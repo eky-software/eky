@@ -34,6 +34,8 @@ Lue lisäksi tehtävän mukaan seuraavat dokumentit:
 - Tarkistuslista: `docs/ai/review-checklist.md`
 - Promptausohjeet: `docs/ai/prompt-guidelines.md`
 - Perusarkkitehtuuri: `docs/architecture/base-architecture.md`
+- Ensimmäisen rungon suunnitelma: `docs/architecture/initial-skeleton-plan.md`
+- Local-cloud-synkronointi: `docs/architecture/local-cloud-sync.md`
 - Moduulien rajat: `docs/architecture/module-boundaries.md`
 - Riippuvuuksien hallinta: `docs/architecture/dependency-policy.md`
 - Turvallisuusperiaatteet: `docs/architecture/security-principles.md`
@@ -45,6 +47,8 @@ Lue lisäksi tehtävän mukaan seuraavat dokumentit:
 - Työnkulut: `docs/product/workflows.md`
 
 Jos työ koskee tiettyä moduulia, lue myös kyseisen moduulin dokumentti `docs/modules/`-kansiosta.
+
+Jos työ koskee teknistä perustaa, skeleton-rakennetta, local-first-mallia, pilvivalmiutta tai synkronointia, lue myös `docs/decisions/ADR-0003-technical-foundation.md`.
 
 Jos kohdekansiossa on oma `AGENTS.md`, se on luettava ennen muutosten tekemistä.
 
@@ -83,7 +87,9 @@ Tavoitteena ei ole rakentaa mikropalveluarkkitehtuuria ensimmäisessä vaiheessa
 
 Järjestelmä rakennetaan kuitenkin niin, että moduuleja voidaan myöhemmin irrottaa omiksi palveluikseen, jos siihen tulee todellinen tarve.
 
-Sama backend-logiikka pyritään pitämään käytettävissä sekä lokaalissa kehityksessä että pilviympäristössä.
+Eky suunnitellaan paikallisesti toimivaksi ja pilveen laajennettavaksi ERP-järjestelmäksi.
+
+Sama domain- ja service-logiikka pyritään pitämään käytettävissä paikallisessa offline-versiossa, pilviversiossa ja myöhemmin mobiilissa.
 
 ## Suunniteltu korkean tason rakenne
 
@@ -98,9 +104,10 @@ Alustava rakenne:
 - `packages/permissions`
 - `packages/ui`
 - `packages/config`
-- `packages/utils`
 
 Lopullinen rakenne tarkentuu projektin edetessä.
+
+`packages/utils` ei kuulu ensimmäiseen skeleton-rakenteeseen. Se voidaan lisätä myöhemmin vain erillisellä päätöksellä ja tarkasti rajatulla vastuulla.
 
 ## Kerrossäännöt
 

@@ -44,9 +44,10 @@ Alustava rakenne:
 - `packages/permissions`
 - `packages/ui`
 - `packages/config`
-- `packages/utils`
 
 Tarkka rakenne voi muuttua projektin edetessä, mutta kerrosajattelu säilyy.
+
+`packages/utils` ei kuulu ensimmäiseen skeleton-rakenteeseen. Se voidaan lisätä myöhemmin vain erillisellä päätöksellä ja tarkasti rajatulla vastuulla.
 
 ## Modulaarinen monoliitti
 

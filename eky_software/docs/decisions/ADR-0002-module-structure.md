@@ -66,9 +66,10 @@ Alustava suunta:
 - `packages/permissions`
 - `packages/ui`
 - `packages/config`
-- `packages/utils`
 
 Tarkka rakenne päätetään teknisen aloituksen yhteydessä.
+
+`packages/utils` ei kuulu ensimmäiseen skeleton-rakenteeseen. Se voidaan lisätä myöhemmin vain erillisellä päätöksellä ja tarkasti rajatulla vastuulla.
 
 ## Perustelut
 
