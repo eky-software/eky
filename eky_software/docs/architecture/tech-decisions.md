@@ -114,9 +114,8 @@ Perustelu:
 ## Avoimet teknologiapäätökset
 
 - Cloud Run vai Cloud Functions backendille
-- ORM tai query builder PostgreSQL-yhteyteen
 - SQLite-kirjasto paikalliseen offline-versioon
-- ORM tai query builder paikalliseen ja pilvitietokantaan
+- ORM tai query builder paikalliseen SQLite-profiiliin ja pilven PostgreSQL-profiiliin
 - käytetäänkö Firebase SQL Connectia vai suoraa PostgreSQL-yhteyttä
 - local-cloud-synkronoinnin malli
 - lopullinen UI-komponenttiratkaisu
