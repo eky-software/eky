@@ -6,9 +6,11 @@ Tarkkoja tauluja ei päätetä tässä dokumentissa, vaan moduulikohtaisessa suu
 
 ## Pääperiaate
 
-Tietomallin pitää tukea turvallisuutta, modulaarisuutta, auditointia ja mahdollista moniyrityskäyttöä.
+Tietomallin pitää tukea turvallisuutta, modulaarisuutta, auditointia, mahdollista moniyrityskäyttöä ja myöhempää local-cloud-synkronointia.
 
 Tietomallia ei suunnitella vain yhden yrityksen väliaikaiseksi rakenteeksi.
+
+Tietomalli suunnitellaan relaatiopohjaiseksi niin, että paikallinen SQLite-profiili ja pilven PostgreSQL-profiili voidaan pitää hallittuina repository-adapterien takana.
 
 ## Yritysrajaus
 
@@ -39,6 +41,8 @@ Kaikki kentät eivät kuulu kaikkiin tauluihin, mutta näitä harkitaan oletukse
 ID:t suunnitellaan niin, että ne toimivat myös tulevaa offline- tai synkronointikäyttöä ajatellen.
 
 ID:t eivät saa sisältää liiketoimintasalaista tietoa.
+
+Paikallisesti syntyvien tietueiden ID-mallin pitää toimia ilman jatkuvaa pilviyhteyttä.
 
 Laskunumerointi erotetaan teknisestä ID:stä.
 
@@ -131,6 +135,29 @@ Audit logiin voidaan tallentaa:
 
 Audit log ei saa tallentaa tarpeettomasti arkaluonteista dataa.
 
+## Synkronointivalmius
+
+Eky suunnitellaan niin, että paikallinen offline-käyttö ja myöhempi pilvisynkronointi ovat mahdollisia.
+
+Kaikkiin tauluihin ei lisätä synkronointikenttiä varmuuden vuoksi, mutta kriittisissä liiketoimintaolioissa harkitaan esimerkiksi:
+
+- `version`
+- `sourceDeviceId`
+- `syncStatus`
+- `lastSyncedAt`
+- `deletedAt`
+- `updatedAt`
+
+Mahdollisia synkronointitiloja voidaan myöhemmin määritellä esimerkiksi:
+
+- `localOnly`
+- `pendingSync`
+- `synced`
+- `syncFailed`
+- `conflict`
+
+Synkronointia ei toteuteta raakakopioimalla paikallista tietokantaa pilveen. Pilveen siirtyvät muutokset kulkevat hallitun backend-rajapinnan, validoinnin, käyttöoikeustarkistusten ja auditoinnin kautta.
+
 ## Liitteet ja tiedostot
 
 Tiedostoja ei tallenneta suoraan relaatiotietokantaan ilman erityistä syytä.
@@ -147,3 +174,4 @@ Tiedostojen käyttöoikeudet tarkistetaan backendissä.
 - Audit log -taulun rakenne
 - Soft delete -käytännöt moduuleittain
 - Offline-synkronoinnin tarvitsemat kentät
+- Local-cloud-synkronoinnin konfliktien ratkaisu

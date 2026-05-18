@@ -56,6 +56,8 @@ Käyttöoikeudet tarkistetaan backendissä.
 
 Frontend voi piilottaa painikkeita tai näkymiä käyttökokemuksen vuoksi, mutta se ei ole varsinainen suojaus.
 
+Käyttöoikeuksissa noudatetaan deny by default -periaatetta: jos oikeutta ei ole nimenomaisesti annettu, toimintoa ei sallita.
+
 Käyttöoikeudet voivat perustua:
 
 - rooleihin
