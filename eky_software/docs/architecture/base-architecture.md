@@ -27,7 +27,8 @@ Eky Base on järjestelmän perusta, jonka päälle voidaan rakentaa:
 - frontend ei puhu suoraan tietokannalle
 - domain-logiikka pidetään puhtaana
 - ulkoiset riippuvuudet eristetään
-- sama backend-logiikka toimii lokaalisti ja pilvessä mahdollisuuksien mukaan
+- Eky toimii paikallisesti ja on laajennettavissa pilveen
+- sama domain- ja service-logiikka pyritään pitämään käytettävissä paikallisessa ja pilviversiossa
 - järjestelmä suunnitellaan tenant-valmiiksi useampaa yritystä varten
 
 ## Korkean tason rakenne
@@ -55,7 +56,7 @@ Tämä tarkoittaa:
 
 - yksi hallittava backend-kokonaisuus
 - selkeät sisäiset moduulit
-- yksi pääasiallinen tietokanta
+- selkeät tietokantaprofiilit paikalliseen ja pilvikäyttöön
 - moduulien väliset rajat dokumentoidaan
 - moduuleja voidaan myöhemmin irrottaa erillisiksi palveluiksi, jos siihen tulee todellinen tarve
 
@@ -91,11 +92,15 @@ Backendin tehtävä:
 
 ## Tietokanta
 
-PostgreSQL on suunniteltu ERP-liiketoimintadatan ensisijaiseksi tietokannaksi.
+Eky käyttää relaatiopohjaista tietomallia ydindatalle.
 
-Kehityksessä voidaan käyttää paikallista PostgreSQL-kantaa.
+Paikallisesti asennettavassa offline-versiossa ensisijainen tietokanta on SQLite.
 
-Pilvessä käytetään myöhemmin hallittua PostgreSQL-ratkaisua, esimerkiksi Firebase SQL / Cloud SQL -tyyppistä ratkaisua.
+Pilviversiossa ensisijainen tietokanta on PostgreSQL, esimerkiksi Firebase SQL / SQL Connect tai Cloud SQL PostgreSQL.
+
+Mobiiliversiossa offline-first-tallennus suunnitellaan myöhemmin Room/SQLite-linjan pohjalta.
+
+Domain- ja service-kerrokset eivät saa riippua suoraan SQLitestä, PostgreSQL:stä tai Roomista. Tietokantakohtaiset toteutukset eristetään repository-adaptereihin.
 
 ## Firebase
 
@@ -111,14 +116,24 @@ Firebase ei saa vuotaa kaikkialle koodiin, vaan se eristetään omien adapterien
 
 ## Local ja cloud
 
-Sama backend-logiikka pyritään pitämään käytettävissä lokaalisti ja pilvessä.
+Eky ei ole vain pilviohjelma, jolla on paikallinen kehitysympäristö.
+
+Eky on paikallisesti toimiva ja pilveen laajennettava ERP-järjestelmä.
 
 Local development:
 
 - web local
 - backend local
-- PostgreSQL local
+- paikallinen tietokanta
 - tarvittaessa Firebase emulator tai dev-auth
+
+Local installed edition:
+
+- paikallinen käyttöliittymä
+- paikallinen backend tai service layer
+- SQLite-tietokanta
+- paikallinen audit log
+- myöhemmin synkronointijono pilveen
 
 Cloud:
 
@@ -128,6 +143,8 @@ Cloud:
 - hallittu PostgreSQL
 
 Frontend puhuu aina backendille, ei suoraan tietokannalle.
+
+Synkronointi ei saa perustua raakakopioon paikallisesta tietokannasta pilveen. Pilveen vietävät muutokset kulkevat myöhemmin sync-kerroksen ja cloud backendin validointi-, käyttöoikeus- ja auditointisääntöjen läpi.
 
 ## Mobiili myöhemmin
 
@@ -174,5 +191,6 @@ Perusvirta:
 
 - Lopullinen backend-ajotapa pilvessä: Cloud Run vai Cloud Functions?
 - Käytetäänkö Firebase SQL Connectia vai suoraa Cloud SQL -yhteyttä?
-- Miten laaja local production -käyttö halutaan myöhemmin?
+- Miten paikallisesti asennettava offline-versio paketoidaan?
 - Miten mobiilin synkronointimalli toteutetaan?
+- Miten local-cloud-synkronoinnin konfliktit ratkaistaan?

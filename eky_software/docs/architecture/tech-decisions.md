@@ -43,17 +43,23 @@ Perustelu:
 - nopea kehitys
 - sopii hallintapaneeliin ja laskutusnäkymiin
 
-## Päätös: PostgreSQL ydindatalle
+## Päätös: relaatiotietokanta ydindatalle
 
 Päätös:
 
-ERP-liiketoimintadatan ensisijainen kanta on PostgreSQL.
+ERP-liiketoimintadata mallinnetaan relaatiopohjaisesti.
+
+Paikallisesti asennettavassa offline-versiossa ensisijainen tietokanta on SQLite.
+
+Pilviversiossa ensisijainen tietokanta on PostgreSQL.
 
 Perustelu:
 
 - asiakas, kohde, työ, kirjaus ja lasku muodostavat relaatioita
 - laskutus vaatii eheyttä ja raportoitavuutta
-- PostgreSQL sopii paremmin ydindataan kuin pelkkä dokumenttikanta
+- SQLite sopii paikalliseen asennettavaan offline-versioon ilman erillistä tietokantapalvelinta
+- PostgreSQL sopii pilvi-, moniyritys- ja raportointikäyttöön
+- domain- ja service-kerrokset voidaan pitää tietokannoista riippumattomina repository-adapterien avulla
 
 ## Päätös: Firebase tukipalveluihin
 
@@ -66,7 +72,7 @@ Perustelu:
 - aiempi osaaminen Firebase-ekosysteemistä
 - Firebase Auth helpottaa kirjautumista
 - Firebase Hosting sopii web-julkaisuihin
-- Firebase SQL / Cloud SQL voi toimia PostgreSQL-pilvikantana
+- Firebase SQL / SQL Connect tai Cloud SQL voi toimia PostgreSQL-pilvikantana
 
 ## Päätös: modulaarinen monoliitti
 
@@ -109,7 +115,10 @@ Perustelu:
 
 - Cloud Run vai Cloud Functions backendille
 - ORM tai query builder PostgreSQL-yhteyteen
+- SQLite-kirjasto paikalliseen offline-versioon
+- ORM tai query builder paikalliseen ja pilvitietokantaan
 - käytetäänkö Firebase SQL Connectia vai suoraa PostgreSQL-yhteyttä
+- local-cloud-synkronoinnin malli
 - lopullinen UI-komponenttiratkaisu
 - PDF-laskujen generointitapa
 - sähköposti- tai verkkolaskuratkaisu
