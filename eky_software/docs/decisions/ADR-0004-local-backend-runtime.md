@@ -210,3 +210,4 @@ Tässä ADR:ssä ei vielä päätetä:
 - `docs/architecture/tech-decisions.md`
 - `docs/decisions/ADR-0003-technical-foundation.md`
 - `docs/decisions/ADR-0005-backend-framework-selection.md`
+- `docs/decisions/ADR-0006-local-database-and-query-layer.md`

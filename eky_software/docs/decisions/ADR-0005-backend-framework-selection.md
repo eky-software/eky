@@ -175,3 +175,4 @@ Tässä ADR:ssä ei vielä päätetä:
 - `docs/architecture/security-principles.md`
 - `docs/decisions/ADR-0003-technical-foundation.md`
 - `docs/decisions/ADR-0004-local-backend-runtime.md`
+- `docs/decisions/ADR-0006-local-database-and-query-layer.md`
