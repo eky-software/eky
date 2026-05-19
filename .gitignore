@@ -3,3 +3,24 @@
 
 # Node / pnpm local installs
 /eky_software/node_modules/
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+*service-account*.json
+*serviceAccount*.json
+
+# Local databases, backups, and generated data files
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+*.backup
+*.bak
