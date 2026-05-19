@@ -3,6 +3,10 @@
 
 # Node / pnpm local installs
 /eky_software/node_modules/
+/eky_software/apps/*/node_modules/
+/eky_software/packages/*/node_modules/
+/eky_software/apps/*/dist/
+/eky_software/packages/*/dist/
 
 # Environment files and secrets
 .env
