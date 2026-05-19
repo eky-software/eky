@@ -209,3 +209,4 @@ Tässä ADR:ssä ei vielä päätetä:
 - `docs/architecture/security-principles.md`
 - `docs/architecture/tech-decisions.md`
 - `docs/decisions/ADR-0003-technical-foundation.md`
+- `docs/decisions/ADR-0005-backend-framework-selection.md`

@@ -321,3 +321,4 @@ Ensimmäisessä toteutuksessa ei tarvitse rakentaa synkronointia valmiiksi, mutt
 - `docs/decisions/ADR-0001-modular-monolith-first.md`
 - `docs/decisions/ADR-0002-module-structure.md`
 - `docs/decisions/ADR-0004-local-backend-runtime.md`
+- `docs/decisions/ADR-0005-backend-framework-selection.md`

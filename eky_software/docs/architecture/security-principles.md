@@ -42,6 +42,29 @@ Salaisuuksia ovat esimerkiksi:
 
 Salaisuudet hallitaan ympäristömuuttujilla tai pilven salaisuuksien hallintapalvelulla.
 
+## Julkisen repositoryn turvallisuus
+
+Repository voi sisältää arkkitehtuurin, koodin, testit, moduulirajat ja yleiset turvallisuusperiaatteet.
+
+Arkkitehtuuripäätökset eivät ole salaisuuksia. On hyväksyttävää dokumentoida, että Eky käyttää esimerkiksi backendin käyttöoikeustarkistuksia, adaptereita, paikallista SQLite-profiilia, pilven PostgreSQL-profiilia tai Firebase Authia adapterin takana.
+
+Repository ei saa sisältää:
+
+- salaisuuksia
+- tuotantoavaimia
+- tietokannan salasanoja
+- Firebase service account -avaimia
+- oikeaa asiakasdataa
+- laskutietoja
+- varmuuskopioita
+- arkaluonteista ympäristökonfiguraatiota
+- yksityisiä tokeneita
+- webhook-salaisuuksia
+
+Paikalliset tietokantatiedostot, varmuuskopiot ja `.env`-tiedostot pidetään Gitin ulkopuolella.
+
+Jos tuotantoympäristöön liittyvä tieto auttaa hyökkääjää suoraan, sitä ei dokumentoida julkiseen repositoryyn.
+
 ## Autentikointi
 
 Firebase Auth on alustava valinta käyttäjän tunnistamiseen.

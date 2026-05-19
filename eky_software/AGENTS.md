@@ -50,7 +50,7 @@ Jos työ koskee tiettyä moduulia, lue myös kyseisen moduulin dokumentti `docs/
 
 Jos työ koskee teknistä perustaa, skeleton-rakennetta, local-first-mallia, pilvivalmiutta tai synkronointia, lue myös `docs/decisions/ADR-0003-technical-foundation.md`.
 
-Jos työ koskee paikallista backend-runtimea, pilvibackendin ajotapaa, backend-frameworkia tai `apps/backend`-rakennetta, lue myös `docs/decisions/ADR-0004-local-backend-runtime.md`.
+Jos työ koskee paikallista backend-runtimea, pilvibackendin ajotapaa, backend-frameworkia tai `apps/backend`-rakennetta, lue myös `docs/decisions/ADR-0004-local-backend-runtime.md` ja `docs/decisions/ADR-0005-backend-framework-selection.md`.
 
 Jos kohdekansiossa on oma `AGENTS.md`, se on luettava ennen muutosten tekemistä.
 

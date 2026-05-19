@@ -25,10 +25,13 @@ Alustavasti hyväksyttyjä riippuvuuksia voivat olla:
 - Firebase
 - Vitest
 - TypeScript
+- Hono
 - ESLint
 - Prettier
 
 Tarkat versiot päätetään projektin teknisessä aloituksessa.
+
+Hono on hyväksytty alustavasti vain backendin HTTP-adapteriksi dokumentin `docs/decisions/ADR-0005-backend-framework-selection.md` mukaisesti.
 
 ## Riippuvuuden lisäämisen tarkistus
 
