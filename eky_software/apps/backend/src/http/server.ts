@@ -1,13 +1,6 @@
 import { serve } from '@hono/node-server';
 
-import { app } from './app.js';
-
-declare const process: {
-  env: {
-    HOST?: string;
-    PORT?: string;
-  };
-};
+import { createApp } from './app.js';
 
 const defaultHostname = '127.0.0.1';
 const defaultPort = 3000;
@@ -29,7 +22,9 @@ function getPort(portValue: string | undefined): number {
 const hostname = process.env.HOST?.trim() || defaultHostname;
 const port = getPort(process.env.PORT);
 
-export function startServer() {
+export async function startServer() {
+  const app = await createApp();
+
   serve(
     {
       fetch: app.fetch,

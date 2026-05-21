@@ -26,12 +26,16 @@ Alustavasti hyväksyttyjä riippuvuuksia voivat olla:
 - Vitest
 - TypeScript
 - Hono
+- Kysely
+- better-sqlite3
 - ESLint
 - Prettier
 
 Tarkat versiot päätetään projektin teknisessä aloituksessa.
 
 Hono on hyväksytty alustavasti vain backendin HTTP-adapteriksi dokumentin `docs/decisions/ADR-0005-backend-framework-selection.md` mukaisesti.
+
+Kysely ja better-sqlite3 on hyväksytty vain `apps/backend`-sovelluksen database/infrastructure-adapterikerrokseen dokumenttien `docs/decisions/ADR-0006-local-database-and-query-layer.md` ja `docs/architecture/local-database-implementation-plan.md` mukaisesti.
 
 ## Riippuvuuden lisäämisen tarkistus
 
@@ -59,6 +63,8 @@ React Hook Form kuuluu lomakelogiikkaan.
 Firebase kuuluu auth- tai infrastructure-kerroksen taakse.
 
 Zod kuuluu validointikerrokseen.
+
+Kysely ja SQLite-ajuri kuuluvat vain backendin database/infrastructure-adapterikerrokseen.
 
 Domain-kerros ei saa riippua Reactista, Firebasesta, TanStack Querystä, React Hook Formista, tietokannasta tai selain-API:sta.
 

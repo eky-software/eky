@@ -7,6 +7,7 @@
 /eky_software/packages/*/node_modules/
 /eky_software/apps/*/dist/
 /eky_software/packages/*/dist/
+/eky_software/apps/backend/data/
 
 # Environment files and secrets
 .env
