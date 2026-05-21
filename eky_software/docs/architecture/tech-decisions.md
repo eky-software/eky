@@ -61,6 +61,23 @@ Perustelu:
 - PostgreSQL sopii pilvi-, moniyritys- ja raportointikäyttöön
 - domain- ja service-kerrokset voidaan pitää tietokannoista riippumattomina repository-adapterien avulla
 
+## Päätös: Kysely + better-sqlite3 paikalliseen backend-tietokanta-adapteriin
+
+Päätös:
+
+Ensimmäisessä paikallisessa backend-tietokantatoteutuksessa käytetään Kyselyä query builderina ja better-sqlite3-kirjastoa Node-yhteensopivana SQLite-ajurina.
+
+Nämä riippuvuudet lisätään vain `apps/backend`-pakettiin.
+
+Perustelu:
+
+- Kysely tukee TypeScript-tyyppiturvallista SQL query builder -mallia
+- Kysely ei ole raskas ORM
+- SQL-ajattelu säilyy näkyvissä
+- better-sqlite3 sopii paikalliseen Node + SQLite -käyttöön
+- riippuvuudet voidaan eristää backendin database/infrastructure-adapterikerrokseen
+- domain, application services ja repository portit voidaan pitää irti tietokantakirjastojen tyypeistä
+
 ## Päätös: Firebase tukipalveluihin
 
 Päätös:
@@ -114,8 +131,7 @@ Perustelu:
 ## Avoimet teknologiapäätökset
 
 - Cloud Run vai Cloud Functions backendille
-- SQLite-kirjasto paikalliseen offline-versioon
-- ORM tai query builder paikalliseen SQLite-profiiliin ja pilven PostgreSQL-profiiliin
+- pilven PostgreSQL-profiilin tarkka query layer / adapteritoteutus
 - käytetäänkö Firebase SQL Connectia vai suoraa PostgreSQL-yhteyttä
 - local-cloud-synkronoinnin malli
 - lopullinen UI-komponenttiratkaisu
