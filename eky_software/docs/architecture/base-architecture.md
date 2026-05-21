@@ -147,6 +147,14 @@ Frontend puhuu aina backendille, ei suoraan tietokannalle.
 
 Synkronointi ei saa perustua raakakopioon paikallisesta tietokannasta pilveen. Pilveen vietävät muutokset kulkevat myöhemmin sync-kerroksen ja cloud backendin validointi-, käyttöoikeus- ja auditointisääntöjen läpi.
 
+## Ensimmäinen pystysuora pala
+
+Ensimmäinen suunniteltu toiminnallinen pystysuora pala on Customer create/list local.
+
+Sen rajaus on kuvattu dokumentissa `docs/architecture/customer-vertical-slice-plan.md`.
+
+Tämän palan tarkoitus on todistaa arkkitehtuurin ensimmäinen oikea local-first dataflow, ei rakentaa koko asiakashallintamoduulia valmiiksi.
+
 ## Mobiili myöhemmin
 
 Mobiilisovellus rakennetaan myöhemmässä vaiheessa.
