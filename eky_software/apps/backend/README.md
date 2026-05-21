@@ -44,11 +44,14 @@ Nykyiset paikalliset asetukset:
 ```env
 HOST=127.0.0.1
 PORT=3000
+DATABASE_FILE_PATH=data/eky-dev.sqlite
 ```
 
 `HOST` määrittää, mihin osoitteeseen paikallinen backend sitoutuu. Oletus on turvallisesti `127.0.0.1`.
 
 `PORT` määrittää paikallisen backendin HTTP-portin. Oletus on `3000`.
+
+`DATABASE_FILE_PATH` määrittää paikallisen SQLite-tietokantatiedoston polun backend-paketin ajokansiosta katsottuna. Oletus on `data/eky-dev.sqlite`, eikä tätä tiedostoa commitoida Gitiin.
 
 ## Komennot
 
@@ -105,4 +108,6 @@ Hono ei saa vuotaa:
 - repository-rajapintoihin
 - `packages/*`-paketteihin
 
-Tässä vaiheessa backendissä ei vielä ole asiakashallintaa, laskutusta, tietokantaa, autentikointia, synkronointia tai audit logia.
+Tässä vaiheessa backendissä on vain pieni paikallinen Customer create/list -polku tietokantakerroksen todistamiseksi.
+
+Backendissä ei vielä ole laskutusta, autentikointia, synkronointia, audit logia tai React-käyttöliittymää.
