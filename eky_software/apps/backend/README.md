@@ -97,6 +97,25 @@ Vastaus:
 
 Jos vaihdat portin `.env`-tiedostossa, käytä curl-komennossa samaa porttia.
 
+Tällä hetkellä `/health` kertoo, että backend käynnistyi onnistuneesti. Koska sovellus alustaa tietokannan käynnistyksessä, `/health` riippuu käytännössä myös paikallisen DB-alustuksen ja migraatioiden onnistumisesta.
+
+Myöhemmin voidaan erottaa:
+
+- `/health` = prosessi elossa
+- `/ready` = tietokanta ja migraatiot kunnossa
+
+## Migraatiot
+
+Nykyinen migration runner lukee SQL-migraatiot kehitysympäristössä polusta:
+
+```text
+src/database/migrations
+```
+
+Tämä sopii nykyiseen backend-kehitysmalliin.
+
+Ennen paketointia, desktop-jakelua tai pilviympäristöä päätetään erikseen, kopioidaanko migraatiot buildiin vai siirretäänkö migraatiot erilliseen backendin migrations-kansioon.
+
 ## Rajaukset
 
 Hono kuuluu vain backendin HTTP-adapterikerrokseen.
