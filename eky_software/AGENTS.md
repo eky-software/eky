@@ -54,6 +54,8 @@ Jos työ koskee paikallista backend-runtimea, pilvibackendin ajotapaa, backend-f
 
 Jos työ koskee tietokantaa, query layeria, repository-portteja, tietokanta-adaptereita, SQLitea, PostgreSQL:ää tai tietomallin moduuliomistusta, lue myös `docs/decisions/ADR-0006-local-database-and-query-layer.md`.
 
+Jos työ koskee ensimmäistä customer-slicea, asiakasmoduulin toteutusta, customer-reittejä, customer repository -portteja tai customer-tietomallia, lue myös `docs/architecture/customer-vertical-slice-plan.md`.
+
 Jos kohdekansiossa on oma `AGENTS.md`, se on luettava ennen muutosten tekemistä.
 
 ## Dokumentaation roolit

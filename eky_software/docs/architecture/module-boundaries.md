@@ -32,6 +32,10 @@ Customers-moduuli ei omista:
 - tuntikirjauksia
 - materiaalikirjauksia
 
+Invoicing, Work Orders, Inventory, Reporting tai muut moduulit eivät saa kirjoittaa customers-moduulin omistamaan asiakasdataan suoraan.
+
+Ensimmäinen rajattu Customer create/list local -toteutuspala on kuvattu dokumentissa `docs/architecture/customer-vertical-slice-plan.md`.
+
 ## Sites
 
 Sites tarkoittaa kohteita tai työmaita.

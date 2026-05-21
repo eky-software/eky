@@ -8,6 +8,10 @@ Customers-moduuli hallitsee yrityksen asiakkaita.
 
 Asiakas voi olla esimerkiksi yksityishenkilö, yritys, taloyhtiö tai muu organisaatio.
 
+Ensimmäinen toteutuspala on rajattu Customer create/list local -sliceen, joka on kuvattu dokumentissa `docs/architecture/customer-vertical-slice-plan.md`.
+
+Ensimmäinen slice ei kuvaa koko lopullista asiakasmoduulia tai lopullista asiakastietomallia.
+
 ## Moduuli omistaa
 
 - asiakkaan perustiedot
