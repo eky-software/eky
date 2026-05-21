@@ -5,6 +5,8 @@ import type { CreateCustomerInput } from '../application/createCustomer.js';
 import type { ListCustomersInput } from '../application/listCustomers.js';
 import type { Customer } from '../domain/customer.js';
 
+// Temporary local development company id.
+// This is not an authentication, tenant, or permission model.
 const devCompanyId = 'dev-company';
 
 interface CustomersRouteDependencies {
