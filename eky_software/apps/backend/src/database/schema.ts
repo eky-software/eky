@@ -1,10 +1,3 @@
-import type { Insertable, Selectable } from 'kysely';
-
-export interface DatabaseSchema {
-  customers: CustomerTable;
-  schema_migrations: SchemaMigrationTable;
-}
-
 export interface CustomerTable {
   id: string;
   company_id: string;
@@ -18,5 +11,5 @@ export interface SchemaMigrationTable {
   run_at: string;
 }
 
-export type CustomerRow = Selectable<CustomerTable>;
-export type NewCustomerRow = Insertable<CustomerTable>;
+export type CustomerRow = CustomerTable;
+export type NewCustomerRow = CustomerTable;

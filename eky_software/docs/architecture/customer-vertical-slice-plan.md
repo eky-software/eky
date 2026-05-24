@@ -154,9 +154,9 @@ Ei vielä toteuteta:
 
 ## Riippuvuuksien rajaus
 
-Kysely ja SQLite-ajuri ovat seuraavan toteutusvaiheen ehdokkaita.
+SQLite-ajuri ja suora parametrisoitu SQL ovat ensimmäisen toteutusvaiheen linja.
 
-Niitä ei asenneta tässä dokumenttityössä.
+Query builderia ei oteta käyttöön ensimmäisessä customer-slicessa.
 
 Kun tietokantariippuvuudet myöhemmin lisätään, niiden pitää pysyä backendin database adapter -kerroksessa.
 
@@ -168,7 +168,7 @@ Tietokantariippuvuudet eivät saa vuotaa:
 - `packages/*`-paketteihin
 - React/UI-kerrokseen
 
-Kyselyä, SQLite-ajuria, Drizzleä, ORM:ää tai muuta query builderia ei lisätä ilman erillistä hyväksyttyä toteutusaskelta.
+SQLite-ajuria, Drizzleä, ORM:ää tai muuta query builderia ei lisätä ilman erillistä hyväksyttyä toteutusaskelta.
 
 ## Arkkitehtuurisäännöt
 
@@ -178,7 +178,7 @@ Domain ei tunne:
 
 - Honoa
 - SQLitea
-- Kyselyä
+- SQL-kyselyitä
 - tietokantakirjastoa
 - HTTP request/response -olioita
 
@@ -200,7 +200,7 @@ SQLite-tiedosto ei saa mennä Gitiin.
 
 SQLite-tiedostoa ei saa tarjoilla webistä.
 
-SQL-kyselyt tehdään parametrisoidusti tai query builderilla.
+SQL-kyselyt tehdään parametrisoidusti.
 
 Käyttäjän syöte ei saa päätyä SQL-lauseisiin merkkijonojen yhdistelyllä.
 
@@ -223,7 +223,7 @@ Ensimmäinen customer-slice on valmis vasta, kun:
 - `pnpm typecheck` menee läpi
 - backend build menee läpi
 - Hono-importit pysyvät HTTP-kerroksessa
-- domain ei importtaa Honoa, SQLitea, Kyselyä tai tietokantakirjastoa
+- domain ei importtaa Honoa, SQLitea, SQL-adaptereita tai tietokantakirjastoa
 - repository port on erillään SQLite-adapterista
 - SQLite-tiedosto ei päädy Gitiin
 - `packages/utils`-kansiota ei synny

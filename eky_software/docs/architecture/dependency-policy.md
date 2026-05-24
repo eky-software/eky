@@ -8,6 +8,14 @@ Tavoitteena on pitää järjestelmä turvallisena, ylläpidettävänä ja vaihde
 
 Uutta kolmannen osapuolen kirjastoa ei lisätä ilman perustelua.
 
+Eky-projektissa riippuvuuksia minimoidaan tietoisesti.
+
+Uusi kirjasto lisätään vain, jos se ratkaisee todellisen ongelman, jota ei ole järkevää ratkaista projektin omalla selkeällä koodilla.
+
+Jos ulkoinen kirjasto ei ole välttämätön, suositaan omaa pientä toteutusta.
+
+Jokainen uusi riippuvuus lisää ylläpito-, tietoturva-, yhteensopivuus- ja pitkäikäisyysriskiä.
+
 Riippuvuudet pyritään eristämään omien Eky-kerrosten taakse.
 
 Jos kirjasto joudutaan myöhemmin vaihtamaan, muutoksen pitää osua rajattuun osaan järjestelmää.
@@ -26,7 +34,6 @@ Alustavasti hyväksyttyjä riippuvuuksia voivat olla:
 - Vitest
 - TypeScript
 - Hono
-- Kysely
 - better-sqlite3
 - ESLint
 - Prettier
@@ -35,7 +42,9 @@ Tarkat versiot päätetään projektin teknisessä aloituksessa.
 
 Hono on hyväksytty alustavasti vain backendin HTTP-adapteriksi dokumentin `docs/decisions/ADR-0005-backend-framework-selection.md` mukaisesti.
 
-Kysely ja better-sqlite3 on hyväksytty vain `apps/backend`-sovelluksen database/infrastructure-adapterikerrokseen dokumenttien `docs/decisions/ADR-0006-local-database-and-query-layer.md` ja `docs/architecture/local-database-implementation-plan.md` mukaisesti.
+better-sqlite3 on hyväksytty vain `apps/backend`-sovelluksen database/infrastructure-adapterikerrokseen dokumenttien `docs/decisions/ADR-0006-local-database-and-query-layer.md` ja `docs/architecture/local-database-implementation-plan.md` mukaisesti.
+
+Query builder tai ORM voidaan lisätä myöhemmin vain erillisellä päätöksellä, jos suora parametrisoitu SQL alkaa kasvattaa ylläpitoriskiä.
 
 ## Riippuvuuden lisäämisen tarkistus
 
@@ -64,7 +73,7 @@ Firebase kuuluu auth- tai infrastructure-kerroksen taakse.
 
 Zod kuuluu validointikerrokseen.
 
-Kysely ja SQLite-ajuri kuuluvat vain backendin database/infrastructure-adapterikerrokseen.
+SQLite-ajuri ja SQL-kyselyt kuuluvat vain backendin database/infrastructure-adapterikerrokseen.
 
 Domain-kerros ei saa riippua Reactista, Firebasesta, TanStack Querystä, React Hook Formista, tietokannasta tai selain-API:sta.
 
