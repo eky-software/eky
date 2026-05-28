@@ -77,6 +77,10 @@ Frontendin tehtävä:
 
 Frontend ei omista liiketoimintasääntöjä eikä turvallisuutta.
 
+Ensimmäinen rajattu web customer UI -pala on kuvattu dokumentissa `docs/architecture/web-customer-ui-plan.md`.
+
+Sen tarkoitus on todistaa ketju `React UI -> packages/api-client -> backend HTTP API -> customer application/domain -> SQLite`, ei rakentaa koko frontend-sovellusta valmiiksi.
+
 ## Backend
 
 Backend toimii järjestelmän luotettuna palvelukerroksena.
