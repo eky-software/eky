@@ -194,6 +194,74 @@ Sisäinen paketti ei tarkoita automaattisesti julkista npm-pakettia.
 
 Aluksi paketit pidetään monorepon sisäisinä.
 
+## Sisäiset Eky-apukerrokset
+
+Ennen uuden ulkoisen npm-kirjaston lisäämistä arvioidaan, voidaanko tarve ratkaista omalla pienellä paikallisella funktiolla tai selkeästi nimetyllä sisäisellä Eky-paketilla.
+
+Lähtökohtainen etenemisjärjestys:
+
+1. Tee ensin pieni paikallinen ratkaisu moduulin sisällä.
+2. Jos sama tarve toistuu vähintään 2-3 paikassa, harkitse sisäistä Eky-pakettia.
+3. Ota ulkoinen kirjasto käyttöön vasta, jos oma ratkaisu muuttuu riskiksi, liian työlääksi tai huonommin ylläpidettäväksi kuin rajattu ulkoinen kirjasto.
+
+Sisäistä pakettia ei luoda varmuuden vuoksi.
+
+Sisäinen paketti voidaan luoda, kun:
+
+- sama tarve toistuu useassa paikassa
+- vastuu on selkeä
+- paketin nimi kertoo tarkasti, mitä se tekee
+- paketti ei riko arkkitehtuurirajoja
+
+Hyviä sisäisen paketin esimerkkejä:
+
+- `packages/validation`
+- `packages/config`
+- `packages/permissions`
+- `packages/api-client`
+
+Sisäinen Eky-paketti ei saa ohittaa:
+
+- domain-sääntöjä
+- application service -kerrosta
+- permission-tarkistuksia
+- repository portteja
+- adapterirajoja
+- moduulien datan omistajuutta
+
+Sisäisen apukerroksen pitää vähentää toistoa, ei piilottaa järjestelmän toimintaa.
+
+Jos oma sisäinen ratkaisu alkaa kasvaa liian suureksi tai monimutkaiseksi, arvioidaan uudelleen, pidetäänkö oma toteutus vai otetaanko rajattu ulkoinen kirjasto käyttöön.
+
+### Validointilinja
+
+Aluksi yksinkertainen validointi voidaan tehdä moduulin omassa HTTP/input-kerroksessa.
+
+Jos sama validointikaava toistuu useassa moduulissa, voidaan ottaa käyttöön tai laajentaa `packages/validation`-pakettia.
+
+Zod tai muu ulkoinen validointikirjasto otetaan käyttöön vain erillisellä päätöksellä, jos oma validointikerros alkaa muodostua riskiksi.
+
+### SQL-apulinja
+
+SQL pidetään adapterikerroksessa.
+
+Jos sama `prepare` / `run` / `all` / `map` -rakenne toistuu paljon, voidaan luoda pieni backendin sisäinen database-apukerros.
+
+Tämä apukerros ei saa muuttua omaksi ORM:ksi.
+
+SQL-apu ei saa levitä domainiin, application serviceihin, HTTP-routeihin tai `packages/*`-paketteihin.
+
+## Kielletyt yleispaketit
+
+Älä luo:
+
+- `packages/utils`
+- `packages/helpers`
+- `common.ts`
+- `everything.ts`
+
+Yleiset apupaketit muuttuvat helposti kaatopaikaksi ja rikkovat moduulirajoja.
+
 ## Kiellettyä
 
 Älä tee:
