@@ -78,6 +78,38 @@ Repository port ei saa paljastaa SQLitea, SQL:ää tai tietokantakirjaston omia 
 
 SQLite adapter toteuttaa repository portin ja saa käyttää tietokantakirjastoa.
 
+## SQL-adapterisäännöt
+
+SQL on adapterin sisäinen toteutusyksityiskohta.
+
+SQL ei saa näkyä domainissa, application serviceissä, HTTP-routeissa, repository port -rajapinnoissa, `packages/*`-paketeissa tai `apps/web`-sovelluksessa.
+
+Kaikki muuttuvat arvot annetaan parametrisoituina arvoina.
+
+Käyttäjän syötettä ei saa koskaan yhdistää SQL-merkkijonoon.
+
+Hyvä:
+
+```ts
+database.prepare('SELECT * FROM customers WHERE company_id = ?').all(companyId);
+```
+
+Huono:
+
+```ts
+database.prepare(`SELECT * FROM customers WHERE company_id = '${companyId}'`);
+```
+
+Repository port ei saa palauttaa tai vastaanottaa better-sqlite3-tyyppejä, SQL statementteja, tietokantarivejä sellaisenaan tai database connection -olioita.
+
+Repository port käyttää vain domain- ja application-tason tyyppejä.
+
+SQLite/PostgreSQL-adapteri vastaa `snake_case` <-> `camelCase` -muunnoksesta.
+
+Pitkät tai monimutkaiset SQL-kyselyt kapseloidaan selkeästi nimettyihin repository-metodeihin.
+
+Laajemmat cross-module JOIN-kyselyt kuuluvat myöhemmin reporting/read-model-kerrokseen.
+
 ## Alustava database-kansiorakenne
 
 Ensimmäinen tietokantarakenne voidaan sijoittaa backendin sisään:
