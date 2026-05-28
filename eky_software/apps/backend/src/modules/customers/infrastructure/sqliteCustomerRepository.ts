@@ -1,6 +1,5 @@
-import type { Kysely } from 'kysely';
-
-import type { DatabaseSchema, CustomerRow, NewCustomerRow } from '../../../database/schema.js';
+import type { DatabaseConnection } from '../../../database/connection/createDatabaseConnection.js';
+import type { CustomerRow, NewCustomerRow } from '../../../database/schema.js';
 import type { Customer } from '../domain/customer.js';
 import type { CustomerRepository } from '../ports/customerRepository.js';
 
@@ -25,21 +24,34 @@ function toCustomer(row: CustomerRow): Customer {
 }
 
 export class SqliteCustomerRepository implements CustomerRepository {
-  constructor(private readonly database: Kysely<DatabaseSchema>) {}
+  constructor(private readonly database: DatabaseConnection) {}
 
   async create(customer: Customer): Promise<Customer> {
-    await this.database.insertInto('customers').values(toCustomerRow(customer)).execute();
+    const row = toCustomerRow(customer);
+
+    this.database
+      .prepare<[string, string, string, string, string]>(
+        `
+          INSERT INTO customers (id, company_id, name, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?)
+        `,
+      )
+      .run(row.id, row.company_id, row.name, row.created_at, row.updated_at);
 
     return customer;
   }
 
   async listByCompanyId(companyId: string): Promise<Customer[]> {
-    const rows = await this.database
-      .selectFrom('customers')
-      .selectAll()
-      .where('company_id', '=', companyId)
-      .orderBy('created_at', 'desc')
-      .execute();
+    const rows = this.database
+      .prepare<[string], CustomerRow>(
+        `
+          SELECT id, company_id, name, created_at, updated_at
+          FROM customers
+          WHERE company_id = ?
+          ORDER BY created_at DESC
+        `,
+      )
+      .all(companyId);
 
     return rows.map(toCustomer);
   }

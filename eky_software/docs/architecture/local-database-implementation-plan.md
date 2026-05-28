@@ -24,19 +24,19 @@ Toteutuksen pitää todistaa:
 
 ## Alustava DB-pinoehdotus
 
-Ensisijainen ehdotus:
+Ensimmäisen toteutuksen valinta:
 
-- Kysely query builderiksi
-- Node-yhteensopiva SQLite-ajuri
-- ensisijainen SQLite-ajuriehdokas: `better-sqlite3`
+- Node-yhteensopiva SQLite-ajuri: `better-sqlite3`
+- suorat parametrisoidut SQL-lauseet backendin database/infrastructure-adapterikerroksessa
 
-Näitä ei asenneta tässä dokumenttityössä.
+Query builderia ei oteta käyttöön ensimmäisessä toteutuksessa.
+
+Kysely tai muu query builder voidaan lisätä myöhemmin erillisellä päätöksellä, jos suora SQL alkaa kasvattaa ylläpito- tai virheriskiä.
 
 Ennen riippuvuuksien lisäämistä tarkistetaan:
 
 - yhteensopivuus nykyisen Node-version kanssa
 - yhteensopivuus nykyisen TypeScript-version kanssa
-- yhteensopivuus valitun Kysely-version kanssa
 - SQLite-ajurin ylläpitotilanne
 - lisenssi
 - transitiiviset riippuvuudet
@@ -61,7 +61,7 @@ Tietokantariippuvuudet ovat backendin infrastructure/database-kerroksen yksityis
 
 ## Kerrosrajat
 
-Kysely ja SQLite-ajuri saavat näkyä vain backendin database/infrastructure adapter -kerroksessa.
+SQLite-ajuri ja SQL-kyselyt saavat näkyä vain backendin database/infrastructure adapter -kerroksessa.
 
 Ne eivät saa näkyä:
 
@@ -74,7 +74,7 @@ Ne eivät saa näkyä:
 
 Application service käyttää repository porttia.
 
-Repository port ei saa paljastaa Kyselyä, SQLitea tai tietokantakirjaston omia tyyppejä.
+Repository port ei saa paljastaa SQLitea, SQL:ää tai tietokantakirjaston omia tyyppejä.
 
 SQLite adapter toteuttaa repository portin ja saa käyttää tietokantakirjastoa.
 
@@ -203,7 +203,7 @@ SQLite-tiedosto ei saa mennä Gitiin.
 
 SQLite-tiedostoa ei saa tarjoilla webistä.
 
-SQL-kyselyt tehdään parametrisoidusti tai query builderilla.
+SQL-kyselyt tehdään parametrisoidusti.
 
 Käyttäjän syötettä ei yhdistetä SQL-merkkijonoihin.
 
@@ -220,7 +220,7 @@ Local/offline-käyttö ei oikeuta ohittamaan domain-sääntöjä.
 Tässä suunnitelmavaiheessa ei tehdä:
 
 - DB-riippuvuuksien asennusta
-- Kyselyn asennusta
+- query builderin asennusta
 - SQLite-ajurin asennusta
 - customer-slicen koodia
 - migraatio-runneria
@@ -240,8 +240,8 @@ Tuleva DB-toteutus on hyväksyttävä vasta, kun:
 - riippuvuudet ovat vain `apps/backend`-paketissa
 - `pnpm typecheck` menee läpi
 - backend build menee läpi
-- Kysely/SQLite eivät vuoda domainiin
-- Kysely/SQLite eivät vuoda `packages/*`-paketteihin
+- SQLite tai SQL eivät vuoda domainiin
+- SQLite tai SQL eivät vuoda `packages/*`-paketteihin
 - repository port ei paljasta tietokantakirjaston tyyppejä
 - SQLite-tiedosto ei päädy Gitiin
 - ensimmäinen customers-migraatio on jäljitettävä

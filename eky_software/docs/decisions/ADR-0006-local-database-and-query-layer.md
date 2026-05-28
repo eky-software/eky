@@ -170,30 +170,56 @@ Domain ei tunne repository-adapteria eikä tietokantakirjastoa.
 
 ## Query layer
 
-Ensisijainen query layer -ehdokas on Kysely.
+Ensimmäinen query layer -toteutus on suora parametrisoitu SQL backendin database/infrastructure-adapterikerroksessa.
 
 Perustelut:
+
+- ensimmäinen customer-slice tarvitsee vain pienen määrän yksinkertaisia kyselyitä
+- erillistä query builder -riippuvuutta ei tarvita vielä
+- riippuvuuksia minimoidaan tietoisesti
+- SQL-ajattelu säilyy näkyvissä
+- sopii repository-adapterikerrokseen
+- muuttuvat arvot annetaan parametrisoituina arvoina
+
+Query builder voidaan ottaa myöhemmin käyttöön erillisellä päätöksellä, jos suora SQL alkaa kasvattaa ylläpito- tai virheriskiä.
+
+## Vaihtoehdot
+
+### Suora parametrisoitu SQL
+
+Suora parametrisoitu SQL on ensimmäinen toteutuslinja.
+
+Plussat:
+
+- ei lisää erillistä query builder -riippuvuutta
+- SQL pysyy näkyvissä
+- sopii pieneen ensimmäiseen SQLite-toteutukseen
+- pakottaa pitämään SQL:n adapterikerroksessa
+
+Riskit:
+
+- käsin kirjoitetut SQL-kyselyt voivat kasvaa vaikeammiksi ylläpitää
+- tyyppiturva on rajatumpaa kuin query builderillä
+- mapper-funktioiden vastuu korostuu
+
+### Kysely
+
+Kysely jää myöhemmäksi vaihtoehdoksi.
+
+Plussat:
 
 - TypeScript-ystävällinen SQL query builder
 - ei ole raskas ORM
 - SQL-ajattelu säilyy näkyvissä
 - sopii monimutkaisempiin join-kyselyihin
 - tukee sekä SQLite- että PostgreSQL-ajattelua
-- sopii repository-adapterikerrokseen
-
-Kyselyä ei vielä asenneta tässä ADR:ssä.
-
-## Vaihtoehdot
-
-### Kysely
-
-Kysely on ensisijainen ehdokas ensimmäiseen query layer -ratkaisuun.
 
 Riskit:
 
 - tuo uuden riippuvuuden
 - skeeman TypeScript-malli pitää suunnitella
 - migraatiomalli pitää ratkaista erikseen
+- ei ole välttämätön ensimmäisessä pienessä customer-slicessa
 
 ### Drizzle
 
@@ -235,7 +261,7 @@ SQLite-tietokantatiedostoa ei saa tarjoilla webistä.
 
 Paikallinen tietokanta pitää sijoittaa myöhemmin hallittuun sovellusdatahakemistoon, ei julkiseen web-hakemistoon.
 
-SQL-injektiot estetään käyttämällä parametrisoituja kyselyitä tai query builderia.
+SQL-injektiot estetään käyttämällä parametrisoituja kyselyitä tai myöhemmin erikseen hyväksyttyä query builderia.
 
 Käyttäjän syöte ei saa päätyä SQL-lauseisiin merkkijonojen yhdistelyllä.
 
@@ -290,7 +316,7 @@ Ensimmäisessä DB-toteutuksessa ei rakenneta koko asiakashallintaa, koko laskut
 Tässä ADR:ssä ei vielä päätetä:
 
 - tarkkaa SQLite-kirjastoa
-- Kyselyn versiota
+- query builder -kirjastoa
 - Drizzlen hylkäämistä lopullisesti
 - migraatiotyökalua
 - ensimmäistä tietokantaskeemaa
