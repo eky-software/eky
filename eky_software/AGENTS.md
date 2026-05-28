@@ -60,6 +60,8 @@ Jos työ koskee SQL-kyselyitä tai repository-adaptereita, noudata lisäksi `doc
 
 Jos työ koskee ensimmäistä customer-slicea, asiakasmoduulin toteutusta, customer-reittejä, customer repository -portteja tai customer-tietomallia, lue myös `docs/architecture/customer-vertical-slice-plan.md`.
 
+Jos työ koskee ensimmäistä web customer UI -palaa, React customer -näkymää, `apps/web`-toteutusta tai customer-kutsuja webistä, lue myös `docs/architecture/web-customer-ui-plan.md`.
+
 Jos kohdekansiossa on oma `AGENTS.md`, se on luettava ennen muutosten tekemistä.
 
 ## Dokumentaation roolit

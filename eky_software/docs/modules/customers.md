@@ -12,6 +12,10 @@ Ensimmäinen toteutuspala on rajattu Customer create/list local -sliceen, joka o
 
 Ensimmäinen slice ei kuvaa koko lopullista asiakasmoduulia tai lopullista asiakastietomallia.
 
+Ensimmäinen rajattu web customer UI -pala on kuvattu dokumentissa `docs/architecture/web-customer-ui-plan.md`.
+
+Se käyttää customer-slicea `packages/api-client`-paketin kautta eikä kuvaa koko lopullista asiakaskortistoa.
+
 ## Moduuli omistaa
 
 - asiakkaan perustiedot
