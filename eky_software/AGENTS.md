@@ -56,6 +56,8 @@ Jos työ koskee tietokantaa, query layeria, repository-portteja, tietokanta-adap
 
 Jos työ koskee ensimmäisen paikallisen tietokantapinon toteutusta, SQLite-ajuria, SQL-kyselyitä, migraatiomallia tai paikallisen SQLite-tiedoston sijaintia, lue myös `docs/architecture/local-database-implementation-plan.md`.
 
+Jos työ koskee SQL-kyselyitä tai repository-adaptereita, noudata lisäksi `docs/architecture/dependency-policy.md`-dokumentin SQL-adapterisääntöjä.
+
 Jos työ koskee ensimmäistä customer-slicea, asiakasmoduulin toteutusta, customer-reittejä, customer repository -portteja tai customer-tietomallia, lue myös `docs/architecture/customer-vertical-slice-plan.md`.
 
 Jos kohdekansiossa on oma `AGENTS.md`, se on luettava ennen muutosten tekemistä.

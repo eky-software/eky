@@ -77,6 +77,66 @@ SQLite-ajuri ja SQL-kyselyt kuuluvat vain backendin database/infrastructure-adap
 
 Domain-kerros ei saa riippua Reactista, Firebasesta, TanStack Querystä, React Hook Formista, tietokannasta tai selain-API:sta.
 
+## SQL-adapterisäännöt
+
+Koska ensimmäinen paikallinen tietokantatoteutus käyttää suoraa parametrisoitua SQL:ää ilman query builderiä, SQL-kurin pitää olla eksplisiittinen.
+
+SQL on adapterin sisäinen toteutusyksityiskohta.
+
+SQL saa näkyä vain backendin infrastructure/database/repository-adapterikerroksessa.
+
+SQL ei saa näkyä:
+
+- domainissa
+- application serviceissä
+- HTTP-routeissa
+- repository port -rajapinnoissa
+- `packages/*`-paketeissa
+- `apps/web`-sovelluksessa
+
+Kaikki muuttuvat arvot annetaan parametrisoituina arvoina.
+
+Hyvä:
+
+```ts
+database.prepare('SELECT * FROM customers WHERE company_id = ?').all(companyId);
+```
+
+Huono:
+
+```ts
+database.prepare(`SELECT * FROM customers WHERE company_id = '${companyId}'`);
+```
+
+Käyttäjän syötettä ei saa koskaan yhdistää SQL-merkkijonoon.
+
+Repository port ei saa palauttaa tai vastaanottaa:
+
+- better-sqlite3-tyyppejä
+- SQL statementteja
+- tietokantarivejä sellaisenaan
+- database connection -olioita
+
+Repository port saa käyttää vain domain- ja application-tason tyyppejä.
+
+Tietokanta-adapteri vastaa `snake_case` <-> `camelCase` -muunnoksesta.
+
+Pitkät tai monimutkaiset SQL-kyselyt kapseloidaan selkeästi nimettyihin repository-metodeihin.
+
+Hyvä:
+
+```text
+customerRepository.listCustomersWithOpenInvoiceSummary(companyId)
+```
+
+Huono:
+
+```text
+application service kokoaa itse JOIN-kyselyn useasta taulusta
+```
+
+Laajemmat cross-module JOIN-kyselyt kuuluvat myöhemmin reporting/read-model-kerrokseen, eivät satunnaisesti customers-, invoicing- tai work-orders-moduulin sisään.
+
 ## API-client
 
 Frontend ei kutsu backend API:a suoraan komponenteista, jos api-client-kerros on olemassa.

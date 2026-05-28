@@ -168,6 +168,12 @@ application service
 
 Domain ei tunne repository-adapteria eikä tietokantakirjastoa.
 
+Repository port ei saa palauttaa tai vastaanottaa tietokantakirjastojen tyyppejä, SQL statementteja, tietokantarivejä sellaisenaan tai database connection -olioita.
+
+Repository port käyttää vain domain- ja application-tason tyyppejä.
+
+Tietokanta-adapteri vastaa tietokantamuunnoksista, kuten `snake_case` <-> `camelCase`.
+
 ## Query layer
 
 Ensimmäinen query layer -toteutus on suora parametrisoitu SQL backendin database/infrastructure-adapterikerroksessa.
@@ -182,6 +188,12 @@ Perustelut:
 - muuttuvat arvot annetaan parametrisoituina arvoina
 
 Query builder voidaan ottaa myöhemmin käyttöön erillisellä päätöksellä, jos suora SQL alkaa kasvattaa ylläpito- tai virheriskiä.
+
+SQL ei saa näkyä domainissa, application serviceissä, HTTP-routeissa, repository port -rajapinnoissa, `packages/*`-paketeissa tai `apps/web`-sovelluksessa.
+
+Kaikki muuttuvat arvot annetaan parametrisoituina arvoina. Käyttäjän syötettä ei saa koskaan yhdistää SQL-merkkijonoon.
+
+Pitkät tai monimutkaiset SQL-kyselyt kapseloidaan selkeästi nimettyihin repository-metodeihin.
 
 ## Vaihtoehdot
 
