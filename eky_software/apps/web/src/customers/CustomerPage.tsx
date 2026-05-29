@@ -1,4 +1,9 @@
-import { createEkyApiClient, EkyApiError, type Customer } from '@eky/api-client';
+import {
+  createEkyApiClient,
+  EkyApiError,
+  type CreateCustomerRequest,
+  type Customer,
+} from '@eky/api-client';
 import { useEffect, useMemo, useState } from 'react';
 
 import { CustomerForm } from './CustomerForm.js';
@@ -7,10 +12,24 @@ import { getFinnishApiErrorMessage, uiText } from '../i18n/fi.js';
 
 const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
 
+const initialCustomerForm: CreateCustomerRequest = {
+  businessId: '',
+  city: '',
+  comment: '',
+  customerNumber: '',
+  customerType: 'company',
+  email: '',
+  name: '',
+  phone: '',
+  postalCode: '',
+  status: 'active',
+  streetAddress: '',
+};
+
 export function CustomerPage(): React.JSX.Element {
   const apiClient = useMemo(() => createEkyApiClient({ baseUrl: apiBaseUrl }), []);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [customerName, setCustomerName] = useState('');
+  const [customerForm, setCustomerForm] = useState<CreateCustomerRequest>(initialCustomerForm);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -55,10 +74,10 @@ export function CustomerPage(): React.JSX.Element {
     setErrorMessage(null);
 
     try {
-      const createdCustomer = await apiClient.createCustomer({ name: customerName });
+      const createdCustomer = await apiClient.createCustomer(customerForm);
 
       setCustomers((currentCustomers) => [...currentCustomers, createdCustomer]);
-      setCustomerName('');
+      setCustomerForm(initialCustomerForm);
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
     } finally {
@@ -78,9 +97,11 @@ export function CustomerPage(): React.JSX.Element {
 
       <div className="content-grid">
         <CustomerForm
-          customerName={customerName}
+          form={customerForm}
           isSaving={isSaving}
-          onCustomerNameChange={setCustomerName}
+          onFieldChange={(fieldName, value) =>
+            setCustomerForm((currentForm) => ({ ...currentForm, [fieldName]: value }))
+          }
           onSubmit={() => void handleCreateCustomer()}
         />
         <CustomerList customers={customers} errorMessage={errorMessage} isLoading={isLoading} />

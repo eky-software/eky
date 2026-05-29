@@ -8,15 +8,7 @@ import { createCustomersRoutes } from './customersRoutes.js';
 
 describe('customersRoutes', () => {
   it('lists customers through the route dependencies', async () => {
-    const customers: Customer[] = [
-      {
-        id: 'customer-1',
-        companyId: 'dev-company',
-        name: 'Example Customer Oy',
-        createdAt: '2026-05-21T00:00:00.000Z',
-        updatedAt: '2026-05-21T00:00:00.000Z',
-      },
-    ];
+    const customers: Customer[] = [createTestCustomer()];
     let listInput: ListCustomersInput | undefined;
     const app = createCustomersRoutes({
       async createCustomer(): Promise<Customer> {
@@ -38,13 +30,7 @@ describe('customersRoutes', () => {
   });
 
   it('creates a customer through the route dependencies', async () => {
-    const createdCustomer: Customer = {
-      id: 'customer-1',
-      companyId: 'dev-company',
-      name: 'Example Customer Oy',
-      createdAt: '2026-05-21T00:00:00.000Z',
-      updatedAt: '2026-05-21T00:00:00.000Z',
-    };
+    const createdCustomer = createTestCustomer();
     let createInput: CreateCustomerInput | undefined;
     const app = createCustomersRoutes({
       async createCustomer(input): Promise<Customer> {
@@ -58,7 +44,19 @@ describe('customersRoutes', () => {
     });
 
     const response = await app.request('/customers', {
-      body: JSON.stringify({ name: '  Example Customer Oy  ' }),
+      body: JSON.stringify({
+        businessId: '  1234567-8  ',
+        city: '  Helsinki  ',
+        comment: '  Important local customer  ',
+        customerNumber: '  1001  ',
+        customerType: 'company',
+        email: '  customer@example.fi  ',
+        name: '  Example Customer Oy  ',
+        phone: '  040 123 4567  ',
+        postalCode: '  00100  ',
+        status: 'active',
+        streetAddress: '  Testikatu 1  ',
+      }),
       headers: { 'Content-Type': 'application/json' },
       method: 'POST',
     });
@@ -66,8 +64,18 @@ describe('customersRoutes', () => {
 
     expect(response.status).toBe(201);
     expect(createInput).toEqual({
+      businessId: '  1234567-8  ',
+      city: '  Helsinki  ',
+      comment: '  Important local customer  ',
       companyId: 'dev-company',
+      customerNumber: '  1001  ',
+      customerType: 'company',
+      email: '  customer@example.fi  ',
       name: '  Example Customer Oy  ',
+      phone: '  040 123 4567  ',
+      postalCode: '  00100  ',
+      status: 'active',
+      streetAddress: '  Testikatu 1  ',
     });
     expect(body).toEqual({ customer: createdCustomer });
   });
@@ -133,7 +141,7 @@ describe('customersRoutes', () => {
     });
 
     const response = await app.request('/customers', {
-      body: JSON.stringify({ name: '   ' }),
+      body: JSON.stringify({ customerNumber: '1001', name: '   ' }),
       headers: { 'Content-Type': 'application/json' },
       method: 'POST',
     });
@@ -143,3 +151,23 @@ describe('customersRoutes', () => {
     expect(body).toEqual({ error: 'Customer name is required.' });
   });
 });
+
+function createTestCustomer(): Customer {
+  return {
+    id: 'customer-1',
+    companyId: 'dev-company',
+    customerNumber: '1001',
+    name: 'Example Customer Oy',
+    customerType: 'company',
+    businessId: '1234567-8',
+    streetAddress: 'Testikatu 1',
+    postalCode: '00100',
+    city: 'Helsinki',
+    email: 'customer@example.fi',
+    phone: '040 123 4567',
+    comment: 'Important local customer',
+    status: 'active',
+    createdAt: '2026-05-21T00:00:00.000Z',
+    updatedAt: '2026-05-21T00:00:00.000Z',
+  };
+}

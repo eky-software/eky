@@ -18,6 +18,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function getOptionalStringField(body: Record<string, unknown>, fieldName: string): string {
+  const value = body[fieldName];
+
+  if (value === undefined || value === null) {
+    return '';
+  }
+
+  return typeof value === 'string' ? value : '';
+}
+
+function getStringField(body: Record<string, unknown>, fieldName: string): string | undefined {
+  const value = body[fieldName];
+
+  return typeof value === 'string' ? value : undefined;
+}
+
 export function createCustomersRoutes(dependencies: CustomersRouteDependencies): Hono {
   const routes = new Hono();
 
@@ -34,10 +50,26 @@ export function createCustomersRoutes(dependencies: CustomersRouteDependencies):
       return context.json({ error: 'Customer name is required.' }, 400);
     }
 
+    const customerNumber = getStringField(body, 'customerNumber');
+
+    if (customerNumber === undefined) {
+      return context.json({ error: 'Customer number is required.' }, 400);
+    }
+
     try {
       const customer = await dependencies.createCustomer({
+        businessId: getOptionalStringField(body, 'businessId'),
+        city: getOptionalStringField(body, 'city'),
+        comment: getOptionalStringField(body, 'comment'),
         companyId: devCompanyId,
+        customerNumber,
+        customerType: getOptionalStringField(body, 'customerType') || 'company',
+        email: getOptionalStringField(body, 'email'),
         name: body.name,
+        phone: getOptionalStringField(body, 'phone'),
+        postalCode: getOptionalStringField(body, 'postalCode'),
+        status: getOptionalStringField(body, 'status') || 'active',
+        streetAddress: getOptionalStringField(body, 'streetAddress'),
       });
 
       return context.json({ customer }, 201);
