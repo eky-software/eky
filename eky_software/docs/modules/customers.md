@@ -14,13 +14,13 @@ Asiakas voi olla esimerkiksi:
 - isännöitsijätoimisto
 - muu organisaatio
 
-Ensimmäinen toteutettu Customer create/list local -slice on tekninen mallipolku, joka on kuvattu dokumentissa `docs/architecture/customer-vertical-slice-plan.md`.
+Ensimmäinen toteutettu Customer create/list local -slice oli tekninen mallipolku, joka on kuvattu dokumentissa `docs/architecture/customer-vertical-slice-plan.md`.
 
 Ensimmäinen rajattu web customer UI -pala on kuvattu dokumentissa `docs/architecture/web-customer-ui-plan.md`.
 
-Nykyinen slice ei kuvaa lopullista asiakaskortistoa.
+Nykyinen customer-toteutus laajentaa teknisen mallipolun Customer MVP -asiakaskortistoksi.
 
-Seuraava customer-vaihe on oikea Customer MVP -asiakaskortisto.
+Se ei vielä ole koko lopullinen asiakashallintamoduuli.
 
 ## Moduuli Omistaa
 
@@ -60,7 +60,7 @@ Esimerkiksi laskutus voi käyttää asiakkaan tietoja laskun muodostuksessa, mut
 
 ## Customer MVP -Asiakaskortti
 
-Ensimmäinen oikea asiakaskortisto laajentaa nykyisen teknisen demon hyödylliseksi customer-moduuliksi.
+Ensimmäinen oikea asiakaskortisto laajentaa teknisen demon hyödylliseksi customer-moduuliksi.
 
 MVP-kentät:
 
@@ -218,11 +218,11 @@ Asiakastietojen muutoksista voidaan myöhemmin kirjata audit log.
 
 Y-tunnus ja yhteystiedot ovat liiketoimintadataa, jota ei saa vuotaa väärälle yritykselle.
 
-## Seuraava Toteutuspolku
+## Toteutuspolku
 
 Customer MVP -asiakaskortiston toteutus tehdään pienissä vaiheissa.
 
-Suositeltu järjestys:
+Toteutusjärjestys:
 
 1. SQLite-migraatio `customers`-taulun laajentamiseksi.
 2. Domainin `Customer`-tyypin laajennus.

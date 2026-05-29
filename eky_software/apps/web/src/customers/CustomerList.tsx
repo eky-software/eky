@@ -32,14 +32,18 @@ export function CustomerList({
       {customers.length > 0 ? (
         <div className="customer-table" role="table" aria-label={uiText.customers.customers}>
           <div className="customer-table-row customer-table-head" role="row">
+            <span role="columnheader">{uiText.customers.customerNumber}</span>
             <span role="columnheader">{uiText.customers.name}</span>
-            <span role="columnheader">{uiText.customers.tenant}</span>
+            <span role="columnheader">{uiText.customers.customerType}</span>
+            <span role="columnheader">{uiText.customers.businessId}</span>
             <span role="columnheader">{uiText.customers.created}</span>
           </div>
           {customers.map((customer) => (
             <div className="customer-table-row" role="row" key={customer.id}>
+              <span role="cell">{customer.customerNumber}</span>
               <strong role="cell">{customer.name}</strong>
-              <span role="cell">{customer.companyId}</span>
+              <span role="cell">{getCustomerTypeLabel(customer.customerType)}</span>
+              <span role="cell">{customer.businessId || '-'}</span>
               <time role="cell" dateTime={customer.createdAt}>
                 {formatDate(customer.createdAt)}
               </time>
@@ -49,6 +53,26 @@ export function CustomerList({
       ) : null}
     </section>
   );
+}
+
+function getCustomerTypeLabel(customerType: Customer['customerType']): string {
+  if (customerType === 'company') {
+    return uiText.customers.organization;
+  }
+
+  if (customerType === 'housingCompany') {
+    return uiText.customers.housingCompany;
+  }
+
+  if (customerType === 'propertyManager') {
+    return uiText.customers.propertyManager;
+  }
+
+  if (customerType === 'privatePerson') {
+    return uiText.customers.privatePerson;
+  }
+
+  return uiText.customers.other;
 }
 
 function formatDate(value: string): string {
