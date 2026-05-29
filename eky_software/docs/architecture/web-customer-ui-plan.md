@@ -18,6 +18,8 @@ React UI
 
 Tämä on ensimmäinen selainkäyttöliittymän kautta kulkeva päästä päähän -polku.
 
+Tässä vaiheessa React UI on Eky Local UI eli paikallisen ohjelman käyttöliittymä paikalliselle backendille. Selaimessa pyöriminen ei tarkoita, että kyseessä on ensisijaisesti pilvisovellus.
+
 Tavoitteena ei ole rakentaa valmista asiakaskortistoa, vaan todistaa että web voi käyttää backendin customer-slicea hallitun api-client-kerroksen kautta.
 
 ## Rajaus
@@ -147,6 +149,8 @@ Web ei saa koskaan kirjoittaa suoraan SQLiteen.
 
 Web ei saa importata backendin sisäisiä moduuleja.
 
+UI:n visuaalinen ja käytettävyydellinen peruslinja on kuvattu dokumentissa `docs/design/ui-principles.md`.
+
 ## Virheiden näyttäminen
 
 Ensimmäisessä palassa virheet voidaan näyttää yksinkertaisena tekstinä.
@@ -203,5 +207,6 @@ Ensimmäinen web customer UI -toteutus on valmis vasta, kun:
 - `docs/architecture/base-architecture.md`
 - `docs/architecture/dependency-policy.md`
 - `docs/architecture/customer-vertical-slice-plan.md`
+- `docs/design/ui-principles.md`
 - `docs/modules/customers.md`
 - `packages/api-client/README.md`

@@ -45,6 +45,7 @@ Lue lisäksi tehtävän mukaan seuraavat dokumentit:
 - Sanasto: `docs/product/glossary.md`
 - Käyttäjäroolit: `docs/product/user-roles.md`
 - Työnkulut: `docs/product/workflows.md`
+- UI-periaatteet: `docs/design/ui-principles.md`
 
 Jos työ koskee tiettyä moduulia, lue myös kyseisen moduulin dokumentti `docs/modules/`-kansiosta.
 
@@ -62,6 +63,8 @@ Jos työ koskee ensimmäistä customer-slicea, asiakasmoduulin toteutusta, custo
 
 Jos työ koskee ensimmäistä web customer UI -palaa, React customer -näkymää, `apps/web`-toteutusta tai customer-kutsuja webistä, lue myös `docs/architecture/web-customer-ui-plan.md`.
 
+Jos työ koskee web-käyttöliittymän ulkoasua, layoutia, komponenttirakennetta, värejä tai Eky-työpöytäkokemusta, lue myös `docs/design/ui-principles.md`.
+
 Jos kohdekansiossa on oma `AGENTS.md`, se on luettava ennen muutosten tekemistä.
 
 ## Dokumentaation roolit
@@ -75,6 +78,8 @@ Jos kohdekansiossa on oma `AGENTS.md`, se on luettava ennen muutosten tekemistä
 `docs/ai/` kertoo miten AI:n kanssa työskennellään tässä projektissa.
 
 `docs/decisions/` sisältää tärkeät arkkitehtuuripäätökset ADR-muodossa.
+
+`docs/design/` kertoo miltä Eky-käyttöliittymän pitää tuntua ja miten UI-periaatteita sovelletaan.
 
 ## Ydinperiaatteet
 
