@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { CustomerForm } from './CustomerForm.js';
 import { CustomerList } from './CustomerList.js';
+import { getFinnishApiErrorMessage, uiText } from '../i18n/fi.js';
 
 const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
 
@@ -69,13 +70,10 @@ export function CustomerPage(): React.JSX.Element {
     <div className="customer-workspace">
       <section className="page-intro">
         <div>
-          <p className="eyebrow">Customer module</p>
-          <h2>Customer register</h2>
+          <p className="eyebrow">{uiText.customers.customerModule}</p>
+          <h2>{uiText.customers.customerRegister}</h2>
         </div>
-        <p>
-          First local customer workflow. Data flows through the API client to the local backend and
-          SQLite.
-        </p>
+        <p>{uiText.customers.description}</p>
       </section>
 
       <div className="content-grid">
@@ -93,12 +91,12 @@ export function CustomerPage(): React.JSX.Element {
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof EkyApiError) {
-    return error.message;
+    return getFinnishApiErrorMessage(error.message);
   }
 
   if (error instanceof Error) {
     return error.message;
   }
 
-  return 'Something went wrong.';
+  return uiText.customers.fallbackError;
 }

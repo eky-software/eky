@@ -1,3 +1,5 @@
+import { uiText } from '../i18n/fi.js';
+
 interface CustomerFormProps {
   customerName: string;
   isSaving: boolean;
@@ -15,8 +17,8 @@ export function CustomerForm({
     <section className="panel customer-form-panel" aria-labelledby="create-customer-heading">
       <div className="panel-header">
         <div>
-          <p className="panel-kicker">New customer</p>
-          <h2 id="create-customer-heading">Add customer</h2>
+          <p className="panel-kicker">{uiText.customers.newCustomer}</p>
+          <h2 id="create-customer-heading">{uiText.customers.addCustomer}</h2>
         </div>
       </div>
 
@@ -27,18 +29,18 @@ export function CustomerForm({
           onSubmit();
         }}
       >
-        <label htmlFor="customer-name">Name</label>
+        <label htmlFor="customer-name">{uiText.customers.name}</label>
         <div className="form-row">
           <input
             id="customer-name"
             name="customerName"
             onChange={(event) => onCustomerNameChange(event.target.value)}
-            placeholder="Example Customer Oy"
+            placeholder={uiText.customers.placeholderName}
             type="text"
             value={customerName}
           />
           <button disabled={isSaving} type="submit">
-            {isSaving ? 'Saving' : 'Add'}
+            {isSaving ? uiText.customers.saving : uiText.customers.add}
           </button>
         </div>
       </form>

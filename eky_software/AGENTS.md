@@ -65,6 +65,8 @@ Jos työ koskee ensimmäistä web customer UI -palaa, React customer -näkymää
 
 Jos työ koskee web-käyttöliittymän ulkoasua, layoutia, komponenttirakennetta, värejä tai Eky-työpöytäkokemusta, lue myös `docs/design/ui-principles.md`.
 
+Jos työ koskee käyttäjälle näkyviä UI-tekstejä, kielivalintaa, i18n-rakennetta tai käännöksiä, lue myös `docs/design/ui-principles.md`.
+
 Jos kohdekansiossa on oma `AGENTS.md`, se on luettava ennen muutosten tekemistä.
 
 ## Dokumentaation roolit
@@ -153,6 +155,10 @@ Tämä koskee muuttujia, funktioita, luokkia, tyyppejä, rajapintoja, tiedostoni
 Käytä `docs/product/glossary.md`-sanastoa oikeiden termien varmistamiseen.
 
 Älä sekoita suomea ja englantia samaan kooditermiin.
+
+Käyttäjälle näkyvät käyttöliittymätekstit ovat ensisijaisesti suomeksi.
+
+UI-tekstien rakenne pidetään sellaisena, että muita kieliä voidaan lisätä myöhemmin hallitusti ilman laajaa uudelleenkirjoitusta.
 
 ## Ennen työn aloittamista
 

@@ -53,6 +53,35 @@ Vältetään:
 - liian väljää landing page -asettelua
 - markkinointisivumaista visuaalista kieltä
 
+## Käyttöliittymän Kieli
+
+Eky-käyttöliittymän ensisijainen kieli on suomi.
+
+Ensimmäinen paikallinen versio rakennetaan suomenkieliseksi, koska ohjelman ensimmäinen käyttökohde on suomalainen rakennusalan yritys.
+
+UI-koodin nimet, komponentit, funktiot, muuttujat ja tiedostonimet pidetään englanniksi projektin koodikielisäännön mukaisesti.
+
+Käyttäjälle näkyvät tekstit ovat suomeksi.
+
+Käyttäjälle näkyviä tekstejä ei pidä hajottaa satunnaisesti komponenttien sisään, jos teksti alkaa toistua tai liittyy laajempaan näkymään.
+
+Ensimmäisessä vaiheessa voidaan käyttää `apps/web`-sovelluksen sisäistä kevyttä tekstikarttaa, esimerkiksi:
+
+```text
+apps/web/src/i18n/
+  fi.ts
+```
+
+Tämä ei ole vielä varsinainen monikielisyysjärjestelmä.
+
+Tavoite on kuitenkin pitää rakenne sellaisena, että myöhemmin voidaan lisätä esimerkiksi englanti tai ruotsi ilman että koko UI pitää kirjoittaa uudelleen.
+
+Ulkoinen i18n-kirjasto lisätään vain erillisellä päätöksellä, jos oma kevyt tekstimalli ei enää riitä.
+
+Backendin tai API-clientin teknisiä virheitä ei näytetä käyttäjälle englanniksi, jos ne tunnetaan ja voidaan kääntää UI-rajalla.
+
+Myöhemmin virheille voidaan lisätä kieliriippumattomat virhekoodit, jolloin UI valitsee näkyvän tekstin käyttäjän kielen mukaan.
+
 ## Visuaalinen Peruslinja
 
 Eky-tyylin alustava päälinja:
@@ -92,8 +121,8 @@ Layout-ajatus:
 - `TopBar` näyttää sovelluksen nimen, tilan ja myöhemmin local/cloud-statuksen
 - `Sidebar` sisältää moduulinavigaation
 - `Main area` sisältää aktiivisen työalueen
-- Customers on ensimmäinen aktiivinen moduuli
-- Invoicing, Work orders ja muut moduulit voivat näkyä myöhemmin passiivisina tai tulevina osioina
+- Asiakkaat on ensimmäinen aktiivinen moduuli
+- Laskutus, työmääräykset ja muut moduulit voivat näkyä myöhemmin passiivisina tai tulevina osioina
 
 Työaluekortteja käytetään oikeisiin työpintoihin, ei koristeeksi.
 
@@ -121,6 +150,7 @@ Ei lisätä vielä:
 - React Hook Formia
 - TanStack Queryä
 - Zodia
+- ulkoista i18n-kirjastoa
 - `packages/ui`-pakettia
 - design system -pakettia
 
