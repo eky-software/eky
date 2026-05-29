@@ -1,0 +1,192 @@
+# UI principles
+
+Tämä dokumentti kuvaa Eky-ohjelman ensimmäiset käyttöliittymäperiaatteet.
+
+Tarkoitus on ohjata nykyisen React-käyttöliittymän jatkokehitystä ennen kuin siitä tehdään ERP-työpöytämäisempi.
+
+## Eky Local ensin, Cloud myöhemmin
+
+Ensimmäinen käyttöliittymä on Eky Local UI.
+
+Se tarkoittaa:
+
+```text
+Eky Local UI
+  -> local backend
+    -> SQLite
+```
+
+Nykyinen React UI toimii tässä vaiheessa ensisijaisesti paikallisen ohjelman käyttöliittymänä paikalliselle backendille ja paikalliselle SQLite-tietokannalle.
+
+Se, että käyttöliittymä toimii selaimessa, ei tarkoita, että kyseessä on ensisijaisesti pilvisovellus.
+
+Sama tai läheinen UI voidaan myöhemmin ajaa myös pilvessä:
+
+```text
+Eky Cloud UI
+  -> cloud backend
+    -> PostgreSQL
+```
+
+Cloud web on myöhempi ajotapa, ei nykyisen local-first-mallin korvaaja.
+
+## Eky On Työohjelma
+
+Eky ei ole landing page tai markkinointisivu.
+
+Eky UI:n pitää tuntua ERP-työpöydältä:
+
+- selkeä
+- rauhallinen
+- luotettava
+- tehokas
+- datan lukemiseen sopiva
+- lomake- ja taulukkotyöskentelyyn sopiva
+- pitkäaikaiseen päivittäiseen käyttöön sopiva
+
+Vältetään:
+
+- isoja hero-alueita
+- koristeellisia efektejä
+- liiallista pyöreyttä
+- liiallisia varjoja
+- liian väljää landing page -asettelua
+- markkinointisivumaista visuaalista kieltä
+
+## Visuaalinen Peruslinja
+
+Eky-tyylin alustava päälinja:
+
+- sinivalkoinen päälinja
+- vaalea siniharmaa tausta
+- valkoiset työalueet
+- tumma sinimusta teksti
+- hillitty sininen päätoimintoväri
+- musta tai hyvin tumma väri korostuksiin
+- selkeät rajat
+- maltillinen border radius
+- maltilliset varjot vain tarvittaessa
+- hyvä kontrasti ja luettavuus
+
+Käyttöliittymän pitää näyttää modernilta työkalulta, ei koristeelliselta sivustolta.
+
+## Layout-Periaate
+
+Ensimmäinen ERP-työpöytämäinen rakenne voidaan rakentaa web-sovelluksen sisään:
+
+```text
+apps/web/src/
+  layout/
+    AppLayout.tsx
+    Sidebar.tsx
+    TopBar.tsx
+
+  customers/
+    CustomerPage.tsx
+    CustomerForm.tsx
+    CustomerList.tsx
+```
+
+Layout-ajatus:
+
+- `TopBar` näyttää sovelluksen nimen, tilan ja myöhemmin local/cloud-statuksen
+- `Sidebar` sisältää moduulinavigaation
+- `Main area` sisältää aktiivisen työalueen
+- Customers on ensimmäinen aktiivinen moduuli
+- Invoicing, Work orders ja muut moduulit voivat näkyä myöhemmin passiivisina tai tulevina osioina
+
+Työaluekortteja käytetään oikeisiin työpintoihin, ei koristeeksi.
+
+## Desktop Ensin
+
+Eky on ensin työpöytäkäyttöön suunnattu ERP-työkalu.
+
+Desktop-käyttö ohjaa ensimmäistä UI-rakennetta.
+
+Responsiivisuus huomioidaan, mutta mobiili ei ohjaa ensimmäistä web-UI-ratkaisua.
+
+Mobiili voi myöhemmin olla oma käyttöliittymänsä tai erillinen sovellus, joka käyttää samaa backend/API-ajattelua.
+
+## UI-Riippuvuuslinja
+
+Ensimmäisessä vaiheessa käytetään `apps/web`-sovelluksen omaa CSS:ää ja tarvittaessa design token -tyyppisiä CSS-muuttujia.
+
+Ei lisätä vielä:
+
+- UI-kirjastoa
+- Tailwindia
+- shadcnia
+- Material UI:ta
+- Bootstrapia
+- React Hook Formia
+- TanStack Queryä
+- Zodia
+- `packages/ui`-pakettia
+- design system -pakettia
+
+UI-riippuvuuksia voidaan arvioida myöhemmin uudelleen, jos oma CSS ja omat komponentit alkavat hidastaa kehitystä tai heikentää laatua.
+
+Mahdollinen UI-kirjasto saa koskea vain web-UI-kerrosta. Se ei saa levitä domainiin, api-clientiin, backendiin tai tietokantakerroksiin.
+
+## Komponenttien Kasvupolku
+
+Aluksi komponentit pidetään `apps/web`-sovelluksen sisällä.
+
+Komponentteja ei nosteta `packages/ui`-pakettiin varmuuden vuoksi.
+
+Jos sama komponenttityyppi alkaa toistua 2-3 eri näkymässä, voidaan harkita `packages/ui`-pakettia.
+
+Mahdollisia myöhempiä jaettavia komponentteja:
+
+- Button
+- Input
+- Panel
+- Table
+- PageHeader
+- EmptyState
+
+`packages/ui` luodaan vasta todelliseen toistuvaan tarpeeseen.
+
+Ei luoda yleistä `utils`- tai `helpers`-pakettia.
+
+## Lomakkeet Ja Validointi
+
+Ensimmäisessä customer UI -palassa yksinkertainen React state riittää.
+
+React Hook Formia ei lisätä vielä.
+
+Zodia ei lisätä vielä.
+
+Yksinkertainen käyttöliittymävalidointi voi olla paikallista UI-koodia.
+
+Backend tekee lopullisen validoinnin ja domain-sääntöjen tarkistuksen.
+
+Jos sama lomake- tai validointikaava alkaa toistua useassa näkymässä, arvioidaan ensin pieni paikallinen helper ja vasta myöhemmin sisäinen Eky-paketti tai ulkoinen kirjasto.
+
+## API-Yhteys
+
+React-komponentit eivät tee raakaa `fetch`-kutsua.
+
+Web käyttää `packages/api-client`-pakettia.
+
+Web ei tunne backendin sisäisiä moduuleja.
+
+Web ei kirjoita suoraan SQLiteen.
+
+Web ei sisällä varsinaista liiketoimintalogiikkaa.
+
+## Seuraava Toteutusaskel
+
+Seuraava UI-toteutusaskel on nykyisen webin refaktorointi ERP-työpöytämäisemmäksi ilman uusia riippuvuuksia.
+
+Suunniteltu pieni refaktorointi:
+
+- `AppLayout`
+- `TopBar`
+- `Sidebar`
+- `CustomerForm`
+- `CustomerList`
+- siistimpi `styles.css` tai `theme.css`
+- parempi työohjelmamainen asettelu
+
+Tässä vaiheessa ei vielä tehdä `packages/ui`-pakettia eikä oteta käyttöön UI-kirjastoa.
