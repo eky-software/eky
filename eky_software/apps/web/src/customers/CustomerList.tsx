@@ -1,5 +1,7 @@
 import type { Customer } from '@eky/api-client';
 
+import { uiText } from '../i18n/fi.js';
+
 interface CustomerListProps {
   customers: Customer[];
   errorMessage: string | null;
@@ -15,22 +17,24 @@ export function CustomerList({
     <section className="panel customer-list-panel" aria-labelledby="customer-list-heading">
       <div className="panel-header">
         <div>
-          <p className="panel-kicker">Customer register</p>
-          <h2 id="customer-list-heading">Customer list</h2>
+          <p className="panel-kicker">{uiText.customers.customerRegister}</p>
+          <h2 id="customer-list-heading">{uiText.customers.customerList}</h2>
         </div>
         <span className="count-badge">{customers.length}</span>
       </div>
 
       {errorMessage ? <p className="message error-message">{errorMessage}</p> : null}
-      {isLoading ? <p className="message">Loading customers...</p> : null}
-      {!isLoading && customers.length === 0 ? <p className="message">No customers yet.</p> : null}
+      {isLoading ? <p className="message">{uiText.customers.loading}</p> : null}
+      {!isLoading && customers.length === 0 ? (
+        <p className="message">{uiText.customers.empty}</p>
+      ) : null}
 
       {customers.length > 0 ? (
-        <div className="customer-table" role="table" aria-label="Customers">
+        <div className="customer-table" role="table" aria-label={uiText.customers.customers}>
           <div className="customer-table-row customer-table-head" role="row">
-            <span role="columnheader">Name</span>
-            <span role="columnheader">Company</span>
-            <span role="columnheader">Created</span>
+            <span role="columnheader">{uiText.customers.name}</span>
+            <span role="columnheader">{uiText.customers.tenant}</span>
+            <span role="columnheader">{uiText.customers.created}</span>
           </div>
           {customers.map((customer) => (
             <div className="customer-table-row" role="row" key={customer.id}>

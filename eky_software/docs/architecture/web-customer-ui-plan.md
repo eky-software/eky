@@ -31,6 +31,7 @@ Ensimmäinen web-pala sisältää vain:
 - yksinkertaisen loading-tilan
 - yksinkertaisen error-tilan
 - `packages/api-client`-paketin käyttämisen backend-kutsuihin
+- suomenkieliset käyttäjälle näkyvät tekstit
 
 Ensimmäinen web-pala ei sisällä:
 
@@ -48,6 +49,8 @@ Ensimmäinen web-pala ei sisällä:
 - syncia
 - mobiili-UI:ta
 - raportointia
+- varsinaista monikielisyysjärjestelmää
+- ulkoista i18n-kirjastoa
 
 ## Riippuvuuslinja
 
@@ -68,6 +71,7 @@ Ensimmäisessä web-palassa ei lisätä:
 - routing-kirjastoa
 - Firebasea
 - design system -riippuvuutta
+- ulkoista i18n-kirjastoa
 
 `packages/ui`-pakettia ei oteta käyttöön vielä, ellei sille synny konkreettista tarvetta.
 
@@ -88,6 +92,29 @@ apps/web/src/
 ```
 
 Rakenne voi tarkentua toteutuksessa, mutta ensimmäisessä palassa vältetään liian aikaista frontend-arkkitehtuurin paisuttamista.
+
+## Käyttöliittymäkieli
+
+Ensimmäinen web customer UI on käyttäjälle suomenkielinen.
+
+Koodin nimet pysyvät englanniksi projektin koodikielisäännön mukaisesti.
+
+Käyttäjälle näkyvät tekstit pidetään aluksi pienessä `apps/web`-sovelluksen sisäisessä tekstikartassa.
+
+Esimerkiksi:
+
+```text
+apps/web/src/i18n/
+  fi.ts
+```
+
+Tämä ei ole vielä lopullinen i18n-ratkaisu.
+
+Tavoite on kuitenkin välttää se, että näkyvät tekstit kovakoodataan hajalleen komponentteihin tavalla, joka vaikeuttaisi myöhempää kielivalintaa.
+
+Muut kielet, kuten englanti tai ruotsi, voidaan lisätä myöhemmin erillisellä päätöksellä.
+
+Ulkoinen i18n-kirjasto lisätään vain, jos oma kevyt tekstimalli ei enää riitä.
 
 ## API-client-sääntö
 
@@ -155,6 +182,12 @@ UI:n visuaalinen ja käytettävyydellinen peruslinja on kuvattu dokumentissa `do
 
 Ensimmäisessä palassa virheet voidaan näyttää yksinkertaisena tekstinä.
 
+Käyttäjälle näkyvät virheet näytetään suomeksi.
+
+Jos backend tai api-client palauttaa teknisen englanninkielisen virheen, tunnetut virheet voidaan kääntää webin UI-rajalla.
+
+Myöhemmin API-virheille voidaan tehdä kieliriippumattomat virhekoodit.
+
 Ei tehdä vielä:
 
 - globaalia toast-järjestelmää
@@ -182,6 +215,7 @@ Ensimmäisessä web customer UI -palassa ei tehdä:
 - `packages/ui`-komponenttikirjastoa
 - omaa design systemiä
 - omaa form-helperiä
+- ulkoista i18n-kirjastoa
 - ulkoista lomakekirjastoa
 - ulkoista data fetching -kirjastoa
 
