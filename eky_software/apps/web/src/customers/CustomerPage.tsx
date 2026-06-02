@@ -3,31 +3,20 @@ import {
   EkyApiError,
   type CreateCustomerRequest,
   type Customer,
-  type UpdateCustomerRequest,
 } from '@eky/api-client';
 import { useEffect, useMemo, useState } from 'react';
 
 import { CustomerForm } from './CustomerForm.js';
 import { CustomerList } from './CustomerList.js';
+import { createDummyCustomerForm } from './customerDummyData.js';
+import {
+  initialCustomerForm,
+  toCustomerForm,
+  toUpdateCustomerRequest,
+} from './customerFormModel.js';
 import { getFinnishApiErrorMessage, uiText } from '../i18n/fi.js';
 
 const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
-
-const initialCustomerForm: CreateCustomerRequest = {
-  businessId: '',
-  city: '',
-  comment: '',
-  customerNumber: '',
-  customerNumberMode: 'auto',
-  customerType: 'company',
-  email: '',
-  managedByCustomerId: '',
-  name: '',
-  phone: '',
-  postalCode: '',
-  status: 'active',
-  streetAddress: '',
-};
 
 export function CustomerPage(): React.JSX.Element {
   const apiClient = useMemo(() => createEkyApiClient({ baseUrl: apiBaseUrl }), []);
@@ -172,17 +161,10 @@ export function CustomerPage(): React.JSX.Element {
     <div className="customer-workspace">
       <section className="page-intro customer-page-header">
         <div>
-          <p className="eyebrow">{uiText.customers.customerModule}</p>
+          <p className="eyebrow">{uiText.customers.customerWorkspace}</p>
           <h2>{uiText.customers.customerRegister}</h2>
           <p>{uiText.customers.description}</p>
         </div>
-        <button
-          className="primary-action"
-          onClick={openCreatePanel}
-          type="button"
-        >
-          {uiText.customers.newCustomerAction}
-        </button>
       </section>
 
       <div className={panelMode === null ? 'customer-view-grid' : 'customer-view-grid has-side-panel'}>
@@ -211,141 +193,6 @@ export function CustomerPage(): React.JSX.Element {
       </div>
     </div>
   );
-}
-
-function createDummyCustomerForm(propertyManagers: Customer[]): CreateCustomerRequest {
-  const customerType = getRandomItem([
-    'company',
-    'housingCompany',
-    'privatePerson',
-    'propertyManager',
-  ] as const);
-  const city = getRandomItem(['Helsinki', 'Espoo', 'Vantaa', 'Turku', 'Tampere', 'Lahti']);
-  const postalCode = getRandomItem(['00100', '02100', '01300', '20100', '33100', '15110']);
-  const phoneSuffix = String(getRandomInteger(1000000, 9999999));
-  const name = createDummyCustomerName(customerType);
-  const managedByCustomerId =
-    customerType === 'housingCompany' && propertyManagers.length > 0
-      ? getRandomItem(propertyManagers).id
-      : '';
-
-  return {
-    businessId: createDummyBusinessId(),
-    city,
-    comment: getRandomItem([
-      'Testiasiakas paikallista kokeilua varten.',
-      'Dummy-dataa käyttöliittymän testaamiseen.',
-      'Luotu testinapilla.',
-      '',
-    ]),
-    customerNumber: '',
-    customerNumberMode: 'auto',
-    customerType,
-    email: createDummyEmail(name),
-    managedByCustomerId,
-    name,
-    phone: `040 ${phoneSuffix.slice(0, 3)} ${phoneSuffix.slice(3)}`,
-    postalCode,
-    status: 'active',
-    streetAddress: `${getRandomItem(['Kotikatu', 'Testitie', 'Puistokuja', 'Satamakatu'])} ${getRandomInteger(
-      1,
-      88,
-    )}`,
-  };
-}
-
-function toCustomerForm(customer: Customer): CreateCustomerRequest {
-  return {
-    businessId: customer.businessId,
-    city: customer.city,
-    comment: customer.comment,
-    customerNumber: customer.customerNumber,
-    customerNumberMode: 'manual',
-    customerType: customer.customerType,
-    email: customer.email,
-    managedByCustomerId: customer.managedByCustomerId,
-    name: customer.name,
-    phone: customer.phone,
-    postalCode: customer.postalCode,
-    status: customer.status,
-    streetAddress: customer.streetAddress,
-  };
-}
-
-function createDummyCustomerName(customerType: CreateCustomerRequest['customerType']): string {
-  const baseName = getRandomItem([
-    'Aurora',
-    'Kivikko',
-    'Sininen Kulma',
-    'Koivupuisto',
-    'Satamapiha',
-    'Pohjolan Tähti',
-  ]);
-
-  if (customerType === 'housingCompany') {
-    return `Asunto Oy ${baseName}`;
-  }
-
-  if (customerType === 'propertyManager') {
-    return `${baseName} Isännöinti Oy`;
-  }
-
-  if (customerType === 'privatePerson') {
-    return `${getRandomItem(['Matti', 'Maija', 'Tiina', 'Teppo'])} ${getRandomItem([
-      'Testinen',
-      'Mallikas',
-      'Esimerkki',
-    ])}`;
-  }
-
-  return `${baseName} Rakennus Oy`;
-}
-
-function createDummyBusinessId(): string {
-  return `${getRandomInteger(1000000, 9999999)}-${getRandomInteger(1, 9)}`;
-}
-
-function createDummyEmail(name: string): string {
-  const normalizedName = name
-    .toLowerCase()
-    .replaceAll('ä', 'a')
-    .replaceAll('ö', 'o')
-    .replaceAll('å', 'a')
-    .replace(/[^a-z0-9]+/g, '.')
-    .replace(/^\.|\.$/g, '');
-
-  return `${normalizedName || 'testiasiakas'}@example.fi`;
-}
-
-function getRandomInteger(min: number, max: number): number {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-function getRandomItem<T>(items: readonly T[]): T {
-  const item = items[Math.floor(Math.random() * items.length)];
-
-  if (item === undefined) {
-    throw new Error('Cannot select a random item from an empty list.');
-  }
-
-  return item;
-}
-
-function toUpdateCustomerRequest(form: CreateCustomerRequest): UpdateCustomerRequest {
-  return {
-    businessId: form.businessId,
-    city: form.city,
-    comment: form.comment,
-    customerNumber: form.customerNumber ?? '',
-    customerType: form.customerType,
-    email: form.email,
-    managedByCustomerId: form.managedByCustomerId,
-    name: form.name,
-    phone: form.phone,
-    postalCode: form.postalCode,
-    status: form.status,
-    streetAddress: form.streetAddress,
-  };
 }
 
 function getErrorMessage(error: unknown): string {
