@@ -451,6 +451,48 @@ h2 {
   background: var(--color-danger-bg);
 }
 
+.customer-type-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.customer-type-filter-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 999px;
+  padding: 0 12px;
+  color: var(--color-primary-dark);
+  background: var(--color-surface);
+  font-size: 0.86rem;
+}
+
+.customer-type-filter-button[aria-pressed='true'] {
+  border-color: var(--color-primary);
+  color: #ffffff;
+  background: var(--color-primary);
+}
+
+.customer-type-filter-button strong {
+  display: grid;
+  min-width: 24px;
+  min-height: 22px;
+  place-items: center;
+  border-radius: 999px;
+  padding: 0 7px;
+  color: inherit;
+  background: rgba(7, 48, 111, 0.1);
+  font-size: 0.76rem;
+}
+
+.customer-type-filter-button[aria-pressed='true'] strong {
+  background: rgba(255, 255, 255, 0.18);
+}
+
 .customer-table {
   display: grid;
   overflow-x: auto;
@@ -462,10 +504,10 @@ h2 {
   display: grid;
   grid-template-columns:
     minmax(220px, 1.7fr) minmax(140px, 1fr) minmax(110px, 0.8fr)
-    minmax(160px, 1fr) minmax(105px, 0.7fr);
+    minmax(160px, 1fr) minmax(108px, 0.65fr) 42px;
   gap: 12px;
   align-items: center;
-  min-width: 760px;
+  min-width: 900px;
   min-height: 46px;
   border-top: 1px solid var(--color-border);
   padding: 0 14px;
@@ -482,8 +524,67 @@ h2 {
   cursor: pointer;
 }
 
+.customer-table-group {
+  display: grid;
+}
+
+.customer-table-button-row {
+  display: grid;
+  grid-template-columns:
+    minmax(220px, 1.7fr) minmax(140px, 1fr) minmax(110px, 0.8fr)
+    minmax(160px, 1fr) minmax(108px, 0.65fr) 42px;
+  padding: 0;
+}
+
+.customer-row-open-button {
+  display: grid;
+  grid-column: 1 / 6;
+  grid-template-columns:
+    minmax(220px, 1.7fr) minmax(140px, 1fr) minmax(110px, 0.8fr)
+    minmax(160px, 1fr) minmax(108px, 0.65fr);
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  min-height: 46px;
+  border: 0;
+  border-radius: 0;
+  padding: 0 14px;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+}
+
+.customer-expand-button {
+  grid-column: 6;
+  right: 12px;
+  display: grid;
+  width: 30px;
+  min-height: 30px;
+  place-items: center;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 999px;
+  padding: 0;
+  color: var(--color-primary-dark);
+  background: var(--color-surface);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.customer-expand-button:disabled {
+  color: var(--color-text-muted);
+  background: var(--color-surface-muted);
+}
+
+.customer-table-child-row {
+  border-top-style: dashed;
+  padding-left: 36px;
+  background: #fbfdff;
+}
+
 .customer-table-button:hover,
-.customer-table-button:focus-visible {
+.customer-table-button:focus-visible,
+.customer-row-open-button:hover,
+.customer-row-open-button:focus-visible {
   background: #f4f8fe;
 }
 
@@ -502,13 +603,18 @@ h2 {
 
 .customer-table-row span,
 .customer-table-row time {
+  min-width: 0;
+  overflow: hidden;
   color: var(--color-text-muted);
   font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .customer-main-cell {
   display: grid;
   gap: 3px;
+  min-width: 0;
 }
 
 .customer-number {
@@ -518,8 +624,11 @@ h2 {
 }
 
 .customer-main-cell strong {
+  overflow: hidden;
   color: var(--color-text);
   font-size: 0.95rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .customer-secondary {
@@ -530,11 +639,13 @@ h2 {
 .status-pill {
   display: inline-flex;
   align-items: center;
+  max-width: 100%;
   min-height: 26px;
   border-radius: 999px;
   padding: 0 9px;
   font-size: 0.78rem;
   font-weight: 800;
+  white-space: nowrap;
 }
 
 .status-pill-active {
@@ -592,6 +703,16 @@ h2 {
     grid-template-columns: 1fr;
     gap: 4px;
     padding: 12px;
+  }
+
+  .customer-table-button-row {
+    min-width: 900px;
+  }
+
+  .customer-row-open-button {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    padding: 12px 54px 12px 12px;
   }
 
   .customer-table-head {
