@@ -18,9 +18,13 @@ Ensimmäinen toteutettu Customer create/list local -slice oli tekninen mallipolk
 
 Ensimmäinen rajattu web customer UI -pala on kuvattu dokumentissa `docs/architecture/web-customer-ui-plan.md`.
 
+Customer UI:n käyttökokemuksen korjaus nykyisestä teknisestä kenttäläpiviennistä oikeaksi asiakaskortistonäkymäksi on kuvattu dokumentissa `docs/architecture/customer-ui-ux-plan.md`.
+
 Nykyinen customer-toteutus laajentaa teknisen mallipolun Customer MVP -asiakaskortistoksi.
 
 Se ei vielä ole koko lopullinen asiakashallintamoduuli.
+
+Nykyinen Customer MVP tukee asiakkaiden listaamista, uuden asiakkaan luontia ja olemassa olevan asiakkaan perustietojen muokkaamista.
 
 ## Moduuli Omistaa
 
@@ -30,6 +34,7 @@ Customers-moduuli omistaa:
 - asiakkaan näkyvän asiakasnumeron
 - asiakkaan nimen
 - asiakkaan tyypin
+- taloyhtiön ja isännöitsijätoimiston välisen asiakasrekisterisuhteen
 - asiakkaan Y-tunnuksen, jos asiakas on yritys, taloyhtiö, isännöitsijätoimisto tai muu organisaatio
 - asiakkaan yhteystiedot
 - asiakkaan pääosoitteen
@@ -69,6 +74,7 @@ MVP-kentät:
 - `customerNumber`
 - `name`
 - `customerType`
+- `managedByCustomerId`
 - `businessId`
 - `streetAddress`
 - `postalCode`
@@ -87,6 +93,7 @@ Kenttien merkitys:
 - `customerNumber` on käyttäjälle näkyvä asiakasnumero.
 - `name` on asiakkaan nimi.
 - `customerType` kertoo asiakkaan tyypin.
+- `managedByCustomerId` kertoo taloyhtiön isännöitsijätoimiston, jos asiakas on taloyhtiö.
 - `businessId` on Y-tunnus, kun asiakkaalla sellainen on.
 - `streetAddress`, `postalCode` ja `city` kuvaavat asiakkaan pääosoitetta.
 - `email` ja `phone` ovat asiakkaan ensisijaiset yhteystiedot.
@@ -106,6 +113,33 @@ Ensimmäiset asiakastyypit voivat olla:
 Tarkat nimet lukitaan toteutusvaiheessa englanniksi.
 
 Käyttöliittymä näyttää tyypit käyttäjälle suomeksi.
+
+## Isännöitsijätoimisto ja Taloyhtiöt
+
+Isännöitsijätoimisto ja taloyhtiö ovat molemmat asiakkaita customer-moduulin näkökulmasta.
+
+Ensimmäinen toteutusmalli:
+
+- isännöitsijätoimiston `customerType` on `propertyManager`
+- taloyhtiön `customerType` on `housingCompany`
+- taloyhtiö voi viitata isännöitsijätoimistoon kentällä `managedByCustomerId`
+- yksi isännöitsijätoimisto voi hallinnoida useita taloyhtiöitä
+- sama suhde rajataan aina `companyId`-yritysrajauksen sisään
+
+Backend tarkistaa, että `managedByCustomerId` viittaa saman yrityksen asiakkaaseen, jonka tyyppi on `propertyManager`.
+
+Jos asiakas ei ole taloyhtiö, `managedByCustomerId` pidetään tyhjänä.
+
+Tämä suhde kuuluu asiakasrekisterin master-dataan. Se ei vielä päätä:
+
+- kuka on laskun maksaja
+- mille kohteelle työ tehdään
+- kenelle lasku lähetetään
+- miten verkkolaskutus muodostetaan
+
+Nämä päätetään myöhemmin laskutus-, kohde- ja työmääräysmoduulien yhteydessä.
+
+Jos suhdemalli myöhemmin monimutkaistuu, esimerkiksi jos taloyhtiöllä voi olla historiassa useita isännöitsijöitä tai useita rooleja, voidaan tehdä erillinen relation-taulu omalla päätöksellä. Ensimmäisessä Customer MVP -vaiheessa yksinkertainen `managedByCustomerId` riittää.
 
 ## Y-tunnus
 
@@ -136,9 +170,31 @@ Säännöt:
 
 - `customerNumber` ei ole tietokannan primary key.
 - `customerNumber` on uniikki `companyId`-rajauksen sisällä.
-- `customerNumber` voidaan myöhemmin antaa automaattisesti tai käsin.
-- Isännöitsijätoimistoille voidaan myöhemmin sallia käsin määritetty numero.
+- `customerNumber` voidaan antaa automaattisesti tai käsin.
+- Oletusmalli on automaattinen numerointi.
+- Käyttäjä voi valita manuaalisen numeron, jos numero on vapaa `companyId`-rajauksen sisällä.
+- Frontend ei päätä lopullista automaattista numeroa.
+- Backend muodostaa automaattisen asiakasnumeron ja tarkistaa manuaalisen numeron uniikkiuden.
+- Isännöitsijätoimistoille voidaan sallia käsin määritetty numero.
 - Asiakasnumerointia ei saa sekoittaa laskunumerointiin.
+
+Mahdollinen tuleva create-request-malli:
+
+```ts
+customerNumberMode: 'auto' | 'manual'
+customerNumber?: string
+```
+
+Jos tila on `auto`, backend muodostaa seuraavan vapaan asiakasnumeron.
+
+Jos tila on `manual`, `customerNumber` on pakollinen ja backend tarkistaa sen.
+
+Ensimmäinen automaattisen numeroinnin sääntö:
+
+- backend hakee yrityksen nykyiset numeeriset asiakasnumerot
+- seuraava automaattinen numero on suurin numeerinen asiakasnumero + 1
+- jos numeerisia asiakasnumeroita ei vielä ole, ensimmäinen automaattinen numero on `1001`
+- manuaaliset ei-numeeriset asiakasnumerot eivät vaikuta automaattiseen juoksevaan numerointiin
 
 ## Status
 
@@ -235,13 +291,16 @@ Toteutusjärjestys:
 9. Web UI -lomakkeen ja listan päivitys suomenkielisillä teksteillä.
 10. Domain-, application-, HTTP- ja api-client-testien päivitys.
 
+Customer UI:n seuraava UX-korjaus tehdään dokumentin `docs/architecture/customer-ui-ux-plan.md` mukaisesti: asiakaslista on pääsisältö ja uuden asiakkaan lomake avataan tarvittaessa erilliseen paneeliin tai lomakealueeseen.
+
+Olemassa oleva asiakas voidaan avata samassa paneelirakenteessa perustietojen muokkaamista varten.
+
 Ei lisätä uusia riippuvuuksia ilman erillistä päätöstä.
 
 Ei lisätä Zodia, React Hook Formia, UI-kirjastoa, `packages/ui`-pakettia, sites-moduulia tai laskutusta tämän muutoksen yhteydessä.
 
 ## Avoimet Kysymykset
 
-- Muodostetaanko `customerNumber` ensimmäisessä toteutuksessa automaattisesti vai annetaanko se käsin?
 - Vaaditaanko Y-tunnus heti kaikilta organisaatiotyyppisiltä asiakkailta?
 - Kuinka tarkka Y-tunnuksen validointi tehdään ensimmäisessä toteutuksessa?
 - Näytetäänkö passivoidut asiakkaat oletuksena asiakaslistassa?

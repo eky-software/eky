@@ -18,6 +18,7 @@ export interface Customer {
   postalCode: string;
   city: string;
   email: string;
+  managedByCustomerId: string;
   phone: string;
   comment: string;
   status: CustomerStatus;
@@ -29,9 +30,26 @@ export interface CreateCustomerRequest {
   businessId: string;
   city: string;
   comment: string;
+  customerNumber?: string;
+  customerNumberMode: 'auto' | 'manual';
+  customerType: CustomerType;
+  email: string;
+  managedByCustomerId: string;
+  name: string;
+  phone: string;
+  postalCode: string;
+  status: CustomerStatus;
+  streetAddress: string;
+}
+
+export interface UpdateCustomerRequest {
+  businessId: string;
+  city: string;
+  comment: string;
   customerNumber: string;
   customerType: CustomerType;
   email: string;
+  managedByCustomerId: string;
   name: string;
   phone: string;
   postalCode: string;
@@ -47,6 +65,7 @@ export interface EkyApiClientOptions {
 export interface EkyApiClient {
   createCustomer(input: CreateCustomerRequest): Promise<Customer>;
   listCustomers(): Promise<Customer[]>;
+  updateCustomer(id: string, input: UpdateCustomerRequest): Promise<Customer>;
 }
 
 export class EkyApiError extends Error {
@@ -90,6 +109,22 @@ export function createEkyApiClient(options: EkyApiClientOptions): EkyApiClient {
       }
 
       return responseBody.customers.map(parseCustomer);
+    },
+
+    async updateCustomer(id, input): Promise<Customer> {
+      const responseBody = await requestJson(fetchImplementation, baseUrl, `/customers/${id}`, {
+        body: JSON.stringify(input),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        method: 'PUT',
+      });
+
+      if (!isRecord(responseBody)) {
+        throw new EkyApiError('Invalid customer response.', { responseBody });
+      }
+
+      return parseCustomer(responseBody.customer);
     },
   };
 }
@@ -152,6 +187,7 @@ function parseCustomer(value: unknown): Customer {
     typeof value.postalCode !== 'string' ||
     typeof value.city !== 'string' ||
     typeof value.email !== 'string' ||
+    typeof value.managedByCustomerId !== 'string' ||
     typeof value.phone !== 'string' ||
     typeof value.comment !== 'string' ||
     typeof value.status !== 'string' ||
@@ -172,6 +208,7 @@ function parseCustomer(value: unknown): Customer {
     postalCode: value.postalCode,
     city: value.city,
     email: value.email,
+    managedByCustomerId: value.managedByCustomerId,
     phone: value.phone,
     comment: value.comment,
     status: parseCustomerStatus(value.status),

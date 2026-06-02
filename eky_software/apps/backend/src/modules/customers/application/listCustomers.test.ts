@@ -13,10 +13,22 @@ class FakeCustomerRepository implements CustomerRepository {
     return customer;
   }
 
+  async findById(): Promise<Customer | undefined> {
+    return undefined;
+  }
+
+  async getNextCustomerNumber(): Promise<string> {
+    throw new Error('getNextCustomerNumber should not be called');
+  }
+
   async listByCompanyId(companyId: string): Promise<Customer[]> {
     this.requestedCompanyId = companyId;
 
     return this.customers;
+  }
+
+  async update(customer: Customer): Promise<Customer> {
+    return customer;
   }
 }
 
@@ -34,6 +46,7 @@ describe('listCustomers', () => {
         postalCode: '00100',
         city: 'Helsinki',
         email: 'customer@example.fi',
+        managedByCustomerId: '',
         phone: '040 123 4567',
         comment: 'Important local customer',
         status: 'active',

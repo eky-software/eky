@@ -1,5 +1,7 @@
 export type CustomerStatus = 'active' | 'inactive';
 
+export type CustomerNumberMode = 'auto' | 'manual';
+
 export type CustomerType =
   | 'company'
   | 'housingCompany'
@@ -13,6 +15,7 @@ export interface Customer {
   customerNumber: string;
   name: string;
   customerType: CustomerType;
+  managedByCustomerId: string;
   businessId: string;
   streetAddress: string;
   postalCode: string;
@@ -31,6 +34,7 @@ export interface CreateCustomerDomainInput {
   comment: string;
   customerNumber: string;
   customerType: CustomerType;
+  managedByCustomerId: string;
   email: string;
   id: string;
   companyId: string;
@@ -49,6 +53,7 @@ export function createCustomerRecord(input: CreateCustomerDomainInput): Customer
     customerNumber: input.customerNumber,
     name: input.name,
     customerType: input.customerType,
+    managedByCustomerId: input.managedByCustomerId,
     businessId: input.businessId,
     streetAddress: input.streetAddress,
     postalCode: input.postalCode,

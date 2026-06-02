@@ -4,6 +4,7 @@ import { createDatabaseConnection } from '../database/connection/createDatabaseC
 import { runMigrations } from '../database/migration/runMigrations.js';
 import { createCustomer } from '../modules/customers/application/createCustomer.js';
 import { listCustomers } from '../modules/customers/application/listCustomers.js';
+import { updateCustomer } from '../modules/customers/application/updateCustomer.js';
 import { createCustomersRoutes } from '../modules/customers/http/customersRoutes.js';
 import { SqliteCustomerRepository } from '../modules/customers/infrastructure/sqliteCustomerRepository.js';
 
@@ -24,6 +25,7 @@ export async function createApp(): Promise<Hono> {
     createCustomersRoutes({
       createCustomer: (input) => createCustomer(input, customerRepository),
       listCustomers: (input) => listCustomers(input, customerRepository),
+      updateCustomer: (input) => updateCustomer(input, customerRepository),
     }),
   );
 

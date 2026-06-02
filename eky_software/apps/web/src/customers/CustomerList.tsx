@@ -6,12 +6,16 @@ interface CustomerListProps {
   customers: Customer[];
   errorMessage: string | null;
   isLoading: boolean;
+  onCreateClick(): void;
+  onCustomerSelect(customer: Customer): void;
 }
 
 export function CustomerList({
   customers,
   errorMessage,
   isLoading,
+  onCreateClick,
+  onCustomerSelect,
 }: CustomerListProps): React.JSX.Element {
   return (
     <section className="panel customer-list-panel" aria-labelledby="customer-list-heading">
@@ -20,7 +24,12 @@ export function CustomerList({
           <p className="panel-kicker">{uiText.customers.customerRegister}</p>
           <h2 id="customer-list-heading">{uiText.customers.customerList}</h2>
         </div>
-        <span className="count-badge">{customers.length}</span>
+        <div className="panel-actions">
+          <span className="count-badge">{customers.length}</span>
+          <button onClick={onCreateClick} type="button">
+            {uiText.customers.newCustomerAction}
+          </button>
+        </div>
       </div>
 
       {errorMessage ? <p className="message error-message">{errorMessage}</p> : null}
@@ -32,22 +41,37 @@ export function CustomerList({
       {customers.length > 0 ? (
         <div className="customer-table" role="table" aria-label={uiText.customers.customers}>
           <div className="customer-table-row customer-table-head" role="row">
-            <span role="columnheader">{uiText.customers.customerNumber}</span>
-            <span role="columnheader">{uiText.customers.name}</span>
+            <span role="columnheader">{uiText.customers.customer}</span>
             <span role="columnheader">{uiText.customers.customerType}</span>
-            <span role="columnheader">{uiText.customers.businessId}</span>
-            <span role="columnheader">{uiText.customers.created}</span>
+            <span role="columnheader">{uiText.customers.city}</span>
+            <span role="columnheader">{uiText.customers.contact}</span>
+            <span role="columnheader">{uiText.customers.status}</span>
           </div>
           {customers.map((customer) => (
-            <div className="customer-table-row" role="row" key={customer.id}>
-              <span role="cell">{customer.customerNumber}</span>
-              <strong role="cell">{customer.name}</strong>
+            <button
+              className="customer-table-row customer-table-button"
+              key={customer.id}
+              onClick={() => onCustomerSelect(customer)}
+              type="button"
+            >
+              <span className="customer-main-cell">
+                <span className="customer-number">{customer.customerNumber}</span>
+                <strong>{customer.name}</strong>
+                {getCustomerRelationshipLabel(customer, customers) ? (
+                  <span className="customer-secondary">
+                    {getCustomerRelationshipLabel(customer, customers)}
+                  </span>
+                ) : null}
+              </span>
               <span role="cell">{getCustomerTypeLabel(customer.customerType)}</span>
-              <span role="cell">{customer.businessId || '-'}</span>
-              <time role="cell" dateTime={customer.createdAt}>
-                {formatDate(customer.createdAt)}
-              </time>
-            </div>
+              <span role="cell">{customer.city || '-'}</span>
+              <span role="cell">{getPrimaryContact(customer)}</span>
+              <span role="cell">
+                <span className={`status-pill status-pill-${customer.status}`}>
+                  {getCustomerStatusLabel(customer.status)}
+                </span>
+              </span>
+            </button>
           ))}
         </div>
       ) : null}
@@ -75,16 +99,26 @@ function getCustomerTypeLabel(customerType: Customer['customerType']): string {
   return uiText.customers.other;
 }
 
-function formatDate(value: string): string {
-  const date = new Date(value);
+function getCustomerStatusLabel(status: Customer['status']): string {
+  return status === 'active' ? uiText.customers.active : uiText.customers.inactive;
+}
 
-  if (Number.isNaN(date.getTime())) {
-    return value;
+function getPrimaryContact(customer: Customer): string {
+  return customer.email || customer.phone || '-';
+}
+
+function getCustomerRelationshipLabel(customer: Customer, customers: Customer[]): string {
+  if (customer.customerType !== 'housingCompany' || customer.managedByCustomerId.length === 0) {
+    return '';
   }
 
-  return new Intl.DateTimeFormat('fi-FI', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  }).format(date);
+  const propertyManager = customers.find(
+    (candidate) => candidate.id === customer.managedByCustomerId,
+  );
+
+  if (propertyManager === undefined) {
+    return '';
+  }
+
+  return `${uiText.customers.managedByPropertyManager}: ${propertyManager.name}`;
 }
