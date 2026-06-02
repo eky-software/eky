@@ -451,6 +451,28 @@ h2 {
   background: var(--color-danger-bg);
 }
 
+.customer-list-tools {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(170px, 220px) auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 14px;
+}
+
+.customer-search-field,
+.customer-sort-select {
+  display: grid;
+  gap: 6px;
+  color: #26374d;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.customer-sort-direction-button {
+  min-width: 96px;
+  white-space: nowrap;
+}
+
 .customer-type-filter {
   display: flex;
   flex-wrap: wrap;
@@ -601,6 +623,39 @@ h2 {
   text-transform: uppercase;
 }
 
+.customer-sort-header-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  min-height: 28px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 0 6px;
+  color: var(--color-text-muted);
+  background: transparent;
+  font-size: inherit;
+  font-weight: inherit;
+  text-align: left;
+  text-transform: inherit;
+}
+
+.customer-sort-header-button:hover,
+.customer-sort-header-button:focus-visible {
+  color: var(--color-primary-dark);
+  background: #eaf2fd;
+}
+
+.customer-sort-header-button strong {
+  border-radius: 999px;
+  padding: 2px 6px;
+  color: var(--color-primary-dark);
+  background: #dceaff;
+  font-size: 0.68rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .customer-table-row span,
 .customer-table-row time {
   min-width: 0;
@@ -688,6 +743,7 @@ h2 {
 
   .customer-view-grid,
   .customer-view-grid.has-side-panel,
+  .customer-list-tools,
   .form-helper-actions,
   .form-grid,
   .form-row {

@@ -2,6 +2,12 @@ import type { Customer } from '@eky/api-client';
 import { useState } from 'react';
 
 import { groupCustomersForList, type CustomerListFilter } from './customerListGrouping.js';
+import {
+  getNextCustomerSortState,
+  sortCustomers,
+  type CustomerSortKey,
+  type CustomerSortState,
+} from './customerListSorting.js';
 import { uiText } from '../i18n/fi.js';
 
 interface CustomerListProps {
@@ -23,7 +29,14 @@ export function CustomerList({
   const [expandedPropertyManagerIds, setExpandedPropertyManagerIds] = useState<Set<string>>(
     () => new Set(),
   );
-  const customerGroups = groupCustomersForList(customers, activeFilter);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortState, setSortState] = useState<CustomerSortState>({
+    direction: 'asc',
+    key: 'name',
+  });
+  const searchedCustomers = searchCustomers(customers, searchQuery);
+  const sortedCustomers = sortCustomers(searchedCustomers, sortState);
+  const customerGroups = groupCustomersForList(sortedCustomers, activeFilter);
 
   function togglePropertyManager(customerId: string): void {
     setExpandedPropertyManagerIds((currentIds) => {
@@ -37,6 +50,10 @@ export function CustomerList({
 
       return nextIds;
     });
+  }
+
+  function updateSort(nextSortKey: CustomerSortKey): void {
+    setSortState((currentSort) => getNextCustomerSortState(currentSort, nextSortKey));
   }
 
   return (
@@ -61,6 +78,40 @@ export function CustomerList({
       ) : null}
 
       {customers.length > 0 ? (
+        <div className="customer-list-tools">
+          <label className="customer-search-field">
+            <span>{uiText.customers.searchCustomer}</span>
+            <input
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder={uiText.customers.searchCustomerPlaceholder}
+              type="search"
+              value={searchQuery}
+            />
+          </label>
+          <label className="customer-sort-select">
+            <span>{uiText.customers.sortCustomers}</span>
+            <select
+              onChange={(event) => updateSort(event.target.value as CustomerSortKey)}
+              value={sortState.key}
+            >
+              <option value="name">{uiText.customers.sortByName}</option>
+              <option value="customerNumber">{uiText.customers.sortByCustomerNumber}</option>
+              <option value="customerType">{uiText.customers.sortByCustomerType}</option>
+              <option value="city">{uiText.customers.sortByCity}</option>
+              <option value="status">{uiText.customers.sortByStatus}</option>
+            </select>
+          </label>
+          <button
+            className="ghost-button customer-sort-direction-button"
+            onClick={() => updateSort(sortState.key)}
+            type="button"
+          >
+            {getSortDirectionLabel(sortState)}
+          </button>
+        </div>
+      ) : null}
+
+      {customers.length > 0 ? (
         <div className="customer-type-filter" aria-label={uiText.customers.customerTypeFilter}>
           {getCustomerListFilters().map((filter) => (
             <button
@@ -71,7 +122,7 @@ export function CustomerList({
               type="button"
             >
               <span>{getCustomerListFilterLabel(filter)}</span>
-              <strong>{countCustomersByFilter(customers, filter)}</strong>
+              <strong>{countCustomersByFilter(searchedCustomers, filter)}</strong>
             </button>
           ))}
         </div>
@@ -80,11 +131,39 @@ export function CustomerList({
       {customerGroups.length > 0 ? (
         <div className="customer-table" role="table" aria-label={uiText.customers.customers}>
           <div className="customer-table-row customer-table-head" role="row">
-            <span role="columnheader">{uiText.customers.customer}</span>
-            <span role="columnheader">{uiText.customers.customerType}</span>
-            <span role="columnheader">{uiText.customers.city}</span>
+            <span role="columnheader">
+              <CustomerSortButton
+                isActive={sortState.key === 'name'}
+                label={uiText.customers.customer}
+                onClick={() => updateSort('name')}
+                sortState={sortState}
+              />
+            </span>
+            <span role="columnheader">
+              <CustomerSortButton
+                isActive={sortState.key === 'customerType'}
+                label={uiText.customers.customerType}
+                onClick={() => updateSort('customerType')}
+                sortState={sortState}
+              />
+            </span>
+            <span role="columnheader">
+              <CustomerSortButton
+                isActive={sortState.key === 'city'}
+                label={uiText.customers.city}
+                onClick={() => updateSort('city')}
+                sortState={sortState}
+              />
+            </span>
             <span role="columnheader">{uiText.customers.contact}</span>
-            <span role="columnheader">{uiText.customers.status}</span>
+            <span role="columnheader">
+              <CustomerSortButton
+                isActive={sortState.key === 'status'}
+                label={uiText.customers.status}
+                onClick={() => updateSort('status')}
+                sortState={sortState}
+              />
+            </span>
             <span role="columnheader" aria-label={uiText.customers.actions} />
           </div>
           {customerGroups.map(({ customer, managedHousingCompanies }) => {
@@ -172,9 +251,39 @@ export function CustomerList({
         </div>
       ) : null}
       {customers.length > 0 && customerGroups.length === 0 ? (
-        <p className="message">{uiText.customers.emptyForSelectedType}</p>
+        <p className="message">
+          {searchQuery.trim().length > 0
+            ? uiText.customers.emptyForSearch
+            : uiText.customers.emptyForSelectedType}
+        </p>
       ) : null}
     </section>
+  );
+}
+
+interface CustomerSortButtonProps {
+  isActive: boolean;
+  label: string;
+  onClick(): void;
+  sortState: CustomerSortState;
+}
+
+function CustomerSortButton({
+  isActive,
+  label,
+  onClick,
+  sortState,
+}: CustomerSortButtonProps): React.JSX.Element {
+  return (
+    <button
+      aria-label={getSortButtonLabel(label, isActive, sortState)}
+      className="customer-sort-header-button"
+      onClick={onClick}
+      type="button"
+    >
+      <span>{label}</span>
+      {isActive ? <strong aria-hidden="true">{getSortIndicator(sortState)}</strong> : null}
+    </button>
   );
 }
 
@@ -196,6 +305,99 @@ function countCustomersByFilter(customers: Customer[], filter: CustomerListFilte
   }
 
   return customers.filter((customer) => customer.customerType === filter).length;
+}
+
+function searchCustomers(customers: Customer[], searchQuery: string): Customer[] {
+  const normalizedSearchQuery = normalizeSearchText(searchQuery);
+
+  if (normalizedSearchQuery.length === 0) {
+    return customers;
+  }
+
+  const directlyMatchingCustomerIds = new Set<string>();
+  const includedCustomerIds = new Set<string>();
+
+  for (const customer of customers) {
+    if (doesCustomerMatchSearch(customer, normalizedSearchQuery)) {
+      directlyMatchingCustomerIds.add(customer.id);
+      includedCustomerIds.add(customer.id);
+    }
+  }
+
+  for (const customer of customers) {
+    if (
+      customer.customerType === 'housingCompany' &&
+      directlyMatchingCustomerIds.has(customer.id) &&
+      customer.managedByCustomerId.length > 0
+    ) {
+      includedCustomerIds.add(customer.managedByCustomerId);
+    }
+  }
+
+  for (const customer of customers) {
+    if (
+      customer.customerType === 'housingCompany' &&
+      directlyMatchingCustomerIds.has(customer.managedByCustomerId)
+    ) {
+      includedCustomerIds.add(customer.id);
+    }
+  }
+
+  return customers.filter((customer) => includedCustomerIds.has(customer.id));
+}
+
+function doesCustomerMatchSearch(customer: Customer, normalizedSearchQuery: string): boolean {
+  const searchableValues = [
+    customer.customerNumber,
+    customer.name,
+    getCustomerTypeLabel(customer.customerType),
+    customer.businessId,
+    customer.city,
+    customer.email,
+    customer.phone,
+  ];
+
+  return searchableValues.some((value) =>
+    normalizeSearchText(value).includes(normalizedSearchQuery),
+  );
+}
+
+function normalizeSearchText(value: string): string {
+  return value.trim().toLocaleLowerCase('fi');
+}
+
+function getSortDirectionLabel(sortState: CustomerSortState): string {
+  if (sortState.key === 'status') {
+    return sortState.direction === 'asc'
+      ? uiText.customers.activeFirst
+      : uiText.customers.inactiveFirst;
+  }
+
+  return sortState.direction === 'asc'
+    ? uiText.customers.sortAscending
+    : uiText.customers.sortDescending;
+}
+
+function getSortButtonLabel(
+  label: string,
+  isActive: boolean,
+  sortState: CustomerSortState,
+): string {
+  if (!isActive) {
+    return `${uiText.customers.sortByColumn}: ${label}`;
+  }
+
+  return `${uiText.customers.sortByColumn}: ${label}, ${getSortDirectionLabel(sortState)}`;
+}
+
+function getSortIndicator(sortState: CustomerSortState): string {
+  if (sortState.key === 'status') {
+    return sortState.direction === 'asc'
+      ? uiText.customers.activeFirstShort
+      : uiText.customers.inactiveFirstShort;
+  }
+
+  return sortState.direction === 'asc' ? 'A-Ö' : 'Ö-A';
 }
 
 function formatManagedHousingCompanyCount(count: number): string {
