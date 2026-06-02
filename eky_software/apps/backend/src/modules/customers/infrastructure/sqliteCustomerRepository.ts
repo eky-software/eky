@@ -20,7 +20,30 @@ type CustomerInsertParameters = [
   string,
   string,
   string,
+  string,
 ];
+
+type CustomerUpdateParameters = [
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+];
+
+interface CustomerNumberRow {
+  customer_number: string;
+}
 
 function toCustomerRow(customer: Customer): NewCustomerRow {
   return {
@@ -29,6 +52,7 @@ function toCustomerRow(customer: Customer): NewCustomerRow {
     customer_number: customer.customerNumber,
     name: customer.name,
     customer_type: customer.customerType,
+    managed_by_customer_id: customer.managedByCustomerId,
     business_id: customer.businessId,
     street_address: customer.streetAddress,
     postal_code: customer.postalCode,
@@ -49,6 +73,7 @@ function toCustomer(row: CustomerRow): Customer {
     customerNumber: row.customer_number,
     name: row.name,
     customerType: row.customer_type as Customer['customerType'],
+    managedByCustomerId: row.managed_by_customer_id,
     businessId: row.business_id,
     streetAddress: row.street_address,
     postalCode: row.postal_code,
@@ -87,6 +112,7 @@ export class SqliteCustomerRepository implements CustomerRepository {
               customer_number,
               name,
               customer_type,
+              managed_by_customer_id,
               business_id,
               street_address,
               postal_code,
@@ -98,7 +124,7 @@ export class SqliteCustomerRepository implements CustomerRepository {
               created_at,
               updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
         )
         .run(
@@ -107,6 +133,7 @@ export class SqliteCustomerRepository implements CustomerRepository {
           row.customer_number,
           row.name,
           row.customer_type,
+          row.managed_by_customer_id,
           row.business_id,
           row.street_address,
           row.postal_code,
@@ -139,6 +166,7 @@ export class SqliteCustomerRepository implements CustomerRepository {
             customer_number,
             name,
             customer_type,
+            managed_by_customer_id,
             business_id,
             street_address,
             postal_code,
@@ -157,5 +185,109 @@ export class SqliteCustomerRepository implements CustomerRepository {
       .all(companyId);
 
     return rows.map(toCustomer);
+  }
+
+  async findById(companyId: string, id: string): Promise<Customer | undefined> {
+    const row = this.database
+      .prepare<[string, string], CustomerRow>(
+        `
+          SELECT
+            id,
+            company_id,
+            customer_number,
+            name,
+            customer_type,
+            managed_by_customer_id,
+            business_id,
+            street_address,
+            postal_code,
+            city,
+            email,
+            phone,
+            comment,
+            status,
+            created_at,
+            updated_at
+          FROM customers
+          WHERE company_id = ? AND id = ?
+        `,
+      )
+      .get(companyId, id);
+
+    return row === undefined ? undefined : toCustomer(row);
+  }
+
+  async getNextCustomerNumber(companyId: string): Promise<string> {
+    const rows = this.database
+      .prepare<[string], CustomerNumberRow>(
+        `
+          SELECT customer_number
+          FROM customers
+          WHERE company_id = ?
+        `,
+      )
+      .all(companyId);
+    const highestNumber = rows.reduce((currentHighestNumber, row) => {
+      if (!/^\d+$/.test(row.customer_number)) {
+        return currentHighestNumber;
+      }
+
+      return Math.max(currentHighestNumber, Number(row.customer_number));
+    }, 1000);
+
+    return String(highestNumber + 1);
+  }
+
+  async update(customer: Customer): Promise<Customer> {
+    const row = toCustomerRow(customer);
+
+    try {
+      this.database
+        .prepare<CustomerUpdateParameters>(
+          `
+            UPDATE customers
+            SET
+              customer_number = ?,
+              name = ?,
+              customer_type = ?,
+              managed_by_customer_id = ?,
+              business_id = ?,
+              street_address = ?,
+              postal_code = ?,
+              city = ?,
+              email = ?,
+              phone = ?,
+              comment = ?,
+              status = ?,
+              updated_at = ?
+            WHERE company_id = ? AND id = ?
+          `,
+        )
+        .run(
+          row.customer_number,
+          row.name,
+          row.customer_type,
+          row.managed_by_customer_id,
+          row.business_id,
+          row.street_address,
+          row.postal_code,
+          row.city,
+          row.email,
+          row.phone,
+          row.comment,
+          row.status,
+          row.updated_at,
+          row.company_id,
+          row.id,
+        );
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new CustomerValidationError('Customer number already exists.');
+      }
+
+      throw error;
+    }
+
+    return customer;
   }
 }

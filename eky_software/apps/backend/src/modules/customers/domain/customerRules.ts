@@ -1,4 +1,4 @@
-import type { CustomerStatus, CustomerType } from './customer.js';
+import type { CustomerNumberMode, CustomerStatus, CustomerType } from './customer.js';
 
 export class CustomerValidationError extends Error {
   constructor(message: string) {
@@ -53,6 +53,31 @@ export function normalizeCustomerNumber(customerNumber: string): string {
   }
 
   return normalizedCustomerNumber;
+}
+
+export function normalizeManagedByCustomerId(
+  managedByCustomerId: string,
+  customerType: CustomerType,
+): string {
+  const normalizedManagedByCustomerId = managedByCustomerId.trim();
+
+  if (normalizedManagedByCustomerId.length > 200) {
+    throw new CustomerValidationError('Managed by customer id must be 200 characters or less.');
+  }
+
+  if (customerType !== 'housingCompany') {
+    return '';
+  }
+
+  return normalizedManagedByCustomerId;
+}
+
+export function parseCustomerNumberMode(customerNumberMode: string): CustomerNumberMode {
+  if (customerNumberMode === 'auto' || customerNumberMode === 'manual') {
+    return customerNumberMode;
+  }
+
+  throw new CustomerValidationError('Customer number mode is invalid.');
 }
 
 export function parseCustomerStatus(status: string): CustomerStatus {

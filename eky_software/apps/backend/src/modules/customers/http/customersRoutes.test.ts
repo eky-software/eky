@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { CreateCustomerInput } from '../application/createCustomer.js';
 import type { ListCustomersInput } from '../application/listCustomers.js';
+import type { UpdateCustomerInput } from '../application/updateCustomer.js';
 import type { Customer } from '../domain/customer.js';
 import { CustomerValidationError } from '../domain/customerRules.js';
 import { createCustomersRoutes } from './customersRoutes.js';
@@ -18,6 +19,9 @@ describe('customersRoutes', () => {
         listInput = input;
 
         return customers;
+      },
+      async updateCustomer(): Promise<Customer> {
+        throw new Error('updateCustomer should not be called');
       },
     });
 
@@ -41,6 +45,9 @@ describe('customersRoutes', () => {
       async listCustomers(): Promise<Customer[]> {
         throw new Error('listCustomers should not be called');
       },
+      async updateCustomer(): Promise<Customer> {
+        throw new Error('updateCustomer should not be called');
+      },
     });
 
     const response = await app.request('/customers', {
@@ -51,6 +58,7 @@ describe('customersRoutes', () => {
         customerNumber: '  1001  ',
         customerType: 'company',
         email: '  customer@example.fi  ',
+        managedByCustomerId: '',
         name: '  Example Customer Oy  ',
         phone: '  040 123 4567  ',
         postalCode: '  00100  ',
@@ -69,8 +77,10 @@ describe('customersRoutes', () => {
       comment: '  Important local customer  ',
       companyId: 'dev-company',
       customerNumber: '  1001  ',
+      customerNumberMode: 'manual',
       customerType: 'company',
       email: '  customer@example.fi  ',
+      managedByCustomerId: '',
       name: '  Example Customer Oy  ',
       phone: '  040 123 4567  ',
       postalCode: '  00100  ',
@@ -78,6 +88,40 @@ describe('customersRoutes', () => {
       streetAddress: '  Testikatu 1  ',
     });
     expect(body).toEqual({ customer: createdCustomer });
+  });
+
+  it('defaults to automatic customer numbers when customerNumber is omitted', async () => {
+    const createdCustomer = createTestCustomer();
+    let createInput: CreateCustomerInput | undefined;
+    const app = createCustomersRoutes({
+      async createCustomer(input): Promise<Customer> {
+        createInput = input;
+
+        return createdCustomer;
+      },
+      async listCustomers(): Promise<Customer[]> {
+        throw new Error('listCustomers should not be called');
+      },
+      async updateCustomer(): Promise<Customer> {
+        throw new Error('updateCustomer should not be called');
+      },
+    });
+
+    const response = await app.request('/customers', {
+      body: JSON.stringify({
+        name: 'Example Customer Oy',
+      }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(201);
+    expect(createInput).toMatchObject({
+      companyId: 'dev-company',
+      customerNumberMode: 'auto',
+      name: 'Example Customer Oy',
+    });
+    expect(createInput).not.toHaveProperty('customerNumber');
   });
 
   it('rejects invalid JSON bodies', async () => {
@@ -90,6 +134,9 @@ describe('customersRoutes', () => {
       },
       async listCustomers(): Promise<Customer[]> {
         return [];
+      },
+      async updateCustomer(): Promise<Customer> {
+        throw new Error('updateCustomer should not be called');
       },
     });
 
@@ -116,6 +163,9 @@ describe('customersRoutes', () => {
       async listCustomers(): Promise<Customer[]> {
         return [];
       },
+      async updateCustomer(): Promise<Customer> {
+        throw new Error('updateCustomer should not be called');
+      },
     });
 
     const response = await app.request('/customers', {
@@ -138,6 +188,9 @@ describe('customersRoutes', () => {
       async listCustomers(): Promise<Customer[]> {
         return [];
       },
+      async updateCustomer(): Promise<Customer> {
+        throw new Error('updateCustomer should not be called');
+      },
     });
 
     const response = await app.request('/customers', {
@@ -149,6 +202,63 @@ describe('customersRoutes', () => {
 
     expect(response.status).toBe(400);
     expect(body).toEqual({ error: 'Customer name is required.' });
+  });
+
+  it('updates a customer through the route dependencies', async () => {
+    const updatedCustomer = createTestCustomer();
+    let updateInput: UpdateCustomerInput | undefined;
+    const app = createCustomersRoutes({
+      async createCustomer(): Promise<Customer> {
+        throw new Error('createCustomer should not be called');
+      },
+      async listCustomers(): Promise<Customer[]> {
+        throw new Error('listCustomers should not be called');
+      },
+      async updateCustomer(input): Promise<Customer> {
+        updateInput = input;
+
+        return updatedCustomer;
+      },
+    });
+
+    const response = await app.request('/customers/customer-1', {
+      body: JSON.stringify({
+        businessId: '  1234567-8  ',
+        city: '  Helsinki  ',
+        comment: '  Important local customer  ',
+        customerNumber: '  1001  ',
+        customerType: 'company',
+        email: '  customer@example.fi  ',
+        managedByCustomerId: '',
+        name: '  Example Customer Oy  ',
+        phone: '  040 123 4567  ',
+        postalCode: '  00100  ',
+        status: 'active',
+        streetAddress: '  Testikatu 1  ',
+      }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'PUT',
+    });
+    const body = (await response.json()) as { customer: Customer };
+
+    expect(response.status).toBe(200);
+    expect(updateInput).toEqual({
+      businessId: '  1234567-8  ',
+      city: '  Helsinki  ',
+      comment: '  Important local customer  ',
+      companyId: 'dev-company',
+      customerNumber: '  1001  ',
+      customerType: 'company',
+      email: '  customer@example.fi  ',
+      id: 'customer-1',
+      managedByCustomerId: '',
+      name: '  Example Customer Oy  ',
+      phone: '  040 123 4567  ',
+      postalCode: '  00100  ',
+      status: 'active',
+      streetAddress: '  Testikatu 1  ',
+    });
+    expect(body).toEqual({ customer: updatedCustomer });
   });
 });
 
@@ -164,6 +274,7 @@ function createTestCustomer(): Customer {
     postalCode: '00100',
     city: 'Helsinki',
     email: 'customer@example.fi',
+    managedByCustomerId: '',
     phone: '040 123 4567',
     comment: 'Important local customer',
     status: 'active',

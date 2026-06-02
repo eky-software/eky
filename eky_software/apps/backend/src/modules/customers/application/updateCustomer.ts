@@ -1,6 +1,4 @@
-import { randomUUID } from 'node:crypto';
-
-import { createCustomerRecord, type Customer } from '../domain/customer.js';
+import type { Customer } from '../domain/customer.js';
 import {
   CustomerValidationError,
   normalizeCustomerComment,
@@ -8,21 +6,20 @@ import {
   normalizeCustomerNumber,
   normalizeManagedByCustomerId,
   normalizeOptionalCustomerField,
-  parseCustomerNumberMode,
   parseCustomerStatus,
   parseCustomerType,
 } from '../domain/customerRules.js';
 import type { CustomerRepository } from '../ports/customerRepository.js';
 
-export interface CreateCustomerInput {
+export interface UpdateCustomerInput {
   businessId: string;
   city: string;
   comment: string;
   companyId: string;
-  customerNumber?: string;
-  customerNumberMode: string;
+  customerNumber: string;
   customerType: string;
   email: string;
+  id: string;
   managedByCustomerId: string;
   name: string;
   phone: string;
@@ -31,19 +28,24 @@ export interface CreateCustomerInput {
   streetAddress: string;
 }
 
-export async function createCustomer(
-  input: CreateCustomerInput,
+export async function updateCustomer(
+  input: UpdateCustomerInput,
   customerRepository: CustomerRepository,
 ): Promise<Customer> {
-  const customerNumberMode = parseCustomerNumberMode(input.customerNumberMode);
-  const customerNumber =
-    customerNumberMode === 'auto'
-      ? await customerRepository.getNextCustomerNumber(input.companyId)
-      : normalizeCustomerNumber(input.customerNumber ?? '');
+  const existingCustomer = await customerRepository.findById(input.companyId, input.id);
+
+  if (existingCustomer === undefined) {
+    throw new CustomerValidationError('Customer not found.');
+  }
+
   const customerType = parseCustomerType(input.customerType);
   const managedByCustomerId = normalizeManagedByCustomerId(input.managedByCustomerId, customerType);
 
   if (managedByCustomerId.length > 0) {
+    if (managedByCustomerId === existingCustomer.id) {
+      throw new CustomerValidationError('Customer cannot manage itself.');
+    }
+
     const propertyManager = await customerRepository.findById(input.companyId, managedByCustomerId);
 
     if (propertyManager?.customerType !== 'propertyManager') {
@@ -51,23 +53,24 @@ export async function createCustomer(
     }
   }
 
-  const customer = createCustomerRecord({
-    id: randomUUID(),
+  const customer: Customer = {
+    id: existingCustomer.id,
     businessId: normalizeOptionalCustomerField(input.businessId, 'Customer business id'),
     city: normalizeOptionalCustomerField(input.city, 'Customer city'),
     comment: normalizeCustomerComment(input.comment),
-    companyId: input.companyId,
-    customerNumber,
+    companyId: existingCustomer.companyId,
+    customerNumber: normalizeCustomerNumber(input.customerNumber),
     customerType,
     email: normalizeOptionalCustomerField(input.email, 'Customer email'),
     managedByCustomerId,
     name: normalizeCustomerName(input.name),
-    now: new Date().toISOString(),
     phone: normalizeOptionalCustomerField(input.phone, 'Customer phone'),
     postalCode: normalizeOptionalCustomerField(input.postalCode, 'Customer postal code'),
     status: parseCustomerStatus(input.status),
     streetAddress: normalizeOptionalCustomerField(input.streetAddress, 'Customer street address'),
-  });
+    createdAt: existingCustomer.createdAt,
+    updatedAt: new Date().toISOString(),
+  };
 
-  return customerRepository.create(customer);
+  return customerRepository.update(customer);
 }

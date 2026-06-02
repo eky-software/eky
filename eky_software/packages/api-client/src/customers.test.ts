@@ -37,8 +37,10 @@ describe('createEkyApiClient', () => {
       city: 'Helsinki',
       comment: 'Important local customer',
       customerNumber: '1001',
+      customerNumberMode: 'manual',
       customerType: 'company',
       email: 'customer@example.fi',
+      managedByCustomerId: '',
       name: 'Example Customer Oy',
       phone: '040 123 4567',
       postalCode: '00100',
@@ -68,6 +70,45 @@ describe('createEkyApiClient', () => {
     expect(requests[0]?.init?.body).toBe(JSON.stringify(input));
   });
 
+  it('updates a customer through PUT /customers/:id', async () => {
+    const customer = createTestCustomer();
+    const input = {
+      businessId: '1234567-8',
+      city: 'Helsinki',
+      comment: 'Important local customer',
+      customerNumber: '1001',
+      customerType: 'company',
+      email: 'customer@example.fi',
+      managedByCustomerId: '',
+      name: 'Example Customer Oy',
+      phone: '040 123 4567',
+      postalCode: '00100',
+      status: 'active',
+      streetAddress: 'Testikatu 1',
+    } as const;
+    const requests: Array<{ input: string; init: RequestInit | undefined }> = [];
+    const client = createEkyApiClient({
+      baseUrl: '',
+      fetch: async (requestInput, init) => {
+        requests.push({ input: requestInput.toString(), init });
+
+        return jsonResponse({ customer });
+      },
+    });
+
+    const result = await client.updateCustomer('customer-1', input);
+
+    expect(result).toEqual(customer);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.input).toBe('/customers/customer-1');
+    expect(requests[0]?.init?.method).toBe('PUT');
+    expect(requests[0]?.init?.headers).toEqual({
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    });
+    expect(requests[0]?.init?.body).toBe(JSON.stringify(input));
+  });
+
   it('throws an API error for backend error responses', async () => {
     const client = createEkyApiClient({
       baseUrl: '',
@@ -80,8 +121,10 @@ describe('createEkyApiClient', () => {
         city: '',
         comment: '',
         customerNumber: '',
+        customerNumberMode: 'manual',
         customerType: 'company',
         email: '',
+        managedByCustomerId: '',
         name: '',
         phone: '',
         postalCode: '',
@@ -123,6 +166,7 @@ function createTestCustomer(): Customer {
     postalCode: '00100',
     city: 'Helsinki',
     email: 'customer@example.fi',
+    managedByCustomerId: '',
     phone: '040 123 4567',
     comment: 'Important local customer',
     status: 'active',

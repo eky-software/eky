@@ -4,6 +4,7 @@ export interface CustomerTable {
   customer_number: string;
   name: string;
   customer_type: string;
+  managed_by_customer_id: string;
   business_id: string;
   street_address: string;
   postal_code: string;

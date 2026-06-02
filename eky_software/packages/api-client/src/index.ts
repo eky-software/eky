@@ -7,4 +7,5 @@ export {
   type CustomerType,
   type EkyApiClient,
   type EkyApiClientOptions,
+  type UpdateCustomerRequest,
 } from './customers.js';

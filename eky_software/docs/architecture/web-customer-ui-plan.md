@@ -178,6 +178,8 @@ Web ei saa importata backendin sisäisiä moduuleja.
 
 UI:n visuaalinen ja käytettävyydellinen peruslinja on kuvattu dokumentissa `docs/design/ui-principles.md`.
 
+Customer UI:n seuraava UX-korjaus nykyisestä pitkästä lomakenäkymästä asiakaskortiston lista + lomakepaneeli -malliin on kuvattu dokumentissa `docs/architecture/customer-ui-ux-plan.md`.
+
 ## Virheiden näyttäminen
 
 Ensimmäisessä palassa virheet voidaan näyttää yksinkertaisena tekstinä.
@@ -241,6 +243,7 @@ Ensimmäinen web customer UI -toteutus on valmis vasta, kun:
 - `docs/architecture/base-architecture.md`
 - `docs/architecture/dependency-policy.md`
 - `docs/architecture/customer-vertical-slice-plan.md`
+- `docs/architecture/customer-ui-ux-plan.md`
 - `docs/design/ui-principles.md`
 - `docs/modules/customers.md`
 - `packages/api-client/README.md`
