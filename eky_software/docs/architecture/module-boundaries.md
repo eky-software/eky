@@ -36,6 +36,41 @@ Invoicing, Work Orders, Inventory, Reporting tai muut moduulit eivät saa kirjoi
 
 Ensimmäinen rajattu Customer create/list local -toteutuspala on kuvattu dokumentissa `docs/architecture/customer-vertical-slice-plan.md`.
 
+Customers-moduuli voi myöhemmin omistaa asiakaskohtaisen tuntihintaohituksen.
+
+Oman yrityksen oletustuntihinta ei kuulu customers-moduulille.
+
+## Company Settings
+
+Company Settings tarkoittaa ohjelmaa käyttävän yrityksen omia tietoja ja oletusasetuksia.
+
+Käyttäjälle näkyvä nimi voi olla esimerkiksi Oma yritys.
+
+Vastuut:
+
+- oman yrityksen perustiedot
+- oman yrityksen yhteystiedot
+- oman yrityksen osoite
+- oman yrityksen Y-tunnus
+- oletustuntihinta
+- myöhemmin rajatut laskutusasetukset
+
+Company Settings ei omista:
+
+- asiakkaita
+- asiakaskohtaisia tuntihintaohituksia
+- kohteita
+- työmääräyksiä
+- tuntikirjauksia
+- materiaalikirjauksia
+- laskuja
+- laskurivejä
+- laskulla käytettyjä snapshot-arvoja
+
+Invoicing voi myöhemmin lukea oman yrityksen tietoja laskun muodostuksessa, mutta laskulla käytetyt tiedot tallennetaan laskutuksen snapshotiksi.
+
+Customers voi myöhemmin lukea oletustuntihinnan käyttöliittymän ohjetekstiä tai hinnoittelun esikatselua varten, mutta customers-moduuli ei omista oletustuntihintaa.
+
 ## Sites
 
 Sites tarkoittaa kohteita tai työmaita.

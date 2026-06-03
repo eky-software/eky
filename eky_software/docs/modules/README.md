@@ -34,6 +34,7 @@ Moduulien välinen kommunikaatio tehdään hallitusti.
 Alustavat moduulit:
 
 - customers
+- company-settings
 - sales
 - invoicing
 - inventory

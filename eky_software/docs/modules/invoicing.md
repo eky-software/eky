@@ -17,12 +17,15 @@ Invoicing-moduuli hallitsee laskuluonnoksia, laskuja, laskurivejä, laskun tiloj
 - laskunumeroinnin
 - ALV-käsittelyn
 - maksuehdot
+- laskulla käytetyt hinta- ja osapuolitietojen snapshotit
 - laskutuksen audit-tapahtumat
 - hyvityslaskut myöhemmin
 
 ## Moduuli ei omista
 
 - asiakkaan perustietoja
+- asiakaskohtaisia tuntihintaohituksia
+- oman yrityksen oletustuntihintaa
 - kohteen perustietoja
 - tuntikirjausten alkuperäistä dataa
 - materiaalikirjausten alkuperäistä dataa
@@ -71,6 +74,29 @@ Myöhemmin lasku voi muodostua hyväksytyistä:
 - tarjouksista
 
 Nämä eivät saa siirtyä lopulliseen laskuun ilman hallittua prosessia.
+
+## Snapshot-Periaate
+
+Laskulle tai laskuriville tallennetaan myöhemmin käytetyt hinnat snapshotiksi.
+
+Tämä koskee esimerkiksi:
+
+- käytettyä tuntihintaa
+- asiakkaan laskuhetken tietoja
+- oman yrityksen laskuhetken tietoja
+
+Vanha lasku ei saa muuttua, vaikka myöhemmin muuttuvat:
+
+- asiakkaan perustiedot
+- asiakkaan asiakaskohtainen tuntihinta
+- oman yrityksen oletustuntihinta
+- oman yrityksen perustiedot
+
+Customers-moduuli omistaa asiakkaan perustiedot ja mahdollisen asiakaskohtaisen tuntihintaohituksen.
+
+Company Settings -moduuli omistaa oman yrityksen tiedot ja oletustuntihinnan.
+
+Invoicing omistaa laskulla käytetyt snapshot-arvot.
 
 ## Turvallisuus
 
