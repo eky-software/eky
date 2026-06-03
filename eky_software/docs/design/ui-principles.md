@@ -120,8 +120,10 @@ Layout-ajatus:
 
 - `TopBar` näyttää sovelluksen nimen, tilan ja myöhemmin local/cloud-statuksen
 - `Sidebar` sisältää moduulinavigaation
+- `Sidebar` voidaan jakaa selkeisiin osioihin, kuten Päätoiminnot ja Yritys
 - `Main area` sisältää aktiivisen työalueen
 - Asiakkaat on ensimmäinen aktiivinen moduuli
+- Oma yritys kuuluu myöhemmin sivupalkin yritysosioon
 - Laskutus, työmääräykset ja muut moduulit voivat näkyä myöhemmin passiivisina tai tulevina osioina
 
 Työaluekortteja käytetään oikeisiin työpintoihin, ei koristeeksi.

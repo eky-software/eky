@@ -4,11 +4,14 @@ export const uiText = {
   },
   layout: {
     appMode: 'Paikallinen käyttöliittymä',
+    companyNavigation: 'Yritys',
     currentRuntimeMode: 'Nykyinen ajotila',
     localBackend: 'Paikallinen backend',
     modules: 'Moduulit',
+    primaryNavigation: 'Päätoiminnot',
   },
   modules: {
+    companySettings: 'Oma yritys',
     customers: 'Asiakkaat',
     sites: 'Kohteet',
     workOrders: 'Työmääräykset',
