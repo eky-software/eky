@@ -207,6 +207,33 @@ Ensimmäinen tilamalli voi olla:
 
 Passivoitu asiakas säilyy historiassa ja viittauksissa, mutta sitä voidaan piilottaa oletuslistauksista myöhemmin.
 
+## Asiakaskohtainen Tuntihinta
+
+Asiakaskortille voidaan myöhemmin lisätä kenttä:
+
+```ts
+hourlyRateOverride: number | null
+```
+
+Tämä on asiakkaan oma tuntihintapoikkeus.
+
+Säännöt:
+
+- jos `hourlyRateOverride` on `null`, käytetään oman yrityksen oletustuntihintaa
+- oman yrityksen oletustuntihinta kuuluu Company Settings / Oma yritys -moduulille
+- jos `hourlyRateOverride` on annettu, se ohittaa oletustuntihinnan kyseiselle asiakkaalle
+- `0` ei tarkoita "ei asetettu"
+- `0` tarkoittaa nolla euroa
+- puuttuva arvo kuvataan siksi `null`-arvolla
+
+Asiakaskohtainen tuntihinta on asiakkaan master-dataa, joten sen omistaa customers-moduuli.
+
+Tämä kenttä ei vielä muodosta laskua eikä laskuriviä.
+
+Myöhemmin työmääräys-, työkirjaus- tai laskutuslogiikka voi käyttää tätä arvoa hinnan valinnan lähtötietona.
+
+Laskulle tai laskuriville tallennetaan lopulta käytetty tuntihinta snapshotiksi, jotta vanhat laskut eivät muutu, vaikka asiakaskohtainen tuntihinta tai oman yrityksen oletustuntihinta muuttuu myöhemmin.
+
 ## Suhde Muihin Moduuleihin
 
 Customers vastaa kysymykseen:
@@ -239,7 +266,15 @@ Invoicing vastaa myöhemmin kysymykseen:
 mitä veloitetaan
 ```
 
+Company Settings vastaa myöhemmin kysymykseen:
+
+```text
+mitkä ovat ohjelmaa käyttävän oman yrityksen tiedot ja oletusasetukset
+```
+
 Lasku voi ottaa asiakkaan tiedoista snapshotin, jotta vanhan laskun tiedot eivät muutu takautuvasti, jos asiakaskorttia päivitetään myöhemmin.
+
+Lasku tai laskurivi ottaa myöhemmin snapshotin myös käytetystä tuntihinnasta.
 
 ## Rajataan Myöhemmäksi
 

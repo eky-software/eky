@@ -154,7 +154,21 @@ h2 {
 
 .module-nav {
   display: grid;
+  gap: 18px;
+}
+
+.nav-section {
+  display: grid;
   gap: 6px;
+}
+
+.nav-section-label {
+  margin: 0 0 2px;
+  padding: 0 12px;
+  color: #7f94ad;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 
 .nav-item {
