@@ -1,0 +1,32 @@
+export class CompanySettingsValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CompanySettingsValidationError';
+  }
+}
+
+export function normalizeCompanySettingsField(value: string, fieldName: string): string {
+  const normalizedValue = value.trim();
+
+  if (normalizedValue.length > 200) {
+    throw new CompanySettingsValidationError(`${fieldName} must be 200 characters or less.`);
+  }
+
+  return normalizedValue;
+}
+
+export function parseDefaultHourlyRateCents(value: unknown): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value !== 'number' || !Number.isSafeInteger(value)) {
+    throw new CompanySettingsValidationError('Default hourly rate must be whole cents.');
+  }
+
+  if (value < 0) {
+    throw new CompanySettingsValidationError('Default hourly rate cannot be negative.');
+  }
+
+  return value;
+}

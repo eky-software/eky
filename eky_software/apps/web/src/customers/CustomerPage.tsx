@@ -1,7 +1,6 @@
 import {
   createEkyApiClient,
   EkyApiError,
-  type CreateCustomerRequest,
   type Customer,
 } from '@eky/api-client';
 import { useEffect, useMemo, useState } from 'react';
@@ -11,8 +10,10 @@ import { CustomerList } from './CustomerList.js';
 import { createDummyCustomerForm } from './customerDummyData.js';
 import {
   initialCustomerForm,
+  toCreateCustomerRequest,
   toCustomerForm,
   toUpdateCustomerRequest,
+  type CustomerFormModel,
 } from './customerFormModel.js';
 import { getFinnishApiErrorMessage, uiText } from '../i18n/fi.js';
 
@@ -21,7 +22,7 @@ const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
 export function CustomerPage(): React.JSX.Element {
   const apiClient = useMemo(() => createEkyApiClient({ baseUrl: apiBaseUrl }), []);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [customerForm, setCustomerForm] = useState<CreateCustomerRequest>(initialCustomerForm);
+  const [customerForm, setCustomerForm] = useState<CustomerFormModel>(initialCustomerForm);
   const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
   const [panelMode, setPanelMode] = useState<'create' | 'edit' | null>(null);
@@ -72,7 +73,7 @@ export function CustomerPage(): React.JSX.Element {
     setSaveErrorMessage(null);
 
     try {
-      const createdCustomer = await apiClient.createCustomer(customerForm);
+      const createdCustomer = await apiClient.createCustomer(toCreateCustomerRequest(customerForm));
 
       setCustomers((currentCustomers) => [...currentCustomers, createdCustomer]);
       setCustomerForm(initialCustomerForm);
@@ -145,7 +146,7 @@ export function CustomerPage(): React.JSX.Element {
   }
 
   function handleCustomerFormFieldChange(
-    fieldName: keyof CreateCustomerRequest,
+    fieldName: keyof CustomerFormModel,
     value: string,
   ): void {
     setCustomerForm((currentForm) => ({
@@ -198,6 +199,10 @@ export function CustomerPage(): React.JSX.Element {
 function getErrorMessage(error: unknown): string {
   if (error instanceof EkyApiError) {
     return getFinnishApiErrorMessage(error.message);
+  }
+
+  if (error instanceof Error && error.message === 'Invalid hourly rate.') {
+    return uiText.customers.invalidHourlyRate;
   }
 
   if (error instanceof Error) {

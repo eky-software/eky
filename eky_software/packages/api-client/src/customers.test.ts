@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { createEkyApiClient, EkyApiError, type Customer } from './customers.js';
+import {
+  createEkyApiClient,
+  EkyApiError,
+  type Customer,
+} from './index.js';
 
 describe('createEkyApiClient', () => {
   it('lists customers through GET /customers', async () => {
@@ -40,6 +44,7 @@ describe('createEkyApiClient', () => {
       customerNumberMode: 'manual',
       customerType: 'company',
       email: 'customer@example.fi',
+      hourlyRateOverrideCents: 6500,
       managedByCustomerId: '',
       name: 'Example Customer Oy',
       phone: '040 123 4567',
@@ -79,6 +84,7 @@ describe('createEkyApiClient', () => {
       customerNumber: '1001',
       customerType: 'company',
       email: 'customer@example.fi',
+      hourlyRateOverrideCents: 6500,
       managedByCustomerId: '',
       name: 'Example Customer Oy',
       phone: '040 123 4567',
@@ -124,6 +130,7 @@ describe('createEkyApiClient', () => {
         customerNumberMode: 'manual',
         customerType: 'company',
         email: '',
+        hourlyRateOverrideCents: null,
         managedByCustomerId: '',
         name: '',
         phone: '',
@@ -169,6 +176,7 @@ function createTestCustomer(): Customer {
     managedByCustomerId: '',
     phone: '040 123 4567',
     comment: 'Important local customer',
+    hourlyRateOverrideCents: 6500,
     status: 'active',
     createdAt: '2026-05-21T00:00:00.000Z',
     updatedAt: '2026-05-21T00:00:00.000Z',

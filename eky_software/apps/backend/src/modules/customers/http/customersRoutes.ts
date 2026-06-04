@@ -1,5 +1,10 @@
 import { Hono } from 'hono';
 
+import {
+  getOptionalStringField,
+  getStringField,
+  isRecord,
+} from '../../../http/requestBody.js';
 import { CustomerValidationError } from '../domain/customerRules.js';
 import type { CreateCustomerInput } from '../application/createCustomer.js';
 import type { ListCustomersInput } from '../application/listCustomers.js';
@@ -14,26 +19,6 @@ interface CustomersRouteDependencies {
   createCustomer(input: CreateCustomerInput): Promise<Customer>;
   listCustomers(input: ListCustomersInput): Promise<Customer[]>;
   updateCustomer(input: UpdateCustomerInput): Promise<Customer>;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function getOptionalStringField(body: Record<string, unknown>, fieldName: string): string {
-  const value = body[fieldName];
-
-  if (value === undefined || value === null) {
-    return '';
-  }
-
-  return typeof value === 'string' ? value : '';
-}
-
-function getStringField(body: Record<string, unknown>, fieldName: string): string | undefined {
-  const value = body[fieldName];
-
-  return typeof value === 'string' ? value : undefined;
 }
 
 function getCustomerNumberMode(body: Record<string, unknown>): string {
@@ -75,6 +60,7 @@ export function createCustomersRoutes(dependencies: CustomersRouteDependencies):
         customerNumberMode,
         customerType: getOptionalStringField(body, 'customerType') || 'company',
         email: getOptionalStringField(body, 'email'),
+        hourlyRateOverrideCents: body.hourlyRateOverrideCents,
         managedByCustomerId: getOptionalStringField(body, 'managedByCustomerId'),
         name: body.name,
         phone: getOptionalStringField(body, 'phone'),
@@ -135,6 +121,7 @@ export function createCustomersRoutes(dependencies: CustomersRouteDependencies):
         customerNumber,
         customerType: getOptionalStringField(body, 'customerType') || 'company',
         email: getOptionalStringField(body, 'email'),
+        hourlyRateOverrideCents: body.hourlyRateOverrideCents,
         id: context.req.param('id'),
         managedByCustomerId: getOptionalStringField(body, 'managedByCustomerId'),
         name: body.name,

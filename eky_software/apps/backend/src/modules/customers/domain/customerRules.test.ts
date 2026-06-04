@@ -5,6 +5,7 @@ import {
   normalizeCustomerName,
   normalizeCustomerNumber,
   normalizeManagedByCustomerId,
+  parseCustomerHourlyRateOverrideCents,
   parseCustomerNumberMode,
   parseCustomerStatus,
   parseCustomerType,
@@ -39,6 +40,28 @@ describe('normalizeCustomerNumber', () => {
 
   it('rejects an empty customer number', () => {
     expect(() => normalizeCustomerNumber('   ')).toThrow(CustomerValidationError);
+  });
+});
+
+describe('parseCustomerHourlyRateOverrideCents', () => {
+  it('accepts null as unset value', () => {
+    expect(parseCustomerHourlyRateOverrideCents(null)).toBeNull();
+  });
+
+  it('accepts zero as a real hourly rate override', () => {
+    expect(parseCustomerHourlyRateOverrideCents(0)).toBe(0);
+  });
+
+  it('accepts positive whole cents', () => {
+    expect(parseCustomerHourlyRateOverrideCents(6500)).toBe(6500);
+  });
+
+  it('rejects decimal cents', () => {
+    expect(() => parseCustomerHourlyRateOverrideCents(65.5)).toThrow(CustomerValidationError);
+  });
+
+  it('rejects negative cents', () => {
+    expect(() => parseCustomerHourlyRateOverrideCents(-1)).toThrow(CustomerValidationError);
   });
 });
 

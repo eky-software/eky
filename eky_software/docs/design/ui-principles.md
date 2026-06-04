@@ -123,7 +123,7 @@ Layout-ajatus:
 - `Sidebar` voidaan jakaa selkeisiin osioihin, kuten Päätoiminnot ja Yritys
 - `Main area` sisältää aktiivisen työalueen
 - Asiakkaat on ensimmäinen aktiivinen moduuli
-- Oma yritys kuuluu myöhemmin sivupalkin yritysosioon
+- Oma yritys kuuluu sivupalkin Yritys-osioon
 - Laskutus, työmääräykset ja muut moduulit voivat näkyä myöhemmin passiivisina tai tulevina osioina
 
 Työaluekortteja käytetään oikeisiin työpintoihin, ei koristeeksi.

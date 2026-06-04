@@ -1,11 +1,15 @@
 import { uiText } from '../i18n/fi.js';
 
-export function TopBar(): React.JSX.Element {
+interface TopBarProps {
+  title: string;
+}
+
+export function TopBar({ title }: TopBarProps): React.JSX.Element {
   return (
     <header className="top-bar">
       <div>
         <p className="top-bar-kicker">{uiText.layout.appMode}</p>
-        <h1>{uiText.modules.customers}</h1>
+        <h1>{title}</h1>
       </div>
       <div className="top-bar-status" aria-label={uiText.layout.currentRuntimeMode}>
         <span className="status-dot" />

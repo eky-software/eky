@@ -1,11 +1,17 @@
 export {
   createEkyApiClient,
-  EkyApiError,
-  type CreateCustomerRequest,
-  type Customer,
-  type CustomerStatus,
-  type CustomerType,
   type EkyApiClient,
   type EkyApiClientOptions,
-  type UpdateCustomerRequest,
+} from './client.js';
+export { EkyApiError } from './http.js';
+export type {
+  CompanySettings,
+  UpdateCompanySettingsRequest,
+} from './companySettings.js';
+export type {
+  CreateCustomerRequest,
+  Customer,
+  CustomerStatus,
+  CustomerType,
+  UpdateCustomerRequest,
 } from './customers.js';

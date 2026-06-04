@@ -44,7 +44,7 @@ Company Settings ei omista:
 - laskulla käytettyjen tietojen snapshotteja
 - maksutapahtumia
 
-Customers-moduuli omistaa asiakaskohtaiset poikkeukset, kuten `hourlyRateOverride`.
+Customers-moduuli omistaa asiakaskohtaiset poikkeukset, kuten `hourlyRateOverrideCents`.
 
 Invoicing-moduuli omistaa laskut, laskurivit ja laskulla käytetyt snapshot-arvot.
 
@@ -61,7 +61,7 @@ Ensimmäinen Company Settings MVP voi sisältää:
 - `city`
 - `email`
 - `phone`
-- `defaultHourlyRate`
+- `defaultHourlyRateCents`
 - `createdAt`
 - `updatedAt`
 
@@ -73,21 +73,29 @@ Kenttien merkitys:
 - `businessId` on oman yrityksen Y-tunnus.
 - `streetAddress`, `postalCode` ja `city` kuvaavat oman yrityksen pääosoitetta.
 - `email` ja `phone` ovat oman yrityksen ensisijaiset yhteystiedot.
-- `defaultHourlyRate` on oman yrityksen oletustuntihinta.
+- `defaultHourlyRateCents` on oman yrityksen oletustuntihinta sentteinä.
 
 ## Oletustuntihinta
 
-`defaultHourlyRate` on oman yrityksen oletustuntihinta.
+`defaultHourlyRateCents` on oman yrityksen oletustuntihinta sentteinä.
+
+Ensimmäisessä toteutuksessa tuntihinta tallennetaan kokonaislukuna sentteinä, ei liukulukuna euroina.
+
+Esimerkki:
+
+```text
+65,00 €/h -> 6500
+```
 
 Sitä käytetään myöhemmin, jos asiakkaalla ei ole asiakaskohtaista tuntihintaa.
 
 Hinnoittelun perussääntö:
 
 ```text
-jos customer.hourlyRateOverride on asetettu
-  -> käytä customer.hourlyRateOverride
+jos customer.hourlyRateOverrideCents on asetettu
+  -> käytä customer.hourlyRateOverrideCents
 muuten
-  -> käytä companySettings.defaultHourlyRate
+  -> käytä companySettings.defaultHourlyRateCents
 ```
 
 Oletustuntihintaa voidaan käyttää myöhemmin esimerkiksi:
@@ -103,18 +111,18 @@ Lopullinen hinnan käyttö päätetään kuitenkin laskutus-, työmääräys- ja
 
 Asiakaskohtainen tuntihinta ei kuulu Company Settings -moduulin omistamaan dataan.
 
-Customers-moduuli voi myöhemmin omistaa kentän:
+Customers-moduuli omistaa kentän:
 
 ```ts
-hourlyRateOverride: number | null
+hourlyRateOverrideCents: number | null
 ```
 
 Säännöt:
 
-- jos `hourlyRateOverride` on `null`, käytetään `companySettings.defaultHourlyRate`-arvoa
-- jos `hourlyRateOverride` on annettu, se ohittaa oletustuntihinnan kyseiselle asiakkaalle
+- jos `hourlyRateOverrideCents` on `null`, käytetään `companySettings.defaultHourlyRateCents`-arvoa
+- jos `hourlyRateOverrideCents` on annettu, se ohittaa oletustuntihinnan kyseiselle asiakkaalle
 - `0` ei tarkoita "ei asetettu"
-- `0` tarkoittaa nolla euroa
+- `0` tarkoittaa nolla senttiä eli nolla euroa
 - puuttuva arvo kuvataan siksi `null`-arvolla
 
 ## Snapshot-Periaate
@@ -125,8 +133,8 @@ Siksi laskulle tai laskuriville tallennetaan myöhemmin käytetty tuntihinta sna
 
 Vanha lasku ei saa muuttua, vaikka:
 
-- `companySettings.defaultHourlyRate` muuttuu
-- `customer.hourlyRateOverride` muuttuu
+- `companySettings.defaultHourlyRateCents` muuttuu
+- `customer.hourlyRateOverrideCents` muuttuu
 - asiakkaan muut tiedot muuttuvat
 
 Invoicing-moduuli omistaa laskulla käytetyn tuntihinnan snapshotin.
@@ -175,7 +183,7 @@ Ensimmäinen näkymä voi sisältää:
 - oman yrityksen osoitteen
 - oletustuntihinnan
 
-Asiakaskortille voidaan myöhemmin lisätä Hinnoittelu-osio.
+Asiakaskortissa on Hinnoittelu-osio asiakaskohtaista tuntihintaa varten.
 
 Asiakaskortin tuntihintakentän ohjeteksti voi olla:
 
@@ -224,3 +232,4 @@ Liittyvät dokumentit:
 - `docs/modules/customers.md`
 - `docs/modules/invoicing.md`
 - `docs/architecture/customer-overview-plan.md`
+- `docs/architecture/company-settings-implementation-plan.md`

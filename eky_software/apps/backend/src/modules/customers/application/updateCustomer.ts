@@ -6,6 +6,7 @@ import {
   normalizeCustomerNumber,
   normalizeManagedByCustomerId,
   normalizeOptionalCustomerField,
+  parseCustomerHourlyRateOverrideCents,
   parseCustomerStatus,
   parseCustomerType,
 } from '../domain/customerRules.js';
@@ -19,6 +20,7 @@ export interface UpdateCustomerInput {
   customerNumber: string;
   customerType: string;
   email: string;
+  hourlyRateOverrideCents: unknown;
   id: string;
   managedByCustomerId: string;
   name: string;
@@ -62,6 +64,7 @@ export async function updateCustomer(
     customerNumber: normalizeCustomerNumber(input.customerNumber),
     customerType,
     email: normalizeOptionalCustomerField(input.email, 'Customer email'),
+    hourlyRateOverrideCents: parseCustomerHourlyRateOverrideCents(input.hourlyRateOverrideCents),
     managedByCustomerId,
     name: normalizeCustomerName(input.name),
     phone: normalizeOptionalCustomerField(input.phone, 'Customer phone'),

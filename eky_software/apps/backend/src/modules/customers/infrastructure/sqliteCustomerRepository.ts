@@ -5,40 +5,42 @@ import { CustomerValidationError } from '../domain/customerRules.js';
 import type { CustomerRepository } from '../ports/customerRepository.js';
 
 type CustomerInsertParameters = [
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
+  string, // id
+  string, // company_id
+  string, // customer_number
+  string, // name
+  string, // customer_type
+  string, // managed_by_customer_id
+  string, // business_id
+  string, // street_address
+  string, // postal_code
+  string, // city
+  string, // email
+  string, // phone
+  string, // comment
+  number | null, // hourly_rate_override_cents
+  string, // status
+  string, // created_at
+  string, // updated_at
 ];
 
 type CustomerUpdateParameters = [
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
+  string, // customer_number
+  string, // name
+  string, // customer_type
+  string, // managed_by_customer_id
+  string, // business_id
+  string, // street_address
+  string, // postal_code
+  string, // city
+  string, // email
+  string, // phone
+  string, // comment
+  number | null, // hourly_rate_override_cents
+  string, // status
+  string, // updated_at
+  string, // company_id
+  string, // id
 ];
 
 interface CustomerNumberRow {
@@ -60,6 +62,7 @@ function toCustomerRow(customer: Customer): NewCustomerRow {
     email: customer.email,
     phone: customer.phone,
     comment: customer.comment,
+    hourly_rate_override_cents: customer.hourlyRateOverrideCents,
     status: customer.status,
     created_at: customer.createdAt,
     updated_at: customer.updatedAt,
@@ -81,6 +84,7 @@ function toCustomer(row: CustomerRow): Customer {
     email: row.email,
     phone: row.phone,
     comment: row.comment,
+    hourlyRateOverrideCents: row.hourly_rate_override_cents,
     status: row.status as Customer['status'],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -120,11 +124,12 @@ export class SqliteCustomerRepository implements CustomerRepository {
               email,
               phone,
               comment,
+              hourly_rate_override_cents,
               status,
               created_at,
               updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
         )
         .run(
@@ -141,6 +146,7 @@ export class SqliteCustomerRepository implements CustomerRepository {
           row.email,
           row.phone,
           row.comment,
+          row.hourly_rate_override_cents,
           row.status,
           row.created_at,
           row.updated_at,
@@ -174,6 +180,7 @@ export class SqliteCustomerRepository implements CustomerRepository {
             email,
             phone,
             comment,
+            hourly_rate_override_cents,
             status,
             created_at,
             updated_at
@@ -205,6 +212,7 @@ export class SqliteCustomerRepository implements CustomerRepository {
             email,
             phone,
             comment,
+            hourly_rate_override_cents,
             status,
             created_at,
             updated_at
@@ -258,6 +266,7 @@ export class SqliteCustomerRepository implements CustomerRepository {
               email = ?,
               phone = ?,
               comment = ?,
+              hourly_rate_override_cents = ?,
               status = ?,
               updated_at = ?
             WHERE company_id = ? AND id = ?
@@ -275,6 +284,7 @@ export class SqliteCustomerRepository implements CustomerRepository {
           row.email,
           row.phone,
           row.comment,
+          row.hourly_rate_override_cents,
           row.status,
           row.updated_at,
           row.company_id,

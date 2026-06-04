@@ -46,7 +46,7 @@ Customers-moduuli omistaa:
 - yhteystiedot
 - osoitetiedot
 - isännöitsijätoimiston ja taloyhtiön välisen asiakasrekisterisuhteen
-- asiakaskohtaisen tuntihintaohituksen, jos sellainen myöhemmin lisätään
+- asiakaskohtaisen tuntihintaohituksen
 - asiakkaan tilan
 
 Customers-moduuli ei omista:

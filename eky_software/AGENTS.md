@@ -51,6 +51,8 @@ Jos työ koskee tiettyä moduulia, lue myös kyseisen moduulin dokumentti `docs/
 
 Jos työ koskee teknistä perustaa, skeleton-rakennetta, local-first-mallia, pilvivalmiutta tai synkronointia, lue myös `docs/decisions/ADR-0003-technical-foundation.md`.
 
+Jos työ koskee modulaarisen monoliitin päälinjaa, moduulirakenteen dokumentointia tai dokumentaation jakoa, lue myös `docs/decisions/ADR-0001-modular-monolith-first.md` ja `docs/decisions/ADR-0002-module-structure.md`.
+
 Jos työ koskee paikallista backend-runtimea, pilvibackendin ajotapaa, backend-frameworkia tai `apps/backend`-rakennetta, lue myös `docs/decisions/ADR-0004-local-backend-runtime.md` ja `docs/decisions/ADR-0005-backend-framework-selection.md`.
 
 Jos työ koskee tietokantaa, query layeria, repository-portteja, tietokanta-adaptereita, SQLitea, PostgreSQL:ää tai tietomallin moduuliomistusta, lue myös `docs/decisions/ADR-0006-local-database-and-query-layer.md`.
@@ -64,6 +66,12 @@ Jos työ koskee ensimmäistä customer-slicea, asiakasmoduulin toteutusta, custo
 Jos työ koskee ensimmäistä web customer UI -palaa, React customer -näkymää, `apps/web`-toteutusta tai customer-kutsuja webistä, lue myös `docs/architecture/web-customer-ui-plan.md`.
 
 Jos työ koskee asiakaskortiston käyttökokemusta, customer-näkymän lomakerakennetta, asiakaslistaa, asiakasnumeron auto/manual-käyttöliittymää tai customer UI:n seuraavaa refaktorointia, lue myös `docs/architecture/customer-ui-ux-plan.md`.
+
+Jos työ koskee asiakkaan avaamista, asiakkaan koontinäkymää, asiakkaaseen liittyvien muiden moduulien tietojen näyttämistä tai customer overview -rakennetta, lue myös `docs/architecture/customer-overview-plan.md`.
+
+Jos työ koskee Oma yritys / Company Settings -moduulia, oman yrityksen perustietoja, oletustuntihintaa tai yrityksen asetuksia, lue myös `docs/modules/company-settings.md`.
+
+Jos työ koskee Company Settings -moduulin ensimmäistä toteutusta, `company_settings`-taulua, `GET /company-settings`- tai `PUT /company-settings`-reittejä, Company Settings API-clientiä tai Oma yritys -web-näkymää, lue myös `docs/architecture/company-settings-implementation-plan.md`.
 
 Jos työ koskee web-käyttöliittymän ulkoasua, layoutia, komponenttirakennetta, värejä tai Eky-työpöytäkokemusta, lue myös `docs/design/ui-principles.md`.
 

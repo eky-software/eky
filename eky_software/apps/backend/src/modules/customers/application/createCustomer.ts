@@ -8,6 +8,7 @@ import {
   normalizeCustomerNumber,
   normalizeManagedByCustomerId,
   normalizeOptionalCustomerField,
+  parseCustomerHourlyRateOverrideCents,
   parseCustomerNumberMode,
   parseCustomerStatus,
   parseCustomerType,
@@ -23,6 +24,7 @@ export interface CreateCustomerInput {
   customerNumberMode: string;
   customerType: string;
   email: string;
+  hourlyRateOverrideCents: unknown;
   managedByCustomerId: string;
   name: string;
   phone: string;
@@ -60,6 +62,7 @@ export async function createCustomer(
     customerNumber,
     customerType,
     email: normalizeOptionalCustomerField(input.email, 'Customer email'),
+    hourlyRateOverrideCents: parseCustomerHourlyRateOverrideCents(input.hourlyRateOverrideCents),
     managedByCustomerId,
     name: normalizeCustomerName(input.name),
     now: new Date().toISOString(),

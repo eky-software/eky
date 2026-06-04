@@ -46,6 +46,7 @@ describe('createCustomer', () => {
         customerNumberMode: 'manual',
         customerType: 'company',
         email: '  customer@example.fi  ',
+        hourlyRateOverrideCents: 6500,
         managedByCustomerId: '',
         name: '  Example Customer Oy  ',
         phone: '  040 123 4567  ',
@@ -70,6 +71,7 @@ describe('createCustomer', () => {
     expect(customer.email).toBe('customer@example.fi');
     expect(customer.phone).toBe('040 123 4567');
     expect(customer.comment).toBe('Important local customer');
+    expect(customer.hourlyRateOverrideCents).toBe(6500);
     expect(customer.status).toBe('active');
     expect(customer.createdAt).toEqual(expect.any(String));
     expect(customer.updatedAt).toEqual(expect.any(String));
@@ -88,6 +90,7 @@ describe('createCustomer', () => {
         customerNumberMode: 'auto',
         customerType: 'company',
         email: '',
+        hourlyRateOverrideCents: null,
         managedByCustomerId: '',
         name: 'Example Customer Oy',
         phone: '',
@@ -114,6 +117,7 @@ describe('createCustomer', () => {
       postalCode: '',
       city: '',
       email: '',
+      hourlyRateOverrideCents: null,
       managedByCustomerId: '',
       phone: '',
       comment: '',
@@ -131,6 +135,7 @@ describe('createCustomer', () => {
         customerNumberMode: 'auto',
         customerType: 'housingCompany',
         email: '',
+        hourlyRateOverrideCents: null,
         managedByCustomerId: 'property-manager-1',
         name: 'Example Asunto Oy',
         phone: '',

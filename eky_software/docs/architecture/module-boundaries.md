@@ -36,7 +36,7 @@ Invoicing, Work Orders, Inventory, Reporting tai muut moduulit eivät saa kirjoi
 
 Ensimmäinen rajattu Customer create/list local -toteutuspala on kuvattu dokumentissa `docs/architecture/customer-vertical-slice-plan.md`.
 
-Customers-moduuli voi myöhemmin omistaa asiakaskohtaisen tuntihintaohituksen.
+Customers-moduuli omistaa asiakaskohtaisen tuntihintaohituksen.
 
 Oman yrityksen oletustuntihinta ei kuulu customers-moduulille.
 
@@ -69,7 +69,7 @@ Company Settings ei omista:
 
 Invoicing voi myöhemmin lukea oman yrityksen tietoja laskun muodostuksessa, mutta laskulla käytetyt tiedot tallennetaan laskutuksen snapshotiksi.
 
-Customers voi myöhemmin lukea oletustuntihinnan käyttöliittymän ohjetekstiä tai hinnoittelun esikatselua varten, mutta customers-moduuli ei omista oletustuntihintaa.
+Customers voi lukea oletustuntihinnan käyttöliittymän ohjetekstiä tai hinnoittelun esikatselua varten, mutta customers-moduuli ei omista oletustuntihintaa.
 
 ## Sites
 

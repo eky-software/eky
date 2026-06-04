@@ -64,9 +64,13 @@ export const uiText = {
     formDescription:
       'Täytä ensin perustiedot. Yhteystiedot, osoite ja kommentti täydentävät asiakaskorttia myöhempää käyttöä varten.',
     housingCompany: 'Taloyhtiö',
+    hourlyRateOverride: 'Asiakaskohtainen tuntihinta €/h',
+    hourlyRateOverrideHelp:
+      'Jos kenttä jätetään tyhjäksi, käytetään oman yrityksen oletustuntihintaa.',
     inactive: 'Passivoitu',
     inactiveFirst: 'Passivoidut ensin',
     inactiveFirstShort: 'P ensin',
+    invalidHourlyRate: 'Tuntihinnan pitää olla euroina, esimerkiksi 65 tai 65,50.',
     loading: 'Ladataan asiakkaita...',
     manualCustomerNumber: 'Syötä itse',
     managedByPropertyManager: 'Isännöitsijätoimisto',
@@ -85,11 +89,13 @@ export const uiText = {
     placeholderComment: 'Sisäinen kommentti',
     placeholderCustomerNumber: '1001',
     placeholderEmail: 'asiakas@example.fi',
+    placeholderHourlyRateOverride: '65,00',
     placeholderName: 'Esimerkki Asiakas Oy',
     placeholderPhone: '040 123 4567',
     placeholderPostalCode: '00100',
     placeholderStreetAddress: 'Katuosoite 1',
     postalCode: 'Postinumero',
+    pricing: 'Hinnoittelu',
     privatePerson: 'Yksityishenkilö',
     propertyManager: 'Isännöitsijätoimisto',
     propertyManagerHelp:
@@ -110,6 +116,43 @@ export const uiText = {
     status: 'Tila',
     streetAddress: 'Katuosoite',
   },
+  companySettings: {
+    address: 'Osoite',
+    basicInformation: 'Perustiedot',
+    businessId: 'Y-tunnus',
+    city: 'Kaupunki',
+    companyName: 'Yrityksen nimi',
+    contactInformation: 'Yhteystiedot',
+    defaultHourlyRate: 'Oletustuntihinta €/h',
+    defaultHourlyRateHelp:
+      'Jos asiakaskohtaista tuntihintaa ei myöhemmin aseteta, tätä hintaa voidaan käyttää oletuksena.',
+    description:
+      'Täällä ylläpidetään ohjelmaa käyttävän yrityksen perustietoja ja oletustuntihintaa. Näitä tietoja voidaan myöhemmin käyttää laskutuksessa lähettäjän tietoina.',
+    email: 'Sähköposti',
+    fallbackError: 'Jotain meni vikaan.',
+    formDescription:
+      'Täytä oman yrityksen tiedot rauhallisesti. Laskutus-, pankki- ja verkkolaskuasetukset lisätään myöhemmin erillisinä vaiheina.',
+    formHeading: 'Oman yrityksen tiedot',
+    formKicker: 'Asetukset',
+    invalidHourlyRate: 'Tuntihinnan pitää olla euroina, esimerkiksi 65 tai 65,50.',
+    loading: 'Ladataan oman yrityksen tietoja...',
+    phone: 'Puhelin',
+    placeholderBusinessId: '1234567-8',
+    placeholderCity: 'Kaupunki',
+    placeholderCompanyName: 'Esimerkki Rakennus Oy',
+    placeholderDefaultHourlyRate: '65,00',
+    placeholderEmail: 'info@example.fi',
+    placeholderPhone: '040 123 4567',
+    placeholderPostalCode: '00100',
+    placeholderStreetAddress: 'Katuosoite 1',
+    postalCode: 'Postinumero',
+    save: 'Tallenna',
+    saveSuccess: 'Oman yrityksen tiedot tallennettu.',
+    saving: 'Tallennetaan',
+    streetAddress: 'Katuosoite',
+    title: 'Oma yritys',
+    workspace: 'Yritysasetukset',
+  },
   apiErrors: {
     'API request failed.': 'API-pyyntö epäonnistui.',
     'Customer business id must be 200 characters or less.':
@@ -120,6 +163,10 @@ export const uiText = {
       'Kommentti saa olla enintään 1000 merkkiä.',
     'Customer email must be 200 characters or less.':
       'Sähköposti saa olla enintään 200 merkkiä.',
+    'Customer hourly rate cannot be negative.':
+      'Asiakaskohtainen tuntihinta ei voi olla negatiivinen.',
+    'Customer hourly rate must be whole cents.':
+      'Asiakaskohtainen tuntihinta pitää antaa sentin tarkkuudella.',
     'Customer name is required.': 'Asiakkaan nimi on pakollinen.',
     'Customer name must be 200 characters or less.':
       'Asiakkaan nimi saa olla enintään 200 merkkiä.',
@@ -144,6 +191,27 @@ export const uiText = {
     'Customer type is invalid.': 'Asiakastyyppi on virheellinen.',
     'Invalid customer response.': 'Asiakastietojen vastaus oli virheellinen.',
     'Invalid customers response.': 'Asiakaslistan vastaus oli virheellinen.',
+    'Company business id must be 200 characters or less.':
+      'Y-tunnus saa olla enintään 200 merkkiä.',
+    'Company city must be 200 characters or less.':
+      'Kaupunki saa olla enintään 200 merkkiä.',
+    'Company email must be 200 characters or less.':
+      'Sähköposti saa olla enintään 200 merkkiä.',
+    'Company name must be 200 characters or less.':
+      'Yrityksen nimi saa olla enintään 200 merkkiä.',
+    'Company phone must be 200 characters or less.':
+      'Puhelinnumero saa olla enintään 200 merkkiä.',
+    'Company postal code must be 200 characters or less.':
+      'Postinumero saa olla enintään 200 merkkiä.',
+    'Company street address must be 200 characters or less.':
+      'Katuosoite saa olla enintään 200 merkkiä.',
+    'Default hourly rate cannot be negative.':
+      'Oletustuntihinta ei voi olla negatiivinen.',
+    'Default hourly rate must be whole cents.':
+      'Oletustuntihinta pitää antaa sentin tarkkuudella.',
+    'Invalid company settings body.': 'Oman yrityksen pyyntö oli virheellinen.',
+    'Invalid company settings response.':
+      'Oman yrityksen tietojen vastaus oli virheellinen.',
     'Invalid JSON body.': 'Pyyntö oli virheellinen.',
     'Invalid JSON response.': 'Palvelimen vastaus oli virheellinen.',
   },

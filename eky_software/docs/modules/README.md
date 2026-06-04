@@ -59,5 +59,6 @@ Kun uusi moduuli lisätään:
 2. määrittele moduulin vastuut
 3. määrittele mitä moduuli ei omista
 4. päivitä `module-boundaries.md`
-5. lisää tarvittaessa ADR-päätös
-6. lisää koodikansioon oma `AGENTS.md`, jos moduuli vaatii erityissääntöjä
+5. päivitä `AGENTS.md`, jos moduuli saa oman merkittävän suunnitelman, toteutusohjeen tai pakollisen lukusäännön
+6. lisää tarvittaessa ADR-päätös
+7. lisää koodikansioon oma `AGENTS.md`, jos moduuli vaatii erityissääntöjä
