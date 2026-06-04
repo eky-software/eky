@@ -23,6 +23,7 @@ export interface Customer {
   email: string;
   phone: string;
   comment: string;
+  hourlyRateOverrideCents: number | null;
   status: CustomerStatus;
   createdAt: string;
   updatedAt: string;
@@ -36,6 +37,7 @@ export interface CreateCustomerDomainInput {
   customerType: CustomerType;
   managedByCustomerId: string;
   email: string;
+  hourlyRateOverrideCents: number | null;
   id: string;
   companyId: string;
   name: string;
@@ -61,6 +63,7 @@ export function createCustomerRecord(input: CreateCustomerDomainInput): Customer
     email: input.email,
     phone: input.phone,
     comment: input.comment,
+    hourlyRateOverrideCents: input.hourlyRateOverrideCents,
     status: input.status,
     createdAt: input.now,
     updatedAt: input.now,

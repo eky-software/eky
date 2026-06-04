@@ -1,9 +1,17 @@
 import { uiText } from '../i18n/fi.js';
+import type { AppView } from '../App.js';
 
-interface SidebarNavItem {
-  label: string;
-  status: 'active' | 'soon';
-}
+type SidebarNavItem =
+  | {
+      id: AppView;
+      label: string;
+      status: 'available';
+    }
+  | {
+      id: 'invoicing' | 'sites' | 'workOrders';
+      label: string;
+      status: 'soon';
+    };
 
 interface SidebarNavSection {
   items: SidebarNavItem[];
@@ -14,19 +22,30 @@ const navSections: SidebarNavSection[] = [
   {
     label: uiText.layout.primaryNavigation,
     items: [
-      { label: uiText.modules.customers, status: 'active' },
-      { label: uiText.modules.sites, status: 'soon' },
-      { label: uiText.modules.workOrders, status: 'soon' },
-      { label: uiText.modules.invoicing, status: 'soon' },
+      { id: 'customers', label: uiText.modules.customers, status: 'available' },
+      { id: 'sites', label: uiText.modules.sites, status: 'soon' },
+      { id: 'workOrders', label: uiText.modules.workOrders, status: 'soon' },
+      { id: 'invoicing', label: uiText.modules.invoicing, status: 'soon' },
     ],
   },
   {
     label: uiText.layout.companyNavigation,
-    items: [{ label: uiText.modules.companySettings, status: 'soon' }],
+    items: [
+      {
+        id: 'companySettings',
+        label: uiText.modules.companySettings,
+        status: 'available',
+      },
+    ],
   },
 ];
 
-export function Sidebar(): React.JSX.Element {
+interface SidebarProps {
+  activeView: AppView;
+  onViewChange(view: AppView): void;
+}
+
+export function Sidebar({ activeView, onViewChange }: SidebarProps): React.JSX.Element {
   return (
     <aside className="sidebar" aria-label={uiText.layout.modules}>
       <div className="brand">
@@ -43,10 +62,15 @@ export function Sidebar(): React.JSX.Element {
             <p className="nav-section-label">{section.label}</p>
             {section.items.map((module) => (
               <button
-                aria-current={module.status === 'active' ? 'page' : undefined}
+                aria-current={module.id === activeView ? 'page' : undefined}
                 className="nav-item"
-                disabled={module.status !== 'active'}
+                disabled={module.status !== 'available'}
                 key={module.label}
+                onClick={() => {
+                  if (module.status === 'available') {
+                    onViewChange(module.id);
+                  }
+                }}
                 type="button"
               >
                 <span>{module.label}</span>

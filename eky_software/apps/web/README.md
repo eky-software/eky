@@ -29,7 +29,7 @@ Käyttöliittymän periaatteet on kuvattu dokumentissa `docs/design/ui-principle
 
 Käynnistä ensin backend.
 
-Webin Vite-dev-palvelin proxyaa `/customers`-kutsut paikalliseen backendiin osoitteeseen `http://127.0.0.1:3000`.
+Webin Vite-dev-palvelin proxyaa `/customers`- ja `/company-settings`-kutsut paikalliseen backendiin osoitteeseen `http://127.0.0.1:3000`.
 
 Käynnistä web:
 

@@ -20,6 +20,8 @@ Ensimmäinen rajattu web customer UI -pala on kuvattu dokumentissa `docs/archite
 
 Customer UI:n käyttökokemuksen korjaus nykyisestä teknisestä kenttäläpiviennistä oikeaksi asiakaskortistonäkymäksi on kuvattu dokumentissa `docs/architecture/customer-ui-ux-plan.md`.
 
+Asiakkaan myöhempi koontinäkymä ja suhde muiden moduulien tietoihin on kuvattu dokumentissa `docs/architecture/customer-overview-plan.md`.
+
 Nykyinen customer-toteutus laajentaa teknisen mallipolun Customer MVP -asiakaskortistoksi.
 
 Se ei vielä ole koko lopullinen asiakashallintamoduuli.
@@ -38,6 +40,7 @@ Customers-moduuli omistaa:
 - asiakkaan Y-tunnuksen, jos asiakas on yritys, taloyhtiö, isännöitsijätoimisto tai muu organisaatio
 - asiakkaan yhteystiedot
 - asiakkaan pääosoitteen
+- asiakkaan asiakaskohtaisen tuntihintaohituksen
 - asiakkaan sisäisen kommentin
 - asiakkaan tilan
 - asiakasdatan yritysrajauksen
@@ -81,6 +84,7 @@ MVP-kentät:
 - `city`
 - `email`
 - `phone`
+- `hourlyRateOverrideCents`
 - `comment`
 - `status`
 - `createdAt`
@@ -97,6 +101,7 @@ Kenttien merkitys:
 - `businessId` on Y-tunnus, kun asiakkaalla sellainen on.
 - `streetAddress`, `postalCode` ja `city` kuvaavat asiakkaan pääosoitetta.
 - `email` ja `phone` ovat asiakkaan ensisijaiset yhteystiedot.
+- `hourlyRateOverrideCents` on asiakkaan oma tuntihintapoikkeus sentteinä, jos sellainen on asetettu.
 - `comment` on sisäinen vapaa kommentti.
 - `status` kertoo, onko asiakas aktiivinen vai passivoitu.
 
@@ -209,21 +214,21 @@ Passivoitu asiakas säilyy historiassa ja viittauksissa, mutta sitä voidaan pii
 
 ## Asiakaskohtainen Tuntihinta
 
-Asiakaskortille voidaan myöhemmin lisätä kenttä:
+Nykyinen Customer MVP sisältää kentän:
 
 ```ts
-hourlyRateOverride: number | null
+hourlyRateOverrideCents: number | null
 ```
 
 Tämä on asiakkaan oma tuntihintapoikkeus.
 
 Säännöt:
 
-- jos `hourlyRateOverride` on `null`, käytetään oman yrityksen oletustuntihintaa
+- jos `hourlyRateOverrideCents` on `null`, käytetään oman yrityksen oletustuntihintaa
 - oman yrityksen oletustuntihinta kuuluu Company Settings / Oma yritys -moduulille
-- jos `hourlyRateOverride` on annettu, se ohittaa oletustuntihinnan kyseiselle asiakkaalle
+- jos `hourlyRateOverrideCents` on annettu, se ohittaa oletustuntihinnan kyseiselle asiakkaalle
 - `0` ei tarkoita "ei asetettu"
-- `0` tarkoittaa nolla euroa
+- `0` tarkoittaa nolla senttiä eli nolla euroa
 - puuttuva arvo kuvataan siksi `null`-arvolla
 
 Asiakaskohtainen tuntihinta on asiakkaan master-dataa, joten sen omistaa customers-moduuli.

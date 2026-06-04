@@ -254,6 +254,11 @@ h2 {
   gap: 18px;
 }
 
+.settings-workspace {
+  display: grid;
+  gap: 18px;
+}
+
 .page-intro {
   display: flex;
   align-items: end;
@@ -275,6 +280,13 @@ h2 {
   background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
 }
 
+.company-settings-page-header {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
 .primary-action {
   white-space: nowrap;
 }
@@ -288,6 +300,11 @@ h2 {
 
 .customer-view-grid.has-side-panel {
   grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
+}
+
+.settings-view-grid {
+  display: grid;
+  max-width: 860px;
 }
 
 .panel {
@@ -342,6 +359,10 @@ h2 {
   top: 90px;
   max-height: calc(100vh - 114px);
   overflow: auto;
+}
+
+.company-settings-form-panel {
+  min-width: 0;
 }
 
 .customer-form label {
@@ -463,6 +484,13 @@ h2 {
   padding: 10px 12px;
   color: var(--color-danger);
   background: var(--color-danger-bg);
+}
+
+.success-message {
+  border-left: 4px solid #14835a;
+  padding: 10px 12px;
+  color: #075b42;
+  background: #e7f8ef;
 }
 
 .customer-list-tools {

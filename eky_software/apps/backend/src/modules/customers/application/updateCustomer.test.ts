@@ -45,6 +45,7 @@ describe('updateCustomer', () => {
         customerNumber: '  2001  ',
         customerType: 'housingCompany',
         email: '  updated@example.fi  ',
+        hourlyRateOverrideCents: 7200,
         id: 'customer-1',
         managedByCustomerId: '',
         name: '  Updated Customer Oy  ',
@@ -70,6 +71,7 @@ describe('updateCustomer', () => {
     expect(customer.email).toBe('updated@example.fi');
     expect(customer.phone).toBe('050 123 4567');
     expect(customer.comment).toBe('Updated customer');
+    expect(customer.hourlyRateOverrideCents).toBe(7200);
     expect(customer.status).toBe('inactive');
     expect(customer.createdAt).toBe('2026-05-21T00:00:00.000Z');
     expect(customer.updatedAt).toEqual(expect.any(String));
@@ -91,6 +93,7 @@ function createTestCustomer(): Customer {
     managedByCustomerId: '',
     phone: '040 123 4567',
     comment: 'Important local customer',
+    hourlyRateOverrideCents: null,
     status: 'active',
     createdAt: '2026-05-21T00:00:00.000Z',
     updatedAt: '2026-05-21T00:00:00.000Z',

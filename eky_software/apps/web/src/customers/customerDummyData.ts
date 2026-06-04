@@ -1,6 +1,8 @@
-import type { CreateCustomerRequest, Customer } from '@eky/api-client';
+import type { Customer } from '@eky/api-client';
 
-export function createDummyCustomerForm(propertyManagers: Customer[]): CreateCustomerRequest {
+import type { CustomerFormModel } from './customerFormModel.js';
+
+export function createDummyCustomerForm(propertyManagers: Customer[]): CustomerFormModel {
   const customerType = getRandomItem([
     'company',
     'housingCompany',
@@ -29,6 +31,7 @@ export function createDummyCustomerForm(propertyManagers: Customer[]): CreateCus
     customerNumberMode: 'auto',
     customerType,
     email: createDummyEmail(name),
+    hourlyRateOverrideEuro: getRandomItem(['', '55,00', '65,00', '72,50']),
     managedByCustomerId,
     name,
     phone: `040 ${phoneSuffix.slice(0, 3)} ${phoneSuffix.slice(3)}`,
@@ -41,7 +44,7 @@ export function createDummyCustomerForm(propertyManagers: Customer[]): CreateCus
   };
 }
 
-export function createDummyCustomerName(customerType: CreateCustomerRequest['customerType']): string {
+export function createDummyCustomerName(customerType: CustomerFormModel['customerType']): string {
   const baseName = getRandomItem([
     'Aurora',
     'Kivikko',

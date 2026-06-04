@@ -118,6 +118,7 @@ function createTestCustomer(overrides: Partial<Customer> = {}): Customer {
     managedByCustomerId: '',
     phone: '040 123 4567',
     comment: 'Test customer',
+    hourlyRateOverrideCents: null,
     status: 'active',
     createdAt: '2026-05-21T00:00:00.000Z',
     updatedAt: '2026-05-21T00:00:00.000Z',

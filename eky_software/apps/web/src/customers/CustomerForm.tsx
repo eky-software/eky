@@ -1,15 +1,16 @@
-import type { CreateCustomerRequest, Customer } from '@eky/api-client';
+import type { Customer } from '@eky/api-client';
 
+import type { CustomerFormModel } from './customerFormModel.js';
 import { uiText } from '../i18n/fi.js';
 
 interface CustomerFormProps {
   errorMessage: string | null;
-  form: CreateCustomerRequest;
+  form: CustomerFormModel;
   isSaving: boolean;
   mode: 'create' | 'edit';
   onCancel(): void;
   onFillDummy?: (() => void) | undefined;
-  onFieldChange(fieldName: keyof CreateCustomerRequest, value: string): void;
+  onFieldChange(fieldName: keyof CustomerFormModel, value: string): void;
   onSubmit(): void;
   propertyManagers: Customer[];
 }
@@ -187,6 +188,23 @@ export function CustomerForm({
               </label>
             ) : null}
           </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>{uiText.customers.pricing}</legend>
+          <label htmlFor="customer-hourly-rate-override">
+            {uiText.customers.hourlyRateOverride}
+            <input
+              id="customer-hourly-rate-override"
+              inputMode="decimal"
+              name="hourlyRateOverrideEuro"
+              onChange={(event) => onFieldChange('hourlyRateOverrideEuro', event.target.value)}
+              placeholder={uiText.customers.placeholderHourlyRateOverride}
+              type="text"
+              value={form.hourlyRateOverrideEuro}
+            />
+            <span className="field-help">{uiText.customers.hourlyRateOverrideHelp}</span>
+          </label>
         </fieldset>
 
         <fieldset>

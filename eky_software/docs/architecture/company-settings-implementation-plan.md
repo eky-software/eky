@@ -14,7 +14,7 @@ Toteutus sisältää:
 - oman yrityksen yhteystiedot
 - oman yrityksen osoitteen
 - oman yrityksen Y-tunnuksen
-- oletustuntihinnan `defaultHourlyRate`
+- oletustuntihinnan `defaultHourlyRateCents`
 - backend-reitit:
   - `GET /company-settings`
   - `PUT /company-settings`
@@ -38,25 +38,29 @@ React UI
             -> SQLite adapter
 ```
 
-## Ei Vielä Customer Hourly Rate Overridea
+## Vaiheistus: Company Settings Ensin, Customer Override Seuraavaksi
 
-Asiakkaan `hourlyRateOverride` toteutetaan vasta seuraavassa vaiheessa.
+Tämä osio kuvaa Company Settings -moduulin ensimmäisen toteutusvaiheen rajauksen ja sitä seuraavan customers-moduulin tuntihintalaajennuksen.
 
-Tässä vaiheessa toteutetaan vain:
+Ensimmäisessä Company Settings -vaiheessa asiakkaan `hourlyRateOverrideCents` ei kuulu muutokseen.
+
+Company Settings -vaiheessa toteutetaan vain:
 
 - Company Settings
 - oman yrityksen perustiedot
-- `defaultHourlyRate`
+- `defaultHourlyRateCents`
 
 Näin muutos pysyy pienenä ja moduulirajat selkeinä.
 
-Seuraava erillinen vaihe voi lisätä customers-moduuliin:
+Seuraava erillinen customers-vaihe lisää customers-moduuliin:
 
 ```ts
-hourlyRateOverride: number | null
+hourlyRateOverrideCents: number | null
 ```
 
-Tällöin asiakkaan tuntihintapoikkeus käyttää jo olemassa olevaa Company Settings -oletushintaa taustaperiaatteena.
+Asiakkaan tuntihintapoikkeus käyttää Company Settings -oletushintaa taustaperiaatteena: jos `hourlyRateOverrideCents` on `null`, myöhemmät työ- ja laskutusmoduulit voivat käyttää `companySettings.defaultHourlyRateCents`-arvoa.
+
+`hourlyRateOverrideCents` on customers-moduulin omistamaa dataa. Company Settings ei omista asiakaskohtaista tuntihintaa.
 
 ## SQLite-Taulu
 
@@ -77,7 +81,7 @@ Alustavat kentät:
 - `city`
 - `email`
 - `phone`
-- `default_hourly_rate`
+- `default_hourly_rate_cents`
 - `created_at`
 - `updated_at`
 
@@ -92,21 +96,25 @@ Säännöt:
 
 Suositus ensimmäiseen toteutukseen:
 
-- `default_hourly_rate` on nullable
+- `default_hourly_rate_cents` on nullable
 - `null` tarkoittaa, että oletustuntihintaa ei ole vielä asetettu
 - `0` tarkoittaa oikeasti nolla euroa tunnilta
 
-Tämä vastaa samaa semantiikkaa, jota myöhemmin käytetään asiakkaan `hourlyRateOverride`-kentässä.
+Tämä vastaa samaa semantiikkaa, jota customers-moduulin `hourlyRateOverrideCents`-kenttä käyttää.
 
-Rahankäsittelyn tarkempi toteutustapa päätetään koodivaiheessa selkeästi.
+Ensimmäisessä toteutuksessa rahankäsittelyn toteutustapa on:
 
-Ensimmäisessä toteutuksessa pitää välttää epäselvää floating point -rahankäsittelyä. Vaihtoehdot arvioidaan ennen koodia:
+- domain/API: `defaultHourlyRateCents: number | null`
+- SQLite: `default_hourly_rate_cents INTEGER`
+- UI: käyttäjä syöttää euroja, mutta lomakemalli muuntaa arvon sentteinä tallennettavaksi kokonaisluvuksi
 
-- tallennetaanko eurot desimaalina
-- tallennetaanko sentit integer-arvona
-- käytetäänkö muuta selkeästi rajattua rahamallia
+Esimerkki:
 
-Tätä päätöstä ei tehdä tässä dokumentissa lopullisesti.
+```text
+65,00 €/h -> 6500
+```
+
+Tällä vältetään epäselvä floating point -rahankäsittely ja valmistellaan myöhempää laskutuksen snapshot-mallia.
 
 ## Backend-Rakenne
 
@@ -289,7 +297,7 @@ Testattavia sääntöjä:
 
 - yrityksen nimi normalisoidaan
 - liian pitkät kentät hylätään
-- `defaultHourlyRate` hyväksyy `null`-arvon, jos näin päätetään toteutusvaiheessa
+- `defaultHourlyRateCents` hyväksyy `null`-arvon
 - `0` on sallittu arvo, jos kenttä mallinnetaan nullable number -arvona
 - repository port ei vuoda tietokantatyyppejä application serviceihin
 
@@ -317,7 +325,7 @@ Ei lisätä React Testing Libraryä tässä vaiheessa.
 
 Ei tehdä tässä ensimmäisessä Company Settings MVP:ssä:
 
-- `customer.hourlyRateOverride`
+- `customer.hourlyRateOverrideCents`
 - laskutusta
 - ALV-sääntöjä
 - pankkitiliä
@@ -355,7 +363,7 @@ Suositeltu toteutusjärjestys:
 9. API-client-testit.
 10. Web UI.
 11. Web-lomakemallin testit, jos lomakemuunnoksia tulee.
-12. Vasta seuraavassa vaiheessa `customer.hourlyRateOverride`.
+12. Company Settings -vaiheen jälkeen erillinen customers-vaihe lisää `customer.hourlyRateOverrideCents`-kentän.
 
 Jokainen vaihe pidetään pienenä.
 
@@ -372,13 +380,13 @@ Ensimmäinen Company Settings MVP on valmis vasta, kun:
 - `company_settings`-taulu on migroitu paikalliseen SQLite-kantaan
 - `GET /company-settings` palauttaa nykyisen yrityksen asetukset
 - `PUT /company-settings` tallentaa asetukset
-- `defaultHourlyRate` tallentuu suunnitellulla rahamallilla
+- `defaultHourlyRateCents` tallentuu sentteinä kokonaislukuna
 - api-client käyttää uusia reittejä
 - webin Oma yritys -näkymä toimii sivupalkista
 - React-komponentit eivät tee raakaa `fetch`-kutsua
 - SQL pysyy SQLite adapterissa
 - domain ei tunne HTTP:tä, Honoa, SQLitea, better-sqlite3:tä tai Reactia
-- `customer.hourlyRateOverride` ei ole mukana tässä vaiheessa
+- `customer.hourlyRateOverrideCents` ei ole mukana Company Settings -vaiheessa
 - `pnpm typecheck` menee läpi
 - `pnpm test` menee läpi
 - `pnpm --filter @eky/web build` menee läpi
@@ -389,6 +397,9 @@ Ensimmäinen Company Settings MVP on valmis vasta, kun:
 - `AGENTS.md`
 - `docs/architecture/module-boundaries.md`
 - `docs/architecture/dependency-policy.md`
+- `docs/architecture/local-database-implementation-plan.md`
+- `docs/architecture/security-principles.md`
+- `docs/decisions/ADR-0006-local-database-and-query-layer.md`
 - `docs/modules/company-settings.md`
 - `docs/modules/customers.md`
 - `docs/modules/invoicing.md`

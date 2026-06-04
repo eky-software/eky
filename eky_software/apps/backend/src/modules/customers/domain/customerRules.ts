@@ -41,6 +41,22 @@ export function normalizeCustomerComment(comment: string): string {
   return normalizedComment;
 }
 
+export function parseCustomerHourlyRateOverrideCents(value: unknown): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value !== 'number' || !Number.isSafeInteger(value)) {
+    throw new CustomerValidationError('Customer hourly rate must be whole cents.');
+  }
+
+  if (value < 0) {
+    throw new CustomerValidationError('Customer hourly rate cannot be negative.');
+  }
+
+  return value;
+}
+
 export function normalizeCustomerNumber(customerNumber: string): string {
   const normalizedCustomerNumber = customerNumber.trim();
 

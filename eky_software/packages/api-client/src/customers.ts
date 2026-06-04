@@ -1,3 +1,5 @@
+import { EkyApiError, isRecord, requestJson } from './http.js';
+
 export type CustomerStatus = 'active' | 'inactive';
 
 export type CustomerType =
@@ -21,6 +23,7 @@ export interface Customer {
   managedByCustomerId: string;
   phone: string;
   comment: string;
+  hourlyRateOverrideCents: number | null;
   status: CustomerStatus;
   createdAt: string;
   updatedAt: string;
@@ -34,6 +37,7 @@ export interface CreateCustomerRequest {
   customerNumberMode: 'auto' | 'manual';
   customerType: CustomerType;
   email: string;
+  hourlyRateOverrideCents: number | null;
   managedByCustomerId: string;
   name: string;
   phone: string;
@@ -49,6 +53,7 @@ export interface UpdateCustomerRequest {
   customerNumber: string;
   customerType: CustomerType;
   email: string;
+  hourlyRateOverrideCents: number | null;
   managedByCustomerId: string;
   name: string;
   phone: string;
@@ -57,33 +62,16 @@ export interface UpdateCustomerRequest {
   streetAddress: string;
 }
 
-export interface EkyApiClientOptions {
-  baseUrl: string;
-  fetch?: typeof fetch;
-}
-
-export interface EkyApiClient {
+export interface CustomersApi {
   createCustomer(input: CreateCustomerRequest): Promise<Customer>;
   listCustomers(): Promise<Customer[]>;
   updateCustomer(id: string, input: UpdateCustomerRequest): Promise<Customer>;
 }
 
-export class EkyApiError extends Error {
-  readonly responseBody: unknown | undefined;
-  readonly status: number | undefined;
-
-  constructor(message: string, options: { responseBody?: unknown; status?: number } = {}) {
-    super(message);
-    this.name = 'EkyApiError';
-    this.responseBody = options.responseBody;
-    this.status = options.status;
-  }
-}
-
-export function createEkyApiClient(options: EkyApiClientOptions): EkyApiClient {
-  const baseUrl = normalizeBaseUrl(options.baseUrl);
-  const fetchImplementation = options.fetch ?? fetch;
-
+export function createCustomersApi(
+  fetchImplementation: typeof fetch,
+  baseUrl: string,
+): CustomersApi {
   return {
     async createCustomer(input): Promise<Customer> {
       const responseBody = await requestJson(fetchImplementation, baseUrl, '/customers', {
@@ -129,51 +117,6 @@ export function createEkyApiClient(options: EkyApiClientOptions): EkyApiClient {
   };
 }
 
-function normalizeBaseUrl(baseUrl: string): string {
-  return baseUrl.replace(/\/+$/, '');
-}
-
-async function requestJson(
-  fetchImplementation: typeof fetch,
-  baseUrl: string,
-  path: string,
-  init?: RequestInit,
-): Promise<unknown> {
-  const response = await fetchImplementation(`${baseUrl}${path}`, {
-    ...init,
-    headers: {
-      Accept: 'application/json',
-      ...init?.headers,
-    },
-  });
-  const responseBody = await readJsonResponse(response);
-
-  if (!response.ok) {
-    throw new EkyApiError(getErrorMessage(responseBody), {
-      responseBody,
-      status: response.status,
-    });
-  }
-
-  return responseBody;
-}
-
-async function readJsonResponse(response: Response): Promise<unknown> {
-  try {
-    return (await response.json()) as unknown;
-  } catch {
-    throw new EkyApiError('Invalid JSON response.', { status: response.status });
-  }
-}
-
-function getErrorMessage(responseBody: unknown): string {
-  if (isRecord(responseBody) && typeof responseBody.error === 'string') {
-    return responseBody.error;
-  }
-
-  return 'API request failed.';
-}
-
 function parseCustomer(value: unknown): Customer {
   if (
     !isRecord(value) ||
@@ -190,6 +133,7 @@ function parseCustomer(value: unknown): Customer {
     typeof value.managedByCustomerId !== 'string' ||
     typeof value.phone !== 'string' ||
     typeof value.comment !== 'string' ||
+    !isNullableNumber(value.hourlyRateOverrideCents) ||
     typeof value.status !== 'string' ||
     typeof value.createdAt !== 'string' ||
     typeof value.updatedAt !== 'string'
@@ -211,10 +155,15 @@ function parseCustomer(value: unknown): Customer {
     managedByCustomerId: value.managedByCustomerId,
     phone: value.phone,
     comment: value.comment,
+    hourlyRateOverrideCents: value.hourlyRateOverrideCents,
     status: parseCustomerStatus(value.status),
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,
   };
+}
+
+function isNullableNumber(value: unknown): value is number | null {
+  return value === null || typeof value === 'number';
 }
 
 function parseCustomerStatus(value: string): CustomerStatus {
@@ -237,8 +186,4 @@ function parseCustomerType(value: string): CustomerType {
   }
 
   throw new EkyApiError('Invalid customer response.', { responseBody: value });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

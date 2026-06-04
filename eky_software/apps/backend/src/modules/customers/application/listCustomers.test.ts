@@ -49,6 +49,7 @@ describe('listCustomers', () => {
         managedByCustomerId: '',
         phone: '040 123 4567',
         comment: 'Important local customer',
+        hourlyRateOverrideCents: null,
         status: 'active',
         createdAt: '2026-05-21T00:00:00.000Z',
         updatedAt: '2026-05-21T00:00:00.000Z',
