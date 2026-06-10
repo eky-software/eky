@@ -1,6 +1,6 @@
 import type { Customer } from '@eky/api-client';
 
-import { uiText } from '../i18n/fi.js';
+import { uiText } from '../../i18n/fi.js';
 
 export type CustomerSortDirection = 'asc' | 'desc';
 

@@ -1,6 +1,6 @@
 import { Sidebar } from './Sidebar.js';
 import { TopBar } from './TopBar.js';
-import type { AppView } from '../App.js';
+import type { AppView } from '../app/App.js';
 
 interface AppLayoutProps {
   activeView: AppView;

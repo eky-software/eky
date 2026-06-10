@@ -105,16 +105,29 @@ Ensimmäinen ERP-työpöytämäinen rakenne voidaan rakentaa web-sovelluksen sis
 
 ```text
 apps/web/src/
+  app/
+    App.tsx
+
+  features/
+    customers/
+    companySettings/
+
+  shared/
+    money/
+
   layout/
     AppLayout.tsx
     Sidebar.tsx
     TopBar.tsx
 
-  customers/
-    CustomerPage.tsx
-    CustomerForm.tsx
-    CustomerList.tsx
+  i18n/
 ```
+
+Webin suuret toiminnalliset näkymät sijoitetaan `features/`-kansion alle.
+
+Pienet ja aidosti useamman featuren käyttämät apukokonaisuudet voidaan sijoittaa `shared/`-kansion alle. `shared/` ei saa muuttua yleiseksi utils-, common- tai helpers-kaatopaikaksi.
+
+Tarkempi web-kansiorakenne on kuvattu dokumentissa `docs/architecture/web-frontend-structure.md`.
 
 Layout-ajatus:
 
@@ -162,7 +175,7 @@ Mahdollinen UI-kirjasto saa koskea vain web-UI-kerrosta. Se ei saa levitä domai
 
 ## Komponenttien Kasvupolku
 
-Aluksi komponentit pidetään `apps/web`-sovelluksen sisällä.
+Aluksi komponentit pidetään `apps/web`-sovelluksen sisällä ja feature-kohtaiset komponentit oman `features/<featureName>`-kansionsa alla.
 
 Komponentteja ei nosteta `packages/ui`-pakettiin varmuuden vuoksi.
 

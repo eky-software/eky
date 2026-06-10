@@ -5,7 +5,7 @@ import {
   getCustomerListFilters,
 } from './customerDisplay.js';
 import type { CustomerListFilter } from './customerListGrouping.js';
-import { uiText } from '../i18n/fi.js';
+import { uiText } from '../../i18n/fi.js';
 
 interface CustomerTypeFilterProps {
   activeFilter: CustomerListFilter;

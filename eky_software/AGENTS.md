@@ -65,6 +65,8 @@ Jos työ koskee ensimmäistä customer-slicea, asiakasmoduulin toteutusta, custo
 
 Jos työ koskee ensimmäistä web customer UI -palaa, React customer -näkymää, `apps/web`-toteutusta tai customer-kutsuja webistä, lue myös `docs/architecture/web-customer-ui-plan.md`.
 
+Jos työ koskee `apps/web/src`-kansiorakennetta, web-featureitä, sovelluksen kokoamista tai webin jaettuja apukokonaisuuksia, lue myös `docs/architecture/web-frontend-structure.md`.
+
 Jos työ koskee asiakaskortiston käyttökokemusta, customer-näkymän lomakerakennetta, asiakaslistaa, asiakasnumeron auto/manual-käyttöliittymää tai customer UI:n seuraavaa refaktorointia, lue myös `docs/architecture/customer-ui-ux-plan.md`.
 
 Jos työ koskee asiakkaan avaamista, asiakkaan koontinäkymää, asiakkaaseen liittyvien muiden moduulien tietojen näyttämistä tai customer overview -rakennetta, lue myös `docs/architecture/customer-overview-plan.md`.

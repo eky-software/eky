@@ -81,17 +81,19 @@ Omaa form-helperiä ei luoda vielä. Jos sama lomake- tai validointikaava alkaa 
 
 ## Alustava rakenne
 
-Ensimmäinen rakenne voidaan pitää pienenä:
+Ensimmäinen rakenne pidettiin toteutuksen alussa pienenä. Nykyinen jatkorakenne erottaa sovelluksen kokoamisen ja feature-moduulit:
 
 ```text
 apps/web/src/
   main.tsx
-  App.tsx
-  customers/
-    CustomerPage.tsx
+  app/
+    App.tsx
+  features/
+    customers/
+      CustomerPage.tsx
 ```
 
-Rakenne voi tarkentua toteutuksessa, mutta ensimmäisessä palassa vältetään liian aikaista frontend-arkkitehtuurin paisuttamista.
+Tarkempi nykyinen rakenne on kuvattu dokumentissa `docs/architecture/web-frontend-structure.md`.
 
 ## Käyttöliittymäkieli
 

@@ -8,7 +8,7 @@ import {
   toUpdateCompanySettingsRequest,
   type CompanySettingsForm as CompanySettingsFormModel,
 } from './companySettingsFormModel.js';
-import { getFinnishApiErrorMessage, uiText } from '../i18n/fi.js';
+import { getFinnishApiErrorMessage, uiText } from '../../i18n/fi.js';
 
 const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
 

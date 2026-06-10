@@ -12,7 +12,7 @@ import { searchCustomers } from './customerListSearch.js';
 import { CustomerListToolbar } from './CustomerListToolbar.js';
 import { CustomerTable } from './CustomerTable.js';
 import { CustomerTypeFilter } from './CustomerTypeFilter.js';
-import { uiText } from '../i18n/fi.js';
+import { uiText } from '../../i18n/fi.js';
 
 interface CustomerListProps {
   customers: Customer[];
