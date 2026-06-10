@@ -1,7 +1,7 @@
 import type { Customer } from '@eky/api-client';
 
 import type { CustomerFormModel } from './customerFormModel.js';
-import { uiText } from '../i18n/fi.js';
+import { uiText } from '../../i18n/fi.js';
 
 interface CustomerFormProps {
   errorMessage: string | null;

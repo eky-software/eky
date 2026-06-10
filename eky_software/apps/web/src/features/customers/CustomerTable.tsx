@@ -10,7 +10,7 @@ import {
 import type { CustomerListGroup } from './customerListGrouping.js';
 import type { CustomerSortKey, CustomerSortState } from './customerListSorting.js';
 import { getSortDirectionLabel } from './CustomerListToolbar.js';
-import { uiText } from '../i18n/fi.js';
+import { uiText } from '../../i18n/fi.js';
 
 interface CustomerTableProps {
   customers: Customer[];

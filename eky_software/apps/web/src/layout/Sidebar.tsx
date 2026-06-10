@@ -1,5 +1,5 @@
 import { uiText } from '../i18n/fi.js';
-import type { AppView } from '../App.js';
+import type { AppView } from '../app/App.js';
 
 type SidebarNavItem =
   | {

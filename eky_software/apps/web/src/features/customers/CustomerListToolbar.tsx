@@ -2,7 +2,7 @@ import {
   type CustomerSortKey,
   type CustomerSortState,
 } from './customerListSorting.js';
-import { uiText } from '../i18n/fi.js';
+import { uiText } from '../../i18n/fi.js';
 
 interface CustomerListToolbarProps {
   searchQuery: string;

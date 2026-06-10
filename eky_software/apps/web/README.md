@@ -25,6 +25,8 @@ Ensimmäisessä vaiheessa ei käytetä TanStack Queryä, React Hook Formia, rout
 
 Käyttöliittymän periaatteet on kuvattu dokumentissa `docs/design/ui-principles.md`.
 
+Webin `app`-, `features`-, `shared`-, `layout`- ja `i18n`-kansioiden vastuut on kuvattu dokumentissa `docs/architecture/web-frontend-structure.md`.
+
 ## Local development
 
 Käynnistä ensin backend.

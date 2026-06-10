@@ -1,5 +1,5 @@
 import type { CompanySettingsForm as CompanySettingsFormModel } from './companySettingsFormModel.js';
-import { uiText } from '../i18n/fi.js';
+import { uiText } from '../../i18n/fi.js';
 
 interface CompanySettingsFormProps {
   errorMessage: string | null;

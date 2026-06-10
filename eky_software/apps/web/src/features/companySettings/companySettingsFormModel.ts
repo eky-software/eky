@@ -1,6 +1,9 @@
 import type { CompanySettings, UpdateCompanySettingsRequest } from '@eky/api-client';
 
-import { centsToEuroInput, euroInputToCents } from '../money/hourlyRateInput.js';
+import {
+  centsToEuroInput,
+  euroInputToCents,
+} from '../../shared/money/hourlyRateInput.js';
 
 export interface CompanySettingsForm {
   businessId: string;
@@ -52,4 +55,4 @@ export function toUpdateCompanySettingsRequest(
   };
 }
 
-export { euroInputToCents } from '../money/hourlyRateInput.js';
+export { euroInputToCents } from '../../shared/money/hourlyRateInput.js';

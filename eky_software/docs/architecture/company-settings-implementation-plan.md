@@ -253,7 +253,7 @@ API-client:
 Suunniteltu rakenne:
 
 ```text
-apps/web/src/companySettings/
+apps/web/src/features/companySettings/
   CompanySettingsPage.tsx
   CompanySettingsForm.tsx
   companySettingsFormModel.ts

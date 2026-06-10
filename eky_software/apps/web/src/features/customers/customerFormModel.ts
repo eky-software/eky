@@ -6,7 +6,10 @@ import type {
   UpdateCustomerRequest,
 } from '@eky/api-client';
 
-import { centsToEuroInput, euroInputToCents } from '../money/hourlyRateInput.js';
+import {
+  centsToEuroInput,
+  euroInputToCents,
+} from '../../shared/money/hourlyRateInput.js';
 
 export interface CustomerFormModel {
   businessId: string;
