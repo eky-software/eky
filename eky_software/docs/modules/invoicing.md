@@ -12,6 +12,8 @@ Laskutus toimii itsenäisesti. Manuaalinen lasku voidaan luoda suoraan asiakkaal
 
 Laskutuksen ja valinnaisen työnohjauspolun rajat on kuvattu dokumentissa `docs/architecture/invoicing-workflow-boundaries.md`.
 
+Ensimmäisen manuaalisen laskuluonnos-MVP:n rajaus, classic-käyttöliittymä ja toteutusvaiheet on kuvattu dokumentissa `docs/architecture/invoicing-mvp-implementation-plan.md`.
+
 ## Moduuli omistaa
 
 - laskuluonnokset
