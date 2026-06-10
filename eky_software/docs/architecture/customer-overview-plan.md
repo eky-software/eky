@@ -188,6 +188,8 @@ Kun laskutusmoduuli on olemassa, customer overview voi näyttää laskutuksen ko
 
 Laskut ja laskurivit pysyvät invoicing-moduulin omistuksessa.
 
+Kooste voi sisältää sekä manuaalisesti luotuja laskuja että myöhemmin työmääräyksistä muodostettuja laskuja. Customer overview ei saa olettaa, että laskulla on aina kohde tai työmääräys.
+
 ## Työmääräysten Merkitys
 
 Työmääräykset kannattaa pitää erillisenä moduulina.
@@ -267,6 +269,7 @@ Tässä dokumentissa ei tehdä:
 - `docs/architecture/module-boundaries.md`
 - `docs/architecture/data-model-principles.md`
 - `docs/architecture/customer-ui-ux-plan.md`
+- `docs/architecture/invoicing-workflow-boundaries.md`
 - `docs/modules/customers.md`
 - `docs/modules/company-settings.md`
 - `docs/design/ui-principles.md`

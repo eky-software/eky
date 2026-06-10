@@ -90,6 +90,8 @@ Sites ei omista:
 - työntekijöiden käyttäjätietoja
 - varastosaldoja
 
+Kohde on laskutuksessa ja työmääräyksessä valinnainen tarkennus. Lasku voidaan muodostaa ilman kohdetta.
+
 ## Sales
 
 Sales voi myöhemmin omistaa myyntiprosessin.
@@ -122,6 +124,8 @@ Work Orders ei omista:
 - laskun lopullista muodostusta
 - asiakkaan perustietoja
 - varaston saldoja
+
+Work Orders on valinnainen toiminnanohjaus- ja kenttätyöpolku. Laskutus ei saa edellyttää työmääräystä.
 
 ## Work Entries
 
@@ -187,6 +191,12 @@ Vastuut:
 - laskutuksen audit trail
 
 Invoicing voi lukea asiakas-, kohde-, työ- ja materiaalidataa rajapintojen kautta, mutta ei saa muuttaa toisen moduulin omistamaa dataa suoraan.
+
+Invoicing toimii myös itsenäisesti: manuaalinen lasku voidaan luoda suoraan asiakkaalle ilman kohdetta, työmääräystä, tuntikirjausta tai materiaalikirjausta.
+
+Työmääräyksistä ja hyväksytyistä kirjauksista voidaan myöhemmin muodostaa laskuehdotuksia, mutta lopullinen lasku syntyy aina Invoicing-moduulin hallitun prosessin kautta.
+
+Laskutuksen ja valinnaisen työnohjauspolun tarkempi rajaus on kuvattu dokumentissa `docs/architecture/invoicing-workflow-boundaries.md`.
 
 ## Reporting
 

@@ -22,6 +22,32 @@ AI-avustajat voivat auttaa suunnittelussa, arkkitehtuurin arvioinnissa, dokument
 
 Codex tai muu koodausagentti toimii toteuttajana, mutta ei saa tehdä laajoja arkkitehtuuripäätöksiä itsenäisesti.
 
+## Ohjeiden etusija ja ristiriitatilanteet
+
+Jos kaksi projektin ohjetta vaikuttavat ristiriitaisilta, noudata seuraavaa etusijajärjestystä:
+
+1. Projektin omistajan nykyisessä tehtävässä antama nimenomainen päätös.
+2. Repositorion juuri-`AGENTS.md` ja sen ydinperiaatteet.
+3. Kohdekansion lähin `AGENTS.md`, joka tarkentaa kyseisen kansion työtä.
+4. Hyväksytyt ADR-päätökset `docs/decisions/`-kansiossa.
+5. Arkkitehtuuri-, turvallisuus-, riippuvuus- ja tietomalliohjeet `docs/architecture/`-kansiossa.
+6. Moduulien vastuut `docs/modules/`-kansiossa.
+7. Rajatut toteutus- ja vaiheistussuunnitelmat.
+
+Kohdekansion `AGENTS.md` saa tarkentaa juuri-`AGENTS.md`:ää, mutta se ei saa kumota tämän tiedoston ydinperiaatteita ilman projektin omistajan nimenomaista päätöstä.
+
+Vanha suunnitelmadokumentti ei saa kumota myöhemmin hyväksyttyä ADR-päätöstä tai projektin omistajan uudempaa päätöstä.
+
+Jos ristiriitaa ei voida ratkaista varmasti etusijajärjestyksen avulla:
+
+- älä valitse tulkintaa itsenäisesti
+- älä jatka ristiriidan vaikutusalueella
+- rajaa muu turvallisesti tehtävissä oleva työ erilleen
+- kerro projektin omistajalle, mitkä ohjeet ovat ristiriidassa
+- pyydä projektin omistajalta päätös ennen jatkamista
+
+Sama pysäytyssääntö koskee tilannetta, jossa liiketoimintasääntö, moduulin omistajuus, turvallisuusvaatimus tai arkkitehtuurin vaikutus jää epäselväksi.
+
 ## Pakollinen lukujärjestys
 
 Lue aina ensin tämä tiedosto.
@@ -74,6 +100,8 @@ Jos työ koskee asiakkaan avaamista, asiakkaan koontinäkymää, asiakkaaseen li
 Jos työ koskee Oma yritys / Company Settings -moduulia, oman yrityksen perustietoja, oletustuntihintaa tai yrityksen asetuksia, lue myös `docs/modules/company-settings.md`.
 
 Jos työ koskee Company Settings -moduulin ensimmäistä toteutusta, `company_settings`-taulua, `GET /company-settings`- tai `PUT /company-settings`-reittejä, Company Settings API-clientiä tai Oma yritys -web-näkymää, lue myös `docs/architecture/company-settings-implementation-plan.md`.
+
+Jos työ koskee laskutusta, kohteita, työmääräyksiä, tunti- tai materiaalikirjauksia, laskuehdotuksia tai mobiilista laskutukseen johtavaa työnkulkua, lue myös `docs/architecture/invoicing-workflow-boundaries.md`.
 
 Jos työ koskee web-käyttöliittymän ulkoasua, layoutia, komponenttirakennetta, värejä tai Eky-työpöytäkokemusta, lue myös `docs/design/ui-principles.md`.
 

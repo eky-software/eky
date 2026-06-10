@@ -10,9 +10,13 @@ Tavoitteena on ymmärtää, miten yritys oikeasti toimii.
 
 Ohjelmiston pitää tukea todellista arkea, ei keksittyä prosessia.
 
-## Ensimmäinen oletettu päävirta
+## Valinnaiset Päävirrat
 
-Alustava työnkulku voi olla:
+Eky tukee kahta toisiaan täydentävää laskutuspolkua.
+
+Manuaalinen laskutus toimii itsenäisesti ilman kohteita, työmääräyksiä tai mobiilikirjauksia.
+
+Laajempi ERP-työnkulku voi myöhemmin olla:
 
 1. asiakas perustetaan
 2. asiakkaalle perustetaan kohde tai työmaa
@@ -26,6 +30,8 @@ Alustava työnkulku voi olla:
 10. lasku merkitään maksetuksi
 
 Tämä on alustava malli, ei lopullinen totuus.
+
+Laajempi ERP-polku ei ole perinteisen laskunkirjoituksen edellytys.
 
 ## Perinteinen laskunkirjoitus
 
@@ -43,6 +49,8 @@ Virta:
 
 Tämä malli muistuttaa perinteistä laskutusohjelmaa.
 
+Tämä polku toimii ilman Work Orders -moduulia. Kohde voidaan valita tarvittaessa, mutta se ei ole pakollinen.
+
 ## Laajempi ERP-laskutus
 
 Myöhemmässä vaiheessa lasku voidaan muodostaa hyväksytyistä kirjauksista.
@@ -55,6 +63,10 @@ Virta:
 4. toimisto tai työnjohtaja hyväksyy kirjaukset
 5. hyväksytyt kirjaukset liitetään laskuluonnokseen
 6. lasku tarkastetaan ja lähetetään
+
+Mobiilista ja työmääräyksistä tuleva aineisto muodostaa ensin tarkistettavan laskuehdotuksen tai laskuluonnoksen lähtötiedot.
+
+Tarkempi moduulirajaus on kuvattu dokumentissa `docs/architecture/invoicing-workflow-boundaries.md`.
 
 ## Asiakkaan perustaminen
 
