@@ -75,6 +75,8 @@ Jos työ koskee Oma yritys / Company Settings -moduulia, oman yrityksen perustie
 
 Jos työ koskee Company Settings -moduulin ensimmäistä toteutusta, `company_settings`-taulua, `GET /company-settings`- tai `PUT /company-settings`-reittejä, Company Settings API-clientiä tai Oma yritys -web-näkymää, lue myös `docs/architecture/company-settings-implementation-plan.md`.
 
+Jos työ koskee laskutusta, kohteita, työmääräyksiä, tunti- tai materiaalikirjauksia, laskuehdotuksia tai mobiilista laskutukseen johtavaa työnkulkua, lue myös `docs/architecture/invoicing-workflow-boundaries.md`.
+
 Jos työ koskee web-käyttöliittymän ulkoasua, layoutia, komponenttirakennetta, värejä tai Eky-työpöytäkokemusta, lue myös `docs/design/ui-principles.md`.
 
 Jos työ koskee käyttäjälle näkyviä UI-tekstejä, kielivalintaa, i18n-rakennetta tai käännöksiä, lue myös `docs/design/ui-principles.md`.

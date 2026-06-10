@@ -229,6 +229,7 @@ Liittyvät dokumentit:
 - `AGENTS.md`
 - `docs/architecture/module-boundaries.md`
 - `docs/architecture/dependency-policy.md`
+- `docs/architecture/invoicing-workflow-boundaries.md`
 - `docs/modules/customers.md`
 - `docs/modules/invoicing.md`
 - `docs/architecture/customer-overview-plan.md`

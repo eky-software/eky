@@ -8,6 +8,10 @@ Work Orders -moduuli hallitsee töitä, joita yritys tekee asiakkaille ja kohtei
 
 Työmääräys kuvaa mitä tehdään, missä tehdään ja mahdollisesti kuka työn tekee.
 
+Work Orders on valinnainen toiminnanohjaus- ja kenttätyöpolku. Laskutus voi toimia ilman työmääräystä.
+
+Laskutuksen ja työnohjauspolun rajat on kuvattu dokumentissa `docs/architecture/invoicing-workflow-boundaries.md`.
+
 ## Moduuli omistaa
 
 - työmääräyksen perustiedot
@@ -59,6 +63,8 @@ Material Entries voi kirjata materiaaleja työmääräykselle.
 
 Invoicing voi myöhemmin hyödyntää hyväksyttyjä tietoja.
 
+Työmääräys, tuntikirjaukset ja materiaalikirjaukset voivat myöhemmin tuottaa laskuehdotuksen lähtöaineiston. Ne eivät muodosta lopullista laskua suoraan.
+
 ## Turvallisuus
 
 Työmääräyksen näkyvyys voi riippua roolista.
@@ -71,8 +77,7 @@ Backend tarkistaa oikeudet.
 
 ## Avoimet kysymykset
 
-- tarvitaanko työmääräys ensimmäisessä MVP:ssä?
-- voiko lasku syntyä ilman työmääräystä?
+- tarvitaanko työmääräys ensimmäisessä kenttätyön MVP:ssä?
 - voiko kohteella olla monta työmääräystä?
 - kuka saa muuttaa työmääräyksen tilaa?
 - miten työmääräys näkyy mobiilissa?

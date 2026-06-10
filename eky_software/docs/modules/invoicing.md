@@ -8,6 +8,10 @@ Laskutus on kriittinen moduuli. Muutokset laskutukseen vaativat erityistä huole
 
 Invoicing-moduuli hallitsee laskuluonnoksia, laskuja, laskurivejä, laskun tiloja ja laskutuksen sääntöjä.
 
+Laskutus toimii itsenäisesti. Manuaalinen lasku voidaan luoda suoraan asiakkaalle ilman kohdetta, työmääräystä, tuntikirjausta tai mobiilityönkulkua.
+
+Laskutuksen ja valinnaisen työnohjauspolun rajat on kuvattu dokumentissa `docs/architecture/invoicing-workflow-boundaries.md`.
+
 ## Moduuli omistaa
 
 - laskuluonnokset
@@ -64,6 +68,8 @@ Ensimmäinen MVP voi sisältää perinteisen laskunkirjoituksen:
 5. tallennetaan laskuluonnos
 6. hyväksytään lasku
 
+Kohde on valinnainen. Work Orders -moduulia ei tarvita tämän polun käyttämiseen.
+
 ## ERP-laskutus myöhemmin
 
 Myöhemmin lasku voi muodostua hyväksytyistä:
@@ -74,6 +80,23 @@ Myöhemmin lasku voi muodostua hyväksytyistä:
 - tarjouksista
 
 Nämä eivät saa siirtyä lopulliseen laskuun ilman hallittua prosessia.
+
+Työmääräyksestä tai kirjauksista muodostuva aineisto on laskuehdotus tai laskuluonnoksen lähtötieto. Toimisto tarkistaa aineiston ennen lopullista laskutusta.
+
+## Laskun Lähde Suunnittelutasolla
+
+Laskulla voi myöhemmin olla:
+
+- pakollinen `customerId`
+- valinnainen `siteId`
+- `sourceType`, kuten `manual` tai `workOrder`
+- valinnainen `sourceId`
+
+Manuaalisessa laskussa `sourceType` voi olla `manual` ja `sourceId` tyhjä.
+
+Työmääräyksestä muodostetussa laskuehdotuksessa `sourceType` voi olla `workOrder` ja `sourceId` työmääräyksen tunniste.
+
+Tarkka tietomalli päätetään erillisessä toteutussuunnitelmassa.
 
 ## Snapshot-Periaate
 

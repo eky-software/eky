@@ -271,6 +271,8 @@ Invoicing vastaa myöhemmin kysymykseen:
 mitä veloitetaan
 ```
 
+Laskutus voi toimia suoraan asiakkaan perusteella ilman kohdetta tai työmääräystä. Laskutuksen ja valinnaisen työnohjauspolun rajat on kuvattu dokumentissa `docs/architecture/invoicing-workflow-boundaries.md`.
+
 Company Settings vastaa myöhemmin kysymykseen:
 
 ```text
