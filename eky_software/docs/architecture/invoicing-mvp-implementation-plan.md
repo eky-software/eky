@@ -324,7 +324,8 @@ ALV-kanta esitetään basis points -mallilla kentässä `vatRateBasisPoints`:
 
 ```text
 25,50 % -> 2550
-14,00 % -> 1400
+13,50 % -> 1350
+10,00 % -> 1000
 0,00 % -> 0
 ```
 
@@ -347,7 +348,7 @@ Hyväksytyt periaatteet:
 - käyttäjän pitää voida valita kaikki yrityksen tarvitsemat ALV-kannat
 - ALV-kantoja ei kovakoodata arkkitehtuurissa pysyvästi yhdeksi arvoksi
 - ALV-kantoja pitää voida myöhemmin hallita laskutusasetuksista
-- ensimmäisen domain-koodivaiheen testattavat ALV-kannat ovat 0,00 %, 14,00 % ja 25,50 %
+- ensimmäisen domain-koodivaiheen ajantasaiset ja testattavat ALV-kannat ovat 0,00 %, 10,00 %, 13,50 % ja 25,50 %
 - tietomalli ja domain eivät saa rajoittua vain ensimmäisen koodivaiheen ALV-kantoihin
 - syöttötapa on laskennassa yksiselitteisesti veroton tai verollinen
 - senttitason laskenta tehdään tarkasti
@@ -358,11 +359,16 @@ Ensimmäisen domain-koodivaiheen testattavat ALV-kannat basis points -arvoina:
 
 ```text
 0,00 %  -> 0
-14,00 % -> 1400
+10,00 % -> 1000
+13,50 % -> 1350
 25,50 % -> 2550
 ```
 
-Nämä ovat ensimmäisen vaiheen testiarvot, eivät domainiin kovakoodattu sallittujen arvojen lista. ALV-kantoja pitää voida myöhemmin hallita laskutusasetuksista ilman laskentadomainin rakennemuutosta.
+Nämä ovat ensimmäisen vaiheen ajantasaiset testiarvot, eivät domainiin kovakoodattu sallittujen arvojen lista. ALV-kantoja pitää voida myöhemmin hallita laskutusasetuksista ilman laskentadomainin rakennemuutosta.
+
+`14,00 %` eli `1400` basis points oli aiempi alennettu verokanta 31.12.2025 saakka. Se voidaan lisätä myöhemmin historiallisena tai legacy-arvona, jos `invoiceDate`- tai suoritusajankohtaan perustuva vanhojen verokantojen tuki toteutetaan.
+
+Nollaverokanta `0,00 %` ja arvonlisäveroton toiminta eivät ole sama asia. Nollaverokannan myynnillä ja arvonlisäverotuksen ulkopuolisella tai verottomalla toiminnalla voi olla eri verokohtelu ja laskumerkinnät. Niiden tarkka käyttötapa ja selite ratkaistaan myöhemmin laskutusasetuksissa tai laskurivimallissa. Pelkkä `vatRateBasisPoints: 0` ei saa tulevaisuudessa peittää tätä eroa.
 
 Kaikki laskennan jakolaskut käyttävät yhtä Invoicing-domainin sisäistä pyöristysfunktiota.
 
@@ -785,7 +791,7 @@ Tuleva toteutus tarvitsee vähintään:
 - verottoman ja verollisen syöttötavan laskenta
 - kahden desimaalin määrät
 - prosentti- ja euromääräiset alennukset
-- ALV-kannat 0, 1400 ja 2550 basis points -arvoilla
+- ajantasaiset ALV-kannat 0, 1000, 1350 ja 2550 basis points -arvoilla
 - negatiivisten määrien, hintojen ja loppusummien hylkäys
 - nollahintaisten rivien hyväksytty käsittely
 - laskun kokonaissummat

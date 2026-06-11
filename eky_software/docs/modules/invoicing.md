@@ -165,10 +165,15 @@ Laskutuksen pitää myöhemmin tukea hallittavia ALV-kantoja sekä prosentti- ja
 Ensimmäisen domain-koodivaiheen testattavat ALV-kannat ovat:
 
 - 0,00 % eli 0 basis points
-- 14,00 % eli 1400 basis points
+- 10,00 % eli 1000 basis points
+- 13,50 % eli 1350 basis points
 - 25,50 % eli 2550 basis points
 
 Domainia ei kovakoodata sallimaan vain näitä arvoja, koska ALV-kantoja hallitaan myöhemmin laskutusasetuksista.
+
+`14,00 %` eli `1400` basis points oli aiempi alennettu verokanta 31.12.2025 saakka. Se voidaan huomioida myöhemmin historiallisena tai legacy-arvona, jos `invoiceDate`- tai suoritusajankohtaan perustuva vanhojen verokantojen tuki tarvitaan.
+
+Nollaverokanta `0,00 %` ja arvonlisäveroton toiminta eivät ole sama asia. Niiden tarkempi käyttötapa, verokohtelu ja laskulla tarvittava selite ratkaistaan myöhemmin laskutusasetuksissa tai laskurivimallissa.
 
 Rivikohtainen laskenta tehdään deterministisesti:
 
