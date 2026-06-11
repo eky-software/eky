@@ -74,6 +74,13 @@ Testaa turvallisuuskriittiset tilanteet:
 - frontendistä lähetetty väärä data hylätään backendissä
 - token puuttuu tai on virheellinen
 - yritysrajaus `companyId` toimii oikein
+- käyttäjän lähettämää `companyId`-arvoa ei luoteta backendin yrityskontekstina
+- liian pitkät arvot, väärät tyypit ja sallitut rajat ylittävät numerot hylätään
+- SQL-, otsake-, polku- ja lokiinjektion kannalta relevantit syötteet käsitellään turvallisesti
+- API ei palauta toisen yrityksen tietoja tai käyttötapaukselle tarpeettomia arkaluonteisia kenttiä
+- turvallinen virhevastaus ei paljasta stack tracea, SQL:ää, tiedostopolkuja tai salaisuuksia
+
+Jos autentikointi, permission-malli tai audit trail ei ole vielä toteutettu, testi ei saa teeskennellä niiden olevan kunnossa. Rajaus dokumentoidaan ja toteutusta käytetään vain hyväksytyssä local development -tilassa synteettisellä datalla.
 
 ## Testidatan periaatteet
 

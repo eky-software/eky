@@ -13,17 +13,30 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
 
 ## Turvallisuus
 
+- Onko muutoksen luottamusraja ja ulkoinen syöte tunnistettu?
+- Onko uuden tai muuttuneen HTTP-reitin autentikointi- ja verkkonäkyvyystila eksplisiittinen?
 - Tarkistaako backend käyttöoikeudet?
+- Noudatetaanko deny by default -periaatetta?
 - Onko frontend vain käyttökokemusta varten, ei turvallisuuden lähde?
+- Tulevatko käyttäjä ja `companyId` backendin vahvistamasta kontekstista eivätkä request bodysta tai querysta?
 - Vuotaako salaisuuksia frontendiin?
+- Palauttaako API vain käyttötapauksen tarvitsemat kentät?
 - Kirjataanko kriittinen toiminto audit logiin?
 - Estetäänkö toisen yrityksen datan käyttö?
-- Onko syöte validoitu backendissä?
+- Onko syötteen tyyppi, muoto, pituus, rajat ja sallittu arvojoukko validoitu backendissä?
+- Onko request bodyn ja tiedostojen kokorajat arvioitu?
+- Voiko syöte vaikuttaa SQL:ään, HTTP-otsakkeisiin, tiedostopolkuihin, lokiin tai renderöityyn sisältöön?
+- Ovatko virhevastaus ja lokitus turvallisia ilman stack trace-, salaisuus- tai henkilötietovuotoa?
+- Onko local-MVP edelleen sidottu vain loopback-osoitteeseen?
+- Käytetäänkö autentikoimattomassa MVP:ssä vain synteettistä testidataa?
 - Käytetäänkö turvallisia ympäristömuuttujia salaisuuksille?
+- Jos palvelu avataan verkkoon, onko auth-, permission-, HTTPS-, origin/CORS-, cookie/token-, CSRF- ja abuse-suojaus päätetty?
 
 ## Riippuvuudet
 
 - Lisättiinkö uusi kirjasto?
+- Ajettiinko dependency- tai lockfile-muutoksen jälkeen tuotantoriippuvuuksien audit?
+- Jäikö tunnettu haavoittuvuus, ja onko sen riski sekä korjaussuunnitelma dokumentoitu?
 - Onko uusi riippuvuus perusteltu?
 - Onko lisenssi tarkistettu?
 - Voidaanko kirjasto eristää sisäisen kerroksen taakse?
@@ -47,6 +60,10 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
 - Lisättiinkö testi kriittiseen logiikkaan?
 - Testataanko virhetilat?
 - Testataanko käyttöoikeudet backendissä?
+- Testataanko puuttuva tai virheellinen identiteetti/token, kun auth on käytössä?
+- Testataanko toisen yrityksen tunnisteella tehdyt luku- ja kirjoitusyritykset?
+- Testataanko virheelliset, liian pitkät ja raja-arvot sisältävät syötteet?
+- Testataanko relevantit injektio- ja tietovuotopolut?
 - Testataanko laskenta ja tilasiirtymät?
 - Ovatko testit luettavia?
 - Käyttävätkö testit vain testidataa?

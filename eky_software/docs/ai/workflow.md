@@ -181,3 +181,17 @@ AI:n tekemä työ voidaan katsoa valmiiksi vasta, kun:
 - koodi on luettavaa
 - tiedostoilla on selkeä vastuu
 - TypeScript-tyyliä noudatetaan
+
+## Turvallisuusvaikutuksen Raportointi
+
+Kun muutos koskee koodia, API:a, dataa, tiedostoja, riippuvuuksia, integraatioita tai verkkonäkyvyyttä, AI raportoi ennen työn valmistumista:
+
+- mitä luottamusrajoja muutos koski
+- mitä ulkoista syötettä käsiteltiin
+- missä backend-validointi ja käyttöoikeustarkistus tehdään
+- miten yritysrajaus säilyy
+- syntyikö uusi tietovuoto-, injektio-, salaisuus-, lokitus- tai dependency-riski
+- mitä turvallisuustestejä ajettiin tai miksi niitä ei tarvittu
+- onko nykyinen toteutus vain local development -tasoinen vai valmis oikealle datalle
+
+Jos muutos paljastaa olemassa olevan haavoittuvuuden, sitä ei piiloteta raportista. Korjattava haavoittuvuus korjataan rajatusti tai työ pysäytetään projektin omistajan päätöstä varten.
