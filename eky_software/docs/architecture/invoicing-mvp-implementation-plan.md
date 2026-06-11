@@ -6,7 +6,7 @@ Tavoitteena on toteuttaa manuaalinen laskuluonnos suoraan asiakkaalle ilman kohd
 
 Tämä dokumentti sisältää ensimmäiset hyväksytyt laskutuksen liiketoimintapäätökset.
 
-Kaikkia yksityiskohtia ei ole vielä lukittu. Erityisesti ensimmäisen koodivaiheen ALV-kannat, hyväksymisen käyttöoikeudet, hyväksytyn laskun korjaaminen ja offline/cloud-numeroinnin yhteensovitus ratkaistaan ennen niitä koskevan tuotantokoodin kirjoittamista.
+Kaikkia yksityiskohtia ei ole vielä lukittu. Erityisesti hyväksymisen käyttöoikeudet, hyväksytyn laskun korjaaminen ja offline/cloud-numeroinnin yhteensovitus ratkaistaan ennen niitä koskevan tuotantokoodin kirjoittamista.
 
 ## Lähtökohta
 
@@ -199,6 +199,15 @@ Laskulla tai laskurivillä pitää olla yksiselitteisesti tiedossa syöttötapa,
 priceInputMode: 'net' | 'gross'
 ```
 
+Ensimmäisessä classic-laskutusnäkymässä käyttäjä muokkaa vain aktiivisen `priceInputMode`-arvon mukaista yksikköhintaa:
+
+- yritysasiakkaalle oletus on `net`, jolloin muokataan verotonta hintaa
+- yksityisasiakkaalle oletus on `gross`, jolloin muokataan verollista hintaa
+
+Toinen hinta voidaan näyttää laskettuna esikatseluna, mutta verotonta ja verollista hintaa ei tehdä yhtä aikaa vapaasti muokattaviksi MVP:ssä.
+
+Domain-laskenta käyttää aina eksplisiittistä `priceInputMode`-arvoa. Asiakastyyppi määrää vain käyttöliittymän oletuksen, ei laskennan tulkintaa.
+
 Tarkka päätös siitä, onko syöttötapa laskukohtainen vai voiko se vaihdella riveittäin, tehdään ennen tietomallin toteutusta. Arkkitehtuuri ei saa pakottaa laskemaan verollista hintaa verottomana tai päinvastoin.
 
 ## Laskurivit
@@ -270,10 +279,9 @@ Prosenttialennus esitetään basis points -mallilla:
 
 Euromääräinen alennus esitetään kokonaislukusentteinä.
 
-Ennen toteutusta päätetään vielä:
+Alennus saa pienentää rivin loppusumman tasan nollaan.
 
-- sallitaanko alennuksen pienentää rivi nollaan
-- voiko alennus ylittää rivin arvon
+Alennus ei saa ylittää rivin lähtösummaa eikä tehdä rivin loppusummasta negatiivista.
 
 ## Laskennan Omistajuus
 
@@ -339,11 +347,22 @@ Hyväksytyt periaatteet:
 - käyttäjän pitää voida valita kaikki yrityksen tarvitsemat ALV-kannat
 - ALV-kantoja ei kovakoodata arkkitehtuurissa pysyvästi yhdeksi arvoksi
 - ALV-kantoja pitää voida myöhemmin hallita laskutusasetuksista
-- ensimmäinen koodivaihe saa käyttää rajattua hyväksyttyä ALV-kantojen joukkoa, mutta tietomalli ja domain eivät saa estää muokattavaa joukkoa
+- ensimmäisen domain-koodivaiheen testattavat ALV-kannat ovat 0,00 %, 14,00 % ja 25,50 %
+- tietomalli ja domain eivät saa rajoittua vain ensimmäisen koodivaiheen ALV-kantoihin
 - syöttötapa on laskennassa yksiselitteisesti veroton tai verollinen
 - senttitason laskenta tehdään tarkasti
 - MVP:ssä ei tehdä erillistä laskun loppusumman pyöristysriviä tai käteismaksun pyöristyserää
 - maksujen lähtökohtana ovat pankkiyhteydet
+
+Ensimmäisen domain-koodivaiheen testattavat ALV-kannat basis points -arvoina:
+
+```text
+0,00 %  -> 0
+14,00 % -> 1400
+25,50 % -> 2550
+```
+
+Nämä ovat ensimmäisen vaiheen testiarvot, eivät domainiin kovakoodattu sallittujen arvojen lista. ALV-kantoja pitää voida myöhemmin hallita laskutusasetuksista ilman laskentadomainin rakennemuutosta.
 
 Kaikki laskennan jakolaskut käyttävät yhtä Invoicing-domainin sisäistä pyöristysfunktiota.
 
@@ -444,12 +463,26 @@ ALV-erittely muodostetaan samoista riveistä ryhmittelemällä niiden pyöristet
 
 Laskutasolla ei lasketa samoja summia uudelleen eri kaavalla. Näin rivien, ALV-erittelyn ja laskun loppusummien pitää aina täsmätä.
 
-Ennen domain-laskennan toteuttamista tarkennetaan vielä:
+### Negatiiviset Ja Nollahintaiset Rivit
 
-- mitkä ALV-kannat kuuluvat ensimmäisen koodivaiheen valittavaan joukkoon
-- näytetäänkö käyttöliittymässä yhtä aikaa veroton ja verollinen hinta
-- sallitaanko negatiiviset laskurivit
-- sallitaanko nollahintaiset laskurivit
+MVP:ssä ei sallita tavallisia laskurivejä, joilla on:
+
+- negatiivinen määrä
+- negatiivinen yksikköhinta
+- negatiivinen loppusumma
+
+Alennukset toteutetaan rivin omilla prosentti- tai euromääräisillä alennuskentillä. Alennus saa pienentää rivin loppusumman nollaan, mutta ei negatiiviseksi.
+
+Hyvityslaskut, laskukohtaiset alennukset ja muut adjustment-rakenteet toteutetaan myöhemmin erillisinä, hallittuina toimintoina. Niitä ei mallinneta negatiivisina tavallisina laskuriveinä.
+
+Nollahintaiset laskurivit sallitaan MVP:ssä. Niitä voidaan käyttää esimerkiksi:
+
+- seliteriveinä
+- huomautuksina
+- lisätietoina
+- työn kuvauksena ilman veloitusta
+
+Nollarivi käsitellään normaalin domain-validoinnin ja laskennan kautta. Se ei saa ohittaa validointia eikä rikkoa ALV-erittelyä tai laskun summien täsmäytystä.
 
 Laskentadomain voidaan toteuttaa näiden determinististen laskenta- ja pyöristyssääntöjen perusteella. Toteutuksen rajaus ei saa vaatia vielä avoimiksi jätettyjen laskun tilojen, numeroinnin tai toimituksen sääntöjä.
 
@@ -752,6 +785,9 @@ Tuleva toteutus tarvitsee vähintään:
 - verottoman ja verollisen syöttötavan laskenta
 - kahden desimaalin määrät
 - prosentti- ja euromääräiset alennukset
+- ALV-kannat 0, 1400 ja 2550 basis points -arvoilla
+- negatiivisten määrien, hintojen ja loppusummien hylkäys
+- nollahintaisten rivien hyväksytty käsittely
 - laskun kokonaissummat
 - pyöristystapaukset
 - tilasiirtymät, kun ne toteutetaan
@@ -798,7 +834,6 @@ Testit eivät käytä oikeita asiakas- tai laskutietoja.
 
 Tarkennetaan ja dokumentoidaan:
 
-- ensimmäisen koodivaiheen ALV-kannat
 - eräpäivän automaattisen ehdotuksen käyttäytyminen
 - ensimmäisen luonnosvaiheen validointisäännöt
 
@@ -864,20 +899,17 @@ Näitä varten tehdään myöhemmin omat rajatut päätökset ja toteutussuunnit
 
 Seuraavia asioita ei saa päätellä tästä dokumentista valmiiksi hyväksytyiksi:
 
-1. Mitkä tarkat ALV-kannat kuuluvat ensimmäiseen koodivaiheeseen?
-2. Onko `priceInputMode` laskukohtainen vai voiko se vaihdella riveittäin?
-3. Miten eräpäivän automaattinen ehdotus reagoi käyttäjän käsin tekemiin muutoksiin?
-4. Sallitaanko negatiiviset tai nollahintaiset rivit?
-5. Saako alennus pienentää rivin nollaan tai ylittää rivin arvon?
-6. Mitkä kentät ovat luonnoksella pakollisia?
-7. Mitkä ovat ensimmäiset sallitut laskuyksiköt?
-8. Ovatko `approved` ja `issued` eri tiloja?
-9. Kuka saa hyväksyä tai lukita laskun?
-10. Saako hyväksyttyä laskua muuttaa ja millä korjausprosessilla?
-11. Milloin lopullinen snapshot muodostetaan?
-12. Saako laskunumeroissa olla aukkoja?
-13. Miten numerointi ratkaistaan offline- ja cloud-tilojen välillä?
-14. Mikä on tilikauden tarkka tietomalli?
+1. Onko `priceInputMode` laskukohtainen vai voiko se vaihdella riveittäin?
+2. Miten eräpäivän automaattinen ehdotus reagoi käyttäjän käsin tekemiin muutoksiin?
+3. Mitkä kentät ovat luonnoksella pakollisia?
+4. Mitkä ovat ensimmäiset sallitut laskuyksiköt?
+5. Ovatko `approved` ja `issued` eri tiloja?
+6. Kuka saa hyväksyä tai lukita laskun?
+7. Saako hyväksyttyä laskua muuttaa ja millä korjausprosessilla?
+8. Milloin lopullinen snapshot muodostetaan?
+9. Saako laskunumeroissa olla aukkoja?
+10. Miten numerointi ratkaistaan offline- ja cloud-tilojen välillä?
+11. Mikä on tilikauden tarkka tietomalli?
 
 Jos toteutustehtävä osuu johonkin näistä eikä päätöstä ole dokumentoitu, työ pysäytetään kyseisen säännön osalta ja projektin omistajalta pyydetään päätös.
 

@@ -158,7 +158,17 @@ Auktoritatiivinen laskenta ei käytä JavaScriptin liukulukulaskentaa.
 
 Yritysasiakkaan uuden laskun oletushinnat syötetään verottomina ja yksityisasiakkaan verollisina. Syöttötapa tallennetaan laskennalle yksiselitteisenä eikä backend luota pelkkään UI-oletukseen.
 
+Classic-laskutusnäkymässä käyttäjä muokkaa vain aktiivisen syöttötavan mukaista hintaa. Toinen hinta voidaan näyttää laskettuna esikatseluna, mutta molempia ei muokata samanaikaisesti MVP:ssä.
+
 Laskutuksen pitää myöhemmin tukea hallittavia ALV-kantoja sekä prosentti- ja euromääräisiä alennuksia. Ensimmäinen suositeltu alennusmalli on rivikohtainen alennus, mutta arkkitehtuuri jättää tilaa myöhemmälle laskukohtaiselle alennukselle.
+
+Ensimmäisen domain-koodivaiheen testattavat ALV-kannat ovat:
+
+- 0,00 % eli 0 basis points
+- 14,00 % eli 1400 basis points
+- 25,50 % eli 2550 basis points
+
+Domainia ei kovakoodata sallimaan vain näitä arvoja, koska ALV-kantoja hallitaan myöhemmin laskutusasetuksista.
 
 Rivikohtainen laskenta tehdään deterministisesti:
 
@@ -171,6 +181,12 @@ Rivikohtainen laskenta tehdään deterministisesti:
 Kaikki jakolaskut käyttävät samaa domainin sisäistä pyöristystä: lähimpään senttiin ja täsmälleen puolikas ylöspäin.
 
 Laskun loppusummat ja ALV-erittely muodostetaan samoista valmiiksi pyöristetyistä riveistä. Summia ei lasketa laskutasolla uudelleen eri kaavalla.
+
+Tavallisen laskurivin määrä, yksikköhinta ja loppusumma eivät saa olla negatiivisia MVP:ssä. Alennus saa pienentää rivin nollaan, mutta ei sen alle.
+
+Nollahintaiset rivit sallitaan selitteille, huomautuksille, lisätiedoille ja veloituksettomille työn kuvauksille. Ne kulkevat normaalin validoinnin ja laskennan kautta.
+
+Hyvityslaskut, laskukohtaiset alennukset ja muut adjustment-rakenteet toteutetaan myöhemmin erillisinä toimintoina, ei negatiivisina tavallisina laskuriveinä.
 
 Tarkat kaavat ja laskentajärjestys on määritelty dokumentissa `docs/architecture/invoicing-mvp-implementation-plan.md`.
 
@@ -192,8 +208,6 @@ Nykyinen Oma yritys on laajemman Asetukset-kokonaisuuden ensimmäinen osa. Käyt
 
 ## Avoimet kysymykset
 
-- mitkä ALV-kannat otetaan ensimmäiseen koodivaiheeseen?
-- sallitaanko alennuksen pienentää rivi nollaan tai ylittää rivin arvo?
 - miten numerointi sovitetaan offline- ja cloud-käyttöön?
 - tarvitaanko PDF ensimmäisessä versiossa?
 - tarvitaanko sähköpostilähetys?
