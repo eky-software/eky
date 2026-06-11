@@ -4,7 +4,9 @@ Tämä dokumentti kuvaa Eky-laskutuksen ensimmäisen itsenäisen toteutuspolun.
 
 Tavoitteena on toteuttaa manuaalinen laskuluonnos suoraan asiakkaalle ilman kohdetta, työmääräystä, tuntikirjausta, materiaalikirjausta, mobiilisovellusta tai synkronointia.
 
-Tämä dokumentti ei vielä lukitse laskutuksen liiketoimintakriittisiä sääntöjä. ALV, pyöristykset, maksuehto, laskun tilasiirtymät ja laskunumerointi ratkaistaan projektin omistajan päätöksillä ennen niitä koskevan tuotantokoodin kirjoittamista.
+Tämä dokumentti sisältää ensimmäiset hyväksytyt laskutuksen liiketoimintapäätökset.
+
+Kaikkia yksityiskohtia ei ole vielä lukittu. Erityisesti ALV-laskennan välivaiheiden pyöristys, hyväksymisen käyttöoikeudet, hyväksytyn laskun korjaaminen ja offline/cloud-numeroinnin yhteensovitus ratkaistaan ennen niitä koskevan tuotantokoodin kirjoittamista.
 
 ## Lähtökohta
 
@@ -45,10 +47,11 @@ Ensimmäisen toteutuksen käyttäjä voi:
 6. tallentaa laskun luonnoksena
 7. avata tallennetun luonnoksen
 8. muokata ja tallentaa luonnoksen uudelleen
+9. hyväksyä laskun joko luonnoksen myöhemmässä käsittelyssä tai heti laskun syöttämisen jälkeen
 
-Ensimmäinen rajattu koodivaihe päättyy muokattavaan laskuluonnokseen.
+Toteutus voidaan rakentaa teknisesti pienissä vaiheissa niin, että ensimmäinen koodipala päättyy muokattavaan laskuluonnokseen.
 
-Laskun hyväksyminen, varsinainen laskunumero, lopullinen snapshot-lukitus ja myöhemmät tilasiirtymät toteutetaan erillisenä vaiheena hyväksyttyjen liiketoimintasääntöjen jälkeen.
+Laskutuksen MVP-kokonaisuuteen kuuluvat kuitenkin sekä luonnos että hallittu hyväksyntä. Varsinainen laskunumero, lopullinen snapshot-lukitus ja hyväksytyn laskun muokkausrajat toteutetaan hyväksyntävaiheessa.
 
 ## Classic-Laskutusnäkymä
 
@@ -100,7 +103,8 @@ Ensimmäisen laskuluonnoksen suunnittelutason kentät:
 - `customerId`
 - `invoiceDate`
 - `dueDate`
-- `paymentTermDays` tai myöhemmin päätettävä maksuehtomalli
+- `paymentTermDays`
+- `priceInputMode`
 - `orderNumber`
 - `subject`
 - `note`
@@ -115,7 +119,8 @@ Kenttien alustava merkitys:
 - `customerId` viittaa Customers-moduulin asiakkaaseen.
 - `invoiceDate` on laskulla näkyvä käyttäjän muokattava päiväys.
 - `dueDate` on käyttäjän muokattava eräpäivä.
-- `paymentTermDays` voi toimia eräpäivän ehdotuksen lähtötietona, jos tämä malli hyväksytään.
+- `paymentTermDays` on laskun maksuehto päivinä. Uuden laskun oletus on 14 päivää netto.
+- `priceInputMode` kertoo yksiselitteisesti, syötetäänkö hinnat verottomina vai verollisina.
 - `orderNumber` on valinnainen asiakkaan tai työn tilausnumero.
 - `subject` on valinnainen laskun aihe.
 - `note` on valinnainen laskun saate tai lisätieto.
@@ -155,24 +160,46 @@ Backend validoi päiväykset ja niiden väliset hyväksytyt suhteet, kun tarkat 
 
 ## Eräpäivä Ja Maksuehto
 
-Käyttöliittymä voi myöhemmin ehdottaa eräpäivää:
+Uuden laskun oletusmaksuehto on 14 päivää netto.
+
+Käyttöliittymä ehdottaa eräpäivää:
 
 ```text
 invoiceDate + paymentTermDays -> ehdotettu dueDate
 ```
 
-Käyttäjän pitää voida muuttaa eräpäivää.
+Käyttäjä voi muuttaa sekä maksuehtoa että eräpäivää käsin.
 
-Ennen toteutusta päätettävät asiat:
+Maksuehtoja voidaan myöhemmin hallita laskutusasetuksissa.
 
-- tallennetaanko maksuehto päivien määränä, tunnisteena vai omana rakenteenaan
-- mikä maksuehto ehdotetaan uudelle laskulle
-- tuleeko oletus Company Settings -moduulista
+Ennen toteutusta tarkennetaan vielä käyttöliittymän käyttäytyminen:
+
 - päivittyykö `dueDate` automaattisesti, kun `invoiceDate` muuttuu
 - päivittyykö `paymentTermDays`, jos käyttäjä muuttaa `dueDate`-arvoa käsin
 - missä vaiheessa automaattinen päivitys lakkaa, jotta käyttäjän syöttämää eräpäivää ei ylikirjoiteta
 
-Näitä sääntöjä ei toteuteta oletuksina ilman projektin omistajan päätöstä.
+Backend säilyttää laskulle valitun maksuehdon ja eräpäivän eikä päättele lopputulosta pelkästään käyttöliittymän oletuksesta.
+
+## Hintojen Syöttötapa
+
+Asiakastyyppi vaikuttaa uuden laskun oletussyöttötapaan:
+
+- yritysasiakkaalle oletus on veroton yksikköhinta
+- yksityisasiakkaalle oletus on verollinen yksikköhinta
+
+Organisaatiotyypit, kuten yritys, taloyhtiö ja isännöitsijätoimisto, käsitellään oletuksena yritysasiakkaina.
+
+Jos asiakastyyppi ei yksiselitteisesti kerro, kumpaa oletusta käytetään, käyttäjältä pyydetään valinta tai käytetään erikseen dokumentoitua asetusta.
+
+UI-oletus on vain käyttökokemuksen apu. Backend-laskenta ei saa päätellä hintojen merkitystä pelkästään asiakkaan tyypistä.
+
+Laskulla tai laskurivillä pitää olla yksiselitteisesti tiedossa syöttötapa, esimerkiksi:
+
+```ts
+priceInputMode: 'net' | 'gross'
+```
+
+Tarkka päätös siitä, onko syöttötapa laskukohtainen vai voiko se vaihdella riveittäin, tehdään ennen tietomallin toteutusta. Arkkitehtuuri ei saa pakottaa laskemaan verollista hintaa verottomana tai päinvastoin.
 
 ## Laskurivit
 
@@ -187,6 +214,8 @@ Ensimmäisen laskurivin suunnittelutason kentät:
 - `unit`
 - `unitPriceCents`
 - `vatRate`
+- `discountType`
+- `discountValue`
 - `lineTotalCents`
 
 Kenttien alustava merkitys:
@@ -194,10 +223,12 @@ Kenttien alustava merkitys:
 - `position` määrittää rivin näkyvän järjestyksen.
 - `code` on valinnainen vapaa rivikoodi.
 - `description` on laskulla näkyvä nimike tai kuvaus.
-- `quantity` on laskutettava määrä.
+- `quantity` on laskutettava määrä ja sallii enintään kaksi desimaalia.
 - `unit` on esimerkiksi tunti, kappale tai muu myöhemmin hyväksytty yksikkö.
 - `unitPriceCents` on yksikköhinta sentteinä.
 - `vatRate` kuvaa rivin ALV-kannan myöhemmin päätettävällä tarkalla esitystavalla.
+- `discountType` kertoo, onko alennus prosentti- vai euromääräinen.
+- `discountValue` sisältää alennuksen tarkasti määritellyssä muodossa.
 - `lineTotalCents` on hyväksyttyjen laskentasääntöjen mukainen rivin summa sentteinä.
 
 `code` ei ensimmäisessä MVP:ssä viittaa:
@@ -209,6 +240,33 @@ Kenttien alustava merkitys:
 - kirjanpitotiliin
 
 Rivikoodi on vapaaehtoinen käyttäjän syöttämä tieto, kunnes sille päätetään erillinen omistava moduuli tai rekisteri.
+
+## Alennukset
+
+Laskutuksen pitää tukea:
+
+- prosenttialennusta, esimerkiksi 5 %
+- euromääräistä alennusta, esimerkiksi 100 €
+
+Alustava suositus on aloittaa rivikohtaisesta alennuksesta.
+
+Rivikohtainen alennus:
+
+- tekee alennuksen kohteen näkyväksi
+- mahdollistaa ALV:n laskemisen oikean rivin ja verokannan yhteydessä
+- säilyttää auditoinnin ja snapshotin ymmärrettävänä
+
+Ensimmäisen mallin pitää kuitenkin jättää tilaa myöhemmälle laskukohtaiselle alennukselle.
+
+Laskukohtaista alennusta ei mallinneta piilotettuna summan vähennyksenä. Se toteutetaan myöhemmin omana selkeästi nimettynä laskutason adjustment- tai discount-rakenteena, jotta sen ALV-vaikutus ja kohdistuminen voidaan laskea yksiselitteisesti.
+
+Alennuskoodia ei toteuteta tässä dokumentaatiomuutoksessa. Ennen toteutusta päätetään:
+
+- prosenttialennuksen tarkka esitystapa
+- euromääräisen alennuksen tallennus sentteinä
+- missä järjestyksessä alennus, ALV ja pyöristys lasketaan
+- sallitaanko alennuksen pienentää rivi nollaan
+- voiko alennus ylittää rivin arvon
 
 ## Laskennan Omistajuus
 
@@ -238,10 +296,19 @@ Rahasummat tallennetaan lähtökohtaisesti kokonaislukuna sentteinä nykyisen Ek
 
 JavaScriptin liukulukulaskentaa ei käytetä rahasummien auktoritatiiviseen laskentaan.
 
-Ennen laskentakoodia päätetään:
+Määrä sallii enintään kaksi desimaalia.
 
-- miten desimaalinen `quantity` esitetään domainissa ja tietokannassa
-- kuinka monta desimaalia määrä sallii
+Suositeltu tarkka domain- ja tallennusmalli on skaalattu kokonaisluku, esimerkiksi:
+
+```text
+1,00 -> 100 quantity hundredths
+1,25 -> 125 quantity hundredths
+```
+
+Tarkka kentän nimi päätetään koodivaiheessa. Auktoritatiivinen laskenta ei saa käyttää epätarkkaa liukulukua määrän ja rahan yhdistämiseen.
+
+Ennen laskentakoodia tarkennetaan:
+
 - miten `vatRate` esitetään tarkasti
 - missä järjestyksessä kertolasku, verolaskenta ja pyöristys tehdään
 
@@ -251,18 +318,27 @@ Jos tarkkaan laskentaan tarvitaan myöhemmin ulkoinen decimal-kirjasto, se arvio
 
 ALV-laskenta on liiketoimintakriittinen osa eikä sen sääntöjä saa arvata.
 
-Ennen domain-laskennan toteuttamista projektin omistajan kanssa päätetään:
+Hyväksytyt periaatteet:
 
-- mitkä ALV-kannat ensimmäinen MVP sallii
-- syöttääkö käyttäjä verottoman vai verollisen yksikköhinnan
-- näytetäänkö käyttöliittymässä molemmat hinnat
+- käyttäjän pitää voida valita kaikki yrityksen tarvitsemat ALV-kannat
+- ALV-kantoja ei kovakoodata arkkitehtuurissa pysyvästi yhdeksi arvoksi
+- ALV-kantoja pitää voida myöhemmin hallita laskutusasetuksista
+- ensimmäinen koodivaihe saa käyttää rajattua hyväksyttyä ALV-kantojen joukkoa, mutta tietomalli ja domain eivät saa estää muokattavaa joukkoa
+- syöttötapa on laskennassa yksiselitteisesti veroton tai verollinen
+- senttitason laskenta tehdään tarkasti
+- MVP:ssä ei tehdä erillistä laskun loppusumman pyöristysriviä tai käteismaksun pyöristyserää
+- maksujen lähtökohtana ovat pankkiyhteydet
+
+Ennen domain-laskennan toteuttamista tarkennetaan:
+
+- mitkä ALV-kannat kuuluvat ensimmäisen koodivaiheen valittavaan joukkoon
+- näytetäänkö käyttöliittymässä yhtä aikaa veroton ja verollinen hinta
 - lasketaanko ALV jokaiselle riville vai verokannoittain laskun yhteissummasta
 - missä vaiheessa pyöristys tehdään
 - mikä pyöristyssääntö on käytössä
 - miten mahdollinen pyöristysero käsitellään
 - sallitaanko negatiiviset laskurivit
 - sallitaanko nollahintaiset laskurivit
-- miten alennukset mallinnetaan, jos niitä tarvitaan
 
 Ensimmäistä laskutusdomainia ei toteuteta ennen näiden päätösten kirjaamista.
 
@@ -276,9 +352,21 @@ Mahdollinen pitkän aikavälin tilajoukko:
 - `paid`
 - `cancelled`
 
-Ensimmäinen koodivaihe tarvitsee vain `draft`-tilan, ellei erillisessä toteutustehtävässä päätetä muuta.
+Laskutuksen MVP tarvitsee vähintään:
 
-Ennen muiden tilojen toteutusta päätetään:
+- `draft`
+- `approved` tai myöhemmin nimettävä vastaava hyväksytty/lukittu tila
+
+Käyttäjä voi:
+
+- tallentaa laskun luonnoksena ja jatkaa myöhemmin
+- hyväksyä valmiin laskun heti syöttämisen jälkeen
+
+Hyväksyntä on backendin hallittu tilasiirtymä. Käyttöliittymän "hyväksy heti" -toiminto ei saa ohittaa validointia, laskentaa, numerointia, snapshotin muodostusta, käyttöoikeuksia tai auditointia.
+
+Hyväksyntä voi myöhemmin avata laskun toimitustavan valinnan. PDF-, sähköposti- ja verkkolaskutoimituksia ei toteuteta tässä vaiheessa.
+
+Ennen hyväksynnän toteutusta päätetään:
 
 - käytetäänkö erikseen tiloja `approved` ja `issued`
 - kuka saa tehdä tilasiirtymän
@@ -295,21 +383,81 @@ Tilasiirtymät toteutetaan domain-sääntöinä, ei vapaana status-merkkijonon m
 
 Tekninen `id` ja käyttäjälle näkyvä laskunumero ovat eri asioita.
 
-Laskuluonnos voi ensimmäisessä vaiheessa käyttää vain teknistä tunnistetta.
+Laskunumerointi on yrityskohtainen, asetuksista säädettävä liiketoimintakriittinen toiminto.
 
-Varsinainen laskunumero muodostetaan backendissä vasta myöhemmin päätettävässä hyväksymis- tai lukitusvaiheessa.
+Esimerkkimuoto voi olla:
 
-Ennen numeroinnin toteutusta päätetään:
+```text
+2026001
+```
+
+Yrityksen pitää voida määrittää:
+
+- numerointisarjan muoto tai periaate
+- seuraava käytettävä laskunumero
+- miten sarjaa jatketaan tai vaihdetaan tilikauden vaihtuessa
+
+Laskutusnäkymässä pitää olla mahdollisuus ehdotetun laskunumeron hallittuun muokkaamiseen.
+
+Numeroa ei hyväksytä suoraan luotettuna frontend-arvona. Backend:
+
+- tarkistaa yritysrajauksen
+- tarkistaa numeron muodon
+- tarkistaa uniikkiuden
+- noudattaa numerointisarjan sääntöjä
+- kirjaa hallitun muutoksen myöhemmin audit trailiin
+
+Laskunumeron muokkaus sallitaan ennen hyväksyntää tai hyväksymisen yhteydessä. Hyväksytyn laskun numeron muuttaminen vaatii myöhemmin erillisen korjaussäännön eikä kuulu tavalliseen muokkaukseen.
+
+Ennen numeroinnin kooditoteutusta tarkennetaan:
 
 - missä tilasiirtymässä numero annetaan
-- onko numerointi yrityskohtainen
-- mikä on ensimmäinen numero
-- käytetäänkö vuosittaista vai jatkuvaa numerosarjaa
 - saako numeroissa olla aukkoja
 - miten offline- ja cloud-käytön numerointi sovitetaan yhteen
 - miten epäonnistunut hyväksyminen vaikuttaa varattuun numeroon
 
 Frontend ei koskaan päätä lopullista laskunumeroa.
+
+## Tilikausi
+
+Tilikausi on yrityskohtainen ja manuaalisesti säädettävä laskutusasetus.
+
+Tilikausi ei aina ala tammikuussa.
+
+Yrityksen pitää voida määrittää ainakin:
+
+- tilikauden alkupäivä tai alkukuukausi
+- tilikauden loppu laskettavalla tai erikseen tallennettavalla tavalla
+- miten laskunumerosarja liittyy tilikauteen
+- jatkuuko nykyinen numerosarja vai vaihtuuko sarja tilikauden vaihtuessa
+
+Tilikauden ja numerointisarjan vaihtaminen tehdään hallitusti. Asetuksen muuttaminen ei saa muuttaa vanhojen laskujen numeroita, päiväyksiä tai snapshot-tietoja.
+
+Tilikauden tarkka tietomalli ja validointi suunnitellaan laskutusasetusten toteutusvaiheessa.
+
+## Asetukset-Kokonaisuus
+
+Nykyinen Oma yritys / Company Settings on asetusten ensimmäinen toteutettu osa.
+
+Laskutuksen kasvaessa käyttöliittymään tarvitaan laajempi Asetukset-kokonaisuus, joka voi sisältää:
+
+- Oma yritys
+- Laskutusasetukset
+- ALV-kannat
+- Maksuehdot
+- Numerointisarjat
+- Tilikausi
+- laskun toimitustavat myöhemmin
+
+Asetukset on käyttöliittymän kokoava näkymä, ei lupa sekoittaa moduulien omistajuutta.
+
+Omistajuus säilyy:
+
+- Company Settings omistaa oman yrityksen master-tiedot ja oletustuntihinnan
+- Invoicing omistaa ALV-kannat, maksuehdot, numerointisarjat, tilikauden ja muut laskutuksen liiketoiminta-asetukset
+- toimitusadapterit omistavat myöhemmin tekniset sähköposti-, PDF- tai verkkolaskuyhteydet sovittujen rajojen mukaisesti
+
+Koko Settings-moduulia tai asetustietokantaa ei suunnitella tässä vaiheessa.
 
 ## Snapshot-Periaate
 
@@ -328,6 +476,8 @@ Snapshot voi sisältää:
 - määrät ja yksiköt
 - yksikköhinnat
 - käytetyt tuntihinnat
+- hinnan syöttötavan
+- käytetyt alennukset
 - ALV-kannat ja ALV-summat
 - verottomat summat ja loppusumman
 
@@ -436,6 +586,7 @@ Painikkeet esitetään selkeinä komentoina tai tuttuina kuvakkeina tooltip-teks
 - asiakas
 - tilausnumero
 - aihe
+- hintojen syöttötapa
 - maksuehto
 - eräpäivä
 - saate tai lisätieto
@@ -452,6 +603,7 @@ Alustavat sarakkeet:
 - määrä
 - yksikkö
 - yksikköhinta
+- alennus
 - ALV
 - rivin summa
 
@@ -486,6 +638,9 @@ Tuleva toteutus tarvitsee vähintään:
 - määrä- ja hintarajaukset
 - rivisumman laskenta
 - ALV-laskenta
+- verottoman ja verollisen syöttötavan laskenta
+- kahden desimaalin määrät
+- prosentti- ja euromääräiset alennukset
 - laskun kokonaissummat
 - pyöristystapaukset
 - tilasiirtymät, kun ne toteutetaan
@@ -530,13 +685,13 @@ Testit eivät käytä oikeita asiakas- tai laskutietoja.
 
 ### Vaihe 1: Liiketoimintapäätökset
 
-Päätetään ja dokumentoidaan:
+Tarkennetaan ja dokumentoidaan:
 
-- ALV-kannat
-- veroton tai verollinen syöttötapa
-- määrä- ja hintatarkkuus
-- pyöristykset
-- maksuehto ja eräpäivän käyttäytyminen
+- ensimmäisen koodivaiheen ALV-kannat
+- hintojen syöttötavan laskentakaavat
+- ALV:n välivaiheiden pyöristykset
+- alennusten laskentajärjestys
+- eräpäivän automaattisen ehdotuksen käyttäytyminen
 - ensimmäisen luonnosvaiheen validointisäännöt
 
 ### Vaihe 2: Domain Ja Laskentasäännöt
@@ -561,12 +716,13 @@ Toteutetaan tiivis classic-laskunkirjausnäkymä `apps/web/src/features/invoicin
 
 UI käyttää vain API-clientiä backend-yhteyteen.
 
-### Vaihe 6: Hyväksyntä, Numerointi Ja Snapshotit
+### Vaihe 6: Hyväksyntä, Numerointi, Tilikausi Ja Snapshotit
 
 Tehdään vasta erikseen hyväksyttyjen sääntöjen jälkeen:
 
 - hyväksyntä tai laskun lukitus
 - lopullinen laskunumero
+- numerointisarjan ja tilikauden asetukset
 - snapshotit
 - hyväksymisen käyttöoikeudet
 - audit trail
@@ -600,20 +756,21 @@ Näitä varten tehdään myöhemmin omat rajatut päätökset ja toteutussuunnit
 
 Seuraavia asioita ei saa päätellä tästä dokumentista valmiiksi hyväksytyiksi:
 
-1. Mitkä ALV-kannat MVP tukee?
-2. Syötetäänkö yksikköhinnat verottomina vai verollisina?
-3. Miten määrä, ALV ja pyöristys esitetään tarkasti?
-4. Lasketaanko ALV riveittäin vai verokannan yhteissummasta?
-5. Mikä on uuden laskun oletusmaksuehto?
-6. Miten eräpäivä reagoi päiväyksen tai maksuehdon muutokseen?
-7. Sallitaanko negatiiviset tai nollahintaiset rivit?
-8. Mitkä kentät ovat luonnoksella pakollisia?
-9. Mitkä ovat ensimmäiset sallitut laskuyksiköt?
-10. Milloin laskunumero annetaan ja millainen numerosarja on?
-11. Ovatko `approved` ja `issued` eri tiloja?
-12. Kuka saa hyväksyä tai lukita laskun?
-13. Saako hyväksyttyä laskua muuttaa?
-14. Milloin lopullinen snapshot muodostetaan?
+1. Mitkä tarkat ALV-kannat kuuluvat ensimmäiseen koodivaiheeseen?
+2. Onko `priceInputMode` laskukohtainen vai voiko se vaihdella riveittäin?
+3. Lasketaanko ALV riveittäin vai verokannan yhteissummasta?
+4. Missä vaiheessa alennus, ALV ja välivaiheiden pyöristys tehdään?
+5. Miten eräpäivän automaattinen ehdotus reagoi käyttäjän käsin tekemiin muutoksiin?
+6. Sallitaanko negatiiviset tai nollahintaiset rivit?
+7. Mitkä kentät ovat luonnoksella pakollisia?
+8. Mitkä ovat ensimmäiset sallitut laskuyksiköt?
+9. Ovatko `approved` ja `issued` eri tiloja?
+10. Kuka saa hyväksyä tai lukita laskun?
+11. Saako hyväksyttyä laskua muuttaa ja millä korjausprosessilla?
+12. Milloin lopullinen snapshot muodostetaan?
+13. Saako laskunumeroissa olla aukkoja?
+14. Miten numerointi ratkaistaan offline- ja cloud-tilojen välillä?
+15. Mikä on tilikauden tarkka tietomalli?
 
 Jos toteutustehtävä osuu johonkin näistä eikä päätöstä ole dokumentoitu, työ pysäytetään kyseisen säännön osalta ja projektin omistajalta pyydetään päätös.
 
@@ -624,9 +781,14 @@ Ensimmäinen laskuluonnos-MVP voidaan hyväksyä, kun:
 - laskuluonnos voidaan luoda suoraan asiakkaalle
 - kohdetta tai työmääräystä ei vaadita
 - laskurivejä voidaan lisätä käsin
+- määrät tukevat kahta desimaalia
+- hintojen veroton/verollinen syöttötapa on laskennassa yksiselitteinen
+- rivikohtainen alennusmalli tukee suunnitelman mukaisesti prosentti- ja euromääräistä alennusta
 - backend validoi ja laskee summat
 - luonnos voidaan tallentaa ja avata uudelleen
 - luonnosta voidaan muokata
+- lasku voidaan hyväksyä hallitulla backendin tilasiirtymällä
+- oletusmaksuehto on 14 päivää netto ja käyttäjä voi muuttaa maksuehtoa sekä eräpäivää
 - yritysrajaus toimii
 - moduulirajat säilyvät
 - laskenta-, application-, repository-, HTTP- ja API-client-testit kattavat kriittisen polun

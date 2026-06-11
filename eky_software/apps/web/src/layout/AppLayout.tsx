@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 import { Sidebar } from './Sidebar.js';
 import { TopBar } from './TopBar.js';
 import type { AppView } from '../app/App.js';
@@ -15,9 +17,16 @@ export function AppLayout({
   onViewChange,
   title,
 }: AppLayoutProps): React.JSX.Element {
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
   return (
-    <div className="app-shell">
-      <Sidebar activeView={activeView} onViewChange={onViewChange} />
+    <div className={`app-shell${isSidebarCollapsed ? ' sidebar-is-collapsed' : ''}`}>
+      <Sidebar
+        activeView={activeView}
+        isCollapsed={isSidebarCollapsed}
+        onToggle={() => setIsSidebarCollapsed((isCollapsed) => !isCollapsed)}
+        onViewChange={onViewChange}
+      />
       <div className="app-workspace">
         <TopBar title={title} />
         <main className="main-area">{children}</main>

@@ -50,11 +50,13 @@ Laskunumerointi erotetaan teknisestä ID:stä.
 
 Laskun numero ei ole sama asia kuin tietokannan tekninen ID.
 
-Laskunumero generoidaan hallitusti backendissä.
+Laskunumero generoidaan tai vahvistetaan hallitusti backendissä yrityksen laskutusasetusten perusteella.
 
-Frontend ei saa päättää lopullista laskunumeroa.
+Käyttäjä voi syöttää tai muokata ehdotettua laskunumeroa laskutusnäkymässä vain hallitun prosessin kautta. Frontend ei saa yksin päättää lopullista laskunumeroa.
 
-Laskunumeroinnin tarkka malli päätetään laskutusmoduulin suunnittelussa.
+Backend tarkistaa laskunumeron muodon, yritysrajauksen, uniikkiuden ja numerointisarjan säännöt.
+
+Numerointisarjan seuraava numero ja tilikausi ovat yrityskohtaisia laskutusasetuksia.
 
 ## Rahasummat
 
