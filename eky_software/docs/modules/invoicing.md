@@ -148,15 +148,31 @@ Laskutuksen tärkeistä muutoksista kirjataan audit log.
 
 ## Rahasummat
 
-Rahasummat käsitellään sentteinä tai muulla erikseen hyväksytyllä tarkalla kokonaislukumallilla.
+Rahasummat käsitellään kokonaislukusentteinä.
 
-Floating point -epätarkkuuksia vältetään.
+Määrä käsitellään sadasosina skaalattuna kokonaislukuna. Esimerkiksi `1,25` tallennetaan arvona `125`.
 
-Määrä sallii kaksi desimaalia.
+ALV-kanta ja prosenttialennus käsitellään basis points -mallilla. Esimerkiksi `25,50 %` on `2550` ja `5,00 %` on `500`.
+
+Auktoritatiivinen laskenta ei käytä JavaScriptin liukulukulaskentaa.
 
 Yritysasiakkaan uuden laskun oletushinnat syötetään verottomina ja yksityisasiakkaan verollisina. Syöttötapa tallennetaan laskennalle yksiselitteisenä eikä backend luota pelkkään UI-oletukseen.
 
 Laskutuksen pitää myöhemmin tukea hallittavia ALV-kantoja sekä prosentti- ja euromääräisiä alennuksia. Ensimmäinen suositeltu alennusmalli on rivikohtainen alennus, mutta arkkitehtuuri jättää tilaa myöhemmälle laskukohtaiselle alennukselle.
+
+Rivikohtainen laskenta tehdään deterministisesti:
+
+1. määrä ja yksikköhinta muodostavat pyöristetyn lähtösumman
+2. rivikohtainen alennus lasketaan ja pyöristetään lähtösummasta
+3. net-tilassa ALV lasketaan alennetusta verottomasta summasta
+4. gross-tilassa veroton osuus erotetaan alennetusta verollisesta summasta
+5. kaikki rivin lopulliset summat tallennetaan kokonaislukusentteinä
+
+Kaikki jakolaskut käyttävät samaa domainin sisäistä pyöristystä: lähimpään senttiin ja täsmälleen puolikas ylöspäin.
+
+Laskun loppusummat ja ALV-erittely muodostetaan samoista valmiiksi pyöristetyistä riveistä. Summia ei lasketa laskutasolla uudelleen eri kaavalla.
+
+Tarkat kaavat ja laskentajärjestys on määritelty dokumentissa `docs/architecture/invoicing-mvp-implementation-plan.md`.
 
 ## Laskutusasetukset
 
@@ -177,7 +193,7 @@ Nykyinen Oma yritys on laajemman Asetukset-kokonaisuuden ensimmäinen osa. Käyt
 ## Avoimet kysymykset
 
 - mitkä ALV-kannat otetaan ensimmäiseen koodivaiheeseen?
-- miten ALV ja alennukset pyöristetään välivaiheissa?
+- sallitaanko alennuksen pienentää rivi nollaan tai ylittää rivin arvo?
 - miten numerointi sovitetaan offline- ja cloud-käyttöön?
 - tarvitaanko PDF ensimmäisessä versiossa?
 - tarvitaanko sähköpostilähetys?

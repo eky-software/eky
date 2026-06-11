@@ -6,7 +6,7 @@ Tavoitteena on toteuttaa manuaalinen laskuluonnos suoraan asiakkaalle ilman kohd
 
 Tämä dokumentti sisältää ensimmäiset hyväksytyt laskutuksen liiketoimintapäätökset.
 
-Kaikkia yksityiskohtia ei ole vielä lukittu. Erityisesti ALV-laskennan välivaiheiden pyöristys, hyväksymisen käyttöoikeudet, hyväksytyn laskun korjaaminen ja offline/cloud-numeroinnin yhteensovitus ratkaistaan ennen niitä koskevan tuotantokoodin kirjoittamista.
+Kaikkia yksityiskohtia ei ole vielä lukittu. Erityisesti ensimmäisen koodivaiheen ALV-kannat, hyväksymisen käyttöoikeudet, hyväksytyn laskun korjaaminen ja offline/cloud-numeroinnin yhteensovitus ratkaistaan ennen niitä koskevan tuotantokoodin kirjoittamista.
 
 ## Lähtökohta
 
@@ -210,10 +210,10 @@ Ensimmäisen laskurivin suunnittelutason kentät:
 - `position`
 - `code`
 - `description`
-- `quantity`
+- `quantityHundredths`
 - `unit`
 - `unitPriceCents`
-- `vatRate`
+- `vatRateBasisPoints`
 - `discountType`
 - `discountValue`
 - `lineTotalCents`
@@ -223,12 +223,12 @@ Kenttien alustava merkitys:
 - `position` määrittää rivin näkyvän järjestyksen.
 - `code` on valinnainen vapaa rivikoodi.
 - `description` on laskulla näkyvä nimike tai kuvaus.
-- `quantity` on laskutettava määrä ja sallii enintään kaksi desimaalia.
+- `quantityHundredths` on laskutettava määrä sadasosina ja sallii enintään kaksi desimaalia.
 - `unit` on esimerkiksi tunti, kappale tai muu myöhemmin hyväksytty yksikkö.
 - `unitPriceCents` on yksikköhinta sentteinä.
-- `vatRate` kuvaa rivin ALV-kannan myöhemmin päätettävällä tarkalla esitystavalla.
+- `vatRateBasisPoints` kuvaa rivin ALV-kannan basis points -mallilla.
 - `discountType` kertoo, onko alennus prosentti- vai euromääräinen.
-- `discountValue` sisältää alennuksen tarkasti määritellyssä muodossa.
+- `discountValue` sisältää euromääräisen alennuksen sentteinä tai prosenttialennuksen basis points -arvona.
 - `lineTotalCents` on hyväksyttyjen laskentasääntöjen mukainen rivin summa sentteinä.
 
 `code` ei ensimmäisessä MVP:ssä viittaa:
@@ -260,11 +260,18 @@ Ensimmäisen mallin pitää kuitenkin jättää tilaa myöhemmälle laskukohtais
 
 Laskukohtaista alennusta ei mallinneta piilotettuna summan vähennyksenä. Se toteutetaan myöhemmin omana selkeästi nimettynä laskutason adjustment- tai discount-rakenteena, jotta sen ALV-vaikutus ja kohdistuminen voidaan laskea yksiselitteisesti.
 
-Alennuskoodia ei toteuteta tässä dokumentaatiomuutoksessa. Ennen toteutusta päätetään:
+Alennuskoodia ei toteuteta tässä dokumentaatiomuutoksessa.
 
-- prosenttialennuksen tarkka esitystapa
-- euromääräisen alennuksen tallennus sentteinä
-- missä järjestyksessä alennus, ALV ja pyöristys lasketaan
+Prosenttialennus esitetään basis points -mallilla:
+
+```text
+5,00 % -> 500
+```
+
+Euromääräinen alennus esitetään kokonaislukusentteinä.
+
+Ennen toteutusta päätetään vielä:
+
 - sallitaanko alennuksen pienentää rivi nollaan
 - voiko alennus ylittää rivin arvon
 
@@ -288,7 +295,7 @@ SQLite-adapteri tallentaa valmiiksi lasketut ja validoidut arvot, mutta ei mää
 
 ## Raha, Määrät Ja Tarkkuus
 
-Rahasummat tallennetaan lähtökohtaisesti kokonaislukuna sentteinä nykyisen Eky-linjan mukaisesti:
+Rahasummat tallennetaan kokonaislukuna sentteinä nykyisen Eky-linjan mukaisesti:
 
 - `unitPriceCents`
 - `lineTotalCents`
@@ -296,21 +303,30 @@ Rahasummat tallennetaan lähtökohtaisesti kokonaislukuna sentteinä nykyisen Ek
 
 JavaScriptin liukulukulaskentaa ei käytetä rahasummien auktoritatiiviseen laskentaan.
 
-Määrä sallii enintään kaksi desimaalia.
+Määrä esitetään skaalattuna kokonaislukuna ja sallii enintään kaksi desimaalia.
 
-Suositeltu tarkka domain- ja tallennusmalli on skaalattu kokonaisluku, esimerkiksi:
+Domainin kenttä on `quantityHundredths`, esimerkiksi:
 
 ```text
-1,00 -> 100 quantity hundredths
-1,25 -> 125 quantity hundredths
+1,00 -> 100
+1,25 -> 125
 ```
 
-Tarkka kentän nimi päätetään koodivaiheessa. Auktoritatiivinen laskenta ei saa käyttää epätarkkaa liukulukua määrän ja rahan yhdistämiseen.
+ALV-kanta esitetään basis points -mallilla kentässä `vatRateBasisPoints`:
 
-Ennen laskentakoodia tarkennetaan:
+```text
+25,50 % -> 2550
+14,00 % -> 1400
+0,00 % -> 0
+```
 
-- miten `vatRate` esitetään tarkasti
-- missä järjestyksessä kertolasku, verolaskenta ja pyöristys tehdään
+Prosenttialennus esitetään samalla basis points -mallilla:
+
+```text
+5,00 % -> 500
+```
+
+Auktoritatiivinen laskenta ei saa käyttää epätarkkaa liukulukua määrän, prosenttien ja rahan yhdistämiseen.
 
 Jos tarkkaan laskentaan tarvitaan myöhemmin ulkoinen decimal-kirjasto, se arvioidaan erikseen `docs/architecture/dependency-policy.md`-dokumentin mukaisesti. Kirjastoa ei lisätä tässä suunnitteluvaiheessa.
 
@@ -329,18 +345,113 @@ Hyväksytyt periaatteet:
 - MVP:ssä ei tehdä erillistä laskun loppusumman pyöristysriviä tai käteismaksun pyöristyserää
 - maksujen lähtökohtana ovat pankkiyhteydet
 
-Ennen domain-laskennan toteuttamista tarkennetaan:
+Kaikki laskennan jakolaskut käyttävät yhtä Invoicing-domainin sisäistä pyöristysfunktiota.
+
+Pyöristyssääntö:
+
+- pyöristetään lähimpään kokonaislukusenttiin
+- täsmälleen puolikas sentti pyöristetään ylöspäin
+- pyöristysfunktio toimii kokonaislukujen osoittajalla ja nimittäjällä
+- auktoritatiivinen laskenta ei muuta arvoja JavaScriptin liukuluvuiksi
+
+Ei-negatiivisilla kokonaisluvuilla pyöristyksen periaate voidaan kuvata näin:
+
+```text
+roundHalfUp(numerator / denominator)
+  = floor((numerator + floor(denominator / 2)) / denominator)
+```
+
+Domain-toteutus nimeää tämän pyöristyksen selkeästi eikä hajauta omia pyöristyskaavoja eri laskentafunktioihin.
+
+### Rivin Lähtösumma
+
+Rivin lähtösumma lasketaan:
+
+```text
+roundHalfUp(unitPriceCents * quantityHundredths / 100)
+```
+
+Tulos on pyöristetty kokonaislukusenttimäärä.
+
+### Rivikohtainen Alennus
+
+Prosenttialennus lasketaan pyöristetystä rivin lähtösummasta:
+
+```text
+roundHalfUp(lineBaseCents * discountBasisPoints / 10000)
+```
+
+Euromääräinen alennus annetaan suoraan kokonaislukusentteinä.
+
+Alennus pyöristetään tai vahvistetaan sentteihin ennen sen vähentämistä rivin lähtösummasta.
+
+### Net-Laskenta
+
+Kun `priceInputMode` on `net`:
+
+1. `unitPriceCents` tarkoittaa verotonta yksikköhintaa.
+2. Rivin lähtösumma lasketaan ja pyöristetään verottomana summana.
+3. Rivikohtainen alennus lasketaan lähtösummasta ja käsitellään verottomana alennuksena.
+4. Alennus vähennetään verottomasta lähtösummasta.
+5. ALV lasketaan alennetusta verottomasta summasta:
+
+```text
+vatCents
+  = roundHalfUp(netCents * vatRateBasisPoints / 10000)
+```
+
+6. Rivin verollinen loppusumma muodostetaan:
+
+```text
+grossCents = netCents + vatCents
+```
+
+### Gross-Laskenta
+
+Kun `priceInputMode` on `gross`:
+
+1. `unitPriceCents` tarkoittaa verollista yksikköhintaa.
+2. Rivin lähtösumma lasketaan ja pyöristetään verollisena summana.
+3. Rivikohtainen alennus lasketaan lähtösummasta ja käsitellään verollisena alennuksena.
+4. Alennus vähennetään verollisesta lähtösummasta.
+5. Alennetusta verollisesta summasta erotetaan veroton osuus:
+
+```text
+netCents
+  = roundHalfUp(
+      grossCents * 10000
+      / (10000 + vatRateBasisPoints)
+    )
+```
+
+6. ALV-osuus muodostetaan samasta pyöristetystä rivistä:
+
+```text
+vatCents = grossCents - netCents
+```
+
+Gross-laskennassa ALV-osuutta ei lasketa uudelleen erillisellä kaavalla, koska `grossCents` on käyttäjän syöttämään verolliseen hintaan perustuva auktoritatiivinen rivisumma.
+
+### Laskun Summat
+
+Laskun summat muodostetaan laskemalla valmiiksi pyöristettyjen laskurivien arvot yhteen:
+
+- veroton yhteensä = rivien `netCents`-arvojen summa
+- ALV yhteensä = rivien `vatCents`-arvojen summa
+- verollinen yhteensä = rivien `grossCents`-arvojen summa
+
+ALV-erittely muodostetaan samoista riveistä ryhmittelemällä niiden pyöristetyt verottomat summat ja ALV-summat `vatRateBasisPoints`-arvon mukaan.
+
+Laskutasolla ei lasketa samoja summia uudelleen eri kaavalla. Näin rivien, ALV-erittelyn ja laskun loppusummien pitää aina täsmätä.
+
+Ennen domain-laskennan toteuttamista tarkennetaan vielä:
 
 - mitkä ALV-kannat kuuluvat ensimmäisen koodivaiheen valittavaan joukkoon
 - näytetäänkö käyttöliittymässä yhtä aikaa veroton ja verollinen hinta
-- lasketaanko ALV jokaiselle riville vai verokannoittain laskun yhteissummasta
-- missä vaiheessa pyöristys tehdään
-- mikä pyöristyssääntö on käytössä
-- miten mahdollinen pyöristysero käsitellään
 - sallitaanko negatiiviset laskurivit
 - sallitaanko nollahintaiset laskurivit
 
-Ensimmäistä laskutusdomainia ei toteuteta ennen näiden päätösten kirjaamista.
+Laskentadomain voidaan toteuttaa näiden determinististen laskenta- ja pyöristyssääntöjen perusteella. Toteutuksen rajaus ei saa vaatia vielä avoimiksi jätettyjen laskun tilojen, numeroinnin tai toimituksen sääntöjä.
 
 ## Tilat
 
@@ -688,9 +799,6 @@ Testit eivät käytä oikeita asiakas- tai laskutietoja.
 Tarkennetaan ja dokumentoidaan:
 
 - ensimmäisen koodivaiheen ALV-kannat
-- hintojen syöttötavan laskentakaavat
-- ALV:n välivaiheiden pyöristykset
-- alennusten laskentajärjestys
 - eräpäivän automaattisen ehdotuksen käyttäytyminen
 - ensimmäisen luonnosvaiheen validointisäännöt
 
@@ -758,19 +866,18 @@ Seuraavia asioita ei saa päätellä tästä dokumentista valmiiksi hyväksytyik
 
 1. Mitkä tarkat ALV-kannat kuuluvat ensimmäiseen koodivaiheeseen?
 2. Onko `priceInputMode` laskukohtainen vai voiko se vaihdella riveittäin?
-3. Lasketaanko ALV riveittäin vai verokannan yhteissummasta?
-4. Missä vaiheessa alennus, ALV ja välivaiheiden pyöristys tehdään?
-5. Miten eräpäivän automaattinen ehdotus reagoi käyttäjän käsin tekemiin muutoksiin?
-6. Sallitaanko negatiiviset tai nollahintaiset rivit?
-7. Mitkä kentät ovat luonnoksella pakollisia?
-8. Mitkä ovat ensimmäiset sallitut laskuyksiköt?
-9. Ovatko `approved` ja `issued` eri tiloja?
-10. Kuka saa hyväksyä tai lukita laskun?
-11. Saako hyväksyttyä laskua muuttaa ja millä korjausprosessilla?
-12. Milloin lopullinen snapshot muodostetaan?
-13. Saako laskunumeroissa olla aukkoja?
-14. Miten numerointi ratkaistaan offline- ja cloud-tilojen välillä?
-15. Mikä on tilikauden tarkka tietomalli?
+3. Miten eräpäivän automaattinen ehdotus reagoi käyttäjän käsin tekemiin muutoksiin?
+4. Sallitaanko negatiiviset tai nollahintaiset rivit?
+5. Saako alennus pienentää rivin nollaan tai ylittää rivin arvon?
+6. Mitkä kentät ovat luonnoksella pakollisia?
+7. Mitkä ovat ensimmäiset sallitut laskuyksiköt?
+8. Ovatko `approved` ja `issued` eri tiloja?
+9. Kuka saa hyväksyä tai lukita laskun?
+10. Saako hyväksyttyä laskua muuttaa ja millä korjausprosessilla?
+11. Milloin lopullinen snapshot muodostetaan?
+12. Saako laskunumeroissa olla aukkoja?
+13. Miten numerointi ratkaistaan offline- ja cloud-tilojen välillä?
+14. Mikä on tilikauden tarkka tietomalli?
 
 Jos toteutustehtävä osuu johonkin näistä eikä päätöstä ole dokumentoitu, työ pysäytetään kyseisen säännön osalta ja projektin omistajalta pyydetään päätös.
 
