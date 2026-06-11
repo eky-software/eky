@@ -134,6 +134,8 @@ Layout-ajatus:
 - `TopBar` näyttää sovelluksen nimen, tilan ja myöhemmin local/cloud-statuksen
 - `Sidebar` sisältää moduulinavigaation
 - `Sidebar` voidaan jakaa selkeisiin osioihin, kuten Päätoiminnot ja Yritys
+- `Sidebar` voidaan supistaa kapeaksi reunapalkiksi, jotta tietotiheille työpinnoille jää enemmän vaakasuuntaista tilaa
+- sivupalkin avaamiseen ja sulkemiseen käytetään selkeää, saavutettavaa ohjainta; navigaation sisältö ja moduulirajat eivät muutu sivupalkin tilan mukana
 - `Main area` sisältää aktiivisen työalueen
 - Asiakkaat on ensimmäinen aktiivinen moduuli
 - Oma yritys kuuluu sivupalkin Yritys-osioon

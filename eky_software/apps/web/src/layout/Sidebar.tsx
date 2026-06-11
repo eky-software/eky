@@ -42,21 +42,46 @@ const navSections: SidebarNavSection[] = [
 
 interface SidebarProps {
   activeView: AppView;
+  isCollapsed: boolean;
+  onToggle(): void;
   onViewChange(view: AppView): void;
 }
 
-export function Sidebar({ activeView, onViewChange }: SidebarProps): React.JSX.Element {
+export function Sidebar({
+  activeView,
+  isCollapsed,
+  onToggle,
+  onViewChange,
+}: SidebarProps): React.JSX.Element {
+  const toggleLabel = isCollapsed
+    ? uiText.layout.expandSidebar
+    : uiText.layout.collapseSidebar;
+
   return (
-    <aside className="sidebar" aria-label={uiText.layout.modules}>
+    <aside
+      className={`sidebar${isCollapsed ? ' sidebar-collapsed' : ''}`}
+      aria-label={uiText.layout.modules}
+    >
       <div className="brand">
         <span className="brand-mark">E</span>
-        <div>
+        <div className="brand-copy">
           <strong>Eky</strong>
           <span>Paikallinen</span>
         </div>
       </div>
 
-      <nav className="module-nav">
+      <button
+        aria-expanded={!isCollapsed}
+        aria-label={toggleLabel}
+        className="sidebar-toggle"
+        onClick={onToggle}
+        title={toggleLabel}
+        type="button"
+      >
+        <span aria-hidden="true">{isCollapsed ? '›' : '‹'}</span>
+      </button>
+
+      <nav className="module-nav" aria-hidden={isCollapsed}>
         {navSections.map((section) => (
           <div className="nav-section" key={section.label}>
             <p className="nav-section-label">{section.label}</p>
@@ -66,6 +91,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps): React.JSX.E
                 className="nav-item"
                 disabled={module.status !== 'available'}
                 key={module.label}
+                tabIndex={isCollapsed ? -1 : undefined}
                 onClick={() => {
                   if (module.status === 'available') {
                     onViewChange(module.id);

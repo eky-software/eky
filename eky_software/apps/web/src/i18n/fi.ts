@@ -4,8 +4,10 @@ export const uiText = {
   },
   layout: {
     appMode: 'Paikallinen käyttöliittymä',
+    collapseSidebar: 'Sulje päävalikko',
     companyNavigation: 'Yritys',
     currentRuntimeMode: 'Nykyinen ajotila',
+    expandSidebar: 'Avaa päävalikko',
     localBackend: 'Paikallinen backend',
     modules: 'Moduulit',
     primaryNavigation: 'Päätoiminnot',
