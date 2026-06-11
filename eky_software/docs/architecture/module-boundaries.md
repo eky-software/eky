@@ -53,7 +53,7 @@ Vastuut:
 - oman yrityksen osoite
 - oman yrityksen Y-tunnus
 - oletustuntihinta
-- myöhemmin rajatut laskutusasetukset
+- oman yrityksen yleiset oletukset
 
 Company Settings ei omista:
 
@@ -70,6 +70,8 @@ Company Settings ei omista:
 Invoicing voi myöhemmin lukea oman yrityksen tietoja laskun muodostuksessa, mutta laskulla käytetyt tiedot tallennetaan laskutuksen snapshotiksi.
 
 Customers voi lukea oletustuntihinnan käyttöliittymän ohjetekstiä tai hinnoittelun esikatselua varten, mutta customers-moduuli ei omista oletustuntihintaa.
+
+Käyttäjälle näkyvä Asetukset-osio voi koota usean moduulin asetuksia samaan navigaatioon. Tämä ei muuta datan omistajuutta: Invoicing omistaa ALV-kannat, maksuehdot, numerointisarjat ja tilikauden.
 
 ## Sites
 
@@ -188,6 +190,10 @@ Vastuut:
 - laskun tilat
 - hyvityslaskut myöhemmin
 - laskunumerointi
+- numerointisarjat
+- tilikauden laskutuskäyttö
+- ALV-kannat ja maksuehdot
+- alennussäännöt
 - laskutuksen audit trail
 
 Invoicing voi lukea asiakas-, kohde-, työ- ja materiaalidataa rajapintojen kautta, mutta ei saa muuttaa toisen moduulin omistamaa dataa suoraan.

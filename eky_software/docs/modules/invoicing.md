@@ -23,6 +23,10 @@ Ensimmäisen manuaalisen laskuluonnos-MVP:n rajaus, classic-käyttöliittymä ja
 - laskunumeroinnin
 - ALV-käsittelyn
 - maksuehdot
+- laskutuksen hintojen veroton/verollinen syöttötavan
+- laskutuksen alennussäännöt
+- laskutuksen numerointisarjat
+- yrityskohtaisen tilikauden laskutuskäyttöön
 - laskulla käytetyt hinta- ja osapuolitietojen snapshotit
 - laskutuksen audit-tapahtumat
 - hyvityslaskut myöhemmin
@@ -49,15 +53,20 @@ Ensimmäisen manuaalisen laskuluonnos-MVP:n rajaus, classic-käyttöliittymä ja
 
 ## Laskun tilat
 
-Alustavat tilat:
+MVP:n vähimmäistilat:
 
 - draft
 - approved
+
+Myöhemmät tilat:
+
 - sent
 - paid
 - cancelled
 
 Tilasiirtymät määritellään domain-säännöillä.
+
+Käyttäjä voi tallentaa laskun luonnoksena ja jatkaa myöhemmin tai hyväksyä valmiin laskun heti. Hyväksyntä ei saa ohittaa backend-validointia, numerointia, snapshotin muodostusta, käyttöoikeuksia tai auditointia.
 
 ## Perinteinen laskutus
 
@@ -67,8 +76,8 @@ Ensimmäinen MVP voi sisältää perinteisen laskunkirjoituksen:
 2. valitaan kohde tarvittaessa
 3. lisätään laskurivit
 4. lasketaan summat ja ALV
-5. tallennetaan laskuluonnos
-6. hyväksytään lasku
+5. tallennetaan laskuluonnos tai hyväksytään lasku heti
+6. luonnos voidaan avata, muokata ja hyväksyä myöhemmin
 
 Kohde on valinnainen. Work Orders -moduulia ei tarvita tämän polun käyttämiseen.
 
@@ -139,13 +148,37 @@ Laskutuksen tärkeistä muutoksista kirjataan audit log.
 
 ## Rahasummat
 
-Rahasummien käsittely päätetään ennen toteutusta.
+Rahasummat käsitellään sentteinä tai muulla erikseen hyväksytyllä tarkalla kokonaislukumallilla.
 
 Floating point -epätarkkuuksia vältetään.
 
+Määrä sallii kaksi desimaalia.
+
+Yritysasiakkaan uuden laskun oletushinnat syötetään verottomina ja yksityisasiakkaan verollisina. Syöttötapa tallennetaan laskennalle yksiselitteisenä eikä backend luota pelkkään UI-oletukseen.
+
+Laskutuksen pitää myöhemmin tukea hallittavia ALV-kantoja sekä prosentti- ja euromääräisiä alennuksia. Ensimmäinen suositeltu alennusmalli on rivikohtainen alennus, mutta arkkitehtuuri jättää tilaa myöhemmälle laskukohtaiselle alennukselle.
+
+## Laskutusasetukset
+
+Invoicing omistaa laskutuksen liiketoiminta-asetukset:
+
+- ALV-kannat
+- maksuehdot
+- laskunumerosarjat
+- seuraavan laskunumeron
+- tilikauden
+
+Uuden laskun oletusmaksuehto on 14 päivää netto. Maksuehtoa ja eräpäivää voi muuttaa laskulla.
+
+Laskunumerointi ja tilikausi ovat yrityskohtaisia ja asetuksista hallittavia. Tilikausi ei aina ala tammikuussa. Laskutusnäkymässä ehdotettua laskunumeroa voidaan muokata hallitusti ennen hyväksyntää tai hyväksymisen yhteydessä, mutta backend vahvistaa lopullisen numeron.
+
+Nykyinen Oma yritys on laajemman Asetukset-kokonaisuuden ensimmäinen osa. Käyttöliittymä voi myöhemmin koota samaan Asetukset-osioon Oma yritys-, laskutus-, ALV-, maksuehto-, numerointi- ja tilikausinäkymät, vaikka niiden data säilyy omistavissa moduuleissa.
+
 ## Avoimet kysymykset
 
-- miten laskunumerointi tehdään?
+- mitkä ALV-kannat otetaan ensimmäiseen koodivaiheeseen?
+- miten ALV ja alennukset pyöristetään välivaiheissa?
+- miten numerointi sovitetaan offline- ja cloud-käyttöön?
 - tarvitaanko PDF ensimmäisessä versiossa?
 - tarvitaanko sähköpostilähetys?
 - tarvitaanko verkkolasku myöhemmin?

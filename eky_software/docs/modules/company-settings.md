@@ -27,7 +27,11 @@ Company Settings omistaa:
 - oman yrityksen yhteystiedot
 - oman yrityksen pääosoitteen
 - oletustuntihinnan
-- myöhemmin rajatut laskutusasetukset, jos ne päätetään kuuluvan tähän moduuliin
+- oman yrityksen yleiset oletukset, jotka eivät kuulu toisen moduulin liiketoimintasäännöiksi
+
+Laajempi käyttäjälle näkyvä Asetukset-osio voi sisältää usean moduulin näkymiä.
+
+Invoicing omistaa omat liiketoimintakriittiset asetuksensa, kuten ALV-kannat, maksuehdot, numerointisarjat ja tilikauden. Niitä ei siirretä Company Settingsin omistukseen vain siksi, että käyttöliittymä näyttää asetukset samassa kokonaisuudessa.
 
 ## Moduuli Ei Omista
 
@@ -145,7 +149,7 @@ Company Settings omistaa:
 
 - oman yrityksen tiedot
 - oletustuntihinnan
-- myöhemmin rajatut laskutusasetukset
+- oman yrityksen yleiset oletukset
 
 Customers omistaa:
 
@@ -156,6 +160,10 @@ Invoicing omistaa:
 
 - laskut
 - laskurivit
+- ALV-kannat
+- maksuehdot
+- numerointisarjat
+- tilikauden
 - laskulla käytetyn tuntihinnan snapshotin
 - laskulla käytetyt lähettäjä- ja asiakastiedot snapshotteina, jos ne päätetään tallentaa laskulle
 
@@ -182,6 +190,8 @@ Ensimmäinen näkymä voi sisältää:
 - oman yrityksen yhteystiedot
 - oman yrityksen osoitteen
 - oletustuntihinnan
+
+Myöhemmin sivupalkissa tai erillisessä Asetukset-kokonaisuudessa voidaan näyttää myös laskutusasetukset. Tällöin Oma yritys ja Laskutusasetukset ovat erilliset näkymät ja säilyttävät omat moduulirajansa.
 
 Asiakaskortissa on Hinnoittelu-osio asiakaskohtaista tuntihintaa varten.
 
@@ -211,14 +221,14 @@ Ei lisätä ensimmäiseen Company Settings MVP:hen ilman erillistä päätöstä
 - verkkolaskuasetuksia
 - OVT-tunnusta
 - verkkolaskuoperaattoria
-- ALV-sääntöjä
 - useita hinnastoja
 - tuoterekisteriä
 - työroolikohtaisia hintoja
 - työntekijäkohtaisia hintoja
 - laskutusta
-- maksuehtoja
 - dokumenttipohjia
+
+ALV-kannat, maksuehdot, numerointisarjat ja tilikausi suunnitellaan myöhemmin Invoicing-moduulin asetuksina, eivät Company Settings MVP:n kenttinä.
 
 Nämä ovat todennäköisiä tulevia tarpeita, mutta ne eivät kuulu ensimmäiseen suunnitteluvaiheeseen.
 

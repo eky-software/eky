@@ -110,10 +110,22 @@ Avoimet kysymykset:
 
 ## Laskutus
 
-Avoimet kysymykset:
+Päätetyt ensimmäiset periaatteet:
 
-- miten laskunumerointi toimii?
-- mitä maksuehtoja käytetään?
+- yritysasiakkaan oletushinta syötetään verottomana
+- yksityisasiakkaan oletushinta syötetään verollisena
+- uusi lasku käyttää oletuksena maksuehtoa 14 päivää netto
+- maksuehtoa ja eräpäivää voidaan muuttaa käsin
+- lasku voidaan tallentaa luonnoksena tai hyväksyä heti
+- laskunumerointi ja tilikausi ovat yrityskohtaisia laskutusasetuksia
+- tilikausi voidaan määrittää muuksi kuin kalenterivuodeksi
+- alennuksia tarvitaan prosentti- ja euromääräisinä
+
+Jäljellä olevat avoimet kysymykset:
+
+- mitkä ALV-kannat otetaan ensimmäiseen koodivaiheeseen?
+- miten ALV, alennukset ja välivaiheiden pyöristys lasketaan?
+- miten laskunumerointi sovitetaan offline- ja cloud-käyttöön?
 - tarvitaanko PDF heti?
 - lähetetäänkö laskut sähköpostilla?
 - tarvitaanko verkkolasku myöhemmin?
