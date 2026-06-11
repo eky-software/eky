@@ -111,6 +111,39 @@ Jos työ koskee käyttäjälle näkyviä UI-tekstejä, kielivalintaa, i18n-raken
 
 Jos kohdekansiossa on oma `AGENTS.md`, se on luettava ennen muutosten tekemistä.
 
+## Pakollinen turvallisuusportti
+
+Turvallisuusarvio tehdään aina, kun työ koskee:
+
+- tuotantokoodia
+- HTTP- tai API-reittejä
+- käyttäjän tai ulkoisen järjestelmän syötettä
+- tietokantaa, tiedostoja tai henkilötietoja
+- autentikointia, käyttöoikeuksia tai yritysrajausta
+- ympäristömuuttujia, salaisuuksia tai lokitusta
+- riippuvuuksia tai lockfilea
+- synkronointia, integraatioita, tiedostotuontia tai AI-agentteja
+
+Näissä tehtävissä lue aina myös:
+
+- `docs/architecture/security-principles.md`
+- `docs/ai/review-checklist.md`
+- `docs/ai/testing-rules.md`
+
+Ennen muutoksen hyväksymistä tarkista vähintään:
+
+1. Mitkä arvot ja pyynnöt tulevat luottamusrajan ulkopuolelta?
+2. Validoiko backend tyypin, muodon, pituuden, rajat ja liiketoimintasäännöt?
+3. Tulevatko käyttäjän identiteetti ja `companyId` luotetusta backendin vahvistamasta kontekstista?
+4. Onko käyttöoikeus deny by default ja tarkistetaanko se backendissä?
+5. Voiko syöte vaikuttaa SQL:ään, HTTP-otsakkeisiin, tiedostopolkuihin, lokiin tai renderöityyn sisältöön?
+6. Vuotaako vastauksissa, virheissä tai lokeissa salaisuuksia tai tarpeetonta henkilötietoa?
+7. Tarvitaanko audit-tapahtuma tai turvallisuustesti?
+8. Muuttuuko palvelun verkkonäkyvyys, CORS-, cookie-, token- tai deployment-malli?
+9. Onko muuttuneiden riippuvuuksien tietoturvatila tarkistettu?
+
+Jos jokin kohta jää epäselväksi, kyseistä vaikutusaluetta ei toteuteta ennen projektin omistajan päätöstä.
+
 ## Dokumentaation roolit
 
 `docs/product/` kertoo mitä yritys tekee ja miksi ohjelmisto rakennetaan.
@@ -139,6 +172,7 @@ Jos kohdekansiossa on oma `AGENTS.md`, se on luettava ennen muutosten tekemistä
 10. Käyttöliittymä ei saa kutsua suoraan tietokantaa tai Firebase-palveluita.
 11. Backend tarkistaa aina käyttöoikeudet.
 12. AI-agentit eivät saa tulevaisuudessakaan ohittaa samoja sääntöjä, joita käyttöliittymä noudattaa.
+13. Nykyistä autentikoimatonta local-MVP:tä ei avata verkkoon eikä käytetä oikealla asiakas- tai laskutusdatalla.
 
 ## Arkkitehtuurin päälinja
 

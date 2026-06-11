@@ -179,6 +179,15 @@ Vältä pieniä turhia kirjastoja yksinkertaisiin tehtäviin.
 
 Tarkista audit-raportit säännöllisesti.
 
+Kun `package.json`- tai `pnpm-lock.yaml`-tiedosto muuttuu:
+
+- aja tuotantoriippuvuuksien tietoturva-audit
+- tarkista suorat ja transitiiviset haavoittuvuudet
+- päivitä korjattuun patch- tai minor-versioon, jos muutos on yhteensopiva ja rajattu
+- dokumentoi perustelu, jos tunnettua haavoittuvuutta ei voida korjata heti
+
+Tunnettua korjattavissa olevaa haavoittuvuutta ei jätetä projektiin vain siksi, ettei nykyinen koodi tiettävästi käytä haavoittuvaa ominaisuutta.
+
 ## Sisäiset paketit
 
 Ekyssä voidaan luoda sisäisiä paketteja, kuten:

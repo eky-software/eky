@@ -165,6 +165,77 @@ Local development voi käyttää paikallista tietokantaa ja kehitysautentikointi
 
 Tuotantokäytössä oikea autentikointi, käyttöoikeudet ja salattu liikenne ovat pakollisia.
 
+### Nykyisen Local-MVP:n Turvallisuusraja
+
+Nykyiset customer- ja company-settings-reitit eivät vielä käytä oikeaa autentikointia, permission-tarkistuksia tai audit logia.
+
+Siksi nykyinen toteutus on kehitys-MVP:
+
+- backend ja web-palvelin sidotaan vain loopback-osoitteeseen, oletuksena `127.0.0.1`
+- käytetään vain synteettistä testi- ja kehitysdataa
+- `dev-company` ei ole autentikointi, tenant-eristys tai permission-malli
+- SQLite-tiedosto pidetään backendin ei-julkisessa, Gitin ulkopuolisessa datahakemistossa
+- käyttö perustuu toistaiseksi luotettuun paikalliseen kehityskoneeseen ja sen käyttöjärjestelmätason käyttäjä- sekä tiedosto-oikeuksiin
+
+Nykyistä autentikoimatonta backendia ei saa:
+
+- sitoa `0.0.0.0`-, `::`- tai muuhun verkosta saavutettavaan osoitteeseen
+- julkaista internetiin, lähiverkkoon tai julkiselle palvelimelle
+- käyttää oikealla asiakas-, lasku-, henkilö- tai tuotantodatalla
+- käsitellä tuotantovalmiina vain siksi, että se toimii paikallisesti
+
+Ei-loopback-verkkosidonta vaatii erikseen hyväksytyn deployment- ja turvallisuusmallin. Ennen sitä tarvitaan vähintään:
+
+- backendin vahvistama autentikointi
+- backendin permission- ja yritysrajaustarkistukset
+- luotettu käyttäjä- ja `companyId`-konteksti
+- HTTPS tai hallittu salattu reverse proxy
+- tarkoituksellinen origin-, CORS-, cookie-, token- ja CSRF-malli
+- turvallinen virheenkäsittely ja lokitus
+- abuse-, request size- ja tarvittaessa rate limit -rajat
+- audit trail kriittisille toiminnoille
+- turvallisuustestit
+
+Oikean paikallisen asiakasdatan käyttöönotto vaatii erillisen release security review -tarkistuksen, vaikka sovellus pysyisi offline-tilassa.
+
+## Pakollinen Turvallisuusarvio Muutoksille
+
+Jokaisessa koodi-, API-, data-, integraatio- tai riippuvuusmuutoksessa tarkistetaan:
+
+- muuttuuko luottamusraja tai palvelun verkkonäkyvyys
+- mitkä syötteet tulevat frontendistä, mobiilista, tiedostosta, integraatiosta, webhookista tai AI-agentilta
+- validoidaanko syötteen tyyppi, muoto, pituus, lukurajat ja sallittu arvojoukko backendissä
+- tulevatko käyttäjän identiteetti, yritysjäsenyys ja `companyId` luotetusta backend-kontekstista
+- estetäänkö toisen yrityksen dataan pääsy sekä luku- että kirjoituspoluissa
+- onko käyttöoikeus deny by default
+- voiko syöte aiheuttaa SQL-, komento-, polku-, otsake-, loki- tai sisältöinjektion
+- palauttaako API vain käyttötapauksen tarvitsemat kentät
+- ovatko virheilmoitukset käyttäjälle turvallisia ja tekniset tiedot rajattu lokeihin
+- sisältävätkö lokit, testidata tai repository salaisuuksia tai oikeaa henkilötietoa
+- tarvitaanko audit-tapahtuma
+- tarvitaanko negatiivinen turvallisuustesti
+- onko dependency- ja lockfile-muutokselle ajettu tietoturvatarkistus
+
+Turvallisuutta ei kuitata yleisellä toteamuksella. Tarkistus suhteutetaan muutoksen todelliseen vaikutusalueeseen.
+
+## Release Security Gate
+
+Ennen oikean asiakas- tai laskutusdatan käyttöä ja ennen verkkoon tai pilveen julkaisemista pitää olla dokumentoidusti kunnossa:
+
+- autentikointi
+- käyttöoikeudet
+- tenant- ja yrityseristys
+- backend-validointi
+- turvallinen salaisuuksien hallinta
+- salattu liikenne
+- audit trail kriittisille muutoksille
+- varmuuskopioiden ja paikallisen tietokannan suojaus
+- turvallinen virheenkäsittely ja lokitus
+- dependency audit ja tunnettuja haavoittuvuuksia koskeva käsittely
+- palautus-, päivitys- ja tietoturvapoikkeaman toimintamalli
+
+Tämän portin puuttuvia kohtia ei saa korvata sillä oletuksella, että hyökkääjä ei tunne arkkitehtuuria tai lähdekoodia.
+
 ## Kiellettyjä ratkaisuja
 
 Älä tee:
