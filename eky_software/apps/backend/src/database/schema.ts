@@ -33,6 +33,44 @@ export interface CompanySettingsTable {
   updated_at: string;
 }
 
+export interface InvoiceDraftTable {
+  id: string;
+  company_id: string;
+  customer_id: string;
+  status: string;
+  invoice_date: string;
+  due_date: string;
+  payment_term_days: number;
+  price_input_mode: string;
+  subject: string;
+  order_number: string;
+  note: string;
+  net_total_cents: number;
+  vat_total_cents: number;
+  gross_total_cents: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InvoiceDraftLineTable {
+  id: string;
+  invoice_draft_id: string;
+  position: number;
+  code: string;
+  description: string;
+  quantity_hundredths: number;
+  unit: string;
+  unit_price_cents: number;
+  vat_rate_basis_points: number;
+  discount_type: string;
+  discount_value: number;
+  base_cents: number;
+  discount_cents: number;
+  net_cents: number;
+  vat_cents: number;
+  gross_cents: number;
+}
+
 export interface SchemaMigrationTable {
   name: string;
   run_at: string;
@@ -42,3 +80,5 @@ export type CustomerRow = CustomerTable;
 export type NewCustomerRow = CustomerTable;
 export type CompanySettingsRow = CompanySettingsTable;
 export type NewCompanySettingsRow = CompanySettingsTable;
+export type NewInvoiceDraftRow = InvoiceDraftTable;
+export type NewInvoiceDraftLineRow = InvoiceDraftLineTable;
