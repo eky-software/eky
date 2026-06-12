@@ -16,6 +16,7 @@ import type {
   InvoiceLineDiscount,
   PriceInputMode,
 } from '../domain/invoiceCalculation.js';
+import type { CustomerAccessReader } from '../ports/customerAccessReader.js';
 import type { InvoiceDraftRepository } from '../ports/invoiceDraftRepository.js';
 
 export interface SaveInvoiceDraftLineInput {
@@ -41,10 +42,29 @@ export interface SaveInvoiceDraftInput {
   lines: readonly SaveInvoiceDraftLineInput[];
 }
 
+export interface SaveInvoiceDraftDependencies {
+  customerAccessReader: CustomerAccessReader;
+  invoiceDraftRepository: InvoiceDraftRepository;
+}
+
 export async function saveInvoiceDraft(
   input: SaveInvoiceDraftInput,
-  invoiceDraftRepository: InvoiceDraftRepository,
+  dependencies: SaveInvoiceDraftDependencies,
 ): Promise<InvoiceDraft> {
+  const companyId = requireIdentifier(input.companyId, 'Company id');
+  const customerId = requireIdentifier(input.customerId, 'Customer id');
+  const customerBelongsToCompany =
+    await dependencies.customerAccessReader.belongsToCompany(
+      customerId,
+      companyId,
+    );
+
+  if (!customerBelongsToCompany) {
+    throw new InvoiceDraftValidationError(
+      'Customer is not available for invoicing.',
+    );
+  }
+
   if (input.lines.length === 0) {
     throw new InvoiceDraftValidationError(
       'Invoice draft must contain at least one line.',
@@ -84,8 +104,8 @@ export async function saveInvoiceDraft(
   const totals = calculateInvoiceTotals(lines);
   const draft: InvoiceDraft = {
     id: randomUUID(),
-    companyId: requireIdentifier(input.companyId, 'Company id'),
-    customerId: requireIdentifier(input.customerId, 'Customer id'),
+    companyId,
+    customerId,
     status: 'draft',
     invoiceDate: dates.invoiceDate,
     dueDate: dates.dueDate,
@@ -100,5 +120,5 @@ export async function saveInvoiceDraft(
     updatedAt: now,
   };
 
-  return invoiceDraftRepository.saveDraft(draft);
+  return dependencies.invoiceDraftRepository.saveDraft(draft);
 }

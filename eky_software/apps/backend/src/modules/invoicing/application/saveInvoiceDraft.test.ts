@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import type { InvoiceDraft } from '../domain/invoiceDraft.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
+import type { CustomerAccessReader } from '../ports/customerAccessReader.js';
 import type { InvoiceDraftRepository } from '../ports/invoiceDraftRepository.js';
 import {
   saveInvoiceDraft,
+  type SaveInvoiceDraftDependencies,
   type SaveInvoiceDraftInput,
 } from './saveInvoiceDraft.js';
 
@@ -15,6 +17,34 @@ class FakeInvoiceDraftRepository implements InvoiceDraftRepository {
     this.savedDraft = draft;
     return draft;
   }
+}
+
+class FakeCustomerAccessReader implements CustomerAccessReader {
+  calls: Array<{ customerId: string; companyId: string }> = [];
+
+  constructor(private readonly customerBelongsToCompany = true) {}
+
+  async belongsToCompany(
+    customerId: string,
+    companyId: string,
+  ): Promise<boolean> {
+    this.calls.push({ customerId, companyId });
+    return this.customerBelongsToCompany;
+  }
+}
+
+function createDependencies(
+  customerBelongsToCompany = true,
+): SaveInvoiceDraftDependencies & {
+  customerAccessReader: FakeCustomerAccessReader;
+  invoiceDraftRepository: FakeInvoiceDraftRepository;
+} {
+  return {
+    customerAccessReader: new FakeCustomerAccessReader(
+      customerBelongsToCompany,
+    ),
+    invoiceDraftRepository: new FakeInvoiceDraftRepository(),
+  };
 }
 
 function createInput(
@@ -51,11 +81,17 @@ function createInput(
 
 describe('saveInvoiceDraft', () => {
   it('calculates and saves a draft through the repository port', async () => {
-    const repository = new FakeInvoiceDraftRepository();
+    const dependencies = createDependencies();
 
-    const draft = await saveInvoiceDraft(createInput(), repository);
+    const draft = await saveInvoiceDraft(createInput(), dependencies);
 
-    expect(repository.savedDraft).toBe(draft);
+    expect(dependencies.customerAccessReader.calls).toEqual([
+      {
+        customerId: 'customer-1',
+        companyId: 'dev-company',
+      },
+    ]);
+    expect(dependencies.invoiceDraftRepository.savedDraft).toBe(draft);
     expect(draft).toMatchObject({
       companyId: 'dev-company',
       customerId: 'customer-1',
@@ -108,7 +144,7 @@ describe('saveInvoiceDraft', () => {
         dueDate: '2026-07-15',
         paymentTermDays: 30,
       }),
-      new FakeInvoiceDraftRepository(),
+      createDependencies(),
     );
 
     expect(draft.dueDate).toBe('2026-07-15');
@@ -116,16 +152,16 @@ describe('saveInvoiceDraft', () => {
   });
 
   it('rejects drafts without lines before calling the repository', async () => {
-    const repository = new FakeInvoiceDraftRepository();
+    const dependencies = createDependencies();
 
     await expect(
-      saveInvoiceDraft(createInput({ lines: [] }), repository),
+      saveInvoiceDraft(createInput({ lines: [] }), dependencies),
     ).rejects.toBeInstanceOf(InvoiceDraftValidationError);
-    expect(repository.savedDraft).toBeUndefined();
+    expect(dependencies.invoiceDraftRepository.savedDraft).toBeUndefined();
   });
 
   it('rejects unsupported invoice units before calling the repository', async () => {
-    const repository = new FakeInvoiceDraftRepository();
+    const dependencies = createDependencies();
     const input = createInput({
       lines: [
         {
@@ -139,9 +175,42 @@ describe('saveInvoiceDraft', () => {
       ],
     });
 
-    await expect(saveInvoiceDraft(input, repository)).rejects.toBeInstanceOf(
-      InvoiceDraftValidationError,
-    );
-    expect(repository.savedDraft).toBeUndefined();
+    await expect(
+      saveInvoiceDraft(input, dependencies),
+    ).rejects.toBeInstanceOf(InvoiceDraftValidationError);
+    expect(dependencies.invoiceDraftRepository.savedDraft).toBeUndefined();
+  });
+
+  it('does not save a draft when the customer is outside the company', async () => {
+    const dependencies = createDependencies(false);
+
+    await expect(
+      saveInvoiceDraft(createInput(), dependencies),
+    ).rejects.toThrow('Customer is not available for invoicing.');
+
+    expect(dependencies.customerAccessReader.calls).toEqual([
+      {
+        customerId: 'customer-1',
+        companyId: 'dev-company',
+      },
+    ]);
+    expect(dependencies.invoiceDraftRepository.savedDraft).toBeUndefined();
+  });
+
+  it('uses the same generic error when customer access is denied', async () => {
+    const dependencies = createDependencies(false);
+
+    try {
+      await saveInvoiceDraft(createInput(), dependencies);
+      throw new Error('Expected customer access validation to fail.');
+    } catch (error) {
+      expect(error).toBeInstanceOf(InvoiceDraftValidationError);
+      expect(error).toMatchObject({
+        message: 'Customer is not available for invoicing.',
+      });
+      expect(error).not.toMatchObject({
+        message: expect.stringMatching(/other company|not found/i),
+      });
+    }
   });
 });
