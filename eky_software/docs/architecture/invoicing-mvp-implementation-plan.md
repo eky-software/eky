@@ -208,7 +208,9 @@ Toinen hinta voidaan näyttää laskettuna esikatseluna, mutta verotonta ja vero
 
 Domain-laskenta käyttää aina eksplisiittistä `priceInputMode`-arvoa. Asiakastyyppi määrää vain käyttöliittymän oletuksen, ei laskennan tulkintaa.
 
-Tarkka päätös siitä, onko syöttötapa laskukohtainen vai voiko se vaihdella riveittäin, tehdään ennen tietomallin toteutusta. Arkkitehtuuri ei saa pakottaa laskemaan verollista hintaa verottomana tai päinvastoin.
+Ensimmäisessä laskuluonnoksen persistence-mallissa `priceInputMode` on laskuluonnoskohtainen ja koskee kaikkia luonnoksen rivejä. Application service välittää luonnoksen syöttötavan eksplisiittisesti jokaisen rivin domain-laskentaan.
+
+Nykyinen domain-laskenta säilyttää `priceInputMode`-arvon rivin laskentasyötteessä, jotta laskentasääntö ei riipu käyttöliittymän tai tietokannan oletuksista. Rivikohtaiset sekalaiset syöttötavat voidaan arvioida myöhemmin erillisellä päätöksellä ja migraatiolla.
 
 ## Laskurivit
 
@@ -300,6 +302,117 @@ Backendin domain/application-logiikka:
 Repository ei päätä laskentasäännöistä.
 
 SQLite-adapteri tallentaa valmiiksi lasketut ja validoidut arvot, mutta ei määritä niiden liiketoimintamerkitystä.
+
+## Laskuluonnoksen Ensimmäinen Persistence-Malli
+
+Tämä osio määrittää ensimmäisen laskuluonnoksen alustavan loogisen tallennusmallin ennen migraatioiden, repository-portin ja SQLite-adapterin toteuttamista.
+
+Tietokannan nimeämisessä käytetään `snake_case`-muotoa ja TypeScriptissä `camelCase`-muotoa. Invoicing-moduuli omistaa laskuluonnoksen päätason ja rivit.
+
+Laskuluonnos ja sen rivit tallennetaan myöhemmin yhtenä transaktiona. Osittain tallentunutta luonnosta ei hyväksytä.
+
+### `invoice_drafts`
+
+Laskuluonnoksen päätasolle suunnitellaan seuraavat kentät:
+
+| TypeScript | Tietokanta | Merkitys |
+| --- | --- | --- |
+| `id` | `id` | Laskuluonnoksen tekninen tunniste. |
+| `companyId` | `company_id` | Luotetusta backend-kontekstista tuleva yritysrajaus. |
+| `customerId` | `customer_id` | Viittaus Customers-moduulin asiakkaaseen. |
+| `status` | `status` | Ensimmäisessä persistence-vaiheessa sallittu arvo on `draft`. |
+| `invoiceDate` | `invoice_date` | Käyttäjän muokattava laskun päiväys. |
+| `dueDate` | `due_date` | Käyttäjän muokattava eräpäivä. |
+| `paymentTermDays` | `payment_term_days` | Maksuehto kokonaisina päivinä. |
+| `priceInputMode` | `price_input_mode` | Laskuluonnoskohtainen `net`- tai `gross`-syöttötapa. |
+| `subject` | `subject` | Valinnainen laskun aihe. |
+| `orderNumber` | `order_number` | Valinnainen tilausnumero. |
+| `note` | `note` | Valinnainen saate tai lisätieto. |
+| `netTotalCents` | `net_total_cents` | Domainin laskema veroton yhteissumma. |
+| `vatTotalCents` | `vat_total_cents` | Domainin laskema ALV-yhteissumma. |
+| `grossTotalCents` | `gross_total_cents` | Domainin laskema verollinen yhteissumma. |
+| `createdAt` | `created_at` | Backendin asettama tekninen luontiaika. |
+| `updatedAt` | `updated_at` | Backendin asettama tekninen muokkausaika. |
+
+`company_id` ei ole asiakkaalta luotettava syöte. Kaikki laskuluonnoksen haut ja muutokset rajataan backendin vahvistamalla `companyId`-arvolla.
+
+`customer_id` on moduulien välinen viittaus. Invoicing ei kirjoita Customers-moduulin omistamaan dataan. Ennen tallennusta application-tason hallittu tarkistus varmistaa, että asiakas kuuluu samaan yritykseen.
+
+Päätason yhteissummat tallennetaan domain-laskennan tuloksina. HTTP-pyynnöstä tai käyttöliittymästä mahdollisesti tulevia yhteissummia ei hyväksytä tallennettaviksi arvoiksi.
+
+### `invoice_draft_lines`
+
+Laskuluonnoksen riveille suunnitellaan seuraavat kentät:
+
+| TypeScript | Tietokanta | Merkitys |
+| --- | --- | --- |
+| `id` | `id` | Rivin tekninen tunniste. |
+| `invoiceDraftId` | `invoice_draft_id` | Viittaus rivin omistavaan laskuluonnokseen. |
+| `position` | `position` | Rivin järjestys luonnoksen sisällä. |
+| `code` | `code` | Valinnainen vapaa rivikoodi. |
+| `description` | `description` | Laskulla näkyvä nimike tai kuvaus. |
+| `quantityHundredths` | `quantity_hundredths` | Määrä sadasosina. |
+| `unit` | `unit` | Laskutusyksikkö. |
+| `unitPriceCents` | `unit_price_cents` | Aktiivisen syöttötavan mukainen yksikköhinta. |
+| `vatRateBasisPoints` | `vat_rate_basis_points` | Rivin ALV-kanta basis points -muodossa. |
+| `discountType` | `discount_type` | `none`, `percentage` tai `fixed`. |
+| `discountValue` | `discount_value` | Prosenttialennus basis points -muodossa tai kiinteä alennus sentteinä. |
+| `baseCents` | `base_cents` | Domainin laskema rivin lähtösumma ennen alennusta. |
+| `discountCents` | `discount_cents` | Domainin laskema alennus sentteinä. |
+| `netCents` | `net_cents` | Domainin laskema veroton rivisumma. |
+| `vatCents` | `vat_cents` | Domainin laskema rivin ALV. |
+| `grossCents` | `gross_cents` | Domainin laskema verollinen rivisumma. |
+
+Ensimmäisessä mallissa rivillä ei ole omaa `price_input_mode`-kenttää. Application service käyttää laskuluonnoksen `priceInputMode`-arvoa jokaisen rivin domain-laskennassa.
+
+`discount_type = none` tallennetaan arvolla `discount_value = 0`. `percentage` tulkitsee arvon basis points -muodossa ja `fixed` sentteinä. Adapteri ei saa päätellä tai muuttaa näiden liiketoimintamerkitystä.
+
+Rivin lasketut kentät ovat domain-laskennan tuloksia. Niitä ei hyväksytä asiakkaan lähettämästä request bodysta auktoritatiivisina arvoina.
+
+`invoice_draft_id` ja `position` muodostavat luonnoksen sisällä yksiselitteisen rivijärjestyksen. Tarkka tietokantarajoite vahvistetaan migraatiovaiheessa.
+
+Ensimmäiseen malliin ei lisätä erillistä ALV-erittelytaulua. ALV-erittely muodostetaan samoista valmiiksi lasketuista riveistä, jotta rinnakkaisia ja mahdollisesti ristiriitaisia summatotuuksia ei synny.
+
+### Tallennusvirta Ja Domainin Auktoriteetti
+
+Ensimmäisen laskuluonnoksen tallennusvirta on:
+
+```text
+validoitu HTTP-syöte + backendin vahvistama companyId
+  -> application service
+    -> Invoicing-domain laskee jokaisen rivin
+      -> Invoicing-domain muodostaa laskun summat ja ALV-erittelyn
+        -> repository vastaanottaa validoidun laskuluonnoskokonaisuuden
+          -> SQLite-adapteri tallentaa päätason ja rivit transaktiossa
+```
+
+Seuraavat rajat ovat pakollisia:
+
+- summia ei lasketa SQLite-adapterissa
+- summia ei lasketa HTTP-reitissä
+- UI:n laskenta on vain esikatselu, ei lopullinen totuus
+- request bodyn laskettuja summia ei luoteta eikä kopioida tietokantaan
+- päivityksessä backend laskee kaikki rivit ja yhteissummat uudelleen domain-funktioilla
+- repository-portti ei paljasta SQLite-tyyppejä eikä vastaanota raakaa HTTP DTO:ta
+- SQLite-adapteri käyttää vain parametrisoituja SQL-lauseita
+
+### Turvallisuus Ja Validointi
+
+Tuleva backend-toteutus noudattaa ainakin seuraavia sääntöjä:
+
+- `companyId` saadaan backendin vahvistamasta kontekstista eikä luotettuna request bodysta tai query-parametrista
+- kaikki haut, päivitykset ja poistot rajataan sekä `companyId`- että laskuluonnostunnisteella
+- `customerId` tarkistetaan samaan yritykseen kuuluvaksi hallitun application-tason sopimuksen kautta
+- määrät, hinnat, ALV-kannat, alennukset ja lasketut tulokset tarkistetaan turvallisiksi kokonaisluvuiksi
+- negatiiviset tai domain-sääntöjen vastaiset arvot hylätään ennen repository-kutsua
+- tekstikenttien tyypit, pituudet ja sallitut muodot validoidaan backendissä
+- päivämäärien muoto ja keskinäinen liiketoimintasääntö validoidaan ennen tallennusta
+- laskuluonnoksen päätaso ja rivit tallennetaan samassa tietokantatransaktiossa
+- virhevastaukset ja lokit eivät paljasta laskun sisältöä tai tarpeetonta henkilötietoa
+
+Nykyinen autentikoimaton local-MVP pidetään vain paikallisessa kehityskäytössä synteettisellä datalla. Sitä ei avata verkkoon eikä käytetä oikealla asiakas- tai laskutusdatalla.
+
+Tuotanto- tai verkkokäyttö vaatii ennen käyttöönottoa autentikoinnin, käyttöoikeuksien backend-tarkistukset, yritysrajauksen luotetun lähteen ja liiketoimintakriittisten laskumuutosten auditoinnin.
 
 ## Raha, Määrät Ja Tarkkuus
 
@@ -905,17 +1018,16 @@ Näitä varten tehdään myöhemmin omat rajatut päätökset ja toteutussuunnit
 
 Seuraavia asioita ei saa päätellä tästä dokumentista valmiiksi hyväksytyiksi:
 
-1. Onko `priceInputMode` laskukohtainen vai voiko se vaihdella riveittäin?
-2. Miten eräpäivän automaattinen ehdotus reagoi käyttäjän käsin tekemiin muutoksiin?
-3. Mitkä kentät ovat luonnoksella pakollisia?
-4. Mitkä ovat ensimmäiset sallitut laskuyksiköt?
-5. Ovatko `approved` ja `issued` eri tiloja?
-6. Kuka saa hyväksyä tai lukita laskun?
-7. Saako hyväksyttyä laskua muuttaa ja millä korjausprosessilla?
-8. Milloin lopullinen snapshot muodostetaan?
-9. Saako laskunumeroissa olla aukkoja?
-10. Miten numerointi ratkaistaan offline- ja cloud-tilojen välillä?
-11. Mikä on tilikauden tarkka tietomalli?
+1. Miten eräpäivän automaattinen ehdotus reagoi käyttäjän käsin tekemiin muutoksiin?
+2. Mitkä kentät ovat luonnoksella pakollisia?
+3. Mitkä ovat ensimmäiset sallitut laskuyksiköt?
+4. Ovatko `approved` ja `issued` eri tiloja?
+5. Kuka saa hyväksyä tai lukita laskun?
+6. Saako hyväksyttyä laskua muuttaa ja millä korjausprosessilla?
+7. Milloin lopullinen snapshot muodostetaan?
+8. Saako laskunumeroissa olla aukkoja?
+9. Miten numerointi ratkaistaan offline- ja cloud-tilojen välillä?
+10. Mikä on tilikauden tarkka tietomalli?
 
 Jos toteutustehtävä osuu johonkin näistä eikä päätöstä ole dokumentoitu, työ pysäytetään kyseisen säännön osalta ja projektin omistajalta pyydetään päätös.
 
