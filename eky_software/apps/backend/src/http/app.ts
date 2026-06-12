@@ -11,6 +11,10 @@ import { listCustomers } from '../modules/customers/application/listCustomers.js
 import { updateCustomer } from '../modules/customers/application/updateCustomer.js';
 import { createCustomersRoutes } from '../modules/customers/http/customersRoutes.js';
 import { SqliteCustomerRepository } from '../modules/customers/infrastructure/sqliteCustomerRepository.js';
+import { saveInvoiceDraft } from '../modules/invoicing/application/saveInvoiceDraft.js';
+import { createInvoiceDraftRoutes } from '../modules/invoicing/http/invoiceDraftRoutes.js';
+import { SqliteInvoiceDraftRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceDraftRepository.js';
+import type { CustomerAccessReader } from '../modules/invoicing/ports/customerAccessReader.js';
 
 export async function createApp(): Promise<Hono> {
   const app = new Hono();
@@ -24,6 +28,14 @@ export async function createApp(): Promise<Hono> {
 
   const customerRepository = new SqliteCustomerRepository(database);
   const companySettingsRepository = new SqliteCompanySettingsRepository(database);
+  const invoiceDraftRepository = new SqliteInvoiceDraftRepository(database);
+  const customerAccessReader: CustomerAccessReader = {
+    async belongsToCompany(customerId, companyId) {
+      const customer = await customerRepository.findById(companyId, customerId);
+
+      return customer !== undefined;
+    },
+  };
 
   app.route(
     '/',
@@ -39,6 +51,17 @@ export async function createApp(): Promise<Hono> {
     createCompanySettingsRoutes({
       getCompanySettings: (input) => getCompanySettings(input, companySettingsRepository),
       updateCompanySettings: (input) => updateCompanySettings(input, companySettingsRepository),
+    }),
+  );
+
+  app.route(
+    '/',
+    createInvoiceDraftRoutes({
+      saveInvoiceDraft: (input) =>
+        saveInvoiceDraft(input, {
+          customerAccessReader,
+          invoiceDraftRepository,
+        }),
     }),
   );
 

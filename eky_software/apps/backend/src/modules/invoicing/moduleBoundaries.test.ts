@@ -22,14 +22,12 @@ function listProductionSourceFiles(directoryPath: string): string[] {
 }
 
 describe('invoicing module boundaries', () => {
-  it('does not import Customers infrastructure, HTTP, UI, or API client code', () => {
+  it('does not import Customers, UI, or API client code', () => {
     const productionSourceFiles = listProductionSourceFiles(moduleDirectoryPath);
     const forbiddenImports = [
       /from\s+['"][^'"]*(?:modules\/customers|\/customers)(?:\/|['"])/,
-      /from\s+['"]hono(?:\/|['"])/,
       /from\s+['"]react(?:\/|['"])/,
       /from\s+['"]@eky\/api-client(?:\/|['"])/,
-      /from\s+['"][^'"]*\/http(?:\/|\.|['"])/,
     ];
 
     for (const filePath of productionSourceFiles) {
@@ -41,8 +39,8 @@ describe('invoicing module boundaries', () => {
     }
   });
 
-  it('keeps database types out of application and repository ports', () => {
-    const checkedDirectories = ['application', 'ports'];
+  it('keeps database types out of application, HTTP, and repository ports', () => {
+    const checkedDirectories = ['application', 'http', 'ports'];
 
     for (const directory of checkedDirectories) {
       const directoryPath = fileURLToPath(
@@ -55,6 +53,27 @@ describe('invoicing module boundaries', () => {
         expect(source, filePath).not.toMatch(/better-sqlite3/);
         expect(source, filePath).not.toMatch(/\/database(?:\/|\.|['"])/);
         expect(source, filePath).not.toMatch(/\/infrastructure(?:\/|\.|['"])/);
+      }
+    }
+  });
+
+  it('keeps Hono inside the HTTP adapter', () => {
+    const checkedDirectories = [
+      'application',
+      'domain',
+      'infrastructure',
+      'ports',
+    ];
+
+    for (const directory of checkedDirectories) {
+      const directoryPath = fileURLToPath(
+        new URL(`${directory}/`, moduleDirectory),
+      );
+
+      for (const filePath of listProductionSourceFiles(directoryPath)) {
+        const source = readFileSync(filePath, 'utf8');
+
+        expect(source, filePath).not.toMatch(/from\s+['"]hono(?:\/|['"])/);
       }
     }
   });
@@ -72,5 +91,18 @@ describe('invoicing module boundaries', () => {
 
     expect(adapterSource).not.toMatch(/calculateInvoiceLine/);
     expect(adapterSource).not.toMatch(/calculateInvoiceTotals/);
+  });
+
+  it('keeps invoice calculations out of the HTTP adapter', () => {
+    const httpDirectoryPath = fileURLToPath(
+      new URL('http/', moduleDirectory),
+    );
+
+    for (const filePath of listProductionSourceFiles(httpDirectoryPath)) {
+      const source = readFileSync(filePath, 'utf8');
+
+      expect(source, filePath).not.toMatch(/calculateInvoiceLine/);
+      expect(source, filePath).not.toMatch(/calculateInvoiceTotals/);
+    }
   });
 });
