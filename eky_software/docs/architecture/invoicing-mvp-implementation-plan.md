@@ -128,6 +128,42 @@ Kenttien alustava merkitys:
 - `createdAt` on tekninen luontiaika.
 - `updatedAt` on tekninen viimeisin muokkausaika.
 
+### Pakolliset Luonnostiedot
+
+Tallennetulla laskuluonnoksella pitää olla:
+
+- `customerId`
+- `invoiceDate`
+- `dueDate`
+- `paymentTermDays`
+- `priceInputMode`
+- `status`
+- vähintään yksi laskurivi
+
+Jokaisella tallennettavalla laskurivillä pitää olla:
+
+- ei-tyhjä `description`
+- `quantityHundredths`
+- sallittu `unit`
+- `unitPriceCents`
+- `vatRateBasisPoints`
+- eksplisiittinen `discount`
+
+Alennuksen puuttumista ei kuvata epäselvällä tyhjällä arvolla. Rivillä käytetään eksplisiittistä ei alennusta -muotoa:
+
+```ts
+discount: { type: 'none' }
+```
+
+Seuraavat kentät ovat MVP-luonnoksella valinnaisia:
+
+- `subject`
+- `orderNumber`
+- `note`
+- rivin `code`
+
+`id`, `companyId`, `status`, lasketut summat sekä tekniset aikaleimat eivät ole asiakkaan vapaasti päätettäviä create-syötteitä. Backend muodostaa tai vahvistaa ne käyttötapauksen sääntöjen mukaisesti.
+
 Myöhemmät aikakentät voivat sisältää:
 
 - `approvedAt`
@@ -162,23 +198,23 @@ Backend validoi päiväykset ja niiden väliset hyväksytyt suhteet, kun tarkat 
 
 Uuden laskun oletusmaksuehto on 14 päivää netto.
 
-Käyttöliittymä ehdottaa eräpäivää:
+Ensimmäisen backend-toteutuksen sääntö on:
 
-```text
-invoiceDate + paymentTermDays -> ehdotettu dueDate
-```
+- `invoiceDate` on pakollinen ja käyttäjän muokattava.
+- `paymentTermDays` on tallennetulla luonnoksella pakollinen ei-negatiivinen kokonaisluku.
+- jos create-syötteestä puuttuu `paymentTermDays`, backend käyttää arvoa `14`.
+- `dueDate` on tallennetulla luonnoksella pakollinen.
+- jos create-syötteestä puuttuu `dueDate`, backend laskee sen arvoista `invoiceDate + paymentTermDays`.
+- jos käyttäjä antaa `dueDate`-arvon, backend säilyttää annetun arvon eikä ylikirjoita sitä automaattisella ehdotuksella.
+- `dueDate` ei saa olla ennen `invoiceDate`-arvoa.
 
-Käyttäjä voi muuttaa sekä maksuehtoa että eräpäivää käsin.
+Käyttäjä voi muuttaa sekä maksuehtoa että eräpäivää käsin. Jos molemmat annetaan, backend validoi molemmat mutta ei päättele, että niiden päivien erotuksen pitäisi aina olla sama kuin `paymentTermDays`. Näin tarkoituksellinen käsin annettu eräpäivä säilyy.
 
 Maksuehtoja voidaan myöhemmin hallita laskutusasetuksissa.
 
-Ennen toteutusta tarkennetaan vielä käyttöliittymän käyttäytyminen:
-
-- päivittyykö `dueDate` automaattisesti, kun `invoiceDate` muuttuu
-- päivittyykö `paymentTermDays`, jos käyttäjä muuttaa `dueDate`-arvoa käsin
-- missä vaiheessa automaattinen päivitys lakkaa, jotta käyttäjän syöttämää eräpäivää ei ylikirjoiteta
-
 Backend säilyttää laskulle valitun maksuehdon ja eräpäivän eikä päättele lopputulosta pelkästään käyttöliittymän oletuksesta.
+
+Käyttöliittymä saa näyttää saman 14 päivän ehdotuksen käyttökokemuksen helpottamiseksi, mutta backend toteuttaa ja validoi lopullisen säännön auktoritatiivisesti.
 
 ## Hintojen Syöttötapa
 
@@ -251,6 +287,24 @@ Kenttien alustava merkitys:
 - kirjanpitotiliin
 
 Rivikoodi on vapaaehtoinen käyttäjän syöttämä tieto, kunnes sille päätetään erillinen omistava moduuli tai rekisteri.
+
+## Ensimmäiset Laskutusyksiköt
+
+Ensimmäisen laskuluonnos-MVP:n sallitut yksikkökoodit ovat:
+
+| Koodi | Käyttäjälle näkyvä merkitys |
+| --- | --- |
+| `h` | tunti |
+| `kpl` | kappale |
+| `pv` | päivä |
+| `km` | kilometri |
+| `erä` | erä |
+
+Backend ja domain hylkäävät MVP:ssä muun yksikkökoodin. Käyttöliittymän valintalista ei korvaa backend-validointia.
+
+Yksikkökoodit tallennetaan vakaina koodeina. Käyttäjälle näkyvät suomenkieliset nimet kuuluvat UI:n käännösteksteihin, eivät domainin tallennettaviksi näyttöteksteiksi.
+
+Yksiköitä voidaan myöhemmin hallita laskutusasetuksista erillisellä päätöksellä. Ensimmäinen toteutus ei saa kuitenkaan käyttää vapaata käyttäjän syöttämää yksikkötekstiä.
 
 ## Alennukset
 
@@ -340,6 +394,33 @@ Laskuluonnoksen päätasolle suunnitellaan seuraavat kentät:
 
 Päätason yhteissummat tallennetaan domain-laskennan tuloksina. HTTP-pyynnöstä tai käyttöliittymästä mahdollisesti tulevia yhteissummia ei hyväksytä tallennettaviksi arvoiksi.
 
+### Asiakkaan Yritysrajaus
+
+Invoicing ei importtaa Customers-moduulin SQLite-adapteria, repository-toteutusta tai muuta infrastructure-koodia.
+
+Laskuluonnoksen application service käyttää rajattua application-tason porttia tai sopimusta, alustavasti nimeltä:
+
+```ts
+interface CustomerAccessReader {
+  belongsToCompany(customerId: string, companyId: string): Promise<boolean>;
+}
+```
+
+Sopimus vastaa vain Invoicing-käyttötapauksen tarvitsemaan kysymykseen: kuuluuko annettu asiakas backendin vahvistamaan yritykseen.
+
+Tarkistusvirta on:
+
+```text
+backendin vahvistama companyId + requestin customerId
+  -> CustomerAccessReader
+    -> asiakas löytyy ja kuuluu yritykseen
+      -> laskuluonnoksen käsittely saa jatkua
+```
+
+Jos asiakasta ei löydy tai se ei kuulu yritykseen, laskuluonnosta ei tallenneta. Ulospäin palautettava virhe ei saa paljastaa, onko toisella yrityksellä kyseistä asiakastunnistetta.
+
+Portin toteutuksen tarkka sijoitus ja moduulien välinen kytkentä päätetään repository/application-toteutusvaiheessa. Toteutus ei saa muodostaa suoraa Invoicing -> Customers infrastructure -riippuvuutta.
+
 ### `invoice_draft_lines`
 
 Laskuluonnoksen riveille suunnitellaan seuraavat kentät:
@@ -402,9 +483,10 @@ Tuleva backend-toteutus noudattaa ainakin seuraavia sääntöjä:
 
 - `companyId` saadaan backendin vahvistamasta kontekstista eikä luotettuna request bodysta tai query-parametrista
 - kaikki haut, päivitykset ja poistot rajataan sekä `companyId`- että laskuluonnostunnisteella
-- `customerId` tarkistetaan samaan yritykseen kuuluvaksi hallitun application-tason sopimuksen kautta
+- `customerId` tarkistetaan samaan yritykseen kuuluvaksi `CustomerAccessReader`-tyyppisen hallitun application-tason sopimuksen kautta
 - määrät, hinnat, ALV-kannat, alennukset ja lasketut tulokset tarkistetaan turvallisiksi kokonaisluvuiksi
 - negatiiviset tai domain-sääntöjen vastaiset arvot hylätään ennen repository-kutsua
+- tuntemattomat laskutusyksiköt hylätään ennen repository-kutsua
 - tekstikenttien tyypit, pituudet ja sallitut muodot validoidaan backendissä
 - päivämäärien muoto ja keskinäinen liiketoimintasääntö validoidaan ennen tallennusta
 - laskuluonnoksen päätaso ja rivit tallennetaan samassa tietokantatransaktiossa
@@ -1018,16 +1100,13 @@ Näitä varten tehdään myöhemmin omat rajatut päätökset ja toteutussuunnit
 
 Seuraavia asioita ei saa päätellä tästä dokumentista valmiiksi hyväksytyiksi:
 
-1. Miten eräpäivän automaattinen ehdotus reagoi käyttäjän käsin tekemiin muutoksiin?
-2. Mitkä kentät ovat luonnoksella pakollisia?
-3. Mitkä ovat ensimmäiset sallitut laskuyksiköt?
-4. Ovatko `approved` ja `issued` eri tiloja?
-5. Kuka saa hyväksyä tai lukita laskun?
-6. Saako hyväksyttyä laskua muuttaa ja millä korjausprosessilla?
-7. Milloin lopullinen snapshot muodostetaan?
-8. Saako laskunumeroissa olla aukkoja?
-9. Miten numerointi ratkaistaan offline- ja cloud-tilojen välillä?
-10. Mikä on tilikauden tarkka tietomalli?
+1. Ovatko `approved` ja `issued` eri tiloja?
+2. Kuka saa hyväksyä tai lukita laskun?
+3. Saako hyväksyttyä laskua muuttaa ja millä korjausprosessilla?
+4. Milloin lopullinen snapshot muodostetaan?
+5. Saako laskunumeroissa olla aukkoja?
+6. Miten numerointi ratkaistaan offline- ja cloud-tilojen välillä?
+7. Mikä on tilikauden tarkka tietomalli?
 
 Jos toteutustehtävä osuu johonkin näistä eikä päätöstä ole dokumentoitu, työ pysäytetään kyseisen säännön osalta ja projektin omistajalta pyydetään päätös.
 
