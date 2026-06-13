@@ -154,6 +154,124 @@ describe('SqliteInvoiceDraftRepository', () => {
     expect(lineCount?.count).toBe(0);
   });
 
+  it('updates a company draft and replaces its lines in one transaction', async () => {
+    const originalDraft = createDraft();
+    const updatedLines = [
+      createLine('new-line-1', 1, 0),
+      createLine(
+        'new-line-2',
+        2,
+        2550,
+        { type: 'percentage', basisPoints: 500 },
+      ),
+    ];
+    const updatedDraft = createDraft(updatedLines, {
+      customerId: 'customer-2',
+      invoiceDate: '2026-06-14',
+      dueDate: '2026-07-14',
+      paymentTermDays: 30,
+      priceInputMode: 'net',
+      subject: 'Updated invoice',
+      createdAt: originalDraft.createdAt,
+      updatedAt: '2026-06-14T12:00:00.000Z',
+    });
+    const repository = new SqliteInvoiceDraftRepository(database);
+
+    await repository.saveDraft(originalDraft);
+
+    await expect(repository.updateDraft(updatedDraft)).resolves.toEqual(
+      updatedDraft,
+    );
+
+    const storedDraft = await repository.getDraftById(
+      'dev-company',
+      'draft-1',
+    );
+    const storedHeader = database
+      .prepare<[string], InvoiceDraftTable>(
+        'SELECT * FROM invoice_drafts WHERE id = ?',
+      )
+      .get('draft-1');
+
+    expect(storedDraft).toEqual(updatedDraft);
+    expect(storedDraft?.lines.map((line) => line.id)).toEqual([
+      'new-line-1',
+      'new-line-2',
+    ]);
+    expect(storedDraft?.lines.map((line) => line.position)).toEqual([1, 2]);
+    expect(storedHeader).toMatchObject({
+      customer_id: 'customer-2',
+      subject: 'Updated invoice',
+      created_at: originalDraft.createdAt,
+      updated_at: '2026-06-14T12:00:00.000Z',
+      net_total_cents: updatedDraft.totals.netTotalCents,
+      vat_total_cents: updatedDraft.totals.vatTotalCents,
+      gross_total_cents: updatedDraft.totals.grossTotalCents,
+    });
+    await expect(
+      repository.listDraftSummaries('dev-company'),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: 'draft-1',
+        updatedAt: '2026-06-14T12:00:00.000Z',
+      }),
+    ]);
+  });
+
+  it('does not update a draft outside the company scope', async () => {
+    const originalDraft = createDraft();
+    const repository = new SqliteInvoiceDraftRepository(database);
+
+    await repository.saveDraft(originalDraft);
+
+    await expect(
+      repository.updateDraft({
+        ...originalDraft,
+        companyId: 'other-company',
+        subject: 'Unauthorized update',
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      repository.getDraftById('dev-company', 'draft-1'),
+    ).resolves.toEqual(originalDraft);
+    await expect(
+      repository.updateDraft({
+        ...originalDraft,
+        id: "draft-1' OR 1=1 --",
+        subject: 'Injected update',
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      repository.getDraftById('dev-company', 'draft-1'),
+    ).resolves.toEqual(originalDraft);
+  });
+
+  it('rolls back the header and line replacement if an updated line insert fails', async () => {
+    const originalDraft = createDraft();
+    const duplicateLineId = 'duplicate-updated-line';
+    const invalidUpdatedDraft = createDraft(
+      [
+        createLine(duplicateLineId, 1, 2550),
+        createLine(duplicateLineId, 2, 1350),
+      ],
+      {
+        subject: 'Update that must roll back',
+        createdAt: originalDraft.createdAt,
+        updatedAt: '2026-06-14T12:00:00.000Z',
+      },
+    );
+    const repository = new SqliteInvoiceDraftRepository(database);
+
+    await repository.saveDraft(originalDraft);
+
+    await expect(
+      repository.updateDraft(invalidUpdatedDraft),
+    ).rejects.toThrow();
+    await expect(
+      repository.getDraftById('dev-company', 'draft-1'),
+    ).resolves.toEqual(originalDraft);
+  });
+
   it('gets a company-scoped draft with ordered lines and stored discounts', async () => {
     const draft = createDraft([
       createLine(

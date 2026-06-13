@@ -3,6 +3,7 @@ import type { InvoiceDraftSummary } from '../domain/invoiceDraftSummary.js';
 
 export interface InvoiceDraftRepository {
   saveDraft(draft: InvoiceDraft): Promise<InvoiceDraft>;
+  updateDraft(draft: InvoiceDraft): Promise<InvoiceDraft | undefined>;
   getDraftById(
     companyId: string,
     invoiceDraftId: string,
