@@ -21,6 +21,10 @@ class FakeInvoiceDraftRepository implements InvoiceDraftRepository {
     this.getCalls.push({ companyId, invoiceDraftId });
     return this.invoiceDraft;
   }
+
+  async listDraftSummaries() {
+    return [];
+  }
 }
 
 function createDraft(): InvoiceDraft {

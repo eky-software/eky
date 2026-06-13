@@ -49,7 +49,10 @@ function createLine(
   };
 }
 
-function createDraft(lineOverrides?: InvoiceDraftLine[]): InvoiceDraft {
+function createDraft(
+  lineOverrides?: InvoiceDraftLine[],
+  draftOverrides: Partial<Omit<InvoiceDraft, 'lines' | 'totals'>> = {},
+): InvoiceDraft {
   const lines = lineOverrides ?? [
     createLine('line-1', 1, 2550),
     createLine('line-2', 2, 1350),
@@ -67,10 +70,11 @@ function createDraft(lineOverrides?: InvoiceDraftLine[]): InvoiceDraft {
     subject: 'Test invoice',
     orderNumber: '',
     note: '',
-    lines,
-    totals: calculateInvoiceTotals(lines),
     createdAt: '2026-06-13T00:00:00.000Z',
     updatedAt: '2026-06-13T00:00:00.000Z',
+    ...draftOverrides,
+    lines,
+    totals: calculateInvoiceTotals(lines),
   };
 }
 
@@ -200,5 +204,114 @@ describe('SqliteInvoiceDraftRepository', () => {
     await expect(
       repository.getDraftById('dev-company', 'missing-draft'),
     ).resolves.toBeUndefined();
+  });
+
+  it('lists only company summaries in stable newest-first order', async () => {
+    const repository = new SqliteInvoiceDraftRepository(database);
+    const drafts = [
+      createDraft(
+        [createLine('line-old', 1, 2550)],
+        {
+          id: 'draft-old',
+          customerId: 'customer-1',
+          updatedAt: '2026-06-12T10:00:00.000Z',
+        },
+      ),
+      createDraft(
+        [createLine('line-b', 1, 1350)],
+        {
+          id: 'draft-b',
+          customerId: 'customer-2',
+          updatedAt: '2026-06-13T10:00:00.000Z',
+        },
+      ),
+      createDraft(
+        [createLine('line-c', 1, 0)],
+        {
+          id: 'draft-c',
+          customerId: 'customer-1',
+          updatedAt: '2026-06-13T10:00:00.000Z',
+        },
+      ),
+      createDraft(
+        [createLine('line-other-company', 1, 2550)],
+        {
+          id: 'draft-other-company',
+          companyId: 'other-company',
+          customerId: 'customer-1',
+          updatedAt: '2026-06-14T10:00:00.000Z',
+        },
+      ),
+    ];
+
+    for (const draft of drafts) {
+      await repository.saveDraft(draft);
+    }
+
+    const summaries = await repository.listDraftSummaries('dev-company');
+
+    expect(summaries.map((summary) => summary.id)).toEqual([
+      'draft-c',
+      'draft-b',
+      'draft-old',
+    ]);
+    expect(summaries[0]).toEqual({
+      id: 'draft-c',
+      customerId: 'customer-1',
+      status: 'draft',
+      invoiceDate: '2026-06-13',
+      dueDate: '2026-06-27',
+      paymentTermDays: 14,
+      priceInputMode: 'net',
+      subject: 'Test invoice',
+      netTotalCents: drafts[2]?.totals.netTotalCents,
+      vatTotalCents: drafts[2]?.totals.vatTotalCents,
+      grossTotalCents: drafts[2]?.totals.grossTotalCents,
+      updatedAt: '2026-06-13T10:00:00.000Z',
+    });
+    expect(summaries[0]).not.toHaveProperty('lines');
+    expect(summaries[0]).not.toHaveProperty('customerName');
+  });
+
+  it('filters company summaries by customer id', async () => {
+    const repository = new SqliteInvoiceDraftRepository(database);
+    const matchingDraft = createDraft(
+      [createLine('line-matching', 1, 2550)],
+      {
+        id: 'draft-matching',
+        customerId: 'customer-1',
+      },
+    );
+    const otherCustomerDraft = createDraft(
+      [createLine('line-other-customer', 1, 2550)],
+      {
+        id: 'draft-other-customer',
+        customerId: 'customer-2',
+      },
+    );
+
+    await repository.saveDraft(matchingDraft);
+    await repository.saveDraft(otherCustomerDraft);
+
+    await expect(
+      repository.listDraftSummaries('dev-company', 'customer-1'),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: 'draft-matching',
+        customerId: 'customer-1',
+      }),
+    ]);
+    await expect(
+      repository.listDraftSummaries('dev-company', 'unknown-customer'),
+    ).resolves.toEqual([]);
+    await expect(
+      repository.listDraftSummaries('other-company', 'customer-1'),
+    ).resolves.toEqual([]);
+    await expect(
+      repository.listDraftSummaries(
+        'dev-company',
+        "customer-1' OR 1=1 --",
+      ),
+    ).resolves.toEqual([]);
   });
 });

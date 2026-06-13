@@ -11,6 +11,7 @@ import {
   type InvoiceDraftStatus,
   type InvoiceUnit,
 } from '../domain/invoiceDraft.js';
+import type { InvoiceDraftSummary } from '../domain/invoiceDraftSummary.js';
 import type {
   InvoiceLineDiscount,
   InvoiceVatBreakdown,
@@ -69,6 +70,38 @@ interface InvoiceVatBreakdownRow {
   vat_cents: number;
   gross_cents: number;
 }
+
+interface InvoiceDraftSummaryRow {
+  id: string;
+  customer_id: string;
+  status: string;
+  invoice_date: string;
+  due_date: string;
+  payment_term_days: number;
+  price_input_mode: string;
+  subject: string;
+  net_total_cents: number;
+  vat_total_cents: number;
+  gross_total_cents: number;
+  updated_at: string;
+}
+
+const invoiceDraftSummarySelect = `
+  SELECT
+    id,
+    customer_id,
+    status,
+    invoice_date,
+    due_date,
+    payment_term_days,
+    price_input_mode,
+    subject,
+    net_total_cents,
+    vat_total_cents,
+    gross_total_cents,
+    updated_at
+  FROM invoice_drafts
+`;
 
 function toStoredDiscount(discount: InvoiceLineDiscount): StoredDiscount {
   if (discount.type === 'percentage') {
@@ -183,6 +216,25 @@ function toInvoiceVatBreakdown(
     netCents: row.net_cents,
     vatCents: row.vat_cents,
     grossCents: row.gross_cents,
+  };
+}
+
+function toInvoiceDraftSummary(
+  row: InvoiceDraftSummaryRow,
+): InvoiceDraftSummary {
+  return {
+    id: row.id,
+    customerId: row.customer_id,
+    status: row.status as InvoiceDraftStatus,
+    invoiceDate: row.invoice_date,
+    dueDate: row.due_date,
+    paymentTermDays: row.payment_term_days,
+    priceInputMode: row.price_input_mode as PriceInputMode,
+    subject: row.subject,
+    netTotalCents: row.net_total_cents,
+    vatTotalCents: row.vat_total_cents,
+    grossTotalCents: row.gross_total_cents,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -394,5 +446,36 @@ export class SqliteInvoiceDraftRepository implements InvoiceDraftRepository {
       createdAt: draftRow.created_at,
       updatedAt: draftRow.updated_at,
     };
+  }
+
+  async listDraftSummaries(
+    companyId: string,
+    customerId?: string,
+  ): Promise<InvoiceDraftSummary[]> {
+    if (customerId === undefined) {
+      const rows = this.database
+        .prepare<[string], InvoiceDraftSummaryRow>(
+          `
+            ${invoiceDraftSummarySelect}
+            WHERE company_id = ?
+            ORDER BY updated_at DESC, id DESC
+          `,
+        )
+        .all(companyId);
+
+      return rows.map(toInvoiceDraftSummary);
+    }
+
+    const rows = this.database
+      .prepare<[string, string], InvoiceDraftSummaryRow>(
+        `
+          ${invoiceDraftSummarySelect}
+          WHERE company_id = ? AND customer_id = ?
+          ORDER BY updated_at DESC, id DESC
+        `,
+      )
+      .all(companyId, customerId);
+
+    return rows.map(toInvoiceDraftSummary);
   }
 }
