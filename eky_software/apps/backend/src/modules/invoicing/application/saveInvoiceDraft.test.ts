@@ -17,6 +17,10 @@ class FakeInvoiceDraftRepository implements InvoiceDraftRepository {
     this.savedDraft = draft;
     return draft;
   }
+
+  async getDraftById(): Promise<InvoiceDraft | undefined> {
+    return undefined;
+  }
 }
 
 class FakeCustomerAccessReader implements CustomerAccessReader {

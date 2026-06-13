@@ -13,6 +13,7 @@ import type {
   InvoiceDraft,
   InvoiceDraftLine,
 } from '../domain/invoiceDraft.js';
+import type { InvoiceLineDiscount } from '../domain/invoiceCalculation.js';
 import { SqliteInvoiceDraftRepository } from './sqliteInvoiceDraftRepository.js';
 
 const migrationSql = readFileSync(
@@ -27,8 +28,8 @@ function createLine(
   id: string,
   position: number,
   vatRateBasisPoints: number,
+  discount: InvoiceLineDiscount = { type: 'none' },
 ): InvoiceDraftLine {
-  const discount = { type: 'none' } as const;
   const calculatedLine = calculateInvoiceLine({
     quantityHundredths: position === 1 ? 150 : 100,
     unitPriceCents: position === 1 ? 10_000 : 1000,
@@ -147,5 +148,57 @@ describe('SqliteInvoiceDraftRepository', () => {
 
     expect(draftCount?.count).toBe(0);
     expect(lineCount?.count).toBe(0);
+  });
+
+  it('gets a company-scoped draft with ordered lines and stored discounts', async () => {
+    const draft = createDraft([
+      createLine(
+        'line-fixed',
+        3,
+        2550,
+        { type: 'fixed', amountCents: 100 },
+      ),
+      createLine('line-none', 1, 0),
+      createLine(
+        'line-percentage',
+        2,
+        1350,
+        { type: 'percentage', basisPoints: 500 },
+      ),
+    ]);
+    const repository = new SqliteInvoiceDraftRepository(database);
+
+    await repository.saveDraft(draft);
+
+    const storedDraft = await repository.getDraftById(
+      'dev-company',
+      'draft-1',
+    );
+
+    expect(storedDraft).toBeDefined();
+    expect(storedDraft?.lines.map((line) => line.position)).toEqual([
+      1,
+      2,
+      3,
+    ]);
+    expect(storedDraft?.lines.map((line) => line.discount)).toEqual([
+      { type: 'none' },
+      { type: 'percentage', basisPoints: 500 },
+      { type: 'fixed', amountCents: 100 },
+    ]);
+    expect(storedDraft?.totals).toEqual(draft.totals);
+  });
+
+  it('does not return a draft for another company or an unknown id', async () => {
+    const repository = new SqliteInvoiceDraftRepository(database);
+
+    await repository.saveDraft(createDraft());
+
+    await expect(
+      repository.getDraftById('other-company', 'draft-1'),
+    ).resolves.toBeUndefined();
+    await expect(
+      repository.getDraftById('dev-company', 'missing-draft'),
+    ).resolves.toBeUndefined();
   });
 });
