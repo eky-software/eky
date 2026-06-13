@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 
+import type { GetInvoiceDraftInput } from '../application/getInvoiceDraft.js';
+import { InvoiceDraftNotFoundError } from '../application/invoiceDraftNotFoundError.js';
 import type {
   SaveInvoiceDraftInput,
 } from '../application/saveInvoiceDraft.js';
@@ -16,6 +18,7 @@ const devCompanyId = 'dev-company';
 const maximumInvoiceDraftBodySizeBytes = 256 * 1024;
 
 interface InvoiceDraftRouteDependencies {
+  getInvoiceDraft(input: GetInvoiceDraftInput): Promise<InvoiceDraft>;
   saveInvoiceDraft(input: SaveInvoiceDraftInput): Promise<InvoiceDraft>;
 }
 
@@ -59,6 +62,27 @@ export function createInvoiceDraftRoutes(
       }
     },
   );
+
+  routes.get('/invoice-drafts/:id', async (context) => {
+    try {
+      const invoiceDraft = await dependencies.getInvoiceDraft({
+        companyId: devCompanyId,
+        invoiceDraftId: context.req.param('id'),
+      });
+
+      return context.json({ invoiceDraft });
+    } catch (error) {
+      if (error instanceof InvoiceDraftNotFoundError) {
+        return context.json({ error: error.message }, 404);
+      }
+
+      if (error instanceof InvoiceDraftValidationError) {
+        return context.json({ error: error.message }, 400);
+      }
+
+      throw error;
+    }
+  });
 
   return routes;
 }

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  getInvoiceDraft,
+  type GetInvoiceDraftInput,
+} from '../application/getInvoiceDraft.js';
+import {
   saveInvoiceDraft,
   type SaveInvoiceDraftInput,
 } from '../application/saveInvoiceDraft.js';
@@ -15,6 +19,20 @@ class FakeInvoiceDraftRepository implements InvoiceDraftRepository {
   async saveDraft(draft: InvoiceDraft): Promise<InvoiceDraft> {
     this.savedDraft = draft;
     return draft;
+  }
+
+  async getDraftById(
+    companyId: string,
+    invoiceDraftId: string,
+  ): Promise<InvoiceDraft | undefined> {
+    if (
+      this.savedDraft?.companyId === companyId &&
+      this.savedDraft.id === invoiceDraftId
+    ) {
+      return this.savedDraft;
+    }
+
+    return undefined;
   }
 }
 
@@ -37,8 +55,14 @@ function createTestApp(customerBelongsToCompany = true) {
   const customerAccessReader = new FakeCustomerAccessReader(
     customerBelongsToCompany,
   );
+  let getInput: GetInvoiceDraftInput | undefined;
   let saveInput: SaveInvoiceDraftInput | undefined;
   const app = createInvoiceDraftRoutes({
+    async getInvoiceDraft(input) {
+      getInput = input;
+
+      return getInvoiceDraft(input, invoiceDraftRepository);
+    },
     async saveInvoiceDraft(input) {
       saveInput = input;
 
@@ -53,6 +77,7 @@ function createTestApp(customerBelongsToCompany = true) {
     app,
     customerAccessReader,
     invoiceDraftRepository,
+    getGetInput: () => getInput,
     getSaveInput: () => saveInput,
   };
 }
@@ -244,5 +269,71 @@ describe('invoiceDraftRoutes', () => {
       error: 'Invoice draft body is too large.',
     });
     expect(testContext.getSaveInput()).toBeUndefined();
+  });
+
+  it('gets an existing invoice draft using the backend company context', async () => {
+    const testContext = createTestApp();
+    const createResponse = await postJson(
+      testContext.app,
+      createValidRequestBody(),
+    );
+    const createBody = (await createResponse.json()) as {
+      invoiceDraft: InvoiceDraft;
+    };
+
+    const response = await testContext.app.request(
+      `/invoice-drafts/${createBody.invoiceDraft.id}`,
+    );
+    const body = (await response.json()) as {
+      invoiceDraft: InvoiceDraft;
+    };
+
+    expect(response.status).toBe(200);
+    expect(testContext.getGetInput()).toEqual({
+      companyId: 'dev-company',
+      invoiceDraftId: createBody.invoiceDraft.id,
+    });
+    expect(body).toEqual({ invoiceDraft: createBody.invoiceDraft });
+  });
+
+  it('returns a generic not-found response for an unavailable draft', async () => {
+    const testContext = createTestApp();
+
+    const response = await testContext.app.request(
+      '/invoice-drafts/missing-draft',
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({
+      error: 'Invoice draft not found.',
+    });
+  });
+
+  it('does not accept request companyId as the trusted company context', async () => {
+    const testContext = createTestApp();
+
+    const response = await testContext.app.request(
+      '/invoice-drafts/draft-1?companyId=other-company',
+    );
+
+    expect(response.status).toBe(404);
+    expect(testContext.getGetInput()).toEqual({
+      companyId: 'dev-company',
+      invoiceDraftId: 'draft-1',
+    });
+  });
+
+  it('rejects an invoice draft id that exceeds the accepted length', async () => {
+    const testContext = createTestApp();
+
+    const response = await testContext.app.request(
+      `/invoice-drafts/${'x'.repeat(201)}`,
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Invoice draft id is invalid.',
+    });
+    expect(testContext.invoiceDraftRepository.savedDraft).toBeUndefined();
   });
 });
