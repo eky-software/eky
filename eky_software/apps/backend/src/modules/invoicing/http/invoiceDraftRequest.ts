@@ -2,6 +2,8 @@ import type {
   SaveInvoiceDraftInput,
   SaveInvoiceDraftLineInput,
 } from '../application/saveInvoiceDraft.js';
+import type { UpdateInvoiceDraftInput } from '../application/updateInvoiceDraft.js';
+import type { InvoiceDraftContentInput } from '../application/prepareInvoiceDraftContent.js';
 import type {
   InvoiceLineDiscount,
   PriceInputMode,
@@ -176,10 +178,9 @@ function readLine(value: unknown): SaveInvoiceDraftLineInput {
   return line;
 }
 
-export function parseSaveInvoiceDraftRequest(
+function parseInvoiceDraftContentRequest(
   body: unknown,
-  companyId: string,
-): SaveInvoiceDraftInput {
+): InvoiceDraftContentInput {
   if (!isRecord(body)) {
     throw new InvoiceDraftRequestValidationError();
   }
@@ -190,8 +191,7 @@ export function parseSaveInvoiceDraftRequest(
     throw new InvoiceDraftRequestValidationError();
   }
 
-  const input: SaveInvoiceDraftInput = {
-    companyId,
+  const input: InvoiceDraftContentInput = {
     customerId: readString(
       body,
       'customerId',
@@ -236,4 +236,26 @@ export function parseSaveInvoiceDraftRequest(
   }
 
   return input;
+}
+
+export function parseSaveInvoiceDraftRequest(
+  body: unknown,
+  companyId: string,
+): SaveInvoiceDraftInput {
+  return {
+    ...parseInvoiceDraftContentRequest(body),
+    companyId,
+  };
+}
+
+export function parseUpdateInvoiceDraftRequest(
+  body: unknown,
+  companyId: string,
+  invoiceDraftId: string,
+): UpdateInvoiceDraftInput {
+  return {
+    ...parseInvoiceDraftContentRequest(body),
+    companyId,
+    invoiceDraftId,
+  };
 }

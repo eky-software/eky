@@ -18,6 +18,11 @@ class FakeInvoiceDraftRepository implements InvoiceDraftRepository {
     return draft;
   }
 
+  async updateDraft(draft: InvoiceDraft): Promise<InvoiceDraft> {
+    this.savedDraft = draft;
+    return draft;
+  }
+
   async getDraftById(): Promise<InvoiceDraft | undefined> {
     return undefined;
   }

@@ -12,6 +12,10 @@ import {
   saveInvoiceDraft,
   type SaveInvoiceDraftInput,
 } from '../application/saveInvoiceDraft.js';
+import {
+  updateInvoiceDraft,
+  type UpdateInvoiceDraftInput,
+} from '../application/updateInvoiceDraft.js';
 import type { InvoiceDraft } from '../domain/invoiceDraft.js';
 import type { CustomerAccessReader } from '../ports/customerAccessReader.js';
 import type { InvoiceDraftRepository } from '../ports/invoiceDraftRepository.js';
@@ -21,6 +25,11 @@ class FakeInvoiceDraftRepository implements InvoiceDraftRepository {
   savedDraft: InvoiceDraft | undefined;
 
   async saveDraft(draft: InvoiceDraft): Promise<InvoiceDraft> {
+    this.savedDraft = draft;
+    return draft;
+  }
+
+  async updateDraft(draft: InvoiceDraft): Promise<InvoiceDraft> {
     this.savedDraft = draft;
     return draft;
   }
@@ -75,7 +84,11 @@ class FakeInvoiceDraftRepository implements InvoiceDraftRepository {
 class FakeCustomerAccessReader implements CustomerAccessReader {
   calls: Array<{ customerId: string; companyId: string }> = [];
 
-  constructor(private readonly customerBelongsToCompany = true) {}
+  constructor(private customerBelongsToCompany = true) {}
+
+  setCustomerBelongsToCompany(value: boolean): void {
+    this.customerBelongsToCompany = value;
+  }
 
   async belongsToCompany(
     customerId: string,
@@ -94,6 +107,7 @@ function createTestApp(customerBelongsToCompany = true) {
   let getInput: GetInvoiceDraftInput | undefined;
   let listInput: ListInvoiceDraftsInput | undefined;
   let saveInput: SaveInvoiceDraftInput | undefined;
+  let updateInput: UpdateInvoiceDraftInput | undefined;
   const app = createInvoiceDraftRoutes({
     async getInvoiceDraft(input) {
       getInput = input;
@@ -113,6 +127,14 @@ function createTestApp(customerBelongsToCompany = true) {
         invoiceDraftRepository,
       });
     },
+    async updateInvoiceDraft(input) {
+      updateInput = input;
+
+      return updateInvoiceDraft(input, {
+        customerAccessReader,
+        invoiceDraftRepository,
+      });
+    },
   });
 
   return {
@@ -122,6 +144,7 @@ function createTestApp(customerBelongsToCompany = true) {
     getGetInput: () => getInput,
     getListInput: () => listInput,
     getSaveInput: () => saveInput,
+    getUpdateInput: () => updateInput,
   };
 }
 
@@ -153,6 +176,19 @@ async function postJson(
     body: JSON.stringify(body),
     headers: { 'Content-Type': 'application/json' },
     method: 'POST',
+  });
+}
+
+async function putJson(
+  app: ReturnType<typeof createInvoiceDraftRoutes>,
+  invoiceDraftId: string,
+  body: unknown,
+  query = '',
+): Promise<Response> {
+  return app.request(`/invoice-drafts/${invoiceDraftId}${query}`, {
+    body: JSON.stringify(body),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'PUT',
   });
 }
 
@@ -473,6 +509,225 @@ describe('invoiceDraftRoutes', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Customer id is required.',
+    });
+  });
+
+  it('updates an existing draft through the backend company context', async () => {
+    const testContext = createTestApp();
+    const createResponse = await postJson(
+      testContext.app,
+      createValidRequestBody(),
+    );
+    const createBody = (await createResponse.json()) as {
+      invoiceDraft: InvoiceDraft;
+    };
+    const updateBody = {
+      ...createValidRequestBody(),
+      customerId: 'customer-2',
+      invoiceDate: '2026-06-14',
+      dueDate: '2026-07-14',
+      paymentTermDays: 30,
+      subject: 'Updated invoice',
+      lines: [
+        {
+          description: 'Updated work',
+          quantityHundredths: 200,
+          unit: 'h',
+          unitPriceCents: 5000,
+          vatRateBasisPoints: 2550,
+          discount: { type: 'none' },
+        },
+      ],
+    };
+
+    const response = await putJson(
+      testContext.app,
+      createBody.invoiceDraft.id,
+      updateBody,
+    );
+    const body = (await response.json()) as {
+      invoiceDraft: InvoiceDraft;
+    };
+
+    expect(response.status).toBe(200);
+    expect(testContext.getUpdateInput()).toMatchObject({
+      companyId: 'dev-company',
+      invoiceDraftId: createBody.invoiceDraft.id,
+      customerId: 'customer-2',
+      invoiceDate: '2026-06-14',
+    });
+    expect(body.invoiceDraft).toMatchObject({
+      id: createBody.invoiceDraft.id,
+      companyId: 'dev-company',
+      customerId: 'customer-2',
+      subject: 'Updated invoice',
+      createdAt: createBody.invoiceDraft.createdAt,
+      totals: {
+        netTotalCents: 10_000,
+        vatTotalCents: 2550,
+        grossTotalCents: 12_550,
+      },
+    });
+    expect(body.invoiceDraft.updatedAt).not.toBe(
+      createBody.invoiceDraft.updatedAt,
+    );
+    expect(body.invoiceDraft.lines).toHaveLength(1);
+    expect(body.invoiceDraft.lines[0]).toMatchObject({
+      position: 1,
+      description: 'Updated work',
+      netCents: 10_000,
+      vatCents: 2550,
+      grossCents: 12_550,
+    });
+  });
+
+  it('rejects server-owned fields from an update body', async () => {
+    const testContext = createTestApp();
+    const createResponse = await postJson(
+      testContext.app,
+      createValidRequestBody(),
+    );
+    const createBody = (await createResponse.json()) as {
+      invoiceDraft: InvoiceDraft;
+    };
+    const serverOwnedFields = [
+      ['id', 'other-draft'],
+      ['companyId', 'other-company'],
+      ['status', 'approved'],
+      ['grossTotalCents', 1],
+      ['createdAt', '2020-01-01T00:00:00.000Z'],
+      ['updatedAt', '2020-01-01T00:00:00.000Z'],
+    ] as const;
+
+    for (const [fieldName, fieldValue] of serverOwnedFields) {
+      const response = await putJson(
+        testContext.app,
+        createBody.invoiceDraft.id,
+        {
+          ...createValidRequestBody(),
+          [fieldName]: fieldValue,
+        },
+      );
+
+      expect(response.status, fieldName).toBe(400);
+      expect(await response.json(), fieldName).toEqual({
+        error: 'Invalid invoice draft body.',
+      });
+    }
+
+    expect(testContext.getUpdateInput()).toBeUndefined();
+  });
+
+  it('returns a generic not-found response for an unavailable update', async () => {
+    const testContext = createTestApp();
+
+    const response = await putJson(
+      testContext.app,
+      'missing-draft',
+      createValidRequestBody(),
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({
+      error: 'Invoice draft not found.',
+    });
+  });
+
+  it('rejects invalid JSON and oversized update bodies', async () => {
+    const testContext = createTestApp();
+    const invalidJsonResponse = await testContext.app.request(
+      '/invoice-drafts/draft-1',
+      {
+        body: '{',
+        headers: { 'Content-Type': 'application/json' },
+        method: 'PUT',
+      },
+    );
+    const oversizedResponse = await putJson(
+      testContext.app,
+      'draft-1',
+      {
+        ...createValidRequestBody(),
+        note: 'x'.repeat(300_000),
+      },
+    );
+
+    expect(invalidJsonResponse.status).toBe(400);
+    expect(await invalidJsonResponse.json()).toEqual({
+      error: 'Invalid JSON body.',
+    });
+    expect(oversizedResponse.status).toBe(413);
+    expect(await oversizedResponse.json()).toEqual({
+      error: 'Invoice draft body is too large.',
+    });
+    expect(testContext.getUpdateInput()).toBeUndefined();
+  });
+
+  it('rejects an update id that exceeds the accepted length', async () => {
+    const testContext = createTestApp();
+
+    const response = await putJson(
+      testContext.app,
+      'x'.repeat(201),
+      createValidRequestBody(),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Invoice draft id is invalid.',
+    });
+  });
+
+  it('does not update when customer access verification fails', async () => {
+    const testContext = createTestApp();
+    const createResponse = await postJson(
+      testContext.app,
+      createValidRequestBody(),
+    );
+    const createBody = (await createResponse.json()) as {
+      invoiceDraft: InvoiceDraft;
+    };
+    testContext.customerAccessReader.setCustomerBelongsToCompany(false);
+
+    const response = await putJson(
+      testContext.app,
+      createBody.invoiceDraft.id,
+      {
+        ...createValidRequestBody(),
+        customerId: 'unavailable-customer',
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Customer is not available for invoicing.',
+    });
+    expect(testContext.invoiceDraftRepository.savedDraft).toEqual(
+      createBody.invoiceDraft,
+    );
+  });
+
+  it('ignores request companyId query and keeps the trusted company context', async () => {
+    const testContext = createTestApp();
+    const createResponse = await postJson(
+      testContext.app,
+      createValidRequestBody(),
+    );
+    const createBody = (await createResponse.json()) as {
+      invoiceDraft: InvoiceDraft;
+    };
+
+    const response = await putJson(
+      testContext.app,
+      createBody.invoiceDraft.id,
+      createValidRequestBody(),
+      '?companyId=other-company',
+    );
+
+    expect(response.status).toBe(200);
+    expect(testContext.getUpdateInput()).toMatchObject({
+      companyId: 'dev-company',
+      invoiceDraftId: createBody.invoiceDraft.id,
     });
   });
 });
