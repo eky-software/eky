@@ -12,6 +12,7 @@ import { updateCustomer } from '../modules/customers/application/updateCustomer.
 import { createCustomersRoutes } from '../modules/customers/http/customersRoutes.js';
 import { SqliteCustomerRepository } from '../modules/customers/infrastructure/sqliteCustomerRepository.js';
 import { getInvoiceDraft } from '../modules/invoicing/application/getInvoiceDraft.js';
+import { listInvoiceDrafts } from '../modules/invoicing/application/listInvoiceDrafts.js';
 import { saveInvoiceDraft } from '../modules/invoicing/application/saveInvoiceDraft.js';
 import { createInvoiceDraftRoutes } from '../modules/invoicing/http/invoiceDraftRoutes.js';
 import { SqliteInvoiceDraftRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceDraftRepository.js';
@@ -60,6 +61,8 @@ export async function createApp(): Promise<Hono> {
     createInvoiceDraftRoutes({
       getInvoiceDraft: (input) =>
         getInvoiceDraft(input, invoiceDraftRepository),
+      listInvoiceDrafts: (input) =>
+        listInvoiceDrafts(input, invoiceDraftRepository),
       saveInvoiceDraft: (input) =>
         saveInvoiceDraft(input, {
           customerAccessReader,

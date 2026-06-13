@@ -5,6 +5,10 @@ import {
   type GetInvoiceDraftInput,
 } from '../application/getInvoiceDraft.js';
 import {
+  listInvoiceDrafts,
+  type ListInvoiceDraftsInput,
+} from '../application/listInvoiceDrafts.js';
+import {
   saveInvoiceDraft,
   type SaveInvoiceDraftInput,
 } from '../application/saveInvoiceDraft.js';
@@ -34,6 +38,38 @@ class FakeInvoiceDraftRepository implements InvoiceDraftRepository {
 
     return undefined;
   }
+
+  async listDraftSummaries(
+    companyId: string,
+    customerId?: string,
+  ) {
+    if (
+      this.savedDraft?.companyId !== companyId ||
+      (customerId !== undefined &&
+        this.savedDraft.customerId !== customerId)
+    ) {
+      return [];
+    }
+
+    const draft = this.savedDraft;
+
+    return [
+      {
+        id: draft.id,
+        customerId: draft.customerId,
+        status: draft.status,
+        invoiceDate: draft.invoiceDate,
+        dueDate: draft.dueDate,
+        paymentTermDays: draft.paymentTermDays,
+        priceInputMode: draft.priceInputMode,
+        subject: draft.subject,
+        netTotalCents: draft.totals.netTotalCents,
+        vatTotalCents: draft.totals.vatTotalCents,
+        grossTotalCents: draft.totals.grossTotalCents,
+        updatedAt: draft.updatedAt,
+      },
+    ];
+  }
 }
 
 class FakeCustomerAccessReader implements CustomerAccessReader {
@@ -56,12 +92,18 @@ function createTestApp(customerBelongsToCompany = true) {
     customerBelongsToCompany,
   );
   let getInput: GetInvoiceDraftInput | undefined;
+  let listInput: ListInvoiceDraftsInput | undefined;
   let saveInput: SaveInvoiceDraftInput | undefined;
   const app = createInvoiceDraftRoutes({
     async getInvoiceDraft(input) {
       getInput = input;
 
       return getInvoiceDraft(input, invoiceDraftRepository);
+    },
+    async listInvoiceDrafts(input) {
+      listInput = input;
+
+      return listInvoiceDrafts(input, invoiceDraftRepository);
     },
     async saveInvoiceDraft(input) {
       saveInput = input;
@@ -78,6 +120,7 @@ function createTestApp(customerBelongsToCompany = true) {
     customerAccessReader,
     invoiceDraftRepository,
     getGetInput: () => getInput,
+    getListInput: () => listInput,
     getSaveInput: () => saveInput,
   };
 }
@@ -335,5 +378,101 @@ describe('invoiceDraftRoutes', () => {
       error: 'Invoice draft id is invalid.',
     });
     expect(testContext.invoiceDraftRepository.savedDraft).toBeUndefined();
+  });
+
+  it('lists company draft summaries without returning draft details', async () => {
+    const testContext = createTestApp();
+    await postJson(testContext.app, createValidRequestBody());
+
+    const response = await testContext.app.request('/invoice-drafts');
+    const body = (await response.json()) as {
+      invoiceDrafts: Array<Record<string, unknown>>;
+    };
+
+    expect(response.status).toBe(200);
+    expect(testContext.getListInput()).toEqual({
+      companyId: 'dev-company',
+    });
+    expect(body.invoiceDrafts).toHaveLength(1);
+    expect(body.invoiceDrafts[0]).toMatchObject({
+      customerId: 'customer-1',
+      status: 'draft',
+      subject: 'Test invoice',
+      netTotalCents: 14_250,
+      vatTotalCents: 3634,
+      grossTotalCents: 17_884,
+    });
+    expect(body.invoiceDrafts[0]).not.toHaveProperty('lines');
+    expect(body.invoiceDrafts[0]).not.toHaveProperty('vatBreakdown');
+    expect(body.invoiceDrafts[0]).not.toHaveProperty('note');
+    expect(body.invoiceDrafts[0]).not.toHaveProperty('orderNumber');
+    expect(body.invoiceDrafts[0]).not.toHaveProperty('customerName');
+  });
+
+  it('passes the optional customerId filter to the use case', async () => {
+    const testContext = createTestApp();
+    await postJson(testContext.app, createValidRequestBody());
+
+    const matchingResponse = await testContext.app.request(
+      '/invoice-drafts?customerId=customer-1',
+    );
+    const missingResponse = await testContext.app.request(
+      '/invoice-drafts?customerId=unknown-customer',
+    );
+    const matchingBody = (await matchingResponse.json()) as {
+      invoiceDrafts: unknown[];
+    };
+    const missingBody = (await missingResponse.json()) as {
+      invoiceDrafts: unknown[];
+    };
+
+    expect(matchingResponse.status).toBe(200);
+    expect(matchingBody.invoiceDrafts).toHaveLength(1);
+    expect(missingResponse.status).toBe(200);
+    expect(missingBody.invoiceDrafts).toEqual([]);
+  });
+
+  it('ignores request companyId and uses the backend company context', async () => {
+    const testContext = createTestApp();
+    await postJson(testContext.app, createValidRequestBody());
+
+    const response = await testContext.app.request(
+      '/invoice-drafts?companyId=other-company',
+    );
+    const body = (await response.json()) as {
+      invoiceDrafts: unknown[];
+    };
+
+    expect(response.status).toBe(200);
+    expect(testContext.getListInput()).toEqual({
+      companyId: 'dev-company',
+    });
+    expect(body.invoiceDrafts).toHaveLength(1);
+  });
+
+  it('rejects an invalid customerId query filter', async () => {
+    const testContext = createTestApp();
+
+    const response = await testContext.app.request(
+      `/invoice-drafts?customerId=${'x'.repeat(201)}`,
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Customer id is invalid.',
+    });
+  });
+
+  it('rejects an empty customerId query filter', async () => {
+    const testContext = createTestApp();
+
+    const response = await testContext.app.request(
+      '/invoice-drafts?customerId=',
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Customer id is required.',
+    });
   });
 });

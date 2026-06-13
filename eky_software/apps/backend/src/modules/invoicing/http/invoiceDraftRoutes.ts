@@ -3,12 +3,14 @@ import { bodyLimit } from 'hono/body-limit';
 
 import type { GetInvoiceDraftInput } from '../application/getInvoiceDraft.js';
 import { InvoiceDraftNotFoundError } from '../application/invoiceDraftNotFoundError.js';
+import type { ListInvoiceDraftsInput } from '../application/listInvoiceDrafts.js';
 import type {
   SaveInvoiceDraftInput,
 } from '../application/saveInvoiceDraft.js';
 import { InvoiceCalculationError } from '../domain/invoiceCalculationError.js';
 import type { InvoiceDraft } from '../domain/invoiceDraft.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
+import type { InvoiceDraftSummary } from '../domain/invoiceDraftSummary.js';
 import {
   InvoiceDraftRequestValidationError,
   parseSaveInvoiceDraftRequest,
@@ -19,6 +21,9 @@ const maximumInvoiceDraftBodySizeBytes = 256 * 1024;
 
 interface InvoiceDraftRouteDependencies {
   getInvoiceDraft(input: GetInvoiceDraftInput): Promise<InvoiceDraft>;
+  listInvoiceDrafts(
+    input: ListInvoiceDraftsInput,
+  ): Promise<InvoiceDraftSummary[]>;
   saveInvoiceDraft(input: SaveInvoiceDraftInput): Promise<InvoiceDraft>;
 }
 
@@ -62,6 +67,29 @@ export function createInvoiceDraftRoutes(
       }
     },
   );
+
+  routes.get('/invoice-drafts', async (context) => {
+    try {
+      const customerId = context.req.query('customerId');
+      const input: ListInvoiceDraftsInput = {
+        companyId: devCompanyId,
+      };
+
+      if (customerId !== undefined) {
+        input.customerId = customerId;
+      }
+
+      const invoiceDrafts = await dependencies.listInvoiceDrafts(input);
+
+      return context.json({ invoiceDrafts });
+    } catch (error) {
+      if (error instanceof InvoiceDraftValidationError) {
+        return context.json({ error: error.message }, 400);
+      }
+
+      throw error;
+    }
+  });
 
   routes.get('/invoice-drafts/:id', async (context) => {
     try {

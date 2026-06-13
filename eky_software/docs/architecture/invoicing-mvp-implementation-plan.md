@@ -477,6 +477,28 @@ Seuraavat rajat ovat pakollisia:
 - repository-portti ei paljasta SQLite-tyyppejä eikä vastaanota raakaa HTTP DTO:ta
 - SQLite-adapteri käyttää vain parametrisoituja SQL-lauseita
 
+### Laskuluonnosten Yhteenvetolistaus
+
+Laskuluonnosten listaus käyttää rajattua `InvoiceDraftSummary`-tyyppiä.
+
+Yhteenveto sisältää vain listan tarvitseman päätason datan:
+
+- tekninen tunniste
+- `customerId`
+- tila
+- laskun päiväys ja eräpäivä
+- maksuehto
+- hintojen syöttötapa
+- aihe
+- tallennetut veroton-, ALV- ja verollinen yhteissumma
+- viimeisin muokkausaika
+
+Listaus ei palauta laskurivejä, ALV-erittelyä, saatetta, tilausnumeroa, asiakkaan nimeä tai Customers-moduulin omistamaa dataa.
+
+Kaikki listaukset rajataan backendin vahvistamalla `companyId`-arvolla. Valinnainen `customerId` toimii saman yritysrajauksen sisäisenä suodattimena eikä aiheuta JOIN-kyselyä Customers-moduuliin.
+
+Ensimmäinen local-MVP järjestää luonnokset arvoilla `updatedAt DESC, id DESC`. Ennen oikeita suuria datamääriä listaukseen lisätään samalla järjestysavaimella cursor/keyset-pagination erillisenä toteutusvaiheena.
+
 ### Turvallisuus Ja Validointi
 
 Tuleva backend-toteutus noudattaa ainakin seuraavia sääntöjä:
