@@ -1,35 +1,8 @@
-import { EkyApiError, isRecord, requestJson } from './http.js';
-
-export interface CompanySettings {
-  id: string;
-  companyId: string;
-  companyName: string;
-  businessId: string;
-  streetAddress: string;
-  postalCode: string;
-  city: string;
-  email: string;
-  phone: string;
-  defaultHourlyRateCents: number | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface UpdateCompanySettingsRequest {
-  companyName: string;
-  businessId: string;
-  streetAddress: string;
-  postalCode: string;
-  city: string;
-  email: string;
-  phone: string;
-  defaultHourlyRateCents: number | null;
-}
-
-export interface CompanySettingsApi {
-  getCompanySettings(): Promise<CompanySettings>;
-  updateCompanySettings(input: UpdateCompanySettingsRequest): Promise<CompanySettings>;
-}
+import { EkyApiError, isRecord, requestJson } from '../http.js';
+import type {
+  CompanySettings,
+  CompanySettingsApi,
+} from './companySettingsTypes.js';
 
 export function createCompanySettingsApi(
   fetchImplementation: typeof fetch,
@@ -44,7 +17,9 @@ export function createCompanySettingsApi(
       );
 
       if (!isRecord(responseBody)) {
-        throw new EkyApiError('Invalid company settings response.', { responseBody });
+        throw new EkyApiError('Invalid company settings response.', {
+          responseBody,
+        });
       }
 
       return parseCompanySettings(responseBody.companySettings);
@@ -65,7 +40,9 @@ export function createCompanySettingsApi(
       );
 
       if (!isRecord(responseBody)) {
-        throw new EkyApiError('Invalid company settings response.', { responseBody });
+        throw new EkyApiError('Invalid company settings response.', {
+          responseBody,
+        });
       }
 
       return parseCompanySettings(responseBody.companySettings);
@@ -89,7 +66,9 @@ function parseCompanySettings(value: unknown): CompanySettings {
     typeof value.createdAt !== 'string' ||
     typeof value.updatedAt !== 'string'
   ) {
-    throw new EkyApiError('Invalid company settings response.', { responseBody: value });
+    throw new EkyApiError('Invalid company settings response.', {
+      responseBody: value,
+    });
   }
 
   return {

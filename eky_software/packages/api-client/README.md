@@ -11,6 +11,39 @@ Vastuut:
 
 React-komponentit eivät saa tehdä raakaa `fetch`-kutsua suoraan, jos api-client-funktio on olemassa.
 
+## Rakenne
+
+API-client on jaettu toiminnallisiin kansioihin:
+
+```text
+src/
+  client.ts
+  http.ts
+  index.ts
+
+  customers/
+    customersClient.ts
+    customersTypes.ts
+
+  companySettings/
+    companySettingsClient.ts
+    companySettingsTypes.ts
+
+  invoiceDrafts/
+    invoiceDraftsClient.ts
+    invoiceDraftsTypes.ts
+    invoiceDraftsSerialization.ts
+    invoiceDraftsResponse.ts
+```
+
+Feature-kansio omistaa kyseisen HTTP-sopimuksen tyypit, kutsut ja tarvittavat
+request/response-muunnokset. `src/client.ts` kokoaa feature-clientit yhteen ja
+`src/index.ts` säilyy paketin julkisena pääexporttina.
+
+Uudet API-kokonaisuudet lisätään omiin selkeästi nimettyihin kansioihinsa.
+Pakettiin ei luoda yleisiä `utils`, `helpers`, `common` tai `everything`
+-kaatopaikkoja.
+
 ## Toteutetut API-kokonaisuudet
 
 Paketti tarjoaa tällä hetkellä hallitut kutsut:

@@ -4,7 +4,7 @@ import {
   createEkyApiClient,
   EkyApiError,
   type Customer,
-} from './index.js';
+} from '../index.js';
 
 describe('createEkyApiClient', () => {
   it('lists customers through GET /customers', async () => {
