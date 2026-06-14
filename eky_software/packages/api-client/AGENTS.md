@@ -8,6 +8,7 @@ Lue ennen API-client-muutoksia:
 - repositorion juuri-`AGENTS.md`
 - `docs/architecture/dependency-policy.md`
 - `docs/architecture/security-principles.md`
+- `docs/architecture/error-handling-principles.md`
 - `packages/api-client/README.md`
 
 ## Rakenne

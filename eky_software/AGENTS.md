@@ -65,6 +65,7 @@ Lue lisäksi tehtävän mukaan seuraavat dokumentit:
 - Moduulien rajat: `docs/architecture/module-boundaries.md`
 - Riippuvuuksien hallinta: `docs/architecture/dependency-policy.md`
 - Turvallisuusperiaatteet: `docs/architecture/security-principles.md`
+- Virheenkäsittelyn periaatteet: `docs/architecture/error-handling-principles.md`
 - Teknologiapäätökset: `docs/architecture/tech-decisions.md`
 - Tietomallin periaatteet: `docs/architecture/data-model-principles.md`
 - Liiketoimintakonteksti: `docs/product/business-context.md`
@@ -108,6 +109,8 @@ Jos työ koskee ensimmäistä manuaalista laskutus-MVP:tä, laskuluonnosta, lask
 Jos työ koskee web-käyttöliittymän ulkoasua, layoutia, komponenttirakennetta, värejä tai Eky-työpöytäkokemusta, lue myös `docs/design/ui-principles.md`.
 
 Jos työ koskee käyttäjälle näkyviä UI-tekstejä, kielivalintaa, i18n-rakennetta tai käännöksiä, lue myös `docs/design/ui-principles.md`.
+
+Jos työ koskee domain- tai application-virheitä, HTTP-virhevastauksia, API-clientin `EkyApiError`-rakennetta, webin virheilmoituksia, React Error Boundarya, virhelokitusta tai virhekoodien sopimusta, lue myös `docs/architecture/error-handling-principles.md`.
 
 Jos kohdekansiossa on oma `AGENTS.md`, se on luettava ennen muutosten tekemistä.
 
