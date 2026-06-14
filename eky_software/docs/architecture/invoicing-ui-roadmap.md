@@ -39,6 +39,8 @@ Customers-moduulin tietoja oikopolkuna.
 
 ## Vaihe 2: uuden laskun lomakkeen perusrakenne
 
+Tila: toteutettu lomakerunkona.
+
 - avaa uuden laskun Classic-työpinta
 - lisää laskun perustietojen osio
 - lisää asiakasvalinnan paikka
