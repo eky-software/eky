@@ -59,6 +59,9 @@ komponentteihin. Yleistä lomakeframeworkia ei rakenneta.
 
 ## Vaihe 4: asiakkaan valinta ja oletusarvot
 
+Tila: asiakasvalinnan perusrakenne toteutettu. Asiakastyypin ja hinnoittelun
+oletusarvot toteutetaan myöhemmin tämän vaiheen jatkona.
+
 - valitse asiakas hallitun API-sopimuksen kautta
 - ehdota asiakkaan tyypin mukaista `priceInputMode`-arvoa
 - ehdota oman yrityksen ja asiakkaan hinnoitteluasetuksia

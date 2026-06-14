@@ -1005,6 +1005,10 @@ h2 {
   line-height: 1.35;
 }
 
+.invoice-field .invoice-field-error {
+  color: #a10f3b;
+}
+
 .invoice-field-customer {
   grid-column: span 2;
 }

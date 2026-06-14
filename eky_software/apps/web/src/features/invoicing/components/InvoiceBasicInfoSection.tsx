@@ -1,7 +1,10 @@
+import { CustomerPicker } from './CustomerPicker.js';
 import type { NewInvoiceFormState } from '../newInvoiceFormState.js';
+import type { InvoiceCustomerListState } from '../useInvoiceCustomers.js';
 import { uiText } from '../../../i18n/fi.js';
 
 interface InvoiceBasicInfoSectionProps {
+  customerListState: InvoiceCustomerListState;
   form: NewInvoiceFormState;
   onFieldChange<FieldName extends keyof NewInvoiceFormState>(
     fieldName: FieldName,
@@ -10,6 +13,7 @@ interface InvoiceBasicInfoSectionProps {
 }
 
 export function InvoiceBasicInfoSection({
+  customerListState,
   form,
   onFieldChange,
 }: InvoiceBasicInfoSectionProps): React.JSX.Element {
@@ -21,20 +25,13 @@ export function InvoiceBasicInfoSection({
       </header>
 
       <div className="invoice-basic-info-grid">
-        <label className="invoice-field invoice-field-customer">
-          <span>{uiText.invoicing.customer}</span>
-          <select
-            disabled
-            name="customerId"
-            value={form.customerId}
-            onChange={(event) =>
-              onFieldChange('customerId', event.target.value)
-            }
-          >
-            <option value="">{uiText.invoicing.customerPlaceholder}</option>
-          </select>
-          <small>{uiText.invoicing.customerPlaceholderHelp}</small>
-        </label>
+        <CustomerPicker
+          {...customerListState}
+          value={form.customerId}
+          onChange={(customerId) =>
+            onFieldChange('customerId', customerId)
+          }
+        />
 
         <label className="invoice-field">
           <span>{uiText.invoicing.invoiceDate}</span>
