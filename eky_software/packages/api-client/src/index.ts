@@ -7,14 +7,14 @@ export { EkyApiError } from './http.js';
 export type {
   CompanySettings,
   UpdateCompanySettingsRequest,
-} from './companySettings.js';
+} from './companySettings/index.js';
 export type {
   CreateCustomerRequest,
   Customer,
   CustomerStatus,
   CustomerType,
   UpdateCustomerRequest,
-} from './customers.js';
+} from './customers/index.js';
 export type {
   InvoiceDraft,
   InvoiceDraftInput,
@@ -28,4 +28,4 @@ export type {
   InvoiceTotals,
   InvoiceUnit,
   InvoiceVatBreakdown,
-} from './invoiceDrafts.js';
+} from './invoiceDrafts/index.js';

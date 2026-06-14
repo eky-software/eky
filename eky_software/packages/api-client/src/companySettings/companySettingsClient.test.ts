@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createEkyApiClient, type CompanySettings } from './index.js';
+import { createEkyApiClient, type CompanySettings } from '../index.js';
 
 describe('company settings api client', () => {
   it('gets company settings through GET /company-settings', async () => {

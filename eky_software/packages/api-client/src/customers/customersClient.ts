@@ -1,72 +1,10 @@
-import { EkyApiError, isRecord, requestJson } from './http.js';
-
-export type CustomerStatus = 'active' | 'inactive';
-
-export type CustomerType =
-  | 'company'
-  | 'housingCompany'
-  | 'other'
-  | 'privatePerson'
-  | 'propertyManager';
-
-export interface Customer {
-  id: string;
-  companyId: string;
-  customerNumber: string;
-  name: string;
-  customerType: CustomerType;
-  businessId: string;
-  streetAddress: string;
-  postalCode: string;
-  city: string;
-  email: string;
-  managedByCustomerId: string;
-  phone: string;
-  comment: string;
-  hourlyRateOverrideCents: number | null;
-  status: CustomerStatus;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface CreateCustomerRequest {
-  businessId: string;
-  city: string;
-  comment: string;
-  customerNumber?: string;
-  customerNumberMode: 'auto' | 'manual';
-  customerType: CustomerType;
-  email: string;
-  hourlyRateOverrideCents: number | null;
-  managedByCustomerId: string;
-  name: string;
-  phone: string;
-  postalCode: string;
-  status: CustomerStatus;
-  streetAddress: string;
-}
-
-export interface UpdateCustomerRequest {
-  businessId: string;
-  city: string;
-  comment: string;
-  customerNumber: string;
-  customerType: CustomerType;
-  email: string;
-  hourlyRateOverrideCents: number | null;
-  managedByCustomerId: string;
-  name: string;
-  phone: string;
-  postalCode: string;
-  status: CustomerStatus;
-  streetAddress: string;
-}
-
-export interface CustomersApi {
-  createCustomer(input: CreateCustomerRequest): Promise<Customer>;
-  listCustomers(): Promise<Customer[]>;
-  updateCustomer(id: string, input: UpdateCustomerRequest): Promise<Customer>;
-}
+import { EkyApiError, isRecord, requestJson } from '../http.js';
+import type {
+  Customer,
+  CustomersApi,
+  CustomerStatus,
+  CustomerType,
+} from './customersTypes.js';
 
 export function createCustomersApi(
   fetchImplementation: typeof fetch,
@@ -74,13 +12,18 @@ export function createCustomersApi(
 ): CustomersApi {
   return {
     async createCustomer(input): Promise<Customer> {
-      const responseBody = await requestJson(fetchImplementation, baseUrl, '/customers', {
-        body: JSON.stringify(input),
-        headers: {
-          'Content-Type': 'application/json',
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        '/customers',
+        {
+          body: JSON.stringify(input),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          method: 'POST',
         },
-        method: 'POST',
-      });
+      );
 
       if (!isRecord(responseBody)) {
         throw new EkyApiError('Invalid customer response.', { responseBody });
@@ -90,7 +33,11 @@ export function createCustomersApi(
     },
 
     async listCustomers(): Promise<Customer[]> {
-      const responseBody = await requestJson(fetchImplementation, baseUrl, '/customers');
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        '/customers',
+      );
 
       if (!isRecord(responseBody) || !Array.isArray(responseBody.customers)) {
         throw new EkyApiError('Invalid customers response.', { responseBody });
@@ -100,13 +47,18 @@ export function createCustomersApi(
     },
 
     async updateCustomer(id, input): Promise<Customer> {
-      const responseBody = await requestJson(fetchImplementation, baseUrl, `/customers/${id}`, {
-        body: JSON.stringify(input),
-        headers: {
-          'Content-Type': 'application/json',
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        `/customers/${id}`,
+        {
+          body: JSON.stringify(input),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          method: 'PUT',
         },
-        method: 'PUT',
-      });
+      );
 
       if (!isRecord(responseBody)) {
         throw new EkyApiError('Invalid customer response.', { responseBody });
@@ -138,7 +90,9 @@ function parseCustomer(value: unknown): Customer {
     typeof value.createdAt !== 'string' ||
     typeof value.updatedAt !== 'string'
   ) {
-    throw new EkyApiError('Invalid customer response.', { responseBody: value });
+    throw new EkyApiError('Invalid customer response.', {
+      responseBody: value,
+    });
   }
 
   return {
