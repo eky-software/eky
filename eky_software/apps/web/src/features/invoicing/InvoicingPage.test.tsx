@@ -1,6 +1,6 @@
 import type { InvoiceDraftSummary } from '@eky/api-client';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { InvoicingPageView } from './InvoicingPage.js';
 import { uiText } from '../../i18n/fi.js';
@@ -8,9 +8,12 @@ import { uiText } from '../../i18n/fi.js';
 describe('InvoicingPageView', () => {
   it('renders invoice draft summaries and the new invoice placeholder', () => {
     const html = renderPage({
+      activeView: 'draftList',
       drafts: [createInvoiceDraftSummary()],
       errorMessage: null,
       isLoading: false,
+      onBackToDrafts: vi.fn(),
+      onNewInvoice: vi.fn(),
     });
 
     expect(html).toContain('Testilasku');
@@ -20,14 +23,17 @@ describe('InvoicingPageView', () => {
     expect(html).toContain('178,84');
     expect(html).toContain(uiText.invoicing.statusDraft);
     expect(html).toContain(uiText.invoicing.newInvoice);
-    expect(html).toContain('disabled=""');
+    expect(html).not.toContain(uiText.invoicing.saveDraft);
   });
 
   it('renders the empty state', () => {
     const html = renderPage({
+      activeView: 'draftList',
       drafts: [],
       errorMessage: null,
       isLoading: false,
+      onBackToDrafts: vi.fn(),
+      onNewInvoice: vi.fn(),
     });
 
     expect(html).toContain(uiText.invoicing.empty);
@@ -35,9 +41,12 @@ describe('InvoicingPageView', () => {
 
   it('renders a safe error state without technical response data', () => {
     const html = renderPage({
+      activeView: 'draftList',
       drafts: [],
       errorMessage: uiText.invoicing.loadError,
       isLoading: false,
+      onBackToDrafts: vi.fn(),
+      onNewInvoice: vi.fn(),
     });
 
     expect(html).toContain(uiText.invoicing.loadError);
@@ -47,12 +56,43 @@ describe('InvoicingPageView', () => {
 
   it('renders the loading state', () => {
     const html = renderPage({
+      activeView: 'draftList',
       drafts: [],
       errorMessage: null,
       isLoading: true,
+      onBackToDrafts: vi.fn(),
+      onNewInvoice: vi.fn(),
     });
 
     expect(html).toContain(uiText.invoicing.loading);
+  });
+
+  it('renders the new invoice Classic form shell', () => {
+    const html = renderPage({
+      activeView: 'newInvoice',
+      drafts: [],
+      errorMessage: null,
+      isLoading: false,
+      onBackToDrafts: vi.fn(),
+      onNewInvoice: vi.fn(),
+    });
+
+    expect(html).toContain(uiText.invoicing.backToDrafts);
+    expect(html).toContain(uiText.invoicing.customerPlaceholder);
+    expect(html).toContain(uiText.invoicing.invoiceDate);
+    expect(html).toContain(uiText.invoicing.paymentTermDays);
+    expect(html).toContain(uiText.invoicing.dueDate);
+    expect(html).toContain(uiText.invoicing.subject);
+    expect(html).toContain(uiText.invoicing.orderNumber);
+    expect(html).toContain(uiText.invoicing.note);
+    expect(html).toContain(uiText.invoicing.priceInputNet);
+    expect(html).toContain(uiText.invoicing.priceInputGross);
+    expect(html).toContain(uiText.invoicing.invoiceRowsLater);
+    expect(html).toContain(uiText.invoicing.invoiceTotalsLater);
+    expect(html).toContain(uiText.invoicing.saveDraft);
+    expect(html).toContain(
+      `disabled="" title="${uiText.invoicing.saveDraftLater}" type="submit">${uiText.invoicing.saveDraft}</button>`,
+    );
   });
 });
 
