@@ -116,9 +116,10 @@ describe('createEkyApiClient', () => {
   });
 
   it('throws an API error for backend error responses', async () => {
+    const responseBody = { error: 'Customer name is required.' };
     const client = createEkyApiClient({
       baseUrl: '',
-      fetch: async () => jsonResponse({ error: 'Customer name is required.' }, { status: 400 }),
+      fetch: async () => jsonResponse(responseBody, { status: 400 }),
     });
 
     await expect(
@@ -140,6 +141,8 @@ describe('createEkyApiClient', () => {
       }),
     ).rejects.toMatchObject({
       message: 'Customer name is required.',
+      name: 'EkyApiError',
+      responseBody,
       status: 400,
     });
   });

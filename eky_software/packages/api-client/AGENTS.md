@@ -47,3 +47,10 @@ API-client:
 
 Jos feature-tiedosto alkaa sisältää useita vastuita tai kasvaa vaikeasti
 luettavaksi, jaa se vastuun mukaan ennen uuden toiminnallisuuden lisäämistä.
+
+## Virheenkäsittelyn yhtenäistäminen
+
+`customers`- ja `companySettings`-polut kuuluvat samaan
+`docs/architecture/error-handling-principles.md`-malliin kuin `invoiceDrafts`.
+Kun niiden tuotantokoodia seuraavan kerran muutetaan, tarkista samalla niiden
+virheenkäsittely tämän mallin mukaiseksi ennen vastaavan UI-työn laajentamista.
