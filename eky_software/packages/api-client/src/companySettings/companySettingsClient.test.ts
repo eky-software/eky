@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { createEkyApiClient, type CompanySettings } from '../index.js';
+import {
+  createEkyApiClient,
+  EkyApiError,
+  type CompanySettings,
+} from '../index.js';
 
 describe('company settings api client', () => {
   it('gets company settings through GET /company-settings', async () => {
@@ -63,6 +67,49 @@ describe('company settings api client', () => {
       'Content-Type': 'application/json',
     });
     expect(requests[0]?.init?.body).toBe(JSON.stringify(input));
+  });
+
+  it('preserves a controlled API error from the backend', async () => {
+    const responseBody = {
+      error: 'Company settings could not be saved.',
+    };
+    const client = createEkyApiClient({
+      baseUrl: '',
+      fetch: async () => jsonResponse(responseBody, { status: 409 }),
+    });
+
+    await expect(
+      client.updateCompanySettings({
+        businessId: '',
+        city: '',
+        companyName: 'Example Builder Oy',
+        defaultHourlyRateCents: null,
+        email: '',
+        phone: '',
+        postalCode: '',
+        streetAddress: '',
+      }),
+    ).rejects.toMatchObject({
+      message: 'Company settings could not be saved.',
+      name: 'EkyApiError',
+      responseBody,
+      status: 409,
+    });
+  });
+
+  it('throws a controlled API error for an invalid response shape', async () => {
+    const invalidSettings = {};
+    const client = createEkyApiClient({
+      baseUrl: '',
+      fetch: async () => jsonResponse({ companySettings: invalidSettings }),
+    });
+
+    await expect(client.getCompanySettings()).rejects.toMatchObject({
+      message: 'Invalid company settings response.',
+      name: 'EkyApiError',
+      responseBody: invalidSettings,
+      status: undefined,
+    } satisfies Partial<EkyApiError>);
   });
 });
 

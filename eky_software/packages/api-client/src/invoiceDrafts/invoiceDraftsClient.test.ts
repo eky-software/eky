@@ -150,6 +150,19 @@ describe('invoice drafts api client', () => {
       client.getInvoiceDraft('draft-1'),
     ).rejects.toBeInstanceOf(EkyApiError);
   });
+
+  it('preserves a controlled API error from the backend', async () => {
+    const requests = createRequestLog();
+    const responseBody = { error: 'Invoice draft was not found.' };
+    const client = createTestClient(requests, responseBody, 404);
+
+    await expect(client.getInvoiceDraft('missing-draft')).rejects.toMatchObject({
+      message: 'Invoice draft was not found.',
+      name: 'EkyApiError',
+      responseBody,
+      status: 404,
+    });
+  });
 });
 
 interface RecordedRequest {
