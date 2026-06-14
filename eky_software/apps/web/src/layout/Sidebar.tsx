@@ -8,7 +8,7 @@ type SidebarNavItem =
       status: 'available';
     }
   | {
-      id: 'invoicing' | 'sites' | 'workOrders';
+      id: 'sites' | 'workOrders';
       label: string;
       status: 'soon';
     };
@@ -25,7 +25,7 @@ const navSections: SidebarNavSection[] = [
       { id: 'customers', label: uiText.modules.customers, status: 'available' },
       { id: 'sites', label: uiText.modules.sites, status: 'soon' },
       { id: 'workOrders', label: uiText.modules.workOrders, status: 'soon' },
-      { id: 'invoicing', label: uiText.modules.invoicing, status: 'soon' },
+      { id: 'invoicing', label: uiText.modules.invoicing, status: 'available' },
     ],
   },
   {

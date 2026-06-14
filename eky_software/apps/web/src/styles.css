@@ -324,6 +324,11 @@ h2 {
   gap: 18px;
 }
 
+.invoicing-workspace {
+  display: grid;
+  gap: 18px;
+}
+
 .page-intro {
   display: flex;
   align-items: end;
@@ -346,6 +351,13 @@ h2 {
 }
 
 .company-settings-page-header {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.invoicing-page-header {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: 18px;
@@ -820,6 +832,101 @@ h2 {
   background: var(--color-surface-strong);
 }
 
+.invoice-draft-list-panel {
+  min-width: 0;
+}
+
+.invoice-draft-list-header {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.invoice-draft-state {
+  margin: 0;
+  padding: 28px 12px;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.invoice-draft-table {
+  display: grid;
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.invoice-draft-table-row {
+  display: grid;
+  grid-template-columns:
+    minmax(220px, 1.6fr) minmax(160px, 1fr) minmax(110px, 0.75fr)
+    minmax(110px, 0.75fr) minmax(110px, 0.75fr) minmax(90px, 0.6fr);
+  gap: 12px;
+  align-items: center;
+  min-width: 920px;
+  min-height: 46px;
+  border-top: 1px solid var(--color-border);
+  padding: 0 14px;
+  background: var(--color-surface);
+}
+
+.invoice-draft-table-row:first-child {
+  border-top: 0;
+}
+
+.invoice-draft-table-head {
+  min-height: 38px;
+  color: var(--color-text-muted);
+  background: var(--color-surface-muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.invoice-draft-table-row > span,
+.invoice-draft-table-row > time {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 0.88rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.invoice-draft-main-cell {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.invoice-draft-main-cell strong,
+.invoice-draft-main-cell span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.invoice-draft-main-cell strong {
+  color: var(--color-text);
+  font-size: 0.92rem;
+}
+
+.invoice-draft-main-cell span {
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+}
+
+.invoice-draft-total {
+  color: var(--color-text);
+  font-size: 0.9rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.status-pill-draft {
+  color: var(--color-primary-dark);
+  background: #e5effd;
+}
+
 @media (max-width: 860px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -900,6 +1007,10 @@ h2 {
 
   .customer-table-head {
     display: none;
+  }
+
+  .invoice-draft-list-header {
+    align-items: flex-start;
   }
 }
 

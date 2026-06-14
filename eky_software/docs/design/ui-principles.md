@@ -222,18 +222,23 @@ Web ei kirjoita suoraan SQLiteen.
 
 Web ei sisällä varsinaista liiketoimintalogiikkaa.
 
-## Seuraava Toteutusaskel
+## Nykyinen Kasvupolku
 
-Seuraava UI-toteutusaskel on nykyisen webin refaktorointi ERP-työpöytämäisemmäksi ilman uusia riippuvuuksia.
+Webin yleinen ERP-työpöytärakenne on toteutettu `AppLayout`-, `TopBar`- ja
+`Sidebar`-komponenteilla.
 
-Suunniteltu pieni refaktorointi:
+Uudet toiminnalliset näkymät rakennetaan feature-kohtaisesti dokumentin
+`docs/architecture/web-frontend-structure.md` mukaisesti. Kukin feature
+vastaa omasta työpinnastaan, paikallisista komponenteistaan ja
+käyttöliittymätilastaan.
 
-- `AppLayout`
-- `TopBar`
-- `Sidebar`
-- `CustomerForm`
-- `CustomerList`
-- siistimpi `styles.css` tai `theme.css`
-- parempi työohjelmamainen asettelu
+Laskutuksen Classic-työpinnan vaiheistus on kuvattu dokumentissa
+`docs/architecture/invoicing-ui-roadmap.md`.
 
-Tässä vaiheessa ei vielä tehdä `packages/ui`-pakettia eikä oteta käyttöön UI-kirjastoa.
+Classic-näkymissä tavoitellaan vanhojen taloushallinto-ohjelmien
+käytännöllisyyttä, tietotiheyttä ja ennakoitavaa työjärjestystä ilman niiden
+brändin tai ulkoasun kopiointia. Eky säilyttää oman modernin, sinivalkoisen ja
+rauhallisen visuaalisen linjansa.
+
+Tässä vaiheessa ei tehdä `packages/ui`-pakettia eikä oteta käyttöön
+UI-kirjastoa ilman todellista toistuvaa tarvetta ja erillistä päätöstä.

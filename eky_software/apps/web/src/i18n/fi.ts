@@ -155,6 +155,28 @@ export const uiText = {
     title: 'Oma yritys',
     workspace: 'Yritysasetukset',
   },
+  invoicing: {
+    customer: 'Asiakas',
+    description:
+      'Täällä käsitellään laskuluonnoksia. Ensimmäinen näkymä kokoaa tallennetut luonnokset selkeäksi työlistaksi.',
+    draftCount: 'Laskuluonnosten määrä',
+    draftList: 'Laskuluonnoslista',
+    drafts: 'Luonnokset',
+    dueDate: 'Eräpäivä',
+    empty: 'Laskuluonnoksia ei ole vielä.',
+    invoice: 'Lasku',
+    invoiceDate: 'Laskun päiväys',
+    loadError: 'Laskuluonnoksia ei voitu ladata. Yritä hetken kuluttua uudelleen.',
+    loading: 'Ladataan laskuluonnoksia...',
+    newInvoice: 'Uusi lasku',
+    newInvoiceLater: 'Uuden laskun lomake lisätään seuraavassa vaiheessa.',
+    status: 'Tila',
+    statusDraft: 'Luonnos',
+    subjectFallback: 'Nimetön laskuluonnos',
+    title: 'Laskutus',
+    total: 'Yhteensä',
+    workspace: 'Laskutustyötila',
+  },
   apiErrors: {
     'API request failed.': 'API-pyyntö epäonnistui.',
     'Customer business id must be 200 characters or less.':
@@ -216,6 +238,8 @@ export const uiText = {
       'Oman yrityksen tietojen vastaus oli virheellinen.',
     'Invalid JSON body.': 'Pyyntö oli virheellinen.',
     'Invalid JSON response.': 'Palvelimen vastaus oli virheellinen.',
+    'Invalid invoice draft response.':
+      'Laskuluonnoksen vastaus oli virheellinen.',
   },
 } as const;
 
