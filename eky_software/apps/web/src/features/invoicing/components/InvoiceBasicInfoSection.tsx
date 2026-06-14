@@ -1,7 +1,11 @@
+import { CustomerPicker } from './CustomerPicker.js';
+import { SelectedCustomerDetails } from './SelectedCustomerDetails.js';
 import type { NewInvoiceFormState } from '../newInvoiceFormState.js';
+import type { InvoiceCustomerListState } from '../useInvoiceCustomers.js';
 import { uiText } from '../../../i18n/fi.js';
 
 interface InvoiceBasicInfoSectionProps {
+  customerListState: InvoiceCustomerListState;
   form: NewInvoiceFormState;
   onFieldChange<FieldName extends keyof NewInvoiceFormState>(
     fieldName: FieldName,
@@ -10,9 +14,23 @@ interface InvoiceBasicInfoSectionProps {
 }
 
 export function InvoiceBasicInfoSection({
+  customerListState,
   form,
   onFieldChange,
 }: InvoiceBasicInfoSectionProps): React.JSX.Element {
+  const selectedCustomer =
+    customerListState.customers.find(
+      (customer) => customer.id === form.customerId,
+    ) ?? null;
+  const propertyManager =
+    selectedCustomer?.managedByCustomerId
+      ? customerListState.customers.find(
+          (customer) =>
+            customer.id === selectedCustomer.managedByCustomerId &&
+            customer.customerType === 'propertyManager',
+        ) ?? null
+      : null;
+
   return (
     <section className="invoice-form-section">
       <header className="invoice-form-section-header">
@@ -21,20 +39,20 @@ export function InvoiceBasicInfoSection({
       </header>
 
       <div className="invoice-basic-info-grid">
-        <label className="invoice-field invoice-field-customer">
-          <span>{uiText.invoicing.customer}</span>
-          <select
-            disabled
-            name="customerId"
-            value={form.customerId}
-            onChange={(event) =>
-              onFieldChange('customerId', event.target.value)
-            }
-          >
-            <option value="">{uiText.invoicing.customerPlaceholder}</option>
-          </select>
-          <small>{uiText.invoicing.customerPlaceholderHelp}</small>
-        </label>
+        <CustomerPicker
+          {...customerListState}
+          value={form.customerId}
+          onChange={(customerId) =>
+            onFieldChange('customerId', customerId)
+          }
+        />
+
+        {selectedCustomer !== null ? (
+          <SelectedCustomerDetails
+            customer={selectedCustomer}
+            propertyManager={propertyManager}
+          />
+        ) : null}
 
         <label className="invoice-field">
           <span>{uiText.invoicing.invoiceDate}</span>

@@ -159,12 +159,24 @@ export const uiText = {
     backToDrafts: 'Takaisin luonnoksiin',
     basicInformation: 'Laskun perustiedot',
     basicInformationHelp:
-      'Täytä laskun perustiedot. Asiakasvalinta ja laskurivit otetaan käyttöön seuraavissa vaiheissa.',
+      'Valitse asiakas ja täytä laskun perustiedot. Laskurivit lisätään seuraavassa vaiheessa.',
     cancel: 'Peruuta',
     customer: 'Asiakas',
-    customerPlaceholder: 'Asiakas valitaan myöhemmässä vaiheessa',
-    customerPlaceholderHelp:
-      'Asiakashaku ja asiakkaan oletusarvot lisätään vaiheessa 4.',
+    customerEmpty: 'Asiakkaita ei ole',
+    customerEmptyHelp:
+      'Luo ensin asiakas asiakaskortistossa ja palaa sitten laskulle.',
+    customerDefaultHourlyRate: 'Käytetään oman yrityksen oletustuntihintaa',
+    customerHourlyRate: 'Asiakaskohtainen tuntihinta',
+    customerInactive: 'passivoitu',
+    customerLoadError:
+      'Asiakkaita ei voitu ladata. Yritä hetken kuluttua uudelleen.',
+    customerLoading: 'Ladataan asiakkaita...',
+    customerLoadingHelp: 'Asiakaslista haetaan paikalliselta backendiltä.',
+    customerPickerHelp:
+      'Valitse laskutettava asiakas asiakasnumeron ja nimen perusteella.',
+    customerPlaceholder: 'Valitse asiakas',
+    customerUnavailable: 'Asiakaslista ei ole käytettävissä',
+    selectedCustomerKicker: 'Valittu asiakas',
     description:
       'Täällä käsitellään laskuluonnoksia. Ensimmäinen näkymä kokoaa tallennetut luonnokset selkeäksi työlistaksi.',
     draftCount: 'Laskuluonnosten määrä',
@@ -184,6 +196,7 @@ export const uiText = {
     newInvoice: 'Uusi lasku',
     newInvoiceKicker: 'Laskuluonnos',
     netTotal: 'Veroton',
+    notSet: 'Ei asetettu',
     note: 'Lisätieto',
     notePlaceholder: 'Laskulla näkyvä saate tai lisätieto',
     orderNumber: 'Tilausnumero',

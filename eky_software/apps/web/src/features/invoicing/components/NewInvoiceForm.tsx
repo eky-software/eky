@@ -8,6 +8,7 @@ import {
   type NewInvoiceFormState,
   updateNewInvoiceFormField,
 } from '../newInvoiceFormState.js';
+import { useInvoiceCustomers } from '../useInvoiceCustomers.js';
 import { uiText } from '../../../i18n/fi.js';
 
 interface NewInvoiceFormProps {
@@ -18,6 +19,7 @@ export function NewInvoiceForm({
   onBack,
 }: NewInvoiceFormProps): React.JSX.Element {
   const [form, setForm] = useState(createInitialNewInvoiceForm);
+  const customerListState = useInvoiceCustomers();
 
   function handleFieldChange<FieldName extends keyof NewInvoiceFormState>(
     fieldName: FieldName,
@@ -48,6 +50,7 @@ export function NewInvoiceForm({
       </header>
 
       <InvoiceBasicInfoSection
+        customerListState={customerListState}
         form={form}
         onFieldChange={handleFieldChange}
       />

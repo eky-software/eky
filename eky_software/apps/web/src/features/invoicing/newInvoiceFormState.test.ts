@@ -46,4 +46,16 @@ describe('createInitialNewInvoiceForm', () => {
     expect(updatedForm.invoiceDate).toBe(form.invoiceDate);
     expect(updatedForm.dueDate).toBe(form.dueDate);
   });
+
+  it('stores the selected customer id in the form state', () => {
+    const form = createInitialNewInvoiceForm(new Date(2026, 5, 15));
+    const updatedForm = updateNewInvoiceFormField(
+      form,
+      'customerId',
+      'customer-1',
+    );
+
+    expect(updatedForm.customerId).toBe('customer-1');
+    expect(updatedForm.invoiceDate).toBe(form.invoiceDate);
+  });
 });

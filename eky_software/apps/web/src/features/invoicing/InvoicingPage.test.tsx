@@ -78,7 +78,7 @@ describe('InvoicingPageView', () => {
     });
 
     expect(html).toContain(uiText.invoicing.backToDrafts);
-    expect(html).toContain(uiText.invoicing.customerPlaceholder);
+    expect(html).toContain(uiText.invoicing.customerLoading);
     expect(html).toContain(uiText.invoicing.invoiceDate);
     expect(html).toContain(uiText.invoicing.paymentTermDays);
     expect(html).toContain(uiText.invoicing.dueDate);

@@ -1005,8 +1005,78 @@ h2 {
   line-height: 1.35;
 }
 
+.invoice-field .invoice-field-error {
+  color: #a10f3b;
+}
+
 .invoice-field-customer {
   grid-column: span 2;
+}
+
+.invoice-customer-details {
+  grid-column: 1 / -1;
+  border-block: 1px solid var(--color-border);
+  padding: 12px 0;
+  background: var(--color-surface-muted);
+}
+
+.invoice-customer-details-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 14px 10px;
+}
+
+.invoice-customer-details-header h4 {
+  margin: 2px 0 0;
+  color: var(--color-text);
+  font-size: 1rem;
+}
+
+.invoice-customer-details-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.invoice-customer-details-grid > div {
+  min-width: 0;
+  border-right: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  padding: 9px 14px;
+}
+
+.invoice-customer-details-grid > div:nth-child(4n) {
+  border-right: 0;
+}
+
+.invoice-customer-details-grid dt {
+  margin-bottom: 3px;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.invoice-customer-details-grid dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--color-text);
+  font-size: 0.84rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.invoice-customer-details-grid .invoice-customer-detail-wide {
+  grid-column: span 2;
+}
+
+.invoice-customer-details-grid .invoice-customer-detail-comment {
+  grid-column: 1 / -1;
+  border-right: 0;
 }
 
 .invoice-field-wide {
@@ -1244,6 +1314,20 @@ h2 {
   .invoice-field-customer,
   .invoice-field-wide {
     grid-column: auto;
+  }
+
+  .invoice-customer-details {
+    grid-column: auto;
+  }
+
+  .invoice-customer-details-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .invoice-customer-details-grid > div,
+  .invoice-customer-details-grid > div:nth-child(4n) {
+    grid-column: auto;
+    border-right: 0;
   }
 
   .invoice-totals-placeholder {
