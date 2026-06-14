@@ -165,6 +165,8 @@ export const uiText = {
     customerEmpty: 'Asiakkaita ei ole',
     customerEmptyHelp:
       'Luo ensin asiakas asiakaskortistossa ja palaa sitten laskulle.',
+    customerDefaultHourlyRate: 'Käytetään oman yrityksen oletustuntihintaa',
+    customerHourlyRate: 'Asiakaskohtainen tuntihinta',
     customerInactive: 'passivoitu',
     customerLoadError:
       'Asiakkaita ei voitu ladata. Yritä hetken kuluttua uudelleen.',
@@ -174,6 +176,7 @@ export const uiText = {
       'Valitse laskutettava asiakas asiakasnumeron ja nimen perusteella.',
     customerPlaceholder: 'Valitse asiakas',
     customerUnavailable: 'Asiakaslista ei ole käytettävissä',
+    selectedCustomerKicker: 'Valittu asiakas',
     description:
       'Täällä käsitellään laskuluonnoksia. Ensimmäinen näkymä kokoaa tallennetut luonnokset selkeäksi työlistaksi.',
     draftCount: 'Laskuluonnosten määrä',
@@ -193,6 +196,7 @@ export const uiText = {
     newInvoice: 'Uusi lasku',
     newInvoiceKicker: 'Laskuluonnos',
     netTotal: 'Veroton',
+    notSet: 'Ei asetettu',
     note: 'Lisätieto',
     notePlaceholder: 'Laskulla näkyvä saate tai lisätieto',
     orderNumber: 'Tilausnumero',

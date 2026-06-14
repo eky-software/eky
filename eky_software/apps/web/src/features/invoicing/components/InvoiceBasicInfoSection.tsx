@@ -1,4 +1,5 @@
 import { CustomerPicker } from './CustomerPicker.js';
+import { SelectedCustomerDetails } from './SelectedCustomerDetails.js';
 import type { NewInvoiceFormState } from '../newInvoiceFormState.js';
 import type { InvoiceCustomerListState } from '../useInvoiceCustomers.js';
 import { uiText } from '../../../i18n/fi.js';
@@ -17,6 +18,19 @@ export function InvoiceBasicInfoSection({
   form,
   onFieldChange,
 }: InvoiceBasicInfoSectionProps): React.JSX.Element {
+  const selectedCustomer =
+    customerListState.customers.find(
+      (customer) => customer.id === form.customerId,
+    ) ?? null;
+  const propertyManager =
+    selectedCustomer?.managedByCustomerId
+      ? customerListState.customers.find(
+          (customer) =>
+            customer.id === selectedCustomer.managedByCustomerId &&
+            customer.customerType === 'propertyManager',
+        ) ?? null
+      : null;
+
   return (
     <section className="invoice-form-section">
       <header className="invoice-form-section-header">
@@ -32,6 +46,13 @@ export function InvoiceBasicInfoSection({
             onFieldChange('customerId', customerId)
           }
         />
+
+        {selectedCustomer !== null ? (
+          <SelectedCustomerDetails
+            customer={selectedCustomer}
+            propertyManager={propertyManager}
+          />
+        ) : null}
 
         <label className="invoice-field">
           <span>{uiText.invoicing.invoiceDate}</span>
