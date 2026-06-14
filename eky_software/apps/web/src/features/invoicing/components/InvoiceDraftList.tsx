@@ -1,0 +1,52 @@
+import type { InvoiceDraftSummary } from '@eky/api-client';
+
+import { InvoiceDraftListItem } from './InvoiceDraftListItem.js';
+import { uiText } from '../../../i18n/fi.js';
+
+interface InvoiceDraftListProps {
+  drafts: InvoiceDraftSummary[];
+  errorMessage: string | null;
+  isLoading: boolean;
+}
+
+export function InvoiceDraftList({
+  drafts,
+  errorMessage,
+  isLoading,
+}: InvoiceDraftListProps): React.JSX.Element {
+  if (isLoading) {
+    return <p className="invoice-draft-state">{uiText.invoicing.loading}</p>;
+  }
+
+  if (errorMessage) {
+    return (
+      <p className="message error-message" role="alert">
+        {errorMessage}
+      </p>
+    );
+  }
+
+  if (drafts.length === 0) {
+    return <p className="invoice-draft-state">{uiText.invoicing.empty}</p>;
+  }
+
+  return (
+    <div
+      aria-label={uiText.invoicing.draftList}
+      className="invoice-draft-table"
+      role="table"
+    >
+      <div className="invoice-draft-table-row invoice-draft-table-head" role="row">
+        <span role="columnheader">{uiText.invoicing.invoice}</span>
+        <span role="columnheader">{uiText.invoicing.customer}</span>
+        <span role="columnheader">{uiText.invoicing.invoiceDate}</span>
+        <span role="columnheader">{uiText.invoicing.dueDate}</span>
+        <span role="columnheader">{uiText.invoicing.total}</span>
+        <span role="columnheader">{uiText.invoicing.status}</span>
+      </div>
+      {drafts.map((draft) => (
+        <InvoiceDraftListItem draft={draft} key={draft.id} />
+      ))}
+    </div>
+  );
+}

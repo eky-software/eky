@@ -14,6 +14,7 @@ apps/web/src/
   features/
     customers/
     companySettings/
+    invoicing/
 
   shared/
     money/
@@ -40,6 +41,7 @@ Nykyiset feature-moduulit:
 
 - `features/customers`
 - `features/companySettings`
+- `features/invoicing`
 
 Feature omistaa oman näkymänsä, paikalliset komponenttinsa, lomakemallinsa ja feature-kohtaiset puhtaat apufunktionsa.
 
