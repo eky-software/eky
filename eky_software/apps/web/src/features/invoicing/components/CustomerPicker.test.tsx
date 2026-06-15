@@ -85,6 +85,7 @@ function renderPicker(
       errorMessage={null}
       isLoading={false}
       onChange={vi.fn()}
+      validationErrorMessage={undefined}
       value=""
       {...props}
     />,

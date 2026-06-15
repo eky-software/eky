@@ -240,6 +240,28 @@ export const uiText = {
     unitKilometre: 'km',
     unitPiece: 'kpl',
     vatTotal: 'ALV',
+    validateForm: 'Tarkista tiedot',
+    validationCustomerRequired: 'Valitse laskutettava asiakas.',
+    validationDateInvalid: 'Syötä päiväys muodossa vvvv-kk-pp.',
+    validationDescriptionRequired: 'Kirjoita riville nimike.',
+    validationDueDateBeforeInvoiceDate:
+      'Eräpäivä ei voi olla ennen laskun päiväystä.',
+    validationDueDateRequired: 'Syötä eräpäivä.',
+    validationFixedDiscountInvalid:
+      'Syötä euromääräinen alennus nollana tai positiivisena arvona.',
+    validationInvoiceDateRequired: 'Syötä laskun päiväys.',
+    validationPaymentTerm:
+      'Syötä maksuehto kokonaisina päivinä, vähintään 0.',
+    validationPercentageDiscountInvalid:
+      'Syötä prosenttialennus väliltä 0–100.',
+    validationQuantityInvalid:
+      'Syötä määrä enintään kahdella desimaalilla.',
+    validationQuantityPositive: 'Määrän pitää olla suurempi kuin 0.',
+    validationSummary: 'Tarkista lomakkeen merkityt kohdat.',
+    validationSuccess:
+      'Tiedot ovat valmiit luonnoksen tallennusta varten.',
+    validationUnitPriceInvalid:
+      'Syötä yksikköhinta nollana tai positiivisena euromääränä.',
     workspace: 'Laskutustyötila',
   },
   apiErrors: {

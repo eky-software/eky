@@ -91,9 +91,10 @@ describe('InvoicingPageView', () => {
     expect(html).toContain(uiText.invoicing.addRow);
     expect(html).toContain(uiText.invoicing.rowDescriptionPlaceholder);
     expect(html).toContain(uiText.invoicing.invoiceTotalsLater);
+    expect(html).toContain(uiText.invoicing.validateForm);
     expect(html).toContain(uiText.invoicing.saveDraft);
     expect(html).toContain(
-      `disabled="" title="${uiText.invoicing.saveDraftLater}" type="submit">${uiText.invoicing.saveDraft}</button>`,
+      `disabled="" title="${uiText.invoicing.saveDraftLater}" type="button">${uiText.invoicing.saveDraft}</button>`,
     );
   });
 });

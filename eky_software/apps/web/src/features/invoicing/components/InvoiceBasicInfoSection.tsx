@@ -1,6 +1,9 @@
 import { CustomerPicker } from './CustomerPicker.js';
 import { SelectedCustomerDetails } from './SelectedCustomerDetails.js';
 import type {
+  InvoiceDraftFormErrors,
+} from '../invoiceDraftFormValidation.js';
+import type {
   NewInvoiceBasicInfoField,
   NewInvoiceFormState,
 } from '../newInvoiceFormState.js';
@@ -9,6 +12,7 @@ import { uiText } from '../../../i18n/fi.js';
 
 interface InvoiceBasicInfoSectionProps {
   customerListState: InvoiceCustomerListState;
+  errors: InvoiceDraftFormErrors | undefined;
   form: NewInvoiceFormState;
   onFieldChange<FieldName extends NewInvoiceBasicInfoField>(
     fieldName: FieldName,
@@ -18,6 +22,7 @@ interface InvoiceBasicInfoSectionProps {
 
 export function InvoiceBasicInfoSection({
   customerListState,
+  errors,
   form,
   onFieldChange,
 }: InvoiceBasicInfoSectionProps): React.JSX.Element {
@@ -44,6 +49,7 @@ export function InvoiceBasicInfoSection({
       <div className="invoice-basic-info-grid">
         <CustomerPicker
           {...customerListState}
+          validationErrorMessage={errors?.customerId}
           value={form.customerId}
           onChange={(customerId) =>
             onFieldChange('customerId', customerId)
@@ -60,6 +66,12 @@ export function InvoiceBasicInfoSection({
         <label className="invoice-field">
           <span>{uiText.invoicing.invoiceDate}</span>
           <input
+            aria-describedby={
+              errors?.invoiceDate === undefined
+                ? undefined
+                : 'invoice-date-error'
+            }
+            aria-invalid={errors?.invoiceDate === undefined ? undefined : true}
             name="invoiceDate"
             type="date"
             value={form.invoiceDate}
@@ -67,11 +79,28 @@ export function InvoiceBasicInfoSection({
               onFieldChange('invoiceDate', event.target.value)
             }
           />
+          {errors?.invoiceDate ? (
+            <small
+              className="invoice-field-error"
+              id="invoice-date-error"
+              role="alert"
+            >
+              {errors.invoiceDate}
+            </small>
+          ) : null}
         </label>
 
         <label className="invoice-field">
           <span>{uiText.invoicing.paymentTermDays}</span>
           <input
+            aria-describedby={
+              errors?.paymentTermDays === undefined
+                ? undefined
+                : 'invoice-payment-term-error'
+            }
+            aria-invalid={
+              errors?.paymentTermDays === undefined ? undefined : true
+            }
             inputMode="numeric"
             min="0"
             name="paymentTermDays"
@@ -82,11 +111,26 @@ export function InvoiceBasicInfoSection({
               onFieldChange('paymentTermDays', event.target.value)
             }
           />
+          {errors?.paymentTermDays ? (
+            <small
+              className="invoice-field-error"
+              id="invoice-payment-term-error"
+              role="alert"
+            >
+              {errors.paymentTermDays}
+            </small>
+          ) : null}
         </label>
 
         <label className="invoice-field">
           <span>{uiText.invoicing.dueDate}</span>
           <input
+            aria-describedby={
+              errors?.dueDate === undefined
+                ? undefined
+                : 'invoice-due-date-error'
+            }
+            aria-invalid={errors?.dueDate === undefined ? undefined : true}
             name="dueDate"
             type="date"
             value={form.dueDate}
@@ -94,6 +138,15 @@ export function InvoiceBasicInfoSection({
               onFieldChange('dueDate', event.target.value)
             }
           />
+          {errors?.dueDate ? (
+            <small
+              className="invoice-field-error"
+              id="invoice-due-date-error"
+              role="alert"
+            >
+              {errors.dueDate}
+            </small>
+          ) : null}
         </label>
 
         <label className="invoice-field invoice-field-wide">

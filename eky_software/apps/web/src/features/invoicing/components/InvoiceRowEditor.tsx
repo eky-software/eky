@@ -1,4 +1,7 @@
 import type {
+  InvoiceDraftLineFormErrors,
+} from '../invoiceDraftFormValidation.js';
+import type {
   InvoiceRowForm,
   InvoiceRowFormField,
 } from '../invoiceRowFormState.js';
@@ -11,6 +14,7 @@ import { uiText } from '../../../i18n/fi.js';
 
 interface InvoiceRowEditorProps {
   canRemove: boolean;
+  errors: InvoiceDraftLineFormErrors | undefined;
   position: number;
   row: InvoiceRowForm;
   onChange<FieldName extends InvoiceRowFormField>(
@@ -23,6 +27,7 @@ interface InvoiceRowEditorProps {
 
 export function InvoiceRowEditor({
   canRemove,
+  errors,
   position,
   row,
   onChange,
@@ -36,27 +41,35 @@ export function InvoiceRowEditor({
         {position}
       </span>
 
-      <input
-        aria-label={uiText.invoicing.rowDescription}
-        name={`${row.id}-description`}
-        placeholder={uiText.invoicing.rowDescriptionPlaceholder}
-        type="text"
-        value={row.description}
-        onChange={(event) =>
-          onChange(row.id, 'description', event.target.value)
-        }
-      />
+      <div className="invoice-row-field">
+        <input
+          aria-invalid={errors?.description === undefined ? undefined : true}
+          aria-label={uiText.invoicing.rowDescription}
+          name={`${row.id}-description`}
+          placeholder={uiText.invoicing.rowDescriptionPlaceholder}
+          type="text"
+          value={row.description}
+          onChange={(event) =>
+            onChange(row.id, 'description', event.target.value)
+          }
+        />
+        <InvoiceRowFieldError message={errors?.description} />
+      </div>
 
-      <input
-        aria-label={uiText.invoicing.rowQuantity}
-        inputMode="decimal"
-        name={`${row.id}-quantity`}
-        type="text"
-        value={row.quantity}
-        onChange={(event) =>
-          onChange(row.id, 'quantity', event.target.value)
-        }
-      />
+      <div className="invoice-row-field">
+        <input
+          aria-invalid={errors?.quantity === undefined ? undefined : true}
+          aria-label={uiText.invoicing.rowQuantity}
+          inputMode="decimal"
+          name={`${row.id}-quantity`}
+          type="text"
+          value={row.quantity}
+          onChange={(event) =>
+            onChange(row.id, 'quantity', event.target.value)
+          }
+        />
+        <InvoiceRowFieldError message={errors?.quantity} />
+      </div>
 
       <select
         aria-label={uiText.invoicing.rowUnit}
@@ -73,17 +86,21 @@ export function InvoiceRowEditor({
         ))}
       </select>
 
-      <input
-        aria-label={uiText.invoicing.rowUnitPrice}
-        inputMode="decimal"
-        name={`${row.id}-unitPrice`}
-        placeholder={uiText.invoicing.rowUnitPricePlaceholder}
-        type="text"
-        value={row.unitPrice}
-        onChange={(event) =>
-          onChange(row.id, 'unitPrice', event.target.value)
-        }
-      />
+      <div className="invoice-row-field">
+        <input
+          aria-invalid={errors?.unitPrice === undefined ? undefined : true}
+          aria-label={uiText.invoicing.rowUnitPrice}
+          inputMode="decimal"
+          name={`${row.id}-unitPrice`}
+          placeholder={uiText.invoicing.rowUnitPricePlaceholder}
+          type="text"
+          value={row.unitPrice}
+          onChange={(event) =>
+            onChange(row.id, 'unitPrice', event.target.value)
+          }
+        />
+        <InvoiceRowFieldError message={errors?.unitPrice} />
+      </div>
 
       <select
         aria-label={uiText.invoicing.rowVat}
@@ -123,22 +140,28 @@ export function InvoiceRowEditor({
         ))}
       </select>
 
-      <input
-        aria-label={uiText.invoicing.rowDiscountValue}
-        disabled={discountValueDisabled}
-        inputMode="decimal"
-        name={`${row.id}-discountValue`}
-        placeholder={
-          discountValueDisabled
-            ? ''
-            : uiText.invoicing.rowDiscountValuePlaceholder
-        }
-        type="text"
-        value={row.discountValue}
-        onChange={(event) =>
-          onChange(row.id, 'discountValue', event.target.value)
-        }
-      />
+      <div className="invoice-row-field">
+        <input
+          aria-invalid={
+            errors?.discountValue === undefined ? undefined : true
+          }
+          aria-label={uiText.invoicing.rowDiscountValue}
+          disabled={discountValueDisabled}
+          inputMode="decimal"
+          name={`${row.id}-discountValue`}
+          placeholder={
+            discountValueDisabled
+              ? ''
+              : uiText.invoicing.rowDiscountValuePlaceholder
+          }
+          type="text"
+          value={row.discountValue}
+          onChange={(event) =>
+            onChange(row.id, 'discountValue', event.target.value)
+          }
+        />
+        <InvoiceRowFieldError message={errors?.discountValue} />
+      </div>
 
       <button
         aria-label={`${uiText.invoicing.removeRow} ${position}`}
@@ -156,4 +179,16 @@ export function InvoiceRowEditor({
       </button>
     </div>
   );
+}
+
+function InvoiceRowFieldError({
+  message,
+}: {
+  message: string | undefined;
+}): React.JSX.Element | null {
+  return message ? (
+    <small className="invoice-row-field-error" role="alert">
+      {message}
+    </small>
+  ) : null;
 }
