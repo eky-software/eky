@@ -31,6 +31,7 @@ describe('InvoiceBasicInfoSection', () => {
           errorMessage: null,
           isLoading: false,
         }}
+        errors={undefined}
         form={form}
         onFieldChange={vi.fn()}
       />,
@@ -50,12 +51,41 @@ describe('InvoiceBasicInfoSection', () => {
           errorMessage: null,
           isLoading: false,
         }}
+        errors={undefined}
         form={createInitialNewInvoiceForm(new Date(2026, 5, 15))}
         onFieldChange={vi.fn()}
       />,
     );
 
     expect(html).not.toContain(uiText.invoicing.selectedCustomerKicker);
+  });
+
+  it('shows safe validation errors for basic invoice fields', () => {
+    const html = renderToStaticMarkup(
+      <InvoiceBasicInfoSection
+        customerListState={{
+          customers: [createCustomer()],
+          errorMessage: null,
+          isLoading: false,
+        }}
+        errors={{
+          customerId: uiText.invoicing.validationCustomerRequired,
+          dueDate: uiText.invoicing.validationDueDateRequired,
+          invoiceDate: uiText.invoicing.validationInvoiceDateRequired,
+          lines: {},
+          paymentTermDays: uiText.invoicing.validationPaymentTerm,
+        }}
+        form={createInitialNewInvoiceForm(new Date(2026, 5, 15))}
+        onFieldChange={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain(uiText.invoicing.validationCustomerRequired);
+    expect(html).toContain(uiText.invoicing.validationInvoiceDateRequired);
+    expect(html).toContain(uiText.invoicing.validationDueDateRequired);
+    expect(html).toContain(uiText.invoicing.validationPaymentTerm);
+    expect(html).not.toContain('stack');
+    expect(html).not.toContain('responseBody');
   });
 });
 

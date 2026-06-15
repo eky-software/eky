@@ -955,6 +955,10 @@ h2 {
   padding: 18px;
 }
 
+.invoice-form-validation-message {
+  margin: 14px 18px 0;
+}
+
 .invoice-form-section + .invoice-form-section {
   border-top: 1px solid var(--color-border);
 }
@@ -1156,6 +1160,19 @@ h2 {
   min-height: 38px;
   padding: 7px 9px;
   font-size: 0.82rem;
+}
+
+.invoice-row-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.invoice-row-field-error {
+  color: #a10f3b;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.25;
 }
 
 .invoice-row-position {

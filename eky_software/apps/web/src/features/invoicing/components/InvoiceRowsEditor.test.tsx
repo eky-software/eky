@@ -44,6 +44,30 @@ describe('InvoiceRowsEditor', () => {
       `disabled="" title="${uiText.invoicing.keepOneRow}"`,
     );
   });
+
+  it('renders safe row validation errors', () => {
+    const html = renderToStaticMarkup(
+      <InvoiceRowsEditor
+        errorsByRowId={{
+          'invoice-row-1': {
+            description: uiText.invoicing.validationDescriptionRequired,
+            quantity: uiText.invoicing.validationQuantityInvalid,
+            unitPrice: uiText.invoicing.validationUnitPriceInvalid,
+          },
+        }}
+        rows={createInitialInvoiceRows()}
+        onAdd={vi.fn()}
+        onChange={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain(uiText.invoicing.validationDescriptionRequired);
+    expect(html).toContain(uiText.invoicing.validationQuantityInvalid);
+    expect(html).toContain(uiText.invoicing.validationUnitPriceInvalid);
+    expect(html).not.toContain('stack');
+    expect(html).not.toContain('responseBody');
+  });
 });
 
 function renderEditor(
@@ -51,6 +75,7 @@ function renderEditor(
 ): string {
   return renderToStaticMarkup(
     <InvoiceRowsEditor
+      errorsByRowId={undefined}
       rows={rows}
       onAdd={vi.fn()}
       onChange={vi.fn()}

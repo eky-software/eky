@@ -7,6 +7,7 @@ interface CustomerPickerProps {
   errorMessage: string | null;
   isLoading: boolean;
   onChange(customerId: string): void;
+  validationErrorMessage: string | undefined;
   value: string;
 }
 
@@ -15,6 +16,7 @@ export function CustomerPicker({
   errorMessage,
   isLoading,
   onChange,
+  validationErrorMessage,
   value,
 }: CustomerPickerProps): React.JSX.Element {
   const isEmpty = !isLoading && errorMessage === null && customers.length === 0;
@@ -25,6 +27,7 @@ export function CustomerPicker({
       <span>{uiText.invoicing.customer}</span>
       <select
         aria-describedby="invoice-customer-help"
+        aria-invalid={validationErrorMessage === undefined ? undefined : true}
         disabled={isDisabled}
         name="customerId"
         required
@@ -39,11 +42,20 @@ export function CustomerPicker({
         ))}
       </select>
       <small
-        className={errorMessage === null ? undefined : 'invoice-field-error'}
+        className={
+          errorMessage === null && validationErrorMessage === undefined
+            ? undefined
+            : 'invoice-field-error'
+        }
         id="invoice-customer-help"
-        role={errorMessage === null ? undefined : 'alert'}
+        role={
+          errorMessage === null && validationErrorMessage === undefined
+            ? undefined
+            : 'alert'
+        }
       >
-        {getHelpText(isLoading, isEmpty, errorMessage)}
+        {validationErrorMessage ??
+          getHelpText(isLoading, isEmpty, errorMessage)}
       </small>
     </label>
   );

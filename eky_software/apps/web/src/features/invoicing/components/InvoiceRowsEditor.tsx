@@ -1,11 +1,15 @@
 import { InvoiceRowEditor } from './InvoiceRowEditor.js';
 import type {
+  InvoiceDraftLineFormErrors,
+} from '../invoiceDraftFormValidation.js';
+import type {
   InvoiceRowForm,
   InvoiceRowFormField,
 } from '../invoiceRowFormState.js';
 import { uiText } from '../../../i18n/fi.js';
 
 interface InvoiceRowsEditorProps {
+  errorsByRowId: Record<string, InvoiceDraftLineFormErrors> | undefined;
   rows: InvoiceRowForm[];
   onAdd(): void;
   onChange<FieldName extends InvoiceRowFormField>(
@@ -17,6 +21,7 @@ interface InvoiceRowsEditorProps {
 }
 
 export function InvoiceRowsEditor({
+  errorsByRowId,
   rows,
   onAdd,
   onChange,
@@ -51,6 +56,7 @@ export function InvoiceRowsEditor({
           <InvoiceRowEditor
             key={row.id}
             canRemove={rows.length > 1}
+            errors={errorsByRowId?.[row.id]}
             position={index + 1}
             row={row}
             onChange={onChange}
