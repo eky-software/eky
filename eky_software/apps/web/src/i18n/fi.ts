@@ -226,7 +226,11 @@ export const uiText = {
     rowUnitPricePlaceholder: '0,00',
     rowVat: 'ALV %',
     saveDraft: 'Tallenna luonnos',
+    saveDraftError:
+      'Laskuluonnosta ei voitu tallentaa. Tarkista tiedot ja yritä uudelleen.',
     saveDraftLater: 'Tallennus otetaan käyttöön vaiheessa 5.',
+    saveDraftSuccess: 'Laskuluonnos tallennettu.',
+    savingDraft: 'Tallennetaan luonnosta...',
     status: 'Tila',
     statusDraft: 'Luonnos',
     subject: 'Aihe',

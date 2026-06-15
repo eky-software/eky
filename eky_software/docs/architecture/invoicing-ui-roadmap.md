@@ -76,6 +76,11 @@ uutta API-kutsua.
 
 ## Vaihe 5: luonnoksen tallennus
 
+Tila: uuden laskun lomake käyttää paikallista validointia ja mappingia,
+kutsuu `createInvoiceDraft`-metodia ja näyttää turvallisen onnistumis- tai
+virhetilan. Backend säilyy laskennan ja lopullisen validoinnin auktoriteettina.
+Luonnoksen avaaminen ja muokkaus tehdään vaiheessa 6.
+
 - kutsu `createInvoiceDraft`
 - näytä backendin validoimat ja laskemat tulokset
 - käsittele tallennusvirheet turvallisesti featuren sisällä
