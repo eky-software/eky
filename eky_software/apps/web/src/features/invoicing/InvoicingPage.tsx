@@ -10,10 +10,15 @@ import {
   useInvoiceDrafts,
   type InvoiceDraftListState,
 } from './useInvoiceDrafts.js';
+import {
+  useInvoiceCustomers,
+  type InvoiceCustomerListState,
+} from './useInvoiceCustomers.js';
 import { uiText } from '../../i18n/fi.js';
 
 export function InvoicingPage(): React.JSX.Element {
   const draftState = useInvoiceDrafts();
+  const customerListState = useInvoiceCustomers();
   const [activeView, dispatch] = useReducer(
     reduceInvoicingPageMode,
     'draftList',
@@ -23,6 +28,7 @@ export function InvoicingPage(): React.JSX.Element {
     <InvoicingPageView
       {...draftState}
       activeView={activeView}
+      customerListState={customerListState}
       onBackToDrafts={() => dispatch({ type: 'showDraftList' })}
       onNewInvoice={() => dispatch({ type: 'openNewInvoice' })}
     />
@@ -31,12 +37,14 @@ export function InvoicingPage(): React.JSX.Element {
 
 interface InvoicingPageViewProps extends InvoiceDraftListState {
   activeView: InvoicingPageMode;
+  customerListState: InvoiceCustomerListState;
   onBackToDrafts(): void;
   onNewInvoice(): void;
 }
 
 export function InvoicingPageView({
   activeView,
+  customerListState,
   drafts,
   errorMessage,
   isLoading,
@@ -80,13 +88,19 @@ export function InvoicingPageView({
           </header>
 
           <InvoiceDraftList
+            customers={customerListState.customers}
+            customerErrorMessage={customerListState.errorMessage}
             drafts={drafts}
             errorMessage={errorMessage}
+            isCustomerLoading={customerListState.isLoading}
             isLoading={isLoading}
           />
         </section>
       ) : (
-        <NewInvoiceForm onBack={onBackToDrafts} />
+        <NewInvoiceForm
+          customerListState={customerListState}
+          onBack={onBackToDrafts}
+        />
       )}
     </div>
   );

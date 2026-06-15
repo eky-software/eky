@@ -172,6 +172,7 @@ export const uiText = {
     customerLoadError:
       'Asiakkaita ei voitu ladata. Yritä hetken kuluttua uudelleen.',
     customerLoading: 'Ladataan asiakkaita...',
+    customerNotFound: 'Asiakasta ei löytynyt',
     customerLoadingHelp: 'Asiakaslista haetaan paikalliselta backendiltä.',
     customerPickerHelp:
       'Valitse laskutettava asiakas asiakasnumeron ja nimen perusteella.',
@@ -193,6 +194,10 @@ export const uiText = {
     invoiceTotals: 'Laskun summat',
     invoiceTotalsLater:
       'Summat lasketaan backendin sääntöjen mukaan tallennusvaiheessa.',
+    invoiceTotalsPreviewHelp:
+      'Esikatselu auttaa tarkistamaan rivit. Backend laskee lopulliset summat tallennuksessa.',
+    invoiceTotalsUnavailable:
+      'Summia ei voida näyttää ennen kuin rivit ovat kelvollisia.',
     loadError: 'Laskuluonnoksia ei voitu ladata. Yritä hetken kuluttua uudelleen.',
     loading: 'Ladataan laskuluonnoksia...',
     newInvoice: 'Uusi lasku',
@@ -244,6 +249,8 @@ export const uiText = {
     unitKilometre: 'km',
     unitPiece: 'kpl',
     vatTotal: 'ALV',
+    vatBreakdown: 'ALV-erittely',
+    vatRate: 'ALV',
     validateForm: 'Tarkista tiedot',
     validationCustomerRequired: 'Valitse laskutettava asiakas.',
     validationDateInvalid: 'Syötä päiväys muodossa vvvv-kk-pp.',

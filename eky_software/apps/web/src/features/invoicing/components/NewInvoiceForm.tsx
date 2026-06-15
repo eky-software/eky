@@ -2,7 +2,7 @@ import { useState } from 'react';
 
 import { InvoiceBasicInfoSection } from './InvoiceBasicInfoSection.js';
 import { InvoiceRowsEditor } from './InvoiceRowsEditor.js';
-import { InvoiceTotalsPlaceholder } from './InvoiceTotalsPlaceholder.js';
+import { InvoiceTotalsPreview } from './InvoiceTotalsPreview.js';
 import {
   addInvoiceRow,
   removeInvoiceRow,
@@ -16,7 +16,7 @@ import {
   type NewInvoiceFormState,
   updateNewInvoiceFormField,
 } from '../newInvoiceFormState.js';
-import { useInvoiceCustomers } from '../useInvoiceCustomers.js';
+import type { InvoiceCustomerListState } from '../useInvoiceCustomers.js';
 import {
   prepareInvoiceDraftSaveInput,
   useSaveInvoiceDraft,
@@ -24,15 +24,16 @@ import {
 import { uiText } from '../../../i18n/fi.js';
 
 interface NewInvoiceFormProps {
+  customerListState: InvoiceCustomerListState;
   onBack(): void;
 }
 
 export function NewInvoiceForm({
+  customerListState,
   onBack,
 }: NewInvoiceFormProps): React.JSX.Element {
   const [form, setForm] = useState(createInitialNewInvoiceForm);
   const [hasValidated, setHasValidated] = useState(false);
-  const customerListState = useInvoiceCustomers();
   const saveState = useSaveInvoiceDraft();
   const validationResult = prepareInvoiceDraftSaveInput(form);
   const displayedErrors = hasValidated
@@ -170,7 +171,7 @@ export function NewInvoiceForm({
         onChange={handleRowChange}
         onRemove={handleRemoveRow}
       />
-      <InvoiceTotalsPlaceholder />
+      <InvoiceTotalsPreview form={form} />
 
       <footer className="new-invoice-form-actions">
         <button className="ghost-button" onClick={onBack} type="button">

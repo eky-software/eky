@@ -27,6 +27,10 @@ Eky säilyttää oman modernin, rauhallisen ja sinivalkoisen työohjelmalinjansa
 
 ## Vaihe 1: runko ja laskuluonnoslista
 
+Tila: laskuluonnoslista näyttää luonnoksen aiheen tai fallbackin sekä asiakkaan
+asiakasnumeron ja nimen, kun asiakas löytyy ladatusta asiakaslistasta. Teknisiä
+draft- tai customer-id-arvoja ei käytetä pääasiallisena käyttöliittymätekstinä.
+
 - aktivoi Laskutus sivupalkissa
 - lisää laskutusnäkymän työpintarunko
 - lataa luonnosyhteenvedot `listInvoiceDrafts`-kutsulla
@@ -53,8 +57,10 @@ komponentteihin. Yleistä lomakeframeworkia ei rakenneta.
 ## Vaihe 3: laskurivien hallinta
 
 Tila: paikallinen rivieditorin runko toteutettu. Käyttäjä voi lisätä, poistaa
-ja muokata rivejä. Rivien järjestäminen, tallennusmuunnokset ja summien
-esikatselu tehdään myöhemmissä rajatuissa vaiheissa.
+ja muokata rivejä. Tallennusmuunnokset ja kevyt summien esikatselu on
+toteutettu. Esikatselu käyttää senttejä ja kokonaislukuja käyttäjän avuksi,
+mutta backend säilyy auktoritatiivisena laskijana. Rivien järjestäminen tehdään
+myöhemmin rajattuna vaiheena.
 
 - lisää, poista ja järjestä laskurivejä
 - käsittele määrä, yksikkö, yksikköhinta, ALV ja alennus
