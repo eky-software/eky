@@ -1,20 +1,26 @@
-import type { InvoiceDraftSummary } from '@eky/api-client';
+import type { Customer, InvoiceDraftSummary } from '@eky/api-client';
 
 import { InvoiceDraftListItem } from './InvoiceDraftListItem.js';
 import { uiText } from '../../../i18n/fi.js';
 
 interface InvoiceDraftListProps {
+  customers: Customer[];
+  customerErrorMessage: string | null;
+  isCustomerLoading: boolean;
   drafts: InvoiceDraftSummary[];
   errorMessage: string | null;
   isLoading: boolean;
 }
 
 export function InvoiceDraftList({
+  customers,
+  customerErrorMessage,
   drafts,
   errorMessage,
+  isCustomerLoading,
   isLoading,
 }: InvoiceDraftListProps): React.JSX.Element {
-  if (isLoading) {
+  if (isLoading || isCustomerLoading) {
     return <p className="invoice-draft-state">{uiText.invoicing.loading}</p>;
   }
 
@@ -22,6 +28,14 @@ export function InvoiceDraftList({
     return (
       <p className="message error-message" role="alert">
         {errorMessage}
+      </p>
+    );
+  }
+
+  if (customerErrorMessage) {
+    return (
+      <p className="message error-message" role="alert">
+        {customerErrorMessage}
       </p>
     );
   }
@@ -45,7 +59,11 @@ export function InvoiceDraftList({
         <span role="columnheader">{uiText.invoicing.status}</span>
       </div>
       {drafts.map((draft) => (
-        <InvoiceDraftListItem draft={draft} key={draft.id} />
+        <InvoiceDraftListItem
+          customers={customers}
+          draft={draft}
+          key={draft.id}
+        />
       ))}
     </div>
   );

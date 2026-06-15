@@ -1218,6 +1218,19 @@ h2 {
   margin: 0;
 }
 
+.invoice-totals-preview-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.invoice-preview-unavailable {
+  margin: 0;
+  border-left: 4px solid var(--color-border-strong);
+  padding: 10px 12px;
+  color: var(--color-text-muted);
+  background: #fff;
+}
+
 .invoice-totals-placeholder dl > div {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 90px;
@@ -1242,6 +1255,16 @@ h2 {
 .invoice-totals-placeholder .invoice-grand-total {
   border-bottom: 0;
   color: var(--color-primary-dark);
+}
+
+.invoice-vat-breakdown {
+  border-top: 1px solid var(--color-border);
+  padding-top: 8px;
+}
+
+.invoice-vat-breakdown dt,
+.invoice-vat-breakdown dd {
+  font-size: 0.78rem;
 }
 
 .invoice-grand-total dt,

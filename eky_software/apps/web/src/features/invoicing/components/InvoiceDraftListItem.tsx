@@ -1,4 +1,4 @@
-import type { InvoiceDraftSummary } from '@eky/api-client';
+import type { Customer, InvoiceDraftSummary } from '@eky/api-client';
 
 import {
   formatInvoiceDraftCurrency,
@@ -6,23 +6,28 @@ import {
   getInvoiceDraftStatusLabel,
   getInvoiceDraftSubject,
 } from '../invoiceDraftFormatting.js';
+import { getInvoiceDraftCustomerDisplayName } from '../invoiceDraftCustomerDisplay.js';
 
 interface InvoiceDraftListItemProps {
+  customers: Customer[];
   draft: InvoiceDraftSummary;
 }
 
 export function InvoiceDraftListItem({
+  customers,
   draft,
 }: InvoiceDraftListItemProps): React.JSX.Element {
+  const customerDisplayName = getInvoiceDraftCustomerDisplayName(
+    draft,
+    customers,
+  );
+
   return (
     <div className="invoice-draft-table-row" role="row">
       <div className="invoice-draft-main-cell" role="cell">
         <strong>{getInvoiceDraftSubject(draft.subject)}</strong>
-        <span>{draft.id}</span>
       </div>
-      <span title={draft.customerId} role="cell">
-        {draft.customerId}
-      </span>
+      <span role="cell">{customerDisplayName}</span>
       <time dateTime={draft.invoiceDate} role="cell">
         {formatInvoiceDraftDate(draft.invoiceDate)}
       </time>
