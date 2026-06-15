@@ -1,15 +1,26 @@
 import type { InvoicePriceInputMode } from '@eky/api-client';
 
+import {
+  createInitialInvoiceRows,
+  type InvoiceRowForm,
+} from './invoiceRowFormState.js';
+
 export interface NewInvoiceFormState {
   customerId: string;
   dueDate: string;
   invoiceDate: string;
+  lines: InvoiceRowForm[];
   note: string;
   orderNumber: string;
   paymentTermDays: string;
   priceInputMode: InvoicePriceInputMode;
   subject: string;
 }
+
+export type NewInvoiceBasicInfoField = Exclude<
+  keyof NewInvoiceFormState,
+  'lines'
+>;
 
 export function createInitialNewInvoiceForm(
   initialDate = new Date(),
@@ -18,6 +29,7 @@ export function createInitialNewInvoiceForm(
     customerId: '',
     dueDate: formatDateInput(addCalendarDays(initialDate, 14)),
     invoiceDate: formatDateInput(initialDate),
+    lines: createInitialInvoiceRows(),
     note: '',
     orderNumber: '',
     paymentTermDays: '14',
