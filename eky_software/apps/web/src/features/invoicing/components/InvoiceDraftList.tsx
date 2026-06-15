@@ -10,6 +10,7 @@ interface InvoiceDraftListProps {
   drafts: InvoiceDraftSummary[];
   errorMessage: string | null;
   isLoading: boolean;
+  onOpenDraft(id: string): void;
 }
 
 export function InvoiceDraftList({
@@ -19,6 +20,7 @@ export function InvoiceDraftList({
   errorMessage,
   isCustomerLoading,
   isLoading,
+  onOpenDraft,
 }: InvoiceDraftListProps): React.JSX.Element {
   if (isLoading || isCustomerLoading) {
     return <p className="invoice-draft-state">{uiText.invoicing.loading}</p>;
@@ -63,6 +65,7 @@ export function InvoiceDraftList({
           customers={customers}
           draft={draft}
           key={draft.id}
+          onOpenDraft={onOpenDraft}
         />
       ))}
     </div>

@@ -13,7 +13,9 @@ describe('InvoicingPageView', () => {
       drafts: [createInvoiceDraftSummary()],
       errorMessage: null,
       isLoading: false,
+      draftEditorState: createDraftEditorState(),
       onBackToDrafts: vi.fn(),
+      onOpenDraft: vi.fn(),
       onNewInvoice: vi.fn(),
     });
 
@@ -26,6 +28,7 @@ describe('InvoicingPageView', () => {
     expect(html).toContain('178,84');
     expect(html).toContain(uiText.invoicing.statusDraft);
     expect(html).toContain(uiText.invoicing.newInvoice);
+    expect(html).toContain('<button');
     expect(html).not.toContain(uiText.invoicing.saveDraft);
   });
 
@@ -36,7 +39,9 @@ describe('InvoicingPageView', () => {
       drafts: [],
       errorMessage: null,
       isLoading: false,
+      draftEditorState: createDraftEditorState(),
       onBackToDrafts: vi.fn(),
+      onOpenDraft: vi.fn(),
       onNewInvoice: vi.fn(),
     });
 
@@ -50,7 +55,9 @@ describe('InvoicingPageView', () => {
       drafts: [],
       errorMessage: uiText.invoicing.loadError,
       isLoading: false,
+      draftEditorState: createDraftEditorState(),
       onBackToDrafts: vi.fn(),
+      onOpenDraft: vi.fn(),
       onNewInvoice: vi.fn(),
     });
 
@@ -66,7 +73,9 @@ describe('InvoicingPageView', () => {
       drafts: [],
       errorMessage: null,
       isLoading: true,
+      draftEditorState: createDraftEditorState(),
       onBackToDrafts: vi.fn(),
+      onOpenDraft: vi.fn(),
       onNewInvoice: vi.fn(),
     });
 
@@ -84,7 +93,9 @@ describe('InvoicingPageView', () => {
       drafts: [],
       errorMessage: null,
       isLoading: false,
+      draftEditorState: createDraftEditorState(),
       onBackToDrafts: vi.fn(),
+      onOpenDraft: vi.fn(),
       onNewInvoice: vi.fn(),
     });
 
@@ -106,6 +117,68 @@ describe('InvoicingPageView', () => {
     expect(html).toContain(uiText.invoicing.validateForm);
     expect(html).toContain(uiText.invoicing.saveDraft);
     expect(html).not.toContain(uiText.invoicing.saveDraftLater);
+  });
+
+  it('renders the edit loading state while an invoice draft is opening', () => {
+    const html = renderPage({
+      activeView: 'editInvoice',
+      customerListState: createCustomerListState(),
+      drafts: [],
+      errorMessage: null,
+      isLoading: false,
+      draftEditorState: createDraftEditorState({
+        isLoading: true,
+      }),
+      onBackToDrafts: vi.fn(),
+      onOpenDraft: vi.fn(),
+      onNewInvoice: vi.fn(),
+    });
+
+    expect(html).toContain(uiText.invoicing.openingDraft);
+  });
+
+  it('renders a safe edit open error without technical response data', () => {
+    const html = renderPage({
+      activeView: 'editInvoice',
+      customerListState: createCustomerListState(),
+      drafts: [],
+      errorMessage: null,
+      isLoading: false,
+      draftEditorState: createDraftEditorState({
+        errorMessage: uiText.invoicing.openDraftError,
+      }),
+      onBackToDrafts: vi.fn(),
+      onOpenDraft: vi.fn(),
+      onNewInvoice: vi.fn(),
+    });
+
+    expect(html).toContain(uiText.invoicing.openDraftError);
+    expect(html).not.toContain('responseBody');
+    expect(html).not.toContain('stack');
+  });
+
+  it('hydrates an opened invoice draft into the edit form', () => {
+    const html = renderPage({
+      activeView: 'editInvoice',
+      customerListState: createCustomerListState(),
+      drafts: [],
+      errorMessage: null,
+      isLoading: false,
+      draftEditorState: createDraftEditorState({
+        draft: createInvoiceDraft(),
+      }),
+      onBackToDrafts: vi.fn(),
+      onOpenDraft: vi.fn(),
+      onNewInvoice: vi.fn(),
+    });
+
+    expect(html).toContain(uiText.invoicing.editInvoice);
+    expect(html).toContain('Työlasku');
+    expect(html).toContain('Saate');
+    expect(html).toContain('ORDER-1');
+    expect(html).toContain('Työtunti');
+    expect(html).toContain('65,50');
+    expect(html).toContain(uiText.invoicing.saveDraftChanges);
   });
 });
 
@@ -157,5 +230,70 @@ function createInvoiceDraftSummary(): InvoiceDraftSummary {
     vatTotalCents: 3634,
     grossTotalCents: 17_884,
     updatedAt: '2026-06-13T18:00:00.000Z',
+  };
+}
+
+function createDraftEditorState(
+  overrides: Partial<React.ComponentProps<typeof InvoicingPageView>['draftEditorState']> = {},
+) {
+  return {
+    clearDraft: vi.fn(),
+    draft: null,
+    errorMessage: null,
+    isLoading: false,
+    openDraft: vi.fn(),
+    ...overrides,
+  };
+}
+
+function createInvoiceDraft() {
+  return {
+    companyId: 'dev-company',
+    createdAt: '2026-06-16T12:00:00.000Z',
+    customerId: 'customer-1',
+    dueDate: '2026-06-30',
+    id: 'draft-1',
+    invoiceDate: '2026-06-16',
+    lines: [
+      {
+        baseCents: 9825,
+        code: '',
+        description: 'Työtunti',
+        discount: {
+          type: 'none' as const,
+        },
+        discountCents: 0,
+        grossCents: 12_331,
+        id: 'line-1',
+        netCents: 9825,
+        position: 1,
+        priceInputMode: 'net' as const,
+        quantityHundredths: 150,
+        unit: 'h' as const,
+        unitPriceCents: 6550,
+        vatCents: 2506,
+        vatRateBasisPoints: 2550,
+      },
+    ],
+    note: 'Saate',
+    orderNumber: 'ORDER-1',
+    paymentTermDays: 14,
+    priceInputMode: 'net' as const,
+    status: 'draft' as const,
+    subject: 'Työlasku',
+    totals: {
+      grossTotalCents: 12_331,
+      netTotalCents: 9825,
+      vatBreakdown: [
+        {
+          grossCents: 12_331,
+          netCents: 9825,
+          vatCents: 2506,
+          vatRateBasisPoints: 2550,
+        },
+      ],
+      vatTotalCents: 2506,
+    },
+    updatedAt: '2026-06-16T12:00:00.000Z',
   };
 }

@@ -14,4 +14,10 @@ describe('reduceInvoicingPageMode', () => {
       reduceInvoicingPageMode('newInvoice', { type: 'showDraftList' }),
     ).toBe('draftList');
   });
+
+  it('opens the invoice draft edit form from the draft list', () => {
+    expect(
+      reduceInvoicingPageMode('draftList', { type: 'openEditInvoice' }),
+    ).toBe('editInvoice');
+  });
 });

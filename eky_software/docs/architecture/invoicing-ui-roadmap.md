@@ -94,6 +94,11 @@ Luonnoksen avaaminen ja muokkaus tehdään vaiheessa 6.
 
 ## Vaihe 6: luonnoksen avaaminen ja muokkaus
 
+Tila: laskuluonnoksen avaaminen ja muokkaaminen on toteutettu web-UI:ssa.
+Lista avaa luonnoksen `getInvoiceDraft`-kutsulla, lomake täytetään tallennetusta
+datasta ja muokkaus tallennetaan `updateInvoiceDraft`-kutsulla. Uuden
+luonnoksen luonti käyttää edelleen `createInvoiceDraft`-kutsua.
+
 - avaa luonnos `getInvoiceDraft`-kutsulla
 - täytä muokkausnäkymä tallennetulla datalla
 - tallenna muutokset `updateInvoiceDraft`-kutsulla

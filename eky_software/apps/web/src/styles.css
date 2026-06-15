@@ -898,11 +898,32 @@ h2 {
   min-width: 0;
 }
 
+.invoice-draft-main-cell button,
 .invoice-draft-main-cell strong,
 .invoice-draft-main-cell span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.invoice-draft-open-button {
+  appearance: none;
+  width: 100%;
+  border: 0;
+  padding: 0;
+  color: var(--color-text);
+  background: transparent;
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 900;
+  text-align: left;
+  cursor: pointer;
+}
+
+.invoice-draft-open-button:hover,
+.invoice-draft-open-button:focus-visible {
+  color: var(--color-primary);
+  text-decoration: underline;
 }
 
 .invoice-draft-main-cell strong {
@@ -920,6 +941,12 @@ h2 {
   font-size: 0.9rem;
   text-align: right;
   white-space: nowrap;
+}
+
+.invoice-draft-editor-state {
+  display: grid;
+  justify-items: start;
+  gap: 14px;
 }
 
 .status-pill-draft {

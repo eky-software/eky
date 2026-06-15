@@ -17,7 +17,14 @@ import { getFinnishApiErrorMessage, uiText } from '../../i18n/fi.js';
 
 const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
 
-type InvoiceDraftCreateClient = Pick<EkyApiClient, 'createInvoiceDraft'>;
+type InvoiceDraftSaveClient = Pick<
+  EkyApiClient,
+  'createInvoiceDraft' | 'updateInvoiceDraft'
+>;
+
+export type InvoiceDraftSaveMode =
+  | { type: 'create' }
+  | { draftId: string; type: 'edit' };
 
 export type PreparedInvoiceDraftSave =
   | {
@@ -58,7 +65,9 @@ export function prepareInvoiceDraftSaveInput(
   };
 }
 
-export function useSaveInvoiceDraft(): SaveInvoiceDraftState {
+export function useSaveInvoiceDraft(
+  mode: InvoiceDraftSaveMode,
+): SaveInvoiceDraftState {
   const apiClient = useMemo(
     () => createEkyApiClient({ baseUrl: apiBaseUrl }),
     [],
@@ -79,7 +88,7 @@ export function useSaveInvoiceDraft(): SaveInvoiceDraftState {
     setErrorMessage(null);
 
     try {
-      const draft = await saveInvoiceDraftInput(input, apiClient);
+      const draft = await saveInvoiceDraftInput(input, apiClient, mode);
 
       setSavedDraft(draft);
 
@@ -105,8 +114,13 @@ export function useSaveInvoiceDraft(): SaveInvoiceDraftState {
 
 export function saveInvoiceDraftInput(
   input: InvoiceDraftInput,
-  apiClient: InvoiceDraftCreateClient,
+  apiClient: InvoiceDraftSaveClient,
+  mode: InvoiceDraftSaveMode,
 ): Promise<InvoiceDraft> {
+  if (mode.type === 'edit') {
+    return apiClient.updateInvoiceDraft(mode.draftId, input);
+  }
+
   return apiClient.createInvoiceDraft(input);
 }
 
