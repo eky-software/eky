@@ -87,7 +87,9 @@ describe('InvoicingPageView', () => {
     expect(html).toContain(uiText.invoicing.note);
     expect(html).toContain(uiText.invoicing.priceInputNet);
     expect(html).toContain(uiText.invoicing.priceInputGross);
-    expect(html).toContain(uiText.invoicing.invoiceRowsLater);
+    expect(html).toContain(uiText.invoicing.invoiceRowsHelp);
+    expect(html).toContain(uiText.invoicing.addRow);
+    expect(html).toContain(uiText.invoicing.rowDescriptionPlaceholder);
     expect(html).toContain(uiText.invoicing.invoiceTotalsLater);
     expect(html).toContain(uiText.invoicing.saveDraft);
     expect(html).toContain(

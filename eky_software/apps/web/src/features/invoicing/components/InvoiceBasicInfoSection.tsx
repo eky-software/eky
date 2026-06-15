@@ -1,13 +1,16 @@
 import { CustomerPicker } from './CustomerPicker.js';
 import { SelectedCustomerDetails } from './SelectedCustomerDetails.js';
-import type { NewInvoiceFormState } from '../newInvoiceFormState.js';
+import type {
+  NewInvoiceBasicInfoField,
+  NewInvoiceFormState,
+} from '../newInvoiceFormState.js';
 import type { InvoiceCustomerListState } from '../useInvoiceCustomers.js';
 import { uiText } from '../../../i18n/fi.js';
 
 interface InvoiceBasicInfoSectionProps {
   customerListState: InvoiceCustomerListState;
   form: NewInvoiceFormState;
-  onFieldChange<FieldName extends keyof NewInvoiceFormState>(
+  onFieldChange<FieldName extends NewInvoiceBasicInfoField>(
     fieldName: FieldName,
     value: NewInvoiceFormState[FieldName],
   ): void;

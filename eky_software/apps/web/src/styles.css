@@ -1112,22 +1112,26 @@ h2 {
   padding-inline: 18px;
 }
 
-.invoice-rows-placeholder {
+.invoice-rows-editor {
   overflow-x: auto;
   border-block: 1px solid var(--color-border);
   background: var(--color-surface);
 }
 
-.invoice-rows-placeholder-head {
+.invoice-row-editor-head,
+.invoice-row-editor {
   display: grid;
   grid-template-columns:
-    minmax(300px, 1.8fr) minmax(90px, 0.5fr) minmax(90px, 0.5fr)
-    minmax(130px, 0.7fr) minmax(90px, 0.5fr) minmax(130px, 0.7fr);
-  gap: 10px;
-  min-width: 900px;
-  min-height: 38px;
+    44px minmax(260px, 1.8fr) 92px 92px minmax(120px, 0.7fr)
+    96px minmax(130px, 0.8fr) 120px 82px;
+  gap: 8px;
+  min-width: 1120px;
   align-items: center;
-  padding: 0 18px;
+  padding-inline: 12px;
+}
+
+.invoice-row-editor-head {
+  min-height: 38px;
   color: var(--color-text-muted);
   background: var(--color-surface-strong);
   font-size: 0.76rem;
@@ -1135,20 +1139,50 @@ h2 {
   text-transform: uppercase;
 }
 
-.invoice-rows-placeholder p {
-  min-width: 900px;
-  min-height: 92px;
-  margin: 0;
-  padding: 30px 18px;
+.invoice-row-editor {
+  min-height: 58px;
+  border-top: 1px solid var(--color-border);
+  padding-block: 8px;
+}
+
+.invoice-row-editor:first-of-type {
+  border-top: 0;
+}
+
+.invoice-row-editor input,
+.invoice-row-editor select {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  padding: 7px 9px;
+  font-size: 0.82rem;
+}
+
+.invoice-row-position {
   color: var(--color-text-muted);
-  background:
-    linear-gradient(
-      to bottom,
-      transparent 45px,
-      var(--color-border) 46px,
-      transparent 47px
-    );
   text-align: center;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.invoice-row-remove-button {
+  min-height: 36px;
+  padding: 6px 8px;
+  border-color: #c7d8ed;
+  color: #7a2340;
+  background: #fff;
+  font-size: 0.76rem;
+}
+
+.invoice-row-remove-button:hover:not(:disabled) {
+  border-color: #9f3558;
+  color: #8a1239;
+  background: #fff5f8;
+}
+
+.invoice-row-remove-button:disabled {
+  color: #8492a5;
+  background: var(--color-surface-muted);
 }
 
 .invoice-totals-placeholder {

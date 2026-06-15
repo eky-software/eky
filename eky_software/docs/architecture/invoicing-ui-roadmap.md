@@ -52,6 +52,10 @@ komponentteihin. Yleistä lomakeframeworkia ei rakenneta.
 
 ## Vaihe 3: laskurivien hallinta
 
+Tila: paikallinen rivieditorin runko toteutettu. Käyttäjä voi lisätä, poistaa
+ja muokata rivejä. Rivien järjestäminen, tallennusmuunnokset ja summien
+esikatselu tehdään myöhemmissä rajatuissa vaiheissa.
+
 - lisää, poista ja järjestä laskurivejä
 - käsittele määrä, yksikkö, yksikköhinta, ALV ja alennus
 - näytä backendin laskentaa vastaava esikatselu käyttökokemuksen apuna
@@ -104,6 +108,11 @@ Roadmap ei vielä sisällä:
 - verkkolaskua
 - työmääräykseltä tai materiaalikirjauksista tuontia
 - uutta UI-, lomake-, datahaku- tai virheenkäsittelykirjastoa
+
+Erillinen laskun maksaja toteutetaan myöhemmin omana kokonaisuutenaan.
+Mahdollinen sopimus on `payerCustomerId`, mutta ominaisuus vaatii erilliset
+tietomalli-, backend-, API-client- ja UI-päätökset. Sitä ei liitetä
+laskurivieditorin paikalliseen lomaketilaan.
 
 Jokainen vaihe toteutetaan omana rajattuna muutoksenaan. UI ei tee raakaa
 `fetch`-kutsua, auktoritatiivista laskentaa tai backendin käyttöoikeuspäätöksiä.

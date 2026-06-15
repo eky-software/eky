@@ -32,6 +32,7 @@ describe('createInitialNewInvoiceForm', () => {
       orderNumber: '',
       subject: '',
     });
+    expect(form.lines).toHaveLength(1);
   });
 
   it('updates one field without changing the other form values', () => {
