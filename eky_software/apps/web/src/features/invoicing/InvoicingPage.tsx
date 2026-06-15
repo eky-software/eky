@@ -14,22 +14,39 @@ import {
   useInvoiceCustomers,
   type InvoiceCustomerListState,
 } from './useInvoiceCustomers.js';
+import {
+  useInvoiceDraftEditor,
+  type InvoiceDraftEditorState,
+} from './useInvoiceDraftEditor.js';
 import { uiText } from '../../i18n/fi.js';
 
 export function InvoicingPage(): React.JSX.Element {
   const draftState = useInvoiceDrafts();
   const customerListState = useInvoiceCustomers();
+  const draftEditorState = useInvoiceDraftEditor();
   const [activeView, dispatch] = useReducer(
     reduceInvoicingPageMode,
     'draftList',
   );
+
+  function handleBackToDrafts(): void {
+    draftEditorState.clearDraft();
+    dispatch({ type: 'showDraftList' });
+  }
+
+  function handleOpenDraft(id: string): void {
+    dispatch({ type: 'openEditInvoice' });
+    void draftEditorState.openDraft(id);
+  }
 
   return (
     <InvoicingPageView
       {...draftState}
       activeView={activeView}
       customerListState={customerListState}
-      onBackToDrafts={() => dispatch({ type: 'showDraftList' })}
+      draftEditorState={draftEditorState}
+      onBackToDrafts={handleBackToDrafts}
+      onOpenDraft={handleOpenDraft}
       onNewInvoice={() => dispatch({ type: 'openNewInvoice' })}
     />
   );
@@ -38,17 +55,21 @@ export function InvoicingPage(): React.JSX.Element {
 interface InvoicingPageViewProps extends InvoiceDraftListState {
   activeView: InvoicingPageMode;
   customerListState: InvoiceCustomerListState;
+  draftEditorState: InvoiceDraftEditorState;
   onBackToDrafts(): void;
+  onOpenDraft(id: string): void;
   onNewInvoice(): void;
 }
 
 export function InvoicingPageView({
   activeView,
   customerListState,
+  draftEditorState,
   drafts,
   errorMessage,
   isLoading,
   onBackToDrafts,
+  onOpenDraft,
   onNewInvoice,
 }: InvoicingPageViewProps): React.JSX.Element {
   return (
@@ -94,14 +115,82 @@ export function InvoicingPageView({
             errorMessage={errorMessage}
             isCustomerLoading={customerListState.isLoading}
             isLoading={isLoading}
+            onOpenDraft={onOpenDraft}
           />
         </section>
-      ) : (
+      ) : activeView === 'newInvoice' ? (
         <NewInvoiceForm
           customerListState={customerListState}
+          mode={{ type: 'create' }}
+          onBack={onBackToDrafts}
+        />
+      ) : (
+        <InvoiceDraftEditView
+          customerListState={customerListState}
+          draftEditorState={draftEditorState}
           onBack={onBackToDrafts}
         />
       )}
     </div>
+  );
+}
+
+interface InvoiceDraftEditViewProps {
+  customerListState: InvoiceCustomerListState;
+  draftEditorState: InvoiceDraftEditorState;
+  onBack(): void;
+}
+
+function InvoiceDraftEditView({
+  customerListState,
+  draftEditorState,
+  onBack,
+}: InvoiceDraftEditViewProps): React.JSX.Element {
+  if (draftEditorState.isLoading) {
+    return (
+      <section className="panel invoice-draft-editor-state">
+        <p className="invoice-draft-state">
+          {uiText.invoicing.openingDraft}
+        </p>
+      </section>
+    );
+  }
+
+  if (draftEditorState.errorMessage !== null) {
+    return (
+      <section className="panel invoice-draft-editor-state">
+        <p className="message error-message" role="alert">
+          {draftEditorState.errorMessage}
+        </p>
+        <button className="ghost-button" onClick={onBack} type="button">
+          {uiText.invoicing.backToDrafts}
+        </button>
+      </section>
+    );
+  }
+
+  if (draftEditorState.draft === null) {
+    return (
+      <section className="panel invoice-draft-editor-state">
+        <p className="invoice-draft-state">
+          {uiText.invoicing.openDraftPrompt}
+        </p>
+        <button className="ghost-button" onClick={onBack} type="button">
+          {uiText.invoicing.backToDrafts}
+        </button>
+      </section>
+    );
+  }
+
+  return (
+    <NewInvoiceForm
+      key={draftEditorState.draft.id}
+      customerListState={customerListState}
+      mode={{
+        draft: draftEditorState.draft,
+        type: 'edit',
+      }}
+      onBack={onBack}
+    />
   );
 }

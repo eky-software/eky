@@ -73,11 +73,37 @@ describe('saveInvoiceDraftInput', () => {
     const draft = createInvoiceDraft(input);
     const apiClient = {
       createInvoiceDraft: vi.fn(async () => draft),
+      updateInvoiceDraft: vi.fn(),
     };
 
-    await expect(saveInvoiceDraftInput(input, apiClient)).resolves.toBe(draft);
+    await expect(
+      saveInvoiceDraftInput(input, apiClient, { type: 'create' }),
+    ).resolves.toBe(draft);
 
     expect(apiClient.createInvoiceDraft).toHaveBeenCalledWith(input);
+    expect(apiClient.updateInvoiceDraft).not.toHaveBeenCalled();
+  });
+
+  it('calls updateInvoiceDraft with the prepared input in edit mode', async () => {
+    const input = createInvoiceDraftInput();
+    const draft = createInvoiceDraft(input);
+    const apiClient = {
+      createInvoiceDraft: vi.fn(),
+      updateInvoiceDraft: vi.fn(async () => draft),
+    };
+
+    await expect(
+      saveInvoiceDraftInput(input, apiClient, {
+        draftId: 'draft-1',
+        type: 'edit',
+      }),
+    ).resolves.toBe(draft);
+
+    expect(apiClient.updateInvoiceDraft).toHaveBeenCalledWith(
+      'draft-1',
+      input,
+    );
+    expect(apiClient.createInvoiceDraft).not.toHaveBeenCalled();
   });
 });
 

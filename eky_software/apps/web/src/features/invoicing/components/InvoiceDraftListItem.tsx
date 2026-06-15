@@ -11,11 +11,13 @@ import { getInvoiceDraftCustomerDisplayName } from '../invoiceDraftCustomerDispl
 interface InvoiceDraftListItemProps {
   customers: Customer[];
   draft: InvoiceDraftSummary;
+  onOpenDraft(id: string): void;
 }
 
 export function InvoiceDraftListItem({
   customers,
   draft,
+  onOpenDraft,
 }: InvoiceDraftListItemProps): React.JSX.Element {
   const customerDisplayName = getInvoiceDraftCustomerDisplayName(
     draft,
@@ -25,7 +27,13 @@ export function InvoiceDraftListItem({
   return (
     <div className="invoice-draft-table-row" role="row">
       <div className="invoice-draft-main-cell" role="cell">
-        <strong>{getInvoiceDraftSubject(draft.subject)}</strong>
+        <button
+          className="invoice-draft-open-button"
+          onClick={() => onOpenDraft(draft.id)}
+          type="button"
+        >
+          {getInvoiceDraftSubject(draft.subject)}
+        </button>
       </div>
       <span role="cell">{customerDisplayName}</span>
       <time dateTime={draft.invoiceDate} role="cell">

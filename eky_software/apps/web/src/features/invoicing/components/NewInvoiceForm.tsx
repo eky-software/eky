@@ -1,8 +1,10 @@
+import type { InvoiceDraft } from '@eky/api-client';
 import { useState } from 'react';
 
 import { InvoiceBasicInfoSection } from './InvoiceBasicInfoSection.js';
 import { InvoiceRowsEditor } from './InvoiceRowsEditor.js';
 import { InvoiceTotalsPreview } from './InvoiceTotalsPreview.js';
+import { toNewInvoiceFormStateFromDraft } from '../invoiceDraftFormHydration.js';
 import {
   addInvoiceRow,
   removeInvoiceRow,
@@ -20,21 +22,28 @@ import type { InvoiceCustomerListState } from '../useInvoiceCustomers.js';
 import {
   prepareInvoiceDraftSaveInput,
   useSaveInvoiceDraft,
+  type InvoiceDraftSaveMode,
 } from '../useSaveInvoiceDraft.js';
 import { uiText } from '../../../i18n/fi.js';
 
+export type NewInvoiceFormMode =
+  | { type: 'create' }
+  | { draft: InvoiceDraft; type: 'edit' };
+
 interface NewInvoiceFormProps {
   customerListState: InvoiceCustomerListState;
+  mode: NewInvoiceFormMode;
   onBack(): void;
 }
 
 export function NewInvoiceForm({
   customerListState,
+  mode,
   onBack,
 }: NewInvoiceFormProps): React.JSX.Element {
-  const [form, setForm] = useState(createInitialNewInvoiceForm);
+  const [form, setForm] = useState(() => createInitialForm(mode));
   const [hasValidated, setHasValidated] = useState(false);
-  const saveState = useSaveInvoiceDraft();
+  const saveState = useSaveInvoiceDraft(createSaveMode(mode));
   const validationResult = prepareInvoiceDraftSaveInput(form);
   const displayedErrors = hasValidated
     ? validationResult.errors
@@ -100,8 +109,16 @@ export function NewInvoiceForm({
   }
 
   const saveButtonText = saveState.isSaving
-    ? uiText.invoicing.savingDraft
-    : uiText.invoicing.saveDraft;
+    ? mode.type === 'edit'
+      ? uiText.invoicing.savingDraftChanges
+      : uiText.invoicing.savingDraft
+    : mode.type === 'edit'
+      ? uiText.invoicing.saveDraftChanges
+      : uiText.invoicing.saveDraft;
+  const successMessage =
+    mode.type === 'edit'
+      ? uiText.invoicing.saveDraftChangesSuccess
+      : uiText.invoicing.saveDraftSuccess;
 
   return (
     <form
@@ -113,8 +130,16 @@ export function NewInvoiceForm({
     >
       <header className="new-invoice-form-header">
         <div>
-          <p className="panel-kicker">{uiText.invoicing.newInvoiceKicker}</p>
-          <h2>{uiText.invoicing.newInvoice}</h2>
+          <p className="panel-kicker">
+            {mode.type === 'edit'
+              ? uiText.invoicing.editInvoiceKicker
+              : uiText.invoicing.newInvoiceKicker}
+          </p>
+          <h2>
+            {mode.type === 'edit'
+              ? uiText.invoicing.editInvoice
+              : uiText.invoicing.newInvoice}
+          </h2>
         </div>
         <button
           className="ghost-button"
@@ -145,7 +170,7 @@ export function NewInvoiceForm({
           className="message success-message invoice-form-validation-message"
           role="status"
         >
-          {uiText.invoicing.saveDraftSuccess}
+          {successMessage}
         </p>
       ) : null}
 
@@ -192,4 +217,23 @@ export function NewInvoiceForm({
       </footer>
     </form>
   );
+}
+
+function createInitialForm(mode: NewInvoiceFormMode): NewInvoiceFormState {
+  if (mode.type === 'edit') {
+    return toNewInvoiceFormStateFromDraft(mode.draft);
+  }
+
+  return createInitialNewInvoiceForm();
+}
+
+function createSaveMode(mode: NewInvoiceFormMode): InvoiceDraftSaveMode {
+  if (mode.type === 'edit') {
+    return {
+      draftId: mode.draft.id,
+      type: 'edit',
+    };
+  }
+
+  return { type: 'create' };
 }
