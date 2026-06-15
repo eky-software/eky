@@ -3,7 +3,6 @@ import { useState } from 'react';
 import { InvoiceBasicInfoSection } from './InvoiceBasicInfoSection.js';
 import { InvoiceRowsEditor } from './InvoiceRowsEditor.js';
 import { InvoiceTotalsPlaceholder } from './InvoiceTotalsPlaceholder.js';
-import { validateInvoiceDraftForm } from '../invoiceDraftFormValidation.js';
 import {
   addInvoiceRow,
   removeInvoiceRow,
@@ -18,6 +17,10 @@ import {
   updateNewInvoiceFormField,
 } from '../newInvoiceFormState.js';
 import { useInvoiceCustomers } from '../useInvoiceCustomers.js';
+import {
+  prepareInvoiceDraftSaveInput,
+  useSaveInvoiceDraft,
+} from '../useSaveInvoiceDraft.js';
 import { uiText } from '../../../i18n/fi.js';
 
 interface NewInvoiceFormProps {
@@ -30,29 +33,37 @@ export function NewInvoiceForm({
   const [form, setForm] = useState(createInitialNewInvoiceForm);
   const [hasValidated, setHasValidated] = useState(false);
   const customerListState = useInvoiceCustomers();
-  const validationResult = validateInvoiceDraftForm(form);
+  const saveState = useSaveInvoiceDraft();
+  const validationResult = prepareInvoiceDraftSaveInput(form);
   const displayedErrors = hasValidated
     ? validationResult.errors
     : undefined;
+
+  function handleFormChange(
+    updateForm: (currentForm: NewInvoiceFormState) => NewInvoiceFormState,
+  ): void {
+    saveState.clearSaveResult();
+    setForm(updateForm);
+  }
 
   function handleFieldChange<FieldName extends NewInvoiceBasicInfoField>(
     fieldName: FieldName,
     value: NewInvoiceFormState[FieldName],
   ): void {
-    setForm((currentForm) =>
+    handleFormChange((currentForm) =>
       updateNewInvoiceFormField(currentForm, fieldName, value),
     );
   }
 
   function handleAddRow(): void {
-    setForm((currentForm) => ({
+    handleFormChange((currentForm) => ({
       ...currentForm,
       lines: addInvoiceRow(currentForm.lines),
     }));
   }
 
   function handleRemoveRow(rowId: string): void {
-    setForm((currentForm) => ({
+    handleFormChange((currentForm) => ({
       ...currentForm,
       lines: removeInvoiceRow(currentForm.lines, rowId),
     }));
@@ -63,7 +74,7 @@ export function NewInvoiceForm({
     fieldName: FieldName,
     value: InvoiceRowForm[FieldName],
   ): void {
-    setForm((currentForm) => ({
+    handleFormChange((currentForm) => ({
       ...currentForm,
       lines: updateInvoiceRow(
         currentForm.lines,
@@ -73,6 +84,23 @@ export function NewInvoiceForm({
       ),
     }));
   }
+
+  async function handleSaveDraft(): Promise<void> {
+    const preparedInput = prepareInvoiceDraftSaveInput(form);
+
+    setHasValidated(true);
+
+    if (!preparedInput.isValid) {
+      saveState.clearSaveResult();
+      return;
+    }
+
+    await saveState.saveInvoiceDraft(preparedInput.input);
+  }
+
+  const saveButtonText = saveState.isSaving
+    ? uiText.invoicing.savingDraft
+    : uiText.invoicing.saveDraft;
 
   return (
     <form
@@ -111,6 +139,24 @@ export function NewInvoiceForm({
         </p>
       ) : null}
 
+      {saveState.savedDraft !== null ? (
+        <p
+          className="message success-message invoice-form-validation-message"
+          role="status"
+        >
+          {uiText.invoicing.saveDraftSuccess}
+        </p>
+      ) : null}
+
+      {saveState.errorMessage !== null ? (
+        <p
+          className="message error-message invoice-form-validation-message"
+          role="alert"
+        >
+          {saveState.errorMessage}
+        </p>
+      ) : null}
+
       <InvoiceBasicInfoSection
         customerListState={customerListState}
         errors={displayedErrors}
@@ -134,11 +180,13 @@ export function NewInvoiceForm({
           {uiText.invoicing.validateForm}
         </button>
         <button
-          disabled
-          title={uiText.invoicing.saveDraftLater}
+          disabled={saveState.isSaving || saveState.savedDraft !== null}
           type="button"
+          onClick={() => {
+            void handleSaveDraft();
+          }}
         >
-          {uiText.invoicing.saveDraft}
+          {saveButtonText}
         </button>
       </footer>
     </form>

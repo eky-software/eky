@@ -93,9 +93,7 @@ describe('InvoicingPageView', () => {
     expect(html).toContain(uiText.invoicing.invoiceTotalsLater);
     expect(html).toContain(uiText.invoicing.validateForm);
     expect(html).toContain(uiText.invoicing.saveDraft);
-    expect(html).toContain(
-      `disabled="" title="${uiText.invoicing.saveDraftLater}" type="button">${uiText.invoicing.saveDraft}</button>`,
-    );
+    expect(html).not.toContain(uiText.invoicing.saveDraftLater);
   });
 });
 
