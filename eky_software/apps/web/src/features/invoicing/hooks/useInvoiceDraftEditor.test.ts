@@ -5,7 +5,7 @@ import {
   getOpenInvoiceDraftErrorMessage,
   loadInvoiceDraft,
 } from './useInvoiceDraftEditor.js';
-import { uiText } from '../../i18n/fi.js';
+import { uiText } from '../../../i18n/fi.js';
 
 describe('loadInvoiceDraft', () => {
   it('calls getInvoiceDraft with the selected draft id', async () => {

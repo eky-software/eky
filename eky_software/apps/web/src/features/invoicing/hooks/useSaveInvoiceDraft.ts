@@ -7,13 +7,13 @@ import {
 } from '@eky/api-client';
 import { useMemo, useState } from 'react';
 
-import { toInvoiceDraftInput } from './invoiceDraftFormMapping.js';
+import { toInvoiceDraftInput } from '../form/invoiceDraftFormMapping.js';
 import {
   type InvoiceDraftFormErrors,
   validateInvoiceDraftForm,
-} from './invoiceDraftFormValidation.js';
-import type { NewInvoiceFormState } from './newInvoiceFormState.js';
-import { getFinnishApiErrorMessage, uiText } from '../../i18n/fi.js';
+} from '../form/invoiceDraftFormValidation.js';
+import type { NewInvoiceFormState } from '../form/newInvoiceFormState.js';
+import { getFinnishApiErrorMessage, uiText } from '../../../i18n/fi.js';
 
 const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
 

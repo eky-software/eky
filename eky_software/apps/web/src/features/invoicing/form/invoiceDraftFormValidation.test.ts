@@ -9,7 +9,7 @@ import {
   createInitialNewInvoiceForm,
   updateNewInvoiceFormField,
 } from './newInvoiceFormState.js';
-import { uiText } from '../../i18n/fi.js';
+import { uiText } from '../../../i18n/fi.js';
 
 describe('validateInvoiceDraftForm', () => {
   it('accepts a valid invoice draft form', () => {

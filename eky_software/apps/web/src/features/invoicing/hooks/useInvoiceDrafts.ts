@@ -1,48 +1,45 @@
 import {
   createEkyApiClient,
   EkyApiError,
-  type Customer,
-  type EkyApiClient,
+  type InvoiceDraftSummary,
 } from '@eky/api-client';
 import { useEffect, useMemo, useState } from 'react';
 
-import { getFinnishApiErrorMessage, uiText } from '../../i18n/fi.js';
+import { getFinnishApiErrorMessage, uiText } from '../../../i18n/fi.js';
 
 const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
 
-export interface InvoiceCustomerListState {
-  customers: Customer[];
+export interface InvoiceDraftListState {
+  drafts: InvoiceDraftSummary[];
   errorMessage: string | null;
   isLoading: boolean;
 }
 
-type InvoiceCustomerClient = Pick<EkyApiClient, 'listCustomers'>;
-
-export function useInvoiceCustomers(): InvoiceCustomerListState {
+export function useInvoiceDrafts(): InvoiceDraftListState {
   const apiClient = useMemo(
     () => createEkyApiClient({ baseUrl: apiBaseUrl }),
     [],
   );
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [drafts, setDrafts] = useState<InvoiceDraftSummary[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let isActive = true;
 
-    async function loadCustomers(): Promise<void> {
+    async function loadDrafts(): Promise<void> {
       setIsLoading(true);
       setErrorMessage(null);
 
       try {
-        const loadedCustomers = await loadInvoiceCustomers(apiClient);
+        const loadedDrafts = await apiClient.listInvoiceDrafts();
 
         if (isActive) {
-          setCustomers(loadedCustomers);
+          setDrafts(loadedDrafts);
         }
       } catch (error) {
         if (isActive) {
-          setErrorMessage(getInvoiceCustomerErrorMessage(error));
+          setErrorMessage(getInvoiceDraftErrorMessage(error));
         }
       } finally {
         if (isActive) {
@@ -51,7 +48,7 @@ export function useInvoiceCustomers(): InvoiceCustomerListState {
       }
     }
 
-    void loadCustomers();
+    void loadDrafts();
 
     return () => {
       isActive = false;
@@ -59,26 +56,20 @@ export function useInvoiceCustomers(): InvoiceCustomerListState {
   }, [apiClient]);
 
   return {
-    customers,
+    drafts,
     errorMessage,
     isLoading,
   };
 }
 
-export function loadInvoiceCustomers(
-  apiClient: InvoiceCustomerClient,
-): Promise<Customer[]> {
-  return apiClient.listCustomers();
-}
-
-export function getInvoiceCustomerErrorMessage(error: unknown): string {
+export function getInvoiceDraftErrorMessage(error: unknown): string {
   if (error instanceof EkyApiError) {
     const translatedMessage = getFinnishApiErrorMessage(error.message);
 
     return translatedMessage === error.message
-      ? uiText.invoicing.customerLoadError
+      ? uiText.invoicing.loadError
       : translatedMessage;
   }
 
-  return uiText.invoicing.customerLoadError;
+  return uiText.invoicing.loadError;
 }

@@ -1,6 +1,6 @@
 import type { InvoiceDraftStatus } from '@eky/api-client';
 
-import { uiText } from '../../i18n/fi.js';
+import { uiText } from '../../../i18n/fi.js';
 
 const euroFormatter = new Intl.NumberFormat('fi-FI', {
   currency: 'EUR',

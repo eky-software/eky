@@ -1,7 +1,7 @@
 import type { InvoiceUnit } from '@eky/api-client';
 
 import type { InvoiceRowDiscountType } from './invoiceRowFormState.js';
-import { uiText } from '../../i18n/fi.js';
+import { uiText } from '../../../i18n/fi.js';
 
 interface InvoiceRowOption<Value> {
   value: Value;

@@ -1,6 +1,7 @@
 import type { Customer, CustomerType } from '@eky/api-client';
 
 import { centsToEuroInput } from '../../../shared/money/hourlyRateInput.js';
+import styles from './SelectedCustomerDetails.module.css';
 import { uiText } from '../../../i18n/fi.js';
 
 interface SelectedCustomerDetailsProps {
@@ -17,9 +18,9 @@ export function SelectedCustomerDetails({
   return (
     <section
       aria-labelledby="selected-customer-details-title"
-      className="invoice-customer-details"
+      className={styles.details}
     >
-      <header className="invoice-customer-details-header">
+      <header className={styles.header}>
         <div>
           <p className="panel-kicker">
             {uiText.invoicing.selectedCustomerKicker}
@@ -39,7 +40,7 @@ export function SelectedCustomerDetails({
         </span>
       </header>
 
-      <dl className="invoice-customer-details-grid">
+      <dl className={styles.grid}>
         <CustomerDetail
           label={uiText.customers.customerNumber}
           value={customer.customerNumber}
@@ -53,7 +54,7 @@ export function SelectedCustomerDetails({
           value={customer.businessId}
         />
         <CustomerDetail
-          className="invoice-customer-detail-wide"
+          className={styles.wide}
           label={uiText.customers.address}
           value={address}
         />
@@ -77,7 +78,7 @@ export function SelectedCustomerDetails({
         ) : null}
         {customer.comment.trim() !== '' ? (
           <CustomerDetail
-            className="invoice-customer-detail-comment"
+            className={styles.comment}
             label={uiText.customers.comment}
             value={customer.comment}
           />
@@ -88,7 +89,7 @@ export function SelectedCustomerDetails({
 }
 
 interface CustomerDetailProps {
-  className?: string;
+  className?: string | undefined;
   label: string;
   value: string;
 }

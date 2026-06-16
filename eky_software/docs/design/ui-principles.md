@@ -129,6 +129,14 @@ Pienet ja aidosti useamman featuren käyttämät apukokonaisuudet voidaan sijoit
 
 Tarkempi web-kansiorakenne on kuvattu dokumentissa `docs/architecture/web-frontend-structure.md`.
 
+Kun feature kasvaa, sen sisäinen rakenne jaetaan selkeisiin vastuisiin, kuten
+`components/`, `hooks/`, `form/`, `list/` tai `drafts/`, `preview/` ja
+`state/`.
+
+Komponenttien omat tyylit pidetään komponentin vieressä CSS Module -tiedostoissa.
+Globaali `styles.css` sisältää vain sovelluksen yleiset
+perustyylit ja yhteiset rakenteet, ei feature-kohtaisia työpintatyylejä.
+
 Layout-ajatus:
 
 - `TopBar` näyttää sovelluksen nimen, tilan ja myöhemmin local/cloud-statuksen

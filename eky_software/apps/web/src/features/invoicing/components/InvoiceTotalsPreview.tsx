@@ -1,9 +1,10 @@
-import { formatInvoiceDraftCurrency } from '../invoiceDraftFormatting.js';
+import { formatInvoiceDraftCurrency } from '../drafts/invoiceDraftFormatting.js';
 import {
   calculateInvoiceDraftPreviewTotals,
   type InvoiceDraftPreviewTotals as InvoiceDraftPreviewTotalsResult,
-} from '../invoiceDraftPreviewTotals.js';
-import type { NewInvoiceFormState } from '../newInvoiceFormState.js';
+} from '../preview/invoiceDraftPreviewTotals.js';
+import type { NewInvoiceFormState } from '../form/newInvoiceFormState.js';
+import styles from './InvoiceTotalsPreview.module.css';
 import { uiText } from '../../../i18n/fi.js';
 
 interface InvoiceTotalsPreviewProps {
@@ -16,7 +17,7 @@ export function InvoiceTotalsPreview({
   const totals = calculateInvoiceDraftPreviewTotals(form);
 
   return (
-    <section className="invoice-totals-placeholder invoice-totals-preview">
+    <section className={styles.container}>
       <div>
         <h3>{uiText.invoicing.invoiceTotals}</h3>
         <p>{uiText.invoicing.invoiceTotalsPreviewHelp}</p>
@@ -25,7 +26,7 @@ export function InvoiceTotalsPreview({
       {totals.isAvailable ? (
         <InvoiceTotalsPreviewValues totals={totals} />
       ) : (
-        <p className="invoice-preview-unavailable" role="status">
+        <p className={styles.unavailable} role="status">
           {uiText.invoicing.invoiceTotalsUnavailable}
         </p>
       )}
@@ -39,7 +40,7 @@ function InvoiceTotalsPreviewValues({
   totals: Extract<InvoiceDraftPreviewTotalsResult, { isAvailable: true }>;
 }): React.JSX.Element {
   return (
-    <div className="invoice-totals-preview-grid">
+    <div className={styles.grid}>
       <dl aria-label={uiText.invoicing.invoiceTotals}>
         <div>
           <dt>{uiText.invoicing.netTotal}</dt>
@@ -49,7 +50,7 @@ function InvoiceTotalsPreviewValues({
           <dt>{uiText.invoicing.vatTotal}</dt>
           <dd>{formatInvoiceDraftCurrency(totals.vatTotalCents)}</dd>
         </div>
-        <div className="invoice-grand-total">
+        <div className={styles.grandTotal}>
           <dt>{uiText.invoicing.total}</dt>
           <dd>{formatInvoiceDraftCurrency(totals.grossTotalCents)}</dd>
         </div>
@@ -58,7 +59,7 @@ function InvoiceTotalsPreviewValues({
       {totals.vatBreakdown.length > 0 ? (
         <dl
           aria-label={uiText.invoicing.vatBreakdown}
-          className="invoice-vat-breakdown"
+          className={styles.vatBreakdown}
         >
           {totals.vatBreakdown.map((breakdown) => (
             <div key={breakdown.vatRateBasisPoints}>

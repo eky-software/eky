@@ -6,7 +6,7 @@ import { InvoiceBasicInfoSection } from './InvoiceBasicInfoSection.js';
 import {
   createInitialNewInvoiceForm,
   updateNewInvoiceFormField,
-} from '../newInvoiceFormState.js';
+} from '../form/newInvoiceFormState.js';
 import { uiText } from '../../../i18n/fi.js';
 
 describe('InvoiceBasicInfoSection', () => {

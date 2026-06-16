@@ -4,9 +4,9 @@ import {
   parseEuroCents,
   parsePercentageBasisPoints,
   parseQuantityHundredths,
-} from './invoiceDraftFormMapping.js';
-import type { InvoiceRowForm } from './invoiceRowFormState.js';
-import type { NewInvoiceFormState } from './newInvoiceFormState.js';
+} from '../form/invoiceDraftFormMapping.js';
+import type { InvoiceRowForm } from '../form/invoiceRowFormState.js';
+import type { NewInvoiceFormState } from '../form/newInvoiceFormState.js';
 
 const quantityScale = 100n;
 const basisPointsScale = 10_000n;

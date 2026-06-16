@@ -1,0 +1,66 @@
+.row {
+  display: grid;
+  grid-template-columns:
+    44px minmax(260px, 1.8fr) 92px 92px minmax(120px, 0.7fr)
+    96px minmax(130px, 0.8fr) 120px 82px;
+  gap: 8px;
+  min-width: 1120px;
+  min-height: 58px;
+  align-items: center;
+  border-top: 1px solid var(--color-border);
+  padding-block: 8px;
+  padding-inline: 12px;
+}
+
+.row:first-of-type {
+  border-top: 0;
+}
+
+.row input,
+.row select {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  padding: 7px 9px;
+  font-size: 0.82rem;
+}
+
+.field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fieldError {
+  color: #a10f3b;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.position {
+  color: var(--color-text-muted);
+  text-align: center;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.removeButton {
+  min-height: 36px;
+  padding: 6px 8px;
+  border-color: #c7d8ed;
+  color: #7a2340;
+  background: #fff;
+  font-size: 0.76rem;
+}
+
+.removeButton:hover:not(:disabled) {
+  border-color: #9f3558;
+  color: #8a1239;
+  background: #fff5f8;
+}
+
+.removeButton:disabled {
+  color: #8492a5;
+  background: var(--color-surface-muted);
+}

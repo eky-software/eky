@@ -1,5 +1,6 @@
 import type { Customer } from '@eky/api-client';
 
+import styles from './InvoiceBasicInfoSection.module.css';
 import { uiText } from '../../../i18n/fi.js';
 
 interface CustomerPickerProps {
@@ -23,7 +24,7 @@ export function CustomerPicker({
   const isDisabled = isLoading || errorMessage !== null || isEmpty;
 
   return (
-    <label className="invoice-field invoice-field-customer">
+    <label className={`${styles.field} ${styles.customerField}`}>
       <span>{uiText.invoicing.customer}</span>
       <select
         aria-describedby="invoice-customer-help"
@@ -45,7 +46,7 @@ export function CustomerPicker({
         className={
           errorMessage === null && validationErrorMessage === undefined
             ? undefined
-            : 'invoice-field-error'
+            : styles.fieldError
         }
         id="invoice-customer-help"
         role={

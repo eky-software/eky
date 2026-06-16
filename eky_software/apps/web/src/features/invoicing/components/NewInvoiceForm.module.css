@@ -1,0 +1,41 @@
+.form {
+  display: grid;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 68px;
+  border-bottom: 1px solid var(--color-border);
+  padding: 14px 18px;
+  background: var(--color-surface-muted);
+}
+
+.header h2 {
+  margin: 0;
+}
+
+.validationMessage {
+  margin: 14px 18px 0;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  border-top: 1px solid var(--color-border);
+  padding: 12px 18px;
+  background: var(--color-surface);
+}
+
+@media (max-width: 860px) {
+  .header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

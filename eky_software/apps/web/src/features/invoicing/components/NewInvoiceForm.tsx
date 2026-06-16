@@ -4,26 +4,27 @@ import { useState } from 'react';
 import { InvoiceBasicInfoSection } from './InvoiceBasicInfoSection.js';
 import { InvoiceRowsEditor } from './InvoiceRowsEditor.js';
 import { InvoiceTotalsPreview } from './InvoiceTotalsPreview.js';
-import { toNewInvoiceFormStateFromDraft } from '../invoiceDraftFormHydration.js';
+import styles from './NewInvoiceForm.module.css';
+import { toNewInvoiceFormStateFromDraft } from '../form/invoiceDraftFormHydration.js';
 import {
   addInvoiceRow,
   removeInvoiceRow,
   type InvoiceRowForm,
   type InvoiceRowFormField,
   updateInvoiceRow,
-} from '../invoiceRowFormState.js';
+} from '../form/invoiceRowFormState.js';
 import {
   createInitialNewInvoiceForm,
   type NewInvoiceBasicInfoField,
   type NewInvoiceFormState,
   updateNewInvoiceFormField,
-} from '../newInvoiceFormState.js';
-import type { InvoiceCustomerListState } from '../useInvoiceCustomers.js';
+} from '../form/newInvoiceFormState.js';
+import type { InvoiceCustomerListState } from '../hooks/useInvoiceCustomers.js';
 import {
   prepareInvoiceDraftSaveInput,
   useSaveInvoiceDraft,
   type InvoiceDraftSaveMode,
-} from '../useSaveInvoiceDraft.js';
+} from '../hooks/useSaveInvoiceDraft.js';
 import { uiText } from '../../../i18n/fi.js';
 
 export type NewInvoiceFormMode =
@@ -122,13 +123,13 @@ export function NewInvoiceForm({
 
   return (
     <form
-      className="panel new-invoice-form"
+      className={`panel ${styles.form}`}
       onSubmit={(event) => {
         event.preventDefault();
         setHasValidated(true);
       }}
     >
-      <header className="new-invoice-form-header">
+      <header className={styles.header}>
         <div>
           <p className="panel-kicker">
             {mode.type === 'edit'
@@ -156,7 +157,7 @@ export function NewInvoiceForm({
             validationResult.isValid
               ? 'success-message'
               : 'error-message'
-          } invoice-form-validation-message`}
+          } ${styles.validationMessage}`}
           role={validationResult.isValid ? 'status' : 'alert'}
         >
           {validationResult.isValid
@@ -167,7 +168,7 @@ export function NewInvoiceForm({
 
       {saveState.savedDraft !== null ? (
         <p
-          className="message success-message invoice-form-validation-message"
+          className={`message success-message ${styles.validationMessage}`}
           role="status"
         >
           {successMessage}
@@ -176,7 +177,7 @@ export function NewInvoiceForm({
 
       {saveState.errorMessage !== null ? (
         <p
-          className="message error-message invoice-form-validation-message"
+          className={`message error-message ${styles.validationMessage}`}
           role="alert"
         >
           {saveState.errorMessage}
@@ -198,7 +199,7 @@ export function NewInvoiceForm({
       />
       <InvoiceTotalsPreview form={form} />
 
-      <footer className="new-invoice-form-actions">
+      <footer className={styles.actions}>
         <button className="ghost-button" onClick={onBack} type="button">
           {uiText.invoicing.cancel}
         </button>

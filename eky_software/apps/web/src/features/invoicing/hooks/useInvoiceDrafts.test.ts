@@ -2,7 +2,7 @@ import { EkyApiError } from '@eky/api-client';
 import { describe, expect, it } from 'vitest';
 
 import { getInvoiceDraftErrorMessage } from './useInvoiceDrafts.js';
-import { uiText } from '../../i18n/fi.js';
+import { uiText } from '../../../i18n/fi.js';
 
 describe('getInvoiceDraftErrorMessage', () => {
   it('translates a known safe API error into Finnish', () => {

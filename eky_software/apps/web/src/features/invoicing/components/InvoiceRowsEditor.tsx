@@ -1,11 +1,12 @@
 import { InvoiceRowEditor } from './InvoiceRowEditor.js';
 import type {
   InvoiceDraftLineFormErrors,
-} from '../invoiceDraftFormValidation.js';
+} from '../form/invoiceDraftFormValidation.js';
 import type {
   InvoiceRowForm,
   InvoiceRowFormField,
-} from '../invoiceRowFormState.js';
+} from '../form/invoiceRowFormState.js';
+import styles from './InvoiceRowsEditor.module.css';
 import { uiText } from '../../../i18n/fi.js';
 
 interface InvoiceRowsEditorProps {
@@ -28,8 +29,8 @@ export function InvoiceRowsEditor({
   onRemove,
 }: InvoiceRowsEditorProps): React.JSX.Element {
   return (
-    <section className="invoice-form-section invoice-rows-section">
-      <header className="invoice-form-section-header">
+    <section className={styles.section}>
+      <header className={styles.sectionHeader}>
         <div>
           <h3>{uiText.invoicing.invoiceRows}</h3>
           <p>{uiText.invoicing.invoiceRowsHelp}</p>
@@ -39,8 +40,8 @@ export function InvoiceRowsEditor({
         </button>
       </header>
 
-      <div className="invoice-rows-editor">
-        <div className="invoice-row-editor-head" aria-hidden="true">
+      <div className={styles.editor}>
+        <div className={styles.head} aria-hidden="true">
           <span>{uiText.invoicing.row}</span>
           <span>{uiText.invoicing.rowDescription}</span>
           <span>{uiText.invoicing.rowQuantity}</span>

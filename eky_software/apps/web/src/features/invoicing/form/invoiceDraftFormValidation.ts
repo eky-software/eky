@@ -5,7 +5,7 @@ import {
 } from './invoiceDraftFormMapping.js';
 import type { InvoiceRowForm } from './invoiceRowFormState.js';
 import type { NewInvoiceFormState } from './newInvoiceFormState.js';
-import { uiText } from '../../i18n/fi.js';
+import { uiText } from '../../../i18n/fi.js';
 
 export interface InvoiceDraftLineFormErrors {
   description?: string;

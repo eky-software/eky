@@ -1,6 +1,7 @@
 import type { Customer, InvoiceDraftSummary } from '@eky/api-client';
 
 import { InvoiceDraftListItem } from './InvoiceDraftListItem.js';
+import styles from './InvoiceDraftList.module.css';
 import { uiText } from '../../../i18n/fi.js';
 
 interface InvoiceDraftListProps {
@@ -23,7 +24,7 @@ export function InvoiceDraftList({
   onOpenDraft,
 }: InvoiceDraftListProps): React.JSX.Element {
   if (isLoading || isCustomerLoading) {
-    return <p className="invoice-draft-state">{uiText.invoicing.loading}</p>;
+    return <p className={styles.state}>{uiText.invoicing.loading}</p>;
   }
 
   if (errorMessage) {
@@ -43,16 +44,16 @@ export function InvoiceDraftList({
   }
 
   if (drafts.length === 0) {
-    return <p className="invoice-draft-state">{uiText.invoicing.empty}</p>;
+    return <p className={styles.state}>{uiText.invoicing.empty}</p>;
   }
 
   return (
     <div
       aria-label={uiText.invoicing.draftList}
-      className="invoice-draft-table"
+      className={styles.table}
       role="table"
     >
-      <div className="invoice-draft-table-row invoice-draft-table-head" role="row">
+      <div className={`${styles.row} ${styles.head}`} role="row">
         <span role="columnheader">{uiText.invoicing.invoice}</span>
         <span role="columnheader">{uiText.invoicing.customer}</span>
         <span role="columnheader">{uiText.invoicing.invoiceDate}</span>
