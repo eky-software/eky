@@ -15,6 +15,7 @@ import {
   toUpdateCustomerRequest,
   type CustomerFormModel,
 } from './customerFormModel.js';
+import styles from './CustomerPageView.module.css';
 import { getFinnishApiErrorMessage, uiText } from '../../i18n/fi.js';
 
 const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
@@ -159,8 +160,8 @@ export function CustomerPage(): React.JSX.Element {
   }
 
   return (
-    <div className="customer-workspace">
-      <section className="page-intro customer-page-header">
+    <div className={styles.workspace}>
+      <section className={`page-intro ${styles.pageHeader}`}>
         <div>
           <p className="eyebrow">{uiText.customers.customerWorkspace}</p>
           <h2>{uiText.customers.customerRegister}</h2>
@@ -168,7 +169,13 @@ export function CustomerPage(): React.JSX.Element {
         </div>
       </section>
 
-      <div className={panelMode === null ? 'customer-view-grid' : 'customer-view-grid has-side-panel'}>
+      <div
+        className={
+          panelMode === null
+            ? styles.viewGrid
+            : `${styles.viewGrid} ${styles.viewGridWithSidePanel}`
+        }
+      >
         <CustomerList
           customers={customers}
           errorMessage={loadErrorMessage}

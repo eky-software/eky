@@ -5,6 +5,7 @@ import {
   getCustomerListFilters,
 } from './customerDisplay.js';
 import type { CustomerListFilter } from './customerListGrouping.js';
+import styles from './CustomerTypeFilter.module.css';
 import { uiText } from '../../i18n/fi.js';
 
 interface CustomerTypeFilterProps {
@@ -19,11 +20,11 @@ export function CustomerTypeFilter({
   onFilterChange,
 }: CustomerTypeFilterProps): React.JSX.Element {
   return (
-    <div className="customer-type-filter" aria-label={uiText.customers.customerTypeFilter}>
+    <div className={styles.filter} aria-label={uiText.customers.customerTypeFilter}>
       {getCustomerListFilters().map((filter) => (
         <button
           aria-pressed={activeFilter === filter}
-          className="customer-type-filter-button"
+          className={styles.button}
           key={filter}
           onClick={() => onFilterChange(filter)}
           type="button"

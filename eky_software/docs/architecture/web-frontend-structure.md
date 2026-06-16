@@ -13,8 +13,11 @@ apps/web/src/
 
   features/
     customers/
+      CustomerPage.ts
     companySettings/
+      CompanySettingsPage.ts
     invoicing/
+      InvoicingPage.ts
       components/
       hooks/
       form/
@@ -39,6 +42,21 @@ Se valitsee aktiivisen näkymän ja yhdistää feature-moduulit yleiseen layouti
 
 Varsinaista feature-kohtaista logiikkaa ei siirretä `app/`-kansioon.
 
+`app/` käyttää featureiden julkisia entrypointteja.
+
+Esimerkiksi:
+
+```text
+features/invoicing/InvoicingPage.ts
+features/customers/CustomerPage.ts
+features/companySettings/CompanySettingsPage.ts
+```
+
+`app/` ei importtaa featureiden sisäisiä `components/`, `hooks/`,
+`form/`, `drafts/`, `preview/` tai `state/` -polkuja suoraan. Feature saa
+muuttaa sisäistä rakennettaan ilman, että sovelluksen kokoava `app/`-kerros
+muuttuu.
+
 ## Features
 
 `features/` sisältää käyttöliittymän suuret toiminnalliset moduulit.
@@ -52,6 +70,10 @@ Nykyiset feature-moduulit:
 Feature omistaa oman näkymänsä, paikalliset komponenttinsa, hookinsa, lomakemallinsa ja feature-kohtaiset puhtaat apufunktionsa.
 
 Feature ei saa importata backendin sisäisiä moduuleja tai kirjoittaa suoraan tietokantaan. Backend-yhteys kulkee `packages/api-client`-paketin kautta.
+
+Feature voi tarjota juuritasollaan pienen julkisen entrypoint-tiedoston, joka
+re-exporttaa featurestä ulospäin käytettävän näkymän tai rajatun API:n.
+Entrypoint ei sisällä feature-logiikkaa, vaan pitää import-polut vakaina.
 
 ## Feature-kansion Sisäinen Rakenne
 
@@ -130,6 +152,8 @@ components/InvoiceDraftList.module.css
 
 CSS Module on feature- tai komponenttikohtainen. Sitä ei käytetä uutena
 yleisenä design systeminä eikä sen vuoksi lisätä UI- tai CSS-kirjastoja.
+
+CSS Module sijoitetaan komponentin viereen, ei feature-kansion juureen.
 
 Komponenttikohtaista tyyliä ei jätetä pysyvästi globaaliin `styles.css`-tiedostoon, jos tyyli kuuluu selvästi vain yhteen featureen tai komponenttiin.
 

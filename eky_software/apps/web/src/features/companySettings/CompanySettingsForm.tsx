@@ -1,4 +1,5 @@
 import type { CompanySettingsForm as CompanySettingsFormModel } from './companySettingsFormModel.js';
+import styles from './CompanySettingsForm.module.css';
 import { uiText } from '../../i18n/fi.js';
 
 interface CompanySettingsFormProps {
@@ -17,7 +18,7 @@ export function CompanySettingsForm({
   onSubmit,
 }: CompanySettingsFormProps): React.JSX.Element {
   return (
-    <section className="panel company-settings-form-panel">
+    <section className={`panel ${styles.panel}`}>
       <div className="panel-header">
         <div>
           <p className="panel-kicker">{uiText.companySettings.formKicker}</p>
@@ -29,7 +30,7 @@ export function CompanySettingsForm({
       {errorMessage ? <p className="message error-message">{errorMessage}</p> : null}
 
       <form
-        className="customer-form company-settings-form"
+        className={styles.form}
         onSubmit={(event) => {
           event.preventDefault();
           onSubmit();
@@ -37,8 +38,8 @@ export function CompanySettingsForm({
       >
         <fieldset>
           <legend>{uiText.companySettings.basicInformation}</legend>
-          <div className="form-grid">
-            <label className="form-field-wide" htmlFor="company-name">
+          <div className={styles.grid}>
+            <label className={styles.wideField} htmlFor="company-name">
               {uiText.companySettings.companyName}
               <input
                 id="company-name"
@@ -73,14 +74,14 @@ export function CompanySettingsForm({
                 type="text"
                 value={form.defaultHourlyRateEuro}
               />
-              <span className="field-help">{uiText.companySettings.defaultHourlyRateHelp}</span>
+              <span className={styles.fieldHelp}>{uiText.companySettings.defaultHourlyRateHelp}</span>
             </label>
           </div>
         </fieldset>
 
         <fieldset>
           <legend>{uiText.companySettings.contactInformation}</legend>
-          <div className="form-grid">
+          <div className={styles.grid}>
             <label htmlFor="company-email">
               {uiText.companySettings.email}
               <input
@@ -109,8 +110,8 @@ export function CompanySettingsForm({
 
         <fieldset>
           <legend>{uiText.companySettings.address}</legend>
-          <div className="form-grid">
-            <label className="form-field-wide" htmlFor="company-street-address">
+          <div className={styles.grid}>
+            <label className={styles.wideField} htmlFor="company-street-address">
               {uiText.companySettings.streetAddress}
               <input
                 id="company-street-address"
@@ -148,7 +149,7 @@ export function CompanySettingsForm({
           </div>
         </fieldset>
 
-        <div className="form-actions">
+        <div className={styles.actions}>
           <button disabled={isSaving} type="submit">
             {isSaving ? uiText.companySettings.saving : uiText.companySettings.save}
           </button>

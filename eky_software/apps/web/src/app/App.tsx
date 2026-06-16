@@ -2,7 +2,7 @@ import { useState } from 'react';
 
 import { CompanySettingsPage } from '../features/companySettings/CompanySettingsPage.js';
 import { CustomerPage } from '../features/customers/CustomerPage.js';
-import { InvoicingPage } from '../features/invoicing/components/InvoicingPage.js';
+import { InvoicingPage } from '../features/invoicing/InvoicingPage.js';
 import { uiText } from '../i18n/fi.js';
 import { AppLayout } from '../layout/AppLayout.js';
 
