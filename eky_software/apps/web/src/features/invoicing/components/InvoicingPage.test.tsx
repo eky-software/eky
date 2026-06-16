@@ -182,8 +182,19 @@ describe('InvoicingPageView', () => {
   });
 });
 
-function renderPage(props: React.ComponentProps<typeof InvoicingPageView>): string {
-  return renderToStaticMarkup(<InvoicingPageView {...props} />);
+type InvoicingPageViewProps = React.ComponentProps<typeof InvoicingPageView>;
+
+function renderPage(
+  props: Omit<InvoicingPageViewProps, 'onDraftSaved' | 'refreshDrafts'> &
+    Partial<Pick<InvoicingPageViewProps, 'onDraftSaved' | 'refreshDrafts'>>,
+): string {
+  return renderToStaticMarkup(
+    <InvoicingPageView
+      onDraftSaved={vi.fn()}
+      refreshDrafts={vi.fn()}
+      {...props}
+    />,
+  );
 }
 
 function createCustomerListState() {
@@ -242,6 +253,7 @@ function createDraftEditorState(
     errorMessage: null,
     isLoading: false,
     openDraft: vi.fn(),
+    replaceDraft: vi.fn(),
     ...overrides,
   };
 }

@@ -20,4 +20,16 @@ describe('reduceInvoicingPageMode', () => {
       reduceInvoicingPageMode('draftList', { type: 'openEditInvoice' }),
     ).toBe('editInvoice');
   });
+
+  it('switches a saved new invoice draft into edit mode', () => {
+    expect(
+      reduceInvoicingPageMode('newInvoice', { type: 'draftSaved' }),
+    ).toBe('editInvoice');
+  });
+
+  it('keeps a saved existing invoice draft in edit mode', () => {
+    expect(
+      reduceInvoicingPageMode('editInvoice', { type: 'draftSaved' }),
+    ).toBe('editInvoice');
+  });
 });

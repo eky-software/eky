@@ -1,18 +1,22 @@
 import {
   createEkyApiClient,
   EkyApiError,
+  type EkyApiClient,
   type InvoiceDraftSummary,
 } from '@eky/api-client';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { getFinnishApiErrorMessage, uiText } from '../../../i18n/fi.js';
 
 const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
 
+type InvoiceDraftListClient = Pick<EkyApiClient, 'listInvoiceDrafts'>;
+
 export interface InvoiceDraftListState {
   drafts: InvoiceDraftSummary[];
   errorMessage: string | null;
   isLoading: boolean;
+  refreshDrafts(): Promise<void>;
 }
 
 export function useInvoiceDrafts(): InvoiceDraftListState {
@@ -24,42 +28,37 @@ export function useInvoiceDrafts(): InvoiceDraftListState {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    let isActive = true;
+  const refreshDrafts = useCallback(async (): Promise<void> => {
+    setIsLoading(true);
+    setErrorMessage(null);
 
-    async function loadDrafts(): Promise<void> {
-      setIsLoading(true);
-      setErrorMessage(null);
+    try {
+      const loadedDrafts = await loadInvoiceDraftSummaries(apiClient);
 
-      try {
-        const loadedDrafts = await apiClient.listInvoiceDrafts();
-
-        if (isActive) {
-          setDrafts(loadedDrafts);
-        }
-      } catch (error) {
-        if (isActive) {
-          setErrorMessage(getInvoiceDraftErrorMessage(error));
-        }
-      } finally {
-        if (isActive) {
-          setIsLoading(false);
-        }
-      }
+      setDrafts(loadedDrafts);
+    } catch (error) {
+      setErrorMessage(getInvoiceDraftErrorMessage(error));
+    } finally {
+      setIsLoading(false);
     }
-
-    void loadDrafts();
-
-    return () => {
-      isActive = false;
-    };
   }, [apiClient]);
+
+  useEffect(() => {
+    void refreshDrafts();
+  }, [refreshDrafts]);
 
   return {
     drafts,
     errorMessage,
     isLoading,
+    refreshDrafts,
   };
+}
+
+export function loadInvoiceDraftSummaries(
+  apiClient: InvoiceDraftListClient,
+): Promise<InvoiceDraftSummary[]> {
+  return apiClient.listInvoiceDrafts();
 }
 
 export function getInvoiceDraftErrorMessage(error: unknown): string {

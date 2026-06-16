@@ -1,6 +1,7 @@
 export type InvoicingPageMode = 'draftList' | 'editInvoice' | 'newInvoice';
 
 export type InvoicingPageAction =
+  | { type: 'draftSaved' }
   | { type: 'openEditInvoice' }
   | { type: 'openNewInvoice' }
   | { type: 'showDraftList' };
@@ -10,6 +11,8 @@ export function reduceInvoicingPageMode(
   action: InvoicingPageAction,
 ): InvoicingPageMode {
   switch (action.type) {
+    case 'draftSaved':
+      return 'editInvoice';
     case 'openEditInvoice':
       return 'editInvoice';
     case 'openNewInvoice':

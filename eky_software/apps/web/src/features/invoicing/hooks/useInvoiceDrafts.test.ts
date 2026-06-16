@@ -1,8 +1,39 @@
 import { EkyApiError } from '@eky/api-client';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { getInvoiceDraftErrorMessage } from './useInvoiceDrafts.js';
+import {
+  getInvoiceDraftErrorMessage,
+  loadInvoiceDraftSummaries,
+} from './useInvoiceDrafts.js';
 import { uiText } from '../../../i18n/fi.js';
+
+describe('loadInvoiceDraftSummaries', () => {
+  it('uses the api-client listInvoiceDrafts endpoint', async () => {
+    const drafts = [
+      {
+        customerId: 'customer-1',
+        dueDate: '2026-06-30',
+        grossTotalCents: 12_331,
+        id: 'draft-1',
+        invoiceDate: '2026-06-16',
+        netTotalCents: 9825,
+        paymentTermDays: 14,
+        priceInputMode: 'net' as const,
+        status: 'draft' as const,
+        subject: 'Työlasku',
+        updatedAt: '2026-06-16T12:00:00.000Z',
+        vatTotalCents: 2506,
+      },
+    ];
+    const apiClient = {
+      listInvoiceDrafts: vi.fn(async () => drafts),
+    };
+
+    await expect(loadInvoiceDraftSummaries(apiClient)).resolves.toBe(drafts);
+
+    expect(apiClient.listInvoiceDrafts).toHaveBeenCalledWith();
+  });
+});
 
 describe('getInvoiceDraftErrorMessage', () => {
   it('translates a known safe API error into Finnish', () => {
