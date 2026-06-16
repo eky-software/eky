@@ -10,6 +10,7 @@ import {
 import type { CustomerListGroup } from './customerListGrouping.js';
 import type { CustomerSortKey, CustomerSortState } from './customerListSorting.js';
 import { getSortDirectionLabel } from './CustomerListToolbar.js';
+import styles from './CustomerTable.module.css';
 import { uiText } from '../../i18n/fi.js';
 
 interface CustomerTableProps {
@@ -32,8 +33,8 @@ export function CustomerTable({
   onSortChange,
 }: CustomerTableProps): React.JSX.Element {
   return (
-    <div className="customer-table" role="table" aria-label={uiText.customers.customers}>
-      <div className="customer-table-row customer-table-head" role="row">
+    <div className={styles.table} role="table" aria-label={uiText.customers.customers}>
+      <div className={`${styles.row} ${styles.head}`} role="row">
         <span role="columnheader">
           <CustomerSortButton
             isActive={sortState.key === 'name'}
@@ -105,8 +106,8 @@ function CustomerTableGroup({
   const hasManagedHousingCompanies = managedHousingCompanies.length > 0;
 
   return (
-    <div className="customer-table-group">
-      <div className="customer-table-row customer-table-button-row">
+    <div className={styles.group}>
+      <div className={`${styles.row} ${styles.buttonRow}`}>
         <CustomerOpenButton
           customer={customer}
           customers={customers}
@@ -121,7 +122,7 @@ function CustomerTableGroup({
                 ? uiText.customers.collapseManagedHousingCompanies
                 : uiText.customers.expandManagedHousingCompanies
             }
-            className="customer-expand-button"
+            className={styles.expandButton}
             disabled={!hasManagedHousingCompanies}
             onClick={() => onPropertyManagerToggle(customer.id)}
             type="button"
@@ -158,7 +159,7 @@ function CustomerOpenButton({
 }: CustomerOpenButtonProps): React.JSX.Element {
   return (
     <button
-      className="customer-row-open-button"
+      className={styles.openButton}
       onClick={() => onCustomerSelect(customer)}
       type="button"
     >
@@ -187,15 +188,15 @@ function CustomerMainCell({
   managedHousingCompanyCount,
 }: CustomerMainCellProps): React.JSX.Element {
   return (
-    <span className="customer-main-cell">
-      <span className="customer-number">{customer.customerNumber}</span>
+    <span className={styles.mainCell}>
+      <span className={styles.number}>{customer.customerNumber}</span>
       <strong>{customer.name}</strong>
       {customer.customerType === 'propertyManager' ? (
-        <span className="customer-secondary">
+        <span className={styles.secondary}>
           {formatManagedHousingCompanyCount(managedHousingCompanyCount)}
         </span>
       ) : customer.customerType === 'housingCompany' ? (
-        <span className="customer-secondary">
+        <span className={styles.secondary}>
           {getCustomerRelationshipLabel(customer, customers)}
         </span>
       ) : null}
@@ -214,14 +215,14 @@ function CustomerChildRow({
 }: CustomerChildRowProps): React.JSX.Element {
   return (
     <button
-      className="customer-table-row customer-table-button customer-table-child-row"
+      className={`${styles.row} ${styles.button} ${styles.childRow}`}
       onClick={() => onCustomerSelect(customer)}
       type="button"
     >
-      <span className="customer-main-cell">
-        <span className="customer-number">{customer.customerNumber}</span>
+      <span className={styles.mainCell}>
+        <span className={styles.number}>{customer.customerNumber}</span>
         <strong>{customer.name}</strong>
-        <span className="customer-secondary">{uiText.customers.housingCompany}</span>
+        <span className={styles.secondary}>{uiText.customers.housingCompany}</span>
       </span>
       <span role="cell">{getCustomerTypeLabel(customer.customerType)}</span>
       <span role="cell">{customer.city || '-'}</span>
@@ -258,7 +259,7 @@ function CustomerSortButton({
   return (
     <button
       aria-label={getSortButtonLabel(label, isActive, sortState)}
-      className="customer-sort-header-button"
+      className={styles.sortButton}
       onClick={onClick}
       type="button"
     >

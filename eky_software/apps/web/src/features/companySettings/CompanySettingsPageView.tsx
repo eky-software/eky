@@ -8,6 +8,7 @@ import {
   toUpdateCompanySettingsRequest,
   type CompanySettingsForm as CompanySettingsFormModel,
 } from './companySettingsFormModel.js';
+import styles from './CompanySettingsPageView.module.css';
 import { getFinnishApiErrorMessage, uiText } from '../../i18n/fi.js';
 
 const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
@@ -84,8 +85,8 @@ export function CompanySettingsPage(): React.JSX.Element {
   }
 
   return (
-    <div className="settings-workspace">
-      <section className="page-intro company-settings-page-header">
+    <div className={styles.workspace}>
+      <section className={`page-intro ${styles.pageHeader}`}>
         <div>
           <p className="eyebrow">{uiText.companySettings.workspace}</p>
           <h2>{uiText.companySettings.title}</h2>
@@ -98,7 +99,7 @@ export function CompanySettingsPage(): React.JSX.Element {
       {isLoading ? <p className="message">{uiText.companySettings.loading}</p> : null}
 
       {!isLoading ? (
-        <div className="settings-view-grid">
+        <div className={styles.viewGrid}>
           <CompanySettingsForm
             errorMessage={saveErrorMessage}
             form={form}

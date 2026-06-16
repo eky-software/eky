@@ -2,6 +2,7 @@ import {
   type CustomerSortKey,
   type CustomerSortState,
 } from './customerListSorting.js';
+import styles from './CustomerListToolbar.module.css';
 import { uiText } from '../../i18n/fi.js';
 
 interface CustomerListToolbarProps {
@@ -18,8 +19,8 @@ export function CustomerListToolbar({
   onSortChange,
 }: CustomerListToolbarProps): React.JSX.Element {
   return (
-    <div className="customer-list-tools">
-      <label className="customer-search-field">
+    <div className={styles.tools}>
+      <label className={styles.field}>
         <span>{uiText.customers.searchCustomer}</span>
         <input
           onChange={(event) => onSearchQueryChange(event.target.value)}
@@ -28,7 +29,7 @@ export function CustomerListToolbar({
           value={searchQuery}
         />
       </label>
-      <label className="customer-sort-select">
+      <label className={styles.field}>
         <span>{uiText.customers.sortCustomers}</span>
         <select
           onChange={(event) => onSortChange(event.target.value as CustomerSortKey)}
@@ -42,7 +43,7 @@ export function CustomerListToolbar({
         </select>
       </label>
       <button
-        className="ghost-button customer-sort-direction-button"
+        className={`ghost-button ${styles.directionButton}`}
         onClick={() => onSortChange(sortState.key)}
         type="button"
       >

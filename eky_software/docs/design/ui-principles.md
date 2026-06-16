@@ -129,6 +129,13 @@ Pienet ja aidosti useamman featuren käyttämät apukokonaisuudet voidaan sijoit
 
 Tarkempi web-kansiorakenne on kuvattu dokumentissa `docs/architecture/web-frontend-structure.md`.
 
+Sovelluksen kokoava `app/`-kerros käyttää featureiden julkisia entrypointteja,
+kuten `features/customers/CustomerPage.ts`,
+`features/companySettings/CompanySettingsPage.ts` ja
+`features/invoicing/InvoicingPage.ts`. Se ei importtaa suoraan featureiden
+sisäisiä `components/`, `hooks/`, `form/`, `drafts/`, `preview/` tai
+`state/` -polkuja.
+
 Kun feature kasvaa, sen sisäinen rakenne jaetaan selkeisiin vastuisiin, kuten
 `components/`, `hooks/`, `form/`, `list/` tai `drafts/`, `preview/` ja
 `state/`.
@@ -136,6 +143,7 @@ Kun feature kasvaa, sen sisäinen rakenne jaetaan selkeisiin vastuisiin, kuten
 Komponenttien omat tyylit pidetään komponentin vieressä CSS Module -tiedostoissa.
 Globaali `styles.css` sisältää vain sovelluksen yleiset
 perustyylit ja yhteiset rakenteet, ei feature-kohtaisia työpintatyylejä.
+CSS Moduleita ei sijoiteta feature-kansion juureen.
 
 Layout-ajatus:
 

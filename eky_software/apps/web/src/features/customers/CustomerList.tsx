@@ -10,6 +10,7 @@ import {
 } from './customerListSorting.js';
 import { searchCustomers } from './customerListSearch.js';
 import { CustomerListToolbar } from './CustomerListToolbar.js';
+import styles from './CustomerList.module.css';
 import { CustomerTable } from './CustomerTable.js';
 import { CustomerTypeFilter } from './CustomerTypeFilter.js';
 import { uiText } from '../../i18n/fi.js';
@@ -61,7 +62,7 @@ export function CustomerList({
   }
 
   return (
-    <section className="panel customer-list-panel" aria-labelledby="customer-list-heading">
+    <section className={`panel ${styles.panel}`} aria-labelledby="customer-list-heading">
       <div className="panel-header">
         <div>
           <p className="panel-kicker">{uiText.customers.customerRegister}</p>

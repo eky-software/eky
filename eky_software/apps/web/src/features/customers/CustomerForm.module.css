@@ -1,0 +1,123 @@
+.panel {
+  position: sticky;
+  top: 90px;
+  max-height: calc(100vh - 114px);
+  overflow: auto;
+}
+
+.form label {
+  display: block;
+  margin-bottom: 8px;
+  color: #26374d;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.form label > input,
+.form label > select,
+.form label > textarea {
+  margin-top: 7px;
+}
+
+.form fieldset {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  margin: 0 0 14px;
+  padding: 14px;
+}
+
+.form legend {
+  padding: 0 6px;
+  color: var(--color-primary-dark);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.fieldLabel {
+  display: block;
+  margin-bottom: 8px;
+  color: #26374d;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.wideField {
+  grid-column: 1 / -1;
+}
+
+.segmentedControl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.segmentedControl label {
+  margin-bottom: 0;
+}
+
+.segmentedControl input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.segmentedControl span {
+  display: grid;
+  min-height: 40px;
+  place-items: center;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  padding: 0 10px;
+  color: var(--color-primary-dark);
+  background: var(--color-surface);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.segmentedControl input:checked + span {
+  border-color: var(--color-primary);
+  color: #ffffff;
+  background: var(--color-primary);
+}
+
+.fieldHelp {
+  margin: 8px 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.helperActions {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  margin: -4px 0 14px;
+  color: var(--color-text-muted);
+  font-size: 0.84rem;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+@media (max-width: 860px) {
+  .panel {
+    position: static;
+    max-height: none;
+  }
+
+  .grid,
+  .helperActions {
+    grid-template-columns: 1fr;
+  }
+}

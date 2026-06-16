@@ -1,6 +1,7 @@
 import type { Customer } from '@eky/api-client';
 
 import type { CustomerFormModel } from './customerFormModel.js';
+import styles from './CustomerForm.module.css';
 import { uiText } from '../../i18n/fi.js';
 
 interface CustomerFormProps {
@@ -36,7 +37,7 @@ export function CustomerForm({
   const submitLabel = mode === 'create' ? uiText.customers.add : uiText.customers.saveChanges;
 
   return (
-    <aside className="panel customer-form-panel" aria-labelledby="create-customer-heading">
+    <aside className={`panel ${styles.panel}`} aria-labelledby="create-customer-heading">
       <div className="panel-header">
         <div>
           <p className="panel-kicker">{kicker}</p>
@@ -49,7 +50,7 @@ export function CustomerForm({
 
       <p className="panel-description">{uiText.customers.formDescription}</p>
       {onFillDummy ? (
-        <div className="form-helper-actions">
+        <div className={styles.helperActions}>
           <button className="ghost-button" disabled={isSaving} onClick={onFillDummy} type="button">
             {uiText.customers.fillDummyCustomer}
           </button>
@@ -59,7 +60,7 @@ export function CustomerForm({
       {errorMessage ? <p className="message error-message">{errorMessage}</p> : null}
 
       <form
-        className="customer-form"
+        className={styles.form}
         onSubmit={(event) => {
           event.preventDefault();
           onSubmit();
@@ -67,12 +68,12 @@ export function CustomerForm({
       >
         <fieldset>
           <legend>{uiText.customers.basicInformation}</legend>
-          <div className="form-grid">
+          <div className={styles.grid}>
             {mode === 'create' ? (
-              <div className="form-field-wide">
-                <span className="field-label">{uiText.customers.customerNumber}</span>
+              <div className={styles.wideField}>
+                <span className={styles.fieldLabel}>{uiText.customers.customerNumber}</span>
                 <div
-                  className="segmented-control"
+                  className={styles.segmentedControl}
                   role="group"
                   aria-label={uiText.customers.customerNumber}
                 >
@@ -97,7 +98,7 @@ export function CustomerForm({
                     <span>{uiText.customers.manualCustomerNumber}</span>
                   </label>
                 </div>
-                <p className="field-help">{uiText.customers.customerNumberHelp}</p>
+                <p className={styles.fieldHelp}>{uiText.customers.customerNumberHelp}</p>
               </div>
             ) : null}
 
@@ -131,7 +132,7 @@ export function CustomerForm({
               </select>
             </label>
 
-            <label className="form-field-wide" htmlFor="customer-name">
+            <label className={styles.wideField} htmlFor="customer-name">
               {uiText.customers.name} *
               <input
                 id="customer-name"
@@ -169,7 +170,7 @@ export function CustomerForm({
             </label>
 
             {form.customerType === 'housingCompany' ? (
-              <label className="form-field-wide" htmlFor="managed-by-customer-id">
+              <label className={styles.wideField} htmlFor="managed-by-customer-id">
                 {uiText.customers.managedByPropertyManager}
                 <select
                   id="managed-by-customer-id"
@@ -184,7 +185,7 @@ export function CustomerForm({
                     </option>
                   ))}
                 </select>
-                <span className="field-help">{uiText.customers.propertyManagerHelp}</span>
+                <span className={styles.fieldHelp}>{uiText.customers.propertyManagerHelp}</span>
               </label>
             ) : null}
           </div>
@@ -203,13 +204,13 @@ export function CustomerForm({
               type="text"
               value={form.hourlyRateOverrideEuro}
             />
-            <span className="field-help">{uiText.customers.hourlyRateOverrideHelp}</span>
+            <span className={styles.fieldHelp}>{uiText.customers.hourlyRateOverrideHelp}</span>
           </label>
         </fieldset>
 
         <fieldset>
           <legend>{uiText.customers.contactInformation}</legend>
-          <div className="form-grid">
+          <div className={styles.grid}>
             <label htmlFor="customer-email">
               {uiText.customers.email}
               <input
@@ -238,8 +239,8 @@ export function CustomerForm({
 
         <fieldset>
           <legend>{uiText.customers.address}</legend>
-          <div className="form-grid">
-            <label className="form-field-wide" htmlFor="customer-street-address">
+          <div className={styles.grid}>
+            <label className={styles.wideField} htmlFor="customer-street-address">
               {uiText.customers.streetAddress}
               <input
                 id="customer-street-address"
@@ -292,7 +293,7 @@ export function CustomerForm({
           </label>
         </fieldset>
 
-        <div className="form-actions">
+        <div className={styles.actions}>
           <button className="ghost-button" disabled={isSaving} onClick={onCancel} type="button">
             {uiText.customers.cancel}
           </button>
