@@ -1,4 +1,5 @@
 import { useReducer } from 'react';
+import type { InvoiceDraft } from '@eky/api-client';
 
 import { InvoiceDraftList } from './InvoiceDraftList.js';
 import { NewInvoiceForm } from './NewInvoiceForm.js';
@@ -40,6 +41,12 @@ export function InvoicingPage(): React.JSX.Element {
     void draftEditorState.openDraft(id);
   }
 
+  function handleDraftSaved(savedDraft: InvoiceDraft): void {
+    draftEditorState.replaceDraft(savedDraft);
+    dispatch({ type: 'draftSaved' });
+    void draftState.refreshDrafts();
+  }
+
   return (
     <InvoicingPageView
       {...draftState}
@@ -47,6 +54,7 @@ export function InvoicingPage(): React.JSX.Element {
       customerListState={customerListState}
       draftEditorState={draftEditorState}
       onBackToDrafts={handleBackToDrafts}
+      onDraftSaved={handleDraftSaved}
       onOpenDraft={handleOpenDraft}
       onNewInvoice={() => dispatch({ type: 'openNewInvoice' })}
     />
@@ -58,6 +66,7 @@ interface InvoicingPageViewProps extends InvoiceDraftListState {
   customerListState: InvoiceCustomerListState;
   draftEditorState: InvoiceDraftEditorState;
   onBackToDrafts(): void;
+  onDraftSaved(savedDraft: InvoiceDraft): void;
   onOpenDraft(id: string): void;
   onNewInvoice(): void;
 }
@@ -70,6 +79,7 @@ export function InvoicingPageView({
   errorMessage,
   isLoading,
   onBackToDrafts,
+  onDraftSaved,
   onOpenDraft,
   onNewInvoice,
 }: InvoicingPageViewProps): React.JSX.Element {
@@ -124,12 +134,14 @@ export function InvoicingPageView({
           customerListState={customerListState}
           mode={{ type: 'create' }}
           onBack={onBackToDrafts}
+          onDraftSaved={onDraftSaved}
         />
       ) : (
         <InvoiceDraftEditView
           customerListState={customerListState}
           draftEditorState={draftEditorState}
           onBack={onBackToDrafts}
+          onDraftSaved={onDraftSaved}
         />
       )}
     </div>
@@ -140,12 +152,14 @@ interface InvoiceDraftEditViewProps {
   customerListState: InvoiceCustomerListState;
   draftEditorState: InvoiceDraftEditorState;
   onBack(): void;
+  onDraftSaved(savedDraft: InvoiceDraft): void;
 }
 
 function InvoiceDraftEditView({
   customerListState,
   draftEditorState,
   onBack,
+  onDraftSaved,
 }: InvoiceDraftEditViewProps): React.JSX.Element {
   if (draftEditorState.isLoading) {
     return (
@@ -192,6 +206,7 @@ function InvoiceDraftEditView({
         type: 'edit',
       }}
       onBack={onBack}
+      onDraftSaved={onDraftSaved}
     />
   );
 }

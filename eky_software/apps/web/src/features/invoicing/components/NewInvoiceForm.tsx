@@ -35,12 +35,14 @@ interface NewInvoiceFormProps {
   customerListState: InvoiceCustomerListState;
   mode: NewInvoiceFormMode;
   onBack(): void;
+  onDraftSaved(savedDraft: InvoiceDraft): void;
 }
 
 export function NewInvoiceForm({
   customerListState,
   mode,
   onBack,
+  onDraftSaved,
 }: NewInvoiceFormProps): React.JSX.Element {
   const [form, setForm] = useState(() => createInitialForm(mode));
   const [hasValidated, setHasValidated] = useState(false);
@@ -106,7 +108,14 @@ export function NewInvoiceForm({
       return;
     }
 
-    await saveState.saveInvoiceDraft(preparedInput.input);
+    const savedDraft = await saveState.saveInvoiceDraft(preparedInput.input);
+
+    if (savedDraft === null) {
+      return;
+    }
+
+    setForm(toNewInvoiceFormStateFromDraft(savedDraft));
+    onDraftSaved(savedDraft);
   }
 
   const saveButtonText = saveState.isSaving

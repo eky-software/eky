@@ -18,6 +18,7 @@ export interface InvoiceDraftEditorState {
   isLoading: boolean;
   clearDraft(): void;
   openDraft(id: string): Promise<InvoiceDraft | null>;
+  replaceDraft(draft: InvoiceDraft): void;
 }
 
 export function useInvoiceDraftEditor(): InvoiceDraftEditorState {
@@ -60,6 +61,7 @@ export function useInvoiceDraftEditor(): InvoiceDraftEditorState {
     errorMessage,
     isLoading,
     openDraft,
+    replaceDraft: setDraft,
   };
 }
 
