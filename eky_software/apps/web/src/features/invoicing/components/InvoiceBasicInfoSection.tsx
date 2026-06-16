@@ -2,12 +2,13 @@ import { CustomerPicker } from './CustomerPicker.js';
 import { SelectedCustomerDetails } from './SelectedCustomerDetails.js';
 import type {
   InvoiceDraftFormErrors,
-} from '../invoiceDraftFormValidation.js';
+} from '../form/invoiceDraftFormValidation.js';
 import type {
   NewInvoiceBasicInfoField,
   NewInvoiceFormState,
-} from '../newInvoiceFormState.js';
-import type { InvoiceCustomerListState } from '../useInvoiceCustomers.js';
+} from '../form/newInvoiceFormState.js';
+import type { InvoiceCustomerListState } from '../hooks/useInvoiceCustomers.js';
+import styles from './InvoiceBasicInfoSection.module.css';
 import { uiText } from '../../../i18n/fi.js';
 
 interface InvoiceBasicInfoSectionProps {
@@ -40,13 +41,13 @@ export function InvoiceBasicInfoSection({
       : null;
 
   return (
-    <section className="invoice-form-section">
-      <header className="invoice-form-section-header">
+    <section className={styles.section}>
+      <header className={styles.sectionHeader}>
         <h3>{uiText.invoicing.basicInformation}</h3>
         <p>{uiText.invoicing.basicInformationHelp}</p>
       </header>
 
-      <div className="invoice-basic-info-grid">
+      <div className={styles.grid}>
         <CustomerPicker
           {...customerListState}
           validationErrorMessage={errors?.customerId}
@@ -63,7 +64,7 @@ export function InvoiceBasicInfoSection({
           />
         ) : null}
 
-        <label className="invoice-field">
+        <label className={styles.field}>
           <span>{uiText.invoicing.invoiceDate}</span>
           <input
             aria-describedby={
@@ -81,7 +82,7 @@ export function InvoiceBasicInfoSection({
           />
           {errors?.invoiceDate ? (
             <small
-              className="invoice-field-error"
+              className={styles.fieldError}
               id="invoice-date-error"
               role="alert"
             >
@@ -90,7 +91,7 @@ export function InvoiceBasicInfoSection({
           ) : null}
         </label>
 
-        <label className="invoice-field">
+        <label className={styles.field}>
           <span>{uiText.invoicing.paymentTermDays}</span>
           <input
             aria-describedby={
@@ -113,7 +114,7 @@ export function InvoiceBasicInfoSection({
           />
           {errors?.paymentTermDays ? (
             <small
-              className="invoice-field-error"
+              className={styles.fieldError}
               id="invoice-payment-term-error"
               role="alert"
             >
@@ -122,7 +123,7 @@ export function InvoiceBasicInfoSection({
           ) : null}
         </label>
 
-        <label className="invoice-field">
+        <label className={styles.field}>
           <span>{uiText.invoicing.dueDate}</span>
           <input
             aria-describedby={
@@ -140,7 +141,7 @@ export function InvoiceBasicInfoSection({
           />
           {errors?.dueDate ? (
             <small
-              className="invoice-field-error"
+              className={styles.fieldError}
               id="invoice-due-date-error"
               role="alert"
             >
@@ -149,7 +150,7 @@ export function InvoiceBasicInfoSection({
           ) : null}
         </label>
 
-        <label className="invoice-field invoice-field-wide">
+        <label className={`${styles.field} ${styles.wideField}`}>
           <span>{uiText.invoicing.subject}</span>
           <input
             name="subject"
@@ -162,7 +163,7 @@ export function InvoiceBasicInfoSection({
           />
         </label>
 
-        <label className="invoice-field">
+        <label className={styles.field}>
           <span>{uiText.invoicing.orderNumber}</span>
           <input
             name="orderNumber"
@@ -175,7 +176,7 @@ export function InvoiceBasicInfoSection({
           />
         </label>
 
-        <fieldset className="invoice-price-mode">
+        <fieldset className={styles.priceMode}>
           <legend>{uiText.invoicing.priceInputMode}</legend>
           <div className="segmented-control">
             <label>
@@ -201,7 +202,7 @@ export function InvoiceBasicInfoSection({
           </div>
         </fieldset>
 
-        <label className="invoice-field invoice-field-wide">
+        <label className={`${styles.field} ${styles.wideField}`}>
           <span>{uiText.invoicing.note}</span>
           <textarea
             name="note"

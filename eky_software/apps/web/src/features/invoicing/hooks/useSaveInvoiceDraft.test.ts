@@ -13,12 +13,12 @@ import {
 import {
   createInitialInvoiceRows,
   updateInvoiceRow,
-} from './invoiceRowFormState.js';
+} from '../form/invoiceRowFormState.js';
 import {
   createInitialNewInvoiceForm,
   updateNewInvoiceFormField,
-} from './newInvoiceFormState.js';
-import { uiText } from '../../i18n/fi.js';
+} from '../form/newInvoiceFormState.js';
+import { uiText } from '../../../i18n/fi.js';
 
 describe('prepareInvoiceDraftSaveInput', () => {
   it('does not prepare an API input when validation fails', () => {

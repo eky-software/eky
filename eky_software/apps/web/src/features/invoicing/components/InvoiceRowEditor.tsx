@@ -1,15 +1,16 @@
 import type {
   InvoiceDraftLineFormErrors,
-} from '../invoiceDraftFormValidation.js';
+} from '../form/invoiceDraftFormValidation.js';
 import type {
   InvoiceRowForm,
   InvoiceRowFormField,
-} from '../invoiceRowFormState.js';
+} from '../form/invoiceRowFormState.js';
 import {
   invoiceDiscountTypeOptions,
   invoiceUnitOptions,
   invoiceVatRateOptions,
-} from '../invoiceRowOptions.js';
+} from '../form/invoiceRowOptions.js';
+import styles from './InvoiceRowEditor.module.css';
 import { uiText } from '../../../i18n/fi.js';
 
 interface InvoiceRowEditorProps {
@@ -36,12 +37,12 @@ export function InvoiceRowEditor({
   const discountValueDisabled = row.discountType === 'none';
 
   return (
-    <div className="invoice-row-editor">
-      <span className="invoice-row-position" aria-label={uiText.invoicing.row}>
+    <div className={styles.row}>
+      <span className={styles.position} aria-label={uiText.invoicing.row}>
         {position}
       </span>
 
-      <div className="invoice-row-field">
+      <div className={styles.field}>
         <input
           aria-invalid={errors?.description === undefined ? undefined : true}
           aria-label={uiText.invoicing.rowDescription}
@@ -56,7 +57,7 @@ export function InvoiceRowEditor({
         <InvoiceRowFieldError message={errors?.description} />
       </div>
 
-      <div className="invoice-row-field">
+      <div className={styles.field}>
         <input
           aria-invalid={errors?.quantity === undefined ? undefined : true}
           aria-label={uiText.invoicing.rowQuantity}
@@ -86,7 +87,7 @@ export function InvoiceRowEditor({
         ))}
       </select>
 
-      <div className="invoice-row-field">
+      <div className={styles.field}>
         <input
           aria-invalid={errors?.unitPrice === undefined ? undefined : true}
           aria-label={uiText.invoicing.rowUnitPrice}
@@ -140,7 +141,7 @@ export function InvoiceRowEditor({
         ))}
       </select>
 
-      <div className="invoice-row-field">
+      <div className={styles.field}>
         <input
           aria-invalid={
             errors?.discountValue === undefined ? undefined : true
@@ -165,7 +166,7 @@ export function InvoiceRowEditor({
 
       <button
         aria-label={`${uiText.invoicing.removeRow} ${position}`}
-        className="invoice-row-remove-button"
+        className={styles.removeButton}
         disabled={!canRemove}
         title={
           canRemove
@@ -187,7 +188,7 @@ function InvoiceRowFieldError({
   message: string | undefined;
 }): React.JSX.Element | null {
   return message ? (
-    <small className="invoice-row-field-error" role="alert">
+    <small className={styles.fieldError} role="alert">
       {message}
     </small>
   ) : null;

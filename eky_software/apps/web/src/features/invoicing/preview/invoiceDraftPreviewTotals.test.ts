@@ -5,11 +5,11 @@ import {
   createInitialInvoiceRows,
   updateInvoiceRow,
   type InvoiceRowForm,
-} from './invoiceRowFormState.js';
+} from '../form/invoiceRowFormState.js';
 import {
   createInitialNewInvoiceForm,
   type NewInvoiceFormState,
-} from './newInvoiceFormState.js';
+} from '../form/newInvoiceFormState.js';
 
 describe('calculateInvoiceDraftPreviewTotals', () => {
   it('calculates net, VAT, and gross totals for 12 pieces at 10 euros', () => {

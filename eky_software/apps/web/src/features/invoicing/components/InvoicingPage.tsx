@@ -1,24 +1,25 @@
 import { useReducer } from 'react';
 
-import { InvoiceDraftList } from './components/InvoiceDraftList.js';
-import { NewInvoiceForm } from './components/NewInvoiceForm.js';
+import { InvoiceDraftList } from './InvoiceDraftList.js';
+import { NewInvoiceForm } from './NewInvoiceForm.js';
+import styles from './InvoicingPage.module.css';
 import {
   reduceInvoicingPageMode,
   type InvoicingPageMode,
-} from './invoicingPageState.js';
+} from '../state/invoicingPageState.js';
 import {
   useInvoiceDrafts,
   type InvoiceDraftListState,
-} from './useInvoiceDrafts.js';
+} from '../hooks/useInvoiceDrafts.js';
 import {
   useInvoiceCustomers,
   type InvoiceCustomerListState,
-} from './useInvoiceCustomers.js';
+} from '../hooks/useInvoiceCustomers.js';
 import {
   useInvoiceDraftEditor,
   type InvoiceDraftEditorState,
-} from './useInvoiceDraftEditor.js';
-import { uiText } from '../../i18n/fi.js';
+} from '../hooks/useInvoiceDraftEditor.js';
+import { uiText } from '../../../i18n/fi.js';
 
 export function InvoicingPage(): React.JSX.Element {
   const draftState = useInvoiceDrafts();
@@ -73,8 +74,8 @@ export function InvoicingPageView({
   onNewInvoice,
 }: InvoicingPageViewProps): React.JSX.Element {
   return (
-    <div className="invoicing-workspace">
-      <section className="page-intro invoicing-page-header">
+    <div className={styles.workspace}>
+      <section className={`page-intro ${styles.pageHeader}`}>
         <div>
           <p className="eyebrow">{uiText.invoicing.workspace}</p>
           <h2>{uiText.invoicing.title}</h2>
@@ -83,8 +84,8 @@ export function InvoicingPageView({
       </section>
 
       {activeView === 'draftList' ? (
-        <section className="panel invoice-draft-list-panel">
-          <header className="panel-header invoice-draft-list-header">
+        <section className={`panel ${styles.draftListPanel}`}>
+          <header className={`panel-header ${styles.draftListHeader}`}>
             <div>
               <p className="panel-kicker">{uiText.invoicing.drafts}</p>
               <h2>{uiText.invoicing.draftList}</h2>
@@ -148,8 +149,8 @@ function InvoiceDraftEditView({
 }: InvoiceDraftEditViewProps): React.JSX.Element {
   if (draftEditorState.isLoading) {
     return (
-      <section className="panel invoice-draft-editor-state">
-        <p className="invoice-draft-state">
+      <section className={`panel ${styles.editorState}`}>
+        <p className={styles.state}>
           {uiText.invoicing.openingDraft}
         </p>
       </section>
@@ -158,7 +159,7 @@ function InvoiceDraftEditView({
 
   if (draftEditorState.errorMessage !== null) {
     return (
-      <section className="panel invoice-draft-editor-state">
+      <section className={`panel ${styles.editorState}`}>
         <p className="message error-message" role="alert">
           {draftEditorState.errorMessage}
         </p>
@@ -171,8 +172,8 @@ function InvoiceDraftEditView({
 
   if (draftEditorState.draft === null) {
     return (
-      <section className="panel invoice-draft-editor-state">
-        <p className="invoice-draft-state">
+      <section className={`panel ${styles.editorState}`}>
+        <p className={styles.state}>
           {uiText.invoicing.openDraftPrompt}
         </p>
         <button className="ghost-button" onClick={onBack} type="button">

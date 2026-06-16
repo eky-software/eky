@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
 import { InvoicingPageView } from './InvoicingPage.js';
-import { uiText } from '../../i18n/fi.js';
+import { uiText } from '../../../i18n/fi.js';
 
 describe('InvoicingPageView', () => {
   it('renders invoice draft summaries and the new invoice placeholder', () => {

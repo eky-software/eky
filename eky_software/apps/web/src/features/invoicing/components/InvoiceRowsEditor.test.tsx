@@ -5,7 +5,7 @@ import { InvoiceRowsEditor } from './InvoiceRowsEditor.js';
 import {
   addInvoiceRow,
   createInitialInvoiceRows,
-} from '../invoiceRowFormState.js';
+} from '../form/invoiceRowFormState.js';
 import { uiText } from '../../../i18n/fi.js';
 
 describe('InvoiceRowsEditor', () => {

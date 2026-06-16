@@ -1,0 +1,100 @@
+.section {
+  padding: 18px;
+}
+
+.section + .section {
+  border-top: 1px solid var(--color-border);
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 14px;
+}
+
+.sectionHeader h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.sectionHeader p {
+  max-width: 620px;
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns:
+    minmax(220px, 1.5fr) minmax(150px, 0.8fr) minmax(130px, 0.65fr)
+    minmax(150px, 0.8fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  color: #26374d;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.field small {
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.fieldError {
+  color: #a10f3b;
+}
+
+.customerField {
+  grid-column: span 2;
+}
+
+.wideField {
+  grid-column: span 2;
+}
+
+.priceMode {
+  min-width: 0;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.priceMode legend {
+  margin-bottom: 6px;
+  padding: 0;
+  color: #26374d;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.priceMode :global(.segmented-control) span {
+  min-height: 40px;
+  font-size: 0.78rem;
+}
+
+@media (max-width: 860px) {
+  .sectionHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .customerField,
+  .wideField {
+    grid-column: auto;
+  }
+}

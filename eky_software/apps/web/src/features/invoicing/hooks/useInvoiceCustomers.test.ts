@@ -5,7 +5,7 @@ import {
   getInvoiceCustomerErrorMessage,
   loadInvoiceCustomers,
 } from './useInvoiceCustomers.js';
-import { uiText } from '../../i18n/fi.js';
+import { uiText } from '../../../i18n/fi.js';
 
 describe('loadInvoiceCustomers', () => {
   it('loads customers through the API client contract', async () => {

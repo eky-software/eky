@@ -5,8 +5,9 @@ import {
   formatInvoiceDraftDate,
   getInvoiceDraftStatusLabel,
   getInvoiceDraftSubject,
-} from '../invoiceDraftFormatting.js';
-import { getInvoiceDraftCustomerDisplayName } from '../invoiceDraftCustomerDisplay.js';
+} from '../drafts/invoiceDraftFormatting.js';
+import { getInvoiceDraftCustomerDisplayName } from '../drafts/invoiceDraftCustomerDisplay.js';
+import styles from './InvoiceDraftList.module.css';
 
 interface InvoiceDraftListItemProps {
   customers: Customer[];
@@ -25,10 +26,10 @@ export function InvoiceDraftListItem({
   );
 
   return (
-    <div className="invoice-draft-table-row" role="row">
-      <div className="invoice-draft-main-cell" role="cell">
+    <div className={styles.row} role="row">
+      <div className={styles.mainCell} role="cell">
         <button
-          className="invoice-draft-open-button"
+          className={styles.openButton}
           onClick={() => onOpenDraft(draft.id)}
           type="button"
         >
@@ -42,7 +43,7 @@ export function InvoiceDraftListItem({
       <time dateTime={draft.dueDate} role="cell">
         {formatInvoiceDraftDate(draft.dueDate)}
       </time>
-      <strong className="invoice-draft-total" role="cell">
+      <strong className={styles.total} role="cell">
         {formatInvoiceDraftCurrency(draft.grossTotalCents)}
       </strong>
       <span className="status-pill status-pill-draft" role="cell">

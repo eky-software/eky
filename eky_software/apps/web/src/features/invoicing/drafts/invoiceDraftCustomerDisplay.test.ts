@@ -2,7 +2,7 @@ import type { Customer, InvoiceDraftSummary } from '@eky/api-client';
 import { describe, expect, it } from 'vitest';
 
 import { getInvoiceDraftCustomerDisplayName } from './invoiceDraftCustomerDisplay.js';
-import { uiText } from '../../i18n/fi.js';
+import { uiText } from '../../../i18n/fi.js';
 
 describe('getInvoiceDraftCustomerDisplayName', () => {
   it('shows customer number and name instead of technical ids', () => {

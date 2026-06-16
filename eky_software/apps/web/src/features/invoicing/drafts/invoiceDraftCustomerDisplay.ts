@@ -1,6 +1,6 @@
 import type { Customer, InvoiceDraftSummary } from '@eky/api-client';
 
-import { uiText } from '../../i18n/fi.js';
+import { uiText } from '../../../i18n/fi.js';
 
 export function getInvoiceDraftCustomerDisplayName(
   draft: InvoiceDraftSummary,
