@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   CustomerPicker,
+  filterInvoiceCustomers,
   formatCustomerOption,
 } from './CustomerPicker.js';
 import { uiText } from '../../../i18n/fi.js';
@@ -73,6 +74,47 @@ describe('formatCustomerOption', () => {
     expect(formatCustomerOption(createCustomer())).toBe(
       '1001 – Esimerkki Asiakas Oy',
     );
+  });
+});
+
+describe('filterInvoiceCustomers', () => {
+  it('filters customers by customer number and name', () => {
+    const customers = [
+      createCustomer(),
+      createCustomer({
+        id: 'customer-2',
+        customerNumber: '2002',
+        name: 'Satamapiha Rakennus Oy',
+      }),
+    ];
+
+    expect(
+      filterInvoiceCustomers(customers, '2002', '').map(
+        (customer) => customer.id,
+      ),
+    ).toEqual(['customer-2']);
+    expect(
+      filterInvoiceCustomers(customers, 'esimerkki', '').map(
+        (customer) => customer.id,
+      ),
+    ).toEqual(['customer-1']);
+  });
+
+  it('keeps the selected customer available when search text changes', () => {
+    const customers = [
+      createCustomer(),
+      createCustomer({
+        id: 'customer-2',
+        customerNumber: '2002',
+        name: 'Satamapiha Rakennus Oy',
+      }),
+    ];
+
+    expect(
+      filterInvoiceCustomers(customers, 'satama', 'customer-1').map(
+        (customer) => customer.id,
+      ),
+    ).toEqual(['customer-1', 'customer-2']);
   });
 });
 

@@ -23,15 +23,31 @@ import {
 import { uiText } from '../../../i18n/fi.js';
 
 describe('prepareInvoiceDraftAutosave', () => {
-  it('does not enable autosave in create mode', () => {
+  it('waits for valid form data in create mode', () => {
+    const plan = prepareInvoiceDraftAutosave(
+      { type: 'create' },
+      createInitialNewInvoiceForm(),
+    );
+
+    expect(plan).toEqual({
+      isEnabled: true,
+      isValid: false,
+      reason: 'invalid-form',
+    });
+  });
+
+  it('prepares a create input for a valid new draft', () => {
+    const input = createInvoiceDraftInput();
     const plan = prepareInvoiceDraftAutosave(
       { type: 'create' },
       createValidForm(),
     );
 
     expect(plan).toEqual({
-      isEnabled: false,
-      reason: 'create-mode',
+      input,
+      isEnabled: true,
+      isValid: true,
+      target: { type: 'create' },
     });
   });
 
@@ -62,26 +78,51 @@ describe('prepareInvoiceDraftAutosave', () => {
     );
 
     expect(plan).toEqual({
-      draftId: 'draft-1',
       input,
       isEnabled: true,
       isValid: true,
+      target: {
+        draftId: 'draft-1',
+        type: 'edit',
+      },
     });
   });
 });
 
 describe('autosaveInvoiceDraftInput', () => {
-  it('uses updateInvoiceDraft and never creates a new draft', async () => {
+  it('uses createInvoiceDraft for the first valid new draft autosave', async () => {
     const input = createInvoiceDraftInput();
     const draft = createInvoiceDraft(input);
     const apiClient = {
+      createInvoiceDraft: vi.fn(async () => draft),
       updateInvoiceDraft: vi.fn(async () => draft),
     };
 
     await expect(
-      autosaveInvoiceDraftInput('draft-1', input, apiClient),
+      autosaveInvoiceDraftInput({ type: 'create' }, input, apiClient),
     ).resolves.toBe(draft);
 
+    expect(apiClient.createInvoiceDraft).toHaveBeenCalledWith(input);
+    expect(apiClient.updateInvoiceDraft).not.toHaveBeenCalled();
+  });
+
+  it('uses updateInvoiceDraft for an existing draft autosave', async () => {
+    const input = createInvoiceDraftInput();
+    const draft = createInvoiceDraft(input);
+    const apiClient = {
+      createInvoiceDraft: vi.fn(async () => draft),
+      updateInvoiceDraft: vi.fn(async () => draft),
+    };
+
+    await expect(
+      autosaveInvoiceDraftInput(
+        { draftId: 'draft-1', type: 'edit' },
+        input,
+        apiClient,
+      ),
+    ).resolves.toBe(draft);
+
+    expect(apiClient.createInvoiceDraft).not.toHaveBeenCalled();
     expect(apiClient.updateInvoiceDraft).toHaveBeenCalledWith(
       'draft-1',
       input,

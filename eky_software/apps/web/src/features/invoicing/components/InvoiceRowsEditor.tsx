@@ -48,8 +48,6 @@ export function InvoiceRowsEditor({
           <span>{uiText.invoicing.rowUnit}</span>
           <span>{uiText.invoicing.rowUnitPrice}</span>
           <span>{uiText.invoicing.rowVat}</span>
-          <span>{uiText.invoicing.rowDiscountType}</span>
-          <span>{uiText.invoicing.rowDiscountValue}</span>
           <span>{uiText.invoicing.rowActions}</span>
         </div>
 

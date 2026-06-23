@@ -45,10 +45,40 @@ export function updateNewInvoiceFormField<
   fieldName: FieldName,
   value: NewInvoiceFormState[FieldName],
 ): NewInvoiceFormState {
+  if (fieldName === 'invoiceDate' && typeof value === 'string') {
+    return {
+      ...form,
+      dueDate: calculateDueDateInput(value, form.paymentTermDays) ?? form.dueDate,
+      invoiceDate: value,
+    };
+  }
+
+  if (fieldName === 'paymentTermDays' && typeof value === 'string') {
+    return {
+      ...form,
+      dueDate: calculateDueDateInput(form.invoiceDate, value) ?? form.dueDate,
+      paymentTermDays: value,
+    };
+  }
+
   return {
     ...form,
     [fieldName]: value,
   };
+}
+
+export function calculateDueDateInput(
+  invoiceDateInput: string,
+  paymentTermDaysInput: string,
+): string | null {
+  const invoiceDate = parseDateInput(invoiceDateInput);
+  const paymentTermDays = parsePaymentTermDays(paymentTermDaysInput);
+
+  if (invoiceDate === null || paymentTermDays === null) {
+    return null;
+  }
+
+  return formatDateInput(addCalendarDays(invoiceDate, paymentTermDays));
 }
 
 function addCalendarDays(date: Date, days: number): Date {
@@ -68,4 +98,35 @@ function formatDateInput(date: Date): string {
   const day = String(date.getDate()).padStart(2, '0');
 
   return `${year}-${month}-${day}`;
+}
+
+function parseDateInput(value: string): Date | null {
+  const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (match === null) {
+    return null;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+
+  return date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day
+    ? date
+    : null;
+}
+
+function parsePaymentTermDays(value: string): number | null {
+  const normalizedValue = value.trim();
+
+  if (!/^\d+$/.test(normalizedValue)) {
+    return null;
+  }
+
+  const paymentTermDays = Number(normalizedValue);
+
+  return Number.isSafeInteger(paymentTermDays) ? paymentTermDays : null;
 }

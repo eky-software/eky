@@ -39,10 +39,10 @@
 .head {
   display: grid;
   grid-template-columns:
-    44px minmax(260px, 1.8fr) 92px 92px minmax(120px, 0.7fr)
-    96px minmax(130px, 0.8fr) 120px 82px;
+    44px minmax(260px, 1.8fr) 92px 92px minmax(120px, 0.7fr) 96px
+    132px;
   gap: 8px;
-  min-width: 1120px;
+  min-width: 960px;
   min-height: 38px;
   align-items: center;
   padding-inline: 12px;

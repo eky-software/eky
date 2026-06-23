@@ -5,6 +5,7 @@ import { InvoiceRowsEditor } from './InvoiceRowsEditor.js';
 import {
   addInvoiceRow,
   createInitialInvoiceRows,
+  updateInvoiceRow,
 } from '../form/invoiceRowFormState.js';
 import { uiText } from '../../../i18n/fi.js';
 
@@ -13,9 +14,9 @@ describe('InvoiceRowsEditor', () => {
     const html = renderEditor(createInitialInvoiceRows());
 
     expect(html).toContain(uiText.invoicing.addRow);
-    expect(html).toContain(uiText.invoicing.discountNone);
-    expect(html).toContain(uiText.invoicing.discountPercentage);
-    expect(html).toContain(uiText.invoicing.discountFixed);
+    expect(html).toContain(uiText.invoicing.toggleRowDiscount);
+    expect(html).not.toContain(uiText.invoicing.discountPercentage);
+    expect(html).not.toContain(uiText.invoicing.discountFixed);
     expect(html).toContain('25,5 %');
     expect(html).toContain('13,5 %');
     expect(html).toContain('10 %');
@@ -45,12 +46,28 @@ describe('InvoiceRowsEditor', () => {
     );
   });
 
+  it('opens the discount panel when a row has a discount', () => {
+    const rows = updateInvoiceRow(
+      createInitialInvoiceRows(),
+      'invoice-row-1',
+      'discountType',
+      'percentage',
+    );
+    const html = renderEditor(rows);
+
+    expect(html).toContain(uiText.invoicing.discountNone);
+    expect(html).toContain(uiText.invoicing.discountPercentage);
+    expect(html).toContain(uiText.invoicing.discountFixed);
+    expect(html).toContain('aria-expanded="true"');
+  });
+
   it('renders safe row validation errors', () => {
     const html = renderToStaticMarkup(
       <InvoiceRowsEditor
         errorsByRowId={{
           'invoice-row-1': {
             description: uiText.invoicing.validationDescriptionRequired,
+            discountValue: uiText.invoicing.validationFixedDiscountInvalid,
             quantity: uiText.invoicing.validationQuantityInvalid,
             unitPrice: uiText.invoicing.validationUnitPriceInvalid,
           },
@@ -63,6 +80,7 @@ describe('InvoiceRowsEditor', () => {
     );
 
     expect(html).toContain(uiText.invoicing.validationDescriptionRequired);
+    expect(html).toContain(uiText.invoicing.validationFixedDiscountInvalid);
     expect(html).toContain(uiText.invoicing.validationQuantityInvalid);
     expect(html).toContain(uiText.invoicing.validationUnitPriceInvalid);
     expect(html).not.toContain('stack');

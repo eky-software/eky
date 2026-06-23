@@ -114,9 +114,11 @@ describe('InvoicingPageView', () => {
     expect(html).toContain(uiText.invoicing.rowDescriptionPlaceholder);
     expect(html).toContain(uiText.invoicing.invoiceTotalsPreviewHelp);
     expect(html).toContain(uiText.invoicing.invoiceTotalsUnavailable);
-    expect(html).toContain(uiText.invoicing.validateForm);
-    expect(html).toContain(uiText.invoicing.saveDraft);
+    expect(html).toContain('noValidate=""');
+    expect(html).not.toContain(uiText.invoicing.validateForm);
+    expect(html).toContain(uiText.invoicing.save);
     expect(html).not.toContain(uiText.invoicing.saveDraftLater);
+    expect(html).not.toContain('required=""');
   });
 
   it('renders the edit loading state while an invoice draft is opening', () => {
@@ -178,7 +180,8 @@ describe('InvoicingPageView', () => {
     expect(html).toContain('ORDER-1');
     expect(html).toContain('Työtunti');
     expect(html).toContain('65,50');
-    expect(html).toContain(uiText.invoicing.saveDraftChanges);
+    expect(html).toContain(uiText.invoicing.save);
+    expect(html).not.toContain(uiText.invoicing.saveDraftChanges);
   });
 });
 
