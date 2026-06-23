@@ -1,12 +1,5 @@
 .row {
-  display: grid;
-  grid-template-columns:
-    44px minmax(260px, 1.8fr) 92px 92px minmax(120px, 0.7fr)
-    96px minmax(130px, 0.8fr) 120px 82px;
-  gap: 8px;
-  min-width: 1120px;
-  min-height: 58px;
-  align-items: center;
+  min-width: 960px;
   border-top: 1px solid var(--color-border);
   padding-block: 8px;
   padding-inline: 12px;
@@ -14,6 +7,16 @@
 
 .row:first-of-type {
   border-top: 0;
+}
+
+.mainRow {
+  display: grid;
+  grid-template-columns:
+    44px minmax(260px, 1.8fr) 92px 92px minmax(120px, 0.7fr) 96px
+    132px;
+  gap: 8px;
+  min-height: 58px;
+  align-items: center;
 }
 
 .row input,
@@ -45,9 +48,40 @@
   font-weight: 800;
 }
 
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.discountButton {
+  width: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-color: #c7d8ed;
+  color: var(--color-primary-dark);
+  background: #fff;
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.discountButton:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: #f3f8ff;
+}
+
+.discountButton[aria-expanded='true'] {
+  border-color: var(--color-primary);
+  color: #fff;
+  background: var(--color-primary);
+}
+
 .removeButton {
   min-height: 36px;
-  padding: 6px 8px;
+  padding: 6px 9px;
   border-color: #c7d8ed;
   color: #7a2340;
   background: #fff;
@@ -63,4 +97,31 @@
 .removeButton:disabled {
   color: #8492a5;
   background: var(--color-surface-muted);
+}
+
+.discountPanel {
+  display: grid;
+  grid-template-columns: minmax(160px, 210px) minmax(160px, 210px);
+  gap: 10px;
+  margin-top: 8px;
+  margin-left: 52px;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+}
+
+.discountField {
+  display: grid;
+  gap: 5px;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+@media (max-width: 760px) {
+  .discountPanel {
+    grid-template-columns: 1fr;
+    margin-left: 0;
+  }
 }

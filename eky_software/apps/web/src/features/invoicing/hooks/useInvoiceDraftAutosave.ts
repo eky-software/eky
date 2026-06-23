@@ -19,7 +19,10 @@ const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
 
 export const invoiceDraftAutosaveDelayMs = 1800;
 
-type InvoiceDraftAutosaveClient = Pick<EkyApiClient, 'updateInvoiceDraft'>;
+type InvoiceDraftAutosaveCreateClient = Pick<
+  EkyApiClient,
+  'createInvoiceDraft' | 'updateInvoiceDraft'
+>;
 
 export type InvoiceDraftAutosaveStatus =
   | 'disabled'
@@ -31,20 +34,20 @@ export type InvoiceDraftAutosaveStatus =
 
 export type PreparedInvoiceDraftAutosave =
   | {
-      isEnabled: false;
-      reason: 'create-mode';
-    }
-  | {
       isEnabled: true;
       isValid: false;
       reason: 'invalid-form';
     }
   | {
-      draftId: string;
       input: InvoiceDraftInput;
       isEnabled: true;
       isValid: true;
+      target: InvoiceDraftAutosaveTarget;
     };
+
+export type InvoiceDraftAutosaveTarget =
+  | { type: 'create' }
+  | { draftId: string; type: 'edit' };
 
 export interface InvoiceDraftAutosaveState {
   errorMessage: string | null;
@@ -75,7 +78,7 @@ export function useInvoiceDraftAutosave({
     useState<InvoiceDraftAutosaveStatus>('disabled');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const lastSavedSignatureRef = useRef<string | null>(null);
-  const currentDraftIdRef = useRef<string | null>(null);
+  const currentTargetKeyRef = useRef<string | null>(null);
   const latestRequestIdRef = useRef(0);
   const formRevisionRef = useRef(formRevision);
   const onDraftAutosavedRef = useRef(onDraftAutosaved);
@@ -95,11 +98,13 @@ export function useInvoiceDraftAutosave({
 
     const plan = prepareInvoiceDraftAutosave(mode, form);
 
-    if (!plan.isEnabled || !plan.isValid) {
+    if (!plan.isValid) {
       return;
     }
 
-    currentDraftIdRef.current = plan.draftId;
+    currentTargetKeyRef.current = createInvoiceDraftAutosaveTargetKey(
+      plan.target,
+    );
     lastSavedSignatureRef.current = createInvoiceDraftAutosaveSignature(
       plan.input,
     );
@@ -110,14 +115,6 @@ export function useInvoiceDraftAutosave({
   useEffect(() => {
     const plan = prepareInvoiceDraftAutosave(mode, form);
 
-    if (!plan.isEnabled) {
-      currentDraftIdRef.current = null;
-      lastSavedSignatureRef.current = null;
-      setErrorMessage(null);
-      setStatus('disabled');
-      return;
-    }
-
     if (!plan.isValid) {
       setErrorMessage(null);
       setStatus('waitingForValidForm');
@@ -125,13 +122,19 @@ export function useInvoiceDraftAutosave({
     }
 
     const signature = createInvoiceDraftAutosaveSignature(plan.input);
+    const targetKey = createInvoiceDraftAutosaveTargetKey(plan.target);
 
-    if (currentDraftIdRef.current !== plan.draftId) {
-      currentDraftIdRef.current = plan.draftId;
-      lastSavedSignatureRef.current = signature;
-      setErrorMessage(null);
-      setStatus('saved');
-      return;
+    if (currentTargetKeyRef.current !== targetKey) {
+      currentTargetKeyRef.current = targetKey;
+
+      if (plan.target.type === 'edit') {
+        lastSavedSignatureRef.current = signature;
+        setErrorMessage(null);
+        setStatus('saved');
+        return;
+      }
+
+      lastSavedSignatureRef.current = null;
     }
 
     if (signature === lastSavedSignatureRef.current) {
@@ -149,7 +152,7 @@ export function useInvoiceDraftAutosave({
       const startedFormRevision = formRevisionRef.current;
 
       void autosaveInvoiceDraftInput(
-        plan.draftId,
+        plan.target,
         plan.input,
         apiClient,
       )
@@ -203,13 +206,6 @@ export function prepareInvoiceDraftAutosave(
   mode: NewInvoiceFormMode,
   form: NewInvoiceFormState,
 ): PreparedInvoiceDraftAutosave {
-  if (mode.type !== 'edit') {
-    return {
-      isEnabled: false,
-      reason: 'create-mode',
-    };
-  }
-
   const preparedInput: PreparedInvoiceDraftSave =
     prepareInvoiceDraftSaveInput(form);
 
@@ -222,19 +218,29 @@ export function prepareInvoiceDraftAutosave(
   }
 
   return {
-    draftId: mode.draft.id,
     input: preparedInput.input,
     isEnabled: true,
     isValid: true,
+    target:
+      mode.type === 'edit'
+        ? {
+            draftId: mode.draft.id,
+            type: 'edit',
+          }
+        : { type: 'create' },
   };
 }
 
 export function autosaveInvoiceDraftInput(
-  draftId: string,
+  target: InvoiceDraftAutosaveTarget,
   input: InvoiceDraftInput,
-  apiClient: InvoiceDraftAutosaveClient,
+  apiClient: InvoiceDraftAutosaveCreateClient,
 ): Promise<InvoiceDraft> {
-  return apiClient.updateInvoiceDraft(draftId, input);
+  if (target.type === 'edit') {
+    return apiClient.updateInvoiceDraft(target.draftId, input);
+  }
+
+  return apiClient.createInvoiceDraft(input);
 }
 
 export function createInvoiceDraftAutosaveSignature(
@@ -255,6 +261,12 @@ export function shouldApplyAutosaveResult({
   startedFormRevision: number;
 }): boolean {
   return requestId === latestRequestId && startedFormRevision === currentFormRevision;
+}
+
+function createInvoiceDraftAutosaveTargetKey(
+  target: InvoiceDraftAutosaveTarget,
+): string {
+  return target.type === 'edit' ? `edit:${target.draftId}` : 'create';
 }
 
 export function getInvoiceDraftAutosaveErrorMessage(

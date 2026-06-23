@@ -98,17 +98,44 @@ Tila: laskuluonnoksen avaaminen ja muokkaaminen on toteutettu web-UI:ssa.
 Lista avaa luonnoksen `getInvoiceDraft`-kutsulla, lomake täytetään tallennetusta
 datasta ja muokkaus tallennetaan `updateInvoiceDraft`-kutsulla. Uuden
 luonnoksen luonti käyttää edelleen `createInvoiceDraft`-kutsua.
-Tallennetun luonnoksen muokkausnäkymässä autosave voidaan toteuttaa vain
-edit-tilaan rajattuna taustatoimintona. Autosave ei luo uutta laskuluonnosta,
-vaan käyttää aina `updateInvoiceDraft`-polkua. Käyttäjän pitää ensin tallentaa
-uusi lasku manuaalisesti luonnokseksi, jotta sille syntyy draft-id.
+Autosave toteutetaan rauhallisena taustatoimintona. Uuden laskun kohdalla
+autosave saa muodostaa ensimmäisen laskuluonnoksen vasta, kun pakolliset kentät
+ja vähintään yksi rivi ovat kelvollisia saman validointimallin mukaan kuin
+käsin tallennuksessa.
+Onnistuneen ensimmäisen automaattitallennuksen jälkeen UI siirtyy edit-tilaan
+ja jatkotallennukset käyttävät `updateInvoiceDraft`-polkua.
 
 - avaa luonnos `getInvoiceDraft`-kutsulla
 - täytä muokkausnäkymä tallennetulla datalla
 - tallenna muutokset `updateInvoiceDraft`-kutsulla
-- tee taustatallennus vain olemassa olevalle luonnokselle
+- tee ensimmäinen taustatallennus uudelle laskulle vasta, kun lomake on
+  tallennuskelpoinen
+- tee jatkossa taustatallennus olemassa olevalle luonnokselle
 - näytä autosave-tila rauhallisena tilaviestinä
 - säilytä draft-tilan ja yritysrajauksen backend-säännöt auktoritatiivisina
+
+### Autosave-Periaate
+
+Autosave on vain käyttökokemusta parantava web-UI-toiminto. Se ei ole uusi
+laskutuksen domain-sääntö eikä se saa ohittaa backendin validointia,
+yritysrajausta tai draft-tilan sääntöjä.
+
+Autosave toimii kahdessa rajatussa vaiheessa:
+
+- uudessa laskussa autosave odottaa, että pakolliset kentät ja rivit ovat
+  kelvollisia
+- vasta kelvollinen uusi lasku saa laukaista `createInvoiceDraft`-kutsun
+- onnistuneen ensimmäisen create-tallennuksen jälkeen UI siirtyy edit-tilaan
+  ja saa draft-id:n
+- tämän jälkeen autosave käyttää vain `updateInvoiceDraft`-kutsua
+- autosave validoi lomaketilan ennen tallennusyritystä
+- virheellinen lomaketila ei laukaise create- eikä update-kutsua
+- käyttäjälle näytetään vain rauhallinen tilaviesti, ei aggressiivisia
+  kenttävirheitä autosaven takia
+- vanha autosave-vastaus ei saa ylikirjoittaa uudempaa lomaketilaa tai
+  tallennustilaa
+
+Manuaalinen “Tallenna muutokset” säilyy käytössä autosavesta huolimatta.
 
 ## Vaihe 7: viimeistely
 

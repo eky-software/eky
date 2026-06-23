@@ -81,6 +81,24 @@ Ensimmäinen MVP voi sisältää perinteisen laskunkirjoituksen:
 
 Kohde on valinnainen. Work Orders -moduulia ei tarvita tämän polun käyttämiseen.
 
+### Laskuluonnoksen Automaattitallennus
+
+Web-UI voi tukea laskuluonnoksen automaattitallennusta käyttökokemuksen
+parantamiseksi.
+
+Autosave ei ole laskutuksen domain-sääntö eikä se korvaa manuaalista
+tallennusta.
+
+Uuden laskun kohdalla autosave saa luoda ensimmäisen laskuluonnoksen vasta,
+kun pakolliset kentät ja vähintään yksi laskurivi ovat kelvollisia saman
+validointimallin mukaan kuin käsin tallennuksessa. Tällöin UI käyttää
+normaalia `createInvoiceDraft`-polkua eikä lähetä palvelimen omistamia kenttiä.
+
+Kun ensimmäinen luonnos on tallennettu käsin tai automaattisesti, UI siirtyy
+muokkaustilaan ja jatkotallennukset käyttävät vain luonnoksen päivityspolkua.
+Autosave ei saa ohittaa backendin validointia, yritysrajausta,
+käyttöoikeustarkistuksia tai myöhemmin lisättäviä audit-sääntöjä.
+
 ## ERP-laskutus myöhemmin
 
 Myöhemmin lasku voi muodostua hyväksytyistä:

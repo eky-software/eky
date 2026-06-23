@@ -138,13 +138,17 @@ export function NewInvoiceForm({
     setFormRevision((currentRevision) => currentRevision + 1);
   }
 
-  const saveButtonText = saveState.isSaving
+  const isSaving =
+    saveState.isSaving || autosaveState.status === 'saving';
+  const saveButtonText = isSaving
     ? mode.type === 'edit'
       ? uiText.invoicing.savingDraftChanges
       : uiText.invoicing.savingDraft
-    : mode.type === 'edit'
-      ? uiText.invoicing.saveDraftChanges
-      : uiText.invoicing.saveDraft;
+    : uiText.invoicing.save;
+  const shouldShowAutosaveMessage =
+    autosaveState.message !== null &&
+    saveState.savedDraft === null &&
+    (mode.type === 'edit' || formRevision > 0);
   const successMessage =
     mode.type === 'edit'
       ? uiText.invoicing.saveDraftChangesSuccess
@@ -153,9 +157,10 @@ export function NewInvoiceForm({
   return (
     <form
       className={`panel ${styles.form}`}
+      noValidate
       onSubmit={(event) => {
         event.preventDefault();
-        setHasValidated(true);
+        void handleSaveDraft();
       }}
     >
       <header className={styles.header}>
@@ -180,18 +185,12 @@ export function NewInvoiceForm({
         </button>
       </header>
 
-      {hasValidated ? (
+      {hasValidated && !validationResult.isValid ? (
         <p
-          className={`message ${
-            validationResult.isValid
-              ? 'success-message'
-              : 'error-message'
-          } ${styles.validationMessage}`}
-          role={validationResult.isValid ? 'status' : 'alert'}
+          className={`message error-message ${styles.validationMessage}`}
+          role="alert"
         >
-          {validationResult.isValid
-            ? uiText.invoicing.validationSuccess
-            : uiText.invoicing.validationSummary}
+          {uiText.invoicing.validationSummary}
         </p>
       ) : null}
 
@@ -213,9 +212,7 @@ export function NewInvoiceForm({
         </p>
       ) : null}
 
-      {mode.type === 'edit' &&
-      saveState.savedDraft === null &&
-      autosaveState.message !== null ? (
+      {shouldShowAutosaveMessage ? (
         <p
           className={`message ${
             autosaveState.status === 'error'
@@ -245,17 +242,11 @@ export function NewInvoiceForm({
 
       <footer className={styles.actions}>
         <button className="ghost-button" onClick={onBack} type="button">
-          {uiText.invoicing.cancel}
-        </button>
-        <button className="ghost-button" type="submit">
-          {uiText.invoicing.validateForm}
+          {uiText.invoicing.backToDrafts}
         </button>
         <button
-          disabled={saveState.isSaving || saveState.savedDraft !== null}
-          type="button"
-          onClick={() => {
-            void handleSaveDraft();
-          }}
+          disabled={isSaving || saveState.savedDraft !== null}
+          type="submit"
         >
           {saveButtonText}
         </button>
