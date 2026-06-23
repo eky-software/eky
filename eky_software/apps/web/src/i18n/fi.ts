@@ -157,6 +157,11 @@ export const uiText = {
   },
   invoicing: {
     addRow: 'Lisää rivi',
+    autosaveError: 'Automaattitallennus epäonnistui.',
+    autosaveSaved: 'Tallennettu',
+    autosaveSaving: 'Tallennetaan...',
+    autosaveWaitingForValidForm:
+      'Automaattitallennus odottaa kelvollisia tietoja.',
     backToDrafts: 'Takaisin luonnoksiin',
     basicInformation: 'Laskun perustiedot',
     basicInformationHelp:

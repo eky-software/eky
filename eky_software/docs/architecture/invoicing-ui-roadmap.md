@@ -98,10 +98,16 @@ Tila: laskuluonnoksen avaaminen ja muokkaaminen on toteutettu web-UI:ssa.
 Lista avaa luonnoksen `getInvoiceDraft`-kutsulla, lomake täytetään tallennetusta
 datasta ja muokkaus tallennetaan `updateInvoiceDraft`-kutsulla. Uuden
 luonnoksen luonti käyttää edelleen `createInvoiceDraft`-kutsua.
+Tallennetun luonnoksen muokkausnäkymässä autosave voidaan toteuttaa vain
+edit-tilaan rajattuna taustatoimintona. Autosave ei luo uutta laskuluonnosta,
+vaan käyttää aina `updateInvoiceDraft`-polkua. Käyttäjän pitää ensin tallentaa
+uusi lasku manuaalisesti luonnokseksi, jotta sille syntyy draft-id.
 
 - avaa luonnos `getInvoiceDraft`-kutsulla
 - täytä muokkausnäkymä tallennetulla datalla
 - tallenna muutokset `updateInvoiceDraft`-kutsulla
+- tee taustatallennus vain olemassa olevalle luonnokselle
+- näytä autosave-tila rauhallisena tilaviestinä
 - säilytä draft-tilan ja yritysrajauksen backend-säännöt auktoritatiivisina
 
 ## Vaihe 7: viimeistely
