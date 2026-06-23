@@ -20,6 +20,7 @@ import {
   updateNewInvoiceFormField,
 } from '../form/newInvoiceFormState.js';
 import type { InvoiceCustomerListState } from '../hooks/useInvoiceCustomers.js';
+import { useInvoiceDraftAutosave } from '../hooks/useInvoiceDraftAutosave.js';
 import {
   prepareInvoiceDraftSaveInput,
   useSaveInvoiceDraft,
@@ -45,8 +46,16 @@ export function NewInvoiceForm({
   onDraftSaved,
 }: NewInvoiceFormProps): React.JSX.Element {
   const [form, setForm] = useState(() => createInitialForm(mode));
+  const [formRevision, setFormRevision] = useState(0);
   const [hasValidated, setHasValidated] = useState(false);
   const saveState = useSaveInvoiceDraft(createSaveMode(mode));
+  const autosaveState = useInvoiceDraftAutosave({
+    form,
+    formRevision,
+    manualSavedDraft: saveState.savedDraft,
+    mode,
+    onDraftAutosaved: handleDraftAutosaved,
+  });
   const validationResult = prepareInvoiceDraftSaveInput(form);
   const displayedErrors = hasValidated
     ? validationResult.errors
@@ -57,6 +66,7 @@ export function NewInvoiceForm({
   ): void {
     saveState.clearSaveResult();
     setForm(updateForm);
+    setFormRevision((currentRevision) => currentRevision + 1);
   }
 
   function handleFieldChange<FieldName extends NewInvoiceBasicInfoField>(
@@ -114,8 +124,18 @@ export function NewInvoiceForm({
       return;
     }
 
-    setForm(toNewInvoiceFormStateFromDraft(savedDraft));
+    replaceFormWithDraft(savedDraft);
     onDraftSaved(savedDraft);
+  }
+
+  function handleDraftAutosaved(savedDraft: InvoiceDraft): void {
+    replaceFormWithDraft(savedDraft);
+    onDraftSaved(savedDraft);
+  }
+
+  function replaceFormWithDraft(savedDraft: InvoiceDraft): void {
+    setForm(toNewInvoiceFormStateFromDraft(savedDraft));
+    setFormRevision((currentRevision) => currentRevision + 1);
   }
 
   const saveButtonText = saveState.isSaving
@@ -190,6 +210,21 @@ export function NewInvoiceForm({
           role="alert"
         >
           {saveState.errorMessage}
+        </p>
+      ) : null}
+
+      {mode.type === 'edit' &&
+      saveState.savedDraft === null &&
+      autosaveState.message !== null ? (
+        <p
+          className={`message ${
+            autosaveState.status === 'error'
+              ? 'error-message'
+              : 'success-message'
+          } ${styles.autosaveMessage}`}
+          role={autosaveState.status === 'error' ? 'alert' : 'status'}
+        >
+          {autosaveState.message}
         </p>
       ) : null}
 
