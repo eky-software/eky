@@ -19,6 +19,7 @@ type CompanySettingsUpsertParameters = [
   number | null,
   string,
   string,
+  string,
 ];
 
 function toCompanySettingsRow(settings: CompanySettings): NewCompanySettingsRow {
@@ -33,6 +34,7 @@ function toCompanySettingsRow(settings: CompanySettings): NewCompanySettingsRow 
     email: settings.email,
     phone: settings.phone,
     default_hourly_rate_cents: settings.defaultHourlyRateCents,
+    hourly_rate_shortcut: settings.hourlyRateShortcut,
     created_at: settings.createdAt,
     updated_at: settings.updatedAt,
   };
@@ -50,6 +52,7 @@ function toCompanySettings(row: CompanySettingsRow): CompanySettings {
     email: row.email,
     phone: row.phone,
     defaultHourlyRateCents: row.default_hourly_rate_cents,
+    hourlyRateShortcut: row.hourly_rate_shortcut,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -73,6 +76,7 @@ export class SqliteCompanySettingsRepository implements CompanySettingsRepositor
             email,
             phone,
             default_hourly_rate_cents,
+            hourly_rate_shortcut,
             created_at,
             updated_at
           FROM company_settings
@@ -101,10 +105,11 @@ export class SqliteCompanySettingsRepository implements CompanySettingsRepositor
             email,
             phone,
             default_hourly_rate_cents,
+            hourly_rate_shortcut,
             created_at,
             updated_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(company_id) DO UPDATE SET
             company_name = excluded.company_name,
             business_id = excluded.business_id,
@@ -114,6 +119,7 @@ export class SqliteCompanySettingsRepository implements CompanySettingsRepositor
             email = excluded.email,
             phone = excluded.phone,
             default_hourly_rate_cents = excluded.default_hourly_rate_cents,
+            hourly_rate_shortcut = excluded.hourly_rate_shortcut,
             updated_at = excluded.updated_at
         `,
       )
@@ -128,6 +134,7 @@ export class SqliteCompanySettingsRepository implements CompanySettingsRepositor
         row.email,
         row.phone,
         row.default_hourly_rate_cents,
+        row.hourly_rate_shortcut,
         row.created_at,
         row.updated_at,
       );

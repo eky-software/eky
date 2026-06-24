@@ -12,7 +12,9 @@ import {
   type InvoiceRowForm,
   type InvoiceRowFormField,
   updateInvoiceRow,
+  updateInvoiceRowDescription,
 } from '../form/invoiceRowFormState.js';
+import { resolveHourlyRateAutofillConfig } from '../form/invoiceHourlyRatePricing.js';
 import {
   createInitialNewInvoiceForm,
   type NewInvoiceBasicInfoField,
@@ -20,6 +22,7 @@ import {
   updateNewInvoiceFormField,
 } from '../form/newInvoiceFormState.js';
 import type { InvoiceCustomerListState } from '../hooks/useInvoiceCustomers.js';
+import type { InvoiceCompanySettingsState } from '../hooks/useInvoiceCompanySettings.js';
 import { useInvoiceDraftAutosave } from '../hooks/useInvoiceDraftAutosave.js';
 import {
   prepareInvoiceDraftSaveInput,
@@ -34,6 +37,7 @@ export type NewInvoiceFormMode =
 
 interface NewInvoiceFormProps {
   customerListState: InvoiceCustomerListState;
+  companySettingsState: InvoiceCompanySettingsState;
   mode: NewInvoiceFormMode;
   onBack(): void;
   onDraftSaved(savedDraft: InvoiceDraft): void;
@@ -41,6 +45,7 @@ interface NewInvoiceFormProps {
 
 export function NewInvoiceForm({
   customerListState,
+  companySettingsState,
   mode,
   onBack,
   onDraftSaved,
@@ -57,6 +62,11 @@ export function NewInvoiceForm({
     onDraftAutosaved: handleDraftAutosaved,
   });
   const validationResult = prepareInvoiceDraftSaveInput(form);
+  const hourlyRateAutofillConfig = resolveHourlyRateAutofillConfig(
+    form.customerId,
+    customerListState.customers,
+    companySettingsState.companySettings,
+  );
   const displayedErrors = hasValidated
     ? validationResult.errors
     : undefined;
@@ -97,6 +107,19 @@ export function NewInvoiceForm({
     fieldName: FieldName,
     value: InvoiceRowForm[FieldName],
   ): void {
+    if (fieldName === 'description') {
+      handleFormChange((currentForm) => ({
+        ...currentForm,
+        lines: updateInvoiceRowDescription(
+          currentForm.lines,
+          rowId,
+          value as InvoiceRowForm['description'],
+          hourlyRateAutofillConfig,
+        ),
+      }));
+      return;
+    }
+
     handleFormChange((currentForm) => ({
       ...currentForm,
       lines: updateInvoiceRow(
@@ -233,6 +256,8 @@ export function NewInvoiceForm({
       />
       <InvoiceRowsEditor
         errorsByRowId={displayedErrors?.lines}
+        hourlyRateShortcut={hourlyRateAutofillConfig.shortcut}
+        hourlyRateShortcutErrorMessage={companySettingsState.errorMessage}
         rows={form.lines}
         onAdd={handleAddRow}
         onChange={handleRowChange}

@@ -11,6 +11,8 @@ import { uiText } from '../../../i18n/fi.js';
 
 interface InvoiceRowsEditorProps {
   errorsByRowId: Record<string, InvoiceDraftLineFormErrors> | undefined;
+  hourlyRateShortcut: string;
+  hourlyRateShortcutErrorMessage: string | null;
   rows: InvoiceRowForm[];
   onAdd(): void;
   onChange<FieldName extends InvoiceRowFormField>(
@@ -23,6 +25,8 @@ interface InvoiceRowsEditorProps {
 
 export function InvoiceRowsEditor({
   errorsByRowId,
+  hourlyRateShortcut,
+  hourlyRateShortcutErrorMessage,
   rows,
   onAdd,
   onChange,
@@ -34,6 +38,18 @@ export function InvoiceRowsEditor({
         <div>
           <h3>{uiText.invoicing.invoiceRows}</h3>
           <p>{uiText.invoicing.invoiceRowsHelp}</p>
+          {hourlyRateShortcut !== '' ? (
+            <p className={styles.shortcutHelp}>
+              {uiText.invoicing.hourlyRateShortcutHelpPrefix}{' '}
+              <strong>“{hourlyRateShortcut}”</strong>{' '}
+              {uiText.invoicing.hourlyRateShortcutHelpSuffix}
+            </p>
+          ) : null}
+          {hourlyRateShortcutErrorMessage !== null ? (
+            <p className={styles.shortcutError} role="status">
+              {hourlyRateShortcutErrorMessage}
+            </p>
+          ) : null}
         </div>
         <button className="ghost-button" type="button" onClick={onAdd}>
           {uiText.invoicing.addRow}

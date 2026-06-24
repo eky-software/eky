@@ -76,6 +76,23 @@ export function CompanySettingsForm({
               />
               <span className={styles.fieldHelp}>{uiText.companySettings.defaultHourlyRateHelp}</span>
             </label>
+
+            <label htmlFor="hourly-rate-shortcut">
+              {uiText.companySettings.hourlyRateShortcut}
+              <input
+                id="hourly-rate-shortcut"
+                name="hourlyRateShortcut"
+                onChange={(event) =>
+                  onFieldChange('hourlyRateShortcut', event.target.value)
+                }
+                placeholder={uiText.companySettings.placeholderHourlyRateShortcut}
+                type="text"
+                value={form.hourlyRateShortcut}
+              />
+              <span className={styles.fieldHelp}>
+                {uiText.companySettings.hourlyRateShortcutHelp}
+              </span>
+            </label>
           </div>
         </fieldset>
 

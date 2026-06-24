@@ -23,6 +23,7 @@ It owns:
 - own company business id
 - own company contact and address data
 - default hourly rate
+- hourly rate shortcut used as an invoicing UI default
 - later explicitly approved invoicing settings
 
 It does not own customers, customer-specific hourly rate overrides, invoices, work orders, work entries, material entries, or invoice snapshots.
@@ -51,6 +52,9 @@ SQLite and SQL are allowed only in `infrastructure`.
 
 `defaultHourlyRateCents` belongs to Company Settings.
 
+`hourlyRateShortcut` belongs to Company Settings. It is a UI convenience
+setting, not an authoritative invoice calculation rule.
+
 `customer.hourlyRateOverrideCents` belongs to Customers.
 
 Invoicing later owns the used hourly rate snapshot on invoices or invoice lines.
@@ -74,11 +78,13 @@ Add or update tests when changing:
 - HTTP route behavior
 - repository port behavior
 - default hourly rate behavior
+- hourly rate shortcut validation and persistence
 
 ## Naming
 
 Code is written in English.
 
-Use terms such as `CompanySettings`, `CompanyName`, `BusinessId`, and `DefaultHourlyRate`.
+Use terms such as `CompanySettings`, `CompanyName`, `BusinessId`,
+`DefaultHourlyRate`, and `HourlyRateShortcut`.
 
 Do not use Finnish code identifiers.

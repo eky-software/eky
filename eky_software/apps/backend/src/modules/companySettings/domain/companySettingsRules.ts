@@ -30,3 +30,21 @@ export function parseDefaultHourlyRateCents(value: unknown): number | null {
 
   return value;
 }
+
+export function normalizeHourlyRateShortcut(value: string): string {
+  const normalizedValue = value.trim();
+
+  if (normalizedValue.length > 50) {
+    throw new CompanySettingsValidationError(
+      'Hourly rate shortcut must be 50 characters or less.',
+    );
+  }
+
+  if (/[\r\n]/.test(normalizedValue)) {
+    throw new CompanySettingsValidationError(
+      'Hourly rate shortcut must be a single line.',
+    );
+  }
+
+  return normalizedValue;
+}

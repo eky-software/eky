@@ -127,15 +127,18 @@ export const uiText = {
     contactInformation: 'Yhteystiedot',
     defaultHourlyRate: 'Oletustuntihinta €/h',
     defaultHourlyRateHelp:
-      'Jos asiakaskohtaista tuntihintaa ei myöhemmin aseteta, tätä hintaa voidaan käyttää oletuksena.',
+      'Jos asiakkaalle ei ole asetettu omaa tuntihintaa, laskutuksen pikavalinta käyttää tätä hintaa.',
     description:
-      'Täällä ylläpidetään ohjelmaa käyttävän yrityksen perustietoja ja oletustuntihintaa. Näitä tietoja voidaan myöhemmin käyttää laskutuksessa lähettäjän tietoina.',
+      'Täällä ylläpidetään ohjelmaa käyttävän yrityksen perustietoja, oletustuntihintaa ja laskutuksen tuntityön pikavalintaa.',
     email: 'Sähköposti',
     fallbackError: 'Jotain meni vikaan.',
     formDescription:
-      'Täytä oman yrityksen tiedot rauhallisesti. Laskutus-, pankki- ja verkkolaskuasetukset lisätään myöhemmin erillisinä vaiheina.',
+      'Täytä oman yrityksen tiedot ja tuntityön oletukset. Pankki- ja verkkolaskuasetukset lisätään myöhemmin erillisinä vaiheina.',
     formHeading: 'Oman yrityksen tiedot',
     formKicker: 'Asetukset',
+    hourlyRateShortcut: 'Tuntityön pikavalinta',
+    hourlyRateShortcutHelp:
+      'Kun kirjoitat tämän sanan laskurivin nimikkeeksi, tuntihinta ehdotetaan kerran automaattisesti. Tyhjä kenttä poistaa pikavalinnan käytöstä.',
     invalidHourlyRate: 'Tuntihinnan pitää olla euroina, esimerkiksi 65 tai 65,50.',
     loading: 'Ladataan oman yrityksen tietoja...',
     phone: 'Puhelin',
@@ -143,6 +146,7 @@ export const uiText = {
     placeholderCity: 'Kaupunki',
     placeholderCompanyName: 'Esimerkki Rakennus Oy',
     placeholderDefaultHourlyRate: '65,00',
+    placeholderHourlyRateShortcut: 'työ',
     placeholderEmail: 'info@example.fi',
     placeholderPhone: '040 123 4567',
     placeholderPostalCode: '00100',
@@ -186,6 +190,8 @@ export const uiText = {
     customerSearch: 'Hae asiakasta',
     customerSearchPlaceholder: 'Hae numerolla tai nimellä',
     customerUnavailable: 'Asiakaslista ei ole käytettävissä',
+    companySettingsLoadError:
+      'Tuntihinnan pikavalintaa ei voitu ladata. Voit syöttää hinnan käsin.',
     selectedCustomerKicker: 'Valittu asiakas',
     description:
       'Täällä käsitellään laskuluonnoksia. Ensimmäinen näkymä kokoaa tallennetut luonnokset selkeäksi työlistaksi.',
@@ -201,6 +207,9 @@ export const uiText = {
     invoiceRows: 'Laskurivit',
     invoiceRowsHelp:
       'Lisää laskutettavat työt ja tuotteet riveittäin. Summat tarkistetaan backendissä tallennettaessa.',
+    hourlyRateShortcutHelpPrefix: 'Pikavalinta',
+    hourlyRateShortcutHelpSuffix:
+      'täyttää valitun asiakkaan tuntihinnan kerran automaattisesti.',
     invoiceTotals: 'Laskun summat',
     invoiceTotalsLater:
       'Summat lasketaan backendin sääntöjen mukaan tallennusvaiheessa.',
@@ -350,6 +359,10 @@ export const uiText = {
       'Oletustuntihinta ei voi olla negatiivinen.',
     'Default hourly rate must be whole cents.':
       'Oletustuntihinta pitää antaa sentin tarkkuudella.',
+    'Hourly rate shortcut must be 50 characters or less.':
+      'Tuntityön pikavalinta saa olla enintään 50 merkkiä.',
+    'Hourly rate shortcut must be a single line.':
+      'Tuntityön pikavalinnan pitää olla yhdellä rivillä.',
     'Invalid company settings body.': 'Oman yrityksen pyyntö oli virheellinen.',
     'Invalid company settings response.':
       'Oman yrityksen tietojen vastaus oli virheellinen.',

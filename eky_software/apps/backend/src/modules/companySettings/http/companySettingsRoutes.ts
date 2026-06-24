@@ -48,6 +48,7 @@ export function createCompanySettingsRoutes(
         companyId: devCompanyId,
         companyName: getOptionalStringField(body, 'companyName'),
         defaultHourlyRateCents: body.defaultHourlyRateCents,
+        hourlyRateShortcut: getOptionalStringField(body, 'hourlyRateShortcut'),
         email: getOptionalStringField(body, 'email'),
         phone: getOptionalStringField(body, 'phone'),
         postalCode: getOptionalStringField(body, 'postalCode'),

@@ -6,6 +6,7 @@ import {
 } from '../domain/companySettings.js';
 import {
   normalizeCompanySettingsField,
+  normalizeHourlyRateShortcut,
   parseDefaultHourlyRateCents,
 } from '../domain/companySettingsRules.js';
 import type { CompanySettingsRepository } from '../ports/companySettingsRepository.js';
@@ -16,6 +17,7 @@ export interface UpdateCompanySettingsInput {
   companyId: string;
   companyName: string;
   defaultHourlyRateCents: unknown;
+  hourlyRateShortcut: string;
   email: string;
   phone: string;
   postalCode: string;
@@ -33,6 +35,7 @@ export async function updateCompanySettings(
     companyId: input.companyId,
     companyName: normalizeCompanySettingsField(input.companyName, 'Company name'),
     defaultHourlyRateCents: parseDefaultHourlyRateCents(input.defaultHourlyRateCents),
+    hourlyRateShortcut: normalizeHourlyRateShortcut(input.hourlyRateShortcut),
     email: normalizeCompanySettingsField(input.email, 'Company email'),
     id: randomUUID(),
     now,

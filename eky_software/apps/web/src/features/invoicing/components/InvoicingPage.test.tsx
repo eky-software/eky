@@ -188,16 +188,47 @@ describe('InvoicingPageView', () => {
 type InvoicingPageViewProps = React.ComponentProps<typeof InvoicingPageView>;
 
 function renderPage(
-  props: Omit<InvoicingPageViewProps, 'onDraftSaved' | 'refreshDrafts'> &
-    Partial<Pick<InvoicingPageViewProps, 'onDraftSaved' | 'refreshDrafts'>>,
+  props: Omit<
+    InvoicingPageViewProps,
+    'companySettingsState' | 'onDraftSaved' | 'refreshDrafts'
+  > &
+    Partial<
+      Pick<
+        InvoicingPageViewProps,
+        'companySettingsState' | 'onDraftSaved' | 'refreshDrafts'
+      >
+    >,
 ): string {
   return renderToStaticMarkup(
     <InvoicingPageView
+      companySettingsState={createCompanySettingsState()}
       onDraftSaved={vi.fn()}
       refreshDrafts={vi.fn()}
       {...props}
     />,
   );
+}
+
+function createCompanySettingsState() {
+  return {
+    companySettings: {
+      businessId: '',
+      city: '',
+      companyId: 'dev-company',
+      companyName: 'Example Builder Oy',
+      createdAt: '2026-06-13T18:00:00.000Z',
+      defaultHourlyRateCents: 6500,
+      email: '',
+      hourlyRateShortcut: 'työ',
+      id: 'settings-1',
+      phone: '',
+      postalCode: '',
+      streetAddress: '',
+      updatedAt: '2026-06-13T18:00:00.000Z',
+    },
+    errorMessage: null,
+    isLoading: false,
+  };
 }
 
 function createCustomerListState() {

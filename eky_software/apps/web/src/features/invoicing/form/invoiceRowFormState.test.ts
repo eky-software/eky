@@ -5,6 +5,7 @@ import {
   createInitialInvoiceRows,
   removeInvoiceRow,
   updateInvoiceRow,
+  updateInvoiceRowDescription,
 } from './invoiceRowFormState.js';
 
 describe('invoiceRowFormState', () => {
@@ -19,8 +20,128 @@ describe('invoiceRowFormState', () => {
         vatRateBasisPoints: 2550,
         discountType: 'none',
         discountValue: '',
+        hourlyRateAutofillState: 'available',
       },
     ]);
+  });
+
+  it('applies the hourly rate once when the description matches the shortcut', () => {
+    const rows = updateInvoiceRowDescription(
+      createInitialInvoiceRows(),
+      'invoice-row-1',
+      '  TYÖ  ',
+      {
+        hourlyRateCents: 6550,
+        shortcut: 'työ',
+      },
+    );
+
+    expect(rows[0]).toMatchObject({
+      description: '  TYÖ  ',
+      hourlyRateAutofillState: 'applied',
+      unit: 'h',
+      unitPrice: '65,50',
+    });
+  });
+
+  it('does not overwrite a manually entered unit price', () => {
+    const manuallyPricedRows = updateInvoiceRow(
+      createInitialInvoiceRows(),
+      'invoice-row-1',
+      'unitPrice',
+      '72,00',
+    );
+    const rows = updateInvoiceRowDescription(
+      manuallyPricedRows,
+      'invoice-row-1',
+      'työ',
+      {
+        hourlyRateCents: 6550,
+        shortcut: 'työ',
+      },
+    );
+
+    expect(rows[0]).toMatchObject({
+      hourlyRateAutofillState: 'blocked',
+      unitPrice: '72,00',
+    });
+  });
+
+  it('does not apply the hourly rate a second time after manual editing', () => {
+    const autoPricedRows = updateInvoiceRowDescription(
+      createInitialInvoiceRows(),
+      'invoice-row-1',
+      'työ',
+      {
+        hourlyRateCents: 6500,
+        shortcut: 'työ',
+      },
+    );
+    const manuallyEditedRows = updateInvoiceRow(
+      autoPricedRows,
+      'invoice-row-1',
+      'unitPrice',
+      '80,00',
+    );
+    const renamedRows = updateInvoiceRowDescription(
+      updateInvoiceRowDescription(
+        manuallyEditedRows,
+        'invoice-row-1',
+        'muu työ',
+        { hourlyRateCents: 7000, shortcut: 'työ' },
+      ),
+      'invoice-row-1',
+      'työ',
+      { hourlyRateCents: 7000, shortcut: 'työ' },
+    );
+
+    expect(renamedRows[0]).toMatchObject({
+      hourlyRateAutofillState: 'blocked',
+      unitPrice: '80,00',
+    });
+  });
+
+  it('applies the shortcut only once even when the description matches again', () => {
+    const autoPricedRows = updateInvoiceRowDescription(
+      createInitialInvoiceRows(),
+      'invoice-row-1',
+      'työ',
+      { hourlyRateCents: 6500, shortcut: 'työ' },
+    );
+    const renamedRows = updateInvoiceRowDescription(
+      updateInvoiceRowDescription(
+        autoPricedRows,
+        'invoice-row-1',
+        'muu',
+        { hourlyRateCents: 7000, shortcut: 'työ' },
+      ),
+      'invoice-row-1',
+      'työ',
+      { hourlyRateCents: 7000, shortcut: 'työ' },
+    );
+
+    expect(renamedRows[0]).toMatchObject({
+      hourlyRateAutofillState: 'applied',
+      unitPrice: '65,00',
+    });
+  });
+
+  it('keeps the row unchanged when the shortcut or hourly rate is unavailable', () => {
+    const withoutShortcut = updateInvoiceRowDescription(
+      createInitialInvoiceRows(),
+      'invoice-row-1',
+      'työ',
+      { hourlyRateCents: 6500, shortcut: '' },
+    );
+    const withoutRate = updateInvoiceRowDescription(
+      createInitialInvoiceRows(),
+      'invoice-row-1',
+      'työ',
+      { hourlyRateCents: null, shortcut: 'työ' },
+    );
+
+    expect(withoutShortcut[0]?.unitPrice).toBe('');
+    expect(withoutRate[0]?.unitPrice).toBe('');
   });
 
   it('adds a new row without changing the existing row', () => {
