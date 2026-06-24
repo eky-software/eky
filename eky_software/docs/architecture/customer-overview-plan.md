@@ -82,6 +82,26 @@ Ensimmäisessä kevyessä rungossa voidaan näyttää vain asiakkaan perustiedot
 
 Myöhemmissä vaiheissa näkymä voi lukea dataa useasta moduulista hallitusti esimerkiksi read servicejen, readonly-porttien tai reporting/read model -tyyppisen kerroksen kautta.
 
+## Asiakaskortin Työskentelytila
+
+Asiakaslistasta avataan varsinainen asiakaskortti koko työalueelle. Asiakaskortti
+on oletuksena lukutilassa, jotta tietojen tarkastelu ja tietojen muuttaminen
+erottuvat selvästi toisistaan.
+
+Työskentelymalli:
+
+- asiakasrivi avaa asiakaskortin lukutilaan
+- `Muokkaa` vaihtaa asiakkaan perustiedot muokattaviksi samalla työalueella
+- `Tallenna` käyttää customers-moduulin kirjoittavaa application serviceä ja
+  palauttaa onnistuneen tallennuksen jälkeen lukutilaan
+- `Peruuta` hylkää tallentamattomat muutokset ja palauttaa lukutilaan
+- lopullisessa mallissa olemassa olevan asiakkaan ylläpitoon ei jää erillistä
+  pientä sivupaneelin pikamuokkausikkunaa
+
+Uuden asiakkaan luonti voi säilyä omana rajattuna lomaketyönkulkunaan.
+Nykyinen olemassa olevan asiakkaan sivupaneelimuokkaus on välivaihe ennen
+varsinaisen asiakaskortin toteutusta.
+
 ## Moduulirajat
 
 Customer overview on read/overview-näkymä.

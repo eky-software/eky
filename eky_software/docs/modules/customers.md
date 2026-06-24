@@ -333,9 +333,20 @@ Toteutusjärjestys:
 9. Web UI -lomakkeen ja listan päivitys suomenkielisillä teksteillä.
 10. Domain-, application-, HTTP- ja api-client-testien päivitys.
 
-Customer UI:n seuraava UX-korjaus tehdään dokumentin `docs/architecture/customer-ui-ux-plan.md` mukaisesti: asiakaslista on pääsisältö ja uuden asiakkaan lomake avataan tarvittaessa erilliseen paneeliin tai lomakealueeseen.
+Customer UI:n seuraava UX-korjaus tehdään dokumenttien
+`docs/architecture/customer-ui-ux-plan.md` ja
+`docs/architecture/customer-overview-plan.md` mukaisesti: asiakaslista on
+pääsisältö ja uuden asiakkaan lomake avataan tarvittaessa erilliseen paneeliin
+tai lomakealueeseen.
 
-Olemassa oleva asiakas voidaan avata samassa paneelirakenteessa perustietojen muokkaamista varten.
+Nykyinen olemassa olevan asiakkaan paneelimuokkaus on välivaihe. Lopullisessa
+mallissa asiakas avataan koko työalueen asiakaskorttiin, joka on oletuksena
+lukutilassa. `Muokkaa` avaa samat perustiedot muokattaviksi, ja `Tallenna` sekä
+`Peruuta` palauttavat näkymän lukutilaan.
+
+Asiakaskortti voi myöhemmin näyttää muiden moduulien koosteita, mutta tämä ei
+siirrä laskujen, kohteiden, työmääräysten, tuntien, materiaalien tai historian
+omistajuutta customers-moduulille.
 
 Ei lisätä uusia riippuvuuksia ilman erillistä päätöstä.
 
