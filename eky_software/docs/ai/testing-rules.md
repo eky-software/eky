@@ -12,6 +12,37 @@ Testaa ensisijaisesti sääntöjä, laskentaa, tilasiirtymiä ja kriittisiä ty�
 
 Pidä testit luettavina ja kohdistettuina.
 
+Onnistuva normaalipolku ei yksin riitä kriittiselle toiminnolle. Testeissä
+huomioidaan riskin mukaan myös virheelliset syötteet, raja-arvot, odottamattomat
+toimintajärjestykset, toistuvat pyynnöt, käyttöoikeuksien puuttuminen,
+yritysrajan ylitysyritykset ja turvalliset virhevastaukset.
+
+Poikkeavia tapauksia ei testata satunnaisesti vain testimäärän kasvattamiseksi.
+Testit johdetaan toiminnon luottamusrajoista, liiketoimintasäännöistä ja
+todellisista väärinkäyttö- tai rikkoutumistavoista.
+
+## Testien Sijainti
+
+Yksikkö- ja komponenttitestit pidetään lähtökohtaisesti testattavan tiedoston
+vieressä.
+
+Esimerkiksi:
+
+```text
+invoiceRowFormState.ts
+invoiceRowFormState.test.ts
+```
+
+Kun toteutus siirtyy moduulin sisällä, sen testi siirtyy mukana. Yksikkötesteille
+ei luoda juureen toteutusrakennetta peilaavaa yleistä `tests/`-kansiota.
+
+Laajemmat integraatio-, sopimus- ja E2E-testit voidaan myöhemmin sijoittaa omiin
+selkeästi nimettyihin kansioihinsa, jos niiden testattava kokonaisuus ei kuulu
+yhdelle tiedostolle tai moduulin sisäiselle vastuulle.
+
+Yleistä `test-utils`-kaatopaikkaa ei luoda. Toistuva testi-infrastruktuuri
+irrotetaan vasta todelliseen tarpeeseen ja nimetään vastuun mukaan.
+
 ## Mitä testataan aina
 
 Lisää testit aina, kun muutos koskee:
@@ -81,6 +112,38 @@ Testaa turvallisuuskriittiset tilanteet:
 - turvallinen virhevastaus ei paljasta stack tracea, SQL:ää, tiedostopolkuja tai salaisuuksia
 
 Jos autentikointi, permission-malli tai audit trail ei ole vielä toteutettu, testi ei saa teeskennellä niiden olevan kunnossa. Rajaus dokumentoidaan ja toteutusta käytetään vain hyväksytyssä local development -tilassa synteettisellä datalla.
+
+## Automaattinen CI-Tarkistus
+
+GitHub Actions ajaa testit ja staattiset tarkistukset automaattisesti `antsa`-
+ja `main`-haarojen push-tapahtumissa sekä `main`-haaraan kohdistuvissa pull
+requesteissa.
+
+CI:n vähimmäisportti on:
+
+```text
+pnpm install --frozen-lockfile
+pnpm test
+pnpm typecheck
+pnpm --filter @eky/backend build
+pnpm --filter @eky/web build
+```
+
+CI täydentää paikallista testausta, mutta ei korvaa sitä. Muutos testataan
+paikallisesti ennen commitia silloin, kun paikallinen ympäristö sen sallii.
+
+CI:
+
+- käyttää lukittua lockfilea
+- ei käytä tuotanto- tai henkilötietoja
+- ei tarvitse sovelluksen salaisuuksia nykyisessä testiputkessa
+- saa vain työn tarvitsemat GitHub-oikeudet
+- käyttää GitHub Action -toiminnoille lukittuja commit-SHA-versioita
+- ei tee deployta eikä kirjoita liiketoimintadataa
+
+Vihreä CI ei yksin todista liiketoimintasäännön tai turvallisuusmallin olevan
+oikea. Katselmoinnissa tarkistetaan edelleen testien laatu, puuttuvat negatiiviset
+tapaukset ja nykyisen local-MVP:n dokumentoidut turvallisuusrajat.
 
 ## Testidatan periaatteet
 
