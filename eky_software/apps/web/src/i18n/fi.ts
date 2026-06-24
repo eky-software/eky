@@ -198,6 +198,13 @@ export const uiText = {
     draftCount: 'Laskuluonnosten määrä',
     draftList: 'Laskuluonnoslista',
     drafts: 'Luonnokset',
+    deleteDraft: 'Poista laskuluonnos',
+    deleteDraftCancel: 'Peruuta',
+    deleteDraftConfirm: 'Haluatko varmasti poistaa laskuluonnoksen?',
+    deleteDraftConfirmAction: 'Poista luonnos',
+    deleteDraftError:
+      'Laskuluonnosta ei voitu poistaa. Yritä hetken kuluttua uudelleen.',
+    deletingDraft: 'Poistetaan...',
     dueDate: 'Eräpäivä',
     editInvoice: 'Muokkaa laskuluonnosta',
     editInvoiceKicker: 'Tallennettu luonnos',
@@ -370,6 +377,7 @@ export const uiText = {
     'Invalid JSON response.': 'Palvelimen vastaus oli virheellinen.',
     'Invalid invoice draft response.':
       'Laskuluonnoksen vastaus oli virheellinen.',
+    'Invoice draft not found.': 'Laskuluonnosta ei löytynyt.',
   },
 } as const;
 

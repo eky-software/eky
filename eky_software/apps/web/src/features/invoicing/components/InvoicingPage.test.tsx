@@ -27,9 +27,50 @@ describe('InvoicingPageView', () => {
     expect(html).toContain('27.06.2026');
     expect(html).toContain('178,84');
     expect(html).toContain(uiText.invoicing.statusDraft);
+    expect(html).toContain(`aria-label="${uiText.invoicing.deleteDraft}"`);
     expect(html).toContain(uiText.invoicing.newInvoice);
     expect(html).toContain('<button');
     expect(html).not.toContain(uiText.invoicing.saveDraft);
+  });
+
+  it('renders an inline confirmation before deleting a draft', () => {
+    const html = renderPage({
+      activeView: 'draftList',
+      customerListState: createCustomerListState(),
+      drafts: [createInvoiceDraftSummary()],
+      errorMessage: null,
+      isLoading: false,
+      pendingDeleteDraftId: 'draft-1',
+      draftEditorState: createDraftEditorState(),
+      onBackToDrafts: vi.fn(),
+      onOpenDraft: vi.fn(),
+      onNewInvoice: vi.fn(),
+    });
+
+    expect(html).toContain(uiText.invoicing.deleteDraftConfirm);
+    expect(html).toContain(uiText.invoicing.deleteDraftConfirmAction);
+    expect(html).toContain(uiText.invoicing.deleteDraftCancel);
+  });
+
+  it('renders a safe draft deletion error without technical response data', () => {
+    const html = renderPage({
+      activeView: 'draftList',
+      customerListState: createCustomerListState(),
+      deleteState: createDeleteState({
+        errorMessage: uiText.invoicing.deleteDraftError,
+      }),
+      drafts: [createInvoiceDraftSummary()],
+      errorMessage: null,
+      isLoading: false,
+      draftEditorState: createDraftEditorState(),
+      onBackToDrafts: vi.fn(),
+      onOpenDraft: vi.fn(),
+      onNewInvoice: vi.fn(),
+    });
+
+    expect(html).toContain(uiText.invoicing.deleteDraftError);
+    expect(html).not.toContain('responseBody');
+    expect(html).not.toContain('stack');
   });
 
   it('renders the empty state', () => {
@@ -190,23 +231,54 @@ type InvoicingPageViewProps = React.ComponentProps<typeof InvoicingPageView>;
 function renderPage(
   props: Omit<
     InvoicingPageViewProps,
-    'companySettingsState' | 'onDraftSaved' | 'refreshDrafts'
+    | 'companySettingsState'
+    | 'deleteState'
+    | 'onCancelDeleteDraft'
+    | 'onConfirmDeleteDraft'
+    | 'onDraftSaved'
+    | 'onRequestDeleteDraft'
+    | 'pendingDeleteDraftId'
+    | 'refreshDrafts'
   > &
     Partial<
       Pick<
         InvoicingPageViewProps,
-        'companySettingsState' | 'onDraftSaved' | 'refreshDrafts'
+        | 'companySettingsState'
+        | 'deleteState'
+        | 'onCancelDeleteDraft'
+        | 'onConfirmDeleteDraft'
+        | 'onDraftSaved'
+        | 'onRequestDeleteDraft'
+        | 'pendingDeleteDraftId'
+        | 'refreshDrafts'
       >
     >,
 ): string {
   return renderToStaticMarkup(
     <InvoicingPageView
       companySettingsState={createCompanySettingsState()}
+      deleteState={createDeleteState()}
+      onCancelDeleteDraft={vi.fn()}
+      onConfirmDeleteDraft={vi.fn()}
       onDraftSaved={vi.fn()}
+      onRequestDeleteDraft={vi.fn()}
+      pendingDeleteDraftId={null}
       refreshDrafts={vi.fn()}
       {...props}
     />,
   );
+}
+
+function createDeleteState(
+  overrides: Partial<InvoicingPageViewProps['deleteState']> = {},
+): InvoicingPageViewProps['deleteState'] {
+  return {
+    clearError: vi.fn(),
+    deleteDraft: vi.fn(async () => true),
+    deletingDraftId: null,
+    errorMessage: null,
+    ...overrides,
+  };
 }
 
 function createCompanySettingsState() {

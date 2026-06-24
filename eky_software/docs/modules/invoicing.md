@@ -79,6 +79,11 @@ Ensimmäinen MVP voi sisältää perinteisen laskunkirjoituksen:
 5. tallennetaan laskuluonnos tai hyväksytään lasku heti
 6. luonnos voidaan avata, muokata ja hyväksyä myöhemmin
 
+`draft`-tilainen laskuluonnos voidaan poistaa pysyvästi vahvistuksen jälkeen.
+Poisto tehdään aina Invoicing-application servicen ja yritysrajatun
+repository-portin kautta. Hyväksyttyä tai numeroitua laskua ei poisteta, vaan
+se perutaan tai hyvitetään myöhemmin hallitulla tilasiirtymällä.
+
 Kohde on valinnainen. Work Orders -moduulia ei tarvita tämän polun käyttämiseen.
 
 ### Laskuluonnoksen Automaattitallennus

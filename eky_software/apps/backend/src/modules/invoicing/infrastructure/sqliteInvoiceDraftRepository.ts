@@ -258,6 +258,22 @@ function toInvoiceDraftSummary(
 export class SqliteInvoiceDraftRepository implements InvoiceDraftRepository {
   constructor(private readonly database: DatabaseConnection) {}
 
+  async deleteDraft(
+    companyId: string,
+    invoiceDraftId: string,
+  ): Promise<boolean> {
+    const result = this.database
+      .prepare<[string, string]>(
+        `
+          DELETE FROM invoice_drafts
+          WHERE company_id = ? AND id = ? AND status = 'draft'
+        `,
+      )
+      .run(companyId, invoiceDraftId);
+
+    return result.changes === 1;
+  }
+
   async saveDraft(draft: InvoiceDraft): Promise<InvoiceDraft> {
     const draftRow = toInvoiceDraftRow(draft);
     const lineRows = toInvoiceDraftLineRows(draft);

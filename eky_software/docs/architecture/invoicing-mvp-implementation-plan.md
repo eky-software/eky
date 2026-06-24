@@ -499,6 +499,19 @@ Kaikki listaukset rajataan backendin vahvistamalla `companyId`-arvolla. Valinnai
 
 Ensimmäinen local-MVP järjestää luonnokset arvoilla `updatedAt DESC, id DESC`. Ennen oikeita suuria datamääriä listaukseen lisätään samalla järjestysavaimella cursor/keyset-pagination erillisenä toteutusvaiheena.
 
+### Laskuluonnoksen Poistaminen
+
+Vain `draft`-tilainen laskuluonnos voidaan poistaa pysyvästi. Poisto rajataan
+aina backendin vahvistamalla `companyId`-arvolla ja laskuluonnoksen
+tunnisteella. Puuttuva, toisen yrityksen tai muun kuin `draft`-tilan resurssi
+palauttaa saman geneerisen not-found-virheen.
+
+SQLite-adapteri poistaa `invoice_drafts`-päätason yhdellä parametrisoidulla
+SQL-lauseella. Luonnoksen rivit poistuvat olemassa olevan foreign key
+`ON DELETE CASCADE` -säännön avulla. Hyväksyttyä tai numeroitua laskua ei
+poisteta tällä polulla; se perutaan tai hyvitetään myöhemmin erikseen
+määriteltävällä ja auditoitavalla tilasiirtymällä.
+
 ### Turvallisuus Ja Validointi
 
 Tuleva backend-toteutus noudattaa ainakin seuraavia sääntöjä:

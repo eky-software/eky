@@ -13,6 +13,10 @@ import {
 class FakeInvoiceDraftRepository implements InvoiceDraftRepository {
   savedDraft: InvoiceDraft | undefined;
 
+  async deleteDraft(): Promise<boolean> {
+    return false;
+  }
+
   async saveDraft(draft: InvoiceDraft): Promise<InvoiceDraft> {
     this.savedDraft = draft;
     return draft;

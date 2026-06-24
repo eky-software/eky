@@ -2,6 +2,7 @@ import type { InvoiceDraft } from '../domain/invoiceDraft.js';
 import type { InvoiceDraftSummary } from '../domain/invoiceDraftSummary.js';
 
 export interface InvoiceDraftRepository {
+  deleteDraft(companyId: string, invoiceDraftId: string): Promise<boolean>;
   saveDraft(draft: InvoiceDraft): Promise<InvoiceDraft>;
   updateDraft(draft: InvoiceDraft): Promise<InvoiceDraft | undefined>;
   getDraftById(

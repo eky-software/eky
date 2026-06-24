@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  deleteInvoiceDraft,
+  type DeleteInvoiceDraftInput,
+} from '../application/deleteInvoiceDraft.js';
+import {
   getInvoiceDraft,
   type GetInvoiceDraftInput,
 } from '../application/getInvoiceDraft.js';
@@ -23,6 +27,22 @@ import { createInvoiceDraftRoutes } from './invoiceDraftRoutes.js';
 
 class FakeInvoiceDraftRepository implements InvoiceDraftRepository {
   savedDraft: InvoiceDraft | undefined;
+
+  async deleteDraft(
+    companyId: string,
+    invoiceDraftId: string,
+  ): Promise<boolean> {
+    if (
+      this.savedDraft?.companyId !== companyId ||
+      this.savedDraft.id !== invoiceDraftId ||
+      this.savedDraft.status !== 'draft'
+    ) {
+      return false;
+    }
+
+    this.savedDraft = undefined;
+    return true;
+  }
 
   async saveDraft(draft: InvoiceDraft): Promise<InvoiceDraft> {
     this.savedDraft = draft;
@@ -105,10 +125,16 @@ function createTestApp(customerBelongsToCompany = true) {
     customerBelongsToCompany,
   );
   let getInput: GetInvoiceDraftInput | undefined;
+  let deleteInput: DeleteInvoiceDraftInput | undefined;
   let listInput: ListInvoiceDraftsInput | undefined;
   let saveInput: SaveInvoiceDraftInput | undefined;
   let updateInput: UpdateInvoiceDraftInput | undefined;
   const app = createInvoiceDraftRoutes({
+    async deleteInvoiceDraft(input) {
+      deleteInput = input;
+
+      return deleteInvoiceDraft(input, invoiceDraftRepository);
+    },
     async getInvoiceDraft(input) {
       getInput = input;
 
@@ -142,6 +168,7 @@ function createTestApp(customerBelongsToCompany = true) {
     customerAccessReader,
     invoiceDraftRepository,
     getGetInput: () => getInput,
+    getDeleteInput: () => deleteInput,
     getListInput: () => listInput,
     getSaveInput: () => saveInput,
     getUpdateInput: () => updateInput,
@@ -728,6 +755,58 @@ describe('invoiceDraftRoutes', () => {
     expect(testContext.getUpdateInput()).toMatchObject({
       companyId: 'dev-company',
       invoiceDraftId: createBody.invoiceDraft.id,
+    });
+  });
+
+  it('deletes a draft using the trusted company context', async () => {
+    const testContext = createTestApp();
+    const createResponse = await postJson(
+      testContext.app,
+      createValidRequestBody(),
+    );
+    const createBody = (await createResponse.json()) as {
+      invoiceDraft: InvoiceDraft;
+    };
+
+    const response = await testContext.app.request(
+      `/invoice-drafts/${createBody.invoiceDraft.id}?companyId=other-company`,
+      { method: 'DELETE' },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ deleted: true });
+    expect(testContext.getDeleteInput()).toEqual({
+      companyId: 'dev-company',
+      invoiceDraftId: createBody.invoiceDraft.id,
+    });
+    expect(testContext.invoiceDraftRepository.savedDraft).toBeUndefined();
+  });
+
+  it('returns the same generic not-found response for an unavailable delete', async () => {
+    const testContext = createTestApp();
+
+    const response = await testContext.app.request(
+      '/invoice-drafts/missing-draft',
+      { method: 'DELETE' },
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({
+      error: 'Invoice draft not found.',
+    });
+  });
+
+  it('rejects a delete id that exceeds the accepted length', async () => {
+    const testContext = createTestApp();
+
+    const response = await testContext.app.request(
+      `/invoice-drafts/${'x'.repeat(201)}`,
+      { method: 'DELETE' },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Invoice draft id is invalid.',
     });
   });
 });

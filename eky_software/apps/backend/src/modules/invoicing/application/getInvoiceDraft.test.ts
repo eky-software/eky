@@ -10,6 +10,10 @@ class FakeInvoiceDraftRepository implements InvoiceDraftRepository {
 
   constructor(private readonly invoiceDraft?: InvoiceDraft) {}
 
+  async deleteDraft(): Promise<boolean> {
+    return false;
+  }
+
   async saveDraft(draft: InvoiceDraft): Promise<InvoiceDraft> {
     return draft;
   }

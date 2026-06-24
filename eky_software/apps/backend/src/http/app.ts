@@ -11,6 +11,7 @@ import { listCustomers } from '../modules/customers/application/listCustomers.js
 import { updateCustomer } from '../modules/customers/application/updateCustomer.js';
 import { createCustomersRoutes } from '../modules/customers/http/customersRoutes.js';
 import { SqliteCustomerRepository } from '../modules/customers/infrastructure/sqliteCustomerRepository.js';
+import { deleteInvoiceDraft } from '../modules/invoicing/application/deleteInvoiceDraft.js';
 import { getInvoiceDraft } from '../modules/invoicing/application/getInvoiceDraft.js';
 import { listInvoiceDrafts } from '../modules/invoicing/application/listInvoiceDrafts.js';
 import { saveInvoiceDraft } from '../modules/invoicing/application/saveInvoiceDraft.js';
@@ -60,6 +61,8 @@ export async function createApp(): Promise<Hono> {
   app.route(
     '/',
     createInvoiceDraftRoutes({
+      deleteInvoiceDraft: (input) =>
+        deleteInvoiceDraft(input, invoiceDraftRepository),
       getInvoiceDraft: (input) =>
         getInvoiceDraft(input, invoiceDraftRepository),
       listInvoiceDrafts: (input) =>

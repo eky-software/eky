@@ -151,7 +151,10 @@ Layout-ajatus:
 - `Sidebar` sisältää moduulinavigaation
 - `Sidebar` voidaan jakaa selkeisiin osioihin, kuten Päätoiminnot ja Yritys
 - `Sidebar` voidaan supistaa kapeaksi reunapalkiksi, jotta tietotiheille työpinnoille jää enemmän vaakasuuntaista tilaa
-- sivupalkin avaamiseen ja sulkemiseen käytetään selkeää, saavutettavaa ohjainta; navigaation sisältö ja moduulirajat eivät muutu sivupalkin tilan mukana
+- sivupalkin avaamiseen ja sulkemiseen käytetään desktopissa koko
+  näkymän korkuista, aina saavutettavaa reunakaistaa; mobiilissa ohjain pysyy
+  kompaktina yläkulmapainikkeena
+- navigaation sisältö ja moduulirajat eivät muutu sivupalkin tilan mukana
 - `Main area` sisältää aktiivisen työalueen
 - Asiakkaat on ensimmäinen aktiivinen moduuli
 - Oma yritys kuuluu sivupalkin Yritys-osioon
