@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import { Sidebar } from './Sidebar.js';
 import { TopBar } from './TopBar.js';
+import styles from './AppLayout.module.css';
 import type { AppView } from '../app/appNavigation.js';
 import { uiText } from '../i18n/fi.js';
 
@@ -24,7 +25,9 @@ export function AppLayout({
     : uiText.layout.collapseSidebar;
 
   return (
-    <div className={`app-shell${isSidebarCollapsed ? ' sidebar-is-collapsed' : ''}`}>
+    <div
+      className={`${styles.shell}${isSidebarCollapsed ? ` ${styles.collapsed}` : ''}`}
+    >
       <Sidebar
         activeView={activeView}
         isCollapsed={isSidebarCollapsed}
@@ -33,16 +36,16 @@ export function AppLayout({
       <button
         aria-expanded={!isSidebarCollapsed}
         aria-label={toggleLabel}
-        className="sidebar-toggle"
+        className={styles.toggle}
         onClick={() => setIsSidebarCollapsed((isCollapsed) => !isCollapsed)}
         title={toggleLabel}
         type="button"
       >
         <span aria-hidden="true">{isSidebarCollapsed ? '›' : '‹'}</span>
       </button>
-      <div className="app-workspace">
+      <div className={styles.workspace}>
         <TopBar title={title} />
-        <main className="main-area">{children}</main>
+        <main className={styles.mainArea}>{children}</main>
       </div>
     </div>
   );

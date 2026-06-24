@@ -1,5 +1,6 @@
 import { uiText } from '../i18n/fi.js';
 import type { AppView } from '../app/appNavigation.js';
+import styles from './Sidebar.module.css';
 
 type SidebarNavItem =
   | {
@@ -53,25 +54,25 @@ export function Sidebar({
 }: SidebarProps): React.JSX.Element {
   return (
     <aside
-      className={`sidebar${isCollapsed ? ' sidebar-collapsed' : ''}`}
+      className={`${styles.sidebar}${isCollapsed ? ` ${styles.collapsed}` : ''}`}
       aria-label={uiText.layout.modules}
     >
-      <div className="brand">
-        <span className="brand-mark">E</span>
-        <div className="brand-copy">
+      <div className={styles.brand}>
+        <span className={styles.brandMark}>E</span>
+        <div className={styles.brandCopy}>
           <strong>Eky</strong>
           <span>Paikallinen</span>
         </div>
       </div>
 
-      <nav className="module-nav" aria-hidden={isCollapsed}>
+      <nav className={styles.navigation} aria-hidden={isCollapsed}>
         {navSections.map((section) => (
-          <div className="nav-section" key={section.label}>
-            <p className="nav-section-label">{section.label}</p>
+          <div className={styles.section} key={section.label}>
+            <p className={styles.sectionLabel}>{section.label}</p>
             {section.items.map((module) => (
               <button
                 aria-current={module.id === activeView ? 'page' : undefined}
-                className="nav-item"
+                className={styles.navItem}
                 disabled={module.status !== 'available'}
                 key={module.label}
                 tabIndex={isCollapsed ? -1 : undefined}

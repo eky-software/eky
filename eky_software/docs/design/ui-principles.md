@@ -142,8 +142,16 @@ Kun feature kasvaa, sen sisäinen rakenne jaetaan selkeisiin vastuisiin, kuten
 
 Komponenttien omat tyylit pidetään komponentin vieressä CSS Module -tiedostoissa.
 Globaali `styles.css` sisältää vain sovelluksen yleiset
-perustyylit ja yhteiset rakenteet, ei feature-kohtaisia työpintatyylejä.
-CSS Moduleita ei sijoiteta feature-kansion juureen.
+perustyylit, design tokenit ja aidosti usean näkymän yhteiset UI-primitiivit.
+Se ei sisällä feature- eikä layout-komponenttien omia tyylejä.
+CSS Module sijoitetaan omistavan komponentin viereen. Se saa olla
+feature-kansion juuressa vain silloin, kun myös omistava komponentti on siellä.
+
+Komponentin responsiiviset tyylit ja liikeasetukset kuuluvat samaan CSS
+Moduleen komponentin muiden tyylien kanssa. Featuret eivät importtaa toistensa
+CSS Moduleita, eikä yleisiä `common.css`- tai `utils.css`-tiedostoja luoda.
+Tarkka CSS-omistajuusportti on dokumentissa
+`docs/architecture/web-frontend-structure.md`.
 
 Layout-ajatus:
 
