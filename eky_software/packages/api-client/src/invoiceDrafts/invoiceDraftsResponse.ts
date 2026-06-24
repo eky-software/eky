@@ -19,6 +19,12 @@ export function readInvoiceDraftResponse(responseBody: unknown): InvoiceDraft {
   return parseInvoiceDraft(responseBody.invoiceDraft);
 }
 
+export function readDeleteInvoiceDraftResponse(responseBody: unknown): void {
+  if (!isRecord(responseBody) || responseBody.deleted !== true) {
+    throw invalidInvoiceDraftResponse(responseBody);
+  }
+}
+
 export function readInvoiceDraftListResponse(
   responseBody: unknown,
 ): InvoiceDraftSummary[] {

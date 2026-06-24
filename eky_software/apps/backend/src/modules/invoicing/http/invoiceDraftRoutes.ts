@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 
+import type { DeleteInvoiceDraftInput } from '../application/deleteInvoiceDraft.js';
 import type { GetInvoiceDraftInput } from '../application/getInvoiceDraft.js';
 import { InvoiceDraftNotFoundError } from '../application/invoiceDraftNotFoundError.js';
 import type { ListInvoiceDraftsInput } from '../application/listInvoiceDrafts.js';
@@ -22,6 +23,7 @@ const devCompanyId = 'dev-company';
 const maximumInvoiceDraftBodySizeBytes = 256 * 1024;
 
 interface InvoiceDraftRouteDependencies {
+  deleteInvoiceDraft(input: DeleteInvoiceDraftInput): Promise<void>;
   getInvoiceDraft(input: GetInvoiceDraftInput): Promise<InvoiceDraft>;
   listInvoiceDrafts(
     input: ListInvoiceDraftsInput,
@@ -102,6 +104,27 @@ export function createInvoiceDraftRoutes(
       });
 
       return context.json({ invoiceDraft });
+    } catch (error) {
+      if (error instanceof InvoiceDraftNotFoundError) {
+        return context.json({ error: error.message }, 404);
+      }
+
+      if (error instanceof InvoiceDraftValidationError) {
+        return context.json({ error: error.message }, 400);
+      }
+
+      throw error;
+    }
+  });
+
+  routes.delete('/invoice-drafts/:id', async (context) => {
+    try {
+      await dependencies.deleteInvoiceDraft({
+        companyId: devCompanyId,
+        invoiceDraftId: context.req.param('id'),
+      });
+
+      return context.json({ deleted: true });
     } catch (error) {
       if (error instanceof InvoiceDraftNotFoundError) {
         return context.json({ error: error.message }, 404);

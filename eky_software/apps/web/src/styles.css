@@ -16,6 +16,7 @@
   --radius-md: 8px;
   --sidebar-width: 248px;
   --sidebar-collapsed-width: 72px;
+  --sidebar-toggle-width: 22px;
   color: var(--color-text);
   background: var(--color-bg);
   font-family:
@@ -112,20 +113,21 @@ h2 {
 
 .app-shell {
   display: grid;
-  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  grid-template-columns:
+    var(--sidebar-width) var(--sidebar-toggle-width) minmax(0, 1fr);
   min-height: 100vh;
   background: var(--color-bg);
   transition: grid-template-columns 180ms ease;
 }
 
 .app-shell.sidebar-is-collapsed {
-  grid-template-columns: var(--sidebar-collapsed-width) minmax(0, 1fr);
+  grid-template-columns:
+    var(--sidebar-collapsed-width) var(--sidebar-toggle-width) minmax(0, 1fr);
 }
 
 .sidebar {
   position: relative;
   min-width: 0;
-  border-right: 1px solid var(--color-border);
   padding: 18px;
   background: #0a1728;
   color: #ffffff;
@@ -179,31 +181,35 @@ h2 {
 }
 
 .sidebar-toggle {
-  position: absolute;
-  z-index: 2;
-  top: 94px;
-  right: -17px;
+  position: sticky;
+  z-index: 3;
+  top: 0;
+  align-self: start;
   display: grid;
-  width: 34px;
-  min-height: 48px;
+  width: var(--sidebar-toggle-width);
+  height: 100vh;
+  min-height: 100vh;
   place-items: center;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-md);
+  border: 0;
+  border-right: 1px solid var(--color-border-strong);
+  border-left: 1px solid var(--color-border-strong);
+  border-radius: 0;
   padding: 0;
   color: var(--color-primary-dark);
-  background: var(--color-surface);
-  box-shadow: 0 5px 14px rgba(10, 23, 40, 0.14);
+  background: var(--color-surface-muted);
 }
 
 .sidebar-toggle:hover,
 .sidebar-toggle:focus-visible {
   border-color: var(--color-primary);
   color: var(--color-primary);
-  outline: 3px solid #cfe0ff;
+  background: var(--color-surface-strong);
+  outline: 2px solid #cfe0ff;
+  outline-offset: -2px;
 }
 
 .sidebar-toggle span {
-  font-size: 1.8rem;
+  font-size: 1.45rem;
   font-weight: 500;
   line-height: 1;
   transform: translateY(-1px);
@@ -475,9 +481,15 @@ h2 {
   }
 
   .sidebar-toggle {
+    position: absolute;
     top: 14px;
     right: 14px;
+    width: 34px;
+    height: 40px;
     min-height: 40px;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
     box-shadow: none;
   }
 

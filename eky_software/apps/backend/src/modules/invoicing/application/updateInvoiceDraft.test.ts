@@ -16,6 +16,10 @@ class FakeInvoiceDraftRepository implements InvoiceDraftRepository {
   getCalls: Array<{ companyId: string; invoiceDraftId: string }> = [];
   updatedDraft: InvoiceDraft | undefined;
 
+  async deleteDraft(): Promise<boolean> {
+    return false;
+  }
+
   constructor(
     private readonly storedDraft?: InvoiceDraft,
     private readonly updateSucceeds = true,

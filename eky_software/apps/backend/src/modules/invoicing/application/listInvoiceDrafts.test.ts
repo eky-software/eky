@@ -8,6 +8,10 @@ import { listInvoiceDrafts } from './listInvoiceDrafts.js';
 class FakeInvoiceDraftRepository implements InvoiceDraftRepository {
   listCalls: Array<{ companyId: string; customerId?: string }> = [];
 
+  async deleteDraft(): Promise<boolean> {
+    return false;
+  }
+
   constructor(
     private readonly summaries: InvoiceDraftSummary[] = [],
   ) {}

@@ -1,5 +1,6 @@
 import { requestJson } from '../http.js';
 import {
+  readDeleteInvoiceDraftResponse,
   readInvoiceDraftListResponse,
   readInvoiceDraftResponse,
 } from './invoiceDraftsResponse.js';
@@ -25,6 +26,17 @@ export function createInvoiceDraftsApi(
       );
 
       return readInvoiceDraftResponse(responseBody);
+    },
+
+    async deleteInvoiceDraft(id): Promise<void> {
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        `/invoice-drafts/${encodeURIComponent(id)}`,
+        { method: 'DELETE' },
+      );
+
+      readDeleteInvoiceDraftResponse(responseBody);
     },
 
     async getInvoiceDraft(id): Promise<InvoiceDraft> {

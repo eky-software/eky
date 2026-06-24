@@ -100,6 +100,7 @@ export interface InvoiceDraftListQuery {
 
 export interface InvoiceDraftsApi {
   createInvoiceDraft(input: InvoiceDraftInput): Promise<InvoiceDraft>;
+  deleteInvoiceDraft(id: string): Promise<void>;
   getInvoiceDraft(id: string): Promise<InvoiceDraft>;
   listInvoiceDrafts(
     query?: InvoiceDraftListQuery,

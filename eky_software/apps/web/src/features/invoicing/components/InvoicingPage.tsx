@@ -1,4 +1,4 @@
-import { useReducer } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
 import type { InvoiceDraft } from '@eky/api-client';
 
 import { InvoiceDraftList } from './InvoiceDraftList.js';
@@ -24,13 +24,27 @@ import {
   useInvoiceDraftEditor,
   type InvoiceDraftEditorState,
 } from '../hooks/useInvoiceDraftEditor.js';
+import {
+  deleteInvoiceDraftAndRefresh,
+  useDeleteInvoiceDraft,
+  type DeleteInvoiceDraftState,
+} from '../hooks/useDeleteInvoiceDraft.js';
 import { uiText } from '../../../i18n/fi.js';
 
-export function InvoicingPage(): React.JSX.Element {
+interface InvoicingPageProps {
+  navigationRevision: number;
+}
+
+export function InvoicingPage({
+  navigationRevision,
+}: InvoicingPageProps): React.JSX.Element {
   const draftState = useInvoiceDrafts();
   const customerListState = useInvoiceCustomers();
   const companySettingsState = useInvoiceCompanySettings();
   const draftEditorState = useInvoiceDraftEditor();
+  const deleteState = useDeleteInvoiceDraft();
+  const [pendingDeleteDraftId, setPendingDeleteDraftId] = useState<string | null>(null);
+  const previousNavigationRevision = useRef(navigationRevision);
   const [activeView, dispatch] = useReducer(
     reduceInvoicingPageMode,
     'draftList',
@@ -38,12 +52,39 @@ export function InvoicingPage(): React.JSX.Element {
 
   function handleBackToDrafts(): void {
     draftEditorState.clearDraft();
+    deleteState.clearError();
+    setPendingDeleteDraftId(null);
     dispatch({ type: 'showDraftList' });
   }
 
   function handleOpenDraft(id: string): void {
+    setPendingDeleteDraftId(null);
     dispatch({ type: 'openEditInvoice' });
     void draftEditorState.openDraft(id);
+  }
+
+  function handleRequestDeleteDraft(id: string): void {
+    deleteState.clearError();
+    setPendingDeleteDraftId(id);
+  }
+
+  function handleCancelDeleteDraft(): void {
+    deleteState.clearError();
+    setPendingDeleteDraftId(null);
+  }
+
+  async function handleConfirmDeleteDraft(id: string): Promise<void> {
+    const wasDeleted = await deleteInvoiceDraftAndRefresh(
+      id,
+      deleteState.deleteDraft,
+      draftState.refreshDrafts,
+    );
+
+    if (!wasDeleted) {
+      return;
+    }
+
+    setPendingDeleteDraftId(null);
   }
 
   function handleDraftSaved(savedDraft: InvoiceDraft): void {
@@ -52,16 +93,30 @@ export function InvoicingPage(): React.JSX.Element {
     void draftState.refreshDrafts();
   }
 
+  useEffect(() => {
+    if (previousNavigationRevision.current === navigationRevision) {
+      return;
+    }
+
+    previousNavigationRevision.current = navigationRevision;
+    handleBackToDrafts();
+  }, [navigationRevision]);
+
   return (
     <InvoicingPageView
       {...draftState}
       activeView={activeView}
       customerListState={customerListState}
       companySettingsState={companySettingsState}
+      deleteState={deleteState}
       draftEditorState={draftEditorState}
+      pendingDeleteDraftId={pendingDeleteDraftId}
       onBackToDrafts={handleBackToDrafts}
+      onCancelDeleteDraft={handleCancelDeleteDraft}
+      onConfirmDeleteDraft={(id) => void handleConfirmDeleteDraft(id)}
       onDraftSaved={handleDraftSaved}
       onOpenDraft={handleOpenDraft}
+      onRequestDeleteDraft={handleRequestDeleteDraft}
       onNewInvoice={() => dispatch({ type: 'openNewInvoice' })}
     />
   );
@@ -71,10 +126,15 @@ interface InvoicingPageViewProps extends InvoiceDraftListState {
   activeView: InvoicingPageMode;
   customerListState: InvoiceCustomerListState;
   companySettingsState: InvoiceCompanySettingsState;
+  deleteState: DeleteInvoiceDraftState;
   draftEditorState: InvoiceDraftEditorState;
+  pendingDeleteDraftId: string | null;
   onBackToDrafts(): void;
+  onCancelDeleteDraft(): void;
+  onConfirmDeleteDraft(id: string): void;
   onDraftSaved(savedDraft: InvoiceDraft): void;
   onOpenDraft(id: string): void;
+  onRequestDeleteDraft(id: string): void;
   onNewInvoice(): void;
 }
 
@@ -82,13 +142,18 @@ export function InvoicingPageView({
   activeView,
   customerListState,
   companySettingsState,
+  deleteState,
   draftEditorState,
   drafts,
   errorMessage,
   isLoading,
+  pendingDeleteDraftId,
   onBackToDrafts,
+  onCancelDeleteDraft,
+  onConfirmDeleteDraft,
   onDraftSaved,
   onOpenDraft,
+  onRequestDeleteDraft,
   onNewInvoice,
 }: InvoicingPageViewProps): React.JSX.Element {
   return (
@@ -134,7 +199,13 @@ export function InvoicingPageView({
             errorMessage={errorMessage}
             isCustomerLoading={customerListState.isLoading}
             isLoading={isLoading}
+            deleteErrorMessage={deleteState.errorMessage}
+            deletingDraftId={deleteState.deletingDraftId}
+            pendingDeleteDraftId={pendingDeleteDraftId}
+            onCancelDelete={onCancelDeleteDraft}
+            onConfirmDelete={onConfirmDeleteDraft}
             onOpenDraft={onOpenDraft}
+            onRequestDelete={onRequestDeleteDraft}
           />
         </section>
       ) : activeView === 'newInvoice' ? (

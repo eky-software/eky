@@ -43,6 +43,35 @@ describe('invoice drafts api client', () => {
     ]);
   });
 
+  it('deletes a draft through DELETE /invoice-drafts/:id', async () => {
+    const requests = createRequestLog();
+    const client = createTestClient(requests, { deleted: true });
+
+    await expect(
+      client.deleteInvoiceDraft('draft/1'),
+    ).resolves.toBeUndefined();
+    expect(requests).toEqual([
+      {
+        input: '/invoice-drafts/draft%2F1',
+        init: {
+          headers: {
+            Accept: 'application/json',
+          },
+          method: 'DELETE',
+        },
+      },
+    ]);
+  });
+
+  it('rejects an invalid delete response shape', async () => {
+    const requests = createRequestLog();
+    const client = createTestClient(requests, { deleted: false });
+
+    await expect(
+      client.deleteInvoiceDraft('draft-1'),
+    ).rejects.toBeInstanceOf(EkyApiError);
+  });
+
   it('lists summaries through GET /invoice-drafts', async () => {
     const requests = createRequestLog();
     const invoiceDrafts = [createTestInvoiceDraftSummary()];

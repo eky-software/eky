@@ -1,5 +1,5 @@
 import { uiText } from '../i18n/fi.js';
-import type { AppView } from '../app/App.js';
+import type { AppView } from '../app/appNavigation.js';
 
 type SidebarNavItem =
   | {
@@ -43,20 +43,14 @@ const navSections: SidebarNavSection[] = [
 interface SidebarProps {
   activeView: AppView;
   isCollapsed: boolean;
-  onToggle(): void;
   onViewChange(view: AppView): void;
 }
 
 export function Sidebar({
   activeView,
   isCollapsed,
-  onToggle,
   onViewChange,
 }: SidebarProps): React.JSX.Element {
-  const toggleLabel = isCollapsed
-    ? uiText.layout.expandSidebar
-    : uiText.layout.collapseSidebar;
-
   return (
     <aside
       className={`sidebar${isCollapsed ? ' sidebar-collapsed' : ''}`}
@@ -69,17 +63,6 @@ export function Sidebar({
           <span>Paikallinen</span>
         </div>
       </div>
-
-      <button
-        aria-expanded={!isCollapsed}
-        aria-label={toggleLabel}
-        className="sidebar-toggle"
-        onClick={onToggle}
-        title={toggleLabel}
-        type="button"
-      >
-        <span aria-hidden="true">{isCollapsed ? '›' : '‹'}</span>
-      </button>
 
       <nav className="module-nav" aria-hidden={isCollapsed}>
         {navSections.map((section) => (

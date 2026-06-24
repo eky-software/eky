@@ -154,6 +154,44 @@ describe('SqliteInvoiceDraftRepository', () => {
     expect(lineCount?.count).toBe(0);
   });
 
+  it('deletes a company draft and its lines through the foreign key cascade', async () => {
+    const repository = new SqliteInvoiceDraftRepository(database);
+
+    await repository.saveDraft(createDraft());
+
+    await expect(
+      repository.deleteDraft('dev-company', 'draft-1'),
+    ).resolves.toBe(true);
+    await expect(
+      repository.getDraftById('dev-company', 'draft-1'),
+    ).resolves.toBeUndefined();
+
+    const lineCount = database
+      .prepare<[], { count: number }>(
+        'SELECT COUNT(*) AS count FROM invoice_draft_lines',
+      )
+      .get();
+
+    expect(lineCount?.count).toBe(0);
+  });
+
+  it('does not delete a draft outside the company scope', async () => {
+    const draft = createDraft();
+    const repository = new SqliteInvoiceDraftRepository(database);
+
+    await repository.saveDraft(draft);
+
+    await expect(
+      repository.deleteDraft('other-company', 'draft-1'),
+    ).resolves.toBe(false);
+    await expect(
+      repository.deleteDraft('dev-company', "draft-1' OR 1=1 --"),
+    ).resolves.toBe(false);
+    await expect(
+      repository.getDraftById('dev-company', 'draft-1'),
+    ).resolves.toEqual(draft);
+  });
+
   it('updates a company draft and replaces its lines in one transaction', async () => {
     const originalDraft = createDraft();
     const updatedLines = [

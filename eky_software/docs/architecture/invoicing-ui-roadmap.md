@@ -30,12 +30,17 @@ Eky säilyttää oman modernin, rauhallisen ja sinivalkoisen työohjelmalinjansa
 Tila: laskuluonnoslista näyttää luonnoksen aiheen tai fallbackin sekä asiakkaan
 asiakasnumeron ja nimen, kun asiakas löytyy ladatusta asiakaslistasta. Teknisiä
 draft- tai customer-id-arvoja ei käytetä pääasiallisena käyttöliittymätekstinä.
+Luonnoksen voi poistaa rivikohtaisella toiminnolla vasta erillisen
+vahvistuksen jälkeen. Aktiivisen Laskutus-valikon uusi painallus palauttaa
+laskutustyötilan luonnoslistaan; lomakkeen Takaisin luonnoksiin -toiminto
+säilyy rinnalla.
 
 - aktivoi Laskutus sivupalkissa
 - lisää laskutusnäkymän työpintarunko
 - lataa luonnosyhteenvedot `listInvoiceDrafts`-kutsulla
 - näytä loading-, empty- ja turvallinen error-tila
 - näytä luonnokset tiiviissä taulukossa
+- poista vain `draft`-tilainen luonnos turvallisen vahvistuksen kautta
 - näytä “Uusi lasku” seuraavan vaiheen toimintona, mutta älä avaa lomaketta
 
 Lista näyttää vain API-clientin yhteenvetotiedot. Se ei laske summia eikä hae
