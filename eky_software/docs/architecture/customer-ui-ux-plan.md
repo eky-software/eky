@@ -49,8 +49,8 @@ Asiakaskortisto
   -> Uusi asiakas -painike
   -> iso asiakaslista
   -> sivupaneeli tai erillinen lomakealue uuden asiakkaan lisäämiseen
-  -> asiakasrivi avaa saman paneelin asiakkaan muokkaamiseen
-  -> myöhemmin tarkka asiakaskortti / details-näkymä
+  -> nykyisessä välivaiheessa asiakasrivi voi avata saman paneelin muokkaamiseen
+  -> lopullisessa mallissa asiakasrivi avaa varsinaisen asiakaskortin koko työalueelle
 ```
 
 Nykyinen pitkä lomake ei saa olla aina näkymän pääsisältö.
@@ -64,7 +64,7 @@ Asiakkaat-päänäkymän ensimmäinen rakenne:
 - ensisijainen toiminto: Uusi asiakas
 - pääsisältö: asiakaslista isona työalueena
 - lomake näkyy vain, kun käyttäjä aloittaa uuden asiakkaan lisäämisen
-- olemassa oleva asiakas avataan muokattavaksi asiakaslistasta
+- olemassa oleva asiakas avataan lopullisessa mallissa asiakaskortin lukutilaan
 
 Tämä vastaa Eky UI -periaatetta: ohjelma on työpöytä, ei lomakesivu tai landing page.
 
@@ -93,7 +93,9 @@ Y-tunnus, koko osoite, kommentti ja muut laajemmat tiedot kuuluvat myöhemmin:
 
 Uusi asiakas -lomake avataan vasta, kun käyttäjä painaa Uusi asiakas -toimintoa.
 
-Samaa paneelirakennetta voidaan käyttää olemassa olevan asiakkaan muokkaamiseen.
+Nykyisessä välivaiheessa samaa paneelirakennetta voidaan käyttää olemassa olevan
+asiakkaan muokkaamiseen. Tämä ei ole lopullinen olemassa olevan asiakkaan
+työskentelymalli.
 
 Ensimmäinen toteutus voi olla:
 
@@ -126,6 +128,27 @@ Ensimmäinen malli:
 - muut asiakastyypit eivät käytä isännöitsijätoimiston viitettä
 
 Ensimmäisessä UX-korjauksessa lomakkeen pitää tuntua ohjatulta työtoiminnolta, ei tietokantataulun suoralta kenttälistalta.
+
+## Lopullinen Asiakaskortti
+
+Asiakaslistasta avataan tulevaisuudessa yksi varsinainen asiakaskortti koko
+työalueelle. Lopullisessa mallissa olemassa olevan asiakkaan ylläpitoa varten ei
+pidetä erillistä pientä sivupaneelin pikamuokkausikkunaa.
+
+Asiakaskortin työskentelymalli:
+
+1. Asiakasrivi avaa asiakaskortin lukutilaan.
+2. Lukutila näyttää asiakkaan tiedot ilman muokattavia kenttiä.
+3. `Muokkaa`-toiminto avaa samat tiedot muokattaviksi samalla työalueella.
+4. `Tallenna` tallentaa muutokset customers-moduulin hallitun kirjoituspolun
+   kautta ja palauttaa asiakaskortin lukutilaan.
+5. `Peruuta` hylkää tallentamattomat muutokset ja palauttaa asiakaskortin
+   lukutilaan.
+
+Asiakaskorttiin voidaan myöhemmin tuoda koosteina asiakkaan laskut, kohteet,
+työmääräykset, tunnit, materiaalit ja historia. Tarkempi koontimalli ja
+moduulien omistajuus on kuvattu dokumentissa
+`docs/architecture/customer-overview-plan.md`.
 
 ## Asiakasnumero
 
