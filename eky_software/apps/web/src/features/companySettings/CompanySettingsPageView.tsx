@@ -115,15 +115,15 @@ export function CompanySettingsPage(): React.JSX.Element {
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof EkyApiError) {
-    return getFinnishApiErrorMessage(error.message);
+    const translatedMessage = getFinnishApiErrorMessage(error.message);
+
+    return translatedMessage === error.message
+      ? uiText.companySettings.fallbackError
+      : translatedMessage;
   }
 
   if (error instanceof Error && error.message === 'Invalid hourly rate.') {
     return uiText.companySettings.invalidHourlyRate;
-  }
-
-  if (error instanceof Error) {
-    return error.message;
   }
 
   return uiText.companySettings.fallbackError;

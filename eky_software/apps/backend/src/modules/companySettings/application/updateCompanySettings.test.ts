@@ -29,6 +29,7 @@ describe('updateCompanySettings', () => {
         companyId: 'dev-company',
         companyName: '  Example Builder Oy  ',
         defaultHourlyRateCents: 6500,
+        hourlyRateShortcut: '  työ  ',
         email: '  info@example.fi  ',
         phone: '  040 123 4567  ',
         postalCode: '  00100  ',
@@ -48,6 +49,7 @@ describe('updateCompanySettings', () => {
     expect(settings.email).toBe('info@example.fi');
     expect(settings.phone).toBe('040 123 4567');
     expect(settings.defaultHourlyRateCents).toBe(6500);
+    expect(settings.hourlyRateShortcut).toBe('työ');
     expect(settings.createdAt).toEqual(expect.any(String));
     expect(settings.updatedAt).toEqual(expect.any(String));
     expect(settings.createdAt).toBe(settings.updatedAt);
@@ -61,6 +63,7 @@ describe('updateCompanySettings', () => {
         companyId: 'dev-company',
         companyName: '',
         defaultHourlyRateCents: null,
+        hourlyRateShortcut: '',
         email: '',
         phone: '',
         postalCode: '',

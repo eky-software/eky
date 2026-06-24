@@ -9,6 +9,7 @@ export interface CompanySettings {
   email: string;
   phone: string;
   defaultHourlyRateCents: number | null;
+  hourlyRateShortcut: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -22,6 +23,7 @@ export interface UpdateCompanySettingsRequest {
   email: string;
   phone: string;
   defaultHourlyRateCents: number | null;
+  hourlyRateShortcut: string;
 }
 
 export interface CompanySettingsApi {

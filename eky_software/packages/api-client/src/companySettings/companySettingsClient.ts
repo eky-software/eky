@@ -63,6 +63,7 @@ function parseCompanySettings(value: unknown): CompanySettings {
     typeof value.email !== 'string' ||
     typeof value.phone !== 'string' ||
     !isNullableNumber(value.defaultHourlyRateCents) ||
+    typeof value.hourlyRateShortcut !== 'string' ||
     typeof value.createdAt !== 'string' ||
     typeof value.updatedAt !== 'string'
   ) {
@@ -82,6 +83,7 @@ function parseCompanySettings(value: unknown): CompanySettings {
     email: value.email,
     phone: value.phone,
     defaultHourlyRateCents: value.defaultHourlyRateCents,
+    hourlyRateShortcut: value.hourlyRateShortcut,
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,
   };

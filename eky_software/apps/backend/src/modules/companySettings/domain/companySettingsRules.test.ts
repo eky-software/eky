@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CompanySettingsValidationError,
   normalizeCompanySettingsField,
+  normalizeHourlyRateShortcut,
   parseDefaultHourlyRateCents,
 } from './companySettingsRules.js';
 
@@ -17,6 +18,25 @@ describe('normalizeCompanySettingsField', () => {
 
   it('rejects values longer than 200 characters', () => {
     expect(() => normalizeCompanySettingsField('A'.repeat(201), 'Company name')).toThrow(
+      CompanySettingsValidationError,
+    );
+  });
+});
+
+describe('normalizeHourlyRateShortcut', () => {
+  it('trims the shortcut and allows an empty value', () => {
+    expect(normalizeHourlyRateShortcut('  työ  ')).toBe('työ');
+    expect(normalizeHourlyRateShortcut('   ')).toBe('');
+  });
+
+  it('rejects a shortcut longer than 50 characters', () => {
+    expect(() => normalizeHourlyRateShortcut('A'.repeat(51))).toThrow(
+      CompanySettingsValidationError,
+    );
+  });
+
+  it('rejects a multiline shortcut', () => {
+    expect(() => normalizeHourlyRateShortcut('työ\nlaskutus')).toThrow(
       CompanySettingsValidationError,
     );
   });

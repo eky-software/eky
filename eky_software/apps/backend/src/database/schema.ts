@@ -29,6 +29,7 @@ export interface CompanySettingsTable {
   email: string;
   phone: string;
   default_hourly_rate_cents: number | null;
+  hourly_rate_shortcut: string;
   created_at: string;
   updated_at: string;
 }

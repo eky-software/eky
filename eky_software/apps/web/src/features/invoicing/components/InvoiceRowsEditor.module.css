@@ -17,6 +17,20 @@
   padding-inline: 18px;
 }
 
+.shortcutHelp,
+.shortcutError {
+  margin-top: 4px;
+  font-size: 0.84rem;
+}
+
+.sectionHeader .shortcutHelp {
+  color: var(--color-text-muted);
+}
+
+.sectionHeader .shortcutError {
+  color: var(--color-danger);
+}
+
 .sectionHeader h3 {
   margin: 0;
   font-size: 0.95rem;

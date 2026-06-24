@@ -69,14 +69,18 @@ myöhemmin rajattuna vaiheena.
 
 ## Vaihe 4: asiakkaan valinta ja oletusarvot
 
-Tila: asiakasvalinnan perusrakenne toteutettu. Asiakastyypin ja hinnoittelun
-oletusarvot toteutetaan myöhemmin tämän vaiheen jatkona. Valitun asiakkaan
-asiakaskortin tiedot näytetään laskulomakkeella tiiviinä koosteena ilman
-uutta API-kutsua.
+Tila: asiakasvalinta ja tuntihinnan pikavalinta on toteutettu. Valitun
+asiakkaan asiakaskortin tiedot näytetään laskulomakkeella tiiviinä koosteena.
+Käyttäjän Company Settingsiin määrittämä nimike voi ehdottaa riville kerran
+asiakaskohtaisen tuntihinnan tai sen puuttuessa oman yrityksen
+oletustuntihinnan. Käsin muokattua tai tallennetusta luonnoksesta ladattua
+hintaa ei ylikirjoiteta.
 
 - valitse asiakas hallitun API-sopimuksen kautta
 - ehdota asiakkaan tyypin mukaista `priceInputMode`-arvoa
 - ehdota oman yrityksen ja asiakkaan hinnoitteluasetuksia
+- pidä automaattinen hinta vain muokattavana UI-oletuksena; laskuriville
+  tallennetaan eksplisiittinen yksikköhinta
 - älä kopioi Customers- tai Company Settings -moduulien omistamaa logiikkaa
   Invoicing-UI:hin
 

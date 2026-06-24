@@ -14,6 +14,8 @@ describe('InvoiceRowsEditor', () => {
     const html = renderEditor(createInitialInvoiceRows());
 
     expect(html).toContain(uiText.invoicing.addRow);
+    expect(html).toContain('“työ”');
+    expect(html).toContain(uiText.invoicing.hourlyRateShortcutHelpSuffix);
     expect(html).toContain(uiText.invoicing.toggleRowDiscount);
     expect(html).not.toContain(uiText.invoicing.discountPercentage);
     expect(html).not.toContain(uiText.invoicing.discountFixed);
@@ -72,6 +74,8 @@ describe('InvoiceRowsEditor', () => {
             unitPrice: uiText.invoicing.validationUnitPriceInvalid,
           },
         }}
+        hourlyRateShortcut="työ"
+        hourlyRateShortcutErrorMessage={null}
         rows={createInitialInvoiceRows()}
         onAdd={vi.fn()}
         onChange={vi.fn()}
@@ -86,6 +90,26 @@ describe('InvoiceRowsEditor', () => {
     expect(html).not.toContain('stack');
     expect(html).not.toContain('responseBody');
   });
+
+  it('renders a safe company settings load error without technical details', () => {
+    const html = renderToStaticMarkup(
+      <InvoiceRowsEditor
+        errorsByRowId={undefined}
+        hourlyRateShortcut=""
+        hourlyRateShortcutErrorMessage={
+          uiText.invoicing.companySettingsLoadError
+        }
+        rows={createInitialInvoiceRows()}
+        onAdd={vi.fn()}
+        onChange={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain(uiText.invoicing.companySettingsLoadError);
+    expect(html).not.toContain('responseBody');
+    expect(html).not.toContain('stack');
+  });
 });
 
 function renderEditor(
@@ -94,6 +118,8 @@ function renderEditor(
   return renderToStaticMarkup(
     <InvoiceRowsEditor
       errorsByRowId={undefined}
+      hourlyRateShortcut="työ"
+      hourlyRateShortcutErrorMessage={null}
       rows={rows}
       onAdd={vi.fn()}
       onChange={vi.fn()}

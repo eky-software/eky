@@ -6,7 +6,7 @@ Tämä ei ole vielä koodimuutos. Tavoite on rajata ensimmäinen toteutettava py
 
 ## MVP-Tavoite
 
-Ensimmäinen Company Settings MVP mahdollistaa yhden Oma yritys -asetuskokonaisuuden per `companyId`.
+Nykyinen Company Settings MVP mahdollistaa yhden Oma yritys -asetuskokonaisuuden per `companyId`.
 
 Toteutus sisältää:
 
@@ -15,6 +15,7 @@ Toteutus sisältää:
 - oman yrityksen osoitteen
 - oman yrityksen Y-tunnuksen
 - oletustuntihinnan `defaultHourlyRateCents`
+- tuntityön pikavalinnan `hourlyRateShortcut`
 - backend-reitit:
   - `GET /company-settings`
   - `PUT /company-settings`
@@ -25,6 +26,7 @@ Toteutus sisältää:
   - `Oma yritys`
   - perustiedot
   - oletustuntihinta
+  - tuntityön pikavalinta
 
 Ensimmäinen toteutus todistaa saman arkkitehtuurisen ketjun kuin customer-slice:
 
@@ -42,9 +44,9 @@ React UI
 
 Tämä osio kuvaa Company Settings -moduulin ensimmäisen toteutusvaiheen rajauksen ja sitä seuraavan customers-moduulin tuntihintalaajennuksen.
 
-Ensimmäisessä Company Settings -vaiheessa asiakkaan `hourlyRateOverrideCents` ei kuulu muutokseen.
+Alkuperäisessä Company Settings -vaiheessa asiakkaan `hourlyRateOverrideCents` ei kuulunut muutokseen.
 
-Company Settings -vaiheessa toteutetaan vain:
+Alkuperäisessä Company Settings -vaiheessa toteutettiin:
 
 - Company Settings
 - oman yrityksen perustiedot
@@ -82,6 +84,7 @@ Alustavat kentät:
 - `email`
 - `phone`
 - `default_hourly_rate_cents`
+- `hourly_rate_shortcut`
 - `created_at`
 - `updated_at`
 
@@ -113,6 +116,19 @@ Esimerkki:
 ```text
 65,00 €/h -> 6500
 ```
+
+### Hourly Rate Shortcut -Jatkolaajennus
+
+Company Settings -pystypolkua on laajennettu kentällä
+`hourlyRateShortcut: string`, joka tallennetaan SQLiteen kenttään
+`hourly_rate_shortcut`.
+
+Kenttä on valinnainen. Tyhjä arvo poistaa pikavalinnan käytöstä. Backend
+trimmaa arvon, sallii enintään 50 merkkiä ja hylkää rivinvaihdot.
+
+Laskutus-UI käyttää arvoa vain kertaluonteiseen yksikköhinnan ehdottamiseen.
+Se ei tee pikasanasta backendin laskentasääntöä eikä siirrä asiakkaan
+tuntihintaohituksen omistajuutta Company Settings -moduulille.
 
 Tällä vältetään epäselvä floating point -rahankäsittely ja valmistellaan myöhempää laskutuksen snapshot-mallia.
 

@@ -15,6 +15,7 @@ export function toNewInvoiceFormStateFromDraft(
       discountType: getDiscountType(line.discount),
       discountValue: formatDiscountValue(line.discount),
       id: `invoice-row-${index + 1}`,
+      hourlyRateAutofillState: 'blocked',
       quantity: formatScaledInput(line.quantityHundredths),
       unit: line.unit,
       unitPrice: formatScaledInput(line.unitPriceCents),

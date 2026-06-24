@@ -178,6 +178,16 @@ Yritysasiakkaan uuden laskun oletushinnat syötetään verottomina ja yksityisas
 
 Classic-laskutusnäkymässä käyttäjä muokkaa vain aktiivisen syöttötavan mukaista hintaa. Toinen hinta voidaan näyttää laskettuna esikatseluna, mutta molempia ei muokata samanaikaisesti MVP:ssä.
 
+Company Settingsin `hourlyRateShortcut` voi ehdottaa laskuriville tuntihintaa,
+kun käyttäjä kirjoittaa pikavalinnan nimikkeeksi. Ehdotuksessa käytetään ensin
+asiakkaan `hourlyRateOverrideCents`-arvoa ja sen puuttuessa oman yrityksen
+`defaultHourlyRateCents`-arvoa.
+
+Ehdotus tehdään lomakeriville enintään kerran. Se ei saa ylikirjoittaa käsin
+muutettua tai tallennetusta luonnoksesta ladattua yksikköhintaa. Tämä on
+web-UI:n käyttömukavuustoiminto, ei Invoicing-domainin piilotettu laskentasääntö.
+Backend vastaanottaa ja validoi aina eksplisiittisen `unitPriceCents`-arvon.
+
 Laskutuksen pitää myöhemmin tukea hallittavia ALV-kantoja sekä prosentti- ja euromääräisiä alennuksia. Ensimmäinen suositeltu alennusmalli on rivikohtainen alennus, mutta arkkitehtuuri jättää tilaa myöhemmälle laskukohtaiselle alennukselle.
 
 Ensimmäisen domain-koodivaiheen testattavat ALV-kannat ovat:

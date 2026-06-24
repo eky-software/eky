@@ -44,6 +44,7 @@ describe('getCompanySettings', () => {
       email: '',
       phone: '',
       defaultHourlyRateCents: null,
+      hourlyRateShortcut: '',
       createdAt: '',
       updatedAt: '',
     });
@@ -62,6 +63,7 @@ function createTestCompanySettings(): CompanySettings {
     email: 'info@example.fi',
     phone: '040 123 4567',
     defaultHourlyRateCents: 6500,
+    hourlyRateShortcut: 'työ',
     createdAt: '2026-05-21T00:00:00.000Z',
     updatedAt: '2026-05-21T00:00:00.000Z',
   };

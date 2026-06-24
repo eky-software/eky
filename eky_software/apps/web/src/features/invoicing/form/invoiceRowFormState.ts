@@ -1,6 +1,14 @@
 import type { InvoiceLineDiscount, InvoiceUnit } from '@eky/api-client';
 
+import { centsToEuroInput } from '../../../shared/money/hourlyRateInput.js';
+
 export type InvoiceRowDiscountType = InvoiceLineDiscount['type'];
+export type HourlyRateAutofillState = 'available' | 'applied' | 'blocked';
+
+export interface HourlyRateAutofillConfig {
+  hourlyRateCents: number | null;
+  shortcut: string;
+}
 
 export interface InvoiceRowForm {
   id: string;
@@ -11,9 +19,13 @@ export interface InvoiceRowForm {
   vatRateBasisPoints: number;
   discountType: InvoiceRowDiscountType;
   discountValue: string;
+  hourlyRateAutofillState: HourlyRateAutofillState;
 }
 
-export type InvoiceRowFormField = Exclude<keyof InvoiceRowForm, 'id'>;
+export type InvoiceRowFormField = Exclude<
+  keyof InvoiceRowForm,
+  'hourlyRateAutofillState' | 'id'
+>;
 
 export function createInitialInvoiceRows(): InvoiceRowForm[] {
   return [createInvoiceRowForm('invoice-row-1')];
@@ -45,14 +57,56 @@ export function updateInvoiceRow<
   fieldName: FieldName,
   value: InvoiceRowForm[FieldName],
 ): InvoiceRowForm[] {
-  return rows.map((row) =>
-    row.id === rowId
+  return rows.map((row) => {
+    if (row.id !== rowId) {
+      return row;
+    }
+
+    const updatedRow = {
+      ...row,
+      [fieldName]: value,
+    };
+
+    return fieldName === 'unitPrice'
       ? {
-          ...row,
-          [fieldName]: value,
+          ...updatedRow,
+          hourlyRateAutofillState: 'blocked' as const,
         }
-      : row,
-  );
+      : updatedRow;
+  });
+}
+
+export function updateInvoiceRowDescription(
+  rows: InvoiceRowForm[],
+  rowId: string,
+  description: string,
+  autofillConfig: HourlyRateAutofillConfig,
+): InvoiceRowForm[] {
+  return rows.map((row) => {
+    if (row.id !== rowId) {
+      return row;
+    }
+
+    const updatedRow = {
+      ...row,
+      description,
+    };
+
+    if (
+      row.hourlyRateAutofillState !== 'available' ||
+      autofillConfig.hourlyRateCents === null ||
+      !matchesHourlyRateShortcut(description, autofillConfig.shortcut)
+    ) {
+      return updatedRow;
+    }
+
+    return {
+      ...updatedRow,
+      hourlyRateAutofillState: 'applied',
+      unit: 'h',
+      unitPrice: centsToEuroInput(autofillConfig.hourlyRateCents),
+    };
+  });
 }
 
 function createInvoiceRowForm(id: string): InvoiceRowForm {
@@ -65,7 +119,20 @@ function createInvoiceRowForm(id: string): InvoiceRowForm {
     vatRateBasisPoints: 2550,
     discountType: 'none',
     discountValue: '',
+    hourlyRateAutofillState: 'available',
   };
+}
+
+function matchesHourlyRateShortcut(
+  description: string,
+  shortcut: string,
+): boolean {
+  const normalizedShortcut = shortcut.trim().toLocaleLowerCase('fi');
+
+  return (
+    normalizedShortcut !== '' &&
+    description.trim().toLocaleLowerCase('fi') === normalizedShortcut
+  );
 }
 
 function getNextRowNumber(rows: InvoiceRowForm[]): number {

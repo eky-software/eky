@@ -27,6 +27,7 @@ Company Settings omistaa:
 - oman yrityksen yhteystiedot
 - oman yrityksen pääosoitteen
 - oletustuntihinnan
+- tuntityön pikavalinnan
 - oman yrityksen yleiset oletukset, jotka eivät kuulu toisen moduulin liiketoimintasäännöiksi
 
 Laajempi käyttäjälle näkyvä Asetukset-osio voi sisältää usean moduulin näkymiä.
@@ -66,6 +67,7 @@ Ensimmäinen Company Settings MVP voi sisältää:
 - `email`
 - `phone`
 - `defaultHourlyRateCents`
+- `hourlyRateShortcut`
 - `createdAt`
 - `updatedAt`
 
@@ -78,6 +80,8 @@ Kenttien merkitys:
 - `streetAddress`, `postalCode` ja `city` kuvaavat oman yrityksen pääosoitetta.
 - `email` ja `phone` ovat oman yrityksen ensisijaiset yhteystiedot.
 - `defaultHourlyRateCents` on oman yrityksen oletustuntihinta sentteinä.
+- `hourlyRateShortcut` on käyttäjän määrittämä laskurivin nimike, joka voi
+  ehdottaa tuntihinnan laskutus-UI:ssa.
 
 ## Oletustuntihinta
 
@@ -110,6 +114,33 @@ Oletustuntihintaa voidaan käyttää myöhemmin esimerkiksi:
 - laskurivien muodostuksessa
 
 Lopullinen hinnan käyttö päätetään kuitenkin laskutus-, työmääräys- ja työkirjausmoduulien yhteydessä.
+
+## Tuntityön Pikavalinta
+
+`hourlyRateShortcut` on valinnainen, enintään 50 merkin mittainen yhden rivin
+teksti, esimerkiksi `työ` tai `laskutus`.
+
+Kun käyttäjä kirjoittaa uuden laskurivin nimikkeeksi täsmälleen tämän arvon,
+laskutus-UI saa ehdottaa riville tuntiyksikköä ja voimassa olevaa tuntihintaa.
+Vertailu tehdään trimmattuna ja kirjainkoosta riippumatta.
+Asiakas pitää valita ennen pikavalinnan kirjoittamista, jotta mahdollinen
+asiakaskohtainen tuntihinta voidaan huomioida oikein.
+
+Hintalähde ratkaistaan seuraavassa järjestyksessä:
+
+```text
+customer.hourlyRateOverrideCents
+  ?? companySettings.defaultHourlyRateCents
+```
+
+Automaattitäyttö tapahtuu yhdelle lomakeriville enintään kerran. Jos käyttäjä
+on syöttänyt tai muuttanut yksikköhintaa käsin, pikavalinta ei saa ylikirjoittaa
+sitä. Tallennetusta luonnoksesta avattua hintaa ei myöskään täytetä uudelleen.
+
+Pikavalinta on käyttökokemuksen oletus, ei laskennan domain-sääntö. Invoicing
+tallentaa laskuriville käyttäjän hyväksymän eksplisiittisen yksikköhinnan, ja
+backend validoi sekä laskee rivin normaalisti. Tyhjä `hourlyRateShortcut`
+poistaa toiminnon käytöstä.
 
 ## Asiakaskohtainen Tuntihinta
 
@@ -150,6 +181,7 @@ Company Settings omistaa:
 - oman yrityksen tiedot
 - oletustuntihinnan
 - oman yrityksen yleiset oletukset
+- tuntityön pikavalinnan
 
 Customers omistaa:
 
@@ -190,6 +222,7 @@ Ensimmäinen näkymä voi sisältää:
 - oman yrityksen yhteystiedot
 - oman yrityksen osoitteen
 - oletustuntihinnan
+- tuntityön pikavalinnan
 
 Myöhemmin sivupalkissa tai erillisessä Asetukset-kokonaisuudessa voidaan näyttää myös laskutusasetukset. Tällöin Oma yritys ja Laskutusasetukset ovat erilliset näkymät ja säilyttävät omat moduulirajansa.
 
@@ -201,7 +234,10 @@ Asiakaskortin tuntihintakentän ohjeteksti voi olla:
 Jos kenttä jätetään tyhjäksi, käytetään oman yrityksen oletustuntihintaa.
 ```
 
-Käyttöliittymä saa auttaa käyttäjää ymmärtämään, mistä tuntihinta tulee, mutta backend ja myöhemmin laskutuslogiikka tekevät lopullisen hinnan valinnan.
+Käyttöliittymä saa ehdottaa tuntihintaa ja auttaa käyttäjää ymmärtämään,
+mistä ehdotus tulee. Käyttäjän hyväksymä yksikköhinta välitetään laskurivillä
+eksplisiittisesti. Backend validoi syötteen ja laskee laskun auktoritatiiviset summat;
+se ei päättele piilossa eri hintaa laskuriville.
 
 ## Turvallisuus
 

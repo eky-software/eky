@@ -10,6 +10,7 @@ export interface CompanySettingsForm {
   city: string;
   companyName: string;
   defaultHourlyRateEuro: string;
+  hourlyRateShortcut: string;
   email: string;
   phone: string;
   postalCode: string;
@@ -21,6 +22,7 @@ export const initialCompanySettingsForm: CompanySettingsForm = {
   city: '',
   companyName: '',
   defaultHourlyRateEuro: '',
+  hourlyRateShortcut: '',
   email: '',
   phone: '',
   postalCode: '',
@@ -33,6 +35,7 @@ export function toCompanySettingsForm(settings: CompanySettings): CompanySetting
     city: settings.city,
     companyName: settings.companyName,
     defaultHourlyRateEuro: centsToEuroInput(settings.defaultHourlyRateCents),
+    hourlyRateShortcut: settings.hourlyRateShortcut,
     email: settings.email,
     phone: settings.phone,
     postalCode: settings.postalCode,
@@ -48,6 +51,7 @@ export function toUpdateCompanySettingsRequest(
     city: form.city,
     companyName: form.companyName,
     defaultHourlyRateCents: euroInputToCents(form.defaultHourlyRateEuro),
+    hourlyRateShortcut: form.hourlyRateShortcut,
     email: form.email,
     phone: form.phone,
     postalCode: form.postalCode,

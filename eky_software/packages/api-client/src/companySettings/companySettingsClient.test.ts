@@ -41,6 +41,7 @@ describe('company settings api client', () => {
       city: 'Helsinki',
       companyName: 'Example Builder Oy',
       defaultHourlyRateCents: 6500,
+      hourlyRateShortcut: 'työ',
       email: 'info@example.fi',
       phone: '040 123 4567',
       postalCode: '00100',
@@ -84,6 +85,7 @@ describe('company settings api client', () => {
         city: '',
         companyName: 'Example Builder Oy',
         defaultHourlyRateCents: null,
+        hourlyRateShortcut: '',
         email: '',
         phone: '',
         postalCode: '',
@@ -132,6 +134,7 @@ function createTestCompanySettings(): CompanySettings {
     email: 'info@example.fi',
     phone: '040 123 4567',
     defaultHourlyRateCents: 6500,
+    hourlyRateShortcut: 'työ',
     createdAt: '2026-05-21T00:00:00.000Z',
     updatedAt: '2026-05-21T00:00:00.000Z',
   };

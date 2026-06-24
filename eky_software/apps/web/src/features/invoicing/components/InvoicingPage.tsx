@@ -17,6 +17,10 @@ import {
   type InvoiceCustomerListState,
 } from '../hooks/useInvoiceCustomers.js';
 import {
+  useInvoiceCompanySettings,
+  type InvoiceCompanySettingsState,
+} from '../hooks/useInvoiceCompanySettings.js';
+import {
   useInvoiceDraftEditor,
   type InvoiceDraftEditorState,
 } from '../hooks/useInvoiceDraftEditor.js';
@@ -25,6 +29,7 @@ import { uiText } from '../../../i18n/fi.js';
 export function InvoicingPage(): React.JSX.Element {
   const draftState = useInvoiceDrafts();
   const customerListState = useInvoiceCustomers();
+  const companySettingsState = useInvoiceCompanySettings();
   const draftEditorState = useInvoiceDraftEditor();
   const [activeView, dispatch] = useReducer(
     reduceInvoicingPageMode,
@@ -52,6 +57,7 @@ export function InvoicingPage(): React.JSX.Element {
       {...draftState}
       activeView={activeView}
       customerListState={customerListState}
+      companySettingsState={companySettingsState}
       draftEditorState={draftEditorState}
       onBackToDrafts={handleBackToDrafts}
       onDraftSaved={handleDraftSaved}
@@ -64,6 +70,7 @@ export function InvoicingPage(): React.JSX.Element {
 interface InvoicingPageViewProps extends InvoiceDraftListState {
   activeView: InvoicingPageMode;
   customerListState: InvoiceCustomerListState;
+  companySettingsState: InvoiceCompanySettingsState;
   draftEditorState: InvoiceDraftEditorState;
   onBackToDrafts(): void;
   onDraftSaved(savedDraft: InvoiceDraft): void;
@@ -74,6 +81,7 @@ interface InvoicingPageViewProps extends InvoiceDraftListState {
 export function InvoicingPageView({
   activeView,
   customerListState,
+  companySettingsState,
   draftEditorState,
   drafts,
   errorMessage,
@@ -131,6 +139,7 @@ export function InvoicingPageView({
         </section>
       ) : activeView === 'newInvoice' ? (
         <NewInvoiceForm
+          companySettingsState={companySettingsState}
           customerListState={customerListState}
           mode={{ type: 'create' }}
           onBack={onBackToDrafts}
@@ -138,6 +147,7 @@ export function InvoicingPageView({
         />
       ) : (
         <InvoiceDraftEditView
+          companySettingsState={companySettingsState}
           customerListState={customerListState}
           draftEditorState={draftEditorState}
           onBack={onBackToDrafts}
@@ -149,6 +159,7 @@ export function InvoicingPageView({
 }
 
 interface InvoiceDraftEditViewProps {
+  companySettingsState: InvoiceCompanySettingsState;
   customerListState: InvoiceCustomerListState;
   draftEditorState: InvoiceDraftEditorState;
   onBack(): void;
@@ -156,6 +167,7 @@ interface InvoiceDraftEditViewProps {
 }
 
 function InvoiceDraftEditView({
+  companySettingsState,
   customerListState,
   draftEditorState,
   onBack,
@@ -200,6 +212,7 @@ function InvoiceDraftEditView({
   return (
     <NewInvoiceForm
       key={draftEditorState.draft.id}
+      companySettingsState={companySettingsState}
       customerListState={customerListState}
       mode={{
         draft: draftEditorState.draft,

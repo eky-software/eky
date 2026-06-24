@@ -9,6 +9,7 @@ export interface CompanySettings {
   email: string;
   phone: string;
   defaultHourlyRateCents: number | null;
+  hourlyRateShortcut: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -19,6 +20,7 @@ export interface CreateCompanySettingsDomainInput {
   companyId: string;
   companyName: string;
   defaultHourlyRateCents: number | null;
+  hourlyRateShortcut: string;
   email: string;
   id: string;
   now: string;
@@ -41,6 +43,7 @@ export function createCompanySettingsRecord(
     email: input.email,
     phone: input.phone,
     defaultHourlyRateCents: input.defaultHourlyRateCents,
+    hourlyRateShortcut: input.hourlyRateShortcut,
     createdAt: input.now,
     updatedAt: input.now,
   };
@@ -58,6 +61,7 @@ export function createEmptyCompanySettings(companyId: string): CompanySettings {
     email: '',
     phone: '',
     defaultHourlyRateCents: null,
+    hourlyRateShortcut: '',
     createdAt: '',
     updatedAt: '',
   };
