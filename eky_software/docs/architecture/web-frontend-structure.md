@@ -137,8 +137,9 @@ kansioissa, jos niille syntyy todellinen tarve.
 
 - reset- ja body-tyylit
 - CSS-muuttujat
-- sovelluksen yleisen layoutin
-- yleiset painike-, panel-, message- ja status-pill-tyylit
+- HTML-elementtien yhteiset perustyylit
+- aidosti usean toisistaan riippumattoman näkymän käyttämät UI-primitiivit,
+  kuten yleiset painike-, panel-, message- ja status-pill-tyylit
 
 Komponenttien omat tyylit sijoitetaan komponentin viereen
 `ComponentName.module.css`-tiedostoon.
@@ -153,9 +154,36 @@ components/InvoiceDraftList.module.css
 CSS Module on feature- tai komponenttikohtainen. Sitä ei käytetä uutena
 yleisenä design systeminä eikä sen vuoksi lisätä UI- tai CSS-kirjastoja.
 
-CSS Module sijoitetaan komponentin viereen, ei feature-kansion juureen.
+CSS Module sijoitetaan aina omistavan komponentin viereen. Jos komponentti on
+feature-kansion juuressa, myös sen CSS Module saa olla juuressa; irrallista
+feature-tason tyylitiedostoa sinne ei sijoiteta.
 
 Komponenttikohtaista tyyliä ei jätetä pysyvästi globaaliin `styles.css`-tiedostoon, jos tyyli kuuluu selvästi vain yhteen featureen tai komponenttiin.
+
+### CSS-omistajuusportti
+
+Sama komponenttikohtainen sääntö koskee sekä `features/`- että
+`layout/`-kansioita. Uutta feature- tai layout-komponentin valitsinta ei lisätä
+`styles.css`-tiedostoon.
+
+Ennen tyylimuutosta tarkistetaan:
+
+- jos tyyli kuuluu yhdelle TSX-komponentille, se sijoitetaan komponentin
+  viereiseen `ComponentName.module.css`-tiedostoon
+- komponentin omat responsiiviset ja reduced-motion-säännöt pidetään samassa
+  CSS Modulessa
+- feature ei importtaa toisen featuren CSS Modulea
+- layout-komponentti ei importtaa feature-komponentin CSS Modulea
+- CSS Modulea ei sijoiteta feature- tai layout-kansion juureen ilman sen
+  vieressä olevaa omistavaa komponenttia
+- uutta `styles/`-kansiota tai `utils.css`-, `helpers.css`-, `common.css`- tai
+  vastaavaa yleiskaatopaikkaa ei luoda
+- globaali luokka lisätään vain, jos se on aidosti yhteinen usealle
+  toisistaan riippumattomalle näkymälle
+
+Jos sama visuaalinen rakenne alkaa toistua 2–3 toisistaan riippumattomassa
+näkymässä, arvioidaan ensin rajattua `apps/web/src/shared/ui`-komponenttia.
+`packages/ui` tai uusi UI-kirjasto vaatii edelleen erillisen päätöksen.
 
 ## Shared
 
