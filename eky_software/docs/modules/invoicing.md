@@ -280,6 +280,13 @@ Numeroinnin ensimmäinen persistence-pohja erottaa numerointiasetukset
 `sequence_scope`-rajoilla, mutta virallinen laskunumero varataan vasta
 myöhemmässä hyväksyntätransaktiossa.
 
+Ensimmäisessä asetusten API-polussa käytetään vain oletussarjaa `default`.
+Jos kyseistä sarjaa on jo käytetty, tavallinen asetustallennus ei saa muuttaa
+numerointimallia, tilikauden aloituskuukautta, numeron pituutta tai ensimmäistä
+sarjanumeroa. Sama-arvoinen tallennus saa onnistua idempotentisti.
+Käytön jälkeinen hallittu numerointimuutos suunnitellaan myöhemmin erillisenä
+toimintona.
+
 Numerointisarjojen, tilikausipohjaisen numeroinnin, kalenterivuosipohjaisen numeroinnin, numerointiasetusten muuttamisen ja local/cloud-numeroinnin tarkemmat periaatteet on kuvattu dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
 
 Nykyinen Oma yritys on laajemman Asetukset-kokonaisuuden ensimmäinen osa. Käyttöliittymä voi myöhemmin koota samaan Asetukset-osioon Oma yritys-, laskutus-, ALV-, maksuehto-, numerointi- ja tilikausinäkymät, vaikka niiden data säilyy omistavissa moduuleissa.

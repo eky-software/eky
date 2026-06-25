@@ -11,9 +11,17 @@ import {
   createInvoiceDraftsApi,
   type InvoiceDraftsApi,
 } from './invoiceDrafts/index.js';
+import {
+  createInvoiceNumberingSettingsApi,
+  type InvoiceNumberingSettingsApi,
+} from './invoiceNumbering/index.js';
 
 export interface EkyApiClient
-  extends CustomersApi, CompanySettingsApi, InvoiceDraftsApi {}
+  extends
+    CustomersApi,
+    CompanySettingsApi,
+    InvoiceDraftsApi,
+    InvoiceNumberingSettingsApi {}
 
 export function createEkyApiClient(options: EkyApiClientOptions): EkyApiClient {
   const baseUrl = normalizeBaseUrl(options.baseUrl);
@@ -23,6 +31,7 @@ export function createEkyApiClient(options: EkyApiClientOptions): EkyApiClient {
     ...createCustomersApi(fetchImplementation, baseUrl),
     ...createCompanySettingsApi(fetchImplementation, baseUrl),
     ...createInvoiceDraftsApi(fetchImplementation, baseUrl),
+    ...createInvoiceNumberingSettingsApi(fetchImplementation, baseUrl),
   };
 }
 

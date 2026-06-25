@@ -18,6 +18,7 @@ Jokainen API-kokonaisuus sijoitetaan omaan toiminnalliseen kansioonsa:
 - `customers/`
 - `companySettings/`
 - `invoiceDrafts/`
+- `invoiceNumbering/`
 
 Feature-kansiossa erotetaan tarpeen mukaan:
 

@@ -234,7 +234,7 @@ Laskutusasetuksissa voidaan näyttää esimerkiksi:
 - maksuehdot
 - ALV-kannat
 
-Näiden UI-sijainti voi olla käyttäjän kannalta Oma yritys / Asetukset -kokonaisuudessa, mutta niiden domain-omistaja on Invoicing. Laskunumeroinnin, hyväksynnän, snapshotin ja auditoinnin tarkempi periaate on kuvattu dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
+Näiden UI-sijainti voi olla käyttäjän kannalta Oma yritys / Asetukset -kokonaisuudessa, mutta niiden domain-omistaja on Invoicing. Oma yritys -näkymä ei saa muodostaa laskunumeroita tai omistaa numerointisarjojen sääntöjä, vaikka se myöhemmin näyttäisi niiden lomakkeen käyttäjälle. Laskunumeroinnin, hyväksynnän, snapshotin ja auditoinnin tarkempi periaate on kuvattu dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
 
 Asiakaskortissa on Hinnoittelu-osio asiakaskohtaista tuntihintaa varten.
 

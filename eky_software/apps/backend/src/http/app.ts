@@ -14,12 +14,16 @@ import { SqliteCustomerRepository } from '../modules/customers/infrastructure/sq
 import { approveInvoiceDraft } from '../modules/invoicing/application/approveInvoiceDraft.js';
 import { deleteInvoiceDraft } from '../modules/invoicing/application/deleteInvoiceDraft.js';
 import { getInvoiceDraft } from '../modules/invoicing/application/getInvoiceDraft.js';
+import { getInvoiceNumberingSettings } from '../modules/invoicing/application/getInvoiceNumberingSettings.js';
 import { listInvoiceDrafts } from '../modules/invoicing/application/listInvoiceDrafts.js';
 import { saveInvoiceDraft } from '../modules/invoicing/application/saveInvoiceDraft.js';
+import { updateInvoiceNumberingSettings } from '../modules/invoicing/application/updateInvoiceNumberingSettings.js';
 import { updateInvoiceDraft } from '../modules/invoicing/application/updateInvoiceDraft.js';
 import { createInvoiceDraftRoutes } from '../modules/invoicing/http/invoiceDraftRoutes.js';
+import { createInvoiceNumberingSettingsRoutes } from '../modules/invoicing/http/invoiceNumberingSettingsRoutes.js';
 import { SqliteInvoiceApprovalRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceApprovalRepository.js';
 import { SqliteInvoiceDraftRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceDraftRepository.js';
+import { SqliteInvoiceNumberingRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceNumberingRepository.js';
 import type { CustomerAccessReader } from '../modules/invoicing/ports/customerAccessReader.js';
 
 export async function createApp(): Promise<Hono> {
@@ -36,6 +40,7 @@ export async function createApp(): Promise<Hono> {
   const companySettingsRepository = new SqliteCompanySettingsRepository(database);
   const invoiceDraftRepository = new SqliteInvoiceDraftRepository(database);
   const invoiceApprovalRepository = new SqliteInvoiceApprovalRepository(database);
+  const invoiceNumberingRepository = new SqliteInvoiceNumberingRepository(database);
   const customerAccessReader: CustomerAccessReader = {
     async belongsToCompany(customerId, companyId) {
       const customer = await customerRepository.findById(companyId, customerId);
@@ -82,6 +87,16 @@ export async function createApp(): Promise<Hono> {
           customerAccessReader,
           invoiceDraftRepository,
         }),
+    }),
+  );
+
+  app.route(
+    '/',
+    createInvoiceNumberingSettingsRoutes({
+      getInvoiceNumberingSettings: (input) =>
+        getInvoiceNumberingSettings(input, invoiceNumberingRepository),
+      updateInvoiceNumberingSettings: (input) =>
+        updateInvoiceNumberingSettings(input, invoiceNumberingRepository),
     }),
   );
 
