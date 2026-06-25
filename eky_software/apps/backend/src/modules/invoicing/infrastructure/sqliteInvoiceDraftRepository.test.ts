@@ -16,9 +16,16 @@ import type {
 import type { InvoiceLineDiscount } from '../domain/invoiceCalculation.js';
 import { SqliteInvoiceDraftRepository } from './sqliteInvoiceDraftRepository.js';
 
-const migrationSql = readFileSync(
+const invoiceDraftMigrationSql = readFileSync(
   new URL(
     '../../../database/migrations/006_create_invoice_drafts.sql',
+    import.meta.url,
+  ),
+  'utf8',
+);
+const approvedInvoiceMigrationSql = readFileSync(
+  new URL(
+    '../../../database/migrations/009_create_approved_invoices.sql',
     import.meta.url,
   ),
   'utf8',
@@ -84,7 +91,8 @@ describe('SqliteInvoiceDraftRepository', () => {
   beforeEach(() => {
     database = new Database(':memory:');
     database.pragma('foreign_keys = ON');
-    database.exec(migrationSql);
+    database.exec(invoiceDraftMigrationSql);
+    database.exec(approvedInvoiceMigrationSql);
   });
 
   afterEach(() => {
