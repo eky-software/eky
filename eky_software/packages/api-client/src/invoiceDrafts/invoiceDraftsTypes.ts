@@ -1,5 +1,10 @@
 export type InvoicePriceInputMode = 'net' | 'gross';
 export type InvoiceDraftStatus = 'draft';
+export type ApprovedInvoiceStatus = 'approved';
+export type InvoiceNumberingMode =
+  | 'calendarYearSequence'
+  | 'fiscalYearSequence'
+  | 'plainSequence';
 export type InvoiceUnit = 'h' | 'kpl' | 'pv' | 'km' | 'erä';
 
 export type InvoiceLineDiscount =
@@ -98,7 +103,18 @@ export interface InvoiceDraftListQuery {
   customerId?: string;
 }
 
+export interface ApprovedInvoiceResult {
+  invoiceId: string;
+  draftId: string;
+  invoiceNumber: string;
+  sequenceNumber: number;
+  sequenceScope: string;
+  numberingMode: InvoiceNumberingMode;
+  status: ApprovedInvoiceStatus;
+}
+
 export interface InvoiceDraftsApi {
+  approveInvoiceDraft(id: string): Promise<ApprovedInvoiceResult>;
   createInvoiceDraft(input: InvoiceDraftInput): Promise<InvoiceDraft>;
   deleteInvoiceDraft(id: string): Promise<void>;
   getInvoiceDraft(id: string): Promise<InvoiceDraft>;

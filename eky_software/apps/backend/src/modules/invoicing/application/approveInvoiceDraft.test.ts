@@ -9,7 +9,7 @@ import {
   approveInvoiceDraft,
   type ApproveInvoiceDraftInput,
 } from './approveInvoiceDraft.js';
-import { ApproveInvoiceDraftError } from './approveInvoiceDraftError.js';
+import { InvoiceDraftNotFoundError } from './invoiceDraftNotFoundError.js';
 
 class FakeInvoiceApprovalRepository implements InvoiceApprovalRepository {
   approveInputs: ApproveInvoiceDraftPersistenceInput[] = [];
@@ -80,19 +80,19 @@ describe('approveInvoiceDraft', () => {
     ]);
   });
 
-  it('throws a generic approval error when the draft is not available', async () => {
+  it('throws a generic not-found error when the draft is not available', async () => {
     const repository = new FakeInvoiceApprovalRepository(undefined);
 
     await expect(
       approveInvoiceDraft(createInput(), {
         invoiceApprovalRepository: repository,
       }),
-    ).rejects.toThrow(ApproveInvoiceDraftError);
+    ).rejects.toEqual(new InvoiceDraftNotFoundError());
     await expect(
       approveInvoiceDraft(createInput(), {
         invoiceApprovalRepository: repository,
       }),
-    ).rejects.toThrow('Invoice draft is not available for approval.');
+    ).rejects.toThrow('Invoice draft not found.');
   });
 
   it('rejects invalid identifiers before calling the repository', async () => {

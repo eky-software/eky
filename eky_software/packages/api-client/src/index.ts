@@ -16,6 +16,8 @@ export type {
   UpdateCustomerRequest,
 } from './customers/index.js';
 export type {
+  ApprovedInvoiceResult,
+  ApprovedInvoiceStatus,
   InvoiceDraft,
   InvoiceDraftInput,
   InvoiceDraftLine,
@@ -24,6 +26,7 @@ export type {
   InvoiceDraftStatus,
   InvoiceDraftSummary,
   InvoiceLineDiscount,
+  InvoiceNumberingMode,
   InvoicePriceInputMode,
   InvoiceTotals,
   InvoiceUnit,

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import type { ApproveInvoiceDraftInput } from '../application/approveInvoiceDraft.js';
+import { ApproveInvoiceDraftError } from '../application/approveInvoiceDraftError.js';
 import {
   deleteInvoiceDraft,
   type DeleteInvoiceDraftInput,
@@ -12,6 +14,7 @@ import {
   listInvoiceDrafts,
   type ListInvoiceDraftsInput,
 } from '../application/listInvoiceDrafts.js';
+import { InvoiceDraftNotFoundError } from '../application/invoiceDraftNotFoundError.js';
 import {
   saveInvoiceDraft,
   type SaveInvoiceDraftInput,
@@ -22,6 +25,7 @@ import {
 } from '../application/updateInvoiceDraft.js';
 import type { InvoiceDraft } from '../domain/invoiceDraft.js';
 import type { CustomerAccessReader } from '../ports/customerAccessReader.js';
+import type { ApprovedInvoiceResult } from '../ports/invoiceApprovalRepository.js';
 import type { InvoiceDraftRepository } from '../ports/invoiceDraftRepository.js';
 import { createInvoiceDraftRoutes } from './invoiceDraftRoutes.js';
 
@@ -119,17 +123,33 @@ class FakeCustomerAccessReader implements CustomerAccessReader {
   }
 }
 
-function createTestApp(customerBelongsToCompany = true) {
+function createTestApp(
+  customerBelongsToCompany = true,
+  options: {
+    approveError?: Error;
+    approveResult?: ApprovedInvoiceResult;
+  } = {},
+) {
   const invoiceDraftRepository = new FakeInvoiceDraftRepository();
   const customerAccessReader = new FakeCustomerAccessReader(
     customerBelongsToCompany,
   );
+  let approveInput: ApproveInvoiceDraftInput | undefined;
   let getInput: GetInvoiceDraftInput | undefined;
   let deleteInput: DeleteInvoiceDraftInput | undefined;
   let listInput: ListInvoiceDraftsInput | undefined;
   let saveInput: SaveInvoiceDraftInput | undefined;
   let updateInput: UpdateInvoiceDraftInput | undefined;
   const app = createInvoiceDraftRoutes({
+    async approveInvoiceDraft(input) {
+      approveInput = input;
+
+      if (options.approveError !== undefined) {
+        throw options.approveError;
+      }
+
+      return options.approveResult ?? createApprovedInvoiceResult();
+    },
     async deleteInvoiceDraft(input) {
       deleteInput = input;
 
@@ -167,11 +187,27 @@ function createTestApp(customerBelongsToCompany = true) {
     app,
     customerAccessReader,
     invoiceDraftRepository,
+    getApproveInput: () => approveInput,
     getGetInput: () => getInput,
     getDeleteInput: () => deleteInput,
     getListInput: () => listInput,
     getSaveInput: () => saveInput,
     getUpdateInput: () => updateInput,
+  };
+}
+
+function createApprovedInvoiceResult(
+  overrides: Partial<ApprovedInvoiceResult> = {},
+): ApprovedInvoiceResult {
+  return {
+    draftId: 'draft-1',
+    invoiceId: 'invoice-1',
+    invoiceNumber: '20260001',
+    numberingMode: 'calendarYearSequence',
+    sequenceNumber: 1,
+    sequenceScope: 'calendar-year:2026',
+    status: 'approved',
+    ...overrides,
   };
 }
 
@@ -412,6 +448,69 @@ describe('invoiceDraftRoutes', () => {
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({
       error: 'Invoice draft not found.',
+    });
+  });
+
+  it('approves a draft using the backend company context and default numbering series', async () => {
+    const approvedInvoice = createApprovedInvoiceResult({
+      draftId: 'draft-1',
+      invoiceId: 'invoice-1',
+      invoiceNumber: '20260001',
+    });
+    const testContext = createTestApp(true, { approveResult: approvedInvoice });
+
+    const response = await testContext.app.request(
+      '/invoice-drafts/draft-1/approve?companyId=other-company',
+      { method: 'POST' },
+    );
+    const body = (await response.json()) as {
+      approvedInvoice: ApprovedInvoiceResult;
+    };
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ approvedInvoice });
+    expect(testContext.getApproveInput()).toMatchObject({
+      actorUserId: 'local-user',
+      companyId: 'dev-company',
+      draftId: 'draft-1',
+      seriesKey: 'default',
+    });
+    expect(testContext.getApproveInput()?.approvedAt).toEqual(
+      expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+    );
+  });
+
+  it('returns a generic not-found response when approving an unavailable draft', async () => {
+    const testContext = createTestApp(true, {
+      approveError: new InvoiceDraftNotFoundError(),
+    });
+
+    const response = await testContext.app.request(
+      '/invoice-drafts/missing-draft/approve',
+      { method: 'POST' },
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({
+      error: 'Invoice draft not found.',
+    });
+  });
+
+  it('returns a safe validation response when approval cannot be completed', async () => {
+    const testContext = createTestApp(true, {
+      approveError: new ApproveInvoiceDraftError(
+        'Invoice numbering settings were not found.',
+      ),
+    });
+
+    const response = await testContext.app.request(
+      '/invoice-drafts/draft-1/approve',
+      { method: 'POST' },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Invoice numbering settings were not found.',
     });
   });
 
