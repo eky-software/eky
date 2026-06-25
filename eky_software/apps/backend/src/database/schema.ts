@@ -51,6 +51,8 @@ export interface InvoiceDraftTable {
   gross_total_cents: number;
   created_at: string;
   updated_at: string;
+  approved_invoice_id: string | null;
+  approved_at: string | null;
 }
 
 export interface InvoiceDraftLineTable {
@@ -92,6 +94,69 @@ export interface InvoiceNumberSequenceTable {
   updated_at: string;
 }
 
+export interface InvoiceTable {
+  id: string;
+  company_id: string;
+  source_draft_id: string;
+  invoice_number: string;
+  series_key: string;
+  sequence_scope: string;
+  sequence_number: number;
+  numbering_mode: string;
+  status: string;
+  customer_id: string;
+  customer_number_snapshot: string;
+  customer_name_snapshot: string;
+  customer_business_id_snapshot: string;
+  customer_type_snapshot: string;
+  company_name_snapshot: string;
+  company_business_id_snapshot: string;
+  invoice_date: string;
+  due_date: string;
+  payment_term_days: number;
+  price_input_mode: string;
+  subject: string;
+  order_number: string;
+  note: string;
+  total_net_cents: number;
+  total_vat_cents: number;
+  total_gross_cents: number;
+  created_at: string;
+  approved_at: string;
+  updated_at: string;
+}
+
+export interface InvoiceLineTable {
+  id: string;
+  invoice_id: string;
+  line_order: number;
+  code: string;
+  description: string;
+  quantity_hundredths: number;
+  unit: string;
+  unit_price_cents: number;
+  vat_rate_basis_points: number;
+  discount_type: string;
+  discount_value: number;
+  base_cents: number;
+  discount_cents: number;
+  net_cents: number;
+  vat_cents: number;
+  gross_cents: number;
+  created_at: string;
+}
+
+export interface InvoiceAuditEventTable {
+  id: string;
+  company_id: string;
+  actor_user_id: string;
+  action: string;
+  draft_id: string;
+  invoice_id: string;
+  invoice_number: string;
+  created_at: string;
+}
+
 export interface SchemaMigrationTable {
   name: string;
   run_at: string;
@@ -101,9 +166,18 @@ export type CustomerRow = CustomerTable;
 export type NewCustomerRow = CustomerTable;
 export type CompanySettingsRow = CompanySettingsTable;
 export type NewCompanySettingsRow = CompanySettingsTable;
-export type NewInvoiceDraftRow = InvoiceDraftTable;
+export type NewInvoiceDraftRow = Omit<
+  InvoiceDraftTable,
+  'approved_at' | 'approved_invoice_id'
+>;
 export type NewInvoiceDraftLineRow = InvoiceDraftLineTable;
 export type InvoiceNumberingSettingsRow = InvoiceNumberingSettingsTable;
 export type NewInvoiceNumberingSettingsRow = InvoiceNumberingSettingsTable;
 export type InvoiceNumberSequenceRow = InvoiceNumberSequenceTable;
 export type NewInvoiceNumberSequenceRow = InvoiceNumberSequenceTable;
+export type InvoiceRow = InvoiceTable;
+export type NewInvoiceRow = InvoiceTable;
+export type InvoiceLineRow = InvoiceLineTable;
+export type NewInvoiceLineRow = InvoiceLineTable;
+export type InvoiceAuditEventRow = InvoiceAuditEventTable;
+export type NewInvoiceAuditEventRow = InvoiceAuditEventTable;

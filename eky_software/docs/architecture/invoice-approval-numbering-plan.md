@@ -283,9 +283,10 @@ calendarYearSequence -> 20270001
 Ensimmäinen persistence-pohja erottaa numeroinnin asetukset ja sarjan
 etenemän omiin tauluihinsa.
 
-Tämä pohja ei vielä hyväksy laskua eikä varaa virallista laskunumeroa. Virallinen
-numeron varaus tehdään myöhemmin hyväksyntä-application servicen
-transaktiossa.
+Numerointiasetuksia voidaan hallita erillään hyväksytyistä laskuista.
+Virallinen numeron varaus tapahtuu vasta hyväksyntätransaktiossa, samassa
+kokonaisuudessa hyväksytyn laskun snapshotin, laskurivien, audit-tapahtuman ja
+luonnoksen lukituksen kanssa.
 
 ### `invoice_numbering_settings`
 
@@ -355,6 +356,47 @@ laskunumeron.
 Hyväksyntätransaktio ei saa muodostaa numeroa UI:ssa, HTTP-reitissä tai
 SQLite-adapterin omana liiketoimintalogiikkana. Numerointimalli, scope ja
 seuraava numero päätetään Invoicing-domain/application-polussa.
+
+## Hyväksytyn Laskun Persistence-Pohja
+
+Ensimmäinen hyväksyntäpohja erottaa muokattavat laskuluonnokset ja hyväksytyt
+laskut toisistaan.
+
+Laskuluonnokset pysyvät `invoice_drafts`-taulussa. Hyväksytty lasku tallennetaan
+erilliseen `invoices`-tauluun ja sen rivit `invoice_lines`-tauluun.
+
+Ensimmäisessä toteutusvaiheessa `invoice_drafts.status` pysyy local-MVP:n
+tallennusmallissa `draft`-arvona. Luonnos lukitaan hyväksynnän jälkeen
+`approved_invoice_id`- ja `approved_at`-kentillä. Tämä pitää vanhan
+luonnostaulun yksinkertaisena ja estää luonnoksen jatkomuokkauksen ilman, että
+muokattava luonnos ja hyväksytty lasku sekoittuvat samaan tietomalliin.
+
+Periaate:
+
+```text
+invoice_drafts
+  -> approved_invoice_id
+  -> approved_at
+
+invoices
+  -> status = approved
+  -> invoice_number
+  -> customer snapshot
+  -> company snapshot
+  -> totals snapshot
+
+invoice_lines
+  -> approved invoice line snapshots
+
+invoice_audit_events
+  -> invoice.approved
+```
+
+Luonnoksen päivitys- ja poistopolut eivät saa käsitellä luonnosta, jolla on
+`approved_invoice_id`. Hyväksyttyä laskua ei poisteta luonnoksen poistopolulla.
+
+Ensimmäinen audit-taulu on Invoicing-moduulin rajattu audit-pohja. Se ei vielä
+korvaa myöhemmin mahdollisesti tarvittavaa laajempaa audit-ratkaisua.
 
 ## Numerointiasetusten Muokkaaminen
 
@@ -503,7 +545,7 @@ Samaan transaktioon kuuluvat:
 - invoice snapshotin luonti
 - invoice line snapshotien luonti
 - audit eventin luonti
-- draftin merkitseminen hyväksytyksi tai linkittäminen invoiceen
+- draftin linkittäminen hyväksyttyyn invoiceen
 
 Periaate:
 
@@ -514,7 +556,7 @@ BEGIN
   create invoice snapshot
   create invoice lines snapshot
   create audit event
-  mark draft approved / link draft to invoice
+  link draft to invoice
 COMMIT
 ```
 
@@ -523,6 +565,10 @@ Jos jokin vaihe epäonnistuu, osittaista hyväksyntää ei saa jäädä.
 Local-MVP:n tavoite on, että epäonnistunut hyväksyntä ei kuluta laskunumeroa.
 Cloud- ja monen laitteen mallissa numeron varauksen aukottomuus arvioidaan
 erikseen, koska hajautettu numerointi voi vaatia eri kompromisseja.
+
+Ensimmäisessä SQLite-toteutuksessa transaktio varmistaa, että numerointisarjan
+etenemä, hyväksytty lasku, laskurivit, audit-tapahtuma ja luonnoksen
+`approved_invoice_id`-linkki onnistuvat tai peruuntuvat yhdessä.
 
 ## Local Ensin, Cloud Myöhemmin
 

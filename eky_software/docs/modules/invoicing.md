@@ -148,9 +148,15 @@ Hyväksynnässä Invoicing:
 - varaa laskunumeron
 - luo laskun ja laskurivien snapshotit
 - kirjaa audit-tapahtuman
-- merkitsee luonnoksen hyväksytyksi tai linkittää sen syntyneeseen laskuun
+- linkittää luonnoksen syntyneeseen hyväksyttyyn laskuun
 
 Nämä tehdään samassa transaktiossa. Osittaista hyväksyntää ei saa jäädä.
+
+Ensimmäisessä persistence-toteutuksessa hyväksytty lasku tallennetaan erilliseen
+`invoices`-tauluun ja sen rivit `invoice_lines`-tauluun. Alkuperäinen luonnos
+säilyy `invoice_drafts`-taulussa, mutta se lukitaan `approved_invoice_id`- ja
+`approved_at`-kentillä. Luonnoksen muokkaus- ja poistopolut eivät saa enää
+käsitellä hyväksyntään linkitettyä luonnosta.
 
 Numerointiasetukset voivat näkyä käyttäjälle Oma yritys / Asetukset -kokonaisuudessa, mutta niiden domain-omistaja on Invoicing.
 

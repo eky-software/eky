@@ -266,7 +266,11 @@ export class SqliteInvoiceDraftRepository implements InvoiceDraftRepository {
       .prepare<[string, string]>(
         `
           DELETE FROM invoice_drafts
-          WHERE company_id = ? AND id = ? AND status = 'draft'
+          WHERE
+            company_id = ?
+            AND id = ?
+            AND status = 'draft'
+            AND approved_invoice_id IS NULL
         `,
       )
       .run(companyId, invoiceDraftId);
@@ -392,7 +396,11 @@ export class SqliteInvoiceDraftRepository implements InvoiceDraftRepository {
             vat_total_cents = ?,
             gross_total_cents = ?,
             updated_at = ?
-          WHERE company_id = ? AND id = ? AND status = 'draft'
+          WHERE
+            company_id = ?
+            AND id = ?
+            AND status = 'draft'
+            AND approved_invoice_id IS NULL
         `,
       );
     const deleteLines = this.database.prepare<[string]>(
@@ -495,7 +503,9 @@ export class SqliteInvoiceDraftRepository implements InvoiceDraftRepository {
             vat_total_cents,
             gross_total_cents,
             created_at,
-            updated_at
+            updated_at,
+            approved_invoice_id,
+            approved_at
           FROM invoice_drafts
           WHERE company_id = ? AND id = ?
         `,
@@ -592,7 +602,10 @@ export class SqliteInvoiceDraftRepository implements InvoiceDraftRepository {
         .prepare<[string], InvoiceDraftSummaryRow>(
           `
             ${invoiceDraftSummarySelect}
-            WHERE company_id = ?
+            WHERE
+              company_id = ?
+              AND status = 'draft'
+              AND approved_invoice_id IS NULL
             ORDER BY updated_at DESC, id DESC
           `,
         )
@@ -605,7 +618,11 @@ export class SqliteInvoiceDraftRepository implements InvoiceDraftRepository {
       .prepare<[string, string], InvoiceDraftSummaryRow>(
         `
           ${invoiceDraftSummarySelect}
-          WHERE company_id = ? AND customer_id = ?
+          WHERE
+            company_id = ?
+            AND customer_id = ?
+            AND status = 'draft'
+            AND approved_invoice_id IS NULL
           ORDER BY updated_at DESC, id DESC
         `,
       )
