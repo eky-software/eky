@@ -72,6 +72,26 @@ export interface InvoiceDraftLineTable {
   gross_cents: number;
 }
 
+export interface InvoiceNumberingSettingsTable {
+  company_id: string;
+  series_key: string;
+  mode: string;
+  fiscal_year_start_month: number;
+  sequence_padding: number;
+  first_sequence_number: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InvoiceNumberSequenceTable {
+  company_id: string;
+  series_key: string;
+  sequence_scope: string;
+  last_sequence_number: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface SchemaMigrationTable {
   name: string;
   run_at: string;
@@ -83,3 +103,7 @@ export type CompanySettingsRow = CompanySettingsTable;
 export type NewCompanySettingsRow = CompanySettingsTable;
 export type NewInvoiceDraftRow = InvoiceDraftTable;
 export type NewInvoiceDraftLineRow = InvoiceDraftLineTable;
+export type InvoiceNumberingSettingsRow = InvoiceNumberingSettingsTable;
+export type NewInvoiceNumberingSettingsRow = InvoiceNumberingSettingsTable;
+export type InvoiceNumberSequenceRow = InvoiceNumberSequenceTable;
+export type NewInvoiceNumberSequenceRow = InvoiceNumberSequenceTable;

@@ -266,7 +266,13 @@ Uuden laskun oletusmaksuehto on 14 päivää netto. Maksuehtoa ja eräpäivää 
 
 Laskunumerointi ja tilikausi ovat yrityskohtaisia ja asetuksista hallittavia. Tilikausi ei aina ala tammikuussa. Virallinen laskunumero annetaan hyväksynnässä, ja backend vahvistaa lopullisen numeron.
 
-Numerointisarjojen, tilikausipohjaisen numeroinnin, numerointiasetusten muuttamisen ja local/cloud-numeroinnin tarkemmat periaatteet on kuvattu dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
+Numeroinnin ensimmäinen persistence-pohja erottaa numerointiasetukset
+(`invoice_numbering_settings`) ja sarjan etenemän
+(`invoice_number_sequences`). Sarjan etenemä tallentuu `series_key`- ja
+`sequence_scope`-rajoilla, mutta virallinen laskunumero varataan vasta
+myöhemmässä hyväksyntätransaktiossa.
+
+Numerointisarjojen, tilikausipohjaisen numeroinnin, kalenterivuosipohjaisen numeroinnin, numerointiasetusten muuttamisen ja local/cloud-numeroinnin tarkemmat periaatteet on kuvattu dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
 
 Nykyinen Oma yritys on laajemman Asetukset-kokonaisuuden ensimmäinen osa. Käyttöliittymä voi myöhemmin koota samaan Asetukset-osioon Oma yritys-, laskutus-, ALV-, maksuehto-, numerointi- ja tilikausinäkymät, vaikka niiden data säilyy omistavissa moduuleissa.
 
