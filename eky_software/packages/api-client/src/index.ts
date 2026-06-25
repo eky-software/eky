@@ -32,3 +32,8 @@ export type {
   InvoiceUnit,
   InvoiceVatBreakdown,
 } from './invoiceDrafts/index.js';
+export type {
+  InvoiceNumberingSettingsMode,
+  InvoiceNumberingSettingsView,
+  UpdateInvoiceNumberingSettingsRequest,
+} from './invoiceNumbering/index.js';

@@ -406,6 +406,20 @@ vapaammin.
 Kun vähintään yksi lasku on jo hyväksytty, numerointiasetusten muuttaminen
 vaatii vahvan varoituksen ja käyttäjän erillisen varmistuksen.
 
+Ensimmäisessä MVP-toteutuksessa tavallinen laskunumerointiasetusten tallennus
+on tätä tiukempi:
+
+```text
+Jos numerointia ei ole vielä käytetty:
+  asetuksia saa muuttaa normaalisti.
+
+Jos numerointia on jo käytetty:
+  asetuksia ei saa muuttaa, elleivät uudet arvot ole täsmälleen samat kuin nykyiset.
+```
+
+Sama-arvoinen tallennus saa olla idempotentti. Varsinainen hallittu "muuta
+numerointia käytön jälkeen" -toiminto suunnitellaan myöhemmin erikseen.
+
 Periaatteet:
 
 - vanhoja laskunumeroita ei muuteta

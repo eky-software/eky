@@ -34,6 +34,12 @@ src/
     invoiceDraftsTypes.ts
     invoiceDraftsSerialization.ts
     invoiceDraftsResponse.ts
+
+  invoiceNumbering/
+    invoiceNumberingClient.ts
+    invoiceNumberingTypes.ts
+    invoiceNumberingSerialization.ts
+    invoiceNumberingResponse.ts
 ```
 
 Feature-kansio omistaa kyseisen HTTP-sopimuksen tyypit, kutsut ja tarvittavat
@@ -58,6 +64,8 @@ Paketti tarjoaa tällä hetkellä hallitut kutsut:
 - `createEkyApiClient().getInvoiceDraft(...)`
 - `createEkyApiClient().listInvoiceDrafts(...)`
 - `createEkyApiClient().updateInvoiceDraft(...)`
+- `createEkyApiClient().getInvoiceNumberingSettings()`
+- `createEkyApiClient().updateInvoiceNumberingSettings(...)`
 
 Tämä paketti ei tunne Reactia, Honoa, SQLitea, backendin repository-rakennetta tai domainin sisäistä toteutusta.
 
@@ -66,3 +74,5 @@ Paketti käyttää selaimen tai ajonaikaisen ympäristön tarjoamaa `fetch`-raja
 Ensimmäisen web customer UI -palan rajaus on kuvattu dokumentissa `docs/architecture/web-customer-ui-plan.md`.
 
 Laskuluonnos-client välittää backendille vain käyttäjän syöttämät kentät. Se ei lähetä `companyId`-arvoa, palvelimen omistamia tunnisteita, laskettuja summia tai teknisiä aikaleimoja eikä suorita auktoritatiivista laskentalogiikkaa.
+
+Laskunumerointiasetusten client välittää backendille vain käyttäjän muokattavat asetuskentät. Se ei lähetä `companyId`-, `seriesKey`-, `hasUsedNumbering`-, `isPersisted`- tai aikaleimakenttiä.
