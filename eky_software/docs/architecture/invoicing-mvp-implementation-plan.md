@@ -6,7 +6,9 @@ Tavoitteena on toteuttaa manuaalinen laskuluonnos suoraan asiakkaalle ilman kohd
 
 Tämä dokumentti sisältää ensimmäiset hyväksytyt laskutuksen liiketoimintapäätökset.
 
-Kaikkia yksityiskohtia ei ole vielä lukittu. Erityisesti hyväksymisen käyttöoikeudet, hyväksytyn laskun korjaaminen ja offline/cloud-numeroinnin yhteensovitus ratkaistaan ennen niitä koskevan tuotantokoodin kirjoittamista.
+Laskun hyväksynnän, virallisen laskunumeron, numerointisarjojen, snapshotin, auditoinnin ja local/cloud-numeroinnin periaatteet on kuvattu erillisessä dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
+
+Kaikkia yksityiskohtia ei ole vielä lukittu. Erityisesti lopullinen permission-malli, laskun lähetys, hyvityslaskut ja tuotantokäytön kirjanpidolliset tarkistukset ratkaistaan ennen niitä koskevan tuotantokoodin kirjoittamista.
 
 ## Lähtökohta
 
@@ -724,10 +726,10 @@ Laskentadomain voidaan toteuttaa näiden determinististen laskenta- ja pyöristy
 
 ## Tilat
 
-Mahdollinen pitkän aikavälin tilajoukko:
+Alustava tilajoukko:
 
 - `draft`
-- `approved` tai `issued`
+- `approved`
 - `sent`
 - `paid`
 - `cancelled`
@@ -735,23 +737,24 @@ Mahdollinen pitkän aikavälin tilajoukko:
 Laskutuksen MVP tarvitsee vähintään:
 
 - `draft`
-- `approved` tai myöhemmin nimettävä vastaava hyväksytty/lukittu tila
+- `approved`
 
 Käyttäjä voi:
 
 - tallentaa laskun luonnoksena ja jatkaa myöhemmin
-- hyväksyä valmiin laskun heti syöttämisen jälkeen
+- hyväksyä valmiin laskun tietoisella hyväksyntätoiminnolla
 
 Hyväksyntä on backendin hallittu tilasiirtymä. Käyttöliittymän "hyväksy heti" -toiminto ei saa ohittaa validointia, laskentaa, numerointia, snapshotin muodostusta, käyttöoikeuksia tai auditointia.
 
 Hyväksyntä voi myöhemmin avata laskun toimitustavan valinnan. PDF-, sähköposti- ja verkkolaskutoimituksia ei toteuteta tässä vaiheessa.
 
-Ennen hyväksynnän toteutusta päätetään:
+Hyväksytyn mutta lähettämättömän laskun korjaus ei ole vapaa luonnosmuokkaus, vaan erillinen hallittu ja auditoitu korjaustoiminto.
 
-- käytetäänkö erikseen tiloja `approved` ja `issued`
-- kuka saa tehdä tilasiirtymän
-- saako hyväksyttyä laskua muuttaa
-- miten virheellinen hyväksytty lasku korjataan
+Tarkemmat hyväksyntä-, korjaus-, snapshot- ja audit-säännöt on kuvattu dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
+
+Myöhemmäksi jää:
+
+- lopullinen permission-malli hyväksynnälle
 - mitä `cancelled` tarkoittaa
 - miten hyvityslasku liittyy tilamalliin
 - milloin lasku katsotaan lähetetyksi
@@ -765,6 +768,8 @@ Tekninen `id` ja käyttäjälle näkyvä laskunumero ovat eri asioita.
 
 Laskunumerointi on yrityskohtainen, asetuksista säädettävä liiketoimintakriittinen toiminto.
 
+Virallinen laskunumero annetaan vasta hyväksynnässä. Luonnoksella on tekninen `draftId`, mutta ei virallista laskunumeroa.
+
 Esimerkkimuoto voi olla:
 
 ```text
@@ -777,7 +782,7 @@ Yrityksen pitää voida määrittää:
 - seuraava käytettävä laskunumero
 - miten sarjaa jatketaan tai vaihdetaan tilikauden vaihtuessa
 
-Laskutusnäkymässä pitää olla mahdollisuus ehdotetun laskunumeron hallittuun muokkaamiseen.
+Laskutusnäkymässä voi myöhemmin olla mahdollisuus ehdotetun laskunumeron hallittuun muokkaamiseen hyväksynnän yhteydessä.
 
 Numeroa ei hyväksytä suoraan luotettuna frontend-arvona. Backend:
 
@@ -787,16 +792,11 @@ Numeroa ei hyväksytä suoraan luotettuna frontend-arvona. Backend:
 - noudattaa numerointisarjan sääntöjä
 - kirjaa hallitun muutoksen myöhemmin audit trailiin
 
-Laskunumeron muokkaus sallitaan ennen hyväksyntää tai hyväksymisen yhteydessä. Hyväksytyn laskun numeron muuttaminen vaatii myöhemmin erillisen korjaussäännön eikä kuulu tavalliseen muokkaukseen.
-
-Ennen numeroinnin kooditoteutusta tarkennetaan:
-
-- missä tilasiirtymässä numero annetaan
-- saako numeroissa olla aukkoja
-- miten offline- ja cloud-käytön numerointi sovitetaan yhteen
-- miten epäonnistunut hyväksyminen vaikuttaa varattuun numeroon
+Hyväksytyn laskun numeron muuttaminen vaatii myöhemmin erillisen korjaussäännön eikä kuulu tavalliseen muokkaukseen.
 
 Frontend ei koskaan päätä lopullista laskunumeroa.
+
+Numerointimallit, asetusten muuttaminen, epäonnistuneen hyväksynnän vaikutus ja local/cloud-numeroinnin periaatteet on kuvattu dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
 
 ## Tilikausi
 
@@ -813,7 +813,7 @@ Yrityksen pitää voida määrittää ainakin:
 
 Tilikauden ja numerointisarjan vaihtaminen tehdään hallitusti. Asetuksen muuttaminen ei saa muuttaa vanhojen laskujen numeroita, päiväyksiä tai snapshot-tietoja.
 
-Tilikauden tarkka tietomalli ja validointi suunnitellaan laskutusasetusten toteutusvaiheessa.
+Tilikauden ja numerointisarjan ensimmäiset periaatteet on kuvattu dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`. Tarkka tietomalli ja validointi suunnitellaan laskutusasetusten toteutusvaiheessa.
 
 ## Asetukset-Kokonaisuus
 
@@ -863,11 +863,7 @@ Snapshot voi sisältää:
 
 Snapshotin jälkeen vanha lasku ei muutu, vaikka Customers- tai Company Settings -data muuttuu.
 
-Ennen toteutusta päätetään:
-
-- mitä tietoja luonnos säilyttää snapshot-muodossa
-- missä täsmällisessä tilasiirtymässä lopullinen snapshot lukitaan
-- saako käyttäjä muokata snapshot-ehdotusta ennen hyväksymistä
+Hyväksynnässä tallennettavat ensimmäiset asiakas-, yritys- ja laskusnapshotin periaatteet on kuvattu dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
 
 Invoicing omistaa snapshot-arvot. Se ei siirrä Customers- tai Company Settings -master-datan omistajuutta itselleen.
 
@@ -1097,7 +1093,7 @@ UI käyttää vain API-clientiä backend-yhteyteen.
 
 ### Vaihe 6: Hyväksyntä, Numerointi, Tilikausi Ja Snapshotit
 
-Tehdään vasta erikseen hyväksyttyjen sääntöjen jälkeen:
+Toteutetaan dokumentin `docs/architecture/invoice-approval-numbering-plan.md` mukaisesti:
 
 - hyväksyntä tai laskun lukitus
 - lopullinen laskunumero
@@ -1131,17 +1127,17 @@ Ensimmäiseen manuaaliseen laskuluonnos-MVP:hen eivät kuulu:
 
 Näitä varten tehdään myöhemmin omat rajatut päätökset ja toteutussuunnitelmat.
 
-## Ennen Koodausta Ratkaistavat Päätökset
+## Ennen Hyväksyntäkoodausta Tarkistettavat Päätökset
 
-Seuraavia asioita ei saa päätellä tästä dokumentista valmiiksi hyväksytyiksi:
+Hyväksynnän ja numeroinnin päälinja on dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
 
-1. Ovatko `approved` ja `issued` eri tiloja?
-2. Kuka saa hyväksyä tai lukita laskun?
-3. Saako hyväksyttyä laskua muuttaa ja millä korjausprosessilla?
-4. Milloin lopullinen snapshot muodostetaan?
-5. Saako laskunumeroissa olla aukkoja?
-6. Miten numerointi ratkaistaan offline- ja cloud-tilojen välillä?
-7. Mikä on tilikauden tarkka tietomalli?
+Ennen hyväksyntää koskevaa tuotantokoodia tarkistetaan vielä:
+
+1. kuka saa hyväksyä tai lukita laskun
+2. millainen permission-malli hyväksynnälle ja hyväksytyn laskun korjaukselle tulee
+3. mikä on tilikauden ja numerointiasetusten tarkka tietomalli
+4. milloin lasku katsotaan lähetetyksi
+5. miten hyvityslasku tehdään
 
 Jos toteutustehtävä osuu johonkin näistä eikä päätöstä ole dokumentoitu, työ pysäytetään kyseisen säännön osalta ja projektin omistajalta pyydetään päätös.
 
@@ -1174,6 +1170,7 @@ Ensimmäinen laskuluonnos-MVP voidaan hyväksyä, kun:
 - `docs/architecture/data-model-principles.md`
 - `docs/architecture/dependency-policy.md`
 - `docs/architecture/invoicing-workflow-boundaries.md`
+- `docs/architecture/invoice-approval-numbering-plan.md`
 - `docs/architecture/module-boundaries.md`
 - `docs/architecture/security-principles.md`
 - `docs/architecture/web-frontend-structure.md`

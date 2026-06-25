@@ -226,6 +226,16 @@ Ensimmäinen näkymä voi sisältää:
 
 Myöhemmin sivupalkissa tai erillisessä Asetukset-kokonaisuudessa voidaan näyttää myös laskutusasetukset. Tällöin Oma yritys ja Laskutusasetukset ovat erilliset näkymät ja säilyttävät omat moduulirajansa.
 
+Laskutusasetuksissa voidaan näyttää esimerkiksi:
+
+- laskunumerointi
+- numerointisarjat
+- tilikausi
+- maksuehdot
+- ALV-kannat
+
+Näiden UI-sijainti voi olla käyttäjän kannalta Oma yritys / Asetukset -kokonaisuudessa, mutta niiden domain-omistaja on Invoicing. Laskunumeroinnin, hyväksynnän, snapshotin ja auditoinnin tarkempi periaate on kuvattu dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
+
 Asiakaskortissa on Hinnoittelu-osio asiakaskohtaista tuntihintaa varten.
 
 Asiakaskortin tuntihintakentän ohjeteksti voi olla:

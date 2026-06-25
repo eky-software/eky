@@ -106,6 +106,8 @@ Jos työ koskee laskutusta, kohteita, työmääräyksiä, tunti- tai materiaalik
 
 Jos työ koskee ensimmäistä manuaalista laskutus-MVP:tä, laskuluonnosta, laskurivejä, laskennan domain-sääntöjä, classic-laskutusnäkymää, laskun päiväyksiä, maksuehtoa, eräpäivää, ALV-laskentaa, pyöristyksiä, laskun tiloja, laskunumerointia tai laskutuksen snapshotteja, lue myös `docs/architecture/invoicing-mvp-implementation-plan.md`.
 
+Jos työ koskee laskun hyväksyntää, virallista laskunumeroa, numerointisarjoja, tilikausipohjaista numerointia, hyväksytyn laskun snapshotteja, laskutuksen auditointia tai hyväksynnän local/cloud-numerointia, lue myös `docs/architecture/invoice-approval-numbering-plan.md`.
+
 Jos työ koskee laskutuksen web-käyttöliittymää, laskuluonnoslistaa, Classic-laskutusnäkymää, uuden laskun lomaketta tai laskuluonnoksen avaamista ja muokkaamista webissä, lue myös `docs/architecture/invoicing-ui-roadmap.md`.
 
 Jos työ koskee web-käyttöliittymän ulkoasua, layoutia, komponenttirakennetta, värejä tai Eky-työpöytäkokemusta, lue myös `docs/design/ui-principles.md`.

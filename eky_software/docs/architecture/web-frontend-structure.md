@@ -57,6 +57,80 @@ features/companySettings/CompanySettingsPage.ts
 muuttaa sisäistä rakennettaan ilman, että sovelluksen kokoava `app/`-kerros
 muuttuu.
 
+## Navigation Ja View Control
+
+Nykyinen kevyt `appNavigation` / `AppView` -malli säilyy toistaiseksi.
+Eky Local UI toimii vielä rajattuna ERP-työpöytänä, jossa app-kerroksen pitää
+valita vain muutaman päämoduulin välillä.
+
+Nykyinen malli on sallittu niin kauan kuin navigointi tarkoittaa pääasiassa
+päämoduulin vaihtamista, esimerkiksi Asiakkaat, Laskutus tai Oma yritys.
+Tämä ei ole pysyvä kielto reitityskirjastolle.
+
+### Vastuut Ilman Routeria
+
+- `app/` saa valita aktiivisen päämoduulin
+- `App.tsx` ei saa kasvaa suureksi `if` / `else`- tai `switch`-keskukseksi
+- feature saa omistaa sisäisen `list` / `detail` / `edit` -näkymätilansa, jos
+  pysyvää URL-osoitetta ei vielä tarvita
+- feature-sisäistä näkymätilaa ei hajauteta satunnaisesti useaan komponenttiin
+- kasvava näkymätila keskitetään selkeään feature-tason state- tai
+  reducer-tiedostoon
+- feature ei importtaa toisen featuren sisäisiä komponentteja, hookkeja tai
+  stateä navigoinnin toteuttamiseksi
+
+Feature-komponentit saavat tarvitsemansa tunnisteet ja siirtymätoiminnot
+mieluummin propseina, esimerkiksi `customerId`, `draftId`, `onBack`,
+`onOpenCustomer` tai `onOpenDraft`. Näin feature pysyy mahdollisimman
+riippumattomana mahdollisesta tulevasta routerista.
+
+### Routerin Päätöspiste
+
+React Router tai vastaava reitityskirjasto arvioidaan erillisenä
+arkkitehtuuripäätöksenä, kun toteutetaan ensimmäinen varsinainen koko työalueen
+detail/edit-näkymä, joka tarvitsee pysyvän URL-osoitteen. Tällainen näkymä voi
+olla esimerkiksi asiakaskortti tai laskuluonnoksen pysyvästi linkitettävä
+muokkausnäkymä.
+
+Routerin käyttöönotto muuttuu perustelluksi, kun tarvitaan yksi tai useampi
+seuraavista:
+
+- selaimen back- ja forward-toiminnot
+- saman näkymän säilyminen sivun päivityksen jälkeen
+- suora linkki tiettyyn asiakkaaseen, laskuluonnokseen, laskuun, kohteeseen tai
+  työmääräykseen
+- selkeät `list` / `detail` / `edit` -polut useammassa moduulissa
+- nykyinen `App.tsx` tai featureiden view state alkaa muistuttaa käsin
+  rakennettua routeria
+
+Todennäköisiä tulevia URL-näkymiä ovat:
+
+```text
+/customers
+/customers/:customerId
+/customers/:customerId/edit
+/invoice-drafts
+/invoice-drafts/:draftId
+/invoices/:invoiceId
+/sites
+/sites/:siteId
+/work-orders
+/work-orders/:workOrderId
+```
+
+### Routerin Tulevat Rajat
+
+Jos router myöhemmin hyväksytään:
+
+- se lisätään kevyenä app-layer-reitityksenä, ei framework-migraationa
+- URL-polut omistaa `app/` / navigation -kerros
+- router ei vuoda domainiin, api-clientiin, backend-koodiin tai featureiden
+  liiketoimintalogiikkaan
+- feature-komponentit pidetään mahdollisimman riippumattomina routerista
+- datahakua ei siirretä router-loader-malliin ilman erillistä päätöstä
+- uutta navigointikirjastoa ei lisätä ilman dokumentoitua perustelua ja
+  riippuvuustarkistusta
+
 ## Features
 
 `features/` sisältää käyttöliittymän suuret toiminnalliset moduulit.

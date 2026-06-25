@@ -14,6 +14,8 @@ Laskutuksen ja valinnaisen työnohjauspolun rajat on kuvattu dokumentissa `docs/
 
 Ensimmäisen manuaalisen laskuluonnos-MVP:n rajaus, classic-käyttöliittymä ja toteutusvaiheet on kuvattu dokumentissa `docs/architecture/invoicing-mvp-implementation-plan.md`.
 
+Laskun hyväksynnän, virallisen laskunumeron, numerointisarjojen, snapshotin ja auditoinnin periaatteet on kuvattu dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
+
 ## Moduuli omistaa
 
 - laskuluonnokset
@@ -66,7 +68,11 @@ Myöhemmät tilat:
 
 Tilasiirtymät määritellään domain-säännöillä.
 
-Käyttäjä voi tallentaa laskun luonnoksena ja jatkaa myöhemmin tai hyväksyä valmiin laskun heti. Hyväksyntä ei saa ohittaa backend-validointia, numerointia, snapshotin muodostusta, käyttöoikeuksia tai auditointia.
+Käyttäjä voi tallentaa laskun luonnoksena ja jatkaa myöhemmin tai hyväksyä valmiin laskun tietoisella hyväksyntätoiminnolla. Hyväksyntä ei saa tapahtua autosavessa, tavallisessa tallennuksessa, luonnoksen avaamisessa tai esikatselussa.
+
+Hyväksyntä ei saa ohittaa backend-validointia, numerointia, snapshotin muodostusta, käyttöoikeuksia, transaktiota tai auditointia.
+
+Virallinen laskunumero annetaan vasta hyväksynnässä. Luonnoksella on tekninen tunniste, mutta ei virallista laskunumeroa.
 
 ## Perinteinen laskutus
 
@@ -131,6 +137,24 @@ Manuaalisessa laskussa `sourceType` voi olla `manual` ja `sourceId` tyhjä.
 Työmääräyksestä muodostetussa laskuehdotuksessa `sourceType` voi olla `workOrder` ja `sourceId` työmääräyksen tunniste.
 
 Tarkka tietomalli päätetään erillisessä toteutussuunnitelmassa.
+
+## Hyväksyntä, Numerointi Ja Snapshotit
+
+Hyväksyntä muuttaa laskuluonnoksen hyväksytyksi laskuksi hallitulla backendin tilasiirtymällä.
+
+Hyväksynnässä Invoicing:
+
+- validoi luonnoksen
+- varaa laskunumeron
+- luo laskun ja laskurivien snapshotit
+- kirjaa audit-tapahtuman
+- merkitsee luonnoksen hyväksytyksi tai linkittää sen syntyneeseen laskuun
+
+Nämä tehdään samassa transaktiossa. Osittaista hyväksyntää ei saa jäädä.
+
+Numerointiasetukset voivat näkyä käyttäjälle Oma yritys / Asetukset -kokonaisuudessa, mutta niiden domain-omistaja on Invoicing.
+
+Tarkat säännöt on kuvattu dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
 
 ## Snapshot-Periaate
 
@@ -240,16 +264,17 @@ Invoicing omistaa laskutuksen liiketoiminta-asetukset:
 
 Uuden laskun oletusmaksuehto on 14 päivää netto. Maksuehtoa ja eräpäivää voi muuttaa laskulla.
 
-Laskunumerointi ja tilikausi ovat yrityskohtaisia ja asetuksista hallittavia. Tilikausi ei aina ala tammikuussa. Laskutusnäkymässä ehdotettua laskunumeroa voidaan muokata hallitusti ennen hyväksyntää tai hyväksymisen yhteydessä, mutta backend vahvistaa lopullisen numeron.
+Laskunumerointi ja tilikausi ovat yrityskohtaisia ja asetuksista hallittavia. Tilikausi ei aina ala tammikuussa. Virallinen laskunumero annetaan hyväksynnässä, ja backend vahvistaa lopullisen numeron.
+
+Numerointisarjojen, tilikausipohjaisen numeroinnin, numerointiasetusten muuttamisen ja local/cloud-numeroinnin tarkemmat periaatteet on kuvattu dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
 
 Nykyinen Oma yritys on laajemman Asetukset-kokonaisuuden ensimmäinen osa. Käyttöliittymä voi myöhemmin koota samaan Asetukset-osioon Oma yritys-, laskutus-, ALV-, maksuehto-, numerointi- ja tilikausinäkymät, vaikka niiden data säilyy omistavissa moduuleissa.
 
 ## Avoimet kysymykset
 
-- miten numerointi sovitetaan offline- ja cloud-käyttöön?
 - tarvitaanko PDF ensimmäisessä versiossa?
 - tarvitaanko sähköpostilähetys?
 - tarvitaanko verkkolasku myöhemmin?
 - kuka saa hyväksyä laskun?
 - miten hyvityslasku tehdään?
-- voiko hyväksyttyä laskua muuttaa?
+- mikä on lopullinen permission-malli hyväksynnälle ja hyväksytyn laskun korjaukselle?

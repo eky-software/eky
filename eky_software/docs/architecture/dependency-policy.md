@@ -65,6 +65,16 @@ Jos vastausta ei ole, riippuvuutta ei lisätä.
 
 React kuuluu vain web-käyttöliittymään.
 
+React Router tai muu reitityskirjasto voidaan lisätä vain erillisellä
+päätöksellä, kun pysyvät URL-näkymät, selainhistoria tai suorat resurssilinkit
+tekevät sen tarpeelliseksi. Nykyistä kevyttä päämoduulien view state -mallia ei
+korvata kirjastolla varmuuden vuoksi.
+
+Jos router hyväksytään, se kuuluu webin `app/` / navigation -kerrokseen. Se ei
+saa levitä domainiin, api-clientiin, backendiin tai featureiden
+liiketoimintalogiikkaan. Tarkempi päätöspiste on dokumentissa
+`docs/architecture/web-frontend-structure.md`.
+
 TanStack Query kuuluu vain frontendin datahakuihin ja hookeihin.
 
 React Hook Form kuuluu lomakelogiikkaan.
