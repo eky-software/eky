@@ -1,11 +1,13 @@
 import { requestJson } from '../http.js';
 import {
+  readApproveInvoiceDraftResponse,
   readDeleteInvoiceDraftResponse,
   readInvoiceDraftListResponse,
   readInvoiceDraftResponse,
 } from './invoiceDraftsResponse.js';
 import { serializeInvoiceDraftInput } from './invoiceDraftsSerialization.js';
 import type {
+  ApprovedInvoiceResult,
   InvoiceDraft,
   InvoiceDraftInput,
   InvoiceDraftsApi,
@@ -17,6 +19,17 @@ export function createInvoiceDraftsApi(
   baseUrl: string,
 ): InvoiceDraftsApi {
   return {
+    async approveInvoiceDraft(id): Promise<ApprovedInvoiceResult> {
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        `/invoice-drafts/${encodeURIComponent(id)}/approve`,
+        { method: 'POST' },
+      );
+
+      return readApproveInvoiceDraftResponse(responseBody);
+    },
+
     async createInvoiceDraft(input): Promise<InvoiceDraft> {
       const responseBody = await requestJson(
         fetchImplementation,

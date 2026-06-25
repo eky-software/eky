@@ -507,7 +507,11 @@ export class SqliteInvoiceDraftRepository implements InvoiceDraftRepository {
             approved_invoice_id,
             approved_at
           FROM invoice_drafts
-          WHERE company_id = ? AND id = ?
+          WHERE
+            company_id = ?
+            AND id = ?
+            AND status = 'draft'
+            AND approved_invoice_id IS NULL
         `,
       )
       .get(companyId, invoiceDraftId);

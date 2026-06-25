@@ -1,8 +1,10 @@
 import { EkyApiError, isRecord } from '../http.js';
 import type {
+  ApprovedInvoiceResult,
   InvoiceDraft,
   InvoiceDraftLine,
   InvoiceDraftStatus,
+  InvoiceNumberingMode,
   InvoiceDraftSummary,
   InvoiceLineDiscount,
   InvoicePriceInputMode,
@@ -10,6 +12,16 @@ import type {
   InvoiceUnit,
   InvoiceVatBreakdown,
 } from './invoiceDraftsTypes.js';
+
+export function readApproveInvoiceDraftResponse(
+  responseBody: unknown,
+): ApprovedInvoiceResult {
+  if (!isRecord(responseBody)) {
+    throw invalidInvoiceDraftResponse(responseBody);
+  }
+
+  return parseApprovedInvoiceResult(responseBody.approvedInvoice);
+}
 
 export function readInvoiceDraftResponse(responseBody: unknown): InvoiceDraft {
   if (!isRecord(responseBody)) {
@@ -33,6 +45,22 @@ export function readInvoiceDraftListResponse(
   }
 
   return responseBody.invoiceDrafts.map(parseInvoiceDraftSummary);
+}
+
+function parseApprovedInvoiceResult(value: unknown): ApprovedInvoiceResult {
+  if (!isRecord(value)) {
+    throw invalidInvoiceDraftResponse(value);
+  }
+
+  return {
+    invoiceId: readString(value, 'invoiceId'),
+    draftId: readString(value, 'draftId'),
+    invoiceNumber: readString(value, 'invoiceNumber'),
+    sequenceNumber: readSafeInteger(value, 'sequenceNumber'),
+    sequenceScope: readString(value, 'sequenceScope'),
+    numberingMode: parseInvoiceNumberingMode(value.numberingMode),
+    status: parseApprovedInvoiceStatus(value.status),
+  };
 }
 
 function parseInvoiceDraft(value: unknown): InvoiceDraft {
@@ -160,8 +188,28 @@ function parseDiscount(value: unknown): InvoiceLineDiscount {
   throw invalidInvoiceDraftResponse(value);
 }
 
+function parseApprovedInvoiceStatus(value: unknown): 'approved' {
+  if (value === 'approved') {
+    return value;
+  }
+
+  throw invalidInvoiceDraftResponse(value);
+}
+
 function parseInvoiceDraftStatus(value: unknown): InvoiceDraftStatus {
   if (value === 'draft') {
+    return value;
+  }
+
+  throw invalidInvoiceDraftResponse(value);
+}
+
+function parseInvoiceNumberingMode(value: unknown): InvoiceNumberingMode {
+  if (
+    value === 'calendarYearSequence' ||
+    value === 'fiscalYearSequence' ||
+    value === 'plainSequence'
+  ) {
     return value;
   }
 

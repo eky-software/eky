@@ -156,7 +156,9 @@ Ensimmäisessä persistence-toteutuksessa hyväksytty lasku tallennetaan erillis
 `invoices`-tauluun ja sen rivit `invoice_lines`-tauluun. Alkuperäinen luonnos
 säilyy `invoice_drafts`-taulussa, mutta se lukitaan `approved_invoice_id`- ja
 `approved_at`-kentillä. Luonnoksen muokkaus- ja poistopolut eivät saa enää
-käsitellä hyväksyntään linkitettyä luonnosta.
+käsitellä hyväksyntään linkitettyä luonnosta. Hyväksyntään linkitetty draft ei
+myöskään kuulu muokattavien draftien lukupolkuun; hyväksytty lasku luetaan
+myöhemmin omasta `invoices`-polustaan.
 
 Numerointiasetukset voivat näkyä käyttäjälle Oma yritys / Asetukset -kokonaisuudessa, mutta niiden domain-omistaja on Invoicing.
 

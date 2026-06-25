@@ -3,12 +3,34 @@ import { describe, expect, it } from 'vitest';
 import {
   createEkyApiClient,
   EkyApiError,
+  type ApprovedInvoiceResult,
   type InvoiceDraft,
   type InvoiceDraftInput,
   type InvoiceDraftSummary,
 } from '../index.js';
 
 describe('invoice drafts api client', () => {
+  it('approves a draft through POST /invoice-drafts/:id/approve', async () => {
+    const requests = createRequestLog();
+    const approvedInvoice = createTestApprovedInvoiceResult();
+    const client = createTestClient(requests, { approvedInvoice });
+
+    const result = await client.approveInvoiceDraft('draft/1');
+
+    expect(result).toEqual(approvedInvoice);
+    expect(requests).toEqual([
+      {
+        input: '/invoice-drafts/draft%2F1/approve',
+        init: {
+          headers: {
+            Accept: 'application/json',
+          },
+          method: 'POST',
+        },
+      },
+    ]);
+  });
+
   it('creates a draft through POST /invoice-drafts', async () => {
     const requests = createRequestLog();
     const invoiceDraft = createTestInvoiceDraft();
@@ -180,6 +202,20 @@ describe('invoice drafts api client', () => {
     ).rejects.toBeInstanceOf(EkyApiError);
   });
 
+  it('rejects invalid approve response shapes', async () => {
+    const requests = createRequestLog();
+    const client = createTestClient(requests, {
+      approvedInvoice: {
+        ...createTestApprovedInvoiceResult(),
+        invoiceNumber: 20260001,
+      },
+    });
+
+    await expect(
+      client.approveInvoiceDraft('draft-1'),
+    ).rejects.toBeInstanceOf(EkyApiError);
+  });
+
   it('preserves a controlled API error from the backend', async () => {
     const requests = createRequestLog();
     const responseBody = { error: 'Invoice draft was not found.' };
@@ -258,6 +294,18 @@ function createTestInput(): InvoiceDraftInput {
         },
       },
     ],
+  };
+}
+
+function createTestApprovedInvoiceResult(): ApprovedInvoiceResult {
+  return {
+    draftId: 'draft-1',
+    invoiceId: 'invoice-1',
+    invoiceNumber: '20260001',
+    numberingMode: 'calendarYearSequence',
+    sequenceNumber: 1,
+    sequenceScope: 'calendar-year:2026',
+    status: 'approved',
   };
 }
 

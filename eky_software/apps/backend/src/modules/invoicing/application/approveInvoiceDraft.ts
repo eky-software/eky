@@ -6,7 +6,7 @@ import type {
   ApprovedInvoiceResult,
   InvoiceApprovalRepository,
 } from '../ports/invoiceApprovalRepository.js';
-import { ApproveInvoiceDraftError } from './approveInvoiceDraftError.js';
+import { InvoiceDraftNotFoundError } from './invoiceDraftNotFoundError.js';
 
 export interface ApproveInvoiceDraftInput {
   actorUserId: string;
@@ -44,9 +44,7 @@ export async function approveInvoiceDraft(
     });
 
   if (approvedInvoice === undefined) {
-    throw new ApproveInvoiceDraftError(
-      'Invoice draft is not available for approval.',
-    );
+    throw new InvoiceDraftNotFoundError();
   }
 
   return approvedInvoice;

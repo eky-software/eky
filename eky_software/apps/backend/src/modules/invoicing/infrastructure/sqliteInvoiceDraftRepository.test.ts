@@ -85,6 +85,23 @@ function createDraft(
   };
 }
 
+function markDraftApproved(
+  database: DatabaseConnection,
+  draftId = 'draft-1',
+): void {
+  database
+    .prepare<[string]>(
+      `
+        UPDATE invoice_drafts
+        SET
+          approved_invoice_id = 'invoice-1',
+          approved_at = '2027-01-15T12:00:00.000Z'
+        WHERE id = ?
+      `,
+    )
+    .run(draftId);
+}
+
 describe('SqliteInvoiceDraftRepository', () => {
   let database: DatabaseConnection;
 
@@ -198,6 +215,43 @@ describe('SqliteInvoiceDraftRepository', () => {
     await expect(
       repository.getDraftById('dev-company', 'draft-1'),
     ).resolves.toEqual(draft);
+  });
+
+  it('hides approved drafts from editable draft operations', async () => {
+    const draft = createDraft();
+    const repository = new SqliteInvoiceDraftRepository(database);
+
+    await repository.saveDraft(draft);
+    markDraftApproved(database);
+
+    await expect(
+      repository.getDraftById('dev-company', 'draft-1'),
+    ).resolves.toBeUndefined();
+    await expect(repository.listDraftSummaries('dev-company')).resolves.toEqual(
+      [],
+    );
+    await expect(repository.updateDraft(draft)).resolves.toBeUndefined();
+    await expect(
+      repository.deleteDraft('dev-company', 'draft-1'),
+    ).resolves.toBe(false);
+
+    const storedDraft = database
+      .prepare<
+        [string],
+        { approved_at: string | null; approved_invoice_id: string | null }
+      >(
+        `
+          SELECT approved_invoice_id, approved_at
+          FROM invoice_drafts
+          WHERE id = ?
+        `,
+      )
+      .get('draft-1');
+
+    expect(storedDraft).toEqual({
+      approved_at: '2027-01-15T12:00:00.000Z',
+      approved_invoice_id: 'invoice-1',
+    });
   });
 
   it('updates a company draft and replaces its lines in one transaction', async () => {

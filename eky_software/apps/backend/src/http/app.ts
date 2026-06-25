@@ -11,12 +11,14 @@ import { listCustomers } from '../modules/customers/application/listCustomers.js
 import { updateCustomer } from '../modules/customers/application/updateCustomer.js';
 import { createCustomersRoutes } from '../modules/customers/http/customersRoutes.js';
 import { SqliteCustomerRepository } from '../modules/customers/infrastructure/sqliteCustomerRepository.js';
+import { approveInvoiceDraft } from '../modules/invoicing/application/approveInvoiceDraft.js';
 import { deleteInvoiceDraft } from '../modules/invoicing/application/deleteInvoiceDraft.js';
 import { getInvoiceDraft } from '../modules/invoicing/application/getInvoiceDraft.js';
 import { listInvoiceDrafts } from '../modules/invoicing/application/listInvoiceDrafts.js';
 import { saveInvoiceDraft } from '../modules/invoicing/application/saveInvoiceDraft.js';
 import { updateInvoiceDraft } from '../modules/invoicing/application/updateInvoiceDraft.js';
 import { createInvoiceDraftRoutes } from '../modules/invoicing/http/invoiceDraftRoutes.js';
+import { SqliteInvoiceApprovalRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceApprovalRepository.js';
 import { SqliteInvoiceDraftRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceDraftRepository.js';
 import type { CustomerAccessReader } from '../modules/invoicing/ports/customerAccessReader.js';
 
@@ -33,6 +35,7 @@ export async function createApp(): Promise<Hono> {
   const customerRepository = new SqliteCustomerRepository(database);
   const companySettingsRepository = new SqliteCompanySettingsRepository(database);
   const invoiceDraftRepository = new SqliteInvoiceDraftRepository(database);
+  const invoiceApprovalRepository = new SqliteInvoiceApprovalRepository(database);
   const customerAccessReader: CustomerAccessReader = {
     async belongsToCompany(customerId, companyId) {
       const customer = await customerRepository.findById(companyId, customerId);
@@ -61,6 +64,8 @@ export async function createApp(): Promise<Hono> {
   app.route(
     '/',
     createInvoiceDraftRoutes({
+      approveInvoiceDraft: (input) =>
+        approveInvoiceDraft(input, { invoiceApprovalRepository }),
       deleteInvoiceDraft: (input) =>
         deleteInvoiceDraft(input, invoiceDraftRepository),
       getInvoiceDraft: (input) =>

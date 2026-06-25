@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 
+import type { ApproveInvoiceDraftInput } from '../application/approveInvoiceDraft.js';
+import { ApproveInvoiceDraftError } from '../application/approveInvoiceDraftError.js';
 import type { DeleteInvoiceDraftInput } from '../application/deleteInvoiceDraft.js';
 import type { GetInvoiceDraftInput } from '../application/getInvoiceDraft.js';
 import { InvoiceDraftNotFoundError } from '../application/invoiceDraftNotFoundError.js';
@@ -13,6 +15,9 @@ import { InvoiceCalculationError } from '../domain/invoiceCalculationError.js';
 import type { InvoiceDraft } from '../domain/invoiceDraft.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
 import type { InvoiceDraftSummary } from '../domain/invoiceDraftSummary.js';
+import { InvoiceNumberingError } from '../domain/invoiceNumberingError.js';
+import { defaultInvoiceNumberSeriesKey } from '../domain/invoiceNumbering.js';
+import type { ApprovedInvoiceResult } from '../ports/invoiceApprovalRepository.js';
 import {
   InvoiceDraftRequestValidationError,
   parseSaveInvoiceDraftRequest,
@@ -20,9 +25,13 @@ import {
 } from './invoiceDraftRequest.js';
 
 const devCompanyId = 'dev-company';
+const devActorUserId = 'local-user';
 const maximumInvoiceDraftBodySizeBytes = 256 * 1024;
 
 interface InvoiceDraftRouteDependencies {
+  approveInvoiceDraft(
+    input: ApproveInvoiceDraftInput,
+  ): Promise<ApprovedInvoiceResult>;
   deleteInvoiceDraft(input: DeleteInvoiceDraftInput): Promise<void>;
   getInvoiceDraft(input: GetInvoiceDraftInput): Promise<InvoiceDraft>;
   listInvoiceDrafts(
@@ -89,6 +98,34 @@ export function createInvoiceDraftRoutes(
       return context.json({ invoiceDrafts });
     } catch (error) {
       if (error instanceof InvoiceDraftValidationError) {
+        return context.json({ error: error.message }, 400);
+      }
+
+      throw error;
+    }
+  });
+
+  routes.post('/invoice-drafts/:id/approve', async (context) => {
+    try {
+      const approvedInvoice = await dependencies.approveInvoiceDraft({
+        actorUserId: devActorUserId,
+        approvedAt: new Date().toISOString(),
+        companyId: devCompanyId,
+        draftId: context.req.param('id'),
+        seriesKey: defaultInvoiceNumberSeriesKey,
+      });
+
+      return context.json({ approvedInvoice });
+    } catch (error) {
+      if (error instanceof InvoiceDraftNotFoundError) {
+        return context.json({ error: error.message }, 404);
+      }
+
+      if (
+        error instanceof ApproveInvoiceDraftError ||
+        error instanceof InvoiceDraftValidationError ||
+        error instanceof InvoiceNumberingError
+      ) {
         return context.json({ error: error.message }, 400);
       }
 
