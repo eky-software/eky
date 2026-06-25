@@ -345,6 +345,13 @@ sarjatilan.
 scope-rajauksessa. Jos sarjatilaa ei ole vielä olemassa, hyväksyntälogiikka voi
 myöhemmin aloittaa asetusten `first_sequence_number`-arvosta.
 
+`reserveInvoiceNumber`-tyyppinen application-palvelu voi testata ja kapseloida
+seuraavan numeron ratkaisemisen, mutta hyväksyntävaiheessa numeron varaus pitää
+ajaa samassa backendin hallitussa transaktiossa kuin invoice snapshot ja audit.
+Sitä ei saa myöhemmin käyttää erillisenä "varaa ensin numero, hyväksy lasku
+myöhemmin" -polkuna, koska epäonnistunut hyväksyntä voisi muuten kuluttaa
+laskunumeron.
+
 Hyväksyntätransaktio ei saa muodostaa numeroa UI:ssa, HTTP-reitissä tai
 SQLite-adapterin omana liiketoimintalogiikkana. Numerointimalli, scope ja
 seuraava numero päätetään Invoicing-domain/application-polussa.
@@ -365,6 +372,11 @@ Periaatteet:
 - suurempi hyppy voidaan sallia vahvalla varoituksella
 - suurempi rakennemuutos voidaan myöhemmin toteuttaa uutena numerointisarjana
 - muutos ei tapahdu vain vaihtamalla kenttiä, vaan vaatii vahvistetun toiminnon
+
+Repository voi teknisesti tallentaa asetukset, mutta application/service-kerros
+vastaa siitä, milloin muutokset ovat sallittuja. Kun numerointia on jo käytetty,
+asetusten muuttaminen vaatii vahvistetun toiminnon, vahvat varoitukset ja
+säännöt, jotka estävät numerohistorian rikkoutumisen.
 
 Mahdollinen UI-varoitus myöhemmin:
 
