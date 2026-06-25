@@ -120,18 +120,20 @@ Päätetyt ensimmäiset periaatteet:
 - laskunumerointi ja tilikausi ovat yrityskohtaisia laskutusasetuksia
 - tilikausi voidaan määrittää muuksi kuin kalenterivuodeksi
 - alennuksia tarvitaan prosentti- ja euromääräisinä
+- virallinen laskunumero annetaan vasta laskun hyväksynnässä
+- hyväksyntä on käyttäjän tietoinen toiminto, ei autosave tai tavallinen tallennus
+- hyväksynnässä lukitaan laskun snapshot ja kirjataan audit-tapahtuma
 
 Jäljellä olevat avoimet kysymykset:
 
-- mitkä ALV-kannat otetaan ensimmäiseen koodivaiheeseen?
-- miten ALV, alennukset ja välivaiheiden pyöristys lasketaan?
-- miten laskunumerointi sovitetaan offline- ja cloud-käyttöön?
 - tarvitaanko PDF heti?
 - lähetetäänkö laskut sähköpostilla?
 - tarvitaanko verkkolasku myöhemmin?
 - miten hyvityslaskut käsitellään?
 - kuka saa hyväksyä laskun?
 - kuka saa lähettää laskun?
+
+Laskun hyväksynnän, laskunumeroinnin, snapshotin, auditoinnin ja local/cloud-numeroinnin tarkempi suunnitelma on dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
 
 ## Raportointi
 

@@ -168,6 +168,12 @@ Layout-ajatus:
 - Oma yritys kuuluu sivupalkin Yritys-osioon
 - Laskutus, työmääräykset ja muut moduulit voivat näkyä myöhemmin passiivisina tai tulevina osioina
 
+Nykyinen kevyt päämoduulien view state säilyy niin kauan kuin sovellus vaihtaa
+vain rajattujen työalueiden välillä. Kun asiakaskortti, laskuluonnos tai muu
+detail/edit-näkymä tarvitsee pysyvän URL-osoitteen, selainhistorian tai suoran
+linkin, reitityskirjasto arvioidaan erikseen. Tarkka päätöspiste ja kerrosrajat
+on kuvattu dokumentissa `docs/architecture/web-frontend-structure.md`.
+
 Työaluekortteja käytetään oikeisiin työpintoihin, ei koristeeksi.
 
 ## Desktop Ensin

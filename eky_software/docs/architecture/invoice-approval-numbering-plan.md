@@ -1,0 +1,492 @@
+# Laskun Hyväksyntä Ja Numerointi
+
+Tämä dokumentti määrittää laskun hyväksyntä-, laskunumerointi-, snapshot-,
+audit- ja local/cloud-periaatteet ennen varsinaista toteutusta.
+
+Tämä dokumentti koskee vaihetta, jossa tallennetusta laskuluonnoksesta tulee
+hyväksytty lasku. Luonnoksen luonti, muokkaus ja automaattitallennus on kuvattu
+dokumentissa `docs/architecture/invoicing-mvp-implementation-plan.md`.
+
+## Periaate
+
+Laskuluonnoksesta tulee hyväksytty lasku vain käyttäjän tietoisella toiminnolla.
+
+Hyväksyntä ei tapahdu:
+
+- automaattitallennuksessa
+- tavallisessa tallennuksessa
+- luonnoksen avaamisessa
+- luonnoksen esikatselussa
+- laskurivien tai summien muokkauksessa
+
+Ensimmäinen toteutus voi sisältää yksittäisen luonnoksen hyväksyntätoiminnon:
+
+```text
+Laskuluonnoslomake
+  -> Hyväksy laskuksi
+```
+
+Myöhemmän vaiheen toteutus voi sisältää myös koottuja hyväksyntätoimintoja:
+
+```text
+Laskutusluonnoslista
+  -> valitse useita luonnoksia
+    -> Hyväksy valitut laskuiksi
+```
+
+Koottu hyväksyntä käyttää samoja backendin application/domain-polkuja kuin
+yksittäinen hyväksyntä. Se ei saa ohittaa validointia, numerointia,
+snapshotteja, transaktiota, käyttöoikeuksia tai auditointia.
+
+Koottu hyväksyntä esivalidoi myöhemmin kaikki valitut luonnokset. Jos yksikin
+luonnos on virheellinen, hyväksyntää ei tehdä osittain. Käyttäjälle näytetään
+korjattavat luonnokset.
+
+## Laskunumero
+
+Virallinen laskunumero annetaan vasta hyväksyntätilasiirtymässä.
+
+Luonnoksella on vain tekninen `draftId`. Luonnoksella ei ole virallista
+laskunumeroa.
+
+```text
+Draft:
+- tekninen id / draftId
+- ei virallista laskunumeroa
+
+Approved invoice:
+- tekninen id / invoiceId
+- virallinen laskunumero
+```
+
+Frontend ei koskaan muodosta lopullista laskunumeroa.
+
+Laskunumero muodostetaan backendissä hyväksyntä-application servicen kautta.
+Backend tarkistaa yritysrajauksen, numerointisarjan, uniikkiuden ja
+hyväksyttävän muodon.
+
+## Tilat Ja Muokkaaminen
+
+Alustava tilamalli:
+
+```text
+draft
+  -> approved
+    -> sent
+      -> paid / credited myöhemmin
+```
+
+`draft`:
+
+- saa muokata
+- saa poistaa
+- ei sisällä virallista laskunumeroa
+- automaattitallennus on sallittu
+
+`approved`:
+
+- laskunumero on annettu
+- lasku on sisäisesti hyväksytty
+- laskua ei saa poistaa
+- laskunumero ei muutu
+- laskua voi korjata hallitusti ennen lähetystä erikoistapauksessa
+- korjaus auditoidaan
+
+`sent`:
+
+- laskun sisältöä ei saa enää muuttaa
+- laskunumero ei muutu
+- laskua ei poisteta
+- virhe korjataan myöhemmin hyvityslaskulla
+
+Hyväksytyn mutta lähettämättömän laskun muokkaus ei ole vapaa luonnosmuokkaus.
+Se on erillinen hallittu korjaustoiminto.
+
+Mahdollinen UI-varoitus myöhemmin:
+
+```text
+Tämä lasku on jo hyväksytty ja sillä on laskunumero.
+Muokkaus kirjataan tapahtumahistoriaan.
+Jatketaanko?
+```
+
+## Virheen Korjaus
+
+Jos lasku on `draft`-tilassa:
+
+- korjataan muokkaamalla luonnosta
+- tai poistetaan luonnos
+
+Jos lasku on `approved` mutta ei vielä `sent`:
+
+- voidaan sallia hallittu korjaus ennen lähetystä
+- laskunumero ei muutu
+- korjaus auditoidaan
+
+Jos lasku on `sent`:
+
+- sisältöä ei muuteta
+- virhe korjataan myöhemmin hyvityslaskulla
+- hyvityslaskua ei toteuteta tässä vaiheessa
+
+## Laskunumeroinnin Omistajuus Ja UI-Sijainti
+
+Käyttäjän näkökulmasta laskunumeroinnin asetukset voivat näkyä Oma yritys /
+Asetukset -kokonaisuuden alla:
+
+```text
+Oma yritys
+  -> Laskutusasetukset
+    -> Laskunumerointi
+```
+
+Domain-omistajuuden näkökulmasta laskunumerointi kuuluu Invoicing-moduulille.
+
+```text
+UI-sijainti:
+Company Settings / Oma yritys / Asetukset
+
+Domain-omistaja:
+Invoicing
+```
+
+Company Settings tai laajempi Asetukset-UI voi näyttää ja hallita
+laskutusasetuksia käyttäjälle. Se ei tarkoita, että Company Settings omistaisi
+laskunumeroinnin liiketoimintasäännöt.
+
+Invoicing omistaa:
+
+- laskunumeroinnin liiketoimintasäännöt
+- numerointisarjat
+- tilikauden laskutuskäytön
+- numeron varauksen
+- numerointisarjan etenemisen
+- numeroinnin validoinnin
+
+## Numerointimallit
+
+Ensimmäinen toteutus suunnitellaan niin, että vähintään seuraavat mallit ovat
+mahdollisia. Tarkka ensimmäisen koodivaiheen kenttämalli päätetään erillisessä
+toteutustehtävässä.
+
+### Malli A: Tilikausivuosi Ja Juokseva Numero
+
+Esimerkkejä:
+
+```text
+20270001
+2027000001
+2027-0001
+```
+
+Mahdollisia asetuksia:
+
+- `fiscalYearStartMonth`
+- `yearSource = fiscalYear`
+- `sequencePadding`
+- `firstSequenceNumber`
+- mahdollinen `prefix` tai `separator` myöhemmin
+
+Esimerkki:
+
+```text
+fiscalYearStartMonth = 1
+sequencePadding = 4
+firstSequenceNumber = 1
+
+2027-01-01 -> 20270001
+2027-01-02 -> 20270002
+```
+
+Jos tilikausi alkaa helmikuussa:
+
+```text
+fiscalYearStartMonth = 2
+
+2027-01-31 -> kuuluu vielä tilikauteen 2026
+2027-02-01 -> kuuluu tilikauteen 2027
+```
+
+Tällä mallilla:
+
+```text
+2027-01-31 -> 202600xx
+2027-02-01 -> 20270001
+```
+
+### Malli B: Pelkkä Juokseva Numerointi
+
+Esimerkkejä:
+
+```text
+1
+2
+3
+```
+
+tai:
+
+```text
+1000
+1001
+1002
+```
+
+Mahdollisia asetuksia:
+
+- `firstSequenceNumber`
+- `sequencePadding` tarvittaessa
+- ei pakollista vuosiosaa
+
+## Numerointiasetusten Muokkaaminen
+
+Ennen ensimmäistä hyväksyttyä laskua numerointiasetuksia voidaan muuttaa
+vapaammin.
+
+Kun vähintään yksi lasku on jo hyväksytty, numerointiasetusten muuttaminen
+vaatii vahvan varoituksen ja käyttäjän erillisen varmistuksen.
+
+Periaatteet:
+
+- vanhoja laskunumeroita ei muuteta
+- samaa laskunumeroa ei saa syntyä kahdesti samalle yritykselle ja sarjalle
+- seuraavaa numeroa ei saa asettaa pienemmäksi kuin seuraava vapaa numero
+- suurempi hyppy voidaan sallia vahvalla varoituksella
+- suurempi rakennemuutos voidaan myöhemmin toteuttaa uutena numerointisarjana
+- muutos ei tapahdu vain vaihtamalla kenttiä, vaan vaatii vahvistetun toiminnon
+
+Mahdollinen UI-varoitus myöhemmin:
+
+```text
+Laskunumerointia on jo käytetty.
+Muutokset vaikuttavat tuleviin laskunumeroihin.
+Aiemmin luotuja laskunumeroita ei muuteta.
+Vahvista muutos erillisellä varmistuksella.
+```
+
+## Snapshotit Hyväksytyssä Laskussa
+
+Hyväksyntä tallentaa laskulle snapshotin niistä tiedoista, joilla lasku
+muodostui.
+
+Periaate:
+
+```text
+Vanha hyväksytty lasku ei muutu, vaikka asiakas- tai yritystietoja muutetaan myöhemmin.
+```
+
+Asiakassnapshot voi sisältää:
+
+- `customerId`
+- `customerNumber`
+- `customerName`
+- `customerType`
+- `businessId`
+- `streetAddress`
+- `postalCode`
+- `city`
+- `email`
+- `phone`
+
+Yrityssnapshot voi sisältää:
+
+- `companyName`
+- `businessId`
+- `streetAddress`
+- `postalCode`
+- `city`
+- `email`
+- `phone`
+
+Laskusnapshot sisältää vähintään:
+
+- `invoiceNumber`
+- `invoiceDate`
+- `dueDate`
+- `paymentTermDays`
+- laskurivit
+- määrät
+- yksiköt
+- yksikköhinnat
+- alennukset
+- ALV-kannat
+- rivisummat
+- ALV-erittelyn
+- loppusumman
+
+Myöhemmän vaiheen snapshot-tietoja voivat olla:
+
+- pankkitili
+- viitenumero
+- verkkolaskuosoite
+- laskutusosoite erikseen
+- yrityksen logo
+- lähetyskanava
+
+Invoicing omistaa laskulle tallennetut snapshot-arvot. Snapshot ei siirrä
+Customers- tai Company Settings -master-datan omistajuutta Invoicingille.
+
+## Auditointi
+
+Laskun hyväksyntä auditoidaan heti ensimmäisessä hyväksyntätoteutuksessa.
+
+Auditointi ei jää myöhemmäksi, koska hyväksyntä, laskunumero ja snapshotit ovat
+kriittisiä laskutustapahtumia.
+
+Minimitason audit actionit:
+
+```text
+invoice.approved
+invoice.edited_before_sending
+invoice.sent myöhemmin
+invoice.credited myöhemmin
+```
+
+Hyväksyntäauditin sisältö:
+
+- `companyId`
+- `actorUserId` tai local-MVP:ssa väliaikainen `local-user`
+- `action = invoice.approved`
+- `draftId`
+- `invoiceId`
+- `invoiceNumber`
+- `fiscalYear` tarvittaessa
+- `sequenceNumber` tarvittaessa
+- `totalGrossCents`
+- `createdAt`
+
+Jos hyväksyttyä mutta lähettämätöntä laskua korjataan, siitä syntyy audit event:
+
+```text
+invoice.edited_before_sending
+```
+
+Tuotantovaiheessa `actorUserId` tulee oikeasta käyttäjähallinnasta.
+Local-MVP:ssa voidaan käyttää väliaikaista `local-user`-arvoa, kunhan
+rajauksen väliaikaisuus näkyy toteutuksessa ja testeissä.
+
+Audit-rakenne voi ensimmäisessä vaiheessa olla Invoicing-moduulin rajattu
+audit-toteutus tai myöhemmin päätettävä yleisempi audit-rakenne. Siitä ei saa
+tehdä yleistä `utils`-, `events`- tai `common`-kaatopaikkaa.
+
+## Transaktio
+
+Laskun hyväksyntä tehdään yhdessä backendin hallitussa transaktiossa.
+
+Samaan transaktioon kuuluvat:
+
+- luonnoksen validointi
+- laskunumeron varaus
+- invoice snapshotin luonti
+- invoice line snapshotien luonti
+- audit eventin luonti
+- draftin merkitseminen hyväksytyksi tai linkittäminen invoiceen
+
+Periaate:
+
+```text
+BEGIN
+  validate draft
+  reserve invoice number
+  create invoice snapshot
+  create invoice lines snapshot
+  create audit event
+  mark draft approved / link draft to invoice
+COMMIT
+```
+
+Jos jokin vaihe epäonnistuu, osittaista hyväksyntää ei saa jäädä.
+
+Local-MVP:n tavoite on, että epäonnistunut hyväksyntä ei kuluta laskunumeroa.
+Cloud- ja monen laitteen mallissa numeron varauksen aukottomuus arvioidaan
+erikseen, koska hajautettu numerointi voi vaatia eri kompromisseja.
+
+## Local Ensin, Cloud Myöhemmin
+
+Local-MVP:
+
+- yksi kone
+- yksi local backend
+- yksi SQLite-tietokanta
+- laskunumero varataan backendissä SQLite-transaktiossa
+
+Cloud myöhemmin:
+
+- frontend ei muodosta numeroa
+- cloud backend varaa numeron
+- numeron varaus tehdään transaktiossa
+- tenant/company-rajaus tarkistetaan backendissä
+
+Monen laitteen offline-hyväksyntää ei ratkaista vielä tässä vaiheessa.
+
+Tulevaisuuden mahdollisia suuntia:
+
+- virallinen hyväksyntä vaatii yhteyden cloudiin
+- laitteille varataan omia numerosarjoja tai numeroblokkeja
+
+Tämä vaatii erillisen suunnitelman ennen toteutusta.
+
+## Lakisidonnaiset Ja Kirjanpidolliset Tarkistukset
+
+Ennen tuotantokäyttöä laskunumerointiin, ALV-käsittelyyn, laskun sisältöön,
+laskujen säilytettävyyteen ja hyvityslaskuihin liittyvät vaatimukset
+tarkistetaan ajantasaisista virallisista lähteistä tai kirjanpitäjän kanssa.
+
+Tämä ei estä MVP:n teknistä toteutusta, mutta laskutusta ei pidetä
+tuotantovalmiina ennen tätä tarkistusta.
+
+## Toteutusjärjestys
+
+Alustava toteutusjärjestys:
+
+1. Päivitetään dokumentaatio ja hyväksytään säännöt.
+2. Tehdään domain-testit numeroinnille ja tilikausilogiikalle.
+3. Toteutetaan numerointiasetusten domain-malli.
+4. Toteutetaan laskun hyväksyntä domain/application-suunnittelun kautta.
+5. Lisätään tietokantamigraatiot:
+   - `invoices`
+   - `invoice_lines`
+   - `invoice_numbering_settings`
+   - `invoice_number_sequences`
+   - `audit_events` tarvittaessa
+6. Toteutetaan repository-portit ja SQLite-adapterit.
+7. Toteutetaan backend API hyväksynnälle.
+8. Päivitetään api-client.
+9. Toteutetaan UI yksittäisen luonnoksen hyväksyntään.
+10. Myöhemmin toteutetaan usean luonnoksen koottu hyväksyntä.
+11. Myöhemmin toteutetaan `sent`-tila ja hyvityslasku.
+
+## Testauslinja
+
+Tuleva toteutus tarvitsee testit vähintään seuraaviin:
+
+- tilikauden aloitus tammikuussa
+- tilikauden aloitus helmikuussa
+- tilikauden aloitus joulukuussa
+- tilikauden vaihtumisen rajapäivä
+- `sequencePadding = 4` tuottaa esimerkiksi `0001`
+- `sequencePadding = 6` tuottaa esimerkiksi `000001`
+- ensimmäinen numero `1`
+- ensimmäinen numero `1000`
+- sama laskunumero ei saa syntyä kahdesti samalle yritykselle ja sarjalle
+- luonnos ei saa laskunumeroa
+- hyväksyntä antaa laskunumeron
+- hyväksyntä luo snapshotit
+- hyväksyntä luo audit eventin
+- epäonnistunut hyväksyntä ei saa kuluttaa laskunumeroa Local-MVP:ssa
+- lähetettyä laskua ei saa muokata
+- hyväksytyn mutta lähettämättömän laskun korjaus auditoidaan
+
+## Rajataan Myöhemmäksi
+
+Ei toteuteta tässä vaiheessa:
+
+- hyvityslaskua
+- laskun lähetystä
+- PDF-tulostusta
+- sähköpostilähetystä
+- verkkolaskua
+- maksusuoritusten kohdistusta
+- monen laitteen offline-hyväksyntää
+- koko asetuskeskuksen toteutusta
+- usean luonnoksen koottua hyväksyntää
