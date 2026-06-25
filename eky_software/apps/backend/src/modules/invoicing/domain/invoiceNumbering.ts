@@ -1,6 +1,9 @@
 import { InvoiceNumberingError } from './invoiceNumberingError.js';
 
-export type InvoiceNumberingMode = 'fiscalYearSequence' | 'plainSequence';
+export type InvoiceNumberingMode =
+  | 'fiscalYearSequence'
+  | 'calendarYearSequence'
+  | 'plainSequence';
 
 export interface InvoiceNumberingSettings {
   mode: InvoiceNumberingMode;
@@ -10,6 +13,25 @@ export interface InvoiceNumberingSettings {
 }
 
 export const maxSequencePadding = 12;
+export const maxInvoiceNumberingIdentifierLength = 80;
+export const defaultInvoiceNumberSeriesKey = 'default';
+
+export interface StoredInvoiceNumberingSettings
+  extends InvoiceNumberingSettings {
+  companyId: string;
+  seriesKey: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InvoiceNumberSequenceState {
+  companyId: string;
+  seriesKey: string;
+  sequenceScope: string;
+  lastSequenceNumber: number;
+  createdAt: string;
+  updatedAt: string;
+}
 
 interface InvoiceDateParts {
   year: number;
@@ -34,6 +56,27 @@ function requireIntegerInRange(
   if (value < minimum || value > maximum) {
     throw new InvoiceNumberingError(
       `${fieldName} must be between ${minimum} and ${maximum}.`,
+    );
+  }
+}
+
+function requireNonEmptyIdentifier(
+  value: string,
+  fieldName: string,
+): void {
+  if (value.trim().length === 0) {
+    throw new InvoiceNumberingError(`${fieldName} must not be empty.`);
+  }
+
+  if (value.length > maxInvoiceNumberingIdentifierLength) {
+    throw new InvoiceNumberingError(
+      `${fieldName} must be at most ${maxInvoiceNumberingIdentifierLength} characters.`,
+    );
+  }
+
+  if (!/^[A-Za-z0-9._:-]+$/.test(value)) {
+    throw new InvoiceNumberingError(
+      `${fieldName} contains unsupported characters.`,
     );
   }
 }
@@ -84,10 +127,11 @@ export function validateInvoiceNumberingSettings(
 ): void {
   if (
     settings.mode !== 'fiscalYearSequence' &&
+    settings.mode !== 'calendarYearSequence' &&
     settings.mode !== 'plainSequence'
   ) {
     throw new InvoiceNumberingError(
-      'Invoice numbering mode must be fiscalYearSequence or plainSequence.',
+      'Invoice numbering mode must be fiscalYearSequence, calendarYearSequence, or plainSequence.',
     );
   }
 
@@ -120,6 +164,16 @@ export function validateInvoiceSequenceNumber(sequenceNumber: number): void {
   );
 }
 
+export function validateInvoiceNumberSeriesKey(seriesKey: string): void {
+  requireNonEmptyIdentifier(seriesKey, 'Invoice number series key');
+}
+
+export function validateInvoiceNumberSequenceScope(
+  sequenceScope: string,
+): void {
+  requireNonEmptyIdentifier(sequenceScope, 'Invoice number sequence scope');
+}
+
 export function getFiscalYearForInvoiceDate(
   invoiceDate: string,
   fiscalYearStartMonth: number,
@@ -134,6 +188,30 @@ export function getFiscalYearForInvoiceDate(
   const { year, month } = parseInvoiceDate(invoiceDate);
 
   return month >= fiscalYearStartMonth ? year : year - 1;
+}
+
+export function getCalendarYearForInvoiceDate(invoiceDate: string): number {
+  return parseInvoiceDate(invoiceDate).year;
+}
+
+export function resolveInvoiceNumberSequenceScope(
+  settings: InvoiceNumberingSettings,
+  invoiceDate: string,
+): string {
+  validateInvoiceNumberingSettings(settings);
+
+  if (settings.mode === 'plainSequence') {
+    return 'plain';
+  }
+
+  if (settings.mode === 'calendarYearSequence') {
+    return `calendar-year:${getCalendarYearForInvoiceDate(invoiceDate)}`;
+  }
+
+  return `fiscal-year:${getFiscalYearForInvoiceDate(
+    invoiceDate,
+    settings.fiscalYearStartMonth,
+  )}`;
 }
 
 export function formatSequenceNumber(
@@ -165,6 +243,11 @@ export function formatInvoiceNumber(
 
   if (settings.mode === 'plainSequence') {
     return sequencePart;
+  }
+
+  if (settings.mode === 'calendarYearSequence') {
+    const calendarYear = getCalendarYearForInvoiceDate(invoiceDate);
+    return `${calendarYear}${sequencePart}`;
   }
 
   const fiscalYear = getFiscalYearForInvoiceDate(

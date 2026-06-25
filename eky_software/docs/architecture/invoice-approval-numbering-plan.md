@@ -238,6 +238,117 @@ Mahdollisia asetuksia:
 - `sequencePadding` tarvittaessa
 - ei pakollista vuosiosaa
 
+### Malli C: Kalenterivuosi Ja Juokseva Numero
+
+Kalenterivuosimallissa vuosiosa tulee suoraan laskupäivän kalenterivuodesta.
+Se ei seuraa tilikauden aloituskuukautta.
+
+Esimerkkejä:
+
+```text
+invoiceDate = 2027-01-31
+sequencePadding = 4
+sequenceNumber = 1
+-> 20270001
+```
+
+```text
+invoiceDate = 2027-12-31
+sequencePadding = 4
+sequenceNumber = 42
+-> 20270042
+```
+
+```text
+invoiceDate = 2028-01-01
+sequencePadding = 4
+sequenceNumber = 1
+-> 20280001
+```
+
+Kalenterivuosimallin ja tilikausimallin ero:
+
+```text
+fiscalYearStartMonth = 2
+invoiceDate = 2027-01-31
+sequencePadding = 4
+sequenceNumber = 1
+
+fiscalYearSequence -> 20260001
+calendarYearSequence -> 20270001
+```
+
+## Numeroinnin Pysyvyysmallin Pohja
+
+Ensimmäinen persistence-pohja erottaa numeroinnin asetukset ja sarjan
+etenemän omiin tauluihinsa.
+
+Tämä pohja ei vielä hyväksy laskua eikä varaa virallista laskunumeroa. Virallinen
+numeron varaus tehdään myöhemmin hyväksyntä-application servicen
+transaktiossa.
+
+### `invoice_numbering_settings`
+
+`invoice_numbering_settings` tallentaa yrityskohtaiset numerointiasetukset
+sarjalle.
+
+Alustavat kentät:
+
+- `company_id`
+- `series_key`
+- `mode`
+- `fiscal_year_start_month`
+- `sequence_padding`
+- `first_sequence_number`
+- `created_at`
+- `updated_at`
+
+`series_key` erottaa mahdolliset tulevat numerointisarjat toisistaan.
+Ensimmäisessä MVP-vaiheessa käytetään oletussarjaa, esimerkiksi `default`.
+
+`company_id` ja `series_key` muodostavat yhdessä uniikin asetusrivin.
+
+### `invoice_number_sequences`
+
+`invoice_number_sequences` tallentaa sen, mihin asti tietty numerointisarja on
+edennyt tietyssä scope-rajauksessa.
+
+Alustavat kentät:
+
+- `company_id`
+- `series_key`
+- `sequence_scope`
+- `last_sequence_number`
+- `created_at`
+- `updated_at`
+
+`sequence_scope` määräytyy numerointimallin ja laskun päiväyksen perusteella:
+
+```text
+plainSequence
+  -> plain
+
+calendarYearSequence + invoiceDate 2027-01-31
+  -> calendar-year:2027
+
+fiscalYearSequence + fiscalYearStartMonth 2 + invoiceDate 2027-01-31
+  -> fiscal-year:2026
+
+fiscalYearSequence + fiscalYearStartMonth 2 + invoiceDate 2027-02-01
+  -> fiscal-year:2027
+```
+
+`company_id`, `series_key` ja `sequence_scope` muodostavat yhdessä uniikin
+sarjatilan.
+
+`last_sequence_number` on viimeksi varattu numero kyseisessä sarjassa ja
+scope-rajauksessa. Jos sarjatilaa ei ole vielä olemassa, hyväksyntälogiikka voi
+myöhemmin aloittaa asetusten `first_sequence_number`-arvosta.
+
+Hyväksyntätransaktio ei saa muodostaa numeroa UI:ssa, HTTP-reitissä tai
+SQLite-adapterin omana liiketoimintalogiikkana. Numerointimalli, scope ja
+seuraava numero päätetään Invoicing-domain/application-polussa.
+
 ## Numerointiasetusten Muokkaaminen
 
 Ennen ensimmäistä hyväksyttyä laskua numerointiasetuksia voidaan muuttaa
@@ -442,19 +553,22 @@ Alustava toteutusjärjestys:
 1. Päivitetään dokumentaatio ja hyväksytään säännöt.
 2. Tehdään domain-testit numeroinnille ja tilikausilogiikalle.
 3. Toteutetaan numerointiasetusten domain-malli.
-4. Toteutetaan laskun hyväksyntä domain/application-suunnittelun kautta.
-5. Lisätään tietokantamigraatiot:
-   - `invoices`
-   - `invoice_lines`
+4. Toteutetaan numerointiasetusten ja sarjatilan persistence-pohja:
    - `invoice_numbering_settings`
    - `invoice_number_sequences`
+   - repository-portit
+   - SQLite-adapterit
+5. Toteutetaan laskun hyväksyntä domain/application-suunnittelun kautta.
+6. Lisätään hyväksytyn laskun tietokantamigraatiot:
+   - `invoices`
+   - `invoice_lines`
    - `audit_events` tarvittaessa
-6. Toteutetaan repository-portit ja SQLite-adapterit.
-7. Toteutetaan backend API hyväksynnälle.
-8. Päivitetään api-client.
-9. Toteutetaan UI yksittäisen luonnoksen hyväksyntään.
-10. Myöhemmin toteutetaan usean luonnoksen koottu hyväksyntä.
-11. Myöhemmin toteutetaan `sent`-tila ja hyvityslasku.
+7. Toteutetaan hyväksynnän repository-portit ja SQLite-adapterit.
+8. Toteutetaan backend API hyväksynnälle.
+9. Päivitetään api-client.
+10. Toteutetaan UI yksittäisen luonnoksen hyväksyntään.
+11. Myöhemmin toteutetaan usean luonnoksen koottu hyväksyntä.
+12. Myöhemmin toteutetaan `sent`-tila ja hyvityslasku.
 
 ## Testauslinja
 
