@@ -2,6 +2,7 @@ import { createEkyApiClient, EkyApiError } from '@eky/api-client';
 import { useEffect, useMemo, useState } from 'react';
 
 import { CompanySettingsForm } from './CompanySettingsForm.js';
+import { InvoiceNumberingSettingsPanel } from './InvoiceNumberingSettingsPanel.js';
 import {
   initialCompanySettingsForm,
   toCompanySettingsForm,
@@ -107,6 +108,7 @@ export function CompanySettingsPage(): React.JSX.Element {
             onFieldChange={handleFieldChange}
             onSubmit={() => void handleSave()}
           />
+          <InvoiceNumberingSettingsPanel apiClient={apiClient} />
         </div>
       ) : null}
     </div>

@@ -12,5 +12,6 @@
 
 .viewGrid {
   display: grid;
+  gap: 18px;
   max-width: 860px;
 }
