@@ -139,8 +139,62 @@ export const uiText = {
     hourlyRateShortcut: 'Tuntityön pikavalinta',
     hourlyRateShortcutHelp:
       'Kun kirjoitat tämän sanan laskurivin nimikkeeksi, tuntihinta ehdotetaan kerran automaattisesti. Tyhjä kenttä poistaa pikavalinnan käytöstä.',
+    invoiceNumberingDefaultInfo:
+      'Näytetään oletusasetukset. Tallenna asetukset, jos haluat ottaa ne käyttöön ennen ensimmäisen laskun hyväksyntää.',
+    invoiceNumberingDescription:
+      'Määritä, miten viralliset laskunumerot muodostetaan hyväksynnässä. Varsinainen laskunumero annetaan vasta, kun lasku hyväksytään.',
+    invoiceNumberingFirstSequenceNumber: 'Ensimmäinen numero',
+    invoiceNumberingFiscalYearStartMonth: 'Tilikauden aloituskuukausi',
+    invoiceNumberingHasUsedNumbering: 'Numerointia käytetty',
+    invoiceNumberingHeading: 'Laskunumerointi',
+    invoiceNumberingIsPersisted: 'Asetukset tallennettu',
+    invoiceNumberingKicker: 'Laskutusasetukset',
+    invoiceNumberingLoading: 'Ladataan laskunumeroinnin asetuksia...',
+    invoiceNumberingLoadError:
+      'Laskunumeroinnin asetuksia ei voitu ladata. Yritä hetken kuluttua uudelleen.',
+    invoiceNumberingLocked: 'Tallennus lukittu',
+    invoiceNumberingMode: 'Numerointitapa',
+    invoiceNumberingModes: {
+      calendarYearSequence: 'Kalenterivuosittainen numerointi',
+      fiscalYearSequence: 'Tilikausittainen numerointi',
+      plainSequence: 'Jatkuva numerointi',
+    },
+    invoiceNumberingMonths: {
+      april: 'Huhtikuu',
+      august: 'Elokuu',
+      december: 'Joulukuu',
+      february: 'Helmikuu',
+      january: 'Tammikuu',
+      july: 'Heinäkuu',
+      june: 'Kesäkuu',
+      march: 'Maaliskuu',
+      may: 'Toukokuu',
+      november: 'Marraskuu',
+      october: 'Lokakuu',
+      september: 'Syyskuu',
+    },
+    invoiceNumberingSave: 'Tallenna numerointiasetukset',
+    invoiceNumberingSaveError:
+      'Laskunumeroinnin asetuksia ei voitu tallentaa. Tarkista tiedot ja yritä uudelleen.',
+    invoiceNumberingSaveSuccess: 'Laskunumeroinnin asetukset tallennettu.',
+    invoiceNumberingSequencePadding: 'Numeron vähimmäispituus',
+    invoiceNumberingSequencePaddingHelp:
+      'Esimerkiksi arvo 3 muodostaa sarjan numerot muodossa 001, 002 ja 003.',
+    invoiceNumberingSeriesKey: 'Sarja',
+    invoiceNumberingSettings: 'Numerointiasetukset',
+    invoiceNumberingUsedWarning:
+      'Numerointia on jo käytetty. Asetuksia ei voi muuttaa normaalisti, jotta laskunumerohistoria ei rikkoudu.',
+    invoiceNumberingValidation: {
+      firstSequenceNumberInvalid: 'Ensimmäisen numeron pitää olla vähintään 1.',
+      fiscalYearStartMonthInvalid:
+        'Tilikauden aloituskuukauden pitää olla välillä 1-12.',
+      modeInvalid: 'Valitse kelvollinen numerointitapa.',
+      sequencePaddingInvalid:
+        'Numeron vähimmäispituuden pitää olla välillä 0-12.',
+    },
     invalidHourlyRate: 'Tuntihinnan pitää olla euroina, esimerkiksi 65 tai 65,50.',
     loading: 'Ladataan oman yrityksen tietoja...',
+    no: 'Ei',
     phone: 'Puhelin',
     placeholderBusinessId: '1234567-8',
     placeholderCity: 'Kaupunki',
@@ -158,6 +212,7 @@ export const uiText = {
     streetAddress: 'Katuosoite',
     title: 'Oma yritys',
     workspace: 'Yritysasetukset',
+    yes: 'Kyllä',
   },
   invoicing: {
     addRow: 'Lisää rivi',
@@ -377,6 +432,10 @@ export const uiText = {
     'Invalid JSON response.': 'Palvelimen vastaus oli virheellinen.',
     'Invalid invoice draft response.':
       'Laskuluonnoksen vastaus oli virheellinen.',
+    'Invalid invoice numbering settings response.':
+      'Laskunumeroinnin asetusten vastaus oli virheellinen.',
+    'Invoice numbering settings cannot be changed after numbering has been used.':
+      'Numerointia on jo käytetty. Asetuksia ei voi muuttaa normaalisti.',
     'Invoice draft not found.': 'Laskuluonnosta ei löytynyt.',
   },
 } as const;

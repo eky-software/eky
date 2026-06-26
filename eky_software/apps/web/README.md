@@ -31,7 +31,12 @@ Webin `app`-, `features`-, `shared`-, `layout`- ja `i18n`-kansioiden vastuut on 
 
 Käynnistä ensin backend.
 
-Webin Vite-dev-palvelin proxyaa `/customers`- ja `/company-settings`-kutsut paikalliseen backendiin osoitteeseen `http://127.0.0.1:3000`.
+Webin Vite-dev-palvelin proxyaa paikalliseen backendiin osoitteeseen `http://127.0.0.1:3000` ne API-polut, joita web käyttää local development -tilassa:
+
+- `/customers`
+- `/company-settings`
+- `/invoice-drafts`
+- `/invoice-numbering-settings`
 
 Käynnistä web:
 

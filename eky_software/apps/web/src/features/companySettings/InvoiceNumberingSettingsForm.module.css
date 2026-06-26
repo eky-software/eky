@@ -1,0 +1,104 @@
+.panel {
+  min-width: 0;
+}
+
+.form label {
+  display: block;
+  margin-bottom: 8px;
+  color: #26374d;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.form label > input,
+.form label > select {
+  margin-top: 7px;
+}
+
+.form fieldset {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  margin: 0 0 14px;
+  padding: 14px;
+}
+
+.form fieldset:disabled {
+  opacity: 0.78;
+}
+
+.form legend {
+  padding: 0 6px;
+  color: var(--color-primary-dark);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.fieldHelp,
+.fieldError {
+  display: block;
+  margin: 8px 0 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.fieldHelp {
+  color: var(--color-text-muted);
+}
+
+.fieldError {
+  color: var(--color-danger);
+}
+
+.warningMessage {
+  border-left: 4px solid #b7791f;
+  padding: 10px 12px;
+  color: #744210;
+  background: #fff8e6;
+}
+
+.metaGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 14px;
+}
+
+.metaGrid div {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  background: #f8fbff;
+}
+
+.metaGrid dt {
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.metaGrid dd {
+  margin: 5px 0 0;
+  color: var(--color-text);
+  font-weight: 800;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+@media (max-width: 860px) {
+  .grid,
+  .metaGrid {
+    grid-template-columns: 1fr;
+  }
+}
