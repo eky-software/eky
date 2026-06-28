@@ -91,10 +91,10 @@ eivät muodosta viitenumeroa lopullisena totuutena.
 
 ## Maksutiedot Myöhemmin
 
-Oman yrityksen pankkitili kuuluu Company Settings -master dataan, mutta
+Oman yrityksen pankkitiedot kuuluvat Company Settings -master dataan, mutta
 hyväksytylle laskulle tallennetaan myöhemmin maksutietojen snapshot.
 
-Company Settings / Oma yritys omistaa tulevan pankkitilien master datan:
+Company Settings / Oma yritys omistaa pankkitilien master datan:
 
 - `iban`
 - `bic`
@@ -115,7 +115,7 @@ Maksutietojen marssijärjestys:
 
 1. viitenumero hyväksyntätransaktioon
 2. Hyväksy laskuksi -UI näyttää laskunumeron ja viitenumeron
-3. ennen print/PDF-vaihetta lisätään Oma yritys -tietoihin pankkitiedot
+3. ennen print/PDF-vaihetta hyväksyntä snapshottaa Oma yritys -pankkitiedot
 4. hyväksytty lasku snapshottaa laskulla käytetyt pankkitiedot
 5. hyväksytyn laskun katselu ja print-layout
 6. PDF

@@ -62,6 +62,9 @@ function parseCompanySettings(value: unknown): CompanySettings {
     typeof value.city !== 'string' ||
     typeof value.email !== 'string' ||
     typeof value.phone !== 'string' ||
+    typeof value.iban !== 'string' ||
+    typeof value.bic !== 'string' ||
+    typeof value.bankName !== 'string' ||
     !isNullableNumber(value.defaultHourlyRateCents) ||
     typeof value.hourlyRateShortcut !== 'string' ||
     typeof value.createdAt !== 'string' ||
@@ -82,6 +85,9 @@ function parseCompanySettings(value: unknown): CompanySettings {
     city: value.city,
     email: value.email,
     phone: value.phone,
+    iban: value.iban,
+    bic: value.bic,
+    bankName: value.bankName,
     defaultHourlyRateCents: value.defaultHourlyRateCents,
     hourlyRateShortcut: value.hourlyRateShortcut,
     createdAt: value.createdAt,

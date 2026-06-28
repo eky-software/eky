@@ -14,6 +14,7 @@ Toteutus sisältää:
 - oman yrityksen yhteystiedot
 - oman yrityksen osoitteen
 - oman yrityksen Y-tunnuksen
+- oman yrityksen pankkitiedot
 - oletustuntihinnan `defaultHourlyRateCents`
 - tuntityön pikavalinnan `hourlyRateShortcut`
 - backend-reitit:
@@ -25,6 +26,7 @@ Toteutus sisältää:
 - web-näkymän:
   - `Oma yritys`
   - perustiedot
+  - pankkitiedot
   - oletustuntihinta
   - tuntityön pikavalinta
 
@@ -83,6 +85,9 @@ Alustavat kentät:
 - `city`
 - `email`
 - `phone`
+- `iban`
+- `bic`
+- `bank_name`
 - `default_hourly_rate_cents`
 - `hourly_rate_shortcut`
 - `created_at`
@@ -131,6 +136,30 @@ Se ei tee pikasanasta backendin laskentasääntöä eikä siirrä asiakkaan
 tuntihintaohituksen omistajuutta Company Settings -moduulille.
 
 Tällä vältetään epäselvä floating point -rahankäsittely ja valmistellaan myöhempää laskutuksen snapshot-mallia.
+
+### Bank Details
+
+Company Settings omistaa oman yrityksen pankkitietojen master datan:
+
+- `iban`
+- `bic`
+- `bankName`
+
+SQLite-kentät ovat:
+
+- `iban`
+- `bic`
+- `bank_name`
+
+Kentät ovat MVP:ssä valinnaisia. Backend normalisoi IBAN-arvon poistamalla
+välilyönnit ja muuttamalla kirjaimet isoiksi. Jos IBAN annetaan, backend
+tarkistaa perusmuodon, pituuden ja IBANin mod 97 -tarkisteen. BIC trimmataan,
+muutetaan isoiksi ja validoidaan 8 tai 11 merkin muodossa. Pankin nimi
+trimmataan ja rajataan enintään 200 merkkiin.
+
+Nämä pankkitiedot eivät ole Invoicing-moduulin omistamaa dataa. Kun
+hyväksytylle laskulle tarvitaan maksutiedot, Invoicing tallentaa niistä oman
+snapshotin erillisessä myöhemmässä vaiheessa.
 
 ## Backend-Rakenne
 

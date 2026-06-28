@@ -26,6 +26,7 @@ Company Settings omistaa:
 - oman yrityksen Y-tunnuksen
 - oman yrityksen yhteystiedot
 - oman yrityksen pääosoitteen
+- oman yrityksen pankkitietojen master datan
 - oletustuntihinnan
 - tuntityön pikavalinnan
 - oman yrityksen yleiset oletukset, jotka eivät kuulu toisen moduulin liiketoimintasäännöiksi
@@ -66,6 +67,9 @@ Ensimmäinen Company Settings MVP voi sisältää:
 - `city`
 - `email`
 - `phone`
+- `iban`
+- `bic`
+- `bankName`
 - `defaultHourlyRateCents`
 - `hourlyRateShortcut`
 - `createdAt`
@@ -79,6 +83,7 @@ Kenttien merkitys:
 - `businessId` on oman yrityksen Y-tunnus.
 - `streetAddress`, `postalCode` ja `city` kuvaavat oman yrityksen pääosoitetta.
 - `email` ja `phone` ovat oman yrityksen ensisijaiset yhteystiedot.
+- `iban`, `bic` ja `bankName` kuvaavat oman yrityksen maksutilin master dataa.
 - `defaultHourlyRateCents` on oman yrityksen oletustuntihinta sentteinä.
 - `hourlyRateShortcut` on käyttäjän määrittämä laskurivin nimike, joka voi
   ehdottaa tuntihinnan laskutus-UI:ssa.
@@ -174,6 +179,12 @@ Vanha lasku ei saa muuttua, vaikka:
 
 Invoicing-moduuli omistaa laskulla käytetyn tuntihinnan snapshotin.
 
+Oman yrityksen pankkitiedot ovat Company Settings -master dataa. Hyväksytylle
+laskulle tallennetaan myöhemmin maksutietojen snapshot, jotta vanhat laskut
+eivät muutu, vaikka Oma yritys -kohdan IBAN, BIC tai pankin nimi muuttuu.
+PDF, print-layout ja sähköpostilähetys käyttävät hyväksytyn laskun
+snapshot-tietoja, eivät suoraan muuttuvaa Company Settings -dataa.
+
 ## Moduulirajat
 
 Company Settings omistaa:
@@ -182,6 +193,7 @@ Company Settings omistaa:
 - oletustuntihinnan
 - oman yrityksen yleiset oletukset
 - tuntityön pikavalinnan
+- oman yrityksen pankkitietojen master datan
 
 Customers omistaa:
 
@@ -198,6 +210,7 @@ Invoicing omistaa:
 - tilikauden
 - laskulla käytetyn tuntihinnan snapshotin
 - laskulla käytetyt lähettäjä- ja asiakastiedot snapshotteina, jos ne päätetään tallentaa laskulle
+- hyväksytylle laskulle tallennettavan maksutietojen snapshotin
 
 Work Orders ja Work Entries omistavat:
 
@@ -221,6 +234,7 @@ Ensimmäinen näkymä voi sisältää:
 - oman yrityksen perustiedot
 - oman yrityksen yhteystiedot
 - oman yrityksen osoitteen
+- oman yrityksen pankkitiedot
 - oletustuntihinnan
 - tuntityön pikavalinnan
 
@@ -236,18 +250,17 @@ Laskutusasetuksissa voidaan näyttää esimerkiksi:
 
 Näiden UI-sijainti voi olla käyttäjän kannalta Oma yritys / Asetukset -kokonaisuudessa, mutta niiden domain-omistaja on Invoicing. Oma yritys -näkymä ei saa muodostaa laskunumeroita tai omistaa numerointisarjojen sääntöjä, vaikka se näyttäisi niiden lomakkeen käyttäjälle. Kun laskunumerointia on jo käytetty, Oma yritys -näkymän normaali numerointilomake lukitaan ja käyttäjälle näytetään varoitus, jotta laskunumerohistoriaa ei rikota. Laskunumeroinnin, hyväksynnän, snapshotin ja auditoinnin tarkempi periaate on kuvattu dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
 
-Oma yritys omistaa myöhemmin yrityksen pankkitilien master datan. Ensimmäisiä
-tulevia kenttiä ovat:
+Oma yritys omistaa yrityksen pankkitilien master datan. Ensimmäiset kentät ovat:
 
 - `iban`
 - `bic`
-- `bankName` valinnaisena
+- `bankName`
 
-Näitä ei lisätä vielä viitenumerovaiheessa. Kun pankkitiedot myöhemmin
-tarvitaan hyväksytylle laskulle, Invoicing tallentaa laskulle maksutietojen
-snapshotin, kuten `seller_iban`, `seller_bic` ja `seller_bank_name`. PDF,
-tulostus ja sähköpostilähetys käyttävät hyväksytyn laskun snapshot-tietoja,
-eivät sen hetkisiä muuttuvia Oma yritys -asetuksia.
+Kentät ovat MVP:ssä valinnaisia. Kun pankkitiedot myöhemmin tarvitaan
+hyväksytylle laskulle, Invoicing tallentaa laskulle maksutietojen snapshotin,
+kuten `seller_iban`, `seller_bic` ja `seller_bank_name`. PDF, tulostus ja
+sähköpostilähetys käyttävät hyväksytyn laskun snapshot-tietoja, eivät sen
+hetkisiä muuttuvia Oma yritys -asetuksia.
 
 Asiakaskortissa on Hinnoittelu-osio asiakaskohtaista tuntihintaa varten.
 
@@ -274,10 +287,9 @@ Oman yrityksen tietoja ei saa vuotaa toisen yrityksen käyttäjille.
 
 ## Rajataan Myöhemmäksi
 
-Ei lisätä ensimmäiseen Company Settings MVP:hen ilman erillistä päätöstä:
+Ei lisätä nykyiseen Company Settings MVP:hen ilman erillistä päätöstä:
 
-- pankkitiliä
-- IBAN- tai BIC-kenttiä
+- useita pankkitilejä
 - verkkolaskuasetuksia
 - OVT-tunnusta
 - verkkolaskuoperaattoria

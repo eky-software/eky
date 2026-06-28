@@ -8,6 +8,9 @@ export interface CompanySettings {
   city: string;
   email: string;
   phone: string;
+  iban: string;
+  bic: string;
+  bankName: string;
   defaultHourlyRateCents: number | null;
   hourlyRateShortcut: string;
   createdAt: string;
@@ -22,6 +25,9 @@ export interface UpdateCompanySettingsRequest {
   city: string;
   email: string;
   phone: string;
+  iban: string;
+  bic: string;
+  bankName: string;
   defaultHourlyRateCents: number | null;
   hourlyRateShortcut: string;
 }
