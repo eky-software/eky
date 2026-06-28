@@ -5,6 +5,7 @@ import type {
   InvoiceDraftLine,
   InvoiceDraftStatus,
   InvoiceNumberingMode,
+  InvoiceReferenceNumberType,
   InvoiceDraftSummary,
   InvoiceLineDiscount,
   InvoicePriceInputMode,
@@ -56,6 +57,8 @@ function parseApprovedInvoiceResult(value: unknown): ApprovedInvoiceResult {
     invoiceId: readString(value, 'invoiceId'),
     draftId: readString(value, 'draftId'),
     invoiceNumber: readString(value, 'invoiceNumber'),
+    referenceNumber: readString(value, 'referenceNumber'),
+    referenceNumberType: parseInvoiceReferenceNumberType(value.referenceNumberType),
     sequenceNumber: readSafeInteger(value, 'sequenceNumber'),
     sequenceScope: readString(value, 'sequenceScope'),
     numberingMode: parseInvoiceNumberingMode(value.numberingMode),
@@ -210,6 +213,14 @@ function parseInvoiceNumberingMode(value: unknown): InvoiceNumberingMode {
     value === 'fiscalYearSequence' ||
     value === 'plainSequence'
   ) {
+    return value;
+  }
+
+  throw invalidInvoiceDraftResponse(value);
+}
+
+function parseInvoiceReferenceNumberType(value: unknown): InvoiceReferenceNumberType {
+  if (value === 'finnishDomestic') {
     return value;
   }
 

@@ -28,6 +28,7 @@ export type {
   InvoiceLineDiscount,
   InvoiceNumberingMode,
   InvoicePriceInputMode,
+  InvoiceReferenceNumberType,
   InvoiceTotals,
   InvoiceUnit,
   InvoiceVatBreakdown,

@@ -34,6 +34,7 @@ const migrationNames = [
   '007_add_company_settings_hourly_rate_shortcut.sql',
   '008_create_invoice_numbering.sql',
   '009_create_approved_invoices.sql',
+  '010_add_invoice_reference_number.sql',
 ];
 
 const migrationSql = migrationNames.map((migrationName) =>
@@ -325,6 +326,8 @@ describe('SqliteInvoiceApprovalRepository', () => {
       invoiceId: 'invoice-1',
       invoiceNumber: '20270001',
       numberingMode: 'calendarYearSequence',
+      referenceNumber: '202700014',
+      referenceNumberType: 'finnishDomestic',
       sequenceNumber: 1,
       sequenceScope: 'calendar-year:2027',
       status: 'approved',
@@ -348,6 +351,8 @@ describe('SqliteInvoiceApprovalRepository', () => {
       company_id: 'dev-company',
       source_draft_id: 'draft-1',
       invoice_number: '20270001',
+      reference_number: '202700014',
+      reference_number_type: 'finnishDomestic',
       customer_id: 'customer-1',
       customer_number_snapshot: '1001',
       customer_name_snapshot: 'Test Customer Oy',
@@ -417,6 +422,8 @@ describe('SqliteInvoiceApprovalRepository', () => {
 
     await expect(repository.approveDraft(createApprovalInput())).resolves.toMatchObject({
       invoiceNumber: '20270001',
+      referenceNumber: '202700014',
+      referenceNumberType: 'finnishDomestic',
     });
     await expect(
       repository.approveDraft(
@@ -440,6 +447,7 @@ describe('SqliteInvoiceApprovalRepository', () => {
     await saveDraft(database, createDraft());
     await expect(repository.approveDraft(createApprovalInput())).resolves.toMatchObject({
       invoiceNumber: '20270001',
+      referenceNumber: '202700014',
     });
     await saveDraft(
       database,

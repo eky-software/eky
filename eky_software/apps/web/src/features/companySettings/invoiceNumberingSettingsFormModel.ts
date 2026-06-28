@@ -42,7 +42,7 @@ export const monthOptions = [
 export const initialInvoiceNumberingSettingsForm: InvoiceNumberingSettingsForm = {
   mode: 'calendarYearSequence',
   fiscalYearStartMonth: '1',
-  sequencePadding: '3',
+  sequencePadding: '4',
   firstSequenceNumber: '1',
 };
 

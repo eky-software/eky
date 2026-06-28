@@ -57,6 +57,7 @@ Draft:
 Approved invoice:
 - tekninen id / invoiceId
 - virallinen laskunumero
+- viitenumero
 ```
 
 Frontend ei koskaan muodosta lopullista laskunumeroa.
@@ -64,6 +65,61 @@ Frontend ei koskaan muodosta lopullista laskunumeroa.
 Laskunumero muodostetaan backendissä hyväksyntä-application servicen kautta.
 Backend tarkistaa yritysrajauksen, numerointisarjan, uniikkiuden ja
 hyväksyttävän muodon.
+
+## Viitenumero
+
+Ensimmäisessä hyväksyntävaiheessa hyväksytylle laskulle muodostetaan suomalainen
+kotimainen viitenumero (`referenceNumberType = finnishDomestic`).
+
+Viitenumeron pohjana käytetään hyväksyntätransaktiossa muodostettua
+virallista laskunumeroa. Pohja-arvoa ei saa siivota hiljaisesti: jos
+laskunumero ei ole puhtaasti numeerinen, hyväksyntä epäonnistuu hallitusti.
+
+Viitenumero muodostetaan 7-3-1-painotuksella oikealta vasemmalle. Tarkistusnumero
+lasketaan kaavalla `(10 - (sum % 10)) % 10`, ja lopullinen viitenumero on
+laskunumero sekä tarkistusnumero ilman välilyöntejä.
+
+Esimerkkejä:
+
+- `123 -> 1232`
+- `1234 -> 12344`
+- `12345 -> 123453`
+
+Viitenumero tallennetaan hyväksytylle laskulle samassa transaktiossa kuin
+laskunumero, snapshotit, laskurivit ja audit-tapahtuma. Frontend ja API-client
+eivät muodosta viitenumeroa lopullisena totuutena.
+
+## Maksutiedot Myöhemmin
+
+Oman yrityksen pankkitili kuuluu Company Settings -master dataan, mutta
+hyväksytylle laskulle tallennetaan myöhemmin maksutietojen snapshot.
+
+Company Settings / Oma yritys omistaa tulevan pankkitilien master datan:
+
+- `iban`
+- `bic`
+- `bankName` valinnaisena
+
+Invoicing omistaa hyväksytylle laskulle tallennetun maksutietojen snapshotin.
+Hyväksytylle laskulle voidaan myöhemmin tallentaa esimerkiksi:
+
+- `seller_iban`
+- `seller_bic`
+- `seller_bank_name`
+
+Näitä tietoja ei saa hakea vain PDF:n luontihetkellä. PDF, tulostus ja
+sähköpostilähetys käyttävät hyväksytyn laskun snapshot-tietoja, eivät sen
+hetkisiä muuttuvia yritysasetuksia.
+
+Maksutietojen marssijärjestys:
+
+1. viitenumero hyväksyntätransaktioon
+2. Hyväksy laskuksi -UI näyttää laskunumeron ja viitenumeron
+3. ennen print/PDF-vaihetta lisätään Oma yritys -tietoihin pankkitiedot
+4. hyväksytty lasku snapshottaa laskulla käytetyt pankkitiedot
+5. hyväksytyn laskun katselu ja print-layout
+6. PDF
+7. sähköpostilähetys
 
 ## Tilat Ja Muokkaaminen
 
@@ -480,6 +536,8 @@ Yrityssnapshot voi sisältää:
 Laskusnapshot sisältää vähintään:
 
 - `invoiceNumber`
+- `referenceNumber`
+- `referenceNumberType`
 - `invoiceDate`
 - `dueDate`
 - `paymentTermDays`
@@ -495,8 +553,7 @@ Laskusnapshot sisältää vähintään:
 
 Myöhemmän vaiheen snapshot-tietoja voivat olla:
 
-- pankkitili
-- viitenumero
+- pankkitilin snapshot, kuten `seller_iban`, `seller_bic` ja `seller_bank_name`
 - verkkolaskuosoite
 - laskutusosoite erikseen
 - yrityksen logo
@@ -556,6 +613,7 @@ Samaan transaktioon kuuluvat:
 
 - luonnoksen validointi
 - laskunumeron varaus
+- viitenumeron muodostus
 - invoice snapshotin luonti
 - invoice line snapshotien luonti
 - audit eventin luonti
@@ -567,6 +625,7 @@ Periaate:
 BEGIN
   validate draft
   reserve invoice number
+  create reference number
   create invoice snapshot
   create invoice lines snapshot
   create audit event
@@ -635,12 +694,14 @@ Alustava toteutusjärjestys:
    - `invoices`
    - `invoice_lines`
    - `audit_events` tarvittaessa
-7. Toteutetaan hyväksynnän repository-portit ja SQLite-adapterit.
-8. Toteutetaan backend API hyväksynnälle.
-9. Päivitetään api-client.
-10. Toteutetaan UI yksittäisen luonnoksen hyväksyntään.
-11. Myöhemmin toteutetaan usean luonnoksen koottu hyväksyntä.
-12. Myöhemmin toteutetaan `sent`-tila ja hyvityslasku.
+7. Lisätään viitenumero hyväksyntätransaktioon.
+8. Toteutetaan hyväksynnän repository-portit ja SQLite-adapterit.
+9. Toteutetaan backend API hyväksynnälle.
+10. Päivitetään api-client.
+11. Toteutetaan UI yksittäisen luonnoksen hyväksyntään.
+12. Myöhemmin lisätään Oma yritys -pankkitiedot ennen print/PDF-vaihetta.
+13. Myöhemmin toteutetaan usean luonnoksen koottu hyväksyntä.
+14. Myöhemmin toteutetaan `sent`-tila ja hyvityslasku.
 
 ## Testauslinja
 

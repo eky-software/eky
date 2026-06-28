@@ -99,6 +99,8 @@ export interface InvoiceTable {
   company_id: string;
   source_draft_id: string;
   invoice_number: string;
+  reference_number: string | null;
+  reference_number_type: string | null;
   series_key: string;
   sequence_scope: string;
   sequence_number: number;

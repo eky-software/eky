@@ -236,6 +236,19 @@ Laskutusasetuksissa voidaan näyttää esimerkiksi:
 
 Näiden UI-sijainti voi olla käyttäjän kannalta Oma yritys / Asetukset -kokonaisuudessa, mutta niiden domain-omistaja on Invoicing. Oma yritys -näkymä ei saa muodostaa laskunumeroita tai omistaa numerointisarjojen sääntöjä, vaikka se näyttäisi niiden lomakkeen käyttäjälle. Kun laskunumerointia on jo käytetty, Oma yritys -näkymän normaali numerointilomake lukitaan ja käyttäjälle näytetään varoitus, jotta laskunumerohistoriaa ei rikota. Laskunumeroinnin, hyväksynnän, snapshotin ja auditoinnin tarkempi periaate on kuvattu dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
 
+Oma yritys omistaa myöhemmin yrityksen pankkitilien master datan. Ensimmäisiä
+tulevia kenttiä ovat:
+
+- `iban`
+- `bic`
+- `bankName` valinnaisena
+
+Näitä ei lisätä vielä viitenumerovaiheessa. Kun pankkitiedot myöhemmin
+tarvitaan hyväksytylle laskulle, Invoicing tallentaa laskulle maksutietojen
+snapshotin, kuten `seller_iban`, `seller_bic` ja `seller_bank_name`. PDF,
+tulostus ja sähköpostilähetys käyttävät hyväksytyn laskun snapshot-tietoja,
+eivät sen hetkisiä muuttuvia Oma yritys -asetuksia.
+
 Asiakaskortissa on Hinnoittelu-osio asiakaskohtaista tuntihintaa varten.
 
 Asiakaskortin tuntihintakentän ohjeteksti voi olla:
@@ -264,6 +277,7 @@ Oman yrityksen tietoja ei saa vuotaa toisen yrityksen käyttäjille.
 Ei lisätä ensimmäiseen Company Settings MVP:hen ilman erillistä päätöstä:
 
 - pankkitiliä
+- IBAN- tai BIC-kenttiä
 - verkkolaskuasetuksia
 - OVT-tunnusta
 - verkkolaskuoperaattoria
