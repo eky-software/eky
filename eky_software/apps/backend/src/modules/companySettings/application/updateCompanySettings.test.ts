@@ -30,6 +30,9 @@ describe('updateCompanySettings', () => {
         companyName: '  Example Builder Oy  ',
         defaultHourlyRateCents: 6500,
         hourlyRateShortcut: '  työ  ',
+        iban: ' fi21 1234 5600 0007 85 ',
+        bic: ' ndeafihh ',
+        bankName: '  Test Bank  ',
         email: '  info@example.fi  ',
         phone: '  040 123 4567  ',
         postalCode: '  00100  ',
@@ -50,6 +53,9 @@ describe('updateCompanySettings', () => {
     expect(settings.phone).toBe('040 123 4567');
     expect(settings.defaultHourlyRateCents).toBe(6500);
     expect(settings.hourlyRateShortcut).toBe('työ');
+    expect(settings.iban).toBe('FI2112345600000785');
+    expect(settings.bic).toBe('NDEAFIHH');
+    expect(settings.bankName).toBe('Test Bank');
     expect(settings.createdAt).toEqual(expect.any(String));
     expect(settings.updatedAt).toEqual(expect.any(String));
     expect(settings.createdAt).toBe(settings.updatedAt);
@@ -64,6 +70,9 @@ describe('updateCompanySettings', () => {
         companyName: '',
         defaultHourlyRateCents: null,
         hourlyRateShortcut: '',
+        iban: '',
+        bic: '',
+        bankName: '',
         email: '',
         phone: '',
         postalCode: '',

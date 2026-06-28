@@ -42,6 +42,9 @@ describe('company settings api client', () => {
       companyName: 'Example Builder Oy',
       defaultHourlyRateCents: 6500,
       hourlyRateShortcut: 'työ',
+      iban: 'FI2112345600000785',
+      bic: 'NDEAFIHH',
+      bankName: 'Test Bank',
       email: 'info@example.fi',
       phone: '040 123 4567',
       postalCode: '00100',
@@ -86,6 +89,9 @@ describe('company settings api client', () => {
         companyName: 'Example Builder Oy',
         defaultHourlyRateCents: null,
         hourlyRateShortcut: '',
+        iban: '',
+        bic: '',
+        bankName: '',
         email: '',
         phone: '',
         postalCode: '',
@@ -101,6 +107,24 @@ describe('company settings api client', () => {
 
   it('throws a controlled API error for an invalid response shape', async () => {
     const invalidSettings = {};
+    const client = createEkyApiClient({
+      baseUrl: '',
+      fetch: async () => jsonResponse({ companySettings: invalidSettings }),
+    });
+
+    await expect(client.getCompanySettings()).rejects.toMatchObject({
+      message: 'Invalid company settings response.',
+      name: 'EkyApiError',
+      responseBody: invalidSettings,
+      status: undefined,
+    } satisfies Partial<EkyApiError>);
+  });
+
+  it('throws a controlled API error when bank detail fields are invalid', async () => {
+    const invalidSettings = {
+      ...createTestCompanySettings(),
+      iban: 123,
+    };
     const client = createEkyApiClient({
       baseUrl: '',
       fetch: async () => jsonResponse({ companySettings: invalidSettings }),
@@ -133,6 +157,9 @@ function createTestCompanySettings(): CompanySettings {
     city: 'Helsinki',
     email: 'info@example.fi',
     phone: '040 123 4567',
+    iban: 'FI2112345600000785',
+    bic: 'NDEAFIHH',
+    bankName: 'Test Bank',
     defaultHourlyRateCents: 6500,
     hourlyRateShortcut: 'työ',
     createdAt: '2026-05-21T00:00:00.000Z',

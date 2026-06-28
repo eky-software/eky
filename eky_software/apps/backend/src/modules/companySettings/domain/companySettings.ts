@@ -8,6 +8,9 @@ export interface CompanySettings {
   city: string;
   email: string;
   phone: string;
+  iban: string;
+  bic: string;
+  bankName: string;
   defaultHourlyRateCents: number | null;
   hourlyRateShortcut: string;
   createdAt: string;
@@ -21,8 +24,11 @@ export interface CreateCompanySettingsDomainInput {
   companyName: string;
   defaultHourlyRateCents: number | null;
   hourlyRateShortcut: string;
+  iban: string;
   email: string;
   id: string;
+  bankName: string;
+  bic: string;
   now: string;
   phone: string;
   postalCode: string;
@@ -42,6 +48,9 @@ export function createCompanySettingsRecord(
     city: input.city,
     email: input.email,
     phone: input.phone,
+    iban: input.iban,
+    bic: input.bic,
+    bankName: input.bankName,
     defaultHourlyRateCents: input.defaultHourlyRateCents,
     hourlyRateShortcut: input.hourlyRateShortcut,
     createdAt: input.now,
@@ -60,6 +69,9 @@ export function createEmptyCompanySettings(companyId: string): CompanySettings {
     city: '',
     email: '',
     phone: '',
+    iban: '',
+    bic: '',
+    bankName: '',
     defaultHourlyRateCents: null,
     hourlyRateShortcut: '',
     createdAt: '',

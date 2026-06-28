@@ -126,6 +126,50 @@ export function CompanySettingsForm({
         </fieldset>
 
         <fieldset>
+          <legend>{uiText.companySettings.bankDetails}</legend>
+          <p className={styles.fieldsetHelp}>
+            {uiText.companySettings.bankDetailsHelp}
+          </p>
+          <div className={styles.grid}>
+            <label className={styles.wideField} htmlFor="company-iban">
+              {uiText.companySettings.iban}
+              <input
+                id="company-iban"
+                name="iban"
+                onChange={(event) => onFieldChange('iban', event.target.value)}
+                placeholder={uiText.companySettings.placeholderIban}
+                type="text"
+                value={form.iban}
+              />
+            </label>
+
+            <label htmlFor="company-bic">
+              {uiText.companySettings.bic}
+              <input
+                id="company-bic"
+                name="bic"
+                onChange={(event) => onFieldChange('bic', event.target.value)}
+                placeholder={uiText.companySettings.placeholderBic}
+                type="text"
+                value={form.bic}
+              />
+            </label>
+
+            <label htmlFor="company-bank-name">
+              {uiText.companySettings.bankName}
+              <input
+                id="company-bank-name"
+                name="bankName"
+                onChange={(event) => onFieldChange('bankName', event.target.value)}
+                placeholder={uiText.companySettings.placeholderBankName}
+                type="text"
+                value={form.bankName}
+              />
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
           <legend>{uiText.companySettings.address}</legend>
           <div className={styles.grid}>
             <label className={styles.wideField} htmlFor="company-street-address">

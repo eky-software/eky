@@ -13,6 +13,9 @@ export interface CompanySettingsForm {
   hourlyRateShortcut: string;
   email: string;
   phone: string;
+  iban: string;
+  bic: string;
+  bankName: string;
   postalCode: string;
   streetAddress: string;
 }
@@ -25,6 +28,9 @@ export const initialCompanySettingsForm: CompanySettingsForm = {
   hourlyRateShortcut: '',
   email: '',
   phone: '',
+  iban: '',
+  bic: '',
+  bankName: '',
   postalCode: '',
   streetAddress: '',
 };
@@ -38,6 +44,9 @@ export function toCompanySettingsForm(settings: CompanySettings): CompanySetting
     hourlyRateShortcut: settings.hourlyRateShortcut,
     email: settings.email,
     phone: settings.phone,
+    iban: settings.iban,
+    bic: settings.bic,
+    bankName: settings.bankName,
     postalCode: settings.postalCode,
     streetAddress: settings.streetAddress,
   };
@@ -54,9 +63,54 @@ export function toUpdateCompanySettingsRequest(
     hourlyRateShortcut: form.hourlyRateShortcut,
     email: form.email,
     phone: form.phone,
+    iban: normalizeCompanyIbanInput(form.iban),
+    bic: normalizeCompanyBicInput(form.bic),
+    bankName: normalizeCompanyBankNameInput(form.bankName),
     postalCode: form.postalCode,
     streetAddress: form.streetAddress,
   };
 }
 
 export { euroInputToCents } from '../../shared/money/hourlyRateInput.js';
+
+export function normalizeCompanyIbanInput(value: string): string {
+  const normalizedValue = value.replace(/\s+/g, '').toUpperCase();
+
+  if (normalizedValue === '') {
+    return '';
+  }
+
+  if (
+    normalizedValue.length < 15 ||
+    normalizedValue.length > 34 ||
+    !/^[A-Z]{2}[0-9]{2}[A-Z0-9]+$/.test(normalizedValue)
+  ) {
+    throw new Error('Invalid company IBAN.');
+  }
+
+  return normalizedValue;
+}
+
+export function normalizeCompanyBicInput(value: string): string {
+  const normalizedValue = value.trim().toUpperCase();
+
+  if (normalizedValue === '') {
+    return '';
+  }
+
+  if (!/^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(normalizedValue)) {
+    throw new Error('Invalid company BIC.');
+  }
+
+  return normalizedValue;
+}
+
+export function normalizeCompanyBankNameInput(value: string): string {
+  const normalizedValue = value.trim();
+
+  if (normalizedValue.length > 200) {
+    throw new Error('Invalid company bank name.');
+  }
+
+  return normalizedValue;
+}

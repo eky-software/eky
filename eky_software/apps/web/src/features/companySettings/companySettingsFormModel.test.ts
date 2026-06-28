@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   euroInputToCents,
   initialCompanySettingsForm,
+  normalizeCompanyBicInput,
+  normalizeCompanyIbanInput,
   toCompanySettingsForm,
   toUpdateCompanySettingsRequest,
 } from './companySettingsFormModel.js';
@@ -22,6 +24,9 @@ describe('companySettingsFormModel', () => {
         phone: '040 123 4567',
         defaultHourlyRateCents: 6500,
         hourlyRateShortcut: 'työ',
+        iban: 'FI2112345600000785',
+        bic: 'NDEAFIHH',
+        bankName: 'Test Bank',
         createdAt: '2026-05-21T00:00:00.000Z',
         updatedAt: '2026-05-21T00:00:00.000Z',
       }),
@@ -31,6 +36,9 @@ describe('companySettingsFormModel', () => {
       companyName: 'Example Builder Oy',
       defaultHourlyRateEuro: '65,00',
       hourlyRateShortcut: 'työ',
+      iban: 'FI2112345600000785',
+      bic: 'NDEAFIHH',
+      bankName: 'Test Bank',
       email: 'info@example.fi',
       phone: '040 123 4567',
       postalCode: '00100',
@@ -50,6 +58,9 @@ describe('companySettingsFormModel', () => {
       companyName: 'Example Builder Oy',
       defaultHourlyRateCents: null,
       hourlyRateShortcut: '',
+      iban: '',
+      bic: '',
+      bankName: '',
       email: '',
       phone: '',
       postalCode: '',
@@ -67,5 +78,29 @@ describe('companySettingsFormModel', () => {
   it('rejects invalid euro input', () => {
     expect(() => euroInputToCents('65,555')).toThrow('Invalid hourly rate.');
     expect(() => euroInputToCents('abc')).toThrow('Invalid hourly rate.');
+  });
+
+  it('normalizes bank detail input for the update request', () => {
+    expect(
+      toUpdateCompanySettingsRequest({
+        ...initialCompanySettingsForm,
+        iban: ' fi21 1234 5600 0007 85 ',
+        bic: ' ndeafihh ',
+        bankName: '  Test Bank  ',
+      }),
+    ).toMatchObject({
+      iban: 'FI2112345600000785',
+      bic: 'NDEAFIHH',
+      bankName: 'Test Bank',
+    });
+  });
+
+  it('rejects clearly invalid bank detail input', () => {
+    expect(() => normalizeCompanyIbanInput('bad')).toThrow(
+      'Invalid company IBAN.',
+    );
+    expect(() => normalizeCompanyBicInput('bad')).toThrow(
+      'Invalid company BIC.',
+    );
   });
 });

@@ -128,5 +128,17 @@ function getErrorMessage(error: unknown): string {
     return uiText.companySettings.invalidHourlyRate;
   }
 
+  if (error instanceof Error && error.message === 'Invalid company IBAN.') {
+    return uiText.companySettings.invalidIban;
+  }
+
+  if (error instanceof Error && error.message === 'Invalid company BIC.') {
+    return uiText.companySettings.invalidBic;
+  }
+
+  if (error instanceof Error && error.message === 'Invalid company bank name.') {
+    return uiText.companySettings.invalidBankName;
+  }
+
   return uiText.companySettings.fallbackError;
 }

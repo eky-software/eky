@@ -20,6 +20,13 @@ const addShortcutMigrationSql = readFileSync(
   ),
   'utf8',
 );
+const addBankDetailsMigrationSql = readFileSync(
+  new URL(
+    '../../../database/migrations/011_add_company_settings_bank_details.sql',
+    import.meta.url,
+  ),
+  'utf8',
+);
 
 describe('SqliteCompanySettingsRepository', () => {
   let database: DatabaseConnection;
@@ -28,13 +35,14 @@ describe('SqliteCompanySettingsRepository', () => {
     database = new Database(':memory:');
     database.exec(createTableMigrationSql);
     database.exec(addShortcutMigrationSql);
+    database.exec(addBankDetailsMigrationSql);
   });
 
   afterEach(() => {
     database.close();
   });
 
-  it('persists and reads the hourly rate shortcut with company settings', async () => {
+  it('persists and reads bank details with company settings', async () => {
     const repository = new SqliteCompanySettingsRepository(database);
     const settings = createSettings();
 
@@ -45,7 +53,7 @@ describe('SqliteCompanySettingsRepository', () => {
     );
   });
 
-  it('updates the shortcut without replacing the original created timestamp', async () => {
+  it('updates bank details without replacing the original created timestamp', async () => {
     const repository = new SqliteCompanySettingsRepository(database);
     const originalSettings = createSettings();
 
@@ -54,12 +62,18 @@ describe('SqliteCompanySettingsRepository', () => {
       ...originalSettings,
       createdAt: '2026-06-26T00:00:00.000Z',
       hourlyRateShortcut: 'laskutus',
+      iban: 'FI5542345670000081',
+      bic: 'OKOYFIHH',
+      bankName: 'Updated Bank',
       updatedAt: '2026-06-26T00:00:00.000Z',
     });
 
     await expect(repository.findByCompanyId('dev-company')).resolves.toMatchObject({
       createdAt: originalSettings.createdAt,
       hourlyRateShortcut: 'laskutus',
+      iban: 'FI5542345670000081',
+      bic: 'OKOYFIHH',
+      bankName: 'Updated Bank',
       updatedAt: '2026-06-26T00:00:00.000Z',
     });
   });
@@ -75,6 +89,9 @@ function createSettings(): CompanySettings {
     defaultHourlyRateCents: 6500,
     email: 'info@example.fi',
     hourlyRateShortcut: 'työ',
+    iban: 'FI2112345600000785',
+    bic: 'NDEAFIHH',
+    bankName: 'Test Bank',
     id: 'settings-1',
     phone: '040 123 4567',
     postalCode: '00100',

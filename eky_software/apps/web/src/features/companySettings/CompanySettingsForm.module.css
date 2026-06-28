@@ -46,6 +46,13 @@
   line-height: 1.45;
 }
 
+.fieldsetHelp {
+  margin: 0 0 12px;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
 .actions {
   display: flex;
   gap: 10px;

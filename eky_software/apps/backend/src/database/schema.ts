@@ -28,6 +28,9 @@ export interface CompanySettingsTable {
   city: string;
   email: string;
   phone: string;
+  iban: string;
+  bic: string;
+  bank_name: string;
   default_hourly_rate_cents: number | null;
   hourly_rate_shortcut: string;
   created_at: string;

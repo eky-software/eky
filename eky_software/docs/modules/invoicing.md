@@ -184,16 +184,16 @@ Viitenumero tallennetaan hyväksytylle laskulle ilman välilyöntejä. Jos
 laskunumero ei ole puhtaasti numeerinen, hyväksyntä epäonnistuu hallitusti
 eikä laskunumeroa tai viitenumeroa tallenneta osittain.
 
-Oman yrityksen pankkitili kuuluu myöhemmin Company Settings -master dataan,
-mutta hyväksytylle laskulle tallennetaan maksutietojen snapshot. PDF, tulostus
-ja sähköpostilähetys käyttävät hyväksytyn laskun snapshot-tietoja, eivät sen
-hetkisiä muuttuvia yritysasetuksia.
+Oman yrityksen pankkitiedot kuuluvat Company Settings -master dataan, mutta
+hyväksytylle laskulle tallennetaan myöhemmin maksutietojen snapshot. PDF,
+tulostus ja sähköpostilähetys käyttävät hyväksytyn laskun snapshot-tietoja,
+eivät sen hetkisiä muuttuvia yritysasetuksia.
 
 Tuleva maksutietojen marssijärjestys:
 
 1. viitenumero hyväksyntätransaktioon
 2. Hyväksy laskuksi -UI näyttää laskunumeron ja viitenumeron
-3. ennen print/PDF-vaihetta lisätään Oma yritys -tietoihin pankkitiedot
+3. ennen print/PDF-vaihetta hyväksyntä snapshottaa Oma yritys -pankkitiedot
 4. hyväksytty lasku snapshottaa laskulla käytetyt pankkitiedot
 5. hyväksytyn laskun katselu ja print-layout
 6. PDF
