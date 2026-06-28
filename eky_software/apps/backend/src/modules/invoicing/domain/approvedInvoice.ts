@@ -5,6 +5,7 @@ import type {
 } from './invoiceCalculation.js';
 import type { InvoiceUnit } from './invoiceDraft.js';
 import type { InvoiceNumberingMode } from './invoiceNumbering.js';
+import type { ReferenceNumberType } from './invoiceReferenceNumber.js';
 
 export type ApprovedInvoiceStatus = 'approved';
 export type InvoiceAuditAction = 'invoice.approved';
@@ -33,6 +34,8 @@ export interface ApprovedInvoice {
   companyId: string;
   sourceDraftId: string;
   invoiceNumber: string;
+  referenceNumber: string;
+  referenceNumberType: ReferenceNumberType;
   seriesKey: string;
   sequenceScope: string;
   sequenceNumber: number;

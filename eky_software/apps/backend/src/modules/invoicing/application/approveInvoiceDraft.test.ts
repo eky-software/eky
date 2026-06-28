@@ -46,6 +46,8 @@ function createResult(
     invoiceId: 'invoice-1',
     invoiceNumber: '20260001',
     numberingMode: 'calendarYearSequence',
+    referenceNumber: '202600017',
+    referenceNumberType: 'finnishDomestic',
     sequenceNumber: 1,
     sequenceScope: 'calendar-year:2026',
     status: 'approved',

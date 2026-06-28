@@ -23,6 +23,7 @@ Laskun hyväksynnän, virallisen laskunumeron, numerointisarjojen, snapshotin ja
 - laskurivit
 - laskun tilat
 - laskunumeroinnin
+- hyväksytyn laskun viitenumeron
 - ALV-käsittelyn
 - maksuehdot
 - laskutuksen hintojen veroton/verollinen syöttötavan
@@ -38,6 +39,7 @@ Laskun hyväksynnän, virallisen laskunumeron, numerointisarjojen, snapshotin ja
 - asiakkaan perustietoja
 - asiakaskohtaisia tuntihintaohituksia
 - oman yrityksen oletustuntihintaa
+- oman yrityksen pankkitilien master dataa
 - kohteen perustietoja
 - tuntikirjausten alkuperäistä dataa
 - materiaalikirjausten alkuperäistä dataa
@@ -146,6 +148,7 @@ Hyväksynnässä Invoicing:
 
 - validoi luonnoksen
 - varaa laskunumeron
+- muodostaa viitenumeron hyväksytylle laskulle
 - luo laskun ja laskurivien snapshotit
 - kirjaa audit-tapahtuman
 - linkittää luonnoksen syntyneeseen hyväksyttyyn laskuun
@@ -164,6 +167,32 @@ Numerointiasetukset voivat näkyä käyttäjälle Oma yritys / Asetukset -kokona
 
 Tarkat säännöt on kuvattu dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
 
+## Viitenumero Ja Maksutiedot
+
+Ensimmäisessä hyväksyntävaiheessa hyväksytylle laskulle muodostetaan suomalainen
+kotimainen viitenumero laskunumeron pohjalta. Viitenumero muodostetaan
+hyväksyntätransaktiossa backendissä, eikä frontend tai API-client saa muodostaa
+sitä lopullisena totuutena.
+
+Viitenumero tallennetaan hyväksytylle laskulle ilman välilyöntejä. Jos
+laskunumero ei ole puhtaasti numeerinen, hyväksyntä epäonnistuu hallitusti
+eikä laskunumeroa tai viitenumeroa tallenneta osittain.
+
+Oman yrityksen pankkitili kuuluu myöhemmin Company Settings -master dataan,
+mutta hyväksytylle laskulle tallennetaan maksutietojen snapshot. PDF, tulostus
+ja sähköpostilähetys käyttävät hyväksytyn laskun snapshot-tietoja, eivät sen
+hetkisiä muuttuvia yritysasetuksia.
+
+Tuleva maksutietojen marssijärjestys:
+
+1. viitenumero hyväksyntätransaktioon
+2. Hyväksy laskuksi -UI näyttää laskunumeron ja viitenumeron
+3. ennen print/PDF-vaihetta lisätään Oma yritys -tietoihin pankkitiedot
+4. hyväksytty lasku snapshottaa laskulla käytetyt pankkitiedot
+5. hyväksytyn laskun katselu ja print-layout
+6. PDF
+7. sähköpostilähetys
+
 ## Snapshot-Periaate
 
 Laskulle tai laskuriville tallennetaan myöhemmin käytetyt hinnat snapshotiksi.
@@ -180,12 +209,17 @@ Vanha lasku ei saa muuttua, vaikka myöhemmin muuttuvat:
 - asiakkaan asiakaskohtainen tuntihinta
 - oman yrityksen oletustuntihinta
 - oman yrityksen perustiedot
+- oman yrityksen pankkitiedot
 
 Customers-moduuli omistaa asiakkaan perustiedot ja mahdollisen asiakaskohtaisen tuntihintaohituksen.
 
 Company Settings -moduuli omistaa oman yrityksen tiedot ja oletustuntihinnan.
 
-Invoicing omistaa laskulla käytetyt snapshot-arvot.
+Company Settings -moduuli omistaa myöhemmin oman yrityksen pankkitilien master
+datan, kuten `iban`, `bic` ja valinnaisen `bankName`-arvon.
+
+Invoicing omistaa laskulla käytetyt snapshot-arvot, mukaan lukien hyväksytylle
+laskulle tallennettavat viitenumeron ja myöhemmän maksutietojen snapshotin.
 
 ## Turvallisuus
 

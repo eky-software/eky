@@ -18,6 +18,10 @@ import {
   type InvoiceNumberingMode,
   type StoredInvoiceNumberingSettings,
 } from '../domain/invoiceNumbering.js';
+import {
+  createFinnishDomesticReferenceNumber,
+  type ReferenceNumberType,
+} from '../domain/invoiceReferenceNumber.js';
 import type {
   ApproveInvoiceDraftPersistenceInput,
   ApprovedInvoiceResult,
@@ -38,35 +42,37 @@ type InvoiceNumberSequenceUpsertParameters = [
 ];
 
 type InvoiceInsertParameters = [
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  number,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  number,
-  string,
-  string,
-  string,
-  string,
-  number,
-  number,
-  number,
-  string,
-  string,
-  string,
+  string, // id
+  string, // company_id
+  string, // source_draft_id
+  string, // invoice_number
+  string | null, // reference_number
+  string | null, // reference_number_type
+  string, // series_key
+  string, // sequence_scope
+  number, // sequence_number
+  string, // numbering_mode
+  string, // status
+  string, // customer_id
+  string, // customer_number_snapshot
+  string, // customer_name_snapshot
+  string, // customer_business_id_snapshot
+  string, // customer_type_snapshot
+  string, // company_name_snapshot
+  string, // company_business_id_snapshot
+  string, // invoice_date
+  string, // due_date
+  number, // payment_term_days
+  string, // price_input_mode
+  string, // subject
+  string, // order_number
+  string, // note
+  number, // total_net_cents
+  number, // total_vat_cents
+  number, // total_gross_cents
+  string, // created_at
+  string, // approved_at
+  string, // updated_at
 ];
 
 type InvoiceLineInsertParameters = [
@@ -171,6 +177,8 @@ function createInvoiceRow(
   sequenceScope: string,
   sequenceNumber: number,
   invoiceNumber: string,
+  referenceNumber: string,
+  referenceNumberType: ReferenceNumberType,
   snapshot: InvoiceSnapshotData,
 ): NewInvoiceRow {
   return {
@@ -178,6 +186,8 @@ function createInvoiceRow(
     company_id: input.companyId,
     source_draft_id: input.draftId,
     invoice_number: invoiceNumber,
+    reference_number: referenceNumber,
+    reference_number_type: referenceNumberType,
     series_key: input.seriesKey,
     sequence_scope: sequenceScope,
     sequence_number: sequenceNumber,
@@ -305,6 +315,8 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
         draft.invoice_date,
         sequenceNumber,
       );
+      const referenceNumberType: ReferenceNumberType = 'finnishDomestic';
+      const referenceNumber = createFinnishDomesticReferenceNumber(invoiceNumber);
       const snapshot = this.getSnapshotData(input.companyId, draft.customer_id);
       const invoiceRow = createInvoiceRow(
         input,
@@ -313,6 +325,8 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
         sequenceScope,
         sequenceNumber,
         invoiceNumber,
+        referenceNumber,
+        referenceNumberType,
         snapshot,
       );
       const lineRows = createInvoiceLineRows(input, lines);
@@ -335,6 +349,8 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
         invoiceId: input.invoiceId,
         draftId: input.draftId,
         invoiceNumber,
+        referenceNumber,
+        referenceNumberType,
         sequenceNumber,
         sequenceScope,
         numberingMode: settings.mode,
@@ -538,6 +554,8 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
             company_id,
             source_draft_id,
             invoice_number,
+            reference_number,
+            reference_number_type,
             series_key,
             sequence_scope,
             sequence_number,
@@ -567,7 +585,8 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
           VALUES (
             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-            ?, ?, ?, ?, ?, ?, ?, ?, ?
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+            ?
           )
         `,
       )
@@ -576,6 +595,8 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
         invoice.company_id,
         invoice.source_draft_id,
         invoice.invoice_number,
+        invoice.reference_number,
+        invoice.reference_number_type,
         invoice.series_key,
         invoice.sequence_scope,
         invoice.sequence_number,

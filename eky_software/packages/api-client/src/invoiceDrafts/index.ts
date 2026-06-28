@@ -13,6 +13,7 @@ export type {
   InvoiceDraftSummary,
   InvoiceLineDiscount,
   InvoicePriceInputMode,
+  InvoiceReferenceNumberType,
   InvoiceTotals,
   InvoiceUnit,
   InvoiceVatBreakdown,

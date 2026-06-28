@@ -216,6 +216,31 @@ describe('invoice drafts api client', () => {
     ).rejects.toBeInstanceOf(EkyApiError);
   });
 
+  it('rejects invalid approve reference number response shapes', async () => {
+    const requests = createRequestLog();
+    const invalidReferenceNumberClient = createTestClient(requests, {
+      approvedInvoice: {
+        ...createTestApprovedInvoiceResult(),
+        referenceNumber: 202600017,
+      },
+    });
+
+    await expect(
+      invalidReferenceNumberClient.approveInvoiceDraft('draft-1'),
+    ).rejects.toBeInstanceOf(EkyApiError);
+
+    const invalidReferenceTypeClient = createTestClient(requests, {
+      approvedInvoice: {
+        ...createTestApprovedInvoiceResult(),
+        referenceNumberType: 'international',
+      },
+    });
+
+    await expect(
+      invalidReferenceTypeClient.approveInvoiceDraft('draft-1'),
+    ).rejects.toBeInstanceOf(EkyApiError);
+  });
+
   it('preserves a controlled API error from the backend', async () => {
     const requests = createRequestLog();
     const responseBody = { error: 'Invoice draft was not found.' };
@@ -303,6 +328,8 @@ function createTestApprovedInvoiceResult(): ApprovedInvoiceResult {
     invoiceId: 'invoice-1',
     invoiceNumber: '20260001',
     numberingMode: 'calendarYearSequence',
+    referenceNumber: '202600017',
+    referenceNumberType: 'finnishDomestic',
     sequenceNumber: 1,
     sequenceScope: 'calendar-year:2026',
     status: 'approved',

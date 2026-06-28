@@ -204,6 +204,8 @@ function createApprovedInvoiceResult(
     invoiceId: 'invoice-1',
     invoiceNumber: '20260001',
     numberingMode: 'calendarYearSequence',
+    referenceNumber: '202600017',
+    referenceNumberType: 'finnishDomestic',
     sequenceNumber: 1,
     sequenceScope: 'calendar-year:2026',
     status: 'approved',
@@ -456,6 +458,7 @@ describe('invoiceDraftRoutes', () => {
       draftId: 'draft-1',
       invoiceId: 'invoice-1',
       invoiceNumber: '20260001',
+      referenceNumber: '202600017',
     });
     const testContext = createTestApp(true, { approveResult: approvedInvoice });
 
@@ -478,6 +481,40 @@ describe('invoiceDraftRoutes', () => {
     expect(testContext.getApproveInput()?.approvedAt).toEqual(
       expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
     );
+  });
+
+  it('ignores request-owned approval fields and returns repository-generated values', async () => {
+    const approvedInvoice = createApprovedInvoiceResult({
+      invoiceNumber: '20260001',
+      referenceNumber: '202600017',
+    });
+    const testContext = createTestApp(true, { approveResult: approvedInvoice });
+
+    const response = await testContext.app.request(
+      '/invoice-drafts/draft-1/approve',
+      {
+        body: JSON.stringify({
+          companyId: 'other-company',
+          invoiceNumber: 'ATTACKER-1',
+          referenceNumber: '123456',
+        }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      },
+    );
+    const body = (await response.json()) as {
+      approvedInvoice: ApprovedInvoiceResult;
+    };
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ approvedInvoice });
+    expect(testContext.getApproveInput()).toMatchObject({
+      companyId: 'dev-company',
+      draftId: 'draft-1',
+      seriesKey: 'default',
+    });
+    expect(testContext.getApproveInput()).not.toHaveProperty('invoiceNumber');
+    expect(testContext.getApproveInput()).not.toHaveProperty('referenceNumber');
   });
 
   it('returns a generic not-found response when approving an unavailable draft', async () => {

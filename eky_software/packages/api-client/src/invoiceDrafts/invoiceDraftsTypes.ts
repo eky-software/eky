@@ -5,6 +5,7 @@ export type InvoiceNumberingMode =
   | 'calendarYearSequence'
   | 'fiscalYearSequence'
   | 'plainSequence';
+export type InvoiceReferenceNumberType = 'finnishDomestic';
 export type InvoiceUnit = 'h' | 'kpl' | 'pv' | 'km' | 'erä';
 
 export type InvoiceLineDiscount =
@@ -107,6 +108,8 @@ export interface ApprovedInvoiceResult {
   invoiceId: string;
   draftId: string;
   invoiceNumber: string;
+  referenceNumber: string;
+  referenceNumberType: InvoiceReferenceNumberType;
   sequenceNumber: number;
   sequenceScope: string;
   numberingMode: InvoiceNumberingMode;
