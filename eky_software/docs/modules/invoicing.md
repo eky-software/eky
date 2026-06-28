@@ -167,6 +167,12 @@ Numerointiasetukset voivat näkyä käyttäjälle Oma yritys / Asetukset -kokona
 
 Tarkat säännöt on kuvattu dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
 
+Web-käyttöliittymä voi näyttää draftin hyväksynnän jälkeen backendin
+palauttaman laskunumeron ja viitenumeron, mutta se ei muodosta niitä itse.
+Hyväksynnän jälkeen käyttäjää ei pidetä luonnoksen muokkaustilassa.
+Hyväksytyn laskun varsinainen katselu-, print- ja lähetysnäkymä toteutetaan
+myöhemmissä vaiheissa hyväksytyn laskun omien lukupolkujen päälle.
+
 ## Viitenumero Ja Maksutiedot
 
 Ensimmäisessä hyväksyntävaiheessa hyväksytylle laskulle muodostetaan suomalainen

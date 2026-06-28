@@ -159,6 +159,7 @@ describe('InvoicingPageView', () => {
     expect(html).not.toContain(uiText.invoicing.validateForm);
     expect(html).toContain(uiText.invoicing.save);
     expect(html).not.toContain(uiText.invoicing.saveDraftLater);
+    expect(html).not.toContain(uiText.invoicing.approveDraft);
     expect(html).not.toContain('required=""');
   });
 
@@ -221,6 +222,10 @@ describe('InvoicingPageView', () => {
     expect(html).toContain('ORDER-1');
     expect(html).toContain('Työtunti');
     expect(html).toContain('65,50');
+    expect(html).toContain(uiText.invoicing.approveDraft);
+    expect(html).not.toContain(
+      uiText.invoicing.approveDraftConfirmationTitle,
+    );
     expect(html).toContain(uiText.invoicing.save);
     expect(html).not.toContain(uiText.invoicing.saveDraftChanges);
   });
@@ -235,6 +240,7 @@ function renderPage(
     | 'deleteState'
     | 'onCancelDeleteDraft'
     | 'onConfirmDeleteDraft'
+    | 'onDraftApproved'
     | 'onDraftSaved'
     | 'onRequestDeleteDraft'
     | 'pendingDeleteDraftId'
@@ -247,6 +253,7 @@ function renderPage(
         | 'deleteState'
         | 'onCancelDeleteDraft'
         | 'onConfirmDeleteDraft'
+        | 'onDraftApproved'
         | 'onDraftSaved'
         | 'onRequestDeleteDraft'
         | 'pendingDeleteDraftId'
@@ -260,6 +267,7 @@ function renderPage(
       deleteState={createDeleteState()}
       onCancelDeleteDraft={vi.fn()}
       onConfirmDeleteDraft={vi.fn()}
+      onDraftApproved={vi.fn()}
       onDraftSaved={vi.fn()}
       onRequestDeleteDraft={vi.fn()}
       pendingDeleteDraftId={null}
