@@ -216,6 +216,23 @@ export const uiText = {
   },
   invoicing: {
     addRow: 'Lisää rivi',
+    approveDraft: 'Hyväksy laskuksi',
+    approveDraftConfirmAction: 'Hyväksy laskuksi',
+    approveDraftConfirmationIntro:
+      'Olet hyväksymässä laskuluonnoksen viralliseksi laskuksi.',
+    approveDraftConfirmationLock:
+      'Hyväksynnässä laskulle annetaan virallinen laskunumero ja viitenumero. Laskun tiedot snapshotataan ja luonnos lukitaan. Tämän jälkeen laskua ei voi enää muokata luonnoksena.',
+    approveDraftConfirmationTitle: 'Hyväksynnän vahvistus',
+    approveDraftError:
+      'Laskua ei voitu hyväksyä. Tarkista laskun tiedot ja yritä uudelleen.',
+    approveDraftNotFound:
+      'Laskuluonnosta ei löytynyt tai se on jo hyväksytty.',
+    approveDraftSuccess: 'Lasku hyväksyttiin.',
+    approveDraftSuccessHelp:
+      'Hyväksytyn laskun varsinainen katselunäkymä lisätään myöhemmin.',
+    approveDraftUnsavedChanges: 'Tallenna muutokset ennen hyväksyntää.',
+    approvedInvoiceKicker: 'Hyväksytty lasku',
+    approvingDraft: 'Hyväksytään...',
     autosaveError: 'Automaattitallennus epäonnistui.',
     autosaveSaved: 'Tallennettu',
     autosaveSaving: 'Tallennetaan...',
@@ -266,6 +283,7 @@ export const uiText = {
     empty: 'Laskuluonnoksia ei ole vielä.',
     invoice: 'Lasku',
     invoiceDate: 'Laskun päiväys',
+    invoiceNumber: 'Laskunumero',
     invoiceRows: 'Laskurivit',
     invoiceRowsHelp:
       'Lisää laskutettavat työt ja tuotteet riveittäin. Summat tarkistetaan backendissä tallennettaessa.',
@@ -293,6 +311,7 @@ export const uiText = {
     priceInputGross: 'Verollinen hinta',
     priceInputMode: 'Hintojen syöttötapa',
     priceInputNet: 'Veroton hinta',
+    referenceNumber: 'Viitenumero',
     discountFixed: 'Euromäärä',
     discountNone: 'Ei alennusta',
     discountPercentage: 'Prosentti',
@@ -434,6 +453,8 @@ export const uiText = {
       'Laskuluonnoksen vastaus oli virheellinen.',
     'Invalid invoice numbering settings response.':
       'Laskunumeroinnin asetusten vastaus oli virheellinen.',
+    'Invoice numbering settings were not found.':
+      'Laskunumeroinnin asetuksia ei löytynyt.',
     'Invoice numbering settings cannot be changed after numbering has been used.':
       'Numerointia on jo käytetty. Asetuksia ei voi muuttaa normaalisti.',
     'Invoice draft not found.': 'Laskuluonnosta ei löytynyt.',

@@ -1,6 +1,10 @@
-import type { InvoiceDraft } from '@eky/api-client';
+import type { ApprovedInvoiceResult, InvoiceDraft } from '@eky/api-client';
 import { useState } from 'react';
 
+import {
+  InvoiceApprovalConfirmation,
+  InvoiceApprovalSuccessPanel,
+} from './InvoiceApprovalPanel.js';
 import { InvoiceBasicInfoSection } from './InvoiceBasicInfoSection.js';
 import { InvoiceRowsEditor } from './InvoiceRowsEditor.js';
 import { InvoiceTotalsPreview } from './InvoiceTotalsPreview.js';
@@ -23,6 +27,7 @@ import {
 } from '../form/newInvoiceFormState.js';
 import type { InvoiceCustomerListState } from '../hooks/useInvoiceCustomers.js';
 import type { InvoiceCompanySettingsState } from '../hooks/useInvoiceCompanySettings.js';
+import { useApproveInvoiceDraft } from '../hooks/useApproveInvoiceDraft.js';
 import { useInvoiceDraftAutosave } from '../hooks/useInvoiceDraftAutosave.js';
 import {
   prepareInvoiceDraftSaveInput,
@@ -40,6 +45,7 @@ interface NewInvoiceFormProps {
   companySettingsState: InvoiceCompanySettingsState;
   mode: NewInvoiceFormMode;
   onBack(): void;
+  onDraftApproved(approvedInvoice: ApprovedInvoiceResult): void;
   onDraftSaved(savedDraft: InvoiceDraft): void;
 }
 
@@ -48,12 +54,18 @@ export function NewInvoiceForm({
   companySettingsState,
   mode,
   onBack,
+  onDraftApproved,
   onDraftSaved,
 }: NewInvoiceFormProps): React.JSX.Element {
   const [form, setForm] = useState(() => createInitialForm(mode));
   const [formRevision, setFormRevision] = useState(0);
   const [hasValidated, setHasValidated] = useState(false);
+  const [isApprovalConfirmationVisible, setIsApprovalConfirmationVisible] =
+    useState(false);
+  const [approvalGuardMessage, setApprovalGuardMessage] =
+    useState<string | null>(null);
   const saveState = useSaveInvoiceDraft(createSaveMode(mode));
+  const approveState = useApproveInvoiceDraft();
   const autosaveState = useInvoiceDraftAutosave({
     form,
     formRevision,
@@ -75,6 +87,9 @@ export function NewInvoiceForm({
     updateForm: (currentForm: NewInvoiceFormState) => NewInvoiceFormState,
   ): void {
     saveState.clearSaveResult();
+    approveState.clearApprovalResult();
+    setApprovalGuardMessage(null);
+    setIsApprovalConfirmationVisible(false);
     setForm(updateForm);
     setFormRevision((currentRevision) => currentRevision + 1);
   }
@@ -161,6 +176,38 @@ export function NewInvoiceForm({
     setFormRevision((currentRevision) => currentRevision + 1);
   }
 
+  function handleRequestApproval(): void {
+    approveState.clearApprovalResult();
+    setApprovalGuardMessage(null);
+
+    if (mode.type !== 'edit') {
+      return;
+    }
+
+    if (autosaveState.status !== 'saved' || saveState.isSaving) {
+      setApprovalGuardMessage(uiText.invoicing.approveDraftUnsavedChanges);
+      setIsApprovalConfirmationVisible(false);
+      return;
+    }
+
+    setIsApprovalConfirmationVisible(true);
+  }
+
+  async function handleConfirmApproval(): Promise<void> {
+    if (mode.type !== 'edit') {
+      return;
+    }
+
+    const approvedInvoice = await approveState.approveDraft(mode.draft.id);
+
+    if (approvedInvoice === null) {
+      return;
+    }
+
+    setIsApprovalConfirmationVisible(false);
+    onDraftApproved(approvedInvoice);
+  }
+
   const isSaving =
     saveState.isSaving || autosaveState.status === 'saving';
   const saveButtonText = isSaving
@@ -176,6 +223,16 @@ export function NewInvoiceForm({
     mode.type === 'edit'
       ? uiText.invoicing.saveDraftChangesSuccess
       : uiText.invoicing.saveDraftSuccess;
+  const canShowApprovalAction = mode.type === 'edit';
+
+  if (approveState.approvedInvoice !== null) {
+    return (
+      <InvoiceApprovalSuccessPanel
+        approvedInvoice={approveState.approvedInvoice}
+        onBack={onBack}
+      />
+    );
+  }
 
   return (
     <form
@@ -235,6 +292,24 @@ export function NewInvoiceForm({
         </p>
       ) : null}
 
+      {approvalGuardMessage !== null ? (
+        <p
+          className={`message error-message ${styles.validationMessage}`}
+          role="alert"
+        >
+          {approvalGuardMessage}
+        </p>
+      ) : null}
+
+      {approveState.errorMessage !== null ? (
+        <p
+          className={`message error-message ${styles.validationMessage}`}
+          role="alert"
+        >
+          {approveState.errorMessage}
+        </p>
+      ) : null}
+
       {shouldShowAutosaveMessage ? (
         <p
           className={`message ${
@@ -265,7 +340,25 @@ export function NewInvoiceForm({
       />
       <InvoiceTotalsPreview form={form} />
 
+      {isApprovalConfirmationVisible ? (
+        <InvoiceApprovalConfirmation
+          isApproving={approveState.isApproving}
+          onCancel={() => setIsApprovalConfirmationVisible(false)}
+          onConfirm={() => void handleConfirmApproval()}
+        />
+      ) : null}
+
       <footer className={styles.actions}>
+        {canShowApprovalAction ? (
+          <button
+            className="ghost-button"
+            disabled={isSaving || approveState.isApproving}
+            onClick={handleRequestApproval}
+            type="button"
+          >
+            {uiText.invoicing.approveDraft}
+          </button>
+        ) : null}
         <button className="ghost-button" onClick={onBack} type="button">
           {uiText.invoicing.backToDrafts}
         </button>

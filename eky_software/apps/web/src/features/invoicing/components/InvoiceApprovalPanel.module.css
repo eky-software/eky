@@ -1,0 +1,35 @@
+.panel {
+  display: grid;
+  gap: 12px;
+  margin: 14px 18px 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.details {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px 14px;
+  margin: 0;
+}
+
+.details dt {
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+.details dd {
+  margin: 0;
+  font-weight: 800;
+  color: var(--color-text);
+}
+
+@media (max-width: 620px) {
+  .details {
+    grid-template-columns: 1fr;
+  }
+}

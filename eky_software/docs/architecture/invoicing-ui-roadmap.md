@@ -146,7 +146,26 @@ Autosave toimii kahdessa rajatussa vaiheessa:
 
 Manuaalinen “Tallenna muutokset” säilyy käytössä autosavesta huolimatta.
 
-## Vaihe 7: viimeistely
+## Vaihe 7: laskuluonnoksen hyväksyntä
+
+Tila: hyväksyntätoiminnon ensimmäinen web-UI-vaihe näyttää käyttäjälle
+tietoisen vahvistuksen ennen hyväksyntää. Hyväksyntä käyttää backendin
+`approveInvoiceDraft`-polkua ja näyttää onnistumisen jälkeen backendin
+palauttaman laskunumeron ja viitenumeron.
+
+- näytä hyväksyntätoiminto vain tallennetulle ja avatulle laskuluonnokselle
+- edellytä, että muutokset on tallennettu ennen hyväksyntää
+- varmista hyväksyntä erillisellä vahvistusalueella
+- kutsu hyväksyntää vain API-clientin kautta
+- näytä laskunumero ja viitenumero backendin palauttamasta tuloksesta
+- siirrä hyväksynnän jälkeen käyttäjä pois luonnoksen muokkaamisesta
+- jätä hyväksytyn laskun varsinainen katselu-, lähetys- ja printtinäkymä
+  myöhemmäksi
+
+UI ei muodosta laskunumeroa, viitenumeroa, snapshotteja eikä
+hyväksyntäpäivää. Ne ovat backendin vastuulla.
+
+## Vaihe 8: viimeistely
 
 - viimeistele Classic-työnkulun näppäimistökäyttö ja saavutettavuus
 - yhtenäistä turvalliset virheilmoitukset
@@ -158,9 +177,7 @@ Manuaalinen “Tallenna muutokset” säilyy käytössä autosavesta huolimatta.
 
 Roadmap ei vielä sisällä:
 
-- laskun hyväksyntää
-- laskunumerointia
-- snapshot-lukitusta
+- hyväksytyn laskun varsinaista katselunäkymää
 - PDF:ää
 - sähköpostia
 - verkkolaskua

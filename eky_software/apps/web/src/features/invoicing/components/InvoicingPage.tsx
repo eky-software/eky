@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
-import type { InvoiceDraft } from '@eky/api-client';
+import type { ApprovedInvoiceResult, InvoiceDraft } from '@eky/api-client';
 
 import { InvoiceDraftList } from './InvoiceDraftList.js';
 import { NewInvoiceForm } from './NewInvoiceForm.js';
@@ -93,6 +93,10 @@ export function InvoicingPage({
     void draftState.refreshDrafts();
   }
 
+  function handleDraftApproved(_approvedInvoice: ApprovedInvoiceResult): void {
+    void draftState.refreshDrafts();
+  }
+
   useEffect(() => {
     if (previousNavigationRevision.current === navigationRevision) {
       return;
@@ -114,6 +118,7 @@ export function InvoicingPage({
       onBackToDrafts={handleBackToDrafts}
       onCancelDeleteDraft={handleCancelDeleteDraft}
       onConfirmDeleteDraft={(id) => void handleConfirmDeleteDraft(id)}
+      onDraftApproved={handleDraftApproved}
       onDraftSaved={handleDraftSaved}
       onOpenDraft={handleOpenDraft}
       onRequestDeleteDraft={handleRequestDeleteDraft}
@@ -132,6 +137,7 @@ interface InvoicingPageViewProps extends InvoiceDraftListState {
   onBackToDrafts(): void;
   onCancelDeleteDraft(): void;
   onConfirmDeleteDraft(id: string): void;
+  onDraftApproved(approvedInvoice: ApprovedInvoiceResult): void;
   onDraftSaved(savedDraft: InvoiceDraft): void;
   onOpenDraft(id: string): void;
   onRequestDeleteDraft(id: string): void;
@@ -151,6 +157,7 @@ export function InvoicingPageView({
   onBackToDrafts,
   onCancelDeleteDraft,
   onConfirmDeleteDraft,
+  onDraftApproved,
   onDraftSaved,
   onOpenDraft,
   onRequestDeleteDraft,
@@ -214,6 +221,7 @@ export function InvoicingPageView({
           customerListState={customerListState}
           mode={{ type: 'create' }}
           onBack={onBackToDrafts}
+          onDraftApproved={onDraftApproved}
           onDraftSaved={onDraftSaved}
         />
       ) : (
@@ -222,6 +230,7 @@ export function InvoicingPageView({
           customerListState={customerListState}
           draftEditorState={draftEditorState}
           onBack={onBackToDrafts}
+          onDraftApproved={onDraftApproved}
           onDraftSaved={onDraftSaved}
         />
       )}
@@ -234,6 +243,7 @@ interface InvoiceDraftEditViewProps {
   customerListState: InvoiceCustomerListState;
   draftEditorState: InvoiceDraftEditorState;
   onBack(): void;
+  onDraftApproved(approvedInvoice: ApprovedInvoiceResult): void;
   onDraftSaved(savedDraft: InvoiceDraft): void;
 }
 
@@ -242,6 +252,7 @@ function InvoiceDraftEditView({
   customerListState,
   draftEditorState,
   onBack,
+  onDraftApproved,
   onDraftSaved,
 }: InvoiceDraftEditViewProps): React.JSX.Element {
   if (draftEditorState.isLoading) {
@@ -290,6 +301,7 @@ function InvoiceDraftEditView({
         type: 'edit',
       }}
       onBack={onBack}
+      onDraftApproved={onDraftApproved}
       onDraftSaved={onDraftSaved}
     />
   );
