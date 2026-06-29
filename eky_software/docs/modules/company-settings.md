@@ -88,6 +88,7 @@ Kenttien merkitys:
 - `companyId` rajaa tiedot nykyiseen yritykseen.
 - `companyName` on oman yrityksen nimi.
 - `businessId` on oman yrityksen Y-tunnus.
+- `vatNumber` voidaan lisätä seuraavassa print/PDF-data foundation -vaiheessa oman yrityksen ALV-tunnukseksi.
 - `streetAddress`, `postalCode` ja `city` kuvaavat oman yrityksen pääosoitetta.
 - `email` ja `phone` ovat oman yrityksen ensisijaiset yhteystiedot.
 - `iban`, `bic` ja `bankName` kuvaavat oman yrityksen maksutilin master dataa.
@@ -191,6 +192,10 @@ laskulle tallennetaan myöhemmin maksutietojen snapshot, jotta vanhat laskut
 eivät muutu, vaikka Oma yritys -kohdan IBAN, BIC tai pankin nimi muuttuu.
 PDF, print-layout ja sähköpostilähetys käyttävät hyväksytyn laskun
 snapshot-tietoja, eivät suoraan muuttuvaa Company Settings -dataa.
+
+Oman yrityksen ALV-tunnus kuuluu samaan master-data-ajatteluun. Kun `vatNumber`
+lisätään Company Settingsiin, hyväksytty lasku snapshottaa sen arvon
+`seller_vat_number`-kenttään eikä hae sitä myöhemmin muuttuvista asetuksista.
 
 ## Moduulirajat
 
@@ -324,3 +329,4 @@ Liittyvät dokumentit:
 - `docs/modules/invoicing.md`
 - `docs/architecture/customer-overview-plan.md`
 - `docs/architecture/company-settings-implementation-plan.md`
+- `docs/architecture/invoice-print-data-foundation-plan.md`

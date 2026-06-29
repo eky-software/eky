@@ -283,6 +283,16 @@ Lasku voi ottaa asiakkaan tiedoista snapshotin, jotta vanhan laskun tiedot eivä
 
 Lasku tai laskurivi ottaa myöhemmin snapshotin myös käytetystä tuntihinnasta.
 
+Laskutuksessa erotetaan myöhemmin varsinainen asiakas (`customerId`) ja
+valinnainen laskun vastaanottaja (`billingRecipientCustomerId`). Jos vastaanottaja
+puuttuu, laskun vastaanottaja on sama kuin asiakas. Taloyhtiö voi siis olla työn
+tai laskun asiakas, ja isännöitsijätoimisto voi olla laskun vastaanottaja, jos
+käyttäjä valitsee sen laskulla. Tämä ei muuta Customers-moduulin omistajuutta:
+Customers omistaa edelleen asiakas-master-datan, ja Invoicing omistaa laskulle
+tallennetut vastaanottaja- ja asiakassnapshotit.
+
+Tarkempi malli on dokumentissa `docs/architecture/invoice-print-data-foundation-plan.md`.
+
 ## Rajataan Myöhemmäksi
 
 Seuraavia ei lisätä ensimmäiseen Customer MVP -laajennukseen ilman erillistä päätöstä:

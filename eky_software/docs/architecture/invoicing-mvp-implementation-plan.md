@@ -8,6 +8,8 @@ Tämä dokumentti sisältää ensimmäiset hyväksytyt laskutuksen liiketoiminta
 
 Laskun hyväksynnän, virallisen laskunumeron, numerointisarjojen, snapshotin, auditoinnin ja local/cloud-numeroinnin periaatteet on kuvattu erillisessä dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
 
+Hyväksytyn laskun katselu-, print- ja PDF-polun tarvitsema data foundation on kuvattu dokumentissa `docs/architecture/invoice-print-data-foundation-plan.md`.
+
 Kaikkia yksityiskohtia ei ole vielä lukittu. Erityisesti lopullinen permission-malli, laskun lähetys, hyvityslaskut ja tuotantokäytön kirjanpidolliset tarkistukset ratkaistaan ennen niitä koskevan tuotantokoodin kirjoittamista.
 
 ## Lähtökohta
@@ -103,6 +105,7 @@ Ensimmäisen laskuluonnoksen suunnittelutason kentät:
 - `id`
 - `companyId`
 - `customerId`
+- `billingRecipientCustomerId` myöhemmässä print/PDF-data foundation -vaiheessa
 - `invoiceDate`
 - `dueDate`
 - `paymentTermDays`
@@ -119,6 +122,7 @@ Kenttien alustava merkitys:
 - `id` on tekninen tunniste.
 - `companyId` rajaa laskun yritykseen.
 - `customerId` viittaa Customers-moduulin asiakkaaseen.
+- `billingRecipientCustomerId` on myöhemmin lisättävä valinnainen laskun vastaanottaja. Jos sitä ei anneta, vastaanottaja on sama kuin `customerId`.
 - `invoiceDate` on laskulla näkyvä käyttäjän muokattava päiväys.
 - `dueDate` on käyttäjän muokattava eräpäivä.
 - `paymentTermDays` on laskun maksuehto päivinä. Uuden laskun oletus on 14 päivää netto.
@@ -126,6 +130,7 @@ Kenttien alustava merkitys:
 - `orderNumber` on valinnainen asiakkaan tai työn tilausnumero.
 - `subject` on valinnainen laskun aihe.
 - `note` on valinnainen laskun saate tai lisätieto.
+- `deliveryAddressText` voidaan lisätä myöhemmin vapaaksi toimitus- tai kohdetiedoksi ennen print/PDF-vaihetta.
 - `status` kertoo laskun käsittelyvaiheen.
 - `createdAt` on tekninen luontiaika.
 - `updatedAt` on tekninen viimeisin muokkausaika.
@@ -162,6 +167,8 @@ Seuraavat kentät ovat MVP-luonnoksella valinnaisia:
 - `subject`
 - `orderNumber`
 - `note`
+- `billingRecipientCustomerId` myöhemmässä print/PDF-data foundation -vaiheessa
+- `deliveryAddressText` myöhemmässä print/PDF-data foundation -vaiheessa
 - rivin `code`
 
 `id`, `companyId`, `status`, lasketut summat sekä tekniset aikaleimat eivät ole asiakkaan vapaasti päätettäviä create-syötteitä. Backend muodostaa tai vahvistaa ne käyttötapauksen sääntöjen mukaisesti.
@@ -878,6 +885,11 @@ Snapshotin jälkeen vanha lasku ei muutu, vaikka Customers- tai Company Settings
 Hyväksynnässä tallennettavat ensimmäiset asiakas-, yritys- ja laskusnapshotin periaatteet on kuvattu dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
 
 Invoicing omistaa snapshot-arvot. Se ei siirrä Customers- tai Company Settings -master-datan omistajuutta itselleen.
+
+Ennen print-layoutia ja PDF:ää snapshot-mallia täydennetään dokumentin
+`docs/architecture/invoice-print-data-foundation-plan.md` mukaisesti. Tähän
+kuuluvat ainakin myyjän ALV-tunnus, laskun vastaanottaja, toimitus- tai
+kohdetieto, maksutietojen snapshot sekä laskukohtainen huomautusaika.
 
 ## Moduulien Välinen Tiedonhaku
 

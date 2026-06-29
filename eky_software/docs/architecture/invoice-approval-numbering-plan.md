@@ -7,6 +7,10 @@ Tämä dokumentti koskee vaihetta, jossa tallennetusta laskuluonnoksesta tulee
 hyväksytty lasku. Luonnoksen luonti, muokkaus ja automaattitallennus on kuvattu
 dokumentissa `docs/architecture/invoicing-mvp-implementation-plan.md`.
 
+Hyväksytyn laskun katselu-, print- ja PDF-polun tarvitsemat tarkemmat myyjä-,
+asiakas-, vastaanottaja-, toimitus- ja maksutietojen snapshotit on kuvattu
+dokumentissa `docs/architecture/invoice-print-data-foundation-plan.md`.
+
 ## Periaate
 
 Laskuluonnoksesta tulee hyväksytty lasku vain käyttäjän tietoisella toiminnolla.
@@ -535,6 +539,7 @@ Yrityssnapshot voi sisältää:
 
 - `companyName`
 - `businessId`
+- `vatNumber`
 - `streetAddress`
 - `postalCode`
 - `city`
@@ -562,6 +567,8 @@ Laskusnapshot sisältää vähintään:
 Myöhemmän vaiheen snapshot-tietoja voivat olla:
 
 - pankkitilin snapshot, kuten `seller_iban`, `seller_bic` ja `seller_bank_name`
+- erillinen laskun vastaanottajan snapshot, jos `billingRecipientCustomerId` eroaa asiakkaasta
+- toimitus- tai kohdetieto, kuten `delivery_address_text`
 - verkkolaskuosoite
 - laskutusosoite erikseen
 - yrityksen logo
@@ -707,7 +714,11 @@ Alustava toteutusjärjestys:
 9. Toteutetaan backend API hyväksynnälle.
 10. Päivitetään api-client.
 11. Toteutetaan UI yksittäisen luonnoksen hyväksyntään.
-12. Myöhemmin lisätään Oma yritys -pankkitiedot ennen print/PDF-vaihetta.
+12. Ennen print/PDF-vaihetta toteutetaan data foundation -vaihe dokumentin `docs/architecture/invoice-print-data-foundation-plan.md` mukaisesti:
+   - oman yrityksen ALV-tunnus
+   - laskun vastaanottaja
+   - toimitus- tai kohdetieto
+   - maksutietojen ja osapuolitietojen laajennettu snapshot
 13. Myöhemmin toteutetaan usean luonnoksen koottu hyväksyntä.
 14. Myöhemmin toteutetaan `sent`-tila ja hyvityslasku.
 
