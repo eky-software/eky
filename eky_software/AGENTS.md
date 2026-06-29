@@ -108,6 +108,8 @@ Jos työ koskee ensimmäistä manuaalista laskutus-MVP:tä, laskuluonnosta, lask
 
 Jos työ koskee laskun hyväksyntää, virallista laskunumeroa, numerointisarjoja, tilikausipohjaista numerointia, hyväksytyn laskun snapshotteja, laskutuksen auditointia tai hyväksynnän local/cloud-numerointia, lue myös `docs/architecture/invoice-approval-numbering-plan.md`.
 
+Jos työ koskee hyväksytyn laskun katselua, print-layoutia, PDF:ää, laskulla näkyviä myyjän, asiakkaan tai vastaanottajan tietoja, toimitus- tai kohdetietoa, maksutietojen snapshotia tai laskun print/PDF-data foundation -vaihetta, lue myös `docs/architecture/invoice-print-data-foundation-plan.md`.
+
 Jos työ koskee laskutuksen web-käyttöliittymää, laskuluonnoslistaa, Classic-laskutusnäkymää, uuden laskun lomaketta tai laskuluonnoksen avaamista ja muokkaamista webissä, lue myös `docs/architecture/invoicing-ui-roadmap.md`.
 
 Jos työ koskee web-käyttöliittymän ulkoasua, layoutia, komponenttirakennetta, värejä tai Eky-työpöytäkokemusta, lue myös `docs/design/ui-principles.md`.

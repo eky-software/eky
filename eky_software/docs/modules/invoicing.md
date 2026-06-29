@@ -16,6 +16,8 @@ Ensimmäisen manuaalisen laskuluonnos-MVP:n rajaus, classic-käyttöliittymä ja
 
 Laskun hyväksynnän, virallisen laskunumeron, numerointisarjojen, snapshotin ja auditoinnin periaatteet on kuvattu dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
 
+Hyväksytyn laskun katselu-, print- ja PDF-polun tarvitsemat data- ja snapshot-valmiudet on kuvattu dokumentissa `docs/architecture/invoice-print-data-foundation-plan.md`.
+
 ## Moduuli omistaa
 
 - laskuluonnokset
@@ -226,6 +228,11 @@ datan, kuten `iban`, `bic` ja valinnaisen `bankName`-arvon.
 
 Invoicing omistaa laskulla käytetyt snapshot-arvot, mukaan lukien hyväksytylle
 laskulle tallennettavat viitenumeron ja myöhemmän maksutietojen snapshotin.
+
+Ennen print-layoutia ja PDF:ää hyväksyntäpolku laajennetaan snapshottaamaan
+myös laskulla näkyvät myyjän, asiakkaan, laskun vastaanottajan, maksutietojen
+sekä toimitus- tai kohdetiedon arvot dokumentin
+`docs/architecture/invoice-print-data-foundation-plan.md` mukaisesti.
 
 ## Turvallisuus
 
