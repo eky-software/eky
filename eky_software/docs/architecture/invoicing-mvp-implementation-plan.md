@@ -214,6 +214,18 @@ Käyttäjä voi muuttaa sekä maksuehtoa että eräpäivää käsin. Jos molemma
 
 Maksuehtoja voidaan myöhemmin hallita laskutusasetuksissa.
 
+Laskutusasetuksiin kuuluu myös käyttäjän syöttämä oletusviivästyskorko ja
+oletushuomautusaika. Ensimmäinen asetusmalli:
+
+- `defaultLatePaymentInterestBasisPoints`
+- `defaultReminderPeriodDays`
+
+Viivästyskorko tallennetaan basis pointseina, esimerkiksi `9,50 % = 950`.
+Asetus voi näkyä Oma yritys -näkymän Laskutusasetukset-kokonaisuudessa, mutta
+sen domain-omistaja on Invoicing. Uusi laskuluonnos voi myöhemmin ehdottaa
+näitä arvoja. Laskukohtainen arvo ja hyväksytyn laskun snapshot lisätään omana
+vaiheenaan ennen print/PDF-toteutusta.
+
 Backend säilyttää laskulle valitun maksuehdon ja eräpäivän eikä päättele lopputulosta pelkästään käyttöliittymän oletuksesta.
 
 Käyttöliittymä saa näyttää saman 14 päivän ehdotuksen käyttökokemuksen helpottamiseksi, mutta backend toteuttaa ja validoi lopullisen säännön auktoritatiivisesti.
@@ -834,7 +846,7 @@ Asetukset on käyttöliittymän kokoava näkymä, ei lupa sekoittaa moduulien om
 Omistajuus säilyy:
 
 - Company Settings omistaa oman yrityksen master-tiedot ja oletustuntihinnan
-- Invoicing omistaa ALV-kannat, maksuehdot, numerointisarjat, tilikauden ja muut laskutuksen liiketoiminta-asetukset
+- Invoicing omistaa ALV-kannat, maksuehdot, viivästyskoron, huomautusajan, numerointisarjat, tilikauden ja muut laskutuksen liiketoiminta-asetukset
 - toimitusadapterit omistavat myöhemmin tekniset sähköposti-, PDF- tai verkkolaskuyhteydet sovittujen rajojen mukaisesti
 
 Koko Settings-moduulia tai asetustietokantaa ei suunnitella tässä vaiheessa.

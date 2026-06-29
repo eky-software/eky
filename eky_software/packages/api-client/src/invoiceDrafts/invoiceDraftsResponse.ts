@@ -83,6 +83,10 @@ function parseInvoiceDraft(value: unknown): InvoiceDraft {
     invoiceDate: readString(value, 'invoiceDate'),
     dueDate: readString(value, 'dueDate'),
     paymentTermDays: readSafeInteger(value, 'paymentTermDays'),
+    latePaymentInterestBasisPoints: readSafeInteger(
+      value,
+      'latePaymentInterestBasisPoints',
+    ),
     priceInputMode: parsePriceInputMode(value.priceInputMode),
     subject: readString(value, 'subject'),
     orderNumber: readString(value, 'orderNumber'),
@@ -156,6 +160,10 @@ function parseInvoiceDraftSummary(value: unknown): InvoiceDraftSummary {
     invoiceDate: readString(value, 'invoiceDate'),
     dueDate: readString(value, 'dueDate'),
     paymentTermDays: readSafeInteger(value, 'paymentTermDays'),
+    latePaymentInterestBasisPoints: readSafeInteger(
+      value,
+      'latePaymentInterestBasisPoints',
+    ),
     priceInputMode: parsePriceInputMode(value.priceInputMode),
     subject: readString(value, 'subject'),
     netTotalCents: readSafeInteger(value, 'netTotalCents'),

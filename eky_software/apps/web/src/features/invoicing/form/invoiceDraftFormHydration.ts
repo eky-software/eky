@@ -10,6 +10,9 @@ export function toNewInvoiceFormStateFromDraft(
     customerId: draft.customerId,
     dueDate: draft.dueDate,
     invoiceDate: draft.invoiceDate,
+    latePaymentInterestPercent: formatScaledInput(
+      draft.latePaymentInterestBasisPoints,
+    ),
     lines: draft.lines.map((line, index) => ({
       description: line.description,
       discountType: getDiscountType(line.discount),

@@ -197,6 +197,32 @@ export const uiText = {
       sequencePaddingInvalid:
         'Numeron vähimmäispituuden pitää olla välillä 0-12.',
     },
+    invoicePaymentDefaultInfo:
+      'Näytetään oletusasetukset. Tallenna asetukset, jos haluat käyttää niitä uusien laskujen pohjana.',
+    invoicePaymentDescription:
+      'Määritä laskutuksen maksamiseen liittyvät oletukset. Uusi laskuluonnos voi myöhemmin ehdottaa näitä arvoja, mutta laskulle tallennetaan lopulta käyttäjän hyväksymä arvo.',
+    invoicePaymentHeading: 'Maksuehdot ja viivästyskorko',
+    invoicePaymentKicker: 'Laskutusasetukset',
+    invoicePaymentLateInterest: 'Oletusviivästyskorko %',
+    invoicePaymentLateInterestHelp:
+      'Anna prosentti esimerkiksi muodossa 9,50. Arvoa voidaan myöhemmin ehdottaa laskulle, mutta sitä voi muuttaa laskukohtaisesti.',
+    invoicePaymentLoading: 'Ladataan maksuehtoasetuksia...',
+    invoicePaymentLoadError:
+      'Maksuehtoasetuksia ei voitu ladata. Yritä hetken kuluttua uudelleen.',
+    invoicePaymentReminderPeriodDays: 'Huomautusaika päivinä',
+    invoicePaymentReminderPeriodDaysHelp:
+      'Esimerkiksi 8 tarkoittaa, että huomautusaika näkyy laskulla kahdeksana päivänä.',
+    invoicePaymentSave: 'Tallenna maksuehtoasetukset',
+    invoicePaymentSaveError:
+      'Maksuehtoasetuksia ei voitu tallentaa. Tarkista tiedot ja yritä uudelleen.',
+    invoicePaymentSaveSuccess: 'Maksuehtoasetukset tallennettu.',
+    invoicePaymentSettings: 'Maksuehtoasetukset',
+    invoicePaymentValidation: {
+      latePaymentInterestInvalid:
+        'Viivästyskoron pitää olla prosenttina, esimerkiksi 9,50.',
+      reminderPeriodDaysInvalid:
+        'Huomautusajan pitää olla kokonaisluku välillä 0-365.',
+    },
     invalidHourlyRate: 'Tuntihinnan pitää olla euroina, esimerkiksi 65 tai 65,50.',
     invalidIban: 'IBAN-tilinumero ei ole kelvollinen.',
     invalidBic: 'BIC-koodi ei ole kelvollinen.',
@@ -302,6 +328,10 @@ export const uiText = {
     hourlyRateShortcutHelpPrefix: 'Pikavalinta',
     hourlyRateShortcutHelpSuffix:
       'täyttää valitun asiakkaan tuntihinnan kerran automaattisesti.',
+    latePaymentInterest: 'Viivästyskorko %',
+    latePaymentInterestHelp:
+      'Tyhjä kenttä käyttää oman yrityksen laskutusasetusten oletusta.',
+    latePaymentInterestPlaceholder: 'esim. 9,50',
     invoiceTotals: 'Laskun summat',
     invoiceTotalsLater:
       'Summat lasketaan backendin sääntöjen mukaan tallennusvaiheessa.',
@@ -378,6 +408,8 @@ export const uiText = {
     validationDescriptionRequired: 'Kirjoita riville nimike.',
     validationDueDateBeforeInvoiceDate:
       'Eräpäivä ei voi olla ennen laskun päiväystä.',
+    validationLatePaymentInterest:
+      'Viivästyskorko pitää antaa prosenttina, esimerkiksi 9,50.',
     validationDueDateRequired: 'Syötä eräpäivä.',
     validationFixedDiscountInvalid:
       'Syötä euromääräinen alennus nollana tai positiivisena arvona.',
@@ -469,8 +501,22 @@ export const uiText = {
       'Laskuluonnoksen vastaus oli virheellinen.',
     'Invalid invoice numbering settings response.':
       'Laskunumeroinnin asetusten vastaus oli virheellinen.',
+    'Invalid invoice payment settings body.':
+      'Maksuehtoasetusten pyyntö oli virheellinen.',
+    'Invalid invoice payment settings response.':
+      'Maksuehtoasetusten vastaus oli virheellinen.',
+    'Invoice payment settings body is too large.':
+      'Maksuehtoasetusten pyyntö on liian suuri.',
     'Invoice numbering settings were not found.':
       'Laskunumeroinnin asetuksia ei löytynyt.',
+    'Default late payment interest must be between 0 and 100000.':
+      'Viivästyskoron pitää olla välillä 0-1000 %.',
+    'Default late payment interest must be a safe integer.':
+      'Viivästyskorko oli virheellinen.',
+    'Default reminder period days must be between 0 and 365.':
+      'Huomautusajan pitää olla välillä 0-365 päivää.',
+    'Default reminder period days must be a safe integer.':
+      'Huomautusaika oli virheellinen.',
     'Invoice numbering settings cannot be changed after numbering has been used.':
       'Numerointia on jo käytetty. Asetuksia ei voi muuttaa normaalisti.',
     'Invoice draft not found.': 'Laskuluonnosta ei löytynyt.',

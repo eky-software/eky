@@ -3,8 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { calculateInvoiceLine } from '../domain/calculateInvoiceLine.js';
 import { calculateInvoiceTotals } from '../domain/calculateInvoiceTotals.js';
 import type { InvoiceDraft } from '../domain/invoiceDraft.js';
+import type {
+  StoredInvoicePaymentSettings,
+} from '../domain/invoicePaymentSettings.js';
 import type { CustomerAccessReader } from '../ports/customerAccessReader.js';
 import type { InvoiceDraftRepository } from '../ports/invoiceDraftRepository.js';
+import type { InvoicePaymentSettingsRepository } from '../ports/invoicePaymentSettingsRepository.js';
 import { InvoiceDraftNotFoundError } from './invoiceDraftNotFoundError.js';
 import {
   type UpdateInvoiceDraftDependencies,
@@ -75,6 +79,20 @@ class FakeCustomerAccessReader implements CustomerAccessReader {
   }
 }
 
+class FakeInvoicePaymentSettingsRepository
+  implements InvoicePaymentSettingsRepository
+{
+  async getSettings(): Promise<StoredInvoicePaymentSettings | undefined> {
+    return undefined;
+  }
+
+  async saveSettings(
+    settings: StoredInvoicePaymentSettings,
+  ): Promise<StoredInvoicePaymentSettings> {
+    return settings;
+  }
+}
+
 function createStoredDraft(): InvoiceDraft {
   const line = calculateInvoiceLine({
     quantityHundredths: 100,
@@ -103,6 +121,7 @@ function createStoredDraft(): InvoiceDraft {
     invoiceDate: '2026-06-13',
     dueDate: '2026-06-27',
     paymentTermDays: 14,
+    latePaymentInterestBasisPoints: 950,
     priceInputMode: 'net',
     subject: 'Old subject',
     orderNumber: '',
@@ -124,6 +143,7 @@ function createInput(
     invoiceDate: '2026-06-14',
     dueDate: '2026-07-14',
     paymentTermDays: 30,
+    latePaymentInterestBasisPoints: 1200,
     priceInputMode: 'gross',
     subject: ' Updated subject ',
     lines: [
@@ -157,6 +177,7 @@ function createDependencies(
 ): UpdateInvoiceDraftDependencies & {
   customerAccessReader: FakeCustomerAccessReader;
   invoiceDraftRepository: FakeInvoiceDraftRepository;
+  invoicePaymentSettingsRepository: FakeInvoicePaymentSettingsRepository;
 } {
   return {
     customerAccessReader: new FakeCustomerAccessReader(
@@ -166,6 +187,8 @@ function createDependencies(
       options.storedDraft,
       options.updateSucceeds,
     ),
+    invoicePaymentSettingsRepository:
+      new FakeInvoicePaymentSettingsRepository(),
   };
 }
 
@@ -202,6 +225,7 @@ describe('updateInvoiceDraft', () => {
       invoiceDate: '2026-06-14',
       dueDate: '2026-07-14',
       paymentTermDays: 30,
+      latePaymentInterestBasisPoints: 1200,
       priceInputMode: 'gross',
       subject: 'Updated subject',
       createdAt: storedDraft.createdAt,
@@ -217,6 +241,19 @@ describe('updateInvoiceDraft', () => {
     );
     expect(updatedDraft.totals).toEqual(
       calculateInvoiceTotals(updatedDraft.lines),
+    );
+  });
+
+  it('preserves the existing late payment interest when update input omits it', async () => {
+    const storedDraft = createStoredDraft();
+    const dependencies = createDependencies({ storedDraft });
+    const { latePaymentInterestBasisPoints: _omitted, ...input } =
+      createInput();
+
+    const updatedDraft = await updateInvoiceDraft(input, dependencies);
+
+    expect(updatedDraft.latePaymentInterestBasisPoints).toBe(
+      storedDraft.latePaymentInterestBasisPoints,
     );
   });
 

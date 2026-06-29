@@ -8,6 +8,7 @@ export interface InvoiceDraftSummary {
   invoiceDate: string;
   dueDate: string;
   paymentTermDays: number;
+  latePaymentInterestBasisPoints: number;
   priceInputMode: PriceInputMode;
   subject: string;
   netTotalCents: number;

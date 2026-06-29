@@ -23,6 +23,11 @@ export function serializeInvoiceDraftInput(
     body.paymentTermDays = input.paymentTermDays;
   }
 
+  if (input.latePaymentInterestBasisPoints !== undefined) {
+    body.latePaymentInterestBasisPoints =
+      input.latePaymentInterestBasisPoints;
+  }
+
   if (input.subject !== undefined) {
     body.subject = input.subject;
   }

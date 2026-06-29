@@ -15,15 +15,19 @@ import { approveInvoiceDraft } from '../modules/invoicing/application/approveInv
 import { deleteInvoiceDraft } from '../modules/invoicing/application/deleteInvoiceDraft.js';
 import { getInvoiceDraft } from '../modules/invoicing/application/getInvoiceDraft.js';
 import { getInvoiceNumberingSettings } from '../modules/invoicing/application/getInvoiceNumberingSettings.js';
+import { getInvoicePaymentSettings } from '../modules/invoicing/application/getInvoicePaymentSettings.js';
 import { listInvoiceDrafts } from '../modules/invoicing/application/listInvoiceDrafts.js';
 import { saveInvoiceDraft } from '../modules/invoicing/application/saveInvoiceDraft.js';
 import { updateInvoiceNumberingSettings } from '../modules/invoicing/application/updateInvoiceNumberingSettings.js';
+import { updateInvoicePaymentSettings } from '../modules/invoicing/application/updateInvoicePaymentSettings.js';
 import { updateInvoiceDraft } from '../modules/invoicing/application/updateInvoiceDraft.js';
 import { createInvoiceDraftRoutes } from '../modules/invoicing/http/invoiceDraftRoutes.js';
 import { createInvoiceNumberingSettingsRoutes } from '../modules/invoicing/http/invoiceNumberingSettingsRoutes.js';
+import { createInvoicePaymentSettingsRoutes } from '../modules/invoicing/http/invoicePaymentSettingsRoutes.js';
 import { SqliteInvoiceApprovalRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceApprovalRepository.js';
 import { SqliteInvoiceDraftRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceDraftRepository.js';
 import { SqliteInvoiceNumberingRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceNumberingRepository.js';
+import { SqliteInvoicePaymentSettingsRepository } from '../modules/invoicing/infrastructure/sqliteInvoicePaymentSettingsRepository.js';
 import type { CustomerAccessReader } from '../modules/invoicing/ports/customerAccessReader.js';
 
 export async function createApp(): Promise<Hono> {
@@ -41,6 +45,8 @@ export async function createApp(): Promise<Hono> {
   const invoiceDraftRepository = new SqliteInvoiceDraftRepository(database);
   const invoiceApprovalRepository = new SqliteInvoiceApprovalRepository(database);
   const invoiceNumberingRepository = new SqliteInvoiceNumberingRepository(database);
+  const invoicePaymentSettingsRepository =
+    new SqliteInvoicePaymentSettingsRepository(database);
   const customerAccessReader: CustomerAccessReader = {
     async belongsToCompany(customerId, companyId) {
       const customer = await customerRepository.findById(companyId, customerId);
@@ -81,11 +87,13 @@ export async function createApp(): Promise<Hono> {
         saveInvoiceDraft(input, {
           customerAccessReader,
           invoiceDraftRepository,
+          invoicePaymentSettingsRepository,
         }),
       updateInvoiceDraft: (input) =>
         updateInvoiceDraft(input, {
           customerAccessReader,
           invoiceDraftRepository,
+          invoicePaymentSettingsRepository,
         }),
     }),
   );
@@ -97,6 +105,16 @@ export async function createApp(): Promise<Hono> {
         getInvoiceNumberingSettings(input, invoiceNumberingRepository),
       updateInvoiceNumberingSettings: (input) =>
         updateInvoiceNumberingSettings(input, invoiceNumberingRepository),
+    }),
+  );
+
+  app.route(
+    '/',
+    createInvoicePaymentSettingsRoutes({
+      getInvoicePaymentSettings: (input) =>
+        getInvoicePaymentSettings(input, invoicePaymentSettingsRepository),
+      updateInvoicePaymentSettings: (input) =>
+        updateInvoicePaymentSettings(input, invoicePaymentSettingsRepository),
     }),
   );
 

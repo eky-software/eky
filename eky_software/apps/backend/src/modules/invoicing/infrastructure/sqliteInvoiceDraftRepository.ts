@@ -27,6 +27,7 @@ type InvoiceDraftInsertParameters = [
   string,
   string,
   number,
+  number,
   string,
   string,
   string,
@@ -62,6 +63,7 @@ type InvoiceDraftUpdateParameters = [
   string,
   string,
   number,
+  number,
   string,
   string,
   string,
@@ -95,6 +97,7 @@ interface InvoiceDraftSummaryRow {
   invoice_date: string;
   due_date: string;
   payment_term_days: number;
+  late_payment_interest_basis_points: number;
   price_input_mode: string;
   subject: string;
   net_total_cents: number;
@@ -111,6 +114,7 @@ const invoiceDraftSummarySelect = `
     invoice_date,
     due_date,
     payment_term_days,
+    late_payment_interest_basis_points,
     price_input_mode,
     subject,
     net_total_cents,
@@ -160,6 +164,8 @@ function toInvoiceDraftRow(draft: InvoiceDraft): NewInvoiceDraftRow {
     invoice_date: draft.invoiceDate,
     due_date: draft.dueDate,
     payment_term_days: draft.paymentTermDays,
+    late_payment_interest_basis_points:
+      draft.latePaymentInterestBasisPoints,
     price_input_mode: draft.priceInputMode,
     subject: draft.subject,
     order_number: draft.orderNumber,
@@ -246,6 +252,8 @@ function toInvoiceDraftSummary(
     invoiceDate: row.invoice_date,
     dueDate: row.due_date,
     paymentTermDays: row.payment_term_days,
+    latePaymentInterestBasisPoints:
+      row.late_payment_interest_basis_points,
     priceInputMode: row.price_input_mode as PriceInputMode,
     subject: row.subject,
     netTotalCents: row.net_total_cents,
@@ -291,6 +299,7 @@ export class SqliteInvoiceDraftRepository implements InvoiceDraftRepository {
           invoice_date,
           due_date,
           payment_term_days,
+          late_payment_interest_basis_points,
           price_input_mode,
           subject,
           order_number,
@@ -301,7 +310,7 @@ export class SqliteInvoiceDraftRepository implements InvoiceDraftRepository {
           created_at,
           updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
     );
     const insertLine = this.database.prepare<InvoiceDraftLineInsertParameters>(
@@ -336,6 +345,7 @@ export class SqliteInvoiceDraftRepository implements InvoiceDraftRepository {
         draftRow.invoice_date,
         draftRow.due_date,
         draftRow.payment_term_days,
+        draftRow.late_payment_interest_basis_points,
         draftRow.price_input_mode,
         draftRow.subject,
         draftRow.order_number,
@@ -388,6 +398,7 @@ export class SqliteInvoiceDraftRepository implements InvoiceDraftRepository {
             invoice_date = ?,
             due_date = ?,
             payment_term_days = ?,
+            late_payment_interest_basis_points = ?,
             price_input_mode = ?,
             subject = ?,
             order_number = ?,
@@ -435,6 +446,7 @@ export class SqliteInvoiceDraftRepository implements InvoiceDraftRepository {
         draftRow.invoice_date,
         draftRow.due_date,
         draftRow.payment_term_days,
+        draftRow.late_payment_interest_basis_points,
         draftRow.price_input_mode,
         draftRow.subject,
         draftRow.order_number,
@@ -495,6 +507,7 @@ export class SqliteInvoiceDraftRepository implements InvoiceDraftRepository {
             invoice_date,
             due_date,
             payment_term_days,
+            late_payment_interest_basis_points,
             price_input_mode,
             subject,
             order_number,
@@ -579,6 +592,8 @@ export class SqliteInvoiceDraftRepository implements InvoiceDraftRepository {
       invoiceDate: draftRow.invoice_date,
       dueDate: draftRow.due_date,
       paymentTermDays: draftRow.payment_term_days,
+      latePaymentInterestBasisPoints:
+        draftRow.late_payment_interest_basis_points,
       priceInputMode,
       subject: draftRow.subject,
       orderNumber: draftRow.order_number,

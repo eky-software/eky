@@ -13,6 +13,7 @@ describe('createInitialNewInvoiceForm', () => {
     expect(form).toMatchObject({
       dueDate: '2026-06-28',
       invoiceDate: '2026-06-14',
+      latePaymentInterestPercent: '',
       paymentTermDays: '14',
       priceInputMode: 'net',
     });

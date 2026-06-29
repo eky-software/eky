@@ -1,5 +1,6 @@
 import {
   parseEuroCents,
+  parseOptionalPercentageBasisPoints,
   parsePercentageBasisPoints,
   parseQuantityHundredths,
 } from './invoiceDraftFormMapping.js';
@@ -18,6 +19,7 @@ export interface InvoiceDraftFormErrors {
   customerId?: string;
   dueDate?: string;
   invoiceDate?: string;
+  latePaymentInterestPercent?: string;
   lines: Record<string, InvoiceDraftLineFormErrors>;
   paymentTermDays?: string;
 }
@@ -38,6 +40,7 @@ export function validateInvoiceDraftForm(
 
   validateDates(form, errors);
   validatePaymentTerm(form.paymentTermDays, errors);
+  validateLatePaymentInterest(form.latePaymentInterestPercent, errors);
 
   for (const row of form.lines) {
     const lineErrors = validateInvoiceDraftLine(row);
@@ -54,6 +57,7 @@ export function validateInvoiceDraftForm(
       errors.invoiceDate === undefined &&
       errors.dueDate === undefined &&
       errors.paymentTermDays === undefined &&
+      errors.latePaymentInterestPercent === undefined &&
       Object.keys(errors.lines).length === 0,
   };
 }
@@ -101,6 +105,18 @@ function validatePaymentTerm(
 
   if (!Number.isSafeInteger(paymentTermDays)) {
     errors.paymentTermDays = uiText.invoicing.validationPaymentTerm;
+  }
+}
+
+function validateLatePaymentInterest(
+  value: string,
+  errors: InvoiceDraftFormErrors,
+): void {
+  const basisPoints = parseOptionalPercentageBasisPoints(value);
+
+  if (basisPoints === null || (basisPoints !== undefined && basisPoints > 100_000)) {
+    errors.latePaymentInterestPercent =
+      uiText.invoicing.validationLatePaymentInterest;
   }
 }
 

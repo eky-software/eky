@@ -18,6 +18,7 @@ describe('loadInvoiceDraftSummaries', () => {
         invoiceDate: '2026-06-16',
         netTotalCents: 9825,
         paymentTermDays: 14,
+        latePaymentInterestBasisPoints: 950,
         priceInputMode: 'net' as const,
         status: 'draft' as const,
         subject: 'Työlasku',

@@ -70,6 +70,30 @@ describe('validateInvoiceDraftForm', () => {
     },
   );
 
+  it.each(['abc', '-1', '1000,01'])(
+    'rejects invalid late payment interest value %s',
+    (latePaymentInterestPercent) => {
+      const result = validateInvoiceDraftForm({
+        ...createValidForm(),
+        latePaymentInterestPercent,
+      });
+
+      expect(result.errors.latePaymentInterestPercent).toBe(
+        uiText.invoicing.validationLatePaymentInterest,
+      );
+    },
+  );
+
+  it('allows empty late payment interest so backend can use the default', () => {
+    const result = validateInvoiceDraftForm({
+      ...createValidForm(),
+      latePaymentInterestPercent: '',
+    });
+
+    expect(result.errors.latePaymentInterestPercent).toBeUndefined();
+    expect(result.isValid).toBe(true);
+  });
+
   it('requires a row description', () => {
     const result = validateInvoiceDraftForm(
       createValidForm({

@@ -25,12 +25,24 @@ export function parsePercentageBasisPoints(value: string): number | null {
   return parseScaledDecimal(value, 2);
 }
 
+export function parseOptionalPercentageBasisPoints(
+  value: string,
+): number | undefined | null {
+  return value.trim() === '' ? undefined : parsePercentageBasisPoints(value);
+}
+
 export function toInvoiceDraftInput(
   form: NewInvoiceFormState,
 ): InvoiceDraftInput {
   const paymentTermDays = parseNonNegativeInteger(form.paymentTermDays);
+  const latePaymentInterestBasisPoints =
+    parseOptionalPercentageBasisPoints(form.latePaymentInterestPercent);
 
-  if (paymentTermDays === null || form.lines.length === 0) {
+  if (
+    paymentTermDays === null ||
+    latePaymentInterestBasisPoints === null ||
+    form.lines.length === 0
+  ) {
     throw new InvoiceDraftFormMappingError();
   }
 
@@ -42,6 +54,11 @@ export function toInvoiceDraftInput(
     priceInputMode: form.priceInputMode,
     lines: form.lines.map(mapInvoiceDraftLine),
   };
+
+  if (latePaymentInterestBasisPoints !== undefined) {
+    input.latePaymentInterestBasisPoints =
+      latePaymentInterestBasisPoints;
+  }
 
   addOptionalTrimmedString(input, 'subject', form.subject);
   addOptionalTrimmedString(input, 'orderNumber', form.orderNumber);

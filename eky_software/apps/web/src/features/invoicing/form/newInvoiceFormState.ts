@@ -9,6 +9,7 @@ export interface NewInvoiceFormState {
   customerId: string;
   dueDate: string;
   invoiceDate: string;
+  latePaymentInterestPercent: string;
   lines: InvoiceRowForm[];
   note: string;
   orderNumber: string;
@@ -29,6 +30,7 @@ export function createInitialNewInvoiceForm(
     customerId: '',
     dueDate: formatDateInput(addCalendarDays(initialDate, 14)),
     invoiceDate: formatDateInput(initialDate),
+    latePaymentInterestPercent: '',
     lines: createInitialInvoiceRows(),
     note: '',
     orderNumber: '',

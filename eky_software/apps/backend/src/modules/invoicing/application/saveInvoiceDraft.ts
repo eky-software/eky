@@ -5,11 +5,15 @@ import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationErr
 import { requireIdentifier } from '../domain/invoiceDraftRules.js';
 import type { CustomerAccessReader } from '../ports/customerAccessReader.js';
 import type { InvoiceDraftRepository } from '../ports/invoiceDraftRepository.js';
+import type { InvoicePaymentSettingsRepository } from '../ports/invoicePaymentSettingsRepository.js';
 import {
   type InvoiceDraftContentInput,
   type InvoiceDraftLineInput,
   prepareInvoiceDraftContent,
 } from './prepareInvoiceDraftContent.js';
+import {
+  resolveInvoiceDraftLatePaymentInterestBasisPoints,
+} from './resolveInvoiceDraftLatePaymentInterest.js';
 
 export type SaveInvoiceDraftLineInput = InvoiceDraftLineInput;
 
@@ -20,6 +24,7 @@ export interface SaveInvoiceDraftInput extends InvoiceDraftContentInput {
 export interface SaveInvoiceDraftDependencies {
   customerAccessReader: CustomerAccessReader;
   invoiceDraftRepository: InvoiceDraftRepository;
+  invoicePaymentSettingsRepository: InvoicePaymentSettingsRepository;
 }
 
 export async function saveInvoiceDraft(
@@ -40,7 +45,16 @@ export async function saveInvoiceDraft(
     );
   }
 
-  const content = prepareInvoiceDraftContent(input);
+  const latePaymentInterestBasisPoints =
+    await resolveInvoiceDraftLatePaymentInterestBasisPoints(
+      companyId,
+      input.latePaymentInterestBasisPoints,
+      dependencies,
+    );
+  const content = prepareInvoiceDraftContent({
+    ...input,
+    latePaymentInterestBasisPoints,
+  });
   const now = new Date().toISOString();
   const draft: InvoiceDraft = {
     ...content,
