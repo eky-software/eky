@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { CompanySettingsForm } from './CompanySettingsForm.js';
 import { InvoiceNumberingSettingsPanel } from './InvoiceNumberingSettingsPanel.js';
+import { InvoicePaymentSettingsPanel } from './InvoicePaymentSettingsPanel.js';
 import {
   initialCompanySettingsForm,
   toCompanySettingsForm,
@@ -109,6 +110,7 @@ export function CompanySettingsPage(): React.JSX.Element {
             onSubmit={() => void handleSave()}
           />
           <InvoiceNumberingSettingsPanel apiClient={apiClient} />
+          <InvoicePaymentSettingsPanel apiClient={apiClient} />
         </div>
       ) : null}
     </div>

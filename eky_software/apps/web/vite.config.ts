@@ -21,6 +21,10 @@ export default defineConfig({
         changeOrigin: true,
         target: 'http://127.0.0.1:3000',
       },
+      '/invoice-payment-settings': {
+        changeOrigin: true,
+        target: 'http://127.0.0.1:3000',
+      },
     },
   },
 });

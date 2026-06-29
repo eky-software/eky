@@ -19,6 +19,7 @@ const invoiceDraftFields = new Set([
   'invoiceDate',
   'dueDate',
   'paymentTermDays',
+  'latePaymentInterestBasisPoints',
   'priceInputMode',
   'subject',
   'orderNumber',
@@ -203,6 +204,10 @@ function parseInvoiceDraftContentRequest(
   };
   const dueDate = readOptionalString(body, 'dueDate', 10);
   const paymentTermDays = readOptionalSafeInteger(body, 'paymentTermDays');
+  const latePaymentInterestBasisPoints = readOptionalSafeInteger(
+    body,
+    'latePaymentInterestBasisPoints',
+  );
   const subject = readOptionalString(
     body,
     'subject',
@@ -221,6 +226,11 @@ function parseInvoiceDraftContentRequest(
 
   if (paymentTermDays !== undefined) {
     input.paymentTermDays = paymentTermDays;
+  }
+
+  if (latePaymentInterestBasisPoints !== undefined) {
+    input.latePaymentInterestBasisPoints =
+      latePaymentInterestBasisPoints;
   }
 
   if (subject !== undefined) {

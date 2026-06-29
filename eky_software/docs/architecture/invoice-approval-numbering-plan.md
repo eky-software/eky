@@ -106,20 +106,28 @@ Hyväksytylle laskulle voidaan myöhemmin tallentaa esimerkiksi:
 - `seller_iban`
 - `seller_bic`
 - `seller_bank_name`
+- `late_payment_interest_basis_points`
+- `reminder_period_days`
 
 Näitä tietoja ei saa hakea vain PDF:n luontihetkellä. PDF, tulostus ja
 sähköpostilähetys käyttävät hyväksytyn laskun snapshot-tietoja, eivät sen
 hetkisiä muuttuvia yritysasetuksia.
 
+Viivästyskorko ja huomautusaika ovat Invoicing-moduulin laskutusasetuksia.
+Käyttäjä voi ylläpitää oletusviivästyskorkoa ja oletushuomautusaikaa Oma yritys
+/ Laskutusasetukset -näkymässä, mutta hyväksytty lasku käyttää aina laskulle
+valittua ja hyväksynnässä snapshotattua arvoa.
+
 Maksutietojen marssijärjestys:
 
 1. viitenumero hyväksyntätransaktioon
 2. Hyväksy laskuksi -UI näyttää laskunumeron ja viitenumeron
-3. ennen print/PDF-vaihetta hyväksyntä snapshottaa Oma yritys -pankkitiedot
-4. hyväksytty lasku snapshottaa laskulla käytetyt pankkitiedot
-5. hyväksytyn laskun katselu ja print-layout
-6. PDF
-7. sähköpostilähetys
+3. Oma yritys / Laskutusasetukset näyttää oletusviivästyskoron ja huomautusajan
+4. ennen print/PDF-vaihetta hyväksyntä snapshottaa Oma yritys -pankkitiedot
+5. hyväksytty lasku snapshottaa laskulla käytetyt pankkitiedot, viivästyskoron ja huomautusajan
+6. hyväksytyn laskun katselu ja print-layout
+7. PDF
+8. sähköpostilähetys
 
 ## Tilat Ja Muokkaaminen
 

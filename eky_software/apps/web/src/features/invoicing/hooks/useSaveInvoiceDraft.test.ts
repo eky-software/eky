@@ -194,6 +194,7 @@ function createInvoiceDraftInput(): InvoiceDraftInput {
       },
     ],
     paymentTermDays: 14,
+    latePaymentInterestBasisPoints: 950,
     priceInputMode: 'net',
   };
 }
@@ -210,6 +211,8 @@ function createInvoiceDraft(input: InvoiceDraftInput): InvoiceDraft {
     note: '',
     orderNumber: '',
     paymentTermDays: input.paymentTermDays ?? 14,
+    latePaymentInterestBasisPoints:
+      input.latePaymentInterestBasisPoints ?? 950,
     priceInputMode: input.priceInputMode,
     status: 'draft',
     subject: '',

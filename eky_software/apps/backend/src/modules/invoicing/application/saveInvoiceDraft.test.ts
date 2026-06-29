@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import type { InvoiceDraft } from '../domain/invoiceDraft.js';
+import type {
+  StoredInvoicePaymentSettings,
+} from '../domain/invoicePaymentSettings.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
 import type { CustomerAccessReader } from '../ports/customerAccessReader.js';
 import type { InvoiceDraftRepository } from '../ports/invoiceDraftRepository.js';
+import type { InvoicePaymentSettingsRepository } from '../ports/invoicePaymentSettingsRepository.js';
 import {
   saveInvoiceDraft,
   type SaveInvoiceDraftDependencies,
@@ -50,17 +54,44 @@ class FakeCustomerAccessReader implements CustomerAccessReader {
   }
 }
 
+class FakeInvoicePaymentSettingsRepository
+  implements InvoicePaymentSettingsRepository
+{
+  getCalls: string[] = [];
+
+  constructor(
+    private readonly settings?: StoredInvoicePaymentSettings,
+  ) {}
+
+  async getSettings(
+    companyId: string,
+  ): Promise<StoredInvoicePaymentSettings | undefined> {
+    this.getCalls.push(companyId);
+    return this.settings;
+  }
+
+  async saveSettings(
+    settings: StoredInvoicePaymentSettings,
+  ): Promise<StoredInvoicePaymentSettings> {
+    return settings;
+  }
+}
+
 function createDependencies(
   customerBelongsToCompany = true,
+  invoicePaymentSettings?: StoredInvoicePaymentSettings,
 ): SaveInvoiceDraftDependencies & {
   customerAccessReader: FakeCustomerAccessReader;
   invoiceDraftRepository: FakeInvoiceDraftRepository;
+  invoicePaymentSettingsRepository: FakeInvoicePaymentSettingsRepository;
 } {
   return {
     customerAccessReader: new FakeCustomerAccessReader(
       customerBelongsToCompany,
     ),
     invoiceDraftRepository: new FakeInvoiceDraftRepository(),
+    invoicePaymentSettingsRepository:
+      new FakeInvoicePaymentSettingsRepository(invoicePaymentSettings),
   };
 }
 
@@ -116,6 +147,7 @@ describe('saveInvoiceDraft', () => {
       invoiceDate: '2026-06-13',
       dueDate: '2026-06-27',
       paymentTermDays: 14,
+      latePaymentInterestBasisPoints: 0,
       priceInputMode: 'net',
       subject: 'Test invoice',
     });
@@ -166,6 +198,41 @@ describe('saveInvoiceDraft', () => {
 
     expect(draft.dueDate).toBe('2026-07-15');
     expect(draft.paymentTermDays).toBe(30);
+  });
+
+  it('uses invoice payment settings as the late payment interest default', async () => {
+    const draft = await saveInvoiceDraft(
+      createInput(),
+      createDependencies(true, {
+        companyId: 'dev-company',
+        createdAt: '2026-06-13T10:00:00.000Z',
+        defaultLatePaymentInterestBasisPoints: 950,
+        defaultReminderPeriodDays: 8,
+        updatedAt: '2026-06-13T10:00:00.000Z',
+      }),
+    );
+
+    expect(draft.latePaymentInterestBasisPoints).toBe(950);
+  });
+
+  it('keeps a manually provided late payment interest', async () => {
+    const dependencies = createDependencies(true, {
+      companyId: 'dev-company',
+      createdAt: '2026-06-13T10:00:00.000Z',
+      defaultLatePaymentInterestBasisPoints: 950,
+      defaultReminderPeriodDays: 8,
+      updatedAt: '2026-06-13T10:00:00.000Z',
+    });
+
+    const draft = await saveInvoiceDraft(
+      createInput({ latePaymentInterestBasisPoints: 1200 }),
+      dependencies,
+    );
+
+    expect(draft.latePaymentInterestBasisPoints).toBe(1200);
+    expect(
+      dependencies.invoicePaymentSettingsRepository.getCalls,
+    ).toEqual([]);
   });
 
   it('rejects drafts without lines before calling the repository', async () => {

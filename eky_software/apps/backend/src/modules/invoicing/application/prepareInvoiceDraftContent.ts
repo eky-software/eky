@@ -11,6 +11,7 @@ import {
   parseInvoiceUnit,
   requireIdentifier,
   resolveInvoiceDates,
+  resolveLatePaymentInterestBasisPoints,
   resolvePaymentTermDays,
 } from '../domain/invoiceDraftRules.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
@@ -35,6 +36,7 @@ export interface InvoiceDraftContentInput {
   invoiceDate: string;
   dueDate?: string;
   paymentTermDays?: number;
+  latePaymentInterestBasisPoints?: number;
   priceInputMode: PriceInputMode;
   subject?: string;
   orderNumber?: string;
@@ -47,6 +49,7 @@ export interface PreparedInvoiceDraftContent {
   invoiceDate: string;
   dueDate: string;
   paymentTermDays: number;
+  latePaymentInterestBasisPoints: number;
   priceInputMode: PriceInputMode;
   subject: string;
   orderNumber: string;
@@ -67,6 +70,10 @@ export function prepareInvoiceDraftContent(
   }
 
   const paymentTermDays = resolvePaymentTermDays(input.paymentTermDays);
+  const latePaymentInterestBasisPoints =
+    resolveLatePaymentInterestBasisPoints(
+      input.latePaymentInterestBasisPoints ?? 0,
+    );
   const dates = resolveInvoiceDates(
     input.invoiceDate,
     input.dueDate,
@@ -101,6 +108,7 @@ export function prepareInvoiceDraftContent(
     invoiceDate: dates.invoiceDate,
     dueDate: dates.dueDate,
     paymentTermDays,
+    latePaymentInterestBasisPoints,
     priceInputMode,
     subject: normalizeOptionalInvoiceText(input.subject),
     orderNumber: normalizeOptionalInvoiceText(input.orderNumber),

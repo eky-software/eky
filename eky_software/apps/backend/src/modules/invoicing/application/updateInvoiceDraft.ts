@@ -3,6 +3,7 @@ import { requireIdentifier } from '../domain/invoiceDraftRules.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
 import type { CustomerAccessReader } from '../ports/customerAccessReader.js';
 import type { InvoiceDraftRepository } from '../ports/invoiceDraftRepository.js';
+import type { InvoicePaymentSettingsRepository } from '../ports/invoicePaymentSettingsRepository.js';
 import { InvoiceDraftNotFoundError } from './invoiceDraftNotFoundError.js';
 import {
   type InvoiceDraftContentInput,
@@ -19,6 +20,7 @@ export interface UpdateInvoiceDraftInput extends InvoiceDraftContentInput {
 export interface UpdateInvoiceDraftDependencies {
   customerAccessReader: CustomerAccessReader;
   invoiceDraftRepository: InvoiceDraftRepository;
+  invoicePaymentSettingsRepository: InvoicePaymentSettingsRepository;
 }
 
 function createNextUpdatedAt(previousUpdatedAt: string): string {
@@ -75,7 +77,12 @@ export async function updateInvoiceDraft(
     );
   }
 
-  const content = prepareInvoiceDraftContent(input);
+  const content = prepareInvoiceDraftContent({
+    ...input,
+    latePaymentInterestBasisPoints:
+      input.latePaymentInterestBasisPoints ??
+      existingDraft.latePaymentInterestBasisPoints,
+  });
   const updatedDraft: InvoiceDraft = {
     ...content,
     id: existingDraft.id,

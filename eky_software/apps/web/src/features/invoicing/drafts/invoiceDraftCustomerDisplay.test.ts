@@ -29,6 +29,7 @@ function createDraftSummary(): InvoiceDraftSummary {
     invoiceDate: '2026-06-16',
     netTotalCents: 10000,
     paymentTermDays: 14,
+    latePaymentInterestBasisPoints: 950,
     priceInputMode: 'net',
     status: 'draft',
     subject: '',

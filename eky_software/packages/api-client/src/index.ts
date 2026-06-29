@@ -38,3 +38,7 @@ export type {
   InvoiceNumberingSettingsView,
   UpdateInvoiceNumberingSettingsRequest,
 } from './invoiceNumbering/index.js';
+export type {
+  InvoicePaymentSettingsView,
+  UpdateInvoicePaymentSettingsRequest,
+} from './invoicePaymentSettings/index.js';

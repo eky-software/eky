@@ -24,9 +24,13 @@ import {
   type UpdateInvoiceDraftInput,
 } from '../application/updateInvoiceDraft.js';
 import type { InvoiceDraft } from '../domain/invoiceDraft.js';
+import type {
+  StoredInvoicePaymentSettings,
+} from '../domain/invoicePaymentSettings.js';
 import type { CustomerAccessReader } from '../ports/customerAccessReader.js';
 import type { ApprovedInvoiceResult } from '../ports/invoiceApprovalRepository.js';
 import type { InvoiceDraftRepository } from '../ports/invoiceDraftRepository.js';
+import type { InvoicePaymentSettingsRepository } from '../ports/invoicePaymentSettingsRepository.js';
 import { createInvoiceDraftRoutes } from './invoiceDraftRoutes.js';
 
 class FakeInvoiceDraftRepository implements InvoiceDraftRepository {
@@ -94,6 +98,8 @@ class FakeInvoiceDraftRepository implements InvoiceDraftRepository {
         invoiceDate: draft.invoiceDate,
         dueDate: draft.dueDate,
         paymentTermDays: draft.paymentTermDays,
+        latePaymentInterestBasisPoints:
+          draft.latePaymentInterestBasisPoints,
         priceInputMode: draft.priceInputMode,
         subject: draft.subject,
         netTotalCents: draft.totals.netTotalCents,
@@ -123,6 +129,26 @@ class FakeCustomerAccessReader implements CustomerAccessReader {
   }
 }
 
+class FakeInvoicePaymentSettingsRepository
+  implements InvoicePaymentSettingsRepository
+{
+  async getSettings(): Promise<StoredInvoicePaymentSettings | undefined> {
+    return {
+      companyId: 'dev-company',
+      createdAt: '2026-06-13T10:00:00.000Z',
+      defaultLatePaymentInterestBasisPoints: 950,
+      defaultReminderPeriodDays: 8,
+      updatedAt: '2026-06-13T10:00:00.000Z',
+    };
+  }
+
+  async saveSettings(
+    settings: StoredInvoicePaymentSettings,
+  ): Promise<StoredInvoicePaymentSettings> {
+    return settings;
+  }
+}
+
 function createTestApp(
   customerBelongsToCompany = true,
   options: {
@@ -131,6 +157,8 @@ function createTestApp(
   } = {},
 ) {
   const invoiceDraftRepository = new FakeInvoiceDraftRepository();
+  const invoicePaymentSettingsRepository =
+    new FakeInvoicePaymentSettingsRepository();
   const customerAccessReader = new FakeCustomerAccessReader(
     customerBelongsToCompany,
   );
@@ -171,6 +199,7 @@ function createTestApp(
       return saveInvoiceDraft(input, {
         customerAccessReader,
         invoiceDraftRepository,
+        invoicePaymentSettingsRepository,
       });
     },
     async updateInvoiceDraft(input) {
@@ -179,6 +208,7 @@ function createTestApp(
       return updateInvoiceDraft(input, {
         customerAccessReader,
         invoiceDraftRepository,
+        invoicePaymentSettingsRepository,
       });
     },
   });

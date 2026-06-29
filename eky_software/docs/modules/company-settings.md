@@ -33,7 +33,10 @@ Company Settings omistaa:
 
 Laajempi käyttäjälle näkyvä Asetukset-osio voi sisältää usean moduulin näkymiä.
 
-Invoicing omistaa omat liiketoimintakriittiset asetuksensa, kuten ALV-kannat, maksuehdot, numerointisarjat ja tilikauden. Niitä ei siirretä Company Settingsin omistukseen vain siksi, että käyttöliittymä näyttää asetukset samassa kokonaisuudessa.
+Invoicing omistaa omat liiketoimintakriittiset asetuksensa, kuten ALV-kannat,
+maksuehdot, viivästyskoron, huomautusajan, numerointisarjat ja tilikauden.
+Niitä ei siirretä Company Settingsin omistukseen vain siksi, että käyttöliittymä
+näyttää asetukset samassa kokonaisuudessa.
 
 ## Moduuli Ei Omista
 
@@ -53,6 +56,10 @@ Company Settings ei omista:
 Customers-moduuli omistaa asiakaskohtaiset poikkeukset, kuten `hourlyRateOverrideCents`.
 
 Invoicing-moduuli omistaa laskut, laskurivit ja laskulla käytetyt snapshot-arvot.
+
+Käyttäjälle näkyvä Oma yritys -näkymä voi silti näyttää Invoicing-moduulin
+omistamia laskutusasetuksia, kuten laskunumeroinnin, oletusviivästyskoron ja
+huomautusajan. Tämä on UI-sijainti, ei moduuliomistajuuden muutos.
 
 ## MVP-Kentät
 
@@ -206,6 +213,7 @@ Invoicing omistaa:
 - laskurivit
 - ALV-kannat
 - maksuehdot
+- viivästyskoron ja huomautusajan laskutusasetukset
 - numerointisarjat
 - tilikauden
 - laskulla käytetyn tuntihinnan snapshotin

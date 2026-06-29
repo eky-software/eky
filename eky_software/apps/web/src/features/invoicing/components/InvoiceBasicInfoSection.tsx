@@ -150,6 +150,49 @@ export function InvoiceBasicInfoSection({
           ) : null}
         </label>
 
+        <label className={styles.field}>
+          <span>{uiText.invoicing.latePaymentInterest}</span>
+          <input
+            aria-describedby={
+              errors?.latePaymentInterestPercent === undefined
+                ? 'invoice-late-payment-interest-help'
+                : 'invoice-late-payment-interest-error'
+            }
+            aria-invalid={
+              errors?.latePaymentInterestPercent === undefined
+                ? undefined
+                : true
+            }
+            inputMode="decimal"
+            name="latePaymentInterestPercent"
+            placeholder={uiText.invoicing.latePaymentInterestPlaceholder}
+            type="text"
+            value={form.latePaymentInterestPercent}
+            onChange={(event) =>
+              onFieldChange(
+                'latePaymentInterestPercent',
+                event.target.value,
+              )
+            }
+          />
+          {errors?.latePaymentInterestPercent ? (
+            <small
+              className={styles.fieldError}
+              id="invoice-late-payment-interest-error"
+              role="alert"
+            >
+              {errors.latePaymentInterestPercent}
+            </small>
+          ) : (
+            <small
+              className={styles.fieldHelp}
+              id="invoice-late-payment-interest-help"
+            >
+              {uiText.invoicing.latePaymentInterestHelp}
+            </small>
+          )}
+        </label>
+
         <label className={`${styles.field} ${styles.wideField}`}>
           <span>{uiText.invoicing.subject}</span>
           <input

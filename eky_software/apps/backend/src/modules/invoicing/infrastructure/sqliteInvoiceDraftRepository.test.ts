@@ -30,6 +30,13 @@ const approvedInvoiceMigrationSql = readFileSync(
   ),
   'utf8',
 );
+const latePaymentInterestMigrationSql = readFileSync(
+  new URL(
+    '../../../database/migrations/013_add_invoice_draft_late_payment_interest.sql',
+    import.meta.url,
+  ),
+  'utf8',
+);
 
 function createLine(
   id: string,
@@ -73,6 +80,7 @@ function createDraft(
     invoiceDate: '2026-06-13',
     dueDate: '2026-06-27',
     paymentTermDays: 14,
+    latePaymentInterestBasisPoints: 950,
     priceInputMode: 'net',
     subject: 'Test invoice',
     orderNumber: '',
@@ -109,6 +117,7 @@ describe('SqliteInvoiceDraftRepository', () => {
     database = new Database(':memory:');
     database.pragma('foreign_keys = ON');
     database.exec(invoiceDraftMigrationSql);
+    database.exec(latePaymentInterestMigrationSql);
     database.exec(approvedInvoiceMigrationSql);
   });
 
@@ -136,6 +145,7 @@ describe('SqliteInvoiceDraftRepository', () => {
       company_id: 'dev-company',
       customer_id: 'customer-1',
       status: 'draft',
+      late_payment_interest_basis_points: 950,
       net_total_cents: draft.totals.netTotalCents,
       vat_total_cents: draft.totals.vatTotalCents,
       gross_total_cents: draft.totals.grossTotalCents,
@@ -480,6 +490,7 @@ describe('SqliteInvoiceDraftRepository', () => {
       invoiceDate: '2026-06-13',
       dueDate: '2026-06-27',
       paymentTermDays: 14,
+      latePaymentInterestBasisPoints: 950,
       priceInputMode: 'net',
       subject: 'Test invoice',
       netTotalCents: drafts[2]?.totals.netTotalCents,

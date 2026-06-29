@@ -55,6 +55,10 @@
   color: #a10f3b;
 }
 
+.fieldHelp {
+  color: var(--color-text-muted);
+}
+
 .customerField {
   grid-column: span 2;
 }

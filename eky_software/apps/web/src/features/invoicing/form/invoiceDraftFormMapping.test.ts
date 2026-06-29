@@ -58,6 +58,7 @@ describe('invoice draft form mapping', () => {
       invoiceDate: '2026-06-16',
       dueDate: '2026-06-30',
       paymentTermDays: 14,
+      latePaymentInterestBasisPoints: 950,
       priceInputMode: 'net',
       subject: 'Työlasku',
       orderNumber: 'TILAUS-1',
@@ -99,6 +100,14 @@ describe('invoice draft form mapping', () => {
     });
   });
 
+  it('omits late payment interest when the field is empty', () => {
+    const input = toInvoiceDraftInput(
+      createValidForm({ latePaymentInterestPercent: '' }),
+    );
+
+    expect(input).not.toHaveProperty('latePaymentInterestBasisPoints');
+  });
+
   it('maps missing discount as explicit none discount', () => {
     const input = toInvoiceDraftInput(
       createValidForm({
@@ -129,6 +138,7 @@ function createValidForm(
   overrides: {
     discountType?: 'none' | 'percentage' | 'fixed';
     discountValue?: string;
+    latePaymentInterestPercent?: string;
     note?: string;
     orderNumber?: string;
     subject?: string;
@@ -172,6 +182,8 @@ function createValidForm(
       overrides.subject ?? 'Työlasku',
     ),
     lines: row,
+    latePaymentInterestPercent:
+      overrides.latePaymentInterestPercent ?? '9,50',
     note: overrides.note ?? 'Saate',
     orderNumber: overrides.orderNumber ?? 'TILAUS-1',
   };

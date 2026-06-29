@@ -44,6 +44,7 @@ function createDraft(): InvoiceDraft {
     invoiceDate: '2026-06-13',
     dueDate: '2026-06-27',
     paymentTermDays: 14,
+    latePaymentInterestBasisPoints: 950,
     priceInputMode: 'net',
     subject: 'Test invoice',
     orderNumber: '',

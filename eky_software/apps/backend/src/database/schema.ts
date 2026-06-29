@@ -45,6 +45,7 @@ export interface InvoiceDraftTable {
   invoice_date: string;
   due_date: string;
   payment_term_days: number;
+  late_payment_interest_basis_points: number;
   price_input_mode: string;
   subject: string;
   order_number: string;
@@ -93,6 +94,14 @@ export interface InvoiceNumberSequenceTable {
   series_key: string;
   sequence_scope: string;
   last_sequence_number: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InvoicePaymentSettingsTable {
+  company_id: string;
+  default_late_payment_interest_basis_points: number;
+  default_reminder_period_days: number;
   created_at: string;
   updated_at: string;
 }
@@ -180,6 +189,8 @@ export type InvoiceNumberingSettingsRow = InvoiceNumberingSettingsTable;
 export type NewInvoiceNumberingSettingsRow = InvoiceNumberingSettingsTable;
 export type InvoiceNumberSequenceRow = InvoiceNumberSequenceTable;
 export type NewInvoiceNumberSequenceRow = InvoiceNumberSequenceTable;
+export type InvoicePaymentSettingsRow = InvoicePaymentSettingsTable;
+export type NewInvoicePaymentSettingsRow = InvoicePaymentSettingsTable;
 export type InvoiceRow = InvoiceTable;
 export type NewInvoiceRow = InvoiceTable;
 export type InvoiceLineRow = InvoiceLineTable;

@@ -27,6 +27,7 @@ export interface InvoiceDraft {
   invoiceDate: string;
   dueDate: string;
   paymentTermDays: number;
+  latePaymentInterestBasisPoints: number;
   priceInputMode: PriceInputMode;
   subject: string;
   orderNumber: string;

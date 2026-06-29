@@ -306,11 +306,34 @@ Invoicing omistaa laskutuksen liiketoiminta-asetukset:
 
 - ALV-kannat
 - maksuehdot
+- oletusviivästyskoron
+- oletushuomautusajan
 - laskunumerosarjat
 - seuraavan laskunumeron
 - tilikauden
 
 Uuden laskun oletusmaksuehto on 14 päivää netto. Maksuehtoa ja eräpäivää voi muuttaa laskulla.
+
+Ensimmäinen maksuehtoasetusten malli sisältää myös käyttäjän syöttämän
+oletusviivästyskoron ja oletushuomautusajan:
+
+- `defaultLatePaymentInterestBasisPoints`
+- `defaultReminderPeriodDays`
+
+Viivästyskorko tallennetaan basis pointseina:
+
+```text
+9,50 % -> 950
+10,50 % -> 1050
+13,00 % -> 1300
+```
+
+Nämä asetukset voivat näkyä käyttäjälle Oma yritys / Laskutusasetukset
+-kokonaisuudessa, mutta domain-omistaja on Invoicing. Uusi laskuluonnos voi
+myöhemmin ehdottaa näitä arvoja oletuksina. Laskulle tallennetaan lopulta
+käyttäjän hyväksymä laskukohtainen arvo, ja hyväksytty lasku snapshottaa
+käytetyn viivästyskoron ja huomautusajan. Vanha hyväksytty lasku ei saa muuttua,
+vaikka maksuehtoasetuksia muutetaan myöhemmin.
 
 Laskunumerointi ja tilikausi ovat yrityskohtaisia ja asetuksista hallittavia. Tilikausi ei aina ala tammikuussa. Virallinen laskunumero annetaan hyväksynnässä, ja backend vahvistaa lopullisen numeron.
 

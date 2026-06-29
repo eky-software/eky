@@ -1,5 +1,8 @@
 import { invoiceUnits, type InvoiceUnit } from './invoiceDraft.js';
 import { InvoiceDraftValidationError } from './invoiceDraftValidationError.js';
+import {
+  maxLatePaymentInterestBasisPoints,
+} from './invoicePaymentSettings.js';
 
 const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
 const millisecondsPerDay = 86_400_000;
@@ -68,6 +71,22 @@ export function resolvePaymentTermDays(value: number | undefined): number {
   }
 
   return paymentTermDays;
+}
+
+export function resolveLatePaymentInterestBasisPoints(
+  value: number,
+): number {
+  if (
+    !Number.isSafeInteger(value) ||
+    value < 0 ||
+    value > maxLatePaymentInterestBasisPoints
+  ) {
+    throw new InvoiceDraftValidationError(
+      'Late payment interest must be a non-negative safe integer within the supported range.',
+    );
+  }
+
+  return value;
 }
 
 export function resolveInvoiceDates(

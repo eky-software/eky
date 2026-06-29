@@ -70,6 +70,7 @@ function createInvoiceDraft(): InvoiceDraft {
     note: '',
     orderNumber: '',
     paymentTermDays: 14,
+    latePaymentInterestBasisPoints: 950,
     priceInputMode: 'net',
     status: 'draft',
     subject: 'Työlasku',
