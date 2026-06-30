@@ -204,6 +204,8 @@ function createInvoiceDraft(input: InvoiceDraftInput): InvoiceDraft {
     companyId: 'dev-company',
     createdAt: '2026-06-16T12:00:00.000Z',
     customerId: input.customerId,
+    billingRecipientCustomerId: input.billingRecipientCustomerId ?? null,
+    deliveryAddressText: input.deliveryAddressText ?? '',
     dueDate: input.dueDate ?? '2026-06-30',
     id: 'draft-1',
     invoiceDate: input.invoiceDate,
@@ -214,6 +216,7 @@ function createInvoiceDraft(input: InvoiceDraftInput): InvoiceDraft {
     latePaymentInterestBasisPoints:
       input.latePaymentInterestBasisPoints ?? 950,
     priceInputMode: input.priceInputMode,
+    reminderPeriodDays: input.reminderPeriodDays ?? 0,
     status: 'draft',
     subject: '',
     totals: {

@@ -105,13 +105,15 @@ Ensimmäisen laskuluonnoksen suunnittelutason kentät:
 - `id`
 - `companyId`
 - `customerId`
-- `billingRecipientCustomerId` myöhemmässä print/PDF-data foundation -vaiheessa
+- `billingRecipientCustomerId`
 - `invoiceDate`
 - `dueDate`
 - `paymentTermDays`
+- `reminderPeriodDays`
 - `priceInputMode`
 - `orderNumber`
 - `subject`
+- `deliveryAddressText`
 - `note`
 - `status`
 - `createdAt`
@@ -122,15 +124,16 @@ Kenttien alustava merkitys:
 - `id` on tekninen tunniste.
 - `companyId` rajaa laskun yritykseen.
 - `customerId` viittaa Customers-moduulin asiakkaaseen.
-- `billingRecipientCustomerId` on myöhemmin lisättävä valinnainen laskun vastaanottaja. Jos sitä ei anneta, vastaanottaja on sama kuin `customerId`.
+- `billingRecipientCustomerId` on valinnainen laskun vastaanottaja. Jos sitä ei anneta, vastaanottaja on sama kuin `customerId`.
 - `invoiceDate` on laskulla näkyvä käyttäjän muokattava päiväys.
 - `dueDate` on käyttäjän muokattava eräpäivä.
 - `paymentTermDays` on laskun maksuehto päivinä. Uuden laskun oletus on 14 päivää netto.
+- `reminderPeriodDays` on laskukohtainen huomautusaika päivinä.
 - `priceInputMode` kertoo yksiselitteisesti, syötetäänkö hinnat verottomina vai verollisina.
 - `orderNumber` on valinnainen asiakkaan tai työn tilausnumero.
 - `subject` on valinnainen laskun aihe.
+- `deliveryAddressText` on valinnainen toimitus- tai kohdetieto ennen varsinaista Sites-moduulia.
 - `note` on valinnainen laskun saate tai lisätieto.
-- `deliveryAddressText` voidaan lisätä myöhemmin vapaaksi toimitus- tai kohdetiedoksi ennen print/PDF-vaihetta.
 - `status` kertoo laskun käsittelyvaiheen.
 - `createdAt` on tekninen luontiaika.
 - `updatedAt` on tekninen viimeisin muokkausaika.
@@ -167,8 +170,8 @@ Seuraavat kentät ovat MVP-luonnoksella valinnaisia:
 - `subject`
 - `orderNumber`
 - `note`
-- `billingRecipientCustomerId` myöhemmässä print/PDF-data foundation -vaiheessa
-- `deliveryAddressText` myöhemmässä print/PDF-data foundation -vaiheessa
+- `billingRecipientCustomerId`
+- `deliveryAddressText`
 - rivin `code`
 
 `id`, `companyId`, `status`, lasketut summat sekä tekniset aikaleimat eivät ole asiakkaan vapaasti päätettäviä create-syötteitä. Backend muodostaa tai vahvistaa ne käyttötapauksen sääntöjen mukaisesti.

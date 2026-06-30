@@ -24,6 +24,7 @@ Company Settings omistaa:
 
 - oman yrityksen perustiedot
 - oman yrityksen Y-tunnuksen
+- oman yrityksen ALV-tunnuksen
 - oman yrityksen yhteystiedot
 - oman yrityksen pääosoitteen
 - oman yrityksen pankkitietojen master datan
@@ -69,6 +70,7 @@ Ensimmäinen Company Settings MVP voi sisältää:
 - `companyId`
 - `companyName`
 - `businessId`
+- `vatNumber`
 - `streetAddress`
 - `postalCode`
 - `city`
@@ -88,7 +90,7 @@ Kenttien merkitys:
 - `companyId` rajaa tiedot nykyiseen yritykseen.
 - `companyName` on oman yrityksen nimi.
 - `businessId` on oman yrityksen Y-tunnus.
-- `vatNumber` voidaan lisätä seuraavassa print/PDF-data foundation -vaiheessa oman yrityksen ALV-tunnukseksi.
+- `vatNumber` on oman yrityksen ALV-tunnus.
 - `streetAddress`, `postalCode` ja `city` kuvaavat oman yrityksen pääosoitetta.
 - `email` ja `phone` ovat oman yrityksen ensisijaiset yhteystiedot.
 - `iban`, `bic` ja `bankName` kuvaavat oman yrityksen maksutilin master dataa.
@@ -202,6 +204,7 @@ lisätään Company Settingsiin, hyväksytty lasku snapshottaa sen arvon
 Company Settings omistaa:
 
 - oman yrityksen tiedot
+- oman yrityksen ALV-tunnuksen
 - oletustuntihinnan
 - oman yrityksen yleiset oletukset
 - tuntityön pikavalinnan
@@ -246,6 +249,7 @@ Ensimmäinen näkymä voi sisältää:
 
 - oman yrityksen perustiedot
 - oman yrityksen yhteystiedot
+- oman yrityksen ALV-tunnuksen
 - oman yrityksen osoitteen
 - oman yrityksen pankkitiedot
 - oletustuntihinnan

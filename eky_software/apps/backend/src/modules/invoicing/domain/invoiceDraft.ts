@@ -23,15 +23,18 @@ export interface InvoiceDraft {
   id: string;
   companyId: string;
   customerId: string;
+  billingRecipientCustomerId: string | null;
   status: InvoiceDraftStatus;
   invoiceDate: string;
   dueDate: string;
   paymentTermDays: number;
+  reminderPeriodDays: number;
   latePaymentInterestBasisPoints: number;
   priceInputMode: PriceInputMode;
   subject: string;
   orderNumber: string;
   note: string;
+  deliveryAddressText: string;
   lines: InvoiceDraftLine[];
   totals: InvoiceTotals;
   createdAt: string;

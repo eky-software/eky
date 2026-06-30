@@ -9,6 +9,8 @@ describe('toNewInvoiceFormStateFromDraft', () => {
 
     expect(form).toMatchObject({
       customerId: 'customer-1',
+      billingRecipientCustomerId: 'billing-customer-1',
+      deliveryAddressText: 'Työkohde 1',
       dueDate: '2026-06-30',
       invoiceDate: '2026-06-16',
       latePaymentInterestPercent: '9,50',
@@ -16,6 +18,7 @@ describe('toNewInvoiceFormStateFromDraft', () => {
       orderNumber: 'ORDER-1',
       paymentTermDays: '14',
       priceInputMode: 'net',
+      reminderPeriodDays: '8',
       subject: 'Työlasku',
     });
   });
@@ -74,6 +77,8 @@ function createInvoiceDraft(): InvoiceDraft {
     companyId: 'dev-company',
     createdAt: '2026-06-16T12:00:00.000Z',
     customerId: 'customer-1',
+    billingRecipientCustomerId: 'billing-customer-1',
+    deliveryAddressText: 'Työkohde 1',
     dueDate: '2026-06-30',
     id: 'draft-1',
     invoiceDate: '2026-06-16',
@@ -104,6 +109,7 @@ function createInvoiceDraft(): InvoiceDraft {
     latePaymentInterestBasisPoints: 950,
     paymentTermDays: 14,
     priceInputMode: 'net',
+    reminderPeriodDays: 8,
     status: 'draft',
     subject: 'Työlasku',
     totals: {

@@ -3,6 +3,7 @@ export interface CompanySettings {
   companyId: string;
   companyName: string;
   businessId: string;
+  vatNumber: string;
   streetAddress: string;
   postalCode: string;
   city: string;
@@ -22,6 +23,7 @@ export interface CreateCompanySettingsDomainInput {
   city: string;
   companyId: string;
   companyName: string;
+  vatNumber: string;
   defaultHourlyRateCents: number | null;
   hourlyRateShortcut: string;
   iban: string;
@@ -43,6 +45,7 @@ export function createCompanySettingsRecord(
     companyId: input.companyId,
     companyName: input.companyName,
     businessId: input.businessId,
+    vatNumber: input.vatNumber,
     streetAddress: input.streetAddress,
     postalCode: input.postalCode,
     city: input.city,
@@ -64,6 +67,7 @@ export function createEmptyCompanySettings(companyId: string): CompanySettings {
     companyId,
     companyName: '',
     businessId: '',
+    vatNumber: '',
     streetAddress: '',
     postalCode: '',
     city: '',

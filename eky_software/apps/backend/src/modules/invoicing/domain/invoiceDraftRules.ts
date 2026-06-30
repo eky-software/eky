@@ -2,10 +2,12 @@ import { invoiceUnits, type InvoiceUnit } from './invoiceDraft.js';
 import { InvoiceDraftValidationError } from './invoiceDraftValidationError.js';
 import {
   maxLatePaymentInterestBasisPoints,
+  maxReminderPeriodDays,
 } from './invoicePaymentSettings.js';
 
 const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
 const millisecondsPerDay = 86_400_000;
+const maximumIdentifierLength = 200;
 
 function parseDateOnly(value: string, fieldName: string): Date {
   if (!dateOnlyPattern.test(value)) {
@@ -33,6 +35,27 @@ export function requireIdentifier(value: string, fieldName: string): string {
     throw new InvoiceDraftValidationError(`${fieldName} is required.`);
   }
 
+  if (normalizedValue.length > maximumIdentifierLength) {
+    throw new InvoiceDraftValidationError(`${fieldName} is invalid.`);
+  }
+
+  return normalizedValue;
+}
+
+export function normalizeOptionalIdentifier(
+  value: string | null | undefined,
+  fieldName: string,
+): string | null {
+  const normalizedValue = value?.trim() ?? '';
+
+  if (normalizedValue === '') {
+    return null;
+  }
+
+  if (normalizedValue.length > maximumIdentifierLength) {
+    throw new InvoiceDraftValidationError(`${fieldName} is invalid.`);
+  }
+
   return normalizedValue;
 }
 
@@ -51,6 +74,22 @@ export function normalizeRequiredInvoiceText(
 
 export function normalizeOptionalInvoiceText(value: string | undefined): string {
   return value?.trim() ?? '';
+}
+
+export function normalizeOptionalInvoiceTextWithLimit(
+  value: string | undefined,
+  fieldName: string,
+  maximumLength: number,
+): string {
+  const normalizedValue = normalizeOptionalInvoiceText(value);
+
+  if (normalizedValue.length > maximumLength) {
+    throw new InvoiceDraftValidationError(
+      `${fieldName} must be ${maximumLength} characters or less.`,
+    );
+  }
+
+  return normalizedValue;
 }
 
 export function parseInvoiceUnit(value: string): InvoiceUnit {
@@ -83,6 +122,20 @@ export function resolveLatePaymentInterestBasisPoints(
   ) {
     throw new InvoiceDraftValidationError(
       'Late payment interest must be a non-negative safe integer within the supported range.',
+    );
+  }
+
+  return value;
+}
+
+export function resolveReminderPeriodDays(value: number): number {
+  if (
+    !Number.isSafeInteger(value) ||
+    value < 0 ||
+    value > maxReminderPeriodDays
+  ) {
+    throw new InvoiceDraftValidationError(
+      'Reminder period days must be a non-negative safe integer within the supported range.',
     );
   }
 

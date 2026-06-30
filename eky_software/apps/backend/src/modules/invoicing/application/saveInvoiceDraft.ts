@@ -13,6 +13,7 @@ import {
 } from './prepareInvoiceDraftContent.js';
 import {
   resolveInvoiceDraftLatePaymentInterestBasisPoints,
+  resolveInvoiceDraftReminderPeriodDays,
 } from './resolveInvoiceDraftLatePaymentInterest.js';
 
 export type SaveInvoiceDraftLineInput = InvoiceDraftLineInput;
@@ -33,6 +34,8 @@ export async function saveInvoiceDraft(
 ): Promise<InvoiceDraft> {
   const companyId = requireIdentifier(input.companyId, 'Company id');
   const customerId = requireIdentifier(input.customerId, 'Customer id');
+  const billingRecipientCustomerId =
+    input.billingRecipientCustomerId?.trim() ?? '';
   const customerBelongsToCompany =
     await dependencies.customerAccessReader.belongsToCompany(
       customerId,
@@ -45,15 +48,35 @@ export async function saveInvoiceDraft(
     );
   }
 
+  if (billingRecipientCustomerId !== '') {
+    const billingRecipientBelongsToCompany =
+      await dependencies.customerAccessReader.belongsToCompany(
+        billingRecipientCustomerId,
+        companyId,
+      );
+
+    if (!billingRecipientBelongsToCompany) {
+      throw new InvoiceDraftValidationError(
+        'Billing recipient is not available for invoicing.',
+      );
+    }
+  }
+
   const latePaymentInterestBasisPoints =
     await resolveInvoiceDraftLatePaymentInterestBasisPoints(
       companyId,
       input.latePaymentInterestBasisPoints,
       dependencies,
     );
+  const reminderPeriodDays = await resolveInvoiceDraftReminderPeriodDays(
+    companyId,
+    input.reminderPeriodDays,
+    dependencies,
+  );
   const content = prepareInvoiceDraftContent({
     ...input,
     latePaymentInterestBasisPoints,
+    reminderPeriodDays,
   });
   const now = new Date().toISOString();
   const draft: InvoiceDraft = {

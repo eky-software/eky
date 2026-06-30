@@ -28,6 +28,7 @@ describe('updateCompanySettings', () => {
         city: '  Helsinki  ',
         companyId: 'dev-company',
         companyName: '  Example Builder Oy  ',
+        vatNumber: '  fi12345678  ',
         defaultHourlyRateCents: 6500,
         hourlyRateShortcut: '  työ  ',
         iban: ' fi21 1234 5600 0007 85 ',
@@ -46,6 +47,7 @@ describe('updateCompanySettings', () => {
     expect(settings.companyId).toBe('dev-company');
     expect(settings.companyName).toBe('Example Builder Oy');
     expect(settings.businessId).toBe('1234567-8');
+    expect(settings.vatNumber).toBe('FI12345678');
     expect(settings.streetAddress).toBe('Testikatu 1');
     expect(settings.postalCode).toBe('00100');
     expect(settings.city).toBe('Helsinki');
@@ -68,6 +70,7 @@ describe('updateCompanySettings', () => {
         city: '',
         companyId: 'dev-company',
         companyName: '',
+        vatNumber: '',
         defaultHourlyRateCents: null,
         hourlyRateShortcut: '',
         iban: '',

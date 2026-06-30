@@ -24,3 +24,23 @@ export async function resolveInvoiceDraftLatePaymentInterestBasisPoints(
     defaultInvoicePaymentSettings.defaultLatePaymentInterestBasisPoints
   );
 }
+
+export async function resolveInvoiceDraftReminderPeriodDays(
+  companyId: string,
+  value: number | undefined,
+  dependencies: ResolveLatePaymentInterestDependencies,
+): Promise<number> {
+  if (value !== undefined) {
+    return value;
+  }
+
+  const settings =
+    await dependencies.invoicePaymentSettingsRepository.getSettings(
+      companyId,
+    );
+
+  return (
+    settings?.defaultReminderPeriodDays ??
+    defaultInvoicePaymentSettings.defaultReminderPeriodDays
+  );
+}

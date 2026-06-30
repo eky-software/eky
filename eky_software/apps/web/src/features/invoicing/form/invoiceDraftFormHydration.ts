@@ -7,7 +7,9 @@ export function toNewInvoiceFormStateFromDraft(
   draft: InvoiceDraft,
 ): NewInvoiceFormState {
   return {
+    billingRecipientCustomerId: draft.billingRecipientCustomerId ?? '',
     customerId: draft.customerId,
+    deliveryAddressText: draft.deliveryAddressText,
     dueDate: draft.dueDate,
     invoiceDate: draft.invoiceDate,
     latePaymentInterestPercent: formatScaledInput(
@@ -28,6 +30,7 @@ export function toNewInvoiceFormStateFromDraft(
     orderNumber: draft.orderNumber,
     paymentTermDays: String(draft.paymentTermDays),
     priceInputMode: draft.priceInputMode,
+    reminderPeriodDays: String(draft.reminderPeriodDays),
     subject: draft.subject,
   };
 }

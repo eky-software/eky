@@ -57,6 +57,7 @@ function parseCompanySettings(value: unknown): CompanySettings {
     typeof value.companyId !== 'string' ||
     typeof value.companyName !== 'string' ||
     typeof value.businessId !== 'string' ||
+    typeof value.vatNumber !== 'string' ||
     typeof value.streetAddress !== 'string' ||
     typeof value.postalCode !== 'string' ||
     typeof value.city !== 'string' ||
@@ -80,6 +81,7 @@ function parseCompanySettings(value: unknown): CompanySettings {
     companyId: value.companyId,
     companyName: value.companyName,
     businessId: value.businessId,
+    vatNumber: value.vatNumber,
     streetAddress: value.streetAddress,
     postalCode: value.postalCode,
     city: value.city,

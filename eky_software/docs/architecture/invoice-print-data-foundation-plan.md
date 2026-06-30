@@ -47,6 +47,18 @@ hyväksytty lasku sisältää laskulla näkyvät tiedot:
 Jos nämä puuttuvat snapshotista, print/PDF-vaihe alkaisi arvata tai hakea
 muuttuvaa master-dataa väärästä paikasta.
 
+Lisäksi ennen tuotantokäyttöä laskulla näkyvät kentät tarkistetaan
+ajantasaisista virallisista lähteistä tai kirjanpitäjän kanssa. Verohallinnon
+arvonlisäverotuksen laskutusvaatimuksissa tavallisella laskulla tarvittavia
+tietoja ovat muun muassa laskun antamispäivä, juokseva tunniste, myyjän
+arvonlisäverotunniste, myyjän ja ostajan nimi ja osoite, tavaroiden tai
+palvelujen määrä ja laji, toimitus- tai suorituspäivä tarvittaessa, veron
+peruste verokannoittain, yksikköhinta ilman veroa, alennukset, verokanta ja
+veron määrä.
+
+Virallinen tarkistuslähde:
+`https://www.vero.fi/syventavat-vero-ohjeet/ohje-hakusivu/48090/laskutusvaatimukset-arvonlisaverotuksessa3/`
+
 ## Moduulien Omistajuus
 
 Company Settings omistaa ohjelmaa käyttävän yrityksen master-datan:
@@ -89,7 +101,7 @@ Customers-moduulien master-dataa.
 
 ## Vaihe 1: ALV-Tunnus Oma Yritys -Tietoihin
 
-Company Settingsiin lisätään myöhemmin kenttä:
+Company Settingsiin lisätään kenttä:
 
 ```ts
 vatNumber: string;
@@ -235,6 +247,29 @@ Myöhemmin Sites-moduuli voi täydentää tai korvata tämän varsinaisella
 `siteId`- ja kohdesnapshot-mallilla. Manuaalinen laskutus ei silti saa alkaa
 edellyttää kohdetta.
 
+### Toimitus- Tai Suorituspäivä
+
+Ennen print/PDF-vaihetta pitää ratkaista myös, tarvitaanko laskulle erillinen
+toimitus- tai suorituspäivä:
+
+```ts
+supplyDate?: string;
+```
+
+Tätä voidaan tarvita silloin, kun tavaran toimitus- tai palvelun suorituspäivä
+on määritettävissä ja eroaa laskun antamispäivästä.
+
+Ensimmäinen mahdollinen malli:
+
+- kenttä on valinnainen
+- jos se puuttuu, laskupohja ei näytä erillistä suorituspäivää
+- jos se annetaan, se snapshotataan hyväksytylle laskulle
+- myöhemmin Sites- tai Work Orders -moduuli voi ehdottaa arvoa
+
+Tätä ei toteuteta ennen kuin on päätetty, tarvitaanko se ensimmäiseen
+laskupohjaan vai riittääkö alkuvaiheen manuaalinen laskutus ilman erillistä
+suorituspäiväkenttää.
+
 ## Vaihe 4: Huomautusaika Laskukohtaiseksi Arvoksi
 
 Invoicing payment settings sisältää oletushuomautusajan:
@@ -314,6 +349,7 @@ Kohde tai toimitustieto laskuluonnokselta:
 
 ```text
 delivery_address_text
+supply_date
 ```
 
 ALV-erittely hyväksytyistä riveistä:
@@ -328,6 +364,43 @@ vatBreakdown:
 
 ALV-erittely muodostetaan hyväksytyistä riveistä backendin domain-sääntöjen
 mukaisesti. Sitä ei lasketa frontendissä uudella logiikalla.
+
+## Vaihe 6: ALV-Merkinnät Ja Poikkeustilanteet
+
+Nykyinen laskentamalli tukee ALV-kantoja ja ALV-erittelyä. Se ei vielä yksin
+ratkaise kaikkia laskulla tarvittavia ALV-merkintöjä.
+
+Ennen print/PDF-vaihetta pitää päättää, tarvitaanko ensimmäisessä laskupohjassa
+seuraavia kenttiä tai niitä vastaavaa mallia:
+
+```ts
+vatTreatment?: string;
+vatExemptionReason?: string;
+buyerVatNumber?: string;
+```
+
+Näitä tarvitaan esimerkiksi tilanteissa, joissa:
+
+- myynti on veroton tai arvonlisäverotuksen ulkopuolinen
+- sovelletaan käännettyä verovelvollisuutta
+- ostajan arvonlisäverotunniste pitää näkyä laskulla
+- laskulla tarvitaan lakiviittaus tai selite verottomuuden perusteesta
+
+Tärkeä sääntö:
+
+```text
+vatRateBasisPoints = 0
+```
+
+ei yksin kerro, onko kyse nollaverokannasta, verottomasta myynnistä,
+arvonlisäverotuksen ulkopuolisesta toiminnasta tai käännetystä
+verovelvollisuudesta.
+
+Tätä ei pidä ratkaista pelkällä vapaalla tekstillä laskupohjassa, vaan
+Invoicing tarvitsee myöhemmin hallitun vero- tai laskumerkintämallin.
+
+Rakennusalan käännetty arvonlisäverovelvollisuus arvioidaan erikseen ennen
+tuotantokäyttöä, koska Ekyä rakennetaan rakennusalan yrityksen tarpeisiin.
 
 ## Hyväksynnän Portit Ja Transaktio
 
@@ -378,11 +451,13 @@ Suositeltu marssijärjestys:
 
 1. `CompanySettings` saa `vatNumber`-kentän.
 2. `InvoiceDraft` saa `billingRecipientCustomerId`, `deliveryAddressText` ja `reminderPeriodDays` -kentät.
-3. Web-laskulomake saa laskun vastaanottajan, toimitus/kohde-kentän ja huomautusajan.
-4. Hyväksyntä laajennetaan snapshottaamaan myyjän, asiakkaan, vastaanottajan, maksutietojen ja toimitus/kohde-tiedon arvot.
-5. Hyväksytylle laskulle tehdään read model katselu- ja print-polulle.
-6. Vasta tämän jälkeen toteutetaan varsinainen print-layout.
-7. PDF ja sähköpostilähetys tulevat print-layoutin jälkeen.
+3. Päätetään, lisätäänkö ensimmäiseen print-polkuun `supplyDate`.
+4. Päätetään ensimmäisen vaiheen ALV-merkintämalli nollaverokannalle, verottomuudelle ja mahdolliselle käännetylle verovelvollisuudelle.
+5. Web-laskulomake saa laskun vastaanottajan, toimitus/kohde-kentän ja huomautusajan.
+6. Hyväksyntä laajennetaan snapshottaamaan myyjän, asiakkaan, vastaanottajan, maksutietojen ja toimitus/kohde-tiedon arvot.
+7. Hyväksytylle laskulle tehdään read model katselu- ja print-polulle.
+8. Vasta tämän jälkeen toteutetaan varsinainen print-layout.
+9. PDF ja sähköpostilähetys tulevat print-layoutin jälkeen.
 
 Jos hyväksyntäsnapshotin vaihe kasvaa liian suureksi, se pysäytetään erilliseksi
 toteutussuunnitelmaksi. Puolittaista snapshotia ei jätetä ilman testejä.
@@ -404,6 +479,7 @@ Tulevat koodimuutokset tarvitsevat testit vähintään seuraavista:
 - hyväksyntä snapshottaa asiakkaan tiedot
 - hyväksyntä snapshottaa laskun vastaanottajan tiedot
 - hyväksyntä snapshottaa `deliveryAddressText`-arvon
+- hyväksyntä snapshottaa `supplyDate`-arvon, jos kenttä toteutetaan
 - hyväksyntä snapshottaa `latePaymentInterestBasisPoints`- ja `reminderPeriodDays`-arvot
 - myöhempi Company Settings- tai Customer-muutos ei muuta hyväksytyn laskun snapshotia
 

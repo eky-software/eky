@@ -5,6 +5,7 @@ import {
   initialCompanySettingsForm,
   normalizeCompanyBicInput,
   normalizeCompanyIbanInput,
+  normalizeCompanyVatNumberInput,
   toCompanySettingsForm,
   toUpdateCompanySettingsRequest,
 } from './companySettingsFormModel.js';
@@ -17,6 +18,7 @@ describe('companySettingsFormModel', () => {
         companyId: 'dev-company',
         companyName: 'Example Builder Oy',
         businessId: '1234567-8',
+        vatNumber: 'FI12345678',
         streetAddress: 'Testikatu 1',
         postalCode: '00100',
         city: 'Helsinki',
@@ -35,6 +37,7 @@ describe('companySettingsFormModel', () => {
       city: 'Helsinki',
       companyName: 'Example Builder Oy',
       defaultHourlyRateEuro: '65,00',
+      vatNumber: 'FI12345678',
       hourlyRateShortcut: 'työ',
       iban: 'FI2112345600000785',
       bic: 'NDEAFIHH',
@@ -50,12 +53,13 @@ describe('companySettingsFormModel', () => {
     expect(
       toUpdateCompanySettingsRequest({
         ...initialCompanySettingsForm,
-        companyName: 'Example Builder Oy',
-      }),
+      companyName: 'Example Builder Oy',
+    }),
     ).toEqual({
       businessId: '',
       city: '',
       companyName: 'Example Builder Oy',
+      vatNumber: '',
       defaultHourlyRateCents: null,
       hourlyRateShortcut: '',
       iban: '',
@@ -95,12 +99,30 @@ describe('companySettingsFormModel', () => {
     });
   });
 
+  it('normalizes company VAT number input for the update request', () => {
+    expect(
+      toUpdateCompanySettingsRequest({
+        ...initialCompanySettingsForm,
+        vatNumber: '  fi12345678  ',
+      }),
+    ).toMatchObject({
+      vatNumber: 'FI12345678',
+    });
+  });
+
   it('rejects clearly invalid bank detail input', () => {
     expect(() => normalizeCompanyIbanInput('bad')).toThrow(
       'Invalid company IBAN.',
     );
     expect(() => normalizeCompanyBicInput('bad')).toThrow(
       'Invalid company BIC.',
+    );
+  });
+
+  it('rejects invalid VAT number input', () => {
+    expect(normalizeCompanyVatNumberInput('')).toBe('');
+    expect(() => normalizeCompanyVatNumberInput('1234567-8')).toThrow(
+      'Invalid company VAT number.',
     );
   });
 });

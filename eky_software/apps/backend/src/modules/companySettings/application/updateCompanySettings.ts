@@ -6,6 +6,7 @@ import {
 } from '../domain/companySettings.js';
 import {
   normalizeCompanySettingsField,
+  normalizeCompanyVatNumber,
   normalizeHourlyRateShortcut,
   parseDefaultHourlyRateCents,
 } from '../domain/companySettingsRules.js';
@@ -17,6 +18,7 @@ export interface UpdateCompanySettingsInput {
   city: string;
   companyId: string;
   companyName: string;
+  vatNumber: string;
   defaultHourlyRateCents: unknown;
   hourlyRateShortcut: string;
   iban: string;
@@ -45,6 +47,7 @@ export async function updateCompanySettings(
     city: normalizeCompanySettingsField(input.city, 'Company city'),
     companyId: input.companyId,
     companyName: normalizeCompanySettingsField(input.companyName, 'Company name'),
+    vatNumber: normalizeCompanyVatNumber(input.vatNumber),
     defaultHourlyRateCents: parseDefaultHourlyRateCents(input.defaultHourlyRateCents),
     hourlyRateShortcut: normalizeHourlyRateShortcut(input.hourlyRateShortcut),
     iban: bankDetails.iban,

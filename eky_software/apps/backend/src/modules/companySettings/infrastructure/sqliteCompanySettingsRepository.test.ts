@@ -27,6 +27,13 @@ const addBankDetailsMigrationSql = readFileSync(
   ),
   'utf8',
 );
+const addVatNumberMigrationSql = readFileSync(
+  new URL(
+    '../../../database/migrations/014_add_company_settings_vat_number.sql',
+    import.meta.url,
+  ),
+  'utf8',
+);
 
 describe('SqliteCompanySettingsRepository', () => {
   let database: DatabaseConnection;
@@ -36,6 +43,7 @@ describe('SqliteCompanySettingsRepository', () => {
     database.exec(createTableMigrationSql);
     database.exec(addShortcutMigrationSql);
     database.exec(addBankDetailsMigrationSql);
+    database.exec(addVatNumberMigrationSql);
   });
 
   afterEach(() => {
@@ -65,6 +73,7 @@ describe('SqliteCompanySettingsRepository', () => {
       iban: 'FI5542345670000081',
       bic: 'OKOYFIHH',
       bankName: 'Updated Bank',
+      vatNumber: 'FI87654321',
       updatedAt: '2026-06-26T00:00:00.000Z',
     });
 
@@ -74,6 +83,7 @@ describe('SqliteCompanySettingsRepository', () => {
       iban: 'FI5542345670000081',
       bic: 'OKOYFIHH',
       bankName: 'Updated Bank',
+      vatNumber: 'FI87654321',
       updatedAt: '2026-06-26T00:00:00.000Z',
     });
   });
@@ -82,6 +92,7 @@ describe('SqliteCompanySettingsRepository', () => {
 function createSettings(): CompanySettings {
   return {
     businessId: '1234567-8',
+    vatNumber: 'FI12345678',
     city: 'Helsinki',
     companyId: 'dev-company',
     companyName: 'Example Builder Oy',

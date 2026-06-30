@@ -142,5 +142,9 @@ function getErrorMessage(error: unknown): string {
     return uiText.companySettings.invalidBankName;
   }
 
+  if (error instanceof Error && error.message === 'Invalid company VAT number.') {
+    return uiText.companySettings.invalidVatNumber;
+  }
+
   return uiText.companySettings.fallbackError;
 }

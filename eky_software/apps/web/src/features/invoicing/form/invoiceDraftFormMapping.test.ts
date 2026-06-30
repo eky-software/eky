@@ -59,6 +59,9 @@ describe('invoice draft form mapping', () => {
       dueDate: '2026-06-30',
       paymentTermDays: 14,
       latePaymentInterestBasisPoints: 950,
+      billingRecipientCustomerId: 'billing-customer-1',
+      reminderPeriodDays: 8,
+      deliveryAddressText: 'Työkohde 1',
       priceInputMode: 'net',
       subject: 'Työlasku',
       orderNumber: 'TILAUS-1',
@@ -122,6 +125,8 @@ describe('invoice draft form mapping', () => {
   it('omits empty optional text fields', () => {
     const input = toInvoiceDraftInput(
       createValidForm({
+        billingRecipientCustomerId: ' ',
+        deliveryAddressText: ' ',
         note: ' ',
         orderNumber: '',
         subject: '',
@@ -131,16 +136,29 @@ describe('invoice draft form mapping', () => {
     expect(input).not.toHaveProperty('subject');
     expect(input).not.toHaveProperty('orderNumber');
     expect(input).not.toHaveProperty('note');
+    expect(input).not.toHaveProperty('billingRecipientCustomerId');
+    expect(input).not.toHaveProperty('deliveryAddressText');
+  });
+
+  it('omits reminder period when the field is empty', () => {
+    const input = toInvoiceDraftInput(
+      createValidForm({ reminderPeriodDays: '' }),
+    );
+
+    expect(input).not.toHaveProperty('reminderPeriodDays');
   });
 });
 
 function createValidForm(
   overrides: {
+    billingRecipientCustomerId?: string;
+    deliveryAddressText?: string;
     discountType?: 'none' | 'percentage' | 'fixed';
     discountValue?: string;
     latePaymentInterestPercent?: string;
     note?: string;
     orderNumber?: string;
+    reminderPeriodDays?: string;
     subject?: string;
   } = {},
 ) {
@@ -184,7 +202,11 @@ function createValidForm(
     lines: row,
     latePaymentInterestPercent:
       overrides.latePaymentInterestPercent ?? '9,50',
+    billingRecipientCustomerId:
+      overrides.billingRecipientCustomerId ?? 'billing-customer-1',
+    deliveryAddressText: overrides.deliveryAddressText ?? 'Työkohde 1',
     note: overrides.note ?? 'Saate',
     orderNumber: overrides.orderNumber ?? 'TILAUS-1',
+    reminderPeriodDays: overrides.reminderPeriodDays ?? '8',
   };
 }

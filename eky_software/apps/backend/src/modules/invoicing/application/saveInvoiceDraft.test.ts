@@ -42,15 +42,23 @@ class FakeInvoiceDraftRepository implements InvoiceDraftRepository {
 
 class FakeCustomerAccessReader implements CustomerAccessReader {
   calls: Array<{ customerId: string; companyId: string }> = [];
+  private readonly deniedCustomerIds = new Set<string>();
 
   constructor(private readonly customerBelongsToCompany = true) {}
+
+  denyCustomer(customerId: string): void {
+    this.deniedCustomerIds.add(customerId);
+  }
 
   async belongsToCompany(
     customerId: string,
     companyId: string,
   ): Promise<boolean> {
     this.calls.push({ customerId, companyId });
-    return this.customerBelongsToCompany;
+    return (
+      this.customerBelongsToCompany &&
+      !this.deniedCustomerIds.has(customerId)
+    );
   }
 }
 
@@ -101,9 +109,11 @@ function createInput(
   return {
     companyId: 'dev-company',
     customerId: 'customer-1',
+    billingRecipientCustomerId: 'billing-customer-1',
     invoiceDate: '2026-06-13',
     priceInputMode: 'net',
     subject: ' Test invoice ',
+    deliveryAddressText: ' Työkohde 1 ',
     lines: [
       {
         code: ' WORK ',
@@ -138,18 +148,25 @@ describe('saveInvoiceDraft', () => {
         customerId: 'customer-1',
         companyId: 'dev-company',
       },
+      {
+        customerId: 'billing-customer-1',
+        companyId: 'dev-company',
+      },
     ]);
     expect(dependencies.invoiceDraftRepository.savedDraft).toBe(draft);
     expect(draft).toMatchObject({
       companyId: 'dev-company',
       customerId: 'customer-1',
+      billingRecipientCustomerId: 'billing-customer-1',
       status: 'draft',
       invoiceDate: '2026-06-13',
       dueDate: '2026-06-27',
       paymentTermDays: 14,
+      reminderPeriodDays: 8,
       latePaymentInterestBasisPoints: 0,
       priceInputMode: 'net',
       subject: 'Test invoice',
+      deliveryAddressText: 'Työkohde 1',
     });
     expect(draft.id).toEqual(expect.any(String));
     expect(draft.lines.map((line) => line.position)).toEqual([1, 2]);
@@ -215,6 +232,56 @@ describe('saveInvoiceDraft', () => {
     expect(draft.latePaymentInterestBasisPoints).toBe(950);
   });
 
+  it('uses invoice payment settings as the reminder period default', async () => {
+    const draft = await saveInvoiceDraft(
+      createInput(),
+      createDependencies(true, {
+        companyId: 'dev-company',
+        createdAt: '2026-06-13T10:00:00.000Z',
+        defaultLatePaymentInterestBasisPoints: 950,
+        defaultReminderPeriodDays: 8,
+        updatedAt: '2026-06-13T10:00:00.000Z',
+      }),
+    );
+
+    expect(draft.reminderPeriodDays).toBe(8);
+  });
+
+  it('keeps a manually provided reminder period', async () => {
+    const draft = await saveInvoiceDraft(
+      createInput({ reminderPeriodDays: 12 }),
+      createDependencies(true, {
+        companyId: 'dev-company',
+        createdAt: '2026-06-13T10:00:00.000Z',
+        defaultLatePaymentInterestBasisPoints: 950,
+        defaultReminderPeriodDays: 8,
+        updatedAt: '2026-06-13T10:00:00.000Z',
+      }),
+    );
+
+    expect(draft.reminderPeriodDays).toBe(12);
+  });
+
+  it('rejects an unavailable billing recipient before saving', async () => {
+    const dependencies = createDependencies();
+    dependencies.customerAccessReader.denyCustomer('billing-customer-1');
+
+    await expect(
+      saveInvoiceDraft(createInput(), dependencies),
+    ).rejects.toThrow('Billing recipient is not available for invoicing.');
+    expect(dependencies.customerAccessReader.calls).toEqual([
+      {
+        customerId: 'customer-1',
+        companyId: 'dev-company',
+      },
+      {
+        customerId: 'billing-customer-1',
+        companyId: 'dev-company',
+      },
+    ]);
+    expect(dependencies.invoiceDraftRepository.savedDraft).toBeUndefined();
+  });
+
   it('keeps a manually provided late payment interest', async () => {
     const dependencies = createDependencies(true, {
       companyId: 'dev-company',
@@ -225,7 +292,10 @@ describe('saveInvoiceDraft', () => {
     });
 
     const draft = await saveInvoiceDraft(
-      createInput({ latePaymentInterestBasisPoints: 1200 }),
+      createInput({
+        latePaymentInterestBasisPoints: 1200,
+        reminderPeriodDays: 8,
+      }),
       dependencies,
     );
 

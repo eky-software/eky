@@ -14,6 +14,7 @@ Toteutus sisältää:
 - oman yrityksen yhteystiedot
 - oman yrityksen osoitteen
 - oman yrityksen Y-tunnuksen
+- oman yrityksen ALV-tunnuksen
 - oman yrityksen pankkitiedot
 - oletustuntihinnan `defaultHourlyRateCents`
 - tuntityön pikavalinnan `hourlyRateShortcut`
@@ -80,6 +81,7 @@ Alustavat kentät:
 - `company_id`
 - `company_name`
 - `business_id`
+- `vat_number`
 - `street_address`
 - `postal_code`
 - `city`
@@ -136,6 +138,23 @@ Se ei tee pikasanasta backendin laskentasääntöä eikä siirrä asiakkaan
 tuntihintaohituksen omistajuutta Company Settings -moduulille.
 
 Tällä vältetään epäselvä floating point -rahankäsittely ja valmistellaan myöhempää laskutuksen snapshot-mallia.
+
+### VAT Number
+
+Company Settings omistaa oman yrityksen ALV-tunnuksen master datan:
+
+- `vatNumber`
+
+SQLite-kenttä on:
+
+- `vat_number`
+
+Kenttä on MVP:ssä valinnainen. Backend trimmaa arvon, muuttaa sen isoiksi
+kirjaimiksi ja hyväksyy suomalaisen perusmuodon `FI` + 8 numeroa. Tyhjä arvo
+tarkoittaa, ettei ALV-tunnusta ole vielä asetettu.
+
+Kun hyväksytylle laskulle tarvitaan myyjän ALV-tunnus, Invoicing tallentaa
+siitä oman snapshotin kenttään `seller_vat_number`.
 
 ### Bank Details
 
