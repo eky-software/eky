@@ -36,6 +36,8 @@ const migrationNames = [
   '009_create_approved_invoices.sql',
   '010_add_invoice_reference_number.sql',
   '013_add_invoice_draft_late_payment_interest.sql',
+  '014_add_company_settings_vat_number.sql',
+  '015_add_invoice_draft_print_foundation_fields.sql',
 ];
 
 const migrationSql = migrationNames.map((migrationName) =>
@@ -109,15 +111,18 @@ function createDraft(
     id: 'draft-1',
     companyId: 'dev-company',
     customerId: 'customer-1',
+    billingRecipientCustomerId: null,
     status: 'draft',
     invoiceDate: '2027-01-15',
     dueDate: '2027-01-29',
     paymentTermDays: 14,
+    reminderPeriodDays: 8,
     latePaymentInterestBasisPoints: 950,
     priceInputMode: 'net',
     subject: 'Test invoice',
     orderNumber: 'ORDER-1',
     note: 'Invoice note',
+    deliveryAddressText: '',
     createdAt: '2027-01-15T08:00:00.000Z',
     updatedAt: '2027-01-15T08:00:00.000Z',
     ...overrides,

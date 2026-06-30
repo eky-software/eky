@@ -5,6 +5,10 @@ import styles from './InvoiceBasicInfoSection.module.css';
 import { uiText } from '../../../i18n/fi.js';
 
 interface CustomerPickerProps {
+  helpText?: string;
+  label?: string;
+  name?: string;
+  placeholder?: string;
   customers: Customer[];
   errorMessage: string | null;
   isLoading: boolean;
@@ -14,6 +18,10 @@ interface CustomerPickerProps {
 }
 
 export function CustomerPicker({
+  helpText = uiText.invoicing.customerPickerHelp,
+  label = uiText.invoicing.customer,
+  name = 'customerId',
+  placeholder,
   customers,
   errorMessage,
   isLoading,
@@ -22,6 +30,7 @@ export function CustomerPicker({
   value,
 }: CustomerPickerProps): React.JSX.Element {
   const [searchQuery, setSearchQuery] = useState('');
+  const helpId = `${name}-help`;
   const isEmpty = !isLoading && errorMessage === null && customers.length === 0;
   const filteredCustomers = useMemo(
     () => filterInvoiceCustomers(customers, searchQuery, value),
@@ -37,26 +46,32 @@ export function CustomerPicker({
 
   return (
     <label className={`${styles.field} ${styles.customerField}`}>
-      <span>{uiText.invoicing.customer}</span>
+      <span>{label}</span>
       <input
-        aria-label={uiText.invoicing.customerSearch}
+        aria-label={`${label}: ${uiText.invoicing.customerSearch}`}
         disabled={isLoading || errorMessage !== null || isEmpty}
-        name="customerSearch"
+        name={`${name}Search`}
         placeholder={uiText.invoicing.customerSearchPlaceholder}
         type="search"
         value={searchQuery}
         onChange={(event) => setSearchQuery(event.target.value)}
       />
       <select
-        aria-describedby="invoice-customer-help"
+        aria-describedby={helpId}
         aria-invalid={validationErrorMessage === undefined ? undefined : true}
         disabled={isDisabled}
-        name="customerId"
+        name={name}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
         <option value="">
-          {getPlaceholder(isLoading, isEmpty, hasNoMatches, errorMessage)}
+          {getPlaceholder(
+            isLoading,
+            isEmpty,
+            hasNoMatches,
+            errorMessage,
+            placeholder,
+          )}
         </option>
         {filteredCustomers.map((customer) => (
           <option key={customer.id} value={customer.id}>
@@ -70,7 +85,7 @@ export function CustomerPicker({
             ? undefined
             : styles.fieldError
         }
-        id="invoice-customer-help"
+        id={helpId}
         role={
           errorMessage === null && validationErrorMessage === undefined
             ? undefined
@@ -78,7 +93,7 @@ export function CustomerPicker({
         }
       >
         {validationErrorMessage ??
-          getHelpText(isLoading, isEmpty, errorMessage)}
+          getHelpText(isLoading, isEmpty, errorMessage, helpText)}
       </small>
     </label>
   );
@@ -129,6 +144,7 @@ function getPlaceholder(
   isEmpty: boolean,
   hasNoMatches: boolean,
   errorMessage: string | null,
+  placeholder: string | undefined,
 ): string {
   if (isLoading) {
     return uiText.invoicing.customerLoading;
@@ -146,13 +162,14 @@ function getPlaceholder(
     return uiText.invoicing.customerNoMatches;
   }
 
-  return uiText.invoicing.customerPlaceholder;
+  return placeholder ?? uiText.invoicing.customerPlaceholder;
 }
 
 function getHelpText(
   isLoading: boolean,
   isEmpty: boolean,
   errorMessage: string | null,
+  helpText: string,
 ): string {
   if (errorMessage !== null) {
     return errorMessage;
@@ -166,7 +183,7 @@ function getHelpText(
     return uiText.invoicing.customerEmptyHelp;
   }
 
-  return uiText.invoicing.customerPickerHelp;
+  return helpText;
 }
 
 function normalizeCustomerSearchText(value: string): string {

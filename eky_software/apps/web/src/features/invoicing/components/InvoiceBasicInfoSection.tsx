@@ -57,6 +57,19 @@ export function InvoiceBasicInfoSection({
           }
         />
 
+        <CustomerPicker
+          {...customerListState}
+          helpText={uiText.invoicing.billingRecipientHelp}
+          label={uiText.invoicing.billingRecipient}
+          name="billingRecipientCustomerId"
+          placeholder={uiText.invoicing.billingRecipientPlaceholder}
+          validationErrorMessage={undefined}
+          value={form.billingRecipientCustomerId}
+          onChange={(customerId) =>
+            onFieldChange('billingRecipientCustomerId', customerId)
+          }
+        />
+
         {selectedCustomer !== null ? (
           <SelectedCustomerDetails
             customer={selectedCustomer}
@@ -193,6 +206,46 @@ export function InvoiceBasicInfoSection({
           )}
         </label>
 
+        <label className={styles.field}>
+          <span>{uiText.invoicing.reminderPeriodDays}</span>
+          <input
+            aria-describedby={
+              errors?.reminderPeriodDays === undefined
+                ? 'invoice-reminder-period-help'
+                : 'invoice-reminder-period-error'
+            }
+            aria-invalid={
+              errors?.reminderPeriodDays === undefined ? undefined : true
+            }
+            inputMode="numeric"
+            min="0"
+            name="reminderPeriodDays"
+            placeholder={uiText.invoicing.reminderPeriodDaysPlaceholder}
+            step="1"
+            type="number"
+            value={form.reminderPeriodDays}
+            onChange={(event) =>
+              onFieldChange('reminderPeriodDays', event.target.value)
+            }
+          />
+          {errors?.reminderPeriodDays ? (
+            <small
+              className={styles.fieldError}
+              id="invoice-reminder-period-error"
+              role="alert"
+            >
+              {errors.reminderPeriodDays}
+            </small>
+          ) : (
+            <small
+              className={styles.fieldHelp}
+              id="invoice-reminder-period-help"
+            >
+              {uiText.invoicing.reminderPeriodDaysHelp}
+            </small>
+          )}
+        </label>
+
         <label className={`${styles.field} ${styles.wideField}`}>
           <span>{uiText.invoicing.subject}</span>
           <input
@@ -217,6 +270,42 @@ export function InvoiceBasicInfoSection({
               onFieldChange('orderNumber', event.target.value)
             }
           />
+        </label>
+
+        <label className={`${styles.field} ${styles.wideField}`}>
+          <span>{uiText.invoicing.deliveryAddressText}</span>
+          <textarea
+            aria-describedby={
+              errors?.deliveryAddressText === undefined
+                ? 'invoice-delivery-address-help'
+                : 'invoice-delivery-address-error'
+            }
+            aria-invalid={
+              errors?.deliveryAddressText === undefined ? undefined : true
+            }
+            name="deliveryAddressText"
+            placeholder={uiText.invoicing.deliveryAddressTextPlaceholder}
+            value={form.deliveryAddressText}
+            onChange={(event) =>
+              onFieldChange('deliveryAddressText', event.target.value)
+            }
+          />
+          {errors?.deliveryAddressText ? (
+            <small
+              className={styles.fieldError}
+              id="invoice-delivery-address-error"
+              role="alert"
+            >
+              {errors.deliveryAddressText}
+            </small>
+          ) : (
+            <small
+              className={styles.fieldHelp}
+              id="invoice-delivery-address-help"
+            >
+              {uiText.invoicing.deliveryAddressTextHelp}
+            </small>
+          )}
         </label>
 
         <fieldset className={styles.priceMode}>

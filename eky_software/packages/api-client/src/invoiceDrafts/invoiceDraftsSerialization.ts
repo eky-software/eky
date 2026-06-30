@@ -15,12 +15,20 @@ export function serializeInvoiceDraftInput(
     lines: input.lines.map(serializeInvoiceDraftLineInput),
   };
 
+  if (input.billingRecipientCustomerId !== undefined) {
+    body.billingRecipientCustomerId = input.billingRecipientCustomerId;
+  }
+
   if (input.dueDate !== undefined) {
     body.dueDate = input.dueDate;
   }
 
   if (input.paymentTermDays !== undefined) {
     body.paymentTermDays = input.paymentTermDays;
+  }
+
+  if (input.reminderPeriodDays !== undefined) {
+    body.reminderPeriodDays = input.reminderPeriodDays;
   }
 
   if (input.latePaymentInterestBasisPoints !== undefined) {
@@ -38,6 +46,10 @@ export function serializeInvoiceDraftInput(
 
   if (input.note !== undefined) {
     body.note = input.note;
+  }
+
+  if (input.deliveryAddressText !== undefined) {
+    body.deliveryAddressText = input.deliveryAddressText;
   }
 
   return body;

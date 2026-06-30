@@ -6,13 +6,16 @@ import type {
   InvoiceDraftLine,
 } from '../domain/invoiceDraft.js';
 import {
+  normalizeOptionalIdentifier,
   normalizeOptionalInvoiceText,
+  normalizeOptionalInvoiceTextWithLimit,
   normalizeRequiredInvoiceText,
   parseInvoiceUnit,
   requireIdentifier,
   resolveInvoiceDates,
   resolveLatePaymentInterestBasisPoints,
   resolvePaymentTermDays,
+  resolveReminderPeriodDays,
 } from '../domain/invoiceDraftRules.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
 import type {
@@ -33,27 +36,33 @@ export interface InvoiceDraftLineInput {
 
 export interface InvoiceDraftContentInput {
   customerId: string;
+  billingRecipientCustomerId?: string | null;
   invoiceDate: string;
   dueDate?: string;
   paymentTermDays?: number;
+  reminderPeriodDays?: number;
   latePaymentInterestBasisPoints?: number;
   priceInputMode: PriceInputMode;
   subject?: string;
   orderNumber?: string;
   note?: string;
+  deliveryAddressText?: string;
   lines: readonly InvoiceDraftLineInput[];
 }
 
 export interface PreparedInvoiceDraftContent {
   customerId: string;
+  billingRecipientCustomerId: string | null;
   invoiceDate: string;
   dueDate: string;
   paymentTermDays: number;
+  reminderPeriodDays: number;
   latePaymentInterestBasisPoints: number;
   priceInputMode: PriceInputMode;
   subject: string;
   orderNumber: string;
   note: string;
+  deliveryAddressText: string;
   lines: InvoiceDraftLine[];
   totals: InvoiceTotals;
 }
@@ -62,6 +71,10 @@ export function prepareInvoiceDraftContent(
   input: InvoiceDraftContentInput,
 ): PreparedInvoiceDraftContent {
   const customerId = requireIdentifier(input.customerId, 'Customer id');
+  const billingRecipientCustomerId = normalizeOptionalIdentifier(
+    input.billingRecipientCustomerId,
+    'Billing recipient customer id',
+  );
 
   if (input.lines.length === 0) {
     throw new InvoiceDraftValidationError(
@@ -70,6 +83,9 @@ export function prepareInvoiceDraftContent(
   }
 
   const paymentTermDays = resolvePaymentTermDays(input.paymentTermDays);
+  const reminderPeriodDays = resolveReminderPeriodDays(
+    input.reminderPeriodDays ?? 0,
+  );
   const latePaymentInterestBasisPoints =
     resolveLatePaymentInterestBasisPoints(
       input.latePaymentInterestBasisPoints ?? 0,
@@ -105,14 +121,21 @@ export function prepareInvoiceDraftContent(
 
   return {
     customerId,
+    billingRecipientCustomerId,
     invoiceDate: dates.invoiceDate,
     dueDate: dates.dueDate,
     paymentTermDays,
+    reminderPeriodDays,
     latePaymentInterestBasisPoints,
     priceInputMode,
     subject: normalizeOptionalInvoiceText(input.subject),
     orderNumber: normalizeOptionalInvoiceText(input.orderNumber),
     note: normalizeOptionalInvoiceText(input.note),
+    deliveryAddressText: normalizeOptionalInvoiceTextWithLimit(
+      input.deliveryAddressText,
+      'Delivery address text',
+      500,
+    ),
     lines,
     totals: calculateInvoiceTotals(lines),
   };

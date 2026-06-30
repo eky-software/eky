@@ -16,14 +16,17 @@ const maximumLongTextLength = 5000;
 
 const invoiceDraftFields = new Set([
   'customerId',
+  'billingRecipientCustomerId',
   'invoiceDate',
   'dueDate',
   'paymentTermDays',
+  'reminderPeriodDays',
   'latePaymentInterestBasisPoints',
   'priceInputMode',
   'subject',
   'orderNumber',
   'note',
+  'deliveryAddressText',
   'lines',
 ]);
 
@@ -202,8 +205,17 @@ function parseInvoiceDraftContentRequest(
     priceInputMode: readPriceInputMode(body),
     lines: body.lines.map(readLine),
   };
+  const billingRecipientCustomerId = readOptionalString(
+    body,
+    'billingRecipientCustomerId',
+    maximumIdentifierLength,
+  );
   const dueDate = readOptionalString(body, 'dueDate', 10);
   const paymentTermDays = readOptionalSafeInteger(body, 'paymentTermDays');
+  const reminderPeriodDays = readOptionalSafeInteger(
+    body,
+    'reminderPeriodDays',
+  );
   const latePaymentInterestBasisPoints = readOptionalSafeInteger(
     body,
     'latePaymentInterestBasisPoints',
@@ -219,6 +231,15 @@ function parseInvoiceDraftContentRequest(
     maximumShortTextLength,
   );
   const note = readOptionalString(body, 'note', maximumLongTextLength);
+  const deliveryAddressText = readOptionalString(
+    body,
+    'deliveryAddressText',
+    maximumShortTextLength,
+  );
+
+  if (billingRecipientCustomerId !== undefined) {
+    input.billingRecipientCustomerId = billingRecipientCustomerId;
+  }
 
   if (dueDate !== undefined) {
     input.dueDate = dueDate;
@@ -226,6 +247,10 @@ function parseInvoiceDraftContentRequest(
 
   if (paymentTermDays !== undefined) {
     input.paymentTermDays = paymentTermDays;
+  }
+
+  if (reminderPeriodDays !== undefined) {
+    input.reminderPeriodDays = reminderPeriodDays;
   }
 
   if (latePaymentInterestBasisPoints !== undefined) {
@@ -243,6 +268,10 @@ function parseInvoiceDraftContentRequest(
 
   if (note !== undefined) {
     input.note = note;
+  }
+
+  if (deliveryAddressText !== undefined) {
+    input.deliveryAddressText = deliveryAddressText;
   }
 
   return input;

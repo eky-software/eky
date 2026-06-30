@@ -63,6 +63,8 @@ function createInvoiceDraft(): InvoiceDraft {
     companyId: 'dev-company',
     createdAt: '2026-06-16T12:00:00.000Z',
     customerId: 'customer-1',
+    billingRecipientCustomerId: null,
+    deliveryAddressText: '',
     dueDate: '2026-06-30',
     id: 'draft-1',
     invoiceDate: '2026-06-16',
@@ -72,6 +74,7 @@ function createInvoiceDraft(): InvoiceDraft {
     paymentTermDays: 14,
     latePaymentInterestBasisPoints: 950,
     priceInputMode: 'net',
+    reminderPeriodDays: 0,
     status: 'draft',
     subject: 'Työlasku',
     totals: {

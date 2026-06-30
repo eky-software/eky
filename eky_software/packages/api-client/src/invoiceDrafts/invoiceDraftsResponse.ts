@@ -79,10 +79,15 @@ function parseInvoiceDraft(value: unknown): InvoiceDraft {
     id: readString(value, 'id'),
     companyId: readString(value, 'companyId'),
     customerId: readString(value, 'customerId'),
+    billingRecipientCustomerId: readNullableString(
+      value,
+      'billingRecipientCustomerId',
+    ),
     status: parseInvoiceDraftStatus(value.status),
     invoiceDate: readString(value, 'invoiceDate'),
     dueDate: readString(value, 'dueDate'),
     paymentTermDays: readSafeInteger(value, 'paymentTermDays'),
+    reminderPeriodDays: readSafeInteger(value, 'reminderPeriodDays'),
     latePaymentInterestBasisPoints: readSafeInteger(
       value,
       'latePaymentInterestBasisPoints',
@@ -91,6 +96,7 @@ function parseInvoiceDraft(value: unknown): InvoiceDraft {
     subject: readString(value, 'subject'),
     orderNumber: readString(value, 'orderNumber'),
     note: readString(value, 'note'),
+    deliveryAddressText: readString(value, 'deliveryAddressText'),
     lines: value.lines.map(parseInvoiceDraftLine),
     totals: parseInvoiceTotals(value.totals),
     createdAt: readString(value, 'createdAt'),
@@ -261,6 +267,19 @@ function readString(value: Record<string, unknown>, fieldName: string): string {
   const fieldValue = value[fieldName];
 
   if (typeof fieldValue === 'string') {
+    return fieldValue;
+  }
+
+  throw invalidInvoiceDraftResponse(value);
+}
+
+function readNullableString(
+  value: Record<string, unknown>,
+  fieldName: string,
+): string | null {
+  const fieldValue = value[fieldName];
+
+  if (fieldValue === null || typeof fieldValue === 'string') {
     return fieldValue;
   }
 

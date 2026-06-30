@@ -17,11 +17,13 @@ export interface InvoiceDraftLineFormErrors {
 
 export interface InvoiceDraftFormErrors {
   customerId?: string;
+  deliveryAddressText?: string;
   dueDate?: string;
   invoiceDate?: string;
   latePaymentInterestPercent?: string;
   lines: Record<string, InvoiceDraftLineFormErrors>;
   paymentTermDays?: string;
+  reminderPeriodDays?: string;
 }
 
 export interface InvoiceDraftFormValidationResult {
@@ -40,7 +42,9 @@ export function validateInvoiceDraftForm(
 
   validateDates(form, errors);
   validatePaymentTerm(form.paymentTermDays, errors);
+  validateReminderPeriod(form.reminderPeriodDays, errors);
   validateLatePaymentInterest(form.latePaymentInterestPercent, errors);
+  validateDeliveryAddressText(form.deliveryAddressText, errors);
 
   for (const row of form.lines) {
     const lineErrors = validateInvoiceDraftLine(row);
@@ -57,7 +61,9 @@ export function validateInvoiceDraftForm(
       errors.invoiceDate === undefined &&
       errors.dueDate === undefined &&
       errors.paymentTermDays === undefined &&
+      errors.reminderPeriodDays === undefined &&
       errors.latePaymentInterestPercent === undefined &&
+      errors.deliveryAddressText === undefined &&
       Object.keys(errors.lines).length === 0,
   };
 }
@@ -105,6 +111,41 @@ function validatePaymentTerm(
 
   if (!Number.isSafeInteger(paymentTermDays)) {
     errors.paymentTermDays = uiText.invoicing.validationPaymentTerm;
+  }
+}
+
+function validateReminderPeriod(
+  value: string,
+  errors: InvoiceDraftFormErrors,
+): void {
+  const normalizedValue = value.trim();
+
+  if (normalizedValue === '') {
+    return;
+  }
+
+  if (!/^\d+$/.test(normalizedValue)) {
+    errors.reminderPeriodDays = uiText.invoicing.validationReminderPeriod;
+    return;
+  }
+
+  const reminderPeriodDays = Number(normalizedValue);
+
+  if (
+    !Number.isSafeInteger(reminderPeriodDays) ||
+    reminderPeriodDays > 365
+  ) {
+    errors.reminderPeriodDays = uiText.invoicing.validationReminderPeriod;
+  }
+}
+
+function validateDeliveryAddressText(
+  value: string,
+  errors: InvoiceDraftFormErrors,
+): void {
+  if (value.trim().length > 500) {
+    errors.deliveryAddressText =
+      uiText.invoicing.validationDeliveryAddressText;
   }
 }
 

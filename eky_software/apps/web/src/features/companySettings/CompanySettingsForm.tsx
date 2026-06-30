@@ -63,6 +63,19 @@ export function CompanySettingsForm({
               />
             </label>
 
+            <label htmlFor="company-vat-number">
+              {uiText.companySettings.vatNumber}
+              <input
+                id="company-vat-number"
+                name="vatNumber"
+                onChange={(event) => onFieldChange('vatNumber', event.target.value)}
+                placeholder={uiText.companySettings.placeholderVatNumber}
+                type="text"
+                value={form.vatNumber}
+              />
+              <span className={styles.fieldHelp}>{uiText.companySettings.vatNumberHelp}</span>
+            </label>
+
             <label htmlFor="default-hourly-rate">
               {uiText.companySettings.defaultHourlyRate}
               <input

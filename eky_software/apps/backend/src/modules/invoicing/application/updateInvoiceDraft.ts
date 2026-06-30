@@ -65,6 +65,8 @@ export async function updateInvoiceDraft(
   }
 
   const customerId = requireIdentifier(input.customerId, 'Customer id');
+  const billingRecipientCustomerId =
+    input.billingRecipientCustomerId?.trim() ?? '';
   const customerBelongsToCompany =
     await dependencies.customerAccessReader.belongsToCompany(
       customerId,
@@ -77,8 +79,24 @@ export async function updateInvoiceDraft(
     );
   }
 
+  if (billingRecipientCustomerId !== '') {
+    const billingRecipientBelongsToCompany =
+      await dependencies.customerAccessReader.belongsToCompany(
+        billingRecipientCustomerId,
+        companyId,
+      );
+
+    if (!billingRecipientBelongsToCompany) {
+      throw new InvoiceDraftValidationError(
+        'Billing recipient is not available for invoicing.',
+      );
+    }
+  }
+
   const content = prepareInvoiceDraftContent({
     ...input,
+    reminderPeriodDays:
+      input.reminderPeriodDays ?? existingDraft.reminderPeriodDays,
     latePaymentInterestBasisPoints:
       input.latePaymentInterestBasisPoints ??
       existingDraft.latePaymentInterestBasisPoints,

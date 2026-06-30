@@ -67,15 +67,23 @@ class FakeInvoiceDraftRepository implements InvoiceDraftRepository {
 
 class FakeCustomerAccessReader implements CustomerAccessReader {
   calls: Array<{ customerId: string; companyId: string }> = [];
+  private readonly deniedCustomerIds = new Set<string>();
 
   constructor(private readonly customerBelongsToCompany = true) {}
+
+  denyCustomer(customerId: string): void {
+    this.deniedCustomerIds.add(customerId);
+  }
 
   async belongsToCompany(
     customerId: string,
     companyId: string,
   ): Promise<boolean> {
     this.calls.push({ customerId, companyId });
-    return this.customerBelongsToCompany;
+    return (
+      this.customerBelongsToCompany &&
+      !this.deniedCustomerIds.has(customerId)
+    );
   }
 }
 
@@ -117,15 +125,18 @@ function createStoredDraft(): InvoiceDraft {
     id: 'draft-1',
     companyId: 'dev-company',
     customerId: 'customer-1',
+    billingRecipientCustomerId: null,
     status: 'draft',
     invoiceDate: '2026-06-13',
     dueDate: '2026-06-27',
     paymentTermDays: 14,
+    reminderPeriodDays: 8,
     latePaymentInterestBasisPoints: 950,
     priceInputMode: 'net',
     subject: 'Old subject',
     orderNumber: '',
     note: '',
+    deliveryAddressText: '',
     lines,
     totals: calculateInvoiceTotals(lines),
     createdAt: '2026-06-13T10:00:00.000Z',
@@ -140,12 +151,15 @@ function createInput(
     companyId: 'dev-company',
     invoiceDraftId: 'draft-1',
     customerId: 'customer-2',
+    billingRecipientCustomerId: 'billing-customer-2',
     invoiceDate: '2026-06-14',
     dueDate: '2026-07-14',
     paymentTermDays: 30,
+    reminderPeriodDays: 12,
     latePaymentInterestBasisPoints: 1200,
     priceInputMode: 'gross',
     subject: ' Updated subject ',
+    deliveryAddressText: ' Kohde B ',
     lines: [
       {
         description: ' First new line ',
@@ -213,6 +227,10 @@ describe('updateInvoiceDraft', () => {
         customerId: 'customer-2',
         companyId: 'dev-company',
       },
+      {
+        customerId: 'billing-customer-2',
+        companyId: 'dev-company',
+      },
     ]);
     expect(dependencies.invoiceDraftRepository.updatedDraft).toBe(
       updatedDraft,
@@ -221,13 +239,16 @@ describe('updateInvoiceDraft', () => {
       id: 'draft-1',
       companyId: 'dev-company',
       customerId: 'customer-2',
+      billingRecipientCustomerId: 'billing-customer-2',
       status: 'draft',
       invoiceDate: '2026-06-14',
       dueDate: '2026-07-14',
       paymentTermDays: 30,
+      reminderPeriodDays: 12,
       latePaymentInterestBasisPoints: 1200,
       priceInputMode: 'gross',
       subject: 'Updated subject',
+      deliveryAddressText: 'Kohde B',
       createdAt: storedDraft.createdAt,
     });
     expect(updatedDraft.updatedAt).not.toBe(storedDraft.updatedAt);
@@ -255,6 +276,43 @@ describe('updateInvoiceDraft', () => {
     expect(updatedDraft.latePaymentInterestBasisPoints).toBe(
       storedDraft.latePaymentInterestBasisPoints,
     );
+  });
+
+  it('preserves the existing reminder period when update input omits it', async () => {
+    const storedDraft = createStoredDraft();
+    const dependencies = createDependencies({ storedDraft });
+    const { reminderPeriodDays: _omitted, ...input } = createInput();
+
+    const updatedDraft = await updateInvoiceDraft(input, dependencies);
+
+    expect(updatedDraft.reminderPeriodDays).toBe(
+      storedDraft.reminderPeriodDays,
+    );
+  });
+
+  it('does not update when billing recipient access verification fails', async () => {
+    const dependencies = createDependencies({
+      storedDraft: createStoredDraft(),
+    });
+    dependencies.customerAccessReader.denyCustomer('billing-customer-2');
+
+    await expect(
+      updateInvoiceDraft(createInput(), dependencies),
+    ).rejects.toThrow('Billing recipient is not available for invoicing.');
+
+    expect(dependencies.customerAccessReader.calls).toEqual([
+      {
+        customerId: 'customer-2',
+        companyId: 'dev-company',
+      },
+      {
+        customerId: 'billing-customer-2',
+        companyId: 'dev-company',
+      },
+    ]);
+    expect(
+      dependencies.invoiceDraftRepository.updatedDraft,
+    ).toBeUndefined();
   });
 
   it('does not update when customer access verification fails', async () => {

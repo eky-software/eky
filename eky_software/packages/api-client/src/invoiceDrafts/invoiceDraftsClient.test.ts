@@ -298,14 +298,17 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
 function createTestInput(): InvoiceDraftInput {
   return {
     customerId: 'customer-1',
+    billingRecipientCustomerId: 'billing-customer-1',
     invoiceDate: '2026-06-13',
     dueDate: '2026-06-27',
     paymentTermDays: 14,
+    reminderPeriodDays: 8,
     latePaymentInterestBasisPoints: 950,
     priceInputMode: 'net',
     subject: 'Test invoice',
     orderNumber: 'ORDER-1',
     note: 'Test note',
+    deliveryAddressText: 'Työkohde 1',
     lines: [
       {
         code: 'WORK',
@@ -342,15 +345,18 @@ function createTestInvoiceDraft(): InvoiceDraft {
     id: 'draft-1',
     companyId: 'dev-company',
     customerId: 'customer-1',
+    billingRecipientCustomerId: 'billing-customer-1',
     status: 'draft',
     invoiceDate: '2026-06-13',
     dueDate: '2026-06-27',
     paymentTermDays: 14,
+    reminderPeriodDays: 8,
     latePaymentInterestBasisPoints: 950,
     priceInputMode: 'net',
     subject: 'Test invoice',
     orderNumber: 'ORDER-1',
     note: 'Test note',
+    deliveryAddressText: 'Työkohde 1',
     lines: [
       {
         id: 'line-1',

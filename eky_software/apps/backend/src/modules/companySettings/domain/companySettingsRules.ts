@@ -48,3 +48,19 @@ export function normalizeHourlyRateShortcut(value: string): string {
 
   return normalizedValue;
 }
+
+export function normalizeCompanyVatNumber(value: string): string {
+  const normalizedValue = value.trim().toUpperCase();
+
+  if (normalizedValue === '') {
+    return '';
+  }
+
+  if (!/^FI\d{8}$/.test(normalizedValue)) {
+    throw new CompanySettingsValidationError(
+      'Company VAT number must use Finnish format FI followed by 8 digits.',
+    );
+  }
+
+  return normalizedValue;
+}

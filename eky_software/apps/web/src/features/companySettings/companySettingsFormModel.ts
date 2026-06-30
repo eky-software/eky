@@ -9,6 +9,7 @@ export interface CompanySettingsForm {
   businessId: string;
   city: string;
   companyName: string;
+  vatNumber: string;
   defaultHourlyRateEuro: string;
   hourlyRateShortcut: string;
   email: string;
@@ -24,6 +25,7 @@ export const initialCompanySettingsForm: CompanySettingsForm = {
   businessId: '',
   city: '',
   companyName: '',
+  vatNumber: '',
   defaultHourlyRateEuro: '',
   hourlyRateShortcut: '',
   email: '',
@@ -40,6 +42,7 @@ export function toCompanySettingsForm(settings: CompanySettings): CompanySetting
     businessId: settings.businessId,
     city: settings.city,
     companyName: settings.companyName,
+    vatNumber: settings.vatNumber,
     defaultHourlyRateEuro: centsToEuroInput(settings.defaultHourlyRateCents),
     hourlyRateShortcut: settings.hourlyRateShortcut,
     email: settings.email,
@@ -59,6 +62,7 @@ export function toUpdateCompanySettingsRequest(
     businessId: form.businessId,
     city: form.city,
     companyName: form.companyName,
+    vatNumber: normalizeCompanyVatNumberInput(form.vatNumber),
     defaultHourlyRateCents: euroInputToCents(form.defaultHourlyRateEuro),
     hourlyRateShortcut: form.hourlyRateShortcut,
     email: form.email,
@@ -110,6 +114,20 @@ export function normalizeCompanyBankNameInput(value: string): string {
 
   if (normalizedValue.length > 200) {
     throw new Error('Invalid company bank name.');
+  }
+
+  return normalizedValue;
+}
+
+export function normalizeCompanyVatNumberInput(value: string): string {
+  const normalizedValue = value.trim().toUpperCase();
+
+  if (normalizedValue === '') {
+    return '';
+  }
+
+  if (!/^FI\d{8}$/.test(normalizedValue)) {
+    throw new Error('Invalid company VAT number.');
   }
 
   return normalizedValue;

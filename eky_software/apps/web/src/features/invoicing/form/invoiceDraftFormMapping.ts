@@ -35,11 +35,15 @@ export function toInvoiceDraftInput(
   form: NewInvoiceFormState,
 ): InvoiceDraftInput {
   const paymentTermDays = parseNonNegativeInteger(form.paymentTermDays);
+  const reminderPeriodDays = parseOptionalNonNegativeInteger(
+    form.reminderPeriodDays,
+  );
   const latePaymentInterestBasisPoints =
     parseOptionalPercentageBasisPoints(form.latePaymentInterestPercent);
 
   if (
     paymentTermDays === null ||
+    reminderPeriodDays === null ||
     latePaymentInterestBasisPoints === null ||
     form.lines.length === 0
   ) {
@@ -55,6 +59,16 @@ export function toInvoiceDraftInput(
     lines: form.lines.map(mapInvoiceDraftLine),
   };
 
+  addOptionalTrimmedString(
+    input,
+    'billingRecipientCustomerId',
+    form.billingRecipientCustomerId,
+  );
+
+  if (reminderPeriodDays !== undefined) {
+    input.reminderPeriodDays = reminderPeriodDays;
+  }
+
   if (latePaymentInterestBasisPoints !== undefined) {
     input.latePaymentInterestBasisPoints =
       latePaymentInterestBasisPoints;
@@ -63,6 +77,11 @@ export function toInvoiceDraftInput(
   addOptionalTrimmedString(input, 'subject', form.subject);
   addOptionalTrimmedString(input, 'orderNumber', form.orderNumber);
   addOptionalTrimmedString(input, 'note', form.note);
+  addOptionalTrimmedString(
+    input,
+    'deliveryAddressText',
+    form.deliveryAddressText,
+  );
 
   return input;
 }
@@ -127,6 +146,12 @@ function parseNonNegativeInteger(value: string): number | null {
   return Number.isSafeInteger(parsedValue) ? parsedValue : null;
 }
 
+function parseOptionalNonNegativeInteger(
+  value: string,
+): number | undefined | null {
+  return value.trim() === '' ? undefined : parseNonNegativeInteger(value);
+}
+
 function parseScaledDecimal(
   value: string,
   decimalPlaces: number,
@@ -157,7 +182,12 @@ function parseScaledDecimal(
 }
 
 function addOptionalTrimmedString<
-  FieldName extends 'subject' | 'orderNumber' | 'note',
+  FieldName extends
+    | 'billingRecipientCustomerId'
+    | 'subject'
+    | 'orderNumber'
+    | 'note'
+    | 'deliveryAddressText',
 >(
   input: InvoiceDraftInput,
   fieldName: FieldName,

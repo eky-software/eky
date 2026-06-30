@@ -94,6 +94,41 @@ describe('validateInvoiceDraftForm', () => {
     expect(result.isValid).toBe(true);
   });
 
+  it.each(['abc', '-1', '1,5', '366'])(
+    'rejects invalid reminder period value %s',
+    (reminderPeriodDays) => {
+      const result = validateInvoiceDraftForm({
+        ...createValidForm(),
+        reminderPeriodDays,
+      });
+
+      expect(result.errors.reminderPeriodDays).toBe(
+        uiText.invoicing.validationReminderPeriod,
+      );
+    },
+  );
+
+  it('allows empty reminder period so backend can use the default', () => {
+    const result = validateInvoiceDraftForm({
+      ...createValidForm(),
+      reminderPeriodDays: '',
+    });
+
+    expect(result.errors.reminderPeriodDays).toBeUndefined();
+    expect(result.isValid).toBe(true);
+  });
+
+  it('rejects too long delivery address text', () => {
+    const result = validateInvoiceDraftForm({
+      ...createValidForm(),
+      deliveryAddressText: 'a'.repeat(501),
+    });
+
+    expect(result.errors.deliveryAddressText).toBe(
+      uiText.invoicing.validationDeliveryAddressText,
+    );
+  });
+
   it('requires a row description', () => {
     const result = validateInvoiceDraftForm(
       createValidForm({

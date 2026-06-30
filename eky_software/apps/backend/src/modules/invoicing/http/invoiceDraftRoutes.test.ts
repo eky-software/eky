@@ -246,9 +246,12 @@ function createApprovedInvoiceResult(
 function createValidRequestBody(): Record<string, unknown> {
   return {
     customerId: 'customer-1',
+    billingRecipientCustomerId: 'billing-customer-1',
     invoiceDate: '2026-06-13',
+    reminderPeriodDays: 8,
     priceInputMode: 'net',
     subject: 'Test invoice',
+    deliveryAddressText: 'Työkohde 1',
     lines: [
       {
         code: 'WORK',
@@ -303,12 +306,19 @@ describe('invoiceDraftRoutes', () => {
     expect(testContext.getSaveInput()).toMatchObject({
       companyId: 'dev-company',
       customerId: 'customer-1',
+      billingRecipientCustomerId: 'billing-customer-1',
       invoiceDate: '2026-06-13',
+      reminderPeriodDays: 8,
       priceInputMode: 'net',
+      deliveryAddressText: 'Työkohde 1',
     });
     expect(testContext.customerAccessReader.calls).toEqual([
       {
         customerId: 'customer-1',
+        companyId: 'dev-company',
+      },
+      {
+        customerId: 'billing-customer-1',
         companyId: 'dev-company',
       },
     ]);
@@ -717,10 +727,13 @@ describe('invoiceDraftRoutes', () => {
     const updateBody = {
       ...createValidRequestBody(),
       customerId: 'customer-2',
+      billingRecipientCustomerId: '',
       invoiceDate: '2026-06-14',
       dueDate: '2026-07-14',
       paymentTermDays: 30,
+      reminderPeriodDays: 10,
       subject: 'Updated invoice',
+      deliveryAddressText: 'Päivitetty kohde',
       lines: [
         {
           description: 'Updated work',
@@ -747,13 +760,19 @@ describe('invoiceDraftRoutes', () => {
       companyId: 'dev-company',
       invoiceDraftId: createBody.invoiceDraft.id,
       customerId: 'customer-2',
+      billingRecipientCustomerId: '',
       invoiceDate: '2026-06-14',
+      reminderPeriodDays: 10,
+      deliveryAddressText: 'Päivitetty kohde',
     });
     expect(body.invoiceDraft).toMatchObject({
       id: createBody.invoiceDraft.id,
       companyId: 'dev-company',
       customerId: 'customer-2',
+      billingRecipientCustomerId: null,
       subject: 'Updated invoice',
+      deliveryAddressText: 'Päivitetty kohde',
+      reminderPeriodDays: 10,
       createdAt: createBody.invoiceDraft.createdAt,
       totals: {
         netTotalCents: 10_000,

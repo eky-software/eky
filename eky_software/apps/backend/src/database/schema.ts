@@ -23,6 +23,7 @@ export interface CompanySettingsTable {
   company_id: string;
   company_name: string;
   business_id: string;
+  vat_number: string;
   street_address: string;
   postal_code: string;
   city: string;
@@ -41,15 +42,18 @@ export interface InvoiceDraftTable {
   id: string;
   company_id: string;
   customer_id: string;
+  billing_recipient_customer_id: string | null;
   status: string;
   invoice_date: string;
   due_date: string;
   payment_term_days: number;
+  reminder_period_days: number;
   late_payment_interest_basis_points: number;
   price_input_mode: string;
   subject: string;
   order_number: string;
   note: string;
+  delivery_address_text: string;
   net_total_cents: number;
   vat_total_cents: number;
   gross_total_cents: number;

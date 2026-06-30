@@ -25,14 +25,17 @@ export interface InvoiceDraftLineInput {
 
 export interface InvoiceDraftInput {
   customerId: string;
+  billingRecipientCustomerId?: string;
   invoiceDate: string;
   dueDate?: string;
   paymentTermDays?: number;
+  reminderPeriodDays?: number;
   latePaymentInterestBasisPoints?: number;
   priceInputMode: InvoicePriceInputMode;
   subject?: string;
   orderNumber?: string;
   note?: string;
+  deliveryAddressText?: string;
   lines: InvoiceDraftLineInput[];
 }
 
@@ -72,15 +75,18 @@ export interface InvoiceDraft {
   id: string;
   companyId: string;
   customerId: string;
+  billingRecipientCustomerId: string | null;
   status: InvoiceDraftStatus;
   invoiceDate: string;
   dueDate: string;
   paymentTermDays: number;
+  reminderPeriodDays: number;
   latePaymentInterestBasisPoints: number;
   priceInputMode: InvoicePriceInputMode;
   subject: string;
   orderNumber: string;
   note: string;
+  deliveryAddressText: string;
   lines: InvoiceDraftLine[];
   totals: InvoiceTotals;
   createdAt: string;

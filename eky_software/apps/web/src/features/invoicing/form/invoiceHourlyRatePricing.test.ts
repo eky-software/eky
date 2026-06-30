@@ -79,6 +79,7 @@ function createCompanySettings(
     defaultHourlyRateCents,
     email: '',
     hourlyRateShortcut: 'työ',
+    vatNumber: '',
     iban: '',
     bic: '',
     bankName: '',

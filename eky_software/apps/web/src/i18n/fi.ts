@@ -227,6 +227,7 @@ export const uiText = {
     invalidIban: 'IBAN-tilinumero ei ole kelvollinen.',
     invalidBic: 'BIC-koodi ei ole kelvollinen.',
     invalidBankName: 'Pankin nimi saa olla enintään 200 merkkiä.',
+    invalidVatNumber: 'ALV-tunnuksen pitää olla muodossa FI ja 8 numeroa, esimerkiksi FI12345678.',
     iban: 'IBAN',
     loading: 'Ladataan oman yrityksen tietoja...',
     no: 'Ei',
@@ -243,12 +244,16 @@ export const uiText = {
     placeholderPhone: '040 123 4567',
     placeholderPostalCode: '00100',
     placeholderStreetAddress: 'Katuosoite 1',
+    placeholderVatNumber: 'FI12345678',
     postalCode: 'Postinumero',
     save: 'Tallenna',
     saveSuccess: 'Oman yrityksen tiedot tallennettu.',
     saving: 'Tallennetaan',
     streetAddress: 'Katuosoite',
     title: 'Oma yritys',
+    vatNumber: 'ALV-tunnus',
+    vatNumberHelp:
+      'Valinnainen. Tämä tallennetaan myöhemmin hyväksytylle laskulle myyjän ALV-tunnukseksi.',
     workspace: 'Yritysasetukset',
     yes: 'Kyllä',
   },
@@ -280,6 +285,10 @@ export const uiText = {
     basicInformation: 'Laskun perustiedot',
     basicInformationHelp:
       'Valitse asiakas ja täytä laskun perustiedot.',
+    billingRecipient: 'Laskun vastaanottaja',
+    billingRecipientHelp:
+      'Valinnainen. Jos jätät tyhjäksi, laskun vastaanottaja on sama kuin asiakas.',
+    billingRecipientPlaceholder: 'Sama kuin asiakas',
     cancel: 'Peruuta',
     customer: 'Asiakas',
     customerEmpty: 'Asiakkaita ei ole',
@@ -315,6 +324,10 @@ export const uiText = {
     deleteDraftError:
       'Laskuluonnosta ei voitu poistaa. Yritä hetken kuluttua uudelleen.',
     deletingDraft: 'Poistetaan...',
+    deliveryAddressText: 'Toimitus / kohde',
+    deliveryAddressTextHelp:
+      'Näkyy myöhemmin laskulla työn kohteena tai toimitusosoitteena.',
+    deliveryAddressTextPlaceholder: 'Työn kohde tai toimitusosoite',
     dueDate: 'Eräpäivä',
     editInvoice: 'Muokkaa laskuluonnosta',
     editInvoiceKicker: 'Tallennettu luonnos',
@@ -354,6 +367,10 @@ export const uiText = {
     priceInputMode: 'Hintojen syöttötapa',
     priceInputNet: 'Veroton hinta',
     referenceNumber: 'Viitenumero',
+    reminderPeriodDays: 'Huomautusaika päivinä',
+    reminderPeriodDaysHelp:
+      'Tyhjä kenttä käyttää oman yrityksen laskutusasetusten oletusta.',
+    reminderPeriodDaysPlaceholder: 'esim. 8',
     discountFixed: 'Euromäärä',
     discountNone: 'Ei alennusta',
     discountPercentage: 'Prosentti',
@@ -405,6 +422,8 @@ export const uiText = {
     validateForm: 'Tarkista tiedot',
     validationCustomerRequired: 'Valitse laskutettava asiakas.',
     validationDateInvalid: 'Syötä päiväys muodossa vvvv-kk-pp.',
+    validationDeliveryAddressText:
+      'Toimitus- tai kohdetieto saa olla enintään 500 merkkiä.',
     validationDescriptionRequired: 'Kirjoita riville nimike.',
     validationDueDateBeforeInvoiceDate:
       'Eräpäivä ei voi olla ennen laskun päiväystä.',
@@ -421,6 +440,8 @@ export const uiText = {
     validationQuantityInvalid:
       'Syötä määrä enintään kahdella desimaalilla.',
     validationQuantityPositive: 'Määrän pitää olla suurempi kuin 0.',
+    validationReminderPeriod:
+      'Syötä huomautusaika kokonaisina päivinä väliltä 0–365.',
     validationSummary: 'Tarkista lomakkeen merkityt kohdat.',
     validationSuccess:
       'Tiedot ovat valmiit luonnoksen tallennusta varten.',

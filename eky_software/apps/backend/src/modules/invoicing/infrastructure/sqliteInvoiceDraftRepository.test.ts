@@ -37,6 +37,13 @@ const latePaymentInterestMigrationSql = readFileSync(
   ),
   'utf8',
 );
+const printFoundationFieldsMigrationSql = readFileSync(
+  new URL(
+    '../../../database/migrations/015_add_invoice_draft_print_foundation_fields.sql',
+    import.meta.url,
+  ),
+  'utf8',
+);
 
 function createLine(
   id: string,
@@ -76,15 +83,18 @@ function createDraft(
     id: 'draft-1',
     companyId: 'dev-company',
     customerId: 'customer-1',
+    billingRecipientCustomerId: 'customer-billing-1',
     status: 'draft',
     invoiceDate: '2026-06-13',
     dueDate: '2026-06-27',
     paymentTermDays: 14,
+    reminderPeriodDays: 8,
     latePaymentInterestBasisPoints: 950,
     priceInputMode: 'net',
     subject: 'Test invoice',
     orderNumber: '',
     note: '',
+    deliveryAddressText: 'Työkohde 1',
     createdAt: '2026-06-13T00:00:00.000Z',
     updatedAt: '2026-06-13T00:00:00.000Z',
     ...draftOverrides,
@@ -118,6 +128,7 @@ describe('SqliteInvoiceDraftRepository', () => {
     database.pragma('foreign_keys = ON');
     database.exec(invoiceDraftMigrationSql);
     database.exec(latePaymentInterestMigrationSql);
+    database.exec(printFoundationFieldsMigrationSql);
     database.exec(approvedInvoiceMigrationSql);
   });
 
@@ -144,8 +155,11 @@ describe('SqliteInvoiceDraftRepository', () => {
       id: 'draft-1',
       company_id: 'dev-company',
       customer_id: 'customer-1',
+      billing_recipient_customer_id: 'customer-billing-1',
       status: 'draft',
+      reminder_period_days: 8,
       late_payment_interest_basis_points: 950,
+      delivery_address_text: 'Työkohde 1',
       net_total_cents: draft.totals.netTotalCents,
       vat_total_cents: draft.totals.vatTotalCents,
       gross_total_cents: draft.totals.grossTotalCents,
@@ -277,11 +291,14 @@ describe('SqliteInvoiceDraftRepository', () => {
     ];
     const updatedDraft = createDraft(updatedLines, {
       customerId: 'customer-2',
+      billingRecipientCustomerId: null,
       invoiceDate: '2026-06-14',
       dueDate: '2026-07-14',
       paymentTermDays: 30,
+      reminderPeriodDays: 10,
       priceInputMode: 'net',
       subject: 'Updated invoice',
+      deliveryAddressText: 'Päivitetty kohde',
       createdAt: originalDraft.createdAt,
       updatedAt: '2026-06-14T12:00:00.000Z',
     });
@@ -311,7 +328,10 @@ describe('SqliteInvoiceDraftRepository', () => {
     expect(storedDraft?.lines.map((line) => line.position)).toEqual([1, 2]);
     expect(storedHeader).toMatchObject({
       customer_id: 'customer-2',
+      billing_recipient_customer_id: null,
       subject: 'Updated invoice',
+      reminder_period_days: 10,
+      delivery_address_text: 'Päivitetty kohde',
       created_at: originalDraft.createdAt,
       updated_at: '2026-06-14T12:00:00.000Z',
       net_total_cents: updatedDraft.totals.netTotalCents,

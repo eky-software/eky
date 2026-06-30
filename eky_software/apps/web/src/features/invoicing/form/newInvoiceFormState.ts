@@ -6,7 +6,9 @@ import {
 } from './invoiceRowFormState.js';
 
 export interface NewInvoiceFormState {
+  billingRecipientCustomerId: string;
   customerId: string;
+  deliveryAddressText: string;
   dueDate: string;
   invoiceDate: string;
   latePaymentInterestPercent: string;
@@ -15,6 +17,7 @@ export interface NewInvoiceFormState {
   orderNumber: string;
   paymentTermDays: string;
   priceInputMode: InvoicePriceInputMode;
+  reminderPeriodDays: string;
   subject: string;
 }
 
@@ -27,7 +30,9 @@ export function createInitialNewInvoiceForm(
   initialDate = new Date(),
 ): NewInvoiceFormState {
   return {
+    billingRecipientCustomerId: '',
     customerId: '',
+    deliveryAddressText: '',
     dueDate: formatDateInput(addCalendarDays(initialDate, 14)),
     invoiceDate: formatDateInput(initialDate),
     latePaymentInterestPercent: '',
@@ -36,6 +41,7 @@ export function createInitialNewInvoiceForm(
     orderNumber: '',
     paymentTermDays: '14',
     priceInputMode: 'net',
+    reminderPeriodDays: '',
     subject: '',
   };
 }

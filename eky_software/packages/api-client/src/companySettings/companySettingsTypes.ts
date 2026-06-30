@@ -3,6 +3,7 @@ export interface CompanySettings {
   companyId: string;
   companyName: string;
   businessId: string;
+  vatNumber: string;
   streetAddress: string;
   postalCode: string;
   city: string;
@@ -20,6 +21,7 @@ export interface CompanySettings {
 export interface UpdateCompanySettingsRequest {
   companyName: string;
   businessId: string;
+  vatNumber: string;
   streetAddress: string;
   postalCode: string;
   city: string;

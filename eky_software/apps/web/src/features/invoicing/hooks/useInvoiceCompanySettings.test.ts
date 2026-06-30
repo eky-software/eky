@@ -44,6 +44,7 @@ function createCompanySettings(): CompanySettings {
     defaultHourlyRateCents: 6500,
     email: '',
     hourlyRateShortcut: 'työ',
+    vatNumber: '',
     iban: '',
     bic: '',
     bankName: '',
