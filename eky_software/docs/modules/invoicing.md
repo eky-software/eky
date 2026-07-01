@@ -175,6 +175,11 @@ Hyväksynnän jälkeen käyttäjää ei pidetä luonnoksen muokkaustilassa.
 Hyväksytyn laskun varsinainen katselu-, print- ja lähetysnäkymä toteutetaan
 myöhemmissä vaiheissa hyväksytyn laskun omien lukupolkujen päälle.
 
+Hyväksytyn laskun ensimmäinen lukupolku on `GET /invoices/:id`. Se palauttaa
+`ApprovedInvoiceView`-lukumallin, joka muodostetaan vain `invoices`- ja
+`invoice_lines`-taulujen snapshot-datasta. Lukupolku ei hae laskulla näkyviä
+tietoja Customer- tai Company Settings -master-datasta eikä laskuluonnoksesta.
+
 ## Viitenumero Ja Maksutiedot
 
 Ensimmäisessä hyväksyntävaiheessa hyväksytylle laskulle muodostetaan suomalainen

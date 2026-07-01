@@ -13,6 +13,7 @@ import { createCustomersRoutes } from '../modules/customers/http/customersRoutes
 import { SqliteCustomerRepository } from '../modules/customers/infrastructure/sqliteCustomerRepository.js';
 import { approveInvoiceDraft } from '../modules/invoicing/application/approveInvoiceDraft.js';
 import { deleteInvoiceDraft } from '../modules/invoicing/application/deleteInvoiceDraft.js';
+import { getApprovedInvoice } from '../modules/invoicing/application/getApprovedInvoice.js';
 import { getInvoiceDraft } from '../modules/invoicing/application/getInvoiceDraft.js';
 import { getInvoiceNumberingSettings } from '../modules/invoicing/application/getInvoiceNumberingSettings.js';
 import { getInvoicePaymentSettings } from '../modules/invoicing/application/getInvoicePaymentSettings.js';
@@ -21,9 +22,11 @@ import { saveInvoiceDraft } from '../modules/invoicing/application/saveInvoiceDr
 import { updateInvoiceNumberingSettings } from '../modules/invoicing/application/updateInvoiceNumberingSettings.js';
 import { updateInvoicePaymentSettings } from '../modules/invoicing/application/updateInvoicePaymentSettings.js';
 import { updateInvoiceDraft } from '../modules/invoicing/application/updateInvoiceDraft.js';
+import { createApprovedInvoiceRoutes } from '../modules/invoicing/http/approvedInvoiceRoutes.js';
 import { createInvoiceDraftRoutes } from '../modules/invoicing/http/invoiceDraftRoutes.js';
 import { createInvoiceNumberingSettingsRoutes } from '../modules/invoicing/http/invoiceNumberingSettingsRoutes.js';
 import { createInvoicePaymentSettingsRoutes } from '../modules/invoicing/http/invoicePaymentSettingsRoutes.js';
+import { SqliteApprovedInvoiceReader } from '../modules/invoicing/infrastructure/sqliteApprovedInvoiceReader.js';
 import { SqliteInvoiceApprovalRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceApprovalRepository.js';
 import { SqliteInvoiceDraftRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceDraftRepository.js';
 import { SqliteInvoiceNumberingRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceNumberingRepository.js';
@@ -44,6 +47,7 @@ export async function createApp(): Promise<Hono> {
   const companySettingsRepository = new SqliteCompanySettingsRepository(database);
   const invoiceDraftRepository = new SqliteInvoiceDraftRepository(database);
   const invoiceApprovalRepository = new SqliteInvoiceApprovalRepository(database);
+  const approvedInvoiceReader = new SqliteApprovedInvoiceReader(database);
   const invoiceNumberingRepository = new SqliteInvoiceNumberingRepository(database);
   const invoicePaymentSettingsRepository =
     new SqliteInvoicePaymentSettingsRepository(database);
@@ -95,6 +99,14 @@ export async function createApp(): Promise<Hono> {
           invoiceDraftRepository,
           invoicePaymentSettingsRepository,
         }),
+    }),
+  );
+
+  app.route(
+    '/',
+    createApprovedInvoiceRoutes({
+      getApprovedInvoice: (input) =>
+        getApprovedInvoice(input, approvedInvoiceReader),
     }),
   );
 

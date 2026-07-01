@@ -93,6 +93,10 @@ Viitenumero tallennetaan hyväksytylle laskulle samassa transaktiossa kuin
 laskunumero, snapshotit, laskurivit ja audit-tapahtuma. Frontend ja API-client
 eivät muodosta viitenumeroa lopullisena totuutena.
 
+Hyväksytyn laskun lukupolku `GET /invoices/:id` palauttaa viitenumeron
+hyväksytyn laskun snapshotista. Lukupolku ei muodosta viitenumeroa uudelleen
+eikä hae laskulla näkyviä tietoja master-datasta.
+
 ## Maksutiedot Ja Snapshot
 
 Oman yrityksen pankkitiedot kuuluvat Company Settings -master dataan, mutta
