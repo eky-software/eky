@@ -93,10 +93,10 @@ Viitenumero tallennetaan hyväksytylle laskulle samassa transaktiossa kuin
 laskunumero, snapshotit, laskurivit ja audit-tapahtuma. Frontend ja API-client
 eivät muodosta viitenumeroa lopullisena totuutena.
 
-## Maksutiedot Myöhemmin
+## Maksutiedot Ja Snapshot
 
 Oman yrityksen pankkitiedot kuuluvat Company Settings -master dataan, mutta
-hyväksytylle laskulle tallennetaan myöhemmin maksutietojen snapshot.
+hyväksytylle laskulle tallennetaan maksutietojen snapshot.
 
 Company Settings / Oma yritys omistaa pankkitilien master datan:
 
@@ -105,11 +105,12 @@ Company Settings / Oma yritys omistaa pankkitilien master datan:
 - `bankName` valinnaisena
 
 Invoicing omistaa hyväksytylle laskulle tallennetun maksutietojen snapshotin.
-Hyväksytylle laskulle voidaan myöhemmin tallentaa esimerkiksi:
+Hyväksytylle laskulle tallennetaan ensimmäisessä print-data foundation
+-vaiheessa esimerkiksi:
 
-- `seller_iban`
-- `seller_bic`
-- `seller_bank_name`
+- `company_iban_snapshot`
+- `company_bic_snapshot`
+- `company_bank_name_snapshot`
 - `late_payment_interest_basis_points`
 - `reminder_period_days`
 
@@ -127,7 +128,7 @@ Maksutietojen marssijärjestys:
 1. viitenumero hyväksyntätransaktioon
 2. Hyväksy laskuksi -UI näyttää laskunumeron ja viitenumeron
 3. Oma yritys / Laskutusasetukset näyttää oletusviivästyskoron ja huomautusajan
-4. ennen print/PDF-vaihetta hyväksyntä snapshottaa Oma yritys -pankkitiedot
+4. hyväksyntä snapshottaa Oma yritys -pankkitiedot
 5. hyväksytty lasku snapshottaa laskulla käytetyt pankkitiedot, viivästyskoron ja huomautusajan
 6. hyväksytyn laskun katselu ja print-layout
 7. PDF
@@ -564,11 +565,14 @@ Laskusnapshot sisältää vähintään:
 - ALV-erittelyn
 - loppusumman
 
+Print data foundation -vaiheessa mukaan lisättyjä snapshot-tietoja ovat:
+
+- pankkitilin snapshot, kuten `company_iban_snapshot`, `company_bic_snapshot` ja `company_bank_name_snapshot`
+- laskun vastaanottajan snapshot, myös silloin kun vastaanottaja on sama kuin asiakas
+- toimitus- tai kohdetieto, kuten `delivery_address_text`
+
 Myöhemmän vaiheen snapshot-tietoja voivat olla:
 
-- pankkitilin snapshot, kuten `seller_iban`, `seller_bic` ja `seller_bank_name`
-- erillinen laskun vastaanottajan snapshot, jos `billingRecipientCustomerId` eroaa asiakkaasta
-- toimitus- tai kohdetieto, kuten `delivery_address_text`
 - verkkolaskuosoite
 - laskutusosoite erikseen
 - yrityksen logo

@@ -187,16 +187,16 @@ laskunumero ei ole puhtaasti numeerinen, hyväksyntä epäonnistuu hallitusti
 eikä laskunumeroa tai viitenumeroa tallenneta osittain.
 
 Oman yrityksen pankkitiedot kuuluvat Company Settings -master dataan, mutta
-hyväksytylle laskulle tallennetaan myöhemmin maksutietojen snapshot. PDF,
-tulostus ja sähköpostilähetys käyttävät hyväksytyn laskun snapshot-tietoja,
-eivät sen hetkisiä muuttuvia yritysasetuksia.
+hyväksytylle laskulle tallennetaan maksutietojen snapshot. PDF, tulostus ja
+sähköpostilähetys käyttävät hyväksytyn laskun snapshot-tietoja, eivät sen
+hetkisiä muuttuvia yritysasetuksia.
 
-Tuleva maksutietojen marssijärjestys:
+Maksutietojen marssijärjestys:
 
 1. viitenumero hyväksyntätransaktioon
 2. Hyväksy laskuksi -UI näyttää laskunumeron ja viitenumeron
-3. ennen print/PDF-vaihetta hyväksyntä snapshottaa Oma yritys -pankkitiedot
-4. hyväksytty lasku snapshottaa laskulla käytetyt pankkitiedot
+3. Oma yritys / Laskutusasetukset näyttää pankki-, viivästyskorko- ja huomautusajan oletukset
+4. hyväksyntä snapshottaa laskulla käytetyt pankkitiedot, viivästyskoron ja huomautusajan
 5. hyväksytyn laskun katselu ja print-layout
 6. PDF
 7. sähköpostilähetys
@@ -227,12 +227,14 @@ Company Settings -moduuli omistaa myöhemmin oman yrityksen pankkitilien master
 datan, kuten `iban`, `bic` ja valinnaisen `bankName`-arvon.
 
 Invoicing omistaa laskulla käytetyt snapshot-arvot, mukaan lukien hyväksytylle
-laskulle tallennettavat viitenumeron ja myöhemmän maksutietojen snapshotin.
+laskulle tallennettavat viitenumeron, pankkitietojen, viivästyskoron,
+huomautusajan, asiakkaan, laskun vastaanottajan sekä toimitus- tai kohdetiedon
+snapshotit.
 
-Ennen print-layoutia ja PDF:ää hyväksyntäpolku laajennetaan snapshottaamaan
-myös laskulla näkyvät myyjän, asiakkaan, laskun vastaanottajan, maksutietojen
-sekä toimitus- tai kohdetiedon arvot dokumentin
-`docs/architecture/invoice-print-data-foundation-plan.md` mukaisesti.
+Hyväksyntäpolku snapshottaa print/PDF-polun tarvitsemat ensimmäisen vaiheen
+arvot dokumentin `docs/architecture/invoice-print-data-foundation-plan.md`
+mukaisesti. Varsinainen hyväksytyn laskun katselu-, print-, PDF- ja
+sähköpostipolku toteutetaan myöhemmissä vaiheissa tämän snapshot-datan päälle.
 
 ## Turvallisuus
 

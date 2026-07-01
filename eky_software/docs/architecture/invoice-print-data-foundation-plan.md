@@ -134,10 +134,10 @@ Ensimmäisen vaiheen säännöt:
 - monimutkaista EU VIES -tarkistusta ei tehdä MVP:ssä
 - ALV-tunnusta ei muodosteta automaattisesti Y-tunnuksesta ilman erillistä päätöstä
 
-Hyväksytyn laskun tuleva snapshot-kenttä:
+Hyväksytyn laskun snapshot-kenttä:
 
 ```text
-seller_vat_number
+company_vat_number_snapshot
 ```
 
 ## Vaihe 2: Asiakas Ja Laskun Vastaanottaja
@@ -186,22 +186,26 @@ Ei tehdä vielä:
 - verkkolaskun vastaanottajarakennetta
 - automaattista sääntöä, että taloyhtiö laskutetaan aina isännöitsijän kautta
 
-Hyväksytyn laskun tulevia snapshot-kenttiä:
+Hyväksytyn laskun snapshot-kenttiä:
 
 ```text
 customer_id
 billing_recipient_customer_id
 
-customer_name
-customer_number
-customer_business_id
+customer_name_snapshot
+customer_number_snapshot
+customer_business_id_snapshot
+customer_email_snapshot
+customer_street_address_snapshot
+customer_postal_code_snapshot
+customer_city_snapshot
 
-billing_recipient_name
-billing_recipient_business_id
-billing_recipient_email
-billing_recipient_street_address
-billing_recipient_postal_code
-billing_recipient_city
+billing_recipient_name_snapshot
+billing_recipient_business_id_snapshot
+billing_recipient_email_snapshot
+billing_recipient_street_address_snapshot
+billing_recipient_postal_code_snapshot
+billing_recipient_city_snapshot
 ```
 
 Jos laskun vastaanottaja on sama kuin asiakas, hyväksyntä tallentaa silti
@@ -303,23 +307,23 @@ Huomautusaika päivinä
 Hyväksyntätransaktiossa hyväksytylle laskulle tallennetaan vähintään seuraavat
 print/PDF-polun tarvitsemat snapshotit.
 
-Myyjän tiedot Company Settingsistä:
+Myyjän tiedot Company Settingsistä snapshotataan hyväksytylle laskulle:
 
 ```text
-seller_company_name
-seller_business_id
-seller_vat_number
-seller_street_address
-seller_postal_code
-seller_city
-seller_email
-seller_phone
-seller_iban
-seller_bic
-seller_bank_name
+company_name_snapshot
+company_business_id_snapshot
+company_vat_number_snapshot
+company_street_address_snapshot
+company_postal_code_snapshot
+company_city_snapshot
+company_email_snapshot
+company_phone_snapshot
+company_iban_snapshot
+company_bic_snapshot
+company_bank_name_snapshot
 ```
 
-Maksutiedot laskuluonnokselta, asetuksista tai hyväksynnästä:
+Maksutiedot laskuluonnokselta, laskutusasetuksista tai hyväksynnästä:
 
 ```text
 payment_term_days
@@ -333,16 +337,26 @@ reference_number_type
 Asiakkaan ja laskun vastaanottajan tiedot Customers-moduulista:
 
 ```text
-customer_name
-customer_number
-customer_business_id
+customer_number_snapshot
+customer_name_snapshot
+customer_business_id_snapshot
+customer_type_snapshot
+customer_email_snapshot
+customer_phone_snapshot
+customer_street_address_snapshot
+customer_postal_code_snapshot
+customer_city_snapshot
 
-billing_recipient_name
-billing_recipient_business_id
-billing_recipient_email
-billing_recipient_street_address
-billing_recipient_postal_code
-billing_recipient_city
+billing_recipient_customer_id
+billing_recipient_customer_number_snapshot
+billing_recipient_name_snapshot
+billing_recipient_business_id_snapshot
+billing_recipient_customer_type_snapshot
+billing_recipient_email_snapshot
+billing_recipient_phone_snapshot
+billing_recipient_street_address_snapshot
+billing_recipient_postal_code_snapshot
+billing_recipient_city_snapshot
 ```
 
 Kohde tai toimitustieto laskuluonnokselta:
@@ -454,7 +468,7 @@ Suositeltu marssijärjestys:
 3. Päätetään, lisätäänkö ensimmäiseen print-polkuun `supplyDate`.
 4. Päätetään ensimmäisen vaiheen ALV-merkintämalli nollaverokannalle, verottomuudelle ja mahdolliselle käännetylle verovelvollisuudelle.
 5. Web-laskulomake saa laskun vastaanottajan, toimitus/kohde-kentän ja huomautusajan.
-6. Hyväksyntä laajennetaan snapshottaamaan myyjän, asiakkaan, vastaanottajan, maksutietojen ja toimitus/kohde-tiedon arvot.
+6. Hyväksyntä laajennetaan snapshottaamaan myyjän, asiakkaan, vastaanottajan, maksutietojen ja toimitus/kohde-tiedon arvot. Tämä on toteutettu ensimmäisessä print data foundation -persistence-vaiheessa.
 7. Hyväksytylle laskulle tehdään read model katselu- ja print-polulle.
 8. Vasta tämän jälkeen toteutetaan varsinainen print-layout.
 9. PDF ja sähköpostilähetys tulevat print-layoutin jälkeen.
