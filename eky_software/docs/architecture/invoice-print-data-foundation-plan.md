@@ -40,6 +40,11 @@ Tämä lukumalli käyttää vain `invoices`- ja `invoice_lines`-taulujen
 snapshot-dataa. Se ei hae laskulla näkyviä tietoja Company Settings-,
 Customers- tai invoice draft -tauluista.
 
+Webin ensimmäinen hyväksytyn laskun katselunäkymä käyttää samaa
+`ApprovedInvoiceView`-lukumallia. Se on tarkistus- ja katselunäkymä ennen
+varsinaista print-layoutia. Se ei ole vielä A4-tulostuspohja, PDF tai
+sähköpostilähetyksen malli.
+
 ## Miksi Tämä Tehdään Ennen Laskupohjaa
 
 Nykyinen laskutuspolku pystyy käsittelemään laskuluonnoksia ja hyväksyntää
@@ -426,6 +431,12 @@ Invoicing tarvitsee myöhemmin hallitun vero- tai laskumerkintämallin.
 
 Rakennusalan käännetty arvonlisäverovelvollisuus arvioidaan erikseen ennen
 tuotantokäyttöä, koska Ekyä rakennetaan rakennusalan yrityksen tarpeisiin.
+Mahdollinen tuleva malli voi käyttää esimerkiksi hallittua `vatTreatment`-
+arvoa, jossa käännetty verovelvollisuus on oma eksplisiittinen käsittelynsä.
+Tällöin laskulle snapshotataan myös laskulla näytettävä selite ja tarvittaessa
+ostajan ALV-tunniste. Tätä ei toteuteta ennen kuin käyttötapa ja laskulla
+tarvittava täsmällinen teksti on tarkistettu virallisista lähteistä tai
+kirjanpitäjän kanssa.
 
 ## Hyväksynnän Portit Ja Transaktio
 
@@ -481,9 +492,10 @@ Suositeltu marssijärjestys:
 5. Web-laskulomake saa laskun vastaanottajan, toimitus/kohde-kentän ja huomautusajan.
 6. Hyväksyntä laajennetaan snapshottaamaan myyjän, asiakkaan, vastaanottajan, maksutietojen ja toimitus/kohde-tiedon arvot. Tämä on toteutettu ensimmäisessä print data foundation -persistence-vaiheessa.
 7. Hyväksytylle laskulle tehdään read model katselu- ja print-polulle. Tämä on toteutettu `ApprovedInvoiceView`-mallilla ja `GET /invoices/:id` -lukupolulla.
-8. Seuraavaksi toteutetaan webin hyväksytyn laskun katselunäkymä tämän read modelin päälle.
+8. Webin hyväksytyn laskun katselunäkymä toteutetaan tämän read modelin päälle. Tämä katselunäkymä on toteutettu ensimmäisenä preview-versiona.
 9. Vasta tämän jälkeen toteutetaan varsinainen print-layout.
-10. PDF ja sähköpostilähetys tulevat print-layoutin jälkeen.
+10. Ennen tuotantovalmiin print/PDF-polun lukitsemista ratkaistaan `supplyDate` ja ensimmäinen hallittu `vatTreatment`-malli, mukaan lukien mahdollinen rakennusalan käännetty verovelvollisuus.
+11. PDF ja sähköpostilähetys tulevat print-layoutin jälkeen.
 
 Jos hyväksyntäsnapshotin vaihe kasvaa liian suureksi, se pysäytetään erilliseksi
 toteutussuunnitelmaksi. Puolittaista snapshotia ei jätetä ilman testejä.
@@ -508,6 +520,7 @@ Tulevat koodimuutokset tarvitsevat testit vähintään seuraavista:
 - hyväksyntä snapshottaa `supplyDate`-arvon, jos kenttä toteutetaan
 - hyväksyntä snapshottaa `latePaymentInterestBasisPoints`- ja `reminderPeriodDays`-arvot
 - myöhempi Company Settings- tai Customer-muutos ei muuta hyväksytyn laskun snapshotia
+- hyväksytyn laskun web-preview käyttää vain `ApprovedInvoiceView`-snapshot-dataa
 
 ## Rajaus
 

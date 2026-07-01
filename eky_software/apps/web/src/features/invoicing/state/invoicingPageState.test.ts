@@ -21,6 +21,12 @@ describe('reduceInvoicingPageMode', () => {
     ).toBe('editInvoice');
   });
 
+  it('opens an approved invoice preview from the draft edit form', () => {
+    expect(
+      reduceInvoicingPageMode('editInvoice', { type: 'openApprovedInvoice' }),
+    ).toBe('approvedInvoice');
+  });
+
   it('switches a saved new invoice draft into edit mode', () => {
     expect(
       reduceInvoicingPageMode('newInvoice', { type: 'draftSaved' }),

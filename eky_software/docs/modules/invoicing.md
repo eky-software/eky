@@ -180,6 +180,10 @@ Hyväksytyn laskun ensimmäinen lukupolku on `GET /invoices/:id`. Se palauttaa
 `invoice_lines`-taulujen snapshot-datasta. Lukupolku ei hae laskulla näkyviä
 tietoja Customer- tai Company Settings -master-datasta eikä laskuluonnoksesta.
 
+Webin ensimmäinen hyväksytyn laskun katselunäkymä käyttää tätä
+`ApprovedInvoiceView`-snapshotia. Se on tarkistusnäkymä ennen varsinaista
+print-layoutia, PDF:ää ja lähetyspolkuja.
+
 ## Viitenumero Ja Maksutiedot
 
 Ensimmäisessä hyväksyntävaiheessa hyväksytylle laskulle muodostetaan suomalainen
@@ -293,6 +297,12 @@ Domainia ei kovakoodata sallimaan vain näitä arvoja, koska ALV-kantoja hallita
 `14,00 %` eli `1400` basis points oli aiempi alennettu verokanta 31.12.2025 saakka. Se voidaan huomioida myöhemmin historiallisena tai legacy-arvona, jos `invoiceDate`- tai suoritusajankohtaan perustuva vanhojen verokantojen tuki tarvitaan.
 
 Nollaverokanta `0,00 %` ja arvonlisäveroton toiminta eivät ole sama asia. Niiden tarkempi käyttötapa, verokohtelu ja laskulla tarvittava selite ratkaistaan myöhemmin laskutusasetuksissa tai laskurivimallissa.
+
+Käännetty verovelvollisuus on oma laskutus- ja ALV-käsittelynsä. Sitä ei saa
+päätellä vain arvosta `vatRateBasisPoints: 0`. Jos Ekyyn lisätään esimerkiksi
+rakennusalan käännetty verovelvollisuus, Invoicing tarvitsee myöhemmin
+hallittavan `vatTreatment`-tyyppisen mallin ja hyväksytylle laskulle
+snapshotattavan laskumerkinnän.
 
 Rivikohtainen laskenta tehdään deterministisesti:
 

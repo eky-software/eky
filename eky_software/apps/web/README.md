@@ -36,6 +36,7 @@ Webin Vite-dev-palvelin proxyaa paikalliseen backendiin osoitteeseen `http://127
 - `/customers`
 - `/company-settings`
 - `/invoice-drafts`
+- `/invoices`
 - `/invoice-numbering-settings`
 - `/invoice-payment-settings`
 

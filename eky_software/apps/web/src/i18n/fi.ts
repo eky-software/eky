@@ -272,9 +272,19 @@ export const uiText = {
       'Laskuluonnosta ei löytynyt tai se on jo hyväksytty.',
     approveDraftSuccess: 'Lasku hyväksyttiin.',
     approveDraftSuccessHelp:
-      'Hyväksytyn laskun varsinainen katselunäkymä lisätään myöhemmin.',
+      'Voit avata hyväksytyn laskun tarkistettavaksi ennen tulostus- ja PDF-vaihetta.',
     approveDraftUnsavedChanges: 'Tallenna muutokset ennen hyväksyntää.',
     approvedInvoiceKicker: 'Hyväksytty lasku',
+    approvedInvoiceLoadError:
+      'Hyväksyttyä laskua ei voitu ladata. Yritä hetken kuluttua uudelleen.',
+    approvedInvoiceLoading: 'Ladataan hyväksyttyä laskua...',
+    approvedInvoiceNotFound:
+      'Hyväksyttyä laskua ei löytynyt.',
+    approvedInvoiceOpenPrompt: 'Avaa hyväksytty lasku hyväksynnän jälkeen.',
+    approvedInvoicePreviewHelp:
+      'Tämä on hyväksytyn laskun tarkistusnäkymä snapshot-tiedoista. Varsinainen tulostus- ja PDF-pohja tehdään seuraavassa vaiheessa.',
+    approvedInvoicePreviewTitle: 'Hyväksytyn laskun katselu',
+    approvedAt: 'Hyväksytty',
     approvingDraft: 'Hyväksytään...',
     autosaveError: 'Automaattitallennus epäonnistui.',
     autosaveSaved: 'Tallennettu',
@@ -335,6 +345,8 @@ export const uiText = {
     invoice: 'Lasku',
     invoiceDate: 'Laskun päiväys',
     invoiceNumber: 'Laskunumero',
+    invoiceRecipient: 'Laskun vastaanottaja',
+    invoicePreviewOpen: 'Avaa hyväksytty lasku',
     invoiceRows: 'Laskurivit',
     invoiceRowsHelp:
       'Lisää laskutettavat työt ja tuotteet riveittäin. Summat tarkistetaan backendissä tallennettaessa.',
@@ -363,6 +375,7 @@ export const uiText = {
     orderNumber: 'Tilausnumero',
     orderNumberPlaceholder: 'Asiakkaan tilausnumero',
     paymentTermDays: 'Maksuehto päivinä',
+    paymentDetails: 'Maksutiedot',
     priceInputGross: 'Verollinen hinta',
     priceInputMode: 'Hintojen syöttötapa',
     priceInputNet: 'Veroton hinta',
@@ -378,6 +391,7 @@ export const uiText = {
     removeRow: 'Poista',
     row: 'Rivi',
     rowActions: 'Toiminnot',
+    rowCode: 'Koodi',
     rowDescription: 'Nimike',
     rowDescriptionPlaceholder: 'Työn tai tuotteen kuvaus',
     rowDiscountType: 'Alennus',
@@ -390,6 +404,7 @@ export const uiText = {
     rowUnitPrice: 'Yksikköhinta',
     rowUnitPricePlaceholder: '0,00',
     rowVat: 'ALV %',
+    seller: 'Myyjä',
     save: 'Tallenna',
     saveDraft: 'Tallenna luonnos',
     saveDraftChanges: 'Tallenna muutokset',
@@ -405,6 +420,7 @@ export const uiText = {
     openDraftPrompt: 'Valitse avattava laskuluonnos listasta.',
     openingDraft: 'Avataan laskuluonnosta...',
     status: 'Tila',
+    statusApproved: 'Hyväksytty',
     statusDraft: 'Luonnos',
     subject: 'Aihe',
     subjectFallback: 'Nimetön laskuluonnos',
@@ -520,6 +536,8 @@ export const uiText = {
     'Invalid JSON response.': 'Palvelimen vastaus oli virheellinen.',
     'Invalid invoice draft response.':
       'Laskuluonnoksen vastaus oli virheellinen.',
+    'Invalid approved invoice response.':
+      'Hyväksytyn laskun vastaus oli virheellinen.',
     'Invalid invoice numbering settings response.':
       'Laskunumeroinnin asetusten vastaus oli virheellinen.',
     'Invalid invoice payment settings body.':
@@ -541,6 +559,7 @@ export const uiText = {
     'Invoice numbering settings cannot be changed after numbering has been used.':
       'Numerointia on jo käytetty. Asetuksia ei voi muuttaa normaalisti.',
     'Invoice draft not found.': 'Laskuluonnosta ei löytynyt.',
+    'Approved invoice was not found.': 'Hyväksyttyä laskua ei löytynyt.',
   },
 } as const;
 

@@ -624,6 +624,13 @@ Nämä ovat ensimmäisen vaiheen ajantasaiset testiarvot, eivät domainiin kovak
 
 Nollaverokanta `0,00 %` ja arvonlisäveroton toiminta eivät ole sama asia. Nollaverokannan myynnillä ja arvonlisäverotuksen ulkopuolisella tai verottomalla toiminnalla voi olla eri verokohtelu ja laskumerkinnät. Niiden tarkka käyttötapa ja selite ratkaistaan myöhemmin laskutusasetuksissa tai laskurivimallissa. Pelkkä `vatRateBasisPoints: 0` ei saa tulevaisuudessa peittää tätä eroa.
 
+Myös käännetty verovelvollisuus, kuten mahdollinen rakennusalan käännetty
+arvonlisäverovelvollisuus, vaatii myöhemmin eksplisiittisen `vatTreatment`-
+tyyppisen mallin. Sitä ei saa päätellä pelkästä nollaverokannasta eikä
+vapaasta laskurivitekstistä. Ennen tuotantokäyttöä tarvittava merkintätapa ja
+mahdollinen ostajan ALV-tunniste tarkistetaan virallisista lähteistä tai
+kirjanpitäjän kanssa.
+
 Kaikki laskennan jakolaskut käyttävät yhtä Invoicing-domainin sisäistä pyöristysfunktiota.
 
 Pyöristyssääntö:
