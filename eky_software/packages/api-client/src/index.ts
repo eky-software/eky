@@ -5,6 +5,18 @@ export {
 } from './client.js';
 export { EkyApiError } from './http.js';
 export type {
+  ApprovedInvoiceLine,
+  ApprovedInvoiceLineDiscount,
+  ApprovedInvoiceNumberingMode,
+  ApprovedInvoicePriceInputMode,
+  ApprovedInvoiceReferenceNumberType,
+  ApprovedInvoiceTotals,
+  ApprovedInvoiceUnit,
+  ApprovedInvoiceVatBreakdown,
+  ApprovedInvoiceView,
+  ApprovedInvoiceViewStatus,
+} from './approvedInvoices/index.js';
+export type {
   CompanySettings,
   UpdateCompanySettingsRequest,
 } from './companySettings/index.js';

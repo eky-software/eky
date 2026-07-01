@@ -29,6 +29,17 @@ Print-layout, PDF ja sähköpostilähetys eivät saa hakea muuttuvaa dataa suora
 `Company Settings`- tai `Customers`-master-tauluista. Ne käyttävät hyväksytylle
 laskulle tallennettua snapshotia.
 
+Hyväksytyn laskun read model on toteutettu ensimmäisenä lukupolkuna:
+
+```text
+GET /invoices/:id
+  -> ApprovedInvoiceView
+```
+
+Tämä lukumalli käyttää vain `invoices`- ja `invoice_lines`-taulujen
+snapshot-dataa. Se ei hae laskulla näkyviä tietoja Company Settings-,
+Customers- tai invoice draft -tauluista.
+
 ## Miksi Tämä Tehdään Ennen Laskupohjaa
 
 Nykyinen laskutuspolku pystyy käsittelemään laskuluonnoksia ja hyväksyntää
@@ -469,9 +480,10 @@ Suositeltu marssijärjestys:
 4. Päätetään ensimmäisen vaiheen ALV-merkintämalli nollaverokannalle, verottomuudelle ja mahdolliselle käännetylle verovelvollisuudelle.
 5. Web-laskulomake saa laskun vastaanottajan, toimitus/kohde-kentän ja huomautusajan.
 6. Hyväksyntä laajennetaan snapshottaamaan myyjän, asiakkaan, vastaanottajan, maksutietojen ja toimitus/kohde-tiedon arvot. Tämä on toteutettu ensimmäisessä print data foundation -persistence-vaiheessa.
-7. Hyväksytylle laskulle tehdään read model katselu- ja print-polulle.
-8. Vasta tämän jälkeen toteutetaan varsinainen print-layout.
-9. PDF ja sähköpostilähetys tulevat print-layoutin jälkeen.
+7. Hyväksytylle laskulle tehdään read model katselu- ja print-polulle. Tämä on toteutettu `ApprovedInvoiceView`-mallilla ja `GET /invoices/:id` -lukupolulla.
+8. Seuraavaksi toteutetaan webin hyväksytyn laskun katselunäkymä tämän read modelin päälle.
+9. Vasta tämän jälkeen toteutetaan varsinainen print-layout.
+10. PDF ja sähköpostilähetys tulevat print-layoutin jälkeen.
 
 Jos hyväksyntäsnapshotin vaihe kasvaa liian suureksi, se pysäytetään erilliseksi
 toteutussuunnitelmaksi. Puolittaista snapshotia ei jätetä ilman testejä.
