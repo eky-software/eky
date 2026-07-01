@@ -1,7 +1,5 @@
 import type { DatabaseConnection } from '../../../database/connection/createDatabaseConnection.js';
 import type {
-  CompanySettingsRow,
-  CustomerRow,
   InvoiceDraftLineTable,
   InvoiceDraftTable,
   NewInvoiceAuditEventRow,
@@ -27,6 +25,11 @@ import type {
   ApprovedInvoiceResult,
   InvoiceApprovalRepository,
 } from '../ports/invoiceApprovalRepository.js';
+import type {
+  InvoiceApprovalSnapshotData,
+  InvoiceApprovalSnapshotReader,
+} from '../ports/invoiceApprovalSnapshotReader.js';
+import { SqliteInvoiceApprovalSnapshotReader } from './sqliteInvoiceApprovalSnapshotReader.js';
 
 type InvoiceDraftApprovalKeyParameters = [string, string];
 type InvoiceNumberingSettingsKeyParameters = [string, string];
@@ -41,39 +44,7 @@ type InvoiceNumberSequenceUpsertParameters = [
   string,
 ];
 
-type InvoiceInsertParameters = [
-  string, // id
-  string, // company_id
-  string, // source_draft_id
-  string, // invoice_number
-  string | null, // reference_number
-  string | null, // reference_number_type
-  string, // series_key
-  string, // sequence_scope
-  number, // sequence_number
-  string, // numbering_mode
-  string, // status
-  string, // customer_id
-  string, // customer_number_snapshot
-  string, // customer_name_snapshot
-  string, // customer_business_id_snapshot
-  string, // customer_type_snapshot
-  string, // company_name_snapshot
-  string, // company_business_id_snapshot
-  string, // invoice_date
-  string, // due_date
-  number, // payment_term_days
-  string, // price_input_mode
-  string, // subject
-  string, // order_number
-  string, // note
-  number, // total_net_cents
-  number, // total_vat_cents
-  number, // total_gross_cents
-  string, // created_at
-  string, // approved_at
-  string, // updated_at
-];
+type InvoiceInsertParameters = NewInvoiceRow;
 
 type InvoiceLineInsertParameters = [
   string,
@@ -123,15 +94,6 @@ interface InvoiceNumberSequenceRow {
   updated_at: string;
 }
 
-interface InvoiceSnapshotData {
-  companyBusinessId: string;
-  companyName: string;
-  customerBusinessId: string;
-  customerName: string;
-  customerNumber: string;
-  customerType: string;
-}
-
 interface StoredDiscount {
   type: 'fixed' | 'none' | 'percentage';
   value: number;
@@ -179,7 +141,7 @@ function createInvoiceRow(
   invoiceNumber: string,
   referenceNumber: string,
   referenceNumberType: ReferenceNumberType,
-  snapshot: InvoiceSnapshotData,
+  snapshot: InvoiceApprovalSnapshotData,
 ): NewInvoiceRow {
   return {
     id: input.invoiceId,
@@ -198,15 +160,45 @@ function createInvoiceRow(
     customer_name_snapshot: snapshot.customerName,
     customer_business_id_snapshot: snapshot.customerBusinessId,
     customer_type_snapshot: snapshot.customerType,
+    customer_email_snapshot: snapshot.customerEmail,
+    customer_phone_snapshot: snapshot.customerPhone,
+    customer_street_address_snapshot: snapshot.customerStreetAddress,
+    customer_postal_code_snapshot: snapshot.customerPostalCode,
+    customer_city_snapshot: snapshot.customerCity,
     company_name_snapshot: snapshot.companyName,
     company_business_id_snapshot: snapshot.companyBusinessId,
+    company_vat_number_snapshot: snapshot.companyVatNumber,
+    company_street_address_snapshot: snapshot.companyStreetAddress,
+    company_postal_code_snapshot: snapshot.companyPostalCode,
+    company_city_snapshot: snapshot.companyCity,
+    company_email_snapshot: snapshot.companyEmail,
+    company_phone_snapshot: snapshot.companyPhone,
+    company_iban_snapshot: snapshot.companyIban,
+    company_bic_snapshot: snapshot.companyBic,
+    company_bank_name_snapshot: snapshot.companyBankName,
+    billing_recipient_customer_id: snapshot.billingRecipientCustomerId,
+    billing_recipient_customer_number_snapshot:
+      snapshot.billingRecipientCustomerNumber,
+    billing_recipient_name_snapshot: snapshot.billingRecipientName,
+    billing_recipient_business_id_snapshot: snapshot.billingRecipientBusinessId,
+    billing_recipient_customer_type_snapshot:
+      snapshot.billingRecipientCustomerType,
+    billing_recipient_email_snapshot: snapshot.billingRecipientEmail,
+    billing_recipient_phone_snapshot: snapshot.billingRecipientPhone,
+    billing_recipient_street_address_snapshot:
+      snapshot.billingRecipientStreetAddress,
+    billing_recipient_postal_code_snapshot: snapshot.billingRecipientPostalCode,
+    billing_recipient_city_snapshot: snapshot.billingRecipientCity,
     invoice_date: draft.invoice_date,
     due_date: draft.due_date,
     payment_term_days: draft.payment_term_days,
+    reminder_period_days: draft.reminder_period_days,
+    late_payment_interest_basis_points: draft.late_payment_interest_basis_points,
     price_input_mode: draft.price_input_mode,
     subject: draft.subject,
     order_number: draft.order_number,
     note: draft.note,
+    delivery_address_text: draft.delivery_address_text,
     total_net_cents: draft.net_total_cents,
     total_vat_cents: draft.vat_total_cents,
     total_gross_cents: draft.gross_total_cents,
@@ -262,7 +254,15 @@ function createAuditEventRow(
 }
 
 export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepository {
-  constructor(private readonly database: DatabaseConnection) {}
+  private readonly snapshotReader: InvoiceApprovalSnapshotReader;
+
+  constructor(
+    private readonly database: DatabaseConnection,
+    snapshotReader?: InvoiceApprovalSnapshotReader,
+  ) {
+    this.snapshotReader =
+      snapshotReader ?? new SqliteInvoiceApprovalSnapshotReader(database);
+  }
 
   async approveDraft(
     input: ApproveInvoiceDraftPersistenceInput,
@@ -317,7 +317,11 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
       );
       const referenceNumberType: ReferenceNumberType = 'finnishDomestic';
       const referenceNumber = createFinnishDomesticReferenceNumber(invoiceNumber);
-      const snapshot = this.getSnapshotData(input.companyId, draft.customer_id);
+      const snapshot = this.snapshotReader.getSnapshotData({
+        billingRecipientCustomerId: draft.billing_recipient_customer_id,
+        companyId: input.companyId,
+        customerId: draft.customer_id,
+      });
       const invoiceRow = createInvoiceRow(
         input,
         draft,
@@ -372,14 +376,18 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
             id,
             company_id,
             customer_id,
+            billing_recipient_customer_id,
             status,
             invoice_date,
             due_date,
             payment_term_days,
+            reminder_period_days,
+            late_payment_interest_basis_points,
             price_input_mode,
             subject,
             order_number,
             note,
+            delivery_address_text,
             net_total_cents,
             vat_total_cents,
             gross_total_cents,
@@ -477,46 +485,6 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
       .get(companyId, seriesKey, sequenceScope);
   }
 
-  private getSnapshotData(
-    companyId: string,
-    customerId: string,
-  ): InvoiceSnapshotData {
-    const customer = this.database
-      .prepare<[string, string], CustomerRow>(
-        `
-          SELECT *
-          FROM customers
-          WHERE company_id = ? AND id = ?
-        `,
-      )
-      .get(companyId, customerId);
-
-    if (customer === undefined) {
-      throw new ApproveInvoiceDraftError(
-        'Invoice customer snapshot could not be created.',
-      );
-    }
-
-    const companySettings = this.database
-      .prepare<[string], CompanySettingsRow>(
-        `
-          SELECT *
-          FROM company_settings
-          WHERE company_id = ?
-        `,
-      )
-      .get(companyId);
-
-    return {
-      companyBusinessId: companySettings?.business_id ?? '',
-      companyName: companySettings?.company_name ?? '',
-      customerBusinessId: customer.business_id,
-      customerName: customer.name,
-      customerNumber: customer.customer_number,
-      customerType: customer.customer_type,
-    };
-  }
-
   private upsertNumberSequence(sequence: NewInvoiceNumberSequenceRow): void {
     this.database
       .prepare<InvoiceNumberSequenceUpsertParameters>(
@@ -566,15 +534,42 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
             customer_name_snapshot,
             customer_business_id_snapshot,
             customer_type_snapshot,
+            customer_email_snapshot,
+            customer_phone_snapshot,
+            customer_street_address_snapshot,
+            customer_postal_code_snapshot,
+            customer_city_snapshot,
             company_name_snapshot,
             company_business_id_snapshot,
+            company_vat_number_snapshot,
+            company_street_address_snapshot,
+            company_postal_code_snapshot,
+            company_city_snapshot,
+            company_email_snapshot,
+            company_phone_snapshot,
+            company_iban_snapshot,
+            company_bic_snapshot,
+            company_bank_name_snapshot,
+            billing_recipient_customer_id,
+            billing_recipient_customer_number_snapshot,
+            billing_recipient_name_snapshot,
+            billing_recipient_business_id_snapshot,
+            billing_recipient_customer_type_snapshot,
+            billing_recipient_email_snapshot,
+            billing_recipient_phone_snapshot,
+            billing_recipient_street_address_snapshot,
+            billing_recipient_postal_code_snapshot,
+            billing_recipient_city_snapshot,
             invoice_date,
             due_date,
             payment_term_days,
+            reminder_period_days,
+            late_payment_interest_basis_points,
             price_input_mode,
             subject,
             order_number,
             note,
+            delivery_address_text,
             total_net_cents,
             total_vat_cents,
             total_gross_cents,
@@ -583,46 +578,68 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
             updated_at
           )
           VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-            ?
+            @id,
+            @company_id,
+            @source_draft_id,
+            @invoice_number,
+            @reference_number,
+            @reference_number_type,
+            @series_key,
+            @sequence_scope,
+            @sequence_number,
+            @numbering_mode,
+            @status,
+            @customer_id,
+            @customer_number_snapshot,
+            @customer_name_snapshot,
+            @customer_business_id_snapshot,
+            @customer_type_snapshot,
+            @customer_email_snapshot,
+            @customer_phone_snapshot,
+            @customer_street_address_snapshot,
+            @customer_postal_code_snapshot,
+            @customer_city_snapshot,
+            @company_name_snapshot,
+            @company_business_id_snapshot,
+            @company_vat_number_snapshot,
+            @company_street_address_snapshot,
+            @company_postal_code_snapshot,
+            @company_city_snapshot,
+            @company_email_snapshot,
+            @company_phone_snapshot,
+            @company_iban_snapshot,
+            @company_bic_snapshot,
+            @company_bank_name_snapshot,
+            @billing_recipient_customer_id,
+            @billing_recipient_customer_number_snapshot,
+            @billing_recipient_name_snapshot,
+            @billing_recipient_business_id_snapshot,
+            @billing_recipient_customer_type_snapshot,
+            @billing_recipient_email_snapshot,
+            @billing_recipient_phone_snapshot,
+            @billing_recipient_street_address_snapshot,
+            @billing_recipient_postal_code_snapshot,
+            @billing_recipient_city_snapshot,
+            @invoice_date,
+            @due_date,
+            @payment_term_days,
+            @reminder_period_days,
+            @late_payment_interest_basis_points,
+            @price_input_mode,
+            @subject,
+            @order_number,
+            @note,
+            @delivery_address_text,
+            @total_net_cents,
+            @total_vat_cents,
+            @total_gross_cents,
+            @created_at,
+            @approved_at,
+            @updated_at
           )
         `,
       )
-      .run(
-        invoice.id,
-        invoice.company_id,
-        invoice.source_draft_id,
-        invoice.invoice_number,
-        invoice.reference_number,
-        invoice.reference_number_type,
-        invoice.series_key,
-        invoice.sequence_scope,
-        invoice.sequence_number,
-        invoice.numbering_mode,
-        invoice.status,
-        invoice.customer_id,
-        invoice.customer_number_snapshot,
-        invoice.customer_name_snapshot,
-        invoice.customer_business_id_snapshot,
-        invoice.customer_type_snapshot,
-        invoice.company_name_snapshot,
-        invoice.company_business_id_snapshot,
-        invoice.invoice_date,
-        invoice.due_date,
-        invoice.payment_term_days,
-        invoice.price_input_mode,
-        invoice.subject,
-        invoice.order_number,
-        invoice.note,
-        invoice.total_net_cents,
-        invoice.total_vat_cents,
-        invoice.total_gross_cents,
-        invoice.created_at,
-        invoice.approved_at,
-        invoice.updated_at,
-      );
+      .run(invoice);
   }
 
   private insertInvoiceLines(lines: NewInvoiceLineRow[]): void {

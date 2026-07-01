@@ -35,9 +35,12 @@ const migrationNames = [
   '008_create_invoice_numbering.sql',
   '009_create_approved_invoices.sql',
   '010_add_invoice_reference_number.sql',
+  '011_add_company_settings_bank_details.sql',
+  '012_create_invoice_payment_settings.sql',
   '013_add_invoice_draft_late_payment_interest.sql',
   '014_add_company_settings_vat_number.sql',
   '015_add_invoice_draft_print_foundation_fields.sql',
+  '016_add_approved_invoice_print_snapshot_fields.sql',
 ];
 
 const migrationSql = migrationNames.map((migrationName) =>
@@ -157,10 +160,17 @@ async function saveDraft(
 function insertCustomer(
   database: DatabaseConnection,
   overrides: {
+    businessId?: string;
+    city?: string;
     companyId?: string;
     customerId?: string;
     customerNumber?: string;
+    customerType?: string;
+    email?: string;
     name?: string;
+    phone?: string;
+    postalCode?: string;
+    streetAddress?: string;
   } = {},
 ): void {
   database
@@ -185,7 +195,25 @@ function insertCustomer(
           managed_by_customer_id,
           hourly_rate_override_cents
         )
-        VALUES (?, ?, ?, 'created', 'updated', ?, 'company', '1234567-8', '', '', '', '', '', '', 'active', '', NULL)
+        VALUES (
+          ?,
+          ?,
+          ?,
+          'created',
+          'updated',
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          '',
+          'active',
+          '',
+          NULL
+        )
       `,
     )
     .run(
@@ -193,6 +221,13 @@ function insertCustomer(
       overrides.companyId ?? 'dev-company',
       overrides.name ?? 'Test Customer Oy',
       overrides.customerNumber ?? '1001',
+      overrides.customerType ?? 'company',
+      overrides.businessId ?? '1234567-8',
+      overrides.streetAddress ?? 'Customer Street 1',
+      overrides.postalCode ?? '00100',
+      overrides.city ?? 'Helsinki',
+      overrides.email ?? 'customer@example.fi',
+      overrides.phone ?? '040 111 2222',
     );
 }
 
@@ -205,11 +240,15 @@ function insertCompanySettings(database: DatabaseConnection): void {
           company_id,
           company_name,
           business_id,
+          vat_number,
           street_address,
           postal_code,
           city,
           email,
           phone,
+          iban,
+          bic,
+          bank_name,
           default_hourly_rate_cents,
           created_at,
           updated_at,
@@ -220,11 +259,15 @@ function insertCompanySettings(database: DatabaseConnection): void {
           'dev-company',
           'Example Builder Oy',
           '7654321-0',
-          '',
-          '',
-          '',
-          '',
-          '',
+          'FI76543210',
+          'Builder Street 2',
+          '33100',
+          'Tampere',
+          'billing@example.fi',
+          '03 123 4567',
+          'FI2112345600000785',
+          'NDEAFIHH',
+          'Example Bank',
           6500,
           'created',
           'updated',
@@ -323,7 +366,22 @@ describe('SqliteInvoiceApprovalRepository', () => {
   });
 
   it('approves a draft by reserving a number, creating snapshots, audit event, and draft link in one transaction', async () => {
-    const draft = createDraft();
+    insertCustomer(database, {
+      businessId: '8765432-1',
+      city: 'Espoo',
+      customerId: 'billing-recipient-1',
+      customerNumber: '2001',
+      customerType: 'propertyManager',
+      email: 'recipient@example.fi',
+      name: 'Billing Recipient Oy',
+      phone: '040 333 4444',
+      postalCode: '02100',
+      streetAddress: 'Recipient Street 3',
+    });
+    const draft = createDraft({
+      billingRecipientCustomerId: 'billing-recipient-1',
+      deliveryAddressText: 'Worksite Street 4, 00100 Helsinki',
+    });
     const repository = new SqliteInvoiceApprovalRepository(database);
 
     await saveDraft(database, draft);
@@ -364,8 +422,36 @@ describe('SqliteInvoiceApprovalRepository', () => {
       customer_number_snapshot: '1001',
       customer_name_snapshot: 'Test Customer Oy',
       customer_business_id_snapshot: '1234567-8',
+      customer_type_snapshot: 'company',
+      customer_email_snapshot: 'customer@example.fi',
+      customer_phone_snapshot: '040 111 2222',
+      customer_street_address_snapshot: 'Customer Street 1',
+      customer_postal_code_snapshot: '00100',
+      customer_city_snapshot: 'Helsinki',
       company_name_snapshot: 'Example Builder Oy',
       company_business_id_snapshot: '7654321-0',
+      company_vat_number_snapshot: 'FI76543210',
+      company_street_address_snapshot: 'Builder Street 2',
+      company_postal_code_snapshot: '33100',
+      company_city_snapshot: 'Tampere',
+      company_email_snapshot: 'billing@example.fi',
+      company_phone_snapshot: '03 123 4567',
+      company_iban_snapshot: 'FI2112345600000785',
+      company_bic_snapshot: 'NDEAFIHH',
+      company_bank_name_snapshot: 'Example Bank',
+      billing_recipient_customer_id: 'billing-recipient-1',
+      billing_recipient_customer_number_snapshot: '2001',
+      billing_recipient_name_snapshot: 'Billing Recipient Oy',
+      billing_recipient_business_id_snapshot: '8765432-1',
+      billing_recipient_customer_type_snapshot: 'propertyManager',
+      billing_recipient_email_snapshot: 'recipient@example.fi',
+      billing_recipient_phone_snapshot: '040 333 4444',
+      billing_recipient_street_address_snapshot: 'Recipient Street 3',
+      billing_recipient_postal_code_snapshot: '02100',
+      billing_recipient_city_snapshot: 'Espoo',
+      late_payment_interest_basis_points: 950,
+      reminder_period_days: 8,
+      delivery_address_text: 'Worksite Street 4, 00100 Helsinki',
       total_net_cents: draft.totals.netTotalCents,
       total_vat_cents: draft.totals.vatTotalCents,
       total_gross_cents: draft.totals.grossTotalCents,
@@ -402,6 +488,83 @@ describe('SqliteInvoiceApprovalRepository', () => {
       sequence_scope: 'calendar-year:2027',
       series_key: 'default',
     });
+  });
+
+  it('uses the invoice customer as billing recipient when no separate recipient is selected', async () => {
+    const repository = new SqliteInvoiceApprovalRepository(database);
+
+    await saveDraft(database, createDraft({ billingRecipientCustomerId: null }));
+
+    await expect(repository.approveDraft(createApprovalInput())).resolves.toMatchObject({
+      invoiceNumber: '20270001',
+    });
+
+    expect(getInvoice(database, 'invoice-1')).toMatchObject({
+      billing_recipient_customer_id: 'customer-1',
+      billing_recipient_customer_number_snapshot: '1001',
+      billing_recipient_name_snapshot: 'Test Customer Oy',
+      billing_recipient_email_snapshot: 'customer@example.fi',
+      billing_recipient_phone_snapshot: '040 111 2222',
+      billing_recipient_street_address_snapshot: 'Customer Street 1',
+      billing_recipient_postal_code_snapshot: '00100',
+      billing_recipient_city_snapshot: 'Helsinki',
+    });
+  });
+
+  it('keeps approved invoice print snapshots stable when master data changes later', async () => {
+    const repository = new SqliteInvoiceApprovalRepository(database);
+
+    await saveDraft(database, createDraft());
+    await expect(repository.approveDraft(createApprovalInput())).resolves.toMatchObject({
+      invoiceNumber: '20270001',
+    });
+
+    database
+      .prepare(
+        `
+          UPDATE customers
+          SET
+            name = 'Changed Customer Oy',
+            email = 'changed-customer@example.fi'
+          WHERE id = 'customer-1'
+        `,
+      )
+      .run();
+    database
+      .prepare(
+        `
+          UPDATE company_settings
+          SET
+            company_name = 'Changed Builder Oy',
+            iban = 'FI4412345600000785'
+          WHERE company_id = 'dev-company'
+        `,
+      )
+      .run();
+
+    expect(getInvoice(database, 'invoice-1')).toMatchObject({
+      customer_name_snapshot: 'Test Customer Oy',
+      customer_email_snapshot: 'customer@example.fi',
+      company_name_snapshot: 'Example Builder Oy',
+      company_iban_snapshot: 'FI2112345600000785',
+    });
+  });
+
+  it('rolls back approval if a separate billing recipient cannot be snapshotted', async () => {
+    const repository = new SqliteInvoiceApprovalRepository(database);
+
+    await saveDraft(
+      database,
+      createDraft({ billingRecipientCustomerId: 'missing-recipient' }),
+    );
+
+    await expect(repository.approveDraft(createApprovalInput())).rejects.toThrow(
+      ApproveInvoiceDraftError,
+    );
+
+    expect(getInvoice(database, 'invoice-1')).toBeUndefined();
+    expect(getSequence(database)).toBeUndefined();
+    expect(getAuditEvents(database)).toEqual([]);
   });
 
   it('does not approve a draft outside the company scope', async () => {
