@@ -151,7 +151,9 @@ Manuaalinen “Tallenna muutokset” säilyy käytössä autosavesta huolimatta.
 Tila: hyväksyntätoiminnon ensimmäinen web-UI-vaihe näyttää käyttäjälle
 tietoisen vahvistuksen ennen hyväksyntää. Hyväksyntä käyttää backendin
 `approveInvoiceDraft`-polkua ja näyttää onnistumisen jälkeen backendin
-palauttaman laskunumeron ja viitenumeron.
+palauttaman laskunumeron ja viitenumeron. Käyttäjä voi avata hyväksytyn laskun
+ensimmäiseen katselunäkymään, joka hakee `ApprovedInvoiceView`-snapshotin
+`getApprovedInvoice`-kutsulla.
 
 - näytä hyväksyntätoiminto vain tallennetulle ja avatulle laskuluonnokselle
 - edellytä, että muutokset on tallennettu ennen hyväksyntää
@@ -159,13 +161,28 @@ palauttaman laskunumeron ja viitenumeron.
 - kutsu hyväksyntää vain API-clientin kautta
 - näytä laskunumero ja viitenumero backendin palauttamasta tuloksesta
 - siirrä hyväksynnän jälkeen käyttäjä pois luonnoksen muokkaamisesta
-- jätä hyväksytyn laskun varsinainen katselu-, lähetys- ja printtinäkymä
-  myöhemmäksi
+- näytä hyväksytyn laskun katselunäkymä snapshot-datasta
+- jätä varsinainen print-layout, PDF, sähköposti ja verkkolasku myöhemmäksi
 
 UI ei muodosta laskunumeroa, viitenumeroa, snapshotteja eikä
 hyväksyntäpäivää. Ne ovat backendin vastuulla.
 
-## Vaihe 8: viimeistely
+## Vaihe 8: hyväksytyn laskun print-layout myöhemmin
+
+Ensimmäinen hyväksytyn laskun katselu ei ole vielä lopullinen print-layout.
+Seuraava erillinen vaihe voi rakentaa A4- ja tulostuslähtöisen laskupohjan
+`ApprovedInvoiceView`-snapshotin päälle.
+
+Ennen lopullista print/PDF-vaihetta ratkaistaan erikseen:
+
+- `supplyDate`, jos laskulla tarvitaan toimitus- tai suorituspäivä
+- hallittu `vatTreatment`-malli nollaverokannalle, verottomuudelle ja
+  mahdolliselle rakennusalan käännetylle verovelvollisuudelle
+- mitkä optional-kentät näytetään laskulla ja missä järjestyksessä
+- asiakkaan ja laskun vastaanottajan lopullinen tulostusmuoto taloyhtiö- ja
+  isännöitsijätilanteissa
+
+## Vaihe 9: viimeistely
 
 - viimeistele Classic-työnkulun näppäimistökäyttö ja saavutettavuus
 - yhtenäistä turvalliset virheilmoitukset
@@ -177,7 +194,7 @@ hyväksyntäpäivää. Ne ovat backendin vastuulla.
 
 Roadmap ei vielä sisällä:
 
-- hyväksytyn laskun varsinaista katselunäkymää
+- lopullista hyväksytyn laskun print-layoutia
 - PDF:ää
 - sähköpostia
 - verkkolaskua

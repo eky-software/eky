@@ -44,6 +44,7 @@ describe('InvoiceApprovalSuccessPanel', () => {
       <InvoiceApprovalSuccessPanel
         approvedInvoice={createApprovedInvoiceResult()}
         onBack={vi.fn()}
+        onOpenApprovedInvoice={vi.fn()}
       />,
     );
 
@@ -52,6 +53,7 @@ describe('InvoiceApprovalSuccessPanel', () => {
     expect(html).toContain('2026001');
     expect(html).toContain(uiText.invoicing.referenceNumber);
     expect(html).toContain('20260015');
+    expect(html).toContain(uiText.invoicing.invoicePreviewOpen);
     expect(html).toContain(uiText.invoicing.backToDrafts);
     expect(html).not.toContain('finnishDomestic');
   });

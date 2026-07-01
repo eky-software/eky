@@ -47,6 +47,7 @@ interface NewInvoiceFormProps {
   onBack(): void;
   onDraftApproved(approvedInvoice: ApprovedInvoiceResult): void;
   onDraftSaved(savedDraft: InvoiceDraft): void;
+  onOpenApprovedInvoice(id: string): void;
 }
 
 export function NewInvoiceForm({
@@ -56,6 +57,7 @@ export function NewInvoiceForm({
   onBack,
   onDraftApproved,
   onDraftSaved,
+  onOpenApprovedInvoice,
 }: NewInvoiceFormProps): React.JSX.Element {
   const [form, setForm] = useState(() => createInitialForm(mode));
   const [formRevision, setFormRevision] = useState(0);
@@ -230,6 +232,7 @@ export function NewInvoiceForm({
       <InvoiceApprovalSuccessPanel
         approvedInvoice={approveState.approvedInvoice}
         onBack={onBack}
+        onOpenApprovedInvoice={onOpenApprovedInvoice}
       />
     );
   }

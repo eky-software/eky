@@ -2,6 +2,7 @@ import { useEffect, useReducer, useRef, useState } from 'react';
 import type { ApprovedInvoiceResult, InvoiceDraft } from '@eky/api-client';
 
 import { InvoiceDraftList } from './InvoiceDraftList.js';
+import { ApprovedInvoicePreview } from './ApprovedInvoicePreview.js';
 import { NewInvoiceForm } from './NewInvoiceForm.js';
 import styles from './InvoicingPage.module.css';
 import {
@@ -25,6 +26,10 @@ import {
   type InvoiceDraftEditorState,
 } from '../hooks/useInvoiceDraftEditor.js';
 import {
+  useApprovedInvoice,
+  type ApprovedInvoiceState,
+} from '../hooks/useApprovedInvoice.js';
+import {
   deleteInvoiceDraftAndRefresh,
   useDeleteInvoiceDraft,
   type DeleteInvoiceDraftState,
@@ -42,6 +47,7 @@ export function InvoicingPage({
   const customerListState = useInvoiceCustomers();
   const companySettingsState = useInvoiceCompanySettings();
   const draftEditorState = useInvoiceDraftEditor();
+  const approvedInvoiceState = useApprovedInvoice();
   const deleteState = useDeleteInvoiceDraft();
   const [pendingDeleteDraftId, setPendingDeleteDraftId] = useState<string | null>(null);
   const previousNavigationRevision = useRef(navigationRevision);
@@ -51,6 +57,7 @@ export function InvoicingPage({
   );
 
   function handleBackToDrafts(): void {
+    approvedInvoiceState.clearApprovedInvoice();
     draftEditorState.clearDraft();
     deleteState.clearError();
     setPendingDeleteDraftId(null);
@@ -58,9 +65,18 @@ export function InvoicingPage({
   }
 
   function handleOpenDraft(id: string): void {
+    approvedInvoiceState.clearApprovedInvoice();
     setPendingDeleteDraftId(null);
     dispatch({ type: 'openEditInvoice' });
     void draftEditorState.openDraft(id);
+  }
+
+  function handleOpenApprovedInvoice(id: string): void {
+    draftEditorState.clearDraft();
+    deleteState.clearError();
+    setPendingDeleteDraftId(null);
+    dispatch({ type: 'openApprovedInvoice' });
+    void approvedInvoiceState.openApprovedInvoice(id);
   }
 
   function handleRequestDeleteDraft(id: string): void {
@@ -110,6 +126,7 @@ export function InvoicingPage({
     <InvoicingPageView
       {...draftState}
       activeView={activeView}
+      approvedInvoiceState={approvedInvoiceState}
       customerListState={customerListState}
       companySettingsState={companySettingsState}
       deleteState={deleteState}
@@ -120,6 +137,7 @@ export function InvoicingPage({
       onConfirmDeleteDraft={(id) => void handleConfirmDeleteDraft(id)}
       onDraftApproved={handleDraftApproved}
       onDraftSaved={handleDraftSaved}
+      onOpenApprovedInvoice={handleOpenApprovedInvoice}
       onOpenDraft={handleOpenDraft}
       onRequestDeleteDraft={handleRequestDeleteDraft}
       onNewInvoice={() => dispatch({ type: 'openNewInvoice' })}
@@ -129,6 +147,7 @@ export function InvoicingPage({
 
 interface InvoicingPageViewProps extends InvoiceDraftListState {
   activeView: InvoicingPageMode;
+  approvedInvoiceState: ApprovedInvoiceState;
   customerListState: InvoiceCustomerListState;
   companySettingsState: InvoiceCompanySettingsState;
   deleteState: DeleteInvoiceDraftState;
@@ -139,6 +158,7 @@ interface InvoicingPageViewProps extends InvoiceDraftListState {
   onConfirmDeleteDraft(id: string): void;
   onDraftApproved(approvedInvoice: ApprovedInvoiceResult): void;
   onDraftSaved(savedDraft: InvoiceDraft): void;
+  onOpenApprovedInvoice(id: string): void;
   onOpenDraft(id: string): void;
   onRequestDeleteDraft(id: string): void;
   onNewInvoice(): void;
@@ -146,6 +166,7 @@ interface InvoicingPageViewProps extends InvoiceDraftListState {
 
 export function InvoicingPageView({
   activeView,
+  approvedInvoiceState,
   customerListState,
   companySettingsState,
   deleteState,
@@ -159,6 +180,7 @@ export function InvoicingPageView({
   onConfirmDeleteDraft,
   onDraftApproved,
   onDraftSaved,
+  onOpenApprovedInvoice,
   onOpenDraft,
   onRequestDeleteDraft,
   onNewInvoice,
@@ -223,8 +245,9 @@ export function InvoicingPageView({
           onBack={onBackToDrafts}
           onDraftApproved={onDraftApproved}
           onDraftSaved={onDraftSaved}
+          onOpenApprovedInvoice={onOpenApprovedInvoice}
         />
-      ) : (
+      ) : activeView === 'editInvoice' ? (
         <InvoiceDraftEditView
           companySettingsState={companySettingsState}
           customerListState={customerListState}
@@ -232,6 +255,12 @@ export function InvoicingPageView({
           onBack={onBackToDrafts}
           onDraftApproved={onDraftApproved}
           onDraftSaved={onDraftSaved}
+          onOpenApprovedInvoice={onOpenApprovedInvoice}
+        />
+      ) : (
+        <ApprovedInvoiceView
+          approvedInvoiceState={approvedInvoiceState}
+          onBack={onBackToDrafts}
         />
       )}
     </div>
@@ -245,6 +274,7 @@ interface InvoiceDraftEditViewProps {
   onBack(): void;
   onDraftApproved(approvedInvoice: ApprovedInvoiceResult): void;
   onDraftSaved(savedDraft: InvoiceDraft): void;
+  onOpenApprovedInvoice(id: string): void;
 }
 
 function InvoiceDraftEditView({
@@ -254,6 +284,7 @@ function InvoiceDraftEditView({
   onBack,
   onDraftApproved,
   onDraftSaved,
+  onOpenApprovedInvoice,
 }: InvoiceDraftEditViewProps): React.JSX.Element {
   if (draftEditorState.isLoading) {
     return (
@@ -303,6 +334,60 @@ function InvoiceDraftEditView({
       onBack={onBack}
       onDraftApproved={onDraftApproved}
       onDraftSaved={onDraftSaved}
+      onOpenApprovedInvoice={onOpenApprovedInvoice}
+    />
+  );
+}
+
+interface ApprovedInvoiceViewProps {
+  approvedInvoiceState: ApprovedInvoiceState;
+  onBack(): void;
+}
+
+function ApprovedInvoiceView({
+  approvedInvoiceState,
+  onBack,
+}: ApprovedInvoiceViewProps): React.JSX.Element {
+  if (approvedInvoiceState.isLoading) {
+    return (
+      <section className={`panel ${styles.editorState}`}>
+        <p className={styles.state}>
+          {uiText.invoicing.approvedInvoiceLoading}
+        </p>
+      </section>
+    );
+  }
+
+  if (approvedInvoiceState.errorMessage !== null) {
+    return (
+      <section className={`panel ${styles.editorState}`}>
+        <p className="message error-message" role="alert">
+          {approvedInvoiceState.errorMessage}
+        </p>
+        <button className="ghost-button" onClick={onBack} type="button">
+          {uiText.invoicing.backToDrafts}
+        </button>
+      </section>
+    );
+  }
+
+  if (approvedInvoiceState.approvedInvoice === null) {
+    return (
+      <section className={`panel ${styles.editorState}`}>
+        <p className={styles.state}>
+          {uiText.invoicing.approvedInvoiceOpenPrompt}
+        </p>
+        <button className="ghost-button" onClick={onBack} type="button">
+          {uiText.invoicing.backToDrafts}
+        </button>
+      </section>
+    );
+  }
+
+  return (
+    <ApprovedInvoicePreview
+      invoice={approvedInvoiceState.approvedInvoice}
+      onBack={onBack}
     />
   );
 }

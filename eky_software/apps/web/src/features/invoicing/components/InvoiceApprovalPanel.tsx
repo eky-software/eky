@@ -47,11 +47,13 @@ export function InvoiceApprovalConfirmation({
 interface InvoiceApprovalSuccessPanelProps {
   approvedInvoice: ApprovedInvoiceResult;
   onBack(): void;
+  onOpenApprovedInvoice(id: string): void;
 }
 
 export function InvoiceApprovalSuccessPanel({
   approvedInvoice,
   onBack,
+  onOpenApprovedInvoice,
 }: InvoiceApprovalSuccessPanelProps): React.JSX.Element {
   return (
     <section className={`panel ${styles.panel}`} role="status">
@@ -67,7 +69,14 @@ export function InvoiceApprovalSuccessPanel({
         <dd>{approvedInvoice.referenceNumber}</dd>
       </dl>
       <div className={styles.actions}>
-        <button className="primary-action" onClick={onBack} type="button">
+        <button
+          className="primary-action"
+          onClick={() => onOpenApprovedInvoice(approvedInvoice.invoiceId)}
+          type="button"
+        >
+          {uiText.invoicing.invoicePreviewOpen}
+        </button>
+        <button className="ghost-button" onClick={onBack} type="button">
           {uiText.invoicing.backToDrafts}
         </button>
       </div>

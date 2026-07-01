@@ -1,0 +1,409 @@
+import type {
+  ApprovedInvoiceLine,
+  ApprovedInvoiceVatBreakdown,
+  ApprovedInvoiceView,
+} from '@eky/api-client';
+
+import {
+  formatApprovedInvoiceCurrency,
+  formatApprovedInvoiceDate,
+  formatApprovedInvoiceDiscount,
+  formatApprovedInvoicePercent,
+  formatApprovedInvoiceQuantity,
+  formatApprovedInvoiceUnit,
+  hasApprovedInvoiceValue,
+} from '../approved/approvedInvoiceFormatting.js';
+import styles from './ApprovedInvoicePreview.module.css';
+import { uiText } from '../../../i18n/fi.js';
+
+interface ApprovedInvoicePreviewProps {
+  invoice: ApprovedInvoiceView;
+  onBack(): void;
+}
+
+export function ApprovedInvoicePreview({
+  invoice,
+  onBack,
+}: ApprovedInvoicePreviewProps): React.JSX.Element {
+  return (
+    <section className={`panel ${styles.preview}`}>
+      <header className={styles.header}>
+        <div>
+          <p className="panel-kicker">{uiText.invoicing.approvedInvoiceKicker}</p>
+          <h2>
+            {uiText.invoicing.invoice} {invoice.invoiceNumber}
+          </h2>
+          <p className={styles.muted}>
+            {uiText.invoicing.approvedInvoicePreviewHelp}
+          </p>
+          <p className={styles.status}>
+            <span className="status-pill status-pill-active">
+              {uiText.invoicing.statusApproved}
+            </span>
+          </p>
+        </div>
+        <div className={styles.headerActions}>
+          <button className="ghost-button" onClick={onBack} type="button">
+            {uiText.invoicing.backToDrafts}
+          </button>
+        </div>
+      </header>
+
+      <div className={styles.summaryGrid}>
+        <div className={styles.partyGrid}>
+          <PartyBox
+            businessId={invoice.companyBusinessIdSnapshot}
+            city={invoice.companyCitySnapshot}
+            email={invoice.companyEmailSnapshot}
+            name={invoice.companyNameSnapshot}
+            phone={invoice.companyPhoneSnapshot}
+            postalCode={invoice.companyPostalCodeSnapshot}
+            streetAddress={invoice.companyStreetAddressSnapshot}
+            title={uiText.invoicing.seller}
+            vatNumber={invoice.companyVatNumberSnapshot}
+          />
+          <PartyBox
+            businessId={invoice.customerBusinessIdSnapshot}
+            city={invoice.customerCitySnapshot}
+            customerNumber={invoice.customerNumberSnapshot}
+            email={invoice.customerEmailSnapshot}
+            name={invoice.customerNameSnapshot}
+            phone={invoice.customerPhoneSnapshot}
+            postalCode={invoice.customerPostalCodeSnapshot}
+            streetAddress={invoice.customerStreetAddressSnapshot}
+            title={uiText.invoicing.customer}
+          />
+          <PartyBox
+            businessId={invoice.billingRecipientBusinessIdSnapshot}
+            city={invoice.billingRecipientCitySnapshot}
+            customerNumber={invoice.billingRecipientCustomerNumberSnapshot}
+            email={invoice.billingRecipientEmailSnapshot}
+            name={invoice.billingRecipientNameSnapshot}
+            phone={invoice.billingRecipientPhoneSnapshot}
+            postalCode={invoice.billingRecipientPostalCodeSnapshot}
+            streetAddress={invoice.billingRecipientStreetAddressSnapshot}
+            title={uiText.invoicing.invoiceRecipient}
+          />
+        </div>
+
+        <InvoiceFacts invoice={invoice} />
+      </div>
+
+      <InvoiceLineTable
+        lines={invoice.lines}
+        priceInputMode={invoice.priceInputMode}
+      />
+
+      <div className={styles.totalsGrid}>
+        <VatBreakdown breakdown={invoice.vatBreakdown} />
+        <Totals invoice={invoice} />
+      </div>
+
+      <PaymentDetails invoice={invoice} />
+    </section>
+  );
+}
+
+interface PartyBoxProps {
+  businessId: string;
+  city: string;
+  customerNumber?: string;
+  email: string;
+  name: string;
+  phone: string;
+  postalCode: string;
+  streetAddress: string;
+  title: string;
+  vatNumber?: string;
+}
+
+function PartyBox({
+  businessId,
+  city,
+  customerNumber,
+  email,
+  name,
+  phone,
+  postalCode,
+  streetAddress,
+  title,
+  vatNumber,
+}: PartyBoxProps): React.JSX.Element {
+  return (
+    <section className={styles.box}>
+      <h3>{title}</h3>
+      <strong>{name}</strong>
+      {hasApprovedInvoiceValue(customerNumber ?? '') ? (
+        <p>
+          {uiText.customers.customerNumber}: {customerNumber}
+        </p>
+      ) : null}
+      {hasApprovedInvoiceValue(businessId) ? (
+        <p>
+          {uiText.customers.businessId}: {businessId}
+        </p>
+      ) : null}
+      {hasApprovedInvoiceValue(vatNumber ?? '') ? (
+        <p>
+          {uiText.companySettings.vatNumber}: {vatNumber}
+        </p>
+      ) : null}
+      {hasApprovedInvoiceValue(streetAddress) ? <p>{streetAddress}</p> : null}
+      {hasApprovedInvoiceValue(postalCode) || hasApprovedInvoiceValue(city) ? (
+        <p>
+          {[postalCode, city].filter(hasApprovedInvoiceValue).join(' ')}
+        </p>
+      ) : null}
+      {hasApprovedInvoiceValue(email) ? <p>{email}</p> : null}
+      {hasApprovedInvoiceValue(phone) ? <p>{phone}</p> : null}
+    </section>
+  );
+}
+
+function InvoiceFacts({
+  invoice,
+}: {
+  invoice: ApprovedInvoiceView;
+}): React.JSX.Element {
+  return (
+    <section className={styles.box}>
+      <h3>{uiText.invoicing.basicInformation}</h3>
+      <DefinitionRow
+        label={uiText.invoicing.invoiceDate}
+        value={formatApprovedInvoiceDate(invoice.invoiceDate)}
+      />
+      <DefinitionRow
+        label={uiText.invoicing.dueDate}
+        value={formatApprovedInvoiceDate(invoice.dueDate)}
+      />
+      <DefinitionRow
+        label={uiText.invoicing.paymentTermDays}
+        value={`${invoice.paymentTermDays}`}
+      />
+      <DefinitionRow
+        label={uiText.invoicing.reminderPeriodDays}
+        value={`${invoice.reminderPeriodDays}`}
+      />
+      <DefinitionRow
+        label={uiText.invoicing.latePaymentInterest}
+        value={formatApprovedInvoicePercent(
+          invoice.latePaymentInterestBasisPoints,
+        )}
+      />
+      <DefinitionRow
+        label={uiText.invoicing.referenceNumber}
+        value={invoice.referenceNumber}
+      />
+      <DefinitionRow
+        label={uiText.invoicing.approvedAt}
+        value={formatApprovedInvoiceDate(invoice.approvedAt.slice(0, 10))}
+      />
+      {hasApprovedInvoiceValue(invoice.orderNumber) ? (
+        <DefinitionRow
+          label={uiText.invoicing.orderNumber}
+          value={invoice.orderNumber}
+        />
+      ) : null}
+      {hasApprovedInvoiceValue(invoice.deliveryAddressText) ? (
+        <DefinitionRow
+          label={uiText.invoicing.deliveryAddressText}
+          value={invoice.deliveryAddressText}
+        />
+      ) : null}
+      {hasApprovedInvoiceValue(invoice.subject) ? (
+        <DefinitionRow label={uiText.invoicing.subject} value={invoice.subject} />
+      ) : null}
+      {hasApprovedInvoiceValue(invoice.note) ? (
+        <DefinitionRow label={uiText.invoicing.note} value={invoice.note} />
+      ) : null}
+    </section>
+  );
+}
+
+function DefinitionRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}): React.JSX.Element {
+  return (
+    <p>
+      <strong>{label}: </strong>
+      <span>{value}</span>
+    </p>
+  );
+}
+
+function InvoiceLineTable({
+  lines,
+  priceInputMode,
+}: {
+  lines: ApprovedInvoiceLine[];
+  priceInputMode: ApprovedInvoiceView['priceInputMode'];
+}): React.JSX.Element {
+  const unitPriceLabel =
+    priceInputMode === 'net'
+      ? uiText.invoicing.priceInputNet
+      : uiText.invoicing.priceInputGross;
+
+  return (
+    <section>
+      <h3>{uiText.invoicing.invoiceRows}</h3>
+      <div className={styles.lines} role="table">
+        <div className={styles.lineHeader} role="row">
+          <span role="columnheader">{uiText.invoicing.rowCode}</span>
+          <span role="columnheader">{uiText.invoicing.rowDescription}</span>
+          <span className={styles.number} role="columnheader">
+            {uiText.invoicing.rowQuantity}
+          </span>
+          <span role="columnheader">{uiText.invoicing.rowUnit}</span>
+          <span className={styles.number} role="columnheader">
+            {unitPriceLabel}
+          </span>
+          <span className={styles.number} role="columnheader">
+            {uiText.invoicing.rowVat}
+          </span>
+          <span className={styles.number} role="columnheader">
+            {uiText.invoicing.rowDiscountType}
+          </span>
+          <span className={styles.number} role="columnheader">
+            {uiText.invoicing.total}
+          </span>
+        </div>
+        {lines.map((line) => (
+          <InvoiceLineRow
+            key={line.id}
+            line={line}
+            priceInputMode={priceInputMode}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function InvoiceLineRow({
+  line,
+  priceInputMode,
+}: {
+  line: ApprovedInvoiceLine;
+  priceInputMode: ApprovedInvoiceView['priceInputMode'];
+}): React.JSX.Element {
+  const discount = formatApprovedInvoiceDiscount(line.discount);
+  const lineTotal =
+    priceInputMode === 'net' ? line.netCents : line.grossCents;
+
+  return (
+    <div className={styles.lineRow} role="row">
+      <span role="cell">{line.code}</span>
+      <span role="cell">{line.description}</span>
+      <span className={styles.number} role="cell">
+        {formatApprovedInvoiceQuantity(line.quantityHundredths)}
+      </span>
+      <span role="cell">{formatApprovedInvoiceUnit(line.unit)}</span>
+      <span className={styles.number} role="cell">
+        {formatApprovedInvoiceCurrency(line.unitPriceCents)}
+      </span>
+      <span className={styles.number} role="cell">
+        {formatApprovedInvoicePercent(line.vatRateBasisPoints)}
+      </span>
+      <span className={styles.number} role="cell">
+        {discount ?? ''}
+      </span>
+      <span className={styles.number} role="cell">
+        {formatApprovedInvoiceCurrency(lineTotal)}
+      </span>
+    </div>
+  );
+}
+
+function VatBreakdown({
+  breakdown,
+}: {
+  breakdown: ApprovedInvoiceVatBreakdown[];
+}): React.JSX.Element {
+  return (
+    <section className={styles.box}>
+      <h3>{uiText.invoicing.vatBreakdown}</h3>
+      <div className={styles.summaryTable}>
+        {breakdown.map((item) => (
+          <div key={item.vatRateBasisPoints}>
+            <span>{formatApprovedInvoicePercent(item.vatRateBasisPoints)}</span>
+            <span>{formatApprovedInvoiceCurrency(item.netCents)}</span>
+            <span>{formatApprovedInvoiceCurrency(item.vatCents)}</span>
+            <strong>{formatApprovedInvoiceCurrency(item.grossCents)}</strong>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function Totals({
+  invoice,
+}: {
+  invoice: ApprovedInvoiceView;
+}): React.JSX.Element {
+  return (
+    <section className={styles.box}>
+      <h3>{uiText.invoicing.invoiceTotals}</h3>
+      <div className={styles.totalsTable}>
+        <div>
+          <span>{uiText.invoicing.netTotal}</span>
+          <span>{formatApprovedInvoiceCurrency(invoice.totals.netTotalCents)}</span>
+        </div>
+        <div>
+          <span>{uiText.invoicing.vatTotal}</span>
+          <span>{formatApprovedInvoiceCurrency(invoice.totals.vatTotalCents)}</span>
+        </div>
+        <div className={styles.grandTotal}>
+          <span>{uiText.invoicing.total}</span>
+          <span>{formatApprovedInvoiceCurrency(invoice.totals.grossTotalCents)}</span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PaymentDetails({
+  invoice,
+}: {
+  invoice: ApprovedInvoiceView;
+}): React.JSX.Element {
+  return (
+    <section className={`${styles.box} ${styles.payment}`}>
+      <h3>{uiText.invoicing.paymentDetails}</h3>
+      {hasApprovedInvoiceValue(invoice.companyBankNameSnapshot) ? (
+        <DefinitionRow
+          label={uiText.companySettings.bankName}
+          value={invoice.companyBankNameSnapshot}
+        />
+      ) : null}
+      {hasApprovedInvoiceValue(invoice.companyIbanSnapshot) ? (
+        <DefinitionRow
+          label={uiText.companySettings.iban}
+          value={invoice.companyIbanSnapshot}
+        />
+      ) : null}
+      {hasApprovedInvoiceValue(invoice.companyBicSnapshot) ? (
+        <DefinitionRow
+          label={uiText.companySettings.bic}
+          value={invoice.companyBicSnapshot}
+        />
+      ) : null}
+      <DefinitionRow
+        label={uiText.invoicing.referenceNumber}
+        value={invoice.referenceNumber}
+      />
+      <DefinitionRow
+        label={uiText.invoicing.dueDate}
+        value={formatApprovedInvoiceDate(invoice.dueDate)}
+      />
+      <DefinitionRow
+        label={uiText.invoicing.total}
+        value={formatApprovedInvoiceCurrency(invoice.totals.grossTotalCents)}
+      />
+    </section>
+  );
+}
