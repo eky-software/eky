@@ -76,9 +76,14 @@ export function InvoiceDraftList({
           <span role="columnheader">{uiText.invoicing.customer}</span>
           <span role="columnheader">{uiText.invoicing.invoiceDate}</span>
           <span role="columnheader">{uiText.invoicing.dueDate}</span>
-          <span role="columnheader">{uiText.invoicing.total}</span>
+          <span className={styles.totalHeader} role="columnheader">
+            {uiText.invoicing.total}
+          </span>
           <span role="columnheader">{uiText.invoicing.status}</span>
-          <span role="columnheader">{uiText.invoicing.rowActions}</span>
+          <span
+            aria-label={uiText.invoicing.rowActions}
+            role="columnheader"
+          />
         </div>
         {drafts.map((draft) => (
           <InvoiceDraftListItem

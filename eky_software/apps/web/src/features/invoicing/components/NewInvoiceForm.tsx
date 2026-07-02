@@ -1,5 +1,5 @@
 import type { ApprovedInvoiceResult, InvoiceDraft } from '@eky/api-client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import {
   InvoiceApprovalConfirmation,
@@ -10,6 +10,9 @@ import { InvoiceRowsEditor } from './InvoiceRowsEditor.js';
 import { InvoiceTotalsPreview } from './InvoiceTotalsPreview.js';
 import styles from './NewInvoiceForm.module.css';
 import { toNewInvoiceFormStateFromDraft } from '../form/invoiceDraftFormHydration.js';
+import { applyCustomerBillingRecipientDefault } from '../form/invoiceBillingRecipientDefaults.js';
+import { createDummyInvoiceForm } from '../form/invoiceDummyForm.js';
+import { applyInvoicePaymentDefaults } from '../form/invoicePaymentDefaults.js';
 import {
   addInvoiceRow,
   removeInvoiceRow,
@@ -27,6 +30,7 @@ import {
 } from '../form/newInvoiceFormState.js';
 import type { InvoiceCustomerListState } from '../hooks/useInvoiceCustomers.js';
 import type { InvoiceCompanySettingsState } from '../hooks/useInvoiceCompanySettings.js';
+import type { InvoicePaymentDefaultsState } from '../hooks/useInvoicePaymentDefaults.js';
 import { useApproveInvoiceDraft } from '../hooks/useApproveInvoiceDraft.js';
 import { useInvoiceDraftAutosave } from '../hooks/useInvoiceDraftAutosave.js';
 import {
@@ -43,6 +47,7 @@ export type NewInvoiceFormMode =
 interface NewInvoiceFormProps {
   customerListState: InvoiceCustomerListState;
   companySettingsState: InvoiceCompanySettingsState;
+  invoicePaymentDefaultsState: InvoicePaymentDefaultsState;
   mode: NewInvoiceFormMode;
   onBack(): void;
   onDraftApproved(approvedInvoice: ApprovedInvoiceResult): void;
@@ -53,6 +58,7 @@ interface NewInvoiceFormProps {
 export function NewInvoiceForm({
   customerListState,
   companySettingsState,
+  invoicePaymentDefaultsState,
   mode,
   onBack,
   onDraftApproved,
@@ -85,6 +91,18 @@ export function NewInvoiceForm({
     ? validationResult.errors
     : undefined;
 
+  useEffect(() => {
+    const settings = invoicePaymentDefaultsState.settings;
+
+    if (mode.type !== 'create' || formRevision !== 0 || settings === null) {
+      return;
+    }
+
+    setForm((currentForm) =>
+      applyInvoicePaymentDefaults(currentForm, settings),
+    );
+  }, [formRevision, invoicePaymentDefaultsState.settings, mode.type]);
+
   function handleFormChange(
     updateForm: (currentForm: NewInvoiceFormState) => NewInvoiceFormState,
   ): void {
@@ -100,9 +118,28 @@ export function NewInvoiceForm({
     fieldName: FieldName,
     value: NewInvoiceFormState[FieldName],
   ): void {
-    handleFormChange((currentForm) =>
-      updateNewInvoiceFormField(currentForm, fieldName, value),
+    handleFormChange((currentForm) => {
+      if (fieldName === 'customerId' && typeof value === 'string') {
+        return applyCustomerBillingRecipientDefault(
+          currentForm,
+          customerListState.customers,
+          value,
+        );
+      }
+
+      return updateNewInvoiceFormField(currentForm, fieldName, value);
+    });
+  }
+
+  function handleFillDummyInvoice(): void {
+    handleFormChange(() =>
+      createDummyInvoiceForm(
+        customerListState.customers,
+        companySettingsState.companySettings,
+        invoicePaymentDefaultsState.settings,
+      ),
     );
+    setHasValidated(false);
   }
 
   function handleAddRow(): void {
@@ -268,6 +305,18 @@ export function NewInvoiceForm({
         </button>
       </header>
 
+      {mode.type === 'create' ? (
+        <div className={styles.toolRow}>
+          <button
+            className="ghost-button"
+            onClick={handleFillDummyInvoice}
+            type="button"
+          >
+            {uiText.invoicing.fillDummyInvoice}
+          </button>
+        </div>
+      ) : null}
+
       {hasValidated && !validationResult.isValid ? (
         <p
           className={`message error-message ${styles.validationMessage}`}
@@ -310,6 +359,15 @@ export function NewInvoiceForm({
           role="alert"
         >
           {approveState.errorMessage}
+        </p>
+      ) : null}
+
+      {invoicePaymentDefaultsState.errorMessage !== null ? (
+        <p
+          className={`message error-message ${styles.validationMessage}`}
+          role="alert"
+        >
+          {invoicePaymentDefaultsState.errorMessage}
         </p>
       ) : null}
 

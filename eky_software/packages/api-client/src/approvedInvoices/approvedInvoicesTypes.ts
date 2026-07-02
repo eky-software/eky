@@ -104,6 +104,23 @@ export interface ApprovedInvoiceView {
   updatedAt: string;
 }
 
+export interface ApprovedInvoiceSummary {
+  id: string;
+  invoiceNumber: string;
+  referenceNumber: string;
+  status: ApprovedInvoiceViewStatus;
+  customerId: string;
+  customerNumberSnapshot: string;
+  customerNameSnapshot: string;
+  billingRecipientNameSnapshot: string;
+  invoiceDate: string;
+  dueDate: string;
+  grossTotalCents: number;
+  approvedAt: string;
+  updatedAt: string;
+}
+
 export interface ApprovedInvoicesApi {
   getApprovedInvoice(id: string): Promise<ApprovedInvoiceView>;
+  listApprovedInvoices(): Promise<ApprovedInvoiceSummary[]>;
 }

@@ -49,44 +49,41 @@ export function ApprovedInvoicePreview({
         </div>
       </header>
 
-      <div className={styles.summaryGrid}>
-        <div className={styles.partyGrid}>
-          <PartyBox
-            businessId={invoice.companyBusinessIdSnapshot}
-            city={invoice.companyCitySnapshot}
-            email={invoice.companyEmailSnapshot}
-            name={invoice.companyNameSnapshot}
-            phone={invoice.companyPhoneSnapshot}
-            postalCode={invoice.companyPostalCodeSnapshot}
-            streetAddress={invoice.companyStreetAddressSnapshot}
-            title={uiText.invoicing.seller}
-            vatNumber={invoice.companyVatNumberSnapshot}
-          />
-          <PartyBox
-            businessId={invoice.customerBusinessIdSnapshot}
-            city={invoice.customerCitySnapshot}
-            customerNumber={invoice.customerNumberSnapshot}
-            email={invoice.customerEmailSnapshot}
-            name={invoice.customerNameSnapshot}
-            phone={invoice.customerPhoneSnapshot}
-            postalCode={invoice.customerPostalCodeSnapshot}
-            streetAddress={invoice.customerStreetAddressSnapshot}
-            title={uiText.invoicing.customer}
-          />
-          <PartyBox
-            businessId={invoice.billingRecipientBusinessIdSnapshot}
-            city={invoice.billingRecipientCitySnapshot}
-            customerNumber={invoice.billingRecipientCustomerNumberSnapshot}
-            email={invoice.billingRecipientEmailSnapshot}
-            name={invoice.billingRecipientNameSnapshot}
-            phone={invoice.billingRecipientPhoneSnapshot}
-            postalCode={invoice.billingRecipientPostalCodeSnapshot}
-            streetAddress={invoice.billingRecipientStreetAddressSnapshot}
-            title={uiText.invoicing.invoiceRecipient}
-          />
-        </div>
-
+      <div className={styles.detailsStack}>
+        <PartyBox
+          businessId={invoice.companyBusinessIdSnapshot}
+          city={invoice.companyCitySnapshot}
+          email={invoice.companyEmailSnapshot}
+          name={invoice.companyNameSnapshot}
+          phone={invoice.companyPhoneSnapshot}
+          postalCode={invoice.companyPostalCodeSnapshot}
+          streetAddress={invoice.companyStreetAddressSnapshot}
+          title={uiText.invoicing.seller}
+          vatNumber={invoice.companyVatNumberSnapshot}
+        />
         <InvoiceFacts invoice={invoice} />
+        <PartyBox
+          businessId={invoice.customerBusinessIdSnapshot}
+          city={invoice.customerCitySnapshot}
+          customerNumber={invoice.customerNumberSnapshot}
+          email={invoice.customerEmailSnapshot}
+          name={invoice.customerNameSnapshot}
+          phone={invoice.customerPhoneSnapshot}
+          postalCode={invoice.customerPostalCodeSnapshot}
+          streetAddress={invoice.customerStreetAddressSnapshot}
+          title={uiText.invoicing.customer}
+        />
+        <PartyBox
+          businessId={invoice.billingRecipientBusinessIdSnapshot}
+          city={invoice.billingRecipientCitySnapshot}
+          customerNumber={invoice.billingRecipientCustomerNumberSnapshot}
+          email={invoice.billingRecipientEmailSnapshot}
+          name={invoice.billingRecipientNameSnapshot}
+          phone={invoice.billingRecipientPhoneSnapshot}
+          postalCode={invoice.billingRecipientPostalCodeSnapshot}
+          streetAddress={invoice.billingRecipientStreetAddressSnapshot}
+          title={uiText.invoicing.invoiceRecipient}
+        />
       </div>
 
       <InvoiceLineTable
@@ -132,30 +129,46 @@ function PartyBox({
   return (
     <section className={styles.box}>
       <h3>{title}</h3>
-      <strong>{name}</strong>
-      {hasApprovedInvoiceValue(customerNumber ?? '') ? (
-        <p>
-          {uiText.customers.customerNumber}: {customerNumber}
-        </p>
-      ) : null}
-      {hasApprovedInvoiceValue(businessId) ? (
-        <p>
-          {uiText.customers.businessId}: {businessId}
-        </p>
-      ) : null}
-      {hasApprovedInvoiceValue(vatNumber ?? '') ? (
-        <p>
-          {uiText.companySettings.vatNumber}: {vatNumber}
-        </p>
-      ) : null}
-      {hasApprovedInvoiceValue(streetAddress) ? <p>{streetAddress}</p> : null}
-      {hasApprovedInvoiceValue(postalCode) || hasApprovedInvoiceValue(city) ? (
-        <p>
-          {[postalCode, city].filter(hasApprovedInvoiceValue).join(' ')}
-        </p>
-      ) : null}
-      {hasApprovedInvoiceValue(email) ? <p>{email}</p> : null}
-      {hasApprovedInvoiceValue(phone) ? <p>{phone}</p> : null}
+      <dl className={styles.detailList}>
+        <DefinitionRow label={uiText.customers.name} value={name} />
+        {hasApprovedInvoiceValue(customerNumber ?? '') ? (
+          <DefinitionRow
+            label={uiText.customers.customerNumber}
+            value={customerNumber ?? ''}
+          />
+        ) : null}
+        {hasApprovedInvoiceValue(businessId) ? (
+          <DefinitionRow
+            label={uiText.customers.businessId}
+            value={businessId}
+          />
+        ) : null}
+        {hasApprovedInvoiceValue(vatNumber ?? '') ? (
+          <DefinitionRow
+            label={uiText.companySettings.vatNumber}
+            value={vatNumber ?? ''}
+          />
+        ) : null}
+        {hasApprovedInvoiceValue(streetAddress) ? (
+          <DefinitionRow
+            label={uiText.companySettings.streetAddress}
+            value={streetAddress}
+          />
+        ) : null}
+        {hasApprovedInvoiceValue(postalCode) ||
+        hasApprovedInvoiceValue(city) ? (
+          <DefinitionRow
+            label={uiText.invoicing.postalCodeAndCity}
+            value={[postalCode, city].filter(hasApprovedInvoiceValue).join(' ')}
+          />
+        ) : null}
+        {hasApprovedInvoiceValue(email) ? (
+          <DefinitionRow label={uiText.companySettings.email} value={email} />
+        ) : null}
+        {hasApprovedInvoiceValue(phone) ? (
+          <DefinitionRow label={uiText.companySettings.phone} value={phone} />
+        ) : null}
+      </dl>
     </section>
   );
 }
@@ -168,54 +181,56 @@ function InvoiceFacts({
   return (
     <section className={styles.box}>
       <h3>{uiText.invoicing.basicInformation}</h3>
-      <DefinitionRow
-        label={uiText.invoicing.invoiceDate}
-        value={formatApprovedInvoiceDate(invoice.invoiceDate)}
-      />
-      <DefinitionRow
-        label={uiText.invoicing.dueDate}
-        value={formatApprovedInvoiceDate(invoice.dueDate)}
-      />
-      <DefinitionRow
-        label={uiText.invoicing.paymentTermDays}
-        value={`${invoice.paymentTermDays}`}
-      />
-      <DefinitionRow
-        label={uiText.invoicing.reminderPeriodDays}
-        value={`${invoice.reminderPeriodDays}`}
-      />
-      <DefinitionRow
-        label={uiText.invoicing.latePaymentInterest}
-        value={formatApprovedInvoicePercent(
-          invoice.latePaymentInterestBasisPoints,
-        )}
-      />
-      <DefinitionRow
-        label={uiText.invoicing.referenceNumber}
-        value={invoice.referenceNumber}
-      />
-      <DefinitionRow
-        label={uiText.invoicing.approvedAt}
-        value={formatApprovedInvoiceDate(invoice.approvedAt.slice(0, 10))}
-      />
-      {hasApprovedInvoiceValue(invoice.orderNumber) ? (
+      <dl className={styles.detailList}>
         <DefinitionRow
-          label={uiText.invoicing.orderNumber}
-          value={invoice.orderNumber}
+          label={uiText.invoicing.invoiceDate}
+          value={formatApprovedInvoiceDate(invoice.invoiceDate)}
         />
-      ) : null}
-      {hasApprovedInvoiceValue(invoice.deliveryAddressText) ? (
         <DefinitionRow
-          label={uiText.invoicing.deliveryAddressText}
-          value={invoice.deliveryAddressText}
+          label={uiText.invoicing.dueDate}
+          value={formatApprovedInvoiceDate(invoice.dueDate)}
         />
-      ) : null}
-      {hasApprovedInvoiceValue(invoice.subject) ? (
-        <DefinitionRow label={uiText.invoicing.subject} value={invoice.subject} />
-      ) : null}
-      {hasApprovedInvoiceValue(invoice.note) ? (
-        <DefinitionRow label={uiText.invoicing.note} value={invoice.note} />
-      ) : null}
+        <DefinitionRow
+          label={uiText.invoicing.paymentTermDays}
+          value={`${invoice.paymentTermDays}`}
+        />
+        <DefinitionRow
+          label={uiText.invoicing.reminderPeriodDays}
+          value={`${invoice.reminderPeriodDays}`}
+        />
+        <DefinitionRow
+          label={uiText.invoicing.latePaymentInterest}
+          value={formatApprovedInvoicePercent(
+            invoice.latePaymentInterestBasisPoints,
+          )}
+        />
+        <DefinitionRow
+          label={uiText.invoicing.referenceNumber}
+          value={invoice.referenceNumber}
+        />
+        <DefinitionRow
+          label={uiText.invoicing.approvedAt}
+          value={formatApprovedInvoiceDate(invoice.approvedAt.slice(0, 10))}
+        />
+        {hasApprovedInvoiceValue(invoice.orderNumber) ? (
+          <DefinitionRow
+            label={uiText.invoicing.orderNumber}
+            value={invoice.orderNumber}
+          />
+        ) : null}
+        {hasApprovedInvoiceValue(invoice.deliveryAddressText) ? (
+          <DefinitionRow
+            label={uiText.invoicing.deliveryAddressText}
+            value={invoice.deliveryAddressText}
+          />
+        ) : null}
+        {hasApprovedInvoiceValue(invoice.subject) ? (
+          <DefinitionRow label={uiText.invoicing.subject} value={invoice.subject} />
+        ) : null}
+        {hasApprovedInvoiceValue(invoice.note) ? (
+          <DefinitionRow label={uiText.invoicing.note} value={invoice.note} />
+        ) : null}
+      </dl>
     </section>
   );
 }
@@ -228,10 +243,10 @@ function DefinitionRow({
   value: string;
 }): React.JSX.Element {
   return (
-    <p>
-      <strong>{label}: </strong>
-      <span>{value}</span>
-    </p>
+    <div className={styles.detailRow}>
+      <dt>{label}</dt>
+      <dd className={styles.value}>{value}</dd>
+    </div>
   );
 }
 
@@ -326,13 +341,33 @@ function VatBreakdown({
   return (
     <section className={styles.box}>
       <h3>{uiText.invoicing.vatBreakdown}</h3>
-      <div className={styles.summaryTable}>
+      <div className={styles.vatTable} role="table">
+        <div className={styles.vatHeader} role="row">
+          <span role="columnheader">{uiText.invoicing.rowVat}</span>
+          <span className={styles.number} role="columnheader">
+            {uiText.invoicing.netAmount}
+          </span>
+          <span className={styles.number} role="columnheader">
+            {uiText.invoicing.vatAmount}
+          </span>
+          <span className={styles.number} role="columnheader">
+            {uiText.invoicing.grossTotal}
+          </span>
+        </div>
         {breakdown.map((item) => (
-          <div key={item.vatRateBasisPoints}>
-            <span>{formatApprovedInvoicePercent(item.vatRateBasisPoints)}</span>
-            <span>{formatApprovedInvoiceCurrency(item.netCents)}</span>
-            <span>{formatApprovedInvoiceCurrency(item.vatCents)}</span>
-            <strong>{formatApprovedInvoiceCurrency(item.grossCents)}</strong>
+          <div className={styles.vatRow} key={item.vatRateBasisPoints} role="row">
+            <span role="cell">
+              {formatApprovedInvoicePercent(item.vatRateBasisPoints)}
+            </span>
+            <span className={styles.number} role="cell">
+              {formatApprovedInvoiceCurrency(item.netCents)}
+            </span>
+            <span className={styles.number} role="cell">
+              {formatApprovedInvoiceCurrency(item.vatCents)}
+            </span>
+            <strong className={styles.number} role="cell">
+              {formatApprovedInvoiceCurrency(item.grossCents)}
+            </strong>
           </div>
         ))}
       </div>
@@ -374,36 +409,38 @@ function PaymentDetails({
   return (
     <section className={`${styles.box} ${styles.payment}`}>
       <h3>{uiText.invoicing.paymentDetails}</h3>
-      {hasApprovedInvoiceValue(invoice.companyBankNameSnapshot) ? (
+      <dl className={styles.detailList}>
+        {hasApprovedInvoiceValue(invoice.companyBankNameSnapshot) ? (
+          <DefinitionRow
+            label={uiText.companySettings.bankName}
+            value={invoice.companyBankNameSnapshot}
+          />
+        ) : null}
+        {hasApprovedInvoiceValue(invoice.companyIbanSnapshot) ? (
+          <DefinitionRow
+            label={uiText.companySettings.iban}
+            value={invoice.companyIbanSnapshot}
+          />
+        ) : null}
+        {hasApprovedInvoiceValue(invoice.companyBicSnapshot) ? (
+          <DefinitionRow
+            label={uiText.companySettings.bic}
+            value={invoice.companyBicSnapshot}
+          />
+        ) : null}
         <DefinitionRow
-          label={uiText.companySettings.bankName}
-          value={invoice.companyBankNameSnapshot}
+          label={uiText.invoicing.referenceNumber}
+          value={invoice.referenceNumber}
         />
-      ) : null}
-      {hasApprovedInvoiceValue(invoice.companyIbanSnapshot) ? (
         <DefinitionRow
-          label={uiText.companySettings.iban}
-          value={invoice.companyIbanSnapshot}
+          label={uiText.invoicing.dueDate}
+          value={formatApprovedInvoiceDate(invoice.dueDate)}
         />
-      ) : null}
-      {hasApprovedInvoiceValue(invoice.companyBicSnapshot) ? (
         <DefinitionRow
-          label={uiText.companySettings.bic}
-          value={invoice.companyBicSnapshot}
+          label={uiText.invoicing.total}
+          value={formatApprovedInvoiceCurrency(invoice.totals.grossTotalCents)}
         />
-      ) : null}
-      <DefinitionRow
-        label={uiText.invoicing.referenceNumber}
-        value={invoice.referenceNumber}
-      />
-      <DefinitionRow
-        label={uiText.invoicing.dueDate}
-        value={formatApprovedInvoiceDate(invoice.dueDate)}
-      />
-      <DefinitionRow
-        label={uiText.invoicing.total}
-        value={formatApprovedInvoiceCurrency(invoice.totals.grossTotalCents)}
-      />
+      </dl>
     </section>
   );
 }

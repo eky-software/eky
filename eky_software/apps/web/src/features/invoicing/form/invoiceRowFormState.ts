@@ -113,7 +113,7 @@ function createInvoiceRowForm(id: string): InvoiceRowForm {
   return {
     id,
     description: '',
-    quantity: '1,00',
+    quantity: '0',
     unit: 'h',
     unitPrice: '',
     vatRateBasisPoints: 2550,

@@ -77,6 +77,11 @@ export function InvoiceRowEditor({
             name={`${row.id}-quantity`}
             type="text"
             value={row.quantity}
+            onFocus={() => {
+              if (row.quantity === '0') {
+                onChange(row.id, 'quantity', '');
+              }
+            }}
             onChange={(event) =>
               onChange(row.id, 'quantity', event.target.value)
             }

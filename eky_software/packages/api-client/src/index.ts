@@ -10,6 +10,7 @@ export type {
   ApprovedInvoiceNumberingMode,
   ApprovedInvoicePriceInputMode,
   ApprovedInvoiceReferenceNumberType,
+  ApprovedInvoiceSummary,
   ApprovedInvoiceTotals,
   ApprovedInvoiceUnit,
   ApprovedInvoiceVatBreakdown,

@@ -1,11 +1,28 @@
 import { describe, expect, it } from 'vitest';
 
 import type { GetApprovedInvoiceInput } from '../application/getApprovedInvoice.js';
+import type { ListApprovedInvoicesInput } from '../application/listApprovedInvoices.js';
 import { ApprovedInvoiceNotFoundError } from '../application/approvedInvoiceNotFoundError.js';
+import type { ApprovedInvoiceSummary } from '../domain/approvedInvoiceSummary.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import { createApprovedInvoiceRoutes } from './approvedInvoiceRoutes.js';
 
 describe('approved invoice routes', () => {
+  it('returns approved invoice summaries in the company scope', async () => {
+    const invoiceSummary = createApprovedInvoiceSummary();
+    const { app, getListInput } = createTestApp({
+      invoices: [invoiceSummary],
+    });
+
+    const response = await app.request('/invoices');
+
+    await expect(response.json()).resolves.toEqual({
+      invoices: [invoiceSummary],
+    });
+    expect(response.status).toBe(200);
+    expect(getListInput()).toEqual({ companyId: 'dev-company' });
+  });
+
   it('returns an approved invoice by id', async () => {
     const invoice = createApprovedInvoiceView();
     const { app, getInput } = createTestApp({ invoice });
@@ -70,8 +87,10 @@ describe('approved invoice routes', () => {
 function createTestApp(options: {
   error?: Error;
   invoice?: ApprovedInvoiceView;
+  invoices?: ApprovedInvoiceSummary[];
 }) {
   let input: GetApprovedInvoiceInput | undefined;
+  let listInput: ListApprovedInvoicesInput | undefined;
   const app = createApprovedInvoiceRoutes({
     async getApprovedInvoice(nextInput) {
       input = nextInput;
@@ -86,11 +105,39 @@ function createTestApp(options: {
 
       return options.invoice;
     },
+    async listApprovedInvoices(nextInput) {
+      listInput = nextInput;
+
+      if (options.error !== undefined) {
+        throw options.error;
+      }
+
+      return options.invoices ?? [];
+    },
   });
 
   return {
     app,
     getInput: () => input,
+    getListInput: () => listInput,
+  };
+}
+
+function createApprovedInvoiceSummary(): ApprovedInvoiceSummary {
+  return {
+    id: 'invoice-1',
+    invoiceNumber: '20260001',
+    referenceNumber: '202600017',
+    status: 'approved',
+    customerId: 'customer-1',
+    customerNumberSnapshot: '1001',
+    customerNameSnapshot: 'Example Customer Oy',
+    billingRecipientNameSnapshot: 'Billing Recipient Oy',
+    invoiceDate: '2026-06-13',
+    dueDate: '2026-06-27',
+    grossTotalCents: 12550,
+    approvedAt: '2026-06-13T10:00:00.000Z',
+    updatedAt: '2026-06-13T10:00:00.000Z',
   };
 }
 

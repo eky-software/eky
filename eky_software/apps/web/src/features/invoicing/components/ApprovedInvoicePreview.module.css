@@ -21,27 +21,52 @@
   margin-top: 8px;
 }
 
-.summaryGrid {
+.detailsStack {
   display: grid;
   gap: 16px;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.75fr);
-}
-
-.partyGrid {
-  display: grid;
-  gap: 16px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .box {
   border: 1px solid var(--color-border);
   border-radius: 8px;
+  min-width: 0;
   padding: 16px;
 }
 
 .box h3 {
   font-size: 1rem;
   margin: 0 0 10px;
+}
+
+.value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.detailList {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 170px minmax(0, 1fr);
+  margin: 0;
+}
+
+.detailRow {
+  display: contents;
+}
+
+.detailRow dt {
+  grid-column: 1;
+  font-weight: 800;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.detailRow dd {
+  grid-column: 2;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .lines {
@@ -92,6 +117,33 @@
   display: flex;
   gap: 16px;
   justify-content: space-between;
+  min-width: 0;
+}
+
+.vatTable {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.vatHeader,
+.vatRow {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(90px, 0.7fr) repeat(3, minmax(90px, 1fr));
+  padding: 10px 12px;
+}
+
+.vatHeader {
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.vatRow {
+  border-top: 1px solid var(--color-border);
 }
 
 .grandTotal {
@@ -111,9 +163,18 @@
 }
 
 @media (max-width: 1100px) {
-  .summaryGrid,
-  .partyGrid,
   .totalsGrid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .detailList {
+    grid-template-columns: 1fr;
+  }
+
+  .detailRow dt,
+  .detailRow dd {
+    grid-column: 1;
   }
 }
