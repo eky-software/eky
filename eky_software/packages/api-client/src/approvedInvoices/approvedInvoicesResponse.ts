@@ -5,12 +5,23 @@ import type {
   ApprovedInvoiceNumberingMode,
   ApprovedInvoicePriceInputMode,
   ApprovedInvoiceReferenceNumberType,
+  ApprovedInvoiceSummary,
   ApprovedInvoiceTotals,
   ApprovedInvoiceUnit,
   ApprovedInvoiceVatBreakdown,
   ApprovedInvoiceView,
   ApprovedInvoiceViewStatus,
 } from './approvedInvoicesTypes.js';
+
+export function readApprovedInvoiceListResponse(
+  responseBody: unknown,
+): ApprovedInvoiceSummary[] {
+  if (!isRecord(responseBody) || !Array.isArray(responseBody.invoices)) {
+    throw invalidApprovedInvoiceResponse(responseBody);
+  }
+
+  return responseBody.invoices.map(parseApprovedInvoiceSummary);
+}
 
 export function readApprovedInvoiceResponse(
   responseBody: unknown,
@@ -20,6 +31,33 @@ export function readApprovedInvoiceResponse(
   }
 
   return parseApprovedInvoiceView(responseBody.invoice);
+}
+
+function parseApprovedInvoiceSummary(
+  value: unknown,
+): ApprovedInvoiceSummary {
+  if (!isRecord(value)) {
+    throw invalidApprovedInvoiceResponse(value);
+  }
+
+  return {
+    id: readString(value, 'id'),
+    invoiceNumber: readString(value, 'invoiceNumber'),
+    referenceNumber: readString(value, 'referenceNumber'),
+    status: parseStatus(value.status),
+    customerId: readString(value, 'customerId'),
+    customerNumberSnapshot: readString(value, 'customerNumberSnapshot'),
+    customerNameSnapshot: readString(value, 'customerNameSnapshot'),
+    billingRecipientNameSnapshot: readString(
+      value,
+      'billingRecipientNameSnapshot',
+    ),
+    invoiceDate: readString(value, 'invoiceDate'),
+    dueDate: readString(value, 'dueDate'),
+    grossTotalCents: readSafeInteger(value, 'grossTotalCents'),
+    approvedAt: readString(value, 'approvedAt'),
+    updatedAt: readString(value, 'updatedAt'),
+  };
 }
 
 function parseApprovedInvoiceView(value: unknown): ApprovedInvoiceView {

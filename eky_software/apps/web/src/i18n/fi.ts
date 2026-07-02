@@ -275,6 +275,10 @@ export const uiText = {
       'Voit avata hyväksytyn laskun tarkistettavaksi ennen tulostus- ja PDF-vaihetta.',
     approveDraftUnsavedChanges: 'Tallenna muutokset ennen hyväksyntää.',
     approvedInvoiceKicker: 'Hyväksytty lasku',
+    approvedInvoiceCount: 'Hyväksyttyjen laskujen määrä',
+    approvedInvoiceList: 'Hyväksytyt laskut',
+    approvedInvoiceListLoadError:
+      'Hyväksyttyjä laskuja ei voitu ladata. Yritä hetken kuluttua uudelleen.',
     approvedInvoiceLoadError:
       'Hyväksyttyä laskua ei voitu ladata. Yritä hetken kuluttua uudelleen.',
     approvedInvoiceLoading: 'Ladataan hyväksyttyä laskua...',
@@ -284,6 +288,9 @@ export const uiText = {
     approvedInvoicePreviewHelp:
       'Tämä on hyväksytyn laskun tarkistusnäkymä snapshot-tiedoista. Varsinainen tulostus- ja PDF-pohja tehdään seuraavassa vaiheessa.',
     approvedInvoicePreviewTitle: 'Hyväksytyn laskun katselu',
+    approvedInvoices: 'Hyväksytyt',
+    approvedInvoicesEmpty: 'Hyväksyttyjä laskuja ei ole vielä.',
+    approvedInvoicesLoading: 'Ladataan hyväksyttyjä laskuja...',
     approvedAt: 'Hyväksytty',
     approvingDraft: 'Hyväksytään...',
     autosaveError: 'Automaattitallennus epäonnistui.',
@@ -350,6 +357,9 @@ export const uiText = {
     invoiceRows: 'Laskurivit',
     invoiceRowsHelp:
       'Lisää laskutettavat työt ja tuotteet riveittäin. Summat tarkistetaan backendissä tallennettaessa.',
+    fillDummyInvoice: 'Täytä testilasku',
+    invoicePaymentSettingsLoadError:
+      'Laskutuksen oletusarvoja ei voitu ladata. Voit syöttää arvot käsin.',
     hourlyRateShortcutHelpPrefix: 'Pikavalinta',
     hourlyRateShortcutHelpSuffix:
       'täyttää valitun asiakkaan tuntihinnan kerran automaattisesti.',
@@ -364,10 +374,12 @@ export const uiText = {
       'Esikatselu auttaa tarkistamaan rivit. Backend laskee lopulliset summat tallennuksessa.',
     invoiceTotalsUnavailable:
       'Summia ei voida näyttää ennen kuin rivit ovat kelvollisia.',
+    grossTotal: 'Brutto',
     loadError: 'Laskuluonnoksia ei voitu ladata. Yritä hetken kuluttua uudelleen.',
     loading: 'Ladataan laskuluonnoksia...',
     newInvoice: 'Uusi lasku',
     newInvoiceKicker: 'Laskuluonnos',
+    netAmount: 'Netto',
     netTotal: 'Veroton',
     notSet: 'Ei asetettu',
     note: 'Lisätieto',
@@ -376,6 +388,7 @@ export const uiText = {
     orderNumberPlaceholder: 'Asiakkaan tilausnumero',
     paymentTermDays: 'Maksuehto päivinä',
     paymentDetails: 'Maksutiedot',
+    postalCodeAndCity: 'Postinumero ja kaupunki',
     priceInputGross: 'Verollinen hinta',
     priceInputMode: 'Hintojen syöttötapa',
     priceInputNet: 'Veroton hinta',
@@ -419,6 +432,7 @@ export const uiText = {
       'Laskuluonnosta ei voitu avata. Yritä hetken kuluttua uudelleen.',
     openDraftPrompt: 'Valitse avattava laskuluonnos listasta.',
     openingDraft: 'Avataan laskuluonnosta...',
+    open: 'Avaa',
     status: 'Tila',
     statusApproved: 'Hyväksytty',
     statusDraft: 'Luonnos',
@@ -432,6 +446,7 @@ export const uiText = {
     unitHour: 'h',
     unitKilometre: 'km',
     unitPiece: 'kpl',
+    vatAmount: 'Vero',
     vatTotal: 'ALV',
     vatBreakdown: 'ALV-erittely',
     vatRate: 'ALV',

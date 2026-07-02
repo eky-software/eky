@@ -2,6 +2,7 @@ import { useEffect, useReducer, useRef, useState } from 'react';
 import type { ApprovedInvoiceResult, InvoiceDraft } from '@eky/api-client';
 
 import { InvoiceDraftList } from './InvoiceDraftList.js';
+import { ApprovedInvoiceList } from './ApprovedInvoiceList.js';
 import { ApprovedInvoicePreview } from './ApprovedInvoicePreview.js';
 import { NewInvoiceForm } from './NewInvoiceForm.js';
 import styles from './InvoicingPage.module.css';
@@ -22,6 +23,10 @@ import {
   type InvoiceCompanySettingsState,
 } from '../hooks/useInvoiceCompanySettings.js';
 import {
+  useInvoicePaymentDefaults,
+  type InvoicePaymentDefaultsState,
+} from '../hooks/useInvoicePaymentDefaults.js';
+import {
   useInvoiceDraftEditor,
   type InvoiceDraftEditorState,
 } from '../hooks/useInvoiceDraftEditor.js';
@@ -29,6 +34,10 @@ import {
   useApprovedInvoice,
   type ApprovedInvoiceState,
 } from '../hooks/useApprovedInvoice.js';
+import {
+  useApprovedInvoices,
+  type ApprovedInvoiceListState,
+} from '../hooks/useApprovedInvoices.js';
 import {
   deleteInvoiceDraftAndRefresh,
   useDeleteInvoiceDraft,
@@ -46,8 +55,10 @@ export function InvoicingPage({
   const draftState = useInvoiceDrafts();
   const customerListState = useInvoiceCustomers();
   const companySettingsState = useInvoiceCompanySettings();
+  const invoicePaymentDefaultsState = useInvoicePaymentDefaults();
   const draftEditorState = useInvoiceDraftEditor();
   const approvedInvoiceState = useApprovedInvoice();
+  const approvedInvoiceListState = useApprovedInvoices();
   const deleteState = useDeleteInvoiceDraft();
   const [pendingDeleteDraftId, setPendingDeleteDraftId] = useState<string | null>(null);
   const previousNavigationRevision = useRef(navigationRevision);
@@ -111,6 +122,7 @@ export function InvoicingPage({
 
   function handleDraftApproved(_approvedInvoice: ApprovedInvoiceResult): void {
     void draftState.refreshDrafts();
+    void approvedInvoiceListState.refreshApprovedInvoices();
   }
 
   useEffect(() => {
@@ -126,11 +138,13 @@ export function InvoicingPage({
     <InvoicingPageView
       {...draftState}
       activeView={activeView}
+      approvedInvoiceListState={approvedInvoiceListState}
       approvedInvoiceState={approvedInvoiceState}
       customerListState={customerListState}
       companySettingsState={companySettingsState}
       deleteState={deleteState}
       draftEditorState={draftEditorState}
+      invoicePaymentDefaultsState={invoicePaymentDefaultsState}
       pendingDeleteDraftId={pendingDeleteDraftId}
       onBackToDrafts={handleBackToDrafts}
       onCancelDeleteDraft={handleCancelDeleteDraft}
@@ -147,11 +161,13 @@ export function InvoicingPage({
 
 interface InvoicingPageViewProps extends InvoiceDraftListState {
   activeView: InvoicingPageMode;
+  approvedInvoiceListState: ApprovedInvoiceListState;
   approvedInvoiceState: ApprovedInvoiceState;
   customerListState: InvoiceCustomerListState;
   companySettingsState: InvoiceCompanySettingsState;
   deleteState: DeleteInvoiceDraftState;
   draftEditorState: InvoiceDraftEditorState;
+  invoicePaymentDefaultsState: InvoicePaymentDefaultsState;
   pendingDeleteDraftId: string | null;
   onBackToDrafts(): void;
   onCancelDeleteDraft(): void;
@@ -166,11 +182,13 @@ interface InvoicingPageViewProps extends InvoiceDraftListState {
 
 export function InvoicingPageView({
   activeView,
+  approvedInvoiceListState,
   approvedInvoiceState,
   customerListState,
   companySettingsState,
   deleteState,
   draftEditorState,
+  invoicePaymentDefaultsState,
   drafts,
   errorMessage,
   isLoading,
@@ -196,51 +214,83 @@ export function InvoicingPageView({
       </section>
 
       {activeView === 'draftList' ? (
-        <section className={`panel ${styles.draftListPanel}`}>
-          <header className={`panel-header ${styles.draftListHeader}`}>
-            <div>
-              <p className="panel-kicker">{uiText.invoicing.drafts}</p>
-              <h2>{uiText.invoicing.draftList}</h2>
-            </div>
-            <div className="panel-actions">
-              {!isLoading && errorMessage === null ? (
-                <span
-                  className="count-badge"
-                  aria-label={uiText.invoicing.draftCount}
+        <div className={styles.listStack}>
+          <section className={`panel ${styles.draftListPanel}`}>
+            <header className={`panel-header ${styles.draftListHeader}`}>
+              <div>
+                <p className="panel-kicker">{uiText.invoicing.drafts}</p>
+                <h2>{uiText.invoicing.draftList}</h2>
+              </div>
+              <div className="panel-actions">
+                {!isLoading && errorMessage === null ? (
+                  <span
+                    className="count-badge"
+                    aria-label={uiText.invoicing.draftCount}
+                  >
+                    {drafts.length}
+                  </span>
+                ) : null}
+                <button
+                  className="primary-action"
+                  onClick={onNewInvoice}
+                  type="button"
                 >
-                  {drafts.length}
-                </span>
-              ) : null}
-              <button
-                className="primary-action"
-                onClick={onNewInvoice}
-                type="button"
-              >
-                {uiText.invoicing.newInvoice}
-              </button>
-            </div>
-          </header>
+                  {uiText.invoicing.newInvoice}
+                </button>
+              </div>
+            </header>
 
-          <InvoiceDraftList
-            customers={customerListState.customers}
-            customerErrorMessage={customerListState.errorMessage}
-            drafts={drafts}
-            errorMessage={errorMessage}
-            isCustomerLoading={customerListState.isLoading}
-            isLoading={isLoading}
-            deleteErrorMessage={deleteState.errorMessage}
-            deletingDraftId={deleteState.deletingDraftId}
-            pendingDeleteDraftId={pendingDeleteDraftId}
-            onCancelDelete={onCancelDeleteDraft}
-            onConfirmDelete={onConfirmDeleteDraft}
-            onOpenDraft={onOpenDraft}
-            onRequestDelete={onRequestDeleteDraft}
-          />
-        </section>
+            <InvoiceDraftList
+              customers={customerListState.customers}
+              customerErrorMessage={customerListState.errorMessage}
+              drafts={drafts}
+              errorMessage={errorMessage}
+              isCustomerLoading={customerListState.isLoading}
+              isLoading={isLoading}
+              deleteErrorMessage={deleteState.errorMessage}
+              deletingDraftId={deleteState.deletingDraftId}
+              pendingDeleteDraftId={pendingDeleteDraftId}
+              onCancelDelete={onCancelDeleteDraft}
+              onConfirmDelete={onConfirmDeleteDraft}
+              onOpenDraft={onOpenDraft}
+              onRequestDelete={onRequestDeleteDraft}
+            />
+          </section>
+
+          <section className={`panel ${styles.draftListPanel}`}>
+            <header className={`panel-header ${styles.draftListHeader}`}>
+              <div>
+                <p className="panel-kicker">
+                  {uiText.invoicing.approvedInvoices}
+                </p>
+                <h2>{uiText.invoicing.approvedInvoiceList}</h2>
+              </div>
+              <div className="panel-actions">
+                {!approvedInvoiceListState.isLoading &&
+                approvedInvoiceListState.errorMessage === null ? (
+                  <span
+                    className="count-badge"
+                    aria-label={uiText.invoicing.approvedInvoiceCount}
+                  >
+                    {approvedInvoiceListState.approvedInvoices.length}
+                  </span>
+                ) : null}
+              </div>
+            </header>
+
+            <ApprovedInvoiceList
+              approvedInvoices={approvedInvoiceListState.approvedInvoices}
+              errorMessage={approvedInvoiceListState.errorMessage}
+              isLoading={approvedInvoiceListState.isLoading}
+              onOpenApprovedInvoice={onOpenApprovedInvoice}
+            />
+          </section>
+        </div>
       ) : activeView === 'newInvoice' ? (
         <NewInvoiceForm
           companySettingsState={companySettingsState}
           customerListState={customerListState}
+          invoicePaymentDefaultsState={invoicePaymentDefaultsState}
           mode={{ type: 'create' }}
           onBack={onBackToDrafts}
           onDraftApproved={onDraftApproved}
@@ -252,6 +302,7 @@ export function InvoicingPageView({
           companySettingsState={companySettingsState}
           customerListState={customerListState}
           draftEditorState={draftEditorState}
+          invoicePaymentDefaultsState={invoicePaymentDefaultsState}
           onBack={onBackToDrafts}
           onDraftApproved={onDraftApproved}
           onDraftSaved={onDraftSaved}
@@ -271,6 +322,7 @@ interface InvoiceDraftEditViewProps {
   companySettingsState: InvoiceCompanySettingsState;
   customerListState: InvoiceCustomerListState;
   draftEditorState: InvoiceDraftEditorState;
+  invoicePaymentDefaultsState: InvoicePaymentDefaultsState;
   onBack(): void;
   onDraftApproved(approvedInvoice: ApprovedInvoiceResult): void;
   onDraftSaved(savedDraft: InvoiceDraft): void;
@@ -281,6 +333,7 @@ function InvoiceDraftEditView({
   companySettingsState,
   customerListState,
   draftEditorState,
+  invoicePaymentDefaultsState,
   onBack,
   onDraftApproved,
   onDraftSaved,
@@ -327,6 +380,7 @@ function InvoiceDraftEditView({
       key={draftEditorState.draft.id}
       companySettingsState={companySettingsState}
       customerListState={customerListState}
+      invoicePaymentDefaultsState={invoicePaymentDefaultsState}
       mode={{
         draft: draftEditorState.draft,
         type: 'edit',

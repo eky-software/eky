@@ -1,4 +1,5 @@
 import type {
+  ApprovedInvoiceSummary,
   ApprovedInvoiceView,
   Customer,
   InvoiceDraftSummary,
@@ -33,6 +34,8 @@ describe('InvoicingPageView', () => {
     expect(html).toContain(uiText.invoicing.statusDraft);
     expect(html).toContain(`aria-label="${uiText.invoicing.deleteDraft}"`);
     expect(html).toContain(uiText.invoicing.newInvoice);
+    expect(html).toContain(uiText.invoicing.approvedInvoiceList);
+    expect(html).toContain('Laskunumero 20260001');
     expect(html).toContain('<button');
     expect(html).not.toContain(uiText.invoicing.saveDraft);
   });
@@ -160,6 +163,7 @@ describe('InvoicingPageView', () => {
     expect(html).toContain(uiText.invoicing.invoiceTotalsPreviewHelp);
     expect(html).toContain(uiText.invoicing.invoiceTotalsUnavailable);
     expect(html).toContain('noValidate=""');
+    expect(html).toContain(uiText.invoicing.fillDummyInvoice);
     expect(html).not.toContain(uiText.invoicing.validateForm);
     expect(html).toContain(uiText.invoicing.save);
     expect(html).not.toContain(uiText.invoicing.saveDraftLater);
@@ -309,8 +313,10 @@ function renderPage(
   props: Omit<
     InvoicingPageViewProps,
     | 'companySettingsState'
+    | 'approvedInvoiceListState'
     | 'approvedInvoiceState'
     | 'deleteState'
+    | 'invoicePaymentDefaultsState'
     | 'onCancelDeleteDraft'
     | 'onConfirmDeleteDraft'
     | 'onDraftApproved'
@@ -324,8 +330,10 @@ function renderPage(
       Pick<
         InvoicingPageViewProps,
         | 'companySettingsState'
+        | 'approvedInvoiceListState'
         | 'approvedInvoiceState'
         | 'deleteState'
+        | 'invoicePaymentDefaultsState'
         | 'onCancelDeleteDraft'
         | 'onConfirmDeleteDraft'
         | 'onDraftApproved'
@@ -339,9 +347,11 @@ function renderPage(
 ): string {
   return renderToStaticMarkup(
     <InvoicingPageView
+      approvedInvoiceListState={createApprovedInvoiceListState()}
       approvedInvoiceState={createApprovedInvoiceState()}
       companySettingsState={createCompanySettingsState()}
       deleteState={createDeleteState()}
+      invoicePaymentDefaultsState={createInvoicePaymentDefaultsState()}
       onCancelDeleteDraft={vi.fn()}
       onConfirmDeleteDraft={vi.fn()}
       onDraftApproved={vi.fn()}
@@ -353,6 +363,18 @@ function renderPage(
       {...props}
     />,
   );
+}
+
+function createApprovedInvoiceListState(
+  overrides: Partial<InvoicingPageViewProps['approvedInvoiceListState']> = {},
+): InvoicingPageViewProps['approvedInvoiceListState'] {
+  return {
+    approvedInvoices: [createApprovedInvoiceSummary()],
+    errorMessage: null,
+    isLoading: false,
+    refreshApprovedInvoices: vi.fn(),
+    ...overrides,
+  };
 }
 
 function createApprovedInvoiceState(
@@ -406,6 +428,18 @@ function createCompanySettingsState() {
   };
 }
 
+function createInvoicePaymentDefaultsState() {
+  return {
+    errorMessage: null,
+    isLoading: false,
+    settings: {
+      defaultLatePaymentInterestBasisPoints: 950,
+      defaultReminderPeriodDays: 8,
+      isPersisted: true,
+    },
+  };
+}
+
 function createCustomerListState() {
   return {
     customers: [createCustomer()],
@@ -450,6 +484,24 @@ function createInvoiceDraftSummary(): InvoiceDraftSummary {
     netTotalCents: 14_250,
     vatTotalCents: 3634,
     grossTotalCents: 17_884,
+    updatedAt: '2026-06-13T18:00:00.000Z',
+  };
+}
+
+function createApprovedInvoiceSummary(): ApprovedInvoiceSummary {
+  return {
+    id: 'invoice-1',
+    invoiceNumber: '20260001',
+    referenceNumber: '202600017',
+    status: 'approved',
+    customerId: 'customer-1',
+    customerNumberSnapshot: '1001',
+    customerNameSnapshot: 'Esimerkki Asiakas Oy',
+    billingRecipientNameSnapshot: 'Esimerkki Asiakas Oy',
+    invoiceDate: '2026-06-13',
+    dueDate: '2026-06-27',
+    grossTotalCents: 17_884,
+    approvedAt: '2026-06-13T18:00:00.000Z',
     updatedAt: '2026-06-13T18:00:00.000Z',
   };
 }

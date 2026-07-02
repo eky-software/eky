@@ -1,5 +1,6 @@
 import type { DatabaseConnection } from '../../../database/connection/createDatabaseConnection.js';
 import type { InvoiceLineRow, InvoiceRow } from '../../../database/schema.js';
+import type { ApprovedInvoiceSummary } from '../domain/approvedInvoiceSummary.js';
 import type {
   ApprovedInvoiceVatBreakdown,
   ApprovedInvoiceView,
@@ -13,6 +14,7 @@ import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
 
 type ApprovedInvoiceKeyParameters = [string, string];
 type ApprovedInvoiceLineParameters = [string];
+type ApprovedInvoiceListParameters = [string];
 
 export class SqliteApprovedInvoiceReader implements ApprovedInvoiceReader {
   constructor(private readonly database: DatabaseConnection) {}
@@ -31,6 +33,24 @@ export class SqliteApprovedInvoiceReader implements ApprovedInvoiceReader {
     const vatBreakdown = createVatBreakdown(lines);
 
     return toApprovedInvoiceView(invoice, lines, vatBreakdown);
+  }
+
+  async listApprovedInvoiceSummaries(
+    companyId: string,
+  ): Promise<ApprovedInvoiceSummary[]> {
+    return this.database
+      .prepare<ApprovedInvoiceListParameters, InvoiceRow>(
+        `
+          SELECT *
+          FROM invoices
+          WHERE
+            company_id = ?
+            AND status = 'approved'
+          ORDER BY approved_at DESC, id DESC
+        `,
+      )
+      .all(companyId)
+      .map(toApprovedInvoiceSummary);
   }
 
   private getInvoiceRow(
@@ -63,6 +83,24 @@ export class SqliteApprovedInvoiceReader implements ApprovedInvoiceReader {
       )
       .all(invoiceId);
   }
+}
+
+function toApprovedInvoiceSummary(invoice: InvoiceRow): ApprovedInvoiceSummary {
+  return {
+    id: invoice.id,
+    invoiceNumber: invoice.invoice_number,
+    referenceNumber: invoice.reference_number ?? '',
+    status: 'approved',
+    customerId: invoice.customer_id,
+    customerNumberSnapshot: invoice.customer_number_snapshot,
+    customerNameSnapshot: invoice.customer_name_snapshot,
+    billingRecipientNameSnapshot: invoice.billing_recipient_name_snapshot,
+    invoiceDate: invoice.invoice_date,
+    dueDate: invoice.due_date,
+    grossTotalCents: invoice.total_gross_cents,
+    approvedAt: invoice.approved_at,
+    updatedAt: invoice.updated_at,
+  };
 }
 
 function toApprovedInvoiceView(

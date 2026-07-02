@@ -14,7 +14,7 @@ describe('invoiceRowFormState', () => {
       {
         id: 'invoice-row-1',
         description: '',
-        quantity: '1,00',
+        quantity: '0',
         unit: 'h',
         unitPrice: '',
         vatRateBasisPoints: 2550,
@@ -176,7 +176,7 @@ describe('invoiceRowFormState', () => {
 
     expect(updatedRows[0]).toBe(rows[0]);
     expect(updatedRows[1]?.description).toBe('Työtunti');
-    expect(updatedRows[1]?.quantity).toBe('1,00');
+    expect(updatedRows[1]?.quantity).toBe('0');
   });
 
   it('stores unit, VAT and discount selections as local form values', () => {

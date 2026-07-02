@@ -7,13 +7,24 @@ import { uiText } from '../../../i18n/fi.js';
 
 describe('ApprovedInvoicePreview', () => {
   it('renders approved invoice snapshot details', () => {
+    const longEmail =
+      'billing.with.a.very.long.address.for.preview.testing@example-builder-company.test';
     const html = renderToStaticMarkup(
-      <ApprovedInvoicePreview invoice={createApprovedInvoiceView()} onBack={vi.fn()} />,
+      <ApprovedInvoicePreview
+        invoice={{
+          ...createApprovedInvoiceView(),
+          companyEmailSnapshot: longEmail,
+        }}
+        onBack={vi.fn()}
+      />,
     );
 
     expect(html).toContain('Lasku 20260001');
     expect(html).toContain(uiText.invoicing.statusApproved);
     expect(html).toContain('Example Builder Oy');
+    expect(html).toContain(uiText.companySettings.vatNumber);
+    expect(html).toContain(uiText.companySettings.streetAddress);
+    expect(html).toContain(longEmail);
     expect(html).toContain('FI76543210');
     expect(html).toContain('Example Customer Oy');
     expect(html).toContain('Billing Recipient Oy');
@@ -23,6 +34,37 @@ describe('ApprovedInvoicePreview', () => {
     expect(html).toContain('125,50');
     expect(html).toContain('FI2112345600000785');
     expect(html).toContain('NDEAFIHH');
+  });
+
+  it('renders invoice detail sections in a readable review order', () => {
+    const html = renderToStaticMarkup(
+      <ApprovedInvoicePreview invoice={createApprovedInvoiceView()} onBack={vi.fn()} />,
+    );
+
+    expect(html.indexOf(uiText.invoicing.seller)).toBeLessThan(
+      html.indexOf(uiText.invoicing.basicInformation),
+    );
+    expect(html.indexOf(uiText.invoicing.basicInformation)).toBeLessThan(
+      html.indexOf(uiText.invoicing.customer),
+    );
+    expect(html.indexOf(uiText.invoicing.customer)).toBeLessThan(
+      html.indexOf(uiText.invoicing.invoiceRecipient),
+    );
+  });
+
+  it('renders clear VAT breakdown and payment details', () => {
+    const html = renderToStaticMarkup(
+      <ApprovedInvoicePreview invoice={createApprovedInvoiceView()} onBack={vi.fn()} />,
+    );
+
+    expect(html).toContain(uiText.invoicing.rowVat);
+    expect(html).toContain(uiText.invoicing.netAmount);
+    expect(html).toContain(uiText.invoicing.vatAmount);
+    expect(html).toContain(uiText.invoicing.grossTotal);
+    expect(html).toContain(uiText.invoicing.paymentDetails);
+    expect(html).toContain(uiText.invoicing.referenceNumber);
+    expect(html).toContain(uiText.invoicing.dueDate);
+    expect(html).toContain(uiText.invoicing.total);
   });
 
   it('hides empty optional invoice fields', () => {

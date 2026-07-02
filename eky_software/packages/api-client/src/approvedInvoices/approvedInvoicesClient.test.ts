@@ -3,10 +3,31 @@ import { describe, expect, it } from 'vitest';
 import {
   createEkyApiClient,
   EkyApiError,
+  type ApprovedInvoiceSummary,
   type ApprovedInvoiceView,
 } from '../index.js';
 
 describe('approved invoices api client', () => {
+  it('lists approved invoices through GET /invoices', async () => {
+    const requests = createRequestLog();
+    const invoiceSummary = createTestApprovedInvoiceSummary();
+    const client = createTestClient(requests, { invoices: [invoiceSummary] });
+
+    const result = await client.listApprovedInvoices();
+
+    expect(result).toEqual([invoiceSummary]);
+    expect(requests).toEqual([
+      {
+        input: '/invoices',
+        init: {
+          headers: {
+            Accept: 'application/json',
+          },
+        },
+      },
+    ]);
+  });
+
   it('gets an approved invoice through GET /invoices/:id', async () => {
     const requests = createRequestLog();
     const invoice = createTestApprovedInvoiceView();
@@ -34,6 +55,15 @@ describe('approved invoices api client', () => {
     await expect(
       client.getApprovedInvoice('invoice-1'),
     ).rejects.toBeInstanceOf(EkyApiError);
+  });
+
+  it('rejects a missing approved invoice list response array', async () => {
+    const requests = createRequestLog();
+    const client = createTestClient(requests, {});
+
+    await expect(client.listApprovedInvoices()).rejects.toBeInstanceOf(
+      EkyApiError,
+    );
   });
 
   it('rejects invalid enum values in the response', async () => {
@@ -247,6 +277,24 @@ function createTestApprovedInvoiceView(): ApprovedInvoiceView {
       },
     ],
     createdAt: '2026-06-13T10:00:00.000Z',
+    approvedAt: '2026-06-13T10:00:00.000Z',
+    updatedAt: '2026-06-13T10:00:00.000Z',
+  };
+}
+
+function createTestApprovedInvoiceSummary(): ApprovedInvoiceSummary {
+  return {
+    id: 'invoice-1',
+    invoiceNumber: '20260001',
+    referenceNumber: '202600017',
+    status: 'approved',
+    customerId: 'customer-1',
+    customerNumberSnapshot: '1001',
+    customerNameSnapshot: 'Example Customer Oy',
+    billingRecipientNameSnapshot: 'Billing Recipient Oy',
+    invoiceDate: '2026-06-13',
+    dueDate: '2026-06-27',
+    grossTotalCents: 12550,
     approvedAt: '2026-06-13T10:00:00.000Z',
     updatedAt: '2026-06-13T10:00:00.000Z',
   };

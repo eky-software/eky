@@ -116,6 +116,38 @@ describe('SqliteApprovedInvoiceReader', () => {
     expect(invoice?.totals.vatBreakdown).toEqual(invoice?.vatBreakdown);
   });
 
+  it('lists approved invoice summaries without lines or master data joins', async () => {
+    const reader = new SqliteApprovedInvoiceReader(database);
+
+    await expect(
+      reader.listApprovedInvoiceSummaries('dev-company'),
+    ).resolves.toEqual([
+      {
+        id: 'invoice-1',
+        invoiceNumber: '20260001',
+        referenceNumber: '202600017',
+        status: 'approved',
+        customerId: 'customer-1',
+        customerNumberSnapshot: '1001',
+        customerNameSnapshot: 'Snapshot Customer Oy',
+        billingRecipientNameSnapshot: 'Snapshot Recipient Oy',
+        invoiceDate: '2026-06-13',
+        dueDate: '2026-06-27',
+        grossTotalCents: 35100,
+        approvedAt: '2026-06-13T10:00:00.000Z',
+        updatedAt: '2026-06-13T10:00:00.000Z',
+      },
+    ]);
+  });
+
+  it('does not list approved invoices outside the company scope', async () => {
+    const reader = new SqliteApprovedInvoiceReader(database);
+
+    await expect(
+      reader.listApprovedInvoiceSummaries('other-company'),
+    ).resolves.toEqual([]);
+  });
+
   it('returns undefined when the invoice is outside the company scope', async () => {
     const reader = new SqliteApprovedInvoiceReader(database);
 

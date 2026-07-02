@@ -3,6 +3,11 @@
   gap: 18px;
 }
 
+.listStack {
+  display: grid;
+  gap: 18px;
+}
+
 .pageHeader {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);

@@ -24,6 +24,14 @@
   margin: 14px 18px 0;
 }
 
+.toolRow {
+  display: flex;
+  justify-content: flex-end;
+  border-bottom: 1px solid var(--color-border);
+  padding: 10px 18px;
+  background: var(--color-surface);
+}
+
 .autosaveMessage {
   margin: 10px 18px 0;
 }

@@ -6,6 +6,7 @@ export type {
   ApprovedInvoicePriceInputMode,
   ApprovedInvoiceReferenceNumberType,
   ApprovedInvoicesApi,
+  ApprovedInvoiceSummary,
   ApprovedInvoiceTotals,
   ApprovedInvoiceUnit,
   ApprovedInvoiceVatBreakdown,

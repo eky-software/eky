@@ -1,7 +1,11 @@
 import { requestJson } from '../http.js';
-import { readApprovedInvoiceResponse } from './approvedInvoicesResponse.js';
+import {
+  readApprovedInvoiceListResponse,
+  readApprovedInvoiceResponse,
+} from './approvedInvoicesResponse.js';
 import type {
   ApprovedInvoicesApi,
+  ApprovedInvoiceSummary,
   ApprovedInvoiceView,
 } from './approvedInvoicesTypes.js';
 
@@ -18,6 +22,16 @@ export function createApprovedInvoicesApi(
       );
 
       return readApprovedInvoiceResponse(responseBody);
+    },
+
+    async listApprovedInvoices(): Promise<ApprovedInvoiceSummary[]> {
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        '/invoices',
+      );
+
+      return readApprovedInvoiceListResponse(responseBody);
     },
   };
 }
