@@ -8,7 +8,10 @@ Tavoite on varmistaa, että PDF, tulostus ja myöhempi sähköpostilähetys
 rakennetaan Eky-projektin moduulirajojen, snapshot-periaatteen ja
 riippuvuuslinjan mukaisesti.
 
-Tämä dokumentti ei vielä toteuta PDF:ää.
+Ensimmäinen PDFKit-teknologiakokeilu on lisätty Invoicing-moduulin
+infrastructure-kerrokseen. Se todistaa PDF:n teknisen muodostamisen
+`ApprovedInvoiceView`-snapshotista, mutta ei vielä tallenna PDF:ää laskulle,
+avaa PDF-reittejä, muuta web-käyttöliittymää tai lähetä laskua.
 
 ## Nykyinen Tilanne
 
@@ -48,9 +51,9 @@ laskun snapshot-datasta.
 
 Etenemisjärjestys:
 
-1. PDFKit-spike ja lisenssitarkistus
-2. ensimmäinen `ApprovedInvoicePdfRenderer` Invoicing-moduuliin
-3. PDF:n tekninen testaus `ApprovedInvoiceView`-testidatalla
+1. PDFKit-spike ja lisenssitarkistus - tehty
+2. ensimmäinen `ApprovedInvoicePdfRenderer` Invoicing-moduuliin - tehty
+3. PDF:n tekninen testaus `ApprovedInvoiceView`-testidatalla - tehty
 4. `invoice_documents`-taulu ja paikallinen tiedostotallennus
 5. `POST /invoices/:id/pdf`
 6. `GET /invoices/:id/pdf`
@@ -84,11 +87,21 @@ Invoicing omistaa:
 - laskuun liittyvän liiketoimintalogiikan
 - hyväksytyn laskun snapshot-periaatteen
 
-Ensimmäinen PDF-spike saa olla kokonaan Invoicing-moduulin sisällä esimerkiksi:
+Ensimmäinen PDF-spike on kokonaan Invoicing-moduulin sisällä:
 
 ```text
 apps/backend/src/modules/invoicing/infrastructure/pdf/
 ```
+
+Rendererin nykyinen rajapinta on:
+
+```ts
+renderApprovedInvoicePdf(invoice: ApprovedInvoiceView): Promise<Uint8Array>
+```
+
+Renderer käyttää vain sille annettua `ApprovedInvoiceView`-snapshotia. Se ei
+hae tietokantaa, Company Settings -master-dataa, Customers-master-dataa,
+invoice draftia tai HTTP-kontekstia.
 
 Jos PDF-tekninen koodi alkaa toistua myöhemmin muualla, voidaan harkita
 rajattua backend shared -kerrosta:
@@ -185,11 +198,17 @@ liiketoimintasääntöihin.
 
 #### PDF-tarpeet
 
-PDF:ää varten ei vielä ole backendissä PDF-apuja, storage-kerrosta tai
-PDF-riippuvuutta.
+PDF:n ensimmäinen teknologiakokeilu käyttää `pdfkit`-kirjastoa backendin
+Invoicing-moduulin infrastructure-kerroksessa.
 
-Suositus: ensimmäinen spike Invoicingin sisällä. `shared/pdf` vasta, jos
-tekninen piirtoapu alkaa oikeasti toistua.
+Suositus jatkoon: pidä PDF-renderöinti edelleen Invoicingin sisällä.
+`shared/pdf` luodaan vasta, jos tekninen piirtoapu alkaa oikeasti toistua
+useassa backend-moduulissa. Ensimmäinen varsinainen tuotantopolku tarvitsee
+vielä `invoice_documents`-taulun, paikallisen storage-adapterin ja rajatut
+PDF-reitit.
+
+Lisenssihuomio on kirjattu tiedostoon
+`docs/legal/third-party-licenses.md`.
 
 ### API-client
 
