@@ -29,23 +29,32 @@ export function drawLabelValueLines(
     }
 
     if (line.label) {
+      doc.font('Helvetica-Bold');
+      const labelHeight = doc.heightOfString(line.label, {
+        width: labelWidth,
+      });
+
+      doc.font('Helvetica');
+      const valueWidth = width - labelWidth;
+      const valueHeight = doc.heightOfString(line.value, {
+        width: valueWidth,
+      });
+
       doc.font('Helvetica-Bold').text(line.label, x, currentY, {
         width: labelWidth,
-        continued: true,
       });
       doc.font('Helvetica').text(line.value, x + labelWidth, currentY, {
-        width: width - labelWidth,
+        width: valueWidth,
       });
+
+      currentY += Math.max(12, labelHeight, valueHeight);
     } else {
-      doc.font('Helvetica').text(line.value, x, currentY, { width });
+      doc.font('Helvetica');
+      const valueHeight = doc.heightOfString(line.value, { width });
+      doc.text(line.value, x, currentY, { width });
+      currentY += Math.max(12, valueHeight);
     }
 
-    currentY += Math.max(
-      12,
-      doc.heightOfString(line.value, {
-        width: line.label ? width - labelWidth : width,
-      }),
-    );
     currentY += lineGap;
   }
 
