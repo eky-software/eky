@@ -18,6 +18,9 @@ Laskun hyväksynnän, virallisen laskunumeron, numerointisarjojen, snapshotin ja
 
 Hyväksytyn laskun katselu-, print- ja PDF-polun tarvitsemat data- ja snapshot-valmiudet on kuvattu dokumentissa `docs/architecture/invoice-print-data-foundation-plan.md`.
 
+PDF-polun ensimmäinen teknologiakokeilu ja sisäisten PDF-apujen rajaus on
+kuvattu dokumentissa `docs/architecture/pdf-and-internal-tools-planning.md`.
+
 ## Moduuli omistaa
 
 - laskuluonnokset
@@ -183,6 +186,11 @@ tietoja Customer- tai Company Settings -master-datasta eikä laskuluonnoksesta.
 Webin ensimmäinen hyväksytyn laskun katselunäkymä käyttää tätä
 `ApprovedInvoiceView`-snapshotia. Se on tarkistusnäkymä ennen varsinaista
 print-layoutia, PDF:ää ja lähetyspolkuja.
+
+Ensimmäinen PDFKit-spike muodostaa A4-kokoisen PDF:n
+`ApprovedInvoiceView`-snapshotista Invoicing-moduulin infrastructure-kerroksessa.
+Se ei vielä tallenna PDF:ää laskulle, luo `invoice_documents`-tietomallia,
+avaa PDF-reittejä eikä merkitse laskua lähetetyksi.
 
 ## Viitenumero Ja Maksutiedot
 
