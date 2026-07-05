@@ -15,7 +15,10 @@ describe('ApprovedInvoicePreview', () => {
           ...createApprovedInvoiceView(),
           companyEmailSnapshot: longEmail,
         }}
+        isReopening={false}
+        reopenErrorMessage={null}
         onBack={vi.fn()}
+        onEditInvoice={vi.fn()}
       />,
     );
 
@@ -38,7 +41,13 @@ describe('ApprovedInvoicePreview', () => {
 
   it('renders invoice detail sections in a readable review order', () => {
     const html = renderToStaticMarkup(
-      <ApprovedInvoicePreview invoice={createApprovedInvoiceView()} onBack={vi.fn()} />,
+      <ApprovedInvoicePreview
+        invoice={createApprovedInvoiceView()}
+        isReopening={false}
+        reopenErrorMessage={null}
+        onBack={vi.fn()}
+        onEditInvoice={vi.fn()}
+      />,
     );
 
     expect(html.indexOf(uiText.invoicing.seller)).toBeLessThan(
@@ -54,7 +63,13 @@ describe('ApprovedInvoicePreview', () => {
 
   it('renders clear VAT breakdown and payment details', () => {
     const html = renderToStaticMarkup(
-      <ApprovedInvoicePreview invoice={createApprovedInvoiceView()} onBack={vi.fn()} />,
+      <ApprovedInvoicePreview
+        invoice={createApprovedInvoiceView()}
+        isReopening={false}
+        reopenErrorMessage={null}
+        onBack={vi.fn()}
+        onEditInvoice={vi.fn()}
+      />,
     );
 
     expect(html).toContain(uiText.invoicing.rowVat);
@@ -77,7 +92,10 @@ describe('ApprovedInvoicePreview', () => {
           orderNumber: '',
           subject: '',
         }}
+        isReopening={false}
+        reopenErrorMessage={null}
         onBack={vi.fn()}
+        onEditInvoice={vi.fn()}
       />,
     );
 
@@ -85,6 +103,20 @@ describe('ApprovedInvoicePreview', () => {
     expect(html).not.toContain(`${uiText.invoicing.note}:`);
     expect(html).not.toContain(`${uiText.invoicing.orderNumber}:`);
     expect(html).not.toContain(`${uiText.invoicing.subject}:`);
+  });
+
+  it('renders the edit action for approved invoices', () => {
+    const html = renderToStaticMarkup(
+      <ApprovedInvoicePreview
+        invoice={createApprovedInvoiceView()}
+        isReopening={false}
+        reopenErrorMessage={null}
+        onBack={vi.fn()}
+        onEditInvoice={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain(uiText.invoicing.editApprovedInvoice);
   });
 });
 

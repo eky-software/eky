@@ -24,8 +24,25 @@ export interface ApprovedInvoiceResult {
   status: ApprovedInvoiceStatus;
 }
 
+export interface ReopenApprovedInvoicePersistenceInput {
+  actorUserId: string;
+  auditEventId: string;
+  companyId: string;
+  invoiceId: string;
+  reopenedAt: string;
+}
+
+export interface ReopenedApprovedInvoiceResult {
+  invoiceId: string;
+  draftId: string;
+}
+
 export interface InvoiceApprovalRepository {
   approveDraft(
     input: ApproveInvoiceDraftPersistenceInput,
   ): Promise<ApprovedInvoiceResult | undefined>;
+
+  reopenApprovedInvoiceForEditing(
+    input: ReopenApprovedInvoicePersistenceInput,
+  ): Promise<ReopenedApprovedInvoiceResult | undefined>;
 }

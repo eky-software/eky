@@ -12,4 +12,5 @@ export type {
   ApprovedInvoiceVatBreakdown,
   ApprovedInvoiceView,
   ApprovedInvoiceViewStatus,
+  ReopenedApprovedInvoice,
 } from './approvedInvoicesTypes.js';

@@ -48,6 +48,30 @@ describe('approved invoices api client', () => {
     ]);
   });
 
+  it('reopens an approved invoice for editing through POST /invoices/:id/reopen-for-edit', async () => {
+    const requests = createRequestLog();
+    const reopenedInvoice = {
+      invoiceDraftId: 'draft-1',
+      invoiceId: 'invoice-1',
+    };
+    const client = createTestClient(requests, reopenedInvoice);
+
+    const result = await client.reopenApprovedInvoiceForEditing('invoice/1');
+
+    expect(result).toEqual(reopenedInvoice);
+    expect(requests).toEqual([
+      {
+        input: '/invoices/invoice%2F1/reopen-for-edit',
+        init: {
+          headers: {
+            Accept: 'application/json',
+          },
+          method: 'POST',
+        },
+      },
+    ]);
+  });
+
   it('rejects a missing invoice response object', async () => {
     const requests = createRequestLog();
     const client = createTestClient(requests, {});
@@ -64,6 +88,15 @@ describe('approved invoices api client', () => {
     await expect(client.listApprovedInvoices()).rejects.toBeInstanceOf(
       EkyApiError,
     );
+  });
+
+  it('rejects a malformed reopen response', async () => {
+    const requests = createRequestLog();
+    const client = createTestClient(requests, { invoiceId: 'invoice-1' });
+
+    await expect(
+      client.reopenApprovedInvoiceForEditing('invoice-1'),
+    ).rejects.toBeInstanceOf(EkyApiError);
   });
 
   it('rejects invalid enum values in the response', async () => {

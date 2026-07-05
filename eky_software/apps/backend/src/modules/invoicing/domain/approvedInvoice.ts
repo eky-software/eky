@@ -8,7 +8,11 @@ import type { InvoiceNumberingMode } from './invoiceNumbering.js';
 import type { ReferenceNumberType } from './invoiceReferenceNumber.js';
 
 export type ApprovedInvoiceStatus = 'approved';
-export type InvoiceAuditAction = 'invoice.approved';
+export type StoredInvoiceStatus = ApprovedInvoiceStatus | 'reopened_for_edit';
+export type InvoiceAuditAction =
+  | 'invoice.approved'
+  | 'invoice.reopened_for_edit'
+  | 'invoice.reapproved';
 
 export interface ApprovedInvoiceLine {
   id: string;

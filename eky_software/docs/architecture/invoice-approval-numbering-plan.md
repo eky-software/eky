@@ -195,6 +195,16 @@ Jos lasku on `approved` mutta ei vielä `sent`:
 - voidaan sallia hallittu korjaus ennen lähetystä
 - laskunumero ei muutu
 - korjaus auditoidaan
+- nykyisessä local-MVP:ssä tämä tehdään palauttamalla hyväksytty lasku
+  sisäiseen `reopened_for_edit`-tilaan
+- hyväksytyn laskun lähdeluonnos vapautetaan muokattavaksi poistamalla sen
+  `approved_invoice_id`- ja `approved_at`-lukitusarvot
+- hyväksytty lasku ei näy hyväksyttyjen laskujen listalla silloin, kun sen
+  sisäinen tila on `reopened_for_edit`
+- uudelleenhyväksyntä päivittää saman `invoices`-rivin, säilyttää
+  laskunumeron ja viitenumeron, korvaa rivit/snapshotit ja kirjaa auditiksi
+  `invoice.reapproved`
+- käyttäjän UI-toiminto voi olla esimerkiksi `Muokkaa laskua`
 
 Jos lasku on `sent`:
 

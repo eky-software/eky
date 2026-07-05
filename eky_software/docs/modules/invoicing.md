@@ -168,6 +168,13 @@ käsitellä hyväksyntään linkitettyä luonnosta. Hyväksyntään linkitetty d
 myöskään kuulu muokattavien draftien lukupolkuun; hyväksytty lasku luetaan
 myöhemmin omasta `invoices`-polustaan.
 
+Jos hyväksyttyä mutta vielä lähettämätöntä laskua pitää korjata, Invoicing voi
+palauttaa sen hallitusti sisäiseen `reopened_for_edit`-tilaan ja vapauttaa
+alkuperäisen lähdeluonnoksen muokattavaksi. Uudelleenhyväksyntä säilyttää saman
+laskunumeron ja viitenumeron, korvaa hyväksytyn laskun snapshotit ja kirjaa
+korjauksen audit-tapahtumana. Lähetettyjen laskujen korjaus tehdään myöhemmin
+hyvityslaskulla, ei muokkaamalla lähetettyä laskua.
+
 Numerointiasetukset voivat näkyä käyttäjälle Oma yritys / Asetukset -kokonaisuudessa, mutta niiden domain-omistaja on Invoicing.
 
 Tarkat säännöt on kuvattu dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
