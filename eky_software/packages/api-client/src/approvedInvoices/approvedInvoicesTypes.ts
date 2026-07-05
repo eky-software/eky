@@ -120,7 +120,13 @@ export interface ApprovedInvoiceSummary {
   updatedAt: string;
 }
 
+export interface ReopenedApprovedInvoice {
+  invoiceId: string;
+  invoiceDraftId: string;
+}
+
 export interface ApprovedInvoicesApi {
   getApprovedInvoice(id: string): Promise<ApprovedInvoiceView>;
   listApprovedInvoices(): Promise<ApprovedInvoiceSummary[]>;
+  reopenApprovedInvoiceForEditing(id: string): Promise<ReopenedApprovedInvoice>;
 }

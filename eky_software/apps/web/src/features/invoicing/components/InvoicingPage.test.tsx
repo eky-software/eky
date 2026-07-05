@@ -317,10 +317,12 @@ function renderPage(
     | 'approvedInvoiceState'
     | 'deleteState'
     | 'invoicePaymentDefaultsState'
+    | 'reopenApprovedInvoiceState'
     | 'onCancelDeleteDraft'
     | 'onConfirmDeleteDraft'
     | 'onDraftApproved'
     | 'onDraftSaved'
+    | 'onEditApprovedInvoice'
     | 'onOpenApprovedInvoice'
     | 'onRequestDeleteDraft'
     | 'pendingDeleteDraftId'
@@ -334,10 +336,12 @@ function renderPage(
         | 'approvedInvoiceState'
         | 'deleteState'
         | 'invoicePaymentDefaultsState'
+        | 'reopenApprovedInvoiceState'
         | 'onCancelDeleteDraft'
         | 'onConfirmDeleteDraft'
         | 'onDraftApproved'
         | 'onDraftSaved'
+        | 'onEditApprovedInvoice'
         | 'onOpenApprovedInvoice'
         | 'onRequestDeleteDraft'
         | 'pendingDeleteDraftId'
@@ -352,10 +356,12 @@ function renderPage(
       companySettingsState={createCompanySettingsState()}
       deleteState={createDeleteState()}
       invoicePaymentDefaultsState={createInvoicePaymentDefaultsState()}
+      reopenApprovedInvoiceState={createReopenApprovedInvoiceState()}
       onCancelDeleteDraft={vi.fn()}
       onConfirmDeleteDraft={vi.fn()}
       onDraftApproved={vi.fn()}
       onDraftSaved={vi.fn()}
+      onEditApprovedInvoice={vi.fn()}
       onOpenApprovedInvoice={vi.fn()}
       onRequestDeleteDraft={vi.fn()}
       pendingDeleteDraftId={null}
@@ -398,6 +404,21 @@ function createDeleteState(
     deleteDraft: vi.fn(async () => true),
     deletingDraftId: null,
     errorMessage: null,
+    ...overrides,
+  };
+}
+
+function createReopenApprovedInvoiceState(
+  overrides: Partial<InvoicingPageViewProps['reopenApprovedInvoiceState']> = {},
+): InvoicingPageViewProps['reopenApprovedInvoiceState'] {
+  return {
+    clearError: vi.fn(),
+    errorMessage: null,
+    isReopening: false,
+    reopenApprovedInvoice: vi.fn(async () => ({
+      invoiceDraftId: 'draft-1',
+      invoiceId: 'invoice-1',
+    })),
     ...overrides,
   };
 }

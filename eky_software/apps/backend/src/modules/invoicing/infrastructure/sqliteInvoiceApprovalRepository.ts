@@ -2,6 +2,7 @@ import type { DatabaseConnection } from '../../../database/connection/createData
 import type {
   InvoiceDraftLineTable,
   InvoiceDraftTable,
+  InvoiceRow,
   NewInvoiceAuditEventRow,
   NewInvoiceLineRow,
   NewInvoiceNumberSequenceRow,
@@ -24,7 +25,10 @@ import type {
   ApproveInvoiceDraftPersistenceInput,
   ApprovedInvoiceResult,
   InvoiceApprovalRepository,
+  ReopenApprovedInvoicePersistenceInput,
+  ReopenedApprovedInvoiceResult,
 } from '../ports/invoiceApprovalRepository.js';
+import type { InvoiceAuditAction } from '../domain/approvedInvoice.js';
 import type {
   InvoiceApprovalSnapshotData,
   InvoiceApprovalSnapshotReader,
@@ -45,6 +49,10 @@ type InvoiceNumberSequenceUpsertParameters = [
 ];
 
 type InvoiceInsertParameters = NewInvoiceRow;
+type InvoiceUpdateParameters = NewInvoiceRow;
+type ReopenedInvoiceDraftKeyParameters = [string, string];
+type ReopenedInvoiceKeyParameters = [string, string];
+type InvoiceLineDeleteParameters = [string];
 
 type InvoiceLineInsertParameters = [
   string,
@@ -78,6 +86,16 @@ type InvoiceAuditEventInsertParameters = [
 ];
 
 type InvoiceDraftApproveParameters = [string, string, string, string, string];
+type InvoiceDraftUnlockParameters = [string, string, string, string];
+type InvoiceStatusUpdateParameters = [string, string, string];
+
+interface InvoiceAuditEventSource {
+  actorUserId: string;
+  auditEventId: string;
+  companyId: string;
+  draftId: string;
+  invoiceId: string;
+}
 
 interface InvoiceNumberingSettingsRow {
   mode: string;
@@ -208,6 +226,40 @@ function createInvoiceRow(
   };
 }
 
+function createReapprovedInvoiceRow(
+  input: ApproveInvoiceDraftPersistenceInput,
+  draft: InvoiceDraftTable,
+  existingInvoice: InvoiceRow,
+  snapshot: InvoiceApprovalSnapshotData,
+): NewInvoiceRow {
+  return {
+    ...createInvoiceRow(
+      {
+        ...input,
+        invoiceId: existingInvoice.id,
+      },
+      draft,
+      {
+        companyId: existingInvoice.company_id,
+        createdAt: existingInvoice.created_at,
+        fiscalYearStartMonth: 1,
+        firstSequenceNumber: existingInvoice.sequence_number,
+        mode: existingInvoice.numbering_mode as InvoiceNumberingMode,
+        sequencePadding: 0,
+        seriesKey: existingInvoice.series_key,
+        updatedAt: existingInvoice.updated_at,
+      },
+      existingInvoice.sequence_scope,
+      existingInvoice.sequence_number,
+      existingInvoice.invoice_number,
+      existingInvoice.reference_number ?? '',
+      (existingInvoice.reference_number_type ?? 'finnishDomestic') as ReferenceNumberType,
+      snapshot,
+    ),
+    created_at: existingInvoice.created_at,
+  };
+}
+
 function createInvoiceLineRows(
   input: ApproveInvoiceDraftPersistenceInput,
   lines: InvoiceDraftLineTable[],
@@ -238,18 +290,20 @@ function createInvoiceLineRows(
 }
 
 function createAuditEventRow(
-  input: ApproveInvoiceDraftPersistenceInput,
+  input: InvoiceAuditEventSource,
   invoiceNumber: string,
+  action: InvoiceAuditAction,
+  createdAt: string,
 ): NewInvoiceAuditEventRow {
   return {
     id: input.auditEventId,
     company_id: input.companyId,
     actor_user_id: input.actorUserId,
-    action: 'invoice.approved',
+    action,
     draft_id: input.draftId,
     invoice_id: input.invoiceId,
     invoice_number: invoiceNumber,
-    created_at: input.approvedAt,
+    created_at: createdAt,
   };
 }
 
@@ -284,6 +338,56 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
         throw new ApproveInvoiceDraftError(
           'Invoice draft must have at least one line before approval.',
         );
+      }
+
+      const reopenedInvoice = this.getReopenedInvoiceForDraft(
+        input.companyId,
+        input.draftId,
+      );
+
+      if (reopenedInvoice !== undefined) {
+        const snapshot = this.snapshotReader.getSnapshotData({
+          billingRecipientCustomerId: draft.billing_recipient_customer_id,
+          companyId: input.companyId,
+          customerId: draft.customer_id,
+        });
+        const reapprovedInput = {
+          ...input,
+          invoiceId: reopenedInvoice.id,
+        };
+        const invoiceRow = createReapprovedInvoiceRow(
+          reapprovedInput,
+          draft,
+          reopenedInvoice,
+          snapshot,
+        );
+        const lineRows = createInvoiceLineRows(reapprovedInput, lines);
+        const auditEventRow = createAuditEventRow(
+          reapprovedInput,
+          reopenedInvoice.invoice_number,
+          'invoice.reapproved',
+          input.approvedAt,
+        );
+
+        this.updateInvoice(invoiceRow);
+        this.deleteInvoiceLines(reopenedInvoice.id);
+        this.insertInvoiceLines(lineRows);
+        this.insertAuditEvent(auditEventRow);
+        this.markDraftApproved(reapprovedInput);
+
+        return {
+          invoiceId: reopenedInvoice.id,
+          draftId: input.draftId,
+          invoiceNumber: reopenedInvoice.invoice_number,
+          referenceNumber: reopenedInvoice.reference_number ?? '',
+          referenceNumberType:
+            (reopenedInvoice.reference_number_type ??
+              'finnishDomestic') as ReferenceNumberType,
+          sequenceNumber: reopenedInvoice.sequence_number,
+          sequenceScope: reopenedInvoice.sequence_scope,
+          numberingMode: reopenedInvoice.numbering_mode as InvoiceNumberingMode,
+          status: 'approved' as const,
+        };
       }
 
       const settings = this.getNumberingSettings(input.companyId, input.seriesKey);
@@ -334,7 +438,12 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
         snapshot,
       );
       const lineRows = createInvoiceLineRows(input, lines);
-      const auditEventRow = createAuditEventRow(input, invoiceNumber);
+      const auditEventRow = createAuditEventRow(
+        input,
+        invoiceNumber,
+        'invoice.approved',
+        input.approvedAt,
+      );
 
       this.upsertNumberSequence({
         company_id: input.companyId,
@@ -363,6 +472,45 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
     });
 
     return approveTransaction();
+  }
+
+  async reopenApprovedInvoiceForEditing(
+    input: ReopenApprovedInvoicePersistenceInput,
+  ): Promise<ReopenedApprovedInvoiceResult | undefined> {
+    const reopenTransaction = this.database.transaction(() => {
+      const invoice = this.getApprovedInvoiceForReopen(
+        input.companyId,
+        input.invoiceId,
+      );
+
+      if (invoice === undefined) {
+        return undefined;
+      }
+
+      this.markInvoiceReopenedForEditing(input);
+      this.unlockSourceDraftForEditing(input, invoice.source_draft_id);
+      this.insertAuditEvent(
+        createAuditEventRow(
+          {
+            actorUserId: input.actorUserId,
+            auditEventId: input.auditEventId,
+            companyId: input.companyId,
+            draftId: invoice.source_draft_id,
+            invoiceId: invoice.id,
+          },
+          invoice.invoice_number,
+          'invoice.reopened_for_edit',
+          input.reopenedAt,
+        ),
+      );
+
+      return {
+        draftId: invoice.source_draft_id,
+        invoiceId: invoice.id,
+      };
+    });
+
+    return reopenTransaction();
   }
 
   private getDraftForApproval(
@@ -397,6 +545,42 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
             approved_at
           FROM invoice_drafts
           WHERE company_id = ? AND id = ?
+        `,
+      )
+      .get(companyId, draftId);
+  }
+
+  private getApprovedInvoiceForReopen(
+    companyId: string,
+    invoiceId: string,
+  ): InvoiceRow | undefined {
+    return this.database
+      .prepare<ReopenedInvoiceKeyParameters, InvoiceRow>(
+        `
+          SELECT *
+          FROM invoices
+          WHERE
+            company_id = ?
+            AND id = ?
+            AND status = 'approved'
+        `,
+      )
+      .get(companyId, invoiceId);
+  }
+
+  private getReopenedInvoiceForDraft(
+    companyId: string,
+    draftId: string,
+  ): InvoiceRow | undefined {
+    return this.database
+      .prepare<ReopenedInvoiceDraftKeyParameters, InvoiceRow>(
+        `
+          SELECT *
+          FROM invoices
+          WHERE
+            company_id = ?
+            AND source_draft_id = ?
+            AND status = 'reopened_for_edit'
         `,
       )
       .get(companyId, draftId);
@@ -642,6 +826,74 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
       .run(invoice);
   }
 
+  private updateInvoice(invoice: NewInvoiceRow): void {
+    const result = this.database
+      .prepare<InvoiceUpdateParameters>(
+        `
+          UPDATE invoices
+          SET
+            status = @status,
+            customer_id = @customer_id,
+            customer_number_snapshot = @customer_number_snapshot,
+            customer_name_snapshot = @customer_name_snapshot,
+            customer_business_id_snapshot = @customer_business_id_snapshot,
+            customer_type_snapshot = @customer_type_snapshot,
+            customer_email_snapshot = @customer_email_snapshot,
+            customer_phone_snapshot = @customer_phone_snapshot,
+            customer_street_address_snapshot = @customer_street_address_snapshot,
+            customer_postal_code_snapshot = @customer_postal_code_snapshot,
+            customer_city_snapshot = @customer_city_snapshot,
+            company_name_snapshot = @company_name_snapshot,
+            company_business_id_snapshot = @company_business_id_snapshot,
+            company_vat_number_snapshot = @company_vat_number_snapshot,
+            company_street_address_snapshot = @company_street_address_snapshot,
+            company_postal_code_snapshot = @company_postal_code_snapshot,
+            company_city_snapshot = @company_city_snapshot,
+            company_email_snapshot = @company_email_snapshot,
+            company_phone_snapshot = @company_phone_snapshot,
+            company_iban_snapshot = @company_iban_snapshot,
+            company_bic_snapshot = @company_bic_snapshot,
+            company_bank_name_snapshot = @company_bank_name_snapshot,
+            billing_recipient_customer_id = @billing_recipient_customer_id,
+            billing_recipient_customer_number_snapshot = @billing_recipient_customer_number_snapshot,
+            billing_recipient_name_snapshot = @billing_recipient_name_snapshot,
+            billing_recipient_business_id_snapshot = @billing_recipient_business_id_snapshot,
+            billing_recipient_customer_type_snapshot = @billing_recipient_customer_type_snapshot,
+            billing_recipient_email_snapshot = @billing_recipient_email_snapshot,
+            billing_recipient_phone_snapshot = @billing_recipient_phone_snapshot,
+            billing_recipient_street_address_snapshot = @billing_recipient_street_address_snapshot,
+            billing_recipient_postal_code_snapshot = @billing_recipient_postal_code_snapshot,
+            billing_recipient_city_snapshot = @billing_recipient_city_snapshot,
+            invoice_date = @invoice_date,
+            due_date = @due_date,
+            payment_term_days = @payment_term_days,
+            reminder_period_days = @reminder_period_days,
+            late_payment_interest_basis_points = @late_payment_interest_basis_points,
+            price_input_mode = @price_input_mode,
+            subject = @subject,
+            order_number = @order_number,
+            note = @note,
+            delivery_address_text = @delivery_address_text,
+            total_net_cents = @total_net_cents,
+            total_vat_cents = @total_vat_cents,
+            total_gross_cents = @total_gross_cents,
+            approved_at = @approved_at,
+            updated_at = @updated_at
+          WHERE
+            company_id = @company_id
+            AND id = @id
+            AND status = 'reopened_for_edit'
+        `,
+      )
+      .run(invoice);
+
+    if (result.changes !== 1) {
+      throw new ApproveInvoiceDraftError(
+        'Reopened invoice could not be reapproved.',
+      );
+    }
+  }
+
   private insertInvoiceLines(lines: NewInvoiceLineRow[]): void {
     const insertLine = this.database.prepare<InvoiceLineInsertParameters>(
       `
@@ -689,6 +941,17 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
         line.created_at,
       );
     }
+  }
+
+  private deleteInvoiceLines(invoiceId: string): void {
+    this.database
+      .prepare<InvoiceLineDeleteParameters>(
+        `
+          DELETE FROM invoice_lines
+          WHERE invoice_id = ?
+        `,
+      )
+      .run(invoiceId);
   }
 
   private insertAuditEvent(auditEvent: NewInvoiceAuditEventRow): void {
@@ -747,6 +1010,58 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
     if (result.changes !== 1) {
       throw new ApproveInvoiceDraftError(
         'Invoice draft could not be marked as approved.',
+      );
+    }
+  }
+
+  private markInvoiceReopenedForEditing(
+    input: ReopenApprovedInvoicePersistenceInput,
+  ): void {
+    const result = this.database
+      .prepare<InvoiceStatusUpdateParameters>(
+        `
+          UPDATE invoices
+          SET
+            status = 'reopened_for_edit',
+            updated_at = ?
+          WHERE
+            company_id = ?
+            AND id = ?
+            AND status = 'approved'
+        `,
+      )
+      .run(input.reopenedAt, input.companyId, input.invoiceId);
+
+    if (result.changes !== 1) {
+      throw new ApproveInvoiceDraftError(
+        'Approved invoice could not be reopened for editing.',
+      );
+    }
+  }
+
+  private unlockSourceDraftForEditing(
+    input: ReopenApprovedInvoicePersistenceInput,
+    draftId: string,
+  ): void {
+    const result = this.database
+      .prepare<InvoiceDraftUnlockParameters>(
+        `
+          UPDATE invoice_drafts
+          SET
+            approved_invoice_id = NULL,
+            approved_at = NULL,
+            updated_at = ?
+          WHERE
+            company_id = ?
+            AND id = ?
+            AND approved_invoice_id = ?
+        `,
+      )
+      .run(input.reopenedAt, input.companyId, draftId, input.invoiceId);
+
+    if (result.changes !== 1) {
+      throw new ApproveInvoiceDraftError(
+        'Approved invoice source draft could not be reopened for editing.',
       );
     }
   }

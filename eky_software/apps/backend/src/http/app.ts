@@ -19,6 +19,7 @@ import { getInvoiceNumberingSettings } from '../modules/invoicing/application/ge
 import { getInvoicePaymentSettings } from '../modules/invoicing/application/getInvoicePaymentSettings.js';
 import { listInvoiceDrafts } from '../modules/invoicing/application/listInvoiceDrafts.js';
 import { listApprovedInvoices } from '../modules/invoicing/application/listApprovedInvoices.js';
+import { reopenApprovedInvoiceForEditing } from '../modules/invoicing/application/reopenApprovedInvoiceForEditing.js';
 import { saveInvoiceDraft } from '../modules/invoicing/application/saveInvoiceDraft.js';
 import { updateInvoiceNumberingSettings } from '../modules/invoicing/application/updateInvoiceNumberingSettings.js';
 import { updateInvoicePaymentSettings } from '../modules/invoicing/application/updateInvoicePaymentSettings.js';
@@ -110,6 +111,8 @@ export async function createApp(): Promise<Hono> {
         getApprovedInvoice(input, approvedInvoiceReader),
       listApprovedInvoices: (input) =>
         listApprovedInvoices(input, approvedInvoiceReader),
+      reopenApprovedInvoiceForEditing: (input) =>
+        reopenApprovedInvoiceForEditing(input, { invoiceApprovalRepository }),
     }),
   );
 

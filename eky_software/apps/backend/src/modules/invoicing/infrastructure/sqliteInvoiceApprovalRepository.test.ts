@@ -41,6 +41,7 @@ const migrationNames = [
   '014_add_company_settings_vat_number.sql',
   '015_add_invoice_draft_print_foundation_fields.sql',
   '016_add_approved_invoice_print_snapshot_fields.sql',
+  '017_allow_reopened_invoice_corrections.sql',
 ];
 
 const migrationSql = migrationNames.map((migrationName) =>
@@ -609,6 +610,134 @@ describe('SqliteInvoiceApprovalRepository', () => {
       .get();
 
     expect(invoiceCount?.count).toBe(1);
+  });
+
+  it('reopens an approved invoice for editing and unlocks its source draft in one transaction', async () => {
+    const repository = new SqliteInvoiceApprovalRepository(database);
+
+    await saveDraft(database, createDraft());
+    await expect(repository.approveDraft(createApprovalInput())).resolves.toMatchObject({
+      invoiceId: 'invoice-1',
+      invoiceNumber: '20270001',
+    });
+
+    await expect(
+      repository.reopenApprovedInvoiceForEditing({
+        actorUserId: 'user-1',
+        auditEventId: 'audit-reopen-1',
+        companyId: 'dev-company',
+        invoiceId: 'invoice-1',
+        reopenedAt: '2027-01-15T13:00:00.000Z',
+      }),
+    ).resolves.toEqual({
+      draftId: 'draft-1',
+      invoiceId: 'invoice-1',
+    });
+
+    const draftRow = database
+      .prepare<
+        [string],
+        { approved_at: string | null; approved_invoice_id: string | null }
+      >(
+        `
+          SELECT approved_invoice_id, approved_at
+          FROM invoice_drafts
+          WHERE id = ?
+        `,
+      )
+      .get('draft-1');
+
+    expect(getInvoice(database, 'invoice-1')).toMatchObject({
+      status: 'reopened_for_edit',
+      updated_at: '2027-01-15T13:00:00.000Z',
+    });
+    expect(draftRow).toEqual({
+      approved_at: null,
+      approved_invoice_id: null,
+    });
+    expect(getAuditEvents(database).map((event) => event.action)).toEqual([
+      'invoice.approved',
+      'invoice.reopened_for_edit',
+    ]);
+  });
+
+  it('reapproves a reopened draft by keeping the invoice number and replacing snapshot lines', async () => {
+    const repository = new SqliteInvoiceApprovalRepository(database);
+
+    await saveDraft(database, createDraft());
+    await expect(repository.approveDraft(createApprovalInput())).resolves.toMatchObject({
+      invoiceId: 'invoice-1',
+      invoiceNumber: '20270001',
+      referenceNumber: '202700014',
+    });
+    await expect(
+      repository.reopenApprovedInvoiceForEditing({
+        actorUserId: 'user-1',
+        auditEventId: 'audit-reopen-1',
+        companyId: 'dev-company',
+        invoiceId: 'invoice-1',
+        reopenedAt: '2027-01-15T13:00:00.000Z',
+      }),
+    ).resolves.toMatchObject({ draftId: 'draft-1' });
+
+    const updatedDraft = createDraft(
+      {
+        note: 'Updated invoice note',
+        updatedAt: '2027-01-15T14:00:00.000Z',
+      },
+      [
+        createLine('line-1', 1, {
+          quantityHundredths: 200,
+          unitPriceCents: 12_000,
+          vatRateBasisPoints: 2550,
+        }),
+      ],
+    );
+    await new SqliteInvoiceDraftRepository(database).updateDraft(updatedDraft);
+
+    await expect(
+      repository.approveDraft(
+        createApprovalInput({
+          approvedAt: '2027-01-15T15:00:00.000Z',
+          auditEventId: 'audit-reapproved-1',
+          invoiceId: 'unused-new-invoice-id',
+        }),
+      ),
+    ).resolves.toEqual({
+      draftId: 'draft-1',
+      invoiceId: 'invoice-1',
+      invoiceNumber: '20270001',
+      numberingMode: 'calendarYearSequence',
+      referenceNumber: '202700014',
+      referenceNumberType: 'finnishDomestic',
+      sequenceNumber: 1,
+      sequenceScope: 'calendar-year:2027',
+      status: 'approved',
+    });
+
+    expect(getInvoice(database, 'invoice-1')).toMatchObject({
+      approved_at: '2027-01-15T15:00:00.000Z',
+      invoice_number: '20270001',
+      note: 'Updated invoice note',
+      reference_number: '202700014',
+      status: 'approved',
+      total_gross_cents: updatedDraft.totals.grossTotalCents,
+    });
+    expect(getInvoiceLines(database, 'invoice-1')).toHaveLength(1);
+    expect(getInvoiceLines(database, 'invoice-1')[0]).toMatchObject({
+      gross_cents: updatedDraft.lines[0]?.grossCents,
+      line_order: 1,
+      quantity_hundredths: 200,
+      unit_price_cents: 12_000,
+    });
+    expect(getSequence(database)).toMatchObject({
+      last_sequence_number: 1,
+    });
+    expect(getAuditEvents(database).map((event) => event.action)).toEqual([
+      'invoice.approved',
+      'invoice.reopened_for_edit',
+      'invoice.reapproved',
+    ]);
   });
 
   it('rolls back sequence and invoice writes when audit insertion fails', async () => {

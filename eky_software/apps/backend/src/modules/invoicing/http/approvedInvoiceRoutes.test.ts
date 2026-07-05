@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { GetApprovedInvoiceInput } from '../application/getApprovedInvoice.js';
 import type { ListApprovedInvoicesInput } from '../application/listApprovedInvoices.js';
+import type { ReopenApprovedInvoiceForEditingInput } from '../application/reopenApprovedInvoiceForEditing.js';
 import { ApprovedInvoiceNotFoundError } from '../application/approvedInvoiceNotFoundError.js';
 import type { ApprovedInvoiceSummary } from '../domain/approvedInvoiceSummary.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
@@ -82,6 +83,40 @@ describe('approved invoice routes', () => {
       ],
     });
   });
+
+  it('reopens an approved invoice for editing in the company scope', async () => {
+    const { app, getReopenInput } = createTestApp({});
+
+    const response = await app.request('/invoices/invoice-1/reopen-for-edit', {
+      method: 'POST',
+    });
+
+    await expect(response.json()).resolves.toEqual({
+      invoiceDraftId: 'draft-1',
+      invoiceId: 'invoice-1',
+    });
+    expect(response.status).toBe(200);
+    expect(getReopenInput()).toMatchObject({
+      actorUserId: 'dev-user',
+      companyId: 'dev-company',
+      invoiceId: 'invoice-1',
+    });
+  });
+
+  it('returns a safe 404 when reopening an invoice outside the company scope', async () => {
+    const { app } = createTestApp({
+      error: new ApprovedInvoiceNotFoundError(),
+    });
+
+    const response = await app.request('/invoices/missing/reopen-for-edit', {
+      method: 'POST',
+    });
+
+    await expect(response.json()).resolves.toEqual({
+      error: 'Approved invoice was not found.',
+    });
+    expect(response.status).toBe(404);
+  });
 });
 
 function createTestApp(options: {
@@ -91,6 +126,7 @@ function createTestApp(options: {
 }) {
   let input: GetApprovedInvoiceInput | undefined;
   let listInput: ListApprovedInvoicesInput | undefined;
+  let reopenInput: ReopenApprovedInvoiceForEditingInput | undefined;
   const app = createApprovedInvoiceRoutes({
     async getApprovedInvoice(nextInput) {
       input = nextInput;
@@ -114,12 +150,25 @@ function createTestApp(options: {
 
       return options.invoices ?? [];
     },
+    async reopenApprovedInvoiceForEditing(nextInput) {
+      reopenInput = nextInput;
+
+      if (options.error !== undefined) {
+        throw options.error;
+      }
+
+      return {
+        draftId: 'draft-1',
+        invoiceId: nextInput.invoiceId,
+      };
+    },
   });
 
   return {
     app,
     getInput: () => input,
     getListInput: () => listInput,
+    getReopenInput: () => reopenInput,
   };
 }
 

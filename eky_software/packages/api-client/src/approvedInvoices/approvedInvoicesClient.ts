@@ -2,11 +2,13 @@ import { requestJson } from '../http.js';
 import {
   readApprovedInvoiceListResponse,
   readApprovedInvoiceResponse,
+  readReopenedApprovedInvoiceResponse,
 } from './approvedInvoicesResponse.js';
 import type {
   ApprovedInvoicesApi,
   ApprovedInvoiceSummary,
   ApprovedInvoiceView,
+  ReopenedApprovedInvoice,
 } from './approvedInvoicesTypes.js';
 
 export function createApprovedInvoicesApi(
@@ -32,6 +34,19 @@ export function createApprovedInvoicesApi(
       );
 
       return readApprovedInvoiceListResponse(responseBody);
+    },
+
+    async reopenApprovedInvoiceForEditing(
+      id,
+    ): Promise<ReopenedApprovedInvoice> {
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        `/invoices/${encodeURIComponent(id)}/reopen-for-edit`,
+        { method: 'POST' },
+      );
+
+      return readReopenedApprovedInvoiceResponse(responseBody);
     },
   };
 }

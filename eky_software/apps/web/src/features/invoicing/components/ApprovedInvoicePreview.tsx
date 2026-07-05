@@ -18,12 +18,18 @@ import { uiText } from '../../../i18n/fi.js';
 
 interface ApprovedInvoicePreviewProps {
   invoice: ApprovedInvoiceView;
+  isReopening: boolean;
+  reopenErrorMessage: string | null;
   onBack(): void;
+  onEditInvoice(id: string): void;
 }
 
 export function ApprovedInvoicePreview({
   invoice,
+  isReopening,
+  reopenErrorMessage,
   onBack,
+  onEditInvoice,
 }: ApprovedInvoicePreviewProps): React.JSX.Element {
   return (
     <section className={`panel ${styles.preview}`}>
@@ -43,11 +49,27 @@ export function ApprovedInvoicePreview({
           </p>
         </div>
         <div className={styles.headerActions}>
+          <button
+            className="secondary-action"
+            disabled={isReopening}
+            onClick={() => onEditInvoice(invoice.id)}
+            type="button"
+          >
+            {isReopening
+              ? uiText.invoicing.reopeningApprovedInvoice
+              : uiText.invoicing.editApprovedInvoice}
+          </button>
           <button className="ghost-button" onClick={onBack} type="button">
             {uiText.invoicing.backToDrafts}
           </button>
         </div>
       </header>
+
+      {reopenErrorMessage !== null ? (
+        <p className="message error-message" role="alert">
+          {reopenErrorMessage}
+        </p>
+      ) : null}
 
       <div className={styles.detailsStack}>
         <PartyBox

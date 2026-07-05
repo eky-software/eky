@@ -5,6 +5,7 @@ import type {
   ApprovedInvoiceNumberingMode,
   ApprovedInvoicePriceInputMode,
   ApprovedInvoiceReferenceNumberType,
+  ReopenedApprovedInvoice,
   ApprovedInvoiceSummary,
   ApprovedInvoiceTotals,
   ApprovedInvoiceUnit,
@@ -31,6 +32,26 @@ export function readApprovedInvoiceResponse(
   }
 
   return parseApprovedInvoiceView(responseBody.invoice);
+}
+
+export function readReopenedApprovedInvoiceResponse(
+  responseBody: unknown,
+): ReopenedApprovedInvoice {
+  if (
+    !isRecord(responseBody) ||
+    typeof responseBody.invoiceId !== 'string'
+  ) {
+    throw invalidApprovedInvoiceResponse(responseBody);
+  }
+
+  if (typeof responseBody.invoiceDraftId !== 'string') {
+    throw invalidApprovedInvoiceResponse(responseBody);
+  }
+
+  return {
+    invoiceDraftId: responseBody.invoiceDraftId,
+    invoiceId: responseBody.invoiceId,
+  };
 }
 
 function parseApprovedInvoiceSummary(

@@ -346,6 +346,7 @@ export const uiText = {
       'Näkyy myöhemmin laskulla työn kohteena tai toimitusosoitteena.',
     deliveryAddressTextPlaceholder: 'Työn kohde tai toimitusosoite',
     dueDate: 'Eräpäivä',
+    editApprovedInvoice: 'Muokkaa laskua',
     editInvoice: 'Muokkaa laskuluonnosta',
     editInvoiceKicker: 'Tallennettu luonnos',
     empty: 'Laskuluonnoksia ei ole vielä.',
@@ -393,6 +394,11 @@ export const uiText = {
     priceInputMode: 'Hintojen syöttötapa',
     priceInputNet: 'Veroton hinta',
     referenceNumber: 'Viitenumero',
+    reopenApprovedInvoiceConfirm:
+      'Tämä lasku on jo hyväksytty ja sillä on laskunumero. Muokkaus kirjataan tapahtumahistoriaan ja lasku palautetaan luonnokseksi korjausta varten. Jatketaanko?',
+    reopenApprovedInvoiceError:
+      'Laskua ei voitu palauttaa muokattavaksi. Yritä hetken kuluttua uudelleen.',
+    reopeningApprovedInvoice: 'Palautetaan...',
     reminderPeriodDays: 'Huomautusaika päivinä',
     reminderPeriodDaysHelp:
       'Tyhjä kenttä käyttää oman yrityksen laskutusasetusten oletusta.',
