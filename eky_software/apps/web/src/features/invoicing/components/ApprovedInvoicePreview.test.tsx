@@ -9,18 +9,12 @@ describe('ApprovedInvoicePreview', () => {
   it('renders approved invoice snapshot details', () => {
     const longEmail =
       'billing.with.a.very.long.address.for.preview.testing@example-builder-company.test';
-    const html = renderToStaticMarkup(
-      <ApprovedInvoicePreview
-        invoice={{
-          ...createApprovedInvoiceView(),
-          companyEmailSnapshot: longEmail,
-        }}
-        isReopening={false}
-        reopenErrorMessage={null}
-        onBack={vi.fn()}
-        onEditInvoice={vi.fn()}
-      />,
-    );
+    const html = renderPreview({
+      invoice: {
+        ...createApprovedInvoiceView(),
+        companyEmailSnapshot: longEmail,
+      },
+    });
 
     expect(html).toContain('Lasku 20260001');
     expect(html).toContain(uiText.invoicing.statusApproved);
@@ -40,15 +34,7 @@ describe('ApprovedInvoicePreview', () => {
   });
 
   it('renders invoice detail sections in a readable review order', () => {
-    const html = renderToStaticMarkup(
-      <ApprovedInvoicePreview
-        invoice={createApprovedInvoiceView()}
-        isReopening={false}
-        reopenErrorMessage={null}
-        onBack={vi.fn()}
-        onEditInvoice={vi.fn()}
-      />,
-    );
+    const html = renderPreview();
 
     expect(html.indexOf(uiText.invoicing.seller)).toBeLessThan(
       html.indexOf(uiText.invoicing.basicInformation),
@@ -62,15 +48,7 @@ describe('ApprovedInvoicePreview', () => {
   });
 
   it('renders clear VAT breakdown and payment details', () => {
-    const html = renderToStaticMarkup(
-      <ApprovedInvoicePreview
-        invoice={createApprovedInvoiceView()}
-        isReopening={false}
-        reopenErrorMessage={null}
-        onBack={vi.fn()}
-        onEditInvoice={vi.fn()}
-      />,
-    );
+    const html = renderPreview();
 
     expect(html).toContain(uiText.invoicing.rowVat);
     expect(html).toContain(uiText.invoicing.netAmount);
@@ -83,21 +61,15 @@ describe('ApprovedInvoicePreview', () => {
   });
 
   it('hides empty optional invoice fields', () => {
-    const html = renderToStaticMarkup(
-      <ApprovedInvoicePreview
-        invoice={{
-          ...createApprovedInvoiceView(),
-          deliveryAddressText: '',
-          note: '',
-          orderNumber: '',
-          subject: '',
-        }}
-        isReopening={false}
-        reopenErrorMessage={null}
-        onBack={vi.fn()}
-        onEditInvoice={vi.fn()}
-      />,
-    );
+    const html = renderPreview({
+      invoice: {
+        ...createApprovedInvoiceView(),
+        deliveryAddressText: '',
+        note: '',
+        orderNumber: '',
+        subject: '',
+      },
+    });
 
     expect(html).not.toContain(`${uiText.invoicing.deliveryAddressText}:`);
     expect(html).not.toContain(`${uiText.invoicing.note}:`);
@@ -106,19 +78,29 @@ describe('ApprovedInvoicePreview', () => {
   });
 
   it('renders the edit action for approved invoices', () => {
-    const html = renderToStaticMarkup(
-      <ApprovedInvoicePreview
-        invoice={createApprovedInvoiceView()}
-        isReopening={false}
-        reopenErrorMessage={null}
-        onBack={vi.fn()}
-        onEditInvoice={vi.fn()}
-      />,
-    );
+    const html = renderPreview();
 
     expect(html).toContain(uiText.invoicing.editApprovedInvoice);
   });
 });
+
+function renderPreview(
+  options: { invoice?: ApprovedInvoiceView; pdfErrorMessage?: string | null } = {},
+): string {
+  return renderToStaticMarkup(
+    <ApprovedInvoicePreview
+      invoice={options.invoice ?? createApprovedInvoiceView()}
+      isCreatingPdf={false}
+      isReopening={false}
+      pdfErrorMessage={options.pdfErrorMessage ?? null}
+      pdfUrl="/invoices/invoice-1/pdf"
+      reopenErrorMessage={null}
+      onBack={vi.fn()}
+      onCreatePdf={vi.fn()}
+      onEditInvoice={vi.fn()}
+    />,
+  );
+}
 
 function createApprovedInvoiceView(): ApprovedInvoiceView {
   return {

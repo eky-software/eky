@@ -194,10 +194,25 @@ Webin ensimmäinen hyväksytyn laskun katselunäkymä käyttää tätä
 `ApprovedInvoiceView`-snapshotia. Se on tarkistusnäkymä ennen varsinaista
 print-layoutia, PDF:ää ja lähetyspolkuja.
 
-Ensimmäinen PDFKit-spike muodostaa A4-kokoisen PDF:n
-`ApprovedInvoiceView`-snapshotista Invoicing-moduulin infrastructure-kerroksessa.
-Se ei vielä tallenna PDF:ää laskulle, luo `invoice_documents`-tietomallia,
-avaa PDF-reittejä eikä merkitse laskua lähetetyksi.
+PDF muodostetaan `ApprovedInvoiceView`-snapshotista Invoicing-moduulin
+infrastructure-kerroksessa. Ensimmäinen local-MVP:n tuotantopolku tallentaa
+hyväksytyn laskun PDF-metadatan `invoice_documents`-tauluun ja PDF-tiedoston
+paikalliseen tiedostovarastoon.
+
+Ensimmäinen PDF-polku:
+
+- `POST /invoices/:id/pdf` luo tai palauttaa hyväksytyn laskun PDF-metadatan
+- `GET /invoices/:id/pdf` palauttaa paikallisesti tallennetun PDF-tiedoston
+- web näyttää hyväksytyllä laskulla `Luo PDF` ja `Avaa PDF` -toiminnot
+- PDF:n luonti ei merkitse laskua lähetetyksi
+- PDF:n luonti ei muuta hyväksytyn laskun snapshot-tietoja
+
+Hyväksytyllä laskulla saa olla local-MVP:ssä yksi voimassa oleva
+`approved_invoice_pdf`-dokumentti per yritys ja lasku. Jos hyväksytty mutta
+lähettämätön lasku palautetaan muokattavaksi, vanhan PDF:n metadata poistetaan
+ja paikallinen tiedosto yritetään poistaa. Uudelleenhyväksyntä luo uuden PDF:n
+samalle laskunumerolle ja viitenumerolle päivitetystä hyväksytyn laskun
+snapshotista.
 
 ## Viitenumero Ja Maksutiedot
 

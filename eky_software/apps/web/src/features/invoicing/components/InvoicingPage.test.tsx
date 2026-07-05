@@ -304,6 +304,33 @@ describe('InvoicingPageView', () => {
     expect(html).toContain('Work row');
     expect(html).toContain('25,50 %');
     expect(html).toContain('125,50');
+    expect(html).toContain(uiText.invoicing.approvedInvoicePdfCreate);
+    expect(html).toContain(uiText.invoicing.approvedInvoiceOpenPdf);
+    expect(html).toContain('/invoices/invoice-1/pdf');
+  });
+
+  it('renders a safe approved invoice PDF error without technical response data', () => {
+    const html = renderPage({
+      activeView: 'approvedInvoice',
+      approvedInvoicePdfState: createApprovedInvoicePdfState({
+        errorMessage: uiText.invoicing.approvedInvoicePdfError,
+      }),
+      approvedInvoiceState: createApprovedInvoiceState({
+        approvedInvoice: createApprovedInvoiceView(),
+      }),
+      customerListState: createCustomerListState(),
+      drafts: [],
+      errorMessage: null,
+      isLoading: false,
+      draftEditorState: createDraftEditorState(),
+      onBackToDrafts: vi.fn(),
+      onOpenDraft: vi.fn(),
+      onNewInvoice: vi.fn(),
+    });
+
+    expect(html).toContain(uiText.invoicing.approvedInvoicePdfError);
+    expect(html).not.toContain('responseBody');
+    expect(html).not.toContain('stack');
   });
 });
 
@@ -314,12 +341,14 @@ function renderPage(
     InvoicingPageViewProps,
     | 'companySettingsState'
     | 'approvedInvoiceListState'
+    | 'approvedInvoicePdfState'
     | 'approvedInvoiceState'
     | 'deleteState'
     | 'invoicePaymentDefaultsState'
     | 'reopenApprovedInvoiceState'
     | 'onCancelDeleteDraft'
     | 'onConfirmDeleteDraft'
+    | 'onCreateApprovedInvoicePdf'
     | 'onDraftApproved'
     | 'onDraftSaved'
     | 'onEditApprovedInvoice'
@@ -333,12 +362,14 @@ function renderPage(
         InvoicingPageViewProps,
         | 'companySettingsState'
         | 'approvedInvoiceListState'
+        | 'approvedInvoicePdfState'
         | 'approvedInvoiceState'
         | 'deleteState'
         | 'invoicePaymentDefaultsState'
         | 'reopenApprovedInvoiceState'
         | 'onCancelDeleteDraft'
         | 'onConfirmDeleteDraft'
+        | 'onCreateApprovedInvoicePdf'
         | 'onDraftApproved'
         | 'onDraftSaved'
         | 'onEditApprovedInvoice'
@@ -352,6 +383,7 @@ function renderPage(
   return renderToStaticMarkup(
     <InvoicingPageView
       approvedInvoiceListState={createApprovedInvoiceListState()}
+      approvedInvoicePdfState={createApprovedInvoicePdfState()}
       approvedInvoiceState={createApprovedInvoiceState()}
       companySettingsState={createCompanySettingsState()}
       deleteState={createDeleteState()}
@@ -359,6 +391,7 @@ function renderPage(
       reopenApprovedInvoiceState={createReopenApprovedInvoiceState()}
       onCancelDeleteDraft={vi.fn()}
       onConfirmDeleteDraft={vi.fn()}
+      onCreateApprovedInvoicePdf={vi.fn()}
       onDraftApproved={vi.fn()}
       onDraftSaved={vi.fn()}
       onEditApprovedInvoice={vi.fn()}
@@ -369,6 +402,19 @@ function renderPage(
       {...props}
     />,
   );
+}
+
+function createApprovedInvoicePdfState(
+  overrides: Partial<InvoicingPageViewProps['approvedInvoicePdfState']> = {},
+): InvoicingPageViewProps['approvedInvoicePdfState'] {
+  return {
+    clearError: vi.fn(),
+    createPdf: vi.fn(async () => null),
+    errorMessage: null,
+    getPdfUrl: vi.fn((id: string) => `/invoices/${id}/pdf`),
+    isCreating: false,
+    ...overrides,
+  };
 }
 
 function createApprovedInvoiceListState(

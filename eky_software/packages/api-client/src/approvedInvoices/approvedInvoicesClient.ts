@@ -1,10 +1,12 @@
 import { requestJson } from '../http.js';
 import {
+  readApprovedInvoiceDocumentMetadataResponse,
   readApprovedInvoiceListResponse,
   readApprovedInvoiceResponse,
   readReopenedApprovedInvoiceResponse,
 } from './approvedInvoicesResponse.js';
 import type {
+  ApprovedInvoiceDocumentMetadata,
   ApprovedInvoicesApi,
   ApprovedInvoiceSummary,
   ApprovedInvoiceView,
@@ -16,6 +18,19 @@ export function createApprovedInvoicesApi(
   baseUrl: string,
 ): ApprovedInvoicesApi {
   return {
+    async createApprovedInvoicePdf(
+      id,
+    ): Promise<ApprovedInvoiceDocumentMetadata> {
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        `/invoices/${encodeURIComponent(id)}/pdf`,
+        { method: 'POST' },
+      );
+
+      return readApprovedInvoiceDocumentMetadataResponse(responseBody);
+    },
+
     async getApprovedInvoice(id): Promise<ApprovedInvoiceView> {
       const responseBody = await requestJson(
         fetchImplementation,
@@ -24,6 +39,10 @@ export function createApprovedInvoicesApi(
       );
 
       return readApprovedInvoiceResponse(responseBody);
+    },
+
+    getApprovedInvoicePdfUrl(id): string {
+      return `${baseUrl}/invoices/${encodeURIComponent(id)}/pdf`;
     },
 
     async listApprovedInvoices(): Promise<ApprovedInvoiceSummary[]> {

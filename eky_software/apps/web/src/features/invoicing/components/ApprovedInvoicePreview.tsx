@@ -18,17 +18,25 @@ import { uiText } from '../../../i18n/fi.js';
 
 interface ApprovedInvoicePreviewProps {
   invoice: ApprovedInvoiceView;
+  isCreatingPdf: boolean;
   isReopening: boolean;
+  pdfErrorMessage: string | null;
+  pdfUrl: string;
   reopenErrorMessage: string | null;
   onBack(): void;
+  onCreatePdf(id: string): void;
   onEditInvoice(id: string): void;
 }
 
 export function ApprovedInvoicePreview({
   invoice,
+  isCreatingPdf,
   isReopening,
+  pdfErrorMessage,
+  pdfUrl,
   reopenErrorMessage,
   onBack,
+  onCreatePdf,
   onEditInvoice,
 }: ApprovedInvoicePreviewProps): React.JSX.Element {
   return (
@@ -51,6 +59,24 @@ export function ApprovedInvoicePreview({
         <div className={styles.headerActions}>
           <button
             className="secondary-action"
+            disabled={isCreatingPdf}
+            onClick={() => onCreatePdf(invoice.id)}
+            type="button"
+          >
+            {isCreatingPdf
+              ? uiText.invoicing.approvedInvoicePdfCreating
+              : uiText.invoicing.approvedInvoicePdfCreate}
+          </button>
+          <a
+            className="secondary-action"
+            href={pdfUrl}
+            rel="noreferrer"
+            target="_blank"
+          >
+            {uiText.invoicing.approvedInvoiceOpenPdf}
+          </a>
+          <button
+            className="secondary-action"
             disabled={isReopening}
             onClick={() => onEditInvoice(invoice.id)}
             type="button"
@@ -68,6 +94,11 @@ export function ApprovedInvoicePreview({
       {reopenErrorMessage !== null ? (
         <p className="message error-message" role="alert">
           {reopenErrorMessage}
+        </p>
+      ) : null}
+      {pdfErrorMessage !== null ? (
+        <p className="message error-message" role="alert">
+          {pdfErrorMessage}
         </p>
       ) : null}
 

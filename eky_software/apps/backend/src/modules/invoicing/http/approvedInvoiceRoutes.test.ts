@@ -3,7 +3,14 @@ import { describe, expect, it } from 'vitest';
 import type { GetApprovedInvoiceInput } from '../application/getApprovedInvoice.js';
 import type { ListApprovedInvoicesInput } from '../application/listApprovedInvoices.js';
 import type { ReopenApprovedInvoiceForEditingInput } from '../application/reopenApprovedInvoiceForEditing.js';
+import { ApprovedInvoiceDocumentNotFoundError } from '../application/approvedInvoiceDocumentNotFoundError.js';
+import type { GenerateApprovedInvoicePdfDocumentInput } from '../application/generateApprovedInvoicePdfDocument.js';
+import type {
+  ApprovedInvoicePdfDocumentFile,
+  GetApprovedInvoicePdfDocumentInput,
+} from '../application/getApprovedInvoicePdfDocument.js';
 import { ApprovedInvoiceNotFoundError } from '../application/approvedInvoiceNotFoundError.js';
+import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
 import type { ApprovedInvoiceSummary } from '../domain/approvedInvoiceSummary.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import { createApprovedInvoiceRoutes } from './approvedInvoiceRoutes.js';
@@ -103,6 +110,55 @@ describe('approved invoice routes', () => {
     });
   });
 
+  it('creates approved invoice PDF metadata in the company scope', async () => {
+    const document = createApprovedInvoiceDocumentMetadata();
+    const { app, getGeneratePdfInput } = createTestApp({ document });
+
+    const response = await app.request('/invoices/invoice-1/pdf', {
+      method: 'POST',
+    });
+
+    await expect(response.json()).resolves.toEqual({ document });
+    expect(response.status).toBe(200);
+    expect(getGeneratePdfInput()).toMatchObject({
+      companyId: 'dev-company',
+      invoiceId: 'invoice-1',
+    });
+  });
+
+  it('returns approved invoice PDF with inline content headers', async () => {
+    const pdfDocument = createApprovedInvoicePdfDocumentFile();
+    const { app, getPdfInput } = createTestApp({ pdfDocument });
+
+    const response = await app.request('/invoices/invoice-1/pdf');
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toBe('application/pdf');
+    expect(response.headers.get('Content-Disposition')).toBe(
+      'inline; filename="lasku-20260001.pdf"',
+    );
+    await expect(response.arrayBuffer()).resolves.toEqual(
+      pdfDocument.content.buffer,
+    );
+    expect(getPdfInput()).toEqual({
+      companyId: 'dev-company',
+      invoiceId: 'invoice-1',
+    });
+  });
+
+  it('returns a safe 404 when the approved invoice PDF is missing', async () => {
+    const { app } = createTestApp({
+      pdfError: new ApprovedInvoiceDocumentNotFoundError(),
+    });
+
+    const response = await app.request('/invoices/missing/pdf');
+
+    await expect(response.json()).resolves.toEqual({
+      error: 'Approved invoice document was not found.',
+    });
+    expect(response.status).toBe(404);
+  });
+
   it('returns a safe 404 when reopening an invoice outside the company scope', async () => {
     const { app } = createTestApp({
       error: new ApprovedInvoiceNotFoundError(),
@@ -120,14 +176,28 @@ describe('approved invoice routes', () => {
 });
 
 function createTestApp(options: {
+  document?: ApprovedInvoiceDocumentMetadata;
   error?: Error;
   invoice?: ApprovedInvoiceView;
   invoices?: ApprovedInvoiceSummary[];
+  pdfDocument?: ApprovedInvoicePdfDocumentFile;
+  pdfError?: Error;
 }) {
   let input: GetApprovedInvoiceInput | undefined;
   let listInput: ListApprovedInvoicesInput | undefined;
   let reopenInput: ReopenApprovedInvoiceForEditingInput | undefined;
+  let generatePdfInput: GenerateApprovedInvoicePdfDocumentInput | undefined;
+  let pdfInput: GetApprovedInvoicePdfDocumentInput | undefined;
   const app = createApprovedInvoiceRoutes({
+    async generateApprovedInvoicePdfDocument(nextInput) {
+      generatePdfInput = nextInput;
+
+      if (options.error !== undefined) {
+        throw options.error;
+      }
+
+      return options.document ?? createApprovedInvoiceDocumentMetadata();
+    },
     async getApprovedInvoice(nextInput) {
       input = nextInput;
 
@@ -150,6 +220,15 @@ function createTestApp(options: {
 
       return options.invoices ?? [];
     },
+    async getApprovedInvoicePdfDocument(nextInput) {
+      pdfInput = nextInput;
+
+      if (options.pdfError !== undefined) {
+        throw options.pdfError;
+      }
+
+      return options.pdfDocument ?? createApprovedInvoicePdfDocumentFile();
+    },
     async reopenApprovedInvoiceForEditing(nextInput) {
       reopenInput = nextInput;
 
@@ -166,9 +245,34 @@ function createTestApp(options: {
 
   return {
     app,
+    getGeneratePdfInput: () => generatePdfInput,
     getInput: () => input,
     getListInput: () => listInput,
+    getPdfInput: () => pdfInput,
     getReopenInput: () => reopenInput,
+  };
+}
+
+function createApprovedInvoiceDocumentMetadata(): ApprovedInvoiceDocumentMetadata {
+  return {
+    id: 'document-1',
+    companyId: 'dev-company',
+    invoiceId: 'invoice-1',
+    documentType: 'approved_invoice_pdf',
+    fileName: 'lasku-20260001.pdf',
+    storagePath: 'dev-company/invoice-1/approved-invoice.pdf',
+    mimeType: 'application/pdf',
+    sha256:
+      '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    sizeBytes: 8,
+    createdAt: '2026-07-05T10:00:00.000Z',
+  };
+}
+
+function createApprovedInvoicePdfDocumentFile(): ApprovedInvoicePdfDocumentFile {
+  return {
+    content: new Uint8Array([37, 80, 68, 70, 45, 116, 101, 115]),
+    metadata: createApprovedInvoiceDocumentMetadata(),
   };
 }
 

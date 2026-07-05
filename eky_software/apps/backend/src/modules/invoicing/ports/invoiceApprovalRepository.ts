@@ -35,6 +35,7 @@ export interface ReopenApprovedInvoicePersistenceInput {
 export interface ReopenedApprovedInvoiceResult {
   invoiceId: string;
   draftId: string;
+  removedDocumentStoragePaths: string[];
 }
 
 export interface InvoiceApprovalRepository {
