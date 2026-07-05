@@ -42,6 +42,7 @@ const migrationNames = [
   '015_add_invoice_draft_print_foundation_fields.sql',
   '016_add_approved_invoice_print_snapshot_fields.sql',
   '017_allow_reopened_invoice_corrections.sql',
+  '018_create_invoice_documents.sql',
 ];
 
 const migrationSql = migrationNames.map((migrationName) =>
@@ -340,6 +341,42 @@ function getAuditEvents(database: DatabaseConnection): InvoiceAuditEventRow[] {
     .all();
 }
 
+function insertInvoiceDocument(
+  database: DatabaseConnection,
+  input: { invoiceId: string; storagePath: string },
+): void {
+  database
+    .prepare(
+      `
+        INSERT INTO invoice_documents (
+          id,
+          company_id,
+          invoice_id,
+          document_type,
+          file_name,
+          storage_path,
+          mime_type,
+          sha256,
+          size_bytes,
+          created_at
+        )
+        VALUES (
+          'document-1',
+          'dev-company',
+          ?,
+          'approved_invoice_pdf',
+          'lasku-20270001.pdf',
+          ?,
+          'application/pdf',
+          '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+          8,
+          '2027-01-15T12:00:00.000Z'
+        )
+      `,
+    )
+    .run(input.invoiceId, input.storagePath);
+}
+
 function getSequence(
   database: DatabaseConnection,
 ): InvoiceNumberSequenceRow | undefined {
@@ -632,6 +669,7 @@ describe('SqliteInvoiceApprovalRepository', () => {
     ).resolves.toEqual({
       draftId: 'draft-1',
       invoiceId: 'invoice-1',
+      removedDocumentStoragePaths: [],
     });
 
     const draftRow = database
@@ -659,6 +697,39 @@ describe('SqliteInvoiceApprovalRepository', () => {
       'invoice.approved',
       'invoice.reopened_for_edit',
     ]);
+  });
+
+  it('removes approved invoice PDF metadata when an invoice is reopened', async () => {
+    const repository = new SqliteInvoiceApprovalRepository(database);
+
+    await saveDraft(database, createDraft());
+    await repository.approveDraft(createApprovalInput());
+    insertInvoiceDocument(database, {
+      invoiceId: 'invoice-1',
+      storagePath: 'dev-company/invoice-1/approved-invoice.pdf',
+    });
+
+    await expect(
+      repository.reopenApprovedInvoiceForEditing({
+        actorUserId: 'user-1',
+        auditEventId: 'audit-reopen-1',
+        companyId: 'dev-company',
+        invoiceId: 'invoice-1',
+        reopenedAt: '2027-01-15T13:00:00.000Z',
+      }),
+    ).resolves.toMatchObject({
+      removedDocumentStoragePaths: [
+        'dev-company/invoice-1/approved-invoice.pdf',
+      ],
+    });
+
+    const documentCount = database
+      .prepare<[], { count: number }>(
+        'SELECT COUNT(*) AS count FROM invoice_documents',
+      )
+      .get();
+
+    expect(documentCount?.count).toBe(0);
   });
 
   it('reapproves a reopened draft by keeping the invoice number and replacing snapshot lines', async () => {

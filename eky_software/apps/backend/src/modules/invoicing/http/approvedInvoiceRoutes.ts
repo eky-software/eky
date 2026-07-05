@@ -4,12 +4,21 @@ import type {
   GetApprovedInvoiceInput,
 } from '../application/getApprovedInvoice.js';
 import type {
+  GenerateApprovedInvoicePdfDocumentInput,
+} from '../application/generateApprovedInvoicePdfDocument.js';
+import type {
+  GetApprovedInvoicePdfDocumentInput,
+  ApprovedInvoicePdfDocumentFile,
+} from '../application/getApprovedInvoicePdfDocument.js';
+import type {
   ListApprovedInvoicesInput,
 } from '../application/listApprovedInvoices.js';
 import type {
   ReopenApprovedInvoiceForEditingInput,
 } from '../application/reopenApprovedInvoiceForEditing.js';
+import { ApprovedInvoiceDocumentNotFoundError } from '../application/approvedInvoiceDocumentNotFoundError.js';
 import { ApprovedInvoiceNotFoundError } from '../application/approvedInvoiceNotFoundError.js';
+import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
 import type { ApprovedInvoiceSummary } from '../domain/approvedInvoiceSummary.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
@@ -18,9 +27,15 @@ const devCompanyId = 'dev-company';
 const devActorUserId = 'dev-user';
 
 interface ApprovedInvoiceRouteDependencies {
+  generateApprovedInvoicePdfDocument(
+    input: GenerateApprovedInvoicePdfDocumentInput,
+  ): Promise<ApprovedInvoiceDocumentMetadata>;
   getApprovedInvoice(
     input: GetApprovedInvoiceInput,
   ): Promise<ApprovedInvoiceView>;
+  getApprovedInvoicePdfDocument(
+    input: GetApprovedInvoicePdfDocumentInput,
+  ): Promise<ApprovedInvoicePdfDocumentFile>;
   listApprovedInvoices(
     input: ListApprovedInvoicesInput,
   ): Promise<ApprovedInvoiceSummary[]>;
@@ -60,6 +75,63 @@ export function createApprovedInvoiceRoutes(
       return context.json({ invoice });
     } catch (error) {
       if (error instanceof ApprovedInvoiceNotFoundError) {
+        return context.json({ error: error.message }, 404);
+      }
+
+      if (error instanceof InvoiceDraftValidationError) {
+        return context.json({ error: error.message }, 400);
+      }
+
+      throw error;
+    }
+  });
+
+  routes.post('/invoices/:id/pdf', async (context) => {
+    try {
+      const document = await dependencies.generateApprovedInvoicePdfDocument({
+        companyId: devCompanyId,
+        createdAt: new Date().toISOString(),
+        invoiceId: context.req.param('id'),
+      });
+
+      return context.json({ document });
+    } catch (error) {
+      if (error instanceof ApprovedInvoiceNotFoundError) {
+        return context.json({ error: error.message }, 404);
+      }
+
+      if (error instanceof InvoiceDraftValidationError) {
+        return context.json({ error: error.message }, 400);
+      }
+
+      throw error;
+    }
+  });
+
+  routes.get('/invoices/:id/pdf', async (context) => {
+    try {
+      const pdfDocument = await dependencies.getApprovedInvoicePdfDocument({
+        companyId: devCompanyId,
+        invoiceId: context.req.param('id'),
+      });
+      const responseBody = pdfDocument.content.buffer.slice(
+        pdfDocument.content.byteOffset,
+        pdfDocument.content.byteOffset + pdfDocument.content.byteLength,
+      ) as ArrayBuffer;
+
+      return new Response(responseBody, {
+        headers: {
+          'Content-Disposition': `inline; filename="${pdfDocument.metadata.fileName}"`,
+          'Content-Length': `${pdfDocument.metadata.sizeBytes}`,
+          'Content-Type': pdfDocument.metadata.mimeType,
+        },
+        status: 200,
+      });
+    } catch (error) {
+      if (
+        error instanceof ApprovedInvoiceDocumentNotFoundError ||
+        error instanceof ApprovedInvoiceNotFoundError
+      ) {
         return context.json({ error: error.message }, 404);
       }
 

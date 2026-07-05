@@ -7,6 +7,7 @@ import type {
   ReopenApprovedInvoicePersistenceInput,
   ReopenedApprovedInvoiceResult,
 } from '../ports/invoiceApprovalRepository.js';
+import type { InvoiceDocumentStorage } from '../ports/invoiceDocumentStorage.js';
 import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
 import {
   reopenApprovedInvoiceForEditing,
@@ -52,6 +53,7 @@ describe('reopenApprovedInvoiceForEditing', () => {
     const repository = new FakeInvoiceApprovalRepository({
       draftId: 'draft-1',
       invoiceId: 'invoice-1',
+      removedDocumentStoragePaths: [],
     });
 
     await expect(
@@ -61,6 +63,7 @@ describe('reopenApprovedInvoiceForEditing', () => {
     ).resolves.toEqual({
       draftId: 'draft-1',
       invoiceId: 'invoice-1',
+      removedDocumentStoragePaths: [],
     });
 
     expect(repository.reopenInputs).toEqual([
@@ -90,6 +93,7 @@ describe('reopenApprovedInvoiceForEditing', () => {
     const repository = new FakeInvoiceApprovalRepository({
       draftId: 'draft-1',
       invoiceId: 'invoice-1',
+      removedDocumentStoragePaths: [],
     });
 
     await expect(
@@ -100,4 +104,38 @@ describe('reopenApprovedInvoiceForEditing', () => {
 
     expect(repository.reopenInputs).toEqual([]);
   });
+
+  it('removes old PDF files from storage after the invoice is reopened', async () => {
+    const repository = new FakeInvoiceApprovalRepository({
+      draftId: 'draft-1',
+      invoiceId: 'invoice-1',
+      removedDocumentStoragePaths: ['dev-company/invoice-1/approved-invoice.pdf'],
+    });
+    const storage = new FakeInvoiceDocumentStorage();
+
+    await reopenApprovedInvoiceForEditing(createInput(), {
+      invoiceApprovalRepository: repository,
+      invoiceDocumentStorage: storage,
+    });
+
+    expect(storage.deletedPaths).toEqual([
+      'dev-company/invoice-1/approved-invoice.pdf',
+    ]);
+  });
 });
+
+class FakeInvoiceDocumentStorage implements InvoiceDocumentStorage {
+  deletedPaths: string[] = [];
+
+  async deleteFile(storagePath: string): Promise<void> {
+    this.deletedPaths.push(storagePath);
+  }
+
+  async readFile(_storagePath: string): Promise<Uint8Array> {
+    throw new Error('Not implemented in this reopen test.');
+  }
+
+  async writeFile(_storagePath: string, _content: Uint8Array): Promise<void> {
+    throw new Error('Not implemented in this reopen test.');
+  }
+}

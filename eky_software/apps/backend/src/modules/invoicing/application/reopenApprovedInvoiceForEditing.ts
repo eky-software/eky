@@ -5,6 +5,7 @@ import type {
   InvoiceApprovalRepository,
   ReopenedApprovedInvoiceResult,
 } from '../ports/invoiceApprovalRepository.js';
+import type { InvoiceDocumentStorage } from '../ports/invoiceDocumentStorage.js';
 import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
 
 export interface ReopenApprovedInvoiceForEditingInput {
@@ -16,6 +17,7 @@ export interface ReopenApprovedInvoiceForEditingInput {
 
 export interface ReopenApprovedInvoiceForEditingDependencies {
   invoiceApprovalRepository: InvoiceApprovalRepository;
+  invoiceDocumentStorage?: InvoiceDocumentStorage;
 }
 
 export async function reopenApprovedInvoiceForEditing(
@@ -38,6 +40,14 @@ export async function reopenApprovedInvoiceForEditing(
 
   if (reopenedInvoice === undefined) {
     throw new ApprovedInvoiceNotFoundError();
+  }
+
+  if (dependencies.invoiceDocumentStorage !== undefined) {
+    for (const storagePath of reopenedInvoice.removedDocumentStoragePaths) {
+      await dependencies.invoiceDocumentStorage
+        .deleteFile(storagePath)
+        .catch(() => undefined);
+    }
   }
 
   return reopenedInvoice;

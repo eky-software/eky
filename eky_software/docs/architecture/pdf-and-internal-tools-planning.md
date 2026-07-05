@@ -9,9 +9,10 @@ rakennetaan Eky-projektin moduulirajojen, snapshot-periaatteen ja
 riippuvuuslinjan mukaisesti.
 
 Ensimmäinen PDFKit-teknologiakokeilu on lisätty Invoicing-moduulin
-infrastructure-kerrokseen. Se todistaa PDF:n teknisen muodostamisen
-`ApprovedInvoiceView`-snapshotista, mutta ei vielä tallenna PDF:ää laskulle,
-avaa PDF-reittejä, muuta web-käyttöliittymää tai lähetä laskua.
+infrastructure-kerrokseen. PDF muodostetaan `ApprovedInvoiceView`-snapshotista,
+ja seuraava local-MVP-vaihe lisää hyväksytyn laskun PDF-metadatan,
+paikallisen tiedostotallennuksen, rajatut PDF-reitit ja webin
+`Luo PDF` / `Avaa PDF` -toiminnot.
 
 ## Nykyinen Tilanne
 
@@ -57,12 +58,34 @@ Etenemisjärjestys:
 4. `invoice_documents`-taulu ja paikallinen tiedostotallennus
 5. `POST /invoices/:id/pdf`
 6. `GET /invoices/:id/pdf`
-7. webiin `Luo PDF`, `Avaa PDF` ja `Lataa PDF`
+7. webiin `Luo PDF` ja `Avaa PDF`
 8. sähköpostisuunnitelma
 9. sähköpostilähetys PDF-liitteellä
 10. lähetys-, lataus- ja tulostushistoria myöhemmin
 
 PDF:n luonti ei vielä merkitse laskua lähetetyksi.
+
+Ensimmäinen tallennusmalli pitää PDF:n binäärisisällön paikallisessa
+tiedostovarastossa ja vain metadatan tietokannassa:
+
+```text
+invoice_documents
+  -> approved_invoice_pdf metadata
+
+apps/backend/storage/invoices/<companyId>/<invoiceId>/approved-invoice.pdf
+  -> paikallinen PDF-tiedosto
+```
+
+`invoice_documents` sisältää yhden voimassa olevan
+`approved_invoice_pdf`-dokumentin per yritys ja hyväksytty lasku. Jos
+hyväksytty mutta lähettämätön lasku avataan takaisin muokattavaksi, vanha
+PDF-metadata poistetaan ja paikallinen tiedosto yritetään poistaa. Kun lasku
+hyväksytään uudelleen, samalle laskunumerolle ja viitenumerolle muodostetaan
+uusi PDF nykyisestä hyväksytyn laskun snapshotista.
+
+PDF:n luonti ei saa hakea tietoja Customer- tai Company Settings
+-master-datasta. Kaikki laskulla näkyvät tiedot tulevat
+`ApprovedInvoiceView`-snapshotista.
 
 Tulostus voidaan ensimmäisessä vaiheessa hoitaa avaamalla valmis PDF selaimeen
 ja käyttämällä selaimen tai käyttöjärjestelmän tulostustoimintoa.

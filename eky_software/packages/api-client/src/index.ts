@@ -5,6 +5,8 @@ export {
 } from './client.js';
 export { EkyApiError } from './http.js';
 export type {
+  ApprovedInvoiceDocumentMetadata,
+  ApprovedInvoiceDocumentType,
   ApprovedInvoiceLine,
   ApprovedInvoiceLineDiscount,
   ApprovedInvoiceNumberingMode,

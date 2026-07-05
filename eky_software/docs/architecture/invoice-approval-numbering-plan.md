@@ -138,6 +138,15 @@ Maksutietojen marssijärjestys:
 7. PDF
 8. sähköpostilähetys
 
+PDF:n muodostaminen on hyväksynnän jälkeinen dokumentointivaihe, ei
+lähetysmerkintä. Local-MVP:ssä PDF:n metadata tallennetaan
+`invoice_documents`-tauluun ja binääritiedosto paikalliseen storage-polkuun.
+PDF muodostetaan vain hyväksytyn laskun snapshotista. Jos hyväksytty mutta
+lähettämätön lasku palautetaan muokattavaksi, nykyinen
+`approved_invoice_pdf`-metadata poistetaan ja paikallinen tiedosto yritetään
+poistaa. Uudelleenhyväksynnässä laskunumero ja viitenumero säilyvät, mutta PDF
+muodostetaan uudelleen päivitetystä hyväksytyn laskun snapshotista.
+
 ## Tilat Ja Muokkaaminen
 
 Alustava tilamalli:

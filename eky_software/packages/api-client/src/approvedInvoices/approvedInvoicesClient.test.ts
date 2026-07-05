@@ -48,6 +48,37 @@ describe('approved invoices api client', () => {
     ]);
   });
 
+  it('creates approved invoice PDF metadata through POST /invoices/:id/pdf', async () => {
+    const requests = createRequestLog();
+    const document = createTestApprovedInvoiceDocumentMetadata();
+    const client = createTestClient(requests, { document });
+
+    const result = await client.createApprovedInvoicePdf('invoice/1');
+
+    expect(result).toEqual(document);
+    expect(requests).toEqual([
+      {
+        input: '/invoices/invoice%2F1/pdf',
+        init: {
+          headers: {
+            Accept: 'application/json',
+          },
+          method: 'POST',
+        },
+      },
+    ]);
+  });
+
+  it('builds the approved invoice PDF URL without fetching the binary document', () => {
+    const requests = createRequestLog();
+    const client = createTestClient(requests, {});
+
+    expect(client.getApprovedInvoicePdfUrl('invoice/1')).toBe(
+      'http://api.test/invoices/invoice%2F1/pdf',
+    );
+    expect(requests).toEqual([]);
+  });
+
   it('reopens an approved invoice for editing through POST /invoices/:id/reopen-for-edit', async () => {
     const requests = createRequestLog();
     const reopenedInvoice = {
@@ -96,6 +127,20 @@ describe('approved invoices api client', () => {
 
     await expect(
       client.reopenApprovedInvoiceForEditing('invoice-1'),
+    ).rejects.toBeInstanceOf(EkyApiError);
+  });
+
+  it('rejects a malformed approved invoice PDF metadata response', async () => {
+    const requests = createRequestLog();
+    const client = createTestClient(requests, {
+      document: {
+        ...createTestApprovedInvoiceDocumentMetadata(),
+        mimeType: 'application/json',
+      },
+    });
+
+    await expect(
+      client.createApprovedInvoicePdf('invoice-1'),
     ).rejects.toBeInstanceOf(EkyApiError);
   });
 
@@ -312,6 +357,22 @@ function createTestApprovedInvoiceView(): ApprovedInvoiceView {
     createdAt: '2026-06-13T10:00:00.000Z',
     approvedAt: '2026-06-13T10:00:00.000Z',
     updatedAt: '2026-06-13T10:00:00.000Z',
+  };
+}
+
+function createTestApprovedInvoiceDocumentMetadata() {
+  return {
+    id: 'document-1',
+    companyId: 'dev-company',
+    invoiceId: 'invoice-1',
+    documentType: 'approved_invoice_pdf',
+    fileName: 'lasku-20260001.pdf',
+    storagePath: 'dev-company/invoice-1/approved-invoice.pdf',
+    mimeType: 'application/pdf',
+    sha256:
+      '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    sizeBytes: 1234,
+    createdAt: '2026-07-05T10:00:00.000Z',
   };
 }
 

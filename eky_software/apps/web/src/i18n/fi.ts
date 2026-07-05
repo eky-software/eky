@@ -285,6 +285,11 @@ export const uiText = {
     approvedInvoiceNotFound:
       'Hyväksyttyä laskua ei löytynyt.',
     approvedInvoiceOpenPrompt: 'Avaa hyväksytty lasku hyväksynnän jälkeen.',
+    approvedInvoiceOpenPdf: 'Avaa PDF',
+    approvedInvoicePdfCreate: 'Luo PDF',
+    approvedInvoicePdfCreating: 'Luodaan PDF...',
+    approvedInvoicePdfError:
+      'PDF-tiedostoa ei voitu luoda tai avata. Yritä hetken kuluttua uudelleen.',
     approvedInvoicePreviewHelp:
       'Tämä on hyväksytyn laskun tarkistusnäkymä snapshot-tiedoista. Varsinainen tulostus- ja PDF-pohja tehdään seuraavassa vaiheessa.',
     approvedInvoicePreviewTitle: 'Hyväksytyn laskun katselu',

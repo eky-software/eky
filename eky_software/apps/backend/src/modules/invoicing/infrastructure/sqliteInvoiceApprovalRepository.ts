@@ -52,6 +52,7 @@ type InvoiceInsertParameters = NewInvoiceRow;
 type InvoiceUpdateParameters = NewInvoiceRow;
 type ReopenedInvoiceDraftKeyParameters = [string, string];
 type ReopenedInvoiceKeyParameters = [string, string];
+type InvoiceDocumentDeleteParameters = [string, string];
 type InvoiceLineDeleteParameters = [string];
 
 type InvoiceLineInsertParameters = [
@@ -95,6 +96,10 @@ interface InvoiceAuditEventSource {
   companyId: string;
   draftId: string;
   invoiceId: string;
+}
+
+interface InvoiceDocumentStoragePathRow {
+  storage_path: string;
 }
 
 interface InvoiceNumberingSettingsRow {
@@ -489,6 +494,11 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
 
       this.markInvoiceReopenedForEditing(input);
       this.unlockSourceDraftForEditing(input, invoice.source_draft_id);
+      const removedDocumentStoragePaths =
+        this.deleteApprovedInvoicePdfDocumentRows(
+          input.companyId,
+          input.invoiceId,
+        );
       this.insertAuditEvent(
         createAuditEventRow(
           {
@@ -507,6 +517,7 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
       return {
         draftId: invoice.source_draft_id,
         invoiceId: invoice.id,
+        removedDocumentStoragePaths,
       };
     });
 
@@ -952,6 +963,38 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
         `,
       )
       .run(invoiceId);
+  }
+
+  private deleteApprovedInvoicePdfDocumentRows(
+    companyId: string,
+    invoiceId: string,
+  ): string[] {
+    const rows = this.database
+      .prepare<InvoiceDocumentDeleteParameters, InvoiceDocumentStoragePathRow>(
+        `
+          SELECT storage_path
+          FROM invoice_documents
+          WHERE
+            company_id = ?
+            AND invoice_id = ?
+            AND document_type = 'approved_invoice_pdf'
+        `,
+      )
+      .all(companyId, invoiceId);
+
+    this.database
+      .prepare<InvoiceDocumentDeleteParameters>(
+        `
+          DELETE FROM invoice_documents
+          WHERE
+            company_id = ?
+            AND invoice_id = ?
+            AND document_type = 'approved_invoice_pdf'
+        `,
+      )
+      .run(companyId, invoiceId);
+
+    return rows.map((row) => row.storage_path);
   }
 
   private insertAuditEvent(auditEvent: NewInvoiceAuditEventRow): void {

@@ -202,6 +202,19 @@ export interface InvoiceAuditEventTable {
   created_at: string;
 }
 
+export interface InvoiceDocumentTable {
+  id: string;
+  company_id: string;
+  invoice_id: string;
+  document_type: string;
+  file_name: string;
+  storage_path: string;
+  mime_type: string;
+  sha256: string;
+  size_bytes: number;
+  created_at: string;
+}
+
 export interface SchemaMigrationTable {
   name: string;
   run_at: string;
@@ -228,3 +241,5 @@ export type InvoiceLineRow = InvoiceLineTable;
 export type NewInvoiceLineRow = InvoiceLineTable;
 export type InvoiceAuditEventRow = InvoiceAuditEventTable;
 export type NewInvoiceAuditEventRow = InvoiceAuditEventTable;
+export type InvoiceDocumentRow = InvoiceDocumentTable;
+export type NewInvoiceDocumentRow = InvoiceDocumentTable;
