@@ -12,6 +12,7 @@ export interface InvoiceApprovalSnapshotData {
   companyCity: string;
   companyEmail: string;
   companyPhone: string;
+  companyWebsite: string;
   companyIban: string;
   companyBic: string;
   companyBankName: string;

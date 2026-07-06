@@ -39,7 +39,19 @@ export async function generateApprovedInvoicePdfDocument(
     );
 
   if (existingDocument !== undefined) {
-    return existingDocument;
+    try {
+      await dependencies.invoiceDocumentStorage.readFile(
+        existingDocument.storagePath,
+      );
+
+      return existingDocument;
+    } catch {
+      await dependencies.invoiceDocumentRepository.deleteDocumentsForInvoice(
+        companyId,
+        invoiceId,
+        approvedInvoicePdfDocumentType,
+      );
+    }
   }
 
   const invoice = await dependencies.approvedInvoiceReader.getApprovedInvoiceById(

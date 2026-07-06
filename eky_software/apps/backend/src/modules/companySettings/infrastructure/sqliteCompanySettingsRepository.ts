@@ -20,6 +20,7 @@ type CompanySettingsUpsertParameters = [
   string,
   string,
   string,
+  string,
   number | null,
   string,
   string,
@@ -38,6 +39,7 @@ function toCompanySettingsRow(settings: CompanySettings): NewCompanySettingsRow 
     city: settings.city,
     email: settings.email,
     phone: settings.phone,
+    website: settings.website,
     iban: settings.iban,
     bic: settings.bic,
     bank_name: settings.bankName,
@@ -60,6 +62,7 @@ function toCompanySettings(row: CompanySettingsRow): CompanySettings {
     city: row.city,
     email: row.email,
     phone: row.phone,
+    website: row.website,
     iban: row.iban,
     bic: row.bic,
     bankName: row.bank_name,
@@ -88,6 +91,7 @@ export class SqliteCompanySettingsRepository implements CompanySettingsRepositor
             city,
             email,
             phone,
+            website,
             iban,
             bic,
             bank_name,
@@ -121,6 +125,7 @@ export class SqliteCompanySettingsRepository implements CompanySettingsRepositor
             city,
             email,
             phone,
+            website,
             iban,
             bic,
             bank_name,
@@ -129,7 +134,7 @@ export class SqliteCompanySettingsRepository implements CompanySettingsRepositor
             created_at,
             updated_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(company_id) DO UPDATE SET
             company_name = excluded.company_name,
             business_id = excluded.business_id,
@@ -139,6 +144,7 @@ export class SqliteCompanySettingsRepository implements CompanySettingsRepositor
             city = excluded.city,
             email = excluded.email,
             phone = excluded.phone,
+            website = excluded.website,
             iban = excluded.iban,
             bic = excluded.bic,
             bank_name = excluded.bank_name,
@@ -158,6 +164,7 @@ export class SqliteCompanySettingsRepository implements CompanySettingsRepositor
         row.city,
         row.email,
         row.phone,
+        row.website,
         row.iban,
         row.bic,
         row.bank_name,

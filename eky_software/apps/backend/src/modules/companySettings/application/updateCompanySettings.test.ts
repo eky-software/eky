@@ -36,6 +36,7 @@ describe('updateCompanySettings', () => {
         bankName: '  Test Bank  ',
         email: '  info@example.fi  ',
         phone: '  040 123 4567  ',
+        website: '  www.example.fi  ',
         postalCode: '  00100  ',
         streetAddress: '  Testikatu 1  ',
       },
@@ -53,6 +54,7 @@ describe('updateCompanySettings', () => {
     expect(settings.city).toBe('Helsinki');
     expect(settings.email).toBe('info@example.fi');
     expect(settings.phone).toBe('040 123 4567');
+    expect(settings.website).toBe('www.example.fi');
     expect(settings.defaultHourlyRateCents).toBe(6500);
     expect(settings.hourlyRateShortcut).toBe('työ');
     expect(settings.iban).toBe('FI2112345600000785');
@@ -78,6 +80,7 @@ describe('updateCompanySettings', () => {
         bankName: '',
         email: '',
         phone: '',
+        website: '',
         postalCode: '',
         streetAddress: '',
       },

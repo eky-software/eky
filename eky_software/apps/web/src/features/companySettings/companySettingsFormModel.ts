@@ -14,6 +14,7 @@ export interface CompanySettingsForm {
   hourlyRateShortcut: string;
   email: string;
   phone: string;
+  website: string;
   iban: string;
   bic: string;
   bankName: string;
@@ -30,6 +31,7 @@ export const initialCompanySettingsForm: CompanySettingsForm = {
   hourlyRateShortcut: '',
   email: '',
   phone: '',
+  website: '',
   iban: '',
   bic: '',
   bankName: '',
@@ -47,7 +49,8 @@ export function toCompanySettingsForm(settings: CompanySettings): CompanySetting
     hourlyRateShortcut: settings.hourlyRateShortcut,
     email: settings.email,
     phone: settings.phone,
-    iban: settings.iban,
+    website: settings.website,
+    iban: formatCompanyIbanInput(settings.iban),
     bic: settings.bic,
     bankName: settings.bankName,
     postalCode: settings.postalCode,
@@ -67,6 +70,7 @@ export function toUpdateCompanySettingsRequest(
     hourlyRateShortcut: form.hourlyRateShortcut,
     email: form.email,
     phone: form.phone,
+    website: form.website.trim(),
     iban: normalizeCompanyIbanInput(form.iban),
     bic: normalizeCompanyBicInput(form.bic),
     bankName: normalizeCompanyBankNameInput(form.bankName),
@@ -93,6 +97,14 @@ export function normalizeCompanyIbanInput(value: string): string {
   }
 
   return normalizedValue;
+}
+
+export function formatCompanyIbanInput(value: string): string {
+  return value
+    .replace(/\s+/g, '')
+    .toUpperCase()
+    .replace(/(.{4})/g, '$1 ')
+    .trim();
 }
 
 export function normalizeCompanyBicInput(value: string): string {

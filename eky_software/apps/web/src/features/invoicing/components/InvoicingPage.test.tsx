@@ -305,8 +305,7 @@ describe('InvoicingPageView', () => {
     expect(html).toContain('25,50 %');
     expect(html).toContain('125,50');
     expect(html).toContain(uiText.invoicing.approvedInvoicePdfCreate);
-    expect(html).toContain(uiText.invoicing.approvedInvoiceOpenPdf);
-    expect(html).toContain('/invoices/invoice-1/pdf');
+    expect(html).not.toContain(uiText.invoicing.approvedInvoiceOpenPdf);
   });
 
   it('renders a safe approved invoice PDF error without technical response data', () => {
@@ -409,10 +408,14 @@ function createApprovedInvoicePdfState(
 ): InvoicingPageViewProps['approvedInvoicePdfState'] {
   return {
     clearError: vi.fn(),
+    clearPdf: vi.fn(),
     createPdf: vi.fn(async () => null),
+    document: null,
     errorMessage: null,
     getPdfUrl: vi.fn((id: string) => `/invoices/${id}/pdf`),
+    isChecking: false,
     isCreating: false,
+    loadPdfMetadata: vi.fn(async () => null),
     ...overrides,
   };
 }
@@ -479,6 +482,7 @@ function createCompanySettingsState() {
       createdAt: '2026-06-13T18:00:00.000Z',
       defaultHourlyRateCents: 6500,
       email: '',
+      website: '',
       hourlyRateShortcut: 'työ',
       vatNumber: '',
       iban: '',
@@ -668,6 +672,7 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     companyPostalCodeSnapshot: '33100',
     companyStreetAddressSnapshot: 'Builder Street 2',
     companyVatNumberSnapshot: 'FI76543210',
+    companyWebsiteSnapshot: 'www.example-builder.fi',
     createdAt: '2026-06-13T10:00:00.000Z',
     customerBusinessIdSnapshot: '1234567-8',
     customerCitySnapshot: 'Helsinki',

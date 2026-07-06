@@ -48,3 +48,9 @@ export function formatPdfDiscount(discount: InvoiceLineDiscount): string {
 
   return formatPdfCents(discount.amountCents);
 }
+
+export function formatPdfIban(iban: string): string {
+  const normalizedIban = iban.replace(/\s+/g, '').toUpperCase();
+
+  return normalizedIban.replace(/(.{4})/g, '$1 ').trim();
+}

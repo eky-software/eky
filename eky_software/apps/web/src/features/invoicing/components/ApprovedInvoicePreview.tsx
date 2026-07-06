@@ -8,6 +8,7 @@ import {
   formatApprovedInvoiceCurrency,
   formatApprovedInvoiceDate,
   formatApprovedInvoiceDiscount,
+  formatApprovedInvoiceIban,
   formatApprovedInvoicePercent,
   formatApprovedInvoiceQuantity,
   formatApprovedInvoiceUnit,
@@ -19,6 +20,7 @@ import { uiText } from '../../../i18n/fi.js';
 interface ApprovedInvoicePreviewProps {
   invoice: ApprovedInvoiceView;
   isCreatingPdf: boolean;
+  isPdfAvailable: boolean;
   isReopening: boolean;
   pdfErrorMessage: string | null;
   pdfUrl: string;
@@ -31,6 +33,7 @@ interface ApprovedInvoicePreviewProps {
 export function ApprovedInvoicePreview({
   invoice,
   isCreatingPdf,
+  isPdfAvailable,
   isReopening,
   pdfErrorMessage,
   pdfUrl,
@@ -57,24 +60,28 @@ export function ApprovedInvoicePreview({
           </p>
         </div>
         <div className={styles.headerActions}>
-          <button
-            className="secondary-action"
-            disabled={isCreatingPdf}
-            onClick={() => onCreatePdf(invoice.id)}
-            type="button"
-          >
-            {isCreatingPdf
-              ? uiText.invoicing.approvedInvoicePdfCreating
-              : uiText.invoicing.approvedInvoicePdfCreate}
-          </button>
-          <a
-            className="secondary-action"
-            href={pdfUrl}
-            rel="noreferrer"
-            target="_blank"
-          >
-            {uiText.invoicing.approvedInvoiceOpenPdf}
-          </a>
+          {!isPdfAvailable ? (
+            <button
+              className="secondary-action"
+              disabled={isCreatingPdf}
+              onClick={() => onCreatePdf(invoice.id)}
+              type="button"
+            >
+              {isCreatingPdf
+                ? uiText.invoicing.approvedInvoicePdfCreating
+                : uiText.invoicing.approvedInvoicePdfCreate}
+            </button>
+          ) : null}
+          {isPdfAvailable ? (
+            <a
+              className={`secondary-action ${styles.actionLink}`}
+              href={pdfUrl}
+              rel="noreferrer"
+              target="_blank"
+            >
+              {uiText.invoicing.approvedInvoiceOpenPdf}
+            </a>
+          ) : null}
           <button
             className="secondary-action"
             disabled={isReopening}
@@ -113,6 +120,7 @@ export function ApprovedInvoicePreview({
           streetAddress={invoice.companyStreetAddressSnapshot}
           title={uiText.invoicing.seller}
           vatNumber={invoice.companyVatNumberSnapshot}
+          website={invoice.companyWebsiteSnapshot}
         />
         <InvoiceFacts invoice={invoice} />
         <PartyBox
@@ -165,6 +173,7 @@ interface PartyBoxProps {
   streetAddress: string;
   title: string;
   vatNumber?: string;
+  website?: string;
 }
 
 function PartyBox({
@@ -178,6 +187,7 @@ function PartyBox({
   streetAddress,
   title,
   vatNumber,
+  website,
 }: PartyBoxProps): React.JSX.Element {
   return (
     <section className={styles.box}>
@@ -220,6 +230,12 @@ function PartyBox({
         ) : null}
         {hasApprovedInvoiceValue(phone) ? (
           <DefinitionRow label={uiText.companySettings.phone} value={phone} />
+        ) : null}
+        {hasApprovedInvoiceValue(website ?? '') ? (
+          <DefinitionRow
+            label={uiText.companySettings.website}
+            value={website ?? ''}
+          />
         ) : null}
       </dl>
     </section>
@@ -472,7 +488,7 @@ function PaymentDetails({
         {hasApprovedInvoiceValue(invoice.companyIbanSnapshot) ? (
           <DefinitionRow
             label={uiText.companySettings.iban}
-            value={invoice.companyIbanSnapshot}
+            value={formatApprovedInvoiceIban(invoice.companyIbanSnapshot)}
           />
         ) : null}
         {hasApprovedInvoiceValue(invoice.companyBicSnapshot) ? (

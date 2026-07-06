@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   euroInputToCents,
+  formatCompanyIbanInput,
   initialCompanySettingsForm,
   normalizeCompanyBicInput,
   normalizeCompanyIbanInput,
@@ -24,6 +25,7 @@ describe('companySettingsFormModel', () => {
         city: 'Helsinki',
         email: 'info@example.fi',
         phone: '040 123 4567',
+        website: 'www.example.fi',
         defaultHourlyRateCents: 6500,
         hourlyRateShortcut: 'työ',
         iban: 'FI2112345600000785',
@@ -39,11 +41,12 @@ describe('companySettingsFormModel', () => {
       defaultHourlyRateEuro: '65,00',
       vatNumber: 'FI12345678',
       hourlyRateShortcut: 'työ',
-      iban: 'FI2112345600000785',
+      iban: 'FI21 1234 5600 0007 85',
       bic: 'NDEAFIHH',
       bankName: 'Test Bank',
       email: 'info@example.fi',
       phone: '040 123 4567',
+      website: 'www.example.fi',
       postalCode: '00100',
       streetAddress: 'Testikatu 1',
     });
@@ -67,6 +70,7 @@ describe('companySettingsFormModel', () => {
       bankName: '',
       email: '',
       phone: '',
+      website: '',
       postalCode: '',
       streetAddress: '',
     });
@@ -91,12 +95,20 @@ describe('companySettingsFormModel', () => {
         iban: ' fi21 1234 5600 0007 85 ',
         bic: ' ndeafihh ',
         bankName: '  Test Bank  ',
+        website: '  www.example.fi  ',
       }),
     ).toMatchObject({
       iban: 'FI2112345600000785',
       bic: 'NDEAFIHH',
       bankName: 'Test Bank',
+      website: 'www.example.fi',
     });
+  });
+
+  it('formats company IBAN for easier reading in the form', () => {
+    expect(formatCompanyIbanInput('FI2112345600000785')).toBe(
+      'FI21 1234 5600 0007 85',
+    );
   });
 
   it('normalizes company VAT number input for the update request', () => {

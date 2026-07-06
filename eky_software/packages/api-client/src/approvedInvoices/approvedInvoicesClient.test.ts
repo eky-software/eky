@@ -69,6 +69,27 @@ describe('approved invoices api client', () => {
     ]);
   });
 
+  it('gets approved invoice PDF metadata through GET /invoices/:id/pdf/metadata', async () => {
+    const requests = createRequestLog();
+    const document = createTestApprovedInvoiceDocumentMetadata();
+    const client = createTestClient(requests, { document });
+
+    const result = await client.getApprovedInvoicePdfMetadata('invoice/1');
+
+    expect(result).toEqual(document);
+    expect(requests).toEqual([
+      {
+        input: '/invoices/invoice%2F1/pdf/metadata',
+        init: {
+          headers: {
+            Accept: 'application/json',
+          },
+        },
+      },
+    ]);
+  });
+
+
   it('builds the approved invoice PDF URL without fetching the binary document', () => {
     const requests = createRequestLog();
     const client = createTestClient(requests, {});
@@ -292,6 +313,7 @@ function createTestApprovedInvoiceView(): ApprovedInvoiceView {
     companyCitySnapshot: 'Tampere',
     companyEmailSnapshot: 'billing@example.fi',
     companyPhoneSnapshot: '03 123 4567',
+    companyWebsiteSnapshot: 'www.example.fi',
     companyIbanSnapshot: 'FI2112345600000785',
     companyBicSnapshot: 'NDEAFIHH',
     companyBankNameSnapshot: 'Example Bank',

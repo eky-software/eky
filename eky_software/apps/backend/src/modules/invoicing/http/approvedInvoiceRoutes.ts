@@ -11,6 +11,9 @@ import type {
   ApprovedInvoicePdfDocumentFile,
 } from '../application/getApprovedInvoicePdfDocument.js';
 import type {
+  GetApprovedInvoicePdfMetadataInput,
+} from '../application/getApprovedInvoicePdfMetadata.js';
+import type {
   ListApprovedInvoicesInput,
 } from '../application/listApprovedInvoices.js';
 import type {
@@ -36,6 +39,9 @@ interface ApprovedInvoiceRouteDependencies {
   getApprovedInvoicePdfDocument(
     input: GetApprovedInvoicePdfDocumentInput,
   ): Promise<ApprovedInvoicePdfDocumentFile>;
+  getApprovedInvoicePdfMetadata(
+    input: GetApprovedInvoicePdfMetadataInput,
+  ): Promise<ApprovedInvoiceDocumentMetadata>;
   listApprovedInvoices(
     input: ListApprovedInvoicesInput,
   ): Promise<ApprovedInvoiceSummary[]>;
@@ -127,6 +133,30 @@ export function createApprovedInvoiceRoutes(
         },
         status: 200,
       });
+    } catch (error) {
+      if (
+        error instanceof ApprovedInvoiceDocumentNotFoundError ||
+        error instanceof ApprovedInvoiceNotFoundError
+      ) {
+        return context.json({ error: error.message }, 404);
+      }
+
+      if (error instanceof InvoiceDraftValidationError) {
+        return context.json({ error: error.message }, 400);
+      }
+
+      throw error;
+    }
+  });
+
+  routes.get('/invoices/:id/pdf/metadata', async (context) => {
+    try {
+      const document = await dependencies.getApprovedInvoicePdfMetadata({
+        companyId: devCompanyId,
+        invoiceId: context.req.param('id'),
+      });
+
+      return context.json({ document });
     } catch (error) {
       if (
         error instanceof ApprovedInvoiceDocumentNotFoundError ||

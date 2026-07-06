@@ -16,6 +16,7 @@ describe('CompanySettingsForm', () => {
           iban: 'FI2112345600000785',
           bic: 'NDEAFIHH',
           bankName: 'Test Bank',
+          website: 'www.example.fi',
         }}
         isSaving={false}
         onFieldChange={vi.fn()}
@@ -27,6 +28,8 @@ describe('CompanySettingsForm', () => {
     expect(html).toContain(uiText.companySettings.vatNumber);
     expect(html).toContain('FI12345678');
     expect(html).toContain(uiText.companySettings.bankDetailsHelp);
+    expect(html).toContain(uiText.companySettings.website);
+    expect(html).toContain('www.example.fi');
     expect(html).toContain(uiText.companySettings.iban);
     expect(html).toContain('FI2112345600000785');
     expect(html).toContain(uiText.companySettings.bic);

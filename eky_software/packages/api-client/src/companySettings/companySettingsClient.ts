@@ -63,6 +63,7 @@ function parseCompanySettings(value: unknown): CompanySettings {
     typeof value.city !== 'string' ||
     typeof value.email !== 'string' ||
     typeof value.phone !== 'string' ||
+    typeof value.website !== 'string' ||
     typeof value.iban !== 'string' ||
     typeof value.bic !== 'string' ||
     typeof value.bankName !== 'string' ||
@@ -87,6 +88,7 @@ function parseCompanySettings(value: unknown): CompanySettings {
     city: value.city,
     email: value.email,
     phone: value.phone,
+    website: value.website,
     iban: value.iban,
     bic: value.bic,
     bankName: value.bankName,

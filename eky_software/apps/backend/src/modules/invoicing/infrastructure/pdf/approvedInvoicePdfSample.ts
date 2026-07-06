@@ -31,6 +31,7 @@ export function createApprovedInvoicePdfSample(): ApprovedInvoiceView {
     companyCitySnapshot: 'Rusko',
     companyEmailSnapshot: 'eky@dnainternet.net',
     companyPhoneSnapshot: '0400647500',
+    companyWebsiteSnapshot: 'www.eky-rakenne.fi',
     companyIbanSnapshot: 'FI8554714001000000',
     companyBicSnapshot: 'POPFFI22',
     companyBankNameSnapshot: 'POP Pankki',

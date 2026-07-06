@@ -52,8 +52,35 @@ describe('generateApprovedInvoicePdfDocument', () => {
     ).resolves.toEqual(existingDocument);
 
     expect(dependencies.renderCalls).toBe(0);
+    expect(dependencies.storage.reads).toEqual([
+      'dev-company/invoice-1/approved-invoice.pdf',
+    ]);
     expect(dependencies.storage.writes).toEqual([]);
     expect(dependencies.repository.savedDocuments).toEqual([]);
+  });
+
+  it('regenerates the PDF when metadata exists but the local file is missing', async () => {
+    const existingDocument = createDocumentMetadata();
+    const dependencies = createDependencies({
+      existingDocument,
+      missingStoragePaths: [existingDocument.storagePath],
+    });
+
+    const metadata = await generateApprovedInvoicePdfDocument(
+      createInput(),
+      dependencies,
+    );
+
+    expect(metadata.id).not.toBe(existingDocument.id);
+    expect(dependencies.repository.deletedDocuments).toEqual([
+      {
+        companyId: 'dev-company',
+        documentType: 'approved_invoice_pdf',
+        invoiceId: 'invoice-1',
+      },
+    ]);
+    expect(dependencies.renderCalls).toBe(1);
+    expect(dependencies.storage.writes).toHaveLength(1);
   });
 
   it('throws a safe not-found error when the approved invoice is not available', async () => {
@@ -78,9 +105,10 @@ function createInput() {
 function createDependencies(options: {
   existingDocument?: ApprovedInvoiceDocumentMetadata;
   invoice?: ApprovedInvoiceView | null;
+  missingStoragePaths?: string[];
 } = {}) {
   const repository = new FakeInvoiceDocumentRepository(options.existingDocument);
-  const storage = new FakeInvoiceDocumentStorage();
+  const storage = new FakeInvoiceDocumentStorage(options.missingStoragePaths);
   const invoice =
     'invoice' in options ? options.invoice : createApprovedInvoiceView();
   const reader = new FakeApprovedInvoiceReader(invoice);
@@ -116,14 +144,25 @@ class FakeApprovedInvoiceReader implements ApprovedInvoiceReader {
 }
 
 class FakeInvoiceDocumentRepository implements InvoiceDocumentRepository {
+  deletedDocuments: Array<{
+    companyId: string;
+    documentType: string;
+    invoiceId: string;
+  }> = [];
   savedDocuments: ApprovedInvoiceDocumentMetadata[] = [];
 
   constructor(
     private readonly existingDocument: ApprovedInvoiceDocumentMetadata | undefined,
   ) {}
 
-  async deleteDocumentsForInvoice(): Promise<string[]> {
-    throw new Error('Not implemented in this PDF document test.');
+  async deleteDocumentsForInvoice(
+    companyId: string,
+    invoiceId: string,
+    documentType: 'approved_invoice_pdf',
+  ): Promise<string[]> {
+    this.deletedDocuments.push({ companyId, documentType, invoiceId });
+
+    return [createDocumentMetadata().storagePath];
   }
 
   async findDocumentForInvoice(): Promise<
@@ -142,14 +181,23 @@ class FakeInvoiceDocumentRepository implements InvoiceDocumentRepository {
 }
 
 class FakeInvoiceDocumentStorage implements InvoiceDocumentStorage {
+  reads: string[] = [];
   writes: Array<{ content: Uint8Array; storagePath: string }> = [];
+
+  constructor(private readonly missingStoragePaths: string[] = []) {}
 
   async deleteFile(): Promise<void> {
     throw new Error('Not implemented in this PDF document test.');
   }
 
-  async readFile(): Promise<Uint8Array> {
-    throw new Error('Not implemented in this PDF document test.');
+  async readFile(storagePath: string): Promise<Uint8Array> {
+    this.reads.push(storagePath);
+
+    if (this.missingStoragePaths.includes(storagePath)) {
+      throw new Error('Missing test file.');
+    }
+
+    return new Uint8Array([37, 80, 68, 70]);
   }
 
   async writeFile(storagePath: string, content: Uint8Array): Promise<void> {
@@ -204,6 +252,7 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     companyCitySnapshot: 'Tampere',
     companyEmailSnapshot: 'office@example.fi',
     companyPhoneSnapshot: '040 000 0000',
+    companyWebsiteSnapshot: 'www.example-builder.fi',
     companyIbanSnapshot: 'FI2112345600000785',
     companyBicSnapshot: 'NDEAFIHH',
     companyBankNameSnapshot: 'Test Bank',

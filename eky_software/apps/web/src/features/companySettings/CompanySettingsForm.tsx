@@ -135,6 +135,18 @@ export function CompanySettingsForm({
                 value={form.phone}
               />
             </label>
+
+            <label htmlFor="company-website">
+              {uiText.companySettings.website}
+              <input
+                id="company-website"
+                name="website"
+                onChange={(event) => onFieldChange('website', event.target.value)}
+                placeholder={uiText.companySettings.placeholderWebsite}
+                type="text"
+                value={form.website}
+              />
+            </label>
           </div>
         </fieldset>
 

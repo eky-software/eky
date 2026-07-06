@@ -26,6 +26,7 @@ export interface UpdateCompanySettingsInput {
   bankName: string;
   email: string;
   phone: string;
+  website: string;
   postalCode: string;
   streetAddress: string;
 }
@@ -52,6 +53,7 @@ export async function updateCompanySettings(
     hourlyRateShortcut: normalizeHourlyRateShortcut(input.hourlyRateShortcut),
     iban: bankDetails.iban,
     email: normalizeCompanySettingsField(input.email, 'Company email'),
+    website: normalizeCompanySettingsField(input.website, 'Company website'),
     id: randomUUID(),
     now,
     phone: normalizeCompanySettingsField(input.phone, 'Company phone'),

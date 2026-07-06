@@ -34,7 +34,6 @@ const addVatNumberMigrationSql = readFileSync(
   ),
   'utf8',
 );
-
 describe('SqliteCompanySettingsRepository', () => {
   let database: DatabaseConnection;
 
@@ -44,6 +43,9 @@ describe('SqliteCompanySettingsRepository', () => {
     database.exec(addShortcutMigrationSql);
     database.exec(addBankDetailsMigrationSql);
     database.exec(addVatNumberMigrationSql);
+    database.exec(
+      "ALTER TABLE company_settings ADD COLUMN website TEXT NOT NULL DEFAULT '';",
+    );
   });
 
   afterEach(() => {
@@ -100,6 +102,7 @@ function createSettings(): CompanySettings {
     defaultHourlyRateCents: 6500,
     email: 'info@example.fi',
     hourlyRateShortcut: 'työ',
+    website: 'www.example.fi',
     iban: 'FI2112345600000785',
     bic: 'NDEAFIHH',
     bankName: 'Test Bank',
