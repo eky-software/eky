@@ -9,6 +9,9 @@ import type {
   ApprovedInvoicePdfDocumentFile,
   GetApprovedInvoicePdfDocumentInput,
 } from '../application/getApprovedInvoicePdfDocument.js';
+import type {
+  GetApprovedInvoicePdfMetadataInput,
+} from '../application/getApprovedInvoicePdfMetadata.js';
 import { ApprovedInvoiceNotFoundError } from '../application/approvedInvoiceNotFoundError.js';
 import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
 import type { ApprovedInvoiceSummary } from '../domain/approvedInvoiceSummary.js';
@@ -146,12 +149,39 @@ describe('approved invoice routes', () => {
     });
   });
 
+  it('returns approved invoice PDF metadata when the stored PDF exists', async () => {
+    const document = createApprovedInvoiceDocumentMetadata();
+    const { app, getPdfMetadataInput } = createTestApp({ document });
+
+    const response = await app.request('/invoices/invoice-1/pdf/metadata');
+
+    await expect(response.json()).resolves.toEqual({ document });
+    expect(response.status).toBe(200);
+    expect(getPdfMetadataInput()).toEqual({
+      companyId: 'dev-company',
+      invoiceId: 'invoice-1',
+    });
+  });
+
   it('returns a safe 404 when the approved invoice PDF is missing', async () => {
     const { app } = createTestApp({
       pdfError: new ApprovedInvoiceDocumentNotFoundError(),
     });
 
     const response = await app.request('/invoices/missing/pdf');
+
+    await expect(response.json()).resolves.toEqual({
+      error: 'Approved invoice document was not found.',
+    });
+    expect(response.status).toBe(404);
+  });
+
+  it('returns a safe 404 when approved invoice PDF metadata is missing', async () => {
+    const { app } = createTestApp({
+      pdfError: new ApprovedInvoiceDocumentNotFoundError(),
+    });
+
+    const response = await app.request('/invoices/missing/pdf/metadata');
 
     await expect(response.json()).resolves.toEqual({
       error: 'Approved invoice document was not found.',
@@ -188,6 +218,7 @@ function createTestApp(options: {
   let reopenInput: ReopenApprovedInvoiceForEditingInput | undefined;
   let generatePdfInput: GenerateApprovedInvoicePdfDocumentInput | undefined;
   let pdfInput: GetApprovedInvoicePdfDocumentInput | undefined;
+  let pdfMetadataInput: GetApprovedInvoicePdfMetadataInput | undefined;
   const app = createApprovedInvoiceRoutes({
     async generateApprovedInvoicePdfDocument(nextInput) {
       generatePdfInput = nextInput;
@@ -229,6 +260,15 @@ function createTestApp(options: {
 
       return options.pdfDocument ?? createApprovedInvoicePdfDocumentFile();
     },
+    async getApprovedInvoicePdfMetadata(nextInput) {
+      pdfMetadataInput = nextInput;
+
+      if (options.pdfError !== undefined) {
+        throw options.pdfError;
+      }
+
+      return options.document ?? createApprovedInvoiceDocumentMetadata();
+    },
     async reopenApprovedInvoiceForEditing(nextInput) {
       reopenInput = nextInput;
 
@@ -249,6 +289,7 @@ function createTestApp(options: {
     getInput: () => input,
     getListInput: () => listInput,
     getPdfInput: () => pdfInput,
+    getPdfMetadataInput: () => pdfMetadataInput,
     getReopenInput: () => reopenInput,
   };
 }
@@ -325,6 +366,7 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     companyCitySnapshot: 'Tampere',
     companyEmailSnapshot: 'billing@example.fi',
     companyPhoneSnapshot: '03 123 4567',
+    companyWebsiteSnapshot: 'www.example-builder.fi',
     companyIbanSnapshot: 'FI2112345600000785',
     companyBicSnapshot: 'NDEAFIHH',
     companyBankNameSnapshot: 'Example Bank',

@@ -16,6 +16,7 @@ import { deleteInvoiceDraft } from '../modules/invoicing/application/deleteInvoi
 import { generateApprovedInvoicePdfDocument } from '../modules/invoicing/application/generateApprovedInvoicePdfDocument.js';
 import { getApprovedInvoice } from '../modules/invoicing/application/getApprovedInvoice.js';
 import { getApprovedInvoicePdfDocument } from '../modules/invoicing/application/getApprovedInvoicePdfDocument.js';
+import { getApprovedInvoicePdfMetadata } from '../modules/invoicing/application/getApprovedInvoicePdfMetadata.js';
 import { getInvoiceDraft } from '../modules/invoicing/application/getInvoiceDraft.js';
 import { getInvoiceNumberingSettings } from '../modules/invoicing/application/getInvoiceNumberingSettings.js';
 import { getInvoicePaymentSettings } from '../modules/invoicing/application/getInvoicePaymentSettings.js';
@@ -144,6 +145,11 @@ export async function createApp(): Promise<Hono> {
         getApprovedInvoice(input, approvedInvoiceReader),
       getApprovedInvoicePdfDocument: (input) =>
         getApprovedInvoicePdfDocument(input, {
+          invoiceDocumentRepository,
+          invoiceDocumentStorage,
+        }),
+      getApprovedInvoicePdfMetadata: (input) =>
+        getApprovedInvoicePdfMetadata(input, {
           invoiceDocumentRepository,
           invoiceDocumentStorage,
         }),

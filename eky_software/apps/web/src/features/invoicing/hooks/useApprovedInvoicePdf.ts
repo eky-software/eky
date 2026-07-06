@@ -12,15 +12,21 @@ const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
 
 type ApprovedInvoicePdfClient = Pick<
   EkyApiClient,
-  'createApprovedInvoicePdf' | 'getApprovedInvoicePdfUrl'
+  | 'createApprovedInvoicePdf'
+  | 'getApprovedInvoicePdfMetadata'
+  | 'getApprovedInvoicePdfUrl'
 >;
 
 export interface ApprovedInvoicePdfState {
+  document: ApprovedInvoiceDocumentMetadata | null;
   errorMessage: string | null;
+  isChecking: boolean;
   isCreating: boolean;
   clearError(): void;
+  clearPdf(): void;
   createPdf(id: string): Promise<ApprovedInvoiceDocumentMetadata | null>;
   getPdfUrl(id: string): string;
+  loadPdfMetadata(id: string): Promise<ApprovedInvoiceDocumentMetadata | null>;
 }
 
 export function useApprovedInvoicePdf(): ApprovedInvoicePdfState {
@@ -29,10 +35,46 @@ export function useApprovedInvoicePdf(): ApprovedInvoicePdfState {
     [],
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [document, setDocument] =
+    useState<ApprovedInvoiceDocumentMetadata | null>(null);
+  const [isChecking, setIsChecking] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
 
   function clearError(): void {
     setErrorMessage(null);
+  }
+
+  function clearPdf(): void {
+    setDocument(null);
+    setErrorMessage(null);
+  }
+
+  async function loadPdfMetadata(
+    id: string,
+  ): Promise<ApprovedInvoiceDocumentMetadata | null> {
+    setIsChecking(true);
+    setErrorMessage(null);
+    setDocument(null);
+
+    try {
+      const metadata = await getApprovedInvoicePdfMetadataWithClient(
+        apiClient,
+        id,
+      );
+      setDocument(metadata);
+
+      return metadata;
+    } catch (error) {
+      if (error instanceof EkyApiError && error.status === 404) {
+        return null;
+      }
+
+      setErrorMessage(getApprovedInvoicePdfErrorMessage(error));
+
+      return null;
+    } finally {
+      setIsChecking(false);
+    }
   }
 
   async function createPdf(
@@ -42,7 +84,10 @@ export function useApprovedInvoicePdf(): ApprovedInvoicePdfState {
     setErrorMessage(null);
 
     try {
-      return await createApprovedInvoicePdfWithClient(apiClient, id);
+      const metadata = await createApprovedInvoicePdfWithClient(apiClient, id);
+      setDocument(metadata);
+
+      return metadata;
     } catch (error) {
       setErrorMessage(getApprovedInvoicePdfErrorMessage(error));
 
@@ -54,10 +99,14 @@ export function useApprovedInvoicePdf(): ApprovedInvoicePdfState {
 
   return {
     clearError,
+    clearPdf,
     createPdf,
+    document,
     errorMessage,
     getPdfUrl: (id) => apiClient.getApprovedInvoicePdfUrl(id),
+    isChecking,
     isCreating,
+    loadPdfMetadata,
   };
 }
 
@@ -66,6 +115,13 @@ export function createApprovedInvoicePdfWithClient(
   id: string,
 ): Promise<ApprovedInvoiceDocumentMetadata> {
   return apiClient.createApprovedInvoicePdf(id);
+}
+
+export function getApprovedInvoicePdfMetadataWithClient(
+  apiClient: ApprovedInvoicePdfClient,
+  id: string,
+): Promise<ApprovedInvoiceDocumentMetadata> {
+  return apiClient.getApprovedInvoicePdfMetadata(id);
 }
 
 export function getApprovedInvoicePdfErrorMessage(error: unknown): string {

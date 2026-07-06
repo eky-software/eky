@@ -4,6 +4,7 @@ import {
   formatApprovedInvoiceCurrency,
   formatApprovedInvoiceDate,
   formatApprovedInvoiceDiscount,
+  formatApprovedInvoiceIban,
   formatApprovedInvoicePercent,
   formatApprovedInvoiceQuantity,
 } from './approvedInvoiceFormatting.js';
@@ -23,6 +24,12 @@ describe('approvedInvoiceFormatting', () => {
 
   it('formats basis points as percent text', () => {
     expect(formatApprovedInvoicePercent(950)).toBe('9,50 %');
+  });
+
+  it('formats IBAN for easier reading', () => {
+    expect(formatApprovedInvoiceIban('FI2112345600000785')).toBe(
+      'FI21 1234 5600 0007 85',
+    );
   });
 
   it('hides missing discounts and formats explicit discounts', () => {

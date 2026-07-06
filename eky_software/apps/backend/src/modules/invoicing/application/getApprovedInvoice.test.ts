@@ -98,6 +98,7 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     companyCitySnapshot: 'Tampere',
     companyEmailSnapshot: 'billing@example.fi',
     companyPhoneSnapshot: '03 123 4567',
+    companyWebsiteSnapshot: 'www.example-builder.fi',
     companyIbanSnapshot: 'FI2112345600000785',
     companyBicSnapshot: 'NDEAFIHH',
     companyBankNameSnapshot: 'Example Bank',

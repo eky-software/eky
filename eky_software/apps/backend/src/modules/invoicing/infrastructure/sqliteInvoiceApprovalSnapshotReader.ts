@@ -45,6 +45,7 @@ export class SqliteInvoiceApprovalSnapshotReader
       companyCity: companySettings?.city ?? '',
       companyEmail: companySettings?.email ?? '',
       companyPhone: companySettings?.phone ?? '',
+      companyWebsite: companySettings?.website ?? '',
       companyIban: companySettings?.iban ?? '',
       companyBic: companySettings?.bic ?? '',
       companyBankName: companySettings?.bank_name ?? '',

@@ -26,6 +26,7 @@ Company Settings omistaa:
 - oman yrityksen Y-tunnuksen
 - oman yrityksen ALV-tunnuksen
 - oman yrityksen yhteystiedot
+- oman yrityksen kotisivutiedon
 - oman yrityksen pääosoitteen
 - oman yrityksen pankkitietojen master datan
 - oletustuntihinnan
@@ -76,6 +77,7 @@ Ensimmäinen Company Settings MVP voi sisältää:
 - `city`
 - `email`
 - `phone`
+- `website`
 - `iban`
 - `bic`
 - `bankName`
@@ -92,7 +94,7 @@ Kenttien merkitys:
 - `businessId` on oman yrityksen Y-tunnus.
 - `vatNumber` on oman yrityksen ALV-tunnus.
 - `streetAddress`, `postalCode` ja `city` kuvaavat oman yrityksen pääosoitetta.
-- `email` ja `phone` ovat oman yrityksen ensisijaiset yhteystiedot.
+- `email`, `phone` ja `website` ovat oman yrityksen ensisijaiset yhteystiedot.
 - `iban`, `bic` ja `bankName` kuvaavat oman yrityksen maksutilin master dataa.
 - `defaultHourlyRateCents` on oman yrityksen oletustuntihinta sentteinä.
 - `hourlyRateShortcut` on käyttäjän määrittämä laskurivin nimike, joka voi
@@ -195,6 +197,11 @@ eivät muutu, vaikka Oma yritys -kohdan IBAN, BIC tai pankin nimi muuttuu.
 PDF, print-layout ja sähköpostilähetys käyttävät hyväksytyn laskun
 snapshot-tietoja, eivät suoraan muuttuvaa Company Settings -dataa.
 
+Oman yrityksen yhteystiedot, kuten sähköposti, puhelin ja kotisivu, kuuluvat
+Company Settings -master dataan. Hyväksytty lasku snapshottaa laskulla
+käytettävät yhteystiedot. Jos kotisivua ei ole annettu, sitä ei näytetä
+laskulla tai PDF:n footerissa.
+
 Oman yrityksen ALV-tunnus kuuluu samaan master-data-ajatteluun. Kun `vatNumber`
 lisätään Company Settingsiin, hyväksytty lasku snapshottaa sen arvon
 `seller_vat_number`-kenttään eikä hae sitä myöhemmin muuttuvista asetuksista.
@@ -205,6 +212,7 @@ Company Settings omistaa:
 
 - oman yrityksen tiedot
 - oman yrityksen ALV-tunnuksen
+- oman yrityksen yhteystiedot ja kotisivun
 - oletustuntihinnan
 - oman yrityksen yleiset oletukset
 - tuntityön pikavalinnan

@@ -29,6 +29,7 @@ export interface CompanySettingsTable {
   city: string;
   email: string;
   phone: string;
+  website: string;
   iban: string;
   bic: string;
   bank_name: string;
@@ -140,6 +141,7 @@ export interface InvoiceTable {
   company_city_snapshot: string;
   company_email_snapshot: string;
   company_phone_snapshot: string;
+  company_website_snapshot: string;
   company_iban_snapshot: string;
   company_bic_snapshot: string;
   company_bank_name_snapshot: string;

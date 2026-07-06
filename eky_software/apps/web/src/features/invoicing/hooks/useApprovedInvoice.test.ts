@@ -71,6 +71,7 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     companyPostalCodeSnapshot: '33100',
     companyStreetAddressSnapshot: 'Builder Street 2',
     companyVatNumberSnapshot: 'FI76543210',
+    companyWebsiteSnapshot: '',
     createdAt: '2026-06-13T10:00:00.000Z',
     customerBusinessIdSnapshot: '',
     customerCitySnapshot: 'Espoo',

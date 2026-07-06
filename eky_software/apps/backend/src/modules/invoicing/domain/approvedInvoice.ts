@@ -63,6 +63,7 @@ export interface ApprovedInvoice {
   companyCitySnapshot: string;
   companyEmailSnapshot: string;
   companyPhoneSnapshot: string;
+  companyWebsiteSnapshot: string;
   companyIbanSnapshot: string;
   companyBicSnapshot: string;
   companyBankNameSnapshot: string;

@@ -100,6 +100,7 @@ function createCompanySettings(): CompanySettings {
     postalCode: '',
     city: '',
     email: '',
+    website: '',
     phone: '',
     iban: '',
     bic: '',

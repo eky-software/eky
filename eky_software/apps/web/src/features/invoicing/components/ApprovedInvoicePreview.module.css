@@ -17,6 +17,12 @@
   justify-content: flex-end;
 }
 
+.actionLink {
+  align-items: center;
+  display: inline-flex;
+  text-decoration: none;
+}
+
 .status {
   margin-top: 8px;
 }

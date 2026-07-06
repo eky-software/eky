@@ -82,7 +82,7 @@ export function InvoicingPage({
     draftEditorState.clearDraft();
     deleteState.clearError();
     reopenApprovedInvoiceState.clearError();
-    approvedInvoicePdfState.clearError();
+    approvedInvoicePdfState.clearPdf();
     setPendingDeleteDraftId(null);
     dispatch({ type: 'showDraftList' });
   }
@@ -90,7 +90,7 @@ export function InvoicingPage({
   function handleOpenDraft(id: string): void {
     approvedInvoiceState.clearApprovedInvoice();
     reopenApprovedInvoiceState.clearError();
-    approvedInvoicePdfState.clearError();
+    approvedInvoicePdfState.clearPdf();
     setPendingDeleteDraftId(null);
     dispatch({ type: 'openEditInvoice' });
     void draftEditorState.openDraft(id);
@@ -100,10 +100,11 @@ export function InvoicingPage({
     draftEditorState.clearDraft();
     deleteState.clearError();
     reopenApprovedInvoiceState.clearError();
-    approvedInvoicePdfState.clearError();
+    approvedInvoicePdfState.clearPdf();
     setPendingDeleteDraftId(null);
     dispatch({ type: 'openApprovedInvoice' });
     void approvedInvoiceState.openApprovedInvoice(id);
+    void approvedInvoicePdfState.loadPdfMetadata(id);
   }
 
   function handleRequestDeleteDraft(id: string): void {
@@ -507,6 +508,7 @@ function ApprovedInvoiceView({
     <ApprovedInvoicePreview
       invoice={approvedInvoiceState.approvedInvoice}
       isCreatingPdf={approvedInvoicePdfState.isCreating}
+      isPdfAvailable={approvedInvoicePdfState.document !== null}
       isReopening={reopenApprovedInvoiceState.isReopening}
       pdfErrorMessage={approvedInvoicePdfState.errorMessage}
       pdfUrl={approvedInvoicePdfState.getPdfUrl(

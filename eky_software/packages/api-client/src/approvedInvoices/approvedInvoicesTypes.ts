@@ -73,6 +73,7 @@ export interface ApprovedInvoiceView {
   companyCitySnapshot: string;
   companyEmailSnapshot: string;
   companyPhoneSnapshot: string;
+  companyWebsiteSnapshot: string;
   companyIbanSnapshot: string;
   companyBicSnapshot: string;
   companyBankNameSnapshot: string;
@@ -142,6 +143,9 @@ export interface ApprovedInvoiceDocumentMetadata {
 
 export interface ApprovedInvoicesApi {
   createApprovedInvoicePdf(id: string): Promise<ApprovedInvoiceDocumentMetadata>;
+  getApprovedInvoicePdfMetadata(
+    id: string,
+  ): Promise<ApprovedInvoiceDocumentMetadata>;
   getApprovedInvoice(id: string): Promise<ApprovedInvoiceView>;
   getApprovedInvoicePdfUrl(id: string): string;
   listApprovedInvoices(): Promise<ApprovedInvoiceSummary[]>;

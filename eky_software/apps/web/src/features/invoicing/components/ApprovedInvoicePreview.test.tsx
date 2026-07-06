@@ -22,6 +22,7 @@ describe('ApprovedInvoicePreview', () => {
     expect(html).toContain(uiText.companySettings.vatNumber);
     expect(html).toContain(uiText.companySettings.streetAddress);
     expect(html).toContain(longEmail);
+    expect(html).toContain('www.example-builder.fi');
     expect(html).toContain('FI76543210');
     expect(html).toContain('Example Customer Oy');
     expect(html).toContain('Billing Recipient Oy');
@@ -29,7 +30,7 @@ describe('ApprovedInvoicePreview', () => {
     expect(html).toContain('Work row');
     expect(html).toContain('25,50 %');
     expect(html).toContain('125,50');
-    expect(html).toContain('FI2112345600000785');
+    expect(html).toContain('FI21 1234 5600 0007 85');
     expect(html).toContain('NDEAFIHH');
   });
 
@@ -82,15 +83,36 @@ describe('ApprovedInvoicePreview', () => {
 
     expect(html).toContain(uiText.invoicing.editApprovedInvoice);
   });
+
+  it('shows the PDF create action only when the stored PDF is not available', () => {
+    const html = renderPreview({ isPdfAvailable: false });
+
+    expect(html).toContain(uiText.invoicing.approvedInvoicePdfCreate);
+    expect(html).not.toContain(uiText.invoicing.approvedInvoiceOpenPdf);
+  });
+
+  it('shows the PDF open action only when the stored PDF is available', () => {
+    const html = renderPreview({ isPdfAvailable: true });
+
+    expect(html).toContain(uiText.invoicing.approvedInvoiceOpenPdf);
+    expect(html).toContain('secondary-action');
+    expect(html).toContain('/invoices/invoice-1/pdf');
+    expect(html).not.toContain(uiText.invoicing.approvedInvoicePdfCreate);
+  });
 });
 
 function renderPreview(
-  options: { invoice?: ApprovedInvoiceView; pdfErrorMessage?: string | null } = {},
+  options: {
+    invoice?: ApprovedInvoiceView;
+    isPdfAvailable?: boolean;
+    pdfErrorMessage?: string | null;
+  } = {},
 ): string {
   return renderToStaticMarkup(
     <ApprovedInvoicePreview
       invoice={options.invoice ?? createApprovedInvoiceView()}
       isCreatingPdf={false}
+      isPdfAvailable={options.isPdfAvailable ?? false}
       isReopening={false}
       pdfErrorMessage={options.pdfErrorMessage ?? null}
       pdfUrl="/invoices/invoice-1/pdf"
@@ -127,6 +149,7 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     companyPostalCodeSnapshot: '33100',
     companyStreetAddressSnapshot: 'Builder Street 2',
     companyVatNumberSnapshot: 'FI76543210',
+    companyWebsiteSnapshot: 'www.example-builder.fi',
     createdAt: '2026-06-13T10:00:00.000Z',
     customerBusinessIdSnapshot: '1234567-8',
     customerCitySnapshot: 'Helsinki',

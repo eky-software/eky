@@ -166,6 +166,7 @@ function parseApprovedInvoiceView(value: unknown): ApprovedInvoiceView {
     companyCitySnapshot: readString(value, 'companyCitySnapshot'),
     companyEmailSnapshot: readString(value, 'companyEmailSnapshot'),
     companyPhoneSnapshot: readString(value, 'companyPhoneSnapshot'),
+    companyWebsiteSnapshot: readString(value, 'companyWebsiteSnapshot'),
     companyIbanSnapshot: readString(value, 'companyIbanSnapshot'),
     companyBicSnapshot: readString(value, 'companyBicSnapshot'),
     companyBankNameSnapshot: readString(value, 'companyBankNameSnapshot'),

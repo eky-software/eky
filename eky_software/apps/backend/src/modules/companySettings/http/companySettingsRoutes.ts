@@ -55,6 +55,7 @@ export function createCompanySettingsRoutes(
         bankName: getOptionalStringField(body, 'bankName'),
         email: getOptionalStringField(body, 'email'),
         phone: getOptionalStringField(body, 'phone'),
+        website: getOptionalStringField(body, 'website'),
         postalCode: getOptionalStringField(body, 'postalCode'),
         streetAddress: getOptionalStringField(body, 'streetAddress'),
       });

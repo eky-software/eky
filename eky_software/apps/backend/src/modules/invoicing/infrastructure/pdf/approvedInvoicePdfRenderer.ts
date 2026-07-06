@@ -8,6 +8,7 @@ import {
   formatPdfCents,
   formatPdfDate,
   formatPdfDiscount,
+  formatPdfIban,
   formatPdfPercentBasisPoints,
   formatPdfQuantity,
 } from './approvedInvoicePdfFormatting.js';
@@ -38,7 +39,7 @@ export async function renderApprovedInvoicePdf(
       size: 'A4',
       margin: invoicePdfLayout.margin,
       autoFirstPage: true,
-      bufferPages: false,
+      bufferPages: true,
     });
     const chunks: Buffer[] = [];
 
@@ -64,12 +65,13 @@ function drawInvoice(
   drawHeader(doc, invoice);
 
   const metaBottom = drawRecipientAndMeta(doc, invoice, 128);
-  const deliveryBottom = drawDeliveryDetails(doc, invoice, metaBottom + 14);
-  const linesBottom = drawInvoiceLines(doc, invoice, deliveryBottom + 18);
+  const detailsBottom = drawAdditionalDetails(doc, invoice, metaBottom + 10);
+  const linesBottom = drawInvoiceLines(doc, invoice, detailsBottom + 16);
   const totalsBottom = drawVatAndTotals(doc, invoice, linesBottom + 18);
 
   drawPaymentBar(doc, invoice, Math.max(totalsBottom + 18, 628));
   drawFooter(doc, invoice);
+  drawPageNumbers(doc);
 }
 
 function drawHeader(
@@ -125,7 +127,7 @@ function drawRecipientAndMeta(
   const recipient = getBillingRecipient(invoice);
   const leftX = invoicePdfLayout.margin;
   const rightX = 338;
-  const boxHeight = 178;
+  const boxHeight = 150;
 
   drawBox(doc, leftX, y, 270, boxHeight);
   drawSectionTitle(doc, 'Laskun vastaanottaja', leftX + 10, y + 10, 250);
@@ -155,42 +157,56 @@ function drawRecipientAndMeta(
     ],
     rightX + 10,
     y + 31,
-    { labelWidth: 78, width: 195, lineGap: 2 },
+    { labelWidth: 78, width: 195, lineGap: 1 },
   );
 
   return y + boxHeight;
 }
 
-function drawDeliveryDetails(
+function drawAdditionalDetails(
   doc: PDFKit.PDFDocument,
   invoice: ApprovedInvoiceView,
   y: number,
 ): number {
-  if (invoice.deliveryAddressText.trim().length === 0) {
+  const lines = [
+    { label: 'Toimitus / kohde', value: invoice.deliveryAddressText },
+    { label: 'Lisätieto', value: invoice.note },
+  ];
+  const visibleLines = lines.filter((line) => line.value.trim().length > 0);
+
+  if (visibleLines.length === 0) {
     return y;
   }
 
   const x = invoicePdfLayout.margin;
   const contentX = x + 10;
   const contentWidth = invoicePdfLayout.contentWidth - 20;
-  const titleHeight = 14;
-  const valueHeight = doc.font('Helvetica').fontSize(9).heightOfString(
-    invoice.deliveryAddressText,
-    {
-      width: contentWidth,
-    },
+  const labelWidth = 88;
+  const valueWidth = contentWidth - labelWidth;
+  const contentHeight = visibleLines.reduce(
+    (height, line) =>
+      height +
+      Math.max(
+        12,
+        doc.font('Helvetica-Bold').fontSize(8.5).heightOfString(line.label, {
+          width: labelWidth,
+        }),
+        doc.font('Helvetica').fontSize(8.5).heightOfString(line.value, {
+          width: valueWidth,
+        }),
+      ) +
+      2,
+    0,
   );
-  const boxHeight = Math.max(52, titleHeight + valueHeight + 26);
+  const boxHeight = Math.max(32, contentHeight + 16);
 
   drawBox(doc, x, y, invoicePdfLayout.contentWidth, boxHeight);
-  drawSectionTitle(doc, 'Toimitus / kohde', contentX, y + 10, contentWidth);
-  doc
-    .font('Helvetica')
-    .fontSize(9)
-    .fillColor('#000000')
-    .text(invoice.deliveryAddressText, contentX, y + 30, {
-      width: contentWidth,
-    });
+  doc.fontSize(8.5);
+  drawLabelValueLines(doc, visibleLines, contentX, y + 9, {
+    labelWidth,
+    width: contentWidth,
+    lineGap: 2,
+  });
 
   return y + boxHeight;
 }
@@ -202,6 +218,31 @@ function drawInvoiceLines(
 ): number {
   const x = invoicePdfLayout.margin;
   const columns = createInvoiceLineColumns(x, invoice.priceInputMode);
+  let currentY = drawInvoiceLinesHeader(doc, columns, y);
+
+  for (const line of invoice.lines) {
+    const rowHeight = calculateLineHeight(doc, line);
+
+    if (currentY + rowHeight > invoicePdfLayout.footerTop - 20) {
+      doc.addPage();
+      currentY = drawInvoiceLinesHeader(doc, columns, invoicePdfLayout.margin);
+    }
+
+    drawLineRow(doc, line, columns, currentY, invoice.priceInputMode);
+    currentY += rowHeight;
+  }
+
+  drawHorizontalLine(doc, currentY - 2);
+
+  return currentY;
+}
+
+function drawInvoiceLinesHeader(
+  doc: PDFKit.PDFDocument,
+  columns: InvoiceLineColumns,
+  y: number,
+): number {
+  const x = invoicePdfLayout.margin;
   let currentY = y;
 
   doc.font('Helvetica-Bold').fontSize(10).text('Laskurivit', x, currentY);
@@ -217,20 +258,6 @@ function drawInvoiceLines(
   currentY += 16;
   drawHorizontalLine(doc, currentY - 6);
   doc.font('Helvetica').fontSize(8.5);
-
-  for (const line of invoice.lines) {
-    const rowHeight = calculateLineHeight(doc, line);
-
-    if (currentY + rowHeight > invoicePdfLayout.footerTop - 20) {
-      doc.addPage();
-      currentY = invoicePdfLayout.margin;
-    }
-
-    drawLineRow(doc, line, columns, currentY, invoice.priceInputMode);
-    currentY += rowHeight;
-  }
-
-  drawHorizontalLine(doc, currentY - 2);
 
   return currentY;
 }
@@ -305,15 +332,15 @@ function drawVatAndTotals(
   y: number,
 ): number {
   const x = invoicePdfLayout.margin;
-  const totalsX = 360;
+  const totalsX = 342;
   let currentY = y;
 
   doc.font('Helvetica-Bold').fontSize(10).text('ALV-erittely', x, currentY);
   currentY += 18;
   doc.font('Helvetica-Bold').fontSize(8);
   doc.text('ALV %', x, currentY, { width: 55 });
-  doc.text('Veroton', x + 102, currentY, { width: 78, align: 'right' });
-  doc.text('ALV', x + 218, currentY, { width: 78, align: 'right' });
+  doc.text('Veroton', x + 88, currentY, { width: 82, align: 'right' });
+  doc.text('ALV', x + 208, currentY, { width: 82, align: 'right' });
   currentY += 14;
   doc.font('Helvetica').fontSize(8.5);
 
@@ -321,12 +348,12 @@ function drawVatAndTotals(
     doc.text(formatPdfPercentBasisPoints(vat.vatRateBasisPoints), x, currentY, {
       width: 55,
     });
-    doc.text(formatPdfCents(vat.netCents), x + 102, currentY, {
-      width: 78,
+    doc.text(formatPdfCents(vat.netCents), x + 88, currentY, {
+      width: 82,
       align: 'right',
     });
-    doc.text(formatPdfCents(vat.vatCents), x + 218, currentY, {
-      width: 78,
+    doc.text(formatPdfCents(vat.vatCents), x + 208, currentY, {
+      width: 82,
       align: 'right',
     });
     currentY += 14;
@@ -352,12 +379,12 @@ function drawVatAndTotals(
     'Loppusumma EUR',
     formatPdfCents(invoice.totals.grossTotalCents),
     totalsX,
-    totalsY + 42,
+    totalsY + 32,
     true,
   );
   doc.font('Helvetica').fontSize(9);
 
-  return Math.max(currentY, totalsY + 60);
+  return Math.max(currentY, totalsY + 50);
 }
 
 function drawTotalsLine(
@@ -369,9 +396,9 @@ function drawTotalsLine(
   strong = false,
 ): void {
   doc.font(strong ? 'Helvetica-Bold' : 'Helvetica').fontSize(strong ? 10 : 9);
-  doc.text(label, x, y, { width: 112 });
-  doc.text(value, x + 112, y, {
-    width: 80,
+  doc.text(label, x, y, { width: 118 });
+  doc.text(value, x + 118, y, {
+    width: 90,
     align: 'right',
   });
 }
@@ -382,23 +409,25 @@ function drawPaymentBar(
   y: number,
 ): void {
   const x = invoicePdfLayout.margin;
+
   drawHorizontalLine(doc, y);
-  doc.font('Helvetica-Bold').fontSize(11);
+  doc.font('Helvetica-Bold').fontSize(10);
   doc.text(`Viitenumero: ${invoice.referenceNumber}`, x, y + 12, {
-    width: 170,
+    width: 160,
   });
-  doc.text(`Eräpäivä: ${formatPdfDate(invoice.dueDate)}`, x + 205, y + 12, {
-    width: 140,
+  doc.text(`Eräpäivä: ${formatPdfDate(invoice.dueDate)}`, x + 174, y + 12, {
+    width: 120,
   });
   doc.text(
     `Yhteensä: ${formatPdfCents(invoice.totals.grossTotalCents)}`,
-    x + 360,
+    x + 312,
     y + 12,
     {
-      width: 150,
+      width: 199,
       align: 'right',
     },
   );
+
   drawHorizontalLine(doc, y + 38);
   doc.font('Helvetica').fontSize(9);
 }
@@ -412,7 +441,7 @@ function drawFooter(
 
   doc.font('Helvetica-Bold').fontSize(8);
   doc.text('Osoite', x, y, { width: 110 });
-  doc.text('Puh, internet', x + 130, y, { width: 110 });
+  doc.text('Puh, sähköposti', x + 130, y, { width: 110 });
   doc.text('Alv, Y-tunnus, kotip.', x + 260, y, { width: 110 });
   doc.text('Pankki', x + 390, y, { width: 120 });
 
@@ -428,7 +457,11 @@ function drawFooter(
     { width: 110 },
   );
   doc.text(
-    [invoice.companyPhoneSnapshot, invoice.companyEmailSnapshot]
+    [
+      invoice.companyPhoneSnapshot,
+      invoice.companyEmailSnapshot,
+      invoice.companyWebsiteSnapshot,
+    ]
       .filter(Boolean)
       .join('\n'),
     x + 130,
@@ -456,7 +489,9 @@ function drawFooter(
   doc.text(
     [
       invoice.companyBankNameSnapshot,
-      invoice.companyIbanSnapshot ? `IBAN ${invoice.companyIbanSnapshot}` : '',
+      invoice.companyIbanSnapshot
+        ? `IBAN ${formatPdfIban(invoice.companyIbanSnapshot)}`
+        : '',
       invoice.companyBicSnapshot ? `BIC ${invoice.companyBicSnapshot}` : '',
     ]
       .filter(Boolean)
@@ -490,8 +525,25 @@ function drawParty(
   drawLabelValueLines(doc, lines, x, y, {
     labelWidth: 82,
     width,
-    lineGap: 2,
+    lineGap: 1,
   });
+}
+
+function drawPageNumbers(doc: PDFKit.PDFDocument): void {
+  const pageRange = doc.bufferedPageRange();
+
+  for (let index = 0; index < pageRange.count; index += 1) {
+    doc.switchToPage(pageRange.start + index);
+    doc
+      .font('Helvetica')
+      .fontSize(8)
+      .fillColor('#4f6075')
+      .text(`Sivu ${index + 1} / ${pageRange.count}`, 460, 24, {
+        width: 90,
+        align: 'right',
+      })
+      .fillColor('#000000');
+  }
 }
 
 function drawAddressLines(
@@ -577,7 +629,7 @@ function createInvoiceLineColumns(
       align: 'right',
     },
     lineTotal: {
-      label: priceInputMode === 'gross' ? 'Yht. sis. alv' : 'Yht. alv 0',
+      label: 'Yht. EUR',
       x: x + 452,
       width: 59,
       align: 'right',

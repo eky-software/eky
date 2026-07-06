@@ -78,6 +78,7 @@ function createCompanySettings(
     createdAt: '2026-06-25T00:00:00.000Z',
     defaultHourlyRateCents,
     email: '',
+    website: '',
     hourlyRateShortcut: 'työ',
     vatNumber: '',
     iban: '',

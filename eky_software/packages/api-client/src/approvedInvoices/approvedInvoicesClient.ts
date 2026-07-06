@@ -31,6 +31,18 @@ export function createApprovedInvoicesApi(
       return readApprovedInvoiceDocumentMetadataResponse(responseBody);
     },
 
+    async getApprovedInvoicePdfMetadata(
+      id,
+    ): Promise<ApprovedInvoiceDocumentMetadata> {
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        `/invoices/${encodeURIComponent(id)}/pdf/metadata`,
+      );
+
+      return readApprovedInvoiceDocumentMetadataResponse(responseBody);
+    },
+
     async getApprovedInvoice(id): Promise<ApprovedInvoiceView> {
       const responseBody = await requestJson(
         fetchImplementation,

@@ -9,6 +9,7 @@ export interface CompanySettings {
   city: string;
   email: string;
   phone: string;
+  website: string;
   iban: string;
   bic: string;
   bankName: string;
@@ -27,6 +28,7 @@ export interface UpdateCompanySettingsRequest {
   city: string;
   email: string;
   phone: string;
+  website: string;
   iban: string;
   bic: string;
   bankName: string;

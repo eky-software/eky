@@ -4,6 +4,7 @@ import type { ApprovedInvoiceViewLine } from '../../domain/approvedInvoiceView.j
 import {
   formatPdfCents,
   formatPdfDate,
+  formatPdfIban,
   formatPdfPercentBasisPoints,
   formatPdfQuantity,
 } from './approvedInvoicePdfFormatting.js';
@@ -43,6 +44,9 @@ describe('approved invoice PDF renderer', () => {
     expect(formatPdfDate('2026-07-03')).toBe('03.07.2026');
     expect(formatPdfPercentBasisPoints(2550)).toBe('25,50 %');
     expect(formatPdfQuantity(150)).toBe('1,50');
+    expect(formatPdfIban('FI2112345600000785')).toBe(
+      'FI21 1234 5600 0007 85',
+    );
   });
 
   it('keeps the renderer independent from database and master-data readers', async () => {

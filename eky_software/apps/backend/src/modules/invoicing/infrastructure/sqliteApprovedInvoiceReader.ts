@@ -139,6 +139,7 @@ function toApprovedInvoiceView(
     companyCitySnapshot: invoice.company_city_snapshot,
     companyEmailSnapshot: invoice.company_email_snapshot,
     companyPhoneSnapshot: invoice.company_phone_snapshot,
+    companyWebsiteSnapshot: invoice.company_website_snapshot,
     companyIbanSnapshot: invoice.company_iban_snapshot,
     companyBicSnapshot: invoice.company_bic_snapshot,
     companyBankNameSnapshot: invoice.company_bank_name_snapshot,

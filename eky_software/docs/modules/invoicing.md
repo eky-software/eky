@@ -203,9 +203,16 @@ Ensimmäinen PDF-polku:
 
 - `POST /invoices/:id/pdf` luo tai palauttaa hyväksytyn laskun PDF-metadatan
 - `GET /invoices/:id/pdf` palauttaa paikallisesti tallennetun PDF-tiedoston
-- web näyttää hyväksytyllä laskulla `Luo PDF` ja `Avaa PDF` -toiminnot
+- `GET /invoices/:id/pdf/metadata` tarkistaa, että PDF-metadata ja paikallinen tiedosto ovat olemassa
+- web näyttää hyväksytyllä laskulla `Luo PDF` -toiminnon vain, jos PDF puuttuu
+- web näyttää `Avaa PDF` -toiminnon vain, jos PDF on tarkistettu olemassa olevaksi
 - PDF:n luonti ei merkitse laskua lähetetyksi
 - PDF:n luonti ei muuta hyväksytyn laskun snapshot-tietoja
+
+Jos PDF-metadata on olemassa mutta paikallinen tiedosto puuttuu, manuaalinen
+`POST /invoices/:id/pdf` saa muodostaa PDF:n uudelleen samasta hyväksytyn laskun
+snapshotista. Tämä on local-MVP:n korjauspolku ennen myöhempää pilvi- ja
+storage-mallia.
 
 Hyväksytyllä laskulla saa olla local-MVP:ssä yksi voimassa oleva
 `approved_invoice_pdf`-dokumentti per yritys ja lasku. Jos hyväksytty mutta

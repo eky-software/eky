@@ -62,3 +62,9 @@ export function formatApprovedInvoiceDiscount(
 export function hasApprovedInvoiceValue(value: string): boolean {
   return value.trim().length > 0;
 }
+
+export function formatApprovedInvoiceIban(iban: string): string {
+  const normalizedIban = iban.replace(/\s+/g, '').toUpperCase();
+
+  return normalizedIban.replace(/(.{4})/g, '$1 ').trim();
+}

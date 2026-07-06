@@ -48,6 +48,7 @@ describe('company settings api client', () => {
       bankName: 'Test Bank',
       email: 'info@example.fi',
       phone: '040 123 4567',
+      website: 'www.example.fi',
       postalCode: '00100',
       streetAddress: 'Testikatu 1',
     } as const;
@@ -96,6 +97,7 @@ describe('company settings api client', () => {
         bankName: '',
         email: '',
         phone: '',
+        website: '',
         postalCode: '',
         streetAddress: '',
       }),
@@ -160,6 +162,7 @@ function createTestCompanySettings(): CompanySettings {
     city: 'Helsinki',
     email: 'info@example.fi',
     phone: '040 123 4567',
+    website: 'www.example.fi',
     iban: 'FI2112345600000785',
     bic: 'NDEAFIHH',
     bankName: 'Test Bank',

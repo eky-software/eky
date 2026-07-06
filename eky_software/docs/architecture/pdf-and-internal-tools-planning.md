@@ -58,10 +58,11 @@ Etenemisjärjestys:
 4. `invoice_documents`-taulu ja paikallinen tiedostotallennus
 5. `POST /invoices/:id/pdf`
 6. `GET /invoices/:id/pdf`
-7. webiin `Luo PDF` ja `Avaa PDF`
-8. sähköpostisuunnitelma
-9. sähköpostilähetys PDF-liitteellä
-10. lähetys-, lataus- ja tulostushistoria myöhemmin
+7. `GET /invoices/:id/pdf/metadata`
+8. webiin tilapohjaiset `Luo PDF` ja `Avaa PDF` -toiminnot
+9. sähköpostisuunnitelma
+10. sähköpostilähetys PDF-liitteellä
+11. lähetys-, lataus- ja tulostushistoria myöhemmin
 
 PDF:n luonti ei vielä merkitse laskua lähetetyksi.
 
@@ -82,6 +83,14 @@ hyväksytty mutta lähettämätön lasku avataan takaisin muokattavaksi, vanha
 PDF-metadata poistetaan ja paikallinen tiedosto yritetään poistaa. Kun lasku
 hyväksytään uudelleen, samalle laskunumerolle ja viitenumerolle muodostetaan
 uusi PDF nykyisestä hyväksytyn laskun snapshotista.
+
+Web-käyttöliittymä ei näytä `Avaa PDF` -toimintoa pelkän laskun tilan
+perusteella. Ensin tarkistetaan `GET /invoices/:id/pdf/metadata` -reitillä,
+että PDF-metadata on olemassa ja paikallinen tiedosto on luettavissa. Jos
+tarkistus palauttaa 404, käyttäjälle näytetään `Luo PDF`. Jos metadata on
+olemassa mutta paikallinen tiedosto puuttuu, manuaalinen
+`POST /invoices/:id/pdf` saa korjata tilanteen muodostamalla PDF:n uudelleen
+hyväksytyn laskun snapshotista.
 
 PDF:n luonti ei saa hakea tietoja Customer- tai Company Settings
 -master-datasta. Kaikki laskulla näkyvät tiedot tulevat
@@ -169,6 +178,20 @@ käyttölogiikan selkeys, ei pikselitarkka kopio.
 
 PDF-layoutin pitää muodostua `ApprovedInvoiceView`-snapshotista. Layout ei saa
 ohjata domain-mallia väärään suuntaan eikä hakea tietoja master-tauluista.
+
+Ensimmäinen PDF-layout pidetään tiiviinä ja laskuriveille jätetään
+mahdollisimman paljon tilaa. Laskun vastaanottaja ja laskun perustiedot
+näytetään yläosassa tiiviinä tietolaatikoina. Toimitus/kohde ja lisätieto
+näytetään vain, jos niille on sisältöä, ja ne pidetään kompaktina
+lisätietorivistönä ennen laskurivejä. ALV-erittely ja laskun summat asetetaan
+samaan loppuyhteenvetoalueeseen. Maksupalkissa näytetään korostetusti
+viitenumero, eräpäivä ja laskun yhteissumma. IBAN ei kuulu maksupalkkiin, jos se
+tekee rivistä ahtaan; pankkitili näytetään footerin pankkitiedoissa ja
+tarvittaessa erillisessä maksutietolohkossa. IBAN näytetään laskulla
+luettavuuden vuoksi neljän merkin ryhmissä, esimerkiksi
+`FI21 1234 5600 0007 85`, vaikka snapshot-arvo säilyy normalisoituna ilman
+välilyöntejä. Monisivuisissa PDF-laskuissa sivunumerointi näytetään sivun
+oikeassa yläkulmassa.
 
 ## Sisäisten Työkalujen Inventaario
 
