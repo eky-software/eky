@@ -14,7 +14,14 @@ export const invoiceUnitOptions: readonly InvoiceRowOption<InvoiceUnit>[] = [
   { value: 'pv', label: uiText.invoicing.unitDay },
   { value: 'km', label: uiText.invoicing.unitKilometre },
   { value: 'erä', label: uiText.invoicing.unitBatch },
+  { value: 'pak', label: uiText.invoicing.unitPackage },
 ];
+
+export const customInvoiceUnitSelectValue = '__custom_invoice_unit__';
+
+export function isKnownInvoiceUnit(value: string): boolean {
+  return invoiceUnitOptions.some((option) => option.value === value);
+}
 
 export const invoiceVatRateOptions: readonly InvoiceRowOption<number>[] = [
   { value: 2550, label: '25,5 %' },

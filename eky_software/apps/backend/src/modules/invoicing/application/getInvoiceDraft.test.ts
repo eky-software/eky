@@ -77,7 +77,7 @@ describe('getInvoiceDraft', () => {
       repository,
     );
 
-    expect(result).toBe(draft);
+    expect(result).toEqual(draft);
     expect(repository.getCalls).toEqual([
       {
         companyId: 'dev-company',
@@ -99,4 +99,83 @@ describe('getInvoiceDraft', () => {
       ),
     ).rejects.toEqual(new InvoiceDraftNotFoundError());
   });
+
+  it('normalizes draft totals from VAT-rate totals before returning it', async () => {
+    const draft = {
+      ...createDraft(),
+      lines: [
+        createDraftLine('line-1', 1, 5_500),
+        ...Array.from({ length: 25 }, (_, index) =>
+          createDraftLine(`line-small-${index + 1}`, index + 2, 100),
+        ),
+        ...Array.from({ length: 4 }, (_, index) =>
+          createDraftLine(`line-medium-${index + 1}`, index + 27, 1_100),
+        ),
+      ],
+      totals: {
+        netTotalCents: 12_400,
+        vatTotalCents: 3_177,
+        grossTotalCents: 15_577,
+        vatBreakdown: [
+          {
+            vatRateBasisPoints: 2550,
+            netCents: 12_400,
+            vatCents: 3_177,
+            grossCents: 15_577,
+          },
+        ],
+      },
+    };
+    const repository = new FakeInvoiceDraftRepository(draft);
+
+    await expect(
+      getInvoiceDraft(
+        {
+          companyId: 'dev-company',
+          invoiceDraftId: 'draft-1',
+        },
+        repository,
+      ),
+    ).resolves.toMatchObject({
+      totals: {
+        netTotalCents: 12_400,
+        vatTotalCents: 3_162,
+        grossTotalCents: 15_562,
+        vatBreakdown: [
+          {
+            vatRateBasisPoints: 2550,
+            netCents: 12_400,
+            vatCents: 3_162,
+            grossCents: 15_562,
+          },
+        ],
+      },
+    });
+  });
 });
+
+function createDraftLine(
+  id: string,
+  position: number,
+  netCents: number,
+): InvoiceDraft['lines'][number] {
+  const vatCents = Math.round((netCents * 2550) / 10_000);
+
+  return {
+    id,
+    position,
+    code: '',
+    description: 'Test line',
+    quantityHundredths: 100,
+    unit: 'kpl',
+    unitPriceCents: netCents,
+    vatRateBasisPoints: 2550,
+    priceInputMode: 'net',
+    discount: { type: 'none' },
+    baseCents: netCents,
+    discountCents: 0,
+    netCents,
+    vatCents,
+    grossCents: netCents + vatCents,
+  };
+}

@@ -179,6 +179,24 @@ describe('validateInvoiceDraftForm', () => {
     ).toBe(true);
   });
 
+  it('allows package and short custom units', () => {
+    expect(validateInvoiceDraftForm(createValidForm({ unit: 'pak' })).isValid)
+      .toBe(true);
+    expect(validateInvoiceDraftForm(createValidForm({ unit: 'ltk' })).isValid)
+      .toBe(true);
+  });
+
+  it.each(['', 'bad unit', 'too-long-unit'])(
+    'rejects invalid unit value %s',
+    (unit) => {
+      const result = validateInvoiceDraftForm(createValidForm({ unit }));
+
+      expect(result.errors.lines['invoice-row-1']?.unit).toBe(
+        uiText.invoicing.validationUnitInvalid,
+      );
+    },
+  );
+
   it.each(['abc', '-1', '100,01'])(
     'rejects invalid percentage discount %s',
     (discountValue) => {
@@ -218,31 +236,43 @@ function createValidForm(
     discountType?: 'none' | 'percentage' | 'fixed';
     discountValue?: string;
     quantity?: string;
+    unit?: string;
     unitPrice?: string;
   } = {},
 ) {
-  const rows = updateInvoiceRow(
-    updateInvoiceRow(
-      updateInvoiceRow(
-        updateInvoiceRow(
-          updateInvoiceRow(
-            createInitialInvoiceRows(),
-            'invoice-row-1',
-            'description',
-            overrides.description ?? 'Työtunti',
-          ),
-          'invoice-row-1',
-          'quantity',
-          overrides.quantity ?? '1,50',
-        ),
-        'invoice-row-1',
-        'unitPrice',
-        overrides.unitPrice ?? '65,50',
-      ),
-      'invoice-row-1',
-      'discountType',
-      overrides.discountType ?? 'none',
-    ),
+  let rows = createInitialInvoiceRows();
+  rows = updateInvoiceRow(
+    rows,
+    'invoice-row-1',
+    'description',
+    overrides.description ?? 'Työtunti',
+  );
+  rows = updateInvoiceRow(
+    rows,
+    'invoice-row-1',
+    'quantity',
+    overrides.quantity ?? '1,50',
+  );
+  rows = updateInvoiceRow(
+    rows,
+    'invoice-row-1',
+    'unit',
+    overrides.unit ?? 'h',
+  );
+  rows = updateInvoiceRow(
+    rows,
+    'invoice-row-1',
+    'unitPrice',
+    overrides.unitPrice ?? '65,50',
+  );
+  rows = updateInvoiceRow(
+    rows,
+    'invoice-row-1',
+    'discountType',
+    overrides.discountType ?? 'none',
+  );
+  rows = updateInvoiceRow(
+    rows,
     'invoice-row-1',
     'discountValue',
     overrides.discountValue ?? '',

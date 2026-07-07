@@ -12,6 +12,7 @@ const migrationNames = [
   '016_add_approved_invoice_print_snapshot_fields.sql',
   '017_allow_reopened_invoice_corrections.sql',
   '018_create_invoice_documents.sql',
+  '020_relax_invoice_line_unit_checks.sql',
 ];
 
 const migrationSql = migrationNames.map((migrationName) =>

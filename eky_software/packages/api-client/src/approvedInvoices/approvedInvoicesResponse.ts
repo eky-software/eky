@@ -346,17 +346,19 @@ function parsePriceInputMode(value: unknown): ApprovedInvoicePriceInputMode {
 }
 
 function parseUnit(value: unknown): ApprovedInvoiceUnit {
-  if (
-    value === 'h' ||
-    value === 'kpl' ||
-    value === 'pv' ||
-    value === 'km' ||
-    value === 'erä'
-  ) {
+  if (typeof value === 'string' && isValidApprovedInvoiceUnit(value)) {
     return value;
   }
 
   throw invalidApprovedInvoiceResponse(value);
+}
+
+function isValidApprovedInvoiceUnit(value: string): boolean {
+  return (
+    value.length > 0 &&
+    value.length <= 8 &&
+    /^[\p{L}\p{N}.-]+$/u.test(value)
+  );
 }
 
 function readString(value: Record<string, unknown>, fieldName: string): string {

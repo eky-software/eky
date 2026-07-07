@@ -8,9 +8,11 @@ import type {
   InvoiceRowFormField,
 } from '../form/invoiceRowFormState.js';
 import {
+  customInvoiceUnitSelectValue,
   invoiceDiscountTypeOptions,
   invoiceUnitOptions,
   invoiceVatRateOptions,
+  isKnownInvoiceUnit,
 } from '../form/invoiceRowOptions.js';
 import styles from './InvoiceRowEditor.module.css';
 import { uiText } from '../../../i18n/fi.js';
@@ -40,6 +42,11 @@ export function InvoiceRowEditor({
     row.discountType !== 'none' || errors?.discountValue !== undefined,
   );
   const discountValueDisabled = row.discountType === 'none';
+  const isCustomUnit =
+    row.unit === '' || !isKnownInvoiceUnit(row.unit);
+  const selectedUnitValue = isCustomUnit
+    ? customInvoiceUnitSelectValue
+    : row.unit;
 
   useEffect(() => {
     if (row.discountType !== 'none' || errors?.discountValue !== undefined) {
@@ -89,24 +96,47 @@ export function InvoiceRowEditor({
           <InvoiceRowFieldError message={errors?.quantity} />
         </div>
 
-        <select
-          aria-label={uiText.invoicing.rowUnit}
-          name={`${row.id}-unit`}
-          value={row.unit}
-          onChange={(event) =>
-            onChange(
-              row.id,
-              'unit',
-              event.target.value as InvoiceRowForm['unit'],
-            )
-          }
-        >
-          {invoiceUnitOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
+        <div className={styles.field}>
+          <select
+            aria-invalid={errors?.unit === undefined ? undefined : true}
+            aria-label={uiText.invoicing.rowUnit}
+            name={`${row.id}-unit`}
+            value={selectedUnitValue}
+            onChange={(event) =>
+              onChange(
+                row.id,
+                'unit',
+                event.target.value === customInvoiceUnitSelectValue
+                  ? ''
+                  : event.target.value,
+              )
+            }
+          >
+            {invoiceUnitOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+            <option value={customInvoiceUnitSelectValue}>
+              {uiText.invoicing.unitCustom}
             </option>
-          ))}
-        </select>
+          </select>
+          {isCustomUnit ? (
+            <input
+              aria-invalid={errors?.unit === undefined ? undefined : true}
+              aria-label={uiText.invoicing.rowCustomUnit}
+              maxLength={8}
+              name={`${row.id}-customUnit`}
+              placeholder={uiText.invoicing.rowCustomUnitPlaceholder}
+              type="text"
+              value={row.unit}
+              onChange={(event) =>
+                onChange(row.id, 'unit', event.target.value)
+              }
+            />
+          ) : null}
+          <InvoiceRowFieldError message={errors?.unit} />
+        </div>
 
         <div className={styles.field}>
           <input

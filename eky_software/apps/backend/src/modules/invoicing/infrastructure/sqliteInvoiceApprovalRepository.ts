@@ -9,6 +9,7 @@ import type {
   NewInvoiceRow,
 } from '../../../database/schema.js';
 import { ApproveInvoiceDraftError } from '../application/approveInvoiceDraftError.js';
+import { calculateInvoiceTotals } from '../domain/calculateInvoiceTotals.js';
 import {
   formatInvoiceNumber,
   resolveInvoiceNumberSequenceScope,
@@ -29,6 +30,7 @@ import type {
   ReopenedApprovedInvoiceResult,
 } from '../ports/invoiceApprovalRepository.js';
 import type { InvoiceAuditAction } from '../domain/approvedInvoice.js';
+import type { InvoiceTotals, PriceInputMode } from '../domain/invoiceCalculation.js';
 import type {
   InvoiceApprovalSnapshotData,
   InvoiceApprovalSnapshotReader,
@@ -158,6 +160,7 @@ function toNumberingSettings(
 function createInvoiceRow(
   input: ApproveInvoiceDraftPersistenceInput,
   draft: InvoiceDraftTable,
+  totals: InvoiceTotals,
   settings: StoredInvoiceNumberingSettings,
   sequenceScope: string,
   sequenceNumber: number,
@@ -223,9 +226,9 @@ function createInvoiceRow(
     order_number: draft.order_number,
     note: draft.note,
     delivery_address_text: draft.delivery_address_text,
-    total_net_cents: draft.net_total_cents,
-    total_vat_cents: draft.vat_total_cents,
-    total_gross_cents: draft.gross_total_cents,
+    total_net_cents: totals.netTotalCents,
+    total_vat_cents: totals.vatTotalCents,
+    total_gross_cents: totals.grossTotalCents,
     created_at: input.approvedAt,
     approved_at: input.approvedAt,
     updated_at: input.approvedAt,
@@ -235,6 +238,7 @@ function createInvoiceRow(
 function createReapprovedInvoiceRow(
   input: ApproveInvoiceDraftPersistenceInput,
   draft: InvoiceDraftTable,
+  totals: InvoiceTotals,
   existingInvoice: InvoiceRow,
   snapshot: InvoiceApprovalSnapshotData,
 ): NewInvoiceRow {
@@ -245,6 +249,7 @@ function createReapprovedInvoiceRow(
         invoiceId: existingInvoice.id,
       },
       draft,
+      totals,
       {
         companyId: existingInvoice.company_id,
         createdAt: existingInvoice.created_at,
@@ -293,6 +298,27 @@ function createInvoiceLineRows(
       created_at: input.approvedAt,
     };
   });
+}
+
+function calculateStoredDraftTotals(
+  draft: InvoiceDraftTable,
+  lines: InvoiceDraftLineTable[],
+): InvoiceTotals {
+  const priceInputMode = draft.price_input_mode as PriceInputMode;
+
+  return calculateInvoiceTotals(
+    lines.map((line) => ({
+      quantityHundredths: line.quantity_hundredths,
+      unitPriceCents: line.unit_price_cents,
+      vatRateBasisPoints: line.vat_rate_basis_points,
+      priceInputMode,
+      baseCents: line.base_cents,
+      discountCents: line.discount_cents,
+      netCents: line.net_cents,
+      vatCents: line.vat_cents,
+      grossCents: line.gross_cents,
+    })),
+  );
 }
 
 function createAuditEventRow(
@@ -346,6 +372,7 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
         );
       }
 
+      const totals = calculateStoredDraftTotals(draft, lines);
       const reopenedInvoice = this.getReopenedInvoiceForDraft(
         input.companyId,
         input.draftId,
@@ -364,6 +391,7 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
         const invoiceRow = createReapprovedInvoiceRow(
           reapprovedInput,
           draft,
+          totals,
           reopenedInvoice,
           snapshot,
         );
@@ -435,6 +463,7 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
       const invoiceRow = createInvoiceRow(
         input,
         draft,
+        totals,
         settings,
         sequenceScope,
         sequenceNumber,

@@ -5,7 +5,8 @@ export type ApprovedInvoiceNumberingMode =
   | 'plainSequence';
 export type ApprovedInvoiceReferenceNumberType = 'finnishDomestic';
 export type ApprovedInvoicePriceInputMode = 'net' | 'gross';
-export type ApprovedInvoiceUnit = 'h' | 'kpl' | 'pv' | 'km' | 'erä';
+export type KnownApprovedInvoiceUnit = 'h' | 'kpl' | 'pv' | 'km' | 'erä' | 'pak';
+export type ApprovedInvoiceUnit = KnownApprovedInvoiceUnit | (string & {});
 
 export type ApprovedInvoiceLineDiscount =
   | { type: 'none' }

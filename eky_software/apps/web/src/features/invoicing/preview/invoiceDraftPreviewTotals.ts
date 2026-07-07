@@ -34,11 +34,14 @@ export type InvoiceDraftPreviewTotals =
 interface PreviewLineTotals {
   grossCents: number;
   netCents: number;
+  priceInputMode: NewInvoiceFormState['priceInputMode'];
   vatCents: number;
   vatRateBasisPoints: number;
 }
 
 interface MutableVatBreakdown {
+  grossInputCents: bigint;
+  priceInputMode: NewInvoiceFormState['priceInputMode'];
   grossCents: bigint;
   netCents: bigint;
   vatCents: bigint;
@@ -105,7 +108,7 @@ function calculatePreviewLine(
     );
     const grossCents = netCents + vatCents;
 
-    return toPreviewLineTotals(row.vatRateBasisPoints, {
+    return toPreviewLineTotals(row.vatRateBasisPoints, priceInputMode, {
       grossCents,
       netCents,
       vatCents,
@@ -119,7 +122,7 @@ function calculatePreviewLine(
   );
   const vatCents = grossCents - netCents;
 
-  return toPreviewLineTotals(row.vatRateBasisPoints, {
+  return toPreviewLineTotals(row.vatRateBasisPoints, priceInputMode, {
     grossCents,
     netCents,
     vatCents,
@@ -183,17 +186,22 @@ function calculatePreviewTotals(
   const breakdownByRate = new Map<number, MutableVatBreakdown>();
 
   for (const line of lines) {
-    grossTotalCents += BigInt(line.grossCents);
-    netTotalCents += BigInt(line.netCents);
-    vatTotalCents += BigInt(line.vatCents);
     addVatBreakdown(breakdownByRate, line);
+  }
+
+  const vatBreakdown = createVatBreakdown(breakdownByRate);
+
+  for (const breakdown of vatBreakdown) {
+    grossTotalCents += BigInt(breakdown.grossCents);
+    netTotalCents += BigInt(breakdown.netCents);
+    vatTotalCents += BigInt(breakdown.vatCents);
   }
 
   return {
     grossTotalCents: toSafeNumber(grossTotalCents),
     isAvailable: true,
     netTotalCents: toSafeNumber(netTotalCents),
-    vatBreakdown: createVatBreakdown(breakdownByRate),
+    vatBreakdown,
     vatTotalCents: toSafeNumber(vatTotalCents),
   };
 }
@@ -205,6 +213,11 @@ function addVatBreakdown(
   const existingBreakdown = breakdownByRate.get(line.vatRateBasisPoints);
 
   if (existingBreakdown) {
+    if (existingBreakdown.priceInputMode !== line.priceInputMode) {
+      throw new Error('Invoice preview rows must use one price input mode per VAT rate.');
+    }
+
+    existingBreakdown.grossInputCents += BigInt(line.grossCents);
     existingBreakdown.grossCents += BigInt(line.grossCents);
     existingBreakdown.netCents += BigInt(line.netCents);
     existingBreakdown.vatCents += BigInt(line.vatCents);
@@ -212,6 +225,8 @@ function addVatBreakdown(
   }
 
   breakdownByRate.set(line.vatRateBasisPoints, {
+    grossInputCents: BigInt(line.grossCents),
+    priceInputMode: line.priceInputMode,
     grossCents: BigInt(line.grossCents),
     netCents: BigInt(line.netCents),
     vatCents: BigInt(line.vatCents),
@@ -223,16 +238,40 @@ function createVatBreakdown(
 ): InvoiceDraftPreviewVatBreakdown[] {
   return [...breakdownByRate.entries()]
     .sort(([firstRate], [secondRate]) => firstRate - secondRate)
-    .map(([vatRateBasisPoints, breakdown]) => ({
-      grossCents: toSafeNumber(breakdown.grossCents),
-      netCents: toSafeNumber(breakdown.netCents),
-      vatCents: toSafeNumber(breakdown.vatCents),
-      vatRateBasisPoints,
-    }));
+    .map(([vatRateBasisPoints, breakdown]) => {
+      if (breakdown.priceInputMode === 'gross') {
+        const grossCents = toSafeNumber(breakdown.grossInputCents);
+        const netCents = roundHalfUp(
+          BigInt(grossCents) * basisPointsScale,
+          basisPointsScale + BigInt(vatRateBasisPoints),
+        );
+
+        return {
+          grossCents,
+          netCents,
+          vatCents: grossCents - netCents,
+          vatRateBasisPoints,
+        };
+      }
+
+      const netCents = toSafeNumber(breakdown.netCents);
+      const vatCents = roundHalfUp(
+        BigInt(netCents) * BigInt(vatRateBasisPoints),
+        basisPointsScale,
+      );
+
+      return {
+        grossCents: netCents + vatCents,
+        netCents,
+        vatCents,
+        vatRateBasisPoints,
+      };
+    });
 }
 
 function toPreviewLineTotals(
   vatRateBasisPoints: number,
+  priceInputMode: NewInvoiceFormState['priceInputMode'],
   values: {
     grossCents: number;
     netCents: number;
@@ -250,6 +289,7 @@ function toPreviewLineTotals(
   return {
     grossCents: values.grossCents,
     netCents: values.netCents,
+    priceInputMode,
     vatCents: values.vatCents,
     vatRateBasisPoints,
   };

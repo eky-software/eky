@@ -250,17 +250,19 @@ function parsePriceInputMode(value: unknown): InvoicePriceInputMode {
 }
 
 function parseInvoiceUnit(value: unknown): InvoiceUnit {
-  if (
-    value === 'h' ||
-    value === 'kpl' ||
-    value === 'pv' ||
-    value === 'km' ||
-    value === 'erä'
-  ) {
+  if (typeof value === 'string' && isValidInvoiceUnit(value)) {
     return value;
   }
 
   throw invalidInvoiceDraftResponse(value);
+}
+
+function isValidInvoiceUnit(value: string): boolean {
+  return (
+    value.length > 0 &&
+    value.length <= 8 &&
+    /^[\p{L}\p{N}.-]+$/u.test(value)
+  );
 }
 
 function readString(value: Record<string, unknown>, fieldName: string): string {

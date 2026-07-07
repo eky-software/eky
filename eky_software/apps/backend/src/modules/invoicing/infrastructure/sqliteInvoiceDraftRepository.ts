@@ -13,8 +13,8 @@ import {
 } from '../domain/invoiceDraft.js';
 import type { InvoiceDraftSummary } from '../domain/invoiceDraftSummary.js';
 import type {
-  InvoiceLineDiscount,
   InvoiceVatBreakdown,
+  InvoiceLineDiscount,
   PriceInputMode,
 } from '../domain/invoiceCalculation.js';
 import type { InvoiceDraftRepository } from '../ports/invoiceDraftRepository.js';
@@ -89,13 +89,6 @@ interface StoredDiscount {
 
 type InvoiceDraftSelectParameters = [string, string];
 
-interface InvoiceVatBreakdownRow {
-  vat_rate_basis_points: number;
-  net_cents: number;
-  vat_cents: number;
-  gross_cents: number;
-}
-
 interface InvoiceDraftSummaryRow {
   id: string;
   customer_id: string;
@@ -110,6 +103,13 @@ interface InvoiceDraftSummaryRow {
   vat_total_cents: number;
   gross_total_cents: number;
   updated_at: string;
+}
+
+interface InvoiceVatBreakdownRow {
+  vat_rate_basis_points: number;
+  net_cents: number;
+  vat_cents: number;
+  gross_cents: number;
 }
 
 const invoiceDraftSummarySelect = `
@@ -234,17 +234,6 @@ function toInvoiceDraftLine(
     ),
     baseCents: row.base_cents,
     discountCents: row.discount_cents,
-    netCents: row.net_cents,
-    vatCents: row.vat_cents,
-    grossCents: row.gross_cents,
-  };
-}
-
-function toInvoiceVatBreakdown(
-  row: InvoiceVatBreakdownRow,
-): InvoiceVatBreakdown {
-  return {
-    vatRateBasisPoints: row.vat_rate_basis_points,
     netCents: row.net_cents,
     vatCents: row.vat_cents,
     grossCents: row.gross_cents,
@@ -607,6 +596,10 @@ export class SqliteInvoiceDraftRepository implements InvoiceDraftRepository {
       )
       .all(companyId, invoiceDraftId);
     const priceInputMode = draftRow.price_input_mode as PriceInputMode;
+    const lines = lineRows.map((lineRow) =>
+      toInvoiceDraftLine(lineRow, priceInputMode),
+    );
+    const vatBreakdown = vatBreakdownRows.map(toInvoiceVatBreakdown);
 
     return {
       id: draftRow.id,
@@ -625,14 +618,12 @@ export class SqliteInvoiceDraftRepository implements InvoiceDraftRepository {
       orderNumber: draftRow.order_number,
       note: draftRow.note,
       deliveryAddressText: draftRow.delivery_address_text,
-      lines: lineRows.map((lineRow) =>
-        toInvoiceDraftLine(lineRow, priceInputMode),
-      ),
+      lines,
       totals: {
         netTotalCents: draftRow.net_total_cents,
         vatTotalCents: draftRow.vat_total_cents,
         grossTotalCents: draftRow.gross_total_cents,
-        vatBreakdown: vatBreakdownRows.map(toInvoiceVatBreakdown),
+        vatBreakdown,
       },
       createdAt: draftRow.created_at,
       updatedAt: draftRow.updated_at,
@@ -676,4 +667,15 @@ export class SqliteInvoiceDraftRepository implements InvoiceDraftRepository {
 
     return rows.map(toInvoiceDraftSummary);
   }
+}
+
+function toInvoiceVatBreakdown(
+  row: InvoiceVatBreakdownRow,
+): InvoiceVatBreakdown {
+  return {
+    vatRateBasisPoints: row.vat_rate_basis_points,
+    netCents: row.net_cents,
+    vatCents: row.vat_cents,
+    grossCents: row.gross_cents,
+  };
 }

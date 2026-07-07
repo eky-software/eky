@@ -8,6 +8,7 @@ import type {
   InvoiceLineDiscount,
   PriceInputMode,
 } from '../domain/invoiceCalculation.js';
+import { maximumInvoiceUnitLength } from '../domain/invoiceDraftRules.js';
 
 const maximumLineCount = 500;
 const maximumIdentifierLength = 200;
@@ -168,7 +169,7 @@ function readLine(value: unknown): SaveInvoiceDraftLineInput {
       maximumLongTextLength,
     ),
     quantityHundredths: readSafeInteger(value, 'quantityHundredths'),
-    unit: readString(value, 'unit', maximumShortTextLength),
+    unit: readString(value, 'unit', maximumInvoiceUnitLength),
     unitPriceCents: readSafeInteger(value, 'unitPriceCents'),
     vatRateBasisPoints: readSafeInteger(value, 'vatRateBasisPoints'),
     discount: readDiscount(value.discount),

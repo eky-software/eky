@@ -48,6 +48,26 @@ describe('approved invoices api client', () => {
     ]);
   });
 
+  it('accepts package and short custom units in approved invoice responses', async () => {
+    const requests = createRequestLog();
+    const invoice = {
+      ...createTestApprovedInvoiceView(),
+      lines: [
+        { ...createTestApprovedInvoiceView().lines[0], unit: 'pak' },
+        {
+          ...createTestApprovedInvoiceView().lines[0],
+          id: 'line-2',
+          unit: 'ltk',
+        },
+      ],
+    };
+    const client = createTestClient(requests, { invoice });
+
+    const result = await client.getApprovedInvoice('invoice-1');
+
+    expect(result.lines.map((line) => line.unit)).toEqual(['pak', 'ltk']);
+  });
+
   it('creates approved invoice PDF metadata through POST /invoices/:id/pdf', async () => {
     const requests = createRequestLog();
     const document = createTestApprovedInvoiceDocumentMetadata();
@@ -173,7 +193,7 @@ describe('approved invoices api client', () => {
       lines: [
         {
           ...createTestApprovedInvoiceView().lines[0],
-          unit: 'hour',
+          unit: 'bad unit',
         },
       ],
     });

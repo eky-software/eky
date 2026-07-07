@@ -30,6 +30,13 @@ const approvedInvoiceMigrationSql = readFileSync(
   ),
   'utf8',
 );
+const relaxedInvoiceUnitChecksMigrationSql = readFileSync(
+  new URL(
+    '../../../database/migrations/020_relax_invoice_line_unit_checks.sql',
+    import.meta.url,
+  ),
+  'utf8',
+);
 const latePaymentInterestMigrationSql = readFileSync(
   new URL(
     '../../../database/migrations/013_add_invoice_draft_late_payment_interest.sql',
@@ -130,6 +137,7 @@ describe('SqliteInvoiceDraftRepository', () => {
     database.exec(latePaymentInterestMigrationSql);
     database.exec(printFoundationFieldsMigrationSql);
     database.exec(approvedInvoiceMigrationSql);
+    database.exec(relaxedInvoiceUnitChecksMigrationSql);
   });
 
   afterEach(() => {
@@ -176,6 +184,30 @@ describe('SqliteInvoiceDraftRepository', () => {
       vat_cents: draft.lines[0]?.vatCents,
       gross_cents: draft.lines[0]?.grossCents,
     });
+  });
+
+  it('saves package and short custom units to SQLite', async () => {
+    const draft = createDraft([
+      {
+        ...createLine('line-1', 1, 2550),
+        unit: 'pak',
+      },
+      {
+        ...createLine('line-2', 2, 1350),
+        unit: 'ltk',
+      },
+    ]);
+    const repository = new SqliteInvoiceDraftRepository(database);
+
+    await repository.saveDraft(draft);
+
+    const storedLines = database
+      .prepare<[], InvoiceDraftLineTable>(
+        'SELECT * FROM invoice_draft_lines ORDER BY position',
+      )
+      .all();
+
+    expect(storedLines.map((line) => line.unit)).toEqual(['pak', 'ltk']);
   });
 
   it('rolls back the whole draft when a line insert fails', async () => {

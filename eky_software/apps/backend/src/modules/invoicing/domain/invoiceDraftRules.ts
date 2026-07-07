@@ -1,4 +1,4 @@
-import { invoiceUnits, type InvoiceUnit } from './invoiceDraft.js';
+import type { InvoiceUnit } from './invoiceDraft.js';
 import { InvoiceDraftValidationError } from './invoiceDraftValidationError.js';
 import {
   maxLatePaymentInterestBasisPoints,
@@ -8,6 +8,8 @@ import {
 const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
 const millisecondsPerDay = 86_400_000;
 const maximumIdentifierLength = 200;
+export const maximumInvoiceUnitLength = 8;
+const invoiceUnitPattern = /^[\p{L}\p{N}.-]+$/u;
 
 function parseDateOnly(value: string, fieldName: string): Date {
   if (!dateOnlyPattern.test(value)) {
@@ -93,11 +95,21 @@ export function normalizeOptionalInvoiceTextWithLimit(
 }
 
 export function parseInvoiceUnit(value: string): InvoiceUnit {
-  if (!invoiceUnits.some((unit) => unit === value)) {
+  const normalizedValue = value.trim();
+
+  if (!isValidInvoiceUnit(normalizedValue)) {
     throw new InvoiceDraftValidationError('Invoice unit is not supported.');
   }
 
-  return value as InvoiceUnit;
+  return normalizedValue as InvoiceUnit;
+}
+
+export function isValidInvoiceUnit(value: string): boolean {
+  return (
+    value.length > 0 &&
+    value.length <= maximumInvoiceUnitLength &&
+    invoiceUnitPattern.test(value)
+  );
 }
 
 export function resolvePaymentTermDays(value: number | undefined): number {

@@ -19,8 +19,27 @@
 
 .actionLink {
   align-items: center;
+  border-radius: var(--radius-sm);
+  color: #ffffff;
+  background: var(--color-primary);
   display: inline-flex;
+  font-weight: 700;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 16px;
   text-decoration: none;
+  white-space: nowrap;
+}
+
+.actionLink:hover,
+.actionLink:focus {
+  color: #ffffff;
+  background: var(--color-primary-dark);
+}
+
+.actionLink:focus {
+  outline: 3px solid #cfe0ff;
+  outline-offset: 2px;
 }
 
 .status {

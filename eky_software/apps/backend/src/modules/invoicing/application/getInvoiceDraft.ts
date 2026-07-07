@@ -1,6 +1,7 @@
 import type { InvoiceDraft } from '../domain/invoiceDraft.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
 import { requireIdentifier } from '../domain/invoiceDraftRules.js';
+import { withCalculatedInvoiceDraftTotals } from '../domain/invoiceViewTotals.js';
 import type { InvoiceDraftRepository } from '../ports/invoiceDraftRepository.js';
 import { InvoiceDraftNotFoundError } from './invoiceDraftNotFoundError.js';
 
@@ -34,5 +35,5 @@ export async function getInvoiceDraft(
     throw new InvoiceDraftNotFoundError();
   }
 
-  return invoiceDraft;
+  return withCalculatedInvoiceDraftTotals(invoiceDraft);
 }

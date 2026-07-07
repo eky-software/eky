@@ -217,6 +217,34 @@ describe('saveInvoiceDraft', () => {
     expect(draft.paymentTermDays).toBe(30);
   });
 
+  it('accepts package and short custom invoice units', async () => {
+    const draft = await saveInvoiceDraft(
+      createInput({
+        lines: [
+          {
+            description: 'Package work',
+            quantityHundredths: 100,
+            unit: 'pak',
+            unitPriceCents: 10_000,
+            vatRateBasisPoints: 2550,
+            discount: { type: 'none' },
+          },
+          {
+            description: 'Custom unit',
+            quantityHundredths: 100,
+            unit: 'ltk',
+            unitPriceCents: 1000,
+            vatRateBasisPoints: 2550,
+            discount: { type: 'none' },
+          },
+        ],
+      }),
+      createDependencies(),
+    );
+
+    expect(draft.lines.map((line) => line.unit)).toEqual(['pak', 'ltk']);
+  });
+
   it('uses invoice payment settings as the late payment interest default', async () => {
     const draft = await saveInvoiceDraft(
       createInput(),
@@ -314,14 +342,14 @@ describe('saveInvoiceDraft', () => {
     expect(dependencies.invoiceDraftRepository.savedDraft).toBeUndefined();
   });
 
-  it('rejects unsupported invoice units before calling the repository', async () => {
+  it('rejects invalid invoice units before calling the repository', async () => {
     const dependencies = createDependencies();
     const input = createInput({
       lines: [
         {
-          description: 'Unsupported unit',
+          description: 'Invalid unit',
           quantityHundredths: 100,
-          unit: 'box',
+          unit: 'bad unit',
           unitPriceCents: 1000,
           vatRateBasisPoints: 2550,
           discount: { type: 'none' },

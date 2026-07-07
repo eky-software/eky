@@ -43,6 +43,10 @@ export function formatApprovedInvoiceUnit(unit: ApprovedInvoiceUnit): string {
       return uiText.invoicing.unitKilometre;
     case 'erä':
       return uiText.invoicing.unitBatch;
+    case 'pak':
+      return uiText.invoicing.unitPackage;
+    default:
+      return unit;
   }
 }
 

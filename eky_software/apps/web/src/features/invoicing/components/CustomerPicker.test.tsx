@@ -100,6 +100,31 @@ describe('filterInvoiceCustomers', () => {
     ).toEqual(['customer-1']);
   });
 
+  it('filters customers by address details', () => {
+    const customers = [
+      createCustomer(),
+      createCustomer({
+        id: 'customer-2',
+        customerNumber: '2002',
+        name: 'Satamapiha Rakennus Oy',
+        streetAddress: 'Satamakatu 12',
+        postalCode: '20100',
+        city: 'Turku',
+      }),
+    ];
+
+    expect(
+      filterInvoiceCustomers(customers, 'satamakatu', '').map(
+        (customer) => customer.id,
+      ),
+    ).toEqual(['customer-2']);
+    expect(
+      filterInvoiceCustomers(customers, '20100 turku', '').map(
+        (customer) => customer.id,
+      ),
+    ).toEqual(['customer-2']);
+  });
+
   it('keeps the selected customer available when search text changes', () => {
     const customers = [
       createCustomer(),

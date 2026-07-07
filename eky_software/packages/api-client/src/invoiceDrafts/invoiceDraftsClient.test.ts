@@ -65,6 +65,22 @@ describe('invoice drafts api client', () => {
     ]);
   });
 
+  it('accepts package and short custom units in draft responses', async () => {
+    const requests = createRequestLog();
+    const invoiceDraft = {
+      ...createTestInvoiceDraft(),
+      lines: [
+        { ...createTestInvoiceDraft().lines[0], unit: 'pak' },
+        { ...createTestInvoiceDraft().lines[0], id: 'line-2', unit: 'ltk' },
+      ],
+    };
+    const client = createTestClient(requests, { invoiceDraft });
+
+    const result = await client.getInvoiceDraft('draft-1');
+
+    expect(result.lines.map((line) => line.unit)).toEqual(['pak', 'ltk']);
+  });
+
   it('deletes a draft through DELETE /invoice-drafts/:id', async () => {
     const requests = createRequestLog();
     const client = createTestClient(requests, { deleted: true });
@@ -194,6 +210,25 @@ describe('invoice drafts api client', () => {
           ...createTestInvoiceDraft().totals,
           grossTotalCents: 'invalid',
         },
+      },
+    });
+
+    await expect(
+      client.getInvoiceDraft('draft-1'),
+    ).rejects.toBeInstanceOf(EkyApiError);
+  });
+
+  it('rejects invalid invoice units in draft responses', async () => {
+    const requests = createRequestLog();
+    const client = createTestClient(requests, {
+      invoiceDraft: {
+        ...createTestInvoiceDraft(),
+        lines: [
+          {
+            ...createTestInvoiceDraft().lines[0],
+            unit: 'bad unit',
+          },
+        ],
       },
     });
 

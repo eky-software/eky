@@ -5,9 +5,10 @@ import type {
   PriceInputMode,
 } from './invoiceCalculation.js';
 
-export const invoiceUnits = ['h', 'kpl', 'pv', 'km', 'erä'] as const;
+export const invoiceUnits = ['h', 'kpl', 'pv', 'km', 'erä', 'pak'] as const;
 
-export type InvoiceUnit = (typeof invoiceUnits)[number];
+export type KnownInvoiceUnit = (typeof invoiceUnits)[number];
+export type InvoiceUnit = KnownInvoiceUnit | (string & {});
 export type InvoiceDraftStatus = 'draft';
 
 export interface InvoiceDraftLine extends CalculatedInvoiceLine {

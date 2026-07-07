@@ -81,6 +81,32 @@ describe('calculateInvoiceTotals', () => {
     });
   });
 
+  it('calculates VAT from VAT-rate totals instead of summing rounded line VAT', () => {
+    const lines = [
+      calculateLine({ unitPriceCents: 5500 }),
+      ...Array.from({ length: 25 }, () => calculateLine({ unitPriceCents: 100 })),
+      ...Array.from({ length: 4 }, () => calculateLine({ unitPriceCents: 1100 })),
+    ];
+
+    const lineVatSum = lines.reduce((sum, line) => sum + line.vatCents, 0);
+    const totals = calculateInvoiceTotals(lines);
+
+    expect(lineVatSum).toBe(3177);
+    expect(totals).toEqual({
+      netTotalCents: 12_400,
+      vatTotalCents: 3162,
+      grossTotalCents: 15_562,
+      vatBreakdown: [
+        {
+          vatRateBasisPoints: 2550,
+          netCents: 12_400,
+          vatCents: 3162,
+          grossCents: 15_562,
+        },
+      ],
+    });
+  });
+
   it('rejects calculated lines whose amounts do not reconcile', () => {
     const invalidLine: CalculatedInvoiceLine = {
       ...calculateLine(),

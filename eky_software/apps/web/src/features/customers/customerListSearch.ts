@@ -47,7 +47,10 @@ function doesCustomerMatchSearch(customer: Customer, normalizedSearchQuery: stri
     customer.name,
     getCustomerTypeLabel(customer.customerType),
     customer.businessId,
+    customer.streetAddress,
+    customer.postalCode,
     customer.city,
+    `${customer.streetAddress} ${customer.postalCode} ${customer.city}`,
     customer.email,
     customer.phone,
   ];

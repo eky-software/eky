@@ -377,14 +377,14 @@ describe('invoiceDraftRoutes', () => {
     expect(testContext.invoiceDraftRepository.savedDraft).toBeUndefined();
   });
 
-  it('rejects unsupported invoice units', async () => {
+  it('rejects invalid invoice units', async () => {
     const testContext = createTestApp();
     const requestBody = createValidRequestBody();
     requestBody.lines = [
       {
-        description: 'Unsupported unit',
+        description: 'Invalid unit',
         quantityHundredths: 100,
-        unit: 'box',
+        unit: 'too-long-unit',
         unitPriceCents: 1000,
         vatRateBasisPoints: 2550,
         discount: { type: 'none' },

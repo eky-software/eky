@@ -44,6 +44,7 @@ const migrationNames = [
   '017_allow_reopened_invoice_corrections.sql',
   '018_create_invoice_documents.sql',
   '019_add_company_website.sql',
+  '020_relax_invoice_line_unit_checks.sql',
 ];
 
 const migrationSql = migrationNames.map((migrationName) =>
@@ -526,6 +527,73 @@ describe('SqliteInvoiceApprovalRepository', () => {
       last_sequence_number: 1,
       sequence_scope: 'calendar-year:2027',
       series_key: 'default',
+    });
+  });
+
+  it('keeps package and short custom units when a draft is approved', async () => {
+    const draft = createDraft({}, [
+      {
+        ...createLine('line-1', 1),
+        unit: 'pak',
+      },
+      {
+        ...createLine('line-2', 2),
+        unit: 'ltk',
+      },
+    ]);
+    const repository = new SqliteInvoiceApprovalRepository(database);
+
+    await saveDraft(database, draft);
+
+    await expect(repository.approveDraft(createApprovalInput())).resolves.toMatchObject({
+      invoiceId: 'invoice-1',
+    });
+
+    expect(getInvoiceLines(database, 'invoice-1').map((line) => line.unit)).toEqual([
+      'pak',
+      'ltk',
+    ]);
+  });
+
+  it('recalculates invoice header totals from draft lines during approval', async () => {
+    const lines = [
+      createLine('line-1', 1, { unitPriceCents: 5_500 }),
+      ...Array.from({ length: 25 }, (_value, index) =>
+        createLine(`line-small-${index + 1}`, index + 2, {
+          unitPriceCents: 100,
+        }),
+      ),
+      ...Array.from({ length: 4 }, (_value, index) =>
+        createLine(`line-medium-${index + 1}`, index + 27, {
+          unitPriceCents: 1_100,
+        }),
+      ),
+    ];
+    const draft = createDraft({}, lines);
+    const repository = new SqliteInvoiceApprovalRepository(database);
+
+    await saveDraft(database, draft);
+    database
+      .prepare(
+        `
+          UPDATE invoice_drafts
+          SET
+            net_total_cents = 12400,
+            vat_total_cents = 3177,
+            gross_total_cents = 15577
+          WHERE id = 'draft-1'
+        `,
+      )
+      .run();
+
+    await expect(repository.approveDraft(createApprovalInput())).resolves.toMatchObject({
+      invoiceId: 'invoice-1',
+    });
+
+    expect(getInvoice(database, 'invoice-1')).toMatchObject({
+      total_net_cents: 12_400,
+      total_vat_cents: 3_162,
+      total_gross_cents: 15_562,
     });
   });
 
