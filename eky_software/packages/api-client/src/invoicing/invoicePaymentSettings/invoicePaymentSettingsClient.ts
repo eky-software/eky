@@ -1,4 +1,4 @@
-import { requestJson } from '../http.js';
+import { requestJson } from '../../http.js';
 import { readInvoicePaymentSettingsResponse } from './invoicePaymentSettingsResponse.js';
 import { serializeInvoicePaymentSettingsInput } from './invoicePaymentSettingsSerialization.js';
 import type {

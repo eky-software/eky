@@ -5,7 +5,7 @@ import {
   EkyApiError,
   type ApprovedInvoiceSummary,
   type ApprovedInvoiceView,
-} from '../index.js';
+} from '../../index.js';
 
 describe('approved invoices api client', () => {
   it('lists approved invoices through GET /invoices', async () => {

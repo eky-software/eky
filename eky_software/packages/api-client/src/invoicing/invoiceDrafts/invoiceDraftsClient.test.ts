@@ -7,7 +7,7 @@ import {
   type InvoiceDraft,
   type InvoiceDraftInput,
   type InvoiceDraftSummary,
-} from '../index.js';
+} from '../../index.js';
 
 describe('invoice drafts api client', () => {
   it('approves a draft through POST /invoice-drafts/:id/approve', async () => {

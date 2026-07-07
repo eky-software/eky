@@ -1,4 +1,4 @@
-import { requestJson } from '../http.js';
+import { requestJson } from '../../http.js';
 import {
   readApproveInvoiceDraftResponse,
   readDeleteInvoiceDraftResponse,

@@ -96,7 +96,6 @@ describe('ApprovedInvoicePreview', () => {
 
     expect(html).toContain(uiText.invoicing.approvedInvoiceOpenPdf);
     expect(html).toContain('secondary-action');
-    expect(html).toContain('/invoices/invoice-1/pdf');
     expect(html).not.toContain(uiText.invoicing.approvedInvoicePdfCreate);
   });
 });
@@ -115,11 +114,11 @@ function renderPreview(
       isPdfAvailable={options.isPdfAvailable ?? false}
       isReopening={false}
       pdfErrorMessage={options.pdfErrorMessage ?? null}
-      pdfUrl="/invoices/invoice-1/pdf"
       reopenErrorMessage={null}
       onBack={vi.fn()}
       onCreatePdf={vi.fn()}
       onEditInvoice={vi.fn()}
+      onOpenPdf={vi.fn()}
     />,
   );
 }

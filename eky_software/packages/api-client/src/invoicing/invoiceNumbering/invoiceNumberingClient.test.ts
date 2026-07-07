@@ -5,7 +5,7 @@ import {
   EkyApiError,
   type InvoiceNumberingSettingsView,
   type UpdateInvoiceNumberingSettingsRequest,
-} from '../index.js';
+} from '../../index.js';
 
 describe('invoice numbering settings api client', () => {
   it('gets invoice numbering settings through GET /invoice-numbering-settings', async () => {

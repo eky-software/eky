@@ -1,4 +1,4 @@
-import { EkyApiError, isRecord } from '../http.js';
+import { EkyApiError, isRecord } from '../../http.js';
 import type {
   ApprovedInvoiceResult,
   InvoiceDraft,
