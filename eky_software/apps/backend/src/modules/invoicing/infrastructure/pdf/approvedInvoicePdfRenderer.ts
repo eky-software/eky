@@ -359,7 +359,9 @@ function drawVatAndTotals(
     currentY += 14;
   }
 
-  const totalsY = y;
+  const lastVatRowY = currentY - 14;
+  const grandTotalY = Math.max(y + 32, lastVatRowY);
+  const totalsY = grandTotalY - 32;
   drawTotalsLine(
     doc,
     'Yhteensä ilman alv',
@@ -384,7 +386,7 @@ function drawVatAndTotals(
   );
   doc.font('Helvetica').fontSize(9);
 
-  return Math.max(currentY, totalsY + 50);
+  return Math.max(currentY, grandTotalY + 18);
 }
 
 function drawTotalsLine(
@@ -409,26 +411,27 @@ function drawPaymentBar(
   y: number,
 ): void {
   const x = invoicePdfLayout.margin;
+  const textY = y + 11;
 
   drawHorizontalLine(doc, y);
   doc.font('Helvetica-Bold').fontSize(10);
-  doc.text(`Viitenumero: ${invoice.referenceNumber}`, x, y + 12, {
+  doc.text(`Viitenumero: ${invoice.referenceNumber}`, x, textY, {
     width: 160,
   });
-  doc.text(`Eräpäivä: ${formatPdfDate(invoice.dueDate)}`, x + 174, y + 12, {
+  doc.text(`Eräpäivä: ${formatPdfDate(invoice.dueDate)}`, x + 174, textY, {
     width: 120,
   });
   doc.text(
     `Yhteensä: ${formatPdfCents(invoice.totals.grossTotalCents)}`,
     x + 312,
-    y + 12,
+    textY,
     {
       width: 199,
       align: 'right',
     },
   );
 
-  drawHorizontalLine(doc, y + 38);
+  drawHorizontalLine(doc, y + 32);
   doc.font('Helvetica').fontSize(9);
 }
 

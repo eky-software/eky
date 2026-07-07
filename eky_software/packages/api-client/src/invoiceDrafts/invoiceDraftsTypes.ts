@@ -6,7 +6,8 @@ export type InvoiceNumberingMode =
   | 'fiscalYearSequence'
   | 'plainSequence';
 export type InvoiceReferenceNumberType = 'finnishDomestic';
-export type InvoiceUnit = 'h' | 'kpl' | 'pv' | 'km' | 'erä';
+export type KnownInvoiceUnit = 'h' | 'kpl' | 'pv' | 'km' | 'erä' | 'pak';
+export type InvoiceUnit = KnownInvoiceUnit | (string & {});
 
 export type InvoiceLineDiscount =
   | { type: 'none' }

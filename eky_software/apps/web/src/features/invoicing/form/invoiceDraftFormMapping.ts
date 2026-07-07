@@ -5,6 +5,7 @@ import type {
 
 import type { InvoiceRowForm } from './invoiceRowFormState.js';
 import type { NewInvoiceFormState } from './newInvoiceFormState.js';
+import { normalizeInvoiceUnit } from './invoiceUnitValidation.js';
 
 export class InvoiceDraftFormMappingError extends Error {
   constructor() {
@@ -97,7 +98,7 @@ function mapInvoiceDraftLine(row: InvoiceRowForm) {
   return {
     description: row.description.trim(),
     quantityHundredths,
-    unit: row.unit,
+    unit: normalizeInvoiceUnit(row.unit),
     unitPriceCents,
     vatRateBasisPoints: row.vatRateBasisPoints,
     discount: mapDiscount(row),

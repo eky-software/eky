@@ -119,7 +119,14 @@ export function filterInvoiceCustomers(
       ? customers
       : customers.filter((customer) =>
           normalizeCustomerSearchText(
-            `${customer.customerNumber} ${customer.name} ${customer.businessId}`,
+            [
+              customer.customerNumber,
+              customer.name,
+              customer.businessId,
+              customer.streetAddress,
+              customer.postalCode,
+              customer.city,
+            ].join(' '),
           ).includes(normalizedQuery),
         );
 

@@ -420,6 +420,8 @@ export const uiText = {
     rowCode: 'Koodi',
     rowDescription: 'Nimike',
     rowDescriptionPlaceholder: 'Työn tai tuotteen kuvaus',
+    rowCustomUnit: 'Oma yksikkö',
+    rowCustomUnitPlaceholder: 'oma',
     rowDiscountType: 'Alennus',
     rowDiscountValue: 'Alennuksen arvo',
     rowDiscountValuePlaceholder: '0,00',
@@ -458,7 +460,9 @@ export const uiText = {
     unitDay: 'pv',
     unitHour: 'h',
     unitKilometre: 'km',
+    unitPackage: 'pak',
     unitPiece: 'kpl',
+    unitCustom: 'Oma yksikkö',
     vatAmount: 'Vero',
     vatTotal: 'ALV',
     vatBreakdown: 'ALV-erittely',
@@ -489,6 +493,8 @@ export const uiText = {
     validationSummary: 'Tarkista lomakkeen merkityt kohdat.',
     validationSuccess:
       'Tiedot ovat valmiit luonnoksen tallennusta varten.',
+    validationUnitInvalid:
+      'Syötä yksikkö 1–8 merkillä. Sallitut merkit ovat kirjaimet, numerot, piste ja väliviiva.',
     validationUnitPriceInvalid:
       'Syötä yksikköhinta nollana tai positiivisena euromääränä.',
     workspace: 'Laskutustyötila',

@@ -1,5 +1,6 @@
 import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
+import { withCalculatedApprovedInvoiceVatBreakdown } from '../domain/invoiceViewTotals.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
 
@@ -25,7 +26,7 @@ export async function getApprovedInvoice(
     throw new ApprovedInvoiceNotFoundError();
   }
 
-  return invoice;
+  return withCalculatedApprovedInvoiceVatBreakdown(invoice);
 }
 
 function validateGetApprovedInvoiceInput(input: GetApprovedInvoiceInput): void {

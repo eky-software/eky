@@ -7,6 +7,7 @@ import {
   formatApprovedInvoiceIban,
   formatApprovedInvoicePercent,
   formatApprovedInvoiceQuantity,
+  formatApprovedInvoiceUnit,
 } from './approvedInvoiceFormatting.js';
 
 describe('approvedInvoiceFormatting', () => {
@@ -30,6 +31,11 @@ describe('approvedInvoiceFormatting', () => {
     expect(formatApprovedInvoiceIban('FI2112345600000785')).toBe(
       'FI21 1234 5600 0007 85',
     );
+  });
+
+  it('formats known and custom invoice units', () => {
+    expect(formatApprovedInvoiceUnit('pak')).toBe('pak');
+    expect(formatApprovedInvoiceUnit('ltk')).toBe('ltk');
   });
 
   it('hides missing discounts and formats explicit discounts', () => {

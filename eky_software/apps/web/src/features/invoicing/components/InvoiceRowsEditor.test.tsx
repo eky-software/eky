@@ -28,6 +28,24 @@ describe('InvoiceRowsEditor', () => {
     expect(html).toContain(`value="${uiText.invoicing.unitDay}"`);
     expect(html).toContain(`value="${uiText.invoicing.unitKilometre}"`);
     expect(html).toContain(`value="${uiText.invoicing.unitBatch}"`);
+    expect(html).toContain(`value="${uiText.invoicing.unitPackage}"`);
+    expect(html).toContain(uiText.invoicing.unitCustom);
+    expect(html).not.toContain('invoice-row-1-customUnit');
+  });
+
+  it('renders a custom unit input when a row uses a custom unit', () => {
+    const rows = updateInvoiceRow(
+      createInitialInvoiceRows(),
+      'invoice-row-1',
+      'unit',
+      'ltk',
+    );
+    const html = renderEditor(rows);
+
+    expect(html).toContain(uiText.invoicing.unitCustom);
+    expect(html).toContain('invoice-row-1-customUnit');
+    expect(html).toContain(uiText.invoicing.rowCustomUnitPlaceholder);
+    expect(html).toContain('value="ltk"');
   });
 
   it('prevents removing the only row', () => {
@@ -71,6 +89,7 @@ describe('InvoiceRowsEditor', () => {
             description: uiText.invoicing.validationDescriptionRequired,
             discountValue: uiText.invoicing.validationFixedDiscountInvalid,
             quantity: uiText.invoicing.validationQuantityInvalid,
+            unit: uiText.invoicing.validationUnitInvalid,
             unitPrice: uiText.invoicing.validationUnitPriceInvalid,
           },
         }}
@@ -86,6 +105,7 @@ describe('InvoiceRowsEditor', () => {
     expect(html).toContain(uiText.invoicing.validationDescriptionRequired);
     expect(html).toContain(uiText.invoicing.validationFixedDiscountInvalid);
     expect(html).toContain(uiText.invoicing.validationQuantityInvalid);
+    expect(html).toContain(uiText.invoicing.validationUnitInvalid);
     expect(html).toContain(uiText.invoicing.validationUnitPriceInvalid);
     expect(html).not.toContain('stack');
     expect(html).not.toContain('responseBody');

@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import { requireIdentifier } from '../domain/invoiceDraftRules.js';
+import { withCalculatedApprovedInvoiceVatBreakdown } from '../domain/invoiceViewTotals.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
 import type { InvoiceDocumentRepository } from '../ports/invoiceDocumentRepository.js';
 import type { InvoiceDocumentStorage } from '../ports/invoiceDocumentStorage.js';
@@ -63,13 +64,14 @@ export async function generateApprovedInvoicePdfDocument(
     throw new ApprovedInvoiceNotFoundError();
   }
 
-  const pdfContent = await dependencies.renderApprovedInvoicePdf(invoice);
+  const invoiceForPdf = withCalculatedApprovedInvoiceVatBreakdown(invoice);
+  const pdfContent = await dependencies.renderApprovedInvoicePdf(invoiceForPdf);
   const metadata: ApprovedInvoiceDocumentMetadata = {
     id: randomUUID(),
     companyId,
     invoiceId,
     documentType: approvedInvoicePdfDocumentType,
-    fileName: `lasku-${invoice.invoiceNumber}.pdf`,
+    fileName: `lasku-${invoiceForPdf.invoiceNumber}.pdf`,
     storagePath: createApprovedInvoicePdfStoragePath(companyId, invoiceId),
     mimeType: 'application/pdf',
     sha256: createSha256(pdfContent),

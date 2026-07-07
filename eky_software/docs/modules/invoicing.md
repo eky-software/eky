@@ -319,6 +319,9 @@ Ehdotus tehdään lomakeriville enintään kerran. Se ei saa ylikirjoittaa käsi
 muutettua tai tallennetusta luonnoksesta ladattua yksikköhintaa. Tämä on
 web-UI:n käyttömukavuustoiminto, ei Invoicing-domainin piilotettu laskentasääntö.
 Backend vastaanottaa ja validoi aina eksplisiittisen `unitPriceCents`-arvon.
+Laskurivin `unit`-arvo voi olla vakiovalinta kuten `h`, `kpl`, `pv`, `km`,
+`erä` tai `pak`, tai käyttäjän antama lyhyt oma yksikkö. Oma yksikkö on silti
+validoitu rajattu arvo, ei vapaa pitkä kuvausteksti.
 
 Laskutuksen pitää myöhemmin tukea hallittavia ALV-kantoja sekä prosentti- ja euromääräisiä alennuksia. Ensimmäinen suositeltu alennusmalli on rivikohtainen alennus, mutta arkkitehtuuri jättää tilaa myöhemmälle laskukohtaiselle alennukselle.
 
@@ -345,13 +348,13 @@ Rivikohtainen laskenta tehdään deterministisesti:
 
 1. määrä ja yksikköhinta muodostavat pyöristetyn lähtösumman
 2. rivikohtainen alennus lasketaan ja pyöristetään lähtösummasta
-3. net-tilassa ALV lasketaan alennetusta verottomasta summasta
-4. gross-tilassa veroton osuus erotetaan alennetusta verollisesta summasta
-5. kaikki rivin lopulliset summat tallennetaan kokonaislukusentteinä
+3. net-tilassa rivin veroton summa tallennetaan kokonaislukusentteinä
+4. gross-tilassa rivin verollinen summa tallennetaan kokonaislukusentteinä
+5. rivikohtaiset ALV-arvot voivat toimia näyttö- ja tarkistustietona, mutta laskun virallinen ALV lasketaan koontina verokannoittain
 
 Kaikki jakolaskut käyttävät samaa domainin sisäistä pyöristystä: lähimpään senttiin ja täsmälleen puolikas ylöspäin.
 
-Laskun loppusummat ja ALV-erittely muodostetaan samoista valmiiksi pyöristetyistä riveistä. Summia ei lasketa laskutasolla uudelleen eri kaavalla.
+Laskun loppusummat ja ALV-erittely muodostetaan verokannoittain koontipohjaisesti. Rivikohtaisesti pyöristettyjä ALV-arvoja ei summata laskun viralliseksi ALV-yhteissummaksi, koska pienet rivikohtaiset pyöristykset voivat muuten kertyä vääräksi kokonaissummaksi.
 
 Tavallisen laskurivin määrä, yksikköhinta ja loppusumma eivät saa olla negatiivisia MVP:ssä. Alennus saa pienentää rivin nollaan, mutta ei sen alle.
 

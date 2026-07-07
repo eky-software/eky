@@ -220,23 +220,25 @@ function toDiscount(line: InvoiceLineRow): InvoiceLineDiscount {
 function createVatBreakdown(
   lines: InvoiceLineRow[],
 ): ApprovedInvoiceVatBreakdown[] {
-  const rowsByVatRate = new Map<number, ApprovedInvoiceVatBreakdown>();
+  const breakdownByRate = new Map<number, ApprovedInvoiceVatBreakdown>();
 
   for (const line of lines) {
-    const existing = rowsByVatRate.get(line.vat_rate_basis_points) ?? {
+    const current = breakdownByRate.get(line.vat_rate_basis_points) ?? {
       vatRateBasisPoints: line.vat_rate_basis_points,
       netCents: 0,
       vatCents: 0,
       grossCents: 0,
     };
 
-    existing.netCents += line.net_cents;
-    existing.vatCents += line.vat_cents;
-    existing.grossCents += line.gross_cents;
-    rowsByVatRate.set(line.vat_rate_basis_points, existing);
+    breakdownByRate.set(line.vat_rate_basis_points, {
+      vatRateBasisPoints: line.vat_rate_basis_points,
+      netCents: current.netCents + line.net_cents,
+      vatCents: current.vatCents + line.vat_cents,
+      grossCents: current.grossCents + line.gross_cents,
+    });
   }
 
-  return [...rowsByVatRate.values()].sort(
+  return [...breakdownByRate.values()].sort(
     (first, second) => first.vatRateBasisPoints - second.vatRateBasisPoints,
   );
 }

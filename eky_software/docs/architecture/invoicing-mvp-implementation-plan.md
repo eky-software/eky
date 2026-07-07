@@ -295,7 +295,12 @@ Kenttien alustava merkitys:
 - `code` on valinnainen vapaa rivikoodi.
 - `description` on laskulla näkyvä nimike tai kuvaus.
 - `quantityHundredths` on laskutettava määrä sadasosina ja sallii enintään kaksi desimaalia.
-- `unit` on esimerkiksi tunti, kappale tai muu myöhemmin hyväksytty yksikkö.
+- `unit` on laskutusyksikkö. Ensimmäiset vakiovalinnat ovat `h`, `kpl`,
+  `pv`, `km`, `erä` ja `pak`.
+- Käyttäjä voi antaa myös oman lyhyen yksikkötekstin. MVP:ssä oma yksikkö
+  rajataan 1-8 merkkiin ja sallittuihin kirjain-, numero-, piste- ja
+  väliviivamerkkeihin. Backend validoi tämän, eikä UI:n ehdotuslista ole
+  yksikön ainoa turvaraja.
 - `unitPriceCents` on yksikköhinta sentteinä.
 - `vatRateBasisPoints` kuvaa rivin ALV-kannan basis points -mallilla.
 - `discountType` kertoo, onko alennus prosentti- vai euromääräinen.
@@ -323,12 +328,19 @@ Ensimmäisen laskuluonnos-MVP:n sallitut yksikkökoodit ovat:
 | `pv` | päivä |
 | `km` | kilometri |
 | `erä` | erä |
+| `pak` | paketti |
 
-Backend ja domain hylkäävät MVP:ssä muun yksikkökoodin. Käyttöliittymän valintalista ei korvaa backend-validointia.
+Näiden lisäksi käyttäjä voi antaa oman lyhyen yksikkötekstin, jos vakiovalinta
+ei riitä. Oma yksikkö rajataan MVP:ssä 1-8 merkkiin. Sallitut merkit ovat
+kirjaimet, numerot, piste ja väliviiva. Välilyöntejä, rivinvaihtoja tai pitkiä
+kuvauksia ei sallita `unit`-kentässä.
+
+Backend ja domain hylkäävät epäkelvon yksikköarvon. Käyttöliittymän
+valintalista ei korvaa backend-validointia.
 
 Yksikkökoodit tallennetaan vakaina koodeina. Käyttäjälle näkyvät suomenkieliset nimet kuuluvat UI:n käännösteksteihin, eivät domainin tallennettaviksi näyttöteksteiksi.
 
-Yksiköitä voidaan myöhemmin hallita laskutusasetuksista erillisellä päätöksellä. Ensimmäinen toteutus ei saa kuitenkaan käyttää vapaata käyttäjän syöttämää yksikkötekstiä.
+Yksiköitä voidaan myöhemmin hallita laskutusasetuksista erillisellä päätöksellä.
 
 ## Alennukset
 
@@ -545,7 +557,7 @@ Tuleva backend-toteutus noudattaa ainakin seuraavia sääntöjä:
 - `customerId` tarkistetaan samaan yritykseen kuuluvaksi `CustomerAccessReader`-tyyppisen hallitun application-tason sopimuksen kautta
 - määrät, hinnat, ALV-kannat, alennukset ja lasketut tulokset tarkistetaan turvallisiksi kokonaisluvuiksi
 - negatiiviset tai domain-sääntöjen vastaiset arvot hylätään ennen repository-kutsua
-- tuntemattomat laskutusyksiköt hylätään ennen repository-kutsua
+- epäkelvot laskutusyksikköarvot hylätään ennen repository-kutsua
 - tekstikenttien tyypit, pituudet ja sallitut muodot validoidaan backendissä
 - päivämäärien muoto ja keskinäinen liiketoimintasääntö validoidaan ennen tallennusta
 - laskuluonnoksen päätaso ja rivit tallennetaan samassa tietokantatransaktiossa
@@ -679,14 +691,16 @@ Kun `priceInputMode` on `net`:
 2. Rivin lähtösumma lasketaan ja pyöristetään verottomana summana.
 3. Rivikohtainen alennus lasketaan lähtösummasta ja käsitellään verottomana alennuksena.
 4. Alennus vähennetään verottomasta lähtösummasta.
-5. ALV lasketaan alennetusta verottomasta summasta:
+5. Riville voidaan laskea näyttö- ja tarkistuskäyttöön rivikohtainen ALV,
+   mutta laskun virallinen ALV-erittely ei perustu rivikohtaisten ALV-
+   pyöristysten summaan.
 
 ```text
 vatCents
   = roundHalfUp(netCents * vatRateBasisPoints / 10000)
 ```
 
-6. Rivin verollinen loppusumma muodostetaan:
+6. Rivin verollinen loppusumma voidaan muodostaa rivikohtaista näyttöä varten:
 
 ```text
 grossCents = netCents + vatCents
@@ -720,15 +734,31 @@ Gross-laskennassa ALV-osuutta ei lasketa uudelleen erillisellä kaavalla, koska 
 
 ### Laskun Summat
 
-Laskun summat muodostetaan laskemalla valmiiksi pyöristettyjen laskurivien arvot yhteen:
+Laskun viralliset loppusummat muodostetaan verokannoittain koontipohjaisesti.
 
-- veroton yhteensä = rivien `netCents`-arvojen summa
-- ALV yhteensä = rivien `vatCents`-arvojen summa
-- verollinen yhteensä = rivien `grossCents`-arvojen summa
+Net-tilassa:
 
-ALV-erittely muodostetaan samoista riveistä ryhmittelemällä niiden pyöristetyt verottomat summat ja ALV-summat `vatRateBasisPoints`-arvon mukaan.
+- saman ALV-kannan rivien verottomat `netCents`-arvot lasketaan yhteen
+- ALV lasketaan tästä verokannan verottomasta yhteissummasta
+- ALV pyöristetään vasta verokannan koontisummasta
+- verollinen summa = veroton koontisumma + koontina laskettu ALV
 
-Laskutasolla ei lasketa samoja summia uudelleen eri kaavalla. Näin rivien, ALV-erittelyn ja laskun loppusummien pitää aina täsmätä.
+Gross-tilassa:
+
+- saman ALV-kannan rivien verolliset `grossCents`-arvot lasketaan yhteen
+- veroton osuus erotetaan tästä verokannan verollisesta yhteissummasta
+- ALV = verollinen koontisumma - veroton koontisumma
+
+Laskun kokonaisarvot muodostetaan ALV-erittelyn koontiriveistä:
+
+- veroton yhteensä = ALV-erittelyn verottomien koontisummien summa
+- ALV yhteensä = ALV-erittelyn koontina laskettujen ALV-summien summa
+- verollinen yhteensä = ALV-erittelyn verollisten koontisummien summa
+
+Rivikohtaisesti pyöristettyjä ALV-arvoja ei saa summata laskun viralliseksi
+ALV-yhteissummaksi. Tämä ehkäisee pienten rivien pyöristyserojen kertymisen.
+Esimerkiksi 124,00 euron verottoman 25,50 % verokannan kokonaisuuden ALV on
+31,62 euroa, vaikka sama summa koostuisi monesta pienestä rivistä.
 
 ### Negatiiviset Ja Nollahintaiset Rivit
 

@@ -123,6 +123,43 @@ describe('calculateInvoiceDraftPreviewTotals', () => {
     });
   });
 
+  it('calculates VAT from VAT-rate totals instead of summing rounded row VAT', () => {
+    const totals = calculateInvoiceDraftPreviewTotals(
+      createForm({
+        rows: [
+          createRow({ unitPrice: '55,00' }),
+          ...Array.from({ length: 25 }, (_value, index) =>
+            createRow({
+              id: `small-row-${index}`,
+              unitPrice: '1,00',
+            }),
+          ),
+          ...Array.from({ length: 4 }, (_value, index) =>
+            createRow({
+              id: `larger-row-${index}`,
+              unitPrice: '11,00',
+            }),
+          ),
+        ],
+      }),
+    );
+
+    expect(totals).toEqual({
+      grossTotalCents: 15_562,
+      isAvailable: true,
+      netTotalCents: 12_400,
+      vatBreakdown: [
+        {
+          grossCents: 15_562,
+          netCents: 12_400,
+          vatCents: 3162,
+          vatRateBasisPoints: 2550,
+        },
+      ],
+      vatTotalCents: 3162,
+    });
+  });
+
   it('returns unavailable totals for an invalid row instead of throwing', () => {
     expect(
       calculateInvoiceDraftPreviewTotals(

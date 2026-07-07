@@ -1,16 +1,19 @@
 import type {
   CalculatedInvoiceLine,
+  PriceInputMode,
   InvoiceTotals,
   InvoiceVatBreakdown,
 } from './invoiceCalculation.js';
 import { InvoiceCalculationError } from './invoiceCalculationError.js';
+import { roundHalfUp } from './roundHalfUp.js';
 
 const maximumSafeInteger = BigInt(Number.MAX_SAFE_INTEGER);
+const basisPointsScale = 10_000n;
 
 interface MutableVatBreakdown {
+  grossInputCents: bigint;
+  mode: PriceInputMode;
   netCents: bigint;
-  vatCents: bigint;
-  grossCents: bigint;
 }
 
 function toSafeInteger(value: bigint): number {
@@ -54,16 +57,21 @@ function addToVatBreakdown(
   const existingBreakdown = breakdownByRate.get(line.vatRateBasisPoints);
 
   if (existingBreakdown) {
+    if (existingBreakdown.mode !== line.priceInputMode) {
+      throw new InvoiceCalculationError(
+        'Invoice lines with the same VAT rate must use one price input mode.',
+      );
+    }
+
+    existingBreakdown.grossInputCents += BigInt(line.grossCents);
     existingBreakdown.netCents += BigInt(line.netCents);
-    existingBreakdown.vatCents += BigInt(line.vatCents);
-    existingBreakdown.grossCents += BigInt(line.grossCents);
     return;
   }
 
   breakdownByRate.set(line.vatRateBasisPoints, {
+    grossInputCents: BigInt(line.grossCents),
+    mode: line.priceInputMode,
     netCents: BigInt(line.netCents),
-    vatCents: BigInt(line.vatCents),
-    grossCents: BigInt(line.grossCents),
   });
 }
 
@@ -72,12 +80,43 @@ function createVatBreakdown(
 ): InvoiceVatBreakdown[] {
   return [...breakdownByRate.entries()]
     .sort(([firstRate], [secondRate]) => firstRate - secondRate)
-    .map(([vatRateBasisPoints, breakdown]) => ({
-      vatRateBasisPoints,
-      netCents: toSafeInteger(breakdown.netCents),
-      vatCents: toSafeInteger(breakdown.vatCents),
-      grossCents: toSafeInteger(breakdown.grossCents),
-    }));
+    .map(([vatRateBasisPoints, breakdown]) => {
+      if (breakdown.mode === 'gross') {
+        const grossCents = toSafeInteger(breakdown.grossInputCents);
+        const netCents = roundHalfUp(
+          BigInt(grossCents) * basisPointsScale,
+          basisPointsScale + BigInt(vatRateBasisPoints),
+        );
+        const vatCents = grossCents - netCents;
+
+        return {
+          vatRateBasisPoints,
+          netCents,
+          vatCents,
+          grossCents,
+        };
+      }
+
+      const netCents = toSafeInteger(breakdown.netCents);
+      const vatCents = roundHalfUp(
+        BigInt(netCents) * BigInt(vatRateBasisPoints),
+        basisPointsScale,
+      );
+      const grossCents = netCents + vatCents;
+
+      if (!Number.isSafeInteger(grossCents)) {
+        throw new InvoiceCalculationError(
+          'Calculated amount exceeds the safe integer range.',
+        );
+      }
+
+      return {
+        vatRateBasisPoints,
+        netCents,
+        vatCents,
+        grossCents,
+      };
+    });
 }
 
 export function calculateInvoiceTotals(
@@ -90,16 +129,21 @@ export function calculateInvoiceTotals(
 
   for (const line of lines) {
     validateCalculatedLine(line);
-    netTotalCents += BigInt(line.netCents);
-    vatTotalCents += BigInt(line.vatCents);
-    grossTotalCents += BigInt(line.grossCents);
     addToVatBreakdown(breakdownByRate, line);
+  }
+
+  const vatBreakdown = createVatBreakdown(breakdownByRate);
+
+  for (const breakdown of vatBreakdown) {
+    netTotalCents += BigInt(breakdown.netCents);
+    vatTotalCents += BigInt(breakdown.vatCents);
+    grossTotalCents += BigInt(breakdown.grossCents);
   }
 
   return {
     netTotalCents: toSafeInteger(netTotalCents),
     vatTotalCents: toSafeInteger(vatTotalCents),
     grossTotalCents: toSafeInteger(grossTotalCents),
-    vatBreakdown: createVatBreakdown(breakdownByRate),
+    vatBreakdown,
   };
 }

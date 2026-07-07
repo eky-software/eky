@@ -122,6 +122,12 @@ describe('invoice draft form mapping', () => {
     expect(input.lines[0]?.discount).toEqual({ type: 'none' });
   });
 
+  it('trims custom invoice units before sending them to the API', () => {
+    const input = toInvoiceDraftInput(createValidForm({ unit: ' ltk ' }));
+
+    expect(input.lines[0]?.unit).toBe('ltk');
+  });
+
   it('omits empty optional text fields', () => {
     const input = toInvoiceDraftInput(
       createValidForm({
@@ -160,30 +166,27 @@ function createValidForm(
     orderNumber?: string;
     reminderPeriodDays?: string;
     subject?: string;
+    unit?: string;
   } = {},
 ) {
-  const row = updateInvoiceRow(
-    updateInvoiceRow(
-      updateInvoiceRow(
-        updateInvoiceRow(
-          updateInvoiceRow(
-            createInitialInvoiceRows(),
-            'invoice-row-1',
-            'description',
-            'Työtunti',
-          ),
-          'invoice-row-1',
-          'quantity',
-          '1,5',
-        ),
-        'invoice-row-1',
-        'unitPrice',
-        '65,50',
-      ),
-      'invoice-row-1',
-      'discountType',
-      overrides.discountType ?? 'none',
-    ),
+  let row = createInitialInvoiceRows();
+  row = updateInvoiceRow(row, 'invoice-row-1', 'description', 'Työtunti');
+  row = updateInvoiceRow(row, 'invoice-row-1', 'quantity', '1,5');
+  row = updateInvoiceRow(
+    row,
+    'invoice-row-1',
+    'unit',
+    overrides.unit ?? 'h',
+  );
+  row = updateInvoiceRow(row, 'invoice-row-1', 'unitPrice', '65,50');
+  row = updateInvoiceRow(
+    row,
+    'invoice-row-1',
+    'discountType',
+    overrides.discountType ?? 'none',
+  );
+  row = updateInvoiceRow(
+    row,
     'invoice-row-1',
     'discountValue',
     overrides.discountValue ?? '',

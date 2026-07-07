@@ -92,6 +92,12 @@ olemassa mutta paikallinen tiedosto puuttuu, manuaalinen
 `POST /invoices/:id/pdf` saa korjata tilanteen muodostamalla PDF:n uudelleen
 hyväksytyn laskun snapshotista.
 
+Local-MVP:ssä PDF-metadatan olemassaolotarkistus saa varmistaa paikallisen
+tiedoston olemassaolon lukemalla tiedoston. Pilvi- ja storage-adapterivaiheessa
+tämä pitää vaihtaa adapterin `exists`-, `stat`- tai vastaavaan tarkistukseen,
+jotta PDF-binääriä ei tarvitse lukea vain käyttöliittymän nappitilan
+selvittämistä varten.
+
 PDF:n luonti ei saa hakea tietoja Customer- tai Company Settings
 -master-datasta. Kaikki laskulla näkyvät tiedot tulevat
 `ApprovedInvoiceView`-snapshotista.
@@ -134,6 +140,13 @@ renderApprovedInvoicePdf(invoice: ApprovedInvoiceView): Promise<Uint8Array>
 Renderer käyttää vain sille annettua `ApprovedInvoiceView`-snapshotia. Se ei
 hae tietokantaa, Company Settings -master-dataa, Customers-master-dataa,
 invoice draftia tai HTTP-kontekstia.
+
+Kun ensimmäinen PDF-polku on toiminnallisesti valmis, renderer voidaan jakaa
+pienempiin sisäisiin piirtovastuisiin, jos tiedosto jatkaa kasvuaan. Mahdollinen
+jako voi olla esimerkiksi `drawHeader`, `drawRecipientAndMeta`,
+`drawAdditionalDetails`, `drawInvoiceLines`, `drawVatAndTotals`,
+`drawPaymentBar` ja `drawFooter`. Tätä ei tehdä ennen kuin layout on riittävän
+vakiintunut, jotta refaktorointi ei häiritse laskun ulkoasun viimeistelyä.
 
 Jos PDF-tekninen koodi alkaa toistua myöhemmin muualla, voidaan harkita
 rajattua backend shared -kerrosta:

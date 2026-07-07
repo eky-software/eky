@@ -4,6 +4,7 @@ import {
   parsePercentageBasisPoints,
   parseQuantityHundredths,
 } from './invoiceDraftFormMapping.js';
+import { isValidInvoiceUnit } from './invoiceUnitValidation.js';
 import type { InvoiceRowForm } from './invoiceRowFormState.js';
 import type { NewInvoiceFormState } from './newInvoiceFormState.js';
 import { uiText } from '../../../i18n/fi.js';
@@ -12,6 +13,7 @@ export interface InvoiceDraftLineFormErrors {
   description?: string;
   discountValue?: string;
   quantity?: string;
+  unit?: string;
   unitPrice?: string;
 }
 
@@ -176,6 +178,10 @@ function validateInvoiceDraftLine(
     errors.quantity = uiText.invoicing.validationQuantityInvalid;
   } else if (quantityHundredths === 0) {
     errors.quantity = uiText.invoicing.validationQuantityPositive;
+  }
+
+  if (!isValidInvoiceUnit(row.unit)) {
+    errors.unit = uiText.invoicing.validationUnitInvalid;
   }
 
   if (parseEuroCents(row.unitPrice) === null) {
