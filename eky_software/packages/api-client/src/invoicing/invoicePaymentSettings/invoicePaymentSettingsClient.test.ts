@@ -5,7 +5,7 @@ import {
   EkyApiError,
   type InvoicePaymentSettingsView,
   type UpdateInvoicePaymentSettingsRequest,
-} from '../index.js';
+} from '../../index.js';
 
 describe('invoice payment settings api client', () => {
   it('gets invoice payment settings through GET /invoice-payment-settings', async () => {

@@ -13,7 +13,7 @@ React-komponentit eivät saa tehdä raakaa `fetch`-kutsua suoraan, jos api-clien
 
 ## Rakenne
 
-API-client on jaettu toiminnallisiin kansioihin:
+API-client on jaettu moduulipohjaisiin toiminnallisiin kansioihin:
 
 ```text
 src/
@@ -29,24 +29,39 @@ src/
     companySettingsClient.ts
     companySettingsTypes.ts
 
-  invoiceDrafts/
-    invoiceDraftsClient.ts
-    invoiceDraftsTypes.ts
-    invoiceDraftsSerialization.ts
-    invoiceDraftsResponse.ts
+  invoicing/
+    invoiceDrafts/
+      invoiceDraftsClient.ts
+      invoiceDraftsTypes.ts
+      invoiceDraftsSerialization.ts
+      invoiceDraftsResponse.ts
 
-  invoiceNumbering/
-    invoiceNumberingClient.ts
-    invoiceNumberingTypes.ts
-    invoiceNumberingSerialization.ts
-    invoiceNumberingResponse.ts
+    approvedInvoices/
+      approvedInvoicesClient.ts
+      approvedInvoicesTypes.ts
+      approvedInvoicesResponse.ts
+
+    invoiceNumbering/
+      invoiceNumberingClient.ts
+      invoiceNumberingTypes.ts
+      invoiceNumberingSerialization.ts
+      invoiceNumberingResponse.ts
+
+    invoicePaymentSettings/
+      invoicePaymentSettingsClient.ts
+      invoicePaymentSettingsTypes.ts
+      invoicePaymentSettingsSerialization.ts
+      invoicePaymentSettingsResponse.ts
 ```
 
+Moduulikansio kokoaa samaan liiketoimintamoduuliin kuuluvat API-kokonaisuudet.
 Feature-kansio omistaa kyseisen HTTP-sopimuksen tyypit, kutsut ja tarvittavat
 request/response-muunnokset. `src/client.ts` kokoaa feature-clientit yhteen ja
 `src/index.ts` säilyy paketin julkisena pääexporttina.
 
 Uudet API-kokonaisuudet lisätään omiin selkeästi nimettyihin kansioihinsa.
+Jos uudella moduulilla on useita API-alikokonaisuuksia, ne sijoitetaan moduulin
+oman kansion alle heti alusta asti.
 Pakettiin ei luoda yleisiä `utils`, `helpers`, `common` tai `everything`
 -kaatopaikkoja.
 

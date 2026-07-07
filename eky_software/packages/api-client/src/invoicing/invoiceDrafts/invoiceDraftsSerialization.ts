@@ -1,4 +1,4 @@
-import { EkyApiError } from '../http.js';
+import { EkyApiError } from '../../http.js';
 import type {
   InvoiceDraftInput,
   InvoiceDraftLineInput,

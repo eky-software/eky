@@ -165,6 +165,30 @@ export function InvoicingPage({
     void draftEditorState.openDraft(reopenedInvoice.invoiceDraftId);
   }
 
+  async function handleOpenApprovedInvoicePdf(id: string): Promise<void> {
+    const pdfWindow = window.open('', '_blank');
+
+    if (pdfWindow !== null) {
+      pdfWindow.opener = null;
+    }
+
+    const metadata = await approvedInvoicePdfState.createPdf(id);
+
+    if (metadata === null) {
+      pdfWindow?.close();
+      return;
+    }
+
+    const pdfUrl = approvedInvoicePdfState.getPdfUrl(id);
+
+    if (pdfWindow !== null) {
+      pdfWindow.location.href = pdfUrl;
+      return;
+    }
+
+    window.open(pdfUrl, '_blank', 'noopener,noreferrer');
+  }
+
   useEffect(() => {
     if (previousNavigationRevision.current === navigationRevision) {
       return;
@@ -198,6 +222,9 @@ export function InvoicingPage({
         void approvedInvoicePdfState.createPdf(id)
       }
       onEditApprovedInvoice={(id) => void handleEditApprovedInvoice(id)}
+      onOpenApprovedInvoicePdf={(id) =>
+        void handleOpenApprovedInvoicePdf(id)
+      }
       onOpenDraft={handleOpenDraft}
       onRequestDeleteDraft={handleRequestDeleteDraft}
       onNewInvoice={() => dispatch({ type: 'openNewInvoice' })}
@@ -225,6 +252,7 @@ interface InvoicingPageViewProps extends InvoiceDraftListState {
   onDraftSaved(savedDraft: InvoiceDraft): void;
   onOpenApprovedInvoice(id: string): void;
   onEditApprovedInvoice(id: string): void;
+  onOpenApprovedInvoicePdf(id: string): void;
   onOpenDraft(id: string): void;
   onRequestDeleteDraft(id: string): void;
   onNewInvoice(): void;
@@ -253,6 +281,7 @@ export function InvoicingPageView({
   onDraftSaved,
   onOpenApprovedInvoice,
   onEditApprovedInvoice,
+  onOpenApprovedInvoicePdf,
   onOpenDraft,
   onRequestDeleteDraft,
   onNewInvoice,
@@ -370,6 +399,7 @@ export function InvoicingPageView({
           onBack={onBackToDrafts}
           onCreateApprovedInvoicePdf={onCreateApprovedInvoicePdf}
           onEditApprovedInvoice={onEditApprovedInvoice}
+          onOpenApprovedInvoicePdf={onOpenApprovedInvoicePdf}
         />
       )}
     </div>
@@ -458,6 +488,7 @@ interface ApprovedInvoiceViewProps {
   onBack(): void;
   onCreateApprovedInvoicePdf(id: string): void;
   onEditApprovedInvoice(id: string): void;
+  onOpenApprovedInvoicePdf(id: string): void;
 }
 
 function ApprovedInvoiceView({
@@ -467,6 +498,7 @@ function ApprovedInvoiceView({
   onBack,
   onCreateApprovedInvoicePdf,
   onEditApprovedInvoice,
+  onOpenApprovedInvoicePdf,
 }: ApprovedInvoiceViewProps): React.JSX.Element {
   if (approvedInvoiceState.isLoading) {
     return (
@@ -511,13 +543,11 @@ function ApprovedInvoiceView({
       isPdfAvailable={approvedInvoicePdfState.document !== null}
       isReopening={reopenApprovedInvoiceState.isReopening}
       pdfErrorMessage={approvedInvoicePdfState.errorMessage}
-      pdfUrl={approvedInvoicePdfState.getPdfUrl(
-        approvedInvoiceState.approvedInvoice.id,
-      )}
       reopenErrorMessage={reopenApprovedInvoiceState.errorMessage}
       onBack={onBack}
       onCreatePdf={onCreateApprovedInvoicePdf}
       onEditInvoice={onEditApprovedInvoice}
+      onOpenPdf={onOpenApprovedInvoicePdf}
     />
   );
 }

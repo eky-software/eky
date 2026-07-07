@@ -23,11 +23,11 @@ interface ApprovedInvoicePreviewProps {
   isPdfAvailable: boolean;
   isReopening: boolean;
   pdfErrorMessage: string | null;
-  pdfUrl: string;
   reopenErrorMessage: string | null;
   onBack(): void;
   onCreatePdf(id: string): void;
   onEditInvoice(id: string): void;
+  onOpenPdf(id: string): void;
 }
 
 export function ApprovedInvoicePreview({
@@ -36,11 +36,11 @@ export function ApprovedInvoicePreview({
   isPdfAvailable,
   isReopening,
   pdfErrorMessage,
-  pdfUrl,
   reopenErrorMessage,
   onBack,
   onCreatePdf,
   onEditInvoice,
+  onOpenPdf,
 }: ApprovedInvoicePreviewProps): React.JSX.Element {
   return (
     <section className={`panel ${styles.preview}`}>
@@ -73,14 +73,16 @@ export function ApprovedInvoicePreview({
             </button>
           ) : null}
           {isPdfAvailable ? (
-            <a
+            <button
               className={`secondary-action ${styles.actionLink}`}
-              href={pdfUrl}
-              rel="noreferrer"
-              target="_blank"
+              disabled={isCreatingPdf}
+              onClick={() => onOpenPdf(invoice.id)}
+              type="button"
             >
-              {uiText.invoicing.approvedInvoiceOpenPdf}
-            </a>
+              {isCreatingPdf
+                ? uiText.invoicing.approvedInvoicePdfCreating
+                : uiText.invoicing.approvedInvoiceOpenPdf}
+            </button>
           ) : null}
           <button
             className="secondary-action"

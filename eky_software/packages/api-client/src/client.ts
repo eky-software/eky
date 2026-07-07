@@ -5,7 +5,7 @@ import {
 import {
   createApprovedInvoicesApi,
   type ApprovedInvoicesApi,
-} from './approvedInvoices/index.js';
+} from './invoicing/approvedInvoices/index.js';
 import {
   createCustomersApi,
   type CustomersApi,
@@ -14,15 +14,15 @@ import { normalizeBaseUrl, type EkyApiClientOptions } from './http.js';
 import {
   createInvoiceDraftsApi,
   type InvoiceDraftsApi,
-} from './invoiceDrafts/index.js';
+} from './invoicing/invoiceDrafts/index.js';
 import {
   createInvoiceNumberingSettingsApi,
   type InvoiceNumberingSettingsApi,
-} from './invoiceNumbering/index.js';
+} from './invoicing/invoiceNumbering/index.js';
 import {
   createInvoicePaymentSettingsApi,
   type InvoicePaymentSettingsApi,
-} from './invoicePaymentSettings/index.js';
+} from './invoicing/invoicePaymentSettings/index.js';
 
 export interface EkyApiClient
   extends

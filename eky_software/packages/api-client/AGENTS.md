@@ -13,16 +13,30 @@ Lue ennen API-client-muutoksia:
 
 ## Rakenne
 
-Jokainen API-kokonaisuus sijoitetaan omaan toiminnalliseen kansioonsa:
+API-clientin rakenne seuraa projektin moduuliajattelua.
+
+Yksittäinen pieni moduuli voi olla suoraan `src/`-kansion alla omana
+toiminnallisena kansionaan:
 
 - `customers/`
 - `companySettings/`
-- `invoiceDrafts/`
-- `invoiceNumbering/`
-- `invoicePaymentSettings/`
-- `approvedInvoices/`
 
-Feature-kansiossa erotetaan tarpeen mukaan:
+Jos moduulilla on useita API-alikokonaisuuksia, ne ryhmitellään moduulin oman
+kansion alle heti alusta asti:
+
+```text
+invoicing/
+  invoiceDrafts/
+  invoiceNumbering/
+  invoicePaymentSettings/
+  approvedInvoices/
+```
+
+Uusia moduuleita lisättäessä sama sääntö pätee: moduulin API-kokonaisuudet
+pidetään moduulin omassa kansiossa, jos niitä on enemmän kuin yksi tai jos
+moduulin odotetaan kasvavan useaan endpoint-kokonaisuuteen.
+
+Moduuli- tai feature-kansiossa erotetaan tarpeen mukaan:
 
 - HTTP-kutsut
 - rajapinnan tyypit

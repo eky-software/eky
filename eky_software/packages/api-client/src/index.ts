@@ -19,7 +19,7 @@ export type {
   ApprovedInvoiceView,
   ApprovedInvoiceViewStatus,
   ReopenedApprovedInvoice,
-} from './approvedInvoices/index.js';
+} from './invoicing/approvedInvoices/index.js';
 export type {
   CompanySettings,
   UpdateCompanySettingsRequest,
@@ -48,13 +48,13 @@ export type {
   InvoiceTotals,
   InvoiceUnit,
   InvoiceVatBreakdown,
-} from './invoiceDrafts/index.js';
+} from './invoicing/invoiceDrafts/index.js';
 export type {
   InvoiceNumberingSettingsMode,
   InvoiceNumberingSettingsView,
   UpdateInvoiceNumberingSettingsRequest,
-} from './invoiceNumbering/index.js';
+} from './invoicing/invoiceNumbering/index.js';
 export type {
   InvoicePaymentSettingsView,
   UpdateInvoicePaymentSettingsRequest,
-} from './invoicePaymentSettings/index.js';
+} from './invoicing/invoicePaymentSettings/index.js';

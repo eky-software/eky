@@ -1,4 +1,4 @@
-import { requestJson } from '../http.js';
+import { requestJson } from '../../http.js';
 import { readInvoiceNumberingSettingsResponse } from './invoiceNumberingResponse.js';
 import { serializeInvoiceNumberingSettingsInput } from './invoiceNumberingSerialization.js';
 import type {

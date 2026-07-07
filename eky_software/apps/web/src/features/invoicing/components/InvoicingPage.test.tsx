@@ -352,6 +352,7 @@ function renderPage(
     | 'onDraftSaved'
     | 'onEditApprovedInvoice'
     | 'onOpenApprovedInvoice'
+    | 'onOpenApprovedInvoicePdf'
     | 'onRequestDeleteDraft'
     | 'pendingDeleteDraftId'
     | 'refreshDrafts'
@@ -373,6 +374,7 @@ function renderPage(
         | 'onDraftSaved'
         | 'onEditApprovedInvoice'
         | 'onOpenApprovedInvoice'
+        | 'onOpenApprovedInvoicePdf'
         | 'onRequestDeleteDraft'
         | 'pendingDeleteDraftId'
         | 'refreshDrafts'
@@ -395,6 +397,7 @@ function renderPage(
       onDraftSaved={vi.fn()}
       onEditApprovedInvoice={vi.fn()}
       onOpenApprovedInvoice={vi.fn()}
+      onOpenApprovedInvoicePdf={vi.fn()}
       onRequestDeleteDraft={vi.fn()}
       pendingDeleteDraftId={null}
       refreshDrafts={vi.fn()}
