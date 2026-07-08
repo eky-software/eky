@@ -27,11 +27,10 @@
   background: var(--color-surface);
 }
 
-.wideActionsTable .row {
+.invoiceStatusTable .row {
   grid-template-columns:
-    minmax(220px, 1.45fr) minmax(160px, 1fr) minmax(110px, 0.7fr)
-    minmax(110px, 0.7fr) minmax(110px, 0.7fr) minmax(90px, 0.55fr)
-    minmax(220px, 0.95fr);
+    minmax(220px, 1.6fr) minmax(160px, 1fr) minmax(110px, 0.75fr)
+    minmax(110px, 0.75fr) minmax(110px, 0.75fr) minmax(90px, 0.6fr);
 }
 
 .row:first-child {

@@ -124,18 +124,16 @@ describe('InvoicingPageView', () => {
     expect(html).toContain(uiText.invoicing.sentInvoiceList);
     expect(html).toContain('Laskunumero 20260001');
     expect(html).toContain('Laskunumero 20260002');
-    expect(html).toContain(uiText.invoicing.copyApprovedInvoice);
+    expect(html).not.toContain(uiText.invoicing.copyApprovedInvoice);
   });
 
   it('renders a safe sent invoice copy error without technical data', () => {
     const html = renderPage({
-      activeView: 'draftList',
-      approvedInvoiceListState: createApprovedInvoiceListState({
-        approvedInvoices: [
-          createApprovedInvoiceSummary({
-            status: 'sent',
-          }),
-        ],
+      activeView: 'approvedInvoice',
+      approvedInvoiceState: createApprovedInvoiceState({
+        approvedInvoice: createApprovedInvoiceView({
+          status: 'sent',
+        }),
       }),
       copyApprovedInvoiceState: createCopyApprovedInvoiceState({
         errorMessage: uiText.invoicing.copyApprovedInvoiceError,

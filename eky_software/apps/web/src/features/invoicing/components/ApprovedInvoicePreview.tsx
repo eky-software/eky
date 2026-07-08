@@ -18,7 +18,9 @@ import styles from './ApprovedInvoicePreview.module.css';
 import { uiText } from '../../../i18n/fi.js';
 
 interface ApprovedInvoicePreviewProps {
+  copyErrorMessage: string | null;
   invoice: ApprovedInvoiceView;
+  isCopyingInvoice: boolean;
   isCreatingPdf: boolean;
   isMarkingSent: boolean;
   isPdfAvailable: boolean;
@@ -27,6 +29,7 @@ interface ApprovedInvoicePreviewProps {
   pdfErrorMessage: string | null;
   reopenErrorMessage: string | null;
   onBack(): void;
+  onCopyInvoice(id: string): void;
   onCreatePdf(id: string): void;
   onEditInvoice(id: string): void;
   onMarkSent(id: string): void;
@@ -34,7 +37,9 @@ interface ApprovedInvoicePreviewProps {
 }
 
 export function ApprovedInvoicePreview({
+  copyErrorMessage,
   invoice,
+  isCopyingInvoice,
   isCreatingPdf,
   isMarkingSent,
   isPdfAvailable,
@@ -43,6 +48,7 @@ export function ApprovedInvoicePreview({
   pdfErrorMessage,
   reopenErrorMessage,
   onBack,
+  onCopyInvoice,
   onCreatePdf,
   onEditInvoice,
   onMarkSent,
@@ -94,17 +100,31 @@ export function ApprovedInvoicePreview({
                 : uiText.invoicing.approvedInvoiceOpenPdf}
             </button>
           ) : null}
+          {isSent ? (
+            <button
+              className="secondary-action"
+              disabled={isCopyingInvoice}
+              onClick={() => onCopyInvoice(invoice.id)}
+              type="button"
+            >
+              {isCopyingInvoice
+                ? uiText.invoicing.copiedApprovedInvoice
+                : uiText.invoicing.copyApprovedInvoice}
+            </button>
+          ) : null}
           {!isSent ? (
             <>
               <button
                 className="secondary-action"
-                disabled={isMarkingSent}
+                disabled={isCreatingPdf || isMarkingSent}
                 onClick={() => onMarkSent(invoice.id)}
                 type="button"
               >
-                {isMarkingSent
-                  ? uiText.invoicing.markingApprovedInvoiceSent
-                  : uiText.invoicing.markApprovedInvoiceSent}
+                {isCreatingPdf
+                  ? uiText.invoicing.approvedInvoicePdfCreating
+                  : isMarkingSent
+                    ? uiText.invoicing.markingApprovedInvoiceSent
+                    : uiText.invoicing.markApprovedInvoiceSent}
               </button>
               <button
                 className="secondary-action"
@@ -137,6 +157,11 @@ export function ApprovedInvoicePreview({
       {markSentErrorMessage !== null ? (
         <p className="message error-message" role="alert">
           {markSentErrorMessage}
+        </p>
+      ) : null}
+      {copyErrorMessage !== null ? (
+        <p className="message error-message" role="alert">
+          {copyErrorMessage}
         </p>
       ) : null}
 

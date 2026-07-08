@@ -85,14 +85,33 @@ describe('ApprovedInvoicePreview', () => {
     expect(html).toContain(uiText.invoicing.markApprovedInvoiceSent);
   });
 
+  it('disables the sent action while the PDF is being prepared', () => {
+    const html = renderPreview({ isCreatingPdf: true });
+
+    expect(html).toContain(uiText.invoicing.approvedInvoicePdfCreating);
+    expect(html).toContain('disabled=""');
+  });
+
   it('renders sent status and hides editing actions for sent invoices', () => {
     const html = renderPreview({
       invoice: createApprovedInvoiceView({ status: 'sent' }),
     });
 
     expect(html).toContain(uiText.invoicing.statusSent);
+    expect(html).toContain(uiText.invoicing.copyApprovedInvoice);
     expect(html).not.toContain(uiText.invoicing.editApprovedInvoice);
     expect(html).not.toContain(uiText.invoicing.markApprovedInvoiceSent);
+  });
+
+  it('renders a safe sent invoice copy error without technical data', () => {
+    const html = renderPreview({
+      copyErrorMessage: uiText.invoicing.copyApprovedInvoiceError,
+      invoice: createApprovedInvoiceView({ status: 'sent' }),
+    });
+
+    expect(html).toContain(uiText.invoicing.copyApprovedInvoiceError);
+    expect(html).not.toContain('responseBody');
+    expect(html).not.toContain('stack');
   });
 
   it('shows the PDF create action only when the stored PDF is not available', () => {
@@ -113,15 +132,20 @@ describe('ApprovedInvoicePreview', () => {
 
 function renderPreview(
   options: {
+    copyErrorMessage?: string | null;
     invoice?: ApprovedInvoiceView;
+    isCopyingInvoice?: boolean;
+    isCreatingPdf?: boolean;
     isPdfAvailable?: boolean;
     pdfErrorMessage?: string | null;
   } = {},
 ): string {
   return renderToStaticMarkup(
     <ApprovedInvoicePreview
+      copyErrorMessage={options.copyErrorMessage ?? null}
       invoice={options.invoice ?? createApprovedInvoiceView()}
-      isCreatingPdf={false}
+      isCopyingInvoice={options.isCopyingInvoice ?? false}
+      isCreatingPdf={options.isCreatingPdf ?? false}
       isMarkingSent={false}
       isPdfAvailable={options.isPdfAvailable ?? false}
       isReopening={false}
@@ -129,6 +153,7 @@ function renderPreview(
       pdfErrorMessage={options.pdfErrorMessage ?? null}
       reopenErrorMessage={null}
       onBack={vi.fn()}
+      onCopyInvoice={vi.fn()}
       onCreatePdf={vi.fn()}
       onEditInvoice={vi.fn()}
       onMarkSent={vi.fn()}
