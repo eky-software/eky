@@ -190,6 +190,12 @@ export function InvoicingPage({
       return;
     }
 
+    const pdfMetadata = await approvedInvoicePdfState.createPdf(id);
+
+    if (pdfMetadata === null) {
+      return;
+    }
+
     const sentInvoice =
       await markApprovedInvoiceSentState.markApprovedInvoiceSent(id);
 
@@ -474,13 +480,10 @@ export function InvoicingPageView({
 
             <ApprovedInvoiceList
               approvedInvoices={sentInvoices}
-              copiedInvoiceId={copyApprovedInvoiceState.copiedInvoiceId}
-              copyErrorMessage={copyApprovedInvoiceState.errorMessage}
               emptyMessage={uiText.invoicing.sentInvoicesEmpty}
               errorMessage={approvedInvoiceListState.errorMessage}
               isLoading={approvedInvoiceListState.isLoading}
               listLabel={uiText.invoicing.sentInvoiceList}
-              onCopyApprovedInvoiceToDraft={onCopyApprovedInvoiceToDraft}
               onOpenApprovedInvoice={onOpenApprovedInvoice}
             />
           </section>
@@ -509,11 +512,13 @@ export function InvoicingPageView({
         />
       ) : (
         <ApprovedInvoiceView
+          copyApprovedInvoiceState={copyApprovedInvoiceState}
           approvedInvoicePdfState={approvedInvoicePdfState}
           approvedInvoiceState={approvedInvoiceState}
           markApprovedInvoiceSentState={markApprovedInvoiceSentState}
           reopenApprovedInvoiceState={reopenApprovedInvoiceState}
           onBack={onBackToDrafts}
+          onCopyApprovedInvoiceToDraft={onCopyApprovedInvoiceToDraft}
           onCreateApprovedInvoicePdf={onCreateApprovedInvoicePdf}
           onEditApprovedInvoice={onEditApprovedInvoice}
           onMarkApprovedInvoiceSent={onMarkApprovedInvoiceSent}
@@ -602,9 +607,11 @@ function InvoiceDraftEditView({
 interface ApprovedInvoiceViewProps {
   approvedInvoicePdfState: ApprovedInvoicePdfState;
   approvedInvoiceState: ApprovedInvoiceState;
+  copyApprovedInvoiceState: CopyApprovedInvoiceState;
   markApprovedInvoiceSentState: MarkApprovedInvoiceSentState;
   reopenApprovedInvoiceState: ReopenApprovedInvoiceState;
   onBack(): void;
+  onCopyApprovedInvoiceToDraft(id: string): void;
   onCreateApprovedInvoicePdf(id: string): void;
   onEditApprovedInvoice(id: string): void;
   onMarkApprovedInvoiceSent(id: string): void;
@@ -614,9 +621,11 @@ interface ApprovedInvoiceViewProps {
 function ApprovedInvoiceView({
   approvedInvoicePdfState,
   approvedInvoiceState,
+  copyApprovedInvoiceState,
   markApprovedInvoiceSentState,
   reopenApprovedInvoiceState,
   onBack,
+  onCopyApprovedInvoiceToDraft,
   onCreateApprovedInvoicePdf,
   onEditApprovedInvoice,
   onMarkApprovedInvoiceSent,
@@ -660,7 +669,9 @@ function ApprovedInvoiceView({
 
   return (
     <ApprovedInvoicePreview
+      copyErrorMessage={copyApprovedInvoiceState.errorMessage}
       invoice={approvedInvoiceState.approvedInvoice}
+      isCopyingInvoice={copyApprovedInvoiceState.isCopying}
       isCreatingPdf={approvedInvoicePdfState.isCreating}
       isPdfAvailable={approvedInvoicePdfState.document !== null}
       isMarkingSent={markApprovedInvoiceSentState.isMarkingSent}
@@ -669,6 +680,7 @@ function ApprovedInvoiceView({
       pdfErrorMessage={approvedInvoicePdfState.errorMessage}
       reopenErrorMessage={reopenApprovedInvoiceState.errorMessage}
       onBack={onBack}
+      onCopyInvoice={onCopyApprovedInvoiceToDraft}
       onCreatePdf={onCreateApprovedInvoicePdf}
       onEditInvoice={onEditApprovedInvoice}
       onMarkSent={onMarkApprovedInvoiceSent}
