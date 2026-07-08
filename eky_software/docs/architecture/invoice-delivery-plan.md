@@ -1,0 +1,397 @@
+# Invoice Delivery Plan
+
+Tämä dokumentti määrittää hyväksytyn laskun toimitusputken suunnittelulinjan:
+tulostus, sähköposti, `sent`-tila, laskun kopiointi, peruutus ja
+hyvityslaskut.
+
+Dokumentti on suunnitelma. Se ei muuta nykyistä MVP-toteutusta eikä lisää
+uusia reittejä, tietokantatauluja, UI-toimintoja tai riippuvuuksia.
+
+## Peruspolku
+
+Nykyinen ja tuleva laskun toimitusketju:
+
+```text
+InvoiceDraft
+  -> ApprovedInvoice snapshot
+    -> PDF document
+      -> delivery action myöhemmin
+        -> sent status myöhemmin
+```
+
+PDF:n luonti ei tarkoita laskun lähettämistä.
+
+PDF on toimitettava dokumentti, jota voidaan käyttää:
+
+- selaimessa avaamiseen
+- tulostamiseen
+- sähköpostin liitteenä
+- myöhemmin muissa toimitustavoissa
+
+Hyväksytyn laskun PDF muodostetaan hyväksytyn laskun snapshot-datasta.
+Toimituspolku ei saa hakea muuttuvaa Customer- tai Company Settings -master
+dataa laskun sisältöä varten.
+
+## Tulostus
+
+Ensimmäinen MVP-tulostus pidetään yksinkertaisena:
+
+- avataan hyväksytyn laskun PDF selaimeen
+- käyttäjä tulostaa selaimen tai käyttöjärjestelmän tulostustoiminnolla
+
+Suoraa tulostinohjausta ei toteuteta ensimmäiseen MVP-toimituspolkuun.
+
+Suora tulostinohjaus voi myöhemmin vaatia:
+
+- erillisen local helper -sovelluksen
+- käyttöjärjestelmäkohtaisen adapterin
+- oikeuksien ja laitevalinnan erillisen suunnittelun
+- virhetilojen ja tulostusjonon hallinnan
+
+Tulostus ei saa automaattisesti merkitä laskua lähetetyksi ilman erillistä
+käyttäjän toimintoa tai myöhemmin määriteltyä audit-polkuun kuuluvaa sääntöä.
+
+## Sähköposti Yleisesti
+
+Sähköpostilähetys tehdään myöhemmin backendin hallitun business-toiminnon kautta.
+
+Tuleva portti voi olla esimerkiksi:
+
+```ts
+interface EmailDeliveryProvider {
+  sendInvoiceEmail(input: SendInvoiceEmailInput): Promise<EmailDeliveryResult>;
+}
+```
+
+Mahdollisia adaptereita:
+
+- `SmtpEmailDeliveryProvider`
+- `GmailEmailDeliveryProvider`
+- `MicrosoftGraphEmailDeliveryProvider`
+- `FakeEmailDeliveryProvider`
+- `DryRunEmailDeliveryProvider`
+
+`webmail.dna.fi` on käyttöliittymä, ei integraatiorajapinta.
+
+Eky ei saa toteuttaa:
+
+- webmailin selainautomaatiota
+- scrapingia
+- epävirallista webmail-ohjausta
+- käyttäjän sähköpostisalasanan tallentamista frontendissä
+- sähköpostin lähettämistä suoraan selaimesta ilman backendin hallittua
+  toimituspolkua
+
+Sähköpostin lähetys kuuluu backendin business-toiminnoksi, joka tarkistaa
+laskun tilan, PDF:n olemassaolon, vastaanottajan osoitteen ja turvallisuusrajat.
+
+## DNA-sähköpostin Suunnittelutiedot
+
+Alla olevat DNA / dnamail -asetukset ovat alustavia käyttäjän toimittamia
+suunnittelutietoja. Ne pitää tarkistaa ennen tuotantototeutusta DNA:n
+ajantasaisista ohjeista ja yrityksen sähköpostitilin asetuksista.
+
+Saapuva posti, POP3:
+
+- suositeltu palvelin: `mail.dnamail.fi`
+- vaihtoehdot:
+  - `pop3.welho.com`
+  - `mail.dnainternet.net`
+- SSL-portti: `995`
+
+Saapuva posti, IMAP:
+
+- suositeltu palvelin: `mail.dnamail.fi`
+- vaihtoehdot:
+  - `imap.welho.com`
+  - `mail.dnainternet.net`
+- SSL-portti: `993`
+
+Lähtevä posti, SMTP:
+
+- suositeltu palvelin: `smtp.dnamail.fi`
+- vaihtoehdot:
+  - `smtp.welho.com`
+  - `smtp.dnainternet.net`
+  - `smtp.dna044.com`
+
+SMTP-portit:
+
+- portti `25`, salaamaton
+  - vain tilanteisiin, joissa salattu yhteys ei ole mahdollinen
+  - voi toimia ilman autentikointia DNA:n verkosta
+  - ei suositella Eky-ohjelman oletukseksi
+- portti `465`, TLS-salattu
+  - autentikointi
+  - voi toimia ilman autentikointia DNA:n verkosta
+  - mahdollinen SMTP-adapterin asetus
+- portti `587`, STARTTLS-salattu
+  - autentikointi
+  - voi toimia ilman autentikointia DNA:n verkosta
+  - suositeltava moderni SMTP-vaihtoehto, jos tilin asetukset tukevat sitä
+
+Koska Eky voi myöhemmin ajaa pilvessä tai muualla kuin DNA:n omassa verkossa,
+ei saa luottaa siihen, että SMTP toimii ilman autentikointia DNA:n verkosta.
+Tuotantomallissa pitää varautua autentikoituun SMTP-lähetykseen.
+
+Suositeltu tuleva DNA SMTP MVP -linja:
+
+- provider: `smtp`
+- host: `smtp.dnamail.fi`
+- port: `587`
+- security: `STARTTLS`
+- authentication: required, jos ympäristö ei ole DNA:n verkossa
+- credentials: vain backendin salaisuuksissa, ympäristömuuttujissa tai
+  Secret Managerissa
+- credentials eivät koskaan kuulu Git-repositorioon
+- credentials eivät koskaan mene frontendille
+- lähetys testataan ensin dry-run- tai test recipient override -tilassa
+
+IMAP/POP3 eivät ole laskun lähettämisen kannalta ensisijaisia. Niitä voidaan
+tarvita myöhemmin esimerkiksi lähetettyjen viestien tarkistukseen tai
+inbox-integraatioihin, mutta ensimmäinen laskun lähetys tarvitsee vain
+SMTP-tyyppisen lähtevän postin ratkaisun.
+
+## Gmail Ja Muut Sähköpostit
+
+Gmail-liitos suunnitellaan erikseen.
+
+Gmailia ei kovakoodata ensimmäiseksi oletukseksi. Gmailin tuleva toteutus voi
+vaatia OAuth-pohjaisen integraation tai muun virallisen lähetysrajapinnan.
+
+Gmail-tunnuksia tai salasanoja ei saa tallentaa suoraan ohjelman asetuksiin.
+
+Sama periaate koskee myöhemmin Microsoft 365 / Outlook -liitoksia.
+
+## Sähköpostin Turvallisuus
+
+Oikeiden asiakaslaskujen vahinkolähetys pitää estää kehityksessä.
+
+Tulevia suojia:
+
+- dry-run mode
+- test recipient override
+- ympäristökohtainen lähetysesto
+- selkeä vahvistus ennen lähetystä
+- lähetysloki
+- vain current PDF voidaan lähettää
+- invalidated tai puuttuvaa PDF:ää ei saa lähettää
+- lähetystä ei saa tehdä frontendistä suoraan ilman backendin hallittua
+  business-toimintoa
+- sähköpostin vastaanottaja pitää näyttää käyttäjälle ennen lähetystä
+- tyhjä vastaanottajan sähköpostiosoite estää lähetyksen
+- liitteen pitää olla hyväksytyn laskun current PDF
+
+Sähköpostin salaisuudet:
+
+- eivät kuulu Git-repositorioon
+- eivät kuulu frontendille
+- eivät kuulu selaimen local storageen
+- eivät saa näkyä lokissa
+- eivät saa palautua API-vastauksissa
+
+Ensimmäinen toteutus tehdään mieluiten fake/dry-run-adapterilla ja vasta sen
+jälkeen oikealla SMTP-adapterilla.
+
+## Sent-tila
+
+Tuleva sääntö:
+
+- `approved` = hyväksytty, mutta ei vielä lähetetty
+- `sent` = toimitettu asiakkaalle
+
+`sent`-tilaan voidaan myöhemmin siirtyä:
+
+- onnistuneen sähköpostilähetyksen jälkeen
+- käyttäjän manuaalisella "Merkitse lähetetyksi" -toiminnolla
+
+`sent`-laskua ei saa enää reopen-muokata.
+
+`sent`-laskun PDF:ää ei poisteta.
+
+`sent`-laskun virhe korjataan hyvityslaskulla tai muulla erillisellä
+korjauspolulla.
+
+Tulevia audit-tapahtumia:
+
+- `invoice.sent`
+- `invoice.marked_sent_manually`
+- `invoice.email_send_failed`
+- `invoice.email_sent`
+- `invoice.printed`
+- `invoice.opened_for_print`
+
+Tulostuksen auditointi päätetään myöhemmin erikseen. Kaikki PDF:n avaaminen ei
+välttämättä tarkoita, että lasku on oikeasti tulostettu tai toimitettu.
+
+## Laskun Kopiointi
+
+Lähetettyä laskua ei saa muokata, mutta sen saa myöhemmin kopioida uudeksi
+laskuluonnokseksi.
+
+`Kopioi lasku` tarkoittaa:
+
+- luodaan uusi `InvoiceDraft` vanhan hyväksytyn tai lähetetyn laskun pohjalta
+- uusi luonnos ei peri vanhan laskun `invoiceNumber`-arvoa
+- uusi luonnos ei peri vanhan laskun `referenceNumber`-arvoa
+- uusi luonnos ei peri vanhan laskun PDF-dokumenttia
+- uusi luonnos ei peri vanhan laskun `sent`, `paid` tai `credited` -tilaa
+- hyväksynnässä syntyy uusi virallinen laskunumero ja uusi viitenumero
+- uusi lasku on juridisesti eri lasku
+
+Mitä voidaan kopioida:
+
+- asiakas, jos `customerId` on edelleen käytettävissä samassa yrityksessä
+- laskun vastaanottaja, jos `billingRecipientCustomerId` on edelleen käytettävissä
+- rivit
+- kuvaukset
+- määrät
+- yksiköt
+- hinnat
+- ALV-kannat
+- alennukset
+- aihe
+- tilausnumero
+- toimitus/kohde
+- lisätieto
+
+Päätettävä myöhemmin:
+
+- kopioidaanko maksuehto ja viivästyskorko vanhalta laskulta vai käytetäänkö
+  nykyisiä oletuksia
+- asetetaanko `invoiceDate` aina kopiointihetken päivään
+- lasketaanko `dueDate` aina uudelleen nykyisestä `invoiceDate` +
+  maksuehto -mallilla
+- miten toimitaan, jos vanha asiakas on poistettu tai passiivinen
+
+Suositeltu MVP-linja:
+
+- `invoiceDate` = kopiointihetken päivä
+- `dueDate` = lasketaan uudelleen
+- rivit ja sisältö kopioidaan
+- virallinen numero ja viite eivät kopioidu koskaan
+- PDF ei kopioidu koskaan
+
+## Laskun Peruutus / Cancel
+
+`draft`-laskuluonnos voidaan poistaa.
+
+`approved` mutta ei `sent` -lasku voidaan myöhemmin merkitä `cancelled`-tilaan.
+
+`sent`-laskua ei cancelled-muokata tai poisteta, vaan se hyvitetään.
+
+`cancelled`-lasku:
+
+- säilyttää laskunumeron
+- numeroa ei käytetä uudelleen
+- säilyttää audit trailin
+- ei ole enää lähetettävissä
+- ei ole enää reopen-muokattavissa ilman erillistä päätöstä
+- PDF voidaan pitää tai merkitä ei-lähetettäväksi; tarkka toteutus päätetään myöhemmin
+
+Tuleva audit-tapahtuma:
+
+- `invoice.cancelled`
+
+`cancelled` ei ole sama asia kuin hyvityslasku.
+
+`cancelled` koskee vain laskua, jota ei ole toimitettu asiakkaalle.
+
+## Hyvityslasku
+
+`sent`-laskun virhe korjataan hyvityslaskulla tai myöhemmin tarkemmin
+määritellyllä korjauspolulla.
+
+Hyvityslasku:
+
+- on oma laskunsa
+- saa oman laskunumeron
+- saa oman viitenumeron tai muun maksutiedon tarpeen mukaan
+- viittaa alkuperäiseen laskuun
+- voi olla koko laskun hyvitys MVP-vaiheessa
+- osahyvitys voidaan suunnitella myöhemmin
+
+Suositeltu vaiheistus:
+
+1. full credit invoice eli hyvitetään koko alkuperäinen lasku
+2. partial credit myöhemmin
+3. mahdollinen uusi korjattu lasku luodaan erillisenä uutena laskuna tai kopiona
+
+Koska nykyinen laskentalogiikka ei tue negatiivisia tavallisia laskurivejä,
+hyvityslaskua ei pidä toteuttaa vain sallimalla negatiiviset rivit tavalliseen
+laskuun.
+
+Parempi tuleva malli:
+
+```text
+invoiceKind: standard | credit
+```
+
+tai vastaava hallittu erottelu.
+
+Hyvityslaskun laskenta, laskumerkinnät ja PDF-merkinnät suunnitellaan erikseen.
+
+## Lähetysloki
+
+Mahdollinen tuleva taulu tai malli:
+
+```text
+invoice_delivery_events
+- id
+- companyId
+- invoiceId
+- deliveryMethod: email | print | manual | other
+- status: attempted | succeeded | failed
+- recipientEmail
+- subject
+- documentId
+- provider
+- providerMessageId
+- errorMessage
+- createdAt
+- createdBy
+```
+
+Tätä ei toteuteta vielä, mutta se toimii suunnittelupohjana.
+
+Lähetysloki ei saa tallentaa sähköpostin salasanoja, SMTP-salaisuuksia tai
+tarpeettoman pitkiä teknisiä provider-virheitä käyttäjälle näkyvään muotoon.
+
+## Manuaalinen Regressiolista
+
+Kevyt käsin testattava lista ennen toimituspolun laajentamista:
+
+- hyväksy lasku -> PDF syntyy
+- avaa PDF
+- reopen approved invoice -> PDF poistuu
+- reapprove -> uusi PDF syntyy
+- avaa uusi PDF
+- 1-sivuinen lasku
+- 2-sivuinen lasku
+- taloyhtiö + isännöitsijä vastaanottajana
+- yritysasiakas
+- yksityisasiakas
+- useampi ALV-kanta
+- puuttuva PDF tiedostosta -> `POST /pdf` regeneroi
+- lähetettyä laskua ei saa muokata, kun `sent`-tila myöhemmin toteutetaan
+- kopioitu lasku saa uuden numeron vasta hyväksynnässä, kun toiminto myöhemmin toteutetaan
+- DNA SMTP -lähetystä ei saa testata oikeille asiakkaille ilman dry-run- tai
+  test recipient -suojaa
+
+## Rajaus
+
+Tässä dokumentissa ei toteuteta:
+
+- `sent`-tilaa
+- sähköpostilähetystä
+- SMTP-adapteria
+- Gmail-integraatiota
+- DNA-integraatiota
+- tulostinintegraatiota
+- hyvityslaskua
+- cancelointia
+- laskun kopiointia
+- uusia migraatioita
+- uusia endpointteja
+- UI-muutoksia
+- uusia riippuvuuksia

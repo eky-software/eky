@@ -110,9 +110,18 @@ Jos työ koskee laskun hyväksyntää, virallista laskunumeroa, numerointisarjoj
 
 Jos työ koskee hyväksytyn laskun katselua, print-layoutia, PDF:ää, laskulla näkyviä myyjän, asiakkaan tai vastaanottajan tietoja, toimitus- tai kohdetietoa, maksutietojen snapshotia tai laskun print/PDF-data foundation -vaihetta, lue myös `docs/architecture/invoice-print-data-foundation-plan.md`.
 
+Jos työ koskee hyväksytyn laskun toimittamista, tulostusta, sähköpostilähetystä,
+SMTP/Gmail/Microsoft-sähköpostiadaptereita, `sent`-tilaa, laskun kopiointia,
+peruutusta, hyvityslaskua tai lähetyslokia, lue myös
+`docs/architecture/invoice-delivery-plan.md`.
+
 Jos työ koskee laskutuksen web-käyttöliittymää, laskuluonnoslistaa, Classic-laskutusnäkymää, uuden laskun lomaketta tai laskuluonnoksen avaamista ja muokkaamista webissä, lue myös `docs/architecture/invoicing-ui-roadmap.md`.
 
 Jos työ koskee web-käyttöliittymän ulkoasua, layoutia, komponenttirakennetta, värejä tai Eky-työpöytäkokemusta, lue myös `docs/design/ui-principles.md`.
+
+Jos työ koskee `packages/ui`-pakettia, jaettuja UI-komponentteja, UI-teknisen
+velan purkua tai yhteisten lomake-, painike-, panel- tai viestikomponenttien
+luomista, lue myös `docs/architecture/ui-design-system-roadmap.md`.
 
 Jos työ koskee käyttäjälle näkyviä UI-tekstejä, kielivalintaa, i18n-rakennetta tai käännöksiä, lue myös `docs/design/ui-principles.md`.
 
