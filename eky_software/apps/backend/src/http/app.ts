@@ -166,6 +166,13 @@ export async function createApp(): Promise<Hono> {
       markApprovedInvoiceSent: (input) =>
         markApprovedInvoiceSent(input, {
           approvedInvoiceReader,
+          ensureApprovedInvoicePdfDocument: (pdfInput) =>
+            generateApprovedInvoicePdfDocument(pdfInput, {
+              approvedInvoiceReader,
+              invoiceDocumentRepository,
+              invoiceDocumentStorage,
+              renderApprovedInvoicePdf,
+            }),
           invoiceApprovalRepository,
         }),
       reopenApprovedInvoiceForEditing: (input) =>

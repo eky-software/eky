@@ -10,8 +10,9 @@ uusia reittejä, tietokantatauluja, UI-toimintoja tai riippuvuuksia.
 Toteutustilanne:
 
 - hyväksytyn laskun PDF voidaan muodostaa ja avata selaimessa
-- `approved`-lasku voidaan merkitä manuaalisesti `sent`-tilaan, kun PDF on
-  ensin varmistettu tai muodostettu onnistuneesti
+- `approved`-lasku voidaan merkitä manuaalisesti `sent`-tilaan vasta, kun
+  backendin application service on ensin varmistanut tai muodostanut laskun PDF:n
+  onnistuneesti
 - `sent`-lasku näkyy laskutuksen omassa Lähetetyt-osiossa
 - hyväksytty tai lähetetty lasku voidaan kopioida uudeksi laskuluonnokseksi
 
@@ -206,8 +207,10 @@ jälkeen oikealla SMTP-adapterilla.
 Ensimmäinen toteutusaskel:
 
 - `approved`-lasku voidaan merkitä manuaalisesti lähetetyksi
-- web-polku varmistaa tai muodostaa hyväksytyn laskun PDF:n ennen
-  manuaalista lähetetyksi merkintää
+- backendin `mark sent` -application service varmistaa tai muodostaa hyväksytyn
+  laskun PDF:n ennen manuaalista lähetetyksi merkintää
+- web voi tehdä saman PDF-varmistuksen käyttökokemuksen vuoksi, mutta se ei ole
+  varsinainen liiketoimintasäännön auktoriteetti
 - jos PDF:n muodostus epäonnistuu, laskua ei merkitä lähetetyksi
 - toiminto ei vielä lähetä sähköpostia eikä ohjaa tulostinta
 - toiminto ei vielä kirjoita erillistä `invoice_delivery_events`-lokitaulua
