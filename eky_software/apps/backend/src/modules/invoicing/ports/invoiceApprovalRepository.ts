@@ -38,10 +38,27 @@ export interface ReopenedApprovedInvoiceResult {
   removedDocumentStoragePaths: string[];
 }
 
+export interface MarkApprovedInvoiceSentPersistenceInput {
+  actorUserId: string;
+  auditEventId: string;
+  companyId: string;
+  invoiceId: string;
+  markedSentAt: string;
+}
+
+export interface MarkApprovedInvoiceSentResult {
+  invoiceId: string;
+  status: 'sent';
+}
+
 export interface InvoiceApprovalRepository {
   approveDraft(
     input: ApproveInvoiceDraftPersistenceInput,
   ): Promise<ApprovedInvoiceResult | undefined>;
+
+  markApprovedInvoiceSent(
+    input: MarkApprovedInvoiceSentPersistenceInput,
+  ): Promise<MarkApprovedInvoiceSentResult | undefined>;
 
   reopenApprovedInvoiceForEditing(
     input: ReopenApprovedInvoicePersistenceInput,

@@ -82,6 +82,17 @@ describe('ApprovedInvoicePreview', () => {
     const html = renderPreview();
 
     expect(html).toContain(uiText.invoicing.editApprovedInvoice);
+    expect(html).toContain(uiText.invoicing.markApprovedInvoiceSent);
+  });
+
+  it('renders sent status and hides editing actions for sent invoices', () => {
+    const html = renderPreview({
+      invoice: createApprovedInvoiceView({ status: 'sent' }),
+    });
+
+    expect(html).toContain(uiText.invoicing.statusSent);
+    expect(html).not.toContain(uiText.invoicing.editApprovedInvoice);
+    expect(html).not.toContain(uiText.invoicing.markApprovedInvoiceSent);
   });
 
   it('shows the PDF create action only when the stored PDF is not available', () => {
@@ -111,19 +122,24 @@ function renderPreview(
     <ApprovedInvoicePreview
       invoice={options.invoice ?? createApprovedInvoiceView()}
       isCreatingPdf={false}
+      isMarkingSent={false}
       isPdfAvailable={options.isPdfAvailable ?? false}
       isReopening={false}
+      markSentErrorMessage={null}
       pdfErrorMessage={options.pdfErrorMessage ?? null}
       reopenErrorMessage={null}
       onBack={vi.fn()}
       onCreatePdf={vi.fn()}
       onEditInvoice={vi.fn()}
+      onMarkSent={vi.fn()}
       onOpenPdf={vi.fn()}
     />,
   );
 }
 
-function createApprovedInvoiceView(): ApprovedInvoiceView {
+function createApprovedInvoiceView(
+  overrides: Partial<ApprovedInvoiceView> = {},
+): ApprovedInvoiceView {
   return {
     approvedAt: '2026-06-13T10:00:00.000Z',
     billingRecipientBusinessIdSnapshot: '8765432-1',
@@ -220,5 +236,6 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
         vatRateBasisPoints: 2550,
       },
     ],
+    ...overrides,
   };
 }

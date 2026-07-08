@@ -51,6 +51,14 @@ import {
   useReopenApprovedInvoiceForEditing,
   type ReopenApprovedInvoiceState,
 } from '../hooks/useReopenApprovedInvoiceForEditing.js';
+import {
+  useMarkApprovedInvoiceSent,
+  type MarkApprovedInvoiceSentState,
+} from '../hooks/useMarkApprovedInvoiceSent.js';
+import {
+  useCopyApprovedInvoiceToDraft,
+  type CopyApprovedInvoiceState,
+} from '../hooks/useCopyApprovedInvoiceToDraft.js';
 import { uiText } from '../../../i18n/fi.js';
 
 interface InvoicingPageProps {
@@ -70,6 +78,8 @@ export function InvoicingPage({
   const approvedInvoicePdfState = useApprovedInvoicePdf();
   const deleteState = useDeleteInvoiceDraft();
   const reopenApprovedInvoiceState = useReopenApprovedInvoiceForEditing();
+  const markApprovedInvoiceSentState = useMarkApprovedInvoiceSent();
+  const copyApprovedInvoiceState = useCopyApprovedInvoiceToDraft();
   const [pendingDeleteDraftId, setPendingDeleteDraftId] = useState<string | null>(null);
   const previousNavigationRevision = useRef(navigationRevision);
   const [activeView, dispatch] = useReducer(
@@ -82,6 +92,8 @@ export function InvoicingPage({
     draftEditorState.clearDraft();
     deleteState.clearError();
     reopenApprovedInvoiceState.clearError();
+    markApprovedInvoiceSentState.clearError();
+    copyApprovedInvoiceState.clearError();
     approvedInvoicePdfState.clearPdf();
     setPendingDeleteDraftId(null);
     dispatch({ type: 'showDraftList' });
@@ -90,6 +102,8 @@ export function InvoicingPage({
   function handleOpenDraft(id: string): void {
     approvedInvoiceState.clearApprovedInvoice();
     reopenApprovedInvoiceState.clearError();
+    markApprovedInvoiceSentState.clearError();
+    copyApprovedInvoiceState.clearError();
     approvedInvoicePdfState.clearPdf();
     setPendingDeleteDraftId(null);
     dispatch({ type: 'openEditInvoice' });
@@ -100,6 +114,8 @@ export function InvoicingPage({
     draftEditorState.clearDraft();
     deleteState.clearError();
     reopenApprovedInvoiceState.clearError();
+    markApprovedInvoiceSentState.clearError();
+    copyApprovedInvoiceState.clearError();
     approvedInvoicePdfState.clearPdf();
     setPendingDeleteDraftId(null);
     dispatch({ type: 'openApprovedInvoice' });
@@ -165,6 +181,49 @@ export function InvoicingPage({
     void draftEditorState.openDraft(reopenedInvoice.invoiceDraftId);
   }
 
+  async function handleMarkApprovedInvoiceSent(id: string): Promise<void> {
+    const shouldMarkSent = window.confirm(
+      uiText.invoicing.markApprovedInvoiceSentConfirm,
+    );
+
+    if (!shouldMarkSent) {
+      return;
+    }
+
+    const sentInvoice =
+      await markApprovedInvoiceSentState.markApprovedInvoiceSent(id);
+
+    if (sentInvoice === null) {
+      return;
+    }
+
+    approvedInvoiceState.replaceApprovedInvoice(sentInvoice);
+    void approvedInvoiceListState.refreshApprovedInvoices();
+  }
+
+  async function handleCopyApprovedInvoiceToDraft(id: string): Promise<void> {
+    const shouldCopy = window.confirm(
+      uiText.invoicing.copyApprovedInvoiceConfirm,
+    );
+
+    if (!shouldCopy) {
+      return;
+    }
+
+    const copiedDraft =
+      await copyApprovedInvoiceState.copyApprovedInvoiceToDraft(id);
+
+    if (copiedDraft === null) {
+      return;
+    }
+
+    approvedInvoiceState.clearApprovedInvoice();
+    approvedInvoicePdfState.clearPdf();
+    draftEditorState.replaceDraft(copiedDraft);
+    dispatch({ type: 'openEditInvoice' });
+    void draftState.refreshDrafts();
+  }
+
   async function handleOpenApprovedInvoicePdf(id: string): Promise<void> {
     const pdfWindow = window.open('', '_blank');
 
@@ -207,9 +266,11 @@ export function InvoicingPage({
       approvedInvoiceState={approvedInvoiceState}
       customerListState={customerListState}
       companySettingsState={companySettingsState}
+      copyApprovedInvoiceState={copyApprovedInvoiceState}
       deleteState={deleteState}
       draftEditorState={draftEditorState}
       invoicePaymentDefaultsState={invoicePaymentDefaultsState}
+      markApprovedInvoiceSentState={markApprovedInvoiceSentState}
       pendingDeleteDraftId={pendingDeleteDraftId}
       reopenApprovedInvoiceState={reopenApprovedInvoiceState}
       onBackToDrafts={handleBackToDrafts}
@@ -221,7 +282,13 @@ export function InvoicingPage({
       onCreateApprovedInvoicePdf={(id) =>
         void approvedInvoicePdfState.createPdf(id)
       }
+      onCopyApprovedInvoiceToDraft={(id) =>
+        void handleCopyApprovedInvoiceToDraft(id)
+      }
       onEditApprovedInvoice={(id) => void handleEditApprovedInvoice(id)}
+      onMarkApprovedInvoiceSent={(id) =>
+        void handleMarkApprovedInvoiceSent(id)
+      }
       onOpenApprovedInvoicePdf={(id) =>
         void handleOpenApprovedInvoicePdf(id)
       }
@@ -239,19 +306,23 @@ interface InvoicingPageViewProps extends InvoiceDraftListState {
   approvedInvoiceState: ApprovedInvoiceState;
   customerListState: InvoiceCustomerListState;
   companySettingsState: InvoiceCompanySettingsState;
+  copyApprovedInvoiceState: CopyApprovedInvoiceState;
   deleteState: DeleteInvoiceDraftState;
   draftEditorState: InvoiceDraftEditorState;
   invoicePaymentDefaultsState: InvoicePaymentDefaultsState;
+  markApprovedInvoiceSentState: MarkApprovedInvoiceSentState;
   pendingDeleteDraftId: string | null;
   reopenApprovedInvoiceState: ReopenApprovedInvoiceState;
   onBackToDrafts(): void;
   onCancelDeleteDraft(): void;
   onConfirmDeleteDraft(id: string): void;
   onCreateApprovedInvoicePdf(id: string): void;
+  onCopyApprovedInvoiceToDraft(id: string): void;
   onDraftApproved(approvedInvoice: ApprovedInvoiceResult): void;
   onDraftSaved(savedDraft: InvoiceDraft): void;
   onOpenApprovedInvoice(id: string): void;
   onEditApprovedInvoice(id: string): void;
+  onMarkApprovedInvoiceSent(id: string): void;
   onOpenApprovedInvoicePdf(id: string): void;
   onOpenDraft(id: string): void;
   onRequestDeleteDraft(id: string): void;
@@ -265,9 +336,11 @@ export function InvoicingPageView({
   approvedInvoiceState,
   customerListState,
   companySettingsState,
+  copyApprovedInvoiceState,
   deleteState,
   draftEditorState,
   invoicePaymentDefaultsState,
+  markApprovedInvoiceSentState,
   drafts,
   errorMessage,
   isLoading,
@@ -277,15 +350,24 @@ export function InvoicingPageView({
   onCancelDeleteDraft,
   onConfirmDeleteDraft,
   onCreateApprovedInvoicePdf,
+  onCopyApprovedInvoiceToDraft,
   onDraftApproved,
   onDraftSaved,
   onOpenApprovedInvoice,
   onEditApprovedInvoice,
+  onMarkApprovedInvoiceSent,
   onOpenApprovedInvoicePdf,
   onOpenDraft,
   onRequestDeleteDraft,
   onNewInvoice,
 }: InvoicingPageViewProps): React.JSX.Element {
+  const approvedInvoices = approvedInvoiceListState.approvedInvoices.filter(
+    (invoice) => invoice.status === 'approved',
+  );
+  const sentInvoices = approvedInvoiceListState.approvedInvoices.filter(
+    (invoice) => invoice.status === 'sent',
+  );
+
   return (
     <div className={styles.workspace}>
       <section className={`page-intro ${styles.pageHeader}`}>
@@ -355,16 +437,50 @@ export function InvoicingPageView({
                     className="count-badge"
                     aria-label={uiText.invoicing.approvedInvoiceCount}
                   >
-                    {approvedInvoiceListState.approvedInvoices.length}
+                    {approvedInvoices.length}
                   </span>
                 ) : null}
               </div>
             </header>
 
             <ApprovedInvoiceList
-              approvedInvoices={approvedInvoiceListState.approvedInvoices}
+              approvedInvoices={approvedInvoices}
               errorMessage={approvedInvoiceListState.errorMessage}
               isLoading={approvedInvoiceListState.isLoading}
+              onOpenApprovedInvoice={onOpenApprovedInvoice}
+            />
+          </section>
+
+          <section className={`panel ${styles.draftListPanel}`}>
+            <header className={`panel-header ${styles.draftListHeader}`}>
+              <div>
+                <p className="panel-kicker">
+                  {uiText.invoicing.sentInvoices}
+                </p>
+                <h2>{uiText.invoicing.sentInvoiceList}</h2>
+              </div>
+              <div className="panel-actions">
+                {!approvedInvoiceListState.isLoading &&
+                approvedInvoiceListState.errorMessage === null ? (
+                  <span
+                    className="count-badge"
+                    aria-label={uiText.invoicing.sentInvoiceCount}
+                  >
+                    {sentInvoices.length}
+                  </span>
+                ) : null}
+              </div>
+            </header>
+
+            <ApprovedInvoiceList
+              approvedInvoices={sentInvoices}
+              copiedInvoiceId={copyApprovedInvoiceState.copiedInvoiceId}
+              copyErrorMessage={copyApprovedInvoiceState.errorMessage}
+              emptyMessage={uiText.invoicing.sentInvoicesEmpty}
+              errorMessage={approvedInvoiceListState.errorMessage}
+              isLoading={approvedInvoiceListState.isLoading}
+              listLabel={uiText.invoicing.sentInvoiceList}
+              onCopyApprovedInvoiceToDraft={onCopyApprovedInvoiceToDraft}
               onOpenApprovedInvoice={onOpenApprovedInvoice}
             />
           </section>
@@ -395,10 +511,12 @@ export function InvoicingPageView({
         <ApprovedInvoiceView
           approvedInvoicePdfState={approvedInvoicePdfState}
           approvedInvoiceState={approvedInvoiceState}
+          markApprovedInvoiceSentState={markApprovedInvoiceSentState}
           reopenApprovedInvoiceState={reopenApprovedInvoiceState}
           onBack={onBackToDrafts}
           onCreateApprovedInvoicePdf={onCreateApprovedInvoicePdf}
           onEditApprovedInvoice={onEditApprovedInvoice}
+          onMarkApprovedInvoiceSent={onMarkApprovedInvoiceSent}
           onOpenApprovedInvoicePdf={onOpenApprovedInvoicePdf}
         />
       )}
@@ -484,20 +602,24 @@ function InvoiceDraftEditView({
 interface ApprovedInvoiceViewProps {
   approvedInvoicePdfState: ApprovedInvoicePdfState;
   approvedInvoiceState: ApprovedInvoiceState;
+  markApprovedInvoiceSentState: MarkApprovedInvoiceSentState;
   reopenApprovedInvoiceState: ReopenApprovedInvoiceState;
   onBack(): void;
   onCreateApprovedInvoicePdf(id: string): void;
   onEditApprovedInvoice(id: string): void;
+  onMarkApprovedInvoiceSent(id: string): void;
   onOpenApprovedInvoicePdf(id: string): void;
 }
 
 function ApprovedInvoiceView({
   approvedInvoicePdfState,
   approvedInvoiceState,
+  markApprovedInvoiceSentState,
   reopenApprovedInvoiceState,
   onBack,
   onCreateApprovedInvoicePdf,
   onEditApprovedInvoice,
+  onMarkApprovedInvoiceSent,
   onOpenApprovedInvoicePdf,
 }: ApprovedInvoiceViewProps): React.JSX.Element {
   if (approvedInvoiceState.isLoading) {
@@ -541,12 +663,15 @@ function ApprovedInvoiceView({
       invoice={approvedInvoiceState.approvedInvoice}
       isCreatingPdf={approvedInvoicePdfState.isCreating}
       isPdfAvailable={approvedInvoicePdfState.document !== null}
+      isMarkingSent={markApprovedInvoiceSentState.isMarkingSent}
       isReopening={reopenApprovedInvoiceState.isReopening}
+      markSentErrorMessage={markApprovedInvoiceSentState.errorMessage}
       pdfErrorMessage={approvedInvoicePdfState.errorMessage}
       reopenErrorMessage={reopenApprovedInvoiceState.errorMessage}
       onBack={onBack}
       onCreatePdf={onCreateApprovedInvoicePdf}
       onEditInvoice={onEditApprovedInvoice}
+      onMarkSent={onMarkApprovedInvoiceSent}
       onOpenPdf={onOpenApprovedInvoicePdf}
     />
   );

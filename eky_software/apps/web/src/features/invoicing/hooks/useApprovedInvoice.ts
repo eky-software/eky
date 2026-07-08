@@ -18,6 +18,7 @@ export interface ApprovedInvoiceState {
   isLoading: boolean;
   clearApprovedInvoice(): void;
   openApprovedInvoice(id: string): Promise<ApprovedInvoiceView | null>;
+  replaceApprovedInvoice(invoice: ApprovedInvoiceView): void;
 }
 
 export function useApprovedInvoice(): ApprovedInvoiceState {
@@ -57,12 +58,18 @@ export function useApprovedInvoice(): ApprovedInvoiceState {
     }
   }
 
+  function replaceApprovedInvoice(invoice: ApprovedInvoiceView): void {
+    setApprovedInvoice(invoice);
+    setErrorMessage(null);
+  }
+
   return {
     approvedInvoice,
     clearApprovedInvoice,
     errorMessage,
     isLoading,
     openApprovedInvoice,
+    replaceApprovedInvoice,
   };
 }
 

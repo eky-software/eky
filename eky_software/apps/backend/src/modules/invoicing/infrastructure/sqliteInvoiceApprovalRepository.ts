@@ -28,6 +28,8 @@ import type {
   InvoiceApprovalRepository,
   ReopenApprovedInvoicePersistenceInput,
   ReopenedApprovedInvoiceResult,
+  MarkApprovedInvoiceSentPersistenceInput,
+  MarkApprovedInvoiceSentResult,
 } from '../ports/invoiceApprovalRepository.js';
 import type { InvoiceAuditAction } from '../domain/approvedInvoice.js';
 import type { InvoiceTotals, PriceInputMode } from '../domain/invoiceCalculation.js';
@@ -91,6 +93,7 @@ type InvoiceAuditEventInsertParameters = [
 type InvoiceDraftApproveParameters = [string, string, string, string, string];
 type InvoiceDraftUnlockParameters = [string, string, string, string];
 type InvoiceStatusUpdateParameters = [string, string, string];
+type MarkInvoiceSentParameters = [string, string, string];
 
 interface InvoiceAuditEventSource {
   actorUserId: string;
@@ -554,6 +557,51 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
     return reopenTransaction();
   }
 
+  async markApprovedInvoiceSent(
+    input: MarkApprovedInvoiceSentPersistenceInput,
+  ): Promise<MarkApprovedInvoiceSentResult | undefined> {
+    const markSentTransaction = this.database.transaction(() => {
+      const invoice = this.getApprovedInvoiceForMarkSent(
+        input.companyId,
+        input.invoiceId,
+      );
+
+      if (invoice === undefined) {
+        return undefined;
+      }
+
+      if (invoice.status === 'sent') {
+        return {
+          invoiceId: invoice.id,
+          status: 'sent' as const,
+        };
+      }
+
+      this.markInvoiceSent(input);
+      this.insertAuditEvent(
+        createAuditEventRow(
+          {
+            actorUserId: input.actorUserId,
+            auditEventId: input.auditEventId,
+            companyId: input.companyId,
+            draftId: invoice.source_draft_id,
+            invoiceId: invoice.id,
+          },
+          invoice.invoice_number,
+          'invoice.marked_sent_manually',
+          input.markedSentAt,
+        ),
+      );
+
+      return {
+        invoiceId: invoice.id,
+        status: 'sent' as const,
+      };
+    });
+
+    return markSentTransaction();
+  }
+
   private getDraftForApproval(
     companyId: string,
     draftId: string,
@@ -604,6 +652,24 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
             company_id = ?
             AND id = ?
             AND status = 'approved'
+        `,
+      )
+      .get(companyId, invoiceId);
+  }
+
+  private getApprovedInvoiceForMarkSent(
+    companyId: string,
+    invoiceId: string,
+  ): InvoiceRow | undefined {
+    return this.database
+      .prepare<ReopenedInvoiceKeyParameters, InvoiceRow>(
+        `
+          SELECT *
+          FROM invoices
+          WHERE
+            company_id = ?
+            AND id = ?
+            AND status IN ('approved', 'sent')
         `,
       )
       .get(companyId, invoiceId);
@@ -1111,6 +1177,29 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
     if (result.changes !== 1) {
       throw new ApproveInvoiceDraftError(
         'Approved invoice could not be reopened for editing.',
+      );
+    }
+  }
+
+  private markInvoiceSent(input: MarkApprovedInvoiceSentPersistenceInput): void {
+    const result = this.database
+      .prepare<MarkInvoiceSentParameters>(
+        `
+          UPDATE invoices
+          SET
+            status = 'sent',
+            updated_at = ?
+          WHERE
+            company_id = ?
+            AND id = ?
+            AND status = 'approved'
+        `,
+      )
+      .run(input.markedSentAt, input.companyId, input.invoiceId);
+
+    if (result.changes !== 1) {
+      throw new ApproveInvoiceDraftError(
+        'Approved invoice could not be marked sent.',
       );
     }
   }

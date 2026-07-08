@@ -20,28 +20,36 @@ import { uiText } from '../../../i18n/fi.js';
 interface ApprovedInvoicePreviewProps {
   invoice: ApprovedInvoiceView;
   isCreatingPdf: boolean;
+  isMarkingSent: boolean;
   isPdfAvailable: boolean;
   isReopening: boolean;
+  markSentErrorMessage: string | null;
   pdfErrorMessage: string | null;
   reopenErrorMessage: string | null;
   onBack(): void;
   onCreatePdf(id: string): void;
   onEditInvoice(id: string): void;
+  onMarkSent(id: string): void;
   onOpenPdf(id: string): void;
 }
 
 export function ApprovedInvoicePreview({
   invoice,
   isCreatingPdf,
+  isMarkingSent,
   isPdfAvailable,
   isReopening,
+  markSentErrorMessage,
   pdfErrorMessage,
   reopenErrorMessage,
   onBack,
   onCreatePdf,
   onEditInvoice,
+  onMarkSent,
   onOpenPdf,
 }: ApprovedInvoicePreviewProps): React.JSX.Element {
+  const isSent = invoice.status === 'sent';
+
   return (
     <section className={`panel ${styles.preview}`}>
       <header className={styles.header}>
@@ -55,7 +63,9 @@ export function ApprovedInvoicePreview({
           </p>
           <p className={styles.status}>
             <span className="status-pill status-pill-active">
-              {uiText.invoicing.statusApproved}
+              {isSent
+                ? uiText.invoicing.statusSent
+                : uiText.invoicing.statusApproved}
             </span>
           </p>
         </div>
@@ -84,16 +94,30 @@ export function ApprovedInvoicePreview({
                 : uiText.invoicing.approvedInvoiceOpenPdf}
             </button>
           ) : null}
-          <button
-            className="secondary-action"
-            disabled={isReopening}
-            onClick={() => onEditInvoice(invoice.id)}
-            type="button"
-          >
-            {isReopening
-              ? uiText.invoicing.reopeningApprovedInvoice
-              : uiText.invoicing.editApprovedInvoice}
-          </button>
+          {!isSent ? (
+            <>
+              <button
+                className="secondary-action"
+                disabled={isMarkingSent}
+                onClick={() => onMarkSent(invoice.id)}
+                type="button"
+              >
+                {isMarkingSent
+                  ? uiText.invoicing.markingApprovedInvoiceSent
+                  : uiText.invoicing.markApprovedInvoiceSent}
+              </button>
+              <button
+                className="secondary-action"
+                disabled={isReopening}
+                onClick={() => onEditInvoice(invoice.id)}
+                type="button"
+              >
+                {isReopening
+                  ? uiText.invoicing.reopeningApprovedInvoice
+                  : uiText.invoicing.editApprovedInvoice}
+              </button>
+            </>
+          ) : null}
           <button className="ghost-button" onClick={onBack} type="button">
             {uiText.invoicing.backToDrafts}
           </button>
@@ -108,6 +132,11 @@ export function ApprovedInvoicePreview({
       {pdfErrorMessage !== null ? (
         <p className="message error-message" role="alert">
           {pdfErrorMessage}
+        </p>
+      ) : null}
+      {markSentErrorMessage !== null ? (
+        <p className="message error-message" role="alert">
+          {markSentErrorMessage}
         </p>
       ) : null}
 

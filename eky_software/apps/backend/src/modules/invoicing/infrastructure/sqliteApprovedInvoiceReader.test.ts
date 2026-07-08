@@ -6,13 +6,16 @@ import type { DatabaseConnection } from '../../../database/connection/createData
 import { SqliteApprovedInvoiceReader } from './sqliteApprovedInvoiceReader.js';
 
 const migrationNames = [
+  '004_create_company_settings.sql',
   '006_create_invoice_drafts.sql',
   '009_create_approved_invoices.sql',
   '010_add_invoice_reference_number.sql',
   '016_add_approved_invoice_print_snapshot_fields.sql',
   '017_allow_reopened_invoice_corrections.sql',
   '018_create_invoice_documents.sql',
+  '019_add_company_website.sql',
   '020_relax_invoice_line_unit_checks.sql',
+  '021_allow_sent_approved_invoices.sql',
 ];
 
 const migrationSql = migrationNames.map((migrationName) =>
@@ -143,6 +146,35 @@ describe('SqliteApprovedInvoiceReader', () => {
     ]);
   });
 
+  it('lists sent invoice summaries with approved invoice summaries', async () => {
+    database
+      .prepare(
+        `
+          UPDATE invoices
+          SET status = 'sent', updated_at = '2026-06-13T11:00:00.000Z'
+          WHERE id = 'invoice-1'
+        `,
+      )
+      .run();
+    const reader = new SqliteApprovedInvoiceReader(database);
+
+    await expect(
+      reader.listApprovedInvoiceSummaries('dev-company'),
+    ).resolves.toMatchObject([
+      {
+        id: 'invoice-1',
+        status: 'sent',
+        updatedAt: '2026-06-13T11:00:00.000Z',
+      },
+    ]);
+    await expect(
+      reader.getApprovedInvoiceById('dev-company', 'invoice-1'),
+    ).resolves.toMatchObject({
+      id: 'invoice-1',
+      status: 'sent',
+    });
+  });
+
   it('does not list approved invoices outside the company scope', async () => {
     const reader = new SqliteApprovedInvoiceReader(database);
 
@@ -160,9 +192,9 @@ describe('SqliteApprovedInvoiceReader', () => {
   });
 
   it('does not need Company Settings or Customers master data for the view', async () => {
-    const companySettingsCount = database
+    const companySettingsRows = database
       .prepare<[], { count: number }>(
-        "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name = 'company_settings'",
+        'SELECT COUNT(*) AS count FROM company_settings',
       )
       .get();
     const customersCount = database
@@ -178,7 +210,7 @@ describe('SqliteApprovedInvoiceReader', () => {
       customerNameSnapshot: 'Snapshot Customer Oy',
       companyNameSnapshot: 'Snapshot Builder Oy',
     });
-    expect(companySettingsCount?.count).toBe(0);
+    expect(companySettingsRows?.count).toBe(0);
     expect(customersCount?.count).toBe(0);
   });
 });

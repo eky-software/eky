@@ -96,6 +96,65 @@ describe('InvoicingPageView', () => {
     expect(html).toContain(uiText.invoicing.empty);
   });
 
+  it('splits approved and sent invoices into separate lists', () => {
+    const html = renderPage({
+      activeView: 'draftList',
+      approvedInvoiceListState: createApprovedInvoiceListState({
+        approvedInvoices: [
+          createApprovedInvoiceSummary(),
+          createApprovedInvoiceSummary({
+            id: 'invoice-2',
+            invoiceNumber: '20260002',
+            status: 'sent',
+          }),
+        ],
+      }),
+      customerListState: createCustomerListState(),
+      drafts: [],
+      errorMessage: null,
+      isLoading: false,
+      draftEditorState: createDraftEditorState(),
+      onBackToDrafts: vi.fn(),
+      onCopyApprovedInvoiceToDraft: vi.fn(),
+      onOpenDraft: vi.fn(),
+      onNewInvoice: vi.fn(),
+    });
+
+    expect(html).toContain(uiText.invoicing.approvedInvoiceList);
+    expect(html).toContain(uiText.invoicing.sentInvoiceList);
+    expect(html).toContain('Laskunumero 20260001');
+    expect(html).toContain('Laskunumero 20260002');
+    expect(html).toContain(uiText.invoicing.copyApprovedInvoice);
+  });
+
+  it('renders a safe sent invoice copy error without technical data', () => {
+    const html = renderPage({
+      activeView: 'draftList',
+      approvedInvoiceListState: createApprovedInvoiceListState({
+        approvedInvoices: [
+          createApprovedInvoiceSummary({
+            status: 'sent',
+          }),
+        ],
+      }),
+      copyApprovedInvoiceState: createCopyApprovedInvoiceState({
+        errorMessage: uiText.invoicing.copyApprovedInvoiceError,
+      }),
+      customerListState: createCustomerListState(),
+      drafts: [],
+      errorMessage: null,
+      isLoading: false,
+      draftEditorState: createDraftEditorState(),
+      onBackToDrafts: vi.fn(),
+      onOpenDraft: vi.fn(),
+      onNewInvoice: vi.fn(),
+    });
+
+    expect(html).toContain(uiText.invoicing.copyApprovedInvoiceError);
+    expect(html).not.toContain('responseBody');
+    expect(html).not.toContain('stack');
+  });
+
   it('renders a safe error state without technical response data', () => {
     const html = renderPage({
       activeView: 'draftList',
@@ -342,15 +401,19 @@ function renderPage(
     | 'approvedInvoiceListState'
     | 'approvedInvoicePdfState'
     | 'approvedInvoiceState'
+    | 'copyApprovedInvoiceState'
     | 'deleteState'
     | 'invoicePaymentDefaultsState'
+    | 'markApprovedInvoiceSentState'
     | 'reopenApprovedInvoiceState'
     | 'onCancelDeleteDraft'
     | 'onConfirmDeleteDraft'
     | 'onCreateApprovedInvoicePdf'
+    | 'onCopyApprovedInvoiceToDraft'
     | 'onDraftApproved'
     | 'onDraftSaved'
     | 'onEditApprovedInvoice'
+    | 'onMarkApprovedInvoiceSent'
     | 'onOpenApprovedInvoice'
     | 'onOpenApprovedInvoicePdf'
     | 'onRequestDeleteDraft'
@@ -364,15 +427,19 @@ function renderPage(
         | 'approvedInvoiceListState'
         | 'approvedInvoicePdfState'
         | 'approvedInvoiceState'
+        | 'copyApprovedInvoiceState'
         | 'deleteState'
         | 'invoicePaymentDefaultsState'
+        | 'markApprovedInvoiceSentState'
         | 'reopenApprovedInvoiceState'
         | 'onCancelDeleteDraft'
         | 'onConfirmDeleteDraft'
         | 'onCreateApprovedInvoicePdf'
+        | 'onCopyApprovedInvoiceToDraft'
         | 'onDraftApproved'
         | 'onDraftSaved'
         | 'onEditApprovedInvoice'
+        | 'onMarkApprovedInvoiceSent'
         | 'onOpenApprovedInvoice'
         | 'onOpenApprovedInvoicePdf'
         | 'onRequestDeleteDraft'
@@ -387,15 +454,19 @@ function renderPage(
       approvedInvoicePdfState={createApprovedInvoicePdfState()}
       approvedInvoiceState={createApprovedInvoiceState()}
       companySettingsState={createCompanySettingsState()}
+      copyApprovedInvoiceState={createCopyApprovedInvoiceState()}
       deleteState={createDeleteState()}
       invoicePaymentDefaultsState={createInvoicePaymentDefaultsState()}
+      markApprovedInvoiceSentState={createMarkApprovedInvoiceSentState()}
       reopenApprovedInvoiceState={createReopenApprovedInvoiceState()}
       onCancelDeleteDraft={vi.fn()}
       onConfirmDeleteDraft={vi.fn()}
       onCreateApprovedInvoicePdf={vi.fn()}
+      onCopyApprovedInvoiceToDraft={vi.fn()}
       onDraftApproved={vi.fn()}
       onDraftSaved={vi.fn()}
       onEditApprovedInvoice={vi.fn()}
+      onMarkApprovedInvoiceSent={vi.fn()}
       onOpenApprovedInvoice={vi.fn()}
       onOpenApprovedInvoicePdf={vi.fn()}
       onRequestDeleteDraft={vi.fn()}
@@ -444,6 +515,34 @@ function createApprovedInvoiceState(
     errorMessage: null,
     isLoading: false,
     openApprovedInvoice: vi.fn(),
+    replaceApprovedInvoice: vi.fn(),
+    ...overrides,
+  };
+}
+
+function createMarkApprovedInvoiceSentState(
+  overrides: Partial<InvoicingPageViewProps['markApprovedInvoiceSentState']> = {},
+): InvoicingPageViewProps['markApprovedInvoiceSentState'] {
+  return {
+    clearError: vi.fn(),
+    errorMessage: null,
+    isMarkingSent: false,
+    markApprovedInvoiceSent: vi.fn(async () => createApprovedInvoiceView({
+      status: 'sent',
+    })),
+    ...overrides,
+  };
+}
+
+function createCopyApprovedInvoiceState(
+  overrides: Partial<InvoicingPageViewProps['copyApprovedInvoiceState']> = {},
+): InvoicingPageViewProps['copyApprovedInvoiceState'] {
+  return {
+    clearError: vi.fn(),
+    copiedInvoiceId: null,
+    copyApprovedInvoiceToDraft: vi.fn(async () => createInvoiceDraft()),
+    errorMessage: null,
+    isCopying: false,
     ...overrides,
   };
 }
@@ -562,7 +661,9 @@ function createInvoiceDraftSummary(): InvoiceDraftSummary {
   };
 }
 
-function createApprovedInvoiceSummary(): ApprovedInvoiceSummary {
+function createApprovedInvoiceSummary(
+  overrides: Partial<ApprovedInvoiceSummary> = {},
+): ApprovedInvoiceSummary {
   return {
     id: 'invoice-1',
     invoiceNumber: '20260001',
@@ -577,6 +678,7 @@ function createApprovedInvoiceSummary(): ApprovedInvoiceSummary {
     grossTotalCents: 17_884,
     approvedAt: '2026-06-13T18:00:00.000Z',
     updatedAt: '2026-06-13T18:00:00.000Z',
+    ...overrides,
   };
 }
 
@@ -650,7 +752,9 @@ function createInvoiceDraft() {
   };
 }
 
-function createApprovedInvoiceView(): ApprovedInvoiceView {
+function createApprovedInvoiceView(
+  overrides: Partial<ApprovedInvoiceView> = {},
+): ApprovedInvoiceView {
   return {
     approvedAt: '2026-06-13T10:00:00.000Z',
     billingRecipientBusinessIdSnapshot: '8765432-1',
@@ -747,5 +851,6 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
         vatRateBasisPoints: 2550,
       },
     ],
+    ...overrides,
   };
 }

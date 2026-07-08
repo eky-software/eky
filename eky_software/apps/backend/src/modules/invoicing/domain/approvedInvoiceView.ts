@@ -7,7 +7,7 @@ import type { InvoiceUnit } from './invoiceDraft.js';
 import type { InvoiceNumberingMode } from './invoiceNumbering.js';
 import type { ReferenceNumberType } from './invoiceReferenceNumber.js';
 
-export type ApprovedInvoiceViewStatus = 'approved';
+export type ApprovedInvoiceViewStatus = 'approved' | 'sent';
 
 export interface ApprovedInvoiceViewLine {
   id: string;

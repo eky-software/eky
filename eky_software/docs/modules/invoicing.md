@@ -75,10 +75,10 @@ MVP:n vähimmäistilat:
 
 - draft
 - approved
+- sent
 
 Myöhemmät tilat:
 
-- sent
 - paid
 - cancelled
 - credited
@@ -184,6 +184,11 @@ alkuperäisen lähdeluonnoksen muokattavaksi. Uudelleenhyväksyntä säilyttää
 laskunumeron ja viitenumeron, korvaa hyväksytyn laskun snapshotit ja kirjaa
 korjauksen audit-tapahtumana. Lähetettyjen laskujen korjaus tehdään myöhemmin
 hyvityslaskulla, ei muokkaamalla lähetettyä laskua.
+
+Lähetetty lasku voidaan kopioida uudeksi laskuluonnokseksi. Kopiointi ei peri
+vanhan laskun laskunumeroa, viitenumeroa, PDF-dokumenttia tai `sent`-tilaa.
+Uusi kopioitu luonnos saa oman laskunumeron ja viitenumeron vasta myöhemmässä
+hyväksynnässä.
 
 Numerointiasetukset voivat näkyä käyttäjälle Oma yritys / Asetukset -kokonaisuudessa, mutta niiden domain-omistaja on Invoicing.
 

@@ -6,6 +6,8 @@ import type {
   InvoiceApprovalRepository,
   ReopenApprovedInvoicePersistenceInput,
   ReopenedApprovedInvoiceResult,
+  MarkApprovedInvoiceSentPersistenceInput,
+  MarkApprovedInvoiceSentResult,
 } from '../ports/invoiceApprovalRepository.js';
 import type { InvoiceDocumentStorage } from '../ports/invoiceDocumentStorage.js';
 import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
@@ -24,6 +26,12 @@ class FakeInvoiceApprovalRepository implements InvoiceApprovalRepository {
   async approveDraft(
     _input: ApproveInvoiceDraftPersistenceInput,
   ): Promise<ApprovedInvoiceResult | undefined> {
+    throw new Error('Not implemented in this reopen test.');
+  }
+
+  async markApprovedInvoiceSent(
+    _input: MarkApprovedInvoiceSentPersistenceInput,
+  ): Promise<MarkApprovedInvoiceSentResult | undefined> {
     throw new Error('Not implemented in this reopen test.');
   }
 
