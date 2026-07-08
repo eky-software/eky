@@ -5,6 +5,7 @@ import {
   EkyApiError,
   type ApprovedInvoiceSummary,
   type ApprovedInvoiceView,
+  type InvoiceDraft,
 } from '../../index.js';
 
 describe('approved invoices api client', () => {
@@ -134,6 +135,48 @@ describe('approved invoices api client', () => {
     expect(requests).toEqual([
       {
         input: '/invoices/invoice%2F1/reopen-for-edit',
+        init: {
+          headers: {
+            Accept: 'application/json',
+          },
+          method: 'POST',
+        },
+      },
+    ]);
+  });
+
+  it('marks an approved invoice sent through POST /invoices/:id/mark-sent', async () => {
+    const requests = createRequestLog();
+    const invoice = createTestApprovedInvoiceView({ status: 'sent' });
+    const client = createTestClient(requests, { invoice });
+
+    const result = await client.markApprovedInvoiceSent('invoice/1');
+
+    expect(result).toEqual(invoice);
+    expect(requests).toEqual([
+      {
+        input: '/invoices/invoice%2F1/mark-sent',
+        init: {
+          headers: {
+            Accept: 'application/json',
+          },
+          method: 'POST',
+        },
+      },
+    ]);
+  });
+
+  it('copies an approved invoice to a draft through POST /invoices/:id/copy-to-draft', async () => {
+    const requests = createRequestLog();
+    const invoiceDraft = createTestInvoiceDraft();
+    const client = createTestClient(requests, { invoiceDraft });
+
+    const result = await client.copyApprovedInvoiceToDraft('invoice/1');
+
+    expect(result).toEqual(invoiceDraft);
+    expect(requests).toEqual([
+      {
+        input: '/invoices/invoice%2F1/copy-to-draft',
         init: {
           headers: {
             Accept: 'application/json',
@@ -302,7 +345,9 @@ function createTestClient(
   });
 }
 
-function createTestApprovedInvoiceView(): ApprovedInvoiceView {
+function createTestApprovedInvoiceView(
+  overrides: Partial<ApprovedInvoiceView> = {},
+): ApprovedInvoiceView {
   return {
     id: 'invoice-1',
     companyId: 'dev-company',
@@ -399,6 +444,7 @@ function createTestApprovedInvoiceView(): ApprovedInvoiceView {
     createdAt: '2026-06-13T10:00:00.000Z',
     approvedAt: '2026-06-13T10:00:00.000Z',
     updatedAt: '2026-06-13T10:00:00.000Z',
+    ...overrides,
   };
 }
 
@@ -418,7 +464,63 @@ function createTestApprovedInvoiceDocumentMetadata() {
   };
 }
 
-function createTestApprovedInvoiceSummary(): ApprovedInvoiceSummary {
+function createTestInvoiceDraft(): InvoiceDraft {
+  return {
+    billingRecipientCustomerId: 'billing-1',
+    companyId: 'dev-company',
+    createdAt: '2026-07-08T10:00:00.000Z',
+    customerId: 'customer-1',
+    deliveryAddressText: 'Worksite Street 4',
+    dueDate: '2026-07-22',
+    id: 'draft-copy-1',
+    invoiceDate: '2026-07-08',
+    latePaymentInterestBasisPoints: 950,
+    lines: [
+      {
+        baseCents: 10000,
+        code: 'WORK',
+        description: 'Work',
+        discount: { type: 'none' },
+        discountCents: 0,
+        grossCents: 12550,
+        id: 'line-1',
+        netCents: 10000,
+        position: 1,
+        priceInputMode: 'net',
+        quantityHundredths: 100,
+        unit: 'h',
+        unitPriceCents: 10000,
+        vatCents: 2550,
+        vatRateBasisPoints: 2550,
+      },
+    ],
+    note: 'Invoice note',
+    orderNumber: 'ORDER-1',
+    paymentTermDays: 14,
+    priceInputMode: 'net',
+    reminderPeriodDays: 8,
+    status: 'draft',
+    subject: 'Copied invoice',
+    totals: {
+      grossTotalCents: 12550,
+      netTotalCents: 10000,
+      vatBreakdown: [
+        {
+          grossCents: 12550,
+          netCents: 10000,
+          vatCents: 2550,
+          vatRateBasisPoints: 2550,
+        },
+      ],
+      vatTotalCents: 2550,
+    },
+    updatedAt: '2026-07-08T10:00:00.000Z',
+  };
+}
+
+function createTestApprovedInvoiceSummary(
+  overrides: Partial<ApprovedInvoiceSummary> = {},
+): ApprovedInvoiceSummary {
   return {
     id: 'invoice-1',
     invoiceNumber: '20260001',
@@ -433,5 +535,6 @@ function createTestApprovedInvoiceSummary(): ApprovedInvoiceSummary {
     grossTotalCents: 12550,
     approvedAt: '2026-06-13T10:00:00.000Z',
     updatedAt: '2026-06-13T10:00:00.000Z',
+    ...overrides,
   };
 }

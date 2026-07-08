@@ -7,10 +7,11 @@ import type { InvoiceUnit } from './invoiceDraft.js';
 import type { InvoiceNumberingMode } from './invoiceNumbering.js';
 import type { ReferenceNumberType } from './invoiceReferenceNumber.js';
 
-export type ApprovedInvoiceStatus = 'approved';
+export type ApprovedInvoiceStatus = 'approved' | 'sent';
 export type StoredInvoiceStatus = ApprovedInvoiceStatus | 'reopened_for_edit';
 export type InvoiceAuditAction =
   | 'invoice.approved'
+  | 'invoice.marked_sent_manually'
   | 'invoice.reopened_for_edit'
   | 'invoice.reapproved';
 

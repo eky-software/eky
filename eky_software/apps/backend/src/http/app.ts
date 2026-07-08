@@ -12,6 +12,7 @@ import { updateCustomer } from '../modules/customers/application/updateCustomer.
 import { createCustomersRoutes } from '../modules/customers/http/customersRoutes.js';
 import { SqliteCustomerRepository } from '../modules/customers/infrastructure/sqliteCustomerRepository.js';
 import { approveInvoiceDraft } from '../modules/invoicing/application/approveInvoiceDraft.js';
+import { copyApprovedInvoiceToDraft } from '../modules/invoicing/application/copyApprovedInvoiceToDraft.js';
 import { deleteInvoiceDraft } from '../modules/invoicing/application/deleteInvoiceDraft.js';
 import { generateApprovedInvoicePdfDocument } from '../modules/invoicing/application/generateApprovedInvoicePdfDocument.js';
 import { getApprovedInvoice } from '../modules/invoicing/application/getApprovedInvoice.js';
@@ -22,6 +23,7 @@ import { getInvoiceNumberingSettings } from '../modules/invoicing/application/ge
 import { getInvoicePaymentSettings } from '../modules/invoicing/application/getInvoicePaymentSettings.js';
 import { listInvoiceDrafts } from '../modules/invoicing/application/listInvoiceDrafts.js';
 import { listApprovedInvoices } from '../modules/invoicing/application/listApprovedInvoices.js';
+import { markApprovedInvoiceSent } from '../modules/invoicing/application/markApprovedInvoiceSent.js';
 import { reopenApprovedInvoiceForEditing } from '../modules/invoicing/application/reopenApprovedInvoiceForEditing.js';
 import { saveInvoiceDraft } from '../modules/invoicing/application/saveInvoiceDraft.js';
 import { updateInvoiceNumberingSettings } from '../modules/invoicing/application/updateInvoiceNumberingSettings.js';
@@ -134,6 +136,12 @@ export async function createApp(): Promise<Hono> {
   app.route(
     '/',
     createApprovedInvoiceRoutes({
+      copyApprovedInvoiceToDraft: (input) =>
+        copyApprovedInvoiceToDraft(input, {
+          approvedInvoiceReader,
+          customerAccessReader,
+          invoiceDraftRepository,
+        }),
       generateApprovedInvoicePdfDocument: (input) =>
         generateApprovedInvoicePdfDocument(input, {
           approvedInvoiceReader,
@@ -155,6 +163,11 @@ export async function createApp(): Promise<Hono> {
         }),
       listApprovedInvoices: (input) =>
         listApprovedInvoices(input, approvedInvoiceReader),
+      markApprovedInvoiceSent: (input) =>
+        markApprovedInvoiceSent(input, {
+          approvedInvoiceReader,
+          invoiceApprovalRepository,
+        }),
       reopenApprovedInvoiceForEditing: (input) =>
         reopenApprovedInvoiceForEditing(input, {
           invoiceApprovalRepository,

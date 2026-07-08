@@ -1,4 +1,6 @@
-export type ApprovedInvoiceViewStatus = 'approved';
+import type { InvoiceDraft } from '../invoiceDrafts/index.js';
+
+export type ApprovedInvoiceViewStatus = 'approved' | 'sent';
 export type ApprovedInvoiceNumberingMode =
   | 'calendarYearSequence'
   | 'fiscalYearSequence'
@@ -143,6 +145,7 @@ export interface ApprovedInvoiceDocumentMetadata {
 }
 
 export interface ApprovedInvoicesApi {
+  copyApprovedInvoiceToDraft(id: string): Promise<InvoiceDraft>;
   createApprovedInvoicePdf(id: string): Promise<ApprovedInvoiceDocumentMetadata>;
   getApprovedInvoicePdfMetadata(
     id: string,
@@ -150,5 +153,6 @@ export interface ApprovedInvoicesApi {
   getApprovedInvoice(id: string): Promise<ApprovedInvoiceView>;
   getApprovedInvoicePdfUrl(id: string): string;
   listApprovedInvoices(): Promise<ApprovedInvoiceSummary[]>;
+  markApprovedInvoiceSent(id: string): Promise<ApprovedInvoiceView>;
   reopenApprovedInvoiceForEditing(id: string): Promise<ReopenedApprovedInvoice>;
 }

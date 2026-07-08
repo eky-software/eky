@@ -6,6 +6,8 @@ import type {
   InvoiceApprovalRepository,
   ReopenApprovedInvoicePersistenceInput,
   ReopenedApprovedInvoiceResult,
+  MarkApprovedInvoiceSentPersistenceInput,
+  MarkApprovedInvoiceSentResult,
 } from '../ports/invoiceApprovalRepository.js';
 import {
   approveInvoiceDraft,
@@ -24,6 +26,12 @@ class FakeInvoiceApprovalRepository implements InvoiceApprovalRepository {
     this.approveInputs.push(input);
 
     return this.result;
+  }
+
+  async markApprovedInvoiceSent(
+    _input: MarkApprovedInvoiceSentPersistenceInput,
+  ): Promise<MarkApprovedInvoiceSentResult | undefined> {
+    throw new Error('Not implemented in this approve test.');
   }
 
   async reopenApprovedInvoiceForEditing(

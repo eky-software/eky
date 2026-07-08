@@ -45,7 +45,7 @@ export class SqliteApprovedInvoiceReader implements ApprovedInvoiceReader {
           FROM invoices
           WHERE
             company_id = ?
-            AND status = 'approved'
+            AND status IN ('approved', 'sent')
           ORDER BY approved_at DESC, id DESC
         `,
       )
@@ -65,7 +65,7 @@ export class SqliteApprovedInvoiceReader implements ApprovedInvoiceReader {
           WHERE
             company_id = ?
             AND id = ?
-            AND status = 'approved'
+            AND status IN ('approved', 'sent')
         `,
       )
       .get(companyId, invoiceId);
@@ -90,7 +90,7 @@ function toApprovedInvoiceSummary(invoice: InvoiceRow): ApprovedInvoiceSummary {
     id: invoice.id,
     invoiceNumber: invoice.invoice_number,
     referenceNumber: invoice.reference_number ?? '',
-    status: 'approved',
+    status: invoice.status as 'approved' | 'sent',
     customerId: invoice.customer_id,
     customerNumberSnapshot: invoice.customer_number_snapshot,
     customerNameSnapshot: invoice.customer_name_snapshot,
@@ -120,7 +120,7 @@ function toApprovedInvoiceView(
     sequenceScope: invoice.sequence_scope,
     sequenceNumber: invoice.sequence_number,
     numberingMode: invoice.numbering_mode as InvoiceNumberingMode,
-    status: 'approved',
+    status: invoice.status as 'approved' | 'sent',
     customerId: invoice.customer_id,
     customerNumberSnapshot: invoice.customer_number_snapshot,
     customerNameSnapshot: invoice.customer_name_snapshot,

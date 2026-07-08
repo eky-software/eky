@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import type { GetApprovedInvoiceInput } from '../application/getApprovedInvoice.js';
 import type { ListApprovedInvoicesInput } from '../application/listApprovedInvoices.js';
 import type { ReopenApprovedInvoiceForEditingInput } from '../application/reopenApprovedInvoiceForEditing.js';
+import type { MarkApprovedInvoiceSentInput } from '../application/markApprovedInvoiceSent.js';
+import type { CopyApprovedInvoiceToDraftInput } from '../application/copyApprovedInvoiceToDraft.js';
 import { ApprovedInvoiceDocumentNotFoundError } from '../application/approvedInvoiceDocumentNotFoundError.js';
 import type { GenerateApprovedInvoicePdfDocumentInput } from '../application/generateApprovedInvoicePdfDocument.js';
 import type {
@@ -16,6 +18,7 @@ import { ApprovedInvoiceNotFoundError } from '../application/approvedInvoiceNotF
 import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
 import type { ApprovedInvoiceSummary } from '../domain/approvedInvoiceSummary.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
+import type { InvoiceDraft } from '../domain/invoiceDraft.js';
 import { createApprovedInvoiceRoutes } from './approvedInvoiceRoutes.js';
 
 describe('approved invoice routes', () => {
@@ -113,6 +116,71 @@ describe('approved invoice routes', () => {
     });
   });
 
+  it('marks an approved invoice as sent in the company scope', async () => {
+    const sentInvoice = createApprovedInvoiceView({ status: 'sent' });
+    const { app, getMarkSentInput } = createTestApp({
+      sentInvoice,
+    });
+
+    const response = await app.request('/invoices/invoice-1/mark-sent', {
+      method: 'POST',
+    });
+
+    await expect(response.json()).resolves.toEqual({ invoice: sentInvoice });
+    expect(response.status).toBe(200);
+    expect(getMarkSentInput()).toMatchObject({
+      actorUserId: 'dev-user',
+      companyId: 'dev-company',
+      invoiceId: 'invoice-1',
+    });
+  });
+
+  it('copies an approved invoice to a new draft in the company scope', async () => {
+    const invoiceDraft = createInvoiceDraft();
+    const { app, getCopyInput } = createTestApp({ copiedDraft: invoiceDraft });
+
+    const response = await app.request('/invoices/invoice-1/copy-to-draft', {
+      method: 'POST',
+    });
+
+    await expect(response.json()).resolves.toEqual({ invoiceDraft });
+    expect(response.status).toBe(201);
+    expect(getCopyInput()).toMatchObject({
+      companyId: 'dev-company',
+      invoiceId: 'invoice-1',
+    });
+  });
+
+  it('returns a safe 404 when copying an invoice outside the company scope', async () => {
+    const { app } = createTestApp({
+      copyError: new ApprovedInvoiceNotFoundError(),
+    });
+
+    const response = await app.request('/invoices/missing/copy-to-draft', {
+      method: 'POST',
+    });
+
+    await expect(response.json()).resolves.toEqual({
+      error: 'Approved invoice was not found.',
+    });
+    expect(response.status).toBe(404);
+  });
+
+  it('returns a safe 404 when marking an invoice sent outside the company scope', async () => {
+    const { app } = createTestApp({
+      markSentError: new ApprovedInvoiceNotFoundError(),
+    });
+
+    const response = await app.request('/invoices/missing/mark-sent', {
+      method: 'POST',
+    });
+
+    await expect(response.json()).resolves.toEqual({
+      error: 'Approved invoice was not found.',
+    });
+    expect(response.status).toBe(404);
+  });
+
   it('creates approved invoice PDF metadata in the company scope', async () => {
     const document = createApprovedInvoiceDocumentMetadata();
     const { app, getGeneratePdfInput } = createTestApp({ document });
@@ -206,20 +274,39 @@ describe('approved invoice routes', () => {
 });
 
 function createTestApp(options: {
+  copiedDraft?: InvoiceDraft;
+  copyError?: Error;
   document?: ApprovedInvoiceDocumentMetadata;
   error?: Error;
   invoice?: ApprovedInvoiceView;
   invoices?: ApprovedInvoiceSummary[];
+  markSentError?: Error;
   pdfDocument?: ApprovedInvoicePdfDocumentFile;
   pdfError?: Error;
+  sentInvoice?: ApprovedInvoiceView;
 }) {
   let input: GetApprovedInvoiceInput | undefined;
+  let copyInput: CopyApprovedInvoiceToDraftInput | undefined;
   let listInput: ListApprovedInvoicesInput | undefined;
   let reopenInput: ReopenApprovedInvoiceForEditingInput | undefined;
+  let markSentInput: MarkApprovedInvoiceSentInput | undefined;
   let generatePdfInput: GenerateApprovedInvoicePdfDocumentInput | undefined;
   let pdfInput: GetApprovedInvoicePdfDocumentInput | undefined;
   let pdfMetadataInput: GetApprovedInvoicePdfMetadataInput | undefined;
   const app = createApprovedInvoiceRoutes({
+    async copyApprovedInvoiceToDraft(nextInput) {
+      copyInput = nextInput;
+
+      if (options.copyError !== undefined) {
+        throw options.copyError;
+      }
+
+      if (options.error !== undefined) {
+        throw options.error;
+      }
+
+      return options.copiedDraft ?? createInvoiceDraft();
+    },
     async generateApprovedInvoicePdfDocument(nextInput) {
       generatePdfInput = nextInput;
 
@@ -250,6 +337,19 @@ function createTestApp(options: {
       }
 
       return options.invoices ?? [];
+    },
+    async markApprovedInvoiceSent(nextInput) {
+      markSentInput = nextInput;
+
+      if (options.markSentError !== undefined) {
+        throw options.markSentError;
+      }
+
+      if (options.error !== undefined) {
+        throw options.error;
+      }
+
+      return options.sentInvoice ?? createApprovedInvoiceView({ status: 'sent' });
     },
     async getApprovedInvoicePdfDocument(nextInput) {
       pdfInput = nextInput;
@@ -286,11 +386,67 @@ function createTestApp(options: {
   return {
     app,
     getGeneratePdfInput: () => generatePdfInput,
+    getCopyInput: () => copyInput,
     getInput: () => input,
     getListInput: () => listInput,
+    getMarkSentInput: () => markSentInput,
     getPdfInput: () => pdfInput,
     getPdfMetadataInput: () => pdfMetadataInput,
     getReopenInput: () => reopenInput,
+  };
+}
+
+function createInvoiceDraft(): InvoiceDraft {
+  return {
+    billingRecipientCustomerId: null,
+    companyId: 'dev-company',
+    createdAt: '2026-07-08T10:00:00.000Z',
+    customerId: 'customer-1',
+    deliveryAddressText: '',
+    dueDate: '2026-07-22',
+    id: 'draft-copy-1',
+    invoiceDate: '2026-07-08',
+    latePaymentInterestBasisPoints: 950,
+    lines: [
+      {
+        baseCents: 10000,
+        code: 'WORK',
+        description: 'Work',
+        discount: { type: 'none' },
+        discountCents: 0,
+        grossCents: 12550,
+        id: 'line-1',
+        netCents: 10000,
+        position: 1,
+        priceInputMode: 'net',
+        quantityHundredths: 100,
+        unit: 'h',
+        unitPriceCents: 10000,
+        vatCents: 2550,
+        vatRateBasisPoints: 2550,
+      },
+    ],
+    note: '',
+    orderNumber: '',
+    paymentTermDays: 14,
+    priceInputMode: 'net',
+    reminderPeriodDays: 8,
+    status: 'draft',
+    subject: 'Copied invoice',
+    totals: {
+      grossTotalCents: 12550,
+      netTotalCents: 10000,
+      vatBreakdown: [
+        {
+          grossCents: 12550,
+          netCents: 10000,
+          vatCents: 2550,
+          vatRateBasisPoints: 2550,
+        },
+      ],
+      vatTotalCents: 2550,
+    },
+    updatedAt: '2026-07-08T10:00:00.000Z',
   };
 }
 
@@ -317,7 +473,9 @@ function createApprovedInvoicePdfDocumentFile(): ApprovedInvoicePdfDocumentFile 
   };
 }
 
-function createApprovedInvoiceSummary(): ApprovedInvoiceSummary {
+function createApprovedInvoiceSummary(
+  overrides: Partial<ApprovedInvoiceSummary> = {},
+): ApprovedInvoiceSummary {
   return {
     id: 'invoice-1',
     invoiceNumber: '20260001',
@@ -332,10 +490,13 @@ function createApprovedInvoiceSummary(): ApprovedInvoiceSummary {
     grossTotalCents: 12550,
     approvedAt: '2026-06-13T10:00:00.000Z',
     updatedAt: '2026-06-13T10:00:00.000Z',
+    ...overrides,
   };
 }
 
-function createApprovedInvoiceView(): ApprovedInvoiceView {
+function createApprovedInvoiceView(
+  overrides: Partial<ApprovedInvoiceView> = {},
+): ApprovedInvoiceView {
   return {
     id: 'invoice-1',
     companyId: 'dev-company',
@@ -432,5 +593,6 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     createdAt: '2026-06-13T10:00:00.000Z',
     approvedAt: '2026-06-13T10:00:00.000Z',
     updatedAt: '2026-06-13T10:00:00.000Z',
+    ...overrides,
   };
 }

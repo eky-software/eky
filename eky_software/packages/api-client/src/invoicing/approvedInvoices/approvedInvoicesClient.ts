@@ -1,4 +1,5 @@
 import { requestJson } from '../../http.js';
+import { readInvoiceDraftResponse } from '../invoiceDrafts/invoiceDraftsResponse.js';
 import {
   readApprovedInvoiceDocumentMetadataResponse,
   readApprovedInvoiceListResponse,
@@ -12,12 +13,24 @@ import type {
   ApprovedInvoiceView,
   ReopenedApprovedInvoice,
 } from './approvedInvoicesTypes.js';
+import type { InvoiceDraft } from '../invoiceDrafts/index.js';
 
 export function createApprovedInvoicesApi(
   fetchImplementation: typeof fetch,
   baseUrl: string,
 ): ApprovedInvoicesApi {
   return {
+    async copyApprovedInvoiceToDraft(id): Promise<InvoiceDraft> {
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        `/invoices/${encodeURIComponent(id)}/copy-to-draft`,
+        { method: 'POST' },
+      );
+
+      return readInvoiceDraftResponse(responseBody);
+    },
+
     async createApprovedInvoicePdf(
       id,
     ): Promise<ApprovedInvoiceDocumentMetadata> {
@@ -65,6 +78,17 @@ export function createApprovedInvoicesApi(
       );
 
       return readApprovedInvoiceListResponse(responseBody);
+    },
+
+    async markApprovedInvoiceSent(id): Promise<ApprovedInvoiceView> {
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        `/invoices/${encodeURIComponent(id)}/mark-sent`,
+        { method: 'POST' },
+      );
+
+      return readApprovedInvoiceResponse(responseBody);
     },
 
     async reopenApprovedInvoiceForEditing(

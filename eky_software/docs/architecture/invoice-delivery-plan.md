@@ -7,6 +7,13 @@ hyvityslaskut.
 Dokumentti on suunnitelma. Se ei muuta nykyistä MVP-toteutusta eikä lisää
 uusia reittejä, tietokantatauluja, UI-toimintoja tai riippuvuuksia.
 
+Toteutustilanne:
+
+- hyväksytyn laskun PDF voidaan muodostaa ja avata selaimessa
+- `approved`-lasku voidaan merkitä manuaalisesti `sent`-tilaan
+- `sent`-lasku näkyy laskutuksen omassa Lähetetyt-osiossa
+- hyväksytty tai lähetetty lasku voidaan kopioida uudeksi laskuluonnokseksi
+
 ## Peruspolku
 
 Nykyinen ja tuleva laskun toimitusketju:
@@ -195,7 +202,14 @@ jälkeen oikealla SMTP-adapterilla.
 
 ## Sent-tila
 
-Tuleva sääntö:
+Ensimmäinen toteutusaskel:
+
+- `approved`-lasku voidaan merkitä manuaalisesti lähetetyksi
+- toiminto ei vielä lähetä sähköpostia eikä ohjaa tulostinta
+- toiminto ei vielä kirjoita erillistä `invoice_delivery_events`-lokitaulua
+- `sent`-tila lukitsee laskun reopen-muokkaukselta
+
+Perussääntö:
 
 - `approved` = hyväksytty, mutta ei vielä lähetetty
 - `sent` = toimitettu asiakkaalle
@@ -226,7 +240,7 @@ välttämättä tarkoita, että lasku on oikeasti tulostettu tai toimitettu.
 
 ## Laskun Kopiointi
 
-Lähetettyä laskua ei saa muokata, mutta sen saa myöhemmin kopioida uudeksi
+Lähetettyä laskua ei saa muokata, mutta sen saa kopioida uudeksi
 laskuluonnokseksi.
 
 `Kopioi lasku` tarkoittaa:
@@ -255,22 +269,17 @@ Mitä voidaan kopioida:
 - toimitus/kohde
 - lisätieto
 
-Päätettävä myöhemmin:
-
-- kopioidaanko maksuehto ja viivästyskorko vanhalta laskulta vai käytetäänkö
-  nykyisiä oletuksia
-- asetetaanko `invoiceDate` aina kopiointihetken päivään
-- lasketaanko `dueDate` aina uudelleen nykyisestä `invoiceDate` +
-  maksuehto -mallilla
-- miten toimitaan, jos vanha asiakas on poistettu tai passiivinen
-
-Suositeltu MVP-linja:
+Toteutettu MVP-linja:
 
 - `invoiceDate` = kopiointihetken päivä
-- `dueDate` = lasketaan uudelleen
+- `dueDate` = lasketaan uudelleen kopiointihetken päivästä ja kopioidusta
+  maksuehdosta
+- maksuehto, huomautusaika ja viivästyskorko kopioidaan vanhalta laskulta
 - rivit ja sisältö kopioidaan
 - virallinen numero ja viite eivät kopioidu koskaan
 - PDF ei kopioidu koskaan
+- jos asiakas tai laskun vastaanottaja ei ole enää käytettävissä samassa
+  yrityksessä, uutta luonnosta ei luoda
 
 ## Laskun Peruutus / Cancel
 
@@ -373,8 +382,8 @@ Kevyt käsin testattava lista ennen toimituspolun laajentamista:
 - yksityisasiakas
 - useampi ALV-kanta
 - puuttuva PDF tiedostosta -> `POST /pdf` regeneroi
-- lähetettyä laskua ei saa muokata, kun `sent`-tila myöhemmin toteutetaan
-- kopioitu lasku saa uuden numeron vasta hyväksynnässä, kun toiminto myöhemmin toteutetaan
+- lähetettyä laskua ei saa muokata
+- kopioitu lasku saa uuden numeron vasta hyväksynnässä
 - DNA SMTP -lähetystä ei saa testata oikeille asiakkaille ilman dry-run- tai
   test recipient -suojaa
 
@@ -382,7 +391,6 @@ Kevyt käsin testattava lista ennen toimituspolun laajentamista:
 
 Tässä dokumentissa ei toteuteta:
 
-- `sent`-tilaa
 - sähköpostilähetystä
 - SMTP-adapteria
 - Gmail-integraatiota
@@ -390,8 +398,4 @@ Tässä dokumentissa ei toteuteta:
 - tulostinintegraatiota
 - hyvityslaskua
 - cancelointia
-- laskun kopiointia
-- uusia migraatioita
-- uusia endpointteja
-- UI-muutoksia
 - uusia riippuvuuksia

@@ -308,7 +308,7 @@ function parseDiscount(value: unknown): ApprovedInvoiceLineDiscount {
 }
 
 function parseStatus(value: unknown): ApprovedInvoiceViewStatus {
-  if (value === 'approved') {
+  if (value === 'approved' || value === 'sent') {
     return value;
   }
 

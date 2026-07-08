@@ -45,6 +45,7 @@ const migrationNames = [
   '018_create_invoice_documents.sql',
   '019_add_company_website.sql',
   '020_relax_invoice_line_unit_checks.sql',
+  '021_allow_sent_approved_invoices.sql',
 ];
 
 const migrationSql = migrationNames.map((migrationName) =>
@@ -799,6 +800,68 @@ describe('SqliteInvoiceApprovalRepository', () => {
       .get();
 
     expect(documentCount?.count).toBe(0);
+  });
+
+  it('marks an approved invoice as sent and records a manual sent audit event', async () => {
+    const repository = new SqliteInvoiceApprovalRepository(database);
+
+    await saveDraft(database, createDraft());
+    await repository.approveDraft(createApprovalInput());
+
+    await expect(
+      repository.markApprovedInvoiceSent({
+        actorUserId: 'user-1',
+        auditEventId: 'audit-sent-1',
+        companyId: 'dev-company',
+        invoiceId: 'invoice-1',
+        markedSentAt: '2027-01-15T16:00:00.000Z',
+      }),
+    ).resolves.toEqual({
+      invoiceId: 'invoice-1',
+      status: 'sent',
+    });
+
+    expect(getInvoice(database, 'invoice-1')).toMatchObject({
+      status: 'sent',
+      updated_at: '2027-01-15T16:00:00.000Z',
+    });
+    expect(getAuditEvents(database).map((event) => event.action)).toEqual([
+      'invoice.approved',
+      'invoice.marked_sent_manually',
+    ]);
+  });
+
+  it('does not reopen a sent invoice for editing', async () => {
+    const repository = new SqliteInvoiceApprovalRepository(database);
+
+    await saveDraft(database, createDraft());
+    await repository.approveDraft(createApprovalInput());
+    await repository.markApprovedInvoiceSent({
+      actorUserId: 'user-1',
+      auditEventId: 'audit-sent-1',
+      companyId: 'dev-company',
+      invoiceId: 'invoice-1',
+      markedSentAt: '2027-01-15T16:00:00.000Z',
+    });
+
+    await expect(
+      repository.reopenApprovedInvoiceForEditing({
+        actorUserId: 'user-1',
+        auditEventId: 'audit-reopen-1',
+        companyId: 'dev-company',
+        invoiceId: 'invoice-1',
+        reopenedAt: '2027-01-15T17:00:00.000Z',
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(getInvoice(database, 'invoice-1')).toMatchObject({
+      status: 'sent',
+      updated_at: '2027-01-15T16:00:00.000Z',
+    });
+    expect(getAuditEvents(database).map((event) => event.action)).toEqual([
+      'invoice.approved',
+      'invoice.marked_sent_manually',
+    ]);
   });
 
   it('reapproves a reopened draft by keeping the invoice number and replacing snapshot lines', async () => {

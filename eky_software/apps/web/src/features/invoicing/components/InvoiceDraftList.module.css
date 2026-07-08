@@ -27,6 +27,13 @@
   background: var(--color-surface);
 }
 
+.wideActionsTable .row {
+  grid-template-columns:
+    minmax(220px, 1.45fr) minmax(160px, 1fr) minmax(110px, 0.7fr)
+    minmax(110px, 0.7fr) minmax(110px, 0.7fr) minmax(90px, 0.55fr)
+    minmax(220px, 0.95fr);
+}
+
 .row:first-child {
   border-top: 0;
 }
@@ -97,6 +104,7 @@
 
 .rowActions {
   display: flex;
+  gap: 8px;
   justify-content: flex-end;
 }
 

@@ -313,6 +313,12 @@ export const uiText = {
     billingRecipientHelp:
       'Valinnainen. Jos jätät tyhjäksi, laskun vastaanottaja on sama kuin asiakas.',
     billingRecipientPlaceholder: 'Sama kuin asiakas',
+    copiedApprovedInvoice: 'Kopioidaan...',
+    copyApprovedInvoice: 'Kopioi luonnokseksi',
+    copyApprovedInvoiceConfirm:
+      'Kopioidaanko lasku uudeksi luonnokseksi? Uusi luonnos saa myöhemmin oman laskunumeron ja viitenumeron.',
+    copyApprovedInvoiceError:
+      'Laskua ei voitu kopioida luonnokseksi. Yritä hetken kuluttua uudelleen.',
     cancel: 'Peruuta',
     customer: 'Asiakas',
     customerEmpty: 'Asiakkaita ei ole',
@@ -365,6 +371,12 @@ export const uiText = {
     invoiceRows: 'Laskurivit',
     invoiceRowsHelp:
       'Lisää laskutettavat työt ja tuotteet riveittäin. Summat tarkistetaan backendissä tallennettaessa.',
+    markApprovedInvoiceSent: 'Merkitse lähetetyksi',
+    markingApprovedInvoiceSent: 'Merkitään lähetetyksi...',
+    markApprovedInvoiceSentConfirm:
+      'Merkitäänkö lasku lähetetyksi? Lähetettyä laskua ei voi enää palauttaa muokattavaksi.',
+    markApprovedInvoiceSentError:
+      'Laskua ei voitu merkitä lähetetyksi. Yritä hetken kuluttua uudelleen.',
     fillDummyInvoice: 'Täytä testilasku',
     invoicePaymentSettingsLoadError:
       'Laskutuksen oletusarvoja ei voitu ladata. Voit syöttää arvot käsin.',
@@ -443,6 +455,10 @@ export const uiText = {
     saveDraftSuccess: 'Laskuluonnos tallennettu.',
     savingDraftChanges: 'Tallennetaan muutoksia...',
     savingDraft: 'Tallennetaan luonnosta...',
+    sentInvoiceCount: 'Lähetettyjen laskujen määrä',
+    sentInvoiceList: 'Lähetetyt laskut',
+    sentInvoices: 'Lähetetyt',
+    sentInvoicesEmpty: 'Lähetettyjä laskuja ei ole vielä.',
     openDraftError:
       'Laskuluonnosta ei voitu avata. Yritä hetken kuluttua uudelleen.',
     openDraftPrompt: 'Valitse avattava laskuluonnos listasta.',
@@ -451,6 +467,7 @@ export const uiText = {
     status: 'Tila',
     statusApproved: 'Hyväksytty',
     statusDraft: 'Luonnos',
+    statusSent: 'Lähetetty',
     subject: 'Aihe',
     subjectFallback: 'Nimetön laskuluonnos',
     subjectPlaceholder: 'Laskutuksen aihe',
