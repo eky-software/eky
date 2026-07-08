@@ -227,6 +227,15 @@ Mahdollisia myöhempiä jaettavia komponentteja:
 
 `packages/ui` luodaan vasta todelliseen toistuvaan tarpeeseen.
 
+Nykyinen UI-koodi saa MVP-vaiheessa sisältää feature-kohtaista toistoa, mutta
+ennen seuraavaa isoa UI-moduulia arvioidaan rajattu `packages/ui`-sprintti.
+Tuleva kasvupolku on kuvattu dokumentissa
+`docs/architecture/ui-design-system-roadmap.md`.
+
+`packages/ui` saa sisältää vain yleisiä teknisiä UI-komponentteja. Se ei saa
+sisältää laskutuslogiikkaa, asiakasvalintasääntöjä, API-kutsuja,
+feature-hookeja, domain-validointia tai moduulien sisäisiä sääntöjä.
+
 Ei luoda yleistä `utils`- tai `helpers`-pakettia.
 
 ## Lomakkeet Ja Validointi

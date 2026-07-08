@@ -74,13 +74,22 @@ Paketti tarjoaa tällä hetkellä hallitut kutsut:
 - `createEkyApiClient().updateCustomer(...)`
 - `createEkyApiClient().getCompanySettings()`
 - `createEkyApiClient().updateCompanySettings(...)`
+- `createEkyApiClient().approveInvoiceDraft(...)`
 - `createEkyApiClient().createInvoiceDraft(...)`
 - `createEkyApiClient().deleteInvoiceDraft(...)`
 - `createEkyApiClient().getInvoiceDraft(...)`
 - `createEkyApiClient().listInvoiceDrafts(...)`
 - `createEkyApiClient().updateInvoiceDraft(...)`
+- `createEkyApiClient().listApprovedInvoices()`
+- `createEkyApiClient().getApprovedInvoice(...)`
+- `createEkyApiClient().reopenApprovedInvoiceForEditing(...)`
+- `createEkyApiClient().createApprovedInvoicePdf(...)`
+- `createEkyApiClient().getApprovedInvoicePdfMetadata(...)`
+- `createEkyApiClient().getApprovedInvoicePdfUrl(...)`
 - `createEkyApiClient().getInvoiceNumberingSettings()`
 - `createEkyApiClient().updateInvoiceNumberingSettings(...)`
+- `createEkyApiClient().getInvoicePaymentSettings()`
+- `createEkyApiClient().updateInvoicePaymentSettings(...)`
 
 Tämä paketti ei tunne Reactia, Honoa, SQLitea, backendin repository-rakennetta tai domainin sisäistä toteutusta.
 
@@ -91,3 +100,11 @@ Ensimmäisen web customer UI -palan rajaus on kuvattu dokumentissa `docs/archite
 Laskuluonnos-client välittää backendille vain käyttäjän syöttämät kentät. Se ei lähetä `companyId`-arvoa, palvelimen omistamia tunnisteita, laskettuja summia tai teknisiä aikaleimoja eikä suorita auktoritatiivista laskentalogiikkaa.
 
 Laskunumerointiasetusten client välittää backendille vain käyttäjän muokattavat asetuskentät. Se ei lähetä `companyId`-, `seriesKey`-, `hasUsedNumbering`-, `isPersisted`- tai aikaleimakenttiä.
+
+Laskutuksen PDF-client käyttää hyväksytyn laskun snapshot-dataan perustuvia
+backend-reittejä. API-client ei renderöi PDF:ää, ei hae master-dataa eikä
+päätä, onko lasku lähetetty.
+
+Laskutuksen maksuasetusten client välittää backendille vain käyttäjän
+muokattavat maksuasetuskentät. Se ei päätä viivästyskoron, huomautusajan tai
+pankkitietojen liiketoimintasääntöjä.

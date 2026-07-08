@@ -21,6 +21,11 @@ Hyväksytyn laskun katselu-, print- ja PDF-polun tarvitsemat data- ja snapshot-v
 PDF-polun ensimmäinen teknologiakokeilu ja sisäisten PDF-apujen rajaus on
 kuvattu dokumentissa `docs/architecture/pdf-and-internal-tools-planning.md`.
 
+Hyväksytyn laskun toimitusputki, tulostuksen MVP-rajaus,
+sähköpostitoimituksen turvallisuuslinja, `sent`-tila, laskun kopiointi,
+peruutus ja hyvityslaskut on kuvattu dokumentissa
+`docs/architecture/invoice-delivery-plan.md`.
+
 ALV-erikoiskäsittelyjen, ALV-kantojen tuotantopolun, viivästyskoron ja
 lähetettyjen laskujen korjausperiaatteiden muistilista on kuvattu dokumentissa
 `docs/architecture/invoicing-tax-and-correction-roadmap.md`.
