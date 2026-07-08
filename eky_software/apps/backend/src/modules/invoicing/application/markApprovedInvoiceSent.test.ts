@@ -17,6 +17,7 @@ import {
   markApprovedInvoiceSent,
   type MarkApprovedInvoiceSentInput,
 } from './markApprovedInvoiceSent.js';
+import type { GenerateApprovedInvoicePdfDocumentInput } from './generateApprovedInvoicePdfDocument.js';
 
 class FakeInvoiceApprovalRepository implements InvoiceApprovalRepository {
   markInputs: MarkApprovedInvoiceSentPersistenceInput[] = [];
@@ -56,21 +57,47 @@ class FakeApprovedInvoiceReader implements ApprovedInvoiceReader {
   }
 }
 
+class FakeApprovedInvoicePdfEnsurer {
+  inputs: GenerateApprovedInvoicePdfDocumentInput[] = [];
+
+  constructor(private readonly error?: Error) {}
+
+  async ensureApprovedInvoicePdfDocument(
+    input: GenerateApprovedInvoicePdfDocumentInput,
+  ): Promise<void> {
+    this.inputs.push(input);
+
+    if (this.error !== undefined) {
+      throw this.error;
+    }
+  }
+}
+
 describe('markApprovedInvoiceSent', () => {
-  it('marks an invoice sent through the repository and returns the updated invoice', async () => {
+  it('ensures the approved invoice PDF before marking the invoice sent', async () => {
     const invoice = createApprovedInvoiceView();
     const repository = new FakeInvoiceApprovalRepository({
       invoiceId: 'invoice-1',
       status: 'sent',
     });
+    const pdfEnsurer = new FakeApprovedInvoicePdfEnsurer();
 
     await expect(
       markApprovedInvoiceSent(createInput(), {
         approvedInvoiceReader: new FakeApprovedInvoiceReader(invoice),
+        ensureApprovedInvoicePdfDocument: (input) =>
+          pdfEnsurer.ensureApprovedInvoicePdfDocument(input),
         invoiceApprovalRepository: repository,
       }),
     ).resolves.toStrictEqual(invoice);
 
+    expect(pdfEnsurer.inputs).toEqual([
+      {
+        companyId: 'dev-company',
+        createdAt: '2026-07-08T10:00:00.000Z',
+        invoiceId: 'invoice-1',
+      },
+    ]);
     expect(repository.markInputs).toEqual([
       {
         actorUserId: 'user-1',
@@ -84,12 +111,36 @@ describe('markApprovedInvoiceSent', () => {
     ]);
   });
 
+  it('does not mark the invoice sent when PDF ensuring fails', async () => {
+    const repository = new FakeInvoiceApprovalRepository({
+      invoiceId: 'invoice-1',
+      status: 'sent',
+    });
+    const pdfEnsurer = new FakeApprovedInvoicePdfEnsurer(
+      new Error('PDF could not be generated.'),
+    );
+
+    await expect(
+      markApprovedInvoiceSent(createInput(), {
+        approvedInvoiceReader: new FakeApprovedInvoiceReader(createApprovedInvoiceView()),
+        ensureApprovedInvoicePdfDocument: (input) =>
+          pdfEnsurer.ensureApprovedInvoicePdfDocument(input),
+        invoiceApprovalRepository: repository,
+      }),
+    ).rejects.toThrow('PDF could not be generated.');
+
+    expect(repository.markInputs).toEqual([]);
+  });
+
   it('throws a generic not-found error when the invoice cannot be marked sent', async () => {
     const repository = new FakeInvoiceApprovalRepository(undefined);
+    const pdfEnsurer = new FakeApprovedInvoicePdfEnsurer();
 
     await expect(
       markApprovedInvoiceSent(createInput(), {
         approvedInvoiceReader: new FakeApprovedInvoiceReader(undefined),
+        ensureApprovedInvoicePdfDocument: (input) =>
+          pdfEnsurer.ensureApprovedInvoicePdfDocument(input),
         invoiceApprovalRepository: repository,
       }),
     ).rejects.toEqual(new ApprovedInvoiceNotFoundError());
@@ -100,14 +151,18 @@ describe('markApprovedInvoiceSent', () => {
       invoiceId: 'invoice-1',
       status: 'sent',
     });
+    const pdfEnsurer = new FakeApprovedInvoicePdfEnsurer();
 
     await expect(
       markApprovedInvoiceSent(createInput({ invoiceId: '' }), {
         approvedInvoiceReader: new FakeApprovedInvoiceReader(createApprovedInvoiceView()),
+        ensureApprovedInvoicePdfDocument: (input) =>
+          pdfEnsurer.ensureApprovedInvoicePdfDocument(input),
         invoiceApprovalRepository: repository,
       }),
     ).rejects.toThrow();
 
+    expect(pdfEnsurer.inputs).toEqual([]);
     expect(repository.markInputs).toEqual([]);
   });
 });
