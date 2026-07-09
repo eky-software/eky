@@ -11,11 +11,17 @@ interface ApprovedInvoiceEmailPreviewProps {
 export function ApprovedInvoiceEmailPreview({
   email,
 }: ApprovedInvoiceEmailPreviewProps): React.JSX.Element {
+  const [editableTo, setEditableTo] = useState(email.to);
+  const [editableCc, setEditableCc] = useState('');
+  const [editableSubject, setEditableSubject] = useState(email.subject);
   const [editableBody, setEditableBody] = useState(email.body);
 
   useEffect(() => {
+    setEditableTo(email.to);
+    setEditableCc('');
+    setEditableSubject(email.subject);
     setEditableBody(email.body);
-  }, [email.body, email.invoiceId]);
+  }, [email.body, email.invoiceId, email.subject, email.to]);
 
   return (
     <section className={styles.preview} aria-label={uiText.invoicing.invoiceEmailPreviewTitle}>
@@ -27,27 +33,44 @@ export function ApprovedInvoiceEmailPreview({
         <span className={styles.badge}>{uiText.invoicing.invoiceEmailDryRunBadge}</span>
       </header>
       <p className={styles.help}>{uiText.invoicing.invoiceEmailDryRunHelp}</p>
-      <dl className={styles.details}>
-        <div>
-          <dt>{uiText.invoicing.invoiceEmailTo}</dt>
-          <dd>{email.to || uiText.invoicing.invoiceEmailNoRecipient}</dd>
+      <p className={styles.editHelp}>{uiText.invoicing.invoiceEmailEditHelp}</p>
+      <div className={styles.fields}>
+        <label htmlFor="invoice-email-to">
+          {uiText.invoicing.invoiceEmailToInput}
+        </label>
+        <input
+          id="invoice-email-to"
+          type="email"
+          value={editableTo}
+          placeholder={uiText.invoicing.invoiceEmailNoRecipient}
+          onChange={(event) => setEditableTo(event.currentTarget.value)}
+        />
+        <label htmlFor="invoice-email-cc">
+          {uiText.invoicing.invoiceEmailCc}
+        </label>
+        <input
+          id="invoice-email-cc"
+          type="email"
+          value={editableCc}
+          onChange={(event) => setEditableCc(event.currentTarget.value)}
+        />
+        <label htmlFor="invoice-email-subject">
+          {uiText.invoicing.invoiceEmailSubjectInput}
+        </label>
+        <input
+          id="invoice-email-subject"
+          value={editableSubject}
+          onChange={(event) => setEditableSubject(event.currentTarget.value)}
+        />
+        <div className={styles.attachmentLabel}>
+          {uiText.invoicing.invoiceEmailAttachment}
         </div>
-        <div>
-          <dt>{uiText.invoicing.invoiceEmailSubject}</dt>
-          <dd>{email.subject}</dd>
+        <div className={styles.attachmentValue}>
+          {email.attachment.fileName} ({formatBytes(email.attachment.sizeBytes)})
         </div>
-        <div>
-          <dt>{uiText.invoicing.invoiceEmailAttachment}</dt>
-          <dd>
-            {email.attachment.fileName} ({formatBytes(email.attachment.sizeBytes)})
-          </dd>
-        </div>
-      </dl>
-      <div className={styles.body}>
         <label htmlFor="invoice-email-body">
           {uiText.invoicing.invoiceEmailBody}
         </label>
-        <p className={styles.bodyHelp}>{uiText.invoicing.invoiceEmailBodyHelp}</p>
         <textarea
           id="invoice-email-body"
           value={editableBody}

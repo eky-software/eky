@@ -32,58 +32,55 @@
   margin: 0;
 }
 
-.details {
-  display: grid;
-  gap: 8px;
-  margin: 0;
-}
-
-.details div {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: 140px minmax(0, 1fr);
-}
-
-.details dt {
-  font-weight: 800;
-}
-
-.details dd {
-  margin: 0;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.body {
-  display: grid;
-  gap: 8px;
-}
-
-.body label {
-  font-weight: 800;
-}
-
-.bodyHelp {
+.editHelp {
   color: var(--color-text-muted);
   margin: 0;
 }
 
-.body textarea {
+.fields {
+  display: grid;
+  gap: 8px 12px;
+  grid-template-columns: 170px minmax(0, 1fr);
+}
+
+.fields label,
+.attachmentLabel {
+  font-weight: 800;
+  padding-top: 9px;
+}
+
+.fields input,
+.fields textarea,
+.attachmentValue {
   background: var(--color-surface-muted);
   border: 1px solid var(--color-border);
   border-radius: 8px;
   font-family: inherit;
+  font-size: 1rem;
   line-height: 1.5;
   margin: 0;
-  min-height: 190px;
   overflow-wrap: anywhere;
-  padding: 12px;
-  resize: vertical;
+  padding: 10px 12px;
   width: 100%;
 }
 
+.fields textarea {
+  min-height: 360px;
+  resize: vertical;
+}
+
+.attachmentValue {
+  color: var(--color-text-muted);
+  min-width: 0;
+}
+
 @media (max-width: 720px) {
-  .details div {
+  .fields {
     grid-template-columns: 1fr;
+  }
+
+  .fields label,
+  .attachmentLabel {
+    padding-top: 0;
   }
 }
