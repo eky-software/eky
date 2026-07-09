@@ -140,6 +140,8 @@ describe('ApprovedInvoicePreview', () => {
 
     expect(html).toContain(uiText.invoicing.invoiceEmailPreviewTitle);
     expect(html).toContain(uiText.invoicing.invoiceEmailDryRunBadge);
+    expect(html).toContain(uiText.invoicing.invoiceEmailBodyHelp);
+    expect(html).toContain('<textarea');
     expect(html).toContain('recipient@example.fi');
     expect(html).toContain('Lasku 20260001');
     expect(html).toContain('lasku-20260001.pdf');

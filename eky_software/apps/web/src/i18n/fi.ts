@@ -367,6 +367,8 @@ export const uiText = {
     invoiceDate: 'Laskun päiväys',
     invoiceEmailAttachment: 'Liite',
     invoiceEmailBody: 'Viestin sisältö',
+    invoiceEmailBodyHelp:
+      'Voit muokata viestiä ennen varsinaista lähetystä. Tässä vaiheessa sähköpostia ei vielä lähetetä.',
     invoiceEmailDryRunBadge: 'Kuivaharjoittelu',
     invoiceEmailDryRunHelp:
       'Tätä sähköpostia ei lähetetty. Näkymä näyttää, millainen viesti muodostettaisiin laskun snapshot-tiedoista ja PDF-liitteestä.',

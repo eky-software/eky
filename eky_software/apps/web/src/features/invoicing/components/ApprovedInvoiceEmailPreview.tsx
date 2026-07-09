@@ -1,4 +1,5 @@
 import type { ApprovedInvoiceEmailPreview as ApprovedInvoiceEmailPreviewData } from '@eky/api-client';
+import { useEffect, useState } from 'react';
 
 import { uiText } from '../../../i18n/fi.js';
 import styles from './ApprovedInvoiceEmailPreview.module.css';
@@ -10,6 +11,12 @@ interface ApprovedInvoiceEmailPreviewProps {
 export function ApprovedInvoiceEmailPreview({
   email,
 }: ApprovedInvoiceEmailPreviewProps): React.JSX.Element {
+  const [editableBody, setEditableBody] = useState(email.body);
+
+  useEffect(() => {
+    setEditableBody(email.body);
+  }, [email.body, email.invoiceId]);
+
   return (
     <section className={styles.preview} aria-label={uiText.invoicing.invoiceEmailPreviewTitle}>
       <header className={styles.header}>
@@ -37,8 +44,15 @@ export function ApprovedInvoiceEmailPreview({
         </div>
       </dl>
       <div className={styles.body}>
-        <p>{uiText.invoicing.invoiceEmailBody}</p>
-        <pre>{email.body}</pre>
+        <label htmlFor="invoice-email-body">
+          {uiText.invoicing.invoiceEmailBody}
+        </label>
+        <p className={styles.bodyHelp}>{uiText.invoicing.invoiceEmailBodyHelp}</p>
+        <textarea
+          id="invoice-email-body"
+          value={editableBody}
+          onChange={(event) => setEditableBody(event.currentTarget.value)}
+        />
       </div>
     </section>
   );

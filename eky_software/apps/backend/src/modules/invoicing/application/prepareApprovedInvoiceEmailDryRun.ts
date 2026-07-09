@@ -84,6 +84,8 @@ function createEmailBody(invoice: ApprovedInvoiceView): string {
   const senderName = invoice.companyNameSnapshot.trim();
   const dueDate = formatFinnishDate(invoice.dueDate);
   const grossTotal = formatCentsAsEuro(invoice.totals.grossTotalCents);
+  const iban = formatIban(invoice.companyIbanSnapshot);
+  const ibanLine = iban.length > 0 ? [`Tilinumero: ${iban}`] : [];
 
   return [
     'Hei,',
@@ -91,6 +93,7 @@ function createEmailBody(invoice: ApprovedInvoiceView): string {
     `Liitteenä lasku ${invoice.invoiceNumber}.`,
     `Eräpäivä: ${dueDate}`,
     `Viitenumero: ${invoice.referenceNumber}`,
+    ...ibanLine,
     `Summa: ${grossTotal}`,
     '',
     'Ystävällisin terveisin',
@@ -119,4 +122,10 @@ function formatCentsAsEuro(cents: number): string {
 
 function formatIntegerWithSpaces(value: number): string {
   return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+}
+
+function formatIban(value: string): string {
+  const normalizedIban = value.replace(/\s+/g, '').toUpperCase();
+
+  return normalizedIban.replace(/(.{4})(?=.)/g, '$1 ').trim();
 }

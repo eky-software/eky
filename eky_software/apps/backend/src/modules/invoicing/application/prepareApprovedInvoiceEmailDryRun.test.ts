@@ -55,6 +55,7 @@ describe('prepareApprovedInvoiceEmailDryRun', () => {
     expect(result.body).toContain('Liitteenä lasku 20260001.');
     expect(result.body).toContain('Eräpäivä: 23.07.2026');
     expect(result.body).toContain('Viitenumero: 202600017');
+    expect(result.body).toContain('Tilinumero: FI21 1234 5600 0007 85');
     expect(result.body).toContain('Summa: 1 255,00 EUR');
   });
 
