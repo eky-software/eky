@@ -14,6 +14,10 @@ import type {
 import type {
   GetApprovedInvoicePdfMetadataInput,
 } from '../application/getApprovedInvoicePdfMetadata.js';
+import type {
+  PrepareApprovedInvoiceEmailDryRunInput,
+} from '../application/prepareApprovedInvoiceEmailDryRun.js';
+import type { ApprovedInvoiceEmailPreview } from '../application/approvedInvoiceEmailPreview.js';
 import { ApprovedInvoiceNotFoundError } from '../application/approvedInvoiceNotFoundError.js';
 import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
 import type { ApprovedInvoiceSummary } from '../domain/approvedInvoiceSummary.js';
@@ -135,6 +139,22 @@ describe('approved invoice routes', () => {
     });
   });
 
+  it('prepares a dry-run invoice email in the company scope', async () => {
+    const email = createApprovedInvoiceEmailPreview();
+    const { app, getEmailInput } = createTestApp({ email });
+
+    const response = await app.request('/invoices/invoice-1/email/dry-run', {
+      method: 'POST',
+    });
+
+    await expect(response.json()).resolves.toEqual({ email });
+    expect(response.status).toBe(200);
+    expect(getEmailInput()).toMatchObject({
+      companyId: 'dev-company',
+      invoiceId: 'invoice-1',
+    });
+  });
+
   it('copies an approved invoice to a new draft in the company scope', async () => {
     const invoiceDraft = createInvoiceDraft();
     const { app, getCopyInput } = createTestApp({ copiedDraft: invoiceDraft });
@@ -172,6 +192,21 @@ describe('approved invoice routes', () => {
     });
 
     const response = await app.request('/invoices/missing/mark-sent', {
+      method: 'POST',
+    });
+
+    await expect(response.json()).resolves.toEqual({
+      error: 'Approved invoice was not found.',
+    });
+    expect(response.status).toBe(404);
+  });
+
+  it('returns a safe 404 when preparing email for an invoice outside the company scope', async () => {
+    const { app } = createTestApp({
+      emailError: new ApprovedInvoiceNotFoundError(),
+    });
+
+    const response = await app.request('/invoices/missing/email/dry-run', {
       method: 'POST',
     });
 
@@ -277,6 +312,8 @@ function createTestApp(options: {
   copiedDraft?: InvoiceDraft;
   copyError?: Error;
   document?: ApprovedInvoiceDocumentMetadata;
+  email?: ApprovedInvoiceEmailPreview;
+  emailError?: Error;
   error?: Error;
   invoice?: ApprovedInvoiceView;
   invoices?: ApprovedInvoiceSummary[];
@@ -290,6 +327,7 @@ function createTestApp(options: {
   let listInput: ListApprovedInvoicesInput | undefined;
   let reopenInput: ReopenApprovedInvoiceForEditingInput | undefined;
   let markSentInput: MarkApprovedInvoiceSentInput | undefined;
+  let emailInput: PrepareApprovedInvoiceEmailDryRunInput | undefined;
   let generatePdfInput: GenerateApprovedInvoicePdfDocumentInput | undefined;
   let pdfInput: GetApprovedInvoicePdfDocumentInput | undefined;
   let pdfMetadataInput: GetApprovedInvoicePdfMetadataInput | undefined;
@@ -351,6 +389,19 @@ function createTestApp(options: {
 
       return options.sentInvoice ?? createApprovedInvoiceView({ status: 'sent' });
     },
+    async prepareApprovedInvoiceEmailDryRun(nextInput) {
+      emailInput = nextInput;
+
+      if (options.emailError !== undefined) {
+        throw options.emailError;
+      }
+
+      if (options.error !== undefined) {
+        throw options.error;
+      }
+
+      return options.email ?? createApprovedInvoiceEmailPreview();
+    },
     async getApprovedInvoicePdfDocument(nextInput) {
       pdfInput = nextInput;
 
@@ -387,12 +438,30 @@ function createTestApp(options: {
     app,
     getGeneratePdfInput: () => generatePdfInput,
     getCopyInput: () => copyInput,
+    getEmailInput: () => emailInput,
     getInput: () => input,
     getListInput: () => listInput,
     getMarkSentInput: () => markSentInput,
     getPdfInput: () => pdfInput,
     getPdfMetadataInput: () => pdfMetadataInput,
     getReopenInput: () => reopenInput,
+  };
+}
+
+function createApprovedInvoiceEmailPreview(): ApprovedInvoiceEmailPreview {
+  return {
+    attachment: {
+      documentId: 'document-1',
+      fileName: 'lasku-20260001.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 8,
+    },
+    body: 'Hei,\n\nLiitteenä lasku 20260001.',
+    invoiceId: 'invoice-1',
+    invoiceNumber: '20260001',
+    provider: 'dryRun',
+    subject: 'Lasku 20260001',
+    to: 'recipient@example.fi',
   };
 }
 

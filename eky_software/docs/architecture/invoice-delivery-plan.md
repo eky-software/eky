@@ -255,6 +255,31 @@ Perussääntö:
 `sent`-laskun virhe korjataan hyvityslaskulla tai muulla erillisellä
 korjauspolulla.
 
+## Sent-laskun Uudelleenlähetys
+
+`sent`-laskun saa lähettää uudelleen, jos vastaanottaja ei saanut laskua,
+lasku meni roskapostiin tai käyttäjä haluaa toimittaa saman laskun uudestaan.
+
+Uudelleenlähetys ei ole sama asia kuin laskun kopiointi uudeksi luonnokseksi.
+
+Uudelleenlähetys:
+
+- ei luo uutta laskua
+- ei muuta laskunumeroa
+- ei muuta viitenumeroa
+- ei muuta laskun sisältöä
+- käyttää samaa current PDF:ää
+- ei muuta laskun `sent`-statusta, koska lasku on jo lähetetty
+- kirjataan uutena delivery eventinä myöhemmin
+
+Vastaanottajaa, otsikkoa ja viestiä voidaan ehdottaa snapshot- ja
+asetustietojen perusteella. Käyttäjä saa muuttaa vastaanottajan
+sähköpostiosoitetta käsin jokaisessa lähetyksessä, koska vastaanottajan
+sähköposti voi olla muuttunut tai lasku voidaan haluta lähettää toiseen
+osoitteeseen.
+
+Käyttäjän vahvistus vaaditaan myös uudelleenlähetyksessä.
+
 Tulevia audit-tapahtumia:
 
 - `invoice.sent`

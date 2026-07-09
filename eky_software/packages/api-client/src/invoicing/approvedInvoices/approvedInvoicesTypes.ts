@@ -144,6 +144,25 @@ export interface ApprovedInvoiceDocumentMetadata {
   createdAt: string;
 }
 
+export type ApprovedInvoiceEmailProvider = 'dryRun';
+
+export interface ApprovedInvoiceEmailAttachmentPreview {
+  documentId: string;
+  fileName: string;
+  mimeType: 'application/pdf';
+  sizeBytes: number;
+}
+
+export interface ApprovedInvoiceEmailPreview {
+  provider: ApprovedInvoiceEmailProvider;
+  invoiceId: string;
+  invoiceNumber: string;
+  to: string;
+  subject: string;
+  body: string;
+  attachment: ApprovedInvoiceEmailAttachmentPreview;
+}
+
 export interface ApprovedInvoicesApi {
   copyApprovedInvoiceToDraft(id: string): Promise<InvoiceDraft>;
   createApprovedInvoicePdf(id: string): Promise<ApprovedInvoiceDocumentMetadata>;
@@ -154,5 +173,8 @@ export interface ApprovedInvoicesApi {
   getApprovedInvoicePdfUrl(id: string): string;
   listApprovedInvoices(): Promise<ApprovedInvoiceSummary[]>;
   markApprovedInvoiceSent(id: string): Promise<ApprovedInvoiceView>;
+  prepareApprovedInvoiceEmailDryRun(
+    id: string,
+  ): Promise<ApprovedInvoiceEmailPreview>;
   reopenApprovedInvoiceForEditing(id: string): Promise<ReopenedApprovedInvoice>;
 }

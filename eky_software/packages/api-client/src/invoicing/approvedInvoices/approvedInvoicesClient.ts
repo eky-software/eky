@@ -2,6 +2,7 @@ import { requestJson } from '../../http.js';
 import { readInvoiceDraftResponse } from '../invoiceDrafts/invoiceDraftsResponse.js';
 import {
   readApprovedInvoiceDocumentMetadataResponse,
+  readApprovedInvoiceEmailPreviewResponse,
   readApprovedInvoiceListResponse,
   readApprovedInvoiceResponse,
   readReopenedApprovedInvoiceResponse,
@@ -89,6 +90,17 @@ export function createApprovedInvoicesApi(
       );
 
       return readApprovedInvoiceResponse(responseBody);
+    },
+
+    async prepareApprovedInvoiceEmailDryRun(id) {
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        `/invoices/${encodeURIComponent(id)}/email/dry-run`,
+        { method: 'POST' },
+      );
+
+      return readApprovedInvoiceEmailPreviewResponse(responseBody);
     },
 
     async reopenApprovedInvoiceForEditing(

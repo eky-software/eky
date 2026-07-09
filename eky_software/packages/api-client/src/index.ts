@@ -7,6 +7,9 @@ export { EkyApiError } from './http.js';
 export type {
   ApprovedInvoiceDocumentMetadata,
   ApprovedInvoiceDocumentType,
+  ApprovedInvoiceEmailAttachmentPreview,
+  ApprovedInvoiceEmailPreview,
+  ApprovedInvoiceEmailProvider,
   ApprovedInvoiceLine,
   ApprovedInvoiceLineDiscount,
   ApprovedInvoiceNumberingMode,

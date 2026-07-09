@@ -396,6 +396,7 @@ function renderPage(
   props: Omit<
     InvoicingPageViewProps,
     | 'companySettingsState'
+    | 'approvedInvoiceEmailState'
     | 'approvedInvoiceListState'
     | 'approvedInvoicePdfState'
     | 'approvedInvoiceState'
@@ -414,6 +415,7 @@ function renderPage(
     | 'onMarkApprovedInvoiceSent'
     | 'onOpenApprovedInvoice'
     | 'onOpenApprovedInvoicePdf'
+    | 'onPrepareApprovedInvoiceEmail'
     | 'onRequestDeleteDraft'
     | 'pendingDeleteDraftId'
     | 'refreshDrafts'
@@ -422,6 +424,7 @@ function renderPage(
       Pick<
         InvoicingPageViewProps,
         | 'companySettingsState'
+        | 'approvedInvoiceEmailState'
         | 'approvedInvoiceListState'
         | 'approvedInvoicePdfState'
         | 'approvedInvoiceState'
@@ -440,6 +443,7 @@ function renderPage(
         | 'onMarkApprovedInvoiceSent'
         | 'onOpenApprovedInvoice'
         | 'onOpenApprovedInvoicePdf'
+        | 'onPrepareApprovedInvoiceEmail'
         | 'onRequestDeleteDraft'
         | 'pendingDeleteDraftId'
         | 'refreshDrafts'
@@ -448,6 +452,7 @@ function renderPage(
 ): string {
   return renderToStaticMarkup(
     <InvoicingPageView
+      approvedInvoiceEmailState={createApprovedInvoiceEmailState()}
       approvedInvoiceListState={createApprovedInvoiceListState()}
       approvedInvoicePdfState={createApprovedInvoicePdfState()}
       approvedInvoiceState={createApprovedInvoiceState()}
@@ -467,12 +472,27 @@ function renderPage(
       onMarkApprovedInvoiceSent={vi.fn()}
       onOpenApprovedInvoice={vi.fn()}
       onOpenApprovedInvoicePdf={vi.fn()}
+      onPrepareApprovedInvoiceEmail={vi.fn()}
       onRequestDeleteDraft={vi.fn()}
       pendingDeleteDraftId={null}
       refreshDrafts={vi.fn()}
       {...props}
     />,
   );
+}
+
+function createApprovedInvoiceEmailState(
+  overrides: Partial<InvoicingPageViewProps['approvedInvoiceEmailState']> = {},
+): InvoicingPageViewProps['approvedInvoiceEmailState'] {
+  return {
+    clearEmail: vi.fn(),
+    clearError: vi.fn(),
+    email: null,
+    errorMessage: null,
+    isPreparing: false,
+    prepareEmail: vi.fn(async () => null),
+    ...overrides,
+  };
 }
 
 function createApprovedInvoicePdfState(

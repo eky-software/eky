@@ -185,6 +185,30 @@ olla käyttäjälle asetusten näkyvä koti, mutta oikea sähköpostilähetys ta
 backendin hallitun provider-rajapinnan kautta ja laskun tilasäännöt kuuluvat
 Invoicing-moduulille.
 
+## Salaisuuden Lifecycle
+
+Sähköpostisalaisuuksilla pitää olla hallittu elinkaari.
+
+Tuettavat tulevat toiminnot:
+
+- salaisuuden asettaminen
+- salaisuuden vaihtaminen
+- salaisuuden poistaminen
+- yhteyden tai asetusten testaus
+- tieto siitä, onko providerin vaatima salaisuus asetettu
+
+Jos valittu provider vaatii salaisuuden ja `secretRef` tai vastaava viite
+puuttuu, oikea lähetys estetään.
+
+Salaisuuden poistaminen ei saa poistaa ei-salaisia asetuksia, kuten lähettäjän
+nimeä, SMTP hostia tai porttia, ellei käyttäjä erikseen tyhjennä niitä.
+
+Yhteyden testaus ei saa lähettää oikealle asiakkaalle. Testaus käyttää
+dry-runia tai erillistä test recipient override -osoitetta.
+
+Salaisuuden vaihtaminen ei saa palauttaa vanhaa salaista arvoa frontendille.
+UI voi näyttää vain esimerkiksi `configured: true`.
+
 ## Salaisuuksien Käsittely
 
 SMTP-salasanaa tai OAuth refresh tokenia ei hashata, koska niitä pitää käyttää
@@ -355,6 +379,7 @@ Hyväksytyn laskun näkymässä nykyisen manuaalisen "Merkitse lähetetyksi"
 
 - toimitustapa: sähköposti / tulostus / manuaalinen
 - vastaanottaja esitäytetään billing recipient/customer email snapshotista
+- vastaanottajan sähköpostiosoitetta voi muuttaa käsin joka lähetyksessä
 - otsikko generoidaan laskunumerosta ja yrityksen nimestä
 - viestirunko generoidaan mallipohjasta
 - liitteenä on current PDF
@@ -383,6 +408,24 @@ Lähetystapahtuma auditoidaan myöhemmin esimerkiksi
 `invoice_delivery_events`-mallilla. Audit- tai delivery-loki ei saa tallentaa
 sähköpostisalaisuuksia, OAuth-tokenia, SMTP-salasanaa tai tarpeettoman pitkiä
 provider-debug-vastauksia.
+
+## Deliverability-tuotantotarkistus
+
+Ennen oikeaa tuotantolähetystä tarkistetaan sähköpostin perillemenoon liittyvät
+asiat.
+
+Tarkistettavia asioita:
+
+- lähettäjän domain ja lähettäjän osoitteen oikeellisuus
+- SPF
+- DKIM
+- DMARC
+- roskapostiriski
+- palveluntarjoajan lähetysrajat
+- test recipient override test/staging-ympäristöissä
+
+Näitä ei tarvita dry-run-vaiheessa, mutta oikeaa SMTP/Gmail-tuotantolähetystä
+ei pidetä valmiina ennen deliverability-tarkistusta.
 
 ## Ei Vielä Toteuteta
 

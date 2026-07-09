@@ -25,8 +25,12 @@ import type {
 import type {
   MarkApprovedInvoiceSentInput,
 } from '../application/markApprovedInvoiceSent.js';
+import type {
+  PrepareApprovedInvoiceEmailDryRunInput,
+} from '../application/prepareApprovedInvoiceEmailDryRun.js';
 import { ApprovedInvoiceDocumentNotFoundError } from '../application/approvedInvoiceDocumentNotFoundError.js';
 import { ApprovedInvoiceNotFoundError } from '../application/approvedInvoiceNotFoundError.js';
+import type { ApprovedInvoiceEmailPreview } from '../application/approvedInvoiceEmailPreview.js';
 import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
 import type { ApprovedInvoiceSummary } from '../domain/approvedInvoiceSummary.js';
 import type { InvoiceDraft } from '../domain/invoiceDraft.js';
@@ -58,6 +62,9 @@ interface ApprovedInvoiceRouteDependencies {
   markApprovedInvoiceSent(
     input: MarkApprovedInvoiceSentInput,
   ): Promise<ApprovedInvoiceView>;
+  prepareApprovedInvoiceEmailDryRun(
+    input: PrepareApprovedInvoiceEmailDryRunInput,
+  ): Promise<ApprovedInvoiceEmailPreview>;
   reopenApprovedInvoiceForEditing(
     input: ReopenApprovedInvoiceForEditingInput,
   ): Promise<{ draftId: string; invoiceId: string }>;
@@ -222,6 +229,28 @@ export function createApprovedInvoiceRoutes(
       });
 
       return context.json({ invoice });
+    } catch (error) {
+      if (error instanceof ApprovedInvoiceNotFoundError) {
+        return context.json({ error: error.message }, 404);
+      }
+
+      if (error instanceof InvoiceDraftValidationError) {
+        return context.json({ error: error.message }, 400);
+      }
+
+      throw error;
+    }
+  });
+
+  routes.post('/invoices/:id/email/dry-run', async (context) => {
+    try {
+      const email = await dependencies.prepareApprovedInvoiceEmailDryRun({
+        companyId: devCompanyId,
+        invoiceId: context.req.param('id'),
+        preparedAt: new Date().toISOString(),
+      });
+
+      return context.json({ email });
     } catch (error) {
       if (error instanceof ApprovedInvoiceNotFoundError) {
         return context.json({ error: error.message }, 404);

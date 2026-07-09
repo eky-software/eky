@@ -1,9 +1,11 @@
 import type {
+  ApprovedInvoiceEmailPreview as ApprovedInvoiceEmailPreviewData,
   ApprovedInvoiceLine,
   ApprovedInvoiceVatBreakdown,
   ApprovedInvoiceView,
 } from '@eky/api-client';
 
+import { ApprovedInvoiceEmailPreview } from './ApprovedInvoiceEmailPreview.js';
 import {
   formatApprovedInvoiceCurrency,
   formatApprovedInvoiceDate,
@@ -23,9 +25,12 @@ interface ApprovedInvoicePreviewProps {
   isCopyingInvoice: boolean;
   isCreatingPdf: boolean;
   isMarkingSent: boolean;
+  isPreparingEmail: boolean;
   isPdfAvailable: boolean;
   isReopening: boolean;
   markSentErrorMessage: string | null;
+  email: ApprovedInvoiceEmailPreviewData | null;
+  emailErrorMessage: string | null;
   pdfErrorMessage: string | null;
   reopenErrorMessage: string | null;
   onBack(): void;
@@ -34,6 +39,7 @@ interface ApprovedInvoicePreviewProps {
   onEditInvoice(id: string): void;
   onMarkSent(id: string): void;
   onOpenPdf(id: string): void;
+  onPrepareEmail(id: string): void;
 }
 
 export function ApprovedInvoicePreview({
@@ -42,9 +48,12 @@ export function ApprovedInvoicePreview({
   isCopyingInvoice,
   isCreatingPdf,
   isMarkingSent,
+  isPreparingEmail,
   isPdfAvailable,
   isReopening,
   markSentErrorMessage,
+  email,
+  emailErrorMessage,
   pdfErrorMessage,
   reopenErrorMessage,
   onBack,
@@ -53,6 +62,7 @@ export function ApprovedInvoicePreview({
   onEditInvoice,
   onMarkSent,
   onOpenPdf,
+  onPrepareEmail,
 }: ApprovedInvoicePreviewProps): React.JSX.Element {
   const isSent = invoice.status === 'sent';
 
@@ -100,6 +110,16 @@ export function ApprovedInvoicePreview({
                 : uiText.invoicing.approvedInvoiceOpenPdf}
             </button>
           ) : null}
+          <button
+            className="secondary-action"
+            disabled={isCreatingPdf || isPreparingEmail}
+            onClick={() => onPrepareEmail(invoice.id)}
+            type="button"
+          >
+            {isPreparingEmail
+              ? uiText.invoicing.invoiceEmailPreparing
+              : uiText.invoicing.invoiceEmailPrepare}
+          </button>
           {isSent ? (
             <button
               className="secondary-action"
@@ -164,6 +184,13 @@ export function ApprovedInvoicePreview({
           {copyErrorMessage}
         </p>
       ) : null}
+      {emailErrorMessage !== null ? (
+        <p className="message error-message" role="alert">
+          {emailErrorMessage}
+        </p>
+      ) : null}
+
+      {email !== null ? <ApprovedInvoiceEmailPreview email={email} /> : null}
 
       <div className={styles.detailsStack}>
         <PartyBox
