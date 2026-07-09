@@ -3,6 +3,7 @@ import type {
   ApprovedInvoiceLine,
   ApprovedInvoiceLineDiscount,
   ApprovedInvoiceDocumentMetadata,
+  ApprovedInvoiceEmailPreview,
   ApprovedInvoiceNumberingMode,
   ApprovedInvoicePriceInputMode,
   ApprovedInvoiceReferenceNumberType,
@@ -65,6 +66,16 @@ export function readApprovedInvoiceDocumentMetadataResponse(
   return parseApprovedInvoiceDocumentMetadata(responseBody.document);
 }
 
+export function readApprovedInvoiceEmailPreviewResponse(
+  responseBody: unknown,
+): ApprovedInvoiceEmailPreview {
+  if (!isRecord(responseBody)) {
+    throw invalidApprovedInvoiceResponse(responseBody);
+  }
+
+  return parseApprovedInvoiceEmailPreview(responseBody.email);
+}
+
 function parseApprovedInvoiceSummary(
   value: unknown,
 ): ApprovedInvoiceSummary {
@@ -117,6 +128,36 @@ function parseApprovedInvoiceDocumentMetadata(
     sha256: readString(value, 'sha256'),
     sizeBytes: readSafeInteger(value, 'sizeBytes'),
     createdAt: readString(value, 'createdAt'),
+  };
+}
+
+function parseApprovedInvoiceEmailPreview(
+  value: unknown,
+): ApprovedInvoiceEmailPreview {
+  if (!isRecord(value) || !isRecord(value.attachment)) {
+    throw invalidApprovedInvoiceResponse(value);
+  }
+
+  const provider = readString(value, 'provider');
+  const mimeType = readString(value.attachment, 'mimeType');
+
+  if (provider !== 'dryRun' || mimeType !== 'application/pdf') {
+    throw invalidApprovedInvoiceResponse(value);
+  }
+
+  return {
+    attachment: {
+      documentId: readString(value.attachment, 'documentId'),
+      fileName: readString(value.attachment, 'fileName'),
+      mimeType,
+      sizeBytes: readSafeInteger(value.attachment, 'sizeBytes'),
+    },
+    body: readString(value, 'body'),
+    invoiceId: readString(value, 'invoiceId'),
+    invoiceNumber: readString(value, 'invoiceNumber'),
+    provider,
+    subject: readString(value, 'subject'),
+    to: readString(value, 'to'),
   };
 }
 

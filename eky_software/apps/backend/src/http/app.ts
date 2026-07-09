@@ -24,6 +24,7 @@ import { getInvoicePaymentSettings } from '../modules/invoicing/application/getI
 import { listInvoiceDrafts } from '../modules/invoicing/application/listInvoiceDrafts.js';
 import { listApprovedInvoices } from '../modules/invoicing/application/listApprovedInvoices.js';
 import { markApprovedInvoiceSent } from '../modules/invoicing/application/markApprovedInvoiceSent.js';
+import { prepareApprovedInvoiceEmailDryRun } from '../modules/invoicing/application/prepareApprovedInvoiceEmailDryRun.js';
 import { reopenApprovedInvoiceForEditing } from '../modules/invoicing/application/reopenApprovedInvoiceForEditing.js';
 import { saveInvoiceDraft } from '../modules/invoicing/application/saveInvoiceDraft.js';
 import { updateInvoiceNumberingSettings } from '../modules/invoicing/application/updateInvoiceNumberingSettings.js';
@@ -33,6 +34,7 @@ import { createApprovedInvoiceRoutes } from '../modules/invoicing/http/approvedI
 import { createInvoiceDraftRoutes } from '../modules/invoicing/http/invoiceDraftRoutes.js';
 import { createInvoiceNumberingSettingsRoutes } from '../modules/invoicing/http/invoiceNumberingSettingsRoutes.js';
 import { createInvoicePaymentSettingsRoutes } from '../modules/invoicing/http/invoicePaymentSettingsRoutes.js';
+import { DryRunInvoiceEmailDeliveryProvider } from '../infrastructure/email/dryRunInvoiceEmailDeliveryProvider.js';
 import { LocalInvoiceDocumentStorage } from '../modules/invoicing/infrastructure/localInvoiceDocumentStorage.js';
 import { renderApprovedInvoicePdf } from '../modules/invoicing/infrastructure/pdf/approvedInvoicePdfRenderer.js';
 import { SqliteApprovedInvoiceReader } from '../modules/invoicing/infrastructure/sqliteApprovedInvoiceReader.js';
@@ -60,6 +62,7 @@ export async function createApp(): Promise<Hono> {
   const invoiceDocumentRepository =
     new SqliteInvoiceDocumentRepository(database);
   const invoiceDocumentStorage = new LocalInvoiceDocumentStorage();
+  const invoiceEmailDeliveryProvider = new DryRunInvoiceEmailDeliveryProvider();
   const approvedInvoiceReader = new SqliteApprovedInvoiceReader(database);
   const invoiceNumberingRepository = new SqliteInvoiceNumberingRepository(database);
   const invoicePaymentSettingsRepository =
@@ -174,6 +177,18 @@ export async function createApp(): Promise<Hono> {
               renderApprovedInvoicePdf,
             }),
           invoiceApprovalRepository,
+        }),
+      prepareApprovedInvoiceEmailDryRun: (input) =>
+        prepareApprovedInvoiceEmailDryRun(input, {
+          approvedInvoiceReader,
+          ensureApprovedInvoicePdfDocument: (pdfInput) =>
+            generateApprovedInvoicePdfDocument(pdfInput, {
+              approvedInvoiceReader,
+              invoiceDocumentRepository,
+              invoiceDocumentStorage,
+              renderApprovedInvoicePdf,
+            }),
+          invoiceEmailDeliveryProvider,
         }),
       reopenApprovedInvoiceForEditing: (input) =>
         reopenApprovedInvoiceForEditing(input, {

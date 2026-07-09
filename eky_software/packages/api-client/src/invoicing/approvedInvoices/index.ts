@@ -2,6 +2,9 @@ export { createApprovedInvoicesApi } from './approvedInvoicesClient.js';
 export type {
   ApprovedInvoiceDocumentMetadata,
   ApprovedInvoiceDocumentType,
+  ApprovedInvoiceEmailAttachmentPreview,
+  ApprovedInvoiceEmailPreview,
+  ApprovedInvoiceEmailProvider,
   ApprovedInvoiceLine,
   ApprovedInvoiceLineDiscount,
   ApprovedInvoiceNumberingMode,

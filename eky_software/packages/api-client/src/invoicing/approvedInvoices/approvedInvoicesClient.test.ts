@@ -166,6 +166,27 @@ describe('approved invoices api client', () => {
     ]);
   });
 
+  it('prepares a dry-run invoice email through POST /invoices/:id/email/dry-run', async () => {
+    const requests = createRequestLog();
+    const email = createTestApprovedInvoiceEmailPreview();
+    const client = createTestClient(requests, { email });
+
+    const result = await client.prepareApprovedInvoiceEmailDryRun('invoice/1');
+
+    expect(result).toEqual(email);
+    expect(requests).toEqual([
+      {
+        input: '/invoices/invoice%2F1/email/dry-run',
+        init: {
+          headers: {
+            Accept: 'application/json',
+          },
+          method: 'POST',
+        },
+      },
+    ]);
+  });
+
   it('copies an approved invoice to a draft through POST /invoices/:id/copy-to-draft', async () => {
     const requests = createRequestLog();
     const invoiceDraft = createTestInvoiceDraft();
@@ -225,6 +246,20 @@ describe('approved invoices api client', () => {
 
     await expect(
       client.createApprovedInvoicePdf('invoice-1'),
+    ).rejects.toBeInstanceOf(EkyApiError);
+  });
+
+  it('rejects a malformed dry-run email response', async () => {
+    const requests = createRequestLog();
+    const client = createTestClient(requests, {
+      email: {
+        ...createTestApprovedInvoiceEmailPreview(),
+        provider: 'smtp',
+      },
+    });
+
+    await expect(
+      client.prepareApprovedInvoiceEmailDryRun('invoice-1'),
     ).rejects.toBeInstanceOf(EkyApiError);
   });
 
@@ -461,6 +496,23 @@ function createTestApprovedInvoiceDocumentMetadata() {
       '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
     sizeBytes: 1234,
     createdAt: '2026-07-05T10:00:00.000Z',
+  };
+}
+
+function createTestApprovedInvoiceEmailPreview() {
+  return {
+    attachment: {
+      documentId: 'document-1',
+      fileName: 'lasku-20260001.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 1234,
+    },
+    body: 'Hei,\n\nLiitteenä lasku 20260001.',
+    invoiceId: 'invoice-1',
+    invoiceNumber: '20260001',
+    provider: 'dryRun',
+    subject: 'Lasku 20260001',
+    to: 'recipient@example.fi',
   };
 }
 

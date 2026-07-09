@@ -1,4 +1,7 @@
-import type { ApprovedInvoiceView } from '@eky/api-client';
+import type {
+  ApprovedInvoiceEmailPreview as ApprovedInvoiceEmailPreviewData,
+  ApprovedInvoiceView,
+} from '@eky/api-client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -128,11 +131,29 @@ describe('ApprovedInvoicePreview', () => {
     expect(html).toContain('secondary-action');
     expect(html).not.toContain(uiText.invoicing.approvedInvoicePdfCreate);
   });
+
+  it('renders the dry-run email preview without technical error details', () => {
+    const html = renderPreview({
+      email: createApprovedInvoiceEmailPreview(),
+      emailErrorMessage: uiText.invoicing.invoiceEmailPrepareError,
+    });
+
+    expect(html).toContain(uiText.invoicing.invoiceEmailPreviewTitle);
+    expect(html).toContain(uiText.invoicing.invoiceEmailDryRunBadge);
+    expect(html).toContain('recipient@example.fi');
+    expect(html).toContain('Lasku 20260001');
+    expect(html).toContain('lasku-20260001.pdf');
+    expect(html).toContain(uiText.invoicing.invoiceEmailPrepareError);
+    expect(html).not.toContain('responseBody');
+    expect(html).not.toContain('stack');
+  });
 });
 
 function renderPreview(
   options: {
     copyErrorMessage?: string | null;
+    email?: ApprovedInvoiceEmailPreviewData | null;
+    emailErrorMessage?: string | null;
     invoice?: ApprovedInvoiceView;
     isCopyingInvoice?: boolean;
     isCreatingPdf?: boolean;
@@ -143,10 +164,13 @@ function renderPreview(
   return renderToStaticMarkup(
     <ApprovedInvoicePreview
       copyErrorMessage={options.copyErrorMessage ?? null}
+      email={options.email ?? null}
+      emailErrorMessage={options.emailErrorMessage ?? null}
       invoice={options.invoice ?? createApprovedInvoiceView()}
       isCopyingInvoice={options.isCopyingInvoice ?? false}
       isCreatingPdf={options.isCreatingPdf ?? false}
       isMarkingSent={false}
+      isPreparingEmail={false}
       isPdfAvailable={options.isPdfAvailable ?? false}
       isReopening={false}
       markSentErrorMessage={null}
@@ -158,8 +182,26 @@ function renderPreview(
       onEditInvoice={vi.fn()}
       onMarkSent={vi.fn()}
       onOpenPdf={vi.fn()}
+      onPrepareEmail={vi.fn()}
     />,
   );
+}
+
+function createApprovedInvoiceEmailPreview(): ApprovedInvoiceEmailPreviewData {
+  return {
+    attachment: {
+      documentId: 'document-1',
+      fileName: 'lasku-20260001.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 1234,
+    },
+    body: 'Hei,\n\nLiitteenä lasku 20260001.',
+    invoiceId: 'invoice-1',
+    invoiceNumber: '20260001',
+    provider: 'dryRun',
+    subject: 'Lasku 20260001',
+    to: 'recipient@example.fi',
+  };
 }
 
 function createApprovedInvoiceView(
