@@ -115,6 +115,11 @@ SMTP/Gmail/Microsoft-sähköpostiadaptereita, `sent`-tilaa, laskun kopiointia,
 peruutusta, hyvityslaskua tai lähetyslokia, lue myös
 `docs/architecture/invoice-delivery-plan.md`.
 
+Jos työ koskee laskun toimitustapahtumia, delivery event -mallia,
+lähetyslokia, sähköpostin send-endpointtia, dry-run-send-polun auditointia tai
+lähetetyn laskun uudelleenlähetystä, lue myös
+`docs/architecture/invoice-delivery-events-plan.md`.
+
 Jos työ koskee laskun sähköpostilähetystä, SMTP/Gmail/Microsoft-provideria,
 dry-run-sähköpostia, sähköpostiasetuksia, sähköpostisalaisuuksia, OAuth-tokenia,
 Windows Credential Manageria, Secret Manageria tai sähköpostiproviderin

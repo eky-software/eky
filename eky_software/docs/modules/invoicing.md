@@ -26,6 +26,10 @@ sähköpostitoimituksen turvallisuuslinja, `sent`-tila, laskun kopiointi,
 peruutus ja hyvityslaskut on kuvattu dokumentissa
 `docs/architecture/invoice-delivery-plan.md`.
 
+Laskun toimitustapahtumien, lähetyslokin, delivery event -mallin ja tulevan
+send-polun auditointiperiaatteet on kuvattu dokumentissa
+`docs/architecture/invoice-delivery-events-plan.md`.
+
 Sähköpostilähetyksen provider-malli, dry-run-vaihe, SMTP/Gmail-linja ja
 salaisuuksien hallinta on kuvattu dokumentissa
 `docs/architecture/email-delivery-and-secrets-plan.md`.
@@ -50,6 +54,7 @@ lähetettyjen laskujen korjausperiaatteiden muistilista on kuvattu dokumentissa
 - yrityskohtaisen tilikauden laskutuskäyttöön
 - laskulla käytetyt hinta- ja osapuolitietojen snapshotit
 - laskutuksen audit-tapahtumat
+- laskun toimitustapahtumat ja delivery event -kirjaukset myöhemmin
 - hyvityslaskut myöhemmin
 - laskun sähköpostitoimituksen liiketoimintasäännöt myöhemmin
 
