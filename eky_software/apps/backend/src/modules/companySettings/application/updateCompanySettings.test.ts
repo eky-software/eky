@@ -35,6 +35,14 @@ describe('updateCompanySettings', () => {
         bic: ' ndeafihh ',
         bankName: '  Test Bank  ',
         email: '  info@example.fi  ',
+        emailDeliveryProvider: 'smtp',
+        emailSenderName: '  Example Builder Oy  ',
+        emailSenderAddress: '  laskutus@example.fi  ',
+        emailSmtpHost: '  SMTP.DNAMAIL.FI  ',
+        emailSmtpPort: 587,
+        emailSmtpSecurity: 'STARTTLS',
+        emailUsername: '  laskutus@example.fi  ',
+        emailTestRecipientOverride: '  test@example.fi  ',
         phone: '  040 123 4567  ',
         website: '  www.example.fi  ',
         postalCode: '  00100  ',
@@ -53,6 +61,15 @@ describe('updateCompanySettings', () => {
     expect(settings.postalCode).toBe('00100');
     expect(settings.city).toBe('Helsinki');
     expect(settings.email).toBe('info@example.fi');
+    expect(settings.emailDeliveryProvider).toBe('smtp');
+    expect(settings.emailSenderName).toBe('Example Builder Oy');
+    expect(settings.emailSenderAddress).toBe('laskutus@example.fi');
+    expect(settings.emailSmtpHost).toBe('smtp.dnamail.fi');
+    expect(settings.emailSmtpPort).toBe(587);
+    expect(settings.emailSmtpSecurity).toBe('starttls');
+    expect(settings.emailUsername).toBe('laskutus@example.fi');
+    expect(settings.emailTestRecipientOverride).toBe('test@example.fi');
+    expect(settings.emailSecretConfigured).toBe(false);
     expect(settings.phone).toBe('040 123 4567');
     expect(settings.website).toBe('www.example.fi');
     expect(settings.defaultHourlyRateCents).toBe(6500);
@@ -79,6 +96,14 @@ describe('updateCompanySettings', () => {
         bic: '',
         bankName: '',
         email: '',
+        emailDeliveryProvider: '',
+        emailSenderName: '',
+        emailSenderAddress: '',
+        emailSmtpHost: '',
+        emailSmtpPort: null,
+        emailSmtpSecurity: '',
+        emailUsername: '',
+        emailTestRecipientOverride: '',
         phone: '',
         website: '',
         postalCode: '',

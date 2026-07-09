@@ -78,6 +78,15 @@ Ensimmäinen Company Settings MVP voi sisältää:
 - `email`
 - `phone`
 - `website`
+- `emailDeliveryProvider`
+- `emailSenderName`
+- `emailSenderAddress`
+- `emailSmtpHost`
+- `emailSmtpPort`
+- `emailSmtpSecurity`
+- `emailUsername`
+- `emailTestRecipientOverride`
+- `emailSecretConfigured`
 - `iban`
 - `bic`
 - `bankName`
@@ -95,6 +104,13 @@ Kenttien merkitys:
 - `vatNumber` on oman yrityksen ALV-tunnus.
 - `streetAddress`, `postalCode` ja `city` kuvaavat oman yrityksen pääosoitetta.
 - `email`, `phone` ja `website` ovat oman yrityksen ensisijaiset yhteystiedot.
+- `emailDeliveryProvider`, `emailSenderName`, `emailSenderAddress`,
+  `emailSmtpHost`, `emailSmtpPort`, `emailSmtpSecurity`, `emailUsername` ja
+  `emailTestRecipientOverride` ovat sähköpostilähetyksen ei-salaisia
+  asetuksia.
+- `emailSecretConfigured` on käyttäjälle näytettävä tieto siitä, onko
+  sähköpostisalaisuus asetettu myöhemmässä secrets-hallinnassa. Itse salaisuus
+  ei kuulu Company Settings -tauluun eikä sitä palauteta frontendille.
 - `iban`, `bic` ja `bankName` kuvaavat oman yrityksen maksutilin master dataa.
 - `defaultHourlyRateCents` on oman yrityksen oletustuntihinta sentteinä.
 - `hourlyRateShortcut` on käyttäjän määrittämä laskurivin nimike, joka voi
@@ -158,6 +174,34 @@ Pikavalinta on käyttökokemuksen oletus, ei laskennan domain-sääntö. Invoici
 tallentaa laskuriville käyttäjän hyväksymän eksplisiittisen yksikköhinnan, ja
 backend validoi sekä laskee rivin normaalisti. Tyhjä `hourlyRateShortcut`
 poistaa toiminnon käytöstä.
+
+## Sähköpostiasetusten Ei-Salainen Runko
+
+Oma yritys -näkymä voi näyttää ja tallentaa sähköpostilähetyksen ei-salaiset
+asetukset:
+
+- `emailDeliveryProvider`: `dryRun` tai `smtp`
+- `emailSenderName`
+- `emailSenderAddress`
+- `emailSmtpHost`
+- `emailSmtpPort`
+- `emailSmtpSecurity`: `starttls` tai `tls`
+- `emailUsername`
+- `emailTestRecipientOverride`
+
+Nämä asetukset eivät vielä tarkoita oikeaa sähköpostilähetystä.
+Nykyisessä vaiheessa laskun sähköpostipolku käyttää edelleen dry-run-mallia,
+joka ei lähetä oikeaa sähköpostia eikä muuta laskua lähetetyksi.
+
+SMTP-salasanaa, OAuth-tokenia tai muuta salaisuutta ei tallenneta Company
+Settings -tauluun, API-vastaukseen, frontendin tilaan eikä Git-repositorioon.
+Salaisuuden hallinta toteutetaan myöhemmin erillisen
+`docs/architecture/email-delivery-and-secrets-plan.md` -linjan mukaisesti.
+
+`emailSecretConfigured` on tässä vaiheessa lukutieto. Se saa kertoa
+käyttäjälle, onko salaisuus asetettu myöhemmän secret store -mallin kautta,
+mutta se ei sisällä salaista arvoa eikä sitä käytetä salaisuuden
+tallentamiseen.
 
 ## Asiakaskohtainen Tuntihinta
 

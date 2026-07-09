@@ -4,9 +4,12 @@ import {
   euroInputToCents,
   formatCompanyIbanInput,
   initialCompanySettingsForm,
+  normalizeCompanyEmailAddressInput,
   normalizeCompanyBicInput,
   normalizeCompanyIbanInput,
+  normalizeCompanySmtpHostInput,
   normalizeCompanyVatNumberInput,
+  parseCompanySmtpPortInput,
   toCompanySettingsForm,
   toUpdateCompanySettingsRequest,
 } from './companySettingsFormModel.js';
@@ -26,6 +29,15 @@ describe('companySettingsFormModel', () => {
         email: 'info@example.fi',
         phone: '040 123 4567',
         website: 'www.example.fi',
+        emailDeliveryProvider: 'smtp',
+        emailSenderName: 'Example Builder Oy',
+        emailSenderAddress: 'laskutus@example.fi',
+        emailSmtpHost: 'smtp.dnamail.fi',
+        emailSmtpPort: 587,
+        emailSmtpSecurity: 'starttls',
+        emailUsername: 'laskutus@example.fi',
+        emailTestRecipientOverride: 'test@example.fi',
+        emailSecretConfigured: false,
         defaultHourlyRateCents: 6500,
         hourlyRateShortcut: 'työ',
         iban: 'FI2112345600000785',
@@ -47,6 +59,15 @@ describe('companySettingsFormModel', () => {
       email: 'info@example.fi',
       phone: '040 123 4567',
       website: 'www.example.fi',
+      emailDeliveryProvider: 'smtp',
+      emailSenderName: 'Example Builder Oy',
+      emailSenderAddress: 'laskutus@example.fi',
+      emailSmtpHost: 'smtp.dnamail.fi',
+      emailSmtpPort: '587',
+      emailSmtpSecurity: 'starttls',
+      emailUsername: 'laskutus@example.fi',
+      emailTestRecipientOverride: 'test@example.fi',
+      emailSecretConfigured: false,
       postalCode: '00100',
       streetAddress: 'Testikatu 1',
     });
@@ -69,6 +90,14 @@ describe('companySettingsFormModel', () => {
       bic: '',
       bankName: '',
       email: '',
+      emailDeliveryProvider: 'dryRun',
+      emailSenderName: '',
+      emailSenderAddress: '',
+      emailSmtpHost: '',
+      emailSmtpPort: null,
+      emailSmtpSecurity: 'starttls',
+      emailUsername: '',
+      emailTestRecipientOverride: '',
       phone: '',
       website: '',
       postalCode: '',
@@ -122,6 +151,31 @@ describe('companySettingsFormModel', () => {
     });
   });
 
+  it('normalizes email delivery settings for the update request', () => {
+    expect(
+      toUpdateCompanySettingsRequest({
+        ...initialCompanySettingsForm,
+        emailDeliveryProvider: 'smtp',
+        emailSenderName: '  Example Builder Oy  ',
+        emailSenderAddress: '  laskutus@example.fi  ',
+        emailSmtpHost: '  SMTP.DNAMAIL.FI  ',
+        emailSmtpPort: '587',
+        emailSmtpSecurity: 'starttls',
+        emailUsername: '  laskutus@example.fi  ',
+        emailTestRecipientOverride: '  test@example.fi  ',
+      }),
+    ).toMatchObject({
+      emailDeliveryProvider: 'smtp',
+      emailSenderName: 'Example Builder Oy',
+      emailSenderAddress: 'laskutus@example.fi',
+      emailSmtpHost: 'smtp.dnamail.fi',
+      emailSmtpPort: 587,
+      emailSmtpSecurity: 'starttls',
+      emailUsername: 'laskutus@example.fi',
+      emailTestRecipientOverride: 'test@example.fi',
+    });
+  });
+
   it('rejects clearly invalid bank detail input', () => {
     expect(() => normalizeCompanyIbanInput('bad')).toThrow(
       'Invalid company IBAN.',
@@ -136,5 +190,16 @@ describe('companySettingsFormModel', () => {
     expect(() => normalizeCompanyVatNumberInput('1234567-8')).toThrow(
       'Invalid company VAT number.',
     );
+  });
+
+  it('rejects invalid email delivery setting input', () => {
+    expect(parseCompanySmtpPortInput('')).toBeNull();
+    expect(() => parseCompanySmtpPortInput('0')).toThrow('Invalid company SMTP port.');
+    expect(() => normalizeCompanySmtpHostInput('https://smtp.example.fi')).toThrow(
+      'Invalid company SMTP host.',
+    );
+    expect(() =>
+      normalizeCompanyEmailAddressInput('bad', 'Invalid company email sender address.'),
+    ).toThrow('Invalid company email sender address.');
   });
 });

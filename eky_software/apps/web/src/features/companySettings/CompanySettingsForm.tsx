@@ -151,6 +151,139 @@ export function CompanySettingsForm({
         </fieldset>
 
         <fieldset>
+          <legend>{uiText.companySettings.emailDeliverySettings}</legend>
+          <p className={styles.fieldsetHelp}>
+            {uiText.companySettings.emailDeliverySettingsHelp}
+          </p>
+          <div className={styles.grid}>
+            <label htmlFor="company-email-delivery-provider">
+              {uiText.companySettings.emailDeliveryProvider}
+              <select
+                id="company-email-delivery-provider"
+                name="emailDeliveryProvider"
+                onChange={(event) =>
+                  onFieldChange(
+                    'emailDeliveryProvider',
+                    event.target.value as CompanySettingsFormModel['emailDeliveryProvider'],
+                  )
+                }
+                value={form.emailDeliveryProvider}
+              >
+                <option value="dryRun">{uiText.companySettings.emailProviderDryRun}</option>
+                <option value="smtp">{uiText.companySettings.emailProviderSmtp}</option>
+              </select>
+            </label>
+
+            <label htmlFor="company-email-sender-name">
+              {uiText.companySettings.emailSenderName}
+              <input
+                id="company-email-sender-name"
+                name="emailSenderName"
+                onChange={(event) => onFieldChange('emailSenderName', event.target.value)}
+                placeholder={uiText.companySettings.placeholderEmailSenderName}
+                type="text"
+                value={form.emailSenderName}
+              />
+            </label>
+
+            <label htmlFor="company-email-sender-address">
+              {uiText.companySettings.emailSenderAddress}
+              <input
+                id="company-email-sender-address"
+                name="emailSenderAddress"
+                onChange={(event) => onFieldChange('emailSenderAddress', event.target.value)}
+                placeholder={uiText.companySettings.placeholderEmailSenderAddress}
+                type="email"
+                value={form.emailSenderAddress}
+              />
+            </label>
+
+            <label htmlFor="company-email-smtp-host">
+              {uiText.companySettings.emailSmtpHost}
+              <input
+                id="company-email-smtp-host"
+                name="emailSmtpHost"
+                onChange={(event) => onFieldChange('emailSmtpHost', event.target.value)}
+                placeholder={uiText.companySettings.placeholderEmailSmtpHost}
+                type="text"
+                value={form.emailSmtpHost}
+              />
+            </label>
+
+            <label htmlFor="company-email-smtp-port">
+              {uiText.companySettings.emailSmtpPort}
+              <input
+                id="company-email-smtp-port"
+                inputMode="numeric"
+                name="emailSmtpPort"
+                onChange={(event) => onFieldChange('emailSmtpPort', event.target.value)}
+                placeholder={uiText.companySettings.placeholderEmailSmtpPort}
+                type="text"
+                value={form.emailSmtpPort}
+              />
+            </label>
+
+            <label htmlFor="company-email-smtp-security">
+              {uiText.companySettings.emailSmtpSecurity}
+              <select
+                id="company-email-smtp-security"
+                name="emailSmtpSecurity"
+                onChange={(event) =>
+                  onFieldChange(
+                    'emailSmtpSecurity',
+                    event.target.value as CompanySettingsFormModel['emailSmtpSecurity'],
+                  )
+                }
+                value={form.emailSmtpSecurity}
+              >
+                <option value="starttls">{uiText.companySettings.emailSmtpStartTls}</option>
+                <option value="tls">{uiText.companySettings.emailSmtpTls}</option>
+              </select>
+            </label>
+
+            <label htmlFor="company-email-username">
+              {uiText.companySettings.emailUsername}
+              <input
+                id="company-email-username"
+                name="emailUsername"
+                onChange={(event) => onFieldChange('emailUsername', event.target.value)}
+                placeholder={uiText.companySettings.placeholderEmailUsername}
+                type="text"
+                value={form.emailUsername}
+              />
+            </label>
+
+            <label htmlFor="company-email-test-recipient">
+              {uiText.companySettings.emailTestRecipientOverride}
+              <input
+                id="company-email-test-recipient"
+                name="emailTestRecipientOverride"
+                onChange={(event) =>
+                  onFieldChange('emailTestRecipientOverride', event.target.value)
+                }
+                placeholder={uiText.companySettings.placeholderEmailTestRecipientOverride}
+                type="email"
+                value={form.emailTestRecipientOverride}
+              />
+            </label>
+
+            <div className={styles.wideField}>
+              <span className={styles.readOnlyLabel}>
+                {uiText.companySettings.emailSecretStatus}
+              </span>
+              <p className={styles.fieldHelp}>
+                {form.emailSecretConfigured
+                  ? uiText.companySettings.emailSecretConfigured
+                  : uiText.companySettings.emailSecretNotConfigured}
+              </p>
+              <p className={styles.fieldHelp}>
+                {uiText.companySettings.emailSecretHelp}
+              </p>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset>
           <legend>{uiText.companySettings.bankDetails}</legend>
           <p className={styles.fieldsetHelp}>
             {uiText.companySettings.bankDetailsHelp}

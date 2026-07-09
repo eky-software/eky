@@ -16,6 +16,7 @@ Toteutus sisältää:
 - oman yrityksen Y-tunnuksen
 - oman yrityksen ALV-tunnuksen
 - oman yrityksen pankkitiedot
+- sähköpostilähetyksen ei-salaiset asetukset
 - oletustuntihinnan `defaultHourlyRateCents`
 - tuntityön pikavalinnan `hourlyRateShortcut`
 - backend-reitit:
@@ -90,6 +91,14 @@ Alustavat kentät:
 - `iban`
 - `bic`
 - `bank_name`
+- `email_delivery_provider`
+- `email_sender_name`
+- `email_sender_address`
+- `email_smtp_host`
+- `email_smtp_port`
+- `email_smtp_security`
+- `email_username`
+- `email_test_recipient_override`
 - `default_hourly_rate_cents`
 - `hourly_rate_shortcut`
 - `created_at`
@@ -179,6 +188,29 @@ trimmataan ja rajataan enintään 200 merkkiin.
 Nämä pankkitiedot eivät ole Invoicing-moduulin omistamaa dataa. Kun
 hyväksytylle laskulle tarvitaan maksutiedot, Invoicing tallentaa niistä oman
 snapshotin erillisessä myöhemmässä vaiheessa.
+
+### Email Delivery Settings
+
+Company Settings -pystypolkua laajennetaan sähköpostilähetyksen ei-salaisilla
+asetuksilla:
+
+- `email_delivery_provider`: `dryRun` tai `smtp`
+- `email_sender_name`
+- `email_sender_address`
+- `email_smtp_host`
+- `email_smtp_port`
+- `email_smtp_security`: `starttls` tai `tls`
+- `email_username`
+- `email_test_recipient_override`
+
+Nämä arvot ovat asetuksia, eivät salaisuuksia. SMTP-salasanaa, OAuth-tokenia,
+secretRef-arvoa tai muuta salaista arvoa ei tallenneta tähän tauluun eikä
+palauteta API:ssa. Käyttäjälle voidaan näyttää erillinen
+`emailSecretConfigured`-tyyppinen lukutieto myöhemmän secrets-hallinnan tilasta.
+
+Ensimmäisessä koodivaiheessa `emailSecretConfigured` on lukuarvo ja pysyy
+`false`, koska salaisuuden asetus, vaihto ja poisto tehdään myöhemmin erillisessä
+turvallisessa vaiheessa.
 
 ## Backend-Rakenne
 

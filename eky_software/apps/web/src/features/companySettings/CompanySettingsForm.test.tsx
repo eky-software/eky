@@ -17,6 +17,15 @@ describe('CompanySettingsForm', () => {
           bic: 'NDEAFIHH',
           bankName: 'Test Bank',
           website: 'www.example.fi',
+          emailDeliveryProvider: 'smtp',
+          emailSenderName: 'Example Builder Oy',
+          emailSenderAddress: 'laskutus@example.fi',
+          emailSmtpHost: 'smtp.dnamail.fi',
+          emailSmtpPort: '587',
+          emailSmtpSecurity: 'starttls',
+          emailUsername: 'laskutus@example.fi',
+          emailTestRecipientOverride: 'test@example.fi',
+          emailSecretConfigured: false,
         }}
         isSaving={false}
         onFieldChange={vi.fn()}
@@ -30,6 +39,15 @@ describe('CompanySettingsForm', () => {
     expect(html).toContain(uiText.companySettings.bankDetailsHelp);
     expect(html).toContain(uiText.companySettings.website);
     expect(html).toContain('www.example.fi');
+    expect(html).toContain(uiText.companySettings.emailDeliverySettings);
+    expect(html).toContain(uiText.companySettings.emailDeliveryProvider);
+    expect(html).toContain(uiText.companySettings.emailSenderName);
+    expect(html).toContain('Example Builder Oy');
+    expect(html).toContain(uiText.companySettings.emailSenderAddress);
+    expect(html).toContain('laskutus@example.fi');
+    expect(html).toContain(uiText.companySettings.emailSmtpHost);
+    expect(html).toContain('smtp.dnamail.fi');
+    expect(html).toContain(uiText.companySettings.emailSecretNotConfigured);
     expect(html).toContain(uiText.companySettings.iban);
     expect(html).toContain('FI2112345600000785');
     expect(html).toContain(uiText.companySettings.bic);

@@ -146,5 +146,21 @@ function getErrorMessage(error: unknown): string {
     return uiText.companySettings.invalidVatNumber;
   }
 
+  if (error instanceof Error && error.message === 'Invalid company email sender address.') {
+    return uiText.companySettings.invalidEmailSenderAddress;
+  }
+
+  if (error instanceof Error && error.message === 'Invalid company SMTP host.') {
+    return uiText.companySettings.invalidEmailSmtpHost;
+  }
+
+  if (error instanceof Error && error.message === 'Invalid company SMTP port.') {
+    return uiText.companySettings.invalidEmailSmtpPort;
+  }
+
+  if (error instanceof Error && error.message === 'Invalid company email test recipient.') {
+    return uiText.companySettings.invalidEmailTestRecipient;
+  }
+
   return uiText.companySettings.fallbackError;
 }
