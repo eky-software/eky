@@ -11,6 +11,10 @@ Sähköpostilähetyksen provider-malli, dry-run-vaihe, SMTP/Gmail-linja ja
 salaisuuksien hallinta on tarkennettu dokumentissa
 `docs/architecture/email-delivery-and-secrets-plan.md`.
 
+Laskun toimitustapahtumien, lähetyslokin ja tulevan send-polun tarkempi
+delivery event -suunnitelma on dokumentissa
+`docs/architecture/invoice-delivery-events-plan.md`.
+
 Toteutustilanne:
 
 - hyväksytyn laskun PDF voidaan muodostaa ja avata selaimessa
@@ -396,26 +400,8 @@ Hyvityslaskun laskenta, laskumerkinnät ja PDF-merkinnät suunnitellaan erikseen
 
 ## Lähetysloki
 
-Mahdollinen tuleva taulu tai malli:
-
-```text
-invoice_delivery_events
-- id
-- companyId
-- invoiceId
-- deliveryMethod: email | print | manual | other
-- status: attempted | succeeded | failed
-- recipientEmail
-- subject
-- documentId
-- provider
-- providerMessageId
-- errorMessage
-- createdAt
-- createdBy
-```
-
-Tätä ei toteuteta vielä, mutta se toimii suunnittelupohjana.
+Lähetyslokin ja delivery event -mallin tarkempi suunnitelma on dokumentissa
+`docs/architecture/invoice-delivery-events-plan.md`.
 
 Lähetysloki ei saa tallentaa sähköpostin salasanoja, SMTP-salaisuuksia tai
 tarpeettoman pitkiä teknisiä provider-virheitä käyttäjälle näkyvään muotoon.

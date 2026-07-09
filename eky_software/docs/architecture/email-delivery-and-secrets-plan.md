@@ -409,6 +409,10 @@ Lähetystapahtuma auditoidaan myöhemmin esimerkiksi
 sähköpostisalaisuuksia, OAuth-tokenia, SMTP-salasanaa tai tarpeettoman pitkiä
 provider-debug-vastauksia.
 
+Delivery event -mallin, send-polun auditoinnin ja uudelleenlähetyksen tarkempi
+suunnitelma on dokumentissa
+`docs/architecture/invoice-delivery-events-plan.md`.
+
 ## Deliverability-tuotantotarkistus
 
 Ennen oikeaa tuotantolähetystä tarkistetaan sähköpostin perillemenoon liittyvät
