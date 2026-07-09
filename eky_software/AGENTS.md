@@ -115,6 +115,12 @@ SMTP/Gmail/Microsoft-sähköpostiadaptereita, `sent`-tilaa, laskun kopiointia,
 peruutusta, hyvityslaskua tai lähetyslokia, lue myös
 `docs/architecture/invoice-delivery-plan.md`.
 
+Jos työ koskee laskun sähköpostilähetystä, SMTP/Gmail/Microsoft-provideria,
+dry-run-sähköpostia, sähköpostiasetuksia, sähköpostisalaisuuksia, OAuth-tokenia,
+Windows Credential Manageria, Secret Manageria tai sähköpostiproviderin
+rajapintaa, lue myös
+`docs/architecture/email-delivery-and-secrets-plan.md`.
+
 Jos työ koskee laskutuksen web-käyttöliittymää, laskuluonnoslistaa, Classic-laskutusnäkymää, uuden laskun lomaketta tai laskuluonnoksen avaamista ja muokkaamista webissä, lue myös `docs/architecture/invoicing-ui-roadmap.md`.
 
 Jos työ koskee web-käyttöliittymän ulkoasua, layoutia, komponenttirakennetta, värejä tai Eky-työpöytäkokemusta, lue myös `docs/design/ui-principles.md`.

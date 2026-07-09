@@ -287,6 +287,23 @@ kuten `seller_iban`, `seller_bic` ja `seller_bank_name`. PDF, tulostus ja
 sähköpostilähetys käyttävät hyväksytyn laskun snapshot-tietoja, eivät sen
 hetkisiä muuttuvia Oma yritys -asetuksia.
 
+Sähköpostin lähetysasetusten käyttäjälle näkyvä hallinta voi myöhemmin sijaita
+Oma yritys / Asetukset -kokonaisuudessa. Company Settings saa näyttää ja
+muokata ei-salaisia asetuksia, kuten lähettäjän nimen, lähettäjän
+sähköpostiosoitteen, SMTP hostin, SMTP portin, security-valinnan, username-arvon
+ja tiedon siitä, onko salaisuus asetettu.
+
+Tavoiteltu käyttökokemus on, että käyttäjä voi myöhemmin määrittää oman
+sähköpostitilinsä lähetysasetukset Ekyssä ja lähettää laskun suoraan
+hyväksytyn laskun näkymästä. Tämä tarkoittaa backendin hallittua
+SMTP/Gmail/Microsoft-provideria, ei webmail-käyttöliittymän automatisointia.
+
+Company Settings ei saa näyttää, palauttaa API:ssa tai tallentaa näkyvään
+tietokantakenttään SMTP-salasanaa, OAuth refresh tokenia tai muuta
+sähköpostisalaisuutta. Salaisuuksien hallinta ja email-providerien tarkka malli
+on kuvattu dokumentissa
+`docs/architecture/email-delivery-and-secrets-plan.md`.
+
 Asiakaskortissa on Hinnoittelu-osio asiakaskohtaista tuntihintaa varten.
 
 Asiakaskortin tuntihintakentän ohjeteksti voi olla:
