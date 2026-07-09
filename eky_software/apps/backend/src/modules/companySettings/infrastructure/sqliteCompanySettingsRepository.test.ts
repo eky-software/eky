@@ -34,6 +34,13 @@ const addVatNumberMigrationSql = readFileSync(
   ),
   'utf8',
 );
+const addEmailSettingsMigrationSql = readFileSync(
+  new URL(
+    '../../../database/migrations/023_add_company_email_settings.sql',
+    import.meta.url,
+  ),
+  'utf8',
+);
 describe('SqliteCompanySettingsRepository', () => {
   let database: DatabaseConnection;
 
@@ -46,6 +53,7 @@ describe('SqliteCompanySettingsRepository', () => {
     database.exec(
       "ALTER TABLE company_settings ADD COLUMN website TEXT NOT NULL DEFAULT '';",
     );
+    database.exec(addEmailSettingsMigrationSql);
   });
 
   afterEach(() => {
@@ -76,6 +84,14 @@ describe('SqliteCompanySettingsRepository', () => {
       bic: 'OKOYFIHH',
       bankName: 'Updated Bank',
       vatNumber: 'FI87654321',
+      emailDeliveryProvider: 'smtp',
+      emailSenderName: 'Updated Sender',
+      emailSenderAddress: 'sender@example.fi',
+      emailSmtpHost: 'smtp.dnamail.fi',
+      emailSmtpPort: 587,
+      emailSmtpSecurity: 'starttls',
+      emailUsername: 'sender@example.fi',
+      emailTestRecipientOverride: 'test@example.fi',
       updatedAt: '2026-06-26T00:00:00.000Z',
     });
 
@@ -86,6 +102,15 @@ describe('SqliteCompanySettingsRepository', () => {
       bic: 'OKOYFIHH',
       bankName: 'Updated Bank',
       vatNumber: 'FI87654321',
+      emailDeliveryProvider: 'smtp',
+      emailSenderName: 'Updated Sender',
+      emailSenderAddress: 'sender@example.fi',
+      emailSmtpHost: 'smtp.dnamail.fi',
+      emailSmtpPort: 587,
+      emailSmtpSecurity: 'starttls',
+      emailUsername: 'sender@example.fi',
+      emailTestRecipientOverride: 'test@example.fi',
+      emailSecretConfigured: false,
       updatedAt: '2026-06-26T00:00:00.000Z',
     });
   });
@@ -101,6 +126,15 @@ function createSettings(): CompanySettings {
     createdAt: '2026-06-25T00:00:00.000Z',
     defaultHourlyRateCents: 6500,
     email: 'info@example.fi',
+    emailDeliveryProvider: 'dryRun',
+    emailSenderName: '',
+    emailSenderAddress: '',
+    emailSmtpHost: '',
+    emailSmtpPort: null,
+    emailSmtpSecurity: 'starttls',
+    emailUsername: '',
+    emailTestRecipientOverride: '',
+    emailSecretConfigured: false,
     hourlyRateShortcut: 'työ',
     website: 'www.example.fi',
     iban: 'FI2112345600000785',

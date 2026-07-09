@@ -15,6 +15,15 @@ export interface CompanySettingsForm {
   email: string;
   phone: string;
   website: string;
+  emailDeliveryProvider: 'dryRun' | 'smtp';
+  emailSenderName: string;
+  emailSenderAddress: string;
+  emailSmtpHost: string;
+  emailSmtpPort: string;
+  emailSmtpSecurity: 'tls' | 'starttls';
+  emailUsername: string;
+  emailTestRecipientOverride: string;
+  emailSecretConfigured: boolean;
   iban: string;
   bic: string;
   bankName: string;
@@ -32,6 +41,15 @@ export const initialCompanySettingsForm: CompanySettingsForm = {
   email: '',
   phone: '',
   website: '',
+  emailDeliveryProvider: 'dryRun',
+  emailSenderName: '',
+  emailSenderAddress: '',
+  emailSmtpHost: '',
+  emailSmtpPort: '',
+  emailSmtpSecurity: 'starttls',
+  emailUsername: '',
+  emailTestRecipientOverride: '',
+  emailSecretConfigured: false,
   iban: '',
   bic: '',
   bankName: '',
@@ -50,6 +68,15 @@ export function toCompanySettingsForm(settings: CompanySettings): CompanySetting
     email: settings.email,
     phone: settings.phone,
     website: settings.website,
+    emailDeliveryProvider: settings.emailDeliveryProvider,
+    emailSenderName: settings.emailSenderName,
+    emailSenderAddress: settings.emailSenderAddress,
+    emailSmtpHost: settings.emailSmtpHost,
+    emailSmtpPort: settings.emailSmtpPort === null ? '' : String(settings.emailSmtpPort),
+    emailSmtpSecurity: settings.emailSmtpSecurity,
+    emailUsername: settings.emailUsername,
+    emailTestRecipientOverride: settings.emailTestRecipientOverride,
+    emailSecretConfigured: settings.emailSecretConfigured,
     iban: formatCompanyIbanInput(settings.iban),
     bic: settings.bic,
     bankName: settings.bankName,
@@ -71,6 +98,20 @@ export function toUpdateCompanySettingsRequest(
     email: form.email,
     phone: form.phone,
     website: form.website.trim(),
+    emailDeliveryProvider: form.emailDeliveryProvider,
+    emailSenderName: form.emailSenderName.trim(),
+    emailSenderAddress: normalizeCompanyEmailAddressInput(
+      form.emailSenderAddress,
+      'Invalid company email sender address.',
+    ),
+    emailSmtpHost: normalizeCompanySmtpHostInput(form.emailSmtpHost),
+    emailSmtpPort: parseCompanySmtpPortInput(form.emailSmtpPort),
+    emailSmtpSecurity: form.emailSmtpSecurity,
+    emailUsername: form.emailUsername.trim(),
+    emailTestRecipientOverride: normalizeCompanyEmailAddressInput(
+      form.emailTestRecipientOverride,
+      'Invalid company email test recipient.',
+    ),
     iban: normalizeCompanyIbanInput(form.iban),
     bic: normalizeCompanyBicInput(form.bic),
     bankName: normalizeCompanyBankNameInput(form.bankName),
@@ -140,6 +181,64 @@ export function normalizeCompanyVatNumberInput(value: string): string {
 
   if (!/^FI\d{8}$/.test(normalizedValue)) {
     throw new Error('Invalid company VAT number.');
+  }
+
+  return normalizedValue;
+}
+
+export function parseCompanySmtpPortInput(value: string): number | null {
+  const normalizedValue = value.trim();
+
+  if (normalizedValue === '') {
+    return null;
+  }
+
+  if (!/^\d+$/.test(normalizedValue)) {
+    throw new Error('Invalid company SMTP port.');
+  }
+
+  const port = Number(normalizedValue);
+
+  if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
+    throw new Error('Invalid company SMTP port.');
+  }
+
+  return port;
+}
+
+export function normalizeCompanySmtpHostInput(value: string): string {
+  const normalizedValue = value.trim().toLowerCase();
+
+  if (normalizedValue === '') {
+    return '';
+  }
+
+  if (
+    normalizedValue.length > 253 ||
+    /[\s/\\:@]/.test(normalizedValue) ||
+    !/^[a-z0-9.-]+$/.test(normalizedValue)
+  ) {
+    throw new Error('Invalid company SMTP host.');
+  }
+
+  return normalizedValue;
+}
+
+export function normalizeCompanyEmailAddressInput(
+  value: string,
+  errorMessage: string,
+): string {
+  const normalizedValue = value.trim();
+
+  if (normalizedValue === '') {
+    return '';
+  }
+
+  if (
+    normalizedValue.length > 254 ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedValue)
+  ) {
+    throw new Error(errorMessage);
   }
 
   return normalizedValue;

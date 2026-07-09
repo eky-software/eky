@@ -64,6 +64,15 @@ function parseCompanySettings(value: unknown): CompanySettings {
     typeof value.email !== 'string' ||
     typeof value.phone !== 'string' ||
     typeof value.website !== 'string' ||
+    !isEmailDeliveryProvider(value.emailDeliveryProvider) ||
+    typeof value.emailSenderName !== 'string' ||
+    typeof value.emailSenderAddress !== 'string' ||
+    typeof value.emailSmtpHost !== 'string' ||
+    !isNullableNumber(value.emailSmtpPort) ||
+    !isEmailSmtpSecurity(value.emailSmtpSecurity) ||
+    typeof value.emailUsername !== 'string' ||
+    typeof value.emailTestRecipientOverride !== 'string' ||
+    typeof value.emailSecretConfigured !== 'boolean' ||
     typeof value.iban !== 'string' ||
     typeof value.bic !== 'string' ||
     typeof value.bankName !== 'string' ||
@@ -89,6 +98,15 @@ function parseCompanySettings(value: unknown): CompanySettings {
     email: value.email,
     phone: value.phone,
     website: value.website,
+    emailDeliveryProvider: value.emailDeliveryProvider,
+    emailSenderName: value.emailSenderName,
+    emailSenderAddress: value.emailSenderAddress,
+    emailSmtpHost: value.emailSmtpHost,
+    emailSmtpPort: value.emailSmtpPort,
+    emailSmtpSecurity: value.emailSmtpSecurity,
+    emailUsername: value.emailUsername,
+    emailTestRecipientOverride: value.emailTestRecipientOverride,
+    emailSecretConfigured: value.emailSecretConfigured,
     iban: value.iban,
     bic: value.bic,
     bankName: value.bankName,
@@ -101,4 +119,12 @@ function parseCompanySettings(value: unknown): CompanySettings {
 
 function isNullableNumber(value: unknown): value is number | null {
   return value === null || typeof value === 'number';
+}
+
+function isEmailDeliveryProvider(value: unknown): value is 'dryRun' | 'smtp' {
+  return value === 'dryRun' || value === 'smtp';
+}
+
+function isEmailSmtpSecurity(value: unknown): value is 'tls' | 'starttls' {
+  return value === 'tls' || value === 'starttls';
 }

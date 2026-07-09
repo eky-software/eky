@@ -10,6 +10,15 @@ export interface CompanySettings {
   email: string;
   phone: string;
   website: string;
+  emailDeliveryProvider: 'dryRun' | 'smtp';
+  emailSenderName: string;
+  emailSenderAddress: string;
+  emailSmtpHost: string;
+  emailSmtpPort: number | null;
+  emailSmtpSecurity: 'tls' | 'starttls';
+  emailUsername: string;
+  emailTestRecipientOverride: string;
+  emailSecretConfigured: boolean;
   iban: string;
   bic: string;
   bankName: string;
@@ -35,6 +44,14 @@ export interface CreateCompanySettingsDomainInput {
   bic: string;
   now: string;
   phone: string;
+  emailDeliveryProvider: 'dryRun' | 'smtp';
+  emailSenderName: string;
+  emailSenderAddress: string;
+  emailSmtpHost: string;
+  emailSmtpPort: number | null;
+  emailSmtpSecurity: 'tls' | 'starttls';
+  emailUsername: string;
+  emailTestRecipientOverride: string;
   postalCode: string;
   streetAddress: string;
 }
@@ -54,6 +71,15 @@ export function createCompanySettingsRecord(
     email: input.email,
     phone: input.phone,
     website: input.website,
+    emailDeliveryProvider: input.emailDeliveryProvider,
+    emailSenderName: input.emailSenderName,
+    emailSenderAddress: input.emailSenderAddress,
+    emailSmtpHost: input.emailSmtpHost,
+    emailSmtpPort: input.emailSmtpPort,
+    emailSmtpSecurity: input.emailSmtpSecurity,
+    emailUsername: input.emailUsername,
+    emailTestRecipientOverride: input.emailTestRecipientOverride,
+    emailSecretConfigured: false,
     iban: input.iban,
     bic: input.bic,
     bankName: input.bankName,
@@ -77,6 +103,15 @@ export function createEmptyCompanySettings(companyId: string): CompanySettings {
     email: '',
     phone: '',
     website: '',
+    emailDeliveryProvider: 'dryRun',
+    emailSenderName: '',
+    emailSenderAddress: '',
+    emailSmtpHost: '',
+    emailSmtpPort: null,
+    emailSmtpSecurity: 'starttls',
+    emailUsername: '',
+    emailTestRecipientOverride: '',
+    emailSecretConfigured: false,
     iban: '',
     bic: '',
     bankName: '',

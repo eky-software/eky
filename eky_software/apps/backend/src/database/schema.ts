@@ -30,6 +30,14 @@ export interface CompanySettingsTable {
   email: string;
   phone: string;
   website: string;
+  email_delivery_provider: string;
+  email_sender_name: string;
+  email_sender_address: string;
+  email_smtp_host: string;
+  email_smtp_port: number | null;
+  email_smtp_security: string;
+  email_username: string;
+  email_test_recipient_override: string;
   iban: string;
   bic: string;
   bank_name: string;

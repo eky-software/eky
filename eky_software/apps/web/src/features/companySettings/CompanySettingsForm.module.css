@@ -46,6 +46,13 @@
   line-height: 1.45;
 }
 
+.readOnlyLabel {
+  display: block;
+  color: #26374d;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
 .fieldsetHelp {
   margin: 0 0 12px;
   color: var(--color-text-muted);
