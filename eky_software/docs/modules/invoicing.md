@@ -26,6 +26,10 @@ sähköpostitoimituksen turvallisuuslinja, `sent`-tila, laskun kopiointi,
 peruutus ja hyvityslaskut on kuvattu dokumentissa
 `docs/architecture/invoice-delivery-plan.md`.
 
+Sähköpostilähetyksen provider-malli, dry-run-vaihe, SMTP/Gmail-linja ja
+salaisuuksien hallinta on kuvattu dokumentissa
+`docs/architecture/email-delivery-and-secrets-plan.md`.
+
 ALV-erikoiskäsittelyjen, ALV-kantojen tuotantopolun, viivästyskoron ja
 lähetettyjen laskujen korjausperiaatteiden muistilista on kuvattu dokumentissa
 `docs/architecture/invoicing-tax-and-correction-roadmap.md`.
@@ -47,6 +51,7 @@ lähetettyjen laskujen korjausperiaatteiden muistilista on kuvattu dokumentissa
 - laskulla käytetyt hinta- ja osapuolitietojen snapshotit
 - laskutuksen audit-tapahtumat
 - hyvityslaskut myöhemmin
+- laskun sähköpostitoimituksen liiketoimintasäännöt myöhemmin
 
 ## Moduuli ei omista
 
@@ -58,6 +63,8 @@ lähetettyjen laskujen korjausperiaatteiden muistilista on kuvattu dokumentissa
 - tuntikirjausten alkuperäistä dataa
 - materiaalikirjausten alkuperäistä dataa
 - varastosaldoja
+- SMTP-salasanoja, OAuth-tokeneita tai teknisten email-providerien salaisuuksia
+- yleistä backend email infrastructure -toteutusta
 
 ## Tärkeitä käsitteitä
 

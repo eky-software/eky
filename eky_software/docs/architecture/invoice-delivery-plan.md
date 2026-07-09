@@ -7,6 +7,10 @@ hyvityslaskut.
 Dokumentti on suunnitelma. Se ei muuta nykyistä MVP-toteutusta eikä lisää
 uusia reittejä, tietokantatauluja, UI-toimintoja tai riippuvuuksia.
 
+Sähköpostilähetyksen provider-malli, dry-run-vaihe, SMTP/Gmail-linja ja
+salaisuuksien hallinta on tarkennettu dokumentissa
+`docs/architecture/email-delivery-and-secrets-plan.md`.
+
 Toteutustilanne:
 
 - hyväksytyn laskun PDF voidaan muodostaa ja avata selaimessa
@@ -64,6 +68,10 @@ käyttäjän toimintoa tai myöhemmin määriteltyä audit-polkuun kuuluvaa sä�
 
 Sähköpostilähetys tehdään myöhemmin backendin hallitun business-toiminnon kautta.
 
+Tämä dokumentti kuvaa toimitusputken laskutuksen näkökulmasta. Teknisen
+sähköpostiproviderin, salaisuuksien ja dry-run-toteutuksen tarkemmat säännöt
+ovat dokumentissa `docs/architecture/email-delivery-and-secrets-plan.md`.
+
 Tuleva portti voi olla esimerkiksi:
 
 ```ts
@@ -81,6 +89,10 @@ Mahdollisia adaptereita:
 - `DryRunEmailDeliveryProvider`
 
 `webmail.dna.fi` on käyttöliittymä, ei integraatiorajapinta.
+
+Tavoite ei ole luopua automaattisesta sähköpostilähetyksestä. Tavoite on tehdä
+automaattinen lähetys turvallisesti backendin SMTP/Gmail/Microsoft-providerin
+kautta, ei webmail-käyttöliittymää klikkailemalla.
 
 Eky ei saa toteuttaa:
 
@@ -129,7 +141,7 @@ SMTP-portit:
 - portti `25`, salaamaton
   - vain tilanteisiin, joissa salattu yhteys ei ole mahdollinen
   - voi toimia ilman autentikointia DNA:n verkosta
-  - ei suositella Eky-ohjelman oletukseksi
+  - ei käytetä Eky-ohjelman oletuksena
 - portti `465`, TLS-salattu
   - autentikointi
   - voi toimia ilman autentikointia DNA:n verkosta
@@ -138,6 +150,12 @@ SMTP-portit:
   - autentikointi
   - voi toimia ilman autentikointia DNA:n verkosta
   - suositeltava moderni SMTP-vaihtoehto, jos tilin asetukset tukevat sitä
+
+Ekyssä laskujen SMTP-lähetys edellyttää salattua yhteyttä. SMTP-adapteri ei saa
+lähettää laskua, jos TLS- tai STARTTLS-neuvottelu epäonnistuu, eikä se saa
+hyväksyä virheellistä TLS-sertifikaattia hiljaisesti. SMTP TLS/STARTTLS on
+siirtotason suojaus Eky-backendin ja sähköpostipalvelimen välillä, ei
+päästä päähän -salaus.
 
 Koska Eky voi myöhemmin ajaa pilvessä tai muualla kuin DNA:n omassa verkossa,
 ei saa luottaa siihen, että SMTP toimii ilman autentikointia DNA:n verkosta.
@@ -155,6 +173,10 @@ Suositeltu tuleva DNA SMTP MVP -linja:
 - credentials eivät koskaan kuulu Git-repositorioon
 - credentials eivät koskaan mene frontendille
 - lähetys testataan ensin dry-run- tai test recipient override -tilassa
+
+Käyttäjä voi myöhemmin hallita ei-salaisia SMTP-asetuksia Oma yritys /
+Asetukset -näkymässä. SMTP-salaisuus asetetaan tai vaihdetaan hallitulla
+toiminnolla, mutta sitä ei näytetä takaisin käyttäjälle eikä palauteta API:ssa.
 
 IMAP/POP3 eivät ole laskun lähettämisen kannalta ensisijaisia. Niitä voidaan
 tarvita myöhemmin esimerkiksi lähetettyjen viestien tarkistukseen tai
