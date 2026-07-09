@@ -141,7 +141,7 @@ SMTP-portit:
 - portti `25`, salaamaton
   - vain tilanteisiin, joissa salattu yhteys ei ole mahdollinen
   - voi toimia ilman autentikointia DNA:n verkosta
-  - ei suositella Eky-ohjelman oletukseksi
+  - ei käytetä Eky-ohjelman oletuksena
 - portti `465`, TLS-salattu
   - autentikointi
   - voi toimia ilman autentikointia DNA:n verkosta
@@ -150,6 +150,12 @@ SMTP-portit:
   - autentikointi
   - voi toimia ilman autentikointia DNA:n verkosta
   - suositeltava moderni SMTP-vaihtoehto, jos tilin asetukset tukevat sitä
+
+Ekyssä laskujen SMTP-lähetys edellyttää salattua yhteyttä. SMTP-adapteri ei saa
+lähettää laskua, jos TLS- tai STARTTLS-neuvottelu epäonnistuu, eikä se saa
+hyväksyä virheellistä TLS-sertifikaattia hiljaisesti. SMTP TLS/STARTTLS on
+siirtotason suojaus Eky-backendin ja sähköpostipalvelimen välillä, ei
+päästä päähän -salaus.
 
 Koska Eky voi myöhemmin ajaa pilvessä tai muualla kuin DNA:n omassa verkossa,
 ei saa luottaa siihen, että SMTP toimii ilman autentikointia DNA:n verkosta.

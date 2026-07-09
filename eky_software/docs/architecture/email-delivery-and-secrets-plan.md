@@ -212,6 +212,43 @@ Virhetilanteissa providerin tekninen virhe muunnetaan käyttäjälle turvallisek
 viestiksi. Salaisuuksia, SMTP-käyttäjätunnuksia, tokenin osia tai providerin
 raakoja debug-vastauksia ei näytetä käyttäjälle eikä kirjoiteta lokiin.
 
+## SMTP-Liikenteen Salaus
+
+SMTP-lähetys saa käyttää vain salattua yhteyttä.
+
+Sallitut tulevat mallit:
+
+- portti `587` ja STARTTLS
+- portti `465` ja TLS heti yhteyden alusta
+
+SMTP-adapteri ei saa lähettää viestiä, jos TLS- tai STARTTLS-neuvottelu
+epäonnistuu.
+
+SMTP-adapteri ei saa hyväksyä virheellistä TLS-sertifikaattia hiljaisesti.
+
+Porttia `25` ei käytetä oletuksena Ekyssä. Sitä ei käytetä laskujen
+automaattiseen lähetykseen ilman erillistä myöhempää arkkitehtuuri- ja
+turvallisuuspäätöstä.
+
+SMTP TLS/STARTTLS suojaa liikenteen Eky-backendin ja SMTP-palvelimen välillä.
+Se ei ole päästä päähän -salaus. Sähköpostipalveluntarjoaja ja vastaanottajan
+sähköpostipalvelin voivat normaalin sähköpostitoimituksen osana käsitellä
+viestin ja PDF-liitteen.
+
+Jos myöhemmin vaaditaan suojaus, jossa edes sähköpostipalveluntarjoaja ei voi
+lukea viestiä tai liitettä, se pitää suunnitella erikseen esimerkiksi PGP- tai
+S/MIME-tyyppisenä päästä päähän -salauksena. Tämä ei kuulu MVP-laskutuksen
+sähköpostipolkuun.
+
+SMTP-adapterin tulevissa testeissä tarkistetaan vähintään:
+
+- lähetys ei onnistu ilman TLS/STARTTLS-suojausta
+- STARTTLS-virhe estää lähetyksen
+- virheellinen sertifikaatti estää lähetyksen
+- SMTP-salasana ei päädy lokiin
+- viestin runko tai PDF-sisältö ei päädy lokiin
+- dry-run ei tarvitse salaisuuksia
+
 ## Local Windows -Malli
 
 Paikallisen Windows-version suositeltu salaisuusmalli:
@@ -279,6 +316,12 @@ Alustava DNA SMTP -linja:
 - authentication: required
 - vaihtoehtoinen portti: `465` TLS
 - porttia `25` ei käytetä oletuksena
+
+DNA:n tukisivu listaa lähtevälle postille salatuiksi vaihtoehdoiksi portin
+`465` TLS:llä ja portin `587` STARTTLS:llä. Portti `25` on DNA:n ohjeessa
+rajattu tilanteisiin, joissa salattu yhteys ei ole lähettävän ohjelmiston
+puolesta mahdollinen. Ekyssä salattu yhteys on vaatimus, joten portti `25` ei
+ole oletuspolku.
 
 Käyttäjä voi myöhemmin syöttää Oma yritys / Sähköpostiasetukset -näkymässä
 tarvittavat SMTP-asetukset ja salaisuuden asettamisen. Salaisuutta ei näytetä
