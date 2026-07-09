@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   createEkyApiClient,
   EkyApiError,
+  type ApprovedInvoiceEmailDryRunSendInput,
+  type ApprovedInvoiceEmailDryRunSendResult,
+  type ApprovedInvoiceEmailPreview,
   type ApprovedInvoiceSummary,
   type ApprovedInvoiceView,
   type InvoiceDraft,
@@ -187,6 +190,62 @@ describe('approved invoices api client', () => {
     ]);
   });
 
+  it('sends a dry-run invoice email through POST /invoices/:id/email/dry-run/send', async () => {
+    const requests = createRequestLog();
+    const delivery = createTestApprovedInvoiceEmailDryRunSendResult();
+    const input: ApprovedInvoiceEmailDryRunSendInput = {
+      body: 'Hei,\n\nMuokattu viesti.',
+      cc: 'copy@example.fi',
+      subject: 'Lasku 20260001 - muokattu',
+      to: 'recipient@example.fi',
+    };
+    const client = createTestClient(requests, { delivery });
+
+    const result = await client.sendApprovedInvoiceEmailDryRun(
+      'invoice/1',
+      input,
+    );
+
+    expect(result).toEqual(delivery);
+    expect(requests[0]).toEqual(
+      {
+        input: '/invoices/invoice%2F1/email/dry-run/send',
+        init: {
+          body: expect.any(String) as string,
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          method: 'POST',
+        },
+      },
+    );
+    expect(JSON.parse(String(requests[0]?.init?.body))).toEqual(input);
+  });
+
+  it('does not send server-owned fields in dry-run invoice email requests', async () => {
+    const requests = createRequestLog();
+    const delivery = createTestApprovedInvoiceEmailDryRunSendResult();
+    const client = createTestClient(requests, { delivery });
+    const unsafeInput = {
+      body: 'Hei',
+      companyId: 'other-company',
+      deliveryEventId: 'event-from-client',
+      providerResult: { provider: 'smtp' },
+      status: 'succeeded',
+      subject: 'Lasku',
+      to: 'recipient@example.fi',
+    } as unknown as ApprovedInvoiceEmailDryRunSendInput;
+
+    await client.sendApprovedInvoiceEmailDryRun('invoice-1', unsafeInput);
+
+    expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({
+      body: 'Hei',
+      subject: 'Lasku',
+      to: 'recipient@example.fi',
+    });
+  });
+
   it('copies an approved invoice to a draft through POST /invoices/:id/copy-to-draft', async () => {
     const requests = createRequestLog();
     const invoiceDraft = createTestInvoiceDraft();
@@ -260,6 +319,24 @@ describe('approved invoices api client', () => {
 
     await expect(
       client.prepareApprovedInvoiceEmailDryRun('invoice-1'),
+    ).rejects.toBeInstanceOf(EkyApiError);
+  });
+
+  it('rejects a malformed dry-run email send response', async () => {
+    const requests = createRequestLog();
+    const client = createTestClient(requests, {
+      delivery: {
+        ...createTestApprovedInvoiceEmailDryRunSendResult(),
+        providerResult: { provider: 'smtp', providerMessageId: null },
+      },
+    });
+
+    await expect(
+      client.sendApprovedInvoiceEmailDryRun('invoice-1', {
+        body: 'Hei',
+        subject: 'Lasku',
+        to: 'recipient@example.fi',
+      }),
     ).rejects.toBeInstanceOf(EkyApiError);
   });
 
@@ -499,7 +576,7 @@ function createTestApprovedInvoiceDocumentMetadata() {
   };
 }
 
-function createTestApprovedInvoiceEmailPreview() {
+function createTestApprovedInvoiceEmailPreview(): ApprovedInvoiceEmailPreview {
   return {
     attachment: {
       documentId: 'document-1',
@@ -513,6 +590,22 @@ function createTestApprovedInvoiceEmailPreview() {
     provider: 'dryRun',
     subject: 'Lasku 20260001',
     to: 'recipient@example.fi',
+  };
+}
+
+function createTestApprovedInvoiceEmailDryRunSendResult(): ApprovedInvoiceEmailDryRunSendResult {
+  return {
+    deliveryEventId: 'delivery-event-1',
+    email: {
+      ...createTestApprovedInvoiceEmailPreview(),
+      body: 'Hei,\n\nMuokattu viesti.',
+      cc: 'copy@example.fi',
+      subject: 'Lasku 20260001 - muokattu',
+    },
+    providerResult: {
+      provider: 'dryRun',
+      providerMessageId: null,
+    },
   };
 }
 

@@ -2,6 +2,7 @@ import { requestJson } from '../../http.js';
 import { readInvoiceDraftResponse } from '../invoiceDrafts/invoiceDraftsResponse.js';
 import {
   readApprovedInvoiceDocumentMetadataResponse,
+  readApprovedInvoiceEmailDryRunSendResponse,
   readApprovedInvoiceEmailPreviewResponse,
   readApprovedInvoiceListResponse,
   readApprovedInvoiceResponse,
@@ -9,6 +10,8 @@ import {
 } from './approvedInvoicesResponse.js';
 import type {
   ApprovedInvoiceDocumentMetadata,
+  ApprovedInvoiceEmailDryRunSendInput,
+  ApprovedInvoiceEmailDryRunSendResult,
   ApprovedInvoicesApi,
   ApprovedInvoiceSummary,
   ApprovedInvoiceView,
@@ -103,6 +106,26 @@ export function createApprovedInvoicesApi(
       return readApprovedInvoiceEmailPreviewResponse(responseBody);
     },
 
+    async sendApprovedInvoiceEmailDryRun(
+      id,
+      input: ApprovedInvoiceEmailDryRunSendInput,
+    ): Promise<ApprovedInvoiceEmailDryRunSendResult> {
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        `/invoices/${encodeURIComponent(id)}/email/dry-run/send`,
+        {
+          body: JSON.stringify(createApprovedInvoiceEmailDryRunSendBody(input)),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          method: 'POST',
+        },
+      );
+
+      return readApprovedInvoiceEmailDryRunSendResponse(responseBody);
+    },
+
     async reopenApprovedInvoiceForEditing(
       id,
     ): Promise<ReopenedApprovedInvoice> {
@@ -116,4 +139,20 @@ export function createApprovedInvoicesApi(
       return readReopenedApprovedInvoiceResponse(responseBody);
     },
   };
+}
+
+function createApprovedInvoiceEmailDryRunSendBody(
+  input: ApprovedInvoiceEmailDryRunSendInput,
+): ApprovedInvoiceEmailDryRunSendInput {
+  const body: ApprovedInvoiceEmailDryRunSendInput = {
+    body: input.body,
+    subject: input.subject,
+    to: input.to,
+  };
+
+  if (input.cc !== undefined) {
+    body.cc = input.cc;
+  }
+
+  return body;
 }

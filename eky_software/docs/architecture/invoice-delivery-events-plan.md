@@ -234,11 +234,16 @@ Toteutettu ensimmäisessä backend-vaiheessa:
 - delivery eventin application service
 - backendin dry-run send -käyttötapa
 - HTTP-reitti backendin sisäiseen dry-run send -polkuun
+- API-clientin dry-run send -kutsu
+- webin kuivaharjoittelulähetyksen toiminto sähköpostiesikatselussa
+
+Webin kuivaharjoittelutoiminto lähettää käyttäjän muokkaamat `to`, `cc`,
+`subject` ja `body` -kentät backendin dry-run-send-polulle. Backend varmistaa
+PDF:n, validoi kentät ja kirjaa delivery eventin. Tämä ei muuta laskua
+`sent`-tilaan eikä lähetä oikeaa sähköpostia.
 
 Ei vielä toteuteta:
 
-- API-clientiä
-- webin lähetysnappia
 - SMTP-provideria
 - Gmail-provideria
 - Secret Manageria

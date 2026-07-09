@@ -405,6 +405,7 @@ function renderPage(
     | 'invoicePaymentDefaultsState'
     | 'markApprovedInvoiceSentState'
     | 'reopenApprovedInvoiceState'
+    | 'sendApprovedInvoiceEmailState'
     | 'onCancelDeleteDraft'
     | 'onConfirmDeleteDraft'
     | 'onCreateApprovedInvoicePdf'
@@ -416,6 +417,7 @@ function renderPage(
     | 'onOpenApprovedInvoice'
     | 'onOpenApprovedInvoicePdf'
     | 'onPrepareApprovedInvoiceEmail'
+    | 'onSendApprovedInvoiceEmailDryRun'
     | 'onRequestDeleteDraft'
     | 'pendingDeleteDraftId'
     | 'refreshDrafts'
@@ -433,6 +435,7 @@ function renderPage(
         | 'invoicePaymentDefaultsState'
         | 'markApprovedInvoiceSentState'
         | 'reopenApprovedInvoiceState'
+        | 'sendApprovedInvoiceEmailState'
         | 'onCancelDeleteDraft'
         | 'onConfirmDeleteDraft'
         | 'onCreateApprovedInvoicePdf'
@@ -444,6 +447,7 @@ function renderPage(
         | 'onOpenApprovedInvoice'
         | 'onOpenApprovedInvoicePdf'
         | 'onPrepareApprovedInvoiceEmail'
+        | 'onSendApprovedInvoiceEmailDryRun'
         | 'onRequestDeleteDraft'
         | 'pendingDeleteDraftId'
         | 'refreshDrafts'
@@ -462,6 +466,7 @@ function renderPage(
       invoicePaymentDefaultsState={createInvoicePaymentDefaultsState()}
       markApprovedInvoiceSentState={createMarkApprovedInvoiceSentState()}
       reopenApprovedInvoiceState={createReopenApprovedInvoiceState()}
+      sendApprovedInvoiceEmailState={createSendApprovedInvoiceEmailState()}
       onCancelDeleteDraft={vi.fn()}
       onConfirmDeleteDraft={vi.fn()}
       onCreateApprovedInvoicePdf={vi.fn()}
@@ -473,12 +478,28 @@ function renderPage(
       onOpenApprovedInvoice={vi.fn()}
       onOpenApprovedInvoicePdf={vi.fn()}
       onPrepareApprovedInvoiceEmail={vi.fn()}
+      onSendApprovedInvoiceEmailDryRun={vi.fn()}
       onRequestDeleteDraft={vi.fn()}
       pendingDeleteDraftId={null}
       refreshDrafts={vi.fn()}
       {...props}
     />,
   );
+}
+
+function createSendApprovedInvoiceEmailState(
+  overrides: Partial<
+    InvoicingPageViewProps['sendApprovedInvoiceEmailState']
+  > = {},
+): InvoicingPageViewProps['sendApprovedInvoiceEmailState'] {
+  return {
+    clearStatus: vi.fn(),
+    errorMessage: null,
+    isSending: false,
+    sendEmailDryRun: vi.fn(async () => null),
+    successMessage: null,
+    ...overrides,
+  };
 }
 
 function createApprovedInvoiceEmailState(
