@@ -93,6 +93,17 @@ MVP:ssä `cc_email` on yksi vapaaehtoinen tekstikenttä. Jos myöhemmin tarvitaa
 useita kopio-osoitteita, se päätetään erikseen esimerkiksi erillisellä
 rakenteella tai JSON-kentällä.
 
+`provider_message_id` ei ole Eky-järjestelmän sisäinen tunniste. Se voi
+myöhemmin sisältää esimerkiksi SMTP/Gmail/Microsoft-providerin viitetunnisteen,
+joten sitä ei validoida liian tiukalla identifier-säännöllä. Ensimmäinen sääntö:
+trim, enimmäispituus ja ei salaisuuksia tai raakaa provider-debugia.
+
+`document_id` voi MVP:ssä viitata current PDF -dokumenttiin. Kun oikea
+onnistunut sähköpostilähetys toteutetaan, pitää varmistaa, että lähetetyn
+laskun audit-polusta ei katoa tieto käytetystä dokumentista. Tämä voidaan
+ratkaista pitämällä sent-laskun PDF pysyvänä tai tallentamalla delivery eventiin
+riittävä dokumenttisnapshot, kuten tiedostonimi ja hash.
+
 ## Ei Salaisuuksia Delivery Eventeihin
 
 Delivery event ei saa tallentaa:
@@ -115,14 +126,11 @@ lyhyen `body_preview`-katkelman tai jättää rungon tallentamatta kokonaan.
 Nykyinen dry-run-esikatselu muodostaa sähköpostiluonnoksen, mutta ei lähetä
 viestiä eikä muuta laskun tilaa.
 
-Ensimmäisessä delivery event -vaiheessa päätetään erikseen, kirjataanko
-dry-run-esikatselu delivery eventiksi. Molemmat mallit ovat mahdollisia:
+Dry-run-esikatselua ei kirjata delivery eventiksi, koska mitään toimitusta ei
+vielä yritetä.
 
-- ei kirjata dry-run-esikatselua, koska mitään toimitusta ei yritetty
-- kirjataan `prepared`-tapahtuma, jos halutaan auditoida lähetysikkunan valmistelu
-
-Jos dry-run kirjataan myöhemmin, sen pitää erottua selvästi oikeasta
-lähetysyrityksestä. Dry-run ei saa merkitä laskua `sent`-tilaan.
+Käyttäjän vahvistama dry-run send kirjataan delivery eventiksi providerilla
+`dryRun`. Se ei lähetä oikeaa sähköpostia eikä saa merkitä laskua `sent`-tilaan.
 
 ## Tuleva Send Input
 
@@ -167,6 +175,9 @@ Jos provider epäonnistuu, laskua ei merkitä `sent`-tilaan.
 Virhevastauksen pitää olla käyttäjälle turvallinen. Se ei saa paljastaa
 salaisuuksia, providerin raakaa vastausta, stack tracea tai muiden yritysten
 dataa.
+
+Ensimmäinen toteutus tekee nämä säännöt dry-run-send-polussa, mutta ei vielä
+muuta laskun tilaa.
 
 ## Uudelleenlähetys
 
@@ -216,12 +227,16 @@ Suositeltu eteneminen:
 
 ## Rajaus
 
+Toteutettu ensimmäisessä backend-vaiheessa:
+
+- tietokantataulu ja migraatio
+- repository-portti ja SQLite-adapteri
+- delivery eventin application service
+- backendin dry-run send -käyttötapa
+- HTTP-reitti backendin sisäiseen dry-run send -polkuun
+
 Ei vielä toteuteta:
 
-- tietokantataulua
-- migraatiota
-- repositoryä
-- HTTP-reittiä
 - API-clientiä
 - webin lähetysnappia
 - SMTP-provideria

@@ -6,6 +6,7 @@ import {
   normalizeDeliveryCreatedBy,
   normalizeDeliveryEmail,
   normalizeDeliveryOptionalIdentifier,
+  normalizeDeliveryProviderMessageId,
   normalizeDeliverySafeErrorMessage,
   normalizeDeliverySubject,
   normalizeDeliveryTechnicalErrorCode,
@@ -60,9 +61,8 @@ export async function recordInvoiceDeliveryEvent(
     bodyPreview: normalizeDeliveryBodyPreview(
       input.bodyPreview ?? input.body,
     ),
-    providerMessageId: normalizeDeliveryOptionalIdentifier(
+    providerMessageId: normalizeDeliveryProviderMessageId(
       input.providerMessageId,
-      'Provider message id',
     ),
     safeErrorMessage: normalizeDeliverySafeErrorMessage(
       input.safeErrorMessage,

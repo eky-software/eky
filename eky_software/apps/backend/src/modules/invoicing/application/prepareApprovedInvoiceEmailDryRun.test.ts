@@ -120,6 +120,10 @@ function createApprovedInvoiceReader(
 function createDryRunProvider(): InvoiceEmailDeliveryProvider {
   return {
     prepareDryRunEmail: vi.fn(async (email) => email),
+    sendDryRunEmail: vi.fn(async () => ({
+      provider: 'dryRun' as const,
+      providerMessageId: null,
+    })),
   };
 }
 
