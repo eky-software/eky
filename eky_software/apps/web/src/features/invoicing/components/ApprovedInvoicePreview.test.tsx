@@ -140,11 +140,20 @@ describe('ApprovedInvoicePreview', () => {
 
     expect(html).toContain(uiText.invoicing.invoiceEmailPreviewTitle);
     expect(html).toContain(uiText.invoicing.invoiceEmailDryRunBadge);
-    expect(html).toContain(uiText.invoicing.invoiceEmailBodyHelp);
+    expect(html).toContain(uiText.invoicing.invoiceEmailEditHelp);
+    expect(html).toContain(uiText.invoicing.invoiceEmailToInput);
+    expect(html).toContain(uiText.invoicing.invoiceEmailCc);
+    expect(html).toContain(uiText.invoicing.invoiceEmailSubjectInput);
+    expect(html).toContain('id="invoice-email-to"');
+    expect(html).toContain('id="invoice-email-cc"');
+    expect(html).toContain('id="invoice-email-subject"');
     expect(html).toContain('<textarea');
+    expect(html).toContain('id="invoice-email-body"');
     expect(html).toContain('recipient@example.fi');
     expect(html).toContain('Lasku 20260001');
     expect(html).toContain('lasku-20260001.pdf');
+    expect(html).not.toContain('type="file"');
+    expect(html).not.toContain('>Lähetä<');
     expect(html).toContain(uiText.invoicing.invoiceEmailPrepareError);
     expect(html).not.toContain('responseBody');
     expect(html).not.toContain('stack');

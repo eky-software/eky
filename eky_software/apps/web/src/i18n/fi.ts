@@ -367,9 +367,10 @@ export const uiText = {
     invoiceDate: 'Laskun päiväys',
     invoiceEmailAttachment: 'Liite',
     invoiceEmailBody: 'Viestin sisältö',
-    invoiceEmailBodyHelp:
-      'Voit muokata viestiä ennen varsinaista lähetystä. Tässä vaiheessa sähköpostia ei vielä lähetetä.',
+    invoiceEmailCc: 'Kopio / Cc',
     invoiceEmailDryRunBadge: 'Kuivaharjoittelu',
+    invoiceEmailEditHelp:
+      'Voit muokata vastaanottajaa, kopiota, otsikkoa ja viestiä esikatselua varten. Sähköpostia ei vielä lähetetä, ja varsinainen lähetys lisätään myöhemmin.',
     invoiceEmailDryRunHelp:
       'Tätä sähköpostia ei lähetetty. Näkymä näyttää, millainen viesti muodostettaisiin laskun snapshot-tiedoista ja PDF-liitteestä.',
     invoiceEmailDryRunKicker: 'Sähköpostiluonnos',
@@ -380,7 +381,9 @@ export const uiText = {
     invoiceEmailPreparing: 'Valmistellaan...',
     invoiceEmailPreviewTitle: 'Sähköpostin esikatselu',
     invoiceEmailSubject: 'Otsikko',
+    invoiceEmailSubjectInput: 'Sähköpostin otsikko',
     invoiceEmailTo: 'Vastaanottaja',
+    invoiceEmailToInput: 'Vastaanottajan sähköposti',
     invoiceNumber: 'Laskunumero',
     invoiceRecipient: 'Laskun vastaanottaja',
     invoicePreviewOpen: 'Avaa hyväksytty lasku',
