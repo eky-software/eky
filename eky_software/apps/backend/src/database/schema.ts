@@ -217,6 +217,25 @@ export interface InvoiceDocumentTable {
   created_at: string;
 }
 
+export interface InvoiceDeliveryEventTable {
+  id: string;
+  company_id: string;
+  invoice_id: string;
+  document_id: string | null;
+  delivery_method: string;
+  provider: string;
+  status: string;
+  recipient_email: string;
+  cc_email: string;
+  subject: string;
+  body_preview: string;
+  provider_message_id: string | null;
+  safe_error_message: string | null;
+  technical_error_code: string | null;
+  created_at: string;
+  created_by: string;
+}
+
 export interface SchemaMigrationTable {
   name: string;
   run_at: string;
@@ -245,3 +264,5 @@ export type InvoiceAuditEventRow = InvoiceAuditEventTable;
 export type NewInvoiceAuditEventRow = InvoiceAuditEventTable;
 export type InvoiceDocumentRow = InvoiceDocumentTable;
 export type NewInvoiceDocumentRow = InvoiceDocumentTable;
+export type InvoiceDeliveryEventRow = InvoiceDeliveryEventTable;
+export type NewInvoiceDeliveryEventRow = InvoiceDeliveryEventTable;

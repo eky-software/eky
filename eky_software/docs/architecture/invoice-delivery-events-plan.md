@@ -3,9 +3,13 @@
 Tämä dokumentti määrittää laskun toimitustapahtumien suunnittelulinjan ennen
 varsinaista sähköpostilähetyksen toteutusta.
 
-Dokumentti on suunnitelma. Se ei lisää tietokantataulua, migraatiota,
-backend-reittiä, API-clientiä, web-toimintoa, SMTP-provideria, sähköpostin
-lähetystä, tulostinintegraatiota, riippuvuutta tai lockfile-muutosta.
+Dokumentti on suunnitelma ja toteutuksen rajaus. Ensimmäinen persistence-vaihe
+lisää delivery event -taulun, repository-portin, SQLite-adapterin ja
+application servicen tapahtuman kirjaamiseen.
+
+Dokumentti ei yksinään lisää backend-reittiä, API-clientiä, web-toimintoa,
+SMTP-provideria, sähköpostin lähetystä, tulostinintegraatiota, riippuvuutta tai
+lockfile-muutosta.
 
 ## Tavoite
 
@@ -45,9 +49,9 @@ Backend email infrastructure omistaa:
 Email infrastructure ei saa muuttaa laskun tilaa eikä kirjoittaa
 Invoicingin delivery event -tauluihin omin päin.
 
-## Tuleva Delivery Event -Tietomalli
+## Delivery Event -Tietomalli
 
-Mahdollinen tuleva taulu:
+Ensimmäinen persistence-vaihe käyttää taulua:
 
 ```text
 invoice_delivery_events
@@ -80,12 +84,14 @@ Kenttien alustava merkitys:
 - `recipient_email` tallentaa käytetyn vastaanottajan
 - `cc_email` tallentaa käyttäjän antaman kopio-osoitteen, jos annettu
 - `subject` tallentaa käytetyn otsikon
-- `body_preview` voi tallentaa rajatun version viestistä myöhempää tarkistusta varten
+- `body_preview` tallentaa enintään rajatun version viestistä myöhempää tarkistusta varten
 - `provider_message_id` tallentaa providerin palauttaman viitetunnisteen, jos sellainen on
 - `safe_error_message` tallentaa turvallisen virheviestin
 - `technical_error_code` voi tallentaa rajatun teknisen koodin ilman salaisuuksia
 
-Tarkka taulurakenne päätetään erillisessä koodivaiheessa.
+MVP:ssä `cc_email` on yksi vapaaehtoinen tekstikenttä. Jos myöhemmin tarvitaan
+useita kopio-osoitteita, se päätetään erikseen esimerkiksi erillisellä
+rakenteella tai JSON-kentällä.
 
 ## Ei Salaisuuksia Delivery Eventeihin
 
