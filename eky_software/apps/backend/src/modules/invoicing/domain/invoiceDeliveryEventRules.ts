@@ -14,6 +14,7 @@ const maximumBodyPreviewLength = 500;
 const maximumSafeErrorMessageLength = 500;
 const maximumTechnicalErrorCodeLength = 120;
 const maximumCreatedByLength = 120;
+const maximumProviderMessageIdLength = 500;
 
 export class InvoiceDeliveryEventValidationError extends Error {
   constructor(message: string) {
@@ -100,6 +101,16 @@ export function normalizeDeliveryTechnicalErrorCode(
     value,
     maximumTechnicalErrorCodeLength,
     'Technical error code',
+  );
+}
+
+export function normalizeDeliveryProviderMessageId(
+  value: string | null | undefined,
+): string | null {
+  return normalizeLimitedNullableString(
+    value,
+    maximumProviderMessageIdLength,
+    'Provider message id',
   );
 }
 

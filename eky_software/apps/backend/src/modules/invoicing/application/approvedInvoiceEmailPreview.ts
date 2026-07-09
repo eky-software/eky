@@ -19,6 +19,22 @@ export interface ApprovedInvoiceEmailPreview {
   attachment: ApprovedInvoiceEmailAttachmentPreview;
 }
 
+export interface ApprovedInvoiceEmailDryRunSend {
+  provider: 'dryRun';
+  invoiceId: string;
+  invoiceNumber: string;
+  to: string;
+  cc: string;
+  subject: string;
+  body: string;
+  attachment: ApprovedInvoiceEmailAttachmentPreview;
+}
+
+export interface ApprovedInvoiceEmailDryRunProviderResult {
+  provider: 'dryRun';
+  providerMessageId: string | null;
+}
+
 export function createApprovedInvoiceEmailAttachmentPreview(
   document: ApprovedInvoiceDocumentMetadata,
 ): ApprovedInvoiceEmailAttachmentPreview {

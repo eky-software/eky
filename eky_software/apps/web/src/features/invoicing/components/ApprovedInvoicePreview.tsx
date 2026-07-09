@@ -1,4 +1,5 @@
 import type {
+  ApprovedInvoiceEmailDryRunSendInput,
   ApprovedInvoiceEmailPreview as ApprovedInvoiceEmailPreviewData,
   ApprovedInvoiceLine,
   ApprovedInvoiceVatBreakdown,
@@ -26,11 +27,14 @@ interface ApprovedInvoicePreviewProps {
   isCreatingPdf: boolean;
   isMarkingSent: boolean;
   isPreparingEmail: boolean;
+  isSendingEmailDryRun: boolean;
   isPdfAvailable: boolean;
   isReopening: boolean;
   markSentErrorMessage: string | null;
   email: ApprovedInvoiceEmailPreviewData | null;
   emailErrorMessage: string | null;
+  emailSendErrorMessage: string | null;
+  emailSendSuccessMessage: string | null;
   pdfErrorMessage: string | null;
   reopenErrorMessage: string | null;
   onBack(): void;
@@ -40,6 +44,10 @@ interface ApprovedInvoicePreviewProps {
   onMarkSent(id: string): void;
   onOpenPdf(id: string): void;
   onPrepareEmail(id: string): void;
+  onSendEmailDryRun(
+    id: string,
+    input: ApprovedInvoiceEmailDryRunSendInput,
+  ): void;
 }
 
 export function ApprovedInvoicePreview({
@@ -49,11 +57,14 @@ export function ApprovedInvoicePreview({
   isCreatingPdf,
   isMarkingSent,
   isPreparingEmail,
+  isSendingEmailDryRun,
   isPdfAvailable,
   isReopening,
   markSentErrorMessage,
   email,
   emailErrorMessage,
+  emailSendErrorMessage,
+  emailSendSuccessMessage,
   pdfErrorMessage,
   reopenErrorMessage,
   onBack,
@@ -63,6 +74,7 @@ export function ApprovedInvoicePreview({
   onMarkSent,
   onOpenPdf,
   onPrepareEmail,
+  onSendEmailDryRun,
 }: ApprovedInvoicePreviewProps): React.JSX.Element {
   const isSent = invoice.status === 'sent';
 
@@ -190,7 +202,15 @@ export function ApprovedInvoicePreview({
         </p>
       ) : null}
 
-      {email !== null ? <ApprovedInvoiceEmailPreview email={email} /> : null}
+      {email !== null ? (
+        <ApprovedInvoiceEmailPreview
+          email={email}
+          errorMessage={emailSendErrorMessage}
+          isSending={isSendingEmailDryRun}
+          successMessage={emailSendSuccessMessage}
+          onSendDryRun={(input) => onSendEmailDryRun(invoice.id, input)}
+        />
+      ) : null}
 
       <div className={styles.detailsStack}>
         <PartyBox

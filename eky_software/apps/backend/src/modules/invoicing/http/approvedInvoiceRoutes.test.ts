@@ -17,6 +17,10 @@ import type {
 import type {
   PrepareApprovedInvoiceEmailDryRunInput,
 } from '../application/prepareApprovedInvoiceEmailDryRun.js';
+import type {
+  SendApprovedInvoiceEmailDryRunInput,
+  SendApprovedInvoiceEmailDryRunResult,
+} from '../application/sendApprovedInvoiceEmailDryRun.js';
 import type { ApprovedInvoiceEmailPreview } from '../application/approvedInvoiceEmailPreview.js';
 import { ApprovedInvoiceNotFoundError } from '../application/approvedInvoiceNotFoundError.js';
 import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
@@ -153,6 +157,76 @@ describe('approved invoice routes', () => {
       companyId: 'dev-company',
       invoiceId: 'invoice-1',
     });
+  });
+
+  it('sends a dry-run invoice email with user-edited fields in the company scope', async () => {
+    const delivery = createApprovedInvoiceEmailDryRunSendResult();
+    const { app, getEmailSendInput } = createTestApp({ emailDelivery: delivery });
+
+    const response = await app.request('/invoices/invoice-1/email/dry-run/send', {
+      body: JSON.stringify({
+        body: 'Hei,\n\nTässä muokattu viesti.',
+        cc: 'copy@example.fi',
+        subject: 'Muokattu laskuotsikko',
+        to: 'recipient@example.fi',
+      }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+
+    await expect(response.json()).resolves.toEqual({ delivery });
+    expect(response.status).toBe(200);
+    expect(getEmailSendInput()).toMatchObject({
+      actorUserId: 'dev-user',
+      body: 'Hei,\n\nTässä muokattu viesti.',
+      cc: 'copy@example.fi',
+      companyId: 'dev-company',
+      invoiceId: 'invoice-1',
+      subject: 'Muokattu laskuotsikko',
+      to: 'recipient@example.fi',
+    });
+  });
+
+  it('rejects server-owned fields in dry-run email send body', async () => {
+    const { app, getEmailSendInput } = createTestApp({});
+
+    const response = await app.request('/invoices/invoice-1/email/dry-run/send', {
+      body: JSON.stringify({
+        body: 'Hei',
+        companyId: 'other-company',
+        subject: 'Lasku',
+        to: 'recipient@example.fi',
+      }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+
+    await expect(response.json()).resolves.toEqual({
+      error: 'Invalid invoice email body.',
+    });
+    expect(response.status).toBe(400);
+    expect(getEmailSendInput()).toBeUndefined();
+  });
+
+  it('returns a safe 404 when dry-run sending email for an invoice outside the company scope', async () => {
+    const { app } = createTestApp({
+      emailSendError: new ApprovedInvoiceNotFoundError(),
+    });
+
+    const response = await app.request('/invoices/missing/email/dry-run/send', {
+      body: JSON.stringify({
+        body: 'Hei',
+        subject: 'Lasku',
+        to: 'recipient@example.fi',
+      }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+
+    await expect(response.json()).resolves.toEqual({
+      error: 'Approved invoice was not found.',
+    });
+    expect(response.status).toBe(404);
   });
 
   it('copies an approved invoice to a new draft in the company scope', async () => {
@@ -312,6 +386,8 @@ function createTestApp(options: {
   copiedDraft?: InvoiceDraft;
   copyError?: Error;
   document?: ApprovedInvoiceDocumentMetadata;
+  emailDelivery?: SendApprovedInvoiceEmailDryRunResult;
+  emailSendError?: Error;
   email?: ApprovedInvoiceEmailPreview;
   emailError?: Error;
   error?: Error;
@@ -328,6 +404,7 @@ function createTestApp(options: {
   let reopenInput: ReopenApprovedInvoiceForEditingInput | undefined;
   let markSentInput: MarkApprovedInvoiceSentInput | undefined;
   let emailInput: PrepareApprovedInvoiceEmailDryRunInput | undefined;
+  let emailSendInput: SendApprovedInvoiceEmailDryRunInput | undefined;
   let generatePdfInput: GenerateApprovedInvoicePdfDocumentInput | undefined;
   let pdfInput: GetApprovedInvoicePdfDocumentInput | undefined;
   let pdfMetadataInput: GetApprovedInvoicePdfMetadataInput | undefined;
@@ -402,6 +479,19 @@ function createTestApp(options: {
 
       return options.email ?? createApprovedInvoiceEmailPreview();
     },
+    async sendApprovedInvoiceEmailDryRun(nextInput) {
+      emailSendInput = nextInput;
+
+      if (options.emailSendError !== undefined) {
+        throw options.emailSendError;
+      }
+
+      if (options.error !== undefined) {
+        throw options.error;
+      }
+
+      return options.emailDelivery ?? createApprovedInvoiceEmailDryRunSendResult();
+    },
     async getApprovedInvoicePdfDocument(nextInput) {
       pdfInput = nextInput;
 
@@ -439,12 +529,38 @@ function createTestApp(options: {
     getGeneratePdfInput: () => generatePdfInput,
     getCopyInput: () => copyInput,
     getEmailInput: () => emailInput,
+    getEmailSendInput: () => emailSendInput,
     getInput: () => input,
     getListInput: () => listInput,
     getMarkSentInput: () => markSentInput,
     getPdfInput: () => pdfInput,
     getPdfMetadataInput: () => pdfMetadataInput,
     getReopenInput: () => reopenInput,
+  };
+}
+
+function createApprovedInvoiceEmailDryRunSendResult(): SendApprovedInvoiceEmailDryRunResult {
+  return {
+    deliveryEventId: 'delivery-event-1',
+    email: {
+      attachment: {
+        documentId: 'document-1',
+        fileName: 'lasku-20260001.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 8,
+      },
+      body: 'Hei,\n\nTässä muokattu viesti.',
+      cc: 'copy@example.fi',
+      invoiceId: 'invoice-1',
+      invoiceNumber: '20260001',
+      provider: 'dryRun',
+      subject: 'Muokattu laskuotsikko',
+      to: 'recipient@example.fi',
+    },
+    providerResult: {
+      provider: 'dryRun',
+      providerMessageId: null,
+    },
   };
 }
 

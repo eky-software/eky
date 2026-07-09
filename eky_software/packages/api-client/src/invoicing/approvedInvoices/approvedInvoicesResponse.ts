@@ -4,6 +4,9 @@ import type {
   ApprovedInvoiceLineDiscount,
   ApprovedInvoiceDocumentMetadata,
   ApprovedInvoiceEmailPreview,
+  ApprovedInvoiceEmailDryRunProviderResult,
+  ApprovedInvoiceEmailDryRunSend,
+  ApprovedInvoiceEmailDryRunSendResult,
   ApprovedInvoiceNumberingMode,
   ApprovedInvoicePriceInputMode,
   ApprovedInvoiceReferenceNumberType,
@@ -74,6 +77,16 @@ export function readApprovedInvoiceEmailPreviewResponse(
   }
 
   return parseApprovedInvoiceEmailPreview(responseBody.email);
+}
+
+export function readApprovedInvoiceEmailDryRunSendResponse(
+  responseBody: unknown,
+): ApprovedInvoiceEmailDryRunSendResult {
+  if (!isRecord(responseBody) || !isRecord(responseBody.delivery)) {
+    throw invalidApprovedInvoiceResponse(responseBody);
+  }
+
+  return parseApprovedInvoiceEmailDryRunSendResult(responseBody.delivery);
 }
 
 function parseApprovedInvoiceSummary(
@@ -158,6 +171,74 @@ function parseApprovedInvoiceEmailPreview(
     provider,
     subject: readString(value, 'subject'),
     to: readString(value, 'to'),
+  };
+}
+
+function parseApprovedInvoiceEmailDryRunSendResult(
+  value: Record<string, unknown>,
+): ApprovedInvoiceEmailDryRunSendResult {
+  if (!isRecord(value.email) || !isRecord(value.providerResult)) {
+    throw invalidApprovedInvoiceResponse(value);
+  }
+
+  return {
+    deliveryEventId: readString(value, 'deliveryEventId'),
+    email: parseApprovedInvoiceEmailDryRunSend(value.email),
+    providerResult: parseApprovedInvoiceEmailDryRunProviderResult(
+      value.providerResult,
+    ),
+  };
+}
+
+function parseApprovedInvoiceEmailDryRunSend(
+  value: Record<string, unknown>,
+): ApprovedInvoiceEmailDryRunSend {
+  if (!isRecord(value.attachment)) {
+    throw invalidApprovedInvoiceResponse(value);
+  }
+
+  const provider = readString(value, 'provider');
+  const mimeType = readString(value.attachment, 'mimeType');
+
+  if (provider !== 'dryRun' || mimeType !== 'application/pdf') {
+    throw invalidApprovedInvoiceResponse(value);
+  }
+
+  const email: ApprovedInvoiceEmailDryRunSend = {
+    attachment: {
+      documentId: readString(value.attachment, 'documentId'),
+      fileName: readString(value.attachment, 'fileName'),
+      mimeType,
+      sizeBytes: readSafeInteger(value.attachment, 'sizeBytes'),
+    },
+    body: readString(value, 'body'),
+    invoiceId: readString(value, 'invoiceId'),
+    invoiceNumber: readString(value, 'invoiceNumber'),
+    provider,
+    subject: readString(value, 'subject'),
+    to: readString(value, 'to'),
+  };
+  const cc = readOptionalString(value, 'cc');
+
+  if (cc !== undefined) {
+    email.cc = cc;
+  }
+
+  return email;
+}
+
+function parseApprovedInvoiceEmailDryRunProviderResult(
+  value: Record<string, unknown>,
+): ApprovedInvoiceEmailDryRunProviderResult {
+  const provider = readString(value, 'provider');
+
+  if (provider !== 'dryRun') {
+    throw invalidApprovedInvoiceResponse(value);
+  }
+
+  return {
+    provider,
+    providerMessageId: readNullableString(value, 'providerMessageId'),
   };
 }
 
@@ -423,6 +504,17 @@ function readNullableString(
   }
 
   throw invalidApprovedInvoiceResponse(value);
+}
+
+function readOptionalString(
+  value: Record<string, unknown>,
+  fieldName: string,
+): string | undefined {
+  if (!(fieldName in value)) {
+    return undefined;
+  }
+
+  return readString(value, fieldName);
 }
 
 function readSafeInteger(

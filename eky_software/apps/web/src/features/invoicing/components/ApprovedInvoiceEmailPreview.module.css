@@ -74,6 +74,11 @@
   min-width: 0;
 }
 
+.actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 @media (max-width: 720px) {
   .fields {
     grid-template-columns: 1fr;

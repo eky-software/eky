@@ -374,6 +374,14 @@ export const uiText = {
     invoiceEmailDryRunHelp:
       'Tätä sähköpostia ei lähetetty. Näkymä näyttää, millainen viesti muodostettaisiin laskun snapshot-tiedoista ja PDF-liitteestä.',
     invoiceEmailDryRunKicker: 'Sähköpostiluonnos',
+    invoiceEmailDryRunSend: 'Kuivaharjoittele lähetys',
+    invoiceEmailDryRunSending: 'Kirjataan kuivaharjoittelua...',
+    invoiceEmailDryRunSendError:
+      'Sähköpostin kuivaharjoittelua ei voitu kirjata. Yritä hetken kuluttua uudelleen.',
+    invoiceEmailDryRunSendSuccess:
+      'Kuivaharjoittelu kirjattiin. Sähköpostia ei lähetetty.',
+    invoiceEmailDryRunValidationError:
+      'Tarkista vastaanottaja, kopio, otsikko ja viestin sisältö.',
     invoiceEmailNoRecipient: 'Vastaanottajan sähköpostia ei ole asetettu',
     invoiceEmailPrepare: 'Valmistele sähköposti',
     invoiceEmailPrepareError:

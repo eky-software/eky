@@ -28,7 +28,12 @@ import type {
 import type {
   PrepareApprovedInvoiceEmailDryRunInput,
 } from '../application/prepareApprovedInvoiceEmailDryRun.js';
+import type {
+  SendApprovedInvoiceEmailDryRunInput,
+  SendApprovedInvoiceEmailDryRunResult,
+} from '../application/sendApprovedInvoiceEmailDryRun.js';
 import { ApprovedInvoiceDocumentNotFoundError } from '../application/approvedInvoiceDocumentNotFoundError.js';
+import { ApprovedInvoiceEmailDeliveryError } from '../application/approvedInvoiceEmailDeliveryError.js';
 import { ApprovedInvoiceNotFoundError } from '../application/approvedInvoiceNotFoundError.js';
 import type { ApprovedInvoiceEmailPreview } from '../application/approvedInvoiceEmailPreview.js';
 import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
@@ -36,6 +41,10 @@ import type { ApprovedInvoiceSummary } from '../domain/approvedInvoiceSummary.js
 import type { InvoiceDraft } from '../domain/invoiceDraft.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
+import {
+  ApprovedInvoiceEmailRequestValidationError,
+  parseApprovedInvoiceEmailDryRunSendBody,
+} from './approvedInvoiceEmailRequest.js';
 
 const devCompanyId = 'dev-company';
 const devActorUserId = 'dev-user';
@@ -65,6 +74,9 @@ interface ApprovedInvoiceRouteDependencies {
   prepareApprovedInvoiceEmailDryRun(
     input: PrepareApprovedInvoiceEmailDryRunInput,
   ): Promise<ApprovedInvoiceEmailPreview>;
+  sendApprovedInvoiceEmailDryRun(
+    input: SendApprovedInvoiceEmailDryRunInput,
+  ): Promise<SendApprovedInvoiceEmailDryRunResult>;
   reopenApprovedInvoiceForEditing(
     input: ReopenApprovedInvoiceForEditingInput,
   ): Promise<{ draftId: string; invoiceId: string }>;
@@ -258,6 +270,39 @@ export function createApprovedInvoiceRoutes(
 
       if (error instanceof InvoiceDraftValidationError) {
         return context.json({ error: error.message }, 400);
+      }
+
+      throw error;
+    }
+  });
+
+  routes.post('/invoices/:id/email/dry-run/send', async (context) => {
+    try {
+      const body = await context.req.json();
+      const delivery = await dependencies.sendApprovedInvoiceEmailDryRun(
+        parseApprovedInvoiceEmailDryRunSendBody(body, {
+          actorUserId: devActorUserId,
+          companyId: devCompanyId,
+          invoiceId: context.req.param('id'),
+          sentAt: new Date().toISOString(),
+        }),
+      );
+
+      return context.json({ delivery });
+    } catch (error) {
+      if (error instanceof ApprovedInvoiceNotFoundError) {
+        return context.json({ error: error.message }, 404);
+      }
+
+      if (
+        error instanceof ApprovedInvoiceEmailRequestValidationError ||
+        error instanceof InvoiceDraftValidationError
+      ) {
+        return context.json({ error: error.message }, 400);
+      }
+
+      if (error instanceof ApprovedInvoiceEmailDeliveryError) {
+        return context.json({ error: error.message }, 502);
       }
 
       throw error;

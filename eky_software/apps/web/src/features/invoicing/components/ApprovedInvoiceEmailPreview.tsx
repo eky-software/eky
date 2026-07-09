@@ -1,4 +1,7 @@
-import type { ApprovedInvoiceEmailPreview as ApprovedInvoiceEmailPreviewData } from '@eky/api-client';
+import type {
+  ApprovedInvoiceEmailDryRunSendInput,
+  ApprovedInvoiceEmailPreview as ApprovedInvoiceEmailPreviewData,
+} from '@eky/api-client';
 import { useEffect, useState } from 'react';
 
 import { uiText } from '../../../i18n/fi.js';
@@ -6,10 +9,18 @@ import styles from './ApprovedInvoiceEmailPreview.module.css';
 
 interface ApprovedInvoiceEmailPreviewProps {
   email: ApprovedInvoiceEmailPreviewData;
+  errorMessage: string | null;
+  isSending: boolean;
+  successMessage: string | null;
+  onSendDryRun(input: ApprovedInvoiceEmailDryRunSendInput): void;
 }
 
 export function ApprovedInvoiceEmailPreview({
   email,
+  errorMessage,
+  isSending,
+  successMessage,
+  onSendDryRun,
 }: ApprovedInvoiceEmailPreviewProps): React.JSX.Element {
   const [editableTo, setEditableTo] = useState(email.to);
   const [editableCc, setEditableCc] = useState('');
@@ -77,8 +88,58 @@ export function ApprovedInvoiceEmailPreview({
           onChange={(event) => setEditableBody(event.currentTarget.value)}
         />
       </div>
+      <div className={styles.actions}>
+        <button
+          className="secondary-action"
+          disabled={isSending}
+          onClick={() =>
+            onSendDryRun(
+              createSendInput({
+                body: editableBody,
+                cc: editableCc,
+                subject: editableSubject,
+                to: editableTo,
+              }),
+            )
+          }
+          type="button"
+        >
+          {isSending
+            ? uiText.invoicing.invoiceEmailDryRunSending
+            : uiText.invoicing.invoiceEmailDryRunSend}
+        </button>
+      </div>
+      {successMessage !== null ? (
+        <p className="message success-message" role="status">
+          {successMessage}
+        </p>
+      ) : null}
+      {errorMessage !== null ? (
+        <p className="message error-message" role="alert">
+          {errorMessage}
+        </p>
+      ) : null}
     </section>
   );
+}
+
+function createSendInput(input: {
+  body: string;
+  cc: string;
+  subject: string;
+  to: string;
+}): ApprovedInvoiceEmailDryRunSendInput {
+  const sendInput: ApprovedInvoiceEmailDryRunSendInput = {
+    body: input.body,
+    subject: input.subject,
+    to: input.to,
+  };
+
+  if (input.cc.trim().length > 0) {
+    sendInput.cc = input.cc;
+  }
+
+  return sendInput;
 }
 
 function formatBytes(sizeBytes: number): string {
