@@ -427,6 +427,28 @@ Kevyt käsin testattava lista ennen toimituspolun laajentamista:
 - DNA SMTP -lähetystä ei saa testata oikeille asiakkaille ilman dry-run- tai
   test recipient -suojaa
 
+## Seuraavien Vaiheiden Järjestys
+
+Nykyinen laskun toimituskokonaisuus viimeistellään ennen uutta isoa moduulia:
+
+1. Viimeistellään sähköposti.
+   Salaisuuden turvallinen hallinta ja SMTP-provider toteutetaan
+   `docs/architecture/email-delivery-and-secrets-plan.md`-dokumentin mukaan.
+   TLS/STARTTLS on pakollinen, ensimmäiset lähetykset käyttävät test recipient
+   overridea ja vain onnistunut oikea lähetys voi muuttaa laskun `sent`-tilaan.
+2. Viimeistellään tulostus.
+   Current PDF avataan luotettavasti ja käyttäjä tulostaa selaimen tai
+   käyttöjärjestelmän normaalilla toiminnolla. Tulostus ei automaattisesti
+   merkitse laskua lähetetyksi, eikä MVP:hen lisätä suoraa tulostinohjausta.
+3. Tehdään rajattu UI-siivoussprintti.
+   `packages/ui` otetaan käyttöön pienillä yleisillä komponenteilla
+   `docs/architecture/ui-design-system-roadmap.md`-dokumentin mukaan.
+   Laskutus-, asiakas-, sähköposti- tai API-logiikkaa ei siirretä UI-pakettiin.
+4. Vasta tämän jälkeen aloitetaan seuraava iso moduuli, kuten Kohteet,
+   Työmääräykset tai Tuntikirjaukset.
+
+UI-siivousta ei aloiteta kesken sähköposti- tai tulostusputken.
+
 ## Rajaus
 
 Tässä dokumentissa ei toteuteta:
