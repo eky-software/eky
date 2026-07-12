@@ -15,9 +15,11 @@ Paikallinen backend kuuntelee vain loopback-osoitteessa. Loopback on tärkeä
 verkkorajaus, mutta se ei yksin ole autentikointi tai käyttöoikeusmalli.
 
 Eky local-version ensisijainen tuotemainen käyttötapa on käyttäjän omalle
-koneelle asennettava desktop-sovellus. Tarkka desktop shell -teknologia
-päätetään myöhemmin. Pilvipalvelut, synkronointi ja suora web-käyttö lisätään
-myöhemmin erillisinä runtime- ja infrastructure-adaptereina.
+koneelle asennettava Electron-desktop-sovellus. Päätös ja turvallinen session-
+bootstrap on kuvattu dokumentissa
+`docs/decisions/ADR-0007-local-desktop-shell-and-session-bootstrap.md`.
+Pilvipalvelut, synkronointi ja suora web-käyttö lisätään myöhemmin erillisinä
+runtime- ja infrastructure-adaptereina.
 
 Ekyä ei laajenneta pilveen avaamalla käyttäjän paikallista backendia
 internetiin. Paikallinen ja pilvessä ajettava runtime käyttävät samaa
@@ -103,17 +105,14 @@ Tavoiteltuja sääntöjä:
 - `companyId` ei tule request bodysta tai querysta
 - käyttöoikeudet tarkistetaan deny-by-default-periaatteella
 
-Sessionin turvallinen välitys UI:lle riippuu local-asennuksen paketointimallista.
-Ensisijainen tavoite on desktop shellin hallittu käynnistys ja IPC- tai
-bootstrap-kanava. Ennen toteutusta päätetään tarkka tekniikka ja arvioidaan,
-tarvitaanko välivaiheessa:
+Electron main process muodostaa runtime-sessionin ja välittää sen backendille
+yksityisen prosessikanavan kautta. Renderer ei saa raakaa session-salaisuutta,
+vaan käyttää preloadin ja main processin kapeaa, validoitua API-transporttia.
+Main process lisää session-todisteen loopback-backendille lähtevään pyyntöön.
 
-- desktop shellin hallittua käynnistystä ja IPC-/bootstrap-kanavaa
-- paikallisen selainkäyttöliittymän rajattua bootstrap-mallia
-- muuta käyttöjärjestelmään sidottua luotettua kanavaa
-
-Sessionia ei saa välittää vain kovakoodattuna arvona tai julkisena build-time
-asetuksena.
+Sessionia ei saa välittää URL:ssa, komentorivillä, localStoragessa,
+kovakoodattuna arvona, julkisena build-time-asetuksena tai lokitettavassa
+ympäristömuuttujassa.
 
 ## Cloud Identity Adapter
 
@@ -213,17 +212,22 @@ Ensimmäisen local trust -toteutuksen pitää testata vähintään:
 1. Local/cloud-yhteinen trust-malli on hyväksytty.
 2. Ympäristöriippumaton `ActorContext`, ensimmäiset permissionit ja deny-by-
    default-tarkistus on toteutettu ilman Firebase- tai HTTP-riippuvuutta.
-3. Päätetään local UI:n paketointiin sopiva sessionin bootstrap-kanava.
-4. Toteutetaan local-session-adapteri ja HTTP-middleware negatiivisine
+3. Electron-shell ja main processin hallitsema session-bootstrap on valittu
+   ADR-0007:ssä.
+4. Sähköpostin secret store -portti ja permissioneja vaativat lifecycle-
+   palvelut on toteutettu ilman runtime-kytkentää.
+5. Tehdään rajattu Electron- ja Windows-paketointispike ilman oikeaa dataa.
+6. Toteutetaan local-session-adapteri ja HTTP-middleware negatiivisine
    turvallisuustesteineen.
-5. Korvataan reittien `dev-company`- ja `dev-user`-oikopolut backendin
+7. Korvataan reittien `dev-company`- ja `dev-user`-oikopolut backendin
    vahvistamalla actor contextilla.
-6. Toteutetaan sähköpostin secret store -portti ja lifecycle-testit.
-7. Toteutetaan Windows Credential Manager -adapteri erillisen dependency- ja
+8. Lisätään salaisuuden asettamisen ja poistamisen audit-tapahtumat ennen
+   oikeaa HTTP- tai UI-kytkentää.
+9. Toteutetaan Windows Credential Manager -adapteri erillisen dependency- ja
    turvallisuusarvion jälkeen.
-8. Toteutetaan SMTP-provider portilla `465` ja implicit TLS -mallilla ensin
+10. Toteutetaan SMTP-provider portilla `465` ja implicit TLS -mallilla ensin
    pakotettuun test recipient -osoitteeseen.
-9. Pilviversiossa toteutetaan erikseen Firebase identity -adapteri ja cloud
+11. Pilviversiossa toteutetaan erikseen Firebase identity -adapteri ja cloud
    secret manager -adapteri saman application-tason sopimuksen ympärille.
 
 ## Seurattava Tekninen Velka
@@ -233,8 +237,8 @@ rajattuun runtime- ja rakennecleanupiin, mutta niitä ei saa unohtaa tai ohittaa
 ennen oikeaa tuotantodataa:
 
 - reittien kovakoodatut `dev-company`- ja `dev-user`-arvot
-- yhteisen backendin vahvistaman `ActorContext`-mallin puuttuminen
-- local desktop -sessionin bootstrap-kanavan päätös ja toteutus
+- toteutetun `ActorContext`-mallin kytkeminen backendin vahvistamaan sessioniin
+- päätetyn Electron-bootstrapin runtime- ja paketointitoteutus
 - kirjoittavien ja arkaluonteisten reittien permission-middleware
 - Viten toistuvan backend-proxyosoitteen keskittäminen
 - runtime-profiilien tyypitetty konfiguraatiomalli `packages/config`-rajalla
@@ -249,7 +253,6 @@ laskutusdatan tuotantokäyttö eivät kuitenkaan saa ohittaa local desktop
 - local-session-koodia
 - HTTP-auth-middlewarea
 - Firebase Authia
-- permission-pakettien tuotantokoodia
 - SMTP-salaisuuden HTTP- tai UI-polkuja
 - Windows Credential Manager -adapteria
 - SMTP-provideria
@@ -264,3 +267,4 @@ laskutusdatan tuotantokäyttö eivät kuitenkaan saa ohittaa local desktop
 - `docs/architecture/local-cloud-sync.md`
 - `docs/decisions/ADR-0003-technical-foundation.md`
 - `docs/decisions/ADR-0004-local-backend-runtime.md`
+- `docs/decisions/ADR-0007-local-desktop-shell-and-session-bootstrap.md`

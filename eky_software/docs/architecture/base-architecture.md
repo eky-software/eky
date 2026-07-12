@@ -204,6 +204,7 @@ Perusvirta:
 
 - Lopullinen backend-ajotapa pilvessä: Cloud Run vai Cloud Functions?
 - Käytetäänkö Firebase SQL Connectia vai suoraa Cloud SQL -yhteyttä?
-- Miten paikallisesti asennettava offline-versio paketoidaan?
+- Electron on valittu local-MVP:n paketointisuunnaksi ADR-0007:ssä; tarkka
+  versio, paketointityökalu ja Windows-jakelupolku päätetään toteutusvaiheessa.
 - Miten mobiilin synkronointimalli toteutetaan?
 - Miten local-cloud-synkronoinnin konfliktit ratkaistaan?
