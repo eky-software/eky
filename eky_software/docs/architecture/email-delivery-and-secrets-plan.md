@@ -255,22 +255,32 @@ raakoja debug-vastauksia ei näytetä käyttäjälle eikä kirjoiteta lokiin.
 
 SMTP-lähetys saa käyttää vain salattua yhteyttä.
 
-Sallitut tulevat mallit:
+Eky local-MVP:n ensimmäinen ja ensisijainen SMTP-malli on:
 
-- portti `587` ja STARTTLS
-- portti `465` ja TLS heti yhteyden alusta
+- portti `465`
+- implicit TLS heti yhteyden muodostamisesta
+- vähintään TLS `1.2`; TLS `1.3` sallitaan
+- autentikointi vaaditaan
 
-SMTP-adapteri ei saa lähettää viestiä, jos TLS- tai STARTTLS-neuvottelu
-epäonnistuu.
+TLS-yhteyden pitää muodostua ennen SMTP-komentoja ja tunnistautumista.
+SMTP-adapterin pitää validoida palvelimen sertifikaatti ja hostname. TLS-virhe
+estää lähetyksen, eikä salaamattomaan yhteyteen saa pudota.
 
-SMTP-adapteri ei saa hyväksyä virheellistä TLS-sertifikaattia hiljaisesti.
+Portti `587` ja pakollinen STARTTLS säilytetään dokumentoituna myöhempänä
+yhteensopivuusvaihtoehtona. Sitä ei toteuteta ensimmäisessä local-MVP
+SMTP-adapterissa, eikä portista `465` tehdä automaattista fallbackia porttiin
+`587`.
 
-Porttia `25` ei käytetä oletuksena Ekyssä. Sitä ei käytetä laskujen
-automaattiseen lähetykseen ilman erillistä myöhempää arkkitehtuuri- ja
-turvallisuuspäätöstä.
+Porttia `25` ei tueta Eky local-MVP:ssä.
 
-SMTP TLS/STARTTLS suojaa liikenteen Eky-backendin ja SMTP-palvelimen välillä.
-Se ei ole päästä päähän -salaus. Sähköpostipalveluntarjoaja ja vastaanottajan
+RFC 8314:n mukaan portin `465` implicit TLS ja portin `587` pakollinen
+STARTTLS ovat oikein toteutettuina ilman merkittävää turvallisuuseroa.
+Standardi suosittelee implicit TLS -mallia. Eky valitsee sen ensimmäiseen
+local-MVP-adapteriin turvallisuus- ja konfiguraatioyksinkertaisuuden vuoksi.
+
+SMTP:n implicit TLS ja myöhempi mahdollinen STARTTLS-yhteensopivuusvaihtoehto
+suojaavat liikenteen Eky-backendin ja SMTP-palvelimen välillä. Tämä ei ole
+päästä päähän -salaus. Sähköpostipalveluntarjoaja ja vastaanottajan
 sähköpostipalvelin voivat normaalin sähköpostitoimituksen osana käsitellä
 viestin ja PDF-liitteen.
 
@@ -281,10 +291,13 @@ sähköpostipolkuun.
 
 SMTP-adapterin tulevissa testeissä tarkistetaan vähintään:
 
-- lähetys ei onnistu ilman TLS/STARTTLS-suojausta
-- STARTTLS-virhe estää lähetyksen
-- virheellinen sertifikaatti estää lähetyksen
+- lähetys ei onnistu ilman implicit TLS -suojausta
+- TLS muodostuu ennen SMTP-komentoja ja tunnistautumista
+- TLS-virhe estää lähetyksen
+- virheellinen sertifikaatti tai hostname estää lähetyksen
+- salaamatonta tai porttiin `587` siirtyvää automaattista fallbackia ei tehdä
 - SMTP-salasana ei päädy lokiin
+- SMTP-salasanaa ei palauteta frontendille
 - viestin runko tai PDF-sisältö ei päädy lokiin
 - dry-run ei tarvitse salaisuuksia
 
@@ -351,32 +364,31 @@ Alustava DNA SMTP -linja:
 
 - ensisijainen host: `smtp.dnamail.fi`
 - varahost: `smtp.dnainternet.net`
-- ensisijainen portti: `587`
-- ensisijainen security: `STARTTLS`
+- portti: `465`
+- security: implicit TLS heti yhteyden muodostamisesta
+- vähimmäisversio: TLS `1.2`; TLS `1.3` sallitaan
 - authentication: required
-- vaihtoehtoinen portti: `465` ja TLS/SSL heti yhteyden alusta
 - username: käyttäjän koko DNA-sähköpostiosoite, esimerkiksi
   `osoite@dnainternet.net`
 - password: postilaatikon salasana, joka tallennetaan myöhemmin vain secret
   storeen
-- porttia `25` ei käytetä oletuksena; se sallitaan vain erikseen valittuna ja
-  perusteltuna poikkeusasetuksena
+- porttia `25` ei tueta local-MVP:ssä
 
 Eky voi esitäyttää SMTP username -kentän lähettäjän sähköpostiosoitteella.
 Kenttä pidetään kuitenkin muokattavana, koska lähettäjän osoite ja SMTP-tilin
 kirjautumistunnus eivät ole kaikissa palveluissa sama asia.
 
-Portti `587` STARTTLS:llä ja portti `465` välittömällä TLS-yhteydellä ovat
-molemmat hyväksyttäviä, kun salaus on pakollinen, sertifikaatti validoidaan ja
-salaamattomaan yhteyteen ei pudota. Eky käyttää alustavana oletuksena porttia
-`587` ja STARTTLS-mallia. Portti `465` on tuettu vaihtoehto, jos käytettävä
-DNA-tili tai ympäristö toimii sillä luotettavammin.
+Portti `587` ja pakollinen STARTTLS voidaan toteuttaa myöhemmin erillisenä
+yhteensopivuusvaihtoehtona. Ensimmäinen local-MVP SMTP-adapteri ei tue sitä,
+eikä se tee automaattista fallbackia portista `465` porttiin `587`. Jos
+varahostia käytetään, myös se käyttää porttia `465`, implicit TLS -mallia ja
+samoja sertifikaatin sekä hostnamen validointisääntöjä.
 
 DNA:n tukisivu listaa lähtevälle postille salatuiksi vaihtoehdoiksi portin
-`465` TLS:llä ja portin `587` STARTTLS:llä. Portti `25` on DNA:n ohjeessa
+`465` implicit TLS -mallilla ja portin `587` STARTTLS:llä. Portti `25` on DNA:n ohjeessa
 rajattu tilanteisiin, joissa salattu yhteys ei ole lähettävän ohjelmiston
-puolesta mahdollinen. Ekyssä salattu yhteys on vaatimus, joten portti `25` ei
-ole oletuspolku.
+puolesta mahdollinen. Ekyssä salattu yhteys on vaatimus, joten porttia `25` ei
+tueta local-MVP:ssä.
 
 Käyttäjä voi myöhemmin syöttää Oma yritys / Sähköpostiasetukset -näkymässä
 tarvittavat SMTP-asetukset ja salaisuuden asettamisen. Salaisuutta ei näytetä
@@ -482,7 +494,8 @@ riippuvuusarviota.
    -ympäristölle.
 2. Toteutetaan Windows Credential Manager -adapteri tai muu erikseen
    hyväksytty local secret store -adapteri testeineen.
-3. Toteutetaan SMTP-provider ensin testitilassa. TLS/STARTTLS, sertifikaatin
+3. Toteutetaan SMTP-provider ensin testitilassa käyttäen porttia `465` ja
+   implicit TLS -mallia. TLS-version vähimmäisraja, sertifikaatin ja hostnamen
    validointi, timeout ja turvallinen virheenkäsittely ovat pakollisia.
 4. Pakotetaan test recipient override ensimmäisissä oikean providerin
    kokeiluissa, jotta viesti ei voi lähteä vahingossa asiakkaalle.
