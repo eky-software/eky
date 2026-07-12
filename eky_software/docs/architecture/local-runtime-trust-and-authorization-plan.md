@@ -54,7 +54,7 @@ Application service saa käyttäjän ja yrityksen vain backendin vahvistamasta
 kontekstista. Request body, query-parametri tai frontendin oma tila ei ole
 luotettu identiteetin tai `companyId`-arvon lähde.
 
-Alustava yhteinen sopimus voi olla:
+Yhteinen sopimus on toteutettu `packages/auth`-pakettiin:
 
 ```ts
 interface ActorContext {
@@ -65,19 +65,24 @@ interface ActorContext {
 }
 ```
 
-Tarkka tyyppien sijainti päätetään ensimmäisessä toteutuspalassa.
-`packages/auth` on luonteva paikka ympäristöriippumattomalle identiteetti- ja
-session-sopimukselle. `packages/permissions` on luonteva paikka permission-
-tyypeille ja deny-by-default-tarkistuksille. Firebase-, HTTP-, desktop- tai
-Windows-tyypit eivät saa vuotaa näihin sopimuksiin.
+`packages/auth` omistaa ympäristöriippumattoman, validoidun ja muuttumattoman
+`ActorContext`-sopimuksen sekä authentication mode -tyypin.
+`packages/permissions` omistaa permission-tyypit, turvallisen authorization-
+virheen ja heittävän deny-by-default-tarkistuksen. Permissions-paketti käyttää
+tarkistuksessa vain permission-listan sisältävää rakenteellista kontekstia,
+jotta `auth`- ja `permissions`-pakettien välille ei muodostu kiertoriippuvuutta.
 
-Ensimmäisiä sähköpostipolun permissioneja voivat olla:
+Toteutus ei vielä muodosta `ActorContext`-oliota HTTP-pyynnöstä tai desktop-
+sessionista. Firebase-, HTTP-, desktop- tai Windows-tyypit eivät vuoda
+sopimuksiin.
+
+Ensimmäiset toteutetut sähköpostipolun permissionit ovat:
 
 - `manageCompanyEmailSettings`
 - `manageCompanyEmailSecret`
 - `sendInvoices`
 
-Permissionien lopulliset nimet ja laajempi roolimalli hyväksytään erikseen.
+Laajempi rooli- ja permission-malli hyväksytään erikseen.
 
 ## Local Identity Adapter
 
@@ -205,10 +210,10 @@ Ensimmäisen local trust -toteutuksen pitää testata vähintään:
 
 ## Toteutusjärjestys
 
-1. Hyväksytään tämä local/cloud-yhteinen trust-malli.
-2. Päätetään local UI:n paketointiin sopiva sessionin bootstrap-kanava.
-3. Määritellään `ActorContext` ja ensimmäiset permissionit ilman Firebase-
-   tai HTTP-riippuvuutta.
+1. Local/cloud-yhteinen trust-malli on hyväksytty.
+2. Ympäristöriippumaton `ActorContext`, ensimmäiset permissionit ja deny-by-
+   default-tarkistus on toteutettu ilman Firebase- tai HTTP-riippuvuutta.
+3. Päätetään local UI:n paketointiin sopiva sessionin bootstrap-kanava.
 4. Toteutetaan local-session-adapteri ja HTTP-middleware negatiivisine
    turvallisuustesteineen.
 5. Korvataan reittien `dev-company`- ja `dev-user`-oikopolut backendin

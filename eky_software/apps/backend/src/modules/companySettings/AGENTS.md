@@ -85,6 +85,10 @@ Email secrets must never be returned to the frontend, written to ordinary
 SQLite fields, included in logs, or placed in test fixtures as real values.
 Use only clearly synthetic secret values in tests.
 
+Email secret lifecycle application services must take the company only from a
+validated `ActorContext`, require `manageCompanyEmailSecret`, and return only
+secret configuration status. HTTP input must never choose the secret's company.
+
 ## Naming
 
 Code is written in English.

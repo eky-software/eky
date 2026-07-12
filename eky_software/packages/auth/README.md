@@ -2,7 +2,12 @@
 
 Tämä paketti sisältää autentikointiin liittyvät rajapinnat ja adapterit.
 
-Vastuut myöhemmin:
+Nykyiset vastuut:
+
+- ympäristöriippumaton, validoitu `ActorContext`
+- local- ja Firebase-authentication mode -tyypit
+
+Tulevat vastuut:
 
 - käyttäjäsession malli
 - tokenin käsittely
@@ -12,3 +17,7 @@ Vastuut myöhemmin:
 Firebase ei saa vuotaa satunnaisiin komponentteihin, domainiin tai service-logiikkaan.
 
 Skeleton-vaiheessa tähän pakettiin ei lisätä vielä Firebase-riippuvuutta.
+
+`ActorContext` muodostetaan myöhemmin vain backendin vahvistamasta local- tai
+cloud-identiteetistä. Frontendin request body ei ole luotettu actor-, company-
+tai permission-tietojen lähde.

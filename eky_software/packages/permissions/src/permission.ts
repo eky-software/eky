@@ -1,0 +1,14 @@
+export const permissionValues = Object.freeze([
+  'manageCompanyEmailSettings',
+  'manageCompanyEmailSecret',
+  'sendInvoices',
+] as const);
+
+export type Permission = (typeof permissionValues)[number];
+
+export function isPermission(value: unknown): value is Permission {
+  return (
+    typeof value === 'string' &&
+    permissionValues.includes(value as Permission)
+  );
+}
