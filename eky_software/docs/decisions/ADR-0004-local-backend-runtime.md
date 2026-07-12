@@ -206,6 +206,7 @@ Tässä ADR:ssä ei vielä päätetä:
 - `docs/architecture/base-architecture.md`
 - `docs/architecture/dependency-policy.md`
 - `docs/architecture/local-cloud-sync.md`
+- `docs/architecture/local-runtime-trust-and-authorization-plan.md`
 - `docs/architecture/security-principles.md`
 - `docs/architecture/tech-decisions.md`
 - `docs/decisions/ADR-0003-technical-foundation.md`
