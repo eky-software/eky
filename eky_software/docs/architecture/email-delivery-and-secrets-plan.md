@@ -8,6 +8,21 @@ Windows Credential Manager -adapteria, Secret Manager -adapteria,
 tietokantatauluja, migraatioita, endpointteja, UI-muutoksia, riippuvuuksia tai
 oikeaa sähköpostin lähetystä.
 
+## Nykyinen Toteutustila
+
+Sähköpostipolusta on toteutettu local-MVP:hen:
+
+- hyväksytyn laskun sähköpostiesikatselu current PDF:n perusteella
+- käyttäjän muokattavat vastaanottaja-, kopio-, otsikko- ja viestikentät
+- backendin dry-run-provider, joka ei lähetä oikeaa sähköpostia
+- dry-run-send HTTP- ja API-client-polku
+- `invoice_delivery_events`-persistence ja dry-run-tapahtuman auditointi
+- Company Settings -moduulin ei-salaiset SMTP-asetukset ja niiden web-UI
+- tieto `emailSecretConfigured`, joka ei sisällä salaista arvoa
+
+Nykyinen dry-run ei muuta laskua `sent`-tilaan. Oikeaa SMTP-provideria,
+salaisuuden tallennusta tai oikeaa sähköpostilähetystä ei ole vielä toteutettu.
+
 ## Julkisen Repositoryn Rajaus
 
 Tämä dokumentti saa olla julkisessa Git-repositoriossa, koska se kuvaa
@@ -334,12 +349,28 @@ tuotantototeutusta tarkistettujen asetusten perusteella.
 
 Alustava DNA SMTP -linja:
 
-- host: `smtp.dnamail.fi`
-- port: `587`
-- security: `STARTTLS`
+- ensisijainen host: `smtp.dnamail.fi`
+- varahost: `smtp.dnainternet.net`
+- ensisijainen portti: `587`
+- ensisijainen security: `STARTTLS`
 - authentication: required
-- vaihtoehtoinen portti: `465` TLS
-- porttia `25` ei käytetä oletuksena
+- vaihtoehtoinen portti: `465` ja TLS/SSL heti yhteyden alusta
+- username: käyttäjän koko DNA-sähköpostiosoite, esimerkiksi
+  `osoite@dnainternet.net`
+- password: postilaatikon salasana, joka tallennetaan myöhemmin vain secret
+  storeen
+- porttia `25` ei käytetä oletuksena; se sallitaan vain erikseen valittuna ja
+  perusteltuna poikkeusasetuksena
+
+Eky voi esitäyttää SMTP username -kentän lähettäjän sähköpostiosoitteella.
+Kenttä pidetään kuitenkin muokattavana, koska lähettäjän osoite ja SMTP-tilin
+kirjautumistunnus eivät ole kaikissa palveluissa sama asia.
+
+Portti `587` STARTTLS:llä ja portti `465` välittömällä TLS-yhteydellä ovat
+molemmat hyväksyttäviä, kun salaus on pakollinen, sertifikaatti validoidaan ja
+salaamattomaan yhteyteen ei pudota. Eky käyttää alustavana oletuksena porttia
+`587` ja STARTTLS-mallia. Portti `465` on tuettu vaihtoehto, jos käytettävä
+DNA-tili tai ympäristö toimii sillä luotettavammin.
 
 DNA:n tukisivu listaa lähtevälle postille salatuiksi vaihtoehdoiksi portin
 `465` TLS:llä ja portin `587` STARTTLS:llä. Portti `25` on DNA:n ohjeessa
@@ -433,15 +464,39 @@ ei pidetä valmiina ennen deliverability-tarkistusta.
 
 ## Ei Vielä Toteuteta
 
-Tässä vaiheessa ei toteuteta:
+Seuraavaan vaiheeseen jäävät:
 
 - SMTP-provideria
 - Gmail-provideria
 - Windows Credential Manager -adapteria
 - Secret Manager -adapteria
-- sähköpostiasetusten UI:ta
-- sähköpostin lähetysendpointtia
-- delivery log -taulua
 - oikeaa sähköpostilähetystä
-- uusia riippuvuuksia
 - `packages/email`-pakettia
+
+SMTP-kirjastoa tai muuta uutta riippuvuutta ei valita ennen erillistä
+riippuvuusarviota.
+
+## Seuraava Toteutusjärjestys
+
+1. Määritellään secret store -portti ja salaisuuden lifecycle local Windows
+   -ympäristölle.
+2. Toteutetaan Windows Credential Manager -adapteri tai muu erikseen
+   hyväksytty local secret store -adapteri testeineen.
+3. Toteutetaan SMTP-provider ensin testitilassa. TLS/STARTTLS, sertifikaatin
+   validointi, timeout ja turvallinen virheenkäsittely ovat pakollisia.
+4. Pakotetaan test recipient override ensimmäisissä oikean providerin
+   kokeiluissa, jotta viesti ei voi lähteä vahingossa asiakkaalle.
+5. Kytketään provider nykyiseen backendin send-polkuun niin, että onnistunut
+   lähetys kirjaa delivery eventin ja voi muuttaa laskun `sent`-tilaan.
+6. Epäonnistunut lähetys kirjataan turvallisesti eikä se muuta laskun tilaa.
+
+Ensimmäinen oikea SMTP-lähetys saa olla synkroninen. UI näyttää lähetyksen
+olevan käynnissä ja estää saman toiminnon uudelleen pyynnön aikana. Backend
+käyttää rajattua timeoutia.
+
+Queue-, background worker- tai outbox-rakennetta ei tehdä ensimmäiseen
+SMTP-vaiheeseen. Ennen tuotantokäyttöä arvioidaan kuitenkin erikseen tilanne,
+jossa provider on lähettänyt viestin mutta delivery eventin tallennus tai
+HTTP-vastaus epäonnistuu. Tuleva ratkaisu voi käyttää `pending`/`queued`
+-tapahtumaa ja outbox- tai background worker -mallia kaksoislähetysten
+estämiseksi.
