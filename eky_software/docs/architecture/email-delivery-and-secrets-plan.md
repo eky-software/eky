@@ -347,6 +347,21 @@ valmiuksia synteettisillä testiarvoilla:
   storea tai HTTP-reittejä
 - turvalliset tyypit, joissa salainen arvo ei päädy response-malliin
 
+Ensimmäinen rajattu valmius on toteutettu Company Settings -moduuliin:
+
+- providerista riippumaton `CompanyEmailSecretStore`-portti tukee salaisuuden
+  asettamista, olemassaolon tarkistamista ja poistamista
+- Company Settings -portti ei palauta salaisuutta; tuleva SMTP-provider saa
+  tarvittaessa oman kapean backend-only reader-sopimuksen
+- salaisen syötteen validointi säilyttää arvon muuttamattomana eikä sisällytä
+  sitä virheviesteihin
+- toteutus ei sisällä adapteria, HTTP-reittiä, UI-kenttää tai oikeaa
+  salaisuutta
+
+Lifecycle-application servicet toteutetaan vasta yhteisen `ActorContext`- ja
+permission-sopimuksen jälkeen, jotta niitä ei voida kytkeä suojaamattomasti
+runtimeen.
+
 Oikeaa Windows Credential Manager -kirjoitusta, salaisuutta vastaanottavaa
 HTTP-reittiä, webin salasanakenttää tai oikeaa SMTP-yhteyttä ei oteta käyttöön
 ennen local-käytön turvallisuusportin hyväksymistä. Testeissä käytetään vain
