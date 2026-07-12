@@ -203,6 +203,19 @@ käyttäjälle, onko salaisuus asetettu myöhemmän secret store -mallin kautta,
 mutta se ei sisällä salaista arvoa eikä sitä käytetä salaisuuden
 tallentamiseen.
 
+Company Settingsin application-kerroksessa on toteutettu rajatut salaisuuden
+asettamisen, poistamisen ja tilan tarkistamisen käyttötapaukset. Ne:
+
+- saavat `companyId`-arvon vain validoidusta `ActorContext`-oliosta
+- vaativat eksplisiittisen `manageCompanyEmailSecret`-permissionin
+- käyttävät `CompanyEmailSecretStore`-porttia
+- palauttavat vain `configured: true | false` -tilan
+- eivät voi lukea tai palauttaa salaista arvoa
+
+Käyttötapauksia ei ole vielä kytketty HTTP-reitteihin tai oikeaan secret store
+-adapteriin. Tämä kytkentä odottaa local desktop -sessionin ja backendin
+vahvistaman actor-kontekstin toteutusta.
+
 ## Asiakaskohtainen Tuntihinta
 
 Asiakaskohtainen tuntihinta ei kuulu Company Settings -moduulin omistamaan dataan.

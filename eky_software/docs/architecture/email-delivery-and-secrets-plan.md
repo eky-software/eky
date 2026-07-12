@@ -358,9 +358,15 @@ Ensimmäinen rajattu valmius on toteutettu Company Settings -moduuliin:
 - toteutus ei sisällä adapteria, HTTP-reittiä, UI-kenttää tai oikeaa
   salaisuutta
 
-Lifecycle-application servicet toteutetaan vasta yhteisen `ActorContext`- ja
-permission-sopimuksen jälkeen, jotta niitä ei voida kytkeä suojaamattomasti
-runtimeen.
+Lifecycle-application servicet on toteutettu yhteisen `ActorContext`- ja
+permission-sopimuksen päälle. Salaisuuden asettaminen, poistaminen ja tilan
+tarkistaminen vaativat `manageCompanyEmailSecret`-permissionin ja käyttävät
+vain actor-kontekstin `companyId`-arvoa. Ne palauttavat vain salaisuuden
+konfigurointitilan eivätkä salaista arvoa.
+
+Palveluja ei ole vielä kytketty HTTP-reitteihin tai oikeaan runtime-adapteriin.
+Kytkentä odottaa local desktop -sessionin ja backendin vahvistaman actor-
+kontekstin toteutusta.
 
 Oikeaa Windows Credential Manager -kirjoitusta, salaisuutta vastaanottavaa
 HTTP-reittiä, webin salasanakenttää tai oikeaa SMTP-yhteyttä ei oteta käyttöön

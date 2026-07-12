@@ -17,6 +17,12 @@ importers:
 
   apps/backend:
     dependencies:
+      '@eky/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
+      '@eky/permissions':
+        specifier: workspace:*
+        version: link:../../packages/permissions
       '@hono/node-server':
         specifier: ^2.0.3
         version: 2.0.3(hono@4.12.27)
@@ -67,7 +73,11 @@ importers:
 
   packages/api-client: {}
 
-  packages/auth: {}
+  packages/auth:
+    dependencies:
+      '@eky/permissions':
+        specifier: workspace:*
+        version: link:../permissions
 
   packages/config: {}
 
