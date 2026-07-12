@@ -82,6 +82,10 @@ Jos työ koskee modulaarisen monoliitin päälinjaa, moduulirakenteen dokumentoi
 
 Jos työ koskee paikallista backend-runtimea, pilvibackendin ajotapaa, backend-frameworkia tai `apps/backend`-rakennetta, lue myös `docs/decisions/ADR-0004-local-backend-runtime.md` ja `docs/decisions/ADR-0005-backend-framework-selection.md`.
 
+Jos työ koskee local desktop -paketointia, Electronia, Tauria, desktop shelliä,
+backend-prosessin hallintaa, preload-/IPC-rajaa tai local-sessionin bootstrapia,
+lue myös `docs/decisions/ADR-0007-local-desktop-shell-and-session-bootstrap.md`.
+
 Jos työ koskee tietokantaa, query layeria, repository-portteja, tietokanta-adaptereita, SQLitea, PostgreSQL:ää tai tietomallin moduuliomistusta, lue myös `docs/decisions/ADR-0006-local-database-and-query-layer.md`.
 
 Jos työ koskee ensimmäisen paikallisen tietokantapinon toteutusta, SQLite-ajuria, SQL-kyselyitä, migraatiomallia tai paikallisen SQLite-tiedoston sijaintia, lue myös `docs/architecture/local-database-implementation-plan.md`.

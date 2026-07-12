@@ -198,6 +198,23 @@ Ei-loopback-verkkosidonta vaatii erikseen hyväksytyn deployment- ja turvallisuu
 
 Oikean paikallisen asiakasdatan käyttöönotto vaatii erillisen release security review -tarkistuksen, vaikka sovellus pysyisi offline-tilassa.
 
+### Local Desktop Shell
+
+Eky local-MVP:n ensisijainen desktop shell on Electron dokumentin
+`docs/decisions/ADR-0007-local-desktop-shell-and-session-bootstrap.md`
+mukaisesti.
+
+Electron renderer on epäluotettu ympäristö samalla tavalla kuin selain-
+frontend. Desktop shell ei saa siirtää backendin permission-, yritysrajaus-,
+validointi- tai auditointivastuuta rendererille tai preloadiin.
+
+Ennen oikean datan käyttöä paketoidusta desktop-artifactista tarkistetaan
+vähintään rendererin sandbox ja context isolation, Node-integraation esto,
+rajattu IPC, CSP, navigoinnin esto, Electron fuses, ASAR-integriteetti,
+allekirjoitus, tuettu Electron-versio ja dependency audit. Electronin debug-
+rajapinnat, remote code, salaamaton local-session tai rendererille paljastuva
+session-salaisuus eivät ole sallittuja tuotantoprofiilissa.
+
 ## Pakollinen Turvallisuusarvio Muutoksille
 
 Jokaisessa koodi-, API-, data-, integraatio- tai riippuvuusmuutoksessa tarkistetaan:

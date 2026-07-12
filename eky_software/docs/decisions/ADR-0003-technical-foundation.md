@@ -240,7 +240,9 @@ Seuraavia asioita ei lukita tässä ADR:ssa:
 - Cloud Run vs Cloud Functions
 - Firebase SQL Connect vs suora Cloud SQL PostgreSQL
 - SQLite-kirjasto paikalliseen versioon
-- paikallisen ohjelman paketointi: selainpohjainen local app, Tauri, Electron tai muu
+- Electron local-MVP:n paketointisuuntana on päätetty dokumentissa
+  `docs/decisions/ADR-0007-local-desktop-shell-and-session-bootstrap.md`; tarkka
+  versio ja paketointityökalu päätetään toteutusvaiheessa
 - local-cloud-synkronoinnin tarkka malli
 - konfliktien ratkaisu synkronoinnissa
 - UI-komponenttikirjasto
@@ -321,5 +323,6 @@ Ensimmäisessä toteutuksessa ei tarvitse rakentaa synkronointia valmiiksi, mutt
 - `docs/decisions/ADR-0001-modular-monolith-first.md`
 - `docs/decisions/ADR-0002-module-structure.md`
 - `docs/decisions/ADR-0004-local-backend-runtime.md`
+- `docs/decisions/ADR-0007-local-desktop-shell-and-session-bootstrap.md`
 - `docs/decisions/ADR-0005-backend-framework-selection.md`
 - `docs/decisions/ADR-0006-local-database-and-query-layer.md`

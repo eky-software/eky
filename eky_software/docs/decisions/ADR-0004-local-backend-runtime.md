@@ -68,7 +68,11 @@ Paikallinen backend voi myöhemmin olla:
 - paikallisen desktop shellin käynnistämä backend-prosessi
 - osa paikallista paketoitua sovellusta
 
-Tätä paketointimallia ei päätetä tässä ADR:ssä.
+Local-MVP:n ensisijaiseksi paketointimalliksi on valittu Electron-shellin
+hallittu backend-prosessi dokumentissa
+`docs/decisions/ADR-0007-local-desktop-shell-and-session-bootstrap.md`.
+Nykyinen tavallisen selaimen local-malli säilyy kehityskäyttöön, ei
+tuotantoturvallisuuden perustaksi.
 
 Paikallinen backend ei saa tarkoittaa sitä, että käyttöliittymä kirjoittaa suoraan SQLite-tietokantaan.
 
@@ -195,7 +199,6 @@ Tässä ADR:ssä ei vielä päätetä:
 - SQLite-kirjastoa
 - ORM- tai query builder -ratkaisua
 - Cloud Runin ja Cloud Functionsien lopullista työnjakoa
-- paikallisen ohjelman paketointia
 - auth-tokenin teknistä tarkistustoteutusta
 - audit login tarkkaa rakennetta
 - local-cloud-synkronoinnin tarkkaa toteutusta
@@ -212,3 +215,4 @@ Tässä ADR:ssä ei vielä päätetä:
 - `docs/decisions/ADR-0003-technical-foundation.md`
 - `docs/decisions/ADR-0005-backend-framework-selection.md`
 - `docs/decisions/ADR-0006-local-database-and-query-layer.md`
+- `docs/decisions/ADR-0007-local-desktop-shell-and-session-bootstrap.md`

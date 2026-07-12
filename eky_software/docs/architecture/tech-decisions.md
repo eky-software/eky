@@ -43,6 +43,25 @@ Perustelu:
 - nopea kehitys
 - sopii hallintapaneeliin ja laskutusnäkymiin
 
+## Päätös: Electron local desktop -kuoreksi
+
+Päätös:
+
+Paikallisesti asennettavan Eky local-MVP:n ensisijainen desktop shell on
+Electron.
+
+Perustelu:
+
+- nykyinen React/Vite-UI säilyy
+- nykyinen Node/TypeScript-backend voidaan käynnistää hallittuna prosessina
+- Electron main process tarjoaa luotetun session-bootstrap- ja prosessirajan
+- renderer voidaan pitää sandboxattuna ilman Node-oikeuksia
+- pilviversio pysyy Electronista riippumattomana
+
+Tarkka päätös ja turvallisuusrajat on kuvattu dokumentissa
+`docs/decisions/ADR-0007-local-desktop-shell-and-session-bootstrap.md`.
+Electron-riippuvuutta tai paketointityökalua ei ole vielä lisätty.
+
 ## Päätös: relaatiotietokanta ydindatalle
 
 Päätös:
