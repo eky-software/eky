@@ -321,6 +321,57 @@ Windows Credential Manager -adapteri voi vaatia myöhemmin erillisen
 riippuvuuden tai natiivin integraation. Se arvioidaan
 `docs/architecture/dependency-policy.md`-dokumentin mukaan ennen lisäämistä.
 
+### Secret Store -Toteutuksen Turvallisuusportti
+
+Nykyinen local-MVP-backend on sidottu loopback-osoitteeseen, mutta sillä ei ole
+vielä oikeaa autentikointia, permission-mallia tai luotettua käyttäjäkontekstia.
+Loopback-sidonta ei yksin riitä oikean postilaatikkosalasanan käsittelyn
+tuotantoturvaksi.
+
+Ennen kuin Eky saa vastaanottaa tai tallentaa oikean SMTP-salasanan, pitää
+hyväksyä local-käytön luottamus- ja valtuutusmalli. Siinä ratkaistaan vähintään:
+
+- miten backend tunnistaa luotetun paikallisen Eky-käyttöliittymän
+- miten salaisuuden asettamis-, vaihtamis- ja poistamispyynnöt suojataan
+- miten origin-, CSRF- ja paikallisen prosessin väärinkäyttöriski rajataan
+- miten käyttäjä ja `companyId` saadaan backendin vahvistamasta kontekstista
+- miten salaisuuden lifecycle auditoidaan ilman salaisen arvon lokitusta
+- miten release security review tehdään ennen oikean sähköpostitilin käyttöä
+
+Ennen tämän portin hyväksymistä saa toteuttaa vain rajattuja teknisiä
+valmiuksia synteettisillä testiarvoilla:
+
+- provider-agnostisen secret store -portin
+- testien fake- tai in-memory-adapterin
+- salaisuuden lifecycle -application servicejen testit ilman oikeaa secret
+  storea tai HTTP-reittejä
+- turvalliset tyypit, joissa salainen arvo ei päädy response-malliin
+
+Ensimmäinen rajattu valmius on toteutettu Company Settings -moduuliin:
+
+- providerista riippumaton `CompanyEmailSecretStore`-portti tukee salaisuuden
+  asettamista, olemassaolon tarkistamista ja poistamista
+- Company Settings -portti ei palauta salaisuutta; tuleva SMTP-provider saa
+  tarvittaessa oman kapean backend-only reader-sopimuksen
+- salaisen syötteen validointi säilyttää arvon muuttamattomana eikä sisällytä
+  sitä virheviesteihin
+- toteutus ei sisällä adapteria, HTTP-reittiä, UI-kenttää tai oikeaa
+  salaisuutta
+
+Lifecycle-application servicet toteutetaan vasta yhteisen `ActorContext`- ja
+permission-sopimuksen jälkeen, jotta niitä ei voida kytkeä suojaamattomasti
+runtimeen.
+
+Oikeaa Windows Credential Manager -kirjoitusta, salaisuutta vastaanottavaa
+HTTP-reittiä, webin salasanakenttää tai oikeaa SMTP-yhteyttä ei oteta käyttöön
+ennen local-käytön turvallisuusportin hyväksymistä. Testeissä käytetään vain
+selvästi synteettisiä salaisuuksia.
+
+Local- ja cloud-ympäristöille yhteinen actor context, local-sessionin
+turvallisuusrajat sekä luotetun `companyId`-kontekstin eteneminen on kuvattu
+dokumentissa
+`docs/architecture/local-runtime-trust-and-authorization-plan.md`.
+
 ## Pilvimalli Myöhemmin
 
 Pilviversion suositeltu malli:
@@ -490,18 +541,22 @@ riippuvuusarviota.
 
 ## Seuraava Toteutusjärjestys
 
-1. Määritellään secret store -portti ja salaisuuden lifecycle local Windows
-   -ympäristölle.
-2. Toteutetaan Windows Credential Manager -adapteri tai muu erikseen
+1. Määritellään provider-agnostinen secret store -portti ja salaisuuden
+   lifecycle synteettisillä testiarvoilla.
+2. Päätetään ja hyväksytään
+   `docs/architecture/local-runtime-trust-and-authorization-plan.md`-dokumentin
+   local-käytön luottamus- ja valtuutusmalli ennen oikeita salaisuuksia
+   vastaanottavia HTTP- tai UI-polkuja.
+3. Toteutetaan Windows Credential Manager -adapteri tai muu erikseen
    hyväksytty local secret store -adapteri testeineen.
-3. Toteutetaan SMTP-provider ensin testitilassa käyttäen porttia `465` ja
+4. Toteutetaan SMTP-provider ensin testitilassa käyttäen porttia `465` ja
    implicit TLS -mallia. TLS-version vähimmäisraja, sertifikaatin ja hostnamen
    validointi, timeout ja turvallinen virheenkäsittely ovat pakollisia.
-4. Pakotetaan test recipient override ensimmäisissä oikean providerin
+5. Pakotetaan test recipient override ensimmäisissä oikean providerin
    kokeiluissa, jotta viesti ei voi lähteä vahingossa asiakkaalle.
-5. Kytketään provider nykyiseen backendin send-polkuun niin, että onnistunut
+6. Kytketään provider nykyiseen backendin send-polkuun niin, että onnistunut
    lähetys kirjaa delivery eventin ja voi muuttaa laskun `sent`-tilaan.
-6. Epäonnistunut lähetys kirjataan turvallisesti eikä se muuta laskun tilaa.
+7. Epäonnistunut lähetys kirjataan turvallisesti eikä se muuta laskun tilaa.
 
 Ensimmäinen oikea SMTP-lähetys saa olla synkroninen. UI näyttää lähetyksen
 olevan käynnissä ja estää saman toiminnon uudelleen pyynnön aikana. Backend

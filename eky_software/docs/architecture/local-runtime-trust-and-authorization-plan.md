@@ -1,0 +1,261 @@
+# Local Runtime Trust And Authorization Plan
+
+Tämä dokumentti määrittää Eky local-runtimen luottamus-, autentikointi- ja
+valtuutusmallin suunnittelulinjan. Tavoitteena on säilyttää sama application- ja
+domain-ydin paikallisessa offline-versiossa, pilvessä ja myöhemmässä
+monilaitemallissa.
+
+Tämä on suunnitelma. Dokumentti ei lisää autentikointia, sessionhallintaa,
+Firebase-riippuvuutta, HTTP-middlewarea, salaisuuden tallennusta tai uusia
+riippuvuuksia.
+
+## Perusperiaate
+
+Paikallinen backend kuuntelee vain loopback-osoitteessa. Loopback on tärkeä
+verkkorajaus, mutta se ei yksin ole autentikointi tai käyttöoikeusmalli.
+
+Eky local-version ensisijainen tuotemainen käyttötapa on käyttäjän omalle
+koneelle asennettava desktop-sovellus. Tarkka desktop shell -teknologia
+päätetään myöhemmin. Pilvipalvelut, synkronointi ja suora web-käyttö lisätään
+myöhemmin erillisinä runtime- ja infrastructure-adaptereina.
+
+Ekyä ei laajenneta pilveen avaamalla käyttäjän paikallista backendia
+internetiin. Paikallinen ja pilvessä ajettava runtime käyttävät samaa
+application- ja domain-ydintä eri adapterien kautta.
+
+```text
+Local installed edition
+  -> local UI
+    -> loopback backend
+      -> verified local actor context
+        -> application services
+          -> SQLite adapters
+          -> local secret store adapter
+          -> outbound integrations
+
+Cloud edition
+  -> web UI over HTTPS
+    -> cloud backend
+      -> verified Firebase identity and company membership
+        -> application services
+          -> PostgreSQL adapters
+          -> cloud secret manager adapter
+          -> outbound integrations
+```
+
+Paikallinen SMTP-yhteys on ulospäin lähtevä yhteys. Se ei tee loopbackiin
+sidotusta backendista internetistä saavutettavaa. Se tuo kuitenkin uuden
+luottamusrajan, koska backend käsittelee salaisuutta ja lähettää laskun tietoja
+sekä PDF-tiedoston ulkoiselle palveluntarjoajalle.
+
+## Yhteinen Actor Context
+
+Application service saa käyttäjän ja yrityksen vain backendin vahvistamasta
+kontekstista. Request body, query-parametri tai frontendin oma tila ei ole
+luotettu identiteetin tai `companyId`-arvon lähde.
+
+Alustava yhteinen sopimus voi olla:
+
+```ts
+interface ActorContext {
+  actorId: string;
+  companyId: string;
+  permissions: readonly Permission[];
+  authenticationMode: 'local' | 'firebase';
+}
+```
+
+Tarkka tyyppien sijainti päätetään ensimmäisessä toteutuspalassa.
+`packages/auth` on luonteva paikka ympäristöriippumattomalle identiteetti- ja
+session-sopimukselle. `packages/permissions` on luonteva paikka permission-
+tyypeille ja deny-by-default-tarkistuksille. Firebase-, HTTP-, desktop- tai
+Windows-tyypit eivät saa vuotaa näihin sopimuksiin.
+
+Ensimmäisiä sähköpostipolun permissioneja voivat olla:
+
+- `manageCompanyEmailSettings`
+- `manageCompanyEmailSecret`
+- `sendInvoices`
+
+Permissionien lopulliset nimet ja laajempi roolimalli hyväksytään erikseen.
+
+## Local Identity Adapter
+
+Yhden käyttäjän paikallinen versio tarvitsee aidon paikallisen session, vaikka
+se ei ensimmäisessä vaiheessa tarvitse koko Firebase Auth -mallia.
+
+Tavoiteltuja sääntöjä:
+
+- backend kuuntelee vain `127.0.0.1`- tai vastaavassa varmennetussa
+  loopback-osoitteessa
+- local runtime muodostaa käynnistyksessä vahvan satunnaisen session
+- kirjoittavat ja arkaluonteiset reitit vaativat session
+- sessionia ei sijoiteta URL:iin, lokiin tai selaimen pysyvään storageen
+- origin on sallittujen paikallisten originien listalla ja CORS on deny by
+  default
+- CSRF- ja cross-origin-riskit käsitellään myös loopback-käytössä
+- backend muodostaa `ActorContext`-olion session perusteella
+- `companyId` ei tule request bodysta tai querysta
+- käyttöoikeudet tarkistetaan deny-by-default-periaatteella
+
+Sessionin turvallinen välitys UI:lle riippuu local-asennuksen paketointimallista.
+Ensisijainen tavoite on desktop shellin hallittu käynnistys ja IPC- tai
+bootstrap-kanava. Ennen toteutusta päätetään tarkka tekniikka ja arvioidaan,
+tarvitaanko välivaiheessa:
+
+- desktop shellin hallittua käynnistystä ja IPC-/bootstrap-kanavaa
+- paikallisen selainkäyttöliittymän rajattua bootstrap-mallia
+- muuta käyttöjärjestelmään sidottua luotettua kanavaa
+
+Sessionia ei saa välittää vain kovakoodattuna arvona tai julkisena build-time
+asetuksena.
+
+## Cloud Identity Adapter
+
+Pilvessä backend muodostaa saman `ActorContext`-olion esimerkiksi seuraavista
+vahvistetuista tiedoista:
+
+- Firebase ID token
+- käyttäjän aktiivinen jäsenyys yrityksessä
+- backendin lukemat roolit ja permissionit
+- pyynnön yrityskonteksti, jonka jäsenyyden backend on tarkistanut
+
+Firebase on auth-adapteri. Se ei saa vuotaa domainiin tai application service
+-sopimuksiin. Pilviversio ei kutsu käyttäjän paikallista loopback-backendia.
+
+## Cloud Connected Local Mode
+
+Paikallinen sovellus voi myöhemmin synkronoida pilveen tekemällä itse
+ulospäin lähteviä HTTPS-pyyntöjä. Paikallista backendia ei avata lähiverkkoon
+tai internetiin.
+
+Synkronointi kulkee erillisen sync-kerroksen ja pilvibackendin autentikointi-,
+permission-, validointi- ja auditointisääntöjen kautta. Raakaa SQLite-tiedostoa
+ei kopioida pilveen.
+
+## SMTP-Salaisuuden Turvallisuusportti
+
+Secret store -portti ja lifecycle-testit voidaan valmistella synteettisillä
+testiarvoilla ennen local-sessionin valmistumista. Oikeaa SMTP-salasanaa ei saa
+vastaanottaa HTTP:llä, näyttää webissä tai kirjoittaa Windows Credential
+Manageriin ennen kuin local identity- ja permission-malli on toteutettu ja
+turvallisuustestattu.
+
+Salaisuuden asettaminen, vaihtaminen ja poistaminen vaativat myöhemmin
+`manageCompanyEmailSecret`-permissionin. Oikea laskun lähetys vaatii
+`sendInvoices`-permissionin.
+
+Salaisuuden arvo:
+
+- ei mene request- tai application-lokiin
+- ei palaudu API-vastauksessa
+- ei tallennu tavalliseen SQLite-kenttään
+- ei tallennu selaimen storageen
+- ei näy audit-eventissä
+- luetaan secret storesta vain backendin provider-kutsua varten
+
+## Runtime-Konfiguraation Rajat
+
+Kaikkia toistuvia arvoja ei keskitetä yhteen yleiseen ohjain- tai
+`constants.ts`-tiedostoon.
+
+Keskitetään runtime-profiilin asetukset, kuten:
+
+- local/cloud/runtime mode
+- backendin host ja portti
+- sallitut paikalliset originit
+- sessionin turvallisuusasetukset
+- tietokanta- ja storage-adapterin valinta
+- auth- ja secret-adapterin valinta
+- timeoutit ja muut ympäristökohtaiset tekniset rajat
+
+Moduuliin jätetään sen omistamat arvot, kuten:
+
+- laskutuksen tilat ja tilasiirtymät
+- ALV- ja rahalaskennan säännöt
+- laskurivien sallitut yksiköt
+- moduulikohtaiset validointirajat
+- PDF-layoutin mitat
+- käyttäjälle näkyvät i18n-tekstit
+
+`packages/config` voi myöhemmin omistaa ympäristöriippumattomat
+konfiguraatiotyypit ja turvallisen runtime-asetusten lukumallin. Se ei saa
+sisältää salaisuuksia, liiketoimintasääntöjä tai yhtä yleistä kaikkien
+moduulien constants-kaatopaikkaa.
+
+Nykyiset `dev-company`- ja `dev-user`-arvot ovat väliaikainen local development
+-oikopolku. Ne korvataan reittien yhteisellä backendin vahvistamalla
+`ActorContext`-mallilla, ei siirtämällä samoja tunnisteita vain uuteen
+constants-tiedostoon.
+
+## Turvallisuustestit
+
+Ensimmäisen local trust -toteutuksen pitää testata vähintään:
+
+- ei-loopback-bind estetään tuotemaisessa local-profiilissa
+- puuttuva, virheellinen ja vanhentunut local session hylätään
+- väärä origin hylätään
+- kirjoittava tai arkaluonteinen reitti ei toimi ilman permissionia
+- request bodyn tai queryn `companyId` ei ohita actor contextia
+- toisen yrityksen dataa ei voi lukea tai muuttaa
+- salaisuus ei näy vastauksessa, virheessä, auditissa tai lokissa
+- salaisuuden lifecycle käyttää vain backendin vahvistamaa yrityskontekstia
+- Firebase-adapterin puuttuminen ei muuta local-sessionia automaattisesti
+  pilviauthiksi
+
+## Toteutusjärjestys
+
+1. Hyväksytään tämä local/cloud-yhteinen trust-malli.
+2. Päätetään local UI:n paketointiin sopiva sessionin bootstrap-kanava.
+3. Määritellään `ActorContext` ja ensimmäiset permissionit ilman Firebase-
+   tai HTTP-riippuvuutta.
+4. Toteutetaan local-session-adapteri ja HTTP-middleware negatiivisine
+   turvallisuustesteineen.
+5. Korvataan reittien `dev-company`- ja `dev-user`-oikopolut backendin
+   vahvistamalla actor contextilla.
+6. Toteutetaan sähköpostin secret store -portti ja lifecycle-testit.
+7. Toteutetaan Windows Credential Manager -adapteri erillisen dependency- ja
+   turvallisuusarvion jälkeen.
+8. Toteutetaan SMTP-provider portilla `465` ja implicit TLS -mallilla ensin
+   pakotettuun test recipient -osoitteeseen.
+9. Pilviversiossa toteutetaan erikseen Firebase identity -adapteri ja cloud
+   secret manager -adapteri saman application-tason sopimuksen ympärille.
+
+## Seurattava Tekninen Velka
+
+Seuraavat kohdat saa siirtää laskutuksen toimitusputken jälkeen tehtävään
+rajattuun runtime- ja rakennecleanupiin, mutta niitä ei saa unohtaa tai ohittaa
+ennen oikeaa tuotantodataa:
+
+- reittien kovakoodatut `dev-company`- ja `dev-user`-arvot
+- yhteisen backendin vahvistaman `ActorContext`-mallin puuttuminen
+- local desktop -sessionin bootstrap-kanavan päätös ja toteutus
+- kirjoittavien ja arkaluonteisten reittien permission-middleware
+- Viten toistuvan backend-proxyosoitteen keskittäminen
+- runtime-profiilien tyypitetty konfiguraatiomalli `packages/config`-rajalla
+
+Laaja cleanup voidaan ajoittaa laskutusmoduulin valmistumisen jälkeen. Oikean
+SMTP-salaisuuden HTTP/UI-polku, oikea asiakkaalle lähetys ja oikean asiakas- tai
+laskutusdatan tuotantokäyttö eivät kuitenkaan saa ohittaa local desktop
+-luottamusrajan toteutusta ja release security review -tarkistusta.
+
+## Ei Vielä Toteuteta
+
+- local-session-koodia
+- HTTP-auth-middlewarea
+- Firebase Authia
+- permission-pakettien tuotantokoodia
+- SMTP-salaisuuden HTTP- tai UI-polkuja
+- Windows Credential Manager -adapteria
+- SMTP-provideria
+- pilvisynkronointia
+- uusia riippuvuuksia
+
+## Liittyvät Dokumentit
+
+- `AGENTS.md`
+- `docs/architecture/security-principles.md`
+- `docs/architecture/email-delivery-and-secrets-plan.md`
+- `docs/architecture/local-cloud-sync.md`
+- `docs/decisions/ADR-0003-technical-foundation.md`
+- `docs/decisions/ADR-0004-local-backend-runtime.md`

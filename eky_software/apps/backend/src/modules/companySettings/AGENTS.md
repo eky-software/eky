@@ -79,6 +79,11 @@ Add or update tests when changing:
 - repository port behavior
 - default hourly rate behavior
 - hourly rate shortcut validation and persistence
+- email secret input validation and secret store port behavior
+
+Email secrets must never be returned to the frontend, written to ordinary
+SQLite fields, included in logs, or placed in test fixtures as real values.
+Use only clearly synthetic secret values in tests.
 
 ## Naming
 
