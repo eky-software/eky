@@ -1,3 +1,5 @@
+import { resolve } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -7,15 +9,23 @@ import {
 
 describe('desktop backend process messages', () => {
   it('accepts only absolute trusted runtime paths', () => {
+    const runtimeRoot = resolve('desktop-test-runtime');
+
     expect(
       parseDesktopBackendCommand({
         config: {
-          backendRoot: 'C:\\Eky\\backend',
+          backendRoot: resolve(runtimeRoot, 'backend'),
           createSmokePdf: true,
-          databaseFilePath: 'C:\\Eky\\data\\eky.sqlite',
-          invoiceDocumentStorageRoot: 'C:\\Eky\\storage',
-          migrationsDirectory: 'C:\\Eky\\backend\\dist\\database\\migrations',
-          smokePdfPath: 'C:\\Eky\\smoke\\invoice.pdf',
+          databaseFilePath: resolve(runtimeRoot, 'data', 'eky.sqlite'),
+          invoiceDocumentStorageRoot: resolve(runtimeRoot, 'storage'),
+          migrationsDirectory: resolve(
+            runtimeRoot,
+            'backend',
+            'dist',
+            'database',
+            'migrations',
+          ),
+          smokePdfPath: resolve(runtimeRoot, 'smoke', 'invoice.pdf'),
         },
         type: 'start',
       }),

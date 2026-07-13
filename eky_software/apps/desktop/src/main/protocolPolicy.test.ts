@@ -1,3 +1,5 @@
+import { join, resolve } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -34,10 +36,10 @@ describe('desktop protocol policy', () => {
   });
 
   it('keeps static resources inside the packaged web root', () => {
-    const webRoot = 'C:\\Program Files\\Eky\\resources\\app.asar\\web';
+    const webRoot = resolve('desktop-test-resources', 'app.asar', 'web');
 
     expect(resolveStaticResourcePath(webRoot, '/assets/index.js')).toBe(
-      'C:\\Program Files\\Eky\\resources\\app.asar\\web\\assets\\index.js',
+      join(webRoot, 'assets', 'index.js'),
     );
     expect(resolveStaticResourcePath(webRoot, '/../secret.txt')).toBeUndefined();
     expect(resolveStaticResourcePath(webRoot, '/%2e%2e/secret.txt')).toBeUndefined();
