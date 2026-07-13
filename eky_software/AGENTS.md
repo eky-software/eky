@@ -86,6 +86,13 @@ Jos työ koskee local desktop -paketointia, Electronia, Tauria, desktop shelliä
 backend-prosessin hallintaa, preload-/IPC-rajaa tai local-sessionin bootstrapia,
 lue myös `docs/decisions/ADR-0007-local-desktop-shell-and-session-bootstrap.md`.
 
+Jos työ koskee Electron-runtimen ensimmäistä toteutusta, `apps/desktop`-
+rakennetta, Electronin development- ja production-profiileja, Windows-
+paketointispikeä, desktop-transporttia tai paketoidun backendin, SQLiten ja
+PDFKitin yhteensopivuuden todentamista, lue myös
+`docs/architecture/local-desktop-implementation-plan.md` ja
+`docs/architecture/local-desktop-dependency-review.md`.
+
 Jos työ koskee tietokantaa, query layeria, repository-portteja, tietokanta-adaptereita, SQLitea, PostgreSQL:ää tai tietomallin moduuliomistusta, lue myös `docs/decisions/ADR-0006-local-database-and-query-layer.md`.
 
 Jos työ koskee ensimmäisen paikallisen tietokantapinon toteutusta, SQLite-ajuria, SQL-kyselyitä, migraatiomallia tai paikallisen SQLite-tiedoston sijaintia, lue myös `docs/architecture/local-database-implementation-plan.md`.

@@ -1,3 +1,5 @@
 import { startServer } from './http/server.js';
 
-await startServer();
+const server = await startServer();
+
+console.log(`Backend listening on http://${server.hostname}:${server.port}`);

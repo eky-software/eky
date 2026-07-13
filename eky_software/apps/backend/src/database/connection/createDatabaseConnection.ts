@@ -6,18 +6,26 @@ const defaultDatabaseFilePath = 'data/eky-dev.sqlite';
 
 export type DatabaseConnection = Database.Database;
 
-function getDatabaseFilePath(): string {
-  const configuredPath = process.env.DATABASE_FILE_PATH?.trim();
+export interface CreateDatabaseConnectionOptions {
+  databaseFilePath?: string;
+}
 
-  if (configuredPath !== undefined && configuredPath !== '') {
-    return resolve(process.cwd(), configuredPath);
+function getDatabaseFilePath(
+  configuredPath = process.env.DATABASE_FILE_PATH,
+): string {
+  const trimmedPath = configuredPath?.trim();
+
+  if (trimmedPath !== undefined && trimmedPath !== '') {
+    return resolve(process.cwd(), trimmedPath);
   }
 
   return resolve(process.cwd(), defaultDatabaseFilePath);
 }
 
-export function createDatabaseConnection(): DatabaseConnection {
-  const databaseFilePath = getDatabaseFilePath();
+export function createDatabaseConnection(
+  options: CreateDatabaseConnectionOptions = {},
+): DatabaseConnection {
+  const databaseFilePath = getDatabaseFilePath(options.databaseFilePath);
   mkdirSync(dirname(databaseFilePath), { recursive: true });
 
   const sqliteDatabase = new Database(databaseFilePath);

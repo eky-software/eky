@@ -3,9 +3,14 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "main": "src/index.ts",
+  "main": "dist/index.js",
   "types": "src/index.ts",
+  "files": [
+    "dist"
+  ],
   "scripts": {
+    "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.build.json",
+    "pretest": "pnpm --filter @eky/permissions build && pnpm build",
     "test": "vitest run src",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

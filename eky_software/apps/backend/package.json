@@ -3,12 +3,17 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "main": "dist/index.js",
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.build.json && node scripts/copy-migrations.mjs",
     "dev": "pnpm build && pnpm start",
     "local:approved-invoice-pdf": "pnpm build && node scripts/create-approved-invoice-pdf-from-local.mjs",
     "sample:approved-invoice-pdf": "pnpm build && node scripts/create-approved-invoice-pdf-sample.mjs",
     "start": "node --env-file-if-exists=../../.env dist/index.js",
+    "pretest": "pnpm --filter @eky/permissions build && pnpm --filter @eky/auth build",
     "test": "vitest run src",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
@@ -16,7 +21,7 @@
     "@eky/auth": "workspace:*",
     "@eky/permissions": "workspace:*",
     "@hono/node-server": "^2.0.3",
-    "better-sqlite3": "^12.10.0",
+    "better-sqlite3": "12.11.1",
     "hono": "^4.12.27",
     "pdfkit": "^0.19.1"
   },
