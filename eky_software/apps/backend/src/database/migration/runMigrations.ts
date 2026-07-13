@@ -1,12 +1,26 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import type { DatabaseConnection } from '../connection/createDatabaseConnection.js';
 import type { SchemaMigrationTable } from '../schema.js';
 
-const migrationsDirectory = resolve(process.cwd(), 'src/database/migrations');
+const defaultMigrationsDirectory = fileURLToPath(
+  new URL('../migrations/', import.meta.url),
+);
 
-export async function runMigrations(database: DatabaseConnection): Promise<void> {
+export interface RunMigrationsOptions {
+  migrationsDirectory?: string;
+}
+
+export async function runMigrations(
+  database: DatabaseConnection,
+  options: RunMigrationsOptions = {},
+): Promise<void> {
+  const migrationsDirectory = resolve(
+    options.migrationsDirectory ?? defaultMigrationsDirectory,
+  );
+
   database.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       name TEXT PRIMARY KEY,

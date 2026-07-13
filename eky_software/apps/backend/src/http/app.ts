@@ -47,15 +47,30 @@ import { SqliteInvoiceNumberingRepository } from '../modules/invoicing/infrastru
 import { SqliteInvoicePaymentSettingsRepository } from '../modules/invoicing/infrastructure/sqliteInvoicePaymentSettingsRepository.js';
 import type { CustomerAccessReader } from '../modules/invoicing/ports/customerAccessReader.js';
 
-export async function createApp(): Promise<Hono> {
+export interface CreateAppOptions {
+  databaseFilePath?: string;
+  invoiceDocumentStorageRoot?: string;
+  migrationsDirectory?: string;
+}
+
+export async function createApp(options: CreateAppOptions = {}): Promise<Hono> {
   const app = new Hono();
 
   app.get('/health', (context) => {
     return context.json({ status: 'ok' });
   });
 
-  const database = createDatabaseConnection();
-  await runMigrations(database);
+  const database = createDatabaseConnection(
+    options.databaseFilePath === undefined
+      ? {}
+      : { databaseFilePath: options.databaseFilePath },
+  );
+  await runMigrations(
+    database,
+    options.migrationsDirectory === undefined
+      ? {}
+      : { migrationsDirectory: options.migrationsDirectory },
+  );
 
   const customerRepository = new SqliteCustomerRepository(database);
   const companySettingsRepository = new SqliteCompanySettingsRepository(database);
@@ -65,7 +80,10 @@ export async function createApp(): Promise<Hono> {
     new SqliteInvoiceDocumentRepository(database);
   const invoiceDeliveryEventRepository =
     new SqliteInvoiceDeliveryEventRepository(database);
-  const invoiceDocumentStorage = new LocalInvoiceDocumentStorage();
+  const invoiceDocumentStorage =
+    options.invoiceDocumentStorageRoot === undefined
+      ? new LocalInvoiceDocumentStorage()
+      : new LocalInvoiceDocumentStorage(options.invoiceDocumentStorageRoot);
   const invoiceEmailDeliveryProvider = new DryRunInvoiceEmailDeliveryProvider();
   const approvedInvoiceReader = new SqliteApprovedInvoiceReader(database);
   const invoiceNumberingRepository = new SqliteInvoiceNumberingRepository(database);

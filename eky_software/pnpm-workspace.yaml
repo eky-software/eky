@@ -1,5 +1,7 @@
 packages:
   - "apps/*"
   - "packages/*"
+injectWorkspacePackages: true
 allowBuilds:
   better-sqlite3: true
+  electron: true

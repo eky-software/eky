@@ -1,1 +1,4 @@
 apps/backend/storage/
+apps/desktop/.stage/
+apps/desktop/dist/
+apps/desktop/out/

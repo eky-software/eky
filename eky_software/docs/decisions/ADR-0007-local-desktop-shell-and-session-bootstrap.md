@@ -403,7 +403,9 @@ Päätös:
 - lisää Electron/Chromium-päivitys- ja paketointivastuun
 
 Ennen Electron-riippuvuuden lisäämistä tehdään erillinen rajattu toteutus-
-suunnitelma, dependency audit ja Windows-paketointispike.
+suunnitelma, dependency audit ja Windows-paketointispike. Ensimmäisen spiken
+toteutus- ja hyväksymisrajat on kuvattu dokumentissa
+`docs/architecture/local-desktop-implementation-plan.md`.
 
 ## Ei Toteuteta Tässä Päätöksessä
 
@@ -445,6 +447,7 @@ suunnitelma, dependency audit ja Windows-paketointispike.
 
 - `AGENTS.md`
 - `docs/architecture/local-runtime-trust-and-authorization-plan.md`
+- `docs/architecture/local-desktop-implementation-plan.md`
 - `docs/architecture/security-principles.md`
 - `docs/decisions/ADR-0003-technical-foundation.md`
 - `docs/decisions/ADR-0004-local-backend-runtime.md`
