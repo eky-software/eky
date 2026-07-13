@@ -28,11 +28,14 @@ paketoidut UI-resurssit ja välittää vain eksplisiittisesti allowlistatut
 backend-reitit ja HTTP-metodit. Preload ei tässä vaiheessa paljasta rendererille
 yhtään Node-, tiedosto-, prosessi- tai yleistä IPC-API:a.
 
-Package-spike ei ole loppukäyttäjän release. Electron 41 on väliaikainen
-`better-sqlite3`-yhteensopivuuslukitus, joka pitää poistaa ennen tuotantoa.
-Installer, code signing, tavallisen Windows-käyttäjän manuaalinen
-hyväksymistesti, visuaalinen PDF-tarkistus ja päivityskanava ovat edelleen
-avoimia toimitusvaiheita.
+Package-spike ei ole loppukäyttäjän release. Spike käyttää virallisesta
+npm-rekisteristä saatavia Electron 42.6.1- ja `better-sqlite3 12.11.1`
+-versioita. `better-sqlite3 12.11.1` korjaa Electron 42:n Windows-käännön.
+Electron 43:een siirrytään heti, kun sitä tukeva `better-sqlite3 12.11.2` tai
+uudempi versio on julkaistu myös npm-rekisteriin ja Windows package- sekä
+smoke-testit läpäisevät päivityksen. Installer, code signing, tavallisen
+Windows-käyttäjän manuaalinen hyväksymistesti, visuaalinen PDF-tarkistus ja
+päivityskanava ovat edelleen avoimia toimitusvaiheita.
 
 ## Tavoite
 

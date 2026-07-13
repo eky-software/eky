@@ -23,7 +23,7 @@ Spikessä käytetään tarkasti lukittuja development-riippuvuuksia vain
 
 | Paketti | Versio | Vastuu |
 | --- | --- | --- |
-| `electron` | `41.10.1` | desktop-runtime ja Windows-binääri |
+| `electron` | `42.6.1` | desktop-runtime ja Windows-binääri |
 | `@electron/packager` | `20.0.2` | rajattu paketoitu sovellushakemisto |
 | `@electron/fuses` | `2.1.3` | production-fusejen lukitseminen |
 
@@ -34,27 +34,32 @@ Electronin asennusskripti lataa version mukaisen binäärin. Siksi
 `pnpm-workspace.yaml` sallii build/install-skriptin eksplisiittisesti vain
 nimetylle `electron`-paketille nykyisen `better-sqlite3`-poikkeuksen rinnalla.
 
-### Tilapäinen Electron 41 -Yhteensopivuuslukitus
+### Electron 42 Ja `better-sqlite3`
 
-Dependency review aloitettiin uusimmasta Electron `43.1.0` -versiosta, mutta
-Windows-native rebuild osoitti, ettei nykyinen `better-sqlite3 12.10.0`
-käänny Electron 43:n V8-rajapintaa vasten. Upstreamin `better-sqlite3 12.10.0`
-release poisti Electron 42 -prebuildit tilapäisesti, ja uuden V8 External API:n
-korjaus on edelleen avoimessa upstream-muutoksessa.
+Dependency review aloitettiin `better-sqlite3 12.10.0` -versiolla, joka ei
+tukenut Electron 42/43:n muuttunutta V8 External API:a. `better-sqlite3
+12.11.1` korjaa Electron 42:n Windows-käännön ja on saatavilla virallisesta
+npm-rekisteristä. GitHubissa 3.7.2026 julkaistu `better-sqlite3 12.11.2` lisää
+Electron 43 -esikäännökset, mutta 14.7.2026 kyseistä versiota ei vielä löydy
+npm-rekisteristä. Eky ei ota tuotantopohjaan julkaisemattomia GitHub-tarball-
+tai binääriartefakteja.
 
-Spikessä käytetään siksi uusinta Electron 41 -sarjan patch-versiota `41.10.1`,
-jolle nykyinen tietokanta-ajuri on yhteensopiva. Electron 41:n ilmoitettu EOL on
-25.8.2026. Tämä on näkyvä väliaikainen yhteensopivuuslukitus, ei pitkäaikainen
-tuotantoversiopäätös.
+Spike käyttää siksi Electron `42.6.1`- ja `better-sqlite3 12.11.1`
+-versioita. Electron 42:n ilmoitettu EOL on 20.10.2026. Native-ajuri lukitaan
+tarkkaan versioon ja rakennetaan vain paketointihakemiston staged-kopiossa
+kohde-Electronin ABI:lle. Paketointiputki etsii paketin pnpm-virtuaalivarastosta
+paketin nimen perusteella eikä kovakoodatusta versiollisesta hakemistopolusta.
 
-Ennen isälle jaettavaa tuotantoversiota pitää:
+Ennen isälle jaettavaa tuotantoversiota pitää edelleen:
 
-1. tarkistaa `better-sqlite3`-upstreamin Electron 42/43+ -tuki
-2. nostaa Electron uusimpaan tuettuun vakaaseen versioon
+1. tarkistaa, onko Electron 43:a tukeva `better-sqlite3 12.11.2` tai uudempi
+   julkaistu npm-rekisteriin
+2. nostaa Electron uusimpaan valitun SQLite-ajurin virallisesti tukemaan
+   vakaaseen versioon
 3. ajaa Windows package- ja smoke-testit uudelleen
 4. tarkistaa Electronin ja transitiivisten riippuvuuksien turvallisuustila
 
-Eky ei ylläpidä omaa `better-sqlite3`-C++-forkkia tämän yhteensopivuusrajan
+Eky ei ylläpidä omaa `better-sqlite3`-C++-forkkia yhteensopivuusrajojen
 kiertämiseksi.
 
 ## Miksi Ei Electron Forgea Tässä Spikessä

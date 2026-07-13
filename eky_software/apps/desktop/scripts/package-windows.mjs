@@ -20,7 +20,7 @@ import {
 } from '@electron/fuses';
 import { packager } from '@electron/packager';
 
-const electronVersion = '41.10.1';
+const electronVersion = '42.6.1';
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const desktopDirectory = resolve(scriptDirectory, '..');
 const repositoryRoot = resolve(desktopDirectory, '../..');
@@ -30,10 +30,6 @@ const backendStage = resolve(stagingRoot, 'backend');
 const desktopRuntimeStage = resolve(stagingRoot, 'desktop-runtime');
 const outputDirectory = resolve(desktopDirectory, 'out');
 const pnpmCliPath = process.env.npm_execpath;
-const workspaceBetterSqliteBinding = resolve(
-  repositoryRoot,
-  'node_modules/.pnpm/better-sqlite3@12.10.0/node_modules/better-sqlite3/build/Release/better_sqlite3.node',
-);
 
 function run(command, args, options = {}) {
   return new Promise((resolveRun, rejectRun) => {
@@ -87,8 +83,8 @@ async function hashFile(filePath) {
   return createHash('sha256').update(contents).digest('hex');
 }
 
-async function findSinglePnpmPackageDirectory(packageName) {
-  const virtualStore = resolve(backendStage, 'node_modules/.pnpm');
+async function findSinglePnpmPackageDirectory(rootDirectory, packageName) {
+  const virtualStore = resolve(rootDirectory, 'node_modules/.pnpm');
   const entries = await readdir(virtualStore, { withFileTypes: true });
   const matches = entries.filter(
     (entry) => entry.isDirectory() && entry.name.startsWith(`${packageName}@`),
@@ -105,9 +101,11 @@ async function findSinglePnpmPackageDirectory(packageName) {
 
 async function rebuildStagedBetterSqlite() {
   const betterSqlitePackageDirectory = await findSinglePnpmPackageDirectory(
+    backendStage,
     'better-sqlite3',
   );
   const prebuildInstallPackageDirectory = await findSinglePnpmPackageDirectory(
+    backendStage,
     'prebuild-install',
   );
   const betterSqliteModuleDirectory = resolve(
@@ -258,6 +256,10 @@ async function applyAndVerifyFuses(executablePath) {
 }
 
 async function packageWindowsSpike() {
+  const workspaceBetterSqliteBinding = resolve(
+    repositoryRoot,
+    'apps/backend/node_modules/better-sqlite3/build/Release/better_sqlite3.node',
+  );
   const workspaceBindingHashBeforePackaging = await hashFile(
     workspaceBetterSqliteBinding,
   );

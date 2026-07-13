@@ -21,7 +21,7 @@
     "@eky/auth": "workspace:*",
     "@eky/permissions": "workspace:*",
     "@hono/node-server": "^2.0.3",
-    "better-sqlite3": "^12.10.0",
+    "better-sqlite3": "12.11.1",
     "hono": "^4.12.27",
     "pdfkit": "^0.19.1"
   },
