@@ -1,5 +1,9 @@
+import { createActorContext } from '@eky/auth';
+import { AuthorizationError } from '@eky/permissions';
+import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 
+import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 import type { GetApprovedInvoiceInput } from '../application/getApprovedInvoice.js';
 import type { ListApprovedInvoicesInput } from '../application/listApprovedInvoices.js';
 import type { ReopenApprovedInvoiceForEditingInput } from '../application/reopenApprovedInvoiceForEditing.js';
@@ -154,7 +158,10 @@ describe('approved invoice routes', () => {
     await expect(response.json()).resolves.toEqual({ email });
     expect(response.status).toBe(200);
     expect(getEmailInput()).toMatchObject({
-      companyId: 'dev-company',
+      actorContext: {
+        actorId: 'dev-user',
+        companyId: 'dev-company',
+      },
       invoiceId: 'invoice-1',
     });
   });
@@ -177,10 +184,12 @@ describe('approved invoice routes', () => {
     await expect(response.json()).resolves.toEqual({ delivery });
     expect(response.status).toBe(200);
     expect(getEmailSendInput()).toMatchObject({
-      actorUserId: 'dev-user',
+      actorContext: {
+        actorId: 'dev-user',
+        companyId: 'dev-company',
+      },
       body: 'Hei,\n\nTässä muokattu viesti.',
       cc: 'copy@example.fi',
-      companyId: 'dev-company',
       invoiceId: 'invoice-1',
       subject: 'Muokattu laskuotsikko',
       to: 'recipient@example.fi',
@@ -288,6 +297,21 @@ describe('approved invoice routes', () => {
       error: 'Approved invoice was not found.',
     });
     expect(response.status).toBe(404);
+  });
+
+  it('returns a safe 403 when preparing email without permission', async () => {
+    const { app } = createTestApp({
+      emailError: new AuthorizationError(),
+    });
+
+    const response = await app.request('/invoices/invoice-1/email/dry-run', {
+      method: 'POST',
+    });
+
+    await expect(response.json()).resolves.toEqual({
+      error: 'Access denied.',
+    });
+    expect(response.status).toBe(403);
   });
 
   it('creates approved invoice PDF metadata in the company scope', async () => {
@@ -408,7 +432,7 @@ function createTestApp(options: {
   let generatePdfInput: GenerateApprovedInvoicePdfDocumentInput | undefined;
   let pdfInput: GetApprovedInvoicePdfDocumentInput | undefined;
   let pdfMetadataInput: GetApprovedInvoicePdfMetadataInput | undefined;
-  const app = createApprovedInvoiceRoutes({
+  const routes = createApprovedInvoiceRoutes({
     async copyApprovedInvoiceToDraft(nextInput) {
       copyInput = nextInput;
 
@@ -523,6 +547,25 @@ function createTestApp(options: {
       };
     },
   });
+
+  const app = new Hono<BackendEnvironment>();
+  app.use('*', async (context, next) => {
+    context.set(
+      'actorContext',
+      createActorContext({
+        actorId: 'dev-user',
+        authenticationMode: 'local',
+        companyId: 'dev-company',
+        permissions: [
+          'manageCompanyEmailSettings',
+          'manageCompanyEmailSecret',
+          'sendInvoices',
+        ],
+      }),
+    );
+    await next();
+  });
+  app.route('/', routes);
 
   return {
     app,

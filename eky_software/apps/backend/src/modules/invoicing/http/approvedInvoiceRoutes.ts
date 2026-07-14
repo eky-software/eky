@@ -1,4 +1,7 @@
 import { Hono } from 'hono';
+import { AuthorizationError } from '@eky/permissions';
+
+import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 
 import type {
   GetApprovedInvoiceInput,
@@ -46,9 +49,6 @@ import {
   parseApprovedInvoiceEmailDryRunSendBody,
 } from './approvedInvoiceEmailRequest.js';
 
-const devCompanyId = 'dev-company';
-const devActorUserId = 'dev-user';
-
 interface ApprovedInvoiceRouteDependencies {
   copyApprovedInvoiceToDraft(
     input: CopyApprovedInvoiceToDraftInput,
@@ -84,13 +84,14 @@ interface ApprovedInvoiceRouteDependencies {
 
 export function createApprovedInvoiceRoutes(
   dependencies: ApprovedInvoiceRouteDependencies,
-): Hono {
-  const routes = new Hono();
+): Hono<BackendEnvironment> {
+  const routes = new Hono<BackendEnvironment>();
 
   routes.get('/invoices', async (context) => {
     try {
+      const actorContext = context.get('actorContext');
       const invoices = await dependencies.listApprovedInvoices({
-        companyId: devCompanyId,
+        companyId: actorContext.companyId,
       });
 
       return context.json({ invoices });
@@ -105,8 +106,9 @@ export function createApprovedInvoiceRoutes(
 
   routes.get('/invoices/:id', async (context) => {
     try {
+      const actorContext = context.get('actorContext');
       const invoice = await dependencies.getApprovedInvoice({
-        companyId: devCompanyId,
+        companyId: actorContext.companyId,
         invoiceId: context.req.param('id'),
       });
 
@@ -126,8 +128,9 @@ export function createApprovedInvoiceRoutes(
 
   routes.post('/invoices/:id/pdf', async (context) => {
     try {
+      const actorContext = context.get('actorContext');
       const document = await dependencies.generateApprovedInvoicePdfDocument({
-        companyId: devCompanyId,
+        companyId: actorContext.companyId,
         createdAt: new Date().toISOString(),
         invoiceId: context.req.param('id'),
       });
@@ -148,8 +151,9 @@ export function createApprovedInvoiceRoutes(
 
   routes.get('/invoices/:id/pdf', async (context) => {
     try {
+      const actorContext = context.get('actorContext');
       const pdfDocument = await dependencies.getApprovedInvoicePdfDocument({
-        companyId: devCompanyId,
+        companyId: actorContext.companyId,
         invoiceId: context.req.param('id'),
       });
       const responseBody = pdfDocument.content.buffer.slice(
@@ -183,8 +187,9 @@ export function createApprovedInvoiceRoutes(
 
   routes.get('/invoices/:id/pdf/metadata', async (context) => {
     try {
+      const actorContext = context.get('actorContext');
       const document = await dependencies.getApprovedInvoicePdfMetadata({
-        companyId: devCompanyId,
+        companyId: actorContext.companyId,
         invoiceId: context.req.param('id'),
       });
 
@@ -207,9 +212,10 @@ export function createApprovedInvoiceRoutes(
 
   routes.post('/invoices/:id/reopen-for-edit', async (context) => {
     try {
+      const actorContext = context.get('actorContext');
       const reopenedInvoice = await dependencies.reopenApprovedInvoiceForEditing({
-        actorUserId: devActorUserId,
-        companyId: devCompanyId,
+        actorUserId: actorContext.actorId,
+        companyId: actorContext.companyId,
         invoiceId: context.req.param('id'),
         reopenedAt: new Date().toISOString(),
       });
@@ -233,9 +239,10 @@ export function createApprovedInvoiceRoutes(
 
   routes.post('/invoices/:id/mark-sent', async (context) => {
     try {
+      const actorContext = context.get('actorContext');
       const invoice = await dependencies.markApprovedInvoiceSent({
-        actorUserId: devActorUserId,
-        companyId: devCompanyId,
+        actorUserId: actorContext.actorId,
+        companyId: actorContext.companyId,
         invoiceId: context.req.param('id'),
         markedSentAt: new Date().toISOString(),
       });
@@ -256,14 +263,19 @@ export function createApprovedInvoiceRoutes(
 
   routes.post('/invoices/:id/email/dry-run', async (context) => {
     try {
+      const actorContext = context.get('actorContext');
       const email = await dependencies.prepareApprovedInvoiceEmailDryRun({
-        companyId: devCompanyId,
+        actorContext,
         invoiceId: context.req.param('id'),
         preparedAt: new Date().toISOString(),
       });
 
       return context.json({ email });
     } catch (error) {
+      if (error instanceof AuthorizationError) {
+        return context.json({ error: 'Access denied.' }, 403);
+      }
+
       if (error instanceof ApprovedInvoiceNotFoundError) {
         return context.json({ error: error.message }, 404);
       }
@@ -278,11 +290,11 @@ export function createApprovedInvoiceRoutes(
 
   routes.post('/invoices/:id/email/dry-run/send', async (context) => {
     try {
+      const actorContext = context.get('actorContext');
       const body = await context.req.json();
       const delivery = await dependencies.sendApprovedInvoiceEmailDryRun(
         parseApprovedInvoiceEmailDryRunSendBody(body, {
-          actorUserId: devActorUserId,
-          companyId: devCompanyId,
+          actorContext,
           invoiceId: context.req.param('id'),
           sentAt: new Date().toISOString(),
         }),
@@ -290,6 +302,10 @@ export function createApprovedInvoiceRoutes(
 
       return context.json({ delivery });
     } catch (error) {
+      if (error instanceof AuthorizationError) {
+        return context.json({ error: 'Access denied.' }, 403);
+      }
+
       if (error instanceof ApprovedInvoiceNotFoundError) {
         return context.json({ error: error.message }, 404);
       }
@@ -311,8 +327,9 @@ export function createApprovedInvoiceRoutes(
 
   routes.post('/invoices/:id/copy-to-draft', async (context) => {
     try {
+      const actorContext = context.get('actorContext');
       const invoiceDraft = await dependencies.copyApprovedInvoiceToDraft({
-        companyId: devCompanyId,
+        companyId: actorContext.companyId,
         copiedAt: new Date().toISOString(),
         invoiceId: context.req.param('id'),
       });

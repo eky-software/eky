@@ -209,12 +209,15 @@ asettamisen, poistamisen ja tilan tarkistamisen käyttötapaukset. Ne:
 - saavat `companyId`-arvon vain validoidusta `ActorContext`-oliosta
 - vaativat eksplisiittisen `manageCompanyEmailSecret`-permissionin
 - käyttävät `CompanyEmailSecretStore`-porttia
+- kirjoittavat asetus- ja poistotapahtumista rajatun audit eventin, jossa ei ole
+  salaista arvoa tai siitä johdettua tietoa
 - palauttavat vain `configured: true | false` -tilan
 - eivät voi lukea tai palauttaa salaista arvoa
 
 Käyttötapauksia ei ole vielä kytketty HTTP-reitteihin tai oikeaan secret store
--adapteriin. Tämä kytkentä odottaa local desktop -sessionin ja backendin
-vahvistaman actor-kontekstin toteutusta.
+-adapteriin. Local desktop -session ja backendin vahvistama actor-konteksti on
+toteutettu; oikea secret store sekä sitä käyttävä HTTP/UI-polku tehdään
+seuraavina erillisinä turvallisuusvaiheina.
 
 ## Asiakaskohtainen Tuntihinta
 

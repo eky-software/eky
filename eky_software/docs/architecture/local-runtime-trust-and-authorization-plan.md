@@ -5,9 +5,10 @@ valtuutusmallin suunnittelulinjan. Tavoitteena on säilyttää sama application-
 domain-ydin paikallisessa offline-versiossa, pilvessä ja myöhemmässä
 monilaitemallissa.
 
-Tämä on suunnitelma. Dokumentti ei lisää autentikointia, sessionhallintaa,
-Firebase-riippuvuutta, HTTP-middlewarea, salaisuuden tallennusta tai uusia
-riippuvuuksia.
+Dokumentin ensimmäinen local-session-, HTTP-middleware- ja `ActorContext`-
+vaihe on toteutettu. Firebase-identityä, salaisuuden tallennusadapteria,
+salaisuutta vastaanottavaa HTTP/UI-polkuja tai uusia riippuvuuksia ei ole
+lisätty.
 
 ## Perusperiaate
 
@@ -74,9 +75,10 @@ virheen ja heittävän deny-by-default-tarkistuksen. Permissions-paketti käytt�
 tarkistuksessa vain permission-listan sisältävää rakenteellista kontekstia,
 jotta `auth`- ja `permissions`-pakettien välille ei muodostu kiertoriippuvuutta.
 
-Toteutus ei vielä muodosta `ActorContext`-oliota HTTP-pyynnöstä tai desktop-
-sessionista. Firebase-, HTTP-, desktop- tai Windows-tyypit eivät vuoda
-sopimuksiin.
+Electron main processin luoma session varmennetaan backendin HTTP-
+middlewaressa, minkä jälkeen backend muodostaa synteettisen local-profiilin
+`ActorContext`-olion. Firebase-, HTTP-, desktop- tai Windows-tyypit eivät vuoda
+application-palvelujen sopimuksiin.
 
 Ensimmäiset toteutetut sähköpostipolun permissionit ovat:
 
@@ -91,7 +93,7 @@ Laajempi rooli- ja permission-malli hyväksytään erikseen.
 Yhden käyttäjän paikallinen versio tarvitsee aidon paikallisen session, vaikka
 se ei ensimmäisessä vaiheessa tarvitse koko Firebase Auth -mallia.
 
-Tavoiteltuja sääntöjä:
+Toteutetut ensimmäisen local-session-vaiheen säännöt:
 
 - backend kuuntelee vain `127.0.0.1`- tai vastaavassa varmennetussa
   loopback-osoitteessa
@@ -187,10 +189,12 @@ konfiguraatiotyypit ja turvallisen runtime-asetusten lukumallin. Se ei saa
 sisältää salaisuuksia, liiketoimintasääntöjä tai yhtä yleistä kaikkien
 moduulien constants-kaatopaikkaa.
 
-Nykyiset `dev-company`- ja `dev-user`-arvot ovat väliaikainen local development
--oikopolku. Ne korvataan reittien yhteisellä backendin vahvistamalla
-`ActorContext`-mallilla, ei siirtämällä samoja tunnisteita vain uuteen
-constants-tiedostoon.
+Synteettisen local-profiilin nykyiset `dev-company`- ja `dev-user`-tunnisteet
+muodostetaan keskitetysti vasta onnistuneen session-varmennuksen jälkeen.
+Arkaluonteiset sähköpostireitit ja Company Settings -reitit eivät enää valitse
+yritystä tai käyttäjää omilla kovakoodatuilla vakioillaan. Muut vielä
+kehitysoikopolkuja sisältävät reitit siirretään samaan backendin vahvistamaan
+`ActorContext`-malliin rajatusti ennen oikean datan tuotantokäyttöä.
 
 ## Turvallisuustestit
 
@@ -216,13 +220,15 @@ Ensimmäisen local trust -toteutuksen pitää testata vähintään:
    ADR-0007:ssä.
 4. Sähköpostin secret store -portti ja permissioneja vaativat lifecycle-
    palvelut on toteutettu ilman runtime-kytkentää.
-5. Tehdään rajattu Electron- ja Windows-paketointispike ilman oikeaa dataa.
-6. Toteutetaan local-session-adapteri ja HTTP-middleware negatiivisine
-   turvallisuustesteineen.
-7. Korvataan reittien `dev-company`- ja `dev-user`-oikopolut backendin
-   vahvistamalla actor contextilla.
-8. Lisätään salaisuuden asettamisen ja poistamisen audit-tapahtumat ennen
-   oikeaa HTTP- tai UI-kytkentää.
+5. Rajattu Electron- ja Windows-paketointispike ilman oikeaa dataa on
+   toteutettu.
+6. Local-session-adapteri ja HTTP-middleware negatiivisine
+   turvallisuustesteineen on toteutettu.
+7. Arkaluonteiset sähköpostireitit ja Company Settings -reitit käyttävät
+   backendin vahvistamaa actor contextia. Jäljellä olevat moduulireitit
+   siirretään samaan malliin ennen oikean datan tuotantokäyttöä.
+8. Salaisuuden asettamisen ja poistamisen audit-tapahtumien portti, SQLite-
+   adapteri ja persistence on toteutettu ennen oikeaa HTTP- tai UI-kytkentää.
 9. Toteutetaan Windows Credential Manager -adapteri erillisen dependency- ja
    turvallisuusarvion jälkeen.
 10. Toteutetaan SMTP-provider portilla `465` ja implicit TLS -mallilla ensin
@@ -236,10 +242,10 @@ Seuraavat kohdat saa siirtää laskutuksen toimitusputken jälkeen tehtävään
 rajattuun runtime- ja rakennecleanupiin, mutta niitä ei saa unohtaa tai ohittaa
 ennen oikeaa tuotantodataa:
 
-- reittien kovakoodatut `dev-company`- ja `dev-user`-arvot
-- toteutetun `ActorContext`-mallin kytkeminen backendin vahvistamaan sessioniin
-- päätetyn Electron-bootstrapin runtime- ja paketointitoteutus
-- kirjoittavien ja arkaluonteisten reittien permission-middleware
+- jäljellä olevien moduulireittien kovakoodatut `dev-company`- ja `dev-user`-
+  oikopolut
+- laajempi moduulikohtainen permission-migraatio; sähköpostin application-
+  palvelut tarkistavat jo omat permissioninsa
 - Viten toistuvan backend-proxyosoitteen keskittäminen
 - runtime-profiilien tyypitetty konfiguraatiomalli `packages/config`-rajalla
 
@@ -250,8 +256,6 @@ laskutusdatan tuotantokäyttö eivät kuitenkaan saa ohittaa local desktop
 
 ## Ei Vielä Toteuteta
 
-- local-session-koodia
-- HTTP-auth-middlewarea
 - Firebase Authia
 - SMTP-salaisuuden HTTP- tai UI-polkuja
 - Windows Credential Manager -adapteria

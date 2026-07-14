@@ -1,3 +1,5 @@
+import type { ActorContext } from '@eky/auth';
+
 import type {
   SendApprovedInvoiceEmailDryRunInput,
 } from '../application/sendApprovedInvoiceEmailDryRun.js';
@@ -17,8 +19,7 @@ export class ApprovedInvoiceEmailRequestValidationError extends Error {
 export function parseApprovedInvoiceEmailDryRunSendBody(
   body: unknown,
   context: {
-    actorUserId: string;
-    companyId: string;
+    actorContext: ActorContext;
     invoiceId: string;
     sentAt: string;
   },
@@ -31,9 +32,8 @@ export function parseApprovedInvoiceEmailDryRunSendBody(
 
   const cc = readOptionalString(body, 'cc', maximumEmailLength);
   const input: SendApprovedInvoiceEmailDryRunInput = {
-    actorUserId: context.actorUserId,
+    actorContext: context.actorContext,
     body: readString(body, 'body', maximumBodyLength),
-    companyId: context.companyId,
     invoiceId: context.invoiceId,
     sentAt: context.sentAt,
     subject: readString(body, 'subject', maximumSubjectLength),

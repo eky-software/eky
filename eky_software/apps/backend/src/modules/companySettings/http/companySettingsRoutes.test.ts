@@ -1,5 +1,8 @@
+import { createActorContext } from '@eky/auth';
+import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 
+import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 import type { GetCompanySettingsInput } from '../application/getCompanySettings.js';
 import type { UpdateCompanySettingsInput } from '../application/updateCompanySettings.js';
 import type { CompanySettings } from '../domain/companySettings.js';
@@ -10,7 +13,7 @@ describe('companySettingsRoutes', () => {
   it('gets company settings through the route dependencies', async () => {
     const companySettings = createTestCompanySettings();
     let getInput: GetCompanySettingsInput | undefined;
-    const app = createCompanySettingsRoutes({
+    const app = createAuthenticatedTestApp(createCompanySettingsRoutes({
       async getCompanySettings(input): Promise<CompanySettings> {
         getInput = input;
 
@@ -19,7 +22,7 @@ describe('companySettingsRoutes', () => {
       async updateCompanySettings(): Promise<CompanySettings> {
         throw new Error('updateCompanySettings should not be called');
       },
-    });
+    }));
 
     const response = await app.request('/company-settings');
     const body = (await response.json()) as { companySettings: CompanySettings };
@@ -32,7 +35,7 @@ describe('companySettingsRoutes', () => {
   it('updates company settings through the route dependencies', async () => {
     const companySettings = createTestCompanySettings();
     let updateInput: UpdateCompanySettingsInput | undefined;
-    const app = createCompanySettingsRoutes({
+    const app = createAuthenticatedTestApp(createCompanySettingsRoutes({
       async getCompanySettings(): Promise<CompanySettings> {
         throw new Error('getCompanySettings should not be called');
       },
@@ -41,7 +44,7 @@ describe('companySettingsRoutes', () => {
 
         return companySettings;
       },
-    });
+    }));
 
     const response = await app.request('/company-settings', {
       body: JSON.stringify({
@@ -103,14 +106,14 @@ describe('companySettingsRoutes', () => {
   });
 
   it('rejects invalid JSON bodies', async () => {
-    const app = createCompanySettingsRoutes({
+    const app = createAuthenticatedTestApp(createCompanySettingsRoutes({
       async getCompanySettings(): Promise<CompanySettings> {
         return createTestCompanySettings();
       },
       async updateCompanySettings(): Promise<CompanySettings> {
         throw new Error('updateCompanySettings should not be called');
       },
-    });
+    }));
 
     const response = await app.request('/company-settings', {
       body: '{',
@@ -124,14 +127,14 @@ describe('companySettingsRoutes', () => {
   });
 
   it('maps validation errors to bad request responses', async () => {
-    const app = createCompanySettingsRoutes({
+    const app = createAuthenticatedTestApp(createCompanySettingsRoutes({
       async getCompanySettings(): Promise<CompanySettings> {
         return createTestCompanySettings();
       },
       async updateCompanySettings(): Promise<CompanySettings> {
         throw new CompanySettingsValidationError('Default hourly rate cannot be negative.');
       },
-    });
+    }));
 
     const response = await app.request('/company-settings', {
       body: JSON.stringify({ defaultHourlyRateCents: -1 }),
@@ -144,6 +147,31 @@ describe('companySettingsRoutes', () => {
     expect(body).toEqual({ error: 'Default hourly rate cannot be negative.' });
   });
 });
+
+function createAuthenticatedTestApp(
+  routes: Hono<BackendEnvironment>,
+): Hono<BackendEnvironment> {
+  const app = new Hono<BackendEnvironment>();
+  app.use('*', async (context, next) => {
+    context.set(
+      'actorContext',
+      createActorContext({
+        actorId: 'dev-user',
+        authenticationMode: 'local',
+        companyId: 'dev-company',
+        permissions: [
+          'manageCompanyEmailSettings',
+          'manageCompanyEmailSecret',
+          'sendInvoices',
+        ],
+      }),
+    );
+    await next();
+  });
+  app.route('/', routes);
+
+  return app;
+}
 
 function createTestCompanySettings(): CompanySettings {
   return {

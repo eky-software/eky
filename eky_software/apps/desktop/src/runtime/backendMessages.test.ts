@@ -25,6 +25,7 @@ describe('desktop backend process messages', () => {
             'database',
             'migrations',
           ),
+          runtimeSessionSecret: 'a'.repeat(43),
           smokePdfPath: resolve(runtimeRoot, 'smoke', 'invoice.pdf'),
         },
         type: 'start',
@@ -38,11 +39,32 @@ describe('desktop backend process messages', () => {
           databaseFilePath: 'eky.sqlite',
           invoiceDocumentStorageRoot: 'storage',
           migrationsDirectory: 'migrations',
+          runtimeSessionSecret: 'a'.repeat(43),
           smokePdfPath: 'invoice.pdf',
         },
         type: 'start',
       }),
     ).toBeUndefined();
+  });
+
+  it('requires a valid private runtime session in the start message', () => {
+    const runtimeRoot = resolve('desktop-test-runtime');
+    const createCommand = (runtimeSessionSecret: unknown) => ({
+      config: {
+        backendRoot: resolve(runtimeRoot, 'backend'),
+        createSmokePdf: false,
+        databaseFilePath: resolve(runtimeRoot, 'data', 'eky.sqlite'),
+        invoiceDocumentStorageRoot: resolve(runtimeRoot, 'storage'),
+        migrationsDirectory: resolve(runtimeRoot, 'migrations'),
+        runtimeSessionSecret,
+        smokePdfPath: resolve(runtimeRoot, 'smoke', 'invoice.pdf'),
+      },
+      type: 'start',
+    });
+
+    expect(parseDesktopBackendCommand(createCommand('a'.repeat(43)))).toBeDefined();
+    expect(parseDesktopBackendCommand(createCommand(undefined))).toBeUndefined();
+    expect(parseDesktopBackendCommand(createCommand('too-short'))).toBeUndefined();
   });
 
   it('rejects malformed readiness messages', () => {

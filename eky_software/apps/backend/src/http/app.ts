@@ -1,5 +1,12 @@
 import { Hono } from 'hono';
 
+import {
+  createRuntimeTrustMiddleware,
+  resolveRuntimeTrust,
+  type BackendEnvironment,
+  type RuntimeTrust,
+} from './runtimeTrust.js';
+
 import { createDatabaseConnection } from '../database/connection/createDatabaseConnection.js';
 import { runMigrations } from '../database/migration/runMigrations.js';
 import { getCompanySettings } from '../modules/companySettings/application/getCompanySettings.js';
@@ -51,10 +58,18 @@ export interface CreateAppOptions {
   databaseFilePath?: string;
   invoiceDocumentStorageRoot?: string;
   migrationsDirectory?: string;
+  runtimeTrust?: RuntimeTrust;
 }
 
-export async function createApp(options: CreateAppOptions = {}): Promise<Hono> {
-  const app = new Hono();
+export async function createApp(
+  options: CreateAppOptions = {},
+): Promise<Hono<BackendEnvironment>> {
+  const app = new Hono<BackendEnvironment>();
+
+  app.use(
+    '*',
+    createRuntimeTrustMiddleware(resolveRuntimeTrust(options.runtimeTrust)),
+  );
 
   app.get('/health', (context) => {
     return context.json({ status: 'ok' });

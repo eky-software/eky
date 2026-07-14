@@ -21,17 +21,24 @@ describe('desktop protocol policy', () => {
   });
 
   it('does not forward renderer-owned credentials or tenant headers', () => {
+    const runtimeSessionSecret = 'a'.repeat(43);
     const headers = new Headers({
       accept: 'application/json',
       authorization: 'Bearer renderer-value',
       'content-type': 'application/json',
       cookie: 'session=renderer-value',
       'x-company-id': 'other-company',
+      'x-eky-local-session': 'renderer-controlled-value',
     });
 
-    expect(Object.fromEntries(createBackendRequestHeaders(headers))).toEqual({
+    expect(
+      Object.fromEntries(
+        createBackendRequestHeaders(headers, runtimeSessionSecret),
+      ),
+    ).toEqual({
       accept: 'application/json',
       'content-type': 'application/json',
+      'x-eky-local-session': runtimeSessionSecret,
     });
   });
 

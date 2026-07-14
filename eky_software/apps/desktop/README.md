@@ -3,9 +3,12 @@
 `apps/desktop` is the secure Electron runtime shell for Eky Local. The normal
 browser/Vite development workflow remains available in `apps/web`.
 
-The initial Windows packaging spike uses synthetic data only. It is not a
-production release and must not be used with real customer data or SMTP
-credentials before the local-session and authorization phases are complete.
+The initial Windows packaging spike uses synthetic data only. The Electron
+runtime now creates an in-memory local session, injects it into restricted
+backend requests in the main process, and lets the backend create ActorContext
+only after verification. This is still not a production release and must not
+be used with real customer data or SMTP credentials before the remaining
+secret-store and release-security phases are complete.
 
 ## Commands
 

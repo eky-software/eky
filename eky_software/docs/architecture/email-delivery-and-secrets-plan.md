@@ -19,6 +19,10 @@ Sähköpostipolusta on toteutettu local-MVP:hen:
 - `invoice_delivery_events`-persistence ja dry-run-tapahtuman auditointi
 - Company Settings -moduulin ei-salaiset SMTP-asetukset ja niiden web-UI
 - tieto `emailSecretConfigured`, joka ei sisällä salaista arvoa
+- Electron-runtimen muistissa pidettävä local-session ja backendin siitä
+  muodostama luotettu `ActorContext`
+- sähköpostisalaisuuden asettamisen ja poistamisen audit event -portti,
+  SQLite-adapteri ja persistence ilman salaista arvoa tai sen johdannaisia
 
 Nykyinen dry-run ei muuta laskua `sent`-tilaan. Oikeaa SMTP-provideria,
 salaisuuden tallennusta tai oikeaa sähköpostilähetystä ei ole vielä toteutettu.
@@ -323,10 +327,12 @@ riippuvuuden tai natiivin integraation. Se arvioidaan
 
 ### Secret Store -Toteutuksen Turvallisuusportti
 
-Nykyinen local-MVP-backend on sidottu loopback-osoitteeseen, mutta sillä ei ole
-vielä oikeaa autentikointia, permission-mallia tai luotettua käyttäjäkontekstia.
-Loopback-sidonta ei yksin riitä oikean postilaatikkosalasanan käsittelyn
-tuotantoturvaksi.
+Local-MVP-backend on sidottu loopback-osoitteeseen. Electron-runtimessa backend
+vaatii main processin muistissa luodun local-sessionin ja muodostaa vasta sen
+varmennuksen jälkeen luotetun `ActorContext`-olion. Application-palvelut
+tarkistavat sähköpostisalaisuuden permissionin. Loopback ja tämä ensimmäinen
+luottamusraja eivät kuitenkaan yksin tee vielä keskeneräisestä paketista
+tuotantovalmista salaisuuksien käsittelijää.
 
 Ennen kuin Eky saa vastaanottaa tai tallentaa oikean SMTP-salasanan, pitää
 hyväksyä local-käytön luottamus- ja valtuutusmalli. Siinä ratkaistaan vähintään:
@@ -364,9 +370,16 @@ tarkistaminen vaativat `manageCompanyEmailSecret`-permissionin ja käyttävät
 vain actor-kontekstin `companyId`-arvoa. Ne palauttavat vain salaisuuden
 konfigurointitilan eivätkä salaista arvoa.
 
+Salaisuuden asettaminen ja poistaminen muodostavat lisäksi rajatun audit-
+tapahtuman, jossa ovat vain yritys, toimija, tapahtumatyyppi ja ajankohta.
+Audit-tauluun ei tallenneta salasanaa, hashia, pituutta, `secretRef`-arvoa tai
+muuta salaisuudesta johdettua tietoa.
+
 Palveluja ei ole vielä kytketty HTTP-reitteihin tai oikeaan runtime-adapteriin.
-Kytkentä odottaa local desktop -sessionin ja backendin vahvistaman actor-
-kontekstin toteutusta.
+Local desktop -session ja backendin vahvistama actor-konteksti on nyt
+toteutettu. Seuraava erillinen turvallisuusvaihe on Windows Credential Manager
+-adapterin arviointi ja vasta sen jälkeen salaisuutta vastaanottavan HTTP/UI-
+polun rajattu toteutus.
 
 Oikeaa Windows Credential Manager -kirjoitusta, salaisuutta vastaanottavaa
 HTTP-reittiä, webin salasanakenttää tai oikeaa SMTP-yhteyttä ei oteta käyttöön
@@ -547,12 +560,11 @@ riippuvuusarviota.
 
 ## Seuraava Toteutusjärjestys
 
-1. Määritellään provider-agnostinen secret store -portti ja salaisuuden
-   lifecycle synteettisillä testiarvoilla.
-2. Päätetään ja hyväksytään
-   `docs/architecture/local-runtime-trust-and-authorization-plan.md`-dokumentin
-   local-käytön luottamus- ja valtuutusmalli ennen oikeita salaisuuksia
-   vastaanottavia HTTP- tai UI-polkuja.
+1. Provider-agnostinen secret store -portti, salaisuuden lifecycle ja lifecycle-
+   auditointi synteettisillä testiarvoilla on toteutettu.
+2. `docs/architecture/local-runtime-trust-and-authorization-plan.md`-
+   dokumentin ensimmäinen local-session- ja actor context -vaihe on toteutettu
+   ennen oikeita salaisuuksia vastaanottavia HTTP- tai UI-polkuja.
 3. Toteutetaan Windows Credential Manager -adapteri tai muu erikseen
    hyväksytty local secret store -adapteri testeineen.
 4. Toteutetaan SMTP-provider ensin testitilassa käyttäen porttia `465` ja

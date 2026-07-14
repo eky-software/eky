@@ -1,3 +1,6 @@
+import type { ActorContext } from '@eky/auth';
+import { requirePermission } from '@eky/permissions';
+
 import {
   createApprovedInvoiceEmailAttachmentPreview,
   type ApprovedInvoiceEmailPreview,
@@ -14,7 +17,7 @@ import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
 import type { InvoiceEmailDeliveryProvider } from '../ports/invoiceEmailDeliveryProvider.js';
 
 export interface PrepareApprovedInvoiceEmailDryRunInput {
-  companyId: string;
+  actorContext: ActorContext;
   invoiceId: string;
   preparedAt: string;
 }
@@ -31,7 +34,12 @@ export async function prepareApprovedInvoiceEmailDryRun(
   input: PrepareApprovedInvoiceEmailDryRunInput,
   dependencies: PrepareApprovedInvoiceEmailDryRunDependencies,
 ): Promise<ApprovedInvoiceEmailPreview> {
-  const companyId = requireIdentifier(input.companyId, 'Company id');
+  requirePermission(input.actorContext, 'sendInvoices');
+
+  const companyId = requireIdentifier(
+    input.actorContext.companyId,
+    'Company id',
+  );
   const invoiceId = requireIdentifier(input.invoiceId, 'Approved invoice id');
   const preparedAt = requireIdentifier(input.preparedAt, 'Email timestamp');
 

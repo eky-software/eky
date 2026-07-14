@@ -18,6 +18,7 @@ import {
   startDesktopBackend,
   type DesktopBackendHandle,
 } from '../runtime/backendProcess.js';
+import { createDesktopRuntimeSession } from '../runtime/runtimeSession.js';
 
 function readSmokeToken(value: string | undefined): string | undefined {
   return value !== undefined && /^[a-f0-9]{32}$/.test(value)
@@ -132,6 +133,7 @@ async function runPackagedSmokeCheck(
 }
 
 async function startDesktopRuntime(): Promise<void> {
+  const runtimeSessionSecret = createDesktopRuntimeSession();
   const backendRoot = join(process.resourcesPath, 'backend');
   const dataRoot = join(app.getPath('userData'), 'runtime');
   const databaseFilePath = join(dataRoot, 'data', 'eky.sqlite');
@@ -146,6 +148,7 @@ async function startDesktopRuntime(): Promise<void> {
       databaseFilePath,
       invoiceDocumentStorageRoot,
       migrationsDirectory: join(backendRoot, 'dist', 'database', 'migrations'),
+      runtimeSessionSecret,
       smokePdfPath,
     },
     runnerPath: join(
@@ -165,6 +168,7 @@ async function startDesktopRuntime(): Promise<void> {
 
   registerApplicationProtocol({
     backendOrigin: `http://127.0.0.1:${backendHandle.port}`,
+    runtimeSessionSecret,
     webRoot: join(app.getAppPath(), 'web'),
   });
 
