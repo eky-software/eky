@@ -3,8 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { isPermission, permissionValues } from './permission.js';
 
 describe('permissionValues', () => {
-  it('contains only the first approved email permissions', () => {
+  it('contains only the explicitly approved permission values', () => {
     expect(permissionValues).toEqual([
+      'manageCompanySettings',
       'manageCompanyEmailSettings',
       'manageCompanyEmailSecret',
       'sendInvoices',

@@ -5,15 +5,12 @@ import {
   getStringField,
   isRecord,
 } from '../../../http/requestBody.js';
+import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 import { CustomerValidationError } from '../domain/customerRules.js';
 import type { CreateCustomerInput } from '../application/createCustomer.js';
 import type { ListCustomersInput } from '../application/listCustomers.js';
 import type { UpdateCustomerInput } from '../application/updateCustomer.js';
 import type { Customer } from '../domain/customer.js';
-
-// Temporary local development company id.
-// This is not an authentication, tenant, or permission model.
-const devCompanyId = 'dev-company';
 
 interface CustomersRouteDependencies {
   createCustomer(input: CreateCustomerInput): Promise<Customer>;
@@ -32,10 +29,13 @@ function getCustomerNumberMode(body: Record<string, unknown>): string {
   return customerNumber === undefined ? 'auto' : 'manual';
 }
 
-export function createCustomersRoutes(dependencies: CustomersRouteDependencies): Hono {
-  const routes = new Hono();
+export function createCustomersRoutes(
+  dependencies: CustomersRouteDependencies,
+): Hono<BackendEnvironment> {
+  const routes = new Hono<BackendEnvironment>();
 
   routes.post('/customers', async (context) => {
+    const actorContext = context.get('actorContext');
     let body: unknown;
 
     try {
@@ -56,7 +56,7 @@ export function createCustomersRoutes(dependencies: CustomersRouteDependencies):
         businessId: getOptionalStringField(body, 'businessId'),
         city: getOptionalStringField(body, 'city'),
         comment: getOptionalStringField(body, 'comment'),
-        companyId: devCompanyId,
+        companyId: actorContext.companyId,
         customerNumberMode,
         customerType: getOptionalStringField(body, 'customerType') || 'company',
         email: getOptionalStringField(body, 'email'),
@@ -86,14 +86,16 @@ export function createCustomersRoutes(dependencies: CustomersRouteDependencies):
   });
 
   routes.get('/customers', async (context) => {
+    const actorContext = context.get('actorContext');
     const customers = await dependencies.listCustomers({
-      companyId: devCompanyId,
+      companyId: actorContext.companyId,
     });
 
     return context.json({ customers });
   });
 
   routes.put('/customers/:id', async (context) => {
+    const actorContext = context.get('actorContext');
     let body: unknown;
 
     try {
@@ -117,7 +119,7 @@ export function createCustomersRoutes(dependencies: CustomersRouteDependencies):
         businessId: getOptionalStringField(body, 'businessId'),
         city: getOptionalStringField(body, 'city'),
         comment: getOptionalStringField(body, 'comment'),
-        companyId: devCompanyId,
+        companyId: actorContext.companyId,
         customerNumber,
         customerType: getOptionalStringField(body, 'customerType') || 'company',
         email: getOptionalStringField(body, 'email'),

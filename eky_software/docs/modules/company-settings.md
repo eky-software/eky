@@ -214,10 +214,24 @@ asettamisen, poistamisen ja tilan tarkistamisen käyttötapaukset. Ne:
 - palauttavat vain `configured: true | false` -tilan
 - eivät voi lukea tai palauttaa salaista arvoa
 
-Käyttötapauksia ei ole vielä kytketty HTTP-reitteihin tai oikeaan secret store
--adapteriin. Local desktop -session ja backendin vahvistama actor-konteksti on
-toteutettu; oikea secret store sekä sitä käyttävä HTTP/UI-polku tehdään
-seuraavina erillisinä turvallisuusvaiheina.
+Koko Oma yritys -master-datan päivitys vaatii erillisen
+`manageCompanySettings`-permissionin. Sähköpostisalaisuuden hallintaan
+tarkoitettu `manageCompanyEmailSecret` ei anna oikeutta muuttaa yrityksen
+nimeä, osoitetta, pankkitietoja tai muita Company Settings -kenttiä.
+
+Secret lifecycle -audit käyttää yhtä operaatiokohtaista riviä. Ensin
+tallennetaan `pending`, jonka jälkeen sama rivi päivitetään `succeeded`- tai
+`failed`-tilaan. Jos secret store onnistuu mutta auditin loppupäivitys ei,
+`pending` jää näkyviin myöhempää reconciliation-tarkistusta varten. Auditissa
+ei ole salaista arvoa, hashia, pituutta, `secretRef`-arvoa tai muuta
+salaisuudesta johdettua tietoa.
+
+Käyttötapauksia ei ole vielä kytketty HTTP-reitteihin. Local desktop -session,
+backendin vahvistama actor-konteksti ja Electron main processin `safeStorage`-
+broker on toteutettu. Company Settings saa käyttää vain lifecycle-storea ja
+konfigurointitilaa. Erillinen `CompanyEmailSecretReader` on backend-only ja
+varattu myöhemmälle hyväksytylle SMTP-providerille; sitä ei saa antaa HTTP:lle,
+API-clientille, preloadille, rendererille tai web-UI:lle.
 
 ## Asiakaskohtainen Tuntihinta
 

@@ -117,6 +117,14 @@ Valitut kolme riippuvuutta hyväksytään vain local desktop -paketointispikeen.
 Uusi desktop-riippuvuus, installer, maker, updater tai salaisuuksiin liittyvä
 kirjasto vaatii uuden rajatun dependency- ja security-arvion.
 
+SMTP-salaisuuden local-MVP-tallennukseen ei lisätä uutta keyring- tai native-
+riippuvuutta. Toteutus käyttää jo hyväksytyn Electron-runtimen sisäänrakennettua
+`safeStorage`-rajapintaa vain main processissa, yksityistä `MessagePort`-brokeria
+ja versionoitua salattua `userData`-blobia. Oma Win32-native-adapteri ja
+kolmannen osapuolen keyring-kirjasto jätettiin pois, koska ne kasvattaisivat
+native-binäärien, Electron ABI:n ja toimitusketjun ylläpitopintaa ilman
+local-MVP:ssä tarvittavaa lisähyötyä.
+
 ## Liittyvät Dokumentit
 
 - `AGENTS.md`

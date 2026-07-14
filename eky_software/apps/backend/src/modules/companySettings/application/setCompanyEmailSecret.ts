@@ -3,7 +3,7 @@ import { requirePermission } from '@eky/permissions';
 
 import type { CompanyEmailSecretStore } from '../ports/companyEmailSecretStore.js';
 import type { CompanyEmailSecretAuditWriter } from '../ports/companyEmailSecretAuditWriter.js';
-import { createCompanyEmailSecretAuditEvent } from './companyEmailSecretAuditEvent.js';
+import { executeCompanyEmailSecretOperation } from './executeCompanyEmailSecretOperation.js';
 import { normalizeCompanyEmailSecretInput } from './companyEmailSecretInput.js';
 import {
   createCompanyEmailSecretStatus,
@@ -31,17 +31,16 @@ export async function setCompanyEmailSecret(
     companyId: input.actorContext.companyId,
     secret: input.secret,
   });
-  const auditEvent = createCompanyEmailSecretAuditEvent({
-    actorId: input.actorContext.actorId,
-    companyId: secretInput.companyId,
-    eventType: 'company_email_secret_set',
+  return executeCompanyEmailSecretOperation({
+    action: 'set',
+    actorContext: input.actorContext,
+    companyEmailSecretAuditWriter:
+      dependencies.companyEmailSecretAuditWriter,
     occurredAt: input.occurredAt,
+    async operation() {
+      await dependencies.companyEmailSecretStore.setSecret(secretInput);
+
+      return createCompanyEmailSecretStatus(true);
+    },
   });
-
-  await dependencies.companyEmailSecretStore.setSecret(secretInput);
-  await dependencies.companyEmailSecretAuditWriter.appendCompanyEmailSecretAuditEvent(
-    auditEvent,
-  );
-
-  return createCompanyEmailSecretStatus(true);
 }

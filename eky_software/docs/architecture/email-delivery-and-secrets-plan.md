@@ -3,10 +3,10 @@
 Tämä dokumentti määrittää Eky-projektin sähköpostilähetyksen,
 SMTP/Gmail-integraatioiden ja salaisuuksien hallinnan suunnittelulinjan.
 
-Dokumentti on suunnitelma. Se ei lisää SMTP-lähetystä, Gmail OAuthia,
-Windows Credential Manager -adapteria, Secret Manager -adapteria,
-tietokantatauluja, migraatioita, endpointteja, UI-muutoksia, riippuvuuksia tai
-oikeaa sähköpostin lähetystä.
+Dokumentti on sähköpostin ja salaisuuksien etenemissuunnitelma. Local-MVP:n
+Electron `safeStorage` -broker ja audit-pohja on toteutettu, mutta dokumentti ei
+vielä tarkoita SMTP-lähetystä, Gmail OAuthia, Secret Manager -adapteria,
+salaisuuden endpointteja, UI-muutoksia tai oikeaa sähköpostin lähetystä.
 
 ## Nykyinen Toteutustila
 
@@ -21,11 +21,16 @@ Sähköpostipolusta on toteutettu local-MVP:hen:
 - tieto `emailSecretConfigured`, joka ei sisällä salaista arvoa
 - Electron-runtimen muistissa pidettävä local-session ja backendin siitä
   muodostama luotettu `ActorContext`
-- sähköpostisalaisuuden asettamisen ja poistamisen audit event -portti,
-  SQLite-adapteri ja persistence ilman salaista arvoa tai sen johdannaisia
+- sähköpostisalaisuuden asettamisen ja poistamisen yhden rivin lifecycle-audit,
+  joka käyttää `pending`, `succeeded` ja `failed` -tiloja ilman salaista arvoa
+  tai sen johdannaisia
+- Electron main processin `safeStorage`-adapteri, versionoitu salattu
+  `userData`-blob ja utility processin yksityinen secret broker synteettiselle
+  local-MVP-testiarvolle
 
-Nykyinen dry-run ei muuta laskua `sent`-tilaan. Oikeaa SMTP-provideria,
-salaisuuden tallennusta tai oikeaa sähköpostilähetystä ei ole vielä toteutettu.
+Nykyinen dry-run ei muuta laskua `sent`-tilaan. Secret brokeria ei ole vielä
+kytketty HTTP- tai UI-polkuun. Oikeaa SMTP-provideria, oikeaa SMTP-salasanaa tai
+oikeaa sähköpostilähetystä ei ole toteutettu.
 
 ## Julkisen Repositoryn Rajaus
 
@@ -190,7 +195,7 @@ Oma yritys ei saa koskaan näyttää:
 - SMTP-salasanaa
 - OAuth refresh tokenia
 - Secret Managerin salaista arvoa
-- Windows Credential Managerista luettua salaista arvoa
+- Electron `safeStorage` -brokerista luettua salaista arvoa
 
 UI saa tarjota myöhemmin:
 
@@ -305,25 +310,37 @@ SMTP-adapterin tulevissa testeissä tarkistetaan vähintään:
 - viestin runko tai PDF-sisältö ei päädy lokiin
 - dry-run ei tarvitse salaisuuksia
 
-## Local Windows -Malli
+## Local Electron -Malli
 
-Paikallisen Windows-version suositeltu salaisuusmalli:
+Paikallisen Windows-version toteutettu secret store -pohja:
 
 - Eky ajetaan paikallisesti käyttäjän koneella
 - backend kuuntelee vain `localhost` / `127.0.0.1`
-- SMTP-salaisuus tallennetaan myöhemmin Windows Credential Manageriin tai
-  vastaavaan käyttöjärjestelmän secret storeen
-- tietokantaan tallennetaan vain `secretRef` tai tieto `configured: true`
-- backend hakee salaisuuden lähetyshetkellä
+- Electron main process käyttää yksin `safeStorage.isEncryptionAvailable()`-,
+  `safeStorage.encryptStringAsync()`- ja `safeStorage.decryptStringAsync()`-
+  metodeja
+- koko payload salataan ennen kirjoittamista versionoituun tiedostoon
+  `userData/runtime/secrets/company-email-smtp-v1.dat`
+- tiedostonimi ei sisällä yritystä, sähköpostiosoitetta, käyttäjätunnusta,
+  salaisuutta tai sen hashia
+- backend utility process käyttää main processin brokeria vain yksityisen
+  siirrettävän `MessagePort`-kanavan kautta
+- Company Settingsin application- ja response-malli saa paljastaa vain tiedon
+  `configured: true | false`; salattu arvo säilyy erillisessä `userData`-
+  blobissa eikä SQLite-taulussa
+- myöhempi SMTP-provider hakee salaisuuden backend-only reader -portin kautta
 - frontend ei koskaan saa salaista arvoa takaisin
+- jos `safeStorage` ei ole käytettävissä, salaus tai purku epäonnistuu tai blob
+  on vioittunut, toiminto epäonnistuu ilman plaintext-fallbackia
 
-Development-vaiheessa voidaan käyttää dry-runia ja tarvittaessa `.env`-tiedostoa
-vain kehittäjän omalla koneella. Tuotemaisessa local-asennuksessa suositaan
-käyttöjärjestelmän secret storea.
+Selainkehitys käyttää edelleen vain dry-runia eikä saa oikeaa SMTP-salaisuutta.
+Salaisuutta ei siirretä URL:ssa, komentorivillä, ympäristömuuttujassa, renderer-
+tallennuksessa, lokissa tai crash-raportissa. `safeStorage.setUsePlainTextEncryption()`
+ja synkroniset encrypt/decrypt-metodit eivät kuulu Eky Localin malliin.
 
-Windows Credential Manager -adapteri voi vaatia myöhemmin erillisen
-riippuvuuden tai natiivin integraation. Se arvioidaan
-`docs/architecture/dependency-policy.md`-dokumentin mukaan ennen lisäämistä.
+Main processin broker ei omista Company Settingsin tai sähköpostitoimituksen
+liiketoimintasääntöjä. `CompanyEmailSecretStore` ja backend-only
+`CompanyEmailSecretReader` säilyvät Electronista riippumattomina portteina.
 
 ### Secret Store -Toteutuksen Turvallisuusportti
 
@@ -344,14 +361,14 @@ hyväksyä local-käytön luottamus- ja valtuutusmalli. Siinä ratkaistaan vähi
 - miten salaisuuden lifecycle auditoidaan ilman salaisen arvon lokitusta
 - miten release security review tehdään ennen oikean sähköpostitilin käyttöä
 
-Ennen tämän portin hyväksymistä saa toteuttaa vain rajattuja teknisiä
-valmiuksia synteettisillä testiarvoilla:
+Turvallisuusportin alla on toteutettu rajattuja teknisiä valmiuksia vain
+synteettisillä testiarvoilla:
 
-- provider-agnostisen secret store -portin
-- testien fake- tai in-memory-adapterin
-- salaisuuden lifecycle -application servicejen testit ilman oikeaa secret
-  storea tai HTTP-reittejä
+- provider-agnostinen secret store -portti ja backend-only reader-portti
+- testien fake- ja in-memory-adapterit
+- salaisuuden lifecycle -application servicet ilman HTTP-reittejä
 - turvalliset tyypit, joissa salainen arvo ei päädy response-malliin
+- Electron main processin `safeStorage`-broker ja salattu tiedostoadapteri
 
 Ensimmäinen rajattu valmius on toteutettu Company Settings -moduuliin:
 
@@ -361,8 +378,7 @@ Ensimmäinen rajattu valmius on toteutettu Company Settings -moduuliin:
   tarvittaessa oman kapean backend-only reader-sopimuksen
 - salaisen syötteen validointi säilyttää arvon muuttamattomana eikä sisällytä
   sitä virheviesteihin
-- toteutus ei sisällä adapteria, HTTP-reittiä, UI-kenttää tai oikeaa
-  salaisuutta
+- toteutus ei sisällä HTTP-reittiä, UI-kenttää tai oikeaa salaisuutta
 
 Lifecycle-application servicet on toteutettu yhteisen `ActorContext`- ja
 permission-sopimuksen päälle. Salaisuuden asettaminen, poistaminen ja tilan
@@ -370,21 +386,31 @@ tarkistaminen vaativat `manageCompanyEmailSecret`-permissionin ja käyttävät
 vain actor-kontekstin `companyId`-arvoa. Ne palauttavat vain salaisuuden
 konfigurointitilan eivätkä salaista arvoa.
 
-Salaisuuden asettaminen ja poistaminen muodostavat lisäksi rajatun audit-
-tapahtuman, jossa ovat vain yritys, toimija, tapahtumatyyppi ja ajankohta.
-Audit-tauluun ei tallenneta salasanaa, hashia, pituutta, `secretRef`-arvoa tai
-muuta salaisuudesta johdettua tietoa.
+Salaisuuden asettaminen ja poistaminen käyttävät yhden rivin lifecycle-auditia.
+Ennen secret store -operaatiota luodaan `pending`. Sama rivi päivitetään
+`succeeded`- tai `failed`-tilaan. Jos store onnistuu mutta auditin
+loppupäivitys epäonnistuu, rivi jää `pending`-tilaan myöhempää reconciliation-
+tarkistusta varten; sitä ei teeskennellä epäonnistuneeksi.
 
-Palveluja ei ole vielä kytketty HTTP-reitteihin tai oikeaan runtime-adapteriin.
-Local desktop -session ja backendin vahvistama actor-konteksti on nyt
-toteutettu. Seuraava erillinen turvallisuusvaihe on Windows Credential Manager
--adapterin arviointi ja vasta sen jälkeen salaisuutta vastaanottavan HTTP/UI-
-polun rajattu toteutus.
+Auditissa ovat vain operaatiotunniste, toiminto, tila, yritys, toimija,
+aloitus- ja valmistumisaika sekä turvallinen failure code. Audit-tauluun ei
+tallenneta salasanaa, hashia, pituutta, ciphertextiä, tiedostopolkua,
+`secretRef`-arvoa tai muuta salaisuudesta johdettua tietoa.
 
-Oikeaa Windows Credential Manager -kirjoitusta, salaisuutta vastaanottavaa
-HTTP-reittiä, webin salasanakenttää tai oikeaa SMTP-yhteyttä ei oteta käyttöön
-ennen local-käytön turvallisuusportin hyväksymistä. Testeissä käytetään vain
-selvästi synteettisiä salaisuuksia.
+Local secret store käyttää yhtä versionoitua teknistä slotia
+`company-email-smtp-v1`. Salattu payload sisältää formaattiversion, `companyId`-
+arvon ja salaisuuden. Broker varmistaa luettaessa yrityksen täsmäämisen. Väärä
+yritys ei saa tietoa salaisuuden arvosta.
+
+Palveluja ei ole vielä kytketty HTTP-reitteihin. Local desktop -session,
+backendin vahvistama actor-konteksti ja `safeStorage`-broker on toteutettu.
+Seuraava erillinen turvallisuusvaihe on salaisuutta vastaanottavan HTTP/UI-polun
+rajattu toteutus synteettisellä arvolla.
+
+Oikeaa käyttäjän SMTP-salaisuutta, salaisuutta vastaanottavaa HTTP-reittiä,
+webin salasanakenttää tai oikeaa SMTP-yhteyttä ei oteta käyttöön ennen local-
+käytön turvallisuusportin ja Windows-integraatiosmoken hyväksymistä. Testeissä
+käytetään vain selvästi synteettisiä salaisuuksia.
 
 Local- ja cloud-ympäristöille yhteinen actor context, local-sessionin
 turvallisuusrajat sekä luotetun `companyId`-kontekstin eteneminen on kuvattu
@@ -404,8 +430,8 @@ Pilviversion suositeltu malli:
 - test/staging-ympäristössä dry-run tai test recipient override oletuksena
 - tuotannossa oikea lähetys vaatii erillisen konfiguraation
 
-Pilviversiossa sähköposti-infrastruktuuri ei saa riippua paikallisen koneen
-Windows Credential Managerista. Local- ja cloud-secret-adapterit pidetään
+Pilviversiossa sähköposti-infrastruktuuri ei saa riippua Electronista tai
+paikallisen koneen `safeStorage`-toteutuksesta. Local- ja cloud-secret-adapterit pidetään
 vaihdettavina infrastructure-tason toteutuksina.
 
 ## DNA SMTP
@@ -550,7 +576,8 @@ Seuraavaan vaiheeseen jäävät:
 
 - SMTP-provideria
 - Gmail-provideria
-- Windows Credential Manager -adapteria
+- Electron `safeStorage` -brokerin kytkentä oikeaan HTTP/UI-salaisuuspolkuun
+- erillinen SMTP-providerin salaisuuden read-portti
 - Secret Manager -adapteria
 - oikeaa sähköpostilähetystä
 - `packages/email`-pakettia
@@ -562,11 +589,12 @@ riippuvuusarviota.
 
 1. Provider-agnostinen secret store -portti, salaisuuden lifecycle ja lifecycle-
    auditointi synteettisillä testiarvoilla on toteutettu.
-2. `docs/architecture/local-runtime-trust-and-authorization-plan.md`-
-   dokumentin ensimmäinen local-session- ja actor context -vaihe on toteutettu
-   ennen oikeita salaisuuksia vastaanottavia HTTP- tai UI-polkuja.
-3. Toteutetaan Windows Credential Manager -adapteri tai muu erikseen
-   hyväksytty local secret store -adapteri testeineen.
+2. Local-session, pysyvä local-runtime-identiteetti, nykyisten reittien actor
+   context -yritysrajaus ja yhden rivin secret-audit on toteutettu ennen
+   oikeita salaisuuksia vastaanottavia HTTP- tai UI-polkuja.
+3. Electron main processin `safeStorage`-broker, salattu tiedosto ja yksityinen
+   utility process -client on toteutettu ilman uutta riippuvuutta. Paketoitu
+   Windows-smoke ajetaan ennen rajattua HTTP/UI-polun toteutusta.
 4. Toteutetaan SMTP-provider ensin testitilassa käyttäen porttia `465` ja
    implicit TLS -mallia. TLS-version vähimmäisraja, sertifikaatin ja hostnamen
    validointi, timeout ja turvallinen virheenkäsittely ovat pakollisia.

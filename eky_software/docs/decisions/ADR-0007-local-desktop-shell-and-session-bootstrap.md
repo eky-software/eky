@@ -284,11 +284,17 @@ CORS on deny by default. Paketoitu runtime ei avaa wildcard-originia.
 Kehitysympäristössä voidaan sallia vain täsmällisesti määritelty Vite-origin,
 mutta development-poikkeus ei saa päätyä packaged production -profiiliin.
 
-## Windows Credential Manager
+## Local Secret Store -Tarkennus 15.7.2026
 
-Windows Credential Manager -adapteri toteutetaan myöhemmin
-`CompanyEmailSecretStore`-portin taakse trusted desktop/backend -prosessiin.
-Renderer ei saa Credential Manager -API:a eikä salaista arvoa.
+Ensimmäinen local-MVP ei käytä erillistä Windows Credential Manager -kirjastoa
+tai omaa native-adapteria. Se käyttää jo hyväksytyn Electron-runtimen
+sisäänrakennettua `safeStorage`-rajapintaa vain main processissa. Koko
+versionoitu payload salataan käyttöjärjestelmän suojausmallilla ennen kuin blob
+kirjoitetaan Electronin `userData`-alueelle.
+
+Backend utility process käyttää salaisuutta Electron main processin yksityisen
+`MessagePort`-brokerin kautta. Renderer ja preload eivät saa brokeria,
+`safeStorage`-API:a, salattua tiedostoa tai salaista arvoa.
 
 SMTP-providerille voidaan myöhemmin antaa erillinen, kapea backend-only reader-
 sopimus. Desktop shellin valinta ei muuta Company Settingsin, Invoicingin tai

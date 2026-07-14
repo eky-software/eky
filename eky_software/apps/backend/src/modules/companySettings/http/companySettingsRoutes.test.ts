@@ -1,4 +1,5 @@
 import { createActorContext } from '@eky/auth';
+import { AuthorizationError } from '@eky/permissions';
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 
@@ -78,9 +79,13 @@ describe('companySettingsRoutes', () => {
 
     expect(response.status).toBe(200);
     expect(updateInput).toEqual({
+      actorContext: expect.objectContaining({
+        actorId: 'dev-user',
+        companyId: 'dev-company',
+        permissions: expect.arrayContaining(['manageCompanySettings']),
+      }),
       businessId: '  1234567-8  ',
       city: '  Helsinki  ',
-      companyId: 'dev-company',
       companyName: '  Example Builder Oy  ',
       vatNumber: '  fi12345678  ',
       defaultHourlyRateCents: 6500,
@@ -146,6 +151,28 @@ describe('companySettingsRoutes', () => {
     expect(response.status).toBe(400);
     expect(body).toEqual({ error: 'Default hourly rate cannot be negative.' });
   });
+
+  it('maps denied company settings updates to a safe forbidden response', async () => {
+    const app = createAuthenticatedTestApp(createCompanySettingsRoutes({
+      async getCompanySettings(): Promise<CompanySettings> {
+        return createTestCompanySettings();
+      },
+      async updateCompanySettings(): Promise<CompanySettings> {
+        throw new AuthorizationError();
+      },
+    }));
+
+    const response = await app.request('/company-settings', {
+      body: JSON.stringify({ companyName: 'Synthetic company' }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'PUT',
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Permission denied.',
+    });
+  });
 });
 
 function createAuthenticatedTestApp(
@@ -160,6 +187,7 @@ function createAuthenticatedTestApp(
         authenticationMode: 'local',
         companyId: 'dev-company',
         permissions: [
+          'manageCompanySettings',
           'manageCompanyEmailSettings',
           'manageCompanyEmailSecret',
           'sendInvoices',

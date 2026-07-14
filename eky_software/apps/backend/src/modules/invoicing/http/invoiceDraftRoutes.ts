@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 
+import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
+
 import type { ApproveInvoiceDraftInput } from '../application/approveInvoiceDraft.js';
 import { ApproveInvoiceDraftError } from '../application/approveInvoiceDraftError.js';
 import type { DeleteInvoiceDraftInput } from '../application/deleteInvoiceDraft.js';
@@ -24,8 +26,6 @@ import {
   parseUpdateInvoiceDraftRequest,
 } from './invoiceDraftRequest.js';
 
-const devCompanyId = 'dev-company';
-const devActorUserId = 'local-user';
 const maximumInvoiceDraftBodySizeBytes = 256 * 1024;
 
 interface InvoiceDraftRouteDependencies {
@@ -43,8 +43,8 @@ interface InvoiceDraftRouteDependencies {
 
 export function createInvoiceDraftRoutes(
   dependencies: InvoiceDraftRouteDependencies,
-): Hono {
-  const routes = new Hono();
+): Hono<BackendEnvironment> {
+  const routes = new Hono<BackendEnvironment>();
 
   routes.post(
     '/invoice-drafts',
@@ -55,6 +55,7 @@ export function createInvoiceDraftRoutes(
       },
     }),
     async (context) => {
+      const actorContext = context.get('actorContext');
       let body: unknown;
 
       try {
@@ -64,7 +65,10 @@ export function createInvoiceDraftRoutes(
       }
 
       try {
-        const input = parseSaveInvoiceDraftRequest(body, devCompanyId);
+        const input = parseSaveInvoiceDraftRequest(
+          body,
+          actorContext.companyId,
+        );
         const invoiceDraft = await dependencies.saveInvoiceDraft(input);
 
         return context.json({ invoiceDraft }, 201);
@@ -84,9 +88,10 @@ export function createInvoiceDraftRoutes(
 
   routes.get('/invoice-drafts', async (context) => {
     try {
+      const actorContext = context.get('actorContext');
       const customerId = context.req.query('customerId');
       const input: ListInvoiceDraftsInput = {
-        companyId: devCompanyId,
+        companyId: actorContext.companyId,
       };
 
       if (customerId !== undefined) {
@@ -107,10 +112,11 @@ export function createInvoiceDraftRoutes(
 
   routes.post('/invoice-drafts/:id/approve', async (context) => {
     try {
+      const actorContext = context.get('actorContext');
       const approvedInvoice = await dependencies.approveInvoiceDraft({
-        actorUserId: devActorUserId,
+        actorUserId: actorContext.actorId,
         approvedAt: new Date().toISOString(),
-        companyId: devCompanyId,
+        companyId: actorContext.companyId,
         draftId: context.req.param('id'),
         seriesKey: defaultInvoiceNumberSeriesKey,
       });
@@ -135,8 +141,9 @@ export function createInvoiceDraftRoutes(
 
   routes.get('/invoice-drafts/:id', async (context) => {
     try {
+      const actorContext = context.get('actorContext');
       const invoiceDraft = await dependencies.getInvoiceDraft({
-        companyId: devCompanyId,
+        companyId: actorContext.companyId,
         invoiceDraftId: context.req.param('id'),
       });
 
@@ -156,8 +163,9 @@ export function createInvoiceDraftRoutes(
 
   routes.delete('/invoice-drafts/:id', async (context) => {
     try {
+      const actorContext = context.get('actorContext');
       await dependencies.deleteInvoiceDraft({
-        companyId: devCompanyId,
+        companyId: actorContext.companyId,
         invoiceDraftId: context.req.param('id'),
       });
 
@@ -184,6 +192,7 @@ export function createInvoiceDraftRoutes(
       },
     }),
     async (context) => {
+      const actorContext = context.get('actorContext');
       let body: unknown;
 
       try {
@@ -195,7 +204,7 @@ export function createInvoiceDraftRoutes(
       try {
         const input = parseUpdateInvoiceDraftRequest(
           body,
-          devCompanyId,
+          actorContext.companyId,
           context.req.param('id'),
         );
         const invoiceDraft = await dependencies.updateInvoiceDraft(input);

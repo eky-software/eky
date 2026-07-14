@@ -40,7 +40,11 @@ Salaisuuksia ovat esimerkiksi:
 - yksityiset tokenit
 - webhook-salaisuudet
 
-Salaisuudet hallitaan ympäristömuuttujilla tai pilven salaisuuksien hallintapalvelulla.
+Salaisuudet hallitaan runtime-profiilin hyväksytyllä secret store -adapterilla.
+Pilvessä käytetään hallittua Secret Manager -palvelua. Eky Localin Electron-
+profiilissa salaisuus suojataan vain main processin `safeStorage`-adapterilla ja
+versionoidulla salatulla `userData`-blobilla. Renderer, preload, HTTP-vastaus,
+SQLite, URL, komentorivi, ympäristömuuttuja ja loki eivät saa salaista arvoa.
 
 ## Julkisen repositoryn turvallisuus
 
@@ -167,17 +171,23 @@ Tuotantokäytössä oikea autentikointi, käyttöoikeudet ja salattu liikenne ov
 
 ### Nykyisen Local-MVP:n Turvallisuusraja
 
-Nykyiset customer- ja company-settings-reitit eivät vielä käytä oikeaa autentikointia, permission-tarkistuksia tai audit logia.
+Electron-local-profiili käyttää main processin muistissa luotua sessionia,
+backendin vahvistamaa pysyvää local-runtime-identiteettiä ja `ActorContext`-
+yritysrajausta. Nykyiset business-reitit saavat yrityksen tästä kontekstista,
+eivät request bodysta, querysta tai omasta reittivakiosta. Local ownerille
+annetaan vain eksplisiittisesti luetellut permissionit.
 
-Siksi nykyinen toteutus on kehitys-MVP:
+Selainpohjainen development-profiili on edelleen tarkoituksellinen
+kehityspoikkeus ilman Electron-sessionia. Siksi koko nykyinen toteutus on yhä
+release security reviewtä edeltävä local-MVP:
 
 - backend ja web-palvelin sidotaan vain loopback-osoitteeseen, oletuksena `127.0.0.1`
 - käytetään vain synteettistä testi- ja kehitysdataa
-- `dev-company` ei ole autentikointi, tenant-eristys tai permission-malli
+- development-profiilia ei pidetä tuotantoautentikointina
 - SQLite-tiedosto pidetään backendin ei-julkisessa, Gitin ulkopuolisessa datahakemistossa
 - käyttö perustuu toistaiseksi luotettuun paikalliseen kehityskoneeseen ja sen käyttöjärjestelmätason käyttäjä- sekä tiedosto-oikeuksiin
 
-Nykyistä autentikoimatonta backendia ei saa:
+Development-profiilissa käynnistettyä backendia ei saa:
 
 - sitoa `0.0.0.0`-, `::`- tai muuhun verkosta saavutettavaan osoitteeseen
 - julkaista internetiin, lähiverkkoon tai julkiselle palvelimelle
@@ -207,6 +217,12 @@ mukaisesti.
 Electron renderer on epäluotettu ympäristö samalla tavalla kuin selain-
 frontend. Desktop shell ei saa siirtää backendin permission-, yritysrajaus-,
 validointi- tai auditointivastuuta rendererille tai preloadiin.
+
+Paikallinen sähköpostisalaisuus kulkee vain backend utility processin ja
+Electron main processin välisessä yksityisessä `MessagePort`-brokerissa.
+`safeStorage`a käyttää vain main process. Jos käyttöjärjestelmän salaus ei ole
+saatavilla tai blobia ei voi purkaa, toiminto epäonnistuu ilman plaintext-
+fallbackia.
 
 Ennen oikean datan käyttöä paketoidusta desktop-artifactista tarkistetaan
 vähintään rendererin sandbox ja context isolation, Node-integraation esto,

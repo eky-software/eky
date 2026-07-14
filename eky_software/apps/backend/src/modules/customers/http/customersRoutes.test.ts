@@ -1,11 +1,36 @@
+import { createActorContext } from '@eky/auth';
+import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
+
+import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 
 import type { CreateCustomerInput } from '../application/createCustomer.js';
 import type { ListCustomersInput } from '../application/listCustomers.js';
 import type { UpdateCustomerInput } from '../application/updateCustomer.js';
 import type { Customer } from '../domain/customer.js';
 import { CustomerValidationError } from '../domain/customerRules.js';
-import { createCustomersRoutes } from './customersRoutes.js';
+import { createCustomersRoutes as createCustomersRouteHandlers } from './customersRoutes.js';
+
+function createCustomersRoutes(
+  dependencies: Parameters<typeof createCustomersRouteHandlers>[0],
+): Hono<BackendEnvironment> {
+  const app = new Hono<BackendEnvironment>();
+  app.use('*', async (context, next) => {
+    context.set(
+      'actorContext',
+      createActorContext({
+        actorId: 'local-owner',
+        authenticationMode: 'local',
+        companyId: 'dev-company',
+        permissions: [],
+      }),
+    );
+    await next();
+  });
+  app.route('/', createCustomersRouteHandlers(dependencies));
+
+  return app;
+}
 
 describe('customersRoutes', () => {
   it('lists customers through the route dependencies', async () => {

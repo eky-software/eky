@@ -7,39 +7,47 @@ import type { CompanyEmailSecretAuditWriter } from '../ports/companyEmailSecretA
 import { removeCompanyEmailSecret } from './removeCompanyEmailSecret.js';
 
 describe('removeCompanyEmailSecret', () => {
-  it('removes the secret from the actor company without returning it', async () => {
+  it('removes the actor company secret between pending and succeeded audit states', async () => {
     const removeSecret = vi.fn<CompanyEmailSecretStore['removeSecret']>();
-    const appendAuditEvent = vi.fn<
-      CompanyEmailSecretAuditWriter['appendCompanyEmailSecretAuditEvent']
-    >();
+    const auditWriter = createAuditWriter();
     const status = await removeCompanyEmailSecret(
       {
         actorContext: createEmailSecretActorContext(),
         occurredAt: '2026-07-14T20:00:00.000Z',
       },
       {
-        companyEmailSecretAuditWriter: createAuditWriter(appendAuditEvent),
+        companyEmailSecretAuditWriter: auditWriter,
         companyEmailSecretStore: createSecretStore({ removeSecret }),
       },
     );
 
     expect(removeSecret).toHaveBeenCalledWith('example-company');
-    expect(appendAuditEvent).toHaveBeenCalledWith({
+    expect(auditWriter.startCompanyEmailSecretAuditOperation).toHaveBeenCalledWith({
+      action: 'remove',
       actorId: 'local-user',
       companyId: 'example-company',
-      eventType: 'company_email_secret_removed',
-      occurredAt: '2026-07-14T20:00:00.000Z',
+      completedAt: null,
+      failureCode: null,
+      operationId: expect.any(String),
+      startedAt: '2026-07-14T20:00:00.000Z',
+      status: 'pending',
     });
-    expect(appendAuditEvent.mock.calls[0]?.[0]).not.toHaveProperty('secret');
+    const operationId = vi.mocked(
+      auditWriter.startCompanyEmailSecretAuditOperation,
+    ).mock.calls[0]?.[0].operationId;
+    expect(auditWriter.completeCompanyEmailSecretAuditOperation).toHaveBeenCalledWith({
+      completedAt: '2026-07-14T20:00:00.000Z',
+      failureCode: null,
+      operationId,
+      status: 'succeeded',
+    });
     expect(status).toEqual({ configured: false });
     expect(status).not.toHaveProperty('secret');
   });
 
-  it('denies access before touching the secret store', async () => {
+  it('denies access before touching the secret store or audit', async () => {
     const removeSecret = vi.fn<CompanyEmailSecretStore['removeSecret']>();
-    const appendAuditEvent = vi.fn<
-      CompanyEmailSecretAuditWriter['appendCompanyEmailSecretAuditEvent']
-    >();
+    const auditWriter = createAuditWriter();
 
     await expect(
       removeCompanyEmailSecret(
@@ -53,21 +61,54 @@ describe('removeCompanyEmailSecret', () => {
           occurredAt: '2026-07-14T20:00:00.000Z',
         },
         {
-          companyEmailSecretAuditWriter: createAuditWriter(appendAuditEvent),
+          companyEmailSecretAuditWriter: auditWriter,
           companyEmailSecretStore: createSecretStore({ removeSecret }),
         },
       ),
     ).rejects.toBeInstanceOf(AuthorizationError);
     expect(removeSecret).not.toHaveBeenCalled();
-    expect(appendAuditEvent).not.toHaveBeenCalled();
+    expect(auditWriter.startCompanyEmailSecretAuditOperation).not.toHaveBeenCalled();
+  });
+
+  it('marks the pending audit failed with a safe code when removal fails', async () => {
+    const removeSecret = vi.fn<CompanyEmailSecretStore['removeSecret']>(
+      async () => {
+        throw new Error('Synthetic secret store failure with private details.');
+      },
+    );
+    const auditWriter = createAuditWriter();
+
+    await expect(
+      removeCompanyEmailSecret(
+        {
+          actorContext: createEmailSecretActorContext(),
+          occurredAt: '2026-07-14T20:00:00.000Z',
+        },
+        {
+          companyEmailSecretAuditWriter: auditWriter,
+          companyEmailSecretStore: createSecretStore({ removeSecret }),
+        },
+      ),
+    ).rejects.toEqual(
+      expect.objectContaining({
+        code: 'COMPANY_EMAIL_SECRET_OPERATION_FAILED',
+      }),
+    );
+
+    expect(auditWriter.completeCompanyEmailSecretAuditOperation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        failureCode: 'SECRET_OPERATION_FAILED',
+        status: 'failed',
+      }),
+    );
   });
 });
 
-function createAuditWriter(
-  appendCompanyEmailSecretAuditEvent: CompanyEmailSecretAuditWriter['appendCompanyEmailSecretAuditEvent'] =
-    vi.fn(async () => undefined),
-): CompanyEmailSecretAuditWriter {
-  return { appendCompanyEmailSecretAuditEvent };
+function createAuditWriter(): CompanyEmailSecretAuditWriter {
+  return {
+    completeCompanyEmailSecretAuditOperation: vi.fn(async () => undefined),
+    startCompanyEmailSecretAuditOperation: vi.fn(async () => undefined),
+  };
 }
 
 function createEmailSecretActorContext() {

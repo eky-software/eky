@@ -5,9 +5,10 @@ desktop-runtimen ensimmäisen rajatun toteutus- ja Windows-paketointispiken sek�
 sen toteutustilan.
 
 Rajattu tekninen package-spike ja sen ensimmäinen local-session-luottamusraja
-on toteutettu 14.7.2026. Toteutus ei vielä sisällä Windows Credential Manager
--sovitinta, SMTP-provideria, installeria, code signingia tai
-automaattipäivitystä.
+on toteutettu 14.7.2026. Electron `safeStorage` -secret broker on toteutettu
+15.7.2026 synteettisellä paketointismokella, mutta sitä ei ole vielä kytketty
+salaisuutta vastaanottavaan HTTP/UI-polkuun. Toteutus ei vielä sisällä SMTP-
+provideria, installeria, code signingia tai automaattipäivitystä.
 
 ## Toteutustulos 14.7.2026
 
@@ -131,6 +132,7 @@ apps/desktop/
     main/
     preload/
     runtime/
+    secrets/
   package.json
   tsconfig.json
 ```
@@ -140,6 +142,8 @@ Vastuut:
 - `main/` omistaa Electron-ikkunan, prosessien elinkaaren ja privileged IPC:n
 - `preload/` paljastaa rendererille vain nimetyn desktop-transportin
 - `runtime/` kokoaa session-bootstrapin, backend-prosessin ja polkuadapterit
+- `secrets/` eristää safeStorage-suojauksen, salatun tiedoston ja yksityisen
+  main/utility-process-brokerin
 - React-featuret pysyvät `apps/web`-sovelluksessa
 - backendin moduulit pysyvät `apps/backend`-sovelluksessa
 - API-clientin julkinen sopimus säilyy Electronista riippumattomana
@@ -313,7 +317,8 @@ Testit eivät käytä oikeaa asiakasdataa, SMTP-salasanaa tai muuta salaisuutta.
 ## Ei Toteuteta Ensimmäisessä Spikessä
 
 - oikeaa asiakas- tai laskutusdataa
-- Windows Credential Manager -adapteria
+- SMTP-salaisuuden HTTP- tai UI-polkuja
+- SMTP-providerin backend-only secret reader -kytkentää
 - SMTP-provideria tai oikeaa sähköpostilähetystä
 - Firebase Authia tai pilvisynkronointia
 - automaattipäivitystä tai julkaisukanavaa
@@ -336,14 +341,14 @@ korjausta.
 6. Todennetaan backend, SQLite, migraatiot ja PDFKit Windows-artifactissa.
 7. Local-session ja backendin auth-middleware negatiivisine
    turvallisuustesteineen on toteutettu.
-8. Arkaluonteiset sähköpostireitit ja Company Settings -reitit käyttävät
-   luotettua `ActorContext`-kontekstia. Jäljellä olevat moduulireitit siirretään
-   samaan malliin ennen oikean datan tuotantokäyttöä.
-9. Sähköpostisalaisuuden asettamisen ja poistamisen lifecycle-auditoinnin portti,
-   SQLite-adapteri ja persistence on toteutettu ilman salaisen arvon
-   tallentamista.
-10. Arvioidaan Windows Credential Manager -adapteri ja SMTP-provider erillisinä
-    turvallisuus- ja riippuvuusmuutoksina.
+8. Pysyvä local-runtime-identiteetti ja nykyisten business-reittien luotettu
+   `ActorContext`-yritysrajaus on toteutettu.
+9. Sähköpostisalaisuuden lifecycle-audit luo yhden `pending`-operaation ja
+   päivittää sen `succeeded`- tai `failed`-tilaan ilman salaisen arvon
+   tallentamista. Keskeneräinen päivitys jää näkyvästi `pending`-tilaan.
+10. Electron main processin `safeStorage`-broker, versionoitu salattu tiedosto
+    ja utility processin kapea client on toteutettu ilman uutta npm-riippuvuutta.
+    SMTP-provider arvioidaan erillisenä turvallisuus- ja riippuvuusmuutoksena.
 
 ## Liittyvät Dokumentit
 

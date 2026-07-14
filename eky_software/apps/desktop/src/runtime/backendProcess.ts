@@ -1,4 +1,8 @@
-import { utilityProcess, type UtilityProcess } from 'electron';
+import {
+  utilityProcess,
+  type MessagePortMain,
+  type UtilityProcess,
+} from 'electron';
 
 import {
   parseDesktopBackendStatus,
@@ -12,6 +16,7 @@ const backendShutdownTimeoutMilliseconds = 3_000;
 export interface StartDesktopBackendOptions {
   config: DesktopBackendStartMessage['config'];
   runnerPath: string;
+  secretBrokerPort: MessagePortMain;
 }
 
 export interface DesktopBackendHandle {
@@ -52,7 +57,10 @@ export function startDesktopBackend(
     }, backendReadinessTimeoutMilliseconds);
 
     processHandle.once('spawn', () => {
-      processHandle.postMessage({ config: options.config, type: 'start' });
+      processHandle.postMessage(
+        { config: options.config, type: 'start' },
+        [options.secretBrokerPort],
+      );
     });
     processHandle.on('message', (value) => {
       const status = parseDesktopBackendStatus(value);

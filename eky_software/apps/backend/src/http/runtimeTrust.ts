@@ -1,18 +1,24 @@
 import { timingSafeEqual } from 'node:crypto';
 
-import {
-  createActorContext,
-  type ActorContext,
-} from '@eky/auth';
-import { permissionValues } from '@eky/permissions';
+import type { ActorContext } from '@eky/auth';
+import type { Permission } from '@eky/permissions';
 import type { MiddlewareHandler } from 'hono';
+
+import {
+  createLocalActorContext,
+  type LocalRuntimeIdentity,
+} from '../infrastructure/identity/localRuntimeIdentity.js';
 
 export const localRuntimeSessionHeaderName = 'x-eky-local-session';
 
-const localActorId = 'dev-user';
-const localCompanyId = 'dev-company';
 const runtimeSessionLength = 43;
 const runtimeSessionPattern = /^[A-Za-z0-9_-]+$/;
+const localOwnerPermissions = Object.freeze([
+  'manageCompanySettings',
+  'manageCompanyEmailSettings',
+  'manageCompanyEmailSecret',
+  'sendInvoices',
+] satisfies readonly Permission[]);
 
 export interface BackendEnvironment {
   Variables: {
@@ -55,9 +61,13 @@ export function resolveRuntimeTrust(
 
 export function createRuntimeTrustMiddleware(
   runtimeTrust: RuntimeTrust,
+  localRuntimeIdentity: LocalRuntimeIdentity,
 ): MiddlewareHandler<BackendEnvironment> {
   assertValidRuntimeTrust(runtimeTrust);
-  const actorContext = createLocalActorContext();
+  const actorContext = createLocalActorContext(
+    localRuntimeIdentity,
+    localOwnerPermissions,
+  );
 
   return async (context, next) => {
     if (context.req.path === '/health') {
@@ -78,15 +88,6 @@ export function createRuntimeTrustMiddleware(
     context.set('actorContext', actorContext);
     await next();
   };
-}
-
-function createLocalActorContext(): ActorContext {
-  return createActorContext({
-    actorId: localActorId,
-    authenticationMode: 'local',
-    companyId: localCompanyId,
-    permissions: permissionValues,
-  });
 }
 
 function assertValidRuntimeTrust(runtimeTrust: RuntimeTrust): void {

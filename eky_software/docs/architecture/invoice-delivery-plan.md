@@ -142,18 +142,14 @@ Lähtevä posti, SMTP:
 
 SMTP-portit:
 
-- portti `25`, salaamaton
-  - vain tilanteisiin, joissa salattu yhteys ei ole mahdollinen
-  - voi toimia ilman autentikointia DNA:n verkosta
-  - ei käytetä Eky-ohjelman oletuksena
-- portti `465`, TLS-salattu
-  - autentikointi
-  - voi toimia ilman autentikointia DNA:n verkosta
-  - mahdollinen SMTP-adapterin asetus
-- portti `587`, STARTTLS-salattu
-  - autentikointi
-  - voi toimia ilman autentikointia DNA:n verkosta
-  - suositeltava moderni SMTP-vaihtoehto, jos tilin asetukset tukevat sitä
+- portti `465`, implicit TLS heti yhteyden muodostamisesta
+  - Eky local MVP:n ensisijainen malli
+  - autentikointi vaaditaan
+  - vähintään TLS `1.2`; TLS `1.3` sallitaan
+- portti `587`, pakollinen STARTTLS
+  - myöhempi erikseen toteutettava yhteensopivuusvaihtoehto
+  - ei kuulu ensimmäiseen SMTP-adapteriin
+- porttia `25` ei tueta Eky local MVP:ssä
 
 Ekyssä laskujen SMTP-lähetys edellyttää salattua yhteyttä. SMTP-adapteri ei saa
 lähettää laskua, jos TLS- tai STARTTLS-neuvottelu epäonnistuu, eikä se saa
@@ -165,15 +161,17 @@ Koska Eky voi myöhemmin ajaa pilvessä tai muualla kuin DNA:n omassa verkossa,
 ei saa luottaa siihen, että SMTP toimii ilman autentikointia DNA:n verkosta.
 Tuotantomallissa pitää varautua autentikoituun SMTP-lähetykseen.
 
-Suositeltu tuleva DNA SMTP MVP -linja:
+Hyväksytty tuleva DNA SMTP MVP -linja:
 
 - provider: `smtp`
 - host: `smtp.dnamail.fi`
-- port: `587`
-- security: `STARTTLS`
-- authentication: required, jos ympäristö ei ole DNA:n verkossa
-- credentials: vain backendin salaisuuksissa, ympäristömuuttujissa tai
-  Secret Managerissa
+- fallback host: `smtp.dnainternet.net` vain eksplisiittisellä asetuksella
+- port: `465`
+- security: implicit TLS
+- authentication: required
+- username: käyttäjän koko DNA-sähköpostiosoite
+- credentials: vain backend-only secret store -adapterissa; local Electron
+  käyttää `safeStorage`-brokeria ja cloud-ympäristö myöhemmin Secret Manageria
 - credentials eivät koskaan kuulu Git-repositorioon
 - credentials eivät koskaan mene frontendille
 - lähetys testataan ensin dry-run- tai test recipient override -tilassa
@@ -434,7 +432,7 @@ Nykyinen laskun toimituskokonaisuus viimeistellään ennen uutta isoa moduulia:
 1. Viimeistellään sähköposti.
    Salaisuuden turvallinen hallinta ja SMTP-provider toteutetaan
    `docs/architecture/email-delivery-and-secrets-plan.md`-dokumentin mukaan.
-   TLS/STARTTLS on pakollinen, ensimmäiset lähetykset käyttävät test recipient
+   implicit TLS on ensimmäisessä adapterissa pakollinen, ensimmäiset lähetykset käyttävät test recipient
    overridea ja vain onnistunut oikea lähetys voi muuttaa laskun `sent`-tilaan.
 2. Viimeistellään tulostus.
    Current PDF avataan luotettavasti ja käyttäjä tulostaa selaimen tai

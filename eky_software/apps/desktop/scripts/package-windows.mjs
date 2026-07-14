@@ -132,6 +132,23 @@ async function rebuildStagedBetterSqlite() {
 
 async function assertSafeBackendStage() {
   const files = await listFiles(backendStage);
+  const unapprovedKeyringPackagePath = ['@napi-rs', 'keyring'].join('/');
+  const forbiddenDependencyFile = files.find((filePath) =>
+    relative(backendStage, filePath)
+      .replaceAll('\\', '/')
+      .toLowerCase()
+      .includes(unapprovedKeyringPackagePath),
+  );
+
+  if (forbiddenDependencyFile !== undefined) {
+    throw new Error(
+      `Unapproved keyring dependency in backend stage: ${relative(
+        backendStage,
+        forbiddenDependencyFile,
+      )}`,
+    );
+  }
+
   const forbiddenFile = files.find((filePath) => {
     const normalizedPath = relative(backendStage, filePath).replaceAll('\\', '/');
     const fileName = normalizedPath.slice(normalizedPath.lastIndexOf('/') + 1);
@@ -196,9 +213,27 @@ async function prepareApplicationStage() {
       recursive: true,
     },
   );
-  await cp(resolve(desktopDirectory, 'dist/runtime'), desktopRuntimeStage, {
-    recursive: true,
-  });
+  await cp(
+    resolve(desktopDirectory, 'dist/secrets'),
+    join(applicationStage, 'dist/secrets'),
+    {
+      recursive: true,
+    },
+  );
+  await cp(
+    resolve(desktopDirectory, 'dist/runtime'),
+    join(desktopRuntimeStage, 'runtime'),
+    {
+      recursive: true,
+    },
+  );
+  await cp(
+    resolve(desktopDirectory, 'dist/secrets'),
+    join(desktopRuntimeStage, 'secrets'),
+    {
+      recursive: true,
+    },
+  );
   await writeFile(
     join(desktopRuntimeStage, 'package.json'),
     `${JSON.stringify({ private: true, type: 'module' }, null, 2)}\n`,

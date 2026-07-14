@@ -1,5 +1,8 @@
 import { randomUUID } from 'node:crypto';
 
+import type { ActorContext } from '@eky/auth';
+import { requirePermission } from '@eky/permissions';
+
 import {
   createCompanySettingsRecord,
   type CompanySettings,
@@ -15,9 +18,9 @@ import { normalizeCompanyBankDetails } from '../domain/companyBankDetails.js';
 import type { CompanySettingsRepository } from '../ports/companySettingsRepository.js';
 
 export interface UpdateCompanySettingsInput {
+  actorContext: ActorContext;
   businessId: string;
   city: string;
-  companyId: string;
   companyName: string;
   vatNumber: string;
   defaultHourlyRateCents: unknown;
@@ -44,6 +47,8 @@ export async function updateCompanySettings(
   input: UpdateCompanySettingsInput,
   companySettingsRepository: CompanySettingsRepository,
 ): Promise<CompanySettings> {
+  requirePermission(input.actorContext, 'manageCompanySettings');
+
   const now = new Date().toISOString();
   const bankDetails = normalizeCompanyBankDetails({
     iban: input.iban,
@@ -65,7 +70,7 @@ export async function updateCompanySettings(
     bankName: bankDetails.bankName,
     bic: bankDetails.bic,
     city: normalizeCompanySettingsField(input.city, 'Company city'),
-    companyId: input.companyId,
+    companyId: input.actorContext.companyId,
     companyName: normalizeCompanySettingsField(input.companyName, 'Company name'),
     vatNumber: normalizeCompanyVatNumber(input.vatNumber),
     defaultHourlyRateCents: parseDefaultHourlyRateCents(input.defaultHourlyRateCents),

@@ -5,10 +5,10 @@ valtuutusmallin suunnittelulinjan. Tavoitteena on säilyttää sama application-
 domain-ydin paikallisessa offline-versiossa, pilvessä ja myöhemmässä
 monilaitemallissa.
 
-Dokumentin ensimmäinen local-session-, HTTP-middleware- ja `ActorContext`-
-vaihe on toteutettu. Firebase-identityä, salaisuuden tallennusadapteria,
-salaisuutta vastaanottavaa HTTP/UI-polkuja tai uusia riippuvuuksia ei ole
-lisätty.
+Dokumentin local-session-, pysyvä local-identiteetti-, HTTP-middleware-,
+`ActorContext`- ja Electron `safeStorage` -brokerivaihe on toteutettu.
+Firebase-identityä, cloud-salaisuusadapteria, salaisuutta vastaanottavia
+HTTP/UI-polkuja tai uusia riippuvuuksia ei ole lisätty.
 
 ## Perusperiaate
 
@@ -76,17 +76,26 @@ tarkistuksessa vain permission-listan sisältävää rakenteellista kontekstia,
 jotta `auth`- ja `permissions`-pakettien välille ei muodostu kiertoriippuvuutta.
 
 Electron main processin luoma session varmennetaan backendin HTTP-
-middlewaressa, minkä jälkeen backend muodostaa synteettisen local-profiilin
-`ActorContext`-olion. Firebase-, HTTP-, desktop- tai Windows-tyypit eivät vuoda
-application-palvelujen sopimuksiin.
+middlewaressa, minkä jälkeen backend muodostaa tietokantaan tallennetusta
+local-runtime-identiteetistä `ActorContext`-olion. Firebase-, HTTP-, desktop-
+tai Windows-tyypit eivät vuoda application-palvelujen sopimuksiin.
 
-Ensimmäiset toteutetut sähköpostipolun permissionit ovat:
+Ensimmäiset toteutetut local-owner-permissionit ovat:
 
+- `manageCompanySettings`
 - `manageCompanyEmailSettings`
 - `manageCompanyEmailSecret`
 - `sendInvoices`
 
-Laajempi rooli- ja permission-malli hyväksytään erikseen.
+Local ownerin oikeudet luetellaan eksplisiittisesti. Uuden permission-arvon
+lisääminen `packages/permissions`-pakettiin ei saa automaattisesti antaa sitä
+local ownerille.
+
+Nämä permissionit ovat backendin teknisiä toimintokohtaisia portteja. Ne eivät
+vielä tarkoita valmista käyttäjä-, rooli- tai työntekijähallintaa. Isän
+ensimmäisessä yhden käyttäjän local-asennuksessa pysyvä `local-owner` toimii
+ainoana paikallisena actorina. Tuleva rooli- ja permission-malli, käyttäjä-UI
+sekä yritysjäsenyydet hyväksytään erikseen pilvi- ja monikäyttäjävaiheessa.
 
 ## Local Identity Adapter
 
@@ -104,8 +113,22 @@ Toteutetut ensimmäisen local-session-vaiheen säännöt:
   default
 - CSRF- ja cross-origin-riskit käsitellään myös loopback-käytössä
 - backend muodostaa `ActorContext`-olion session perusteella
+- SQLite-tietokannan singleton `local_runtime_identity` säilyttää asennuksen
+  sisäisen `installationId`-, `companyId`- ja `actorId`-identiteetin
 - `companyId` ei tule request bodysta tai querysta
 - käyttöoikeudet tarkistetaan deny-by-default-periaatteella
+
+Uudessa asennuksessa `installationId` ja sisäinen `companyId` luodaan kerran
+migraatiossa. Uudelleenkäynnistys, Electronin päivitys tai sovelluksen uusi
+build ei vaihda niitä. Vanhassa yhden yrityksen local-kannassa migraatio
+säilyttää olemassa olevan yritysrajan. Jos vanhasta local-kannasta löytyy
+useita eri yritysrajoja, migraatio epäonnistuu turvallisesti eikä valitse yhtä
+yritystä hiljaa.
+
+`installationId` on tekninen paikallisen asennuksen tunniste. Sitä voidaan
+myöhemmin käyttää yhdessä `companyId`-arvon kanssa käyttöjärjestelmän secret
+store -avaimen nimiavaruudessa. Avainta ei johdeta sähköpostiosoitteesta,
+Y-tunnuksesta tai muusta muuttuvasta liiketoimintadatasta.
 
 Electron main process muodostaa runtime-sessionin ja välittää sen backendille
 yksityisen prosessikanavan kautta. Renderer ei saa raakaa session-salaisuutta,
@@ -189,12 +212,11 @@ konfiguraatiotyypit ja turvallisen runtime-asetusten lukumallin. Se ei saa
 sisältää salaisuuksia, liiketoimintasääntöjä tai yhtä yleistä kaikkien
 moduulien constants-kaatopaikkaa.
 
-Synteettisen local-profiilin nykyiset `dev-company`- ja `dev-user`-tunnisteet
-muodostetaan keskitetysti vasta onnistuneen session-varmennuksen jälkeen.
-Arkaluonteiset sähköpostireitit ja Company Settings -reitit eivät enää valitse
-yritystä tai käyttäjää omilla kovakoodatuilla vakioillaan. Muut vielä
-kehitysoikopolkuja sisältävät reitit siirretään samaan backendin vahvistamaan
-`ActorContext`-malliin rajatusti ennen oikean datan tuotantokäyttöä.
+Nykyiset business-HTTP-reitit eivät valitse yritystä tai käyttäjää omilla
+kovakoodatuilla `dev-company`- tai `dev-user`-vakioillaan. Customers-, Company
+Settings-, Invoice Draft-, Invoice Numbering-, Invoice Payment Settings- ja
+Approved Invoice -reitit käyttävät backendin vahvistamaa `ActorContext`-
+kontekstia. Request bodyn tai queryn yritystunniste ei voi ohittaa sitä.
 
 ## Turvallisuustestit
 
@@ -208,6 +230,11 @@ Ensimmäisen local trust -toteutuksen pitää testata vähintään:
 - toisen yrityksen dataa ei voi lukea tai muuttaa
 - salaisuus ei näy vastauksessa, virheessä, auditissa tai lokissa
 - salaisuuden lifecycle käyttää vain backendin vahvistamaa yrityskontekstia
+- local-identiteetti säilyy uudelleenkäynnistyksessä ja vanha yhden yrityksen
+  local-data säilyttää yritysrajansa
+- usean yritysrajan sisältävä vanha local-kanta epäonnistuu fail-closed
+- local owner ei saa uutta permissionia pelkän permission-listan kasvamisen
+  seurauksena
 - Firebase-adapterin puuttuminen ei muuta local-sessionia automaattisesti
   pilviauthiksi
 
@@ -224,13 +251,15 @@ Ensimmäisen local trust -toteutuksen pitää testata vähintään:
    toteutettu.
 6. Local-session-adapteri ja HTTP-middleware negatiivisine
    turvallisuustesteineen on toteutettu.
-7. Arkaluonteiset sähköpostireitit ja Company Settings -reitit käyttävät
-   backendin vahvistamaa actor contextia. Jäljellä olevat moduulireitit
-   siirretään samaan malliin ennen oikean datan tuotantokäyttöä.
-8. Salaisuuden asettamisen ja poistamisen audit-tapahtumien portti, SQLite-
-   adapteri ja persistence on toteutettu ennen oikeaa HTTP- tai UI-kytkentää.
-9. Toteutetaan Windows Credential Manager -adapteri erillisen dependency- ja
-   turvallisuusarvion jälkeen.
+7. Pysyvä local-runtime-identiteetti ja nykyisten business-reittien
+   `ActorContext`-yritysrajaus on toteutettu.
+8. Salaisuuden asettamisen ja poistamisen audit luo ennen secret store
+   -operaatiota yhden `pending`-rivin ja päivittää sen `succeeded`- tai
+   `failed`-tilaan. Epäselvä auditin loppupäivitys jää näkyvästi `pending`-
+   tilaan myöhempää reconciliation-tarkistusta varten.
+9. Electron main processin `safeStorage`-broker ja utility processin yksityinen
+   `MessagePort`-client on toteutettu ilman uutta riippuvuutta. Ennen oikeaa
+   salaisuutta toteutetaan rajattu HTTP/UI-polku.
 10. Toteutetaan SMTP-provider portilla `465` ja implicit TLS -mallilla ensin
    pakotettuun test recipient -osoitteeseen.
 11. Pilviversiossa toteutetaan erikseen Firebase identity -adapteri ja cloud
@@ -242,10 +271,10 @@ Seuraavat kohdat saa siirtää laskutuksen toimitusputken jälkeen tehtävään
 rajattuun runtime- ja rakennecleanupiin, mutta niitä ei saa unohtaa tai ohittaa
 ennen oikeaa tuotantodataa:
 
-- jäljellä olevien moduulireittien kovakoodatut `dev-company`- ja `dev-user`-
-  oikopolut
 - laajempi moduulikohtainen permission-migraatio; sähköpostin application-
   palvelut tarkistavat jo omat permissioninsa
+- käyttäjä-, rooli- ja yritysjäsenyyshallinta monikäyttäjä- ja pilvivaihetta
+  varten
 - Viten toistuvan backend-proxyosoitteen keskittäminen
 - runtime-profiilien tyypitetty konfiguraatiomalli `packages/config`-rajalla
 
@@ -258,7 +287,7 @@ laskutusdatan tuotantokäyttö eivät kuitenkaan saa ohittaa local desktop
 
 - Firebase Authia
 - SMTP-salaisuuden HTTP- tai UI-polkuja
-- Windows Credential Manager -adapteria
+- SMTP-providerin backend-only secret reader -kytkentää
 - SMTP-provideria
 - pilvisynkronointia
 - uusia riippuvuuksia

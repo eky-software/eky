@@ -1,0 +1,48 @@
+import { readFile, readdir } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { describe, expect, it } from 'vitest';
+
+const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+describe('desktop secret broker boundaries', () => {
+  it('does not expose safeStorage or the secret broker through preload', async () => {
+    const preloadSource = await readFile(
+      join(sourceRoot, 'preload', 'index.ts'),
+      'utf8',
+    );
+
+    expect(preloadSource).not.toMatch(/safeStorage|secretBroker|MessagePort/i);
+    expect(preloadSource).not.toMatch(/contextBridge|ipcRenderer/i);
+  });
+
+  it('does not expose the broker or secret read operation to web source code', async () => {
+    const webSourceRoot = resolve(sourceRoot, '../../web/src');
+    const webFiles = await listSourceFiles(webSourceRoot);
+    const combinedSource = (
+      await Promise.all(webFiles.map((filePath) => readFile(filePath, 'utf8')))
+    ).join('\n');
+
+    expect(combinedSource).not.toMatch(
+      /readCompanyEmailSecret|safeStorage|secretBroker/i,
+    );
+  });
+});
+
+async function listSourceFiles(directory: string): Promise<string[]> {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files: string[] = [];
+
+  for (const entry of entries) {
+    const entryPath = join(directory, entry.name);
+
+    if (entry.isDirectory()) {
+      files.push(...(await listSourceFiles(entryPath)));
+    } else if (/\.(ts|tsx)$/.test(entry.name)) {
+      files.push(entryPath);
+    }
+  }
+
+  return files;
+}
