@@ -1,20 +1,34 @@
-export const companyEmailSecretAuditEventTypeValues = Object.freeze([
-  'company_email_secret_set',
-  'company_email_secret_removed',
+export const companyEmailSecretAuditActionValues = Object.freeze([
+  'set',
+  'remove',
 ] as const);
 
-export type CompanyEmailSecretAuditEventType =
-  (typeof companyEmailSecretAuditEventTypeValues)[number];
+export type CompanyEmailSecretAuditAction =
+  (typeof companyEmailSecretAuditActionValues)[number];
 
-export interface CompanyEmailSecretAuditEvent {
+export interface CompanyEmailSecretAuditOperation {
+  action: CompanyEmailSecretAuditAction;
   actorId: string;
   companyId: string;
-  eventType: CompanyEmailSecretAuditEventType;
-  occurredAt: string;
+  completedAt: null;
+  failureCode: null;
+  operationId: string;
+  startedAt: string;
+  status: 'pending';
+}
+
+export interface CompanyEmailSecretAuditCompletion {
+  completedAt: string;
+  failureCode: string | null;
+  operationId: string;
+  status: 'failed' | 'succeeded';
 }
 
 export interface CompanyEmailSecretAuditWriter {
-  appendCompanyEmailSecretAuditEvent(
-    event: CompanyEmailSecretAuditEvent,
+  completeCompanyEmailSecretAuditOperation(
+    completion: CompanyEmailSecretAuditCompletion,
+  ): Promise<void>;
+  startCompanyEmailSecretAuditOperation(
+    operation: CompanyEmailSecretAuditOperation,
   ): Promise<void>;
 }

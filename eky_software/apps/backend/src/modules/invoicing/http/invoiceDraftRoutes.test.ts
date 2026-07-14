@@ -1,4 +1,8 @@
+import { createActorContext } from '@eky/auth';
+import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
+
+import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 
 import type { ApproveInvoiceDraftInput } from '../application/approveInvoiceDraft.js';
 import { ApproveInvoiceDraftError } from '../application/approveInvoiceDraftError.js';
@@ -31,7 +35,28 @@ import type { CustomerAccessReader } from '../ports/customerAccessReader.js';
 import type { ApprovedInvoiceResult } from '../ports/invoiceApprovalRepository.js';
 import type { InvoiceDraftRepository } from '../ports/invoiceDraftRepository.js';
 import type { InvoicePaymentSettingsRepository } from '../ports/invoicePaymentSettingsRepository.js';
-import { createInvoiceDraftRoutes } from './invoiceDraftRoutes.js';
+import { createInvoiceDraftRoutes as createInvoiceDraftRouteHandlers } from './invoiceDraftRoutes.js';
+
+function createInvoiceDraftRoutes(
+  dependencies: Parameters<typeof createInvoiceDraftRouteHandlers>[0],
+): Hono<BackendEnvironment> {
+  const app = new Hono<BackendEnvironment>();
+  app.use('*', async (context, next) => {
+    context.set(
+      'actorContext',
+      createActorContext({
+        actorId: 'local-user',
+        authenticationMode: 'local',
+        companyId: 'dev-company',
+        permissions: [],
+      }),
+    );
+    await next();
+  });
+  app.route('/', createInvoiceDraftRouteHandlers(dependencies));
+
+  return app;
+}
 
 class FakeInvoiceDraftRepository implements InvoiceDraftRepository {
   savedDraft: InvoiceDraft | undefined;

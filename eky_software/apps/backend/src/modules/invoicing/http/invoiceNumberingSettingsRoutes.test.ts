@@ -1,4 +1,8 @@
+import { createActorContext } from '@eky/auth';
+import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
+
+import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 
 import {
   getInvoiceNumberingSettings,
@@ -14,7 +18,30 @@ import {
   type StoredInvoiceNumberingSettings,
 } from '../domain/invoiceNumbering.js';
 import type { InvoiceNumberingSettingsRepository } from '../ports/invoiceNumberingSettingsRepository.js';
-import { createInvoiceNumberingSettingsRoutes } from './invoiceNumberingSettingsRoutes.js';
+import { createInvoiceNumberingSettingsRoutes as createInvoiceNumberingSettingsRouteHandlers } from './invoiceNumberingSettingsRoutes.js';
+
+function createInvoiceNumberingSettingsRoutes(
+  dependencies: Parameters<
+    typeof createInvoiceNumberingSettingsRouteHandlers
+  >[0],
+): Hono<BackendEnvironment> {
+  const app = new Hono<BackendEnvironment>();
+  app.use('*', async (context, next) => {
+    context.set(
+      'actorContext',
+      createActorContext({
+        actorId: 'local-owner',
+        authenticationMode: 'local',
+        companyId: 'dev-company',
+        permissions: [],
+      }),
+    );
+    await next();
+  });
+  app.route('/', createInvoiceNumberingSettingsRouteHandlers(dependencies));
+
+  return app;
+}
 
 class FakeInvoiceNumberingSettingsRepository
   implements InvoiceNumberingSettingsRepository

@@ -1,4 +1,8 @@
+import { createActorContext } from '@eky/auth';
+import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
+
+import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 
 import {
   getInvoicePaymentSettings,
@@ -17,7 +21,30 @@ import type {
 import type {
   InvoicePaymentSettingsRepository,
 } from '../ports/invoicePaymentSettingsRepository.js';
-import { createInvoicePaymentSettingsRoutes } from './invoicePaymentSettingsRoutes.js';
+import { createInvoicePaymentSettingsRoutes as createInvoicePaymentSettingsRouteHandlers } from './invoicePaymentSettingsRoutes.js';
+
+function createInvoicePaymentSettingsRoutes(
+  dependencies: Parameters<
+    typeof createInvoicePaymentSettingsRouteHandlers
+  >[0],
+): Hono<BackendEnvironment> {
+  const app = new Hono<BackendEnvironment>();
+  app.use('*', async (context, next) => {
+    context.set(
+      'actorContext',
+      createActorContext({
+        actorId: 'local-owner',
+        authenticationMode: 'local',
+        companyId: 'dev-company',
+        permissions: [],
+      }),
+    );
+    await next();
+  });
+  app.route('/', createInvoicePaymentSettingsRouteHandlers(dependencies));
+
+  return app;
+}
 
 class FakeInvoicePaymentSettingsRepository
   implements InvoicePaymentSettingsRepository

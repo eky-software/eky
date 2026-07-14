@@ -8,6 +8,7 @@ import {
 } from './runtimeTrust.js';
 
 import { createDatabaseConnection } from '../database/connection/createDatabaseConnection.js';
+import { readLocalRuntimeIdentity } from '../database/localRuntimeIdentityReader.js';
 import { runMigrations } from '../database/migration/runMigrations.js';
 import { getCompanySettings } from '../modules/companySettings/application/getCompanySettings.js';
 import { updateCompanySettings } from '../modules/companySettings/application/updateCompanySettings.js';
@@ -64,17 +65,6 @@ export interface CreateAppOptions {
 export async function createApp(
   options: CreateAppOptions = {},
 ): Promise<Hono<BackendEnvironment>> {
-  const app = new Hono<BackendEnvironment>();
-
-  app.use(
-    '*',
-    createRuntimeTrustMiddleware(resolveRuntimeTrust(options.runtimeTrust)),
-  );
-
-  app.get('/health', (context) => {
-    return context.json({ status: 'ok' });
-  });
-
   const database = createDatabaseConnection(
     options.databaseFilePath === undefined
       ? {}
@@ -86,6 +76,20 @@ export async function createApp(
       ? {}
       : { migrationsDirectory: options.migrationsDirectory },
   );
+  const localRuntimeIdentity = readLocalRuntimeIdentity(database);
+  const app = new Hono<BackendEnvironment>();
+
+  app.use(
+    '*',
+    createRuntimeTrustMiddleware(
+      resolveRuntimeTrust(options.runtimeTrust),
+      localRuntimeIdentity,
+    ),
+  );
+
+  app.get('/health', (context) => {
+    return context.json({ status: 'ok' });
+  });
 
   const customerRepository = new SqliteCustomerRepository(database);
   const companySettingsRepository = new SqliteCompanySettingsRepository(database);

@@ -1,3 +1,5 @@
+import { createActorContext } from '@eky/auth';
+import { AuthorizationError } from '@eky/permissions';
 import { describe, expect, it } from 'vitest';
 
 import type { CompanySettings } from '../domain/companySettings.js';
@@ -24,9 +26,9 @@ describe('updateCompanySettings', () => {
 
     const settings = await updateCompanySettings(
       {
+        actorContext: createCompanySettingsActorContext(),
         businessId: '  1234567-8  ',
         city: '  Helsinki  ',
-        companyId: 'dev-company',
         companyName: '  Example Builder Oy  ',
         vatNumber: '  fi12345678  ',
         defaultHourlyRateCents: 6500,
@@ -85,9 +87,9 @@ describe('updateCompanySettings', () => {
   it('keeps null as an unset default hourly rate', async () => {
     const settings = await updateCompanySettings(
       {
+        actorContext: createCompanySettingsActorContext(),
         businessId: '',
         city: '',
-        companyId: 'dev-company',
         companyName: '',
         vatNumber: '',
         defaultHourlyRateCents: null,
@@ -114,4 +116,51 @@ describe('updateCompanySettings', () => {
 
     expect(settings.defaultHourlyRateCents).toBeNull();
   });
+
+  it('denies updates without the company settings permission', async () => {
+    const repository = new FakeCompanySettingsRepository();
+
+    await expect(
+      updateCompanySettings(
+        {
+          actorContext: createCompanySettingsActorContext([]),
+          businessId: '',
+          city: '',
+          companyName: '',
+          vatNumber: '',
+          defaultHourlyRateCents: null,
+          hourlyRateShortcut: '',
+          iban: '',
+          bic: '',
+          bankName: '',
+          email: '',
+          emailDeliveryProvider: '',
+          emailSenderName: '',
+          emailSenderAddress: '',
+          emailSmtpHost: '',
+          emailSmtpPort: null,
+          emailSmtpSecurity: '',
+          emailUsername: '',
+          emailTestRecipientOverride: '',
+          phone: '',
+          website: '',
+          postalCode: '',
+          streetAddress: '',
+        },
+        repository,
+      ),
+    ).rejects.toBeInstanceOf(AuthorizationError);
+    expect(repository.savedSettings).toBeUndefined();
+  });
 });
+
+function createCompanySettingsActorContext(
+  permissions: Array<'manageCompanySettings'> = ['manageCompanySettings'],
+) {
+  return createActorContext({
+    actorId: 'local-owner',
+    authenticationMode: 'local',
+    companyId: 'dev-company',
+    permissions,
+  });
+}

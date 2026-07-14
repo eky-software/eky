@@ -26,6 +26,7 @@ export type DesktopBackendCommand =
 export interface DesktopBackendReadyMessage {
   port: number;
   smokePdfCreated: boolean;
+  smokeSecretBrokerVerified: boolean;
   type: 'ready';
 }
 
@@ -36,6 +37,7 @@ export interface DesktopBackendFailedMessage {
 
 export type DesktopBackendFailureCode =
   | 'BACKEND_MODULE_IMPORT_FAILED'
+  | 'BACKEND_SECRET_BROKER_FAILED'
   | 'BACKEND_SERVER_START_FAILED'
   | 'BACKEND_SMOKE_PDF_FAILED';
 
@@ -45,6 +47,7 @@ export type DesktopBackendStatusMessage =
 
 const backendFailureCodes = new Set<DesktopBackendFailureCode>([
   'BACKEND_MODULE_IMPORT_FAILED',
+  'BACKEND_SECRET_BROKER_FAILED',
   'BACKEND_SERVER_START_FAILED',
   'BACKEND_SMOKE_PDF_FAILED',
 ]);
@@ -130,11 +133,13 @@ export function parseDesktopBackendStatus(
     typeof value.port === 'number' &&
     value.port >= 1 &&
     value.port <= 65535 &&
-    typeof value.smokePdfCreated === 'boolean'
+    typeof value.smokePdfCreated === 'boolean' &&
+    typeof value.smokeSecretBrokerVerified === 'boolean'
   ) {
     return {
       port: value.port,
       smokePdfCreated: value.smokePdfCreated,
+      smokeSecretBrokerVerified: value.smokeSecretBrokerVerified,
       type: 'ready',
     };
   }

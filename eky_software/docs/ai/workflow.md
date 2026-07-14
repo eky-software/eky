@@ -78,6 +78,13 @@ Koodaamista ei aloiteta ennen hyväksyntää, jos tehtävä:
 - koskee laskutusta, käyttöoikeuksia tai audit trailia
 - koskee useita kerroksia yhtä aikaa
 
+Uusi riippuvuus vaatii aina oman hyväksyntänsä. Muun tehtävän tai kokonaisen
+toteutusvaiheen hyväksyntä ei riitä, ellei projektin omistaja hyväksy samalla
+nimenomaisesti nimettyä riippuvuutta. Jos riippuvuuden tarve havaitaan vasta
+koodauksen aikana, työ pysäytetään ennen asennusta, importtia sekä
+`package.json`- tai lockfile-muutosta ja asia tuodaan uudelleen projektin
+omistajan päätettäväksi.
+
 ## Älä arvaa liiketoimintasääntöjä
 
 AI ei saa keksiä yrityksen prosesseja omasta päästään.

@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { AuthorizationError } from '@eky/permissions';
 
 import { getOptionalStringField, isRecord } from '../../../http/requestBody.js';
 import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
@@ -42,9 +43,9 @@ export function createCompanySettingsRoutes(
 
     try {
       const companySettings = await dependencies.updateCompanySettings({
+        actorContext,
         businessId: getOptionalStringField(body, 'businessId'),
         city: getOptionalStringField(body, 'city'),
-        companyId: actorContext.companyId,
         companyName: getOptionalStringField(body, 'companyName'),
         vatNumber: getOptionalStringField(body, 'vatNumber'),
         defaultHourlyRateCents: body.defaultHourlyRateCents,
@@ -72,6 +73,10 @@ export function createCompanySettingsRoutes(
 
       return context.json({ companySettings });
     } catch (error) {
+      if (error instanceof AuthorizationError) {
+        return context.json({ error: error.message }, 403);
+      }
+
       if (error instanceof CompanySettingsValidationError) {
         return context.json({ error: error.message }, 400);
       }

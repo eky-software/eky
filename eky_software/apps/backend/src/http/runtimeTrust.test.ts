@@ -7,8 +7,14 @@ import {
   resolveRuntimeTrust,
   type BackendEnvironment,
 } from './runtimeTrust.js';
+import { createLocalRuntimeIdentity } from '../infrastructure/identity/localRuntimeIdentity.js';
 
 const currentSession = 'a'.repeat(43);
+const localRuntimeIdentity = createLocalRuntimeIdentity({
+  actorId: 'local-owner',
+  companyId: 'local-company-test',
+  installationId: 'b'.repeat(32),
+});
 
 describe('backend runtime trust', () => {
   it('rejects missing, malformed and stale local sessions', async () => {
@@ -38,10 +44,11 @@ describe('backend runtime trust', () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
-      actorId: 'dev-user',
+      actorId: 'local-owner',
       authenticationMode: 'local',
-      companyId: 'dev-company',
+      companyId: 'local-company-test',
       permissions: [
+        'manageCompanySettings',
         'manageCompanyEmailSettings',
         'manageCompanyEmailSecret',
         'sendInvoices',
@@ -58,7 +65,13 @@ describe('backend runtime trust', () => {
 
   it('allows the explicit synthetic development profile', async () => {
     const app = new Hono<BackendEnvironment>();
-    app.use('*', createRuntimeTrustMiddleware({ mode: 'development' }));
+    app.use(
+      '*',
+      createRuntimeTrustMiddleware(
+        { mode: 'development' },
+        localRuntimeIdentity,
+      ),
+    );
     app.get('/protected', (context) =>
       context.json(context.get('actorContext')),
     );
@@ -80,7 +93,7 @@ describe('backend runtime trust', () => {
       createRuntimeTrustMiddleware({
         mode: 'localSession',
         sessionSecret: 'too-short',
-      }),
+      }, localRuntimeIdentity),
     ).toThrow('Local runtime session configuration is invalid.');
   });
 });
@@ -89,7 +102,10 @@ function createTestApp(sessionSecret: string): Hono<BackendEnvironment> {
   const app = new Hono<BackendEnvironment>();
   app.use(
     '*',
-    createRuntimeTrustMiddleware({ mode: 'localSession', sessionSecret }),
+    createRuntimeTrustMiddleware(
+      { mode: 'localSession', sessionSecret },
+      localRuntimeIdentity,
+    ),
   );
   app.get('/health', (context) => context.json({ status: 'ok' }));
   app.get('/protected', (context) =>

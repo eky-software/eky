@@ -48,11 +48,22 @@ export interface CompanySettingsTable {
 }
 
 export interface CompanyEmailSecretAuditEventTable {
-  id: string;
+  operation_id: string;
   company_id: string;
   actor_id: string;
-  event_type: string;
-  occurred_at: string;
+  action: string;
+  status: string;
+  started_at: string;
+  completed_at: string | null;
+  failure_code: string | null;
+}
+
+export interface LocalRuntimeIdentityTable {
+  singleton_key: string;
+  installation_id: string;
+  company_id: string;
+  actor_id: string;
+  created_at: string;
 }
 
 export interface InvoiceDraftTable {

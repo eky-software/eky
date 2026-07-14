@@ -63,12 +63,14 @@ Do not move customer-specific pricing into Company Settings.
 
 ## Security
 
-The synthetic browser-development profile and the verified local-session
-profile currently resolve to `dev-company` as a temporary local company id.
+The verified local-session profile resolves a database-persisted local runtime
+identity. Browser development uses the same persisted identity but remains an
+explicit unauthenticated development exception.
 
-`dev-company` is not authentication, tenant isolation, or a permission model.
 HTTP routes must read the company from the backend-verified `ActorContext` and
-must not define their own development company constants.
+must not define their own development company constants. Updating the complete
+company settings master data requires `manageCompanySettings`; email secret
+operations require the separate `manageCompanyEmailSecret` permission.
 
 Future cloud auth must produce the same application-level actor contract from
 a separately verified identity and company membership.
@@ -92,9 +94,16 @@ Use only clearly synthetic secret values in tests.
 Email secret lifecycle application services must take the company only from a
 validated `ActorContext`, require `manageCompanyEmailSecret`, and return only
 secret configuration status. HTTP input must never choose the secret's company.
-Setting and removing a secret must append a lifecycle audit event that contains
-only the actor, company, event type, and timestamp. Never audit the secret,
-secret hash, secret length, secret reference, or another derived value.
+Setting and removing a secret must create one `pending` audit operation before
+the secret store call and complete the same row as `succeeded` or `failed`.
+If the store succeeds but audit completion fails, the row remains `pending` for
+later reconciliation. The row contains only operation metadata, actor, company,
+action, lifecycle timestamps, status, and a safe failure code. Never audit the
+secret, secret hash, secret length, secret reference, or another derived value.
+
+`CompanyEmailSecretReader` is backend-only and reserved for an approved email
+delivery provider. It must not be injected into Company Settings HTTP routes,
+the API client, preload, renderer, or web UI.
 
 ## Naming
 

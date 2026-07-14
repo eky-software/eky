@@ -52,11 +52,13 @@ SQLite and SQL are allowed only in `infrastructure`.
 
 ## Security
 
-The current local MVP uses `dev-company` only as a temporary local development company id.
+Customer HTTP routes take `companyId` only from the backend-verified
+`ActorContext`. They must not define local development company constants or
+trust a request body or query parameter as the company boundary.
 
-`dev-company` is not authentication, tenant isolation, or a permission model.
-
-Future auth and permission work must move company context to a trusted backend-verified source.
+The verified Electron local-session uses a persistent local runtime identity.
+The browser development profile remains a development-only exception and is
+not a production authentication model.
 
 ## Tests
 

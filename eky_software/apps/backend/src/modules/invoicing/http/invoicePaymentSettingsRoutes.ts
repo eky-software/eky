@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 
+import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
+
 import type {
   GetInvoicePaymentSettingsInput,
 } from '../application/getInvoicePaymentSettings.js';
@@ -17,7 +19,6 @@ import {
   parseUpdateInvoicePaymentSettingsRequest,
 } from './invoicePaymentSettingsRequest.js';
 
-const devCompanyId = 'dev-company';
 const maximumInvoicePaymentSettingsBodySizeBytes = 16 * 1024;
 
 interface InvoicePaymentSettingsRouteDependencies {
@@ -31,14 +32,15 @@ interface InvoicePaymentSettingsRouteDependencies {
 
 export function createInvoicePaymentSettingsRoutes(
   dependencies: InvoicePaymentSettingsRouteDependencies,
-): Hono {
-  const routes = new Hono();
+): Hono<BackendEnvironment> {
+  const routes = new Hono<BackendEnvironment>();
 
   routes.get('/invoice-payment-settings', async (context) => {
     try {
+      const actorContext = context.get('actorContext');
       const invoicePaymentSettings =
         await dependencies.getInvoicePaymentSettings({
-          companyId: devCompanyId,
+          companyId: actorContext.companyId,
         });
 
       return context.json({ invoicePaymentSettings });
@@ -66,6 +68,7 @@ export function createInvoicePaymentSettingsRoutes(
       },
     }),
     async (context) => {
+      const actorContext = context.get('actorContext');
       let body: unknown;
 
       try {
@@ -77,7 +80,7 @@ export function createInvoicePaymentSettingsRoutes(
       try {
         const input = parseUpdateInvoicePaymentSettingsRequest(
           body,
-          devCompanyId,
+          actorContext.companyId,
           new Date().toISOString(),
         );
         const invoicePaymentSettings =

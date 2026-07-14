@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 
+import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
+
 import type {
   GetInvoiceNumberingSettingsInput,
 } from '../application/getInvoiceNumberingSettings.js';
@@ -15,7 +17,6 @@ import {
   parseUpdateInvoiceNumberingSettingsRequest,
 } from './invoiceNumberingSettingsRequest.js';
 
-const devCompanyId = 'dev-company';
 const maximumInvoiceNumberingSettingsBodySizeBytes = 16 * 1024;
 
 interface InvoiceNumberingSettingsRouteDependencies {
@@ -29,14 +30,15 @@ interface InvoiceNumberingSettingsRouteDependencies {
 
 export function createInvoiceNumberingSettingsRoutes(
   dependencies: InvoiceNumberingSettingsRouteDependencies,
-): Hono {
-  const routes = new Hono();
+): Hono<BackendEnvironment> {
+  const routes = new Hono<BackendEnvironment>();
 
   routes.get('/invoice-numbering-settings', async (context) => {
     try {
+      const actorContext = context.get('actorContext');
       const invoiceNumberingSettings =
         await dependencies.getInvoiceNumberingSettings({
-          companyId: devCompanyId,
+          companyId: actorContext.companyId,
         });
 
       return context.json({ invoiceNumberingSettings });
@@ -64,6 +66,7 @@ export function createInvoiceNumberingSettingsRoutes(
       },
     }),
     async (context) => {
+      const actorContext = context.get('actorContext');
       let body: unknown;
 
       try {
@@ -75,7 +78,7 @@ export function createInvoiceNumberingSettingsRoutes(
       try {
         const input = parseUpdateInvoiceNumberingSettingsRequest(
           body,
-          devCompanyId,
+          actorContext.companyId,
           new Date().toISOString(),
         );
         const invoiceNumberingSettings =
