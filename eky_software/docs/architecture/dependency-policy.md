@@ -8,6 +8,12 @@ Tavoitteena on pitää järjestelmä turvallisena, ylläpidettävänä ja vaihde
 
 Uutta kolmannen osapuolen kirjastoa ei lisätä ilman perustelua.
 
+Perustelu ei yksin riitä hyväksynnäksi. Jokainen uusi runtime- ja
+development-riippuvuus vaatii projektin omistajan erillisen, nimenomaisen
+hyväksynnän ennen asennusta, importointia tai package-/lockfile-muutosta.
+Laajemman ominaisuuden tai toteutusvaiheen hyväksyntä ei hyväksy siinä
+nimeämätöntä riippuvuutta.
+
 Eky-projektissa riippuvuuksia minimoidaan tietoisesti.
 
 Uusi kirjasto lisätään vain, jos se ratkaisee todellisen ongelman, jota ei ole järkevää ratkaista projektin omalla selkeällä koodilla.
@@ -60,6 +66,13 @@ Ennen uuden riippuvuuden lisäämistä vastaa:
 8. Onko olemassa turvallisempi tai yksinkertaisempi vaihtoehto?
 
 Jos vastausta ei ole, riippuvuutta ei lisätä.
+
+Jos riippuvuuden tarve selviää vasta ensimmäistä toteutusta kirjoitettaessa,
+koodaus pysäytetään ennen riippuvuuden lisäämistä ja vertailu tuodaan
+projektin omistajan hyväksyttäväksi. Kokeiluasennusta ei tehdä ennakkoon. Jos
+riippuvuus on lisätty vahingossa ilman hyväksyntää, muutosta ei commitoida tai
+pushata ennen kuin se on peruttu tai projektin omistaja on hyväksynyt sen
+nimenomaisesti.
 
 ## Kerroskohtaiset säännöt
 

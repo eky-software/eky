@@ -209,7 +209,8 @@ Jos jokin kohta jää epäselväksi, kyseistä vaikutusaluetta ei toteuteta enne
 1. Turvallisuus ensin.
 2. Pidä järjestelmä modulaarisena.
 3. Älä sekoita liiketoimintalogiikkaa käyttöliittymään.
-4. Älä lisää uusia riippuvuuksia ilman perustelua.
+4. Älä lisää uusia riippuvuuksia ilman projektin omistajan erillistä,
+   nimenomaista hyväksyntää.
 5. Älä luo moduulien välisiä oikopolkuja.
 6. Älä tee laajoja arkkitehtuurimuutoksia ilman erillistä hyväksyntää.
 7. Suosi pieniä, selkeitä ja yhden vastuun tiedostoja.
@@ -311,3 +312,28 @@ Tarkista:
 10. Muuttuiko jokin arkkitehtuuripäätös?
 
 Jos muutos rikkoo projektin periaatteita, älä tee sitä ilman erillistä hyväksyntää.
+
+## Pakollinen riippuvuuksien hyväksyntäportti
+
+Uusi kolmannen osapuolen runtime- tai development-riippuvuus hyväksytään aina
+erillisenä päätöksenä. Laajan tehtävän, toteutusvaiheen tai suunnitelman
+hyväksyminen ei samalla hyväksy siinä nimeämätöntä riippuvuutta.
+
+Ennen riippuvuuden asentamista, importointia tai `package.json`- ja
+lockfile-muutosta AI:n pitää:
+
+1. nimetä ehdotettu riippuvuus ja tarkka käyttötarkoitus
+2. vertailla projektin omaa toteutusta ja jo hyväksyttyjä vaihtoehtoja
+3. raportoida ylläpito-, tietoturva-, toimitusketju- ja paketointivaikutukset
+4. pyytää projektin omistajalta riippuvuudelle nimenomainen hyväksyntä
+
+Jos riippuvuuden todellinen tarve ilmenee ensimmäisen kerran vasta koodauksen
+aikana, työ pysäytetään juuri siinä kohdassa. Riippuvuutta ei saa kokeeksi
+asentaa tai kirjoittaa toteutukseen ennen uutta hyväksyntää. Näin ratkaisu
+voidaan vielä perua, rajata tai korvata omalla toteutuksella ennen kuin se
+juurtuu koodiin tai lockfileen.
+
+AI ei saa tulkita omaa riippuvuusarviotaan hyväksynnäksi. Jos riippuvuus on
+lisätty vahingossa ilman tätä porttia, työtä ei commitoida tai pushata. Tilanne
+raportoidaan heti ja muutos pidetään peruttavana projektin omistajan päätökseen
+asti.
