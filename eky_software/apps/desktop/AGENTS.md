@@ -26,5 +26,7 @@ Mandatory boundaries:
 - keep browser development available through `apps/web`
 - add no desktop dependency without a documented dependency/security review
 
-The initial packaging spike uses synthetic data only. It does not make the
-current unauthenticated backend suitable for real customer or invoice data.
+The packaging spike and local-session trust layer use synthetic data only.
+Session verification is necessary but does not by itself make the incomplete
+desktop release suitable for real customer data, invoice data, or SMTP
+credentials.

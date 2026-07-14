@@ -1,6 +1,7 @@
 import { serve, type ServerType } from '@hono/node-server';
 
 import { createApp, type CreateAppOptions } from './app.js';
+import type { RuntimeTrust } from './runtimeTrust.js';
 
 const defaultHostname = '127.0.0.1';
 const defaultPort = 3000;
@@ -33,6 +34,7 @@ export interface StartServerOptions {
   appOptions?: CreateAppOptions;
   hostname?: string;
   port?: number;
+  runtimeTrust?: RuntimeTrust;
 }
 
 export interface StartedServer {
@@ -60,7 +62,13 @@ export async function startServer(
   const hostname = getServerHostname(options.hostname ?? process.env.HOST);
   const port =
     options.port ?? getServerPort(process.env.PORT);
-  const app = await createApp(options.appOptions);
+  const appOptions: CreateAppOptions = { ...options.appOptions };
+
+  if (options.runtimeTrust !== undefined) {
+    appOptions.runtimeTrust = options.runtimeTrust;
+  }
+
+  const app = await createApp(appOptions);
 
   return new Promise((resolveStart, rejectStart) => {
     const server = serve(

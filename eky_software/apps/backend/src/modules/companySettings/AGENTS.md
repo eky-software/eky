@@ -63,11 +63,15 @@ Do not move customer-specific pricing into Company Settings.
 
 ## Security
 
-The current local MVP uses `dev-company` only as a temporary local development company id.
+The synthetic browser-development profile and the verified local-session
+profile currently resolve to `dev-company` as a temporary local company id.
 
 `dev-company` is not authentication, tenant isolation, or a permission model.
+HTTP routes must read the company from the backend-verified `ActorContext` and
+must not define their own development company constants.
 
-Future auth and permission work must move company context to a trusted backend-verified source.
+Future cloud auth must produce the same application-level actor contract from
+a separately verified identity and company membership.
 
 ## Tests
 
@@ -88,6 +92,9 @@ Use only clearly synthetic secret values in tests.
 Email secret lifecycle application services must take the company only from a
 validated `ActorContext`, require `manageCompanyEmailSecret`, and return only
 secret configuration status. HTTP input must never choose the secret's company.
+Setting and removing a secret must append a lifecycle audit event that contains
+only the actor, company, event type, and timestamp. Never audit the secret,
+secret hash, secret length, secret reference, or another derived value.
 
 ## Naming
 

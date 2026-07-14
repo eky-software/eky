@@ -1,3 +1,6 @@
+import type { ActorContext } from '@eky/auth';
+import { requirePermission } from '@eky/permissions';
+
 import {
   createApprovedInvoiceEmailAttachmentPreview,
   type ApprovedInvoiceEmailDryRunSend,
@@ -19,10 +22,9 @@ import type { InvoiceDeliveryEventRepository } from '../ports/invoiceDeliveryEve
 import type { InvoiceEmailDeliveryProvider } from '../ports/invoiceEmailDeliveryProvider.js';
 
 export interface SendApprovedInvoiceEmailDryRunInput {
-  actorUserId: string;
+  actorContext: ActorContext;
   body: string;
   cc?: string;
-  companyId: string;
   invoiceId: string;
   sentAt: string;
   subject: string;
@@ -48,9 +50,17 @@ export async function sendApprovedInvoiceEmailDryRun(
   input: SendApprovedInvoiceEmailDryRunInput,
   dependencies: SendApprovedInvoiceEmailDryRunDependencies,
 ): Promise<SendApprovedInvoiceEmailDryRunResult> {
-  const companyId = requireIdentifier(input.companyId, 'Company id');
+  requirePermission(input.actorContext, 'sendInvoices');
+
+  const companyId = requireIdentifier(
+    input.actorContext.companyId,
+    'Company id',
+  );
   const invoiceId = requireIdentifier(input.invoiceId, 'Approved invoice id');
-  const actorUserId = requireIdentifier(input.actorUserId, 'Actor user id');
+  const actorUserId = requireIdentifier(
+    input.actorContext.actorId,
+    'Actor user id',
+  );
   const sentAt = requireIdentifier(input.sentAt, 'Email delivery timestamp');
   const emailFields = normalizeApprovedInvoiceEmailSendFields(input);
   const invoice = await dependencies.approvedInvoiceReader.getApprovedInvoiceById(

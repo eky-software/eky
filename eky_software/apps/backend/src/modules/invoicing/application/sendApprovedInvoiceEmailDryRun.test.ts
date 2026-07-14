@@ -1,3 +1,5 @@
+import { createActorContext } from '@eky/auth';
+import { AuthorizationError } from '@eky/permissions';
 import { describe, expect, it, vi } from 'vitest';
 
 import type {
@@ -179,6 +181,26 @@ describe('sendApprovedInvoiceEmailDryRun', () => {
       dependencies.deliveryEventRepository.events[0]?.safeErrorMessage,
     ).not.toContain('secret-value');
   });
+
+  it('denies sending before reading invoice data without sendInvoices permission', async () => {
+    const dependencies = createDependencies();
+
+    await expect(
+      sendApprovedInvoiceEmailDryRun(
+        createInput({
+          actorContext: createActorContext({
+            actorId: 'dev-user',
+            authenticationMode: 'local',
+            companyId: 'dev-company',
+            permissions: [],
+          }),
+        }),
+        dependencies,
+      ),
+    ).rejects.toBeInstanceOf(AuthorizationError);
+    expect(dependencies.ensureApprovedInvoicePdfDocument).not.toHaveBeenCalled();
+    expect(dependencies.deliveryEventRepository.events).toEqual([]);
+  });
 });
 
 function createDependencies(options: {
@@ -206,9 +228,13 @@ function createInput(
   overrides: Partial<SendApprovedInvoiceEmailDryRunInput> = {},
 ): SendApprovedInvoiceEmailDryRunInput {
   return {
-    actorUserId: 'dev-user',
+    actorContext: createActorContext({
+      actorId: 'dev-user',
+      authenticationMode: 'local',
+      companyId: 'dev-company',
+      permissions: ['sendInvoices'],
+    }),
     body: 'Hei,\n\nLiitteenä lasku.',
-    companyId: 'dev-company',
     invoiceId: 'invoice-1',
     sentAt: '2026-07-10T10:00:00.000Z',
     subject: 'Lasku 20260001',

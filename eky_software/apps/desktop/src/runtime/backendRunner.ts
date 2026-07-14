@@ -18,6 +18,10 @@ type StartServer = (options: {
   };
   hostname: string;
   port: number;
+  runtimeTrust: {
+    mode: 'localSession';
+    sessionSecret: string;
+  };
 }) => Promise<StartedBackendServer>;
 
 let backendServer: StartedBackendServer | undefined;
@@ -101,6 +105,10 @@ utilityParentPort.on('message', (event) => {
         },
         hostname: '127.0.0.1',
         port: 0,
+        runtimeTrust: {
+          mode: 'localSession',
+          sessionSecret: command.config.runtimeSessionSecret,
+        },
       });
       let smokePdfCreated = false;
 

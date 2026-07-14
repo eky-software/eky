@@ -1,3 +1,5 @@
+import { createActorContext } from '@eky/auth';
+import { AuthorizationError } from '@eky/permissions';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
@@ -17,7 +19,7 @@ describe('prepareApprovedInvoiceEmailDryRun', () => {
 
     const result = await prepareApprovedInvoiceEmailDryRun(
       {
-        companyId: 'company-1',
+        actorContext: createSendInvoicesActorContext(),
         invoiceId: 'invoice-1',
         preparedAt: '2026-07-09T10:00:00.000Z',
       },
@@ -68,7 +70,7 @@ describe('prepareApprovedInvoiceEmailDryRun', () => {
 
     const result = await prepareApprovedInvoiceEmailDryRun(
       {
-        companyId: 'company-1',
+        actorContext: createSendInvoicesActorContext(),
         invoiceId: 'invoice-1',
         preparedAt: '2026-07-09T10:00:00.000Z',
       },
@@ -90,7 +92,7 @@ describe('prepareApprovedInvoiceEmailDryRun', () => {
     await expect(
       prepareApprovedInvoiceEmailDryRun(
         {
-          companyId: 'company-1',
+          actorContext: createSendInvoicesActorContext(),
           invoiceId: 'missing-invoice',
           preparedAt: '2026-07-09T10:00:00.000Z',
         },
@@ -106,7 +108,45 @@ describe('prepareApprovedInvoiceEmailDryRun', () => {
 
     expect(invoiceEmailDeliveryProvider.prepareDryRunEmail).not.toHaveBeenCalled();
   });
+
+  it('denies preparation without sendInvoices permission', async () => {
+    const approvedInvoiceReader = createApprovedInvoiceReader(
+      createApprovedInvoiceView(),
+    );
+
+    await expect(
+      prepareApprovedInvoiceEmailDryRun(
+        {
+          actorContext: createActorContext({
+            actorId: 'local-user',
+            authenticationMode: 'local',
+            companyId: 'company-1',
+            permissions: [],
+          }),
+          invoiceId: 'invoice-1',
+          preparedAt: '2026-07-09T10:00:00.000Z',
+        },
+        {
+          approvedInvoiceReader,
+          ensureApprovedInvoicePdfDocument: vi.fn(
+            async () => createApprovedInvoiceDocumentMetadata(),
+          ),
+          invoiceEmailDeliveryProvider: createDryRunProvider(),
+        },
+      ),
+    ).rejects.toBeInstanceOf(AuthorizationError);
+    expect(approvedInvoiceReader.getApprovedInvoiceById).not.toHaveBeenCalled();
+  });
 });
+
+function createSendInvoicesActorContext() {
+  return createActorContext({
+    actorId: 'local-user',
+    authenticationMode: 'local',
+    companyId: 'company-1',
+    permissions: ['sendInvoices'],
+  });
+}
 
 function createApprovedInvoiceReader(
   invoice: ApprovedInvoiceView | undefined,

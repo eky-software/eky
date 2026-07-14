@@ -4,9 +4,10 @@ Tämä dokumentti kuvaa ADR-0007:ssä päätetyn Electron-pohjaisen paikallisen
 desktop-runtimen ensimmäisen rajatun toteutus- ja Windows-paketointispiken sekä
 sen toteutustilan.
 
-Rajattu tekninen package-spike on toteutettu 14.7.2026. Se ei vielä toteuta
-local-sessionia, Windows Credential Manager -sovitinta, SMTP-provideria,
-installeria, code signingia tai automaattipäivitystä.
+Rajattu tekninen package-spike ja sen ensimmäinen local-session-luottamusraja
+on toteutettu 14.7.2026. Toteutus ei vielä sisällä Windows Credential Manager
+-sovitinta, SMTP-provideria, installeria, code signingia tai
+automaattipäivitystä.
 
 ## Toteutustulos 14.7.2026
 
@@ -22,6 +23,13 @@ Toteutettu spike todentaa Windows x64 -artifactissa:
 - turvallisuusasetusten ja production-fusejen automaattisen tarkistuksen
 - sen, ettei pakettiin kopioida kehityksen tietokantoja, PDF-artifakteja,
   `.env`-tiedostoja, lähdekoodeja tai testejä Eky-omisteisista build-osista
+- main processin luoman 256-bittisen kertakäyttöisen runtime-sessionin
+- sessionin välityksen backendille vain Electronin yksityisellä
+  prosessikanavalla
+- session-otsakkeen lisäämisen main processin rajatussa backend-proxyssa niin,
+  ettei renderer voi nähdä tai korvata session-salaisuutta
+- backendin session-varmennuksen ja varmennetusta local-profiilista muodostetun
+  muuttumattoman `ActorContext`-olion
 
 Renderer käyttää paketoitua `eky://app`-protokollaa. Protokolla palvelee vain
 paketoidut UI-resurssit ja välittää vain eksplisiittisesti allowlistatut
@@ -77,8 +85,8 @@ Selainkehitys:
 - käyttää vain synteettistä kehitysdataa
 - ei ole isälle toimitettavan local-tuotteen turvallisuusmalli
 - ei saa vastaanottaa oikeaa SMTP-salasanaa tai muuta tuotantosalaisuutta
-- käyttää myöhemmin eksplisiittistä development-session-adapteria, kun
-  backendin session-middleware otetaan käyttöön
+- käyttää eksplisiittistä synteettisen datan development trust -profiilia;
+  tuotantoprofiili ei käynnisty ilman erikseen annettua runtime trust -mallia
 
 Electronin lisääminen ei poista tai korvaa tätä nopeaa kehitystapaa.
 
@@ -192,8 +200,7 @@ hiljaisesti.
 
 ## Session- Ja Transport-Raja
 
-Spikessä ei vielä tarvitse kytkeä kaikkia backend-reittejä sessioniin, mutta
-transportin rakenteen pitää mahdollistaa ADR-0007:n lopullinen malli:
+Electron-runtimessa session- ja transport-raja on toteutettu seuraavasti:
 
 - main process luo vähintään 256-bittisen kertakäyttöisen runtime-sessionin
 - session välitetään backendille yksityisellä prosessikanavalla
@@ -207,6 +214,13 @@ transportin rakenteen pitää mahdollistaa ADR-0007:n lopullinen malli:
 - request- ja response-koot rajataan
 - backend vahvistaa sessionin ja muodostaa `ActorContext`-olion luotetusta
   local-profiilista
+
+Session-middleware suojaa Electron-runtimessa kaikki muut reitit paitsi
+prosessin readinessiin käytetyn `GET /health` -reitin. Arkaluonteiset
+sähköpostireitit ja Company Settings -reitit käyttävät jo actor-kontekstin
+yritys- ja käyttäjätietoja. Muiden vielä kehitysoikopolkuja sisältävien
+moduulireittien siirto samaan actor-kontekstiin tehdään rajattuina muutoksina
+ennen oikean datan tuotantokäyttöä.
 
 `packages/api-client` käyttää jatkossakin injektoitavaa fetch-/transport-
 toteutusta. Runtime valitsee transportin app-tason compositionissa; React-
@@ -320,11 +334,14 @@ korjausta.
 4. Luodaan minimaalinen `apps/desktop` ilman liiketoimintalogiikkaa.
 5. Toteutetaan Electron-kehitysprofiili ja paketoitu production-profiili.
 6. Todennetaan backend, SQLite, migraatiot ja PDFKit Windows-artifactissa.
-7. Toteutetaan local-session ja backendin auth-middleware negatiivisine
-   turvallisuustesteineen.
-8. Korvataan reittien `dev-company`- ja `dev-user`-oikopolut luotetulla
-   `ActorContext`-kontekstilla.
-9. Lisätään sähköpostisalaisuuden lifecycle-auditointi.
+7. Local-session ja backendin auth-middleware negatiivisine
+   turvallisuustesteineen on toteutettu.
+8. Arkaluonteiset sähköpostireitit ja Company Settings -reitit käyttävät
+   luotettua `ActorContext`-kontekstia. Jäljellä olevat moduulireitit siirretään
+   samaan malliin ennen oikean datan tuotantokäyttöä.
+9. Sähköpostisalaisuuden asettamisen ja poistamisen lifecycle-auditoinnin portti,
+   SQLite-adapteri ja persistence on toteutettu ilman salaisen arvon
+   tallentamista.
 10. Arvioidaan Windows Credential Manager -adapteri ja SMTP-provider erillisinä
     turvallisuus- ja riippuvuusmuutoksina.
 

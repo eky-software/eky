@@ -1,6 +1,7 @@
 import { isAbsolute, relative, resolve } from 'node:path';
 
 export const maximumBackendRequestBodyBytes = 1_048_576;
+export const localRuntimeSessionHeaderName = 'x-eky-local-session';
 
 const resourceId = '[A-Za-z0-9_-]{1,100}';
 
@@ -69,7 +70,10 @@ export function isAllowedBackendRequest(method: string, pathname: string): boole
   );
 }
 
-export function createBackendRequestHeaders(source: Headers): Headers {
+export function createBackendRequestHeaders(
+  source: Headers,
+  runtimeSessionSecret: string,
+): Headers {
   const headers = new Headers();
 
   for (const headerName of ['accept', 'content-type']) {
@@ -79,6 +83,8 @@ export function createBackendRequestHeaders(source: Headers): Headers {
       headers.set(headerName, value);
     }
   }
+
+  headers.set(localRuntimeSessionHeaderName, runtimeSessionSecret);
 
   return headers;
 }

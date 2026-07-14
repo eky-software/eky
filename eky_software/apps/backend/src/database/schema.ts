@@ -47,6 +47,14 @@ export interface CompanySettingsTable {
   updated_at: string;
 }
 
+export interface CompanyEmailSecretAuditEventTable {
+  id: string;
+  company_id: string;
+  actor_id: string;
+  event_type: string;
+  occurred_at: string;
+}
+
 export interface InvoiceDraftTable {
   id: string;
   company_id: string;
@@ -253,6 +261,10 @@ export type CustomerRow = CustomerTable;
 export type NewCustomerRow = CustomerTable;
 export type CompanySettingsRow = CompanySettingsTable;
 export type NewCompanySettingsRow = CompanySettingsTable;
+export type CompanyEmailSecretAuditEventRow =
+  CompanyEmailSecretAuditEventTable;
+export type NewCompanyEmailSecretAuditEventRow =
+  CompanyEmailSecretAuditEventTable;
 export type NewInvoiceDraftRow = Omit<
   InvoiceDraftTable,
   'approved_at' | 'approved_invoice_id'

@@ -1,5 +1,7 @@
 import { isAbsolute } from 'node:path';
 
+import { isDesktopRuntimeSession } from './runtimeSession.js';
+
 export interface DesktopBackendStartMessage {
   config: {
     backendRoot: string;
@@ -7,6 +9,7 @@ export interface DesktopBackendStartMessage {
     databaseFilePath: string;
     invoiceDocumentStorageRoot: string;
     migrationsDirectory: string;
+    runtimeSessionSecret: string;
     smokePdfPath: string;
   };
   type: 'start';
@@ -86,6 +89,7 @@ export function parseDesktopBackendCommand(
 
   if (
     typeof config.createSmokePdf !== 'boolean' ||
+    !isDesktopRuntimeSession(config.runtimeSessionSecret) ||
     pathKeys.some((key) => !isSafeAbsolutePath(config[key]))
   ) {
     return undefined;
@@ -98,6 +102,7 @@ export function parseDesktopBackendCommand(
       databaseFilePath: config.databaseFilePath as string,
       invoiceDocumentStorageRoot: config.invoiceDocumentStorageRoot as string,
       migrationsDirectory: config.migrationsDirectory as string,
+      runtimeSessionSecret: config.runtimeSessionSecret,
       smokePdfPath: config.smokePdfPath as string,
     },
     type: 'start',

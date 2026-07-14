@@ -26,6 +26,7 @@ const contentSecurityPolicy = [
 
 export interface RegisterApplicationProtocolOptions {
   backendOrigin: string;
+  runtimeSessionSecret: string;
   webRoot: string;
 }
 
@@ -35,6 +36,7 @@ function jsonError(status: number, message: string): Response {
 
 async function proxyBackendRequest(
   request: Request,
+  runtimeSessionSecret: string,
   targetUrl: URL,
 ): Promise<Response> {
   const contentLength = Number(request.headers.get('content-length') ?? '0');
@@ -48,7 +50,10 @@ async function proxyBackendRequest(
   }
 
   const requestOptions: RequestInit = {
-    headers: createBackendRequestHeaders(request.headers),
+    headers: createBackendRequestHeaders(
+      request.headers,
+      runtimeSessionSecret,
+    ),
     method: request.method,
   };
 
@@ -123,7 +128,11 @@ export function registerApplicationProtocol(
         options.backendOrigin,
       );
 
-      return proxyBackendRequest(request, targetUrl);
+      return proxyBackendRequest(
+        request,
+        options.runtimeSessionSecret,
+        targetUrl,
+      );
     }
 
     if (request.method !== 'GET') {

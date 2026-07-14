@@ -1,14 +1,11 @@
 import { Hono } from 'hono';
 
 import { getOptionalStringField, isRecord } from '../../../http/requestBody.js';
+import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 import type { GetCompanySettingsInput } from '../application/getCompanySettings.js';
 import type { UpdateCompanySettingsInput } from '../application/updateCompanySettings.js';
 import type { CompanySettings } from '../domain/companySettings.js';
 import { CompanySettingsValidationError } from '../domain/companySettingsRules.js';
-
-// Temporary local development company id.
-// This is not an authentication, tenant, or permission model.
-const devCompanyId = 'dev-company';
 
 interface CompanySettingsRouteDependencies {
   getCompanySettings(input: GetCompanySettingsInput): Promise<CompanySettings>;
@@ -17,18 +14,20 @@ interface CompanySettingsRouteDependencies {
 
 export function createCompanySettingsRoutes(
   dependencies: CompanySettingsRouteDependencies,
-): Hono {
-  const routes = new Hono();
+): Hono<BackendEnvironment> {
+  const routes = new Hono<BackendEnvironment>();
 
   routes.get('/company-settings', async (context) => {
+    const actorContext = context.get('actorContext');
     const companySettings = await dependencies.getCompanySettings({
-      companyId: devCompanyId,
+      companyId: actorContext.companyId,
     });
 
     return context.json({ companySettings });
   });
 
   routes.put('/company-settings', async (context) => {
+    const actorContext = context.get('actorContext');
     let body: unknown;
 
     try {
@@ -45,7 +44,7 @@ export function createCompanySettingsRoutes(
       const companySettings = await dependencies.updateCompanySettings({
         businessId: getOptionalStringField(body, 'businessId'),
         city: getOptionalStringField(body, 'city'),
-        companyId: devCompanyId,
+        companyId: actorContext.companyId,
         companyName: getOptionalStringField(body, 'companyName'),
         vatNumber: getOptionalStringField(body, 'vatNumber'),
         defaultHourlyRateCents: body.defaultHourlyRateCents,
