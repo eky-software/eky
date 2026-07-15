@@ -35,9 +35,55 @@ Sähköpostipolusta on toteutettu local-MVP:hen:
   vain `configured`-tilan eikä koskaan esitäytä tai palauta salaista arvoa
 - paketoitu Windows-smoke, joka varmistaa synteettisellä arvolla koko
   HTTP -> application -> audit -> secret broker -> `safeStorage` -elinkaaren
+- backendin sisäinen, riippuvuudeton SMTP/MIME-kuljetuskerros, joka käyttää
+  vain Node-standardikirjaston TLS- ja crypto-rajapintoja eikä ole vielä
+  kytketty DNA-provideriin tai laskun send-polkuun
 
 Nykyinen dry-run ei muuta laskua `sent`-tilaan. Oikeaa SMTP-provideria, oikean
 tilin yhteystestiä tai oikeaa sähköpostilähetystä ei ole toteutettu.
+
+## Sisäinen SMTP- Ja MIME-Kuljetuskerros
+
+Ensimmäinen tekninen SMTP/MIME-kerros sijaitsee rajatusti kansiossa:
+
+```text
+apps/backend/src/infrastructure/email/
+```
+
+Kerros sisältää:
+
+- tiukasti rajatun ASCII-sähköpostiosoitteen validoinnin ilman SMTPUTF8-tukea
+- bounded SMTP reply -parserin
+- eksplisiittisen SMTP-tilakoneen
+- vain palvelimen mainostaman `AUTH PLAIN`- tai `AUTH LOGIN`-mekanismin
+- canonical CRLF- ja dot-stuffing-käsittelyn
+- UTF-8-tekstirungon ja yhden muistissa annetun PDF-liitteen MIME-rakentamisen
+- implicit TLS -yhteyden, jossa sertifikaatti, hostname ja vähintään TLS 1.2
+  vaaditaan ennen SMTP-komentoja tai tunnistautumista
+- vaihekohtaiset, idle- ja kokonaisaikarajat sekä `outcomeUnknown`-tilan, jos
+  DATA on kirjoitettu mutta palvelimen lopullista hyväksyntää ei saada
+
+Kerros ei sisällä:
+
+- DNA- tai muuta provider-päätöstä
+- STARTTLS-, portti 25-, retry-, pooling-, proxy- tai automaattista fallback-
+  toimintaa
+- HTML-viestiä, Bcc:tä, lisäliitteitä tai tiedostopolkujen lukemista
+- laskutusdomainia, delivery event -kirjauksia tai laskun tilasiirtymiä
+- salaisuuden tallennusta tai lukua
+
+Kuljetuskerros ei käytä Nodemaileria tai muuta uutta kolmannen osapuolen
+riippuvuutta. Sen rajat ja protokollakäytös testataan synteettisillä arvoilla;
+automaattiset testit eivät muodosta yhteyttä DNA:n palvelimeen.
+
+Kuljetuksen rajat, kuten viestin, PDF:n, SMTP-vastauksen ja aikakatkaisujen
+enimmäisarvot, pidetään sähköposti-infrastruktuurin omissa tarkasti nimetyissä
+konfiguraatiotiedostoissa. DNA:n kiinteä provider-profiili kuuluu myöhemmin
+DNA-providerin omaan kansioon. Projektin juureen ei luoda yleistä
+`constants`, `config`, `utils` tai vastaavaa muuttujakaatopaikkaa. Jos sama
+konfiguraatio tarvitsee myöhemmin aidosti usean sovelluksen tai moduulin
+omistajuuden, erillinen `packages/config`-ratkaisu arvioidaan omana
+arkkitehtuuripäätöksenään.
 
 ## Julkisen Repositoryn Rajaus
 
@@ -599,15 +645,15 @@ ei pidetä valmiina ennen deliverability-tarkistusta.
 
 Seuraavaan vaiheeseen jäävät:
 
-- SMTP-provideria
+- DNA SMTP -provideri ja kuljetuskerroksen kytkentä siihen
 - Gmail-provideria
 - erillinen SMTP-providerin salaisuuden read-portti
 - Secret Manager -adapteria
 - oikeaa sähköpostilähetystä
 - `packages/email`-pakettia
 
-SMTP-kirjastoa tai muuta uutta riippuvuutta ei valita ennen erillistä
-riippuvuusarviota.
+SMTP-kirjastoa tai muuta uutta riippuvuutta ei lisätä ilman erillistä
+riippuvuusarviota ja projektin omistajan nimenomaista hyväksyntää.
 
 ## Seuraava Toteutusjärjestys
 
@@ -621,7 +667,9 @@ riippuvuusarviota.
 4. Desktop-sessionilla suojattu HTTP-, API-client- ja UI-lifecycle on
    toteutettu. Paketoitu Windows-smoke varmistaa koko elinkaaren synteettisellä
    salaisuudella ja kaikkien salattujen tiedostoslottien poistumisen.
-5. Toteutetaan SMTP-provider ensin testitilassa käyttäen porttia `465` ja
+5. Riippuvuudeton sisäinen SMTP/MIME-kuljetuskerros ja sen turvallisuus- sekä
+   protokollatestit on toteutettu. Toteutetaan seuraavaksi DNA SMTP -provider
+   testitilassa käyttäen porttia `465` ja
    implicit TLS -mallia. TLS-version vähimmäisraja, sertifikaatin ja hostnamen
    validointi, timeout ja turvallinen virheenkäsittely ovat pakollisia.
 6. Pakotetaan test recipient override ensimmäisissä oikean providerin
