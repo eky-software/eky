@@ -11,9 +11,15 @@ import { createDatabaseConnection } from '../database/connection/createDatabaseC
 import { readLocalRuntimeIdentity } from '../database/localRuntimeIdentityReader.js';
 import { runMigrations } from '../database/migration/runMigrations.js';
 import { getCompanySettings } from '../modules/companySettings/application/getCompanySettings.js';
+import { getCompanyEmailSecretStatus } from '../modules/companySettings/application/getCompanyEmailSecretStatus.js';
+import { removeCompanyEmailSecret } from '../modules/companySettings/application/removeCompanyEmailSecret.js';
+import { setCompanyEmailSecret } from '../modules/companySettings/application/setCompanyEmailSecret.js';
 import { updateCompanySettings } from '../modules/companySettings/application/updateCompanySettings.js';
+import { createCompanyEmailSecretRoutes } from '../modules/companySettings/http/companyEmailSecretRoutes.js';
 import { createCompanySettingsRoutes } from '../modules/companySettings/http/companySettingsRoutes.js';
+import { SqliteCompanyEmailSecretAuditWriter } from '../modules/companySettings/infrastructure/sqliteCompanyEmailSecretAuditWriter.js';
 import { SqliteCompanySettingsRepository } from '../modules/companySettings/infrastructure/sqliteCompanySettingsRepository.js';
+import type { CompanyEmailSecretStore } from '../modules/companySettings/ports/companyEmailSecretStore.js';
 import { createCustomer } from '../modules/customers/application/createCustomer.js';
 import { listCustomers } from '../modules/customers/application/listCustomers.js';
 import { updateCustomer } from '../modules/customers/application/updateCustomer.js';
@@ -56,6 +62,7 @@ import { SqliteInvoicePaymentSettingsRepository } from '../modules/invoicing/inf
 import type { CustomerAccessReader } from '../modules/invoicing/ports/customerAccessReader.js';
 
 export interface CreateAppOptions {
+  companyEmailSecretStore?: CompanyEmailSecretStore;
   databaseFilePath?: string;
   invoiceDocumentStorageRoot?: string;
   migrationsDirectory?: string;
@@ -124,6 +131,30 @@ export async function createApp(
       updateCustomer: (input) => updateCustomer(input, customerRepository),
     }),
   );
+
+  if (options.companyEmailSecretStore !== undefined) {
+    const companyEmailSecretAuditWriter =
+      new SqliteCompanyEmailSecretAuditWriter(database);
+    const companyEmailSecretStore = options.companyEmailSecretStore;
+
+    app.route(
+      '/',
+      createCompanyEmailSecretRoutes({
+        getCompanyEmailSecretStatus: (input) =>
+          getCompanyEmailSecretStatus(input, { companyEmailSecretStore }),
+        removeCompanyEmailSecret: (input) =>
+          removeCompanyEmailSecret(input, {
+            companyEmailSecretAuditWriter,
+            companyEmailSecretStore,
+          }),
+        setCompanyEmailSecret: (input) =>
+          setCompanyEmailSecret(input, {
+            companyEmailSecretAuditWriter,
+            companyEmailSecretStore,
+          }),
+      }),
+    );
+  }
 
   app.route(
     '/',

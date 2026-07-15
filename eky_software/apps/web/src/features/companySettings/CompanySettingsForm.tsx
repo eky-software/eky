@@ -267,19 +267,6 @@ export function CompanySettingsForm({
               />
             </label>
 
-            <div className={styles.wideField}>
-              <span className={styles.readOnlyLabel}>
-                {uiText.companySettings.emailSecretStatus}
-              </span>
-              <p className={styles.fieldHelp}>
-                {form.emailSecretConfigured
-                  ? uiText.companySettings.emailSecretConfigured
-                  : uiText.companySettings.emailSecretNotConfigured}
-              </p>
-              <p className={styles.fieldHelp}>
-                {uiText.companySettings.emailSecretHelp}
-              </p>
-            </div>
           </div>
         </fieldset>
 

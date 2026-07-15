@@ -6,6 +6,7 @@ import {
   createCompanyEmailSecretStatus,
   type CompanyEmailSecretStatus,
 } from './companyEmailSecretStatus.js';
+import { CompanyEmailSecretOperationError } from './executeCompanyEmailSecretOperation.js';
 
 export interface GetCompanyEmailSecretStatusInput {
   actorContext: ActorContext;
@@ -21,9 +22,17 @@ export async function getCompanyEmailSecretStatus(
 ): Promise<CompanyEmailSecretStatus> {
   requirePermission(input.actorContext, 'manageCompanyEmailSecret');
 
-  const configured = await dependencies.companyEmailSecretStore.hasSecret(
-    input.actorContext.companyId,
-  );
+  let configured: boolean;
+
+  try {
+    configured = await dependencies.companyEmailSecretStore.hasSecret(
+      input.actorContext.companyId,
+    );
+  } catch {
+    throw new CompanyEmailSecretOperationError(
+      'COMPANY_EMAIL_SECRET_OPERATION_FAILED',
+    );
+  }
 
   return createCompanyEmailSecretStatus(configured);
 }

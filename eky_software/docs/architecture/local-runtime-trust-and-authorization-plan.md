@@ -6,9 +6,10 @@ domain-ydin paikallisessa offline-versiossa, pilvessä ja myöhemmässä
 monilaitemallissa.
 
 Dokumentin local-session-, pysyvä local-identiteetti-, HTTP-middleware-,
-`ActorContext`- ja Electron `safeStorage` -brokerivaihe on toteutettu.
-Firebase-identityä, cloud-salaisuusadapteria, salaisuutta vastaanottavia
-HTTP/UI-polkuja tai uusia riippuvuuksia ei ole lisätty.
+`ActorContext`-, Electron `safeStorage` -brokeri- ja rajattu
+sähköpostisalaisuuden HTTP/UI-lifecycle on toteutettu. Firebase-identityä,
+cloud-salaisuusadapteria, SMTP-provideria tai uusia riippuvuuksia ei ole
+lisätty.
 
 ## Perusperiaate
 
@@ -258,11 +259,13 @@ Ensimmäisen local trust -toteutuksen pitää testata vähintään:
    `failed`-tilaan. Epäselvä auditin loppupäivitys jää näkyvästi `pending`-
    tilaan myöhempää reconciliation-tarkistusta varten.
 9. Electron main processin `safeStorage`-broker ja utility processin yksityinen
-   `MessagePort`-client on toteutettu ilman uutta riippuvuutta. Ennen oikeaa
-   salaisuutta toteutetaan rajattu HTTP/UI-polku.
-10. Toteutetaan SMTP-provider portilla `465` ja implicit TLS -mallilla ensin
+   `MessagePort`-client on toteutettu ilman uutta riippuvuutta.
+10. Rajattu HTTP-, API-client- ja UI-lifecycle on toteutettu. Reitit
+    rekisteröidään vain Electron desktop -compositionissa, request ei hyväksy
+    `companyId`-arvoa ja response sisältää vain `configured`-tilan.
+11. Toteutetaan SMTP-provider portilla `465` ja implicit TLS -mallilla ensin
    pakotettuun test recipient -osoitteeseen.
-11. Pilviversiossa toteutetaan erikseen Firebase identity -adapteri ja cloud
+12. Pilviversiossa toteutetaan erikseen Firebase identity -adapteri ja cloud
    secret manager -adapteri saman application-tason sopimuksen ympärille.
 
 ## Seurattava Tekninen Velka
@@ -286,7 +289,6 @@ laskutusdatan tuotantokäyttö eivät kuitenkaan saa ohittaa local desktop
 ## Ei Vielä Toteuteta
 
 - Firebase Authia
-- SMTP-salaisuuden HTTP- tai UI-polkuja
 - SMTP-providerin backend-only secret reader -kytkentää
 - SMTP-provideria
 - pilvisynkronointia

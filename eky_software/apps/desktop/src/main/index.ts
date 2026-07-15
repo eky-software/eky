@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -12,6 +13,7 @@ import {
 } from 'electron';
 
 import { registerApplicationProtocol } from './applicationProtocol.js';
+import { localRuntimeSessionHeaderName } from './protocolPolicy.js';
 import {
   createSecureWindowOptions,
   isAllowedApplicationNavigation,
@@ -154,6 +156,7 @@ async function loadApplicationWindow(window: BrowserWindow): Promise<void> {
 async function runPackagedSmokeCheck(
   backend: DesktopBackendHandle,
   databaseFilePath: string,
+  runtimeSessionSecret: string,
   secretFilePath: string,
   smokePdfPath: string,
 ): Promise<void> {
@@ -171,6 +174,11 @@ async function runPackagedSmokeCheck(
   if (pdf.subarray(0, 4).toString('ascii') !== '%PDF') {
     throw new Error('DESKTOP_SMOKE_PDF_FAILED');
   }
+
+  await verifyCompanyEmailSecretHttpLifecycle(
+    backend.port,
+    runtimeSessionSecret,
+  );
 
   for (const path of [
     secretFilePath,
@@ -192,6 +200,91 @@ async function runPackagedSmokeCheck(
       throw error;
     }
   }
+}
+
+async function verifyCompanyEmailSecretHttpLifecycle(
+  port: number,
+  runtimeSessionSecret: string,
+): Promise<void> {
+  const secret = `eky-http-secret-smoke-${randomBytes(32).toString('base64url')}`;
+
+  if (await requestCompanyEmailSecretStatus(port, runtimeSessionSecret, 'GET')) {
+    throw new Error('DESKTOP_SMOKE_SECRET_HTTP_FAILED');
+  }
+
+  if (
+    !(await requestCompanyEmailSecretStatus(
+      port,
+      runtimeSessionSecret,
+      'PUT',
+      secret,
+    ))
+  ) {
+    throw new Error('DESKTOP_SMOKE_SECRET_HTTP_FAILED');
+  }
+
+  if (!(await requestCompanyEmailSecretStatus(port, runtimeSessionSecret, 'GET'))) {
+    throw new Error('DESKTOP_SMOKE_SECRET_HTTP_FAILED');
+  }
+
+  if (await requestCompanyEmailSecretStatus(port, runtimeSessionSecret, 'DELETE')) {
+    throw new Error('DESKTOP_SMOKE_SECRET_HTTP_FAILED');
+  }
+
+  if (await requestCompanyEmailSecretStatus(port, runtimeSessionSecret, 'GET')) {
+    throw new Error('DESKTOP_SMOKE_SECRET_HTTP_FAILED');
+  }
+}
+
+async function requestCompanyEmailSecretStatus(
+  port: number,
+  runtimeSessionSecret: string,
+  method: 'DELETE' | 'GET' | 'PUT',
+  secret?: string,
+): Promise<boolean> {
+  const headers = new Headers({
+    accept: 'application/json',
+    [localRuntimeSessionHeaderName]: runtimeSessionSecret,
+  });
+
+  if (method === 'PUT') {
+    headers.set('content-type', 'application/json');
+  }
+
+  const requestOptions: RequestInit = {
+    headers,
+    method,
+    signal: AbortSignal.timeout(5_000),
+  };
+
+  if (method === 'PUT') {
+    requestOptions.body = JSON.stringify({ secret });
+  }
+
+  const response = await fetch(
+    `http://127.0.0.1:${port}/company-settings/email-secret`,
+    requestOptions,
+  );
+
+  if (!response.ok) {
+    throw new Error('DESKTOP_SMOKE_SECRET_HTTP_FAILED');
+  }
+
+  const body: unknown = await response.json();
+
+  if (
+    typeof body !== 'object' ||
+    body === null ||
+    !('emailSecretStatus' in body) ||
+    typeof body.emailSecretStatus !== 'object' ||
+    body.emailSecretStatus === null ||
+    !('configured' in body.emailSecretStatus) ||
+    typeof body.emailSecretStatus.configured !== 'boolean'
+  ) {
+    throw new Error('DESKTOP_SMOKE_SECRET_HTTP_FAILED');
+  }
+
+  return body.emailSecretStatus.configured;
 }
 
 async function startDesktopRuntime(): Promise<void> {
@@ -266,6 +359,7 @@ async function startDesktopRuntime(): Promise<void> {
     await runPackagedSmokeCheck(
       backendHandle,
       databaseFilePath,
+      runtimeSessionSecret,
       secretFilePath,
       smokePdfPath,
     );

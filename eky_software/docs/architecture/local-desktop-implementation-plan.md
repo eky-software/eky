@@ -6,15 +6,16 @@ sen toteutustilan.
 
 Rajattu tekninen package-spike ja sen ensimmäinen local-session-luottamusraja
 on toteutettu 14.7.2026. Electron `safeStorage` -secret broker on toteutettu
-15.7.2026 synteettisellä paketointismokella, mutta sitä ei ole vielä kytketty
-salaisuutta vastaanottavaan HTTP/UI-polkuun. Toteutus ei vielä sisällä SMTP-
-provideria, installeria, code signingia tai automaattipäivitystä.
+15.7.2026 synteettisellä paketointismokella. Desktop-sessionilla suojattu
+salaisuuden HTTP-, API-client- ja UI-lifecycle sekä koko polun Windows-smoke on
+toteutettu 15.7.2026. Toteutus ei vielä sisällä SMTP-provideria, installeria,
+code signingia tai automaattipäivitystä.
 
 Salatun secret-tiedoston kirjoitus ja palautuminen on kovennettu 15.7.2026
 deterministisillä next- ja backup-sloteilla. Paketoitu Windows-smoke varmistaa
-synteettisen salaisuuden set/read/remove-elinkaaren, ettei plaintext päädy
-salattuun tiedostoon ja ettei current-, next- tai backup-slottia jää poiston
-jälkeen.
+synteettisen salaisuuden broker- ja HTTP set/status/remove-elinkaaren, ettei
+plaintext päädy salattuun tiedostoon ja ettei current-, next- tai backup-
+slottia jää poiston jälkeen.
 
 ## Toteutustulos 14.7.2026
 
@@ -323,7 +324,6 @@ Testit eivät käytä oikeaa asiakasdataa, SMTP-salasanaa tai muuta salaisuutta.
 ## Ei Toteuteta Ensimmäisessä Spikessä
 
 - oikeaa asiakas- tai laskutusdataa
-- SMTP-salaisuuden HTTP- tai UI-polkuja
 - SMTP-providerin backend-only secret reader -kytkentää
 - SMTP-provideria tai oikeaa sähköpostilähetystä
 - Firebase Authia tai pilvisynkronointia
@@ -354,6 +354,8 @@ korjausta.
    tallentamista. Keskeneräinen päivitys jää näkyvästi `pending`-tilaan.
 10. Electron main processin `safeStorage`-broker, versionoitu salattu tiedosto
     ja utility processin kapea client on toteutettu ilman uutta npm-riippuvuutta.
+11. Desktop-sessionilla suojattu HTTP-, API-client- ja UI-lifecycle sekä koko
+    polun paketoitu Windows-smoke on toteutettu synteettisellä arvolla.
     SMTP-provider arvioidaan erillisenä turvallisuus- ja riippuvuusmuutoksena.
 
 ## Liittyvät Dokumentit

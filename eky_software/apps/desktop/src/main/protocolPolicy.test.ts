@@ -15,6 +15,12 @@ describe('desktop protocol policy', () => {
     expect(isAllowedBackendRequest('POST', '/invoices/invoice-1/email/dry-run/send')).toBe(
       true,
     );
+    expect(isAllowedBackendRequest('GET', '/company-settings/email-secret')).toBe(true);
+    expect(isAllowedBackendRequest('PUT', '/company-settings/email-secret')).toBe(true);
+    expect(isAllowedBackendRequest('DELETE', '/company-settings/email-secret')).toBe(
+      true,
+    );
+    expect(isAllowedBackendRequest('POST', '/company-settings/email-secret')).toBe(false);
     expect(isAllowedBackendRequest('DELETE', '/company-settings')).toBe(false);
     expect(isAllowedBackendRequest('GET', '/unknown')).toBe(false);
     expect(isAllowedBackendRequest('GET', '/customers/%2e%2e/secret')).toBe(false);

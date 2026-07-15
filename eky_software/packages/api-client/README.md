@@ -74,6 +74,9 @@ Paketti tarjoaa tällä hetkellä hallitut kutsut:
 - `createEkyApiClient().updateCustomer(...)`
 - `createEkyApiClient().getCompanySettings()`
 - `createEkyApiClient().updateCompanySettings(...)`
+- `createEkyApiClient().getCompanyEmailSecretStatus()`
+- `createEkyApiClient().setCompanyEmailSecret(...)`
+- `createEkyApiClient().removeCompanyEmailSecret()`
 - `createEkyApiClient().approveInvoiceDraft(...)`
 - `createEkyApiClient().createInvoiceDraft(...)`
 - `createEkyApiClient().deleteInvoiceDraft(...)`

@@ -15,6 +15,11 @@ interface StartedBackendServer {
 
 type StartServer = (options: {
   appOptions: {
+    companyEmailSecretStore: {
+      hasSecret(companyId: string): Promise<boolean>;
+      removeSecret(companyId: string): Promise<void>;
+      setSecret(input: { companyId: string; secret: string }): Promise<void>;
+    };
     databaseFilePath: string;
     invoiceDocumentStorageRoot: string;
     migrationsDirectory: string;
@@ -154,6 +159,12 @@ utilityParentPort.on('message', (event) => {
       failureCode = 'BACKEND_SERVER_START_FAILED';
       backendServer = await serverModule.startServer({
         appOptions: {
+          companyEmailSecretStore: {
+            hasSecret: (companyId) => secretBrokerClient!.hasSecret(companyId),
+            removeSecret: (companyId) =>
+              secretBrokerClient!.removeSecret(companyId),
+            setSecret: (input) => secretBrokerClient!.setSecret(input),
+          },
           databaseFilePath: command.config.databaseFilePath,
           invoiceDocumentStorageRoot: command.config.invoiceDocumentStorageRoot,
           migrationsDirectory: command.config.migrationsDirectory,

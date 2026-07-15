@@ -7,6 +7,94 @@ import {
 } from '../index.js';
 
 describe('company settings api client', () => {
+  it('gets the email secret status without receiving a secret value', async () => {
+    const client = createEkyApiClient({
+      baseUrl: '',
+      fetch: async (input, init) => {
+        expect(input.toString()).toBe('/company-settings/email-secret');
+        expect(init).toEqual({ headers: { Accept: 'application/json' } });
+
+        return jsonResponse({ emailSecretStatus: { configured: true } });
+      },
+    });
+
+    const status = await client.getCompanyEmailSecretStatus();
+
+    expect(status).toEqual({ configured: true });
+    expect(status).not.toHaveProperty('secret');
+  });
+
+  it('sets only the email secret through the lifecycle endpoint', async () => {
+    const requests: Array<{ input: string; init: RequestInit | undefined }> = [];
+    const client = createEkyApiClient({
+      baseUrl: '',
+      fetch: async (input, init) => {
+        requests.push({ input: input.toString(), init });
+
+        return jsonResponse({ emailSecretStatus: { configured: true } });
+      },
+    });
+
+    const status = await client.setCompanyEmailSecret({
+      secret: 'synthetic-password',
+      companyId: 'untrusted-company',
+    } as { secret: string });
+
+    expect(status).toEqual({ configured: true });
+    expect(requests[0]?.input).toBe('/company-settings/email-secret');
+    expect(requests[0]?.init).toEqual({
+      body: JSON.stringify({ secret: 'synthetic-password' }),
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      method: 'PUT',
+    });
+  });
+
+  it('removes the email secret without a request body', async () => {
+    const requests: Array<{ input: string; init: RequestInit | undefined }> = [];
+    const client = createEkyApiClient({
+      baseUrl: '',
+      fetch: async (input, init) => {
+        requests.push({ input: input.toString(), init });
+
+        return jsonResponse({ emailSecretStatus: { configured: false } });
+      },
+    });
+
+    await expect(client.removeCompanyEmailSecret()).resolves.toEqual({
+      configured: false,
+    });
+    expect(requests).toEqual([
+      {
+        input: '/company-settings/email-secret',
+        init: {
+          headers: { Accept: 'application/json' },
+          method: 'DELETE',
+        },
+      },
+    ]);
+  });
+
+  it('rejects invalid email secret status responses safely', async () => {
+    const client = createEkyApiClient({
+      baseUrl: '',
+      fetch: async () =>
+        jsonResponse({
+          emailSecretStatus: {
+            configured: 'yes',
+            secret: 'must-not-be-returned',
+          },
+        }),
+    });
+
+    await expect(client.getCompanyEmailSecretStatus()).rejects.toMatchObject({
+      message: 'Invalid company email secret response.',
+      name: 'EkyApiError',
+    });
+  });
+
   it('gets company settings through GET /company-settings', async () => {
     const companySettings = createTestCompanySettings();
     const requests: Array<{ input: string; init: RequestInit | undefined }> = [];

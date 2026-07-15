@@ -28,7 +28,9 @@ export type {
   ReopenedApprovedInvoice,
 } from './invoicing/approvedInvoices/index.js';
 export type {
+  CompanyEmailSecretStatus,
   CompanySettings,
+  SetCompanyEmailSecretRequest,
   UpdateCompanySettingsRequest,
 } from './companySettings/index.js';
 export type {
