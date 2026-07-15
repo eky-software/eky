@@ -5,6 +5,7 @@ import {
   EkyApiError,
   type ApprovedInvoiceEmailDryRunSendInput,
   type ApprovedInvoiceEmailDryRunSendResult,
+  type ApprovedInvoiceEmailSmtpTestSendResult,
   type ApprovedInvoiceEmailPreview,
   type ApprovedInvoiceSummary,
   type ApprovedInvoiceView,
@@ -243,6 +244,41 @@ describe('approved invoices api client', () => {
       body: 'Hei',
       subject: 'Lasku',
       to: 'recipient@example.fi',
+    });
+  });
+
+  it('sends a controlled SMTP test request without server-owned fields', async () => {
+    const requests = createRequestLog();
+    const delivery = createTestApprovedInvoiceEmailSmtpTestSendResult();
+    const client = createTestClient(requests, { delivery });
+
+    const result = await client.sendApprovedInvoiceEmailSmtpTest(
+      'invoice/1',
+      {
+        body: 'Hei, liitteenä lasku.',
+        cc: 'copy@example.fi',
+        subject: 'Lasku 20260001',
+        to: 'customer@example.fi',
+      },
+    );
+
+    expect(result).toEqual(delivery);
+    expect(requests[0]).toEqual({
+      input: '/invoices/invoice%2F1/email/smtp-test/send',
+      init: {
+        body: expect.any(String) as string,
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        method: 'POST',
+      },
+    });
+    expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({
+      body: 'Hei, liitteenä lasku.',
+      cc: 'copy@example.fi',
+      subject: 'Lasku 20260001',
+      to: 'customer@example.fi',
     });
   });
 
@@ -606,6 +642,16 @@ function createTestApprovedInvoiceEmailDryRunSendResult(): ApprovedInvoiceEmailD
       provider: 'dryRun',
       providerMessageId: null,
     },
+  };
+}
+
+function createTestApprovedInvoiceEmailSmtpTestSendResult(): ApprovedInvoiceEmailSmtpTestSendResult {
+  return {
+    deliveredTo: 'owner-test@example.fi',
+    deliveryEventId: 'delivery-event-2',
+    provider: 'smtp',
+    providerMessageId: '<synthetic@example.test>',
+    testMode: true,
   };
 }
 

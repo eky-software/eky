@@ -13,6 +13,10 @@ const backendRoutes: ReadonlyArray<{
   { methods: new Set(['GET', 'POST']), pathname: /^\/customers$/ },
   { methods: new Set(['PUT']), pathname: new RegExp(`^/customers/${resourceId}$`) },
   { methods: new Set(['GET', 'PUT']), pathname: /^\/company-settings$/ },
+  {
+    methods: new Set(['DELETE', 'GET', 'PUT']),
+    pathname: /^\/company-settings\/email-secret$/,
+  },
   { methods: new Set(['GET', 'POST']), pathname: /^\/invoice-drafts$/ },
   {
     methods: new Set(['DELETE', 'GET', 'PUT']),
@@ -45,6 +49,12 @@ const backendRoutes: ReadonlyArray<{
     methods: new Set(['POST']),
     pathname: new RegExp(
       `^/invoices/${resourceId}/email/dry-run(?:/send)?$`,
+    ),
+  },
+  {
+    methods: new Set(['POST']),
+    pathname: new RegExp(
+      `^/invoices/${resourceId}/email/smtp-test/send$`,
     ),
   },
   {

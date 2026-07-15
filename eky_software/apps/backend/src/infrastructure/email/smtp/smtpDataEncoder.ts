@@ -1,0 +1,41 @@
+import { SmtpTransportError } from './smtpErrors.js';
+
+export function encodeSmtpData(message: Uint8Array): Buffer {
+  const source = Buffer.from(message).toString('ascii');
+
+  assertCanonicalCrlf(source);
+
+  const canonicalMessage = source.endsWith('\r\n') ? source : `${source}\r\n`;
+  const dotStuffedMessage = canonicalMessage
+    .split('\r\n')
+    .map((line) => (line.startsWith('.') ? `.${line}` : line))
+    .join('\r\n');
+
+  return Buffer.from(`${dotStuffedMessage}.\r\n`, 'ascii');
+}
+
+function assertCanonicalCrlf(value: string): void {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+
+    if (code > 0x7f || code === 0) {
+      throw protocolError();
+    }
+
+    if (value[index] === '\r' && value[index + 1] !== '\n') {
+      throw protocolError();
+    }
+
+    if (value[index] === '\n' && value[index - 1] !== '\r') {
+      throw protocolError();
+    }
+  }
+
+  if (value.endsWith('\r')) {
+    throw protocolError();
+  }
+}
+
+function protocolError(): SmtpTransportError {
+  return new SmtpTransportError('SMTP_PROTOCOL_ERROR', 'data');
+}

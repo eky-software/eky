@@ -406,6 +406,7 @@ function renderPage(
     | 'markApprovedInvoiceSentState'
     | 'reopenApprovedInvoiceState'
     | 'sendApprovedInvoiceEmailState'
+    | 'sendApprovedInvoiceEmailSmtpTestState'
     | 'onCancelDeleteDraft'
     | 'onConfirmDeleteDraft'
     | 'onCreateApprovedInvoicePdf'
@@ -418,6 +419,7 @@ function renderPage(
     | 'onOpenApprovedInvoicePdf'
     | 'onPrepareApprovedInvoiceEmail'
     | 'onSendApprovedInvoiceEmailDryRun'
+    | 'onSendApprovedInvoiceEmailSmtpTest'
     | 'onRequestDeleteDraft'
     | 'pendingDeleteDraftId'
     | 'refreshDrafts'
@@ -436,6 +438,7 @@ function renderPage(
         | 'markApprovedInvoiceSentState'
         | 'reopenApprovedInvoiceState'
         | 'sendApprovedInvoiceEmailState'
+        | 'sendApprovedInvoiceEmailSmtpTestState'
         | 'onCancelDeleteDraft'
         | 'onConfirmDeleteDraft'
         | 'onCreateApprovedInvoicePdf'
@@ -448,6 +451,7 @@ function renderPage(
         | 'onOpenApprovedInvoicePdf'
         | 'onPrepareApprovedInvoiceEmail'
         | 'onSendApprovedInvoiceEmailDryRun'
+        | 'onSendApprovedInvoiceEmailSmtpTest'
         | 'onRequestDeleteDraft'
         | 'pendingDeleteDraftId'
         | 'refreshDrafts'
@@ -467,6 +471,9 @@ function renderPage(
       markApprovedInvoiceSentState={createMarkApprovedInvoiceSentState()}
       reopenApprovedInvoiceState={createReopenApprovedInvoiceState()}
       sendApprovedInvoiceEmailState={createSendApprovedInvoiceEmailState()}
+      sendApprovedInvoiceEmailSmtpTestState={
+        createSendApprovedInvoiceEmailSmtpTestState()
+      }
       onCancelDeleteDraft={vi.fn()}
       onConfirmDeleteDraft={vi.fn()}
       onCreateApprovedInvoicePdf={vi.fn()}
@@ -479,6 +486,7 @@ function renderPage(
       onOpenApprovedInvoicePdf={vi.fn()}
       onPrepareApprovedInvoiceEmail={vi.fn()}
       onSendApprovedInvoiceEmailDryRun={vi.fn()}
+      onSendApprovedInvoiceEmailSmtpTest={vi.fn()}
       onRequestDeleteDraft={vi.fn()}
       pendingDeleteDraftId={null}
       refreshDrafts={vi.fn()}
@@ -497,6 +505,21 @@ function createSendApprovedInvoiceEmailState(
     errorMessage: null,
     isSending: false,
     sendEmailDryRun: vi.fn(async () => null),
+    successMessage: null,
+    ...overrides,
+  };
+}
+
+function createSendApprovedInvoiceEmailSmtpTestState(
+  overrides: Partial<
+    InvoicingPageViewProps['sendApprovedInvoiceEmailSmtpTestState']
+  > = {},
+): InvoicingPageViewProps['sendApprovedInvoiceEmailSmtpTestState'] {
+  return {
+    clearStatus: vi.fn(),
+    errorMessage: null,
+    isSending: false,
+    sendEmailSmtpTest: vi.fn(async () => null),
     successMessage: null,
     ...overrides,
   };

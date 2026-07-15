@@ -37,6 +37,13 @@ const invoiceDeliveryEventMigrationSql = readFileSync(
   ),
   'utf8',
 );
+const invoiceDeliveryOutcomeMigrationSql = readFileSync(
+  new URL(
+    '../../../database/migrations/028_allow_unknown_invoice_delivery_outcome.sql',
+    import.meta.url,
+  ),
+  'utf8',
+);
 
 describe('SqliteInvoiceDeliveryEventRepository', () => {
   let database: DatabaseConnection;
@@ -48,6 +55,7 @@ describe('SqliteInvoiceDeliveryEventRepository', () => {
     database.exec(approvedInvoiceMigrationSql);
     database.exec(invoiceDocumentMigrationSql);
     database.exec(invoiceDeliveryEventMigrationSql);
+    database.exec(invoiceDeliveryOutcomeMigrationSql);
     insertInvoice(database);
     insertInvoiceDocument(database);
   });
@@ -96,6 +104,64 @@ describe('SqliteInvoiceDeliveryEventRepository', () => {
       subject: 'Lasku 20260001',
       technical_error_code: null,
     });
+  });
+
+  it('completes an attempted event within the company boundary', async () => {
+    const repository = new SqliteInvoiceDeliveryEventRepository(database);
+    const event = createEvent({ status: 'attempted' });
+    await repository.saveDeliveryEvent(event);
+
+    await repository.completeDeliveryEvent({
+      companyId: event.companyId,
+      eventId: event.id,
+      providerMessageId: '<synthetic@example.test>',
+      safeErrorMessage: null,
+      status: 'succeeded',
+      technicalErrorCode: null,
+    });
+
+    const row = database
+      .prepare<[string], InvoiceDeliveryEventRow>(
+        'SELECT * FROM invoice_delivery_events WHERE id = ?',
+      )
+      .get(event.id);
+
+    expect(row?.status).toBe('succeeded');
+    expect(row?.provider_message_id).toBe('<synthetic@example.test>');
+  });
+
+  it('stores an unknown delivery outcome and rejects another company', async () => {
+    const repository = new SqliteInvoiceDeliveryEventRepository(database);
+    const event = createEvent({ status: 'attempted' });
+    await repository.saveDeliveryEvent(event);
+
+    await expect(
+      repository.completeDeliveryEvent({
+        companyId: 'other-company',
+        eventId: event.id,
+        providerMessageId: null,
+        safeErrorMessage: null,
+        status: 'outcomeUnknown',
+        technicalErrorCode: null,
+      }),
+    ).rejects.toThrow('Invoice delivery event could not be completed.');
+
+    await repository.completeDeliveryEvent({
+      companyId: event.companyId,
+      eventId: event.id,
+      providerMessageId: null,
+      safeErrorMessage: 'Outcome unknown.',
+      status: 'outcomeUnknown',
+      technicalErrorCode: 'SMTP_FINAL_RESPONSE_MISSING',
+    });
+
+    const row = database
+      .prepare<[string], InvoiceDeliveryEventRow>(
+        'SELECT * FROM invoice_delivery_events WHERE id = ?',
+      )
+      .get(event.id);
+
+    expect(row?.status).toBe('outcomeUnknown');
   });
 
   it('enforces company and invoice indexes for later scoped reads', () => {

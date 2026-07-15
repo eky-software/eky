@@ -1,6 +1,7 @@
 import type {
   ApprovedInvoiceEmailDryRunSendInput,
   ApprovedInvoiceEmailPreview as ApprovedInvoiceEmailPreviewData,
+  ApprovedInvoiceEmailSmtpTestSendInput,
   ApprovedInvoiceLine,
   ApprovedInvoiceVatBreakdown,
   ApprovedInvoiceView,
@@ -28,6 +29,7 @@ interface ApprovedInvoicePreviewProps {
   isMarkingSent: boolean;
   isPreparingEmail: boolean;
   isSendingEmailDryRun: boolean;
+  isSendingEmailSmtpTest: boolean;
   isPdfAvailable: boolean;
   isReopening: boolean;
   markSentErrorMessage: string | null;
@@ -35,6 +37,9 @@ interface ApprovedInvoicePreviewProps {
   emailErrorMessage: string | null;
   emailSendErrorMessage: string | null;
   emailSendSuccessMessage: string | null;
+  emailSmtpTestErrorMessage: string | null;
+  emailSmtpTestRecipient: string | null;
+  emailSmtpTestSuccessMessage: string | null;
   pdfErrorMessage: string | null;
   reopenErrorMessage: string | null;
   onBack(): void;
@@ -48,6 +53,10 @@ interface ApprovedInvoicePreviewProps {
     id: string,
     input: ApprovedInvoiceEmailDryRunSendInput,
   ): void;
+  onSendEmailSmtpTest(
+    id: string,
+    input: ApprovedInvoiceEmailSmtpTestSendInput,
+  ): void;
 }
 
 export function ApprovedInvoicePreview({
@@ -58,6 +67,7 @@ export function ApprovedInvoicePreview({
   isMarkingSent,
   isPreparingEmail,
   isSendingEmailDryRun,
+  isSendingEmailSmtpTest,
   isPdfAvailable,
   isReopening,
   markSentErrorMessage,
@@ -65,6 +75,9 @@ export function ApprovedInvoicePreview({
   emailErrorMessage,
   emailSendErrorMessage,
   emailSendSuccessMessage,
+  emailSmtpTestErrorMessage,
+  emailSmtpTestRecipient,
+  emailSmtpTestSuccessMessage,
   pdfErrorMessage,
   reopenErrorMessage,
   onBack,
@@ -75,6 +88,7 @@ export function ApprovedInvoicePreview({
   onOpenPdf,
   onPrepareEmail,
   onSendEmailDryRun,
+  onSendEmailSmtpTest,
 }: ApprovedInvoicePreviewProps): React.JSX.Element {
   const isSent = invoice.status === 'sent';
 
@@ -207,8 +221,15 @@ export function ApprovedInvoicePreview({
           email={email}
           errorMessage={emailSendErrorMessage}
           isSending={isSendingEmailDryRun}
+          isSendingSmtpTest={isSendingEmailSmtpTest}
+          smtpTestErrorMessage={emailSmtpTestErrorMessage}
+          smtpTestRecipient={emailSmtpTestRecipient}
+          smtpTestSuccessMessage={emailSmtpTestSuccessMessage}
           successMessage={emailSendSuccessMessage}
           onSendDryRun={(input) => onSendEmailDryRun(invoice.id, input)}
+          onSendSmtpTest={(input) =>
+            onSendEmailSmtpTest(invoice.id, input)
+          }
         />
       ) : null}
 

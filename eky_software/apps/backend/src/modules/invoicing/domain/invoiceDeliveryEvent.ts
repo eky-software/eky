@@ -12,6 +12,7 @@ export const invoiceDeliveryStatuses = [
   'attempted',
   'succeeded',
   'failed',
+  'outcomeUnknown',
 ] as const;
 
 export type InvoiceDeliveryMethod = (typeof invoiceDeliveryMethods)[number];

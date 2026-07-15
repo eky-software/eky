@@ -1,5 +1,6 @@
 import { EkyApiError, isRecord, requestJson } from '../http.js';
 import type {
+  CompanyEmailSecretStatus,
   CompanySettings,
   CompanySettingsApi,
 } from './companySettingsTypes.js';
@@ -9,6 +10,16 @@ export function createCompanySettingsApi(
   baseUrl: string,
 ): CompanySettingsApi {
   return {
+    async getCompanyEmailSecretStatus(): Promise<CompanyEmailSecretStatus> {
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        '/company-settings/email-secret',
+      );
+
+      return parseCompanyEmailSecretStatusResponse(responseBody);
+    },
+
     async getCompanySettings(): Promise<CompanySettings> {
       const responseBody = await requestJson(
         fetchImplementation,
@@ -23,6 +34,34 @@ export function createCompanySettingsApi(
       }
 
       return parseCompanySettings(responseBody.companySettings);
+    },
+
+    async removeCompanyEmailSecret(): Promise<CompanyEmailSecretStatus> {
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        '/company-settings/email-secret',
+        { method: 'DELETE' },
+      );
+
+      return parseCompanyEmailSecretStatusResponse(responseBody);
+    },
+
+    async setCompanyEmailSecret(input): Promise<CompanyEmailSecretStatus> {
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        '/company-settings/email-secret',
+        {
+          body: JSON.stringify({ secret: input.secret }),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          method: 'PUT',
+        },
+      );
+
+      return parseCompanyEmailSecretStatusResponse(responseBody);
     },
 
     async updateCompanySettings(input): Promise<CompanySettings> {
@@ -48,6 +87,26 @@ export function createCompanySettingsApi(
       return parseCompanySettings(responseBody.companySettings);
     },
   };
+}
+
+function parseCompanyEmailSecretStatusResponse(
+  value: unknown,
+): CompanyEmailSecretStatus {
+  if (!isRecord(value)) {
+    throw new EkyApiError('Invalid company email secret response.', {
+      responseBody: value,
+    });
+  }
+
+  const status = value.emailSecretStatus;
+
+  if (!isRecord(status) || typeof status.configured !== 'boolean') {
+    throw new EkyApiError('Invalid company email secret response.', {
+      responseBody: status,
+    });
+  }
+
+  return { configured: status.configured };
 }
 
 function parseCompanySettings(value: unknown): CompanySettings {

@@ -7,6 +7,8 @@ export type {
   ApprovedInvoiceEmailDryRunSend,
   ApprovedInvoiceEmailDryRunSendInput,
   ApprovedInvoiceEmailDryRunSendResult,
+  ApprovedInvoiceEmailSmtpTestSendInput,
+  ApprovedInvoiceEmailSmtpTestSendResult,
   ApprovedInvoiceEmailPreview,
   ApprovedInvoiceEmailProvider,
   ApprovedInvoiceLine,

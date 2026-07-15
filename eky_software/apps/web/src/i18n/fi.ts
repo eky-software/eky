@@ -139,16 +139,39 @@ export const uiText = {
     emailDeliveryProvider: 'Sähköpostin lähetystapa',
     emailDeliverySettings: 'Sähköpostiasetukset',
     emailDeliverySettingsHelp:
-      'Näillä asetuksilla valmistellaan laskun sähköpostilähetystä. Oikeaa SMTP-lähetystä tai salasanaa ei vielä tallenneta tässä vaiheessa.',
+      'Näillä asetuksilla valmistellaan laskun sähköpostilähetystä. SMTP-salasana hallitaan erikseen turvallisessa työpöytäsovelluksessa.',
     emailProviderDryRun: 'Kuivaharjoittelu',
     emailProviderSmtp: 'SMTP myöhemmin',
     emailSenderAddress: 'Lähettäjän sähköpostiosoite',
     emailSenderName: 'Lähettäjän nimi',
-    emailSecretConfigured: 'Salaisuus on asetettu myöhemmässä salaisuuksien hallinnassa.',
+    emailSecretChange: 'Vaihda salasana',
+    emailSecretConfigured: 'Salasana asetettu',
+    emailSecretDescription:
+      'Salasana suojataan käyttöjärjestelmän salauksella. Sitä ei tallenneta yritystietoihin eikä näytetä tallennuksen jälkeen.',
+    emailSecretDesktopOnly:
+      'Salasanan hallinta on käytettävissä vain turvallisessa Eky-työpöytäsovelluksessa.',
+    emailSecretHeading: 'SMTP-salasana',
     emailSecretHelp:
-      'SMTP-salasanaa ei näytetä eikä tallenneta tähän lomakkeeseen. Salaisuuden hallinta lisätään erillisenä turvallisena vaiheena.',
-    emailSecretNotConfigured: 'Salaisuutta ei ole asetettu.',
-    emailSecretStatus: 'Salaisuuden tila',
+      'Anna postilaatikon salasana. Salasanaa ei esitäytetä, palauteta selaimelle eikä tallenneta lomakkeeseen.',
+    emailSecretKicker: 'Sähköpostin suojaus',
+    emailSecretLoadError:
+      'SMTP-salasanan tilaa ei voitu tarkistaa. Yritä hetken kuluttua uudelleen.',
+    emailSecretLoading: 'Tarkistetaan SMTP-salasanan tilaa...',
+    emailSecretNewPassword: 'Uusi SMTP-salasana',
+    emailSecretNotConfigured: 'Salasanaa ei ole asetettu',
+    emailSecretPassword: 'SMTP-salasana',
+    emailSecretRemove: 'Poista salasana',
+    emailSecretRemoveConfirm:
+      'Haluatko varmasti poistaa tallennetun SMTP-salasanan?',
+    emailSecretRemoveError:
+      'SMTP-salasanaa ei voitu poistaa turvallisesti. Yritä hetken kuluttua uudelleen.',
+    emailSecretRemoveSuccess: 'SMTP-salasana poistettu.',
+    emailSecretSaveError:
+      'SMTP-salasanaa ei voitu tallentaa turvallisesti. Tarkista tieto ja yritä uudelleen.',
+    emailSecretSaveSuccess: 'SMTP-salasana tallennettu turvallisesti.',
+    emailSecretSaving: 'Tallennetaan...',
+    emailSecretSet: 'Aseta salasana',
+    emailSecretStatus: 'Salasanan tila',
     emailSmtpHost: 'SMTP-palvelin',
     emailSmtpPort: 'SMTP-portti',
     emailSmtpSecurity: 'Yhteyden suojaus',
@@ -420,6 +443,18 @@ export const uiText = {
     invoiceEmailPreviewTitle: 'Sähköpostin esikatselu',
     invoiceEmailSubject: 'Otsikko',
     invoiceEmailSubjectInput: 'Sähköpostin otsikko',
+    invoiceEmailSmtpTestActualRecipient: 'Todellinen testivastaanottaja',
+    invoiceEmailSmtpTestError:
+      'SMTP-testilähetystä ei voitu tehdä. Laskua ei merkitty lähetetyksi.',
+    invoiceEmailSmtpTestHelp:
+      'Testilähetys käyttää vain alla näkyvää testivastaanottajaa. Vastaanottaja- ja Cc-kenttiä ei käytetä SMTP-testin toimitusosoitteina, eikä laskua merkitä lähetetyksi.',
+    invoiceEmailSmtpTestMissingRecipient:
+      'Aseta ensin Oma yritys -näkymässä sähköpostin testivastaanottaja.',
+    invoiceEmailSmtpTestOutcomeUnknown:
+      'SMTP-testin lopputulosta ei voitu varmistaa. Älä yritä heti uudelleen, vaan tarkista testipostilaatikko ja toimitustapahtuma.',
+    invoiceEmailSmtpTestSend: 'Lähetä hallittu SMTP-testi',
+    invoiceEmailSmtpTestSending: 'Lähetetään testivastaanottajalle...',
+    invoiceEmailSmtpTestSuccess: 'SMTP-testi lähetettiin osoitteeseen',
     invoiceEmailTo: 'Vastaanottaja',
     invoiceEmailToInput: 'Vastaanottajan sähköposti',
     invoiceNumber: 'Laskunumero',
@@ -640,6 +675,18 @@ export const uiText = {
     'Invalid company settings body.': 'Oman yrityksen pyyntö oli virheellinen.',
     'Invalid company settings response.':
       'Oman yrityksen tietojen vastaus oli virheellinen.',
+    'Invalid company email secret body.':
+      'SMTP-salasanan pyyntö oli virheellinen.',
+    'Invalid company email secret response.':
+      'SMTP-salasanan tilan vastaus oli virheellinen.',
+    'Email secret is required.': 'Anna SMTP-salasana.',
+    'Email secret must be text.': 'SMTP-salasanan pitää olla tekstiä.',
+    'Email secret must be 1024 characters or less.':
+      'SMTP-salasana saa olla enintään 1024 merkkiä.',
+    'Email secret contains an unsupported null character.':
+      'SMTP-salasana sisältää merkin, jota ei tueta.',
+    'Email secret storage is unavailable.':
+      'Turvallinen SMTP-salasanan säilytys ei ole käytettävissä.',
     'Invalid JSON body.': 'Pyyntö oli virheellinen.',
     'Invalid JSON response.': 'Palvelimen vastaus oli virheellinen.',
     'Invalid invoice draft response.':

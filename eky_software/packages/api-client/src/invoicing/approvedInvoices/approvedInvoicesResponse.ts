@@ -7,6 +7,7 @@ import type {
   ApprovedInvoiceEmailDryRunProviderResult,
   ApprovedInvoiceEmailDryRunSend,
   ApprovedInvoiceEmailDryRunSendResult,
+  ApprovedInvoiceEmailSmtpTestSendResult,
   ApprovedInvoiceNumberingMode,
   ApprovedInvoicePriceInputMode,
   ApprovedInvoiceReferenceNumberType,
@@ -87,6 +88,28 @@ export function readApprovedInvoiceEmailDryRunSendResponse(
   }
 
   return parseApprovedInvoiceEmailDryRunSendResult(responseBody.delivery);
+}
+
+export function readApprovedInvoiceEmailSmtpTestSendResponse(
+  responseBody: unknown,
+): ApprovedInvoiceEmailSmtpTestSendResult {
+  if (!isRecord(responseBody) || !isRecord(responseBody.delivery)) {
+    throw invalidApprovedInvoiceResponse(responseBody);
+  }
+
+  const delivery = responseBody.delivery;
+
+  if (delivery.provider !== 'smtp' || delivery.testMode !== true) {
+    throw invalidApprovedInvoiceResponse(responseBody);
+  }
+
+  return {
+    deliveredTo: readString(delivery, 'deliveredTo'),
+    deliveryEventId: readString(delivery, 'deliveryEventId'),
+    provider: 'smtp',
+    providerMessageId: readNullableString(delivery, 'providerMessageId'),
+    testMode: true,
+  };
 }
 
 function parseApprovedInvoiceSummary(

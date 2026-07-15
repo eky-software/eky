@@ -192,6 +192,17 @@ export interface ApprovedInvoiceEmailDryRunSendResult {
   providerResult: ApprovedInvoiceEmailDryRunProviderResult;
 }
 
+export type ApprovedInvoiceEmailSmtpTestSendInput =
+  ApprovedInvoiceEmailDryRunSendInput;
+
+export interface ApprovedInvoiceEmailSmtpTestSendResult {
+  deliveredTo: string;
+  deliveryEventId: string;
+  provider: 'smtp';
+  providerMessageId: string | null;
+  testMode: true;
+}
+
 export interface ApprovedInvoicesApi {
   copyApprovedInvoiceToDraft(id: string): Promise<InvoiceDraft>;
   createApprovedInvoicePdf(id: string): Promise<ApprovedInvoiceDocumentMetadata>;
@@ -209,5 +220,9 @@ export interface ApprovedInvoicesApi {
     id: string,
     input: ApprovedInvoiceEmailDryRunSendInput,
   ): Promise<ApprovedInvoiceEmailDryRunSendResult>;
+  sendApprovedInvoiceEmailSmtpTest(
+    id: string,
+    input: ApprovedInvoiceEmailSmtpTestSendInput,
+  ): Promise<ApprovedInvoiceEmailSmtpTestSendResult>;
   reopenApprovedInvoiceForEditing(id: string): Promise<ReopenedApprovedInvoice>;
 }

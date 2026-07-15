@@ -47,7 +47,8 @@ describe('CompanySettingsForm', () => {
     expect(html).toContain('laskutus@example.fi');
     expect(html).toContain(uiText.companySettings.emailSmtpHost);
     expect(html).toContain('smtp.dnamail.fi');
-    expect(html).toContain(uiText.companySettings.emailSecretNotConfigured);
+    expect(html).not.toContain('id="company-email-secret"');
+    expect(html).not.toContain('type="password"');
     expect(html).toContain(uiText.companySettings.iban);
     expect(html).toContain('FI2112345600000785');
     expect(html).toContain(uiText.companySettings.bic);

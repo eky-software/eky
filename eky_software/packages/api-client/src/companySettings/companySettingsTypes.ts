@@ -53,8 +53,21 @@ export interface UpdateCompanySettingsRequest {
   hourlyRateShortcut: string;
 }
 
+export interface CompanyEmailSecretStatus {
+  configured: boolean;
+}
+
+export interface SetCompanyEmailSecretRequest {
+  secret: string;
+}
+
 export interface CompanySettingsApi {
+  getCompanyEmailSecretStatus(): Promise<CompanyEmailSecretStatus>;
   getCompanySettings(): Promise<CompanySettings>;
+  removeCompanyEmailSecret(): Promise<CompanyEmailSecretStatus>;
+  setCompanyEmailSecret(
+    input: SetCompanyEmailSecretRequest,
+  ): Promise<CompanyEmailSecretStatus>;
   updateCompanySettings(
     input: UpdateCompanySettingsRequest,
   ): Promise<CompanySettings>;

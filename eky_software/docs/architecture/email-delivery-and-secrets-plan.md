@@ -4,9 +4,11 @@ Tämä dokumentti määrittää Eky-projektin sähköpostilähetyksen,
 SMTP/Gmail-integraatioiden ja salaisuuksien hallinnan suunnittelulinjan.
 
 Dokumentti on sähköpostin ja salaisuuksien etenemissuunnitelma. Local-MVP:n
-Electron `safeStorage` -broker ja audit-pohja on toteutettu, mutta dokumentti ei
-vielä tarkoita SMTP-lähetystä, Gmail OAuthia, Secret Manager -adapteria,
-salaisuuden endpointteja, UI-muutoksia tai oikeaa sähköpostin lähetystä.
+Electron `safeStorage` -broker, lifecycle-audit sekä rajattu HTTP-, API-client-
+ja UI-polku on toteutettu. Hallittu DNA SMTP -testipolku on kytketty, mutta
+oikean tilin verkkoyhteystestiä tai asiakkaille tarkoitettua tuotantolähetystä
+ei ole tehty. Dokumentti ei vielä tarkoita Gmail OAuthia, Secret Manager
+-adapteria tai tuotantovalmista sähköpostin lähetystä.
 
 ## Nykyinen Toteutustila
 
@@ -27,10 +29,78 @@ Sähköpostipolusta on toteutettu local-MVP:hen:
 - Electron main processin `safeStorage`-adapteri, versionoitu salattu
   `userData`-blob ja utility processin yksityinen secret broker synteettiselle
   local-MVP-testiarvolle
+- salatun tiedoston keskeytyksenkestävä `current`/`next`/`backup`-vaihto,
+  turvallinen palautuminen sekä kaikkien slottien poistaminen
+- desktop-sessionilla suojatut salaisuuden tila-, asetus- ja poistoreitit,
+  jotka käyttävät vain backendin vahvistamaa `ActorContext`-kontekstia
+- API-client ja Oma yritys -näkymän erillinen salasanapaneeli, joka näyttää
+  vain `configured`-tilan eikä koskaan esitäytä tai palauta salaista arvoa
+- paketoitu Windows-smoke, joka varmistaa synteettisellä arvolla koko
+  HTTP -> application -> audit -> secret broker -> `safeStorage` -elinkaaren
+- backendin sisäinen, riippuvuudeton SMTP/MIME-kuljetuskerros, joka käyttää
+  vain Node-standardikirjaston TLS- ja crypto-rajapintoja eikä ole vielä
+  kytketty DNA-provideriin tai laskun send-polkuun
+- rajattu DNA SMTP -testiprovider, joka hyväksyy vain hostin
+  `smtp.dnamail.fi`, portin `465`, implicit TLS -mallin ja pakollisen
+  testivastaanottajan
+- Invoicingin hallittu SMTP-testikäyttötapa, HTTP-reitti, API-client,
+  Electronin backend-allowlist ja web-toiminto
+- SMTP-testin delivery event -tilat `attempted`, `succeeded`, `failed` ja
+  `outcomeUnknown`; tapahtuma kirjataan `attempted`-tilaan ennen providerin
+  kutsua ja sama tapahtuma viimeistellään providerin tuloksen perusteella
+- webissä näkyvä todellinen testivastaanottaja ja turvalliset onnistumis-,
+  virhe- sekä epäselvän lopputuloksen viestit
 
-Nykyinen dry-run ei muuta laskua `sent`-tilaan. Secret brokeria ei ole vielä
-kytketty HTTP- tai UI-polkuun. Oikeaa SMTP-provideria, oikeaa SMTP-salasanaa tai
-oikeaa sähköpostilähetystä ei ole toteutettu.
+Nykyinen dry-run ei muuta laskua `sent`-tilaan. DNA SMTP -testiproviderin
+hallittu testipolku ei myöskään muuta laskua `sent`-tilaan. Testipolku pakottaa
+Oma yritys -asetusten `emailTestRecipientOverride`-osoitteen, jättää Cc:n pois
+SMTP-kuoresta ja MIME-viestistä sekä käyttää asiakkaan osoitetta vain
+käyttäjän muokkaaman esikatselulomakkeen tietona. Oikean DNA-tilin
+verkkoyhteystestiä tai asiakkaille tarkoitettua sähköpostilähetystä ei ole
+vielä tehty.
+
+## Sisäinen SMTP- Ja MIME-Kuljetuskerros
+
+Ensimmäinen tekninen SMTP/MIME-kerros sijaitsee rajatusti kansiossa:
+
+```text
+apps/backend/src/infrastructure/email/
+```
+
+Kerros sisältää:
+
+- tiukasti rajatun ASCII-sähköpostiosoitteen validoinnin ilman SMTPUTF8-tukea
+- bounded SMTP reply -parserin
+- eksplisiittisen SMTP-tilakoneen
+- vain palvelimen mainostaman `AUTH PLAIN`- tai `AUTH LOGIN`-mekanismin
+- canonical CRLF- ja dot-stuffing-käsittelyn
+- UTF-8-tekstirungon ja yhden muistissa annetun PDF-liitteen MIME-rakentamisen
+- implicit TLS -yhteyden, jossa sertifikaatti, hostname ja vähintään TLS 1.2
+  vaaditaan ennen SMTP-komentoja tai tunnistautumista
+- vaihekohtaiset, idle- ja kokonaisaikarajat sekä `outcomeUnknown`-tilan, jos
+  DATA on kirjoitettu mutta palvelimen lopullista hyväksyntää ei saada
+
+Kerros ei sisällä:
+
+- DNA- tai muuta provider-päätöstä
+- STARTTLS-, portti 25-, retry-, pooling-, proxy- tai automaattista fallback-
+  toimintaa
+- HTML-viestiä, Bcc:tä, lisäliitteitä tai tiedostopolkujen lukemista
+- laskutusdomainia, delivery event -kirjauksia tai laskun tilasiirtymiä
+- salaisuuden tallennusta tai lukua
+
+Kuljetuskerros ei käytä Nodemaileria tai muuta uutta kolmannen osapuolen
+riippuvuutta. Sen rajat ja protokollakäytös testataan synteettisillä arvoilla;
+automaattiset testit eivät muodosta yhteyttä DNA:n palvelimeen.
+
+Kuljetuksen rajat, kuten viestin, PDF:n, SMTP-vastauksen ja aikakatkaisujen
+enimmäisarvot, pidetään sähköposti-infrastruktuurin omissa tarkasti nimetyissä
+konfiguraatiotiedostoissa. DNA:n kiinteä provider-profiili kuuluu myöhemmin
+DNA-providerin omaan kansioon. Projektin juureen ei luoda yleistä
+`constants`, `config`, `utils` tai vastaavaa muuttujakaatopaikkaa. Jos sama
+konfiguraatio tarvitsee myöhemmin aidosti usean sovelluksen tai moduulin
+omistajuuden, erillinen `packages/config`-ratkaisu arvioidaan omana
+arkkitehtuuripäätöksenään.
 
 ## Julkisen Repositoryn Rajaus
 
@@ -197,10 +267,13 @@ Oma yritys ei saa koskaan näyttää:
 - Secret Managerin salaista arvoa
 - Electron `safeStorage` -brokerista luettua salaista arvoa
 
-UI saa tarjota myöhemmin:
+UI tarjoaa local desktop -versiossa:
 
 - Aseta/vaihda salasana
 - Poista sähköpostiyhteys
+
+Myöhemmin UI voi tarjota:
+
 - Lähetä testiviesti
 - Tarkista asetukset
 
@@ -252,6 +325,13 @@ Sähköpostisalaisuudet eivät saa:
 - tallentua selaimen localStorageen
 - tallentua tavalliseen näkyvään tietokantakenttään
 - näkyä testifixtureissä oikeina arvoina
+
+Salasana kulkee asetushetkellä välttämättä hetkellisesti käyttäjän suojatussa
+salasanakentässä, API-clientin request-mallissa ja backendin validoidussa
+pyynnössä. Web ei pidä arvoa React-tilassa, ei esitäytä sitä eikä kirjoita sitä
+localStorageen, sessionStorageen tai muuhun pysyvään selainvarastoon.
+Onnistuneen asetuksen jälkeen kenttä tyhjennetään. API palauttaa vain
+`configured: true | false` -tilan.
 
 Tietokantaan voidaan myöhemmin tallentaa vain esimerkiksi `secretRef`,
 `configured: true` tai vastaava ei-salainen viite.
@@ -361,14 +441,15 @@ hyväksyä local-käytön luottamus- ja valtuutusmalli. Siinä ratkaistaan vähi
 - miten salaisuuden lifecycle auditoidaan ilman salaisen arvon lokitusta
 - miten release security review tehdään ennen oikean sähköpostitilin käyttöä
 
-Turvallisuusportin alla on toteutettu rajattuja teknisiä valmiuksia vain
-synteettisillä testiarvoilla:
+Turvallisuusportin alla on toteutettu rajattuja teknisiä valmiuksia ja niiden
+automaattiset testit vain synteettisillä arvoilla:
 
 - provider-agnostinen secret store -portti ja backend-only reader-portti
 - testien fake- ja in-memory-adapterit
-- salaisuuden lifecycle -application servicet ilman HTTP-reittejä
+- salaisuuden lifecycle -application servicet
 - turvalliset tyypit, joissa salainen arvo ei päädy response-malliin
 - Electron main processin `safeStorage`-broker ja salattu tiedostoadapteri
+- desktop-sessionilla suojatut HTTP-reitit, API-client ja erillinen UI-paneeli
 
 Ensimmäinen rajattu valmius on toteutettu Company Settings -moduuliin:
 
@@ -378,7 +459,7 @@ Ensimmäinen rajattu valmius on toteutettu Company Settings -moduuliin:
   tarvittaessa oman kapean backend-only reader-sopimuksen
 - salaisen syötteen validointi säilyttää arvon muuttamattomana eikä sisällytä
   sitä virheviesteihin
-- toteutus ei sisällä HTTP-reittiä, UI-kenttää tai oikeaa salaisuutta
+- response-malli ei sisällä salaista arvoa
 
 Lifecycle-application servicet on toteutettu yhteisen `ActorContext`- ja
 permission-sopimuksen päälle. Salaisuuden asettaminen, poistaminen ja tilan
@@ -402,15 +483,22 @@ Local secret store käyttää yhtä versionoitua teknistä slotia
 arvon ja salaisuuden. Broker varmistaa luettaessa yrityksen täsmäämisen. Väärä
 yritys ei saa tietoa salaisuuden arvosta.
 
-Palveluja ei ole vielä kytketty HTTP-reitteihin. Local desktop -session,
-backendin vahvistama actor-konteksti ja `safeStorage`-broker on toteutettu.
-Seuraava erillinen turvallisuusvaihe on salaisuutta vastaanottavan HTTP/UI-polun
-rajattu toteutus synteettisellä arvolla.
+Tiedostoadapteri käyttää deterministisiä `current`, `.next` ja `.backup`-
+slotteja. Kelvollinen current-arvo voittaa ja vanhat palautumisjäämät
+poistetaan. Jos current puuttuu, kelvollinen backup palautetaan ennen next-
+arvoa. Ensimmäisen kirjoituksen keskeytyessä kelvollinen next voidaan nostaa
+current-arvoksi. Vioittunutta current- tai palautumistiedostoa ei korvata
+hiljaa toisella arvolla. Salaisuuden poistaminen poistaa kaikki kolme slottia.
 
-Oikeaa käyttäjän SMTP-salaisuutta, salaisuutta vastaanottavaa HTTP-reittiä,
-webin salasanakenttää tai oikeaa SMTP-yhteyttä ei oteta käyttöön ennen local-
-käytön turvallisuusportin ja Windows-integraatiosmoken hyväksymistä. Testeissä
-käytetään vain selvästi synteettisiä salaisuuksia.
+Palvelut on kytketty vain Electron desktop -runtimessa rekisteröitäviin
+HTTP-reitteihin. Local desktop -session, backendin vahvistama actor-konteksti,
+permission, lifecycle-audit ja `safeStorage`-broker suojaavat polkua. Tavallinen
+selainkehityksen backend ei rekisteröi reittejä eikä voi tallentaa salaisuutta.
+
+Automaattiset testit ja Windows-integraatiosmoke käyttävät vain selvästi
+synteettisiä salaisuuksia. Oikea käyttäjän SMTP-salaisuus otetaan
+käyttötestiin vasta erikseen hyväksytyn SMTP-providerin, pakotetun
+testivastaanottajan ja release security review -tarkistuksen yhteydessä.
 
 Local- ja cloud-ympäristöille yhteinen actor context, local-sessionin
 turvallisuusrajat sekä luotetun `companyId`-kontekstin eteneminen on kuvattu
@@ -574,16 +662,14 @@ ei pidetä valmiina ennen deliverability-tarkistusta.
 
 Seuraavaan vaiheeseen jäävät:
 
-- SMTP-provideria
 - Gmail-provideria
-- Electron `safeStorage` -brokerin kytkentä oikeaan HTTP/UI-salaisuuspolkuun
-- erillinen SMTP-providerin salaisuuden read-portti
 - Secret Manager -adapteria
-- oikeaa sähköpostilähetystä
+- asiakkaille tarkoitettua oikeaa sähköpostilähetystä
+- onnistuneen asiakaslähetyksen `sent`-tilasiirtymää
 - `packages/email`-pakettia
 
-SMTP-kirjastoa tai muuta uutta riippuvuutta ei valita ennen erillistä
-riippuvuusarviota.
+SMTP-kirjastoa tai muuta uutta riippuvuutta ei lisätä ilman erillistä
+riippuvuusarviota ja projektin omistajan nimenomaista hyväksyntää.
 
 ## Seuraava Toteutusjärjestys
 
@@ -593,16 +679,28 @@ riippuvuusarviota.
    context -yritysrajaus ja yhden rivin secret-audit on toteutettu ennen
    oikeita salaisuuksia vastaanottavia HTTP- tai UI-polkuja.
 3. Electron main processin `safeStorage`-broker, salattu tiedosto ja yksityinen
-   utility process -client on toteutettu ilman uutta riippuvuutta. Paketoitu
-   Windows-smoke ajetaan ennen rajattua HTTP/UI-polun toteutusta.
-4. Toteutetaan SMTP-provider ensin testitilassa käyttäen porttia `465` ja
-   implicit TLS -mallia. TLS-version vähimmäisraja, sertifikaatin ja hostnamen
-   validointi, timeout ja turvallinen virheenkäsittely ovat pakollisia.
-5. Pakotetaan test recipient override ensimmäisissä oikean providerin
-   kokeiluissa, jotta viesti ei voi lähteä vahingossa asiakkaalle.
-6. Kytketään provider nykyiseen backendin send-polkuun niin, että onnistunut
-   lähetys kirjaa delivery eventin ja voi muuttaa laskun `sent`-tilaan.
-7. Epäonnistunut lähetys kirjataan turvallisesti eikä se muuta laskun tilaa.
+   utility process -client on toteutettu ilman uutta riippuvuutta.
+4. Desktop-sessionilla suojattu HTTP-, API-client- ja UI-lifecycle on
+   toteutettu. Paketoitu Windows-smoke varmistaa koko elinkaaren synteettisellä
+   salaisuudella ja kaikkien salattujen tiedostoslottien poistumisen.
+5. Riippuvuudeton sisäinen SMTP/MIME-kuljetuskerros ja sen turvallisuus- sekä
+   protokollatestit on toteutettu.
+6. DNA SMTP -providerin rajattu testitila on toteutettu käyttäen vain porttia
+   `465`, implicit TLS -mallia ja lukittua ensisijaista hostia. Provider
+   pakottaa test recipient override -osoitteen ja jättää Cc:n pois, jotta
+   viesti ei voi lähteä vahingossa asiakkaalle.
+7. DNA SMTP -testiprovider on kytketty hallittuun backend-, HTTP-, API-client-,
+   desktop- ja web-polkuun. Testi kirjaa `attempted`-tapahtuman ennen
+   provider-kutsua, viimeistelee saman tapahtuman tilaan `succeeded`, `failed`
+   tai `outcomeUnknown`, pakottaa testivastaanottajan eikä muuta laskun tilaa.
+8. Oikean DNA-tilin ensimmäinen verkkoyhteystesti tehdään vasta projektin
+   omistajan erillisellä luvalla. Testissä käytetään vain erikseen vahvistettua
+   testipostilaatikkoa; oikeaa salasanaa ei anneta chattiin, komentoriville,
+   ympäristömuuttujaan, testifixtureen tai lokiin.
+9. Asiakkaalle tarkoitettu tuotantolähetys ja onnistuneen lähetyksen
+   `sent`-tilasiirtymä toteutetaan vasta hallitun testin ja uuden
+   turvallisuustarkistuksen jälkeen. Epäonnistunut tai lopputulokseltaan
+   epäselvä lähetys ei muuta laskun tilaa.
 
 Ensimmäinen oikea SMTP-lähetys saa olla synkroninen. UI näyttää lähetyksen
 olevan käynnissä ja estää saman toiminnon uudelleen pyynnön aikana. Backend

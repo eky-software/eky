@@ -194,12 +194,12 @@ Nykyisessä vaiheessa laskun sähköpostipolku käyttää edelleen dry-run-malli
 joka ei lähetä oikeaa sähköpostia eikä muuta laskua lähetetyksi.
 
 SMTP-salasanaa, OAuth-tokenia tai muuta salaisuutta ei tallenneta Company
-Settings -tauluun, API-vastaukseen, frontendin tilaan eikä Git-repositorioon.
-Salaisuuden hallinta toteutetaan myöhemmin erillisen
+Settings -tauluun, API-vastaukseen, frontendin pysyvään tilaan eikä
+Git-repositorioon. Local desktop -salaisuuden lifecycle on toteutettu erillisen
 `docs/architecture/email-delivery-and-secrets-plan.md` -linjan mukaisesti.
 
-`emailSecretConfigured` on tässä vaiheessa lukutieto. Se saa kertoa
-käyttäjälle, onko salaisuus asetettu myöhemmän secret store -mallin kautta,
+`emailSecretConfigured` on lukutieto. Se saa kertoa käyttäjälle, onko salaisuus
+asetettu secret store -mallin kautta,
 mutta se ei sisällä salaista arvoa eikä sitä käytetä salaisuuden
 tallentamiseen.
 
@@ -226,10 +226,13 @@ tallennetaan `pending`, jonka jälkeen sama rivi päivitetään `succeeded`- tai
 ei ole salaista arvoa, hashia, pituutta, `secretRef`-arvoa tai muuta
 salaisuudesta johdettua tietoa.
 
-Käyttötapauksia ei ole vielä kytketty HTTP-reitteihin. Local desktop -session,
-backendin vahvistama actor-konteksti ja Electron main processin `safeStorage`-
-broker on toteutettu. Company Settings saa käyttää vain lifecycle-storea ja
-konfigurointitilaa. Erillinen `CompanyEmailSecretReader` on backend-only ja
+Käyttötapaukset on kytketty desktop-sessionilla suojattuihin tila-, asetus- ja
+poisto-HTTP-reitteihin, API-clientiin ja Oma yritys -näkymän erilliseen
+salasanapaneeliin. Tavallinen selainkehityksen backend ei rekisteröi näitä
+reittejä. Salasanakenttää ei esitäytetä, arvoa ei pidetä React-tilassa ja kenttä
+tyhjennetään onnistuneen tallennuksen jälkeen. Company Settings saa käyttää
+vain lifecycle-storea ja konfigurointitilaa. Erillinen
+`CompanyEmailSecretReader` on backend-only ja
 varattu myöhemmälle hyväksytylle SMTP-providerille; sitä ei saa antaa HTTP:lle,
 API-clientille, preloadille, rendererille tai web-UI:lle.
 
@@ -361,7 +364,7 @@ kuten `seller_iban`, `seller_bic` ja `seller_bank_name`. PDF, tulostus ja
 sähköpostilähetys käyttävät hyväksytyn laskun snapshot-tietoja, eivät sen
 hetkisiä muuttuvia Oma yritys -asetuksia.
 
-Sähköpostin lähetysasetusten käyttäjälle näkyvä hallinta voi myöhemmin sijaita
+Sähköpostin lähetysasetusten käyttäjälle näkyvä hallinta sijaitsee local-MVP:ssä
 Oma yritys / Asetukset -kokonaisuudessa. Company Settings saa näyttää ja
 muokata ei-salaisia asetuksia, kuten lähettäjän nimen, lähettäjän
 sähköpostiosoitteen, SMTP hostin, SMTP portin, security-valinnan, username-arvon

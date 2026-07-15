@@ -35,8 +35,13 @@ import type {
   SendApprovedInvoiceEmailDryRunInput,
   SendApprovedInvoiceEmailDryRunResult,
 } from '../application/sendApprovedInvoiceEmailDryRun.js';
+import type {
+  SendApprovedInvoiceEmailSmtpTestInput,
+  SendApprovedInvoiceEmailSmtpTestResult,
+} from '../application/sendApprovedInvoiceEmailSmtpTest.js';
 import { ApprovedInvoiceDocumentNotFoundError } from '../application/approvedInvoiceDocumentNotFoundError.js';
 import { ApprovedInvoiceEmailDeliveryError } from '../application/approvedInvoiceEmailDeliveryError.js';
+import { ApprovedInvoiceEmailDeliveryOutcomeUnknownError } from '../application/approvedInvoiceEmailDeliveryOutcomeUnknownError.js';
 import { ApprovedInvoiceNotFoundError } from '../application/approvedInvoiceNotFoundError.js';
 import type { ApprovedInvoiceEmailPreview } from '../application/approvedInvoiceEmailPreview.js';
 import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
@@ -47,6 +52,7 @@ import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import {
   ApprovedInvoiceEmailRequestValidationError,
   parseApprovedInvoiceEmailDryRunSendBody,
+  parseApprovedInvoiceEmailSmtpTestSendBody,
 } from './approvedInvoiceEmailRequest.js';
 
 interface ApprovedInvoiceRouteDependencies {
@@ -77,6 +83,9 @@ interface ApprovedInvoiceRouteDependencies {
   sendApprovedInvoiceEmailDryRun(
     input: SendApprovedInvoiceEmailDryRunInput,
   ): Promise<SendApprovedInvoiceEmailDryRunResult>;
+  sendApprovedInvoiceEmailSmtpTest(
+    input: SendApprovedInvoiceEmailSmtpTestInput,
+  ): Promise<SendApprovedInvoiceEmailSmtpTestResult>;
   reopenApprovedInvoiceForEditing(
     input: ReopenApprovedInvoiceForEditingInput,
   ): Promise<{ draftId: string; invoiceId: string }>;
@@ -315,6 +324,47 @@ export function createApprovedInvoiceRoutes(
         error instanceof InvoiceDraftValidationError
       ) {
         return context.json({ error: error.message }, 400);
+      }
+
+      if (error instanceof ApprovedInvoiceEmailDeliveryError) {
+        return context.json({ error: error.message }, 502);
+      }
+
+      throw error;
+    }
+  });
+
+  routes.post('/invoices/:id/email/smtp-test/send', async (context) => {
+    try {
+      const actorContext = context.get('actorContext');
+      const body = await context.req.json();
+      const delivery = await dependencies.sendApprovedInvoiceEmailSmtpTest(
+        parseApprovedInvoiceEmailSmtpTestSendBody(body, {
+          actorContext,
+          invoiceId: context.req.param('id'),
+          sentAt: new Date().toISOString(),
+        }),
+      );
+
+      return context.json({ delivery });
+    } catch (error) {
+      if (error instanceof AuthorizationError) {
+        return context.json({ error: 'Access denied.' }, 403);
+      }
+
+      if (error instanceof ApprovedInvoiceNotFoundError) {
+        return context.json({ error: error.message }, 404);
+      }
+
+      if (
+        error instanceof ApprovedInvoiceEmailRequestValidationError ||
+        error instanceof InvoiceDraftValidationError
+      ) {
+        return context.json({ error: error.message }, 400);
+      }
+
+      if (error instanceof ApprovedInvoiceEmailDeliveryOutcomeUnknownError) {
+        return context.json({ error: error.message }, 502);
       }
 
       if (error instanceof ApprovedInvoiceEmailDeliveryError) {

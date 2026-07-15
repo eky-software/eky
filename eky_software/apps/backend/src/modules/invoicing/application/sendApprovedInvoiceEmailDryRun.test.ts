@@ -40,6 +40,8 @@ class FakeInvoiceDeliveryEventRepository
 {
   events: InvoiceDeliveryEvent[] = [];
 
+  async completeDeliveryEvent(): Promise<void> {}
+
   async saveDeliveryEvent(
     event: InvoiceDeliveryEvent,
   ): Promise<InvoiceDeliveryEvent> {
