@@ -38,9 +38,14 @@ Sähköpostipolusta on toteutettu local-MVP:hen:
 - backendin sisäinen, riippuvuudeton SMTP/MIME-kuljetuskerros, joka käyttää
   vain Node-standardikirjaston TLS- ja crypto-rajapintoja eikä ole vielä
   kytketty DNA-provideriin tai laskun send-polkuun
+- rajattu DNA SMTP -testiprovider, joka hyväksyy vain hostin
+  `smtp.dnamail.fi`, portin `465`, implicit TLS -mallin ja pakollisen
+  testivastaanottajan; provideria ei ole vielä kytketty HTTP-, API-client- tai
+  web-polkuun
 
-Nykyinen dry-run ei muuta laskua `sent`-tilaan. Oikeaa SMTP-provideria, oikean
-tilin yhteystestiä tai oikeaa sähköpostilähetystä ei ole toteutettu.
+Nykyinen dry-run ei muuta laskua `sent`-tilaan. DNA SMTP -testiproviderin
+tekninen adapteri on olemassa, mutta oikean tilin yhteystestiä, laskutuksen
+send-polun kytkentää tai oikeaa sähköpostilähetystä ei ole vielä toteutettu.
 
 ## Sisäinen SMTP- Ja MIME-Kuljetuskerros
 
@@ -645,7 +650,7 @@ ei pidetä valmiina ennen deliverability-tarkistusta.
 
 Seuraavaan vaiheeseen jäävät:
 
-- DNA SMTP -provideri ja kuljetuskerroksen kytkentä siihen
+- DNA SMTP -testiproviderin kytkentä laskutuksen hallittuun send-polkuun
 - Gmail-provideria
 - erillinen SMTP-providerin salaisuuden read-portti
 - Secret Manager -adapteria
@@ -668,13 +673,12 @@ riippuvuusarviota ja projektin omistajan nimenomaista hyväksyntää.
    toteutettu. Paketoitu Windows-smoke varmistaa koko elinkaaren synteettisellä
    salaisuudella ja kaikkien salattujen tiedostoslottien poistumisen.
 5. Riippuvuudeton sisäinen SMTP/MIME-kuljetuskerros ja sen turvallisuus- sekä
-   protokollatestit on toteutettu. Toteutetaan seuraavaksi DNA SMTP -provider
-   testitilassa käyttäen porttia `465` ja
-   implicit TLS -mallia. TLS-version vähimmäisraja, sertifikaatin ja hostnamen
-   validointi, timeout ja turvallinen virheenkäsittely ovat pakollisia.
-6. Pakotetaan test recipient override ensimmäisissä oikean providerin
-   kokeiluissa, jotta viesti ei voi lähteä vahingossa asiakkaalle.
-7. Kytketään provider nykyiseen backendin send-polkuun niin, että onnistunut
+   protokollatestit on toteutettu.
+6. DNA SMTP -providerin rajattu testitila on toteutettu käyttäen vain porttia
+   `465`, implicit TLS -mallia ja lukittua ensisijaista hostia. Provider
+   pakottaa test recipient override -osoitteen ja jättää Cc:n pois, jotta
+   viesti ei voi lähteä vahingossa asiakkaalle.
+7. Kytketään seuraavaksi provider nykyiseen backendin send-polkuun niin, että onnistunut
    lähetys kirjaa delivery eventin ja voi muuttaa laskun `sent`-tilaan.
 8. Epäonnistunut lähetys kirjataan turvallisesti eikä se muuta laskun tilaa.
 
