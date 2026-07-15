@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import {
   chmod,
   lstat,
@@ -26,6 +25,8 @@ export interface EncryptedSecretFileStore {
 
 export class EncryptedSecretFile implements EncryptedSecretFileStore {
   private readonly directoryPath: string;
+  private readonly nextFilePath: string;
+  private readonly backupFilePath: string;
 
   constructor(private readonly filePath: string) {
     if (
@@ -38,38 +39,44 @@ export class EncryptedSecretFile implements EncryptedSecretFileStore {
     }
 
     this.directoryPath = dirname(filePath);
+    this.nextFilePath = `${filePath}.next`;
+    this.backupFilePath = `${filePath}.backup`;
   }
 
   async read(): Promise<Uint8Array | null> {
-    try {
-      const fileStats = await lstat(this.filePath);
+    const current = await readEncryptedFile(this.filePath);
 
-      if (!fileStats.isFile() || fileStats.isSymbolicLink()) {
-        throw new SecretBrokerError('SECRET_PAYLOAD_INVALID');
-      }
-
-      if (fileStats.size < 1 || fileStats.size > maximumEnvelopeBytes) {
-        throw new SecretBrokerError('SECRET_PAYLOAD_INVALID');
-      }
-
-      return parseEnvelope(await readFile(this.filePath, 'utf8'));
-    } catch (error) {
-      if (isNodeError(error) && error.code === 'ENOENT') {
-        return null;
-      }
-
-      if (error instanceof SecretBrokerError) {
-        throw error;
-      }
-
-      throw new SecretBrokerError('SECRET_PAYLOAD_INVALID');
+    if (current !== null) {
+      await this.removeRecoveryFiles();
+      return current;
     }
+
+    const backup = await readEncryptedFile(this.backupFilePath);
+
+    if (backup !== null) {
+      await this.restoreFile(this.backupFilePath);
+      await removeFile(this.nextFilePath, 'SECRET_STORAGE_UNAVAILABLE');
+      return backup;
+    }
+
+    const next = await readEncryptedFile(this.nextFilePath);
+
+    if (next !== null) {
+      await this.restoreFile(this.nextFilePath);
+      return next;
+    }
+
+    return null;
   }
 
   async remove(): Promise<void> {
-    try {
-      await rm(this.filePath, { force: true });
-    } catch {
+    const removals = await Promise.allSettled([
+      rm(this.filePath, { force: true }),
+      rm(this.nextFilePath, { force: true }),
+      rm(this.backupFilePath, { force: true }),
+    ]);
+
+    if (removals.some((removal) => removal.status === 'rejected')) {
       throw new SecretBrokerError('SECRET_REMOVE_FAILED');
     }
   }
@@ -82,14 +89,12 @@ export class EncryptedSecretFile implements EncryptedSecretFileStore {
       throw new SecretBrokerError('SECRET_WRITE_FAILED');
     }
 
-    const suffix = randomUUID();
-    const temporaryPath = `${this.filePath}.${suffix}.tmp`;
-    const backupPath = `${this.filePath}.${suffix}.bak`;
     let previousFileMoved = false;
 
     try {
       await mkdir(this.directoryPath, { mode: 0o700, recursive: true });
-      const fileHandle = await open(temporaryPath, 'wx', 0o600);
+      await this.read();
+      const fileHandle = await open(this.nextFilePath, 'wx', 0o600);
 
       try {
         await fileHandle.writeFile(serializeEnvelope(ciphertext), 'utf8');
@@ -98,10 +103,10 @@ export class EncryptedSecretFile implements EncryptedSecretFileStore {
         await fileHandle.close();
       }
 
-      await chmod(temporaryPath, 0o600);
+      await chmod(this.nextFilePath, 0o600);
 
       try {
-        await rename(this.filePath, backupPath);
+        await rename(this.filePath, this.backupFilePath);
         previousFileMoved = true;
       } catch (error) {
         if (!isNodeError(error) || error.code !== 'ENOENT') {
@@ -110,23 +115,75 @@ export class EncryptedSecretFile implements EncryptedSecretFileStore {
       }
 
       try {
-        await rename(temporaryPath, this.filePath);
+        await rename(this.nextFilePath, this.filePath);
       } catch (error) {
         if (previousFileMoved) {
-          await rename(backupPath, this.filePath).catch(() => undefined);
+          await rename(this.backupFilePath, this.filePath).catch(
+            () => undefined,
+          );
         }
 
         throw error;
       }
 
       if (previousFileMoved) {
-        await rm(backupPath, { force: true });
+        await rm(this.backupFilePath, { force: true });
       }
     } catch {
       throw new SecretBrokerError('SECRET_WRITE_FAILED');
     } finally {
-      await rm(temporaryPath, { force: true }).catch(() => undefined);
+      await rm(this.nextFilePath, { force: true }).catch(() => undefined);
     }
+  }
+
+  private async removeRecoveryFiles(): Promise<void> {
+    await removeFile(this.nextFilePath, 'SECRET_STORAGE_UNAVAILABLE');
+    await removeFile(this.backupFilePath, 'SECRET_STORAGE_UNAVAILABLE');
+  }
+
+  private async restoreFile(sourcePath: string): Promise<void> {
+    try {
+      await rename(sourcePath, this.filePath);
+    } catch {
+      throw new SecretBrokerError('SECRET_STORAGE_UNAVAILABLE');
+    }
+  }
+}
+
+async function readEncryptedFile(filePath: string): Promise<Uint8Array | null> {
+  try {
+    const fileStats = await lstat(filePath);
+
+    if (!fileStats.isFile() || fileStats.isSymbolicLink()) {
+      throw new SecretBrokerError('SECRET_PAYLOAD_INVALID');
+    }
+
+    if (fileStats.size < 1 || fileStats.size > maximumEnvelopeBytes) {
+      throw new SecretBrokerError('SECRET_PAYLOAD_INVALID');
+    }
+
+    return parseEnvelope(await readFile(filePath, 'utf8'));
+  } catch (error) {
+    if (isNodeError(error) && error.code === 'ENOENT') {
+      return null;
+    }
+
+    if (error instanceof SecretBrokerError) {
+      throw error;
+    }
+
+    throw new SecretBrokerError('SECRET_PAYLOAD_INVALID');
+  }
+}
+
+async function removeFile(
+  filePath: string,
+  failureCode: 'SECRET_STORAGE_UNAVAILABLE',
+): Promise<void> {
+  try {
+    await rm(filePath, { force: true });
+  } catch {
+    throw new SecretBrokerError(failureCode);
   }
 }
 

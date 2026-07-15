@@ -10,6 +10,12 @@ on toteutettu 14.7.2026. Electron `safeStorage` -secret broker on toteutettu
 salaisuutta vastaanottavaan HTTP/UI-polkuun. Toteutus ei vielä sisällä SMTP-
 provideria, installeria, code signingia tai automaattipäivitystä.
 
+Salatun secret-tiedoston kirjoitus ja palautuminen on kovennettu 15.7.2026
+deterministisillä next- ja backup-sloteilla. Paketoitu Windows-smoke varmistaa
+synteettisen salaisuuden set/read/remove-elinkaaren, ettei plaintext päädy
+salattuun tiedostoon ja ettei current-, next- tai backup-slottia jää poiston
+jälkeen.
+
 ## Toteutustulos 14.7.2026
 
 Toteutettu spike todentaa Windows x64 -artifactissa:

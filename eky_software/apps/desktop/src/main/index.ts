@@ -172,19 +172,25 @@ async function runPackagedSmokeCheck(
     throw new Error('DESKTOP_SMOKE_PDF_FAILED');
   }
 
-  try {
-    await stat(secretFilePath);
-    throw new Error('DESKTOP_SMOKE_SECRET_CLEANUP_FAILED');
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      'code' in error &&
-      error.code === 'ENOENT'
-    ) {
-      return;
-    }
+  for (const path of [
+    secretFilePath,
+    `${secretFilePath}.next`,
+    `${secretFilePath}.backup`,
+  ]) {
+    try {
+      await stat(path);
+      throw new Error('DESKTOP_SMOKE_SECRET_CLEANUP_FAILED');
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        'code' in error &&
+        error.code === 'ENOENT'
+      ) {
+        continue;
+      }
 
-    throw error;
+      throw error;
+    }
   }
 }
 

@@ -27,6 +27,8 @@ Sähköpostipolusta on toteutettu local-MVP:hen:
 - Electron main processin `safeStorage`-adapteri, versionoitu salattu
   `userData`-blob ja utility processin yksityinen secret broker synteettiselle
   local-MVP-testiarvolle
+- salatun tiedoston keskeytyksenkestävä `current`/`next`/`backup`-vaihto,
+  turvallinen palautuminen sekä kaikkien slottien poistaminen
 
 Nykyinen dry-run ei muuta laskua `sent`-tilaan. Secret brokeria ei ole vielä
 kytketty HTTP- tai UI-polkuun. Oikeaa SMTP-provideria, oikeaa SMTP-salasanaa tai
@@ -401,6 +403,13 @@ Local secret store käyttää yhtä versionoitua teknistä slotia
 `company-email-smtp-v1`. Salattu payload sisältää formaattiversion, `companyId`-
 arvon ja salaisuuden. Broker varmistaa luettaessa yrityksen täsmäämisen. Väärä
 yritys ei saa tietoa salaisuuden arvosta.
+
+Tiedostoadapteri käyttää deterministisiä `current`, `.next` ja `.backup`-
+slotteja. Kelvollinen current-arvo voittaa ja vanhat palautumisjäämät
+poistetaan. Jos current puuttuu, kelvollinen backup palautetaan ennen next-
+arvoa. Ensimmäisen kirjoituksen keskeytyessä kelvollinen next voidaan nostaa
+current-arvoksi. Vioittunutta current- tai palautumistiedostoa ei korvata
+hiljaa toisella arvolla. Salaisuuden poistaminen poistaa kaikki kolme slottia.
 
 Palveluja ei ole vielä kytketty HTTP-reitteihin. Local desktop -session,
 backendin vahvistama actor-konteksti ja `safeStorage`-broker on toteutettu.
