@@ -1,6 +1,7 @@
 import type {
   ApprovedInvoiceEmailDryRunSendInput,
   ApprovedInvoiceEmailPreview as ApprovedInvoiceEmailPreviewData,
+  ApprovedInvoiceEmailSmtpTestSendInput,
 } from '@eky/api-client';
 import { useEffect, useState } from 'react';
 
@@ -11,16 +12,26 @@ interface ApprovedInvoiceEmailPreviewProps {
   email: ApprovedInvoiceEmailPreviewData;
   errorMessage: string | null;
   isSending: boolean;
+  isSendingSmtpTest: boolean;
+  smtpTestErrorMessage: string | null;
+  smtpTestRecipient: string | null;
+  smtpTestSuccessMessage: string | null;
   successMessage: string | null;
   onSendDryRun(input: ApprovedInvoiceEmailDryRunSendInput): void;
+  onSendSmtpTest(input: ApprovedInvoiceEmailSmtpTestSendInput): void;
 }
 
 export function ApprovedInvoiceEmailPreview({
   email,
   errorMessage,
   isSending,
+  isSendingSmtpTest,
+  smtpTestErrorMessage,
+  smtpTestRecipient,
+  smtpTestSuccessMessage,
   successMessage,
   onSendDryRun,
+  onSendSmtpTest,
 }: ApprovedInvoiceEmailPreviewProps): React.JSX.Element {
   const [editableTo, setEditableTo] = useState(email.to);
   const [editableCc, setEditableCc] = useState('');
@@ -88,10 +99,22 @@ export function ApprovedInvoiceEmailPreview({
           onChange={(event) => setEditableBody(event.currentTarget.value)}
         />
       </div>
+      <section className={styles.smtpTest}>
+        <p className={styles.smtpTestHelp}>
+          {uiText.invoicing.invoiceEmailSmtpTestHelp}
+        </p>
+        <p className={styles.smtpTestRecipient}>
+          <strong>
+            {uiText.invoicing.invoiceEmailSmtpTestActualRecipient}:
+          </strong>{' '}
+          {smtpTestRecipient ??
+            uiText.invoicing.invoiceEmailSmtpTestMissingRecipient}
+        </p>
+      </section>
       <div className={styles.actions}>
         <button
           className="secondary-action"
-          disabled={isSending}
+          disabled={isSending || isSendingSmtpTest}
           onClick={() =>
             onSendDryRun(
               createSendInput({
@@ -108,6 +131,27 @@ export function ApprovedInvoiceEmailPreview({
             ? uiText.invoicing.invoiceEmailDryRunSending
             : uiText.invoicing.invoiceEmailDryRunSend}
         </button>
+        <button
+          className="primary-action"
+          disabled={
+            isSending || isSendingSmtpTest || smtpTestRecipient === null
+          }
+          onClick={() =>
+            onSendSmtpTest(
+              createSendInput({
+                body: editableBody,
+                cc: editableCc,
+                subject: editableSubject,
+                to: editableTo,
+              }),
+            )
+          }
+          type="button"
+        >
+          {isSendingSmtpTest
+            ? uiText.invoicing.invoiceEmailSmtpTestSending
+            : uiText.invoicing.invoiceEmailSmtpTestSend}
+        </button>
       </div>
       {successMessage !== null ? (
         <p className="message success-message" role="status">
@@ -117,6 +161,16 @@ export function ApprovedInvoiceEmailPreview({
       {errorMessage !== null ? (
         <p className="message error-message" role="alert">
           {errorMessage}
+        </p>
+      ) : null}
+      {smtpTestSuccessMessage !== null ? (
+        <p className="message success-message" role="status">
+          {smtpTestSuccessMessage}
+        </p>
+      ) : null}
+      {smtpTestErrorMessage !== null ? (
+        <p className="message error-message" role="alert">
+          {smtpTestErrorMessage}
         </p>
       ) : null}
     </section>

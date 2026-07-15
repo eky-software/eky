@@ -80,7 +80,8 @@ Kenttien alustava merkitys:
 - `document_id` viittaa current PDF -dokumenttiin
 - `delivery_method` voi olla esimerkiksi `email`, `manual`, `print` tai `other`
 - `provider` voi olla esimerkiksi `dryRun`, `smtp`, `gmail`, `microsoft` tai `manual`
-- `status` voi olla esimerkiksi `prepared`, `attempted`, `succeeded` tai `failed`
+- `status` voi olla `prepared`, `attempted`, `succeeded`, `failed` tai
+  `outcomeUnknown`
 - `recipient_email` tallentaa käytetyn vastaanottajan
 - `cc_email` tallentaa käyttäjän antaman kopio-osoitteen, jos annettu
 - `subject` tallentaa käytetyn otsikon
@@ -131,6 +132,15 @@ vielä yritetä.
 
 Käyttäjän vahvistama dry-run send kirjataan delivery eventiksi providerilla
 `dryRun`. Se ei lähetä oikeaa sähköpostia eikä saa merkitä laskua `sent`-tilaan.
+
+Hallittu DNA SMTP -testilähetys kirjataan providerilla `smtp`. Ennen
+provider-kutsua luodaan yksi `attempted`-tapahtuma, joka viimeistellään saman
+tunnisteen alla tilaan `succeeded`, `failed` tai `outcomeUnknown`.
+`outcomeUnknown` tarkoittaa, että viestin lopullista hyväksyntää ei voida
+varmistaa; käyttöliittymä ei saa tällöin kehottaa sokkona uudelleenlähetykseen.
+SMTP-testi käyttää aina Company Settingsin testivastaanottajaa, tallentaa
+delivery eventiin todellisen testivastaanottajan, jättää Cc:n tyhjäksi eikä
+muuta laskua `sent`-tilaan.
 
 ## Tuleva Send Input
 
@@ -222,8 +232,9 @@ Suositeltu eteneminen:
 3. application service delivery eventin kirjaamiseen
 4. fake/dry-run send -käyttötapa ilman oikeaa SMTP:tä
 5. webin `Lähetä kuivaharjoitteluna` tai vastaava toiminto
-6. oikea SMTP/Gmail-provider myöhemmin
-7. delivery history -näkymä myöhemmin
+6. hallittu DNA SMTP -testipolku pakotetulla testivastaanottajalla
+7. oikea asiakaslähetys ja sen tilasiirtymät myöhemmin
+8. delivery history -näkymä myöhemmin
 
 ## Rajaus
 
@@ -236,17 +247,22 @@ Toteutettu ensimmäisessä backend-vaiheessa:
 - HTTP-reitti backendin sisäiseen dry-run send -polkuun
 - API-clientin dry-run send -kutsu
 - webin kuivaharjoittelulähetyksen toiminto sähköpostiesikatselussa
+- hallittu DNA SMTP -testikäyttötapa, delivery eventin tilasiirtymät,
+  HTTP-reitti, API-client, desktop-allowlist ja web-toiminto
 
 Webin kuivaharjoittelutoiminto lähettää käyttäjän muokkaamat `to`, `cc`,
 `subject` ja `body` -kentät backendin dry-run-send-polulle. Backend varmistaa
 PDF:n, validoi kentät ja kirjaa delivery eventin. Tämä ei muuta laskua
 `sent`-tilaan eikä lähetä oikeaa sähköpostia.
 
+Hallittu SMTP-testi ei ole tuotantolähetys: todellinen vastaanottaja pakotetaan
+testiasetuksesta, Cc poistetaan eikä laskun tila muutu. Automaattiset testit
+eivät muodosta verkkoyhteyttä DNA:n palvelimeen.
+
 Ei vielä toteuteta:
 
-- SMTP-provideria
 - Gmail-provideria
 - Secret Manageria
-- Windows Credential Manageria
-- oikeaa sähköpostilähetystä
+- asiakkaille tarkoitettua oikeaa sähköpostilähetystä
+- SMTP-lähetyksen `sent`-tilasiirtymää
 - delivery history -näkymää

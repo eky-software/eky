@@ -5,6 +5,7 @@ import type {
 } from '../../../database/schema.js';
 import type { InvoiceDeliveryEvent } from '../domain/invoiceDeliveryEvent.js';
 import type { InvoiceDeliveryEventRepository } from '../ports/invoiceDeliveryEventRepository.js';
+import type { CompleteInvoiceDeliveryEventInput } from '../ports/invoiceDeliveryEventRepository.js';
 
 type InvoiceDeliveryEventInsertParameters = NewInvoiceDeliveryEventRow;
 
@@ -12,6 +13,42 @@ export class SqliteInvoiceDeliveryEventRepository
   implements InvoiceDeliveryEventRepository
 {
   constructor(private readonly database: DatabaseConnection) {}
+
+  async completeDeliveryEvent(
+    input: CompleteInvoiceDeliveryEventInput,
+  ): Promise<void> {
+    const result = this.database
+      .prepare<{
+        company_id: string;
+        id: string;
+        provider_message_id: string | null;
+        safe_error_message: string | null;
+        status: CompleteInvoiceDeliveryEventInput['status'];
+        technical_error_code: string | null;
+      }>(
+        `
+          UPDATE invoice_delivery_events
+          SET
+            status = @status,
+            provider_message_id = @provider_message_id,
+            safe_error_message = @safe_error_message,
+            technical_error_code = @technical_error_code
+          WHERE id = @id AND company_id = @company_id AND status = 'attempted'
+        `,
+      )
+      .run({
+        company_id: input.companyId,
+        id: input.eventId,
+        provider_message_id: input.providerMessageId,
+        safe_error_message: input.safeErrorMessage,
+        status: input.status,
+        technical_error_code: input.technicalErrorCode,
+      });
+
+    if (result.changes !== 1) {
+      throw new Error('Invoice delivery event could not be completed.');
+    }
+  }
 
   async saveDeliveryEvent(
     event: InvoiceDeliveryEvent,

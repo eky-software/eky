@@ -3,6 +3,7 @@ import { readInvoiceDraftResponse } from '../invoiceDrafts/invoiceDraftsResponse
 import {
   readApprovedInvoiceDocumentMetadataResponse,
   readApprovedInvoiceEmailDryRunSendResponse,
+  readApprovedInvoiceEmailSmtpTestSendResponse,
   readApprovedInvoiceEmailPreviewResponse,
   readApprovedInvoiceListResponse,
   readApprovedInvoiceResponse,
@@ -12,6 +13,8 @@ import type {
   ApprovedInvoiceDocumentMetadata,
   ApprovedInvoiceEmailDryRunSendInput,
   ApprovedInvoiceEmailDryRunSendResult,
+  ApprovedInvoiceEmailSmtpTestSendInput,
+  ApprovedInvoiceEmailSmtpTestSendResult,
   ApprovedInvoicesApi,
   ApprovedInvoiceSummary,
   ApprovedInvoiceView,
@@ -115,7 +118,7 @@ export function createApprovedInvoicesApi(
         baseUrl,
         `/invoices/${encodeURIComponent(id)}/email/dry-run/send`,
         {
-          body: JSON.stringify(createApprovedInvoiceEmailDryRunSendBody(input)),
+          body: JSON.stringify(createApprovedInvoiceEmailSendBody(input)),
           headers: {
             'Content-Type': 'application/json',
           },
@@ -124,6 +127,26 @@ export function createApprovedInvoicesApi(
       );
 
       return readApprovedInvoiceEmailDryRunSendResponse(responseBody);
+    },
+
+    async sendApprovedInvoiceEmailSmtpTest(
+      id,
+      input: ApprovedInvoiceEmailSmtpTestSendInput,
+    ): Promise<ApprovedInvoiceEmailSmtpTestSendResult> {
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        `/invoices/${encodeURIComponent(id)}/email/smtp-test/send`,
+        {
+          body: JSON.stringify(createApprovedInvoiceEmailSendBody(input)),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          method: 'POST',
+        },
+      );
+
+      return readApprovedInvoiceEmailSmtpTestSendResponse(responseBody);
     },
 
     async reopenApprovedInvoiceForEditing(
@@ -141,7 +164,7 @@ export function createApprovedInvoicesApi(
   };
 }
 
-function createApprovedInvoiceEmailDryRunSendBody(
+function createApprovedInvoiceEmailSendBody(
   input: ApprovedInvoiceEmailDryRunSendInput,
 ): ApprovedInvoiceEmailDryRunSendInput {
   const body: ApprovedInvoiceEmailDryRunSendInput = {

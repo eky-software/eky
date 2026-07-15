@@ -443,6 +443,18 @@ export const uiText = {
     invoiceEmailPreviewTitle: 'Sähköpostin esikatselu',
     invoiceEmailSubject: 'Otsikko',
     invoiceEmailSubjectInput: 'Sähköpostin otsikko',
+    invoiceEmailSmtpTestActualRecipient: 'Todellinen testivastaanottaja',
+    invoiceEmailSmtpTestError:
+      'SMTP-testilähetystä ei voitu tehdä. Laskua ei merkitty lähetetyksi.',
+    invoiceEmailSmtpTestHelp:
+      'Testilähetys käyttää vain alla näkyvää testivastaanottajaa. Vastaanottaja- ja Cc-kenttiä ei käytetä SMTP-testin toimitusosoitteina, eikä laskua merkitä lähetetyksi.',
+    invoiceEmailSmtpTestMissingRecipient:
+      'Aseta ensin Oma yritys -näkymässä sähköpostin testivastaanottaja.',
+    invoiceEmailSmtpTestOutcomeUnknown:
+      'SMTP-testin lopputulosta ei voitu varmistaa. Älä yritä heti uudelleen, vaan tarkista testipostilaatikko ja toimitustapahtuma.',
+    invoiceEmailSmtpTestSend: 'Lähetä hallittu SMTP-testi',
+    invoiceEmailSmtpTestSending: 'Lähetetään testivastaanottajalle...',
+    invoiceEmailSmtpTestSuccess: 'SMTP-testi lähetettiin osoitteeseen',
     invoiceEmailTo: 'Vastaanottaja',
     invoiceEmailToInput: 'Vastaanottajan sähköposti',
     invoiceNumber: 'Laskunumero',

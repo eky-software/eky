@@ -25,6 +25,10 @@ import type {
   SendApprovedInvoiceEmailDryRunInput,
   SendApprovedInvoiceEmailDryRunResult,
 } from '../application/sendApprovedInvoiceEmailDryRun.js';
+import type {
+  SendApprovedInvoiceEmailSmtpTestInput,
+  SendApprovedInvoiceEmailSmtpTestResult,
+} from '../application/sendApprovedInvoiceEmailSmtpTest.js';
 import type { ApprovedInvoiceEmailPreview } from '../application/approvedInvoiceEmailPreview.js';
 import { ApprovedInvoiceNotFoundError } from '../application/approvedInvoiceNotFoundError.js';
 import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
@@ -215,6 +219,38 @@ describe('approved invoice routes', () => {
     });
     expect(response.status).toBe(400);
     expect(getEmailSendInput()).toBeUndefined();
+  });
+
+  it('sends a controlled SMTP test through the trusted actor context', async () => {
+    const delivery = createApprovedInvoiceEmailSmtpTestSendResult();
+    const { app, getEmailSmtpTestInput } = createTestApp({
+      emailSmtpTestDelivery: delivery,
+    });
+
+    const response = await app.request(
+      '/invoices/invoice-1/email/smtp-test/send',
+      {
+        body: JSON.stringify({
+          body: 'Hei, liitteenä lasku.',
+          cc: 'copy@example.fi',
+          subject: 'Lasku 20260001',
+          to: 'customer@example.fi',
+        }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      },
+    );
+
+    await expect(response.json()).resolves.toEqual({ delivery });
+    expect(response.status).toBe(200);
+    expect(getEmailSmtpTestInput()).toMatchObject({
+      actorContext: {
+        actorId: 'dev-user',
+        companyId: 'dev-company',
+      },
+      invoiceId: 'invoice-1',
+      to: 'customer@example.fi',
+    });
   });
 
   it('returns a safe 404 when dry-run sending email for an invoice outside the company scope', async () => {
@@ -411,6 +447,7 @@ function createTestApp(options: {
   copyError?: Error;
   document?: ApprovedInvoiceDocumentMetadata;
   emailDelivery?: SendApprovedInvoiceEmailDryRunResult;
+  emailSmtpTestDelivery?: SendApprovedInvoiceEmailSmtpTestResult;
   emailSendError?: Error;
   email?: ApprovedInvoiceEmailPreview;
   emailError?: Error;
@@ -429,6 +466,7 @@ function createTestApp(options: {
   let markSentInput: MarkApprovedInvoiceSentInput | undefined;
   let emailInput: PrepareApprovedInvoiceEmailDryRunInput | undefined;
   let emailSendInput: SendApprovedInvoiceEmailDryRunInput | undefined;
+  let emailSmtpTestInput: SendApprovedInvoiceEmailSmtpTestInput | undefined;
   let generatePdfInput: GenerateApprovedInvoicePdfDocumentInput | undefined;
   let pdfInput: GetApprovedInvoicePdfDocumentInput | undefined;
   let pdfMetadataInput: GetApprovedInvoicePdfMetadataInput | undefined;
@@ -516,6 +554,18 @@ function createTestApp(options: {
 
       return options.emailDelivery ?? createApprovedInvoiceEmailDryRunSendResult();
     },
+    async sendApprovedInvoiceEmailSmtpTest(nextInput) {
+      emailSmtpTestInput = nextInput;
+
+      if (options.emailSendError !== undefined) {
+        throw options.emailSendError;
+      }
+
+      return (
+        options.emailSmtpTestDelivery ??
+        createApprovedInvoiceEmailSmtpTestSendResult()
+      );
+    },
     async getApprovedInvoicePdfDocument(nextInput) {
       pdfInput = nextInput;
 
@@ -573,6 +623,7 @@ function createTestApp(options: {
     getCopyInput: () => copyInput,
     getEmailInput: () => emailInput,
     getEmailSendInput: () => emailSendInput,
+    getEmailSmtpTestInput: () => emailSmtpTestInput,
     getInput: () => input,
     getListInput: () => listInput,
     getMarkSentInput: () => markSentInput,
@@ -604,6 +655,16 @@ function createApprovedInvoiceEmailDryRunSendResult(): SendApprovedInvoiceEmailD
       provider: 'dryRun',
       providerMessageId: null,
     },
+  };
+}
+
+function createApprovedInvoiceEmailSmtpTestSendResult(): SendApprovedInvoiceEmailSmtpTestResult {
+  return {
+    deliveredTo: 'owner-test@example.fi',
+    deliveryEventId: 'delivery-event-2',
+    provider: 'smtp',
+    providerMessageId: '<synthetic@example.test>',
+    testMode: true,
   };
 }
 

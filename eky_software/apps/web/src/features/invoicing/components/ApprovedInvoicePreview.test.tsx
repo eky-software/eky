@@ -145,6 +145,11 @@ describe('ApprovedInvoicePreview', () => {
     expect(html).toContain(uiText.invoicing.invoiceEmailCc);
     expect(html).toContain(uiText.invoicing.invoiceEmailSubjectInput);
     expect(html).toContain(uiText.invoicing.invoiceEmailDryRunSend);
+    expect(html).toContain(uiText.invoicing.invoiceEmailSmtpTestSend);
+    expect(html).toContain(
+      uiText.invoicing.invoiceEmailSmtpTestActualRecipient,
+    );
+    expect(html).toContain('safe-test@example.fi');
     expect(html).toContain('id="invoice-email-to"');
     expect(html).toContain('id="invoice-email-cc"');
     expect(html).toContain('id="invoice-email-subject"');
@@ -195,12 +200,16 @@ function renderPreview(
       emailErrorMessage={options.emailErrorMessage ?? null}
       emailSendErrorMessage={options.emailSendErrorMessage ?? null}
       emailSendSuccessMessage={options.emailSendSuccessMessage ?? null}
+      emailSmtpTestErrorMessage={null}
+      emailSmtpTestRecipient="safe-test@example.fi"
+      emailSmtpTestSuccessMessage={null}
       invoice={options.invoice ?? createApprovedInvoiceView()}
       isCopyingInvoice={options.isCopyingInvoice ?? false}
       isCreatingPdf={options.isCreatingPdf ?? false}
       isMarkingSent={false}
       isPreparingEmail={false}
       isSendingEmailDryRun={false}
+      isSendingEmailSmtpTest={false}
       isPdfAvailable={options.isPdfAvailable ?? false}
       isReopening={false}
       markSentErrorMessage={null}
@@ -214,6 +223,7 @@ function renderPreview(
       onOpenPdf={vi.fn()}
       onPrepareEmail={vi.fn()}
       onSendEmailDryRun={vi.fn()}
+      onSendEmailSmtpTest={vi.fn()}
     />,
   );
 }

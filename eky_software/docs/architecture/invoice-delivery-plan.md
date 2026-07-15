@@ -23,6 +23,11 @@ Toteutustilanne:
   onnistuneesti
 - `sent`-lasku näkyy laskutuksen omassa Lähetetyt-osiossa
 - hyväksytty tai lähetetty lasku voidaan kopioida uudeksi laskuluonnokseksi
+- hyväksytylle laskulle voidaan valmistella kuivaharjoittelusähköposti ja tehdä
+  hallittu DNA SMTP -testilähetys vain Oma yritys -asetusten pakotettuun
+  testivastaanottajaan
+- SMTP-testilähetys kirjaa delivery eventin mutta ei muuta laskua
+  `sent`-tilaan
 
 ## Peruspolku
 
@@ -433,7 +438,9 @@ Nykyinen laskun toimituskokonaisuus viimeistellään ennen uutta isoa moduulia:
    Salaisuuden turvallinen hallinta ja SMTP-provider toteutetaan
    `docs/architecture/email-delivery-and-secrets-plan.md`-dokumentin mukaan.
    implicit TLS on ensimmäisessä adapterissa pakollinen, ensimmäiset lähetykset käyttävät test recipient
-   overridea ja vain onnistunut oikea lähetys voi muuttaa laskun `sent`-tilaan.
+   overridea. Hallittu testipolku on toteutettu ilman laskun tilasiirtymää;
+   oikean tilin verkkotesti vaatii vielä projektin omistajan erillisen luvan.
+   Vain myöhempi onnistunut asiakaslähetys voi muuttaa laskun `sent`-tilaan.
 2. Viimeistellään tulostus.
    Current PDF avataan luotettavasti ja käyttäjä tulostaa selaimen tai
    käyttöjärjestelmän normaalilla toiminnolla. Tulostus ei automaattisesti

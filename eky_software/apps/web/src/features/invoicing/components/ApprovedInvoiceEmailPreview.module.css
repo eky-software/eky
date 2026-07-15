@@ -76,7 +76,30 @@
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
   justify-content: flex-end;
+}
+
+.smtpTest {
+  background: var(--color-surface-muted);
+  border-left: 4px solid var(--color-primary);
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+}
+
+.smtpTestHelp,
+.smtpTestRecipient {
+  margin: 0;
+}
+
+.smtpTestHelp {
+  color: var(--color-text-muted);
+}
+
+.smtpTestRecipient {
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 720px) {

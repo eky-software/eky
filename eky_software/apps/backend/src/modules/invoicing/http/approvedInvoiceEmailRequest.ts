@@ -3,6 +3,9 @@ import type { ActorContext } from '@eky/auth';
 import type {
   SendApprovedInvoiceEmailDryRunInput,
 } from '../application/sendApprovedInvoiceEmailDryRun.js';
+import type {
+  SendApprovedInvoiceEmailSmtpTestInput,
+} from '../application/sendApprovedInvoiceEmailSmtpTest.js';
 
 const maximumEmailLength = 320;
 const maximumSubjectLength = 200;
@@ -45,6 +48,17 @@ export function parseApprovedInvoiceEmailDryRunSendBody(
   }
 
   return input;
+}
+
+export function parseApprovedInvoiceEmailSmtpTestSendBody(
+  body: unknown,
+  context: {
+    actorContext: ActorContext;
+    invoiceId: string;
+    sentAt: string;
+  },
+): SendApprovedInvoiceEmailSmtpTestInput {
+  return parseApprovedInvoiceEmailDryRunSendBody(body, context);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

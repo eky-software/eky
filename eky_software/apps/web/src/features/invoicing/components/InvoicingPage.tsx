@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
 import type {
   ApprovedInvoiceEmailDryRunSendInput,
+  ApprovedInvoiceEmailSmtpTestSendInput,
   ApprovedInvoiceResult,
   InvoiceDraft,
 } from '@eky/api-client';
@@ -55,6 +56,10 @@ import {
   type SendApprovedInvoiceEmailDryRunState,
 } from '../hooks/useSendApprovedInvoiceEmailDryRun.js';
 import {
+  useSendApprovedInvoiceEmailSmtpTest,
+  type SendApprovedInvoiceEmailSmtpTestState,
+} from '../hooks/useSendApprovedInvoiceEmailSmtpTest.js';
+import {
   deleteInvoiceDraftAndRefresh,
   useDeleteInvoiceDraft,
   type DeleteInvoiceDraftState,
@@ -90,6 +95,8 @@ export function InvoicingPage({
   const approvedInvoicePdfState = useApprovedInvoicePdf();
   const approvedInvoiceEmailState = useApprovedInvoiceEmailDryRun();
   const sendApprovedInvoiceEmailState = useSendApprovedInvoiceEmailDryRun();
+  const sendApprovedInvoiceEmailSmtpTestState =
+    useSendApprovedInvoiceEmailSmtpTest();
   const deleteState = useDeleteInvoiceDraft();
   const reopenApprovedInvoiceState = useReopenApprovedInvoiceForEditing();
   const markApprovedInvoiceSentState = useMarkApprovedInvoiceSent();
@@ -111,6 +118,7 @@ export function InvoicingPage({
     approvedInvoicePdfState.clearPdf();
     approvedInvoiceEmailState.clearEmail();
     sendApprovedInvoiceEmailState.clearStatus();
+    sendApprovedInvoiceEmailSmtpTestState.clearStatus();
     setPendingDeleteDraftId(null);
     dispatch({ type: 'showDraftList' });
   }
@@ -123,6 +131,7 @@ export function InvoicingPage({
     approvedInvoicePdfState.clearPdf();
     approvedInvoiceEmailState.clearEmail();
     sendApprovedInvoiceEmailState.clearStatus();
+    sendApprovedInvoiceEmailSmtpTestState.clearStatus();
     setPendingDeleteDraftId(null);
     dispatch({ type: 'openEditInvoice' });
     void draftEditorState.openDraft(id);
@@ -137,6 +146,7 @@ export function InvoicingPage({
     approvedInvoicePdfState.clearPdf();
     approvedInvoiceEmailState.clearEmail();
     sendApprovedInvoiceEmailState.clearStatus();
+    sendApprovedInvoiceEmailSmtpTestState.clearStatus();
     setPendingDeleteDraftId(null);
     dispatch({ type: 'openApprovedInvoice' });
     void approvedInvoiceState.openApprovedInvoice(id);
@@ -247,6 +257,7 @@ export function InvoicingPage({
     approvedInvoicePdfState.clearPdf();
     approvedInvoiceEmailState.clearEmail();
     sendApprovedInvoiceEmailState.clearStatus();
+    sendApprovedInvoiceEmailSmtpTestState.clearStatus();
     draftEditorState.replaceDraft(copiedDraft);
     dispatch({ type: 'openEditInvoice' });
     void draftState.refreshDrafts();
@@ -277,6 +288,8 @@ export function InvoicingPage({
   }
 
   async function handlePrepareApprovedInvoiceEmail(id: string): Promise<void> {
+    sendApprovedInvoiceEmailState.clearStatus();
+    sendApprovedInvoiceEmailSmtpTestState.clearStatus();
     const metadata = await approvedInvoicePdfState.createPdf(id);
 
     if (metadata === null) {
@@ -291,6 +304,13 @@ export function InvoicingPage({
     input: ApprovedInvoiceEmailDryRunSendInput,
   ): Promise<void> {
     await sendApprovedInvoiceEmailState.sendEmailDryRun(id, input);
+  }
+
+  async function handleSendApprovedInvoiceEmailSmtpTest(
+    id: string,
+    input: ApprovedInvoiceEmailSmtpTestSendInput,
+  ): Promise<void> {
+    await sendApprovedInvoiceEmailSmtpTestState.sendEmailSmtpTest(id, input);
   }
 
   useEffect(() => {
@@ -320,6 +340,9 @@ export function InvoicingPage({
       pendingDeleteDraftId={pendingDeleteDraftId}
       reopenApprovedInvoiceState={reopenApprovedInvoiceState}
       sendApprovedInvoiceEmailState={sendApprovedInvoiceEmailState}
+      sendApprovedInvoiceEmailSmtpTestState={
+        sendApprovedInvoiceEmailSmtpTestState
+      }
       onBackToDrafts={handleBackToDrafts}
       onCancelDeleteDraft={handleCancelDeleteDraft}
       onConfirmDeleteDraft={(id) => void handleConfirmDeleteDraft(id)}
@@ -345,6 +368,9 @@ export function InvoicingPage({
       onSendApprovedInvoiceEmailDryRun={(id, input) =>
         void handleSendApprovedInvoiceEmailDryRun(id, input)
       }
+      onSendApprovedInvoiceEmailSmtpTest={(id, input) =>
+        void handleSendApprovedInvoiceEmailSmtpTest(id, input)
+      }
       onOpenDraft={handleOpenDraft}
       onRequestDeleteDraft={handleRequestDeleteDraft}
       onNewInvoice={() => dispatch({ type: 'openNewInvoice' })}
@@ -368,6 +394,7 @@ interface InvoicingPageViewProps extends InvoiceDraftListState {
   pendingDeleteDraftId: string | null;
   reopenApprovedInvoiceState: ReopenApprovedInvoiceState;
   sendApprovedInvoiceEmailState: SendApprovedInvoiceEmailDryRunState;
+  sendApprovedInvoiceEmailSmtpTestState: SendApprovedInvoiceEmailSmtpTestState;
   onBackToDrafts(): void;
   onCancelDeleteDraft(): void;
   onConfirmDeleteDraft(id: string): void;
@@ -383,6 +410,10 @@ interface InvoicingPageViewProps extends InvoiceDraftListState {
   onSendApprovedInvoiceEmailDryRun(
     id: string,
     input: ApprovedInvoiceEmailDryRunSendInput,
+  ): void;
+  onSendApprovedInvoiceEmailSmtpTest(
+    id: string,
+    input: ApprovedInvoiceEmailSmtpTestSendInput,
   ): void;
   onOpenDraft(id: string): void;
   onRequestDeleteDraft(id: string): void;
@@ -408,6 +439,7 @@ export function InvoicingPageView({
   pendingDeleteDraftId,
   reopenApprovedInvoiceState,
   sendApprovedInvoiceEmailState,
+  sendApprovedInvoiceEmailSmtpTestState,
   onBackToDrafts,
   onCancelDeleteDraft,
   onConfirmDeleteDraft,
@@ -421,6 +453,7 @@ export function InvoicingPageView({
   onOpenApprovedInvoicePdf,
   onPrepareApprovedInvoiceEmail,
   onSendApprovedInvoiceEmailDryRun,
+  onSendApprovedInvoiceEmailSmtpTest,
   onOpenDraft,
   onRequestDeleteDraft,
   onNewInvoice,
@@ -571,12 +604,19 @@ export function InvoicingPageView({
       ) : (
         <ApprovedInvoiceView
           approvedInvoiceEmailState={approvedInvoiceEmailState}
+          emailSmtpTestRecipient={normalizeOptionalValue(
+            companySettingsState.companySettings
+              ?.emailTestRecipientOverride ?? '',
+          )}
           copyApprovedInvoiceState={copyApprovedInvoiceState}
           approvedInvoicePdfState={approvedInvoicePdfState}
           approvedInvoiceState={approvedInvoiceState}
           markApprovedInvoiceSentState={markApprovedInvoiceSentState}
           reopenApprovedInvoiceState={reopenApprovedInvoiceState}
           sendApprovedInvoiceEmailState={sendApprovedInvoiceEmailState}
+          sendApprovedInvoiceEmailSmtpTestState={
+            sendApprovedInvoiceEmailSmtpTestState
+          }
           onBack={onBackToDrafts}
           onCopyApprovedInvoiceToDraft={onCopyApprovedInvoiceToDraft}
           onCreateApprovedInvoicePdf={onCreateApprovedInvoicePdf}
@@ -585,6 +625,9 @@ export function InvoicingPageView({
           onOpenApprovedInvoicePdf={onOpenApprovedInvoicePdf}
           onPrepareApprovedInvoiceEmail={onPrepareApprovedInvoiceEmail}
           onSendApprovedInvoiceEmailDryRun={onSendApprovedInvoiceEmailDryRun}
+          onSendApprovedInvoiceEmailSmtpTest={
+            onSendApprovedInvoiceEmailSmtpTest
+          }
         />
       )}
     </div>
@@ -668,12 +711,14 @@ function InvoiceDraftEditView({
 
 interface ApprovedInvoiceViewProps {
   approvedInvoiceEmailState: ApprovedInvoiceEmailDryRunState;
+  emailSmtpTestRecipient: string | null;
   approvedInvoicePdfState: ApprovedInvoicePdfState;
   approvedInvoiceState: ApprovedInvoiceState;
   copyApprovedInvoiceState: CopyApprovedInvoiceState;
   markApprovedInvoiceSentState: MarkApprovedInvoiceSentState;
   reopenApprovedInvoiceState: ReopenApprovedInvoiceState;
   sendApprovedInvoiceEmailState: SendApprovedInvoiceEmailDryRunState;
+  sendApprovedInvoiceEmailSmtpTestState: SendApprovedInvoiceEmailSmtpTestState;
   onBack(): void;
   onCopyApprovedInvoiceToDraft(id: string): void;
   onCreateApprovedInvoicePdf(id: string): void;
@@ -685,16 +730,22 @@ interface ApprovedInvoiceViewProps {
     id: string,
     input: ApprovedInvoiceEmailDryRunSendInput,
   ): void;
+  onSendApprovedInvoiceEmailSmtpTest(
+    id: string,
+    input: ApprovedInvoiceEmailSmtpTestSendInput,
+  ): void;
 }
 
 function ApprovedInvoiceView({
   approvedInvoiceEmailState,
+  emailSmtpTestRecipient,
   approvedInvoicePdfState,
   approvedInvoiceState,
   copyApprovedInvoiceState,
   markApprovedInvoiceSentState,
   reopenApprovedInvoiceState,
   sendApprovedInvoiceEmailState,
+  sendApprovedInvoiceEmailSmtpTestState,
   onBack,
   onCopyApprovedInvoiceToDraft,
   onCreateApprovedInvoicePdf,
@@ -703,6 +754,7 @@ function ApprovedInvoiceView({
   onOpenApprovedInvoicePdf,
   onPrepareApprovedInvoiceEmail,
   onSendApprovedInvoiceEmailDryRun,
+  onSendApprovedInvoiceEmailSmtpTest,
 }: ApprovedInvoiceViewProps): React.JSX.Element {
   if (approvedInvoiceState.isLoading) {
     return (
@@ -747,6 +799,13 @@ function ApprovedInvoiceView({
       emailErrorMessage={approvedInvoiceEmailState.errorMessage}
       emailSendErrorMessage={sendApprovedInvoiceEmailState.errorMessage}
       emailSendSuccessMessage={sendApprovedInvoiceEmailState.successMessage}
+      emailSmtpTestErrorMessage={
+        sendApprovedInvoiceEmailSmtpTestState.errorMessage
+      }
+      emailSmtpTestRecipient={emailSmtpTestRecipient}
+      emailSmtpTestSuccessMessage={
+        sendApprovedInvoiceEmailSmtpTestState.successMessage
+      }
       invoice={approvedInvoiceState.approvedInvoice}
       isCopyingInvoice={copyApprovedInvoiceState.isCopying}
       isCreatingPdf={approvedInvoicePdfState.isCreating}
@@ -754,6 +813,9 @@ function ApprovedInvoiceView({
       isMarkingSent={markApprovedInvoiceSentState.isMarkingSent}
       isPreparingEmail={approvedInvoiceEmailState.isPreparing}
       isSendingEmailDryRun={sendApprovedInvoiceEmailState.isSending}
+      isSendingEmailSmtpTest={
+        sendApprovedInvoiceEmailSmtpTestState.isSending
+      }
       isReopening={reopenApprovedInvoiceState.isReopening}
       markSentErrorMessage={markApprovedInvoiceSentState.errorMessage}
       pdfErrorMessage={approvedInvoicePdfState.errorMessage}
@@ -766,6 +828,13 @@ function ApprovedInvoiceView({
       onOpenPdf={onOpenApprovedInvoicePdf}
       onPrepareEmail={onPrepareApprovedInvoiceEmail}
       onSendEmailDryRun={onSendApprovedInvoiceEmailDryRun}
+      onSendEmailSmtpTest={onSendApprovedInvoiceEmailSmtpTest}
     />
   );
+}
+
+function normalizeOptionalValue(value: string): string | null {
+  const normalizedValue = value.trim();
+
+  return normalizedValue.length > 0 ? normalizedValue : null;
 }

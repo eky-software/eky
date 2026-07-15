@@ -19,6 +19,7 @@ import { createCompanyEmailSecretRoutes } from '../modules/companySettings/http/
 import { createCompanySettingsRoutes } from '../modules/companySettings/http/companySettingsRoutes.js';
 import { SqliteCompanyEmailSecretAuditWriter } from '../modules/companySettings/infrastructure/sqliteCompanyEmailSecretAuditWriter.js';
 import { SqliteCompanySettingsRepository } from '../modules/companySettings/infrastructure/sqliteCompanySettingsRepository.js';
+import type { CompanyEmailSecretReader } from '../modules/companySettings/ports/companyEmailSecretReader.js';
 import type { CompanyEmailSecretStore } from '../modules/companySettings/ports/companyEmailSecretStore.js';
 import { createCustomer } from '../modules/customers/application/createCustomer.js';
 import { listCustomers } from '../modules/customers/application/listCustomers.js';
@@ -42,6 +43,7 @@ import { prepareApprovedInvoiceEmailDryRun } from '../modules/invoicing/applicat
 import { reopenApprovedInvoiceForEditing } from '../modules/invoicing/application/reopenApprovedInvoiceForEditing.js';
 import { saveInvoiceDraft } from '../modules/invoicing/application/saveInvoiceDraft.js';
 import { sendApprovedInvoiceEmailDryRun } from '../modules/invoicing/application/sendApprovedInvoiceEmailDryRun.js';
+import { sendApprovedInvoiceEmailSmtpTest } from '../modules/invoicing/application/sendApprovedInvoiceEmailSmtpTest.js';
 import { updateInvoiceNumberingSettings } from '../modules/invoicing/application/updateInvoiceNumberingSettings.js';
 import { updateInvoicePaymentSettings } from '../modules/invoicing/application/updateInvoicePaymentSettings.js';
 import { updateInvoiceDraft } from '../modules/invoicing/application/updateInvoiceDraft.js';
@@ -50,6 +52,8 @@ import { createInvoiceDraftRoutes } from '../modules/invoicing/http/invoiceDraft
 import { createInvoiceNumberingSettingsRoutes } from '../modules/invoicing/http/invoiceNumberingSettingsRoutes.js';
 import { createInvoicePaymentSettingsRoutes } from '../modules/invoicing/http/invoicePaymentSettingsRoutes.js';
 import { DryRunInvoiceEmailDeliveryProvider } from '../infrastructure/email/dryRunInvoiceEmailDeliveryProvider.js';
+import { DnaInvoiceSmtpTestDeliveryProvider } from '../infrastructure/email/providers/dna/dnaInvoiceSmtpTestDeliveryProvider.js';
+import { DnaSmtpEmailDeliveryProvider } from '../infrastructure/email/providers/dna/dnaSmtpEmailDeliveryProvider.js';
 import { LocalInvoiceDocumentStorage } from '../modules/invoicing/infrastructure/localInvoiceDocumentStorage.js';
 import { renderApprovedInvoicePdf } from '../modules/invoicing/infrastructure/pdf/approvedInvoicePdfRenderer.js';
 import { SqliteApprovedInvoiceReader } from '../modules/invoicing/infrastructure/sqliteApprovedInvoiceReader.js';
@@ -60,8 +64,10 @@ import { SqliteInvoiceDraftRepository } from '../modules/invoicing/infrastructur
 import { SqliteInvoiceNumberingRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceNumberingRepository.js';
 import { SqliteInvoicePaymentSettingsRepository } from '../modules/invoicing/infrastructure/sqliteInvoicePaymentSettingsRepository.js';
 import type { CustomerAccessReader } from '../modules/invoicing/ports/customerAccessReader.js';
+import type { InvoiceEmailSettingsReader } from '../modules/invoicing/ports/invoiceEmailSettingsReader.js';
 
 export interface CreateAppOptions {
+  companyEmailSecretReader?: CompanyEmailSecretReader;
   companyEmailSecretStore?: CompanyEmailSecretStore;
   databaseFilePath?: string;
   invoiceDocumentStorageRoot?: string;
@@ -111,6 +117,16 @@ export async function createApp(
       ? new LocalInvoiceDocumentStorage()
       : new LocalInvoiceDocumentStorage(options.invoiceDocumentStorageRoot);
   const invoiceEmailDeliveryProvider = new DryRunInvoiceEmailDeliveryProvider();
+  const companyEmailSecretReader: CompanyEmailSecretReader =
+    options.companyEmailSecretReader ?? {
+      async getSecret() {
+        return null;
+      },
+    };
+  const invoiceSmtpTestDeliveryProvider =
+    new DnaInvoiceSmtpTestDeliveryProvider(
+      new DnaSmtpEmailDeliveryProvider({ companyEmailSecretReader }),
+    );
   const approvedInvoiceReader = new SqliteApprovedInvoiceReader(database);
   const invoiceNumberingRepository = new SqliteInvoiceNumberingRepository(database);
   const invoicePaymentSettingsRepository =
@@ -120,6 +136,26 @@ export async function createApp(
       const customer = await customerRepository.findById(companyId, customerId);
 
       return customer !== undefined;
+    },
+  };
+  const invoiceEmailSettingsReader: InvoiceEmailSettingsReader = {
+    async getEmailSettings(companyId) {
+      const settings = await companySettingsRepository.findByCompanyId(companyId);
+
+      if (settings === null) {
+        return null;
+      }
+
+      return {
+        emailDeliveryProvider: settings.emailDeliveryProvider,
+        emailSenderAddress: settings.emailSenderAddress,
+        emailSenderName: settings.emailSenderName,
+        emailSmtpHost: settings.emailSmtpHost,
+        emailSmtpPort: settings.emailSmtpPort,
+        emailSmtpSecurity: settings.emailSmtpSecurity,
+        emailTestRecipientOverride: settings.emailTestRecipientOverride,
+        emailUsername: settings.emailUsername,
+      };
     },
   };
 
@@ -274,6 +310,25 @@ export async function createApp(
             }),
           invoiceDeliveryEventRepository,
           invoiceEmailDeliveryProvider,
+        }),
+      sendApprovedInvoiceEmailSmtpTest: (input) =>
+        sendApprovedInvoiceEmailSmtpTest(input, {
+          approvedInvoiceReader,
+          ensureApprovedInvoicePdfDocument: (pdfInput) =>
+            generateApprovedInvoicePdfDocument(pdfInput, {
+              approvedInvoiceReader,
+              invoiceDocumentRepository,
+              invoiceDocumentStorage,
+              renderApprovedInvoicePdf,
+            }),
+          getApprovedInvoicePdfDocument: (pdfInput) =>
+            getApprovedInvoicePdfDocument(pdfInput, {
+              invoiceDocumentRepository,
+              invoiceDocumentStorage,
+            }),
+          invoiceDeliveryEventRepository,
+          invoiceEmailSettingsReader,
+          invoiceSmtpTestDeliveryProvider,
         }),
       reopenApprovedInvoiceForEditing: (input) =>
         reopenApprovedInvoiceForEditing(input, {

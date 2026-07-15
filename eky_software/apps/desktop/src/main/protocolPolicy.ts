@@ -52,6 +52,12 @@ const backendRoutes: ReadonlyArray<{
     ),
   },
   {
+    methods: new Set(['POST']),
+    pathname: new RegExp(
+      `^/invoices/${resourceId}/email/smtp-test/send$`,
+    ),
+  },
+  {
     methods: new Set(['GET', 'PUT']),
     pathname: /^\/invoice-numbering-settings$/,
   },

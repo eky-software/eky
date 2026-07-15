@@ -5,8 +5,10 @@ SMTP/Gmail-integraatioiden ja salaisuuksien hallinnan suunnittelulinjan.
 
 Dokumentti on sähköpostin ja salaisuuksien etenemissuunnitelma. Local-MVP:n
 Electron `safeStorage` -broker, lifecycle-audit sekä rajattu HTTP-, API-client-
-ja UI-polku on toteutettu. Dokumentti ei vielä tarkoita SMTP-lähetystä, Gmail
-OAuthia, Secret Manager -adapteria tai oikeaa sähköpostin lähetystä.
+ja UI-polku on toteutettu. Hallittu DNA SMTP -testipolku on kytketty, mutta
+oikean tilin verkkoyhteystestiä tai asiakkaille tarkoitettua tuotantolähetystä
+ei ole tehty. Dokumentti ei vielä tarkoita Gmail OAuthia, Secret Manager
+-adapteria tai tuotantovalmista sähköpostin lähetystä.
 
 ## Nykyinen Toteutustila
 
@@ -40,12 +42,22 @@ Sähköpostipolusta on toteutettu local-MVP:hen:
   kytketty DNA-provideriin tai laskun send-polkuun
 - rajattu DNA SMTP -testiprovider, joka hyväksyy vain hostin
   `smtp.dnamail.fi`, portin `465`, implicit TLS -mallin ja pakollisen
-  testivastaanottajan; provideria ei ole vielä kytketty HTTP-, API-client- tai
-  web-polkuun
+  testivastaanottajan
+- Invoicingin hallittu SMTP-testikäyttötapa, HTTP-reitti, API-client,
+  Electronin backend-allowlist ja web-toiminto
+- SMTP-testin delivery event -tilat `attempted`, `succeeded`, `failed` ja
+  `outcomeUnknown`; tapahtuma kirjataan `attempted`-tilaan ennen providerin
+  kutsua ja sama tapahtuma viimeistellään providerin tuloksen perusteella
+- webissä näkyvä todellinen testivastaanottaja ja turvalliset onnistumis-,
+  virhe- sekä epäselvän lopputuloksen viestit
 
 Nykyinen dry-run ei muuta laskua `sent`-tilaan. DNA SMTP -testiproviderin
-tekninen adapteri on olemassa, mutta oikean tilin yhteystestiä, laskutuksen
-send-polun kytkentää tai oikeaa sähköpostilähetystä ei ole vielä toteutettu.
+hallittu testipolku ei myöskään muuta laskua `sent`-tilaan. Testipolku pakottaa
+Oma yritys -asetusten `emailTestRecipientOverride`-osoitteen, jättää Cc:n pois
+SMTP-kuoresta ja MIME-viestistä sekä käyttää asiakkaan osoitetta vain
+käyttäjän muokkaaman esikatselulomakkeen tietona. Oikean DNA-tilin
+verkkoyhteystestiä tai asiakkaille tarkoitettua sähköpostilähetystä ei ole
+vielä tehty.
 
 ## Sisäinen SMTP- Ja MIME-Kuljetuskerros
 
@@ -650,11 +662,10 @@ ei pidetä valmiina ennen deliverability-tarkistusta.
 
 Seuraavaan vaiheeseen jäävät:
 
-- DNA SMTP -testiproviderin kytkentä laskutuksen hallittuun send-polkuun
 - Gmail-provideria
-- erillinen SMTP-providerin salaisuuden read-portti
 - Secret Manager -adapteria
-- oikeaa sähköpostilähetystä
+- asiakkaille tarkoitettua oikeaa sähköpostilähetystä
+- onnistuneen asiakaslähetyksen `sent`-tilasiirtymää
 - `packages/email`-pakettia
 
 SMTP-kirjastoa tai muuta uutta riippuvuutta ei lisätä ilman erillistä
@@ -678,9 +689,18 @@ riippuvuusarviota ja projektin omistajan nimenomaista hyväksyntää.
    `465`, implicit TLS -mallia ja lukittua ensisijaista hostia. Provider
    pakottaa test recipient override -osoitteen ja jättää Cc:n pois, jotta
    viesti ei voi lähteä vahingossa asiakkaalle.
-7. Kytketään seuraavaksi provider nykyiseen backendin send-polkuun niin, että onnistunut
-   lähetys kirjaa delivery eventin ja voi muuttaa laskun `sent`-tilaan.
-8. Epäonnistunut lähetys kirjataan turvallisesti eikä se muuta laskun tilaa.
+7. DNA SMTP -testiprovider on kytketty hallittuun backend-, HTTP-, API-client-,
+   desktop- ja web-polkuun. Testi kirjaa `attempted`-tapahtuman ennen
+   provider-kutsua, viimeistelee saman tapahtuman tilaan `succeeded`, `failed`
+   tai `outcomeUnknown`, pakottaa testivastaanottajan eikä muuta laskun tilaa.
+8. Oikean DNA-tilin ensimmäinen verkkoyhteystesti tehdään vasta projektin
+   omistajan erillisellä luvalla. Testissä käytetään vain erikseen vahvistettua
+   testipostilaatikkoa; oikeaa salasanaa ei anneta chattiin, komentoriville,
+   ympäristömuuttujaan, testifixtureen tai lokiin.
+9. Asiakkaalle tarkoitettu tuotantolähetys ja onnistuneen lähetyksen
+   `sent`-tilasiirtymä toteutetaan vasta hallitun testin ja uuden
+   turvallisuustarkistuksen jälkeen. Epäonnistunut tai lopputulokseltaan
+   epäselvä lähetys ei muuta laskun tilaa.
 
 Ensimmäinen oikea SMTP-lähetys saa olla synkroninen. UI näyttää lähetyksen
 olevan käynnissä ja estää saman toiminnon uudelleen pyynnön aikana. Backend
