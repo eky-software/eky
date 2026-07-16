@@ -4,6 +4,7 @@ import type {
   IpcMainInvokeEvent,
 } from 'electron';
 
+import { hasVisiblePdfPreview } from './invoicePdfPreviewRendering.js';
 import {
   createInvoicePdfPreviewUrl,
   createInvoicePdfPreviewWindowOptions,
@@ -30,10 +31,13 @@ interface ActiveInvoicePdfPreview {
 export interface InvoicePdfPreviewWindowController {
   close(): void;
   dispose(): void;
+  hasRendererBridgeForSmoke(): Promise<boolean>;
   openForSmoke(invoiceId: string): Promise<void>;
 }
 
 const blockedSmokeNavigationUrl = 'data:text/plain,blocked-by-eky';
+const previewPaintPollIntervalMilliseconds = 100;
+const previewPaintTimeoutMilliseconds = 5_000;
 
 function isTrustedMainWindowRequest(
   event: IpcMainInvokeEvent,
@@ -174,6 +178,14 @@ export function createInvoicePdfPreviewWindowController(
 
       activePreview = undefined;
     },
+    async hasRendererBridgeForSmoke() {
+      return options.mainWindow.webContents.executeJavaScript(
+        `typeof window.ekyDesktop === 'object' &&
+          typeof window.ekyDesktop.openInvoicePdf === 'function' &&
+          Object.keys(window.ekyDesktop).length === 1`,
+        true,
+      );
+    },
     async openForSmoke(invoiceId) {
       await openInvoicePdf(invoiceId);
 
@@ -189,8 +201,36 @@ export function createInvoicePdfPreviewWindowController(
         activePreview.window,
         createInvoicePdfPreviewUrl(invoiceId),
       );
+      await assertPackagedPreviewRendering(activePreview.window);
     },
   };
+}
+
+async function assertPackagedPreviewRendering(
+  previewWindow: BrowserWindow,
+): Promise<void> {
+  const deadline = Date.now() + previewPaintTimeoutMilliseconds;
+
+  while (Date.now() < deadline) {
+    const capture = await previewWindow.webContents.capturePage();
+    const size = capture.getSize();
+
+    if (
+      hasVisiblePdfPreview({
+        bitmap: capture.toBitmap(),
+        height: size.height,
+        width: size.width,
+      })
+    ) {
+      return;
+    }
+
+    await new Promise((resolve) =>
+      setTimeout(resolve, previewPaintPollIntervalMilliseconds),
+    );
+  }
+
+  throw new Error('DESKTOP_SMOKE_PDF_PREVIEW_RENDERING_FAILED');
 }
 
 async function assertPackagedPreviewSecurity(

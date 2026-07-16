@@ -272,6 +272,14 @@ Selainkehitys säilyttää nykyisen selain-PDF-polun. App-kerros injektoi
 desktop-esikatselun callbackina Invoicing-featurelle, joten feature ei tunne
 Electronin IPC:tä tai globaalia preload-objektia.
 
+Pääikkunan rajattu preload rakennetaan yhdeksi CommonJS `.cjs` -tiedostoksi.
+Sandboxattu Electron-renderer ei tue preloadin ESM-importteja eikä preloadia
+saa tämän vuoksi jakaa runtime-tilassa suhteellisia moduuleja lataavaksi
+ketjuksi. Preload saa käyttää vain Electronin sandboxissa sallittua
+`require('electron')`-rajapintaa ja paljastaa nimetyt, yksittäiset toiminnot
+`contextBridge`-rajalla. Paketoitu Windows-smoke varmistaa, että preload-silta
+on oikeasti latautunut ennen PDF-esikatselun testaamista.
+
 ## Pakollinen Electron-Turvallisuuskonfiguraatio
 
 Spiken ja myöhemmän tuotantobuildin lähtöasetukset ovat:

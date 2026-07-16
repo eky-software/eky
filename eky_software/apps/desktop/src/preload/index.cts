@@ -1,9 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
-import {
-  invoicePdfPreviewIpcChannel,
-  type InvoicePdfPreviewApi,
-} from '../pdf/invoicePdfPreviewTypes.js';
+const invoicePdfPreviewIpcChannel = 'eky:invoice-pdf-preview:open';
+
+interface InvoicePdfPreviewApi {
+  openInvoicePdf(invoiceId: string): Promise<void>;
+}
 
 const invoicePdfPreviewApi: InvoicePdfPreviewApi = Object.freeze({
   openInvoicePdf(invoiceId: string) {
