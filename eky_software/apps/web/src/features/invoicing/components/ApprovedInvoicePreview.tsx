@@ -1,7 +1,7 @@
 import type {
   ApprovedInvoiceEmailDryRunSendInput,
   ApprovedInvoiceEmailPreview as ApprovedInvoiceEmailPreviewData,
-  ApprovedInvoiceEmailSmtpTestSendInput,
+  ApprovedInvoiceEmailSmtpTestPrepareInput,
   ApprovedInvoiceLine,
   ApprovedInvoiceVatBreakdown,
   ApprovedInvoiceView,
@@ -39,6 +39,7 @@ interface ApprovedInvoicePreviewProps {
   emailSendSuccessMessage: string | null;
   emailSmtpTestErrorMessage: string | null;
   emailSmtpTestRecipient: string | null;
+  emailSmtpTestUnavailableMessage: string | null;
   emailSmtpTestSuccessMessage: string | null;
   pdfErrorMessage: string | null;
   reopenErrorMessage: string | null;
@@ -55,7 +56,7 @@ interface ApprovedInvoicePreviewProps {
   ): void;
   onSendEmailSmtpTest(
     id: string,
-    input: ApprovedInvoiceEmailSmtpTestSendInput,
+    input: ApprovedInvoiceEmailSmtpTestPrepareInput,
   ): void;
 }
 
@@ -77,6 +78,7 @@ export function ApprovedInvoicePreview({
   emailSendSuccessMessage,
   emailSmtpTestErrorMessage,
   emailSmtpTestRecipient,
+  emailSmtpTestUnavailableMessage,
   emailSmtpTestSuccessMessage,
   pdfErrorMessage,
   reopenErrorMessage,
@@ -224,6 +226,7 @@ export function ApprovedInvoicePreview({
           isSendingSmtpTest={isSendingEmailSmtpTest}
           smtpTestErrorMessage={emailSmtpTestErrorMessage}
           smtpTestRecipient={emailSmtpTestRecipient}
+          smtpTestUnavailableMessage={emailSmtpTestUnavailableMessage}
           smtpTestSuccessMessage={emailSmtpTestSuccessMessage}
           successMessage={emailSendSuccessMessage}
           onSendDryRun={(input) => onSendEmailDryRun(invoice.id, input)}

@@ -32,9 +32,6 @@ export interface UpdateCompanySettingsInput {
   emailDeliveryProvider: string;
   emailSenderName: string;
   emailSenderAddress: string;
-  emailSmtpHost: string;
-  emailSmtpPort: unknown;
-  emailSmtpSecurity: string;
   emailUsername: string;
   emailTestRecipientOverride: string;
   phone: string;
@@ -59,9 +56,6 @@ export async function updateCompanySettings(
     emailDeliveryProvider: input.emailDeliveryProvider,
     emailSenderName: input.emailSenderName,
     emailSenderAddress: input.emailSenderAddress,
-    emailSmtpHost: input.emailSmtpHost,
-    emailSmtpPort: input.emailSmtpPort,
-    emailSmtpSecurity: input.emailSmtpSecurity,
     emailUsername: input.emailUsername,
     emailTestRecipientOverride: input.emailTestRecipientOverride,
   });

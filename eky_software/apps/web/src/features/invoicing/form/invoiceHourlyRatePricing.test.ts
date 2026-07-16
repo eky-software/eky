@@ -83,7 +83,7 @@ function createCompanySettings(
     emailSenderAddress: '',
     emailSmtpHost: '',
     emailSmtpPort: null,
-    emailSmtpSecurity: 'starttls',
+    emailSmtpSecurity: 'tls',
     emailUsername: '',
     emailTestRecipientOverride: '',
     emailSecretConfigured: false,

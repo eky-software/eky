@@ -29,11 +29,11 @@ describe('EncryptedSecretFile', () => {
     const { filePath, store } = await createStore();
 
     await store.write(Buffer.from('ciphertext-one', 'utf8'));
-    await expect(store.read()).resolves.toEqual(
+    await expect(readAndConfirm(store)).resolves.toEqual(
       Uint8Array.from(Buffer.from('ciphertext-one', 'utf8')),
     );
     await store.write(Buffer.from('ciphertext-two', 'utf8'));
-    await expect(store.read()).resolves.toEqual(
+    await expect(readAndConfirm(store)).resolves.toEqual(
       Uint8Array.from(Buffer.from('ciphertext-two', 'utf8')),
     );
 
@@ -45,7 +45,7 @@ describe('EncryptedSecretFile', () => {
   it('returns null for a missing file and removes idempotently', async () => {
     const { store } = await createStore();
 
-    await expect(store.read()).resolves.toBeNull();
+    await expect(readAndConfirm(store)).resolves.toBeNull();
     await expect(store.remove()).resolves.toBeUndefined();
   });
 
@@ -54,7 +54,7 @@ describe('EncryptedSecretFile', () => {
     const corruptEnvelope = '{"formatVersion":2,"ciphertext":"YQ=="}\n';
 
     await writeFile(filePath, corruptEnvelope, 'utf8');
-    await expect(store.read()).rejects.toEqual(
+    await expect(store.readCandidate()).rejects.toEqual(
       expect.objectContaining({ code: 'SECRET_PAYLOAD_INVALID' }),
     );
     await expect(readFile(filePath, 'utf8')).resolves.toBe(corruptEnvelope);
@@ -65,7 +65,7 @@ describe('EncryptedSecretFile', () => {
 
     await mkdir(filePath);
 
-    await expect(store.read()).rejects.toEqual(
+    await expect(store.readCandidate()).rejects.toEqual(
       expect.objectContaining({ code: 'SECRET_PAYLOAD_INVALID' }),
     );
   });
@@ -78,7 +78,11 @@ describe('EncryptedSecretFile', () => {
     await writeFile(`${filePath}.next`, envelope, 'utf8');
     await writeFile(`${filePath}.backup`, envelope, 'utf8');
 
-    await expect(store.read()).resolves.toEqual(bytes('current'));
+    const candidate = await store.readCandidate();
+    expect(candidate).toMatchObject({ slot: 'current' });
+    await expect(stat(`${filePath}.next`)).resolves.toBeDefined();
+    await expect(stat(`${filePath}.backup`)).resolves.toBeDefined();
+    await store.confirm(requireCandidate(candidate));
     await expectFileToBeMissing(`${filePath}.next`);
     await expectFileToBeMissing(`${filePath}.backup`);
   });
@@ -94,7 +98,7 @@ describe('EncryptedSecretFile', () => {
     await writeFile(`${filePath}.backup`, previousEnvelope, 'utf8');
     await writeFile(`${filePath}.next`, nextEnvelope, 'utf8');
 
-    await expect(store.read()).resolves.toEqual(bytes('previous'));
+    await expect(readAndConfirm(store)).resolves.toEqual(bytes('previous'));
     await expect(readFile(filePath, 'utf8')).resolves.toContain('cHJldmlvdXM=');
     await expectFileToBeMissing(`${filePath}.next`);
     await expectFileToBeMissing(`${filePath}.backup`);
@@ -106,7 +110,7 @@ describe('EncryptedSecretFile', () => {
     await store.write(Buffer.from('first-value', 'utf8'));
     await rename(filePath, `${filePath}.next`);
 
-    await expect(store.read()).resolves.toEqual(bytes('first-value'));
+    await expect(readAndConfirm(store)).resolves.toEqual(bytes('first-value'));
     await expectFileToBeMissing(`${filePath}.next`);
   });
 
@@ -117,7 +121,7 @@ describe('EncryptedSecretFile', () => {
     await rename(filePath, `${filePath}.backup`);
     await writeFile(filePath, '{"corrupt":true}\n', 'utf8');
 
-    await expect(store.read()).rejects.toEqual(
+    await expect(store.readCandidate()).rejects.toEqual(
       expect.objectContaining({ code: 'SECRET_PAYLOAD_INVALID' }),
     );
     await expect(readFile(filePath, 'utf8')).resolves.toBe('{"corrupt":true}\n');
@@ -142,6 +146,29 @@ describe('EncryptedSecretFile', () => {
 
 function bytes(value: string): Uint8Array {
   return Uint8Array.from(Buffer.from(value, 'utf8'));
+}
+
+async function readAndConfirm(
+  store: EncryptedSecretFile,
+): Promise<Uint8Array | null> {
+  const candidate = await store.readCandidate();
+
+  if (candidate === null) {
+    return null;
+  }
+
+  const ciphertext = Uint8Array.from(candidate.ciphertext);
+  await store.confirm(candidate);
+
+  return ciphertext;
+}
+
+function requireCandidate<T>(candidate: T | null): T {
+  if (candidate === null) {
+    throw new Error('Expected a synthetic encrypted secret candidate.');
+  }
+
+  return candidate;
 }
 
 async function expectFileToBeMissing(filePath: string): Promise<void> {

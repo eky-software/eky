@@ -1,10 +1,7 @@
 export interface InvoiceEmailSettings {
-  emailDeliveryProvider: 'dryRun' | 'smtp';
+  emailDeliveryProvider: 'dryRun' | 'dnaSmtp';
   emailSenderAddress: string;
   emailSenderName: string;
-  emailSmtpHost: string;
-  emailSmtpPort: number | null;
-  emailSmtpSecurity: 'tls' | 'starttls';
   emailTestRecipientOverride: string;
   emailUsername: string;
 }

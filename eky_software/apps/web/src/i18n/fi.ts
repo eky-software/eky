@@ -141,7 +141,9 @@ export const uiText = {
     emailDeliverySettingsHelp:
       'Näillä asetuksilla valmistellaan laskun sähköpostilähetystä. SMTP-salasana hallitaan erikseen turvallisessa työpöytäsovelluksessa.',
     emailProviderDryRun: 'Kuivaharjoittelu',
-    emailProviderSmtp: 'SMTP myöhemmin',
+    emailProviderDnaSmtp: 'DNA SMTP',
+    emailDnaSmtpProfileHelp:
+      'DNA SMTP käyttää aina suojattua yhteyttä: smtp.dnamail.fi, portti 465 ja implicit TLS (vähintään TLS 1.2). Näitä yhteysasetuksia ei voi muuttaa.',
     emailSenderAddress: 'Lähettäjän sähköpostiosoite',
     emailSenderName: 'Lähettäjän nimi',
     emailSecretChange: 'Vaihda salasana',
@@ -444,12 +446,24 @@ export const uiText = {
     invoiceEmailSubject: 'Otsikko',
     invoiceEmailSubjectInput: 'Sähköpostin otsikko',
     invoiceEmailSmtpTestActualRecipient: 'Todellinen testivastaanottaja',
+    invoiceEmailSmtpTestConflict:
+      'SMTP-testilähetys on jo käynnissä, valtuutus vanheni tai lyhyt varoaika on voimassa. Odota hetki ja valmistele lähetys uudelleen.',
     invoiceEmailSmtpTestError:
       'SMTP-testilähetystä ei voitu tehdä. Laskua ei merkitty lähetetyksi.',
     invoiceEmailSmtpTestHelp:
       'Testilähetys käyttää vain alla näkyvää testivastaanottajaa. Vastaanottaja- ja Cc-kenttiä ei käytetä SMTP-testin toimitusosoitteina, eikä laskua merkitä lähetetyksi.',
     invoiceEmailSmtpTestMissingRecipient:
       'Aseta ensin Oma yritys -näkymässä sähköpostin testivastaanottaja.',
+    invoiceEmailSmtpTestProfileMissing:
+      'Valitse ensin Oma yritys -näkymässä sähköpostin lähetystavaksi DNA SMTP.',
+    invoiceEmailSmtpTestSecretMissing:
+      'Aseta SMTP-salasana turvallisessa Eky-työpöytäsovelluksessa. Selainkehityksessä oikea DNA SMTP -testi ei ole käytettävissä.',
+    invoiceEmailSmtpTestSettingsIncomplete:
+      'Täydennä Oma yritys -näkymässä lähettäjän osoite, SMTP-käyttäjätunnus ja testivastaanottaja.',
+    invoiceEmailSmtpTestSettingsLoading:
+      'Tarkistetaan DNA SMTP -testin asetuksia...',
+    invoiceEmailSmtpTestSettingsUnavailable:
+      'DNA SMTP -testin asetuksia ei voitu tarkistaa turvallisesti.',
     invoiceEmailSmtpTestOutcomeUnknown:
       'SMTP-testin lopputulosta ei voitu varmistaa. Älä yritä heti uudelleen, vaan tarkista testipostilaatikko ja toimitustapahtuma.',
     invoiceEmailSmtpTestSend: 'Lähetä hallittu SMTP-testi',

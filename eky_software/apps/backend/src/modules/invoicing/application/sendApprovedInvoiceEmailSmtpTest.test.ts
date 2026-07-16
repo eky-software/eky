@@ -4,6 +4,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ApprovedInvoiceEmailDeliveryError } from './approvedInvoiceEmailDeliveryError.js';
 import { ApprovedInvoiceEmailDeliveryOutcomeUnknownError } from './approvedInvoiceEmailDeliveryOutcomeUnknownError.js';
+import { InvoiceSmtpTestAttemptError } from './invoiceSmtpTestAttemptError.js';
+import { createInvoiceSmtpTestRequestFingerprint } from './invoiceSmtpTestRequestFingerprint.js';
 import {
   sendApprovedInvoiceEmailSmtpTest,
   type SendApprovedInvoiceEmailSmtpTestInput,
@@ -18,6 +20,8 @@ import type {
   InvoiceDeliveryEventRepository,
 } from '../ports/invoiceDeliveryEventRepository.js';
 import type { InvoiceEmailSettingsReader } from '../ports/invoiceEmailSettingsReader.js';
+import type { InvoiceSmtpTestAttemptStore } from '../ports/invoiceSmtpTestAttemptStore.js';
+import { InMemoryInvoiceSmtpTestAttemptStore } from '../infrastructure/inMemoryInvoiceSmtpTestAttemptStore.js';
 import {
   InvoiceSmtpTestDeliveryError,
   type InvoiceSmtpTestDeliveryProvider,
@@ -62,8 +66,9 @@ describe('sendApprovedInvoiceEmailSmtpTest', () => {
     const sendTestEmail = vi.fn(async (input: InvoiceSmtpTestEmailInput) => {
       expect(repository.events[0]?.status).toBe('attempted');
       expect(repository.completions).toEqual([]);
-      expect(input.requestedTo).toBe('customer@example.fi');
-      expect(input.cc).toBe('copy@example.fi');
+      expect(input).not.toHaveProperty('requestedTo');
+      expect(input).not.toHaveProperty('cc');
+      expect(input.attemptId).toBe(repository.events[0]?.id);
       expect(input.emailTestRecipientOverride).toBe('owner-test@example.fi');
 
       return {
@@ -189,9 +194,74 @@ describe('sendApprovedInvoiceEmailSmtpTest', () => {
     expect(dependencies.ensureApprovedInvoicePdfDocument).not.toHaveBeenCalled();
     expect(dependencies.invoiceSmtpTestDeliveryProvider.sendTestEmail).not.toHaveBeenCalled();
   });
+
+  it('allows only one provider call for concurrent requests with the same attempt', async () => {
+    const attemptStore = new InMemoryInvoiceSmtpTestAttemptStore();
+    let releaseProvider: (() => void) | undefined;
+    const sendTestEmail = vi.fn(
+      () =>
+        new Promise<{
+          deliveredTo: string;
+          provider: 'smtp';
+          providerMessageId: null;
+          testMode: true;
+        }>((resolve) => {
+          releaseProvider = () =>
+            resolve({
+              deliveredTo: 'owner-test@example.fi',
+              provider: 'smtp',
+              providerMessageId: null,
+              testMode: true,
+            });
+        }),
+    );
+    const input = createInput();
+    const emailFields = {
+      body: input.body,
+      cc: input.cc ?? '',
+      subject: input.subject,
+      testRecipient: 'owner-test@example.fi',
+      to: input.to,
+    };
+    const preparation = attemptStore.prepare({
+      actorId: input.actorContext.actorId,
+      companyId: input.actorContext.companyId,
+      invoiceId: input.invoiceId,
+      provider: 'dnaSmtp',
+      requestFingerprint: createInvoiceSmtpTestRequestFingerprint(emailFields),
+      testRecipient: emailFields.testRecipient,
+    });
+    const preparedInput = {
+      ...input,
+      attemptId: preparation.attemptId,
+      authorizationToken: preparation.authorizationToken,
+    };
+    const dependencies = createDependencies({
+      attemptStore,
+      sendTestEmail,
+    });
+    const firstRequest = sendApprovedInvoiceEmailSmtpTest(
+      preparedInput,
+      dependencies,
+    );
+
+    await vi.waitFor(() => expect(sendTestEmail).toHaveBeenCalledOnce());
+
+    await expect(
+      sendApprovedInvoiceEmailSmtpTest(preparedInput, dependencies),
+    ).rejects.toBeInstanceOf(InvoiceSmtpTestAttemptError);
+    expect(sendTestEmail).toHaveBeenCalledOnce();
+
+    releaseProvider?.();
+
+    await expect(firstRequest).resolves.toEqual(
+      expect.objectContaining({ deliveryEventId: preparation.attemptId }),
+    );
+  });
 });
 
 function createDependencies(options: {
+  attemptStore?: InvoiceSmtpTestAttemptStore;
   pdfContent?: Buffer;
   repository?: FakeInvoiceDeliveryEventRepository;
   sendTestEmail?: InvoiceSmtpTestDeliveryProvider['sendTestEmail'];
@@ -212,6 +282,14 @@ function createDependencies(options: {
   const invoiceSmtpTestDeliveryProvider: InvoiceSmtpTestDeliveryProvider = {
     sendTestEmail,
   };
+  const invoiceSmtpTestAttemptStore: InvoiceSmtpTestAttemptStore =
+    options.attemptStore ?? {
+      acquire: vi.fn(),
+      complete: vi.fn(),
+      prepare: vi.fn(() => {
+        throw new Error('Not implemented in SMTP send test.');
+      }),
+    };
 
   return {
     approvedInvoiceReader: new FakeApprovedInvoiceReader(),
@@ -222,6 +300,7 @@ function createDependencies(options: {
     })),
     invoiceDeliveryEventRepository: repository,
     invoiceEmailSettingsReader,
+    invoiceSmtpTestAttemptStore,
     invoiceSmtpTestDeliveryProvider,
   };
 }
@@ -236,6 +315,8 @@ function createInput(
       companyId: 'dev-company',
       permissions: ['sendInvoices'],
     }),
+    attemptId: 'attempt-1',
+    authorizationToken: 'one-time-authorization',
     body: 'Hei, liitteenä lasku.',
     invoiceId: 'invoice-1',
     sentAt: '2026-07-16T10:00:00.000Z',
@@ -247,12 +328,9 @@ function createInput(
 
 function createEmailSettings() {
   return {
-    emailDeliveryProvider: 'smtp' as const,
+    emailDeliveryProvider: 'dnaSmtp' as const,
     emailSenderAddress: 'billing@example.fi',
     emailSenderName: 'Example Builder Oy',
-    emailSmtpHost: 'smtp.dnamail.fi',
-    emailSmtpPort: 465,
-    emailSmtpSecurity: 'tls' as const,
     emailTestRecipientOverride: 'owner-test@example.fi',
     emailUsername: 'billing@example.fi',
   };

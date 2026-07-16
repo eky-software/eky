@@ -18,6 +18,12 @@ describe('desktop protocol policy', () => {
     expect(
       isAllowedBackendRequest(
         'POST',
+        '/invoices/invoice-1/email/smtp-test/prepare',
+      ),
+    ).toBe(true);
+    expect(
+      isAllowedBackendRequest(
+        'POST',
         '/invoices/invoice-1/email/smtp-test/send',
       ),
     ).toBe(true);

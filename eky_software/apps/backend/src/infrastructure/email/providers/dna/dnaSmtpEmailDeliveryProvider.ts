@@ -10,7 +10,6 @@ import type {
 import {
   dnaSmtpConnectionProfile,
   dnaSmtpSessionTimeouts,
-  isExactDnaSmtpProfile,
 } from './dnaSmtpConfiguration.js';
 import {
   DnaSmtpProviderError,
@@ -49,6 +48,10 @@ export class DnaSmtpEmailDeliveryProvider {
         pdfFileName: input.pdfFileName,
         subject: input.subject,
         to: testRecipient,
+      }, {
+        messageId: `${normalizeAttemptId(input.attemptId)}@${senderAddress.slice(
+          senderAddress.lastIndexOf('@') + 1,
+        )}`,
       });
       const password = await this.dependencies.companyEmailSecretReader.getSecret(
         input.companyId,
@@ -87,7 +90,7 @@ function normalizeDnaTestConfiguration(input: DnaSmtpTestEmailInput): {
   username: string;
 } {
   if (
-    !isExactDnaSmtpProfile(input) ||
+    input.emailDeliveryProvider !== 'dnaSmtp' ||
     input.companyId.length === 0 ||
     input.companyId.length > 200 ||
     /[\u0000-\u001f\u007f]/.test(input.companyId) ||
@@ -98,14 +101,31 @@ function normalizeDnaTestConfiguration(input: DnaSmtpTestEmailInput): {
   }
 
   try {
+    const senderAddress = normalizeEmailAddress(input.emailSenderAddress);
+    const username = normalizeEmailAddress(input.emailUsername);
+
+    if (senderAddress.toLowerCase() !== username.toLowerCase()) {
+      throw new DnaSmtpProviderError('DNA_SMTP_CONFIGURATION_INVALID');
+    }
+
     return {
-      senderAddress: normalizeEmailAddress(input.emailSenderAddress),
+      senderAddress,
       testRecipient: normalizeEmailAddress(input.emailTestRecipientOverride),
-      username: normalizeEmailAddress(input.emailUsername),
+      username,
     };
   } catch {
     throw new DnaSmtpProviderError('DNA_SMTP_CONFIGURATION_INVALID');
   }
+}
+
+function normalizeAttemptId(value: string): string {
+  const normalizedValue = value.trim().toLowerCase();
+
+  if (!/^[a-z0-9][a-z0-9-]{0,199}$/.test(normalizedValue)) {
+    throw new DnaSmtpProviderError('DNA_SMTP_CONFIGURATION_INVALID');
+  }
+
+  return normalizedValue;
 }
 
 async function defaultTransport(

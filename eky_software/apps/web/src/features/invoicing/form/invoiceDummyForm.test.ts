@@ -105,7 +105,7 @@ function createCompanySettings(): CompanySettings {
     emailSenderAddress: '',
     emailSmtpHost: '',
     emailSmtpPort: null,
-    emailSmtpSecurity: 'starttls',
+    emailSmtpSecurity: 'tls',
     emailUsername: '',
     emailTestRecipientOverride: '',
     emailSecretConfigured: false,

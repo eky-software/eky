@@ -10,6 +10,10 @@ import {
   maximumBackendRequestBodyBytes,
   resolveStaticResourcePath,
 } from './protocolPolicy.js';
+import {
+  readSmtpTestPreparationConfirmation,
+  type SmtpTestPreparationConfirmation,
+} from './smtpTestConfirmation.js';
 
 const contentSecurityPolicy = [
   "default-src 'self'",
@@ -26,6 +30,9 @@ const contentSecurityPolicy = [
 
 export interface RegisterApplicationProtocolOptions {
   backendOrigin: string;
+  confirmSmtpTestPreparation?(
+    preparation: SmtpTestPreparationConfirmation,
+  ): Promise<boolean>;
   runtimeSessionSecret: string;
   webRoot: string;
 }
@@ -38,6 +45,9 @@ async function proxyBackendRequest(
   request: Request,
   runtimeSessionSecret: string,
   targetUrl: URL,
+  confirmSmtpTestPreparation?: (
+    preparation: SmtpTestPreparationConfirmation,
+  ) => Promise<boolean>,
 ): Promise<Response> {
   const contentLength = Number(request.headers.get('content-length') ?? '0');
 
@@ -71,6 +81,30 @@ async function proxyBackendRequest(
 
   try {
     const backendResponse = await net.fetch(targetUrl.toString(), requestOptions);
+
+    if (
+      backendResponse.ok &&
+      targetUrl.pathname.endsWith('/email/smtp-test/prepare') &&
+      confirmSmtpTestPreparation !== undefined
+    ) {
+      let responseBody: unknown;
+
+      try {
+        responseBody = await backendResponse.clone().json();
+      } catch {
+        return jsonError(502, 'SMTP-testin valmistelua ei voitu vahvistaa.');
+      }
+
+      const confirmation = readSmtpTestPreparationConfirmation(responseBody);
+
+      if (confirmation === undefined) {
+        return jsonError(502, 'SMTP-testin valmistelua ei voitu vahvistaa.');
+      }
+
+      if (!(await confirmSmtpTestPreparation(confirmation))) {
+        return jsonError(409, 'SMTP-testilähetys peruutettiin.');
+      }
+    }
 
     return new Response(backendResponse.body, {
       headers: createBackendResponseHeaders(backendResponse.headers),
@@ -132,6 +166,7 @@ export function registerApplicationProtocol(
         request,
         options.runtimeSessionSecret,
         targetUrl,
+        options.confirmSmtpTestPreparation,
       );
     }
 

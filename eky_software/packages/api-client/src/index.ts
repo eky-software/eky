@@ -16,6 +16,8 @@ export type {
   ApprovedInvoiceEmailProvider,
   ApprovedInvoiceEmailSmtpTestSendInput,
   ApprovedInvoiceEmailSmtpTestSendResult,
+  ApprovedInvoiceEmailSmtpTestPrepareInput,
+  ApprovedInvoiceEmailSmtpTestPreparation,
   ApprovedInvoiceLine,
   ApprovedInvoiceLineDiscount,
   ApprovedInvoiceNumberingMode,

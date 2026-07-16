@@ -8,8 +8,10 @@ Rajattu tekninen package-spike ja sen ensimmäinen local-session-luottamusraja
 on toteutettu 14.7.2026. Electron `safeStorage` -secret broker on toteutettu
 15.7.2026 synteettisellä paketointismokella. Desktop-sessionilla suojattu
 salaisuuden HTTP-, API-client- ja UI-lifecycle sekä koko polun Windows-smoke on
-toteutettu 15.7.2026. Toteutus ei vielä sisällä SMTP-provideria, installeria,
-code signingia tai automaattipäivitystä.
+toteutettu 15.7.2026. Rajattu DNA SMTP -testiprovider ja sen prepare/send-
+turvallisuuspolku on toteutettu 16.7.2026, mutta oikean tilin verkkoyhteystestiä
+tai asiakkaille tarkoitettua tuotantolähetystä ei ole tehty. Toteutus ei vielä
+sisällä installeria, code signingia tai automaattipäivitystä.
 
 Salatun secret-tiedoston kirjoitus ja palautuminen on kovennettu 15.7.2026
 deterministisillä next- ja backup-sloteilla. Paketoitu Windows-smoke varmistaa
@@ -324,8 +326,8 @@ Testit eivät käytä oikeaa asiakasdataa, SMTP-salasanaa tai muuta salaisuutta.
 ## Ei Toteuteta Ensimmäisessä Spikessä
 
 - oikeaa asiakas- tai laskutusdataa
-- SMTP-providerin backend-only secret reader -kytkentää
-- SMTP-provideria tai oikeaa sähköpostilähetystä
+- asiakkaille tarkoitettua oikeaa sähköpostilähetystä tai sen `sent`-
+  tilasiirtymää
 - Firebase Authia tai pilvisynkronointia
 - automaattipäivitystä tai julkaisukanavaa
 - production code signing -avaimen kytkentää
@@ -356,7 +358,9 @@ korjausta.
     ja utility processin kapea client on toteutettu ilman uutta npm-riippuvuutta.
 11. Desktop-sessionilla suojattu HTTP-, API-client- ja UI-lifecycle sekä koko
     polun paketoitu Windows-smoke on toteutettu synteettisellä arvolla.
-    SMTP-provider arvioidaan erillisenä turvallisuus- ja riippuvuusmuutoksena.
+12. Riippuvuudeton SMTP/MIME-kuljetus, kiinteä DNA-testiprofiili,
+    backend-only secret reader, prepare/send-kertakäyttövaltuutus ja Electron
+    main processin vahvistus on toteutettu ilman oikeaa DNA-verkkotestiä.
 
 ## Liittyvät Dokumentit
 

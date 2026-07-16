@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 
 import styles from './CompanyEmailSecretForm.module.css';
 import { uiText } from '../../i18n/fi.js';
@@ -23,6 +23,12 @@ export function CompanyEmailSecretForm({
   successMessage,
 }: CompanyEmailSecretFormProps): React.JSX.Element {
   const secretInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    return () => {
+      clearSecretInput(secretInputRef.current);
+    };
+  }, []);
 
   return (
     <section className={`panel ${styles.panel}`}>
@@ -60,13 +66,9 @@ export function CompanyEmailSecretForm({
         className={styles.form}
         onSubmit={(event) => {
           event.preventDefault();
-          const secret = secretInputRef.current?.value ?? '';
+          const secret = readAndClearSecretInput(secretInputRef.current);
 
-          void onSave(secret).then((saved) => {
-            if (saved && secretInputRef.current) {
-              secretInputRef.current.value = '';
-            }
-          });
+          void onSave(secret);
         }}
       >
         <label htmlFor="company-email-secret">
@@ -91,11 +93,8 @@ export function CompanyEmailSecretForm({
               className="secondary-button"
               disabled={!isAvailable || isSaving}
               onClick={() => {
-                void onRemove().then((removed) => {
-                  if (removed && secretInputRef.current) {
-                    secretInputRef.current.value = '';
-                  }
-                });
+                clearSecretInput(secretInputRef.current);
+                void onRemove();
               }}
               type="button"
             >
@@ -117,4 +116,21 @@ export function CompanyEmailSecretForm({
       </form>
     </section>
   );
+}
+
+export function readAndClearSecretInput(
+  input: Pick<HTMLInputElement, 'value'> | null,
+): string {
+  const secret = input?.value ?? '';
+  clearSecretInput(input);
+
+  return secret;
+}
+
+function clearSecretInput(
+  input: Pick<HTMLInputElement, 'value'> | null,
+): void {
+  if (input !== null) {
+    input.value = '';
+  }
 }

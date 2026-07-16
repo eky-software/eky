@@ -40,6 +40,7 @@ import { listInvoiceDrafts } from '../modules/invoicing/application/listInvoiceD
 import { listApprovedInvoices } from '../modules/invoicing/application/listApprovedInvoices.js';
 import { markApprovedInvoiceSent } from '../modules/invoicing/application/markApprovedInvoiceSent.js';
 import { prepareApprovedInvoiceEmailDryRun } from '../modules/invoicing/application/prepareApprovedInvoiceEmailDryRun.js';
+import { prepareApprovedInvoiceEmailSmtpTest } from '../modules/invoicing/application/prepareApprovedInvoiceEmailSmtpTest.js';
 import { reopenApprovedInvoiceForEditing } from '../modules/invoicing/application/reopenApprovedInvoiceForEditing.js';
 import { saveInvoiceDraft } from '../modules/invoicing/application/saveInvoiceDraft.js';
 import { sendApprovedInvoiceEmailDryRun } from '../modules/invoicing/application/sendApprovedInvoiceEmailDryRun.js';
@@ -63,6 +64,7 @@ import { SqliteInvoiceDocumentRepository } from '../modules/invoicing/infrastruc
 import { SqliteInvoiceDraftRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceDraftRepository.js';
 import { SqliteInvoiceNumberingRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceNumberingRepository.js';
 import { SqliteInvoicePaymentSettingsRepository } from '../modules/invoicing/infrastructure/sqliteInvoicePaymentSettingsRepository.js';
+import { InMemoryInvoiceSmtpTestAttemptStore } from '../modules/invoicing/infrastructure/inMemoryInvoiceSmtpTestAttemptStore.js';
 import type { CustomerAccessReader } from '../modules/invoicing/ports/customerAccessReader.js';
 import type { InvoiceEmailSettingsReader } from '../modules/invoicing/ports/invoiceEmailSettingsReader.js';
 
@@ -117,6 +119,7 @@ export async function createApp(
       ? new LocalInvoiceDocumentStorage()
       : new LocalInvoiceDocumentStorage(options.invoiceDocumentStorageRoot);
   const invoiceEmailDeliveryProvider = new DryRunInvoiceEmailDeliveryProvider();
+  const invoiceSmtpTestAttemptStore = new InMemoryInvoiceSmtpTestAttemptStore();
   const companyEmailSecretReader: CompanyEmailSecretReader =
     options.companyEmailSecretReader ?? {
       async getSecret() {
@@ -150,9 +153,6 @@ export async function createApp(
         emailDeliveryProvider: settings.emailDeliveryProvider,
         emailSenderAddress: settings.emailSenderAddress,
         emailSenderName: settings.emailSenderName,
-        emailSmtpHost: settings.emailSmtpHost,
-        emailSmtpPort: settings.emailSmtpPort,
-        emailSmtpSecurity: settings.emailSmtpSecurity,
         emailTestRecipientOverride: settings.emailTestRecipientOverride,
         emailUsername: settings.emailUsername,
       };
@@ -195,8 +195,16 @@ export async function createApp(
   app.route(
     '/',
     createCompanySettingsRoutes({
-      getCompanySettings: (input) => getCompanySettings(input, companySettingsRepository),
-      updateCompanySettings: (input) => updateCompanySettings(input, companySettingsRepository),
+      getCompanySettings: async (input) =>
+        withCompanyEmailSecretStatus(
+          await getCompanySettings(input, companySettingsRepository),
+          options.companyEmailSecretStore,
+        ),
+      updateCompanySettings: async (input) =>
+        withCompanyEmailSecretStatus(
+          await updateCompanySettings(input, companySettingsRepository),
+          options.companyEmailSecretStore,
+        ),
     }),
   );
 
@@ -298,6 +306,19 @@ export async function createApp(
             }),
           invoiceEmailDeliveryProvider,
         }),
+      prepareApprovedInvoiceEmailSmtpTest: (input) =>
+        prepareApprovedInvoiceEmailSmtpTest(input, {
+          approvedInvoiceReader,
+          ensureApprovedInvoicePdfDocument: (pdfInput) =>
+            generateApprovedInvoicePdfDocument(pdfInput, {
+              approvedInvoiceReader,
+              invoiceDocumentRepository,
+              invoiceDocumentStorage,
+              renderApprovedInvoicePdf,
+            }),
+          invoiceEmailSettingsReader,
+          invoiceSmtpTestAttemptStore,
+        }),
       sendApprovedInvoiceEmailDryRun: (input) =>
         sendApprovedInvoiceEmailDryRun(input, {
           approvedInvoiceReader,
@@ -328,6 +349,7 @@ export async function createApp(
             }),
           invoiceDeliveryEventRepository,
           invoiceEmailSettingsReader,
+          invoiceSmtpTestAttemptStore,
           invoiceSmtpTestDeliveryProvider,
         }),
       reopenApprovedInvoiceForEditing: (input) =>
@@ -359,4 +381,18 @@ export async function createApp(
   );
 
   return app;
+}
+
+async function withCompanyEmailSecretStatus<T extends { companyId: string }>(
+  settings: T & { emailSecretConfigured: boolean },
+  secretStore: CompanyEmailSecretStore | undefined,
+): Promise<T & { emailSecretConfigured: boolean }> {
+  if (secretStore === undefined) {
+    return settings;
+  }
+
+  return {
+    ...settings,
+    emailSecretConfigured: await secretStore.hasSecret(settings.companyId),
+  };
 }

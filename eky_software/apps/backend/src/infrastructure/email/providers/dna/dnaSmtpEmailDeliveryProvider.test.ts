@@ -4,9 +4,10 @@ import type { CompanyEmailSecretReader } from '../../../../modules/companySettin
 import { SmtpTransportError } from '../../smtp/smtpErrors.js';
 import type { SmtpMessageDeliveryInput } from '../../smtp/smtpTypes.js';
 import { DnaSmtpEmailDeliveryProvider } from './dnaSmtpEmailDeliveryProvider.js';
+import type { DnaSmtpTestEmailInput } from './dnaSmtpTypes.js';
 
 describe('DnaSmtpEmailDeliveryProvider', () => {
-  it('forces the test recipient and removes the requested recipient and cc', async () => {
+  it('uses only the trusted test recipient and a stable attempt Message-ID', async () => {
     let transportInput: SmtpMessageDeliveryInput | undefined;
     const provider = new DnaSmtpEmailDeliveryProvider({
       companyEmailSecretReader: createSecretReader('synthetic-password'),
@@ -35,6 +36,7 @@ describe('DnaSmtpEmailDeliveryProvider', () => {
         ? ''
         : Buffer.from(transportInput.message).toString('ascii');
     expect(message).toContain('To: safe-recipient@example.com');
+    expect(message).toContain('Message-ID: <attempt-1@example.com>');
     expect(message).not.toContain('actual-customer@example.com');
     expect(message).not.toContain('copy@example.com');
     expect(message).not.toContain('Cc:');
@@ -42,12 +44,11 @@ describe('DnaSmtpEmailDeliveryProvider', () => {
 
   it.each([
     { emailDeliveryProvider: 'dryRun' },
-    { emailSmtpHost: 'attacker.example' },
-    { emailSmtpPort: 587 },
-    { emailSmtpSecurity: 'starttls' },
     { emailTestRecipientOverride: '' },
     { emailTestRecipientOverride: 'not-an-email' },
     { emailUsername: 'not-an-email' },
+    { emailUsername: 'other@example.com' },
+    { attemptId: 'bad@attempt' },
   ])('fails before reading the secret for an invalid profile: %o', async (override) => {
     const getSecret = vi.fn(async () => 'synthetic-password');
     const transport = vi.fn();
@@ -57,7 +58,10 @@ describe('DnaSmtpEmailDeliveryProvider', () => {
     });
 
     await expect(
-      provider.sendTestEmail({ ...createInput(), ...override }),
+      provider.sendTestEmail({
+        ...createInput(),
+        ...override,
+      } as DnaSmtpTestEmailInput),
     ).rejects.toMatchObject({ code: 'DNA_SMTP_CONFIGURATION_INVALID' });
     expect(getSecret).not.toHaveBeenCalled();
     expect(transport).not.toHaveBeenCalled();
@@ -117,20 +121,16 @@ describe('DnaSmtpEmailDeliveryProvider', () => {
 
 function createInput() {
   return {
+    attemptId: 'attempt-1',
     body: 'Synthetic test message',
-    cc: 'copy@example.com',
     companyId: 'company-1',
-    emailDeliveryProvider: 'smtp',
+    emailDeliveryProvider: 'dnaSmtp' as const,
     emailSenderAddress: 'billing@example.com',
     emailSenderName: 'Example Builder Oy',
-    emailSmtpHost: 'smtp.dnamail.fi',
-    emailSmtpPort: 465,
-    emailSmtpSecurity: 'tls',
     emailTestRecipientOverride: 'safe-recipient@example.com',
     emailUsername: 'billing@example.com',
     pdfContent: Buffer.from('%PDF-1.7\nsynthetic', 'ascii'),
     pdfFileName: 'invoice-2026001.pdf',
-    requestedTo: 'actual-customer@example.com',
     subject: 'Invoice 2026001',
   };
 }

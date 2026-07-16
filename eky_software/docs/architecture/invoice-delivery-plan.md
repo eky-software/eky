@@ -140,10 +140,9 @@ Saapuva posti, IMAP:
 Lähtevä posti, SMTP:
 
 - suositeltu palvelin: `smtp.dnamail.fi`
-- vaihtoehdot:
-  - `smtp.welho.com`
-  - `smtp.dnainternet.net`
-  - `smtp.dna044.com`
+- muut historiassa tai erillisissä DNA-ohjeissa esiintyvät hostit eivät kuulu
+  local-MVP:n automaattiseen fallbackiin; niiden mahdollinen tuki arvioidaan
+  erikseen ajantasaisen tilikohtaisen ohjeen perusteella
 
 SMTP-portit:
 
@@ -166,11 +165,10 @@ Koska Eky voi myöhemmin ajaa pilvessä tai muualla kuin DNA:n omassa verkossa,
 ei saa luottaa siihen, että SMTP toimii ilman autentikointia DNA:n verkosta.
 Tuotantomallissa pitää varautua autentikoituun SMTP-lähetykseen.
 
-Hyväksytty tuleva DNA SMTP MVP -linja:
+Hyväksytty DNA SMTP local-MVP -linja:
 
-- provider: `smtp`
+- provider: `dnaSmtp`
 - host: `smtp.dnamail.fi`
-- fallback host: `smtp.dnainternet.net` vain eksplisiittisellä asetuksella
 - port: `465`
 - security: implicit TLS
 - authentication: required
@@ -179,11 +177,15 @@ Hyväksytty tuleva DNA SMTP MVP -linja:
   käyttää `safeStorage`-brokeria ja cloud-ympäristö myöhemmin Secret Manageria
 - credentials eivät koskaan kuulu Git-repositorioon
 - credentials eivät koskaan mene frontendille
-- lähetys testataan ensin dry-run- tai test recipient override -tilassa
+- yhteysprofiili ei ole käyttäjän muokattavissa
+- lähetys testataan ensin dry-run- tai pakotetussa test recipient override
+  -tilassa
 
-Käyttäjä voi myöhemmin hallita ei-salaisia SMTP-asetuksia Oma yritys /
-Asetukset -näkymässä. SMTP-salaisuus asetetaan tai vaihdetaan hallitulla
-toiminnolla, mutta sitä ei näytetä takaisin käyttäjälle eikä palauteta API:ssa.
+Käyttäjä hallitsee Oma yritys / Asetukset -näkymässä lähettäjän nimeä,
+lähettäjän osoitetta, username-arvoa ja testivastaanottajaa. Host, portti ja
+implicit TLS ovat backendin omistama kiinteä DNA-profiili. SMTP-salaisuus
+asetetaan tai vaihdetaan hallitulla toiminnolla, mutta sitä ei näytetä takaisin
+käyttäjälle eikä palauteta API:ssa.
 
 IMAP/POP3 eivät ole laskun lähettämisen kannalta ensisijaisia. Niitä voidaan
 tarvita myöhemmin esimerkiksi lähetettyjen viestien tarkistukseen tai

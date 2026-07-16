@@ -4,57 +4,49 @@ import { CompanySettingsValidationError } from './companySettingsRules.js';
 import { normalizeCompanyEmailSettings } from './companyEmailSettings.js';
 
 describe('normalizeCompanyEmailSettings', () => {
-  it('normalizes non-secret SMTP settings', () => {
+  it('normalizes the fixed non-secret DNA SMTP profile', () => {
     expect(
       normalizeCompanyEmailSettings({
-        emailDeliveryProvider: 'smtp',
+        emailDeliveryProvider: 'dnaSmtp',
         emailSenderName: '  Example Builder Oy  ',
         emailSenderAddress: '  laskutus@example.fi  ',
-        emailSmtpHost: '  SMTP.DNAMAIL.FI  ',
-        emailSmtpPort: 587,
-        emailSmtpSecurity: 'STARTTLS',
         emailUsername: '  laskutus@example.fi  ',
         emailTestRecipientOverride: '  test@example.fi  ',
       }),
     ).toEqual({
-      emailDeliveryProvider: 'smtp',
+      emailDeliveryProvider: 'dnaSmtp',
       emailSenderName: 'Example Builder Oy',
       emailSenderAddress: 'laskutus@example.fi',
       emailSmtpHost: 'smtp.dnamail.fi',
-      emailSmtpPort: 587,
-      emailSmtpSecurity: 'starttls',
+      emailSmtpPort: 465,
+      emailSmtpSecurity: 'tls',
       emailUsername: 'laskutus@example.fi',
       emailTestRecipientOverride: 'test@example.fi',
     });
   });
 
-  it('defaults empty provider and security values to dry-run and STARTTLS', () => {
+  it('defaults an empty provider to dry-run without a configurable SMTP endpoint', () => {
     expect(
       normalizeCompanyEmailSettings({
         emailDeliveryProvider: '',
         emailSenderName: '',
         emailSenderAddress: '',
-        emailSmtpHost: '',
-        emailSmtpPort: null,
-        emailSmtpSecurity: '',
         emailUsername: '',
         emailTestRecipientOverride: '',
       }),
     ).toMatchObject({
       emailDeliveryProvider: 'dryRun',
-      emailSmtpSecurity: 'starttls',
+      emailSmtpHost: '',
+      emailSmtpSecurity: 'tls',
       emailSmtpPort: null,
     });
   });
 
-  it('rejects invalid provider, host, port, security and email values', () => {
+  it('rejects invalid providers, email values, and mismatched DNA identities', () => {
     const baseInput = {
       emailDeliveryProvider: 'dryRun',
       emailSenderName: '',
       emailSenderAddress: '',
-      emailSmtpHost: '',
-      emailSmtpPort: null,
-      emailSmtpSecurity: 'starttls',
       emailUsername: '',
       emailTestRecipientOverride: '',
     };
@@ -63,16 +55,15 @@ describe('normalizeCompanyEmailSettings', () => {
       normalizeCompanyEmailSettings({ ...baseInput, emailDeliveryProvider: 'webmail' }),
     ).toThrow(CompanySettingsValidationError);
     expect(() =>
-      normalizeCompanyEmailSettings({ ...baseInput, emailSmtpHost: 'https://smtp.example.fi' }),
-    ).toThrow(CompanySettingsValidationError);
-    expect(() =>
-      normalizeCompanyEmailSettings({ ...baseInput, emailSmtpPort: 0 }),
-    ).toThrow(CompanySettingsValidationError);
-    expect(() =>
-      normalizeCompanyEmailSettings({ ...baseInput, emailSmtpSecurity: 'plain' }),
-    ).toThrow(CompanySettingsValidationError);
-    expect(() =>
       normalizeCompanyEmailSettings({ ...baseInput, emailSenderAddress: 'not-email' }),
+    ).toThrow(CompanySettingsValidationError);
+    expect(() =>
+      normalizeCompanyEmailSettings({
+        ...baseInput,
+        emailDeliveryProvider: 'dnaSmtp',
+        emailSenderAddress: 'sender@example.fi',
+        emailUsername: 'other@example.fi',
+      }),
     ).toThrow(CompanySettingsValidationError);
   });
 });

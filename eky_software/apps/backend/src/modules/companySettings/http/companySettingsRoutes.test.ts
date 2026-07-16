@@ -1,7 +1,7 @@
 import { createActorContext } from '@eky/auth';
 import { AuthorizationError } from '@eky/permissions';
 import { Hono } from 'hono';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 import type { GetCompanySettingsInput } from '../application/getCompanySettings.js';
@@ -59,12 +59,9 @@ describe('companySettingsRoutes', () => {
         bic: ' ndeafihh ',
         bankName: '  Test Bank  ',
         email: '  info@example.fi  ',
-        emailDeliveryProvider: 'smtp',
+        emailDeliveryProvider: 'dnaSmtp',
         emailSenderName: '  Example Builder Oy  ',
         emailSenderAddress: '  laskutus@example.fi  ',
-        emailSmtpHost: '  smtp.dnamail.fi  ',
-        emailSmtpPort: 587,
-        emailSmtpSecurity: 'starttls',
         emailUsername: '  laskutus@example.fi  ',
         emailTestRecipientOverride: '  test@example.fi  ',
         phone: '  040 123 4567  ',
@@ -94,12 +91,9 @@ describe('companySettingsRoutes', () => {
       bic: ' ndeafihh ',
       bankName: '  Test Bank  ',
       email: '  info@example.fi  ',
-      emailDeliveryProvider: 'smtp',
+      emailDeliveryProvider: 'dnaSmtp',
       emailSenderName: '  Example Builder Oy  ',
       emailSenderAddress: '  laskutus@example.fi  ',
-      emailSmtpHost: '  smtp.dnamail.fi  ',
-      emailSmtpPort: 587,
-      emailSmtpSecurity: 'starttls',
       emailUsername: '  laskutus@example.fi  ',
       emailTestRecipientOverride: '  test@example.fi  ',
       phone: '  040 123 4567  ',
@@ -129,6 +123,32 @@ describe('companySettingsRoutes', () => {
 
     expect(response.status).toBe(400);
     expect(body).toEqual({ error: 'Invalid JSON body.' });
+  });
+
+  it.each([
+    ['emailSmtpHost', 'attacker.example'],
+    ['emailSmtpPort', 25],
+    ['emailSmtpSecurity', 'none'],
+  ])('rejects client-controlled fixed SMTP setting %s', async (field, value) => {
+    const updateCompanySettings = vi.fn();
+    const app = createAuthenticatedTestApp(createCompanySettingsRoutes({
+      async getCompanySettings(): Promise<CompanySettings> {
+        return createTestCompanySettings();
+      },
+      updateCompanySettings,
+    }));
+
+    const response = await app.request('/company-settings', {
+      body: JSON.stringify({ [field]: value }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'PUT',
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'SMTP connection settings are fixed.',
+    });
+    expect(updateCompanySettings).not.toHaveBeenCalled();
   });
 
   it('maps validation errors to bad request responses', async () => {
@@ -212,12 +232,12 @@ function createTestCompanySettings(): CompanySettings {
     postalCode: '00100',
     city: 'Helsinki',
     email: 'info@example.fi',
-    emailDeliveryProvider: 'smtp',
+    emailDeliveryProvider: 'dnaSmtp',
     emailSenderName: 'Example Builder Oy',
     emailSenderAddress: 'laskutus@example.fi',
     emailSmtpHost: 'smtp.dnamail.fi',
-    emailSmtpPort: 587,
-    emailSmtpSecurity: 'starttls',
+    emailSmtpPort: 465,
+    emailSmtpSecurity: 'tls',
     emailUsername: 'laskutus@example.fi',
     emailTestRecipientOverride: 'test@example.fi',
     emailSecretConfigured: false,

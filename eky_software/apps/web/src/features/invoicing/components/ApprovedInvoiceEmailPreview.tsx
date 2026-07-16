@@ -1,7 +1,7 @@
 import type {
   ApprovedInvoiceEmailDryRunSendInput,
   ApprovedInvoiceEmailPreview as ApprovedInvoiceEmailPreviewData,
-  ApprovedInvoiceEmailSmtpTestSendInput,
+  ApprovedInvoiceEmailSmtpTestPrepareInput,
 } from '@eky/api-client';
 import { useEffect, useState } from 'react';
 
@@ -15,10 +15,11 @@ interface ApprovedInvoiceEmailPreviewProps {
   isSendingSmtpTest: boolean;
   smtpTestErrorMessage: string | null;
   smtpTestRecipient: string | null;
+  smtpTestUnavailableMessage: string | null;
   smtpTestSuccessMessage: string | null;
   successMessage: string | null;
   onSendDryRun(input: ApprovedInvoiceEmailDryRunSendInput): void;
-  onSendSmtpTest(input: ApprovedInvoiceEmailSmtpTestSendInput): void;
+  onSendSmtpTest(input: ApprovedInvoiceEmailSmtpTestPrepareInput): void;
 }
 
 export function ApprovedInvoiceEmailPreview({
@@ -28,6 +29,7 @@ export function ApprovedInvoiceEmailPreview({
   isSendingSmtpTest,
   smtpTestErrorMessage,
   smtpTestRecipient,
+  smtpTestUnavailableMessage,
   smtpTestSuccessMessage,
   successMessage,
   onSendDryRun,
@@ -110,6 +112,11 @@ export function ApprovedInvoiceEmailPreview({
           {smtpTestRecipient ??
             uiText.invoicing.invoiceEmailSmtpTestMissingRecipient}
         </p>
+        {smtpTestUnavailableMessage !== null ? (
+          <p className="message info-message" role="status">
+            {smtpTestUnavailableMessage}
+          </p>
+        ) : null}
       </section>
       <div className={styles.actions}>
         <button
@@ -134,7 +141,10 @@ export function ApprovedInvoiceEmailPreview({
         <button
           className="primary-action"
           disabled={
-            isSending || isSendingSmtpTest || smtpTestRecipient === null
+            isSending ||
+            isSendingSmtpTest ||
+            smtpTestRecipient === null ||
+            smtpTestUnavailableMessage !== null
           }
           onClick={() =>
             onSendSmtpTest(

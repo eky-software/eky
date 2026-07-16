@@ -21,7 +21,17 @@ export class DnaInvoiceSmtpTestDeliveryProvider
     input: InvoiceSmtpTestEmailInput,
   ): Promise<InvoiceSmtpTestEmailResult> {
     try {
-      return await this.provider.sendTestEmail(input);
+      if (input.emailDeliveryProvider !== 'dnaSmtp') {
+        throw new InvoiceSmtpTestDeliveryError(
+          'failed',
+          'DNA_SMTP_CONFIGURATION_INVALID',
+        );
+      }
+
+      return await this.provider.sendTestEmail({
+        ...input,
+        emailDeliveryProvider: 'dnaSmtp',
+      });
     } catch (error) {
       if (error instanceof DnaSmtpProviderError) {
         throw new InvoiceSmtpTestDeliveryError(

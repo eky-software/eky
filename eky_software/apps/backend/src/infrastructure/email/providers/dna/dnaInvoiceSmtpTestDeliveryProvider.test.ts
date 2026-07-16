@@ -57,20 +57,16 @@ describe('DnaInvoiceSmtpTestDeliveryProvider', () => {
 
 function createInput() {
   return {
+    attemptId: 'attempt-1',
     body: 'Synthetic message',
-    cc: 'customer-copy@example.fi',
     companyId: 'company-1',
-    emailDeliveryProvider: 'smtp' as const,
+    emailDeliveryProvider: 'dnaSmtp' as const,
     emailSenderAddress: 'billing@example.fi',
     emailSenderName: 'Example Builder Oy',
-    emailSmtpHost: 'smtp.dnamail.fi',
-    emailSmtpPort: 465,
-    emailSmtpSecurity: 'tls' as const,
     emailTestRecipientOverride: 'safe-test@example.fi',
     emailUsername: 'billing@example.fi',
     pdfContent: Buffer.from('%PDF-1.7\nsynthetic', 'ascii'),
     pdfFileName: 'invoice-2026001.pdf',
-    requestedTo: 'customer@example.fi',
     subject: 'Invoice 2026001',
   };
 }

@@ -180,10 +180,10 @@ function isNullableNumber(value: unknown): value is number | null {
   return value === null || typeof value === 'number';
 }
 
-function isEmailDeliveryProvider(value: unknown): value is 'dryRun' | 'smtp' {
-  return value === 'dryRun' || value === 'smtp';
+function isEmailDeliveryProvider(value: unknown): value is 'dryRun' | 'dnaSmtp' {
+  return value === 'dryRun' || value === 'dnaSmtp';
 }
 
-function isEmailSmtpSecurity(value: unknown): value is 'tls' | 'starttls' {
-  return value === 'tls' || value === 'starttls';
+function isEmailSmtpSecurity(value: unknown): value is 'tls' {
+  return value === 'tls';
 }

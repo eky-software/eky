@@ -75,7 +75,7 @@ describe('Electron safeStorage secret broker', () => {
       ).rejects.toEqual(
         expect.objectContaining({ code: 'SECRET_STORAGE_UNAVAILABLE' }),
       );
-      await expect(harness.file.read()).resolves.toBeNull();
+      await expect(harness.file.readCandidate()).resolves.toBeNull();
     } finally {
       harness.close();
     }
@@ -102,6 +102,38 @@ describe('Electron safeStorage secret broker', () => {
     } finally {
       harness.close();
     }
+  });
+
+  it('does not confirm or clean a candidate when safeStorage decryption fails', async () => {
+    const file = new InMemoryEncryptedSecretFile();
+    await file.write(Buffer.from('synthetic-ciphertext', 'ascii'));
+
+    const response = await handleSecretBrokerMessage(
+      {
+        companyId: 'example-company',
+        operation: 'hasCompanyEmailSecret',
+        protocolVersion: 1,
+        requestId: '47a8881e-e9b8-4f40-b5c7-8fe2c9f2ed5e',
+      },
+      {
+        encryptedSecretFile: file,
+        protector: {
+          async decrypt(): Promise<DecryptedString> {
+            throw new Error('synthetic decrypt failure');
+          },
+          async encrypt(): Promise<Uint8Array> {
+            throw new Error('not used');
+          },
+        },
+      },
+    );
+
+    expect(response).toMatchObject({
+      errorCode: 'SECRET_STORAGE_UNAVAILABLE',
+      ok: false,
+    });
+    expect(file.confirmCount).toBe(0);
+    await expect(file.readCandidate()).resolves.not.toBeNull();
   });
 
   it('rejects malformed messages with only a safe broker error code', async () => {
@@ -166,9 +198,19 @@ function createBrokerHarness(
 
 class InMemoryEncryptedSecretFile implements EncryptedSecretFileStore {
   private ciphertext: Uint8Array | null = null;
+  confirmCount = 0;
 
-  async read(): Promise<Uint8Array | null> {
-    return this.ciphertext === null ? null : Uint8Array.from(this.ciphertext);
+  async confirm(): Promise<void> {
+    this.confirmCount += 1;
+  }
+
+  async readCandidate(): Promise<{
+    ciphertext: Uint8Array;
+    slot: 'current';
+  } | null> {
+    return this.ciphertext === null
+      ? null
+      : { ciphertext: Uint8Array.from(this.ciphertext), slot: 'current' };
   }
 
   readRawText(): string {

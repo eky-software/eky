@@ -192,8 +192,27 @@ export interface ApprovedInvoiceEmailDryRunSendResult {
   providerResult: ApprovedInvoiceEmailDryRunProviderResult;
 }
 
-export type ApprovedInvoiceEmailSmtpTestSendInput =
+export type ApprovedInvoiceEmailSmtpTestPrepareInput =
   ApprovedInvoiceEmailDryRunSendInput;
+
+export type ApprovedInvoiceEmailSmtpTestSendInput =
+  ApprovedInvoiceEmailDryRunSendInput & {
+    attemptId: string;
+    authorizationToken: string;
+  };
+
+export interface ApprovedInvoiceEmailSmtpTestPreparation {
+  attachment: {
+    fileName: string;
+    sizeBytes: number;
+  };
+  attemptId: string;
+  authorizationToken: string;
+  expiresAt: string;
+  invoiceId: string;
+  subject: string;
+  testRecipient: string;
+}
 
 export interface ApprovedInvoiceEmailSmtpTestSendResult {
   deliveredTo: string;
@@ -216,6 +235,10 @@ export interface ApprovedInvoicesApi {
   prepareApprovedInvoiceEmailDryRun(
     id: string,
   ): Promise<ApprovedInvoiceEmailPreview>;
+  prepareApprovedInvoiceEmailSmtpTest(
+    id: string,
+    input: ApprovedInvoiceEmailSmtpTestPrepareInput,
+  ): Promise<ApprovedInvoiceEmailSmtpTestPreparation>;
   sendApprovedInvoiceEmailDryRun(
     id: string,
     input: ApprovedInvoiceEmailDryRunSendInput,

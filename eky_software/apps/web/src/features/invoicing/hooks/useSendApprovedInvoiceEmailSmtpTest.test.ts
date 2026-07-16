@@ -1,6 +1,6 @@
 import {
   EkyApiError,
-  type ApprovedInvoiceEmailSmtpTestSendInput,
+  type ApprovedInvoiceEmailSmtpTestPrepareInput,
   type ApprovedInvoiceEmailSmtpTestSendResult,
 } from '@eky/api-client';
 import { describe, expect, it, vi } from 'vitest';
@@ -20,13 +20,22 @@ describe('sendApprovedInvoiceEmailSmtpTestWithClient', () => {
       providerMessageId: '<message-1@example.fi>',
       testMode: true,
     };
-    const input: ApprovedInvoiceEmailSmtpTestSendInput = {
+    const input: ApprovedInvoiceEmailSmtpTestPrepareInput = {
       body: 'Hei,\n\nLiitteenä testilasku.',
       cc: 'customer-copy@example.fi',
       subject: 'Lasku 20260001',
       to: 'customer@example.fi',
     };
     const apiClient = {
+      prepareApprovedInvoiceEmailSmtpTest: vi.fn(async () => ({
+        attachment: { fileName: 'invoice.pdf', sizeBytes: 2048 },
+        attemptId: 'attempt-1',
+        authorizationToken: 'one-time-authorization',
+        expiresAt: '2026-07-16T10:01:00.000Z',
+        invoiceId: 'invoice-1',
+        subject: input.subject,
+        testRecipient: 'safe-test@example.fi',
+      })),
       sendApprovedInvoiceEmailSmtpTest: vi.fn(async () => result),
     };
 
@@ -37,9 +46,17 @@ describe('sendApprovedInvoiceEmailSmtpTestWithClient', () => {
         input,
       ),
     ).resolves.toBe(result);
-    expect(apiClient.sendApprovedInvoiceEmailSmtpTest).toHaveBeenCalledWith(
+    expect(apiClient.prepareApprovedInvoiceEmailSmtpTest).toHaveBeenCalledWith(
       'invoice-1',
       input,
+    );
+    expect(apiClient.sendApprovedInvoiceEmailSmtpTest).toHaveBeenCalledWith(
+      'invoice-1',
+      {
+        ...input,
+        attemptId: 'attempt-1',
+        authorizationToken: 'one-time-authorization',
+      },
     );
   });
 });

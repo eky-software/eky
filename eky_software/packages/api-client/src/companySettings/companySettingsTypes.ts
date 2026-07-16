@@ -10,12 +10,12 @@ export interface CompanySettings {
   email: string;
   phone: string;
   website: string;
-  emailDeliveryProvider: 'dryRun' | 'smtp';
+  emailDeliveryProvider: 'dryRun' | 'dnaSmtp';
   emailSenderName: string;
   emailSenderAddress: string;
   emailSmtpHost: string;
   emailSmtpPort: number | null;
-  emailSmtpSecurity: 'tls' | 'starttls';
+  emailSmtpSecurity: 'tls';
   emailUsername: string;
   emailTestRecipientOverride: string;
   emailSecretConfigured: boolean;
@@ -38,12 +38,9 @@ export interface UpdateCompanySettingsRequest {
   email: string;
   phone: string;
   website: string;
-  emailDeliveryProvider: 'dryRun' | 'smtp';
+  emailDeliveryProvider: 'dryRun' | 'dnaSmtp';
   emailSenderName: string;
   emailSenderAddress: string;
-  emailSmtpHost: string;
-  emailSmtpPort: number | null;
-  emailSmtpSecurity: 'tls' | 'starttls';
   emailUsername: string;
   emailTestRecipientOverride: string;
   iban: string;

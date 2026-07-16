@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 
 import {
   dnaSmtpConnectionProfile,
-  isExactDnaSmtpProfile,
 } from './dnaSmtpConfiguration.js';
 
 describe('DNA SMTP configuration', () => {
@@ -17,22 +16,19 @@ describe('DNA SMTP configuration', () => {
     });
   });
 
-  it.each([
-    { emailDeliveryProvider: 'dryRun' },
-    { emailSmtpHost: 'smtp.dnainternet.net' },
-    { emailSmtpHost: 'attacker.example' },
-    { emailSmtpPort: 25 },
-    { emailSmtpPort: 587 },
-    { emailSmtpSecurity: 'starttls' },
-  ])('rejects a profile override: %o', (override) => {
-    expect(
-      isExactDnaSmtpProfile({
-        emailDeliveryProvider: 'smtp',
-        emailSmtpHost: 'smtp.dnamail.fi',
-        emailSmtpPort: 465,
-        emailSmtpSecurity: 'tls',
-        ...override,
-      }),
-    ).toBe(false);
+  it('exposes no configurable fallback host, STARTTLS, or alternate port', () => {
+    expect(Object.keys(dnaSmtpConnectionProfile).sort()).toEqual([
+      'connectionTimeoutMilliseconds',
+      'host',
+      'idleTimeoutMilliseconds',
+      'minVersion',
+      'port',
+      'servername',
+    ]);
+    expect(JSON.stringify(dnaSmtpConnectionProfile)).not.toContain('587');
+    expect(JSON.stringify(dnaSmtpConnectionProfile)).not.toContain('25');
+    expect(JSON.stringify(dnaSmtpConnectionProfile)).not.toContain(
+      'smtp.dnainternet.net',
+    );
   });
 });

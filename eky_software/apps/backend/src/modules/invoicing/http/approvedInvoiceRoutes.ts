@@ -36,12 +36,17 @@ import type {
   SendApprovedInvoiceEmailDryRunResult,
 } from '../application/sendApprovedInvoiceEmailDryRun.js';
 import type {
+  ApprovedInvoiceEmailSmtpTestPreparation,
+  PrepareApprovedInvoiceEmailSmtpTestInput,
+} from '../application/prepareApprovedInvoiceEmailSmtpTest.js';
+import type {
   SendApprovedInvoiceEmailSmtpTestInput,
   SendApprovedInvoiceEmailSmtpTestResult,
 } from '../application/sendApprovedInvoiceEmailSmtpTest.js';
 import { ApprovedInvoiceDocumentNotFoundError } from '../application/approvedInvoiceDocumentNotFoundError.js';
 import { ApprovedInvoiceEmailDeliveryError } from '../application/approvedInvoiceEmailDeliveryError.js';
 import { ApprovedInvoiceEmailDeliveryOutcomeUnknownError } from '../application/approvedInvoiceEmailDeliveryOutcomeUnknownError.js';
+import { InvoiceSmtpTestAttemptError } from '../application/invoiceSmtpTestAttemptError.js';
 import { ApprovedInvoiceNotFoundError } from '../application/approvedInvoiceNotFoundError.js';
 import type { ApprovedInvoiceEmailPreview } from '../application/approvedInvoiceEmailPreview.js';
 import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
@@ -52,6 +57,7 @@ import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import {
   ApprovedInvoiceEmailRequestValidationError,
   parseApprovedInvoiceEmailDryRunSendBody,
+  parseApprovedInvoiceEmailSmtpTestPrepareBody,
   parseApprovedInvoiceEmailSmtpTestSendBody,
 } from './approvedInvoiceEmailRequest.js';
 
@@ -83,6 +89,9 @@ interface ApprovedInvoiceRouteDependencies {
   sendApprovedInvoiceEmailDryRun(
     input: SendApprovedInvoiceEmailDryRunInput,
   ): Promise<SendApprovedInvoiceEmailDryRunResult>;
+  prepareApprovedInvoiceEmailSmtpTest(
+    input: PrepareApprovedInvoiceEmailSmtpTestInput,
+  ): Promise<ApprovedInvoiceEmailSmtpTestPreparation>;
   sendApprovedInvoiceEmailSmtpTest(
     input: SendApprovedInvoiceEmailSmtpTestInput,
   ): Promise<SendApprovedInvoiceEmailSmtpTestResult>;
@@ -367,8 +376,59 @@ export function createApprovedInvoiceRoutes(
         return context.json({ error: error.message }, 502);
       }
 
+      if (error instanceof InvoiceSmtpTestAttemptError) {
+        return context.json(
+          { error: error.message },
+          error.code === 'cooldown' ? 429 : 409,
+        );
+      }
+
       if (error instanceof ApprovedInvoiceEmailDeliveryError) {
         return context.json({ error: error.message }, 502);
+      }
+
+      throw error;
+    }
+  });
+
+  routes.post('/invoices/:id/email/smtp-test/prepare', async (context) => {
+    try {
+      const actorContext = context.get('actorContext');
+      const body = await context.req.json();
+      const preparation = await dependencies.prepareApprovedInvoiceEmailSmtpTest(
+        parseApprovedInvoiceEmailSmtpTestPrepareBody(body, {
+          actorContext,
+          invoiceId: context.req.param('id'),
+          preparedAt: new Date().toISOString(),
+        }),
+      );
+
+      return context.json({ preparation });
+    } catch (error) {
+      if (error instanceof AuthorizationError) {
+        return context.json({ error: 'Access denied.' }, 403);
+      }
+
+      if (error instanceof ApprovedInvoiceNotFoundError) {
+        return context.json({ error: error.message }, 404);
+      }
+
+      if (
+        error instanceof ApprovedInvoiceEmailRequestValidationError ||
+        error instanceof InvoiceDraftValidationError
+      ) {
+        return context.json({ error: error.message }, 400);
+      }
+
+      if (error instanceof InvoiceSmtpTestAttemptError) {
+        return context.json(
+          { error: error.message },
+          error.code === 'cooldown' ? 429 : 409,
+        );
+      }
+
+      if (error instanceof ApprovedInvoiceEmailDeliveryError) {
+        return context.json({ error: error.message }, 409);
       }
 
       throw error;
