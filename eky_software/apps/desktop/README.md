@@ -38,5 +38,10 @@ loads the packaged React/Vite renderer through the restricted `eky://app`
 protocol, checks `/health`, and renders a synthetic invoice PDF with the
 packaged PDFKit stack. It also creates a synthetic approved invoice through
 the authenticated backend routes and loads its current PDF into the secured
-Electron preview window. Smoke data is written under a random operating-system
-temporary directory and removed after the check.
+Electron preview window. The Chromium PDF component is enabled only for that
+sandboxed preview window, and the smoke check verifies that the window paints
+non-blank content in addition to loading the authenticated PDF response. Smoke
+also verifies that the sandbox-compatible CommonJS preload exposes exactly the
+named invoice PDF preview operation to the packaged renderer. Smoke
+data is written under a random operating-system temporary directory and
+removed after the check.

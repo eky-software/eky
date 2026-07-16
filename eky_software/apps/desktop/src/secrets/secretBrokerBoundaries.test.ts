@@ -4,12 +4,14 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
+import { invoicePdfPreviewIpcChannel } from '../pdf/invoicePdfPreviewTypes.js';
+
 const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 describe('desktop secret broker boundaries', () => {
   it('exposes only the named PDF preview operation through preload', async () => {
     const preloadSource = await readFile(
-      join(sourceRoot, 'preload', 'index.ts'),
+      join(sourceRoot, 'preload', 'index.cts'),
       'utf8',
     );
 
@@ -17,6 +19,9 @@ describe('desktop secret broker boundaries', () => {
     expect(preloadSource).not.toMatch(/node:fs|shell|process\.|openUrl|openFile|rawIpc/i);
     expect(preloadSource.match(/ipcRenderer\.invoke/g)).toHaveLength(1);
     expect(preloadSource).toContain('invoicePdfPreviewIpcChannel');
+    expect(preloadSource).toContain(
+      `invoicePdfPreviewIpcChannel = '${invoicePdfPreviewIpcChannel}'`,
+    );
     expect(preloadSource).toContain('openInvoicePdf');
   });
 

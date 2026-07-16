@@ -137,7 +137,7 @@ async function writeSmokeResult(
 }
 
 function createMainWindow(showWhenReady = true): BrowserWindow {
-  const preloadPath = join(app.getAppPath(), 'dist/preload/index.js');
+  const preloadPath = join(app.getAppPath(), 'dist/preload/index.cjs');
   const window = new BrowserWindow(createSecureWindowOptions(preloadPath));
 
   window.removeMenu();
@@ -188,6 +188,8 @@ async function runPackagedSmokeCheck(
     throw new Error('DESKTOP_SMOKE_PDF_FAILED');
   }
 
+  await assertPackagedDesktopBridge(pdfPreviewController);
+
   await verifyCompanyEmailSecretHttpLifecycle(
     backend.port,
     runtimeSessionSecret,
@@ -220,6 +222,14 @@ async function runPackagedSmokeCheck(
 
       throw error;
     }
+  }
+}
+
+async function assertPackagedDesktopBridge(
+  pdfPreviewController: InvoicePdfPreviewWindowController,
+): Promise<void> {
+  if (!(await pdfPreviewController.hasRendererBridgeForSmoke())) {
+    throw new Error('DESKTOP_SMOKE_PRELOAD_BRIDGE_FAILED');
   }
 }
 

@@ -78,6 +78,7 @@ describe('invoice PDF preview policy', () => {
       devTools: false,
       nodeIntegration: false,
       nodeIntegrationInWorker: false,
+      plugins: true,
       sandbox: true,
       webSecurity: true,
       webviewTag: false,
