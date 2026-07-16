@@ -17,12 +17,9 @@ describe('CompanySettingsForm', () => {
           bic: 'NDEAFIHH',
           bankName: 'Test Bank',
           website: 'www.example.fi',
-          emailDeliveryProvider: 'smtp',
+          emailDeliveryProvider: 'dnaSmtp',
           emailSenderName: 'Example Builder Oy',
           emailSenderAddress: 'laskutus@example.fi',
-          emailSmtpHost: 'smtp.dnamail.fi',
-          emailSmtpPort: '587',
-          emailSmtpSecurity: 'starttls',
           emailUsername: 'laskutus@example.fi',
           emailTestRecipientOverride: 'test@example.fi',
           emailSecretConfigured: false,
@@ -45,8 +42,10 @@ describe('CompanySettingsForm', () => {
     expect(html).toContain('Example Builder Oy');
     expect(html).toContain(uiText.companySettings.emailSenderAddress);
     expect(html).toContain('laskutus@example.fi');
-    expect(html).toContain(uiText.companySettings.emailSmtpHost);
-    expect(html).toContain('smtp.dnamail.fi');
+    expect(html).toContain(uiText.companySettings.emailDnaSmtpProfileHelp);
+    expect(html).not.toContain('id="company-email-smtp-host"');
+    expect(html).not.toContain('id="company-email-smtp-port"');
+    expect(html).not.toContain('id="company-email-smtp-security"');
     expect(html).not.toContain('id="company-email-secret"');
     expect(html).not.toContain('type="password"');
     expect(html).toContain(uiText.companySettings.iban);

@@ -170,7 +170,7 @@ export function CompanySettingsForm({
                 value={form.emailDeliveryProvider}
               >
                 <option value="dryRun">{uiText.companySettings.emailProviderDryRun}</option>
-                <option value="smtp">{uiText.companySettings.emailProviderSmtp}</option>
+                <option value="dnaSmtp">{uiText.companySettings.emailProviderDnaSmtp}</option>
               </select>
             </label>
 
@@ -198,48 +198,11 @@ export function CompanySettingsForm({
               />
             </label>
 
-            <label htmlFor="company-email-smtp-host">
-              {uiText.companySettings.emailSmtpHost}
-              <input
-                id="company-email-smtp-host"
-                name="emailSmtpHost"
-                onChange={(event) => onFieldChange('emailSmtpHost', event.target.value)}
-                placeholder={uiText.companySettings.placeholderEmailSmtpHost}
-                type="text"
-                value={form.emailSmtpHost}
-              />
-            </label>
-
-            <label htmlFor="company-email-smtp-port">
-              {uiText.companySettings.emailSmtpPort}
-              <input
-                id="company-email-smtp-port"
-                inputMode="numeric"
-                name="emailSmtpPort"
-                onChange={(event) => onFieldChange('emailSmtpPort', event.target.value)}
-                placeholder={uiText.companySettings.placeholderEmailSmtpPort}
-                type="text"
-                value={form.emailSmtpPort}
-              />
-            </label>
-
-            <label htmlFor="company-email-smtp-security">
-              {uiText.companySettings.emailSmtpSecurity}
-              <select
-                id="company-email-smtp-security"
-                name="emailSmtpSecurity"
-                onChange={(event) =>
-                  onFieldChange(
-                    'emailSmtpSecurity',
-                    event.target.value as CompanySettingsFormModel['emailSmtpSecurity'],
-                  )
-                }
-                value={form.emailSmtpSecurity}
-              >
-                <option value="starttls">{uiText.companySettings.emailSmtpStartTls}</option>
-                <option value="tls">{uiText.companySettings.emailSmtpTls}</option>
-              </select>
-            </label>
+            {form.emailDeliveryProvider === 'dnaSmtp' ? (
+              <p className={styles.wideField}>
+                {uiText.companySettings.emailDnaSmtpProfileHelp}
+              </p>
+            ) : null}
 
             <label htmlFor="company-email-username">
               {uiText.companySettings.emailUsername}

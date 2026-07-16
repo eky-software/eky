@@ -17,21 +17,3 @@ export const dnaSmtpSessionTimeouts: Readonly<SmtpSessionTimeouts> =
     greetingMilliseconds: 10_000,
     totalMilliseconds: 60_000,
   });
-
-export interface DnaSmtpStoredProfile {
-  emailDeliveryProvider: string;
-  emailSmtpHost: string;
-  emailSmtpPort: number | null;
-  emailSmtpSecurity: string;
-}
-
-export function isExactDnaSmtpProfile(
-  profile: DnaSmtpStoredProfile,
-): boolean {
-  return (
-    profile.emailDeliveryProvider === 'smtp' &&
-    profile.emailSmtpHost === dnaSmtpConnectionProfile.host &&
-    profile.emailSmtpPort === dnaSmtpConnectionProfile.port &&
-    profile.emailSmtpSecurity === 'tls'
-  );
-}

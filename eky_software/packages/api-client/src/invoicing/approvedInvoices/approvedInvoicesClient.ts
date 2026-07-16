@@ -4,6 +4,7 @@ import {
   readApprovedInvoiceDocumentMetadataResponse,
   readApprovedInvoiceEmailDryRunSendResponse,
   readApprovedInvoiceEmailSmtpTestSendResponse,
+  readApprovedInvoiceEmailSmtpTestPreparationResponse,
   readApprovedInvoiceEmailPreviewResponse,
   readApprovedInvoiceListResponse,
   readApprovedInvoiceResponse,
@@ -138,7 +139,11 @@ export function createApprovedInvoicesApi(
         baseUrl,
         `/invoices/${encodeURIComponent(id)}/email/smtp-test/send`,
         {
-          body: JSON.stringify(createApprovedInvoiceEmailSendBody(input)),
+          body: JSON.stringify({
+            ...createApprovedInvoiceEmailSendBody(input),
+            attemptId: input.attemptId,
+            authorizationToken: input.authorizationToken,
+          }),
           headers: {
             'Content-Type': 'application/json',
           },
@@ -147,6 +152,23 @@ export function createApprovedInvoicesApi(
       );
 
       return readApprovedInvoiceEmailSmtpTestSendResponse(responseBody);
+    },
+
+    async prepareApprovedInvoiceEmailSmtpTest(id, input) {
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        `/invoices/${encodeURIComponent(id)}/email/smtp-test/prepare`,
+        {
+          body: JSON.stringify(createApprovedInvoiceEmailSendBody(input)),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          method: 'POST',
+        },
+      );
+
+      return readApprovedInvoiceEmailSmtpTestPreparationResponse(responseBody);
     },
 
     async reopenApprovedInvoiceForEditing(

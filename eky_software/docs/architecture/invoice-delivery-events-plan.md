@@ -142,6 +142,17 @@ SMTP-testi käyttää aina Company Settingsin testivastaanottajaa, tallentaa
 delivery eventiin todellisen testivastaanottajan, jättää Cc:n tyhjäksi eikä
 muuta laskua `sent`-tilaan.
 
+SMTP-testin send-vaihettä edeltää erillinen prepare-vaihe. Backend luo
+lyhytikäisen kertakäyttövaltuutuksen ja sitoo sen actoriin, yritykseen,
+laskuun, provideriin, todelliseen testivastaanottajaan ja validoitujen
+viestikenttien fingerprintiin. Electron main process näyttää prepare-
+vastauksesta rajatun vahvistusikkunan. Vain uusin vahvistettu, käyttämätön ja
+voimassa oleva valtuutus saa edetä provider-kutsuun. Yhtä laskua ja provideria
+kohti sallitaan vain yksi aktiivinen yritys; onnistunut tai lopputulokseltaan
+epäselvä yritys käynnistää lyhyen varoajan. Automaattista retrytä ei tehdä.
+Local-MVP:n attempt store on prosessimuistissa, joten se ei ole pilvi- tai
+moniprosessilukko; tuotantomalli arvioidaan erikseen ennen pilvikäyttöä.
+
 ## Tuleva Send Input
 
 Kun oikea tai fake-send-polku lisätään, webistä backendille voidaan lähettää
@@ -258,6 +269,10 @@ PDF:n, validoi kentät ja kirjaa delivery eventin. Tämä ei muuta laskua
 Hallittu SMTP-testi ei ole tuotantolähetys: todellinen vastaanottaja pakotetaan
 testiasetuksesta, Cc poistetaan eikä laskun tila muutu. Automaattiset testit
 eivät muodosta verkkoyhteyttä DNA:n palvelimeen.
+
+Selainkehityksessä käytetään vain dry-run-polkuja. Oikea SMTP-testipolku on
+käytettävissä vain Electron desktop -runtimessa, jossa salaisuuden tila ja
+backend-only secret reader ovat saatavilla.
 
 Ei vielä toteuteta:
 

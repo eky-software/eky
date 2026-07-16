@@ -8,6 +8,7 @@ import type {
   ApprovedInvoiceEmailDryRunSend,
   ApprovedInvoiceEmailDryRunSendResult,
   ApprovedInvoiceEmailSmtpTestSendResult,
+  ApprovedInvoiceEmailSmtpTestPreparation,
   ApprovedInvoiceNumberingMode,
   ApprovedInvoicePriceInputMode,
   ApprovedInvoiceReferenceNumberType,
@@ -109,6 +110,33 @@ export function readApprovedInvoiceEmailSmtpTestSendResponse(
     provider: 'smtp',
     providerMessageId: readNullableString(delivery, 'providerMessageId'),
     testMode: true,
+  };
+}
+
+export function readApprovedInvoiceEmailSmtpTestPreparationResponse(
+  responseBody: unknown,
+): ApprovedInvoiceEmailSmtpTestPreparation {
+  if (!isRecord(responseBody) || !isRecord(responseBody.preparation)) {
+    throw invalidApprovedInvoiceResponse(responseBody);
+  }
+
+  const preparation = responseBody.preparation;
+
+  if (!isRecord(preparation.attachment)) {
+    throw invalidApprovedInvoiceResponse(responseBody);
+  }
+
+  return {
+    attachment: {
+      fileName: readString(preparation.attachment, 'fileName'),
+      sizeBytes: readSafeInteger(preparation.attachment, 'sizeBytes'),
+    },
+    attemptId: readString(preparation, 'attemptId'),
+    authorizationToken: readString(preparation, 'authorizationToken'),
+    expiresAt: readString(preparation, 'expiresAt'),
+    invoiceId: readString(preparation, 'invoiceId'),
+    subject: readString(preparation, 'subject'),
+    testRecipient: readString(preparation, 'testRecipient'),
   };
 }
 

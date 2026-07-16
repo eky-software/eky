@@ -14,6 +14,7 @@ import {
 
 import { registerApplicationProtocol } from './applicationProtocol.js';
 import { localRuntimeSessionHeaderName } from './protocolPolicy.js';
+import type { SmtpTestPreparationConfirmation } from './smtpTestConfirmation.js';
 import {
   createSecureWindowOptions,
   isAllowedApplicationNavigation,
@@ -91,7 +92,8 @@ function createSecretFileStore(
   );
 
   return {
-    read: () => encryptedSecretFile.read(),
+    confirm: (candidate) => encryptedSecretFile.confirm(candidate),
+    readCandidate: () => encryptedSecretFile.readCandidate(),
     remove: () => encryptedSecretFile.remove(),
     async write(ciphertext) {
       if (Buffer.from(ciphertext).includes(forbiddenPlaintextMarker)) {
@@ -343,6 +345,7 @@ async function startDesktopRuntime(): Promise<void> {
 
   registerApplicationProtocol({
     backendOrigin: `http://127.0.0.1:${backendHandle.port}`,
+    confirmSmtpTestPreparation,
     runtimeSessionSecret,
     webRoot: join(app.getAppPath(), 'web'),
   });
@@ -379,6 +382,27 @@ async function startDesktopRuntime(): Promise<void> {
     );
     app.quit();
   });
+}
+
+async function confirmSmtpTestPreparation(
+  preparation: SmtpTestPreparationConfirmation,
+): Promise<boolean> {
+  const result = await dialog.showMessageBox({
+    buttons: ['Lähetä testiviesti', 'Peruuta'],
+    cancelId: 1,
+    defaultId: 1,
+    detail: [
+      `Vastaanottaja: ${preparation.testRecipient}`,
+      `Otsikko: ${preparation.subject}`,
+      `Liite: ${preparation.attachmentFileName}`,
+    ].join('\n'),
+    message: 'Vahvista DNA SMTP -testilähetys',
+    noLink: true,
+    title: 'Eky - sähköpostitesti',
+    type: 'question',
+  });
+
+  return result.response === 0;
 }
 
 app.on('before-quit', (event) => {

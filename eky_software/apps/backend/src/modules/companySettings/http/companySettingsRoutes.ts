@@ -41,6 +41,14 @@ export function createCompanySettingsRoutes(
       return context.json({ error: 'Invalid company settings body.' }, 400);
     }
 
+    if (
+      'emailSmtpHost' in body ||
+      'emailSmtpPort' in body ||
+      'emailSmtpSecurity' in body
+    ) {
+      return context.json({ error: 'SMTP connection settings are fixed.' }, 400);
+    }
+
     try {
       const companySettings = await dependencies.updateCompanySettings({
         actorContext,
@@ -53,9 +61,6 @@ export function createCompanySettingsRoutes(
         emailDeliveryProvider: getOptionalStringField(body, 'emailDeliveryProvider'),
         emailSenderName: getOptionalStringField(body, 'emailSenderName'),
         emailSenderAddress: getOptionalStringField(body, 'emailSenderAddress'),
-        emailSmtpHost: getOptionalStringField(body, 'emailSmtpHost'),
-        emailSmtpPort: body.emailSmtpPort,
-        emailSmtpSecurity: getOptionalStringField(body, 'emailSmtpSecurity'),
         emailUsername: getOptionalStringField(body, 'emailUsername'),
         emailTestRecipientOverride: getOptionalStringField(
           body,

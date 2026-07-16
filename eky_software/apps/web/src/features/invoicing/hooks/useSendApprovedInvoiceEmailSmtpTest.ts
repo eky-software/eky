@@ -1,7 +1,7 @@
 import {
   createEkyApiClient,
   EkyApiError,
-  type ApprovedInvoiceEmailSmtpTestSendInput,
+  type ApprovedInvoiceEmailSmtpTestPrepareInput,
   type ApprovedInvoiceEmailSmtpTestSendResult,
   type EkyApiClient,
 } from '@eky/api-client';
@@ -13,7 +13,8 @@ const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
 
 type SendApprovedInvoiceEmailSmtpTestClient = Pick<
   EkyApiClient,
-  'sendApprovedInvoiceEmailSmtpTest'
+  | 'prepareApprovedInvoiceEmailSmtpTest'
+  | 'sendApprovedInvoiceEmailSmtpTest'
 >;
 
 export interface SendApprovedInvoiceEmailSmtpTestState {
@@ -23,7 +24,7 @@ export interface SendApprovedInvoiceEmailSmtpTestState {
   clearStatus(): void;
   sendEmailSmtpTest(
     id: string,
-    input: ApprovedInvoiceEmailSmtpTestSendInput,
+    input: ApprovedInvoiceEmailSmtpTestPrepareInput,
   ): Promise<ApprovedInvoiceEmailSmtpTestSendResult | null>;
 }
 
@@ -43,7 +44,7 @@ export function useSendApprovedInvoiceEmailSmtpTest(): SendApprovedInvoiceEmailS
 
   async function sendEmailSmtpTest(
     id: string,
-    input: ApprovedInvoiceEmailSmtpTestSendInput,
+    input: ApprovedInvoiceEmailSmtpTestPrepareInput,
   ): Promise<ApprovedInvoiceEmailSmtpTestSendResult | null> {
     setErrorMessage(null);
     setSuccessMessage(null);
@@ -81,9 +82,16 @@ export function useSendApprovedInvoiceEmailSmtpTest(): SendApprovedInvoiceEmailS
 export function sendApprovedInvoiceEmailSmtpTestWithClient(
   client: SendApprovedInvoiceEmailSmtpTestClient,
   id: string,
-  input: ApprovedInvoiceEmailSmtpTestSendInput,
+  input: ApprovedInvoiceEmailSmtpTestPrepareInput,
 ): Promise<ApprovedInvoiceEmailSmtpTestSendResult> {
-  return client.sendApprovedInvoiceEmailSmtpTest(id, input);
+  return client.prepareApprovedInvoiceEmailSmtpTest(id, input).then(
+    (preparation) =>
+      client.sendApprovedInvoiceEmailSmtpTest(id, {
+        ...input,
+        attemptId: preparation.attemptId,
+        authorizationToken: preparation.authorizationToken,
+      }),
+  );
 }
 
 export function getSendApprovedInvoiceEmailSmtpTestErrorMessage(
@@ -95,6 +103,10 @@ export function getSendApprovedInvoiceEmailSmtpTestErrorMessage(
 
   if (error instanceof EkyApiError && error.status === 400) {
     return uiText.invoicing.invoiceEmailDryRunValidationError;
+  }
+
+  if (error instanceof EkyApiError && [409, 429].includes(error.status ?? 0)) {
+    return uiText.invoicing.invoiceEmailSmtpTestConflict;
   }
 
   if (

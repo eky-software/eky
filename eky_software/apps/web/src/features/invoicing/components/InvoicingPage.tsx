@@ -1,7 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
 import type {
   ApprovedInvoiceEmailDryRunSendInput,
-  ApprovedInvoiceEmailSmtpTestSendInput,
+  ApprovedInvoiceEmailSmtpTestPrepareInput,
   ApprovedInvoiceResult,
   InvoiceDraft,
 } from '@eky/api-client';
@@ -51,6 +51,7 @@ import {
   useApprovedInvoiceEmailDryRun,
   type ApprovedInvoiceEmailDryRunState,
 } from '../hooks/useApprovedInvoiceEmailDryRun.js';
+import { getInvoiceEmailSmtpTestUnavailableMessage } from '../approved/invoiceEmailSmtpTestAvailability.js';
 import {
   useSendApprovedInvoiceEmailDryRun,
   type SendApprovedInvoiceEmailDryRunState,
@@ -308,7 +309,7 @@ export function InvoicingPage({
 
   async function handleSendApprovedInvoiceEmailSmtpTest(
     id: string,
-    input: ApprovedInvoiceEmailSmtpTestSendInput,
+    input: ApprovedInvoiceEmailSmtpTestPrepareInput,
   ): Promise<void> {
     await sendApprovedInvoiceEmailSmtpTestState.sendEmailSmtpTest(id, input);
   }
@@ -413,7 +414,7 @@ interface InvoicingPageViewProps extends InvoiceDraftListState {
   ): void;
   onSendApprovedInvoiceEmailSmtpTest(
     id: string,
-    input: ApprovedInvoiceEmailSmtpTestSendInput,
+    input: ApprovedInvoiceEmailSmtpTestPrepareInput,
   ): void;
   onOpenDraft(id: string): void;
   onRequestDeleteDraft(id: string): void;
@@ -608,6 +609,13 @@ export function InvoicingPageView({
             companySettingsState.companySettings
               ?.emailTestRecipientOverride ?? '',
           )}
+          emailSmtpTestUnavailableMessage={
+            getInvoiceEmailSmtpTestUnavailableMessage(
+              companySettingsState.companySettings,
+              companySettingsState.errorMessage,
+              companySettingsState.isLoading,
+            )
+          }
           copyApprovedInvoiceState={copyApprovedInvoiceState}
           approvedInvoicePdfState={approvedInvoicePdfState}
           approvedInvoiceState={approvedInvoiceState}
@@ -712,6 +720,7 @@ function InvoiceDraftEditView({
 interface ApprovedInvoiceViewProps {
   approvedInvoiceEmailState: ApprovedInvoiceEmailDryRunState;
   emailSmtpTestRecipient: string | null;
+  emailSmtpTestUnavailableMessage: string | null;
   approvedInvoicePdfState: ApprovedInvoicePdfState;
   approvedInvoiceState: ApprovedInvoiceState;
   copyApprovedInvoiceState: CopyApprovedInvoiceState;
@@ -732,13 +741,14 @@ interface ApprovedInvoiceViewProps {
   ): void;
   onSendApprovedInvoiceEmailSmtpTest(
     id: string,
-    input: ApprovedInvoiceEmailSmtpTestSendInput,
+    input: ApprovedInvoiceEmailSmtpTestPrepareInput,
   ): void;
 }
 
 function ApprovedInvoiceView({
   approvedInvoiceEmailState,
   emailSmtpTestRecipient,
+  emailSmtpTestUnavailableMessage,
   approvedInvoicePdfState,
   approvedInvoiceState,
   copyApprovedInvoiceState,
@@ -803,6 +813,7 @@ function ApprovedInvoiceView({
         sendApprovedInvoiceEmailSmtpTestState.errorMessage
       }
       emailSmtpTestRecipient={emailSmtpTestRecipient}
+      emailSmtpTestUnavailableMessage={emailSmtpTestUnavailableMessage}
       emailSmtpTestSuccessMessage={
         sendApprovedInvoiceEmailSmtpTestState.successMessage
       }

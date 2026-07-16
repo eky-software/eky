@@ -651,7 +651,7 @@ function createCompanySettingsState() {
       emailSenderAddress: '',
       emailSmtpHost: '',
       emailSmtpPort: null,
-      emailSmtpSecurity: 'starttls' as const,
+      emailSmtpSecurity: 'tls' as const,
       emailUsername: '',
       emailTestRecipientOverride: '',
       emailSecretConfigured: false,

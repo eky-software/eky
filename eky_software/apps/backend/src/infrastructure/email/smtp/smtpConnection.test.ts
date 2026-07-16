@@ -38,6 +38,19 @@ describe('connectImplicitTlsSmtp', () => {
     connection.close();
   });
 
+  it('accepts an authorized TLS socket when authorizationError is undefined', async () => {
+    const socket = new FakeTlsSocket();
+    socket.authorizationError = undefined;
+    const connectionPromise = connectImplicitTlsSmtp(
+      createOptions(),
+      () => socket.asTlsSocket(),
+    );
+
+    socket.emit('secureConnect');
+
+    await expect(connectionPromise).resolves.toBeDefined();
+  });
+
   it('fails closed when the certificate is not authorized', async () => {
     const socket = new FakeTlsSocket();
     socket.authorized = false;
@@ -91,6 +104,52 @@ describe('connectImplicitTlsSmtp', () => {
       vi.useRealTimers();
     }
   });
+
+  it('rejects an unsolicited reply after the expected greeting', async () => {
+    const socket = new FakeTlsSocket();
+    const connectionPromise = connectImplicitTlsSmtp(
+      createOptions(),
+      () => socket.asTlsSocket(),
+    );
+    socket.emit('secureConnect');
+    const connection = await connectionPromise;
+
+    socket.emit('data', Buffer.from('220 smtp.example.test ready\r\n', 'ascii'));
+    await expect(connection.readReply(1_000, 'greeting')).resolves.toMatchObject({
+      code: 220,
+    });
+
+    socket.emit('data', Buffer.from('250 unsolicited\r\n', 'ascii'));
+
+    await expect(connection.readReply(1_000, 'next')).rejects.toMatchObject({
+      code: 'SMTP_PROTOCOL_ERROR',
+    });
+    expect(socket.destroyedByClient).toBe(true);
+  });
+
+  it('rejects a second reply for one command instead of reusing it later', async () => {
+    const socket = new FakeTlsSocket();
+    const connectionPromise = connectImplicitTlsSmtp(
+      createOptions(),
+      () => socket.asTlsSocket(),
+    );
+    socket.emit('secureConnect');
+    const connection = await connectionPromise;
+    socket.emit('data', Buffer.from('220 smtp.example.test ready\r\n', 'ascii'));
+    await connection.readReply(1_000, 'greeting');
+
+    const command = connection.sendCommand('EHLO localhost', 1_000, 'ehlo');
+    socket.emit(
+      'data',
+      Buffer.from('250 first\r\n250 unexpected-second\r\n', 'ascii'),
+    );
+
+    await expect(command).resolves.toMatchObject({ code: 250 });
+    await expect(
+      connection.sendCommand('QUIT', 1_000, 'quit'),
+    ).rejects.toMatchObject({ code: 'SMTP_PROTOCOL_ERROR' });
+    expect(socket.destroyedByClient).toBe(true);
+  });
 });
 
 function createOptions() {
@@ -105,7 +164,7 @@ function createOptions() {
 }
 
 class FakeTlsSocket extends EventEmitter {
-  authorizationError: Error | null = null;
+  authorizationError: Error | null | undefined = null;
   authorized = true;
   destroyedByClient = false;
   protocol: string | null = 'TLSv1.3';

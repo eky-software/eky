@@ -1,9 +1,16 @@
 import { SmtpTransportError } from './smtpErrors.js';
 
 export function encodeSmtpData(message: Uint8Array): Buffer {
-  const source = Buffer.from(message).toString('ascii');
+  const messageBytes = Buffer.from(message);
+
+  assertAsciiBytes(messageBytes);
+  const source = messageBytes.toString('ascii');
 
   assertCanonicalCrlf(source);
+
+  if (source.endsWith('\r\n.\r\n')) {
+    throw protocolError();
+  }
 
   const canonicalMessage = source.endsWith('\r\n') ? source : `${source}\r\n`;
   const dotStuffedMessage = canonicalMessage
@@ -14,14 +21,16 @@ export function encodeSmtpData(message: Uint8Array): Buffer {
   return Buffer.from(`${dotStuffedMessage}.\r\n`, 'ascii');
 }
 
-function assertCanonicalCrlf(value: string): void {
-  for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index);
-
-    if (code > 0x7f || code === 0) {
+function assertAsciiBytes(value: Uint8Array): void {
+  for (const byte of value) {
+    if (byte > 0x7f || byte === 0) {
       throw protocolError();
     }
+  }
+}
 
+function assertCanonicalCrlf(value: string): void {
+  for (let index = 0; index < value.length; index += 1) {
     if (value[index] === '\r' && value[index + 1] !== '\n') {
       throw protocolError();
     }

@@ -203,6 +203,7 @@ function renderPreview(
       emailSmtpTestErrorMessage={null}
       emailSmtpTestRecipient="safe-test@example.fi"
       emailSmtpTestSuccessMessage={null}
+      emailSmtpTestUnavailableMessage={null}
       invoice={options.invoice ?? createApprovedInvoiceView()}
       isCopyingInvoice={options.isCopyingInvoice ?? false}
       isCreatingPdf={options.isCreatingPdf ?? false}

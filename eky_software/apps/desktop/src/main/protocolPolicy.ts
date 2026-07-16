@@ -54,7 +54,7 @@ const backendRoutes: ReadonlyArray<{
   {
     methods: new Set(['POST']),
     pathname: new RegExp(
-      `^/invoices/${resourceId}/email/smtp-test/send$`,
+      `^/invoices/${resourceId}/email/smtp-test/(?:prepare|send)$`,
     ),
   },
   {

@@ -255,6 +255,8 @@ describe('approved invoices api client', () => {
     const result = await client.sendApprovedInvoiceEmailSmtpTest(
       'invoice/1',
       {
+        attemptId: 'attempt-1',
+        authorizationToken: 'one-time-authorization',
         body: 'Hei, liitteenä lasku.',
         cc: 'copy@example.fi',
         subject: 'Lasku 20260001',
@@ -265,6 +267,51 @@ describe('approved invoices api client', () => {
     expect(result).toEqual(delivery);
     expect(requests[0]).toEqual({
       input: '/invoices/invoice%2F1/email/smtp-test/send',
+      init: {
+        body: expect.any(String) as string,
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        method: 'POST',
+      },
+    });
+    expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({
+      attemptId: 'attempt-1',
+      authorizationToken: 'one-time-authorization',
+      body: 'Hei, liitteenä lasku.',
+      cc: 'copy@example.fi',
+      subject: 'Lasku 20260001',
+      to: 'customer@example.fi',
+    });
+  });
+
+  it('prepares a controlled SMTP test without sending server-owned fields', async () => {
+    const requests = createRequestLog();
+    const preparation = {
+      attachment: { fileName: 'invoice.pdf', sizeBytes: 2048 },
+      attemptId: 'attempt-1',
+      authorizationToken: 'one-time-authorization',
+      expiresAt: '2026-07-16T10:01:00.000Z',
+      invoiceId: 'invoice-1',
+      subject: 'Lasku 20260001',
+      testRecipient: 'safe-test@example.fi',
+    };
+    const client = createTestClient(requests, { preparation });
+
+    const result = await client.prepareApprovedInvoiceEmailSmtpTest(
+      'invoice/1',
+      {
+        body: 'Hei, liitteenä lasku.',
+        cc: 'copy@example.fi',
+        subject: 'Lasku 20260001',
+        to: 'customer@example.fi',
+      },
+    );
+
+    expect(result).toEqual(preparation);
+    expect(requests[0]).toEqual({
+      input: '/invoices/invoice%2F1/email/smtp-test/prepare',
       init: {
         body: expect.any(String) as string,
         headers: {

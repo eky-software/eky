@@ -1,7 +1,10 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
-import { CompanyEmailSecretForm } from './CompanyEmailSecretForm.js';
+import {
+  CompanyEmailSecretForm,
+  readAndClearSecretInput,
+} from './CompanyEmailSecretForm.js';
 import { uiText } from '../../i18n/fi.js';
 
 describe('CompanyEmailSecretForm', () => {
@@ -35,6 +38,13 @@ describe('CompanyEmailSecretForm', () => {
 
     expect(html).toContain(uiText.companySettings.emailSecretDesktopOnly);
     expect(html).toContain('disabled=""');
+  });
+
+  it('clears the password value immediately before an async save can fail', () => {
+    const syntheticInput = { value: 'synthetic-password' };
+
+    expect(readAndClearSecretInput(syntheticInput)).toBe('synthetic-password');
+    expect(syntheticInput.value).toBe('');
   });
 });
 

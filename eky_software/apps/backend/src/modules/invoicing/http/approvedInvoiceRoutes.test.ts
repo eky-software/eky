@@ -22,6 +22,9 @@ import type {
   PrepareApprovedInvoiceEmailDryRunInput,
 } from '../application/prepareApprovedInvoiceEmailDryRun.js';
 import type {
+  PrepareApprovedInvoiceEmailSmtpTestInput,
+} from '../application/prepareApprovedInvoiceEmailSmtpTest.js';
+import type {
   SendApprovedInvoiceEmailDryRunInput,
   SendApprovedInvoiceEmailDryRunResult,
 } from '../application/sendApprovedInvoiceEmailDryRun.js';
@@ -231,6 +234,8 @@ describe('approved invoice routes', () => {
       '/invoices/invoice-1/email/smtp-test/send',
       {
         body: JSON.stringify({
+          attemptId: 'attempt-1',
+          authorizationToken: 'one-time-authorization',
           body: 'Hei, liitteenä lasku.',
           cc: 'copy@example.fi',
           subject: 'Lasku 20260001',
@@ -244,6 +249,41 @@ describe('approved invoice routes', () => {
     await expect(response.json()).resolves.toEqual({ delivery });
     expect(response.status).toBe(200);
     expect(getEmailSmtpTestInput()).toMatchObject({
+      actorContext: {
+        actorId: 'dev-user',
+        companyId: 'dev-company',
+      },
+      invoiceId: 'invoice-1',
+      attemptId: 'attempt-1',
+      to: 'customer@example.fi',
+    });
+  });
+
+  it('prepares a one-time controlled SMTP test authorization', async () => {
+    const { app, getEmailSmtpTestPreparationInput } = createTestApp({});
+
+    const response = await app.request(
+      '/invoices/invoice-1/email/smtp-test/prepare',
+      {
+        body: JSON.stringify({
+          body: 'Hei, liitteenä lasku.',
+          cc: 'copy@example.fi',
+          subject: 'Lasku 20260001',
+          to: 'customer@example.fi',
+        }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      preparation: expect.objectContaining({
+        attemptId: 'attempt-1',
+        testRecipient: 'owner-test@example.fi',
+      }),
+    });
+    expect(getEmailSmtpTestPreparationInput()).toMatchObject({
       actorContext: {
         actorId: 'dev-user',
         companyId: 'dev-company',
@@ -466,6 +506,9 @@ function createTestApp(options: {
   let markSentInput: MarkApprovedInvoiceSentInput | undefined;
   let emailInput: PrepareApprovedInvoiceEmailDryRunInput | undefined;
   let emailSendInput: SendApprovedInvoiceEmailDryRunInput | undefined;
+  let emailSmtpTestPreparationInput:
+    | PrepareApprovedInvoiceEmailSmtpTestInput
+    | undefined;
   let emailSmtpTestInput: SendApprovedInvoiceEmailSmtpTestInput | undefined;
   let generatePdfInput: GenerateApprovedInvoicePdfDocumentInput | undefined;
   let pdfInput: GetApprovedInvoicePdfDocumentInput | undefined;
@@ -554,6 +597,19 @@ function createTestApp(options: {
 
       return options.emailDelivery ?? createApprovedInvoiceEmailDryRunSendResult();
     },
+    async prepareApprovedInvoiceEmailSmtpTest(nextInput) {
+      emailSmtpTestPreparationInput = nextInput;
+
+      return {
+        attachment: { fileName: 'invoice.pdf', sizeBytes: 2048 },
+        attemptId: 'attempt-1',
+        authorizationToken: 'one-time-authorization',
+        expiresAt: '2026-07-16T10:01:00.000Z',
+        invoiceId: nextInput.invoiceId,
+        subject: nextInput.subject,
+        testRecipient: 'owner-test@example.fi',
+      };
+    },
     async sendApprovedInvoiceEmailSmtpTest(nextInput) {
       emailSmtpTestInput = nextInput;
 
@@ -623,6 +679,7 @@ function createTestApp(options: {
     getCopyInput: () => copyInput,
     getEmailInput: () => emailInput,
     getEmailSendInput: () => emailSendInput,
+    getEmailSmtpTestPreparationInput: () => emailSmtpTestPreparationInput,
     getEmailSmtpTestInput: () => emailSmtpTestInput,
     getInput: () => input,
     getListInput: () => listInput,

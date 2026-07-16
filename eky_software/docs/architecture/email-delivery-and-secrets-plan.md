@@ -19,7 +19,9 @@ Sähköpostipolusta on toteutettu local-MVP:hen:
 - backendin dry-run-provider, joka ei lähetä oikeaa sähköpostia
 - dry-run-send HTTP- ja API-client-polku
 - `invoice_delivery_events`-persistence ja dry-run-tapahtuman auditointi
-- Company Settings -moduulin ei-salaiset SMTP-asetukset ja niiden web-UI
+- Company Settings -moduulin ei-salaiset lähettäjä- ja testivastaanottaja-
+  asetukset sekä niiden web-UI; DNA-yhteysprofiili ei ole käyttäjän
+  muokattavissa
 - tieto `emailSecretConfigured`, joka ei sisällä salaista arvoa
 - Electron-runtimen muistissa pidettävä local-session ja backendin siitä
   muodostama luotettu `ActorContext`
@@ -38,13 +40,19 @@ Sähköpostipolusta on toteutettu local-MVP:hen:
 - paketoitu Windows-smoke, joka varmistaa synteettisellä arvolla koko
   HTTP -> application -> audit -> secret broker -> `safeStorage` -elinkaaren
 - backendin sisäinen, riippuvuudeton SMTP/MIME-kuljetuskerros, joka käyttää
-  vain Node-standardikirjaston TLS- ja crypto-rajapintoja eikä ole vielä
-  kytketty DNA-provideriin tai laskun send-polkuun
+  vain Node-standardikirjaston TLS- ja crypto-rajapintoja ja on kytketty vain
+  rajattuun DNA SMTP -testipolkuun
 - rajattu DNA SMTP -testiprovider, joka hyväksyy vain hostin
   `smtp.dnamail.fi`, portin `465`, implicit TLS -mallin ja pakollisen
   testivastaanottajan
 - Invoicingin hallittu SMTP-testikäyttötapa, HTTP-reitti, API-client,
   Electronin backend-allowlist ja web-toiminto
+- SMTP-testin lyhytikäinen prepare-vaihe, kertakäyttöinen kryptografinen
+  valtuutus, actor/company/invoice/provider/request-sidonta, samanaikaisen
+  lähetyksen esto ja onnistuneen tai epäselvän lopputuloksen lyhyt varoaika
+- Electron main processin oma vahvistusikkuna, joka näyttää todellisen
+  testivastaanottajan, otsikon, laskun ja PDF-liitteen ennen kuin
+  kertakäyttövaltuutus palautetaan rendererin käyttöön
 - SMTP-testin delivery event -tilat `attempted`, `succeeded`, `failed` ja
   `outcomeUnknown`; tapahtuma kirjataan `attempted`-tilaan ennen providerin
   kutsua ja sama tapahtuma viimeistellään providerin tuloksen perusteella
@@ -95,7 +103,7 @@ automaattiset testit eivät muodosta yhteyttä DNA:n palvelimeen.
 
 Kuljetuksen rajat, kuten viestin, PDF:n, SMTP-vastauksen ja aikakatkaisujen
 enimmäisarvot, pidetään sähköposti-infrastruktuurin omissa tarkasti nimetyissä
-konfiguraatiotiedostoissa. DNA:n kiinteä provider-profiili kuuluu myöhemmin
+konfiguraatiotiedostoissa. DNA:n kiinteä provider-profiili kuuluu
 DNA-providerin omaan kansioon. Projektin juureen ei luoda yleistä
 `constants`, `config`, `utils` tai vastaavaa muuttujakaatopaikkaa. Jos sama
 konfiguraatio tarvitsee myöhemmin aidosti usean sovelluksen tai moduulin
@@ -248,17 +256,20 @@ Company Settings -alueelle tai myöhemmin laajempaan Asetukset-kokonaisuuteen.
 
 Oma yritys saa näyttää ja muokata ei-salaisia asetuksia:
 
-- provider: `dryRun | smtp | gmail` myöhemmin
+- provider: nykyisessä local-MVP:ssä `dryRun | dnaSmtp`
 - lähettäjän nimi
 - lähettäjän sähköpostiosoite
 - reply-to myöhemmin
-- SMTP host
-- SMTP port
-- security: `tls | starttls`
 - username
 - test recipient override
-- dry-run enabled
 - tieto siitä, onko salaisuus asetettu: `true | false`
+
+Kun provider on `dnaSmtp`, backend omistaa kiinteän yhteysprofiilin
+`smtp.dnamail.fi:465` + implicit TLS. Hostia, porttia tai security-mallia ei
+hyväksytä Company Settingsin päivityspyynnöstä eikä näytetä muokattavina
+kenttinä. SQLiteen aiemmin tallennetut yhteysarvot eivät ohita tätä profiilia.
+Mahdollinen Gmail- tai muu provider suunnitellaan myöhemmin omana adapterinaan;
+sitä ei lisätä DNA-profiilin muokattavaksi variaatioksi.
 
 Oma yritys ei saa koskaan näyttää:
 
@@ -298,7 +309,7 @@ Jos valittu provider vaatii salaisuuden ja `secretRef` tai vastaava viite
 puuttuu, oikea lähetys estetään.
 
 Salaisuuden poistaminen ei saa poistaa ei-salaisia asetuksia, kuten lähettäjän
-nimeä, SMTP hostia tai porttia, ellei käyttäjä erikseen tyhjennä niitä.
+nimeä, lähettäjän osoitetta, username-arvoa tai testivastaanottajaa.
 
 Yhteyden testaus ei saa lähettää oikealle asiakkaalle. Testaus käyttää
 dry-runia tai erillistä test recipient override -osoitetta.
@@ -390,6 +401,14 @@ SMTP-adapterin tulevissa testeissä tarkistetaan vähintään:
 - viestin runko tai PDF-sisältö ei päädy lokiin
 - dry-run ei tarvitse salaisuuksia
 
+Nykyinen testikokonaisuus toteuttaa nämä tarkistukset paikallisella
+synteettisellä TLS-palvelimella ja testivarmenteella. Se kattaa luotetun CA:n
+ja oikean hostnamen lisäksi väärän hostnamen, tuntemattoman CA:n, liian vanhan
+TLS-version, keskeytetyn handshake-vaiheen sekä aikakatkaisun. Testit eivät
+avaa verkkoyhteyttä DNA:n palvelimeen. SMTP DATA -syöte validoidaan raakoina
+tavuina ennen ASCII-muunnosta, ja odottamattomat tai ylimääräiset
+palvelinvastaukset katkaisevat session turvallisesti ilman rajatonta jonoa.
+
 ## Local Electron -Malli
 
 Paikallisen Windows-version toteutettu secret store -pohja:
@@ -421,6 +440,11 @@ ja synkroniset encrypt/decrypt-metodit eivät kuulu Eky Localin malliin.
 Main processin broker ei omista Company Settingsin tai sähköpostitoimituksen
 liiketoimintasääntöjä. `CompanyEmailSecretStore` ja backend-only
 `CompanyEmailSecretReader` säilyvät Electronista riippumattomina portteina.
+
+Company Settingsin `emailSecretConfigured`-tila muodostetaan desktop-
+runtimessa secret storen todellisesta tilasta. Selainkehityksen backendissä
+tila pysyy epätotena, joten web-UI estää oikean DNA SMTP -testin mutta jättää
+paikallisen dry-run-polun käytettäväksi.
 
 ### Secret Store -Toteutuksen Turvallisuusportti
 
@@ -544,10 +568,9 @@ Kiellettyä:
 DNA SMTP voidaan toteuttaa myöhemmin käyttäjän toimittamien ja ennen
 tuotantototeutusta tarkistettujen asetusten perusteella.
 
-Alustava DNA SMTP -linja:
+DNA SMTP local-MVP:n kiinteä yhteysprofiili:
 
 - ensisijainen host: `smtp.dnamail.fi`
-- varahost: `smtp.dnainternet.net`
 - portti: `465`
 - security: implicit TLS heti yhteyden muodostamisesta
 - vähimmäisversio: TLS `1.2`; TLS `1.3` sallitaan
@@ -558,21 +581,25 @@ Alustava DNA SMTP -linja:
   storeen
 - porttia `25` ei tueta local-MVP:ssä
 
-Eky voi esitäyttää SMTP username -kentän lähettäjän sähköpostiosoitteella.
-Kenttä pidetään kuitenkin muokattavana, koska lähettäjän osoite ja SMTP-tilin
-kirjautumistunnus eivät ole kaikissa palveluissa sama asia.
+Eky esitäyttää SMTP username -kentän lähettäjän sähköpostiosoitteella niin
+kauan kuin käyttäjä ei ole muokannut username-arvoa erikseen. DNA SMTP
+-profiilissa lähettäjän osoitteen ja username-arvon pitää olla sama
+sähköpostiosoite; backend tarkistaa tämän ennen asetusten tallentamista ja
+provider tarkistaa saman vielä ennen salaisuuden lukua tai verkkoyhteyttä.
 
 Portti `587` ja pakollinen STARTTLS voidaan toteuttaa myöhemmin erillisenä
 yhteensopivuusvaihtoehtona. Ensimmäinen local-MVP SMTP-adapteri ei tue sitä,
-eikä se tee automaattista fallbackia portista `465` porttiin `587`. Jos
-varahostia käytetään, myös se käyttää porttia `465`, implicit TLS -mallia ja
-samoja sertifikaatin sekä hostnamen validointisääntöjä.
+eikä se tee automaattista fallbackia portista `465` porttiin `587`. Myöskään
+automaattista host-fallbackia ei tehdä local-MVP:ssä.
 
-DNA:n tukisivu listaa lähtevälle postille salatuiksi vaihtoehdoiksi portin
-`465` implicit TLS -mallilla ja portin `587` STARTTLS:llä. Portti `25` on DNA:n ohjeessa
-rajattu tilanteisiin, joissa salattu yhteys ei ole lähettävän ohjelmiston
-puolesta mahdollinen. Ekyssä salattu yhteys on vaatimus, joten porttia `25` ei
-tueta local-MVP:ssä.
+DNA:n julkisista ohjeista voidaan vahvistaa SMTP-palvelun olemassaolo,
+sähköpostiosoitteen käyttö kirjautumistunnuksena sekä portin `25` rajoitukset.
+Julkisesta ajantasaisesta DNA-ohjeesta ei ole tämän päätöksen yhteydessä voitu
+vahvistaa kiinteän `smtp.dnamail.fi:465`-profiilin tilikohtaista sopivuutta.
+Profiili on siksi Eky local-MVP:n hyväksytty ja rajattu testiprofiili, joka
+vahvistetaan vielä käytettävän postilaatikon omasta ohjeesta tai DNA:n
+asiakaspalvelusta ennen ensimmäistä oikeaa lähetystä. Epävarmuutta ei ratkaista
+automaattisella host-, portti- tai salaamattomalla fallbackilla.
 
 Käyttäjä voi myöhemmin syöttää Oma yritys / Sähköpostiasetukset -näkymässä
 tarvittavat SMTP-asetukset ja salaisuuden asettamisen. Salaisuutta ei näytetä
@@ -690,7 +717,13 @@ riippuvuusarviota ja projektin omistajan nimenomaista hyväksyntää.
    pakottaa test recipient override -osoitteen ja jättää Cc:n pois, jotta
    viesti ei voi lähteä vahingossa asiakkaalle.
 7. DNA SMTP -testiprovider on kytketty hallittuun backend-, HTTP-, API-client-,
-   desktop- ja web-polkuun. Testi kirjaa `attempted`-tapahtuman ennen
+   desktop- ja web-polkuun. Prepare-vaihe luo lyhytikäisen kertakäyttöisen
+   valtuutuksen, joka sidotaan actoriin, yritykseen, laskuun, provideriin,
+   testivastaanottajaan ja lähetettävien kenttien fingerprintiin. Desktop
+   näyttää ennen send-vaihetta main processin vahvistuksen. Send-vaihe hyväksyy
+   valtuutuksen vain kerran, estää rinnakkaisen yrityksen ja käyttää lyhyttä
+   varoaikaa onnistuneen tai epäselvän lopputuloksen jälkeen. Testi kirjaa
+   `attempted`-tapahtuman ennen
    provider-kutsua, viimeistelee saman tapahtuman tilaan `succeeded`, `failed`
    tai `outcomeUnknown`, pakottaa testivastaanottajan eikä muuta laskun tilaa.
 8. Oikean DNA-tilin ensimmäinen verkkoyhteystesti tehdään vasta projektin

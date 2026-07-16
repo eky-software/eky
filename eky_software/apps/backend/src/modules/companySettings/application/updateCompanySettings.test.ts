@@ -37,12 +37,9 @@ describe('updateCompanySettings', () => {
         bic: ' ndeafihh ',
         bankName: '  Test Bank  ',
         email: '  info@example.fi  ',
-        emailDeliveryProvider: 'smtp',
+        emailDeliveryProvider: 'dnaSmtp',
         emailSenderName: '  Example Builder Oy  ',
         emailSenderAddress: '  laskutus@example.fi  ',
-        emailSmtpHost: '  SMTP.DNAMAIL.FI  ',
-        emailSmtpPort: 587,
-        emailSmtpSecurity: 'STARTTLS',
         emailUsername: '  laskutus@example.fi  ',
         emailTestRecipientOverride: '  test@example.fi  ',
         phone: '  040 123 4567  ',
@@ -63,12 +60,12 @@ describe('updateCompanySettings', () => {
     expect(settings.postalCode).toBe('00100');
     expect(settings.city).toBe('Helsinki');
     expect(settings.email).toBe('info@example.fi');
-    expect(settings.emailDeliveryProvider).toBe('smtp');
+    expect(settings.emailDeliveryProvider).toBe('dnaSmtp');
     expect(settings.emailSenderName).toBe('Example Builder Oy');
     expect(settings.emailSenderAddress).toBe('laskutus@example.fi');
     expect(settings.emailSmtpHost).toBe('smtp.dnamail.fi');
-    expect(settings.emailSmtpPort).toBe(587);
-    expect(settings.emailSmtpSecurity).toBe('starttls');
+    expect(settings.emailSmtpPort).toBe(465);
+    expect(settings.emailSmtpSecurity).toBe('tls');
     expect(settings.emailUsername).toBe('laskutus@example.fi');
     expect(settings.emailTestRecipientOverride).toBe('test@example.fi');
     expect(settings.emailSecretConfigured).toBe(false);
@@ -101,9 +98,6 @@ describe('updateCompanySettings', () => {
         emailDeliveryProvider: '',
         emailSenderName: '',
         emailSenderAddress: '',
-        emailSmtpHost: '',
-        emailSmtpPort: null,
-        emailSmtpSecurity: '',
         emailUsername: '',
         emailTestRecipientOverride: '',
         phone: '',
@@ -137,9 +131,6 @@ describe('updateCompanySettings', () => {
           emailDeliveryProvider: '',
           emailSenderName: '',
           emailSenderAddress: '',
-          emailSmtpHost: '',
-          emailSmtpPort: null,
-          emailSmtpSecurity: '',
           emailUsername: '',
           emailTestRecipientOverride: '',
           phone: '',

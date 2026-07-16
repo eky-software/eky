@@ -81,10 +81,26 @@ export function CompanySettingsPage(): React.JSX.Element {
 
   function handleFieldChange(fieldName: keyof CompanySettingsFormModel, value: string): void {
     setSuccessMessage(null);
-    setForm((currentForm) => ({
-      ...currentForm,
-      [fieldName]: value,
-    }));
+    setForm((currentForm) => {
+      if (fieldName === 'emailSenderAddress') {
+        const shouldPrefillUsername =
+          currentForm.emailUsername === '' ||
+          currentForm.emailUsername === currentForm.emailSenderAddress;
+
+        return {
+          ...currentForm,
+          emailSenderAddress: value,
+          emailUsername: shouldPrefillUsername
+            ? value
+            : currentForm.emailUsername,
+        };
+      }
+
+      return {
+        ...currentForm,
+        [fieldName]: value,
+      };
+    });
   }
 
   return (
@@ -150,14 +166,6 @@ function getErrorMessage(error: unknown): string {
 
   if (error instanceof Error && error.message === 'Invalid company email sender address.') {
     return uiText.companySettings.invalidEmailSenderAddress;
-  }
-
-  if (error instanceof Error && error.message === 'Invalid company SMTP host.') {
-    return uiText.companySettings.invalidEmailSmtpHost;
-  }
-
-  if (error instanceof Error && error.message === 'Invalid company SMTP port.') {
-    return uiText.companySettings.invalidEmailSmtpPort;
   }
 
   if (error instanceof Error && error.message === 'Invalid company email test recipient.') {

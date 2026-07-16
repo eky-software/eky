@@ -15,12 +15,9 @@ export interface CompanySettingsForm {
   email: string;
   phone: string;
   website: string;
-  emailDeliveryProvider: 'dryRun' | 'smtp';
+  emailDeliveryProvider: 'dryRun' | 'dnaSmtp';
   emailSenderName: string;
   emailSenderAddress: string;
-  emailSmtpHost: string;
-  emailSmtpPort: string;
-  emailSmtpSecurity: 'tls' | 'starttls';
   emailUsername: string;
   emailTestRecipientOverride: string;
   emailSecretConfigured: boolean;
@@ -44,9 +41,6 @@ export const initialCompanySettingsForm: CompanySettingsForm = {
   emailDeliveryProvider: 'dryRun',
   emailSenderName: '',
   emailSenderAddress: '',
-  emailSmtpHost: '',
-  emailSmtpPort: '',
-  emailSmtpSecurity: 'starttls',
   emailUsername: '',
   emailTestRecipientOverride: '',
   emailSecretConfigured: false,
@@ -71,9 +65,6 @@ export function toCompanySettingsForm(settings: CompanySettings): CompanySetting
     emailDeliveryProvider: settings.emailDeliveryProvider,
     emailSenderName: settings.emailSenderName,
     emailSenderAddress: settings.emailSenderAddress,
-    emailSmtpHost: settings.emailSmtpHost,
-    emailSmtpPort: settings.emailSmtpPort === null ? '' : String(settings.emailSmtpPort),
-    emailSmtpSecurity: settings.emailSmtpSecurity,
     emailUsername: settings.emailUsername,
     emailTestRecipientOverride: settings.emailTestRecipientOverride,
     emailSecretConfigured: settings.emailSecretConfigured,
@@ -104,9 +95,6 @@ export function toUpdateCompanySettingsRequest(
       form.emailSenderAddress,
       'Invalid company email sender address.',
     ),
-    emailSmtpHost: normalizeCompanySmtpHostInput(form.emailSmtpHost),
-    emailSmtpPort: parseCompanySmtpPortInput(form.emailSmtpPort),
-    emailSmtpSecurity: form.emailSmtpSecurity,
     emailUsername: form.emailUsername.trim(),
     emailTestRecipientOverride: normalizeCompanyEmailAddressInput(
       form.emailTestRecipientOverride,
@@ -181,44 +169,6 @@ export function normalizeCompanyVatNumberInput(value: string): string {
 
   if (!/^FI\d{8}$/.test(normalizedValue)) {
     throw new Error('Invalid company VAT number.');
-  }
-
-  return normalizedValue;
-}
-
-export function parseCompanySmtpPortInput(value: string): number | null {
-  const normalizedValue = value.trim();
-
-  if (normalizedValue === '') {
-    return null;
-  }
-
-  if (!/^\d+$/.test(normalizedValue)) {
-    throw new Error('Invalid company SMTP port.');
-  }
-
-  const port = Number(normalizedValue);
-
-  if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
-    throw new Error('Invalid company SMTP port.');
-  }
-
-  return port;
-}
-
-export function normalizeCompanySmtpHostInput(value: string): string {
-  const normalizedValue = value.trim().toLowerCase();
-
-  if (normalizedValue === '') {
-    return '';
-  }
-
-  if (
-    normalizedValue.length > 253 ||
-    /[\s/\\:@]/.test(normalizedValue) ||
-    !/^[a-z0-9.-]+$/.test(normalizedValue)
-  ) {
-    throw new Error('Invalid company SMTP host.');
   }
 
   return normalizedValue;

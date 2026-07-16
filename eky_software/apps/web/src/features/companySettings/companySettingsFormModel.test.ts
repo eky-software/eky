@@ -7,9 +7,7 @@ import {
   normalizeCompanyEmailAddressInput,
   normalizeCompanyBicInput,
   normalizeCompanyIbanInput,
-  normalizeCompanySmtpHostInput,
   normalizeCompanyVatNumberInput,
-  parseCompanySmtpPortInput,
   toCompanySettingsForm,
   toUpdateCompanySettingsRequest,
 } from './companySettingsFormModel.js';
@@ -29,12 +27,12 @@ describe('companySettingsFormModel', () => {
         email: 'info@example.fi',
         phone: '040 123 4567',
         website: 'www.example.fi',
-        emailDeliveryProvider: 'smtp',
+        emailDeliveryProvider: 'dnaSmtp',
         emailSenderName: 'Example Builder Oy',
         emailSenderAddress: 'laskutus@example.fi',
         emailSmtpHost: 'smtp.dnamail.fi',
-        emailSmtpPort: 587,
-        emailSmtpSecurity: 'starttls',
+        emailSmtpPort: 465,
+        emailSmtpSecurity: 'tls',
         emailUsername: 'laskutus@example.fi',
         emailTestRecipientOverride: 'test@example.fi',
         emailSecretConfigured: false,
@@ -59,12 +57,9 @@ describe('companySettingsFormModel', () => {
       email: 'info@example.fi',
       phone: '040 123 4567',
       website: 'www.example.fi',
-      emailDeliveryProvider: 'smtp',
+      emailDeliveryProvider: 'dnaSmtp',
       emailSenderName: 'Example Builder Oy',
       emailSenderAddress: 'laskutus@example.fi',
-      emailSmtpHost: 'smtp.dnamail.fi',
-      emailSmtpPort: '587',
-      emailSmtpSecurity: 'starttls',
       emailUsername: 'laskutus@example.fi',
       emailTestRecipientOverride: 'test@example.fi',
       emailSecretConfigured: false,
@@ -93,9 +88,6 @@ describe('companySettingsFormModel', () => {
       emailDeliveryProvider: 'dryRun',
       emailSenderName: '',
       emailSenderAddress: '',
-      emailSmtpHost: '',
-      emailSmtpPort: null,
-      emailSmtpSecurity: 'starttls',
       emailUsername: '',
       emailTestRecipientOverride: '',
       phone: '',
@@ -155,22 +147,16 @@ describe('companySettingsFormModel', () => {
     expect(
       toUpdateCompanySettingsRequest({
         ...initialCompanySettingsForm,
-        emailDeliveryProvider: 'smtp',
+        emailDeliveryProvider: 'dnaSmtp',
         emailSenderName: '  Example Builder Oy  ',
         emailSenderAddress: '  laskutus@example.fi  ',
-        emailSmtpHost: '  SMTP.DNAMAIL.FI  ',
-        emailSmtpPort: '587',
-        emailSmtpSecurity: 'starttls',
         emailUsername: '  laskutus@example.fi  ',
         emailTestRecipientOverride: '  test@example.fi  ',
       }),
     ).toMatchObject({
-      emailDeliveryProvider: 'smtp',
+      emailDeliveryProvider: 'dnaSmtp',
       emailSenderName: 'Example Builder Oy',
       emailSenderAddress: 'laskutus@example.fi',
-      emailSmtpHost: 'smtp.dnamail.fi',
-      emailSmtpPort: 587,
-      emailSmtpSecurity: 'starttls',
       emailUsername: 'laskutus@example.fi',
       emailTestRecipientOverride: 'test@example.fi',
     });
@@ -193,11 +179,6 @@ describe('companySettingsFormModel', () => {
   });
 
   it('rejects invalid email delivery setting input', () => {
-    expect(parseCompanySmtpPortInput('')).toBeNull();
-    expect(() => parseCompanySmtpPortInput('0')).toThrow('Invalid company SMTP port.');
-    expect(() => normalizeCompanySmtpHostInput('https://smtp.example.fi')).toThrow(
-      'Invalid company SMTP host.',
-    );
     expect(() =>
       normalizeCompanyEmailAddressInput('bad', 'Invalid company email sender address.'),
     ).toThrow('Invalid company email sender address.');

@@ -105,9 +105,11 @@ Kenttien merkitys:
 - `streetAddress`, `postalCode` ja `city` kuvaavat oman yrityksen pääosoitetta.
 - `email`, `phone` ja `website` ovat oman yrityksen ensisijaiset yhteystiedot.
 - `emailDeliveryProvider`, `emailSenderName`, `emailSenderAddress`,
-  `emailSmtpHost`, `emailSmtpPort`, `emailSmtpSecurity`, `emailUsername` ja
-  `emailTestRecipientOverride` ovat sähköpostilähetyksen ei-salaisia
-  asetuksia.
+  `emailUsername` ja `emailTestRecipientOverride` ovat sähköpostilähetyksen
+  käyttäjän hallittavia ei-salaisia asetuksia.
+- `emailSmtpHost`, `emailSmtpPort` ja `emailSmtpSecurity` ovat nykyisessä
+  local-MVP:ssä vain kiinteän DNA-yhteysprofiilin yhteensopivuuslukutietoja.
+  Niitä ei hyväksytä päivityspyynnöstä eikä näytetä muokattavina UI-kenttinä.
 - `emailSecretConfigured` on käyttäjälle näytettävä tieto siitä, onko
   sähköpostisalaisuus asetettu myöhemmässä secrets-hallinnassa. Itse salaisuus
   ei kuulu Company Settings -tauluun eikä sitä palauteta frontendille.
@@ -180,18 +182,18 @@ poistaa toiminnon käytöstä.
 Oma yritys -näkymä voi näyttää ja tallentaa sähköpostilähetyksen ei-salaiset
 asetukset:
 
-- `emailDeliveryProvider`: `dryRun` tai `smtp`
+- `emailDeliveryProvider`: `dryRun` tai `dnaSmtp`
 - `emailSenderName`
 - `emailSenderAddress`
-- `emailSmtpHost`
-- `emailSmtpPort`
-- `emailSmtpSecurity`: `starttls` tai `tls`
 - `emailUsername`
 - `emailTestRecipientOverride`
 
-Nämä asetukset eivät vielä tarkoita oikeaa sähköpostilähetystä.
-Nykyisessä vaiheessa laskun sähköpostipolku käyttää edelleen dry-run-mallia,
-joka ei lähetä oikeaa sähköpostia eikä muuta laskua lähetetyksi.
+`dnaSmtp` käyttää aina backendin omistamaa profiilia
+`smtp.dnamail.fi:465` + implicit TLS, vähintään TLS 1.2. Hostia, porttia tai
+security-mallia ei voi muuttaa Company Settingsistä. Lähettäjän osoitteen ja
+DNA SMTP username -arvon pitää olla sama osoite. Nykyinen hallittu SMTP-testi
+lähettää vain asetusten testivastaanottajalle eikä muuta laskua lähetetyksi.
+Täysin paikallinen dry-run ei muodosta verkkoyhteyttä.
 
 SMTP-salasanaa, OAuth-tokenia tai muuta salaisuutta ei tallenneta Company
 Settings -tauluun, API-vastaukseen, frontendin pysyvään tilaan eikä
@@ -366,9 +368,10 @@ hetkisiä muuttuvia Oma yritys -asetuksia.
 
 Sähköpostin lähetysasetusten käyttäjälle näkyvä hallinta sijaitsee local-MVP:ssä
 Oma yritys / Asetukset -kokonaisuudessa. Company Settings saa näyttää ja
-muokata ei-salaisia asetuksia, kuten lähettäjän nimen, lähettäjän
-sähköpostiosoitteen, SMTP hostin, SMTP portin, security-valinnan, username-arvon
-ja tiedon siitä, onko salaisuus asetettu.
+muokata ei-salaisia asetuksia, kuten provider-valinnan, lähettäjän nimen,
+lähettäjän sähköpostiosoitteen, username-arvon, testivastaanottajan ja tiedon
+siitä, onko salaisuus asetettu. DNA SMTP:n host, portti ja implicit TLS
+-turvallisuusmalli ovat backendin omistama kiinteä profiili.
 
 Tavoiteltu käyttökokemus on, että käyttäjä voi myöhemmin määrittää oman
 sähköpostitilinsä lähetysasetukset Ekyssä ja lähettää laskun suoraan

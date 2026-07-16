@@ -18,6 +18,7 @@ import { requireIdentifier } from '../domain/invoiceDraftRules.js';
 import type { InvoiceDeliveryEventRepository } from '../ports/invoiceDeliveryEventRepository.js';
 
 export interface RecordInvoiceDeliveryEventInput {
+  id?: string;
   companyId: string;
   invoiceId: string;
   documentId?: string | null;
@@ -45,7 +46,10 @@ export async function recordInvoiceDeliveryEvent(
   dependencies: RecordInvoiceDeliveryEventDependencies,
 ): Promise<InvoiceDeliveryEvent> {
   const event: InvoiceDeliveryEvent = {
-    id: randomUUID(),
+    id:
+      input.id === undefined
+        ? randomUUID()
+        : requireIdentifier(input.id, 'Delivery event id'),
     companyId: requireIdentifier(input.companyId, 'Company id'),
     invoiceId: requireIdentifier(input.invoiceId, 'Approved invoice id'),
     documentId: normalizeDeliveryOptionalIdentifier(

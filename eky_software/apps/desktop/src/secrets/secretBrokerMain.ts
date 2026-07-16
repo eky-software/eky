@@ -146,20 +146,22 @@ async function readStoredPayload(dependencies: {
   encryptedSecretFile: EncryptedSecretFileStore;
   protector: StringProtector;
 }): Promise<SecretPayload | null> {
-  const ciphertext = await dependencies.encryptedSecretFile.read();
+  const candidate = await dependencies.encryptedSecretFile.readCandidate();
 
-  if (ciphertext === null) {
+  if (candidate === null) {
     return null;
   }
 
   let decrypted;
 
   try {
-    decrypted = await dependencies.protector.decrypt(ciphertext);
+    decrypted = await dependencies.protector.decrypt(candidate.ciphertext);
   } finally {
-    ciphertext.fill(0);
+    candidate.ciphertext.fill(0);
   }
   const payload = parseSecretPayload(decrypted.value);
+
+  await dependencies.encryptedSecretFile.confirm(candidate);
 
   if (decrypted.shouldReEncrypt) {
     const refreshedCiphertext = await dependencies.protector.encrypt(

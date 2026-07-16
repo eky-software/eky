@@ -4,6 +4,7 @@ import type {
   NewCompanySettingsRow,
 } from '../../../database/schema.js';
 import type { CompanySettings } from '../domain/companySettings.js';
+import { dnaSmtpCompatibilityProfile } from '../domain/companyEmailSettings.js';
 import type { CompanySettingsRepository } from '../ports/companySettingsRepository.js';
 
 type CompanySettingsUpsertParameters = [
@@ -48,7 +49,8 @@ function toCompanySettingsRow(settings: CompanySettings): NewCompanySettingsRow 
     email: settings.email,
     phone: settings.phone,
     website: settings.website,
-    email_delivery_provider: settings.emailDeliveryProvider,
+    email_delivery_provider:
+      settings.emailDeliveryProvider === 'dnaSmtp' ? 'smtp' : 'dryRun',
     email_sender_name: settings.emailSenderName,
     email_sender_address: settings.emailSenderAddress,
     email_smtp_host: settings.emailSmtpHost,
@@ -80,12 +82,18 @@ function toCompanySettings(row: CompanySettingsRow): CompanySettings {
     phone: row.phone,
     website: row.website,
     emailDeliveryProvider:
-      row.email_delivery_provider === 'smtp' ? 'smtp' : 'dryRun',
+      row.email_delivery_provider === 'smtp' ? 'dnaSmtp' : 'dryRun',
     emailSenderName: row.email_sender_name,
     emailSenderAddress: row.email_sender_address,
-    emailSmtpHost: row.email_smtp_host,
-    emailSmtpPort: row.email_smtp_port,
-    emailSmtpSecurity: row.email_smtp_security === 'tls' ? 'tls' : 'starttls',
+    emailSmtpHost:
+      row.email_delivery_provider === 'smtp'
+        ? dnaSmtpCompatibilityProfile.host
+        : '',
+    emailSmtpPort:
+      row.email_delivery_provider === 'smtp'
+        ? dnaSmtpCompatibilityProfile.port
+        : null,
+    emailSmtpSecurity: dnaSmtpCompatibilityProfile.security,
     emailUsername: row.email_username,
     emailTestRecipientOverride: row.email_test_recipient_override,
     emailSecretConfigured: false,

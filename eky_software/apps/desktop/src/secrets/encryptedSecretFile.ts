@@ -18,9 +18,17 @@ const maximumEnvelopeBytes = 24_576;
 const base64Pattern = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
 export interface EncryptedSecretFileStore {
-  read(): Promise<Uint8Array | null>;
+  confirm(candidate: EncryptedSecretCandidate): Promise<void>;
+  readCandidate(): Promise<EncryptedSecretCandidate | null>;
   remove(): Promise<void>;
   write(ciphertext: Uint8Array): Promise<void>;
+}
+
+export type EncryptedSecretSlot = 'current' | 'backup' | 'next';
+
+export interface EncryptedSecretCandidate {
+  ciphertext: Uint8Array;
+  slot: EncryptedSecretSlot;
 }
 
 export class EncryptedSecretFile implements EncryptedSecretFileStore {
@@ -43,30 +51,49 @@ export class EncryptedSecretFile implements EncryptedSecretFileStore {
     this.backupFilePath = `${filePath}.backup`;
   }
 
-  async read(): Promise<Uint8Array | null> {
+  async readCandidate(): Promise<EncryptedSecretCandidate | null> {
     const current = await readEncryptedFile(this.filePath);
 
     if (current !== null) {
-      await this.removeRecoveryFiles();
-      return current;
+      return { ciphertext: current, slot: 'current' };
     }
 
     const backup = await readEncryptedFile(this.backupFilePath);
 
     if (backup !== null) {
-      await this.restoreFile(this.backupFilePath);
-      await removeFile(this.nextFilePath, 'SECRET_STORAGE_UNAVAILABLE');
-      return backup;
+      return { ciphertext: backup, slot: 'backup' };
     }
 
     const next = await readEncryptedFile(this.nextFilePath);
 
     if (next !== null) {
-      await this.restoreFile(this.nextFilePath);
-      return next;
+      return { ciphertext: next, slot: 'next' };
     }
 
     return null;
+  }
+
+  async confirm(candidate: EncryptedSecretCandidate): Promise<void> {
+    if (candidate.slot === 'current') {
+      await this.removeRecoveryFiles();
+      return;
+    }
+
+    if (await readEncryptedFile(this.filePath) !== null) {
+      throw new SecretBrokerError('SECRET_STORAGE_UNAVAILABLE');
+    }
+
+    if (candidate.slot === 'backup') {
+      await this.restoreFile(this.backupFilePath);
+      await removeFile(this.nextFilePath, 'SECRET_STORAGE_UNAVAILABLE');
+      return;
+    }
+
+    if (await readEncryptedFile(this.backupFilePath) !== null) {
+      throw new SecretBrokerError('SECRET_STORAGE_UNAVAILABLE');
+    }
+
+    await this.restoreFile(this.nextFilePath);
   }
 
   async remove(): Promise<void> {
@@ -93,7 +120,8 @@ export class EncryptedSecretFile implements EncryptedSecretFileStore {
 
     try {
       await mkdir(this.directoryPath, { mode: 0o700, recursive: true });
-      await this.read();
+      await rm(this.nextFilePath, { force: true });
+      await rm(this.backupFilePath, { force: true });
       const fileHandle = await open(this.nextFilePath, 'wx', 0o600);
 
       try {

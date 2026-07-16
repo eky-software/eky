@@ -1,12 +1,11 @@
 import type { InvoiceEmailSettings } from './invoiceEmailSettingsReader.js';
 
 export interface InvoiceSmtpTestEmailInput extends InvoiceEmailSettings {
+  attemptId: string;
   body: string;
-  cc: string;
   companyId: string;
   pdfContent: Uint8Array;
   pdfFileName: string;
-  requestedTo: string;
   subject: string;
 }
 

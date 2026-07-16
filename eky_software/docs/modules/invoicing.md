@@ -34,6 +34,12 @@ Sähköpostilähetyksen provider-malli, dry-run-vaihe, SMTP/Gmail-linja ja
 salaisuuksien hallinta on kuvattu dokumentissa
 `docs/architecture/email-delivery-and-secrets-plan.md`.
 
+Nykyinen hallittu DNA SMTP -testipolku käyttää prepare- ja send-vaiheita,
+kertakäyttöistä sidottua valtuutusta, Electron main processin vahvistusta,
+pakotettua testivastaanottajaa ja delivery event -auditointia. Se ei ole
+asiakaslähetys eikä muuta laskua `sent`-tilaan. Selainkehityksessä käytetään
+vain paikallista dry-run-polkuja ilman SMTP-salaisuutta tai DNA-verkkoyhteyttä.
+
 ALV-erikoiskäsittelyjen, ALV-kantojen tuotantopolun, viivästyskoron ja
 lähetettyjen laskujen korjausperiaatteiden muistilista on kuvattu dokumentissa
 `docs/architecture/invoicing-tax-and-correction-roadmap.md`.

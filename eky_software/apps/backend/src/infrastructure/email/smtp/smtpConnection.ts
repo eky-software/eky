@@ -89,7 +89,7 @@ export async function connectImplicitTlsSmtp(
 
       if (
         !socket.authorized ||
-        socket.authorizationError !== null ||
+        socket.authorizationError != null ||
         (protocol !== 'TLSv1.2' && protocol !== 'TLSv1.3')
       ) {
         fail(new SmtpTransportError('SMTP_TLS_FAILED', 'connect'));
@@ -106,6 +106,8 @@ export async function connectImplicitTlsSmtp(
 
 class TlsSmtpConnection implements SmtpConnection {
   private closed = false;
+  private initialGreeting: SmtpReply | undefined;
+  private initialGreetingWindowOpen = true;
   private pendingRead:
     | {
         reject(error: Error): void;
@@ -113,7 +115,6 @@ class TlsSmtpConnection implements SmtpConnection {
         timer: ReturnType<typeof setTimeout>;
       }
     | undefined;
-  private readonly queuedReplies: SmtpReply[] = [];
   private readonly replyParser = new SmtpReplyParser();
   private terminalError: SmtpTransportError | undefined;
 
@@ -141,28 +142,16 @@ class TlsSmtpConnection implements SmtpConnection {
     timeoutMilliseconds: number,
     phase: string,
   ): Promise<SmtpReply> {
-    const queuedReply = this.queuedReplies.shift();
+    const initialGreeting = this.initialGreeting;
 
-    if (queuedReply !== undefined) {
-      return queuedReply;
+    if (initialGreeting !== undefined) {
+      this.initialGreeting = undefined;
+      this.initialGreetingWindowOpen = false;
+      return initialGreeting;
     }
 
-    if (this.terminalError !== undefined || this.closed) {
-      throw this.terminalError ?? connectionClosedError(phase);
-    }
-
-    if (this.pendingRead !== undefined) {
-      throw new SmtpTransportError('SMTP_PROTOCOL_ERROR', phase);
-    }
-
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pendingRead = undefined;
-        reject(new SmtpTransportError('SMTP_TIMEOUT', phase));
-      }, timeoutMilliseconds);
-
-      this.pendingRead = { reject, resolve, timer };
-    });
+    this.initialGreetingWindowOpen = false;
+    return this.beginRead(timeoutMilliseconds, phase);
   }
 
   async sendCommand(
@@ -171,8 +160,15 @@ class TlsSmtpConnection implements SmtpConnection {
     phase: string,
   ): Promise<SmtpReply> {
     assertSafeSmtpCommand(command);
-    await this.write(Buffer.from(`${command}\r\n`, 'ascii'), phase);
-    return this.readReply(timeoutMilliseconds, phase);
+    const reply = this.beginRead(timeoutMilliseconds, phase);
+
+    try {
+      await this.write(Buffer.from(`${command}\r\n`, 'ascii'), phase);
+    } catch (error) {
+      this.failPending(asTransportError(error, phase));
+    }
+
+    return reply;
   }
 
   async sendSensitiveLine(
@@ -181,25 +177,38 @@ class TlsSmtpConnection implements SmtpConnection {
     phase: string,
   ): Promise<SmtpReply> {
     const line = Buffer.concat([token, Buffer.from('\r\n', 'ascii')]);
+    const reply = this.beginRead(timeoutMilliseconds, phase);
 
     try {
       await this.write(line, phase);
+    } catch (error) {
+      this.failPending(asTransportError(error, phase));
     } finally {
       token.fill(0);
       line.fill(0);
     }
 
-    return this.readReply(timeoutMilliseconds, phase);
+    return reply;
   }
 
   async sendData(
     data: Buffer,
     timeoutMilliseconds: number,
   ): Promise<SmtpReply> {
-    await this.write(data, 'data');
+    const reply = this.beginRead(
+      timeoutMilliseconds,
+      'finalAcceptance',
+    );
 
     try {
-      return await this.readReply(timeoutMilliseconds, 'finalAcceptance');
+      await this.write(data, 'data');
+    } catch (error) {
+      this.failPending(asTransportError(error, 'data'));
+      return reply;
+    }
+
+    try {
+      return await reply;
     } catch {
       throw new SmtpTransportError(
         'SMTP_OUTCOME_UNKNOWN',
@@ -207,6 +216,35 @@ class TlsSmtpConnection implements SmtpConnection {
         'outcomeUnknown',
       );
     }
+  }
+
+  private beginRead(
+    timeoutMilliseconds: number,
+    phase: string,
+  ): Promise<SmtpReply> {
+    if (this.terminalError !== undefined || this.closed) {
+      return Promise.reject(
+        this.terminalError ?? connectionClosedError(phase),
+      );
+    }
+
+    if (this.pendingRead !== undefined) {
+      return Promise.reject(
+        new SmtpTransportError('SMTP_PROTOCOL_ERROR', phase),
+      );
+    }
+
+    const reply = new Promise<SmtpReply>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingRead = undefined;
+        reject(new SmtpTransportError('SMTP_TIMEOUT', phase));
+      }, timeoutMilliseconds);
+
+      this.pendingRead = { reject, resolve, timer };
+    });
+
+    void reply.catch(() => undefined);
+    return reply;
   }
 
   private failPending(error: SmtpTransportError): void {
@@ -245,8 +283,21 @@ class TlsSmtpConnection implements SmtpConnection {
         this.pendingRead = undefined;
         clearTimeout(pendingRead.timer);
         pendingRead.resolve(reply);
+      } else if (
+        this.initialGreetingWindowOpen &&
+        this.initialGreeting === undefined &&
+        replies.length === 1
+      ) {
+        this.initialGreeting = reply;
       } else {
-        this.queuedReplies.push(reply);
+        const error = new SmtpTransportError(
+          'SMTP_PROTOCOL_ERROR',
+          'reply',
+        );
+        this.terminalError = error;
+        this.failPending(error);
+        this.socket.destroy();
+        return;
       }
     }
   }
@@ -260,7 +311,7 @@ class TlsSmtpConnection implements SmtpConnection {
 
     return new Promise((resolve, reject) => {
       this.socket.write(data, (error) => {
-        if (error !== undefined) {
+        if (error != null) {
           reject(new SmtpTransportError('SMTP_CONNECTION_CLOSED', phase));
           return;
         }
@@ -273,6 +324,12 @@ class TlsSmtpConnection implements SmtpConnection {
 
 function connectionClosedError(phase = 'connection'): SmtpTransportError {
   return new SmtpTransportError('SMTP_CONNECTION_CLOSED', phase);
+}
+
+function asTransportError(error: unknown, phase: string): SmtpTransportError {
+  return error instanceof SmtpTransportError
+    ? error
+    : new SmtpTransportError('SMTP_CONNECTION_CLOSED', phase);
 }
 
 function isTlsValidationError(error: Error): boolean {
