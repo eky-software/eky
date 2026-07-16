@@ -5,10 +5,20 @@ import { describe, expect, it } from 'vitest';
 import {
   createBackendRequestHeaders,
   isAllowedBackendRequest,
+  isValidResourceId,
   resolveStaticResourcePath,
 } from './protocolPolicy.js';
 
 describe('desktop protocol policy', () => {
+  it('shares one strict resource id policy with privileged desktop actions', () => {
+    expect(isValidResourceId('invoice_2026-1')).toBe(true);
+    expect(isValidResourceId('../invoice-1')).toBe(false);
+    expect(isValidResourceId('invoice/1')).toBe(false);
+    expect(isValidResourceId('invoice%2f1')).toBe(false);
+    expect(isValidResourceId('x'.repeat(101))).toBe(false);
+    expect(isValidResourceId(123)).toBe(false);
+  });
+
   it('allows only explicitly named backend routes and methods', () => {
     expect(isAllowedBackendRequest('GET', '/customers')).toBe(true);
     expect(isAllowedBackendRequest('PUT', '/invoice-drafts/draft-1')).toBe(true);

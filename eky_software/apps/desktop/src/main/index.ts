@@ -6,7 +6,9 @@ import {
   app,
   BrowserWindow,
   dialog,
+  ipcMain,
   MessageChannelMain,
+  net,
   protocol,
   safeStorage,
   session,
@@ -34,6 +36,11 @@ import {
   type SecretBrokerMainHandle,
 } from '../secrets/secretBrokerMain.js';
 import { SafeStorageStringProtector } from '../secrets/safeStorageStringProtector.js';
+import { createInvoicePdfPreviewSmokeFixture } from '../pdf/invoicePdfPreviewSmoke.js';
+import {
+  createInvoicePdfPreviewWindowController,
+  type InvoicePdfPreviewWindowController,
+} from '../pdf/invoicePdfPreviewWindow.js';
 
 function readSmokeToken(value: string | undefined): string | undefined {
   return value !== undefined && /^[a-f0-9]{32}$/.test(value)
@@ -74,6 +81,9 @@ if (!hasSingleInstanceLock) {
 }
 
 let backendHandle: DesktopBackendHandle | undefined;
+let invoicePdfPreviewController:
+  | InvoicePdfPreviewWindowController
+  | undefined;
 let secretBrokerHandle: SecretBrokerMainHandle | undefined;
 let shutdownStarted = false;
 
@@ -161,6 +171,7 @@ async function runPackagedSmokeCheck(
   runtimeSessionSecret: string,
   secretFilePath: string,
   smokePdfPath: string,
+  pdfPreviewController: InvoicePdfPreviewWindowController,
 ): Promise<void> {
   const healthResponse = await fetch(`http://127.0.0.1:${backend.port}/health`, {
     signal: AbortSignal.timeout(5_000),
@@ -181,6 +192,14 @@ async function runPackagedSmokeCheck(
     backend.port,
     runtimeSessionSecret,
   );
+
+  const previewInvoiceId = await createInvoicePdfPreviewSmokeFixture({
+    backendPort: backend.port,
+    runtimeSessionSecret,
+  });
+
+  await pdfPreviewController.openForSmoke(previewInvoiceId);
+  pdfPreviewController.close();
 
   for (const path of [
     secretFilePath,
@@ -358,6 +377,8 @@ async function startDesktopRuntime(): Promise<void> {
   if (smokeMode) {
     const smokeWindow = createMainWindow(false);
 
+    invoicePdfPreviewController = createInvoicePdfPreviewController(smokeWindow);
+
     await loadApplicationWindow(smokeWindow);
     await runPackagedSmokeCheck(
       backendHandle,
@@ -365,22 +386,55 @@ async function startDesktopRuntime(): Promise<void> {
       runtimeSessionSecret,
       secretFilePath,
       smokePdfPath,
+      invoicePdfPreviewController,
     );
     await writeSmokeResult({ status: 'ok' });
     await backendHandle.stop();
     secretBrokerHandle.close();
     secretBrokerHandle = undefined;
+    invoicePdfPreviewController.dispose();
+    invoicePdfPreviewController = undefined;
     smokeWindow.destroy();
     app.quit();
     return;
   }
 
-  void loadApplicationWindow(createMainWindow()).catch(() => {
+  const mainWindow = createMainWindow();
+
+  invoicePdfPreviewController = createInvoicePdfPreviewController(mainWindow);
+  void loadApplicationWindow(mainWindow).catch(() => {
     dialog.showErrorBox(
       'Eky ei käynnistynyt',
       'Käyttöliittymää ei voitu ladata turvallisesti.',
     );
     app.quit();
+  });
+}
+
+function createInvoicePdfPreviewController(
+  mainWindow: BrowserWindow,
+): InvoicePdfPreviewWindowController {
+  return createInvoicePdfPreviewWindowController({
+    createWindow: (options) => new BrowserWindow(options),
+    ipcMain,
+    mainWindow,
+    showSafeError() {
+      dialog.showErrorBox(
+        'Laskua ei voitu avata',
+        'Laskun PDF-esikatselua ei voitu avata turvallisesti.',
+      );
+    },
+    async verifyPdfAvailable(url) {
+      const response = await net.fetch(url);
+      const contentType = response.headers.get('content-type') ?? '';
+      const available =
+        response.ok &&
+        contentType.toLowerCase().startsWith('application/pdf');
+
+      await response.body?.cancel().catch(() => undefined);
+
+      return available;
+    },
   });
 }
 
@@ -412,6 +466,8 @@ app.on('before-quit', (event) => {
 
   event.preventDefault();
   shutdownStarted = true;
+  invoicePdfPreviewController?.dispose();
+  invoicePdfPreviewController = undefined;
   void backendHandle.stop().finally(() => {
     secretBrokerHandle?.close();
     secretBrokerHandle = undefined;

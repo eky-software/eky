@@ -7,14 +7,17 @@ import { describe, expect, it } from 'vitest';
 const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 describe('desktop secret broker boundaries', () => {
-  it('does not expose safeStorage or the secret broker through preload', async () => {
+  it('exposes only the named PDF preview operation through preload', async () => {
     const preloadSource = await readFile(
       join(sourceRoot, 'preload', 'index.ts'),
       'utf8',
     );
 
     expect(preloadSource).not.toMatch(/safeStorage|secretBroker|MessagePort/i);
-    expect(preloadSource).not.toMatch(/contextBridge|ipcRenderer/i);
+    expect(preloadSource).not.toMatch(/node:fs|shell|process\.|openUrl|openFile|rawIpc/i);
+    expect(preloadSource.match(/ipcRenderer\.invoke/g)).toHaveLength(1);
+    expect(preloadSource).toContain('invoicePdfPreviewIpcChannel');
+    expect(preloadSource).toContain('openInvoicePdf');
   });
 
   it('does not expose the broker or secret read operation to web source code', async () => {
