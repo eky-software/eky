@@ -203,6 +203,9 @@ async function prepareApplicationStage() {
     join(applicationStage, 'dist/preload'),
     { recursive: true },
   );
+  await cp(resolve(desktopDirectory, 'dist/pdf'), join(applicationStage, 'dist/pdf'), {
+    recursive: true,
+  });
   await cp(resolve(repositoryRoot, 'apps/web/dist'), join(applicationStage, 'web'), {
     recursive: true,
   });

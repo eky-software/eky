@@ -4,6 +4,11 @@ export const maximumBackendRequestBodyBytes = 1_048_576;
 export const localRuntimeSessionHeaderName = 'x-eky-local-session';
 
 const resourceId = '[A-Za-z0-9_-]{1,100}';
+const resourceIdPattern = new RegExp(`^${resourceId}$`);
+
+export function isValidResourceId(value: unknown): value is string {
+  return typeof value === 'string' && resourceIdPattern.test(value);
+}
 
 const backendRoutes: ReadonlyArray<{
   methods: ReadonlySet<string>;

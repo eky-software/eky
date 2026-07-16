@@ -9,6 +9,7 @@ import {
   activateAppView,
   initialAppNavigationState,
 } from './appNavigation.js';
+import { getDesktopInvoicePdfPreview } from './desktopBridge.js';
 
 export function App(): React.JSX.Element {
   const [navigation, activateView] = useReducer(
@@ -17,6 +18,7 @@ export function App(): React.JSX.Element {
   );
   const { activeView } = navigation;
   const activeTitle = uiText.modules[activeView];
+  const openInvoicePdfPreview = getDesktopInvoicePdfPreview();
 
   return (
     <AppLayout activeView={activeView} onViewChange={activateView} title={activeTitle}>
@@ -25,6 +27,9 @@ export function App(): React.JSX.Element {
       {activeView === 'invoicing' ? (
         <InvoicingPage
           navigationRevision={navigation.invoicingNavigationRevision}
+          {...(openInvoicePdfPreview === undefined
+            ? {}
+            : { openInvoicePdfPreview })}
         />
       ) : null}
     </AppLayout>

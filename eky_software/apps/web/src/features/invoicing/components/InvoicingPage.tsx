@@ -52,6 +52,7 @@ import {
   type ApprovedInvoiceEmailDryRunState,
 } from '../hooks/useApprovedInvoiceEmailDryRun.js';
 import { getInvoiceEmailSmtpTestUnavailableMessage } from '../approved/invoiceEmailSmtpTestAvailability.js';
+import { openApprovedInvoicePdf } from '../approved/openApprovedInvoicePdf.js';
 import {
   useSendApprovedInvoiceEmailDryRun,
   type SendApprovedInvoiceEmailDryRunState,
@@ -81,10 +82,12 @@ import { uiText } from '../../../i18n/fi.js';
 
 interface InvoicingPageProps {
   navigationRevision: number;
+  openInvoicePdfPreview?(invoiceId: string): Promise<void>;
 }
 
 export function InvoicingPage({
   navigationRevision,
+  openInvoicePdfPreview,
 }: InvoicingPageProps): React.JSX.Element {
   const draftState = useInvoiceDrafts();
   const customerListState = useInvoiceCustomers();
@@ -265,27 +268,15 @@ export function InvoicingPage({
   }
 
   async function handleOpenApprovedInvoicePdf(id: string): Promise<void> {
-    const pdfWindow = window.open('', '_blank');
-
-    if (pdfWindow !== null) {
-      pdfWindow.opener = null;
-    }
-
-    const metadata = await approvedInvoicePdfState.createPdf(id);
-
-    if (metadata === null) {
-      pdfWindow?.close();
-      return;
-    }
-
-    const pdfUrl = approvedInvoicePdfState.getPdfUrl(id);
-
-    if (pdfWindow !== null) {
-      pdfWindow.location.href = pdfUrl;
-      return;
-    }
-
-    window.open(pdfUrl, '_blank', 'noopener,noreferrer');
+    await openApprovedInvoicePdf({
+      createPdf: approvedInvoicePdfState.createPdf,
+      getPdfUrl: approvedInvoicePdfState.getPdfUrl,
+      id,
+      openBrowserWindow: window.open.bind(window),
+      ...(openInvoicePdfPreview === undefined
+        ? {}
+        : { openDesktopPreview: openInvoicePdfPreview }),
+    });
   }
 
   async function handlePrepareApprovedInvoiceEmail(id: string): Promise<void> {

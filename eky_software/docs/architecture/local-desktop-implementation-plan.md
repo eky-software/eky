@@ -140,6 +140,7 @@ apps/desktop/
   src/
     main/
     preload/
+    pdf/
     runtime/
     secrets/
   package.json
@@ -150,6 +151,8 @@ Vastuut:
 
 - `main/` omistaa Electron-ikkunan, prosessien elinkaaren ja privileged IPC:n
 - `preload/` paljastaa rendererille vain nimetyn desktop-transportin
+- `pdf/` omistaa laskun PDF-esikatselun kapean IPC-sopimuksen, URL-politiikan
+  ja suojatun esikatseluikkunan elinkaaren
 - `runtime/` kokoaa session-bootstrapin, backend-prosessin ja polkuadapterit
 - `secrets/` eristää safeStorage-suojauksen, salatun tiedoston ja yksityisen
   main/utility-process-brokerin
@@ -220,7 +223,8 @@ Electron-runtimessa session- ja transport-raja on toteutettu seuraavasti:
 - sessionia ei välitetä komentorivillä, URL:ssa, localStoragessa, build-
   asetuksessa tai lokitettavassa ympäristömuuttujassa
 - renderer ja React-koodi eivät saa raakaa session-salaisuutta
-- preload paljastaa vain rajatun request-metodin
+- preload paljastaa vain nimetyt ja rajatut desktop-toiminnot; ensimmäinen
+  toiminto on `openInvoicePdf(invoiceId)`, eikä se hyväksy URL:ia tai polkua
 - main process hyväksyy vain suhteelliset allowlistatut API-polut ja sallitut
   HTTP-metodit
 - renderer ei saa asettaa tai korvata session- tai authorization-otsaketta
@@ -238,6 +242,35 @@ ennen oikean datan tuotantokäyttöä.
 `packages/api-client` käyttää jatkossakin injektoitavaa fetch-/transport-
 toteutusta. Runtime valitsee transportin app-tason compositionissa; React-
 featureissä ei tehdä `window.electron`-ehtoja.
+
+## Laskun PDF-Esikatselu
+
+Paketoitu Electron-sovellus avaa hyväksytyn laskun PDF:n main-prosessin
+omistamaan erilliseen esikatseluikkunaan. Renderer saa välittää vain tiukalla
+resource-id-säännöllä validoitavan `invoiceId`-arvon. Renderer ei saa välittää
+URL:ia, tiedostopolkua, backend-originia, headereita tai runtime-sessionia.
+
+Main process muodostaa itse täsmällisen osoitteen:
+
+```text
+eky://app/invoices/{invoiceId}/pdf
+```
+
+Custom protocol lisää backendin runtime-sessionin vasta main-prosessissa.
+Backendin `ActorContext`-, permission- ja `companyId`-rajaukset pysyvät siten
+voimassa myös esikatselussa.
+
+PDF-ikkunassa ei ole preloadia, Node-integraatiota, webviewta tai DevToolsia.
+Ikkuna estää popupit, permission-pyynnöt ja navigoinnin pois täsmälleen mainin
+muodostamasta PDF-osoitteesta. Ikkunoita ei luoda rajattomasti: sama lasku
+fokusoidaan uudelleen ja eri laskua avattaessa aiempi esikatselu suljetaan.
+Main varmistaa custom protocol -polun kautta ennen ikkunan luontia, että vastaus
+on onnistunut `application/pdf`-vastaus. Puuttuva PDF tai latausvirhe sulkee
+ikkunan ja näyttää vain turvallisen yleisvirheen.
+
+Selainkehitys säilyttää nykyisen selain-PDF-polun. App-kerros injektoi
+desktop-esikatselun callbackina Invoicing-featurelle, joten feature ei tunne
+Electronin IPC:tä tai globaalia preload-objektia.
 
 ## Pakollinen Electron-Turvallisuuskonfiguraatio
 
@@ -299,6 +332,10 @@ vasta, kun Windows-artifactista on todennettu synteettisellä datalla vähintä�
 - backendin kaatuminen ja puuttuva readiness käsitellään turvallisesti
 - renderer ei saa Node-API:a, session-salaisuutta tai suoraa tiedostopolkua
 - navigointi, uudet ikkunat ja ei-sallitut IPC-pyynnöt estetään
+- synteettisen hyväksytyn laskun PDF latautuu suojattuun BrowserWindow-
+  esikatseluun nykyisen custom protocol- ja runtime-session-polun kautta
+- paketoitu smoke varmistaa lisäksi esikatseluikkunan privilege-asetukset ja
+  sen, etteivät popup- tai ulkopuolinen navigointiyritys pääse läpi
 - CSP, sandbox, context isolation, fuses ja ASAR-integriteetti voidaan
   todentaa paketoidusta artifactista
 - sovellus käynnistyy ja paikalliset ydintoiminnot toimivat ilman internetiä
@@ -318,6 +355,8 @@ Toteutusvaiheessa lisätään riskin mukaan vähintään:
 - runtime-profiilien testit, jotka estävät development-poikkeusten päätymisen
   productioniin
 - paketoidun Windows-artifactin smoke-testit
+- PDF-esikatselun resource-id-, sender-, navigointi-, popup-, webview-,
+  ikkunarekisteri- ja latausvirhetestit
 - tarkistus, ettei pakettiin sisälly `.env`-tiedostoja, testitietokantoja,
   varmuuskopioita tai salaisuuksia
 
@@ -361,6 +400,9 @@ korjausta.
 12. Riippuvuudeton SMTP/MIME-kuljetus, kiinteä DNA-testiprofiili,
     backend-only secret reader, prepare/send-kertakäyttövaltuutus ja Electron
     main processin vahvistus on toteutettu ilman oikeaa DNA-verkkotestiä.
+13. Hyväksytyn laskun PDF-esikatselu käyttää main-prosessin muodostamaa
+    `eky://app`-osoitetta, rajattua preload/IPC-toimintoa ja yhtä suojattua
+    BrowserWindow-instanssia ilman uutta PDF-riippuvuutta.
 
 ## Liittyvät Dokumentit
 
