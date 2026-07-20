@@ -5,7 +5,6 @@ import type {
   ApprovedInvoiceEmailSmtpTestPrepareInput,
   ApprovedInvoiceResult,
   InvoiceDraft,
-  InvoiceManualDeliveryMethod,
 } from '@eky/api-client';
 
 import { InvoiceDraftList } from './InvoiceDraftList.js';
@@ -213,14 +212,6 @@ export function InvoicingPage({
   }
 
   async function handleEditApprovedInvoice(id: string): Promise<void> {
-    const shouldReopen = window.confirm(
-      uiText.invoicing.reopenApprovedInvoiceConfirm,
-    );
-
-    if (!shouldReopen) {
-      return;
-    }
-
     const reopenedInvoice =
       await reopenApprovedInvoiceState.reopenApprovedInvoice(id);
 
@@ -235,18 +226,7 @@ export function InvoicingPage({
     void draftEditorState.openDraft(reopenedInvoice.invoiceDraftId);
   }
 
-  async function handleMarkApprovedInvoiceSent(
-    id: string,
-    deliveryMethod: InvoiceManualDeliveryMethod,
-  ): Promise<void> {
-    const shouldMarkSent = window.confirm(
-      uiText.invoicing.markApprovedInvoiceSentConfirm,
-    );
-
-    if (!shouldMarkSent) {
-      return;
-    }
-
+  async function handleMarkApprovedInvoiceSent(id: string): Promise<void> {
     const pdfMetadata = await approvedInvoicePdfState.createPdf(id);
 
     if (pdfMetadata === null) {
@@ -256,7 +236,7 @@ export function InvoicingPage({
     const sentInvoice =
       await markApprovedInvoiceSentState.markApprovedInvoiceSent(
         id,
-        deliveryMethod,
+        'manual',
       );
 
     if (sentInvoice === null) {
@@ -269,14 +249,6 @@ export function InvoicingPage({
   }
 
   async function handleCopyApprovedInvoiceToDraft(id: string): Promise<void> {
-    const shouldCopy = window.confirm(
-      uiText.invoicing.copyApprovedInvoiceConfirm,
-    );
-
-    if (!shouldCopy) {
-      return;
-    }
-
     const copiedDraft =
       await copyApprovedInvoiceState.copyApprovedInvoiceToDraft(id);
 
@@ -397,8 +369,8 @@ export function InvoicingPage({
         void handleCopyApprovedInvoiceToDraft(id)
       }
       onEditApprovedInvoice={(id) => void handleEditApprovedInvoice(id)}
-      onMarkApprovedInvoiceSent={(id, deliveryMethod) =>
-        void handleMarkApprovedInvoiceSent(id, deliveryMethod)
+      onMarkApprovedInvoiceSent={(id) =>
+        void handleMarkApprovedInvoiceSent(id)
       }
       onOpenApprovedInvoicePdf={(id) =>
         void handleOpenApprovedInvoicePdf(id)
@@ -450,10 +422,7 @@ interface InvoicingPageViewProps extends InvoiceDraftListState {
   onDraftSaved(savedDraft: InvoiceDraft): void;
   onOpenApprovedInvoice(id: string): void;
   onEditApprovedInvoice(id: string): void;
-  onMarkApprovedInvoiceSent(
-    id: string,
-    deliveryMethod: InvoiceManualDeliveryMethod,
-  ): void;
+  onMarkApprovedInvoiceSent(id: string): void;
   onOpenApprovedInvoicePdf(id: string): void;
   onPrepareApprovedInvoiceEmail(id: string): void;
   onSendApprovedInvoiceEmailDryRun(
@@ -798,10 +767,7 @@ interface ApprovedInvoiceViewProps {
   onCopyApprovedInvoiceToDraft(id: string): void;
   onCreateApprovedInvoicePdf(id: string): void;
   onEditApprovedInvoice(id: string): void;
-  onMarkApprovedInvoiceSent(
-    id: string,
-    deliveryMethod: InvoiceManualDeliveryMethod,
-  ): void;
+  onMarkApprovedInvoiceSent(id: string): void;
   onOpenApprovedInvoicePdf(id: string): void;
   onPrepareApprovedInvoiceEmail(id: string): void;
   onSendApprovedInvoiceEmailDryRun(
