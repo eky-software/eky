@@ -146,7 +146,9 @@ muuta laskua `sent`-tilaan.
 SMTP-testin send-vaihettä edeltää erillinen prepare-vaihe. Backend luo
 lyhytikäisen kertakäyttövaltuutuksen ja sitoo sen actoriin, yritykseen,
 laskuun, provideriin, todelliseen testivastaanottajaan ja validoitujen
-viestikenttien fingerprintiin. Electron main process näyttää prepare-
+viestikenttien fingerprintiin. Sama fingerprint sitoo lähettäjän nimen ja
+osoitteen sekä current PDF:n tunnisteen, SHA-256-tiivisteen, tiedostonimen ja
+koon. Electron main process näyttää prepare-
 vastauksesta rajatun vahvistusikkunan. Vain uusin vahvistettu, käyttämätön ja
 voimassa oleva valtuutus saa edetä provider-kutsuun. Yhtä laskua ja provideria
 kohti sallitaan vain yksi käynnissä oleva yritys. Käyttämätön prepare-valtuutus
@@ -233,10 +235,12 @@ Uudelleenlähetys ei ole sama asia kuin laskun kopiointi uudeksi luonnokseksi.
 ## Manuaalinen Toimitus Ja Tulostus
 
 Manuaalinen toimitus on rajattu arvoihin `print` ja `manual`. Backend varmistaa
-ensin current PDF:n. Sen jälkeen manual-providerin `succeeded`-delivery event,
-laskun `sent`-siirtymä ja laskun audit-tapahtuma tallennetaan samassa
-SQLite-transaktiossa. Pelkkä PDF:n avaaminen tai tulostusikkunan näyttäminen ei
-tee tätä tilasiirtymää.
+ennen PDF:n muodostamista, ettei laskulla ole ratkaisemattomia `attempted`- tai
+`outcomeUnknown`-tapahtumia. Jos sellainen löytyy, manuaalista toimitusta ei
+viimeistellä. Muussa tapauksessa backend varmistaa current PDF:n, minkä jälkeen
+manual-providerin `succeeded`-delivery event, laskun `sent`-siirtymä ja laskun
+audit-tapahtuma tallennetaan samassa SQLite-transaktiossa. Pelkkä PDF:n avaaminen
+tai tulostusikkunan näyttäminen ei tee tätä tilasiirtymää.
 
 Tulostuksen auditointi päätetään erikseen. PDF:n avaaminen ei välttämättä
 tarkoita, että lasku on tulostettu tai toimitettu asiakkaalle.

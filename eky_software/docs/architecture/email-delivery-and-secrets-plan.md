@@ -737,8 +737,10 @@ riippuvuusarviota ja projektin omistajan nimenomaista hyväksyntää.
 7. DNA SMTP -testiprovider on kytketty hallittuun backend-, HTTP-, API-client-,
    desktop- ja web-polkuun. Prepare-vaihe luo lyhytikäisen kertakäyttöisen
    valtuutuksen, joka sidotaan actoriin, yritykseen, laskuun, provideriin,
-   testivastaanottajaan ja lähetettävien kenttien fingerprintiin. Desktop
-   näyttää ennen send-vaihetta main processin vahvistuksen. Send-vaihe hyväksyy
+   testivastaanottajaan ja lähetettävien kenttien fingerprintiin. Fingerprint
+   sitoo lisäksi lähettäjän nimen ja osoitteen sekä PDF:n tunnisteen,
+   SHA-256-tiivisteen, tiedostonimen ja koon. Desktop näyttää ennen send-vaihetta
+   main processin vahvistuksen. Send-vaihe hyväksyy
    valtuutuksen vain kerran, estää rinnakkaisen yrityksen ja käyttää lyhyttä
    varoaikaa onnistuneen tai epäselvän lopputuloksen jälkeen. Testi kirjaa
    `attempted`-tapahtuman ennen
@@ -749,7 +751,9 @@ riippuvuusarviota ja projektin omistajan nimenomaista hyväksyntää.
    chattiin, komentoriville, ympäristömuuttujaan, testifixtureen tai lokiin.
 9. Asiakaslähetyksen prepare/send-käyttötapa, Electron-vahvistus, delivery
    eventin tilat ja onnistuneen lähetyksen atominen `sent`-tilasiirtymä on
-   toteutettu. Epäonnistunut tai lopputulokseltaan epäselvä lähetys ei muuta
+   toteutettu. Asiakaslähetyksen kertavaltuutus käyttää samaa lähettäjään,
+   viestikenttiin ja PDF:n identiteettiin sidottua fingerprintiä kuin hallittu
+   testipolku. Epäonnistunut tai lopputulokseltaan epäselvä lähetys ei muuta
    laskun tilaa. Oikean asiakasdatan tuotantokäyttö odottaa erillistä release
    security gatea.
 

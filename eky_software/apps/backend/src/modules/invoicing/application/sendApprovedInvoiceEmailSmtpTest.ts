@@ -107,23 +107,48 @@ export async function sendApprovedInvoiceEmailSmtpTest(
     subject: emailFields.subject,
     to: settings.emailTestRecipientOverride,
   }).to;
-  dependencies.invoiceEmailSendAttemptStore.acquire({
-    actorId: actorUserId,
-    attemptId,
-    authorizationToken: input.authorizationToken,
+  await dependencies.ensureApprovedInvoicePdfDocument({
+    companyId,
+    createdAt: sentAt,
+    invoiceId,
+  });
+  const pdfDocument = await dependencies.getApprovedInvoicePdfDocument({
     companyId,
     invoiceId,
-    mode: 'smtpTest',
-    provider: 'dnaSmtp',
-    recipient: testRecipient,
-    requestFingerprint: createInvoiceEmailSendRequestFingerprint({
-      body: emailFields.body,
-      cc: emailFields.cc,
-      recipient: testRecipient,
-      subject: emailFields.subject,
-      to: emailFields.to,
-    }),
   });
+
+  try {
+    dependencies.invoiceEmailSendAttemptStore.acquire({
+      actorId: actorUserId,
+      attemptId,
+      authorizationToken: input.authorizationToken,
+      companyId,
+      invoiceId,
+      mode: 'smtpTest',
+      provider: 'dnaSmtp',
+      recipient: testRecipient,
+      requestFingerprint: createInvoiceEmailSendRequestFingerprint({
+        body: emailFields.body,
+        cc: emailFields.cc,
+        document: {
+          fileName: pdfDocument.metadata.fileName,
+          id: pdfDocument.metadata.id,
+          sha256: pdfDocument.metadata.sha256,
+          sizeBytes: pdfDocument.metadata.sizeBytes,
+        },
+        recipient: testRecipient,
+        sender: {
+          address: settings.emailSenderAddress,
+          name: settings.emailSenderName,
+        },
+        subject: emailFields.subject,
+        to: emailFields.to,
+      }),
+    });
+  } catch (error) {
+    pdfDocument.content.fill(0);
+    throw error;
+  }
 
   let attemptOutcome: InvoiceEmailSendAttemptOutcome = 'failed';
 
@@ -135,6 +160,7 @@ export async function sendApprovedInvoiceEmailSmtpTest(
       dependencies,
       emailFields,
       invoiceId,
+      pdfDocument,
       sentAt,
       settings,
       testRecipient,
@@ -150,6 +176,7 @@ export async function sendApprovedInvoiceEmailSmtpTest(
 
     throw error;
   } finally {
+    pdfDocument.content.fill(0);
     dependencies.invoiceEmailSendAttemptStore.complete({
       attemptId,
       outcome: attemptOutcome,
@@ -164,6 +191,7 @@ interface DeliverPreparedSmtpTestInput {
   dependencies: SendApprovedInvoiceEmailSmtpTestDependencies;
   emailFields: ReturnType<typeof normalizeApprovedInvoiceEmailSendFields>;
   invoiceId: string;
+  pdfDocument: ApprovedInvoicePdfDocumentFile;
   sentAt: string;
   settings: NonNullable<
     Awaited<ReturnType<InvoiceEmailSettingsReader['getEmailSettings']>>
@@ -174,15 +202,6 @@ interface DeliverPreparedSmtpTestInput {
 async function deliverPreparedSmtpTest(
   input: DeliverPreparedSmtpTestInput,
 ): Promise<SendApprovedInvoiceEmailSmtpTestResult> {
-  const document = await input.dependencies.ensureApprovedInvoicePdfDocument({
-    companyId: input.companyId,
-    createdAt: input.sentAt,
-    invoiceId: input.invoiceId,
-  });
-  const pdfDocument = await input.dependencies.getApprovedInvoicePdfDocument({
-    companyId: input.companyId,
-    invoiceId: input.invoiceId,
-  });
   const deliveryEvent = await recordInvoiceDeliveryEvent(
     {
       body: input.emailFields.body,
@@ -191,7 +210,7 @@ async function deliverPreparedSmtpTest(
       createdAt: input.sentAt,
       createdBy: input.actorUserId,
       deliveryMethod: 'email',
-      documentId: document.id,
+      documentId: input.pdfDocument.metadata.id,
       id: input.attemptId,
       invoiceId: input.invoiceId,
       provider: 'smtp',
@@ -215,8 +234,8 @@ async function deliverPreparedSmtpTest(
       ...input.settings,
       body: input.emailFields.body,
       companyId: input.companyId,
-      pdfContent: pdfDocument.content,
-      pdfFileName: pdfDocument.metadata.fileName,
+      pdfContent: input.pdfDocument.content,
+      pdfFileName: input.pdfDocument.metadata.fileName,
       subject: input.emailFields.subject,
     });
   } catch (error) {
@@ -246,8 +265,6 @@ async function deliverPreparedSmtpTest(
     throw new ApprovedInvoiceEmailDeliveryError(
       'Invoice SMTP test delivery failed.',
     );
-  } finally {
-    pdfDocument.content.fill(0);
   }
 
   if (

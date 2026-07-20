@@ -216,11 +216,23 @@ describe('sendApprovedInvoiceEmailSmtpTest', () => {
         }),
     );
     const input = createInput();
+    const document = createDocumentMetadata();
+    const settings = createEmailSettings();
     const emailFields = {
       body: input.body,
       cc: input.cc ?? '',
+      document: {
+        fileName: document.fileName,
+        id: document.id,
+        sha256: document.sha256,
+        sizeBytes: document.sizeBytes,
+      },
       subject: input.subject,
       recipient: 'owner-test@example.fi',
+      sender: {
+        address: settings.emailSenderAddress,
+        name: settings.emailSenderName,
+      },
       to: input.to,
     };
     const preparation = attemptStore.prepare({
