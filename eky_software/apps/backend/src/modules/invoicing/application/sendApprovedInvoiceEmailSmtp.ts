@@ -102,23 +102,48 @@ export async function sendApprovedInvoiceEmailSmtp(
     );
   }
 
-  dependencies.invoiceEmailSendAttemptStore.acquire({
-    actorId: actorUserId,
-    attemptId,
-    authorizationToken: input.authorizationToken,
+  await dependencies.ensureApprovedInvoicePdfDocument({
+    companyId,
+    createdAt: sentAt,
+    invoiceId,
+  });
+  const pdfDocument = await dependencies.getApprovedInvoicePdfDocument({
     companyId,
     invoiceId,
-    mode: 'customer',
-    provider: 'dnaSmtp',
-    recipient: emailFields.to,
-    requestFingerprint: createInvoiceEmailSendRequestFingerprint({
-      body: emailFields.body,
-      cc: emailFields.cc,
-      recipient: emailFields.to,
-      subject: emailFields.subject,
-      to: emailFields.to,
-    }),
   });
+
+  try {
+    dependencies.invoiceEmailSendAttemptStore.acquire({
+      actorId: actorUserId,
+      attemptId,
+      authorizationToken: input.authorizationToken,
+      companyId,
+      invoiceId,
+      mode: 'customer',
+      provider: 'dnaSmtp',
+      recipient: emailFields.to,
+      requestFingerprint: createInvoiceEmailSendRequestFingerprint({
+        body: emailFields.body,
+        cc: emailFields.cc,
+        document: {
+          fileName: pdfDocument.metadata.fileName,
+          id: pdfDocument.metadata.id,
+          sha256: pdfDocument.metadata.sha256,
+          sizeBytes: pdfDocument.metadata.sizeBytes,
+        },
+        recipient: emailFields.to,
+        sender: {
+          address: settings.emailSenderAddress,
+          name: settings.emailSenderName,
+        },
+        subject: emailFields.subject,
+        to: emailFields.to,
+      }),
+    });
+  } catch (error) {
+    pdfDocument.content.fill(0);
+    throw error;
+  }
 
   let attemptOutcome: InvoiceEmailSendAttemptOutcome = 'failed';
 
@@ -131,6 +156,7 @@ export async function sendApprovedInvoiceEmailSmtp(
       emailFields,
       invoice,
       invoiceId,
+      pdfDocument,
       sentAt,
       settings,
     });
@@ -145,6 +171,7 @@ export async function sendApprovedInvoiceEmailSmtp(
 
     throw error;
   } finally {
+    pdfDocument.content.fill(0);
     dependencies.invoiceEmailSendAttemptStore.complete({
       attemptId,
       outcome: attemptOutcome,
@@ -160,6 +187,7 @@ interface DeliverPreparedInvoiceEmailInput {
   emailFields: ReturnType<typeof normalizeApprovedInvoiceEmailSendFields>;
   invoice: ApprovedInvoiceView;
   invoiceId: string;
+  pdfDocument: ApprovedInvoicePdfDocumentFile;
   sentAt: string;
   settings: NonNullable<
     Awaited<ReturnType<InvoiceEmailSettingsReader['getEmailSettings']>>
@@ -169,15 +197,6 @@ interface DeliverPreparedInvoiceEmailInput {
 async function deliverPreparedInvoiceEmail(
   input: DeliverPreparedInvoiceEmailInput,
 ): Promise<SendApprovedInvoiceEmailSmtpResult> {
-  const document = await input.dependencies.ensureApprovedInvoicePdfDocument({
-    companyId: input.companyId,
-    createdAt: input.sentAt,
-    invoiceId: input.invoiceId,
-  });
-  const pdfDocument = await input.dependencies.getApprovedInvoicePdfDocument({
-    companyId: input.companyId,
-    invoiceId: input.invoiceId,
-  });
   const deliveryEvent = await recordInvoiceDeliveryEvent(
     {
       body: input.emailFields.body,
@@ -186,7 +205,7 @@ async function deliverPreparedInvoiceEmail(
       createdAt: input.sentAt,
       createdBy: input.actorUserId,
       deliveryMethod: 'email',
-      documentId: document.id,
+      documentId: input.pdfDocument.metadata.id,
       id: input.attemptId,
       invoiceId: input.invoiceId,
       provider: 'smtp',
@@ -211,8 +230,8 @@ async function deliverPreparedInvoiceEmail(
       body: input.emailFields.body,
       cc: input.emailFields.cc,
       companyId: input.companyId,
-      pdfContent: pdfDocument.content,
-      pdfFileName: pdfDocument.metadata.fileName,
+      pdfContent: input.pdfDocument.content,
+      pdfFileName: input.pdfDocument.metadata.fileName,
       subject: input.emailFields.subject,
       to: input.emailFields.to,
     });
@@ -241,8 +260,6 @@ async function deliverPreparedInvoiceEmail(
     }
 
     throw new ApprovedInvoiceEmailDeliveryError('Invoice email delivery failed.');
-  } finally {
-    pdfDocument.content.fill(0);
   }
 
   if (

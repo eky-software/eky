@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ApprovedInvoiceEmailDeliveryError } from './approvedInvoiceEmailDeliveryError.js';
 import { ApprovedInvoiceEmailDeliveryOutcomeUnknownError } from './approvedInvoiceEmailDeliveryOutcomeUnknownError.js';
+import { InvoiceEmailSendAttemptError } from './invoiceEmailSendAttemptError.js';
+import { createInvoiceEmailSendRequestFingerprint } from './invoiceEmailSendRequestFingerprint.js';
 import {
   sendApprovedInvoiceEmailSmtp,
   type SendApprovedInvoiceEmailSmtpInput,
@@ -15,8 +17,10 @@ import type {
   InvoiceDeliveryEventRepository,
 } from '../ports/invoiceDeliveryEventRepository.js';
 import type { InvoiceEmailDeliveryFinalizer } from '../ports/invoiceEmailDeliveryFinalizer.js';
+import type { InvoiceEmailSendAttemptStore } from '../ports/invoiceEmailSendAttemptStore.js';
 import type { InvoiceSmtpDeliveryProvider } from '../ports/invoiceSmtpDeliveryProvider.js';
 import { InvoiceSmtpDeliveryError } from '../ports/invoiceSmtpDeliveryProvider.js';
+import { InMemoryInvoiceEmailSendAttemptStore } from '../infrastructure/inMemoryInvoiceEmailSendAttemptStore.js';
 
 class FakeDeliveryEventRepository implements InvoiceDeliveryEventRepository {
   completions: CompleteInvoiceDeliveryEventInput[] = [];
@@ -232,16 +236,89 @@ describe('sendApprovedInvoiceEmailSmtp', () => {
 
     expect(getApprovedInvoiceById).toHaveBeenCalledOnce();
   });
+
+  it.each([
+    {
+      changedDocument: createDocumentMetadata({ sha256: '1'.repeat(64) }),
+      changedSettings: createEmailSettings(),
+      label: 'PDF document',
+    },
+    {
+      changedDocument: createDocumentMetadata(),
+      changedSettings: createEmailSettings({ emailSenderName: 'Changed Oy' }),
+      label: 'sender',
+    },
+  ])(
+    'rejects the one-time authorization when the confirmed $label changes',
+    async ({ changedDocument, changedSettings }) => {
+      const attemptStore = new InMemoryInvoiceEmailSendAttemptStore();
+      const input = createInput();
+      const originalDocument = createDocumentMetadata();
+      const originalSettings = createEmailSettings();
+      const preparation = attemptStore.prepare({
+        actorId: input.actorContext.actorId,
+        companyId: input.actorContext.companyId,
+        invoiceId: input.invoiceId,
+        mode: 'customer',
+        provider: 'dnaSmtp',
+        recipient: input.to,
+        requestFingerprint: createInvoiceEmailSendRequestFingerprint({
+          body: input.body,
+          cc: input.cc ?? '',
+          document: {
+            fileName: originalDocument.fileName,
+            id: originalDocument.id,
+            sha256: originalDocument.sha256,
+            sizeBytes: originalDocument.sizeBytes,
+          },
+          recipient: input.to,
+          sender: {
+            address: originalSettings.emailSenderAddress,
+            name: originalSettings.emailSenderName,
+          },
+          subject: input.subject,
+          to: input.to,
+        }),
+      });
+      const sendEmail = vi.fn();
+      const repository = new FakeDeliveryEventRepository();
+
+      await expect(
+        sendApprovedInvoiceEmailSmtp(
+          {
+            ...input,
+            attemptId: preparation.attemptId,
+            authorizationToken: preparation.authorizationToken,
+          },
+          createDependencies({
+            attemptStore,
+            documentMetadata: changedDocument,
+            emailSettings: changedSettings,
+            repository,
+            sendEmail,
+          }),
+        ),
+      ).rejects.toBeInstanceOf(InvoiceEmailSendAttemptError);
+
+      expect(sendEmail).not.toHaveBeenCalled();
+      expect(repository.events).toEqual([]);
+    },
+  );
 });
 
 function createDependencies(options: {
   completeSuccessfulEmailDelivery?: InvoiceEmailDeliveryFinalizer['completeSuccessfulEmailDelivery'];
+  attemptStore?: InvoiceEmailSendAttemptStore;
+  documentMetadata?: ApprovedInvoiceDocumentMetadata;
+  emailSettings?: ReturnType<typeof createEmailSettings>;
   getStatus?: () => 'approved' | 'sent';
   pdfContent?: Buffer;
   repository?: FakeDeliveryEventRepository;
   sendEmail?: InvoiceSmtpDeliveryProvider['sendEmail'];
 } = {}) {
   const repository = options.repository ?? new FakeDeliveryEventRepository();
+  const documentMetadata =
+    options.documentMetadata ?? createDocumentMetadata();
   const getStatus = options.getStatus ?? (() => 'approved' as const);
   const sendEmail =
     options.sendEmail ??
@@ -258,12 +335,10 @@ function createDependencies(options: {
       getApprovedInvoiceById: vi.fn(async () => createInvoice(getStatus())),
       listApprovedInvoiceSummaries: vi.fn(),
     },
-    ensureApprovedInvoicePdfDocument: vi.fn(async () =>
-      createDocumentMetadata(),
-    ),
+    ensureApprovedInvoicePdfDocument: vi.fn(async () => documentMetadata),
     getApprovedInvoicePdfDocument: vi.fn(async () => ({
       content: options.pdfContent ?? Buffer.from('%PDF-1.7 synthetic'),
-      metadata: createDocumentMetadata(),
+      metadata: documentMetadata,
     })),
     invoiceDeliveryEventRepository: repository,
     invoiceEmailDeliveryFinalizer: {
@@ -275,13 +350,15 @@ function createDependencies(options: {
           wasResend: false,
         })),
     },
-    invoiceEmailSendAttemptStore: {
-      acquire: vi.fn(),
-      complete: vi.fn(),
-      prepare: vi.fn(),
-    },
+    invoiceEmailSendAttemptStore: options.attemptStore ?? {
+        acquire: vi.fn(),
+        complete: vi.fn(),
+        prepare: vi.fn(),
+      },
     invoiceEmailSettingsReader: {
-      getEmailSettings: vi.fn(async () => createEmailSettings()),
+      getEmailSettings: vi.fn(async () =>
+        options.emailSettings ?? createEmailSettings(),
+      ),
     },
     invoiceSmtpDeliveryProvider: { sendEmail },
   };
@@ -317,17 +394,28 @@ function createInvoice(status: 'approved' | 'sent'): ApprovedInvoiceView {
   } as ApprovedInvoiceView;
 }
 
-function createEmailSettings() {
+function createEmailSettings(
+  overrides: Partial<{
+    emailDeliveryProvider: 'dnaSmtp';
+    emailSenderAddress: string;
+    emailSenderName: string;
+    emailTestRecipientOverride: string;
+    emailUsername: string;
+  }> = {},
+) {
   return {
     emailDeliveryProvider: 'dnaSmtp' as const,
     emailSenderAddress: 'billing@example.fi',
     emailSenderName: 'Example Oy',
     emailTestRecipientOverride: 'owner-test@example.fi',
     emailUsername: 'billing@example.fi',
+    ...overrides,
   };
 }
 
-function createDocumentMetadata(): ApprovedInvoiceDocumentMetadata {
+function createDocumentMetadata(
+  overrides: Partial<ApprovedInvoiceDocumentMetadata> = {},
+): ApprovedInvoiceDocumentMetadata {
   return {
     companyId: 'company-1',
     createdAt: '2026-07-17T22:00:00.000Z',
@@ -339,5 +427,6 @@ function createDocumentMetadata(): ApprovedInvoiceDocumentMetadata {
     sha256: '0'.repeat(64),
     sizeBytes: 2048,
     storagePath: 'company-1/invoice-1/lasku.pdf',
+    ...overrides,
   };
 }

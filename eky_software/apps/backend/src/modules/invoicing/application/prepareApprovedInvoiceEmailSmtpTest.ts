@@ -99,7 +99,17 @@ export async function prepareApprovedInvoiceEmailSmtpTest(
     requestFingerprint: createInvoiceEmailSendRequestFingerprint({
       body: emailFields.body,
       cc: emailFields.cc,
+      document: {
+        fileName: document.fileName,
+        id: document.id,
+        sha256: document.sha256,
+        sizeBytes: document.sizeBytes,
+      },
       recipient: testRecipient,
+      sender: {
+        address: settings.emailSenderAddress,
+        name: settings.emailSenderName,
+      },
       subject: emailFields.subject,
       to: emailFields.to,
     }),

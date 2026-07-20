@@ -260,9 +260,10 @@ toimitustavasta, providerista, vastaanottajasta, kopiosta, tilasta ja
 turvallisesta virheviestistä. Se ei palauta MIME-runkoa, PDF-binääriä,
 salaisuuksia tai providerin raakaa vastausta.
 Ratkaisematon `attempted`- tai `outcomeUnknown`-tapahtuma estää uuden tavallisen
-asiakaslähetyksen valmistelun. Manuaalinen tulostus- tai muu toimitus kirjaa
-delivery eventin ja audit-tapahtuman sekä muuttaa laskun `sent`-tilaan samassa
-transaktiossa.
+asiakaslähetyksen valmistelun ja manuaalisen toimituksen viimeistelyn.
+Manuaalinen tulostus- tai muu toimitus kirjaa delivery eventin ja
+audit-tapahtuman sekä muuttaa laskun `sent`-tilaan samassa transaktiossa vain,
+kun epäselvää aiempaa toimitustapahtumaa ei ole.
 
 Hyväksytyllä laskulla saa olla local-MVP:ssä yksi voimassa oleva
 `approved_invoice_pdf`-dokumentti per yritys ja lasku. Jos hyväksytty mutta

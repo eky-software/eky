@@ -36,8 +36,9 @@ Toteutustilanne:
   `sent`-tilan samassa SQLite-transaktiossa
 - epäonnistunut tai lopputulokseltaan epäselvä lähetys ei muuta laskun tilaa
 - yritys- ja laskurajattu ratkaisematon `attempted`- tai `outcomeUnknown`-
-  tapahtuma estää uuden tavallisen asiakaslähetyksen valmistelun, kunnes tilanne
-  on ratkaistu erillisellä myöhemmällä hallintapolulla
+  tapahtuma estää uuden tavallisen asiakaslähetyksen valmistelun ja manuaalisen
+  toimituksen viimeistelyn, kunnes tilanne on ratkaistu erillisellä myöhemmällä
+  hallintapolulla
 - `sent`-laskun uudelleenlähetys kirjaa uuden tapahtuman muuttamatta laskun
   numeroa, viitenumeroa, sisältöä tai tilaa
 

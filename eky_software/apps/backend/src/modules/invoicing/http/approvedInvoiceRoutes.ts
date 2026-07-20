@@ -310,6 +310,10 @@ export function createApprovedInvoiceRoutes(
         return context.json({ error: error.message }, 400);
       }
 
+      if (error instanceof InvoiceDeliveryConflictError) {
+        return context.json({ error: error.message }, 409);
+      }
+
       throw error;
     }
   });

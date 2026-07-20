@@ -553,6 +553,23 @@ describe('approved invoice routes', () => {
     expect(response.status).toBe(404);
   });
 
+  it('returns a safe conflict when manual delivery has an unresolved attempt', async () => {
+    const { app } = createTestApp({
+      markSentError: new InvoiceDeliveryConflictError(),
+    });
+
+    const response = await app.request('/invoices/invoice-1/mark-sent', {
+      body: JSON.stringify({ deliveryMethod: 'manual' }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+
+    await expect(response.json()).resolves.toEqual({
+      error: 'Invoice has an unresolved delivery attempt.',
+    });
+    expect(response.status).toBe(409);
+  });
+
   it('returns a safe 404 when preparing email for an invoice outside the company scope', async () => {
     const { app } = createTestApp({
       emailError: new ApprovedInvoiceNotFoundError(),

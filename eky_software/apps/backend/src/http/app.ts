@@ -304,6 +304,7 @@ export async function createApp(
               invoiceDocumentStorage,
               renderApprovedInvoicePdf,
             }),
+          invoiceDeliveryEventReader: invoiceDeliveryEventRepository,
           invoiceManualDeliveryFinalizer: invoiceDeliveryEventRepository,
         }),
       prepareApprovedInvoiceEmailDryRun: (input) =>

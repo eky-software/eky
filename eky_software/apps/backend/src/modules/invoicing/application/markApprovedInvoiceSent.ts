@@ -7,7 +7,9 @@ import { requireIdentifier } from '../domain/invoiceDraftRules.js';
 import { withCalculatedApprovedInvoiceVatBreakdown } from '../domain/invoiceViewTotals.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
+import type { InvoiceDeliveryEventReader } from '../ports/invoiceDeliveryEventReader.js';
 import type { InvoiceManualDeliveryFinalizer } from '../ports/invoiceManualDeliveryFinalizer.js';
+import { InvoiceDeliveryConflictError } from './invoiceDeliveryConflictError.js';
 import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
 import type { GenerateApprovedInvoicePdfDocumentInput } from './generateApprovedInvoicePdfDocument.js';
 
@@ -23,6 +25,7 @@ export interface MarkApprovedInvoiceSentDependencies {
   ensureApprovedInvoicePdfDocument(
     input: GenerateApprovedInvoicePdfDocumentInput,
   ): Promise<ApprovedInvoiceDocumentMetadata>;
+  invoiceDeliveryEventReader: InvoiceDeliveryEventReader;
   invoiceManualDeliveryFinalizer: InvoiceManualDeliveryFinalizer;
 }
 
@@ -48,6 +51,15 @@ export async function markApprovedInvoiceSent(
 
   if (currentInvoice.status === 'sent') {
     return withCalculatedApprovedInvoiceVatBreakdown(currentInvoice);
+  }
+
+  if (
+    await dependencies.invoiceDeliveryEventReader.hasUnresolvedDeliveryEvent(
+      companyId,
+      invoiceId,
+    )
+  ) {
+    throw new InvoiceDeliveryConflictError();
   }
 
   const document = await dependencies.ensureApprovedInvoicePdfDocument({

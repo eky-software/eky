@@ -2,6 +2,7 @@ import { createActorContext } from '@eky/auth';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
+import { InvoiceDeliveryConflictError } from './invoiceDeliveryConflictError.js';
 import {
   markApprovedInvoiceSent,
   type MarkApprovedInvoiceSentInput,
@@ -28,6 +29,7 @@ describe('markApprovedInvoiceSent', () => {
           listApprovedInvoiceSummaries: vi.fn(),
         },
         ensureApprovedInvoicePdfDocument,
+        invoiceDeliveryEventReader: createDeliveryEventReader(false),
         invoiceManualDeliveryFinalizer: { completeManualDelivery },
       }),
     ).resolves.toStrictEqual(sentInvoice);
@@ -61,6 +63,7 @@ describe('markApprovedInvoiceSent', () => {
         ensureApprovedInvoicePdfDocument: vi.fn(async () => {
           throw new Error('PDF could not be generated.');
         }),
+        invoiceDeliveryEventReader: createDeliveryEventReader(false),
         invoiceManualDeliveryFinalizer: { completeManualDelivery },
       }),
     ).rejects.toThrow('PDF could not be generated.');
@@ -77,6 +80,7 @@ describe('markApprovedInvoiceSent', () => {
       markApprovedInvoiceSent(createInput(), {
         approvedInvoiceReader: createReader(sentInvoice),
         ensureApprovedInvoicePdfDocument,
+        invoiceDeliveryEventReader: createDeliveryEventReader(false),
         invoiceManualDeliveryFinalizer: { completeManualDelivery },
       }),
     ).resolves.toStrictEqual(sentInvoice);
@@ -92,6 +96,7 @@ describe('markApprovedInvoiceSent', () => {
       markApprovedInvoiceSent(createInput(), {
         approvedInvoiceReader: createReader(undefined),
         ensureApprovedInvoicePdfDocument: vi.fn(),
+        invoiceDeliveryEventReader: createDeliveryEventReader(false),
         invoiceManualDeliveryFinalizer: { completeManualDelivery },
       }),
     ).rejects.toEqual(new ApprovedInvoiceNotFoundError());
@@ -118,6 +123,7 @@ describe('markApprovedInvoiceSent', () => {
             listApprovedInvoiceSummaries: vi.fn(),
           },
           ensureApprovedInvoicePdfDocument: vi.fn(),
+          invoiceDeliveryEventReader: createDeliveryEventReader(false),
           invoiceManualDeliveryFinalizer: {
             completeManualDelivery: vi.fn(),
           },
@@ -126,6 +132,25 @@ describe('markApprovedInvoiceSent', () => {
     ).rejects.toThrow('Permission denied');
 
     expect(getApprovedInvoiceById).not.toHaveBeenCalled();
+  });
+
+  it('blocks manual delivery while an earlier delivery attempt is unresolved', async () => {
+    const ensureApprovedInvoicePdfDocument = vi.fn();
+    const completeManualDelivery = vi.fn();
+
+    await expect(
+      markApprovedInvoiceSent(createInput(), {
+        approvedInvoiceReader: createReader(
+          createApprovedInvoiceView({ status: 'approved' }),
+        ),
+        ensureApprovedInvoicePdfDocument,
+        invoiceDeliveryEventReader: createDeliveryEventReader(true),
+        invoiceManualDeliveryFinalizer: { completeManualDelivery },
+      }),
+    ).rejects.toEqual(new InvoiceDeliveryConflictError());
+
+    expect(ensureApprovedInvoicePdfDocument).not.toHaveBeenCalled();
+    expect(completeManualDelivery).not.toHaveBeenCalled();
   });
 });
 
@@ -150,6 +175,13 @@ function createReader(invoice: ApprovedInvoiceView | undefined) {
   return {
     getApprovedInvoiceById: vi.fn(async () => invoice),
     listApprovedInvoiceSummaries: vi.fn(),
+  };
+}
+
+function createDeliveryEventReader(hasUnresolvedEvent: boolean) {
+  return {
+    hasUnresolvedDeliveryEvent: vi.fn(async () => hasUnresolvedEvent),
+    listDeliveryEvents: vi.fn(async () => []),
   };
 }
 
