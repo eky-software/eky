@@ -6,7 +6,7 @@ erillisen lisenssihuomion.
 
 Tämä ei korvaa lockfilea tai myöhempää automaattista lisenssiraportointia.
 
-## PDFKit-Spike
+## PDFKit
 
 Ensimmäinen hyväksytyn laskun PDF-teknologiakokeilu käyttää backendissä
 `pdfkit`-kirjastoa.
@@ -27,10 +27,27 @@ kuten MIT, ISC, BSD-3-Clause, Apache-2.0, 0BSD ja `(MIT AND Zlib)`.
 `png-js`-paketin npm-metadatassa ei ollut lisenssikenttää, mutta asennetun
 version tarballissa oli MIT-lisenssitiedosto.
 
-Tämä vaihe on vasta PDF-spike:
+PDFKit-polun nykytila:
 
-- PDF ei vielä tallennu laskulle
-- ei ole `invoice_documents`-taulua
-- ei ole PDF:n luonti- tai latausreittejä
-- webissä ei vielä ole PDF-painikkeita
-- sähköpostilähetystä ei vielä toteuteta
+- PDF-metadata tallennetaan `invoice_documents`-tauluun
+- PDF-binääri tallennetaan paikallisen storage-adapterin kautta
+- backendissä on rajatut PDF:n luonti-, metadata- ja latausreitit
+- web ja Electron käyttävät hallittuja PDF:n luonti- ja esikatselutoimintoja
+- hyväksytyn laskun current PDF voidaan liittää hallittuun SMTP-toimitukseen
+
+## Electron Desktop -Paketointi
+
+Nykyisen Windows-paketointipolun suorat desktop-riippuvuudet:
+
+- `electron` 42.6.1, MIT
+- `@electron/packager` 20.0.2, BSD-2-Clause
+- `@electron/fuses` 2.1.3, MIT
+
+Electron ja paketointityökalut kuuluvat vain `apps/desktop`-runtimeen. Ne eivät
+vuoda domainiin, application serviceihin, API-clientiin tai web-featureihin.
+
+Tämä dokumentti ei ole vielä täydellinen automaattisesti muodostettu
+kolmannen osapuolen lisenssi-inventaario. Ennen loppukäyttäjälle jaettavaa
+tuotantojulkaisua suorat ja transitiiviset runtime- sekä paketointiriippuvuudet
+tarkistetaan, tarvittavat notices-tiedostot kootaan artifactiin ja dokumentti
+päivitetään release security gate -tarkistuksessa.

@@ -448,37 +448,41 @@ Kevyt käsin testattava lista ennen toimituspolun laajentamista:
 
 ## Seuraavien Vaiheiden Järjestys
 
-Nykyinen laskun toimituskokonaisuus viimeistellään ennen uutta isoa moduulia:
+Ensimmäinen local desktop -toimituskokonaisuus on toteutettu:
 
-1. Viimeistellään sähköposti.
-   Salaisuuden turvallinen hallinta ja SMTP-provider toteutetaan
-   `docs/architecture/email-delivery-and-secrets-plan.md`-dokumentin mukaan.
-   implicit TLS on ensimmäisessä adapterissa pakollinen, ensimmäiset lähetykset käyttävät test recipient
-   overridea. Hallittu testipolku on toteutettu ilman laskun tilasiirtymää;
-   oikean tilin verkkotesti vaatii vielä projektin omistajan erillisen luvan.
-   Vain myöhempi onnistunut asiakaslähetys voi muuttaa laskun `sent`-tilaan.
-2. Viimeistellään tulostus.
-   Current PDF avataan luotettavasti ja käyttäjä tulostaa selaimen tai
-   käyttöjärjestelmän normaalilla toiminnolla. Tulostus ei automaattisesti
-   merkitse laskua lähetetyksi, eikä MVP:hen lisätä suoraa tulostinohjausta.
-3. Tehdään rajattu UI-siivoussprintti.
-   `packages/ui` otetaan käyttöön pienillä yleisillä komponenteilla
-   `docs/architecture/ui-design-system-roadmap.md`-dokumentin mukaan.
-   Laskutus-, asiakas-, sähköposti- tai API-logiikkaa ei siirretä UI-pakettiin.
+- current PDF avautuu webissä ja suojatussa Electron-esikatselussa
+- tulostus käyttää PDF-näyttimen normaalia tulostustoimintoa eikä muuta laskun
+  tilaa automaattisesti
+- DNA SMTP -testivastaanottajapolku ja käyttäjän vahvistama asiakaslähetys on
+  toteutettu
+- delivery event kirjataan ennen SMTP-kutsua
+- vain varmasti onnistunut toimitus muuttaa laskun `sent`-tilaan
+- epäonnistunut tai epäselvä toimitus ei muuta laskun tilaa
+
+Seuraava järjestys:
+
+1. Tehdään koko koodipohjan rajattu rakenteellinen siivous dokumentin
+   `docs/architecture/codebase-cleanup-roadmap.md` mukaan.
+2. Arvioidaan siivouksen aikana ensin `apps/web/src/shared/ui` pienille,
+   useassa riippumattomassa web-featuressa toistuville teknisille komponenteille
+   dokumentin
+   `docs/architecture/ui-design-system-roadmap.md` mukaan.
+3. Suljetaan oikean asiakasdatan release-portit: backup/restore, migraatioiden
+   upgrade-testit, Windows release -smoke, lisenssit, code signing ja hallittu
+   päivityspolku.
 4. Vasta tämän jälkeen aloitetaan seuraava iso moduuli, kuten Kohteet,
    Työmääräykset tai Tuntikirjaukset.
 
-UI-siivousta ei aloiteta kesken sähköposti- tai tulostusputken.
+## Jatkokehityksen Rajaus
 
-## Rajaus
+Nykyisen local desktop -toimituspolun jälkeen ei toteuteta tämän suunnitelman
+nojalla automaattisesti:
 
-Tässä dokumentissa ei toteuteta:
-
-- sähköpostilähetystä
-- SMTP-adapteria
-- Gmail-integraatiota
-- DNA-integraatiota
-- tulostinintegraatiota
-- hyvityslaskua
-- cancelointia
+- uutta sähköposti- tai delivery-provideria
+- Gmail- tai Microsoft OAuth -integraatiota
+- suoraa tulostinohjausta
+- background queue- tai outbox-järjestelmää
+- hyvityslaskua tai cancelointia
 - uusia riippuvuuksia
+
+Nämä vaativat erillisen päätöksen ja oman rajatun suunnitelmansa.

@@ -1,18 +1,26 @@
 # PDF ja sisäiset työkalut -suunnitelma
 
-Tämä dokumentti pysäyttää laskutuksen PDF-vaiheen hetkeksi
-arkkitehtuuritarkistukseen ennen uuden PDF-riippuvuuden tai tuotantokoodin
-lisäämistä.
+Tämä dokumentti syntyi laskutuksen PDF-vaiheen arkkitehtuuritarkistukseksi
+ennen PDF-riippuvuuden ja tuotantokoodin lisäämistä. Se säilyttää PDF-polun
+alkuperäiset rajat ja perustelut.
 
 Tavoite on varmistaa, että PDF, tulostus ja myöhempi sähköpostilähetys
 rakennetaan Eky-projektin moduulirajojen, snapshot-periaatteen ja
 riippuvuuslinjan mukaisesti.
 
-Ensimmäinen PDFKit-teknologiakokeilu on lisätty Invoicing-moduulin
-infrastructure-kerrokseen. PDF muodostetaan `ApprovedInvoiceView`-snapshotista,
-ja seuraava local-MVP-vaihe lisää hyväksytyn laskun PDF-metadatan,
-paikallisen tiedostotallennuksen, rajatut PDF-reitit ja webin
-`Luo PDF` / `Avaa PDF` -toiminnot.
+## Dokumentin Nykytila
+
+PDFKit-renderer, `invoice_documents`-metadata, paikallinen storage-adapteri,
+rajatut PDF-reitit, webin ja Electronin PDF-esikatselu sekä PDF:n käyttäminen
+hallittuna laskun sähköpostiliitteenä on toteutettu. PDF muodostetaan edelleen
+vain `ApprovedInvoiceView`-snapshotista.
+
+Tämän dokumentin vaiheistus on osittain historiallinen. Nykyinen laskun
+toimituspolku kuvataan dokumenteissa `docs/architecture/invoice-delivery-plan.md`,
+`docs/architecture/invoice-delivery-events-plan.md` ja
+`docs/architecture/email-delivery-and-secrets-plan.md`. PDF-rendererin
+myöhempi vastuunjako on kirjattu dokumenttiin
+`docs/architecture/codebase-cleanup-roadmap.md`.
 
 ## Nykyinen Tilanne
 
@@ -25,6 +33,9 @@ InvoiceDraft
       -> ApprovedInvoiceView
         -> web preview
         -> approved invoice list
+        -> current PDF document
+          -> web- tai Electron-esikatselu ja tulostus
+          -> hallittu sähköpostitoimitus
 ```
 
 Hyväksynnässä Invoicing muodostaa virallisen laskunumeron, viitenumeron ja
@@ -41,12 +52,8 @@ Tämä palauttaa `ApprovedInvoiceView`-lukumallin.
 hyväksytyn laskun snapshot-dataa, ei muuttuvaa Customer- tai Company Settings
 -master-dataa eikä alkuperäistä invoice draftia.
 
-Nykyinen web-preview on tarkistusnäkymä. Se auttaa varmistamaan, että
-snapshotissa on oikeat tiedot, mutta se ei ole vielä virallinen asiakkaalle
-lähtevä lasku, A4-print-layout tai PDF.
-
-Virallinen asiakkaalle lähtevä lasku muodostetaan myöhemmin PDF:nä hyväksytyn
-laskun snapshot-datasta.
+Web-preview on tarkistusnäkymä. Virallinen asiakkaalle lähtevä laskudokumentti
+on hyväksytyn laskun snapshot-datasta muodostettu current PDF.
 
 ## PDF-Polun Suositeltu Vaiheistus
 
@@ -55,14 +62,15 @@ Etenemisjärjestys:
 1. PDFKit-spike ja lisenssitarkistus - tehty
 2. ensimmäinen `ApprovedInvoicePdfRenderer` Invoicing-moduuliin - tehty
 3. PDF:n tekninen testaus `ApprovedInvoiceView`-testidatalla - tehty
-4. `invoice_documents`-taulu ja paikallinen tiedostotallennus
-5. `POST /invoices/:id/pdf`
-6. `GET /invoices/:id/pdf`
-7. `GET /invoices/:id/pdf/metadata`
-8. webiin tilapohjaiset `Luo PDF` ja `Avaa PDF` -toiminnot
-9. sähköpostisuunnitelma
-10. sähköpostilähetys PDF-liitteellä
-11. lähetys-, lataus- ja tulostushistoria myöhemmin
+4. `invoice_documents`-taulu ja paikallinen tiedostotallennus - tehty
+5. `POST /invoices/:id/pdf` - tehty
+6. `GET /invoices/:id/pdf` - tehty
+7. `GET /invoices/:id/pdf/metadata` - tehty
+8. webiin tilapohjaiset `Luo PDF` ja `Avaa PDF` -toiminnot - tehty
+9. sähköpostisuunnitelma - tehty
+10. sähköpostilähetys PDF-liitteellä - tehty local desktop -profiiliin
+11. sähköpostin delivery event -historia - tehty; lataus- ja tulostushistoria
+    arvioidaan myöhemmin
 
 PDF:n luonti ei vielä merkitse laskua lähetetyksi.
 
@@ -105,7 +113,8 @@ PDF:n luonti ei saa hakea tietoja Customer- tai Company Settings
 Tulostus voidaan ensimmäisessä vaiheessa hoitaa avaamalla valmis PDF selaimeen
 ja käyttämällä selaimen tai käyttöjärjestelmän tulostustoimintoa.
 
-Sähköposti tehdään vasta, kun PDF:n muodostus ja tallennusmalli ovat olemassa.
+Sähköpostitoimitus käyttää olemassa olevaa current PDF -dokumenttia. Se ei
+muodosta laskun sisältöä uudelleen eikä hae muuttuvaa master-dataa.
 
 ## PDF-Rendererin Omistajuus
 
@@ -419,8 +428,10 @@ moduulissa ja tarvitsee monorepo-tason jaon.
 Tarve: ennakoitu.
 
 Suositus: ei vielä. Webin feature- ja CSS Module -rakenne kantaa nykyisen
-vaiheen. `packages/ui` vasta, kun samat UI-komponentit toistuvat useassa
-isossa näkymässä.
+vaiheen. Useassa riippumattomassa web-featuressa toistuvat vakaat primitiivit
+arvioidaan ensin `apps/web/src/shared/ui`-kerrokseen. `packages/ui` vasta, jos
+sama UI tarvitaan useassa itsenäisessä sovelluksessa erillisen päätöksen
+jälkeen.
 
 ### `packages/config`
 

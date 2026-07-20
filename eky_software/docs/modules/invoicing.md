@@ -475,11 +475,10 @@ Numerointisarjojen, tilikausipohjaisen numeroinnin, kalenterivuosipohjaisen nume
 
 Nykyinen Oma yritys on laajemman Asetukset-kokonaisuuden ensimmäinen osa. Käyttöliittymä voi myöhemmin koota samaan Asetukset-osioon Oma yritys-, laskutus-, ALV-, maksuehto-, numerointi- ja tilikausinäkymät, vaikka niiden data säilyy omistavissa moduuleissa.
 
-## Avoimet kysymykset
+## Jatkokehityksen avoimet kysymykset
 
-- tarvitaanko PDF ensimmäisessä versiossa?
-- tarvitaanko sähköpostilähetys?
 - tarvitaanko verkkolasku myöhemmin?
 - kuka saa hyväksyä laskun?
 - miten hyvityslasku tehdään?
 - mikä on lopullinen permission-malli hyväksynnälle ja hyväksytyn laskun korjaukselle?
+- tarvitaanko sähköpostin lisäksi uusia hallittuja toimitusprovidereita?

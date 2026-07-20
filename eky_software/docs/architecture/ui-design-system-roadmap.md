@@ -1,153 +1,198 @@
 # UI Design System Roadmap
 
-Tämä dokumentti kirjaa Eky-webin jaettujen UI-komponenttien kasvupolun.
+Tämä dokumentti kirjaa Eky-webin jaettujen UI-primitiivien hallitun
+kasvupolun.
 
-Nykyinen UI-koodi toimii MVP-vaiheessa, mutta lomakkeissa, napeissa,
-paneeleissa, kentissä, virheviesteissä ja CSS Module -rakenteissa on alkanut
-näkyä toistoa. Tämä ei riko ohjelmaa nyt, mutta se kasvattaa ylläpitokustannusta
-seuraavien isojen UI-moduulien kohdalla.
+Nykyinen UI toimii, mutta lomakkeissa, napeissa, vahvistuksissa,
+tilailmoituksissa ja kenttärakenteissa on alkanut näkyä toistoa. Tavoite ei ole
+rakentaa suurta design systemiä, vaan yhtenäistää aidosti yhteinen
+käyttäytyminen ja saavutettavuus ilman featurelogiikan siirtämistä väärään
+kerrokseen.
+
+Koodipohjan yleinen refaktorointijärjestys on kuvattu dokumentissa
+`docs/architecture/codebase-cleanup-roadmap.md`.
+
+## UI-Omistajuuden Kasvupolku
+
+```text
+apps/web/src/styles.css
+  -> design tokenit ja aidosti yhteinen elementtien perustyyli
+
+apps/web/src/features/<feature>/components
+  -> featurekohtaiset komponentit ja liiketoimintakonteksti
+
+apps/web/src/shared/ui
+  -> vähintään 2-3 riippumattoman web-featuren aidosti yhteiset React-
+     primitiivit
+
+packages/ui
+  -> vasta, jos sama vakaa UI tarvitaan useassa itsenäisessä sovelluksessa
+```
+
+Electron desktop käyttää samaa React/Vite-web-sovellusta rendererinä. Se ei
+yksin muodosta toista UI-sovellusta eikä perustele `packages/ui`-pakettia.
 
 ## Nykyinen Tila
 
-`packages/ui` on vielä skeleton-paketti. Siihen ei ole lisätty React-riippuvuutta
-eikä varsinaisia komponentteja.
+`packages/ui` on skeleton-paketti ilman React-riippuvuutta tai komponentteja.
+Sitä ei aktivoida ensimmäisessä UI-siivoussprintissä.
 
-Web-sovelluksen featuret omistavat edelleen omat komponenttinsa:
+Featuret omistavat omat komponenttinsa:
 
-- `Customers`
-- `Company Settings`
-- `Invoicing`
+- Customers
+- Company Settings
+- Invoicing
 
-Tämä on ollut oikea ratkaisu MVP-vaiheessa, koska featureiden vastuut ja
-käyttölogiikka ovat vielä tarkentuneet nopeasti.
+Globaalit design tokenit ja aidosti yhteiset perustyylit ovat
+`apps/web/src/styles.css`-tiedostossa. Komponenttikohtaiset tyylit ovat
+komponenttien vieressä CSS Moduleissa.
+
+Tämä on edelleen oikea perusrakenne.
 
 ## Havaittu Toisto
 
-Samankaltaisia UI-rakenteita näkyy jo useissa tiedostoissa, esimerkiksi:
+Toistoa näkyy erityisesti:
 
-- `CustomerForm`
-- `CompanySettingsForm`
-- `NewInvoiceForm`
-- `InvoiceBasicInfoSection`
-- `InvoicePaymentSettingsForm`
-- muut laskutuksen lomakeosat
+- button-varianteissa, loading-teksteissä ja disabled-tiloissa
+- label-, help- ja error-rakenteissa
+- virhe-, onnistumis- ja infoviesteissä
+- sivunsisäisissä vahvistuspaneeleissa
+- status badge -ulkoasussa
+- saavutettavuuden ja fokuksen käsittelyssä
 
-Toistuvia rakenteita ovat muun muassa:
+Pelkkä sama CSS-luokka tai saman näköinen JSX ei riitä komponentin
+irrottamiseen. Yhteisellä komponentilla pitää olla sama käyttäytyminen,
+saavutettavuussopimus ja muutosperuste useassa riippumattomassa featuressa.
 
-- button
-- input
-- select
-- textarea
-- label
-- fieldset
-- legend
-- help text
-- error text
-- panel
-- panel header
-- actions/footer
-- message/error/success-rakenteet
-- CSS Module -luokat kuten field, grid, actions, help ja error
+## Ajoitus
 
-## Riski Jos Tätä Ei Korjata
+1. Ensin pilkotaan Invoicing-webin suuret workspace- ja preview-vastuut
+   käyttäytymistä muuttamatta.
+2. Sen jälkeen inventoidaan todelliset yhteiset käyttökohteet Customers-,
+   Company Settings- ja Invoicing-featureistä.
+3. Hyväksytään ensimmäiset 1-4 webin sisäistä primitiiviä.
+4. Yksi primitiivi siirretään kerrallaan 2-3 edustavaan käyttökohteeseen.
+5. Ulkoasu, tekstit, domain-päätökset ja käyttäjäpolut säilytetään.
+6. Vasta käytännön kokemuksen jälkeen arvioidaan, onko `packages/ui` koskaan
+   tarpeellinen.
 
-Jos myöhemmin halutaan muuttaa kaikkien nappien ulkoasua, kenttien
-virheviestien tyyliä, lomakkeiden välejä tai paneelien rakennetta, muutos
-joudutaan tekemään monesta feature-tiedostosta.
+UI-siivousta ei yhdistetä samaan committiin laskutus-, API-, tietokanta- tai
+domain-muutoksen kanssa.
 
-Toisto myös vaikeuttaa uusien moduulien rakentamista, koska jokainen uusi
-moduuli voi alkaa kopioida omaa hieman erilaista lomake- ja panelirakennetta.
+## Ensimmäiset Arvioitavat Primitiivit
 
-## Miksi Refaktorointia Ei Tehdä Heti Kesken Feature-työn
+### Button
 
-Jaettua UI-pakettia ei rakenneta kesken laskutuksen PDF- tai print-polun, koska
-se voisi sotkea feature-työn fokuksen ja tuoda uuden riippuvuuspäätöksen liian
-aikaisin.
+Rajatut variantit voivat olla:
 
-Ensin viimeistellään laskutuksen PDF-polku vakaaksi. Sen jälkeen voidaan tehdä
-lyhyt, rajattu UI-refaktorointisprintti ennen seuraavaa isoa UI-moduulia, kuten
-työmääräyksiä.
+```ts
+type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+```
 
-## Suositeltu Ajoitus
+Button tukee natiivin button-elementin ominaisuudet, oikean `type`-arvon,
+disabled-tilan ja tarvittaessa loading-tilan. Se ei omista featurekohtaista
+tekstiä, permission-päätöstä tai toimintoa.
 
-1. Viimeistellään laskutuksen PDF-polku vakaaksi.
-2. Tehdään tarvittavat pienet dokumentaatio- ja rakennecleanupit.
-3. Ennen työmääräysmoduulia tai muuta isoa uutta UI-kokonaisuutta tehdään
-   `packages/ui`-paketin ensimmäinen vaihe.
-4. Uudet moduulit käyttävät sen jälkeen yhteisiä UI-komponentteja heti alusta.
+### FormField
 
-## Ensimmäisen Vaiheen Komponentit
+FormField voi koota:
 
-Ensimmäinen `packages/ui`-vaihe pidetään pienenä.
+- labelin
+- required-merkinnän
+- help-tekstin
+- kentän
+- field error -tekstin
 
-Mahdollisia ensimmäisiä komponentteja:
+Kenttä annetaan aluksi natiivina lapsena. Yleistä lomakeframeworkia ei tehdä.
 
-- `Button`
-- `TextField`
-- `SelectField`
-- `TextareaField`
-- `FormField`
-- `Panel`
-- `PageHeader`
-- `Message`
-- `EmptyState`
+### MessageBanner
 
-Tarkoitus ei ole rakentaa isoa design systemiä kerralla. Komponentti lisätään
-vasta, kun sillä poistetaan todellista toistoa useasta näkymästä.
+Rajatut variantit voivat olla `info`, `success`, `warning` ja `error`.
+Komponentti omistaa esityksen ja saavutettavan ilmoitustavan, ei virheen
+liiketoimintaluokitusta.
 
-## Mitä `packages/ui` Saa Sisältää
+### ConfirmationPanel
 
-`packages/ui` saa sisältää vain yleisiä teknisiä UI-komponentteja.
+ConfirmationPanel voi omistaa sivunsisäisen vahvistuksen yhtenäisen
+rakenteen, fokuksen ja toimintojen asettelun. Se ei omista sitä, milloin lasku,
+asiakas tai muu resurssi saa muuttua.
 
-Sallittuja vastuita:
+### StatusBadge
 
-- perusnappi
-- tekstikenttä
-- valintakenttä
-- tekstialue
-- kentän label/help/error-rakenne
-- panelirakenne
-- sivuotsikon tekninen rakenne
-- yleinen viesti- tai tyhjä tila
+StatusBadge voi omistaa teknisen badge-esityksen. Feature muuntaa domain-tilan
+käyttäjälle näkyväksi tekstiksi ja valitsee sallitun variantin.
 
-## Mitä `packages/ui` Ei Saa Sisältää
+`Panel` tehdään React-komponentiksi vain, jos yhteinen rakenne tai käyttäytyminen
+toistuu. Pelkkä yhteinen CSS-luokka ei vaadi komponenttia.
 
-`packages/ui` ei saa sisältää:
+## Saavutettavuusportti
 
-- laskutuslogiikkaa
-- ALV-laskentaa
+Jaetun UI-primitiivin pitää testata ja dokumentoida vähintään sitä koskevat
+seuraavat asiat:
+
+- oikea HTML-elementti ja buttonin `type`
+- labelin ja kentän ohjelmallinen yhteys
+- help- ja error-tekstien `aria-describedby`
+- virheen tarkoituksenmukainen `role="alert"` tai live region
+- näkyvä näppäimistöfokus
+- fokuksen palautuminen vahvistuksen tai näkymäsiirtymän jälkeen
+- disabled- ja loading-tilojen ero
+- riittävä kontrasti
+- kosketuskohteiden koko
+- tekstin mahtuminen ja käyttö 125-150 prosentin näyttöskaalauksella
+- responsiivinen käyttö tuetuissa näkymissä
+
+UI-siivous ei ole vain ulkoasun yhtenäistämistä.
+
+## Mitä Jaettu UI Saa Sisältää
+
+`apps/web/src/shared/ui` saa sisältää vain yleisiä teknisiä
+React-komponentteja, joilla on useita todellisia web-featurekäyttäjiä.
+
+Se saa omistaa esimerkiksi:
+
+- perusnapin esityksen ja tekniset tilat
+- kentän label/help/error-rakenteen
+- yleisen viesti- ja vahvistusrakenteen
+- yleisen status badge -esityksen
+- saavutettavuuden teknisen sopimuksen
+
+## Mitä Jaettu UI Ei Saa Sisältää
+
+Jaettu UI ei saa sisältää:
+
+- laskutuslogiikkaa tai ALV-laskentaa
 - asiakkaan valintasääntöjä
-- taloyhtiö/isännöitsijälogiikkaa
-- API-kutsuja
-- Firebase-kutsuja
-- backend- tai tietokantalogiikkaa
+- taloyhtiö- tai isännöitsijälogiikkaa
+- domain-tilasiirtymiä
+- API-, Firebase-, backend- tai tietokantakutsuja
 - feature-hookeja
+- permission-päätöksiä
 - domain-validointia
-- moduulien sisäisiä sääntöjä
+- käyttäjälle näkyviä featurekohtaisia tekstejä
 
-Feature-kohtaiset komponentit pysyvät featureissä.
+Esimerkiksi `CustomerPicker`, `InvoiceRowsEditor` ja
+`ApprovedInvoiceEmailPreview` pysyvät featureissä. Niiden sisällä käytetty
+tekninen Button tai FormField voi myöhemmin tulla `shared/ui`-kerroksesta.
 
-Esimerkkejä:
+## `packages/ui`-Päätöspiste
 
-- `CustomerPicker` ei lähtökohtaisesti kuulu `packages/ui`-pakettiin, koska siinä
-  on asiakas- ja laskutuskontekstia.
-- `InvoiceRowsEditor` ei kuulu `packages/ui`-pakettiin, koska se on laskutuksen
-  oma toiminnallinen komponentti.
-- `TextField`, `Button` ja `FormField` voivat kuulua `packages/ui`-pakettiin,
-  koska ne eivät tunne liiketoimintaa.
+`packages/ui` voidaan arvioida erillisellä päätöksellä vasta, kun:
+
+- Ekyllä on vähintään kaksi itsenäistä UI-sovellusta
+- sama vakaa primitiivi tarvitaan niissä molemmissa
+- paketin React-, build-, CSS- ja testiriippuvuudet on hyväksytty
+- siirto ei pakota featurelogiikkaa pakettiin
+- paketille on selkeä julkinen API ja omistajuus
+
+Siirtoa ei tehdä varmuuden vuoksi eikä siksi, että skeleton-paketti on jo
+olemassa.
 
 ## Vaikutus Tuleviin Moduuleihin
 
-Kun ensimmäinen `packages/ui`-vaihe on tehty, uudet isot UI-moduulit voivat
-käyttää samoja perustyökaluja heti alusta.
+Rajattu webin sisäinen UI-perusta auttaa tulevia Sites-, Work Orders-, Work
+Entries-, Materials- ja Settings-näkymiä säilyttämään saman työohjelmamaisen
+käyttökokemuksen.
 
-Tämä tukee erityisesti tulevia moduuleita:
-
-- Sites / Kohteet
-- Work Orders / Työmääräykset
-- Work Entries
-- Materials
-- laajemmat Settings-näkymät
-
-Näin Eky säilyttää yhtenäisen työohjelmamaisen käyttöliittymän ilman, että
-liiketoimintalogiikkaa nostetaan väärään jaettuun pakettiin.
+Featureiden liiketoimintakomponentit pysyvät silti omissa moduuleissaan. Näin
+jaettu UI vähentää teknistä toistoa ilman, että moduulien omistajuus hämärtyy.

@@ -143,6 +143,12 @@ loopback-backendin arkaluonteisia reittejä tai local/cloud-yhteistä
 identity-adapteria, lue myös
 `docs/architecture/local-runtime-trust-and-authorization-plan.md`.
 
+Jos työ koskee koko koodipohjan siivousta, suurten tiedostojen pilkkomista,
+composition root -rakennetta, tiedostojen tai vastuiden siirtämistä,
+teknisen velan purkua tai usean moduulin käyttäytymisen säilyttävää
+refaktorointia, lue myös
+`docs/architecture/codebase-cleanup-roadmap.md`.
+
 Jos työ koskee laskutuksen web-käyttöliittymää, laskuluonnoslistaa, Classic-laskutusnäkymää, uuden laskun lomaketta tai laskuluonnoksen avaamista ja muokkaamista webissä, lue myös `docs/architecture/invoicing-ui-roadmap.md`.
 
 Jos työ koskee web-käyttöliittymän ulkoasua, layoutia, komponenttirakennetta, värejä tai Eky-työpöytäkokemusta, lue myös `docs/design/ui-principles.md`.
