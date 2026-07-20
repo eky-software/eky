@@ -4,7 +4,10 @@ import type { CompanyEmailSecretReader } from '../../../../modules/companySettin
 import { SmtpTransportError } from '../../smtp/smtpErrors.js';
 import type { SmtpMessageDeliveryInput } from '../../smtp/smtpTypes.js';
 import { DnaSmtpEmailDeliveryProvider } from './dnaSmtpEmailDeliveryProvider.js';
-import type { DnaSmtpTestEmailInput } from './dnaSmtpTypes.js';
+import type {
+  DnaSmtpEmailInput,
+  DnaSmtpTestEmailInput,
+} from './dnaSmtpTypes.js';
 
 describe('DnaSmtpEmailDeliveryProvider', () => {
   it('uses only the trusted test recipient and a stable attempt Message-ID', async () => {
@@ -40,6 +43,36 @@ describe('DnaSmtpEmailDeliveryProvider', () => {
     expect(message).not.toContain('actual-customer@example.com');
     expect(message).not.toContain('copy@example.com');
     expect(message).not.toContain('Cc:');
+  });
+
+  it('delivers an invoice only to the validated customer and optional Cc', async () => {
+    let transportInput: SmtpMessageDeliveryInput | undefined;
+    const provider = new DnaSmtpEmailDeliveryProvider({
+      companyEmailSecretReader: createSecretReader('synthetic-password'),
+      transport: async (input) => {
+        transportInput = {
+          ...input,
+          message: Buffer.from(input.message),
+        };
+        return { accepted: true, providerMessageId: 'synthetic-message-id' };
+      },
+    });
+
+    await expect(provider.sendEmail(createCustomerInput())).resolves.toEqual({
+      deliveredCc: 'copy@example.com',
+      deliveredTo: 'customer@example.com',
+      provider: 'smtp',
+      providerMessageId: 'synthetic-message-id',
+      testMode: false,
+    });
+    expect(transportInput?.envelope).toEqual({
+      from: 'billing@example.com',
+      recipients: ['customer@example.com', 'copy@example.com'],
+    });
+    const message = Buffer.from(transportInput?.message ?? []).toString('ascii');
+    expect(message).toContain('To: customer@example.com');
+    expect(message).toContain('Cc: copy@example.com');
+    expect(message).toContain('Message-ID: <attempt-1@example.com>');
   });
 
   it.each([
@@ -132,6 +165,14 @@ function createInput() {
     pdfContent: Buffer.from('%PDF-1.7\nsynthetic', 'ascii'),
     pdfFileName: 'invoice-2026001.pdf',
     subject: 'Invoice 2026001',
+  };
+}
+
+function createCustomerInput(): DnaSmtpEmailInput {
+  return {
+    ...createInput(),
+    cc: 'copy@example.com',
+    to: 'customer@example.com',
   };
 }
 

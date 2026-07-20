@@ -222,6 +222,42 @@ export interface ApprovedInvoiceEmailSmtpTestSendResult {
   testMode: true;
 }
 
+export type ApprovedInvoiceEmailSmtpPrepareInput =
+  ApprovedInvoiceEmailDryRunSendInput;
+
+export type ApprovedInvoiceEmailSmtpSendInput =
+  ApprovedInvoiceEmailDryRunSendInput & {
+    attemptId: string;
+    authorizationToken: string;
+  };
+
+export interface ApprovedInvoiceEmailSmtpPreparation {
+  attachment: {
+    fileName: string;
+    sizeBytes: number;
+  };
+  attemptId: string;
+  authorizationToken: string;
+  cc: string;
+  expiresAt: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  recipient: string;
+  resend: boolean;
+  subject: string;
+}
+
+export interface ApprovedInvoiceEmailSmtpSendResult {
+  deliveredCc: string;
+  deliveredTo: string;
+  deliveryEventId: string;
+  invoice: ApprovedInvoiceView;
+  provider: 'smtp';
+  providerMessageId: string | null;
+  resend: boolean;
+  testMode: false;
+}
+
 export interface ApprovedInvoicesApi {
   copyApprovedInvoiceToDraft(id: string): Promise<InvoiceDraft>;
   createApprovedInvoicePdf(id: string): Promise<ApprovedInvoiceDocumentMetadata>;
@@ -239,6 +275,10 @@ export interface ApprovedInvoicesApi {
     id: string,
     input: ApprovedInvoiceEmailSmtpTestPrepareInput,
   ): Promise<ApprovedInvoiceEmailSmtpTestPreparation>;
+  prepareApprovedInvoiceEmailSmtp(
+    id: string,
+    input: ApprovedInvoiceEmailSmtpPrepareInput,
+  ): Promise<ApprovedInvoiceEmailSmtpPreparation>;
   sendApprovedInvoiceEmailDryRun(
     id: string,
     input: ApprovedInvoiceEmailDryRunSendInput,
@@ -247,5 +287,9 @@ export interface ApprovedInvoicesApi {
     id: string,
     input: ApprovedInvoiceEmailSmtpTestSendInput,
   ): Promise<ApprovedInvoiceEmailSmtpTestSendResult>;
+  sendApprovedInvoiceEmailSmtp(
+    id: string,
+    input: ApprovedInvoiceEmailSmtpSendInput,
+  ): Promise<ApprovedInvoiceEmailSmtpSendResult>;
   reopenApprovedInvoiceForEditing(id: string): Promise<ReopenedApprovedInvoice>;
 }

@@ -5,6 +5,8 @@ import {
   readApprovedInvoiceEmailDryRunSendResponse,
   readApprovedInvoiceEmailSmtpTestSendResponse,
   readApprovedInvoiceEmailSmtpTestPreparationResponse,
+  readApprovedInvoiceEmailSmtpPreparationResponse,
+  readApprovedInvoiceEmailSmtpSendResponse,
   readApprovedInvoiceEmailPreviewResponse,
   readApprovedInvoiceListResponse,
   readApprovedInvoiceResponse,
@@ -16,6 +18,8 @@ import type {
   ApprovedInvoiceEmailDryRunSendResult,
   ApprovedInvoiceEmailSmtpTestSendInput,
   ApprovedInvoiceEmailSmtpTestSendResult,
+  ApprovedInvoiceEmailSmtpSendInput,
+  ApprovedInvoiceEmailSmtpSendResult,
   ApprovedInvoicesApi,
   ApprovedInvoiceSummary,
   ApprovedInvoiceView,
@@ -169,6 +173,47 @@ export function createApprovedInvoicesApi(
       );
 
       return readApprovedInvoiceEmailSmtpTestPreparationResponse(responseBody);
+    },
+
+    async prepareApprovedInvoiceEmailSmtp(id, input) {
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        `/invoices/${encodeURIComponent(id)}/email/smtp/prepare`,
+        {
+          body: JSON.stringify(createApprovedInvoiceEmailSendBody(input)),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          method: 'POST',
+        },
+      );
+
+      return readApprovedInvoiceEmailSmtpPreparationResponse(responseBody);
+    },
+
+    async sendApprovedInvoiceEmailSmtp(
+      id,
+      input: ApprovedInvoiceEmailSmtpSendInput,
+    ): Promise<ApprovedInvoiceEmailSmtpSendResult> {
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        `/invoices/${encodeURIComponent(id)}/email/smtp/send`,
+        {
+          body: JSON.stringify({
+            ...createApprovedInvoiceEmailSendBody(input),
+            attemptId: input.attemptId,
+            authorizationToken: input.authorizationToken,
+          }),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          method: 'POST',
+        },
+      );
+
+      return readApprovedInvoiceEmailSmtpSendResponse(responseBody);
     },
 
     async reopenApprovedInvoiceForEditing(

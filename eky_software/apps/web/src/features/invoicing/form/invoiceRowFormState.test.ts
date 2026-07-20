@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   addInvoiceRow,
   createInitialInvoiceRows,
+  refreshAutoAppliedHourlyRates,
   removeInvoiceRow,
   updateInvoiceRow,
   updateInvoiceRowDescription,
@@ -142,6 +143,92 @@ describe('invoiceRowFormState', () => {
 
     expect(withoutShortcut[0]?.unitPrice).toBe('');
     expect(withoutRate[0]?.unitPrice).toBe('');
+  });
+
+  it('refreshes an auto-applied hourly rate when the customer changes', () => {
+    const autoPricedRows = updateInvoiceRowDescription(
+      createInitialInvoiceRows(),
+      'invoice-row-1',
+      'työ',
+      { hourlyRateCents: 6500, shortcut: 'työ' },
+    );
+
+    const rows = refreshAutoAppliedHourlyRates(autoPricedRows, {
+      hourlyRateCents: 8500,
+      shortcut: 'työ',
+    });
+
+    expect(rows[0]).toMatchObject({
+      hourlyRateAutofillState: 'applied',
+      unit: 'h',
+      unitPrice: '85,00',
+    });
+  });
+
+  it('does not refresh a manually edited hourly rate', () => {
+    const autoPricedRows = updateInvoiceRowDescription(
+      createInitialInvoiceRows(),
+      'invoice-row-1',
+      'työ',
+      { hourlyRateCents: 6500, shortcut: 'työ' },
+    );
+    const manuallyPricedRows = updateInvoiceRow(
+      autoPricedRows,
+      'invoice-row-1',
+      'unitPrice',
+      '72,00',
+    );
+
+    const rows = refreshAutoAppliedHourlyRates(manuallyPricedRows, {
+      hourlyRateCents: 8500,
+      shortcut: 'työ',
+    });
+
+    expect(rows[0]).toMatchObject({
+      hourlyRateAutofillState: 'blocked',
+      unitPrice: '72,00',
+    });
+  });
+
+  it('clears a stale auto-applied rate when no new rate is available', () => {
+    const autoPricedRows = updateInvoiceRowDescription(
+      createInitialInvoiceRows(),
+      'invoice-row-1',
+      'työ',
+      { hourlyRateCents: 6500, shortcut: 'työ' },
+    );
+
+    const rows = refreshAutoAppliedHourlyRates(autoPricedRows, {
+      hourlyRateCents: null,
+      shortcut: 'työ',
+    });
+
+    expect(rows[0]).toMatchObject({
+      hourlyRateAutofillState: 'applied',
+      unitPrice: '',
+    });
+  });
+
+  it('does not refresh an auto-applied row after its description changes', () => {
+    const autoPricedRows = updateInvoiceRowDescription(
+      createInitialInvoiceRows(),
+      'invoice-row-1',
+      'työ',
+      { hourlyRateCents: 6500, shortcut: 'työ' },
+    );
+    const renamedRows = updateInvoiceRow(
+      autoPricedRows,
+      'invoice-row-1',
+      'description',
+      'muu työ',
+    );
+
+    const rows = refreshAutoAppliedHourlyRates(renamedRows, {
+      hourlyRateCents: 8500,
+      shortcut: 'työ',
+    });
+
+    expect(rows[0]?.unitPrice).toBe('65,00');
   });
 
   it('adds a new row without changing the existing row', () => {

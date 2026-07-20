@@ -15,6 +15,7 @@ import { createDummyInvoiceForm } from '../form/invoiceDummyForm.js';
 import { applyInvoicePaymentDefaults } from '../form/invoicePaymentDefaults.js';
 import {
   addInvoiceRow,
+  refreshAutoAppliedHourlyRates,
   removeInvoiceRow,
   type InvoiceRowForm,
   type InvoiceRowFormField,
@@ -120,11 +121,23 @@ export function NewInvoiceForm({
   ): void {
     handleFormChange((currentForm) => {
       if (fieldName === 'customerId' && typeof value === 'string') {
-        return applyCustomerBillingRecipientDefault(
+        const formWithCustomer = applyCustomerBillingRecipientDefault(
           currentForm,
           customerListState.customers,
           value,
         );
+
+        return {
+          ...formWithCustomer,
+          lines: refreshAutoAppliedHourlyRates(
+            formWithCustomer.lines,
+            resolveHourlyRateAutofillConfig(
+              value,
+              customerListState.customers,
+              companySettingsState.companySettings,
+            ),
+          ),
+        };
       }
 
       return updateNewInvoiceFormField(currentForm, fieldName, value);
@@ -211,7 +224,9 @@ export function NewInvoiceForm({
   }
 
   function replaceFormWithDraft(savedDraft: InvoiceDraft): void {
-    setForm(toNewInvoiceFormStateFromDraft(savedDraft));
+    setForm((currentForm) =>
+      toNewInvoiceFormStateFromDraft(savedDraft, currentForm.lines),
+    );
     setFormRevision((currentRevision) => currentRevision + 1);
   }
 

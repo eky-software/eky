@@ -4,8 +4,8 @@ Tämä dokumentti määrittää hyväksytyn laskun toimitusputken suunnittelulin
 tulostus, sähköposti, `sent`-tila, laskun kopiointi, peruutus ja
 hyvityslaskut.
 
-Dokumentti on suunnitelma. Se ei muuta nykyistä MVP-toteutusta eikä lisää
-uusia reittejä, tietokantatauluja, UI-toimintoja tai riippuvuuksia.
+Dokumentti toimii suunnitelmana ja toteutuneen local-MVP-toimituspolun
+rajauksena.
 
 Sähköpostilähetyksen provider-malli, dry-run-vaihe, SMTP/Gmail-linja ja
 salaisuuksien hallinta on tarkennettu dokumentissa
@@ -28,6 +28,14 @@ Toteutustilanne:
   testivastaanottajaan
 - SMTP-testilähetys kirjaa delivery eventin mutta ei muuta laskua
   `sent`-tilaan
+- asiakaslähetys käyttää erillistä Electronissa vahvistettavaa prepare/send-
+  polkua, varmistaa current PDF:n backendissä ja kirjaa delivery eventin ennen
+  SMTP-kutsua
+- varmasti onnistunut asiakaslähetys viimeistelee delivery eventin ja laskun
+  `sent`-tilan samassa SQLite-transaktiossa
+- epäonnistunut tai lopputulokseltaan epäselvä lähetys ei muuta laskun tilaa
+- `sent`-laskun uudelleenlähetys kirjaa uuden tapahtuman muuttamatta laskun
+  numeroa, viitenumeroa, sisältöä tai tilaa
 
 ## Peruspolku
 
@@ -37,8 +45,8 @@ Nykyinen ja tuleva laskun toimitusketju:
 InvoiceDraft
   -> ApprovedInvoice snapshot
     -> PDF document
-      -> delivery action myöhemmin
-        -> sent status myöhemmin
+      -> delivery action
+        -> sent status vain varmasta onnistumisesta
 ```
 
 PDF:n luonti ei tarkoita laskun lähettämistä.
@@ -75,13 +83,14 @@ käyttäjän toimintoa tai myöhemmin määriteltyä audit-polkuun kuuluvaa sä�
 
 ## Sähköposti Yleisesti
 
-Sähköpostilähetys tehdään myöhemmin backendin hallitun business-toiminnon kautta.
+Sähköpostilähetys tehdään backendin hallitun business-toiminnon kautta.
 
 Tämä dokumentti kuvaa toimitusputken laskutuksen näkökulmasta. Teknisen
 sähköpostiproviderin, salaisuuksien ja dry-run-toteutuksen tarkemmat säännöt
 ovat dokumentissa `docs/architecture/email-delivery-and-secrets-plan.md`.
 
-Tuleva portti voi olla esimerkiksi:
+Provider-portti pitää teknisen kuljetuksen erossa Invoicingin
+liiketoimintapäätöksistä. Nykyinen ensimmäinen adapteri on DNA SMTP.
 
 ```ts
 interface EmailDeliveryProvider {

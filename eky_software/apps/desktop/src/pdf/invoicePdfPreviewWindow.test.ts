@@ -80,6 +80,7 @@ describe('invoice PDF preview window controller', () => {
     expect(context.windows[0]?.focus).toHaveBeenCalledTimes(2);
 
     context.windows[0]?.close();
+    expect(context.restoreMainWindowFocus).toHaveBeenCalledOnce();
     await handler(context.trustedEvent, 'invoice-1');
     expect(context.windows).toHaveLength(2);
   });
@@ -151,6 +152,7 @@ function createContext(
   } as unknown as IpcMainInvokeEvent;
   const windows: FakeBrowserWindow[] = [];
   const showSafeError = vi.fn();
+  const restoreMainWindowFocus = vi.fn();
   const ipc = {
     handle(channel: string, handler: IpcHandler) {
       handlers.set(channel, handler);
@@ -168,6 +170,7 @@ function createContext(
     },
     ipcMain: ipc,
     mainWindow,
+    restoreMainWindowFocus,
     showSafeError,
     verifyPdfAvailable: vi
       .fn()
@@ -185,6 +188,7 @@ function createContext(
       return handler;
     },
     showSafeError,
+    restoreMainWindowFocus,
     trustedEvent,
     windows,
   };

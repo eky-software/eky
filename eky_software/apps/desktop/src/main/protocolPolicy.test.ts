@@ -22,6 +22,13 @@ describe('desktop protocol policy', () => {
   it('allows only explicitly named backend routes and methods', () => {
     expect(isAllowedBackendRequest('GET', '/customers')).toBe(true);
     expect(isAllowedBackendRequest('PUT', '/invoice-drafts/draft-1')).toBe(true);
+    expect(isAllowedBackendRequest('DELETE', '/invoice-drafts/draft-1')).toBe(
+      true,
+    );
+    expect(isAllowedBackendRequest('DELETE', '/invoice-drafts')).toBe(false);
+    expect(
+      isAllowedBackendRequest('DELETE', '/invoice-drafts/draft-1/extra'),
+    ).toBe(false);
     expect(isAllowedBackendRequest('POST', '/invoices/invoice-1/email/dry-run/send')).toBe(
       true,
     );
@@ -37,6 +44,24 @@ describe('desktop protocol policy', () => {
         '/invoices/invoice-1/email/smtp-test/send',
       ),
     ).toBe(true);
+    expect(
+      isAllowedBackendRequest(
+        'POST',
+        '/invoices/invoice-1/email/smtp/prepare',
+      ),
+    ).toBe(true);
+    expect(
+      isAllowedBackendRequest(
+        'POST',
+        '/invoices/invoice-1/email/smtp/send',
+      ),
+    ).toBe(true);
+    expect(
+      isAllowedBackendRequest(
+        'POST',
+        '/invoices/invoice-1/email/smtp/send/extra',
+      ),
+    ).toBe(false);
     expect(isAllowedBackendRequest('GET', '/company-settings/email-secret')).toBe(true);
     expect(isAllowedBackendRequest('PUT', '/company-settings/email-secret')).toBe(true);
     expect(isAllowedBackendRequest('DELETE', '/company-settings/email-secret')).toBe(

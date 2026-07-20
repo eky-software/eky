@@ -6,13 +6,13 @@ import {
   normalizeApprovedInvoiceEmailSendFields,
 } from './approvedInvoiceEmailSendValidation.js';
 import type { GenerateApprovedInvoicePdfDocumentInput } from './generateApprovedInvoicePdfDocument.js';
-import { createInvoiceSmtpTestRequestFingerprint } from './invoiceSmtpTestRequestFingerprint.js';
+import { createInvoiceEmailSendRequestFingerprint } from './invoiceEmailSendRequestFingerprint.js';
 import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
 import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
 import { requireIdentifier } from '../domain/invoiceDraftRules.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
 import type { InvoiceEmailSettingsReader } from '../ports/invoiceEmailSettingsReader.js';
-import type { InvoiceSmtpTestAttemptStore } from '../ports/invoiceSmtpTestAttemptStore.js';
+import type { InvoiceEmailSendAttemptStore } from '../ports/invoiceEmailSendAttemptStore.js';
 
 export interface PrepareApprovedInvoiceEmailSmtpTestInput {
   actorContext: ActorContext;
@@ -43,7 +43,7 @@ export interface PrepareApprovedInvoiceEmailSmtpTestDependencies {
     input: GenerateApprovedInvoicePdfDocumentInput,
   ): Promise<ApprovedInvoiceDocumentMetadata>;
   invoiceEmailSettingsReader: InvoiceEmailSettingsReader;
-  invoiceSmtpTestAttemptStore: InvoiceSmtpTestAttemptStore;
+  invoiceEmailSendAttemptStore: InvoiceEmailSendAttemptStore;
 }
 
 export async function prepareApprovedInvoiceEmailSmtpTest(
@@ -89,16 +89,20 @@ export async function prepareApprovedInvoiceEmailSmtpTest(
     createdAt: preparedAt,
     invoiceId,
   });
-  const preparedAttempt = dependencies.invoiceSmtpTestAttemptStore.prepare({
+  const preparedAttempt = dependencies.invoiceEmailSendAttemptStore.prepare({
     actorId,
     companyId,
     invoiceId,
+    mode: 'smtpTest',
     provider: 'dnaSmtp',
-    requestFingerprint: createInvoiceSmtpTestRequestFingerprint({
-      ...emailFields,
-      testRecipient,
+    recipient: testRecipient,
+    requestFingerprint: createInvoiceEmailSendRequestFingerprint({
+      body: emailFields.body,
+      cc: emailFields.cc,
+      recipient: testRecipient,
+      subject: emailFields.subject,
+      to: emailFields.to,
     }),
-    testRecipient,
   });
 
   return {

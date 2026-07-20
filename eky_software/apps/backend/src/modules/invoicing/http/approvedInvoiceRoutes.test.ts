@@ -25,6 +25,9 @@ import type {
   PrepareApprovedInvoiceEmailSmtpTestInput,
 } from '../application/prepareApprovedInvoiceEmailSmtpTest.js';
 import type {
+  PrepareApprovedInvoiceEmailSmtpInput,
+} from '../application/prepareApprovedInvoiceEmailSmtp.js';
+import type {
   SendApprovedInvoiceEmailDryRunInput,
   SendApprovedInvoiceEmailDryRunResult,
 } from '../application/sendApprovedInvoiceEmailDryRun.js';
@@ -32,6 +35,10 @@ import type {
   SendApprovedInvoiceEmailSmtpTestInput,
   SendApprovedInvoiceEmailSmtpTestResult,
 } from '../application/sendApprovedInvoiceEmailSmtpTest.js';
+import type {
+  SendApprovedInvoiceEmailSmtpInput,
+  SendApprovedInvoiceEmailSmtpResult,
+} from '../application/sendApprovedInvoiceEmailSmtp.js';
 import type { ApprovedInvoiceEmailPreview } from '../application/approvedInvoiceEmailPreview.js';
 import { ApprovedInvoiceNotFoundError } from '../application/approvedInvoiceNotFoundError.js';
 import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
@@ -293,6 +300,100 @@ describe('approved invoice routes', () => {
     });
   });
 
+  it('prepares and sends a customer SMTP delivery through trusted context', async () => {
+    const delivery = createApprovedInvoiceEmailSmtpSendResult();
+    const { app, getEmailSmtpInput, getEmailSmtpPreparationInput } =
+      createTestApp({ emailSmtpDelivery: delivery });
+    const emailBody = {
+      body: 'Hei, liitteenä lasku.',
+      cc: 'copy@example.fi',
+      subject: 'Lasku 20260001',
+      to: 'customer@example.fi',
+    };
+    const preparationResponse = await app.request(
+      '/invoices/invoice-1/email/smtp/prepare',
+      {
+        body: JSON.stringify(emailBody),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      },
+    );
+
+    expect(preparationResponse.status).toBe(200);
+    expect(getEmailSmtpPreparationInput()).toMatchObject({
+      actorContext: { actorId: 'dev-user', companyId: 'dev-company' },
+      invoiceId: 'invoice-1',
+      to: 'customer@example.fi',
+    });
+
+    const sendResponse = await app.request(
+      '/invoices/invoice-1/email/smtp/send',
+      {
+        body: JSON.stringify({
+          ...emailBody,
+          attemptId: 'attempt-1',
+          authorizationToken: 'one-time-authorization',
+        }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      },
+    );
+
+    expect(sendResponse.status).toBe(200);
+    await expect(sendResponse.json()).resolves.toEqual({ delivery });
+    expect(getEmailSmtpInput()).toMatchObject({
+      actorContext: { actorId: 'dev-user', companyId: 'dev-company' },
+      invoiceId: 'invoice-1',
+      attemptId: 'attempt-1',
+      to: 'customer@example.fi',
+    });
+  });
+
+  it('rejects server-owned fields in a customer SMTP preparation', async () => {
+    const { app, getEmailSmtpPreparationInput } = createTestApp({});
+
+    const response = await app.request(
+      '/invoices/invoice-1/email/smtp/prepare',
+      {
+        body: JSON.stringify({
+          body: 'Hei',
+          companyId: 'other-company',
+          subject: 'Lasku',
+          to: 'customer@example.fi',
+        }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(getEmailSmtpPreparationInput()).toBeUndefined();
+  });
+
+  it('rejects server-owned fields in a customer SMTP send body', async () => {
+    const { app, getEmailSmtpInput } = createTestApp({});
+
+    const response = await app.request(
+      '/invoices/invoice-1/email/smtp/send',
+      {
+        body: JSON.stringify({
+          attemptId: 'attempt-1',
+          authorizationToken: 'one-time-authorization',
+          body: 'Hei',
+          companyId: 'other-company',
+          status: 'sent',
+          subject: 'Lasku',
+          to: 'customer@example.fi',
+        }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(getEmailSmtpInput()).toBeUndefined();
+  });
+
   it('returns a safe 404 when dry-run sending email for an invoice outside the company scope', async () => {
     const { app } = createTestApp({
       emailSendError: new ApprovedInvoiceNotFoundError(),
@@ -487,6 +588,7 @@ function createTestApp(options: {
   copyError?: Error;
   document?: ApprovedInvoiceDocumentMetadata;
   emailDelivery?: SendApprovedInvoiceEmailDryRunResult;
+  emailSmtpDelivery?: SendApprovedInvoiceEmailSmtpResult;
   emailSmtpTestDelivery?: SendApprovedInvoiceEmailSmtpTestResult;
   emailSendError?: Error;
   email?: ApprovedInvoiceEmailPreview;
@@ -510,6 +612,10 @@ function createTestApp(options: {
     | PrepareApprovedInvoiceEmailSmtpTestInput
     | undefined;
   let emailSmtpTestInput: SendApprovedInvoiceEmailSmtpTestInput | undefined;
+  let emailSmtpPreparationInput:
+    | PrepareApprovedInvoiceEmailSmtpInput
+    | undefined;
+  let emailSmtpInput: SendApprovedInvoiceEmailSmtpInput | undefined;
   let generatePdfInput: GenerateApprovedInvoicePdfDocumentInput | undefined;
   let pdfInput: GetApprovedInvoicePdfDocumentInput | undefined;
   let pdfMetadataInput: GetApprovedInvoicePdfMetadataInput | undefined;
@@ -610,6 +716,31 @@ function createTestApp(options: {
         testRecipient: 'owner-test@example.fi',
       };
     },
+    async prepareApprovedInvoiceEmailSmtp(nextInput) {
+      emailSmtpPreparationInput = nextInput;
+
+      return {
+        attachment: { fileName: 'invoice.pdf', sizeBytes: 2048 },
+        attemptId: 'attempt-1',
+        authorizationToken: 'one-time-authorization',
+        cc: nextInput.cc ?? '',
+        expiresAt: '2026-07-17T22:01:00.000Z',
+        invoiceId: nextInput.invoiceId,
+        invoiceNumber: '20260001',
+        recipient: nextInput.to,
+        resend: false,
+        subject: nextInput.subject,
+      };
+    },
+    async sendApprovedInvoiceEmailSmtp(nextInput) {
+      emailSmtpInput = nextInput;
+
+      if (options.emailSendError !== undefined) {
+        throw options.emailSendError;
+      }
+
+      return options.emailSmtpDelivery ?? createApprovedInvoiceEmailSmtpSendResult();
+    },
     async sendApprovedInvoiceEmailSmtpTest(nextInput) {
       emailSmtpTestInput = nextInput;
 
@@ -681,6 +812,8 @@ function createTestApp(options: {
     getEmailSendInput: () => emailSendInput,
     getEmailSmtpTestPreparationInput: () => emailSmtpTestPreparationInput,
     getEmailSmtpTestInput: () => emailSmtpTestInput,
+    getEmailSmtpPreparationInput: () => emailSmtpPreparationInput,
+    getEmailSmtpInput: () => emailSmtpInput,
     getInput: () => input,
     getListInput: () => listInput,
     getMarkSentInput: () => markSentInput,
@@ -722,6 +855,19 @@ function createApprovedInvoiceEmailSmtpTestSendResult(): SendApprovedInvoiceEmai
     provider: 'smtp',
     providerMessageId: '<synthetic@example.test>',
     testMode: true,
+  };
+}
+
+function createApprovedInvoiceEmailSmtpSendResult(): SendApprovedInvoiceEmailSmtpResult {
+  return {
+    deliveredCc: 'copy@example.fi',
+    deliveredTo: 'customer@example.fi',
+    deliveryEventId: 'delivery-event-1',
+    invoice: createApprovedInvoiceView({ status: 'sent' }),
+    provider: 'smtp',
+    providerMessageId: '<message@example.fi>',
+    resend: false,
+    testMode: false,
   };
 }
 

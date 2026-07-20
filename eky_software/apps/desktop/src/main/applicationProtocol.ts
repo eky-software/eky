@@ -14,6 +14,10 @@ import {
   readSmtpTestPreparationConfirmation,
   type SmtpTestPreparationConfirmation,
 } from './smtpTestConfirmation.js';
+import {
+  readInvoiceEmailPreparationConfirmation,
+  type InvoiceEmailPreparationConfirmation,
+} from './invoiceEmailConfirmation.js';
 
 const contentSecurityPolicy = [
   "default-src 'self'",
@@ -33,6 +37,9 @@ export interface RegisterApplicationProtocolOptions {
   confirmSmtpTestPreparation?(
     preparation: SmtpTestPreparationConfirmation,
   ): Promise<boolean>;
+  confirmInvoiceEmailPreparation?(
+    preparation: InvoiceEmailPreparationConfirmation,
+  ): Promise<boolean>;
   runtimeSessionSecret: string;
   webRoot: string;
 }
@@ -47,6 +54,9 @@ async function proxyBackendRequest(
   targetUrl: URL,
   confirmSmtpTestPreparation?: (
     preparation: SmtpTestPreparationConfirmation,
+  ) => Promise<boolean>,
+  confirmInvoiceEmailPreparation?: (
+    preparation: InvoiceEmailPreparationConfirmation,
   ) => Promise<boolean>,
 ): Promise<Response> {
   const contentLength = Number(request.headers.get('content-length') ?? '0');
@@ -103,6 +113,30 @@ async function proxyBackendRequest(
 
       if (!(await confirmSmtpTestPreparation(confirmation))) {
         return jsonError(409, 'SMTP-testilähetys peruutettiin.');
+      }
+    }
+
+    if (
+      backendResponse.ok &&
+      targetUrl.pathname.endsWith('/email/smtp/prepare') &&
+      confirmInvoiceEmailPreparation !== undefined
+    ) {
+      let responseBody: unknown;
+
+      try {
+        responseBody = await backendResponse.clone().json();
+      } catch {
+        return jsonError(502, 'Sähköpostilähetystä ei voitu vahvistaa.');
+      }
+
+      const confirmation = readInvoiceEmailPreparationConfirmation(responseBody);
+
+      if (confirmation === undefined) {
+        return jsonError(502, 'Sähköpostilähetystä ei voitu vahvistaa.');
+      }
+
+      if (!(await confirmInvoiceEmailPreparation(confirmation))) {
+        return jsonError(409, 'Sähköpostilähetys peruutettiin.');
       }
     }
 
@@ -167,6 +201,7 @@ export function registerApplicationProtocol(
         options.runtimeSessionSecret,
         targetUrl,
         options.confirmSmtpTestPreparation,
+        options.confirmInvoiceEmailPreparation,
       );
     }
 

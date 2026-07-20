@@ -16,6 +16,8 @@ import {
   mapDnaSmtpProviderError,
 } from './dnaSmtpErrorMapper.js';
 import type {
+  DnaSmtpEmailInput,
+  DnaSmtpEmailResult,
   DnaSmtpTestEmailInput,
   DnaSmtpTestEmailResult,
 } from './dnaSmtpTypes.js';
@@ -35,22 +37,72 @@ export class DnaSmtpEmailDeliveryProvider {
   async sendTestEmail(
     input: DnaSmtpTestEmailInput,
   ): Promise<DnaSmtpTestEmailResult> {
+    const { senderAddress, testRecipient, username } =
+      normalizeDnaTestConfiguration(input);
+    const result = await this.sendMessage({
+      ...input,
+      cc: '',
+      senderAddress,
+      to: testRecipient,
+      username,
+    });
+
+    return {
+      deliveredTo: result.deliveredTo,
+      provider: result.provider,
+      providerMessageId: result.providerMessageId,
+      testMode: true,
+    };
+  }
+
+  async sendEmail(input: DnaSmtpEmailInput): Promise<DnaSmtpEmailResult> {
+    const { cc, senderAddress, to, username } =
+      normalizeDnaConfiguration(input);
+    const result = await this.sendMessage({
+      ...input,
+      cc,
+      senderAddress,
+      to,
+      username,
+    });
+
+    return {
+      deliveredCc: cc,
+      deliveredTo: result.deliveredTo,
+      provider: result.provider,
+      providerMessageId: result.providerMessageId,
+      testMode: false,
+    };
+  }
+
+  private async sendMessage(input: {
+    attemptId: string;
+    body: string;
+    cc: string;
+    companyId: string;
+    emailSenderName: string;
+    pdfContent: Uint8Array;
+    pdfFileName: string;
+    senderAddress: string;
+    subject: string;
+    to: string;
+    username: string;
+  }): Promise<Omit<DnaSmtpEmailResult, 'deliveredCc' | 'testMode'>> {
     let message: Buffer | undefined;
 
     try {
-      const { senderAddress, testRecipient, username } =
-        normalizeDnaTestConfiguration(input);
       message = buildInvoiceMimeMessage({
         body: input.body,
-        fromAddress: senderAddress,
+        cc: input.cc,
+        fromAddress: input.senderAddress,
         fromName: input.emailSenderName,
         pdfContent: input.pdfContent,
         pdfFileName: input.pdfFileName,
         subject: input.subject,
-        to: testRecipient,
+        to: input.to,
       }, {
-        messageId: `${normalizeAttemptId(input.attemptId)}@${senderAddress.slice(
-          senderAddress.lastIndexOf('@') + 1,
+        messageId: `${normalizeAttemptId(input.attemptId)}@${input.senderAddress.slice(
+          input.senderAddress.lastIndexOf('@') + 1,
         )}`,
       });
       const password = await this.dependencies.companyEmailSecretReader.getSecret(
@@ -62,25 +114,59 @@ export class DnaSmtpEmailDeliveryProvider {
       }
 
       const result = await (this.dependencies.transport ?? defaultTransport)({
-        credentials: { password, username },
+        credentials: { password, username: input.username },
         envelope: {
-          from: senderAddress,
-          recipients: [testRecipient],
+          from: input.senderAddress,
+          recipients: [input.to, ...(input.cc === '' ? [] : [input.cc])],
         },
         message,
       });
 
       return {
-        deliveredTo: testRecipient,
+        deliveredTo: input.to,
         provider: 'smtp',
         providerMessageId: result.providerMessageId,
-        testMode: true,
       };
     } catch (error) {
       throw mapDnaSmtpProviderError(error);
     } finally {
       message?.fill(0);
     }
+  }
+}
+
+function normalizeDnaConfiguration(input: DnaSmtpEmailInput): {
+  cc: string;
+  senderAddress: string;
+  to: string;
+  username: string;
+} {
+  if (
+    input.emailDeliveryProvider !== 'dnaSmtp' ||
+    input.companyId.length === 0 ||
+    input.companyId.length > 200 ||
+    /[\u0000-\u001f\u007f]/.test(input.companyId) ||
+    input.emailUsername.length === 0
+  ) {
+    throw new DnaSmtpProviderError('DNA_SMTP_CONFIGURATION_INVALID');
+  }
+
+  try {
+    const senderAddress = normalizeEmailAddress(input.emailSenderAddress);
+    const username = normalizeEmailAddress(input.emailUsername);
+
+    if (senderAddress.toLowerCase() !== username.toLowerCase()) {
+      throw new DnaSmtpProviderError('DNA_SMTP_CONFIGURATION_INVALID');
+    }
+
+    return {
+      cc: input.cc === '' ? '' : normalizeEmailAddress(input.cc),
+      senderAddress,
+      to: normalizeEmailAddress(input.to),
+      username,
+    };
+  } catch {
+    throw new DnaSmtpProviderError('DNA_SMTP_CONFIGURATION_INVALID');
   }
 }
 

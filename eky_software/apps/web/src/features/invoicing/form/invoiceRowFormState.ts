@@ -109,6 +109,29 @@ export function updateInvoiceRowDescription(
   });
 }
 
+export function refreshAutoAppliedHourlyRates(
+  rows: InvoiceRowForm[],
+  autofillConfig: HourlyRateAutofillConfig,
+): InvoiceRowForm[] {
+  return rows.map((row) => {
+    if (
+      row.hourlyRateAutofillState !== 'applied' ||
+      !matchesHourlyRateShortcut(row.description, autofillConfig.shortcut)
+    ) {
+      return row;
+    }
+
+    return {
+      ...row,
+      unit: 'h',
+      unitPrice:
+        autofillConfig.hourlyRateCents === null
+          ? ''
+          : centsToEuroInput(autofillConfig.hourlyRateCents),
+    };
+  });
+}
+
 function createInvoiceRowForm(id: string): InvoiceRowForm {
   return {
     id,

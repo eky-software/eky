@@ -5,16 +5,16 @@ import {
   timingSafeEqual,
 } from 'node:crypto';
 
-import { InvoiceSmtpTestAttemptError } from '../application/invoiceSmtpTestAttemptError.js';
+import { InvoiceEmailSendAttemptError } from '../application/invoiceEmailSendAttemptError.js';
 import type {
-  AcquireInvoiceSmtpTestAttemptInput,
-  CompleteInvoiceSmtpTestAttemptInput,
-  InvoiceSmtpTestAttemptStore,
-  PrepareInvoiceSmtpTestAttemptInput,
-  PreparedInvoiceSmtpTestAttempt,
-} from '../ports/invoiceSmtpTestAttemptStore.js';
+  AcquireInvoiceEmailSendAttemptInput,
+  CompleteInvoiceEmailSendAttemptInput,
+  InvoiceEmailSendAttemptStore,
+  PrepareInvoiceEmailSendAttemptInput,
+  PreparedInvoiceEmailSendAttempt,
+} from '../ports/invoiceEmailSendAttemptStore.js';
 
-interface StoredAttempt extends PrepareInvoiceSmtpTestAttemptInput {
+interface StoredAttempt extends PrepareInvoiceEmailSendAttemptInput {
   attemptId: string;
   authorizationExpiresAtMs: number;
   authorizationTokenHash: Buffer;
@@ -23,7 +23,7 @@ interface StoredAttempt extends PrepareInvoiceSmtpTestAttemptInput {
   status: 'completed' | 'inFlight' | 'prepared';
 }
 
-export interface InMemoryInvoiceSmtpTestAttemptStoreOptions {
+export interface InMemoryInvoiceEmailSendAttemptStoreOptions {
   authorizationLifetimeMs?: number;
   cooldownMs?: number;
   now?: () => number;
@@ -34,8 +34,8 @@ const defaultAuthorizationLifetimeMs = 60_000;
 const defaultCooldownMs = 10_000;
 const defaultRetentionMs = 300_000;
 
-export class InMemoryInvoiceSmtpTestAttemptStore
-  implements InvoiceSmtpTestAttemptStore
+export class InMemoryInvoiceEmailSendAttemptStore
+  implements InvoiceEmailSendAttemptStore
 {
   private readonly activeAttemptByKey = new Map<string, string>();
   private readonly attempts = new Map<string, StoredAttempt>();
@@ -45,7 +45,7 @@ export class InMemoryInvoiceSmtpTestAttemptStore
   private readonly now: () => number;
   private readonly retentionMs: number;
 
-  constructor(options: InMemoryInvoiceSmtpTestAttemptStoreOptions = {}) {
+  constructor(options: InMemoryInvoiceEmailSendAttemptStoreOptions = {}) {
     this.authorizationLifetimeMs =
       options.authorizationLifetimeMs ?? defaultAuthorizationLifetimeMs;
     this.cooldownMs = options.cooldownMs ?? defaultCooldownMs;
@@ -54,8 +54,8 @@ export class InMemoryInvoiceSmtpTestAttemptStore
   }
 
   prepare(
-    input: PrepareInvoiceSmtpTestAttemptInput,
-  ): PreparedInvoiceSmtpTestAttempt {
+    input: PrepareInvoiceEmailSendAttemptInput,
+  ): PreparedInvoiceEmailSendAttempt {
     const now = this.now();
 
     this.cleanup(now);
@@ -64,13 +64,24 @@ export class InMemoryInvoiceSmtpTestAttemptStore
     const activeAttemptId = this.activeAttemptByKey.get(key);
 
     if (activeAttemptId !== undefined) {
-      throw new InvoiceSmtpTestAttemptError('inProgress');
+      const activeAttempt = this.attempts.get(activeAttemptId);
+
+      if (activeAttempt?.status === 'inFlight') {
+        throw new InvoiceEmailSendAttemptError('inProgress');
+      }
+
+      if (activeAttempt?.status === 'prepared') {
+        activeAttempt.authorizationTokenHash.fill(0);
+        activeAttempt.status = 'completed';
+      }
+
+      this.activeAttemptByKey.delete(key);
     }
 
     const cooldownUntil = this.cooldownByKey.get(key);
 
     if (cooldownUntil !== undefined && cooldownUntil > now) {
-      throw new InvoiceSmtpTestAttemptError('cooldown');
+      throw new InvoiceEmailSendAttemptError('cooldown');
     }
 
     const attemptId = randomUUID();
@@ -96,7 +107,7 @@ export class InMemoryInvoiceSmtpTestAttemptStore
     };
   }
 
-  acquire(input: AcquireInvoiceSmtpTestAttemptInput): void {
+  acquire(input: AcquireInvoiceEmailSendAttemptInput): void {
     const now = this.now();
 
     this.cleanup(now);
@@ -104,21 +115,25 @@ export class InMemoryInvoiceSmtpTestAttemptStore
     const attempt = this.attempts.get(input.attemptId);
     const suppliedTokenHash = hashAuthorizationToken(input.authorizationToken);
 
-    if (
-      attempt === undefined ||
-      attempt.status !== 'prepared' ||
-      attempt.authorizationExpiresAtMs <= now ||
-      !bindingsMatch(attempt, input) ||
-      !timingSafeEqual(attempt.authorizationTokenHash, suppliedTokenHash)
-    ) {
-      throw new InvoiceSmtpTestAttemptError('invalidOrExpired');
-    }
+    try {
+      if (
+        attempt === undefined ||
+        attempt.status !== 'prepared' ||
+        attempt.authorizationExpiresAtMs <= now ||
+        !bindingsMatch(attempt, input) ||
+        !timingSafeEqual(attempt.authorizationTokenHash, suppliedTokenHash)
+      ) {
+        throw new InvoiceEmailSendAttemptError('invalidOrExpired');
+      }
 
-    attempt.status = 'inFlight';
-    attempt.authorizationTokenHash.fill(0);
+      attempt.status = 'inFlight';
+      attempt.authorizationTokenHash.fill(0);
+    } finally {
+      suppliedTokenHash.fill(0);
+    }
   }
 
-  complete(input: CompleteInvoiceSmtpTestAttemptInput): void {
+  complete(input: CompleteInvoiceEmailSendAttemptInput): void {
     const now = this.now();
     const attempt = this.attempts.get(input.attemptId);
 
@@ -162,7 +177,7 @@ export class InMemoryInvoiceSmtpTestAttemptStore
   }
 }
 
-function createAttemptKey(input: PrepareInvoiceSmtpTestAttemptInput): string {
+function createAttemptKey(input: PrepareInvoiceEmailSendAttemptInput): string {
   return `${input.companyId}\u0000${input.invoiceId}\u0000${input.provider}`;
 }
 
@@ -172,14 +187,15 @@ function hashAuthorizationToken(value: string): Buffer {
 
 function bindingsMatch(
   attempt: StoredAttempt,
-  input: AcquireInvoiceSmtpTestAttemptInput,
+  input: AcquireInvoiceEmailSendAttemptInput,
 ): boolean {
   return (
     attempt.actorId === input.actorId &&
     attempt.companyId === input.companyId &&
     attempt.invoiceId === input.invoiceId &&
+    attempt.mode === input.mode &&
     attempt.provider === input.provider &&
-    attempt.requestFingerprint === input.requestFingerprint &&
-    attempt.testRecipient === input.testRecipient
+    attempt.recipient === input.recipient &&
+    attempt.requestFingerprint === input.requestFingerprint
   );
 }

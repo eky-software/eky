@@ -1,61 +1,21 @@
 import Database from 'better-sqlite3';
-import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { DatabaseConnection } from '../../../database/connection/createDatabaseConnection.js';
+import { runMigrations } from '../../../database/migration/runMigrations.js';
 import type {
   InvoiceDeliveryEventRow,
 } from '../../../database/schema.js';
 import type { InvoiceDeliveryEvent } from '../domain/invoiceDeliveryEvent.js';
 import { SqliteInvoiceDeliveryEventRepository } from './sqliteInvoiceDeliveryEventRepository.js';
 
-const invoiceDraftMigrationSql = readFileSync(
-  new URL(
-    '../../../database/migrations/006_create_invoice_drafts.sql',
-    import.meta.url,
-  ),
-  'utf8',
-);
-const approvedInvoiceMigrationSql = readFileSync(
-  new URL(
-    '../../../database/migrations/009_create_approved_invoices.sql',
-    import.meta.url,
-  ),
-  'utf8',
-);
-const invoiceDocumentMigrationSql = readFileSync(
-  new URL(
-    '../../../database/migrations/018_create_invoice_documents.sql',
-    import.meta.url,
-  ),
-  'utf8',
-);
-const invoiceDeliveryEventMigrationSql = readFileSync(
-  new URL(
-    '../../../database/migrations/022_create_invoice_delivery_events.sql',
-    import.meta.url,
-  ),
-  'utf8',
-);
-const invoiceDeliveryOutcomeMigrationSql = readFileSync(
-  new URL(
-    '../../../database/migrations/028_allow_unknown_invoice_delivery_outcome.sql',
-    import.meta.url,
-  ),
-  'utf8',
-);
-
 describe('SqliteInvoiceDeliveryEventRepository', () => {
   let database: DatabaseConnection;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     database = new Database(':memory:');
     database.pragma('foreign_keys = ON');
-    database.exec(invoiceDraftMigrationSql);
-    database.exec(approvedInvoiceMigrationSql);
-    database.exec(invoiceDocumentMigrationSql);
-    database.exec(invoiceDeliveryEventMigrationSql);
-    database.exec(invoiceDeliveryOutcomeMigrationSql);
+    await runMigrations(database);
     insertInvoice(database);
     insertInvoiceDocument(database);
   });
@@ -128,6 +88,119 @@ describe('SqliteInvoiceDeliveryEventRepository', () => {
 
     expect(row?.status).toBe('succeeded');
     expect(row?.provider_message_id).toBe('<synthetic@example.test>');
+  });
+
+  it('atomically completes a successful SMTP event and marks an approved invoice sent', async () => {
+    const repository = new SqliteInvoiceDeliveryEventRepository(database);
+    const event = createEvent({ provider: 'smtp', status: 'attempted' });
+    await repository.saveDeliveryEvent(event);
+
+    await expect(
+      repository.completeSuccessfulEmailDelivery({
+        companyId: 'dev-company',
+        eventId: event.id,
+        invoiceId: event.invoiceId,
+        providerMessageId: '<message@example.fi>',
+        sentAt: '2026-07-10T10:01:00.000Z',
+      }),
+    ).resolves.toEqual({ invoiceStatus: 'sent', wasResend: false });
+
+    expect(
+      database
+        .prepare<[string], { status: string; updated_at: string }>(
+          'SELECT status, updated_at FROM invoices WHERE id = ?',
+        )
+        .get('invoice-1'),
+    ).toEqual({
+      status: 'sent',
+      updated_at: '2026-07-10T10:01:00.000Z',
+    });
+    expect(
+      database
+        .prepare<[string], { provider_message_id: string; status: string }>(
+          'SELECT provider_message_id, status FROM invoice_delivery_events WHERE id = ?',
+        )
+        .get(event.id),
+    ).toEqual({
+      provider_message_id: '<message@example.fi>',
+      status: 'succeeded',
+    });
+  });
+
+  it('finalizes a resend without changing the sent invoice identity or timestamp', async () => {
+    database
+      .prepare(
+        `
+          UPDATE invoices
+          SET status = 'sent', updated_at = '2026-07-10T09:30:00.000Z'
+          WHERE id = 'invoice-1'
+        `,
+      )
+      .run();
+    const repository = new SqliteInvoiceDeliveryEventRepository(database);
+    const event = createEvent({
+      id: 'resend-event-1',
+      provider: 'smtp',
+      status: 'attempted',
+    });
+    await repository.saveDeliveryEvent(event);
+
+    await expect(
+      repository.completeSuccessfulEmailDelivery({
+        companyId: 'dev-company',
+        eventId: event.id,
+        invoiceId: event.invoiceId,
+        providerMessageId: '<resend@example.fi>',
+        sentAt: '2026-07-10T10:02:00.000Z',
+      }),
+    ).resolves.toEqual({ invoiceStatus: 'sent', wasResend: true });
+
+    expect(
+      database
+        .prepare<[string], { id: string; status: string; updated_at: string }>(
+          'SELECT id, status, updated_at FROM invoices WHERE id = ?',
+        )
+        .get('invoice-1'),
+    ).toEqual({
+      id: 'invoice-1',
+      status: 'sent',
+      updated_at: '2026-07-10T09:30:00.000Z',
+    });
+    expect(
+      database
+        .prepare<[string], { provider_message_id: string; status: string }>(
+          'SELECT provider_message_id, status FROM invoice_delivery_events WHERE id = ?',
+        )
+        .get(event.id),
+    ).toEqual({
+      provider_message_id: '<resend@example.fi>',
+      status: 'succeeded',
+    });
+  });
+
+  it('rolls back the sent transition when the delivery event cannot be finalized', async () => {
+    const repository = new SqliteInvoiceDeliveryEventRepository(database);
+
+    await expect(
+      repository.completeSuccessfulEmailDelivery({
+        companyId: 'dev-company',
+        eventId: 'missing-event',
+        invoiceId: 'invoice-1',
+        providerMessageId: null,
+        sentAt: '2026-07-10T10:01:00.000Z',
+      }),
+    ).rejects.toThrow('Invoice delivery event could not be completed.');
+
+    expect(
+      database
+        .prepare<[string], { status: string; updated_at: string }>(
+          'SELECT status, updated_at FROM invoices WHERE id = ?',
+        )
+        .get('invoice-1'),
+    ).toEqual({
+      status: 'approved',
+      updated_at: '2026-07-10T09:00:00.000Z',
+    });
   });
 
   it('stores an unknown delivery outcome and rejects another company', async () => {

@@ -2,6 +2,7 @@ import type {
   ApprovedInvoiceEmailDryRunSendInput,
   ApprovedInvoiceEmailPreview as ApprovedInvoiceEmailPreviewData,
   ApprovedInvoiceEmailSmtpTestPrepareInput,
+  ApprovedInvoiceEmailSmtpPrepareInput,
   ApprovedInvoiceLine,
   ApprovedInvoiceVatBreakdown,
   ApprovedInvoiceView,
@@ -29,6 +30,7 @@ interface ApprovedInvoicePreviewProps {
   isMarkingSent: boolean;
   isPreparingEmail: boolean;
   isSendingEmailDryRun: boolean;
+  isSendingEmailSmtp: boolean;
   isSendingEmailSmtpTest: boolean;
   isPdfAvailable: boolean;
   isReopening: boolean;
@@ -41,6 +43,9 @@ interface ApprovedInvoicePreviewProps {
   emailSmtpTestRecipient: string | null;
   emailSmtpTestUnavailableMessage: string | null;
   emailSmtpTestSuccessMessage: string | null;
+  emailSmtpErrorMessage: string | null;
+  emailSmtpSuccessMessage: string | null;
+  emailSmtpUnavailableMessage: string | null;
   pdfErrorMessage: string | null;
   reopenErrorMessage: string | null;
   onBack(): void;
@@ -53,6 +58,10 @@ interface ApprovedInvoicePreviewProps {
   onSendEmailDryRun(
     id: string,
     input: ApprovedInvoiceEmailDryRunSendInput,
+  ): void;
+  onSendEmailSmtp(
+    id: string,
+    input: ApprovedInvoiceEmailSmtpPrepareInput,
   ): void;
   onSendEmailSmtpTest(
     id: string,
@@ -68,6 +77,7 @@ export function ApprovedInvoicePreview({
   isMarkingSent,
   isPreparingEmail,
   isSendingEmailDryRun,
+  isSendingEmailSmtp,
   isSendingEmailSmtpTest,
   isPdfAvailable,
   isReopening,
@@ -80,6 +90,9 @@ export function ApprovedInvoicePreview({
   emailSmtpTestRecipient,
   emailSmtpTestUnavailableMessage,
   emailSmtpTestSuccessMessage,
+  emailSmtpErrorMessage,
+  emailSmtpSuccessMessage,
+  emailSmtpUnavailableMessage,
   pdfErrorMessage,
   reopenErrorMessage,
   onBack,
@@ -90,6 +103,7 @@ export function ApprovedInvoicePreview({
   onOpenPdf,
   onPrepareEmail,
   onSendEmailDryRun,
+  onSendEmailSmtp,
   onSendEmailSmtpTest,
 }: ApprovedInvoicePreviewProps): React.JSX.Element {
   const isSent = invoice.status === 'sent';
@@ -223,13 +237,19 @@ export function ApprovedInvoicePreview({
           email={email}
           errorMessage={emailSendErrorMessage}
           isSending={isSendingEmailDryRun}
+          isSendingSmtp={isSendingEmailSmtp}
           isSendingSmtpTest={isSendingEmailSmtpTest}
+          isResend={isSent}
+          smtpErrorMessage={emailSmtpErrorMessage}
+          smtpSuccessMessage={emailSmtpSuccessMessage}
+          smtpUnavailableMessage={emailSmtpUnavailableMessage}
           smtpTestErrorMessage={emailSmtpTestErrorMessage}
           smtpTestRecipient={emailSmtpTestRecipient}
           smtpTestUnavailableMessage={emailSmtpTestUnavailableMessage}
           smtpTestSuccessMessage={emailSmtpTestSuccessMessage}
           successMessage={emailSendSuccessMessage}
           onSendDryRun={(input) => onSendEmailDryRun(invoice.id, input)}
+          onSendSmtp={(input) => onSendEmailSmtp(invoice.id, input)}
           onSendSmtpTest={(input) =>
             onSendEmailSmtpTest(invoice.id, input)
           }

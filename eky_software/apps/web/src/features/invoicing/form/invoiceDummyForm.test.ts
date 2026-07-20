@@ -23,6 +23,7 @@ describe('invoiceDummyForm', () => {
     });
     expect(form.lines[0]).toMatchObject({
       description: 'työ',
+      hourlyRateAutofillState: 'applied',
       unit: 'h',
       unitPrice: '65,00',
       vatRateBasisPoints: 2550,

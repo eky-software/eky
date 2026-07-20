@@ -1,7 +1,8 @@
 # Invoice Delivery Events Plan
 
-Tämä dokumentti määrittää laskun toimitustapahtumien suunnittelulinjan ennen
-varsinaista sähköpostilähetyksen toteutusta.
+Tämä dokumentti määrittää laskun toimitustapahtumien suunnittelulinjan ja
+kuvaa ensimmäisen dry-run-, DNA SMTP -testi- ja asiakaslähetyspolun
+toteutustilan.
 
 Dokumentti on suunnitelma ja toteutuksen rajaus. Ensimmäinen persistence-vaihe
 lisää delivery event -taulun, repository-portin, SQLite-adapterin ja
@@ -148,15 +149,19 @@ laskuun, provideriin, todelliseen testivastaanottajaan ja validoitujen
 viestikenttien fingerprintiin. Electron main process näyttää prepare-
 vastauksesta rajatun vahvistusikkunan. Vain uusin vahvistettu, käyttämätön ja
 voimassa oleva valtuutus saa edetä provider-kutsuun. Yhtä laskua ja provideria
-kohti sallitaan vain yksi aktiivinen yritys; onnistunut tai lopputulokseltaan
-epäselvä yritys käynnistää lyhyen varoajan. Automaattista retrytä ei tehdä.
+kohti sallitaan vain yksi käynnissä oleva yritys. Käyttämätön prepare-valtuutus
+voidaan korvata uudella, jotta Electronin vahvistusikkunassa peruutettu lähetys
+ei lukitse seuraavaa hallittua yritystä. Provider-kutsuun jo siirtynyttä
+yritystä ei saa ohittaa uudella valtuutuksella. Onnistunut tai
+lopputulokseltaan epäselvä yritys käynnistää lyhyen varoajan. Automaattista
+retrytä ei tehdä.
 Local-MVP:n attempt store on prosessimuistissa, joten se ei ole pilvi- tai
 moniprosessilukko; tuotantomalli arvioidaan erikseen ennen pilvikäyttöä.
 
-## Tuleva Send Input
+## Send Input
 
-Kun oikea tai fake-send-polku lisätään, webistä backendille voidaan lähettää
-käyttäjän vahvistamat lähetyskentät:
+Nykyisessä dry-run-, test- ja asiakaslähetyspolussa webistä backendille
+lähetetään käyttäjän vahvistamat lähetyskentät:
 
 ```text
 invoiceId
@@ -178,18 +183,22 @@ Frontend ei saa lähettää luotettuna:
 - providerin teknisiä asetuksia
 - sent-tilaa
 
-## Backendin Tulevat Säännöt
+## Backendin Send-Säännöt
 
-Tuleva send- tai dry-run-send-käyttötapa:
+Send- ja dry-run-send-käyttötapa:
 
 1. ottaa `companyId`-arvon luotetusta backend-kontekstista
 2. hakee laskun yritysrajatusti
 3. tarkistaa, että laskun saa toimittaa
 4. varmistaa tai muodostaa current PDF:n backendissä
 5. validoi vastaanottajan, cc:n, otsikon ja viestirungon
-6. kutsuu valittua provideria
-7. kirjaa delivery eventin
-8. muuttaa laskun `sent`-tilaan vain onnistuneen oikean toimituksen jälkeen
+6. kirjaa oikeassa SMTP-polussa delivery eventin `attempted`-tilaan ennen
+   provider-kutsua
+7. kutsuu valittua provideria
+8. viimeistelee saman delivery eventin tilaan `succeeded`, `failed` tai
+   `outcomeUnknown`
+9. muuttaa laskun `sent`-tilaan vain varmasti onnistuneen oikean toimituksen
+   jälkeen ja samassa transaktiossa onnistuneen event-tilan kanssa
 
 Jos provider epäonnistuu, laskua ei merkitä `sent`-tilaan.
 
@@ -197,8 +206,9 @@ Virhevastauksen pitää olla käyttäjälle turvallinen. Se ei saa paljastaa
 salaisuuksia, providerin raakaa vastausta, stack tracea tai muiden yritysten
 dataa.
 
-Ensimmäinen toteutus tekee nämä säännöt dry-run-send-polussa, mutta ei vielä
-muuta laskun tilaa.
+Dry-run- ja SMTP-testipolut eivät muuta laskun tilaa. Asiakaslähetyksen
+onnistuminen muuttaa `approved`-laskun `sent`-tilaan. `sent`-laskun
+uudelleenlähetys jättää tilan ennalleen.
 
 ## Uudelleenlähetys
 
@@ -244,7 +254,7 @@ Suositeltu eteneminen:
 4. fake/dry-run send -käyttötapa ilman oikeaa SMTP:tä
 5. webin `Lähetä kuivaharjoitteluna` tai vastaava toiminto
 6. hallittu DNA SMTP -testipolku pakotetulla testivastaanottajalla
-7. oikea asiakaslähetys ja sen tilasiirtymät myöhemmin
+7. oikea asiakaslähetys ja sen tilasiirtymät
 8. delivery history -näkymä myöhemmin
 
 ## Rajaus
@@ -260,6 +270,13 @@ Toteutettu ensimmäisessä backend-vaiheessa:
 - webin kuivaharjoittelulähetyksen toiminto sähköpostiesikatselussa
 - hallittu DNA SMTP -testikäyttötapa, delivery eventin tilasiirtymät,
   HTTP-reitti, API-client, desktop-allowlist ja web-toiminto
+- DNA SMTP -asiakaslähetyksen prepare/send-käyttötapa, lyhytikäinen
+  kertakäyttövaltuutus, Electron-vahvistus, API-client ja web-toiminto
+- delivery eventin `attempted`-kirjaus ennen provider-kutsua
+- `succeeded`-, `failed`- ja `outcomeUnknown`-lopputulokset
+- onnistuneen eventin ja laskun `sent`-tilan atominen SQLite-viimeistely
+- `sent`-laskun uudelleenlähetys uutena tapahtumana ilman laskun identiteetin
+  tai tilan muuttamista
 
 Webin kuivaharjoittelutoiminto lähettää käyttäjän muokkaamat `to`, `cc`,
 `subject` ja `body` -kentät backendin dry-run-send-polulle. Backend varmistaa
@@ -270,14 +287,14 @@ Hallittu SMTP-testi ei ole tuotantolähetys: todellinen vastaanottaja pakotetaan
 testiasetuksesta, Cc poistetaan eikä laskun tila muutu. Automaattiset testit
 eivät muodosta verkkoyhteyttä DNA:n palvelimeen.
 
-Selainkehityksessä käytetään vain dry-run-polkuja. Oikea SMTP-testipolku on
-käytettävissä vain Electron desktop -runtimessa, jossa salaisuuden tila ja
-backend-only secret reader ovat saatavilla.
+Selainkehityksessä käytetään vain dry-run-polkuja. SMTP-testi ja
+asiakaslähetys edellyttävät Electron desktop -runtimea, jossa backendin
+runtime-session, main processin vahvistus ja backend-only secret reader ovat
+käytettävissä.
 
 Ei vielä toteuteta:
 
 - Gmail-provideria
 - Secret Manageria
-- asiakkaille tarkoitettua oikeaa sähköpostilähetystä
-- SMTP-lähetyksen `sent`-tilasiirtymää
+- oikean asiakasdatan tuotantovapautusta ennen release security gatea
 - delivery history -näkymää

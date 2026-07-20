@@ -5,10 +5,11 @@ SMTP/Gmail-integraatioiden ja salaisuuksien hallinnan suunnittelulinjan.
 
 Dokumentti on sähköpostin ja salaisuuksien etenemissuunnitelma. Local-MVP:n
 Electron `safeStorage` -broker, lifecycle-audit sekä rajattu HTTP-, API-client-
-ja UI-polku on toteutettu. Hallittu DNA SMTP -testipolku on kytketty, mutta
-oikean tilin verkkoyhteystestiä tai asiakkaille tarkoitettua tuotantolähetystä
-ei ole tehty. Dokumentti ei vielä tarkoita Gmail OAuthia, Secret Manager
--adapteria tai tuotantovalmista sähköpostin lähetystä.
+ja UI-polku on toteutettu. Hallittu DNA SMTP -testipolku on kytketty ja oikean
+DNA-tilin verkkoyhteys on varmennettu projektin omistajan testivastaanottajalla.
+Asiakaslähetyksen ensimmäinen prepare/send-polku on toteutettu, mutta tämä ei
+vielä tarkoita Gmail OAuthia, Secret Manager -adapteria tai tuotantovalmista
+desktop-julkaisua oikealle asiakasdatalle.
 
 ## Nykyinen Toteutustila
 
@@ -58,14 +59,26 @@ Sähköpostipolusta on toteutettu local-MVP:hen:
   kutsua ja sama tapahtuma viimeistellään providerin tuloksen perusteella
 - webissä näkyvä todellinen testivastaanottaja ja turvalliset onnistumis-,
   virhe- sekä epäselvän lopputuloksen viestit
+- asiakkaalle tarkoitetun DNA SMTP -lähetyksen erillinen prepare/send-polku,
+  jossa käyttäjän muokkaamat `to`, `cc`, `subject` ja `body` validoidaan ja
+  sidotaan lyhytikäiseen kertakäyttövaltuutukseen
+- Electron main processin lähetys- ja uudelleenlähetysvahvistus, joka näyttää
+  vastaanottajan, kopion, otsikon, laskun ja current PDF -liitteen
+- delivery eventin kirjaaminen `attempted`-tilaan ennen asiakaslähetystä sekä
+  lopputuloksen erottelu tiloihin `succeeded`, `failed` ja `outcomeUnknown`
+- onnistuneen delivery eventin ja laskun `sent`-tilasiirtymän atominen
+  SQLite-transaktio; epäonnistunut tai epäselvä lähetys ei muuta laskun tilaa
+- `sent`-laskun uudelleenlähetys uutena delivery eventinä muuttamatta laskun
+  tunnistetta, numeroa, viitenumeroa tai tilaa
 
 Nykyinen dry-run ei muuta laskua `sent`-tilaan. DNA SMTP -testiproviderin
 hallittu testipolku ei myöskään muuta laskua `sent`-tilaan. Testipolku pakottaa
 Oma yritys -asetusten `emailTestRecipientOverride`-osoitteen, jättää Cc:n pois
 SMTP-kuoresta ja MIME-viestistä sekä käyttää asiakkaan osoitetta vain
-käyttäjän muokkaaman esikatselulomakkeen tietona. Oikean DNA-tilin
-verkkoyhteystestiä tai asiakkaille tarkoitettua sähköpostilähetystä ei ole
-vielä tehty.
+käyttäjän muokkaaman esikatselulomakkeen tietona. Oikean DNA-tilin rajattu
+verkkoyhteystesti on tehty testivastaanottajalla. Asiakaslähetyksen koodi on
+toteutettu, mutta sen käyttö oikealla asiakasdatalla kuuluu erilliseen
+tuotantojulkaisun turvallisuusporttiin.
 
 ## Sisäinen SMTP- Ja MIME-Kuljetuskerros
 
@@ -86,7 +99,8 @@ Kerros sisältää:
 - implicit TLS -yhteyden, jossa sertifikaatti, hostname ja vähintään TLS 1.2
   vaaditaan ennen SMTP-komentoja tai tunnistautumista
 - vaihekohtaiset, idle- ja kokonaisaikarajat sekä `outcomeUnknown`-tilan, jos
-  DATA on kirjoitettu mutta palvelimen lopullista hyväksyntää ei saada
+  DATA-vaiheen kirjoituksen tai palvelimen lopullisen hyväksynnän tulos jää
+  epäselväksi
 
 Kerros ei sisällä:
 
@@ -653,13 +667,14 @@ Oikea SMTP/Gmail-lähetys vaatii vähintään:
 - käyttäjän vahvistus vaaditaan
 - dev/test-tilassa oikea lähetys estetään oletuksena
 - test recipient override voidaan pakottaa
-- onnistunut lähetys voi merkitä laskun `sent`-tilaan
+- onnistunut lähetys merkitsee laskun `sent`-tilaan backendin hallitussa
+  transaktiossa
 - epäonnistunut lähetys ei merkitse laskua `sent`-tilaan
 - salaisuudet redaktoidaan lokeista
 - providerin teknisiä virheitä ei näytetä käyttäjälle sellaisenaan
 
-Lähetystapahtuma auditoidaan myöhemmin esimerkiksi
-`invoice_delivery_events`-mallilla. Audit- tai delivery-loki ei saa tallentaa
+Lähetystapahtuma auditoidaan `invoice_delivery_events`-mallilla. Audit- tai
+delivery-loki ei saa tallentaa
 sähköpostisalaisuuksia, OAuth-tokenia, SMTP-salasanaa tai tarpeettoman pitkiä
 provider-debug-vastauksia.
 
@@ -691,8 +706,8 @@ Seuraavaan vaiheeseen jäävät:
 
 - Gmail-provideria
 - Secret Manager -adapteria
-- asiakkaille tarkoitettua oikeaa sähköpostilähetystä
-- onnistuneen asiakaslähetyksen `sent`-tilasiirtymää
+- tuotantoon vapautettua asiakaslähetystä ennen release security gatea
+- delivery history -näkymää
 - `packages/email`-pakettia
 
 SMTP-kirjastoa tai muuta uutta riippuvuutta ei lisätä ilman erillistä
@@ -726,14 +741,14 @@ riippuvuusarviota ja projektin omistajan nimenomaista hyväksyntää.
    `attempted`-tapahtuman ennen
    provider-kutsua, viimeistelee saman tapahtuman tilaan `succeeded`, `failed`
    tai `outcomeUnknown`, pakottaa testivastaanottajan eikä muuta laskun tilaa.
-8. Oikean DNA-tilin ensimmäinen verkkoyhteystesti tehdään vasta projektin
-   omistajan erillisellä luvalla. Testissä käytetään vain erikseen vahvistettua
-   testipostilaatikkoa; oikeaa salasanaa ei anneta chattiin, komentoriville,
-   ympäristömuuttujaan, testifixtureen tai lokiin.
-9. Asiakkaalle tarkoitettu tuotantolähetys ja onnistuneen lähetyksen
-   `sent`-tilasiirtymä toteutetaan vasta hallitun testin ja uuden
-   turvallisuustarkistuksen jälkeen. Epäonnistunut tai lopputulokseltaan
-   epäselvä lähetys ei muuta laskun tilaa.
+8. Oikean DNA-tilin ensimmäinen verkkoyhteystesti on tehty projektin omistajan
+   erikseen vahvistamaan testipostilaatikkoon. Oikeaa salasanaa ei annettu
+   chattiin, komentoriville, ympäristömuuttujaan, testifixtureen tai lokiin.
+9. Asiakaslähetyksen prepare/send-käyttötapa, Electron-vahvistus, delivery
+   eventin tilat ja onnistuneen lähetyksen atominen `sent`-tilasiirtymä on
+   toteutettu. Epäonnistunut tai lopputulokseltaan epäselvä lähetys ei muuta
+   laskun tilaa. Oikean asiakasdatan tuotantokäyttö odottaa erillistä release
+   security gatea.
 
 Ensimmäinen oikea SMTP-lähetys saa olla synkroninen. UI näyttää lähetyksen
 olevan käynnissä ja estää saman toiminnon uudelleen pyynnön aikana. Backend

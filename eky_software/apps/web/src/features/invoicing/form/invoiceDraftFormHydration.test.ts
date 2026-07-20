@@ -70,6 +70,35 @@ describe('toNewInvoiceFormStateFromDraft', () => {
       discountValue: '5,00',
     });
   });
+
+  it('keeps local hourly-rate ownership across the current save response', () => {
+    const previousLines = [
+      {
+        description: 'Työtunti',
+        discountType: 'percentage' as const,
+        discountValue: '10,50',
+        hourlyRateAutofillState: 'applied' as const,
+        id: 'invoice-row-1',
+        quantity: '1,50',
+        unit: 'h' as const,
+        unitPrice: '65,50',
+        vatRateBasisPoints: 2550,
+      },
+    ];
+
+    const form = toNewInvoiceFormStateFromDraft(
+      createInvoiceDraft(),
+      previousLines,
+    );
+
+    expect(form.lines[0]?.hourlyRateAutofillState).toBe('applied');
+  });
+
+  it('treats a separately opened persisted draft price as user-owned', () => {
+    const form = toNewInvoiceFormStateFromDraft(createInvoiceDraft());
+
+    expect(form.lines[0]?.hourlyRateAutofillState).toBe('blocked');
+  });
 });
 
 function createInvoiceDraft(): InvoiceDraft {

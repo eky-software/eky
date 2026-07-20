@@ -26,7 +26,9 @@ Mandatory boundaries:
 - keep browser development available through `apps/web`
 - add no desktop dependency without a documented dependency/security review
 
-The packaging spike and local-session trust layer use synthetic data only.
-Session verification is necessary but does not by itself make the incomplete
-desktop release suitable for real customer data, invoice data, or SMTP
-credentials.
+Oikeaa SMTP-tunnusta saa käyttää vain erikseen hyväksytyssä, salatussa ja
+käyttäjän vahvistamassa Electron-polussa. Testilähetys pakotetaan määritettyyn
+testivastaanottajaan. Asiakaslähetyksen toteutus ei yksin tee keskeneräisestä
+desktop-artifactista tuotantojulkaisua: oikea asiakas- ja laskutusdata sekä
+normaali asiakaslähetys sallitaan vasta erillisen release security gaten,
+paketointitarkistusten ja projektin omistajan hyväksynnän jälkeen.

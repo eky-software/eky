@@ -43,6 +43,10 @@ describe('CompanySettingsForm', () => {
     expect(html).toContain(uiText.companySettings.emailSenderAddress);
     expect(html).toContain('laskutus@example.fi');
     expect(html).toContain(uiText.companySettings.emailDnaSmtpProfileHelp);
+    expect(html).toContain(uiText.companySettings.emailTestRecipientOverride);
+    expect(html).toContain(
+      uiText.companySettings.emailTestRecipientOverrideHelp,
+    );
     expect(html).not.toContain('id="company-email-smtp-host"');
     expect(html).not.toContain('id="company-email-smtp-port"');
     expect(html).not.toContain('id="company-email-smtp-security"');

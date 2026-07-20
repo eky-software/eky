@@ -150,6 +150,26 @@ describe('connectImplicitTlsSmtp', () => {
     ).rejects.toMatchObject({ code: 'SMTP_PROTOCOL_ERROR' });
     expect(socket.destroyedByClient).toBe(true);
   });
+
+  it('treats a write failure during message data as an unknown outcome', async () => {
+    const socket = new FakeTlsSocket();
+    const connectionPromise = connectImplicitTlsSmtp(
+      createOptions(),
+      () => socket.asTlsSocket(),
+    );
+    socket.emit('secureConnect');
+    const connection = await connectionPromise;
+    socket.emit('data', Buffer.from('220 smtp.example.test ready\r\n', 'ascii'));
+    await connection.readReply(1_000, 'greeting');
+    socket.nextWriteError = new Error('synthetic interrupted write');
+
+    await expect(
+      connection.sendData(Buffer.from('message\r\n.\r\n'), 1_000),
+    ).rejects.toMatchObject({
+      code: 'SMTP_OUTCOME_UNKNOWN',
+      outcome: 'outcomeUnknown',
+    });
+  });
 });
 
 function createOptions() {
@@ -167,6 +187,7 @@ class FakeTlsSocket extends EventEmitter {
   authorizationError: Error | null | undefined = null;
   authorized = true;
   destroyedByClient = false;
+  nextWriteError: Error | undefined;
   protocol: string | null = 'TLSv1.3';
   timeoutMilliseconds: number | undefined;
   writes: Buffer[] = [];
@@ -194,7 +215,10 @@ class FakeTlsSocket extends EventEmitter {
     callback?: (error?: Error | null) => void,
   ): boolean {
     this.writes.push(Buffer.from(data));
-    callback?.();
+    const error = this.nextWriteError;
+
+    this.nextWriteError = undefined;
+    callback?.(error);
     return true;
   }
 }
