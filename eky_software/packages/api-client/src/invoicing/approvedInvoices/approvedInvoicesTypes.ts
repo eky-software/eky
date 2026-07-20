@@ -238,12 +238,14 @@ export interface ApprovedInvoiceEmailSmtpPreparation {
   };
   attemptId: string;
   authorizationToken: string;
+  body: string;
   cc: string;
   expiresAt: string;
   invoiceId: string;
   invoiceNumber: string;
   recipient: string;
   resend: boolean;
+  sender: string;
   subject: string;
 }
 
@@ -258,6 +260,37 @@ export interface ApprovedInvoiceEmailSmtpSendResult {
   testMode: false;
 }
 
+export type InvoiceManualDeliveryMethod = 'manual' | 'print';
+
+export type InvoiceDeliveryMethod =
+  | 'email'
+  | InvoiceManualDeliveryMethod
+  | 'other';
+export type InvoiceDeliveryProvider =
+  | 'dryRun'
+  | 'smtp'
+  | 'gmail'
+  | 'microsoft'
+  | 'manual'
+  | 'other';
+export type InvoiceDeliveryStatus =
+  | 'prepared'
+  | 'attempted'
+  | 'succeeded'
+  | 'failed'
+  | 'outcomeUnknown';
+
+export interface InvoiceDeliveryEventSummary {
+  id: string;
+  createdAt: string;
+  deliveryMethod: InvoiceDeliveryMethod;
+  provider: InvoiceDeliveryProvider;
+  recipientEmail: string;
+  ccEmail: string;
+  safeErrorMessage: string | null;
+  status: InvoiceDeliveryStatus;
+}
+
 export interface ApprovedInvoicesApi {
   copyApprovedInvoiceToDraft(id: string): Promise<InvoiceDraft>;
   createApprovedInvoicePdf(id: string): Promise<ApprovedInvoiceDocumentMetadata>;
@@ -267,7 +300,13 @@ export interface ApprovedInvoicesApi {
   getApprovedInvoice(id: string): Promise<ApprovedInvoiceView>;
   getApprovedInvoicePdfUrl(id: string): string;
   listApprovedInvoices(): Promise<ApprovedInvoiceSummary[]>;
-  markApprovedInvoiceSent(id: string): Promise<ApprovedInvoiceView>;
+  listInvoiceDeliveryEvents(
+    id: string,
+  ): Promise<InvoiceDeliveryEventSummary[]>;
+  markApprovedInvoiceSent(
+    id: string,
+    deliveryMethod: InvoiceManualDeliveryMethod,
+  ): Promise<ApprovedInvoiceView>;
   prepareApprovedInvoiceEmailDryRun(
     id: string,
   ): Promise<ApprovedInvoiceEmailPreview>;

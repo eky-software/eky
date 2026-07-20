@@ -1,6 +1,7 @@
 import type {
   ApprovedInvoiceEmailPreview as ApprovedInvoiceEmailPreviewData,
   ApprovedInvoiceView,
+  InvoiceDeliveryEventSummary,
 } from '@eky/api-client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
@@ -177,6 +178,50 @@ describe('ApprovedInvoicePreview', () => {
     expect(html).not.toContain('responseBody');
     expect(html).not.toContain('stack');
   });
+
+  it('renders manual delivery choices and safe delivery history', () => {
+    const html = renderPreview({
+      deliveryEvents: [
+        {
+          ccEmail: '',
+          createdAt: '2026-07-20T20:00:00.000Z',
+          deliveryMethod: 'print',
+          id: 'event-1',
+          provider: 'manual',
+          recipientEmail: '',
+          safeErrorMessage: null,
+          status: 'succeeded',
+        },
+      ],
+    });
+
+    expect(html).toContain(uiText.invoicing.manualDeliveryMethodPrint);
+    expect(html).toContain(uiText.invoicing.manualDeliveryMethodManual);
+    expect(html).toContain(uiText.invoicing.invoiceDeliveryHistory);
+    expect(html).toContain(uiText.invoicing.invoiceDeliveryStatuses.succeeded);
+  });
+
+  it('does not render raw delivery error details', () => {
+    const html = renderPreview({
+      deliveryEvents: [
+        {
+          ccEmail: 'copy@example.fi',
+          createdAt: '2026-07-20T20:00:00.000Z',
+          deliveryMethod: 'email',
+          id: 'event-1',
+          provider: 'smtp',
+          recipientEmail: 'recipient@example.fi',
+          safeErrorMessage: 'Raw provider details must not be rendered',
+          status: 'outcomeUnknown',
+        },
+      ],
+    });
+
+    expect(html).toContain(
+      uiText.invoicing.invoiceDeliveryHistoryOutcomeUnknown,
+    );
+    expect(html).not.toContain('Raw provider details');
+  });
 });
 
 function renderPreview(
@@ -186,6 +231,7 @@ function renderPreview(
     emailErrorMessage?: string | null;
     emailSendErrorMessage?: string | null;
     emailSendSuccessMessage?: string | null;
+    deliveryEvents?: InvoiceDeliveryEventSummary[];
     invoice?: ApprovedInvoiceView;
     isCopyingInvoice?: boolean;
     isCreatingPdf?: boolean;
@@ -207,6 +253,8 @@ function renderPreview(
       emailSmtpErrorMessage={null}
       emailSmtpSuccessMessage={null}
       emailSmtpUnavailableMessage={null}
+      deliveryEvents={options.deliveryEvents ?? []}
+      deliveryEventsErrorMessage={null}
       invoice={options.invoice ?? createApprovedInvoiceView()}
       isCopyingInvoice={options.isCopyingInvoice ?? false}
       isCreatingPdf={options.isCreatingPdf ?? false}
@@ -215,6 +263,7 @@ function renderPreview(
       isSendingEmailDryRun={false}
       isSendingEmailSmtp={false}
       isSendingEmailSmtpTest={false}
+      isLoadingDeliveryEvents={false}
       isPdfAvailable={options.isPdfAvailable ?? false}
       isReopening={false}
       markSentErrorMessage={null}

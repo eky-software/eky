@@ -3,6 +3,7 @@ import {
   EkyApiError,
   type ApprovedInvoiceView,
   type EkyApiClient,
+  type InvoiceManualDeliveryMethod,
 } from '@eky/api-client';
 import { useMemo, useState } from 'react';
 
@@ -19,7 +20,10 @@ export interface MarkApprovedInvoiceSentState {
   errorMessage: string | null;
   isMarkingSent: boolean;
   clearError(): void;
-  markApprovedInvoiceSent(id: string): Promise<ApprovedInvoiceView | null>;
+  markApprovedInvoiceSent(
+    id: string,
+    deliveryMethod: InvoiceManualDeliveryMethod,
+  ): Promise<ApprovedInvoiceView | null>;
 }
 
 export function useMarkApprovedInvoiceSent(): MarkApprovedInvoiceSentState {
@@ -34,12 +38,19 @@ export function useMarkApprovedInvoiceSent(): MarkApprovedInvoiceSentState {
     setErrorMessage(null);
   }
 
-  async function markSent(id: string): Promise<ApprovedInvoiceView | null> {
+  async function markSent(
+    id: string,
+    deliveryMethod: InvoiceManualDeliveryMethod,
+  ): Promise<ApprovedInvoiceView | null> {
     setIsMarkingSent(true);
     setErrorMessage(null);
 
     try {
-      return await markApprovedInvoiceSentWithClient(apiClient, id);
+      return await markApprovedInvoiceSentWithClient(
+        apiClient,
+        id,
+        deliveryMethod,
+      );
     } catch (error) {
       setErrorMessage(getMarkApprovedInvoiceSentErrorMessage(error));
       return null;
@@ -59,8 +70,9 @@ export function useMarkApprovedInvoiceSent(): MarkApprovedInvoiceSentState {
 export function markApprovedInvoiceSentWithClient(
   client: MarkApprovedInvoiceSentClient,
   id: string,
+  deliveryMethod: InvoiceManualDeliveryMethod,
 ): Promise<ApprovedInvoiceView> {
-  return client.markApprovedInvoiceSent(id);
+  return client.markApprovedInvoiceSent(id, deliveryMethod);
 }
 
 export function getMarkApprovedInvoiceSentErrorMessage(error: unknown): string {

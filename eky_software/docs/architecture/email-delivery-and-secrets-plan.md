@@ -63,7 +63,9 @@ Sähköpostipolusta on toteutettu local-MVP:hen:
   jossa käyttäjän muokkaamat `to`, `cc`, `subject` ja `body` validoidaan ja
   sidotaan lyhytikäiseen kertakäyttövaltuutukseen
 - Electron main processin lähetys- ja uudelleenlähetysvahvistus, joka näyttää
-  vastaanottajan, kopion, otsikon, laskun ja current PDF -liitteen
+  laskunumeron, lähettäjän, vastaanottajan, kopion, otsikon, koko viestirungon,
+  current PDF -liitteen nimen ja koon sekä tiedon uudelleenlähetyksestä;
+  oletusvalinta on aina peruutus
 - delivery eventin kirjaaminen `attempted`-tilaan ennen asiakaslähetystä sekä
   lopputuloksen erottelu tiloihin `succeeded`, `failed` ja `outcomeUnknown`
 - onnistuneen delivery eventin ja laskun `sent`-tilasiirtymän atominen
@@ -640,8 +642,10 @@ Gmailin tavallista salasanaa ei tallenneta Ekyyn.
 
 ## Tuleva Laskunäkymän Käyttökokemus
 
-Hyväksytyn laskun näkymässä nykyisen manuaalisen "Merkitse lähetetyksi"
--toiminnon rinnalle tai tilalle tulee myöhemmin "Lähetä lasku".
+Hyväksytyn laskun näkymässä "Lähetä lasku" on manuaalisen
+"Merkitse käsin toimitetuksi" -toiminnon rinnalla. Manuaalinen toiminto pyytää
+rajatun toimitustavan ja kirjoittaa auditoidun delivery eventin;
+sähköpostitoiminto käyttää erillistä vahvistettua SMTP-polkuansa.
 
 "Lähetä lasku" avaa lähetysikkunan:
 
@@ -707,7 +711,6 @@ Seuraavaan vaiheeseen jäävät:
 - Gmail-provideria
 - Secret Manager -adapteria
 - tuotantoon vapautettua asiakaslähetystä ennen release security gatea
-- delivery history -näkymää
 - `packages/email`-pakettia
 
 SMTP-kirjastoa tai muuta uutta riippuvuutta ei lisätä ilman erillistä

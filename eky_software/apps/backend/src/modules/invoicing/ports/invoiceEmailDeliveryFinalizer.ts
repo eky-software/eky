@@ -8,6 +8,7 @@ export interface CompleteSuccessfulInvoiceEmailDeliveryInput {
 
 export interface CompleteSuccessfulInvoiceEmailDeliveryResult {
   invoiceStatus: 'sent';
+  updatedAt: string;
   wasResend: boolean;
 }
 

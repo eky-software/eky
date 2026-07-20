@@ -84,7 +84,9 @@ Paketti tarjoaa tällä hetkellä hallitut kutsut:
 - `createEkyApiClient().listInvoiceDrafts(...)`
 - `createEkyApiClient().updateInvoiceDraft(...)`
 - `createEkyApiClient().listApprovedInvoices()`
+- `createEkyApiClient().listInvoiceDeliveryEvents(...)`
 - `createEkyApiClient().getApprovedInvoice(...)`
+- `createEkyApiClient().markApprovedInvoiceSent(...)`
 - `createEkyApiClient().reopenApprovedInvoiceForEditing(...)`
 - `createEkyApiClient().createApprovedInvoicePdf(...)`
 - `createEkyApiClient().getApprovedInvoicePdfMetadata(...)`

@@ -15,9 +15,12 @@ describe('markApprovedInvoiceSentWithClient', () => {
     };
 
     await expect(
-      markApprovedInvoiceSentWithClient(apiClient, 'invoice-1'),
+      markApprovedInvoiceSentWithClient(apiClient, 'invoice-1', 'print'),
     ).resolves.toBe(invoice);
-    expect(apiClient.markApprovedInvoiceSent).toHaveBeenCalledWith('invoice-1');
+    expect(apiClient.markApprovedInvoiceSent).toHaveBeenCalledWith(
+      'invoice-1',
+      'print',
+    );
   });
 });
 

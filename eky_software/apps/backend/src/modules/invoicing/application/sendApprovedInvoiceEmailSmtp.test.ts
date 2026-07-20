@@ -56,7 +56,11 @@ describe('sendApprovedInvoiceEmailSmtp', () => {
     const completeSuccessfulEmailDelivery = vi.fn(async () => {
       expect(sendEmail).toHaveBeenCalledOnce();
       currentStatus = 'sent';
-      return { invoiceStatus: 'sent' as const, wasResend: false };
+      return {
+        invoiceStatus: 'sent' as const,
+        updatedAt: '2026-07-17T22:00:00.000Z',
+        wasResend: false,
+      };
     });
 
     const result = await sendApprovedInvoiceEmailSmtp(
@@ -180,6 +184,7 @@ describe('sendApprovedInvoiceEmailSmtp', () => {
   it('resends an already sent invoice without creating a new invoice identity', async () => {
     const completeSuccessfulEmailDelivery = vi.fn(async () => ({
       invoiceStatus: 'sent' as const,
+      updatedAt: '2026-07-17T21:00:00.000Z',
       wasResend: true,
     }));
 
@@ -201,6 +206,31 @@ describe('sendApprovedInvoiceEmailSmtp', () => {
         resend: true,
       }),
     );
+  });
+
+  it('returns committed success without re-reading the invoice after finalization', async () => {
+    const getApprovedInvoiceById = vi.fn(async () => createInvoice('approved'));
+    const dependencies = createDependencies({
+      completeSuccessfulEmailDelivery: vi.fn(async () => ({
+        invoiceStatus: 'sent' as const,
+        updatedAt: '2026-07-17T22:00:00.000Z',
+        wasResend: false,
+      })),
+    });
+    dependencies.approvedInvoiceReader.getApprovedInvoiceById =
+      getApprovedInvoiceById;
+
+    await expect(
+      sendApprovedInvoiceEmailSmtp(createInput(), dependencies),
+    ).resolves.toMatchObject({
+      invoice: {
+        id: 'invoice-1',
+        status: 'sent',
+        updatedAt: '2026-07-17T22:00:00.000Z',
+      },
+    });
+
+    expect(getApprovedInvoiceById).toHaveBeenCalledOnce();
   });
 });
 
@@ -241,6 +271,7 @@ function createDependencies(options: {
         options.completeSuccessfulEmailDelivery ??
         vi.fn(async () => ({
           invoiceStatus: 'sent' as const,
+          updatedAt: '2026-07-17T22:00:00.000Z',
           wasResend: false,
         })),
     },

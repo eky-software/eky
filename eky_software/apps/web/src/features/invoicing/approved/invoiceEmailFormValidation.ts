@@ -36,6 +36,15 @@ export function validateInvoiceEmailForm(
   validateSubject(values.subject, errors);
   validateBody(values.body, errors);
 
+  if (
+    errors.to === undefined &&
+    errors.cc === undefined &&
+    values.cc.trim().length > 0 &&
+    values.to.trim().toLowerCase() === values.cc.trim().toLowerCase()
+  ) {
+    errors.cc = uiText.invoicing.invoiceEmailCcSameAsRecipient;
+  }
+
   return {
     errors,
     isValid: Object.keys(errors).length === 0,

@@ -19,7 +19,10 @@ import { registerApplicationProtocol } from './applicationProtocol.js';
 import { createDeleteDraftSmokeFixture } from './applicationProtocolSmoke.js';
 import { localRuntimeSessionHeaderName } from './protocolPolicy.js';
 import type { SmtpTestPreparationConfirmation } from './smtpTestConfirmation.js';
-import type { InvoiceEmailPreparationConfirmation } from './invoiceEmailConfirmation.js';
+import {
+  createInvoiceEmailConfirmationDetail,
+  type InvoiceEmailPreparationConfirmation,
+} from './invoiceEmailConfirmation.js';
 import {
   createSecureWindowOptions,
   isAllowedApplicationNavigation,
@@ -528,13 +531,7 @@ async function confirmInvoiceEmailPreparation(
     buttons: [preparation.resend ? 'Lähetä uudelleen' : 'Lähetä lasku', 'Peruuta'],
     cancelId: 1,
     defaultId: 1,
-    detail: [
-      `Lasku: ${preparation.invoiceNumber}`,
-      `Vastaanottaja: ${preparation.recipient}`,
-      ...(preparation.cc === '' ? [] : [`Kopio: ${preparation.cc}`]),
-      `Otsikko: ${preparation.subject}`,
-      `Liite: ${preparation.attachmentFileName}`,
-    ].join('\n'),
+    detail: createInvoiceEmailConfirmationDetail(preparation),
     message: preparation.resend
       ? 'Vahvista laskun uudelleenlähetys'
       : 'Vahvista laskun lähetys',

@@ -156,7 +156,11 @@ yritystä ei saa ohittaa uudella valtuutuksella. Onnistunut tai
 lopputulokseltaan epäselvä yritys käynnistää lyhyen varoajan. Automaattista
 retrytä ei tehdä.
 Local-MVP:n attempt store on prosessimuistissa, joten se ei ole pilvi- tai
-moniprosessilukko; tuotantomalli arvioidaan erikseen ennen pilvikäyttöä.
+moniprosessilukko. Sen rinnalla Invoicingin pysyvä delivery event -lukija
+estää uuden tavallisen asiakaslähetyksen valmistelun, jos samalla yrityksellä
+ja laskulla on `attempted`- tai `outcomeUnknown`-tapahtuma. Automaattista retryä
+ei tehdä. Pilvi- ja moniprosessimallin lukitus arvioidaan edelleen erikseen
+ennen pilvikäyttöä.
 
 ## Send Input
 
@@ -228,12 +232,16 @@ Uudelleenlähetys ei ole sama asia kuin laskun kopiointi uudeksi luonnokseksi.
 
 ## Manuaalinen Toimitus Ja Tulostus
 
-Manuaalinen "Merkitse lähetetyksi" voi myöhemmin kirjata delivery eventin.
+Manuaalinen toimitus on rajattu arvoihin `print` ja `manual`. Backend varmistaa
+ensin current PDF:n. Sen jälkeen manual-providerin `succeeded`-delivery event,
+laskun `sent`-siirtymä ja laskun audit-tapahtuma tallennetaan samassa
+SQLite-transaktiossa. Pelkkä PDF:n avaaminen tai tulostusikkunan näyttäminen ei
+tee tätä tilasiirtymää.
 
 Tulostuksen auditointi päätetään erikseen. PDF:n avaaminen ei välttämättä
 tarkoita, että lasku on tulostettu tai toimitettu asiakkaalle.
 
-Mahdollisia tulevia tapahtumia:
+Nykyisiä ja tulevia tapahtumia:
 
 - `manual_mark_sent`
 - `email_send_succeeded`
@@ -255,7 +263,7 @@ Suositeltu eteneminen:
 5. webin `Lähetä kuivaharjoitteluna` tai vastaava toiminto
 6. hallittu DNA SMTP -testipolku pakotetulla testivastaanottajalla
 7. oikea asiakaslähetys ja sen tilasiirtymät
-8. delivery history -näkymä myöhemmin
+8. yritysrajattu delivery history -näkymä turvallisilla yhteenvetotiedoilla
 
 ## Rajaus
 
@@ -277,6 +285,10 @@ Toteutettu ensimmäisessä backend-vaiheessa:
 - onnistuneen eventin ja laskun `sent`-tilan atominen SQLite-viimeistely
 - `sent`-laskun uudelleenlähetys uutena tapahtumana ilman laskun identiteetin
   tai tilan muuttamista
+- yritysrajattu delivery history -reitti, API-client ja web-näkymä, jotka
+  palauttavat vain rajatut tapahtumayhteenvedot
+- manuaalisen tai tulostetun toimituksen event-, audit- ja `sent`-tilasiirtymä
+  samassa SQLite-transaktiossa
 
 Webin kuivaharjoittelutoiminto lähettää käyttäjän muokkaamat `to`, `cc`,
 `subject` ja `body` -kentät backendin dry-run-send-polulle. Backend varmistaa
@@ -297,4 +309,3 @@ Ei vielä toteuteta:
 - Gmail-provideria
 - Secret Manageria
 - oikean asiakasdatan tuotantovapautusta ennen release security gatea
-- delivery history -näkymää

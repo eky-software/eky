@@ -114,6 +114,14 @@ export function getSendApprovedInvoiceEmailSmtpErrorMessage(
     return uiText.invoicing.invoiceEmailDryRunValidationError;
   }
 
+  if (
+    error instanceof EkyApiError &&
+    error.status === 409 &&
+    error.message === 'Invoice has an unresolved delivery attempt.'
+  ) {
+    return uiText.invoicing.invoiceEmailSmtpPersistentConflict;
+  }
+
   if (error instanceof EkyApiError && [409, 429].includes(error.status ?? 0)) {
     return uiText.invoicing.invoiceEmailSmtpConflict;
   }

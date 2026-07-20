@@ -34,12 +34,14 @@ describe('sendApprovedInvoiceEmailSmtpWithClient', () => {
         attachment: { fileName: 'invoice.pdf', sizeBytes: 2048 },
         attemptId: 'attempt-1',
         authorizationToken: 'one-time-authorization',
+        body: input.body,
         cc: 'copy@example.fi',
         expiresAt: '2026-07-17T22:01:00.000Z',
         invoiceId: 'invoice-1',
         invoiceNumber: '20260001',
         recipient: 'customer@example.fi',
         resend: false,
+        sender: 'Example Oy <billing@example.fi>',
         subject: input.subject,
       })),
       sendApprovedInvoiceEmailSmtp: vi.fn(async () => result),
@@ -89,6 +91,23 @@ describe('getSendApprovedInvoiceEmailSmtpErrorMessage', () => {
 
     expect(message).toBe(uiText.invoicing.invoiceEmailSmtpOutcomeUnknown);
     expect(message).not.toContain('stack');
+  });
+
+  it('directs an unresolved persisted attempt to delivery history', () => {
+    const error = new EkyApiError(
+      'Invoice has an unresolved delivery attempt.',
+      {
+        responseBody: { technicalDetail: 'must-not-leak' },
+        status: 409,
+      },
+    );
+
+    const message = getSendApprovedInvoiceEmailSmtpErrorMessage(error);
+
+    expect(message).toBe(
+      uiText.invoicing.invoiceEmailSmtpPersistentConflict,
+    );
+    expect(message).not.toContain('technicalDetail');
   });
 
   it('uses a safe Finnish message for provider failures', () => {

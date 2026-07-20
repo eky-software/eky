@@ -486,10 +486,12 @@ export const uiText = {
     invoiceEmailSmtpCancelled: 'Sähköpostilähetys peruutettiin.',
     invoiceEmailSmtpConflict:
       'Lähetys on jo käynnissä, vahvistus vanheni tai lyhyt varoaika on voimassa. Odota hetki ja valmistele lähetys uudelleen.',
+    invoiceEmailSmtpPersistentConflict:
+      'Laskulla on toimitusyritys, jonka lopputulosta ei ole varmistettu. Tarkista toimitushistoria ennen uutta lähetystä.',
     invoiceEmailSmtpError:
       'Laskun sähköpostia ei voitu lähettää. Laskua ei merkitty lähetetyksi.',
     invoiceEmailSmtpOutcomeUnknown:
-      'Lähetyksen lopputulosta ei voitu varmistaa. Älä lähetä heti uudelleen, vaan tarkista Lähetetyt-kansio ja vastaanottajalta toimituksen tila.',
+      'Lähetyksen lopputulosta ei voitu varmistaa. Älä lähetä heti uudelleen. Tarkista toimitushistoria ja varmista vastaanottajalta toimituksen tila.',
     invoiceEmailSmtpProfileMissing:
       'Valitse ensin Oma yritys -näkymässä sähköpostin lähetystavaksi DNA SMTP.',
     invoiceEmailSmtpSecretMissing:
@@ -508,16 +510,54 @@ export const uiText = {
     invoiceEmailTestTools: 'Testitoiminnot',
     invoiceEmailTo: 'Vastaanottaja',
     invoiceEmailToInput: 'Vastaanottajan sähköposti',
+    invoiceEmailCcSameAsRecipient:
+      'Vastaanottaja ja kopion saaja eivät voi olla sama osoite.',
+    invoiceDeliveryHistory: 'Toimitushistoria',
+    invoiceDeliveryHistoryEmpty: 'Laskulle ei ole vielä toimitustapahtumia.',
+    invoiceDeliveryHistoryError:
+      'Laskun toimitushistoriaa ei voitu ladata turvallisesti.',
+    invoiceDeliveryHistoryFailure: 'Toimitus epäonnistui.',
+    invoiceDeliveryHistoryLoading: 'Ladataan toimitushistoriaa...',
+    invoiceDeliveryHistoryOutcomeUnknown:
+      'Toimituksen lopputulosta ei voitu varmistaa.',
+    invoiceDeliveryMethod: 'Toimitustapa',
+    invoiceDeliveryMethods: {
+      email: 'Sähköposti',
+      manual: 'Muu käsin toimitettu',
+      other: 'Muu',
+      print: 'Tulostettu',
+    },
+    invoiceDeliveryProvider: 'Palvelu',
+    invoiceDeliveryProviders: {
+      dryRun: 'Kuivaharjoittelu',
+      gmail: 'Gmail',
+      manual: 'Käsin',
+      microsoft: 'Microsoft',
+      other: 'Muu',
+      smtp: 'SMTP',
+    },
+    invoiceDeliveryStatuses: {
+      attempted: 'Käynnissä',
+      failed: 'Epäonnistui',
+      outcomeUnknown: 'Lopputulos epäselvä',
+      prepared: 'Valmisteltu',
+      succeeded: 'Onnistui',
+    },
+    invoiceDeliveryTime: 'Aika',
+    notApplicable: 'Ei käytössä',
+    manualDeliveryMethod: 'Käsin toimituksen tapa',
+    manualDeliveryMethodManual: 'Muu käsin toimitettu',
+    manualDeliveryMethodPrint: 'Tulostettu',
     invoiceNumber: 'Laskunumero',
     invoiceRecipient: 'Laskun vastaanottaja',
     invoicePreviewOpen: 'Avaa hyväksytty lasku',
     invoiceRows: 'Laskurivit',
     invoiceRowsHelp:
       'Lisää laskutettavat työt ja tuotteet riveittäin. Summat tarkistetaan backendissä tallennettaessa.',
-    markApprovedInvoiceSent: 'Merkitse lähetetyksi',
-    markingApprovedInvoiceSent: 'Merkitään lähetetyksi...',
+    markApprovedInvoiceSent: 'Merkitse käsin toimitetuksi',
+    markingApprovedInvoiceSent: 'Merkitään toimitetuksi...',
     markApprovedInvoiceSentConfirm:
-      'Merkitäänkö lasku lähetetyksi? Lähetettyä laskua ei voi enää palauttaa muokattavaksi.',
+      'Merkitäänkö lasku käsin toimitetuksi? Lähetettyä laskua ei voi enää palauttaa muokattavaksi.',
     markApprovedInvoiceSentError:
       'Laskua ei voitu merkitä lähetetyksi. Yritä hetken kuluttua uudelleen.',
     fillDummyInvoice: 'Täytä testilasku',

@@ -403,6 +403,7 @@ function renderPage(
     | 'copyApprovedInvoiceState'
     | 'deleteState'
     | 'invoicePaymentDefaultsState'
+    | 'invoiceDeliveryEventListState'
     | 'markApprovedInvoiceSentState'
     | 'reopenApprovedInvoiceState'
     | 'sendApprovedInvoiceEmailState'
@@ -437,6 +438,7 @@ function renderPage(
         | 'copyApprovedInvoiceState'
         | 'deleteState'
         | 'invoicePaymentDefaultsState'
+        | 'invoiceDeliveryEventListState'
         | 'markApprovedInvoiceSentState'
         | 'reopenApprovedInvoiceState'
         | 'sendApprovedInvoiceEmailState'
@@ -472,6 +474,7 @@ function renderPage(
       copyApprovedInvoiceState={createCopyApprovedInvoiceState()}
       deleteState={createDeleteState()}
       invoicePaymentDefaultsState={createInvoicePaymentDefaultsState()}
+      invoiceDeliveryEventListState={createInvoiceDeliveryEventListState()}
       markApprovedInvoiceSentState={createMarkApprovedInvoiceSentState()}
       reopenApprovedInvoiceState={createReopenApprovedInvoiceState()}
       sendApprovedInvoiceEmailState={createSendApprovedInvoiceEmailState()}
@@ -587,6 +590,21 @@ function createApprovedInvoiceListState(
     errorMessage: null,
     isLoading: false,
     refreshApprovedInvoices: vi.fn(),
+    ...overrides,
+  };
+}
+
+function createInvoiceDeliveryEventListState(
+  overrides: Partial<
+    InvoicingPageViewProps['invoiceDeliveryEventListState']
+  > = {},
+): InvoicingPageViewProps['invoiceDeliveryEventListState'] {
+  return {
+    clearEvents: vi.fn(),
+    errorMessage: null,
+    events: [],
+    isLoading: false,
+    loadEvents: vi.fn(async () => undefined),
     ...overrides,
   };
 }

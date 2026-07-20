@@ -155,7 +155,7 @@ describe('approved invoices api client', () => {
     const invoice = createTestApprovedInvoiceView({ status: 'sent' });
     const client = createTestClient(requests, { invoice });
 
-    const result = await client.markApprovedInvoiceSent('invoice/1');
+    const result = await client.markApprovedInvoiceSent('invoice/1', 'print');
 
     expect(result).toEqual(invoice);
     expect(requests).toEqual([
@@ -164,8 +164,52 @@ describe('approved invoices api client', () => {
         init: {
           headers: {
             Accept: 'application/json',
+            'Content-Type': 'application/json',
           },
+          body: JSON.stringify({ deliveryMethod: 'print' }),
           method: 'POST',
+        },
+      },
+    ]);
+  });
+
+  it('lists safe delivery history through GET /invoices/:id/delivery-events', async () => {
+    const requests = createRequestLog();
+    const events = [
+      {
+        ccEmail: '',
+        createdAt: '2026-07-20T20:00:00.000Z',
+        deliveryMethod: 'print',
+        id: 'event-1',
+        provider: 'manual',
+        providerMessageId: '<must-not-be-forwarded@example.fi>',
+        recipientEmail: '',
+        safeErrorMessage: null,
+        technicalErrorCode: 'must-not-be-forwarded',
+        status: 'succeeded',
+      },
+    ];
+    const client = createTestClient(requests, { events });
+
+    await expect(
+      client.listInvoiceDeliveryEvents('invoice/1'),
+    ).resolves.toEqual([
+      {
+        ccEmail: '',
+        createdAt: '2026-07-20T20:00:00.000Z',
+        deliveryMethod: 'print',
+        id: 'event-1',
+        provider: 'manual',
+        recipientEmail: '',
+        safeErrorMessage: null,
+        status: 'succeeded',
+      },
+    ]);
+    expect(requests).toEqual([
+      {
+        input: '/invoices/invoice%2F1/delivery-events',
+        init: {
+          headers: { Accept: 'application/json' },
         },
       },
     ]);
@@ -335,12 +379,14 @@ describe('approved invoices api client', () => {
       attachment: { fileName: 'invoice.pdf', sizeBytes: 2048 },
       attemptId: 'attempt-1',
       authorizationToken: 'one-time-authorization',
+      body: 'Hei, liitteenä lasku.',
       cc: 'copy@example.fi',
       expiresAt: '2026-07-17T22:01:00.000Z',
       invoiceId: 'invoice-1',
       invoiceNumber: '20260001',
       recipient: 'customer@example.fi',
       resend: false,
+      sender: 'Example Oy <billing@example.fi>',
       subject: 'Lasku 20260001',
     };
     const prepareRequests = createRequestLog();
@@ -390,12 +436,14 @@ describe('approved invoices api client', () => {
         attachment: { fileName: 'invoice.pdf', sizeBytes: 2048 },
         attemptId: 'attempt-1',
         authorizationToken: 'one-time-authorization',
+        body: 'Hei',
         cc: '',
         expiresAt: '2026-07-17T22:01:00.000Z',
         invoiceId: 'invoice-1',
         invoiceNumber: '20260001',
         recipient: 'customer@example.fi',
         resend: false,
+        sender: 'Example Oy <billing@example.fi>',
         subject: 'Lasku 20260001',
       },
     });

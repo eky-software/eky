@@ -254,6 +254,16 @@ Jos PDF-metadata on olemassa mutta paikallinen tiedosto puuttuu, manuaalinen
 snapshotista. Tämä on local-MVP:n korjauspolku ennen myöhempää pilvi- ja
 storage-mallia.
 
+Hyväksytyn ja lähetetyn laskun toimitushistoria kuuluu Invoicing-moduulille.
+Historia palauttaa yritysrajatusti vain turvallisen yhteenvedon ajasta,
+toimitustavasta, providerista, vastaanottajasta, kopiosta, tilasta ja
+turvallisesta virheviestistä. Se ei palauta MIME-runkoa, PDF-binääriä,
+salaisuuksia tai providerin raakaa vastausta.
+Ratkaisematon `attempted`- tai `outcomeUnknown`-tapahtuma estää uuden tavallisen
+asiakaslähetyksen valmistelun. Manuaalinen tulostus- tai muu toimitus kirjaa
+delivery eventin ja audit-tapahtuman sekä muuttaa laskun `sent`-tilaan samassa
+transaktiossa.
+
 Hyväksytyllä laskulla saa olla local-MVP:ssä yksi voimassa oleva
 `approved_invoice_pdf`-dokumentti per yritys ja lasku. Jos hyväksytty mutta
 lähettämätön lasku palautetaan muokattavaksi, vanhan PDF:n metadata poistetaan

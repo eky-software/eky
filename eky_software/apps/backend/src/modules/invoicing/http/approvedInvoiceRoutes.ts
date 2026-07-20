@@ -28,6 +28,7 @@ import type {
 import type {
   MarkApprovedInvoiceSentInput,
 } from '../application/markApprovedInvoiceSent.js';
+import type { ListInvoiceDeliveryEventsInput } from '../application/listInvoiceDeliveryEvents.js';
 import type {
   PrepareApprovedInvoiceEmailDryRunInput,
 } from '../application/prepareApprovedInvoiceEmailDryRun.js';
@@ -55,10 +56,12 @@ import { ApprovedInvoiceDocumentNotFoundError } from '../application/approvedInv
 import { ApprovedInvoiceEmailDeliveryError } from '../application/approvedInvoiceEmailDeliveryError.js';
 import { ApprovedInvoiceEmailDeliveryOutcomeUnknownError } from '../application/approvedInvoiceEmailDeliveryOutcomeUnknownError.js';
 import { InvoiceEmailSendAttemptError } from '../application/invoiceEmailSendAttemptError.js';
+import { InvoiceDeliveryConflictError } from '../application/invoiceDeliveryConflictError.js';
 import { ApprovedInvoiceNotFoundError } from '../application/approvedInvoiceNotFoundError.js';
 import type { ApprovedInvoiceEmailPreview } from '../application/approvedInvoiceEmailPreview.js';
 import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
 import type { ApprovedInvoiceSummary } from '../domain/approvedInvoiceSummary.js';
+import type { InvoiceDeliveryEventSummary } from '../domain/invoiceDeliveryEventSummary.js';
 import type { InvoiceDraft } from '../domain/invoiceDraft.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
@@ -70,6 +73,10 @@ import {
   parseApprovedInvoiceEmailSmtpTestPrepareBody,
   parseApprovedInvoiceEmailSmtpTestSendBody,
 } from './approvedInvoiceEmailRequest.js';
+import {
+  ApprovedInvoiceManualDeliveryRequestValidationError,
+  parseApprovedInvoiceManualDeliveryBody,
+} from './approvedInvoiceManualDeliveryRequest.js';
 
 interface ApprovedInvoiceRouteDependencies {
   copyApprovedInvoiceToDraft(
@@ -90,6 +97,9 @@ interface ApprovedInvoiceRouteDependencies {
   listApprovedInvoices(
     input: ListApprovedInvoicesInput,
   ): Promise<ApprovedInvoiceSummary[]>;
+  listInvoiceDeliveryEvents(
+    input: ListInvoiceDeliveryEventsInput,
+  ): Promise<InvoiceDeliveryEventSummary[]>;
   markApprovedInvoiceSent(
     input: MarkApprovedInvoiceSentInput,
   ): Promise<ApprovedInvoiceView>;
@@ -274,15 +284,50 @@ export function createApprovedInvoiceRoutes(
   routes.post('/invoices/:id/mark-sent', async (context) => {
     try {
       const actorContext = context.get('actorContext');
+      const body = await context.req.json();
+      const manualDelivery = parseApprovedInvoiceManualDeliveryBody(body);
       const invoice = await dependencies.markApprovedInvoiceSent({
-        actorUserId: actorContext.actorId,
-        companyId: actorContext.companyId,
+        actorContext,
+        deliveryMethod: manualDelivery.deliveryMethod,
         invoiceId: context.req.param('id'),
         markedSentAt: new Date().toISOString(),
       });
 
       return context.json({ invoice });
     } catch (error) {
+      if (error instanceof AuthorizationError) {
+        return context.json({ error: 'Access denied.' }, 403);
+      }
+
+      if (error instanceof ApprovedInvoiceNotFoundError) {
+        return context.json({ error: error.message }, 404);
+      }
+
+      if (
+        error instanceof ApprovedInvoiceManualDeliveryRequestValidationError ||
+        error instanceof InvoiceDraftValidationError
+      ) {
+        return context.json({ error: error.message }, 400);
+      }
+
+      throw error;
+    }
+  });
+
+  routes.get('/invoices/:id/delivery-events', async (context) => {
+    try {
+      const actorContext = context.get('actorContext');
+      const events = await dependencies.listInvoiceDeliveryEvents({
+        actorContext,
+        invoiceId: context.req.param('id'),
+      });
+
+      return context.json({ events });
+    } catch (error) {
+      if (error instanceof AuthorizationError) {
+        return context.json({ error: 'Access denied.' }, 403);
+      }
+
       if (error instanceof ApprovedInvoiceNotFoundError) {
         return context.json({ error: error.message }, 404);
       }
@@ -533,6 +578,10 @@ export function createApprovedInvoiceRoutes(
           { error: error.message },
           error.code === 'cooldown' ? 429 : 409,
         );
+      }
+
+      if (error instanceof InvoiceDeliveryConflictError) {
+        return context.json({ error: error.message }, 409);
       }
 
       if (error instanceof ApprovedInvoiceEmailDeliveryError) {

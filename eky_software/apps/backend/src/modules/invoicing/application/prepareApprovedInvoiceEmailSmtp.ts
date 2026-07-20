@@ -2,6 +2,7 @@ import type { ActorContext } from '@eky/auth';
 import { requirePermission } from '@eky/permissions';
 
 import { ApprovedInvoiceEmailDeliveryError } from './approvedInvoiceEmailDeliveryError.js';
+import { InvoiceDeliveryConflictError } from './invoiceDeliveryConflictError.js';
 import { createInvoiceEmailSendRequestFingerprint } from './invoiceEmailSendRequestFingerprint.js';
 import { normalizeApprovedInvoiceEmailSendFields } from './approvedInvoiceEmailSendValidation.js';
 import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
@@ -9,6 +10,7 @@ import type { GenerateApprovedInvoicePdfDocumentInput } from './generateApproved
 import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
 import { requireIdentifier } from '../domain/invoiceDraftRules.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
+import type { InvoiceDeliveryEventReader } from '../ports/invoiceDeliveryEventReader.js';
 import type { InvoiceEmailSendAttemptStore } from '../ports/invoiceEmailSendAttemptStore.js';
 import type { InvoiceEmailSettingsReader } from '../ports/invoiceEmailSettingsReader.js';
 
@@ -29,12 +31,14 @@ export interface ApprovedInvoiceEmailSmtpPreparation {
   };
   attemptId: string;
   authorizationToken: string;
+  body: string;
   cc: string;
   expiresAt: string;
   invoiceId: string;
   invoiceNumber: string;
   recipient: string;
   resend: boolean;
+  sender: string;
   subject: string;
 }
 
@@ -45,6 +49,7 @@ export interface PrepareApprovedInvoiceEmailSmtpDependencies {
   ): Promise<ApprovedInvoiceDocumentMetadata>;
   invoiceEmailSendAttemptStore: InvoiceEmailSendAttemptStore;
   invoiceEmailSettingsReader: InvoiceEmailSettingsReader;
+  invoiceDeliveryEventReader: InvoiceDeliveryEventReader;
 }
 
 export async function prepareApprovedInvoiceEmailSmtp(
@@ -68,6 +73,15 @@ export async function prepareApprovedInvoiceEmailSmtp(
 
   if (invoice === undefined) {
     throw new ApprovedInvoiceNotFoundError();
+  }
+
+  if (
+    await dependencies.invoiceDeliveryEventReader.hasUnresolvedDeliveryEvent(
+      companyId,
+      invoiceId,
+    )
+  ) {
+    throw new InvoiceDeliveryConflictError();
   }
 
   const settings = await dependencies.invoiceEmailSettingsReader.getEmailSettings(
@@ -107,11 +121,22 @@ export async function prepareApprovedInvoiceEmailSmtp(
       sizeBytes: document.sizeBytes,
     },
     ...preparedAttempt,
+    body: emailFields.body,
     cc: emailFields.cc,
     invoiceId,
     invoiceNumber: invoice.invoiceNumber,
     recipient: emailFields.to,
     resend: invoice.status === 'sent',
+    sender: formatSender(settings.emailSenderName, settings.emailSenderAddress),
     subject: emailFields.subject,
   };
+}
+
+function formatSender(name: string, address: string): string {
+  const normalizedName = name.trim();
+  const normalizedAddress = address.trim();
+
+  return normalizedName.length === 0
+    ? normalizedAddress
+    : `${normalizedName} <${normalizedAddress}>`;
 }

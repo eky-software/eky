@@ -38,6 +38,7 @@ import { getInvoiceNumberingSettings } from '../modules/invoicing/application/ge
 import { getInvoicePaymentSettings } from '../modules/invoicing/application/getInvoicePaymentSettings.js';
 import { listInvoiceDrafts } from '../modules/invoicing/application/listInvoiceDrafts.js';
 import { listApprovedInvoices } from '../modules/invoicing/application/listApprovedInvoices.js';
+import { listInvoiceDeliveryEvents } from '../modules/invoicing/application/listInvoiceDeliveryEvents.js';
 import { markApprovedInvoiceSent } from '../modules/invoicing/application/markApprovedInvoiceSent.js';
 import { prepareApprovedInvoiceEmailDryRun } from '../modules/invoicing/application/prepareApprovedInvoiceEmailDryRun.js';
 import { prepareApprovedInvoiceEmailSmtpTest } from '../modules/invoicing/application/prepareApprovedInvoiceEmailSmtpTest.js';
@@ -288,6 +289,11 @@ export async function createApp(
         }),
       listApprovedInvoices: (input) =>
         listApprovedInvoices(input, approvedInvoiceReader),
+      listInvoiceDeliveryEvents: (input) =>
+        listInvoiceDeliveryEvents(input, {
+          approvedInvoiceReader,
+          invoiceDeliveryEventReader: invoiceDeliveryEventRepository,
+        }),
       markApprovedInvoiceSent: (input) =>
         markApprovedInvoiceSent(input, {
           approvedInvoiceReader,
@@ -298,7 +304,7 @@ export async function createApp(
               invoiceDocumentStorage,
               renderApprovedInvoicePdf,
             }),
-          invoiceApprovalRepository,
+          invoiceManualDeliveryFinalizer: invoiceDeliveryEventRepository,
         }),
       prepareApprovedInvoiceEmailDryRun: (input) =>
         prepareApprovedInvoiceEmailDryRun(input, {
@@ -337,6 +343,7 @@ export async function createApp(
             }),
           invoiceEmailSendAttemptStore,
           invoiceEmailSettingsReader,
+          invoiceDeliveryEventReader: invoiceDeliveryEventRepository,
         }),
       sendApprovedInvoiceEmailDryRun: (input) =>
         sendApprovedInvoiceEmailDryRun(input, {

@@ -1,169 +1,131 @@
-import { describe, expect, it } from 'vitest';
+import { createActorContext } from '@eky/auth';
+import { describe, expect, it, vi } from 'vitest';
 
-import type { ApprovedInvoiceSummary } from '../domain/approvedInvoiceSummary.js';
-import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
-import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
-import type {
-  ApprovedInvoiceResult,
-  ApproveInvoiceDraftPersistenceInput,
-  InvoiceApprovalRepository,
-  MarkApprovedInvoiceSentPersistenceInput,
-  MarkApprovedInvoiceSentResult,
-  ReopenApprovedInvoicePersistenceInput,
-  ReopenedApprovedInvoiceResult,
-} from '../ports/invoiceApprovalRepository.js';
 import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
 import {
   markApprovedInvoiceSent,
   type MarkApprovedInvoiceSentInput,
 } from './markApprovedInvoiceSent.js';
-import type { GenerateApprovedInvoicePdfDocumentInput } from './generateApprovedInvoicePdfDocument.js';
-
-class FakeInvoiceApprovalRepository implements InvoiceApprovalRepository {
-  markInputs: MarkApprovedInvoiceSentPersistenceInput[] = [];
-
-  constructor(private readonly result: MarkApprovedInvoiceSentResult | undefined) {}
-
-  async approveDraft(
-    _input: ApproveInvoiceDraftPersistenceInput,
-  ): Promise<ApprovedInvoiceResult | undefined> {
-    throw new Error('Not implemented in this mark-sent test.');
-  }
-
-  async markApprovedInvoiceSent(
-    input: MarkApprovedInvoiceSentPersistenceInput,
-  ): Promise<MarkApprovedInvoiceSentResult | undefined> {
-    this.markInputs.push(input);
-
-    return this.result;
-  }
-
-  async reopenApprovedInvoiceForEditing(
-    _input: ReopenApprovedInvoicePersistenceInput,
-  ): Promise<ReopenedApprovedInvoiceResult | undefined> {
-    throw new Error('Not implemented in this mark-sent test.');
-  }
-}
-
-class FakeApprovedInvoiceReader implements ApprovedInvoiceReader {
-  constructor(private readonly invoice: ApprovedInvoiceView | undefined) {}
-
-  async getApprovedInvoiceById(): Promise<ApprovedInvoiceView | undefined> {
-    return this.invoice;
-  }
-
-  async listApprovedInvoiceSummaries(): Promise<ApprovedInvoiceSummary[]> {
-    throw new Error('Not implemented in this mark-sent test.');
-  }
-}
-
-class FakeApprovedInvoicePdfEnsurer {
-  inputs: GenerateApprovedInvoicePdfDocumentInput[] = [];
-
-  constructor(private readonly error?: Error) {}
-
-  async ensureApprovedInvoicePdfDocument(
-    input: GenerateApprovedInvoicePdfDocumentInput,
-  ): Promise<void> {
-    this.inputs.push(input);
-
-    if (this.error !== undefined) {
-      throw this.error;
-    }
-  }
-}
+import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
+import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 
 describe('markApprovedInvoiceSent', () => {
-  it('ensures the approved invoice PDF before marking the invoice sent', async () => {
-    const invoice = createApprovedInvoiceView();
-    const repository = new FakeInvoiceApprovalRepository({
-      invoiceId: 'invoice-1',
-      status: 'sent',
-    });
-    const pdfEnsurer = new FakeApprovedInvoicePdfEnsurer();
+  it('ensures the PDF and atomically records a bounded manual delivery', async () => {
+    const approvedInvoice = createApprovedInvoiceView({ status: 'approved' });
+    const sentInvoice = createApprovedInvoiceView({ status: 'sent' });
+    const getApprovedInvoiceById = vi.fn(async () => approvedInvoice);
+    const ensureApprovedInvoicePdfDocument = vi.fn(async () =>
+      createDocumentMetadata(),
+    );
+    const completeManualDelivery = vi.fn(async () => ({
+      updatedAt: sentInvoice.updatedAt,
+    }));
 
     await expect(
       markApprovedInvoiceSent(createInput(), {
-        approvedInvoiceReader: new FakeApprovedInvoiceReader(invoice),
-        ensureApprovedInvoicePdfDocument: (input) =>
-          pdfEnsurer.ensureApprovedInvoicePdfDocument(input),
-        invoiceApprovalRepository: repository,
+        approvedInvoiceReader: {
+          getApprovedInvoiceById,
+          listApprovedInvoiceSummaries: vi.fn(),
+        },
+        ensureApprovedInvoicePdfDocument,
+        invoiceManualDeliveryFinalizer: { completeManualDelivery },
       }),
-    ).resolves.toStrictEqual(invoice);
+    ).resolves.toStrictEqual(sentInvoice);
 
-    expect(pdfEnsurer.inputs).toEqual([
-      {
-        companyId: 'dev-company',
-        createdAt: '2026-07-08T10:00:00.000Z',
-        invoiceId: 'invoice-1',
-      },
-    ]);
-    expect(repository.markInputs).toEqual([
-      {
-        actorUserId: 'user-1',
-        auditEventId: expect.stringMatching(
-          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
-        ),
-        companyId: 'dev-company',
-        invoiceId: 'invoice-1',
-        markedSentAt: '2026-07-08T10:00:00.000Z',
-      },
-    ]);
+    expect(ensureApprovedInvoicePdfDocument).toHaveBeenCalledWith({
+      companyId: 'dev-company',
+      createdAt: '2026-07-08T10:00:00.000Z',
+      invoiceId: 'invoice-1',
+    });
+    expect(completeManualDelivery).toHaveBeenCalledWith({
+      actorUserId: 'user-1',
+      auditEventId: expectUuid(),
+      companyId: 'dev-company',
+      deliveredAt: '2026-07-08T10:00:00.000Z',
+      deliveryEventId: expectUuid(),
+      deliveryMethod: 'print',
+      documentId: 'document-1',
+      invoiceId: 'invoice-1',
+    });
+    expect(getApprovedInvoiceById).toHaveBeenCalledOnce();
   });
 
-  it('does not mark the invoice sent when PDF ensuring fails', async () => {
-    const repository = new FakeInvoiceApprovalRepository({
-      invoiceId: 'invoice-1',
-      status: 'sent',
-    });
-    const pdfEnsurer = new FakeApprovedInvoicePdfEnsurer(
-      new Error('PDF could not be generated.'),
-    );
+  it('does not finalize manual delivery when PDF ensuring fails', async () => {
+    const completeManualDelivery = vi.fn();
 
     await expect(
       markApprovedInvoiceSent(createInput(), {
-        approvedInvoiceReader: new FakeApprovedInvoiceReader(createApprovedInvoiceView()),
-        ensureApprovedInvoicePdfDocument: (input) =>
-          pdfEnsurer.ensureApprovedInvoicePdfDocument(input),
-        invoiceApprovalRepository: repository,
+        approvedInvoiceReader: createReader(
+          createApprovedInvoiceView({ status: 'approved' }),
+        ),
+        ensureApprovedInvoicePdfDocument: vi.fn(async () => {
+          throw new Error('PDF could not be generated.');
+        }),
+        invoiceManualDeliveryFinalizer: { completeManualDelivery },
       }),
     ).rejects.toThrow('PDF could not be generated.');
 
-    expect(repository.markInputs).toEqual([]);
+    expect(completeManualDelivery).not.toHaveBeenCalled();
   });
 
-  it('throws a generic not-found error when the invoice cannot be marked sent', async () => {
-    const repository = new FakeInvoiceApprovalRepository(undefined);
-    const pdfEnsurer = new FakeApprovedInvoicePdfEnsurer();
+  it('does not create another event for an invoice already marked sent', async () => {
+    const ensureApprovedInvoicePdfDocument = vi.fn();
+    const completeManualDelivery = vi.fn();
+    const sentInvoice = createApprovedInvoiceView({ status: 'sent' });
 
     await expect(
       markApprovedInvoiceSent(createInput(), {
-        approvedInvoiceReader: new FakeApprovedInvoiceReader(undefined),
-        ensureApprovedInvoicePdfDocument: (input) =>
-          pdfEnsurer.ensureApprovedInvoicePdfDocument(input),
-        invoiceApprovalRepository: repository,
+        approvedInvoiceReader: createReader(sentInvoice),
+        ensureApprovedInvoicePdfDocument,
+        invoiceManualDeliveryFinalizer: { completeManualDelivery },
       }),
-    ).rejects.toEqual(new ApprovedInvoiceNotFoundError());
+    ).resolves.toStrictEqual(sentInvoice);
+
+    expect(ensureApprovedInvoicePdfDocument).not.toHaveBeenCalled();
+    expect(completeManualDelivery).not.toHaveBeenCalled();
   });
 
-  it('rejects invalid identifiers before calling the repository', async () => {
-    const repository = new FakeInvoiceApprovalRepository({
-      invoiceId: 'invoice-1',
-      status: 'sent',
-    });
-    const pdfEnsurer = new FakeApprovedInvoicePdfEnsurer();
+  it('throws a generic not-found error without invoking persistence', async () => {
+    const completeManualDelivery = vi.fn();
 
     await expect(
-      markApprovedInvoiceSent(createInput({ invoiceId: '' }), {
-        approvedInvoiceReader: new FakeApprovedInvoiceReader(createApprovedInvoiceView()),
-        ensureApprovedInvoicePdfDocument: (input) =>
-          pdfEnsurer.ensureApprovedInvoicePdfDocument(input),
-        invoiceApprovalRepository: repository,
+      markApprovedInvoiceSent(createInput(), {
+        approvedInvoiceReader: createReader(undefined),
+        ensureApprovedInvoicePdfDocument: vi.fn(),
+        invoiceManualDeliveryFinalizer: { completeManualDelivery },
       }),
-    ).rejects.toThrow();
+    ).rejects.toEqual(new ApprovedInvoiceNotFoundError());
 
-    expect(pdfEnsurer.inputs).toEqual([]);
-    expect(repository.markInputs).toEqual([]);
+    expect(completeManualDelivery).not.toHaveBeenCalled();
+  });
+
+  it('rejects missing permission before reading invoice data', async () => {
+    const getApprovedInvoiceById = vi.fn();
+
+    await expect(
+      markApprovedInvoiceSent(
+        createInput({
+          actorContext: createActorContext({
+            actorId: 'user-1',
+            authenticationMode: 'local',
+            companyId: 'dev-company',
+            permissions: [],
+          }),
+        }),
+        {
+          approvedInvoiceReader: {
+            getApprovedInvoiceById,
+            listApprovedInvoiceSummaries: vi.fn(),
+          },
+          ensureApprovedInvoicePdfDocument: vi.fn(),
+          invoiceManualDeliveryFinalizer: {
+            completeManualDelivery: vi.fn(),
+          },
+        },
+      ),
+    ).rejects.toThrow('Permission denied');
+
+    expect(getApprovedInvoiceById).not.toHaveBeenCalled();
   });
 });
 
@@ -171,15 +133,50 @@ function createInput(
   overrides: Partial<MarkApprovedInvoiceSentInput> = {},
 ): MarkApprovedInvoiceSentInput {
   return {
-    actorUserId: 'user-1',
-    companyId: 'dev-company',
+    actorContext: createActorContext({
+      actorId: 'user-1',
+      authenticationMode: 'local',
+      companyId: 'dev-company',
+      permissions: ['sendInvoices'],
+    }),
+    deliveryMethod: 'print',
     invoiceId: 'invoice-1',
     markedSentAt: '2026-07-08T10:00:00.000Z',
     ...overrides,
   };
 }
 
-function createApprovedInvoiceView(): ApprovedInvoiceView {
+function createReader(invoice: ApprovedInvoiceView | undefined) {
+  return {
+    getApprovedInvoiceById: vi.fn(async () => invoice),
+    listApprovedInvoiceSummaries: vi.fn(),
+  };
+}
+
+function createDocumentMetadata(): ApprovedInvoiceDocumentMetadata {
+  return {
+    companyId: 'dev-company',
+    createdAt: '2026-07-08T10:00:00.000Z',
+    documentType: 'approved_invoice_pdf',
+    fileName: 'lasku-20260001.pdf',
+    id: 'document-1',
+    invoiceId: 'invoice-1',
+    mimeType: 'application/pdf',
+    sha256: '0'.repeat(64),
+    sizeBytes: 2048,
+    storagePath: 'dev-company/invoice-1/lasku-20260001.pdf',
+  };
+}
+
+function expectUuid() {
+  return expect.stringMatching(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  );
+}
+
+function createApprovedInvoiceView(
+  overrides: Partial<ApprovedInvoiceView> = {},
+): ApprovedInvoiceView {
   return {
     approvedAt: '2026-06-13T10:00:00.000Z',
     billingRecipientBusinessIdSnapshot: '',
@@ -235,7 +232,7 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     sequenceScope: 'calendar-year:2026',
     seriesKey: 'default',
     sourceDraftId: 'draft-1',
-    status: 'sent',
+    status: 'approved',
     subject: '',
     totals: {
       grossTotalCents: 0,
@@ -245,5 +242,6 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     },
     updatedAt: '2026-06-13T10:00:00.000Z',
     vatBreakdown: [],
+    ...overrides,
   };
 }

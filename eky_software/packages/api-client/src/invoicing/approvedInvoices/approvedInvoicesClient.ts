@@ -8,6 +8,7 @@ import {
   readApprovedInvoiceEmailSmtpPreparationResponse,
   readApprovedInvoiceEmailSmtpSendResponse,
   readApprovedInvoiceEmailPreviewResponse,
+  readInvoiceDeliveryEventListResponse,
   readApprovedInvoiceListResponse,
   readApprovedInvoiceResponse,
   readReopenedApprovedInvoiceResponse,
@@ -23,6 +24,7 @@ import type {
   ApprovedInvoicesApi,
   ApprovedInvoiceSummary,
   ApprovedInvoiceView,
+  InvoiceDeliveryEventSummary,
   ReopenedApprovedInvoice,
 } from './approvedInvoicesTypes.js';
 import type { InvoiceDraft } from '../invoiceDrafts/index.js';
@@ -92,12 +94,33 @@ export function createApprovedInvoicesApi(
       return readApprovedInvoiceListResponse(responseBody);
     },
 
-    async markApprovedInvoiceSent(id): Promise<ApprovedInvoiceView> {
+    async listInvoiceDeliveryEvents(
+      id,
+    ): Promise<InvoiceDeliveryEventSummary[]> {
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        `/invoices/${encodeURIComponent(id)}/delivery-events`,
+      );
+
+      return readInvoiceDeliveryEventListResponse(responseBody);
+    },
+
+    async markApprovedInvoiceSent(
+      id,
+      deliveryMethod,
+    ): Promise<ApprovedInvoiceView> {
       const responseBody = await requestJson(
         fetchImplementation,
         baseUrl,
         `/invoices/${encodeURIComponent(id)}/mark-sent`,
-        { method: 'POST' },
+        {
+          body: JSON.stringify({ deliveryMethod }),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          method: 'POST',
+        },
       );
 
       return readApprovedInvoiceResponse(responseBody);

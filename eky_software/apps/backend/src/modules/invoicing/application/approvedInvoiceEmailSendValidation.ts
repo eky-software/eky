@@ -20,7 +20,7 @@ export function normalizeApprovedInvoiceEmailSendFields(input: {
   subject: string;
   body: string;
 }): NormalizedApprovedInvoiceEmailSendFields {
-  return {
+  const normalizedFields = {
     body: normalizeRequiredText(input.body, 'Email body', maximumBodyLength),
     cc: normalizeOptionalEmail(input.cc, 'Cc email'),
     subject: normalizeRequiredHeaderText(
@@ -30,6 +30,17 @@ export function normalizeApprovedInvoiceEmailSendFields(input: {
     ),
     to: normalizeRequiredEmail(input.to, 'Recipient email'),
   };
+
+  if (
+    normalizedFields.cc !== '' &&
+    normalizedFields.cc.toLowerCase() === normalizedFields.to.toLowerCase()
+  ) {
+    throw new InvoiceDraftValidationError(
+      'Recipient email and Cc email must be different.',
+    );
+  }
+
+  return normalizedFields;
 }
 
 function normalizeRequiredEmail(value: string, fieldName: string): string {

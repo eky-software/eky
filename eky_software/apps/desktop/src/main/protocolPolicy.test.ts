@@ -57,6 +57,12 @@ describe('desktop protocol policy', () => {
       ),
     ).toBe(true);
     expect(
+      isAllowedBackendRequest('GET', '/invoices/invoice-1/delivery-events'),
+    ).toBe(true);
+    expect(
+      isAllowedBackendRequest('POST', '/invoices/invoice-1/delivery-events'),
+    ).toBe(false);
+    expect(
       isAllowedBackendRequest(
         'POST',
         '/invoices/invoice-1/email/smtp/send/extra',
