@@ -90,6 +90,7 @@ function getDefaultRecipientEmail(invoice: ApprovedInvoiceView): string {
 
 function createEmailBody(invoice: ApprovedInvoiceView): string {
   const senderName = invoice.companyNameSnapshot.trim();
+  const payeeName = senderName.length > 0 ? senderName : 'Eky';
   const dueDate = formatFinnishDate(invoice.dueDate);
   const grossTotal = formatCentsAsEuro(invoice.totals.grossTotalCents);
   const iban = formatIban(invoice.companyIbanSnapshot);
@@ -100,12 +101,13 @@ function createEmailBody(invoice: ApprovedInvoiceView): string {
     '',
     `Liitteenä lasku ${invoice.invoiceNumber}.`,
     `Eräpäivä: ${dueDate}`,
+    `Maksun saaja: ${payeeName}`,
     `Viitenumero: ${invoice.referenceNumber}`,
     ...ibanLine,
     `Summa: ${grossTotal}`,
     '',
     'Ystävällisin terveisin',
-    senderName.length > 0 ? senderName : 'Eky',
+    payeeName,
   ].join('\n');
 }
 

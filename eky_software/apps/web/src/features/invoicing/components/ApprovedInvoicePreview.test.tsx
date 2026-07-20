@@ -179,7 +179,7 @@ describe('ApprovedInvoicePreview', () => {
     expect(html).not.toContain('stack');
   });
 
-  it('renders manual delivery choices and safe delivery history', () => {
+  it('renders one clear manual delivery action and safe delivery history', () => {
     const html = renderPreview({
       deliveryEvents: [
         {
@@ -195,8 +195,8 @@ describe('ApprovedInvoicePreview', () => {
       ],
     });
 
-    expect(html).toContain(uiText.invoicing.manualDeliveryMethodPrint);
-    expect(html).toContain(uiText.invoicing.manualDeliveryMethodManual);
+    expect(html).toContain(uiText.invoicing.markApprovedInvoiceSent);
+    expect(html).not.toContain('<select');
     expect(html).toContain(uiText.invoicing.invoiceDeliveryHistory);
     expect(html).toContain(uiText.invoicing.invoiceDeliveryStatuses.succeeded);
   });

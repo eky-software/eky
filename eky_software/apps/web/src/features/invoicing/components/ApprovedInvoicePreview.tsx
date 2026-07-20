@@ -7,7 +7,6 @@ import type {
   ApprovedInvoiceVatBreakdown,
   ApprovedInvoiceView,
   InvoiceDeliveryEventSummary,
-  InvoiceManualDeliveryMethod,
 } from '@eky/api-client';
 import { useState } from 'react';
 
@@ -59,7 +58,7 @@ interface ApprovedInvoicePreviewProps {
   onCopyInvoice(id: string): void;
   onCreatePdf(id: string): void;
   onEditInvoice(id: string): void;
-  onMarkSent(id: string, method: InvoiceManualDeliveryMethod): void;
+  onMarkSent(id: string): void;
   onOpenPdf(id: string): void;
   onPrepareEmail(id: string): void;
   onSendEmailDryRun(
@@ -75,6 +74,8 @@ interface ApprovedInvoicePreviewProps {
     input: ApprovedInvoiceEmailSmtpTestPrepareInput,
   ): void;
 }
+
+type PendingInvoiceAction = 'copy' | 'edit' | 'markSent' | null;
 
 export function ApprovedInvoicePreview({
   copyErrorMessage,
@@ -117,8 +118,45 @@ export function ApprovedInvoicePreview({
   onSendEmailSmtpTest,
 }: ApprovedInvoicePreviewProps): React.JSX.Element {
   const isSent = invoice.status === 'sent';
-  const [manualDeliveryMethod, setManualDeliveryMethod] =
-    useState<InvoiceManualDeliveryMethod>('print');
+  const [pendingAction, setPendingAction] =
+    useState<PendingInvoiceAction>(null);
+  const confirmationMessage =
+    pendingAction === 'copy'
+      ? uiText.invoicing.copyApprovedInvoiceConfirm
+      : pendingAction === 'markSent'
+        ? uiText.invoicing.markApprovedInvoiceSentConfirm
+        : uiText.invoicing.reopenApprovedInvoiceConfirm;
+  const confirmationAction =
+    pendingAction === 'copy'
+      ? uiText.invoicing.copyApprovedInvoice
+      : pendingAction === 'markSent'
+        ? uiText.invoicing.markApprovedInvoiceSent
+        : uiText.invoicing.editApprovedInvoice;
+  const isConfirmationActionPending =
+    pendingAction === 'copy'
+      ? isCopyingInvoice
+      : pendingAction === 'markSent'
+        ? isCreatingPdf || isMarkingSent
+        : isReopening;
+
+  function confirmPendingAction(): void {
+    const action = pendingAction;
+    setPendingAction(null);
+
+    if (action === 'copy') {
+      onCopyInvoice(invoice.id);
+      return;
+    }
+
+    if (action === 'markSent') {
+      onMarkSent(invoice.id);
+      return;
+    }
+
+    if (action === 'edit') {
+      onEditInvoice(invoice.id);
+    }
+  }
 
   return (
     <section className={`panel ${styles.preview}`}>
@@ -178,7 +216,7 @@ export function ApprovedInvoicePreview({
             <button
               className="secondary-action"
               disabled={isCopyingInvoice}
-              onClick={() => onCopyInvoice(invoice.id)}
+              onClick={() => setPendingAction('copy')}
               type="button"
             >
               {isCopyingInvoice
@@ -188,44 +226,22 @@ export function ApprovedInvoicePreview({
           ) : null}
           {!isSent ? (
             <>
-              <div className={styles.manualDelivery}>
-                <label htmlFor="approved-invoice-manual-delivery-method">
-                  {uiText.invoicing.manualDeliveryMethod}
-                </label>
-                <select
-                  disabled={isMarkingSent}
-                  id="approved-invoice-manual-delivery-method"
-                  onChange={(event) =>
-                    setManualDeliveryMethod(
-                      event.currentTarget.value as InvoiceManualDeliveryMethod,
-                    )
-                  }
-                  value={manualDeliveryMethod}
-                >
-                  <option value="print">
-                    {uiText.invoicing.manualDeliveryMethodPrint}
-                  </option>
-                  <option value="manual">
-                    {uiText.invoicing.manualDeliveryMethodManual}
-                  </option>
-                </select>
-                <button
-                  className="secondary-action"
-                  disabled={isCreatingPdf || isMarkingSent}
-                  onClick={() => onMarkSent(invoice.id, manualDeliveryMethod)}
-                  type="button"
-                >
-                  {isCreatingPdf
-                    ? uiText.invoicing.approvedInvoicePdfCreating
-                    : isMarkingSent
-                      ? uiText.invoicing.markingApprovedInvoiceSent
-                      : uiText.invoicing.markApprovedInvoiceSent}
-                </button>
-              </div>
+              <button
+                className="secondary-action"
+                disabled={isCreatingPdf || isMarkingSent}
+                onClick={() => setPendingAction('markSent')}
+                type="button"
+              >
+                {isCreatingPdf
+                  ? uiText.invoicing.approvedInvoicePdfCreating
+                  : isMarkingSent
+                    ? uiText.invoicing.markingApprovedInvoiceSent
+                    : uiText.invoicing.markApprovedInvoiceSent}
+              </button>
               <button
                 className="secondary-action"
                 disabled={isReopening}
-                onClick={() => onEditInvoice(invoice.id)}
+                onClick={() => setPendingAction('edit')}
                 type="button"
               >
                 {isReopening
@@ -239,6 +255,34 @@ export function ApprovedInvoicePreview({
           </button>
         </div>
       </header>
+
+      {pendingAction !== null ? (
+        <section
+          aria-labelledby="approved-invoice-action-confirmation-heading"
+          className={styles.actionConfirmation}
+        >
+          <p id="approved-invoice-action-confirmation-heading">
+            {confirmationMessage}
+          </p>
+          <div className={styles.actionConfirmationButtons}>
+            <button
+              className="ghost-button"
+              onClick={() => setPendingAction(null)}
+              type="button"
+            >
+              {uiText.invoicing.cancel}
+            </button>
+            <button
+              className="primary-action"
+              disabled={isConfirmationActionPending}
+              onClick={confirmPendingAction}
+              type="button"
+            >
+              {confirmationAction}
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       {reopenErrorMessage !== null ? (
         <p className="message error-message" role="alert">
