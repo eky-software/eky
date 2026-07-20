@@ -214,7 +214,9 @@ Aluksi komponentit pidetään `apps/web`-sovelluksen sisällä ja feature-kohtai
 
 Komponentteja ei nosteta `packages/ui`-pakettiin varmuuden vuoksi.
 
-Jos sama komponenttityyppi alkaa toistua 2-3 eri näkymässä, voidaan harkita `packages/ui`-pakettia.
+Jos sama komponenttityyppi ja käyttäytyminen alkavat toistua 2-3
+toisistaan riippumattomassa web-featuressa, arvioidaan ensin
+`apps/web/src/shared/ui`-komponenttia.
 
 Mahdollisia myöhempiä jaettavia komponentteja:
 
@@ -225,14 +227,17 @@ Mahdollisia myöhempiä jaettavia komponentteja:
 - PageHeader
 - EmptyState
 
-`packages/ui` luodaan vasta todelliseen toistuvaan tarpeeseen.
+`packages/ui` arvioidaan vasta, kun sama vakaa tekninen UI tarvitaan useassa
+itsenäisessä sovelluksessa. Electron desktop käyttää samaa web-rendereriä eikä
+yksin muodosta toista UI-sovellusta.
 
 Nykyinen UI-koodi saa MVP-vaiheessa sisältää feature-kohtaista toistoa, mutta
-ennen seuraavaa isoa UI-moduulia arvioidaan rajattu `packages/ui`-sprintti.
+ennen seuraavaa isoa UI-moduulia arvioidaan rajattu webin sisäinen
+`shared/ui`-sprintti.
 Tuleva kasvupolku on kuvattu dokumentissa
 `docs/architecture/ui-design-system-roadmap.md`.
 
-`packages/ui` saa sisältää vain yleisiä teknisiä UI-komponentteja. Se ei saa
+Jaettu UI saa sisältää vain yleisiä teknisiä UI-komponentteja. Se ei saa
 sisältää laskutuslogiikkaa, asiakasvalintasääntöjä, API-kutsuja,
 feature-hookeja, domain-validointia tai moduulien sisäisiä sääntöjä.
 

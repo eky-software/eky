@@ -123,15 +123,20 @@ Päätetyt ensimmäiset periaatteet:
 - virallinen laskunumero annetaan vasta laskun hyväksynnässä
 - hyväksyntä on käyttäjän tietoinen toiminto, ei autosave tai tavallinen tallennus
 - hyväksynnässä lukitaan laskun snapshot ja kirjataan audit-tapahtuma
+- hyväksytylle laskulle voidaan muodostaa ja tallentaa current PDF snapshot-
+  datasta
+- local desktopissa lasku voidaan toimittaa käyttäjän vahvistamalla DNA SMTP
+  -lähetyksellä, ja vain varmasti onnistunut toimitus muuttaa laskun `sent`-
+  tilaan
+- PDF:n avaaminen tai tulostaminen ei yksin merkitse laskua lähetetyksi
 
 Jäljellä olevat avoimet kysymykset:
 
-- tarvitaanko PDF heti?
-- lähetetäänkö laskut sähköpostilla?
 - tarvitaanko verkkolasku myöhemmin?
 - miten hyvityslaskut käsitellään?
 - kuka saa hyväksyä laskun?
 - kuka saa lähettää laskun?
+- tarvitaanko myöhemmin muita sähköposti- tai toimitusprovidereita?
 
 Laskun hyväksynnän, laskunumeroinnin, snapshotin, auditoinnin ja local/cloud-numeroinnin tarkempi suunnitelma on dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
 

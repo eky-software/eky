@@ -7,9 +7,10 @@ monilaitemallissa.
 
 Dokumentin local-session-, pysyvä local-identiteetti-, HTTP-middleware-,
 `ActorContext`-, Electron `safeStorage` -brokeri- ja rajattu
-sähköpostisalaisuuden HTTP/UI-lifecycle on toteutettu. Firebase-identityä,
-cloud-salaisuusadapteria, SMTP-provideria tai uusia riippuvuuksia ei ole
-lisätty.
+sähköpostisalaisuuden HTTP/UI-lifecycle on toteutettu. DNA SMTP -providerin
+testivastaanottajapolku ja käyttäjän vahvistama asiakaslähetys on toteutettu
+delivery event -auditointeineen. Firebase-identityä ja cloud-
+salaisuusadapteria ei ole toteutettu.
 
 ## Perusperiaate
 
@@ -165,13 +166,14 @@ ei kopioida pilveen.
 
 ## SMTP-Salaisuuden Turvallisuusportti
 
-Secret store -portti ja lifecycle-testit voidaan valmistella synteettisillä
-testiarvoilla ennen local-sessionin valmistumista. Oikeaa SMTP-salasanaa ei saa
-vastaanottaa HTTP:llä, näyttää webissä tai kirjoittaa Windows Credential
-Manageriin ennen kuin local identity- ja permission-malli on toteutettu ja
-turvallisuustestattu.
+Secret store -portti ja lifecycle-testit valmisteltiin synteettisillä
+testiarvoilla ennen oikean SMTP-salaisuuden käyttöönottoa. Oikeaa SMTP-
+salasanaa ei saa vastaanottaa suojaamattomalla HTTP-profiililla, näyttää
+webissä tai välittää Electron rendererille. Salaisuuden asettaminen kulkee
+Electron-sessionilla suojatun backend-reitin ja main processin `safeStorage`-
+brokerin kautta vasta local identity- ja permission-mallin jälkeen.
 
-Salaisuuden asettaminen, vaihtaminen ja poistaminen vaativat myöhemmin
+Salaisuuden asettaminen, vaihtaminen ja poistaminen vaativat
 `manageCompanyEmailSecret`-permissionin. Oikea laskun lähetys vaatii
 `sendInvoices`-permissionin.
 
@@ -263,9 +265,11 @@ Ensimmäisen local trust -toteutuksen pitää testata vähintään:
 10. Rajattu HTTP-, API-client- ja UI-lifecycle on toteutettu. Reitit
     rekisteröidään vain Electron desktop -compositionissa, request ei hyväksy
     `companyId`-arvoa ja response sisältää vain `configured`-tilan.
-11. Toteutetaan SMTP-provider portilla `465` ja implicit TLS -mallilla ensin
-   pakotettuun test recipient -osoitteeseen.
-12. Pilviversiossa toteutetaan erikseen Firebase identity -adapteri ja cloud
+11. SMTP-provider portilla `465`, implicit TLS -mallilla ja pakotetulla test
+    recipient -osoitteella on toteutettu ja varmennettu.
+12. Asiakaslähetyksen prepare/confirm/send-polku, delivery event -auditointi ja
+    vain varmasti onnistuneen toimituksen `sent`-tilasiirtymä on toteutettu.
+13. Pilviversiossa toteutetaan erikseen Firebase identity -adapteri ja cloud
    secret manager -adapteri saman application-tason sopimuksen ympärille.
 
 ## Seurattava Tekninen Velka
@@ -289,8 +293,9 @@ laskutusdatan tuotantokäyttö eivät kuitenkaan saa ohittaa local desktop
 ## Ei Vielä Toteuteta
 
 - Firebase Authia
-- SMTP-providerin backend-only secret reader -kytkentää
-- SMTP-provideria
+- cloud identity -adapteria
+- cloud secret manager -adapteria
+- monikäyttäjän rooli- ja yritysjäsenyyshallintaa
 - pilvisynkronointia
 - uusia riippuvuuksia
 

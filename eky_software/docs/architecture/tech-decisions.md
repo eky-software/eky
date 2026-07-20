@@ -60,7 +60,11 @@ Perustelu:
 
 Tarkka päätös ja turvallisuusrajat on kuvattu dokumentissa
 `docs/decisions/ADR-0007-local-desktop-shell-and-session-bootstrap.md`.
-Electron-riippuvuutta tai paketointityökalua ei ole vielä lisätty.
+Electron, rajattu Windows-paketointi ja Electron fuses on toteutettu
+`apps/desktop`-runtimeen. Nykyinen toteutustila, avoimet release-portit ja
+versiopäivityksen rajat on kuvattu dokumenteissa
+`docs/architecture/local-desktop-implementation-plan.md` ja
+`docs/architecture/local-desktop-dependency-review.md`.
 
 ## Päätös: relaatiotietokanta ydindatalle
 

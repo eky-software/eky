@@ -16,8 +16,11 @@ Tulevat vastuut:
 
 Firebase ei saa vuotaa satunnaisiin komponentteihin, domainiin tai service-logiikkaan.
 
-Skeleton-vaiheessa tähän pakettiin ei lisätä vielä Firebase-riippuvuutta.
+Nykyiseen local-runtimeen ei ole lisätty Firebase-riippuvuutta. Tuleva cloud-
+identity-adapteri arvioidaan ja hyväksytään erikseen.
 
-`ActorContext` muodostetaan myöhemmin vain backendin vahvistamasta local- tai
-cloud-identiteetistä. Frontendin request body ei ole luotettu actor-, company-
+Local-runtime muodostaa `ActorContext`-olion backendin vahvistamasta Electron-
+sessionista ja tietokantaan tallennetusta local-identiteetistä. Tuleva
+cloud-runtime muodostaa saman sopimuksen vahvistetusta cloud-identiteetistä ja
+yritysjäsenyydestä. Frontendin request body ei ole luotettu actor-, company-
 tai permission-tietojen lähde.

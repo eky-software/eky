@@ -257,7 +257,10 @@ Ennen tyylimuutosta tarkistetaan:
 
 Jos sama visuaalinen rakenne alkaa toistua 2–3 toisistaan riippumattomassa
 näkymässä, arvioidaan ensin rajattua `apps/web/src/shared/ui`-komponenttia.
-`packages/ui` tai uusi UI-kirjasto vaatii edelleen erillisen päätöksen.
+`packages/ui` arvioidaan vasta, jos sama vakaa UI tarvitaan useassa
+itsenäisessä sovelluksessa. Electron desktop käyttää samaa web-rendereriä eikä
+yksin ole toinen UI-sovellus. `packages/ui` tai uusi UI-kirjasto vaatii
+edelleen erillisen päätöksen.
 
 ## Shared
 
