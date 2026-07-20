@@ -228,6 +228,9 @@ export function CompanySettingsForm({
                 type="email"
                 value={form.emailTestRecipientOverride}
               />
+              <span className={styles.fieldHelp}>
+                {uiText.companySettings.emailTestRecipientOverrideHelp}
+              </span>
             </label>
 
           </div>

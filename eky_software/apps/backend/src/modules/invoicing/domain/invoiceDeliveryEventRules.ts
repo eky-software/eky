@@ -15,6 +15,7 @@ const maximumSafeErrorMessageLength = 500;
 const maximumTechnicalErrorCodeLength = 120;
 const maximumCreatedByLength = 120;
 const maximumProviderMessageIdLength = 500;
+const forbiddenProviderMessageIdCharacterPattern = /[\u0000-\u001f\u007f]/;
 
 export class InvoiceDeliveryEventValidationError extends Error {
   constructor(message: string) {
@@ -107,11 +108,22 @@ export function normalizeDeliveryTechnicalErrorCode(
 export function normalizeDeliveryProviderMessageId(
   value: string | null | undefined,
 ): string | null {
-  return normalizeLimitedNullableString(
+  const normalizedValue = normalizeLimitedNullableString(
     value,
     maximumProviderMessageIdLength,
     'Provider message id',
   );
+
+  if (
+    normalizedValue !== null &&
+    forbiddenProviderMessageIdCharacterPattern.test(normalizedValue)
+  ) {
+    throw new InvoiceDeliveryEventValidationError(
+      'Provider message id is invalid.',
+    );
+  }
+
+  return normalizedValue;
 }
 
 export function normalizeDeliveryCreatedBy(value: string | undefined): string {

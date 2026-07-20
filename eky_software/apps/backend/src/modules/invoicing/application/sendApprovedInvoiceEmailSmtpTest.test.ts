@@ -4,8 +4,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ApprovedInvoiceEmailDeliveryError } from './approvedInvoiceEmailDeliveryError.js';
 import { ApprovedInvoiceEmailDeliveryOutcomeUnknownError } from './approvedInvoiceEmailDeliveryOutcomeUnknownError.js';
-import { InvoiceSmtpTestAttemptError } from './invoiceSmtpTestAttemptError.js';
-import { createInvoiceSmtpTestRequestFingerprint } from './invoiceSmtpTestRequestFingerprint.js';
+import { InvoiceEmailSendAttemptError } from './invoiceEmailSendAttemptError.js';
+import { createInvoiceEmailSendRequestFingerprint } from './invoiceEmailSendRequestFingerprint.js';
 import {
   sendApprovedInvoiceEmailSmtpTest,
   type SendApprovedInvoiceEmailSmtpTestInput,
@@ -20,8 +20,8 @@ import type {
   InvoiceDeliveryEventRepository,
 } from '../ports/invoiceDeliveryEventRepository.js';
 import type { InvoiceEmailSettingsReader } from '../ports/invoiceEmailSettingsReader.js';
-import type { InvoiceSmtpTestAttemptStore } from '../ports/invoiceSmtpTestAttemptStore.js';
-import { InMemoryInvoiceSmtpTestAttemptStore } from '../infrastructure/inMemoryInvoiceSmtpTestAttemptStore.js';
+import type { InvoiceEmailSendAttemptStore } from '../ports/invoiceEmailSendAttemptStore.js';
+import { InMemoryInvoiceEmailSendAttemptStore } from '../infrastructure/inMemoryInvoiceEmailSendAttemptStore.js';
 import {
   InvoiceSmtpTestDeliveryError,
   type InvoiceSmtpTestDeliveryProvider,
@@ -196,7 +196,7 @@ describe('sendApprovedInvoiceEmailSmtpTest', () => {
   });
 
   it('allows only one provider call for concurrent requests with the same attempt', async () => {
-    const attemptStore = new InMemoryInvoiceSmtpTestAttemptStore();
+    const attemptStore = new InMemoryInvoiceEmailSendAttemptStore();
     let releaseProvider: (() => void) | undefined;
     const sendTestEmail = vi.fn(
       () =>
@@ -220,16 +220,17 @@ describe('sendApprovedInvoiceEmailSmtpTest', () => {
       body: input.body,
       cc: input.cc ?? '',
       subject: input.subject,
-      testRecipient: 'owner-test@example.fi',
+      recipient: 'owner-test@example.fi',
       to: input.to,
     };
     const preparation = attemptStore.prepare({
       actorId: input.actorContext.actorId,
       companyId: input.actorContext.companyId,
       invoiceId: input.invoiceId,
+      mode: 'smtpTest',
       provider: 'dnaSmtp',
-      requestFingerprint: createInvoiceSmtpTestRequestFingerprint(emailFields),
-      testRecipient: emailFields.testRecipient,
+      recipient: emailFields.recipient,
+      requestFingerprint: createInvoiceEmailSendRequestFingerprint(emailFields),
     });
     const preparedInput = {
       ...input,
@@ -249,7 +250,7 @@ describe('sendApprovedInvoiceEmailSmtpTest', () => {
 
     await expect(
       sendApprovedInvoiceEmailSmtpTest(preparedInput, dependencies),
-    ).rejects.toBeInstanceOf(InvoiceSmtpTestAttemptError);
+    ).rejects.toBeInstanceOf(InvoiceEmailSendAttemptError);
     expect(sendTestEmail).toHaveBeenCalledOnce();
 
     releaseProvider?.();
@@ -261,7 +262,7 @@ describe('sendApprovedInvoiceEmailSmtpTest', () => {
 });
 
 function createDependencies(options: {
-  attemptStore?: InvoiceSmtpTestAttemptStore;
+  attemptStore?: InvoiceEmailSendAttemptStore;
   pdfContent?: Buffer;
   repository?: FakeInvoiceDeliveryEventRepository;
   sendTestEmail?: InvoiceSmtpTestDeliveryProvider['sendTestEmail'];
@@ -282,7 +283,7 @@ function createDependencies(options: {
   const invoiceSmtpTestDeliveryProvider: InvoiceSmtpTestDeliveryProvider = {
     sendTestEmail,
   };
-  const invoiceSmtpTestAttemptStore: InvoiceSmtpTestAttemptStore =
+  const invoiceEmailSendAttemptStore: InvoiceEmailSendAttemptStore =
     options.attemptStore ?? {
       acquire: vi.fn(),
       complete: vi.fn(),
@@ -300,7 +301,7 @@ function createDependencies(options: {
     })),
     invoiceDeliveryEventRepository: repository,
     invoiceEmailSettingsReader,
-    invoiceSmtpTestAttemptStore,
+    invoiceEmailSendAttemptStore,
     invoiceSmtpTestDeliveryProvider,
   };
 }

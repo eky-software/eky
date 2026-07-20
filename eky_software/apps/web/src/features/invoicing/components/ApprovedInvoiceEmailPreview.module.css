@@ -64,6 +64,18 @@
   width: 100%;
 }
 
+.fieldControl {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.fieldError {
+  color: var(--color-danger);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
 .fields textarea {
   min-height: 360px;
   resize: vertical;
@@ -100,6 +112,18 @@
 
 .smtpTestRecipient {
   overflow-wrap: anywhere;
+}
+
+.testTools {
+  border-top: 1px solid var(--color-border);
+  padding-top: 10px;
+}
+
+.testTools summary {
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-weight: 800;
+  margin-bottom: 10px;
 }
 
 @media (max-width: 720px) {

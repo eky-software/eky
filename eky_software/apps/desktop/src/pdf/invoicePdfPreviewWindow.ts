@@ -18,6 +18,7 @@ interface InvoicePdfPreviewWindowControllerOptions {
   ): BrowserWindow;
   ipcMain: Pick<IpcMain, 'handle' | 'removeHandler'>;
   mainWindow: BrowserWindow;
+  restoreMainWindowFocus(): void;
   showSafeError(): void;
   verifyPdfAvailable(url: string): Promise<boolean>;
 }
@@ -144,6 +145,8 @@ export function createInvoicePdfPreviewWindowController(
       if (activePreview?.window === previewWindow) {
         activePreview = undefined;
       }
+
+      options.restoreMainWindowFocus();
     });
 
     await ready;

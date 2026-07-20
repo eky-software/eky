@@ -5,6 +5,7 @@ import {
   EkyApiError,
   type ApprovedInvoiceEmailDryRunSendInput,
   type ApprovedInvoiceEmailDryRunSendResult,
+  type ApprovedInvoiceEmailSmtpSendResult,
   type ApprovedInvoiceEmailSmtpTestSendResult,
   type ApprovedInvoiceEmailPreview,
   type ApprovedInvoiceSummary,
@@ -325,6 +326,92 @@ describe('approved invoices api client', () => {
       body: 'Hei, liitteenä lasku.',
       cc: 'copy@example.fi',
       subject: 'Lasku 20260001',
+      to: 'customer@example.fi',
+    });
+  });
+
+  it('prepares and sends a customer SMTP delivery through exact endpoints', async () => {
+    const preparation = {
+      attachment: { fileName: 'invoice.pdf', sizeBytes: 2048 },
+      attemptId: 'attempt-1',
+      authorizationToken: 'one-time-authorization',
+      cc: 'copy@example.fi',
+      expiresAt: '2026-07-17T22:01:00.000Z',
+      invoiceId: 'invoice-1',
+      invoiceNumber: '20260001',
+      recipient: 'customer@example.fi',
+      resend: false,
+      subject: 'Lasku 20260001',
+    };
+    const prepareRequests = createRequestLog();
+    const prepareClient = createTestClient(prepareRequests, { preparation });
+    const emailFields = {
+      body: 'Hei, liitteenä lasku.',
+      cc: 'copy@example.fi',
+      subject: 'Lasku 20260001',
+      to: 'customer@example.fi',
+    };
+
+    await expect(
+      prepareClient.prepareApprovedInvoiceEmailSmtp('invoice/1', emailFields),
+    ).resolves.toEqual(preparation);
+    expect(prepareRequests[0]?.input).toBe(
+      '/invoices/invoice%2F1/email/smtp/prepare',
+    );
+    expect(JSON.parse(String(prepareRequests[0]?.init?.body))).toEqual(
+      emailFields,
+    );
+
+    const delivery = createTestApprovedInvoiceEmailSmtpSendResult();
+    const sendRequests = createRequestLog();
+    const sendClient = createTestClient(sendRequests, { delivery });
+
+    await expect(
+      sendClient.sendApprovedInvoiceEmailSmtp('invoice/1', {
+        ...emailFields,
+        attemptId: preparation.attemptId,
+        authorizationToken: preparation.authorizationToken,
+      }),
+    ).resolves.toEqual(delivery);
+    expect(sendRequests[0]?.input).toBe(
+      '/invoices/invoice%2F1/email/smtp/send',
+    );
+    expect(JSON.parse(String(sendRequests[0]?.init?.body))).toEqual({
+      ...emailFields,
+      attemptId: 'attempt-1',
+      authorizationToken: 'one-time-authorization',
+    });
+  });
+
+  it('strips server-owned fields from customer SMTP requests', async () => {
+    const requests = createRequestLog();
+    const client = createTestClient(requests, {
+      preparation: {
+        attachment: { fileName: 'invoice.pdf', sizeBytes: 2048 },
+        attemptId: 'attempt-1',
+        authorizationToken: 'one-time-authorization',
+        cc: '',
+        expiresAt: '2026-07-17T22:01:00.000Z',
+        invoiceId: 'invoice-1',
+        invoiceNumber: '20260001',
+        recipient: 'customer@example.fi',
+        resend: false,
+        subject: 'Lasku 20260001',
+      },
+    });
+
+    await client.prepareApprovedInvoiceEmailSmtp('invoice-1', {
+      body: 'Hei',
+      companyId: 'other-company',
+      invoiceId: 'other-invoice',
+      status: 'sent',
+      subject: 'Lasku',
+      to: 'customer@example.fi',
+    } as never);
+
+    expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({
+      body: 'Hei',
+      subject: 'Lasku',
       to: 'customer@example.fi',
     });
   });
@@ -699,6 +786,19 @@ function createTestApprovedInvoiceEmailSmtpTestSendResult(): ApprovedInvoiceEmai
     provider: 'smtp',
     providerMessageId: '<synthetic@example.test>',
     testMode: true,
+  };
+}
+
+function createTestApprovedInvoiceEmailSmtpSendResult(): ApprovedInvoiceEmailSmtpSendResult {
+  return {
+    deliveredCc: 'copy@example.fi',
+    deliveredTo: 'customer@example.fi',
+    deliveryEventId: 'delivery-event-1',
+    invoice: createTestApprovedInvoiceView({ status: 'sent' }),
+    provider: 'smtp',
+    providerMessageId: '<message@example.fi>',
+    resend: false,
+    testMode: false,
   };
 }
 

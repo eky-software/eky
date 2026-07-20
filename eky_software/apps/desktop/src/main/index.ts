@@ -12,15 +12,19 @@ import {
   protocol,
   safeStorage,
   session,
+  type MessageBoxOptions,
 } from 'electron';
 
 import { registerApplicationProtocol } from './applicationProtocol.js';
+import { createDeleteDraftSmokeFixture } from './applicationProtocolSmoke.js';
 import { localRuntimeSessionHeaderName } from './protocolPolicy.js';
 import type { SmtpTestPreparationConfirmation } from './smtpTestConfirmation.js';
+import type { InvoiceEmailPreparationConfirmation } from './invoiceEmailConfirmation.js';
 import {
   createSecureWindowOptions,
   isAllowedApplicationNavigation,
 } from './windowSecurity.js';
+import { restoreWindowInputFocus } from './windowInputFocus.js';
 import {
   startDesktopBackend,
   type DesktopBackendHandle,
@@ -81,6 +85,7 @@ if (!hasSingleInstanceLock) {
 }
 
 let backendHandle: DesktopBackendHandle | undefined;
+let applicationWindow: BrowserWindow | undefined;
 let invoicePdfPreviewController:
   | InvoicePdfPreviewWindowController
   | undefined;
@@ -157,6 +162,15 @@ function createMainWindow(showWhenReady = true): BrowserWindow {
   return window;
 }
 
+function registerApplicationWindow(window: BrowserWindow): void {
+  applicationWindow = window;
+  window.once('closed', () => {
+    if (applicationWindow === window) {
+      applicationWindow = undefined;
+    }
+  });
+}
+
 async function loadApplicationWindow(window: BrowserWindow): Promise<void> {
   try {
     await window.loadURL('eky://app/index.html');
@@ -168,6 +182,7 @@ async function loadApplicationWindow(window: BrowserWindow): Promise<void> {
 async function runPackagedSmokeCheck(
   backend: DesktopBackendHandle,
   databaseFilePath: string,
+  mainWindow: BrowserWindow,
   runtimeSessionSecret: string,
   secretFilePath: string,
   smokePdfPath: string,
@@ -189,6 +204,13 @@ async function runPackagedSmokeCheck(
   }
 
   await assertPackagedDesktopBridge(pdfPreviewController);
+
+  const deleteDraftId = await createDeleteDraftSmokeFixture({
+    backendPort: backend.port,
+    runtimeSessionSecret,
+  });
+
+  await assertPackagedDeleteTransport(mainWindow, deleteDraftId);
 
   await verifyCompanyEmailSecretHttpLifecycle(
     backend.port,
@@ -222,6 +244,48 @@ async function runPackagedSmokeCheck(
 
       throw error;
     }
+  }
+}
+
+async function assertPackagedDeleteTransport(
+  mainWindow: BrowserWindow,
+  invoiceDraftId: string,
+): Promise<void> {
+  const result: unknown = await mainWindow.webContents.executeJavaScript(
+    `fetch(${JSON.stringify(`/invoice-drafts/${invoiceDraftId}`)}, { method: 'DELETE' })
+      .then(async (response) => ({
+        body: await response.text(),
+        status: response.status,
+      }))`,
+    true,
+  );
+
+  if (
+    typeof result !== 'object' ||
+    result === null ||
+    !('body' in result) ||
+    typeof result.body !== 'string' ||
+    !('status' in result) ||
+    result.status !== 200
+  ) {
+    throw new Error('DESKTOP_SMOKE_DELETE_TRANSPORT_FAILED');
+  }
+
+  let body: unknown;
+
+  try {
+    body = JSON.parse(result.body) as unknown;
+  } catch {
+    throw new Error('DESKTOP_SMOKE_DELETE_TRANSPORT_FAILED');
+  }
+
+  if (
+    typeof body !== 'object' ||
+    body === null ||
+    !('deleted' in body) ||
+    body.deleted !== true
+  ) {
+    throw new Error('DESKTOP_SMOKE_DELETE_TRANSPORT_FAILED');
   }
 }
 
@@ -374,6 +438,7 @@ async function startDesktopRuntime(): Promise<void> {
 
   registerApplicationProtocol({
     backendOrigin: `http://127.0.0.1:${backendHandle.port}`,
+    confirmInvoiceEmailPreparation,
     confirmSmtpTestPreparation,
     runtimeSessionSecret,
     webRoot: join(app.getAppPath(), 'web'),
@@ -386,6 +451,7 @@ async function startDesktopRuntime(): Promise<void> {
 
   if (smokeMode) {
     const smokeWindow = createMainWindow(false);
+    registerApplicationWindow(smokeWindow);
 
     invoicePdfPreviewController = createInvoicePdfPreviewController(smokeWindow);
 
@@ -393,6 +459,7 @@ async function startDesktopRuntime(): Promise<void> {
     await runPackagedSmokeCheck(
       backendHandle,
       databaseFilePath,
+      smokeWindow,
       runtimeSessionSecret,
       secretFilePath,
       smokePdfPath,
@@ -410,6 +477,7 @@ async function startDesktopRuntime(): Promise<void> {
   }
 
   const mainWindow = createMainWindow();
+  registerApplicationWindow(mainWindow);
 
   invoicePdfPreviewController = createInvoicePdfPreviewController(mainWindow);
   void loadApplicationWindow(mainWindow).catch(() => {
@@ -428,8 +496,13 @@ function createInvoicePdfPreviewController(
     createWindow: (options) => new BrowserWindow(options),
     ipcMain,
     mainWindow,
+    restoreMainWindowFocus() {
+      if (!smokeMode) {
+        restoreWindowInputFocus(mainWindow);
+      }
+    },
     showSafeError() {
-      dialog.showErrorBox(
+      showApplicationError(
         'Laskua ei voitu avata',
         'Laskun PDF-esikatselua ei voitu avata turvallisesti.',
       );
@@ -448,10 +521,35 @@ function createInvoicePdfPreviewController(
   });
 }
 
+async function confirmInvoiceEmailPreparation(
+  preparation: InvoiceEmailPreparationConfirmation,
+): Promise<boolean> {
+  const response = await showApplicationMessageBox({
+    buttons: [preparation.resend ? 'Lähetä uudelleen' : 'Lähetä lasku', 'Peruuta'],
+    cancelId: 1,
+    defaultId: 1,
+    detail: [
+      `Lasku: ${preparation.invoiceNumber}`,
+      `Vastaanottaja: ${preparation.recipient}`,
+      ...(preparation.cc === '' ? [] : [`Kopio: ${preparation.cc}`]),
+      `Otsikko: ${preparation.subject}`,
+      `Liite: ${preparation.attachmentFileName}`,
+    ].join('\n'),
+    message: preparation.resend
+      ? 'Vahvista laskun uudelleenlähetys'
+      : 'Vahvista laskun lähetys',
+    noLink: true,
+    title: 'Eky - laskun sähköposti',
+    type: 'question',
+  });
+
+  return response === 0;
+}
+
 async function confirmSmtpTestPreparation(
   preparation: SmtpTestPreparationConfirmation,
 ): Promise<boolean> {
-  const result = await dialog.showMessageBox({
+  const response = await showApplicationMessageBox({
     buttons: ['Lähetä testiviesti', 'Peruuta'],
     cancelId: 1,
     defaultId: 1,
@@ -466,8 +564,55 @@ async function confirmSmtpTestPreparation(
     type: 'question',
   });
 
-  return result.response === 0;
+  return response === 0;
 }
+
+async function showApplicationMessageBox(
+  options: MessageBoxOptions,
+): Promise<number> {
+  const owner = applicationWindow;
+
+  try {
+    const result =
+      owner === undefined || owner.isDestroyed()
+        ? await dialog.showMessageBox(options)
+        : await dialog.showMessageBox(owner, options);
+
+    return result.response;
+  } finally {
+    restoreWindowInputFocus(owner);
+  }
+}
+
+function showApplicationError(title: string, message: string): void {
+  const owner = applicationWindow;
+
+  if (owner === undefined || owner.isDestroyed()) {
+    dialog.showErrorBox(title, message);
+    return;
+  }
+
+  void dialog
+    .showMessageBox(owner, {
+      buttons: ['Sulje'],
+      cancelId: 0,
+      defaultId: 0,
+      message,
+      noLink: true,
+      title,
+      type: 'error',
+    })
+    .catch(() => undefined)
+    .finally(() => restoreWindowInputFocus(owner));
+}
+
+app.on('activate', () => {
+  restoreWindowInputFocus(applicationWindow);
+});
+
+app.on('second-instance', () => {
+  restoreWindowInputFocus(applicationWindow);
+});
 
 app.on('before-quit', (event) => {
   if (backendHandle === undefined || shutdownStarted) {

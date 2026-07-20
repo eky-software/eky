@@ -97,5 +97,10 @@ try {
     });
   });
 } finally {
-  await rm(smokeRootDirectory, { force: true, recursive: true });
+  await rm(smokeRootDirectory, {
+    force: true,
+    maxRetries: 20,
+    recursive: true,
+    retryDelay: 100,
+  });
 }

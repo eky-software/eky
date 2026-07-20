@@ -26,7 +26,7 @@ sähköpostitoimituksen turvallisuuslinja, `sent`-tila, laskun kopiointi,
 peruutus ja hyvityslaskut on kuvattu dokumentissa
 `docs/architecture/invoice-delivery-plan.md`.
 
-Laskun toimitustapahtumien, lähetyslokin, delivery event -mallin ja tulevan
+Laskun toimitustapahtumien, lähetyslokin, delivery event -mallin ja
 send-polun auditointiperiaatteet on kuvattu dokumentissa
 `docs/architecture/invoice-delivery-events-plan.md`.
 
@@ -36,9 +36,16 @@ salaisuuksien hallinta on kuvattu dokumentissa
 
 Nykyinen hallittu DNA SMTP -testipolku käyttää prepare- ja send-vaiheita,
 kertakäyttöistä sidottua valtuutusta, Electron main processin vahvistusta,
-pakotettua testivastaanottajaa ja delivery event -auditointia. Se ei ole
-asiakaslähetys eikä muuta laskua `sent`-tilaan. Selainkehityksessä käytetään
-vain paikallista dry-run-polkuja ilman SMTP-salaisuutta tai DNA-verkkoyhteyttä.
+pakotettua testivastaanottajaa ja delivery event -auditointia. Testipolku ei
+muuta laskua `sent`-tilaan.
+
+Asiakaslähetys käyttää erillistä prepare/send-polkuansa. Delivery event
+kirjataan ennen SMTP-kutsua. Vain varmasti onnistunut SMTP-toimitus viimeistelee
+eventin ja `approved` -> `sent` -tilasiirtymän samassa transaktiossa.
+Epäonnistunut tai epäselvä toimitus jättää laskun tilan ennalleen.
+Uudelleenlähetys luo uuden eventin mutta ei muuta `sent`-laskun identiteettiä
+tai tilaa. Selainkehityksessä käytetään vain dry-run-polkuja ilman
+SMTP-salaisuutta tai DNA-verkkoyhteyttä.
 
 ALV-erikoiskäsittelyjen, ALV-kantojen tuotantopolun, viivästyskoron ja
 lähetettyjen laskujen korjausperiaatteiden muistilista on kuvattu dokumentissa
@@ -60,9 +67,9 @@ lähetettyjen laskujen korjausperiaatteiden muistilista on kuvattu dokumentissa
 - yrityskohtaisen tilikauden laskutuskäyttöön
 - laskulla käytetyt hinta- ja osapuolitietojen snapshotit
 - laskutuksen audit-tapahtumat
-- laskun toimitustapahtumat ja delivery event -kirjaukset myöhemmin
+- laskun toimitustapahtumat ja delivery event -kirjaukset
 - hyvityslaskut myöhemmin
-- laskun sähköpostitoimituksen liiketoimintasäännöt myöhemmin
+- laskun sähköpostitoimituksen liiketoimintasäännöt
 
 ## Moduuli ei omista
 
@@ -352,6 +359,12 @@ Ehdotus tehdään lomakeriville enintään kerran. Se ei saa ylikirjoittaa käsi
 muutettua tai tallennetusta luonnoksesta ladattua yksikköhintaa. Tämä on
 web-UI:n käyttömukavuustoiminto, ei Invoicing-domainin piilotettu laskentasääntö.
 Backend vastaanottaa ja validoi aina eksplisiittisen `unitPriceCents`-arvon.
+Jos käyttäjä vaihtaa asiakkaan ennen hyväksyntää, web päivittää uuden asiakkaan
+tuntihintaan vain sellaiset pikavalintarivit, joiden hinta on edelleen ohjelman
+automaattisesti ehdottama. Käsin muutettu tai tallennetusta luonnoksesta ladattu
+hinta säilyy. Jos uudelle asiakkaalle tai yritykselle ei löydy soveltuvaa hintaa,
+vanha automaattinen hinta tyhjennetään ja käyttäjän pitää antaa hinta ennen
+tallennusta.
 Laskurivin `unit`-arvo voi olla vakiovalinta kuten `h`, `kpl`, `pv`, `km`,
 `erä` tai `pak`, tai käyttäjän antama lyhyt oma yksikkö. Oma yksikkö on silti
 validoitu rajattu arvo, ei vapaa pitkä kuvausteksti.

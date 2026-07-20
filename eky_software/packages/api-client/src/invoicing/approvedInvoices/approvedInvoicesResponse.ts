@@ -9,6 +9,8 @@ import type {
   ApprovedInvoiceEmailDryRunSendResult,
   ApprovedInvoiceEmailSmtpTestSendResult,
   ApprovedInvoiceEmailSmtpTestPreparation,
+  ApprovedInvoiceEmailSmtpPreparation,
+  ApprovedInvoiceEmailSmtpSendResult,
   ApprovedInvoiceNumberingMode,
   ApprovedInvoicePriceInputMode,
   ApprovedInvoiceReferenceNumberType,
@@ -137,6 +139,61 @@ export function readApprovedInvoiceEmailSmtpTestPreparationResponse(
     invoiceId: readString(preparation, 'invoiceId'),
     subject: readString(preparation, 'subject'),
     testRecipient: readString(preparation, 'testRecipient'),
+  };
+}
+
+export function readApprovedInvoiceEmailSmtpPreparationResponse(
+  responseBody: unknown,
+): ApprovedInvoiceEmailSmtpPreparation {
+  if (!isRecord(responseBody) || !isRecord(responseBody.preparation)) {
+    throw invalidApprovedInvoiceResponse(responseBody);
+  }
+
+  const preparation = responseBody.preparation;
+
+  if (!isRecord(preparation.attachment)) {
+    throw invalidApprovedInvoiceResponse(responseBody);
+  }
+
+  return {
+    attachment: {
+      fileName: readString(preparation.attachment, 'fileName'),
+      sizeBytes: readSafeInteger(preparation.attachment, 'sizeBytes'),
+    },
+    attemptId: readString(preparation, 'attemptId'),
+    authorizationToken: readString(preparation, 'authorizationToken'),
+    cc: readString(preparation, 'cc'),
+    expiresAt: readString(preparation, 'expiresAt'),
+    invoiceId: readString(preparation, 'invoiceId'),
+    invoiceNumber: readString(preparation, 'invoiceNumber'),
+    recipient: readString(preparation, 'recipient'),
+    resend: readBoolean(preparation, 'resend'),
+    subject: readString(preparation, 'subject'),
+  };
+}
+
+export function readApprovedInvoiceEmailSmtpSendResponse(
+  responseBody: unknown,
+): ApprovedInvoiceEmailSmtpSendResult {
+  if (!isRecord(responseBody) || !isRecord(responseBody.delivery)) {
+    throw invalidApprovedInvoiceResponse(responseBody);
+  }
+
+  const delivery = responseBody.delivery;
+
+  if (delivery.provider !== 'smtp' || delivery.testMode !== false) {
+    throw invalidApprovedInvoiceResponse(responseBody);
+  }
+
+  return {
+    deliveredCc: readString(delivery, 'deliveredCc'),
+    deliveredTo: readString(delivery, 'deliveredTo'),
+    deliveryEventId: readString(delivery, 'deliveryEventId'),
+    invoice: parseApprovedInvoiceView(delivery.invoice),
+    provider: 'smtp',
+    providerMessageId: readNullableString(delivery, 'providerMessageId'),
+    resend: readBoolean(delivery, 'resend'),
+    testMode: false,
   };
 }
 
@@ -538,6 +595,16 @@ function readString(value: Record<string, unknown>, fieldName: string): string {
   const fieldValue = value[fieldName];
 
   if (typeof fieldValue === 'string') {
+    return fieldValue;
+  }
+
+  throw invalidApprovedInvoiceResponse(value);
+}
+
+function readBoolean(value: Record<string, unknown>, fieldName: string): boolean {
+  const fieldValue = value[fieldName];
+
+  if (typeof fieldValue === 'boolean') {
     return fieldValue;
   }
 

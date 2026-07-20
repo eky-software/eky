@@ -1,10 +1,14 @@
 import type { InvoiceDraft, InvoiceLineDiscount } from '@eky/api-client';
 
-import type { InvoiceRowDiscountType } from './invoiceRowFormState.js';
+import type {
+  InvoiceRowDiscountType,
+  InvoiceRowForm,
+} from './invoiceRowFormState.js';
 import type { NewInvoiceFormState } from './newInvoiceFormState.js';
 
 export function toNewInvoiceFormStateFromDraft(
   draft: InvoiceDraft,
+  previousLines: InvoiceRowForm[] = [],
 ): NewInvoiceFormState {
   return {
     billingRecipientCustomerId: draft.billingRecipientCustomerId ?? '',
@@ -20,7 +24,8 @@ export function toNewInvoiceFormStateFromDraft(
       discountType: getDiscountType(line.discount),
       discountValue: formatDiscountValue(line.discount),
       id: `invoice-row-${index + 1}`,
-      hourlyRateAutofillState: 'blocked',
+      hourlyRateAutofillState:
+        previousLines[index]?.hourlyRateAutofillState ?? 'blocked',
       quantity: formatScaledInput(line.quantityHundredths),
       unit: line.unit,
       unitPrice: formatScaledInput(line.unitPriceCents),

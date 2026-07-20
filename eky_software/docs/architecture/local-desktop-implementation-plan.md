@@ -9,9 +9,11 @@ on toteutettu 14.7.2026. Electron `safeStorage` -secret broker on toteutettu
 15.7.2026 synteettisellä paketointismokella. Desktop-sessionilla suojattu
 salaisuuden HTTP-, API-client- ja UI-lifecycle sekä koko polun Windows-smoke on
 toteutettu 15.7.2026. Rajattu DNA SMTP -testiprovider ja sen prepare/send-
-turvallisuuspolku on toteutettu 16.7.2026, mutta oikean tilin verkkoyhteystestiä
-tai asiakkaille tarkoitettua tuotantolähetystä ei ole tehty. Toteutus ei vielä
-sisällä installeria, code signingia tai automaattipäivitystä.
+turvallisuuspolku on toteutettu 16.7.2026, ja oikean tilin yhteys on varmennettu
+projektin omistajan testivastaanottajalla. Asiakaslähetyksen ensimmäinen
+prepare/send-polku ja `sent`-tilasiirtymä on toteutettu 17.7.2026. Toteutus ei
+vielä sisällä tuotantojulkaisun release security gatea, installeria, code
+signingia tai automaattipäivitystä.
 
 Salatun secret-tiedoston kirjoitus ja palautuminen on kovennettu 15.7.2026
 deterministisillä next- ja backup-sloteilla. Paketoitu Windows-smoke varmistaa
@@ -268,6 +270,17 @@ Main varmistaa custom protocol -polun kautta ennen ikkunan luontia, että vastau
 on onnistunut `application/pdf`-vastaus. Puuttuva PDF tai latausvirhe sulkee
 ikkunan ja näyttää vain turvallisen yleisvirheen.
 
+Nykyinen local-MVP tekee saatavuustarkistuksen ja BrowserWindowin varsinaisen
+PDF-latauksen erillisinä pyyntöinä. Pienten paikallisten laskujen kohdalla tämä
+on hyväksytty ratkaisu. Myöhemmin voidaan arvioida storage-adapterin
+`stat`/`exists`-tarkistus tai suora lataus turvallisella `did-fail-load`-
+käsittelyllä. Samalla lisätään avausjärjestysnumero tai request token, jotta
+hyvin nopeat eri laskujen avauspyynnöt eivät voi valmistua väärässä
+järjestyksessä. Näitä ei muuteta kesken sähköpostin toimitusputken.
+
+Chromiumin PDF-esikatselun oma tulostustoiminto riittää local-MVP:n
+tulostuspoluksi. Erillistä suoraa tulostinohjausta ei lisätä tässä vaiheessa.
+
 Selainkehitys säilyttää nykyisen selain-PDF-polun. App-kerros injektoi
 desktop-esikatselun callbackina Invoicing-featurelle, joten feature ei tunne
 Electronin IPC:tä tai globaalia preload-objektia.
@@ -407,10 +420,15 @@ korjausta.
     polun paketoitu Windows-smoke on toteutettu synteettisellä arvolla.
 12. Riippuvuudeton SMTP/MIME-kuljetus, kiinteä DNA-testiprofiili,
     backend-only secret reader, prepare/send-kertakäyttövaltuutus ja Electron
-    main processin vahvistus on toteutettu ilman oikeaa DNA-verkkotestiä.
+    main processin vahvistus on toteutettu ja oikea DNA-yhteys on varmennettu
+    pakotetulla testivastaanottajalla.
 13. Hyväksytyn laskun PDF-esikatselu käyttää main-prosessin muodostamaa
     `eky://app`-osoitetta, rajattua preload/IPC-toimintoa ja yhtä suojattua
     BrowserWindow-instanssia ilman uutta PDF-riippuvuutta.
+14. Asiakaslähetyksen prepare/send-polku käyttää main processin vahvistusta,
+    current PDF:ää, delivery event -auditointia ja atomista
+    `approved` -> `sent` -tilasiirtymää. Oikean asiakasdatan käyttö odottaa
+    erillistä release security gatea.
 
 ## Liittyvät Dokumentit
 

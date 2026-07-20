@@ -52,7 +52,7 @@ export function createDummyInvoiceForm(
         description: companySettings?.hourlyRateShortcut.trim() || 'työ',
         discountType: 'none',
         discountValue: '',
-        hourlyRateAutofillState: 'blocked',
+        hourlyRateAutofillState: 'applied',
         quantity: '1,00',
         unit: 'h',
         unitPrice: centsToEuroInput(hourlyRateCents),

@@ -6,13 +6,110 @@ import type {
 import type { InvoiceDeliveryEvent } from '../domain/invoiceDeliveryEvent.js';
 import type { InvoiceDeliveryEventRepository } from '../ports/invoiceDeliveryEventRepository.js';
 import type { CompleteInvoiceDeliveryEventInput } from '../ports/invoiceDeliveryEventRepository.js';
+import type {
+  CompleteSuccessfulInvoiceEmailDeliveryInput,
+  CompleteSuccessfulInvoiceEmailDeliveryResult,
+  InvoiceEmailDeliveryFinalizer,
+} from '../ports/invoiceEmailDeliveryFinalizer.js';
 
 type InvoiceDeliveryEventInsertParameters = NewInvoiceDeliveryEventRow;
 
 export class SqliteInvoiceDeliveryEventRepository
-  implements InvoiceDeliveryEventRepository
+  implements InvoiceDeliveryEventRepository, InvoiceEmailDeliveryFinalizer
 {
   constructor(private readonly database: DatabaseConnection) {}
+
+  async completeSuccessfulEmailDelivery(
+    input: CompleteSuccessfulInvoiceEmailDeliveryInput,
+  ): Promise<CompleteSuccessfulInvoiceEmailDeliveryResult> {
+    const completeTransaction = this.database.transaction(() => {
+      const invoice = this.database
+        .prepare<
+          { company_id: string; id: string },
+          { status: 'approved' | 'sent' }
+        >(
+          `
+            SELECT status
+            FROM invoices
+            WHERE
+              company_id = @company_id
+              AND id = @id
+              AND status IN ('approved', 'sent')
+          `,
+        )
+        .get({ company_id: input.companyId, id: input.invoiceId });
+
+      if (invoice === undefined) {
+        throw new Error('Approved invoice could not be finalized after delivery.');
+      }
+
+      const eventResult = this.database
+        .prepare<{
+          company_id: string;
+          id: string;
+          invoice_id: string;
+          provider_message_id: string | null;
+        }>(
+          `
+            UPDATE invoice_delivery_events
+            SET
+              status = 'succeeded',
+              provider_message_id = @provider_message_id,
+              safe_error_message = NULL,
+              technical_error_code = NULL
+            WHERE
+              id = @id
+              AND company_id = @company_id
+              AND invoice_id = @invoice_id
+              AND status = 'attempted'
+          `,
+        )
+        .run({
+          company_id: input.companyId,
+          id: input.eventId,
+          invoice_id: input.invoiceId,
+          provider_message_id: input.providerMessageId,
+        });
+
+      if (eventResult.changes !== 1) {
+        throw new Error('Invoice delivery event could not be completed.');
+      }
+
+      if (invoice.status === 'approved') {
+        const invoiceResult = this.database
+          .prepare<{
+            company_id: string;
+            id: string;
+            sent_at: string;
+          }>(
+            `
+              UPDATE invoices
+              SET status = 'sent', updated_at = @sent_at
+              WHERE
+                company_id = @company_id
+                AND id = @id
+                AND status = 'approved'
+            `,
+          )
+          .run({
+            company_id: input.companyId,
+            id: input.invoiceId,
+            sent_at: input.sentAt,
+          });
+
+        if (invoiceResult.changes !== 1) {
+          throw new Error('Approved invoice could not be marked sent.');
+        }
+      }
+
+      return {
+        invoiceStatus: 'sent' as const,
+        wasResend: invoice.status === 'sent',
+      };
+    });
+
+    return completeTransaction();
+  }
 
   async completeDeliveryEvent(
     input: CompleteInvoiceDeliveryEventInput,

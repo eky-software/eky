@@ -1,24 +1,24 @@
 import { createHash } from 'node:crypto';
 
-export interface InvoiceSmtpTestRequestFingerprintInput {
+export interface InvoiceEmailSendRequestFingerprintInput {
   body: string;
   cc: string;
+  recipient: string;
   subject: string;
-  testRecipient: string;
   to: string;
 }
 
-export function createInvoiceSmtpTestRequestFingerprint(
-  input: InvoiceSmtpTestRequestFingerprintInput,
+export function createInvoiceEmailSendRequestFingerprint(
+  input: InvoiceEmailSendRequestFingerprintInput,
 ): string {
   return createHash('sha256')
     .update(
       JSON.stringify([
+        input.recipient,
         input.to,
         input.cc,
         input.subject,
         input.body,
-        input.testRecipient,
       ]),
       'utf8',
     )

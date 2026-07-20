@@ -7,7 +7,7 @@ import { prepareApprovedInvoiceEmailSmtpTest } from './prepareApprovedInvoiceEma
 import type { ApprovedInvoiceSummary } from '../domain/approvedInvoiceSummary.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
-import type { InvoiceSmtpTestAttemptStore } from '../ports/invoiceSmtpTestAttemptStore.js';
+import type { InvoiceEmailSendAttemptStore } from '../ports/invoiceEmailSendAttemptStore.js';
 
 class FakeApprovedInvoiceReader implements ApprovedInvoiceReader {
   async getApprovedInvoiceById(): Promise<ApprovedInvoiceView> {
@@ -21,7 +21,7 @@ class FakeApprovedInvoiceReader implements ApprovedInvoiceReader {
 
 describe('prepareApprovedInvoiceEmailSmtpTest', () => {
   it('binds a short-lived attempt to the trusted test recipient and PDF', async () => {
-    const attemptStore: InvoiceSmtpTestAttemptStore = {
+    const attemptStore: InvoiceEmailSendAttemptStore = {
       acquire: vi.fn(),
       complete: vi.fn(),
       prepare: vi.fn(() => ({
@@ -48,15 +48,16 @@ describe('prepareApprovedInvoiceEmailSmtpTest', () => {
         actorId: 'user-1',
         companyId: 'company-1',
         invoiceId: 'invoice-1',
+        mode: 'smtpTest',
         provider: 'dnaSmtp',
+        recipient: 'owner-test@example.fi',
         requestFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
-        testRecipient: 'owner-test@example.fi',
       }),
     );
   });
 
   it('rejects a non-DNA profile before creating an authorization', async () => {
-    const attemptStore: InvoiceSmtpTestAttemptStore = {
+    const attemptStore: InvoiceEmailSendAttemptStore = {
       acquire: vi.fn(),
       complete: vi.fn(),
       prepare: vi.fn(() => {
@@ -95,7 +96,7 @@ describe('prepareApprovedInvoiceEmailSmtpTest', () => {
 });
 
 function createDependencies(options: {
-  attemptStore?: InvoiceSmtpTestAttemptStore;
+  attemptStore?: InvoiceEmailSendAttemptStore;
   provider?: 'dnaSmtp' | 'dryRun';
 } = {}) {
   return {
@@ -121,7 +122,7 @@ function createDependencies(options: {
         emailUsername: 'billing@example.fi',
       })),
     },
-    invoiceSmtpTestAttemptStore:
+    invoiceEmailSendAttemptStore:
       options.attemptStore ??
       ({
         acquire: vi.fn(),
@@ -131,7 +132,7 @@ function createDependencies(options: {
           authorizationToken: 'one-time-authorization',
           expiresAt: '2026-07-16T10:01:00.000Z',
         })),
-      } satisfies InvoiceSmtpTestAttemptStore),
+      } satisfies InvoiceEmailSendAttemptStore),
   };
 }
 

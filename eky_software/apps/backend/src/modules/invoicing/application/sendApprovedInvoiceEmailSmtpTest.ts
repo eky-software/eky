@@ -8,7 +8,7 @@ import { completeInvoiceDeliveryEvent } from './completeInvoiceDeliveryEvent.js'
 import {
   normalizeApprovedInvoiceEmailSendFields,
 } from './approvedInvoiceEmailSendValidation.js';
-import { createInvoiceSmtpTestRequestFingerprint } from './invoiceSmtpTestRequestFingerprint.js';
+import { createInvoiceEmailSendRequestFingerprint } from './invoiceEmailSendRequestFingerprint.js';
 import type {
   ApprovedInvoicePdfDocumentFile,
   GetApprovedInvoicePdfDocumentInput,
@@ -23,9 +23,9 @@ import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
 import type { InvoiceDeliveryEventRepository } from '../ports/invoiceDeliveryEventRepository.js';
 import type { InvoiceEmailSettingsReader } from '../ports/invoiceEmailSettingsReader.js';
 import type {
-  InvoiceSmtpTestAttemptOutcome,
-  InvoiceSmtpTestAttemptStore,
-} from '../ports/invoiceSmtpTestAttemptStore.js';
+  InvoiceEmailSendAttemptOutcome,
+  InvoiceEmailSendAttemptStore,
+} from '../ports/invoiceEmailSendAttemptStore.js';
 import {
   InvoiceSmtpTestDeliveryError,
   type InvoiceSmtpTestDeliveryProvider,
@@ -61,7 +61,7 @@ export interface SendApprovedInvoiceEmailSmtpTestDependencies {
   ): Promise<ApprovedInvoicePdfDocumentFile>;
   invoiceDeliveryEventRepository: InvoiceDeliveryEventRepository;
   invoiceEmailSettingsReader: InvoiceEmailSettingsReader;
-  invoiceSmtpTestAttemptStore: InvoiceSmtpTestAttemptStore;
+  invoiceEmailSendAttemptStore: InvoiceEmailSendAttemptStore;
   invoiceSmtpTestDeliveryProvider: InvoiceSmtpTestDeliveryProvider;
 }
 
@@ -107,21 +107,25 @@ export async function sendApprovedInvoiceEmailSmtpTest(
     subject: emailFields.subject,
     to: settings.emailTestRecipientOverride,
   }).to;
-  dependencies.invoiceSmtpTestAttemptStore.acquire({
+  dependencies.invoiceEmailSendAttemptStore.acquire({
     actorId: actorUserId,
     attemptId,
     authorizationToken: input.authorizationToken,
     companyId,
     invoiceId,
+    mode: 'smtpTest',
     provider: 'dnaSmtp',
-    requestFingerprint: createInvoiceSmtpTestRequestFingerprint({
-      ...emailFields,
-      testRecipient,
+    recipient: testRecipient,
+    requestFingerprint: createInvoiceEmailSendRequestFingerprint({
+      body: emailFields.body,
+      cc: emailFields.cc,
+      recipient: testRecipient,
+      subject: emailFields.subject,
+      to: emailFields.to,
     }),
-    testRecipient,
   });
 
-  let attemptOutcome: InvoiceSmtpTestAttemptOutcome = 'failed';
+  let attemptOutcome: InvoiceEmailSendAttemptOutcome = 'failed';
 
   try {
     const result = await deliverPreparedSmtpTest({
@@ -146,7 +150,7 @@ export async function sendApprovedInvoiceEmailSmtpTest(
 
     throw error;
   } finally {
-    dependencies.invoiceSmtpTestAttemptStore.complete({
+    dependencies.invoiceEmailSendAttemptStore.complete({
       attemptId,
       outcome: attemptOutcome,
     });

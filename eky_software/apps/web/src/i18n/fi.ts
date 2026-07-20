@@ -179,7 +179,9 @@ export const uiText = {
     emailSmtpSecurity: 'Yhteyden suojaus',
     emailSmtpStartTls: 'STARTTLS',
     emailSmtpTls: 'TLS',
-    emailTestRecipientOverride: 'Testivastaanottaja',
+    emailTestRecipientOverride: 'SMTP-testin vastaanottaja',
+    emailTestRecipientOverrideHelp:
+      'Käytetään vain Testitoiminnot-osion hallituissa SMTP-testiviesteissä. Oikea lasku lähetetään laskulla vahvistettuun osoitteeseen.',
     emailUsername: 'SMTP-käyttäjätunnus',
     fallbackError: 'Jotain meni vikaan.',
     formDescription:
@@ -422,13 +424,18 @@ export const uiText = {
     invoiceDate: 'Laskun päiväys',
     invoiceEmailAttachment: 'Liite',
     invoiceEmailBody: 'Viestin sisältö',
+    invoiceEmailBodyRequired: 'Kirjoita viestin sisältö.',
+    invoiceEmailBodyTooLong: 'Viestin sisältö on liian pitkä.',
     invoiceEmailCc: 'Kopio / Cc',
-    invoiceEmailDryRunBadge: 'Kuivaharjoittelu',
+    invoiceEmailCcInvalid:
+      'Anna kelvollinen kopion sähköpostiosoite tai jätä kenttä tyhjäksi.',
+    invoiceEmailCcTooLong: 'Kopion sähköpostiosoite on liian pitkä.',
+    invoiceEmailDryRunBadge: 'Valmis vahvistettavaksi',
     invoiceEmailEditHelp:
-      'Voit muokata vastaanottajaa, kopiota, otsikkoa ja viestiä esikatselua varten. Sähköpostia ei vielä lähetetä, ja varsinainen lähetys lisätään myöhemmin.',
+      'Voit muokata vastaanottajaa, kopiota, otsikkoa ja viestiä. Tarkista tiedot huolellisesti ennen lähettämistä.',
     invoiceEmailDryRunHelp:
-      'Tätä sähköpostia ei lähetetty. Näkymä näyttää, millainen viesti muodostettaisiin laskun snapshot-tiedoista ja PDF-liitteestä.',
-    invoiceEmailDryRunKicker: 'Sähköpostiluonnos',
+      'Sähköposti lähetetään vasta, kun painat Lähetä lasku. Desktop-sovellus pyytää lisäksi vahvistuksen suojatussa ikkunassa.',
+    invoiceEmailDryRunKicker: 'Laskun sähköposti',
     invoiceEmailDryRunSend: 'Kuivaharjoittele lähetys',
     invoiceEmailDryRunSending: 'Kirjataan kuivaharjoittelua...',
     invoiceEmailDryRunSendError:
@@ -443,8 +450,15 @@ export const uiText = {
       'Sähköpostiluonnosta ei voitu valmistella. Yritä hetken kuluttua uudelleen.',
     invoiceEmailPreparing: 'Valmistellaan...',
     invoiceEmailPreviewTitle: 'Sähköpostin esikatselu',
+    invoiceEmailRecipientInvalid:
+      'Anna kelvollinen vastaanottajan sähköpostiosoite.',
+    invoiceEmailRecipientRequired: 'Anna vastaanottajan sähköpostiosoite.',
+    invoiceEmailRecipientTooLong:
+      'Vastaanottajan sähköpostiosoite on liian pitkä.',
     invoiceEmailSubject: 'Otsikko',
+    invoiceEmailSubjectInvalid: 'Tarkista sähköpostin otsikko.',
     invoiceEmailSubjectInput: 'Sähköpostin otsikko',
+    invoiceEmailSubjectRequired: 'Anna sähköpostin otsikko.',
     invoiceEmailSmtpTestActualRecipient: 'Todellinen testivastaanottaja',
     invoiceEmailSmtpTestConflict:
       'SMTP-testilähetys on jo käynnissä, valtuutus vanheni tai lyhyt varoaika on voimassa. Odota hetki ja valmistele lähetys uudelleen.',
@@ -469,6 +483,29 @@ export const uiText = {
     invoiceEmailSmtpTestSend: 'Lähetä hallittu SMTP-testi',
     invoiceEmailSmtpTestSending: 'Lähetetään testivastaanottajalle...',
     invoiceEmailSmtpTestSuccess: 'SMTP-testi lähetettiin osoitteeseen',
+    invoiceEmailSmtpCancelled: 'Sähköpostilähetys peruutettiin.',
+    invoiceEmailSmtpConflict:
+      'Lähetys on jo käynnissä, vahvistus vanheni tai lyhyt varoaika on voimassa. Odota hetki ja valmistele lähetys uudelleen.',
+    invoiceEmailSmtpError:
+      'Laskun sähköpostia ei voitu lähettää. Laskua ei merkitty lähetetyksi.',
+    invoiceEmailSmtpOutcomeUnknown:
+      'Lähetyksen lopputulosta ei voitu varmistaa. Älä lähetä heti uudelleen, vaan tarkista Lähetetyt-kansio ja vastaanottajalta toimituksen tila.',
+    invoiceEmailSmtpProfileMissing:
+      'Valitse ensin Oma yritys -näkymässä sähköpostin lähetystavaksi DNA SMTP.',
+    invoiceEmailSmtpSecretMissing:
+      'Aseta SMTP-salasana turvallisessa Eky-työpöytäsovelluksessa.',
+    invoiceEmailSmtpSettingsIncomplete:
+      'Täydennä Oma yritys -näkymässä lähettäjän osoite ja SMTP-käyttäjätunnus.',
+    invoiceEmailSmtpSettingsLoading:
+      'Tarkistetaan sähköpostilähetyksen asetuksia...',
+    invoiceEmailSmtpSettingsUnavailable:
+      'Sähköpostilähetyksen asetuksia ei voitu tarkistaa turvallisesti.',
+    invoiceEmailSmtpSend: 'Lähetä lasku',
+    invoiceEmailSmtpResend: 'Lähetä uudelleen',
+    invoiceEmailSmtpSending: 'Lähetetään...',
+    invoiceEmailSmtpSendSuccess: 'Lasku lähetettiin ja merkittiin lähetetyksi.',
+    invoiceEmailSmtpResendSuccess: 'Lasku lähetettiin uudelleen.',
+    invoiceEmailTestTools: 'Testitoiminnot',
     invoiceEmailTo: 'Vastaanottaja',
     invoiceEmailToInput: 'Vastaanottajan sähköposti',
     invoiceNumber: 'Laskunumero',

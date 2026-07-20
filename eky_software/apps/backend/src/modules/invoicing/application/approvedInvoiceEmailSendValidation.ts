@@ -4,6 +4,8 @@ const maximumEmailLength = 320;
 const maximumSubjectLength = 200;
 const maximumBodyLength = 10_000;
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const forbiddenEmailCharacterPattern = /[\u0000-\u0020\u007f<>(),:;"\\[\]]/;
+const forbiddenHeaderCharacterPattern = /[\u0000-\u001f\u007f]/;
 
 export interface NormalizedApprovedInvoiceEmailSendFields {
   to: string;
@@ -21,7 +23,7 @@ export function normalizeApprovedInvoiceEmailSendFields(input: {
   return {
     body: normalizeRequiredText(input.body, 'Email body', maximumBodyLength),
     cc: normalizeOptionalEmail(input.cc, 'Cc email'),
-    subject: normalizeRequiredText(
+    subject: normalizeRequiredHeaderText(
       input.subject,
       'Email subject',
       maximumSubjectLength,
@@ -37,11 +39,14 @@ function normalizeRequiredEmail(value: string, fieldName: string): string {
     maximumEmailLength,
   );
 
-  if (!emailPattern.test(normalizedValue)) {
+  if (
+    forbiddenEmailCharacterPattern.test(normalizedValue) ||
+    !emailPattern.test(normalizedValue)
+  ) {
     throw new InvoiceDraftValidationError(`${fieldName} is invalid.`);
   }
 
-  return normalizedValue;
+  return normalizeEmailDomain(normalizedValue);
 }
 
 function normalizeOptionalEmail(
@@ -60,7 +65,36 @@ function normalizeOptionalEmail(
     );
   }
 
-  if (!emailPattern.test(normalizedValue)) {
+  if (
+    forbiddenEmailCharacterPattern.test(normalizedValue) ||
+    !emailPattern.test(normalizedValue)
+  ) {
+    throw new InvoiceDraftValidationError(`${fieldName} is invalid.`);
+  }
+
+  return normalizeEmailDomain(normalizedValue);
+}
+
+function normalizeEmailDomain(value: string): string {
+  const separatorIndex = value.lastIndexOf('@');
+
+  return `${value.slice(0, separatorIndex)}@${value
+    .slice(separatorIndex + 1)
+    .toLowerCase()}`;
+}
+
+function normalizeRequiredHeaderText(
+  value: string,
+  fieldName: string,
+  maximumLength: number,
+): string {
+  const normalizedValue = normalizeRequiredText(
+    value,
+    fieldName,
+    maximumLength,
+  );
+
+  if (forbiddenHeaderCharacterPattern.test(normalizedValue)) {
     throw new InvoiceDraftValidationError(`${fieldName} is invalid.`);
   }
 

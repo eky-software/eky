@@ -79,7 +79,9 @@ asiakkaan asiakaskortin tiedot näytetään laskulomakkeella tiiviinä koosteena
 Käyttäjän Company Settingsiin määrittämä nimike voi ehdottaa riville kerran
 asiakaskohtaisen tuntihinnan tai sen puuttuessa oman yrityksen
 oletustuntihinnan. Käsin muokattua tai tallennetusta luonnoksesta ladattua
-hintaa ei ylikirjoiteta.
+hintaa ei ylikirjoiteta. Asiakkaan vaihtuessa vain ohjelman edelleen omistama
+automaattinen pikavalintahinta päivitetään uuden asiakkaan hintaan. Jos hintaa
+ei löydy, vanha automaattinen hinta tyhjennetään turvallisesti.
 
 - valitse asiakas hallitun API-sopimuksen kautta
 - ehdota asiakkaan tyypin mukaista `priceInputMode`-arvoa

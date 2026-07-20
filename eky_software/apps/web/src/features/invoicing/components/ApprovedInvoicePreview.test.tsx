@@ -146,6 +146,7 @@ describe('ApprovedInvoicePreview', () => {
     expect(html).toContain(uiText.invoicing.invoiceEmailSubjectInput);
     expect(html).toContain(uiText.invoicing.invoiceEmailDryRunSend);
     expect(html).toContain(uiText.invoicing.invoiceEmailSmtpTestSend);
+    expect(html).toContain(uiText.invoicing.invoiceEmailSmtpSend);
     expect(html).toContain(
       uiText.invoicing.invoiceEmailSmtpTestActualRecipient,
     );
@@ -159,7 +160,6 @@ describe('ApprovedInvoicePreview', () => {
     expect(html).toContain('Lasku 20260001');
     expect(html).toContain('lasku-20260001.pdf');
     expect(html).not.toContain('type="file"');
-    expect(html).not.toContain('>Lähetä<');
     expect(html).toContain(uiText.invoicing.invoiceEmailPrepareError);
     expect(html).not.toContain('responseBody');
     expect(html).not.toContain('stack');
@@ -204,12 +204,16 @@ function renderPreview(
       emailSmtpTestRecipient="safe-test@example.fi"
       emailSmtpTestSuccessMessage={null}
       emailSmtpTestUnavailableMessage={null}
+      emailSmtpErrorMessage={null}
+      emailSmtpSuccessMessage={null}
+      emailSmtpUnavailableMessage={null}
       invoice={options.invoice ?? createApprovedInvoiceView()}
       isCopyingInvoice={options.isCopyingInvoice ?? false}
       isCreatingPdf={options.isCreatingPdf ?? false}
       isMarkingSent={false}
       isPreparingEmail={false}
       isSendingEmailDryRun={false}
+      isSendingEmailSmtp={false}
       isSendingEmailSmtpTest={false}
       isPdfAvailable={options.isPdfAvailable ?? false}
       isReopening={false}
@@ -224,6 +228,7 @@ function renderPreview(
       onOpenPdf={vi.fn()}
       onPrepareEmail={vi.fn()}
       onSendEmailDryRun={vi.fn()}
+      onSendEmailSmtp={vi.fn()}
       onSendEmailSmtpTest={vi.fn()}
     />,
   );

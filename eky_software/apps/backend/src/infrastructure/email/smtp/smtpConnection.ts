@@ -202,8 +202,14 @@ class TlsSmtpConnection implements SmtpConnection {
 
     try {
       await this.write(data, 'data');
-    } catch (error) {
-      this.failPending(asTransportError(error, 'data'));
+    } catch {
+      this.failPending(
+        new SmtpTransportError(
+          'SMTP_OUTCOME_UNKNOWN',
+          'data',
+          'outcomeUnknown',
+        ),
+      );
       return reply;
     }
 

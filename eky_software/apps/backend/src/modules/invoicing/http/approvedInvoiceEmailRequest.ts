@@ -9,6 +9,8 @@ import type {
 import type {
   SendApprovedInvoiceEmailSmtpTestInput,
 } from '../application/sendApprovedInvoiceEmailSmtpTest.js';
+import type { PrepareApprovedInvoiceEmailSmtpInput } from '../application/prepareApprovedInvoiceEmailSmtp.js';
+import type { SendApprovedInvoiceEmailSmtpInput } from '../application/sendApprovedInvoiceEmailSmtp.js';
 
 const maximumEmailLength = 320;
 const maximumSubjectLength = 200;
@@ -65,6 +67,27 @@ export function parseApprovedInvoiceEmailSmtpTestSendBody(
   };
 }
 
+export function parseApprovedInvoiceEmailSmtpSendBody(
+  body: unknown,
+  context: {
+    actorContext: ActorContext;
+    invoiceId: string;
+    sentAt: string;
+  },
+): SendApprovedInvoiceEmailSmtpInput {
+  if (!isRecord(body)) {
+    throw new ApprovedInvoiceEmailRequestValidationError();
+  }
+
+  assertAllowedFields(body, allowedSmtpTestSendFields);
+
+  return {
+    ...parseApprovedInvoiceEmailFields(body, context),
+    attemptId: readString(body, 'attemptId', 100),
+    authorizationToken: readString(body, 'authorizationToken', 100),
+  };
+}
+
 export function parseApprovedInvoiceEmailSmtpTestPrepareBody(
   body: unknown,
   context: {
@@ -94,6 +117,19 @@ export function parseApprovedInvoiceEmailSmtpTestPrepareBody(
     subject: fields.subject,
     to: fields.to,
   };
+}
+
+export function parseApprovedInvoiceEmailSmtpPrepareBody(
+  body: unknown,
+  context: {
+    actorContext: ActorContext;
+    invoiceId: string;
+    preparedAt: string;
+  },
+): PrepareApprovedInvoiceEmailSmtpInput {
+  const input = parseApprovedInvoiceEmailSmtpTestPrepareBody(body, context);
+
+  return input;
 }
 
 function parseApprovedInvoiceEmailFields(
