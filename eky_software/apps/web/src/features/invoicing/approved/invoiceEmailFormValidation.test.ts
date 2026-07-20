@@ -20,6 +20,17 @@ describe('validateInvoiceEmailForm', () => {
       .toBe(true);
   });
 
+  it('rejects the same recipient and copy address case-insensitively', () => {
+    const result = validateInvoiceEmailForm(createValidValues({
+      cc: 'RECIPIENT@example.fi',
+      to: 'recipient@example.fi',
+    }));
+
+    expect(result.errors.cc).toBe(
+      uiText.invoicing.invoiceEmailCcSameAsRecipient,
+    );
+  });
+
   it.each(['karimu.dnainternet.net', 'copy @example.fi', 'copy@example']) (
     'rejects an invalid copy address %s with a field-specific message',
     (cc) => {

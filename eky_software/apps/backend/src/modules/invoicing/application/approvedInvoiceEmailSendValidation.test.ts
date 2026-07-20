@@ -35,4 +35,15 @@ describe('normalizeApprovedInvoiceEmailSendFields', () => {
       }),
     ).toThrow();
   });
+
+  it('rejects the same normalized address in To and Cc', () => {
+    expect(() =>
+      normalizeApprovedInvoiceEmailSendFields({
+        body: 'Hei',
+        cc: ' CUSTOMER@example.fi ',
+        subject: 'Lasku 20260001',
+        to: 'customer@example.fi',
+      }),
+    ).toThrow('Recipient email and Cc email must be different.');
+  });
 });

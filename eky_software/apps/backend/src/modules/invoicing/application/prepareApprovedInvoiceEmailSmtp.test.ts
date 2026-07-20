@@ -1,6 +1,7 @@
 import { createActorContext } from '@eky/auth';
 import { describe, expect, it, vi } from 'vitest';
 
+import { InvoiceDeliveryConflictError } from './invoiceDeliveryConflictError.js';
 import { prepareApprovedInvoiceEmailSmtp } from './prepareApprovedInvoiceEmailSmtp.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import type { InvoiceEmailSendAttemptStore } from '../ports/invoiceEmailSendAttemptStore.js';
@@ -46,14 +47,17 @@ describe('prepareApprovedInvoiceEmailSmtp', () => {
           invoiceEmailSettingsReader: {
             getEmailSettings: vi.fn(async () => createEmailSettings()),
           },
+          invoiceDeliveryEventReader: createDeliveryEventReader(false),
         }),
       ).resolves.toEqual(
         expect.objectContaining({
           attemptId: 'attempt-1',
+          body: 'Hei, liitteenä lasku.',
           cc: 'copy@example.fi',
           invoiceNumber: '20260001',
           recipient: 'customer@example.fi',
           resend,
+          sender: 'Example Oy <billing@example.fi>',
           subject: 'Lasku 20260001',
         }),
       );
@@ -68,7 +72,39 @@ describe('prepareApprovedInvoiceEmailSmtp', () => {
       });
     },
   );
+
+  it('blocks preparation when a persistent delivery event is unresolved', async () => {
+      const attemptStore: InvoiceEmailSendAttemptStore = {
+        acquire: vi.fn(),
+        complete: vi.fn(),
+        prepare: vi.fn(),
+      };
+
+      await expect(
+        prepareApprovedInvoiceEmailSmtp(createInput(), {
+          approvedInvoiceReader: {
+            getApprovedInvoiceById: vi.fn(async () => createInvoice('approved')),
+            listApprovedInvoiceSummaries: vi.fn(),
+          },
+          ensureApprovedInvoicePdfDocument: vi.fn(),
+          invoiceDeliveryEventReader: createDeliveryEventReader(true),
+          invoiceEmailSendAttemptStore: attemptStore,
+          invoiceEmailSettingsReader: {
+            getEmailSettings: vi.fn(async () => createEmailSettings()),
+          },
+        }),
+      ).rejects.toEqual(new InvoiceDeliveryConflictError());
+
+      expect(attemptStore.prepare).not.toHaveBeenCalled();
+  });
 });
+
+function createDeliveryEventReader(hasUnresolvedEvent: boolean) {
+  return {
+    hasUnresolvedDeliveryEvent: vi.fn(async () => hasUnresolvedEvent),
+    listDeliveryEvents: vi.fn(async () => []),
+  };
+}
 
 function createInput() {
   return {

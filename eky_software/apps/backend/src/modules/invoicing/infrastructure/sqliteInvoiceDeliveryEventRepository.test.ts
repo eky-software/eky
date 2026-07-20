@@ -103,7 +103,11 @@ describe('SqliteInvoiceDeliveryEventRepository', () => {
         providerMessageId: '<message@example.fi>',
         sentAt: '2026-07-10T10:01:00.000Z',
       }),
-    ).resolves.toEqual({ invoiceStatus: 'sent', wasResend: false });
+    ).resolves.toEqual({
+      invoiceStatus: 'sent',
+      updatedAt: '2026-07-10T10:01:00.000Z',
+      wasResend: false,
+    });
 
     expect(
       database
@@ -153,7 +157,11 @@ describe('SqliteInvoiceDeliveryEventRepository', () => {
         providerMessageId: '<resend@example.fi>',
         sentAt: '2026-07-10T10:02:00.000Z',
       }),
-    ).resolves.toEqual({ invoiceStatus: 'sent', wasResend: true });
+    ).resolves.toEqual({
+      invoiceStatus: 'sent',
+      updatedAt: '2026-07-10T09:30:00.000Z',
+      wasResend: true,
+    });
 
     expect(
       database
@@ -235,6 +243,183 @@ describe('SqliteInvoiceDeliveryEventRepository', () => {
       .get(event.id);
 
     expect(row?.status).toBe('outcomeUnknown');
+  });
+
+  it.each(['attempted', 'outcomeUnknown'] as const)(
+    'blocks a new customer send while a %s event remains unresolved',
+    async (status) => {
+      const repository = new SqliteInvoiceDeliveryEventRepository(database);
+      await repository.saveDeliveryEvent(createEvent({ status }));
+
+      await expect(
+        repository.hasUnresolvedDeliveryEvent('dev-company', 'invoice-1'),
+      ).resolves.toBe(true);
+      await expect(
+        repository.hasUnresolvedDeliveryEvent('other-company', 'invoice-1'),
+      ).resolves.toBe(false);
+    },
+  );
+
+  it('lists only company-scoped safe delivery metadata in stable newest-first order', async () => {
+    const repository = new SqliteInvoiceDeliveryEventRepository(database);
+    await repository.saveDeliveryEvent(
+      createEvent({
+        id: 'event-1',
+        createdAt: '2026-07-10T10:00:00.000Z',
+        safeErrorMessage: 'Safe failure.',
+        status: 'failed',
+      }),
+    );
+    await repository.saveDeliveryEvent(
+      createEvent({
+        bodyPreview: 'This must not be returned.',
+        ccEmail: '',
+        createdAt: '2026-07-10T11:00:00.000Z',
+        id: 'event-2',
+        provider: 'smtp',
+        providerMessageId: '<private-provider-id@example.fi>',
+        safeErrorMessage: null,
+        status: 'succeeded',
+        subject: 'Private subject',
+        technicalErrorCode: 'PRIVATE_TECHNICAL_CODE',
+      }),
+    );
+
+    await expect(
+      repository.listDeliveryEvents('dev-company', 'invoice-1'),
+    ).resolves.toEqual([
+      {
+        ccEmail: '',
+        createdAt: '2026-07-10T11:00:00.000Z',
+        deliveryMethod: 'email',
+        id: 'event-2',
+        provider: 'smtp',
+        recipientEmail: 'customer@example.fi',
+        safeErrorMessage: null,
+        status: 'succeeded',
+      },
+      {
+        ccEmail: 'copy@example.fi',
+        createdAt: '2026-07-10T10:00:00.000Z',
+        deliveryMethod: 'email',
+        id: 'event-1',
+        provider: 'dryRun',
+        recipientEmail: 'customer@example.fi',
+        safeErrorMessage: 'Safe failure.',
+        status: 'failed',
+      },
+    ]);
+    await expect(
+      repository.listDeliveryEvents('other-company', 'invoice-1'),
+    ).resolves.toEqual([]);
+  });
+
+  it('atomically records manual delivery, sent status and audit metadata', async () => {
+    const repository = new SqliteInvoiceDeliveryEventRepository(database);
+
+    await expect(
+      repository.completeManualDelivery({
+        actorUserId: 'user-1',
+        auditEventId: 'audit-manual-1',
+        companyId: 'dev-company',
+        deliveredAt: '2026-07-10T12:00:00.000Z',
+        deliveryEventId: 'manual-event-1',
+        deliveryMethod: 'print',
+        documentId: 'document-1',
+        invoiceId: 'invoice-1',
+      }),
+    ).resolves.toEqual({
+      updatedAt: '2026-07-10T12:00:00.000Z',
+    });
+
+    expect(
+      database
+        .prepare<[string], { status: string; updated_at: string }>(
+          'SELECT status, updated_at FROM invoices WHERE id = ?',
+        )
+        .get('invoice-1'),
+    ).toEqual({
+      status: 'sent',
+      updated_at: '2026-07-10T12:00:00.000Z',
+    });
+    expect(
+      database
+        .prepare<
+          [string],
+          Pick<
+            InvoiceDeliveryEventRow,
+            'delivery_method' | 'provider' | 'recipient_email' | 'status'
+          >
+        >(
+          `
+            SELECT delivery_method, provider, recipient_email, status
+            FROM invoice_delivery_events
+            WHERE id = ?
+          `,
+        )
+        .get('manual-event-1'),
+    ).toEqual({
+      delivery_method: 'print',
+      provider: 'manual',
+      recipient_email: '',
+      status: 'succeeded',
+    });
+    expect(
+      database
+        .prepare<[string], { action: string; actor_user_id: string }>(
+          'SELECT action, actor_user_id FROM invoice_audit_events WHERE id = ?',
+        )
+        .get('audit-manual-1'),
+    ).toEqual({
+      action: 'invoice.marked_sent_manually',
+      actor_user_id: 'user-1',
+    });
+  });
+
+  it('rolls back manual delivery when its audit event cannot be stored', async () => {
+    database
+      .prepare(
+        `
+          INSERT INTO invoice_audit_events (
+            id, company_id, actor_user_id, action, draft_id,
+            invoice_id, invoice_number, created_at
+          )
+          VALUES (
+            'duplicate-audit', 'dev-company', 'user-1', 'invoice.approved',
+            'draft-1', 'invoice-1', '20260001', '2026-07-10T09:00:00.000Z'
+          )
+        `,
+      )
+      .run();
+    const repository = new SqliteInvoiceDeliveryEventRepository(database);
+
+    await expect(
+      repository.completeManualDelivery({
+        actorUserId: 'user-1',
+        auditEventId: 'duplicate-audit',
+        companyId: 'dev-company',
+        deliveredAt: '2026-07-10T12:00:00.000Z',
+        deliveryEventId: 'manual-event-rollback',
+        deliveryMethod: 'manual',
+        documentId: 'document-1',
+        invoiceId: 'invoice-1',
+      }),
+    ).rejects.toThrow();
+
+    expect(
+      database
+        .prepare<[string], { status: string }>(
+          'SELECT status FROM invoices WHERE id = ?',
+        )
+        .get('invoice-1'),
+    ).toEqual({ status: 'approved' });
+    expect(
+      database
+        .prepare<[string], { id: string }>(
+          'SELECT id FROM invoice_delivery_events WHERE id = ?',
+        )
+        .get('manual-event-rollback'),
+    ).toBeUndefined();
   });
 
   it('enforces company and invoice indexes for later scoped reads', () => {

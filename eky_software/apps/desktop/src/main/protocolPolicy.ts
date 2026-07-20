@@ -37,6 +37,10 @@ const backendRoutes: ReadonlyArray<{
     pathname: new RegExp(`^/invoices/${resourceId}$`),
   },
   {
+    methods: new Set(['GET']),
+    pathname: new RegExp(`^/invoices/${resourceId}/delivery-events$`),
+  },
+  {
     methods: new Set(['GET', 'POST']),
     pathname: new RegExp(`^/invoices/${resourceId}/pdf$`),
   },

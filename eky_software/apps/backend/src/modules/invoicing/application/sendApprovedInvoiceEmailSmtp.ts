@@ -129,6 +129,7 @@ export async function sendApprovedInvoiceEmailSmtp(
       companyId,
       dependencies,
       emailFields,
+      invoice,
       invoiceId,
       sentAt,
       settings,
@@ -157,6 +158,7 @@ interface DeliverPreparedInvoiceEmailInput {
   companyId: string;
   dependencies: SendApprovedInvoiceEmailSmtpDependencies;
   emailFields: ReturnType<typeof normalizeApprovedInvoiceEmailSendFields>;
+  invoice: ApprovedInvoiceView;
   invoiceId: string;
   sentAt: string;
   settings: NonNullable<
@@ -262,10 +264,12 @@ async function deliverPreparedInvoiceEmail(
     throw new ApprovedInvoiceEmailDeliveryOutcomeUnknownError();
   }
 
-  let resend: boolean;
+  let completion: Awaited<
+    ReturnType<InvoiceEmailDeliveryFinalizer['completeSuccessfulEmailDelivery']>
+  >;
 
   try {
-    const completion =
+    completion =
       await input.dependencies.invoiceEmailDeliveryFinalizer.completeSuccessfulEmailDelivery(
         {
           companyId: input.companyId,
@@ -277,8 +281,6 @@ async function deliverPreparedInvoiceEmail(
           sentAt: input.sentAt,
         },
       );
-
-    resend = completion.wasResend;
   } catch {
     await completeInvoiceDeliveryEvent(
       {
@@ -293,23 +295,18 @@ async function deliverPreparedInvoiceEmail(
     throw new ApprovedInvoiceEmailDeliveryOutcomeUnknownError();
   }
 
-  const invoice = await input.dependencies.approvedInvoiceReader.getApprovedInvoiceById(
-    input.companyId,
-    input.invoiceId,
-  );
-
-  if (invoice === undefined || invoice.status !== 'sent') {
-    throw new ApprovedInvoiceEmailDeliveryOutcomeUnknownError();
-  }
-
   return {
     deliveredCc: providerResult.deliveredCc,
     deliveredTo: providerResult.deliveredTo,
     deliveryEventId: deliveryEvent.id,
-    invoice,
+    invoice: {
+      ...input.invoice,
+      status: completion.invoiceStatus,
+      updatedAt: completion.updatedAt,
+    },
     provider: providerResult.provider,
     providerMessageId: providerResult.providerMessageId,
-    resend,
+    resend: completion.wasResend,
     testMode: false,
   };
 }

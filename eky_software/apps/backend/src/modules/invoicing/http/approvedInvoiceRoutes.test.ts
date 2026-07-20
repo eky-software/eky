@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 import type { GetApprovedInvoiceInput } from '../application/getApprovedInvoice.js';
 import type { ListApprovedInvoicesInput } from '../application/listApprovedInvoices.js';
+import type { ListInvoiceDeliveryEventsInput } from '../application/listInvoiceDeliveryEvents.js';
 import type { ReopenApprovedInvoiceForEditingInput } from '../application/reopenApprovedInvoiceForEditing.js';
 import type { MarkApprovedInvoiceSentInput } from '../application/markApprovedInvoiceSent.js';
 import type { CopyApprovedInvoiceToDraftInput } from '../application/copyApprovedInvoiceToDraft.js';
@@ -41,9 +42,11 @@ import type {
 } from '../application/sendApprovedInvoiceEmailSmtp.js';
 import type { ApprovedInvoiceEmailPreview } from '../application/approvedInvoiceEmailPreview.js';
 import { ApprovedInvoiceNotFoundError } from '../application/approvedInvoiceNotFoundError.js';
+import { InvoiceDeliveryConflictError } from '../application/invoiceDeliveryConflictError.js';
 import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
 import type { ApprovedInvoiceSummary } from '../domain/approvedInvoiceSummary.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
+import type { InvoiceDeliveryEventSummary } from '../domain/invoiceDeliveryEventSummary.js';
 import type { InvoiceDraft } from '../domain/invoiceDraft.js';
 import { createApprovedInvoiceRoutes } from './approvedInvoiceRoutes.js';
 
@@ -149,14 +152,76 @@ describe('approved invoice routes', () => {
     });
 
     const response = await app.request('/invoices/invoice-1/mark-sent', {
+      body: JSON.stringify({ deliveryMethod: 'print' }),
+      headers: { 'Content-Type': 'application/json' },
       method: 'POST',
     });
 
     await expect(response.json()).resolves.toEqual({ invoice: sentInvoice });
     expect(response.status).toBe(200);
     expect(getMarkSentInput()).toMatchObject({
-      actorUserId: 'dev-user',
-      companyId: 'dev-company',
+      actorContext: {
+        actorId: 'dev-user',
+        companyId: 'dev-company',
+      },
+      deliveryMethod: 'print',
+      invoiceId: 'invoice-1',
+    });
+  });
+
+  it('rejects an unbounded manual delivery method', async () => {
+    const { app, getMarkSentInput } = createTestApp({});
+
+    const response = await app.request('/invoices/invoice-1/mark-sent', {
+      body: JSON.stringify({ deliveryMethod: 'email' }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(400);
+    expect(getMarkSentInput()).toBeUndefined();
+  });
+
+  it('rejects server-owned fields in manual delivery input', async () => {
+    const { app, getMarkSentInput } = createTestApp({});
+
+    const response = await app.request('/invoices/invoice-1/mark-sent', {
+      body: JSON.stringify({
+        companyId: 'other-company',
+        deliveryMethod: 'print',
+      }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(400);
+    expect(getMarkSentInput()).toBeUndefined();
+  });
+
+  it('returns company-scoped delivery event summaries without technical metadata', async () => {
+    const deliveryEvents: InvoiceDeliveryEventSummary[] = [
+      {
+        ccEmail: '',
+        createdAt: '2026-07-20T20:00:00.000Z',
+        deliveryMethod: 'print',
+        id: 'event-1',
+        provider: 'manual',
+        recipientEmail: '',
+        safeErrorMessage: null,
+        status: 'succeeded',
+      },
+    ];
+    const { app, getDeliveryEventsInput } = createTestApp({ deliveryEvents });
+
+    const response = await app.request('/invoices/invoice-1/delivery-events');
+
+    await expect(response.json()).resolves.toEqual({ events: deliveryEvents });
+    expect(response.status).toBe(200);
+    expect(getDeliveryEventsInput()).toMatchObject({
+      actorContext: {
+        actorId: 'dev-user',
+        companyId: 'dev-company',
+      },
       invoiceId: 'invoice-1',
     });
   });
@@ -370,6 +435,31 @@ describe('approved invoice routes', () => {
     expect(getEmailSmtpPreparationInput()).toBeUndefined();
   });
 
+  it('returns a distinguishable safe conflict for an unresolved delivery', async () => {
+    const { app, getEmailSmtpPreparationInput } = createTestApp({
+      emailSmtpPreparationError: new InvoiceDeliveryConflictError(),
+    });
+
+    const response = await app.request(
+      '/invoices/invoice-1/email/smtp/prepare',
+      {
+        body: JSON.stringify({
+          body: 'Hei',
+          subject: 'Lasku',
+          to: 'customer@example.fi',
+        }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      },
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Invoice has an unresolved delivery attempt.',
+    });
+    expect(getEmailSmtpPreparationInput()).toBeDefined();
+  });
+
   it('rejects server-owned fields in a customer SMTP send body', async () => {
     const { app, getEmailSmtpInput } = createTestApp({});
 
@@ -452,6 +542,8 @@ describe('approved invoice routes', () => {
     });
 
     const response = await app.request('/invoices/missing/mark-sent', {
+      body: JSON.stringify({ deliveryMethod: 'manual' }),
+      headers: { 'Content-Type': 'application/json' },
       method: 'POST',
     });
 
@@ -587,10 +679,12 @@ function createTestApp(options: {
   copiedDraft?: InvoiceDraft;
   copyError?: Error;
   document?: ApprovedInvoiceDocumentMetadata;
+  deliveryEvents?: InvoiceDeliveryEventSummary[];
   emailDelivery?: SendApprovedInvoiceEmailDryRunResult;
   emailSmtpDelivery?: SendApprovedInvoiceEmailSmtpResult;
   emailSmtpTestDelivery?: SendApprovedInvoiceEmailSmtpTestResult;
   emailSendError?: Error;
+  emailSmtpPreparationError?: Error;
   email?: ApprovedInvoiceEmailPreview;
   emailError?: Error;
   error?: Error;
@@ -604,6 +698,7 @@ function createTestApp(options: {
   let input: GetApprovedInvoiceInput | undefined;
   let copyInput: CopyApprovedInvoiceToDraftInput | undefined;
   let listInput: ListApprovedInvoicesInput | undefined;
+  let deliveryEventsInput: ListInvoiceDeliveryEventsInput | undefined;
   let reopenInput: ReopenApprovedInvoiceForEditingInput | undefined;
   let markSentInput: MarkApprovedInvoiceSentInput | undefined;
   let emailInput: PrepareApprovedInvoiceEmailDryRunInput | undefined;
@@ -664,6 +759,15 @@ function createTestApp(options: {
 
       return options.invoices ?? [];
     },
+    async listInvoiceDeliveryEvents(nextInput) {
+      deliveryEventsInput = nextInput;
+
+      if (options.error !== undefined) {
+        throw options.error;
+      }
+
+      return options.deliveryEvents ?? [];
+    },
     async markApprovedInvoiceSent(nextInput) {
       markSentInput = nextInput;
 
@@ -719,16 +823,22 @@ function createTestApp(options: {
     async prepareApprovedInvoiceEmailSmtp(nextInput) {
       emailSmtpPreparationInput = nextInput;
 
+      if (options.emailSmtpPreparationError !== undefined) {
+        throw options.emailSmtpPreparationError;
+      }
+
       return {
         attachment: { fileName: 'invoice.pdf', sizeBytes: 2048 },
         attemptId: 'attempt-1',
         authorizationToken: 'one-time-authorization',
+        body: nextInput.body,
         cc: nextInput.cc ?? '',
         expiresAt: '2026-07-17T22:01:00.000Z',
         invoiceId: nextInput.invoiceId,
         invoiceNumber: '20260001',
         recipient: nextInput.to,
         resend: false,
+        sender: 'Example Oy <billing@example.fi>',
         subject: nextInput.subject,
       };
     },
@@ -815,6 +925,7 @@ function createTestApp(options: {
     getEmailSmtpPreparationInput: () => emailSmtpPreparationInput,
     getEmailSmtpInput: () => emailSmtpInput,
     getInput: () => input,
+    getDeliveryEventsInput: () => deliveryEventsInput,
     getListInput: () => listInput,
     getMarkSentInput: () => markSentInput,
     getPdfInput: () => pdfInput,

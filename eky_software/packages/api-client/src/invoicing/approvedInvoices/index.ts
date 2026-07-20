@@ -29,5 +29,10 @@ export type {
   ApprovedInvoiceVatBreakdown,
   ApprovedInvoiceView,
   ApprovedInvoiceViewStatus,
+  InvoiceDeliveryEventSummary,
+  InvoiceDeliveryMethod,
+  InvoiceDeliveryProvider,
+  InvoiceDeliveryStatus,
+  InvoiceManualDeliveryMethod,
   ReopenedApprovedInvoice,
 } from './approvedInvoicesTypes.js';

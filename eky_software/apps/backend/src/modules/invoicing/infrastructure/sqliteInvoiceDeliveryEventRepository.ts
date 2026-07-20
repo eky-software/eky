@@ -4,6 +4,8 @@ import type {
   NewInvoiceDeliveryEventRow,
 } from '../../../database/schema.js';
 import type { InvoiceDeliveryEvent } from '../domain/invoiceDeliveryEvent.js';
+import type { InvoiceDeliveryEventSummary } from '../domain/invoiceDeliveryEventSummary.js';
+import type { InvoiceDeliveryEventReader } from '../ports/invoiceDeliveryEventReader.js';
 import type { InvoiceDeliveryEventRepository } from '../ports/invoiceDeliveryEventRepository.js';
 import type { CompleteInvoiceDeliveryEventInput } from '../ports/invoiceDeliveryEventRepository.js';
 import type {
@@ -11,11 +13,20 @@ import type {
   CompleteSuccessfulInvoiceEmailDeliveryResult,
   InvoiceEmailDeliveryFinalizer,
 } from '../ports/invoiceEmailDeliveryFinalizer.js';
+import type {
+  CompleteManualInvoiceDeliveryInput,
+  CompleteManualInvoiceDeliveryResult,
+  InvoiceManualDeliveryFinalizer,
+} from '../ports/invoiceManualDeliveryFinalizer.js';
 
 type InvoiceDeliveryEventInsertParameters = NewInvoiceDeliveryEventRow;
 
 export class SqliteInvoiceDeliveryEventRepository
-  implements InvoiceDeliveryEventRepository, InvoiceEmailDeliveryFinalizer
+  implements
+    InvoiceDeliveryEventRepository,
+    InvoiceDeliveryEventReader,
+    InvoiceEmailDeliveryFinalizer,
+    InvoiceManualDeliveryFinalizer
 {
   constructor(private readonly database: DatabaseConnection) {}
 
@@ -26,10 +37,10 @@ export class SqliteInvoiceDeliveryEventRepository
       const invoice = this.database
         .prepare<
           { company_id: string; id: string },
-          { status: 'approved' | 'sent' }
+          { status: 'approved' | 'sent'; updated_at: string }
         >(
           `
-            SELECT status
+            SELECT status, updated_at
             FROM invoices
             WHERE
               company_id = @company_id
@@ -104,6 +115,8 @@ export class SqliteInvoiceDeliveryEventRepository
 
       return {
         invoiceStatus: 'sent' as const,
+        updatedAt:
+          invoice.status === 'approved' ? input.sentAt : invoice.updated_at,
         wasResend: invoice.status === 'sent',
       };
     });
@@ -147,9 +160,213 @@ export class SqliteInvoiceDeliveryEventRepository
     }
   }
 
+  async completeManualDelivery(
+    input: CompleteManualInvoiceDeliveryInput,
+  ): Promise<CompleteManualInvoiceDeliveryResult | undefined> {
+    const completeTransaction = this.database.transaction(() => {
+      const invoice = this.database
+        .prepare<
+          { company_id: string; id: string },
+          {
+            invoice_number: string;
+            source_draft_id: string;
+            status: 'approved' | 'sent';
+            updated_at: string;
+          }
+        >(
+          `
+            SELECT status, source_draft_id, invoice_number, updated_at
+            FROM invoices
+            WHERE
+              company_id = @company_id
+              AND id = @id
+              AND status IN ('approved', 'sent')
+          `,
+        )
+        .get({ company_id: input.companyId, id: input.invoiceId });
+
+      if (invoice === undefined) {
+        return undefined;
+      }
+
+      if (invoice.status === 'sent') {
+        return { updatedAt: invoice.updated_at };
+      }
+
+      this.insertDeliveryEvent({
+        bodyPreview: '',
+        ccEmail: '',
+        companyId: input.companyId,
+        createdAt: input.deliveredAt,
+        createdBy: input.actorUserId,
+        deliveryMethod: input.deliveryMethod,
+        documentId: input.documentId,
+        id: input.deliveryEventId,
+        invoiceId: input.invoiceId,
+        provider: 'manual',
+        providerMessageId: null,
+        recipientEmail: '',
+        safeErrorMessage: null,
+        status: 'succeeded',
+        subject: '',
+        technicalErrorCode: null,
+      });
+
+      const invoiceResult = this.database
+        .prepare<{
+          company_id: string;
+          id: string;
+          sent_at: string;
+        }>(
+          `
+            UPDATE invoices
+            SET status = 'sent', updated_at = @sent_at
+            WHERE company_id = @company_id AND id = @id AND status = 'approved'
+          `,
+        )
+        .run({
+          company_id: input.companyId,
+          id: input.invoiceId,
+          sent_at: input.deliveredAt,
+        });
+
+      if (invoiceResult.changes !== 1) {
+        throw new Error('Approved invoice could not be marked sent.');
+      }
+
+      this.database
+        .prepare<{
+          action: string;
+          actor_user_id: string;
+          company_id: string;
+          created_at: string;
+          draft_id: string;
+          id: string;
+          invoice_id: string;
+          invoice_number: string;
+        }>(
+          `
+            INSERT INTO invoice_audit_events (
+              id,
+              company_id,
+              actor_user_id,
+              action,
+              draft_id,
+              invoice_id,
+              invoice_number,
+              created_at
+            )
+            VALUES (
+              @id,
+              @company_id,
+              @actor_user_id,
+              @action,
+              @draft_id,
+              @invoice_id,
+              @invoice_number,
+              @created_at
+            )
+          `,
+        )
+        .run({
+          action: 'invoice.marked_sent_manually',
+          actor_user_id: input.actorUserId,
+          company_id: input.companyId,
+          created_at: input.deliveredAt,
+          draft_id: invoice.source_draft_id,
+          id: input.auditEventId,
+          invoice_id: input.invoiceId,
+          invoice_number: invoice.invoice_number,
+        });
+
+      return { updatedAt: input.deliveredAt };
+    });
+
+    return completeTransaction();
+  }
+
+  async hasUnresolvedDeliveryEvent(
+    companyId: string,
+    invoiceId: string,
+  ): Promise<boolean> {
+    const row = this.database
+      .prepare<
+        { company_id: string; invoice_id: string },
+        { present: number }
+      >(
+        `
+          SELECT 1 AS present
+          FROM invoice_delivery_events
+          WHERE
+            company_id = @company_id
+            AND invoice_id = @invoice_id
+            AND status IN ('attempted', 'outcomeUnknown')
+          LIMIT 1
+        `,
+      )
+      .get({ company_id: companyId, invoice_id: invoiceId });
+
+    return row !== undefined;
+  }
+
+  async listDeliveryEvents(
+    companyId: string,
+    invoiceId: string,
+  ): Promise<InvoiceDeliveryEventSummary[]> {
+    const rows = this.database
+      .prepare<
+        { company_id: string; invoice_id: string },
+        Pick<
+          InvoiceDeliveryEventRow,
+          | 'id'
+          | 'created_at'
+          | 'delivery_method'
+          | 'provider'
+          | 'recipient_email'
+          | 'cc_email'
+          | 'safe_error_message'
+          | 'status'
+        >
+      >(
+        `
+          SELECT
+            id,
+            created_at,
+            delivery_method,
+            provider,
+            recipient_email,
+            cc_email,
+            safe_error_message,
+            status
+          FROM invoice_delivery_events
+          WHERE company_id = @company_id AND invoice_id = @invoice_id
+          ORDER BY created_at DESC, id DESC
+        `,
+      )
+      .all({ company_id: companyId, invoice_id: invoiceId });
+
+    return rows.map((row) => ({
+      ccEmail: row.cc_email,
+      createdAt: row.created_at,
+      deliveryMethod:
+        row.delivery_method as InvoiceDeliveryEventSummary['deliveryMethod'],
+      id: row.id,
+      provider: row.provider as InvoiceDeliveryEventSummary['provider'],
+      recipientEmail: row.recipient_email,
+      safeErrorMessage: row.safe_error_message,
+      status: row.status as InvoiceDeliveryEventSummary['status'],
+    }));
+  }
+
   async saveDeliveryEvent(
     event: InvoiceDeliveryEvent,
   ): Promise<InvoiceDeliveryEvent> {
+    this.insertDeliveryEvent(event);
+
+    return event;
+  }
+
+  private insertDeliveryEvent(event: InvoiceDeliveryEvent): void {
     this.database
       .prepare<InvoiceDeliveryEventInsertParameters>(
         `
@@ -192,8 +409,6 @@ export class SqliteInvoiceDeliveryEventRepository
         `,
       )
       .run(toRow(event));
-
-    return event;
   }
 }
 

@@ -18,9 +18,10 @@ delivery event -suunnitelma on dokumentissa
 Toteutustilanne:
 
 - hyväksytyn laskun PDF voidaan muodostaa ja avata selaimessa
-- `approved`-lasku voidaan merkitä manuaalisesti `sent`-tilaan vasta, kun
-  backendin application service on ensin varmistanut tai muodostanut laskun PDF:n
-  onnistuneesti
+- `approved`-lasku voidaan merkitä rajatulla tavalla tulostetuksi tai muuten
+  käsin toimitetuksi vasta, kun backendin application service on varmistanut
+  tai muodostanut laskun PDF:n onnistuneesti; delivery event, audit-tapahtuma
+  ja `sent`-siirtymä tallennetaan samassa SQLite-transaktiossa
 - `sent`-lasku näkyy laskutuksen omassa Lähetetyt-osiossa
 - hyväksytty tai lähetetty lasku voidaan kopioida uudeksi laskuluonnokseksi
 - hyväksytylle laskulle voidaan valmistella kuivaharjoittelusähköposti ja tehdä
@@ -34,6 +35,9 @@ Toteutustilanne:
 - varmasti onnistunut asiakaslähetys viimeistelee delivery eventin ja laskun
   `sent`-tilan samassa SQLite-transaktiossa
 - epäonnistunut tai lopputulokseltaan epäselvä lähetys ei muuta laskun tilaa
+- yritys- ja laskurajattu ratkaisematon `attempted`- tai `outcomeUnknown`-
+  tapahtuma estää uuden tavallisen asiakaslähetyksen valmistelun, kunnes tilanne
+  on ratkaistu erillisellä myöhemmällä hallintapolulla
 - `sent`-laskun uudelleenlähetys kirjaa uuden tapahtuman muuttamatta laskun
   numeroa, viitenumeroa, sisältöä tai tilaa
 

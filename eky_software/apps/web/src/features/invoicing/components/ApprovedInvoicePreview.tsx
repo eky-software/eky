@@ -6,9 +6,13 @@ import type {
   ApprovedInvoiceLine,
   ApprovedInvoiceVatBreakdown,
   ApprovedInvoiceView,
+  InvoiceDeliveryEventSummary,
+  InvoiceManualDeliveryMethod,
 } from '@eky/api-client';
+import { useState } from 'react';
 
 import { ApprovedInvoiceEmailPreview } from './ApprovedInvoiceEmailPreview.js';
+import { InvoiceDeliveryHistory } from './InvoiceDeliveryHistory.js';
 import {
   formatApprovedInvoiceCurrency,
   formatApprovedInvoiceDate,
@@ -46,13 +50,16 @@ interface ApprovedInvoicePreviewProps {
   emailSmtpErrorMessage: string | null;
   emailSmtpSuccessMessage: string | null;
   emailSmtpUnavailableMessage: string | null;
+  deliveryEvents: InvoiceDeliveryEventSummary[];
+  deliveryEventsErrorMessage: string | null;
+  isLoadingDeliveryEvents: boolean;
   pdfErrorMessage: string | null;
   reopenErrorMessage: string | null;
   onBack(): void;
   onCopyInvoice(id: string): void;
   onCreatePdf(id: string): void;
   onEditInvoice(id: string): void;
-  onMarkSent(id: string): void;
+  onMarkSent(id: string, method: InvoiceManualDeliveryMethod): void;
   onOpenPdf(id: string): void;
   onPrepareEmail(id: string): void;
   onSendEmailDryRun(
@@ -93,6 +100,9 @@ export function ApprovedInvoicePreview({
   emailSmtpErrorMessage,
   emailSmtpSuccessMessage,
   emailSmtpUnavailableMessage,
+  deliveryEvents,
+  deliveryEventsErrorMessage,
+  isLoadingDeliveryEvents,
   pdfErrorMessage,
   reopenErrorMessage,
   onBack,
@@ -107,6 +117,8 @@ export function ApprovedInvoicePreview({
   onSendEmailSmtpTest,
 }: ApprovedInvoicePreviewProps): React.JSX.Element {
   const isSent = invoice.status === 'sent';
+  const [manualDeliveryMethod, setManualDeliveryMethod] =
+    useState<InvoiceManualDeliveryMethod>('print');
 
   return (
     <section className={`panel ${styles.preview}`}>
@@ -176,18 +188,40 @@ export function ApprovedInvoicePreview({
           ) : null}
           {!isSent ? (
             <>
-              <button
-                className="secondary-action"
-                disabled={isCreatingPdf || isMarkingSent}
-                onClick={() => onMarkSent(invoice.id)}
-                type="button"
-              >
-                {isCreatingPdf
-                  ? uiText.invoicing.approvedInvoicePdfCreating
-                  : isMarkingSent
-                    ? uiText.invoicing.markingApprovedInvoiceSent
-                    : uiText.invoicing.markApprovedInvoiceSent}
-              </button>
+              <div className={styles.manualDelivery}>
+                <label htmlFor="approved-invoice-manual-delivery-method">
+                  {uiText.invoicing.manualDeliveryMethod}
+                </label>
+                <select
+                  disabled={isMarkingSent}
+                  id="approved-invoice-manual-delivery-method"
+                  onChange={(event) =>
+                    setManualDeliveryMethod(
+                      event.currentTarget.value as InvoiceManualDeliveryMethod,
+                    )
+                  }
+                  value={manualDeliveryMethod}
+                >
+                  <option value="print">
+                    {uiText.invoicing.manualDeliveryMethodPrint}
+                  </option>
+                  <option value="manual">
+                    {uiText.invoicing.manualDeliveryMethodManual}
+                  </option>
+                </select>
+                <button
+                  className="secondary-action"
+                  disabled={isCreatingPdf || isMarkingSent}
+                  onClick={() => onMarkSent(invoice.id, manualDeliveryMethod)}
+                  type="button"
+                >
+                  {isCreatingPdf
+                    ? uiText.invoicing.approvedInvoicePdfCreating
+                    : isMarkingSent
+                      ? uiText.invoicing.markingApprovedInvoiceSent
+                      : uiText.invoicing.markApprovedInvoiceSent}
+                </button>
+              </div>
               <button
                 className="secondary-action"
                 disabled={isReopening}
@@ -255,6 +289,12 @@ export function ApprovedInvoicePreview({
           }
         />
       ) : null}
+
+      <InvoiceDeliveryHistory
+        errorMessage={deliveryEventsErrorMessage}
+        events={deliveryEvents}
+        isLoading={isLoadingDeliveryEvents}
+      />
 
       <div className={styles.detailsStack}>
         <PartyBox

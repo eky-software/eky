@@ -1,0 +1,54 @@
+.history {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.history h3 {
+  font-size: 1rem;
+  margin: 0 0 12px;
+}
+
+.state {
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.table {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.header,
+.row {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1.1fr 1fr 0.8fr 1.4fr 1.4fr 1fr;
+  min-width: 960px;
+  padding: 10px 12px;
+}
+
+.header {
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.row {
+  border-top: 1px solid var(--color-border);
+}
+
+.row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.error {
+  color: var(--color-danger);
+  display: block;
+  margin-top: 4px;
+}
