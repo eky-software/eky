@@ -17,10 +17,9 @@ import type {
 } from '../ports/invoiceManualDeliveryFinalizer.js';
 import {
   type InvoiceDeliveryEventInsertParameters,
-  type InvoiceDeliveryEventSummaryRow,
-  toInvoiceDeliveryEventSummary,
   toRow,
 } from './invoiceDeliveryEventPersistenceRows.js';
+import { SqliteInvoiceDeliveryEventQueries } from './sqliteInvoiceDeliveryEventQueries.js';
 
 export { toInvoiceDeliveryEvent } from './invoiceDeliveryEventPersistenceRows.js';
 
@@ -31,27 +30,20 @@ export class SqliteInvoiceDeliveryEventRepository
     InvoiceEmailDeliveryFinalizer,
     InvoiceManualDeliveryFinalizer
 {
-  constructor(private readonly database: DatabaseConnection) {}
+  private readonly queries: SqliteInvoiceDeliveryEventQueries;
+
+  constructor(private readonly database: DatabaseConnection) {
+    this.queries = new SqliteInvoiceDeliveryEventQueries(database);
+  }
 
   async completeSuccessfulEmailDelivery(
     input: CompleteSuccessfulInvoiceEmailDeliveryInput,
   ): Promise<CompleteSuccessfulInvoiceEmailDeliveryResult> {
     const completeTransaction = this.database.transaction(() => {
-      const invoice = this.database
-        .prepare<
-          { company_id: string; id: string },
-          { status: 'approved' | 'sent'; updated_at: string }
-        >(
-          `
-            SELECT status, updated_at
-            FROM invoices
-            WHERE
-              company_id = @company_id
-              AND id = @id
-              AND status IN ('approved', 'sent')
-          `,
-        )
-        .get({ company_id: input.companyId, id: input.invoiceId });
+      const invoice = this.queries.getSuccessfulEmailDeliveryInvoice(
+        input.companyId,
+        input.invoiceId,
+      );
 
       if (invoice === undefined) {
         throw new Error('Approved invoice could not be finalized after delivery.');
@@ -167,26 +159,10 @@ export class SqliteInvoiceDeliveryEventRepository
     input: CompleteManualInvoiceDeliveryInput,
   ): Promise<CompleteManualInvoiceDeliveryResult | undefined> {
     const completeTransaction = this.database.transaction(() => {
-      const invoice = this.database
-        .prepare<
-          { company_id: string; id: string },
-          {
-            invoice_number: string;
-            source_draft_id: string;
-            status: 'approved' | 'sent';
-            updated_at: string;
-          }
-        >(
-          `
-            SELECT status, source_draft_id, invoice_number, updated_at
-            FROM invoices
-            WHERE
-              company_id = @company_id
-              AND id = @id
-              AND status IN ('approved', 'sent')
-          `,
-        )
-        .get({ company_id: input.companyId, id: input.invoiceId });
+      const invoice = this.queries.getManualDeliveryInvoice(
+        input.companyId,
+        input.invoiceId,
+      );
 
       if (invoice === undefined) {
         return undefined;
@@ -196,24 +172,13 @@ export class SqliteInvoiceDeliveryEventRepository
         return { updatedAt: invoice.updated_at };
       }
 
-      const unresolvedDeliveryEvent = this.database
-        .prepare<
-          { company_id: string; invoice_id: string },
-          { present: number }
-        >(
-          `
-            SELECT 1 AS present
-            FROM invoice_delivery_events
-            WHERE
-              company_id = @company_id
-              AND invoice_id = @invoice_id
-              AND status IN ('attempted', 'outcomeUnknown')
-            LIMIT 1
-          `,
-        )
-        .get({ company_id: input.companyId, invoice_id: input.invoiceId });
+      const hasUnresolvedDeliveryEvent =
+        this.queries.hasUnresolvedDeliveryEvent(
+          input.companyId,
+          input.invoiceId,
+        );
 
-      if (unresolvedDeliveryEvent !== undefined) {
+      if (hasUnresolvedDeliveryEvent) {
         throw new InvoiceDeliveryConflictError();
       }
 
@@ -313,53 +278,14 @@ export class SqliteInvoiceDeliveryEventRepository
     companyId: string,
     invoiceId: string,
   ): Promise<boolean> {
-    const row = this.database
-      .prepare<
-        { company_id: string; invoice_id: string },
-        { present: number }
-      >(
-        `
-          SELECT 1 AS present
-          FROM invoice_delivery_events
-          WHERE
-            company_id = @company_id
-            AND invoice_id = @invoice_id
-            AND status IN ('attempted', 'outcomeUnknown')
-          LIMIT 1
-        `,
-      )
-      .get({ company_id: companyId, invoice_id: invoiceId });
-
-    return row !== undefined;
+    return this.queries.hasUnresolvedDeliveryEvent(companyId, invoiceId);
   }
 
   async listDeliveryEvents(
     companyId: string,
     invoiceId: string,
   ): Promise<InvoiceDeliveryEventSummary[]> {
-    const rows = this.database
-      .prepare<
-        { company_id: string; invoice_id: string },
-        InvoiceDeliveryEventSummaryRow
-      >(
-        `
-          SELECT
-            id,
-            created_at,
-            delivery_method,
-            provider,
-            recipient_email,
-            cc_email,
-            safe_error_message,
-            status
-          FROM invoice_delivery_events
-          WHERE company_id = @company_id AND invoice_id = @invoice_id
-          ORDER BY created_at DESC, id DESC
-        `,
-      )
-      .all({ company_id: companyId, invoice_id: invoiceId });
-
-    return rows.map(toInvoiceDeliveryEventSummary);
+    return this.queries.listDeliveryEvents(companyId, invoiceId);
   }
 
   async saveDeliveryEvent(
