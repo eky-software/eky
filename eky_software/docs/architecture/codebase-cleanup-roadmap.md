@@ -717,12 +717,16 @@ korvataan viittauksella uuteen hyväksyttyyn ADR- tai moduulisuunnitelmaan.
 | Cleanup- ja UI-dokumenttien tarkennus | Valmis | `195cce2` | `0f7add7` | Omistajuudet, release-portit ja seuranta tarkennettu |
 | `InvoicingPageView`-erotus | Valmis | `0f7add7` | `4688d22` | Controller, näkymä ja näkymätesti erotettu; julkinen entrypoint säilytetty |
 | `InvoiceWorkspaceListView`-erotus | Valmis | `4688d22` | `5286f19` | Draft-, approved- ja sent-listat sekä niiden testit erotettu rajatulla props-sopimuksella |
-| `InvoiceDraftEditorView`-erotus | Valmis | `5286f19` | Tämä commit | Luonnoksen lataus-, virhe- ja editointinäkymä sekä niitä koskevat testit erotettu rajatulla props-sopimuksella |
+| `InvoiceDraftEditorView`-erotus | Valmis | `5286f19` | `c09ebc7` | Luonnoksen lataus-, virhe- ja editointinäkymä sekä niitä koskevat testit erotettu rajatulla props-sopimuksella |
+| `ApprovedInvoiceDetailView`-erotus | Valmis | `c09ebc7` | `44c2499` | Hyväksytyn laskun lataus-, virhe- ja detail-näkymä erotettu pienillä read-only-näkymätiloilla |
+| `ApprovedInvoiceActions`-erotus | Valmis | `44c2499` | `eeff796` | Otsikko, tila, toiminnot, vahvistus ja toimintovirheet erotettu rajatulla props-sopimuksella |
+| `ApprovedInvoicePreview`-esitysjako | Valmis | `eeff796` | Tämä commit | Osapuoli-, perustieto-, rivi-, summa- ja maksutietoesitys erotettu feature-kohtaisiin komponentteihin |
 | Muut cleanup-roadmapin vaiheet | Ei aloitettu | - | - | Vaativat projektin omistajan uuden luvan |
 
 Roadmapia ei käytetä vanhojen ADR-päätösten historian uudelleenkirjoittamiseen.
 Kun nykytila muuttuu, nykytilaa kuvaavat moduuli- ja arkkitehtuuridokumentit
 päivitetään samassa muutoksessa.
 
-Seuraava pienin turvallinen toteutusaskel on `ApprovedInvoiceDetailView`-erotus
-ilman käyttäytymis-, API-, tietokanta- tai riippuvuusmuutoksia.
+Seuraava pienin turvallinen toteutusaskel arvioidaan tämän web-refaktorointi-
+erän jälkeen erikseen ennen backend-compositionin tai muiden roadmapin
+vastuiden muuttamista.

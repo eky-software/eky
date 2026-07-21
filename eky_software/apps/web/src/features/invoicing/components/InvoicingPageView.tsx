@@ -7,7 +7,7 @@ import type {
   InvoiceDraftSummary,
 } from '@eky/api-client';
 
-import { ApprovedInvoicePreview } from './ApprovedInvoicePreview.js';
+import { ApprovedInvoiceDetailView } from './ApprovedInvoiceDetailView.js';
 import { InvoiceDraftEditorView } from './InvoiceDraftEditorView.js';
 import { InvoiceWorkspaceListView } from './InvoiceWorkspaceListView.js';
 import { NewInvoiceForm } from './NewInvoiceForm.js';
@@ -181,8 +181,31 @@ export function InvoicingPageView({
           onOpenApprovedInvoice={onOpenApprovedInvoice}
         />
       ) : (
-        <ApprovedInvoiceView
-          approvedInvoiceEmailState={approvedInvoiceEmailState}
+        <ApprovedInvoiceDetailView
+          copyState={{
+            errorMessage: copyApprovedInvoiceState.errorMessage,
+            isCopying: copyApprovedInvoiceState.isCopying,
+          }}
+          deliveryHistoryState={{
+            errorMessage: invoiceDeliveryEventListState.errorMessage,
+            events: invoiceDeliveryEventListState.events,
+            isLoading: invoiceDeliveryEventListState.isLoading,
+          }}
+          emailState={{
+            email: approvedInvoiceEmailState.email,
+            errorMessage: approvedInvoiceEmailState.errorMessage,
+            isPreparing: approvedInvoiceEmailState.isPreparing,
+          }}
+          emailSendState={{
+            errorMessage: sendApprovedInvoiceEmailState.errorMessage,
+            isSending: sendApprovedInvoiceEmailState.isSending,
+            successMessage: sendApprovedInvoiceEmailState.successMessage,
+          }}
+          emailSmtpState={{
+            errorMessage: sendApprovedInvoiceEmailSmtpState.errorMessage,
+            isSending: sendApprovedInvoiceEmailSmtpState.isSending,
+            successMessage: sendApprovedInvoiceEmailSmtpState.successMessage,
+          }}
           emailSmtpTestRecipient={normalizeOptionalValue(
             companySettingsState.companySettings
               ?.emailTestRecipientOverride ?? '',
@@ -199,178 +222,43 @@ export function InvoicingPageView({
             companySettingsState.errorMessage,
             companySettingsState.isLoading,
           )}
-          copyApprovedInvoiceState={copyApprovedInvoiceState}
-          approvedInvoicePdfState={approvedInvoicePdfState}
-          approvedInvoiceState={approvedInvoiceState}
-          invoiceDeliveryEventListState={invoiceDeliveryEventListState}
-          markApprovedInvoiceSentState={markApprovedInvoiceSentState}
-          reopenApprovedInvoiceState={reopenApprovedInvoiceState}
-          sendApprovedInvoiceEmailState={sendApprovedInvoiceEmailState}
-          sendApprovedInvoiceEmailSmtpState={sendApprovedInvoiceEmailSmtpState}
-          sendApprovedInvoiceEmailSmtpTestState={
-            sendApprovedInvoiceEmailSmtpTestState
-          }
+          emailSmtpTestState={{
+            errorMessage: sendApprovedInvoiceEmailSmtpTestState.errorMessage,
+            isSending: sendApprovedInvoiceEmailSmtpTestState.isSending,
+            successMessage:
+              sendApprovedInvoiceEmailSmtpTestState.successMessage,
+          }}
+          invoiceState={{
+            approvedInvoice: approvedInvoiceState.approvedInvoice,
+            errorMessage: approvedInvoiceState.errorMessage,
+            isLoading: approvedInvoiceState.isLoading,
+          }}
+          markSentState={{
+            errorMessage: markApprovedInvoiceSentState.errorMessage,
+            isMarkingSent: markApprovedInvoiceSentState.isMarkingSent,
+          }}
+          pdfState={{
+            document: approvedInvoicePdfState.document,
+            errorMessage: approvedInvoicePdfState.errorMessage,
+            isCreating: approvedInvoicePdfState.isCreating,
+          }}
+          reopenState={{
+            errorMessage: reopenApprovedInvoiceState.errorMessage,
+            isReopening: reopenApprovedInvoiceState.isReopening,
+          }}
           onBack={onBackToDrafts}
-          onCopyApprovedInvoiceToDraft={onCopyApprovedInvoiceToDraft}
-          onCreateApprovedInvoicePdf={onCreateApprovedInvoicePdf}
-          onEditApprovedInvoice={onEditApprovedInvoice}
-          onMarkApprovedInvoiceSent={onMarkApprovedInvoiceSent}
-          onOpenApprovedInvoicePdf={onOpenApprovedInvoicePdf}
-          onPrepareApprovedInvoiceEmail={onPrepareApprovedInvoiceEmail}
-          onSendApprovedInvoiceEmailDryRun={onSendApprovedInvoiceEmailDryRun}
-          onSendApprovedInvoiceEmailSmtp={onSendApprovedInvoiceEmailSmtp}
-          onSendApprovedInvoiceEmailSmtpTest={
-            onSendApprovedInvoiceEmailSmtpTest
-          }
+          onCopyInvoice={onCopyApprovedInvoiceToDraft}
+          onCreatePdf={onCreateApprovedInvoicePdf}
+          onEditInvoice={onEditApprovedInvoice}
+          onMarkSent={onMarkApprovedInvoiceSent}
+          onOpenPdf={onOpenApprovedInvoicePdf}
+          onPrepareEmail={onPrepareApprovedInvoiceEmail}
+          onSendEmailDryRun={onSendApprovedInvoiceEmailDryRun}
+          onSendEmailSmtp={onSendApprovedInvoiceEmailSmtp}
+          onSendEmailSmtpTest={onSendApprovedInvoiceEmailSmtpTest}
         />
       )}
     </div>
-  );
-}
-
-interface ApprovedInvoiceViewProps {
-  approvedInvoiceEmailState: ApprovedInvoiceEmailDryRunState;
-  emailSmtpTestRecipient: string | null;
-  emailSmtpTestUnavailableMessage: string | null;
-  emailSmtpUnavailableMessage: string | null;
-  approvedInvoicePdfState: ApprovedInvoicePdfState;
-  approvedInvoiceState: ApprovedInvoiceState;
-  invoiceDeliveryEventListState: InvoiceDeliveryEventListState;
-  copyApprovedInvoiceState: CopyApprovedInvoiceState;
-  markApprovedInvoiceSentState: MarkApprovedInvoiceSentState;
-  reopenApprovedInvoiceState: ReopenApprovedInvoiceState;
-  sendApprovedInvoiceEmailState: SendApprovedInvoiceEmailDryRunState;
-  sendApprovedInvoiceEmailSmtpState: SendApprovedInvoiceEmailSmtpState;
-  sendApprovedInvoiceEmailSmtpTestState: SendApprovedInvoiceEmailSmtpTestState;
-  onBack(): void;
-  onCopyApprovedInvoiceToDraft(id: string): void;
-  onCreateApprovedInvoicePdf(id: string): void;
-  onEditApprovedInvoice(id: string): void;
-  onMarkApprovedInvoiceSent(id: string): void;
-  onOpenApprovedInvoicePdf(id: string): void;
-  onPrepareApprovedInvoiceEmail(id: string): void;
-  onSendApprovedInvoiceEmailDryRun(
-    id: string,
-    input: ApprovedInvoiceEmailDryRunSendInput,
-  ): void;
-  onSendApprovedInvoiceEmailSmtpTest(
-    id: string,
-    input: ApprovedInvoiceEmailSmtpTestPrepareInput,
-  ): void;
-  onSendApprovedInvoiceEmailSmtp(
-    id: string,
-    input: ApprovedInvoiceEmailSmtpPrepareInput,
-  ): void;
-}
-
-function ApprovedInvoiceView({
-  approvedInvoiceEmailState,
-  emailSmtpTestRecipient,
-  emailSmtpTestUnavailableMessage,
-  emailSmtpUnavailableMessage,
-  approvedInvoicePdfState,
-  approvedInvoiceState,
-  invoiceDeliveryEventListState,
-  copyApprovedInvoiceState,
-  markApprovedInvoiceSentState,
-  reopenApprovedInvoiceState,
-  sendApprovedInvoiceEmailState,
-  sendApprovedInvoiceEmailSmtpState,
-  sendApprovedInvoiceEmailSmtpTestState,
-  onBack,
-  onCopyApprovedInvoiceToDraft,
-  onCreateApprovedInvoicePdf,
-  onEditApprovedInvoice,
-  onMarkApprovedInvoiceSent,
-  onOpenApprovedInvoicePdf,
-  onPrepareApprovedInvoiceEmail,
-  onSendApprovedInvoiceEmailDryRun,
-  onSendApprovedInvoiceEmailSmtp,
-  onSendApprovedInvoiceEmailSmtpTest,
-}: ApprovedInvoiceViewProps): React.JSX.Element {
-  if (approvedInvoiceState.isLoading) {
-    return (
-      <section className={`panel ${styles.editorState}`}>
-        <p className={styles.state}>
-          {uiText.invoicing.approvedInvoiceLoading}
-        </p>
-      </section>
-    );
-  }
-
-  if (approvedInvoiceState.errorMessage !== null) {
-    return (
-      <section className={`panel ${styles.editorState}`}>
-        <p className="message error-message" role="alert">
-          {approvedInvoiceState.errorMessage}
-        </p>
-        <button className="ghost-button" onClick={onBack} type="button">
-          {uiText.invoicing.backToDrafts}
-        </button>
-      </section>
-    );
-  }
-
-  if (approvedInvoiceState.approvedInvoice === null) {
-    return (
-      <section className={`panel ${styles.editorState}`}>
-        <p className={styles.state}>
-          {uiText.invoicing.approvedInvoiceOpenPrompt}
-        </p>
-        <button className="ghost-button" onClick={onBack} type="button">
-          {uiText.invoicing.backToDrafts}
-        </button>
-      </section>
-    );
-  }
-
-  return (
-    <ApprovedInvoicePreview
-      copyErrorMessage={copyApprovedInvoiceState.errorMessage}
-      email={approvedInvoiceEmailState.email}
-      emailErrorMessage={approvedInvoiceEmailState.errorMessage}
-      emailSendErrorMessage={sendApprovedInvoiceEmailState.errorMessage}
-      emailSendSuccessMessage={sendApprovedInvoiceEmailState.successMessage}
-      emailSmtpTestErrorMessage={
-        sendApprovedInvoiceEmailSmtpTestState.errorMessage
-      }
-      emailSmtpTestRecipient={emailSmtpTestRecipient}
-      emailSmtpTestUnavailableMessage={emailSmtpTestUnavailableMessage}
-      emailSmtpTestSuccessMessage={
-        sendApprovedInvoiceEmailSmtpTestState.successMessage
-      }
-      emailSmtpErrorMessage={sendApprovedInvoiceEmailSmtpState.errorMessage}
-      emailSmtpSuccessMessage={sendApprovedInvoiceEmailSmtpState.successMessage}
-      emailSmtpUnavailableMessage={emailSmtpUnavailableMessage}
-      invoice={approvedInvoiceState.approvedInvoice}
-      deliveryEvents={invoiceDeliveryEventListState.events}
-      deliveryEventsErrorMessage={invoiceDeliveryEventListState.errorMessage}
-      isLoadingDeliveryEvents={invoiceDeliveryEventListState.isLoading}
-      isCopyingInvoice={copyApprovedInvoiceState.isCopying}
-      isCreatingPdf={approvedInvoicePdfState.isCreating}
-      isPdfAvailable={approvedInvoicePdfState.document !== null}
-      isMarkingSent={markApprovedInvoiceSentState.isMarkingSent}
-      isPreparingEmail={approvedInvoiceEmailState.isPreparing}
-      isSendingEmailDryRun={sendApprovedInvoiceEmailState.isSending}
-      isSendingEmailSmtp={sendApprovedInvoiceEmailSmtpState.isSending}
-      isSendingEmailSmtpTest={
-        sendApprovedInvoiceEmailSmtpTestState.isSending
-      }
-      isReopening={reopenApprovedInvoiceState.isReopening}
-      markSentErrorMessage={markApprovedInvoiceSentState.errorMessage}
-      pdfErrorMessage={approvedInvoicePdfState.errorMessage}
-      reopenErrorMessage={reopenApprovedInvoiceState.errorMessage}
-      onBack={onBack}
-      onCopyInvoice={onCopyApprovedInvoiceToDraft}
-      onCreatePdf={onCreateApprovedInvoicePdf}
-      onEditInvoice={onEditApprovedInvoice}
-      onMarkSent={onMarkApprovedInvoiceSent}
-      onOpenPdf={onOpenApprovedInvoicePdf}
-      onPrepareEmail={onPrepareApprovedInvoiceEmail}
-      onSendEmailDryRun={onSendApprovedInvoiceEmailDryRun}
-      onSendEmailSmtp={onSendApprovedInvoiceEmailSmtp}
-      onSendEmailSmtpTest={onSendApprovedInvoiceEmailSmtpTest}
-    />
   );
 }
 

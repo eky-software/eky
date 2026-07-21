@@ -10,34 +10,6 @@ import { ApprovedInvoicePreview } from './ApprovedInvoicePreview.js';
 import { uiText } from '../../../i18n/fi.js';
 
 describe('ApprovedInvoicePreview', () => {
-  it('renders approved invoice snapshot details', () => {
-    const longEmail =
-      'billing.with.a.very.long.address.for.preview.testing@example-builder-company.test';
-    const html = renderPreview({
-      invoice: {
-        ...createApprovedInvoiceView(),
-        companyEmailSnapshot: longEmail,
-      },
-    });
-
-    expect(html).toContain('Lasku 20260001');
-    expect(html).toContain(uiText.invoicing.statusApproved);
-    expect(html).toContain('Example Builder Oy');
-    expect(html).toContain(uiText.companySettings.vatNumber);
-    expect(html).toContain(uiText.companySettings.streetAddress);
-    expect(html).toContain(longEmail);
-    expect(html).toContain('www.example-builder.fi');
-    expect(html).toContain('FI76543210');
-    expect(html).toContain('Example Customer Oy');
-    expect(html).toContain('Billing Recipient Oy');
-    expect(html).toContain('202600017');
-    expect(html).toContain('Work row');
-    expect(html).toContain('25,50 %');
-    expect(html).toContain('125,50');
-    expect(html).toContain('FI21 1234 5600 0007 85');
-    expect(html).toContain('NDEAFIHH');
-  });
-
   it('renders invoice detail sections in a readable review order', () => {
     const html = renderPreview();
 
@@ -50,87 +22,6 @@ describe('ApprovedInvoicePreview', () => {
     expect(html.indexOf(uiText.invoicing.customer)).toBeLessThan(
       html.indexOf(uiText.invoicing.invoiceRecipient),
     );
-  });
-
-  it('renders clear VAT breakdown and payment details', () => {
-    const html = renderPreview();
-
-    expect(html).toContain(uiText.invoicing.rowVat);
-    expect(html).toContain(uiText.invoicing.netAmount);
-    expect(html).toContain(uiText.invoicing.vatAmount);
-    expect(html).toContain(uiText.invoicing.grossTotal);
-    expect(html).toContain(uiText.invoicing.paymentDetails);
-    expect(html).toContain(uiText.invoicing.referenceNumber);
-    expect(html).toContain(uiText.invoicing.dueDate);
-    expect(html).toContain(uiText.invoicing.total);
-  });
-
-  it('hides empty optional invoice fields', () => {
-    const html = renderPreview({
-      invoice: {
-        ...createApprovedInvoiceView(),
-        deliveryAddressText: '',
-        note: '',
-        orderNumber: '',
-        subject: '',
-      },
-    });
-
-    expect(html).not.toContain(`${uiText.invoicing.deliveryAddressText}:`);
-    expect(html).not.toContain(`${uiText.invoicing.note}:`);
-    expect(html).not.toContain(`${uiText.invoicing.orderNumber}:`);
-    expect(html).not.toContain(`${uiText.invoicing.subject}:`);
-  });
-
-  it('renders the edit action for approved invoices', () => {
-    const html = renderPreview();
-
-    expect(html).toContain(uiText.invoicing.editApprovedInvoice);
-    expect(html).toContain(uiText.invoicing.markApprovedInvoiceSent);
-  });
-
-  it('disables the sent action while the PDF is being prepared', () => {
-    const html = renderPreview({ isCreatingPdf: true });
-
-    expect(html).toContain(uiText.invoicing.approvedInvoicePdfCreating);
-    expect(html).toContain('disabled=""');
-  });
-
-  it('renders sent status and hides editing actions for sent invoices', () => {
-    const html = renderPreview({
-      invoice: createApprovedInvoiceView({ status: 'sent' }),
-    });
-
-    expect(html).toContain(uiText.invoicing.statusSent);
-    expect(html).toContain(uiText.invoicing.copyApprovedInvoice);
-    expect(html).not.toContain(uiText.invoicing.editApprovedInvoice);
-    expect(html).not.toContain(uiText.invoicing.markApprovedInvoiceSent);
-  });
-
-  it('renders a safe sent invoice copy error without technical data', () => {
-    const html = renderPreview({
-      copyErrorMessage: uiText.invoicing.copyApprovedInvoiceError,
-      invoice: createApprovedInvoiceView({ status: 'sent' }),
-    });
-
-    expect(html).toContain(uiText.invoicing.copyApprovedInvoiceError);
-    expect(html).not.toContain('responseBody');
-    expect(html).not.toContain('stack');
-  });
-
-  it('shows the PDF create action only when the stored PDF is not available', () => {
-    const html = renderPreview({ isPdfAvailable: false });
-
-    expect(html).toContain(uiText.invoicing.approvedInvoicePdfCreate);
-    expect(html).not.toContain(uiText.invoicing.approvedInvoiceOpenPdf);
-  });
-
-  it('shows the PDF open action only when the stored PDF is available', () => {
-    const html = renderPreview({ isPdfAvailable: true });
-
-    expect(html).toContain(uiText.invoicing.approvedInvoiceOpenPdf);
-    expect(html).toContain('secondary-action');
-    expect(html).not.toContain(uiText.invoicing.approvedInvoicePdfCreate);
   });
 
   it('renders the dry-run email preview without technical error details', () => {
