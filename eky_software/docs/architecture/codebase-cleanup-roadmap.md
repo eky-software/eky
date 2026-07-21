@@ -715,12 +715,13 @@ korvataan viittauksella uuteen hyväksyttyyn ADR- tai moduulisuunnitelmaan.
 | Vaihe | Tila | Lähtöcommit | Valmis commit | Huomiot |
 | --- | --- | --- | --- | --- |
 | Cleanup- ja UI-dokumenttien tarkennus | Valmis | `195cce2` | `0f7add7` | Omistajuudet, release-portit ja seuranta tarkennettu |
-| `InvoicingPageView`-erotus | Valmis | `0f7add7` | Tämä commit | Controller, näkymä ja näkymätesti erotettu; julkinen entrypoint säilytetty |
+| `InvoicingPageView`-erotus | Valmis | `0f7add7` | `4688d22` | Controller, näkymä ja näkymätesti erotettu; julkinen entrypoint säilytetty |
+| `InvoiceWorkspaceListView`-erotus | Valmis | `4688d22` | Tämä commit | Draft-, approved- ja sent-listat sekä niiden testit erotettu rajatulla props-sopimuksella |
 | Muut cleanup-roadmapin vaiheet | Ei aloitettu | - | - | Vaativat projektin omistajan uuden luvan |
 
 Roadmapia ei käytetä vanhojen ADR-päätösten historian uudelleenkirjoittamiseen.
 Kun nykytila muuttuu, nykytilaa kuvaavat moduuli- ja arkkitehtuuridokumentit
 päivitetään samassa muutoksessa.
 
-Seuraava suositeltu toteutusaskel on Invoicing-webin työtilan controller- ja
-näkymäjako ilman käyttäytymis-, API-, tietokanta- tai riippuvuusmuutoksia.
+Seuraava pienin turvallinen toteutusaskel on `InvoiceDraftEditorView`-erotus
+ilman käyttäytymis-, API-, tietokanta- tai riippuvuusmuutoksia.

@@ -1,8 +1,6 @@
 import type {
-  ApprovedInvoiceSummary,
   ApprovedInvoiceView,
   Customer,
-  InvoiceDraftSummary,
 } from '@eky/api-client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
@@ -11,122 +9,6 @@ import { InvoicingPageView } from './InvoicingPageView.js';
 import { uiText } from '../../../i18n/fi.js';
 
 describe('InvoicingPageView', () => {
-  it('renders invoice draft summaries and the new invoice placeholder', () => {
-    const html = renderPage({
-      activeView: 'draftList',
-      customerListState: createCustomerListState(),
-      drafts: [createInvoiceDraftSummary()],
-      errorMessage: null,
-      isLoading: false,
-      draftEditorState: createDraftEditorState(),
-      onBackToDrafts: vi.fn(),
-      onOpenDraft: vi.fn(),
-      onNewInvoice: vi.fn(),
-    });
-
-    expect(html).toContain('Testilasku');
-    expect(html).toContain('1001 – Esimerkki Asiakas Oy');
-    expect(html).not.toContain('customer-1');
-    expect(html).not.toContain('draft-1');
-    expect(html).toContain('13.06.2026');
-    expect(html).toContain('27.06.2026');
-    expect(html).toContain('178,84');
-    expect(html).toContain(uiText.invoicing.statusDraft);
-    expect(html).toContain(`aria-label="${uiText.invoicing.deleteDraft}"`);
-    expect(html).toContain(uiText.invoicing.newInvoice);
-    expect(html).toContain(uiText.invoicing.approvedInvoiceList);
-    expect(html).toContain('Laskunumero 20260001');
-    expect(html).toContain('<button');
-    expect(html).not.toContain(uiText.invoicing.saveDraft);
-  });
-
-  it('renders an inline confirmation before deleting a draft', () => {
-    const html = renderPage({
-      activeView: 'draftList',
-      customerListState: createCustomerListState(),
-      drafts: [createInvoiceDraftSummary()],
-      errorMessage: null,
-      isLoading: false,
-      pendingDeleteDraftId: 'draft-1',
-      draftEditorState: createDraftEditorState(),
-      onBackToDrafts: vi.fn(),
-      onOpenDraft: vi.fn(),
-      onNewInvoice: vi.fn(),
-    });
-
-    expect(html).toContain(uiText.invoicing.deleteDraftConfirm);
-    expect(html).toContain(uiText.invoicing.deleteDraftConfirmAction);
-    expect(html).toContain(uiText.invoicing.deleteDraftCancel);
-  });
-
-  it('renders a safe draft deletion error without technical response data', () => {
-    const html = renderPage({
-      activeView: 'draftList',
-      customerListState: createCustomerListState(),
-      deleteState: createDeleteState({
-        errorMessage: uiText.invoicing.deleteDraftError,
-      }),
-      drafts: [createInvoiceDraftSummary()],
-      errorMessage: null,
-      isLoading: false,
-      draftEditorState: createDraftEditorState(),
-      onBackToDrafts: vi.fn(),
-      onOpenDraft: vi.fn(),
-      onNewInvoice: vi.fn(),
-    });
-
-    expect(html).toContain(uiText.invoicing.deleteDraftError);
-    expect(html).not.toContain('responseBody');
-    expect(html).not.toContain('stack');
-  });
-
-  it('renders the empty state', () => {
-    const html = renderPage({
-      activeView: 'draftList',
-      customerListState: createCustomerListState(),
-      drafts: [],
-      errorMessage: null,
-      isLoading: false,
-      draftEditorState: createDraftEditorState(),
-      onBackToDrafts: vi.fn(),
-      onOpenDraft: vi.fn(),
-      onNewInvoice: vi.fn(),
-    });
-
-    expect(html).toContain(uiText.invoicing.empty);
-  });
-
-  it('splits approved and sent invoices into separate lists', () => {
-    const html = renderPage({
-      activeView: 'draftList',
-      approvedInvoiceListState: createApprovedInvoiceListState({
-        approvedInvoices: [
-          createApprovedInvoiceSummary(),
-          createApprovedInvoiceSummary({
-            id: 'invoice-2',
-            invoiceNumber: '20260002',
-            status: 'sent',
-          }),
-        ],
-      }),
-      customerListState: createCustomerListState(),
-      drafts: [],
-      errorMessage: null,
-      isLoading: false,
-      draftEditorState: createDraftEditorState(),
-      onBackToDrafts: vi.fn(),
-      onCopyApprovedInvoiceToDraft: vi.fn(),
-      onOpenDraft: vi.fn(),
-      onNewInvoice: vi.fn(),
-    });
-
-    expect(html).toContain(uiText.invoicing.approvedInvoiceList);
-    expect(html).toContain(uiText.invoicing.sentInvoiceList);
-    expect(html).toContain('Laskunumero 20260001');
-    expect(html).toContain('Laskunumero 20260002');
-    expect(html).not.toContain(uiText.invoicing.copyApprovedInvoice);
-  });
-
   it('renders a safe sent invoice copy error without technical data', () => {
     const html = renderPage({
       activeView: 'approvedInvoice',
@@ -151,40 +33,6 @@ describe('InvoicingPageView', () => {
     expect(html).toContain(uiText.invoicing.copyApprovedInvoiceError);
     expect(html).not.toContain('responseBody');
     expect(html).not.toContain('stack');
-  });
-
-  it('renders a safe error state without technical response data', () => {
-    const html = renderPage({
-      activeView: 'draftList',
-      customerListState: createCustomerListState(),
-      drafts: [],
-      errorMessage: uiText.invoicing.loadError,
-      isLoading: false,
-      draftEditorState: createDraftEditorState(),
-      onBackToDrafts: vi.fn(),
-      onOpenDraft: vi.fn(),
-      onNewInvoice: vi.fn(),
-    });
-
-    expect(html).toContain(uiText.invoicing.loadError);
-    expect(html).not.toContain('responseBody');
-    expect(html).not.toContain('stack');
-  });
-
-  it('renders the loading state', () => {
-    const html = renderPage({
-      activeView: 'draftList',
-      customerListState: createCustomerListState(),
-      drafts: [],
-      errorMessage: null,
-      isLoading: true,
-      draftEditorState: createDraftEditorState(),
-      onBackToDrafts: vi.fn(),
-      onOpenDraft: vi.fn(),
-      onNewInvoice: vi.fn(),
-    });
-
-    expect(html).toContain(uiText.invoicing.loading);
   });
 
   it('renders the new invoice Classic form shell', () => {
@@ -586,7 +434,7 @@ function createApprovedInvoiceListState(
   overrides: Partial<InvoicingPageViewProps['approvedInvoiceListState']> = {},
 ): InvoicingPageViewProps['approvedInvoiceListState'] {
   return {
-    approvedInvoices: [createApprovedInvoiceSummary()],
+    approvedInvoices: [],
     errorMessage: null,
     isLoading: false,
     refreshApprovedInvoices: vi.fn(),
@@ -752,45 +600,6 @@ function createCustomer(): Customer {
     status: 'active',
     streetAddress: 'Testikatu 1',
     updatedAt: '2026-06-13T18:00:00.000Z',
-  };
-}
-
-function createInvoiceDraftSummary(): InvoiceDraftSummary {
-  return {
-    id: 'draft-1',
-    customerId: 'customer-1',
-    status: 'draft',
-    invoiceDate: '2026-06-13',
-    dueDate: '2026-06-27',
-    paymentTermDays: 14,
-    latePaymentInterestBasisPoints: 950,
-    priceInputMode: 'net',
-    subject: 'Testilasku',
-    netTotalCents: 14_250,
-    vatTotalCents: 3634,
-    grossTotalCents: 17_884,
-    updatedAt: '2026-06-13T18:00:00.000Z',
-  };
-}
-
-function createApprovedInvoiceSummary(
-  overrides: Partial<ApprovedInvoiceSummary> = {},
-): ApprovedInvoiceSummary {
-  return {
-    id: 'invoice-1',
-    invoiceNumber: '20260001',
-    referenceNumber: '202600017',
-    status: 'approved',
-    customerId: 'customer-1',
-    customerNumberSnapshot: '1001',
-    customerNameSnapshot: 'Esimerkki Asiakas Oy',
-    billingRecipientNameSnapshot: 'Esimerkki Asiakas Oy',
-    invoiceDate: '2026-06-13',
-    dueDate: '2026-06-27',
-    grossTotalCents: 17_884,
-    approvedAt: '2026-06-13T18:00:00.000Z',
-    updatedAt: '2026-06-13T18:00:00.000Z',
-    ...overrides,
   };
 }
 
