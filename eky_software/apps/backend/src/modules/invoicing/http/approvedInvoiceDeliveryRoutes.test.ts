@@ -4,21 +4,8 @@ import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 
 import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
-import type { GetApprovedInvoiceInput } from '../application/getApprovedInvoice.js';
-import type { ListApprovedInvoicesInput } from '../application/listApprovedInvoices.js';
 import type { ListInvoiceDeliveryEventsInput } from '../application/listInvoiceDeliveryEvents.js';
-import type { ReopenApprovedInvoiceForEditingInput } from '../application/reopenApprovedInvoiceForEditing.js';
 import type { MarkApprovedInvoiceSentInput } from '../application/markApprovedInvoiceSent.js';
-import type { CopyApprovedInvoiceToDraftInput } from '../application/copyApprovedInvoiceToDraft.js';
-import { ApprovedInvoiceDocumentNotFoundError } from '../application/approvedInvoiceDocumentNotFoundError.js';
-import type { GenerateApprovedInvoicePdfDocumentInput } from '../application/generateApprovedInvoicePdfDocument.js';
-import type {
-  ApprovedInvoicePdfDocumentFile,
-  GetApprovedInvoicePdfDocumentInput,
-} from '../application/getApprovedInvoicePdfDocument.js';
-import type {
-  GetApprovedInvoicePdfMetadataInput,
-} from '../application/getApprovedInvoicePdfMetadata.js';
 import type {
   PrepareApprovedInvoiceEmailDryRunInput,
 } from '../application/prepareApprovedInvoiceEmailDryRun.js';
@@ -43,33 +30,11 @@ import type {
 import type { ApprovedInvoiceEmailPreview } from '../application/approvedInvoiceEmailPreview.js';
 import { ApprovedInvoiceNotFoundError } from '../application/approvedInvoiceNotFoundError.js';
 import { InvoiceDeliveryConflictError } from '../application/invoiceDeliveryConflictError.js';
-import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
-import type { ApprovedInvoiceSummary } from '../domain/approvedInvoiceSummary.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import type { InvoiceDeliveryEventSummary } from '../domain/invoiceDeliveryEventSummary.js';
-import type { InvoiceDraft } from '../domain/invoiceDraft.js';
-import { createApprovedInvoiceRoutes } from './approvedInvoiceRoutes.js';
+import { createApprovedInvoiceDeliveryRoutes } from './approvedInvoiceDeliveryRoutes.js';
 
-describe('approved invoice routes', () => {
-
-  it('reopens an approved invoice for editing in the company scope', async () => {
-    const { app, getReopenInput } = createTestApp({});
-
-    const response = await app.request('/invoices/invoice-1/reopen-for-edit', {
-      method: 'POST',
-    });
-
-    await expect(response.json()).resolves.toEqual({
-      invoiceDraftId: 'draft-1',
-      invoiceId: 'invoice-1',
-    });
-    expect(response.status).toBe(200);
-    expect(getReopenInput()).toMatchObject({
-      actorUserId: 'dev-user',
-      companyId: 'dev-company',
-      invoiceId: 'invoice-1',
-    });
-  });
+describe('approved invoice delivery routes', () => {
 
   it('marks an approved invoice as sent in the company scope', async () => {
     const sentInvoice = createApprovedInvoiceView({ status: 'sent' });
@@ -431,37 +396,6 @@ describe('approved invoice routes', () => {
     expect(response.status).toBe(404);
   });
 
-  it('copies an approved invoice to a new draft in the company scope', async () => {
-    const invoiceDraft = createInvoiceDraft();
-    const { app, getCopyInput } = createTestApp({ copiedDraft: invoiceDraft });
-
-    const response = await app.request('/invoices/invoice-1/copy-to-draft', {
-      method: 'POST',
-    });
-
-    await expect(response.json()).resolves.toEqual({ invoiceDraft });
-    expect(response.status).toBe(201);
-    expect(getCopyInput()).toMatchObject({
-      companyId: 'dev-company',
-      invoiceId: 'invoice-1',
-    });
-  });
-
-  it('returns a safe 404 when copying an invoice outside the company scope', async () => {
-    const { app } = createTestApp({
-      copyError: new ApprovedInvoiceNotFoundError(),
-    });
-
-    const response = await app.request('/invoices/missing/copy-to-draft', {
-      method: 'POST',
-    });
-
-    await expect(response.json()).resolves.toEqual({
-      error: 'Approved invoice was not found.',
-    });
-    expect(response.status).toBe(404);
-  });
-
   it('returns a safe 404 when marking an invoice sent outside the company scope', async () => {
     const { app } = createTestApp({
       markSentError: new ApprovedInvoiceNotFoundError(),
@@ -526,26 +460,9 @@ describe('approved invoice routes', () => {
     expect(response.status).toBe(403);
   });
 
-  it('returns a safe 404 when reopening an invoice outside the company scope', async () => {
-    const { app } = createTestApp({
-      error: new ApprovedInvoiceNotFoundError(),
-    });
-
-    const response = await app.request('/invoices/missing/reopen-for-edit', {
-      method: 'POST',
-    });
-
-    await expect(response.json()).resolves.toEqual({
-      error: 'Approved invoice was not found.',
-    });
-    expect(response.status).toBe(404);
-  });
 });
 
 function createTestApp(options: {
-  copiedDraft?: InvoiceDraft;
-  copyError?: Error;
-  document?: ApprovedInvoiceDocumentMetadata;
   deliveryEvents?: InvoiceDeliveryEventSummary[];
   emailDelivery?: SendApprovedInvoiceEmailDryRunResult;
   emailSmtpDelivery?: SendApprovedInvoiceEmailSmtpResult;
@@ -555,18 +472,10 @@ function createTestApp(options: {
   email?: ApprovedInvoiceEmailPreview;
   emailError?: Error;
   error?: Error;
-  invoice?: ApprovedInvoiceView;
-  invoices?: ApprovedInvoiceSummary[];
   markSentError?: Error;
-  pdfDocument?: ApprovedInvoicePdfDocumentFile;
-  pdfError?: Error;
   sentInvoice?: ApprovedInvoiceView;
 }) {
-  let input: GetApprovedInvoiceInput | undefined;
-  let copyInput: CopyApprovedInvoiceToDraftInput | undefined;
-  let listInput: ListApprovedInvoicesInput | undefined;
   let deliveryEventsInput: ListInvoiceDeliveryEventsInput | undefined;
-  let reopenInput: ReopenApprovedInvoiceForEditingInput | undefined;
   let markSentInput: MarkApprovedInvoiceSentInput | undefined;
   let emailInput: PrepareApprovedInvoiceEmailDryRunInput | undefined;
   let emailSendInput: SendApprovedInvoiceEmailDryRunInput | undefined;
@@ -578,54 +487,7 @@ function createTestApp(options: {
     | PrepareApprovedInvoiceEmailSmtpInput
     | undefined;
   let emailSmtpInput: SendApprovedInvoiceEmailSmtpInput | undefined;
-  let generatePdfInput: GenerateApprovedInvoicePdfDocumentInput | undefined;
-  let pdfInput: GetApprovedInvoicePdfDocumentInput | undefined;
-  let pdfMetadataInput: GetApprovedInvoicePdfMetadataInput | undefined;
-  const routes = createApprovedInvoiceRoutes({
-    async copyApprovedInvoiceToDraft(nextInput) {
-      copyInput = nextInput;
-
-      if (options.copyError !== undefined) {
-        throw options.copyError;
-      }
-
-      if (options.error !== undefined) {
-        throw options.error;
-      }
-
-      return options.copiedDraft ?? createInvoiceDraft();
-    },
-    async generateApprovedInvoicePdfDocument(nextInput) {
-      generatePdfInput = nextInput;
-
-      if (options.error !== undefined) {
-        throw options.error;
-      }
-
-      return options.document ?? createApprovedInvoiceDocumentMetadata();
-    },
-    async getApprovedInvoice(nextInput) {
-      input = nextInput;
-
-      if (options.error !== undefined) {
-        throw options.error;
-      }
-
-      if (options.invoice === undefined) {
-        throw new ApprovedInvoiceNotFoundError();
-      }
-
-      return options.invoice;
-    },
-    async listApprovedInvoices(nextInput) {
-      listInput = nextInput;
-
-      if (options.error !== undefined) {
-        throw options.error;
-      }
-
-      return options.invoices ?? [];
-    },
+  const routes = createApprovedInvoiceDeliveryRoutes({
     async listInvoiceDeliveryEvents(nextInput) {
       deliveryEventsInput = nextInput;
 
@@ -730,36 +592,6 @@ function createTestApp(options: {
         createApprovedInvoiceEmailSmtpTestSendResult()
       );
     },
-    async getApprovedInvoicePdfDocument(nextInput) {
-      pdfInput = nextInput;
-
-      if (options.pdfError !== undefined) {
-        throw options.pdfError;
-      }
-
-      return options.pdfDocument ?? createApprovedInvoicePdfDocumentFile();
-    },
-    async getApprovedInvoicePdfMetadata(nextInput) {
-      pdfMetadataInput = nextInput;
-
-      if (options.pdfError !== undefined) {
-        throw options.pdfError;
-      }
-
-      return options.document ?? createApprovedInvoiceDocumentMetadata();
-    },
-    async reopenApprovedInvoiceForEditing(nextInput) {
-      reopenInput = nextInput;
-
-      if (options.error !== undefined) {
-        throw options.error;
-      }
-
-      return {
-        draftId: 'draft-1',
-        invoiceId: nextInput.invoiceId,
-      };
-    },
   });
 
   const app = new Hono<BackendEnvironment>();
@@ -783,21 +615,14 @@ function createTestApp(options: {
 
   return {
     app,
-    getGeneratePdfInput: () => generatePdfInput,
-    getCopyInput: () => copyInput,
     getEmailInput: () => emailInput,
     getEmailSendInput: () => emailSendInput,
     getEmailSmtpTestPreparationInput: () => emailSmtpTestPreparationInput,
     getEmailSmtpTestInput: () => emailSmtpTestInput,
     getEmailSmtpPreparationInput: () => emailSmtpPreparationInput,
     getEmailSmtpInput: () => emailSmtpInput,
-    getInput: () => input,
     getDeliveryEventsInput: () => deliveryEventsInput,
-    getListInput: () => listInput,
     getMarkSentInput: () => markSentInput,
-    getPdfInput: () => pdfInput,
-    getPdfMetadataInput: () => pdfMetadataInput,
-    getReopenInput: () => reopenInput,
   };
 }
 
@@ -863,104 +688,6 @@ function createApprovedInvoiceEmailPreview(): ApprovedInvoiceEmailPreview {
     provider: 'dryRun',
     subject: 'Lasku 20260001',
     to: 'recipient@example.fi',
-  };
-}
-
-function createInvoiceDraft(): InvoiceDraft {
-  return {
-    billingRecipientCustomerId: null,
-    companyId: 'dev-company',
-    createdAt: '2026-07-08T10:00:00.000Z',
-    customerId: 'customer-1',
-    deliveryAddressText: '',
-    dueDate: '2026-07-22',
-    id: 'draft-copy-1',
-    invoiceDate: '2026-07-08',
-    latePaymentInterestBasisPoints: 950,
-    lines: [
-      {
-        baseCents: 10000,
-        code: 'WORK',
-        description: 'Work',
-        discount: { type: 'none' },
-        discountCents: 0,
-        grossCents: 12550,
-        id: 'line-1',
-        netCents: 10000,
-        position: 1,
-        priceInputMode: 'net',
-        quantityHundredths: 100,
-        unit: 'h',
-        unitPriceCents: 10000,
-        vatCents: 2550,
-        vatRateBasisPoints: 2550,
-      },
-    ],
-    note: '',
-    orderNumber: '',
-    paymentTermDays: 14,
-    priceInputMode: 'net',
-    reminderPeriodDays: 8,
-    status: 'draft',
-    subject: 'Copied invoice',
-    totals: {
-      grossTotalCents: 12550,
-      netTotalCents: 10000,
-      vatBreakdown: [
-        {
-          grossCents: 12550,
-          netCents: 10000,
-          vatCents: 2550,
-          vatRateBasisPoints: 2550,
-        },
-      ],
-      vatTotalCents: 2550,
-    },
-    updatedAt: '2026-07-08T10:00:00.000Z',
-  };
-}
-
-function createApprovedInvoiceDocumentMetadata(): ApprovedInvoiceDocumentMetadata {
-  return {
-    id: 'document-1',
-    companyId: 'dev-company',
-    invoiceId: 'invoice-1',
-    documentType: 'approved_invoice_pdf',
-    fileName: 'lasku-20260001.pdf',
-    storagePath: 'dev-company/invoice-1/approved-invoice.pdf',
-    mimeType: 'application/pdf',
-    sha256:
-      '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-    sizeBytes: 8,
-    createdAt: '2026-07-05T10:00:00.000Z',
-  };
-}
-
-function createApprovedInvoicePdfDocumentFile(): ApprovedInvoicePdfDocumentFile {
-  return {
-    content: new Uint8Array([37, 80, 68, 70, 45, 116, 101, 115]),
-    metadata: createApprovedInvoiceDocumentMetadata(),
-  };
-}
-
-function createApprovedInvoiceSummary(
-  overrides: Partial<ApprovedInvoiceSummary> = {},
-): ApprovedInvoiceSummary {
-  return {
-    id: 'invoice-1',
-    invoiceNumber: '20260001',
-    referenceNumber: '202600017',
-    status: 'approved',
-    customerId: 'customer-1',
-    customerNumberSnapshot: '1001',
-    customerNameSnapshot: 'Example Customer Oy',
-    billingRecipientNameSnapshot: 'Billing Recipient Oy',
-    invoiceDate: '2026-06-13',
-    dueDate: '2026-06-27',
-    grossTotalCents: 12550,
-    approvedAt: '2026-06-13T10:00:00.000Z',
-    updatedAt: '2026-06-13T10:00:00.000Z',
-    ...overrides,
   };
 }
 
