@@ -1,0 +1,258 @@
+import { createActorContext } from '@eky/auth';
+import { Hono } from 'hono';
+import { describe, expect, it } from 'vitest';
+
+import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
+import type { GetApprovedInvoiceInput } from '../application/getApprovedInvoice.js';
+import type { ListApprovedInvoicesInput } from '../application/listApprovedInvoices.js';
+import { ApprovedInvoiceNotFoundError } from '../application/approvedInvoiceNotFoundError.js';
+import type { ApprovedInvoiceSummary } from '../domain/approvedInvoiceSummary.js';
+import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
+import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
+import { createApprovedInvoiceQueryRoutes } from './approvedInvoiceQueryRoutes.js';
+
+describe('approved invoice query routes', () => {
+  it('returns approved invoice summaries in the trusted company scope', async () => {
+    const invoice = createApprovedInvoiceSummary();
+    const { app, getListInput } = createTestApp({ invoices: [invoice] });
+
+    const response = await app.request('/invoices');
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ invoices: [invoice] });
+    expect(getListInput()).toEqual({ companyId: 'dev-company' });
+  });
+
+  it('returns an approved invoice by id in the trusted company scope', async () => {
+    const invoice = createApprovedInvoiceView();
+    const { app, getInput } = createTestApp({ invoice });
+
+    const response = await app.request('/invoices/invoice-1');
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ invoice });
+    expect(getInput()).toEqual({
+      companyId: 'dev-company',
+      invoiceId: 'invoice-1',
+    });
+  });
+
+  it('preserves the snapshot response shape used by invoice views', async () => {
+    const { app } = createTestApp({ invoice: createApprovedInvoiceView() });
+
+    const response = await app.request('/invoices/invoice-1');
+    const body = await response.json();
+
+    expect(body.invoice).toMatchObject({
+      billingRecipientNameSnapshot: 'Billing Recipient Oy',
+      companyNameSnapshot: 'Example Builder Oy',
+      companyVatNumberSnapshot: 'FI76543210',
+      customerNameSnapshot: 'Example Customer Oy',
+      invoiceNumber: '20260001',
+      referenceNumber: '202600017',
+      totals: {
+        grossTotalCents: 12550,
+        netTotalCents: 10000,
+        vatTotalCents: 2550,
+      },
+    });
+  });
+
+  it('returns a safe 404 without revealing another company invoice', async () => {
+    const { app } = createTestApp({
+      getError: new ApprovedInvoiceNotFoundError(),
+    });
+
+    const response = await app.request('/invoices/missing-invoice');
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Approved invoice was not found.',
+    });
+  });
+
+  it('maps query validation failures to the existing safe 400 response', async () => {
+    const { app } = createTestApp({
+      listError: new InvoiceDraftValidationError('Invalid company id.'),
+    });
+
+    const response = await app.request('/invoices');
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Invalid company id.',
+    });
+  });
+});
+
+function createTestApp(options: {
+  getError?: Error;
+  invoice?: ApprovedInvoiceView;
+  invoices?: ApprovedInvoiceSummary[];
+  listError?: Error;
+}) {
+  let getInput: GetApprovedInvoiceInput | undefined;
+  let listInput: ListApprovedInvoicesInput | undefined;
+  const routes = createApprovedInvoiceQueryRoutes({
+    async getApprovedInvoice(input) {
+      getInput = input;
+
+      if (options.getError !== undefined) {
+        throw options.getError;
+      }
+
+      if (options.invoice === undefined) {
+        throw new ApprovedInvoiceNotFoundError();
+      }
+
+      return options.invoice;
+    },
+    async listApprovedInvoices(input) {
+      listInput = input;
+
+      if (options.listError !== undefined) {
+        throw options.listError;
+      }
+
+      return options.invoices ?? [];
+    },
+  });
+  const app = new Hono<BackendEnvironment>();
+  app.use('*', async (context, next) => {
+    context.set(
+      'actorContext',
+      createActorContext({
+        actorId: 'dev-user',
+        authenticationMode: 'local',
+        companyId: 'dev-company',
+        permissions: [],
+      }),
+    );
+    await next();
+  });
+  app.route('/', routes);
+
+  return {
+    app,
+    getInput: () => getInput,
+    getListInput: () => listInput,
+  };
+}
+
+function createApprovedInvoiceSummary(): ApprovedInvoiceSummary {
+  return {
+    approvedAt: '2026-06-13T10:00:00.000Z',
+    billingRecipientNameSnapshot: 'Billing Recipient Oy',
+    customerId: 'customer-1',
+    customerNameSnapshot: 'Example Customer Oy',
+    customerNumberSnapshot: '1001',
+    dueDate: '2026-06-27',
+    grossTotalCents: 12550,
+    id: 'invoice-1',
+    invoiceDate: '2026-06-13',
+    invoiceNumber: '20260001',
+    referenceNumber: '202600017',
+    status: 'approved',
+    updatedAt: '2026-06-13T10:00:00.000Z',
+  };
+}
+
+function createApprovedInvoiceView(): ApprovedInvoiceView {
+  return {
+    approvedAt: '2026-06-13T10:00:00.000Z',
+    billingRecipientBusinessIdSnapshot: '8765432-1',
+    billingRecipientCitySnapshot: 'Espoo',
+    billingRecipientCustomerId: 'billing-1',
+    billingRecipientCustomerNumberSnapshot: '2001',
+    billingRecipientCustomerTypeSnapshot: 'propertyManager',
+    billingRecipientEmailSnapshot: 'recipient@example.fi',
+    billingRecipientNameSnapshot: 'Billing Recipient Oy',
+    billingRecipientPhoneSnapshot: '040 333 4444',
+    billingRecipientPostalCodeSnapshot: '02100',
+    billingRecipientStreetAddressSnapshot: 'Recipient Street 3',
+    companyBankNameSnapshot: 'Example Bank',
+    companyBicSnapshot: 'NDEAFIHH',
+    companyBusinessIdSnapshot: '7654321-0',
+    companyCitySnapshot: 'Tampere',
+    companyEmailSnapshot: 'billing@example.fi',
+    companyIbanSnapshot: 'FI2112345600000785',
+    companyNameSnapshot: 'Example Builder Oy',
+    companyPhoneSnapshot: '03 123 4567',
+    companyPostalCodeSnapshot: '33100',
+    companyStreetAddressSnapshot: 'Builder Street 2',
+    companyVatNumberSnapshot: 'FI76543210',
+    companyWebsiteSnapshot: 'www.example-builder.fi',
+    companyId: 'dev-company',
+    createdAt: '2026-06-13T10:00:00.000Z',
+    customerBusinessIdSnapshot: '1234567-8',
+    customerCitySnapshot: 'Helsinki',
+    customerEmailSnapshot: 'customer@example.fi',
+    customerId: 'customer-1',
+    customerNameSnapshot: 'Example Customer Oy',
+    customerNumberSnapshot: '1001',
+    customerPhoneSnapshot: '040 111 2222',
+    customerPostalCodeSnapshot: '00100',
+    customerStreetAddressSnapshot: 'Customer Street 1',
+    customerTypeSnapshot: 'company',
+    deliveryAddressText: 'Worksite Street 4',
+    dueDate: '2026-06-27',
+    id: 'invoice-1',
+    invoiceDate: '2026-06-13',
+    invoiceNumber: '20260001',
+    latePaymentInterestBasisPoints: 950,
+    lines: [
+      {
+        baseCents: 10000,
+        code: 'WORK',
+        description: 'Work',
+        discount: { type: 'none' },
+        discountCents: 0,
+        grossCents: 12550,
+        id: 'line-1',
+        lineOrder: 1,
+        netCents: 10000,
+        quantityHundredths: 100,
+        unit: 'h',
+        unitPriceCents: 10000,
+        vatCents: 2550,
+        vatRateBasisPoints: 2550,
+      },
+    ],
+    note: 'Invoice note',
+    numberingMode: 'calendarYearSequence',
+    orderNumber: 'ORDER-1',
+    paymentTermDays: 14,
+    priceInputMode: 'net',
+    referenceNumber: '202600017',
+    referenceNumberType: 'finnishDomestic',
+    reminderPeriodDays: 8,
+    sequenceNumber: 1,
+    sequenceScope: 'calendar-year:2026',
+    seriesKey: 'default',
+    sourceDraftId: 'draft-1',
+    status: 'approved',
+    subject: 'Test invoice',
+    totals: {
+      grossTotalCents: 12550,
+      netTotalCents: 10000,
+      vatBreakdown: [
+        {
+          grossCents: 12550,
+          netCents: 10000,
+          vatCents: 2550,
+          vatRateBasisPoints: 2550,
+        },
+      ],
+      vatTotalCents: 2550,
+    },
+    updatedAt: '2026-06-13T10:00:00.000Z',
+    vatBreakdown: [
+      {
+        grossCents: 12550,
+        netCents: 10000,
+        vatCents: 2550,
+        vatRateBasisPoints: 2550,
+      },
+    ],
+  };
+}
