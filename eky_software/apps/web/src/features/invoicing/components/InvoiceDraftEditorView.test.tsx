@@ -22,6 +22,13 @@ describe('InvoiceDraftEditorView', () => {
     expect(html).not.toContain('stack');
   });
 
+  it('renders the empty editor prompt when no draft is open', () => {
+    const html = renderEditor();
+
+    expect(html).toContain(uiText.invoicing.openDraftPrompt);
+    expect(html).toContain(uiText.invoicing.backToDrafts);
+  });
+
   it('hydrates an opened invoice draft into the edit form', () => {
     const html = renderEditor({ draft: createInvoiceDraft() });
 

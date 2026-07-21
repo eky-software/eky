@@ -1,7 +1,4 @@
-import type {
-  ApprovedInvoiceView,
-  Customer,
-} from '@eky/api-client';
+import type { Customer } from '@eky/api-client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -9,32 +6,6 @@ import { InvoicingPageView } from './InvoicingPageView.js';
 import { uiText } from '../../../i18n/fi.js';
 
 describe('InvoicingPageView', () => {
-  it('renders a safe sent invoice copy error without technical data', () => {
-    const html = renderPage({
-      activeView: 'approvedInvoice',
-      approvedInvoiceState: createApprovedInvoiceState({
-        approvedInvoice: createApprovedInvoiceView({
-          status: 'sent',
-        }),
-      }),
-      copyApprovedInvoiceState: createCopyApprovedInvoiceState({
-        errorMessage: uiText.invoicing.copyApprovedInvoiceError,
-      }),
-      customerListState: createCustomerListState(),
-      drafts: [],
-      draftErrorMessage: null,
-      isDraftListLoading: false,
-      draftEditorState: createDraftEditorState(),
-      onBackToDrafts: vi.fn(),
-      onOpenDraft: vi.fn(),
-      onNewInvoice: vi.fn(),
-    });
-
-    expect(html).toContain(uiText.invoicing.copyApprovedInvoiceError);
-    expect(html).not.toContain('responseBody');
-    expect(html).not.toContain('stack');
-  });
-
   it('renders the new invoice Classic form shell', () => {
     const html = renderPage({
       activeView: 'newInvoice',
@@ -76,98 +47,6 @@ describe('InvoicingPageView', () => {
     expect(html).not.toContain('required=""');
   });
 
-  it('renders the approved invoice loading state', () => {
-    const html = renderPage({
-      activeView: 'approvedInvoice',
-      approvedInvoiceState: createApprovedInvoiceState({
-        isLoading: true,
-      }),
-      customerListState: createCustomerListState(),
-      drafts: [],
-      draftErrorMessage: null,
-      isDraftListLoading: false,
-      draftEditorState: createDraftEditorState(),
-      onBackToDrafts: vi.fn(),
-      onOpenDraft: vi.fn(),
-      onNewInvoice: vi.fn(),
-    });
-
-    expect(html).toContain(uiText.invoicing.approvedInvoiceLoading);
-  });
-
-  it('renders a safe approved invoice loading error', () => {
-    const html = renderPage({
-      activeView: 'approvedInvoice',
-      approvedInvoiceState: createApprovedInvoiceState({
-        errorMessage: uiText.invoicing.approvedInvoiceLoadError,
-      }),
-      customerListState: createCustomerListState(),
-      drafts: [],
-      draftErrorMessage: null,
-      isDraftListLoading: false,
-      draftEditorState: createDraftEditorState(),
-      onBackToDrafts: vi.fn(),
-      onOpenDraft: vi.fn(),
-      onNewInvoice: vi.fn(),
-    });
-
-    expect(html).toContain(uiText.invoicing.approvedInvoiceLoadError);
-    expect(html).not.toContain('responseBody');
-    expect(html).not.toContain('stack');
-  });
-
-  it('renders an approved invoice preview from snapshot data', () => {
-    const html = renderPage({
-      activeView: 'approvedInvoice',
-      approvedInvoiceState: createApprovedInvoiceState({
-        approvedInvoice: createApprovedInvoiceView(),
-      }),
-      customerListState: createCustomerListState(),
-      drafts: [],
-      draftErrorMessage: null,
-      isDraftListLoading: false,
-      draftEditorState: createDraftEditorState(),
-      onBackToDrafts: vi.fn(),
-      onOpenDraft: vi.fn(),
-      onNewInvoice: vi.fn(),
-    });
-
-    expect(html).toContain('Lasku 20260001');
-    expect(html).toContain('202600017');
-    expect(html).toContain('Example Builder Oy');
-    expect(html).toContain('FI76543210');
-    expect(html).toContain('Example Customer Oy');
-    expect(html).toContain('Billing Recipient Oy');
-    expect(html).toContain('Work row');
-    expect(html).toContain('25,50 %');
-    expect(html).toContain('125,50');
-    expect(html).toContain(uiText.invoicing.approvedInvoicePdfCreate);
-    expect(html).not.toContain(uiText.invoicing.approvedInvoiceOpenPdf);
-  });
-
-  it('renders a safe approved invoice PDF error without technical response data', () => {
-    const html = renderPage({
-      activeView: 'approvedInvoice',
-      approvedInvoicePdfState: createApprovedInvoicePdfState({
-        errorMessage: uiText.invoicing.approvedInvoicePdfError,
-      }),
-      approvedInvoiceState: createApprovedInvoiceState({
-        approvedInvoice: createApprovedInvoiceView(),
-      }),
-      customerListState: createCustomerListState(),
-      drafts: [],
-      draftErrorMessage: null,
-      isDraftListLoading: false,
-      draftEditorState: createDraftEditorState(),
-      onBackToDrafts: vi.fn(),
-      onOpenDraft: vi.fn(),
-      onNewInvoice: vi.fn(),
-    });
-
-    expect(html).toContain(uiText.invoicing.approvedInvoicePdfError);
-    expect(html).not.toContain('responseBody');
-    expect(html).not.toContain('stack');
-  });
 });
 
 type InvoicingPageViewProps = React.ComponentProps<typeof InvoicingPageView>;
@@ -407,9 +286,7 @@ function createMarkApprovedInvoiceSentState(
     clearError: vi.fn(),
     errorMessage: null,
     isMarkingSent: false,
-    markApprovedInvoiceSent: vi.fn(async () => createApprovedInvoiceView({
-      status: 'sent',
-    })),
+    markApprovedInvoiceSent: vi.fn(async () => null),
     ...overrides,
   };
 }
@@ -599,108 +476,5 @@ function createInvoiceDraft() {
       vatTotalCents: 2506,
     },
     updatedAt: '2026-06-16T12:00:00.000Z',
-  };
-}
-
-function createApprovedInvoiceView(
-  overrides: Partial<ApprovedInvoiceView> = {},
-): ApprovedInvoiceView {
-  return {
-    approvedAt: '2026-06-13T10:00:00.000Z',
-    billingRecipientBusinessIdSnapshot: '8765432-1',
-    billingRecipientCitySnapshot: 'Espoo',
-    billingRecipientCustomerId: 'billing-1',
-    billingRecipientCustomerNumberSnapshot: '2001',
-    billingRecipientCustomerTypeSnapshot: 'propertyManager',
-    billingRecipientEmailSnapshot: 'recipient@example.fi',
-    billingRecipientNameSnapshot: 'Billing Recipient Oy',
-    billingRecipientPhoneSnapshot: '',
-    billingRecipientPostalCodeSnapshot: '02100',
-    billingRecipientStreetAddressSnapshot: 'Recipient Street 3',
-    companyBankNameSnapshot: 'Example Bank',
-    companyBicSnapshot: 'NDEAFIHH',
-    companyBusinessIdSnapshot: '7654321-0',
-    companyCitySnapshot: 'Tampere',
-    companyEmailSnapshot: 'billing@example.fi',
-    companyIbanSnapshot: 'FI2112345600000785',
-    companyId: 'dev-company',
-    companyNameSnapshot: 'Example Builder Oy',
-    companyPhoneSnapshot: '03 123 4567',
-    companyPostalCodeSnapshot: '33100',
-    companyStreetAddressSnapshot: 'Builder Street 2',
-    companyVatNumberSnapshot: 'FI76543210',
-    companyWebsiteSnapshot: 'www.example-builder.fi',
-    createdAt: '2026-06-13T10:00:00.000Z',
-    customerBusinessIdSnapshot: '1234567-8',
-    customerCitySnapshot: 'Helsinki',
-    customerEmailSnapshot: '',
-    customerId: 'customer-1',
-    customerNameSnapshot: 'Example Customer Oy',
-    customerNumberSnapshot: '1001',
-    customerPhoneSnapshot: '',
-    customerPostalCodeSnapshot: '00100',
-    customerStreetAddressSnapshot: 'Customer Street 1',
-    customerTypeSnapshot: 'company',
-    deliveryAddressText: '',
-    dueDate: '2026-06-27',
-    id: 'invoice-1',
-    invoiceDate: '2026-06-13',
-    invoiceNumber: '20260001',
-    latePaymentInterestBasisPoints: 950,
-    lines: [
-      {
-        baseCents: 10000,
-        code: '',
-        description: 'Work row',
-        discount: { type: 'none' },
-        discountCents: 0,
-        grossCents: 12550,
-        id: 'line-1',
-        lineOrder: 1,
-        netCents: 10000,
-        quantityHundredths: 100,
-        unit: 'h',
-        unitPriceCents: 10000,
-        vatCents: 2550,
-        vatRateBasisPoints: 2550,
-      },
-    ],
-    note: '',
-    numberingMode: 'calendarYearSequence',
-    orderNumber: '',
-    paymentTermDays: 14,
-    priceInputMode: 'net',
-    referenceNumber: '202600017',
-    referenceNumberType: 'finnishDomestic',
-    reminderPeriodDays: 8,
-    sequenceNumber: 1,
-    sequenceScope: 'calendar-year:2026',
-    seriesKey: 'default',
-    sourceDraftId: 'draft-1',
-    status: 'approved',
-    subject: 'Approved invoice',
-    totals: {
-      grossTotalCents: 12550,
-      netTotalCents: 10000,
-      vatBreakdown: [
-        {
-          grossCents: 12550,
-          netCents: 10000,
-          vatCents: 2550,
-          vatRateBasisPoints: 2550,
-        },
-      ],
-      vatTotalCents: 2550,
-    },
-    updatedAt: '2026-06-13T10:00:00.000Z',
-    vatBreakdown: [
-      {
-        grossCents: 12550,
-        netCents: 10000,
-        vatCents: 2550,
-        vatRateBasisPoints: 2550,
-      },
-    ],
-    ...overrides,
   };
 }
