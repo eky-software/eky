@@ -196,18 +196,18 @@ Jo `sent`-tilainen lasku palautuu idempotentisti ennen mark sent -kirjoituksia.
 
 ## Vastuumatriisi
 
-| Vastuu | Nykyinen omistaja | Hyväksytty tavoite tässä siivouksessa |
+| Vastuu | Omistaja ennen write boundary -erää | Nykyinen omistaja |
 | --- | --- | --- |
 | Puhtaat persistence-rivien muunnokset | SQLite approval repository | `invoiceApprovalPersistenceRows.ts` |
 | Hyväksynnän SELECT-kyselyt | SQLite approval repository | `sqliteInvoiceApprovalQueries.ts` |
 | Yritys- ja asiakassnapshotien luku | `SqliteInvoiceApprovalSnapshotReader` | Säilyy nykyisessä readerissä |
-| INSERT-, UPDATE- ja DELETE-lauseet | SQLite approval repository | Kapea `sqliteInvoiceApprovalStatements.ts`, sama yhteys ja synkroninen kutsutapa |
+| INSERT-, UPDATE- ja DELETE-lauseet | SQLite approval repository | `sqliteInvoiceApprovalStatements.ts`, sama yhteys ja synkroninen kutsutapa |
 | Transaktioiden orkestrointi | SQLite approval repository | Säilyy repositoryssä |
 | Numerointipäätös ja domain-validointi | Domain + repositoryn orkestrointi | Säilyy nykyisessä kutsuketjussa |
-| Sekvenssin persistence | SQLite approval repository | Säilyy samassa hyväksyntätransaktiossa |
-| Audit-rivin muodostus | SQLite approval repository | Puhdas mapping siirtyy rows-tiedostoon |
-| Audit-rivin kirjoitus | SQLite approval repository | Säilyy repositoryssä |
-| PDF-metadatan poisto reopenissa | SQLite approval repository | Säilyy repositoryn transaktiossa |
+| Sekvenssin persistence | SQLite approval repository | Statement-helperissä saman hyväksyntätransaktion sisällä |
+| Audit-rivin muodostus | SQLite approval repository | Puhdas mapping `invoiceApprovalPersistenceRows.ts`-tiedostossa |
+| Audit-rivin kirjoitus | SQLite approval repository | Statement-helperissä repositoryn transaktion sisällä |
+| PDF-metadatan poisto reopenissa | SQLite approval repository | Statement-helperissä repositoryn transaktion sisällä |
 | Varsinaisen PDF-tiedoston poisto | Application/storage-adapteri | Ei muutu |
 
 `sqliteInvoiceApprovalStatements.ts` saa sisältää vain yllä auditoidut
@@ -283,16 +283,20 @@ transaktiocallbackiensa sisällä.
 | Myöhäisten virheiden rollback-testit | Valmis | `75242f6` | `73a7c18` | Reopen, mark sent ja reapproval palautuvat kokonaan audit-kirjoituksen epäonnistuessa |
 | Puhtaiden persistence-rivien erotus | Valmis | `73a7c18` | `5bfa4f4` | Mapping ei tunne tietokantaa, SQL:ää, transaktioita, aikaa tai tunnisteiden luontia |
 | Hyväksynnän SELECT-kyselyiden erotus | Valmis | `5bfa4f4` | `6fb0c0a` | Seitsemän synkronista kyselyä käyttää repositoryn kanssa samaa tietokantayhteyttä |
-| SQLite approval write boundary -auditointi | Valmis, commit avoin | `4485256` | - | Yksitoista kirjoitusta, statement-järjestykset, yritys- ja tilarajat sekä rollback-vaikutukset auditoitu; pysäytysehtoa ei löytynyt |
-| Puuttuvien write guard -karakterisointien täydennys | Seuraava | audit-commit | - | Vain nykyisen idempotenssin, tenant-rajojen, status guardien ja rollbackin testit |
-| SQLite approval write statements -erotus | Hyväksytty auditin jälkeen | testicommit | - | SQL siirtyy kapeaan synkroniseen helperiin; transaktiot ja järjestys säilyvät repositoryssä |
-| SQLite approval transaction orchestration -selkeytys | Hyväksytty vain vihreän statements-erotuksen jälkeen | statements-commit | - | Nimetyt yksityiset sync-metodit samassa repositoryssä; public-portti ja callback-rajat eivät muutu |
+| SQLite approval write boundary -auditointi | Valmis | `4485256` | `4fe7657` | Yksitoista kirjoitusta, statement-järjestykset, yritys- ja tilarajat sekä rollback-vaikutukset auditoitu; pysäytysehtoa ei löytynyt |
+| Puuttuvien write guard -karakterisointien täydennys | Valmis | `4fe7657` | `aa7e845` | Idempotentti mark sent, tenant-rajat, reapproval-status ja kaksi `changes !== 1` -rollbackia lukittu kuudella testillä |
+| SQLite approval write statements -erotus | Valmis | `aa7e845` | `b40e265` | Yksitoista synkronista kirjoitusoperaatiota erotettu helperiin samalla yhteydellä, SQL:llä ja virhekäyttäytymisellä |
+| SQLite approval transaction orchestration -selkeytys | Valmis | `b40e265` | `a83071e` | Viisi nimettyä private sync -metodia; kolme public-metodia omistavat edelleen transaction callbackit |
 
-Auditointi antaa luvan vain yllä kuvatun statements-helperin toteutukseen sen
-jälkeen, kun puuttuvat write guard -karakterisoinnit ovat vihreät. Repositoryn
-public-metodit avaavat transaktiot jatkossakin. Transaction orchestrationin
-nimettyjen yksityisten metodien erotus tehdään vasta statements-erotuksen
-jälkeen eikä se anna lupaa siirtää transaktiorajaa repositoryn ulkopuolelle.
+Toteutetussa jaossa `SqliteInvoiceApprovalRepository` on 356 riviä ja
+`SqliteInvoiceApprovalStatements` 526 riviä. Statements-tiedoston koko johtuu
+pääosin yhdestä laajasta snapshot-INSERTistä ja UPDATEsta; sitä ei pilkota
+mekaanisesti ilman uutta vastuu- ja transaktioarviota.
+
+Seuraava mahdollinen työ on ainoastaan **SQLite invoice delivery event
+persistence boundaries** -arviointi. Tämä kirjaus ei anna lupaa muuttaa
+delivery event -repositoryä, SQL:ää, transaktioita, migraatioita tai julkisia
+portteja.
 
 ## Pysäytysehdot
 

@@ -733,7 +733,10 @@ korvataan viittauksella uuteen hyväksyttyyn ADR- tai moduulisuunnitelmaan.
 | SQLite approval -rollback-karakterisointi | Valmis | `75242f6` | `73a7c18` | Reopen-, mark sent- ja reapproval-polkujen myöhäiset audit-virheet palauttavat kaikki saman transaktion muutokset |
 | SQLite approval -rivimuunnosten erotus | Valmis | `73a7c18` | `5bfa4f4` | Puhtaat persistence-rivimuunnokset erotettu ilman SQL-, transaktio- tai sopimusmuutoksia |
 | SQLite approval -lukukyselyiden erotus | Valmis | `5bfa4f4` | `6fb0c0a` | Seitsemän SELECT-kyselyä erotettu saman yhteyden query-helperiin; kirjoitukset ja transaktiot säilyvät repositoryssä |
-| SQLite approval write statements- ja transaction orchestrator -arvio | Seuraava arvioitava | `6fb0c0a` | - | Vain vastuu- ja riskikatselmus; ei lupaa toteuttaa statements-tiedostoa tai siirtää transaktiorajoja |
+| SQLite approval write boundary -auditointi | Valmis | `4485256` | `4fe7657` | Yksitoista kirjoitusoperaatiota, statement-järjestykset, tenant- ja status-rajat sekä rollback-vaikutukset kirjattu |
+| SQLite approval write guard -karakterisointi | Valmis | `4fe7657` | `aa7e845` | Kuusi puuttunutta idempotenssi-, tenant-, status- ja rollback-testiä lisätty oikealla in-memory SQLite-kannalla |
+| SQLite approval write statements -erotus | Valmis | `aa7e845` | `b40e265` | Kirjoitus-SQL erotettu synkroniseen helperiin; repository säilyttää yhteyden, järjestyksen ja transaktiot |
+| SQLite approval transaction orchestration -selkeytys | Valmis | `b40e265` | `a83071e` | Viisi nimettyä private sync -polkua; public-portti ja kolme transaction callbackia säilytetty |
 | Muut cleanup-roadmapin vaiheet | Ei aloitettu | - | - | Vaativat projektin omistajan uuden luvan |
 
 Roadmapia ei käytetä vanhojen ADR-päätösten historian uudelleenkirjoittamiseen.
@@ -741,8 +744,9 @@ Kun nykytila muuttuu, nykytilaa kuvaavat moduuli- ja arkkitehtuuridokumentit
 päivitetään samassa muutoksessa.
 
 Web Foundation-, backend-composition-, approved invoice HTTP-, API-response- ja
-SQLite approval read boundary -erien jälkeen seuraava pienin turvallinen askel
-on approval-adapterin write statements- ja transaction orchestrator -vastuiden
-read-only-arviointi. Arvio ei anna lupaa luoda statements-tiedostoa, siirtää
-transaktiocallbackeja, muuttaa SQL-lauseita, migraatioita, tietokantaa tai
-moduulin julkisia sopimuksia ilman projektin omistajan uutta päätöstä.
+SQLite approval read- ja write boundary -erien jälkeen seuraava pienin
+turvallinen arviointikohde on **SQLite invoice delivery event persistence
+boundaries**. Tämä on vain seuraavan mahdollisen vastuu- ja riskikatselmuksen
+nimi. Se ei anna lupaa muuttaa delivery event -repositoryä, SQL-lauseita,
+transaktioita, migraatioita, tietokantaa tai moduulin julkisia sopimuksia ilman
+projektin omistajan uutta päätöstä.
