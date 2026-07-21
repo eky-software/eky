@@ -1,6 +1,7 @@
 import {
   hasApprovedInvoiceValue,
 } from '../approved/approvedInvoiceFormatting.js';
+import { ApprovedInvoiceDefinitionRow } from './ApprovedInvoiceDefinitionRow.js';
 import styles from './ApprovedInvoicePreview.module.css';
 import { uiText } from '../../../i18n/fi.js';
 
@@ -90,20 +91,5 @@ export function ApprovedInvoicePartyDetails({
         ) : null}
       </dl>
     </section>
-  );
-}
-
-export function ApprovedInvoiceDefinitionRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}): React.JSX.Element {
-  return (
-    <div className={styles.detailRow}>
-      <dt>{label}</dt>
-      <dd className={styles.value}>{value}</dd>
-    </div>
   );
 }
