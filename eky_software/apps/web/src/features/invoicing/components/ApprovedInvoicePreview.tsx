@@ -8,8 +8,8 @@ import type {
   ApprovedInvoiceView,
   InvoiceDeliveryEventSummary,
 } from '@eky/api-client';
-import { useState } from 'react';
 
+import { ApprovedInvoiceActions } from './ApprovedInvoiceActions.js';
 import { ApprovedInvoiceEmailPreview } from './ApprovedInvoiceEmailPreview.js';
 import { InvoiceDeliveryHistory } from './InvoiceDeliveryHistory.js';
 import {
@@ -75,8 +75,6 @@ interface ApprovedInvoicePreviewProps {
   ): void;
 }
 
-type PendingInvoiceAction = 'copy' | 'edit' | 'markSent' | null;
-
 export function ApprovedInvoicePreview({
   copyErrorMessage,
   invoice,
@@ -118,197 +116,32 @@ export function ApprovedInvoicePreview({
   onSendEmailSmtpTest,
 }: ApprovedInvoicePreviewProps): React.JSX.Element {
   const isSent = invoice.status === 'sent';
-  const [pendingAction, setPendingAction] =
-    useState<PendingInvoiceAction>(null);
-  const confirmationMessage =
-    pendingAction === 'copy'
-      ? uiText.invoicing.copyApprovedInvoiceConfirm
-      : pendingAction === 'markSent'
-        ? uiText.invoicing.markApprovedInvoiceSentConfirm
-        : uiText.invoicing.reopenApprovedInvoiceConfirm;
-  const confirmationAction =
-    pendingAction === 'copy'
-      ? uiText.invoicing.copyApprovedInvoice
-      : pendingAction === 'markSent'
-        ? uiText.invoicing.markApprovedInvoiceSent
-        : uiText.invoicing.editApprovedInvoice;
-  const isConfirmationActionPending =
-    pendingAction === 'copy'
-      ? isCopyingInvoice
-      : pendingAction === 'markSent'
-        ? isCreatingPdf || isMarkingSent
-        : isReopening;
-
-  function confirmPendingAction(): void {
-    const action = pendingAction;
-    setPendingAction(null);
-
-    if (action === 'copy') {
-      onCopyInvoice(invoice.id);
-      return;
-    }
-
-    if (action === 'markSent') {
-      onMarkSent(invoice.id);
-      return;
-    }
-
-    if (action === 'edit') {
-      onEditInvoice(invoice.id);
-    }
-  }
 
   return (
     <section className={`panel ${styles.preview}`}>
-      <header className={styles.header}>
-        <div>
-          <p className="panel-kicker">{uiText.invoicing.approvedInvoiceKicker}</p>
-          <h2>
-            {uiText.invoicing.invoice} {invoice.invoiceNumber}
-          </h2>
-          <p className={styles.muted}>
-            {uiText.invoicing.approvedInvoicePreviewHelp}
-          </p>
-          <p className={styles.status}>
-            <span className="status-pill status-pill-active">
-              {isSent
-                ? uiText.invoicing.statusSent
-                : uiText.invoicing.statusApproved}
-            </span>
-          </p>
-        </div>
-        <div className={styles.headerActions}>
-          {!isPdfAvailable ? (
-            <button
-              className="secondary-action"
-              disabled={isCreatingPdf}
-              onClick={() => onCreatePdf(invoice.id)}
-              type="button"
-            >
-              {isCreatingPdf
-                ? uiText.invoicing.approvedInvoicePdfCreating
-                : uiText.invoicing.approvedInvoicePdfCreate}
-            </button>
-          ) : null}
-          {isPdfAvailable ? (
-            <button
-              className={`secondary-action ${styles.actionLink}`}
-              disabled={isCreatingPdf}
-              onClick={() => onOpenPdf(invoice.id)}
-              type="button"
-            >
-              {isCreatingPdf
-                ? uiText.invoicing.approvedInvoicePdfCreating
-                : uiText.invoicing.approvedInvoiceOpenPdf}
-            </button>
-          ) : null}
-          <button
-            className="secondary-action"
-            disabled={isCreatingPdf || isPreparingEmail}
-            onClick={() => onPrepareEmail(invoice.id)}
-            type="button"
-          >
-            {isPreparingEmail
-              ? uiText.invoicing.invoiceEmailPreparing
-              : uiText.invoicing.invoiceEmailPrepare}
-          </button>
-          {isSent ? (
-            <button
-              className="secondary-action"
-              disabled={isCopyingInvoice}
-              onClick={() => setPendingAction('copy')}
-              type="button"
-            >
-              {isCopyingInvoice
-                ? uiText.invoicing.copiedApprovedInvoice
-                : uiText.invoicing.copyApprovedInvoice}
-            </button>
-          ) : null}
-          {!isSent ? (
-            <>
-              <button
-                className="secondary-action"
-                disabled={isCreatingPdf || isMarkingSent}
-                onClick={() => setPendingAction('markSent')}
-                type="button"
-              >
-                {isCreatingPdf
-                  ? uiText.invoicing.approvedInvoicePdfCreating
-                  : isMarkingSent
-                    ? uiText.invoicing.markingApprovedInvoiceSent
-                    : uiText.invoicing.markApprovedInvoiceSent}
-              </button>
-              <button
-                className="secondary-action"
-                disabled={isReopening}
-                onClick={() => setPendingAction('edit')}
-                type="button"
-              >
-                {isReopening
-                  ? uiText.invoicing.reopeningApprovedInvoice
-                  : uiText.invoicing.editApprovedInvoice}
-              </button>
-            </>
-          ) : null}
-          <button className="ghost-button" onClick={onBack} type="button">
-            {uiText.invoicing.backToDrafts}
-          </button>
-        </div>
-      </header>
-
-      {pendingAction !== null ? (
-        <section
-          aria-labelledby="approved-invoice-action-confirmation-heading"
-          className={styles.actionConfirmation}
-        >
-          <p id="approved-invoice-action-confirmation-heading">
-            {confirmationMessage}
-          </p>
-          <div className={styles.actionConfirmationButtons}>
-            <button
-              className="ghost-button"
-              onClick={() => setPendingAction(null)}
-              type="button"
-            >
-              {uiText.invoicing.cancel}
-            </button>
-            <button
-              className="primary-action"
-              disabled={isConfirmationActionPending}
-              onClick={confirmPendingAction}
-              type="button"
-            >
-              {confirmationAction}
-            </button>
-          </div>
-        </section>
-      ) : null}
-
-      {reopenErrorMessage !== null ? (
-        <p className="message error-message" role="alert">
-          {reopenErrorMessage}
-        </p>
-      ) : null}
-      {pdfErrorMessage !== null ? (
-        <p className="message error-message" role="alert">
-          {pdfErrorMessage}
-        </p>
-      ) : null}
-      {markSentErrorMessage !== null ? (
-        <p className="message error-message" role="alert">
-          {markSentErrorMessage}
-        </p>
-      ) : null}
-      {copyErrorMessage !== null ? (
-        <p className="message error-message" role="alert">
-          {copyErrorMessage}
-        </p>
-      ) : null}
-      {emailErrorMessage !== null ? (
-        <p className="message error-message" role="alert">
-          {emailErrorMessage}
-        </p>
-      ) : null}
+      <ApprovedInvoiceActions
+        copyErrorMessage={copyErrorMessage}
+        emailErrorMessage={emailErrorMessage}
+        invoiceId={invoice.id}
+        invoiceNumber={invoice.invoiceNumber}
+        invoiceStatus={invoice.status}
+        isCopyingInvoice={isCopyingInvoice}
+        isCreatingPdf={isCreatingPdf}
+        isMarkingSent={isMarkingSent}
+        isPdfAvailable={isPdfAvailable}
+        isPreparingEmail={isPreparingEmail}
+        isReopening={isReopening}
+        markSentErrorMessage={markSentErrorMessage}
+        pdfErrorMessage={pdfErrorMessage}
+        reopenErrorMessage={reopenErrorMessage}
+        onBack={onBack}
+        onCopyInvoice={onCopyInvoice}
+        onCreatePdf={onCreatePdf}
+        onEditInvoice={onEditInvoice}
+        onMarkSent={onMarkSent}
+        onOpenPdf={onOpenPdf}
+        onPrepareEmail={onPrepareEmail}
+      />
 
       {email !== null ? (
         <ApprovedInvoiceEmailPreview

@@ -82,57 +82,6 @@ describe('ApprovedInvoicePreview', () => {
     expect(html).not.toContain(`${uiText.invoicing.subject}:`);
   });
 
-  it('renders the edit action for approved invoices', () => {
-    const html = renderPreview();
-
-    expect(html).toContain(uiText.invoicing.editApprovedInvoice);
-    expect(html).toContain(uiText.invoicing.markApprovedInvoiceSent);
-  });
-
-  it('disables the sent action while the PDF is being prepared', () => {
-    const html = renderPreview({ isCreatingPdf: true });
-
-    expect(html).toContain(uiText.invoicing.approvedInvoicePdfCreating);
-    expect(html).toContain('disabled=""');
-  });
-
-  it('renders sent status and hides editing actions for sent invoices', () => {
-    const html = renderPreview({
-      invoice: createApprovedInvoiceView({ status: 'sent' }),
-    });
-
-    expect(html).toContain(uiText.invoicing.statusSent);
-    expect(html).toContain(uiText.invoicing.copyApprovedInvoice);
-    expect(html).not.toContain(uiText.invoicing.editApprovedInvoice);
-    expect(html).not.toContain(uiText.invoicing.markApprovedInvoiceSent);
-  });
-
-  it('renders a safe sent invoice copy error without technical data', () => {
-    const html = renderPreview({
-      copyErrorMessage: uiText.invoicing.copyApprovedInvoiceError,
-      invoice: createApprovedInvoiceView({ status: 'sent' }),
-    });
-
-    expect(html).toContain(uiText.invoicing.copyApprovedInvoiceError);
-    expect(html).not.toContain('responseBody');
-    expect(html).not.toContain('stack');
-  });
-
-  it('shows the PDF create action only when the stored PDF is not available', () => {
-    const html = renderPreview({ isPdfAvailable: false });
-
-    expect(html).toContain(uiText.invoicing.approvedInvoicePdfCreate);
-    expect(html).not.toContain(uiText.invoicing.approvedInvoiceOpenPdf);
-  });
-
-  it('shows the PDF open action only when the stored PDF is available', () => {
-    const html = renderPreview({ isPdfAvailable: true });
-
-    expect(html).toContain(uiText.invoicing.approvedInvoiceOpenPdf);
-    expect(html).toContain('secondary-action');
-    expect(html).not.toContain(uiText.invoicing.approvedInvoicePdfCreate);
-  });
-
   it('renders the dry-run email preview without technical error details', () => {
     const html = renderPreview({
       email: createApprovedInvoiceEmailPreview(),
