@@ -802,6 +802,63 @@ describe('SqliteInvoiceApprovalRepository', () => {
     expect(documentCount?.count).toBe(0);
   });
 
+  it('does not reopen an approved invoice outside the company scope', async () => {
+    const repository = new SqliteInvoiceApprovalRepository(database);
+
+    await saveDraft(database, createDraft());
+    await repository.approveDraft(createApprovalInput());
+    insertInvoiceDocument(database, {
+      invoiceId: 'invoice-1',
+      storagePath: 'dev-company/invoice-1/approved-invoice.pdf',
+    });
+
+    const invoiceBeforeReopen = getInvoice(database, 'invoice-1');
+    const auditEventsBeforeReopen = getAuditEvents(database);
+
+    await expect(
+      repository.reopenApprovedInvoiceForEditing({
+        actorUserId: 'other-user',
+        auditEventId: 'audit-other-company-reopen',
+        companyId: 'other-company',
+        invoiceId: 'invoice-1',
+        reopenedAt: '2027-01-15T13:00:00.000Z',
+      }),
+    ).resolves.toBeUndefined();
+
+    const draftRow = database
+      .prepare<
+        [string],
+        { approved_at: string | null; approved_invoice_id: string | null }
+      >(
+        `
+          SELECT approved_invoice_id, approved_at
+          FROM invoice_drafts
+          WHERE id = ?
+        `,
+      )
+      .get('draft-1');
+    const documentRow = database
+      .prepare<[string], { invoice_id: string; storage_path: string }>(
+        `
+          SELECT invoice_id, storage_path
+          FROM invoice_documents
+          WHERE invoice_id = ?
+        `,
+      )
+      .get('invoice-1');
+
+    expect(getInvoice(database, 'invoice-1')).toEqual(invoiceBeforeReopen);
+    expect(draftRow).toEqual({
+      approved_at: '2027-01-15T12:00:00.000Z',
+      approved_invoice_id: 'invoice-1',
+    });
+    expect(documentRow).toEqual({
+      invoice_id: 'invoice-1',
+      storage_path: 'dev-company/invoice-1/approved-invoice.pdf',
+    });
+    expect(getAuditEvents(database)).toEqual(auditEventsBeforeReopen);
+  });
+
   it('rolls back invoice, draft, and PDF metadata changes when reopen audit insertion fails', async () => {
     const repository = new SqliteInvoiceApprovalRepository(database);
 
@@ -891,6 +948,62 @@ describe('SqliteInvoiceApprovalRepository', () => {
       'invoice.approved',
       'invoice.marked_sent_manually',
     ]);
+  });
+
+  it('keeps an already sent invoice unchanged when mark sent is repeated', async () => {
+    const repository = new SqliteInvoiceApprovalRepository(database);
+
+    await saveDraft(database, createDraft());
+    await repository.approveDraft(createApprovalInput());
+    await repository.markApprovedInvoiceSent({
+      actorUserId: 'user-1',
+      auditEventId: 'audit-sent-1',
+      companyId: 'dev-company',
+      invoiceId: 'invoice-1',
+      markedSentAt: '2027-01-15T16:00:00.000Z',
+    });
+
+    const sentInvoice = getInvoice(database, 'invoice-1');
+    const auditEvents = getAuditEvents(database);
+
+    await expect(
+      repository.markApprovedInvoiceSent({
+        actorUserId: 'user-2',
+        auditEventId: 'audit-sent-2',
+        companyId: 'dev-company',
+        invoiceId: 'invoice-1',
+        markedSentAt: '2027-01-16T09:00:00.000Z',
+      }),
+    ).resolves.toEqual({
+      invoiceId: 'invoice-1',
+      status: 'sent',
+    });
+
+    expect(getInvoice(database, 'invoice-1')).toEqual(sentInvoice);
+    expect(getAuditEvents(database)).toEqual(auditEvents);
+  });
+
+  it('does not mark an approved invoice sent outside the company scope', async () => {
+    const repository = new SqliteInvoiceApprovalRepository(database);
+
+    await saveDraft(database, createDraft());
+    await repository.approveDraft(createApprovalInput());
+
+    const invoiceBeforeMarkSent = getInvoice(database, 'invoice-1');
+    const auditEventsBeforeMarkSent = getAuditEvents(database);
+
+    await expect(
+      repository.markApprovedInvoiceSent({
+        actorUserId: 'other-user',
+        auditEventId: 'audit-other-company-sent',
+        companyId: 'other-company',
+        invoiceId: 'invoice-1',
+        markedSentAt: '2027-01-15T16:00:00.000Z',
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(getInvoice(database, 'invoice-1')).toEqual(invoiceBeforeMarkSent);
+    expect(getAuditEvents(database)).toEqual(auditEventsBeforeMarkSent);
   });
 
   it('rolls back sent status and updated timestamp when sent audit insertion fails', async () => {
@@ -1033,6 +1146,140 @@ describe('SqliteInvoiceApprovalRepository', () => {
     ]);
   });
 
+  it('does not reapprove a draft when its existing invoice is no longer reopened for editing', async () => {
+    const repository = new SqliteInvoiceApprovalRepository(database);
+
+    await saveDraft(database, createDraft());
+    await repository.approveDraft(createApprovalInput());
+    await repository.reopenApprovedInvoiceForEditing({
+      actorUserId: 'user-1',
+      auditEventId: 'audit-reopen-1',
+      companyId: 'dev-company',
+      invoiceId: 'invoice-1',
+      reopenedAt: '2027-01-15T13:00:00.000Z',
+    });
+    database
+      .prepare(
+        `
+          UPDATE invoices
+          SET status = 'approved'
+          WHERE id = 'invoice-1'
+        `,
+      )
+      .run();
+
+    const invoiceBeforeAttempt = getInvoice(database, 'invoice-1');
+    const linesBeforeAttempt = getInvoiceLines(database, 'invoice-1');
+    const sequenceBeforeAttempt = getSequence(database);
+    const auditEventsBeforeAttempt = getAuditEvents(database);
+
+    await expect(
+      repository.approveDraft(
+        createApprovalInput({
+          approvedAt: '2027-01-15T15:00:00.000Z',
+          auditEventId: 'audit-invalid-reapproval',
+          invoiceId: 'invoice-2',
+        }),
+      ),
+    ).rejects.toThrow();
+
+    const draftRow = database
+      .prepare<
+        [string],
+        { approved_at: string | null; approved_invoice_id: string | null }
+      >(
+        `
+          SELECT approved_invoice_id, approved_at
+          FROM invoice_drafts
+          WHERE id = ?
+        `,
+      )
+      .get('draft-1');
+
+    expect(getInvoice(database, 'invoice-1')).toEqual(invoiceBeforeAttempt);
+    expect(getInvoice(database, 'invoice-2')).toBeUndefined();
+    expect(getInvoiceLines(database, 'invoice-1')).toEqual(linesBeforeAttempt);
+    expect(getSequence(database)).toEqual(sequenceBeforeAttempt);
+    expect(getAuditEvents(database)).toEqual(auditEventsBeforeAttempt);
+    expect(draftRow).toEqual({
+      approved_at: null,
+      approved_invoice_id: null,
+    });
+  });
+
+  it('keeps the previous snapshot and lines when the reapproval update changes no row', async () => {
+    const repository = new SqliteInvoiceApprovalRepository(database);
+
+    await saveDraft(database, createDraft());
+    await repository.approveDraft(createApprovalInput());
+    await repository.reopenApprovedInvoiceForEditing({
+      actorUserId: 'user-1',
+      auditEventId: 'audit-reopen-1',
+      companyId: 'dev-company',
+      invoiceId: 'invoice-1',
+      reopenedAt: '2027-01-15T13:00:00.000Z',
+    });
+
+    const invoiceBeforeReapproval = getInvoice(database, 'invoice-1');
+    const linesBeforeReapproval = getInvoiceLines(database, 'invoice-1');
+    const sequenceBeforeReapproval = getSequence(database);
+    const auditEventsBeforeReapproval = getAuditEvents(database);
+    await new SqliteInvoiceDraftRepository(database).updateDraft(
+      createDraft(
+        {
+          note: 'This guarded update must not replace the snapshot',
+          updatedAt: '2027-01-15T14:00:00.000Z',
+        },
+        [
+          createLine('line-1', 1, {
+            quantityHundredths: 400,
+            unitPriceCents: 20_000,
+          }),
+        ],
+      ),
+    );
+    database.exec(`
+      CREATE TRIGGER ignore_reapproval_invoice_update
+      BEFORE UPDATE ON invoices
+      WHEN OLD.id = 'invoice-1' AND OLD.status = 'reopened_for_edit'
+      BEGIN
+        SELECT RAISE(IGNORE);
+      END;
+    `);
+
+    await expect(
+      repository.approveDraft(
+        createApprovalInput({
+          approvedAt: '2027-01-15T15:00:00.000Z',
+          auditEventId: 'audit-reapproved-guarded',
+          invoiceId: 'unused-new-invoice-id',
+        }),
+      ),
+    ).rejects.toThrow('Reopened invoice could not be reapproved.');
+
+    const draftRow = database
+      .prepare<
+        [string],
+        { approved_at: string | null; approved_invoice_id: string | null }
+      >(
+        `
+          SELECT approved_invoice_id, approved_at
+          FROM invoice_drafts
+          WHERE id = ?
+        `,
+      )
+      .get('draft-1');
+
+    expect(getInvoice(database, 'invoice-1')).toEqual(invoiceBeforeReapproval);
+    expect(getInvoiceLines(database, 'invoice-1')).toEqual(linesBeforeReapproval);
+    expect(getSequence(database)).toEqual(sequenceBeforeReapproval);
+    expect(getAuditEvents(database)).toEqual(auditEventsBeforeReapproval);
+    expect(draftRow).toEqual({
+      approved_at: null,
+      approved_invoice_id: null,
+    });
+  });
+
   it('rolls back reapproval snapshot and lines when reapproval audit insertion fails', async () => {
     const repository = new SqliteInvoiceApprovalRepository(database);
 
@@ -1149,6 +1396,51 @@ describe('SqliteInvoiceApprovalRepository', () => {
       last_sequence_number: 1,
     });
     expect(draftTwo).toEqual({
+      approved_at: null,
+      approved_invoice_id: null,
+    });
+  });
+
+  it('rolls back sequence, invoice, lines, and audit when the draft approval guard changes no row', async () => {
+    const repository = new SqliteInvoiceApprovalRepository(database);
+
+    await saveDraft(database, createDraft());
+    database.exec(`
+      CREATE TRIGGER ignore_draft_approval_update
+      BEFORE UPDATE OF approved_invoice_id ON invoice_drafts
+      WHEN NEW.approved_invoice_id IS NOT NULL
+      BEGIN
+        SELECT RAISE(IGNORE);
+      END;
+    `);
+
+    await expect(
+      repository.approveDraft(createApprovalInput()),
+    ).rejects.toThrow('Invoice draft could not be marked as approved.');
+
+    const draftRow = database
+      .prepare<
+        [string],
+        { approved_at: string | null; approved_invoice_id: string | null }
+      >(
+        `
+          SELECT approved_invoice_id, approved_at
+          FROM invoice_drafts
+          WHERE id = ?
+        `,
+      )
+      .get('draft-1');
+    const invoiceLineCount = database
+      .prepare<[], { count: number }>(
+        'SELECT COUNT(*) AS count FROM invoice_lines',
+      )
+      .get();
+
+    expect(getInvoice(database, 'invoice-1')).toBeUndefined();
+    expect(invoiceLineCount?.count).toBe(0);
+    expect(getSequence(database)).toBeUndefined();
+    expect(getAuditEvents(database)).toEqual([]);
+    expect(draftRow).toEqual({
       approved_at: null,
       approved_invoice_id: null,
     });
