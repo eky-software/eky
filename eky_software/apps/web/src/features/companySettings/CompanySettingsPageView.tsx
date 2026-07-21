@@ -13,6 +13,7 @@ import {
 } from './companySettingsFormModel.js';
 import styles from './CompanySettingsPageView.module.css';
 import { getFinnishApiErrorMessage, uiText } from '../../i18n/fi.js';
+import { MessageBanner } from '../../shared/ui/index.js';
 
 const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
 
@@ -113,9 +114,17 @@ export function CompanySettingsPage(): React.JSX.Element {
         </div>
       </section>
 
-      {loadErrorMessage ? <p className="message error-message">{loadErrorMessage}</p> : null}
-      {successMessage ? <p className="message success-message">{successMessage}</p> : null}
-      {isLoading ? <p className="message">{uiText.companySettings.loading}</p> : null}
+      {loadErrorMessage ? (
+        <MessageBanner variant="error">{loadErrorMessage}</MessageBanner>
+      ) : null}
+      {successMessage ? (
+        <MessageBanner variant="success">{successMessage}</MessageBanner>
+      ) : null}
+      {isLoading ? (
+        <MessageBanner variant="info">
+          {uiText.companySettings.loading}
+        </MessageBanner>
+      ) : null}
 
       {!isLoading ? (
         <div className={styles.viewGrid}>

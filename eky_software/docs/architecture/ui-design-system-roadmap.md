@@ -55,6 +55,13 @@ komponenttien vieressä CSS Moduleissa.
 
 Tämä on edelleen oikea perusrakenne.
 
+Ensimmäinen hyväksytty `apps/web/src/shared/ui`-primitiivi on
+`MessageBanner`. Se yhtenäistää vain viestielementin nykyiset luokat ja
+saavutettavan ilmoitustavan. Ensimmäiset todelliset käyttäjät ovat Customersin
+lomakevirhe, Company Settingsin sivuviestit ja Invoicingin hyväksytyn laskun
+toimintovirheet. Featuret omistavat edelleen viestien tekstit ja sen, milloin
+viesti näytetään. Tämä ei aktivoi `packages/ui`-skeletonia.
+
 ## Havaittu Toisto
 
 Toistoa näkyy erityisesti:

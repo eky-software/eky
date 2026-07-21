@@ -3,6 +3,7 @@ import { useState } from 'react';
 
 import styles from './ApprovedInvoicePreview.module.css';
 import { uiText } from '../../../i18n/fi.js';
+import { MessageBanner } from '../../../shared/ui/index.js';
 
 interface ApprovedInvoiceActionsProps {
   copyErrorMessage: string | null;
@@ -223,29 +224,19 @@ export function ApprovedInvoiceActions({
       ) : null}
 
       {reopenErrorMessage !== null ? (
-        <p className="message error-message" role="alert">
-          {reopenErrorMessage}
-        </p>
+        <MessageBanner variant="error">{reopenErrorMessage}</MessageBanner>
       ) : null}
       {pdfErrorMessage !== null ? (
-        <p className="message error-message" role="alert">
-          {pdfErrorMessage}
-        </p>
+        <MessageBanner variant="error">{pdfErrorMessage}</MessageBanner>
       ) : null}
       {markSentErrorMessage !== null ? (
-        <p className="message error-message" role="alert">
-          {markSentErrorMessage}
-        </p>
+        <MessageBanner variant="error">{markSentErrorMessage}</MessageBanner>
       ) : null}
       {copyErrorMessage !== null ? (
-        <p className="message error-message" role="alert">
-          {copyErrorMessage}
-        </p>
+        <MessageBanner variant="error">{copyErrorMessage}</MessageBanner>
       ) : null}
       {emailErrorMessage !== null ? (
-        <p className="message error-message" role="alert">
-          {emailErrorMessage}
-        </p>
+        <MessageBanner variant="error">{emailErrorMessage}</MessageBanner>
       ) : null}
     </>
   );
