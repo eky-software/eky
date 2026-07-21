@@ -1,0 +1,132 @@
+import { EkyApiError } from '../../http.js';
+import type {
+  ApprovedInvoiceNumberingMode,
+  ApprovedInvoicePriceInputMode,
+  ApprovedInvoiceReferenceNumberType,
+  ApprovedInvoiceUnit,
+  ApprovedInvoiceViewStatus,
+} from './approvedInvoicesTypes.js';
+
+export function readString(
+  value: Record<string, unknown>,
+  fieldName: string,
+): string {
+  const fieldValue = value[fieldName];
+
+  if (typeof fieldValue === 'string') {
+    return fieldValue;
+  }
+
+  throw invalidApprovedInvoiceResponse(value);
+}
+
+export function readBoolean(
+  value: Record<string, unknown>,
+  fieldName: string,
+): boolean {
+  const fieldValue = value[fieldName];
+
+  if (typeof fieldValue === 'boolean') {
+    return fieldValue;
+  }
+
+  throw invalidApprovedInvoiceResponse(value);
+}
+
+export function readNullableString(
+  value: Record<string, unknown>,
+  fieldName: string,
+): string | null {
+  const fieldValue = value[fieldName];
+
+  if (fieldValue === null || typeof fieldValue === 'string') {
+    return fieldValue;
+  }
+
+  throw invalidApprovedInvoiceResponse(value);
+}
+
+export function readOptionalString(
+  value: Record<string, unknown>,
+  fieldName: string,
+): string | undefined {
+  if (!(fieldName in value)) {
+    return undefined;
+  }
+
+  return readString(value, fieldName);
+}
+
+export function readSafeInteger(
+  value: Record<string, unknown>,
+  fieldName: string,
+): number {
+  const fieldValue = value[fieldName];
+
+  if (typeof fieldValue === 'number' && Number.isSafeInteger(fieldValue)) {
+    return fieldValue;
+  }
+
+  throw invalidApprovedInvoiceResponse(value);
+}
+
+export function parseInvoiceStatus(value: unknown): ApprovedInvoiceViewStatus {
+  if (value === 'approved' || value === 'sent') {
+    return value;
+  }
+
+  throw invalidApprovedInvoiceResponse(value);
+}
+
+export function parseNumberingMode(
+  value: unknown,
+): ApprovedInvoiceNumberingMode {
+  if (
+    value === 'calendarYearSequence' ||
+    value === 'fiscalYearSequence' ||
+    value === 'plainSequence'
+  ) {
+    return value;
+  }
+
+  throw invalidApprovedInvoiceResponse(value);
+}
+
+export function parseReferenceNumberType(
+  value: unknown,
+): ApprovedInvoiceReferenceNumberType {
+  if (value === 'finnishDomestic') {
+    return value;
+  }
+
+  throw invalidApprovedInvoiceResponse(value);
+}
+
+export function parsePriceInputMode(
+  value: unknown,
+): ApprovedInvoicePriceInputMode {
+  if (value === 'net' || value === 'gross') {
+    return value;
+  }
+
+  throw invalidApprovedInvoiceResponse(value);
+}
+
+export function parseInvoiceUnit(value: unknown): ApprovedInvoiceUnit {
+  if (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= 8 &&
+    /^[\p{L}\p{N}.-]+$/u.test(value)
+  ) {
+    return value;
+  }
+
+  throw invalidApprovedInvoiceResponse(value);
+}
+
+export function invalidApprovedInvoiceResponse(
+  responseBody: unknown,
+): EkyApiError {
+  return new EkyApiError('Invalid approved invoice response.', { responseBody });
+}

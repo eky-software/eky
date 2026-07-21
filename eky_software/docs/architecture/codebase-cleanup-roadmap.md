@@ -724,15 +724,20 @@ korvataan viittauksella uuteen hyväksyttyyn ADR- tai moduulisuunnitelmaan.
 | `ApprovedInvoiceDefinitionRow`-viimeistely | Valmis | `924f1d1` | `b08a92c` | Hyväksytyn laskun yhdenmukainen label/value-rivi erotettu omaan esityskomponenttiin |
 | Ensimmäinen jaettu `MessageBanner` | Valmis | `b08a92c` | `7222d91` | Saavutettava web-primitiivi otettu käyttöön Customers-, Company Settings- ja Invoicing-kohteissa ilman CSS- tai tekstimuutoksia |
 | API-clientin app-tason composition | Valmis | `7222d91` | `1b4acc9` | Yksi web-sovelluksen client luodaan app-juuressa; Customers ja Company Settings saavat kapeat client-sopimukset propseina |
-| API-clientin injektointi Invoicing-hookeihin | Valmis | `1b4acc9` | Tämä commit | Kaikki Invoicing-hookit käyttävät samaa app-clientiä omilla kapeilla metodisopimuksillaan; feature ei lue API-base-URL:ia |
-| Backendin Invoicing-compositionin erottaminen | Seuraava arvioitava | Tämä commit | - | Rajataan omaan käyttäytymisen säilyttävään vaiheeseen ennen HTTP-reitti- tai persistence-jakoja |
+| API-clientin injektointi Invoicing-hookeihin | Valmis | `1b4acc9` | `72b5423` | Kaikki Invoicing-hookit käyttävät samaa app-clientiä omilla kapeilla metodisopimuksillaan; feature ei lue API-base-URL:ia |
+| Backendin Invoicing-compositionin erottaminen | Valmis | `72b5423` | `0d3b62e` | `app.ts` säilyy ylimpänä composition rootina; Invoicing-adapterit ja PDF-riippuvuudet kootaan yhdessä nimetyssä compositionissa |
+| Approved invoice query- ja document-reittien jako | Valmis | `0d3b62e` | `f475d4c` | Kysely- ja PDF-reitit sekä niiden testit erotettu kapeilla riippuvuussopimuksilla; endpointit ja PDF-otsakkeet säilytetty |
+| Approved invoice lifecycle- ja delivery-reittien jako | Valmis | `f475d4c` | `88e9850` | Koontireitti kokoaa neljä vastuukohtaista reittiryhmää; lifecycle ei tunne SMTP:tä eikä delivery luonnoksen kopiointia |
+| Approved invoice API-response-lukijoiden jako | Valmis | `88e9850` | `77751e5` | Laskunäkymä-, dokumentti-, lifecycle- ja delivery-parserit erotettu; vanha response-polku säilyy ohuena yhteensopivuusentrypointina |
+| SQLite approval -persistenssin vastuiden arviointi | Seuraava arvioitava | `77751e5` | - | Tehdään ensin read-only-vastuu- ja transaktioraja-arvio; tämä roadmap-päivitys ei anna lupaa toteuttaa jakoa tai muuttaa tietokantaa |
 | Muut cleanup-roadmapin vaiheet | Ei aloitettu | - | - | Vaativat projektin omistajan uuden luvan |
 
 Roadmapia ei käytetä vanhojen ADR-päätösten historian uudelleenkirjoittamiseen.
 Kun nykytila muuttuu, nykytilaa kuvaavat moduuli- ja arkkitehtuuridokumentit
 päivitetään samassa muutoksessa.
 
-Web Foundation -erän jälkeen seuraava pienin turvallinen toteutusaskel on
-backendin Invoicing-compositionin rajattu arviointi. Se ei vielä anna lupaa
-HTTP-reittien, repositoryjen, tietokannan tai moduulin julkisten sopimusten
-muuttamiseen.
+Web Foundation-, backend-composition-, approved invoice HTTP- ja API-response-
+erien jälkeen seuraava pienin turvallinen askel on SQLite approval -adapterin
+vastuiden ja transaktiorajojen read-only-arviointi. Arvio ei anna lupaa jakaa
+repositorya, muuttaa SQL-kyselyitä, migraatioita, tietokantaa tai moduulin
+julkisia sopimuksia ilman projektin omistajan uutta päätöstä.
