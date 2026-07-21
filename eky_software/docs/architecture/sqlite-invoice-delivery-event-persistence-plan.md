@@ -227,12 +227,14 @@ Rinnakkaisuusikkuna on nykyisistä business-reiteistä periaatteessa
 saavutettava kahdella limittäisellä pyynnöllä. Se ei ole tenant-tietovuoto,
 mutta se rikkoo dokumentoitua toimituksen eheysinvarianttia. Havainto
 luokitellaan rajatuksi toimituksen tilasiirtymä- ja rinnakkaisuusriskiksi,
-joka korjataan omassa toiminnallisessa turvallisuuscommitissaan ennen tämän
-repositoryn refaktoroinnin jatkamista.
+joka korjattiin omassa toiminnallisessa turvallisuuscommitissaan `d6d6935`
+ennen repositoryn refaktoroinnin jatkamista.
 
-Korjauksen tavoite on tehdä ratkaisemattoman eventin tarkistuksesta ja
-manuaalisesta finalisoinnista yksi atominen SQLite-päätös. Korjausta ei
-piiloteta row mapping- tai read query -erotukseen.
+Korjauksessa ratkaisemattoman eventin tarkistus ja manuaalinen finalisointi
+tehtiin yhdeksi atomiseksi SQLite-päätökseksi. Application-tason ennakkotarkistus
+säilyi nopeana käyttäjäpolun guardina, mutta repository varmistaa invariantin
+uudelleen omassa transaktiossaan. Korjausta ei yhdistetty row mapping- tai read
+query -erotukseen.
 
 ## Säilytettävät Invariantit
 
@@ -250,11 +252,16 @@ piiloteta row mapping- tai read query -erotukseen.
   alkuperäistä `updated_at`-arvoa
 - toimitushistoria ei palauta teknisiä tai tarpeettomia viestikenttiä
 
-## Jatkopäätös
+## Toteutusseuranta
 
-Liitteen pysäytyssäännön mukaisesti characterization-testien sekä row mapping-
-ja SELECT-query-erotusten toteutusta ei aloiteta ennen kuin manuaalisen
-toimituksen rinnakkaisuusikkuna on korjattu ja suojattu omilla testeillään.
+| Vaihe | Commit | Tulos |
+| --- | --- | --- |
+| Persistence boundary -auditointi | `3847ef1` | Portit, yritysrajat, tilasiirtymät ja transaktiot dokumentoitu |
+| Manuaalisen toimituksen atominen guard | `d6d6935` | Rinnakkaisuusikkuna suljettu repositoryn transaktion sisällä |
+| Characterization-testit | `3529a05` | Tenant-, invoice-, guard-, rollback- ja idempotenssipolut suojattu |
+| Row mapping -erotus | `7d45eca` | Puhtaat persistence-muunnokset erotettu ilman SQL-vastuuta |
+| Read query -erotus | `039bbd1` | Neljä synkronista SELECT-vastuuta erotettu samaa yhteyttä käyttävään helperiin |
 
-Korjauksen jälkeen sama audit-baseline voidaan päivittää ja suunniteltu
-käyttäytymisen säilyttävä cleanup-erä voi jatkua erillisellä luvalla.
+Seuraavaksi voidaan erikseen arvioida SQLite invoice delivery event write
+statements and transaction orchestration. Tämä kirjaus ei anna lupaa toteuttaa
+sitä eikä muuttaa kirjoitusjärjestystä, transaktioita tai julkisia portteja.
