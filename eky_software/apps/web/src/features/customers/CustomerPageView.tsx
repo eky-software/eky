@@ -1,9 +1,9 @@
 import {
-  createEkyApiClient,
   EkyApiError,
   type Customer,
+  type EkyApiClient,
 } from '@eky/api-client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { CustomerForm } from './CustomerForm.js';
 import { CustomerList } from './CustomerList.js';
@@ -18,10 +18,16 @@ import {
 import styles from './CustomerPageView.module.css';
 import { getFinnishApiErrorMessage, uiText } from '../../i18n/fi.js';
 
-const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
+type CustomerPageClient = Pick<
+  EkyApiClient,
+  'createCustomer' | 'listCustomers' | 'updateCustomer'
+>;
 
-export function CustomerPage(): React.JSX.Element {
-  const apiClient = useMemo(() => createEkyApiClient({ baseUrl: apiBaseUrl }), []);
+interface CustomerPageProps {
+  apiClient: CustomerPageClient;
+}
+
+export function CustomerPage({ apiClient }: CustomerPageProps): React.JSX.Element {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerForm, setCustomerForm] = useState<CustomerFormModel>(initialCustomerForm);
   const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);

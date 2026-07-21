@@ -3,7 +3,10 @@ import type {
   InvoiceDraft,
 } from '@eky/api-client';
 
-import { NewInvoiceForm } from './NewInvoiceForm.js';
+import {
+  NewInvoiceForm,
+  type NewInvoiceFormClient,
+} from './NewInvoiceForm.js';
 import styles from './InvoicingPage.module.css';
 import type { InvoiceCompanySettingsState } from '../hooks/useInvoiceCompanySettings.js';
 import type { InvoiceCustomerListState } from '../hooks/useInvoiceCustomers.js';
@@ -11,6 +14,7 @@ import type { InvoicePaymentDefaultsState } from '../hooks/useInvoicePaymentDefa
 import { uiText } from '../../../i18n/fi.js';
 
 interface InvoiceDraftEditorViewProps {
+  apiClient: NewInvoiceFormClient;
   companySettingsState: InvoiceCompanySettingsState;
   customerListState: InvoiceCustomerListState;
   draft: InvoiceDraft | null;
@@ -24,6 +28,7 @@ interface InvoiceDraftEditorViewProps {
 }
 
 export function InvoiceDraftEditorView({
+  apiClient,
   companySettingsState,
   customerListState,
   draft,
@@ -70,6 +75,7 @@ export function InvoiceDraftEditorView({
   return (
     <NewInvoiceForm
       key={draft.id}
+      apiClient={apiClient}
       companySettingsState={companySettingsState}
       customerListState={customerListState}
       invoicePaymentDefaultsState={invoicePaymentDefaultsState}

@@ -1,14 +1,11 @@
 import {
-  createEkyApiClient,
   EkyApiError,
   type EkyApiClient,
   type InvoiceDraft,
 } from '@eky/api-client';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 
 import { uiText } from '../../../i18n/fi.js';
-
-const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
 
 type CopyApprovedInvoiceClient = Pick<EkyApiClient, 'copyApprovedInvoiceToDraft'>;
 
@@ -20,11 +17,9 @@ export interface CopyApprovedInvoiceState {
   copyApprovedInvoiceToDraft(id: string): Promise<InvoiceDraft | null>;
 }
 
-export function useCopyApprovedInvoiceToDraft(): CopyApprovedInvoiceState {
-  const apiClient = useMemo(
-    () => createEkyApiClient({ baseUrl: apiBaseUrl }),
-    [],
-  );
+export function useCopyApprovedInvoiceToDraft(
+  apiClient: CopyApprovedInvoiceClient,
+): CopyApprovedInvoiceState {
   const [copiedInvoiceId, setCopiedInvoiceId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isCopying, setIsCopying] = useState(false);

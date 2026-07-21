@@ -1,13 +1,10 @@
 import {
-  createEkyApiClient,
   EkyApiError,
   type EkyApiClient,
 } from '@eky/api-client';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import { getFinnishApiErrorMessage, uiText } from '../../../i18n/fi.js';
-
-const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
 
 type DeleteInvoiceDraftClient = Pick<EkyApiClient, 'deleteInvoiceDraft'>;
 
@@ -18,11 +15,9 @@ export interface DeleteInvoiceDraftState {
   deleteDraft(id: string): Promise<boolean>;
 }
 
-export function useDeleteInvoiceDraft(): DeleteInvoiceDraftState {
-  const apiClient = useMemo(
-    () => createEkyApiClient({ baseUrl: apiBaseUrl }),
-    [],
-  );
+export function useDeleteInvoiceDraft(
+  apiClient: DeleteInvoiceDraftClient,
+): DeleteInvoiceDraftState {
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 

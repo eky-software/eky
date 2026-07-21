@@ -1,11 +1,10 @@
 import {
-  createEkyApiClient,
   EkyApiError,
   type EkyApiClient,
   type InvoiceDraft,
   type InvoiceDraftInput,
 } from '@eky/api-client';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import type { NewInvoiceFormMode } from '../components/NewInvoiceForm.js';
 import type { NewInvoiceFormState } from '../form/newInvoiceFormState.js';
@@ -14,8 +13,6 @@ import {
   type PreparedInvoiceDraftSave,
 } from './useSaveInvoiceDraft.js';
 import { getFinnishApiErrorMessage, uiText } from '../../../i18n/fi.js';
-
-const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
 
 export const invoiceDraftAutosaveDelayMs = 1800;
 
@@ -56,6 +53,7 @@ export interface InvoiceDraftAutosaveState {
 }
 
 export interface UseInvoiceDraftAutosaveOptions {
+  apiClient: InvoiceDraftAutosaveCreateClient;
   form: NewInvoiceFormState;
   formRevision: number;
   manualSavedDraft: InvoiceDraft | null;
@@ -64,16 +62,13 @@ export interface UseInvoiceDraftAutosaveOptions {
 }
 
 export function useInvoiceDraftAutosave({
+  apiClient,
   form,
   formRevision,
   manualSavedDraft,
   mode,
   onDraftAutosaved,
 }: UseInvoiceDraftAutosaveOptions): InvoiceDraftAutosaveState {
-  const apiClient = useMemo(
-    () => createEkyApiClient({ baseUrl: apiBaseUrl }),
-    [],
-  );
   const [status, setStatus] =
     useState<InvoiceDraftAutosaveStatus>('disabled');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);

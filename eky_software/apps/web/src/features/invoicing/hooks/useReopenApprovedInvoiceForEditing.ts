@@ -1,14 +1,11 @@
 import {
-  createEkyApiClient,
   EkyApiError,
   type EkyApiClient,
   type ReopenedApprovedInvoice,
 } from '@eky/api-client';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 
 import { uiText } from '../../../i18n/fi.js';
-
-const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
 
 type ReopenApprovedInvoiceClient = Pick<
   EkyApiClient,
@@ -22,11 +19,9 @@ export interface ReopenApprovedInvoiceState {
   reopenApprovedInvoice(id: string): Promise<ReopenedApprovedInvoice | null>;
 }
 
-export function useReopenApprovedInvoiceForEditing(): ReopenApprovedInvoiceState {
-  const apiClient = useMemo(
-    () => createEkyApiClient({ baseUrl: apiBaseUrl }),
-    [],
-  );
+export function useReopenApprovedInvoiceForEditing(
+  apiClient: ReopenApprovedInvoiceClient,
+): ReopenApprovedInvoiceState {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isReopening, setIsReopening] = useState(false);
 

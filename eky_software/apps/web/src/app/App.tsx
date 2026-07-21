@@ -1,3 +1,4 @@
+import type { EkyApiClient } from '@eky/api-client';
 import { useReducer } from 'react';
 
 import { CompanySettingsPage } from '../features/companySettings/CompanySettingsPage.js';
@@ -11,7 +12,11 @@ import {
 } from './appNavigation.js';
 import { getDesktopInvoicePdfPreview } from './desktopBridge.js';
 
-export function App(): React.JSX.Element {
+interface AppProps {
+  apiClient: EkyApiClient;
+}
+
+export function App({ apiClient }: AppProps): React.JSX.Element {
   const [navigation, activateView] = useReducer(
     activateAppView,
     initialAppNavigationState,
@@ -22,10 +27,15 @@ export function App(): React.JSX.Element {
 
   return (
     <AppLayout activeView={activeView} onViewChange={activateView} title={activeTitle}>
-      {activeView === 'customers' ? <CustomerPage /> : null}
-      {activeView === 'companySettings' ? <CompanySettingsPage /> : null}
+      {activeView === 'customers' ? (
+        <CustomerPage apiClient={apiClient} />
+      ) : null}
+      {activeView === 'companySettings' ? (
+        <CompanySettingsPage apiClient={apiClient} />
+      ) : null}
       {activeView === 'invoicing' ? (
         <InvoicingPage
+          apiClient={apiClient}
           navigationRevision={navigation.invoicingNavigationRevision}
           {...(openInvoicePdfPreview === undefined
             ? {}

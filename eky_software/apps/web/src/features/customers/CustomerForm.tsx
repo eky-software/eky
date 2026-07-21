@@ -3,6 +3,7 @@ import type { Customer } from '@eky/api-client';
 import type { CustomerFormModel } from './customerFormModel.js';
 import styles from './CustomerForm.module.css';
 import { uiText } from '../../i18n/fi.js';
+import { MessageBanner } from '../../shared/ui/index.js';
 
 interface CustomerFormProps {
   errorMessage: string | null;
@@ -57,7 +58,9 @@ export function CustomerForm({
           <span>{uiText.customers.fillDummyCustomerHelp}</span>
         </div>
       ) : null}
-      {errorMessage ? <p className="message error-message">{errorMessage}</p> : null}
+      {errorMessage ? (
+        <MessageBanner variant="error">{errorMessage}</MessageBanner>
+      ) : null}
 
       <form
         className={styles.form}

@@ -1,14 +1,11 @@
 import {
-  createEkyApiClient,
   EkyApiError,
   type ApprovedInvoiceEmailPreview,
   type EkyApiClient,
 } from '@eky/api-client';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 
 import { uiText } from '../../../i18n/fi.js';
-
-const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
 
 type ApprovedInvoiceEmailDryRunClient = Pick<
   EkyApiClient,
@@ -24,11 +21,9 @@ export interface ApprovedInvoiceEmailDryRunState {
   prepareEmail(id: string): Promise<ApprovedInvoiceEmailPreview | null>;
 }
 
-export function useApprovedInvoiceEmailDryRun(): ApprovedInvoiceEmailDryRunState {
-  const apiClient = useMemo(
-    () => createEkyApiClient({ baseUrl: apiBaseUrl }),
-    [],
-  );
+export function useApprovedInvoiceEmailDryRun(
+  apiClient: ApprovedInvoiceEmailDryRunClient,
+): ApprovedInvoiceEmailDryRunState {
   const [email, setEmail] = useState<ApprovedInvoiceEmailPreview | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isPreparing, setIsPreparing] = useState(false);

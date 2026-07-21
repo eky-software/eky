@@ -1,14 +1,11 @@
 import {
-  createEkyApiClient,
   EkyApiError,
   type EkyApiClient,
   type InvoiceDeliveryEventSummary,
 } from '@eky/api-client';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 
 import { uiText } from '../../../i18n/fi.js';
-
-const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
 
 type InvoiceDeliveryEventsClient = Pick<
   EkyApiClient,
@@ -23,11 +20,9 @@ export interface InvoiceDeliveryEventListState {
   loadEvents(invoiceId: string): Promise<void>;
 }
 
-export function useInvoiceDeliveryEvents(): InvoiceDeliveryEventListState {
-  const apiClient = useMemo(
-    () => createEkyApiClient({ baseUrl: apiBaseUrl }),
-    [],
-  );
+export function useInvoiceDeliveryEvents(
+  apiClient: InvoiceDeliveryEventsClient,
+): InvoiceDeliveryEventListState {
   const [events, setEvents] = useState<InvoiceDeliveryEventSummary[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);

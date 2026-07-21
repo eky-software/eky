@@ -1,14 +1,11 @@
 import {
-  createEkyApiClient,
   EkyApiError,
   type Customer,
   type EkyApiClient,
 } from '@eky/api-client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { getFinnishApiErrorMessage, uiText } from '../../../i18n/fi.js';
-
-const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
 
 export interface InvoiceCustomerListState {
   customers: Customer[];
@@ -18,11 +15,9 @@ export interface InvoiceCustomerListState {
 
 type InvoiceCustomerClient = Pick<EkyApiClient, 'listCustomers'>;
 
-export function useInvoiceCustomers(): InvoiceCustomerListState {
-  const apiClient = useMemo(
-    () => createEkyApiClient({ baseUrl: apiBaseUrl }),
-    [],
-  );
+export function useInvoiceCustomers(
+  apiClient: InvoiceCustomerClient,
+): InvoiceCustomerListState {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);

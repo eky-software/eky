@@ -720,13 +720,19 @@ korvataan viittauksella uuteen hyväksyttyyn ADR- tai moduulisuunnitelmaan.
 | `InvoiceDraftEditorView`-erotus | Valmis | `5286f19` | `c09ebc7` | Luonnoksen lataus-, virhe- ja editointinäkymä sekä niitä koskevat testit erotettu rajatulla props-sopimuksella |
 | `ApprovedInvoiceDetailView`-erotus | Valmis | `c09ebc7` | `44c2499` | Hyväksytyn laskun lataus-, virhe- ja detail-näkymä erotettu pienillä read-only-näkymätiloilla |
 | `ApprovedInvoiceActions`-erotus | Valmis | `44c2499` | `eeff796` | Otsikko, tila, toiminnot, vahvistus ja toimintovirheet erotettu rajatulla props-sopimuksella |
-| `ApprovedInvoicePreview`-esitysjako | Valmis | `eeff796` | Tämä commit | Osapuoli-, perustieto-, rivi-, summa- ja maksutietoesitys erotettu feature-kohtaisiin komponentteihin |
+| `ApprovedInvoicePreview`-esitysjako | Valmis | `eeff796` | `924f1d1` | Osapuoli-, perustieto-, rivi-, summa- ja maksutietoesitys erotettu feature-kohtaisiin komponentteihin |
+| `ApprovedInvoiceDefinitionRow`-viimeistely | Valmis | `924f1d1` | `b08a92c` | Hyväksytyn laskun yhdenmukainen label/value-rivi erotettu omaan esityskomponenttiin |
+| Ensimmäinen jaettu `MessageBanner` | Valmis | `b08a92c` | `7222d91` | Saavutettava web-primitiivi otettu käyttöön Customers-, Company Settings- ja Invoicing-kohteissa ilman CSS- tai tekstimuutoksia |
+| API-clientin app-tason composition | Valmis | `7222d91` | `1b4acc9` | Yksi web-sovelluksen client luodaan app-juuressa; Customers ja Company Settings saavat kapeat client-sopimukset propseina |
+| API-clientin injektointi Invoicing-hookeihin | Valmis | `1b4acc9` | Tämä commit | Kaikki Invoicing-hookit käyttävät samaa app-clientiä omilla kapeilla metodisopimuksillaan; feature ei lue API-base-URL:ia |
+| Backendin Invoicing-compositionin erottaminen | Seuraava arvioitava | Tämä commit | - | Rajataan omaan käyttäytymisen säilyttävään vaiheeseen ennen HTTP-reitti- tai persistence-jakoja |
 | Muut cleanup-roadmapin vaiheet | Ei aloitettu | - | - | Vaativat projektin omistajan uuden luvan |
 
 Roadmapia ei käytetä vanhojen ADR-päätösten historian uudelleenkirjoittamiseen.
 Kun nykytila muuttuu, nykytilaa kuvaavat moduuli- ja arkkitehtuuridokumentit
 päivitetään samassa muutoksessa.
 
-Seuraava pienin turvallinen toteutusaskel arvioidaan tämän web-refaktorointi-
-erän jälkeen erikseen ennen backend-compositionin tai muiden roadmapin
-vastuiden muuttamista.
+Web Foundation -erän jälkeen seuraava pienin turvallinen toteutusaskel on
+backendin Invoicing-compositionin rajattu arviointi. Se ei vielä anna lupaa
+HTTP-reittien, repositoryjen, tietokannan tai moduulin julkisten sopimusten
+muuttamiseen.

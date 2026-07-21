@@ -1,15 +1,12 @@
 import {
-  createEkyApiClient,
   EkyApiError,
   type ApprovedInvoiceView,
   type EkyApiClient,
   type InvoiceManualDeliveryMethod,
 } from '@eky/api-client';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 
 import { uiText } from '../../../i18n/fi.js';
-
-const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
 
 type MarkApprovedInvoiceSentClient = Pick<
   EkyApiClient,
@@ -26,11 +23,9 @@ export interface MarkApprovedInvoiceSentState {
   ): Promise<ApprovedInvoiceView | null>;
 }
 
-export function useMarkApprovedInvoiceSent(): MarkApprovedInvoiceSentState {
-  const apiClient = useMemo(
-    () => createEkyApiClient({ baseUrl: apiBaseUrl }),
-    [],
-  );
+export function useMarkApprovedInvoiceSent(
+  apiClient: MarkApprovedInvoiceSentClient,
+): MarkApprovedInvoiceSentState {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isMarkingSent, setIsMarkingSent] = useState(false);
 

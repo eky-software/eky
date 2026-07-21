@@ -4,6 +4,7 @@ import type {
   ApprovedInvoiceEmailSmtpPrepareInput,
   ApprovedInvoiceEmailSmtpTestPrepareInput,
   ApprovedInvoiceResult,
+  EkyApiClient,
   InvoiceDraft,
 } from '@eky/api-client';
 
@@ -32,32 +33,37 @@ import { useCopyApprovedInvoiceToDraft } from '../hooks/useCopyApprovedInvoiceTo
 import { useInvoiceDeliveryEvents } from '../hooks/useInvoiceDeliveryEvents.js';
 
 interface InvoicingPageProps {
+  apiClient: EkyApiClient;
   navigationRevision: number;
   openInvoicePdfPreview?(invoiceId: string): Promise<void>;
 }
 
 export function InvoicingPage({
+  apiClient,
   navigationRevision,
   openInvoicePdfPreview,
 }: InvoicingPageProps): React.JSX.Element {
-  const draftState = useInvoiceDrafts();
-  const customerListState = useInvoiceCustomers();
-  const companySettingsState = useInvoiceCompanySettings();
-  const invoicePaymentDefaultsState = useInvoicePaymentDefaults();
-  const draftEditorState = useInvoiceDraftEditor();
-  const approvedInvoiceState = useApprovedInvoice();
-  const approvedInvoiceListState = useApprovedInvoices();
-  const approvedInvoicePdfState = useApprovedInvoicePdf();
-  const approvedInvoiceEmailState = useApprovedInvoiceEmailDryRun();
-  const sendApprovedInvoiceEmailState = useSendApprovedInvoiceEmailDryRun();
+  const draftState = useInvoiceDrafts(apiClient);
+  const customerListState = useInvoiceCustomers(apiClient);
+  const companySettingsState = useInvoiceCompanySettings(apiClient);
+  const invoicePaymentDefaultsState = useInvoicePaymentDefaults(apiClient);
+  const draftEditorState = useInvoiceDraftEditor(apiClient);
+  const approvedInvoiceState = useApprovedInvoice(apiClient);
+  const approvedInvoiceListState = useApprovedInvoices(apiClient);
+  const approvedInvoicePdfState = useApprovedInvoicePdf(apiClient);
+  const approvedInvoiceEmailState = useApprovedInvoiceEmailDryRun(apiClient);
+  const sendApprovedInvoiceEmailState =
+    useSendApprovedInvoiceEmailDryRun(apiClient);
   const sendApprovedInvoiceEmailSmtpTestState =
-    useSendApprovedInvoiceEmailSmtpTest();
-  const sendApprovedInvoiceEmailSmtpState = useSendApprovedInvoiceEmailSmtp();
-  const deleteState = useDeleteInvoiceDraft();
-  const reopenApprovedInvoiceState = useReopenApprovedInvoiceForEditing();
-  const markApprovedInvoiceSentState = useMarkApprovedInvoiceSent();
-  const copyApprovedInvoiceState = useCopyApprovedInvoiceToDraft();
-  const invoiceDeliveryEventListState = useInvoiceDeliveryEvents();
+    useSendApprovedInvoiceEmailSmtpTest(apiClient);
+  const sendApprovedInvoiceEmailSmtpState =
+    useSendApprovedInvoiceEmailSmtp(apiClient);
+  const deleteState = useDeleteInvoiceDraft(apiClient);
+  const reopenApprovedInvoiceState =
+    useReopenApprovedInvoiceForEditing(apiClient);
+  const markApprovedInvoiceSentState = useMarkApprovedInvoiceSent(apiClient);
+  const copyApprovedInvoiceState = useCopyApprovedInvoiceToDraft(apiClient);
+  const invoiceDeliveryEventListState = useInvoiceDeliveryEvents(apiClient);
   const [pendingDeleteDraftId, setPendingDeleteDraftId] = useState<
     string | null
   >(null);
@@ -279,6 +285,7 @@ export function InvoicingPage({
   return (
     <InvoicingPageView
       activeView={activeView}
+      apiClient={apiClient}
       approvedInvoiceListState={approvedInvoiceListState}
       approvedInvoiceEmailState={approvedInvoiceEmailState}
       approvedInvoicePdfState={approvedInvoicePdfState}

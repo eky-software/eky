@@ -3,7 +3,7 @@ import {
   formatApprovedInvoicePercent,
   hasApprovedInvoiceValue,
 } from '../approved/approvedInvoiceFormatting.js';
-import { ApprovedInvoiceDefinitionRow } from './ApprovedInvoicePartyDetails.js';
+import { ApprovedInvoiceDefinitionRow } from './ApprovedInvoiceDefinitionRow.js';
 import styles from './ApprovedInvoicePreview.module.css';
 import { uiText } from '../../../i18n/fi.js';
 

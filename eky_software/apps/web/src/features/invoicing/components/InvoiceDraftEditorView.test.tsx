@@ -56,6 +56,7 @@ function renderEditor(
 ): string {
   return renderToStaticMarkup(
     <InvoiceDraftEditorView
+      apiClient={createApiClient()}
       companySettingsState={createCompanySettingsState()}
       customerListState={createCustomerListState()}
       draft={null}
@@ -69,6 +70,14 @@ function renderEditor(
       {...overrides}
     />,
   );
+}
+
+function createApiClient(): InvoiceDraftEditorViewProps['apiClient'] {
+  return {
+    approveInvoiceDraft: vi.fn(),
+    createInvoiceDraft: vi.fn(),
+    updateInvoiceDraft: vi.fn(),
+  };
 }
 
 function createCompanySettingsState(): InvoiceDraftEditorViewProps['companySettingsState'] {

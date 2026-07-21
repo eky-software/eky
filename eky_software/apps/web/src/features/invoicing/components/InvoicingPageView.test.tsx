@@ -55,6 +55,7 @@ function renderPage(
   props: Omit<
     InvoicingPageViewProps,
     | 'companySettingsState'
+    | 'apiClient'
     | 'approvedInvoiceEmailState'
     | 'approvedInvoiceListState'
     | 'approvedInvoicePdfState'
@@ -123,6 +124,7 @@ function renderPage(
 ): string {
   return renderToStaticMarkup(
     <InvoicingPageView
+      apiClient={createApiClient()}
       approvedInvoiceEmailState={createApprovedInvoiceEmailState()}
       approvedInvoiceListState={createApprovedInvoiceListState()}
       approvedInvoicePdfState={createApprovedInvoicePdfState()}
@@ -160,6 +162,14 @@ function renderPage(
       {...props}
     />,
   );
+}
+
+function createApiClient(): InvoicingPageViewProps['apiClient'] {
+  return {
+    approveInvoiceDraft: vi.fn(),
+    createInvoiceDraft: vi.fn(),
+    updateInvoiceDraft: vi.fn(),
+  };
 }
 
 function createSendApprovedInvoiceEmailState(
