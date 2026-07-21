@@ -1,14 +1,11 @@
 import {
-  createEkyApiClient,
   EkyApiError,
   type EkyApiClient,
   type InvoicePaymentSettingsView,
 } from '@eky/api-client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { getFinnishApiErrorMessage, uiText } from '../../../i18n/fi.js';
-
-const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
 
 type InvoicePaymentDefaultsClient = Pick<
   EkyApiClient,
@@ -21,11 +18,9 @@ export interface InvoicePaymentDefaultsState {
   settings: InvoicePaymentSettingsView | null;
 }
 
-export function useInvoicePaymentDefaults(): InvoicePaymentDefaultsState {
-  const apiClient = useMemo(
-    () => createEkyApiClient({ baseUrl: apiBaseUrl }),
-    [],
-  );
+export function useInvoicePaymentDefaults(
+  apiClient: InvoicePaymentDefaultsClient,
+): InvoicePaymentDefaultsState {
   const [settings, setSettings] =
     useState<InvoicePaymentSettingsView | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);

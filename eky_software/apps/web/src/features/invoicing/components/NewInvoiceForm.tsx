@@ -1,4 +1,8 @@
-import type { ApprovedInvoiceResult, InvoiceDraft } from '@eky/api-client';
+import type {
+  ApprovedInvoiceResult,
+  EkyApiClient,
+  InvoiceDraft,
+} from '@eky/api-client';
 import { useEffect, useState } from 'react';
 
 import {
@@ -45,7 +49,13 @@ export type NewInvoiceFormMode =
   | { type: 'create' }
   | { draft: InvoiceDraft; type: 'edit' };
 
+export type NewInvoiceFormClient = Pick<
+  EkyApiClient,
+  'approveInvoiceDraft' | 'createInvoiceDraft' | 'updateInvoiceDraft'
+>;
+
 interface NewInvoiceFormProps {
+  apiClient: NewInvoiceFormClient;
   customerListState: InvoiceCustomerListState;
   companySettingsState: InvoiceCompanySettingsState;
   invoicePaymentDefaultsState: InvoicePaymentDefaultsState;
@@ -57,6 +67,7 @@ interface NewInvoiceFormProps {
 }
 
 export function NewInvoiceForm({
+  apiClient,
   customerListState,
   companySettingsState,
   invoicePaymentDefaultsState,
@@ -73,9 +84,10 @@ export function NewInvoiceForm({
     useState(false);
   const [approvalGuardMessage, setApprovalGuardMessage] =
     useState<string | null>(null);
-  const saveState = useSaveInvoiceDraft(createSaveMode(mode));
-  const approveState = useApproveInvoiceDraft();
+  const saveState = useSaveInvoiceDraft(apiClient, createSaveMode(mode));
+  const approveState = useApproveInvoiceDraft(apiClient);
   const autosaveState = useInvoiceDraftAutosave({
+    apiClient,
     form,
     formRevision,
     manualSavedDraft: saveState.savedDraft,

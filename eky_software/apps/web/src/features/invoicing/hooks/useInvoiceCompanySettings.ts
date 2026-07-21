@@ -1,14 +1,11 @@
 import {
-  createEkyApiClient,
   EkyApiError,
   type CompanySettings,
   type EkyApiClient,
 } from '@eky/api-client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { getFinnishApiErrorMessage, uiText } from '../../../i18n/fi.js';
-
-const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
 
 type InvoiceCompanySettingsClient = Pick<
   EkyApiClient,
@@ -21,11 +18,9 @@ export interface InvoiceCompanySettingsState {
   isLoading: boolean;
 }
 
-export function useInvoiceCompanySettings(): InvoiceCompanySettingsState {
-  const apiClient = useMemo(
-    () => createEkyApiClient({ baseUrl: apiBaseUrl }),
-    [],
-  );
+export function useInvoiceCompanySettings(
+  apiClient: InvoiceCompanySettingsClient,
+): InvoiceCompanySettingsState {
   const [companySettings, setCompanySettings] =
     useState<CompanySettings | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);

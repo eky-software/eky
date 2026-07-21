@@ -1,14 +1,11 @@
 import {
-  createEkyApiClient,
   EkyApiError,
   type ApprovedInvoiceDocumentMetadata,
   type EkyApiClient,
 } from '@eky/api-client';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 
 import { getFinnishApiErrorMessage, uiText } from '../../../i18n/fi.js';
-
-const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
 
 type ApprovedInvoicePdfClient = Pick<
   EkyApiClient,
@@ -29,11 +26,9 @@ export interface ApprovedInvoicePdfState {
   loadPdfMetadata(id: string): Promise<ApprovedInvoiceDocumentMetadata | null>;
 }
 
-export function useApprovedInvoicePdf(): ApprovedInvoicePdfState {
-  const apiClient = useMemo(
-    () => createEkyApiClient({ baseUrl: apiBaseUrl }),
-    [],
-  );
+export function useApprovedInvoicePdf(
+  apiClient: ApprovedInvoicePdfClient,
+): ApprovedInvoicePdfState {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [document, setDocument] =
     useState<ApprovedInvoiceDocumentMetadata | null>(null);

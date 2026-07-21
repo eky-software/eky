@@ -1,11 +1,10 @@
 import {
-  createEkyApiClient,
   EkyApiError,
   type EkyApiClient,
   type InvoiceDraft,
   type InvoiceDraftInput,
 } from '@eky/api-client';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 
 import { toInvoiceDraftInput } from '../form/invoiceDraftFormMapping.js';
 import {
@@ -14,8 +13,6 @@ import {
 } from '../form/invoiceDraftFormValidation.js';
 import type { NewInvoiceFormState } from '../form/newInvoiceFormState.js';
 import { getFinnishApiErrorMessage, uiText } from '../../../i18n/fi.js';
-
-const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
 
 type InvoiceDraftSaveClient = Pick<
   EkyApiClient,
@@ -66,12 +63,9 @@ export function prepareInvoiceDraftSaveInput(
 }
 
 export function useSaveInvoiceDraft(
+  apiClient: InvoiceDraftSaveClient,
   mode: InvoiceDraftSaveMode,
 ): SaveInvoiceDraftState {
-  const apiClient = useMemo(
-    () => createEkyApiClient({ baseUrl: apiBaseUrl }),
-    [],
-  );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [savedDraft, setSavedDraft] = useState<InvoiceDraft | null>(null);

@@ -1,15 +1,12 @@
 import {
-  createEkyApiClient,
   EkyApiError,
   type ApprovedInvoiceEmailSmtpTestPrepareInput,
   type ApprovedInvoiceEmailSmtpTestSendResult,
   type EkyApiClient,
 } from '@eky/api-client';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 
 import { uiText } from '../../../i18n/fi.js';
-
-const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
 
 type SendApprovedInvoiceEmailSmtpTestClient = Pick<
   EkyApiClient,
@@ -28,11 +25,9 @@ export interface SendApprovedInvoiceEmailSmtpTestState {
   ): Promise<ApprovedInvoiceEmailSmtpTestSendResult | null>;
 }
 
-export function useSendApprovedInvoiceEmailSmtpTest(): SendApprovedInvoiceEmailSmtpTestState {
-  const apiClient = useMemo(
-    () => createEkyApiClient({ baseUrl: apiBaseUrl }),
-    [],
-  );
+export function useSendApprovedInvoiceEmailSmtpTest(
+  apiClient: SendApprovedInvoiceEmailSmtpTestClient,
+): SendApprovedInvoiceEmailSmtpTestState {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);

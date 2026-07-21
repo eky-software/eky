@@ -35,6 +35,7 @@ export function App({ apiClient }: AppProps): React.JSX.Element {
       ) : null}
       {activeView === 'invoicing' ? (
         <InvoicingPage
+          apiClient={apiClient}
           navigationRevision={navigation.invoicingNavigationRevision}
           {...(openInvoicePdfPreview === undefined
             ? {}

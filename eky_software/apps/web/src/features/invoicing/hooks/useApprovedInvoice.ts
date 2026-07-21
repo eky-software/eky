@@ -1,14 +1,11 @@
 import {
-  createEkyApiClient,
   EkyApiError,
   type ApprovedInvoiceView,
   type EkyApiClient,
 } from '@eky/api-client';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 
 import { getFinnishApiErrorMessage, uiText } from '../../../i18n/fi.js';
-
-const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
 
 type ApprovedInvoiceClient = Pick<EkyApiClient, 'getApprovedInvoice'>;
 
@@ -21,11 +18,9 @@ export interface ApprovedInvoiceState {
   replaceApprovedInvoice(invoice: ApprovedInvoiceView): void;
 }
 
-export function useApprovedInvoice(): ApprovedInvoiceState {
-  const apiClient = useMemo(
-    () => createEkyApiClient({ baseUrl: apiBaseUrl }),
-    [],
-  );
+export function useApprovedInvoice(
+  apiClient: ApprovedInvoiceClient,
+): ApprovedInvoiceState {
   const [approvedInvoice, setApprovedInvoice] =
     useState<ApprovedInvoiceView | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);

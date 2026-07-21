@@ -10,7 +10,10 @@ import type {
 import { ApprovedInvoiceDetailView } from './ApprovedInvoiceDetailView.js';
 import { InvoiceDraftEditorView } from './InvoiceDraftEditorView.js';
 import { InvoiceWorkspaceListView } from './InvoiceWorkspaceListView.js';
-import { NewInvoiceForm } from './NewInvoiceForm.js';
+import {
+  NewInvoiceForm,
+  type NewInvoiceFormClient,
+} from './NewInvoiceForm.js';
 import styles from './InvoicingPage.module.css';
 import { getInvoiceEmailSmtpTestUnavailableMessage } from '../approved/invoiceEmailSmtpTestAvailability.js';
 import { getInvoiceEmailSmtpUnavailableMessage } from '../approved/invoiceEmailSmtpAvailability.js';
@@ -35,6 +38,7 @@ import { uiText } from '../../../i18n/fi.js';
 
 interface InvoicingPageViewProps {
   activeView: InvoicingPageMode;
+  apiClient: NewInvoiceFormClient;
   approvedInvoiceEmailState: ApprovedInvoiceEmailDryRunState;
   approvedInvoiceListState: ApprovedInvoiceListState;
   approvedInvoicePdfState: ApprovedInvoicePdfState;
@@ -86,6 +90,7 @@ interface InvoicingPageViewProps {
 
 export function InvoicingPageView({
   activeView,
+  apiClient,
   approvedInvoiceEmailState,
   approvedInvoiceListState,
   approvedInvoicePdfState,
@@ -158,6 +163,7 @@ export function InvoicingPageView({
         />
       ) : activeView === 'newInvoice' ? (
         <NewInvoiceForm
+          apiClient={apiClient}
           companySettingsState={companySettingsState}
           customerListState={customerListState}
           invoicePaymentDefaultsState={invoicePaymentDefaultsState}
@@ -169,6 +175,7 @@ export function InvoicingPageView({
         />
       ) : activeView === 'editInvoice' ? (
         <InvoiceDraftEditorView
+          apiClient={apiClient}
           companySettingsState={companySettingsState}
           customerListState={customerListState}
           draft={draftEditorState.draft}

@@ -1,14 +1,11 @@
 import {
-  createEkyApiClient,
   EkyApiError,
   type EkyApiClient,
   type InvoiceDraft,
 } from '@eky/api-client';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 
 import { getFinnishApiErrorMessage, uiText } from '../../../i18n/fi.js';
-
-const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
 
 type InvoiceDraftEditorClient = Pick<EkyApiClient, 'getInvoiceDraft'>;
 
@@ -21,11 +18,9 @@ export interface InvoiceDraftEditorState {
   replaceDraft(draft: InvoiceDraft): void;
 }
 
-export function useInvoiceDraftEditor(): InvoiceDraftEditorState {
-  const apiClient = useMemo(
-    () => createEkyApiClient({ baseUrl: apiBaseUrl }),
-    [],
-  );
+export function useInvoiceDraftEditor(
+  apiClient: InvoiceDraftEditorClient,
+): InvoiceDraftEditorState {
   const [draft, setDraft] = useState<InvoiceDraft | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
