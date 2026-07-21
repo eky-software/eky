@@ -223,6 +223,25 @@ välimuistia, kirjoituksia, numeron varausta, snapshotin kokoamista tai
 auditointia. Repository kutsuu helperiä olemassa olevien transaktiocallbackien
 sisällä.
 
+## Toteutusseuranta
+
+| Vaihe | Tila | Lähtöcommit | Valmis commit | Huomiot |
+| --- | --- | --- | --- | --- |
+| Persistence-rajojen read-only-auditointi | Valmis | `cef6216` | `75242f6` | Julkinen portti, neljä transaktiopolkua, invariantit sekä indeksi- ja rajoitetilanne kirjattu |
+| Myöhäisten virheiden rollback-testit | Valmis | `75242f6` | `73a7c18` | Reopen, mark sent ja reapproval palautuvat kokonaan audit-kirjoituksen epäonnistuessa |
+| Puhtaiden persistence-rivien erotus | Valmis | `73a7c18` | `5bfa4f4` | Mapping ei tunne tietokantaa, SQL:ää, transaktioita, aikaa tai tunnisteiden luontia |
+| Hyväksynnän SELECT-kyselyiden erotus | Valmis | `5bfa4f4` | `6fb0c0a` | Seitsemän synkronista kyselyä käyttää repositoryn kanssa samaa tietokantayhteyttä |
+| SQLite approval write statements- ja transaction orchestrator -arvio | Seuraava arvioitava | `6fb0c0a` | - | Vain vastuu- ja riskikatselmus; ei lupaa siirtää kirjoituksia tai transaktioita |
+
+Toteutetussa jaossa kaikki INSERT-, UPDATE- ja DELETE-lauseet sekä
+transaktiocallbackit säilyvät `SqliteInvoiceApprovalRepository`-luokassa.
+Uudet rollback-testit ovat osa seuraavien arvioiden pakollista käyttäytymisporttia.
+
+Seuraava vaihe on ainoastaan SQLite approval write statements- ja transaction
+orchestrator -vastuiden arviointi. Tämä dokumentti ei hyväksy
+`sqliteInvoiceApprovalStatements.ts`-tiedoston luomista, transaktiocallbackien
+siirtämistä tai repository-portin muuttamista.
+
 ## Pysäytysehdot
 
 Refaktorointi pysäytetään ja raportoidaan projektin omistajalle, jos työ
