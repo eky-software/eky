@@ -729,15 +729,20 @@ korvataan viittauksella uuteen hyväksyttyyn ADR- tai moduulisuunnitelmaan.
 | Approved invoice query- ja document-reittien jako | Valmis | `0d3b62e` | `f475d4c` | Kysely- ja PDF-reitit sekä niiden testit erotettu kapeilla riippuvuussopimuksilla; endpointit ja PDF-otsakkeet säilytetty |
 | Approved invoice lifecycle- ja delivery-reittien jako | Valmis | `f475d4c` | `88e9850` | Koontireitti kokoaa neljä vastuukohtaista reittiryhmää; lifecycle ei tunne SMTP:tä eikä delivery luonnoksen kopiointia |
 | Approved invoice API-response-lukijoiden jako | Valmis | `88e9850` | `77751e5` | Laskunäkymä-, dokumentti-, lifecycle- ja delivery-parserit erotettu; vanha response-polku säilyy ohuena yhteensopivuusentrypointina |
-| SQLite approval -persistenssin vastuiden arviointi | Seuraava arvioitava | `77751e5` | - | Tehdään ensin read-only-vastuu- ja transaktioraja-arvio; tämä roadmap-päivitys ei anna lupaa toteuttaa jakoa tai muuttaa tietokantaa |
+| SQLite approval -persistenssin vastuiden arviointi | Valmis | `cef6216` | `75242f6` | Julkinen portti, transaktiopolut, invariantit sekä indeksi- ja rajoitetilanne kirjattu erilliseen persistence-suunnitelmaan |
+| SQLite approval -rollback-karakterisointi | Valmis | `75242f6` | `73a7c18` | Reopen-, mark sent- ja reapproval-polkujen myöhäiset audit-virheet palauttavat kaikki saman transaktion muutokset |
+| SQLite approval -rivimuunnosten erotus | Valmis | `73a7c18` | `5bfa4f4` | Puhtaat persistence-rivimuunnokset erotettu ilman SQL-, transaktio- tai sopimusmuutoksia |
+| SQLite approval -lukukyselyiden erotus | Valmis | `5bfa4f4` | `6fb0c0a` | Seitsemän SELECT-kyselyä erotettu saman yhteyden query-helperiin; kirjoitukset ja transaktiot säilyvät repositoryssä |
+| SQLite approval write statements- ja transaction orchestrator -arvio | Seuraava arvioitava | `6fb0c0a` | - | Vain vastuu- ja riskikatselmus; ei lupaa toteuttaa statements-tiedostoa tai siirtää transaktiorajoja |
 | Muut cleanup-roadmapin vaiheet | Ei aloitettu | - | - | Vaativat projektin omistajan uuden luvan |
 
 Roadmapia ei käytetä vanhojen ADR-päätösten historian uudelleenkirjoittamiseen.
 Kun nykytila muuttuu, nykytilaa kuvaavat moduuli- ja arkkitehtuuridokumentit
 päivitetään samassa muutoksessa.
 
-Web Foundation-, backend-composition-, approved invoice HTTP- ja API-response-
-erien jälkeen seuraava pienin turvallinen askel on SQLite approval -adapterin
-vastuiden ja transaktiorajojen read-only-arviointi. Arvio ei anna lupaa jakaa
-repositorya, muuttaa SQL-kyselyitä, migraatioita, tietokantaa tai moduulin
-julkisia sopimuksia ilman projektin omistajan uutta päätöstä.
+Web Foundation-, backend-composition-, approved invoice HTTP-, API-response- ja
+SQLite approval read boundary -erien jälkeen seuraava pienin turvallinen askel
+on approval-adapterin write statements- ja transaction orchestrator -vastuiden
+read-only-arviointi. Arvio ei anna lupaa luoda statements-tiedostoa, siirtää
+transaktiocallbackeja, muuttaa SQL-lauseita, migraatioita, tietokantaa tai
+moduulin julkisia sopimuksia ilman projektin omistajan uutta päätöstä.
