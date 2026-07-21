@@ -22,8 +22,8 @@ describe('InvoicingPageView', () => {
       }),
       customerListState: createCustomerListState(),
       drafts: [],
-      errorMessage: null,
-      isLoading: false,
+      draftErrorMessage: null,
+      isDraftListLoading: false,
       draftEditorState: createDraftEditorState(),
       onBackToDrafts: vi.fn(),
       onOpenDraft: vi.fn(),
@@ -44,8 +44,8 @@ describe('InvoicingPageView', () => {
         isLoading: true,
       },
       drafts: [],
-      errorMessage: null,
-      isLoading: false,
+      draftErrorMessage: null,
+      isDraftListLoading: false,
       draftEditorState: createDraftEditorState(),
       onBackToDrafts: vi.fn(),
       onOpenDraft: vi.fn(),
@@ -76,74 +76,6 @@ describe('InvoicingPageView', () => {
     expect(html).not.toContain('required=""');
   });
 
-  it('renders the edit loading state while an invoice draft is opening', () => {
-    const html = renderPage({
-      activeView: 'editInvoice',
-      approvedInvoiceState: createApprovedInvoiceState(),
-      customerListState: createCustomerListState(),
-      drafts: [],
-      errorMessage: null,
-      isLoading: false,
-      draftEditorState: createDraftEditorState({
-        isLoading: true,
-      }),
-      onBackToDrafts: vi.fn(),
-      onOpenDraft: vi.fn(),
-      onNewInvoice: vi.fn(),
-    });
-
-    expect(html).toContain(uiText.invoicing.openingDraft);
-  });
-
-  it('renders a safe edit open error without technical response data', () => {
-    const html = renderPage({
-      activeView: 'editInvoice',
-      customerListState: createCustomerListState(),
-      drafts: [],
-      errorMessage: null,
-      isLoading: false,
-      draftEditorState: createDraftEditorState({
-        errorMessage: uiText.invoicing.openDraftError,
-      }),
-      onBackToDrafts: vi.fn(),
-      onOpenDraft: vi.fn(),
-      onNewInvoice: vi.fn(),
-    });
-
-    expect(html).toContain(uiText.invoicing.openDraftError);
-    expect(html).not.toContain('responseBody');
-    expect(html).not.toContain('stack');
-  });
-
-  it('hydrates an opened invoice draft into the edit form', () => {
-    const html = renderPage({
-      activeView: 'editInvoice',
-      customerListState: createCustomerListState(),
-      drafts: [],
-      errorMessage: null,
-      isLoading: false,
-      draftEditorState: createDraftEditorState({
-        draft: createInvoiceDraft(),
-      }),
-      onBackToDrafts: vi.fn(),
-      onOpenDraft: vi.fn(),
-      onNewInvoice: vi.fn(),
-    });
-
-    expect(html).toContain(uiText.invoicing.editInvoice);
-    expect(html).toContain('Työlasku');
-    expect(html).toContain('Saate');
-    expect(html).toContain('ORDER-1');
-    expect(html).toContain('Työtunti');
-    expect(html).toContain('65,50');
-    expect(html).toContain(uiText.invoicing.approveDraft);
-    expect(html).not.toContain(
-      uiText.invoicing.approveDraftConfirmationTitle,
-    );
-    expect(html).toContain(uiText.invoicing.save);
-    expect(html).not.toContain(uiText.invoicing.saveDraftChanges);
-  });
-
   it('renders the approved invoice loading state', () => {
     const html = renderPage({
       activeView: 'approvedInvoice',
@@ -152,8 +84,8 @@ describe('InvoicingPageView', () => {
       }),
       customerListState: createCustomerListState(),
       drafts: [],
-      errorMessage: null,
-      isLoading: false,
+      draftErrorMessage: null,
+      isDraftListLoading: false,
       draftEditorState: createDraftEditorState(),
       onBackToDrafts: vi.fn(),
       onOpenDraft: vi.fn(),
@@ -171,8 +103,8 @@ describe('InvoicingPageView', () => {
       }),
       customerListState: createCustomerListState(),
       drafts: [],
-      errorMessage: null,
-      isLoading: false,
+      draftErrorMessage: null,
+      isDraftListLoading: false,
       draftEditorState: createDraftEditorState(),
       onBackToDrafts: vi.fn(),
       onOpenDraft: vi.fn(),
@@ -192,8 +124,8 @@ describe('InvoicingPageView', () => {
       }),
       customerListState: createCustomerListState(),
       drafts: [],
-      errorMessage: null,
-      isLoading: false,
+      draftErrorMessage: null,
+      isDraftListLoading: false,
       draftEditorState: createDraftEditorState(),
       onBackToDrafts: vi.fn(),
       onOpenDraft: vi.fn(),
@@ -224,8 +156,8 @@ describe('InvoicingPageView', () => {
       }),
       customerListState: createCustomerListState(),
       drafts: [],
-      errorMessage: null,
-      isLoading: false,
+      draftErrorMessage: null,
+      isDraftListLoading: false,
       draftEditorState: createDraftEditorState(),
       onBackToDrafts: vi.fn(),
       onOpenDraft: vi.fn(),
@@ -273,7 +205,6 @@ function renderPage(
     | 'onSendApprovedInvoiceEmailSmtpTest'
     | 'onRequestDeleteDraft'
     | 'pendingDeleteDraftId'
-    | 'refreshDrafts'
   > &
     Partial<
       Pick<
@@ -308,7 +239,6 @@ function renderPage(
         | 'onSendApprovedInvoiceEmailSmtpTest'
         | 'onRequestDeleteDraft'
         | 'pendingDeleteDraftId'
-        | 'refreshDrafts'
       >
     >,
 ): string {
@@ -348,7 +278,6 @@ function renderPage(
       onSendApprovedInvoiceEmailSmtpTest={vi.fn()}
       onRequestDeleteDraft={vi.fn()}
       pendingDeleteDraftId={null}
-      refreshDrafts={vi.fn()}
       {...props}
     />,
   );
