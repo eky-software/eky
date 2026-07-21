@@ -1,5 +1,5 @@
-import { createEkyApiClient, EkyApiError } from '@eky/api-client';
-import { useEffect, useMemo, useState } from 'react';
+import { EkyApiError, type EkyApiClient } from '@eky/api-client';
+import { useEffect, useState } from 'react';
 
 import { CompanySettingsForm } from './CompanySettingsForm.js';
 import { CompanyEmailSecretPanel } from './CompanyEmailSecretPanel.js';
@@ -15,10 +15,26 @@ import styles from './CompanySettingsPageView.module.css';
 import { getFinnishApiErrorMessage, uiText } from '../../i18n/fi.js';
 import { MessageBanner } from '../../shared/ui/index.js';
 
-const apiBaseUrl = import.meta.env.VITE_EKY_API_BASE_URL ?? '';
+type CompanySettingsPageClient = Pick<
+  EkyApiClient,
+  | 'getCompanyEmailSecretStatus'
+  | 'getCompanySettings'
+  | 'getInvoiceNumberingSettings'
+  | 'getInvoicePaymentSettings'
+  | 'removeCompanyEmailSecret'
+  | 'setCompanyEmailSecret'
+  | 'updateCompanySettings'
+  | 'updateInvoiceNumberingSettings'
+  | 'updateInvoicePaymentSettings'
+>;
 
-export function CompanySettingsPage(): React.JSX.Element {
-  const apiClient = useMemo(() => createEkyApiClient({ baseUrl: apiBaseUrl }), []);
+interface CompanySettingsPageProps {
+  apiClient: CompanySettingsPageClient;
+}
+
+export function CompanySettingsPage({
+  apiClient,
+}: CompanySettingsPageProps): React.JSX.Element {
   const [form, setForm] = useState<CompanySettingsFormModel>(initialCompanySettingsForm);
   const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
