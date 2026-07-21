@@ -2,6 +2,13 @@
 
 Tämä dokumentti kuvaa Eky-ohjelman ensimmäiset käyttöliittymäperiaatteet.
 
+Tämä dokumentti on auktoritatiivinen lähde Eky-käyttöliittymän
+käyttäjäkokemukselle ja visuaaliselle peruslinjalle. Webin kansio-, import- ja
+CSS-omistajuus määritellään dokumentissa
+`docs/architecture/web-frontend-structure.md`. Jaettujen UI-primitiivien ja
+`packages/ui`-paketin päätöspiste määritellään dokumentissa
+`docs/architecture/ui-design-system-roadmap.md`.
+
 Tarkoitus on ohjata nykyisen React-käyttöliittymän jatkokehitystä ennen kuin siitä tehdään ERP-työpöytämäisempi.
 
 ## Eky Local ensin, Cloud myöhemmin
@@ -201,8 +208,11 @@ Ei lisätä vielä:
 - TanStack Queryä
 - Zodia
 - ulkoista i18n-kirjastoa
-- `packages/ui`-pakettia
 - design system -pakettia
+
+Repositoriossa on jo `packages/ui`-skeleton. Sitä ei aktivoida eikä sinne
+lisätä React-komponentteja ennen dokumentissa
+`docs/architecture/ui-design-system-roadmap.md` kuvattua päätöspistettä.
 
 UI-riippuvuuksia voidaan arvioida myöhemmin uudelleen, jos oma CSS ja omat komponentit alkavat hidastaa kehitystä tai heikentää laatua.
 
@@ -287,5 +297,6 @@ käytännöllisyyttä, tietotiheyttä ja ennakoitavaa työjärjestystä ilman ni
 brändin tai ulkoasun kopiointia. Eky säilyttää oman modernin, sinivalkoisen ja
 rauhallisen visuaalisen linjansa.
 
-Tässä vaiheessa ei tehdä `packages/ui`-pakettia eikä oteta käyttöön
-UI-kirjastoa ilman todellista toistuvaa tarvetta ja erillistä päätöstä.
+Tässä vaiheessa olemassa olevaa `packages/ui`-skeletonia ei aktivoida eikä
+oteta käyttöön UI-kirjastoa ilman todellista toistuvaa tarvetta ja erillistä
+päätöstä.

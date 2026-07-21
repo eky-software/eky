@@ -3,6 +3,12 @@
 Tämä dokumentti kirjaa Eky-webin jaettujen UI-primitiivien hallitun
 kasvupolun.
 
+Tämä dokumentti on auktoritatiivinen lähde jaettujen UI-primitiivien
+abstraktiokynnykselle sekä `apps/web/src/shared/ui`- ja `packages/ui`-
+päätöksille. Käyttäjäkokemuksen ja visuaalisen peruslinjan omistaa
+`docs/design/ui-principles.md`. Webin kansiot, importit ja CSS-omistajuuden
+omistaa `docs/architecture/web-frontend-structure.md`.
+
 Nykyinen UI toimii, mutta lomakkeissa, napeissa, vahvistuksissa,
 tilailmoituksissa ja kenttärakenteissa on alkanut näkyä toistoa. Tavoite ei ole
 rakentaa suurta design systemiä, vaan yhtenäistää aidosti yhteinen

@@ -3,6 +3,13 @@
 Tämä dokumentti ohjaa Eky-koodipohjan hallittua rakenteellista siivousta
 laskutuksen ensimmäisen laajan toteutusvaiheen jälkeen.
 
+Tämä dokumentti on auktoritatiivinen lähde koodipohjan siivouksen
+prioriteeteille, työjärjestykselle ja etenemisen seurannalle. Se ei omista
+webin visuaalista linjaa, kansiorakennetta eikä jaettujen UI-primitiivien
+päätöksiä; ne määritellään dokumenteissa `docs/design/ui-principles.md`,
+`docs/architecture/web-frontend-structure.md` ja
+`docs/architecture/ui-design-system-roadmap.md`.
+
 Roadmap perustuu 20.7.2026 tehtyyn koko repositorion read-only-auditointiin.
 Auditoinnin Git-baseline oli `antsa`-haaran commit `095da06`
 (`fix(invoicing): harden delivery confirmation`).
@@ -137,24 +144,59 @@ Auditoinnissa ei löytynyt aktiivista `P0`-koodivirhettä.
 
 ### Release Gate
 
-- `R0`: estää oikean asiakas- tai laskutusdatan tuotantokäytön
+- `R0`: estää yhden hallitun koneen oikean asiakas- tai laskutusdatan käytön
 - `R1`: tarvitaan ennen laajempaa loppukäyttäjäkäyttöönottoa
 - `R2`: tarvitaan ennen pilvi-, synkronointi- tai multi-user-käyttöä
 
-`R0`-portit:
+#### Datan Eheys: R0
 
 - dokumentoitu ja testattu SQLite backup/restore -polku
 - migraatioiden muuttumattomuus tai checksum-tarkistus
 - edustavilla vanhoilla tietokannoilla ajettavat upgrade- ja recovery-testit
-- tuettu Electron-versio ja hallittu päivitysstrategia
-- installer, code signing ja julkaisun eheystarkistus
-- ajantasainen kolmannen osapuolen lisenssi-inventaario
-- release security review ja turvallinen palautusmalli
 
-Windows-paketointi ja packaged smoke kuuluvat viimeistään `R0`/`R1`-porttiin
-sen mukaan, käytetäänkö tarkistusta yhden hallitun asennuksen vai laajemman
-julkaisun ehtona. Selainpohjaiset kriittisten työnkulkujen E2E-testit ovat
-nykytilassa `P2` ja viimeistään `R1`.
+Nämä ovat `R0`-portteja, koska yhdenkin oikeaa dataa käyttävän asennuksen pitää
+selvitä tiedoston vioittumisesta, epäonnistuneesta migraatiosta ja hallitusta
+palautuksesta ilman laskutus- tai asiakasdatan hallitsematonta menetystä.
+
+#### Turvallisuus: R0
+
+- tuettu Electron-versio ja hyväksyttyjen runtime-riippuvuuksien
+  tietoturvatarkistus
+- paikallisen tietokannan, PDF-tiedostojen ja salattujen salaisuustiedostojen
+  suojaus käyttöjärjestelmän käyttäjäprofiilissa
+- loopback-, runtime-session-, ActorContext- ja permission-rajojen release-
+  tarkistus
+- turvallinen palautusmalli, joka ei ohita yritys-, session- tai
+  salaisuusrajoja
+
+Nämä ovat `R0`-portteja, koska yhden hallitun koneen käyttö ei saa muuttaa
+local-runtimen luottamusrajoja tai tehdä oikeasta datasta tarpeettomasti
+muiden paikallisten käyttäjien tai verkon saavutettavaa.
+
+#### Jakelu: R1
+
+- hallittu Windows-installer
+- julkaisun eheystarkistus ja code signing
+- testattu automaattinen tai muuten hallittu päivityspolku
+- Windows-paketointi ja packaged smoke tuetulla julkaisuympäristöllä
+
+Nämä ovat viimeistään `R1`-portteja ennen laajempaa jakelua. Code signing
+nostetaan `R0`-portiksi vain, jos projektin omistaja päättää, ettei edes yhden
+hallittuun koneeseen asennettavaa artifactia saa käyttää allekirjoittamattomana.
+Tämä päätös kirjataan erikseen ennen ensimmäistä oikean datan asennusta.
+
+#### Juridiset Velvoitteet: R1
+
+- ajantasainen kolmannen osapuolen lisenssi-inventaario
+- jaeltavaan artifactiin kuuluvat lisenssi- ja notice-tiedostot
+- valitun jakelumallin tietosuoja- ja käyttöehtotarkistus
+
+Juridiset jakeluvelvoitteet suljetaan viimeistään `R1`-portissa. Jos lisenssi
+tai muu velvoite kieltää jo yhden hallitun asennuksen suunnitellulla tavalla,
+siitä tulee kyseisen julkaisun `R0`-portti.
+
+Selainpohjaiset kriittisten työnkulkujen E2E-testit ovat nykytilassa `P2` ja
+viimeistään `R1`.
 
 `R2`-portteja ovat muun muassa cloud identity, yritysjäsenyydet, rooli- ja
 permission-hallinta, cloud secret manager, tenant-eristyksen tuotantomalli ja
@@ -669,6 +711,12 @@ Siivousaskel on valmis vasta, kun:
 
 Tämä on elävä roadmap. Toteutetut kohdat merkitään tähän dokumenttiin tai
 korvataan viittauksella uuteen hyväksyttyyn ADR- tai moduulisuunnitelmaan.
+
+| Vaihe | Tila | Lähtöcommit | Valmis commit | Huomiot |
+| --- | --- | --- | --- | --- |
+| Cleanup- ja UI-dokumenttien tarkennus | Valmis | `195cce2` | `0f7add7` | Omistajuudet, release-portit ja seuranta tarkennettu |
+| `InvoicingPageView`-erotus | Valmis | `0f7add7` | Tämä commit | Controller, näkymä ja näkymätesti erotettu; julkinen entrypoint säilytetty |
+| Muut cleanup-roadmapin vaiheet | Ei aloitettu | - | - | Vaativat projektin omistajan uuden luvan |
 
 Roadmapia ei käytetä vanhojen ADR-päätösten historian uudelleenkirjoittamiseen.
 Kun nykytila muuttuu, nykytilaa kuvaavat moduuli- ja arkkitehtuuridokumentit

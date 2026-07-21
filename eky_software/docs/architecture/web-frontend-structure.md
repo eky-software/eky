@@ -2,6 +2,12 @@
 
 Tämä dokumentti määrittelee `apps/web/src`-kansion perusrakenteen.
 
+Tämä dokumentti on auktoritatiivinen lähde webin kansiorakenteelle,
+importtirajoille, feature-entrypointeille ja CSS-omistajuudelle.
+Käyttäjäkokemuksen ja visuaalisen peruslinjan omistaa
+`docs/design/ui-principles.md`. Jaettujen UI-primitiivien päätöspisteen omistaa
+`docs/architecture/ui-design-system-roadmap.md`.
+
 Tavoitteena on erottaa käyttöliittymän toiminnalliset moduulit, sovelluksen kokoaminen ja pienet jaetut apukokonaisuudet toisistaan.
 
 ## Rakenne
