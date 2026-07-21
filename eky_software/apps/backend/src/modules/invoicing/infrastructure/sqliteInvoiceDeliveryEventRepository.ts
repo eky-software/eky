@@ -5,6 +5,7 @@ import type {
 } from '../../../database/schema.js';
 import type { InvoiceDeliveryEvent } from '../domain/invoiceDeliveryEvent.js';
 import type { InvoiceDeliveryEventSummary } from '../domain/invoiceDeliveryEventSummary.js';
+import { InvoiceDeliveryConflictError } from '../domain/invoiceDeliveryConflictError.js';
 import type { InvoiceDeliveryEventReader } from '../ports/invoiceDeliveryEventReader.js';
 import type { InvoiceDeliveryEventRepository } from '../ports/invoiceDeliveryEventRepository.js';
 import type { CompleteInvoiceDeliveryEventInput } from '../ports/invoiceDeliveryEventRepository.js';
@@ -191,6 +192,27 @@ export class SqliteInvoiceDeliveryEventRepository
 
       if (invoice.status === 'sent') {
         return { updatedAt: invoice.updated_at };
+      }
+
+      const unresolvedDeliveryEvent = this.database
+        .prepare<
+          { company_id: string; invoice_id: string },
+          { present: number }
+        >(
+          `
+            SELECT 1 AS present
+            FROM invoice_delivery_events
+            WHERE
+              company_id = @company_id
+              AND invoice_id = @invoice_id
+              AND status IN ('attempted', 'outcomeUnknown')
+            LIMIT 1
+          `,
+        )
+        .get({ company_id: input.companyId, invoice_id: input.invoiceId });
+
+      if (unresolvedDeliveryEvent !== undefined) {
+        throw new InvoiceDeliveryConflictError();
       }
 
       this.insertDeliveryEvent({

@@ -7,6 +7,7 @@ import type {
   InvoiceDeliveryEventRow,
 } from '../../../database/schema.js';
 import type { InvoiceDeliveryEvent } from '../domain/invoiceDeliveryEvent.js';
+import { InvoiceDeliveryConflictError } from '../domain/invoiceDeliveryConflictError.js';
 import { SqliteInvoiceDeliveryEventRepository } from './sqliteInvoiceDeliveryEventRepository.js';
 
 describe('SqliteInvoiceDeliveryEventRepository', () => {
@@ -374,6 +375,51 @@ describe('SqliteInvoiceDeliveryEventRepository', () => {
       action: 'invoice.marked_sent_manually',
       actor_user_id: 'user-1',
     });
+  });
+
+  it('atomically blocks manual delivery when an unresolved event exists', async () => {
+    const repository = new SqliteInvoiceDeliveryEventRepository(database);
+    await repository.saveDeliveryEvent(
+      createEvent({ id: 'unresolved-event', status: 'attempted' }),
+    );
+
+    await expect(
+      repository.completeManualDelivery({
+        actorUserId: 'user-1',
+        auditEventId: 'audit-manual-blocked',
+        companyId: 'dev-company',
+        deliveredAt: '2026-07-10T12:00:00.000Z',
+        deliveryEventId: 'manual-event-blocked',
+        deliveryMethod: 'manual',
+        documentId: 'document-1',
+        invoiceId: 'invoice-1',
+      }),
+    ).rejects.toEqual(new InvoiceDeliveryConflictError());
+
+    expect(
+      database
+        .prepare<[string], { status: string; updated_at: string }>(
+          'SELECT status, updated_at FROM invoices WHERE id = ?',
+        )
+        .get('invoice-1'),
+    ).toEqual({
+      status: 'approved',
+      updated_at: '2026-07-10T09:00:00.000Z',
+    });
+    expect(
+      database
+        .prepare<[string], { id: string }>(
+          'SELECT id FROM invoice_delivery_events WHERE id = ?',
+        )
+        .get('manual-event-blocked'),
+    ).toBeUndefined();
+    expect(
+      database
+        .prepare<[string], { id: string }>(
+          'SELECT id FROM invoice_audit_events WHERE id = ?',
+        )
+        .get('audit-manual-blocked'),
+    ).toBeUndefined();
   });
 
   it('rolls back manual delivery when its audit event cannot be stored', async () => {
