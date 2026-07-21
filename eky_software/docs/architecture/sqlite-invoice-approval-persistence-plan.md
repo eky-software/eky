@@ -145,6 +145,55 @@ Kaikissa myöhemmissä rakenteellisissa muutoksissa säilytetään vähintään:
 12. Repository käyttää samaa tietokantayhteyttä kaikissa transaktion sisällä
     tehtävissä luvuissa ja kirjoituksissa.
 
+## Kirjoituslauseiden auditointi
+
+Kaikki alla kuvatut kirjoitukset suoritetaan repositoryn avaaman synkronisen
+SQLite-transaktion sisällä ja samalla `DatabaseConnection`-oliolla kuin niitä
+edeltävät SELECT-kyselyt. Kirjoitushelper ei saa myöhemmässäkään jaossa avata
+omaa yhteyttä tai transaktiota.
+
+| Metodi | Taulu ja statement | Syöte | Yritys- ja tilaraja | `changes`-vaatimus | Luotettu edeltävä luku | Epäonnistuminen ja rollback |
+| --- | --- | --- | --- | --- | --- | --- |
+| `upsertNumberSequence` | `invoice_number_sequences`, `INSERT ... ON CONFLICT DO UPDATE` | `NewInvoiceNumberSequenceRow` | Avain sisältää `company_id`, `series_key` ja `sequence_scope`; ei tilakenttää | Ei erillistä tarkistusta: onnistunut upsert kirjoittaa yhden rivin, constraint-virhe heitetään | Yritys- ja sarjarajattu numerointiasetus sekä yritys-, sarja- ja scope-rajattu nykysekvenssi | SQLite-virhe keskeyttää hyväksynnän; myös mahdollinen sekvenssipäivitys palautuu myöhemmän virheen yhteydessä |
+| `insertInvoice` | `invoices`, `INSERT` | `NewInvoiceRow` | `company_id` on kirjoitettavassa snapshot-rivissä; uniikki yritys + laskunumero/lähdeluonnos ja lähdeluonnoksen FK vartioivat eheyttä | Ei erillistä tarkistusta: INSERT joko onnistuu yhdelle riville tai heittää | Yritysrajattu hyväksyttävä luonnos, rivit, numerointi ja snapshot-lähteet | SQLite constraint -virhe heitetään; sekvenssi ja kaikki muut saman transaktion kirjoitukset palautuvat |
+| `updateInvoice` | `invoices`, `UPDATE` | `NewInvoiceRow` | `WHERE company_id = @company_id AND id = @id AND status = 'reopened_for_edit'` | Täsmälleen yksi; muuten `ApproveInvoiceDraftError('Reopened invoice could not be reapproved.')` | Yritys- ja lähdeluonnosrajattu lasku, jonka tila on `reopened_for_edit` | Virhe palauttaa vanhan snapshotin ja pitää vanhat rivit, avoimen luonnoksen sekä sekvenssin ennallaan |
+| `insertInvoiceLines` | `invoice_lines`, yksi `INSERT` per rivi | `NewInvoiceLineRow[]` | Taulussa ei ole `company_id`-kenttää; `invoice_id` tulee saman transaktion yritysrajatusta laskusta ja FK sekä `(invoice_id, line_order)`-uniikkius vartioivat eheyttä | Ei erillistä tarkistusta: kukin INSERT onnistuu yhdelle riville tai heittää | Uudessa hyväksynnässä juuri lisätty lasku; uudelleenhyväksynnässä yritys- ja tilarajattu olemassa oleva lasku | Minkä tahansa rivin virhe palauttaa kaikki aiemmat rivit ja saman transaktion muut kirjoitukset |
+| `deleteInvoiceLines` | `invoice_lines`, `DELETE` | `invoiceId` | Statementissa ei ole omaa `companyId`-ehtoa, koska taulussa ei ole yrityskenttää; tunniste tulee saman transaktion yritys- ja `reopened_for_edit`-rajatusta laskusta | Ei; nolla tai useampi vanha rivi on sallittu | `getReopenedInvoiceForDraft(companyId, draftId)` | Myöhempi update-, insert-, audit- tai draft-linkitysvirhe palauttaa poistetut vanhat rivit |
+| `deleteApprovedInvoicePdfDocumentRows` | `invoice_documents`, ensin `SELECT storage_path`, sitten `DELETE` | `companyId`, `invoiceId` | Sekä luku että poisto käyttävät samaa `company_id`, `invoice_id` ja `document_type = 'approved_invoice_pdf'` -rajaa | Ei; nolla tai yksi rivi on sallittu nykyisen uniikkiusrajan vuoksi | Yritys- ja `approved`-rajattu lasku | Poistettavat polut luetaan ennen poistoa samassa transaktiossa; myöhempi audit-virhe palauttaa metadata-rivin, eikä repository poista tiedostoa |
+| `insertAuditEvent` | `invoice_audit_events`, `INSERT` | `NewInvoiceAuditEventRow` | `company_id` tulee vahvistetusta persistence-inputista; laskun FK ja action CHECK vartioivat eheyttä, mutta `draft_id` ei ole FK | Ei erillistä tarkistusta: INSERT joko onnistuu yhdelle riville tai heittää | Kyseisen polun yritys- ja tilarajattu luonnos tai lasku | SQLite constraint -virhe heitetään ja palauttaa kaikki sitä edeltävät saman transaktion kirjoitukset |
+| `markDraftApproved` | `invoice_drafts`, `UPDATE` | `ApproveInvoiceDraftPersistenceInput` | `WHERE company_id = ? AND id = ? AND status = 'draft' AND approved_invoice_id IS NULL` | Täsmälleen yksi; muuten `ApproveInvoiceDraftError('Invoice draft could not be marked as approved.')` | Yritysrajattu, `draft`-tilainen ja hyväksyntään linkittämätön luonnos | Virhe palauttaa sekvenssin, laskun, rivit ja auditin tai uudelleenhyväksynnän snapshotin, rivit ja auditin |
+| `markInvoiceReopenedForEditing` | `invoices`, `UPDATE` | `ReopenApprovedInvoicePersistenceInput` | `WHERE company_id = ? AND id = ? AND status = 'approved'` | Täsmälleen yksi; muuten `ApproveInvoiceDraftError('Approved invoice could not be reopened for editing.')` | Yritys- ja `approved`-rajattu lasku | Virhe jättää laskun, luonnoksen, PDF-metadatan ja auditin ennalleen |
+| `markInvoiceSent` | `invoices`, `UPDATE` | `MarkApprovedInvoiceSentPersistenceInput` | `WHERE company_id = ? AND id = ? AND status = 'approved'` | Täsmälleen yksi; muuten `ApproveInvoiceDraftError('Approved invoice could not be marked sent.')` | Yritysrajattu lasku tilassa `approved` tai `sent`; jo lähetetty lasku palautuu ennen kirjoitusta | Virhe tai myöhempi audit-virhe palauttaa tilan ja `updated_at`-arvon |
+| `unlockSourceDraftForEditing` | `invoice_drafts`, `UPDATE` | Reopen-input ja luetun laskun `source_draft_id` | `WHERE company_id = ? AND id = ? AND approved_invoice_id = ?` | Täsmälleen yksi; muuten `ApproveInvoiceDraftError('Approved invoice source draft could not be reopened for editing.')` | Yritys- ja `approved`-rajatusta laskusta saatu lähdeluonnoksen tunniste | Virhe palauttaa sitä edeltävän laskun tilapäivityksen; myöhempi PDF- tai audit-virhe palauttaa myös luonnoslinkin |
+
+`invoiceId`-rajattu laskurivien poisto on hyväksytty vain tämän sisäisen
+transaktiopolun osana. Metodia ei saa nostaa julkiseksi tai kutsua ilman saman
+transaktion yritys- ja tilarajattua laskuhakua. Laskurivien lisäys on vastaavasti
+sidottu laskun pääavaimeen ja FK-rajaan, ei erilliseen laskurivien
+`company_id`-kenttään.
+
+PDF-metadatan storage-polkujen SELECT ja samoin rajattu DELETE muodostavat
+yhden kirjoitusoperaation. Niitä ei eroteta eri yhteyksille tai
+transaktiorajojen eri puolille. Varsinainen tiedostopoisto ei kuulu tähän
+SQLite-operaatioon.
+
+## Kirjoitusten täsmällinen järjestys
+
+Nykyinen järjestys on käyttäytymissopimus, joka säilytetään statements- ja
+orchestrator-erotuksissa:
+
+1. **Uusi hyväksyntä:** `upsertNumberSequence` -> `insertInvoice` ->
+   `insertInvoiceLines` -> `insertAuditEvent` -> `markDraftApproved`.
+2. **Uudelleenhyväksyntä:** `updateInvoice` -> `deleteInvoiceLines` ->
+   `insertInvoiceLines` -> `insertAuditEvent` -> `markDraftApproved`.
+3. **Palautus muokattavaksi:** `markInvoiceReopenedForEditing` ->
+   `unlockSourceDraftForEditing` ->
+   `deleteApprovedInvoicePdfDocumentRows` -> `insertAuditEvent`.
+4. **Merkitse lähetetyksi:** `markInvoiceSent` -> `insertAuditEvent`.
+
+Jokainen järjestys alkaa sitä suojaavilla yritys- ja tilarajatuilla luvuilla.
+Jo `sent`-tilainen lasku palautuu idempotentisti ennen mark sent -kirjoituksia.
+
 ## Vastuumatriisi
 
 | Vastuu | Nykyinen omistaja | Hyväksytty tavoite tässä siivouksessa |
@@ -152,7 +201,7 @@ Kaikissa myöhemmissä rakenteellisissa muutoksissa säilytetään vähintään:
 | Puhtaat persistence-rivien muunnokset | SQLite approval repository | `invoiceApprovalPersistenceRows.ts` |
 | Hyväksynnän SELECT-kyselyt | SQLite approval repository | `sqliteInvoiceApprovalQueries.ts` |
 | Yritys- ja asiakassnapshotien luku | `SqliteInvoiceApprovalSnapshotReader` | Säilyy nykyisessä readerissä |
-| INSERT-, UPDATE- ja DELETE-lauseet | SQLite approval repository | Säilyvät repositoryssä |
+| INSERT-, UPDATE- ja DELETE-lauseet | SQLite approval repository | Kapea `sqliteInvoiceApprovalStatements.ts`, sama yhteys ja synkroninen kutsutapa |
 | Transaktioiden orkestrointi | SQLite approval repository | Säilyy repositoryssä |
 | Numerointipäätös ja domain-validointi | Domain + repositoryn orkestrointi | Säilyy nykyisessä kutsuketjussa |
 | Sekvenssin persistence | SQLite approval repository | Säilyy samassa hyväksyntätransaktiossa |
@@ -161,9 +210,10 @@ Kaikissa myöhemmissä rakenteellisissa muutoksissa säilytetään vähintään:
 | PDF-metadatan poisto reopenissa | SQLite approval repository | Säilyy repositoryn transaktiossa |
 | Varsinaisen PDF-tiedoston poisto | Application/storage-adapteri | Ei muutu |
 
-Mahdollinen tuleva `sqliteInvoiceApprovalStatements.ts` arvioidaan vasta, kun
-read query -erotus ja rollback-testit ovat vakaat. Tätä tiedostoa tai erillistä
-write-adapteria ei ole hyväksytty toteutettavaksi tässä vaiheessa.
+`sqliteInvoiceApprovalStatements.ts` saa sisältää vain yllä auditoidut
+synkroniset kirjoitusmetodit. Se ei ole erillinen repository tai adapteri eikä
+se saa omistaa yhteyttä, transaktiota, järjestystä, tunnisteita, aikaa,
+domain-päätöksiä tai application-orkestrointia.
 
 ## Indeksi- ja rajoiteauditointi
 
@@ -210,18 +260,20 @@ mahdollinen schema-hardening arvioidaan myöhemmin erillisenä migraatiotyönä.
 Tässä siivouserässä saa muodostua vain seuraava jako:
 
 - `sqliteInvoiceApprovalRepository.ts`: julkisen portin toteutus,
-  transaktiot ja kaikki kirjoituslauseet
+  transaktiorajat ja kirjoitusten järjestys
 - `invoiceApprovalPersistenceRows.ts`: puhtaat persistence-rivien
   muunnokset ja niiden kapeat tyypit
 - `sqliteInvoiceApprovalQueries.ts`: saman tietokantayhteyden synkroniset,
   vain hyväksyntää palvelevat SELECT-kyselyt
+- `sqliteInvoiceApprovalStatements.ts`: saman tietokantayhteyden synkroniset,
+  vain hyväksyntäpolun auditoidut INSERT-, UPDATE- ja DELETE-operaatiot
 - `sqliteInvoiceApprovalSnapshotReader.ts`: nykyinen snapshot-lähteiden
   reader
 
-Query-helper ei omista tietokantayhteyden elinkaarta, transaktiota,
-välimuistia, kirjoituksia, numeron varausta, snapshotin kokoamista tai
-auditointia. Repository kutsuu helperiä olemassa olevien transaktiocallbackien
-sisällä.
+Query- ja statement-helperit eivät omista tietokantayhteyden elinkaarta,
+transaktiota, välimuistia, numeron varausta, snapshotin kokoamista,
+audit-päätöstä tai kirjoitusjärjestystä. Repository kutsuu niitä omien
+transaktiocallbackiensa sisällä.
 
 ## Toteutusseuranta
 
@@ -231,16 +283,16 @@ sisällä.
 | Myöhäisten virheiden rollback-testit | Valmis | `75242f6` | `73a7c18` | Reopen, mark sent ja reapproval palautuvat kokonaan audit-kirjoituksen epäonnistuessa |
 | Puhtaiden persistence-rivien erotus | Valmis | `73a7c18` | `5bfa4f4` | Mapping ei tunne tietokantaa, SQL:ää, transaktioita, aikaa tai tunnisteiden luontia |
 | Hyväksynnän SELECT-kyselyiden erotus | Valmis | `5bfa4f4` | `6fb0c0a` | Seitsemän synkronista kyselyä käyttää repositoryn kanssa samaa tietokantayhteyttä |
-| SQLite approval write statements- ja transaction orchestrator -arvio | Seuraava arvioitava | `6fb0c0a` | - | Vain vastuu- ja riskikatselmus; ei lupaa siirtää kirjoituksia tai transaktioita |
+| SQLite approval write boundary -auditointi | Valmis, commit avoin | `4485256` | - | Yksitoista kirjoitusta, statement-järjestykset, yritys- ja tilarajat sekä rollback-vaikutukset auditoitu; pysäytysehtoa ei löytynyt |
+| Puuttuvien write guard -karakterisointien täydennys | Seuraava | audit-commit | - | Vain nykyisen idempotenssin, tenant-rajojen, status guardien ja rollbackin testit |
+| SQLite approval write statements -erotus | Hyväksytty auditin jälkeen | testicommit | - | SQL siirtyy kapeaan synkroniseen helperiin; transaktiot ja järjestys säilyvät repositoryssä |
+| SQLite approval transaction orchestration -selkeytys | Hyväksytty vain vihreän statements-erotuksen jälkeen | statements-commit | - | Nimetyt yksityiset sync-metodit samassa repositoryssä; public-portti ja callback-rajat eivät muutu |
 
-Toteutetussa jaossa kaikki INSERT-, UPDATE- ja DELETE-lauseet sekä
-transaktiocallbackit säilyvät `SqliteInvoiceApprovalRepository`-luokassa.
-Uudet rollback-testit ovat osa seuraavien arvioiden pakollista käyttäytymisporttia.
-
-Seuraava vaihe on ainoastaan SQLite approval write statements- ja transaction
-orchestrator -vastuiden arviointi. Tämä dokumentti ei hyväksy
-`sqliteInvoiceApprovalStatements.ts`-tiedoston luomista, transaktiocallbackien
-siirtämistä tai repository-portin muuttamista.
+Auditointi antaa luvan vain yllä kuvatun statements-helperin toteutukseen sen
+jälkeen, kun puuttuvat write guard -karakterisoinnit ovat vihreät. Repositoryn
+public-metodit avaavat transaktiot jatkossakin. Transaction orchestrationin
+nimettyjen yksityisten metodien erotus tehdään vasta statements-erotuksen
+jälkeen eikä se anna lupaa siirtää transaktiorajaa repositoryn ulkopuolelle.
 
 ## Pysäytysehdot
 
