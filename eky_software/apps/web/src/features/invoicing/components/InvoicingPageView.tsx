@@ -6,9 +6,8 @@ import type {
   InvoiceDraft,
 } from '@eky/api-client';
 
-import { ApprovedInvoiceList } from './ApprovedInvoiceList.js';
 import { ApprovedInvoicePreview } from './ApprovedInvoicePreview.js';
-import { InvoiceDraftList } from './InvoiceDraftList.js';
+import { InvoiceWorkspaceListView } from './InvoiceWorkspaceListView.js';
 import { NewInvoiceForm } from './NewInvoiceForm.js';
 import styles from './InvoicingPage.module.css';
 import { getInvoiceEmailSmtpTestUnavailableMessage } from '../approved/invoiceEmailSmtpTestAvailability.js';
@@ -122,13 +121,6 @@ export function InvoicingPageView({
   onRequestDeleteDraft,
   onNewInvoice,
 }: InvoicingPageViewProps): React.JSX.Element {
-  const approvedInvoices = approvedInvoiceListState.approvedInvoices.filter(
-    (invoice) => invoice.status === 'approved',
-  );
-  const sentInvoices = approvedInvoiceListState.approvedInvoices.filter(
-    (invoice) => invoice.status === 'sent',
-  );
-
   return (
     <div className={styles.workspace}>
       <section className={`page-intro ${styles.pageHeader}`}>
@@ -140,109 +132,26 @@ export function InvoicingPageView({
       </section>
 
       {activeView === 'draftList' ? (
-        <div className={styles.listStack}>
-          <section className={`panel ${styles.draftListPanel}`}>
-            <header className={`panel-header ${styles.draftListHeader}`}>
-              <div>
-                <p className="panel-kicker">{uiText.invoicing.drafts}</p>
-                <h2>{uiText.invoicing.draftList}</h2>
-              </div>
-              <div className="panel-actions">
-                {!isLoading && errorMessage === null ? (
-                  <span
-                    className="count-badge"
-                    aria-label={uiText.invoicing.draftCount}
-                  >
-                    {drafts.length}
-                  </span>
-                ) : null}
-                <button
-                  className="primary-action"
-                  onClick={onNewInvoice}
-                  type="button"
-                >
-                  {uiText.invoicing.newInvoice}
-                </button>
-              </div>
-            </header>
-
-            <InvoiceDraftList
-              customers={customerListState.customers}
-              customerErrorMessage={customerListState.errorMessage}
-              drafts={drafts}
-              errorMessage={errorMessage}
-              isCustomerLoading={customerListState.isLoading}
-              isLoading={isLoading}
-              deleteErrorMessage={deleteState.errorMessage}
-              deletingDraftId={deleteState.deletingDraftId}
-              pendingDeleteDraftId={pendingDeleteDraftId}
-              onCancelDelete={onCancelDeleteDraft}
-              onConfirmDelete={onConfirmDeleteDraft}
-              onOpenDraft={onOpenDraft}
-              onRequestDelete={onRequestDeleteDraft}
-            />
-          </section>
-
-          <section className={`panel ${styles.draftListPanel}`}>
-            <header className={`panel-header ${styles.draftListHeader}`}>
-              <div>
-                <p className="panel-kicker">
-                  {uiText.invoicing.approvedInvoices}
-                </p>
-                <h2>{uiText.invoicing.approvedInvoiceList}</h2>
-              </div>
-              <div className="panel-actions">
-                {!approvedInvoiceListState.isLoading &&
-                approvedInvoiceListState.errorMessage === null ? (
-                  <span
-                    className="count-badge"
-                    aria-label={uiText.invoicing.approvedInvoiceCount}
-                  >
-                    {approvedInvoices.length}
-                  </span>
-                ) : null}
-              </div>
-            </header>
-
-            <ApprovedInvoiceList
-              approvedInvoices={approvedInvoices}
-              errorMessage={approvedInvoiceListState.errorMessage}
-              isLoading={approvedInvoiceListState.isLoading}
-              onOpenApprovedInvoice={onOpenApprovedInvoice}
-            />
-          </section>
-
-          <section className={`panel ${styles.draftListPanel}`}>
-            <header className={`panel-header ${styles.draftListHeader}`}>
-              <div>
-                <p className="panel-kicker">
-                  {uiText.invoicing.sentInvoices}
-                </p>
-                <h2>{uiText.invoicing.sentInvoiceList}</h2>
-              </div>
-              <div className="panel-actions">
-                {!approvedInvoiceListState.isLoading &&
-                approvedInvoiceListState.errorMessage === null ? (
-                  <span
-                    className="count-badge"
-                    aria-label={uiText.invoicing.sentInvoiceCount}
-                  >
-                    {sentInvoices.length}
-                  </span>
-                ) : null}
-              </div>
-            </header>
-
-            <ApprovedInvoiceList
-              approvedInvoices={sentInvoices}
-              emptyMessage={uiText.invoicing.sentInvoicesEmpty}
-              errorMessage={approvedInvoiceListState.errorMessage}
-              isLoading={approvedInvoiceListState.isLoading}
-              listLabel={uiText.invoicing.sentInvoiceList}
-              onOpenApprovedInvoice={onOpenApprovedInvoice}
-            />
-          </section>
-        </div>
+        <InvoiceWorkspaceListView
+          approvedInvoices={approvedInvoiceListState.approvedInvoices}
+          approvedInvoiceErrorMessage={approvedInvoiceListState.errorMessage}
+          customers={customerListState.customers}
+          customerErrorMessage={customerListState.errorMessage}
+          deleteErrorMessage={deleteState.errorMessage}
+          deletingDraftId={deleteState.deletingDraftId}
+          drafts={drafts}
+          draftErrorMessage={errorMessage}
+          isApprovedInvoiceListLoading={approvedInvoiceListState.isLoading}
+          isCustomerListLoading={customerListState.isLoading}
+          isDraftListLoading={isLoading}
+          pendingDeleteDraftId={pendingDeleteDraftId}
+          onCancelDeleteDraft={onCancelDeleteDraft}
+          onConfirmDeleteDraft={onConfirmDeleteDraft}
+          onNewInvoice={onNewInvoice}
+          onOpenApprovedInvoice={onOpenApprovedInvoice}
+          onOpenDraft={onOpenDraft}
+          onRequestDeleteDraft={onRequestDeleteDraft}
+        />
       ) : activeView === 'newInvoice' ? (
         <NewInvoiceForm
           companySettingsState={companySettingsState}
