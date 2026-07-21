@@ -278,7 +278,6 @@ export function InvoicingPage({
 
   return (
     <InvoicingPageView
-      {...draftState}
       activeView={activeView}
       approvedInvoiceListState={approvedInvoiceListState}
       approvedInvoiceEmailState={approvedInvoiceEmailState}
@@ -288,10 +287,13 @@ export function InvoicingPage({
       companySettingsState={companySettingsState}
       copyApprovedInvoiceState={copyApprovedInvoiceState}
       deleteState={deleteState}
+      drafts={draftState.drafts}
+      draftErrorMessage={draftState.errorMessage}
       draftEditorState={draftEditorState}
       invoicePaymentDefaultsState={invoicePaymentDefaultsState}
       invoiceDeliveryEventListState={invoiceDeliveryEventListState}
       markApprovedInvoiceSentState={markApprovedInvoiceSentState}
+      isDraftListLoading={draftState.isLoading}
       pendingDeleteDraftId={pendingDeleteDraftId}
       reopenApprovedInvoiceState={reopenApprovedInvoiceState}
       sendApprovedInvoiceEmailState={sendApprovedInvoiceEmailState}
