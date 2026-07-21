@@ -719,13 +719,14 @@ korvataan viittauksella uuteen hyväksyttyyn ADR- tai moduulisuunnitelmaan.
 | `InvoiceWorkspaceListView`-erotus | Valmis | `4688d22` | `5286f19` | Draft-, approved- ja sent-listat sekä niiden testit erotettu rajatulla props-sopimuksella |
 | `InvoiceDraftEditorView`-erotus | Valmis | `5286f19` | `c09ebc7` | Luonnoksen lataus-, virhe- ja editointinäkymä sekä niitä koskevat testit erotettu rajatulla props-sopimuksella |
 | `ApprovedInvoiceDetailView`-erotus | Valmis | `c09ebc7` | `44c2499` | Hyväksytyn laskun lataus-, virhe- ja detail-näkymä erotettu pienillä read-only-näkymätiloilla |
-| `ApprovedInvoiceActions`-erotus | Valmis | `44c2499` | Tämä commit | Otsikko, tila, toiminnot, vahvistus ja toimintovirheet erotettu rajatulla props-sopimuksella |
+| `ApprovedInvoiceActions`-erotus | Valmis | `44c2499` | `eeff796` | Otsikko, tila, toiminnot, vahvistus ja toimintovirheet erotettu rajatulla props-sopimuksella |
+| `ApprovedInvoicePreview`-esitysjako | Valmis | `eeff796` | Tämä commit | Osapuoli-, perustieto-, rivi-, summa- ja maksutietoesitys erotettu feature-kohtaisiin komponentteihin |
 | Muut cleanup-roadmapin vaiheet | Ei aloitettu | - | - | Vaativat projektin omistajan uuden luvan |
 
 Roadmapia ei käytetä vanhojen ADR-päätösten historian uudelleenkirjoittamiseen.
 Kun nykytila muuttuu, nykytilaa kuvaavat moduuli- ja arkkitehtuuridokumentit
 päivitetään samassa muutoksessa.
 
-Seuraava pienin turvallinen toteutusaskel on hyväksytyn laskun snapshot-
-esityksen jako osapuoli-, perustieto-, rivi-, summa- ja maksutieto-osiin ilman
-käyttäytymis-, CSS-, API-, tietokanta- tai riippuvuusmuutoksia.
+Seuraava pienin turvallinen toteutusaskel arvioidaan tämän web-refaktorointi-
+erän jälkeen erikseen ennen backend-compositionin tai muiden roadmapin
+vastuiden muuttamista.
