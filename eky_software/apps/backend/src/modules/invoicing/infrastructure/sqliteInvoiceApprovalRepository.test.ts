@@ -802,6 +802,68 @@ describe('SqliteInvoiceApprovalRepository', () => {
     expect(documentCount?.count).toBe(0);
   });
 
+  it('rolls back invoice, draft, and PDF metadata changes when reopen audit insertion fails', async () => {
+    const repository = new SqliteInvoiceApprovalRepository(database);
+
+    await saveDraft(database, createDraft());
+    await repository.approveDraft(createApprovalInput());
+    insertInvoiceDocument(database, {
+      invoiceId: 'invoice-1',
+      storagePath: 'dev-company/invoice-1/approved-invoice.pdf',
+    });
+
+    const invoiceBeforeReopen = getInvoice(database, 'invoice-1');
+
+    await expect(
+      repository.reopenApprovedInvoiceForEditing({
+        actorUserId: 'user-1',
+        // Reuse the approval event id to fail after all reopen writes.
+        auditEventId: 'audit-1',
+        companyId: 'dev-company',
+        invoiceId: 'invoice-1',
+        reopenedAt: '2027-01-15T13:00:00.000Z',
+      }),
+    ).rejects.toThrow();
+
+    const draftRow = database
+      .prepare<
+        [string],
+        { approved_at: string | null; approved_invoice_id: string | null }
+      >(
+        `
+          SELECT approved_invoice_id, approved_at
+          FROM invoice_drafts
+          WHERE id = ?
+        `,
+      )
+      .get('draft-1');
+    const documentRow = database
+      .prepare<
+        [string],
+        { invoice_id: string; storage_path: string }
+      >(
+        `
+          SELECT invoice_id, storage_path
+          FROM invoice_documents
+          WHERE invoice_id = ?
+        `,
+      )
+      .get('invoice-1');
+
+    expect(getInvoice(database, 'invoice-1')).toEqual(invoiceBeforeReopen);
+    expect(draftRow).toEqual({
+      approved_at: '2027-01-15T12:00:00.000Z',
+      approved_invoice_id: 'invoice-1',
+    });
+    expect(documentRow).toEqual({
+      invoice_id: 'invoice-1',
+      storage_path: 'dev-company/invoice-1/approved-invoice.pdf',
+    });
+    expect(getAuditEvents(database).map((event) => event.action)).toEqual([
+      'invoice.approved',
+    ]);
+  });
+
   it('marks an approved invoice as sent and records a manual sent audit event', async () => {
     const repository = new SqliteInvoiceApprovalRepository(database);
 
@@ -828,6 +890,34 @@ describe('SqliteInvoiceApprovalRepository', () => {
     expect(getAuditEvents(database).map((event) => event.action)).toEqual([
       'invoice.approved',
       'invoice.marked_sent_manually',
+    ]);
+  });
+
+  it('rolls back sent status and updated timestamp when sent audit insertion fails', async () => {
+    const repository = new SqliteInvoiceApprovalRepository(database);
+
+    await saveDraft(database, createDraft());
+    await repository.approveDraft(createApprovalInput());
+    const invoiceBeforeMarkSent = getInvoice(database, 'invoice-1');
+
+    await expect(
+      repository.markApprovedInvoiceSent({
+        actorUserId: 'user-1',
+        // Reuse the approval event id to fail after the sent status update.
+        auditEventId: 'audit-1',
+        companyId: 'dev-company',
+        invoiceId: 'invoice-1',
+        markedSentAt: '2027-01-15T16:00:00.000Z',
+      }),
+    ).rejects.toThrow();
+
+    expect(getInvoice(database, 'invoice-1')).toEqual(invoiceBeforeMarkSent);
+    expect(getInvoice(database, 'invoice-1')).toMatchObject({
+      status: 'approved',
+      updated_at: '2027-01-15T12:00:00.000Z',
+    });
+    expect(getAuditEvents(database).map((event) => event.action)).toEqual([
+      'invoice.approved',
     ]);
   });
 
@@ -940,6 +1030,77 @@ describe('SqliteInvoiceApprovalRepository', () => {
       'invoice.approved',
       'invoice.reopened_for_edit',
       'invoice.reapproved',
+    ]);
+  });
+
+  it('rolls back reapproval snapshot and lines when reapproval audit insertion fails', async () => {
+    const repository = new SqliteInvoiceApprovalRepository(database);
+
+    await saveDraft(database, createDraft());
+    await repository.approveDraft(createApprovalInput());
+    await repository.reopenApprovedInvoiceForEditing({
+      actorUserId: 'user-1',
+      auditEventId: 'audit-reopen-1',
+      companyId: 'dev-company',
+      invoiceId: 'invoice-1',
+      reopenedAt: '2027-01-15T13:00:00.000Z',
+    });
+
+    const invoiceBeforeReapproval = getInvoice(database, 'invoice-1');
+    const linesBeforeReapproval = getInvoiceLines(database, 'invoice-1');
+    const sequenceBeforeReapproval = getSequence(database);
+    const updatedDraft = createDraft(
+      {
+        note: 'This update must roll back',
+        updatedAt: '2027-01-15T14:00:00.000Z',
+      },
+      [
+        createLine('line-1', 1, {
+          quantityHundredths: 300,
+          unitPriceCents: 15_000,
+          vatRateBasisPoints: 2550,
+        }),
+      ],
+    );
+    await new SqliteInvoiceDraftRepository(database).updateDraft(updatedDraft);
+
+    await expect(
+      repository.approveDraft(
+        createApprovalInput({
+          approvedAt: '2027-01-15T15:00:00.000Z',
+          // Reuse the first event id to fail after snapshot and line writes.
+          auditEventId: 'audit-1',
+          invoiceId: 'unused-new-invoice-id',
+        }),
+      ),
+    ).rejects.toThrow();
+
+    const draftRow = database
+      .prepare<
+        [string],
+        { approved_at: string | null; approved_invoice_id: string | null }
+      >(
+        `
+          SELECT approved_invoice_id, approved_at
+          FROM invoice_drafts
+          WHERE id = ?
+        `,
+      )
+      .get('draft-1');
+
+    expect(getInvoice(database, 'invoice-1')).toEqual(invoiceBeforeReapproval);
+    expect(getInvoice(database, 'invoice-1')).toMatchObject({
+      status: 'reopened_for_edit',
+    });
+    expect(getInvoiceLines(database, 'invoice-1')).toEqual(linesBeforeReapproval);
+    expect(getSequence(database)).toEqual(sequenceBeforeReapproval);
+    expect(draftRow).toEqual({
+      approved_at: null,
+      approved_invoice_id: null,
+    });
+    expect(getAuditEvents(database).map((event) => event.action)).toEqual([
+      'invoice.approved',
+      'invoice.reopened_for_edit',
     ]);
   });
 
