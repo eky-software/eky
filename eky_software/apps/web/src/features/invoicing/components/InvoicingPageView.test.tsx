@@ -7,7 +7,7 @@ import type {
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
-import { InvoicingPageView } from './InvoicingPage.js';
+import { InvoicingPageView } from './InvoicingPageView.js';
 import { uiText } from '../../../i18n/fi.js';
 
 describe('InvoicingPageView', () => {

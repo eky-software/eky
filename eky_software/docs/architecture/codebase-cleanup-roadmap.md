@@ -714,8 +714,8 @@ korvataan viittauksella uuteen hyväksyttyyn ADR- tai moduulisuunnitelmaan.
 
 | Vaihe | Tila | Lähtöcommit | Valmis commit | Huomiot |
 | --- | --- | --- | --- | --- |
-| Cleanup- ja UI-dokumenttien tarkennus | Valmis | `195cce2` | Tämä commit | Ensimmäinen rajattu dokumentaatiovaihe |
-| `InvoicingPageView`-erotus | Hyväksytty, ei aloitettu | Tämä commit | - | Seuraava rajattu koodivaihe |
+| Cleanup- ja UI-dokumenttien tarkennus | Valmis | `195cce2` | `0f7add7` | Omistajuudet, release-portit ja seuranta tarkennettu |
+| `InvoicingPageView`-erotus | Valmis | `0f7add7` | Tämä commit | Controller, näkymä ja näkymätesti erotettu; julkinen entrypoint säilytetty |
 | Muut cleanup-roadmapin vaiheet | Ei aloitettu | - | - | Vaativat projektin omistajan uuden luvan |
 
 Roadmapia ei käytetä vanhojen ADR-päätösten historian uudelleenkirjoittamiseen.
