@@ -42,6 +42,29 @@ Pieni tekninen tai jaettu infrastruktuurikokonaisuus ei tarvitse omaa
 olla aidosti rajattu eikä se saa omistaa liiketoimintadataa tai muodostaa uutta
 moduulirajaa.
 
+## Nykyiset Toteutusreferenssit
+
+Nykyiset moduulit ovat erikokoisia esimerkkejä, eivät yksi kopioitava
+template-puu:
+
+- **Customers** näyttää pienen master-data-moduulin, jossa muutama domain- ja
+  application-vastuu, yksi repository-portti, yksi SQLite-adapteri ja yksi
+  HTTP-kokonaisuus riittävät.
+- **Company Settings** näyttää keskikokoisen asetusten ja salaisuuden
+  elinkaaren moduulin, jossa tavallinen master data, backend-only secret portit,
+  auditointi ja valinnaiset reitit tarvitsevat omat rajansa.
+- **Invoicing** näyttää laajan liiketoimintamoduulin, jossa laskenta,
+  transaktiot, snapshotit, dokumentit ja toimitusadapterit perustelevat useita
+  pieniä portteja ja vastuukohtaisia tiedostoja.
+
+Kaikissa kolmessa `apps/backend/src/composition/` kokoaa moduulin konkreettiset
+adapterit ja reitit. Moduulien välille annetaan vain kuluttajan tarvitsema kapea
+lukusopimus. Repositorya, audit writeria, secret storea tai muuta vapaasti
+käytettävää riippuvuusrekisteriä ei palauteta.
+
+Nykytilan yksityiskohtainen arvio ja hyväksytyt poikkeukset ovat dokumentissa
+`docs/architecture/current-module-conformance-audit.md`.
+
 ## Backend Ja Data
 
 - [ ] Toteuta infrastructure-adapterit porttien taakse; älä paljasta
@@ -115,5 +138,6 @@ moduulirajaa.
 - `docs/architecture/dependency-policy.md`
 - `docs/architecture/security-principles.md`
 - `docs/architecture/codebase-cleanup-roadmap.md`
+- `docs/architecture/current-module-conformance-audit.md`
 - `docs/ai/testing-rules.md`
 - `docs/ai/review-checklist.md`

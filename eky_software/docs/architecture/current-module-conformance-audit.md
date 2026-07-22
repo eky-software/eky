@@ -24,20 +24,20 @@ seuraavia tiloja:
 | Tarkistettava asia | Customers | Company Settings | Invoicing |
 | --- | --- | --- | --- |
 | Moduulidokumentti | **Compliant**: `docs/modules/customers.md` | **Compliant**: `docs/modules/company-settings.md` | **Compliant**: `docs/modules/invoicing.md` |
-| Paikallinen `AGENTS.md` | **Compliant** | **Compliant** | **Needs documentation update**: moduulilta puuttuu oma rajattu ohje |
+| Paikallinen `AGENTS.md` | **Compliant** | **Compliant** | **Compliant**: omistajuus, cross-module-rajat ja testivaatimukset on nimetty |
 | Datan omistajuus | **Compliant**: asiakasmaster ja asiakaskohtainen tuntihinta | **Compliant**: oman yrityksen master data ja oletukset | **Compliant**: luonnokset, hyväksytyt snapshotit, numerointi, maksuehdot, dokumentit ja toimitustapahtumat |
 | Domain | **Acceptable because module is small**: asiakastyypit ja säännöt ovat erillään | **Compliant**: asetusten, pankki- ja sähköpostiarvojen säännöt ovat erillään | **Compliant**: laskenta, numerointi, viite, tilat ja toimitussäännöt ovat domainissa |
 | Application | **Acceptable because module is small**: kolme selkeää käyttötapausta | **Compliant**: asetukset ja salaisuuden elinkaari on erotettu | **Compliant**: käyttötapaukset ovat erillisiä ja riippuvat porteista |
-| Portit | **Compliant** moduulin sisällä | **Compliant** moduulin sisällä | **Compliant** moduulin sisällä; compositionin ulkoiset nimet tarvitsevat rajauksen |
+| Portit | **Compliant** moduulin sisällä | **Compliant** moduulin sisällä | **Compliant**: myös composition vastaanottaa kuluttajan omistamat kapeat reader-portit |
 | Infrastructure | **Acceptable because module is small**: yksi SQLite-adapteri | **Compliant**: repository ja salaisuusauditointi erillään | **Compliant**: SQLite-, PDF-, storage- ja provider-adapterit ovat rajojen takana |
 | HTTP | **Compliant** yritysrajauksen osalta | **Compliant**: validointi ja turvalliset salaisuusvirheet | **Compliant**: reitit on jaettu query-, lifecycle-, document- ja delivery-vastuisiin |
-| Composition | **Needs limited structural correction**: kytkentä on vielä suoraan `app.ts`:ssä | **Needs limited structural correction**: kytkentä ja salaisuustilan rikastus ovat vielä `app.ts`:ssä | **Compliant**, mutta sille pitää antaa lähdemoduulien repositoryjen sijaan kapeat Invoicing-readerit |
+| Composition | **Compliant**: oma composition palauttaa reitit ja kapean asiakaslukijan | **Compliant**: oma composition palauttaa reitit ja kapean sähköpostiasetuslukijan | **Compliant**: vastaanottaa Invoicingin omistamat reader-portit ilman lähdemoduulien repositoryja |
 | `ActorContext` ja `companyId` | **Compliant**: HTTP ottaa yrityksen vahvistetusta kontekstista | **Compliant** | **Compliant** |
 | Permissionit | **Future concern**: customer-kohtaisia permissioneja ei ole vielä mallinnettu | **Compliant** nykyisille muutos- ja salaisuustoiminnoille | **Future concern**: `sendInvoices` suojaa toimituspolun, mutta kaikkia tulevia laskutustoimintoja ei ole vielä eroteltu omiksi oikeuksiksi |
 | Transaktiot | **Future concern**: automaattisen asiakasnumeron kilpailutilanne arvioidaan ennen multi-user-käyttöä | **Compliant** nykyisille yksittäisille upserteille; salaisuus- ja audit-adapterin välinen epäonnistumismalli on dokumentoitu | **Compliant**: laskuluonnos-, hyväksyntä-, numerointi-, audit- ja delivery-siirtymät omistavat atomiset rajansa |
 | API-client | **Compliant**: oma feature-entrypoint ja testit | **Compliant**: oma feature-entrypoint ja testit | **Compliant**: invoice drafts-, numbering-, payment- ja approved invoice -rajat erillään |
 | Web | **Compliant**: feature käyttää API-clientiä | **Compliant**: feature käyttää API-clientiä | **Compliant**: feature on jaettu controller-, view-, hook-, form- ja preview-vastuisiin |
-| Cross-module-luku | **Needs limited structural correction**: nykyinen repository-luku rajataan compositionissa asiakaslukijaksi | **Needs limited structural correction**: nykyinen repository-luku rajataan compositionissa sähköpostiasetuslukijaksi | **Needs limited structural correction** composition-nimissä; hyväksynnän suora snapshot-lukija on dokumentoitava rajattu poikkeus |
+| Cross-module-luku | **Compliant**: tarjoaa vain `CustomerAccessReader`-sopimuksen | **Compliant**: tarjoaa vain `InvoiceEmailSettingsReader`-sopimuksen | **Compliant** compositionissa; hyväksynnän suora snapshot-lukija säilyy dokumentoituna rajattuna poikkeuksena |
 | Cross-module-kirjoitus | **Compliant**: muut moduulit eivät kirjoita customer-masteriin | **Compliant**: muut moduulit eivät kirjoita company masteriin tai salaisuuksiin | **Compliant**: ei kirjoita Customers- tai Company Settings -tauluihin |
 | Testit | **Future concern**: domain-, application- ja HTTP-testit ovat olemassa, mutta SQLite-adapterille ei ole omaa suoraa testiä | **Compliant**: domain-, application-, HTTP-, repository-, audit- ja boundary-testit | **Compliant**: laaja domain-, application-, HTTP-, adapteri-, transaktio- ja boundary-kate |
 | Jaettu infra | **Compliant** | **Compliant**: secret store tulee ulkoa portin kautta | **Compliant**: yleinen SMTP-infra kytketään compositionissa, ei domainissa |
@@ -50,11 +50,9 @@ Customers on tarkoituksella pieni moduuli. Sen 14 tiedostoa sisältävät aidost
 tarvittavat domain-, application-, ports-, infrastructure- ja HTTP-vastuut.
 Invoicingin rakenteen tai tiedostomäärän kopiointi ei parantaisi sitä.
 
-Nykyinen puute on ylimmän tason kokoaminen. `app.ts` luo suoraan
-`SqliteCustomerRepository`-adapterin ja sitoo kolme application serviceä
-HTTP-reitteihin. Rajattu `customersComposition` tekisi moduulin julkisesta
-backend-pinnasta näkyvän: reitit sekä Invoicingin tarvitsema
-`CustomerAccessReader`. Konkreettista repositorya ei pidä palauttaa.
+`customersComposition` luo repositoryn, sitoo kolme application serviceä
+HTTP-reitteihin ja tarjoaa Invoicingille vain `CustomerAccessReader`-portin.
+Konkreettista repositorya ei palauteta compositionista.
 
 Customer-HTTP käyttää aina `ActorContext.companyId`-arvoa eikä luota bodyn tai
 queryn yritystietoon. Erillisiä customer-permissioneja ei vielä ole
@@ -69,10 +67,9 @@ salaisuuden elinkaarisäännöillä. Asetusmaster, salaisuuden portit ja
 salaisuusauditointi ovat erillisiä. Salaisuutta ei tallenneta tavalliseen
 SQLite-dataan eikä palauteta frontendille.
 
-`app.ts` luo kuitenkin repositoryn, audit writerin, valinnaiset
-salaisuusreitit ja sähköpostisalaisuuden tilarikastuksen. Nämä kuuluvat
-rajattuun `companySettingsComposition`-funktioon. Sen julkinen tulos saa
-sisältää vain reitit sekä Invoicingin tarvitseman
+`companySettingsComposition` luo repositoryn, tarvittaessa audit writerin,
+valinnaiset salaisuusreitit ja sähköpostisalaisuuden tilarikastuksen. Sen
+julkinen tulos sisältää vain reitit sekä Invoicingin tarvitseman
 `InvoiceEmailSettingsReader`-sopimuksen. Repositorya, audit writeria tai secret
 storea ei palauteta vapaasti käytettäväksi.
 
@@ -81,15 +78,11 @@ storea ei palauteta vapaasti käytettäväksi.
 Invoicing on muita nykyisiä moduuleja selvästi laajempi, koska se omistaa
 laskennan, luonnokset, hyväksynnän, snapshotit, numeroinnin, PDF-dokumentit,
 toimitustapahtumat ja sähköpostitoimituksen käyttötapaukset. Sen 183 tiedostoa
-eivät ole tavoitemalli pienille moduuleille.
+auditointihetkellä eivät ole tavoitemalli pienille moduuleille.
 
-Nykyinen `invoicingComposition` on oikea moduulikohtainen composition-raja.
-Sen vaihtoehdot ovat kuitenkin nimetty `customerRepository`- ja
-`companySettingsRepository`-riippuvuuksiksi. Vaikka ne on rajattu `Pick`-
-tyypeillä ja niitä käytetään vain lukemiseen, nimet ja tyypit kuvaavat
-persistenceä eivätkä Invoicingin tarvitsemaa sopimusta. Compositionin pitää
-vastaanottaa suoraan Invoicingin omistamat `CustomerAccessReader`- ja
-`InvoiceEmailSettingsReader`-portit.
+`invoicingComposition` vastaanottaa suoraan Invoicingin omistamat
+`CustomerAccessReader`- ja `InvoiceEmailSettingsReader`-portit. Se ei tunne
+Customers- tai Company Settings -repository-tyyppejä.
 
 Invoicingin hyväksyntäadapterissa oleva `SqliteInvoiceApprovalSnapshotReader`
 lukee `customers`- ja `company_settings`-tauluja suoraan parametrisoidulla,
@@ -100,16 +93,13 @@ nimetyt lukusopimukset. Tämä on rajattu nykyinen persistence-poikkeus, joka
 arvioidaan erikseen ennen tietokantapinon irrottamista, pilvisynkronointia tai
 moduulien eriyttämistä. Sitä ei korjata composition-siirron sivuvaikutuksena.
 
-Invoicingilta puuttuu moduulikohtainen `AGENTS.md`. Se lisätään lyhyenä
-ohjeena, joka nimeää moduulin omistajuuden, pakolliset dokumentit,
-luottamusrajat, cross-module-sopimukset ja olennaiset testit kopioimatta juuri-
-`AGENTS.md`:ää.
+Invoicingin moduulikohtainen `AGENTS.md` nimeää moduulin omistajuuden,
+pakolliset dokumentit, luottamusrajat, cross-module-sopimukset ja olennaiset
+testit kopioimatta juuri-`AGENTS.md`:ää.
 
-## `app.ts`:n Tavoiteltu Rajaus
+## `app.ts`:n Nykyinen Rajaus
 
-Nykyinen `app.ts` omistaa sekä ylimmän runtimen että Customers- ja Company
-Settings -moduulien sisäisen kokoamisen. Rajattujen korjausten jälkeen se
-omistaa edelleen:
+`app.ts` omistaa ylimmän runtimen ja:
 
 - tietokantayhteyden ja migraatioiden käynnistyksen
 - paikallisen runtime-identiteetin ja trust-middlewaren
@@ -120,17 +110,17 @@ omistaa edelleen:
 Se ei enää omista Customers- tai Company Settings -application servicejen,
 repositoryjen tai HTTP-riippuvuuksien yksityiskohtaista sidontaa.
 
-## Rajatut Korjaukset
+## Valmistuneet Rajatut Korjaukset
 
-Auditointi perustelee seuraavat käyttäytymistä säilyttävät korjaukset:
+| Muutos | Commit |
+| --- | --- |
+| Moduulityön ohjaus toteutuschecklistiin | `f7780e8` |
+| Nykyisten moduulien lähtöauditointi | `b546438` |
+| Customers-composition ja `CustomerAccessReader`-raja | `a0325d1` |
+| Company Settings -composition ja `InvoiceEmailSettingsReader`-raja | `6109130` |
 
-1. Lisää `customersComposition`, joka palauttaa vain reitit ja
-   `CustomerAccessReader`-sopimuksen.
-2. Lisää `companySettingsComposition`, joka palauttaa vain reitit ja
-   `InvoiceEmailSettingsReader`-sopimuksen.
-3. Muuta `invoicingComposition` vastaanottamaan nämä kapeat portit ilman
-   Customers- tai Company Settings -repository-tyyppejä.
-4. Lisää Invoicing-moduulille oma rajattu `AGENTS.md`.
+Invoicingin moduulikohtainen ohje ja nykytilan referenssit viimeistellään tämän
+dokumentaatiovaiheen yhteydessä.
 
 Korjaukset eivät muuta endpointteja, response-muotoja, `ActorContext`- tai
 permission-sääntöjä, `CreateAppOptions`-sopimusta, SQL-kyselyitä,
@@ -150,4 +140,4 @@ Seuraavat eivät kuulu tähän rakenteelliseen korjaukseen:
 Auditoinnissa ei löytynyt aktiivista salaisuuden vuotoa, yritysrajauksen
 ohitusta, toisen moduulin master-dataan kohdistuvaa kirjoitusta tai muuta
 turvallisuuspoikkeamaa, joka estäisi yllä kuvattujen rajattujen
-composition-korjausten tekemisen.
+composition-korjausten hyväksymisen.
