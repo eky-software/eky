@@ -10,17 +10,9 @@ import {
 import { createDatabaseConnection } from '../database/connection/createDatabaseConnection.js';
 import { readLocalRuntimeIdentity } from '../database/localRuntimeIdentityReader.js';
 import { runMigrations } from '../database/migration/runMigrations.js';
+import { createCompanySettingsComposition } from '../composition/companySettingsComposition.js';
 import { createCustomersComposition } from '../composition/customersComposition.js';
 import { createInvoicingComposition } from '../composition/invoicingComposition.js';
-import { getCompanySettings } from '../modules/companySettings/application/getCompanySettings.js';
-import { getCompanyEmailSecretStatus } from '../modules/companySettings/application/getCompanyEmailSecretStatus.js';
-import { removeCompanyEmailSecret } from '../modules/companySettings/application/removeCompanyEmailSecret.js';
-import { setCompanyEmailSecret } from '../modules/companySettings/application/setCompanyEmailSecret.js';
-import { updateCompanySettings } from '../modules/companySettings/application/updateCompanySettings.js';
-import { createCompanyEmailSecretRoutes } from '../modules/companySettings/http/companyEmailSecretRoutes.js';
-import { createCompanySettingsRoutes } from '../modules/companySettings/http/companySettingsRoutes.js';
-import { SqliteCompanyEmailSecretAuditWriter } from '../modules/companySettings/infrastructure/sqliteCompanyEmailSecretAuditWriter.js';
-import { SqliteCompanySettingsRepository } from '../modules/companySettings/infrastructure/sqliteCompanySettingsRepository.js';
 import type { CompanyEmailSecretReader } from '../modules/companySettings/ports/companyEmailSecretReader.js';
 import type { CompanyEmailSecretStore } from '../modules/companySettings/ports/companyEmailSecretStore.js';
 
@@ -63,7 +55,12 @@ export async function createApp(
   });
 
   const customersComposition = createCustomersComposition(database);
-  const companySettingsRepository = new SqliteCompanySettingsRepository(database);
+  const companySettingsComposition = createCompanySettingsComposition({
+    database,
+    ...(options.companyEmailSecretStore === undefined
+      ? {}
+      : { companyEmailSecretStore: options.companyEmailSecretStore }),
+  });
   const companyEmailSecretReader: CompanyEmailSecretReader =
     options.companyEmailSecretReader ?? {
       async getSecret() {
@@ -72,54 +69,16 @@ export async function createApp(
     };
 
   app.route('/', customersComposition.routes);
-
-  if (options.companyEmailSecretStore !== undefined) {
-    const companyEmailSecretAuditWriter =
-      new SqliteCompanyEmailSecretAuditWriter(database);
-    const companyEmailSecretStore = options.companyEmailSecretStore;
-
-    app.route(
-      '/',
-      createCompanyEmailSecretRoutes({
-        getCompanyEmailSecretStatus: (input) =>
-          getCompanyEmailSecretStatus(input, { companyEmailSecretStore }),
-        removeCompanyEmailSecret: (input) =>
-          removeCompanyEmailSecret(input, {
-            companyEmailSecretAuditWriter,
-            companyEmailSecretStore,
-          }),
-        setCompanyEmailSecret: (input) =>
-          setCompanyEmailSecret(input, {
-            companyEmailSecretAuditWriter,
-            companyEmailSecretStore,
-          }),
-      }),
-    );
-  }
-
-  app.route(
-    '/',
-    createCompanySettingsRoutes({
-      getCompanySettings: async (input) =>
-        withCompanyEmailSecretStatus(
-          await getCompanySettings(input, companySettingsRepository),
-          options.companyEmailSecretStore,
-        ),
-      updateCompanySettings: async (input) =>
-        withCompanyEmailSecretStatus(
-          await updateCompanySettings(input, companySettingsRepository),
-          options.companyEmailSecretStore,
-        ),
-    }),
-  );
+  app.route('/', companySettingsComposition.routes);
 
   app.route(
     '/',
     createInvoicingComposition({
       companyEmailSecretReader,
-      companySettingsRepository,
       customerAccessReader: customersComposition.customerAccessReader,
       database,
+      invoiceEmailSettingsReader:
+        companySettingsComposition.invoiceEmailSettingsReader,
       ...(options.invoiceDocumentStorageRoot === undefined
         ? {}
         : { invoiceDocumentStorageRoot: options.invoiceDocumentStorageRoot }),
@@ -127,18 +86,4 @@ export async function createApp(
   );
 
   return app;
-}
-
-async function withCompanyEmailSecretStatus<T extends { companyId: string }>(
-  settings: T & { emailSecretConfigured: boolean },
-  secretStore: CompanyEmailSecretStore | undefined,
-): Promise<T & { emailSecretConfigured: boolean }> {
-  if (secretStore === undefined) {
-    return settings;
-  }
-
-  return {
-    ...settings,
-    emailSecretConfigured: await secretStore.hasSecret(settings.companyId),
-  };
 }

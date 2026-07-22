@@ -7,7 +7,6 @@ import { DnaInvoiceSmtpDeliveryProvider } from '../infrastructure/email/provider
 import { DnaInvoiceSmtpTestDeliveryProvider } from '../infrastructure/email/providers/dna/dnaInvoiceSmtpTestDeliveryProvider.js';
 import { DnaSmtpEmailDeliveryProvider } from '../infrastructure/email/providers/dna/dnaSmtpEmailDeliveryProvider.js';
 import type { CompanyEmailSecretReader } from '../modules/companySettings/ports/companyEmailSecretReader.js';
-import type { CompanySettingsRepository } from '../modules/companySettings/ports/companySettingsRepository.js';
 import { approveInvoiceDraft } from '../modules/invoicing/application/approveInvoiceDraft.js';
 import { copyApprovedInvoiceToDraft } from '../modules/invoicing/application/copyApprovedInvoiceToDraft.js';
 import { deleteInvoiceDraft } from '../modules/invoicing/application/deleteInvoiceDraft.js';
@@ -58,9 +57,9 @@ import type { InvoiceEmailSettingsReader } from '../modules/invoicing/ports/invo
 
 interface InvoicingCompositionOptions {
   companyEmailSecretReader: CompanyEmailSecretReader;
-  companySettingsRepository: Pick<CompanySettingsRepository, 'findByCompanyId'>;
   customerAccessReader: CustomerAccessReader;
   database: DatabaseConnection;
+  invoiceEmailSettingsReader: InvoiceEmailSettingsReader;
   invoiceDocumentStorageRoot?: string;
 }
 
@@ -97,24 +96,6 @@ export function createInvoicingComposition(
   const invoiceSmtpDeliveryProvider = new DnaInvoiceSmtpDeliveryProvider(
     dnaSmtpEmailDeliveryProvider,
   );
-  const invoiceEmailSettingsReader: InvoiceEmailSettingsReader = {
-    async getEmailSettings(companyId) {
-      const settings =
-        await options.companySettingsRepository.findByCompanyId(companyId);
-
-      if (settings === null) {
-        return null;
-      }
-
-      return {
-        emailDeliveryProvider: settings.emailDeliveryProvider,
-        emailSenderAddress: settings.emailSenderAddress,
-        emailSenderName: settings.emailSenderName,
-        emailTestRecipientOverride: settings.emailTestRecipientOverride,
-        emailUsername: settings.emailUsername,
-      };
-    },
-  };
   const ensureApprovedInvoicePdfDocument = (
     input: GenerateApprovedInvoicePdfDocumentInput,
   ) =>
@@ -209,7 +190,7 @@ export function createInvoicingComposition(
         prepareApprovedInvoiceEmailSmtpTest(input, {
           approvedInvoiceReader,
           ensureApprovedInvoicePdfDocument,
-          invoiceEmailSettingsReader,
+          invoiceEmailSettingsReader: options.invoiceEmailSettingsReader,
           invoiceEmailSendAttemptStore,
         }),
       prepareApprovedInvoiceEmailSmtp: (input) =>
@@ -218,7 +199,7 @@ export function createInvoicingComposition(
           ensureApprovedInvoicePdfDocument,
           invoiceDeliveryEventReader: invoiceDeliveryEventRepository,
           invoiceEmailSendAttemptStore,
-          invoiceEmailSettingsReader,
+          invoiceEmailSettingsReader: options.invoiceEmailSettingsReader,
         }),
       sendApprovedInvoiceEmailDryRun: (input) =>
         sendApprovedInvoiceEmailDryRun(input, {
@@ -233,7 +214,7 @@ export function createInvoicingComposition(
           ensureApprovedInvoicePdfDocument,
           getApprovedInvoicePdfDocument,
           invoiceDeliveryEventRepository,
-          invoiceEmailSettingsReader,
+          invoiceEmailSettingsReader: options.invoiceEmailSettingsReader,
           invoiceEmailSendAttemptStore,
           invoiceSmtpTestDeliveryProvider,
         }),
@@ -245,7 +226,7 @@ export function createInvoicingComposition(
           invoiceDeliveryEventRepository,
           invoiceEmailDeliveryFinalizer: invoiceDeliveryEventRepository,
           invoiceEmailSendAttemptStore,
-          invoiceEmailSettingsReader,
+          invoiceEmailSettingsReader: options.invoiceEmailSettingsReader,
           invoiceSmtpDeliveryProvider,
         }),
       reopenApprovedInvoiceForEditing: (input) =>
