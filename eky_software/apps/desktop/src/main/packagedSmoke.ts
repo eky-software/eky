@@ -1,0 +1,312 @@
+import { randomBytes } from 'node:crypto';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
+import type { BrowserWindow } from 'electron';
+
+import { createInvoicePdfPreviewSmokeFixture } from '../pdf/invoicePdfPreviewSmoke.js';
+import type { InvoicePdfPreviewWindowController } from '../pdf/invoicePdfPreviewWindow.js';
+import type { DesktopBackendHandle } from '../runtime/backendProcess.js';
+import {
+  EncryptedSecretFile,
+  type EncryptedSecretFileStore,
+} from '../secrets/encryptedSecretFile.js';
+import { createDeleteDraftSmokeFixture } from './applicationProtocolSmoke.js';
+import { localRuntimeSessionHeaderName } from './protocolPolicy.js';
+
+export interface PackagedSmokeConfiguration {
+  enabled: boolean;
+  root: string | undefined;
+  userDataPath: string | undefined;
+}
+
+interface RunPackagedSmokeCheckOptions {
+  backend: DesktopBackendHandle;
+  databaseFilePath: string;
+  mainWindow: BrowserWindow;
+  pdfPreviewController: InvoicePdfPreviewWindowController;
+  runtimeSessionSecret: string;
+  secretFilePath: string;
+  smokePdfPath: string;
+}
+
+export function createPackagedSmokeConfiguration(options: {
+  hasSmokeSwitch: boolean;
+  tempPath: string;
+  tokenValue: string | undefined;
+}): PackagedSmokeConfiguration {
+  const token = readSmokeToken(options.tokenValue);
+  const root =
+    token === undefined
+      ? undefined
+      : join(options.tempPath, 'eky-desktop-smoke', token);
+  const enabled = token !== undefined && options.hasSmokeSwitch;
+
+  return {
+    enabled,
+    root,
+    userDataPath: enabled && root !== undefined ? join(root, 'user-data') : undefined,
+  };
+}
+
+export function createPackagedSmokeSecretFileStore(
+  secretFilePath: string,
+  smokeEnabled: boolean,
+): EncryptedSecretFileStore {
+  const encryptedSecretFile = new EncryptedSecretFile(secretFilePath);
+
+  if (!smokeEnabled) {
+    return encryptedSecretFile;
+  }
+
+  const forbiddenPlaintextMarker = Buffer.from(
+    'eky-safe-storage-smoke-',
+    'utf8',
+  );
+
+  return {
+    confirm: (candidate) => encryptedSecretFile.confirm(candidate),
+    readCandidate: () => encryptedSecretFile.readCandidate(),
+    remove: () => encryptedSecretFile.remove(),
+    async write(ciphertext) {
+      if (Buffer.from(ciphertext).includes(forbiddenPlaintextMarker)) {
+        throw new Error('DESKTOP_SMOKE_SECRET_ENCRYPTION_FAILED');
+      }
+
+      await encryptedSecretFile.write(ciphertext);
+    },
+  };
+}
+
+export async function writePackagedSmokeResult(
+  configuration: PackagedSmokeConfiguration,
+  result: { code?: string; status: 'failed' | 'ok' | 'started' },
+): Promise<void> {
+  if (!configuration.enabled || configuration.root === undefined) {
+    return;
+  }
+
+  const resultDirectory = join(configuration.root, 'result');
+
+  await mkdir(resultDirectory, { recursive: true });
+  await writeFile(
+    join(resultDirectory, 'desktop-smoke-result.json'),
+    `${JSON.stringify(result)}\n`,
+    'utf8',
+  );
+}
+
+export async function runPackagedSmokeCheck(
+  options: RunPackagedSmokeCheckOptions,
+): Promise<void> {
+  const healthResponse = await fetch(
+    `http://127.0.0.1:${options.backend.port}/health`,
+    { signal: AbortSignal.timeout(5_000) },
+  );
+
+  if (!healthResponse.ok) {
+    throw new Error('DESKTOP_SMOKE_HEALTH_FAILED');
+  }
+
+  await stat(options.databaseFilePath);
+  const pdf = await readFile(options.smokePdfPath);
+
+  if (pdf.subarray(0, 4).toString('ascii') !== '%PDF') {
+    throw new Error('DESKTOP_SMOKE_PDF_FAILED');
+  }
+
+  await assertPackagedDesktopBridge(options.pdfPreviewController);
+
+  const deleteDraftId = await createDeleteDraftSmokeFixture({
+    backendPort: options.backend.port,
+    runtimeSessionSecret: options.runtimeSessionSecret,
+  });
+
+  await assertPackagedDeleteTransport(options.mainWindow, deleteDraftId);
+  await verifyCompanyEmailSecretHttpLifecycle(
+    options.backend.port,
+    options.runtimeSessionSecret,
+  );
+
+  const previewInvoiceId = await createInvoicePdfPreviewSmokeFixture({
+    backendPort: options.backend.port,
+    runtimeSessionSecret: options.runtimeSessionSecret,
+  });
+
+  await options.pdfPreviewController.openForSmoke(previewInvoiceId);
+  options.pdfPreviewController.close();
+
+  for (const path of [
+    options.secretFilePath,
+    `${options.secretFilePath}.next`,
+    `${options.secretFilePath}.backup`,
+  ]) {
+    try {
+      await stat(path);
+      throw new Error('DESKTOP_SMOKE_SECRET_CLEANUP_FAILED');
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        'code' in error &&
+        error.code === 'ENOENT'
+      ) {
+        continue;
+      }
+
+      throw error;
+    }
+  }
+}
+
+function readSmokeToken(value: string | undefined): string | undefined {
+  return value !== undefined && /^[a-f0-9]{32}$/.test(value)
+    ? value
+    : undefined;
+}
+
+async function assertPackagedDeleteTransport(
+  mainWindow: BrowserWindow,
+  invoiceDraftId: string,
+): Promise<void> {
+  const result: unknown = await mainWindow.webContents.executeJavaScript(
+    `fetch(${JSON.stringify(`/invoice-drafts/${invoiceDraftId}`)}, { method: 'DELETE' })
+      .then(async (response) => ({
+        body: await response.text(),
+        status: response.status,
+      }))`,
+    true,
+  );
+
+  if (
+    typeof result !== 'object' ||
+    result === null ||
+    !('body' in result) ||
+    typeof result.body !== 'string' ||
+    !('status' in result) ||
+    result.status !== 200
+  ) {
+    throw new Error('DESKTOP_SMOKE_DELETE_TRANSPORT_FAILED');
+  }
+
+  let body: unknown;
+
+  try {
+    body = JSON.parse(result.body) as unknown;
+  } catch {
+    throw new Error('DESKTOP_SMOKE_DELETE_TRANSPORT_FAILED');
+  }
+
+  if (
+    typeof body !== 'object' ||
+    body === null ||
+    !('deleted' in body) ||
+    body.deleted !== true
+  ) {
+    throw new Error('DESKTOP_SMOKE_DELETE_TRANSPORT_FAILED');
+  }
+}
+
+async function assertPackagedDesktopBridge(
+  pdfPreviewController: InvoicePdfPreviewWindowController,
+): Promise<void> {
+  if (!(await pdfPreviewController.hasRendererBridgeForSmoke())) {
+    throw new Error('DESKTOP_SMOKE_PRELOAD_BRIDGE_FAILED');
+  }
+}
+
+async function verifyCompanyEmailSecretHttpLifecycle(
+  port: number,
+  runtimeSessionSecret: string,
+): Promise<void> {
+  const secret = `eky-http-secret-smoke-${randomBytes(32).toString('base64url')}`;
+
+  if (await requestCompanyEmailSecretStatus(port, runtimeSessionSecret, 'GET')) {
+    throw new Error('DESKTOP_SMOKE_SECRET_HTTP_FAILED');
+  }
+
+  if (
+    !(await requestCompanyEmailSecretStatus(
+      port,
+      runtimeSessionSecret,
+      'PUT',
+      secret,
+    ))
+  ) {
+    throw new Error('DESKTOP_SMOKE_SECRET_HTTP_FAILED');
+  }
+
+  if (
+    !(await requestCompanyEmailSecretStatus(
+      port,
+      runtimeSessionSecret,
+      'GET',
+    ))
+  ) {
+    throw new Error('DESKTOP_SMOKE_SECRET_HTTP_FAILED');
+  }
+
+  if (
+    await requestCompanyEmailSecretStatus(
+      port,
+      runtimeSessionSecret,
+      'DELETE',
+    )
+  ) {
+    throw new Error('DESKTOP_SMOKE_SECRET_HTTP_FAILED');
+  }
+
+  if (await requestCompanyEmailSecretStatus(port, runtimeSessionSecret, 'GET')) {
+    throw new Error('DESKTOP_SMOKE_SECRET_HTTP_FAILED');
+  }
+}
+
+async function requestCompanyEmailSecretStatus(
+  port: number,
+  runtimeSessionSecret: string,
+  method: 'DELETE' | 'GET' | 'PUT',
+  secret?: string,
+): Promise<boolean> {
+  const headers = new Headers({
+    accept: 'application/json',
+    [localRuntimeSessionHeaderName]: runtimeSessionSecret,
+  });
+
+  if (method === 'PUT') {
+    headers.set('content-type', 'application/json');
+  }
+
+  const requestOptions: RequestInit = {
+    headers,
+    method,
+    signal: AbortSignal.timeout(5_000),
+  };
+
+  if (method === 'PUT') {
+    requestOptions.body = JSON.stringify({ secret });
+  }
+
+  const response = await fetch(
+    `http://127.0.0.1:${port}/company-settings/email-secret`,
+    requestOptions,
+  );
+
+  if (!response.ok) {
+    throw new Error('DESKTOP_SMOKE_SECRET_HTTP_FAILED');
+  }
+
+  const body: unknown = await response.json();
+
+  if (
+    typeof body !== 'object' ||
+    body === null ||
+    !('emailSecretStatus' in body) ||
+    typeof body.emailSecretStatus !== 'object' ||
+    body.emailSecretStatus === null ||
+    !('configured' in body.emailSecretStatus) ||
+    typeof body.emailSecretStatus.configured !== 'boolean'
+  ) {
+    throw new Error('DESKTOP_SMOKE_SECRET_HTTP_FAILED');
+  }
+
+  return body.emailSecretStatus.configured;
+}
