@@ -308,7 +308,18 @@ query -erotukseen.
 | Characterization-testit | `3529a05` | Tenant-, invoice-, guard-, rollback- ja idempotenssipolut suojattu |
 | Row mapping -erotus | `7d45eca` | Puhtaat persistence-muunnokset erotettu ilman SQL-vastuuta |
 | Read query -erotus | `039bbd1` | Neljä synkronista SELECT-vastuuta erotettu samaa yhteyttä käyttävään helperiin |
+| Write boundary -auditointi | `ce45296` | Viisi kirjoitusstatementtia, suoritusjärjestykset, guardit ja rollback-rajat kirjattu |
+| Write guard -karakterisointi | `e507f74` | Terminal guard-, tenant-, tuntematon lasku- ja duplicate audit -rollback-polut vahvistettu |
+| Write statements -erotus | `d6deb05` | Parametrisoidut synkroniset kirjoitukset erotettu helperiin ilman transaktiovastuuta |
+| Transaction orchestration -selkeytys | `6434846` | Kaksi finalizer-transaktiota nimetty yksityisiksi synkronisiksi työnkuluiksi repositoryyn |
 
-Seuraavaksi voidaan erikseen arvioida SQLite invoice delivery event write
-statements and transaction orchestration. Tämä kirjaus ei anna lupaa toteuttaa
-sitä eikä muuttaa kirjoitusjärjestystä, transaktioita tai julkisia portteja.
+Delivery event -persistenssin read- ja write-boundaryt ovat tämän suunnitelman
+mukaisesti erotettu ja karakterisoitu. Seuraava erikseen arvioitava
+persistence-kohde on **SQLite invoice draft persistence boundaries**. Tämä
+kirjaus ei anna lupaa refaktoroida draft-repositorya eikä muuttaa sen SQL:ää,
+transaktioita, skeemaa tai julkisia portteja.
+
+Delivery eventin `companyId`-, `invoiceId`- ja `documentId`-suhteen
+persistence-tason vahvistaminen säilyy erillisenä turvallisuuskohteena. Se voi
+vaatia SQL- tai skeemapäätöksen, eikä nykyinen cleanup-työ anna siihen
+toteutuslupaa.
