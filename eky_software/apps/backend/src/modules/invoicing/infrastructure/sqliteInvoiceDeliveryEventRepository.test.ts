@@ -7,6 +7,7 @@ import type {
   InvoiceDeliveryEventRow,
 } from '../../../database/schema.js';
 import type { InvoiceDeliveryEvent } from '../domain/invoiceDeliveryEvent.js';
+import { InvoiceDeliveryConflictError } from '../domain/invoiceDeliveryConflictError.js';
 import { SqliteInvoiceDeliveryEventRepository } from './sqliteInvoiceDeliveryEventRepository.js';
 
 describe('SqliteInvoiceDeliveryEventRepository', () => {
@@ -211,6 +212,98 @@ describe('SqliteInvoiceDeliveryEventRepository', () => {
     });
   });
 
+  it('does not change the event or invoice when successful delivery uses another company', async () => {
+    const repository = new SqliteInvoiceDeliveryEventRepository(database);
+    const event = createEvent({ provider: 'smtp', status: 'attempted' });
+    await repository.saveDeliveryEvent(event);
+
+    await expect(
+      repository.completeSuccessfulEmailDelivery({
+        companyId: 'other-company',
+        eventId: event.id,
+        invoiceId: event.invoiceId,
+        providerMessageId: '<message@example.fi>',
+        sentAt: '2026-07-10T10:01:00.000Z',
+      }),
+    ).rejects.toThrow('Approved invoice could not be finalized after delivery.');
+
+    expect(readInvoiceStatus(database, 'invoice-1')).toEqual({
+      status: 'approved',
+      updated_at: '2026-07-10T09:00:00.000Z',
+    });
+    expect(readEventCompletion(database, event.id)).toEqual({
+      provider_message_id: null,
+      status: 'attempted',
+    });
+  });
+
+  it('does not finalize an event that belongs to another invoice', async () => {
+    insertInvoice(database, {
+      draftId: 'draft-2',
+      invoiceId: 'invoice-2',
+      invoiceNumber: '20260002',
+      sequenceNumber: 2,
+    });
+    const repository = new SqliteInvoiceDeliveryEventRepository(database);
+    const event = createEvent({
+      documentId: null,
+      id: 'event-invoice-2',
+      invoiceId: 'invoice-2',
+      provider: 'smtp',
+      status: 'attempted',
+    });
+    await repository.saveDeliveryEvent(event);
+
+    await expect(
+      repository.completeSuccessfulEmailDelivery({
+        companyId: 'dev-company',
+        eventId: event.id,
+        invoiceId: 'invoice-1',
+        providerMessageId: '<message@example.fi>',
+        sentAt: '2026-07-10T10:01:00.000Z',
+      }),
+    ).rejects.toThrow('Invoice delivery event could not be completed.');
+
+    expect(readInvoiceStatus(database, 'invoice-1')?.status).toBe('approved');
+    expect(readEventCompletion(database, event.id)).toEqual({
+      provider_message_id: null,
+      status: 'attempted',
+    });
+  });
+
+  it('rolls back the successful event update when the invoice status update fails', async () => {
+    const repository = new SqliteInvoiceDeliveryEventRepository(database);
+    const event = createEvent({ provider: 'smtp', status: 'attempted' });
+    await repository.saveDeliveryEvent(event);
+    database.exec(`
+      CREATE TRIGGER fail_invoice_sent_update
+      BEFORE UPDATE OF status ON invoices
+      WHEN OLD.id = 'invoice-1' AND NEW.status = 'sent'
+      BEGIN
+        SELECT RAISE(ABORT, 'synthetic invoice update failure');
+      END
+    `);
+
+    await expect(
+      repository.completeSuccessfulEmailDelivery({
+        companyId: 'dev-company',
+        eventId: event.id,
+        invoiceId: event.invoiceId,
+        providerMessageId: '<message@example.fi>',
+        sentAt: '2026-07-10T10:01:00.000Z',
+      }),
+    ).rejects.toThrow('synthetic invoice update failure');
+
+    expect(readInvoiceStatus(database, 'invoice-1')).toEqual({
+      status: 'approved',
+      updated_at: '2026-07-10T09:00:00.000Z',
+    });
+    expect(readEventCompletion(database, event.id)).toEqual({
+      provider_message_id: null,
+      status: 'attempted',
+    });
+  });
+
   it('stores an unknown delivery outcome and rejects another company', async () => {
     const repository = new SqliteInvoiceDeliveryEventRepository(database);
     const event = createEvent({ status: 'attempted' });
@@ -243,6 +336,61 @@ describe('SqliteInvoiceDeliveryEventRepository', () => {
       .get(event.id);
 
     expect(row?.status).toBe('outcomeUnknown');
+  });
+
+  it('does not complete a terminal event again', async () => {
+    const repository = new SqliteInvoiceDeliveryEventRepository(database);
+    const event = createEvent({ status: 'attempted' });
+    await repository.saveDeliveryEvent(event);
+    await repository.completeDeliveryEvent({
+      companyId: event.companyId,
+      eventId: event.id,
+      providerMessageId: null,
+      safeErrorMessage: 'Safe failure.',
+      status: 'failed',
+      technicalErrorCode: 'SMTP_REJECTED',
+    });
+
+    await expect(
+      repository.completeDeliveryEvent({
+        companyId: event.companyId,
+        eventId: event.id,
+        providerMessageId: '<late@example.fi>',
+        safeErrorMessage: null,
+        status: 'succeeded',
+        technicalErrorCode: null,
+      }),
+    ).rejects.toThrow('Invoice delivery event could not be completed.');
+
+    expect(
+      database
+        .prepare<
+          [string],
+          Pick<
+            InvoiceDeliveryEventRow,
+            | 'provider_message_id'
+            | 'safe_error_message'
+            | 'status'
+            | 'technical_error_code'
+          >
+        >(
+          `
+            SELECT
+              provider_message_id,
+              safe_error_message,
+              status,
+              technical_error_code
+            FROM invoice_delivery_events
+            WHERE id = ?
+          `,
+        )
+        .get(event.id),
+    ).toEqual({
+      provider_message_id: null,
+      safe_error_message: 'Safe failure.',
+      status: 'failed',
+      technical_error_code: 'SMTP_REJECTED',
+    });
   });
 
   it.each(['attempted', 'outcomeUnknown'] as const)(
@@ -285,9 +433,12 @@ describe('SqliteInvoiceDeliveryEventRepository', () => {
       }),
     );
 
-    await expect(
-      repository.listDeliveryEvents('dev-company', 'invoice-1'),
-    ).resolves.toEqual([
+    const summaries = await repository.listDeliveryEvents(
+      'dev-company',
+      'invoice-1',
+    );
+
+    expect(summaries).toEqual([
       {
         ccEmail: '',
         createdAt: '2026-07-10T11:00:00.000Z',
@@ -309,6 +460,10 @@ describe('SqliteInvoiceDeliveryEventRepository', () => {
         status: 'failed',
       },
     ]);
+    expect(summaries[0]).not.toHaveProperty('subject');
+    expect(summaries[0]).not.toHaveProperty('bodyPreview');
+    expect(summaries[0]).not.toHaveProperty('providerMessageId');
+    expect(summaries[0]).not.toHaveProperty('technicalErrorCode');
     await expect(
       repository.listDeliveryEvents('other-company', 'invoice-1'),
     ).resolves.toEqual([]);
@@ -374,6 +529,140 @@ describe('SqliteInvoiceDeliveryEventRepository', () => {
       action: 'invoice.marked_sent_manually',
       actor_user_id: 'user-1',
     });
+  });
+
+  it('atomically blocks manual delivery when an unresolved event exists', async () => {
+    const repository = new SqliteInvoiceDeliveryEventRepository(database);
+    await repository.saveDeliveryEvent(
+      createEvent({ id: 'unresolved-event', status: 'attempted' }),
+    );
+
+    await expect(
+      repository.completeManualDelivery({
+        actorUserId: 'user-1',
+        auditEventId: 'audit-manual-blocked',
+        companyId: 'dev-company',
+        deliveredAt: '2026-07-10T12:00:00.000Z',
+        deliveryEventId: 'manual-event-blocked',
+        deliveryMethod: 'manual',
+        documentId: 'document-1',
+        invoiceId: 'invoice-1',
+      }),
+    ).rejects.toEqual(new InvoiceDeliveryConflictError());
+
+    expect(
+      database
+        .prepare<[string], { status: string; updated_at: string }>(
+          'SELECT status, updated_at FROM invoices WHERE id = ?',
+        )
+        .get('invoice-1'),
+    ).toEqual({
+      status: 'approved',
+      updated_at: '2026-07-10T09:00:00.000Z',
+    });
+    expect(
+      database
+        .prepare<[string], { id: string }>(
+          'SELECT id FROM invoice_delivery_events WHERE id = ?',
+        )
+        .get('manual-event-blocked'),
+    ).toBeUndefined();
+    expect(
+      database
+        .prepare<[string], { id: string }>(
+          'SELECT id FROM invoice_audit_events WHERE id = ?',
+        )
+        .get('audit-manual-blocked'),
+    ).toBeUndefined();
+  });
+
+  it('does not write manual delivery data for another company', async () => {
+    const repository = new SqliteInvoiceDeliveryEventRepository(database);
+
+    await expect(
+      repository.completeManualDelivery({
+        actorUserId: 'user-1',
+        auditEventId: 'audit-other-company',
+        companyId: 'other-company',
+        deliveredAt: '2026-07-10T12:00:00.000Z',
+        deliveryEventId: 'manual-event-other-company',
+        deliveryMethod: 'manual',
+        documentId: 'document-1',
+        invoiceId: 'invoice-1',
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(readInvoiceStatus(database, 'invoice-1')).toEqual({
+      status: 'approved',
+      updated_at: '2026-07-10T09:00:00.000Z',
+    });
+    expect(countDeliveryEvents(database)).toBe(0);
+    expect(countInvoiceAuditEvents(database)).toBe(0);
+  });
+
+  it('treats manual finalization of a sent invoice as an idempotent no-op', async () => {
+    database
+      .prepare(
+        `
+          UPDATE invoices
+          SET status = 'sent', updated_at = '2026-07-10T09:30:00.000Z'
+          WHERE id = 'invoice-1'
+        `,
+      )
+      .run();
+    const repository = new SqliteInvoiceDeliveryEventRepository(database);
+
+    await expect(
+      repository.completeManualDelivery({
+        actorUserId: 'user-1',
+        auditEventId: 'audit-sent-no-op',
+        companyId: 'dev-company',
+        deliveredAt: '2026-07-10T12:00:00.000Z',
+        deliveryEventId: 'manual-event-sent-no-op',
+        deliveryMethod: 'print',
+        documentId: 'document-1',
+        invoiceId: 'invoice-1',
+      }),
+    ).resolves.toEqual({ updatedAt: '2026-07-10T09:30:00.000Z' });
+
+    expect(readInvoiceStatus(database, 'invoice-1')).toEqual({
+      status: 'sent',
+      updated_at: '2026-07-10T09:30:00.000Z',
+    });
+    expect(countDeliveryEvents(database)).toBe(0);
+    expect(countInvoiceAuditEvents(database)).toBe(0);
+  });
+
+  it('rolls back the manual event when the invoice status guard changes no row', async () => {
+    database.exec(`
+      CREATE TRIGGER ignore_invoice_sent_update
+      BEFORE UPDATE OF status ON invoices
+      WHEN OLD.id = 'invoice-1' AND NEW.status = 'sent'
+      BEGIN
+        SELECT RAISE(IGNORE);
+      END
+    `);
+    const repository = new SqliteInvoiceDeliveryEventRepository(database);
+
+    await expect(
+      repository.completeManualDelivery({
+        actorUserId: 'user-1',
+        auditEventId: 'audit-manual-guard',
+        companyId: 'dev-company',
+        deliveredAt: '2026-07-10T12:00:00.000Z',
+        deliveryEventId: 'manual-event-guard',
+        deliveryMethod: 'manual',
+        documentId: 'document-1',
+        invoiceId: 'invoice-1',
+      }),
+    ).rejects.toThrow('Approved invoice could not be marked sent.');
+
+    expect(readInvoiceStatus(database, 'invoice-1')).toEqual({
+      status: 'approved',
+      updated_at: '2026-07-10T09:00:00.000Z',
+    });
+    expect(countDeliveryEvents(database)).toBe(0);
+    expect(countInvoiceAuditEvents(database)).toBe(0);
   });
 
   it('rolls back manual delivery when its audit event cannot be stored', async () => {
@@ -480,7 +769,24 @@ function createEvent(
   };
 }
 
-function insertInvoice(database: DatabaseConnection): void {
+interface InsertInvoiceOptions {
+  companyId?: string;
+  draftId?: string;
+  invoiceId?: string;
+  invoiceNumber?: string;
+  sequenceNumber?: number;
+}
+
+function insertInvoice(
+  database: DatabaseConnection,
+  options: InsertInvoiceOptions = {},
+): void {
+  const companyId = options.companyId ?? 'dev-company';
+  const draftId = options.draftId ?? 'draft-1';
+  const invoiceId = options.invoiceId ?? 'invoice-1';
+  const invoiceNumber = options.invoiceNumber ?? '20260001';
+  const sequenceNumber = options.sequenceNumber ?? 1;
+
   database
     .prepare(
       `
@@ -503,8 +809,8 @@ function insertInvoice(database: DatabaseConnection): void {
           updated_at
         )
         VALUES (
-          'draft-1',
-          'dev-company',
+          @draft_id,
+          @company_id,
           'customer-1',
           'draft',
           '2026-07-10',
@@ -522,7 +828,7 @@ function insertInvoice(database: DatabaseConnection): void {
         )
       `,
     )
-    .run();
+    .run({ company_id: companyId, draft_id: draftId });
 
   database
     .prepare(
@@ -559,13 +865,13 @@ function insertInvoice(database: DatabaseConnection): void {
           updated_at
         )
         VALUES (
-          'invoice-1',
-          'dev-company',
-          'draft-1',
-          '20260001',
+          @invoice_id,
+          @company_id,
+          @draft_id,
+          @invoice_number,
           'default',
           'calendar-year:2026',
-          1,
+          @sequence_number,
           'calendarYearSequence',
           'approved',
           'customer-1',
@@ -591,7 +897,52 @@ function insertInvoice(database: DatabaseConnection): void {
         )
       `,
     )
-    .run();
+    .run({
+      company_id: companyId,
+      draft_id: draftId,
+      invoice_id: invoiceId,
+      invoice_number: invoiceNumber,
+      sequence_number: sequenceNumber,
+    });
+}
+
+function readInvoiceStatus(database: DatabaseConnection, invoiceId: string) {
+  return database
+    .prepare<[string], { status: string; updated_at: string }>(
+      'SELECT status, updated_at FROM invoices WHERE id = ?',
+    )
+    .get(invoiceId);
+}
+
+function readEventCompletion(database: DatabaseConnection, eventId: string) {
+  return database
+    .prepare<
+      [string],
+      Pick<InvoiceDeliveryEventRow, 'provider_message_id' | 'status'>
+    >(
+      `
+        SELECT provider_message_id, status
+        FROM invoice_delivery_events
+        WHERE id = ?
+      `,
+    )
+    .get(eventId);
+}
+
+function countDeliveryEvents(database: DatabaseConnection): number {
+  return database
+    .prepare<[], { count: number }>(
+      'SELECT COUNT(*) AS count FROM invoice_delivery_events',
+    )
+    .get()!.count;
+}
+
+function countInvoiceAuditEvents(database: DatabaseConnection): number {
+  return database
+    .prepare<[], { count: number }>(
+      'SELECT COUNT(*) AS count FROM invoice_audit_events',
+    )
+    .get()!.count;
 }
 
 function insertInvoiceDocument(database: DatabaseConnection): void {

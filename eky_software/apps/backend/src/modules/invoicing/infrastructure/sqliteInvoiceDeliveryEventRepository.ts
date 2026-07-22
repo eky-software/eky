@@ -1,10 +1,7 @@
 import type { DatabaseConnection } from '../../../database/connection/createDatabaseConnection.js';
-import type {
-  InvoiceDeliveryEventRow,
-  NewInvoiceDeliveryEventRow,
-} from '../../../database/schema.js';
 import type { InvoiceDeliveryEvent } from '../domain/invoiceDeliveryEvent.js';
 import type { InvoiceDeliveryEventSummary } from '../domain/invoiceDeliveryEventSummary.js';
+import { InvoiceDeliveryConflictError } from '../domain/invoiceDeliveryConflictError.js';
 import type { InvoiceDeliveryEventReader } from '../ports/invoiceDeliveryEventReader.js';
 import type { InvoiceDeliveryEventRepository } from '../ports/invoiceDeliveryEventRepository.js';
 import type { CompleteInvoiceDeliveryEventInput } from '../ports/invoiceDeliveryEventRepository.js';
@@ -18,8 +15,13 @@ import type {
   CompleteManualInvoiceDeliveryResult,
   InvoiceManualDeliveryFinalizer,
 } from '../ports/invoiceManualDeliveryFinalizer.js';
+import {
+  type InvoiceDeliveryEventInsertParameters,
+  toRow,
+} from './invoiceDeliveryEventPersistenceRows.js';
+import { SqliteInvoiceDeliveryEventQueries } from './sqliteInvoiceDeliveryEventQueries.js';
 
-type InvoiceDeliveryEventInsertParameters = NewInvoiceDeliveryEventRow;
+export { toInvoiceDeliveryEvent } from './invoiceDeliveryEventPersistenceRows.js';
 
 export class SqliteInvoiceDeliveryEventRepository
   implements
@@ -28,27 +30,20 @@ export class SqliteInvoiceDeliveryEventRepository
     InvoiceEmailDeliveryFinalizer,
     InvoiceManualDeliveryFinalizer
 {
-  constructor(private readonly database: DatabaseConnection) {}
+  private readonly queries: SqliteInvoiceDeliveryEventQueries;
+
+  constructor(private readonly database: DatabaseConnection) {
+    this.queries = new SqliteInvoiceDeliveryEventQueries(database);
+  }
 
   async completeSuccessfulEmailDelivery(
     input: CompleteSuccessfulInvoiceEmailDeliveryInput,
   ): Promise<CompleteSuccessfulInvoiceEmailDeliveryResult> {
     const completeTransaction = this.database.transaction(() => {
-      const invoice = this.database
-        .prepare<
-          { company_id: string; id: string },
-          { status: 'approved' | 'sent'; updated_at: string }
-        >(
-          `
-            SELECT status, updated_at
-            FROM invoices
-            WHERE
-              company_id = @company_id
-              AND id = @id
-              AND status IN ('approved', 'sent')
-          `,
-        )
-        .get({ company_id: input.companyId, id: input.invoiceId });
+      const invoice = this.queries.getSuccessfulEmailDeliveryInvoice(
+        input.companyId,
+        input.invoiceId,
+      );
 
       if (invoice === undefined) {
         throw new Error('Approved invoice could not be finalized after delivery.');
@@ -164,26 +159,10 @@ export class SqliteInvoiceDeliveryEventRepository
     input: CompleteManualInvoiceDeliveryInput,
   ): Promise<CompleteManualInvoiceDeliveryResult | undefined> {
     const completeTransaction = this.database.transaction(() => {
-      const invoice = this.database
-        .prepare<
-          { company_id: string; id: string },
-          {
-            invoice_number: string;
-            source_draft_id: string;
-            status: 'approved' | 'sent';
-            updated_at: string;
-          }
-        >(
-          `
-            SELECT status, source_draft_id, invoice_number, updated_at
-            FROM invoices
-            WHERE
-              company_id = @company_id
-              AND id = @id
-              AND status IN ('approved', 'sent')
-          `,
-        )
-        .get({ company_id: input.companyId, id: input.invoiceId });
+      const invoice = this.queries.getManualDeliveryInvoice(
+        input.companyId,
+        input.invoiceId,
+      );
 
       if (invoice === undefined) {
         return undefined;
@@ -191,6 +170,16 @@ export class SqliteInvoiceDeliveryEventRepository
 
       if (invoice.status === 'sent') {
         return { updatedAt: invoice.updated_at };
+      }
+
+      const hasUnresolvedDeliveryEvent =
+        this.queries.hasUnresolvedDeliveryEvent(
+          input.companyId,
+          input.invoiceId,
+        );
+
+      if (hasUnresolvedDeliveryEvent) {
+        throw new InvoiceDeliveryConflictError();
       }
 
       this.insertDeliveryEvent({
@@ -289,73 +278,14 @@ export class SqliteInvoiceDeliveryEventRepository
     companyId: string,
     invoiceId: string,
   ): Promise<boolean> {
-    const row = this.database
-      .prepare<
-        { company_id: string; invoice_id: string },
-        { present: number }
-      >(
-        `
-          SELECT 1 AS present
-          FROM invoice_delivery_events
-          WHERE
-            company_id = @company_id
-            AND invoice_id = @invoice_id
-            AND status IN ('attempted', 'outcomeUnknown')
-          LIMIT 1
-        `,
-      )
-      .get({ company_id: companyId, invoice_id: invoiceId });
-
-    return row !== undefined;
+    return this.queries.hasUnresolvedDeliveryEvent(companyId, invoiceId);
   }
 
   async listDeliveryEvents(
     companyId: string,
     invoiceId: string,
   ): Promise<InvoiceDeliveryEventSummary[]> {
-    const rows = this.database
-      .prepare<
-        { company_id: string; invoice_id: string },
-        Pick<
-          InvoiceDeliveryEventRow,
-          | 'id'
-          | 'created_at'
-          | 'delivery_method'
-          | 'provider'
-          | 'recipient_email'
-          | 'cc_email'
-          | 'safe_error_message'
-          | 'status'
-        >
-      >(
-        `
-          SELECT
-            id,
-            created_at,
-            delivery_method,
-            provider,
-            recipient_email,
-            cc_email,
-            safe_error_message,
-            status
-          FROM invoice_delivery_events
-          WHERE company_id = @company_id AND invoice_id = @invoice_id
-          ORDER BY created_at DESC, id DESC
-        `,
-      )
-      .all({ company_id: companyId, invoice_id: invoiceId });
-
-    return rows.map((row) => ({
-      ccEmail: row.cc_email,
-      createdAt: row.created_at,
-      deliveryMethod:
-        row.delivery_method as InvoiceDeliveryEventSummary['deliveryMethod'],
-      id: row.id,
-      provider: row.provider as InvoiceDeliveryEventSummary['provider'],
-      recipientEmail: row.recipient_email,
-      safeErrorMessage: row.safe_error_message,
-      status: row.status as InvoiceDeliveryEventSummary['status'],
-    }));
+    return this.queries.listDeliveryEvents(companyId, invoiceId);
   }
 
   async saveDeliveryEvent(
@@ -410,48 +340,4 @@ export class SqliteInvoiceDeliveryEventRepository
       )
       .run(toRow(event));
   }
-}
-
-function toRow(event: InvoiceDeliveryEvent): NewInvoiceDeliveryEventRow {
-  return {
-    id: event.id,
-    company_id: event.companyId,
-    invoice_id: event.invoiceId,
-    document_id: event.documentId,
-    delivery_method: event.deliveryMethod,
-    provider: event.provider,
-    status: event.status,
-    recipient_email: event.recipientEmail,
-    cc_email: event.ccEmail,
-    subject: event.subject,
-    body_preview: event.bodyPreview,
-    provider_message_id: event.providerMessageId,
-    safe_error_message: event.safeErrorMessage,
-    technical_error_code: event.technicalErrorCode,
-    created_at: event.createdAt,
-    created_by: event.createdBy,
-  };
-}
-
-export function toInvoiceDeliveryEvent(
-  row: InvoiceDeliveryEventRow,
-): InvoiceDeliveryEvent {
-  return {
-    id: row.id,
-    companyId: row.company_id,
-    invoiceId: row.invoice_id,
-    documentId: row.document_id,
-    deliveryMethod: row.delivery_method as InvoiceDeliveryEvent['deliveryMethod'],
-    provider: row.provider as InvoiceDeliveryEvent['provider'],
-    status: row.status as InvoiceDeliveryEvent['status'],
-    recipientEmail: row.recipient_email,
-    ccEmail: row.cc_email,
-    subject: row.subject,
-    bodyPreview: row.body_preview,
-    providerMessageId: row.provider_message_id,
-    safeErrorMessage: row.safe_error_message,
-    technicalErrorCode: row.technical_error_code,
-    createdAt: row.created_at,
-    createdBy: row.created_by,
-  };
 }
