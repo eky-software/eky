@@ -1,0 +1,211 @@
+import {
+  EkyApiError,
+  type ApprovedInvoiceListPage,
+  type ApprovedInvoiceListPageSize,
+  type ApprovedInvoiceListSort,
+  type ApprovedInvoiceSummary,
+  type ApprovedInvoiceViewStatus,
+  type EkyApiClient,
+} from '@eky/api-client';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+import {
+  createApprovedInvoiceListQuery,
+  createDefaultApprovedInvoiceListControls,
+  getCurrentFiscalYearStartYear,
+  type ApprovedInvoiceListControls,
+  type ApprovedInvoicePeriodMode,
+} from '../approved/approvedInvoiceListFilters.js';
+import { getFinnishApiErrorMessage, uiText } from '../../../i18n/fi.js';
+
+type ApprovedInvoicePageClient = Pick<EkyApiClient, 'listApprovedInvoices'>;
+
+export interface ApprovedInvoicePageState {
+  controls: ApprovedInvoiceListControls;
+  errorMessage: string | null;
+  invoices: ApprovedInvoiceSummary[];
+  isFiscalYearFilterAvailable: boolean;
+  isLoading: boolean;
+  totalCount: number;
+  totalPages: number;
+  goToPage(page: number): void;
+  refresh(): Promise<void>;
+  setFiscalYearStartYear(year: number): void;
+  setMonth(month: string): void;
+  setPageSize(pageSize: ApprovedInvoiceListPageSize): void;
+  setPeriodMode(periodMode: ApprovedInvoicePeriodMode): void;
+  setSort(sort: ApprovedInvoiceListSort): void;
+}
+
+export function useApprovedInvoicePage(
+  apiClient: ApprovedInvoicePageClient,
+  status: ApprovedInvoiceViewStatus,
+  fiscalYearStartMonth: number | null,
+): ApprovedInvoicePageState {
+  const [controls, setControls] = useState(
+    createDefaultApprovedInvoiceListControls,
+  );
+  const [invoices, setInvoices] = useState<ApprovedInvoiceSummary[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const requestSequence = useRef(0);
+
+  useEffect(() => {
+    if (fiscalYearStartMonth === null) {
+      return;
+    }
+
+    const currentFiscalYearStartYear = getCurrentFiscalYearStartYear(
+      new Date(),
+      fiscalYearStartMonth,
+    );
+
+    setControls((current) =>
+      current.fiscalYearStartYear === currentFiscalYearStartYear
+        ? current
+        : {
+            ...current,
+            fiscalYearStartYear: currentFiscalYearStartYear,
+          },
+    );
+  }, [fiscalYearStartMonth]);
+
+  const refresh = useCallback(async (): Promise<void> => {
+    const requestId = requestSequence.current + 1;
+    requestSequence.current = requestId;
+    setIsLoading(true);
+    setErrorMessage(null);
+
+    try {
+      const page = await loadApprovedInvoicePage(
+        apiClient,
+        status,
+        controls,
+        fiscalYearStartMonth,
+      );
+
+      if (requestId !== requestSequence.current) {
+        return;
+      }
+
+      const lastAvailablePage = Math.max(1, page.totalPages);
+
+      if (controls.page > lastAvailablePage) {
+        setControls((current) => ({
+          ...current,
+          page: lastAvailablePage,
+        }));
+        return;
+      }
+
+      setInvoices(page.invoices);
+      setTotalCount(page.totalCount);
+      setTotalPages(page.totalPages);
+    } catch (error) {
+      if (requestId !== requestSequence.current) {
+        return;
+      }
+
+      setInvoices([]);
+      setTotalCount(0);
+      setTotalPages(0);
+      setErrorMessage(getApprovedInvoiceListErrorMessage(error, status));
+    } finally {
+      if (requestId === requestSequence.current) {
+        setIsLoading(false);
+      }
+    }
+  }, [apiClient, controls, fiscalYearStartMonth, status]);
+
+  useEffect(() => {
+    void refresh();
+
+    return () => {
+      requestSequence.current += 1;
+    };
+  }, [refresh]);
+
+  const updateControls = useCallback(
+    (update: Partial<ApprovedInvoiceListControls>): void => {
+      setControls((current) => ({ ...current, ...update, page: 1 }));
+    },
+    [],
+  );
+
+  return {
+    controls,
+    errorMessage,
+    invoices,
+    isFiscalYearFilterAvailable: fiscalYearStartMonth !== null,
+    isLoading,
+    totalCount,
+    totalPages,
+    goToPage(page) {
+      if (Number.isSafeInteger(page) && page >= 1) {
+        setControls((current) => ({ ...current, page }));
+      }
+    },
+    refresh,
+    setFiscalYearStartYear(fiscalYearStartYear) {
+      updateControls({ fiscalYearStartYear });
+    },
+    setMonth(month) {
+      updateControls({ month });
+    },
+    setPageSize(pageSize) {
+      updateControls({ pageSize });
+    },
+    setPeriodMode(periodMode) {
+      updateControls({ periodMode });
+    },
+    setSort(sort) {
+      updateControls({ sort });
+    },
+  };
+}
+
+export async function loadApprovedInvoicePage(
+  apiClient: ApprovedInvoicePageClient,
+  status: ApprovedInvoiceViewStatus,
+  controls: ApprovedInvoiceListControls,
+  fiscalYearStartMonth: number | null,
+): Promise<ApprovedInvoiceListPage> {
+  const query = createApprovedInvoiceListQuery(
+    status,
+    controls,
+    fiscalYearStartMonth,
+  );
+  const page = await apiClient.listApprovedInvoices(query);
+
+  if (
+    page.page !== query.page ||
+    page.pageSize !== query.pageSize ||
+    page.invoices.some((invoice) => invoice.status !== status)
+  ) {
+    throw new Error('Approved invoice page does not match its request.');
+  }
+
+  return page;
+}
+
+export function getApprovedInvoiceListErrorMessage(
+  error: unknown,
+  status: ApprovedInvoiceViewStatus,
+): string {
+  const fallbackMessage =
+    status === 'sent'
+      ? uiText.invoicing.sentInvoiceListLoadError
+      : uiText.invoicing.approvedInvoiceListLoadError;
+
+  if (error instanceof EkyApiError) {
+    const translatedMessage = getFinnishApiErrorMessage(error.message);
+
+    return translatedMessage === error.message
+      ? fallbackMessage
+      : translatedMessage;
+  }
+
+  return fallbackMessage;
+}

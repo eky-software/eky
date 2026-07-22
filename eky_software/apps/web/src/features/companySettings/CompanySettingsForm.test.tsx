@@ -58,5 +58,13 @@ describe('CompanySettingsForm', () => {
     expect(html).toContain('NDEAFIHH');
     expect(html).toContain(uiText.companySettings.bankName);
     expect(html).toContain('Test Bank');
+    expect(html.indexOf(uiText.companySettings.companyAndContactInformation))
+      .toBeLessThan(html.indexOf(uiText.companySettings.billingPrices));
+    expect(html.indexOf(uiText.companySettings.billingPrices)).toBeLessThan(
+      html.indexOf(uiText.companySettings.bankDetails),
+    );
+    expect(html.indexOf(uiText.companySettings.bankDetails)).toBeLessThan(
+      html.indexOf(uiText.companySettings.emailDeliverySettings),
+    );
   });
 });

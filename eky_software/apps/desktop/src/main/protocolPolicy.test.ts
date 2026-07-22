@@ -75,6 +75,9 @@ describe('desktop protocol policy', () => {
     );
     expect(isAllowedBackendRequest('POST', '/company-settings/email-secret')).toBe(false);
     expect(isAllowedBackendRequest('DELETE', '/company-settings')).toBe(false);
+    expect(isAllowedBackendRequest('GET', '/invoice-vat-rates')).toBe(true);
+    expect(isAllowedBackendRequest('PUT', '/invoice-vat-rates')).toBe(true);
+    expect(isAllowedBackendRequest('POST', '/invoice-vat-rates')).toBe(false);
     expect(isAllowedBackendRequest('GET', '/unknown')).toBe(false);
     expect(isAllowedBackendRequest('GET', '/customers/%2e%2e/secret')).toBe(false);
   });

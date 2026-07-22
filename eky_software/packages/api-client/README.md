@@ -83,7 +83,7 @@ Paketti tarjoaa tällä hetkellä hallitut kutsut:
 - `createEkyApiClient().getInvoiceDraft(...)`
 - `createEkyApiClient().listInvoiceDrafts(...)`
 - `createEkyApiClient().updateInvoiceDraft(...)`
-- `createEkyApiClient().listApprovedInvoices()`
+- `createEkyApiClient().listApprovedInvoices(query)`
 - `createEkyApiClient().listInvoiceDeliveryEvents(...)`
 - `createEkyApiClient().getApprovedInvoice(...)`
 - `createEkyApiClient().markApprovedInvoiceSent(...)`
@@ -101,6 +101,8 @@ Paketti tarjoaa tällä hetkellä hallitut kutsut:
 - `createEkyApiClient().updateInvoiceNumberingSettings(...)`
 - `createEkyApiClient().getInvoicePaymentSettings()`
 - `createEkyApiClient().updateInvoicePaymentSettings(...)`
+- `createEkyApiClient().getInvoiceVatRates()`
+- `createEkyApiClient().updateInvoiceVatRates(...)`
 
 Tämä paketti ei tunne Reactia, Honoa, SQLitea, backendin repository-rakennetta tai domainin sisäistä toteutusta.
 

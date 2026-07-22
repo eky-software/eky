@@ -205,6 +205,10 @@ asetettu secret store -mallin kautta,
 mutta se ei sisällä salaista arvoa eikä sitä käytetä salaisuuden
 tallentamiseen.
 
+Salaisuuspaneeli mountataan vain app-kerroksen vahvistamassa Electron-
+runtimessa. Tavallinen selainkehitys ei kutsu sähköpostisalaisuuden tila-,
+asetus- tai poistoreittejä.
+
 Company Settingsin application-kerroksessa on toteutettu rajatut salaisuuden
 asettamisen, poistamisen ja tilan tarkistamisen käyttötapaukset. Ne:
 
@@ -342,7 +346,9 @@ Ensimmäinen näkymä voi sisältää:
 - oletustuntihinnan
 - tuntityön pikavalinnan
 
-Myöhemmin sivupalkissa tai erillisessä Asetukset-kokonaisuudessa voidaan näyttää myös laskutusasetukset. Tällöin Oma yritys ja Laskutusasetukset ovat erilliset näkymät ja säilyttävät omat moduulirajansa.
+Oma yritys -näkymä kokoaa local-MVP:ssä myös ensimmäisiä laskutusasetuksia.
+Tämä on käyttöliittymän koonti eikä moduulien yhdistäminen: laskutusasetusten
+domain-, API- ja persistence-vastuu säilyy Invoicing-moduulilla.
 
 Laskutusasetuksissa voidaan näyttää esimerkiksi:
 
@@ -422,7 +428,10 @@ Ei lisätä nykyiseen Company Settings MVP:hen ilman erillistä päätöstä:
 - laskutusta
 - dokumenttipohjia
 
-ALV-kannat, maksuehdot, numerointisarjat ja tilikausi suunnitellaan myöhemmin Invoicing-moduulin asetuksina, eivät Company Settings MVP:n kenttinä.
+ALV-kannat, maksuasetukset ja numerointiasetukset ovat Invoicing-moduulin
+asetuksia, vaikka niiden lomakkeet näytetään local-MVP:ssä Oma yritys
+-näkymässä. ALV-kantojen ensimmäinen yrityskohtainen hallintapolku on
+toteutettu. Muutos ei päivitä hyväksyttyjen laskujen ALV-snapshotteja.
 
 Nämä ovat todennäköisiä tulevia tarpeita, mutta ne eivät kuulu ensimmäiseen suunnitteluvaiheeseen.
 

@@ -1,71 +1,67 @@
-import {
-  EkyApiError,
-  type ApprovedInvoiceSummary,
-  type EkyApiClient,
-} from '@eky/api-client';
+import type { EkyApiClient } from '@eky/api-client';
 import { useCallback, useEffect, useState } from 'react';
 
-import { getFinnishApiErrorMessage, uiText } from '../../../i18n/fi.js';
+import {
+  useApprovedInvoicePage,
+  type ApprovedInvoicePageState,
+} from './useApprovedInvoicePage.js';
 
-type ApprovedInvoiceListClient = Pick<EkyApiClient, 'listApprovedInvoices'>;
+type ApprovedInvoiceListClient = Pick<
+  EkyApiClient,
+  'getInvoiceNumberingSettings' | 'listApprovedInvoices'
+>;
 
 export interface ApprovedInvoiceListState {
-  approvedInvoices: ApprovedInvoiceSummary[];
-  errorMessage: string | null;
-  isLoading: boolean;
+  approved: ApprovedInvoicePageState;
+  sent: ApprovedInvoicePageState;
   refreshApprovedInvoices(): Promise<void>;
 }
 
 export function useApprovedInvoices(
   apiClient: ApprovedInvoiceListClient,
 ): ApprovedInvoiceListState {
-  const [approvedInvoices, setApprovedInvoices] = useState<
-    ApprovedInvoiceSummary[]
-  >([]);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const refreshApprovedInvoices = useCallback(async (): Promise<void> => {
-    setIsLoading(true);
-    setErrorMessage(null);
-
-    try {
-      const loadedInvoices = await loadApprovedInvoiceSummaries(apiClient);
-
-      setApprovedInvoices(loadedInvoices);
-    } catch (error) {
-      setErrorMessage(getApprovedInvoiceListErrorMessage(error));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [apiClient]);
+  const [fiscalYearStartMonth, setFiscalYearStartMonth] = useState<
+    number | null
+  >(null);
 
   useEffect(() => {
-    void refreshApprovedInvoices();
-  }, [refreshApprovedInvoices]);
+    let isCurrent = true;
+
+    void apiClient
+      .getInvoiceNumberingSettings()
+      .then((settings) => {
+        if (isCurrent) {
+          setFiscalYearStartMonth(settings.fiscalYearStartMonth);
+        }
+      })
+      .catch(() => {
+        if (isCurrent) {
+          setFiscalYearStartMonth(null);
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [apiClient]);
+
+  const approved = useApprovedInvoicePage(
+    apiClient,
+    'approved',
+    fiscalYearStartMonth,
+  );
+  const sent = useApprovedInvoicePage(
+    apiClient,
+    'sent',
+    fiscalYearStartMonth,
+  );
+  const refreshApprovedInvoices = useCallback(async (): Promise<void> => {
+    await Promise.all([approved.refresh(), sent.refresh()]);
+  }, [approved.refresh, sent.refresh]);
 
   return {
-    approvedInvoices,
-    errorMessage,
-    isLoading,
+    approved,
+    sent,
     refreshApprovedInvoices,
   };
-}
-
-export function loadApprovedInvoiceSummaries(
-  apiClient: ApprovedInvoiceListClient,
-): Promise<ApprovedInvoiceSummary[]> {
-  return apiClient.listApprovedInvoices();
-}
-
-export function getApprovedInvoiceListErrorMessage(error: unknown): string {
-  if (error instanceof EkyApiError) {
-    const translatedMessage = getFinnishApiErrorMessage(error.message);
-
-    return translatedMessage === error.message
-      ? uiText.invoicing.approvedInvoiceListLoadError
-      : translatedMessage;
-  }
-
-  return uiText.invoicing.approvedInvoiceListLoadError;
 }

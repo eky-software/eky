@@ -4,15 +4,16 @@ import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 import { ApprovedInvoiceNotFoundError } from '../application/approvedInvoiceNotFoundError.js';
 import type { GetApprovedInvoiceInput } from '../application/getApprovedInvoice.js';
 import type { ListApprovedInvoicesInput } from '../application/listApprovedInvoices.js';
-import type { ApprovedInvoiceSummary } from '../domain/approvedInvoiceSummary.js';
+import type { ApprovedInvoiceListPage } from '../domain/approvedInvoiceSummary.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
+import { parseApprovedInvoiceListRequest } from './approvedInvoiceListRequest.js';
 
 export interface ApprovedInvoiceQueryRouteDependencies {
   getApprovedInvoice(input: GetApprovedInvoiceInput): Promise<ApprovedInvoiceView>;
   listApprovedInvoices(
     input: ListApprovedInvoicesInput,
-  ): Promise<ApprovedInvoiceSummary[]>;
+  ): Promise<ApprovedInvoiceListPage>;
 }
 
 export function createApprovedInvoiceQueryRoutes(
@@ -23,11 +24,14 @@ export function createApprovedInvoiceQueryRoutes(
   routes.get('/invoices', async (context) => {
     try {
       const actorContext = context.get('actorContext');
-      const invoices = await dependencies.listApprovedInvoices({
-        companyId: actorContext.companyId,
-      });
+      const invoicePage = await dependencies.listApprovedInvoices(
+        parseApprovedInvoiceListRequest(
+          actorContext.companyId,
+          context.req.query(),
+        ),
+      );
 
-      return context.json({ invoices });
+      return context.json({ invoicePage });
     } catch (error) {
       if (error instanceof InvoiceDraftValidationError) {
         return context.json({ error: error.message }, 400);

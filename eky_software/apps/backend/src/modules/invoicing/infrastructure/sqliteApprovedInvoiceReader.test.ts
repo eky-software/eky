@@ -126,24 +126,27 @@ describe('SqliteApprovedInvoiceReader', () => {
     const reader = new SqliteApprovedInvoiceReader(database);
 
     await expect(
-      reader.listApprovedInvoiceSummaries('dev-company'),
-    ).resolves.toEqual([
-      {
-        id: 'invoice-1',
-        invoiceNumber: '20260001',
-        referenceNumber: '202600017',
-        status: 'approved',
-        customerId: 'customer-1',
-        customerNumberSnapshot: '1001',
-        customerNameSnapshot: 'Snapshot Customer Oy',
-        billingRecipientNameSnapshot: 'Snapshot Recipient Oy',
-        invoiceDate: '2026-06-13',
-        dueDate: '2026-06-27',
-        grossTotalCents: 35100,
-        approvedAt: '2026-06-13T10:00:00.000Z',
-        updatedAt: '2026-06-13T10:00:00.000Z',
-      },
-    ]);
+      reader.listApprovedInvoiceSummaries(createListQuery()),
+    ).resolves.toEqual({
+      invoices: [
+        {
+          id: 'invoice-1',
+          invoiceNumber: '20260001',
+          referenceNumber: '202600017',
+          status: 'approved',
+          customerId: 'customer-1',
+          customerNumberSnapshot: '1001',
+          customerNameSnapshot: 'Snapshot Customer Oy',
+          billingRecipientNameSnapshot: 'Snapshot Recipient Oy',
+          invoiceDate: '2026-06-13',
+          dueDate: '2026-06-27',
+          grossTotalCents: 35100,
+          approvedAt: '2026-06-13T10:00:00.000Z',
+          updatedAt: '2026-06-13T10:00:00.000Z',
+        },
+      ],
+      totalCount: 1,
+    });
   });
 
   it('lists sent invoice summaries with approved invoice summaries', async () => {
@@ -159,14 +162,19 @@ describe('SqliteApprovedInvoiceReader', () => {
     const reader = new SqliteApprovedInvoiceReader(database);
 
     await expect(
-      reader.listApprovedInvoiceSummaries('dev-company'),
-    ).resolves.toMatchObject([
-      {
-        id: 'invoice-1',
-        status: 'sent',
-        updatedAt: '2026-06-13T11:00:00.000Z',
-      },
-    ]);
+      reader.listApprovedInvoiceSummaries(
+        createListQuery({ status: 'sent' }),
+      ),
+    ).resolves.toMatchObject({
+      invoices: [
+        {
+          id: 'invoice-1',
+          status: 'sent',
+          updatedAt: '2026-06-13T11:00:00.000Z',
+        },
+      ],
+      totalCount: 1,
+    });
     await expect(
       reader.getApprovedInvoiceById('dev-company', 'invoice-1'),
     ).resolves.toMatchObject({
@@ -175,12 +183,28 @@ describe('SqliteApprovedInvoiceReader', () => {
     });
   });
 
+  it('applies invoice-date filters and pagination without changing the total count', async () => {
+    const reader = new SqliteApprovedInvoiceReader(database);
+
+    await expect(
+      reader.listApprovedInvoiceSummaries(
+        createListQuery({ dateFrom: '2026-06-14' }),
+      ),
+    ).resolves.toEqual({ invoices: [], totalCount: 0 });
+
+    await expect(
+      reader.listApprovedInvoiceSummaries(createListQuery({ offset: 1 })),
+    ).resolves.toEqual({ invoices: [], totalCount: 1 });
+  });
+
   it('does not list approved invoices outside the company scope', async () => {
     const reader = new SqliteApprovedInvoiceReader(database);
 
     await expect(
-      reader.listApprovedInvoiceSummaries('other-company'),
-    ).resolves.toEqual([]);
+      reader.listApprovedInvoiceSummaries(
+        createListQuery({ companyId: 'other-company' }),
+      ),
+    ).resolves.toEqual({ invoices: [], totalCount: 0 });
   });
 
   it('returns undefined when the invoice is outside the company scope', async () => {
@@ -214,6 +238,27 @@ describe('SqliteApprovedInvoiceReader', () => {
     expect(customersCount?.count).toBe(0);
   });
 });
+
+function createListQuery(
+  overrides: Partial<
+    Parameters<
+      SqliteApprovedInvoiceReader['listApprovedInvoiceSummaries']
+    >[0]
+  > = {},
+): Parameters<
+  SqliteApprovedInvoiceReader['listApprovedInvoiceSummaries']
+>[0] {
+  return {
+    companyId: 'dev-company',
+    status: 'approved',
+    dateFrom: null,
+    dateTo: null,
+    limit: 20,
+    offset: 0,
+    sort: 'invoiceDateDesc',
+    ...overrides,
+  };
+}
 
 function insertSourceDraft(database: DatabaseConnection): void {
   database

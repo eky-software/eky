@@ -6,11 +6,12 @@ import {
   parseNumberingMode,
   parsePriceInputMode,
   parseReferenceNumberType,
+  readNullableString,
   readSafeInteger,
   readString,
-  readNullableString,
 } from './approvedInvoiceResponsePrimitives.js';
 import type {
+  ApprovedInvoiceListPage,
   ApprovedInvoiceLine,
   ApprovedInvoiceLineDiscount,
   ApprovedInvoiceSummary,
@@ -21,12 +22,44 @@ import type {
 
 export function readApprovedInvoiceListResponse(
   responseBody: unknown,
-): ApprovedInvoiceSummary[] {
-  if (!isRecord(responseBody) || !Array.isArray(responseBody.invoices)) {
+): ApprovedInvoiceListPage {
+  if (!isRecord(responseBody) || !isRecord(responseBody.invoicePage)) {
     throw invalidApprovedInvoiceResponse(responseBody);
   }
 
-  return responseBody.invoices.map(parseApprovedInvoiceSummary);
+  const invoicePage = responseBody.invoicePage;
+
+  if (!Array.isArray(invoicePage.invoices)) {
+    throw invalidApprovedInvoiceResponse(responseBody);
+  }
+
+  const page = readSafeInteger(invoicePage, 'page');
+  const pageSize = readSafeInteger(invoicePage, 'pageSize');
+  const totalCount = readSafeInteger(invoicePage, 'totalCount');
+  const totalPages = readSafeInteger(invoicePage, 'totalPages');
+
+  if (
+    page < 1 ||
+    !isApprovedInvoicePageSize(pageSize) ||
+    totalCount < 0 ||
+    totalPages !== Math.ceil(totalCount / pageSize) ||
+    invoicePage.invoices.length > pageSize ||
+    invoicePage.invoices.length > totalCount
+  ) {
+    throw invalidApprovedInvoiceResponse(responseBody);
+  }
+
+  return {
+    invoices: invoicePage.invoices.map(parseApprovedInvoiceSummary),
+    page,
+    pageSize,
+    totalCount,
+    totalPages,
+  };
+}
+
+function isApprovedInvoicePageSize(value: number): value is 20 | 50 | 100 {
+  return value === 20 || value === 50 || value === 100;
 }
 
 export function readApprovedInvoiceResponse(

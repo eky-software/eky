@@ -760,6 +760,10 @@ korvataan viittauksella uuteen hyväksyttyyn ADR- tai moduulisuunnitelmaan.
 | Approved invoice PDF identity sections | Valmis | `ece3a2b` | `2a17539` | Header, vastaanottaja/perustiedot, lisätiedot ja laskukohtainen party-fallback erotettu |
 | Approved invoice PDF layout sections | Valmis | `2a17539` | `cce2b32` | Rivit, ALV/summat, maksupalkki, footer ja sivunumerot erotettu; renderer jäi 55-riviseksi orkestroijaksi |
 | Alkuperäisen roadmapin ydinsiivous | Valmis | `195cce2` | `cce2b32` | Web-, composition-, HTTP-, API-client-, approval-, delivery-, draft-, Electron- ja PDF-ydinkohteet on käsitelty |
+| Moduulityön checklist-reititys | Valmis | `4c2bfb0` | `f7780e8` | Juuri-AGENTS ohjaa uudet moduuli-, composition- ja cross-module-työt yhteiseen checklistiin |
+| Nykyisten moduulien yhdenmukaisuusauditointi | Valmis | `f7780e8` | `b546438` | Customers-, Company Settings- ja Invoicing-rakenteet, poikkeukset ja tulevat huolet luokiteltu |
+| Customers-composition | Valmis | `b546438` | `a0325d1` | Reitit ja asiakasrepositoryn sidonta eristetty; Invoicing saa vain `CustomerAccessReader`-portin |
+| Company Settings -composition | Valmis | `a0325d1` | `6109130` | Reitit, salaisuusauditointi ja repositoryn sidonta eristetty; Invoicing saa vain `InvoiceEmailSettingsReader`-portin |
 | Featurekohtainen i18n-jako | Valinnainen P3 | - | - | Tehdään vain, jos nykyinen `uiText`-sopimus säilyy ja jako vähentää todellisia merge-konflikteja |
 | `packages/ui` | Passiivinen | - | - | Skeletonia ei aktivoida eikä sinne lisätä React-komponentteja ilman dokumentoitua usean itsenäisen UI:n tarvetta |
 | Release gate | Seuraava erillinen kokonaisuus | - | - | Backup/restore, migraatioiden eheys ja Windows-jakelun portit eivät kuulu käyttäytymisen säilyttävään ydinsiivoukseen |

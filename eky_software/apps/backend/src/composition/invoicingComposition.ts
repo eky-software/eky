@@ -7,8 +7,6 @@ import { DnaInvoiceSmtpDeliveryProvider } from '../infrastructure/email/provider
 import { DnaInvoiceSmtpTestDeliveryProvider } from '../infrastructure/email/providers/dna/dnaInvoiceSmtpTestDeliveryProvider.js';
 import { DnaSmtpEmailDeliveryProvider } from '../infrastructure/email/providers/dna/dnaSmtpEmailDeliveryProvider.js';
 import type { CompanyEmailSecretReader } from '../modules/companySettings/ports/companyEmailSecretReader.js';
-import type { CompanySettingsRepository } from '../modules/companySettings/ports/companySettingsRepository.js';
-import type { CustomerRepository } from '../modules/customers/ports/customerRepository.js';
 import { approveInvoiceDraft } from '../modules/invoicing/application/approveInvoiceDraft.js';
 import { copyApprovedInvoiceToDraft } from '../modules/invoicing/application/copyApprovedInvoiceToDraft.js';
 import { deleteInvoiceDraft } from '../modules/invoicing/application/deleteInvoiceDraft.js';
@@ -25,6 +23,7 @@ import { getApprovedInvoicePdfMetadata } from '../modules/invoicing/application/
 import { getInvoiceDraft } from '../modules/invoicing/application/getInvoiceDraft.js';
 import { getInvoiceNumberingSettings } from '../modules/invoicing/application/getInvoiceNumberingSettings.js';
 import { getInvoicePaymentSettings } from '../modules/invoicing/application/getInvoicePaymentSettings.js';
+import { getInvoiceVatRates } from '../modules/invoicing/application/getInvoiceVatRates.js';
 import { listApprovedInvoices } from '../modules/invoicing/application/listApprovedInvoices.js';
 import { listInvoiceDeliveryEvents } from '../modules/invoicing/application/listInvoiceDeliveryEvents.js';
 import { listInvoiceDrafts } from '../modules/invoicing/application/listInvoiceDrafts.js';
@@ -40,10 +39,12 @@ import { sendApprovedInvoiceEmailSmtpTest } from '../modules/invoicing/applicati
 import { updateInvoiceDraft } from '../modules/invoicing/application/updateInvoiceDraft.js';
 import { updateInvoiceNumberingSettings } from '../modules/invoicing/application/updateInvoiceNumberingSettings.js';
 import { updateInvoicePaymentSettings } from '../modules/invoicing/application/updateInvoicePaymentSettings.js';
+import { updateInvoiceVatRates } from '../modules/invoicing/application/updateInvoiceVatRates.js';
 import { createApprovedInvoiceRoutes } from '../modules/invoicing/http/approvedInvoiceRoutes.js';
 import { createInvoiceDraftRoutes } from '../modules/invoicing/http/invoiceDraftRoutes.js';
 import { createInvoiceNumberingSettingsRoutes } from '../modules/invoicing/http/invoiceNumberingSettingsRoutes.js';
 import { createInvoicePaymentSettingsRoutes } from '../modules/invoicing/http/invoicePaymentSettingsRoutes.js';
+import { createInvoiceVatRatesRoutes } from '../modules/invoicing/http/invoiceVatRatesRoutes.js';
 import { InMemoryInvoiceEmailSendAttemptStore } from '../modules/invoicing/infrastructure/inMemoryInvoiceEmailSendAttemptStore.js';
 import { LocalInvoiceDocumentStorage } from '../modules/invoicing/infrastructure/localInvoiceDocumentStorage.js';
 import { renderApprovedInvoicePdf } from '../modules/invoicing/infrastructure/pdf/approvedInvoicePdfRenderer.js';
@@ -54,14 +55,15 @@ import { SqliteInvoiceDocumentRepository } from '../modules/invoicing/infrastruc
 import { SqliteInvoiceDraftRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceDraftRepository.js';
 import { SqliteInvoiceNumberingRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceNumberingRepository.js';
 import { SqliteInvoicePaymentSettingsRepository } from '../modules/invoicing/infrastructure/sqliteInvoicePaymentSettingsRepository.js';
+import { SqliteInvoiceVatRateRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceVatRateRepository.js';
 import type { CustomerAccessReader } from '../modules/invoicing/ports/customerAccessReader.js';
 import type { InvoiceEmailSettingsReader } from '../modules/invoicing/ports/invoiceEmailSettingsReader.js';
 
 interface InvoicingCompositionOptions {
   companyEmailSecretReader: CompanyEmailSecretReader;
-  companySettingsRepository: Pick<CompanySettingsRepository, 'findByCompanyId'>;
-  customerRepository: Pick<CustomerRepository, 'findById'>;
+  customerAccessReader: CustomerAccessReader;
   database: DatabaseConnection;
+  invoiceEmailSettingsReader: InvoiceEmailSettingsReader;
   invoiceDocumentStorageRoot?: string;
 }
 
@@ -88,6 +90,9 @@ export function createInvoicingComposition(
   );
   const invoicePaymentSettingsRepository =
     new SqliteInvoicePaymentSettingsRepository(options.database);
+  const invoiceVatRateRepository = new SqliteInvoiceVatRateRepository(
+    options.database,
+  );
   const invoiceEmailDeliveryProvider = new DryRunInvoiceEmailDeliveryProvider();
   const invoiceEmailSendAttemptStore = new InMemoryInvoiceEmailSendAttemptStore();
   const dnaSmtpEmailDeliveryProvider = new DnaSmtpEmailDeliveryProvider({
@@ -98,34 +103,6 @@ export function createInvoicingComposition(
   const invoiceSmtpDeliveryProvider = new DnaInvoiceSmtpDeliveryProvider(
     dnaSmtpEmailDeliveryProvider,
   );
-  const customerAccessReader: CustomerAccessReader = {
-    async belongsToCompany(customerId, companyId) {
-      const customer = await options.customerRepository.findById(
-        companyId,
-        customerId,
-      );
-
-      return customer !== undefined;
-    },
-  };
-  const invoiceEmailSettingsReader: InvoiceEmailSettingsReader = {
-    async getEmailSettings(companyId) {
-      const settings =
-        await options.companySettingsRepository.findByCompanyId(companyId);
-
-      if (settings === null) {
-        return null;
-      }
-
-      return {
-        emailDeliveryProvider: settings.emailDeliveryProvider,
-        emailSenderAddress: settings.emailSenderAddress,
-        emailSenderName: settings.emailSenderName,
-        emailTestRecipientOverride: settings.emailTestRecipientOverride,
-        emailUsername: settings.emailUsername,
-      };
-    },
-  };
   const ensureApprovedInvoicePdfDocument = (
     input: GenerateApprovedInvoicePdfDocumentInput,
   ) =>
@@ -165,13 +142,13 @@ export function createInvoicingComposition(
         listInvoiceDrafts(input, invoiceDraftRepository),
       saveInvoiceDraft: (input) =>
         saveInvoiceDraft(input, {
-          customerAccessReader,
+          customerAccessReader: options.customerAccessReader,
           invoiceDraftRepository,
           invoicePaymentSettingsRepository,
         }),
       updateInvoiceDraft: (input) =>
         updateInvoiceDraft(input, {
-          customerAccessReader,
+          customerAccessReader: options.customerAccessReader,
           invoiceDraftRepository,
           invoicePaymentSettingsRepository,
         }),
@@ -184,7 +161,7 @@ export function createInvoicingComposition(
       copyApprovedInvoiceToDraft: (input) =>
         copyApprovedInvoiceToDraft(input, {
           approvedInvoiceReader,
-          customerAccessReader,
+          customerAccessReader: options.customerAccessReader,
           invoiceDraftRepository,
         }),
       generateApprovedInvoicePdfDocument: ensureApprovedInvoicePdfDocument,
@@ -220,7 +197,7 @@ export function createInvoicingComposition(
         prepareApprovedInvoiceEmailSmtpTest(input, {
           approvedInvoiceReader,
           ensureApprovedInvoicePdfDocument,
-          invoiceEmailSettingsReader,
+          invoiceEmailSettingsReader: options.invoiceEmailSettingsReader,
           invoiceEmailSendAttemptStore,
         }),
       prepareApprovedInvoiceEmailSmtp: (input) =>
@@ -229,7 +206,7 @@ export function createInvoicingComposition(
           ensureApprovedInvoicePdfDocument,
           invoiceDeliveryEventReader: invoiceDeliveryEventRepository,
           invoiceEmailSendAttemptStore,
-          invoiceEmailSettingsReader,
+          invoiceEmailSettingsReader: options.invoiceEmailSettingsReader,
         }),
       sendApprovedInvoiceEmailDryRun: (input) =>
         sendApprovedInvoiceEmailDryRun(input, {
@@ -244,7 +221,7 @@ export function createInvoicingComposition(
           ensureApprovedInvoicePdfDocument,
           getApprovedInvoicePdfDocument,
           invoiceDeliveryEventRepository,
-          invoiceEmailSettingsReader,
+          invoiceEmailSettingsReader: options.invoiceEmailSettingsReader,
           invoiceEmailSendAttemptStore,
           invoiceSmtpTestDeliveryProvider,
         }),
@@ -256,7 +233,7 @@ export function createInvoicingComposition(
           invoiceDeliveryEventRepository,
           invoiceEmailDeliveryFinalizer: invoiceDeliveryEventRepository,
           invoiceEmailSendAttemptStore,
-          invoiceEmailSettingsReader,
+          invoiceEmailSettingsReader: options.invoiceEmailSettingsReader,
           invoiceSmtpDeliveryProvider,
         }),
       reopenApprovedInvoiceForEditing: (input) =>
@@ -284,6 +261,16 @@ export function createInvoicingComposition(
         getInvoicePaymentSettings(input, invoicePaymentSettingsRepository),
       updateInvoicePaymentSettings: (input) =>
         updateInvoicePaymentSettings(input, invoicePaymentSettingsRepository),
+    }),
+  );
+
+  routes.route(
+    '/',
+    createInvoiceVatRatesRoutes({
+      getInvoiceVatRates: (input) =>
+        getInvoiceVatRates(input, invoiceVatRateRepository),
+      updateInvoiceVatRates: (input) =>
+        updateInvoiceVatRates(input, invoiceVatRateRepository),
     }),
   );
 

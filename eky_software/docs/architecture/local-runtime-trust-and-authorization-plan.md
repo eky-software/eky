@@ -85,6 +85,7 @@ tai Windows-tyypit eivät vuoda application-palvelujen sopimuksiin.
 Ensimmäiset toteutetut local-owner-permissionit ovat:
 
 - `manageCompanySettings`
+- `manageInvoiceSettings`
 - `manageCompanyEmailSettings`
 - `manageCompanyEmailSecret`
 - `sendInvoices`

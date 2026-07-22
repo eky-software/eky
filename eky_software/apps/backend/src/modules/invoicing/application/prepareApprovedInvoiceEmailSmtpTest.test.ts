@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ApprovedInvoiceEmailDeliveryError } from './approvedInvoiceEmailDeliveryError.js';
 import { prepareApprovedInvoiceEmailSmtpTest } from './prepareApprovedInvoiceEmailSmtpTest.js';
-import type { ApprovedInvoiceSummary } from '../domain/approvedInvoiceSummary.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
 import type { InvoiceEmailSendAttemptStore } from '../ports/invoiceEmailSendAttemptStore.js';
@@ -14,7 +13,7 @@ class FakeApprovedInvoiceReader implements ApprovedInvoiceReader {
     return { id: 'invoice-1' } as ApprovedInvoiceView;
   }
 
-  async listApprovedInvoiceSummaries(): Promise<ApprovedInvoiceSummary[]> {
+  async listApprovedInvoiceSummaries(): Promise<never> {
     throw new Error('Not implemented in SMTP preparation test.');
   }
 }

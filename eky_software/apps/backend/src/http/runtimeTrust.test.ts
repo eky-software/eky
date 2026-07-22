@@ -49,6 +49,7 @@ describe('backend runtime trust', () => {
       companyId: 'local-company-test',
       permissions: [
         'manageCompanySettings',
+        'manageInvoiceSettings',
         'manageCompanyEmailSettings',
         'manageCompanyEmailSecret',
         'sendInvoices',

@@ -1,0 +1,74 @@
+.panel {
+  min-width: 0;
+}
+
+.header {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(145px, 1fr));
+  gap: 10px;
+  align-items: end;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.control {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.control input,
+.control select {
+  min-width: 0;
+  height: 36px;
+}
+
+.pageSizeControl {
+  max-width: 130px;
+}
+
+.pagination {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  padding-top: 12px;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.pagination button {
+  min-width: 92px;
+}
+
+@media (max-width: 980px) {
+  .controls {
+    grid-template-columns: repeat(2, minmax(145px, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .header {
+    align-items: flex-start;
+  }
+
+  .controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pageSizeControl {
+    max-width: none;
+  }
+
+  .pagination {
+    justify-content: space-between;
+  }
+}

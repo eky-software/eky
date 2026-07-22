@@ -80,6 +80,10 @@ const backendRoutes: ReadonlyArray<{
     methods: new Set(['GET', 'PUT']),
     pathname: /^\/invoice-payment-settings$/,
   },
+  {
+    methods: new Set(['GET', 'PUT']),
+    pathname: /^\/invoice-vat-rates$/,
+  },
 ];
 
 export function isAllowedBackendRequest(method: string, pathname: string): boolean {

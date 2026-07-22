@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 
-import type { ApprovedInvoiceSummary } from '../domain/approvedInvoiceSummary.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
 import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
@@ -24,8 +23,8 @@ class FakeApprovedInvoiceReader implements ApprovedInvoiceReader {
     return this.invoice;
   }
 
-  async listApprovedInvoiceSummaries(): Promise<ApprovedInvoiceSummary[]> {
-    return [];
+  async listApprovedInvoiceSummaries() {
+    return { invoices: [], totalCount: 0 };
   }
 }
 

@@ -129,7 +129,9 @@ export const uiText = {
     businessId: 'Y-tunnus',
     city: 'Kaupunki',
     companyName: 'Yrityksen nimi',
+    companyAndContactInformation: 'Perustiedot ja yhteystiedot',
     contactInformation: 'Yhteystiedot',
+    billingPrices: 'Laskutushinnat',
     defaultHourlyRate: 'Oletustuntihinta €/h',
     defaultHourlyRateHelp:
       'Jos asiakkaalle ei ole asetettu omaa tuntihintaa, laskutuksen pikavalinta käyttää tätä hintaa.',
@@ -269,6 +271,34 @@ export const uiText = {
         'Viivästyskoron pitää olla prosenttina, esimerkiksi 9,50.',
       reminderPeriodDaysInvalid:
         'Huomautusajan pitää olla kokonaisluku välillä 0-365.',
+    },
+    invoiceVatRatesKicker: 'Laskutusasetukset',
+    invoiceVatRatesHeading: 'ALV-kannat',
+    invoiceVatRatesDescription:
+      'Ylläpidä uusilla laskuriveillä valittavia ALV-kantoja. Muutokset eivät muuta jo tallennettuja tai hyväksyttyjä laskuja.',
+    invoiceVatRatesDefaultInfo:
+      'Näytetään nykyinen oletuslista. Tallenna, jos haluat ottaa oman listan käyttöön.',
+    invoiceVatRatesSettings: 'Valittavat ALV-kannat',
+    invoiceVatRatesLoading: 'Ladataan ALV-kantoja...',
+    invoiceVatRatesLoadError:
+      'ALV-kantoja ei voitu ladata. Yritä hetken kuluttua uudelleen.',
+    invoiceVatRatesSaveError:
+      'ALV-kantoja ei voitu tallentaa. Tarkista tiedot ja yritä uudelleen.',
+    invoiceVatRatesSaveSuccess: 'ALV-kannat tallennettu.',
+    invoiceVatRatesAdd: 'Lisää ALV-kanta',
+    invoiceVatRatesRemove: 'Poista',
+    invoiceVatRatesSave: 'Tallenna ALV-kannat',
+    invoiceVatRatePercent: 'ALV %',
+    invoiceVatRateLabel: 'Nimi',
+    invoiceVatRateActive: 'Aktiivinen',
+    invoiceVatRateDefault: 'Oletus',
+    invoiceVatRateActions: 'Toiminnot',
+    invoiceVatRatesValidation: {
+      collectionInvalid: 'ALV-kantoja pitää olla 1–20.',
+      defaultInvalid: 'Valitse yksi aktiivinen oletuskanta.',
+      duplicateRate: 'Sama ALV-kanta on jo listalla.',
+      labelInvalid: 'Anna nimelle 1–50 merkkiä yhdelle riville.',
+      rateInvalid: 'Anna ALV-kanta väliltä 0–100 kahden desimaalin tarkkuudella.',
     },
     invalidHourlyRate: 'Tuntihinnan pitää olla euroina, esimerkiksi 65 tai 65,50.',
     invalidIban: 'IBAN-tilinumero ei ole kelvollinen.',
@@ -543,6 +573,24 @@ export const uiText = {
       prepared: 'Valmisteltu',
       succeeded: 'Onnistui',
     },
+    listFilters: 'Laskulistan suodattimet',
+    listFiscalYearStart: 'Tilikauden alkamisvuosi',
+    listMonth: 'Kuukausi',
+    listNextPage: 'Seuraava',
+    listPageLabel: (page: number, totalPages: number) =>
+      `Sivu ${page} / ${totalPages}`,
+    listPages: 'Laskulistan sivut',
+    listPageSize: 'Rivejä sivulla',
+    listPeriod: 'Ajanjakso',
+    listPeriodAll: 'Kaikki',
+    listPeriodFiscalYear: 'Tilikausi',
+    listPeriodMonth: 'Kuukausi',
+    listPreviousPage: 'Edellinen',
+    listSort: 'Järjestys',
+    listSortCustomer: 'Asiakas A–Ö',
+    listSortDueDate: 'Eräpäivä ensin',
+    listSortNewest: 'Uusimmat ensin',
+    listSortOldest: 'Vanhimmat ensin',
     invoiceDeliveryTime: 'Aika',
     notApplicable: 'Ei käytössä',
     invoiceNumber: 'Laskunumero',
@@ -560,6 +608,8 @@ export const uiText = {
     fillDummyInvoice: 'Täytä testilasku',
     invoicePaymentSettingsLoadError:
       'Laskutuksen oletusarvoja ei voitu ladata. Voit syöttää arvot käsin.',
+    invoiceVatRatesLoadError:
+      'ALV-kantoja ei voitu ladata. Nykyiset oletuskannat ovat käytettävissä.',
     hourlyRateShortcutHelpPrefix: 'Pikavalinta',
     hourlyRateShortcutHelpSuffix:
       'täyttää valitun asiakkaan tuntihinnan kerran automaattisesti.',
@@ -639,6 +689,9 @@ export const uiText = {
     sentInvoiceList: 'Lähetetyt laskut',
     sentInvoices: 'Lähetetyt',
     sentInvoicesEmpty: 'Lähetettyjä laskuja ei ole vielä.',
+    sentInvoicesLoading: 'Ladataan lähetettyjä laskuja...',
+    sentInvoiceListLoadError:
+      'Lähetettyjä laskuja ei voitu ladata. Yritä hetken kuluttua uudelleen.',
     openDraftError:
       'Laskuluonnosta ei voitu avata. Yritä hetken kuluttua uudelleen.',
     openDraftPrompt: 'Valitse avattava laskuluonnos listasta.',
@@ -787,6 +840,22 @@ export const uiText = {
       'Maksuehtoasetusten pyyntö oli virheellinen.',
     'Invalid invoice payment settings response.':
       'Maksuehtoasetusten vastaus oli virheellinen.',
+    'Invalid invoice VAT rates body.':
+      'ALV-kantojen pyyntö oli virheellinen.',
+    'Invalid invoice VAT rates response.':
+      'ALV-kantojen vastaus oli virheellinen.',
+    'Invoice VAT rates body is too large.':
+      'ALV-kantojen pyyntö on liian suuri.',
+    'Invoice VAT rates must contain between 1 and 20 items.':
+      'ALV-kantoja pitää olla 1–20.',
+    'Invoice VAT rates must be unique.':
+      'Jokainen ALV-kanta saa esiintyä listalla vain kerran.',
+    'Invoice VAT rates must have exactly one default.':
+      'Valitse yksi ALV-oletuskanta.',
+    'Default invoice VAT rate must be active.':
+      'ALV-oletuskannan pitää olla aktiivinen.',
+    'Invoice VAT rate label is invalid.':
+      'ALV-kannan nimi on virheellinen.',
     'Invoice payment settings body is too large.':
       'Maksuehtoasetusten pyyntö on liian suuri.',
     'Invoice numbering settings were not found.':

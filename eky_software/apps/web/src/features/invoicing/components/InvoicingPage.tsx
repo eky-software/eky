@@ -14,6 +14,7 @@ import { useInvoiceDrafts } from '../hooks/useInvoiceDrafts.js';
 import { useInvoiceCustomers } from '../hooks/useInvoiceCustomers.js';
 import { useInvoiceCompanySettings } from '../hooks/useInvoiceCompanySettings.js';
 import { useInvoicePaymentDefaults } from '../hooks/useInvoicePaymentDefaults.js';
+import { useInvoiceVatRates } from '../hooks/useInvoiceVatRates.js';
 import { useInvoiceDraftEditor } from '../hooks/useInvoiceDraftEditor.js';
 import { useApprovedInvoice } from '../hooks/useApprovedInvoice.js';
 import { useApprovedInvoices } from '../hooks/useApprovedInvoices.js';
@@ -47,6 +48,7 @@ export function InvoicingPage({
   const customerListState = useInvoiceCustomers(apiClient);
   const companySettingsState = useInvoiceCompanySettings(apiClient);
   const invoicePaymentDefaultsState = useInvoicePaymentDefaults(apiClient);
+  const invoiceVatRatesState = useInvoiceVatRates(apiClient);
   const draftEditorState = useInvoiceDraftEditor(apiClient);
   const approvedInvoiceState = useApprovedInvoice(apiClient);
   const approvedInvoiceListState = useApprovedInvoices(apiClient);
@@ -298,6 +300,7 @@ export function InvoicingPage({
       draftErrorMessage={draftState.errorMessage}
       draftEditorState={draftEditorState}
       invoicePaymentDefaultsState={invoicePaymentDefaultsState}
+      invoiceVatRatesState={invoiceVatRatesState}
       invoiceDeliveryEventListState={invoiceDeliveryEventListState}
       markApprovedInvoiceSentState={markApprovedInvoiceSentState}
       isDraftListLoading={draftState.isLoading}

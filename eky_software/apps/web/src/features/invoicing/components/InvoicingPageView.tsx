@@ -10,10 +10,7 @@ import type {
 import { ApprovedInvoiceDetailView } from './ApprovedInvoiceDetailView.js';
 import { InvoiceDraftEditorView } from './InvoiceDraftEditorView.js';
 import { InvoiceWorkspaceListView } from './InvoiceWorkspaceListView.js';
-import {
-  NewInvoiceForm,
-  type NewInvoiceFormClient,
-} from './NewInvoiceForm.js';
+import type { NewInvoiceFormClient } from './NewInvoiceForm.js';
 import styles from './InvoicingPage.module.css';
 import { getInvoiceEmailSmtpTestUnavailableMessage } from '../approved/invoiceEmailSmtpTestAvailability.js';
 import { getInvoiceEmailSmtpUnavailableMessage } from '../approved/invoiceEmailSmtpAvailability.js';
@@ -29,6 +26,7 @@ import type { InvoiceCustomerListState } from '../hooks/useInvoiceCustomers.js';
 import type { InvoiceDeliveryEventListState } from '../hooks/useInvoiceDeliveryEvents.js';
 import type { InvoiceDraftEditorState } from '../hooks/useInvoiceDraftEditor.js';
 import type { InvoicePaymentDefaultsState } from '../hooks/useInvoicePaymentDefaults.js';
+import type { InvoiceVatRatesState } from '../hooks/useInvoiceVatRates.js';
 import type { MarkApprovedInvoiceSentState } from '../hooks/useMarkApprovedInvoiceSent.js';
 import type { ReopenApprovedInvoiceState } from '../hooks/useReopenApprovedInvoiceForEditing.js';
 import type { SendApprovedInvoiceEmailDryRunState } from '../hooks/useSendApprovedInvoiceEmailDryRun.js';
@@ -51,6 +49,7 @@ interface InvoicingPageViewProps {
   draftErrorMessage: string | null;
   draftEditorState: InvoiceDraftEditorState;
   invoicePaymentDefaultsState: InvoicePaymentDefaultsState;
+  invoiceVatRatesState: InvoiceVatRatesState;
   invoiceDeliveryEventListState: InvoiceDeliveryEventListState;
   markApprovedInvoiceSentState: MarkApprovedInvoiceSentState;
   isDraftListLoading: boolean;
@@ -101,6 +100,7 @@ export function InvoicingPageView({
   deleteState,
   draftEditorState,
   invoicePaymentDefaultsState,
+  invoiceVatRatesState,
   invoiceDeliveryEventListState,
   markApprovedInvoiceSentState,
   drafts,
@@ -142,18 +142,17 @@ export function InvoicingPageView({
 
       {activeView === 'draftList' ? (
         <InvoiceWorkspaceListView
-          approvedInvoices={approvedInvoiceListState.approvedInvoices}
-          approvedInvoiceErrorMessage={approvedInvoiceListState.errorMessage}
+          approvedInvoicePageState={approvedInvoiceListState.approved}
           customers={customerListState.customers}
           customerErrorMessage={customerListState.errorMessage}
           deleteErrorMessage={deleteState.errorMessage}
           deletingDraftId={deleteState.deletingDraftId}
           drafts={drafts}
           draftErrorMessage={draftErrorMessage}
-          isApprovedInvoiceListLoading={approvedInvoiceListState.isLoading}
           isCustomerListLoading={customerListState.isLoading}
           isDraftListLoading={isDraftListLoading}
           pendingDeleteDraftId={pendingDeleteDraftId}
+          sentInvoicePageState={approvedInvoiceListState.sent}
           onCancelDeleteDraft={onCancelDeleteDraft}
           onConfirmDeleteDraft={onConfirmDeleteDraft}
           onNewInvoice={onNewInvoice}
@@ -161,27 +160,23 @@ export function InvoicingPageView({
           onOpenDraft={onOpenDraft}
           onRequestDeleteDraft={onRequestDeleteDraft}
         />
-      ) : activeView === 'newInvoice' ? (
-        <NewInvoiceForm
-          apiClient={apiClient}
-          companySettingsState={companySettingsState}
-          customerListState={customerListState}
-          invoicePaymentDefaultsState={invoicePaymentDefaultsState}
-          mode={{ type: 'create' }}
-          onBack={onBackToDrafts}
-          onDraftApproved={onDraftApproved}
-          onDraftSaved={onDraftSaved}
-          onOpenApprovedInvoice={onOpenApprovedInvoice}
-        />
-      ) : activeView === 'editInvoice' ? (
+      ) : activeView === 'newInvoice' || activeView === 'editInvoice' ? (
         <InvoiceDraftEditorView
           apiClient={apiClient}
           companySettingsState={companySettingsState}
           customerListState={customerListState}
-          draft={draftEditorState.draft}
-          draftErrorMessage={draftEditorState.errorMessage}
+          draft={
+            activeView === 'editInvoice' ? draftEditorState.draft : null
+          }
+          draftErrorMessage={
+            activeView === 'editInvoice' ? draftEditorState.errorMessage : null
+          }
+          editorMode={activeView === 'newInvoice' ? 'create' : 'edit'}
           invoicePaymentDefaultsState={invoicePaymentDefaultsState}
-          isDraftLoading={draftEditorState.isLoading}
+          invoiceVatRatesState={invoiceVatRatesState}
+          isDraftLoading={
+            activeView === 'editInvoice' && draftEditorState.isLoading
+          }
           onBack={onBackToDrafts}
           onDraftApproved={onDraftApproved}
           onDraftSaved={onDraftSaved}

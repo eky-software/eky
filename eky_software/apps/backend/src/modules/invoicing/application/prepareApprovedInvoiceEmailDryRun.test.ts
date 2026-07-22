@@ -157,7 +157,10 @@ function createApprovedInvoiceReader(
 ): ApprovedInvoiceReader {
   return {
     getApprovedInvoiceById: vi.fn(async () => invoice),
-    listApprovedInvoiceSummaries: vi.fn(async () => []),
+    listApprovedInvoiceSummaries: vi.fn(async () => ({
+      invoices: [],
+      totalCount: 0,
+    })),
   };
 }
 

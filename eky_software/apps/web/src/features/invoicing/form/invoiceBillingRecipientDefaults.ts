@@ -4,7 +4,7 @@ import type { NewInvoiceFormState } from './newInvoiceFormState.js';
 
 export function applyCustomerBillingRecipientDefault(
   form: NewInvoiceFormState,
-  customers: Customer[],
+  customers: readonly Customer[],
   customerId: string,
 ): NewInvoiceFormState {
   return {
@@ -19,7 +19,7 @@ export function applyCustomerBillingRecipientDefault(
 
 export function getSuggestedBillingRecipientCustomerId(
   customerId: string,
-  customers: Customer[],
+  customers: readonly Customer[],
 ): string {
   const customer = customers.find((item) => item.id === customerId);
 

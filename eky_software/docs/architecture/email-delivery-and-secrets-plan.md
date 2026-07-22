@@ -36,8 +36,10 @@ Sähköpostipolusta on toteutettu local-MVP:hen:
   turvallinen palautuminen sekä kaikkien slottien poistaminen
 - desktop-sessionilla suojatut salaisuuden tila-, asetus- ja poistoreitit,
   jotka käyttävät vain backendin vahvistamaa `ActorContext`-kontekstia
-- API-client ja Oma yritys -näkymän erillinen salasanapaneeli, joka näyttää
-  vain `configured`-tilan eikä koskaan esitäytä tai palauta salaista arvoa
+- API-client ja Oma yritys -näkymän erillinen salasanapaneeli, joka näytetään
+  vain app-kerroksen vahvistamassa Electron-runtimessa, näyttää vain
+  `configured`-tilan eikä koskaan esitäytä tai palauta salaista arvoa;
+  selainkehitys ei mounttaa paneelia eikä kutsu salaisuuden endpointteja
 - paketoitu Windows-smoke, joka varmistaa synteettisellä arvolla koko
   HTTP -> application -> audit -> secret broker -> `safeStorage` -elinkaaren
 - backendin sisäinen, riippuvuudeton SMTP/MIME-kuljetuskerros, joka käyttää

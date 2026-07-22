@@ -31,7 +31,12 @@ export function App({ apiClient }: AppProps): React.JSX.Element {
         <CustomerPage apiClient={apiClient} />
       ) : null}
       {activeView === 'companySettings' ? (
-        <CompanySettingsPage apiClient={apiClient} />
+        <CompanySettingsPage
+          apiClient={apiClient}
+          isEmailSecretManagementAvailable={
+            openInvoicePdfPreview !== undefined
+          }
+        />
       ) : null}
       {activeView === 'invoicing' ? (
         <InvoicingPage

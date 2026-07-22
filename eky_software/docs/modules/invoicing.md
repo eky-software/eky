@@ -230,6 +230,14 @@ Hyväksytyn laskun ensimmäinen lukupolku on `GET /invoices/:id`. Se palauttaa
 `invoice_lines`-taulujen snapshot-datasta. Lukupolku ei hae laskulla näkyviä
 tietoja Customer- tai Company Settings -master-datasta eikä laskuluonnoksesta.
 
+`GET /invoices` palauttaa hyväksyttyjen tai lähetettyjen laskujen rajatun
+snapshot-yhteenvetosivun. Backend rajaa haun aina vahvistetulla `companyId`- ja
+`status`-yhdistelmällä, validoi päivämäärärajat, sivun, 20/50/100 rivin
+sivukoon sekä sallitun järjestyksen. SQL:n arvot parametrisoidaan ja vapaa
+`ORDER BY` -syöte estetään enum-kartoituksella. Listaus ei hae laskurivejä,
+Customers-master-dataa tai Company Settings -master-dataa eikä aiheuta
+N+1-kyselyitä.
+
 Webin ensimmäinen hyväksytyn laskun katselunäkymä käyttää tätä
 `ApprovedInvoiceView`-snapshotia. Se on tarkistusnäkymä ennen varsinaista
 print-layoutia, PDF:ää ja lähetyspolkuja.
@@ -357,7 +365,12 @@ ALV-kanta ja prosenttialennus käsitellään basis points -mallilla. Esimerkiksi
 
 Auktoritatiivinen laskenta ei käytä JavaScriptin liukulukulaskentaa.
 
-Yritysasiakkaan uuden laskun oletushinnat syötetään verottomina ja yksityisasiakkaan verollisina. Syöttötapa tallennetaan laskennalle yksiselitteisenä eikä backend luota pelkkään UI-oletukseen.
+Yritysasiakkaan uuden laskun oletushinnat syötetään verottomina ja
+yksityisasiakkaan verollisina. Uuden laskun asiakasvalinta asettaa tämän
+käyttöliittymäoletuksen, kunnes käyttäjä valitsee syöttötavan itse. Käyttäjän
+manuaalista valintaa ei ylikirjoiteta myöhemmällä asiakasvaihdolla. Syöttötapa
+tallennetaan laskennalle yksiselitteisenä eikä backend luota pelkkään
+UI-oletukseen.
 
 Classic-laskutusnäkymässä käyttäjä muokkaa vain aktiivisen syöttötavan mukaista hintaa. Toinen hinta voidaan näyttää laskettuna esikatseluna, mutta molempia ei muokata samanaikaisesti MVP:ssä.
 
@@ -380,7 +393,11 @@ Laskurivin `unit`-arvo voi olla vakiovalinta kuten `h`, `kpl`, `pv`, `km`,
 `erä` tai `pak`, tai käyttäjän antama lyhyt oma yksikkö. Oma yksikkö on silti
 validoitu rajattu arvo, ei vapaa pitkä kuvausteksti.
 
-Laskutuksen pitää myöhemmin tukea hallittavia ALV-kantoja sekä prosentti- ja euromääräisiä alennuksia. Ensimmäinen suositeltu alennusmalli on rivikohtainen alennus, mutta arkkitehtuuri jättää tilaa myöhemmälle laskukohtaiselle alennukselle.
+Laskutuksen ensimmäinen yrityskohtainen ALV-kantojen asetuskokoelma on
+toteutettu Invoicing-moduuliin. Käyttäjä voi ylläpitää kannan arvoa, selitettä,
+aktiivisuutta, järjestystä ja yhtä aktiivista oletuskantaa Oma yritys
+-näkymästä. Prosentti- ja euromääräiset alennukset ovat rivikohtaisia;
+arkkitehtuuri jättää tilaa myöhemmälle laskukohtaiselle alennukselle.
 
 Ensimmäisen domain-koodivaiheen testattavat ALV-kannat ovat:
 
@@ -389,7 +406,11 @@ Ensimmäisen domain-koodivaiheen testattavat ALV-kannat ovat:
 - 13,50 % eli 1350 basis points
 - 25,50 % eli 2550 basis points
 
-Domainia ei kovakoodata sallimaan vain näitä arvoja, koska ALV-kantoja hallitaan myöhemmin laskutusasetuksista.
+Domainia ei kovakoodata sallimaan vain näitä arvoja. Ensimmäinen asetusten
+API-polku on `GET/PUT /invoice-vat-rates`, ja `companyId` tulee aina backendin
+vahvistamasta `ActorContext`-kontekstista. Asetusten muuttaminen vaikuttaa
+uuden laskurivin valintoihin ja oletukseen, ei tallennettujen laskujen
+eksplisiittisiin arvoihin eikä hyväksyttyjen laskujen snapshotteihin.
 
 `14,00 %` eli `1400` basis points oli aiempi alennettu verokanta 31.12.2025 saakka. Se voidaan huomioida myöhemmin historiallisena tai legacy-arvona, jos `invoiceDate`- tai suoritusajankohtaan perustuva vanhojen verokantojen tuki tarvitaan.
 
@@ -432,6 +453,13 @@ Invoicing omistaa laskutuksen liiketoiminta-asetukset:
 - laskunumerosarjat
 - seuraavan laskunumeron
 - tilikauden
+
+ALV-kantojen hallinta näkyy local-MVP:ssä Oma yritys -näkymässä, mutta
+Company Settings ei omista niiden dataa. Invoicing validoi kokoelman,
+rajaa sen luotettuun yrityskontekstiin ja tallentaa muutoksen yhtenä
+transaktiona. Vanhalla luonnoksella käytössä oleva poistettu tai passivoitu
+kanta säilyy muokattavana legacy-valintana, jotta olemassa oleva laskudata ei
+muutu asetusten mukana.
 
 Uuden laskun oletusmaksuehto on 14 päivää netto. Maksuehtoa ja eräpäivää voi muuttaa laskulla.
 

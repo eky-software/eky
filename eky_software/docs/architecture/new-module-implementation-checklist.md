@@ -21,6 +21,50 @@ korvaa niitä.
 - [ ] Varmista ennen asennusta projektin omistajan nimenomainen hyväksyntä
   jokaiselle uudelle riippuvuudelle sekä `package.json`- tai lockfile-muutokselle.
 
+## Moduulikohtainen AGENTS.md
+
+Jokaisen liiketoimintamoduulin juurella pitää normaalisti olla oma
+`AGENTS.md`. Se tarkentaa juuri kyseisen moduulin työtä, mutta ei kopioi juuri-
+`AGENTS.md`:n yleisiä sääntöjä eikä kumoa niitä.
+
+Moduulikohtainen ohje määrittelee tiiviisti vähintään:
+
+- moduulin omistaman ja sen ulkopuolelle rajatun datan
+- pakolliset moduuli- ja arkkitehtuuridokumentit
+- sallitut kerrokset ja niiden riippuvuussuunnat
+- `ActorContext`- ja `companyId`-luottamusrajan
+- sallitut moduulien väliset luku- ja kirjoitussopimukset
+- muutokseen suhteutetut pakolliset testit
+- moduulille olennaiset kielletyt riippuvuussuunnat
+
+Pieni tekninen tai jaettu infrastruktuurikokonaisuus ei tarvitse omaa
+`AGENTS.md`:ää vain kansiorakenteen yhdenmukaisuuden vuoksi. Poikkeuksen pitää
+olla aidosti rajattu eikä se saa omistaa liiketoimintadataa tai muodostaa uutta
+moduulirajaa.
+
+## Nykyiset Toteutusreferenssit
+
+Nykyiset moduulit ovat erikokoisia esimerkkejä, eivät yksi kopioitava
+template-puu:
+
+- **Customers** näyttää pienen master-data-moduulin, jossa muutama domain- ja
+  application-vastuu, yksi repository-portti, yksi SQLite-adapteri ja yksi
+  HTTP-kokonaisuus riittävät.
+- **Company Settings** näyttää keskikokoisen asetusten ja salaisuuden
+  elinkaaren moduulin, jossa tavallinen master data, backend-only secret portit,
+  auditointi ja valinnaiset reitit tarvitsevat omat rajansa.
+- **Invoicing** näyttää laajan liiketoimintamoduulin, jossa laskenta,
+  transaktiot, snapshotit, dokumentit ja toimitusadapterit perustelevat useita
+  pieniä portteja ja vastuukohtaisia tiedostoja.
+
+Kaikissa kolmessa `apps/backend/src/composition/` kokoaa moduulin konkreettiset
+adapterit ja reitit. Moduulien välille annetaan vain kuluttajan tarvitsema kapea
+lukusopimus. Repositorya, audit writeria, secret storea tai muuta vapaasti
+käytettävää riippuvuusrekisteriä ei palauteta.
+
+Nykytilan yksityiskohtainen arvio ja hyväksytyt poikkeukset ovat dokumentissa
+`docs/architecture/current-module-conformance-audit.md`.
+
 ## Backend Ja Data
 
 - [ ] Toteuta infrastructure-adapterit porttien taakse; älä paljasta
@@ -94,5 +138,6 @@ korvaa niitä.
 - `docs/architecture/dependency-policy.md`
 - `docs/architecture/security-principles.md`
 - `docs/architecture/codebase-cleanup-roadmap.md`
+- `docs/architecture/current-module-conformance-audit.md`
 - `docs/ai/testing-rules.md`
 - `docs/ai/review-checklist.md`

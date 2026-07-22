@@ -76,6 +76,12 @@ Lue lisäksi tehtävän mukaan seuraavat dokumentit:
 
 Jos työ koskee tiettyä moduulia, lue myös kyseisen moduulin dokumentti `docs/modules/`-kansiosta.
 
+Jos työ koskee uuden liiketoimintamoduulin tai moduulikansion perustamista,
+`docs/modules/`-vastuudokumenttia, moduulikohtaista `AGENTS.md`-tiedostoa,
+composition rootia, moduulien välistä luku- tai kirjoitussopimusta,
+repository-, HTTP-, application- tai frontend-rakennetta, lue myös
+`docs/architecture/new-module-implementation-checklist.md`.
+
 Jos työ koskee teknistä perustaa, skeleton-rakennetta, local-first-mallia, pilvivalmiutta tai synkronointia, lue myös `docs/decisions/ADR-0003-technical-foundation.md`.
 
 Jos työ koskee modulaarisen monoliitin päälinjaa, moduulirakenteen dokumentointia tai dokumentaation jakoa, lue myös `docs/decisions/ADR-0001-modular-monolith-first.md` ja `docs/decisions/ADR-0002-module-structure.md`.

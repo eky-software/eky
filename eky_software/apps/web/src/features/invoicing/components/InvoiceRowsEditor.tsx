@@ -8,12 +8,14 @@ import type {
 } from '../form/invoiceRowFormState.js';
 import styles from './InvoiceRowsEditor.module.css';
 import { uiText } from '../../../i18n/fi.js';
+import type { InvoiceVatRate } from '@eky/api-client';
 
 interface InvoiceRowsEditorProps {
   errorsByRowId: Record<string, InvoiceDraftLineFormErrors> | undefined;
   hourlyRateShortcut: string;
   hourlyRateShortcutErrorMessage: string | null;
   rows: InvoiceRowForm[];
+  vatRates: readonly InvoiceVatRate[] | null;
   onAdd(): void;
   onChange<FieldName extends InvoiceRowFormField>(
     rowId: string,
@@ -28,6 +30,7 @@ export function InvoiceRowsEditor({
   hourlyRateShortcut,
   hourlyRateShortcutErrorMessage,
   rows,
+  vatRates,
   onAdd,
   onChange,
   onRemove,
@@ -74,6 +77,7 @@ export function InvoiceRowsEditor({
             errors={errorsByRowId?.[row.id]}
             position={index + 1}
             row={row}
+            vatRates={vatRates}
             onChange={onChange}
             onRemove={onRemove}
           />

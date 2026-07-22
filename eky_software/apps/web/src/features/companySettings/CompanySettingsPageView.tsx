@@ -5,6 +5,7 @@ import { CompanySettingsForm } from './CompanySettingsForm.js';
 import { CompanyEmailSecretPanel } from './CompanyEmailSecretPanel.js';
 import { InvoiceNumberingSettingsPanel } from './InvoiceNumberingSettingsPanel.js';
 import { InvoicePaymentSettingsPanel } from './InvoicePaymentSettingsPanel.js';
+import { InvoiceVatRatesPanel } from './InvoiceVatRatesPanel.js';
 import {
   initialCompanySettingsForm,
   toCompanySettingsForm,
@@ -21,19 +22,23 @@ type CompanySettingsPageClient = Pick<
   | 'getCompanySettings'
   | 'getInvoiceNumberingSettings'
   | 'getInvoicePaymentSettings'
+  | 'getInvoiceVatRates'
   | 'removeCompanyEmailSecret'
   | 'setCompanyEmailSecret'
   | 'updateCompanySettings'
   | 'updateInvoiceNumberingSettings'
   | 'updateInvoicePaymentSettings'
+  | 'updateInvoiceVatRates'
 >;
 
 interface CompanySettingsPageProps {
   apiClient: CompanySettingsPageClient;
+  isEmailSecretManagementAvailable: boolean;
 }
 
 export function CompanySettingsPage({
   apiClient,
+  isEmailSecretManagementAvailable,
 }: CompanySettingsPageProps): React.JSX.Element {
   const [form, setForm] = useState<CompanySettingsFormModel>(initialCompanySettingsForm);
   const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
@@ -151,7 +156,10 @@ export function CompanySettingsPage({
             onFieldChange={handleFieldChange}
             onSubmit={() => void handleSave()}
           />
-          <CompanyEmailSecretPanel apiClient={apiClient} />
+          {isEmailSecretManagementAvailable ? (
+            <CompanyEmailSecretPanel apiClient={apiClient} />
+          ) : null}
+          <InvoiceVatRatesPanel apiClient={apiClient} />
           <InvoiceNumberingSettingsPanel apiClient={apiClient} />
           <InvoicePaymentSettingsPanel apiClient={apiClient} />
         </div>

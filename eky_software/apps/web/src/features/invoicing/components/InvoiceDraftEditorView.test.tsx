@@ -6,6 +6,18 @@ import { InvoiceDraftEditorView } from './InvoiceDraftEditorView.js';
 import { uiText } from '../../../i18n/fi.js';
 
 describe('InvoiceDraftEditorView', () => {
+  it('renders the new draft form through the same editor view', () => {
+    const html = renderEditor({
+      draftErrorMessage: uiText.invoicing.openDraftError,
+      editorMode: 'create',
+      isDraftLoading: true,
+    });
+
+    expect(html).toContain(uiText.invoicing.newInvoice);
+    expect(html).not.toContain(uiText.invoicing.openingDraft);
+    expect(html).not.toContain(uiText.invoicing.openDraftError);
+  });
+
   it('renders the loading state while an invoice draft is opening', () => {
     const html = renderEditor({ isDraftLoading: true });
 
@@ -61,7 +73,9 @@ function renderEditor(
       customerListState={createCustomerListState()}
       draft={null}
       draftErrorMessage={null}
+      editorMode="edit"
       invoicePaymentDefaultsState={createInvoicePaymentDefaultsState()}
+      invoiceVatRatesState={createInvoiceVatRatesState()}
       isDraftLoading={false}
       onBack={vi.fn()}
       onDraftApproved={vi.fn()}
@@ -124,6 +138,25 @@ function createInvoicePaymentDefaultsState(): InvoiceDraftEditorViewProps['invoi
       defaultLatePaymentInterestBasisPoints: 950,
       defaultReminderPeriodDays: 8,
       isPersisted: true,
+    },
+  };
+}
+
+function createInvoiceVatRatesState(): InvoiceDraftEditorViewProps['invoiceVatRatesState'] {
+  return {
+    errorMessage: null,
+    isLoading: false,
+    settings: {
+      isPersisted: true,
+      vatRates: [
+        {
+          isActive: true,
+          isDefault: true,
+          label: 'Yleinen ALV',
+          rateBasisPoints: 2550,
+          sortOrder: 0,
+        },
+      ],
     },
   };
 }

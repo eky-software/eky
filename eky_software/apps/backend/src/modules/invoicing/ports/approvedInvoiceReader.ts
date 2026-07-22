@@ -1,4 +1,7 @@
-import type { ApprovedInvoiceSummary } from '../domain/approvedInvoiceSummary.js';
+import type {
+  ApprovedInvoiceSummaryQuery,
+  ApprovedInvoiceSummaryResult,
+} from '../domain/approvedInvoiceSummary.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 
 export interface ApprovedInvoiceReader {
@@ -8,6 +11,6 @@ export interface ApprovedInvoiceReader {
   ): Promise<ApprovedInvoiceView | undefined>;
 
   listApprovedInvoiceSummaries(
-    companyId: string,
-  ): Promise<ApprovedInvoiceSummary[]>;
+    query: ApprovedInvoiceSummaryQuery,
+  ): Promise<ApprovedInvoiceSummaryResult>;
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { InvoiceVatRate } from '@eky/api-client';
 
 import type {
   InvoiceDraftLineFormErrors,
@@ -9,9 +10,9 @@ import type {
 } from '../form/invoiceRowFormState.js';
 import {
   customInvoiceUnitSelectValue,
+  createInvoiceVatRateOptions,
   invoiceDiscountTypeOptions,
   invoiceUnitOptions,
-  invoiceVatRateOptions,
   isKnownInvoiceUnit,
 } from '../form/invoiceRowOptions.js';
 import styles from './InvoiceRowEditor.module.css';
@@ -22,6 +23,7 @@ interface InvoiceRowEditorProps {
   errors: InvoiceDraftLineFormErrors | undefined;
   position: number;
   row: InvoiceRowForm;
+  vatRates: readonly InvoiceVatRate[] | null;
   onChange<FieldName extends InvoiceRowFormField>(
     rowId: string,
     fieldName: FieldName,
@@ -35,6 +37,7 @@ export function InvoiceRowEditor({
   errors,
   position,
   row,
+  vatRates,
   onChange,
   onRemove,
 }: InvoiceRowEditorProps): React.JSX.Element {
@@ -47,6 +50,10 @@ export function InvoiceRowEditor({
   const selectedUnitValue = isCustomUnit
     ? customInvoiceUnitSelectValue
     : row.unit;
+  const vatRateOptions = createInvoiceVatRateOptions(
+    vatRates,
+    row.vatRateBasisPoints,
+  );
 
   useEffect(() => {
     if (row.discountType !== 'none' || errors?.discountValue !== undefined) {
@@ -166,7 +173,7 @@ export function InvoiceRowEditor({
             )
           }
         >
-          {invoiceVatRateOptions.map((option) => (
+          {vatRateOptions.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
             </option>

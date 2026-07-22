@@ -12,7 +12,11 @@ import { uiText } from '../../../i18n/fi.js';
 describe('InvoiceWorkspaceListView', () => {
   it('renders invoice draft summaries and list workspace actions', () => {
     const html = renderView({
-      approvedInvoices: [createApprovedInvoiceSummary()],
+      approvedInvoicePageState: createApprovedInvoicePageState({
+        invoices: [createApprovedInvoiceSummary()],
+        totalCount: 1,
+        totalPages: 1,
+      }),
       drafts: [createInvoiceDraftSummary()],
     });
 
@@ -62,14 +66,22 @@ describe('InvoiceWorkspaceListView', () => {
 
   it('splits approved and sent invoices into separate lists', () => {
     const html = renderView({
-      approvedInvoices: [
-        createApprovedInvoiceSummary(),
-        createApprovedInvoiceSummary({
-          id: 'invoice-2',
-          invoiceNumber: '20260002',
-          status: 'sent',
-        }),
-      ],
+      approvedInvoicePageState: createApprovedInvoicePageState({
+        invoices: [createApprovedInvoiceSummary()],
+        totalCount: 1,
+        totalPages: 1,
+      }),
+      sentInvoicePageState: createApprovedInvoicePageState({
+        invoices: [
+          createApprovedInvoiceSummary({
+            id: 'invoice-2',
+            invoiceNumber: '20260002',
+            status: 'sent',
+          }),
+        ],
+        totalCount: 1,
+        totalPages: 1,
+      }),
     });
     const approvedListStart = html.indexOf(
       `aria-label="${uiText.invoicing.approvedInvoiceList}"`,
@@ -115,18 +127,17 @@ function renderView(
 ): string {
   return renderToStaticMarkup(
     <InvoiceWorkspaceListView
-      approvedInvoices={[]}
-      approvedInvoiceErrorMessage={null}
+      approvedInvoicePageState={createApprovedInvoicePageState()}
       customers={[createCustomer()]}
       customerErrorMessage={null}
       deleteErrorMessage={null}
       deletingDraftId={null}
       drafts={[]}
       draftErrorMessage={null}
-      isApprovedInvoiceListLoading={false}
       isCustomerListLoading={false}
       isDraftListLoading={false}
       pendingDeleteDraftId={null}
+      sentInvoicePageState={createApprovedInvoicePageState()}
       onCancelDeleteDraft={vi.fn()}
       onConfirmDeleteDraft={vi.fn()}
       onNewInvoice={vi.fn()}
@@ -136,6 +147,37 @@ function renderView(
       {...overrides}
     />,
   );
+}
+
+function createApprovedInvoicePageState(
+  overrides: Partial<
+    InvoiceWorkspaceListViewProps['approvedInvoicePageState']
+  > = {},
+): InvoiceWorkspaceListViewProps['approvedInvoicePageState'] {
+  return {
+    controls: {
+      fiscalYearStartYear: 2026,
+      month: '2026-07',
+      page: 1,
+      pageSize: 20,
+      periodMode: 'all',
+      sort: 'invoiceDateDesc',
+    },
+    errorMessage: null,
+    goToPage: vi.fn(),
+    invoices: [],
+    isFiscalYearFilterAvailable: true,
+    isLoading: false,
+    refresh: vi.fn(async () => undefined),
+    setFiscalYearStartYear: vi.fn(),
+    setMonth: vi.fn(),
+    setPageSize: vi.fn(),
+    setPeriodMode: vi.fn(),
+    setSort: vi.fn(),
+    totalCount: 0,
+    totalPages: 0,
+    ...overrides,
+  };
 }
 
 function createCustomer(): Customer {

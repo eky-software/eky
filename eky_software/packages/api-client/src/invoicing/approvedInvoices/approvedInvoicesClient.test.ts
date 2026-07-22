@@ -8,6 +8,7 @@ import {
   type ApprovedInvoiceEmailSmtpSendResult,
   type ApprovedInvoiceEmailSmtpTestSendResult,
   type ApprovedInvoiceEmailPreview,
+  type ApprovedInvoiceListQuery,
   type ApprovedInvoiceSummary,
   type ApprovedInvoiceView,
   type InvoiceDraft,
@@ -17,14 +18,29 @@ describe('approved invoices api client', () => {
   it('lists approved invoices through GET /invoices', async () => {
     const requests = createRequestLog();
     const invoiceSummary = createTestApprovedInvoiceSummary();
-    const client = createTestClient(requests, { invoices: [invoiceSummary] });
+    const invoicePage = {
+      invoices: [invoiceSummary],
+      page: 2,
+      pageSize: 20,
+      totalCount: 23,
+      totalPages: 2,
+    } as const;
+    const client = createTestClient(requests, { invoicePage });
 
-    const result = await client.listApprovedInvoices();
+    const result = await client.listApprovedInvoices({
+      dateFrom: '2026-06-01',
+      dateTo: '2026-06-30',
+      page: 2,
+      pageSize: 20,
+      sort: 'customerNameAsc',
+      status: 'approved',
+    });
 
-    expect(result).toEqual([invoiceSummary]);
+    expect(result).toEqual(invoicePage);
     expect(requests).toEqual([
       {
-        input: '/invoices',
+        input:
+          '/invoices?status=approved&page=2&pageSize=20&sort=customerNameAsc&dateFrom=2026-06-01&dateTo=2026-06-30',
         init: {
           headers: {
             Accept: 'application/json',
@@ -498,9 +514,26 @@ describe('approved invoices api client', () => {
     const requests = createRequestLog();
     const client = createTestClient(requests, {});
 
-    await expect(client.listApprovedInvoices()).rejects.toBeInstanceOf(
-      EkyApiError,
-    );
+    await expect(
+      client.listApprovedInvoices(createApprovedInvoiceListQuery()),
+    ).rejects.toBeInstanceOf(EkyApiError);
+  });
+
+  it('rejects malformed approved invoice pagination metadata', async () => {
+    const requests = createRequestLog();
+    const client = createTestClient(requests, {
+      invoicePage: {
+        invoices: [],
+        page: 1,
+        pageSize: 25,
+        totalCount: 0,
+        totalPages: 0,
+      },
+    });
+
+    await expect(
+      client.listApprovedInvoices(createApprovedInvoiceListQuery()),
+    ).rejects.toBeInstanceOf(EkyApiError);
   });
 
   it('rejects a malformed reopen response', async () => {
@@ -922,5 +955,14 @@ function createTestApprovedInvoiceSummary(
     approvedAt: '2026-06-13T10:00:00.000Z',
     updatedAt: '2026-06-13T10:00:00.000Z',
     ...overrides,
+  };
+}
+
+function createApprovedInvoiceListQuery(): ApprovedInvoiceListQuery {
+  return {
+    page: 1,
+    pageSize: 20,
+    sort: 'invoiceDateDesc',
+    status: 'approved',
   };
 }

@@ -29,6 +29,10 @@ export default defineConfig({
         changeOrigin: true,
         target: 'http://127.0.0.1:3000',
       },
+      '/invoice-vat-rates': {
+        changeOrigin: true,
+        target: 'http://127.0.0.1:3000',
+      },
     },
   },
 });

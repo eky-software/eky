@@ -13,6 +13,7 @@ interface ApprovedInvoiceListProps {
   errorMessage: string | null;
   isLoading: boolean;
   listLabel?: string;
+  loadingMessage?: string;
   onOpenApprovedInvoice(id: string): void;
 }
 
@@ -22,10 +23,11 @@ export function ApprovedInvoiceList({
   errorMessage,
   isLoading,
   listLabel = uiText.invoicing.approvedInvoiceList,
+  loadingMessage = uiText.invoicing.approvedInvoicesLoading,
   onOpenApprovedInvoice,
 }: ApprovedInvoiceListProps): React.JSX.Element {
   if (isLoading) {
-    return <p className={styles.state}>{uiText.invoicing.approvedInvoicesLoading}</p>;
+    return <p className={styles.state}>{loadingMessage}</p>;
   }
 
   if (errorMessage) {
