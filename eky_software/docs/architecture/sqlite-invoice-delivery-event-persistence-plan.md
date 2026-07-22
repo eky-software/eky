@@ -166,6 +166,53 @@ varmista, että eventin `company_id`, laskun `company_id` ja dokumentin
 | `failed` | ei uutta siirtymää | - | Terminal-eventtiä ei voi täydentää uudelleen |
 | `outcomeUnknown` | ei nykyistä ratkaisupolkua | - | Estää uuden tavallisen lähetyksen ja manuaalisen toimituksen ennakkotarkistuksessa |
 
+## Kirjoitusrajan Auditointi
+
+Jäljellä olevat kirjoitusstatementit kuuluvat samaan Invoicingin SQLite-
+adapteriin. Kaikki muuttuvat arvot välitetään nimettyinä parametreina.
+Statementit eivät omista transaktioita, tunnisteiden tai aikojen generointia
+eivätkä statementtien välistä suoritusjärjestystä.
+
+| Operaatio | Taulu ja statement | Input ja guardit | `changes` ja virhe | Luotettu luku ja rollback-raja |
+| --- | --- | --- | --- | --- |
+| Varmasti onnistuneen email-eventin viimeistely | `invoice_delivery_events`, `UPDATE` | `companyId`, `invoiceId`, `eventId`, `providerMessageId`; `id + company_id + invoice_id + status = attempted` | vaatii `changes === 1`; `Invoice delivery event could not be completed.` | luottaa saman transaktion aiempaan `companyId + invoiceId + approved/sent` -laskuhakuun; myöhempi laskun statusvirhe peruu event-päivityksen |
+| Yleinen terminal-päivitys | `invoice_delivery_events`, `UPDATE` | `companyId`, `eventId`, terminal-status sekä provider- ja virhekentät; `id + company_id + status = attempted` | vaatii `changes === 1`; `Invoice delivery event could not be completed.` | ei repositoryn aiempaa SELECTiä; application-polku sitoo eventin vahvistettuun lähetysyritykseen; yksittäinen statement joko onnistuu tai epäonnistuu kokonaan |
+| Laskun merkitseminen lähetetyksi | `invoices`, `UPDATE` | `companyId`, `invoiceId`, `sentAt`; `company_id + id + status = approved` | vaatii `changes === 1`; `Approved invoice could not be marked sent.` | luottaa saman transaktion aiempaan yritysrajattuun laskuhakuun; email-polussa sen virhe peruu event-päivityksen, manual-polussa sen virhe peruu delivery-eventin INSERTin |
+| Delivery-eventin tallennus | `invoice_delivery_events`, `INSERT` | koko `InvoiceDeliveryEvent` persistence-riviksi muunnettuna; PK-, FK-, enum- ja pituusrajat ovat skeemassa | ei erillistä `changes`-tarkistusta; SQLite constraint -virhe välitetään kutsujalle | nykyiset application-polut luottavat aiempaan `companyId + invoiceId` -lasku- ja dokumenttihakuun; yksittäinen INSERT ei jätä osittaista riviä, manual-transaktiossa myöhempi status- tai audit-virhe peruu INSERTin |
+| Manuaalisen toimituksen audit-event | `invoice_audit_events`, `INSERT` | `auditEventId`, `companyId`, `actorUserId`, vakioaction, laskuhaun `sourceDraftId` ja `invoiceNumber`, `invoiceId`, `deliveredAt` | ei erillistä `changes`-tarkistusta; SQLite constraint -virhe välitetään kutsujalle | luottaa saman transaktion yritysrajattuun manual-laskuhakuun; sen virhe peruu delivery-eventin ja laskun statuspäivityksen |
+
+### Kirjoitusjärjestykset
+
+Varmasti onnistunut sähköpostitoimitus tehdään yhdessä synkronisessa
+SQLite-transaktiossa:
+
+1. lasku haetaan `companyId + invoiceId` -rajalla tilassa `approved` tai `sent`
+2. `attempted`-event päivitetään `succeeded`-tilaan yritys- ja laskurajattuna
+3. `approved`-lasku päivitetään tarvittaessa `sent`-tilaan
+
+Manuaalinen toimitus tehdään yhdessä synkronisessa SQLite-transaktiossa:
+
+1. lasku haetaan `companyId + invoiceId` -rajalla tilassa `approved` tai `sent`
+2. `sent`-lasku palautetaan idempotenttina no-opina
+3. ratkaisematon event tarkistetaan saman transaktion sisällä
+4. suoraan `succeeded`-tilainen manual/print-event tallennetaan
+5. lasku päivitetään `approved -> sent`
+6. `invoice.marked_sent_manually`-audit-event tallennetaan
+
+Yksittäiset polut eivät avaa erillistä transaktiowrapperia:
+
+- `saveDeliveryEvent` tekee yhden delivery-eventin `INSERT`-statementin
+- `completeDeliveryEvent` tekee yhden `attempted -> terminal` -`UPDATE`-
+  statementin
+
+Molempien finalizerien laskun `approved -> sent` -statementit ovat SQL:n,
+nimettyjen parametrien, `changes === 1` -ehdon ja virheviestin osalta
+identtiset. Ne voidaan toteuttaa yhdellä tarkasti nimetyllä synkronisella
+statement-metodilla muuttamatta nykyistä käyttäytymistä. Auditointi ei
+paljastanut uutta turvallisuus- tai datan eheysvirhettä. Tunnettu
+company/invoice/document-ristiinlinkityksen defense-in-depth-puute pidetään
+erillään tästä käyttäytymisen säilyttävästä työerästä.
+
 ## Tenant- Ja Dokumenttirajojen Audit
 
 ### Eventin Yritys Ja Lasku
