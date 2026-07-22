@@ -21,6 +21,27 @@ korvaa niitä.
 - [ ] Varmista ennen asennusta projektin omistajan nimenomainen hyväksyntä
   jokaiselle uudelle riippuvuudelle sekä `package.json`- tai lockfile-muutokselle.
 
+## Moduulikohtainen AGENTS.md
+
+Jokaisen liiketoimintamoduulin juurella pitää normaalisti olla oma
+`AGENTS.md`. Se tarkentaa juuri kyseisen moduulin työtä, mutta ei kopioi juuri-
+`AGENTS.md`:n yleisiä sääntöjä eikä kumoa niitä.
+
+Moduulikohtainen ohje määrittelee tiiviisti vähintään:
+
+- moduulin omistaman ja sen ulkopuolelle rajatun datan
+- pakolliset moduuli- ja arkkitehtuuridokumentit
+- sallitut kerrokset ja niiden riippuvuussuunnat
+- `ActorContext`- ja `companyId`-luottamusrajan
+- sallitut moduulien väliset luku- ja kirjoitussopimukset
+- muutokseen suhteutetut pakolliset testit
+- moduulille olennaiset kielletyt riippuvuussuunnat
+
+Pieni tekninen tai jaettu infrastruktuurikokonaisuus ei tarvitse omaa
+`AGENTS.md`:ää vain kansiorakenteen yhdenmukaisuuden vuoksi. Poikkeuksen pitää
+olla aidosti rajattu eikä se saa omistaa liiketoimintadataa tai muodostaa uutta
+moduulirajaa.
+
 ## Backend Ja Data
 
 - [ ] Toteuta infrastructure-adapterit porttien taakse; älä paljasta
