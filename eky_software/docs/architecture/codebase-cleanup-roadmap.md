@@ -742,6 +742,10 @@ korvataan viittauksella uuteen hyväksyttyyn ADR- tai moduulisuunnitelmaan.
 | SQLite delivery event -karakterisointi | Valmis | `d6d6935` | `3529a05` | Tenant-, invoice-, terminal guard-, rollback-, safe response- ja idempotenssitestit täydennetty |
 | SQLite delivery event -rivimuunnosten erotus | Valmis | `3529a05` | `7d45eca` | Puhtaat event- ja summary-row-muunnokset erotettu ilman SQL- tai transaktiovastuuta |
 | SQLite delivery event -lukukyselyiden erotus | Valmis | `7d45eca` | `039bbd1` | Neljä synkronista SELECT-vastuuta erotettu samaa tietokantayhteyttä käyttävään query-helperiin |
+| SQLite delivery event write boundary -auditointi | Valmis | `039bbd1` | `ce45296` | Viisi kirjoitusstatementtia, suoritusjärjestykset, guardit ja rollback-rajat kirjattu |
+| SQLite delivery event write guard -karakterisointi | Valmis | `ce45296` | `e507f74` | Terminal guard-, tenant-, tuntematon lasku- ja duplicate audit -rollback-polut vahvistettu |
+| SQLite delivery event write statements -erotus | Valmis | `e507f74` | `d6deb05` | Parametrisoidut synkroniset kirjoitukset erotettu helperiin; repository säilyttää päätökset ja transaktiot |
+| SQLite delivery event transaction orchestration -selkeytys | Valmis | `d6deb05` | `6434846` | Kaksi finalizer-transaktiota nimetty yksityisiksi synkronisiksi työnkuluiksi repositoryyn |
 | Muut cleanup-roadmapin vaiheet | Ei aloitettu | - | - | Vaativat projektin omistajan uuden luvan |
 
 Roadmapia ei käytetä vanhojen ADR-päätösten historian uudelleenkirjoittamiseen.
@@ -749,9 +753,15 @@ Kun nykytila muuttuu, nykytilaa kuvaavat moduuli- ja arkkitehtuuridokumentit
 päivitetään samassa muutoksessa.
 
 Web Foundation-, backend-composition-, approved invoice HTTP-, API-response-,
-SQLite approval- ja SQLite delivery event read boundary -erien jälkeen seuraava
-pienin turvallinen arviointikohde on **SQLite invoice delivery event write
-statements and transaction orchestration**. Tämä on vain seuraavan mahdollisen
-vastuu- ja riskikatselmuksen nimi. Se ei anna lupaa erottaa kirjoituslauseita,
+SQLite approval- ja SQLite delivery event persistence boundary -erien jälkeen
+seuraava pienin turvallinen arviointikohde on **SQLite invoice draft
+persistence boundaries**. Tämä on vain seuraavan mahdollisen vastuu- ja
+riskikatselmuksen nimi. Se ei anna lupaa erottaa kyselyitä tai kirjoituksia,
 muuttaa statement-järjestystä, transaktioita, migraatioita, tietokantaa tai
 moduulin julkisia sopimuksia ilman projektin omistajan uutta päätöstä.
+
+Delivery eventin `companyId`-, `invoiceId`- ja `documentId`-suhteen
+persistence-tason vahvistaminen pidetään erillisenä myöhempänä
+turvallisuuskohteena. Mahdollinen SQL- tai skeemamuutos vaatii oman päätöksen,
+testit ja toteutusluvan, eikä sitä yhdistetä käyttäytymisen säilyttäviin
+cleanup-eriin.

@@ -304,6 +304,35 @@ describe('SqliteInvoiceDeliveryEventRepository', () => {
     });
   });
 
+  it('does not change the invoice when the successful delivery event is no longer attempted', async () => {
+    const repository = new SqliteInvoiceDeliveryEventRepository(database);
+    const event = createEvent({
+      provider: 'smtp',
+      providerMessageId: '<original@example.fi>',
+      status: 'succeeded',
+    });
+    await repository.saveDeliveryEvent(event);
+
+    await expect(
+      repository.completeSuccessfulEmailDelivery({
+        companyId: 'dev-company',
+        eventId: event.id,
+        invoiceId: event.invoiceId,
+        providerMessageId: '<replacement@example.fi>',
+        sentAt: '2026-07-10T10:01:00.000Z',
+      }),
+    ).rejects.toThrow('Invoice delivery event could not be completed.');
+
+    expect(readInvoiceStatus(database, 'invoice-1')).toEqual({
+      status: 'approved',
+      updated_at: '2026-07-10T09:00:00.000Z',
+    });
+    expect(readEventCompletion(database, event.id)).toEqual({
+      provider_message_id: '<original@example.fi>',
+      status: 'succeeded',
+    });
+  });
+
   it('stores an unknown delivery outcome and rejects another company', async () => {
     const repository = new SqliteInvoiceDeliveryEventRepository(database);
     const event = createEvent({ status: 'attempted' });
@@ -319,6 +348,13 @@ describe('SqliteInvoiceDeliveryEventRepository', () => {
         technicalErrorCode: null,
       }),
     ).rejects.toThrow('Invoice delivery event could not be completed.');
+
+    expect(readEventTerminalFields(database, event.id)).toEqual({
+      provider_message_id: null,
+      safe_error_message: null,
+      status: 'attempted',
+      technical_error_code: null,
+    });
 
     await repository.completeDeliveryEvent({
       companyId: event.companyId,
@@ -665,6 +701,33 @@ describe('SqliteInvoiceDeliveryEventRepository', () => {
     expect(countInvoiceAuditEvents(database)).toBe(0);
   });
 
+  it('rolls back manual delivery when its delivery event id already exists', async () => {
+    const repository = new SqliteInvoiceDeliveryEventRepository(database);
+    await repository.saveDeliveryEvent(
+      createEvent({ id: 'duplicate-manual-event', status: 'succeeded' }),
+    );
+
+    await expect(
+      repository.completeManualDelivery({
+        actorUserId: 'user-1',
+        auditEventId: 'audit-duplicate-manual-event',
+        companyId: 'dev-company',
+        deliveredAt: '2026-07-10T12:00:00.000Z',
+        deliveryEventId: 'duplicate-manual-event',
+        deliveryMethod: 'manual',
+        documentId: 'document-1',
+        invoiceId: 'invoice-1',
+      }),
+    ).rejects.toThrow();
+
+    expect(readInvoiceStatus(database, 'invoice-1')).toEqual({
+      status: 'approved',
+      updated_at: '2026-07-10T09:00:00.000Z',
+    });
+    expect(countDeliveryEvents(database)).toBe(1);
+    expect(countInvoiceAuditEvents(database)).toBe(0);
+  });
+
   it('rolls back manual delivery when its audit event cannot be stored', async () => {
     database
       .prepare(
@@ -742,6 +805,8 @@ describe('SqliteInvoiceDeliveryEventRepository', () => {
     await expect(
       repository.saveDeliveryEvent(createEvent({ invoiceId: 'missing-invoice' })),
     ).rejects.toThrow();
+
+    expect(countDeliveryEvents(database)).toBe(0);
   });
 });
 
@@ -922,6 +987,34 @@ function readEventCompletion(database: DatabaseConnection, eventId: string) {
     >(
       `
         SELECT provider_message_id, status
+        FROM invoice_delivery_events
+        WHERE id = ?
+      `,
+    )
+    .get(eventId);
+}
+
+function readEventTerminalFields(
+  database: DatabaseConnection,
+  eventId: string,
+) {
+  return database
+    .prepare<
+      [string],
+      Pick<
+        InvoiceDeliveryEventRow,
+        | 'provider_message_id'
+        | 'safe_error_message'
+        | 'status'
+        | 'technical_error_code'
+      >
+    >(
+      `
+        SELECT
+          provider_message_id,
+          safe_error_message,
+          status,
+          technical_error_code
         FROM invoice_delivery_events
         WHERE id = ?
       `,
