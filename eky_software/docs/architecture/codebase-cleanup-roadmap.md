@@ -477,6 +477,7 @@ PDF-renderer pysyy Invoicing-moduulin infrastructure-kerroksessa.
 invoicing/infrastructure/pdf/
   approvedInvoicePdfRenderer.ts
   approvedInvoicePdfLayout.ts
+  approvedInvoicePdfParty.ts
   sections/
     drawHeader.ts
     drawRecipientAndMeta.ts
@@ -485,6 +486,7 @@ invoicing/infrastructure/pdf/
     drawVatAndTotals.ts
     drawPaymentBar.ts
     drawFooter.ts
+    drawPageNumbers.ts
 ```
 
 `approvedInvoicePdfRenderer.ts` orkestroi järjestyksen. Section-tiedostot
@@ -746,22 +748,38 @@ korvataan viittauksella uuteen hyväksyttyyn ADR- tai moduulisuunnitelmaan.
 | SQLite delivery event write guard -karakterisointi | Valmis | `ce45296` | `e507f74` | Terminal guard-, tenant-, tuntematon lasku- ja duplicate audit -rollback-polut vahvistettu |
 | SQLite delivery event write statements -erotus | Valmis | `e507f74` | `d6deb05` | Parametrisoidut synkroniset kirjoitukset erotettu helperiin; repository säilyttää päätökset ja transaktiot |
 | SQLite delivery event transaction orchestration -selkeytys | Valmis | `d6deb05` | `6434846` | Kaksi finalizer-transaktiota nimetty yksityisiksi synkronisiksi työnkuluiksi repositoryyn |
-| Muut cleanup-roadmapin vaiheet | Ei aloitettu | - | - | Vaativat projektin omistajan uuden luvan |
+| SQLite invoice draft persistence -auditointi | Valmis | `f5dea7a` | `bcc74bf` | Public-portti, SQL-järjestys, tenant- ja statusguardit, transaktiot sekä rollback-invariantit kirjattu |
+| SQLite invoice draft persistence -karakterisointi | Valmis | `bcc74bf` | `4f65ee3` | Duplikaatti-id, hyväksytyn draftin rivisuoja ja virheellinen tallennettu discount-tyyppi testattu oikealla in-memory SQLite-kannalla |
+| SQLite invoice draft read/mapping -erotus | Valmis | `4f65ee3` | `2c1a072` | Puhtaat row-muunnokset ja synkroniset yritysrajatut lukukyselyt erotettu |
+| SQLite invoice draft write/transaction -erotus | Valmis | `2c1a072` | `b2e0f0e` | Statementit erotettu; repository säilyttää save/update-transaktiot ja kirjoitusjärjestyksen |
+| Electron main process -auditointi | Valmis | `b2e0f0e` | `88aca9c` | Main processin vastuut ja muuttumattomat trust-, sandbox-, protocol-, secret- ja smoke-rajat kirjattu |
+| Electron packaged smoke ja application window | Valmis | `88aca9c` | `57e133c` | Paketoidun artifactin assertiot ja turvallinen pääikkuna erotettu ilman preload- tai protocol-muutosta |
+| Electron runtime composition ja vahvistukset | Valmis | `57e133c` | `540f32b` | Runtime-session, backend, safeStorage-broker, protocol, permissionit, ikkunat ja luotetut dialogit kootaan nimetyssä compositionissa |
+| Electron lifecycle-entrypoint | Valmis | `540f32b` | `25a0004` | `index.ts` sisältää vain schemen oikea-aikaisen rekisteröinnin, smoke userDatan, single-instancen, app-lifecyclen ja turvallisen startup-virheen |
+| Approved invoice PDF -auditointi | Valmis | `25a0004` | `ece3a2b` | Osiojärjestys, snapshot-inputit, layout-vakiot, fontit, värit ja sivunvaihdot kirjattu |
+| Approved invoice PDF identity sections | Valmis | `ece3a2b` | `2a17539` | Header, vastaanottaja/perustiedot, lisätiedot ja laskukohtainen party-fallback erotettu |
+| Approved invoice PDF layout sections | Valmis | `2a17539` | `cce2b32` | Rivit, ALV/summat, maksupalkki, footer ja sivunumerot erotettu; renderer jäi 55-riviseksi orkestroijaksi |
+| Alkuperäisen roadmapin ydinsiivous | Valmis | `195cce2` | `cce2b32` | Web-, composition-, HTTP-, API-client-, approval-, delivery-, draft-, Electron- ja PDF-ydinkohteet on käsitelty |
+| Featurekohtainen i18n-jako | Valinnainen P3 | - | - | Tehdään vain, jos nykyinen `uiText`-sopimus säilyy ja jako vähentää todellisia merge-konflikteja |
+| `packages/ui` | Passiivinen | - | - | Skeletonia ei aktivoida eikä sinne lisätä React-komponentteja ilman dokumentoitua usean itsenäisen UI:n tarvetta |
+| Release gate | Seuraava erillinen kokonaisuus | - | - | Backup/restore, migraatioiden eheys ja Windows-jakelun portit eivät kuulu käyttäytymisen säilyttävään ydinsiivoukseen |
 
 Roadmapia ei käytetä vanhojen ADR-päätösten historian uudelleenkirjoittamiseen.
 Kun nykytila muuttuu, nykytilaa kuvaavat moduuli- ja arkkitehtuuridokumentit
 päivitetään samassa muutoksessa.
 
-Web Foundation-, backend-composition-, approved invoice HTTP-, API-response-,
-SQLite approval- ja SQLite delivery event persistence boundary -erien jälkeen
-seuraava pienin turvallinen arviointikohde on **SQLite invoice draft
-persistence boundaries**. Tämä on vain seuraavan mahdollisen vastuu- ja
-riskikatselmuksen nimi. Se ei anna lupaa erottaa kyselyitä tai kirjoituksia,
-muuttaa statement-järjestystä, transaktioita, migraatioita, tietokantaa tai
-moduulin julkisia sopimuksia ilman projektin omistajan uutta päätöstä.
+Alkuperäisen roadmapin ydinsiivous on valmis. Uusien moduulien työ aloitetaan
+dokumentin `docs/architecture/new-module-implementation-checklist.md` avulla.
+Seuraavat kokonaisuudet ovat erillisiä jatkotöitä eivätkä saa toteutuslupaa
+tämän merkinnän perusteella:
 
-Delivery eventin `companyId`-, `invoiceId`- ja `documentId`-suhteen
-persistence-tason vahvistaminen pidetään erillisenä myöhempänä
-turvallisuuskohteena. Mahdollinen SQL- tai skeemamuutos vaatii oman päätöksen,
-testit ja toteutusluvan, eikä sitä yhdistetä käyttäytymisen säilyttäviin
-cleanup-eriin.
+1. Customer card / customer overview
+2. backup and restore -arkkitehtuuri
+3. migraatioiden muuttumattomuus ja checksum-tarkistus
+4. delivery eventin `companyId`-, `invoiceId`- ja `documentId`-suhteen
+   persistence-tason vahvistaminen
+5. Windows release gate
+
+Jokainen schema-, migraatio-, release- tai käyttäytymismuutos vaatii oman
+päätöksen, testit ja toteutusluvan. Niitä ei yhdistetä jälkikäteen tähän
+käyttäytymisen säilyttävään cleanup-erään.

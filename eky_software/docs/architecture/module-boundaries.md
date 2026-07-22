@@ -242,3 +242,7 @@ Moduulirajan rikkomista ovat esimerkiksi:
 - AI-agentti kirjoittaa suoraan tietokantaan
 
 Jos moduuliraja tuntuu estävän järkevän työn, rajaa muutetaan dokumentoidulla päätöksellä, ei oikopolulla.
+
+Uuden moduulin rajat, cross-module-luku- ja kirjoituspolut sekä testit käydään
+läpi dokumentin `docs/architecture/new-module-implementation-checklist.md`
+avulla ennen toteutuksen laajentamista.

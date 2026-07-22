@@ -235,6 +235,25 @@ describe('SqliteInvoiceDraftRepository', () => {
     expect(lineCount?.count).toBe(0);
   });
 
+  it('does not replace an existing draft when the draft id is duplicated', async () => {
+    const originalDraft = createDraft();
+    const duplicateDraft = createDraft(
+      [createLine('replacement-line', 1, 0)],
+      {
+        subject: 'Duplicate draft must not replace existing data',
+        updatedAt: '2026-06-14T12:00:00.000Z',
+      },
+    );
+    const repository = new SqliteInvoiceDraftRepository(database);
+
+    await repository.saveDraft(originalDraft);
+
+    await expect(repository.saveDraft(duplicateDraft)).rejects.toThrow();
+    await expect(
+      repository.getDraftById('dev-company', 'draft-1'),
+    ).resolves.toEqual(originalDraft);
+  });
+
   it('deletes a company draft and its lines through the foreign key cascade', async () => {
     const repository = new SqliteInvoiceDraftRepository(database);
 
@@ -308,6 +327,14 @@ describe('SqliteInvoiceDraftRepository', () => {
       approved_at: '2027-01-15T12:00:00.000Z',
       approved_invoice_id: 'invoice-1',
     });
+
+    const lineCount = database
+      .prepare<[], { count: number }>(
+        'SELECT COUNT(*) AS count FROM invoice_draft_lines',
+      )
+      .get();
+
+    expect(lineCount?.count).toBe(draft.lines.length);
   });
 
   it('updates a company draft and replaces its lines in one transaction', async () => {
@@ -471,6 +498,27 @@ describe('SqliteInvoiceDraftRepository', () => {
       { type: 'fixed', amountCents: 100 },
     ]);
     expect(storedDraft?.totals).toEqual(draft.totals);
+  });
+
+  it('rejects an invalid stored discount type instead of returning corrupted domain data', async () => {
+    const repository = new SqliteInvoiceDraftRepository(database);
+
+    await repository.saveDraft(createDraft());
+    database.pragma('ignore_check_constraints = ON');
+    database
+      .prepare<[string, string]>(
+        `
+          UPDATE invoice_draft_lines
+          SET discount_type = ?
+          WHERE id = ?
+        `,
+      )
+      .run('unexpected', 'line-1');
+    database.pragma('ignore_check_constraints = OFF');
+
+    await expect(
+      repository.getDraftById('dev-company', 'draft-1'),
+    ).rejects.toThrow('Stored invoice draft discount type is invalid.');
   });
 
   it('does not return a draft for another company or an unknown id', async () => {
