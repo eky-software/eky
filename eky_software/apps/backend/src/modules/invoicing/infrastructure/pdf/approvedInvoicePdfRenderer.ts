@@ -13,23 +13,12 @@ import {
   formatPdfQuantity,
 } from './approvedInvoicePdfFormatting.js';
 import {
-  drawBox,
   drawHorizontalLine,
-  drawLabelValueLines,
-  drawSectionTitle,
   invoicePdfLayout,
 } from './approvedInvoicePdfLayout.js';
-
-interface PartySnapshot {
-  name: string;
-  businessId: string;
-  customerNumber?: string;
-  streetAddress: string;
-  postalCode: string;
-  city: string;
-  email: string;
-  phone: string;
-}
+import { drawAdditionalDetails } from './sections/drawAdditionalDetails.js';
+import { drawHeader } from './sections/drawHeader.js';
+import { drawRecipientAndMeta } from './sections/drawRecipientAndMeta.js';
 
 export async function renderApprovedInvoicePdf(
   invoice: ApprovedInvoiceView,
@@ -72,143 +61,6 @@ function drawInvoice(
   drawPaymentBar(doc, invoice, Math.max(totalsBottom + 18, 628));
   drawFooter(doc, invoice);
   drawPageNumbers(doc);
-}
-
-function drawHeader(
-  doc: PDFKit.PDFDocument,
-  invoice: ApprovedInvoiceView,
-): void {
-  const leftX = invoicePdfLayout.margin;
-  const rightX = 385;
-
-  doc
-    .font('Helvetica-Bold')
-    .fontSize(16)
-    .text(invoice.companyNameSnapshot, leftX, 42, { width: 260 });
-  doc.font('Helvetica').fontSize(9);
-  drawAddressLines(
-    doc,
-    {
-      name: '',
-      businessId: invoice.companyBusinessIdSnapshot,
-      streetAddress: invoice.companyStreetAddressSnapshot,
-      postalCode: invoice.companyPostalCodeSnapshot,
-      city: invoice.companyCitySnapshot,
-      email: '',
-      phone: '',
-    },
-    leftX,
-    64,
-    240,
-  );
-
-  doc
-    .font('Helvetica-Bold')
-    .fontSize(16)
-    .text(`Lasku: ${invoice.invoiceNumber}`, rightX, 42, {
-      width: 166,
-      align: 'left',
-    });
-  doc
-    .font('Helvetica-Bold')
-    .fontSize(11)
-    .text(`Päiväys: ${formatPdfDate(invoice.invoiceDate)}`, rightX, 78, {
-      width: 166,
-    });
-
-  drawHorizontalLine(doc, 112);
-}
-
-function drawRecipientAndMeta(
-  doc: PDFKit.PDFDocument,
-  invoice: ApprovedInvoiceView,
-  y: number,
-): number {
-  const recipient = getBillingRecipient(invoice);
-  const leftX = invoicePdfLayout.margin;
-  const rightX = 338;
-  const boxHeight = 150;
-
-  drawBox(doc, leftX, y, 270, boxHeight);
-  drawSectionTitle(doc, 'Laskun vastaanottaja', leftX + 10, y + 10, 250);
-  drawParty(doc, recipient, leftX + 10, y + 30, 250);
-
-  drawBox(doc, rightX, y, 215, boxHeight);
-  drawSectionTitle(doc, 'Laskun tiedot', rightX + 10, y + 10, 195);
-  drawLabelValueLines(
-    doc,
-    [
-      { label: 'Asiakas', value: invoice.customerNameSnapshot },
-      { label: 'Asiakasnumero', value: invoice.customerNumberSnapshot },
-      { label: 'Tilausnumero', value: invoice.orderNumber },
-      { label: 'Maksuehto', value: `${invoice.paymentTermDays} pv netto` },
-      { label: 'Eräpäivä', value: formatPdfDate(invoice.dueDate) },
-      {
-        label: 'Huom.aika',
-        value: `${invoice.reminderPeriodDays} pv`,
-      },
-      {
-        label: 'Viiv.korko',
-        value: formatPdfPercentBasisPoints(
-          invoice.latePaymentInterestBasisPoints,
-        ),
-      },
-      { label: 'Viitenumero', value: invoice.referenceNumber },
-    ],
-    rightX + 10,
-    y + 31,
-    { labelWidth: 78, width: 195, lineGap: 1 },
-  );
-
-  return y + boxHeight;
-}
-
-function drawAdditionalDetails(
-  doc: PDFKit.PDFDocument,
-  invoice: ApprovedInvoiceView,
-  y: number,
-): number {
-  const lines = [
-    { label: 'Toimitus / kohde', value: invoice.deliveryAddressText },
-    { label: 'Lisätieto', value: invoice.note },
-  ];
-  const visibleLines = lines.filter((line) => line.value.trim().length > 0);
-
-  if (visibleLines.length === 0) {
-    return y;
-  }
-
-  const x = invoicePdfLayout.margin;
-  const contentX = x + 10;
-  const contentWidth = invoicePdfLayout.contentWidth - 20;
-  const labelWidth = 88;
-  const valueWidth = contentWidth - labelWidth;
-  const contentHeight = visibleLines.reduce(
-    (height, line) =>
-      height +
-      Math.max(
-        12,
-        doc.font('Helvetica-Bold').fontSize(8.5).heightOfString(line.label, {
-          width: labelWidth,
-        }),
-        doc.font('Helvetica').fontSize(8.5).heightOfString(line.value, {
-          width: valueWidth,
-        }),
-      ) +
-      2,
-    0,
-  );
-  const boxHeight = Math.max(32, contentHeight + 16);
-
-  drawBox(doc, x, y, invoicePdfLayout.contentWidth, boxHeight);
-  doc.fontSize(8.5);
-  drawLabelValueLines(doc, visibleLines, contentX, y + 9, {
-    labelWidth,
-    width: contentWidth,
-    lineGap: 2,
-  });
-
-  return y + boxHeight;
 }
 
 function drawInvoiceLines(
@@ -505,33 +357,6 @@ function drawFooter(
   );
 }
 
-function drawParty(
-  doc: PDFKit.PDFDocument,
-  party: PartySnapshot,
-  x: number,
-  y: number,
-  width: number,
-): void {
-  const lines = [
-    { label: 'Nimi', value: party.name },
-    { label: 'Asiakasnumero', value: party.customerNumber ?? '' },
-    { label: 'Y-tunnus', value: party.businessId },
-    { label: 'Osoite', value: party.streetAddress },
-    {
-      label: 'Postinumero',
-      value: `${party.postalCode} ${party.city}`.trim(),
-    },
-    { label: 'Sähköposti', value: party.email },
-    { label: 'Puhelin', value: party.phone },
-  ];
-
-  drawLabelValueLines(doc, lines, x, y, {
-    labelWidth: 82,
-    width,
-    lineGap: 1,
-  });
-}
-
 function drawPageNumbers(doc: PDFKit.PDFDocument): void {
   const pageRange = doc.bufferedPageRange();
 
@@ -547,57 +372,6 @@ function drawPageNumbers(doc: PDFKit.PDFDocument): void {
       })
       .fillColor('#000000');
   }
-}
-
-function drawAddressLines(
-  doc: PDFKit.PDFDocument,
-  party: PartySnapshot,
-  x: number,
-  y: number,
-  width: number,
-): void {
-  doc
-    .font('Helvetica')
-    .fontSize(9)
-    .text(
-      [
-        party.streetAddress,
-        `${party.postalCode} ${party.city}`.trim(),
-        party.email,
-        party.phone,
-      ]
-        .filter(Boolean)
-        .join('\n'),
-      x,
-      y,
-      { width },
-    );
-}
-
-function getBillingRecipient(invoice: ApprovedInvoiceView): PartySnapshot {
-  if (invoice.billingRecipientCustomerId) {
-    return {
-      name: invoice.billingRecipientNameSnapshot,
-      customerNumber: invoice.billingRecipientCustomerNumberSnapshot,
-      businessId: invoice.billingRecipientBusinessIdSnapshot,
-      streetAddress: invoice.billingRecipientStreetAddressSnapshot,
-      postalCode: invoice.billingRecipientPostalCodeSnapshot,
-      city: invoice.billingRecipientCitySnapshot,
-      email: invoice.billingRecipientEmailSnapshot,
-      phone: invoice.billingRecipientPhoneSnapshot,
-    };
-  }
-
-  return {
-    name: invoice.customerNameSnapshot,
-    customerNumber: invoice.customerNumberSnapshot,
-    businessId: invoice.customerBusinessIdSnapshot,
-    streetAddress: invoice.customerStreetAddressSnapshot,
-    postalCode: invoice.customerPostalCodeSnapshot,
-    city: invoice.customerCitySnapshot,
-    email: invoice.customerEmailSnapshot,
-    phone: invoice.customerPhoneSnapshot,
-  };
 }
 
 interface InvoiceLineColumn {
