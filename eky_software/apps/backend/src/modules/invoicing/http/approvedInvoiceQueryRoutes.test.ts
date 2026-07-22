@@ -6,7 +6,10 @@ import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 import type { GetApprovedInvoiceInput } from '../application/getApprovedInvoice.js';
 import type { ListApprovedInvoicesInput } from '../application/listApprovedInvoices.js';
 import { ApprovedInvoiceNotFoundError } from '../application/approvedInvoiceNotFoundError.js';
-import type { ApprovedInvoiceSummary } from '../domain/approvedInvoiceSummary.js';
+import type {
+  ApprovedInvoiceListPage,
+  ApprovedInvoiceSummary,
+} from '../domain/approvedInvoiceSummary.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
 import { createApprovedInvoiceQueryRoutes } from './approvedInvoiceQueryRoutes.js';
@@ -14,13 +17,47 @@ import { createApprovedInvoiceQueryRoutes } from './approvedInvoiceQueryRoutes.j
 describe('approved invoice query routes', () => {
   it('returns approved invoice summaries in the trusted company scope', async () => {
     const invoice = createApprovedInvoiceSummary();
-    const { app, getListInput } = createTestApp({ invoices: [invoice] });
+    const invoicePage = createApprovedInvoiceListPage([invoice]);
+    const { app, getListInput } = createTestApp({ invoicePage });
 
     const response = await app.request('/invoices');
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ invoices: [invoice] });
-    expect(getListInput()).toEqual({ companyId: 'dev-company' });
+    await expect(response.json()).resolves.toEqual({ invoicePage });
+    expect(getListInput()).toEqual({
+      companyId: 'dev-company',
+      status: 'approved',
+      page: 1,
+      pageSize: 20,
+      sort: 'invoiceDateDesc',
+    });
+  });
+
+  it('validates and forwards supported list filters without trusting companyId', async () => {
+    const { app, getListInput } = createTestApp({
+      invoicePage: createApprovedInvoiceListPage([]),
+    });
+
+    const response = await app.request(
+      '/invoices?status=sent&dateFrom=2026-01-01&dateTo=2026-12-31&page=2&pageSize=50&sort=customerNameAsc',
+    );
+
+    expect(response.status).toBe(200);
+    expect(getListInput()).toEqual({
+      companyId: 'dev-company',
+      status: 'sent',
+      dateFrom: '2026-01-01',
+      dateTo: '2026-12-31',
+      page: 2,
+      pageSize: 50,
+      sort: 'customerNameAsc',
+    });
+
+    const tenantOverrideResponse = await app.request(
+      '/invoices?companyId=other-company',
+    );
+
+    expect(tenantOverrideResponse.status).toBe(400);
   });
 
   it('returns an approved invoice by id in the trusted company scope', async () => {
@@ -88,7 +125,7 @@ describe('approved invoice query routes', () => {
 function createTestApp(options: {
   getError?: Error;
   invoice?: ApprovedInvoiceView;
-  invoices?: ApprovedInvoiceSummary[];
+  invoicePage?: ApprovedInvoiceListPage;
   listError?: Error;
 }) {
   let getInput: GetApprovedInvoiceInput | undefined;
@@ -114,7 +151,7 @@ function createTestApp(options: {
         throw options.listError;
       }
 
-      return options.invoices ?? [];
+      return options.invoicePage ?? createApprovedInvoiceListPage([]);
     },
   });
   const app = new Hono<BackendEnvironment>();
@@ -136,6 +173,18 @@ function createTestApp(options: {
     app,
     getInput: () => getInput,
     getListInput: () => listInput,
+  };
+}
+
+function createApprovedInvoiceListPage(
+  invoices: ApprovedInvoiceSummary[],
+): ApprovedInvoiceListPage {
+  return {
+    invoices,
+    page: 1,
+    pageSize: 20,
+    totalCount: invoices.length,
+    totalPages: invoices.length === 0 ? 0 : 1,
   };
 }
 

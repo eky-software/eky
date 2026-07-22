@@ -63,6 +63,7 @@ function renderPage(
     | 'copyApprovedInvoiceState'
     | 'deleteState'
     | 'invoicePaymentDefaultsState'
+    | 'invoiceVatRatesState'
     | 'invoiceDeliveryEventListState'
     | 'markApprovedInvoiceSentState'
     | 'reopenApprovedInvoiceState'
@@ -97,6 +98,7 @@ function renderPage(
         | 'copyApprovedInvoiceState'
         | 'deleteState'
         | 'invoicePaymentDefaultsState'
+        | 'invoiceVatRatesState'
         | 'invoiceDeliveryEventListState'
         | 'markApprovedInvoiceSentState'
         | 'reopenApprovedInvoiceState'
@@ -133,6 +135,7 @@ function renderPage(
       copyApprovedInvoiceState={createCopyApprovedInvoiceState()}
       deleteState={createDeleteState()}
       invoicePaymentDefaultsState={createInvoicePaymentDefaultsState()}
+      invoiceVatRatesState={createInvoiceVatRatesState()}
       invoiceDeliveryEventListState={createInvoiceDeliveryEventListState()}
       markApprovedInvoiceSentState={createMarkApprovedInvoiceSentState()}
       reopenApprovedInvoiceState={createReopenApprovedInvoiceState()}
@@ -252,11 +255,38 @@ function createApprovedInvoiceListState(
   overrides: Partial<InvoicingPageViewProps['approvedInvoiceListState']> = {},
 ): InvoicingPageViewProps['approvedInvoiceListState'] {
   return {
-    approvedInvoices: [],
-    errorMessage: null,
-    isLoading: false,
+    approved: createApprovedInvoicePageState(),
     refreshApprovedInvoices: vi.fn(),
+    sent: createApprovedInvoicePageState(),
     ...overrides,
+  };
+}
+
+function createApprovedInvoicePageState(): InvoicingPageViewProps[
+  'approvedInvoiceListState'
+]['approved'] {
+  return {
+    controls: {
+      fiscalYearStartYear: 2026,
+      month: '2026-07',
+      page: 1,
+      pageSize: 20,
+      periodMode: 'all',
+      sort: 'invoiceDateDesc',
+    },
+    errorMessage: null,
+    goToPage: vi.fn(),
+    invoices: [],
+    isFiscalYearFilterAvailable: true,
+    isLoading: false,
+    refresh: vi.fn(async () => undefined),
+    setFiscalYearStartYear: vi.fn(),
+    setMonth: vi.fn(),
+    setPageSize: vi.fn(),
+    setPeriodMode: vi.fn(),
+    setSort: vi.fn(),
+    totalCount: 0,
+    totalPages: 0,
   };
 }
 
@@ -385,6 +415,25 @@ function createInvoicePaymentDefaultsState() {
       defaultLatePaymentInterestBasisPoints: 950,
       defaultReminderPeriodDays: 8,
       isPersisted: true,
+    },
+  };
+}
+
+function createInvoiceVatRatesState() {
+  return {
+    errorMessage: null,
+    isLoading: false,
+    settings: {
+      isPersisted: true,
+      vatRates: [
+        {
+          isActive: true,
+          isDefault: true,
+          label: 'Yleinen ALV',
+          rateBasisPoints: 2550,
+          sortOrder: 0,
+        },
+      ],
     },
   };
 }

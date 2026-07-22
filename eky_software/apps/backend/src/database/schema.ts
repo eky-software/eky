@@ -138,6 +138,17 @@ export interface InvoicePaymentSettingsTable {
   updated_at: string;
 }
 
+export interface InvoiceVatRateTable {
+  company_id: string;
+  rate_basis_points: number;
+  label: string;
+  is_active: number;
+  is_default: number;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface InvoiceTable {
   id: string;
   company_id: string;
@@ -287,6 +298,8 @@ export type InvoiceNumberSequenceRow = InvoiceNumberSequenceTable;
 export type NewInvoiceNumberSequenceRow = InvoiceNumberSequenceTable;
 export type InvoicePaymentSettingsRow = InvoicePaymentSettingsTable;
 export type NewInvoicePaymentSettingsRow = InvoicePaymentSettingsTable;
+export type InvoiceVatRateRow = InvoiceVatRateTable;
+export type NewInvoiceVatRateRow = InvoiceVatRateTable;
 export type InvoiceRow = InvoiceTable;
 export type NewInvoiceRow = InvoiceTable;
 export type InvoiceLineRow = InvoiceLineTable;

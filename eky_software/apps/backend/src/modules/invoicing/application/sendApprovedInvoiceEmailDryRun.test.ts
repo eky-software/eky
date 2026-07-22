@@ -12,7 +12,6 @@ import {
   type SendApprovedInvoiceEmailDryRunInput,
 } from './sendApprovedInvoiceEmailDryRun.js';
 import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
-import type { ApprovedInvoiceSummary } from '../domain/approvedInvoiceSummary.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import type { InvoiceDeliveryEvent } from '../domain/invoiceDeliveryEvent.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
@@ -30,7 +29,7 @@ class FakeApprovedInvoiceReader implements ApprovedInvoiceReader {
     return this.invoice;
   }
 
-  async listApprovedInvoiceSummaries(): Promise<ApprovedInvoiceSummary[]> {
+  async listApprovedInvoiceSummaries(): Promise<never> {
     throw new Error('Not implemented in this send dry-run test.');
   }
 }

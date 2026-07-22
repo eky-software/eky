@@ -23,6 +23,7 @@ import { getApprovedInvoicePdfMetadata } from '../modules/invoicing/application/
 import { getInvoiceDraft } from '../modules/invoicing/application/getInvoiceDraft.js';
 import { getInvoiceNumberingSettings } from '../modules/invoicing/application/getInvoiceNumberingSettings.js';
 import { getInvoicePaymentSettings } from '../modules/invoicing/application/getInvoicePaymentSettings.js';
+import { getInvoiceVatRates } from '../modules/invoicing/application/getInvoiceVatRates.js';
 import { listApprovedInvoices } from '../modules/invoicing/application/listApprovedInvoices.js';
 import { listInvoiceDeliveryEvents } from '../modules/invoicing/application/listInvoiceDeliveryEvents.js';
 import { listInvoiceDrafts } from '../modules/invoicing/application/listInvoiceDrafts.js';
@@ -38,10 +39,12 @@ import { sendApprovedInvoiceEmailSmtpTest } from '../modules/invoicing/applicati
 import { updateInvoiceDraft } from '../modules/invoicing/application/updateInvoiceDraft.js';
 import { updateInvoiceNumberingSettings } from '../modules/invoicing/application/updateInvoiceNumberingSettings.js';
 import { updateInvoicePaymentSettings } from '../modules/invoicing/application/updateInvoicePaymentSettings.js';
+import { updateInvoiceVatRates } from '../modules/invoicing/application/updateInvoiceVatRates.js';
 import { createApprovedInvoiceRoutes } from '../modules/invoicing/http/approvedInvoiceRoutes.js';
 import { createInvoiceDraftRoutes } from '../modules/invoicing/http/invoiceDraftRoutes.js';
 import { createInvoiceNumberingSettingsRoutes } from '../modules/invoicing/http/invoiceNumberingSettingsRoutes.js';
 import { createInvoicePaymentSettingsRoutes } from '../modules/invoicing/http/invoicePaymentSettingsRoutes.js';
+import { createInvoiceVatRatesRoutes } from '../modules/invoicing/http/invoiceVatRatesRoutes.js';
 import { InMemoryInvoiceEmailSendAttemptStore } from '../modules/invoicing/infrastructure/inMemoryInvoiceEmailSendAttemptStore.js';
 import { LocalInvoiceDocumentStorage } from '../modules/invoicing/infrastructure/localInvoiceDocumentStorage.js';
 import { renderApprovedInvoicePdf } from '../modules/invoicing/infrastructure/pdf/approvedInvoicePdfRenderer.js';
@@ -52,6 +55,7 @@ import { SqliteInvoiceDocumentRepository } from '../modules/invoicing/infrastruc
 import { SqliteInvoiceDraftRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceDraftRepository.js';
 import { SqliteInvoiceNumberingRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceNumberingRepository.js';
 import { SqliteInvoicePaymentSettingsRepository } from '../modules/invoicing/infrastructure/sqliteInvoicePaymentSettingsRepository.js';
+import { SqliteInvoiceVatRateRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceVatRateRepository.js';
 import type { CustomerAccessReader } from '../modules/invoicing/ports/customerAccessReader.js';
 import type { InvoiceEmailSettingsReader } from '../modules/invoicing/ports/invoiceEmailSettingsReader.js';
 
@@ -86,6 +90,9 @@ export function createInvoicingComposition(
   );
   const invoicePaymentSettingsRepository =
     new SqliteInvoicePaymentSettingsRepository(options.database);
+  const invoiceVatRateRepository = new SqliteInvoiceVatRateRepository(
+    options.database,
+  );
   const invoiceEmailDeliveryProvider = new DryRunInvoiceEmailDeliveryProvider();
   const invoiceEmailSendAttemptStore = new InMemoryInvoiceEmailSendAttemptStore();
   const dnaSmtpEmailDeliveryProvider = new DnaSmtpEmailDeliveryProvider({
@@ -254,6 +261,16 @@ export function createInvoicingComposition(
         getInvoicePaymentSettings(input, invoicePaymentSettingsRepository),
       updateInvoicePaymentSettings: (input) =>
         updateInvoicePaymentSettings(input, invoicePaymentSettingsRepository),
+    }),
+  );
+
+  routes.route(
+    '/',
+    createInvoiceVatRatesRoutes({
+      getInvoiceVatRates: (input) =>
+        getInvoiceVatRates(input, invoiceVatRateRepository),
+      updateInvoiceVatRates: (input) =>
+        updateInvoiceVatRates(input, invoiceVatRateRepository),
     }),
   );
 

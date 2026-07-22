@@ -46,6 +46,12 @@ säilyy rinnalla.
 Lista näyttää vain API-clientin yhteenvetotiedot. Se ei laske summia eikä hae
 Customers-moduulin tietoja oikopolkuna.
 
+Hyväksytyt ja lähetetyt laskut haetaan erillisinä backendissä sivutettuina
+snapshot-listoina. Kummallakin listalla on oma kuukausi- tai
+tilikausisuodatus, järjestys ja 20/50/100 rivin sivukoko. Tilikausisuodatus
+käyttää laskunumerointiasetusten `fiscalYearStartMonth`-arvoa. Selain ei lataa
+koko laskuhistoriaa muistiin eikä muodosta yritysrajausta itse.
+
 ## Vaihe 2: uuden laskun lomakkeen perusrakenne
 
 Tila: toteutettu lomakerunkona.

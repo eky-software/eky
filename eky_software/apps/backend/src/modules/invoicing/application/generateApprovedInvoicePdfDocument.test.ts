@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
-import type { ApprovedInvoiceSummary } from '../domain/approvedInvoiceSummary.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
 import type { InvoiceDocumentRepository } from '../ports/invoiceDocumentRepository.js';
@@ -138,7 +137,7 @@ class FakeApprovedInvoiceReader implements ApprovedInvoiceReader {
     return this.invoice ?? undefined;
   }
 
-  async listApprovedInvoiceSummaries(): Promise<ApprovedInvoiceSummary[]> {
+  async listApprovedInvoiceSummaries(): Promise<never> {
     throw new Error('Not implemented in this PDF document test.');
   }
 }

@@ -4,7 +4,7 @@ import type { HourlyRateAutofillConfig } from './invoiceRowFormState.js';
 
 export function resolveHourlyRateAutofillConfig(
   customerId: string,
-  customers: Customer[],
+  customers: readonly Customer[],
   companySettings: CompanySettings | null,
 ): HourlyRateAutofillConfig {
   const customer = customers.find((item) => item.id === customerId);

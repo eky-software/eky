@@ -1,4 +1,5 @@
 import { requestJson } from '../../http.js';
+import { serializeApprovedInvoiceListQuery } from './approvedInvoiceListSerialization.js';
 import { readInvoiceDraftResponse } from '../invoiceDrafts/invoiceDraftsResponse.js';
 import {
   readApprovedInvoiceDocumentMetadataResponse,
@@ -22,7 +23,7 @@ import type {
   ApprovedInvoiceEmailSmtpSendInput,
   ApprovedInvoiceEmailSmtpSendResult,
   ApprovedInvoicesApi,
-  ApprovedInvoiceSummary,
+  ApprovedInvoiceListPage,
   ApprovedInvoiceView,
   InvoiceDeliveryEventSummary,
   ReopenedApprovedInvoice,
@@ -84,11 +85,11 @@ export function createApprovedInvoicesApi(
       return `${baseUrl}/invoices/${encodeURIComponent(id)}/pdf`;
     },
 
-    async listApprovedInvoices(): Promise<ApprovedInvoiceSummary[]> {
+    async listApprovedInvoices(query): Promise<ApprovedInvoiceListPage> {
       const responseBody = await requestJson(
         fetchImplementation,
         baseUrl,
-        '/invoices',
+        `/invoices?${serializeApprovedInvoiceListQuery(query)}`,
       );
 
       return readApprovedInvoiceListResponse(responseBody);

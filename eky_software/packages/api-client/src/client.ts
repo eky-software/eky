@@ -23,6 +23,10 @@ import {
   createInvoicePaymentSettingsApi,
   type InvoicePaymentSettingsApi,
 } from './invoicing/invoicePaymentSettings/index.js';
+import {
+  createInvoiceVatRatesApi,
+  type InvoiceVatRatesApi,
+} from './invoicing/invoiceVatRates/index.js';
 
 export interface EkyApiClient
   extends
@@ -31,7 +35,8 @@ export interface EkyApiClient
     ApprovedInvoicesApi,
     InvoiceDraftsApi,
     InvoiceNumberingSettingsApi,
-    InvoicePaymentSettingsApi {}
+    InvoicePaymentSettingsApi,
+    InvoiceVatRatesApi {}
 
 export function createEkyApiClient(options: EkyApiClientOptions): EkyApiClient {
   const baseUrl = normalizeBaseUrl(options.baseUrl);
@@ -44,6 +49,7 @@ export function createEkyApiClient(options: EkyApiClientOptions): EkyApiClient {
     ...createInvoiceDraftsApi(fetchImplementation, baseUrl),
     ...createInvoiceNumberingSettingsApi(fetchImplementation, baseUrl),
     ...createInvoicePaymentSettingsApi(fetchImplementation, baseUrl),
+    ...createInvoiceVatRatesApi(fetchImplementation, baseUrl),
   };
 }
 

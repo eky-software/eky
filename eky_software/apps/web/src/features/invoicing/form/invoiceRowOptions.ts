@@ -1,9 +1,9 @@
-import type { InvoiceUnit } from '@eky/api-client';
+import type { InvoiceUnit, InvoiceVatRate } from '@eky/api-client';
 
 import type { InvoiceRowDiscountType } from './invoiceRowFormState.js';
 import { uiText } from '../../../i18n/fi.js';
 
-interface InvoiceRowOption<Value> {
+export interface InvoiceRowOption<Value> {
   value: Value;
   label: string;
 }
@@ -29,6 +29,44 @@ export const invoiceVatRateOptions: readonly InvoiceRowOption<number>[] = [
   { value: 1000, label: '10 %' },
   { value: 0, label: '0 %' },
 ];
+
+export function createInvoiceVatRateOptions(
+  configuredRates: readonly InvoiceVatRate[] | null,
+  currentRateBasisPoints: number,
+): InvoiceRowOption<number>[] {
+  const activeRates = configuredRates === null
+    ? [...invoiceVatRateOptions]
+    : configuredRates
+        .filter((vatRate) => vatRate.isActive)
+        .sort((left, right) => left.sortOrder - right.sortOrder)
+        .map((vatRate) => ({
+          value: vatRate.rateBasisPoints,
+          label: vatRate.label,
+        }));
+
+  if (!activeRates.some((option) => option.value === currentRateBasisPoints)) {
+    activeRates.push({
+      value: currentRateBasisPoints,
+      label: `${formatVatRate(currentRateBasisPoints)} (laskulla käytössä)`,
+    });
+  }
+
+  return activeRates;
+}
+
+export function getDefaultInvoiceVatRateBasisPoints(
+  configuredRates: readonly InvoiceVatRate[] | null,
+): number {
+  return configuredRates?.find(
+    (vatRate) => vatRate.isActive && vatRate.isDefault,
+  )?.rateBasisPoints ?? 2550;
+}
+
+function formatVatRate(rateBasisPoints: number): string {
+  const whole = Math.trunc(rateBasisPoints / 100);
+  const decimal = String(rateBasisPoints % 100).padStart(2, '0');
+  return `${whole},${decimal} %`;
+}
 
 export const invoiceDiscountTypeOptions: readonly InvoiceRowOption<InvoiceRowDiscountType>[] =
   [

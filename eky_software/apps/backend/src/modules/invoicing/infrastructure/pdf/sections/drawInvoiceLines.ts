@@ -5,6 +5,7 @@ import type {
 import {
   formatPdfCents,
   formatPdfDiscount,
+  formatPdfPercentBasisPoints,
   formatPdfQuantity,
 } from '../approvedInvoicePdfFormatting.js';
 import {
@@ -24,6 +25,7 @@ interface InvoiceLineColumns {
   description: InvoiceLineColumn;
   quantity: InvoiceLineColumn;
   unit: InvoiceLineColumn;
+  vatRate: InvoiceLineColumn;
   unitPrice: InvoiceLineColumn;
   lineTotal: InvoiceLineColumn;
 }
@@ -38,7 +40,7 @@ export function drawInvoiceLines(
   let currentY = drawInvoiceLinesHeader(doc, columns, y);
 
   for (const line of invoice.lines) {
-    const rowHeight = calculateLineHeight(doc, line);
+    const rowHeight = calculateLineHeight(doc, line, columns.description.width);
 
     if (currentY + rowHeight > invoicePdfLayout.footerTop - 20) {
       doc.addPage();
@@ -109,6 +111,15 @@ function drawLineRow(
     width: columns.unit.width,
     align: columns.unit.align,
   });
+  doc.text(
+    formatPdfPercentBasisPoints(line.vatRateBasisPoints),
+    columns.vatRate.x,
+    y,
+    {
+      width: columns.vatRate.width,
+      align: columns.vatRate.align,
+    },
+  );
   doc.text(formatPdfCents(unitPrice), columns.unitPrice.x, y, {
     width: columns.unitPrice.width,
     align: columns.unitPrice.align,
@@ -134,9 +145,10 @@ function drawLineRow(
 function calculateLineHeight(
   doc: PDFKit.PDFDocument,
   line: ApprovedInvoiceViewLine,
+  descriptionWidth: number,
 ): number {
   const descriptionHeight = doc.heightOfString(line.description, {
-    width: 235,
+    width: descriptionWidth,
   });
   const discountExtra = line.discount.type === 'none' ? 0 : 10;
 
@@ -148,20 +160,21 @@ function createInvoiceLineColumns(
   priceInputMode: ApprovedInvoiceView['priceInputMode'],
 ): InvoiceLineColumns {
   return {
-    code: { label: 'Koodi', x, width: 55, align: 'left' },
-    description: { label: 'Nimike', x: x + 58, width: 235, align: 'left' },
-    quantity: { label: 'Määrä', x: x + 298, width: 42, align: 'right' },
-    unit: { label: 'Yks', x: x + 345, width: 28, align: 'left' },
+    code: { label: 'Koodi', x, width: 47, align: 'left' },
+    description: { label: 'Nimike', x: x + 50, width: 188, align: 'left' },
+    quantity: { label: 'Määrä', x: x + 243, width: 39, align: 'right' },
+    unit: { label: 'Yks', x: x + 287, width: 25, align: 'left' },
+    vatRate: { label: 'ALV %', x: x + 314, width: 42, align: 'right' },
     unitPrice: {
       label: priceInputMode === 'gross' ? 'A-hinta sis. alv' : 'A-hinta alv 0',
-      x: x + 374,
-      width: 74,
+      x: x + 361,
+      width: 73,
       align: 'right',
     },
     lineTotal: {
       label: 'Yht. EUR',
-      x: x + 452,
-      width: 59,
+      x: x + 439,
+      width: 72,
       align: 'right',
     },
   };
@@ -175,6 +188,7 @@ function getInvoiceLineColumnList(
     columns.description,
     columns.quantity,
     columns.unit,
+    columns.vatRate,
     columns.unitPrice,
     columns.lineTotal,
   ];

@@ -24,6 +24,10 @@ export type {
   ApprovedInvoiceEmailSmtpTestPreparation,
   ApprovedInvoiceLine,
   ApprovedInvoiceLineDiscount,
+  ApprovedInvoiceListPage,
+  ApprovedInvoiceListPageSize,
+  ApprovedInvoiceListQuery,
+  ApprovedInvoiceListSort,
   ApprovedInvoiceNumberingMode,
   ApprovedInvoicePriceInputMode,
   ApprovedInvoiceReferenceNumberType,
@@ -80,3 +84,8 @@ export type {
   InvoicePaymentSettingsView,
   UpdateInvoicePaymentSettingsRequest,
 } from './invoicing/invoicePaymentSettings/index.js';
+export type {
+  InvoiceVatRate,
+  InvoiceVatRatesView,
+  UpdateInvoiceVatRatesRequest,
+} from './invoicing/invoiceVatRates/index.js';

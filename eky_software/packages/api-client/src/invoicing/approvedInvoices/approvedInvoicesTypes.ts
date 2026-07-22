@@ -124,6 +124,30 @@ export interface ApprovedInvoiceSummary {
   updatedAt: string;
 }
 
+export type ApprovedInvoiceListSort =
+  | 'invoiceDateDesc'
+  | 'invoiceDateAsc'
+  | 'dueDateAsc'
+  | 'customerNameAsc';
+export type ApprovedInvoiceListPageSize = 20 | 50 | 100;
+
+export interface ApprovedInvoiceListQuery {
+  status: ApprovedInvoiceViewStatus;
+  page: number;
+  pageSize: ApprovedInvoiceListPageSize;
+  sort: ApprovedInvoiceListSort;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export interface ApprovedInvoiceListPage {
+  invoices: ApprovedInvoiceSummary[];
+  page: number;
+  pageSize: ApprovedInvoiceListPageSize;
+  totalCount: number;
+  totalPages: number;
+}
+
 export interface ReopenedApprovedInvoice {
   invoiceId: string;
   invoiceDraftId: string;
@@ -299,7 +323,9 @@ export interface ApprovedInvoicesApi {
   ): Promise<ApprovedInvoiceDocumentMetadata>;
   getApprovedInvoice(id: string): Promise<ApprovedInvoiceView>;
   getApprovedInvoicePdfUrl(id: string): string;
-  listApprovedInvoices(): Promise<ApprovedInvoiceSummary[]>;
+  listApprovedInvoices(
+    query: ApprovedInvoiceListQuery,
+  ): Promise<ApprovedInvoiceListPage>;
   listInvoiceDeliveryEvents(
     id: string,
   ): Promise<InvoiceDeliveryEventSummary[]>;

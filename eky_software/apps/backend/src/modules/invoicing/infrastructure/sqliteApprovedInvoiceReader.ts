@@ -1,6 +1,11 @@
 import type { DatabaseConnection } from '../../../database/connection/createDatabaseConnection.js';
 import type { InvoiceLineRow, InvoiceRow } from '../../../database/schema.js';
-import type { ApprovedInvoiceSummary } from '../domain/approvedInvoiceSummary.js';
+import type {
+  ApprovedInvoiceListSort,
+  ApprovedInvoiceSummary,
+  ApprovedInvoiceSummaryQuery,
+  ApprovedInvoiceSummaryResult,
+} from '../domain/approvedInvoiceSummary.js';
 import type {
   ApprovedInvoiceVatBreakdown,
   ApprovedInvoiceView,
@@ -14,7 +19,19 @@ import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
 
 type ApprovedInvoiceKeyParameters = [string, string];
 type ApprovedInvoiceLineParameters = [string];
-type ApprovedInvoiceListParameters = [string];
+type ApprovedInvoiceListFilterParameters = [
+  string,
+  string,
+  string | null,
+  string | null,
+  string | null,
+  string | null,
+];
+type ApprovedInvoiceListParameters = [
+  ...ApprovedInvoiceListFilterParameters,
+  number,
+  number,
+];
 
 export class SqliteApprovedInvoiceReader implements ApprovedInvoiceReader {
   constructor(private readonly database: DatabaseConnection) {}
@@ -36,21 +53,51 @@ export class SqliteApprovedInvoiceReader implements ApprovedInvoiceReader {
   }
 
   async listApprovedInvoiceSummaries(
-    companyId: string,
-  ): Promise<ApprovedInvoiceSummary[]> {
-    return this.database
+    query: ApprovedInvoiceSummaryQuery,
+  ): Promise<ApprovedInvoiceSummaryResult> {
+    const filterParameters: ApprovedInvoiceListFilterParameters = [
+      query.companyId,
+      query.status,
+      query.dateFrom,
+      query.dateFrom,
+      query.dateTo,
+      query.dateTo,
+    ];
+    const orderBy = getApprovedInvoiceListOrderBy(query.sort);
+    const invoices = this.database
       .prepare<ApprovedInvoiceListParameters, InvoiceRow>(
         `
           SELECT *
           FROM invoices
           WHERE
             company_id = ?
-            AND status IN ('approved', 'sent')
-          ORDER BY approved_at DESC, id DESC
+            AND status = ?
+            AND (? IS NULL OR invoice_date >= ?)
+            AND (? IS NULL OR invoice_date <= ?)
+          ORDER BY ${orderBy}
+          LIMIT ? OFFSET ?
         `,
       )
-      .all(companyId)
+      .all(...filterParameters, query.limit, query.offset)
       .map(toApprovedInvoiceSummary);
+    const countRow = this.database
+      .prepare<ApprovedInvoiceListFilterParameters, { total_count: number }>(
+        `
+          SELECT COUNT(*) AS total_count
+          FROM invoices
+          WHERE
+            company_id = ?
+            AND status = ?
+            AND (? IS NULL OR invoice_date >= ?)
+            AND (? IS NULL OR invoice_date <= ?)
+        `,
+      )
+      .get(...filterParameters);
+
+    return {
+      invoices,
+      totalCount: countRow?.total_count ?? 0,
+    };
   }
 
   private getInvoiceRow(
@@ -82,6 +129,19 @@ export class SqliteApprovedInvoiceReader implements ApprovedInvoiceReader {
         `,
       )
       .all(invoiceId);
+  }
+}
+
+function getApprovedInvoiceListOrderBy(sort: ApprovedInvoiceListSort): string {
+  switch (sort) {
+    case 'invoiceDateAsc':
+      return 'invoice_date ASC, id ASC';
+    case 'dueDateAsc':
+      return 'due_date ASC, id ASC';
+    case 'customerNameAsc':
+      return 'customer_name_snapshot COLLATE NOCASE ASC, invoice_date DESC, id DESC';
+    case 'invoiceDateDesc':
+      return 'invoice_date DESC, id DESC';
   }
 }
 

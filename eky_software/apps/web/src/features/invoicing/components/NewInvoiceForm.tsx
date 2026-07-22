@@ -3,7 +3,7 @@ import type {
   EkyApiClient,
   InvoiceDraft,
 } from '@eky/api-client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import {
   InvoiceApprovalConfirmation,
@@ -14,12 +14,11 @@ import { InvoiceRowsEditor } from './InvoiceRowsEditor.js';
 import { InvoiceTotalsPreview } from './InvoiceTotalsPreview.js';
 import styles from './NewInvoiceForm.module.css';
 import { toNewInvoiceFormStateFromDraft } from '../form/invoiceDraftFormHydration.js';
-import { applyCustomerBillingRecipientDefault } from '../form/invoiceBillingRecipientDefaults.js';
+import { applyInvoiceCustomerSelection } from '../form/invoiceCustomerDefaults.js';
 import { createDummyInvoiceForm } from '../form/invoiceDummyForm.js';
 import { applyInvoicePaymentDefaults } from '../form/invoicePaymentDefaults.js';
 import {
   addInvoiceRow,
-  refreshAutoAppliedHourlyRates,
   removeInvoiceRow,
   type InvoiceRowForm,
   type InvoiceRowFormField,
@@ -27,6 +26,7 @@ import {
   updateInvoiceRowDescription,
 } from '../form/invoiceRowFormState.js';
 import { resolveHourlyRateAutofillConfig } from '../form/invoiceHourlyRatePricing.js';
+import { getDefaultInvoiceVatRateBasisPoints } from '../form/invoiceRowOptions.js';
 import {
   createInitialNewInvoiceForm,
   type NewInvoiceBasicInfoField,
@@ -36,6 +36,7 @@ import {
 import type { InvoiceCustomerListState } from '../hooks/useInvoiceCustomers.js';
 import type { InvoiceCompanySettingsState } from '../hooks/useInvoiceCompanySettings.js';
 import type { InvoicePaymentDefaultsState } from '../hooks/useInvoicePaymentDefaults.js';
+import type { InvoiceVatRatesState } from '../hooks/useInvoiceVatRates.js';
 import { useApproveInvoiceDraft } from '../hooks/useApproveInvoiceDraft.js';
 import { useInvoiceDraftAutosave } from '../hooks/useInvoiceDraftAutosave.js';
 import {
@@ -59,6 +60,7 @@ interface NewInvoiceFormProps {
   customerListState: InvoiceCustomerListState;
   companySettingsState: InvoiceCompanySettingsState;
   invoicePaymentDefaultsState: InvoicePaymentDefaultsState;
+  invoiceVatRatesState: InvoiceVatRatesState;
   mode: NewInvoiceFormMode;
   onBack(): void;
   onDraftApproved(approvedInvoice: ApprovedInvoiceResult): void;
@@ -71,13 +73,17 @@ export function NewInvoiceForm({
   customerListState,
   companySettingsState,
   invoicePaymentDefaultsState,
+  invoiceVatRatesState,
   mode,
   onBack,
   onDraftApproved,
   onDraftSaved,
   onOpenApprovedInvoice,
 }: NewInvoiceFormProps): React.JSX.Element {
-  const [form, setForm] = useState(() => createInitialForm(mode));
+  const [form, setForm] = useState(() =>
+    createInitialForm(mode, invoiceVatRatesState.settings?.vatRates ?? null),
+  );
+  const hasManualPriceInputModeOverride = useRef(mode.type === 'edit');
   const [formRevision, setFormRevision] = useState(0);
   const [hasValidated, setHasValidated] = useState(false);
   const [isApprovalConfirmationVisible, setIsApprovalConfirmationVisible] =
@@ -116,6 +122,27 @@ export function NewInvoiceForm({
     );
   }, [formRevision, invoicePaymentDefaultsState.settings, mode.type]);
 
+  useEffect(() => {
+    if (
+      mode.type !== 'create' ||
+      formRevision !== 0 ||
+      invoiceVatRatesState.settings === null
+    ) {
+      return;
+    }
+
+    const defaultVatRateBasisPoints = getDefaultInvoiceVatRateBasisPoints(
+      invoiceVatRatesState.settings.vatRates,
+    );
+    setForm((currentForm) => ({
+      ...currentForm,
+      lines: currentForm.lines.map((line) => ({
+        ...line,
+        vatRateBasisPoints: defaultVatRateBasisPoints,
+      })),
+    }));
+  }, [formRevision, invoiceVatRatesState.settings, mode.type]);
+
   function handleFormChange(
     updateForm: (currentForm: NewInvoiceFormState) => NewInvoiceFormState,
   ): void {
@@ -131,25 +158,19 @@ export function NewInvoiceForm({
     fieldName: FieldName,
     value: NewInvoiceFormState[FieldName],
   ): void {
+    if (fieldName === 'priceInputMode') {
+      hasManualPriceInputModeOverride.current = true;
+    }
+
     handleFormChange((currentForm) => {
       if (fieldName === 'customerId' && typeof value === 'string') {
-        const formWithCustomer = applyCustomerBillingRecipientDefault(
+        return applyInvoiceCustomerSelection(
           currentForm,
           customerListState.customers,
+          companySettingsState.companySettings,
           value,
+          !hasManualPriceInputModeOverride.current,
         );
-
-        return {
-          ...formWithCustomer,
-          lines: refreshAutoAppliedHourlyRates(
-            formWithCustomer.lines,
-            resolveHourlyRateAutofillConfig(
-              value,
-              customerListState.customers,
-              companySettingsState.companySettings,
-            ),
-          ),
-        };
       }
 
       return updateNewInvoiceFormField(currentForm, fieldName, value);
@@ -157,6 +178,7 @@ export function NewInvoiceForm({
   }
 
   function handleFillDummyInvoice(): void {
+    hasManualPriceInputModeOverride.current = true;
     handleFormChange(() =>
       createDummyInvoiceForm(
         customerListState.customers,
@@ -170,7 +192,12 @@ export function NewInvoiceForm({
   function handleAddRow(): void {
     handleFormChange((currentForm) => ({
       ...currentForm,
-      lines: addInvoiceRow(currentForm.lines),
+      lines: addInvoiceRow(
+        currentForm.lines,
+        getDefaultInvoiceVatRateBasisPoints(
+          invoiceVatRatesState.settings?.vatRates ?? null,
+        ),
+      ),
     }));
   }
 
@@ -398,6 +425,15 @@ export function NewInvoiceForm({
         </p>
       ) : null}
 
+      {invoiceVatRatesState.errorMessage !== null ? (
+        <p
+          className={`message error-message ${styles.validationMessage}`}
+          role="status"
+        >
+          {invoiceVatRatesState.errorMessage}
+        </p>
+      ) : null}
+
       {shouldShowAutosaveMessage ? (
         <p
           className={`message ${
@@ -422,6 +458,7 @@ export function NewInvoiceForm({
         hourlyRateShortcut={hourlyRateAutofillConfig.shortcut}
         hourlyRateShortcutErrorMessage={companySettingsState.errorMessage}
         rows={form.lines}
+        vatRates={invoiceVatRatesState.settings?.vatRates ?? null}
         onAdd={handleAddRow}
         onChange={handleRowChange}
         onRemove={handleRemoveRow}
@@ -461,12 +498,21 @@ export function NewInvoiceForm({
   );
 }
 
-function createInitialForm(mode: NewInvoiceFormMode): NewInvoiceFormState {
+function createInitialForm(
+  mode: NewInvoiceFormMode,
+  vatRates: Parameters<typeof getDefaultInvoiceVatRateBasisPoints>[0],
+): NewInvoiceFormState {
   if (mode.type === 'edit') {
     return toNewInvoiceFormStateFromDraft(mode.draft);
   }
 
-  return createInitialNewInvoiceForm();
+  const form = createInitialNewInvoiceForm();
+  const defaultVatRateBasisPoints = getDefaultInvoiceVatRateBasisPoints(vatRates);
+
+  return {
+    ...form,
+    lines: form.lines.map((line) => ({ ...line, vatRateBasisPoints: defaultVatRateBasisPoints })),
+  };
 }
 
 function createSaveMode(mode: NewInvoiceFormMode): InvoiceDraftSaveMode {

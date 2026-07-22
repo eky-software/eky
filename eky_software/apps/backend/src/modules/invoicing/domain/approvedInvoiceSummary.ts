@@ -15,3 +15,32 @@ export interface ApprovedInvoiceSummary {
   approvedAt: string;
   updatedAt: string;
 }
+
+export type ApprovedInvoiceListSort =
+  | 'invoiceDateDesc'
+  | 'invoiceDateAsc'
+  | 'dueDateAsc'
+  | 'customerNameAsc';
+
+export interface ApprovedInvoiceSummaryQuery {
+  companyId: string;
+  status: ApprovedInvoiceStatus;
+  dateFrom: string | null;
+  dateTo: string | null;
+  limit: number;
+  offset: number;
+  sort: ApprovedInvoiceListSort;
+}
+
+export interface ApprovedInvoiceSummaryResult {
+  invoices: ApprovedInvoiceSummary[];
+  totalCount: number;
+}
+
+export interface ApprovedInvoiceListPage {
+  invoices: ApprovedInvoiceSummary[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+}

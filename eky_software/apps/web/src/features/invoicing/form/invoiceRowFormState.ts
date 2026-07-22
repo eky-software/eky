@@ -27,14 +27,22 @@ export type InvoiceRowFormField = Exclude<
   'hourlyRateAutofillState' | 'id'
 >;
 
-export function createInitialInvoiceRows(): InvoiceRowForm[] {
-  return [createInvoiceRowForm('invoice-row-1')];
+export function createInitialInvoiceRows(
+  defaultVatRateBasisPoints = 2550,
+): InvoiceRowForm[] {
+  return [createInvoiceRowForm('invoice-row-1', defaultVatRateBasisPoints)];
 }
 
-export function addInvoiceRow(rows: InvoiceRowForm[]): InvoiceRowForm[] {
+export function addInvoiceRow(
+  rows: InvoiceRowForm[],
+  defaultVatRateBasisPoints = 2550,
+): InvoiceRowForm[] {
   return [
     ...rows,
-    createInvoiceRowForm(`invoice-row-${getNextRowNumber(rows)}`),
+    createInvoiceRowForm(
+      `invoice-row-${getNextRowNumber(rows)}`,
+      defaultVatRateBasisPoints,
+    ),
   ];
 }
 
@@ -132,14 +140,17 @@ export function refreshAutoAppliedHourlyRates(
   });
 }
 
-function createInvoiceRowForm(id: string): InvoiceRowForm {
+function createInvoiceRowForm(
+  id: string,
+  defaultVatRateBasisPoints: number,
+): InvoiceRowForm {
   return {
     id,
     description: '',
     quantity: '0',
     unit: 'h',
     unitPrice: '',
-    vatRateBasisPoints: 2550,
+    vatRateBasisPoints: defaultVatRateBasisPoints,
     discountType: 'none',
     discountValue: '',
     hourlyRateAutofillState: 'available',

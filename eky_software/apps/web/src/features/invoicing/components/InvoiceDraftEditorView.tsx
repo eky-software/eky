@@ -11,6 +11,7 @@ import styles from './InvoicingPage.module.css';
 import type { InvoiceCompanySettingsState } from '../hooks/useInvoiceCompanySettings.js';
 import type { InvoiceCustomerListState } from '../hooks/useInvoiceCustomers.js';
 import type { InvoicePaymentDefaultsState } from '../hooks/useInvoicePaymentDefaults.js';
+import type { InvoiceVatRatesState } from '../hooks/useInvoiceVatRates.js';
 import { uiText } from '../../../i18n/fi.js';
 
 interface InvoiceDraftEditorViewProps {
@@ -19,7 +20,9 @@ interface InvoiceDraftEditorViewProps {
   customerListState: InvoiceCustomerListState;
   draft: InvoiceDraft | null;
   draftErrorMessage: string | null;
+  editorMode: 'create' | 'edit';
   invoicePaymentDefaultsState: InvoicePaymentDefaultsState;
+  invoiceVatRatesState: InvoiceVatRatesState;
   isDraftLoading: boolean;
   onBack(): void;
   onDraftApproved(approvedInvoice: ApprovedInvoiceResult): void;
@@ -33,14 +36,16 @@ export function InvoiceDraftEditorView({
   customerListState,
   draft,
   draftErrorMessage,
+  editorMode,
   invoicePaymentDefaultsState,
+  invoiceVatRatesState,
   isDraftLoading,
   onBack,
   onDraftApproved,
   onDraftSaved,
   onOpenApprovedInvoice,
 }: InvoiceDraftEditorViewProps): React.JSX.Element {
-  if (isDraftLoading) {
+  if (editorMode === 'edit' && isDraftLoading) {
     return (
       <section className={`panel ${styles.editorState}`}>
         <p className={styles.state}>{uiText.invoicing.openingDraft}</p>
@@ -48,7 +53,7 @@ export function InvoiceDraftEditorView({
     );
   }
 
-  if (draftErrorMessage !== null) {
+  if (editorMode === 'edit' && draftErrorMessage !== null) {
     return (
       <section className={`panel ${styles.editorState}`}>
         <p className="message error-message" role="alert">
@@ -61,7 +66,7 @@ export function InvoiceDraftEditorView({
     );
   }
 
-  if (draft === null) {
+  if (editorMode === 'edit' && draft === null) {
     return (
       <section className={`panel ${styles.editorState}`}>
         <p className={styles.state}>{uiText.invoicing.openDraftPrompt}</p>
@@ -74,15 +79,16 @@ export function InvoiceDraftEditorView({
 
   return (
     <NewInvoiceForm
-      key={draft.id}
       apiClient={apiClient}
       companySettingsState={companySettingsState}
       customerListState={customerListState}
       invoicePaymentDefaultsState={invoicePaymentDefaultsState}
-      mode={{
-        draft,
-        type: 'edit',
-      }}
+      invoiceVatRatesState={invoiceVatRatesState}
+      mode={
+        editorMode === 'create'
+          ? { type: 'create' }
+          : { draft: draft as InvoiceDraft, type: 'edit' }
+      }
       onBack={onBack}
       onDraftApproved={onDraftApproved}
       onDraftSaved={onDraftSaved}

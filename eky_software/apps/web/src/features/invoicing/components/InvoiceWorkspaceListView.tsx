@@ -1,27 +1,26 @@
 import type {
-  ApprovedInvoiceSummary,
   Customer,
   InvoiceDraftSummary,
 } from '@eky/api-client';
 
-import { ApprovedInvoiceList } from './ApprovedInvoiceList.js';
+import { ApprovedInvoiceListSection } from './ApprovedInvoiceListSection.js';
 import { InvoiceDraftList } from './InvoiceDraftList.js';
 import styles from './InvoicingPage.module.css';
+import type { ApprovedInvoicePageState } from '../hooks/useApprovedInvoicePage.js';
 import { uiText } from '../../../i18n/fi.js';
 
 interface InvoiceWorkspaceListViewProps {
-  approvedInvoices: ApprovedInvoiceSummary[];
-  approvedInvoiceErrorMessage: string | null;
+  approvedInvoicePageState: ApprovedInvoicePageState;
   customers: Customer[];
   customerErrorMessage: string | null;
   deleteErrorMessage: string | null;
   deletingDraftId: string | null;
   drafts: InvoiceDraftSummary[];
   draftErrorMessage: string | null;
-  isApprovedInvoiceListLoading: boolean;
   isCustomerListLoading: boolean;
   isDraftListLoading: boolean;
   pendingDeleteDraftId: string | null;
+  sentInvoicePageState: ApprovedInvoicePageState;
   onCancelDeleteDraft(): void;
   onConfirmDeleteDraft(id: string): void;
   onNewInvoice(): void;
@@ -31,18 +30,17 @@ interface InvoiceWorkspaceListViewProps {
 }
 
 export function InvoiceWorkspaceListView({
-  approvedInvoices,
-  approvedInvoiceErrorMessage,
+  approvedInvoicePageState,
   customers,
   customerErrorMessage,
   deleteErrorMessage,
   deletingDraftId,
   drafts,
   draftErrorMessage,
-  isApprovedInvoiceListLoading,
   isCustomerListLoading,
   isDraftListLoading,
   pendingDeleteDraftId,
+  sentInvoicePageState,
   onCancelDeleteDraft,
   onConfirmDeleteDraft,
   onNewInvoice,
@@ -50,13 +48,6 @@ export function InvoiceWorkspaceListView({
   onOpenDraft,
   onRequestDeleteDraft,
 }: InvoiceWorkspaceListViewProps): React.JSX.Element {
-  const approvedInvoiceItems = approvedInvoices.filter(
-    (invoice) => invoice.status === 'approved',
-  );
-  const sentInvoiceItems = approvedInvoices.filter(
-    (invoice) => invoice.status === 'sent',
-  );
-
   return (
     <div className={styles.listStack}>
       <section className={`panel ${styles.draftListPanel}`}>
@@ -101,63 +92,27 @@ export function InvoiceWorkspaceListView({
         />
       </section>
 
-      <section className={`panel ${styles.draftListPanel}`}>
-        <header className={`panel-header ${styles.draftListHeader}`}>
-          <div>
-            <p className="panel-kicker">
-              {uiText.invoicing.approvedInvoices}
-            </p>
-            <h2>{uiText.invoicing.approvedInvoiceList}</h2>
-          </div>
-          <div className="panel-actions">
-            {!isApprovedInvoiceListLoading &&
-            approvedInvoiceErrorMessage === null ? (
-              <span
-                className="count-badge"
-                aria-label={uiText.invoicing.approvedInvoiceCount}
-              >
-                {approvedInvoiceItems.length}
-              </span>
-            ) : null}
-          </div>
-        </header>
+      <ApprovedInvoiceListSection
+        countLabel={uiText.invoicing.approvedInvoiceCount}
+        emptyMessage={uiText.invoicing.approvedInvoicesEmpty}
+        kicker={uiText.invoicing.approvedInvoices}
+        listLabel={uiText.invoicing.approvedInvoiceList}
+        loadingMessage={uiText.invoicing.approvedInvoicesLoading}
+        pageState={approvedInvoicePageState}
+        title={uiText.invoicing.approvedInvoiceList}
+        onOpenApprovedInvoice={onOpenApprovedInvoice}
+      />
 
-        <ApprovedInvoiceList
-          approvedInvoices={approvedInvoiceItems}
-          errorMessage={approvedInvoiceErrorMessage}
-          isLoading={isApprovedInvoiceListLoading}
-          onOpenApprovedInvoice={onOpenApprovedInvoice}
-        />
-      </section>
-
-      <section className={`panel ${styles.draftListPanel}`}>
-        <header className={`panel-header ${styles.draftListHeader}`}>
-          <div>
-            <p className="panel-kicker">{uiText.invoicing.sentInvoices}</p>
-            <h2>{uiText.invoicing.sentInvoiceList}</h2>
-          </div>
-          <div className="panel-actions">
-            {!isApprovedInvoiceListLoading &&
-            approvedInvoiceErrorMessage === null ? (
-              <span
-                className="count-badge"
-                aria-label={uiText.invoicing.sentInvoiceCount}
-              >
-                {sentInvoiceItems.length}
-              </span>
-            ) : null}
-          </div>
-        </header>
-
-        <ApprovedInvoiceList
-          approvedInvoices={sentInvoiceItems}
-          emptyMessage={uiText.invoicing.sentInvoicesEmpty}
-          errorMessage={approvedInvoiceErrorMessage}
-          isLoading={isApprovedInvoiceListLoading}
-          listLabel={uiText.invoicing.sentInvoiceList}
-          onOpenApprovedInvoice={onOpenApprovedInvoice}
-        />
-      </section>
+      <ApprovedInvoiceListSection
+        countLabel={uiText.invoicing.sentInvoiceCount}
+        emptyMessage={uiText.invoicing.sentInvoicesEmpty}
+        kicker={uiText.invoicing.sentInvoices}
+        listLabel={uiText.invoicing.sentInvoiceList}
+        loadingMessage={uiText.invoicing.sentInvoicesLoading}
+        pageState={sentInvoicePageState}
+        title={uiText.invoicing.sentInvoiceList}
+        onOpenApprovedInvoice={onOpenApprovedInvoice}
+      />
     </div>
   );
 }

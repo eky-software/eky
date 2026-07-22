@@ -11,7 +11,6 @@ import {
   type SendApprovedInvoiceEmailSmtpTestInput,
 } from './sendApprovedInvoiceEmailSmtpTest.js';
 import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
-import type { ApprovedInvoiceSummary } from '../domain/approvedInvoiceSummary.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import type { InvoiceDeliveryEvent } from '../domain/invoiceDeliveryEvent.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
@@ -33,7 +32,7 @@ class FakeApprovedInvoiceReader implements ApprovedInvoiceReader {
     return { id: 'invoice-1', invoiceNumber: '20260001' } as ApprovedInvoiceView;
   }
 
-  async listApprovedInvoiceSummaries(): Promise<ApprovedInvoiceSummary[]> {
+  async listApprovedInvoiceSummaries(): Promise<never> {
     throw new Error('Not implemented in SMTP test delivery test.');
   }
 }

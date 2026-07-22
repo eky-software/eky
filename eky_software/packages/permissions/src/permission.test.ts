@@ -6,6 +6,7 @@ describe('permissionValues', () => {
   it('contains only the explicitly approved permission values', () => {
     expect(permissionValues).toEqual([
       'manageCompanySettings',
+      'manageInvoiceSettings',
       'manageCompanyEmailSettings',
       'manageCompanyEmailSecret',
       'sendInvoices',
@@ -14,6 +15,7 @@ describe('permissionValues', () => {
 
   it('recognizes only known permission values', () => {
     expect(isPermission('sendInvoices')).toBe(true);
+    expect(isPermission('manageInvoiceSettings')).toBe(true);
     expect(isPermission('unknownPermission')).toBe(false);
     expect(isPermission(123)).toBe(false);
   });

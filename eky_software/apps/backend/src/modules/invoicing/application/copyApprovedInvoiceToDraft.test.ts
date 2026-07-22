@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 
-import type { ApprovedInvoiceSummary } from '../domain/approvedInvoiceSummary.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import type { InvoiceDraft } from '../domain/invoiceDraft.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
@@ -19,7 +18,7 @@ class FakeApprovedInvoiceReader implements ApprovedInvoiceReader {
     return this.invoice;
   }
 
-  async listApprovedInvoiceSummaries(): Promise<ApprovedInvoiceSummary[]> {
+  async listApprovedInvoiceSummaries(): Promise<never> {
     throw new Error('Not implemented in this copy test.');
   }
 }

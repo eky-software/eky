@@ -613,7 +613,8 @@ Hyväksytyt periaatteet:
 
 - käyttäjän pitää voida valita kaikki yrityksen tarvitsemat ALV-kannat
 - ALV-kantoja ei kovakoodata arkkitehtuurissa pysyvästi yhdeksi arvoksi
-- ALV-kantoja pitää voida myöhemmin hallita laskutusasetuksista
+- ALV-kantoja hallitaan yrityskohtaisesti Invoicing-moduulin
+  laskutusasetuksista; Oma yritys toimii local-MVP:ssä niiden UI-koontina
 - ensimmäisen domain-koodivaiheen ajantasaiset ja testattavat ALV-kannat ovat 0,00 %, 10,00 %, 13,50 % ja 25,50 %
 - tietomalli ja domain eivät saa rajoittua vain ensimmäisen koodivaiheen ALV-kantoihin
 - syöttötapa on laskennassa yksiselitteisesti veroton tai verollinen
@@ -630,7 +631,12 @@ Ensimmäisen domain-koodivaiheen testattavat ALV-kannat basis points -arvoina:
 25,50 % -> 2550
 ```
 
-Nämä ovat ensimmäisen vaiheen ajantasaiset testiarvot, eivät domainiin kovakoodattu sallittujen arvojen lista. ALV-kantoja pitää voida myöhemmin hallita laskutusasetuksista ilman laskentadomainin rakennemuutosta.
+Nämä ovat ensimmäisen vaiheen ajantasaiset oletus- ja testiarvot, eivät
+domainiin kovakoodattu sallittujen arvojen lista. Toteutettu
+`invoice_vat_rates`-malli ja `GET/PUT /invoice-vat-rates`-polku ylläpitävät
+yrityskohtaista aktiivista listaa ja yhtä oletuskantaa ilman
+laskentadomainin rakennemuutosta. Asetusmuutos ei muuta luonnokselle jo
+tallennettua kantaa eikä hyväksytyn laskun snapshotia.
 
 `14,00 %` eli `1400` basis points oli aiempi alennettu verokanta 31.12.2025 saakka. Se voidaan lisätä myöhemmin historiallisena tai legacy-arvona, jos `invoiceDate`- tai suoritusajankohtaan perustuva vanhojen verokantojen tuki toteutetaan.
 

@@ -18,7 +18,7 @@ export function drawParty(
   x: number,
   y: number,
   width: number,
-): void {
+): number {
   const lines = [
     { label: 'Nimi', value: party.name },
     { label: 'Asiakasnumero', value: party.customerNumber ?? '' },
@@ -32,7 +32,7 @@ export function drawParty(
     { label: 'Puhelin', value: party.phone },
   ];
 
-  drawLabelValueLines(doc, lines, x, y, {
+  return drawLabelValueLines(doc, lines, x, y, {
     labelWidth: 82,
     width,
     lineGap: 1,

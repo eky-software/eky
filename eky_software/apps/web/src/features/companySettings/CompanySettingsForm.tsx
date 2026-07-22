@@ -37,7 +37,7 @@ export function CompanySettingsForm({
         }}
       >
         <fieldset>
-          <legend>{uiText.companySettings.basicInformation}</legend>
+          <legend>{uiText.companySettings.companyAndContactInformation}</legend>
           <div className={styles.grid}>
             <label className={styles.wideField} htmlFor="company-name">
               {uiText.companySettings.companyName}
@@ -76,42 +76,6 @@ export function CompanySettingsForm({
               <span className={styles.fieldHelp}>{uiText.companySettings.vatNumberHelp}</span>
             </label>
 
-            <label htmlFor="default-hourly-rate">
-              {uiText.companySettings.defaultHourlyRate}
-              <input
-                id="default-hourly-rate"
-                inputMode="decimal"
-                name="defaultHourlyRateEuro"
-                onChange={(event) => onFieldChange('defaultHourlyRateEuro', event.target.value)}
-                placeholder={uiText.companySettings.placeholderDefaultHourlyRate}
-                type="text"
-                value={form.defaultHourlyRateEuro}
-              />
-              <span className={styles.fieldHelp}>{uiText.companySettings.defaultHourlyRateHelp}</span>
-            </label>
-
-            <label htmlFor="hourly-rate-shortcut">
-              {uiText.companySettings.hourlyRateShortcut}
-              <input
-                id="hourly-rate-shortcut"
-                name="hourlyRateShortcut"
-                onChange={(event) =>
-                  onFieldChange('hourlyRateShortcut', event.target.value)
-                }
-                placeholder={uiText.companySettings.placeholderHourlyRateShortcut}
-                type="text"
-                value={form.hourlyRateShortcut}
-              />
-              <span className={styles.fieldHelp}>
-                {uiText.companySettings.hourlyRateShortcutHelp}
-              </span>
-            </label>
-          </div>
-        </fieldset>
-
-        <fieldset>
-          <legend>{uiText.companySettings.contactInformation}</legend>
-          <div className={styles.grid}>
             <label htmlFor="company-email">
               {uiText.companySettings.email}
               <input
@@ -145,6 +109,118 @@ export function CompanySettingsForm({
                 placeholder={uiText.companySettings.placeholderWebsite}
                 type="text"
                 value={form.website}
+              />
+            </label>
+
+            <label className={styles.wideField} htmlFor="company-street-address">
+              {uiText.companySettings.streetAddress}
+              <input
+                id="company-street-address"
+                name="streetAddress"
+                onChange={(event) => onFieldChange('streetAddress', event.target.value)}
+                placeholder={uiText.companySettings.placeholderStreetAddress}
+                type="text"
+                value={form.streetAddress}
+              />
+            </label>
+
+            <label htmlFor="company-postal-code">
+              {uiText.companySettings.postalCode}
+              <input
+                id="company-postal-code"
+                name="postalCode"
+                onChange={(event) => onFieldChange('postalCode', event.target.value)}
+                placeholder={uiText.companySettings.placeholderPostalCode}
+                type="text"
+                value={form.postalCode}
+              />
+            </label>
+
+            <label htmlFor="company-city">
+              {uiText.companySettings.city}
+              <input
+                id="company-city"
+                name="city"
+                onChange={(event) => onFieldChange('city', event.target.value)}
+                placeholder={uiText.companySettings.placeholderCity}
+                type="text"
+                value={form.city}
+              />
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>{uiText.companySettings.billingPrices}</legend>
+          <div className={styles.grid}>
+            <label htmlFor="default-hourly-rate">
+              {uiText.companySettings.defaultHourlyRate}
+              <input
+                id="default-hourly-rate"
+                inputMode="decimal"
+                name="defaultHourlyRateEuro"
+                onChange={(event) => onFieldChange('defaultHourlyRateEuro', event.target.value)}
+                placeholder={uiText.companySettings.placeholderDefaultHourlyRate}
+                type="text"
+                value={form.defaultHourlyRateEuro}
+              />
+              <span className={styles.fieldHelp}>{uiText.companySettings.defaultHourlyRateHelp}</span>
+            </label>
+
+            <label htmlFor="hourly-rate-shortcut">
+              {uiText.companySettings.hourlyRateShortcut}
+              <input
+                id="hourly-rate-shortcut"
+                name="hourlyRateShortcut"
+                onChange={(event) => onFieldChange('hourlyRateShortcut', event.target.value)}
+                placeholder={uiText.companySettings.placeholderHourlyRateShortcut}
+                type="text"
+                value={form.hourlyRateShortcut}
+              />
+              <span className={styles.fieldHelp}>{uiText.companySettings.hourlyRateShortcutHelp}</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>{uiText.companySettings.bankDetails}</legend>
+          <p className={styles.fieldsetHelp}>
+            {uiText.companySettings.bankDetailsHelp}
+          </p>
+          <div className={styles.grid}>
+            <label className={styles.wideField} htmlFor="company-iban">
+              {uiText.companySettings.iban}
+              <input
+                id="company-iban"
+                name="iban"
+                onChange={(event) => onFieldChange('iban', event.target.value)}
+                placeholder={uiText.companySettings.placeholderIban}
+                type="text"
+                value={form.iban}
+              />
+            </label>
+
+            <label htmlFor="company-bic">
+              {uiText.companySettings.bic}
+              <input
+                id="company-bic"
+                name="bic"
+                onChange={(event) => onFieldChange('bic', event.target.value)}
+                placeholder={uiText.companySettings.placeholderBic}
+                type="text"
+                value={form.bic}
+              />
+            </label>
+
+            <label htmlFor="company-bank-name">
+              {uiText.companySettings.bankName}
+              <input
+                id="company-bank-name"
+                name="bankName"
+                onChange={(event) => onFieldChange('bankName', event.target.value)}
+                placeholder={uiText.companySettings.placeholderBankName}
+                type="text"
+                value={form.bankName}
               />
             </label>
           </div>
@@ -233,91 +309,6 @@ export function CompanySettingsForm({
               </span>
             </label>
 
-          </div>
-        </fieldset>
-
-        <fieldset>
-          <legend>{uiText.companySettings.bankDetails}</legend>
-          <p className={styles.fieldsetHelp}>
-            {uiText.companySettings.bankDetailsHelp}
-          </p>
-          <div className={styles.grid}>
-            <label className={styles.wideField} htmlFor="company-iban">
-              {uiText.companySettings.iban}
-              <input
-                id="company-iban"
-                name="iban"
-                onChange={(event) => onFieldChange('iban', event.target.value)}
-                placeholder={uiText.companySettings.placeholderIban}
-                type="text"
-                value={form.iban}
-              />
-            </label>
-
-            <label htmlFor="company-bic">
-              {uiText.companySettings.bic}
-              <input
-                id="company-bic"
-                name="bic"
-                onChange={(event) => onFieldChange('bic', event.target.value)}
-                placeholder={uiText.companySettings.placeholderBic}
-                type="text"
-                value={form.bic}
-              />
-            </label>
-
-            <label htmlFor="company-bank-name">
-              {uiText.companySettings.bankName}
-              <input
-                id="company-bank-name"
-                name="bankName"
-                onChange={(event) => onFieldChange('bankName', event.target.value)}
-                placeholder={uiText.companySettings.placeholderBankName}
-                type="text"
-                value={form.bankName}
-              />
-            </label>
-          </div>
-        </fieldset>
-
-        <fieldset>
-          <legend>{uiText.companySettings.address}</legend>
-          <div className={styles.grid}>
-            <label className={styles.wideField} htmlFor="company-street-address">
-              {uiText.companySettings.streetAddress}
-              <input
-                id="company-street-address"
-                name="streetAddress"
-                onChange={(event) => onFieldChange('streetAddress', event.target.value)}
-                placeholder={uiText.companySettings.placeholderStreetAddress}
-                type="text"
-                value={form.streetAddress}
-              />
-            </label>
-
-            <label htmlFor="company-postal-code">
-              {uiText.companySettings.postalCode}
-              <input
-                id="company-postal-code"
-                name="postalCode"
-                onChange={(event) => onFieldChange('postalCode', event.target.value)}
-                placeholder={uiText.companySettings.placeholderPostalCode}
-                type="text"
-                value={form.postalCode}
-              />
-            </label>
-
-            <label htmlFor="company-city">
-              {uiText.companySettings.city}
-              <input
-                id="company-city"
-                name="city"
-                onChange={(event) => onFieldChange('city', event.target.value)}
-                placeholder={uiText.companySettings.placeholderCity}
-                type="text"
-                value={form.city}
-              />
-            </label>
           </div>
         </fieldset>
 

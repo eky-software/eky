@@ -1,9 +1,10 @@
 import type { ApprovedInvoiceView } from '../../../domain/approvedInvoiceView.js';
-import {
-  drawBox,
-  drawLabelValueLines,
-  invoicePdfLayout,
-} from '../approvedInvoicePdfLayout.js';
+import { drawBox, invoicePdfLayout } from '../approvedInvoicePdfLayout.js';
+
+interface AdditionalDetailLine {
+  label: string;
+  value: string;
+}
 
 export function drawAdditionalDetails(
   doc: PDFKit.PDFDocument,
@@ -24,31 +25,70 @@ export function drawAdditionalDetails(
   const contentX = x + 10;
   const contentWidth = invoicePdfLayout.contentWidth - 20;
   const labelWidth = 88;
+  const topPadding = 6;
+  const bottomPadding = 1.5;
+  const lineGap = 1.5;
   const valueWidth = contentWidth - labelWidth;
-  const contentHeight = visibleLines.reduce(
-    (height, line) =>
-      height +
-      Math.max(
-        12,
-        doc.font('Helvetica-Bold').fontSize(8.5).heightOfString(line.label, {
-          width: labelWidth,
-        }),
-        doc.font('Helvetica').fontSize(8.5).heightOfString(line.value, {
-          width: valueWidth,
-        }),
-      ) +
-      2,
-    0,
+  const rowHeights = visibleLines.map((line) =>
+    measureRowHeight(doc, line, labelWidth, valueWidth),
   );
-  const boxHeight = Math.max(32, contentHeight + 16);
+  const contentHeight =
+    rowHeights.reduce((height, rowHeight) => height + rowHeight, 0) +
+    lineGap * Math.max(0, visibleLines.length - 1);
+  const boxHeight = topPadding + contentHeight + bottomPadding;
 
   drawBox(doc, x, y, invoicePdfLayout.contentWidth, boxHeight);
-  doc.fontSize(8.5);
-  drawLabelValueLines(doc, visibleLines, contentX, y + 9, {
+  drawRows(
+    doc,
+    visibleLines,
+    rowHeights,
+    contentX,
+    y + topPadding,
     labelWidth,
-    width: contentWidth,
-    lineGap: 2,
-  });
+    valueWidth,
+    lineGap,
+  );
 
   return y + boxHeight;
+}
+
+function measureRowHeight(
+  doc: PDFKit.PDFDocument,
+  line: AdditionalDetailLine,
+  labelWidth: number,
+  valueWidth: number,
+): number {
+  const labelHeight = doc
+    .font('Helvetica-Bold')
+    .fontSize(8.5)
+    .heightOfString(line.label, { width: labelWidth });
+  const valueHeight = doc
+    .font('Helvetica')
+    .fontSize(8.5)
+    .heightOfString(line.value, { width: valueWidth });
+
+  return Math.max(labelHeight, valueHeight);
+}
+
+function drawRows(
+  doc: PDFKit.PDFDocument,
+  lines: AdditionalDetailLine[],
+  rowHeights: number[],
+  x: number,
+  y: number,
+  labelWidth: number,
+  valueWidth: number,
+  lineGap: number,
+): void {
+  let currentY = y;
+
+  lines.forEach((line, index) => {
+    doc.font('Helvetica-Bold').fontSize(8.5).text(line.label, x, currentY, {
+      width: labelWidth,
+    });
+    doc.font('Helvetica').fontSize(8.5).text(line.value, x + labelWidth, currentY, {
+      width: valueWidth,
+    });
+    currentY += (rowHeights[index] ?? 0) + lineGap;
+  });
 }
