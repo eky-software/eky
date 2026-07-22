@@ -10,6 +10,7 @@ import {
 import { createDatabaseConnection } from '../database/connection/createDatabaseConnection.js';
 import { readLocalRuntimeIdentity } from '../database/localRuntimeIdentityReader.js';
 import { runMigrations } from '../database/migration/runMigrations.js';
+import { createCustomersComposition } from '../composition/customersComposition.js';
 import { createInvoicingComposition } from '../composition/invoicingComposition.js';
 import { getCompanySettings } from '../modules/companySettings/application/getCompanySettings.js';
 import { getCompanyEmailSecretStatus } from '../modules/companySettings/application/getCompanyEmailSecretStatus.js';
@@ -22,11 +23,6 @@ import { SqliteCompanyEmailSecretAuditWriter } from '../modules/companySettings/
 import { SqliteCompanySettingsRepository } from '../modules/companySettings/infrastructure/sqliteCompanySettingsRepository.js';
 import type { CompanyEmailSecretReader } from '../modules/companySettings/ports/companyEmailSecretReader.js';
 import type { CompanyEmailSecretStore } from '../modules/companySettings/ports/companyEmailSecretStore.js';
-import { createCustomer } from '../modules/customers/application/createCustomer.js';
-import { listCustomers } from '../modules/customers/application/listCustomers.js';
-import { updateCustomer } from '../modules/customers/application/updateCustomer.js';
-import { createCustomersRoutes } from '../modules/customers/http/customersRoutes.js';
-import { SqliteCustomerRepository } from '../modules/customers/infrastructure/sqliteCustomerRepository.js';
 
 export interface CreateAppOptions {
   companyEmailSecretReader?: CompanyEmailSecretReader;
@@ -66,7 +62,7 @@ export async function createApp(
     return context.json({ status: 'ok' });
   });
 
-  const customerRepository = new SqliteCustomerRepository(database);
+  const customersComposition = createCustomersComposition(database);
   const companySettingsRepository = new SqliteCompanySettingsRepository(database);
   const companyEmailSecretReader: CompanyEmailSecretReader =
     options.companyEmailSecretReader ?? {
@@ -75,14 +71,7 @@ export async function createApp(
       },
     };
 
-  app.route(
-    '/',
-    createCustomersRoutes({
-      createCustomer: (input) => createCustomer(input, customerRepository),
-      listCustomers: (input) => listCustomers(input, customerRepository),
-      updateCustomer: (input) => updateCustomer(input, customerRepository),
-    }),
-  );
+  app.route('/', customersComposition.routes);
 
   if (options.companyEmailSecretStore !== undefined) {
     const companyEmailSecretAuditWriter =
@@ -129,7 +118,7 @@ export async function createApp(
     createInvoicingComposition({
       companyEmailSecretReader,
       companySettingsRepository,
-      customerRepository,
+      customerAccessReader: customersComposition.customerAccessReader,
       database,
       ...(options.invoiceDocumentStorageRoot === undefined
         ? {}

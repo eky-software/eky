@@ -8,7 +8,6 @@ import { DnaInvoiceSmtpTestDeliveryProvider } from '../infrastructure/email/prov
 import { DnaSmtpEmailDeliveryProvider } from '../infrastructure/email/providers/dna/dnaSmtpEmailDeliveryProvider.js';
 import type { CompanyEmailSecretReader } from '../modules/companySettings/ports/companyEmailSecretReader.js';
 import type { CompanySettingsRepository } from '../modules/companySettings/ports/companySettingsRepository.js';
-import type { CustomerRepository } from '../modules/customers/ports/customerRepository.js';
 import { approveInvoiceDraft } from '../modules/invoicing/application/approveInvoiceDraft.js';
 import { copyApprovedInvoiceToDraft } from '../modules/invoicing/application/copyApprovedInvoiceToDraft.js';
 import { deleteInvoiceDraft } from '../modules/invoicing/application/deleteInvoiceDraft.js';
@@ -60,7 +59,7 @@ import type { InvoiceEmailSettingsReader } from '../modules/invoicing/ports/invo
 interface InvoicingCompositionOptions {
   companyEmailSecretReader: CompanyEmailSecretReader;
   companySettingsRepository: Pick<CompanySettingsRepository, 'findByCompanyId'>;
-  customerRepository: Pick<CustomerRepository, 'findById'>;
+  customerAccessReader: CustomerAccessReader;
   database: DatabaseConnection;
   invoiceDocumentStorageRoot?: string;
 }
@@ -98,16 +97,6 @@ export function createInvoicingComposition(
   const invoiceSmtpDeliveryProvider = new DnaInvoiceSmtpDeliveryProvider(
     dnaSmtpEmailDeliveryProvider,
   );
-  const customerAccessReader: CustomerAccessReader = {
-    async belongsToCompany(customerId, companyId) {
-      const customer = await options.customerRepository.findById(
-        companyId,
-        customerId,
-      );
-
-      return customer !== undefined;
-    },
-  };
   const invoiceEmailSettingsReader: InvoiceEmailSettingsReader = {
     async getEmailSettings(companyId) {
       const settings =
@@ -165,13 +154,13 @@ export function createInvoicingComposition(
         listInvoiceDrafts(input, invoiceDraftRepository),
       saveInvoiceDraft: (input) =>
         saveInvoiceDraft(input, {
-          customerAccessReader,
+          customerAccessReader: options.customerAccessReader,
           invoiceDraftRepository,
           invoicePaymentSettingsRepository,
         }),
       updateInvoiceDraft: (input) =>
         updateInvoiceDraft(input, {
-          customerAccessReader,
+          customerAccessReader: options.customerAccessReader,
           invoiceDraftRepository,
           invoicePaymentSettingsRepository,
         }),
@@ -184,7 +173,7 @@ export function createInvoicingComposition(
       copyApprovedInvoiceToDraft: (input) =>
         copyApprovedInvoiceToDraft(input, {
           approvedInvoiceReader,
-          customerAccessReader,
+          customerAccessReader: options.customerAccessReader,
           invoiceDraftRepository,
         }),
       generateApprovedInvoicePdfDocument: ensureApprovedInvoicePdfDocument,
