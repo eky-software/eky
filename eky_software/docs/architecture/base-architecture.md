@@ -208,3 +208,7 @@ Perusvirta:
   versio, paketointityökalu ja Windows-jakelupolku päätetään toteutusvaiheessa.
 - Miten mobiilin synkronointimalli toteutetaan?
 - Miten local-cloud-synkronoinnin konfliktit ratkaistaan?
+
+Uuden liiketoimintamoduulin toteutus aloitetaan dokumentin
+`docs/architecture/new-module-implementation-checklist.md` avulla. Checklist
+ei muuta tämän dokumentin riippuvuussuuntaa tai moduulien omistajuutta.

@@ -307,3 +307,7 @@ Yleiset apupaketit muuttuvat helposti kaatopaikaksi ja rikkovat moduulirajoja.
 ## Dokumentointi
 
 Jos uusi riippuvuus lisätään, kirjaa perustelu `docs/architecture/tech-decisions.md`-tiedostoon tai erilliseen ADR:ään, jos päätös on merkittävä.
+
+Uuden moduulin riippuvuudet, adapterirajat ja jaettujen työkalujen kynnys
+tarkistetaan lisäksi dokumentin
+`docs/architecture/new-module-implementation-checklist.md` avulla.
