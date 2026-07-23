@@ -1,10 +1,9 @@
 import type { DatabaseConnection } from '../../../database/connection/createDatabaseConnection.js';
 import type { InvoiceRow } from '../../../database/schema.js';
-import type { ApprovedInvoiceSummary } from '../domain/approvedInvoiceSummary.js';
 import type { InvoiceCreditContext } from '../domain/invoiceCreditContext.js';
-import type { InvoiceKind } from '../domain/invoiceKind.js';
-import type { SentInvoiceGroup } from '../domain/sentInvoiceGroup.js';
 import type { InvoiceCreditContextReader } from '../ports/invoiceCreditContextReader.js';
+import { toApprovedInvoiceSummary } from './approvedInvoiceReadModelMapping.js';
+import { createSentInvoiceGroup } from './sentInvoiceGroupMapping.js';
 
 type InvoiceCreditContextKeyParameters = [string, string];
 
@@ -87,48 +86,4 @@ export class SqliteInvoiceCreditContextReader
       activeCreditDraftId: activeCreditDraft?.id ?? null,
     };
   }
-}
-
-function toApprovedInvoiceSummary(invoice: InvoiceRow): ApprovedInvoiceSummary {
-  return {
-    id: invoice.id,
-    invoiceKind: invoice.invoice_kind as InvoiceKind,
-    creditedInvoiceId: invoice.credited_invoice_id,
-    invoiceNumber: invoice.invoice_number,
-    referenceNumber: invoice.reference_number ?? '',
-    status: invoice.status as 'approved' | 'sent' | 'cancelled',
-    customerId: invoice.customer_id,
-    customerNumberSnapshot: invoice.customer_number_snapshot,
-    customerNameSnapshot: invoice.customer_name_snapshot,
-    billingRecipientNameSnapshot: invoice.billing_recipient_name_snapshot,
-    invoiceDate: invoice.invoice_date,
-    dueDate: invoice.due_date,
-    grossTotalCents: invoice.total_gross_cents,
-    approvedAt: invoice.approved_at,
-    updatedAt: invoice.updated_at,
-    cancelledAt: invoice.cancelled_at,
-  };
-}
-
-function createSentInvoiceGroup(
-  rootInvoice: ApprovedInvoiceSummary,
-  creditInvoices: ApprovedInvoiceSummary[],
-  creditedGrossCents: number,
-): SentInvoiceGroup {
-  const remainingCreditableGrossCents = Math.max(
-    0,
-    rootInvoice.grossTotalCents - creditedGrossCents,
-  );
-
-  return {
-    rootInvoice,
-    creditInvoices,
-    creditStatus:
-      creditedGrossCents <= 0
-        ? 'none'
-        : remainingCreditableGrossCents === 0
-          ? 'full'
-          : 'partial',
-    remainingCreditableGrossCents,
-  };
 }
