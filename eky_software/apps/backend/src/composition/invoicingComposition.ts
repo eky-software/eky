@@ -57,6 +57,7 @@ import { InMemoryInvoiceEmailSendAttemptStore } from '../modules/invoicing/infra
 import { LocalInvoiceDocumentStorage } from '../modules/invoicing/infrastructure/localInvoiceDocumentStorage.js';
 import { renderApprovedInvoicePdf } from '../modules/invoicing/infrastructure/pdf/approvedInvoicePdfRenderer.js';
 import { SqliteApprovedInvoiceReader } from '../modules/invoicing/infrastructure/sqliteApprovedInvoiceReader.js';
+import { SqliteInvoiceCreditContextReader } from '../modules/invoicing/infrastructure/sqliteInvoiceCreditContextReader.js';
 import { SqliteInvoiceApprovalRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceApprovalRepository.js';
 import { SqliteInvoiceCorrectionRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceCorrectionRepository.js';
 import { SqliteInvoiceCreditApprovalRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceCreditApprovalRepository.js';
@@ -67,6 +68,7 @@ import { SqliteInvoiceDraftRepository } from '../modules/invoicing/infrastructur
 import { SqliteInvoiceNumberingRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceNumberingRepository.js';
 import { SqliteInvoicePaymentSettingsRepository } from '../modules/invoicing/infrastructure/sqliteInvoicePaymentSettingsRepository.js';
 import { SqliteInvoiceVatRateRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceVatRateRepository.js';
+import { SqliteSentInvoiceGroupReader } from '../modules/invoicing/infrastructure/sqliteSentInvoiceGroupReader.js';
 import type { CustomerAccessReader } from '../modules/invoicing/ports/customerAccessReader.js';
 import type { InvoiceEmailSettingsReader } from '../modules/invoicing/ports/invoiceEmailSettingsReader.js';
 
@@ -103,6 +105,12 @@ export function createInvoicingComposition(
       ? new LocalInvoiceDocumentStorage()
       : new LocalInvoiceDocumentStorage(options.invoiceDocumentStorageRoot);
   const approvedInvoiceReader = new SqliteApprovedInvoiceReader(options.database);
+  const invoiceCreditContextReader = new SqliteInvoiceCreditContextReader(
+    options.database,
+  );
+  const sentInvoiceGroupReader = new SqliteSentInvoiceGroupReader(
+    options.database,
+  );
   const invoiceNumberingRepository = new SqliteInvoiceNumberingRepository(
     options.database,
   );
@@ -224,7 +232,7 @@ export function createInvoicingComposition(
       getApprovedInvoice: (input) =>
         getApprovedInvoice(input, approvedInvoiceReader),
       getInvoiceCreditContext: (input) =>
-        getInvoiceCreditContext(input, approvedInvoiceReader),
+        getInvoiceCreditContext(input, invoiceCreditContextReader),
       getApprovedInvoicePdfDocument,
       getApprovedInvoicePdfMetadata: (input) =>
         getApprovedInvoicePdfMetadata(input, {
@@ -234,7 +242,7 @@ export function createInvoicingComposition(
       listApprovedInvoices: (input) =>
         listApprovedInvoices(input, approvedInvoiceReader),
       listSentInvoiceGroups: (input) =>
-        listSentInvoiceGroups(input, approvedInvoiceReader),
+        listSentInvoiceGroups(input, sentInvoiceGroupReader),
       listInvoiceDeliveryEvents: (input) =>
         listInvoiceDeliveryEvents(input, {
           approvedInvoiceReader,
