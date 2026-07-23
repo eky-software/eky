@@ -420,6 +420,28 @@ uudelleenhyväksyntä säilyttää saman hyvityslaskun numeron ja kirjaa
 `invoice.credit_reapproved`-audit-tapahtuman. Lähetettyä hyvityslaskua ei
 reopen-muokata.
 
+## Hyväksyntä- Ja Reopen-Rajat
+
+Tavallisen laskun hyväksyntäpolku hyväksyy vain luonnoksen, jonka
+`invoice_kind` on `standard` ja jonka `credited_invoice_id` on `NULL`. Sama
+raja koskee tavallisen laskun uudelleenhyväksyntää. Hyvitysluonnos hyväksytään
+aina omalla `approve-credit`-käyttötapauksellaan.
+
+Suora hyvitysluonnoksen kutsu tavalliseen
+`POST /invoice-drafts/:id/approve`-endpointiin torjutaan yleisenä
+not-found-virheenä ennen kirjoituksia. Väärä kutsu ei saa:
+
+- kuluttaa laskunumeroa
+- luoda laskua tai laskurivejä
+- lisätä audit-tapahtumaa
+- muuttaa hyvitysluonnosta tai alkuperäistä laskua
+
+Tavallisen laskun reopen-polku ja sitä seuraava tavallinen
+uudelleenhyväksyntähaku hyväksyvät vain `standard`-laskun. Hyväksyttyä
+hyvityslaskua ei palauteta muokattavaksi tavallisella reopen-endpointilla.
+Väärä kutsu torjutaan ennen kirjoituksia, eikä se saa muuttaa laskua,
+luonnosta, PDF-metatietoa, PDF-storagea tai audit-tapahtumia.
+
 ## Hyvitysrajan Johdettu Tila
 
 Alkuperäisen laskun hyvitystila johdetaan ei-perutuista hyvityslaskuista:
@@ -516,6 +538,17 @@ ennalleen ja kirjautuu delivery event -malliin nykyisten sääntöjen mukaan.
 Peruutetun laskun olemassa oleva PDF säilyy luettavana audit- ja
 tarkastustarkoituksiin, mutta peruutettua laskua ei voi toimittaa.
 
+Kaikki toimituskäyttötapaukset käyttävät yhtä Invoicing application -tason
+toimituskelpoisuussääntöä. Vain `approved`- ja `sent`-tilaiset laskut ovat
+toimituskelpoisia. `sent` sallitaan uudelleenlähetystä varten.
+
+`cancelled`-lasku torjutaan heti yritysrajatun laskun lukemisen jälkeen
+kaikissa dry-run-, SMTP-test-, SMTP- ja manuaalisen toimituksen prepare/send-
+poluissa. Tarkistus tehdään ennen PDF:n muodostamista tai lukemista,
+vahvistus- tai attempt-tokenia, delivery event -kirjausta, provider-kutsua ja
+finalisointia. Peruutettu lasku säilyy read-only-katseltavana ja sen olemassa
+oleva PDF avattavana.
+
 ## Auditointi
 
 Ensimmäiset uudet audit-toiminnot:
@@ -561,6 +594,18 @@ Vähimmäistestit:
 - credit PDF näyttää negatiiviset summat ja jättää maksupalkin pois
 - credit email käyttää samaa current PDF -toimitusputkea
 - cancelled-, standard- ja credit-laskut rajautuvat aina companyId:llä
+- suora credit draftin kutsu tavalliseen approve-endpointiin palauttaa yleisen
+  not-found-virheen eikä kuluta numeroa, luo laskua tai rivejä, kirjaa auditia
+  tai muuta luonnosta
+- suora hyväksytyn credit invoicen kutsu tavalliseen reopen-endpointiin
+  palauttaa yleisen not-found-virheen eikä muuta laskua, luonnosta,
+  PDF-metatietoa, storagea tai auditia
+- cancelled-laskun dry-run prepare/send, SMTP test prepare/send, SMTP
+  prepare/send ja manuaalinen mark-sent torjutaan ennen PDF-, token-, event-,
+  provider- ja finalizer-sivuvaikutuksia
+- sent-laskun uudelleenlähetys säilyy sallittuna
+- cancelled-laskun read-only-haku ja olemassa olevan PDF:n avaaminen säilyvät
+  sallittuina
 - sent-ryhmittely sivuttaa juurilaskut vakaasti ilman N+1-kyselyitä
 - HTTP, API-client ja desktop allowlist hylkäävät ylimääräiset tai luvattomat
   kentät
