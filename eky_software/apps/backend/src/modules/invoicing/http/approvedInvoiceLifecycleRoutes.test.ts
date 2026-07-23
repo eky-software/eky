@@ -161,6 +161,25 @@ describe('approved invoice lifecycle routes', () => {
     });
   });
 
+  it('returns the same safe 404 when a credit invoice uses the standard reopen route', async () => {
+    const { app, getReopenInput } = createTestApp({
+      reopenError: new ApprovedInvoiceNotFoundError(),
+    });
+
+    const response = await app.request('/invoices/credit-1/reopen-for-edit', {
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Approved invoice was not found.',
+    });
+    expect(getReopenInput()).toMatchObject({
+      companyId: 'dev-company',
+      invoiceId: 'credit-1',
+    });
+  });
+
   it('returns a safe 404 when copying an invoice outside the company scope', async () => {
     const { app } = createTestApp({
       copyError: new ApprovedInvoiceNotFoundError(),

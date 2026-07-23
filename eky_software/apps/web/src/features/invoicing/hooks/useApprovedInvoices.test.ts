@@ -81,13 +81,46 @@ describe('loadApprovedInvoicePage', () => {
         apiClient,
         createDefaultApprovedInvoiceListControls(),
         1,
+        'uncredited',
       ),
     ).resolves.toEqual(groupPage);
     expect(apiClient.listSentInvoiceGroups).toHaveBeenCalledWith({
+      creditState: 'uncredited',
       page: 1,
       pageSize: 20,
       sort: 'invoiceDateDesc',
     });
+  });
+
+  it('rejects a sent group that does not match the requested credit section', async () => {
+    const rootInvoice = createApprovedInvoiceSummary({ status: 'sent' });
+    const mismatchPage: SentInvoiceGroupListPage = {
+      groups: [
+        {
+          rootInvoice,
+          creditInvoices: [],
+          creditStatus: 'none',
+          remainingCreditableGrossCents: rootInvoice.grossTotalCents,
+        },
+      ],
+      page: 1,
+      pageSize: 20,
+      totalCount: 1,
+      totalPages: 1,
+    };
+    const apiClient = {
+      listApprovedInvoices: vi.fn(),
+      listSentInvoiceGroups: vi.fn(async () => mismatchPage),
+    };
+
+    await expect(
+      loadSentInvoiceGroupPage(
+        apiClient,
+        createDefaultApprovedInvoiceListControls(),
+        1,
+        'credited',
+      ),
+    ).rejects.toThrow();
   });
 });
 
@@ -114,6 +147,16 @@ describe('getApprovedInvoiceListErrorMessage', () => {
     expect(
       getApprovedInvoiceListErrorMessage(new Error('secret'), 'cancelled'),
     ).toBe(uiText.invoicing.cancelledInvoiceListLoadError);
+  });
+
+  it('uses the credited-list fallback for an unknown failure', () => {
+    expect(
+      getApprovedInvoiceListErrorMessage(
+        new Error('secret'),
+        'sent',
+        'credited',
+      ),
+    ).toBe(uiText.invoicing.creditedInvoiceListLoadError);
   });
 });
 

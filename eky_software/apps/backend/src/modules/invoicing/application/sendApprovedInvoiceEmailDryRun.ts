@@ -15,6 +15,7 @@ import type {
   GenerateApprovedInvoicePdfDocumentInput,
 } from './generateApprovedInvoicePdfDocument.js';
 import { recordInvoiceDeliveryEvent } from './recordInvoiceDeliveryEvent.js';
+import { requireInvoiceDeliveryEligible } from './requireInvoiceDeliveryEligible.js';
 import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
 import { requireIdentifier } from '../domain/invoiceDraftRules.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
@@ -71,6 +72,8 @@ export async function sendApprovedInvoiceEmailDryRun(
   if (invoice === undefined) {
     throw new ApprovedInvoiceNotFoundError();
   }
+
+  requireInvoiceDeliveryEligible(invoice);
 
   const document = await dependencies.ensureApprovedInvoicePdfDocument({
     companyId,

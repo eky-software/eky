@@ -20,6 +20,7 @@ import type { ReferenceNumberType } from '../domain/invoiceReferenceNumber.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
 import type { InvoiceCreditContextReader } from '../ports/invoiceCreditContextReader.js';
 import type {
+  SentInvoiceCreditStateFilter,
   SentInvoiceGroup,
   SentInvoiceGroupQuery,
   SentInvoiceGroupResult,
@@ -156,7 +157,10 @@ export class SqliteApprovedInvoiceReader
       query.dateTo,
     ];
     const orderBy = getApprovedInvoiceListOrderBy(query.sort);
-    const rootInvoiceQuery = createSentInvoiceRootQuery(orderBy);
+    const rootInvoiceQuery = createSentInvoiceRootQuery(
+      orderBy,
+      query.creditState,
+    );
     const rootParameters: SentInvoiceRootListParameters = [
       ...filterParameters,
       query.limit,
@@ -170,13 +174,14 @@ export class SqliteApprovedInvoiceReader
       .prepare<SentInvoiceRootFilterParameters, { total_count: number }>(
         `
           SELECT COUNT(*) AS total_count
-          FROM invoices
+          FROM invoices AS root_invoices
           WHERE
-            company_id = ?
-            AND status = 'sent'
-            AND invoice_kind = 'standard'
-            AND (? IS NULL OR invoice_date >= ?)
-            AND (? IS NULL OR invoice_date <= ?)
+            root_invoices.company_id = ?
+            AND root_invoices.status = 'sent'
+            AND root_invoices.invoice_kind = 'standard'
+            AND (? IS NULL OR root_invoices.invoice_date >= ?)
+            AND (? IS NULL OR root_invoices.invoice_date <= ?)
+            ${getSentInvoiceCreditStateWhereClause(query.creditState)}
         `,
       )
       .get(...filterParameters);
@@ -374,18 +379,44 @@ export class SqliteApprovedInvoiceReader
   }
 }
 
-function createSentInvoiceRootQuery(orderBy: string): string {
+function createSentInvoiceRootQuery(
+  orderBy: string,
+  creditState: SentInvoiceCreditStateFilter,
+): string {
   return `
-    SELECT *
-    FROM invoices
+    SELECT root_invoices.*
+    FROM invoices AS root_invoices
     WHERE
-      company_id = ?
-      AND status = 'sent'
-      AND invoice_kind = 'standard'
-      AND (? IS NULL OR invoice_date >= ?)
-      AND (? IS NULL OR invoice_date <= ?)
+      root_invoices.company_id = ?
+      AND root_invoices.status = 'sent'
+      AND root_invoices.invoice_kind = 'standard'
+      AND (? IS NULL OR root_invoices.invoice_date >= ?)
+      AND (? IS NULL OR root_invoices.invoice_date <= ?)
+      ${getSentInvoiceCreditStateWhereClause(creditState)}
     ORDER BY ${orderBy}
     LIMIT ? OFFSET ?
+  `;
+}
+
+function getSentInvoiceCreditStateWhereClause(
+  creditState: SentInvoiceCreditStateFilter,
+): string {
+  if (creditState === 'all') {
+    return '';
+  }
+
+  const comparison = creditState === 'credited' ? '>' : '=';
+
+  return `
+    AND (
+      SELECT COALESCE(SUM(credit_invoices.total_gross_cents), 0)
+      FROM invoices AS credit_invoices
+      WHERE
+        credit_invoices.company_id = root_invoices.company_id
+        AND credit_invoices.credited_invoice_id = root_invoices.id
+        AND credit_invoices.invoice_kind = 'credit'
+        AND credit_invoices.status IN ('approved', 'sent')
+    ) ${comparison} 0
   `;
 }
 

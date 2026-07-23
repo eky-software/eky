@@ -44,6 +44,7 @@ export type {
   InvoiceManualDeliveryMethod,
   ReopenedApprovedInvoice,
   SentInvoiceCreditStatus,
+  SentInvoiceCreditStateFilter,
   SentInvoiceGroup,
   SentInvoiceGroupListPage,
   SentInvoiceGroupListQuery,

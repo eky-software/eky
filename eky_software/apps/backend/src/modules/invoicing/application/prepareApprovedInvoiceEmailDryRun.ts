@@ -6,6 +6,7 @@ import {
   type ApprovedInvoiceEmailPreview,
 } from './approvedInvoiceEmailPreview.js';
 import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
+import { requireInvoiceDeliveryEligible } from './requireInvoiceDeliveryEligible.js';
 import type {
   GenerateApprovedInvoicePdfDocumentInput,
 } from './generateApprovedInvoicePdfDocument.js';
@@ -51,6 +52,8 @@ export async function prepareApprovedInvoiceEmailDryRun(
   if (invoice === undefined) {
     throw new ApprovedInvoiceNotFoundError();
   }
+
+  requireInvoiceDeliveryEligible(invoice);
 
   const invoiceForEmail = withCalculatedApprovedInvoiceVatBreakdown(invoice);
   const document = await dependencies.ensureApprovedInvoicePdfDocument({

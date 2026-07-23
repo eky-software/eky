@@ -6,6 +6,7 @@ import { InvoiceDeliveryConflictError } from './invoiceDeliveryConflictError.js'
 import { createInvoiceEmailSendRequestFingerprint } from './invoiceEmailSendRequestFingerprint.js';
 import { normalizeApprovedInvoiceEmailSendFields } from './approvedInvoiceEmailSendValidation.js';
 import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
+import { requireInvoiceDeliveryEligible } from './requireInvoiceDeliveryEligible.js';
 import type { GenerateApprovedInvoicePdfDocumentInput } from './generateApprovedInvoicePdfDocument.js';
 import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
 import { requireIdentifier } from '../domain/invoiceDraftRules.js';
@@ -74,6 +75,8 @@ export async function prepareApprovedInvoiceEmailSmtp(
   if (invoice === undefined) {
     throw new ApprovedInvoiceNotFoundError();
   }
+
+  requireInvoiceDeliveryEligible(invoice);
 
   if (
     await dependencies.invoiceDeliveryEventReader.hasUnresolvedDeliveryEvent(

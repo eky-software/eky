@@ -74,7 +74,9 @@ export function SentInvoiceGroupList({
           <span className="status-pill status-pill-active" role="cell">
             {group.creditStatus === 'full'
               ? uiText.invoicing.statusCredited
-              : uiText.invoicing.statusSent}
+              : group.creditStatus === 'partial'
+                ? uiText.invoicing.creditStatusPartial
+                : uiText.invoicing.statusSent}
           </span>
         </div>,
         ...group.creditInvoices.map((creditInvoice) => (

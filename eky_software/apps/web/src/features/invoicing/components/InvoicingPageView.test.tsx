@@ -296,6 +296,7 @@ function createApprovedInvoiceListState(
   return {
     approved: createApprovedInvoicePageState(),
     cancelled: createApprovedInvoicePageState(),
+    credited: createApprovedInvoicePageState(),
     refreshApprovedInvoices: vi.fn(),
     sent: createApprovedInvoicePageState(),
     ...overrides,

@@ -87,6 +87,7 @@ describe('approved invoice query routes', () => {
     expect(response.status).toBe(200);
     expect(getSentGroupInput()).toEqual({
       companyId: 'dev-company',
+      creditState: 'all',
       dateFrom: '2026-01-01',
       page: 2,
       pageSize: 50,
@@ -102,6 +103,29 @@ describe('approved invoice query routes', () => {
 
     expect(statusOverrideResponse.status).toBe(400);
     expect(tenantOverrideResponse.status).toBe(400);
+  });
+
+  it('validates the sent invoice credit-state filter', async () => {
+    const { app, getSentGroupInput } = createTestApp({});
+
+    const response = await app.request(
+      '/sent-invoice-groups?creditState=credited',
+    );
+
+    expect(response.status).toBe(200);
+    expect(getSentGroupInput()).toEqual({
+      companyId: 'dev-company',
+      creditState: 'credited',
+      page: 1,
+      pageSize: 20,
+      sort: 'invoiceDateDesc',
+    });
+
+    const invalidResponse = await app.request(
+      '/sent-invoice-groups?creditState=other',
+    );
+
+    expect(invalidResponse.status).toBe(400);
   });
 
   it('returns a credit context in the trusted company scope', async () => {

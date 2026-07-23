@@ -162,6 +162,10 @@ export interface ApprovedInvoiceListPage {
 }
 
 export type SentInvoiceCreditStatus = 'none' | 'partial' | 'full';
+export type SentInvoiceCreditStateFilter =
+  | 'all'
+  | 'uncredited'
+  | 'credited';
 
 export interface SentInvoiceGroup {
   rootInvoice: ApprovedInvoiceSummary;
@@ -181,7 +185,9 @@ export interface InvoiceCreditContext {
 export type SentInvoiceGroupListQuery = Omit<
   ApprovedInvoiceListQuery,
   'status'
->;
+> & {
+  creditState?: SentInvoiceCreditStateFilter;
+};
 
 export interface SentInvoiceGroupListPage {
   groups: SentInvoiceGroup[];

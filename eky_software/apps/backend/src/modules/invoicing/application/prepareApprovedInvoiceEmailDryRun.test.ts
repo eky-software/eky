@@ -157,6 +157,33 @@ describe('prepareApprovedInvoiceEmailDryRun', () => {
     expect(invoiceEmailDeliveryProvider.prepareDryRunEmail).not.toHaveBeenCalled();
   });
 
+  it('does not prepare a cancelled invoice or ensure its PDF', async () => {
+    const ensureApprovedInvoicePdfDocument = vi.fn(
+      async () => createApprovedInvoiceDocumentMetadata(),
+    );
+    const invoiceEmailDeliveryProvider = createDryRunProvider();
+
+    await expect(
+      prepareApprovedInvoiceEmailDryRun(
+        {
+          actorContext: createSendInvoicesActorContext(),
+          invoiceId: 'invoice-1',
+          preparedAt: '2026-07-09T10:00:00.000Z',
+        },
+        {
+          approvedInvoiceReader: createApprovedInvoiceReader(
+            createApprovedInvoiceView({ status: 'cancelled' }),
+          ),
+          ensureApprovedInvoicePdfDocument,
+          invoiceEmailDeliveryProvider,
+        },
+      ),
+    ).rejects.toBeInstanceOf(ApprovedInvoiceNotFoundError);
+
+    expect(ensureApprovedInvoicePdfDocument).not.toHaveBeenCalled();
+    expect(invoiceEmailDeliveryProvider.prepareDryRunEmail).not.toHaveBeenCalled();
+  });
+
   it('denies preparation without sendInvoices permission', async () => {
     const approvedInvoiceReader = createApprovedInvoiceReader(
       createApprovedInvoiceView(),

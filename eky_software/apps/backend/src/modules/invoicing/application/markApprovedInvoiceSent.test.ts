@@ -104,6 +104,29 @@ describe('markApprovedInvoiceSent', () => {
     expect(completeManualDelivery).not.toHaveBeenCalled();
   });
 
+  it('rejects a cancelled invoice before delivery state, PDF, or finalization', async () => {
+    const invoiceDeliveryEventReader = createDeliveryEventReader(false);
+    const ensureApprovedInvoicePdfDocument = vi.fn();
+    const completeManualDelivery = vi.fn();
+
+    await expect(
+      markApprovedInvoiceSent(createInput(), {
+        approvedInvoiceReader: createReader(
+          createApprovedInvoiceView({ status: 'cancelled' }),
+        ),
+        ensureApprovedInvoicePdfDocument,
+        invoiceDeliveryEventReader,
+        invoiceManualDeliveryFinalizer: { completeManualDelivery },
+      }),
+    ).rejects.toBeInstanceOf(ApprovedInvoiceNotFoundError);
+
+    expect(
+      invoiceDeliveryEventReader.hasUnresolvedDeliveryEvent,
+    ).not.toHaveBeenCalled();
+    expect(ensureApprovedInvoicePdfDocument).not.toHaveBeenCalled();
+    expect(completeManualDelivery).not.toHaveBeenCalled();
+  });
+
   it('rejects missing permission before reading invoice data', async () => {
     const getApprovedInvoiceById = vi.fn();
 

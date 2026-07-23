@@ -3,14 +3,22 @@ import { AuthorizationError } from '@eky/permissions';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ApprovedInvoiceEmailDeliveryError } from './approvedInvoiceEmailDeliveryError.js';
+import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
 import { prepareApprovedInvoiceEmailSmtpTest } from './prepareApprovedInvoiceEmailSmtpTest.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
 import type { InvoiceEmailSendAttemptStore } from '../ports/invoiceEmailSendAttemptStore.js';
 
 class FakeApprovedInvoiceReader implements ApprovedInvoiceReader {
+  constructor(
+    private readonly invoice: ApprovedInvoiceView = {
+      id: 'invoice-1',
+      status: 'approved',
+    } as ApprovedInvoiceView,
+  ) {}
+
   async getApprovedInvoiceById(): Promise<ApprovedInvoiceView> {
-    return { id: 'invoice-1' } as ApprovedInvoiceView;
+    return this.invoice;
   }
 
   async listApprovedInvoiceSummaries(): Promise<never> {
@@ -73,6 +81,23 @@ describe('prepareApprovedInvoiceEmailSmtpTest', () => {
     expect(attemptStore.prepare).not.toHaveBeenCalled();
   });
 
+  it('rejects a cancelled invoice before settings, PDF, or authorization', async () => {
+    const dependencies = createDependencies({
+      invoice: {
+        id: 'invoice-1',
+        status: 'cancelled',
+      } as ApprovedInvoiceView,
+    });
+
+    await expect(
+      prepareApprovedInvoiceEmailSmtpTest(createInput(), dependencies),
+    ).rejects.toBeInstanceOf(ApprovedInvoiceNotFoundError);
+
+    expect(dependencies.invoiceEmailSettingsReader.getEmailSettings).not.toHaveBeenCalled();
+    expect(dependencies.ensureApprovedInvoicePdfDocument).not.toHaveBeenCalled();
+    expect(dependencies.invoiceEmailSendAttemptStore.prepare).not.toHaveBeenCalled();
+  });
+
   it('denies preparation before reading invoice or settings', async () => {
     const dependencies = createDependencies();
 
@@ -96,10 +121,11 @@ describe('prepareApprovedInvoiceEmailSmtpTest', () => {
 
 function createDependencies(options: {
   attemptStore?: InvoiceEmailSendAttemptStore;
+  invoice?: ApprovedInvoiceView;
   provider?: 'dnaSmtp' | 'dryRun';
 } = {}) {
   return {
-    approvedInvoiceReader: new FakeApprovedInvoiceReader(),
+    approvedInvoiceReader: new FakeApprovedInvoiceReader(options.invoice),
     ensureApprovedInvoicePdfDocument: vi.fn(async () => ({
       companyId: 'company-1',
       createdAt: '2026-07-16T10:00:00.000Z',

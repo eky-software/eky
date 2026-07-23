@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ApprovedInvoiceEmailDeliveryError } from './approvedInvoiceEmailDeliveryError.js';
 import { ApprovedInvoiceEmailDeliveryOutcomeUnknownError } from './approvedInvoiceEmailDeliveryOutcomeUnknownError.js';
+import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
 import { InvoiceEmailSendAttemptError } from './invoiceEmailSendAttemptError.js';
 import { createInvoiceEmailSendRequestFingerprint } from './invoiceEmailSendRequestFingerprint.js';
 import {
@@ -237,6 +238,28 @@ describe('sendApprovedInvoiceEmailSmtp', () => {
     expect(getApprovedInvoiceById).toHaveBeenCalledOnce();
   });
 
+  it('rejects a cancelled invoice before settings, PDF, attempt, event, provider, or finalizer', async () => {
+    const repository = new FakeDeliveryEventRepository();
+    const dependencies = createDependencies({
+      getStatus: () => 'cancelled',
+      repository,
+    });
+
+    await expect(
+      sendApprovedInvoiceEmailSmtp(createInput(), dependencies),
+    ).rejects.toBeInstanceOf(ApprovedInvoiceNotFoundError);
+
+    expect(dependencies.invoiceEmailSettingsReader.getEmailSettings).not.toHaveBeenCalled();
+    expect(dependencies.ensureApprovedInvoicePdfDocument).not.toHaveBeenCalled();
+    expect(dependencies.getApprovedInvoicePdfDocument).not.toHaveBeenCalled();
+    expect(dependencies.invoiceEmailSendAttemptStore.acquire).not.toHaveBeenCalled();
+    expect(repository.events).toEqual([]);
+    expect(dependencies.invoiceSmtpDeliveryProvider.sendEmail).not.toHaveBeenCalled();
+    expect(
+      dependencies.invoiceEmailDeliveryFinalizer.completeSuccessfulEmailDelivery,
+    ).not.toHaveBeenCalled();
+  });
+
   it.each([
     {
       changedDocument: createDocumentMetadata({ sha256: '1'.repeat(64) }),
@@ -311,7 +334,7 @@ function createDependencies(options: {
   attemptStore?: InvoiceEmailSendAttemptStore;
   documentMetadata?: ApprovedInvoiceDocumentMetadata;
   emailSettings?: ReturnType<typeof createEmailSettings>;
-  getStatus?: () => 'approved' | 'sent';
+  getStatus?: () => ApprovedInvoiceView['status'];
   pdfContent?: Buffer;
   repository?: FakeDeliveryEventRepository;
   sendEmail?: InvoiceSmtpDeliveryProvider['sendEmail'];
@@ -386,7 +409,9 @@ function createInput(
   };
 }
 
-function createInvoice(status: 'approved' | 'sent'): ApprovedInvoiceView {
+function createInvoice(
+  status: ApprovedInvoiceView['status'],
+): ApprovedInvoiceView {
   return {
     id: 'invoice-1',
     invoiceNumber: '20260001',

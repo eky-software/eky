@@ -251,6 +251,23 @@ describe('SqliteApprovedInvoiceReader', () => {
       remainingCreditableGrossCents: 0,
       creditInvoices: [{ id: 'credit-invoice-1' }],
     });
+
+    await expect(
+      reader.listSentInvoiceGroups(
+        createSentGroupQuery({ creditState: 'uncredited' }),
+      ),
+    ).resolves.toMatchObject({
+      totalCount: 1,
+      groups: [{ rootInvoice: { id: 'invoice-2' }, creditStatus: 'none' }],
+    });
+    await expect(
+      reader.listSentInvoiceGroups(
+        createSentGroupQuery({ creditState: 'credited' }),
+      ),
+    ).resolves.toMatchObject({
+      totalCount: 1,
+      groups: [{ rootInvoice: { id: 'invoice-1' }, creditStatus: 'full' }],
+    });
   });
 
   it('does not return sent invoice groups outside the company scope', async () => {
@@ -400,6 +417,7 @@ function createSentGroupQuery(
 ): Parameters<SqliteApprovedInvoiceReader['listSentInvoiceGroups']>[0] {
   return {
     companyId: 'dev-company',
+    creditState: 'all',
     dateFrom: null,
     dateTo: null,
     limit: 20,

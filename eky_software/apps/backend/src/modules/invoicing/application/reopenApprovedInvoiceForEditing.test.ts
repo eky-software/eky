@@ -97,6 +97,20 @@ describe('reopenApprovedInvoiceForEditing', () => {
     ).rejects.toEqual(new ApprovedInvoiceNotFoundError());
   });
 
+  it('does not delete PDF storage when a credit invoice is rejected by the standard reopen boundary', async () => {
+    const repository = new FakeInvoiceApprovalRepository(undefined);
+    const storage = new FakeInvoiceDocumentStorage();
+
+    await expect(
+      reopenApprovedInvoiceForEditing(createInput({ invoiceId: 'credit-1' }), {
+        invoiceApprovalRepository: repository,
+        invoiceDocumentStorage: storage,
+      }),
+    ).rejects.toEqual(new ApprovedInvoiceNotFoundError());
+
+    expect(storage.deletedPaths).toEqual([]);
+  });
+
   it('rejects invalid identifiers before calling the repository', async () => {
     const repository = new FakeInvoiceApprovalRepository({
       draftId: 'draft-1',
