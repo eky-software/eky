@@ -435,6 +435,8 @@ function createTestInvoiceDraft(): InvoiceDraft {
 function createTestInvoiceDraftSummary(): InvoiceDraftSummary {
   return {
     id: 'draft-1',
+    invoiceKind: 'standard',
+    creditedInvoiceId: null,
     customerId: 'customer-1',
     status: 'draft',
     invoiceDate: '2026-06-13',

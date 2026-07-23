@@ -1,7 +1,10 @@
 import type { ApprovedInvoiceStatus } from './approvedInvoice.js';
+import type { InvoiceKind } from './invoiceKind.js';
 
 export interface ApprovedInvoiceSummary {
   id: string;
+  invoiceKind: InvoiceKind;
+  creditedInvoiceId: string | null;
   invoiceNumber: string;
   referenceNumber: string;
   status: ApprovedInvoiceStatus;
@@ -14,6 +17,7 @@ export interface ApprovedInvoiceSummary {
   grossTotalCents: number;
   approvedAt: string;
   updatedAt: string;
+  cancelledAt: string | null;
 }
 
 export type ApprovedInvoiceListSort =

@@ -6,6 +6,8 @@ import {
   type ApprovedInvoiceSummary,
   type ApprovedInvoiceViewStatus,
   type EkyApiClient,
+  type SentInvoiceGroup,
+  type SentInvoiceGroupListPage,
 } from '@eky/api-client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -18,11 +20,15 @@ import {
 } from '../approved/approvedInvoiceListFilters.js';
 import { getFinnishApiErrorMessage, uiText } from '../../../i18n/fi.js';
 
-type ApprovedInvoicePageClient = Pick<EkyApiClient, 'listApprovedInvoices'>;
+type ApprovedInvoicePageClient = Pick<
+  EkyApiClient,
+  'listApprovedInvoices' | 'listSentInvoiceGroups'
+>;
 
 export interface ApprovedInvoicePageState {
   controls: ApprovedInvoiceListControls;
   errorMessage: string | null;
+  invoiceGroups: SentInvoiceGroup[];
   invoices: ApprovedInvoiceSummary[];
   isFiscalYearFilterAvailable: boolean;
   isLoading: boolean;
@@ -46,6 +52,7 @@ export function useApprovedInvoicePage(
     createDefaultApprovedInvoiceListControls,
   );
   const [invoices, setInvoices] = useState<ApprovedInvoiceSummary[]>([]);
+  const [invoiceGroups, setInvoiceGroups] = useState<SentInvoiceGroup[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
@@ -79,12 +86,29 @@ export function useApprovedInvoicePage(
     setErrorMessage(null);
 
     try {
-      const page = await loadApprovedInvoicePage(
-        apiClient,
-        status,
-        controls,
-        fiscalYearStartMonth,
-      );
+      const groupPage =
+        status === 'sent'
+          ? await loadSentInvoiceGroupPage(
+              apiClient,
+              controls,
+              fiscalYearStartMonth,
+            )
+          : null;
+      const page =
+        groupPage === null
+          ? await loadApprovedInvoicePage(
+              apiClient,
+              status,
+              controls,
+              fiscalYearStartMonth,
+            )
+          : {
+              invoices: groupPage.groups.map((group) => group.rootInvoice),
+              page: groupPage.page,
+              pageSize: groupPage.pageSize,
+              totalCount: groupPage.totalCount,
+              totalPages: groupPage.totalPages,
+            };
 
       if (requestId !== requestSequence.current) {
         return;
@@ -101,6 +125,7 @@ export function useApprovedInvoicePage(
       }
 
       setInvoices(page.invoices);
+      setInvoiceGroups(groupPage?.groups ?? []);
       setTotalCount(page.totalCount);
       setTotalPages(page.totalPages);
     } catch (error) {
@@ -109,6 +134,7 @@ export function useApprovedInvoicePage(
       }
 
       setInvoices([]);
+      setInvoiceGroups([]);
       setTotalCount(0);
       setTotalPages(0);
       setErrorMessage(getApprovedInvoiceListErrorMessage(error, status));
@@ -137,6 +163,7 @@ export function useApprovedInvoicePage(
   return {
     controls,
     errorMessage,
+    invoiceGroups,
     invoices,
     isFiscalYearFilterAvailable: fiscalYearStartMonth !== null,
     isLoading,
@@ -164,6 +191,33 @@ export function useApprovedInvoicePage(
       updateControls({ sort });
     },
   };
+}
+
+export async function loadSentInvoiceGroupPage(
+  apiClient: ApprovedInvoicePageClient,
+  controls: ApprovedInvoiceListControls,
+  fiscalYearStartMonth: number | null,
+): Promise<SentInvoiceGroupListPage> {
+  const { status: _status, ...query } = createApprovedInvoiceListQuery(
+    'sent',
+    controls,
+    fiscalYearStartMonth,
+  );
+  const page = await apiClient.listSentInvoiceGroups(query);
+
+  if (
+    page.page !== query.page ||
+    page.pageSize !== query.pageSize ||
+    page.groups.some(
+      (group) =>
+        group.rootInvoice.status !== 'sent' ||
+        group.rootInvoice.invoiceKind !== 'standard',
+    )
+  ) {
+    throw new Error('Sent invoice group page does not match its request.');
+  }
+
+  return page;
 }
 
 export async function loadApprovedInvoicePage(
@@ -197,7 +251,9 @@ export function getApprovedInvoiceListErrorMessage(
   const fallbackMessage =
     status === 'sent'
       ? uiText.invoicing.sentInvoiceListLoadError
-      : uiText.invoicing.approvedInvoiceListLoadError;
+      : status === 'cancelled'
+        ? uiText.invoicing.cancelledInvoiceListLoadError
+        : uiText.invoicing.approvedInvoiceListLoadError;
 
   if (error instanceof EkyApiError) {
     const translatedMessage = getFinnishApiErrorMessage(error.message);

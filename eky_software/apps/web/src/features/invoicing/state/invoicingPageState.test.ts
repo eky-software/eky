@@ -27,6 +27,14 @@ describe('reduceInvoicingPageMode', () => {
     ).toBe('approvedInvoice');
   });
 
+  it('opens the dedicated credit invoice editor', () => {
+    expect(
+      reduceInvoicingPageMode('approvedInvoice', {
+        type: 'openCreditInvoice',
+      }),
+    ).toBe('creditInvoice');
+  });
+
   it('switches a saved new invoice draft into edit mode', () => {
     expect(
       reduceInvoicingPageMode('newInvoice', { type: 'draftSaved' }),

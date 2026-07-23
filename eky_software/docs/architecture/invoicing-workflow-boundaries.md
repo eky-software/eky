@@ -172,6 +172,21 @@ Vanha lasku ei saa muuttua, vaikka myöhemmin muuttuvat:
 
 Invoicing omistaa laskulle tallennetut snapshot-arvot.
 
+Sama snapshot-periaate koskee laskun korjauksia:
+
+- hyväksytty mutta toimittamaton lasku perutaan muuttamatta sen snapshotia
+- lähetetystä tavallisesta laskusta tehtävä hyvityslasku saa oman snapshotin
+- hyvityslasku viittaa alkuperäiseen laskuun ja sen riveihin
+- hyvityksen hinta-, ALV-, alennus- ja yksikkötiedot perustuvat
+  alkuperäislaskun snapshotiin, eivät muuttuneeseen master-dataan
+- useiden osahyvitysten jäljellä oleva kapasiteetti johdetaan saman yrityksen
+  ei-perutuista hyväksytyistä ja lähetetyistä hyvityssnapshoteista
+
+Customers, Company Settings tai myöhemmät työnohjausmoduulit eivät saa
+muuttaa, perua tai hyvittää laskua suoraan. Ne voivat tarjota lähtöaineistoa
+Invoicingin application-sopimuksille, mutta Invoicing omistaa korjauksen
+validoinnin, numeroinnin, transaktion ja auditoinnin.
+
 ## Offline, Cloud Ja Firebase
 
 Tämä rajaus noudattaa dokumentin `docs/decisions/ADR-0003-technical-foundation.md` käyttötiloja:

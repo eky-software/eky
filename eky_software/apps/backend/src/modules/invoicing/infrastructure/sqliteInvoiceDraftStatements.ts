@@ -10,11 +10,14 @@ type InvoiceDraftInsertParameters = [
   string,
   string | null,
   string,
+  string | null,
   string,
   string,
+  string,
   number,
   number,
   number,
+  string,
   string,
   string,
   string,
@@ -30,6 +33,7 @@ type InvoiceDraftInsertParameters = [
 type InvoiceDraftLineInsertParameters = [
   string,
   string,
+  string | null,
   number,
   string,
   string,
@@ -59,6 +63,7 @@ type InvoiceDraftUpdateParameters = [
   string,
   string,
   string,
+  string,
   number,
   number,
   number,
@@ -77,6 +82,8 @@ export class SqliteInvoiceDraftStatements {
           INSERT INTO invoice_drafts (
             id,
             company_id,
+            invoice_kind,
+            credited_invoice_id,
             customer_id,
             billing_recipient_customer_id,
             status,
@@ -90,18 +97,21 @@ export class SqliteInvoiceDraftStatements {
             order_number,
             note,
             delivery_address_text,
+            refund_iban,
             net_total_cents,
             vat_total_cents,
             gross_total_cents,
             created_at,
             updated_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
       )
       .run(
         draft.id,
         draft.company_id,
+        draft.invoice_kind,
+        draft.credited_invoice_id,
         draft.customer_id,
         draft.billing_recipient_customer_id,
         draft.status,
@@ -115,6 +125,7 @@ export class SqliteInvoiceDraftStatements {
         draft.order_number,
         draft.note,
         draft.delivery_address_text,
+        draft.refund_iban,
         draft.net_total_cents,
         draft.vat_total_cents,
         draft.gross_total_cents,
@@ -130,6 +141,7 @@ export class SqliteInvoiceDraftStatements {
           INSERT INTO invoice_draft_lines (
             id,
             invoice_draft_id,
+            source_invoice_line_id,
             position,
             code,
             description,
@@ -145,7 +157,7 @@ export class SqliteInvoiceDraftStatements {
             vat_cents,
             gross_cents
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
       );
 
@@ -153,6 +165,7 @@ export class SqliteInvoiceDraftStatements {
       insertLine.run(
         line.id,
         line.invoice_draft_id,
+        line.source_invoice_line_id,
         line.position,
         line.code,
         line.description,
@@ -189,6 +202,7 @@ export class SqliteInvoiceDraftStatements {
             order_number = ?,
             note = ?,
             delivery_address_text = ?,
+            refund_iban = ?,
             net_total_cents = ?,
             vat_total_cents = ?,
             gross_total_cents = ?,
@@ -213,6 +227,7 @@ export class SqliteInvoiceDraftStatements {
         draft.order_number,
         draft.note,
         draft.delivery_address_text,
+        draft.refund_iban,
         draft.net_total_cents,
         draft.vat_total_cents,
         draft.gross_total_cents,

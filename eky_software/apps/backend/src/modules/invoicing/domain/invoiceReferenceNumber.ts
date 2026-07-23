@@ -1,6 +1,6 @@
 import { InvoiceNumberingError } from './invoiceNumberingError.js';
 
-export type ReferenceNumberType = 'finnishDomestic';
+export type ReferenceNumberType = 'finnishDomestic' | 'none';
 
 const finnishDomesticReferenceWeights = [7, 3, 1] as const;
 const maximumFinnishDomesticReferenceNumberLength = 20;

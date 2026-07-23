@@ -161,6 +161,8 @@ function parseInvoiceDraftSummary(value: unknown): InvoiceDraftSummary {
 
   return {
     id: readString(value, 'id'),
+    invoiceKind: parseInvoiceKind(value.invoiceKind),
+    creditedInvoiceId: readNullableString(value, 'creditedInvoiceId'),
     customerId: readString(value, 'customerId'),
     status: parseInvoiceDraftStatus(value.status),
     invoiceDate: readString(value, 'invoiceDate'),
@@ -177,6 +179,14 @@ function parseInvoiceDraftSummary(value: unknown): InvoiceDraftSummary {
     grossTotalCents: readSafeInteger(value, 'grossTotalCents'),
     updatedAt: readString(value, 'updatedAt'),
   };
+}
+
+function parseInvoiceKind(value: unknown): 'standard' | 'credit' {
+  if (value === 'standard' || value === 'credit') {
+    return value;
+  }
+
+  throw invalidInvoiceDraftResponse(value);
 }
 
 function parseDiscount(value: unknown): InvoiceLineDiscount {

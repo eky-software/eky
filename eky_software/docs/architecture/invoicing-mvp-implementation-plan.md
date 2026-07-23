@@ -10,7 +10,11 @@ Laskun hyväksynnän, virallisen laskunumeron, numerointisarjojen, snapshotin, a
 
 Hyväksytyn laskun katselu-, print- ja PDF-polun tarvitsema data foundation on kuvattu dokumentissa `docs/architecture/invoice-print-data-foundation-plan.md`.
 
-Kaikkia yksityiskohtia ei ole vielä lukittu. Erityisesti lopullinen permission-malli, laskun lähetys, hyvityslaskut ja tuotantokäytön kirjanpidolliset tarkistukset ratkaistaan ennen niitä koskevan tuotantokoodin kirjoittamista.
+Kaikkia yksityiskohtia ei ole vielä lukittu. Lopullinen tuotannon
+rooli-/permission-malli ja kirjanpidolliset tarkistukset ratkaistaan ennen
+laajempaa käyttöönottoa. Laskun toimituksen sekä peruutuksen ja
+hyvityslaskujen nykyinen local-MVP-malli on päätetty ja kuvattu erillisissä
+toimitus- ja korjaussuunnitelmissa.
 
 ## Lähtökohta
 
@@ -776,7 +780,11 @@ MVP:ssä ei sallita tavallisia laskurivejä, joilla on:
 
 Alennukset toteutetaan rivin omilla prosentti- tai euromääräisillä alennuskentillä. Alennus saa pienentää rivin loppusumman nollaan, mutta ei negatiiviseksi.
 
-Hyvityslaskut, laskukohtaiset alennukset ja muut adjustment-rakenteet toteutetaan myöhemmin erillisinä, hallittuina toimintoina. Niitä ei mallinneta negatiivisina tavallisina laskuriveinä.
+Hyvityslaskut toteutetaan erillisinä, lähdelaskuun ja lähderiveihin sidottuina
+hallittuina toimintoina. Hyvityksen määrät ja summat tallennetaan positiivisina
+magnitudeina ja näytetään negatiivisina laskulajin perusteella. Tavallisia
+laskurivejä ei mallinneta vapaina negatiivisina riveinä. Laskukohtaiset
+alennukset ja muut adjustment-rakenteet ratkaistaan myöhemmin erikseen.
 
 Nollahintaiset laskurivit sallitaan MVP:ssä. Niitä voidaan käyttää esimerkiksi:
 
@@ -791,18 +799,14 @@ Laskentadomain voidaan toteuttaa näiden determinististen laskenta- ja pyöristy
 
 ## Tilat
 
-Alustava tilajoukko:
+Nykyinen tilajoukko:
 
 - `draft`
 - `approved`
 - `sent`
-- `paid`
 - `cancelled`
 
-Laskutuksen MVP tarvitsee vähintään:
-
-- `draft`
-- `approved`
+Myöhempään vaiheeseen jää `paid`.
 
 Käyttäjä voi:
 
@@ -811,7 +815,8 @@ Käyttäjä voi:
 
 Hyväksyntä on backendin hallittu tilasiirtymä. Käyttöliittymän "hyväksy heti" -toiminto ei saa ohittaa validointia, laskentaa, numerointia, snapshotin muodostusta, käyttöoikeuksia tai auditointia.
 
-Hyväksyntä voi myöhemmin avata laskun toimitustavan valinnan. PDF-, sähköposti- ja verkkolaskutoimituksia ei toteuteta tässä vaiheessa.
+Hyväksyntä avaa nykyisessä local-MVP:ssä hyväksytyn snapshotin PDF- ja
+toimituspolun. Verkkolaskutoimitusta ei ole vielä toteutettu.
 
 Hyväksytyn mutta lähettämättömän laskun korjaus ei ole vapaa luonnosmuokkaus, vaan erillinen hallittu ja auditoitu korjaustoiminto.
 
@@ -820,10 +825,12 @@ Tarkemmat hyväksyntä-, korjaus-, snapshot- ja audit-säännöt on kuvattu doku
 Myöhemmäksi jää:
 
 - lopullinen permission-malli hyväksynnälle
-- mitä `cancelled` tarkoittaa
-- miten hyvityslasku liittyy tilamalliin
-- milloin lasku katsotaan lähetetyksi
 - miten maksetuksi merkitseminen tapahtuu
+
+`cancelled`-tilan, hyvityslaskun, `sent`-tilan ja niiden auditoinnin tarkat
+säännöt ovat dokumenteissa
+`docs/architecture/invoice-cancellation-and-credit-note-plan.md` ja
+`docs/architecture/invoice-delivery-plan.md`.
 
 Tilasiirtymät toteutetaan domain-sääntöinä, ei vapaana status-merkkijonon muokkauksena.
 
@@ -1187,7 +1194,6 @@ Ensimmäiseen manuaaliseen laskuluonnos-MVP:hen eivät kuulu:
 - materiaalirekisteri
 - kirjanpitotilit
 - kirjanpitointegraatio
-- hyvityslaskut
 - Sites-moduulin toteutus
 - työmääräykseltä tuonti
 - tunti- tai materiaalikirjaukselta tuonti
@@ -1201,13 +1207,13 @@ Näitä varten tehdään myöhemmin omat rajatut päätökset ja toteutussuunnit
 
 Hyväksynnän ja numeroinnin päälinja on dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
 
-Ennen hyväksyntää koskevaa tuotantokoodia tarkistetaan vielä:
+Ennen laajempaa tuotantokäyttöä tarkistetaan vielä:
 
 1. kuka saa hyväksyä tai lukita laskun
 2. millainen permission-malli hyväksynnälle ja hyväksytyn laskun korjaukselle tulee
-3. mikä on tilikauden ja numerointiasetusten tarkka tietomalli
-4. milloin lasku katsotaan lähetetyksi
-5. miten hyvityslasku tehdään
+3. miten maksetuksi merkitseminen ja maksusuoritusten käsittely toteutetaan
+4. miten tuotannon tax treatment -malli, mukaan lukien mahdollinen
+   rakennusalan käännetty verovelvollisuus, vahvistetaan
 
 Jos toteutustehtävä osuu johonkin näistä eikä päätöstä ole dokumentoitu, työ pysäytetään kyseisen säännön osalta ja projektin omistajalta pyydetään päätös.
 

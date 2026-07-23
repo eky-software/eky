@@ -1,8 +1,11 @@
 import type { InvoiceDraftStatus } from './invoiceDraft.js';
 import type { PriceInputMode } from './invoiceCalculation.js';
+import type { InvoiceKind } from './invoiceKind.js';
 
 export interface InvoiceDraftSummary {
   id: string;
+  invoiceKind: InvoiceKind;
+  creditedInvoiceId: string | null;
   customerId: string;
   status: InvoiceDraftStatus;
   invoiceDate: string;

@@ -8,6 +8,7 @@ describe('ApprovedInvoiceLineTable', () => {
   it('renders stored invoice line values using the selected price mode', () => {
     const html = renderToStaticMarkup(
       <ApprovedInvoiceLineTable
+        invoiceKind="standard"
         lines={[
           {
             baseCents: 10000,
@@ -17,6 +18,7 @@ describe('ApprovedInvoiceLineTable', () => {
             discountCents: 500,
             grossCents: 11923,
             id: 'line-1',
+            sourceInvoiceLineId: null,
             lineOrder: 1,
             netCents: 9500,
             quantityHundredths: 150,

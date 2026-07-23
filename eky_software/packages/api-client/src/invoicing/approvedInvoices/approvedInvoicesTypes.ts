@@ -1,11 +1,12 @@
 import type { InvoiceDraft } from '../invoiceDrafts/index.js';
 
-export type ApprovedInvoiceViewStatus = 'approved' | 'sent';
+export type ApprovedInvoiceViewStatus = 'approved' | 'sent' | 'cancelled';
+export type ApprovedInvoiceKind = 'standard' | 'credit';
 export type ApprovedInvoiceNumberingMode =
   | 'calendarYearSequence'
   | 'fiscalYearSequence'
   | 'plainSequence';
-export type ApprovedInvoiceReferenceNumberType = 'finnishDomestic';
+export type ApprovedInvoiceReferenceNumberType = 'finnishDomestic' | 'none';
 export type ApprovedInvoicePriceInputMode = 'net' | 'gross';
 export type KnownApprovedInvoiceUnit = 'h' | 'kpl' | 'pv' | 'km' | 'erä' | 'pak';
 export type ApprovedInvoiceUnit = KnownApprovedInvoiceUnit | (string & {});
@@ -17,6 +18,7 @@ export type ApprovedInvoiceLineDiscount =
 
 export interface ApprovedInvoiceLine {
   id: string;
+  sourceInvoiceLineId: string | null;
   lineOrder: number;
   code: string;
   description: string;
@@ -48,6 +50,10 @@ export interface ApprovedInvoiceTotals {
 
 export interface ApprovedInvoiceView {
   id: string;
+  invoiceKind: ApprovedInvoiceKind;
+  creditedInvoiceId: string | null;
+  creditedInvoiceNumber: string | null;
+  creditedInvoiceDate: string | null;
   companyId: string;
   sourceDraftId: string;
   invoiceNumber: string;
@@ -100,16 +106,22 @@ export interface ApprovedInvoiceView {
   orderNumber: string;
   note: string;
   deliveryAddressText: string;
+  refundIbanSnapshot: string;
   lines: ApprovedInvoiceLine[];
   totals: ApprovedInvoiceTotals;
   vatBreakdown: ApprovedInvoiceVatBreakdown[];
   createdAt: string;
   approvedAt: string;
   updatedAt: string;
+  cancelledAt: string | null;
+  cancelledBy: string | null;
+  cancellationReason: string | null;
 }
 
 export interface ApprovedInvoiceSummary {
   id: string;
+  invoiceKind: ApprovedInvoiceKind;
+  creditedInvoiceId: string | null;
   invoiceNumber: string;
   referenceNumber: string;
   status: ApprovedInvoiceViewStatus;
@@ -122,6 +134,7 @@ export interface ApprovedInvoiceSummary {
   grossTotalCents: number;
   approvedAt: string;
   updatedAt: string;
+  cancelledAt: string | null;
 }
 
 export type ApprovedInvoiceListSort =
@@ -148,9 +161,54 @@ export interface ApprovedInvoiceListPage {
   totalPages: number;
 }
 
+export type SentInvoiceCreditStatus = 'none' | 'partial' | 'full';
+
+export interface SentInvoiceGroup {
+  rootInvoice: ApprovedInvoiceSummary;
+  creditInvoices: ApprovedInvoiceSummary[];
+  creditStatus: SentInvoiceCreditStatus;
+  remainingCreditableGrossCents: number;
+}
+
+export interface InvoiceCreditContext {
+  sourceInvoiceId: string;
+  creditInvoices: ApprovedInvoiceSummary[];
+  creditStatus: SentInvoiceCreditStatus;
+  remainingCreditableGrossCents: number;
+  activeCreditDraftId: string | null;
+}
+
+export type SentInvoiceGroupListQuery = Omit<
+  ApprovedInvoiceListQuery,
+  'status'
+>;
+
+export interface SentInvoiceGroupListPage {
+  groups: SentInvoiceGroup[];
+  page: number;
+  pageSize: ApprovedInvoiceListPageSize;
+  totalCount: number;
+  totalPages: number;
+}
+
 export interface ReopenedApprovedInvoice {
   invoiceId: string;
   invoiceDraftId: string;
+}
+
+export interface CancelApprovedInvoiceInput {
+  cancellationReason: string;
+  confirmationInvoiceNumber: string;
+}
+
+export interface CancelledApprovedInvoice {
+  cancellationReason: string;
+  cancelledAt: string;
+  cancelledBy: string;
+  invoiceId: string;
+  invoiceKind: ApprovedInvoiceKind;
+  invoiceNumber: string;
+  status: 'cancelled';
 }
 
 export type ApprovedInvoiceDocumentType = 'approved_invoice_pdf';
@@ -316,16 +374,24 @@ export interface InvoiceDeliveryEventSummary {
 }
 
 export interface ApprovedInvoicesApi {
+  cancelApprovedInvoice(
+    id: string,
+    input: CancelApprovedInvoiceInput,
+  ): Promise<CancelledApprovedInvoice>;
   copyApprovedInvoiceToDraft(id: string): Promise<InvoiceDraft>;
   createApprovedInvoicePdf(id: string): Promise<ApprovedInvoiceDocumentMetadata>;
   getApprovedInvoicePdfMetadata(
     id: string,
   ): Promise<ApprovedInvoiceDocumentMetadata>;
   getApprovedInvoice(id: string): Promise<ApprovedInvoiceView>;
+  getInvoiceCreditContext(id: string): Promise<InvoiceCreditContext>;
   getApprovedInvoicePdfUrl(id: string): string;
   listApprovedInvoices(
     query: ApprovedInvoiceListQuery,
   ): Promise<ApprovedInvoiceListPage>;
+  listSentInvoiceGroups(
+    query: SentInvoiceGroupListQuery,
+  ): Promise<SentInvoiceGroupListPage>;
   listInvoiceDeliveryEvents(
     id: string,
   ): Promise<InvoiceDeliveryEventSummary[]>;

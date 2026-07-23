@@ -95,7 +95,13 @@ function renderDetail(
 ): string {
   return renderToStaticMarkup(
     <ApprovedInvoiceDetailView
+      cancellationState={{ errorMessage: null, isCancelling: false }}
       copyState={{ errorMessage: null, isCopying: false }}
+      creditContextState={{
+        creditContext: null,
+        errorMessage: null,
+        isLoading: false,
+      }}
       deliveryHistoryState={{
         errorMessage: null,
         events: [],
@@ -129,11 +135,15 @@ function renderDetail(
       pdfState={{ document: null, errorMessage: null, isCreating: false }}
       reopenState={{ errorMessage: null, isReopening: false }}
       onBack={vi.fn()}
+      onCancelInvoice={vi.fn()}
       onCopyInvoice={vi.fn()}
+      onCreateCreditDraft={vi.fn()}
       onCreatePdf={vi.fn()}
       onEditInvoice={vi.fn()}
       onMarkSent={vi.fn()}
       onOpenPdf={vi.fn()}
+      onOpenRelatedDraft={vi.fn()}
+      onOpenRelatedInvoice={vi.fn()}
       onPrepareEmail={vi.fn()}
       onSendEmailDryRun={vi.fn()}
       onSendEmailSmtp={vi.fn()}
@@ -172,6 +182,9 @@ function createApprovedInvoiceView(
     companyVatNumberSnapshot: 'FI76543210',
     companyWebsiteSnapshot: 'www.example-builder.fi',
     createdAt: '2026-06-13T10:00:00.000Z',
+    creditedInvoiceId: null,
+    creditedInvoiceNumber: null,
+    creditedInvoiceDate: null,
     customerBusinessIdSnapshot: '1234567-8',
     customerCitySnapshot: 'Helsinki',
     customerEmailSnapshot: '',
@@ -183,8 +196,10 @@ function createApprovedInvoiceView(
     customerStreetAddressSnapshot: 'Customer Street 1',
     customerTypeSnapshot: 'company',
     deliveryAddressText: '',
+    refundIbanSnapshot: '',
     dueDate: '2026-06-27',
     id: 'invoice-1',
+    invoiceKind: 'standard',
     invoiceDate: '2026-06-13',
     invoiceNumber: '20260001',
     latePaymentInterestBasisPoints: 950,
@@ -197,6 +212,7 @@ function createApprovedInvoiceView(
         discountCents: 0,
         grossCents: 12550,
         id: 'line-1',
+        sourceInvoiceLineId: null,
         lineOrder: 1,
         netCents: 10000,
         quantityHundredths: 100,
@@ -234,6 +250,9 @@ function createApprovedInvoiceView(
       vatTotalCents: 2550,
     },
     updatedAt: '2026-06-13T10:00:00.000Z',
+    cancelledAt: null,
+    cancelledBy: null,
+    cancellationReason: null,
     vatBreakdown: [
       {
         grossCents: 12550,

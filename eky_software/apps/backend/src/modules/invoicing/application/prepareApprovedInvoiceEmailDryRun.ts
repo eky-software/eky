@@ -73,7 +73,9 @@ function createApprovedInvoiceEmailPreview(
     invoiceId: invoice.id,
     invoiceNumber: invoice.invoiceNumber,
     provider: 'dryRun',
-    subject: `Lasku ${invoice.invoiceNumber}`,
+    subject: `${
+      invoice.invoiceKind === 'credit' ? 'Hyvityslasku' : 'Lasku'
+    } ${invoice.invoiceNumber}`,
     to: getDefaultRecipientEmail(invoice),
   };
 }
@@ -91,6 +93,10 @@ function getDefaultRecipientEmail(invoice: ApprovedInvoiceView): string {
 function createEmailBody(invoice: ApprovedInvoiceView): string {
   const senderName = invoice.companyNameSnapshot.trim();
   const payeeName = senderName.length > 0 ? senderName : 'Eky';
+  if (invoice.invoiceKind === 'credit') {
+    return createCreditInvoiceEmailBody(invoice, payeeName);
+  }
+
   const dueDate = formatFinnishDate(invoice.dueDate);
   const grossTotal = formatCentsAsEuro(invoice.totals.grossTotalCents);
   const iban = formatIban(invoice.companyIbanSnapshot);
@@ -108,6 +114,35 @@ function createEmailBody(invoice: ApprovedInvoiceView): string {
     '',
     'Ystävällisin terveisin',
     payeeName,
+  ].join('\n');
+}
+
+function createCreditInvoiceEmailBody(
+  invoice: ApprovedInvoiceView,
+  senderName: string,
+): string {
+  const creditedInvoiceLine =
+    invoice.creditedInvoiceNumber === null
+      ? []
+      : [
+          `Hyvityslasku kohdistuu laskuun ${invoice.creditedInvoiceNumber}${
+            invoice.creditedInvoiceDate === null
+              ? ''
+              : ` (${formatFinnishDate(invoice.creditedInvoiceDate)})`
+          }.`,
+        ];
+
+  return [
+    'Hei,',
+    '',
+    `Liitteenä hyvityslasku ${invoice.invoiceNumber}.`,
+    ...creditedInvoiceLine,
+    `Hyvityksen summa: ${formatCentsAsEuro(
+      -Math.abs(invoice.totals.grossTotalCents),
+    )}`,
+    '',
+    'Ystävällisin terveisin',
+    senderName,
   ].join('\n');
 }
 

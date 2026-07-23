@@ -4,9 +4,9 @@ import type {
 } from '@eky/api-client';
 
 import {
-  formatApprovedInvoiceCurrency,
   formatApprovedInvoiceDiscount,
   formatApprovedInvoicePercent,
+  formatApprovedInvoicePresentedCurrency,
   formatApprovedInvoiceQuantity,
   formatApprovedInvoiceUnit,
 } from '../approved/approvedInvoiceFormatting.js';
@@ -14,11 +14,13 @@ import styles from './ApprovedInvoicePreview.module.css';
 import { uiText } from '../../../i18n/fi.js';
 
 interface ApprovedInvoiceLineTableProps {
+  invoiceKind: ApprovedInvoiceView['invoiceKind'];
   lines: ApprovedInvoiceLine[];
   priceInputMode: ApprovedInvoiceView['priceInputMode'];
 }
 
 export function ApprovedInvoiceLineTable({
+  invoiceKind,
   lines,
   priceInputMode,
 }: ApprovedInvoiceLineTableProps): React.JSX.Element {
@@ -53,6 +55,7 @@ export function ApprovedInvoiceLineTable({
         </div>
         {lines.map((line) => (
           <ApprovedInvoiceLineRow
+            invoiceKind={invoiceKind}
             key={line.id}
             line={line}
             priceInputMode={priceInputMode}
@@ -64,9 +67,11 @@ export function ApprovedInvoiceLineTable({
 }
 
 function ApprovedInvoiceLineRow({
+  invoiceKind,
   line,
   priceInputMode,
 }: {
+  invoiceKind: ApprovedInvoiceView['invoiceKind'];
   line: ApprovedInvoiceLine;
   priceInputMode: ApprovedInvoiceView['priceInputMode'];
 }): React.JSX.Element {
@@ -83,7 +88,10 @@ function ApprovedInvoiceLineRow({
       </span>
       <span role="cell">{formatApprovedInvoiceUnit(line.unit)}</span>
       <span className={styles.number} role="cell">
-        {formatApprovedInvoiceCurrency(line.unitPriceCents)}
+        {formatApprovedInvoicePresentedCurrency(
+          line.unitPriceCents,
+          invoiceKind,
+        )}
       </span>
       <span className={styles.number} role="cell">
         {formatApprovedInvoicePercent(line.vatRateBasisPoints)}
@@ -92,7 +100,7 @@ function ApprovedInvoiceLineRow({
         {discount ?? ''}
       </span>
       <span className={styles.number} role="cell">
-        {formatApprovedInvoiceCurrency(lineTotal)}
+        {formatApprovedInvoicePresentedCurrency(lineTotal, invoiceKind)}
       </span>
     </div>
   );

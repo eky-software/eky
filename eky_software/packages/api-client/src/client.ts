@@ -16,6 +16,10 @@ import {
   type InvoiceDraftsApi,
 } from './invoicing/invoiceDrafts/index.js';
 import {
+  createInvoiceCreditsApi,
+  type InvoiceCreditsApi,
+} from './invoicing/invoiceCredits/index.js';
+import {
   createInvoiceNumberingSettingsApi,
   type InvoiceNumberingSettingsApi,
 } from './invoicing/invoiceNumbering/index.js';
@@ -33,6 +37,7 @@ export interface EkyApiClient
     CustomersApi,
     CompanySettingsApi,
     ApprovedInvoicesApi,
+    InvoiceCreditsApi,
     InvoiceDraftsApi,
     InvoiceNumberingSettingsApi,
     InvoicePaymentSettingsApi,
@@ -46,6 +51,7 @@ export function createEkyApiClient(options: EkyApiClientOptions): EkyApiClient {
     ...createCustomersApi(fetchImplementation, baseUrl),
     ...createCompanySettingsApi(fetchImplementation, baseUrl),
     ...createApprovedInvoicesApi(fetchImplementation, baseUrl),
+    ...createInvoiceCreditsApi(fetchImplementation, baseUrl),
     ...createInvoiceDraftsApi(fetchImplementation, baseUrl),
     ...createInvoiceNumberingSettingsApi(fetchImplementation, baseUrl),
     ...createInvoicePaymentSettingsApi(fetchImplementation, baseUrl),

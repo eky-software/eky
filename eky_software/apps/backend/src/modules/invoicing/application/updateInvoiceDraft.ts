@@ -64,6 +64,12 @@ export async function updateInvoiceDraft(
     );
   }
 
+  if (existingDraft.invoiceKind !== 'standard') {
+    throw new InvoiceDraftValidationError(
+      'Credit invoice drafts use the credit correction workflow.',
+    );
+  }
+
   const customerId = requireIdentifier(input.customerId, 'Customer id');
   const billingRecipientCustomerId =
     input.billingRecipientCustomerId?.trim() ?? '';
@@ -105,6 +111,9 @@ export async function updateInvoiceDraft(
     ...content,
     id: existingDraft.id,
     companyId,
+    invoiceKind: existingDraft.invoiceKind,
+    creditedInvoiceId: existingDraft.creditedInvoiceId,
+    refundIban: '',
     status: 'draft',
     createdAt: existingDraft.createdAt,
     updatedAt: createNextUpdatedAt(existingDraft.updatedAt),

@@ -5,6 +5,10 @@ export function createApprovedInvoicePdfSample(): ApprovedInvoiceView {
     id: 'invoice-sample-1',
     companyId: 'dev-company',
     sourceDraftId: 'draft-sample-1',
+    invoiceKind: 'standard',
+    creditedInvoiceId: null,
+    creditedInvoiceNumber: null,
+    creditedInvoiceDate: null,
     invoiceNumber: '24389',
     referenceNumber: '2438901007',
     referenceNumberType: 'finnishDomestic',
@@ -51,6 +55,7 @@ export function createApprovedInvoicePdfSample(): ApprovedInvoiceView {
     reminderPeriodDays: 8,
     latePaymentInterestBasisPoints: 1300,
     priceInputMode: 'gross',
+    refundIbanSnapshot: '',
     subject: 'Liesituulettimen poistoilmaventtiilin muutostyöt',
     orderNumber: '',
     note: '',
@@ -58,6 +63,7 @@ export function createApprovedInvoicePdfSample(): ApprovedInvoiceView {
     lines: [
       {
         id: 'line-1',
+        sourceInvoiceLineId: null,
         lineOrder: 1,
         code: '',
         description:
@@ -75,6 +81,7 @@ export function createApprovedInvoicePdfSample(): ApprovedInvoiceView {
       },
       {
         id: 'line-2',
+        sourceInvoiceLineId: null,
         lineOrder: 2,
         code: '',
         description: 'Kiinnityskehys',
@@ -91,6 +98,7 @@ export function createApprovedInvoicePdfSample(): ApprovedInvoiceView {
       },
       {
         id: 'line-3',
+        sourceInvoiceLineId: null,
         lineOrder: 3,
         code: '',
         description: 'Poistoilmaventtiili',
@@ -107,6 +115,7 @@ export function createApprovedInvoicePdfSample(): ApprovedInvoiceView {
       },
       {
         id: 'line-4',
+        sourceInvoiceLineId: null,
         lineOrder: 4,
         code: '',
         description: 'IV sivuliitin',
@@ -123,6 +132,7 @@ export function createApprovedInvoicePdfSample(): ApprovedInvoiceView {
       },
       {
         id: 'line-5',
+        sourceInvoiceLineId: null,
         lineOrder: 5,
         code: '',
         description: 'IV ulkoliitin',
@@ -139,6 +149,7 @@ export function createApprovedInvoicePdfSample(): ApprovedInvoiceView {
       },
       {
         id: 'line-6',
+        sourceInvoiceLineId: null,
         lineOrder: 6,
         code: '',
         description: 'IV käyrä',
@@ -155,6 +166,7 @@ export function createApprovedInvoicePdfSample(): ApprovedInvoiceView {
       },
       {
         id: 'line-7',
+        sourceInvoiceLineId: null,
         lineOrder: 7,
         code: '',
         description: 'Autokulut',
@@ -194,5 +206,8 @@ export function createApprovedInvoicePdfSample(): ApprovedInvoiceView {
     createdAt: '2026-07-03T10:00:00.000Z',
     approvedAt: '2026-07-03T10:15:00.000Z',
     updatedAt: '2026-07-03T10:15:00.000Z',
+    cancelledAt: null,
+    cancelledBy: null,
+    cancellationReason: null,
   };
 }

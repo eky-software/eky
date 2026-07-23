@@ -35,5 +35,11 @@ export async function getInvoiceDraft(
     throw new InvoiceDraftNotFoundError();
   }
 
+  if (invoiceDraft.invoiceKind !== 'standard') {
+    throw new InvoiceDraftValidationError(
+      'Credit invoice drafts use the credit correction workflow.',
+    );
+  }
+
   return withCalculatedInvoiceDraftTotals(invoiceDraft);
 }

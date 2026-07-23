@@ -71,7 +71,9 @@ export async function generateApprovedInvoicePdfDocument(
     companyId,
     invoiceId,
     documentType: approvedInvoicePdfDocumentType,
-    fileName: `lasku-${invoiceForPdf.invoiceNumber}.pdf`,
+    fileName: `${
+      invoiceForPdf.invoiceKind === 'credit' ? 'hyvityslasku' : 'lasku'
+    }-${invoiceForPdf.invoiceNumber}.pdf`,
     storagePath: createApprovedInvoicePdfStoragePath(companyId, invoiceId),
     mimeType: 'application/pdf',
     sha256: createSha256(pdfContent),

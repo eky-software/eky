@@ -34,10 +34,17 @@ export function drawHeader(
   doc
     .font('Helvetica-Bold')
     .fontSize(16)
-    .text(`Lasku: ${invoice.invoiceNumber}`, rightX, 42, {
+    .text(
+      `${invoice.invoiceKind === 'credit' ? 'Hyvityslasku' : 'Lasku'}: ${
+        invoice.invoiceNumber
+      }`,
+      rightX,
+      42,
+      {
       width: 166,
       align: 'left',
-    });
+      },
+    );
   doc
     .font('Helvetica-Bold')
     .fontSize(11)

@@ -4,13 +4,18 @@ import type {
   PriceInputMode,
 } from './invoiceCalculation.js';
 import type { InvoiceUnit } from './invoiceDraft.js';
+import type { InvoiceKind } from './invoiceKind.js';
 import type { InvoiceNumberingMode } from './invoiceNumbering.js';
 import type { ReferenceNumberType } from './invoiceReferenceNumber.js';
 
-export type ApprovedInvoiceStatus = 'approved' | 'sent';
+export type ApprovedInvoiceStatus = 'approved' | 'sent' | 'cancelled';
 export type StoredInvoiceStatus = ApprovedInvoiceStatus | 'reopened_for_edit';
 export type InvoiceAuditAction =
   | 'invoice.approved'
+  | 'invoice.cancelled'
+  | 'invoice.credit_draft_created'
+  | 'invoice.credit_approved'
+  | 'invoice.credit_reapproved'
   | 'invoice.marked_sent_manually'
   | 'invoice.reopened_for_edit'
   | 'invoice.reapproved';
@@ -18,6 +23,7 @@ export type InvoiceAuditAction =
 export interface ApprovedInvoiceLine {
   id: string;
   invoiceId: string;
+  sourceInvoiceLineId: string | null;
   lineOrder: number;
   code: string;
   description: string;
@@ -38,6 +44,8 @@ export interface ApprovedInvoice {
   id: string;
   companyId: string;
   sourceDraftId: string;
+  invoiceKind: InvoiceKind;
+  creditedInvoiceId: string | null;
   invoiceNumber: string;
   referenceNumber: string;
   referenceNumberType: ReferenceNumberType;
@@ -93,6 +101,9 @@ export interface ApprovedInvoice {
   createdAt: string;
   approvedAt: string;
   updatedAt: string;
+  cancelledAt: string | null;
+  cancelledBy: string | null;
+  cancellationReason: string | null;
 }
 
 export interface InvoiceAuditEvent {

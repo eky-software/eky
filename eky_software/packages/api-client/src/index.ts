@@ -24,6 +24,7 @@ export type {
   ApprovedInvoiceEmailSmtpTestPreparation,
   ApprovedInvoiceLine,
   ApprovedInvoiceLineDiscount,
+  ApprovedInvoiceKind,
   ApprovedInvoiceListPage,
   ApprovedInvoiceListPageSize,
   ApprovedInvoiceListQuery,
@@ -37,12 +38,19 @@ export type {
   ApprovedInvoiceVatBreakdown,
   ApprovedInvoiceView,
   ApprovedInvoiceViewStatus,
+  CancelApprovedInvoiceInput,
+  CancelledApprovedInvoice,
   InvoiceDeliveryEventSummary,
+  InvoiceCreditContext,
   InvoiceDeliveryMethod,
   InvoiceDeliveryProvider,
   InvoiceDeliveryStatus,
   InvoiceManualDeliveryMethod,
   ReopenedApprovedInvoice,
+  SentInvoiceCreditStatus,
+  SentInvoiceGroup,
+  SentInvoiceGroupListPage,
+  SentInvoiceGroupListQuery,
 } from './invoicing/approvedInvoices/index.js';
 export type {
   CompanyEmailSecretStatus,
@@ -58,6 +66,14 @@ export type {
   UpdateCustomerRequest,
 } from './customers/index.js';
 export type {
+  ApprovedCreditInvoiceResult,
+  CreditInvoiceDraft,
+  CreditInvoiceDraftLine,
+  CreditInvoiceDraftLineInput,
+  CreditInvoiceParty,
+  UpdateCreditInvoiceDraftInput,
+} from './invoicing/invoiceCredits/index.js';
+export type {
   ApprovedInvoiceResult,
   ApprovedInvoiceStatus,
   InvoiceDraft,
@@ -67,6 +83,7 @@ export type {
   InvoiceDraftListQuery,
   InvoiceDraftStatus,
   InvoiceDraftSummary,
+  InvoiceKind,
   InvoiceLineDiscount,
   InvoiceNumberingMode,
   InvoicePriceInputMode,

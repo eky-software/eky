@@ -46,6 +46,17 @@ const migrationNames = [
   '019_add_company_website.sql',
   '020_relax_invoice_line_unit_checks.sql',
   '021_allow_sent_approved_invoices.sql',
+  '022_create_invoice_delivery_events.sql',
+  '023_add_company_email_settings.sql',
+  '024_create_company_email_secret_audit_events.sql',
+  '025_create_local_runtime_identity.sql',
+  '026_harden_company_email_secret_audit.sql',
+  '027_use_email_secret_audit_lifecycle.sql',
+  '028_allow_unknown_invoice_delivery_outcome.sql',
+  '029_create_invoice_vat_rates.sql',
+  '030_add_invoice_list_index.sql',
+  '031_add_invoice_corrections.sql',
+  '032_add_credit_refund_iban.sql',
 ];
 
 const migrationSql = migrationNames.map((migrationName) =>
@@ -93,6 +104,7 @@ function createLine(
     description: position === 1 ? 'Installation work' : 'Travel',
     unit: position === 1 ? 'h' : 'km',
     discount,
+    sourceInvoiceLineId: null,
   };
 }
 
@@ -121,6 +133,8 @@ function createDraft(
     customerId: 'customer-1',
     billingRecipientCustomerId: null,
     status: 'draft',
+    invoiceKind: 'standard',
+    creditedInvoiceId: null,
     invoiceDate: '2027-01-15',
     dueDate: '2027-01-29',
     paymentTermDays: 14,
@@ -131,6 +145,7 @@ function createDraft(
     orderNumber: 'ORDER-1',
     note: 'Invoice note',
     deliveryAddressText: '',
+    refundIban: '',
     createdAt: '2027-01-15T08:00:00.000Z',
     updatedAt: '2027-01-15T08:00:00.000Z',
     ...overrides,

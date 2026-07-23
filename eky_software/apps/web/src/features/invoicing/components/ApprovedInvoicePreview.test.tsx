@@ -92,6 +92,38 @@ describe('ApprovedInvoicePreview', () => {
     expect(html).toContain(uiText.invoicing.invoiceDeliveryStatuses.succeeded);
   });
 
+  it('renders a credit invoice as a negative correction without payment details', () => {
+    const html = renderPreview({
+      invoice: createApprovedInvoiceView({
+        creditedInvoiceId: 'source-invoice-1',
+        creditedInvoiceNumber: '20260001',
+        creditedInvoiceDate: '2026-06-01',
+        invoiceKind: 'credit',
+        invoiceNumber: '20260002',
+        referenceNumber: '',
+        referenceNumberType: 'none',
+        dueDate: '2026-06-13',
+        paymentTermDays: 0,
+        reminderPeriodDays: 0,
+        latePaymentInterestBasisPoints: 0,
+        lines: [
+          {
+            ...createApprovedInvoiceView().lines[0]!,
+            sourceInvoiceLineId: 'source-line-1',
+          },
+        ],
+      }),
+    });
+
+    expect(html).toContain(uiText.invoicing.creditInvoice);
+    expect(html).toContain(uiText.invoicing.creditedInvoiceNumber);
+    expect(html).toContain('20260001');
+    expect(html).toContain('−125,50');
+    expect(html).not.toContain(uiText.invoicing.paymentDetails);
+    expect(html).not.toContain(uiText.invoicing.referenceNumber);
+    expect(html).not.toContain(uiText.invoicing.dueDate);
+  });
+
   it('does not render raw delivery error details', () => {
     const html = renderPreview({
       deliveryEvents: [
@@ -132,7 +164,10 @@ function renderPreview(
 ): string {
   return renderToStaticMarkup(
     <ApprovedInvoicePreview
+      cancellationErrorMessage={null}
       copyErrorMessage={options.copyErrorMessage ?? null}
+      creditContext={null}
+      creditContextErrorMessage={null}
       email={options.email ?? null}
       emailErrorMessage={options.emailErrorMessage ?? null}
       emailSendErrorMessage={options.emailSendErrorMessage ?? null}
@@ -147,8 +182,10 @@ function renderPreview(
       deliveryEvents={options.deliveryEvents ?? []}
       deliveryEventsErrorMessage={null}
       invoice={options.invoice ?? createApprovedInvoiceView()}
+      isCancellingInvoice={false}
       isCopyingInvoice={options.isCopyingInvoice ?? false}
       isCreatingPdf={options.isCreatingPdf ?? false}
+      isLoadingCreditContext={false}
       isMarkingSent={false}
       isPreparingEmail={false}
       isSendingEmailDryRun={false}
@@ -161,11 +198,15 @@ function renderPreview(
       pdfErrorMessage={options.pdfErrorMessage ?? null}
       reopenErrorMessage={null}
       onBack={vi.fn()}
+      onCancelInvoice={vi.fn()}
       onCopyInvoice={vi.fn()}
+      onCreateCreditDraft={vi.fn()}
       onCreatePdf={vi.fn()}
       onEditInvoice={vi.fn()}
       onMarkSent={vi.fn()}
       onOpenPdf={vi.fn()}
+      onOpenRelatedDraft={vi.fn()}
+      onOpenRelatedInvoice={vi.fn()}
       onPrepareEmail={vi.fn()}
       onSendEmailDryRun={vi.fn()}
       onSendEmailSmtp={vi.fn()}
@@ -220,6 +261,9 @@ function createApprovedInvoiceView(
     companyVatNumberSnapshot: 'FI76543210',
     companyWebsiteSnapshot: 'www.example-builder.fi',
     createdAt: '2026-06-13T10:00:00.000Z',
+    creditedInvoiceId: null,
+    creditedInvoiceNumber: null,
+    creditedInvoiceDate: null,
     customerBusinessIdSnapshot: '1234567-8',
     customerCitySnapshot: 'Helsinki',
     customerEmailSnapshot: '',
@@ -231,8 +275,10 @@ function createApprovedInvoiceView(
     customerStreetAddressSnapshot: 'Customer Street 1',
     customerTypeSnapshot: 'company',
     deliveryAddressText: 'Worksite Street 4',
+    refundIbanSnapshot: '',
     dueDate: '2026-06-27',
     id: 'invoice-1',
+    invoiceKind: 'standard',
     invoiceDate: '2026-06-13',
     invoiceNumber: '20260001',
     latePaymentInterestBasisPoints: 950,
@@ -245,6 +291,7 @@ function createApprovedInvoiceView(
         discountCents: 0,
         grossCents: 12550,
         id: 'line-1',
+        sourceInvoiceLineId: null,
         lineOrder: 1,
         netCents: 10000,
         quantityHundredths: 100,
@@ -282,6 +329,9 @@ function createApprovedInvoiceView(
       vatTotalCents: 2550,
     },
     updatedAt: '2026-06-13T10:00:00.000Z',
+    cancelledAt: null,
+    cancelledBy: null,
+    cancellationReason: null,
     vatBreakdown: [
       {
         grossCents: 12550,

@@ -362,7 +362,7 @@ Toteutettu MVP-linja:
 
 `draft`-laskuluonnos voidaan poistaa.
 
-`approved` mutta ei `sent` -lasku voidaan myöhemmin merkitä `cancelled`-tilaan.
+`approved` mutta ei `sent` -lasku voidaan merkitä `cancelled`-tilaan.
 
 `sent`-laskua ei cancelled-muokata tai poisteta, vaan se hyvitetään.
 
@@ -373,7 +373,7 @@ Toteutettu MVP-linja:
 - säilyttää audit trailin
 - ei ole enää lähetettävissä
 - ei ole enää reopen-muokattavissa ilman erillistä päätöstä
-- PDF voidaan pitää tai merkitä ei-lähetettäväksi; tarkka toteutus päätetään myöhemmin
+- PDF säilyy tarkasteltavana, mutta peruutettua laskua ei saa toimittaa
 
 Tuleva audit-tapahtuma:
 
@@ -385,37 +385,31 @@ Tuleva audit-tapahtuma:
 
 ## Hyvityslasku
 
-`sent`-laskun virhe korjataan hyvityslaskulla tai myöhemmin tarkemmin
-määritellyllä korjauspolulla.
+`sent`-laskun virhe korjataan hyvityslaskulla.
 
 Hyvityslasku:
 
 - on oma laskunsa
 - saa oman laskunumeron
-- saa oman viitenumeron tai muun maksutiedon tarpeen mukaan
+- ei muodosta uutta maksuvaatimusta tai viitenumeroa
 - viittaa alkuperäiseen laskuun
-- voi olla koko laskun hyvitys MVP-vaiheessa
-- osahyvitys voidaan suunnitella myöhemmin
-
-Suositeltu vaiheistus:
-
-1. full credit invoice eli hyvitetään koko alkuperäinen lasku
-2. partial credit myöhemmin
-3. mahdollinen uusi korjattu lasku luodaan erillisenä uutena laskuna tai kopiona
+- tukee koko laskun hyvitystä ja rivikohtaista osahyvitystä
+- tallentaa summat positiivisina suuruuksina ja esittää ne hyvityslaskulla
+  negatiivisina
 
 Koska nykyinen laskentalogiikka ei tue negatiivisia tavallisia laskurivejä,
 hyvityslaskua ei pidä toteuttaa vain sallimalla negatiiviset rivit tavalliseen
 laskuun.
 
-Parempi tuleva malli:
+Hyväksytty malli:
 
 ```text
 invoiceKind: standard | credit
 ```
 
-tai vastaava hallittu erottelu.
-
-Hyvityslaskun laskenta, laskumerkinnät ja PDF-merkinnät suunnitellaan erikseen.
+Hyvityslaskun kumulatiivinen senttilaskenta, lähdeviittaukset, hyväksyntä,
+PDF-merkinnät ja listaus on määritetty dokumentissa
+`docs/architecture/invoice-cancellation-and-credit-note-plan.md`.
 
 ## Lähetysloki
 
@@ -482,7 +476,9 @@ nojalla automaattisesti:
 - Gmail- tai Microsoft OAuth -integraatiota
 - suoraa tulostinohjausta
 - background queue- tai outbox-järjestelmää
-- hyvityslaskua tai cancelointia
 - uusia riippuvuuksia
 
-Nämä vaativat erillisen päätöksen ja oman rajatun suunnitelmansa.
+Peruutuksen ja hyvityslaskun toteutunut local-MVP-malli on dokumentissa
+`docs/architecture/invoice-cancellation-and-credit-note-plan.md`. Muut yllä
+mainitut laajennukset vaativat erillisen päätöksen ja oman rajatun
+suunnitelmansa.

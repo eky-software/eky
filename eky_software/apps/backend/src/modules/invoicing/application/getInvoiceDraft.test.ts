@@ -39,6 +39,8 @@ function createDraft(): InvoiceDraft {
   return {
     id: 'draft-1',
     companyId: 'dev-company',
+    invoiceKind: 'standard',
+    creditedInvoiceId: null,
     customerId: 'customer-1',
     billingRecipientCustomerId: null,
     status: 'draft',
@@ -52,6 +54,7 @@ function createDraft(): InvoiceDraft {
     orderNumber: '',
     note: '',
     deliveryAddressText: '',
+    refundIban: '',
     lines: [],
     totals: {
       netTotalCents: 0,
@@ -163,6 +166,7 @@ function createDraftLine(
 
   return {
     id,
+    sourceInvoiceLineId: null,
     position,
     code: '',
     description: 'Test line',

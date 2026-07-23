@@ -11,6 +11,7 @@ describe('ApprovedInvoiceActions', () => {
     expect(html).toContain(uiText.invoicing.statusApproved);
     expect(html).toContain(uiText.invoicing.editApprovedInvoice);
     expect(html).toContain(uiText.invoicing.markApprovedInvoiceSent);
+    expect(html).toContain(uiText.invoicing.cancelApprovedInvoice);
   });
 
   it('disables the sent action while the PDF is being prepared', () => {
@@ -27,6 +28,21 @@ describe('ApprovedInvoiceActions', () => {
     expect(html).toContain(uiText.invoicing.copyApprovedInvoice);
     expect(html).not.toContain(uiText.invoicing.editApprovedInvoice);
     expect(html).not.toContain(uiText.invoicing.markApprovedInvoiceSent);
+    expect(html).not.toContain(uiText.invoicing.cancelApprovedInvoice);
+  });
+
+  it('shows credit creation only when the backend context allows it', () => {
+    const allowedHtml = renderActions({
+      canCreateCreditDraft: true,
+      invoiceStatus: 'sent',
+    });
+    const blockedHtml = renderActions({
+      canCreateCreditDraft: false,
+      invoiceStatus: 'sent',
+    });
+
+    expect(allowedHtml).toContain(uiText.invoicing.createCreditDraft);
+    expect(blockedHtml).not.toContain(uiText.invoicing.createCreditDraft);
   });
 
   it('renders safe action errors without technical data', () => {
@@ -69,11 +85,15 @@ function renderActions(
 ): string {
   return renderToStaticMarkup(
     <ApprovedInvoiceActions
+      canCreateCreditDraft={false}
+      cancellationErrorMessage={null}
       copyErrorMessage={null}
       emailErrorMessage={null}
       invoiceId="invoice-1"
+      invoiceKind="standard"
       invoiceNumber="20260001"
       invoiceStatus="approved"
+      isCancellingInvoice={false}
       isCopyingInvoice={false}
       isCreatingPdf={false}
       isMarkingSent={false}
@@ -84,7 +104,9 @@ function renderActions(
       pdfErrorMessage={null}
       reopenErrorMessage={null}
       onBack={vi.fn()}
+      onCancelInvoice={vi.fn()}
       onCopyInvoice={vi.fn()}
+      onCreateCreditDraft={vi.fn()}
       onCreatePdf={vi.fn()}
       onEditInvoice={vi.fn()}
       onMarkSent={vi.fn()}

@@ -1,5 +1,8 @@
 import { requestJson } from '../../http.js';
-import { serializeApprovedInvoiceListQuery } from './approvedInvoiceListSerialization.js';
+import {
+  serializeApprovedInvoiceListQuery,
+  serializeSentInvoiceGroupListQuery,
+} from './approvedInvoiceListSerialization.js';
 import { readInvoiceDraftResponse } from '../invoiceDrafts/invoiceDraftsResponse.js';
 import {
   readApprovedInvoiceDocumentMetadataResponse,
@@ -12,9 +15,14 @@ import {
   readInvoiceDeliveryEventListResponse,
   readApprovedInvoiceListResponse,
   readApprovedInvoiceResponse,
+  readInvoiceCreditContextResponse,
+  readSentInvoiceGroupListResponse,
+  readCancelledApprovedInvoiceResponse,
   readReopenedApprovedInvoiceResponse,
 } from './approvedInvoicesResponse.js';
 import type {
+  CancelApprovedInvoiceInput,
+  CancelledApprovedInvoice,
   ApprovedInvoiceDocumentMetadata,
   ApprovedInvoiceEmailDryRunSendInput,
   ApprovedInvoiceEmailDryRunSendResult,
@@ -26,7 +34,9 @@ import type {
   ApprovedInvoiceListPage,
   ApprovedInvoiceView,
   InvoiceDeliveryEventSummary,
+  InvoiceCreditContext,
   ReopenedApprovedInvoice,
+  SentInvoiceGroupListPage,
 } from './approvedInvoicesTypes.js';
 import type { InvoiceDraft } from '../invoiceDrafts/index.js';
 
@@ -35,6 +45,29 @@ export function createApprovedInvoicesApi(
   baseUrl: string,
 ): ApprovedInvoicesApi {
   return {
+    async cancelApprovedInvoice(
+      id,
+      input: CancelApprovedInvoiceInput,
+    ): Promise<CancelledApprovedInvoice> {
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        `/invoices/${encodeURIComponent(id)}/cancel`,
+        {
+          body: JSON.stringify({
+            cancellationReason: input.cancellationReason,
+            confirmationInvoiceNumber: input.confirmationInvoiceNumber,
+          }),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          method: 'POST',
+        },
+      );
+
+      return readCancelledApprovedInvoiceResponse(responseBody);
+    },
+
     async copyApprovedInvoiceToDraft(id): Promise<InvoiceDraft> {
       const responseBody = await requestJson(
         fetchImplementation,
@@ -81,6 +114,16 @@ export function createApprovedInvoicesApi(
       return readApprovedInvoiceResponse(responseBody);
     },
 
+    async getInvoiceCreditContext(id): Promise<InvoiceCreditContext> {
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        `/invoices/${encodeURIComponent(id)}/credit-context`,
+      );
+
+      return readInvoiceCreditContextResponse(responseBody);
+    },
+
     getApprovedInvoicePdfUrl(id): string {
       return `${baseUrl}/invoices/${encodeURIComponent(id)}/pdf`;
     },
@@ -93,6 +136,16 @@ export function createApprovedInvoicesApi(
       );
 
       return readApprovedInvoiceListResponse(responseBody);
+    },
+
+    async listSentInvoiceGroups(query): Promise<SentInvoiceGroupListPage> {
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        `/sent-invoice-groups?${serializeSentInvoiceGroupListQuery(query)}`,
+      );
+
+      return readSentInvoiceGroupListResponse(responseBody);
     },
 
     async listInvoiceDeliveryEvents(

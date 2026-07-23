@@ -60,20 +60,27 @@ function renderPage(
     | 'approvedInvoiceListState'
     | 'approvedInvoicePdfState'
     | 'approvedInvoiceState'
+    | 'approveCreditInvoiceDraftState'
+    | 'cancelApprovedInvoiceState'
     | 'copyApprovedInvoiceState'
+    | 'creditInvoiceDraftState'
     | 'deleteState'
     | 'invoicePaymentDefaultsState'
     | 'invoiceVatRatesState'
     | 'invoiceDeliveryEventListState'
+    | 'invoiceCreditContextState'
     | 'markApprovedInvoiceSentState'
     | 'reopenApprovedInvoiceState'
     | 'sendApprovedInvoiceEmailState'
     | 'sendApprovedInvoiceEmailSmtpState'
     | 'sendApprovedInvoiceEmailSmtpTestState'
     | 'onCancelDeleteDraft'
+    | 'onCancelApprovedInvoice'
+    | 'onApproveCreditInvoiceDraft'
     | 'onConfirmDeleteDraft'
     | 'onCreateApprovedInvoicePdf'
     | 'onCopyApprovedInvoiceToDraft'
+    | 'onCreateCreditInvoiceDraft'
     | 'onDraftApproved'
     | 'onDraftSaved'
     | 'onEditApprovedInvoice'
@@ -85,6 +92,7 @@ function renderPage(
     | 'onSendApprovedInvoiceEmailSmtp'
     | 'onSendApprovedInvoiceEmailSmtpTest'
     | 'onRequestDeleteDraft'
+    | 'onSaveCreditInvoiceDraft'
     | 'pendingDeleteDraftId'
   > &
     Partial<
@@ -95,20 +103,27 @@ function renderPage(
         | 'approvedInvoiceListState'
         | 'approvedInvoicePdfState'
         | 'approvedInvoiceState'
+        | 'approveCreditInvoiceDraftState'
+        | 'cancelApprovedInvoiceState'
         | 'copyApprovedInvoiceState'
+        | 'creditInvoiceDraftState'
         | 'deleteState'
         | 'invoicePaymentDefaultsState'
         | 'invoiceVatRatesState'
         | 'invoiceDeliveryEventListState'
+        | 'invoiceCreditContextState'
         | 'markApprovedInvoiceSentState'
         | 'reopenApprovedInvoiceState'
         | 'sendApprovedInvoiceEmailState'
         | 'sendApprovedInvoiceEmailSmtpState'
         | 'sendApprovedInvoiceEmailSmtpTestState'
         | 'onCancelDeleteDraft'
+        | 'onCancelApprovedInvoice'
+        | 'onApproveCreditInvoiceDraft'
         | 'onConfirmDeleteDraft'
         | 'onCreateApprovedInvoicePdf'
         | 'onCopyApprovedInvoiceToDraft'
+        | 'onCreateCreditInvoiceDraft'
         | 'onDraftApproved'
         | 'onDraftSaved'
         | 'onEditApprovedInvoice'
@@ -120,6 +135,7 @@ function renderPage(
         | 'onSendApprovedInvoiceEmailSmtp'
         | 'onSendApprovedInvoiceEmailSmtpTest'
         | 'onRequestDeleteDraft'
+        | 'onSaveCreditInvoiceDraft'
         | 'pendingDeleteDraftId'
       >
     >,
@@ -131,12 +147,31 @@ function renderPage(
       approvedInvoiceListState={createApprovedInvoiceListState()}
       approvedInvoicePdfState={createApprovedInvoicePdfState()}
       approvedInvoiceState={createApprovedInvoiceState()}
+      approveCreditInvoiceDraftState={{
+        approveDraft: vi.fn(async () => null),
+        clearError: vi.fn(),
+        errorMessage: null,
+        isApproving: false,
+      }}
+      cancelApprovedInvoiceState={createCancelApprovedInvoiceState()}
       companySettingsState={createCompanySettingsState()}
       copyApprovedInvoiceState={createCopyApprovedInvoiceState()}
+      creditInvoiceDraftState={{
+        clearDraft: vi.fn(),
+        createDraft: vi.fn(async () => null),
+        draft: null,
+        errorMessage: null,
+        isLoading: false,
+        isSaving: false,
+        openDraft: vi.fn(async () => null),
+        saveDraft: vi.fn(async () => null),
+        successMessage: null,
+      }}
       deleteState={createDeleteState()}
       invoicePaymentDefaultsState={createInvoicePaymentDefaultsState()}
       invoiceVatRatesState={createInvoiceVatRatesState()}
       invoiceDeliveryEventListState={createInvoiceDeliveryEventListState()}
+      invoiceCreditContextState={createInvoiceCreditContextState()}
       markApprovedInvoiceSentState={createMarkApprovedInvoiceSentState()}
       reopenApprovedInvoiceState={createReopenApprovedInvoiceState()}
       sendApprovedInvoiceEmailState={createSendApprovedInvoiceEmailState()}
@@ -147,9 +182,12 @@ function renderPage(
         createSendApprovedInvoiceEmailSmtpTestState()
       }
       onCancelDeleteDraft={vi.fn()}
+      onCancelApprovedInvoice={vi.fn()}
+      onApproveCreditInvoiceDraft={vi.fn()}
       onConfirmDeleteDraft={vi.fn()}
       onCreateApprovedInvoicePdf={vi.fn()}
       onCopyApprovedInvoiceToDraft={vi.fn()}
+      onCreateCreditInvoiceDraft={vi.fn()}
       onDraftApproved={vi.fn()}
       onDraftSaved={vi.fn()}
       onEditApprovedInvoice={vi.fn()}
@@ -161,6 +199,7 @@ function renderPage(
       onSendApprovedInvoiceEmailSmtp={vi.fn()}
       onSendApprovedInvoiceEmailSmtpTest={vi.fn()}
       onRequestDeleteDraft={vi.fn()}
+      onSaveCreditInvoiceDraft={vi.fn()}
       pendingDeleteDraftId={null}
       {...props}
     />,
@@ -256,6 +295,7 @@ function createApprovedInvoiceListState(
 ): InvoicingPageViewProps['approvedInvoiceListState'] {
   return {
     approved: createApprovedInvoicePageState(),
+    cancelled: createApprovedInvoicePageState(),
     refreshApprovedInvoices: vi.fn(),
     sent: createApprovedInvoicePageState(),
     ...overrides,
@@ -276,6 +316,7 @@ function createApprovedInvoicePageState(): InvoicingPageViewProps[
     },
     errorMessage: null,
     goToPage: vi.fn(),
+    invoiceGroups: [],
     invoices: [],
     isFiscalYearFilterAvailable: true,
     isLoading: false,
@@ -305,6 +346,16 @@ function createInvoiceDeliveryEventListState(
   };
 }
 
+function createInvoiceCreditContextState(): InvoicingPageViewProps['invoiceCreditContextState'] {
+  return {
+    clearCreditContext: vi.fn(),
+    creditContext: null,
+    errorMessage: null,
+    isLoading: false,
+    loadCreditContext: vi.fn(async () => null),
+  };
+}
+
 function createApprovedInvoiceState(
   overrides: Partial<InvoicingPageViewProps['approvedInvoiceState']> = {},
 ): InvoicingPageViewProps['approvedInvoiceState'] {
@@ -315,6 +366,20 @@ function createApprovedInvoiceState(
     isLoading: false,
     openApprovedInvoice: vi.fn(),
     replaceApprovedInvoice: vi.fn(),
+    ...overrides,
+  };
+}
+
+function createCancelApprovedInvoiceState(
+  overrides: Partial<
+    InvoicingPageViewProps['cancelApprovedInvoiceState']
+  > = {},
+): InvoicingPageViewProps['cancelApprovedInvoiceState'] {
+  return {
+    cancelApprovedInvoice: vi.fn(async () => null),
+    clearError: vi.fn(),
+    errorMessage: null,
+    isCancelling: false,
     ...overrides,
   };
 }

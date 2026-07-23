@@ -1,0 +1,83 @@
+.relations {
+  border-top: 1px solid var(--color-border);
+  display: grid;
+  gap: 12px;
+  padding-top: 16px;
+}
+
+.relations h3 {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 28px;
+  margin: 0;
+}
+
+.summary div {
+  display: grid;
+  gap: 3px;
+}
+
+.summary dt {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.summary dd {
+  font-weight: 700;
+  margin: 0;
+}
+
+.invoiceList {
+  border: 1px solid var(--color-border);
+  display: grid;
+}
+
+.invoiceLink {
+  align-items: center;
+  background: var(--color-surface);
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  gap: 12px;
+  grid-template-columns: minmax(180px, 1fr) minmax(110px, auto) minmax(120px, auto);
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.invoiceLink:last-child {
+  border-bottom: 0;
+}
+
+.invoiceLink:hover,
+.invoiceLink:focus-visible {
+  background: var(--color-surface-muted);
+}
+
+.invoiceLink span:last-child {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.muted {
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .invoiceLink {
+    grid-template-columns: 1fr;
+  }
+
+  .invoiceLink span:last-child {
+    text-align: left;
+  }
+}

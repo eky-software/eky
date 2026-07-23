@@ -24,6 +24,8 @@ interface StoredDiscount {
 
 export interface InvoiceDraftSummaryRow {
   id: string;
+  invoice_kind: string;
+  credited_invoice_id: string | null;
   customer_id: string;
   status: string;
   invoice_date: string;
@@ -80,6 +82,8 @@ export function toInvoiceDraftRow(draft: InvoiceDraft): NewInvoiceDraftRow {
   return {
     id: draft.id,
     company_id: draft.companyId,
+    invoice_kind: draft.invoiceKind,
+    credited_invoice_id: draft.creditedInvoiceId,
     customer_id: draft.customerId,
     billing_recipient_customer_id: draft.billingRecipientCustomerId,
     status: draft.status,
@@ -94,6 +98,7 @@ export function toInvoiceDraftRow(draft: InvoiceDraft): NewInvoiceDraftRow {
     order_number: draft.orderNumber,
     note: draft.note,
     delivery_address_text: draft.deliveryAddressText,
+    refund_iban: draft.refundIban,
     net_total_cents: draft.totals.netTotalCents,
     vat_total_cents: draft.totals.vatTotalCents,
     gross_total_cents: draft.totals.grossTotalCents,
@@ -111,6 +116,7 @@ export function toInvoiceDraftLineRows(
     return {
       id: line.id,
       invoice_draft_id: draft.id,
+      source_invoice_line_id: line.sourceInvoiceLineId,
       position: line.position,
       code: line.code,
       description: line.description,
@@ -135,6 +141,7 @@ export function toInvoiceDraftLine(
 ): InvoiceDraftLine {
   return {
     id: row.id,
+    sourceInvoiceLineId: row.source_invoice_line_id,
     position: row.position,
     code: row.code,
     description: row.description,
@@ -160,6 +167,8 @@ export function toInvoiceDraftSummary(
 ): InvoiceDraftSummary {
   return {
     id: row.id,
+    invoiceKind: row.invoice_kind as InvoiceDraft['invoiceKind'],
+    creditedInvoiceId: row.credited_invoice_id,
     customerId: row.customer_id,
     status: row.status as InvoiceDraftStatus,
     invoiceDate: row.invoice_date,

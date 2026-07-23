@@ -82,6 +82,78 @@ describe('desktop protocol policy', () => {
     expect(isAllowedBackendRequest('GET', '/customers/%2e%2e/secret')).toBe(false);
   });
 
+  it('allows only POST for the exact invoice cancellation path', () => {
+    expect(
+      isAllowedBackendRequest('POST', '/invoices/invoice-1/cancel'),
+    ).toBe(true);
+    expect(
+      isAllowedBackendRequest('GET', '/invoices/invoice-1/cancel'),
+    ).toBe(false);
+    expect(
+      isAllowedBackendRequest('POST', '/invoices/invoice-1/cancel/extra'),
+    ).toBe(false);
+    expect(
+      isAllowedBackendRequest('POST', '/invoices/invoice%2F1/cancel'),
+    ).toBe(false);
+  });
+
+  it('allows only the exact credit draft routes and methods', () => {
+    expect(
+      isAllowedBackendRequest('POST', '/invoices/invoice-1/credit-draft'),
+    ).toBe(true);
+    expect(
+      isAllowedBackendRequest('GET', '/invoices/invoice-1/credit-draft'),
+    ).toBe(false);
+    expect(
+      isAllowedBackendRequest('GET', '/invoice-drafts/draft-1/credit'),
+    ).toBe(true);
+    expect(
+      isAllowedBackendRequest('PUT', '/invoice-drafts/draft-1/credit'),
+    ).toBe(true);
+    expect(
+      isAllowedBackendRequest('POST', '/invoice-drafts/draft-1/credit'),
+    ).toBe(false);
+    expect(
+      isAllowedBackendRequest(
+        'POST',
+        '/invoice-drafts/draft-1/approve-credit',
+      ),
+    ).toBe(true);
+    expect(
+      isAllowedBackendRequest(
+        'GET',
+        '/invoice-drafts/draft-1/approve-credit',
+      ),
+    ).toBe(false);
+    expect(
+      isAllowedBackendRequest(
+        'POST',
+        '/invoice-drafts/draft-1/approve-credit/extra',
+      ),
+    ).toBe(false);
+    expect(
+      isAllowedBackendRequest('PUT', '/invoice-drafts/draft%2F1/credit'),
+    ).toBe(false);
+    expect(
+      isAllowedBackendRequest('PUT', '/invoice-drafts/draft-1/credit/extra'),
+    ).toBe(false);
+  });
+
+  it('allows only GET for the exact invoice credit context path', () => {
+    expect(
+      isAllowedBackendRequest('GET', '/invoices/invoice-1/credit-context'),
+    ).toBe(true);
+    expect(
+      isAllowedBackendRequest('POST', '/invoices/invoice-1/credit-context'),
+    ).toBe(false);
+    expect(
+      isAllowedBackendRequest(
+        'GET',
+        '/invoices/invoice-1/credit-context/extra',
+      ),
+    ).toBe(false);
+  });
+
   it('does not forward renderer-owned credentials or tenant headers', () => {
     const runtimeSessionSecret = 'a'.repeat(43);
     const headers = new Headers({

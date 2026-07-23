@@ -30,7 +30,7 @@ export async function listApprovedInvoices(
   input: ListApprovedInvoicesInput,
   approvedInvoiceReader: ApprovedInvoiceReader,
 ): Promise<ApprovedInvoiceListPage> {
-  validateInput(input);
+  validateApprovedInvoiceListInput(input);
 
   const offset = (input.page - 1) * input.pageSize;
 
@@ -60,7 +60,9 @@ export async function listApprovedInvoices(
   };
 }
 
-function validateInput(input: ListApprovedInvoicesInput): void {
+export function validateApprovedInvoiceListInput(
+  input: ListApprovedInvoicesInput,
+): void {
   if (input.companyId.trim().length === 0) {
     throw new InvoiceDraftValidationError('Company id is required.');
   }
@@ -69,7 +71,11 @@ function validateInput(input: ListApprovedInvoicesInput): void {
     throw new InvoiceDraftValidationError('Company id is too long.');
   }
 
-  if (input.status !== 'approved' && input.status !== 'sent') {
+  if (
+    input.status !== 'approved' &&
+    input.status !== 'sent' &&
+    input.status !== 'cancelled'
+  ) {
     throw new InvoiceDraftValidationError('Invoice list status is invalid.');
   }
 

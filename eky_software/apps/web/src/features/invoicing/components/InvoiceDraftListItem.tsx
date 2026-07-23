@@ -35,6 +35,7 @@ export function InvoiceDraftListItem({
     draft,
     customers,
   );
+  const isCreditDraft = draft.invoiceKind === 'credit';
 
   return (
     <>
@@ -56,10 +57,16 @@ export function InvoiceDraftListItem({
           {formatInvoiceDraftDate(draft.dueDate)}
         </time>
         <strong className={styles.total} role="cell">
-          {formatInvoiceDraftCurrency(draft.grossTotalCents)}
+          {formatInvoiceDraftCurrency(
+            isCreditDraft && draft.grossTotalCents !== 0
+              ? -draft.grossTotalCents
+              : draft.grossTotalCents,
+          )}
         </strong>
         <span className="status-pill status-pill-draft" role="cell">
-          {getInvoiceDraftStatusLabel(draft.status)}
+          {isCreditDraft
+            ? uiText.invoicing.statusCreditDraft
+            : getInvoiceDraftStatusLabel(draft.status)}
         </span>
         <div className={styles.rowActions} role="cell">
           <button

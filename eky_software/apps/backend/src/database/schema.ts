@@ -71,6 +71,8 @@ export interface InvoiceDraftTable {
   company_id: string;
   customer_id: string;
   billing_recipient_customer_id: string | null;
+  invoice_kind: string;
+  credited_invoice_id: string | null;
   status: string;
   invoice_date: string;
   due_date: string;
@@ -82,6 +84,7 @@ export interface InvoiceDraftTable {
   order_number: string;
   note: string;
   delivery_address_text: string;
+  refund_iban: string;
   net_total_cents: number;
   vat_total_cents: number;
   gross_total_cents: number;
@@ -94,6 +97,7 @@ export interface InvoiceDraftTable {
 export interface InvoiceDraftLineTable {
   id: string;
   invoice_draft_id: string;
+  source_invoice_line_id: string | null;
   position: number;
   code: string;
   description: string;
@@ -153,6 +157,8 @@ export interface InvoiceTable {
   id: string;
   company_id: string;
   source_draft_id: string;
+  invoice_kind: string;
+  credited_invoice_id: string | null;
   invoice_number: string;
   reference_number: string | null;
   reference_number_type: string | null;
@@ -203,17 +209,22 @@ export interface InvoiceTable {
   order_number: string;
   note: string;
   delivery_address_text: string;
+  refund_iban_snapshot: string;
   total_net_cents: number;
   total_vat_cents: number;
   total_gross_cents: number;
   created_at: string;
   approved_at: string;
   updated_at: string;
+  cancelled_at: string | null;
+  cancelled_by: string | null;
+  cancellation_reason: string | null;
 }
 
 export interface InvoiceLineTable {
   id: string;
   invoice_id: string;
+  source_invoice_line_id: string | null;
   line_order: number;
   code: string;
   description: string;

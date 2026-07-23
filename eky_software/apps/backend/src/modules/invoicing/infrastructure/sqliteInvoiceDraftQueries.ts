@@ -13,6 +13,8 @@ type InvoiceDraftKeyParameters = [string, string];
 const invoiceDraftSummarySelect = `
   SELECT
     id,
+    invoice_kind,
+    credited_invoice_id,
     customer_id,
     status,
     invoice_date,
@@ -41,6 +43,8 @@ export class SqliteInvoiceDraftQueries {
           SELECT
             id,
             company_id,
+            invoice_kind,
+            credited_invoice_id,
             customer_id,
             billing_recipient_customer_id,
             status,
@@ -54,6 +58,7 @@ export class SqliteInvoiceDraftQueries {
             order_number,
             note,
             delivery_address_text,
+            refund_iban,
             net_total_cents,
             vat_total_cents,
             gross_total_cents,
@@ -82,6 +87,7 @@ export class SqliteInvoiceDraftQueries {
           SELECT
             invoice_draft_lines.id,
             invoice_draft_lines.invoice_draft_id,
+            invoice_draft_lines.source_invoice_line_id,
             invoice_draft_lines.position,
             invoice_draft_lines.code,
             invoice_draft_lines.description,

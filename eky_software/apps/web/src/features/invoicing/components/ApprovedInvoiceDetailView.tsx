@@ -2,6 +2,7 @@ import type {
   ApprovedInvoiceEmailDryRunSendInput,
   ApprovedInvoiceEmailSmtpPrepareInput,
   ApprovedInvoiceEmailSmtpTestPrepareInput,
+  CancelApprovedInvoiceInput,
 } from '@eky/api-client';
 
 import { ApprovedInvoicePreview } from './ApprovedInvoicePreview.js';
@@ -9,8 +10,10 @@ import styles from './InvoicingPage.module.css';
 import type { ApprovedInvoiceEmailDryRunState } from '../hooks/useApprovedInvoiceEmailDryRun.js';
 import type { ApprovedInvoicePdfState } from '../hooks/useApprovedInvoicePdf.js';
 import type { ApprovedInvoiceState } from '../hooks/useApprovedInvoice.js';
+import type { CancelApprovedInvoiceState } from '../hooks/useCancelApprovedInvoice.js';
 import type { CopyApprovedInvoiceState } from '../hooks/useCopyApprovedInvoiceToDraft.js';
 import type { InvoiceDeliveryEventListState } from '../hooks/useInvoiceDeliveryEvents.js';
+import type { InvoiceCreditContextState } from '../hooks/useInvoiceCreditContext.js';
 import type { MarkApprovedInvoiceSentState } from '../hooks/useMarkApprovedInvoiceSent.js';
 import type { ReopenApprovedInvoiceState } from '../hooks/useReopenApprovedInvoiceForEditing.js';
 import type { SendApprovedInvoiceEmailDryRunState } from '../hooks/useSendApprovedInvoiceEmailDryRun.js';
@@ -34,9 +37,17 @@ type InvoiceDeliveryHistoryViewState = Pick<
   InvoiceDeliveryEventListState,
   'errorMessage' | 'events' | 'isLoading'
 >;
+type InvoiceCreditContextViewState = Pick<
+  InvoiceCreditContextState,
+  'creditContext' | 'errorMessage' | 'isLoading'
+>;
 type CopyApprovedInvoiceViewState = Pick<
   CopyApprovedInvoiceState,
   'errorMessage' | 'isCopying'
+>;
+type CancelApprovedInvoiceViewState = Pick<
+  CancelApprovedInvoiceState,
+  'errorMessage' | 'isCancelling'
 >;
 type MarkApprovedInvoiceSentViewState = Pick<
   MarkApprovedInvoiceSentState,
@@ -60,7 +71,9 @@ type EmailSmtpTestSendViewState = Pick<
 >;
 
 interface ApprovedInvoiceDetailViewProps {
+  cancellationState: CancelApprovedInvoiceViewState;
   copyState: CopyApprovedInvoiceViewState;
+  creditContextState: InvoiceCreditContextViewState;
   deliveryHistoryState: InvoiceDeliveryHistoryViewState;
   emailState: ApprovedInvoiceEmailViewState;
   emailSendState: EmailSendViewState;
@@ -74,11 +87,15 @@ interface ApprovedInvoiceDetailViewProps {
   pdfState: ApprovedInvoicePdfViewState;
   reopenState: ReopenApprovedInvoiceViewState;
   onBack(): void;
+  onCancelInvoice(id: string, input: CancelApprovedInvoiceInput): void;
   onCopyInvoice(id: string): void;
+  onCreateCreditDraft(id: string): void;
   onCreatePdf(id: string): void;
   onEditInvoice(id: string): void;
   onMarkSent(id: string): void;
   onOpenPdf(id: string): void;
+  onOpenRelatedDraft(id: string): void;
+  onOpenRelatedInvoice(id: string): void;
   onPrepareEmail(id: string): void;
   onSendEmailDryRun(
     id: string,
@@ -95,7 +112,9 @@ interface ApprovedInvoiceDetailViewProps {
 }
 
 export function ApprovedInvoiceDetailView({
+  cancellationState,
   copyState,
+  creditContextState,
   deliveryHistoryState,
   emailState,
   emailSendState,
@@ -109,11 +128,15 @@ export function ApprovedInvoiceDetailView({
   pdfState,
   reopenState,
   onBack,
+  onCancelInvoice,
   onCopyInvoice,
+  onCreateCreditDraft,
   onCreatePdf,
   onEditInvoice,
   onMarkSent,
   onOpenPdf,
+  onOpenRelatedDraft,
+  onOpenRelatedInvoice,
   onPrepareEmail,
   onSendEmailDryRun,
   onSendEmailSmtp,
@@ -157,7 +180,10 @@ export function ApprovedInvoiceDetailView({
 
   return (
     <ApprovedInvoicePreview
+      cancellationErrorMessage={cancellationState.errorMessage}
       copyErrorMessage={copyState.errorMessage}
+      creditContext={creditContextState.creditContext}
+      creditContextErrorMessage={creditContextState.errorMessage}
       deliveryEvents={deliveryHistoryState.events}
       deliveryEventsErrorMessage={deliveryHistoryState.errorMessage}
       email={emailState.email}
@@ -172,8 +198,10 @@ export function ApprovedInvoiceDetailView({
       emailSmtpTestUnavailableMessage={emailSmtpTestUnavailableMessage}
       emailSmtpUnavailableMessage={emailSmtpUnavailableMessage}
       invoice={invoiceState.approvedInvoice}
+      isCancellingInvoice={cancellationState.isCancelling}
       isCopyingInvoice={copyState.isCopying}
       isCreatingPdf={pdfState.isCreating}
+      isLoadingCreditContext={creditContextState.isLoading}
       isLoadingDeliveryEvents={deliveryHistoryState.isLoading}
       isMarkingSent={markSentState.isMarkingSent}
       isPdfAvailable={pdfState.document !== null}
@@ -186,11 +214,15 @@ export function ApprovedInvoiceDetailView({
       pdfErrorMessage={pdfState.errorMessage}
       reopenErrorMessage={reopenState.errorMessage}
       onBack={onBack}
+      onCancelInvoice={onCancelInvoice}
       onCopyInvoice={onCopyInvoice}
+      onCreateCreditDraft={onCreateCreditDraft}
       onCreatePdf={onCreatePdf}
       onEditInvoice={onEditInvoice}
       onMarkSent={onMarkSent}
       onOpenPdf={onOpenPdf}
+      onOpenRelatedDraft={onOpenRelatedDraft}
+      onOpenRelatedInvoice={onOpenRelatedInvoice}
       onPrepareEmail={onPrepareEmail}
       onSendEmailDryRun={onSendEmailDryRun}
       onSendEmailSmtp={onSendEmailSmtp}

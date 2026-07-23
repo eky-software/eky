@@ -263,6 +263,10 @@ function createApprovedInvoiceDocumentMetadata(): ApprovedInvoiceDocumentMetadat
 function createApprovedInvoiceView(): ApprovedInvoiceView {
   return {
     approvedAt: '2026-07-10T09:00:00.000Z',
+    invoiceKind: 'standard',
+    creditedInvoiceId: null,
+    creditedInvoiceNumber: null,
+    creditedInvoiceDate: null,
     billingRecipientBusinessIdSnapshot: '',
     billingRecipientCitySnapshot: 'Espoo',
     billingRecipientCustomerId: 'billing-1',
@@ -309,6 +313,7 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     orderNumber: '',
     paymentTermDays: 14,
     priceInputMode: 'net',
+    refundIbanSnapshot: '',
     referenceNumber: '202600017',
     referenceNumberType: 'finnishDomestic',
     reminderPeriodDays: 8,
@@ -326,5 +331,8 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     },
     updatedAt: '2026-07-10T09:00:00.000Z',
     vatBreakdown: [],
+    cancelledAt: null,
+    cancelledBy: null,
+    cancellationReason: null,
   };
 }

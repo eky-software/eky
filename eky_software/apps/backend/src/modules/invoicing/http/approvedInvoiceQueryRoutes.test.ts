@@ -4,13 +4,16 @@ import { describe, expect, it } from 'vitest';
 
 import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 import type { GetApprovedInvoiceInput } from '../application/getApprovedInvoice.js';
+import type { GetInvoiceCreditContextInput } from '../application/getInvoiceCreditContext.js';
 import type { ListApprovedInvoicesInput } from '../application/listApprovedInvoices.js';
+import type { ListSentInvoiceGroupsInput } from '../application/listSentInvoiceGroups.js';
 import { ApprovedInvoiceNotFoundError } from '../application/approvedInvoiceNotFoundError.js';
 import type {
   ApprovedInvoiceListPage,
   ApprovedInvoiceSummary,
 } from '../domain/approvedInvoiceSummary.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
+import type { InvoiceCreditContext } from '../domain/invoiceCreditContext.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
 import { createApprovedInvoiceQueryRoutes } from './approvedInvoiceQueryRoutes.js';
 
@@ -74,6 +77,47 @@ describe('approved invoice query routes', () => {
     });
   });
 
+  it('returns company-scoped sent invoice groups without accepting status overrides', async () => {
+    const { app, getSentGroupInput } = createTestApp({});
+
+    const response = await app.request(
+      '/sent-invoice-groups?dateFrom=2026-01-01&page=2&pageSize=50',
+    );
+
+    expect(response.status).toBe(200);
+    expect(getSentGroupInput()).toEqual({
+      companyId: 'dev-company',
+      dateFrom: '2026-01-01',
+      page: 2,
+      pageSize: 50,
+      sort: 'invoiceDateDesc',
+    });
+
+    const statusOverrideResponse = await app.request(
+      '/sent-invoice-groups?status=approved',
+    );
+    const tenantOverrideResponse = await app.request(
+      '/sent-invoice-groups?companyId=other-company',
+    );
+
+    expect(statusOverrideResponse.status).toBe(400);
+    expect(tenantOverrideResponse.status).toBe(400);
+  });
+
+  it('returns a credit context in the trusted company scope', async () => {
+    const creditContext = createInvoiceCreditContext();
+    const { app, getCreditContextInput } = createTestApp({ creditContext });
+
+    const response = await app.request('/invoices/invoice-1/credit-context');
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ creditContext });
+    expect(getCreditContextInput()).toEqual({
+      companyId: 'dev-company',
+      sourceInvoiceId: 'invoice-1',
+    });
+  });
+
   it('preserves the snapshot response shape used by invoice views', async () => {
     const { app } = createTestApp({ invoice: createApprovedInvoiceView() });
 
@@ -124,12 +168,15 @@ describe('approved invoice query routes', () => {
 
 function createTestApp(options: {
   getError?: Error;
+  creditContext?: InvoiceCreditContext;
   invoice?: ApprovedInvoiceView;
   invoicePage?: ApprovedInvoiceListPage;
   listError?: Error;
 }) {
   let getInput: GetApprovedInvoiceInput | undefined;
+  let creditContextInput: GetInvoiceCreditContextInput | undefined;
   let listInput: ListApprovedInvoicesInput | undefined;
+  let sentGroupInput: ListSentInvoiceGroupsInput | undefined;
   const routes = createApprovedInvoiceQueryRoutes({
     async getApprovedInvoice(input) {
       getInput = input;
@@ -144,6 +191,15 @@ function createTestApp(options: {
 
       return options.invoice;
     },
+    async getInvoiceCreditContext(input) {
+      creditContextInput = input;
+
+      if (options.creditContext === undefined) {
+        throw new ApprovedInvoiceNotFoundError();
+      }
+
+      return options.creditContext;
+    },
     async listApprovedInvoices(input) {
       listInput = input;
 
@@ -152,6 +208,16 @@ function createTestApp(options: {
       }
 
       return options.invoicePage ?? createApprovedInvoiceListPage([]);
+    },
+    async listSentInvoiceGroups(input) {
+      sentGroupInput = input;
+      return {
+        groups: [],
+        page: 1,
+        pageSize: 20,
+        totalCount: 0,
+        totalPages: 0,
+      };
     },
   });
   const app = new Hono<BackendEnvironment>();
@@ -172,7 +238,19 @@ function createTestApp(options: {
   return {
     app,
     getInput: () => getInput,
+    getCreditContextInput: () => creditContextInput,
     getListInput: () => listInput,
+    getSentGroupInput: () => sentGroupInput,
+  };
+}
+
+function createInvoiceCreditContext(): InvoiceCreditContext {
+  return {
+    sourceInvoiceId: 'invoice-1',
+    creditInvoices: [],
+    creditStatus: 'none',
+    remainingCreditableGrossCents: 12_550,
+    activeCreditDraftId: null,
   };
 }
 
@@ -198,11 +276,14 @@ function createApprovedInvoiceSummary(): ApprovedInvoiceSummary {
     dueDate: '2026-06-27',
     grossTotalCents: 12550,
     id: 'invoice-1',
+    invoiceKind: 'standard',
+    creditedInvoiceId: null,
     invoiceDate: '2026-06-13',
     invoiceNumber: '20260001',
     referenceNumber: '202600017',
     status: 'approved',
     updatedAt: '2026-06-13T10:00:00.000Z',
+    cancelledAt: null,
   };
 }
 
@@ -232,6 +313,10 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     companyVatNumberSnapshot: 'FI76543210',
     companyWebsiteSnapshot: 'www.example-builder.fi',
     companyId: 'dev-company',
+    invoiceKind: 'standard',
+    creditedInvoiceId: null,
+    creditedInvoiceNumber: null,
+    creditedInvoiceDate: null,
     createdAt: '2026-06-13T10:00:00.000Z',
     customerBusinessIdSnapshot: '1234567-8',
     customerCitySnapshot: 'Helsinki',
@@ -258,6 +343,7 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
         discountCents: 0,
         grossCents: 12550,
         id: 'line-1',
+        sourceInvoiceLineId: null,
         lineOrder: 1,
         netCents: 10000,
         quantityHundredths: 100,
@@ -272,6 +358,7 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     orderNumber: 'ORDER-1',
     paymentTermDays: 14,
     priceInputMode: 'net',
+    refundIbanSnapshot: '',
     referenceNumber: '202600017',
     referenceNumberType: 'finnishDomestic',
     reminderPeriodDays: 8,
@@ -303,5 +390,8 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
         vatRateBasisPoints: 2550,
       },
     ],
+    cancelledAt: null,
+    cancelledBy: null,
+    cancellationReason: null,
   };
 }

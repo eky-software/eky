@@ -58,6 +58,26 @@ describe('generateApprovedInvoicePdfDocument', () => {
     expect(dependencies.repository.savedDocuments).toEqual([]);
   });
 
+  it('uses a credit invoice filename for a credit snapshot', async () => {
+    const dependencies = createDependencies({
+      invoice: {
+        ...createApprovedInvoiceView(),
+        creditedInvoiceId: 'source-invoice-1',
+        creditedInvoiceNumber: '20260001',
+        creditedInvoiceDate: '2026-07-01',
+        invoiceKind: 'credit',
+        invoiceNumber: '20260002',
+      },
+    });
+
+    const metadata = await generateApprovedInvoicePdfDocument(
+      createInput(),
+      dependencies,
+    );
+
+    expect(metadata.fileName).toBe('hyvityslasku-20260002.pdf');
+  });
+
   it('regenerates the PDF when metadata exists but the local file is missing', async () => {
     const existingDocument = createDocumentMetadata();
     const dependencies = createDependencies({
@@ -225,6 +245,10 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     id: 'invoice-1',
     companyId: 'dev-company',
     sourceDraftId: 'draft-1',
+    invoiceKind: 'standard',
+    creditedInvoiceId: null,
+    creditedInvoiceNumber: null,
+    creditedInvoiceDate: null,
     invoiceNumber: '20260001',
     referenceNumber: '202600017',
     referenceNumberType: 'finnishDomestic',
@@ -271,6 +295,7 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     reminderPeriodDays: 8,
     latePaymentInterestBasisPoints: 950,
     priceInputMode: 'net',
+    refundIbanSnapshot: '',
     subject: 'Test invoice',
     orderNumber: '',
     note: '',
@@ -286,5 +311,8 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     createdAt: '2026-07-05T10:00:00.000Z',
     approvedAt: '2026-07-05T10:00:00.000Z',
     updatedAt: '2026-07-05T10:00:00.000Z',
+    cancelledAt: null,
+    cancelledBy: null,
+    cancellationReason: null,
   };
 }

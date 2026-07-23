@@ -132,6 +132,11 @@ SMTP/Gmail/Microsoft-sähköpostiadaptereita, `sent`-tilaa, laskun kopiointia,
 peruutusta, hyvityslaskua tai lähetyslokia, lue myös
 `docs/architecture/invoice-delivery-plan.md`.
 
+Jos työ koskee hyväksytyn laskun peruutusta, hyvitysluonnosta, koko- tai
+osahyvitystä, hyvityksen kumulatiivista laskentaa, hyvityslaskun hyväksyntää,
+hyvityksen PDF:ää tai alkuperäislaskun ja hyvitysten ryhmittelyä, lue myös
+`docs/architecture/invoice-cancellation-and-credit-note-plan.md`.
+
 Jos työ koskee laskun toimitustapahtumia, delivery event -mallia,
 lähetyslokia, sähköpostin send-endpointtia, dry-run-send-polun auditointia tai
 lähetetyn laskun uudelleenlähetystä, lue myös

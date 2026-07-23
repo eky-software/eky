@@ -1,46 +1,17 @@
 import Database from 'better-sqlite3';
-import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { DatabaseConnection } from '../../../database/connection/createDatabaseConnection.js';
+import { runMigrations } from '../../../database/migration/runMigrations.js';
 import { SqliteApprovedInvoiceReader } from './sqliteApprovedInvoiceReader.js';
-
-const migrationNames = [
-  '004_create_company_settings.sql',
-  '006_create_invoice_drafts.sql',
-  '009_create_approved_invoices.sql',
-  '010_add_invoice_reference_number.sql',
-  '016_add_approved_invoice_print_snapshot_fields.sql',
-  '017_allow_reopened_invoice_corrections.sql',
-  '018_create_invoice_documents.sql',
-  '019_add_company_website.sql',
-  '020_relax_invoice_line_unit_checks.sql',
-  '021_allow_sent_approved_invoices.sql',
-];
-
-const migrationSql = migrationNames.map((migrationName) =>
-  readFileSync(
-    new URL(
-      `../../../database/migrations/${migrationName}`,
-      import.meta.url,
-    ),
-    'utf8',
-  ),
-);
-
-function runMigrations(database: DatabaseConnection): void {
-  for (const sql of migrationSql) {
-    database.exec(sql);
-  }
-}
 
 describe('SqliteApprovedInvoiceReader', () => {
   let database: DatabaseConnection;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     database = new Database(':memory:');
     database.pragma('foreign_keys = ON');
-    runMigrations(database);
+    await runMigrations(database);
     insertSourceDraft(database);
     insertApprovedInvoice(database);
     insertInvoiceLines(database);
@@ -131,6 +102,8 @@ describe('SqliteApprovedInvoiceReader', () => {
       invoices: [
         {
           id: 'invoice-1',
+          invoiceKind: 'standard',
+          creditedInvoiceId: null,
           invoiceNumber: '20260001',
           referenceNumber: '202600017',
           status: 'approved',
@@ -143,6 +116,7 @@ describe('SqliteApprovedInvoiceReader', () => {
           grossTotalCents: 35100,
           approvedAt: '2026-06-13T10:00:00.000Z',
           updatedAt: '2026-06-13T10:00:00.000Z',
+          cancelledAt: null,
         },
       ],
       totalCount: 1,
@@ -183,6 +157,161 @@ describe('SqliteApprovedInvoiceReader', () => {
     });
   });
 
+  it('groups sent credits with their root and counts approved credits in the remaining amount', async () => {
+    markInvoiceSent(database, 'invoice-1');
+    insertInvoiceClone(database, {
+      id: 'credit-invoice-sent',
+      sourceDraftId: 'credit-draft-sent',
+      invoiceKind: 'credit',
+      creditedInvoiceId: 'invoice-1',
+      invoiceNumber: '20260002',
+      status: 'sent',
+      totalGrossCents: 10_000,
+      invoiceDate: '2026-06-14',
+    });
+    insertInvoiceClone(database, {
+      id: 'credit-invoice-approved',
+      sourceDraftId: 'credit-draft-approved',
+      invoiceKind: 'credit',
+      creditedInvoiceId: 'invoice-1',
+      invoiceNumber: '20260003',
+      status: 'approved',
+      totalGrossCents: 5_000,
+      invoiceDate: '2026-06-15',
+    });
+    const reader = new SqliteApprovedInvoiceReader(database);
+
+    await expect(
+      reader.listSentInvoiceGroups(createSentGroupQuery()),
+    ).resolves.toMatchObject({
+      totalCount: 1,
+      groups: [
+        {
+          rootInvoice: {
+            id: 'invoice-1',
+            invoiceKind: 'standard',
+            status: 'sent',
+          },
+          creditInvoices: [
+            {
+              id: 'credit-invoice-sent',
+              invoiceKind: 'credit',
+              creditedInvoiceId: 'invoice-1',
+              status: 'sent',
+            },
+          ],
+          creditStatus: 'partial',
+          remainingCreditableGrossCents: 20_100,
+        },
+      ],
+    });
+  });
+
+  it('pages sent roots without separating a credit from its root', async () => {
+    markInvoiceSent(database, 'invoice-1');
+    insertInvoiceClone(database, {
+      id: 'invoice-2',
+      sourceDraftId: 'draft-2',
+      invoiceKind: 'standard',
+      creditedInvoiceId: null,
+      invoiceNumber: '20260002',
+      status: 'sent',
+      totalGrossCents: 20_000,
+      invoiceDate: '2026-06-14',
+    });
+    insertInvoiceClone(database, {
+      id: 'credit-invoice-1',
+      sourceDraftId: 'credit-draft-1',
+      invoiceKind: 'credit',
+      creditedInvoiceId: 'invoice-1',
+      invoiceNumber: '20260003',
+      status: 'sent',
+      totalGrossCents: 35_100,
+      invoiceDate: '2026-06-15',
+    });
+    const reader = new SqliteApprovedInvoiceReader(database);
+
+    const firstPage = await reader.listSentInvoiceGroups(
+      createSentGroupQuery({ limit: 1 }),
+    );
+    const secondPage = await reader.listSentInvoiceGroups(
+      createSentGroupQuery({ limit: 1, offset: 1 }),
+    );
+
+    expect(firstPage.totalCount).toBe(2);
+    expect(firstPage.groups.map((group) => group.rootInvoice.id)).toEqual([
+      'invoice-2',
+    ]);
+    expect(firstPage.groups[0]?.creditInvoices).toEqual([]);
+    expect(secondPage.groups.map((group) => group.rootInvoice.id)).toEqual([
+      'invoice-1',
+    ]);
+    expect(secondPage.groups[0]).toMatchObject({
+      creditStatus: 'full',
+      remainingCreditableGrossCents: 0,
+      creditInvoices: [{ id: 'credit-invoice-1' }],
+    });
+  });
+
+  it('does not return sent invoice groups outside the company scope', async () => {
+    markInvoiceSent(database, 'invoice-1');
+    const reader = new SqliteApprovedInvoiceReader(database);
+
+    await expect(
+      reader.listSentInvoiceGroups(
+        createSentGroupQuery({ companyId: 'other-company' }),
+      ),
+    ).resolves.toEqual({ groups: [], totalCount: 0 });
+  });
+
+  it('returns the company-scoped credit context with related invoices and an active draft', async () => {
+    markInvoiceSent(database, 'invoice-1');
+    insertInvoiceClone(database, {
+      id: 'credit-invoice-approved',
+      sourceDraftId: 'credit-draft-approved',
+      invoiceKind: 'credit',
+      creditedInvoiceId: 'invoice-1',
+      invoiceNumber: '20260002',
+      status: 'approved',
+      totalGrossCents: 10_000,
+      invoiceDate: '2026-06-14',
+    });
+    insertActiveCreditDraft(database, {
+      id: 'credit-draft-active',
+      creditedInvoiceId: 'invoice-1',
+    });
+    const reader = new SqliteApprovedInvoiceReader(database);
+
+    await expect(
+      reader.getInvoiceCreditContext('dev-company', 'invoice-1'),
+    ).resolves.toMatchObject({
+      sourceInvoiceId: 'invoice-1',
+      creditInvoices: [
+        {
+          id: 'credit-invoice-approved',
+          invoiceKind: 'credit',
+          creditedInvoiceId: 'invoice-1',
+          status: 'approved',
+        },
+      ],
+      creditStatus: 'partial',
+      remainingCreditableGrossCents: 25_100,
+      activeCreditDraftId: 'credit-draft-active',
+    });
+  });
+
+  it('does not reveal a credit context outside the company scope or for a non-sent invoice', async () => {
+    const reader = new SqliteApprovedInvoiceReader(database);
+
+    await expect(
+      reader.getInvoiceCreditContext('dev-company', 'invoice-1'),
+    ).resolves.toBeUndefined();
+    markInvoiceSent(database, 'invoice-1');
+    await expect(
+      reader.getInvoiceCreditContext('other-company', 'invoice-1'),
+    ).resolves.toBeUndefined();
+  });
+
   it('applies invoice-date filters and pagination without changing the total count', async () => {
     const reader = new SqliteApprovedInvoiceReader(database);
 
@@ -216,6 +345,10 @@ describe('SqliteApprovedInvoiceReader', () => {
   });
 
   it('does not need Company Settings or Customers master data for the view', async () => {
+    database.exec(`
+      DELETE FROM company_settings;
+      DROP TABLE customers;
+    `);
     const companySettingsRows = database
       .prepare<[], { count: number }>(
         'SELECT COUNT(*) AS count FROM company_settings',
@@ -251,6 +384,22 @@ function createListQuery(
   return {
     companyId: 'dev-company',
     status: 'approved',
+    dateFrom: null,
+    dateTo: null,
+    limit: 20,
+    offset: 0,
+    sort: 'invoiceDateDesc',
+    ...overrides,
+  };
+}
+
+function createSentGroupQuery(
+  overrides: Partial<
+    Parameters<SqliteApprovedInvoiceReader['listSentInvoiceGroups']>[0]
+  > = {},
+): Parameters<SqliteApprovedInvoiceReader['listSentInvoiceGroups']>[0] {
+  return {
+    companyId: 'dev-company',
     dateFrom: null,
     dateTo: null,
     limit: 20,
@@ -511,4 +660,190 @@ function insertInvoiceLines(database: DatabaseConnection): void {
     0,
     2000,
   );
+}
+
+function markInvoiceSent(
+  database: DatabaseConnection,
+  invoiceId: string,
+): void {
+  database
+    .prepare(
+      `
+        UPDATE invoices
+        SET status = 'sent', updated_at = '2026-06-13T11:00:00.000Z'
+        WHERE id = ?
+      `,
+    )
+    .run(invoiceId);
+}
+
+interface InvoiceCloneInput {
+  id: string;
+  sourceDraftId: string;
+  invoiceKind: 'standard' | 'credit';
+  creditedInvoiceId: string | null;
+  invoiceNumber: string;
+  status: 'approved' | 'sent';
+  totalGrossCents: number;
+  invoiceDate: string;
+}
+
+function insertInvoiceClone(
+  database: DatabaseConnection,
+  input: InvoiceCloneInput,
+): void {
+  database
+    .prepare(
+      `
+        INSERT INTO invoice_drafts (
+          id,
+          company_id,
+          customer_id,
+          status,
+          invoice_date,
+          due_date,
+          payment_term_days,
+          price_input_mode,
+          subject,
+          order_number,
+          note,
+          net_total_cents,
+          vat_total_cents,
+          gross_total_cents,
+          created_at,
+          updated_at,
+          invoice_kind,
+          credited_invoice_id
+        )
+        SELECT
+          @sourceDraftId,
+          company_id,
+          customer_id,
+          status,
+          @invoiceDate,
+          @invoiceDate,
+          payment_term_days,
+          price_input_mode,
+          subject,
+          order_number,
+          note,
+          @totalGrossCents,
+          0,
+          @totalGrossCents,
+          created_at,
+          updated_at,
+          @invoiceKind,
+          @creditedInvoiceId
+        FROM invoice_drafts
+        WHERE id = 'draft-1'
+      `,
+    )
+    .run(input);
+
+  const columns = database
+    .prepare<[], { name: string }>('PRAGMA table_info(invoices)')
+    .all()
+    .map((column) => column.name);
+  const overrides: Record<string, string | number | null> = {
+    id: input.id,
+    source_draft_id: input.sourceDraftId,
+    invoice_kind: input.invoiceKind,
+    credited_invoice_id: input.creditedInvoiceId,
+    invoice_number: input.invoiceNumber,
+    reference_number:
+      input.invoiceKind === 'credit' ? null : input.invoiceNumber,
+    reference_number_type:
+      input.invoiceKind === 'credit' ? null : 'finnishDomestic',
+    sequence_number: Number(input.invoiceNumber.slice(-2)),
+    status: input.status,
+    invoice_date: input.invoiceDate,
+    due_date: input.invoiceDate,
+    total_net_cents: input.totalGrossCents,
+    total_vat_cents: 0,
+    total_gross_cents: input.totalGrossCents,
+    approved_at: `${input.invoiceDate}T10:00:00.000Z`,
+    updated_at: `${input.invoiceDate}T10:00:00.000Z`,
+  };
+  const selectExpressions = columns.map((column) =>
+    Object.prototype.hasOwnProperty.call(overrides, column)
+      ? `@${column}`
+      : `"${column}"`,
+  );
+
+  database
+    .prepare(
+      `
+        INSERT INTO invoices (${columns.map((column) => `"${column}"`).join(', ')})
+        SELECT ${selectExpressions.join(', ')}
+        FROM invoices
+        WHERE id = @cloneSourceInvoiceId
+      `,
+    )
+    .run({ cloneSourceInvoiceId: 'invoice-1', ...overrides });
+  database
+    .prepare(
+      `
+        UPDATE invoice_drafts
+        SET approved_invoice_id = ?, approved_at = ?
+        WHERE id = ?
+      `,
+    )
+    .run(
+      input.id,
+      `${input.invoiceDate}T10:00:00.000Z`,
+      input.sourceDraftId,
+    );
+}
+
+function insertActiveCreditDraft(
+  database: DatabaseConnection,
+  input: { id: string; creditedInvoiceId: string },
+): void {
+  database
+    .prepare(
+      `
+        INSERT INTO invoice_drafts (
+          id,
+          company_id,
+          customer_id,
+          status,
+          invoice_date,
+          due_date,
+          payment_term_days,
+          price_input_mode,
+          subject,
+          order_number,
+          note,
+          net_total_cents,
+          vat_total_cents,
+          gross_total_cents,
+          created_at,
+          updated_at,
+          invoice_kind,
+          credited_invoice_id
+        )
+        SELECT
+          @id,
+          company_id,
+          customer_id,
+          'draft',
+          invoice_date,
+          invoice_date,
+          0,
+          price_input_mode,
+          subject,
+          '',
+          '',
+          0,
+          0,
+          0,
+          '2026-06-15T10:00:00.000Z',
+          '2026-06-15T10:00:00.000Z',
+          'credit',
+          @creditedInvoiceId
+        FROM invoice_drafts
+        WHERE id = 'draft-1'
+      `,
+    )
+    .run(input);
 }

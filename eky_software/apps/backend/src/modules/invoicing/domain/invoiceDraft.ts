@@ -4,6 +4,7 @@ import type {
   InvoiceTotals,
   PriceInputMode,
 } from './invoiceCalculation.js';
+import type { InvoiceKind } from './invoiceKind.js';
 
 export const invoiceUnits = ['h', 'kpl', 'pv', 'km', 'erä', 'pak'] as const;
 
@@ -13,6 +14,7 @@ export type InvoiceDraftStatus = 'draft';
 
 export interface InvoiceDraftLine extends CalculatedInvoiceLine {
   id: string;
+  sourceInvoiceLineId: string | null;
   position: number;
   code: string;
   description: string;
@@ -23,6 +25,8 @@ export interface InvoiceDraftLine extends CalculatedInvoiceLine {
 export interface InvoiceDraft {
   id: string;
   companyId: string;
+  invoiceKind: InvoiceKind;
+  creditedInvoiceId: string | null;
   customerId: string;
   billingRecipientCustomerId: string | null;
   status: InvoiceDraftStatus;
@@ -36,6 +40,7 @@ export interface InvoiceDraft {
   orderNumber: string;
   note: string;
   deliveryAddressText: string;
+  refundIban: string;
   lines: InvoiceDraftLine[];
   totals: InvoiceTotals;
   createdAt: string;

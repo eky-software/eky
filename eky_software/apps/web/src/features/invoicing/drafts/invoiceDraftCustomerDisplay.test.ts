@@ -22,10 +22,12 @@ describe('getInvoiceDraftCustomerDisplayName', () => {
 
 function createDraftSummary(): InvoiceDraftSummary {
   return {
+    creditedInvoiceId: null,
     customerId: 'customer-1',
     dueDate: '2026-06-30',
     grossTotalCents: 12550,
     id: 'draft-1',
+    invoiceKind: 'standard',
     invoiceDate: '2026-06-16',
     netTotalCents: 10000,
     paymentTermDays: 14,

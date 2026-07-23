@@ -4,7 +4,9 @@ import type {
   ApprovedInvoiceEmailSmtpTestPrepareInput,
   ApprovedInvoiceEmailSmtpPrepareInput,
   ApprovedInvoiceView,
+  CancelApprovedInvoiceInput,
   InvoiceDeliveryEventSummary,
+  InvoiceCreditContext,
 } from '@eky/api-client';
 
 import { ApprovedInvoiceActions } from './ApprovedInvoiceActions.js';
@@ -15,14 +17,20 @@ import { ApprovedInvoicePartyDetails } from './ApprovedInvoicePartyDetails.js';
 import { ApprovedInvoicePaymentDetails } from './ApprovedInvoicePaymentDetails.js';
 import { ApprovedInvoiceTotals } from './ApprovedInvoiceTotals.js';
 import { InvoiceDeliveryHistory } from './InvoiceDeliveryHistory.js';
+import { InvoiceCreditRelations } from './InvoiceCreditRelations.js';
 import styles from './ApprovedInvoicePreview.module.css';
 import { uiText } from '../../../i18n/fi.js';
 
 interface ApprovedInvoicePreviewProps {
+  cancellationErrorMessage: string | null;
   copyErrorMessage: string | null;
+  creditContext: InvoiceCreditContext | null;
+  creditContextErrorMessage: string | null;
   invoice: ApprovedInvoiceView;
+  isCancellingInvoice: boolean;
   isCopyingInvoice: boolean;
   isCreatingPdf: boolean;
+  isLoadingCreditContext: boolean;
   isMarkingSent: boolean;
   isPreparingEmail: boolean;
   isSendingEmailDryRun: boolean;
@@ -48,11 +56,15 @@ interface ApprovedInvoicePreviewProps {
   pdfErrorMessage: string | null;
   reopenErrorMessage: string | null;
   onBack(): void;
+  onCancelInvoice(id: string, input: CancelApprovedInvoiceInput): void;
   onCopyInvoice(id: string): void;
+  onCreateCreditDraft(id: string): void;
   onCreatePdf(id: string): void;
   onEditInvoice(id: string): void;
   onMarkSent(id: string): void;
   onOpenPdf(id: string): void;
+  onOpenRelatedDraft(id: string): void;
+  onOpenRelatedInvoice(id: string): void;
   onPrepareEmail(id: string): void;
   onSendEmailDryRun(
     id: string,
@@ -69,10 +81,15 @@ interface ApprovedInvoicePreviewProps {
 }
 
 export function ApprovedInvoicePreview({
+  cancellationErrorMessage,
   copyErrorMessage,
+  creditContext,
+  creditContextErrorMessage,
   invoice,
+  isCancellingInvoice,
   isCopyingInvoice,
   isCreatingPdf,
+  isLoadingCreditContext,
   isMarkingSent,
   isPreparingEmail,
   isSendingEmailDryRun,
@@ -98,26 +115,41 @@ export function ApprovedInvoicePreview({
   pdfErrorMessage,
   reopenErrorMessage,
   onBack,
+  onCancelInvoice,
   onCopyInvoice,
+  onCreateCreditDraft,
   onCreatePdf,
   onEditInvoice,
   onMarkSent,
   onOpenPdf,
+  onOpenRelatedDraft,
+  onOpenRelatedInvoice,
   onPrepareEmail,
   onSendEmailDryRun,
   onSendEmailSmtp,
   onSendEmailSmtpTest,
 }: ApprovedInvoicePreviewProps): React.JSX.Element {
   const isSent = invoice.status === 'sent';
+  const isCancelled = invoice.status === 'cancelled';
 
   return (
     <section className={`panel ${styles.preview}`}>
       <ApprovedInvoiceActions
+        canCreateCreditDraft={
+          invoice.invoiceKind === 'standard' &&
+          invoice.status === 'sent' &&
+          creditContext !== null &&
+          creditContext.remainingCreditableGrossCents > 0 &&
+          creditContext.activeCreditDraftId === null
+        }
+        cancellationErrorMessage={cancellationErrorMessage}
         copyErrorMessage={copyErrorMessage}
         emailErrorMessage={emailErrorMessage}
         invoiceId={invoice.id}
+        invoiceKind={invoice.invoiceKind}
         invoiceNumber={invoice.invoiceNumber}
         invoiceStatus={invoice.status}
+        isCancellingInvoice={isCancellingInvoice}
         isCopyingInvoice={isCopyingInvoice}
         isCreatingPdf={isCreatingPdf}
         isMarkingSent={isMarkingSent}
@@ -128,7 +160,9 @@ export function ApprovedInvoicePreview({
         pdfErrorMessage={pdfErrorMessage}
         reopenErrorMessage={reopenErrorMessage}
         onBack={onBack}
+        onCancelInvoice={onCancelInvoice}
         onCopyInvoice={onCopyInvoice}
+        onCreateCreditDraft={onCreateCreditDraft}
         onCreatePdf={onCreatePdf}
         onEditInvoice={onEditInvoice}
         onMarkSent={onMarkSent}
@@ -136,7 +170,16 @@ export function ApprovedInvoicePreview({
         onPrepareEmail={onPrepareEmail}
       />
 
-      {email !== null ? (
+      <InvoiceCreditRelations
+        context={creditContext}
+        errorMessage={creditContextErrorMessage}
+        invoice={invoice}
+        isLoading={isLoadingCreditContext}
+        onOpenDraft={onOpenRelatedDraft}
+        onOpenInvoice={onOpenRelatedInvoice}
+      />
+
+      {!isCancelled && email !== null ? (
         <ApprovedInvoiceEmailPreview
           email={email}
           errorMessage={emailSendErrorMessage}
@@ -181,9 +224,12 @@ export function ApprovedInvoicePreview({
         />
         <ApprovedInvoiceFacts
           approvedAt={invoice.approvedAt}
+          creditedInvoiceDate={invoice.creditedInvoiceDate}
+          creditedInvoiceNumber={invoice.creditedInvoiceNumber}
           deliveryAddressText={invoice.deliveryAddressText}
           dueDate={invoice.dueDate}
           invoiceDate={invoice.invoiceDate}
+          invoiceKind={invoice.invoiceKind}
           latePaymentInterestBasisPoints={
             invoice.latePaymentInterestBasisPoints
           }
@@ -191,6 +237,7 @@ export function ApprovedInvoicePreview({
           orderNumber={invoice.orderNumber}
           paymentTermDays={invoice.paymentTermDays}
           referenceNumber={invoice.referenceNumber}
+          refundIbanSnapshot={invoice.refundIbanSnapshot}
           reminderPeriodDays={invoice.reminderPeriodDays}
           subject={invoice.subject}
         />
@@ -219,23 +266,27 @@ export function ApprovedInvoicePreview({
       </div>
 
       <ApprovedInvoiceLineTable
+        invoiceKind={invoice.invoiceKind}
         lines={invoice.lines}
         priceInputMode={invoice.priceInputMode}
       />
 
       <ApprovedInvoiceTotals
         breakdown={invoice.vatBreakdown}
+        invoiceKind={invoice.invoiceKind}
         totals={invoice.totals}
       />
 
-      <ApprovedInvoicePaymentDetails
-        bankName={invoice.companyBankNameSnapshot}
-        bic={invoice.companyBicSnapshot}
-        dueDate={invoice.dueDate}
-        grossTotalCents={invoice.totals.grossTotalCents}
-        iban={invoice.companyIbanSnapshot}
-        referenceNumber={invoice.referenceNumber}
-      />
+      {invoice.invoiceKind === 'standard' ? (
+        <ApprovedInvoicePaymentDetails
+          bankName={invoice.companyBankNameSnapshot}
+          bic={invoice.companyBicSnapshot}
+          dueDate={invoice.dueDate}
+          grossTotalCents={invoice.totals.grossTotalCents}
+          iban={invoice.companyIbanSnapshot}
+          referenceNumber={invoice.referenceNumber}
+        />
+      ) : null}
     </section>
   );
 }

@@ -1,4 +1,5 @@
 export type InvoicePriceInputMode = 'net' | 'gross';
+export type InvoiceKind = 'standard' | 'credit';
 export type InvoiceDraftStatus = 'draft';
 export type ApprovedInvoiceStatus = 'approved';
 export type InvoiceNumberingMode =
@@ -96,6 +97,8 @@ export interface InvoiceDraft {
 
 export interface InvoiceDraftSummary {
   id: string;
+  invoiceKind: InvoiceKind;
+  creditedInvoiceId: string | null;
   customerId: string;
   status: InvoiceDraftStatus;
   invoiceDate: string;

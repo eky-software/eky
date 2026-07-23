@@ -108,6 +108,7 @@ export function prepareInvoiceDraftContent(
     return {
       ...calculatedLine,
       id: randomUUID(),
+      sourceInvoiceLineId: null,
       position: index + 1,
       code: normalizeOptionalInvoiceText(line.code),
       description: normalizeRequiredInvoiceText(

@@ -29,6 +29,7 @@ type InvoiceLineDeleteParameters = [string];
 type InvoiceLineInsertParameters = [
   string,
   string,
+  string | null,
   number,
   string,
   string,
@@ -105,6 +106,8 @@ export class SqliteInvoiceApprovalStatements {
             id,
             company_id,
             source_draft_id,
+            invoice_kind,
+            credited_invoice_id,
             invoice_number,
             reference_number,
             reference_number_type,
@@ -155,17 +158,23 @@ export class SqliteInvoiceApprovalStatements {
             order_number,
             note,
             delivery_address_text,
+            refund_iban_snapshot,
             total_net_cents,
             total_vat_cents,
             total_gross_cents,
             created_at,
             approved_at,
-            updated_at
+            updated_at,
+            cancelled_at,
+            cancelled_by,
+            cancellation_reason
           )
           VALUES (
             @id,
             @company_id,
             @source_draft_id,
+            @invoice_kind,
+            @credited_invoice_id,
             @invoice_number,
             @reference_number,
             @reference_number_type,
@@ -216,12 +225,16 @@ export class SqliteInvoiceApprovalStatements {
             @order_number,
             @note,
             @delivery_address_text,
+            @refund_iban_snapshot,
             @total_net_cents,
             @total_vat_cents,
             @total_gross_cents,
             @created_at,
             @approved_at,
-            @updated_at
+            @updated_at,
+            @cancelled_at,
+            @cancelled_by,
+            @cancellation_reason
           )
         `,
       )
@@ -277,6 +290,7 @@ export class SqliteInvoiceApprovalStatements {
             order_number = @order_number,
             note = @note,
             delivery_address_text = @delivery_address_text,
+            refund_iban_snapshot = @refund_iban_snapshot,
             total_net_cents = @total_net_cents,
             total_vat_cents = @total_vat_cents,
             total_gross_cents = @total_gross_cents,
@@ -303,6 +317,7 @@ export class SqliteInvoiceApprovalStatements {
         INSERT INTO invoice_lines (
           id,
           invoice_id,
+          source_invoice_line_id,
           line_order,
           code,
           description,
@@ -319,7 +334,7 @@ export class SqliteInvoiceApprovalStatements {
           gross_cents,
           created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
     );
 
@@ -327,6 +342,7 @@ export class SqliteInvoiceApprovalStatements {
       insertLine.run(
         line.id,
         line.invoice_id,
+        line.source_invoice_line_id,
         line.line_order,
         line.code,
         line.description,

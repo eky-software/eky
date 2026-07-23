@@ -248,6 +248,10 @@ function createApprovedInvoiceView(
     deliveryAddressText: '',
     dueDate: '2026-06-27',
     id: 'invoice-1',
+    invoiceKind: 'standard',
+    creditedInvoiceId: null,
+    creditedInvoiceNumber: null,
+    creditedInvoiceDate: null,
     invoiceDate: '2026-06-13',
     invoiceNumber: '20260001',
     latePaymentInterestBasisPoints: 0,
@@ -257,6 +261,7 @@ function createApprovedInvoiceView(
     orderNumber: '',
     paymentTermDays: 14,
     priceInputMode: 'net',
+    refundIbanSnapshot: '',
     referenceNumber: '202600017',
     referenceNumberType: 'finnishDomestic',
     reminderPeriodDays: 0,
@@ -274,6 +279,9 @@ function createApprovedInvoiceView(
     },
     updatedAt: '2026-06-13T10:00:00.000Z',
     vatBreakdown: [],
+    cancelledAt: null,
+    cancelledBy: null,
+    cancellationReason: null,
     ...overrides,
   };
 }
