@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DatabaseConnection } from '../../../database/connection/createDatabaseConnection.js';
 import type {
   InvoiceAuditEventRow,
+  InvoiceDraftTable,
   InvoiceLineRow,
   InvoiceNumberSequenceRow,
   InvoiceRow,
@@ -706,6 +707,60 @@ describe('SqliteInvoiceApprovalRepository', () => {
 
     expect(getInvoice(database, 'invoice-other')).toBeUndefined();
     expect(getSequence(database)).toBeUndefined();
+  });
+
+  it('does not approve a credit draft through the standard approval repository', async () => {
+    const repository = new SqliteInvoiceApprovalRepository(database);
+
+    await saveDraft(database, createDraft());
+    await repository.approveDraft(createApprovalInput());
+    await saveDraft(
+      database,
+      createDraft(
+        {
+          creditedInvoiceId: 'invoice-1',
+          id: 'credit-draft-1',
+          invoiceKind: 'credit',
+          updatedAt: '2027-01-15T13:00:00.000Z',
+        },
+        [createLine('credit-draft-line-1', 1)],
+      ),
+    );
+
+    const invoiceBeforeAttempt = getInvoice(database, 'invoice-1');
+    const linesBeforeAttempt = getInvoiceLines(database, 'invoice-1');
+    const sequenceBeforeAttempt = getSequence(database);
+    const auditEventsBeforeAttempt = getAuditEvents(database);
+    const draftBeforeAttempt = database
+      .prepare<[string], InvoiceDraftTable>(
+        'SELECT * FROM invoice_drafts WHERE id = ?',
+      )
+      .get('credit-draft-1');
+
+    await expect(
+      repository.approveDraft(
+        createApprovalInput({
+          auditEventId: 'audit-standard-credit-guard',
+          draftId: 'credit-draft-1',
+          invoiceId: 'credit-invoice-through-standard-route',
+        }),
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(getInvoice(database, 'invoice-1')).toEqual(invoiceBeforeAttempt);
+    expect(
+      getInvoice(database, 'credit-invoice-through-standard-route'),
+    ).toBeUndefined();
+    expect(getInvoiceLines(database, 'invoice-1')).toEqual(linesBeforeAttempt);
+    expect(getSequence(database)).toEqual(sequenceBeforeAttempt);
+    expect(getAuditEvents(database)).toEqual(auditEventsBeforeAttempt);
+    expect(
+      database
+        .prepare<[string], InvoiceDraftTable>(
+          'SELECT * FROM invoice_drafts WHERE id = ?',
+        )
+        .get('credit-draft-1'),
+    ).toEqual(draftBeforeAttempt);
   });
 
   it('does not approve the same draft twice', async () => {

@@ -93,6 +93,8 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
 
     if (
       draft === undefined ||
+      draft.invoice_kind !== 'standard' ||
+      draft.credited_invoice_id !== null ||
       draft.status !== 'draft' ||
       draft.approved_invoice_id !== null
     ) {

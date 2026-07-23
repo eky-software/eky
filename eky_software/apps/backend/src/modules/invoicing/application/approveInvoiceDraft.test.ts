@@ -113,6 +113,18 @@ describe('approveInvoiceDraft', () => {
     ).rejects.toThrow('Invoice draft not found.');
   });
 
+  it('keeps a rejected credit draft behind the generic not-found boundary', async () => {
+    const repository = new FakeInvoiceApprovalRepository(undefined);
+
+    await expect(
+      approveInvoiceDraft(createInput({ draftId: 'credit-draft-1' }), {
+        invoiceApprovalRepository: repository,
+      }),
+    ).rejects.toEqual(new InvoiceDraftNotFoundError());
+
+    expect(repository.approveInputs).toHaveLength(1);
+  });
+
   it('rejects invalid identifiers before calling the repository', async () => {
     const repository = new FakeInvoiceApprovalRepository(createResult());
 

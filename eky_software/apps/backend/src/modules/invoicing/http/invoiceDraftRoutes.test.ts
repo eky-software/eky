@@ -600,6 +600,26 @@ describe('invoiceDraftRoutes', () => {
     });
   });
 
+  it('returns the generic not-found response when a credit draft uses the standard approval route', async () => {
+    const testContext = createTestApp(true, {
+      approveError: new InvoiceDraftNotFoundError(),
+    });
+
+    const response = await testContext.app.request(
+      '/invoice-drafts/credit-draft-1/approve',
+      { method: 'POST' },
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({
+      error: 'Invoice draft not found.',
+    });
+    expect(testContext.getApproveInput()).toMatchObject({
+      companyId: 'dev-company',
+      draftId: 'credit-draft-1',
+    });
+  });
+
   it('returns a safe validation response when approval cannot be completed', async () => {
     const testContext = createTestApp(true, {
       approveError: new ApproveInvoiceDraftError(

@@ -109,6 +109,8 @@ export class SqliteInvoiceApprovalQueries {
             company_id = ?
             AND source_draft_id = ?
             AND status = 'reopened_for_edit'
+            AND invoice_kind = 'standard'
+            AND credited_invoice_id IS NULL
         `,
       )
       .get(companyId, draftId);
