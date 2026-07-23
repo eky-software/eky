@@ -132,6 +132,7 @@ function renderPreview(
 ): string {
   return renderToStaticMarkup(
     <ApprovedInvoicePreview
+      cancellationErrorMessage={null}
       copyErrorMessage={options.copyErrorMessage ?? null}
       email={options.email ?? null}
       emailErrorMessage={options.emailErrorMessage ?? null}
@@ -147,6 +148,7 @@ function renderPreview(
       deliveryEvents={options.deliveryEvents ?? []}
       deliveryEventsErrorMessage={null}
       invoice={options.invoice ?? createApprovedInvoiceView()}
+      isCancellingInvoice={false}
       isCopyingInvoice={options.isCopyingInvoice ?? false}
       isCreatingPdf={options.isCreatingPdf ?? false}
       isMarkingSent={false}
@@ -161,6 +163,7 @@ function renderPreview(
       pdfErrorMessage={options.pdfErrorMessage ?? null}
       reopenErrorMessage={null}
       onBack={vi.fn()}
+      onCancelInvoice={vi.fn()}
       onCopyInvoice={vi.fn()}
       onCreatePdf={vi.fn()}
       onEditInvoice={vi.fn()}

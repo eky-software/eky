@@ -60,6 +60,7 @@ function renderPage(
     | 'approvedInvoiceListState'
     | 'approvedInvoicePdfState'
     | 'approvedInvoiceState'
+    | 'cancelApprovedInvoiceState'
     | 'copyApprovedInvoiceState'
     | 'deleteState'
     | 'invoicePaymentDefaultsState'
@@ -71,6 +72,7 @@ function renderPage(
     | 'sendApprovedInvoiceEmailSmtpState'
     | 'sendApprovedInvoiceEmailSmtpTestState'
     | 'onCancelDeleteDraft'
+    | 'onCancelApprovedInvoice'
     | 'onConfirmDeleteDraft'
     | 'onCreateApprovedInvoicePdf'
     | 'onCopyApprovedInvoiceToDraft'
@@ -95,6 +97,7 @@ function renderPage(
         | 'approvedInvoiceListState'
         | 'approvedInvoicePdfState'
         | 'approvedInvoiceState'
+        | 'cancelApprovedInvoiceState'
         | 'copyApprovedInvoiceState'
         | 'deleteState'
         | 'invoicePaymentDefaultsState'
@@ -106,6 +109,7 @@ function renderPage(
         | 'sendApprovedInvoiceEmailSmtpState'
         | 'sendApprovedInvoiceEmailSmtpTestState'
         | 'onCancelDeleteDraft'
+        | 'onCancelApprovedInvoice'
         | 'onConfirmDeleteDraft'
         | 'onCreateApprovedInvoicePdf'
         | 'onCopyApprovedInvoiceToDraft'
@@ -131,6 +135,7 @@ function renderPage(
       approvedInvoiceListState={createApprovedInvoiceListState()}
       approvedInvoicePdfState={createApprovedInvoicePdfState()}
       approvedInvoiceState={createApprovedInvoiceState()}
+      cancelApprovedInvoiceState={createCancelApprovedInvoiceState()}
       companySettingsState={createCompanySettingsState()}
       copyApprovedInvoiceState={createCopyApprovedInvoiceState()}
       deleteState={createDeleteState()}
@@ -147,6 +152,7 @@ function renderPage(
         createSendApprovedInvoiceEmailSmtpTestState()
       }
       onCancelDeleteDraft={vi.fn()}
+      onCancelApprovedInvoice={vi.fn()}
       onConfirmDeleteDraft={vi.fn()}
       onCreateApprovedInvoicePdf={vi.fn()}
       onCopyApprovedInvoiceToDraft={vi.fn()}
@@ -315,6 +321,20 @@ function createApprovedInvoiceState(
     isLoading: false,
     openApprovedInvoice: vi.fn(),
     replaceApprovedInvoice: vi.fn(),
+    ...overrides,
+  };
+}
+
+function createCancelApprovedInvoiceState(
+  overrides: Partial<
+    InvoicingPageViewProps['cancelApprovedInvoiceState']
+  > = {},
+): InvoicingPageViewProps['cancelApprovedInvoiceState'] {
+  return {
+    cancelApprovedInvoice: vi.fn(async () => null),
+    clearError: vi.fn(),
+    errorMessage: null,
+    isCancelling: false,
     ...overrides,
   };
 }

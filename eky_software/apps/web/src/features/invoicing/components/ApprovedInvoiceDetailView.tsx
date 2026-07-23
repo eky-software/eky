@@ -2,6 +2,7 @@ import type {
   ApprovedInvoiceEmailDryRunSendInput,
   ApprovedInvoiceEmailSmtpPrepareInput,
   ApprovedInvoiceEmailSmtpTestPrepareInput,
+  CancelApprovedInvoiceInput,
 } from '@eky/api-client';
 
 import { ApprovedInvoicePreview } from './ApprovedInvoicePreview.js';
@@ -9,6 +10,7 @@ import styles from './InvoicingPage.module.css';
 import type { ApprovedInvoiceEmailDryRunState } from '../hooks/useApprovedInvoiceEmailDryRun.js';
 import type { ApprovedInvoicePdfState } from '../hooks/useApprovedInvoicePdf.js';
 import type { ApprovedInvoiceState } from '../hooks/useApprovedInvoice.js';
+import type { CancelApprovedInvoiceState } from '../hooks/useCancelApprovedInvoice.js';
 import type { CopyApprovedInvoiceState } from '../hooks/useCopyApprovedInvoiceToDraft.js';
 import type { InvoiceDeliveryEventListState } from '../hooks/useInvoiceDeliveryEvents.js';
 import type { MarkApprovedInvoiceSentState } from '../hooks/useMarkApprovedInvoiceSent.js';
@@ -38,6 +40,10 @@ type CopyApprovedInvoiceViewState = Pick<
   CopyApprovedInvoiceState,
   'errorMessage' | 'isCopying'
 >;
+type CancelApprovedInvoiceViewState = Pick<
+  CancelApprovedInvoiceState,
+  'errorMessage' | 'isCancelling'
+>;
 type MarkApprovedInvoiceSentViewState = Pick<
   MarkApprovedInvoiceSentState,
   'errorMessage' | 'isMarkingSent'
@@ -60,6 +66,7 @@ type EmailSmtpTestSendViewState = Pick<
 >;
 
 interface ApprovedInvoiceDetailViewProps {
+  cancellationState: CancelApprovedInvoiceViewState;
   copyState: CopyApprovedInvoiceViewState;
   deliveryHistoryState: InvoiceDeliveryHistoryViewState;
   emailState: ApprovedInvoiceEmailViewState;
@@ -74,6 +81,7 @@ interface ApprovedInvoiceDetailViewProps {
   pdfState: ApprovedInvoicePdfViewState;
   reopenState: ReopenApprovedInvoiceViewState;
   onBack(): void;
+  onCancelInvoice(id: string, input: CancelApprovedInvoiceInput): void;
   onCopyInvoice(id: string): void;
   onCreatePdf(id: string): void;
   onEditInvoice(id: string): void;
@@ -95,6 +103,7 @@ interface ApprovedInvoiceDetailViewProps {
 }
 
 export function ApprovedInvoiceDetailView({
+  cancellationState,
   copyState,
   deliveryHistoryState,
   emailState,
@@ -109,6 +118,7 @@ export function ApprovedInvoiceDetailView({
   pdfState,
   reopenState,
   onBack,
+  onCancelInvoice,
   onCopyInvoice,
   onCreatePdf,
   onEditInvoice,
@@ -157,6 +167,7 @@ export function ApprovedInvoiceDetailView({
 
   return (
     <ApprovedInvoicePreview
+      cancellationErrorMessage={cancellationState.errorMessage}
       copyErrorMessage={copyState.errorMessage}
       deliveryEvents={deliveryHistoryState.events}
       deliveryEventsErrorMessage={deliveryHistoryState.errorMessage}
@@ -172,6 +183,7 @@ export function ApprovedInvoiceDetailView({
       emailSmtpTestUnavailableMessage={emailSmtpTestUnavailableMessage}
       emailSmtpUnavailableMessage={emailSmtpUnavailableMessage}
       invoice={invoiceState.approvedInvoice}
+      isCancellingInvoice={cancellationState.isCancelling}
       isCopyingInvoice={copyState.isCopying}
       isCreatingPdf={pdfState.isCreating}
       isLoadingDeliveryEvents={deliveryHistoryState.isLoading}
@@ -186,6 +198,7 @@ export function ApprovedInvoiceDetailView({
       pdfErrorMessage={pdfState.errorMessage}
       reopenErrorMessage={reopenState.errorMessage}
       onBack={onBack}
+      onCancelInvoice={onCancelInvoice}
       onCopyInvoice={onCopyInvoice}
       onCreatePdf={onCreatePdf}
       onEditInvoice={onEditInvoice}

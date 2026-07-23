@@ -8,6 +8,7 @@ import { DnaInvoiceSmtpTestDeliveryProvider } from '../infrastructure/email/prov
 import { DnaSmtpEmailDeliveryProvider } from '../infrastructure/email/providers/dna/dnaSmtpEmailDeliveryProvider.js';
 import type { CompanyEmailSecretReader } from '../modules/companySettings/ports/companyEmailSecretReader.js';
 import { approveInvoiceDraft } from '../modules/invoicing/application/approveInvoiceDraft.js';
+import { cancelApprovedInvoice } from '../modules/invoicing/application/cancelApprovedInvoice.js';
 import { copyApprovedInvoiceToDraft } from '../modules/invoicing/application/copyApprovedInvoiceToDraft.js';
 import { deleteInvoiceDraft } from '../modules/invoicing/application/deleteInvoiceDraft.js';
 import {
@@ -50,6 +51,7 @@ import { LocalInvoiceDocumentStorage } from '../modules/invoicing/infrastructure
 import { renderApprovedInvoicePdf } from '../modules/invoicing/infrastructure/pdf/approvedInvoicePdfRenderer.js';
 import { SqliteApprovedInvoiceReader } from '../modules/invoicing/infrastructure/sqliteApprovedInvoiceReader.js';
 import { SqliteInvoiceApprovalRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceApprovalRepository.js';
+import { SqliteInvoiceCorrectionRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceCorrectionRepository.js';
 import { SqliteInvoiceDeliveryEventRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceDeliveryEventRepository.js';
 import { SqliteInvoiceDocumentRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceDocumentRepository.js';
 import { SqliteInvoiceDraftRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceDraftRepository.js';
@@ -73,6 +75,9 @@ export function createInvoicingComposition(
   const routes = new Hono<BackendEnvironment>();
   const invoiceDraftRepository = new SqliteInvoiceDraftRepository(options.database);
   const invoiceApprovalRepository = new SqliteInvoiceApprovalRepository(
+    options.database,
+  );
+  const invoiceCorrectionRepository = new SqliteInvoiceCorrectionRepository(
     options.database,
   );
   const invoiceDocumentRepository = new SqliteInvoiceDocumentRepository(
@@ -158,6 +163,8 @@ export function createInvoicingComposition(
   routes.route(
     '/',
     createApprovedInvoiceRoutes({
+      cancelApprovedInvoice: (input) =>
+        cancelApprovedInvoice(input, { invoiceCorrectionRepository }),
       copyApprovedInvoiceToDraft: (input) =>
         copyApprovedInvoiceToDraft(input, {
           approvedInvoiceReader,

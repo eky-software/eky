@@ -4,6 +4,7 @@ import type {
   ApprovedInvoiceEmailSmtpTestPrepareInput,
   ApprovedInvoiceEmailSmtpPrepareInput,
   ApprovedInvoiceView,
+  CancelApprovedInvoiceInput,
   InvoiceDeliveryEventSummary,
 } from '@eky/api-client';
 
@@ -19,8 +20,10 @@ import styles from './ApprovedInvoicePreview.module.css';
 import { uiText } from '../../../i18n/fi.js';
 
 interface ApprovedInvoicePreviewProps {
+  cancellationErrorMessage: string | null;
   copyErrorMessage: string | null;
   invoice: ApprovedInvoiceView;
+  isCancellingInvoice: boolean;
   isCopyingInvoice: boolean;
   isCreatingPdf: boolean;
   isMarkingSent: boolean;
@@ -48,6 +51,7 @@ interface ApprovedInvoicePreviewProps {
   pdfErrorMessage: string | null;
   reopenErrorMessage: string | null;
   onBack(): void;
+  onCancelInvoice(id: string, input: CancelApprovedInvoiceInput): void;
   onCopyInvoice(id: string): void;
   onCreatePdf(id: string): void;
   onEditInvoice(id: string): void;
@@ -69,8 +73,10 @@ interface ApprovedInvoicePreviewProps {
 }
 
 export function ApprovedInvoicePreview({
+  cancellationErrorMessage,
   copyErrorMessage,
   invoice,
+  isCancellingInvoice,
   isCopyingInvoice,
   isCreatingPdf,
   isMarkingSent,
@@ -98,6 +104,7 @@ export function ApprovedInvoicePreview({
   pdfErrorMessage,
   reopenErrorMessage,
   onBack,
+  onCancelInvoice,
   onCopyInvoice,
   onCreatePdf,
   onEditInvoice,
@@ -113,11 +120,13 @@ export function ApprovedInvoicePreview({
   return (
     <section className={`panel ${styles.preview}`}>
       <ApprovedInvoiceActions
+        cancellationErrorMessage={cancellationErrorMessage}
         copyErrorMessage={copyErrorMessage}
         emailErrorMessage={emailErrorMessage}
         invoiceId={invoice.id}
         invoiceNumber={invoice.invoiceNumber}
         invoiceStatus={invoice.status}
+        isCancellingInvoice={isCancellingInvoice}
         isCopyingInvoice={isCopyingInvoice}
         isCreatingPdf={isCreatingPdf}
         isMarkingSent={isMarkingSent}
@@ -128,6 +137,7 @@ export function ApprovedInvoicePreview({
         pdfErrorMessage={pdfErrorMessage}
         reopenErrorMessage={reopenErrorMessage}
         onBack={onBack}
+        onCancelInvoice={onCancelInvoice}
         onCopyInvoice={onCopyInvoice}
         onCreatePdf={onCreatePdf}
         onEditInvoice={onEditInvoice}

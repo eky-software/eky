@@ -8,7 +8,10 @@ export {
   readInvoiceDeliveryEventListResponse,
 } from './approvedInvoiceDeliveryResponse.js';
 export { readApprovedInvoiceDocumentMetadataResponse } from './approvedInvoiceDocumentResponse.js';
-export { readReopenedApprovedInvoiceResponse } from './approvedInvoiceLifecycleResponse.js';
+export {
+  readCancelledApprovedInvoiceResponse,
+  readReopenedApprovedInvoiceResponse,
+} from './approvedInvoiceLifecycleResponse.js';
 export {
   readApprovedInvoiceListResponse,
   readApprovedInvoiceResponse,

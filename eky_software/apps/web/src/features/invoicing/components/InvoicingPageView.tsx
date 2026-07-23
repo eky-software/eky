@@ -3,6 +3,7 @@ import type {
   ApprovedInvoiceEmailSmtpPrepareInput,
   ApprovedInvoiceEmailSmtpTestPrepareInput,
   ApprovedInvoiceResult,
+  CancelApprovedInvoiceInput,
   InvoiceDraft,
   InvoiceDraftSummary,
 } from '@eky/api-client';
@@ -19,6 +20,7 @@ import type { ApprovedInvoiceEmailDryRunState } from '../hooks/useApprovedInvoic
 import type { ApprovedInvoiceListState } from '../hooks/useApprovedInvoices.js';
 import type { ApprovedInvoicePdfState } from '../hooks/useApprovedInvoicePdf.js';
 import type { ApprovedInvoiceState } from '../hooks/useApprovedInvoice.js';
+import type { CancelApprovedInvoiceState } from '../hooks/useCancelApprovedInvoice.js';
 import type { CopyApprovedInvoiceState } from '../hooks/useCopyApprovedInvoiceToDraft.js';
 import type { DeleteInvoiceDraftState } from '../hooks/useDeleteInvoiceDraft.js';
 import type { InvoiceCompanySettingsState } from '../hooks/useInvoiceCompanySettings.js';
@@ -41,6 +43,7 @@ interface InvoicingPageViewProps {
   approvedInvoiceListState: ApprovedInvoiceListState;
   approvedInvoicePdfState: ApprovedInvoicePdfState;
   approvedInvoiceState: ApprovedInvoiceState;
+  cancelApprovedInvoiceState: CancelApprovedInvoiceState;
   customerListState: InvoiceCustomerListState;
   companySettingsState: InvoiceCompanySettingsState;
   copyApprovedInvoiceState: CopyApprovedInvoiceState;
@@ -59,6 +62,10 @@ interface InvoicingPageViewProps {
   sendApprovedInvoiceEmailSmtpState: SendApprovedInvoiceEmailSmtpState;
   sendApprovedInvoiceEmailSmtpTestState: SendApprovedInvoiceEmailSmtpTestState;
   onBackToDrafts(): void;
+  onCancelApprovedInvoice(
+    id: string,
+    input: CancelApprovedInvoiceInput,
+  ): void;
   onCancelDeleteDraft(): void;
   onConfirmDeleteDraft(id: string): void;
   onCreateApprovedInvoicePdf(id: string): void;
@@ -94,6 +101,7 @@ export function InvoicingPageView({
   approvedInvoiceListState,
   approvedInvoicePdfState,
   approvedInvoiceState,
+  cancelApprovedInvoiceState,
   customerListState,
   companySettingsState,
   copyApprovedInvoiceState,
@@ -112,6 +120,7 @@ export function InvoicingPageView({
   sendApprovedInvoiceEmailSmtpState,
   sendApprovedInvoiceEmailSmtpTestState,
   onBackToDrafts,
+  onCancelApprovedInvoice,
   onCancelDeleteDraft,
   onConfirmDeleteDraft,
   onCreateApprovedInvoicePdf,
@@ -184,6 +193,10 @@ export function InvoicingPageView({
         />
       ) : (
         <ApprovedInvoiceDetailView
+          cancellationState={{
+            errorMessage: cancelApprovedInvoiceState.errorMessage,
+            isCancelling: cancelApprovedInvoiceState.isCancelling,
+          }}
           copyState={{
             errorMessage: copyApprovedInvoiceState.errorMessage,
             isCopying: copyApprovedInvoiceState.isCopying,
@@ -249,6 +262,7 @@ export function InvoicingPageView({
             isReopening: reopenApprovedInvoiceState.isReopening,
           }}
           onBack={onBackToDrafts}
+          onCancelInvoice={onCancelApprovedInvoice}
           onCopyInvoice={onCopyApprovedInvoiceToDraft}
           onCreatePdf={onCreateApprovedInvoicePdf}
           onEditInvoice={onEditApprovedInvoice}

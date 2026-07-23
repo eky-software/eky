@@ -166,6 +166,72 @@ describe('approved invoices api client', () => {
     ]);
   });
 
+  it('cancels an approved invoice through POST /invoices/:id/cancel', async () => {
+    const requests = createRequestLog();
+    const cancellation = {
+      cancellationReason: 'Duplicate invoice',
+      cancelledAt: '2026-07-23T18:00:00.000Z',
+      cancelledBy: 'local-owner',
+      invoiceId: 'invoice-1',
+      invoiceKind: 'standard',
+      invoiceNumber: '20260001',
+      status: 'cancelled',
+    } as const;
+    const client = createTestClient(requests, { cancellation });
+
+    const result = await client.cancelApprovedInvoice('invoice/1', {
+      cancellationReason: 'Duplicate invoice',
+      confirmationInvoiceNumber: '20260001',
+    });
+
+    expect(result).toEqual(cancellation);
+    expect(requests).toEqual([
+      {
+        input: '/invoices/invoice%2F1/cancel',
+        init: {
+          body: JSON.stringify({
+            cancellationReason: 'Duplicate invoice',
+            confirmationInvoiceNumber: '20260001',
+          }),
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          method: 'POST',
+        },
+      },
+    ]);
+  });
+
+  it('does not send server-owned fields in invoice cancellation requests', async () => {
+    const requests = createRequestLog();
+    const client = createTestClient(requests, {
+      cancellation: {
+        cancellationReason: 'Duplicate invoice',
+        cancelledAt: '2026-07-23T18:00:00.000Z',
+        cancelledBy: 'local-owner',
+        invoiceId: 'invoice-1',
+        invoiceKind: 'standard',
+        invoiceNumber: '20260001',
+        status: 'cancelled',
+      },
+    });
+
+    await client.cancelApprovedInvoice('invoice-1', {
+      cancellationReason: 'Duplicate invoice',
+      cancelledAt: 'client-time',
+      cancelledBy: 'other-user',
+      companyId: 'other-company',
+      confirmationInvoiceNumber: '20260001',
+      status: 'cancelled',
+    } as never);
+
+    expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({
+      cancellationReason: 'Duplicate invoice',
+      confirmationInvoiceNumber: '20260001',
+    });
+  });
+
   it('marks an approved invoice sent through POST /invoices/:id/mark-sent', async () => {
     const requests = createRequestLog();
     const invoice = createTestApprovedInvoiceView({ status: 'sent' });
@@ -542,6 +608,28 @@ describe('approved invoices api client', () => {
 
     await expect(
       client.reopenApprovedInvoiceForEditing('invoice-1'),
+    ).rejects.toBeInstanceOf(EkyApiError);
+  });
+
+  it('rejects a malformed cancellation response', async () => {
+    const requests = createRequestLog();
+    const client = createTestClient(requests, {
+      cancellation: {
+        cancellationReason: 'Duplicate invoice',
+        cancelledAt: '2026-07-23T18:00:00.000Z',
+        cancelledBy: 'local-owner',
+        invoiceId: 'invoice-1',
+        invoiceKind: 'standard',
+        invoiceNumber: '20260001',
+        status: 'approved',
+      },
+    });
+
+    await expect(
+      client.cancelApprovedInvoice('invoice-1', {
+        cancellationReason: 'Duplicate invoice',
+        confirmationInvoiceNumber: '20260001',
+      }),
     ).rejects.toBeInstanceOf(EkyApiError);
   });
 

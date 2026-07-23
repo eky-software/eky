@@ -1,16 +1,22 @@
-import type { ApprovedInvoiceView } from '@eky/api-client';
+import type {
+  ApprovedInvoiceView,
+  CancelApprovedInvoiceInput,
+} from '@eky/api-client';
 import { useState } from 'react';
 
+import { InvoiceCancellationPanel } from './InvoiceCancellationPanel.js';
 import styles from './ApprovedInvoicePreview.module.css';
 import { uiText } from '../../../i18n/fi.js';
 import { MessageBanner } from '../../../shared/ui/index.js';
 
 interface ApprovedInvoiceActionsProps {
+  cancellationErrorMessage: string | null;
   copyErrorMessage: string | null;
   emailErrorMessage: string | null;
   invoiceId: string;
   invoiceNumber: string;
   invoiceStatus: ApprovedInvoiceView['status'];
+  isCancellingInvoice: boolean;
   isCopyingInvoice: boolean;
   isCreatingPdf: boolean;
   isMarkingSent: boolean;
@@ -21,6 +27,7 @@ interface ApprovedInvoiceActionsProps {
   pdfErrorMessage: string | null;
   reopenErrorMessage: string | null;
   onBack(): void;
+  onCancelInvoice(id: string, input: CancelApprovedInvoiceInput): void;
   onCopyInvoice(id: string): void;
   onCreatePdf(id: string): void;
   onEditInvoice(id: string): void;
@@ -29,14 +36,16 @@ interface ApprovedInvoiceActionsProps {
   onPrepareEmail(id: string): void;
 }
 
-type PendingInvoiceAction = 'copy' | 'edit' | 'markSent' | null;
+type PendingInvoiceAction = 'cancel' | 'copy' | 'edit' | 'markSent' | null;
 
 export function ApprovedInvoiceActions({
+  cancellationErrorMessage,
   copyErrorMessage,
   emailErrorMessage,
   invoiceId,
   invoiceNumber,
   invoiceStatus,
+  isCancellingInvoice,
   isCopyingInvoice,
   isCreatingPdf,
   isMarkingSent,
@@ -47,6 +56,7 @@ export function ApprovedInvoiceActions({
   pdfErrorMessage,
   reopenErrorMessage,
   onBack,
+  onCancelInvoice,
   onCopyInvoice,
   onCreatePdf,
   onEditInvoice,
@@ -187,6 +197,14 @@ export function ApprovedInvoiceActions({
                   ? uiText.invoicing.reopeningApprovedInvoice
                   : uiText.invoicing.editApprovedInvoice}
               </button>
+              <button
+                className="secondary-action"
+                disabled={isCancellingInvoice}
+                onClick={() => setPendingAction('cancel')}
+                type="button"
+              >
+                {uiText.invoicing.cancelApprovedInvoice}
+              </button>
             </>
           ) : null}
           <button className="ghost-button" onClick={onBack} type="button">
@@ -195,7 +213,15 @@ export function ApprovedInvoiceActions({
         </div>
       </header>
 
-      {pendingAction !== null ? (
+      {pendingAction === 'cancel' ? (
+        <InvoiceCancellationPanel
+          errorMessage={cancellationErrorMessage}
+          invoiceNumber={invoiceNumber}
+          isCancelling={isCancellingInvoice}
+          onCancel={() => setPendingAction(null)}
+          onConfirm={(input) => onCancelInvoice(invoiceId, input)}
+        />
+      ) : pendingAction !== null ? (
         <section
           aria-labelledby="approved-invoice-action-confirmation-heading"
           className={styles.actionConfirmation}

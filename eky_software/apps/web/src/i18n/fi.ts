@@ -407,6 +407,22 @@ export const uiText = {
     copyApprovedInvoiceError:
       'Laskua ei voitu kopioida luonnokseksi. Yritä hetken kuluttua uudelleen.',
     cancel: 'Peruuta',
+    cancelApprovedInvoice: 'Peru lasku',
+    cancelApprovedInvoiceConflictError:
+      'Laskua ei voi perua, koska sen tila tai toimitustilanne on muuttunut.',
+    cancelApprovedInvoiceError:
+      'Laskua ei voitu perua. Yritä hetken kuluttua uudelleen.',
+    cancelApprovedInvoiceNumberHelp:
+      'Kirjoita yllä näkyvä laskunumero täsmälleen vahvistukseksi.',
+    cancelApprovedInvoiceNumberLabel: 'Vahvista laskunumero',
+    cancelApprovedInvoiceReasonLabel: 'Peruutuksen syy',
+    cancelApprovedInvoiceTitle: 'Peru hyväksytty lasku',
+    cancelApprovedInvoiceValidationError:
+      'Tarkista laskunumero ja peruutuksen syy.',
+    cancelApprovedInvoiceWarning:
+      'Peruutus säilyttää laskunumeron ja laskun tiedot, mutta laskua ei voi enää muokata tai toimittaa.',
+    cancellingApprovedInvoice: 'Peruutetaan...',
+    confirmApprovedInvoiceCancellation: 'Vahvista peruutus',
     customer: 'Asiakas',
     customerEmpty: 'Asiakkaita ei ole',
     customerEmptyHelp:

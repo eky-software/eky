@@ -95,6 +95,7 @@ function renderDetail(
 ): string {
   return renderToStaticMarkup(
     <ApprovedInvoiceDetailView
+      cancellationState={{ errorMessage: null, isCancelling: false }}
       copyState={{ errorMessage: null, isCopying: false }}
       deliveryHistoryState={{
         errorMessage: null,
@@ -129,6 +130,7 @@ function renderDetail(
       pdfState={{ document: null, errorMessage: null, isCreating: false }}
       reopenState={{ errorMessage: null, isReopening: false }}
       onBack={vi.fn()}
+      onCancelInvoice={vi.fn()}
       onCopyInvoice={vi.fn()}
       onCreatePdf={vi.fn()}
       onEditInvoice={vi.fn()}

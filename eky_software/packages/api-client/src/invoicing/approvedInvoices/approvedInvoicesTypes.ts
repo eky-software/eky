@@ -1,6 +1,7 @@
 import type { InvoiceDraft } from '../invoiceDrafts/index.js';
 
 export type ApprovedInvoiceViewStatus = 'approved' | 'sent';
+export type ApprovedInvoiceKind = 'standard' | 'credit';
 export type ApprovedInvoiceNumberingMode =
   | 'calendarYearSequence'
   | 'fiscalYearSequence'
@@ -151,6 +152,21 @@ export interface ApprovedInvoiceListPage {
 export interface ReopenedApprovedInvoice {
   invoiceId: string;
   invoiceDraftId: string;
+}
+
+export interface CancelApprovedInvoiceInput {
+  cancellationReason: string;
+  confirmationInvoiceNumber: string;
+}
+
+export interface CancelledApprovedInvoice {
+  cancellationReason: string;
+  cancelledAt: string;
+  cancelledBy: string;
+  invoiceId: string;
+  invoiceKind: ApprovedInvoiceKind;
+  invoiceNumber: string;
+  status: 'cancelled';
 }
 
 export type ApprovedInvoiceDocumentType = 'approved_invoice_pdf';
@@ -316,6 +332,10 @@ export interface InvoiceDeliveryEventSummary {
 }
 
 export interface ApprovedInvoicesApi {
+  cancelApprovedInvoice(
+    id: string,
+    input: CancelApprovedInvoiceInput,
+  ): Promise<CancelledApprovedInvoice>;
   copyApprovedInvoiceToDraft(id: string): Promise<InvoiceDraft>;
   createApprovedInvoicePdf(id: string): Promise<ApprovedInvoiceDocumentMetadata>;
   getApprovedInvoicePdfMetadata(

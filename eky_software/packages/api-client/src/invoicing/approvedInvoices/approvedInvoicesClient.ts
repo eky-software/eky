@@ -12,9 +12,12 @@ import {
   readInvoiceDeliveryEventListResponse,
   readApprovedInvoiceListResponse,
   readApprovedInvoiceResponse,
+  readCancelledApprovedInvoiceResponse,
   readReopenedApprovedInvoiceResponse,
 } from './approvedInvoicesResponse.js';
 import type {
+  CancelApprovedInvoiceInput,
+  CancelledApprovedInvoice,
   ApprovedInvoiceDocumentMetadata,
   ApprovedInvoiceEmailDryRunSendInput,
   ApprovedInvoiceEmailDryRunSendResult,
@@ -35,6 +38,29 @@ export function createApprovedInvoicesApi(
   baseUrl: string,
 ): ApprovedInvoicesApi {
   return {
+    async cancelApprovedInvoice(
+      id,
+      input: CancelApprovedInvoiceInput,
+    ): Promise<CancelledApprovedInvoice> {
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        `/invoices/${encodeURIComponent(id)}/cancel`,
+        {
+          body: JSON.stringify({
+            cancellationReason: input.cancellationReason,
+            confirmationInvoiceNumber: input.confirmationInvoiceNumber,
+          }),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          method: 'POST',
+        },
+      );
+
+      return readCancelledApprovedInvoiceResponse(responseBody);
+    },
+
     async copyApprovedInvoiceToDraft(id): Promise<InvoiceDraft> {
       const responseBody = await requestJson(
         fetchImplementation,

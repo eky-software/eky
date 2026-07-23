@@ -4,6 +4,7 @@ import type {
   ApprovedInvoiceEmailSmtpPrepareInput,
   ApprovedInvoiceEmailSmtpTestPrepareInput,
   ApprovedInvoiceResult,
+  CancelApprovedInvoiceInput,
   EkyApiClient,
   InvoiceDraft,
 } from '@eky/api-client';
@@ -32,6 +33,7 @@ import { useReopenApprovedInvoiceForEditing } from '../hooks/useReopenApprovedIn
 import { useMarkApprovedInvoiceSent } from '../hooks/useMarkApprovedInvoiceSent.js';
 import { useCopyApprovedInvoiceToDraft } from '../hooks/useCopyApprovedInvoiceToDraft.js';
 import { useInvoiceDeliveryEvents } from '../hooks/useInvoiceDeliveryEvents.js';
+import { useCancelApprovedInvoice } from '../hooks/useCancelApprovedInvoice.js';
 
 interface InvoicingPageProps {
   apiClient: EkyApiClient;
@@ -66,6 +68,7 @@ export function InvoicingPage({
   const markApprovedInvoiceSentState = useMarkApprovedInvoiceSent(apiClient);
   const copyApprovedInvoiceState = useCopyApprovedInvoiceToDraft(apiClient);
   const invoiceDeliveryEventListState = useInvoiceDeliveryEvents(apiClient);
+  const cancelApprovedInvoiceState = useCancelApprovedInvoice(apiClient);
   const [pendingDeleteDraftId, setPendingDeleteDraftId] = useState<
     string | null
   >(null);
@@ -88,6 +91,7 @@ export function InvoicingPage({
     sendApprovedInvoiceEmailSmtpTestState.clearStatus();
     sendApprovedInvoiceEmailSmtpState.clearStatus();
     invoiceDeliveryEventListState.clearEvents();
+    cancelApprovedInvoiceState.clearError();
     setPendingDeleteDraftId(null);
     dispatch({ type: 'showDraftList' });
   }
@@ -103,6 +107,7 @@ export function InvoicingPage({
     sendApprovedInvoiceEmailSmtpTestState.clearStatus();
     sendApprovedInvoiceEmailSmtpState.clearStatus();
     invoiceDeliveryEventListState.clearEvents();
+    cancelApprovedInvoiceState.clearError();
     setPendingDeleteDraftId(null);
     dispatch({ type: 'openEditInvoice' });
     void draftEditorState.openDraft(id);
@@ -120,6 +125,7 @@ export function InvoicingPage({
     sendApprovedInvoiceEmailSmtpTestState.clearStatus();
     sendApprovedInvoiceEmailSmtpState.clearStatus();
     invoiceDeliveryEventListState.clearEvents();
+    cancelApprovedInvoiceState.clearError();
     setPendingDeleteDraftId(null);
     dispatch({ type: 'openApprovedInvoice' });
     void approvedInvoiceState.openApprovedInvoice(id);
@@ -218,6 +224,25 @@ export function InvoicingPage({
     void draftState.refreshDrafts();
   }
 
+  async function handleCancelApprovedInvoice(
+    id: string,
+    input: CancelApprovedInvoiceInput,
+  ): Promise<void> {
+    const cancellation =
+      await cancelApprovedInvoiceState.cancelApprovedInvoice(id, input);
+
+    if (cancellation === null) {
+      return;
+    }
+
+    approvedInvoiceState.clearApprovedInvoice();
+    approvedInvoicePdfState.clearPdf();
+    approvedInvoiceEmailState.clearEmail();
+    invoiceDeliveryEventListState.clearEvents();
+    dispatch({ type: 'showDraftList' });
+    void approvedInvoiceListState.refreshApprovedInvoices();
+  }
+
   async function handleOpenApprovedInvoicePdf(id: string): Promise<void> {
     await openApprovedInvoicePdf({
       createPdf: approvedInvoicePdfState.createPdf,
@@ -292,6 +317,7 @@ export function InvoicingPage({
       approvedInvoiceEmailState={approvedInvoiceEmailState}
       approvedInvoicePdfState={approvedInvoicePdfState}
       approvedInvoiceState={approvedInvoiceState}
+      cancelApprovedInvoiceState={cancelApprovedInvoiceState}
       customerListState={customerListState}
       companySettingsState={companySettingsState}
       copyApprovedInvoiceState={copyApprovedInvoiceState}
@@ -312,6 +338,9 @@ export function InvoicingPage({
       }
       sendApprovedInvoiceEmailSmtpState={sendApprovedInvoiceEmailSmtpState}
       onBackToDrafts={handleBackToDrafts}
+      onCancelApprovedInvoice={(id, input) =>
+        void handleCancelApprovedInvoice(id, input)
+      }
       onCancelDeleteDraft={handleCancelDeleteDraft}
       onConfirmDeleteDraft={(id) => void handleConfirmDeleteDraft(id)}
       onDraftApproved={handleDraftApproved}
