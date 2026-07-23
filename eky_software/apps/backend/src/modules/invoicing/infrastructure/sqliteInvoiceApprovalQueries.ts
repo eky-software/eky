@@ -32,6 +32,8 @@ export class SqliteInvoiceApprovalQueries {
             company_id,
             customer_id,
             billing_recipient_customer_id,
+            invoice_kind,
+            credited_invoice_id,
             status,
             invoice_date,
             due_date,
@@ -121,6 +123,7 @@ export class SqliteInvoiceApprovalQueries {
           SELECT
             invoice_draft_lines.id,
             invoice_draft_lines.invoice_draft_id,
+            invoice_draft_lines.source_invoice_line_id,
             invoice_draft_lines.position,
             invoice_draft_lines.code,
             invoice_draft_lines.description,

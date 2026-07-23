@@ -7,8 +7,10 @@ import { DnaInvoiceSmtpDeliveryProvider } from '../infrastructure/email/provider
 import { DnaInvoiceSmtpTestDeliveryProvider } from '../infrastructure/email/providers/dna/dnaInvoiceSmtpTestDeliveryProvider.js';
 import { DnaSmtpEmailDeliveryProvider } from '../infrastructure/email/providers/dna/dnaSmtpEmailDeliveryProvider.js';
 import type { CompanyEmailSecretReader } from '../modules/companySettings/ports/companyEmailSecretReader.js';
+import { approveCreditInvoiceDraft } from '../modules/invoicing/application/approveCreditInvoiceDraft.js';
 import { approveInvoiceDraft } from '../modules/invoicing/application/approveInvoiceDraft.js';
 import { cancelApprovedInvoice } from '../modules/invoicing/application/cancelApprovedInvoice.js';
+import { createCreditInvoiceDraft } from '../modules/invoicing/application/createCreditInvoiceDraft.js';
 import { copyApprovedInvoiceToDraft } from '../modules/invoicing/application/copyApprovedInvoiceToDraft.js';
 import { deleteInvoiceDraft } from '../modules/invoicing/application/deleteInvoiceDraft.js';
 import {
@@ -22,10 +24,13 @@ import {
 } from '../modules/invoicing/application/getApprovedInvoicePdfDocument.js';
 import { getApprovedInvoicePdfMetadata } from '../modules/invoicing/application/getApprovedInvoicePdfMetadata.js';
 import { getInvoiceDraft } from '../modules/invoicing/application/getInvoiceDraft.js';
+import { getCreditInvoiceDraft } from '../modules/invoicing/application/getCreditInvoiceDraft.js';
+import { getInvoiceCreditContext } from '../modules/invoicing/application/getInvoiceCreditContext.js';
 import { getInvoiceNumberingSettings } from '../modules/invoicing/application/getInvoiceNumberingSettings.js';
 import { getInvoicePaymentSettings } from '../modules/invoicing/application/getInvoicePaymentSettings.js';
 import { getInvoiceVatRates } from '../modules/invoicing/application/getInvoiceVatRates.js';
 import { listApprovedInvoices } from '../modules/invoicing/application/listApprovedInvoices.js';
+import { listSentInvoiceGroups } from '../modules/invoicing/application/listSentInvoiceGroups.js';
 import { listInvoiceDeliveryEvents } from '../modules/invoicing/application/listInvoiceDeliveryEvents.js';
 import { listInvoiceDrafts } from '../modules/invoicing/application/listInvoiceDrafts.js';
 import { markApprovedInvoiceSent } from '../modules/invoicing/application/markApprovedInvoiceSent.js';
@@ -38,11 +43,13 @@ import { sendApprovedInvoiceEmailDryRun } from '../modules/invoicing/application
 import { sendApprovedInvoiceEmailSmtp } from '../modules/invoicing/application/sendApprovedInvoiceEmailSmtp.js';
 import { sendApprovedInvoiceEmailSmtpTest } from '../modules/invoicing/application/sendApprovedInvoiceEmailSmtpTest.js';
 import { updateInvoiceDraft } from '../modules/invoicing/application/updateInvoiceDraft.js';
+import { updateCreditInvoiceDraft } from '../modules/invoicing/application/updateCreditInvoiceDraft.js';
 import { updateInvoiceNumberingSettings } from '../modules/invoicing/application/updateInvoiceNumberingSettings.js';
 import { updateInvoicePaymentSettings } from '../modules/invoicing/application/updateInvoicePaymentSettings.js';
 import { updateInvoiceVatRates } from '../modules/invoicing/application/updateInvoiceVatRates.js';
 import { createApprovedInvoiceRoutes } from '../modules/invoicing/http/approvedInvoiceRoutes.js';
 import { createInvoiceDraftRoutes } from '../modules/invoicing/http/invoiceDraftRoutes.js';
+import { createCreditInvoiceDraftRoutes } from '../modules/invoicing/http/creditInvoiceDraftRoutes.js';
 import { createInvoiceNumberingSettingsRoutes } from '../modules/invoicing/http/invoiceNumberingSettingsRoutes.js';
 import { createInvoicePaymentSettingsRoutes } from '../modules/invoicing/http/invoicePaymentSettingsRoutes.js';
 import { createInvoiceVatRatesRoutes } from '../modules/invoicing/http/invoiceVatRatesRoutes.js';
@@ -52,6 +59,8 @@ import { renderApprovedInvoicePdf } from '../modules/invoicing/infrastructure/pd
 import { SqliteApprovedInvoiceReader } from '../modules/invoicing/infrastructure/sqliteApprovedInvoiceReader.js';
 import { SqliteInvoiceApprovalRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceApprovalRepository.js';
 import { SqliteInvoiceCorrectionRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceCorrectionRepository.js';
+import { SqliteInvoiceCreditApprovalRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceCreditApprovalRepository.js';
+import { SqliteInvoiceCreditDraftRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceCreditDraftRepository.js';
 import { SqliteInvoiceDeliveryEventRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceDeliveryEventRepository.js';
 import { SqliteInvoiceDocumentRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceDocumentRepository.js';
 import { SqliteInvoiceDraftRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceDraftRepository.js';
@@ -80,6 +89,10 @@ export function createInvoicingComposition(
   const invoiceCorrectionRepository = new SqliteInvoiceCorrectionRepository(
     options.database,
   );
+  const invoiceCreditDraftRepository =
+    new SqliteInvoiceCreditDraftRepository(options.database);
+  const invoiceCreditApprovalRepository =
+    new SqliteInvoiceCreditApprovalRepository(options.database);
   const invoiceDocumentRepository = new SqliteInvoiceDocumentRepository(
     options.database,
   );
@@ -162,6 +175,42 @@ export function createInvoicingComposition(
 
   routes.route(
     '/',
+    createCreditInvoiceDraftRoutes({
+      approveCreditInvoiceDraft: (input) =>
+        approveCreditInvoiceDraft(input, {
+          invoiceCreditApprovalRepository,
+        }).then(async (approvedInvoice) => {
+          await ensureApprovedInvoicePdfDocument({
+            companyId: input.actorContext.companyId,
+            createdAt: new Date().toISOString(),
+            invoiceId: approvedInvoice.invoiceId,
+          }).catch(() => undefined);
+
+          return approvedInvoice;
+        }),
+      createCreditInvoiceDraft: (input) =>
+        createCreditInvoiceDraft(input, {
+          approvedInvoiceReader,
+          invoiceCreditDraftRepository,
+          invoiceDraftRepository,
+        }),
+      getCreditInvoiceDraft: (input) =>
+        getCreditInvoiceDraft(input, {
+          approvedInvoiceReader,
+          invoiceCreditDraftRepository,
+          invoiceDraftRepository,
+        }),
+      updateCreditInvoiceDraft: (input) =>
+        updateCreditInvoiceDraft(input, {
+          approvedInvoiceReader,
+          invoiceCreditDraftRepository,
+          invoiceDraftRepository,
+        }),
+    }),
+  );
+
+  routes.route(
+    '/',
     createApprovedInvoiceRoutes({
       cancelApprovedInvoice: (input) =>
         cancelApprovedInvoice(input, { invoiceCorrectionRepository }),
@@ -174,6 +223,8 @@ export function createInvoicingComposition(
       generateApprovedInvoicePdfDocument: ensureApprovedInvoicePdfDocument,
       getApprovedInvoice: (input) =>
         getApprovedInvoice(input, approvedInvoiceReader),
+      getInvoiceCreditContext: (input) =>
+        getInvoiceCreditContext(input, approvedInvoiceReader),
       getApprovedInvoicePdfDocument,
       getApprovedInvoicePdfMetadata: (input) =>
         getApprovedInvoicePdfMetadata(input, {
@@ -182,6 +233,8 @@ export function createInvoicingComposition(
         }),
       listApprovedInvoices: (input) =>
         listApprovedInvoices(input, approvedInvoiceReader),
+      listSentInvoiceGroups: (input) =>
+        listSentInvoiceGroups(input, approvedInvoiceReader),
       listInvoiceDeliveryEvents: (input) =>
         listInvoiceDeliveryEvents(input, {
           approvedInvoiceReader,

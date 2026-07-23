@@ -1,4 +1,5 @@
 import type { ListApprovedInvoicesInput } from '../application/listApprovedInvoices.js';
+import type { ListSentInvoiceGroupsInput } from '../application/listSentInvoiceGroups.js';
 import type { ApprovedInvoiceListSort } from '../domain/approvedInvoiceSummary.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
 
@@ -37,13 +38,37 @@ export function parseApprovedInvoiceListRequest(
   };
 }
 
-function parseStatus(value: string | undefined): 'approved' | 'sent' {
+export function parseSentInvoiceGroupListRequest(
+  companyId: string,
+  query: Record<string, string>,
+): ListSentInvoiceGroupsInput {
+  if ('status' in query) {
+    throw new InvoiceDraftValidationError(
+      'Sent invoice group query contains an unsupported field.',
+    );
+  }
+
+  const { status: _status, ...input } = parseApprovedInvoiceListRequest(
+    companyId,
+    { ...query, status: 'sent' },
+  );
+
+  return input;
+}
+
+function parseStatus(
+  value: string | undefined,
+): 'approved' | 'sent' | 'cancelled' {
   if (value === undefined || value === 'approved') {
     return 'approved';
   }
 
   if (value === 'sent') {
     return 'sent';
+  }
+
+  if (value === 'cancelled') {
+    return 'cancelled';
   }
 
   throw new InvoiceDraftValidationError('Invoice list status is invalid.');

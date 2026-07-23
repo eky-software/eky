@@ -118,6 +118,8 @@ class FakeInvoiceDraftRepository implements InvoiceDraftRepository {
     return [
       {
         id: draft.id,
+        invoiceKind: draft.invoiceKind,
+        creditedInvoiceId: draft.creditedInvoiceId,
         customerId: draft.customerId,
         status: draft.status,
         invoiceDate: draft.invoiceDate,

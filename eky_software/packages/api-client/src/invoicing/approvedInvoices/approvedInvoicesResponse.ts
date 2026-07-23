@@ -15,4 +15,6 @@ export {
 export {
   readApprovedInvoiceListResponse,
   readApprovedInvoiceResponse,
+  readInvoiceCreditContextResponse,
+  readSentInvoiceGroupListResponse,
 } from './approvedInvoiceViewResponse.js';

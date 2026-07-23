@@ -548,6 +548,8 @@ describe('SqliteInvoiceDraftRepository', () => {
     ]);
     expect(summaries[0]).toEqual({
       id: 'draft-c',
+      invoiceKind: 'standard',
+      creditedInvoiceId: null,
       customerId: 'customer-1',
       status: 'draft',
       invoiceDate: '2026-06-13',

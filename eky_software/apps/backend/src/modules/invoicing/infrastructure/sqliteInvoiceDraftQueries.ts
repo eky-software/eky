@@ -13,6 +13,8 @@ type InvoiceDraftKeyParameters = [string, string];
 const invoiceDraftSummarySelect = `
   SELECT
     id,
+    invoice_kind,
+    credited_invoice_id,
     customer_id,
     status,
     invoice_date,

@@ -31,10 +31,23 @@ const backendRoutes: ReadonlyArray<{
     methods: new Set(['POST']),
     pathname: new RegExp(`^/invoice-drafts/${resourceId}/approve$`),
   },
+  {
+    methods: new Set(['GET', 'PUT']),
+    pathname: new RegExp(`^/invoice-drafts/${resourceId}/credit$`),
+  },
+  {
+    methods: new Set(['POST']),
+    pathname: new RegExp(`^/invoice-drafts/${resourceId}/approve-credit$`),
+  },
   { methods: new Set(['GET']), pathname: /^\/invoices$/ },
+  { methods: new Set(['GET']), pathname: /^\/sent-invoice-groups$/ },
   {
     methods: new Set(['GET']),
     pathname: new RegExp(`^/invoices/${resourceId}$`),
+  },
+  {
+    methods: new Set(['GET']),
+    pathname: new RegExp(`^/invoices/${resourceId}/credit-context$`),
   },
   {
     methods: new Set(['GET']),
@@ -51,7 +64,7 @@ const backendRoutes: ReadonlyArray<{
   {
     methods: new Set(['POST']),
     pathname: new RegExp(
-      `^/invoices/${resourceId}/(?:cancel|reopen-for-edit|mark-sent|copy-to-draft)$`,
+      `^/invoices/${resourceId}/(?:cancel|credit-draft|reopen-for-edit|mark-sent|copy-to-draft)$`,
     ),
   },
   {

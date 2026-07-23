@@ -11,6 +11,7 @@ export type {
   InvoiceDraftStatus,
   InvoiceNumberingMode,
   InvoiceDraftSummary,
+  InvoiceKind,
   InvoiceLineDiscount,
   InvoicePriceInputMode,
   InvoiceReferenceNumberType,

@@ -1,11 +1,20 @@
 import { EkyApiError } from '../../http.js';
 import type {
   ApprovedInvoiceNumberingMode,
+  ApprovedInvoiceKind,
   ApprovedInvoicePriceInputMode,
   ApprovedInvoiceReferenceNumberType,
   ApprovedInvoiceUnit,
   ApprovedInvoiceViewStatus,
 } from './approvedInvoicesTypes.js';
+
+export function parseInvoiceKind(value: unknown): ApprovedInvoiceKind {
+  if (value === 'standard' || value === 'credit') {
+    return value;
+  }
+
+  throw invalidApprovedInvoiceResponse(value);
+}
 
 export function readString(
   value: Record<string, unknown>,
@@ -71,7 +80,7 @@ export function readSafeInteger(
 }
 
 export function parseInvoiceStatus(value: unknown): ApprovedInvoiceViewStatus {
-  if (value === 'approved' || value === 'sent') {
+  if (value === 'approved' || value === 'sent' || value === 'cancelled') {
     return value;
   }
 
@@ -95,7 +104,7 @@ export function parseNumberingMode(
 export function parseReferenceNumberType(
   value: unknown,
 ): ApprovedInvoiceReferenceNumberType {
-  if (value === 'finnishDomestic') {
+  if (value === 'finnishDomestic' || value === 'none') {
     return value;
   }
 

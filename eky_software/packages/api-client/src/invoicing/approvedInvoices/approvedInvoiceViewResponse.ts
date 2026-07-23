@@ -1,6 +1,7 @@
 import { isRecord } from '../../http.js';
 import {
   invalidApprovedInvoiceResponse,
+  parseInvoiceKind,
   parseInvoiceStatus,
   parseInvoiceUnit,
   parseNumberingMode,
@@ -18,6 +19,10 @@ import type {
   ApprovedInvoiceTotals,
   ApprovedInvoiceVatBreakdown,
   ApprovedInvoiceView,
+  InvoiceCreditContext,
+  SentInvoiceCreditStatus,
+  SentInvoiceGroup,
+  SentInvoiceGroupListPage,
 } from './approvedInvoicesTypes.js';
 
 export function readApprovedInvoiceListResponse(
@@ -58,6 +63,95 @@ export function readApprovedInvoiceListResponse(
   };
 }
 
+export function readSentInvoiceGroupListResponse(
+  responseBody: unknown,
+): SentInvoiceGroupListPage {
+  if (!isRecord(responseBody) || !isRecord(responseBody.invoiceGroupPage)) {
+    throw invalidApprovedInvoiceResponse(responseBody);
+  }
+
+  const invoiceGroupPage = responseBody.invoiceGroupPage;
+
+  if (!Array.isArray(invoiceGroupPage.groups)) {
+    throw invalidApprovedInvoiceResponse(responseBody);
+  }
+
+  const page = readSafeInteger(invoiceGroupPage, 'page');
+  const pageSize = readSafeInteger(invoiceGroupPage, 'pageSize');
+  const totalCount = readSafeInteger(invoiceGroupPage, 'totalCount');
+  const totalPages = readSafeInteger(invoiceGroupPage, 'totalPages');
+
+  if (
+    page < 1 ||
+    !isApprovedInvoicePageSize(pageSize) ||
+    totalCount < 0 ||
+    totalPages !== Math.ceil(totalCount / pageSize) ||
+    invoiceGroupPage.groups.length > pageSize ||
+    invoiceGroupPage.groups.length > totalCount
+  ) {
+    throw invalidApprovedInvoiceResponse(responseBody);
+  }
+
+  return {
+    groups: invoiceGroupPage.groups.map(parseSentInvoiceGroup),
+    page,
+    pageSize,
+    totalCount,
+    totalPages,
+  };
+}
+
+export function readInvoiceCreditContextResponse(
+  responseBody: unknown,
+): InvoiceCreditContext {
+  if (!isRecord(responseBody) || !isRecord(responseBody.creditContext)) {
+    throw invalidApprovedInvoiceResponse(responseBody);
+  }
+
+  const value = responseBody.creditContext;
+
+  if (!Array.isArray(value.creditInvoices)) {
+    throw invalidApprovedInvoiceResponse(responseBody);
+  }
+
+  const sourceInvoiceId = readString(value, 'sourceInvoiceId');
+  const creditInvoices = value.creditInvoices.map(parseApprovedInvoiceSummary);
+  const creditStatus = parseSentInvoiceCreditStatus(value.creditStatus);
+  const remainingCreditableGrossCents = readSafeInteger(
+    value,
+    'remainingCreditableGrossCents',
+  );
+  const activeCreditDraftId = readNullableString(
+    value,
+    'activeCreditDraftId',
+  );
+
+  if (
+    remainingCreditableGrossCents < 0 ||
+    creditInvoices.some(
+      (invoice) =>
+        invoice.invoiceKind !== 'credit' ||
+        (invoice.status !== 'approved' && invoice.status !== 'sent') ||
+        invoice.creditedInvoiceId !== sourceInvoiceId ||
+        invoice.grossTotalCents < 0,
+    ) ||
+    (creditStatus === 'none' && creditInvoices.length !== 0) ||
+    (creditStatus === 'full' && remainingCreditableGrossCents !== 0) ||
+    (creditStatus === 'partial' &&
+      (creditInvoices.length === 0 || remainingCreditableGrossCents === 0))
+  ) {
+    throw invalidApprovedInvoiceResponse(responseBody);
+  }
+
+  return {
+    sourceInvoiceId,
+    creditInvoices,
+    creditStatus,
+    remainingCreditableGrossCents,
+    activeCreditDraftId,
+  };
+}
+
 function isApprovedInvoicePageSize(value: number): value is 20 | 50 | 100 {
   return value === 20 || value === 50 || value === 100;
 }
@@ -84,6 +178,10 @@ export function parseApprovedInvoiceView(value: unknown): ApprovedInvoiceView {
 
   return {
     id: readString(value, 'id'),
+    invoiceKind: parseInvoiceKind(value.invoiceKind),
+    creditedInvoiceId: readNullableString(value, 'creditedInvoiceId'),
+    creditedInvoiceNumber: readNullableString(value, 'creditedInvoiceNumber'),
+    creditedInvoiceDate: readNullableString(value, 'creditedInvoiceDate'),
     companyId: readString(value, 'companyId'),
     sourceDraftId: readString(value, 'sourceDraftId'),
     invoiceNumber: readString(value, 'invoiceNumber'),
@@ -181,16 +279,23 @@ export function parseApprovedInvoiceView(value: unknown): ApprovedInvoiceView {
     createdAt: readString(value, 'createdAt'),
     approvedAt: readString(value, 'approvedAt'),
     updatedAt: readString(value, 'updatedAt'),
+    cancelledAt: readNullableString(value, 'cancelledAt'),
+    cancelledBy: readNullableString(value, 'cancelledBy'),
+    cancellationReason: readNullableString(value, 'cancellationReason'),
   };
 }
 
-function parseApprovedInvoiceSummary(value: unknown): ApprovedInvoiceSummary {
+export function parseApprovedInvoiceSummary(
+  value: unknown,
+): ApprovedInvoiceSummary {
   if (!isRecord(value)) {
     throw invalidApprovedInvoiceResponse(value);
   }
 
   return {
     id: readString(value, 'id'),
+    invoiceKind: parseInvoiceKind(value.invoiceKind),
+    creditedInvoiceId: readNullableString(value, 'creditedInvoiceId'),
     invoiceNumber: readString(value, 'invoiceNumber'),
     referenceNumber: readString(value, 'referenceNumber'),
     status: parseInvoiceStatus(value.status),
@@ -206,7 +311,66 @@ function parseApprovedInvoiceSummary(value: unknown): ApprovedInvoiceSummary {
     grossTotalCents: readSafeInteger(value, 'grossTotalCents'),
     approvedAt: readString(value, 'approvedAt'),
     updatedAt: readString(value, 'updatedAt'),
+    cancelledAt: readNullableString(value, 'cancelledAt'),
   };
+}
+
+function parseSentInvoiceGroup(value: unknown): SentInvoiceGroup {
+  if (
+    !isRecord(value) ||
+    !Array.isArray(value.creditInvoices)
+  ) {
+    throw invalidApprovedInvoiceResponse(value);
+  }
+
+  const rootInvoice = parseApprovedInvoiceSummary(value.rootInvoice);
+  const creditInvoices = value.creditInvoices.map(parseApprovedInvoiceSummary);
+  const creditStatus = parseSentInvoiceCreditStatus(value.creditStatus);
+  const remainingCreditableGrossCents = readSafeInteger(
+    value,
+    'remainingCreditableGrossCents',
+  );
+
+  if (
+    rootInvoice.invoiceKind !== 'standard' ||
+    rootInvoice.status !== 'sent' ||
+    rootInvoice.creditedInvoiceId !== null ||
+    rootInvoice.grossTotalCents < 0 ||
+    remainingCreditableGrossCents < 0 ||
+    remainingCreditableGrossCents > rootInvoice.grossTotalCents ||
+    creditInvoices.some(
+      (invoice) =>
+        invoice.invoiceKind !== 'credit' ||
+        invoice.status !== 'sent' ||
+        invoice.creditedInvoiceId !== rootInvoice.id ||
+        invoice.grossTotalCents < 0,
+    ) ||
+    (creditStatus === 'none' &&
+      remainingCreditableGrossCents !== rootInvoice.grossTotalCents) ||
+    (creditStatus === 'full' && remainingCreditableGrossCents !== 0) ||
+    (creditStatus === 'partial' &&
+      (remainingCreditableGrossCents === 0 ||
+        remainingCreditableGrossCents === rootInvoice.grossTotalCents))
+  ) {
+    throw invalidApprovedInvoiceResponse(value);
+  }
+
+  return {
+    rootInvoice,
+    creditInvoices,
+    creditStatus,
+    remainingCreditableGrossCents,
+  };
+}
+
+function parseSentInvoiceCreditStatus(
+  value: unknown,
+): SentInvoiceCreditStatus {
+  if (value === 'none' || value === 'partial' || value === 'full') {
+    return value;
+  }
+
+  throw invalidApprovedInvoiceResponse(value);
 }
 
 function parseApprovedInvoiceLine(value: unknown): ApprovedInvoiceLine {
@@ -216,6 +380,7 @@ function parseApprovedInvoiceLine(value: unknown): ApprovedInvoiceLine {
 
   return {
     id: readString(value, 'id'),
+    sourceInvoiceLineId: readNullableString(value, 'sourceInvoiceLineId'),
     lineOrder: readSafeInteger(value, 'lineOrder'),
     code: readString(value, 'code'),
     description: readString(value, 'description'),

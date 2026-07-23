@@ -250,6 +250,8 @@ function createApprovedInvoiceView(
     id: 'invoice-1',
     invoiceKind: 'standard',
     creditedInvoiceId: null,
+    creditedInvoiceNumber: null,
+    creditedInvoiceDate: null,
     invoiceDate: '2026-06-13',
     invoiceNumber: '20260001',
     latePaymentInterestBasisPoints: 0,

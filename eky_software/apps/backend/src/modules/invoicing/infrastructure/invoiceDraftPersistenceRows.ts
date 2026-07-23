@@ -24,6 +24,8 @@ interface StoredDiscount {
 
 export interface InvoiceDraftSummaryRow {
   id: string;
+  invoice_kind: string;
+  credited_invoice_id: string | null;
   customer_id: string;
   status: string;
   invoice_date: string;
@@ -164,6 +166,8 @@ export function toInvoiceDraftSummary(
 ): InvoiceDraftSummary {
   return {
     id: row.id,
+    invoiceKind: row.invoice_kind as InvoiceDraft['invoiceKind'],
+    creditedInvoiceId: row.credited_invoice_id,
     customerId: row.customer_id,
     status: row.status as InvoiceDraftStatus,
     invoiceDate: row.invoice_date,

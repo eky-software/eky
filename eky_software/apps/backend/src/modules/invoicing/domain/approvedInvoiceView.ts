@@ -41,6 +41,8 @@ export interface ApprovedInvoiceView {
   sourceDraftId: string;
   invoiceKind: InvoiceKind;
   creditedInvoiceId: string | null;
+  creditedInvoiceNumber: string | null;
+  creditedInvoiceDate: string | null;
   invoiceNumber: string;
   referenceNumber: string;
   referenceNumberType: ReferenceNumberType;

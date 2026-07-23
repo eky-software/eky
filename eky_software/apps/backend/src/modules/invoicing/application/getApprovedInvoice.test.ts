@@ -139,6 +139,8 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     sourceDraftId: 'draft-1',
     invoiceKind: 'standard',
     creditedInvoiceId: null,
+    creditedInvoiceNumber: null,
+    creditedInvoiceDate: null,
     invoiceNumber: '20260001',
     referenceNumber: '202600017',
     referenceNumberType: 'finnishDomestic',

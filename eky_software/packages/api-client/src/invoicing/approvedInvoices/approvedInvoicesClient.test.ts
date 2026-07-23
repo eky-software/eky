@@ -12,6 +12,7 @@ import {
   type ApprovedInvoiceSummary,
   type ApprovedInvoiceView,
   type InvoiceDraft,
+  type InvoiceCreditContext,
 } from '../../index.js';
 
 describe('approved invoices api client', () => {
@@ -48,6 +49,140 @@ describe('approved invoices api client', () => {
         },
       },
     ]);
+  });
+
+  it('lists sent invoice groups through the dedicated root-paginated route', async () => {
+    const requests = createRequestLog();
+    const rootInvoice = createTestApprovedInvoiceSummary({
+      status: 'sent',
+    });
+    const creditInvoice = createTestApprovedInvoiceSummary({
+      id: 'credit-invoice-1',
+      invoiceKind: 'credit',
+      creditedInvoiceId: rootInvoice.id,
+      invoiceNumber: '20260002',
+      referenceNumber: '',
+      status: 'sent',
+      grossTotalCents: 2_550,
+    });
+    const invoiceGroupPage = {
+      groups: [
+        {
+          rootInvoice,
+          creditInvoices: [creditInvoice],
+          creditStatus: 'partial',
+          remainingCreditableGrossCents: 10_000,
+        },
+      ],
+      page: 1,
+      pageSize: 20,
+      totalCount: 1,
+      totalPages: 1,
+    } as const;
+    const client = createTestClient(requests, { invoiceGroupPage });
+
+    await expect(
+      client.listSentInvoiceGroups({
+        dateFrom: '2026-01-01',
+        page: 1,
+        pageSize: 20,
+        sort: 'invoiceDateDesc',
+      }),
+    ).resolves.toEqual(invoiceGroupPage);
+    expect(requests[0]?.input).toBe(
+      '/sent-invoice-groups?page=1&pageSize=20&sort=invoiceDateDesc&dateFrom=2026-01-01',
+    );
+    expect(requests[0]?.input).not.toContain('status=');
+    expect(requests[0]?.input).not.toContain('companyId=');
+  });
+
+  it('rejects inconsistent sent invoice group relationships', async () => {
+    const requests = createRequestLog();
+    const rootInvoice = createTestApprovedInvoiceSummary({ status: 'sent' });
+    const client = createTestClient(requests, {
+      invoiceGroupPage: {
+        groups: [
+          {
+            rootInvoice,
+            creditInvoices: [
+              createTestApprovedInvoiceSummary({
+                id: 'credit-invoice-1',
+                invoiceKind: 'credit',
+                creditedInvoiceId: 'other-invoice',
+                status: 'sent',
+              }),
+            ],
+            creditStatus: 'full',
+            remainingCreditableGrossCents: 0,
+          },
+        ],
+        page: 1,
+        pageSize: 20,
+        totalCount: 1,
+        totalPages: 1,
+      },
+    });
+
+    await expect(
+      client.listSentInvoiceGroups({
+        page: 1,
+        pageSize: 20,
+        sort: 'invoiceDateDesc',
+      }),
+    ).rejects.toBeInstanceOf(EkyApiError);
+  });
+
+  it('gets the validated credit context through GET /invoices/:id/credit-context', async () => {
+    const requests = createRequestLog();
+    const creditContext: InvoiceCreditContext = {
+      sourceInvoiceId: 'invoice-1',
+      creditInvoices: [
+        createTestApprovedInvoiceSummary({
+          id: 'credit-invoice-1',
+          invoiceKind: 'credit',
+          creditedInvoiceId: 'invoice-1',
+          invoiceNumber: '20260002',
+          referenceNumber: '',
+          status: 'approved',
+          grossTotalCents: 2_550,
+        }),
+      ],
+      creditStatus: 'partial',
+      remainingCreditableGrossCents: 10_000,
+      activeCreditDraftId: 'credit-draft-2',
+    };
+    const client = createTestClient(requests, { creditContext });
+
+    await expect(
+      client.getInvoiceCreditContext('invoice/1'),
+    ).resolves.toEqual(creditContext);
+    expect(requests[0]?.input).toBe(
+      '/invoices/invoice%2F1/credit-context',
+    );
+    expect(requests[0]?.init?.method).toBeUndefined();
+  });
+
+  it('rejects credit context relationships that point to another invoice', async () => {
+    const requests = createRequestLog();
+    const client = createTestClient(requests, {
+      creditContext: {
+        sourceInvoiceId: 'invoice-1',
+        creditInvoices: [
+          createTestApprovedInvoiceSummary({
+            invoiceKind: 'credit',
+            creditedInvoiceId: 'invoice-2',
+            status: 'approved',
+          }),
+        ],
+        creditStatus: 'partial',
+        remainingCreditableGrossCents: 1,
+        activeCreditDraftId: null,
+      },
+    });
+
+    await expect(
+      client.getInvoiceCreditContext('invoice-1'),
+    ).rejects.toBeInstanceOf(EkyApiError);
   });
 
   it('gets an approved invoice through GET /invoices/:id', async () => {
@@ -801,6 +936,10 @@ function createTestApprovedInvoiceView(
 ): ApprovedInvoiceView {
   return {
     id: 'invoice-1',
+    invoiceKind: 'standard',
+    creditedInvoiceId: null,
+    creditedInvoiceNumber: null,
+    creditedInvoiceDate: null,
     companyId: 'dev-company',
     sourceDraftId: 'draft-1',
     invoiceNumber: '20260001',
@@ -856,6 +995,7 @@ function createTestApprovedInvoiceView(
     lines: [
       {
         id: 'line-1',
+        sourceInvoiceLineId: null,
         lineOrder: 1,
         code: 'WORK',
         description: 'Work',
@@ -895,6 +1035,9 @@ function createTestApprovedInvoiceView(
     createdAt: '2026-06-13T10:00:00.000Z',
     approvedAt: '2026-06-13T10:00:00.000Z',
     updatedAt: '2026-06-13T10:00:00.000Z',
+    cancelledAt: null,
+    cancelledBy: null,
+    cancellationReason: null,
     ...overrides,
   };
 }
@@ -1030,6 +1173,8 @@ function createTestApprovedInvoiceSummary(
 ): ApprovedInvoiceSummary {
   return {
     id: 'invoice-1',
+    invoiceKind: 'standard',
+    creditedInvoiceId: null,
     invoiceNumber: '20260001',
     referenceNumber: '202600017',
     status: 'approved',
@@ -1041,6 +1186,7 @@ function createTestApprovedInvoiceSummary(
     dueDate: '2026-06-27',
     grossTotalCents: 12550,
     approvedAt: '2026-06-13T10:00:00.000Z',
+    cancelledAt: null,
     updatedAt: '2026-06-13T10:00:00.000Z',
     ...overrides,
   };

@@ -265,6 +265,8 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     approvedAt: '2026-07-10T09:00:00.000Z',
     invoiceKind: 'standard',
     creditedInvoiceId: null,
+    creditedInvoiceNumber: null,
+    creditedInvoiceDate: null,
     billingRecipientBusinessIdSnapshot: '',
     billingRecipientCitySnapshot: 'Espoo',
     billingRecipientCustomerId: 'billing-1',
