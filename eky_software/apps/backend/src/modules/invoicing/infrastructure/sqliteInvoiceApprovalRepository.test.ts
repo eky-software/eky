@@ -929,6 +929,92 @@ describe('SqliteInvoiceApprovalRepository', () => {
     expect(getAuditEvents(database)).toEqual(auditEventsBeforeReopen);
   });
 
+  it('does not reopen an approved credit invoice through the standard reopen repository', async () => {
+    const repository = new SqliteInvoiceApprovalRepository(database);
+
+    await saveDraft(database, createDraft());
+    await repository.approveDraft(createApprovalInput());
+    await saveDraft(
+      database,
+      createDraft(
+        {
+          id: 'draft-2',
+          updatedAt: '2027-01-15T13:00:00.000Z',
+        },
+        [createLine('draft-2-line-1', 1)],
+      ),
+    );
+    await repository.approveDraft(
+      createApprovalInput({
+        approvedAt: '2027-01-15T13:00:00.000Z',
+        auditEventId: 'audit-2',
+        draftId: 'draft-2',
+        invoiceId: 'invoice-2',
+      }),
+    );
+    database
+      .prepare(
+        `
+          UPDATE invoices
+          SET invoice_kind = 'credit', credited_invoice_id = 'invoice-2'
+          WHERE id = 'invoice-1'
+        `,
+      )
+      .run();
+    insertInvoiceDocument(database, {
+      invoiceId: 'invoice-1',
+      storagePath: 'dev-company/invoice-1/approved-invoice.pdf',
+    });
+
+    const invoiceBeforeReopen = getInvoice(database, 'invoice-1');
+    const draftBeforeReopen = database
+      .prepare<[string], InvoiceDraftTable>(
+        'SELECT * FROM invoice_drafts WHERE id = ?',
+      )
+      .get('draft-1');
+    const documentBeforeReopen = database
+      .prepare<[string], { invoice_id: string; storage_path: string }>(
+        `
+          SELECT invoice_id, storage_path
+          FROM invoice_documents
+          WHERE invoice_id = ?
+        `,
+      )
+      .get('invoice-1');
+    const auditEventsBeforeReopen = getAuditEvents(database);
+
+    await expect(
+      repository.reopenApprovedInvoiceForEditing({
+        actorUserId: 'user-1',
+        auditEventId: 'audit-credit-reopen-guard',
+        companyId: 'dev-company',
+        invoiceId: 'invoice-1',
+        reopenedAt: '2027-01-15T14:00:00.000Z',
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(getInvoice(database, 'invoice-1')).toEqual(invoiceBeforeReopen);
+    expect(
+      database
+        .prepare<[string], InvoiceDraftTable>(
+          'SELECT * FROM invoice_drafts WHERE id = ?',
+        )
+        .get('draft-1'),
+    ).toEqual(draftBeforeReopen);
+    expect(
+      database
+        .prepare<[string], { invoice_id: string; storage_path: string }>(
+          `
+            SELECT invoice_id, storage_path
+            FROM invoice_documents
+            WHERE invoice_id = ?
+          `,
+        )
+        .get('invoice-1'),
+    ).toEqual(documentBeforeReopen);
+    expect(getAuditEvents(database)).toEqual(auditEventsBeforeReopen);
+  });
+
   it('rolls back invoice, draft, and PDF metadata changes when reopen audit insertion fails', async () => {
     const repository = new SqliteInvoiceApprovalRepository(database);
 
