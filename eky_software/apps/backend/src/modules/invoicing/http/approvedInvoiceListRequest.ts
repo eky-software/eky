@@ -11,6 +11,7 @@ const allowedFields = new Set([
   'pageSize',
   'sort',
 ]);
+const sentGroupAllowedFields = new Set([...allowedFields, 'creditState']);
 
 export function parseApprovedInvoiceListRequest(
   companyId: string,
@@ -42,18 +43,40 @@ export function parseSentInvoiceGroupListRequest(
   companyId: string,
   query: Record<string, string>,
 ): ListSentInvoiceGroupsInput {
-  if ('status' in query) {
-    throw new InvoiceDraftValidationError(
-      'Sent invoice group query contains an unsupported field.',
-    );
+  for (const field of Object.keys(query)) {
+    if (!sentGroupAllowedFields.has(field) || field === 'status') {
+      throw new InvoiceDraftValidationError(
+        'Sent invoice group query contains an unsupported field.',
+      );
+    }
   }
 
+  const { creditState, ...listQuery } = query;
   const { status: _status, ...input } = parseApprovedInvoiceListRequest(
     companyId,
-    { ...query, status: 'sent' },
+    { ...listQuery, status: 'sent' },
   );
 
-  return input;
+  return {
+    ...input,
+    creditState: parseSentInvoiceCreditState(creditState),
+  };
+}
+
+function parseSentInvoiceCreditState(
+  value: string | undefined,
+): 'all' | 'uncredited' | 'credited' {
+  if (value === undefined || value === 'all') {
+    return 'all';
+  }
+
+  if (value === 'uncredited' || value === 'credited') {
+    return value;
+  }
+
+  throw new InvoiceDraftValidationError(
+    'Sent invoice group credit state is invalid.',
+  );
 }
 
 function parseStatus(

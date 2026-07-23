@@ -1,10 +1,15 @@
 import type { ApprovedInvoiceListSort } from '../domain/approvedInvoiceSummary.js';
-import type { SentInvoiceGroupListPage } from '../domain/sentInvoiceGroup.js';
+import type {
+  SentInvoiceCreditStateFilter,
+  SentInvoiceGroupListPage,
+} from '../domain/sentInvoiceGroup.js';
+import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
 import type { SentInvoiceGroupReader } from '../ports/sentInvoiceGroupReader.js';
 import { validateApprovedInvoiceListInput } from './listApprovedInvoices.js';
 
 export interface ListSentInvoiceGroupsInput {
   companyId: string;
+  creditState?: SentInvoiceCreditStateFilter;
   dateFrom?: string;
   dateTo?: string;
   page: number;
@@ -17,10 +22,22 @@ export async function listSentInvoiceGroups(
   reader: SentInvoiceGroupReader,
 ): Promise<SentInvoiceGroupListPage> {
   validateApprovedInvoiceListInput({ ...input, status: 'sent' });
+  const creditState = input.creditState ?? 'all';
+
+  if (
+    creditState !== 'all' &&
+    creditState !== 'uncredited' &&
+    creditState !== 'credited'
+  ) {
+    throw new InvoiceDraftValidationError(
+      'Sent invoice group credit state is invalid.',
+    );
+  }
 
   const offset = (input.page - 1) * input.pageSize;
   const result = await reader.listSentInvoiceGroups({
     companyId: input.companyId,
+    creditState,
     dateFrom: input.dateFrom ?? null,
     dateTo: input.dateTo ?? null,
     limit: input.pageSize,

@@ -33,12 +33,50 @@ describe('listSentInvoiceGroups', () => {
     });
     expect(reader.listSentInvoiceGroups).toHaveBeenCalledWith({
       companyId: 'dev-company',
+      creditState: 'all',
       dateFrom: '2026-01-01',
       dateTo: '2026-12-31',
       limit: 20,
       offset: 20,
       sort: 'invoiceDateDesc',
     });
+  });
+
+  it('passes the requested credit-state filter to the reader', async () => {
+    const reader = createReader();
+
+    await listSentInvoiceGroups(
+      {
+        companyId: 'dev-company',
+        creditState: 'credited',
+        page: 1,
+        pageSize: 20,
+        sort: 'invoiceDateDesc',
+      },
+      reader,
+    );
+
+    expect(reader.listSentInvoiceGroups).toHaveBeenCalledWith(
+      expect.objectContaining({ creditState: 'credited' }),
+    );
+  });
+
+  it('rejects an unsupported credit-state filter before calling the reader', async () => {
+    const reader = createReader();
+
+    await expect(
+      listSentInvoiceGroups(
+        {
+          companyId: 'dev-company',
+          creditState: 'other' as 'credited',
+          page: 1,
+          pageSize: 20,
+          sort: 'invoiceDateDesc',
+        },
+        reader,
+      ),
+    ).rejects.toBeInstanceOf(InvoiceDraftValidationError);
+    expect(reader.listSentInvoiceGroups).not.toHaveBeenCalled();
   });
 
   it('rejects invalid pagination before calling the reader', async () => {

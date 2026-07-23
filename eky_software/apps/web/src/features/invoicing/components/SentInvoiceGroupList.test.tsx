@@ -22,7 +22,7 @@ describe('SentInvoiceGroupList', () => {
     expect(html).toContain('Hyvityslasku 20260002');
     expect(html).toContain('−25,50');
     expect(html).toContain(uiText.invoicing.status);
-    expect(html).toContain(uiText.invoicing.statusSent);
+    expect(html).toContain(uiText.invoicing.creditStatusPartial);
     expect(html).not.toContain(uiText.invoicing.statusCredited);
     expect(html).toContain('Hyvitettävissä 100,00');
   });

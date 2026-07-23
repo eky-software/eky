@@ -473,7 +473,7 @@ POST /invoices/:id/cancel
 POST /invoices/:id/credit-draft
 POST /invoice-drafts/:id/approve-credit
 GET  /invoices?status=cancelled
-GET  /invoices/sent-groups
+GET  /sent-invoice-groups
 ```
 
 Nykyisiä tavallisen laskun reittejä ei rikota. Sent-ryhmittelylle käytetään
@@ -511,12 +511,22 @@ Listaus näyttää erilliset osiot:
 
 - luonnokset
 - hyväksytyt
-- peruutetut
 - lähetetyt
+- peruutetut
+- hyvitetyt ja osittain hyvitetyt
 
-Lähetetyt tavalliset laskut ovat ryhmän juuria ja niiden hyvityslaskut
-alirivejä. Palvelin sivuttaa juurilaskut, ei litteää rivilistaa. Ryhmä näyttää
-hyvitystilan ja jäljellä olevan summan.
+Lähetettyjen osio näyttää tavalliset laskut, joilla ei vielä ole hyväksyttyä
+hyvitystä. Hyvitettyjen osio näyttää kokonaan ja osittain hyvitetyt tavalliset
+laskut ryhmän juurina sekä niiden hyvityslaskut aliriveinä. Molemmat osiot
+käyttävät samaa rajattua `GET /sent-invoice-groups` -sopimusta eri
+`creditState`-suodattimella. Palvelin suodattaa ja sivuttaa juurilaskut ennen
+ryhmien muodostamista; web ei jaa yhtä valmiiksi sivutettua tulosta kahteen
+osioon.
+
+Laskun detail-näkymä ei näytä tyhjää hyvitysyhteenvetoa tavalliselle
+lähetetylle laskulle. Yhteenveto tulee näkyviin, kun laskulla on aktiivinen
+hyvitysluonnos tai hyväksytty hyvityslasku. Hyvityskontekstin turvallinen
+latausvirhe näytetään edelleen käyttäjälle.
 
 ## PDF Ja Toimitus
 

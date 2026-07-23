@@ -47,6 +47,21 @@ describe('InvoiceCreditRelations', () => {
     expect(html).toContain(uiText.invoicing.creditContextLoadError);
     expect(html).not.toContain('stack');
   });
+
+  it('hides the empty credit summary until crediting has started', () => {
+    const html = renderRelations({
+      context: {
+        ...createCreditContext(),
+        activeCreditDraftId: null,
+        creditInvoices: [],
+        creditStatus: 'none',
+        remainingCreditableGrossCents: 12_550,
+      },
+      invoice: createInvoice(),
+    });
+
+    expect(html).toBe('');
+  });
 });
 
 type Props = React.ComponentProps<typeof InvoiceCreditRelations>;

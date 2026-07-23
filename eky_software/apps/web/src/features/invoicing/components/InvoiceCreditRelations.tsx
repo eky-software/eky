@@ -57,6 +57,15 @@ export function InvoiceCreditRelations({
     return null;
   }
 
+  if (
+    errorMessage === null &&
+    (context === null ||
+      (context.activeCreditDraftId === null &&
+        context.creditInvoices.length === 0))
+  ) {
+    return null;
+  }
+
   return (
     <section className={styles.relations}>
       <h3>{uiText.invoicing.creditRelations}</h3>
@@ -116,11 +125,7 @@ export function InvoiceCreditRelations({
                 </button>
               ))}
             </div>
-          ) : (
-            <p className={styles.muted}>
-              {uiText.invoicing.noRelatedCreditInvoices}
-            </p>
-          )}
+          ) : null}
         </>
       ) : null}
     </section>

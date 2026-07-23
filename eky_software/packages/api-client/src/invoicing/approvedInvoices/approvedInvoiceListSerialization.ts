@@ -20,6 +20,10 @@ export function serializeSentInvoiceGroupListQuery(
   const searchParameters = new URLSearchParams();
   appendInvoiceListSearchParameters(searchParameters, query);
 
+  if (query.creditState !== undefined) {
+    searchParameters.set('creditState', query.creditState);
+  }
+
   return searchParameters.toString();
 }
 

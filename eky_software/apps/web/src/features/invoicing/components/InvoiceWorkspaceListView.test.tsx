@@ -2,6 +2,7 @@ import type {
   ApprovedInvoiceSummary,
   Customer,
   InvoiceDraftSummary,
+  SentInvoiceGroup,
 } from '@eky/api-client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
@@ -83,12 +84,27 @@ describe('InvoiceWorkspaceListView', () => {
         totalCount: 1,
         totalPages: 1,
       }),
+      creditedInvoicePageState: createApprovedInvoicePageState({
+        invoiceGroups: [
+          createSentInvoiceGroup({
+            creditStatus: 'partial',
+            remainingCreditableGrossCents: 10_000,
+          }),
+        ],
+        totalCount: 1,
+        totalPages: 1,
+      }),
       sentInvoicePageState: createApprovedInvoicePageState({
-        invoices: [
-          createApprovedInvoiceSummary({
+        invoiceGroups: [
+          createSentInvoiceGroup({
+            rootInvoice: createApprovedInvoiceSummary({
             id: 'invoice-2',
             invoiceNumber: '20260002',
             status: 'sent',
+          }),
+            creditInvoices: [],
+            creditStatus: 'none',
+            remainingCreditableGrossCents: 17_884,
           }),
         ],
         totalCount: 1,
@@ -106,12 +122,17 @@ describe('InvoiceWorkspaceListView', () => {
     const cancelledListStart = html.indexOf(
       `aria-label="${uiText.invoicing.cancelledInvoiceList}"`,
     );
+    const creditedListStart = html.indexOf(
+      `aria-label="${uiText.invoicing.creditedInvoiceList}"`,
+    );
 
     expect(approvedListStart).toBeGreaterThan(-1);
     expect(approvedInvoice).toBeGreaterThan(approvedListStart);
     expect(sentListStart).toBeGreaterThan(approvedInvoice);
     expect(sentInvoice).toBeGreaterThan(sentListStart);
     expect(cancelledListStart).toBeGreaterThan(sentInvoice);
+    expect(creditedListStart).toBeGreaterThan(cancelledListStart);
+    expect(html).toContain(uiText.invoicing.creditStatusPartial);
     expect(html).not.toContain(uiText.invoicing.copyApprovedInvoice);
   });
 
@@ -166,6 +187,7 @@ function renderView(
     <InvoiceWorkspaceListView
       approvedInvoicePageState={createApprovedInvoicePageState()}
       cancelledInvoicePageState={createApprovedInvoicePageState()}
+      creditedInvoicePageState={createApprovedInvoicePageState()}
       customers={[createCustomer()]}
       customerErrorMessage={null}
       deleteErrorMessage={null}
@@ -281,6 +303,34 @@ function createApprovedInvoiceSummary(
     approvedAt: '2026-06-13T18:00:00.000Z',
     cancelledAt: null,
     updatedAt: '2026-06-13T18:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function createSentInvoiceGroup(
+  overrides: Partial<SentInvoiceGroup> = {},
+): SentInvoiceGroup {
+  const rootInvoice = createApprovedInvoiceSummary({
+    id: 'invoice-credited',
+    invoiceNumber: '20260010',
+    status: 'sent',
+  });
+
+  return {
+    rootInvoice,
+    creditInvoices: [
+      createApprovedInvoiceSummary({
+        creditedInvoiceId: rootInvoice.id,
+        grossTotalCents: 7_884,
+        id: 'credit-invoice-1',
+        invoiceKind: 'credit',
+        invoiceNumber: '20260011',
+        referenceNumber: '',
+        status: 'sent',
+      }),
+    ],
+    creditStatus: 'partial',
+    remainingCreditableGrossCents: 10_000,
     ...overrides,
   };
 }

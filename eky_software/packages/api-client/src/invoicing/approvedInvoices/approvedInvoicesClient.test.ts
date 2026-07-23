@@ -83,6 +83,7 @@ describe('approved invoices api client', () => {
 
     await expect(
       client.listSentInvoiceGroups({
+        creditState: 'credited',
         dateFrom: '2026-01-01',
         page: 1,
         pageSize: 20,
@@ -90,7 +91,7 @@ describe('approved invoices api client', () => {
       }),
     ).resolves.toEqual(invoiceGroupPage);
     expect(requests[0]?.input).toBe(
-      '/sent-invoice-groups?page=1&pageSize=20&sort=invoiceDateDesc&dateFrom=2026-01-01',
+      '/sent-invoice-groups?page=1&pageSize=20&sort=invoiceDateDesc&dateFrom=2026-01-01&creditState=credited',
     );
     expect(requests[0]?.input).not.toContain('status=');
     expect(requests[0]?.input).not.toContain('companyId=');

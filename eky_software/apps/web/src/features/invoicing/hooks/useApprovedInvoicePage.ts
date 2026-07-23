@@ -6,6 +6,7 @@ import {
   type ApprovedInvoiceSummary,
   type ApprovedInvoiceViewStatus,
   type EkyApiClient,
+  type SentInvoiceCreditStateFilter,
   type SentInvoiceGroup,
   type SentInvoiceGroupListPage,
 } from '@eky/api-client';
@@ -47,6 +48,7 @@ export function useApprovedInvoicePage(
   apiClient: ApprovedInvoicePageClient,
   status: ApprovedInvoiceViewStatus,
   fiscalYearStartMonth: number | null,
+  creditState: SentInvoiceCreditStateFilter = 'all',
 ): ApprovedInvoicePageState {
   const [controls, setControls] = useState(
     createDefaultApprovedInvoiceListControls,
@@ -92,6 +94,7 @@ export function useApprovedInvoicePage(
               apiClient,
               controls,
               fiscalYearStartMonth,
+              creditState,
             )
           : null;
       const page =
@@ -137,13 +140,15 @@ export function useApprovedInvoicePage(
       setInvoiceGroups([]);
       setTotalCount(0);
       setTotalPages(0);
-      setErrorMessage(getApprovedInvoiceListErrorMessage(error, status));
+      setErrorMessage(
+        getApprovedInvoiceListErrorMessage(error, status, creditState),
+      );
     } finally {
       if (requestId === requestSequence.current) {
         setIsLoading(false);
       }
     }
-  }, [apiClient, controls, fiscalYearStartMonth, status]);
+  }, [apiClient, controls, creditState, fiscalYearStartMonth, status]);
 
   useEffect(() => {
     void refresh();
@@ -197,13 +202,17 @@ export async function loadSentInvoiceGroupPage(
   apiClient: ApprovedInvoicePageClient,
   controls: ApprovedInvoiceListControls,
   fiscalYearStartMonth: number | null,
+  creditState: SentInvoiceCreditStateFilter = 'all',
 ): Promise<SentInvoiceGroupListPage> {
   const { status: _status, ...query } = createApprovedInvoiceListQuery(
     'sent',
     controls,
     fiscalYearStartMonth,
   );
-  const page = await apiClient.listSentInvoiceGroups(query);
+  const page = await apiClient.listSentInvoiceGroups({
+    ...query,
+    creditState,
+  });
 
   if (
     page.page !== query.page ||
@@ -211,7 +220,9 @@ export async function loadSentInvoiceGroupPage(
     page.groups.some(
       (group) =>
         group.rootInvoice.status !== 'sent' ||
-        group.rootInvoice.invoiceKind !== 'standard',
+        group.rootInvoice.invoiceKind !== 'standard' ||
+        (creditState === 'uncredited' && group.creditStatus !== 'none') ||
+        (creditState === 'credited' && group.creditStatus === 'none'),
     )
   ) {
     throw new Error('Sent invoice group page does not match its request.');
@@ -247,10 +258,13 @@ export async function loadApprovedInvoicePage(
 export function getApprovedInvoiceListErrorMessage(
   error: unknown,
   status: ApprovedInvoiceViewStatus,
+  creditState: SentInvoiceCreditStateFilter = 'all',
 ): string {
   const fallbackMessage =
     status === 'sent'
-      ? uiText.invoicing.sentInvoiceListLoadError
+      ? creditState === 'credited'
+        ? uiText.invoicing.creditedInvoiceListLoadError
+        : uiText.invoicing.sentInvoiceListLoadError
       : status === 'cancelled'
         ? uiText.invoicing.cancelledInvoiceListLoadError
         : uiText.invoicing.approvedInvoiceListLoadError;

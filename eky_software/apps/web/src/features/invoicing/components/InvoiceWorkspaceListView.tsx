@@ -12,6 +12,7 @@ import { uiText } from '../../../i18n/fi.js';
 interface InvoiceWorkspaceListViewProps {
   approvedInvoicePageState: ApprovedInvoicePageState;
   cancelledInvoicePageState: ApprovedInvoicePageState;
+  creditedInvoicePageState: ApprovedInvoicePageState;
   customers: Customer[];
   customerErrorMessage: string | null;
   deleteErrorMessage: string | null;
@@ -33,6 +34,7 @@ interface InvoiceWorkspaceListViewProps {
 export function InvoiceWorkspaceListView({
   approvedInvoicePageState,
   cancelledInvoicePageState,
+  creditedInvoicePageState,
   customers,
   customerErrorMessage,
   deleteErrorMessage,
@@ -124,6 +126,17 @@ export function InvoiceWorkspaceListView({
         loadingMessage={uiText.invoicing.cancelledInvoicesLoading}
         pageState={cancelledInvoicePageState}
         title={uiText.invoicing.cancelledInvoiceList}
+        onOpenApprovedInvoice={onOpenApprovedInvoice}
+      />
+
+      <ApprovedInvoiceListSection
+        countLabel={uiText.invoicing.creditedInvoiceCount}
+        emptyMessage={uiText.invoicing.creditedInvoicesEmpty}
+        kicker={uiText.invoicing.creditedInvoices}
+        listLabel={uiText.invoicing.creditedInvoiceList}
+        loadingMessage={uiText.invoicing.creditedInvoicesLoading}
+        pageState={creditedInvoicePageState}
+        title={uiText.invoicing.creditedInvoiceList}
         onOpenApprovedInvoice={onOpenApprovedInvoice}
       />
     </div>

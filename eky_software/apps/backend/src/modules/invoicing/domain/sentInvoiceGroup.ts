@@ -4,6 +4,10 @@ import type {
 } from './approvedInvoiceSummary.js';
 
 export type SentInvoiceCreditStatus = 'none' | 'partial' | 'full';
+export type SentInvoiceCreditStateFilter =
+  | 'all'
+  | 'uncredited'
+  | 'credited';
 
 export interface SentInvoiceGroup {
   rootInvoice: ApprovedInvoiceSummary;
@@ -14,6 +18,7 @@ export interface SentInvoiceGroup {
 
 export interface SentInvoiceGroupQuery {
   companyId: string;
+  creditState: SentInvoiceCreditStateFilter;
   dateFrom: string | null;
   dateTo: string | null;
   limit: number;

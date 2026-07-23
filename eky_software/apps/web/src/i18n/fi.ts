@@ -448,6 +448,13 @@ export const uiText = {
     creditDraftApproving: 'Hyväksytään hyvityslaskua...',
     creditDraftError:
       'Hyvitysluonnosta ei voitu käsitellä. Yritä hetken kuluttua uudelleen.',
+    creditedInvoiceCount: 'Hyvitettyjen laskujen määrä',
+    creditedInvoiceList: 'Hyvitetyt laskut',
+    creditedInvoiceListLoadError:
+      'Hyvitettyjä laskuja ei voitu ladata. Yritä hetken kuluttua uudelleen.',
+    creditedInvoices: 'Hyvitetyt',
+    creditedInvoicesEmpty: 'Hyvitettyjä tai osittain hyvitettyjä laskuja ei ole.',
+    creditedInvoicesLoading: 'Ladataan hyvitettyjä laskuja...',
     creditDraftFacts: 'Hyvitysluonnoksen perustiedot',
     creditDraftHelp: (invoiceNumber: string, invoiceDate: string) =>
       `Hyvitys kohdistuu laskuun ${invoiceNumber}, päiväys ${invoiceDate}. Backend laskee hyvityksen lopulliset summat alkuperäisen laskun snapshotista.`,

@@ -16,6 +16,7 @@ type ApprovedInvoiceListClient = Pick<
 export interface ApprovedInvoiceListState {
   approved: ApprovedInvoicePageState;
   cancelled: ApprovedInvoicePageState;
+  credited: ApprovedInvoicePageState;
   sent: ApprovedInvoicePageState;
   refreshApprovedInvoices(): Promise<void>;
 }
@@ -57,6 +58,13 @@ export function useApprovedInvoices(
     apiClient,
     'sent',
     fiscalYearStartMonth,
+    'uncredited',
+  );
+  const credited = useApprovedInvoicePage(
+    apiClient,
+    'sent',
+    fiscalYearStartMonth,
+    'credited',
   );
   const cancelled = useApprovedInvoicePage(
     apiClient,
@@ -68,12 +76,14 @@ export function useApprovedInvoices(
       approved.refresh(),
       sent.refresh(),
       cancelled.refresh(),
+      credited.refresh(),
     ]);
-  }, [approved.refresh, cancelled.refresh, sent.refresh]);
+  }, [approved.refresh, cancelled.refresh, credited.refresh, sent.refresh]);
 
   return {
     approved,
     cancelled,
+    credited,
     sent,
     refreshApprovedInvoices,
   };

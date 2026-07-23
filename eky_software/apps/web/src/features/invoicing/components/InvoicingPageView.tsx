@@ -176,6 +176,7 @@ export function InvoicingPageView({
         <InvoiceWorkspaceListView
           approvedInvoicePageState={approvedInvoiceListState.approved}
           cancelledInvoicePageState={approvedInvoiceListState.cancelled}
+          creditedInvoicePageState={approvedInvoiceListState.credited}
           customers={customerListState.customers}
           customerErrorMessage={customerListState.errorMessage}
           deleteErrorMessage={deleteState.errorMessage}
