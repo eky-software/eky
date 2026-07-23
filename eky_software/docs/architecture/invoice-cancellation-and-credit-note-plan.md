@@ -7,6 +7,25 @@ Dokumentti korvaa aiemman alustavan rajauksen, jossa ensimmäinen hyvityslasku
 oli vain koko laskun hyvitys ja osahyvitys jätettiin myöhemmäksi. Ensimmäinen
 toteutus tukee sekä koko laskun että laskuriveittäin rajatun osahyvityksen.
 
+## Toteutustila
+
+Ensimmäinen local-MVP-kokonaisuus on toteutettu:
+
+- toimittamattoman hyväksytyn laskun peruutus
+- hyvitysluonnos lähetetystä tavallisesta laskusta
+- koko- ja osahyvitys lähderiveihin sidottuna
+- atominen ylihyvityksen esto ja hyvityksen numerointi
+- hyvityslaskun snapshot, PDF ja turvallinen toimituspolku
+- peruutettujen laskujen listaus
+- lähetettyjen tavallisten laskujen palvelinpuolen ryhmittely hyvityksineen
+- alkuperäisen laskun, hyvitysten ja aktiivisen hyvitysluonnoksen
+  detail-suhteet
+
+Käyttäjälle näkyvä koko audit-/delivery-aikajana sekä selainpohjainen E2E ovat
+myöhempiä rajattuja vaiheita. Nykyiset peruutus- ja hyvitystoiminnot kirjaavat
+audit-eventit jo nyt. Pilotoinnin release- ja E2E-portit ovat dokumentissa
+`docs/architecture/codebase-cleanup-roadmap.md`.
+
 ## Tavoite
 
 Toteutuksen jälkeen käyttäjä voi:

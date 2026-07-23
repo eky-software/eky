@@ -476,7 +476,9 @@ nojalla automaattisesti:
 - Gmail- tai Microsoft OAuth -integraatiota
 - suoraa tulostinohjausta
 - background queue- tai outbox-järjestelmää
-- hyvityslaskua tai cancelointia
 - uusia riippuvuuksia
 
-Nämä vaativat erillisen päätöksen ja oman rajatun suunnitelmansa.
+Peruutuksen ja hyvityslaskun toteutunut local-MVP-malli on dokumentissa
+`docs/architecture/invoice-cancellation-and-credit-note-plan.md`. Muut yllä
+mainitut laajennukset vaativat erillisen päätöksen ja oman rajatun
+suunnitelmansa.

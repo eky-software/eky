@@ -198,9 +198,53 @@ Ennen lopullista print/PDF-vaihetta ratkaistaan erikseen:
 - arvioi React Error Boundary odottamattomille renderöintivirheille
 - tarkista responsiivisuus ilman desktop-työpinnan heikentämistä
 
+## Vaihe 10: peruutus ja hyvityslaskut
+
+Tila: local-MVP:n peruutus- ja hyvityspolku toteutettu.
+
+- hyväksytty mutta toimittamaton lasku voidaan perua kaksivaiheisella
+  vahvistuksella
+- peruttu lasku säilyy avattavana read-only-snapshotina omassa listassaan
+- lähetetystä tavallisesta laskusta voidaan luoda yksi aktiivinen
+  hyvitysluonnos
+- hyvitysluonnoksen editori sallii rivien poiston, määrän pienentämisen sekä
+  selitteen ja lisätiedon muokkauksen
+- lähderivin hinta-, ALV-, alennus-, yksikkö- ja lähdeviitetiedot ovat lukittuja
+- hyvityksen hyväksyntä käyttää backendin atomista ylihyvityssuojaa
+- hyväksytty hyvityslasku näkyy negatiivisena mutta on tallennettu
+  positiivisina magnitudeina
+- hyvityslaskulla on oma numero, PDF ja delivery state mutta ei uutta
+  maksuviitettä tai maksupalkkia
+- lähetettyjen lista sivuttaa juurilaskut palvelimella ja näyttää niiden
+  hyvityslaskut lapsiriveinä
+- detail-näkymä linkittää alkuperäisen laskun, hyvityslaskut ja mahdollisen
+  aktiivisen hyvitysluonnoksen
+
+Käyttäjälle näkyvä koko audit- ja delivery-aikajana toteutetaan myöhemmin
+omana rajattuna näkymänään. Nykyiset peruutus- ja hyvitystoiminnot kirjaavat
+audit-eventit jo backendissä.
+
+## Regressio- Ja Pilotointiportti
+
+Nykyinen colocated-testaus kattaa domain-, application-, repository-, HTTP-,
+API-client-, web- ja desktop-protokollarajat. Kriittiset korjauspolut ovat:
+
+- hyväksyntä ja toimittamattoman laskun peruutus vahvistusvirheineen
+- lähetetyn laskun koko- ja osahyvitys
+- peräkkäiset osahyvitykset sekä yhden sentin tai määräyksikön ylihyvitys
+- samanaikaisten hyväksyntäyritysten transaktiosuoja
+- hyvitysluonnoksen reload/autosave
+- juurilaskujen sivutus ja hyvityslasten ryhmittely sivurajojen yli
+
+Selainpohjaista E2E-riippuvuutta ei lisätä tässä vaiheessa. E2E:n,
+backup/restore-polun, Customer Overview -koosteen, observabilityn ja
+Windows-installerin pilotointiportit käsitellään
+`docs/architecture/codebase-cleanup-roadmap.md`-dokumentin release gate
+-järjestyksessä.
+
 ## Rajat
 
-Roadmap ei vielä sisällä:
+Alkuperäisen laskuluonnos-UI:n roadmap ei sisältänyt:
 
 - lopullista hyväksytyn laskun print-layoutia
 - PDF:ää

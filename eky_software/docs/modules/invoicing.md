@@ -223,6 +223,48 @@ vanhan laskun laskunumeroa, viitenumeroa, PDF-dokumenttia tai `sent`-tilaa.
 Uusi kopioitu luonnos saa oman laskunumeron ja viitenumeron vasta myöhemmässä
 hyväksynnässä.
 
+## Peruutus Ja Hyvityslaskut
+
+Hyväksytty mutta vielä toimittamaton lasku voidaan perua hallitulla
+`approved` -> `cancelled` -tilasiirtymällä. Peruutus säilyttää laskunumeron,
+snapshotin, rivit ja PDF:n eikä vapauta numeroa uudelleen käytettäväksi.
+Peruutuksen syy, aika ja vahvistettu actor tallennetaan laskulle, ja toiminto
+kirjaa `invoice.cancelled`-audit-tapahtuman.
+
+Lähetettyä tavallista laskua ei muokata tai peruta. Se korjataan erillisellä
+hyvityslaskulla, joka:
+
+- saa hyväksynnässä oman normaalin laskunumeron
+- viittaa alkuperäiseen laskuun ja hyvitysriveillä alkuperäisiin riveihin
+- tallentaa määrät ja rahasummat positiivisina magnitudeina
+- esittää rivit, ALV:n ja summat käyttäjälle negatiivisina
+- ei muodosta uutta maksuvaatimusta tai viitenumeroa
+- käyttää hyväksynnän jälkeen samaa current PDF- ja toimitusputkea kuin
+  tavallinen lasku
+
+Hyvitys voi olla koko laskun hyvitys tai lähderiveihin sidottu osahyvitys.
+Hyvitysluonnoksessa käyttäjä voi poistaa rivejä ja pienentää hyvitettävää
+määrää, mutta ei muuttaa lähderivin yksikköä, hintaa, ALV-kantaa, alennusta,
+syöttötapaa tai lähdeviitettä. Tavallisen laskun vapaata negatiivista syötettä
+ei sallita.
+
+Hyvityksen hyväksyntä laskee aiempien ei-peruttujen hyväksyttyjen ja
+lähetettyjen hyvitysten käyttämän kapasiteetin ja jäljellä olevan määrän
+transaktion sisällä. Ylihyvitys estetään sekä määrä- että senttitasolla.
+Alkuperäisen laskun hyvitystila `none | partial | full` ja jäljellä oleva
+hyvitettävä summa ovat snapshot-datasta johdettuja tietoja; ne eivät ole
+frontendin tallentamia totuuksia.
+
+Yhdellä alkuperäislaskulla saa olla vain yksi aktiivinen hyvitysluonnos.
+Lähetettyjen laskujen listaus sivuttaa tavalliset juurilaskut ja palauttaa
+niiden lähetetyt hyvityslaskut samassa palvelinpuolen ryhmässä. Laskun
+detail-näkymä näyttää myös hyväksytyt hyvitykset ja mahdollisen aktiivisen
+hyvitysluonnoksen. Käyttäjälle näkyvä koko tapahtuma-aikajana on myöhempi
+rajattu vaihe, vaikka peruutus- ja hyvitystoiminnot kirjaavat jo audit-eventit.
+
+Tarkat validointi-, transaktio-, PDF- ja ryhmittelysäännöt ovat dokumentissa
+`docs/architecture/invoice-cancellation-and-credit-note-plan.md`.
+
 Numerointiasetukset voivat näkyä käyttäjälle Oma yritys / Asetukset -kokonaisuudessa, mutta niiden domain-omistaja on Invoicing.
 
 Tarkat säännöt on kuvattu dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
@@ -446,7 +488,9 @@ Tavallisen laskurivin määrä, yksikköhinta ja loppusumma eivät saa olla nega
 
 Nollahintaiset rivit sallitaan selitteille, huomautuksille, lisätiedoille ja veloituksettomille työn kuvauksille. Ne kulkevat normaalin validoinnin ja laskennan kautta.
 
-Hyvityslaskut, laskukohtaiset alennukset ja muut adjustment-rakenteet toteutetaan myöhemmin erillisinä toimintoina, ei negatiivisina tavallisina laskuriveinä.
+Hyvityslaskut toteutetaan erillisenä lähdelaskuun sidottuna toimintona, ei
+negatiivisina tavallisina laskuriveinä. Laskukohtaiset alennukset ja muut
+adjustment-rakenteet ratkaistaan myöhemmin erikseen.
 
 Tarkat kaavat ja laskentajärjestys on määritelty dokumentissa `docs/architecture/invoicing-mvp-implementation-plan.md`.
 
