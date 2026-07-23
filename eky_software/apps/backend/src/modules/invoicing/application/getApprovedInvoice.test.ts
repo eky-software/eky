@@ -45,6 +45,22 @@ describe('getApprovedInvoice', () => {
     });
   });
 
+  it('keeps a cancelled invoice available as a read-only view', async () => {
+    const invoice = createApprovedInvoiceView({
+      cancelledAt: '2026-07-23T10:00:00.000Z',
+      cancelledBy: 'user-1',
+      cancellationReason: 'Duplicate invoice',
+      status: 'cancelled',
+    });
+
+    await expect(
+      getApprovedInvoice(
+        { companyId: 'dev-company', invoiceId: 'invoice-1' },
+        new FakeApprovedInvoiceReader(invoice),
+      ),
+    ).resolves.toEqual(invoice);
+  });
+
   it('normalizes approved invoice VAT breakdown from VAT-rate totals', async () => {
     const invoice = {
       ...createApprovedInvoiceView(),
@@ -132,7 +148,9 @@ describe('getApprovedInvoice', () => {
   });
 });
 
-function createApprovedInvoiceView(): ApprovedInvoiceView {
+function createApprovedInvoiceView(
+  overrides: Partial<ApprovedInvoiceView> = {},
+): ApprovedInvoiceView {
   return {
     id: 'invoice-1',
     companyId: 'dev-company',
@@ -206,6 +224,7 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     cancelledAt: null,
     cancelledBy: null,
     cancellationReason: null,
+    ...overrides,
   };
 }
 

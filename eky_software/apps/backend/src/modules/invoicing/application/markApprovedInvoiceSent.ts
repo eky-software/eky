@@ -12,6 +12,7 @@ import type { InvoiceManualDeliveryFinalizer } from '../ports/invoiceManualDeliv
 import { InvoiceDeliveryConflictError } from './invoiceDeliveryConflictError.js';
 import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
 import type { GenerateApprovedInvoicePdfDocumentInput } from './generateApprovedInvoicePdfDocument.js';
+import { requireInvoiceDeliveryEligible } from './requireInvoiceDeliveryEligible.js';
 
 export interface MarkApprovedInvoiceSentInput {
   actorContext: ActorContext;
@@ -48,6 +49,8 @@ export async function markApprovedInvoiceSent(
   if (currentInvoice === undefined) {
     throw new ApprovedInvoiceNotFoundError();
   }
+
+  requireInvoiceDeliveryEligible(currentInvoice);
 
   if (currentInvoice.status === 'sent') {
     return withCalculatedApprovedInvoiceVatBreakdown(currentInvoice);

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ApprovedInvoiceEmailDeliveryError } from './approvedInvoiceEmailDeliveryError.js';
 import { ApprovedInvoiceEmailDeliveryOutcomeUnknownError } from './approvedInvoiceEmailDeliveryOutcomeUnknownError.js';
+import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
 import { InvoiceEmailSendAttemptError } from './invoiceEmailSendAttemptError.js';
 import { createInvoiceEmailSendRequestFingerprint } from './invoiceEmailSendRequestFingerprint.js';
 import {
@@ -28,8 +29,16 @@ import {
 } from '../ports/invoiceSmtpTestDeliveryProvider.js';
 
 class FakeApprovedInvoiceReader implements ApprovedInvoiceReader {
+  constructor(
+    private readonly invoice: ApprovedInvoiceView = {
+      id: 'invoice-1',
+      invoiceNumber: '20260001',
+      status: 'approved',
+    } as ApprovedInvoiceView,
+  ) {}
+
   async getApprovedInvoiceById(): Promise<ApprovedInvoiceView> {
-    return { id: 'invoice-1', invoiceNumber: '20260001' } as ApprovedInvoiceView;
+    return this.invoice;
   }
 
   async listApprovedInvoiceSummaries(): Promise<never> {
@@ -194,6 +203,29 @@ describe('sendApprovedInvoiceEmailSmtpTest', () => {
     expect(dependencies.invoiceSmtpTestDeliveryProvider.sendTestEmail).not.toHaveBeenCalled();
   });
 
+  it('rejects a cancelled invoice before settings, PDF, attempt, event, or provider', async () => {
+    const repository = new FakeInvoiceDeliveryEventRepository();
+    const dependencies = createDependencies({
+      invoice: {
+        id: 'invoice-1',
+        invoiceNumber: '20260001',
+        status: 'cancelled',
+      } as ApprovedInvoiceView,
+      repository,
+    });
+
+    await expect(
+      sendApprovedInvoiceEmailSmtpTest(createInput(), dependencies),
+    ).rejects.toBeInstanceOf(ApprovedInvoiceNotFoundError);
+
+    expect(dependencies.invoiceEmailSettingsReader.getEmailSettings).not.toHaveBeenCalled();
+    expect(dependencies.ensureApprovedInvoicePdfDocument).not.toHaveBeenCalled();
+    expect(dependencies.getApprovedInvoicePdfDocument).not.toHaveBeenCalled();
+    expect(dependencies.invoiceEmailSendAttemptStore.acquire).not.toHaveBeenCalled();
+    expect(repository.events).toEqual([]);
+    expect(dependencies.invoiceSmtpTestDeliveryProvider.sendTestEmail).not.toHaveBeenCalled();
+  });
+
   it('allows only one provider call for concurrent requests with the same attempt', async () => {
     const attemptStore = new InMemoryInvoiceEmailSendAttemptStore();
     let releaseProvider: (() => void) | undefined;
@@ -274,6 +306,7 @@ describe('sendApprovedInvoiceEmailSmtpTest', () => {
 
 function createDependencies(options: {
   attemptStore?: InvoiceEmailSendAttemptStore;
+  invoice?: ApprovedInvoiceView;
   pdfContent?: Buffer;
   repository?: FakeInvoiceDeliveryEventRepository;
   sendTestEmail?: InvoiceSmtpTestDeliveryProvider['sendTestEmail'];
@@ -304,7 +337,7 @@ function createDependencies(options: {
     };
 
   return {
-    approvedInvoiceReader: new FakeApprovedInvoiceReader(),
+    approvedInvoiceReader: new FakeApprovedInvoiceReader(options.invoice),
     ensureApprovedInvoicePdfDocument: vi.fn(async () => createDocumentMetadata()),
     getApprovedInvoicePdfDocument: vi.fn(async () => ({
       content: pdfContent,

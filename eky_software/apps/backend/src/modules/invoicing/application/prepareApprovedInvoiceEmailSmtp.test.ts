@@ -2,6 +2,7 @@ import { createActorContext } from '@eky/auth';
 import { describe, expect, it, vi } from 'vitest';
 
 import { InvoiceDeliveryConflictError } from './invoiceDeliveryConflictError.js';
+import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
 import { prepareApprovedInvoiceEmailSmtp } from './prepareApprovedInvoiceEmailSmtp.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import type { InvoiceEmailSendAttemptStore } from '../ports/invoiceEmailSendAttemptStore.js';
@@ -97,6 +98,41 @@ describe('prepareApprovedInvoiceEmailSmtp', () => {
 
       expect(attemptStore.prepare).not.toHaveBeenCalled();
   });
+
+  it('rejects a cancelled invoice before delivery state, settings, PDF, or authorization', async () => {
+    const invoiceDeliveryEventReader = createDeliveryEventReader(false);
+    const ensureApprovedInvoicePdfDocument = vi.fn();
+    const invoiceEmailSendAttemptStore: InvoiceEmailSendAttemptStore = {
+      acquire: vi.fn(),
+      complete: vi.fn(),
+      prepare: vi.fn(),
+    };
+    const invoiceEmailSettingsReader = {
+      getEmailSettings: vi.fn(async () => createEmailSettings()),
+    };
+
+    await expect(
+      prepareApprovedInvoiceEmailSmtp(createInput(), {
+        approvedInvoiceReader: {
+          getApprovedInvoiceById: vi.fn(async () =>
+            createInvoice('cancelled'),
+          ),
+          listApprovedInvoiceSummaries: vi.fn(),
+        },
+        ensureApprovedInvoicePdfDocument,
+        invoiceDeliveryEventReader,
+        invoiceEmailSendAttemptStore,
+        invoiceEmailSettingsReader,
+      }),
+    ).rejects.toBeInstanceOf(ApprovedInvoiceNotFoundError);
+
+    expect(
+      invoiceDeliveryEventReader.hasUnresolvedDeliveryEvent,
+    ).not.toHaveBeenCalled();
+    expect(invoiceEmailSettingsReader.getEmailSettings).not.toHaveBeenCalled();
+    expect(ensureApprovedInvoicePdfDocument).not.toHaveBeenCalled();
+    expect(invoiceEmailSendAttemptStore.prepare).not.toHaveBeenCalled();
+  });
 });
 
 function createDeliveryEventReader(hasUnresolvedEvent: boolean) {
@@ -123,7 +159,9 @@ function createInput() {
   };
 }
 
-function createInvoice(status: 'approved' | 'sent'): ApprovedInvoiceView {
+function createInvoice(
+  status: ApprovedInvoiceView['status'],
+): ApprovedInvoiceView {
   return {
     id: 'invoice-1',
     invoiceNumber: '20260001',

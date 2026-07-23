@@ -13,6 +13,7 @@ import type {
 } from './getApprovedInvoicePdfDocument.js';
 import type { GenerateApprovedInvoicePdfDocumentInput } from './generateApprovedInvoicePdfDocument.js';
 import { recordInvoiceDeliveryEvent } from './recordInvoiceDeliveryEvent.js';
+import { requireInvoiceDeliveryEligible } from './requireInvoiceDeliveryEligible.js';
 import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import { normalizeDeliveryProviderMessageId } from '../domain/invoiceDeliveryEventRules.js';
@@ -91,6 +92,8 @@ export async function sendApprovedInvoiceEmailSmtp(
   if (invoice === undefined) {
     throw new ApprovedInvoiceNotFoundError();
   }
+
+  requireInvoiceDeliveryEligible(invoice);
 
   const settings = await dependencies.invoiceEmailSettingsReader.getEmailSettings(
     companyId,

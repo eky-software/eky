@@ -160,6 +160,20 @@ describe('sendApprovedInvoiceEmailDryRun', () => {
     expect(dependencies.deliveryEventRepository.events).toEqual([]);
   });
 
+  it('does not send or record a cancelled invoice', async () => {
+    const dependencies = createDependencies({
+      invoice: createApprovedInvoiceView({ status: 'cancelled' }),
+    });
+
+    await expect(
+      sendApprovedInvoiceEmailDryRun(createInput(), dependencies),
+    ).rejects.toBeInstanceOf(ApprovedInvoiceNotFoundError);
+
+    expect(dependencies.ensureApprovedInvoicePdfDocument).not.toHaveBeenCalled();
+    expect(dependencies.provider.sentEmails).toEqual([]);
+    expect(dependencies.deliveryEventRepository.events).toEqual([]);
+  });
+
   it('records a safe failed delivery event when dry-run provider fails', async () => {
     const dependencies = createDependencies({
       sendError: new Error('SMTP password was wrong: secret-value'),
@@ -260,7 +274,9 @@ function createApprovedInvoiceDocumentMetadata(): ApprovedInvoiceDocumentMetadat
   };
 }
 
-function createApprovedInvoiceView(): ApprovedInvoiceView {
+function createApprovedInvoiceView(
+  overrides: Partial<ApprovedInvoiceView> = {},
+): ApprovedInvoiceView {
   return {
     approvedAt: '2026-07-10T09:00:00.000Z',
     invoiceKind: 'standard',
@@ -334,5 +350,6 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     cancelledAt: null,
     cancelledBy: null,
     cancellationReason: null,
+    ...overrides,
   };
 }
