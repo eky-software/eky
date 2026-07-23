@@ -49,7 +49,9 @@ function drawInvoice(
   const linesBottom = drawInvoiceLines(doc, invoice, detailsBottom + 16);
   const totalsBottom = drawVatAndTotals(doc, invoice, linesBottom + 18);
 
-  drawPaymentBar(doc, invoice, Math.max(totalsBottom + 18, 628));
+  if (invoice.invoiceKind === 'standard') {
+    drawPaymentBar(doc, invoice, Math.max(totalsBottom + 18, 628));
+  }
   drawFooter(doc, invoice);
   drawPageNumbers(doc);
 }

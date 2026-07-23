@@ -16,6 +16,7 @@ describe('ApprovedInvoiceTotals', () => {
             vatRateBasisPoints: 2550,
           },
         ]}
+        invoiceKind="standard"
         totals={{
           grossTotalCents: 12550,
           netTotalCents: 10000,

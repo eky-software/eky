@@ -7,6 +7,8 @@ export function createApprovedInvoicePdfSample(): ApprovedInvoiceView {
     sourceDraftId: 'draft-sample-1',
     invoiceKind: 'standard',
     creditedInvoiceId: null,
+    creditedInvoiceNumber: null,
+    creditedInvoiceDate: null,
     invoiceNumber: '24389',
     referenceNumber: '2438901007',
     referenceNumberType: 'finnishDomestic',

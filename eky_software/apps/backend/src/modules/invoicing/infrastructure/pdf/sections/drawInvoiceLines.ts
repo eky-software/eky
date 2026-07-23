@@ -3,9 +3,9 @@ import type {
   ApprovedInvoiceViewLine,
 } from '../../../domain/approvedInvoiceView.js';
 import {
-  formatPdfCents,
   formatPdfDiscount,
   formatPdfPercentBasisPoints,
+  formatPdfPresentedCents,
   formatPdfQuantity,
 } from '../approvedInvoicePdfFormatting.js';
 import {
@@ -47,7 +47,14 @@ export function drawInvoiceLines(
       currentY = drawInvoiceLinesHeader(doc, columns, invoicePdfLayout.margin);
     }
 
-    drawLineRow(doc, line, columns, currentY, invoice.priceInputMode);
+    drawLineRow(
+      doc,
+      line,
+      columns,
+      currentY,
+      invoice.priceInputMode,
+      invoice.invoiceKind,
+    );
     currentY += rowHeight;
   }
 
@@ -87,6 +94,7 @@ function drawLineRow(
   columns: InvoiceLineColumns,
   y: number,
   priceInputMode: ApprovedInvoiceView['priceInputMode'],
+  invoiceKind: ApprovedInvoiceView['invoiceKind'],
 ): void {
   const unitPrice =
     priceInputMode === 'gross'
@@ -120,11 +128,11 @@ function drawLineRow(
       align: columns.vatRate.align,
     },
   );
-  doc.text(formatPdfCents(unitPrice), columns.unitPrice.x, y, {
+  doc.text(formatPdfPresentedCents(unitPrice, invoiceKind), columns.unitPrice.x, y, {
     width: columns.unitPrice.width,
     align: columns.unitPrice.align,
   });
-  doc.text(formatPdfCents(lineTotal), columns.lineTotal.x, y, {
+  doc.text(formatPdfPresentedCents(lineTotal, invoiceKind), columns.lineTotal.x, y, {
     width: columns.lineTotal.width,
     align: columns.lineTotal.align,
   });

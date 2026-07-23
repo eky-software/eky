@@ -6,6 +6,7 @@ import {
   formatPdfDate,
   formatPdfIban,
   formatPdfPercentBasisPoints,
+  formatPdfPresentedCents,
   formatPdfQuantity,
 } from './approvedInvoicePdfFormatting.js';
 import { renderApprovedInvoicePdf } from './approvedInvoicePdfRenderer.js';
@@ -38,9 +39,37 @@ describe('approved invoice PDF renderer', () => {
     ).resolves.toBeInstanceOf(Uint8Array);
   });
 
+  it('renders a non-empty credit invoice PDF from snapshot data', async () => {
+    const invoice = createApprovedInvoicePdfSample();
+
+    const pdf = await renderApprovedInvoicePdf({
+      ...invoice,
+      creditedInvoiceId: 'source-invoice-1',
+      creditedInvoiceNumber: '20260001',
+      creditedInvoiceDate: '2026-07-01',
+      invoiceKind: 'credit',
+      invoiceNumber: '20260002',
+      referenceNumber: '',
+      referenceNumberType: 'none',
+      dueDate: invoice.invoiceDate,
+      paymentTermDays: 0,
+      reminderPeriodDays: 0,
+      latePaymentInterestBasisPoints: 0,
+      lines: invoice.lines.map((line) => ({
+        ...line,
+        sourceInvoiceLineId: `source-${line.id}`,
+      })),
+    });
+
+    expect(pdf.length).toBeGreaterThan(1000);
+    expect(Buffer.from(pdf.subarray(0, 4)).toString('ascii')).toBe('%PDF');
+  });
+
   it('formats invoice values for the PDF layout', () => {
     expect(formatPdfCents(45430)).toBe('454,30 EUR');
     expect(formatPdfCents(106675)).toBe('1 066,75 EUR');
+    expect(formatPdfPresentedCents(45430, 'standard')).toBe('454,30 EUR');
+    expect(formatPdfPresentedCents(45430, 'credit')).toBe('-454,30 EUR');
     expect(formatPdfDate('2026-07-03')).toBe('03.07.2026');
     expect(formatPdfPercentBasisPoints(2550)).toBe('25,50 %');
     expect(formatPdfQuantity(150)).toBe('1,50');

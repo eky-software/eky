@@ -1,4 +1,5 @@
 import type { InvoiceLineDiscount } from '../../domain/invoiceCalculation.js';
+import type { InvoiceKind } from '../../domain/invoiceKind.js';
 
 export function formatPdfCents(cents: number): string {
   const sign = cents < 0 ? '-' : '';
@@ -9,6 +10,13 @@ export function formatPdfCents(cents: number): string {
   return `${sign}${euros.toLocaleString('fi-FI')},${remainder
     .toString()
     .padStart(2, '0')} EUR`;
+}
+
+export function formatPdfPresentedCents(
+  cents: number,
+  invoiceKind: InvoiceKind,
+): string {
+  return formatPdfCents(invoiceKind === 'credit' ? -Math.abs(cents) : cents);
 }
 
 export function formatPdfDate(date: string): string {

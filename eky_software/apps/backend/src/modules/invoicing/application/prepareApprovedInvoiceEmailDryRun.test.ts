@@ -90,6 +90,50 @@ describe('prepareApprovedInvoiceEmailDryRun', () => {
     expect(result.to).toBe('customer@example.fi');
   });
 
+  it('prepares a credit invoice email without a payment request', async () => {
+    const invoice = createApprovedInvoiceView({
+      creditedInvoiceId: 'source-invoice-1',
+      creditedInvoiceNumber: '20260001',
+      creditedInvoiceDate: '2026-07-01',
+      invoiceKind: 'credit',
+      invoiceNumber: '20260002',
+      referenceNumber: '',
+      referenceNumberType: 'none',
+      dueDate: '2026-07-09',
+      paymentTermDays: 0,
+      reminderPeriodDays: 0,
+      latePaymentInterestBasisPoints: 0,
+    });
+    const invoiceEmailDeliveryProvider = createDryRunProvider();
+
+    const result = await prepareApprovedInvoiceEmailDryRun(
+      {
+        actorContext: createSendInvoicesActorContext(),
+        invoiceId: 'invoice-1',
+        preparedAt: '2026-07-09T10:00:00.000Z',
+      },
+      {
+        approvedInvoiceReader: createApprovedInvoiceReader(invoice),
+        ensureApprovedInvoicePdfDocument: vi.fn(async () => ({
+          ...createApprovedInvoiceDocumentMetadata(),
+          fileName: 'hyvityslasku-20260002.pdf',
+        })),
+        invoiceEmailDeliveryProvider,
+      },
+    );
+
+    expect(result.subject).toBe('Hyvityslasku 20260002');
+    expect(result.body).toContain('Liitteenä hyvityslasku 20260002.');
+    expect(result.body).toContain(
+      'Hyvityslasku kohdistuu laskuun 20260001 (01.07.2026).',
+    );
+    expect(result.body).toContain('Hyvityksen summa: -1 255,00 EUR');
+    expect(result.body).not.toContain('Eräpäivä:');
+    expect(result.body).not.toContain('Maksun saaja:');
+    expect(result.body).not.toContain('Viitenumero:');
+    expect(result.body).not.toContain('Tilinumero:');
+  });
+
   it('does not prepare an email when the approved invoice is not found', async () => {
     const invoiceEmailDeliveryProvider = createDryRunProvider();
 
@@ -199,6 +243,8 @@ function createApprovedInvoiceView(
     sourceDraftId: 'draft-1',
     invoiceKind: 'standard',
     creditedInvoiceId: null,
+    creditedInvoiceNumber: null,
+    creditedInvoiceDate: null,
     invoiceNumber: '20260001',
     referenceNumber: '202600017',
     referenceNumberType: 'finnishDomestic',

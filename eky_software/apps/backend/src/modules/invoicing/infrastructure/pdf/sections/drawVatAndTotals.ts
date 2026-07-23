@@ -1,7 +1,7 @@
 import type { ApprovedInvoiceView } from '../../../domain/approvedInvoiceView.js';
 import {
-  formatPdfCents,
   formatPdfPercentBasisPoints,
+  formatPdfPresentedCents,
 } from '../approvedInvoicePdfFormatting.js';
 import { invoicePdfLayout } from '../approvedInvoicePdfLayout.js';
 
@@ -27,11 +27,11 @@ export function drawVatAndTotals(
     doc.text(formatPdfPercentBasisPoints(vat.vatRateBasisPoints), x, currentY, {
       width: 55,
     });
-    doc.text(formatPdfCents(vat.netCents), x + 88, currentY, {
+    doc.text(formatPdfPresentedCents(vat.netCents, invoice.invoiceKind), x + 88, currentY, {
       width: 82,
       align: 'right',
     });
-    doc.text(formatPdfCents(vat.vatCents), x + 208, currentY, {
+    doc.text(formatPdfPresentedCents(vat.vatCents, invoice.invoiceKind), x + 208, currentY, {
       width: 82,
       align: 'right',
     });
@@ -44,21 +44,21 @@ export function drawVatAndTotals(
   drawTotalsLine(
     doc,
     'Yhteensä ilman alv',
-    formatPdfCents(invoice.totals.netTotalCents),
+    formatPdfPresentedCents(invoice.totals.netTotalCents, invoice.invoiceKind),
     totalsX,
     totalsY,
   );
   drawTotalsLine(
     doc,
     'Alv yhteensä',
-    formatPdfCents(invoice.totals.vatTotalCents),
+    formatPdfPresentedCents(invoice.totals.vatTotalCents, invoice.invoiceKind),
     totalsX,
     totalsY + 18,
   );
   drawTotalsLine(
     doc,
     'Loppusumma EUR',
-    formatPdfCents(invoice.totals.grossTotalCents),
+    formatPdfPresentedCents(invoice.totals.grossTotalCents, invoice.invoiceKind),
     totalsX,
     totalsY + 32,
     true,

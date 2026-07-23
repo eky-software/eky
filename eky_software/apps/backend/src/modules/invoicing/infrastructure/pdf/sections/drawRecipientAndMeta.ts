@@ -33,26 +33,45 @@ export function drawRecipientAndMeta(
   );
 
   drawSectionTitle(doc, 'Laskun tiedot', rightX + 10, y + 10, 195);
+  const invoiceMetadata =
+    invoice.invoiceKind === 'credit'
+      ? [
+          { label: 'Asiakas', value: invoice.customerNameSnapshot },
+          { label: 'Asiakasnumero', value: invoice.customerNumberSnapshot },
+          { label: 'Tilausnumero', value: invoice.orderNumber },
+          {
+            label: 'Hyvittää laskua',
+            value: invoice.creditedInvoiceNumber ?? '',
+          },
+          {
+            label: 'Laskun päiväys',
+            value:
+              invoice.creditedInvoiceDate === null
+                ? ''
+                : formatPdfDate(invoice.creditedInvoiceDate),
+          },
+        ]
+      : [
+          { label: 'Asiakas', value: invoice.customerNameSnapshot },
+          { label: 'Asiakasnumero', value: invoice.customerNumberSnapshot },
+          { label: 'Tilausnumero', value: invoice.orderNumber },
+          { label: 'Maksuehto', value: `${invoice.paymentTermDays} pv netto` },
+          { label: 'Eräpäivä', value: formatPdfDate(invoice.dueDate) },
+          {
+            label: 'Huom.aika',
+            value: `${invoice.reminderPeriodDays} pv`,
+          },
+          {
+            label: 'Viiv.korko',
+            value: formatPdfPercentBasisPoints(
+              invoice.latePaymentInterestBasisPoints,
+            ),
+          },
+          { label: 'Viitenumero', value: invoice.referenceNumber },
+        ];
   const metadataBottom = drawLabelValueLines(
     doc,
-    [
-      { label: 'Asiakas', value: invoice.customerNameSnapshot },
-      { label: 'Asiakasnumero', value: invoice.customerNumberSnapshot },
-      { label: 'Tilausnumero', value: invoice.orderNumber },
-      { label: 'Maksuehto', value: `${invoice.paymentTermDays} pv netto` },
-      { label: 'Eräpäivä', value: formatPdfDate(invoice.dueDate) },
-      {
-        label: 'Huom.aika',
-        value: `${invoice.reminderPeriodDays} pv`,
-      },
-      {
-        label: 'Viiv.korko',
-        value: formatPdfPercentBasisPoints(
-          invoice.latePaymentInterestBasisPoints,
-        ),
-      },
-      { label: 'Viitenumero', value: invoice.referenceNumber },
-    ],
+    invoiceMetadata,
     rightX + 10,
     contentTop,
     { labelWidth: 78, width: 195, lineGap },

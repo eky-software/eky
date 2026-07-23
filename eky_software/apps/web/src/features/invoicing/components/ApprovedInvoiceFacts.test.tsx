@@ -43,9 +43,12 @@ function renderFacts(
   return renderToStaticMarkup(
     <ApprovedInvoiceFacts
       approvedAt="2026-06-13T10:00:00.000Z"
+      creditedInvoiceDate={null}
+      creditedInvoiceNumber={null}
       deliveryAddressText="Worksite Street 4"
       dueDate="2026-06-27"
       invoiceDate="2026-06-13"
+      invoiceKind="standard"
       latePaymentInterestBasisPoints={950}
       note="Invoice note"
       orderNumber="ORDER-1"

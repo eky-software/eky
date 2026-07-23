@@ -1,4 +1,5 @@
 import type {
+  ApprovedInvoiceKind,
   ApprovedInvoiceLineDiscount,
   ApprovedInvoiceUnit,
 } from '@eky/api-client';
@@ -11,6 +12,15 @@ import {
 
 export function formatApprovedInvoiceCurrency(cents: number): string {
   return formatInvoiceDraftCurrency(cents);
+}
+
+export function formatApprovedInvoicePresentedCurrency(
+  cents: number,
+  invoiceKind: ApprovedInvoiceKind,
+): string {
+  return formatApprovedInvoiceCurrency(
+    invoiceKind === 'credit' ? -Math.abs(cents) : cents,
+  );
 }
 
 export function formatApprovedInvoiceDate(date: string): string {

@@ -4,19 +4,21 @@ import type {
 } from '@eky/api-client';
 
 import {
-  formatApprovedInvoiceCurrency,
   formatApprovedInvoicePercent,
+  formatApprovedInvoicePresentedCurrency,
 } from '../approved/approvedInvoiceFormatting.js';
 import styles from './ApprovedInvoicePreview.module.css';
 import { uiText } from '../../../i18n/fi.js';
 
 interface ApprovedInvoiceTotalsProps {
   breakdown: ApprovedInvoiceVatBreakdown[];
+  invoiceKind: ApprovedInvoiceView['invoiceKind'];
   totals: ApprovedInvoiceView['totals'];
 }
 
 export function ApprovedInvoiceTotals({
   breakdown,
+  invoiceKind,
   totals,
 }: ApprovedInvoiceTotalsProps): React.JSX.Element {
   return (
@@ -46,13 +48,22 @@ export function ApprovedInvoiceTotals({
                 {formatApprovedInvoicePercent(item.vatRateBasisPoints)}
               </span>
               <span className={styles.number} role="cell">
-                {formatApprovedInvoiceCurrency(item.netCents)}
+                {formatApprovedInvoicePresentedCurrency(
+                  item.netCents,
+                  invoiceKind,
+                )}
               </span>
               <span className={styles.number} role="cell">
-                {formatApprovedInvoiceCurrency(item.vatCents)}
+                {formatApprovedInvoicePresentedCurrency(
+                  item.vatCents,
+                  invoiceKind,
+                )}
               </span>
               <strong className={styles.number} role="cell">
-                {formatApprovedInvoiceCurrency(item.grossCents)}
+                {formatApprovedInvoicePresentedCurrency(
+                  item.grossCents,
+                  invoiceKind,
+                )}
               </strong>
             </div>
           ))}
@@ -64,15 +75,30 @@ export function ApprovedInvoiceTotals({
         <div className={styles.totalsTable}>
           <div>
             <span>{uiText.invoicing.netTotal}</span>
-            <span>{formatApprovedInvoiceCurrency(totals.netTotalCents)}</span>
+            <span>
+              {formatApprovedInvoicePresentedCurrency(
+                totals.netTotalCents,
+                invoiceKind,
+              )}
+            </span>
           </div>
           <div>
             <span>{uiText.invoicing.vatTotal}</span>
-            <span>{formatApprovedInvoiceCurrency(totals.vatTotalCents)}</span>
+            <span>
+              {formatApprovedInvoicePresentedCurrency(
+                totals.vatTotalCents,
+                invoiceKind,
+              )}
+            </span>
           </div>
           <div className={styles.grandTotal}>
             <span>{uiText.invoicing.total}</span>
-            <span>{formatApprovedInvoiceCurrency(totals.grossTotalCents)}</span>
+            <span>
+              {formatApprovedInvoicePresentedCurrency(
+                totals.grossTotalCents,
+                invoiceKind,
+              )}
+            </span>
           </div>
         </div>
       </section>
