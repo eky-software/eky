@@ -1,46 +1,17 @@
 import Database from 'better-sqlite3';
-import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { DatabaseConnection } from '../../../database/connection/createDatabaseConnection.js';
+import { runMigrations } from '../../../database/migration/runMigrations.js';
 import { SqliteApprovedInvoiceReader } from './sqliteApprovedInvoiceReader.js';
-
-const migrationNames = [
-  '004_create_company_settings.sql',
-  '006_create_invoice_drafts.sql',
-  '009_create_approved_invoices.sql',
-  '010_add_invoice_reference_number.sql',
-  '016_add_approved_invoice_print_snapshot_fields.sql',
-  '017_allow_reopened_invoice_corrections.sql',
-  '018_create_invoice_documents.sql',
-  '019_add_company_website.sql',
-  '020_relax_invoice_line_unit_checks.sql',
-  '021_allow_sent_approved_invoices.sql',
-];
-
-const migrationSql = migrationNames.map((migrationName) =>
-  readFileSync(
-    new URL(
-      `../../../database/migrations/${migrationName}`,
-      import.meta.url,
-    ),
-    'utf8',
-  ),
-);
-
-function runMigrations(database: DatabaseConnection): void {
-  for (const sql of migrationSql) {
-    database.exec(sql);
-  }
-}
 
 describe('SqliteApprovedInvoiceReader', () => {
   let database: DatabaseConnection;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     database = new Database(':memory:');
     database.pragma('foreign_keys = ON');
-    runMigrations(database);
+    await runMigrations(database);
     insertSourceDraft(database);
     insertApprovedInvoice(database);
     insertInvoiceLines(database);
@@ -131,6 +102,8 @@ describe('SqliteApprovedInvoiceReader', () => {
       invoices: [
         {
           id: 'invoice-1',
+          invoiceKind: 'standard',
+          creditedInvoiceId: null,
           invoiceNumber: '20260001',
           referenceNumber: '202600017',
           status: 'approved',
@@ -143,6 +116,7 @@ describe('SqliteApprovedInvoiceReader', () => {
           grossTotalCents: 35100,
           approvedAt: '2026-06-13T10:00:00.000Z',
           updatedAt: '2026-06-13T10:00:00.000Z',
+          cancelledAt: null,
         },
       ],
       totalCount: 1,
@@ -216,6 +190,10 @@ describe('SqliteApprovedInvoiceReader', () => {
   });
 
   it('does not need Company Settings or Customers master data for the view', async () => {
+    database.exec(`
+      DELETE FROM company_settings;
+      DROP TABLE customers;
+    `);
     const companySettingsRows = database
       .prepare<[], { count: number }>(
         'SELECT COUNT(*) AS count FROM company_settings',

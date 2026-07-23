@@ -263,6 +263,8 @@ function createApprovedInvoiceDocumentMetadata(): ApprovedInvoiceDocumentMetadat
 function createApprovedInvoiceView(): ApprovedInvoiceView {
   return {
     approvedAt: '2026-07-10T09:00:00.000Z',
+    invoiceKind: 'standard',
+    creditedInvoiceId: null,
     billingRecipientBusinessIdSnapshot: '',
     billingRecipientCitySnapshot: 'Espoo',
     billingRecipientCustomerId: 'billing-1',
@@ -326,5 +328,8 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     },
     updatedAt: '2026-07-10T09:00:00.000Z',
     vatBreakdown: [],
+    cancelledAt: null,
+    cancelledBy: null,
+    cancellationReason: null,
   };
 }

@@ -102,6 +102,8 @@ export function createInvoiceRow(
     id: input.invoiceId,
     company_id: input.companyId,
     source_draft_id: input.draftId,
+    invoice_kind: 'standard',
+    credited_invoice_id: null,
     invoice_number: invoiceNumber,
     reference_number: referenceNumber,
     reference_number_type: referenceNumberType,
@@ -161,6 +163,9 @@ export function createInvoiceRow(
     created_at: input.approvedAt,
     approved_at: input.approvedAt,
     updated_at: input.approvedAt,
+    cancelled_at: null,
+    cancelled_by: null,
+    cancellation_reason: null,
   };
 }
 
@@ -211,6 +216,7 @@ export function createInvoiceLineRows(
     return {
       id: line.id,
       invoice_id: input.invoiceId,
+      source_invoice_line_id: null,
       line_order: line.position,
       code: line.code,
       description: line.description,

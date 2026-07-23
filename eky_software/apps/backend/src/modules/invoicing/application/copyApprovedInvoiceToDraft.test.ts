@@ -196,6 +196,8 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     deliveryAddressText: 'Worksite Street 4',
     dueDate: '2026-06-27',
     id: 'invoice-1',
+    invoiceKind: 'standard',
+    creditedInvoiceId: null,
     invoiceDate: '2026-06-13',
     invoiceNumber: '20260001',
     latePaymentInterestBasisPoints: 950,
@@ -208,6 +210,7 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
         discountCents: 0,
         grossCents: 12550,
         id: 'line-1',
+        sourceInvoiceLineId: null,
         lineOrder: 1,
         netCents: 10000,
         quantityHundredths: 100,
@@ -245,6 +248,9 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
       vatTotalCents: 2550,
     },
     updatedAt: '2026-06-13T10:00:00.000Z',
+    cancelledAt: null,
+    cancelledBy: null,
+    cancellationReason: null,
     vatBreakdown: [
       {
         grossCents: 12550,

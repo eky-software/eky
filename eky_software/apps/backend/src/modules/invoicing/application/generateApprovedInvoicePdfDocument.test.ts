@@ -225,6 +225,8 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     id: 'invoice-1',
     companyId: 'dev-company',
     sourceDraftId: 'draft-1',
+    invoiceKind: 'standard',
+    creditedInvoiceId: null,
     invoiceNumber: '20260001',
     referenceNumber: '202600017',
     referenceNumberType: 'finnishDomestic',
@@ -286,5 +288,8 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     createdAt: '2026-07-05T10:00:00.000Z',
     approvedAt: '2026-07-05T10:00:00.000Z',
     updatedAt: '2026-07-05T10:00:00.000Z',
+    cancelledAt: null,
+    cancelledBy: null,
+    cancellationReason: null,
   };
 }

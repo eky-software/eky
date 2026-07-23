@@ -198,11 +198,14 @@ function createApprovedInvoiceSummary(): ApprovedInvoiceSummary {
     dueDate: '2026-06-27',
     grossTotalCents: 12550,
     id: 'invoice-1',
+    invoiceKind: 'standard',
+    creditedInvoiceId: null,
     invoiceDate: '2026-06-13',
     invoiceNumber: '20260001',
     referenceNumber: '202600017',
     status: 'approved',
     updatedAt: '2026-06-13T10:00:00.000Z',
+    cancelledAt: null,
   };
 }
 
@@ -232,6 +235,8 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     companyVatNumberSnapshot: 'FI76543210',
     companyWebsiteSnapshot: 'www.example-builder.fi',
     companyId: 'dev-company',
+    invoiceKind: 'standard',
+    creditedInvoiceId: null,
     createdAt: '2026-06-13T10:00:00.000Z',
     customerBusinessIdSnapshot: '1234567-8',
     customerCitySnapshot: 'Helsinki',
@@ -258,6 +263,7 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
         discountCents: 0,
         grossCents: 12550,
         id: 'line-1',
+        sourceInvoiceLineId: null,
         lineOrder: 1,
         netCents: 10000,
         quantityHundredths: 100,
@@ -303,5 +309,8 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
         vatRateBasisPoints: 2550,
       },
     ],
+    cancelledAt: null,
+    cancelledBy: null,
+    cancellationReason: null,
   };
 }

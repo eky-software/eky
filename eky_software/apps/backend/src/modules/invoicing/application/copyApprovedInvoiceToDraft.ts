@@ -37,6 +37,12 @@ export async function copyApprovedInvoiceToDraft(
     throw new ApprovedInvoiceNotFoundError();
   }
 
+  if (invoice.invoiceKind !== 'standard') {
+    throw new InvoiceDraftValidationError(
+      'Only standard invoices can be copied to a standard invoice draft.',
+    );
+  }
+
   const customerBelongsToCompany =
     await dependencies.customerAccessReader.belongsToCompany(
       invoice.customerId,
@@ -91,7 +97,9 @@ export async function copyApprovedInvoiceToDraft(
     ...content,
     companyId,
     createdAt: now,
+    creditedInvoiceId: null,
     id: randomUUID(),
+    invoiceKind: 'standard',
     status: 'draft',
     updatedAt: now,
   };

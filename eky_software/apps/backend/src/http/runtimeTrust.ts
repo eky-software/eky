@@ -16,6 +16,7 @@ const runtimeSessionPattern = /^[A-Za-z0-9_-]+$/;
 const localOwnerPermissions = Object.freeze([
   'manageCompanySettings',
   'manageInvoiceSettings',
+  'manageInvoiceCorrections',
   'manageCompanyEmailSettings',
   'manageCompanyEmailSecret',
   'sendInvoices',

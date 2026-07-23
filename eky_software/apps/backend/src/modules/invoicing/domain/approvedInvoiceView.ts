@@ -4,13 +4,15 @@ import type {
   PriceInputMode,
 } from './invoiceCalculation.js';
 import type { InvoiceUnit } from './invoiceDraft.js';
+import type { InvoiceKind } from './invoiceKind.js';
 import type { InvoiceNumberingMode } from './invoiceNumbering.js';
 import type { ReferenceNumberType } from './invoiceReferenceNumber.js';
 
-export type ApprovedInvoiceViewStatus = 'approved' | 'sent';
+export type ApprovedInvoiceViewStatus = 'approved' | 'sent' | 'cancelled';
 
 export interface ApprovedInvoiceViewLine {
   id: string;
+  sourceInvoiceLineId: string | null;
   lineOrder: number;
   code: string;
   description: string;
@@ -37,6 +39,8 @@ export interface ApprovedInvoiceView {
   id: string;
   companyId: string;
   sourceDraftId: string;
+  invoiceKind: InvoiceKind;
+  creditedInvoiceId: string | null;
   invoiceNumber: string;
   referenceNumber: string;
   referenceNumberType: ReferenceNumberType;
@@ -93,4 +97,7 @@ export interface ApprovedInvoiceView {
   createdAt: string;
   approvedAt: string;
   updatedAt: string;
+  cancelledAt: string | null;
+  cancelledBy: string | null;
+  cancellationReason: string | null;
 }

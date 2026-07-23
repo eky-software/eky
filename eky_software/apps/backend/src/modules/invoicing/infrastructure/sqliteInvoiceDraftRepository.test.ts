@@ -1,8 +1,8 @@
 import Database from 'better-sqlite3';
-import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { DatabaseConnection } from '../../../database/connection/createDatabaseConnection.js';
+import { runMigrations } from '../../../database/migration/runMigrations.js';
 import type {
   InvoiceDraftLineTable,
   InvoiceDraftTable,
@@ -15,42 +15,6 @@ import type {
 } from '../domain/invoiceDraft.js';
 import type { InvoiceLineDiscount } from '../domain/invoiceCalculation.js';
 import { SqliteInvoiceDraftRepository } from './sqliteInvoiceDraftRepository.js';
-
-const invoiceDraftMigrationSql = readFileSync(
-  new URL(
-    '../../../database/migrations/006_create_invoice_drafts.sql',
-    import.meta.url,
-  ),
-  'utf8',
-);
-const approvedInvoiceMigrationSql = readFileSync(
-  new URL(
-    '../../../database/migrations/009_create_approved_invoices.sql',
-    import.meta.url,
-  ),
-  'utf8',
-);
-const relaxedInvoiceUnitChecksMigrationSql = readFileSync(
-  new URL(
-    '../../../database/migrations/020_relax_invoice_line_unit_checks.sql',
-    import.meta.url,
-  ),
-  'utf8',
-);
-const latePaymentInterestMigrationSql = readFileSync(
-  new URL(
-    '../../../database/migrations/013_add_invoice_draft_late_payment_interest.sql',
-    import.meta.url,
-  ),
-  'utf8',
-);
-const printFoundationFieldsMigrationSql = readFileSync(
-  new URL(
-    '../../../database/migrations/015_add_invoice_draft_print_foundation_fields.sql',
-    import.meta.url,
-  ),
-  'utf8',
-);
 
 function createLine(
   id: string,
@@ -74,6 +38,7 @@ function createLine(
     description: position === 1 ? 'Installation work' : 'Travel',
     unit: position === 1 ? 'h' : 'km',
     discount,
+    sourceInvoiceLineId: null,
   };
 }
 
@@ -92,6 +57,8 @@ function createDraft(
     customerId: 'customer-1',
     billingRecipientCustomerId: 'customer-billing-1',
     status: 'draft',
+    invoiceKind: 'standard',
+    creditedInvoiceId: null,
     invoiceDate: '2026-06-13',
     dueDate: '2026-06-27',
     paymentTermDays: 14,
@@ -130,14 +97,10 @@ function markDraftApproved(
 describe('SqliteInvoiceDraftRepository', () => {
   let database: DatabaseConnection;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     database = new Database(':memory:');
     database.pragma('foreign_keys = ON');
-    database.exec(invoiceDraftMigrationSql);
-    database.exec(latePaymentInterestMigrationSql);
-    database.exec(printFoundationFieldsMigrationSql);
-    database.exec(approvedInvoiceMigrationSql);
-    database.exec(relaxedInvoiceUnitChecksMigrationSql);
+    await runMigrations(database);
   });
 
   afterEach(() => {

@@ -113,6 +113,7 @@ function createStoredDraft(): InvoiceDraft {
     {
       ...line,
       id: 'old-line',
+      sourceInvoiceLineId: null,
       position: 1,
       code: '',
       description: 'Old line',
@@ -124,6 +125,8 @@ function createStoredDraft(): InvoiceDraft {
   return {
     id: 'draft-1',
     companyId: 'dev-company',
+    invoiceKind: 'standard',
+    creditedInvoiceId: null,
     customerId: 'customer-1',
     billingRecipientCustomerId: null,
     status: 'draft',

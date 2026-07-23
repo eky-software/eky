@@ -80,6 +80,8 @@ export function toInvoiceDraftRow(draft: InvoiceDraft): NewInvoiceDraftRow {
   return {
     id: draft.id,
     company_id: draft.companyId,
+    invoice_kind: draft.invoiceKind,
+    credited_invoice_id: draft.creditedInvoiceId,
     customer_id: draft.customerId,
     billing_recipient_customer_id: draft.billingRecipientCustomerId,
     status: draft.status,
@@ -111,6 +113,7 @@ export function toInvoiceDraftLineRows(
     return {
       id: line.id,
       invoice_draft_id: draft.id,
+      source_invoice_line_id: line.sourceInvoiceLineId,
       position: line.position,
       code: line.code,
       description: line.description,
@@ -135,6 +138,7 @@ export function toInvoiceDraftLine(
 ): InvoiceDraftLine {
   return {
     id: row.id,
+    sourceInvoiceLineId: row.source_invoice_line_id,
     position: row.position,
     code: row.code,
     description: row.description,

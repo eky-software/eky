@@ -5,6 +5,7 @@ import type {
 } from '../domain/invoiceDraft.js';
 import type { InvoiceDraftSummary } from '../domain/invoiceDraftSummary.js';
 import type { PriceInputMode } from '../domain/invoiceCalculation.js';
+import type { InvoiceKind } from '../domain/invoiceKind.js';
 import type { InvoiceDraftRepository } from '../ports/invoiceDraftRepository.js';
 import {
   toInvoiceDraftLine,
@@ -99,6 +100,8 @@ export class SqliteInvoiceDraftRepository implements InvoiceDraftRepository {
     return {
       id: draftRow.id,
       companyId: draftRow.company_id,
+      invoiceKind: draftRow.invoice_kind as InvoiceKind,
+      creditedInvoiceId: draftRow.credited_invoice_id,
       customerId: draftRow.customer_id,
       billingRecipientCustomerId: draftRow.billing_recipient_customer_id,
       status: draftRow.status as InvoiceDraftStatus,

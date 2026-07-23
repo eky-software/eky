@@ -13,6 +13,7 @@ import type {
 } from '../domain/approvedInvoiceView.js';
 import type { InvoiceLineDiscount } from '../domain/invoiceCalculation.js';
 import type { InvoiceUnit } from '../domain/invoiceDraft.js';
+import type { InvoiceKind } from '../domain/invoiceKind.js';
 import type { InvoiceNumberingMode } from '../domain/invoiceNumbering.js';
 import type { ReferenceNumberType } from '../domain/invoiceReferenceNumber.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
@@ -112,7 +113,7 @@ export class SqliteApprovedInvoiceReader implements ApprovedInvoiceReader {
           WHERE
             company_id = ?
             AND id = ?
-            AND status IN ('approved', 'sent')
+            AND status IN ('approved', 'sent', 'cancelled')
         `,
       )
       .get(companyId, invoiceId);
@@ -148,9 +149,11 @@ function getApprovedInvoiceListOrderBy(sort: ApprovedInvoiceListSort): string {
 function toApprovedInvoiceSummary(invoice: InvoiceRow): ApprovedInvoiceSummary {
   return {
     id: invoice.id,
+    invoiceKind: invoice.invoice_kind as InvoiceKind,
+    creditedInvoiceId: invoice.credited_invoice_id,
     invoiceNumber: invoice.invoice_number,
     referenceNumber: invoice.reference_number ?? '',
-    status: invoice.status as 'approved' | 'sent',
+    status: invoice.status as 'approved' | 'sent' | 'cancelled',
     customerId: invoice.customer_id,
     customerNumberSnapshot: invoice.customer_number_snapshot,
     customerNameSnapshot: invoice.customer_name_snapshot,
@@ -160,6 +163,7 @@ function toApprovedInvoiceSummary(invoice: InvoiceRow): ApprovedInvoiceSummary {
     grossTotalCents: invoice.total_gross_cents,
     approvedAt: invoice.approved_at,
     updatedAt: invoice.updated_at,
+    cancelledAt: invoice.cancelled_at,
   };
 }
 
@@ -172,6 +176,8 @@ function toApprovedInvoiceView(
     id: invoice.id,
     companyId: invoice.company_id,
     sourceDraftId: invoice.source_draft_id,
+    invoiceKind: invoice.invoice_kind as InvoiceKind,
+    creditedInvoiceId: invoice.credited_invoice_id,
     invoiceNumber: invoice.invoice_number,
     referenceNumber: invoice.reference_number ?? '',
     referenceNumberType:
@@ -180,7 +186,7 @@ function toApprovedInvoiceView(
     sequenceScope: invoice.sequence_scope,
     sequenceNumber: invoice.sequence_number,
     numberingMode: invoice.numbering_mode as InvoiceNumberingMode,
-    status: invoice.status as 'approved' | 'sent',
+    status: invoice.status as 'approved' | 'sent' | 'cancelled',
     customerId: invoice.customer_id,
     customerNumberSnapshot: invoice.customer_number_snapshot,
     customerNameSnapshot: invoice.customer_name_snapshot,
@@ -239,12 +245,16 @@ function toApprovedInvoiceView(
     createdAt: invoice.created_at,
     approvedAt: invoice.approved_at,
     updatedAt: invoice.updated_at,
+    cancelledAt: invoice.cancelled_at,
+    cancelledBy: invoice.cancelled_by,
+    cancellationReason: invoice.cancellation_reason,
   };
 }
 
 function toApprovedInvoiceViewLine(line: InvoiceLineRow): ApprovedInvoiceViewLine {
   return {
     id: line.id,
+    sourceInvoiceLineId: line.source_invoice_line_id,
     lineOrder: line.line_order,
     code: line.code,
     description: line.description,

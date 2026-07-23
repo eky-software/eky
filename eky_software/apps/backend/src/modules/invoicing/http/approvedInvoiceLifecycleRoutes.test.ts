@@ -129,6 +129,8 @@ function createInvoiceDraft(): InvoiceDraft {
   return {
     billingRecipientCustomerId: null,
     companyId: 'dev-company',
+    invoiceKind: 'standard',
+    creditedInvoiceId: null,
     createdAt: '2026-07-08T10:00:00.000Z',
     customerId: 'customer-1',
     deliveryAddressText: '',
@@ -145,6 +147,7 @@ function createInvoiceDraft(): InvoiceDraft {
         discountCents: 0,
         grossCents: 12550,
         id: 'line-1',
+        sourceInvoiceLineId: null,
         netCents: 10000,
         position: 1,
         priceInputMode: 'net',

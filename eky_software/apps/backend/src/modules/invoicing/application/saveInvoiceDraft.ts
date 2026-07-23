@@ -83,6 +83,8 @@ export async function saveInvoiceDraft(
     ...content,
     id: randomUUID(),
     companyId,
+    invoiceKind: 'standard',
+    creditedInvoiceId: null,
     status: 'draft',
     createdAt: now,
     updatedAt: now,

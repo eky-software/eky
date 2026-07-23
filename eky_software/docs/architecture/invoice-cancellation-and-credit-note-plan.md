@@ -268,30 +268,42 @@ newCumulativeQuantity =
 newCumulativeQuantity <= sourceQuantity
 ```
 
-Kumulatiivinen tavoite lasketaan yhteisellä domainin
-`roundHalfUp`-pyöristyksellä:
+Kumulatiivinen lähtösumma ja alennettu syöttöhinta lasketaan lähderiveittäin
+yhteisellä domainin `roundHalfUp`-pyöristyksellä:
 
 ```text
 targetBase =
   roundHalfUp(sourceBase * newCumulativeQuantity / sourceQuantity)
 
-targetDiscount =
-  roundHalfUp(sourceDiscount * newCumulativeQuantity / sourceQuantity)
-
-targetVat =
-  roundHalfUp(sourceVat * newCumulativeQuantity / sourceQuantity)
+targetDiscountedInput =
+  roundHalfUp(
+    (sourceBase - sourceDiscount)
+    * newCumulativeQuantity
+    / sourceQuantity
+  )
 ```
 
 Nykyisen hyvitysrivin summat ovat tavoitteen ja aiempien ei-peruttujen
-hyvitysten erotus:
+hyvitysten erotus. Net-tilassa alennettu syöttöhinta on veroton summa ja
+gross-tilassa verollinen summa.
 
 ```text
 base = targetBase - previousCreditedBase
-discount = targetDiscount - previousCreditedDiscount
-net = base - discount
-vat = targetVat - previousCreditedVat
-gross = net + vat
+discountedInput =
+  targetDiscountedInput - previousCreditedDiscountedInput
+discount = base - discountedInput
 ```
+
+ALV:n senttipyöristys tehdään alkuperäisen tavallisen laskennan tavoin
+ALV-kannan ja syöttötilan muodostamalle ryhmälle, ei laskemalla jokaisen rivin
+veroa erikseen. Net-tilassa kumulatiivinen ALV lasketaan ryhmän
+kumulatiivisesta verottomasta summasta. Gross-tilassa kumulatiivinen veroton
+summa erotellaan ryhmän kumulatiivisesta verollisesta summasta.
+
+Nykyiselle hyvitykselle kuuluva ryhmän vero tai veroton summa on
+kumulatiivisen tavoitteen ja aiempien ei-peruttujen hyvitysten erotus. Se
+jaetaan nykyisille hyvitysriveille deterministisesti kokonaisluvuilla niin,
+että rivit ja laskutason ALV-erittely täsmäävät sentilleen.
 
 Kaikki laskenta tehdään turvallisilla kokonaisluvuilla. JavaScriptin
 liukulukuja ei käytetä auktoritatiiviseen rahalaskentaan.
@@ -299,12 +311,13 @@ liukulukuja ei käytetä auktoritatiiviseen rahalaskentaan.
 Tämä malli:
 
 - jakaa kiinteän alennuksen vain kerran koko hyvityskapasiteettiin
-- sitoo jokaisen hyvityksen alkuperäisen rivin snapshot-summiin
+- sitoo jokaisen hyvityksen alkuperäisen rivin snapshotin lähtösummaan ja
+  alennettuun syöttöhintaan
 - estää kumulatiivisen ylityksen
 - antaa viimeiselle täydentävälle hyvitykselle täsmälleen jäljellä olevat
   sentit
-- takaa, että täysin hyvitetyn rivin ei-peruttujen hyvitysten summa vastaa
-  alkuperäistä snapshot-riviä
+- takaa, että täysin hyvitetyn laskun ei-peruttujen hyvitysten summat vastaavat
+  alkuperäisen snapshotin laskutason summia ja ALV-erittelyä
 
 Laskutason hyvityssummat ja ALV-erittely muodostetaan valmiiksi lasketuista
 hyvitysriveistä. Niitä ei lasketa uudelleen toisella tavalla.
