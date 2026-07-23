@@ -31,6 +31,20 @@ describe('ApprovedInvoiceActions', () => {
     expect(html).not.toContain(uiText.invoicing.cancelApprovedInvoice);
   });
 
+  it('shows credit creation only when the backend context allows it', () => {
+    const allowedHtml = renderActions({
+      canCreateCreditDraft: true,
+      invoiceStatus: 'sent',
+    });
+    const blockedHtml = renderActions({
+      canCreateCreditDraft: false,
+      invoiceStatus: 'sent',
+    });
+
+    expect(allowedHtml).toContain(uiText.invoicing.createCreditDraft);
+    expect(blockedHtml).not.toContain(uiText.invoicing.createCreditDraft);
+  });
+
   it('renders safe action errors without technical data', () => {
     const html = renderActions({
       copyErrorMessage: uiText.invoicing.copyApprovedInvoiceError,
@@ -71,10 +85,12 @@ function renderActions(
 ): string {
   return renderToStaticMarkup(
     <ApprovedInvoiceActions
+      canCreateCreditDraft={false}
       cancellationErrorMessage={null}
       copyErrorMessage={null}
       emailErrorMessage={null}
       invoiceId="invoice-1"
+      invoiceKind="standard"
       invoiceNumber="20260001"
       invoiceStatus="approved"
       isCancellingInvoice={false}
@@ -90,6 +106,7 @@ function renderActions(
       onBack={vi.fn()}
       onCancelInvoice={vi.fn()}
       onCopyInvoice={vi.fn()}
+      onCreateCreditDraft={vi.fn()}
       onCreatePdf={vi.fn()}
       onEditInvoice={vi.fn()}
       onMarkSent={vi.fn()}

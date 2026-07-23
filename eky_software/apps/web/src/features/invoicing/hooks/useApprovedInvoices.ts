@@ -8,11 +8,14 @@ import {
 
 type ApprovedInvoiceListClient = Pick<
   EkyApiClient,
-  'getInvoiceNumberingSettings' | 'listApprovedInvoices'
+  | 'getInvoiceNumberingSettings'
+  | 'listApprovedInvoices'
+  | 'listSentInvoiceGroups'
 >;
 
 export interface ApprovedInvoiceListState {
   approved: ApprovedInvoicePageState;
+  cancelled: ApprovedInvoicePageState;
   sent: ApprovedInvoicePageState;
   refreshApprovedInvoices(): Promise<void>;
 }
@@ -55,12 +58,22 @@ export function useApprovedInvoices(
     'sent',
     fiscalYearStartMonth,
   );
+  const cancelled = useApprovedInvoicePage(
+    apiClient,
+    'cancelled',
+    fiscalYearStartMonth,
+  );
   const refreshApprovedInvoices = useCallback(async (): Promise<void> => {
-    await Promise.all([approved.refresh(), sent.refresh()]);
-  }, [approved.refresh, sent.refresh]);
+    await Promise.all([
+      approved.refresh(),
+      sent.refresh(),
+      cancelled.refresh(),
+    ]);
+  }, [approved.refresh, cancelled.refresh, sent.refresh]);
 
   return {
     approved,
+    cancelled,
     sent,
     refreshApprovedInvoices,
   };

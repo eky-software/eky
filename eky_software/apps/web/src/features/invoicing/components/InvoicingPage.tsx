@@ -7,6 +7,7 @@ import type {
   CancelApprovedInvoiceInput,
   EkyApiClient,
   InvoiceDraft,
+  UpdateCreditInvoiceDraftInput,
 } from '@eky/api-client';
 
 import { InvoicingPageView } from './InvoicingPageView.js';
@@ -34,6 +35,9 @@ import { useMarkApprovedInvoiceSent } from '../hooks/useMarkApprovedInvoiceSent.
 import { useCopyApprovedInvoiceToDraft } from '../hooks/useCopyApprovedInvoiceToDraft.js';
 import { useInvoiceDeliveryEvents } from '../hooks/useInvoiceDeliveryEvents.js';
 import { useCancelApprovedInvoice } from '../hooks/useCancelApprovedInvoice.js';
+import { useCreditInvoiceDraft } from '../hooks/useCreditInvoiceDraft.js';
+import { useApproveCreditInvoiceDraft } from '../hooks/useApproveCreditInvoiceDraft.js';
+import { useInvoiceCreditContext } from '../hooks/useInvoiceCreditContext.js';
 
 interface InvoicingPageProps {
   apiClient: EkyApiClient;
@@ -69,6 +73,10 @@ export function InvoicingPage({
   const copyApprovedInvoiceState = useCopyApprovedInvoiceToDraft(apiClient);
   const invoiceDeliveryEventListState = useInvoiceDeliveryEvents(apiClient);
   const cancelApprovedInvoiceState = useCancelApprovedInvoice(apiClient);
+  const creditInvoiceDraftState = useCreditInvoiceDraft(apiClient);
+  const approveCreditInvoiceDraftState =
+    useApproveCreditInvoiceDraft(apiClient);
+  const invoiceCreditContextState = useInvoiceCreditContext(apiClient);
   const [pendingDeleteDraftId, setPendingDeleteDraftId] = useState<
     string | null
   >(null);
@@ -92,11 +100,29 @@ export function InvoicingPage({
     sendApprovedInvoiceEmailSmtpState.clearStatus();
     invoiceDeliveryEventListState.clearEvents();
     cancelApprovedInvoiceState.clearError();
+    creditInvoiceDraftState.clearDraft();
+    approveCreditInvoiceDraftState.clearError();
+    invoiceCreditContextState.clearCreditContext();
     setPendingDeleteDraftId(null);
     dispatch({ type: 'showDraftList' });
   }
 
   function handleOpenDraft(id: string): void {
+    invoiceCreditContextState.clearCreditContext();
+    const draft = draftState.drafts.find((item) => item.id === id);
+
+    if (draft?.invoiceKind === 'credit') {
+      approvedInvoiceState.clearApprovedInvoice();
+      draftEditorState.clearDraft();
+      approveCreditInvoiceDraftState.clearError();
+      setPendingDeleteDraftId(null);
+      dispatch({ type: 'openCreditInvoice' });
+      void creditInvoiceDraftState.openDraft(id);
+      return;
+    }
+
+    creditInvoiceDraftState.clearDraft();
+    approveCreditInvoiceDraftState.clearError();
     approvedInvoiceState.clearApprovedInvoice();
     reopenApprovedInvoiceState.clearError();
     markApprovedInvoiceSentState.clearError();
@@ -113,7 +139,8 @@ export function InvoicingPage({
     void draftEditorState.openDraft(id);
   }
 
-  function handleOpenApprovedInvoice(id: string): void {
+  async function handleOpenApprovedInvoice(id: string): Promise<void> {
+    creditInvoiceDraftState.clearDraft();
     draftEditorState.clearDraft();
     deleteState.clearError();
     reopenApprovedInvoiceState.clearError();
@@ -126,11 +153,16 @@ export function InvoicingPage({
     sendApprovedInvoiceEmailSmtpState.clearStatus();
     invoiceDeliveryEventListState.clearEvents();
     cancelApprovedInvoiceState.clearError();
+    invoiceCreditContextState.clearCreditContext();
     setPendingDeleteDraftId(null);
     dispatch({ type: 'openApprovedInvoice' });
-    void approvedInvoiceState.openApprovedInvoice(id);
+    const invoice = await approvedInvoiceState.openApprovedInvoice(id);
     void approvedInvoicePdfState.loadPdfMetadata(id);
     void invoiceDeliveryEventListState.loadEvents(id);
+
+    if (invoice?.invoiceKind === 'standard' && invoice.status === 'sent') {
+      void invoiceCreditContextState.loadCreditContext(id);
+    }
   }
 
   function handleRequestDeleteDraft(id: string): void {
@@ -201,6 +233,7 @@ export function InvoicingPage({
     }
 
     approvedInvoiceState.replaceApprovedInvoice(sentInvoice);
+    void invoiceCreditContextState.loadCreditContext(id);
     void approvedInvoiceListState.refreshApprovedInvoices();
     void invoiceDeliveryEventListState.loadEvents(id);
   }
@@ -214,6 +247,7 @@ export function InvoicingPage({
     }
 
     approvedInvoiceState.clearApprovedInvoice();
+    invoiceCreditContextState.clearCreditContext();
     approvedInvoicePdfState.clearPdf();
     approvedInvoiceEmailState.clearEmail();
     sendApprovedInvoiceEmailState.clearStatus();
@@ -236,11 +270,63 @@ export function InvoicingPage({
     }
 
     approvedInvoiceState.clearApprovedInvoice();
+    invoiceCreditContextState.clearCreditContext();
     approvedInvoicePdfState.clearPdf();
     approvedInvoiceEmailState.clearEmail();
     invoiceDeliveryEventListState.clearEvents();
     dispatch({ type: 'showDraftList' });
     void approvedInvoiceListState.refreshApprovedInvoices();
+  }
+
+  async function handleCreateCreditInvoiceDraft(
+    invoiceId: string,
+  ): Promise<void> {
+    dispatch({ type: 'openCreditInvoice' });
+    const creditDraft = await creditInvoiceDraftState.createDraft(invoiceId);
+
+    if (creditDraft !== null) {
+      void draftState.refreshDrafts();
+    }
+  }
+
+  async function handleSaveCreditInvoiceDraft(
+    invoiceDraftId: string,
+    input: UpdateCreditInvoiceDraftInput,
+  ): Promise<void> {
+    const savedDraft = await creditInvoiceDraftState.saveDraft(
+      invoiceDraftId,
+      input,
+    );
+
+    if (savedDraft !== null) {
+      void draftState.refreshDrafts();
+    }
+  }
+
+  async function handleApproveCreditInvoiceDraft(
+    invoiceDraftId: string,
+    input: UpdateCreditInvoiceDraftInput,
+  ): Promise<void> {
+    const savedDraft = await creditInvoiceDraftState.saveDraft(
+      invoiceDraftId,
+      input,
+    );
+
+    if (savedDraft === null) {
+      return;
+    }
+
+    const approvedInvoice =
+      await approveCreditInvoiceDraftState.approveDraft(invoiceDraftId);
+
+    if (approvedInvoice === null) {
+      return;
+    }
+
+    creditInvoiceDraftState.clearDraft();
+    void draftState.refreshDrafts();
+    void approvedInvoiceListState.refreshApprovedInvoices();
+    void handleOpenApprovedInvoice(approvedInvoice.invoiceId);
   }
 
   async function handleOpenApprovedInvoicePdf(id: string): Promise<void> {
@@ -297,6 +383,12 @@ export function InvoicingPage({
     }
 
     approvedInvoiceState.replaceApprovedInvoice(result.invoice);
+    if (
+      result.invoice.invoiceKind === 'standard' &&
+      result.invoice.status === 'sent'
+    ) {
+      void invoiceCreditContextState.loadCreditContext(id);
+    }
     void approvedInvoiceListState.refreshApprovedInvoices();
   }
 
@@ -313,6 +405,7 @@ export function InvoicingPage({
     <InvoicingPageView
       activeView={activeView}
       apiClient={apiClient}
+      approveCreditInvoiceDraftState={approveCreditInvoiceDraftState}
       approvedInvoiceListState={approvedInvoiceListState}
       approvedInvoiceEmailState={approvedInvoiceEmailState}
       approvedInvoicePdfState={approvedInvoicePdfState}
@@ -321,6 +414,7 @@ export function InvoicingPage({
       customerListState={customerListState}
       companySettingsState={companySettingsState}
       copyApprovedInvoiceState={copyApprovedInvoiceState}
+      creditInvoiceDraftState={creditInvoiceDraftState}
       deleteState={deleteState}
       drafts={draftState.drafts}
       draftErrorMessage={draftState.errorMessage}
@@ -328,6 +422,7 @@ export function InvoicingPage({
       invoicePaymentDefaultsState={invoicePaymentDefaultsState}
       invoiceVatRatesState={invoiceVatRatesState}
       invoiceDeliveryEventListState={invoiceDeliveryEventListState}
+      invoiceCreditContextState={invoiceCreditContextState}
       markApprovedInvoiceSentState={markApprovedInvoiceSentState}
       isDraftListLoading={draftState.isLoading}
       pendingDeleteDraftId={pendingDeleteDraftId}
@@ -338,6 +433,9 @@ export function InvoicingPage({
       }
       sendApprovedInvoiceEmailSmtpState={sendApprovedInvoiceEmailSmtpState}
       onBackToDrafts={handleBackToDrafts}
+      onApproveCreditInvoiceDraft={(id, input) =>
+        void handleApproveCreditInvoiceDraft(id, input)
+      }
       onCancelApprovedInvoice={(id, input) =>
         void handleCancelApprovedInvoice(id, input)
       }
@@ -345,12 +443,15 @@ export function InvoicingPage({
       onConfirmDeleteDraft={(id) => void handleConfirmDeleteDraft(id)}
       onDraftApproved={handleDraftApproved}
       onDraftSaved={handleDraftSaved}
-      onOpenApprovedInvoice={handleOpenApprovedInvoice}
+      onOpenApprovedInvoice={(id) => void handleOpenApprovedInvoice(id)}
       onCreateApprovedInvoicePdf={(id) =>
         void approvedInvoicePdfState.createPdf(id)
       }
       onCopyApprovedInvoiceToDraft={(id) =>
         void handleCopyApprovedInvoiceToDraft(id)
+      }
+      onCreateCreditInvoiceDraft={(id) =>
+        void handleCreateCreditInvoiceDraft(id)
       }
       onEditApprovedInvoice={(id) => void handleEditApprovedInvoice(id)}
       onMarkApprovedInvoiceSent={(id) =>
@@ -372,6 +473,9 @@ export function InvoicingPage({
         void handleSendApprovedInvoiceEmailSmtp(id, input)
       }
       onOpenDraft={handleOpenDraft}
+      onSaveCreditInvoiceDraft={(id, input) =>
+        void handleSaveCreditInvoiceDraft(id, input)
+      }
       onRequestDeleteDraft={handleRequestDeleteDraft}
       onNewInvoice={() => dispatch({ type: 'openNewInvoice' })}
     />

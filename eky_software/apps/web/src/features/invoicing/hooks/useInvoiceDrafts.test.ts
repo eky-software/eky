@@ -11,10 +11,12 @@ describe('loadInvoiceDraftSummaries', () => {
   it('uses the api-client listInvoiceDrafts endpoint', async () => {
     const drafts = [
       {
+        creditedInvoiceId: null,
         customerId: 'customer-1',
         dueDate: '2026-06-30',
         grossTotalCents: 12_331,
         id: 'draft-1',
+        invoiceKind: 'standard' as const,
         invoiceDate: '2026-06-16',
         netTotalCents: 9825,
         paymentTermDays: 14,

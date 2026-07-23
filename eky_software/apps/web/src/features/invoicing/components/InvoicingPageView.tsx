@@ -6,9 +6,11 @@ import type {
   CancelApprovedInvoiceInput,
   InvoiceDraft,
   InvoiceDraftSummary,
+  UpdateCreditInvoiceDraftInput,
 } from '@eky/api-client';
 
 import { ApprovedInvoiceDetailView } from './ApprovedInvoiceDetailView.js';
+import { CreditInvoiceDraftEditorView } from './CreditInvoiceDraftEditorView.js';
 import { InvoiceDraftEditorView } from './InvoiceDraftEditorView.js';
 import { InvoiceWorkspaceListView } from './InvoiceWorkspaceListView.js';
 import type { NewInvoiceFormClient } from './NewInvoiceForm.js';
@@ -17,15 +19,18 @@ import { getInvoiceEmailSmtpTestUnavailableMessage } from '../approved/invoiceEm
 import { getInvoiceEmailSmtpUnavailableMessage } from '../approved/invoiceEmailSmtpAvailability.js';
 import type { InvoicingPageMode } from '../state/invoicingPageState.js';
 import type { ApprovedInvoiceEmailDryRunState } from '../hooks/useApprovedInvoiceEmailDryRun.js';
+import type { ApproveCreditInvoiceDraftState } from '../hooks/useApproveCreditInvoiceDraft.js';
 import type { ApprovedInvoiceListState } from '../hooks/useApprovedInvoices.js';
 import type { ApprovedInvoicePdfState } from '../hooks/useApprovedInvoicePdf.js';
 import type { ApprovedInvoiceState } from '../hooks/useApprovedInvoice.js';
 import type { CancelApprovedInvoiceState } from '../hooks/useCancelApprovedInvoice.js';
 import type { CopyApprovedInvoiceState } from '../hooks/useCopyApprovedInvoiceToDraft.js';
+import type { CreditInvoiceDraftState } from '../hooks/useCreditInvoiceDraft.js';
 import type { DeleteInvoiceDraftState } from '../hooks/useDeleteInvoiceDraft.js';
 import type { InvoiceCompanySettingsState } from '../hooks/useInvoiceCompanySettings.js';
 import type { InvoiceCustomerListState } from '../hooks/useInvoiceCustomers.js';
 import type { InvoiceDeliveryEventListState } from '../hooks/useInvoiceDeliveryEvents.js';
+import type { InvoiceCreditContextState } from '../hooks/useInvoiceCreditContext.js';
 import type { InvoiceDraftEditorState } from '../hooks/useInvoiceDraftEditor.js';
 import type { InvoicePaymentDefaultsState } from '../hooks/useInvoicePaymentDefaults.js';
 import type { InvoiceVatRatesState } from '../hooks/useInvoiceVatRates.js';
@@ -39,6 +44,7 @@ import { uiText } from '../../../i18n/fi.js';
 interface InvoicingPageViewProps {
   activeView: InvoicingPageMode;
   apiClient: NewInvoiceFormClient;
+  approveCreditInvoiceDraftState: ApproveCreditInvoiceDraftState;
   approvedInvoiceEmailState: ApprovedInvoiceEmailDryRunState;
   approvedInvoiceListState: ApprovedInvoiceListState;
   approvedInvoicePdfState: ApprovedInvoicePdfState;
@@ -47,6 +53,7 @@ interface InvoicingPageViewProps {
   customerListState: InvoiceCustomerListState;
   companySettingsState: InvoiceCompanySettingsState;
   copyApprovedInvoiceState: CopyApprovedInvoiceState;
+  creditInvoiceDraftState: CreditInvoiceDraftState;
   deleteState: DeleteInvoiceDraftState;
   drafts: InvoiceDraftSummary[];
   draftErrorMessage: string | null;
@@ -54,6 +61,7 @@ interface InvoicingPageViewProps {
   invoicePaymentDefaultsState: InvoicePaymentDefaultsState;
   invoiceVatRatesState: InvoiceVatRatesState;
   invoiceDeliveryEventListState: InvoiceDeliveryEventListState;
+  invoiceCreditContextState: InvoiceCreditContextState;
   markApprovedInvoiceSentState: MarkApprovedInvoiceSentState;
   isDraftListLoading: boolean;
   pendingDeleteDraftId: string | null;
@@ -62,6 +70,10 @@ interface InvoicingPageViewProps {
   sendApprovedInvoiceEmailSmtpState: SendApprovedInvoiceEmailSmtpState;
   sendApprovedInvoiceEmailSmtpTestState: SendApprovedInvoiceEmailSmtpTestState;
   onBackToDrafts(): void;
+  onApproveCreditInvoiceDraft(
+    invoiceDraftId: string,
+    input: UpdateCreditInvoiceDraftInput,
+  ): void;
   onCancelApprovedInvoice(
     id: string,
     input: CancelApprovedInvoiceInput,
@@ -70,6 +82,7 @@ interface InvoicingPageViewProps {
   onConfirmDeleteDraft(id: string): void;
   onCreateApprovedInvoicePdf(id: string): void;
   onCopyApprovedInvoiceToDraft(id: string): void;
+  onCreateCreditInvoiceDraft(id: string): void;
   onDraftApproved(approvedInvoice: ApprovedInvoiceResult): void;
   onDraftSaved(savedDraft: InvoiceDraft): void;
   onOpenApprovedInvoice(id: string): void;
@@ -90,6 +103,10 @@ interface InvoicingPageViewProps {
     input: ApprovedInvoiceEmailSmtpPrepareInput,
   ): void;
   onOpenDraft(id: string): void;
+  onSaveCreditInvoiceDraft(
+    invoiceDraftId: string,
+    input: UpdateCreditInvoiceDraftInput,
+  ): void;
   onRequestDeleteDraft(id: string): void;
   onNewInvoice(): void;
 }
@@ -97,6 +114,7 @@ interface InvoicingPageViewProps {
 export function InvoicingPageView({
   activeView,
   apiClient,
+  approveCreditInvoiceDraftState,
   approvedInvoiceEmailState,
   approvedInvoiceListState,
   approvedInvoicePdfState,
@@ -105,11 +123,13 @@ export function InvoicingPageView({
   customerListState,
   companySettingsState,
   copyApprovedInvoiceState,
+  creditInvoiceDraftState,
   deleteState,
   draftEditorState,
   invoicePaymentDefaultsState,
   invoiceVatRatesState,
   invoiceDeliveryEventListState,
+  invoiceCreditContextState,
   markApprovedInvoiceSentState,
   drafts,
   draftErrorMessage,
@@ -120,11 +140,13 @@ export function InvoicingPageView({
   sendApprovedInvoiceEmailSmtpState,
   sendApprovedInvoiceEmailSmtpTestState,
   onBackToDrafts,
+  onApproveCreditInvoiceDraft,
   onCancelApprovedInvoice,
   onCancelDeleteDraft,
   onConfirmDeleteDraft,
   onCreateApprovedInvoicePdf,
   onCopyApprovedInvoiceToDraft,
+  onCreateCreditInvoiceDraft,
   onDraftApproved,
   onDraftSaved,
   onOpenApprovedInvoice,
@@ -136,6 +158,7 @@ export function InvoicingPageView({
   onSendApprovedInvoiceEmailSmtp,
   onSendApprovedInvoiceEmailSmtpTest,
   onOpenDraft,
+  onSaveCreditInvoiceDraft,
   onRequestDeleteDraft,
   onNewInvoice,
 }: InvoicingPageViewProps): React.JSX.Element {
@@ -152,6 +175,7 @@ export function InvoicingPageView({
       {activeView === 'draftList' ? (
         <InvoiceWorkspaceListView
           approvedInvoicePageState={approvedInvoiceListState.approved}
+          cancelledInvoicePageState={approvedInvoiceListState.cancelled}
           customers={customerListState.customers}
           customerErrorMessage={customerListState.errorMessage}
           deleteErrorMessage={deleteState.errorMessage}
@@ -191,6 +215,19 @@ export function InvoicingPageView({
           onDraftSaved={onDraftSaved}
           onOpenApprovedInvoice={onOpenApprovedInvoice}
         />
+      ) : activeView === 'creditInvoice' ? (
+        <CreditInvoiceDraftEditorView
+          approvalErrorMessage={approveCreditInvoiceDraftState.errorMessage}
+          draft={creditInvoiceDraftState.draft}
+          errorMessage={creditInvoiceDraftState.errorMessage}
+          isApproving={approveCreditInvoiceDraftState.isApproving}
+          isLoading={creditInvoiceDraftState.isLoading}
+          isSaving={creditInvoiceDraftState.isSaving}
+          successMessage={creditInvoiceDraftState.successMessage}
+          onApprove={onApproveCreditInvoiceDraft}
+          onBack={onBackToDrafts}
+          onSave={onSaveCreditInvoiceDraft}
+        />
       ) : (
         <ApprovedInvoiceDetailView
           cancellationState={{
@@ -200,6 +237,11 @@ export function InvoicingPageView({
           copyState={{
             errorMessage: copyApprovedInvoiceState.errorMessage,
             isCopying: copyApprovedInvoiceState.isCopying,
+          }}
+          creditContextState={{
+            creditContext: invoiceCreditContextState.creditContext,
+            errorMessage: invoiceCreditContextState.errorMessage,
+            isLoading: invoiceCreditContextState.isLoading,
           }}
           deliveryHistoryState={{
             errorMessage: invoiceDeliveryEventListState.errorMessage,
@@ -264,10 +306,13 @@ export function InvoicingPageView({
           onBack={onBackToDrafts}
           onCancelInvoice={onCancelApprovedInvoice}
           onCopyInvoice={onCopyApprovedInvoiceToDraft}
+          onCreateCreditDraft={onCreateCreditInvoiceDraft}
           onCreatePdf={onCreateApprovedInvoicePdf}
           onEditInvoice={onEditApprovedInvoice}
           onMarkSent={onMarkApprovedInvoiceSent}
           onOpenPdf={onOpenApprovedInvoicePdf}
+          onOpenRelatedDraft={onOpenDraft}
+          onOpenRelatedInvoice={onOpenApprovedInvoice}
           onPrepareEmail={onPrepareApprovedInvoiceEmail}
           onSendEmailDryRun={onSendApprovedInvoiceEmailDryRun}
           onSendEmailSmtp={onSendApprovedInvoiceEmailSmtp}

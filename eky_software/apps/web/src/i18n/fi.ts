@@ -422,7 +422,76 @@ export const uiText = {
     cancelApprovedInvoiceWarning:
       'Peruutus säilyttää laskunumeron ja laskun tiedot, mutta laskua ei voi enää muokata tai toimittaa.',
     cancellingApprovedInvoice: 'Peruutetaan...',
+    cancelledInvoiceCount: 'Peruttujen laskujen määrä',
+    cancelledInvoiceList: 'Perutut laskut',
+    cancelledInvoiceListLoadError:
+      'Peruttuja laskuja ei voitu ladata. Yritä hetken kuluttua uudelleen.',
+    cancelledInvoices: 'Perutut',
+    cancelledInvoicesEmpty: 'Peruttuja laskuja ei ole.',
+    cancelledInvoicesLoading: 'Ladataan peruttuja laskuja...',
     confirmApprovedInvoiceCancellation: 'Vahvista peruutus',
+    createCreditDraft: 'Hyvitä lasku',
+    createCreditDraftConfirm:
+      'Luodaanko tästä lähetetystä laskusta hyvitysluonnos? Voit rajata hyvitettävät rivit ja määrät ennen hyväksyntää.',
+    creatingCreditDraft: 'Luodaan hyvitysluonnosta...',
+    creditDraftConflictError:
+      'Hyvitysluonnosta ei voi luoda tai muuttaa, koska laskun tila tai jäljellä oleva hyvitysmäärä on muuttunut.',
+    creditDraftApprovalConflict:
+      'Hyvityslaskua ei voitu hyväksyä, koska alkuperäisen laskun tila tai jäljellä oleva hyvitysmäärä on muuttunut. Päivitä hyvitysluonnos ennen uutta yritystä.',
+    creditDraftApprovalError:
+      'Hyvityslaskua ei voitu hyväksyä. Yritä hetken kuluttua uudelleen.',
+    creditDraftApprovalHelp:
+      'Nykyiset muutokset tallennetaan ensin. Hyväksynnässä hyvityslasku saa oman laskunumeron, eikä toimintoa tehdä automaattisesti.',
+    creditDraftApprovalTitle: 'Hyväksytäänkö hyvityslasku?',
+    creditDraftApprovalConfirm: 'Hyväksy hyvityslasku',
+    creditDraftApprove: 'Hyväksy hyvityslasku',
+    creditDraftApproving: 'Hyväksytään hyvityslaskua...',
+    creditDraftError:
+      'Hyvitysluonnosta ei voitu käsitellä. Yritä hetken kuluttua uudelleen.',
+    creditDraftFacts: 'Hyvitysluonnoksen perustiedot',
+    creditDraftHelp: (invoiceNumber: string, invoiceDate: string) =>
+      `Hyvitys kohdistuu laskuun ${invoiceNumber}, päiväys ${invoiceDate}. Backend laskee hyvityksen lopulliset summat alkuperäisen laskun snapshotista.`,
+    creditDraftIncludeLine: 'Hyvitä rivi',
+    creditDraftKicker: 'Hyvitysluonnos',
+    creditDraftLines: 'Hyvitettävät laskurivit',
+    creditDraftLinesHelp:
+      'Valitse hyvitettävät rivit ja anna enintään jäljellä oleva määrä. Hinta, ALV, alennus ja yksikkö tulevat alkuperäiseltä laskulta.',
+    creditDraftLoading: 'Avataan hyvitysluonnosta...',
+    creditDraftMaximumQuantity: (quantity: string, unit: string) =>
+      `Enintään ${quantity} ${unit}`,
+    creditDraftNotFound:
+      'Hyvitysluonnosta tai sen alkuperäistä laskua ei löytynyt.',
+    creditDraftOpenPrompt: 'Valitse avattava hyvitysluonnos listasta.',
+    creditDraftQuantity: 'Hyvitettävä määrä',
+    creditDraftSave: 'Tallenna hyvitysluonnos',
+    creditDraftSaveSuccess: 'Hyvitysluonnoksen muutokset tallennettu.',
+    creditDraftSavedLineTotal: 'Tallennettu hyvitys',
+    creditDraftSaving: 'Tallennetaan hyvitysluonnosta...',
+    creditDraftSourceInvoice: 'Alkuperäinen lasku',
+    creditDraftTitle: 'Muokkaa hyvitysluonnosta',
+    creditDraftTotalsHelp:
+      'Näytetyt summat ovat viimeksi backendissä tallennetut hyvityssummat. Muutokset lasketaan uudelleen tallennettaessa.',
+    creditDraftValidationError:
+      'Valitse vähintään yksi rivi ja tarkista kuvaukset sekä hyvitettävät määrät.',
+    creditedInvoiceDate: 'Alkuperäisen laskun päiväys',
+    creditedInvoiceNumber: 'Alkuperäinen lasku',
+    creditInvoice: 'Hyvityslasku',
+    creditInvoiceKicker: 'Hyväksytty hyvityslasku',
+    creditContextLoadError:
+      'Laskun hyvitystilannetta ei voitu ladata. Yritä hetken kuluttua uudelleen.',
+    creditContextLoading: 'Ladataan hyvitystilannetta...',
+    creditRelations: 'Laskun hyvitykset',
+    noRelatedCreditInvoices: 'Laskuun ei liity hyväksyttyjä hyvityslaskuja.',
+    openActiveCreditDraft: 'Avaa keskeneräinen hyvitysluonnos',
+    openCreditedInvoice: (invoiceNumber: string) =>
+      `Avaa alkuperäinen lasku ${invoiceNumber}`,
+    creditStatus: 'Hyvitystilanne',
+    creditStatusFull: 'Hyvitetty kokonaan',
+    creditStatusNone: 'Ei hyvityksiä',
+    creditStatusPartial: 'Osittain hyvitetty',
+    remainingCreditableAmount: (amount: string) =>
+      `Hyvitettävissä ${amount}`,
+    remainingCreditableLabel: 'Hyvitettävissä jäljellä',
     customer: 'Asiakas',
     customerEmpty: 'Asiakkaita ei ole',
     customerEmptyHelp:
@@ -715,6 +784,8 @@ export const uiText = {
     open: 'Avaa',
     status: 'Tila',
     statusApproved: 'Hyväksytty',
+    statusCancelled: 'Peruutettu',
+    statusCreditDraft: 'Hyvitysluonnos',
     statusDraft: 'Luonnos',
     statusSent: 'Lähetetty',
     subject: 'Aihe',

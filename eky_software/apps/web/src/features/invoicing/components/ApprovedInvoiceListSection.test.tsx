@@ -91,6 +91,7 @@ function createPageState(
     },
     errorMessage: null,
     goToPage: vi.fn(),
+    invoiceGroups: [],
     invoices: [],
     isFiscalYearFilterAvailable: true,
     isLoading: false,

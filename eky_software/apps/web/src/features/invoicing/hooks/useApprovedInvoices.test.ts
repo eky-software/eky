@@ -2,12 +2,14 @@ import {
   EkyApiError,
   type ApprovedInvoiceListPage,
   type ApprovedInvoiceSummary,
+  type SentInvoiceGroupListPage,
 } from '@eky/api-client';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
   getApprovedInvoiceListErrorMessage,
   loadApprovedInvoicePage,
+  loadSentInvoiceGroupPage,
 } from './useApprovedInvoicePage.js';
 import { createDefaultApprovedInvoiceListControls } from '../approved/approvedInvoiceListFilters.js';
 import { uiText } from '../../../i18n/fi.js';
@@ -17,6 +19,7 @@ describe('loadApprovedInvoicePage', () => {
     const invoicePage = createApprovedInvoicePage();
     const apiClient = {
       listApprovedInvoices: vi.fn(async () => invoicePage),
+      listSentInvoiceGroups: vi.fn(),
     };
     const controls = createDefaultApprovedInvoiceListControls(
       new Date(2026, 6, 22),
@@ -39,6 +42,7 @@ describe('loadApprovedInvoicePage', () => {
     });
     const apiClient = {
       listApprovedInvoices: vi.fn(async () => invoicePage),
+      listSentInvoiceGroups: vi.fn(),
     };
 
     await expect(
@@ -49,6 +53,41 @@ describe('loadApprovedInvoicePage', () => {
         1,
       ),
     ).rejects.toThrow();
+  });
+
+  it('loads sent invoices as server-grouped root pages', async () => {
+    const rootInvoice = createApprovedInvoiceSummary({ status: 'sent' });
+    const groupPage: SentInvoiceGroupListPage = {
+      groups: [
+        {
+          rootInvoice,
+          creditInvoices: [],
+          creditStatus: 'none',
+          remainingCreditableGrossCents: rootInvoice.grossTotalCents,
+        },
+      ],
+      page: 1,
+      pageSize: 20,
+      totalCount: 1,
+      totalPages: 1,
+    };
+    const apiClient = {
+      listApprovedInvoices: vi.fn(),
+      listSentInvoiceGroups: vi.fn(async () => groupPage),
+    };
+
+    await expect(
+      loadSentInvoiceGroupPage(
+        apiClient,
+        createDefaultApprovedInvoiceListControls(),
+        1,
+      ),
+    ).resolves.toEqual(groupPage);
+    expect(apiClient.listSentInvoiceGroups).toHaveBeenCalledWith({
+      page: 1,
+      pageSize: 20,
+      sort: 'invoiceDateDesc',
+    });
   });
 });
 
@@ -69,6 +108,12 @@ describe('getApprovedInvoiceListErrorMessage', () => {
     expect(getApprovedInvoiceListErrorMessage(new Error('secret'), 'sent')).toBe(
       uiText.invoicing.sentInvoiceListLoadError,
     );
+  });
+
+  it('uses the cancelled-list fallback for an unknown failure', () => {
+    expect(
+      getApprovedInvoiceListErrorMessage(new Error('secret'), 'cancelled'),
+    ).toBe(uiText.invoicing.cancelledInvoiceListLoadError);
   });
 });
 
@@ -91,16 +136,19 @@ function createApprovedInvoiceSummary(
   return {
     approvedAt: '2026-06-13T10:00:00.000Z',
     billingRecipientNameSnapshot: 'Billing Recipient Oy',
+    creditedInvoiceId: null,
     customerId: 'customer-1',
     customerNameSnapshot: 'Example Customer Oy',
     customerNumberSnapshot: '1001',
     dueDate: '2026-06-27',
     grossTotalCents: 12550,
     id: 'invoice-1',
+    invoiceKind: 'standard',
     invoiceDate: '2026-06-13',
     invoiceNumber: '20260001',
     referenceNumber: '202600017',
     status: 'approved',
+    cancelledAt: null,
     updatedAt: '2026-06-13T10:00:00.000Z',
     ...overrides,
   };

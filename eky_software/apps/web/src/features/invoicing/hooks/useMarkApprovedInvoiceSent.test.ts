@@ -76,6 +76,9 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     companyVatNumberSnapshot: '',
     companyWebsiteSnapshot: '',
     createdAt: '2026-06-13T10:00:00.000Z',
+    creditedInvoiceId: null,
+    creditedInvoiceNumber: null,
+    creditedInvoiceDate: null,
     customerBusinessIdSnapshot: '',
     customerCitySnapshot: '',
     customerEmailSnapshot: '',
@@ -89,6 +92,7 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     deliveryAddressText: '',
     dueDate: '2026-06-27',
     id: 'invoice-1',
+    invoiceKind: 'standard',
     invoiceDate: '2026-06-13',
     invoiceNumber: '20260001',
     latePaymentInterestBasisPoints: 0,
@@ -115,5 +119,8 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     },
     updatedAt: '2026-06-13T10:00:00.000Z',
     vatBreakdown: [],
+    cancelledAt: null,
+    cancelledBy: null,
+    cancellationReason: null,
   };
 }

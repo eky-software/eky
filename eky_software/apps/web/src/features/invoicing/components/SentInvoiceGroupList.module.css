@@ -1,0 +1,13 @@
+.creditRow {
+  background: var(--color-surface-muted);
+}
+
+.creditLink {
+  padding-left: 18px;
+  font-weight: 700;
+}
+
+.remaining {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}

@@ -99,6 +99,27 @@ describe('InvoiceWorkspaceListView', () => {
     expect(html).not.toContain(uiText.invoicing.copyApprovedInvoice);
   });
 
+  it('renders cancelled invoices in their own read-only list', () => {
+    const html = renderView({
+      cancelledInvoicePageState: createApprovedInvoicePageState({
+        invoices: [
+          createApprovedInvoiceSummary({
+            cancelledAt: '2026-07-23T12:00:00.000Z',
+            id: 'invoice-cancelled',
+            invoiceNumber: '20260009',
+            status: 'cancelled',
+          }),
+        ],
+        totalCount: 1,
+        totalPages: 1,
+      }),
+    });
+
+    expect(html).toContain(uiText.invoicing.cancelledInvoiceList);
+    expect(html).toContain('Laskunumero 20260009');
+    expect(html).toContain(uiText.invoicing.statusCancelled);
+  });
+
   it('renders a safe loading error without technical response data', () => {
     const html = renderView({
       draftErrorMessage: uiText.invoicing.loadError,
@@ -128,6 +149,7 @@ function renderView(
   return renderToStaticMarkup(
     <InvoiceWorkspaceListView
       approvedInvoicePageState={createApprovedInvoicePageState()}
+      cancelledInvoicePageState={createApprovedInvoicePageState()}
       customers={[createCustomer()]}
       customerErrorMessage={null}
       deleteErrorMessage={null}
@@ -165,6 +187,7 @@ function createApprovedInvoicePageState(
     },
     errorMessage: null,
     goToPage: vi.fn(),
+    invoiceGroups: [],
     invoices: [],
     isFiscalYearFilterAvailable: true,
     isLoading: false,
@@ -205,6 +228,8 @@ function createCustomer(): Customer {
 function createInvoiceDraftSummary(): InvoiceDraftSummary {
   return {
     id: 'draft-1',
+    invoiceKind: 'standard',
+    creditedInvoiceId: null,
     customerId: 'customer-1',
     status: 'draft',
     invoiceDate: '2026-06-13',
@@ -225,6 +250,8 @@ function createApprovedInvoiceSummary(
 ): ApprovedInvoiceSummary {
   return {
     id: 'invoice-1',
+    invoiceKind: 'standard',
+    creditedInvoiceId: null,
     invoiceNumber: '20260001',
     referenceNumber: '202600017',
     status: 'approved',
@@ -236,6 +263,7 @@ function createApprovedInvoiceSummary(
     dueDate: '2026-06-27',
     grossTotalCents: 17_884,
     approvedAt: '2026-06-13T18:00:00.000Z',
+    cancelledAt: null,
     updatedAt: '2026-06-13T18:00:00.000Z',
     ...overrides,
   };

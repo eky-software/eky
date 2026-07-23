@@ -1,8 +1,8 @@
 import type { ApprovedInvoiceSummary } from '@eky/api-client';
 
 import {
-  formatApprovedInvoiceCurrency,
   formatApprovedInvoiceDate,
+  formatApprovedInvoicePresentedCurrency,
 } from '../approved/approvedInvoiceFormatting.js';
 import styles from './InvoiceDraftList.module.css';
 import { uiText } from '../../../i18n/fi.js';
@@ -66,7 +66,10 @@ export function ApprovedInvoiceList({
               onClick={() => onOpenApprovedInvoice(invoice.id)}
               type="button"
             >
-              {uiText.invoicing.invoiceNumber} {invoice.invoiceNumber}
+              {invoice.invoiceKind === 'credit'
+                ? uiText.invoicing.creditInvoice
+                : uiText.invoicing.invoiceNumber}{' '}
+              {invoice.invoiceNumber}
             </button>
           </div>
           <span role="cell">
@@ -79,12 +82,17 @@ export function ApprovedInvoiceList({
             {formatApprovedInvoiceDate(invoice.dueDate)}
           </time>
           <strong className={styles.total} role="cell">
-            {formatApprovedInvoiceCurrency(invoice.grossTotalCents)}
+            {formatApprovedInvoicePresentedCurrency(
+              invoice.grossTotalCents,
+              invoice.invoiceKind,
+            )}
           </strong>
           <span className="status-pill status-pill-active" role="cell">
-            {invoice.status === 'sent'
-              ? uiText.invoicing.statusSent
-              : uiText.invoicing.statusApproved}
+            {invoice.status === 'cancelled'
+              ? uiText.invoicing.statusCancelled
+              : invoice.status === 'sent'
+                ? uiText.invoicing.statusSent
+                : uiText.invoicing.statusApproved}
           </span>
         </div>
       ))}

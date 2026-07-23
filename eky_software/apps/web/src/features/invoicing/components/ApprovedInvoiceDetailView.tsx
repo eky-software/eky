@@ -13,6 +13,7 @@ import type { ApprovedInvoiceState } from '../hooks/useApprovedInvoice.js';
 import type { CancelApprovedInvoiceState } from '../hooks/useCancelApprovedInvoice.js';
 import type { CopyApprovedInvoiceState } from '../hooks/useCopyApprovedInvoiceToDraft.js';
 import type { InvoiceDeliveryEventListState } from '../hooks/useInvoiceDeliveryEvents.js';
+import type { InvoiceCreditContextState } from '../hooks/useInvoiceCreditContext.js';
 import type { MarkApprovedInvoiceSentState } from '../hooks/useMarkApprovedInvoiceSent.js';
 import type { ReopenApprovedInvoiceState } from '../hooks/useReopenApprovedInvoiceForEditing.js';
 import type { SendApprovedInvoiceEmailDryRunState } from '../hooks/useSendApprovedInvoiceEmailDryRun.js';
@@ -35,6 +36,10 @@ type ApprovedInvoiceEmailViewState = Pick<
 type InvoiceDeliveryHistoryViewState = Pick<
   InvoiceDeliveryEventListState,
   'errorMessage' | 'events' | 'isLoading'
+>;
+type InvoiceCreditContextViewState = Pick<
+  InvoiceCreditContextState,
+  'creditContext' | 'errorMessage' | 'isLoading'
 >;
 type CopyApprovedInvoiceViewState = Pick<
   CopyApprovedInvoiceState,
@@ -68,6 +73,7 @@ type EmailSmtpTestSendViewState = Pick<
 interface ApprovedInvoiceDetailViewProps {
   cancellationState: CancelApprovedInvoiceViewState;
   copyState: CopyApprovedInvoiceViewState;
+  creditContextState: InvoiceCreditContextViewState;
   deliveryHistoryState: InvoiceDeliveryHistoryViewState;
   emailState: ApprovedInvoiceEmailViewState;
   emailSendState: EmailSendViewState;
@@ -83,10 +89,13 @@ interface ApprovedInvoiceDetailViewProps {
   onBack(): void;
   onCancelInvoice(id: string, input: CancelApprovedInvoiceInput): void;
   onCopyInvoice(id: string): void;
+  onCreateCreditDraft(id: string): void;
   onCreatePdf(id: string): void;
   onEditInvoice(id: string): void;
   onMarkSent(id: string): void;
   onOpenPdf(id: string): void;
+  onOpenRelatedDraft(id: string): void;
+  onOpenRelatedInvoice(id: string): void;
   onPrepareEmail(id: string): void;
   onSendEmailDryRun(
     id: string,
@@ -105,6 +114,7 @@ interface ApprovedInvoiceDetailViewProps {
 export function ApprovedInvoiceDetailView({
   cancellationState,
   copyState,
+  creditContextState,
   deliveryHistoryState,
   emailState,
   emailSendState,
@@ -120,10 +130,13 @@ export function ApprovedInvoiceDetailView({
   onBack,
   onCancelInvoice,
   onCopyInvoice,
+  onCreateCreditDraft,
   onCreatePdf,
   onEditInvoice,
   onMarkSent,
   onOpenPdf,
+  onOpenRelatedDraft,
+  onOpenRelatedInvoice,
   onPrepareEmail,
   onSendEmailDryRun,
   onSendEmailSmtp,
@@ -169,6 +182,8 @@ export function ApprovedInvoiceDetailView({
     <ApprovedInvoicePreview
       cancellationErrorMessage={cancellationState.errorMessage}
       copyErrorMessage={copyState.errorMessage}
+      creditContext={creditContextState.creditContext}
+      creditContextErrorMessage={creditContextState.errorMessage}
       deliveryEvents={deliveryHistoryState.events}
       deliveryEventsErrorMessage={deliveryHistoryState.errorMessage}
       email={emailState.email}
@@ -186,6 +201,7 @@ export function ApprovedInvoiceDetailView({
       isCancellingInvoice={cancellationState.isCancelling}
       isCopyingInvoice={copyState.isCopying}
       isCreatingPdf={pdfState.isCreating}
+      isLoadingCreditContext={creditContextState.isLoading}
       isLoadingDeliveryEvents={deliveryHistoryState.isLoading}
       isMarkingSent={markSentState.isMarkingSent}
       isPdfAvailable={pdfState.document !== null}
@@ -200,10 +216,13 @@ export function ApprovedInvoiceDetailView({
       onBack={onBack}
       onCancelInvoice={onCancelInvoice}
       onCopyInvoice={onCopyInvoice}
+      onCreateCreditDraft={onCreateCreditDraft}
       onCreatePdf={onCreatePdf}
       onEditInvoice={onEditInvoice}
       onMarkSent={onMarkSent}
       onOpenPdf={onOpenPdf}
+      onOpenRelatedDraft={onOpenRelatedDraft}
+      onOpenRelatedInvoice={onOpenRelatedInvoice}
       onPrepareEmail={onPrepareEmail}
       onSendEmailDryRun={onSendEmailDryRun}
       onSendEmailSmtp={onSendEmailSmtp}

@@ -4,6 +4,7 @@ import type {
 } from '@eky/api-client';
 
 import { ApprovedInvoiceList } from './ApprovedInvoiceList.js';
+import { SentInvoiceGroupList } from './SentInvoiceGroupList.js';
 import styles from './ApprovedInvoiceListSection.module.css';
 import type { ApprovedInvoicePeriodMode } from '../approved/approvedInvoiceListFilters.js';
 import type { ApprovedInvoicePageState } from '../hooks/useApprovedInvoicePage.js';
@@ -142,15 +143,25 @@ export function ApprovedInvoiceListSection({
         </label>
       </div>
 
-      <ApprovedInvoiceList
-        approvedInvoices={pageState.invoices}
-        emptyMessage={emptyMessage}
-        errorMessage={pageState.errorMessage}
-        isLoading={pageState.isLoading}
-        listLabel={listLabel}
-        loadingMessage={loadingMessage}
-        onOpenApprovedInvoice={onOpenApprovedInvoice}
-      />
+      {pageState.invoiceGroups.length > 0 &&
+      !pageState.isLoading &&
+      pageState.errorMessage === null ? (
+        <SentInvoiceGroupList
+          groups={pageState.invoiceGroups}
+          listLabel={listLabel}
+          onOpenApprovedInvoice={onOpenApprovedInvoice}
+        />
+      ) : (
+        <ApprovedInvoiceList
+          approvedInvoices={pageState.invoices}
+          emptyMessage={emptyMessage}
+          errorMessage={pageState.errorMessage}
+          isLoading={pageState.isLoading}
+          listLabel={listLabel}
+          loadingMessage={loadingMessage}
+          onOpenApprovedInvoice={onOpenApprovedInvoice}
+        />
+      )}
 
       {pageState.totalCount > 0 ? (
         <nav

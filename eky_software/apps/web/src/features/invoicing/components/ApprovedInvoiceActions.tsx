@@ -10,10 +10,12 @@ import { uiText } from '../../../i18n/fi.js';
 import { MessageBanner } from '../../../shared/ui/index.js';
 
 interface ApprovedInvoiceActionsProps {
+  canCreateCreditDraft: boolean;
   cancellationErrorMessage: string | null;
   copyErrorMessage: string | null;
   emailErrorMessage: string | null;
   invoiceId: string;
+  invoiceKind: ApprovedInvoiceView['invoiceKind'];
   invoiceNumber: string;
   invoiceStatus: ApprovedInvoiceView['status'];
   isCancellingInvoice: boolean;
@@ -29,6 +31,7 @@ interface ApprovedInvoiceActionsProps {
   onBack(): void;
   onCancelInvoice(id: string, input: CancelApprovedInvoiceInput): void;
   onCopyInvoice(id: string): void;
+  onCreateCreditDraft(id: string): void;
   onCreatePdf(id: string): void;
   onEditInvoice(id: string): void;
   onMarkSent(id: string): void;
@@ -36,13 +39,21 @@ interface ApprovedInvoiceActionsProps {
   onPrepareEmail(id: string): void;
 }
 
-type PendingInvoiceAction = 'cancel' | 'copy' | 'edit' | 'markSent' | null;
+type PendingInvoiceAction =
+  | 'cancel'
+  | 'copy'
+  | 'credit'
+  | 'edit'
+  | 'markSent'
+  | null;
 
 export function ApprovedInvoiceActions({
+  canCreateCreditDraft,
   cancellationErrorMessage,
   copyErrorMessage,
   emailErrorMessage,
   invoiceId,
+  invoiceKind,
   invoiceNumber,
   invoiceStatus,
   isCancellingInvoice,
@@ -58,6 +69,7 @@ export function ApprovedInvoiceActions({
   onBack,
   onCancelInvoice,
   onCopyInvoice,
+  onCreateCreditDraft,
   onCreatePdf,
   onEditInvoice,
   onMarkSent,
@@ -65,23 +77,31 @@ export function ApprovedInvoiceActions({
   onPrepareEmail,
 }: ApprovedInvoiceActionsProps): React.JSX.Element {
   const isSent = invoiceStatus === 'sent';
+  const isCancelled = invoiceStatus === 'cancelled';
+  const isCreditInvoice = invoiceKind === 'credit';
   const [pendingAction, setPendingAction] =
     useState<PendingInvoiceAction>(null);
   const confirmationMessage =
     pendingAction === 'copy'
       ? uiText.invoicing.copyApprovedInvoiceConfirm
+      : pendingAction === 'credit'
+        ? uiText.invoicing.createCreditDraftConfirm
       : pendingAction === 'markSent'
         ? uiText.invoicing.markApprovedInvoiceSentConfirm
         : uiText.invoicing.reopenApprovedInvoiceConfirm;
   const confirmationAction =
     pendingAction === 'copy'
       ? uiText.invoicing.copyApprovedInvoice
+      : pendingAction === 'credit'
+        ? uiText.invoicing.createCreditDraft
       : pendingAction === 'markSent'
         ? uiText.invoicing.markApprovedInvoiceSent
         : uiText.invoicing.editApprovedInvoice;
   const isConfirmationActionPending =
     pendingAction === 'copy'
       ? isCopyingInvoice
+      : pendingAction === 'credit'
+        ? false
       : pendingAction === 'markSent'
         ? isCreatingPdf || isMarkingSent
         : isReopening;
@@ -100,6 +120,11 @@ export function ApprovedInvoiceActions({
       return;
     }
 
+    if (action === 'credit') {
+      onCreateCreditDraft(invoiceId);
+      return;
+    }
+
     if (action === 'edit') {
       onEditInvoice(invoiceId);
     }
@@ -110,19 +135,26 @@ export function ApprovedInvoiceActions({
       <header className={styles.header}>
         <div>
           <p className="panel-kicker">
-            {uiText.invoicing.approvedInvoiceKicker}
+            {isCreditInvoice
+              ? uiText.invoicing.creditInvoiceKicker
+              : uiText.invoicing.approvedInvoiceKicker}
           </p>
           <h2>
-            {uiText.invoicing.invoice} {invoiceNumber}
+            {isCreditInvoice
+              ? uiText.invoicing.creditInvoice
+              : uiText.invoicing.invoice}{' '}
+            {invoiceNumber}
           </h2>
           <p className={styles.muted}>
             {uiText.invoicing.approvedInvoicePreviewHelp}
           </p>
           <p className={styles.status}>
             <span className="status-pill status-pill-active">
-              {isSent
-                ? uiText.invoicing.statusSent
-                : uiText.invoicing.statusApproved}
+              {isCancelled
+                ? uiText.invoicing.statusCancelled
+                : isSent
+                  ? uiText.invoicing.statusSent
+                  : uiText.invoicing.statusApproved}
             </span>
           </p>
         </div>
@@ -151,29 +183,42 @@ export function ApprovedInvoiceActions({
                 : uiText.invoicing.approvedInvoiceOpenPdf}
             </button>
           ) : null}
-          <button
-            className="secondary-action"
-            disabled={isCreatingPdf || isPreparingEmail}
-            onClick={() => onPrepareEmail(invoiceId)}
-            type="button"
-          >
-            {isPreparingEmail
-              ? uiText.invoicing.invoiceEmailPreparing
-              : uiText.invoicing.invoiceEmailPrepare}
-          </button>
-          {isSent ? (
+          {!isCancelled ? (
             <button
               className="secondary-action"
-              disabled={isCopyingInvoice}
-              onClick={() => setPendingAction('copy')}
+              disabled={isCreatingPdf || isPreparingEmail}
+              onClick={() => onPrepareEmail(invoiceId)}
               type="button"
             >
-              {isCopyingInvoice
-                ? uiText.invoicing.copiedApprovedInvoice
-                : uiText.invoicing.copyApprovedInvoice}
+              {isPreparingEmail
+                ? uiText.invoicing.invoiceEmailPreparing
+                : uiText.invoicing.invoiceEmailPrepare}
             </button>
           ) : null}
-          {!isSent ? (
+          {isSent && !isCreditInvoice ? (
+            <>
+              <button
+                className="secondary-action"
+                disabled={isCopyingInvoice}
+                onClick={() => setPendingAction('copy')}
+                type="button"
+              >
+                {isCopyingInvoice
+                  ? uiText.invoicing.copiedApprovedInvoice
+                  : uiText.invoicing.copyApprovedInvoice}
+              </button>
+              {canCreateCreditDraft ? (
+                <button
+                  className="secondary-action"
+                  onClick={() => setPendingAction('credit')}
+                  type="button"
+                >
+                  {uiText.invoicing.createCreditDraft}
+                </button>
+              ) : null}
+            </>
+          ) : null}
+          {!isSent && !isCancelled ? (
             <>
               <button
                 className="secondary-action"
@@ -187,16 +232,18 @@ export function ApprovedInvoiceActions({
                     ? uiText.invoicing.markingApprovedInvoiceSent
                     : uiText.invoicing.markApprovedInvoiceSent}
               </button>
-              <button
-                className="secondary-action"
-                disabled={isReopening}
-                onClick={() => setPendingAction('edit')}
-                type="button"
-              >
-                {isReopening
-                  ? uiText.invoicing.reopeningApprovedInvoice
-                  : uiText.invoicing.editApprovedInvoice}
-              </button>
+              {!isCreditInvoice ? (
+                <button
+                  className="secondary-action"
+                  disabled={isReopening}
+                  onClick={() => setPendingAction('edit')}
+                  type="button"
+                >
+                  {isReopening
+                    ? uiText.invoicing.reopeningApprovedInvoice
+                    : uiText.invoicing.editApprovedInvoice}
+                </button>
+              ) : null}
               <button
                 className="secondary-action"
                 disabled={isCancellingInvoice}
