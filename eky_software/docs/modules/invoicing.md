@@ -26,6 +26,11 @@ sähköpostitoimituksen turvallisuuslinja, `sent`-tila, laskun kopiointi,
 peruutus ja hyvityslaskut on kuvattu dokumentissa
 `docs/architecture/invoice-delivery-plan.md`.
 
+Laskun peruutuksen, koko- ja osahyvityksen, hyvityksen kumulatiivisen
+senttilaskennan sekä hyvityslaskun hyväksynnän tarkka toteutusmalli on kuvattu
+dokumentissa
+`docs/architecture/invoice-cancellation-and-credit-note-plan.md`.
+
 Laskun toimitustapahtumien, lähetyslokin, delivery event -mallin ja
 send-polun auditointiperiaatteet on kuvattu dokumentissa
 `docs/architecture/invoice-delivery-events-plan.md`.
@@ -68,7 +73,7 @@ lähetettyjen laskujen korjausperiaatteiden muistilista on kuvattu dokumentissa
 - laskulla käytetyt hinta- ja osapuolitietojen snapshotit
 - laskutuksen audit-tapahtumat
 - laskun toimitustapahtumat ja delivery event -kirjaukset
-- hyvityslaskut myöhemmin
+- laskun peruutus ja hyvityslaskut
 - laskun sähköpostitoimituksen liiketoimintasäännöt
 
 ## Moduuli ei omista
@@ -96,17 +101,20 @@ lähetettyjen laskujen korjausperiaatteiden muistilista on kuvattu dokumentissa
 
 ## Laskun tilat
 
-MVP:n vähimmäistilat:
+Nykyisen laskun elinkaaren tilat:
 
 - draft
 - approved
 - sent
+- cancelled
 
 Myöhemmät tilat:
 
 - paid
-- cancelled
-- credited
+
+Hyvitystila `none | partial | full` johdetaan alkuperäislaskun ja sen
+ei-peruttujen hyvityslaskujen snapshot-summista. Sitä ei mallinneta
+toimitustilan kanssa kilpailevaksi `credited`-statukseksi.
 
 Tilasiirtymät määritellään domain-säännöillä.
 
@@ -507,6 +515,5 @@ Nykyinen Oma yritys on laajemman Asetukset-kokonaisuuden ensimmäinen osa. Käyt
 
 - tarvitaanko verkkolasku myöhemmin?
 - kuka saa hyväksyä laskun?
-- miten hyvityslasku tehdään?
 - mikä on lopullinen permission-malli hyväksynnälle ja hyväksytyn laskun korjaukselle?
 - tarvitaanko sähköpostin lisäksi uusia hallittuja toimitusprovidereita?
