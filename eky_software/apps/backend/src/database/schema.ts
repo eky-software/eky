@@ -84,6 +84,7 @@ export interface InvoiceDraftTable {
   order_number: string;
   note: string;
   delivery_address_text: string;
+  refund_iban: string;
   net_total_cents: number;
   vat_total_cents: number;
   gross_total_cents: number;
@@ -208,6 +209,7 @@ export interface InvoiceTable {
   order_number: string;
   note: string;
   delivery_address_text: string;
+  refund_iban_snapshot: string;
   total_net_cents: number;
   total_vat_cents: number;
   total_gross_cents: number;

@@ -100,6 +100,7 @@ export async function copyApprovedInvoiceToDraft(
     creditedInvoiceId: null,
     id: randomUUID(),
     invoiceKind: 'standard',
+    refundIban: '',
     status: 'draft',
     updatedAt: now,
   };

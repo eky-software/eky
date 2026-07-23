@@ -71,6 +71,18 @@ describe('InvoiceWorkspaceListView', () => {
         totalCount: 1,
         totalPages: 1,
       }),
+      cancelledInvoicePageState: createApprovedInvoicePageState({
+        invoices: [
+          createApprovedInvoiceSummary({
+            cancelledAt: '2026-07-23T12:00:00.000Z',
+            id: 'invoice-cancelled',
+            invoiceNumber: '20260009',
+            status: 'cancelled',
+          }),
+        ],
+        totalCount: 1,
+        totalPages: 1,
+      }),
       sentInvoicePageState: createApprovedInvoicePageState({
         invoices: [
           createApprovedInvoiceSummary({
@@ -91,11 +103,15 @@ describe('InvoiceWorkspaceListView', () => {
       `aria-label="${uiText.invoicing.sentInvoiceList}"`,
     );
     const sentInvoice = html.indexOf('Laskunumero 20260002');
+    const cancelledListStart = html.indexOf(
+      `aria-label="${uiText.invoicing.cancelledInvoiceList}"`,
+    );
 
     expect(approvedListStart).toBeGreaterThan(-1);
     expect(approvedInvoice).toBeGreaterThan(approvedListStart);
     expect(sentListStart).toBeGreaterThan(approvedInvoice);
     expect(sentInvoice).toBeGreaterThan(sentListStart);
+    expect(cancelledListStart).toBeGreaterThan(sentInvoice);
     expect(html).not.toContain(uiText.invoicing.copyApprovedInvoice);
   });
 

@@ -313,6 +313,7 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     orderNumber: '',
     paymentTermDays: 14,
     priceInputMode: 'net',
+    refundIbanSnapshot: '',
     referenceNumber: '202600017',
     referenceNumberType: 'finnishDomestic',
     reminderPeriodDays: 8,

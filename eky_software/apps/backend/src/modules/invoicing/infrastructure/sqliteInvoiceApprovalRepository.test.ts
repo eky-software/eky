@@ -56,6 +56,7 @@ const migrationNames = [
   '029_create_invoice_vat_rates.sql',
   '030_add_invoice_list_index.sql',
   '031_add_invoice_corrections.sql',
+  '032_add_credit_refund_iban.sql',
 ];
 
 const migrationSql = migrationNames.map((migrationName) =>
@@ -144,6 +145,7 @@ function createDraft(
     orderNumber: 'ORDER-1',
     note: 'Invoice note',
     deliveryAddressText: '',
+    refundIban: '',
     createdAt: '2027-01-15T08:00:00.000Z',
     updatedAt: '2027-01-15T08:00:00.000Z',
     ...overrides,

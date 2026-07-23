@@ -170,6 +170,8 @@ describe('SqliteInvoiceCreditDraftRepository', () => {
       {
         sourceInvoiceLineId: 'source-line-1',
         quantityHundredths: 40,
+        priceInputMode: 'net',
+        vatRateBasisPoints: 2_550,
         baseCents: 4_000,
         discountCents: 0,
         netCents: 4_000,
@@ -217,6 +219,7 @@ function createDraft(
     orderNumber: '',
     note: '',
     deliveryAddressText: '',
+    refundIban: '',
     lines: [
       {
         id: 'credit-draft-line-1',

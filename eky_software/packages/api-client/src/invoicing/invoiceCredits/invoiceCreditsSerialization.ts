@@ -6,10 +6,23 @@ export function serializeUpdateCreditInvoiceDraftInput(
   return {
     subject: input.subject,
     note: input.note,
-    lines: input.lines.map((line) => ({
-      sourceInvoiceLineId: line.sourceInvoiceLineId,
-      description: line.description,
-      quantityHundredths: line.quantityHundredths,
-    })),
+    refundIban: input.refundIban,
+    lines: input.lines.map((line) =>
+      line.lineType === 'source'
+        ? {
+            lineType: line.lineType,
+            sourceInvoiceLineId: line.sourceInvoiceLineId,
+            description: line.description,
+            quantityHundredths: line.quantityHundredths,
+          }
+        : {
+            lineType: line.lineType,
+            description: line.description,
+            quantityHundredths: line.quantityHundredths,
+            unit: line.unit,
+            unitPriceCents: line.unitPriceCents,
+            vatRateBasisPoints: line.vatRateBasisPoints,
+          },
+    ),
   };
 }

@@ -1,5 +1,6 @@
 import {
   formatApprovedInvoiceDate,
+  formatApprovedInvoiceIban,
   formatApprovedInvoicePercent,
   hasApprovedInvoiceValue,
 } from '../approved/approvedInvoiceFormatting.js';
@@ -21,6 +22,7 @@ interface ApprovedInvoiceFactsProps {
   orderNumber: string;
   paymentTermDays: number;
   referenceNumber: string;
+  refundIbanSnapshot: string;
   reminderPeriodDays: number;
   subject: string;
 }
@@ -38,6 +40,7 @@ export function ApprovedInvoiceFacts({
   orderNumber,
   paymentTermDays,
   referenceNumber,
+  refundIbanSnapshot,
   reminderPeriodDays,
   subject,
 }: ApprovedInvoiceFactsProps): React.JSX.Element {
@@ -61,6 +64,12 @@ export function ApprovedInvoiceFacts({
           <ApprovedInvoiceDefinitionRow
             label={uiText.invoicing.creditedInvoiceDate}
             value={formatApprovedInvoiceDate(creditedInvoiceDate)}
+          />
+        ) : null}
+        {isCreditInvoice && hasApprovedInvoiceValue(refundIbanSnapshot) ? (
+          <ApprovedInvoiceDefinitionRow
+            label={uiText.invoicing.creditDraftRefundIban}
+            value={formatApprovedInvoiceIban(refundIbanSnapshot)}
           />
         ) : null}
         {!isCreditInvoice ? (

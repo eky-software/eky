@@ -9,9 +9,10 @@ import type {
 } from '../../../database/schema.js';
 import { ApproveInvoiceDraftError } from '../application/approveInvoiceDraftError.js';
 import {
-  calculateCreditInvoice,
-  type PreviousCreditLineAllocation,
-} from '../domain/calculateCreditInvoice.js';
+  calculateCreditInvoiceDraft,
+  type CalculatedCreditDraftLine,
+  type PreviousCreditAllocation,
+} from '../domain/calculateCreditInvoiceDraft.js';
 import {
   formatInvoiceNumber,
   resolveInvoiceNumberSequenceScope,
@@ -28,8 +29,10 @@ import { SqliteInvoiceApprovalQueries } from './sqliteInvoiceApprovalQueries.js'
 import { SqliteInvoiceApprovalStatements } from './sqliteInvoiceApprovalStatements.js';
 
 interface PreviousCreditAllocationRow {
-  source_invoice_line_id: string;
+  source_invoice_line_id: string | null;
   quantity_hundredths: number;
+  price_input_mode: string;
+  vat_rate_basis_points: number;
   base_cents: number;
   discount_cents: number;
   net_cents: number;
@@ -99,7 +102,7 @@ export class SqliteInvoiceCreditApprovalRepository
       input.companyId,
       sourceInvoice.id,
     );
-    const calculated = calculateCreditInvoice(
+    const calculated = calculateCreditInvoiceDraft(
       sourceLines.map((line) => ({
         id: line.id,
         lineOrder: line.line_order,
@@ -113,18 +116,28 @@ export class SqliteInvoiceCreditApprovalRepository
         grossCents: line.gross_cents,
       })),
       previousAllocations,
-      draftLines.map((line) => {
-        if (line.source_invoice_line_id === null) {
-          throw new ApproveInvoiceDraftError(
-            'Credit invoice draft source line is missing.',
-          );
-        }
-
-        return {
-          sourceInvoiceLineId: line.source_invoice_line_id,
-          quantityHundredths: line.quantity_hundredths,
-        };
-      }),
+      draftLines.flatMap((line) =>
+        line.source_invoice_line_id === null
+          ? []
+          : [
+              {
+                sourceInvoiceLineId: line.source_invoice_line_id,
+                quantityHundredths: line.quantity_hundredths,
+              },
+            ],
+      ),
+      draftLines.flatMap((line) =>
+        line.source_invoice_line_id !== null
+          ? []
+          : [
+              {
+                lineKey: line.id,
+                quantityHundredths: line.quantity_hundredths,
+                unitPriceCents: line.unit_price_cents,
+                vatRateBasisPoints: line.vat_rate_basis_points,
+              },
+            ],
+      ),
     );
     const settings = this.approvalQueries.getNumberingSettings(
       input.companyId,
@@ -246,13 +259,15 @@ export class SqliteInvoiceCreditApprovalRepository
   private getPreviousAllocations(
     companyId: string,
     sourceInvoiceId: string,
-  ): PreviousCreditLineAllocation[] {
+  ): PreviousCreditAllocation[] {
     return this.database
       .prepare<[string, string], PreviousCreditAllocationRow>(
         `
           SELECT
             invoice_lines.source_invoice_line_id,
             invoice_lines.quantity_hundredths,
+            credit_invoices.price_input_mode,
+            invoice_lines.vat_rate_basis_points,
             invoice_lines.base_cents,
             invoice_lines.discount_cents,
             invoice_lines.net_cents,
@@ -266,7 +281,6 @@ export class SqliteInvoiceCreditApprovalRepository
             AND credit_invoices.invoice_kind = 'credit'
             AND credit_invoices.credited_invoice_id = ?
             AND credit_invoices.status <> 'cancelled'
-            AND invoice_lines.source_invoice_line_id IS NOT NULL
           ORDER BY
             credit_invoices.approved_at,
             credit_invoices.id,
@@ -277,6 +291,8 @@ export class SqliteInvoiceCreditApprovalRepository
       .map((row) => ({
         sourceInvoiceLineId: row.source_invoice_line_id,
         quantityHundredths: row.quantity_hundredths,
+        priceInputMode: row.price_input_mode as 'net' | 'gross',
+        vatRateBasisPoints: row.vat_rate_basis_points,
         baseCents: row.base_cents,
         discountCents: row.discount_cents,
         netCents: row.net_cents,
@@ -323,6 +339,7 @@ function createCreditInvoiceRow(
     order_number: sourceInvoice.order_number,
     note: draft.note,
     delivery_address_text: sourceInvoice.delivery_address_text,
+    refund_iban_snapshot: draft.refund_iban,
     total_net_cents: totals.netTotalCents,
     total_vat_cents: totals.vatTotalCents,
     total_gross_cents: totals.grossTotalCents,
@@ -339,19 +356,22 @@ function createCreditInvoiceLineRows(
   input: ApproveCreditInvoiceDraftPersistenceInput,
   draftLines: readonly InvoiceDraftLineTable[],
   sourceLines: readonly InvoiceLineRow[],
-  calculatedLines: readonly {
-    sourceInvoiceLineId: string;
-    quantityHundredths: number;
-    baseCents: number;
-    discountCents: number;
-    netCents: number;
-    vatCents: number;
-    grossCents: number;
-  }[],
+  calculatedLines: readonly CalculatedCreditDraftLine[],
 ): NewInvoiceLineRow[] {
   const sourceById = new Map(sourceLines.map((line) => [line.id, line]));
   const calculatedBySourceId = new Map(
-    calculatedLines.map((line) => [line.sourceInvoiceLineId, line]),
+    calculatedLines.flatMap((line) =>
+      line.sourceInvoiceLineId === null
+        ? []
+        : [[line.sourceInvoiceLineId, line] as const],
+    ),
+  );
+  const calculatedManualByDraftLineId = new Map(
+    calculatedLines.flatMap((line) =>
+      line.sourceInvoiceLineId === null
+        ? [[line.lineKey, line] as const]
+        : [],
+    ),
   );
 
   return draftLines.map((draftLine) => {
@@ -360,10 +380,13 @@ function createCreditInvoiceLineRows(
       sourceLineId === null ? undefined : sourceById.get(sourceLineId);
     const calculated =
       sourceLineId === null
-        ? undefined
+        ? calculatedManualByDraftLineId.get(draftLine.id)
         : calculatedBySourceId.get(sourceLineId);
 
-    if (sourceLine === undefined || calculated === undefined) {
+    if (
+      calculated === undefined ||
+      (sourceLineId !== null && sourceLine === undefined)
+    ) {
       throw new ApproveInvoiceDraftError(
         'Credit invoice draft source line is invalid.',
       );
@@ -372,16 +395,19 @@ function createCreditInvoiceLineRows(
     return {
       id: draftLine.id,
       invoice_id: input.invoiceId,
-      source_invoice_line_id: sourceLine.id,
+      source_invoice_line_id: sourceLineId,
       line_order: draftLine.position,
-      code: sourceLine.code,
+      code: sourceLine?.code ?? draftLine.code,
       description: draftLine.description,
       quantity_hundredths: calculated.quantityHundredths,
-      unit: sourceLine.unit,
-      unit_price_cents: sourceLine.unit_price_cents,
-      vat_rate_basis_points: sourceLine.vat_rate_basis_points,
-      discount_type: sourceLine.discount_type,
-      discount_value: sourceLine.discount_value,
+      unit: sourceLine?.unit ?? draftLine.unit,
+      unit_price_cents:
+        sourceLine?.unit_price_cents ?? draftLine.unit_price_cents,
+      vat_rate_basis_points:
+        sourceLine?.vat_rate_basis_points ??
+        draftLine.vat_rate_basis_points,
+      discount_type: sourceLine?.discount_type ?? 'none',
+      discount_value: sourceLine?.discount_value ?? 0,
       base_cents: calculated.baseCents,
       discount_cents: calculated.discountCents,
       net_cents: calculated.netCents,

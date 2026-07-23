@@ -260,6 +260,7 @@ function createInvoiceDraft(): InvoiceDraft {
     createdAt: '2026-07-08T10:00:00.000Z',
     customerId: 'customer-1',
     deliveryAddressText: '',
+    refundIban: '',
     dueDate: '2026-07-22',
     id: 'draft-copy-1',
     invoiceDate: '2026-07-08',

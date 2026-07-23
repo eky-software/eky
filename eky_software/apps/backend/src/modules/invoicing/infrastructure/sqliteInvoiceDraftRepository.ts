@@ -116,6 +116,7 @@ export class SqliteInvoiceDraftRepository implements InvoiceDraftRepository {
       orderNumber: draftRow.order_number,
       note: draftRow.note,
       deliveryAddressText: draftRow.delivery_address_text,
+      refundIban: draftRow.refund_iban,
       lines,
       totals: {
         netTotalCents: draftRow.net_total_cents,

@@ -15,13 +15,14 @@ export interface CreditInvoicePartyView {
 
 export interface CreditInvoiceDraftLineView {
   id: string | null;
-  sourceInvoiceLineId: string;
+  lineType: 'source' | 'manual';
+  sourceInvoiceLineId: string | null;
   isIncluded: boolean;
   position: number;
   code: string;
   description: string;
   quantityHundredths: number;
-  maximumQuantityHundredths: number;
+  maximumQuantityHundredths: number | null;
   unit: InvoiceUnit;
   unitPriceCents: number;
   vatRateBasisPoints: number;
@@ -51,6 +52,7 @@ export interface CreditInvoiceDraftView {
   orderNumber: string;
   note: string;
   deliveryAddressText: string;
+  refundIban: string;
   lines: CreditInvoiceDraftLineView[];
   totals: InvoiceTotals;
   createdAt: string;

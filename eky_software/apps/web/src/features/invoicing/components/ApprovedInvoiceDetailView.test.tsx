@@ -196,6 +196,7 @@ function createApprovedInvoiceView(
     customerStreetAddressSnapshot: 'Customer Street 1',
     customerTypeSnapshot: 'company',
     deliveryAddressText: '',
+    refundIbanSnapshot: '',
     dueDate: '2026-06-27',
     id: 'invoice-1',
     invoiceKind: 'standard',

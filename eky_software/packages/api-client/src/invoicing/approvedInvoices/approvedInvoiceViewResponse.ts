@@ -273,6 +273,7 @@ export function parseApprovedInvoiceView(value: unknown): ApprovedInvoiceView {
     orderNumber: readString(value, 'orderNumber'),
     note: readString(value, 'note'),
     deliveryAddressText: readString(value, 'deliveryAddressText'),
+    refundIbanSnapshot: readString(value, 'refundIbanSnapshot'),
     lines: value.lines.map(parseApprovedInvoiceLine),
     totals: parseTotals(value.totals),
     vatBreakdown: value.vatBreakdown.map(parseVatBreakdown),

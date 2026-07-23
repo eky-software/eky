@@ -54,6 +54,7 @@ function createDraft(): InvoiceDraft {
     orderNumber: '',
     note: '',
     deliveryAddressText: '',
+    refundIban: '',
     lines: [],
     totals: {
       netTotalCents: 0,

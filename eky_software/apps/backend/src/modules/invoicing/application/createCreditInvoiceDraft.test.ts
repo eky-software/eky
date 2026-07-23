@@ -66,6 +66,7 @@ describe('createCreditInvoiceDraft', () => {
       orderNumber: '',
       note: '',
       deliveryAddressText: '',
+      refundIban: '',
       lines: [
         {
           id: 'credit-line-1',

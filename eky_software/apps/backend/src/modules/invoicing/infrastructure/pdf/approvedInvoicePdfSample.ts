@@ -55,6 +55,7 @@ export function createApprovedInvoicePdfSample(): ApprovedInvoiceView {
     reminderPeriodDays: 8,
     latePaymentInterestBasisPoints: 1300,
     priceInputMode: 'gross',
+    refundIbanSnapshot: '',
     subject: 'Liesituulettimen poistoilmaventtiilin muutostyöt',
     orderNumber: '',
     note: '',

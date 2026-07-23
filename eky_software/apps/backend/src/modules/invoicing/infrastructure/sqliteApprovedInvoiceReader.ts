@@ -534,6 +534,7 @@ function toApprovedInvoiceView(
     orderNumber: invoice.order_number,
     note: invoice.note,
     deliveryAddressText: invoice.delivery_address_text,
+    refundIbanSnapshot: invoice.refund_iban_snapshot,
     lines: lines.map(toApprovedInvoiceViewLine),
     totals: {
       netTotalCents: invoice.total_net_cents,

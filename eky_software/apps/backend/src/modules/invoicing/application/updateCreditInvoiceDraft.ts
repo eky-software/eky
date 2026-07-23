@@ -18,6 +18,7 @@ export interface UpdateCreditInvoiceDraftInput {
   invoiceDraftId: string;
   subject: string;
   note: string;
+  refundIban: string;
   lines: readonly CreditInvoiceDraftLineInput[];
 }
 
@@ -78,6 +79,7 @@ export async function updateCreditInvoiceDraft(
     {
       subject: input.subject,
       note: input.note,
+      refundIban: input.refundIban,
       lines: input.lines,
       updatedAt: createNextUpdatedAt(existingDraft.updatedAt),
     },

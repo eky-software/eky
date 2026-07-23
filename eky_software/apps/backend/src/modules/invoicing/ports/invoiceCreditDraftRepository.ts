@@ -1,5 +1,5 @@
 import type { InvoiceDraft } from '../domain/invoiceDraft.js';
-import type { PreviousCreditLineAllocation } from '../domain/calculateCreditInvoice.js';
+import type { PreviousCreditAllocation } from '../domain/calculateCreditInvoiceDraft.js';
 
 export interface CreateCreditDraftPersistenceInput {
   actorUserId: string;
@@ -20,5 +20,5 @@ export interface InvoiceCreditDraftRepository {
   listPreviousCreditLineAllocations(
     companyId: string,
     sourceInvoiceId: string,
-  ): Promise<PreviousCreditLineAllocation[]>;
+  ): Promise<PreviousCreditAllocation[]>;
 }

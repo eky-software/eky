@@ -157,6 +157,7 @@ export function createInvoiceRow(
     order_number: draft.order_number,
     note: draft.note,
     delivery_address_text: draft.delivery_address_text,
+    refund_iban_snapshot: '',
     total_net_cents: totals.netTotalCents,
     total_vat_cents: totals.vatTotalCents,
     total_gross_cents: totals.grossTotalCents,

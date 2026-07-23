@@ -72,9 +72,11 @@ function createCreditDraft(): CreditInvoiceDraft {
     orderNumber: '',
     note: '',
     deliveryAddressText: '',
+    refundIban: '',
     lines: [
       {
         id: 'line-1',
+        lineType: 'source',
         sourceInvoiceLineId: 'source-line-1',
         isIncluded: true,
         position: 1,

@@ -113,6 +113,7 @@ export async function updateInvoiceDraft(
     companyId,
     invoiceKind: existingDraft.invoiceKind,
     creditedInvoiceId: existingDraft.creditedInvoiceId,
+    refundIban: '',
     status: 'draft',
     createdAt: existingDraft.createdAt,
     updatedAt: createNextUpdatedAt(existingDraft.updatedAt),

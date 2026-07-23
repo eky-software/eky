@@ -1,5 +1,5 @@
 import type { DatabaseConnection } from '../../../database/connection/createDatabaseConnection.js';
-import type { PreviousCreditLineAllocation } from '../domain/calculateCreditInvoice.js';
+import type { PreviousCreditAllocation } from '../domain/calculateCreditInvoiceDraft.js';
 import {
   type CreateCreditDraftPersistenceInput,
   type CreateCreditDraftPersistenceResult,
@@ -20,8 +20,10 @@ interface CreditSourceInvoiceRow {
 }
 
 interface PreviousCreditAllocationRow {
-  source_invoice_line_id: string;
+  source_invoice_line_id: string | null;
   quantity_hundredths: number;
+  price_input_mode: string;
+  vat_rate_basis_points: number;
   base_cents: number;
   discount_cents: number;
   net_cents: number;
@@ -51,13 +53,15 @@ export class SqliteInvoiceCreditDraftRepository
   async listPreviousCreditLineAllocations(
     companyId: string,
     sourceInvoiceId: string,
-  ): Promise<PreviousCreditLineAllocation[]> {
+  ): Promise<PreviousCreditAllocation[]> {
     return this.database
       .prepare<[string, string], PreviousCreditAllocationRow>(
         `
           SELECT
             invoice_lines.source_invoice_line_id,
             invoice_lines.quantity_hundredths,
+            credit_invoices.price_input_mode,
+            invoice_lines.vat_rate_basis_points,
             invoice_lines.base_cents,
             invoice_lines.discount_cents,
             invoice_lines.net_cents,
@@ -71,7 +75,6 @@ export class SqliteInvoiceCreditDraftRepository
             AND credit_invoices.invoice_kind = 'credit'
             AND credit_invoices.credited_invoice_id = ?
             AND credit_invoices.status <> 'cancelled'
-            AND invoice_lines.source_invoice_line_id IS NOT NULL
           ORDER BY
             credit_invoices.approved_at,
             credit_invoices.id,
@@ -82,6 +85,8 @@ export class SqliteInvoiceCreditDraftRepository
       .map((row) => ({
         sourceInvoiceLineId: row.source_invoice_line_id,
         quantityHundredths: row.quantity_hundredths,
+        priceInputMode: row.price_input_mode as 'net' | 'gross',
+        vatRateBasisPoints: row.vat_rate_basis_points,
         baseCents: row.base_cents,
         discountCents: row.discount_cents,
         netCents: row.net_cents,

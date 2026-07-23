@@ -8,18 +8,19 @@ import styles from './CreditInvoiceDraftEditorView.module.css';
 import {
   formatApprovedInvoiceCurrency,
   formatApprovedInvoiceDate,
-  formatApprovedInvoiceDiscount,
-  formatApprovedInvoicePercent,
-  formatApprovedInvoiceQuantity,
-  formatApprovedInvoiceUnit,
 } from '../approved/approvedInvoiceFormatting.js';
 import {
+  createManualCreditLineForm,
   hydrateCreditInvoiceDraftForm,
   type CreditInvoiceDraftForm,
   validateAndMapCreditInvoiceDraftForm,
 } from '../form/creditInvoiceDraftForm.js';
 import { uiText } from '../../../i18n/fi.js';
 import { MessageBanner } from '../../../shared/ui/index.js';
+import {
+  CreditInvoiceDraftLineEditor,
+  CreditInvoiceUnitOptions,
+} from './CreditInvoiceDraftLineEditor.js';
 
 interface CreditInvoiceDraftEditorViewProps {
   draft: CreditInvoiceDraft | null;
@@ -194,12 +195,13 @@ export function CreditInvoiceDraftEditorView({
           <span>{uiText.invoicing.subject}</span>
           <input
             maxLength={500}
-            onChange={(event) =>
+            onChange={(event) => {
+              const subject = event.currentTarget.value;
               updateForm((current) => ({
                 ...current,
-                subject: event.currentTarget.value,
-              }))
-            }
+                subject,
+              }));
+            }}
             type="text"
             value={form.subject}
           />
@@ -208,15 +210,35 @@ export function CreditInvoiceDraftEditorView({
           <span>{uiText.invoicing.note}</span>
           <textarea
             maxLength={5_000}
-            onChange={(event) =>
+            onChange={(event) => {
+              const note = event.currentTarget.value;
               updateForm((current) => ({
                 ...current,
-                note: event.currentTarget.value,
-              }))
-            }
+                note,
+              }));
+            }}
             rows={3}
             value={form.note}
           />
+        </label>
+        <label>
+          <span>{uiText.invoicing.creditDraftRefundIban}</span>
+          <input
+            autoComplete="off"
+            inputMode="text"
+            maxLength={42}
+            onChange={(event) => {
+              const refundIban = event.currentTarget.value;
+              updateForm((current) => ({
+                ...current,
+                refundIban,
+              }));
+            }}
+            placeholder={uiText.invoicing.creditDraftRefundIbanPlaceholder}
+            type="text"
+            value={form.refundIban}
+          />
+          <small>{uiText.invoicing.creditDraftRefundIbanHelp}</small>
         </label>
       </section>
 
@@ -226,124 +248,48 @@ export function CreditInvoiceDraftEditorView({
             <h3>{uiText.invoicing.creditDraftLines}</h3>
             <p>{uiText.invoicing.creditDraftLinesHelp}</p>
           </div>
-        </div>
-        <div className={styles.lines}>
-          {draft.lines.map((line, index) => {
-            const lineForm = form.lines[index];
-
-            if (lineForm === undefined) {
-              return null;
+          <button
+            className="ghost-button"
+            onClick={() =>
+              updateForm((current) => ({
+                ...current,
+                lines: [
+                  ...current.lines,
+                  createManualCreditLineForm(current),
+                ],
+              }))
             }
-
-            return (
-              <fieldset className={styles.line} key={line.sourceInvoiceLineId}>
-                <legend>
-                  {uiText.invoicing.row} {index + 1}
-                </legend>
-                <label className={styles.include}>
-                  <input
-                    checked={lineForm.isIncluded}
-                    onChange={(event) =>
-                      updateForm((current) => ({
-                        ...current,
-                        lines: current.lines.map((item, itemIndex) =>
-                          itemIndex === index
-                            ? {
-                                ...item,
-                                isIncluded: event.currentTarget.checked,
-                                quantity:
-                                  event.currentTarget.checked &&
-                                  item.quantity === '0,00'
-                                    ? formatMaximumQuantity(
-                                        item.maximumQuantityHundredths,
-                                      )
-                                    : item.quantity,
-                              }
-                            : item,
-                        ),
-                      }))
-                    }
-                    type="checkbox"
-                  />
-                  <span>{uiText.invoicing.creditDraftIncludeLine}</span>
-                </label>
-                <label className={styles.description}>
-                  <span>{uiText.invoicing.rowDescription}</span>
-                  <input
-                    disabled={!lineForm.isIncluded}
-                    maxLength={5_000}
-                    onChange={(event) =>
-                      updateForm((current) => ({
-                        ...current,
-                        lines: current.lines.map((item, itemIndex) =>
-                          itemIndex === index
-                            ? {
-                                ...item,
-                                description: event.currentTarget.value,
-                              }
-                            : item,
-                        ),
-                      }))
-                    }
-                    type="text"
-                    value={lineForm.description}
-                  />
-                </label>
-                <label>
-                  <span>{uiText.invoicing.creditDraftQuantity}</span>
-                  <input
-                    disabled={!lineForm.isIncluded}
-                    inputMode="decimal"
-                    onChange={(event) =>
-                      updateForm((current) => ({
-                        ...current,
-                        lines: current.lines.map((item, itemIndex) =>
-                          itemIndex === index
-                            ? { ...item, quantity: event.currentTarget.value }
-                            : item,
-                        ),
-                      }))
-                    }
-                    type="text"
-                    value={lineForm.quantity}
-                  />
-                  <small>
-                    {uiText.invoicing.creditDraftMaximumQuantity(
-                      formatApprovedInvoiceQuantity(
-                        line.maximumQuantityHundredths,
-                      ),
-                      formatApprovedInvoiceUnit(line.unit),
-                    )}
-                  </small>
-                </label>
-                <ReadonlyValue
-                  label={uiText.invoicing.rowUnit}
-                  value={formatApprovedInvoiceUnit(line.unit)}
-                />
-                <ReadonlyValue
-                  label={uiText.invoicing.rowUnitPrice}
-                  value={formatApprovedInvoiceCurrency(line.unitPriceCents)}
-                />
-                <ReadonlyValue
-                  label={uiText.invoicing.rowVat}
-                  value={formatApprovedInvoicePercent(
-                    line.vatRateBasisPoints,
-                  )}
-                />
-                <ReadonlyValue
-                  label={uiText.invoicing.rowDiscountType}
-                  value={
-                    formatApprovedInvoiceDiscount(line.discount) ??
-                    uiText.invoicing.discountNone
-                  }
-                />
-                <ReadonlyValue
-                  label={uiText.invoicing.creditDraftSavedLineTotal}
-                  value={formatCreditCurrency(line.grossCents)}
-                />
-              </fieldset>
-            );
-          })}
+            type="button"
+          >
+            {uiText.invoicing.creditDraftAddManualLine}
+          </button>
+        </div>
+        <CreditInvoiceUnitOptions />
+        <div className={styles.lines}>
+          {form.lines.map((line, index) => (
+            <CreditInvoiceDraftLineEditor
+              availableVatRates={form.availableVatRates}
+              index={index}
+              key={line.key}
+              line={line}
+              onChange={(nextLine) =>
+                updateForm((current) => ({
+                  ...current,
+                  lines: current.lines.map((item) =>
+                    item.key === nextLine.key ? nextLine : item,
+                  ),
+                }))
+              }
+              onRemove={() =>
+                updateForm((current) => ({
+                  ...current,
+                  lines: current.lines.filter(
+                    (item) => item.key !== line.key,
+                  ),
+                }))
+              }
+            />
+          ))}
         </div>
       </section>
 
@@ -446,21 +392,6 @@ function Definition({
   );
 }
 
-function ReadonlyValue({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}): React.JSX.Element {
-  return (
-    <div aria-readonly="true" className={styles.readonlyValue}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
 function formatParty(party: CreditInvoiceDraft['customer']): string {
   return party.customerNumber.trim() === ''
     ? party.name
@@ -469,8 +400,4 @@ function formatParty(party: CreditInvoiceDraft['customer']): string {
 
 function formatCreditCurrency(cents: number): string {
   return formatApprovedInvoiceCurrency(cents === 0 ? 0 : -cents);
-}
-
-function formatMaximumQuantity(quantityHundredths: number): string {
-  return formatApprovedInvoiceQuantity(quantityHundredths);
 }

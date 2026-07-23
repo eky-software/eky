@@ -21,7 +21,9 @@ describe('SentInvoiceGroupList', () => {
     expect(html).toContain('Laskunumero 20260001');
     expect(html).toContain('Hyvityslasku 20260002');
     expect(html).toContain('−25,50');
-    expect(html).toContain(uiText.invoicing.creditStatusPartial);
+    expect(html).toContain(uiText.invoicing.status);
+    expect(html).toContain(uiText.invoicing.statusSent);
+    expect(html).not.toContain(uiText.invoicing.statusCredited);
     expect(html).toContain('Hyvitettävissä 100,00');
   });
 
@@ -39,7 +41,7 @@ describe('SentInvoiceGroupList', () => {
       />,
     );
 
-    expect(html).toContain(uiText.invoicing.creditStatusFull);
+    expect(html).toContain(uiText.invoicing.statusCredited);
   });
 });
 

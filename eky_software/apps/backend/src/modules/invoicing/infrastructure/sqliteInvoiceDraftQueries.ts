@@ -58,6 +58,7 @@ export class SqliteInvoiceDraftQueries {
             order_number,
             note,
             delivery_address_text,
+            refund_iban,
             net_total_cents,
             vat_total_cents,
             gross_total_cents,

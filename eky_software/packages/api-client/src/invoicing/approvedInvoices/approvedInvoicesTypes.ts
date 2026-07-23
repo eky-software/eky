@@ -106,6 +106,7 @@ export interface ApprovedInvoiceView {
   orderNumber: string;
   note: string;
   deliveryAddressText: string;
+  refundIbanSnapshot: string;
   lines: ApprovedInvoiceLine[];
   totals: ApprovedInvoiceTotals;
   vatBreakdown: ApprovedInvoiceVatBreakdown[];

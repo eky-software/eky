@@ -295,6 +295,7 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
     reminderPeriodDays: 8,
     latePaymentInterestBasisPoints: 950,
     priceInputMode: 'net',
+    refundIbanSnapshot: '',
     subject: 'Test invoice',
     orderNumber: '',
     note: '',

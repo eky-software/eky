@@ -62,6 +62,8 @@ describe('creditInvoiceDraftModel', () => {
         {
           sourceInvoiceLineId: 'line-1',
           quantityHundredths: 50,
+          priceInputMode: 'net',
+          vatRateBasisPoints: 2_550,
           baseCents: 5_000,
           discountCents: 0,
           netCents: 5_000,
@@ -89,6 +91,8 @@ describe('creditInvoiceDraftModel', () => {
           {
             sourceInvoiceLineId: 'line-1',
             quantityHundredths: 200,
+            priceInputMode: 'net',
+            vatRateBasisPoints: 2_550,
             baseCents: 20_000,
             discountCents: 0,
             netCents: 20_000,
@@ -111,8 +115,10 @@ describe('creditInvoiceDraftModel', () => {
     const updated = prepareUpdatedCreditDraft(existing, source, [], {
       subject: 'Partial correction',
       note: 'Correct one hour.',
+      refundIban: '',
       lines: [
         {
+          lineType: 'source',
           sourceInvoiceLineId: 'line-1',
           description: 'Corrected work description',
           quantityHundredths: 100,
@@ -154,8 +160,10 @@ describe('creditInvoiceDraftModel', () => {
       prepareUpdatedCreditDraft(existing, source, [], {
         subject: '',
         note: '',
+        refundIban: '',
         lines: [
           {
+            lineType: 'source',
             sourceInvoiceLineId: 'line-1',
             description: 'Too much',
             quantityHundredths: 201,
@@ -279,6 +287,7 @@ function createSourceInvoice(
     orderNumber: 'ORDER-1',
     paymentTermDays: 14,
     priceInputMode: 'net',
+    refundIbanSnapshot: '',
     referenceNumber: '202600017',
     referenceNumberType: 'finnishDomestic',
     reminderPeriodDays: 8,

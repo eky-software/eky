@@ -85,6 +85,7 @@ export async function saveInvoiceDraft(
     companyId,
     invoiceKind: 'standard',
     creditedInvoiceId: null,
+    refundIban: '',
     status: 'draft',
     createdAt: now,
     updatedAt: now,

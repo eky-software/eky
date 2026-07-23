@@ -106,17 +106,6 @@ export function InvoiceWorkspaceListView({
       />
 
       <ApprovedInvoiceListSection
-        countLabel={uiText.invoicing.cancelledInvoiceCount}
-        emptyMessage={uiText.invoicing.cancelledInvoicesEmpty}
-        kicker={uiText.invoicing.cancelledInvoices}
-        listLabel={uiText.invoicing.cancelledInvoiceList}
-        loadingMessage={uiText.invoicing.cancelledInvoicesLoading}
-        pageState={cancelledInvoicePageState}
-        title={uiText.invoicing.cancelledInvoiceList}
-        onOpenApprovedInvoice={onOpenApprovedInvoice}
-      />
-
-      <ApprovedInvoiceListSection
         countLabel={uiText.invoicing.sentInvoiceCount}
         emptyMessage={uiText.invoicing.sentInvoicesEmpty}
         kicker={uiText.invoicing.sentInvoices}
@@ -124,6 +113,17 @@ export function InvoiceWorkspaceListView({
         loadingMessage={uiText.invoicing.sentInvoicesLoading}
         pageState={sentInvoicePageState}
         title={uiText.invoicing.sentInvoiceList}
+        onOpenApprovedInvoice={onOpenApprovedInvoice}
+      />
+
+      <ApprovedInvoiceListSection
+        countLabel={uiText.invoicing.cancelledInvoiceCount}
+        emptyMessage={uiText.invoicing.cancelledInvoicesEmpty}
+        kicker={uiText.invoicing.cancelledInvoices}
+        listLabel={uiText.invoicing.cancelledInvoiceList}
+        loadingMessage={uiText.invoicing.cancelledInvoicesLoading}
+        pageState={cancelledInvoicePageState}
+        title={uiText.invoicing.cancelledInvoiceList}
         onOpenApprovedInvoice={onOpenApprovedInvoice}
       />
     </div>

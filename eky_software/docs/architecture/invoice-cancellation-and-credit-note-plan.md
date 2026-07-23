@@ -14,6 +14,10 @@ Ensimmäinen local-MVP-kokonaisuus on toteutettu:
 - toimittamattoman hyväksytyn laskun peruutus
 - hyvitysluonnos lähetetystä tavallisesta laskusta
 - koko- ja osahyvitys lähderiveihin sidottuna
+- vapaa hyvitysrivi alkuperäisen laskun jäljellä olevan ALV- ja
+  summakapasiteetin rajoissa
+- valinnainen palautus-IBAN hyvitysluonnoksella ja hyväksytyn hyvityslaskun
+  snapshotissa
 - atominen ylihyvityksen esto ja hyvityksen numerointi
 - hyvityslaskun snapshot, PDF ja turvallinen toimituspolku
 - peruutettujen laskujen listaus
@@ -33,6 +37,9 @@ Toteutuksen jälkeen käyttäjä voi:
 - perua hyväksytyn mutta toimittamattoman laskun
 - luoda lähetetystä tavallisesta laskusta hyvitysluonnoksen
 - pienentää hyvitykseen otettavia määriä tai poistaa rivejä
+- lisätä vapaan hyvitysrivin, kun hyvitys ei kohdistu suoraan yhteen
+  alkuperäiseen nimikkeeseen
+- antaa valinnaisen palautus-IBANin
 - hyväksyä hyvitysluonnoksen omaksi numeroiduksi hyvityslaskukseen
 - muodostaa ja toimittaa hyvityslaskun nykyisen turvallisen PDF- ja
   sähköpostiputken kautta
@@ -101,6 +108,11 @@ Hyvityslaskun rivi viittaa alkuperäisen laskun snapshot-riviin:
 sourceInvoiceLineId
 ```
 
+Lähderiviin kohdistumaton vapaa hyvitysrivi käyttää eksplisiittistä
+`manual`-rivityyppiä, ja sen `sourceInvoiceLineId` on tyhjä. Tyhjä
+lähdeviite ei yksin päätä rivin tyyppiä requestissa, vaan HTTP- ja
+application-sopimukset käyttävät eroteltua lähde- ja manual-varianttia.
+
 Hyvityssummat tallennetaan tietokantaan positiivisina suuruuksina. Web ja PDF
 esittävät hyvityslaskun rivit, ALV:n ja loppusumman negatiivisina. Näin
 olemassa olevat raha-arvojen ei-negatiivisuusrajat säilyvät ja laskun laji
@@ -113,6 +125,7 @@ kertoo arvon suunnan.
 ```text
 invoice_kind             standard | credit, oletus standard
 credited_invoice_id      nullable viite invoices.id
+refund_iban              valinnainen normalisoitu IBAN vain hyvitysluonnokselle
 ```
 
 `invoice_draft_lines`:
@@ -129,6 +142,7 @@ credited_invoice_id      nullable viite invoices.id
 cancelled_at             nullable aikaleima
 cancelled_by             nullable actor id
 cancellation_reason      nullable rajattu teksti
+refund_iban_snapshot     valinnainen palautus-IBAN hyvityslaskulle
 ```
 
 `invoice_lines`:
@@ -139,8 +153,9 @@ source_invoice_line_id   nullable viite invoice_lines.id
 
 Vanha data migroidaan laskulajiksi `standard`. Tavallisella laskulla
 `credited_invoice_id` ja rivien `source_invoice_line_id` ovat tyhjiä.
-Hyvityksellä molemmat lähdeviittaukset ovat pakollisia arvollisille
-hyvitysriveille.
+Hyvityslasku viittaa aina alkuperäiseen laskuun. Lähderivivariantin
+`source_invoice_line_id` on pakollinen, mutta vapaan `manual`-rivin
+`source_invoice_line_id` on tyhjä.
 
 Tietokanta estää vähintään:
 
@@ -252,6 +267,10 @@ Hyvitysluonnoksessa käyttäjä saa:
 - palauttaa määrän enintään backendin ilmoittamaan jäljellä olevaan määrään
 - muokata rivin kuvausta
 - muokata laskun aihetta ja lisätietoa
+- lisätä tai poistaa vapaita hyvitysrivejä
+- muokata vapaan rivin kuvausta, määrää, yksikköä, yksikköhintaa ja
+  alkuperäisellä laskulla käytettyä ALV-kantaa
+- antaa tai poistaa valinnainen palautus-IBAN
 
 Käyttäjä ei saa muuttaa:
 
@@ -264,6 +283,27 @@ Käyttäjä ei saa muuttaa:
 - alennustyyppiä tai alennusarvoa
 - price input mode -arvoa
 - laskun lajia
+
+Vapaa hyvitysrivi:
+
+- käyttää hyvitysluonnoksen alkuperäiseltä laskulta perittyä
+  `priceInputMode`-arvoa
+- käyttää positiivista määrää ja yksikköhintaa; hyvityksen suunta tulee
+  laskun `credit`-lajista
+- ei käytä alennusta ensimmäisessä toteutuksessa
+- saa käyttää vain alkuperäisen laskun ALV-kantaa
+- ei saa yhdessä aiempien ja saman luonnoksen muiden hyvitysrivien kanssa
+  ylittää alkuperäisellä laskulla jäljellä olevaa hyvityssummaa eikä
+  kyseisen ALV-kannan jäljellä olevaa netto-, vero- tai bruttokapasiteettia
+
+Palautus-IBAN:
+
+- on valinnainen eikä sen puuttuminen estä hyvitystä
+- normalisoidaan ilman välilyöntejä ja isoilla kirjaimilla
+- validoidaan backendissä IBAN-rakenteen ja tarkistenumeron avulla
+- tallennetaan hyväksytylle hyvityslaskulle snapshotina
+- ei ole Company Settings -masterdatan päivitys
+- näytetään hyvityslaskun katselussa ja PDF:ssä vain, jos se on annettu
 
 Backend tarkistaa muuttumattomat snapshot-arvot hyväksynnässä. UI:n readonly-
 kentät eivät ole turvallisuusraja.
@@ -338,6 +378,13 @@ Tämä malli:
 - takaa, että täysin hyvitetyn laskun ei-peruttujen hyvitysten summat vastaavat
   alkuperäisen snapshotin laskutason summia ja ALV-erittelyä
 
+Vapaan hyvitysrivin määrä ja hinta lasketaan samoilla kokonaisluku- ja
+`roundHalfUp`-säännöillä kuin tavallinen laskurivi. Sen jälkeen lähderiveihin
+sidotut ja vapaat rivit sovitetaan samaan kumulatiiviseen ALV-kantakohtaiseen
+hyvityskapasiteettiin. Vapaa rivi ei saa kiertää lähderiveihin sidottujen
+rivien määrärajaa kasvattamalla laskun tai ALV-kannan yhteenlaskettua
+hyvitystä yli alkuperäisen snapshotin.
+
 Laskutason hyvityssummat ja ALV-erittely muodostetaan valmiiksi lasketuista
 hyvitysriveistä. Niitä ei lasketa uudelleen toisella tavalla.
 
@@ -350,10 +397,12 @@ Transaktio:
 
 1. lukee hyvitysluonnoksen yritysrajattuna
 2. lukee alkuperäisen lähetetyn tavallisen laskun ja sen rivit
-3. lukee samojen lähderivien kaikki aiemmat ei-perutut hyvitykset
+3. lukee kaikki alkuperäiseen laskuun liittyvät aiemmat ei-perutut
+   hyvitysrivit, mukaan lukien vapaat rivit
 4. varmistaa lähdeviittaukset ja muuttumattomat snapshot-kentät
 5. laskee tämän hyvityksen rivit kumulatiivisella kokonaislukumallilla
-6. estää määrä- ja summaylitykset
+6. estää lähderivien määräylitykset sekä lasku- ja ALV-kantakohtaiset
+   summaylitykset
 7. varaa uuden laskunumeron nykyisestä yrityskohtaisesta numerointisarjasta
 8. tallentaa hyvityslaskun ja rivit
 9. linkittää hyvitysluonnoksen hyväksyttyyn hyvityslaskuun
@@ -383,6 +432,7 @@ full
 
 `remainingGrossCents` ja rivikohtaiset jäljellä olevat määrät johdetaan
 alkuperäisen snapshotin ja hyväksyttyjen ei-peruttujen hyvitysten erotuksesta.
+Laskenta huomioi sekä lähderiveihin sidotut että vapaat hyvitysrivit.
 
 Alkuperäisen laskun `status` säilyy `sent`-tilassa. Johdettua hyvitystilaa ei
 sekoiteta toimitustilaan eikä toteuteta erillisenä `credited`-statuksena tässä
@@ -454,6 +504,7 @@ Hyvityslaskun PDF:
 - sisältää näkyvän otsikon `HYVITYSLASKU`
 - näyttää alkuperäisen laskun numeron ja päiväyksen
 - näyttää hyvitysrivit, ALV-erittelyn ja summat negatiivisina
+- näyttää valinnaisen palautus-IBANin vain, jos se on snapshotattu
 - ei näytä maksupalkkia
 - ei näytä uutta viitenumeroa tai muuta maksuvaatimusta
 
@@ -494,6 +545,12 @@ Vähimmäistestit:
 - toinen aktiivinen credit draft palauttaa olemassa olevan luonnoksen
 - credit draft ei lue muuttunutta master-dataa
 - credit editor ei voi muuttaa hintaa, ALV:tä, alennusta tai lähdeviitettä
+- vapaa hyvitysrivi käyttää vain alkuperäisen laskun ALV-kantoja
+- vapaa hyvitysrivi ei voi ylittää jäljellä olevaa kokonais- tai
+  ALV-kantakohtaista hyvityskapasiteettia
+- vapaa hyvitysrivi käyttää samaa kokonaislukulaskentaa kuin muut laskurivit
+- tyhjä ja virheellinen palautus-IBAN käsitellään turvallisesti
+- palautus-IBAN snapshotataan eikä sitä näytetä tyhjänä PDF:ssä
 - koko hyvitys täsmää alkuperäisen laskun kaikkiin senttisummiin
 - osahyvitys toimii prosentti- ja kiinteällä alennuksella
 - useat osahyvitykset eivät ylitä määrää tai senttisummia

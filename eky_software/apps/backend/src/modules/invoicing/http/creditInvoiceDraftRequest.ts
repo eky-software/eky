@@ -7,11 +7,27 @@ const maximumLineCount = 500;
 const maximumIdentifierLength = 200;
 const maximumShortTextLength = 500;
 const maximumLongTextLength = 5_000;
-const creditDraftFields = new Set(['subject', 'note', 'lines']);
-const creditDraftLineFields = new Set([
+const maximumIbanLength = 34;
+const maximumUnitLength = 8;
+const creditDraftFields = new Set([
+  'subject',
+  'note',
+  'refundIban',
+  'lines',
+]);
+const sourceCreditDraftLineFields = new Set([
+  'lineType',
   'sourceInvoiceLineId',
   'description',
   'quantityHundredths',
+]);
+const manualCreditDraftLineFields = new Set([
+  'lineType',
+  'description',
+  'quantityHundredths',
+  'unit',
+  'unitPriceCents',
+  'vatRateBasisPoints',
 ]);
 
 export class CreditInvoiceDraftRequestValidationError extends Error {
@@ -63,6 +79,7 @@ export function parseUpdateCreditInvoiceDraftRequest(
     invoiceDraftId: options.invoiceDraftId,
     subject: readString(body, 'subject', maximumShortTextLength),
     note: readString(body, 'note', maximumLongTextLength),
+    refundIban: readString(body, 'refundIban', maximumIbanLength),
     lines: body.lines.map(readCreditDraftLine),
   };
 }
@@ -72,17 +89,45 @@ function readCreditDraftLine(value: unknown): CreditInvoiceDraftLineInput {
     throw new CreditInvoiceDraftRequestValidationError();
   }
 
-  assertAllowedFields(value, creditDraftLineFields);
+  const lineType = readString(value, 'lineType', 20);
+  if (lineType === 'source') {
+    assertAllowedFields(value, sourceCreditDraftLineFields);
 
-  return {
-    sourceInvoiceLineId: readString(
-      value,
-      'sourceInvoiceLineId',
-      maximumIdentifierLength,
-    ),
-    description: readString(value, 'description', maximumLongTextLength),
-    quantityHundredths: readSafeInteger(value, 'quantityHundredths'),
-  };
+    return {
+      lineType,
+      sourceInvoiceLineId: readString(
+        value,
+        'sourceInvoiceLineId',
+        maximumIdentifierLength,
+      ),
+      description: readString(value, 'description', maximumLongTextLength),
+      quantityHundredths: readPositiveSafeInteger(
+        value,
+        'quantityHundredths',
+      ),
+    };
+  }
+
+  if (lineType === 'manual') {
+    assertAllowedFields(value, manualCreditDraftLineFields);
+
+    return {
+      lineType,
+      description: readString(value, 'description', maximumLongTextLength),
+      quantityHundredths: readPositiveSafeInteger(
+        value,
+        'quantityHundredths',
+      ),
+      unit: readString(value, 'unit', maximumUnitLength),
+      unitPriceCents: readNonnegativeSafeInteger(value, 'unitPriceCents'),
+      vatRateBasisPoints: readNonnegativeSafeInteger(
+        value,
+        'vatRateBasisPoints',
+      ),
+    };
+  }
+
+  throw new CreditInvoiceDraftRequestValidationError();
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -125,5 +170,27 @@ function readSafeInteger(
     throw new CreditInvoiceDraftRequestValidationError();
   }
 
+  return fieldValue;
+}
+
+function readPositiveSafeInteger(
+  value: Record<string, unknown>,
+  fieldName: string,
+): number {
+  const fieldValue = readSafeInteger(value, fieldName);
+  if (fieldValue <= 0) {
+    throw new CreditInvoiceDraftRequestValidationError();
+  }
+  return fieldValue;
+}
+
+function readNonnegativeSafeInteger(
+  value: Record<string, unknown>,
+  fieldName: string,
+): number {
+  const fieldValue = readSafeInteger(value, fieldName);
+  if (fieldValue < 0) {
+    throw new CreditInvoiceDraftRequestValidationError();
+  }
   return fieldValue;
 }

@@ -1,18 +1,24 @@
 import { randomUUID } from 'node:crypto';
 
 import {
-  calculateCreditInvoice,
   type CreditSourceLine,
-  type PreviousCreditLineAllocation,
   type RequestedCreditLine,
 } from '../domain/calculateCreditInvoice.js';
+import {
+  calculateCreditInvoiceDraft,
+  calculateRemainingCreditTotals,
+  type PreviousCreditAllocation,
+  type RequestedManualCreditLine,
+} from '../domain/calculateCreditInvoiceDraft.js';
 import { InvoiceCreditError } from '../domain/invoiceCreditError.js';
 import type { InvoiceDraft, InvoiceDraftLine } from '../domain/invoiceDraft.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
 import {
   normalizeOptionalInvoiceTextWithLimit,
   normalizeRequiredInvoiceText,
+  parseInvoiceUnit,
 } from '../domain/invoiceDraftRules.js';
+import { normalizeOptionalRefundIban } from '../domain/invoiceRefundIban.js';
 import type {
   ApprovedInvoiceView,
   ApprovedInvoiceViewLine,
@@ -26,11 +32,25 @@ import type {
 const maximumShortTextLength = 500;
 const maximumLongTextLength = 5_000;
 
-export interface CreditInvoiceDraftLineInput {
+export interface SourceCreditInvoiceDraftLineInput {
+  lineType: 'source';
   sourceInvoiceLineId: string;
   description: string;
   quantityHundredths: number;
 }
+
+export interface ManualCreditInvoiceDraftLineInput {
+  lineType: 'manual';
+  description: string;
+  quantityHundredths: number;
+  unit: string;
+  unitPriceCents: number;
+  vatRateBasisPoints: number;
+}
+
+export type CreditInvoiceDraftLineInput =
+  | SourceCreditInvoiceDraftLineInput
+  | ManualCreditInvoiceDraftLineInput;
 
 export interface PreparedCreditDraftContent {
   lines: InvoiceDraftLine[];
@@ -39,33 +59,55 @@ export interface PreparedCreditDraftContent {
 
 export function createInitialCreditDraft(
   sourceInvoice: ApprovedInvoiceView,
-  previousAllocations: readonly PreviousCreditLineAllocation[],
+  previousAllocations: readonly PreviousCreditAllocation[],
   createdAt: string,
 ): InvoiceDraft {
   const invoiceDate = parseCreditDraftTimestamp(createdAt);
-  const requestedLines = createRemainingRequestedLines(
-    sourceInvoice,
+  const sourceLines = toCreditSourceLines(sourceInvoice);
+  const remainingTotals = calculateRemainingCreditTotals(
+    sourceLines,
     previousAllocations,
   );
 
-  if (requestedLines.length === 0) {
+  if (remainingTotals.grossTotalCents === 0) {
     throw new InvoiceCreditError(
       'Source invoice has no remaining creditable lines.',
     );
   }
 
-  const content = prepareCreditDraftContent(
-    sourceInvoice,
-    previousAllocations,
-    requestedLines.map((line) => {
-      const sourceLine = getSourceLine(sourceInvoice, line.sourceInvoiceLineId);
+  const requestedLines =
+    previousAllocations.some(
+      (allocation) => allocation.sourceInvoiceLineId === null,
+    )
+      ? []
+      : createRemainingRequestedLines(sourceInvoice, previousAllocations);
+  const content =
+    requestedLines.length === 0
+      ? {
+          lines: [],
+          totals: {
+            netTotalCents: 0,
+            vatTotalCents: 0,
+            grossTotalCents: 0,
+            vatBreakdown: [],
+          },
+        }
+      : prepareCreditDraftContent(
+          sourceInvoice,
+          previousAllocations,
+          requestedLines.map((line) => {
+            const sourceLine = getSourceLine(
+              sourceInvoice,
+              line.sourceInvoiceLineId,
+            );
 
-      return {
-        ...line,
-        description: sourceLine.description,
-      };
-    }),
-  );
+            return {
+              ...line,
+              lineType: 'source' as const,
+              description: sourceLine.description,
+            };
+          }),
+        );
 
   return {
     id: randomUUID(),
@@ -85,6 +127,7 @@ export function createInitialCreditDraft(
     orderNumber: sourceInvoice.orderNumber,
     note: createCreditNote(sourceInvoice),
     deliveryAddressText: sourceInvoice.deliveryAddressText,
+    refundIban: '',
     ...content,
     createdAt,
     updatedAt: createdAt,
@@ -94,10 +137,11 @@ export function createInitialCreditDraft(
 export function prepareUpdatedCreditDraft(
   existingDraft: InvoiceDraft,
   sourceInvoice: ApprovedInvoiceView,
-  previousAllocations: readonly PreviousCreditLineAllocation[],
+  previousAllocations: readonly PreviousCreditAllocation[],
   input: {
     subject: string;
     note: string;
+    refundIban: string;
     lines: readonly CreditInvoiceDraftLineInput[];
     updatedAt: string;
   },
@@ -120,6 +164,7 @@ export function prepareUpdatedCreditDraft(
       'Credit invoice note',
       maximumLongTextLength,
     ),
+    refundIban: normalizeOptionalRefundIban(input.refundIban),
     lines: content.lines,
     totals: content.totals,
     updatedAt: input.updatedAt,
@@ -129,7 +174,7 @@ export function prepareUpdatedCreditDraft(
 export function toCreditInvoiceDraftView(
   draft: InvoiceDraft,
   sourceInvoice: ApprovedInvoiceView,
-  previousAllocations: readonly PreviousCreditLineAllocation[],
+  previousAllocations: readonly PreviousCreditAllocation[],
 ): CreditInvoiceDraftView {
   if (draft.invoiceKind !== 'credit' || draft.creditedInvoiceId === null) {
     throw new InvoiceDraftValidationError(
@@ -141,7 +186,11 @@ export function toCreditInvoiceDraftView(
     previousAllocations,
   );
   const draftLineBySourceLine = new Map(
-    draft.lines.map((line) => [line.sourceInvoiceLineId, line]),
+    draft.lines.flatMap((line) =>
+      line.sourceInvoiceLineId === null
+        ? []
+        : [[line.sourceInvoiceLineId, line] as const],
+    ),
   );
   const lines: CreditInvoiceDraftLineView[] = [];
 
@@ -161,6 +210,7 @@ export function toCreditInvoiceDraftView(
     const draftLine = draftLineBySourceLine.get(sourceLine.id);
     lines.push({
       id: draftLine?.id ?? null,
+      lineType: 'source',
       sourceInvoiceLineId: sourceLine.id,
       isIncluded: draftLine !== undefined,
       position: sourceLine.lineOrder,
@@ -177,6 +227,33 @@ export function toCreditInvoiceDraftView(
       netCents: draftLine?.netCents ?? 0,
       vatCents: draftLine?.vatCents ?? 0,
       grossCents: draftLine?.grossCents ?? 0,
+    });
+  }
+
+  for (const draftLine of draft.lines) {
+    if (draftLine.sourceInvoiceLineId !== null) {
+      continue;
+    }
+
+    lines.push({
+      id: draftLine.id,
+      lineType: 'manual',
+      sourceInvoiceLineId: null,
+      isIncluded: true,
+      position: draftLine.position,
+      code: draftLine.code,
+      description: draftLine.description,
+      quantityHundredths: draftLine.quantityHundredths,
+      maximumQuantityHundredths: null,
+      unit: draftLine.unit,
+      unitPriceCents: draftLine.unitPriceCents,
+      vatRateBasisPoints: draftLine.vatRateBasisPoints,
+      discount: draftLine.discount,
+      baseCents: draftLine.baseCents,
+      discountCents: draftLine.discountCents,
+      netCents: draftLine.netCents,
+      vatCents: draftLine.vatCents,
+      grossCents: draftLine.grossCents,
     });
   }
 
@@ -198,6 +275,7 @@ export function toCreditInvoiceDraftView(
     orderNumber: draft.orderNumber,
     note: draft.note,
     deliveryAddressText: draft.deliveryAddressText,
+    refundIban: draft.refundIban,
     lines,
     totals: draft.totals,
     createdAt: draft.createdAt,
@@ -207,7 +285,7 @@ export function toCreditInvoiceDraftView(
 
 function prepareCreditDraftContent(
   sourceInvoice: ApprovedInvoiceView,
-  previousAllocations: readonly PreviousCreditLineAllocation[],
+  previousAllocations: readonly PreviousCreditAllocation[],
   inputLines: readonly CreditInvoiceDraftLineInput[],
 ): PreparedCreditDraftContent {
   if (inputLines.length === 0) {
@@ -216,31 +294,83 @@ function prepareCreditDraftContent(
     );
   }
 
-  const requestedLines: RequestedCreditLine[] = inputLines.map((line) => ({
-    sourceInvoiceLineId: line.sourceInvoiceLineId,
-    quantityHundredths: line.quantityHundredths,
-  }));
-  const calculated = calculateCreditInvoice(
+  const sourceInputs = inputLines.filter(
+    (line): line is SourceCreditInvoiceDraftLineInput =>
+      line.lineType === 'source',
+  );
+  const manualInputs = inputLines.filter(
+    (line): line is ManualCreditInvoiceDraftLineInput =>
+      line.lineType === 'manual',
+  );
+  const requestedSourceLines: RequestedCreditLine[] = sourceInputs.map(
+    (line) => ({
+      sourceInvoiceLineId: line.sourceInvoiceLineId,
+      quantityHundredths: line.quantityHundredths,
+    }),
+  );
+  const manualInputByKey = new Map<
+    string,
+    ManualCreditInvoiceDraftLineInput
+  >();
+  const requestedManualLines: RequestedManualCreditLine[] = manualInputs.map(
+    (line, index) => {
+      const lineKey = `manual-${index}`;
+      manualInputByKey.set(lineKey, line);
+      return {
+        lineKey,
+        quantityHundredths: line.quantityHundredths,
+        unitPriceCents: line.unitPriceCents,
+        vatRateBasisPoints: line.vatRateBasisPoints,
+      };
+    },
+  );
+  const calculated = calculateCreditInvoiceDraft(
     toCreditSourceLines(sourceInvoice),
     previousAllocations,
-    requestedLines,
+    requestedSourceLines,
+    requestedManualLines,
   );
   const sourceLineById = new Map(
     sourceInvoice.lines.map((line) => [line.id, line]),
   );
   const existingLineBySourceId = new Map(
-    inputLines.map((line) => [line.sourceInvoiceLineId, line]),
+    sourceInputs.map((line) => [line.sourceInvoiceLineId, line]),
   );
   const lines = calculated.lines.map((line, index): InvoiceDraftLine => {
+    if (line.sourceInvoiceLineId === null) {
+      const inputLine = manualInputByKey.get(line.lineKey);
+      if (inputLine === undefined || line.unitPriceCents === null) {
+        throw new InvoiceDraftValidationError(
+          'Manual credit invoice line is invalid.',
+        );
+      }
+
+      return {
+        ...line,
+        id: randomUUID(),
+        position: index + 1,
+        code: '',
+        description: normalizeRequiredInvoiceText(
+          normalizeOptionalInvoiceTextWithLimit(
+            inputLine.description,
+            'Manual credit invoice line description',
+            maximumLongTextLength,
+          ),
+          'Manual credit invoice line description',
+        ),
+        unit: parseInvoiceUnit(inputLine.unit),
+        unitPriceCents: line.unitPriceCents,
+        discount: { type: 'none' },
+      };
+    }
+
     const sourceLine = sourceLineById.get(line.sourceInvoiceLineId);
     const inputLine = existingLineBySourceId.get(line.sourceInvoiceLineId);
-
     if (sourceLine === undefined || inputLine === undefined) {
       throw new InvoiceDraftValidationError(
         'Credit invoice source line is invalid.',
       );
     }
-
     return {
       ...line,
       id: randomUUID(),
@@ -268,7 +398,7 @@ function prepareCreditDraftContent(
 
 function createRemainingRequestedLines(
   sourceInvoice: ApprovedInvoiceView,
-  previousAllocations: readonly PreviousCreditLineAllocation[],
+  previousAllocations: readonly PreviousCreditAllocation[],
 ): RequestedCreditLine[] {
   const previousQuantityBySourceLine = sumPreviousQuantities(
     previousAllocations,
@@ -307,11 +437,14 @@ function toCreditSourceLines(
 }
 
 function sumPreviousQuantities(
-  previousAllocations: readonly PreviousCreditLineAllocation[],
+  previousAllocations: readonly PreviousCreditAllocation[],
 ): Map<string, number> {
   const quantities = new Map<string, number>();
 
   for (const allocation of previousAllocations) {
+    if (allocation.sourceInvoiceLineId === null) {
+      continue;
+    }
     const next =
       (quantities.get(allocation.sourceInvoiceLineId) ?? 0) +
       allocation.quantityHundredths;

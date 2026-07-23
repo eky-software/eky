@@ -78,6 +78,42 @@ describe('SqliteInvoiceCreditApprovalRepository', () => {
     expect(getSequence(database)?.last_sequence_number).toBe(1);
   });
 
+  it('approves a manual credit and snapshots the optional refund account', async () => {
+    replaceDraftLineWithManualCredit(database);
+    database
+      .prepare(
+        `
+          UPDATE invoice_drafts
+          SET refund_iban = 'FI2112345600000785'
+          WHERE id = 'credit-draft-1'
+        `,
+      )
+      .run();
+    const repository = new SqliteInvoiceCreditApprovalRepository(database);
+
+    await expect(repository.approveCreditDraft(createInput())).resolves.toMatchObject({
+      outcome: 'approved',
+    });
+
+    expect(getCreditInvoice(database)).toMatchObject({
+      refund_iban_snapshot: 'FI2112345600000785',
+      total_net_cents: 2_500,
+      total_vat_cents: 638,
+      total_gross_cents: 3_138,
+    });
+    expect(getCreditLine(database)).toMatchObject({
+      source_invoice_line_id: null,
+      description: 'Manual customer credit',
+      quantity_hundredths: 100,
+      unit: 'kpl',
+      unit_price_cents: 2_500,
+      vat_rate_basis_points: 2_550,
+      net_cents: 2_500,
+      vat_cents: 638,
+      gross_cents: 3_138,
+    });
+  });
+
   it('returns a conflict if the source invoice is no longer sent', async () => {
     database
       .prepare(
@@ -534,6 +570,63 @@ function insertPreviousCredit(
         UPDATE invoice_drafts
         SET credited_invoice_id = 'source-invoice-1'
         WHERE id = 'credit-draft-1'
+      `,
+    )
+    .run();
+}
+
+function replaceDraftLineWithManualCredit(
+  database: DatabaseConnection,
+): void {
+  database
+    .prepare(
+      `
+        DELETE FROM invoice_draft_lines
+        WHERE invoice_draft_id = 'credit-draft-1'
+      `,
+    )
+    .run();
+  database
+    .prepare(
+      `
+        INSERT INTO invoice_draft_lines (
+          id,
+          invoice_draft_id,
+          source_invoice_line_id,
+          position,
+          code,
+          description,
+          quantity_hundredths,
+          unit,
+          unit_price_cents,
+          vat_rate_basis_points,
+          discount_type,
+          discount_value,
+          base_cents,
+          discount_cents,
+          net_cents,
+          vat_cents,
+          gross_cents
+        )
+        VALUES (
+          'manual-credit-draft-line',
+          'credit-draft-1',
+          NULL,
+          1,
+          '',
+          'Manual customer credit',
+          100,
+          'kpl',
+          2500,
+          2550,
+          'none',
+          0,
+          1,
+          0,
+          1,
+          0,
+          1
+        )
       `,
     )
     .run();

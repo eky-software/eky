@@ -69,6 +69,7 @@ function createDraft(
     orderNumber: '',
     note: '',
     deliveryAddressText: 'Työkohde 1',
+    refundIban: '',
     createdAt: '2026-06-13T00:00:00.000Z',
     updatedAt: '2026-06-13T00:00:00.000Z',
     ...draftOverrides,

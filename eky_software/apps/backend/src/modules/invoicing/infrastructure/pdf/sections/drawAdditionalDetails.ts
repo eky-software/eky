@@ -1,4 +1,5 @@
 import type { ApprovedInvoiceView } from '../../../domain/approvedInvoiceView.js';
+import { formatPdfIban } from '../approvedInvoicePdfFormatting.js';
 import { drawBox, invoicePdfLayout } from '../approvedInvoicePdfLayout.js';
 
 interface AdditionalDetailLine {
@@ -14,6 +15,13 @@ export function drawAdditionalDetails(
   const lines = [
     { label: 'Toimitus / kohde', value: invoice.deliveryAddressText },
     { label: 'Lisätieto', value: invoice.note },
+    {
+      label: 'Palautustili',
+      value:
+        invoice.invoiceKind === 'credit'
+          ? formatPdfIban(invoice.refundIbanSnapshot)
+          : '',
+    },
   ];
   const visibleLines = lines.filter((line) => line.value.trim().length > 0);
 
@@ -26,7 +34,7 @@ export function drawAdditionalDetails(
   const contentWidth = invoicePdfLayout.contentWidth - 20;
   const labelWidth = 88;
   const topPadding = 6;
-  const bottomPadding = 1.5;
+  const bottomPadding = topPadding;
   const lineGap = 1.5;
   const valueWidth = contentWidth - labelWidth;
   const rowHeights = visibleLines.map((line) =>

@@ -97,6 +97,7 @@ function parseCreditInvoiceDraft(value: unknown): CreditInvoiceDraft {
     orderNumber: readString(value, 'orderNumber'),
     note: readString(value, 'note'),
     deliveryAddressText: readString(value, 'deliveryAddressText'),
+    refundIban: readString(value, 'refundIban'),
     lines: value.lines.map(parseCreditLine),
     totals: parseTotals(value.totals),
     createdAt: readString(value, 'createdAt'),
@@ -123,18 +124,23 @@ function parseCreditLine(value: unknown): CreditInvoiceDraftLine {
     throw invalidCreditInvoiceResponse(value);
   }
 
-  return {
+  const lineType = parseCreditLineType(value.lineType);
+  const sourceInvoiceLineId = readNullableString(
+    value,
+    'sourceInvoiceLineId',
+  );
+  const maximumQuantityHundredths = readNullableSafeInteger(
+    value,
+    'maximumQuantityHundredths',
+  );
+
+  const common = {
     id: readNullableString(value, 'id'),
-    sourceInvoiceLineId: readString(value, 'sourceInvoiceLineId'),
     isIncluded: readBoolean(value, 'isIncluded'),
     position: readSafeInteger(value, 'position'),
     code: readString(value, 'code'),
     description: readString(value, 'description'),
     quantityHundredths: readSafeInteger(value, 'quantityHundredths'),
-    maximumQuantityHundredths: readSafeInteger(
-      value,
-      'maximumQuantityHundredths',
-    ),
     unit: parseInvoiceUnit(value.unit),
     unitPriceCents: readSafeInteger(value, 'unitPriceCents'),
     vatRateBasisPoints: readSafeInteger(value, 'vatRateBasisPoints'),
@@ -145,6 +151,44 @@ function parseCreditLine(value: unknown): CreditInvoiceDraftLine {
     vatCents: readSafeInteger(value, 'vatCents'),
     grossCents: readSafeInteger(value, 'grossCents'),
   };
+
+  if (lineType === 'source') {
+    if (
+      sourceInvoiceLineId === null ||
+      maximumQuantityHundredths === null
+    ) {
+      throw invalidCreditInvoiceResponse(value);
+    }
+
+    return {
+      ...common,
+      lineType,
+      sourceInvoiceLineId,
+      maximumQuantityHundredths,
+    };
+  }
+
+  if (
+    sourceInvoiceLineId !== null ||
+    maximumQuantityHundredths !== null
+  ) {
+    throw invalidCreditInvoiceResponse(value);
+  }
+
+  return {
+    ...common,
+    lineType,
+    sourceInvoiceLineId: null,
+    maximumQuantityHundredths: null,
+  };
+}
+
+function parseCreditLineType(value: unknown): 'source' | 'manual' {
+  if (value === 'source' || value === 'manual') {
+    return value;
+  }
+
+  throw invalidCreditInvoiceResponse(value);
 }
 
 function parseTotals(value: Record<string, unknown>): InvoiceTotals {
@@ -267,6 +311,19 @@ function readSafeInteger(
   }
 
   throw invalidCreditInvoiceResponse(value);
+}
+
+function readNullableSafeInteger(
+  value: Record<string, unknown>,
+  fieldName: string,
+): number | null {
+  const fieldValue = value[fieldName];
+
+  if (fieldValue === null) {
+    return null;
+  }
+
+  return readSafeInteger(value, fieldName);
 }
 
 function readZero(

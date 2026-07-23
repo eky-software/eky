@@ -242,11 +242,19 @@ hyvityslaskulla, joka:
 - käyttää hyväksynnän jälkeen samaa current PDF- ja toimitusputkea kuin
   tavallinen lasku
 
-Hyvitys voi olla koko laskun hyvitys tai lähderiveihin sidottu osahyvitys.
-Hyvitysluonnoksessa käyttäjä voi poistaa rivejä ja pienentää hyvitettävää
-määrää, mutta ei muuttaa lähderivin yksikköä, hintaa, ALV-kantaa, alennusta,
-syöttötapaa tai lähdeviitettä. Tavallisen laskun vapaata negatiivista syötettä
-ei sallita.
+Hyvitys voi olla koko laskun hyvitys, lähderiveihin sidottu osahyvitys tai
+alkuperäisen laskun jäljellä olevaan summa- ja ALV-kantakapasiteettiin rajattu
+vapaa hyvitysrivi. Hyvitysluonnoksessa käyttäjä voi poistaa lähderivejä ja
+pienentää niiden hyvitettävää määrää, mutta ei muuttaa lähderivin yksikköä,
+hintaa, ALV-kantaa, alennusta, syöttötapaa tai lähdeviitettä. Vapaa hyvitysrivi
+käyttää alkuperäisen laskun syöttötapaa ja ALV-kantoja sekä samaa
+kokonaislukulaskentaa kuin muut laskurivit. Tavallisen laskun vapaata
+negatiivista syötettä ei sallita.
+
+Hyvitysluonnokselle voidaan antaa valinnainen palautus-IBAN. Backend validoi
+ja normalisoi sen, ja hyväksyntä tallentaa sen hyvityslaskun snapshotiin.
+Palautustili ei muuta Company Settings -masterdataa eikä näy hyvityslaskulla,
+jos kenttä jätetään tyhjäksi.
 
 Hyvityksen hyväksyntä laskee aiempien ei-peruttujen hyväksyttyjen ja
 lähetettyjen hyvitysten käyttämän kapasiteetin ja jäljellä olevan määrän

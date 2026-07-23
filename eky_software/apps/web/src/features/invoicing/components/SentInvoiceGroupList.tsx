@@ -33,7 +33,7 @@ export function SentInvoiceGroupList({
         <span className={tableStyles.totalHeader} role="columnheader">
           {uiText.invoicing.total}
         </span>
-        <span role="columnheader">{uiText.invoicing.creditStatus}</span>
+        <span role="columnheader">{uiText.invoicing.status}</span>
       </div>
 
       {groups.flatMap((group) => [
@@ -72,7 +72,9 @@ export function SentInvoiceGroupList({
             )}
           </strong>
           <span className="status-pill status-pill-active" role="cell">
-            {getCreditStatusLabel(group.creditStatus)}
+            {group.creditStatus === 'full'
+              ? uiText.invoicing.statusCredited
+              : uiText.invoicing.statusSent}
           </span>
         </div>,
         ...group.creditInvoices.map((creditInvoice) => (
@@ -117,18 +119,4 @@ function formatCustomer(
   invoice: SentInvoiceGroup['rootInvoice'],
 ): string {
   return `${invoice.customerNumberSnapshot} – ${invoice.customerNameSnapshot}`;
-}
-
-function getCreditStatusLabel(
-  status: SentInvoiceGroup['creditStatus'],
-): string {
-  if (status === 'partial') {
-    return uiText.invoicing.creditStatusPartial;
-  }
-
-  if (status === 'full') {
-    return uiText.invoicing.creditStatusFull;
-  }
-
-  return uiText.invoicing.creditStatusNone;
 }

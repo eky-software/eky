@@ -452,6 +452,9 @@ export const uiText = {
     creditDraftHelp: (invoiceNumber: string, invoiceDate: string) =>
       `Hyvitys kohdistuu laskuun ${invoiceNumber}, päiväys ${invoiceDate}. Backend laskee hyvityksen lopulliset summat alkuperäisen laskun snapshotista.`,
     creditDraftIncludeLine: 'Hyvitä rivi',
+    creditDraftAddManualLine: 'Lisää vapaa hyvitysrivi',
+    creditDraftManualLine: 'Vapaa hyvitysrivi',
+    creditDraftRemoveManualLine: 'Poista rivi',
     creditDraftKicker: 'Hyvitysluonnos',
     creditDraftLines: 'Hyvitettävät laskurivit',
     creditDraftLinesHelp:
@@ -463,6 +466,10 @@ export const uiText = {
       'Hyvitysluonnosta tai sen alkuperäistä laskua ei löytynyt.',
     creditDraftOpenPrompt: 'Valitse avattava hyvitysluonnos listasta.',
     creditDraftQuantity: 'Hyvitettävä määrä',
+    creditDraftRefundIban: 'Palautustili (IBAN)',
+    creditDraftRefundIbanHelp:
+      'Valinnainen tili, jolle asiakkaalle palautettava maksu ohjataan. Tyhjä arvo ei näy hyvityslaskulla.',
+    creditDraftRefundIbanPlaceholder: 'FI12 3456 7890 1234 56',
     creditDraftSave: 'Tallenna hyvitysluonnos',
     creditDraftSaveSuccess: 'Hyvitysluonnoksen muutokset tallennettu.',
     creditDraftSavedLineTotal: 'Tallennettu hyvitys',
@@ -472,7 +479,7 @@ export const uiText = {
     creditDraftTotalsHelp:
       'Näytetyt summat ovat viimeksi backendissä tallennetut hyvityssummat. Muutokset lasketaan uudelleen tallennettaessa.',
     creditDraftValidationError:
-      'Valitse vähintään yksi rivi ja tarkista kuvaukset sekä hyvitettävät määrät.',
+      'Tarkista hyvitysrivit, määrät, hinnat, ALV-kannat ja mahdollinen palautustili.',
     creditedInvoiceDate: 'Alkuperäisen laskun päiväys',
     creditedInvoiceNumber: 'Alkuperäinen lasku',
     creditInvoice: 'Hyvityslasku',
@@ -785,6 +792,7 @@ export const uiText = {
     status: 'Tila',
     statusApproved: 'Hyväksytty',
     statusCancelled: 'Peruutettu',
+    statusCredited: 'Hyvitetty',
     statusCreditDraft: 'Hyvitysluonnos',
     statusDraft: 'Luonnos',
     statusSent: 'Lähetetty',

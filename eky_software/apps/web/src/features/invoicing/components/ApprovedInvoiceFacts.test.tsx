@@ -31,6 +31,23 @@ describe('ApprovedInvoiceFacts', () => {
     expect(html).not.toContain(`${uiText.invoicing.orderNumber}:`);
     expect(html).not.toContain(`${uiText.invoicing.subject}:`);
   });
+
+  it('shows a refund account only on a credit invoice', () => {
+    const creditHtml = renderFacts({
+      invoiceKind: 'credit',
+      refundIbanSnapshot: 'FI2112345600000785',
+    });
+    const standardHtml = renderFacts({
+      invoiceKind: 'standard',
+      refundIbanSnapshot: 'FI2112345600000785',
+    });
+
+    expect(creditHtml).toContain(uiText.invoicing.creditDraftRefundIban);
+    expect(creditHtml).toContain('FI21 1234 5600 0007 85');
+    expect(standardHtml).not.toContain(
+      uiText.invoicing.creditDraftRefundIban,
+    );
+  });
 });
 
 type ApprovedInvoiceFactsProps = React.ComponentProps<
@@ -54,6 +71,7 @@ function renderFacts(
       orderNumber="ORDER-1"
       paymentTermDays={14}
       referenceNumber="202600017"
+      refundIbanSnapshot=""
       reminderPeriodDays={8}
       subject="Approved invoice"
       {...overrides}

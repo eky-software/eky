@@ -86,6 +86,12 @@
   font-weight: 700;
 }
 
+.textFields small {
+  color: var(--color-text-muted);
+  font-weight: 500;
+  line-height: 1.35;
+}
+
 .textFields textarea {
   min-height: 82px;
   resize: vertical;
@@ -98,6 +104,10 @@
 }
 
 .sectionHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 12px;
 }
 
@@ -137,6 +147,10 @@
 .include input {
   width: 18px;
   height: 18px;
+}
+
+.removeManualLine {
+  align-self: end;
 }
 
 .description input {
@@ -235,7 +249,8 @@
 @media (max-width: 700px) {
   .header,
   .footer,
-  .confirmation {
+  .confirmation,
+  .sectionHeader {
     align-items: stretch;
     flex-direction: column;
   }

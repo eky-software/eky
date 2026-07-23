@@ -98,6 +98,7 @@ export function toInvoiceDraftRow(draft: InvoiceDraft): NewInvoiceDraftRow {
     order_number: draft.orderNumber,
     note: draft.note,
     delivery_address_text: draft.deliveryAddressText,
+    refund_iban: draft.refundIban,
     net_total_cents: draft.totals.netTotalCents,
     vat_total_cents: draft.totals.vatTotalCents,
     gross_total_cents: draft.totals.grossTotalCents,

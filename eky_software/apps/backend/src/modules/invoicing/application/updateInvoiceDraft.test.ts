@@ -140,6 +140,7 @@ function createStoredDraft(): InvoiceDraft {
     orderNumber: '',
     note: '',
     deliveryAddressText: '',
+    refundIban: '',
     lines,
     totals: calculateInvoiceTotals(lines),
     createdAt: '2026-06-13T10:00:00.000Z',

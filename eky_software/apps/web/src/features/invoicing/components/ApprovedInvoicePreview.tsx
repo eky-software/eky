@@ -237,6 +237,7 @@ export function ApprovedInvoicePreview({
           orderNumber={invoice.orderNumber}
           paymentTermDays={invoice.paymentTermDays}
           referenceNumber={invoice.referenceNumber}
+          refundIbanSnapshot={invoice.refundIbanSnapshot}
           reminderPeriodDays={invoice.reminderPeriodDays}
           subject={invoice.subject}
         />

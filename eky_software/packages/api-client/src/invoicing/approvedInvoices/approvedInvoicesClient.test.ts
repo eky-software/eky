@@ -992,6 +992,7 @@ function createTestApprovedInvoiceView(
     orderNumber: 'ORDER-1',
     note: 'Invoice note',
     deliveryAddressText: 'Worksite Street 4',
+    refundIbanSnapshot: '',
     lines: [
       {
         id: 'line-1',

@@ -155,6 +155,7 @@ function createInvoice(
     orderNumber: '',
     note: '',
     deliveryAddressText: '',
+    refundIbanSnapshot: '',
     lines: [],
     totals: {
       netTotalCents: 10_000,

@@ -2,6 +2,7 @@ import type { CreditInvoiceDraft } from '@eky/api-client';
 import { describe, expect, it } from 'vitest';
 
 import {
+  createManualCreditLineForm,
   formatCreditQuantityInput,
   hydrateCreditInvoiceDraftForm,
   validateAndMapCreditInvoiceDraftForm,
@@ -40,8 +41,10 @@ describe('creditInvoiceDraftForm', () => {
       input: {
         subject: 'Osahyvitys',
         note: 'Korjattu määrä',
+        refundIban: '',
         lines: [
           {
+            lineType: 'source',
             sourceInvoiceLineId: 'source-line-1',
             description: 'Hyvitetty työ',
             quantityHundredths: 125,
@@ -79,6 +82,70 @@ describe('creditInvoiceDraftForm', () => {
     expect(formatCreditQuantityInput(125)).toBe('1,25');
     expect(formatCreditQuantityInput(10_000)).toBe('100,00');
   });
+
+  it('maps a manual credit and normalizes an optional refund IBAN', () => {
+    const form = hydrateCreditInvoiceDraftForm(createCreditDraft());
+    const manualLine = createManualCreditLineForm(form);
+    const sourceLine = form.lines[0];
+    if (sourceLine?.lineType !== 'source') {
+      throw new Error('Expected a source credit line.');
+    }
+
+    form.lines = [
+      {
+        ...sourceLine,
+        isIncluded: false,
+      },
+      {
+        ...manualLine,
+        description: '  Erillinen hyvitys  ',
+        quantity: '2,00',
+        unit: 'kpl',
+        unitPrice: '12,50',
+        vatRateBasisPoints: 2_550,
+      },
+    ];
+    form.refundIban = ' fi21 1234 5600 0007 85 ';
+
+    expect(validateAndMapCreditInvoiceDraftForm(form)).toEqual({
+      errors: [],
+      input: {
+        subject: 'Hyvityslasku laskulle 20260001',
+        note: '',
+        refundIban: 'FI2112345600000785',
+        lines: [
+          {
+            lineType: 'manual',
+            description: 'Erillinen hyvitys',
+            quantityHundredths: 200,
+            unit: 'kpl',
+            unitPriceCents: 1_250,
+            vatRateBasisPoints: 2_550,
+          },
+        ],
+      },
+    });
+  });
+
+  it('rejects an invalid refund IBAN and unsupported manual VAT rate', () => {
+    const form = hydrateCreditInvoiceDraftForm(createCreditDraft());
+    const manualLine = createManualCreditLineForm(form);
+
+    form.lines = [
+      {
+        ...manualLine,
+        description: 'Erillinen hyvitys',
+        unitPrice: '10,00',
+        vatRateBasisPoints: 1_350,
+      },
+    ];
+    form.refundIban = 'FI2112345600000786';
+
+    expect(validateAndMapCreditInvoiceDraftForm(form)).toEqual({
+      errors: ['refundIban', 'vatRate'],
+      input: null,
+    });
+  });
 });
 
 function createCreditDraft(): CreditInvoiceDraft {
@@ -104,6 +171,7 @@ function createCreditDraft(): CreditInvoiceDraft {
     orderNumber: '',
     note: '',
     deliveryAddressText: '',
+    refundIban: '',
     lines: [
       createLine({
         isIncluded: true,
@@ -153,10 +221,11 @@ function createParty(
 }
 
 function createLine(
-  overrides: Partial<CreditInvoiceDraft['lines'][number]>,
-): CreditInvoiceDraft['lines'][number] {
+  overrides: Partial<SourceCreditLine>,
+): SourceCreditLine {
   return {
     id: null,
+    lineType: 'source',
     sourceInvoiceLineId: 'source-line-1',
     isIncluded: true,
     position: 1,
@@ -177,3 +246,7 @@ function createLine(
   };
 }
 
+type SourceCreditLine = Extract<
+  CreditInvoiceDraft['lines'][number],
+  { lineType: 'source' }
+>;

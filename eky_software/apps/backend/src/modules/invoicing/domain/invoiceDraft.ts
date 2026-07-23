@@ -40,6 +40,7 @@ export interface InvoiceDraft {
   orderNumber: string;
   note: string;
   deliveryAddressText: string;
+  refundIban: string;
   lines: InvoiceDraftLine[];
   totals: InvoiceTotals;
   createdAt: string;

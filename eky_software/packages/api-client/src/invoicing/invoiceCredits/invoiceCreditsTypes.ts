@@ -17,15 +17,13 @@ export interface CreditInvoiceParty {
   city: string;
 }
 
-export interface CreditInvoiceDraftLine {
+interface CreditInvoiceDraftLineBase {
   id: string | null;
-  sourceInvoiceLineId: string;
   isIncluded: boolean;
   position: number;
   code: string;
   description: string;
   quantityHundredths: number;
-  maximumQuantityHundredths: number;
   unit: InvoiceUnit;
   unitPriceCents: number;
   vatRateBasisPoints: number;
@@ -36,6 +34,24 @@ export interface CreditInvoiceDraftLine {
   vatCents: number;
   grossCents: number;
 }
+
+export interface SourceCreditInvoiceDraftLine
+  extends CreditInvoiceDraftLineBase {
+  lineType: 'source';
+  sourceInvoiceLineId: string;
+  maximumQuantityHundredths: number;
+}
+
+export interface ManualCreditInvoiceDraftLine
+  extends CreditInvoiceDraftLineBase {
+  lineType: 'manual';
+  sourceInvoiceLineId: null;
+  maximumQuantityHundredths: null;
+}
+
+export type CreditInvoiceDraftLine =
+  | SourceCreditInvoiceDraftLine
+  | ManualCreditInvoiceDraftLine;
 
 export interface CreditInvoiceDraft {
   id: string;
@@ -55,21 +71,37 @@ export interface CreditInvoiceDraft {
   orderNumber: string;
   note: string;
   deliveryAddressText: string;
+  refundIban: string;
   lines: CreditInvoiceDraftLine[];
   totals: InvoiceTotals;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface CreditInvoiceDraftLineInput {
+export interface SourceCreditInvoiceDraftLineInput {
+  lineType: 'source';
   sourceInvoiceLineId: string;
   description: string;
   quantityHundredths: number;
 }
 
+export interface ManualCreditInvoiceDraftLineInput {
+  lineType: 'manual';
+  description: string;
+  quantityHundredths: number;
+  unit: string;
+  unitPriceCents: number;
+  vatRateBasisPoints: number;
+}
+
+export type CreditInvoiceDraftLineInput =
+  | SourceCreditInvoiceDraftLineInput
+  | ManualCreditInvoiceDraftLineInput;
+
 export interface UpdateCreditInvoiceDraftInput {
   subject: string;
   note: string;
+  refundIban: string;
   lines: CreditInvoiceDraftLineInput[];
 }
 

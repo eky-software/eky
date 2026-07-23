@@ -65,15 +65,27 @@ describe('invoice credits api client', () => {
     const unsafeInput = {
       subject: 'Osahyvitys',
       note: 'Hyvityksen lisätieto',
+      refundIban: 'FI2112345600000785',
       companyId: 'other-company',
       totals: { grossTotalCents: 1 },
       lines: [
         {
+          lineType: 'source',
           sourceInvoiceLineId: 'source-line-1',
           description: 'Korjattu kuvaus',
           quantityHundredths: 50,
           unitPriceCents: 1,
           vatRateBasisPoints: 0,
+        },
+        {
+          lineType: 'manual',
+          description: 'Asiakaspalautus',
+          quantityHundredths: 100,
+          unit: 'kpl',
+          unitPriceCents: 2_500,
+          vatRateBasisPoints: 2_550,
+          sourceInvoiceLineId: 'server-owned',
+          grossCents: 1,
         },
       ],
     } as unknown as UpdateCreditInvoiceDraftInput;
@@ -85,14 +97,63 @@ describe('invoice credits api client', () => {
     expect(readRequestBody(requests[0])).toEqual({
       subject: 'Osahyvitys',
       note: 'Hyvityksen lisätieto',
+      refundIban: 'FI2112345600000785',
       lines: [
         {
+          lineType: 'source',
           sourceInvoiceLineId: 'source-line-1',
           description: 'Korjattu kuvaus',
           quantityHundredths: 50,
         },
+        {
+          lineType: 'manual',
+          description: 'Asiakaspalautus',
+          quantityHundredths: 100,
+          unit: 'kpl',
+          unitPriceCents: 2_500,
+          vatRateBasisPoints: 2_550,
+        },
       ],
     });
+  });
+
+  it('reads a manual credit line without a source allocation', async () => {
+    const requests: RecordedRequest[] = [];
+    const creditInvoiceDraft = createCreditInvoiceDraft();
+    creditInvoiceDraft.lines = [createManualCreditLine()];
+    const client = createTestClient(requests, { creditInvoiceDraft });
+
+    await expect(
+      client.getCreditInvoiceDraft('draft-1'),
+    ).resolves.toMatchObject({
+      lines: [
+        {
+          lineType: 'manual',
+          sourceInvoiceLineId: null,
+          maximumQuantityHundredths: null,
+        },
+      ],
+    });
+  });
+
+  it('rejects a response with contradictory credit line ownership', async () => {
+    const requests: RecordedRequest[] = [];
+    const creditInvoiceDraft = createCreditInvoiceDraft();
+    const client = createTestClient(requests, {
+      creditInvoiceDraft: {
+        ...creditInvoiceDraft,
+        lines: [
+          {
+            ...createManualCreditLine(),
+            sourceInvoiceLineId: 'source-line-1',
+          },
+        ],
+      },
+    });
+
+    await expect(
+      client.getCreditInvoiceDraft('draft-1'),
+    ).rejects.toBeInstanceOf(EkyApiError);
   });
 
   it('rejects an invalid credit draft response shape', async () => {
@@ -175,9 +236,11 @@ function createCreditInvoiceDraft(): CreditInvoiceDraft {
     orderNumber: '',
     note: '',
     deliveryAddressText: '',
+    refundIban: '',
     lines: [
       {
         id: 'draft-line-1',
+        lineType: 'source',
         sourceInvoiceLineId: 'source-line-1',
         isIncluded: true,
         position: 1,
@@ -223,6 +286,29 @@ function createApprovedCreditInvoiceResult(): ApprovedCreditInvoiceResult {
     sequenceScope: 'calendar-year:2026',
     numberingMode: 'calendarYearSequence',
     status: 'approved',
+  };
+}
+
+function createManualCreditLine(): CreditInvoiceDraft['lines'][number] {
+  return {
+    id: 'manual-line-1',
+    lineType: 'manual',
+    sourceInvoiceLineId: null,
+    isIncluded: true,
+    position: 1,
+    code: '',
+    description: 'Asiakaspalautus',
+    quantityHundredths: 100,
+    maximumQuantityHundredths: null,
+    unit: 'kpl',
+    unitPriceCents: 2_500,
+    vatRateBasisPoints: 2_550,
+    discount: { type: 'none' },
+    baseCents: 2_500,
+    discountCents: 0,
+    netCents: 2_500,
+    vatCents: 638,
+    grossCents: 3_138,
   };
 }
 

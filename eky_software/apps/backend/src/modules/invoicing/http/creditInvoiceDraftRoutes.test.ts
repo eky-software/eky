@@ -72,12 +72,22 @@ describe('credit invoice draft routes', () => {
       body: JSON.stringify({
         lines: [
           {
+            lineType: 'source',
             description: 'Korjattu hyvitysrivi',
             quantityHundredths: 50,
             sourceInvoiceLineId: 'source-line-1',
           },
+          {
+            lineType: 'manual',
+            description: 'Erillinen hyvitys',
+            quantityHundredths: 100,
+            unit: 'kpl',
+            unitPriceCents: 2_500,
+            vatRateBasisPoints: 2_550,
+          },
         ],
         note: 'Hyvityksen lisätieto',
+        refundIban: 'FI2112345600000785',
         subject: 'Osahyvitys',
       }),
       headers: { 'Content-Type': 'application/json' },
@@ -93,12 +103,22 @@ describe('credit invoice draft routes', () => {
       invoiceDraftId: 'draft-1',
       lines: [
         {
+          lineType: 'source',
           description: 'Korjattu hyvitysrivi',
           quantityHundredths: 50,
           sourceInvoiceLineId: 'source-line-1',
         },
+        {
+          lineType: 'manual',
+          description: 'Erillinen hyvitys',
+          quantityHundredths: 100,
+          unit: 'kpl',
+          unitPriceCents: 2_500,
+          vatRateBasisPoints: 2_550,
+        },
       ],
       note: 'Hyvityksen lisätieto',
+      refundIban: 'FI2112345600000785',
       subject: 'Osahyvitys',
     });
   });
@@ -159,6 +179,7 @@ describe('credit invoice draft routes', () => {
         companyId: 'other-company',
         lines: [],
         note: '',
+        refundIban: '',
         subject: '',
       },
     },
@@ -166,6 +187,7 @@ describe('credit invoice draft routes', () => {
       body: {
         lines: [
           {
+            lineType: 'source',
             description: 'Rivi',
             quantityHundredths: 100,
             sourceInvoiceLineId: 'source-line-1',
@@ -173,6 +195,7 @@ describe('credit invoice draft routes', () => {
           },
         ],
         note: '',
+        refundIban: '',
         subject: '',
       },
     },
@@ -318,9 +341,11 @@ function createCreditDraftView(): CreditInvoiceDraftView {
     orderNumber: '',
     note: '',
     deliveryAddressText: '',
+    refundIban: '',
     lines: [
       {
         id: 'draft-line-1',
+        lineType: 'source',
         sourceInvoiceLineId: 'source-line-1',
         isIncluded: true,
         position: 1,
