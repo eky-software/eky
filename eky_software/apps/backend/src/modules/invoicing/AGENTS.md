@@ -38,6 +38,10 @@ Do not import another business module's infrastructure, repository adapter or
 HTTP code. Do not add a generic manager, service locator, base repository or
 shared helper layer to shorten explicit Invoicing dependencies.
 
+Implement independent Invoicing repository and read-model ports in separate
+adapters. Do not combine invoice detail, credit context, sent grouping or
+future reporting reads back into one general SQLite reader.
+
 ## Trust And Permissions
 
 HTTP routes take `ActorContext` and `companyId` only from the backend-verified

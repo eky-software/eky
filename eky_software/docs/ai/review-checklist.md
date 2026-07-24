@@ -9,6 +9,12 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
 - Rikkooko muutos moduulirajoja?
 - Sisältääkö UI liiketoimintalogiikkaa?
 - Sisältääkö repository liiketoimintalogiikkaa?
+- Toteuttaako yksi adapteri useita toisistaan riippumattomia portteja?
+- Onko readeriin kasaantunut detail-, context-, grouping- tai
+  reporting-vastuita?
+- Saako jokainen application service compositionista vain tarvitsemansa portin?
+- Onko yhteinen mapping aidosti yhteistä muunnosta eikä piilotettu business- tai
+  query-kerros?
 - Onko mahdollinen uusi rakenne dokumentoitu?
 
 ## Turvallisuus

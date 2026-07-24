@@ -118,9 +118,17 @@ repositoryjen tai HTTP-riippuvuuksien yksityiskohtaista sidontaa.
 | Nykyisten moduulien lähtöauditointi | `b546438` |
 | Customers-composition ja `CustomerAccessReader`-raja | `a0325d1` |
 | Company Settings -composition ja `InvoiceEmailSettingsReader`-raja | `6109130` |
+| PR #143: Invoicingin SQLite read model -vastuiden ja mappingien jako | `4eb809c`, `bc2ed0b` |
 
 Invoicingin moduulikohtainen ohje ja nykytilan referenssit viimeistellään tämän
 dokumentaatiovaiheen yhteydessä.
+
+PR #143:ssa `ApprovedInvoiceReader`, `InvoiceCreditContextReader` ja
+`SentInvoiceGroupReader` erotettiin omiksi SQLite-adaptereikseen. Yhteiset
+muunnokset sijoitettiin tarkasti nimettyihin moduulikohtaisiin tiedostoihin
+`approvedInvoiceReadModelMapping.ts` ja `sentInvoiceGroupMapping.ts`. Muutos
+säilytti käyttäytymisen, API-sopimukset, skeeman, SQL-kyselyiden
+tenant-rajaukset ja muut `companyId`-rajat ennallaan.
 
 Korjaukset eivät muuta endpointteja, response-muotoja, `ActorContext`- tai
 permission-sääntöjä, `CreateAppOptions`-sopimusta, SQL-kyselyitä,
