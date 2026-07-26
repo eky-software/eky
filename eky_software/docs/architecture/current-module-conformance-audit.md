@@ -173,3 +173,35 @@ Auditissa löytynyt erillinen pilotin release-blocker on viivästyskoron
 `100000` basis pointin eli 1000 % tekninen yläraja. Se korjataan omana
 laskutuksen domain-, UI- ja migraatiomuutoksenaan ennen oikeaa dataa eikä
 observability-työn sivuvaikutuksena.
+
+## R0 Observability -toteutuksen tila
+
+Lähtöauditin jälkeen R0-observability on toteutettu seuraavina rajattuina
+muutoksina:
+
+| Muutos | Commit |
+| --- | --- |
+| Observability-perusta ja hyväksytyt turvallisuusrajat | `07b9f28` |
+| Tyypitetyt operational event -sopimukset | `3c12720` |
+| Rotatoivat ja säilytysajalla rajatut JSONL-lokit | `7e83f7c` |
+| Kriittisten runtime-rajojen instrumentointi | `6840ed4` |
+| Customers- ja Company Settings -kirjoitusten moduuliomisteinen auditointi | `93be675` |
+| Read-only Activity-koontinäkymä | `327a54c` |
+| Sanitoitu Diagnostics-näkymä | `2ca4bac` |
+| Electron mainin hallitsema turvallinen operational log -kansion avaus | `3610932` |
+| Electron mainin hallitsema sanitoitu tukipakettivienti | `2f016a2` |
+
+Tukipaketti syntyy vain käyttäjän vahvistuksella ja Electron main -prosessin
+omistaman kapean capabilityn kautta. Renderer ei anna vientipolkua,
+backend-originia, runtime-sessionia, URL:ia tai tukipaketin sisältöä.
+Backendin permission-tarkistettu tekninen read model palauttaa vain
+sovellusversiot, tietokannan health- ja migraatioyhteenvedon sekä sanitoidut
+viimeisen 30 päivän warn-, error- ja security-eventit. Paketti ei sisällä
+asiakas- tai laskudataa, PDF:iä, master dataa, `companyId`- tai
+actor-tunnisteita, polkuja, salaisuuksia, request/response-bodyja eikä raakoja
+lokirivejä.
+
+Activity säilyy read-only-koontina eikä omista business audit -kirjoituksia.
+Diagnostics ei palauta raakoja operational eventejä, vaan erillisen
+sanitoidun projection-mallin. Moduulit omistavat edelleen omat atomiset
+business audit -kirjoituksensa.
