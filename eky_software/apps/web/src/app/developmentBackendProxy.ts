@@ -1,6 +1,8 @@
 export const developmentBackendProxyPaths = [
+  '/activity',
   '/company-settings',
   '/customers',
+  '/diagnostics',
   '/invoice-drafts',
   '/invoices',
   '/invoice-numbering-settings',
