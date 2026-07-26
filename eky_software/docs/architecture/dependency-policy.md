@@ -175,6 +175,23 @@ Frontend ei kutsu backend API:a suoraan komponenteista, jos api-client-kerros on
 
 API-client piilottaa backend-reitit ja yhteiset virheenkäsittelyt.
 
+## Observability-adapterit
+
+Operational- ja security-lokitus toteutetaan kapeiden porttien ja tyypitettyjen
+tapahtumasopimusten kautta.
+
+- Älä luo `LoggerManager`-, `LoggingService`-, `commonLogger`- tai
+  `logger.info(string, object)` -rajapintaa.
+- Älä hyväksy arbitrary metadataa tai raw `Error` -objektia.
+- Yksi adapteri omistaa yhden koherentin tiedostovirran.
+- Backend- ja desktop-adapterit pidetään erillisinä.
+- Renderer ei kirjoita lokitiedostoja eikä saa yleistä log-IPC:tä.
+- Node.js:n vakiokirjastoa käytetään JSONL-, rotaatio-, gzip- ja checksum-
+  vastuisiin; uutta loki- tai pakkausriippuvuutta ei lisätä ilman erillistä
+  hyväksyntää.
+- Business audit pysyy moduulin omassa persistence-adapterissa eikä kulje
+  operational loggerin kautta.
+
 ## Auth-wrapper
 
 Firebase Auth eristetään oman auth-kerroksen taakse.

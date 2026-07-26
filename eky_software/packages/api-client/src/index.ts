@@ -5,6 +5,21 @@ export {
 } from './client.js';
 export { EkyApiError } from './http.js';
 export type {
+  ActivityItem,
+  ActivityItemReference,
+  ActivityItemType,
+  ActivityListQuery,
+  ActivityModule,
+} from './activity/index.js';
+export type {
+  DiagnosticEventComponent,
+  DiagnosticEventItem,
+  DiagnosticEventLevel,
+  DiagnosticEventListQuery,
+  DiagnosticEventName,
+  DiagnosticEventOutcome,
+} from './diagnostics/index.js';
+export type {
   ApprovedInvoiceDocumentMetadata,
   ApprovedInvoiceDocumentType,
   ApprovedInvoiceEmailAttachmentPreview,

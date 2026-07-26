@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Customer } from '../domain/customer.js';
+import type { CustomerAuditEvent } from '../domain/customerAuditEvent.js';
 import type { CustomerRepository } from '../ports/customerRepository.js';
 import { listCustomers } from './listCustomers.js';
 
@@ -9,7 +10,10 @@ class FakeCustomerRepository implements CustomerRepository {
 
   constructor(private readonly customers: Customer[]) {}
 
-  async create(customer: Customer): Promise<Customer> {
+  async create(
+    customer: Customer,
+    _auditEvent: CustomerAuditEvent,
+  ): Promise<Customer> {
     return customer;
   }
 
@@ -27,7 +31,10 @@ class FakeCustomerRepository implements CustomerRepository {
     return this.customers;
   }
 
-  async update(customer: Customer): Promise<Customer> {
+  async update(
+    customer: Customer,
+    _auditEvent: CustomerAuditEvent,
+  ): Promise<Customer> {
     return customer;
   }
 }

@@ -98,10 +98,13 @@ describe('customersRoutes', () => {
 
     expect(response.status).toBe(201);
     expect(createInput).toEqual({
+      actorContext: expect.objectContaining({
+        actorId: 'local-owner',
+        companyId: 'dev-company',
+      }),
       businessId: '  1234567-8  ',
       city: '  Helsinki  ',
       comment: '  Important local customer  ',
-      companyId: 'dev-company',
       customerNumber: '  1001  ',
       customerNumberMode: 'manual',
       customerType: 'company',
@@ -144,7 +147,10 @@ describe('customersRoutes', () => {
 
     expect(response.status).toBe(201);
     expect(createInput).toMatchObject({
-      companyId: 'dev-company',
+      actorContext: expect.objectContaining({
+        actorId: 'local-owner',
+        companyId: 'dev-company',
+      }),
       customerNumberMode: 'auto',
       name: 'Example Customer Oy',
     });
@@ -271,10 +277,13 @@ describe('customersRoutes', () => {
 
     expect(response.status).toBe(200);
     expect(updateInput).toEqual({
+      actorContext: expect.objectContaining({
+        actorId: 'local-owner',
+        companyId: 'dev-company',
+      }),
       businessId: '  1234567-8  ',
       city: '  Helsinki  ',
       comment: '  Important local customer  ',
-      companyId: 'dev-company',
       customerNumber: '  1001  ',
       customerType: 'company',
       email: '  customer@example.fi  ',

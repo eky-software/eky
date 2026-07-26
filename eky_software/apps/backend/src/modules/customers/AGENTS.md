@@ -71,6 +71,20 @@ Add or update tests when changing:
 - customer form-facing data contracts
 - customer number, property manager, status, or hourly rate behavior
 
+## Business Audit
+
+Customers owns its business audit writes. Customer create, update, activate
+and deactivate events must be written atomically with the customer change.
+Audit rows contain only actor/company/customer identifiers, a fixed action,
+timestamp, outcome and allowlisted changed-field categories. Never store old
+or new values, names, addresses, emails, phone numbers, business IDs or free
+text in audit rows or technical logs.
+
+Activity exposes only a company-scoped safe projection using the customer
+number, not the customer name. Read
+`docs/architecture/observability-and-audit-plan.md` before changing these
+boundaries.
+
 ## Naming
 
 Code is written in English.

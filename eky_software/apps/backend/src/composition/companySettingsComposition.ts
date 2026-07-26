@@ -10,16 +10,24 @@ import { updateCompanySettings } from '../modules/companySettings/application/up
 import { createCompanyEmailSecretRoutes } from '../modules/companySettings/http/companyEmailSecretRoutes.js';
 import { createCompanySettingsRoutes } from '../modules/companySettings/http/companySettingsRoutes.js';
 import { SqliteCompanyEmailSecretAuditWriter } from '../modules/companySettings/infrastructure/sqliteCompanyEmailSecretAuditWriter.js';
+import { SqliteCompanySettingsActivityReader } from '../modules/companySettings/infrastructure/sqliteCompanySettingsActivityReader.js';
 import { SqliteCompanySettingsRepository } from '../modules/companySettings/infrastructure/sqliteCompanySettingsRepository.js';
+import { CompanySettingsAuditWriteError } from '../modules/companySettings/ports/companySettingsAuditWriteError.js';
 import type { CompanyEmailSecretStore } from '../modules/companySettings/ports/companyEmailSecretStore.js';
+import type { CompanySettingsActivityReader } from '../modules/companySettings/ports/companySettingsActivityReader.js';
 import type { InvoiceEmailSettingsReader } from '../modules/invoicing/ports/invoiceEmailSettingsReader.js';
+import { createBackendOperationalEvent } from '../observability/createOperationalEvent.js';
+import type { OperationalLogger } from '../observability/operationalLogger.js';
 
 interface CompanySettingsCompositionOptions {
+  appVersion: string;
   companyEmailSecretStore?: CompanyEmailSecretStore;
   database: DatabaseConnection;
+  operationalLogger: OperationalLogger;
 }
 
 interface CompanySettingsComposition {
+  companySettingsActivityReader: CompanySettingsActivityReader;
   invoiceEmailSettingsReader: InvoiceEmailSettingsReader;
   routes: Hono<BackendEnvironment>;
 }
@@ -28,6 +36,9 @@ export function createCompanySettingsComposition(
   options: CompanySettingsCompositionOptions,
 ): CompanySettingsComposition {
   const companySettingsRepository = new SqliteCompanySettingsRepository(
+    options.database,
+  );
+  const companySettingsActivityReader = new SqliteCompanySettingsActivityReader(
     options.database,
   );
   const routes = new Hono<BackendEnvironment>();
@@ -66,7 +77,10 @@ export function createCompanySettingsComposition(
         ),
       updateCompanySettings: async (input) =>
         withCompanyEmailSecretStatus(
-          await updateCompanySettings(input, companySettingsRepository),
+          await logAuditWriteFailure(
+            () => updateCompanySettings(input, companySettingsRepository),
+            options,
+          ),
           options.companyEmailSecretStore,
         ),
     }),
@@ -91,9 +105,43 @@ export function createCompanySettingsComposition(
   };
 
   return {
+    companySettingsActivityReader,
     invoiceEmailSettingsReader,
     routes,
   };
+}
+
+async function logAuditWriteFailure<T>(
+  operation: () => Promise<T>,
+  options: Pick<
+    CompanySettingsCompositionOptions,
+    'appVersion' | 'operationalLogger'
+  >,
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof CompanySettingsAuditWriteError) {
+      try {
+        options.operationalLogger.write(
+          createBackendOperationalEvent(
+            {
+              entityType: 'companySettings',
+              errorCode: 'COMPANY_SETTINGS_AUDIT_WRITE_FAILED',
+              eventName: 'businessAudit.writeFailed',
+              sideEffectState: 'rolledBack',
+              stage: 'companySettingsMutation',
+            },
+            { appVersion: options.appVersion },
+          ),
+        );
+      } catch {
+        // Operational logging must not replace the original safe audit error.
+      }
+    }
+
+    throw error;
+  }
 }
 
 async function withCompanyEmailSecretStatus<T extends { companyId: string }>(

@@ -25,8 +25,16 @@ export interface SecretBrokerMainHandle {
   close(): void;
 }
 
+export interface SecretBrokerObserver {
+  operationFailed(
+    operation: SecretBrokerRequest['operation'],
+    errorCode: SecretBrokerError['code'],
+  ): void;
+}
+
 export function startSecretBrokerMain(input: {
   encryptedSecretFile: EncryptedSecretFileStore;
+  observer?: SecretBrokerObserver;
   protector: StringProtector;
   transport: SecretBrokerTransport;
 }): SecretBrokerMainHandle {
@@ -65,6 +73,7 @@ export async function handleSecretBrokerMessage(
   value: unknown,
   dependencies: {
     encryptedSecretFile: EncryptedSecretFileStore;
+    observer?: SecretBrokerObserver;
     protector: StringProtector;
   },
 ): Promise<SecretBrokerResponse | undefined> {
@@ -91,6 +100,7 @@ export async function handleSecretBrokerMessage(
       error instanceof SecretBrokerError
         ? error.code
         : 'SECRET_STORAGE_UNAVAILABLE';
+    dependencies.observer?.operationFailed(request.operation, code);
 
     return createErrorResponse(request.requestId, code);
   }

@@ -54,6 +54,9 @@ describe('backend runtime trust', () => {
         'manageCompanyEmailSettings',
         'manageCompanyEmailSecret',
         'sendInvoices',
+        'viewActivity',
+        'viewDiagnostics',
+        'createSupportBundle',
       ],
     });
   });

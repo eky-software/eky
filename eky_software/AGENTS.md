@@ -66,6 +66,7 @@ Lue lisäksi tehtävän mukaan seuraavat dokumentit:
 - Riippuvuuksien hallinta: `docs/architecture/dependency-policy.md`
 - Turvallisuusperiaatteet: `docs/architecture/security-principles.md`
 - Virheenkäsittelyn periaatteet: `docs/architecture/error-handling-principles.md`
+- Observability ja auditointi: `docs/architecture/observability-and-audit-plan.md`
 - Teknologiapäätökset: `docs/architecture/tech-decisions.md`
 - Tietomallin periaatteet: `docs/architecture/data-model-principles.md`
 - Liiketoimintakonteksti: `docs/product/business-context.md`
@@ -75,6 +76,15 @@ Lue lisäksi tehtävän mukaan seuraavat dokumentit:
 - UI-periaatteet: `docs/design/ui-principles.md`
 
 Jos työ koskee tiettyä moduulia, lue myös kyseisen moduulin dokumentti `docs/modules/`-kansiosta.
+
+Jos työ koskee käyttäjälle näkyvää tapahtumahistoriaa, Activity-moduulia tai
+moduulien audit-tapahtumista muodostettua turvallista read modelia, lue myös
+`docs/modules/activity.md` ja `docs/architecture/observability-and-audit-plan.md`.
+
+Jos työ koskee teknistä diagnostiikkanäkymää, operational-lokien lukemista,
+lokikansion avaamista tai tukipakettia, lue myös
+`docs/modules/diagnostics.md`, `docs/architecture/operational-log-retention-plan.md`
+ja `docs/architecture/support-bundle-plan.md`.
 
 Jos työ koskee uuden liiketoimintamoduulin tai moduulikansion perustamista,
 `docs/modules/`-vastuudokumenttia, moduulikohtaista `AGENTS.md`-tiedostoa,

@@ -48,6 +48,7 @@ let shutdownStarted = false;
 
 async function startDesktopRuntime(): Promise<void> {
   desktopLifecycle = await startDesktopComposition({
+    appVersion: app.getVersion(),
     applicationPath: app.getAppPath(),
     quitApplication: () => app.quit(),
     resourcesPath: process.resourcesPath,

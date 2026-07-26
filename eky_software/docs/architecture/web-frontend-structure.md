@@ -143,6 +143,8 @@ Jos router myöhemmin hyväksytään:
 
 Nykyiset feature-moduulit:
 
+- `features/activity`
+- `features/diagnostics`
 - `features/customers`
 - `features/companySettings`
 - `features/invoicing`

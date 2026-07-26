@@ -3,17 +3,23 @@ import { AuthorizationError } from '@eky/permissions';
 import { describe, expect, it } from 'vitest';
 
 import type { CompanySettings } from '../domain/companySettings.js';
+import type { CompanySettingsAuditEvent } from '../domain/companySettingsAuditEvent.js';
 import type { CompanySettingsRepository } from '../ports/companySettingsRepository.js';
 import { updateCompanySettings } from './updateCompanySettings.js';
 
 class FakeCompanySettingsRepository implements CompanySettingsRepository {
+  savedAuditEvent: CompanySettingsAuditEvent | undefined;
   savedSettings: CompanySettings | undefined;
 
   async findByCompanyId(): Promise<CompanySettings | null> {
     return null;
   }
 
-  async upsertCompanySettings(settings: CompanySettings): Promise<CompanySettings> {
+  async upsertCompanySettings(
+    settings: CompanySettings,
+    auditEvent: CompanySettingsAuditEvent,
+  ): Promise<CompanySettings> {
+    this.savedAuditEvent = auditEvent;
     this.savedSettings = settings;
 
     return settings;
@@ -51,6 +57,20 @@ describe('updateCompanySettings', () => {
     );
 
     expect(repository.savedSettings).toBe(settings);
+    expect(repository.savedAuditEvent).toMatchObject({
+      action: 'companySettings.updated',
+      actorUserId: 'local-owner',
+      changedFieldCategories: [
+        'identity',
+        'address',
+        'contact',
+        'banking',
+        'invoicingDefaults',
+        'emailConfiguration',
+      ],
+      companyId: 'dev-company',
+      outcome: 'success',
+    });
     expect(settings.id).toEqual(expect.any(String));
     expect(settings.companyId).toBe('dev-company');
     expect(settings.companyName).toBe('Example Builder Oy');

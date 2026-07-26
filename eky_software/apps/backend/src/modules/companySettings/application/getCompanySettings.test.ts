@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { CompanySettings } from '../domain/companySettings.js';
+import type { CompanySettingsAuditEvent } from '../domain/companySettingsAuditEvent.js';
 import type { CompanySettingsRepository } from '../ports/companySettingsRepository.js';
 import { getCompanySettings } from './getCompanySettings.js';
 
@@ -11,7 +12,10 @@ class FakeCompanySettingsRepository implements CompanySettingsRepository {
     return this.settings;
   }
 
-  async upsertCompanySettings(settings: CompanySettings): Promise<CompanySettings> {
+  async upsertCompanySettings(
+    settings: CompanySettings,
+    _auditEvent: CompanySettingsAuditEvent,
+  ): Promise<CompanySettings> {
     return settings;
   }
 }

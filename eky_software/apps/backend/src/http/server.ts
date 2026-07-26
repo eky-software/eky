@@ -2,6 +2,12 @@ import { serve, type ServerType } from '@hono/node-server';
 
 import { createApp, type CreateAppOptions } from './app.js';
 import type { RuntimeTrust } from './runtimeTrust.js';
+import { createBackendOperationalEvent } from '../observability/createOperationalEvent.js';
+import { createBackendOperationalLogger } from '../observability/infrastructure/createBackendOperationalLogger.js';
+import {
+  noOpOperationalLogger,
+  type OperationalLogger,
+} from '../observability/operationalLogger.js';
 
 const defaultHostname = '127.0.0.1';
 const defaultPort = 3000;
@@ -59,10 +65,14 @@ function closeServer(server: ServerType): Promise<void> {
 export async function startServer(
   options: StartServerOptions = {},
 ): Promise<StartedServer> {
+  const startedAt = Date.now();
   const hostname = getServerHostname(options.hostname ?? process.env.HOST);
   const port =
     options.port ?? getServerPort(process.env.PORT);
   const appOptions: CreateAppOptions = { ...options.appOptions };
+  const appVersion = appOptions.appVersion ?? '0.0.0';
+  const operationalLogger = resolveOperationalLogger(appOptions);
+  appOptions.operationalLogger = operationalLogger;
 
   if (options.runtimeTrust !== undefined) {
     appOptions.runtimeTrust = options.runtimeTrust;
@@ -78,8 +88,35 @@ export async function startServer(
         port,
       },
       (info) => {
+        operationalLogger.write(
+          createBackendOperationalEvent(
+            {
+              durationMs: Date.now() - startedAt,
+              eventName: 'backend.started',
+            },
+            { appVersion },
+          ),
+        );
         resolveStart({
-          close: () => closeServer(server),
+          async close() {
+            const shutdownStartedAt = Date.now();
+            operationalLogger.write(
+              createBackendOperationalEvent(
+                { eventName: 'backend.shutdownStarted' },
+                { appVersion },
+              ),
+            );
+            await closeServer(server);
+            operationalLogger.write(
+              createBackendOperationalEvent(
+                {
+                  durationMs: Date.now() - shutdownStartedAt,
+                  eventName: 'backend.shutdownCompleted',
+                },
+                { appVersion },
+              ),
+            );
+          },
           hostname,
           port: info.port,
         });
@@ -88,4 +125,16 @@ export async function startServer(
 
     server.once('error', rejectStart);
   });
+}
+
+function resolveOperationalLogger(
+  appOptions: CreateAppOptions,
+): OperationalLogger {
+  if (appOptions.operationalLogger !== undefined) {
+    return appOptions.operationalLogger;
+  }
+  if (appOptions.operationalLogsRoot !== undefined) {
+    return createBackendOperationalLogger(appOptions.operationalLogsRoot);
+  }
+  return noOpOperationalLogger;
 }

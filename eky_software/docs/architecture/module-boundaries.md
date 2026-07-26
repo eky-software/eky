@@ -73,6 +73,34 @@ Customers voi lukea oletustuntihinnan käyttöliittymän ohjetekstiä tai hinnoi
 
 Käyttäjälle näkyvä Asetukset-osio voi koota usean moduulin asetuksia samaan navigaatioon. Tämä ei muuta datan omistajuutta: Invoicing omistaa ALV-kannat, maksuehdot, numerointisarjat ja tilikauden.
 
+## Activity
+
+Activity tarjoaa vain lukuun tarkoitetun koontinäkymän tärkeimmistä
+liiketoimintatapahtumista.
+
+Activity ei omista audit-kirjoituksia, audit-tauluja, teknisiä lokeja eikä
+liiketoimintadataa. Customers, Company Settings ja Invoicing omistavat omat
+audit-tapahtumansa sekä niiden yritysrajatut reader-portit. Activity yhdistää
+vain näiden porttien turvalliset projektiot.
+
+Activity ei saa importata omistajamoduulien infrastructure-, repository- tai
+HTTP-koodia. Julkinen projektio ei sisällä raakaa audit-metadataa,
+kenttäarvoja, yhteystietoja, actor-tunnisteita eikä teknisiä virheitä.
+
+Tarkempi vastuu on kuvattu dokumentissa `docs/modules/activity.md`.
+
+## Diagnostics
+
+Diagnostics on Activitysta erillinen tekninen, vain lukuun tarkoitettu
+projektio. Se lukee ainoastaan compositionissa annetusta kiinteästä Eky
+logs-rootista ja näyttää operational- sekä security-eventtien rajatun ytimen.
+
+Diagnostics ei omista business auditia, lokien kirjoittamista,
+liiketoimintadataa, lokikansion avaamista tai tukipaketin tallennusta.
+Desktop-capabilityt kuuluvat Electron mainille.
+
+Tarkempi vastuu on kuvattu dokumentissa `docs/modules/diagnostics.md`.
+
 ## Sites
 
 Sites tarkoittaa kohteita tai työmaita.

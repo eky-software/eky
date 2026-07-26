@@ -592,3 +592,35 @@ Nykyinen Oma yritys on laajemman Asetukset-kokonaisuuden ensimmäinen osa. Käyt
 - kuka saa hyväksyä laskun?
 - mikä on lopullinen permission-malli hyväksynnälle ja hyväksytyn laskun korjaukselle?
 - tarvitaanko sähköpostin lisäksi uusia hallittuja toimitusprovidereita?
+
+## R0-Closeout
+
+Laskutuksen nykyinen R0-laajuus on toteutettu:
+
+- normaali ALV (`normalVat`)
+- rakennusalan käännetty ALV (`reverseChargeConstruction`)
+- suorituspäivä ja laskutusjakso varsinaisessa laskulomakkeessa
+- luonnoksen hyväksyntä, reopen ja reapproval
+- virallinen numerointi ja hyväksytyn laskun snapshot
+- PDF ja sähköpostitoimitus
+- `sent`-, `cancelled`- ja credit note -polut
+
+Suoritusajankohta kuuluu laskun perustietoihin eikä tax treatment
+-lisäasetukseen. `sent`, `cancelled` ja hyvityslasku eivät enää ole tulevia
+R0-toimintoja.
+
+Myöhempään laajuuteen jäävät:
+
+- `paid` ja maksutapahtumien kohdistaminen
+- verkkolasku
+- `vatExempt` ja `outsideVatScope`
+- automaattinen perintä
+- work order billing
+
+Invoicing omistaa edelleen oman business audit trailinsa sekä
+`invoice_delivery_events`-tapahtumat. Käyttäjälle näkyvä activity feed lukee
+niistä vain turvallisen, yritys- ja permission-rajatun projektion. Tekninen
+JSONL-loki ei korvaa laskutuksen audit trailia.
+
+Observabilityn yhteiset rajat ovat dokumentissa
+`docs/architecture/observability-and-audit-plan.md`.

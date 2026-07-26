@@ -4,11 +4,13 @@ import { isDesktopRuntimeSession } from './runtimeSession.js';
 
 export interface DesktopBackendStartMessage {
   config: {
+    appVersion: string;
     backendRoot: string;
     createSmokePdf: boolean;
     databaseFilePath: string;
     invoiceDocumentStorageRoot: string;
     migrationsDirectory: string;
+    operationalLogsRoot: string;
     runtimeSessionSecret: string;
     smokePdfPath: string;
   };
@@ -87,10 +89,13 @@ export function parseDesktopBackendCommand(
     'databaseFilePath',
     'invoiceDocumentStorageRoot',
     'migrationsDirectory',
+    'operationalLogsRoot',
     'smokePdfPath',
   ] as const;
 
   if (
+    typeof config.appVersion !== 'string' ||
+    !/^[A-Za-z0-9.+_-]{1,80}$/.test(config.appVersion) ||
     typeof config.createSmokePdf !== 'boolean' ||
     !isDesktopRuntimeSession(config.runtimeSessionSecret) ||
     pathKeys.some((key) => !isSafeAbsolutePath(config[key]))
@@ -100,11 +105,13 @@ export function parseDesktopBackendCommand(
 
   return {
     config: {
+      appVersion: config.appVersion,
       backendRoot: config.backendRoot as string,
       createSmokePdf: config.createSmokePdf,
       databaseFilePath: config.databaseFilePath as string,
       invoiceDocumentStorageRoot: config.invoiceDocumentStorageRoot as string,
       migrationsDirectory: config.migrationsDirectory as string,
+      operationalLogsRoot: config.operationalLogsRoot as string,
       runtimeSessionSecret: config.runtimeSessionSecret,
       smokePdfPath: config.smokePdfPath as string,
     },

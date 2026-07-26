@@ -41,7 +41,13 @@ the authenticated backend routes and loads its current PDF into the secured
 Electron preview window. The Chromium PDF component is enabled only for that
 sandboxed preview window, and the smoke check verifies that the window paints
 non-blank content in addition to loading the authenticated PDF response. Smoke
-also verifies that the sandbox-compatible CommonJS preload exposes exactly the
-named invoice PDF preview operation to the packaged renderer. Smoke
-data is written under a random operating-system temporary directory and
-removed after the check.
+also verifies that the sandbox-compatible CommonJS preload exposes only the
+named PDF preview, operational log folder, and support bundle capabilities to
+the packaged renderer. Smoke data is written under a random operating-system
+temporary directory and removed after the check.
+
+The support bundle capability accepts no renderer arguments. Electron main
+owns the confirmation, backend request with the runtime session, save dialog,
+strict response parsing, archive creation, and file write. Browser development
+does not expose support bundle export. The resulting `.ekysupport` file is a
+sanitized gzip JSON diagnostic artifact, not an encrypted backup.

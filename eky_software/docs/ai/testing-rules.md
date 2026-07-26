@@ -181,3 +181,21 @@ Ennen kuin muutos katsotaan valmiiksi, tarkista:
 - kriittinen virhepolku on huomioitu
 - käyttöoikeudet on testattu backendissä
 - domain-logiikka on testattu puhtaasti
+
+## Observability- ja audit-testit
+
+Kun muutos lisää eventin, lokin, auditin, retentionin tai tukipaketin:
+
+- testaa vakaa eventName ja tuntemattomien kenttien torjunta
+- testaa salaisuuksien, henkilötietojen, raw errorin ja kontrollimerkkien
+  redaction tai torjunta
+- testaa business auditin atominen rollback
+- testaa, ettei operational writer -virhe muuta business-operaation tulosta
+- testaa company- ja permission-raja sekä turvallinen read projection
+- testaa rotaation, retentionin ja levybudejetin raja-arvot
+- testaa, ettei lokinlukija seuraa symlinkkiä tai hyväksy ulkoista polkua
+- testaa tukipaketin kielletty sisältö myös epäonnistuvissa poluissa
+
+E2E:n pysyvä strategia on dokumentissa
+`docs/architecture/e2e-testing-strategy.md`. Playwrightia ei lisätä ilman
+erillistä riippuvuuspäätöstä.

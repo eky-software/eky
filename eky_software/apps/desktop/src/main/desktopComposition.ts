@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 
 import {
@@ -8,14 +9,30 @@ import {
   net,
   safeStorage,
   session,
+  shell,
 } from 'electron';
 
+import {
+  createOperationalLogFolderCapability,
+  type OperationalLogFolderCapability,
+} from '../diagnostics/operationalLogFolderCapability.js';
+import {
+  createSupportBundleCapability,
+  type SupportBundleCapability,
+} from '../supportBundle/supportBundleCapability.js';
+import { removeExpiredSupportBundleTemporaryFiles } from '../supportBundle/supportBundleFileStore.js';
 import {
   createInvoicePdfPreviewWindowController,
   type InvoicePdfPreviewWindowController,
 } from '../pdf/invoicePdfPreviewWindow.js';
 import { startDesktopBackend } from '../runtime/backendProcess.js';
 import { createDesktopRuntimeSession } from '../runtime/runtimeSession.js';
+import { createDesktopOperationalEvent } from '../observability/createDesktopOperationalEvent.js';
+import type { DesktopOperationalLogger } from '../observability/desktopOperationalLogger.js';
+import { maintainDesktopIncidentIndex } from '../observability/infrastructure/desktopIncidentIndexRetention.js';
+import { maintainDesktopOperationalLogs } from '../observability/infrastructure/desktopOperationalLogRetention.js';
+import { DesktopIncidentIndexingOperationalLogger } from '../observability/infrastructure/jsonLineDesktopIncidentIndex.js';
+import { JsonLineDesktopOperationalLogger } from '../observability/infrastructure/jsonLineDesktopOperationalLogger.js';
 import { createMainSecretBrokerTransport } from '../secrets/electronSecretBrokerTransport.js';
 import { startSecretBrokerMain } from '../secrets/secretBrokerMain.js';
 import { SafeStorageStringProtector } from '../secrets/safeStorageStringProtector.js';
@@ -24,6 +41,7 @@ import {
   loadApplicationWindow,
 } from './applicationWindow.js';
 import { registerApplicationProtocol } from './applicationProtocol.js';
+import { createBackendRequestHeaders } from './protocolPolicy.js';
 import { createInvoiceDeliveryConfirmation } from './invoiceDeliveryConfirmation.js';
 import {
   createPackagedSmokeSecretFileStore,
@@ -40,6 +58,7 @@ export interface DesktopLifecycleHandle {
 }
 
 interface StartDesktopCompositionOptions {
+  appVersion: string;
   applicationPath: string;
   quitApplication(): void;
   resourcesPath: string;
@@ -54,6 +73,39 @@ export async function startDesktopComposition(
   const runtimeSessionSecret = createDesktopRuntimeSession();
   const backendRoot = join(options.resourcesPath, 'backend');
   const dataRoot = join(options.userDataPath, 'runtime');
+  const operationalLogsRoot = join(dataRoot, 'logs');
+  const retention = maintainDesktopOperationalLogs({
+    logsRoot: operationalLogsRoot,
+  });
+  maintainDesktopIncidentIndex({ logsRoot: operationalLogsRoot });
+  const desktopOperationalLogger =
+    new DesktopIncidentIndexingOperationalLogger(
+      new JsonLineDesktopOperationalLogger({
+        logsRoot: operationalLogsRoot,
+      }),
+      operationalLogsRoot,
+    );
+  const desktopStartedAt = Date.now();
+  const desktopAppVersion = options.appVersion;
+  desktopOperationalLogger.write(
+    createDesktopOperationalEvent(
+      { eventName: 'desktop.starting' },
+      { appVersion: desktopAppVersion },
+    ),
+  );
+  desktopOperationalLogger.write(
+    createDesktopOperationalEvent(
+      {
+        deletedByteCount: retention.deletedByteCount,
+        deletedFileCount: retention.deletedFileCount,
+        eventName: 'operationalLog.retentionCompleted',
+        ...(retention.oldestRemainingMonth === undefined
+          ? {}
+          : { oldestRemainingMonth: retention.oldestRemainingMonth }),
+      },
+      { appVersion: desktopAppVersion },
+    ),
+  );
   const databaseFilePath = join(dataRoot, 'data', 'eky.sqlite');
   const invoiceDocumentStorageRoot = join(dataRoot, 'storage', 'invoices');
   const secretFilePath = join(
@@ -65,6 +117,10 @@ export async function startDesktopComposition(
   const secretBrokerChannel = new MessageChannelMain();
   let applicationWindow: BrowserWindow | undefined;
   let pdfPreviewController: InvoicePdfPreviewWindowController | undefined;
+  let operationalLogFolderCapability:
+    | OperationalLogFolderCapability
+    | undefined;
+  let supportBundleCapability: SupportBundleCapability | undefined;
   let shutdownStarted = false;
 
   const deliveryConfirmation = createInvoiceDeliveryConfirmation(
@@ -80,6 +136,27 @@ export async function startDesktopComposition(
       secretFilePath,
       smokeMode,
     ),
+    observer: {
+      operationFailed(operation, errorCode) {
+        const isReadOperation =
+          operation === 'readCompanyEmailSecret' ||
+          operation === 'hasCompanyEmailSecret';
+        desktopOperationalLogger.write(
+          createDesktopOperationalEvent(
+            {
+              errorCode,
+              eventName: isReadOperation
+                ? 'secretStorage.decryptFailed'
+                : 'secretStorage.writeFailed',
+              retryable: false,
+              sideEffectState: 'unknown',
+              stage: operation,
+            },
+            { appVersion: desktopAppVersion },
+          ),
+        );
+      },
+    },
     protector: new SafeStorageStringProtector(safeStorage),
     transport: createMainSecretBrokerTransport(secretBrokerChannel.port1),
   });
@@ -88,7 +165,9 @@ export async function startDesktopComposition(
 
   try {
     backendHandle = await startDesktopBackend({
+      appVersion: desktopAppVersion,
       config: {
+        appVersion: desktopAppVersion,
         backendRoot,
         createSmokePdf: smokeMode,
         databaseFilePath,
@@ -99,9 +178,11 @@ export async function startDesktopComposition(
           'database',
           'migrations',
         ),
+        operationalLogsRoot,
         runtimeSessionSecret,
         smokePdfPath,
       },
+      operationalLogger: desktopOperationalLogger,
       runnerPath: join(
         options.resourcesPath,
         'desktop-runtime',
@@ -135,17 +216,169 @@ export async function startDesktopComposition(
 
   session.defaultSession.setPermissionRequestHandler(
     (_webContents, _permission, callback) => {
+      desktopOperationalLogger.write(
+        createDesktopOperationalEvent(
+          {
+            eventName: 'electron.permissionDenied',
+            stage: 'request',
+          },
+          { appVersion: desktopAppVersion },
+        ),
+      );
       callback(false);
     },
   );
-  session.defaultSession.setPermissionCheckHandler(() => false);
+  session.defaultSession.setPermissionCheckHandler(() => {
+    desktopOperationalLogger.write(
+      createDesktopOperationalEvent(
+        {
+          eventName: 'electron.permissionDenied',
+          stage: 'check',
+        },
+        { appVersion: desktopAppVersion },
+      ),
+    );
+    return false;
+  });
 
   applicationWindow = createApplicationWindow(
     options.applicationPath,
     !smokeMode,
+    {
+      loadFailed() {
+        desktopOperationalLogger.write(
+          createDesktopOperationalEvent(
+            {
+              errorCode: 'APPLICATION_WINDOW_LOAD_FAILED',
+              eventName: 'applicationWindow.loadFailed',
+              retryable: true,
+              sideEffectState: 'none',
+              stage: 'load',
+            },
+            { appVersion: desktopAppVersion },
+          ),
+        );
+      },
+      navigationBlocked() {
+        desktopOperationalLogger.write(
+          createDesktopOperationalEvent(
+            {
+              eventName: 'applicationWindow.navigationBlocked',
+              stage: 'will-navigate',
+            },
+            { appVersion: desktopAppVersion },
+          ),
+        );
+      },
+      newWindowBlocked() {
+        desktopOperationalLogger.write(
+          createDesktopOperationalEvent(
+            {
+              eventName: 'applicationWindow.newWindowBlocked',
+              stage: 'window-open',
+            },
+            { appVersion: desktopAppVersion },
+          ),
+        );
+      },
+      renderProcessGone() {
+        desktopOperationalLogger.write(
+          createDesktopOperationalEvent(
+            {
+              errorCode: 'RENDER_PROCESS_GONE',
+              eventName: 'applicationWindow.renderProcessGone',
+              retryable: true,
+              sideEffectState: 'unknown',
+              stage: 'runtime',
+            },
+            { appVersion: desktopAppVersion },
+          ),
+        );
+      },
+    },
   );
   const mainWindow = applicationWindow;
+  operationalLogFolderCapability = createOperationalLogFolderCapability({
+    ipcMain,
+    mainWindow,
+    openPath: (path) => shell.openPath(path),
+    runtimeRoot: dataRoot,
+    showSafeError() {
+      deliveryConfirmation.showApplicationError(
+        'Lokikansiota ei voitu avata',
+        'Eky-lokikansiota ei voitu avata turvallisesti.',
+      );
+    },
+  });
+  supportBundleCapability = createSupportBundleCapability({
+    appVersion: desktopAppVersion,
+    architecture: process.arch,
+    async confirmCreation() {
+      const result = await dialog.showMessageBox(mainWindow, {
+        buttons: ['Peruuta', 'Jatka'],
+        cancelId: 0,
+        defaultId: 0,
+        detail:
+          'Paketti sisältää vain sanitoituja teknisiä tapahtumia, sovellusversiot sekä tietokannan health- ja migraatioyhteenvedon. Se ei sisällä asiakas- tai laskudataa, PDF:iä eikä salaisuuksia.',
+        message: 'Luodaanko Eky-tukipaketti?',
+        noLink: true,
+        title: 'Luo tukipaketti',
+        type: 'warning',
+      });
+      return result.response === 1;
+    },
+    ipcMain,
+    loadBackendData: () =>
+      loadSupportBundleBackendData(
+        `http://127.0.0.1:${backendHandle.port}`,
+        runtimeSessionSecret,
+      ),
+    mainWindow,
+    operationalLogger: desktopOperationalLogger,
+    platform: process.platform,
+    runtimeRoot: dataRoot,
+    async selectTargetPath(defaultFileName) {
+      const result = await dialog.showSaveDialog(mainWindow, {
+        defaultPath: defaultFileName,
+        filters: [
+          {
+            extensions: ['ekysupport'],
+            name: 'Eky-tukipaketti',
+          },
+        ],
+        title: 'Tallenna Eky-tukipaketti',
+      });
+      return result.canceled || result.filePath === ''
+        ? null
+        : result.filePath;
+    },
+    showSafeError() {
+      deliveryConfirmation.showApplicationError(
+        'Tukipakettia ei voitu luoda',
+        'Eky-tukipakettia ei voitu luoda turvallisesti.',
+      );
+    },
+  });
+  try {
+    removeExpiredSupportBundleTemporaryFiles(dataRoot);
+  } catch {
+    desktopOperationalLogger.write(
+      createDesktopOperationalEvent(
+        {
+          correlationId: randomUUID(),
+          errorCode: 'SUPPORT_BUNDLE_RETENTION_FAILED',
+          eventName: 'supportBundle.creationFailed',
+          retryable: true,
+          sideEffectState: 'none',
+          stage: 'retention',
+        },
+        { appVersion: desktopAppVersion },
+      ),
+    );
+  }
   pdfPreviewController = createInvoicePdfPreviewController(
+    desktopAppVersion,
+    desktopOperationalLogger,
     mainWindow,
     smokeMode,
     deliveryConfirmation.showApplicationError,
@@ -162,36 +395,114 @@ export async function startDesktopComposition(
       }
 
       shutdownStarted = true;
+      const shutdownStartedAt = Date.now();
+      desktopOperationalLogger.write(
+        createDesktopOperationalEvent(
+          { eventName: 'desktop.shutdownStarted' },
+          { appVersion: desktopAppVersion },
+        ),
+      );
       pdfPreviewController?.dispose();
       pdfPreviewController = undefined;
+      operationalLogFolderCapability?.dispose();
+      operationalLogFolderCapability = undefined;
+      supportBundleCapability?.dispose();
+      supportBundleCapability = undefined;
 
       try {
         await backendHandle.stop();
-      } finally {
         secretBrokerHandle.close();
+        desktopOperationalLogger.write(
+          createDesktopOperationalEvent(
+            {
+              durationMs: Date.now() - shutdownStartedAt,
+              eventName: 'desktop.shutdownCompleted',
+            },
+            { appVersion: desktopAppVersion },
+          ),
+        );
+      } catch {
+        secretBrokerHandle.close();
+        desktopOperationalLogger.write(
+          createDesktopOperationalEvent(
+            {
+              durationMs: Date.now() - shutdownStartedAt,
+              errorCode: 'DESKTOP_SHUTDOWN_FAILED',
+              eventName: 'desktop.shutdownFailed',
+              retryable: false,
+              sideEffectState: 'unknown',
+              stage: 'shutdown',
+            },
+            { appVersion: desktopAppVersion },
+          ),
+        );
+        throw new Error('DESKTOP_SHUTDOWN_FAILED');
       }
     },
   };
 
   if (smokeMode) {
-    await loadApplicationWindow(mainWindow);
-    await runPackagedSmokeCheck({
-      backend: backendHandle,
-      databaseFilePath,
-      mainWindow,
-      pdfPreviewController,
-      runtimeSessionSecret,
-      secretFilePath,
-      smokePdfPath,
-    });
-    await writePackagedSmokeResult(options.smokeConfiguration, {
-      status: 'ok',
-    });
-    await lifecycleHandle.shutdown();
-    mainWindow.destroy();
-    options.quitApplication();
-    return undefined;
+    const smokeStartedAt = Date.now();
+    desktopOperationalLogger.write(
+      createDesktopOperationalEvent(
+        { eventName: 'packagedSmoke.started' },
+        { appVersion: desktopAppVersion },
+      ),
+    );
+    try {
+      await loadApplicationWindow(mainWindow);
+      await runPackagedSmokeCheck({
+        backend: backendHandle,
+        databaseFilePath,
+        mainWindow,
+        pdfPreviewController,
+        runtimeSessionSecret,
+        secretFilePath,
+        smokePdfPath,
+      });
+      desktopOperationalLogger.write(
+        createDesktopOperationalEvent(
+          {
+            durationMs: Date.now() - smokeStartedAt,
+            eventName: 'packagedSmoke.completed',
+          },
+          { appVersion: desktopAppVersion },
+        ),
+      );
+      await writePackagedSmokeResult(options.smokeConfiguration, {
+        status: 'ok',
+      });
+      await lifecycleHandle.shutdown();
+      mainWindow.destroy();
+      options.quitApplication();
+      return undefined;
+    } catch {
+      desktopOperationalLogger.write(
+        createDesktopOperationalEvent(
+          {
+            durationMs: Date.now() - smokeStartedAt,
+            errorCode: 'PACKAGED_SMOKE_FAILED',
+            eventName: 'packagedSmoke.failed',
+            retryable: false,
+            sideEffectState: 'unknown',
+            stage: 'smoke',
+          },
+          { appVersion: desktopAppVersion },
+        ),
+      );
+      throw new Error('PACKAGED_SMOKE_FAILED');
+    }
   }
+
+  desktopOperationalLogger.write(
+    createDesktopOperationalEvent(
+      {
+        durationMs: Date.now() - desktopStartedAt,
+        eventName: 'desktop.started',
+      },
+      { appVersion: desktopAppVersion },
+    ),
+  );
 
   void loadApplicationWindow(mainWindow).catch(() => {
     dialog.showErrorBox(
@@ -204,7 +515,53 @@ export async function startDesktopComposition(
   return lifecycleHandle;
 }
 
+const maximumSupportBundleBackendBytes = 8 * 1024 * 1024;
+
+async function loadSupportBundleBackendData(
+  backendOrigin: string,
+  runtimeSessionSecret: string,
+): Promise<unknown> {
+  const response = await net.fetch(
+    `${backendOrigin}/diagnostics/support-bundle-data`,
+    {
+      headers: createBackendRequestHeaders(
+        new Headers(),
+        runtimeSessionSecret,
+      ),
+      method: 'GET',
+    },
+  );
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new Error('SUPPORT_BUNDLE_BACKEND_REQUEST_FAILED');
+  }
+  const declaredLength = Number(
+    response.headers.get('content-length') ?? '0',
+  );
+  if (
+    !Number.isFinite(declaredLength) ||
+    declaredLength < 0 ||
+    declaredLength > maximumSupportBundleBackendBytes
+  ) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new Error('SUPPORT_BUNDLE_BACKEND_RESPONSE_TOO_LARGE');
+  }
+
+  const responseBytes = Buffer.from(await response.arrayBuffer());
+  if (responseBytes.byteLength > maximumSupportBundleBackendBytes) {
+    throw new Error('SUPPORT_BUNDLE_BACKEND_RESPONSE_TOO_LARGE');
+  }
+
+  try {
+    return JSON.parse(responseBytes.toString('utf8')) as unknown;
+  } catch {
+    throw new Error('SUPPORT_BUNDLE_BACKEND_RESPONSE_INVALID');
+  }
+}
+
 function createInvoicePdfPreviewController(
+  appVersion: string,
+  operationalLogger: DesktopOperationalLogger,
   mainWindow: BrowserWindow,
   smokeMode: boolean,
   showApplicationError: (title: string, message: string) => void,
@@ -219,6 +576,18 @@ function createInvoicePdfPreviewController(
       }
     },
     showSafeError() {
+      operationalLogger.write(
+        createDesktopOperationalEvent(
+          {
+            errorCode: 'PDF_PREVIEW_OPEN_FAILED',
+            eventName: 'pdfPreview.openFailed',
+            retryable: true,
+            sideEffectState: 'none',
+            stage: 'open',
+          },
+          { appVersion },
+        ),
+      );
       showApplicationError(
         'Laskua ei voitu avata',
         'Laskun PDF-esikatselua ei voitu avata turvallisesti.',
