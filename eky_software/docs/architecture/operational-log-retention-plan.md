@@ -51,11 +51,19 @@ userData/runtime/logs/
 Kuukausitiedostot:
 
 ```text
-backend-2026-07-001.jsonl
-desktop-2026-07-001.jsonl
-security-2026-07-001.jsonl
-incident-index-2026.jsonl
+backend-info-2026-07-001.jsonl
+backend-warning-error-2026-07-001.jsonl
+desktop-info-2026-07-001.jsonl
+desktop-warning-error-2026-07-001.jsonl
+backend-security-2026-07-001.jsonl
+desktop-security-2026-07-001.jsonl
+backend-incident-index-2026.jsonl
+desktop-incident-index-2026.jsonl
 ```
+
+Backend ja Electron main eivät kirjoita samaan tiedostovirtaan. Security-
+hakemiston `backend-security`- ja `desktop-security`-virrat yhdistetään vasta
+diagnostiikan lukuprojektiossa.
 
 - Uusi kuukausi aloittaa uuden tiedoston.
 - Yksi kuukausisegmentti on enintään 5 MiB.
