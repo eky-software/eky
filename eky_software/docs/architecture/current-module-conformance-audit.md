@@ -149,3 +149,27 @@ Auditoinnissa ei löytynyt aktiivista salaisuuden vuotoa, yritysrajauksen
 ohitusta, toisen moduulin master-dataan kohdistuvaa kirjoitusta tai muuta
 turvallisuuspoikkeamaa, joka estäisi yllä kuvattujen rajattujen
 composition-korjausten hyväksymisen.
+
+## R0 Observability -lähtöauditointi
+
+Nykytila ennen observability-toteutusta:
+
+- Invoicing omistaa `invoice_audit_events`- ja
+  `invoice_delivery_events`-rakenteet.
+- Company Settings omistaa sähköpostisalaisuuden erillisen lifecycle-auditin.
+- Customersilla ei vielä ole moduulin omaa business audit -taulua.
+- Company Settingsin tavallisilla master-data- ja laskutusasetusten
+  kirjoituspoluilla ei vielä ole yhtenäistä moduulin omaa audit-taulua.
+- Backendillä ja desktopilla ei vielä ole tyypitettyä, redaktoitua,
+  rotatoivaa operational/security JSONL -pohjaa.
+- Activity feed, diagnostics, turvallinen lokikansion avaus ja tukipaketti
+  puuttuvat.
+
+R0-observability rakentaa nämä rajat ilman globaalia business audit
+-kirjoitustaulua. Moduulit omistavat write-auditinsa; Activity on vain
+read-only composition.
+
+Auditissa löytynyt erillinen pilotin release-blocker on viivästyskoron
+`100000` basis pointin eli 1000 % tekninen yläraja. Se korjataan omana
+laskutuksen domain-, UI- ja migraatiomuutoksenaan ennen oikeaa dataa eikä
+observability-työn sivuvaikutuksena.

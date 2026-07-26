@@ -73,3 +73,18 @@ the change requires.
 
 Use synthetic data only. Never place real customer data, invoice data,
 credentials or secrets in tests, fixtures, snapshots or logs.
+
+## Observability
+
+Invoicing owns its business audit and delivery events. Critical audit writes
+remain in the same transaction as the invoice transition. Operational logs
+must not replace these tables or contain invoice content, customer contact
+data, IBAN values, email bodies, PDF bytes, secrets, raw errors or stacks.
+
+Activity readers may expose only company-scoped safe projections such as an
+invoice number and a translation key. Technical incident indexes must not
+contain invoice, customer, actor or company identifiers.
+
+Read `docs/architecture/observability-and-audit-plan.md` and
+`docs/architecture/r0-observability-event-catalog.md` before changing audit,
+activity, diagnostics or logging behavior.

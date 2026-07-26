@@ -242,6 +242,14 @@ Windows-installerin pilotointiportit käsitellään
 `docs/architecture/codebase-cleanup-roadmap.md`-dokumentin release gate
 -järjestyksessä.
 
+R0:n laskutus-UI on closeout-tilassa: luonnokset, hyväksyntä, PDF,
+sähköpostitoimitus, lähetetyt, peruutukset, hyvityslaskut,
+`reverseChargeConstruction` ja suoritusajankohta on toteutettu. Seuraava
+käyttäjälle näkyvä laskutukseen liittyvä kokonaisuus on read-only
+tapahtumahistoria observability-suunnitelman mukaan. Varsinaiset uudet
+laskutusominaisuudet, kuten `paid`, verkkolasku ja work order billing, eivät
+kuulu tähän R0-closeoutiin.
+
 ## Rajat
 
 Alkuperäisen laskuluonnos-UI:n roadmap ei sisältänyt:

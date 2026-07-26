@@ -37,6 +37,16 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
 - Käytetäänkö autentikoimattomassa MVP:ssä vain synteettistä testidataa?
 - Käytetäänkö turvallisia ympäristömuuttujia salaisuuksille?
 - Jos palvelu avataan verkkoon, onko auth-, permission-, HTTPS-, origin/CORS-, cookie/token-, CSRF- ja abuse-suojaus päätetty?
+- Onko business audit erotettu operational- ja security-lokeista?
+- Onko eventName tyypitetty ja eventin kentät allowlistattu?
+- Voiko eventtiin päästä nimi, osoite, sähköposti, IBAN, request body,
+  salaisuus, raw error, stack tai paikallinen käyttäjäpolku?
+- Onko pseudonyymi entity- tai actor-tunniste tunnistettu mahdolliseksi
+  henkilötiedoksi?
+- Onko retention luokiteltu tarkoituksen mukaan ja automaattinen poisto
+  testattu?
+- Korvaako technical log vahingossa moduulin atomisen business auditin?
+- Onko tukipaketti sanitoitu ja erotettu backupista?
 
 ## Riippuvuudet
 

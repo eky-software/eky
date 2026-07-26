@@ -125,6 +125,23 @@ Nykytilan yksityiskohtainen arvio ja hyväksytyt poikkeukset ovat dokumentissa
 
 ## Testit Ja Valmistuminen
 
+### Observability ja auditointi
+
+- [ ] Määrittele moduulin omistama business event catalog.
+- [ ] Nimeä kriittiset eventit, jotka kirjoitetaan saman transaktion mukana.
+- [ ] Määrittele operational- ja security-event catalog sekä retention class.
+- [ ] Määrittele jokaiselle eventille sallitut ja kielletyt kentät ilman
+  arbitrary metadataa.
+- [ ] Lisää redaction-, control character-, henkilötieto- ja
+  salaisuustestit.
+- [ ] Päätä erikseen business audit- ja operational log -virheen vaikutus
+  käyttötapaukseen.
+- [ ] Tarjoa activity feedille vain turvallinen read-only-projektio.
+- [ ] Lisää E2E-matriisiin onnistuvat, estetyt ja rikkoutuvat polut.
+- [ ] Päätä, sisällytetäänkö tapahtuma tukipakettiin vai suljetaanko se pois.
+- [ ] Dokumentoi henkilötietojen käsittelyn tarkoitus ja säilytysaika; älä
+  oleta pseudonyymiä entity-tunnistetta anonyymiksi.
+
 - [ ] Lisää domain-invarianttien ja application-käyttötapausten positiiviset ja
   negatiiviset testit.
 - [ ] Testaa tenant-/company-rajaus, permission-deny ja tuntemattoman resurssin

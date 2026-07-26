@@ -66,6 +66,7 @@ Lue lisäksi tehtävän mukaan seuraavat dokumentit:
 - Riippuvuuksien hallinta: `docs/architecture/dependency-policy.md`
 - Turvallisuusperiaatteet: `docs/architecture/security-principles.md`
 - Virheenkäsittelyn periaatteet: `docs/architecture/error-handling-principles.md`
+- Observability ja auditointi: `docs/architecture/observability-and-audit-plan.md`
 - Teknologiapäätökset: `docs/architecture/tech-decisions.md`
 - Tietomallin periaatteet: `docs/architecture/data-model-principles.md`
 - Liiketoimintakonteksti: `docs/product/business-context.md`

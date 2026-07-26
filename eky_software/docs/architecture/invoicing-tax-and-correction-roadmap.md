@@ -99,8 +99,16 @@ ulkopuolisuus toteutetaan myöhemmin omina käsittelyinään.
 
 ## Viivästyskorko
 
-Nykyinen tekninen maksimi viivästyskorolle on liian korkea tuotantokäyttöön.
-Tuleva tuotantopolku rajaa arvon realistisemmin ja käyttäjälle selkeämmin.
+Nykyinen todellinen tekninen maksimi on `100000` basis pointia eli 1000 %.
+Sama raja on domain-validoinnissa, web-lomakkeessa ja nykyisten SQLite-
+rakenteiden CHECK-rajoissa. Raja on epärealistinen yhden koneen pilotille ja
+muodostaa release-blockerin ennen oikeaa laskutusdataa.
+
+Tuleva rajattu korjaus määrittelee realistisen ylärajan yhdessä projektin
+omistajan ja tarvittaessa kirjanpitäjän kanssa, päivittää backend- ja
+frontend-validoinnin sekä tekee julkaistuihin skeemoihin uuden migraation.
+Nykyisiä migraatioita ei muokata jälkikäteen. Tätä arvoa ei muuteta
+observability-dokumentaatiocommitissa.
 
 Lopullista automaattista korkolain mukaista mallia ei päätetä tässä vaiheessa.
 Jos Eky myöhemmin ehdottaa viivästyskorkoa lain perusteella, ehdotuksen lähde,
@@ -121,21 +129,15 @@ siirtyy hyväksytyksi laskuksi väärillä koontisummilla.
 
 ## Lähetetty Lasku Ja Hyvityslasku
 
-Nykyinen reopen-polku koskee hyväksyttyä laskua ennen lähetystä. Tuleva sääntö:
+R0:ssa toteutettu sääntö:
 
 - `approved`-lasku voidaan palauttaa muokattavaksi ennen lähetystä
-- `sent`-laskua ei saa enää reopen-muokata
-- `sent`-laskun virhe korjataan hyvityslaskulla tai erillisellä korjauspolulla
-- hyvityslasku saa oman laskunumeron
-- hyvityslasku viittaa alkuperäiseen laskuun
+- `sent`-laskua ei saa reopen-muokata
+- `sent`-laskun virhe korjataan hyvityslaskulla
+- hyvityslasku saa oman laskunumeron ja viittaa alkuperäiseen laskuun
 - mahdollinen uusi korjattu lasku tehdään erillisenä uutena laskuna
+- `cancelled` ja hyvityksen tilat säilyttävät alkuperäisen snapshotin sekä
+  audit trailin
 
-Tulevat laskun tilat:
-
-- `sent`
-- `paid`
-- `cancelled`
-- `credited`
-
-Näiden tarkka domain-malli, auditointi, UI ja tietokantatoteutus suunnitellaan
-erillisinä vaiheina.
+Myöhempiä tiloja tai työnkulkuja ovat `paid`, maksujen kohdistus ja
+automaattinen perintä.

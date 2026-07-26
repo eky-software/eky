@@ -71,3 +71,11 @@ luettavaksi, jaa se vastuun mukaan ennen uuden toiminnallisuuden lisäämistä.
 `docs/architecture/error-handling-principles.md`-malliin kuin `invoiceDrafts`.
 Kun niiden tuotantokoodia seuraavan kerran muutetaan, tarkista samalla niiden
 virheenkäsittely tämän mallin mukaiseksi ennen vastaavan UI-työn laajentamista.
+
+## Activity ja diagnostics
+
+Activity- ja diagnostics-clientit kuvaavat vain backendin turvallisia
+read-only-projektioita. Ne eivät palauta raw audit metadataa, raw JSONL-rivejä,
+stackeja, tiedostopolkuja, business-dataa tai salaisuuksia. Query-parametrit ja
+response-rakenne validoidaan tarkasti. API-client ei yhdistä moduulien
+audit-eventtejä eikä päätä retentionista.

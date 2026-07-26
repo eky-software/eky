@@ -105,6 +105,21 @@ secret, secret hash, secret length, secret reference, or another derived value.
 delivery provider. It must not be injected into Company Settings HTTP routes,
 the API client, preload, renderer, or web UI.
 
+## Business Audit And Logs
+
+Company Settings owns audit writes for company master data and email-secret
+lifecycle actions. Master-data audit contains only a fixed action, actor and
+company identifiers, timestamp, outcome and allowlisted changed-field
+categories. It never stores setting values. In particular, do not audit or log
+IBAN, BIC, sender email, SMTP username, password, secret reference, secret
+length or derived secret values.
+
+Settings persistence and its mandatory audit event share a transaction.
+Secret-store lifecycle keeps the existing pending/terminal reconciliation
+model because the OS secret store and SQLite cannot share one transaction.
+Read `docs/architecture/observability-and-audit-plan.md` before changing these
+boundaries.
+
 ## Naming
 
 Code is written in English.
