@@ -69,8 +69,20 @@ Nykytilan yksityiskohtainen arvio ja hyväksytyt poikkeukset ovat dokumentissa
 
 - [ ] Toteuta infrastructure-adapterit porttien taakse; älä paljasta
   framework-, SQLite-, storage- tai provider-tyyppejä application/domainiin.
+- [ ] Rajaa yksi infrastructure-adapteri omistamaan yksi koherentti repository-,
+  persistence- tai read model -vastuu.
+- [ ] Anna adapterin toteuttaa useita portteja vain, jos portit kuvaavat samaa
+  koherenttia kyvykkyyttä sekä samaa transaktio- tai elinkaarirajaa.
+- [ ] Toteuta toisistaan riippumattomat detail-, list-, context-, grouping-,
+  reporting- ja projection-read modelit erillisinä adaptereina.
+- [ ] Älä luo yleistä `Sqlite<Module>Reader`- tai
+  `Sqlite<Module>Repository`-luokkaa vain composition-wiringin vähentämiseksi.
 - [ ] Kytke konkreettiset adapterit nimetyssä composition rootissa ilman
   service locatoria tai request-kohtaista globaalia tilaa.
+- [ ] Muodosta adapterit composition rootissa erikseen ja anna käyttötapaukselle
+  vain sen tarvitsema portti.
+- [ ] Jos olemassa oleva adapteri on saamassa toisen tai kolmannen itsenäisen
+  portin, pysähdy ja arvioi vastuun jako ennen toteutusta.
 - [ ] Muodosta `ActorContext` vain backendin vahvistamasta identiteetistä.
 - [ ] Ota `companyId` aina vahvistetusta backend-kontekstista, ei request bodysta,
   query-parametrista tai rendererin ilmoittamana totuutena.

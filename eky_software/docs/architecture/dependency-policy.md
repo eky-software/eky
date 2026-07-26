@@ -108,6 +108,15 @@ SQL on adapterin sisäinen toteutusyksityiskohta.
 
 SQL saa näkyä vain backendin infrastructure/database/repository-adapterikerroksessa.
 
+SQL-adapterin raja määräytyy käyttötapauksen tai koherentin read modelin
+mukaan, ei pelkästään yhteisen tietokantayhteyden mukaan. Yhteinen
+`DatabaseConnection` ei ole peruste yhdistää toisistaan riippumattomia
+repository- tai reader-portteja samaan adapteriin.
+
+Yhteiset row-to-domain- ja row-to-read-model-muunnokset voidaan jakaa tarkasti
+nimettyyn moduulikohtaiseen mapping-tiedostoon. Tätä varten ei luoda geneeristä
+base readeria, query manageria tai mapper-frameworkia.
+
 SQL ei saa näkyä:
 
 - domainissa
