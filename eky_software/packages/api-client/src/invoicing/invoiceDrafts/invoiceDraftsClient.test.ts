@@ -31,6 +31,21 @@ describe('invoice drafts api client', () => {
     ]);
   });
 
+  it('sends the explicit reverse charge confirmation on approval', async () => {
+    const requests = createRequestLog();
+    const client = createTestClient(requests, {
+      approvedInvoice: createTestApprovedInvoiceResult(),
+    });
+
+    await client.approveInvoiceDraft('draft-1', {
+      reverseChargeEligibilityConfirmed: true,
+    });
+
+    expect(readRequestBody(requests[0])).toEqual({
+      reverseChargeEligibilityConfirmed: true,
+    });
+  });
+
   it('creates a draft through POST /invoice-drafts', async () => {
     const requests = createRequestLog();
     const invoiceDraft = createTestInvoiceDraft();
@@ -79,6 +94,38 @@ describe('invoice drafts api client', () => {
     const result = await client.getInvoiceDraft('draft-1');
 
     expect(result.lines.map((line) => line.unit)).toEqual(['pak', 'ltk']);
+  });
+
+  it('preserves a reverse charge draft without a synthetic VAT rate', async () => {
+    const requests = createRequestLog();
+    const invoiceDraft: InvoiceDraft = {
+      ...createTestInvoiceDraft(),
+      taxTreatment: 'reverseChargeConstruction',
+      performancePeriod: {
+        type: 'dateRange',
+        startDate: '2026-06-01',
+        endDate: '2026-06-13',
+      },
+      lines: [
+        {
+          ...createTestInvoiceDraft().lines[0]!,
+          vatRateBasisPoints: null,
+          vatCents: 0,
+          grossCents: 14_250,
+        },
+      ],
+      totals: {
+        netTotalCents: 14_250,
+        vatTotalCents: 0,
+        grossTotalCents: 14_250,
+        vatBreakdown: [],
+      },
+    };
+    const client = createTestClient(requests, { invoiceDraft });
+
+    await expect(client.getInvoiceDraft('draft-1')).resolves.toEqual(
+      invoiceDraft,
+    );
   });
 
   it('deletes a draft through DELETE /invoice-drafts/:id', async () => {
@@ -340,6 +387,8 @@ function createTestInput(): InvoiceDraftInput {
     reminderPeriodDays: 8,
     latePaymentInterestBasisPoints: 950,
     priceInputMode: 'net',
+    taxTreatment: 'normalVat',
+    performancePeriod: { type: 'invoiceDate' },
     subject: 'Test invoice',
     orderNumber: 'ORDER-1',
     note: 'Test note',
@@ -388,6 +437,8 @@ function createTestInvoiceDraft(): InvoiceDraft {
     reminderPeriodDays: 8,
     latePaymentInterestBasisPoints: 950,
     priceInputMode: 'net',
+    taxTreatment: 'normalVat',
+    performancePeriod: { type: 'invoiceDate' },
     subject: 'Test invoice',
     orderNumber: 'ORDER-1',
     note: 'Test note',

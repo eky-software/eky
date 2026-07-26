@@ -1,6 +1,8 @@
 import type {
   InvoiceLineDiscount,
+  InvoicePerformancePeriod,
   InvoicePriceInputMode,
+  InvoiceTaxTreatment,
   InvoiceTotals,
   InvoiceUnit,
 } from '../invoiceDrafts/index.js';
@@ -26,7 +28,7 @@ interface CreditInvoiceDraftLineBase {
   quantityHundredths: number;
   unit: InvoiceUnit;
   unitPriceCents: number;
-  vatRateBasisPoints: number;
+  vatRateBasisPoints: number | null;
   discount: InvoiceLineDiscount;
   baseCents: number;
   discountCents: number;
@@ -67,6 +69,8 @@ export interface CreditInvoiceDraft {
   reminderPeriodDays: 0;
   latePaymentInterestBasisPoints: 0;
   priceInputMode: InvoicePriceInputMode;
+  taxTreatment: InvoiceTaxTreatment;
+  performancePeriod: InvoicePerformancePeriod;
   subject: string;
   orderNumber: string;
   note: string;
@@ -91,7 +95,7 @@ export interface ManualCreditInvoiceDraftLineInput {
   quantityHundredths: number;
   unit: string;
   unitPriceCents: number;
-  vatRateBasisPoints: number;
+  vatRateBasisPoints: number | null;
 }
 
 export type CreditInvoiceDraftLineInput =

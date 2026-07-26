@@ -1,4 +1,8 @@
-import type { InvoiceDraft } from '../invoiceDrafts/index.js';
+import type {
+  InvoiceDraft,
+  InvoicePerformancePeriod,
+  InvoiceTaxTreatment,
+} from '../invoiceDrafts/index.js';
 
 export type ApprovedInvoiceViewStatus = 'approved' | 'sent' | 'cancelled';
 export type ApprovedInvoiceKind = 'standard' | 'credit';
@@ -25,7 +29,7 @@ export interface ApprovedInvoiceLine {
   quantityHundredths: number;
   unit: ApprovedInvoiceUnit;
   unitPriceCents: number;
-  vatRateBasisPoints: number;
+  vatRateBasisPoints: number | null;
   discount: ApprovedInvoiceLineDiscount;
   baseCents: number;
   discountCents: number;
@@ -102,6 +106,10 @@ export interface ApprovedInvoiceView {
   reminderPeriodDays: number;
   latePaymentInterestBasisPoints: number;
   priceInputMode: ApprovedInvoicePriceInputMode;
+  taxTreatment: InvoiceTaxTreatment;
+  taxTreatmentLabelSnapshot: string;
+  taxLegalBasisSnapshot: string;
+  performancePeriod: InvoicePerformancePeriod;
   subject: string;
   orderNumber: string;
   note: string;

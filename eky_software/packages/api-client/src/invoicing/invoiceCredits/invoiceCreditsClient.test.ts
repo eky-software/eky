@@ -136,6 +136,37 @@ describe('invoice credits api client', () => {
     });
   });
 
+  it('reads a reverse charge credit draft without a VAT rate', async () => {
+    const requests: RecordedRequest[] = [];
+    const creditInvoiceDraft: CreditInvoiceDraft = {
+      ...createCreditInvoiceDraft(),
+      taxTreatment: 'reverseChargeConstruction',
+      performancePeriod: {
+        type: 'singleDate',
+        date: '2026-07-01',
+      },
+      lines: [
+        {
+          ...createCreditInvoiceDraft().lines[0]!,
+          vatRateBasisPoints: null,
+          vatCents: 0,
+          grossCents: 10_000,
+        },
+      ],
+      totals: {
+        netTotalCents: 10_000,
+        vatTotalCents: 0,
+        grossTotalCents: 10_000,
+        vatBreakdown: [],
+      },
+    };
+    const client = createTestClient(requests, { creditInvoiceDraft });
+
+    await expect(
+      client.getCreditInvoiceDraft('draft-1'),
+    ).resolves.toEqual(creditInvoiceDraft);
+  });
+
   it('rejects a response with contradictory credit line ownership', async () => {
     const requests: RecordedRequest[] = [];
     const creditInvoiceDraft = createCreditInvoiceDraft();
@@ -232,6 +263,8 @@ function createCreditInvoiceDraft(): CreditInvoiceDraft {
     reminderPeriodDays: 0,
     latePaymentInterestBasisPoints: 0,
     priceInputMode: 'net',
+    taxTreatment: 'normalVat',
+    performancePeriod: { type: 'invoiceDate' },
     subject: 'Hyvitys laskulle 20260001',
     orderNumber: '',
     note: '',

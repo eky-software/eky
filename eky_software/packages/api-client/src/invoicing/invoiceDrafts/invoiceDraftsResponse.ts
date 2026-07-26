@@ -8,7 +8,9 @@ import type {
   InvoiceReferenceNumberType,
   InvoiceDraftSummary,
   InvoiceLineDiscount,
+  InvoicePerformancePeriod,
   InvoicePriceInputMode,
+  InvoiceTaxTreatment,
   InvoiceTotals,
   InvoiceUnit,
   InvoiceVatBreakdown,
@@ -93,6 +95,8 @@ function parseInvoiceDraft(value: unknown): InvoiceDraft {
       'latePaymentInterestBasisPoints',
     ),
     priceInputMode: parsePriceInputMode(value.priceInputMode),
+    taxTreatment: parseTaxTreatment(value.taxTreatment),
+    performancePeriod: parsePerformancePeriod(value.performancePeriod),
     subject: readString(value, 'subject'),
     orderNumber: readString(value, 'orderNumber'),
     note: readString(value, 'note'),
@@ -117,7 +121,10 @@ function parseInvoiceDraftLine(value: unknown): InvoiceDraftLine {
     quantityHundredths: readSafeInteger(value, 'quantityHundredths'),
     unit: parseInvoiceUnit(value.unit),
     unitPriceCents: readSafeInteger(value, 'unitPriceCents'),
-    vatRateBasisPoints: readSafeInteger(value, 'vatRateBasisPoints'),
+    vatRateBasisPoints: readNullableSafeInteger(
+      value,
+      'vatRateBasisPoints',
+    ),
     priceInputMode: parsePriceInputMode(value.priceInputMode),
     discount: parseDiscount(value.discount),
     baseCents: readSafeInteger(value, 'baseCents'),
@@ -259,6 +266,47 @@ function parsePriceInputMode(value: unknown): InvoicePriceInputMode {
   throw invalidInvoiceDraftResponse(value);
 }
 
+function parseTaxTreatment(value: unknown): InvoiceTaxTreatment {
+  if (value === 'normalVat' || value === 'reverseChargeConstruction') {
+    return value;
+  }
+
+  throw invalidInvoiceDraftResponse(value);
+}
+
+function parsePerformancePeriod(value: unknown): InvoicePerformancePeriod {
+  if (!isRecord(value)) {
+    throw invalidInvoiceDraftResponse(value);
+  }
+
+  if (value.type === 'invoiceDate' && Object.keys(value).length === 1) {
+    return { type: 'invoiceDate' };
+  }
+
+  if (
+    value.type === 'singleDate' &&
+    Object.keys(value).length === 2 &&
+    typeof value.date === 'string'
+  ) {
+    return { type: 'singleDate', date: value.date };
+  }
+
+  if (
+    value.type === 'dateRange' &&
+    Object.keys(value).length === 3 &&
+    typeof value.startDate === 'string' &&
+    typeof value.endDate === 'string'
+  ) {
+    return {
+      type: 'dateRange',
+      startDate: value.startDate,
+      endDate: value.endDate,
+    };
+  }
+
+  throw invalidInvoiceDraftResponse(value);
+}
+
 function parseInvoiceUnit(value: unknown): InvoiceUnit {
   if (typeof value === 'string' && isValidInvoiceUnit(value)) {
     return value;
@@ -309,6 +357,17 @@ function readSafeInteger(
   }
 
   throw invalidInvoiceDraftResponse(value);
+}
+
+function readNullableSafeInteger(
+  value: Record<string, unknown>,
+  fieldName: string,
+): number | null {
+  if (value[fieldName] === null) {
+    return null;
+  }
+
+  return readSafeInteger(value, fieldName);
 }
 
 function invalidInvoiceDraftResponse(responseBody: unknown): EkyApiError {

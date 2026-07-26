@@ -1,6 +1,7 @@
 export { createInvoiceDraftsApi } from './invoiceDraftsClient.js';
 export type {
   ApprovedInvoiceResult,
+  ApproveInvoiceDraftInput,
   ApprovedInvoiceStatus,
   InvoiceDraft,
   InvoiceDraftInput,
@@ -14,7 +15,9 @@ export type {
   InvoiceKind,
   InvoiceLineDiscount,
   InvoicePriceInputMode,
+  InvoicePerformancePeriod,
   InvoiceReferenceNumberType,
+  InvoiceTaxTreatment,
   InvoiceTotals,
   InvoiceUnit,
   InvoiceVatBreakdown,
