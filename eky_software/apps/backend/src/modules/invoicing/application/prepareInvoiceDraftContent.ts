@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { calculateInvoiceLine } from '../domain/calculateInvoiceLine.js';
 import { calculateInvoiceTotals } from '../domain/calculateInvoiceTotals.js';
+import { calculateReverseChargeInvoice } from '../domain/calculateReverseChargeInvoice.js';
 import type {
   InvoiceDraftLine,
 } from '../domain/invoiceDraft.js';
@@ -23,6 +24,14 @@ import type {
   InvoiceTotals,
   PriceInputMode,
 } from '../domain/invoiceCalculation.js';
+import {
+  resolveInvoicePerformancePeriod,
+  type InvoicePerformancePeriod,
+} from '../domain/invoicePerformancePeriod.js';
+import {
+  resolveInvoiceTaxTreatment,
+  type InvoiceTaxTreatment,
+} from '../domain/invoiceTaxTreatment.js';
 
 export interface InvoiceDraftLineInput {
   code?: string;
@@ -30,7 +39,7 @@ export interface InvoiceDraftLineInput {
   quantityHundredths: number;
   unit: string;
   unitPriceCents: number;
-  vatRateBasisPoints: number;
+  vatRateBasisPoints?: number | null;
   discount: InvoiceLineDiscount;
 }
 
@@ -43,6 +52,8 @@ export interface InvoiceDraftContentInput {
   reminderPeriodDays?: number;
   latePaymentInterestBasisPoints?: number;
   priceInputMode: PriceInputMode;
+  taxTreatment?: InvoiceTaxTreatment;
+  performancePeriod?: InvoicePerformancePeriod;
   subject?: string;
   orderNumber?: string;
   note?: string;
@@ -59,6 +70,8 @@ export interface PreparedInvoiceDraftContent {
   reminderPeriodDays: number;
   latePaymentInterestBasisPoints: number;
   priceInputMode: PriceInputMode;
+  taxTreatment: InvoiceTaxTreatment;
+  performancePeriod: InvoicePerformancePeriod;
   subject: string;
   orderNumber: string;
   note: string;
@@ -96,14 +109,57 @@ export function prepareInvoiceDraftContent(
     paymentTermDays,
   );
   const priceInputMode = input.priceInputMode;
-  const lines = input.lines.map((line, index) => {
-    const calculatedLine = calculateInvoiceLine({
-      quantityHundredths: line.quantityHundredths,
-      unitPriceCents: line.unitPriceCents,
-      vatRateBasisPoints: line.vatRateBasisPoints,
-      priceInputMode,
-      discount: line.discount,
-    });
+  const taxTreatment = resolveInvoiceTaxTreatment(input.taxTreatment);
+  const performancePeriod = resolveInvoicePerformancePeriod(
+    input.performancePeriod,
+  );
+  const calculatedLines =
+    taxTreatment === 'reverseChargeConstruction'
+      ? calculateReverseChargeInvoice(
+          input.lines.map((line) => {
+            if (line.vatRateBasisPoints != null) {
+              throw new InvoiceDraftValidationError(
+                'Reverse charge invoice lines cannot contain a VAT rate.',
+              );
+            }
+
+            return {
+              quantityHundredths: line.quantityHundredths,
+              unitPriceCents: line.unitPriceCents,
+              priceInputMode,
+              discount: line.discount,
+            };
+          }),
+        )
+      : {
+          lines: input.lines.map((line) => {
+            if (
+              line.vatRateBasisPoints == null ||
+              line.vatRateBasisPoints === 0
+            ) {
+              throw new InvoiceDraftValidationError(
+                'Normal VAT invoice lines require a positive VAT rate.',
+              );
+            }
+
+            return calculateInvoiceLine({
+              quantityHundredths: line.quantityHundredths,
+              unitPriceCents: line.unitPriceCents,
+              vatRateBasisPoints: line.vatRateBasisPoints,
+              priceInputMode,
+              discount: line.discount,
+            });
+          }),
+          totals: undefined,
+        };
+  const lines = calculatedLines.lines.map((calculatedLine, index) => {
+    const line = input.lines[index];
+
+    if (line === undefined) {
+      throw new InvoiceDraftValidationError(
+        'Invoice draft line mapping failed.',
+      );
+    }
 
     return {
       ...calculatedLine,
@@ -129,6 +185,8 @@ export function prepareInvoiceDraftContent(
     reminderPeriodDays,
     latePaymentInterestBasisPoints,
     priceInputMode,
+    taxTreatment,
+    performancePeriod,
     subject: normalizeOptionalInvoiceText(input.subject),
     orderNumber: normalizeOptionalInvoiceText(input.orderNumber),
     note: normalizeOptionalInvoiceText(input.note),
@@ -138,6 +196,21 @@ export function prepareInvoiceDraftContent(
       500,
     ),
     lines,
-    totals: calculateInvoiceTotals(lines),
+    totals:
+      calculatedLines.totals ??
+      calculateInvoiceTotals(
+        lines.map((line) => {
+          if (line.vatRateBasisPoints === null) {
+            throw new InvoiceDraftValidationError(
+              'Normal VAT invoice lines require a VAT rate.',
+            );
+          }
+
+          return {
+            ...line,
+            vatRateBasisPoints: line.vatRateBasisPoints,
+          };
+        }),
+      ),
   };
 }

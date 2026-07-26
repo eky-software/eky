@@ -7,9 +7,17 @@ import {
 import {
   calculateCreditInvoiceDraft,
   calculateRemainingCreditTotals,
+  type CalculatedCreditDraft,
   type PreviousCreditAllocation,
   type RequestedManualCreditLine,
 } from '../domain/calculateCreditInvoiceDraft.js';
+import {
+  calculateRemainingReverseChargeCreditTotals,
+  calculateReverseChargeCreditInvoiceDraft,
+  type RequestedReverseChargeManualCreditLine,
+  type ReverseChargeCreditSourceLine,
+  type ReverseChargePreviousCreditAllocation,
+} from '../domain/calculateReverseChargeCreditInvoiceDraft.js';
 import { InvoiceCreditError } from '../domain/invoiceCreditError.js';
 import type { InvoiceDraft, InvoiceDraftLine } from '../domain/invoiceDraft.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
@@ -23,6 +31,7 @@ import type {
   ApprovedInvoiceView,
   ApprovedInvoiceViewLine,
 } from '../domain/approvedInvoiceView.js';
+import type { InvoiceCreditAllocation } from '../ports/invoiceCreditDraftRepository.js';
 import type {
   CreditInvoiceDraftLineView,
   CreditInvoiceDraftView,
@@ -45,7 +54,7 @@ export interface ManualCreditInvoiceDraftLineInput {
   quantityHundredths: number;
   unit: string;
   unitPriceCents: number;
-  vatRateBasisPoints: number;
+  vatRateBasisPoints: number | null;
 }
 
 export type CreditInvoiceDraftLineInput =
@@ -59,13 +68,12 @@ export interface PreparedCreditDraftContent {
 
 export function createInitialCreditDraft(
   sourceInvoice: ApprovedInvoiceView,
-  previousAllocations: readonly PreviousCreditAllocation[],
+  previousAllocations: readonly InvoiceCreditAllocation[],
   createdAt: string,
 ): InvoiceDraft {
   const invoiceDate = parseCreditDraftTimestamp(createdAt);
-  const sourceLines = toCreditSourceLines(sourceInvoice);
-  const remainingTotals = calculateRemainingCreditTotals(
-    sourceLines,
+  const remainingTotals = calculateRemainingTotals(
+    sourceInvoice,
     previousAllocations,
   );
 
@@ -123,6 +131,8 @@ export function createInitialCreditDraft(
     reminderPeriodDays: 0,
     latePaymentInterestBasisPoints: 0,
     priceInputMode: sourceInvoice.priceInputMode,
+    taxTreatment: sourceInvoice.taxTreatment,
+    performancePeriod: sourceInvoice.performancePeriod,
     subject: createCreditSubject(sourceInvoice),
     orderNumber: sourceInvoice.orderNumber,
     note: createCreditNote(sourceInvoice),
@@ -137,7 +147,7 @@ export function createInitialCreditDraft(
 export function prepareUpdatedCreditDraft(
   existingDraft: InvoiceDraft,
   sourceInvoice: ApprovedInvoiceView,
-  previousAllocations: readonly PreviousCreditAllocation[],
+  previousAllocations: readonly InvoiceCreditAllocation[],
   input: {
     subject: string;
     note: string;
@@ -146,6 +156,16 @@ export function prepareUpdatedCreditDraft(
     updatedAt: string;
   },
 ): InvoiceDraft {
+  if (
+    existingDraft.taxTreatment !== sourceInvoice.taxTreatment ||
+    JSON.stringify(existingDraft.performancePeriod) !==
+      JSON.stringify(sourceInvoice.performancePeriod)
+  ) {
+    throw new InvoiceDraftValidationError(
+      'Credit invoice tax treatment must match the source invoice.',
+    );
+  }
+
   const content = prepareCreditDraftContent(
     sourceInvoice,
     previousAllocations,
@@ -174,7 +194,7 @@ export function prepareUpdatedCreditDraft(
 export function toCreditInvoiceDraftView(
   draft: InvoiceDraft,
   sourceInvoice: ApprovedInvoiceView,
-  previousAllocations: readonly PreviousCreditAllocation[],
+  previousAllocations: readonly InvoiceCreditAllocation[],
 ): CreditInvoiceDraftView {
   if (draft.invoiceKind !== 'credit' || draft.creditedInvoiceId === null) {
     throw new InvoiceDraftValidationError(
@@ -271,6 +291,8 @@ export function toCreditInvoiceDraftView(
     reminderPeriodDays: 0,
     latePaymentInterestBasisPoints: 0,
     priceInputMode: draft.priceInputMode,
+    taxTreatment: draft.taxTreatment,
+    performancePeriod: draft.performancePeriod,
     subject: draft.subject,
     orderNumber: draft.orderNumber,
     note: draft.note,
@@ -285,7 +307,7 @@ export function toCreditInvoiceDraftView(
 
 function prepareCreditDraftContent(
   sourceInvoice: ApprovedInvoiceView,
-  previousAllocations: readonly PreviousCreditAllocation[],
+  previousAllocations: readonly InvoiceCreditAllocation[],
   inputLines: readonly CreditInvoiceDraftLineInput[],
 ): PreparedCreditDraftContent {
   if (inputLines.length === 0) {
@@ -312,24 +334,22 @@ function prepareCreditDraftContent(
     string,
     ManualCreditInvoiceDraftLineInput
   >();
-  const requestedManualLines: RequestedManualCreditLine[] = manualInputs.map(
-    (line, index) => {
-      const lineKey = `manual-${index}`;
-      manualInputByKey.set(lineKey, line);
-      return {
-        lineKey,
-        quantityHundredths: line.quantityHundredths,
-        unitPriceCents: line.unitPriceCents,
-        vatRateBasisPoints: line.vatRateBasisPoints,
-      };
-    },
-  );
-  const calculated = calculateCreditInvoiceDraft(
-    toCreditSourceLines(sourceInvoice),
-    previousAllocations,
-    requestedSourceLines,
-    requestedManualLines,
-  );
+  const calculated =
+    sourceInvoice.taxTreatment === 'reverseChargeConstruction'
+      ? calculateReverseChargeInvoiceDraftContent(
+          sourceInvoice,
+          previousAllocations,
+          requestedSourceLines,
+          manualInputs,
+          manualInputByKey,
+        )
+      : calculateNormalInvoiceDraftContent(
+          sourceInvoice,
+          previousAllocations,
+          requestedSourceLines,
+          manualInputs,
+          manualInputByKey,
+        );
   const sourceLineById = new Map(
     sourceInvoice.lines.map((line) => [line.id, line]),
   );
@@ -396,9 +416,90 @@ function prepareCreditDraftContent(
   };
 }
 
+function calculateNormalInvoiceDraftContent(
+  sourceInvoice: ApprovedInvoiceView,
+  previousAllocations: readonly InvoiceCreditAllocation[],
+  requestedSourceLines: readonly RequestedCreditLine[],
+  manualInputs: readonly ManualCreditInvoiceDraftLineInput[],
+  manualInputByKey: Map<string, ManualCreditInvoiceDraftLineInput>,
+): CalculatedCreditDraft {
+  const requestedManualLines: RequestedManualCreditLine[] = manualInputs.map(
+    (line, index) => {
+      if (line.vatRateBasisPoints === null) {
+        throw new InvoiceDraftValidationError(
+          'Normal VAT manual credit line requires a VAT rate.',
+        );
+      }
+
+      const lineKey = `manual-${index}`;
+      manualInputByKey.set(lineKey, line);
+      return {
+        lineKey,
+        quantityHundredths: line.quantityHundredths,
+        unitPriceCents: line.unitPriceCents,
+        vatRateBasisPoints: line.vatRateBasisPoints,
+      };
+    },
+  );
+
+  return calculateCreditInvoiceDraft(
+    toNormalCreditSourceLines(sourceInvoice),
+    toNormalPreviousCreditAllocations(previousAllocations),
+    requestedSourceLines,
+    requestedManualLines,
+  );
+}
+
+function calculateReverseChargeInvoiceDraftContent(
+  sourceInvoice: ApprovedInvoiceView,
+  previousAllocations: readonly InvoiceCreditAllocation[],
+  requestedSourceLines: readonly RequestedCreditLine[],
+  manualInputs: readonly ManualCreditInvoiceDraftLineInput[],
+  manualInputByKey: Map<string, ManualCreditInvoiceDraftLineInput>,
+): CalculatedCreditDraft {
+  const requestedManualLines: RequestedReverseChargeManualCreditLine[] =
+    manualInputs.map((line, index) => {
+      if (line.vatRateBasisPoints !== null) {
+        throw new InvoiceDraftValidationError(
+          'Reverse charge manual credit line cannot contain a VAT rate.',
+        );
+      }
+
+      const lineKey = `manual-${index}`;
+      manualInputByKey.set(lineKey, line);
+      return {
+        lineKey,
+        quantityHundredths: line.quantityHundredths,
+        unitPriceCents: line.unitPriceCents,
+      };
+    });
+
+  return calculateReverseChargeCreditInvoiceDraft(
+    toReverseChargeCreditSourceLines(sourceInvoice),
+    toReverseChargePreviousAllocations(previousAllocations),
+    requestedSourceLines,
+    requestedManualLines,
+  );
+}
+
+function calculateRemainingTotals(
+  sourceInvoice: ApprovedInvoiceView,
+  previousAllocations: readonly InvoiceCreditAllocation[],
+): InvoiceDraft['totals'] {
+  return sourceInvoice.taxTreatment === 'reverseChargeConstruction'
+    ? calculateRemainingReverseChargeCreditTotals(
+        toReverseChargeCreditSourceLines(sourceInvoice),
+        toReverseChargePreviousAllocations(previousAllocations),
+      )
+    : calculateRemainingCreditTotals(
+        toNormalCreditSourceLines(sourceInvoice),
+        toNormalPreviousCreditAllocations(previousAllocations),
+      );
+}
+
 function createRemainingRequestedLines(
   sourceInvoice: ApprovedInvoiceView,
-  previousAllocations: readonly PreviousCreditAllocation[],
+  previousAllocations: readonly InvoiceCreditAllocation[],
 ): RequestedCreditLine[] {
   const previousQuantityBySourceLine = sumPreviousQuantities(
     previousAllocations,
@@ -419,25 +520,118 @@ function createRemainingRequestedLines(
   });
 }
 
-function toCreditSourceLines(
+function toNormalPreviousCreditAllocations(
+  allocations: readonly InvoiceCreditAllocation[],
+): PreviousCreditAllocation[] {
+  return allocations.map((allocation) => {
+    if (allocation.vatRateBasisPoints === null) {
+      throw new InvoiceDraftValidationError(
+        'Stored normal VAT credit allocation is invalid.',
+      );
+    }
+
+    return {
+      ...allocation,
+      vatRateBasisPoints: allocation.vatRateBasisPoints,
+    };
+  });
+}
+
+function toReverseChargePreviousAllocations(
+  allocations: readonly InvoiceCreditAllocation[],
+): ReverseChargePreviousCreditAllocation[] {
+  return allocations.map((allocation) => {
+    if (
+      allocation.vatRateBasisPoints !== null ||
+      allocation.priceInputMode !== 'net' ||
+      allocation.vatCents !== 0 ||
+      allocation.netCents !== allocation.grossCents
+    ) {
+      throw new InvoiceDraftValidationError(
+        'Stored reverse charge credit allocation is invalid.',
+      );
+    }
+
+    return {
+      ...allocation,
+      priceInputMode: 'net',
+      vatRateBasisPoints: null,
+      vatCents: 0,
+    };
+  });
+}
+
+function toNormalCreditSourceLines(
   sourceInvoice: ApprovedInvoiceView,
 ): CreditSourceLine[] {
-  return sourceInvoice.lines.map((line) => ({
-    id: line.id,
-    lineOrder: line.lineOrder,
-    quantityHundredths: line.quantityHundredths,
-    priceInputMode: sourceInvoice.priceInputMode,
-    vatRateBasisPoints: line.vatRateBasisPoints,
-    baseCents: line.baseCents,
-    discountCents: line.discountCents,
-    netCents: line.netCents,
-    vatCents: line.vatCents,
-    grossCents: line.grossCents,
-  }));
+  if (sourceInvoice.taxTreatment !== 'normalVat') {
+    throw new InvoiceDraftValidationError(
+      'Normal VAT credit source invoice is invalid.',
+    );
+  }
+
+  return sourceInvoice.lines.map((line) => {
+    if (line.vatRateBasisPoints === null) {
+      throw new InvoiceDraftValidationError(
+        'Normal VAT credit source line is invalid.',
+      );
+    }
+
+    return {
+      id: line.id,
+      lineOrder: line.lineOrder,
+      quantityHundredths: line.quantityHundredths,
+      priceInputMode: sourceInvoice.priceInputMode,
+      vatRateBasisPoints: line.vatRateBasisPoints,
+      baseCents: line.baseCents,
+      discountCents: line.discountCents,
+      netCents: line.netCents,
+      vatCents: line.vatCents,
+      grossCents: line.grossCents,
+    };
+  });
+}
+
+function toReverseChargeCreditSourceLines(
+  sourceInvoice: ApprovedInvoiceView,
+): ReverseChargeCreditSourceLine[] {
+  if (
+    sourceInvoice.taxTreatment !== 'reverseChargeConstruction' ||
+    sourceInvoice.priceInputMode !== 'net'
+  ) {
+    throw new InvoiceDraftValidationError(
+      'Reverse charge credit source invoice is invalid.',
+    );
+  }
+
+  return sourceInvoice.lines.map((line) => {
+    if (
+      line.vatRateBasisPoints !== null ||
+      line.vatCents !== 0 ||
+      line.netCents !== line.grossCents
+    ) {
+      throw new InvoiceDraftValidationError(
+        'Reverse charge credit source line is invalid.',
+      );
+    }
+
+    return {
+      id: line.id,
+      lineOrder: line.lineOrder,
+      quantityHundredths: line.quantityHundredths,
+      priceInputMode: 'net',
+      vatRateBasisPoints: null,
+      baseCents: line.baseCents,
+      discountCents: line.discountCents,
+      netCents: line.netCents,
+      vatCents: 0,
+      grossCents: line.grossCents,
+    };
+  });
 }
 
 function sumPreviousQuantities(
-  previousAllocations: readonly PreviousCreditAllocation[],
+  previousAllocations: readonly InvoiceCreditAllocation[],
 ): Map<string, number> {
   const quantities = new Map<string, number>();
 

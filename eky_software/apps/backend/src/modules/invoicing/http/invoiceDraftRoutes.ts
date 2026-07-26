@@ -113,11 +113,42 @@ export function createInvoiceDraftRoutes(
   routes.post('/invoice-drafts/:id/approve', async (context) => {
     try {
       const actorContext = context.get('actorContext');
+      const requestText = await context.req.text();
+      let reverseChargeEligibilityConfirmed = false;
+
+      if (requestText.trim() !== '') {
+        let requestBody: unknown;
+
+        try {
+          requestBody = JSON.parse(requestText);
+        } catch {
+          return context.json({ error: 'Invalid JSON body.' }, 400);
+        }
+
+        if (
+          typeof requestBody !== 'object' ||
+          requestBody === null ||
+          Array.isArray(requestBody) ||
+          Object.keys(requestBody).some(
+            (field) => field !== 'reverseChargeEligibilityConfirmed',
+          ) ||
+          ('reverseChargeEligibilityConfirmed' in requestBody &&
+            typeof requestBody.reverseChargeEligibilityConfirmed !==
+              'boolean')
+        ) {
+          return context.json({ error: 'Invalid approval body.' }, 400);
+        }
+
+        reverseChargeEligibilityConfirmed =
+          'reverseChargeEligibilityConfirmed' in requestBody &&
+          requestBody.reverseChargeEligibilityConfirmed === true;
+      }
       const approvedInvoice = await dependencies.approveInvoiceDraft({
         actorUserId: actorContext.actorId,
         approvedAt: new Date().toISOString(),
         companyId: actorContext.companyId,
         draftId: context.req.param('id'),
+        reverseChargeEligibilityConfirmed,
         seriesKey: defaultInvoiceNumberSeriesKey,
       });
 

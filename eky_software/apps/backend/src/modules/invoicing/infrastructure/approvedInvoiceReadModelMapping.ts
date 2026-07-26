@@ -12,7 +12,9 @@ import type { InvoiceLineDiscount } from '../domain/invoiceCalculation.js';
 import type { InvoiceUnit } from '../domain/invoiceDraft.js';
 import type { InvoiceKind } from '../domain/invoiceKind.js';
 import type { InvoiceNumberingMode } from '../domain/invoiceNumbering.js';
+import { fromInvoicePerformancePeriodColumns } from '../domain/invoicePerformancePeriod.js';
 import type { ReferenceNumberType } from '../domain/invoiceReferenceNumber.js';
+import { resolveInvoiceTaxTreatment } from '../domain/invoiceTaxTreatment.js';
 
 export interface CreditedInvoiceIdentityRow {
   invoice_number: string;
@@ -62,7 +64,9 @@ export function toApprovedInvoiceView(
   lines: InvoiceLineRow[],
   creditedInvoice: CreditedInvoiceIdentityRow | undefined,
 ): ApprovedInvoiceView {
-  const vatBreakdown = createVatBreakdown(lines);
+  const taxTreatment = resolveInvoiceTaxTreatment(invoice.tax_treatment);
+  const vatBreakdown =
+    taxTreatment === 'normalVat' ? createVatBreakdown(lines) : [];
 
   return {
     id: invoice.id,
@@ -124,6 +128,14 @@ export function toApprovedInvoiceView(
     reminderPeriodDays: invoice.reminder_period_days,
     latePaymentInterestBasisPoints: invoice.late_payment_interest_basis_points,
     priceInputMode: invoice.price_input_mode as 'net' | 'gross',
+    taxTreatment,
+    taxTreatmentLabelSnapshot: invoice.tax_treatment_label_snapshot,
+    taxLegalBasisSnapshot: invoice.tax_legal_basis_snapshot,
+    performancePeriod: fromInvoicePerformancePeriodColumns({
+      performanceDate: invoice.performance_date,
+      performancePeriodStart: invoice.performance_period_start,
+      performancePeriodEnd: invoice.performance_period_end,
+    }),
     subject: invoice.subject,
     orderNumber: invoice.order_number,
     note: invoice.note,
@@ -188,15 +200,22 @@ function createVatBreakdown(
   const breakdownByRate = new Map<number, ApprovedInvoiceVatBreakdown>();
 
   for (const line of lines) {
-    const current = breakdownByRate.get(line.vat_rate_basis_points) ?? {
-      vatRateBasisPoints: line.vat_rate_basis_points,
+    if (line.vat_rate_basis_points === null) {
+      throw new Error(
+        'Stored normal VAT invoice line is missing its VAT rate.',
+      );
+    }
+
+    const vatRateBasisPoints = line.vat_rate_basis_points;
+    const current = breakdownByRate.get(vatRateBasisPoints) ?? {
+      vatRateBasisPoints,
       netCents: 0,
       vatCents: 0,
       grossCents: 0,
     };
 
-    breakdownByRate.set(line.vat_rate_basis_points, {
-      vatRateBasisPoints: line.vat_rate_basis_points,
+    breakdownByRate.set(vatRateBasisPoints, {
+      vatRateBasisPoints,
       netCents: current.netCents + line.net_cents,
       vatCents: current.vatCents + line.vat_cents,
       grossCents: current.grossCents + line.gross_cents,

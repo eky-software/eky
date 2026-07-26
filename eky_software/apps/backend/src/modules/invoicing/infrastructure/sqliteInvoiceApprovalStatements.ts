@@ -7,7 +7,6 @@ import type {
 } from '../../../database/schema.js';
 import { ApproveInvoiceDraftError } from '../application/approveInvoiceDraftError.js';
 import type {
-  ApproveInvoiceDraftPersistenceInput,
   MarkApprovedInvoiceSentPersistenceInput,
   ReopenApprovedInvoicePersistenceInput,
 } from '../ports/invoiceApprovalRepository.js';
@@ -36,7 +35,7 @@ type InvoiceLineInsertParameters = [
   number,
   string,
   number,
-  number,
+  number | null,
   string,
   number,
   number,
@@ -65,6 +64,13 @@ type MarkInvoiceSentParameters = [string, string, string];
 
 interface InvoiceDocumentStoragePathRow {
   storage_path: string;
+}
+
+interface MarkInvoiceDraftApprovedInput {
+  approvedAt: string;
+  companyId: string;
+  draftId: string;
+  invoiceId: string;
 }
 
 export class SqliteInvoiceApprovalStatements {
@@ -159,6 +165,12 @@ export class SqliteInvoiceApprovalStatements {
             note,
             delivery_address_text,
             refund_iban_snapshot,
+            tax_treatment,
+            tax_treatment_label_snapshot,
+            tax_legal_basis_snapshot,
+            performance_date,
+            performance_period_start,
+            performance_period_end,
             total_net_cents,
             total_vat_cents,
             total_gross_cents,
@@ -226,6 +238,12 @@ export class SqliteInvoiceApprovalStatements {
             @note,
             @delivery_address_text,
             @refund_iban_snapshot,
+            @tax_treatment,
+            @tax_treatment_label_snapshot,
+            @tax_legal_basis_snapshot,
+            @performance_date,
+            @performance_period_start,
+            @performance_period_end,
             @total_net_cents,
             @total_vat_cents,
             @total_gross_cents,
@@ -291,6 +309,12 @@ export class SqliteInvoiceApprovalStatements {
             note = @note,
             delivery_address_text = @delivery_address_text,
             refund_iban_snapshot = @refund_iban_snapshot,
+            tax_treatment = @tax_treatment,
+            tax_treatment_label_snapshot = @tax_treatment_label_snapshot,
+            tax_legal_basis_snapshot = @tax_legal_basis_snapshot,
+            performance_date = @performance_date,
+            performance_period_start = @performance_period_start,
+            performance_period_end = @performance_period_end,
             total_net_cents = @total_net_cents,
             total_vat_cents = @total_vat_cents,
             total_gross_cents = @total_gross_cents,
@@ -434,7 +458,7 @@ export class SqliteInvoiceApprovalStatements {
       );
   }
 
-  markDraftApproved(input: ApproveInvoiceDraftPersistenceInput): void {
+  markDraftApproved(input: MarkInvoiceDraftApprovedInput): void {
     const result = this.database
       .prepare<InvoiceDraftApproveParameters>(
         `

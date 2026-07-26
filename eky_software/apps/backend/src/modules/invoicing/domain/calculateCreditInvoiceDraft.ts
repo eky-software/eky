@@ -40,7 +40,7 @@ export interface CalculatedCreditDraftLine {
   quantityHundredths: number;
   unitPriceCents: number | null;
   priceInputMode: PriceInputMode;
-  vatRateBasisPoints: number;
+  vatRateBasisPoints: number | null;
   baseCents: number;
   discountCents: number;
   netCents: number;
@@ -52,6 +52,10 @@ export interface CalculatedCreditDraft {
   lines: CalculatedCreditDraftLine[];
   totals: InvoiceTotals;
 }
+
+type CalculatedNormalCreditDraftLine = CalculatedCreditDraftLine & {
+  vatRateBasisPoints: number;
+};
 
 interface VatCapacity {
   priceInputMode: PriceInputMode;
@@ -104,7 +108,7 @@ export function calculateCreditInvoiceDraft(
           previousSourceAllocations,
           requestedSourceLines,
         );
-  const sourceCalculatedLines: CalculatedCreditDraftLine[] =
+  const sourceCalculatedLines: CalculatedNormalCreditDraftLine[] =
     sourceCalculation.lines.map((line) => ({
       lineKey: line.sourceInvoiceLineId,
       sourceInvoiceLineId: line.sourceInvoiceLineId,
@@ -174,7 +178,7 @@ export function calculateRemainingCreditTotals(
 function calculateManualLine(
   line: RequestedManualCreditLine,
   capacities: ReadonlyMap<number, VatCapacity>,
-): CalculatedCreditDraftLine {
+): CalculatedNormalCreditDraftLine {
   requireIdentifier(line.lineKey, 'Manual credit line key');
   const capacity = capacities.get(line.vatRateBasisPoints);
   if (capacity === undefined) {
@@ -292,9 +296,9 @@ function validatePreviousAllocations(
 }
 
 function reconcileCurrentVat(
-  lines: readonly CalculatedCreditDraftLine[],
+  lines: readonly CalculatedNormalCreditDraftLine[],
   previousAllocations: readonly PreviousCreditAllocation[],
-): CalculatedCreditDraftLine[] {
+): CalculatedNormalCreditDraftLine[] {
   const previousByRate = sumPreviousByRate(previousAllocations);
   const currentIndexesByRate = new Map<number, number[]>();
   lines.forEach((line, index) => {
@@ -408,7 +412,7 @@ function reconcileCurrentVat(
 
 function requireWithinVatCapacity(
   previousAllocations: readonly PreviousCreditAllocation[],
-  currentLines: readonly CalculatedCreditDraftLine[],
+  currentLines: readonly CalculatedNormalCreditDraftLine[],
   capacities: ReadonlyMap<number, VatCapacity>,
 ): void {
   const usedByRate = sumPreviousByRate(previousAllocations);
@@ -473,7 +477,7 @@ function sumPreviousByRate(
 }
 
 function sumCreditTotals(
-  lines: readonly CalculatedCreditDraftLine[],
+  lines: readonly CalculatedNormalCreditDraftLine[],
 ): InvoiceTotals {
   const byRate = new Map<number, InvoiceVatBreakdown>();
   for (const line of lines) {
@@ -536,7 +540,7 @@ function distributeAmount(totalAmount: number, weights: readonly number[]) {
 }
 
 function sumLineAmount(
-  lines: readonly CalculatedCreditDraftLine[],
+  lines: readonly CalculatedNormalCreditDraftLine[],
   field: 'netCents' | 'grossCents',
 ): number {
   return lines.reduce((sum, line) => addSafe(sum, line[field]), 0);

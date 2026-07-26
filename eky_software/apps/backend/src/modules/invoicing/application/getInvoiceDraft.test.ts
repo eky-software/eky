@@ -50,6 +50,8 @@ function createDraft(): InvoiceDraft {
     reminderPeriodDays: 8,
     latePaymentInterestBasisPoints: 950,
     priceInputMode: 'net',
+    taxTreatment: 'normalVat',
+    performancePeriod: { type: 'invoiceDate' },
     subject: 'Test invoice',
     orderNumber: '',
     note: '',

@@ -9,12 +9,21 @@ import type {
 import { ApproveInvoiceDraftError } from '../application/approveInvoiceDraftError.js';
 import type { InvoiceAuditAction } from '../domain/approvedInvoice.js';
 import { calculateInvoiceTotals } from '../domain/calculateInvoiceTotals.js';
+import { calculateReverseChargeInvoice } from '../domain/calculateReverseChargeInvoice.js';
 import type { InvoiceTotals, PriceInputMode } from '../domain/invoiceCalculation.js';
 import type {
   InvoiceNumberingMode,
   StoredInvoiceNumberingSettings,
 } from '../domain/invoiceNumbering.js';
 import type { ReferenceNumberType } from '../domain/invoiceReferenceNumber.js';
+import {
+  fromInvoicePerformancePeriodColumns,
+  toInvoicePerformancePeriodColumns,
+} from '../domain/invoicePerformancePeriod.js';
+import {
+  getInvoiceTaxTreatmentSnapshot,
+  resolveInvoiceTaxTreatment,
+} from '../domain/invoiceTaxTreatment.js';
 import type {
   ApproveInvoiceDraftPersistenceInput,
 } from '../ports/invoiceApprovalRepository.js';
@@ -98,6 +107,16 @@ export function createInvoiceRow(
   referenceNumberType: ReferenceNumberType,
   snapshot: InvoiceApprovalSnapshotData,
 ): NewInvoiceRow {
+  const taxTreatment = resolveInvoiceTaxTreatment(draft.tax_treatment);
+  const taxTreatmentSnapshot = getInvoiceTaxTreatmentSnapshot(taxTreatment);
+  const performancePeriod = toInvoicePerformancePeriodColumns(
+    fromInvoicePerformancePeriodColumns({
+      performanceDate: draft.performance_date,
+      performancePeriodStart: draft.performance_period_start,
+      performancePeriodEnd: draft.performance_period_end,
+    }),
+  );
+
   return {
     id: input.invoiceId,
     company_id: input.companyId,
@@ -158,6 +177,12 @@ export function createInvoiceRow(
     note: draft.note,
     delivery_address_text: draft.delivery_address_text,
     refund_iban_snapshot: '',
+    tax_treatment: taxTreatment,
+    tax_treatment_label_snapshot: taxTreatmentSnapshot.label,
+    tax_legal_basis_snapshot: taxTreatmentSnapshot.legalBasis,
+    performance_date: performancePeriod.performanceDate,
+    performance_period_start: performancePeriod.performancePeriodStart,
+    performance_period_end: performancePeriod.performancePeriodEnd,
     total_net_cents: totals.netTotalCents,
     total_vat_cents: totals.vatTotalCents,
     total_gross_cents: totals.grossTotalCents,
@@ -242,12 +267,64 @@ export function calculateStoredDraftTotals(
   lines: InvoiceDraftLineTable[],
 ): InvoiceTotals {
   const priceInputMode = draft.price_input_mode as PriceInputMode;
+  const taxTreatment = resolveInvoiceTaxTreatment(draft.tax_treatment);
+
+  if (taxTreatment === 'reverseChargeConstruction') {
+    const calculated = calculateReverseChargeInvoice(
+      lines.map((line) => {
+        if (line.vat_rate_basis_points !== null) {
+          throw new ApproveInvoiceDraftError(
+            'Reverse charge invoice line contains a VAT rate.',
+          );
+        }
+
+        return {
+          quantityHundredths: line.quantity_hundredths,
+          unitPriceCents: line.unit_price_cents,
+          priceInputMode,
+          discount: toStoredDiscount(
+            line.discount_type,
+            line.discount_value,
+          ).type === 'none'
+            ? { type: 'none' as const }
+            : line.discount_type === 'percentage'
+              ? {
+                  type: 'percentage' as const,
+                  basisPoints: line.discount_value,
+                }
+              : {
+                  type: 'fixed' as const,
+                  amountCents: line.discount_value,
+                },
+        };
+      }),
+    );
+
+    for (const [index, line] of lines.entries()) {
+      const calculatedLine = calculated.lines[index];
+
+      if (
+        calculatedLine === undefined ||
+        line.base_cents !== calculatedLine.baseCents ||
+        line.discount_cents !== calculatedLine.discountCents ||
+        line.net_cents !== calculatedLine.netCents ||
+        line.vat_cents !== 0 ||
+        line.gross_cents !== calculatedLine.grossCents
+      ) {
+        throw new ApproveInvoiceDraftError(
+          'Stored reverse charge invoice line totals are invalid.',
+        );
+      }
+    }
+
+    return calculated.totals;
+  }
 
   return calculateInvoiceTotals(
     lines.map((line) => ({
       quantityHundredths: line.quantity_hundredths,
       unitPriceCents: line.unit_price_cents,
-      vatRateBasisPoints: line.vat_rate_basis_points,
+      vatRateBasisPoints: requireNormalVatRate(line.vat_rate_basis_points),
       priceInputMode,
       baseCents: line.base_cents,
       discountCents: line.discount_cents,
@@ -256,6 +333,16 @@ export function calculateStoredDraftTotals(
       grossCents: line.gross_cents,
     })),
   );
+}
+
+function requireNormalVatRate(value: number | null): number {
+  if (value === null || value <= 0) {
+    throw new ApproveInvoiceDraftError(
+      'Normal VAT invoice lines require a positive VAT rate.',
+    );
+  }
+
+  return value;
 }
 
 export function createAuditEventRow(

@@ -197,6 +197,10 @@ function createSourceLine(
 function toPreviousAllocation(
   line: ReturnType<typeof calculateCreditInvoiceDraft>['lines'][number],
 ): PreviousCreditAllocation {
+  if (line.vatRateBasisPoints === null) {
+    throw new Error('Normal VAT test line requires a VAT rate.');
+  }
+
   return {
     sourceInvoiceLineId: line.sourceInvoiceLineId,
     quantityHundredths: line.quantityHundredths,

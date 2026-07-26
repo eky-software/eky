@@ -93,6 +93,7 @@ describe('approveInvoiceDraft', () => {
         invoiceId: expect.stringMatching(
           /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
         ),
+        reverseChargeEligibilityConfirmed: false,
         seriesKey: 'default',
       },
     ]);
@@ -111,6 +112,19 @@ describe('approveInvoiceDraft', () => {
         invoiceApprovalRepository: repository,
       }),
     ).rejects.toThrow('Invoice draft not found.');
+  });
+
+  it('passes an explicit reverse charge confirmation to persistence', async () => {
+    const repository = new FakeInvoiceApprovalRepository(createResult());
+
+    await approveInvoiceDraft(
+      createInput({ reverseChargeEligibilityConfirmed: true }),
+      { invoiceApprovalRepository: repository },
+    );
+
+    expect(repository.approveInputs[0]).toMatchObject({
+      reverseChargeEligibilityConfirmed: true,
+    });
   });
 
   it('keeps a rejected credit draft behind the generic not-found boundary', async () => {

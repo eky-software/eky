@@ -14,6 +14,10 @@ export function drawVatAndTotals(
   const totalsX = 342;
   let currentY = y;
 
+  if (invoice.taxTreatment === 'reverseChargeConstruction') {
+    return drawReverseChargeTotals(doc, invoice, currentY, x, totalsX);
+  }
+
   doc.font('Helvetica-Bold').fontSize(10).text('ALV-erittely', x, currentY);
   currentY += 18;
   doc.font('Helvetica-Bold').fontSize(8);
@@ -66,6 +70,48 @@ export function drawVatAndTotals(
   doc.font('Helvetica').fontSize(9);
 
   return Math.max(currentY, grandTotalY + 18);
+}
+
+function drawReverseChargeTotals(
+  doc: PDFKit.PDFDocument,
+  invoice: ApprovedInvoiceView,
+  y: number,
+  x: number,
+  totalsX: number,
+): number {
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(10)
+    .text(invoice.taxTreatmentLabelSnapshot, x, y, { width: 250 });
+  doc
+    .font('Helvetica')
+    .fontSize(8.5)
+    .text(invoice.taxLegalBasisSnapshot, x, y + 18, { width: 250 });
+
+  drawTotalsLine(
+    doc,
+    'Veroton yhteensä',
+    formatPdfPresentedCents(
+      invoice.totals.netTotalCents,
+      invoice.invoiceKind,
+    ),
+    totalsX,
+    y,
+  );
+  drawTotalsLine(
+    doc,
+    'Loppusumma EUR',
+    formatPdfPresentedCents(
+      invoice.totals.grossTotalCents,
+      invoice.invoiceKind,
+    ),
+    totalsX,
+    y + 22,
+    true,
+  );
+  doc.font('Helvetica').fontSize(9);
+
+  return y + 40;
 }
 
 function drawTotalsLine(

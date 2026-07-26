@@ -5,7 +5,9 @@ import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationErr
 import { requireIdentifier } from '../domain/invoiceDraftRules.js';
 import type { CustomerAccessReader } from '../ports/customerAccessReader.js';
 import type { InvoiceDraftRepository } from '../ports/invoiceDraftRepository.js';
+import type { InvoiceCustomerTaxProfileReader } from '../ports/invoiceCustomerTaxProfileReader.js';
 import type { InvoicePaymentSettingsRepository } from '../ports/invoicePaymentSettingsRepository.js';
+import { requireReverseChargeCustomerEligibility } from '../domain/invoiceTaxTreatment.js';
 import {
   type InvoiceDraftContentInput,
   type InvoiceDraftLineInput,
@@ -24,6 +26,7 @@ export interface SaveInvoiceDraftInput extends InvoiceDraftContentInput {
 
 export interface SaveInvoiceDraftDependencies {
   customerAccessReader: CustomerAccessReader;
+  invoiceCustomerTaxProfileReader: InvoiceCustomerTaxProfileReader;
   invoiceDraftRepository: InvoiceDraftRepository;
   invoicePaymentSettingsRepository: InvoicePaymentSettingsRepository;
 }
@@ -78,6 +81,21 @@ export async function saveInvoiceDraft(
     latePaymentInterestBasisPoints,
     reminderPeriodDays,
   });
+  if (content.taxTreatment === 'reverseChargeConstruction') {
+    const taxProfile =
+      await dependencies.invoiceCustomerTaxProfileReader.getTaxProfile(
+        customerId,
+        companyId,
+      );
+
+    if (taxProfile === undefined) {
+      throw new InvoiceDraftValidationError(
+        'Customer is not available for invoicing.',
+      );
+    }
+
+    requireReverseChargeCustomerEligibility(taxProfile);
+  }
   const now = new Date().toISOString();
   const draft: InvoiceDraft = {
     ...content,

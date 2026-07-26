@@ -10,10 +10,12 @@ Normaali ALV, yrityskohtaiset ALV-kannat, `sent`- ja `cancelled`-tilat sekä
 hyvityslaskut on toteutettu. Laskun summat, ALV-erittely ja hyväksytyn laskun
 snapshotit muodostetaan Invoicing-domainin laskentasääntöjen kautta.
 
-Rakennusalan käännetyn verovelvollisuuden toteutusmalli on päätetty
-dokumentissa
-`docs/architecture/invoice-tax-treatment-completion-plan.md`. Se toteutetaan
-laskutason erikoiskäsittelynä muuttamatta nykyisen `normalVat`-polun tuloksia.
+Rakennusalan käännetty verovelvollisuus on toteutettu
+`docs/architecture/invoice-tax-treatment-completion-plan.md`-dokumentin
+mukaisena laskutason erikoiskäsittelynä muuttamatta nykyisen `normalVat`-polun
+tuloksia. Toiminto on käyttöliittymässä laskun lisäasetuksissa, ja sen
+tuotantokäytön aineellinen soveltuvuus pitää edelleen varmistaa käyttäjän ja
+kirjanpitäjän toimesta.
 
 Tässä kokonaisuudessa ei toteuteta:
 
@@ -25,25 +27,30 @@ Tässä kokonaisuudessa ei toteuteta:
 
 ## ALV-Käsittelyt
 
-Normaali ALV on nykyisen MVP:n oletettu käsittely. Muita ALV-käsittelyjä ei saa
+Normaali ALV on nykyisen MVP:n oletettu käsittely. Käännetty
+verovelvollisuus on erillinen eksplisiittinen käsittely. Muita
+ALV-käsittelyjä ei saa
 toteuttaa sotkemalla normaalia ALV-mallia tai tulkitsemalla `0 %`-verokantaa
 automaattisesti erikoistapaukseksi.
 
-Tuleva laskutason tai rivitason käsittelymalli voi olla esimerkiksi:
+Nykyinen laskutason käsittelymalli sisältää:
 
 - `normalVat`
 - `reverseChargeConstruction`
+
+Myöhemmin erikseen päätettäviä käsittelyjä voivat olla:
+
 - `vatExempt`
 - `outsideVatScope`
 
 Nämä ovat eri asioita kuin pelkkä `vatRateBasisPoints`-arvo. Hyväksytylle
-laskulle tallennetaan myöhemmin käytetty ALV-käsittely ja tarvittavat
+laskulle tallennetaan käytetty ALV-käsittely ja tarvittavat
 laskumerkinnät snapshot-tietoina.
 
 ## Rakennusalan Käännetty ALV
 
-Rakennusalan käännetty ALV lisätään myöhemmin hallittuna
-ALV-käsittelynä, jos sitä tarvitaan.
+Rakennusalan käännetty ALV on toteutettu hallittuna
+`reverseChargeConstruction`-käsittelynä.
 
 `reverseChargeConstruction`:
 

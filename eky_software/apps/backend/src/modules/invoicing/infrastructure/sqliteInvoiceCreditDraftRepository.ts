@@ -1,8 +1,8 @@
 import type { DatabaseConnection } from '../../../database/connection/createDatabaseConnection.js';
-import type { PreviousCreditAllocation } from '../domain/calculateCreditInvoiceDraft.js';
 import {
   type CreateCreditDraftPersistenceInput,
   type CreateCreditDraftPersistenceResult,
+  type InvoiceCreditAllocation,
   type InvoiceCreditDraftRepository,
 } from '../ports/invoiceCreditDraftRepository.js';
 import {
@@ -23,7 +23,7 @@ interface PreviousCreditAllocationRow {
   source_invoice_line_id: string | null;
   quantity_hundredths: number;
   price_input_mode: string;
-  vat_rate_basis_points: number;
+  vat_rate_basis_points: number | null;
   base_cents: number;
   discount_cents: number;
   net_cents: number;
@@ -53,7 +53,7 @@ export class SqliteInvoiceCreditDraftRepository
   async listPreviousCreditLineAllocations(
     companyId: string,
     sourceInvoiceId: string,
-  ): Promise<PreviousCreditAllocation[]> {
+  ): Promise<InvoiceCreditAllocation[]> {
     return this.database
       .prepare<[string, string], PreviousCreditAllocationRow>(
         `

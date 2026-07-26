@@ -308,6 +308,8 @@ function createInvoiceDraft(): InvoiceDraft {
     orderNumber: '',
     paymentTermDays: 14,
     priceInputMode: 'net',
+    taxTreatment: 'normalVat',
+    performancePeriod: { type: 'invoiceDate' },
     reminderPeriodDays: 8,
     status: 'draft',
     subject: 'Copied invoice',

@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import PDFDocument from 'pdfkit';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { ApprovedInvoiceViewLine } from '../../domain/approvedInvoiceView.js';
 import {
@@ -63,6 +64,54 @@ describe('approved invoice PDF renderer', () => {
 
     expect(pdf.length).toBeGreaterThan(1000);
     expect(Buffer.from(pdf.subarray(0, 4)).toString('ascii')).toBe('%PDF');
+  });
+
+  it('renders reverse charge labels without normal VAT columns or breakdown', async () => {
+    const invoice = createApprovedInvoicePdfSample();
+    const textSpy = vi.spyOn(PDFDocument.prototype, 'text');
+
+    try {
+      const pdf = await renderApprovedInvoicePdf({
+        ...invoice,
+        priceInputMode: 'net',
+        taxTreatment: 'reverseChargeConstruction',
+        taxTreatmentLabelSnapshot: 'Käännetty verovelvollisuus',
+        taxLegalBasisSnapshot: 'AVL 8 c §',
+        performancePeriod: {
+          type: 'dateRange',
+          startDate: '2026-06-01',
+          endDate: '2026-06-15',
+        },
+        lines: invoice.lines.map((line) => ({
+          ...line,
+          grossCents: line.netCents,
+          unitPriceCents: line.netCents,
+          vatCents: 0,
+          vatRateBasisPoints: null,
+        })),
+        totals: {
+          grossTotalCents: invoice.totals.netTotalCents,
+          netTotalCents: invoice.totals.netTotalCents,
+          vatBreakdown: [],
+          vatTotalCents: 0,
+        },
+        vatBreakdown: [],
+      });
+      const renderedText = textSpy.mock.calls.map(([value]) => value);
+
+      expect(pdf.length).toBeGreaterThan(1000);
+      expect(renderedText).toContain('Käännetty verovelvollisuus');
+      expect(renderedText).toContain('AVL 8 c §');
+      expect(renderedText).toContain('Ostajan Y-tunnus');
+      expect(renderedText).toContain('1234567-8');
+      expect(renderedText).toContain('01.06.2026–15.06.2026');
+      expect(renderedText).not.toContain('ALV-erittely');
+      expect(renderedText).not.toContain('ALV %');
+      expect(renderedText).not.toContain('Alv yhteensä');
+      expect(renderedText).not.toContain('25,50 %');
+    } finally {
+      textSpy.mockRestore();
+    }
   });
 
   it('formats invoice values for the PDF layout', () => {

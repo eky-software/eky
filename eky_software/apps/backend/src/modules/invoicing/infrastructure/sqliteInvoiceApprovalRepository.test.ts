@@ -13,6 +13,7 @@ import type {
 import { ApproveInvoiceDraftError } from '../application/approveInvoiceDraftError.js';
 import { calculateInvoiceLine } from '../domain/calculateInvoiceLine.js';
 import { calculateInvoiceTotals } from '../domain/calculateInvoiceTotals.js';
+import { calculateReverseChargeInvoice } from '../domain/calculateReverseChargeInvoice.js';
 import type {
   InvoiceDraft,
   InvoiceDraftLine,
@@ -58,6 +59,7 @@ const migrationNames = [
   '030_add_invoice_list_index.sql',
   '031_add_invoice_corrections.sql',
   '032_add_credit_refund_iban.sql',
+  '033_add_invoice_tax_treatments.sql',
 ];
 
 const migrationSql = migrationNames.map((migrationName) =>
@@ -124,7 +126,7 @@ function createDraft(
     createLine('line-3', 3, {
       discount: { type: 'fixed', amountCents: 1000 },
       unitPriceCents: 5000,
-      vatRateBasisPoints: 0,
+      vatRateBasisPoints: 1000,
     }),
   ],
 ): InvoiceDraft {
@@ -142,6 +144,8 @@ function createDraft(
     reminderPeriodDays: 8,
     latePaymentInterestBasisPoints: 950,
     priceInputMode: 'net',
+    taxTreatment: 'normalVat',
+    performancePeriod: { type: 'invoiceDate' },
     subject: 'Test invoice',
     orderNumber: 'ORDER-1',
     note: 'Invoice note',
@@ -151,7 +155,56 @@ function createDraft(
     updatedAt: '2027-01-15T08:00:00.000Z',
     ...overrides,
     lines,
-    totals: calculateInvoiceTotals(lines),
+    totals: calculateInvoiceTotals(
+      lines.map((line) => {
+        if (line.vatRateBasisPoints === null) {
+          throw new Error('Normal VAT test line requires a VAT rate.');
+        }
+        return {
+          ...line,
+          vatRateBasisPoints: line.vatRateBasisPoints,
+        };
+      }),
+    ),
+  };
+}
+
+function createReverseChargeDraft(): InvoiceDraft {
+  const calculated = calculateReverseChargeInvoice([
+    {
+      quantityHundredths: 150,
+      unitPriceCents: 10_000,
+      priceInputMode: 'net',
+      discount: { type: 'percentage', basisPoints: 500 },
+    },
+  ]);
+  const calculatedLine = calculated.lines[0];
+
+  if (calculatedLine === undefined) {
+    throw new Error('Reverse charge test line was not calculated.');
+  }
+
+  return {
+    ...createDraft(),
+    taxTreatment: 'reverseChargeConstruction',
+    performancePeriod: {
+      type: 'dateRange',
+      startDate: '2027-01-01',
+      endDate: '2027-01-15',
+    },
+    lines: [
+      {
+        ...calculatedLine,
+        id: 'reverse-line-1',
+        sourceInvoiceLineId: null,
+        position: 1,
+        code: 'WORK',
+        description: 'Construction service',
+        unit: 'h',
+        discount: { type: 'percentage', basisPoints: 500 },
+      },
+    ],
+    totals: calculated.totals,
   };
 }
 
@@ -165,6 +218,7 @@ function createApprovalInput(
     companyId: 'dev-company',
     draftId: 'draft-1',
     invoiceId: 'invoice-1',
+    reverseChargeEligibilityConfirmed: false,
     seriesKey: 'default',
     ...overrides,
   };
@@ -518,7 +572,7 @@ describe('SqliteInvoiceApprovalRepository', () => {
     expect(lines.map((line) => line.vat_rate_basis_points)).toEqual([
       2550,
       1350,
-      0,
+      1000,
     ]);
     expect(lines.map((line) => [line.discount_type, line.discount_value])).toEqual([
       ['none', 0],
@@ -545,6 +599,100 @@ describe('SqliteInvoiceApprovalRepository', () => {
       sequence_scope: 'calendar-year:2027',
       series_key: 'default',
     });
+  });
+
+  it('requires explicit confirmation before approving reverse charge', async () => {
+    const repository = new SqliteInvoiceApprovalRepository(database);
+
+    await saveDraft(database, createReverseChargeDraft());
+
+    await expect(
+      repository.approveDraft(createApprovalInput()),
+    ).rejects.toThrow(
+      'Reverse charge eligibility must be confirmed before approval.',
+    );
+
+    expect(getInvoice(database, 'invoice-1')).toBeUndefined();
+    expect(getSequence(database)).toBeUndefined();
+    expect(getAuditEvents(database)).toEqual([]);
+    expect(
+      database
+        .prepare<[string], InvoiceDraftTable>(
+          'SELECT * FROM invoice_drafts WHERE id = ?',
+        )
+        .get('draft-1'),
+    ).toMatchObject({
+      approved_at: null,
+      approved_invoice_id: null,
+      status: 'draft',
+    });
+  });
+
+  it('approves reverse charge with immutable legal and performance snapshots', async () => {
+    const repository = new SqliteInvoiceApprovalRepository(database);
+    const draft = createReverseChargeDraft();
+
+    await saveDraft(database, draft);
+
+    await expect(
+      repository.approveDraft(
+        createApprovalInput({
+          reverseChargeEligibilityConfirmed: true,
+        }),
+      ),
+    ).resolves.toMatchObject({
+      invoiceId: 'invoice-1',
+      invoiceNumber: '20270001',
+    });
+
+    expect(getInvoice(database, 'invoice-1')).toMatchObject({
+      tax_treatment: 'reverseChargeConstruction',
+      tax_treatment_label_snapshot: 'Käännetty verovelvollisuus',
+      tax_legal_basis_snapshot: 'AVL 8 c §',
+      performance_date: null,
+      performance_period_start: '2027-01-01',
+      performance_period_end: '2027-01-15',
+      total_net_cents: 14_250,
+      total_vat_cents: 0,
+      total_gross_cents: 14_250,
+    });
+    expect(getInvoiceLines(database, 'invoice-1')).toEqual([
+      expect.objectContaining({
+        vat_rate_basis_points: null,
+        net_cents: 14_250,
+        vat_cents: 0,
+        gross_cents: 14_250,
+      }),
+    ]);
+  });
+
+  it('rechecks reverse charge customer eligibility before consuming a number', async () => {
+    const repository = new SqliteInvoiceApprovalRepository(database);
+
+    await saveDraft(database, createReverseChargeDraft());
+    database
+      .prepare(
+        `
+          UPDATE customers
+          SET business_id = ''
+          WHERE company_id = 'dev-company' AND id = 'customer-1'
+        `,
+      )
+      .run();
+
+    await expect(
+      repository.approveDraft(
+        createApprovalInput({
+          reverseChargeEligibilityConfirmed: true,
+        }),
+      ),
+    ).rejects.toThrow(
+      'Reverse charge invoice customer is not eligible.',
+    );
+
+    expect(getInvoice(database, 'invoice-1')).toBeUndefined();
+    expect(getSequence(database)).toBeUndefined();
+    expect(getAuditEvents(database)).toEqual([]);
   });
 
   it('keeps package and short custom units when a draft is approved', async () => {

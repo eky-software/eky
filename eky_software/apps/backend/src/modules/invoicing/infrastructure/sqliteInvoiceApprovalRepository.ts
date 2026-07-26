@@ -7,6 +7,10 @@ import type {
 import { ApproveInvoiceDraftError } from '../application/approveInvoiceDraftError.js';
 import type { InvoiceTotals } from '../domain/invoiceCalculation.js';
 import {
+  requireReverseChargeCustomerEligibility,
+  resolveInvoiceTaxTreatment,
+} from '../domain/invoiceTaxTreatment.js';
+import {
   formatInvoiceNumber,
   resolveInvoiceNumberSequenceScope,
   validateInvoiceNumberingSettings,
@@ -111,6 +115,16 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
         'Invoice draft must have at least one line before approval.',
       );
     }
+    const taxTreatment = resolveInvoiceTaxTreatment(draft.tax_treatment);
+
+    if (
+      taxTreatment === 'reverseChargeConstruction' &&
+      !input.reverseChargeEligibilityConfirmed
+    ) {
+      throw new ApproveInvoiceDraftError(
+        'Reverse charge eligibility must be confirmed before approval.',
+      );
+    }
 
     const totals = calculateStoredDraftTotals(draft, lines);
     const reopenedInvoice = this.queries.getReopenedInvoiceForDraft(
@@ -176,6 +190,7 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
       companyId: input.companyId,
       customerId: draft.customer_id,
     });
+    this.requireTaxTreatmentSnapshotEligibility(draft, snapshot);
     const invoiceRow = createInvoiceRow(
       input,
       draft,
@@ -234,6 +249,7 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
       companyId: input.companyId,
       customerId: draft.customer_id,
     });
+    this.requireTaxTreatmentSnapshotEligibility(draft, snapshot);
     const reapprovedInput = {
       ...input,
       invoiceId: reopenedInvoice.id,
@@ -272,6 +288,29 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
       numberingMode: reopenedInvoice.numbering_mode as InvoiceNumberingMode,
       status: 'approved',
     };
+  }
+
+  private requireTaxTreatmentSnapshotEligibility(
+    draft: InvoiceDraftTable,
+    snapshot: ReturnType<InvoiceApprovalSnapshotReader['getSnapshotData']>,
+  ): void {
+    if (
+      resolveInvoiceTaxTreatment(draft.tax_treatment) !==
+      'reverseChargeConstruction'
+    ) {
+      return;
+    }
+
+    try {
+      requireReverseChargeCustomerEligibility({
+        businessId: snapshot.customerBusinessId,
+        customerType: snapshot.customerType,
+      });
+    } catch {
+      throw new ApproveInvoiceDraftError(
+        'Reverse charge invoice customer is not eligible.',
+      );
+    }
   }
 
   private reopenApprovedInvoiceWithinTransaction(

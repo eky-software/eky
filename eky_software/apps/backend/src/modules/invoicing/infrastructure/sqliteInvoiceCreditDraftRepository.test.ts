@@ -215,6 +215,8 @@ function createDraft(
     reminderPeriodDays: 0,
     latePaymentInterestBasisPoints: 0,
     priceInputMode: 'net',
+    taxTreatment: 'normalVat',
+    performancePeriod: { type: 'invoiceDate' },
     subject: 'Credit',
     orderNumber: '',
     note: '',

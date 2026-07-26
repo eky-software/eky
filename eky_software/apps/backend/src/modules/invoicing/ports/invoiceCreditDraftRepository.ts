@@ -1,5 +1,17 @@
 import type { InvoiceDraft } from '../domain/invoiceDraft.js';
-import type { PreviousCreditAllocation } from '../domain/calculateCreditInvoiceDraft.js';
+import type { PriceInputMode } from '../domain/invoiceCalculation.js';
+
+export interface InvoiceCreditAllocation {
+  sourceInvoiceLineId: string | null;
+  quantityHundredths: number;
+  priceInputMode: PriceInputMode;
+  vatRateBasisPoints: number | null;
+  baseCents: number;
+  discountCents: number;
+  netCents: number;
+  vatCents: number;
+  grossCents: number;
+}
 
 export interface CreateCreditDraftPersistenceInput {
   actorUserId: string;
@@ -20,5 +32,5 @@ export interface InvoiceCreditDraftRepository {
   listPreviousCreditLineAllocations(
     companyId: string,
     sourceInvoiceId: string,
-  ): Promise<PreviousCreditAllocation[]>;
+  ): Promise<InvoiceCreditAllocation[]>;
 }

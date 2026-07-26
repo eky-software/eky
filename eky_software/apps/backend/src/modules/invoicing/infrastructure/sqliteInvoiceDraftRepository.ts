@@ -12,6 +12,7 @@ import {
   toInvoiceDraftLineRows,
   toInvoiceDraftRow,
   toInvoiceDraftSummary,
+  toInvoiceDraftTaxFields,
   toInvoiceVatBreakdown,
 } from './invoiceDraftPersistenceRows.js';
 import { SqliteInvoiceDraftQueries } from './sqliteInvoiceDraftQueries.js';
@@ -63,11 +64,16 @@ export class SqliteInvoiceDraftRepository implements InvoiceDraftRepository {
   private updateDraftWithinTransaction(draft: InvoiceDraft): boolean {
     const draftRow = toInvoiceDraftRow(draft);
 
-    if (!this.statements.updateEditableDraft(draftRow)) {
+    if (
+      this.queries.getEditableDraft(draft.companyId, draft.id) === undefined
+    ) {
       return false;
     }
 
     this.statements.deleteDraftLines(draftRow.id);
+    if (!this.statements.updateEditableDraft(draftRow)) {
+      throw new Error('Editable invoice draft disappeared during update.');
+    }
     this.statements.insertDraftLines(toInvoiceDraftLineRows(draft));
 
     return true;
@@ -87,10 +93,11 @@ export class SqliteInvoiceDraftRepository implements InvoiceDraftRepository {
     }
 
     const lineRows = this.queries.getDraftLines(companyId, invoiceDraftId);
-    const vatBreakdownRows = this.queries.getVatBreakdown(
-      companyId,
-      invoiceDraftId,
-    );
+    const taxFields = toInvoiceDraftTaxFields(draftRow);
+    const vatBreakdownRows =
+      taxFields.taxTreatment === 'normalVat'
+        ? this.queries.getVatBreakdown(companyId, invoiceDraftId)
+        : [];
     const priceInputMode = draftRow.price_input_mode as PriceInputMode;
     const lines = lineRows.map((lineRow) =>
       toInvoiceDraftLine(lineRow, priceInputMode),
@@ -112,6 +119,7 @@ export class SqliteInvoiceDraftRepository implements InvoiceDraftRepository {
       latePaymentInterestBasisPoints:
         draftRow.late_payment_interest_basis_points,
       priceInputMode,
+      ...taxFields,
       subject: draftRow.subject,
       orderNumber: draftRow.order_number,
       note: draftRow.note,

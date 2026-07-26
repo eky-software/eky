@@ -6,7 +6,9 @@ import type {
 import type { InvoiceUnit } from './invoiceDraft.js';
 import type { InvoiceKind } from './invoiceKind.js';
 import type { InvoiceNumberingMode } from './invoiceNumbering.js';
+import type { InvoicePerformancePeriod } from './invoicePerformancePeriod.js';
 import type { ReferenceNumberType } from './invoiceReferenceNumber.js';
+import type { InvoiceTaxTreatment } from './invoiceTaxTreatment.js';
 
 export type ApprovedInvoiceViewStatus = 'approved' | 'sent' | 'cancelled';
 
@@ -19,7 +21,7 @@ export interface ApprovedInvoiceViewLine {
   quantityHundredths: number;
   unit: InvoiceUnit;
   unitPriceCents: number;
-  vatRateBasisPoints: number;
+  vatRateBasisPoints: number | null;
   discount: InvoiceLineDiscount;
   baseCents: number;
   discountCents: number;
@@ -89,6 +91,10 @@ export interface ApprovedInvoiceView {
   reminderPeriodDays: number;
   latePaymentInterestBasisPoints: number;
   priceInputMode: PriceInputMode;
+  taxTreatment: InvoiceTaxTreatment;
+  taxTreatmentLabelSnapshot: string;
+  taxLegalBasisSnapshot: string;
+  performancePeriod: InvoicePerformancePeriod;
   subject: string;
   orderNumber: string;
   note: string;

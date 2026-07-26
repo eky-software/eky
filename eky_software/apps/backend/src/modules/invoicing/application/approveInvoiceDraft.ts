@@ -13,6 +13,7 @@ export interface ApproveInvoiceDraftInput {
   approvedAt: string;
   companyId: string;
   draftId: string;
+  reverseChargeEligibilityConfirmed?: boolean;
   seriesKey: string;
 }
 
@@ -40,6 +41,8 @@ export async function approveInvoiceDraft(
       companyId,
       draftId,
       invoiceId: randomUUID(),
+      reverseChargeEligibilityConfirmed:
+        input.reverseChargeEligibilityConfirmed === true,
       seriesKey,
     });
 
