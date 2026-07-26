@@ -16,6 +16,7 @@ import { runMigrations } from '../database/migration/runMigrations.js';
 import { createCompanySettingsComposition } from '../composition/companySettingsComposition.js';
 import { createCustomersComposition } from '../composition/customersComposition.js';
 import { createActivityComposition } from '../composition/activityComposition.js';
+import { createDiagnosticsComposition } from '../composition/diagnosticsComposition.js';
 import { createInvoicingComposition } from '../composition/invoicingComposition.js';
 import type { CompanyEmailSecretReader } from '../modules/companySettings/ports/companyEmailSecretReader.js';
 import type { CompanyEmailSecretStore } from '../modules/companySettings/ports/companyEmailSecretStore.js';
@@ -275,6 +276,7 @@ export async function createApp(
       invoiceActivityReader: invoicingComposition.invoiceActivityReader,
     }),
   );
+  app.route('/', createDiagnosticsComposition(options.operationalLogsRoot));
 
   app.notFound((context) => {
     logUnknownRoute({

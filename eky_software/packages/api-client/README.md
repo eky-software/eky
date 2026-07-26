@@ -26,6 +26,11 @@ src/
     activityTypes.ts
     activityResponse.ts
 
+  diagnostics/
+    diagnosticsClient.ts
+    diagnosticsTypes.ts
+    diagnosticsResponse.ts
+
   customers/
     customersClient.ts
     customersTypes.ts
@@ -75,6 +80,7 @@ Pakettiin ei luoda yleisiä `utils`, `helpers`, `common` tai `everything`
 Paketti tarjoaa tällä hetkellä hallitut kutsut:
 
 - `createEkyApiClient().listActivity(...)`
+- `createEkyApiClient().listDiagnosticEvents(...)`
 - `createEkyApiClient().createCustomer(...)`
 - `createEkyApiClient().listCustomers()`
 - `createEkyApiClient().updateCustomer(...)`

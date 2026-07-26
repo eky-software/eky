@@ -12,6 +12,14 @@ export type {
   ActivityModule,
 } from './activity/index.js';
 export type {
+  DiagnosticEventComponent,
+  DiagnosticEventItem,
+  DiagnosticEventLevel,
+  DiagnosticEventListQuery,
+  DiagnosticEventName,
+  DiagnosticEventOutcome,
+} from './diagnostics/index.js';
+export type {
   ApprovedInvoiceDocumentMetadata,
   ApprovedInvoiceDocumentType,
   ApprovedInvoiceEmailAttachmentPreview,

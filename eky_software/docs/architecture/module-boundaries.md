@@ -89,6 +89,18 @@ kenttäarvoja, yhteystietoja, actor-tunnisteita eikä teknisiä virheitä.
 
 Tarkempi vastuu on kuvattu dokumentissa `docs/modules/activity.md`.
 
+## Diagnostics
+
+Diagnostics on Activitysta erillinen tekninen, vain lukuun tarkoitettu
+projektio. Se lukee ainoastaan compositionissa annetusta kiinteästä Eky
+logs-rootista ja näyttää operational- sekä security-eventtien rajatun ytimen.
+
+Diagnostics ei omista business auditia, lokien kirjoittamista,
+liiketoimintadataa, lokikansion avaamista tai tukipaketin tallennusta.
+Desktop-capabilityt kuuluvat Electron mainille.
+
+Tarkempi vastuu on kuvattu dokumentissa `docs/modules/diagnostics.md`.
+
 ## Sites
 
 Sites tarkoittaa kohteita tai työmaita.

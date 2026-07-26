@@ -22,6 +22,13 @@ describe('activateAppView', () => {
     });
   });
 
+  it('opens diagnostics without changing invoicing state', () => {
+    expect(activateAppView(initialAppNavigationState, 'diagnostics')).toEqual({
+      activeView: 'diagnostics',
+      invoicingNavigationRevision: 0,
+    });
+  });
+
   it('signals a return to the draft list when invoicing is selected again', () => {
     const invoicingState = activateAppView(
       initialAppNavigationState,

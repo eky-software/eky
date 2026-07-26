@@ -2,6 +2,7 @@ export type AppView =
   | 'activity'
   | 'companySettings'
   | 'customers'
+  | 'diagnostics'
   | 'invoicing';
 
 export interface AppNavigationState {

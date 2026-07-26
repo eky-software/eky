@@ -5,6 +5,7 @@ import { CompanySettingsPage } from '../features/companySettings/CompanySettings
 import { CustomerPage } from '../features/customers/CustomerPage.js';
 import { InvoicingPage } from '../features/invoicing/InvoicingPage.js';
 import { ActivityPage } from '../features/activity/ActivityPage.js';
+import { DiagnosticsPage } from '../features/diagnostics/DiagnosticsPage.js';
 import { uiText } from '../i18n/fi.js';
 import { AppLayout } from '../layout/AppLayout.js';
 import {
@@ -32,6 +33,9 @@ export function App({ apiClient }: AppProps): React.JSX.Element {
         <CustomerPage apiClient={apiClient} />
       ) : null}
       {activeView === 'activity' ? <ActivityPage apiClient={apiClient} /> : null}
+      {activeView === 'diagnostics' ? (
+        <DiagnosticsPage apiClient={apiClient} />
+      ) : null}
       {activeView === 'companySettings' ? (
         <CompanySettingsPage
           apiClient={apiClient}

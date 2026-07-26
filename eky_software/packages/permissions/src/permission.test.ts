@@ -12,6 +12,7 @@ describe('permissionValues', () => {
       'manageCompanyEmailSecret',
       'sendInvoices',
       'viewActivity',
+      'viewDiagnostics',
     ]);
   });
 
@@ -20,6 +21,7 @@ describe('permissionValues', () => {
     expect(isPermission('manageInvoiceSettings')).toBe(true);
     expect(isPermission('manageInvoiceCorrections')).toBe(true);
     expect(isPermission('viewActivity')).toBe(true);
+    expect(isPermission('viewDiagnostics')).toBe(true);
     expect(isPermission('unknownPermission')).toBe(false);
     expect(isPermission(123)).toBe(false);
   });

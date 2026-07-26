@@ -81,6 +81,11 @@ Jos työ koskee käyttäjälle näkyvää tapahtumahistoriaa, Activity-moduulia 
 moduulien audit-tapahtumista muodostettua turvallista read modelia, lue myös
 `docs/modules/activity.md` ja `docs/architecture/observability-and-audit-plan.md`.
 
+Jos työ koskee teknistä diagnostiikkanäkymää, operational-lokien lukemista,
+lokikansion avaamista tai tukipakettia, lue myös
+`docs/modules/diagnostics.md`, `docs/architecture/operational-log-retention-plan.md`
+ja `docs/architecture/support-bundle-plan.md`.
+
 Jos työ koskee uuden liiketoimintamoduulin tai moduulikansion perustamista,
 `docs/modules/`-vastuudokumenttia, moduulikohtaista `AGENTS.md`-tiedostoa,
 composition rootia, moduulien välistä luku- tai kirjoitussopimusta,

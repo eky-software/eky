@@ -21,6 +21,7 @@ const localOwnerPermissions = Object.freeze([
   'manageCompanyEmailSecret',
   'sendInvoices',
   'viewActivity',
+  'viewDiagnostics',
 ] satisfies readonly Permission[]);
 
 export interface BackendEnvironment {

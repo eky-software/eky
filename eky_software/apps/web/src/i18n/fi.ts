@@ -14,6 +14,7 @@ export const uiText = {
   },
   modules: {
     activity: 'Tapahtumat',
+    diagnostics: 'Diagnostiikka',
     companySettings: 'Oma yritys',
     customers: 'Asiakkaat',
     sites: 'Kohteet',
@@ -47,6 +48,32 @@ export const uiText = {
       'invoice.reapproved': 'Lasku hyväksytty uudelleen',
       'invoice.reopenedForEdit': 'Lasku palautettu muokattavaksi',
     },
+  },
+  diagnostics: {
+    component: 'Osa',
+    components: {
+      backend: 'Paikallinen palvelu',
+      desktop: 'Työpöytäsovellus',
+    },
+    description:
+      'Tekninen näkymä näyttää vain rajatut ja turvalliset tapahtumatiedot.',
+    empty: 'Diagnostiikkatapahtumia ei ole vielä.',
+    errorCode: 'Virhekoodi',
+    event: 'Tapahtuma',
+    heading: 'Diagnostiikka',
+    kicker: 'Tekninen tila',
+    loadError:
+      'Diagnostiikkaa ei voitu ladata. Yritä hetken kuluttua uudelleen.',
+    loading: 'Ladataan diagnostiikkaa...',
+    noErrorCode: 'Ei virhekoodia',
+    occurredAt: 'Ajankohta',
+    outcomes: {
+      blocked: 'Estetty',
+      failure: 'Epäonnistui',
+      success: 'Onnistui',
+      unknown: 'Epäselvä',
+    },
+    status: 'Tila',
   },
   customers: {
     add: 'Lisää',
