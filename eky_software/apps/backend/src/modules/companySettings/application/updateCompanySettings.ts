@@ -7,6 +7,7 @@ import {
   createCompanySettingsRecord,
   type CompanySettings,
 } from '../domain/companySettings.js';
+import { createCompanySettingsAuditEvent } from '../domain/companySettingsAuditEvent.js';
 import {
   normalizeCompanySettingsField,
   normalizeCompanyVatNumber,
@@ -87,5 +88,16 @@ export async function updateCompanySettings(
     streetAddress: normalizeCompanySettingsField(input.streetAddress, 'Company street address'),
   });
 
-  return companySettingsRepository.upsertCompanySettings(settings);
+  const current = await companySettingsRepository.findByCompanyId(
+    input.actorContext.companyId,
+  );
+
+  return companySettingsRepository.upsertCompanySettings(
+    settings,
+    createCompanySettingsAuditEvent({
+      actorUserId: input.actorContext.actorId,
+      current,
+      updated: settings,
+    }),
+  );
 }

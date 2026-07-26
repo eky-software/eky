@@ -1,4 +1,7 @@
+import type { ActorContext } from '@eky/auth';
+
 import type { Customer } from '../domain/customer.js';
+import { createCustomerUpdatedAuditEvent } from '../domain/customerAuditEvent.js';
 import {
   CustomerValidationError,
   normalizeCustomerComment,
@@ -16,7 +19,7 @@ export interface UpdateCustomerInput {
   businessId: string;
   city: string;
   comment: string;
-  companyId: string;
+  actorContext: ActorContext;
   customerNumber: string;
   customerType: string;
   email: string;
@@ -34,7 +37,10 @@ export async function updateCustomer(
   input: UpdateCustomerInput,
   customerRepository: CustomerRepository,
 ): Promise<Customer> {
-  const existingCustomer = await customerRepository.findById(input.companyId, input.id);
+  const existingCustomer = await customerRepository.findById(
+    input.actorContext.companyId,
+    input.id,
+  );
 
   if (existingCustomer === undefined) {
     throw new CustomerValidationError('Customer not found.');
@@ -48,7 +54,10 @@ export async function updateCustomer(
       throw new CustomerValidationError('Customer cannot manage itself.');
     }
 
-    const propertyManager = await customerRepository.findById(input.companyId, managedByCustomerId);
+    const propertyManager = await customerRepository.findById(
+      input.actorContext.companyId,
+      managedByCustomerId,
+    );
 
     if (propertyManager?.customerType !== 'propertyManager') {
       throw new CustomerValidationError('Managed by customer must be a property manager.');
@@ -75,5 +84,12 @@ export async function updateCustomer(
     updatedAt: new Date().toISOString(),
   };
 
-  return customerRepository.update(customer);
+  return customerRepository.update(
+    customer,
+    createCustomerUpdatedAuditEvent({
+      actorUserId: input.actorContext.actorId,
+      current: existingCustomer,
+      updated: customer,
+    }),
+  );
 }

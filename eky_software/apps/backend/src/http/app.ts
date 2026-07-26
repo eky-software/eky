@@ -226,9 +226,15 @@ export async function createApp(
     return context.json({ status: 'ok' });
   });
 
-  const customersComposition = createCustomersComposition(database);
-  const companySettingsComposition = createCompanySettingsComposition({
+  const customersComposition = createCustomersComposition({
+    appVersion,
     database,
+    operationalLogger,
+  });
+  const companySettingsComposition = createCompanySettingsComposition({
+    appVersion,
+    database,
+    operationalLogger,
     ...(options.companyEmailSecretStore === undefined
       ? {}
       : { companyEmailSecretStore: options.companyEmailSecretStore }),

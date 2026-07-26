@@ -53,10 +53,10 @@ export function createCustomersRoutes(
 
     try {
       const createCustomerInput: CreateCustomerInput = {
+        actorContext,
         businessId: getOptionalStringField(body, 'businessId'),
         city: getOptionalStringField(body, 'city'),
         comment: getOptionalStringField(body, 'comment'),
-        companyId: actorContext.companyId,
         customerNumberMode,
         customerType: getOptionalStringField(body, 'customerType') || 'company',
         email: getOptionalStringField(body, 'email'),
@@ -116,10 +116,10 @@ export function createCustomersRoutes(
 
     try {
       const customer = await dependencies.updateCustomer({
+        actorContext,
         businessId: getOptionalStringField(body, 'businessId'),
         city: getOptionalStringField(body, 'city'),
         comment: getOptionalStringField(body, 'comment'),
-        companyId: actorContext.companyId,
         customerNumber,
         customerType: getOptionalStringField(body, 'customerType') || 'company',
         email: getOptionalStringField(body, 'email'),

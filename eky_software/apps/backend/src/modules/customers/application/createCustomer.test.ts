@@ -1,15 +1,22 @@
+import { createActorContext } from '@eky/auth';
 import { describe, expect, it } from 'vitest';
 
 import type { Customer } from '../domain/customer.js';
+import type { CustomerAuditEvent } from '../domain/customerAuditEvent.js';
 import type { CustomerRepository } from '../ports/customerRepository.js';
 import { createCustomer } from './createCustomer.js';
 
 class FakeCustomerRepository implements CustomerRepository {
+  createdAuditEvent: CustomerAuditEvent | undefined;
   createdCustomer: Customer | undefined;
   foundCustomers = new Map<string, Customer>();
   nextCustomerNumber = '2001';
 
-  async create(customer: Customer): Promise<Customer> {
+  async create(
+    customer: Customer,
+    auditEvent: CustomerAuditEvent,
+  ): Promise<Customer> {
+    this.createdAuditEvent = auditEvent;
     this.createdCustomer = customer;
 
     return customer;
@@ -38,10 +45,10 @@ describe('createCustomer', () => {
 
     const customer = await createCustomer(
       {
+        actorContext: createCustomerActorContext(),
         businessId: '  1234567-8  ',
         city: '  Helsinki  ',
         comment: '  Important local customer  ',
-        companyId: 'dev-company',
         customerNumber: '  1001  ',
         customerNumberMode: 'manual',
         customerType: 'company',
@@ -58,6 +65,20 @@ describe('createCustomer', () => {
     );
 
     expect(repository.createdCustomer).toBe(customer);
+    expect(repository.createdAuditEvent).toMatchObject({
+      action: 'customer.created',
+      actorUserId: 'local-owner',
+      changedFieldCategories: [
+        'identity',
+        'contact',
+        'billing',
+        'pricing',
+        'status',
+      ],
+      companyId: 'dev-company',
+      customerId: customer.id,
+      outcome: 'success',
+    });
     expect(customer.id).toEqual(expect.any(String));
     expect(customer.companyId).toBe('dev-company');
     expect(customer.customerNumber).toBe('1001');
@@ -83,10 +104,10 @@ describe('createCustomer', () => {
 
     const customer = await createCustomer(
       {
+        actorContext: createCustomerActorContext(),
         businessId: '',
         city: '',
         comment: '',
-        companyId: 'dev-company',
         customerNumberMode: 'auto',
         customerType: 'company',
         email: '',
@@ -128,10 +149,10 @@ describe('createCustomer', () => {
 
     const customer = await createCustomer(
       {
+        actorContext: createCustomerActorContext(),
         businessId: '',
         city: '',
         comment: '',
-        companyId: 'dev-company',
         customerNumberMode: 'auto',
         customerType: 'housingCompany',
         email: '',
@@ -150,3 +171,12 @@ describe('createCustomer', () => {
     expect(customer.managedByCustomerId).toBe('property-manager-1');
   });
 });
+
+function createCustomerActorContext() {
+  return createActorContext({
+    actorId: 'local-owner',
+    authenticationMode: 'local',
+    companyId: 'dev-company',
+    permissions: [],
+  });
+}

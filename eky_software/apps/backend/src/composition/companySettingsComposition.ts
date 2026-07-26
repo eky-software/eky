@@ -11,12 +11,17 @@ import { createCompanyEmailSecretRoutes } from '../modules/companySettings/http/
 import { createCompanySettingsRoutes } from '../modules/companySettings/http/companySettingsRoutes.js';
 import { SqliteCompanyEmailSecretAuditWriter } from '../modules/companySettings/infrastructure/sqliteCompanyEmailSecretAuditWriter.js';
 import { SqliteCompanySettingsRepository } from '../modules/companySettings/infrastructure/sqliteCompanySettingsRepository.js';
+import { CompanySettingsAuditWriteError } from '../modules/companySettings/ports/companySettingsAuditWriteError.js';
 import type { CompanyEmailSecretStore } from '../modules/companySettings/ports/companyEmailSecretStore.js';
 import type { InvoiceEmailSettingsReader } from '../modules/invoicing/ports/invoiceEmailSettingsReader.js';
+import { createBackendOperationalEvent } from '../observability/createOperationalEvent.js';
+import type { OperationalLogger } from '../observability/operationalLogger.js';
 
 interface CompanySettingsCompositionOptions {
+  appVersion: string;
   companyEmailSecretStore?: CompanyEmailSecretStore;
   database: DatabaseConnection;
+  operationalLogger: OperationalLogger;
 }
 
 interface CompanySettingsComposition {
@@ -66,7 +71,10 @@ export function createCompanySettingsComposition(
         ),
       updateCompanySettings: async (input) =>
         withCompanyEmailSecretStatus(
-          await updateCompanySettings(input, companySettingsRepository),
+          await logAuditWriteFailure(
+            () => updateCompanySettings(input, companySettingsRepository),
+            options,
+          ),
           options.companyEmailSecretStore,
         ),
     }),
@@ -94,6 +102,39 @@ export function createCompanySettingsComposition(
     invoiceEmailSettingsReader,
     routes,
   };
+}
+
+async function logAuditWriteFailure<T>(
+  operation: () => Promise<T>,
+  options: Pick<
+    CompanySettingsCompositionOptions,
+    'appVersion' | 'operationalLogger'
+  >,
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof CompanySettingsAuditWriteError) {
+      try {
+        options.operationalLogger.write(
+          createBackendOperationalEvent(
+            {
+              entityType: 'companySettings',
+              errorCode: 'COMPANY_SETTINGS_AUDIT_WRITE_FAILED',
+              eventName: 'businessAudit.writeFailed',
+              sideEffectState: 'rolledBack',
+              stage: 'companySettingsMutation',
+            },
+            { appVersion: options.appVersion },
+          ),
+        );
+      } catch {
+        // Operational logging must not replace the original safe audit error.
+      }
+    }
+
+    throw error;
+  }
 }
 
 async function withCompanyEmailSecretStatus<T extends { companyId: string }>(

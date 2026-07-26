@@ -1,10 +1,13 @@
+import { createActorContext } from '@eky/auth';
 import { describe, expect, it } from 'vitest';
 
 import type { Customer } from '../domain/customer.js';
+import type { CustomerAuditEvent } from '../domain/customerAuditEvent.js';
 import type { CustomerRepository } from '../ports/customerRepository.js';
 import { updateCustomer } from './updateCustomer.js';
 
 class FakeCustomerRepository implements CustomerRepository {
+  updatedAuditEvent: CustomerAuditEvent | undefined;
   updatedCustomer: Customer | undefined;
 
   constructor(private readonly existingCustomer: Customer | undefined) {}
@@ -25,7 +28,11 @@ class FakeCustomerRepository implements CustomerRepository {
     return [];
   }
 
-  async update(customer: Customer): Promise<Customer> {
+  async update(
+    customer: Customer,
+    auditEvent: CustomerAuditEvent,
+  ): Promise<Customer> {
+    this.updatedAuditEvent = auditEvent;
     this.updatedCustomer = customer;
 
     return customer;
@@ -38,10 +45,10 @@ describe('updateCustomer', () => {
 
     const customer = await updateCustomer(
       {
+        actorContext: createCustomerActorContext(),
         businessId: '  7654321-0  ',
         city: '  Espoo  ',
         comment: '  Updated customer  ',
-        companyId: 'dev-company',
         customerNumber: '  2001  ',
         customerType: 'housingCompany',
         email: '  updated@example.fi  ',
@@ -58,6 +65,20 @@ describe('updateCustomer', () => {
     );
 
     expect(repository.updatedCustomer).toBe(customer);
+    expect(repository.updatedAuditEvent).toMatchObject({
+      action: 'customer.deactivated',
+      actorUserId: 'local-owner',
+      changedFieldCategories: [
+        'identity',
+        'contact',
+        'billing',
+        'pricing',
+        'status',
+      ],
+      companyId: 'dev-company',
+      customerId: 'customer-1',
+      outcome: 'success',
+    });
     expect(customer.id).toBe('customer-1');
     expect(customer.companyId).toBe('dev-company');
     expect(customer.customerNumber).toBe('2001');
@@ -98,4 +119,13 @@ function createTestCustomer(): Customer {
     createdAt: '2026-05-21T00:00:00.000Z',
     updatedAt: '2026-05-21T00:00:00.000Z',
   };
+}
+
+function createCustomerActorContext() {
+  return createActorContext({
+    actorId: 'local-owner',
+    authenticationMode: 'local',
+    companyId: 'dev-company',
+    permissions: [],
+  });
 }

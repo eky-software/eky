@@ -1,7 +1,12 @@
 import type { DatabaseConnection } from '../../../database/connection/createDatabaseConnection.js';
 import type { CustomerRow, NewCustomerRow } from '../../../database/schema.js';
 import type { Customer } from '../domain/customer.js';
+import type {
+  CustomerAuditEvent,
+  CustomerChangedFieldCategory,
+} from '../domain/customerAuditEvent.js';
 import { CustomerValidationError } from '../domain/customerRules.js';
+import { CustomerAuditWriteError } from '../ports/customerAuditWriteError.js';
 import type { CustomerRepository } from '../ports/customerRepository.js';
 
 type CustomerInsertParameters = [
@@ -46,6 +51,14 @@ type CustomerUpdateParameters = [
 interface CustomerNumberRow {
   customer_number: string;
 }
+
+const customerAuditCategories = new Set<CustomerChangedFieldCategory>([
+  'billing',
+  'contact',
+  'identity',
+  'pricing',
+  'status',
+]);
 
 function toCustomerRow(customer: Customer): NewCustomerRow {
   return {
@@ -103,54 +116,18 @@ function isUniqueConstraintError(error: unknown): boolean {
 export class SqliteCustomerRepository implements CustomerRepository {
   constructor(private readonly database: DatabaseConnection) {}
 
-  async create(customer: Customer): Promise<Customer> {
+  async create(
+    customer: Customer,
+    auditEvent: CustomerAuditEvent,
+  ): Promise<Customer> {
     const row = toCustomerRow(customer);
+    this.assertAuditEventMatchesCustomer(auditEvent, customer);
 
     try {
-      this.database
-        .prepare<CustomerInsertParameters>(
-          `
-            INSERT INTO customers (
-              id,
-              company_id,
-              customer_number,
-              name,
-              customer_type,
-              managed_by_customer_id,
-              business_id,
-              street_address,
-              postal_code,
-              city,
-              email,
-              phone,
-              comment,
-              hourly_rate_override_cents,
-              status,
-              created_at,
-              updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `,
-        )
-        .run(
-          row.id,
-          row.company_id,
-          row.customer_number,
-          row.name,
-          row.customer_type,
-          row.managed_by_customer_id,
-          row.business_id,
-          row.street_address,
-          row.postal_code,
-          row.city,
-          row.email,
-          row.phone,
-          row.comment,
-          row.hourly_rate_override_cents,
-          row.status,
-          row.created_at,
-          row.updated_at,
-        );
+      this.database.transaction(() => {
+        this.insertCustomer(row);
+        this.insertAuditEvent(auditEvent);
+      })();
     } catch (error) {
       if (isUniqueConstraintError(error)) {
         throw new CustomerValidationError('Customer number already exists.');
@@ -246,50 +223,18 @@ export class SqliteCustomerRepository implements CustomerRepository {
     return String(highestNumber + 1);
   }
 
-  async update(customer: Customer): Promise<Customer> {
+  async update(
+    customer: Customer,
+    auditEvent: CustomerAuditEvent,
+  ): Promise<Customer> {
     const row = toCustomerRow(customer);
+    this.assertAuditEventMatchesCustomer(auditEvent, customer);
 
     try {
-      this.database
-        .prepare<CustomerUpdateParameters>(
-          `
-            UPDATE customers
-            SET
-              customer_number = ?,
-              name = ?,
-              customer_type = ?,
-              managed_by_customer_id = ?,
-              business_id = ?,
-              street_address = ?,
-              postal_code = ?,
-              city = ?,
-              email = ?,
-              phone = ?,
-              comment = ?,
-              hourly_rate_override_cents = ?,
-              status = ?,
-              updated_at = ?
-            WHERE company_id = ? AND id = ?
-          `,
-        )
-        .run(
-          row.customer_number,
-          row.name,
-          row.customer_type,
-          row.managed_by_customer_id,
-          row.business_id,
-          row.street_address,
-          row.postal_code,
-          row.city,
-          row.email,
-          row.phone,
-          row.comment,
-          row.hourly_rate_override_cents,
-          row.status,
-          row.updated_at,
-          row.company_id,
-          row.id,
-        );
+      this.database.transaction(() => {
+        this.updateCustomer(row);
+        this.insertAuditEvent(auditEvent);
+      })();
     } catch (error) {
       if (isUniqueConstraintError(error)) {
         throw new CustomerValidationError('Customer number already exists.');
@@ -299,5 +244,147 @@ export class SqliteCustomerRepository implements CustomerRepository {
     }
 
     return customer;
+  }
+
+  private insertAuditEvent(auditEvent: CustomerAuditEvent): void {
+    if (
+      auditEvent.changedFieldCategories.some(
+        (category) => !customerAuditCategories.has(category),
+      )
+    ) {
+      throw new CustomerAuditWriteError();
+    }
+
+    try {
+      this.database
+        .prepare(
+          `
+            INSERT INTO customer_audit_events (
+              id,
+              company_id,
+              actor_user_id,
+              customer_id,
+              action,
+              changed_field_categories,
+              outcome,
+              occurred_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `,
+        )
+        .run(
+          auditEvent.id,
+          auditEvent.companyId,
+          auditEvent.actorUserId,
+          auditEvent.customerId,
+          auditEvent.action,
+          JSON.stringify(auditEvent.changedFieldCategories),
+          auditEvent.outcome,
+          auditEvent.occurredAt,
+        );
+    } catch {
+      throw new CustomerAuditWriteError();
+    }
+  }
+
+  private assertAuditEventMatchesCustomer(
+    auditEvent: CustomerAuditEvent,
+    customer: Customer,
+  ): void {
+    if (
+      auditEvent.companyId !== customer.companyId ||
+      auditEvent.customerId !== customer.id
+    ) {
+      throw new CustomerAuditWriteError();
+    }
+  }
+
+  private insertCustomer(row: NewCustomerRow): void {
+    this.database
+      .prepare<CustomerInsertParameters>(
+        `
+          INSERT INTO customers (
+            id,
+            company_id,
+            customer_number,
+            name,
+            customer_type,
+            managed_by_customer_id,
+            business_id,
+            street_address,
+            postal_code,
+            city,
+            email,
+            phone,
+            comment,
+            hourly_rate_override_cents,
+            status,
+            created_at,
+            updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+      )
+      .run(
+        row.id,
+        row.company_id,
+        row.customer_number,
+        row.name,
+        row.customer_type,
+        row.managed_by_customer_id,
+        row.business_id,
+        row.street_address,
+        row.postal_code,
+        row.city,
+        row.email,
+        row.phone,
+        row.comment,
+        row.hourly_rate_override_cents,
+        row.status,
+        row.created_at,
+        row.updated_at,
+      );
+  }
+
+  private updateCustomer(row: NewCustomerRow): void {
+    this.database
+      .prepare<CustomerUpdateParameters>(
+        `
+          UPDATE customers
+          SET
+            customer_number = ?,
+            name = ?,
+            customer_type = ?,
+            managed_by_customer_id = ?,
+            business_id = ?,
+            street_address = ?,
+            postal_code = ?,
+            city = ?,
+            email = ?,
+            phone = ?,
+            comment = ?,
+            hourly_rate_override_cents = ?,
+            status = ?,
+            updated_at = ?
+          WHERE company_id = ? AND id = ?
+        `,
+      )
+      .run(
+        row.customer_number,
+        row.name,
+        row.customer_type,
+        row.managed_by_customer_id,
+        row.business_id,
+        row.street_address,
+        row.postal_code,
+        row.city,
+        row.email,
+        row.phone,
+        row.comment,
+        row.hourly_rate_override_cents,
+        row.status,
+        row.updated_at,
+        row.company_id,
+        row.id,
+      );
   }
 }

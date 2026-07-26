@@ -1,59 +1,22 @@
 import Database from 'better-sqlite3';
-import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { DatabaseConnection } from '../../../database/connection/createDatabaseConnection.js';
+import { runMigrations } from '../../../database/migration/runMigrations.js';
 import type { CompanySettings } from '../domain/companySettings.js';
+import {
+  createCompanySettingsAuditEvent,
+  type CompanySettingsAuditEvent,
+} from '../domain/companySettingsAuditEvent.js';
+import { CompanySettingsAuditWriteError } from '../ports/companySettingsAuditWriteError.js';
 import { SqliteCompanySettingsRepository } from './sqliteCompanySettingsRepository.js';
 
-const createTableMigrationSql = readFileSync(
-  new URL(
-    '../../../database/migrations/004_create_company_settings.sql',
-    import.meta.url,
-  ),
-  'utf8',
-);
-const addShortcutMigrationSql = readFileSync(
-  new URL(
-    '../../../database/migrations/007_add_company_settings_hourly_rate_shortcut.sql',
-    import.meta.url,
-  ),
-  'utf8',
-);
-const addBankDetailsMigrationSql = readFileSync(
-  new URL(
-    '../../../database/migrations/011_add_company_settings_bank_details.sql',
-    import.meta.url,
-  ),
-  'utf8',
-);
-const addVatNumberMigrationSql = readFileSync(
-  new URL(
-    '../../../database/migrations/014_add_company_settings_vat_number.sql',
-    import.meta.url,
-  ),
-  'utf8',
-);
-const addEmailSettingsMigrationSql = readFileSync(
-  new URL(
-    '../../../database/migrations/023_add_company_email_settings.sql',
-    import.meta.url,
-  ),
-  'utf8',
-);
 describe('SqliteCompanySettingsRepository', () => {
   let database: DatabaseConnection;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     database = new Database(':memory:');
-    database.exec(createTableMigrationSql);
-    database.exec(addShortcutMigrationSql);
-    database.exec(addBankDetailsMigrationSql);
-    database.exec(addVatNumberMigrationSql);
-    database.exec(
-      "ALTER TABLE company_settings ADD COLUMN website TEXT NOT NULL DEFAULT '';",
-    );
-    database.exec(addEmailSettingsMigrationSql);
+    await runMigrations(database);
   });
 
   afterEach(() => {
@@ -64,10 +27,27 @@ describe('SqliteCompanySettingsRepository', () => {
     const repository = new SqliteCompanySettingsRepository(database);
     const settings = createSettings();
 
-    await repository.upsertCompanySettings(settings);
+    await repository.upsertCompanySettings(
+      settings,
+      createAuditEvent(null, settings),
+    );
 
     await expect(repository.findByCompanyId('dev-company')).resolves.toEqual(
       settings,
+    );
+    expect(readAuditRows(database)).toEqual([
+      expect.objectContaining({
+        action: 'companySettings.updated',
+        actor_user_id: 'local-owner',
+        company_id: 'dev-company',
+        outcome: 'success',
+      }),
+    ]);
+    expect(JSON.stringify(readAuditRows(database))).not.toContain(
+      'info@example.fi',
+    );
+    expect(JSON.stringify(readAuditRows(database))).not.toContain(
+      'FI2112345600000785',
     );
   });
 
@@ -75,8 +55,11 @@ describe('SqliteCompanySettingsRepository', () => {
     const repository = new SqliteCompanySettingsRepository(database);
     const originalSettings = createSettings();
 
-    await repository.upsertCompanySettings(originalSettings);
-    await repository.upsertCompanySettings({
+    await repository.upsertCompanySettings(
+      originalSettings,
+      createAuditEvent(null, originalSettings),
+    );
+    const updatedSettings = {
       ...originalSettings,
       createdAt: '2026-06-26T00:00:00.000Z',
       hourlyRateShortcut: 'laskutus',
@@ -93,7 +76,11 @@ describe('SqliteCompanySettingsRepository', () => {
       emailUsername: 'sender@example.fi',
       emailTestRecipientOverride: 'test@example.fi',
       updatedAt: '2026-06-26T00:00:00.000Z',
-    });
+    };
+    await repository.upsertCompanySettings(
+      updatedSettings,
+      createAuditEvent(originalSettings, updatedSettings),
+    );
 
     await expect(repository.findByCompanyId('dev-company')).resolves.toMatchObject({
       createdAt: originalSettings.createdAt,
@@ -114,7 +101,55 @@ describe('SqliteCompanySettingsRepository', () => {
       updatedAt: '2026-06-26T00:00:00.000Z',
     });
   });
+
+  it('rolls back company settings when the mandatory audit write fails', async () => {
+    const repository = new SqliteCompanySettingsRepository(database);
+    const settings = createSettings();
+    database.exec('DROP TABLE company_settings_audit_events;');
+
+    await expect(
+      repository.upsertCompanySettings(
+        settings,
+        createAuditEvent(null, settings),
+      ),
+    ).rejects.toBeInstanceOf(CompanySettingsAuditWriteError);
+
+    expect(
+      database
+        .prepare('SELECT COUNT(*) AS count FROM company_settings')
+        .get(),
+    ).toEqual({ count: 0 });
+  });
 });
+
+function createAuditEvent(
+  current: CompanySettings | null,
+  updated: CompanySettings,
+): CompanySettingsAuditEvent {
+  return createCompanySettingsAuditEvent({
+    actorUserId: 'local-owner',
+    current,
+    updated,
+  });
+}
+
+function readAuditRows(database: DatabaseConnection): unknown[] {
+  return database
+    .prepare(
+      `
+        SELECT
+          company_id,
+          actor_user_id,
+          action,
+          changed_field_categories,
+          outcome,
+          occurred_at
+        FROM company_settings_audit_events
+        ORDER BY occurred_at, id
+      `,
+    )
+    .all();
+}
 
 function createSettings(): CompanySettings {
   return {

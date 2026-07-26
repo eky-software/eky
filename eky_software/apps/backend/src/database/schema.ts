@@ -18,6 +18,17 @@ export interface CustomerTable {
   updated_at: string;
 }
 
+export interface CustomerAuditEventTable {
+  id: string;
+  company_id: string;
+  actor_user_id: string;
+  customer_id: string;
+  action: string;
+  changed_field_categories: string;
+  outcome: string;
+  occurred_at: string;
+}
+
 export interface CompanySettingsTable {
   id: string;
   company_id: string;
@@ -45,6 +56,16 @@ export interface CompanySettingsTable {
   hourly_rate_shortcut: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface CompanySettingsAuditEventTable {
+  id: string;
+  company_id: string;
+  actor_user_id: string;
+  action: string;
+  changed_field_categories: string;
+  outcome: string;
+  occurred_at: string;
 }
 
 export interface CompanyEmailSecretAuditEventTable {
@@ -302,8 +323,12 @@ export interface SchemaMigrationTable {
 
 export type CustomerRow = CustomerTable;
 export type NewCustomerRow = CustomerTable;
+export type CustomerAuditEventRow = CustomerAuditEventTable;
+export type NewCustomerAuditEventRow = CustomerAuditEventTable;
 export type CompanySettingsRow = CompanySettingsTable;
 export type NewCompanySettingsRow = CompanySettingsTable;
+export type CompanySettingsAuditEventRow = CompanySettingsAuditEventTable;
+export type NewCompanySettingsAuditEventRow = CompanySettingsAuditEventTable;
 export type CompanyEmailSecretAuditEventRow =
   CompanyEmailSecretAuditEventTable;
 export type NewCompanyEmailSecretAuditEventRow =

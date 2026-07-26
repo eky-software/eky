@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
 
+import type { ActorContext } from '@eky/auth';
+
 import { createCustomerRecord, type Customer } from '../domain/customer.js';
+import { createCustomerCreatedAuditEvent } from '../domain/customerAuditEvent.js';
 import {
   CustomerValidationError,
   normalizeCustomerComment,
@@ -19,7 +22,7 @@ export interface CreateCustomerInput {
   businessId: string;
   city: string;
   comment: string;
-  companyId: string;
+  actorContext: ActorContext;
   customerNumber?: string;
   customerNumberMode: string;
   customerType: string;
@@ -40,13 +43,18 @@ export async function createCustomer(
   const customerNumberMode = parseCustomerNumberMode(input.customerNumberMode);
   const customerNumber =
     customerNumberMode === 'auto'
-      ? await customerRepository.getNextCustomerNumber(input.companyId)
+      ? await customerRepository.getNextCustomerNumber(
+          input.actorContext.companyId,
+        )
       : normalizeCustomerNumber(input.customerNumber ?? '');
   const customerType = parseCustomerType(input.customerType);
   const managedByCustomerId = normalizeManagedByCustomerId(input.managedByCustomerId, customerType);
 
   if (managedByCustomerId.length > 0) {
-    const propertyManager = await customerRepository.findById(input.companyId, managedByCustomerId);
+    const propertyManager = await customerRepository.findById(
+      input.actorContext.companyId,
+      managedByCustomerId,
+    );
 
     if (propertyManager?.customerType !== 'propertyManager') {
       throw new CustomerValidationError('Managed by customer must be a property manager.');
@@ -58,7 +66,7 @@ export async function createCustomer(
     businessId: normalizeOptionalCustomerField(input.businessId, 'Customer business id'),
     city: normalizeOptionalCustomerField(input.city, 'Customer city'),
     comment: normalizeCustomerComment(input.comment),
-    companyId: input.companyId,
+    companyId: input.actorContext.companyId,
     customerNumber,
     customerType,
     email: normalizeOptionalCustomerField(input.email, 'Customer email'),
@@ -72,5 +80,11 @@ export async function createCustomer(
     streetAddress: normalizeOptionalCustomerField(input.streetAddress, 'Customer street address'),
   });
 
-  return customerRepository.create(customer);
+  return customerRepository.create(
+    customer,
+    createCustomerCreatedAuditEvent({
+      actorUserId: input.actorContext.actorId,
+      customer,
+    }),
+  );
 }
