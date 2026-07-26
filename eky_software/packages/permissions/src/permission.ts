@@ -5,6 +5,7 @@ export const permissionValues = Object.freeze([
   'manageCompanyEmailSettings',
   'manageCompanyEmailSecret',
   'sendInvoices',
+  'viewActivity',
 ] as const);
 
 export type Permission = (typeof permissionValues)[number];

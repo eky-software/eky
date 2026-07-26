@@ -1,4 +1,8 @@
-export type AppView = 'companySettings' | 'customers' | 'invoicing';
+export type AppView =
+  | 'activity'
+  | 'companySettings'
+  | 'customers'
+  | 'invoicing';
 
 export interface AppNavigationState {
   activeView: AppView;

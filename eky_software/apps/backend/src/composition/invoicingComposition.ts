@@ -65,6 +65,7 @@ import { SqliteInvoiceCreditDraftRepository } from '../modules/invoicing/infrast
 import { SqliteInvoiceDeliveryEventRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceDeliveryEventRepository.js';
 import { SqliteInvoiceDocumentRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceDocumentRepository.js';
 import { SqliteInvoiceDraftRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceDraftRepository.js';
+import { SqliteInvoiceActivityReader } from '../modules/invoicing/infrastructure/sqliteInvoiceActivityReader.js';
 import { SqliteInvoiceNumberingRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceNumberingRepository.js';
 import { SqliteInvoicePaymentSettingsRepository } from '../modules/invoicing/infrastructure/sqliteInvoicePaymentSettingsRepository.js';
 import { SqliteInvoiceVatRateRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceVatRateRepository.js';
@@ -72,6 +73,7 @@ import { SqliteSentInvoiceGroupReader } from '../modules/invoicing/infrastructur
 import type { CustomerAccessReader } from '../modules/invoicing/ports/customerAccessReader.js';
 import type { InvoiceCustomerTaxProfileReader } from '../modules/invoicing/ports/invoiceCustomerTaxProfileReader.js';
 import type { InvoiceEmailSettingsReader } from '../modules/invoicing/ports/invoiceEmailSettingsReader.js';
+import type { InvoiceActivityReader } from '../modules/invoicing/ports/invoiceActivityReader.js';
 import { ApprovedInvoiceEmailDeliveryOutcomeUnknownError } from '../modules/invoicing/application/approvedInvoiceEmailDeliveryOutcomeUnknownError.js';
 import { createBackendOperationalEvent } from '../observability/createOperationalEvent.js';
 import type { OperationalLogger } from '../observability/operationalLogger.js';
@@ -87,10 +89,18 @@ interface InvoicingCompositionOptions {
   operationalLogger: OperationalLogger;
 }
 
+interface InvoicingComposition {
+  invoiceActivityReader: InvoiceActivityReader;
+  routes: Hono<BackendEnvironment>;
+}
+
 export function createInvoicingComposition(
   options: InvoicingCompositionOptions,
-): Hono<BackendEnvironment> {
+): InvoicingComposition {
   const routes = new Hono<BackendEnvironment>();
+  const invoiceActivityReader = new SqliteInvoiceActivityReader(
+    options.database,
+  );
   const invoiceDraftRepository = new SqliteInvoiceDraftRepository(options.database);
   const invoiceApprovalRepository = new SqliteInvoiceApprovalRepository(
     options.database,
@@ -414,5 +424,8 @@ export function createInvoicingComposition(
     }),
   );
 
-  return routes;
+  return {
+    invoiceActivityReader,
+    routes,
+  };
 }

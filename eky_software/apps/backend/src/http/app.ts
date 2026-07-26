@@ -15,6 +15,7 @@ import { readLocalRuntimeIdentity } from '../database/localRuntimeIdentityReader
 import { runMigrations } from '../database/migration/runMigrations.js';
 import { createCompanySettingsComposition } from '../composition/companySettingsComposition.js';
 import { createCustomersComposition } from '../composition/customersComposition.js';
+import { createActivityComposition } from '../composition/activityComposition.js';
 import { createInvoicingComposition } from '../composition/invoicingComposition.js';
 import type { CompanyEmailSecretReader } from '../modules/companySettings/ports/companyEmailSecretReader.js';
 import type { CompanyEmailSecretStore } from '../modules/companySettings/ports/companyEmailSecretStore.js';
@@ -249,21 +250,29 @@ export async function createApp(
   app.route('/', customersComposition.routes);
   app.route('/', companySettingsComposition.routes);
 
+  const invoicingComposition = createInvoicingComposition({
+    companyEmailSecretReader,
+    customerAccessReader: customersComposition.customerAccessReader,
+    invoiceCustomerTaxProfileReader:
+      customersComposition.invoiceCustomerTaxProfileReader,
+    database,
+    invoiceEmailSettingsReader:
+      companySettingsComposition.invoiceEmailSettingsReader,
+    operationalLogger,
+    operationalAppVersion: appVersion,
+    ...(options.invoiceDocumentStorageRoot === undefined
+      ? {}
+      : { invoiceDocumentStorageRoot: options.invoiceDocumentStorageRoot }),
+  });
+
+  app.route('/', invoicingComposition.routes);
   app.route(
     '/',
-    createInvoicingComposition({
-      companyEmailSecretReader,
-      customerAccessReader: customersComposition.customerAccessReader,
-      invoiceCustomerTaxProfileReader:
-        customersComposition.invoiceCustomerTaxProfileReader,
-      database,
-      invoiceEmailSettingsReader:
-        companySettingsComposition.invoiceEmailSettingsReader,
-      operationalLogger,
-      operationalAppVersion: appVersion,
-      ...(options.invoiceDocumentStorageRoot === undefined
-        ? {}
-        : { invoiceDocumentStorageRoot: options.invoiceDocumentStorageRoot }),
+    createActivityComposition({
+      companySettingsActivityReader:
+        companySettingsComposition.companySettingsActivityReader,
+      customerActivityReader: customersComposition.customerActivityReader,
+      invoiceActivityReader: invoicingComposition.invoiceActivityReader,
     }),
   );
 

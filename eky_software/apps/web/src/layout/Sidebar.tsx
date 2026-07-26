@@ -27,6 +27,7 @@ const navSections: SidebarNavSection[] = [
       { id: 'sites', label: uiText.modules.sites, status: 'soon' },
       { id: 'workOrders', label: uiText.modules.workOrders, status: 'soon' },
       { id: 'invoicing', label: uiText.modules.invoicing, status: 'available' },
+      { id: 'activity', label: uiText.modules.activity, status: 'available' },
     ],
   },
   {

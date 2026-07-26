@@ -15,6 +15,13 @@ describe('activateAppView', () => {
     });
   });
 
+  it('opens the read-only activity view without changing invoicing state', () => {
+    expect(activateAppView(initialAppNavigationState, 'activity')).toEqual({
+      activeView: 'activity',
+      invoicingNavigationRevision: 0,
+    });
+  });
+
   it('signals a return to the draft list when invoicing is selected again', () => {
     const invoicingState = activateAppView(
       initialAppNavigationState,

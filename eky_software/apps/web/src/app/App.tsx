@@ -4,6 +4,7 @@ import { useReducer } from 'react';
 import { CompanySettingsPage } from '../features/companySettings/CompanySettingsPage.js';
 import { CustomerPage } from '../features/customers/CustomerPage.js';
 import { InvoicingPage } from '../features/invoicing/InvoicingPage.js';
+import { ActivityPage } from '../features/activity/ActivityPage.js';
 import { uiText } from '../i18n/fi.js';
 import { AppLayout } from '../layout/AppLayout.js';
 import {
@@ -30,6 +31,7 @@ export function App({ apiClient }: AppProps): React.JSX.Element {
       {activeView === 'customers' ? (
         <CustomerPage apiClient={apiClient} />
       ) : null}
+      {activeView === 'activity' ? <ActivityPage apiClient={apiClient} /> : null}
       {activeView === 'companySettings' ? (
         <CompanySettingsPage
           apiClient={apiClient}
