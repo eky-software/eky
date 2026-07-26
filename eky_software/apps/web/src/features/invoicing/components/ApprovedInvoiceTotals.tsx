@@ -14,18 +14,21 @@ interface ApprovedInvoiceTotalsProps {
   breakdown: ApprovedInvoiceVatBreakdown[];
   invoiceKind: ApprovedInvoiceView['invoiceKind'];
   totals: ApprovedInvoiceView['totals'];
+  taxTreatment: ApprovedInvoiceView['taxTreatment'];
 }
 
 export function ApprovedInvoiceTotals({
   breakdown,
   invoiceKind,
   totals,
+  taxTreatment,
 }: ApprovedInvoiceTotalsProps): React.JSX.Element {
   return (
     <div className={styles.totalsGrid}>
-      <section className={styles.box}>
-        <h3>{uiText.invoicing.vatBreakdown}</h3>
-        <div className={styles.vatTable} role="table">
+      {taxTreatment === 'normalVat' ? (
+        <section className={styles.box}>
+          <h3>{uiText.invoicing.vatBreakdown}</h3>
+          <div className={styles.vatTable} role="table">
           <div className={styles.vatHeader} role="row">
             <span role="columnheader">{uiText.invoicing.rowVat}</span>
             <span className={styles.number} role="columnheader">
@@ -67,8 +70,17 @@ export function ApprovedInvoiceTotals({
               </strong>
             </div>
           ))}
-        </div>
-      </section>
+          </div>
+        </section>
+      ) : (
+        <section className={styles.box}>
+          <h3>{uiText.invoicing.taxTreatment}</h3>
+          <p className={styles.reverseChargeNotice}>
+            {uiText.invoicing.taxTreatmentReverseChargeConstruction}
+          </p>
+          <p>{uiText.invoicing.reverseChargeNoSellerVat}</p>
+        </section>
+      )}
 
       <section className={styles.box}>
         <h3>{uiText.invoicing.invoiceTotals}</h3>

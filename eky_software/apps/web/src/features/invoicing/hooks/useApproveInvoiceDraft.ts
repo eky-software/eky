@@ -1,5 +1,6 @@
 import {
   EkyApiError,
+  type ApproveInvoiceDraftInput,
   type ApprovedInvoiceResult,
   type EkyApiClient,
 } from '@eky/api-client';
@@ -13,7 +14,10 @@ export interface ApproveInvoiceDraftState {
   approvedInvoice: ApprovedInvoiceResult | null;
   errorMessage: string | null;
   isApproving: boolean;
-  approveDraft(id: string): Promise<ApprovedInvoiceResult | null>;
+  approveDraft(
+    id: string,
+    input?: ApproveInvoiceDraftInput,
+  ): Promise<ApprovedInvoiceResult | null>;
   clearApprovalResult(): void;
 }
 
@@ -30,12 +34,19 @@ export function useApproveInvoiceDraft(
     setErrorMessage(null);
   }
 
-  async function approveDraft(id: string): Promise<ApprovedInvoiceResult | null> {
+  async function approveDraft(
+    id: string,
+    input: ApproveInvoiceDraftInput = {},
+  ): Promise<ApprovedInvoiceResult | null> {
     setIsApproving(true);
     setErrorMessage(null);
 
     try {
-      const result = await approveInvoiceDraftWithClient(apiClient, id);
+      const result = await approveInvoiceDraftWithClient(
+        apiClient,
+        id,
+        input,
+      );
 
       setApprovedInvoice(result);
 
@@ -62,8 +73,9 @@ export function useApproveInvoiceDraft(
 export function approveInvoiceDraftWithClient(
   apiClient: ApproveInvoiceDraftClient,
   id: string,
+  input: ApproveInvoiceDraftInput = {},
 ): Promise<ApprovedInvoiceResult> {
-  return apiClient.approveInvoiceDraft(id);
+  return apiClient.approveInvoiceDraft(id, input);
 }
 
 export function getApproveInvoiceDraftErrorMessage(error: unknown): string {

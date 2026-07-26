@@ -34,9 +34,23 @@ export function toNewInvoiceFormStateFromDraft(
     note: draft.note,
     orderNumber: draft.orderNumber,
     paymentTermDays: String(draft.paymentTermDays),
+    performanceDate:
+      draft.performancePeriod.type === 'singleDate'
+        ? draft.performancePeriod.date
+        : '',
+    performancePeriodEnd:
+      draft.performancePeriod.type === 'dateRange'
+        ? draft.performancePeriod.endDate
+        : '',
+    performancePeriodStart:
+      draft.performancePeriod.type === 'dateRange'
+        ? draft.performancePeriod.startDate
+        : '',
+    performancePeriodType: draft.performancePeriod.type,
     priceInputMode: draft.priceInputMode,
     reminderPeriodDays: String(draft.reminderPeriodDays),
     subject: draft.subject,
+    taxTreatment: draft.taxTreatment,
   };
 }
 

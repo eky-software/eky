@@ -11,6 +11,7 @@ import {
   updateInvoiceRow,
 } from './invoiceRowFormState.js';
 import {
+  applyInvoiceTaxTreatment,
   createInitialNewInvoiceForm,
   updateNewInvoiceFormField,
 } from './newInvoiceFormState.js';
@@ -63,6 +64,8 @@ describe('invoice draft form mapping', () => {
       reminderPeriodDays: 8,
       deliveryAddressText: 'Työkohde 1',
       priceInputMode: 'net',
+      taxTreatment: 'normalVat',
+      performancePeriod: { type: 'invoiceDate' },
       subject: 'Työlasku',
       orderNumber: 'TILAUS-1',
       note: 'Saate',
@@ -152,6 +155,34 @@ describe('invoice draft form mapping', () => {
     );
 
     expect(input).not.toHaveProperty('reminderPeriodDays');
+  });
+
+  it('maps reverse charge without a VAT rate or server-owned totals', () => {
+    const form = applyInvoiceTaxTreatment(
+      {
+        ...createValidForm(),
+        performancePeriodType: 'dateRange',
+        performancePeriodStart: '2026-06-01',
+        performancePeriodEnd: '2026-06-15',
+      },
+      'reverseChargeConstruction',
+      2550,
+    );
+
+    const input = toInvoiceDraftInput(form);
+
+    expect(input).toMatchObject({
+      taxTreatment: 'reverseChargeConstruction',
+      priceInputMode: 'net',
+      performancePeriod: {
+        type: 'dateRange',
+        startDate: '2026-06-01',
+        endDate: '2026-06-15',
+      },
+    });
+    expect(input.lines[0]?.vatRateBasisPoints).toBeNull();
+    expect(input).not.toHaveProperty('totals');
+    expect(input.lines[0]).not.toHaveProperty('vatCents');
   });
 });
 

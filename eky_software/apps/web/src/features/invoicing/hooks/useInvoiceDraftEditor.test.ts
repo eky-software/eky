@@ -74,6 +74,8 @@ function createInvoiceDraft(): InvoiceDraft {
     paymentTermDays: 14,
     latePaymentInterestBasisPoints: 950,
     priceInputMode: 'net',
+    taxTreatment: 'normalVat',
+    performancePeriod: { type: 'invoiceDate' },
     reminderPeriodDays: 0,
     status: 'draft',
     subject: 'Työlasku',

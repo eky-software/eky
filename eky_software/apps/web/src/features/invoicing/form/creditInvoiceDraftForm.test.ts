@@ -146,6 +146,53 @@ describe('creditInvoiceDraftForm', () => {
       input: null,
     });
   });
+
+  it('inherits reverse charge and maps a manual line without VAT', () => {
+    const draft = createCreditDraft();
+    draft.taxTreatment = 'reverseChargeConstruction';
+    draft.lines = draft.lines.map((line) => ({
+      ...line,
+      vatRateBasisPoints: null,
+      vatCents: 0,
+      grossCents: line.netCents,
+    }));
+    draft.totals = {
+      grossTotalCents: 15_000,
+      netTotalCents: 15_000,
+      vatBreakdown: [],
+      vatTotalCents: 0,
+    };
+    const form = hydrateCreditInvoiceDraftForm(draft);
+    const manualLine = createManualCreditLineForm(form);
+
+    form.lines = [
+      {
+        ...manualLine,
+        description: 'Käännetty hyvitys',
+        quantity: '1,00',
+        unitPrice: '100,00',
+      },
+    ];
+
+    expect(validateAndMapCreditInvoiceDraftForm(form)).toEqual({
+      errors: [],
+      input: {
+        subject: 'Hyvityslasku laskulle 20260001',
+        note: '',
+        refundIban: '',
+        lines: [
+          {
+            lineType: 'manual',
+            description: 'Käännetty hyvitys',
+            quantityHundredths: 100,
+            unit: 'kpl',
+            unitPriceCents: 10_000,
+            vatRateBasisPoints: null,
+          },
+        ],
+      },
+    });
+  });
 });
 
 function createCreditDraft(): CreditInvoiceDraft {
@@ -167,6 +214,8 @@ function createCreditDraft(): CreditInvoiceDraft {
     reminderPeriodDays: 0,
     latePaymentInterestBasisPoints: 0,
     priceInputMode: 'net',
+    taxTreatment: 'normalVat',
+    performancePeriod: { type: 'invoiceDate' },
     subject: 'Hyvityslasku laskulle 20260001',
     orderNumber: '',
     note: '',

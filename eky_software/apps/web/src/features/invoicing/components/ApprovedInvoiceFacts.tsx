@@ -4,7 +4,11 @@ import {
   formatApprovedInvoicePercent,
   hasApprovedInvoiceValue,
 } from '../approved/approvedInvoiceFormatting.js';
-import type { ApprovedInvoiceKind } from '@eky/api-client';
+import type {
+  ApprovedInvoiceKind,
+  InvoicePerformancePeriod,
+  InvoiceTaxTreatment,
+} from '@eky/api-client';
 import { ApprovedInvoiceDefinitionRow } from './ApprovedInvoiceDefinitionRow.js';
 import styles from './ApprovedInvoicePreview.module.css';
 import { uiText } from '../../../i18n/fi.js';
@@ -25,6 +29,10 @@ interface ApprovedInvoiceFactsProps {
   refundIbanSnapshot: string;
   reminderPeriodDays: number;
   subject: string;
+  taxLegalBasisSnapshot: string;
+  taxTreatment: InvoiceTaxTreatment;
+  taxTreatmentLabelSnapshot: string;
+  performancePeriod: InvoicePerformancePeriod;
 }
 
 export function ApprovedInvoiceFacts({
@@ -43,6 +51,10 @@ export function ApprovedInvoiceFacts({
   refundIbanSnapshot,
   reminderPeriodDays,
   subject,
+  taxLegalBasisSnapshot,
+  taxTreatment,
+  taxTreatmentLabelSnapshot,
+  performancePeriod,
 }: ApprovedInvoiceFactsProps): React.JSX.Element {
   const isCreditInvoice = invoiceKind === 'credit';
 
@@ -54,6 +66,32 @@ export function ApprovedInvoiceFacts({
           label={uiText.invoicing.invoiceDate}
           value={formatApprovedInvoiceDate(invoiceDate)}
         />
+        {taxTreatment === 'reverseChargeConstruction' ? (
+          <>
+            <ApprovedInvoiceDefinitionRow
+              label={uiText.invoicing.taxTreatment}
+              value={taxTreatmentLabelSnapshot}
+            />
+            <ApprovedInvoiceDefinitionRow
+              label={uiText.invoicing.taxLegalBasis}
+              value={taxLegalBasisSnapshot}
+            />
+          </>
+        ) : null}
+        {performancePeriod.type === 'singleDate' ? (
+          <ApprovedInvoiceDefinitionRow
+            label={uiText.invoicing.performanceDate}
+            value={formatApprovedInvoiceDate(performancePeriod.date)}
+          />
+        ) : null}
+        {performancePeriod.type === 'dateRange' ? (
+          <ApprovedInvoiceDefinitionRow
+            label={uiText.invoicing.performancePeriod}
+            value={`${formatApprovedInvoiceDate(
+              performancePeriod.startDate,
+            )}–${formatApprovedInvoiceDate(performancePeriod.endDate)}`}
+          />
+        ) : null}
         {isCreditInvoice && creditedInvoiceNumber !== null ? (
           <ApprovedInvoiceDefinitionRow
             label={uiText.invoicing.creditedInvoiceNumber}

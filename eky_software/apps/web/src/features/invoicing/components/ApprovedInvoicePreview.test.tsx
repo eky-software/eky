@@ -145,6 +145,44 @@ describe('ApprovedInvoicePreview', () => {
     );
     expect(html).not.toContain('Raw provider details');
   });
+
+  it('renders reverse charge snapshot without a normal VAT breakdown', () => {
+    const invoice = createApprovedInvoiceView({
+      customerBusinessIdSnapshot: '1234567-8',
+      performancePeriod: {
+        type: 'dateRange',
+        startDate: '2026-06-01',
+        endDate: '2026-06-15',
+      },
+      taxLegalBasisSnapshot: 'AVL 8 c §',
+      taxTreatment: 'reverseChargeConstruction',
+      taxTreatmentLabelSnapshot: 'Käännetty verovelvollisuus',
+      lines: [
+        {
+          ...createApprovedInvoiceView().lines[0]!,
+          grossCents: 10000,
+          netCents: 10000,
+          vatCents: 0,
+          vatRateBasisPoints: null,
+        },
+      ],
+      totals: {
+        grossTotalCents: 10000,
+        netTotalCents: 10000,
+        vatBreakdown: [],
+        vatTotalCents: 0,
+      },
+      vatBreakdown: [],
+    });
+    const html = renderPreview({ invoice });
+
+    expect(html).toContain('Käännetty verovelvollisuus');
+    expect(html).toContain('AVL 8 c §');
+    expect(html).toContain('01.06.2026–15.06.2026');
+    expect(html).toContain(uiText.invoicing.reverseChargeNoSellerVat);
+    expect(html).not.toContain(uiText.invoicing.vatBreakdown);
+    expect(html).not.toContain('25,50 %');
+  });
 });
 
 function renderPreview(
@@ -315,6 +353,10 @@ function createApprovedInvoiceView(
     sourceDraftId: 'draft-1',
     status: 'approved',
     subject: 'Approved invoice',
+    taxLegalBasisSnapshot: '',
+    taxTreatment: 'normalVat',
+    taxTreatmentLabelSnapshot: '',
+    performancePeriod: { type: 'invoiceDate' },
     totals: {
       grossTotalCents: 12550,
       netTotalCents: 10000,

@@ -9,12 +9,14 @@ import type {
 import styles from './InvoiceRowsEditor.module.css';
 import { uiText } from '../../../i18n/fi.js';
 import type { InvoiceVatRate } from '@eky/api-client';
+import type { InvoiceTaxTreatment } from '@eky/api-client';
 
 interface InvoiceRowsEditorProps {
   errorsByRowId: Record<string, InvoiceDraftLineFormErrors> | undefined;
   hourlyRateShortcut: string;
   hourlyRateShortcutErrorMessage: string | null;
   rows: InvoiceRowForm[];
+  taxTreatment: InvoiceTaxTreatment;
   vatRates: readonly InvoiceVatRate[] | null;
   onAdd(): void;
   onChange<FieldName extends InvoiceRowFormField>(
@@ -30,6 +32,7 @@ export function InvoiceRowsEditor({
   hourlyRateShortcut,
   hourlyRateShortcutErrorMessage,
   rows,
+  taxTreatment,
   vatRates,
   onAdd,
   onChange,
@@ -60,13 +63,22 @@ export function InvoiceRowsEditor({
       </header>
 
       <div className={styles.editor}>
-        <div className={styles.head} aria-hidden="true">
+        <div
+          className={`${styles.head} ${
+            taxTreatment === 'reverseChargeConstruction'
+              ? styles.headWithoutVat
+              : ''
+          }`}
+          aria-hidden="true"
+        >
           <span>{uiText.invoicing.row}</span>
           <span>{uiText.invoicing.rowDescription}</span>
           <span>{uiText.invoicing.rowQuantity}</span>
           <span>{uiText.invoicing.rowUnit}</span>
           <span>{uiText.invoicing.rowUnitPrice}</span>
-          <span>{uiText.invoicing.rowVat}</span>
+          {taxTreatment === 'normalVat' ? (
+            <span>{uiText.invoicing.rowVat}</span>
+          ) : null}
           <span>{uiText.invoicing.rowActions}</span>
         </div>
 
@@ -77,6 +89,7 @@ export function InvoiceRowsEditor({
             errors={errorsByRowId?.[row.id]}
             position={index + 1}
             row={row}
+            showVat={taxTreatment === 'normalVat'}
             vatRates={vatRates}
             onChange={onChange}
             onRemove={onRemove}

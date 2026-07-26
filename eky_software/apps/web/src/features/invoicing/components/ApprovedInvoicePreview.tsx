@@ -240,6 +240,12 @@ export function ApprovedInvoicePreview({
           refundIbanSnapshot={invoice.refundIbanSnapshot}
           reminderPeriodDays={invoice.reminderPeriodDays}
           subject={invoice.subject}
+          taxLegalBasisSnapshot={invoice.taxLegalBasisSnapshot}
+          taxTreatment={invoice.taxTreatment}
+          taxTreatmentLabelSnapshot={
+            invoice.taxTreatmentLabelSnapshot
+          }
+          performancePeriod={invoice.performancePeriod}
         />
         <ApprovedInvoicePartyDetails
           businessId={invoice.customerBusinessIdSnapshot}
@@ -269,12 +275,14 @@ export function ApprovedInvoicePreview({
         invoiceKind={invoice.invoiceKind}
         lines={invoice.lines}
         priceInputMode={invoice.priceInputMode}
+        taxTreatment={invoice.taxTreatment}
       />
 
       <ApprovedInvoiceTotals
         breakdown={invoice.vatBreakdown}
         invoiceKind={invoice.invoiceKind}
         totals={invoice.totals}
+        taxTreatment={invoice.taxTreatment}
       />
 
       {invoice.invoiceKind === 'standard' ? (

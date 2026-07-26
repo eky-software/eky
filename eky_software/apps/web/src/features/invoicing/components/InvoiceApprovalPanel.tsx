@@ -5,13 +5,23 @@ import { uiText } from '../../../i18n/fi.js';
 
 interface InvoiceApprovalConfirmationProps {
   isApproving: boolean;
+  isReverseCharge: boolean;
+  isReverseChargeConfirmed: boolean;
+  legalCustomerBusinessId: string;
+  legalCustomerName: string;
   onCancel(): void;
+  onReverseChargeConfirmationChange(checked: boolean): void;
   onConfirm(): void;
 }
 
 export function InvoiceApprovalConfirmation({
   isApproving,
+  isReverseCharge,
+  isReverseChargeConfirmed,
+  legalCustomerBusinessId,
+  legalCustomerName,
   onCancel,
+  onReverseChargeConfirmationChange,
   onConfirm,
 }: InvoiceApprovalConfirmationProps): React.JSX.Element {
   return (
@@ -25,13 +35,35 @@ export function InvoiceApprovalConfirmation({
         </h3>
         <p>{uiText.invoicing.approveDraftConfirmationIntro}</p>
         <p>{uiText.invoicing.approveDraftConfirmationLock}</p>
+        {isReverseCharge ? (
+          <label className={styles.reverseChargeConfirmation}>
+            <input
+              checked={isReverseChargeConfirmed}
+              type="checkbox"
+              onChange={(event) =>
+                onReverseChargeConfirmationChange(
+                  event.currentTarget.checked,
+                )
+              }
+            />
+            <span>
+              {uiText.invoicing.reverseChargeApprovalConfirmation(
+                legalCustomerName,
+                legalCustomerBusinessId,
+              )}
+            </span>
+          </label>
+        ) : null}
       </div>
       <div className={styles.actions}>
         <button className="ghost-button" onClick={onCancel} type="button">
           {uiText.invoicing.cancel}
         </button>
         <button
-          disabled={isApproving}
+          disabled={
+            isApproving ||
+            (isReverseCharge && !isReverseChargeConfirmed)
+          }
           onClick={onConfirm}
           type="button"
         >

@@ -16,7 +16,7 @@ export interface InvoiceRowForm {
   quantity: string;
   unit: InvoiceUnit;
   unitPrice: string;
-  vatRateBasisPoints: number;
+  vatRateBasisPoints: number | null;
   discountType: InvoiceRowDiscountType;
   discountValue: string;
   hourlyRateAutofillState: HourlyRateAutofillState;

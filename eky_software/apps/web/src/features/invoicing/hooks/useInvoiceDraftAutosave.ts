@@ -59,6 +59,7 @@ export interface UseInvoiceDraftAutosaveOptions {
   manualSavedDraft: InvoiceDraft | null;
   mode: NewInvoiceFormMode;
   onDraftAutosaved(savedDraft: InvoiceDraft): void;
+  reverseChargeCustomerEligible?: boolean;
 }
 
 export function useInvoiceDraftAutosave({
@@ -68,6 +69,7 @@ export function useInvoiceDraftAutosave({
   manualSavedDraft,
   mode,
   onDraftAutosaved,
+  reverseChargeCustomerEligible,
 }: UseInvoiceDraftAutosaveOptions): InvoiceDraftAutosaveState {
   const [status, setStatus] =
     useState<InvoiceDraftAutosaveStatus>('disabled');
@@ -91,7 +93,11 @@ export function useInvoiceDraftAutosave({
       return;
     }
 
-    const plan = prepareInvoiceDraftAutosave(mode, form);
+    const plan = prepareInvoiceDraftAutosave(
+      mode,
+      form,
+      reverseChargeCustomerEligible,
+    );
 
     if (!plan.isValid) {
       return;
@@ -105,10 +111,14 @@ export function useInvoiceDraftAutosave({
     );
     setErrorMessage(null);
     setStatus('saved');
-  }, [form, manualSavedDraft, mode]);
+  }, [form, manualSavedDraft, mode, reverseChargeCustomerEligible]);
 
   useEffect(() => {
-    const plan = prepareInvoiceDraftAutosave(mode, form);
+    const plan = prepareInvoiceDraftAutosave(
+      mode,
+      form,
+      reverseChargeCustomerEligible,
+    );
 
     if (!plan.isValid) {
       setErrorMessage(null);
@@ -188,7 +198,13 @@ export function useInvoiceDraftAutosave({
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [apiClient, form, formRevision, mode]);
+  }, [
+    apiClient,
+    form,
+    formRevision,
+    mode,
+    reverseChargeCustomerEligible,
+  ]);
 
   return {
     errorMessage,
@@ -200,9 +216,15 @@ export function useInvoiceDraftAutosave({
 export function prepareInvoiceDraftAutosave(
   mode: NewInvoiceFormMode,
   form: NewInvoiceFormState,
+  reverseChargeCustomerEligible?: boolean,
 ): PreparedInvoiceDraftAutosave {
   const preparedInput: PreparedInvoiceDraftSave =
-    prepareInvoiceDraftSaveInput(form);
+    prepareInvoiceDraftSaveInput(
+      form,
+      reverseChargeCustomerEligible === undefined
+        ? {}
+        : { reverseChargeCustomerEligible },
+    );
 
   if (!preparedInput.isValid) {
     return {

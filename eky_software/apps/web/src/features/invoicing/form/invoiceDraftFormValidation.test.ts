@@ -6,6 +6,7 @@ import {
   updateInvoiceRow,
 } from './invoiceRowFormState.js';
 import {
+  applyInvoiceTaxTreatment,
   createInitialNewInvoiceForm,
   updateNewInvoiceFormField,
 } from './newInvoiceFormState.js';
@@ -228,6 +229,72 @@ describe('validateInvoiceDraftForm', () => {
       );
     },
   );
+
+  it('requires an eligible business customer for reverse charge', () => {
+    const form = applyInvoiceTaxTreatment(
+      createValidForm(),
+      'reverseChargeConstruction',
+      2550,
+    );
+
+    const result = validateInvoiceDraftForm(form, {
+      reverseChargeCustomerEligible: false,
+    });
+
+    expect(result.errors.taxTreatment).toBe(
+      uiText.invoicing.reverseChargeCustomerEligibilityError,
+    );
+  });
+
+  it('accepts reverse charge for an explicitly eligible customer', () => {
+    const form = applyInvoiceTaxTreatment(
+      createValidForm(),
+      'reverseChargeConstruction',
+      2550,
+    );
+
+    expect(
+      validateInvoiceDraftForm(form, {
+        reverseChargeCustomerEligible: true,
+      }).isValid,
+    ).toBe(true);
+  });
+
+  it('rejects gross price mode for reverse charge', () => {
+    const form = {
+      ...applyInvoiceTaxTreatment(
+        createValidForm(),
+        'reverseChargeConstruction',
+        2550,
+      ),
+      priceInputMode: 'gross' as const,
+    };
+
+    expect(
+      validateInvoiceDraftForm(form, {
+        reverseChargeCustomerEligible: true,
+      }).errors.taxTreatment,
+    ).toBe(uiText.invoicing.reverseChargeNetOnlyError);
+  });
+
+  it('validates reverse charge performance date ranges', () => {
+    const form = {
+      ...applyInvoiceTaxTreatment(
+        createValidForm(),
+        'reverseChargeConstruction',
+        2550,
+      ),
+      performancePeriodType: 'dateRange' as const,
+      performancePeriodStart: '2026-06-16',
+      performancePeriodEnd: '2026-06-15',
+    };
+
+    expect(
+      validateInvoiceDraftForm(form, {
+        reverseChargeCustomerEligible: true,
+      }).errors.performancePeriodEnd,
+    ).toBe(uiText.invoicing.validationPerformancePeriodOrder);
+  });
 });
 
 function createValidForm(

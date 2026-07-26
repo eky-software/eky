@@ -84,6 +84,7 @@ describe('InvoiceRowsEditor', () => {
   it('renders safe row validation errors', () => {
     const html = renderToStaticMarkup(
       <InvoiceRowsEditor
+        taxTreatment="normalVat"
         vatRates={null}
         errorsByRowId={{
           'invoice-row-1': {
@@ -115,6 +116,7 @@ describe('InvoiceRowsEditor', () => {
   it('renders a safe company settings load error without technical details', () => {
     const html = renderToStaticMarkup(
       <InvoiceRowsEditor
+        taxTreatment="normalVat"
         vatRates={null}
         errorsByRowId={undefined}
         hourlyRateShortcut=""
@@ -139,6 +141,7 @@ function renderEditor(
 ): string {
   return renderToStaticMarkup(
     <InvoiceRowsEditor
+      taxTreatment="normalVat"
       vatRates={null}
       errorsByRowId={undefined}
       hourlyRateShortcut="työ"

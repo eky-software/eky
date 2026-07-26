@@ -1,6 +1,7 @@
 import type {
   InvoiceDraftInput,
   InvoiceLineDiscount,
+  InvoicePerformancePeriod,
 } from '@eky/api-client';
 
 import type { InvoiceRowForm } from './invoiceRowFormState.js';
@@ -57,7 +58,9 @@ export function toInvoiceDraftInput(
     dueDate: form.dueDate.trim(),
     paymentTermDays,
     priceInputMode: form.priceInputMode,
-    lines: form.lines.map(mapInvoiceDraftLine),
+    taxTreatment: form.taxTreatment,
+    performancePeriod: mapPerformancePeriod(form),
+    lines: form.lines.map((row) => mapInvoiceDraftLine(row, form)),
   };
 
   addOptionalTrimmedString(
@@ -87,11 +90,21 @@ export function toInvoiceDraftInput(
   return input;
 }
 
-function mapInvoiceDraftLine(row: InvoiceRowForm) {
+function mapInvoiceDraftLine(
+  row: InvoiceRowForm,
+  form: NewInvoiceFormState,
+) {
   const quantityHundredths = parseQuantityHundredths(row.quantity);
   const unitPriceCents = parseEuroCents(row.unitPrice);
 
   if (quantityHundredths === null || unitPriceCents === null) {
+    throw new InvoiceDraftFormMappingError();
+  }
+
+  if (
+    form.taxTreatment === 'normalVat' &&
+    (row.vatRateBasisPoints === null || row.vatRateBasisPoints <= 0)
+  ) {
     throw new InvoiceDraftFormMappingError();
   }
 
@@ -100,9 +113,33 @@ function mapInvoiceDraftLine(row: InvoiceRowForm) {
     quantityHundredths,
     unit: normalizeInvoiceUnit(row.unit),
     unitPriceCents,
-    vatRateBasisPoints: row.vatRateBasisPoints,
+    vatRateBasisPoints:
+      form.taxTreatment === 'reverseChargeConstruction'
+        ? null
+        : row.vatRateBasisPoints,
     discount: mapDiscount(row),
   };
+}
+
+function mapPerformancePeriod(
+  form: NewInvoiceFormState,
+): InvoicePerformancePeriod {
+  if (form.performancePeriodType === 'singleDate') {
+    return {
+      type: 'singleDate',
+      date: form.performanceDate.trim(),
+    };
+  }
+
+  if (form.performancePeriodType === 'dateRange') {
+    return {
+      type: 'dateRange',
+      startDate: form.performancePeriodStart.trim(),
+      endDate: form.performancePeriodEnd.trim(),
+    };
+  }
+
+  return { type: 'invoiceDate' };
 }
 
 function mapDiscount(row: InvoiceRowForm): InvoiceLineDiscount {

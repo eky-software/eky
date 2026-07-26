@@ -17,12 +17,14 @@ interface ApprovedInvoiceLineTableProps {
   invoiceKind: ApprovedInvoiceView['invoiceKind'];
   lines: ApprovedInvoiceLine[];
   priceInputMode: ApprovedInvoiceView['priceInputMode'];
+  taxTreatment: ApprovedInvoiceView['taxTreatment'];
 }
 
 export function ApprovedInvoiceLineTable({
   invoiceKind,
   lines,
   priceInputMode,
+  taxTreatment,
 }: ApprovedInvoiceLineTableProps): React.JSX.Element {
   const unitPriceLabel =
     priceInputMode === 'net'
@@ -33,7 +35,14 @@ export function ApprovedInvoiceLineTable({
     <section>
       <h3>{uiText.invoicing.invoiceRows}</h3>
       <div className={styles.lines} role="table">
-        <div className={styles.lineHeader} role="row">
+        <div
+          className={`${styles.lineHeader} ${
+            taxTreatment === 'reverseChargeConstruction'
+              ? styles.lineWithoutVat
+              : ''
+          }`}
+          role="row"
+        >
           <span role="columnheader">{uiText.invoicing.rowCode}</span>
           <span role="columnheader">{uiText.invoicing.rowDescription}</span>
           <span className={styles.number} role="columnheader">
@@ -43,9 +52,11 @@ export function ApprovedInvoiceLineTable({
           <span className={styles.number} role="columnheader">
             {unitPriceLabel}
           </span>
-          <span className={styles.number} role="columnheader">
-            {uiText.invoicing.rowVat}
-          </span>
+          {taxTreatment === 'normalVat' ? (
+            <span className={styles.number} role="columnheader">
+              {uiText.invoicing.rowVat}
+            </span>
+          ) : null}
           <span className={styles.number} role="columnheader">
             {uiText.invoicing.rowDiscountType}
           </span>
@@ -59,6 +70,7 @@ export function ApprovedInvoiceLineTable({
             key={line.id}
             line={line}
             priceInputMode={priceInputMode}
+            showVat={taxTreatment === 'normalVat'}
           />
         ))}
       </div>
@@ -70,17 +82,24 @@ function ApprovedInvoiceLineRow({
   invoiceKind,
   line,
   priceInputMode,
+  showVat,
 }: {
   invoiceKind: ApprovedInvoiceView['invoiceKind'];
   line: ApprovedInvoiceLine;
   priceInputMode: ApprovedInvoiceView['priceInputMode'];
+  showVat: boolean;
 }): React.JSX.Element {
   const discount = formatApprovedInvoiceDiscount(line.discount);
   const lineTotal =
     priceInputMode === 'net' ? line.netCents : line.grossCents;
 
   return (
-    <div className={styles.lineRow} role="row">
+    <div
+      className={`${styles.lineRow} ${
+        showVat ? '' : styles.lineWithoutVat
+      }`}
+      role="row"
+    >
       <span role="cell">{line.code}</span>
       <span role="cell">{line.description}</span>
       <span className={styles.number} role="cell">
@@ -93,9 +112,11 @@ function ApprovedInvoiceLineRow({
           invoiceKind,
         )}
       </span>
-      <span className={styles.number} role="cell">
-        {formatApprovedInvoicePercent(line.vatRateBasisPoints)}
-      </span>
+      {showVat && line.vatRateBasisPoints !== null ? (
+        <span className={styles.number} role="cell">
+          {formatApprovedInvoicePercent(line.vatRateBasisPoints)}
+        </span>
+      ) : null}
       <span className={styles.number} role="cell">
         {discount ?? ''}
       </span>

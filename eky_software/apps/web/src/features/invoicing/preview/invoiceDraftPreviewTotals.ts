@@ -36,7 +36,7 @@ interface PreviewLineTotals {
   netCents: number;
   priceInputMode: NewInvoiceFormState['priceInputMode'];
   vatCents: number;
-  vatRateBasisPoints: number;
+  vatRateBasisPoints: number | null;
 }
 
 interface MutableVatBreakdown {
@@ -54,7 +54,11 @@ export function calculateInvoiceDraftPreviewTotals(
     const lineTotals: PreviewLineTotals[] = [];
 
     for (const row of form.lines) {
-      const line = calculatePreviewLine(row, form.priceInputMode);
+      const line = calculatePreviewLine(
+        row,
+        form.priceInputMode,
+        form.taxTreatment,
+      );
 
       if (line === null) {
         return { isAvailable: false };
@@ -72,6 +76,7 @@ export function calculateInvoiceDraftPreviewTotals(
 function calculatePreviewLine(
   row: InvoiceRowForm,
   priceInputMode: NewInvoiceFormState['priceInputMode'],
+  taxTreatment: NewInvoiceFormState['taxTreatment'],
 ): PreviewLineTotals | null {
   const quantityHundredths = parseQuantityHundredths(row.quantity);
   const unitPriceCents = parseEuroCents(row.unitPrice);
@@ -81,9 +86,7 @@ function calculatePreviewLine(
     quantityHundredths === null ||
     quantityHundredths <= 0 ||
     unitPriceCents === null ||
-    discount === null ||
-    !Number.isSafeInteger(row.vatRateBasisPoints) ||
-    row.vatRateBasisPoints < 0
+    discount === null
   ) {
     return null;
   }
@@ -99,6 +102,26 @@ function calculatePreviewLine(
   }
 
   const discountedBaseCents = baseCents - discountCents;
+
+  if (taxTreatment === 'reverseChargeConstruction') {
+    if (priceInputMode !== 'net' || row.vatRateBasisPoints !== null) {
+      return null;
+    }
+
+    return toPreviewLineTotals(null, priceInputMode, {
+      grossCents: discountedBaseCents,
+      netCents: discountedBaseCents,
+      vatCents: 0,
+    });
+  }
+
+  if (
+    row.vatRateBasisPoints === null ||
+    !Number.isSafeInteger(row.vatRateBasisPoints) ||
+    row.vatRateBasisPoints <= 0
+  ) {
+    return null;
+  }
 
   if (priceInputMode === 'net') {
     const netCents = discountedBaseCents;
@@ -186,6 +209,13 @@ function calculatePreviewTotals(
   const breakdownByRate = new Map<number, MutableVatBreakdown>();
 
   for (const line of lines) {
+    if (line.vatRateBasisPoints === null) {
+      grossTotalCents += BigInt(line.grossCents);
+      netTotalCents += BigInt(line.netCents);
+      vatTotalCents += BigInt(line.vatCents);
+      continue;
+    }
+
     addVatBreakdown(breakdownByRate, line);
   }
 
@@ -210,6 +240,10 @@ function addVatBreakdown(
   breakdownByRate: Map<number, MutableVatBreakdown>,
   line: PreviewLineTotals,
 ): void {
+  if (line.vatRateBasisPoints === null) {
+    throw new Error('Reverse charge rows do not use VAT breakdowns.');
+  }
+
   const existingBreakdown = breakdownByRate.get(line.vatRateBasisPoints);
 
   if (existingBreakdown) {
@@ -270,7 +304,7 @@ function createVatBreakdown(
 }
 
 function toPreviewLineTotals(
-  vatRateBasisPoints: number,
+  vatRateBasisPoints: number | null,
   priceInputMode: NewInvoiceFormState['priceInputMode'],
   values: {
     grossCents: number;

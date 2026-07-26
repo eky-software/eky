@@ -20,7 +20,7 @@ interface CreditInvoiceDraftLineFormBase {
   quantity: string;
   unit: string;
   unitPrice: string;
-  vatRateBasisPoints: number;
+  vatRateBasisPoints: number | null;
   discount: InvoiceLineDiscount;
   savedGrossCents: number;
 }
@@ -46,6 +46,7 @@ export interface CreditInvoiceDraftForm {
   subject: string;
   note: string;
   refundIban: string;
+  taxTreatment: CreditInvoiceDraft['taxTreatment'];
   availableVatRates: number[];
   lines: CreditInvoiceDraftLineForm[];
 }
@@ -73,7 +74,8 @@ export function hydrateCreditInvoiceDraftForm(
     ...new Set(
       draft.lines
         .filter((line) => line.lineType === 'source')
-        .map((line) => line.vatRateBasisPoints),
+        .map((line) => line.vatRateBasisPoints)
+        .filter((vatRate): vatRate is number => vatRate !== null),
     ),
   ].sort((first, second) => first - second);
 
@@ -81,6 +83,7 @@ export function hydrateCreditInvoiceDraftForm(
     subject: draft.subject,
     note: draft.note,
     refundIban: formatIbanInput(draft.refundIban),
+    taxTreatment: draft.taxTreatment,
     availableVatRates,
     lines: draft.lines.map((line, index) => {
       const base = {
@@ -123,7 +126,10 @@ export function createManualCreditLineForm(
     quantity: '1,00',
     unit: 'kpl',
     unitPrice: '',
-    vatRateBasisPoints: form.availableVatRates[0] ?? 0,
+    vatRateBasisPoints:
+      form.taxTreatment === 'reverseChargeConstruction'
+        ? null
+        : (form.availableVatRates[0] ?? null),
     discount: { type: 'none' },
     savedGrossCents: 0,
   };
@@ -204,7 +210,13 @@ export function validateAndMapCreditInvoiceDraftForm(
     if (unitPriceCents === null || unitPriceCents <= 0) {
       errors.add('unitPrice');
     }
-    if (!form.availableVatRates.includes(line.vatRateBasisPoints)) {
+    const hasValidVatRate =
+      form.taxTreatment === 'reverseChargeConstruction'
+        ? line.vatRateBasisPoints === null
+        : line.vatRateBasisPoints !== null &&
+          form.availableVatRates.includes(line.vatRateBasisPoints);
+
+    if (!hasValidVatRate) {
       errors.add('vatRate');
     }
 
@@ -214,7 +226,7 @@ export function validateAndMapCreditInvoiceDraftForm(
       unit !== null &&
       unitPriceCents !== null &&
       unitPriceCents > 0 &&
-      form.availableVatRates.includes(line.vatRateBasisPoints)
+      hasValidVatRate
     ) {
       lines.push({
         lineType: 'manual',

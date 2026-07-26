@@ -45,8 +45,10 @@ describe('prepareInvoiceDraftSaveInput', () => {
       invoiceDate: '2026-06-16',
       dueDate: '2026-06-30',
       paymentTermDays: 14,
+      performancePeriod: { type: 'invoiceDate' },
       priceInputMode: 'net',
       subject: 'Työlasku',
+      taxTreatment: 'normalVat',
       lines: [
         {
           description: 'Työtunti',
@@ -195,7 +197,9 @@ function createInvoiceDraftInput(): InvoiceDraftInput {
     ],
     paymentTermDays: 14,
     latePaymentInterestBasisPoints: 950,
+    performancePeriod: { type: 'invoiceDate' },
     priceInputMode: 'net',
+    taxTreatment: 'normalVat',
   };
 }
 
@@ -216,6 +220,8 @@ function createInvoiceDraft(input: InvoiceDraftInput): InvoiceDraft {
     latePaymentInterestBasisPoints:
       input.latePaymentInterestBasisPoints ?? 950,
     priceInputMode: input.priceInputMode,
+    taxTreatment: input.taxTreatment ?? 'normalVat',
+    performancePeriod: input.performancePeriod ?? { type: 'invoiceDate' },
     reminderPeriodDays: input.reminderPeriodDays ?? 0,
     status: 'draft',
     subject: '',

@@ -17,6 +17,7 @@ describe('ApprovedInvoiceTotals', () => {
           },
         ]}
         invoiceKind="standard"
+        taxTreatment="normalVat"
         totals={{
           grossTotalCents: 12550,
           netTotalCents: 10000,

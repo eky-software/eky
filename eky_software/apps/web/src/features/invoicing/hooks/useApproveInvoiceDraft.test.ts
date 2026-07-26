@@ -11,7 +11,7 @@ import {
 import { uiText } from '../../../i18n/fi.js';
 
 describe('approveInvoiceDraftWithClient', () => {
-  it('calls approveInvoiceDraft with only the draft id', async () => {
+  it('calls approveInvoiceDraft without server-owned approval values', async () => {
     const approvedInvoice = createApprovedInvoiceResult();
     const apiClient = {
       approveInvoiceDraft: vi.fn(async () => approvedInvoice),
@@ -21,7 +21,10 @@ describe('approveInvoiceDraftWithClient', () => {
       approveInvoiceDraftWithClient(apiClient, 'draft-1'),
     ).resolves.toBe(approvedInvoice);
 
-    expect(apiClient.approveInvoiceDraft).toHaveBeenCalledWith('draft-1');
+    expect(apiClient.approveInvoiceDraft).toHaveBeenCalledWith(
+      'draft-1',
+      {},
+    );
     expect(apiClient.approveInvoiceDraft).not.toHaveBeenCalledWith(
       'draft-1',
       expect.objectContaining({
@@ -33,6 +36,21 @@ describe('approveInvoiceDraftWithClient', () => {
         referenceNumberType: expect.anything(),
       }),
     );
+  });
+
+  it('forwards only the explicit reverse charge confirmation', async () => {
+    const approvedInvoice = createApprovedInvoiceResult();
+    const apiClient = {
+      approveInvoiceDraft: vi.fn(async () => approvedInvoice),
+    };
+
+    await approveInvoiceDraftWithClient(apiClient, 'draft-1', {
+      reverseChargeEligibilityConfirmed: true,
+    });
+
+    expect(apiClient.approveInvoiceDraft).toHaveBeenCalledWith('draft-1', {
+      reverseChargeEligibilityConfirmed: true,
+    });
   });
 });
 
