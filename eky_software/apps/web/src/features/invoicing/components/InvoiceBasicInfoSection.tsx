@@ -324,6 +324,9 @@ export function InvoiceBasicInfoSection({
             <label>
               <input
                 checked={form.priceInputMode === 'gross'}
+                disabled={
+                  form.taxTreatment === 'reverseChargeConstruction'
+                }
                 name="priceInputMode"
                 type="radio"
                 value="gross"
@@ -332,6 +335,11 @@ export function InvoiceBasicInfoSection({
               <span>{uiText.invoicing.priceInputGross}</span>
             </label>
           </div>
+          {form.taxTreatment === 'reverseChargeConstruction' ? (
+            <small className={styles.fieldHelp}>
+              {uiText.invoicing.reverseChargeNetOnlyHelp}
+            </small>
+          ) : null}
         </fieldset>
 
         <label className={`${styles.field} ${styles.wideField}`}>

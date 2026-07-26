@@ -74,6 +74,10 @@ function renderFacts(
       refundIbanSnapshot=""
       reminderPeriodDays={8}
       subject="Approved invoice"
+      taxLegalBasisSnapshot=""
+      taxTreatment="normalVat"
+      taxTreatmentLabelSnapshot=""
+      performancePeriod={{ type: 'invoiceDate' }}
       {...overrides}
     />,
   );

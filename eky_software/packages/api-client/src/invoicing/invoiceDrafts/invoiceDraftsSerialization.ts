@@ -3,6 +3,7 @@ import type {
   InvoiceDraftInput,
   InvoiceDraftLineInput,
   InvoiceLineDiscount,
+  InvoicePerformancePeriod,
 } from './invoiceDraftsTypes.js';
 
 export function serializeInvoiceDraftInput(
@@ -52,6 +53,16 @@ export function serializeInvoiceDraftInput(
     body.deliveryAddressText = input.deliveryAddressText;
   }
 
+  if (input.taxTreatment !== undefined) {
+    body.taxTreatment = input.taxTreatment;
+  }
+
+  if (input.performancePeriod !== undefined) {
+    body.performancePeriod = serializePerformancePeriod(
+      input.performancePeriod,
+    );
+  }
+
   return body;
 }
 
@@ -63,15 +74,39 @@ function serializeInvoiceDraftLineInput(
     quantityHundredths: input.quantityHundredths,
     unit: input.unit,
     unitPriceCents: input.unitPriceCents,
-    vatRateBasisPoints: input.vatRateBasisPoints,
     discount: serializeDiscount(input.discount),
   };
+
+  if (input.vatRateBasisPoints !== undefined) {
+    line.vatRateBasisPoints = input.vatRateBasisPoints;
+  }
 
   if (input.code !== undefined) {
     line.code = input.code;
   }
 
   return line;
+}
+
+function serializePerformancePeriod(
+  period: InvoicePerformancePeriod,
+): InvoicePerformancePeriod {
+  if (period.type === 'invoiceDate') {
+    return { type: 'invoiceDate' };
+  }
+
+  if (period.type === 'singleDate') {
+    return {
+      type: 'singleDate',
+      date: period.date,
+    };
+  }
+
+  return {
+    type: 'dateRange',
+    startDate: period.startDate,
+    endDate: period.endDate,
+  };
 }
 
 function serializeDiscount(

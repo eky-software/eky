@@ -19,12 +19,24 @@ export function createInvoiceDraftsApi(
   baseUrl: string,
 ): InvoiceDraftsApi {
   return {
-    async approveInvoiceDraft(id): Promise<ApprovedInvoiceResult> {
+    async approveInvoiceDraft(id, input = {}): Promise<ApprovedInvoiceResult> {
+      const hasBody = input.reverseChargeEligibilityConfirmed !== undefined;
       const responseBody = await requestJson(
         fetchImplementation,
         baseUrl,
         `/invoice-drafts/${encodeURIComponent(id)}/approve`,
-        { method: 'POST' },
+        hasBody
+          ? {
+              body: JSON.stringify({
+                reverseChargeEligibilityConfirmed:
+                  input.reverseChargeEligibilityConfirmed,
+              }),
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              method: 'POST',
+            }
+          : { method: 'POST' },
       );
 
       return readApproveInvoiceDraftResponse(responseBody);

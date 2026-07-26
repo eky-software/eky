@@ -65,6 +65,8 @@ function createDraft(
     reminderPeriodDays: 8,
     latePaymentInterestBasisPoints: 950,
     priceInputMode: 'net',
+    taxTreatment: 'normalVat',
+    performancePeriod: { type: 'invoiceDate' },
     subject: 'Test invoice',
     orderNumber: '',
     note: '',
@@ -74,7 +76,17 @@ function createDraft(
     updatedAt: '2026-06-13T00:00:00.000Z',
     ...draftOverrides,
     lines,
-    totals: calculateInvoiceTotals(lines),
+    totals: calculateInvoiceTotals(
+      lines.map((line) => {
+        if (line.vatRateBasisPoints === null) {
+          throw new Error('Normal VAT test line requires a VAT rate.');
+        }
+        return {
+          ...line,
+          vatRateBasisPoints: line.vatRateBasisPoints,
+        };
+      }),
+    ),
   };
 }
 

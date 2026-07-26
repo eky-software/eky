@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  applyInvoiceTaxTreatment,
   calculateDueDateInput,
   createInitialNewInvoiceForm,
   updateNewInvoiceFormField,
@@ -15,7 +16,9 @@ describe('createInitialNewInvoiceForm', () => {
       invoiceDate: '2026-06-14',
       latePaymentInterestPercent: '',
       paymentTermDays: '14',
+      performancePeriodType: 'invoiceDate',
       priceInputMode: 'net',
+      taxTreatment: 'normalVat',
     });
   });
 
@@ -98,6 +101,39 @@ describe('createInitialNewInvoiceForm', () => {
 
     expect(updatedForm.customerId).toBe('customer-1');
     expect(updatedForm.invoiceDate).toBe(form.invoiceDate);
+  });
+
+  it('clears VAT rates and forces net prices for reverse charge', () => {
+    const form = {
+      ...createInitialNewInvoiceForm(new Date(2026, 5, 15)),
+      priceInputMode: 'gross' as const,
+    };
+
+    const reverseChargeForm = applyInvoiceTaxTreatment(
+      form,
+      'reverseChargeConstruction',
+      2550,
+    );
+
+    expect(reverseChargeForm.priceInputMode).toBe('net');
+    expect(reverseChargeForm.lines[0]?.vatRateBasisPoints).toBeNull();
+  });
+
+  it('restores the configured VAT rate when returning to normal VAT', () => {
+    const form = applyInvoiceTaxTreatment(
+      createInitialNewInvoiceForm(new Date(2026, 5, 15)),
+      'reverseChargeConstruction',
+      2550,
+    );
+
+    const normalVatForm = applyInvoiceTaxTreatment(
+      form,
+      'normalVat',
+      1350,
+    );
+
+    expect(normalVatForm.taxTreatment).toBe('normalVat');
+    expect(normalVatForm.lines[0]?.vatRateBasisPoints).toBe(1350);
   });
 });
 

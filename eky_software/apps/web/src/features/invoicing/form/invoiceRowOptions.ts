@@ -27,24 +27,26 @@ export const invoiceVatRateOptions: readonly InvoiceRowOption<number>[] = [
   { value: 2550, label: '25,5 %' },
   { value: 1350, label: '13,5 %' },
   { value: 1000, label: '10 %' },
-  { value: 0, label: '0 %' },
 ];
 
 export function createInvoiceVatRateOptions(
   configuredRates: readonly InvoiceVatRate[] | null,
-  currentRateBasisPoints: number,
+  currentRateBasisPoints: number | null,
 ): InvoiceRowOption<number>[] {
   const activeRates = configuredRates === null
     ? [...invoiceVatRateOptions]
     : configuredRates
-        .filter((vatRate) => vatRate.isActive)
+        .filter((vatRate) => vatRate.isActive && vatRate.rateBasisPoints > 0)
         .sort((left, right) => left.sortOrder - right.sortOrder)
         .map((vatRate) => ({
           value: vatRate.rateBasisPoints,
           label: vatRate.label,
         }));
 
-  if (!activeRates.some((option) => option.value === currentRateBasisPoints)) {
+  if (
+    currentRateBasisPoints !== null &&
+    !activeRates.some((option) => option.value === currentRateBasisPoints)
+  ) {
     activeRates.push({
       value: currentRateBasisPoints,
       label: `${formatVatRate(currentRateBasisPoints)} (laskulla käytössä)`,

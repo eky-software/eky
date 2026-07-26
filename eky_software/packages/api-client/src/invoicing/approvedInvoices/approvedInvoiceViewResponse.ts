@@ -24,6 +24,10 @@ import type {
   SentInvoiceGroup,
   SentInvoiceGroupListPage,
 } from './approvedInvoicesTypes.js';
+import type {
+  InvoicePerformancePeriod,
+  InvoiceTaxTreatment,
+} from '../invoiceDrafts/index.js';
 
 export function readApprovedInvoiceListResponse(
   responseBody: unknown,
@@ -269,6 +273,13 @@ export function parseApprovedInvoiceView(value: unknown): ApprovedInvoiceView {
       'latePaymentInterestBasisPoints',
     ),
     priceInputMode: parsePriceInputMode(value.priceInputMode),
+    taxTreatment: parseTaxTreatment(value.taxTreatment),
+    taxTreatmentLabelSnapshot: readString(
+      value,
+      'taxTreatmentLabelSnapshot',
+    ),
+    taxLegalBasisSnapshot: readString(value, 'taxLegalBasisSnapshot'),
+    performancePeriod: parsePerformancePeriod(value.performancePeriod),
     subject: readString(value, 'subject'),
     orderNumber: readString(value, 'orderNumber'),
     note: readString(value, 'note'),
@@ -388,7 +399,10 @@ function parseApprovedInvoiceLine(value: unknown): ApprovedInvoiceLine {
     quantityHundredths: readSafeInteger(value, 'quantityHundredths'),
     unit: parseInvoiceUnit(value.unit),
     unitPriceCents: readSafeInteger(value, 'unitPriceCents'),
-    vatRateBasisPoints: readSafeInteger(value, 'vatRateBasisPoints'),
+    vatRateBasisPoints: readNullableSafeInteger(
+      value,
+      'vatRateBasisPoints',
+    ),
     discount: parseDiscount(value.discount),
     baseCents: readSafeInteger(value, 'baseCents'),
     discountCents: readSafeInteger(value, 'discountCents'),
@@ -448,4 +462,56 @@ function parseDiscount(value: unknown): ApprovedInvoiceLineDiscount {
   }
 
   throw invalidApprovedInvoiceResponse(value);
+}
+
+function parseTaxTreatment(value: unknown): InvoiceTaxTreatment {
+  if (value === 'normalVat' || value === 'reverseChargeConstruction') {
+    return value;
+  }
+
+  throw invalidApprovedInvoiceResponse(value);
+}
+
+function parsePerformancePeriod(value: unknown): InvoicePerformancePeriod {
+  if (!isRecord(value)) {
+    throw invalidApprovedInvoiceResponse(value);
+  }
+
+  if (value.type === 'invoiceDate' && Object.keys(value).length === 1) {
+    return { type: 'invoiceDate' };
+  }
+
+  if (
+    value.type === 'singleDate' &&
+    Object.keys(value).length === 2 &&
+    typeof value.date === 'string'
+  ) {
+    return { type: 'singleDate', date: value.date };
+  }
+
+  if (
+    value.type === 'dateRange' &&
+    Object.keys(value).length === 3 &&
+    typeof value.startDate === 'string' &&
+    typeof value.endDate === 'string'
+  ) {
+    return {
+      type: 'dateRange',
+      startDate: value.startDate,
+      endDate: value.endDate,
+    };
+  }
+
+  throw invalidApprovedInvoiceResponse(value);
+}
+
+function readNullableSafeInteger(
+  value: Record<string, unknown>,
+  fieldName: string,
+): number | null {
+  if (value[fieldName] === null) {
+    return null;
+  }
+
+  return readSafeInteger(value, fieldName);
 }

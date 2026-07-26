@@ -67,6 +67,13 @@
   text-transform: uppercase;
 }
 
+.headWithoutVat {
+  grid-template-columns:
+    44px minmax(260px, 1.8fr) 92px 92px minmax(120px, 0.7fr)
+    132px;
+  min-width: 856px;
+}
+
 @media (max-width: 860px) {
   .sectionHeader {
     align-items: stretch;

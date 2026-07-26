@@ -13,8 +13,13 @@ describe('InvoiceApprovalConfirmation', () => {
     const html = renderToStaticMarkup(
       <InvoiceApprovalConfirmation
         isApproving={false}
+        isReverseCharge={false}
+        isReverseChargeConfirmed={false}
+        legalCustomerBusinessId=""
+        legalCustomerName=""
         onCancel={vi.fn()}
         onConfirm={vi.fn()}
+        onReverseChargeConfirmationChange={vi.fn()}
       />,
     );
 
@@ -29,12 +34,37 @@ describe('InvoiceApprovalConfirmation', () => {
     const html = renderToStaticMarkup(
       <InvoiceApprovalConfirmation
         isApproving={true}
+        isReverseCharge={false}
+        isReverseChargeConfirmed={false}
+        legalCustomerBusinessId=""
+        legalCustomerName=""
         onCancel={vi.fn()}
         onConfirm={vi.fn()}
+        onReverseChargeConfirmationChange={vi.fn()}
       />,
     );
 
     expect(html).toContain(uiText.invoicing.approvingDraft);
+  });
+
+  it('requires explicit confirmation for reverse charge approval', () => {
+    const html = renderToStaticMarkup(
+      <InvoiceApprovalConfirmation
+        isApproving={false}
+        isReverseCharge
+        isReverseChargeConfirmed={false}
+        legalCustomerBusinessId="1234567-8"
+        legalCustomerName="Rakennusostaja Oy"
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+        onReverseChargeConfirmationChange={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain('Rakennusostaja Oy');
+    expect(html).toContain('1234567-8');
+    expect(html).toContain('type="checkbox"');
+    expect(html).toContain('disabled=""');
   });
 });
 

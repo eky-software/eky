@@ -236,6 +236,10 @@ function createApprovedInvoiceView(
     sourceDraftId: 'draft-1',
     status: 'approved',
     subject: 'Approved invoice',
+    taxLegalBasisSnapshot: '',
+    taxTreatment: 'normalVat',
+    taxTreatmentLabelSnapshot: '',
+    performancePeriod: { type: 'invoiceDate' },
     totals: {
       grossTotalCents: 12550,
       netTotalCents: 10000,

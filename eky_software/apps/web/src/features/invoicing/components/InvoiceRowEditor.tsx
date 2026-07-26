@@ -23,6 +23,7 @@ interface InvoiceRowEditorProps {
   errors: InvoiceDraftLineFormErrors | undefined;
   position: number;
   row: InvoiceRowForm;
+  showVat: boolean;
   vatRates: readonly InvoiceVatRate[] | null;
   onChange<FieldName extends InvoiceRowFormField>(
     rowId: string,
@@ -37,6 +38,7 @@ export function InvoiceRowEditor({
   errors,
   position,
   row,
+  showVat,
   vatRates,
   onChange,
   onRemove,
@@ -62,8 +64,12 @@ export function InvoiceRowEditor({
   }, [errors?.discountValue, row.discountType]);
 
   return (
-    <div className={styles.row}>
-      <div className={styles.mainRow}>
+    <div className={`${styles.row} ${showVat ? '' : styles.rowWithoutVat}`}>
+      <div
+        className={`${styles.mainRow} ${
+          showVat ? '' : styles.mainRowWithoutVat
+        }`}
+      >
         <span className={styles.position} aria-label={uiText.invoicing.row}>
           {position}
         </span>
@@ -161,24 +167,26 @@ export function InvoiceRowEditor({
           <InvoiceRowFieldError message={errors?.unitPrice} />
         </div>
 
-        <select
-          aria-label={uiText.invoicing.rowVat}
-          name={`${row.id}-vatRate`}
-          value={row.vatRateBasisPoints}
-          onChange={(event) =>
-            onChange(
-              row.id,
-              'vatRateBasisPoints',
-              Number(event.target.value),
-            )
-          }
-        >
-          {vatRateOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+        {showVat ? (
+          <select
+            aria-label={uiText.invoicing.rowVat}
+            name={`${row.id}-vatRate`}
+            value={row.vatRateBasisPoints ?? ''}
+            onChange={(event) =>
+              onChange(
+                row.id,
+                'vatRateBasisPoints',
+                Number(event.target.value),
+              )
+            }
+          >
+            {vatRateOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        ) : null}
 
         <div className={styles.actions}>
           <button

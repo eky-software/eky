@@ -188,6 +188,14 @@ export function CreditInvoiceDraftEditorView({
               : uiText.invoicing.priceInputGross
           }
         />
+        <Definition
+          label={uiText.invoicing.taxTreatment}
+          value={
+            draft.taxTreatment === 'reverseChargeConstruction'
+              ? uiText.invoicing.taxTreatmentReverseChargeConstruction
+              : uiText.invoicing.taxTreatmentNormalVat
+          }
+        />
       </dl>
 
       <section className={styles.textFields}>
@@ -272,6 +280,7 @@ export function CreditInvoiceDraftEditorView({
               index={index}
               key={line.key}
               line={line}
+              showVat={draft.taxTreatment === 'normalVat'}
               onChange={(nextLine) =>
                 updateForm((current) => ({
                   ...current,

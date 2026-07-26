@@ -25,7 +25,7 @@ interface InvoiceLineColumns {
   description: InvoiceLineColumn;
   quantity: InvoiceLineColumn;
   unit: InvoiceLineColumn;
-  vatRate: InvoiceLineColumn;
+  vatRate: InvoiceLineColumn | null;
   unitPrice: InvoiceLineColumn;
   lineTotal: InvoiceLineColumn;
 }
@@ -36,7 +36,11 @@ export function drawInvoiceLines(
   y: number,
 ): number {
   const x = invoicePdfLayout.margin;
-  const columns = createInvoiceLineColumns(x, invoice.priceInputMode);
+  const columns = createInvoiceLineColumns(
+    x,
+    invoice.priceInputMode,
+    invoice.taxTreatment,
+  );
   let currentY = drawInvoiceLinesHeader(doc, columns, y);
 
   for (const line of invoice.lines) {
@@ -119,15 +123,17 @@ function drawLineRow(
     width: columns.unit.width,
     align: columns.unit.align,
   });
-  doc.text(
-    formatPdfPercentBasisPoints(line.vatRateBasisPoints),
-    columns.vatRate.x,
-    y,
-    {
-      width: columns.vatRate.width,
-      align: columns.vatRate.align,
-    },
-  );
+  if (columns.vatRate !== null && line.vatRateBasisPoints !== null) {
+    doc.text(
+      formatPdfPercentBasisPoints(line.vatRateBasisPoints),
+      columns.vatRate.x,
+      y,
+      {
+        width: columns.vatRate.width,
+        align: columns.vatRate.align,
+      },
+    );
+  }
   doc.text(formatPdfPresentedCents(unitPrice, invoiceKind), columns.unitPrice.x, y, {
     width: columns.unitPrice.width,
     align: columns.unitPrice.align,
@@ -166,13 +172,33 @@ function calculateLineHeight(
 function createInvoiceLineColumns(
   x: number,
   priceInputMode: ApprovedInvoiceView['priceInputMode'],
+  taxTreatment: ApprovedInvoiceView['taxTreatment'],
 ): InvoiceLineColumns {
+  const isReverseCharge = taxTreatment === 'reverseChargeConstruction';
+
   return {
     code: { label: 'Koodi', x, width: 47, align: 'left' },
-    description: { label: 'Nimike', x: x + 50, width: 188, align: 'left' },
-    quantity: { label: 'Määrä', x: x + 243, width: 39, align: 'right' },
-    unit: { label: 'Yks', x: x + 287, width: 25, align: 'left' },
-    vatRate: { label: 'ALV %', x: x + 314, width: 42, align: 'right' },
+    description: {
+      label: 'Nimike',
+      x: x + 50,
+      width: isReverseCharge ? 230 : 188,
+      align: 'left',
+    },
+    quantity: {
+      label: 'Määrä',
+      x: x + (isReverseCharge ? 285 : 243),
+      width: 39,
+      align: 'right',
+    },
+    unit: {
+      label: 'Yks',
+      x: x + (isReverseCharge ? 329 : 287),
+      width: 25,
+      align: 'left',
+    },
+    vatRate: isReverseCharge
+      ? null
+      : { label: 'ALV %', x: x + 314, width: 42, align: 'right' },
     unitPrice: {
       label: priceInputMode === 'gross' ? 'A-hinta sis. alv' : 'A-hinta alv 0',
       x: x + 361,
@@ -196,7 +222,7 @@ function getInvoiceLineColumnList(
     columns.description,
     columns.quantity,
     columns.unit,
-    columns.vatRate,
+    ...(columns.vatRate === null ? [] : [columns.vatRate]),
     columns.unitPrice,
     columns.lineTotal,
   ];

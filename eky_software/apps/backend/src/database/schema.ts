@@ -85,6 +85,10 @@ export interface InvoiceDraftTable {
   note: string;
   delivery_address_text: string;
   refund_iban: string;
+  tax_treatment: string;
+  performance_date: string | null;
+  performance_period_start: string | null;
+  performance_period_end: string | null;
   net_total_cents: number;
   vat_total_cents: number;
   gross_total_cents: number;
@@ -104,7 +108,7 @@ export interface InvoiceDraftLineTable {
   quantity_hundredths: number;
   unit: string;
   unit_price_cents: number;
-  vat_rate_basis_points: number;
+  vat_rate_basis_points: number | null;
   discount_type: string;
   discount_value: number;
   base_cents: number;
@@ -210,6 +214,12 @@ export interface InvoiceTable {
   note: string;
   delivery_address_text: string;
   refund_iban_snapshot: string;
+  tax_treatment: string;
+  tax_treatment_label_snapshot: string;
+  tax_legal_basis_snapshot: string;
+  performance_date: string | null;
+  performance_period_start: string | null;
+  performance_period_end: string | null;
   total_net_cents: number;
   total_vat_cents: number;
   total_gross_cents: number;
@@ -231,7 +241,7 @@ export interface InvoiceLineTable {
   quantity_hundredths: number;
   unit: string;
   unit_price_cents: number;
-  vat_rate_basis_points: number;
+  vat_rate_basis_points: number | null;
   discount_type: string;
   discount_value: number;
   base_cents: number;

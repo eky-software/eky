@@ -68,6 +68,8 @@ function createCreditDraft(): CreditInvoiceDraft {
     reminderPeriodDays: 0,
     latePaymentInterestBasisPoints: 0,
     priceInputMode: 'net',
+    taxTreatment: 'normalVat',
+    performancePeriod: { type: 'invoiceDate' },
     subject: 'Hyvityslasku laskulle 20260001',
     orderNumber: '',
     note: '',

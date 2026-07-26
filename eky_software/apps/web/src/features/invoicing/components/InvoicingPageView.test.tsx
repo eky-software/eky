@@ -584,6 +584,8 @@ function createInvoiceDraft() {
     paymentTermDays: 14,
     latePaymentInterestBasisPoints: 950,
     priceInputMode: 'net' as const,
+    taxTreatment: 'normalVat' as const,
+    performancePeriod: { type: 'invoiceDate' as const },
     reminderPeriodDays: 0,
     status: 'draft' as const,
     subject: 'Työlasku',

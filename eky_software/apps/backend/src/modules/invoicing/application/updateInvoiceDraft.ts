@@ -3,7 +3,9 @@ import { requireIdentifier } from '../domain/invoiceDraftRules.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
 import type { CustomerAccessReader } from '../ports/customerAccessReader.js';
 import type { InvoiceDraftRepository } from '../ports/invoiceDraftRepository.js';
+import type { InvoiceCustomerTaxProfileReader } from '../ports/invoiceCustomerTaxProfileReader.js';
 import type { InvoicePaymentSettingsRepository } from '../ports/invoicePaymentSettingsRepository.js';
+import { requireReverseChargeCustomerEligibility } from '../domain/invoiceTaxTreatment.js';
 import { InvoiceDraftNotFoundError } from './invoiceDraftNotFoundError.js';
 import {
   type InvoiceDraftContentInput,
@@ -19,6 +21,7 @@ export interface UpdateInvoiceDraftInput extends InvoiceDraftContentInput {
 
 export interface UpdateInvoiceDraftDependencies {
   customerAccessReader: CustomerAccessReader;
+  invoiceCustomerTaxProfileReader: InvoiceCustomerTaxProfileReader;
   invoiceDraftRepository: InvoiceDraftRepository;
   invoicePaymentSettingsRepository: InvoicePaymentSettingsRepository;
 }
@@ -107,6 +110,21 @@ export async function updateInvoiceDraft(
       input.latePaymentInterestBasisPoints ??
       existingDraft.latePaymentInterestBasisPoints,
   });
+  if (content.taxTreatment === 'reverseChargeConstruction') {
+    const taxProfile =
+      await dependencies.invoiceCustomerTaxProfileReader.getTaxProfile(
+        customerId,
+        companyId,
+      );
+
+    if (taxProfile === undefined) {
+      throw new InvoiceDraftValidationError(
+        'Customer is not available for invoicing.',
+      );
+    }
+
+    requireReverseChargeCustomerEligibility(taxProfile);
+  }
   const updatedDraft: InvoiceDraft = {
     ...content,
     id: existingDraft.id,

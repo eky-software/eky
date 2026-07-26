@@ -16,6 +16,11 @@ import type {
   InvoiceVatBreakdown,
   PriceInputMode,
 } from '../domain/invoiceCalculation.js';
+import {
+  fromInvoicePerformancePeriodColumns,
+  toInvoicePerformancePeriodColumns,
+} from '../domain/invoicePerformancePeriod.js';
+import { resolveInvoiceTaxTreatment } from '../domain/invoiceTaxTreatment.js';
 
 interface StoredDiscount {
   type: 'none' | 'percentage' | 'fixed';
@@ -41,7 +46,7 @@ export interface InvoiceDraftSummaryRow {
 }
 
 export interface InvoiceVatBreakdownRow {
-  vat_rate_basis_points: number;
+  vat_rate_basis_points: number | null;
   net_cents: number;
   vat_cents: number;
   gross_cents: number;
@@ -79,6 +84,10 @@ function toInvoiceLineDiscount(
 }
 
 export function toInvoiceDraftRow(draft: InvoiceDraft): NewInvoiceDraftRow {
+  const performancePeriod = toInvoicePerformancePeriodColumns(
+    draft.performancePeriod,
+  );
+
   return {
     id: draft.id,
     company_id: draft.companyId,
@@ -99,6 +108,10 @@ export function toInvoiceDraftRow(draft: InvoiceDraft): NewInvoiceDraftRow {
     note: draft.note,
     delivery_address_text: draft.deliveryAddressText,
     refund_iban: draft.refundIban,
+    tax_treatment: draft.taxTreatment,
+    performance_date: performancePeriod.performanceDate,
+    performance_period_start: performancePeriod.performancePeriodStart,
+    performance_period_end: performancePeriod.performancePeriodEnd,
     net_total_cents: draft.totals.netTotalCents,
     vat_total_cents: draft.totals.vatTotalCents,
     gross_total_cents: draft.totals.grossTotalCents,
@@ -188,10 +201,30 @@ export function toInvoiceDraftSummary(
 export function toInvoiceVatBreakdown(
   row: InvoiceVatBreakdownRow,
 ): InvoiceVatBreakdown {
+  if (row.vat_rate_basis_points === null) {
+    throw new Error(
+      'Stored normal VAT breakdown cannot contain a missing VAT rate.',
+    );
+  }
+
   return {
     vatRateBasisPoints: row.vat_rate_basis_points,
     netCents: row.net_cents,
     vatCents: row.vat_cents,
     grossCents: row.gross_cents,
+  };
+}
+
+export function toInvoiceDraftTaxFields(row: InvoiceDraftTable): Pick<
+  InvoiceDraft,
+  'taxTreatment' | 'performancePeriod'
+> {
+  return {
+    taxTreatment: resolveInvoiceTaxTreatment(row.tax_treatment),
+    performancePeriod: fromInvoicePerformancePeriodColumns({
+      performanceDate: row.performance_date,
+      performancePeriodStart: row.performance_period_start,
+      performancePeriodEnd: row.performance_period_end,
+    }),
   };
 }

@@ -76,6 +76,7 @@ export type {
 } from './invoicing/invoiceCredits/index.js';
 export type {
   ApprovedInvoiceResult,
+  ApproveInvoiceDraftInput,
   ApprovedInvoiceStatus,
   InvoiceDraft,
   InvoiceDraftInput,
@@ -88,7 +89,9 @@ export type {
   InvoiceLineDiscount,
   InvoiceNumberingMode,
   InvoicePriceInputMode,
+  InvoicePerformancePeriod,
   InvoiceReferenceNumberType,
+  InvoiceTaxTreatment,
   InvoiceTotals,
   InvoiceUnit,
   InvoiceVatBreakdown,

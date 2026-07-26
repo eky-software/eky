@@ -9,6 +9,7 @@ export interface ApproveInvoiceDraftPersistenceInput {
   companyId: string;
   draftId: string;
   invoiceId: string;
+  reverseChargeEligibilityConfirmed: boolean;
   seriesKey: string;
 }
 

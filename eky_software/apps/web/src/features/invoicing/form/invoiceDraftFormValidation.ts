@@ -25,7 +25,15 @@ export interface InvoiceDraftFormErrors {
   latePaymentInterestPercent?: string;
   lines: Record<string, InvoiceDraftLineFormErrors>;
   paymentTermDays?: string;
+  performanceDate?: string;
+  performancePeriodEnd?: string;
+  performancePeriodStart?: string;
   reminderPeriodDays?: string;
+  taxTreatment?: string;
+}
+
+export interface InvoiceDraftFormValidationContext {
+  reverseChargeCustomerEligible?: boolean;
 }
 
 export interface InvoiceDraftFormValidationResult {
@@ -35,6 +43,7 @@ export interface InvoiceDraftFormValidationResult {
 
 export function validateInvoiceDraftForm(
   form: NewInvoiceFormState,
+  context: InvoiceDraftFormValidationContext = {},
 ): InvoiceDraftFormValidationResult {
   const errors: InvoiceDraftFormErrors = { lines: {} };
 
@@ -47,6 +56,8 @@ export function validateInvoiceDraftForm(
   validateReminderPeriod(form.reminderPeriodDays, errors);
   validateLatePaymentInterest(form.latePaymentInterestPercent, errors);
   validateDeliveryAddressText(form.deliveryAddressText, errors);
+  validateTaxTreatment(form, context, errors);
+  validatePerformancePeriod(form, errors);
 
   for (const row of form.lines) {
     const lineErrors = validateInvoiceDraftLine(row);
@@ -66,8 +77,69 @@ export function validateInvoiceDraftForm(
       errors.reminderPeriodDays === undefined &&
       errors.latePaymentInterestPercent === undefined &&
       errors.deliveryAddressText === undefined &&
+      errors.taxTreatment === undefined &&
+      errors.performanceDate === undefined &&
+      errors.performancePeriodStart === undefined &&
+      errors.performancePeriodEnd === undefined &&
       Object.keys(errors.lines).length === 0,
   };
+}
+
+function validateTaxTreatment(
+  form: NewInvoiceFormState,
+  context: InvoiceDraftFormValidationContext,
+  errors: InvoiceDraftFormErrors,
+): void {
+  if (form.taxTreatment !== 'reverseChargeConstruction') {
+    return;
+  }
+
+  if (form.priceInputMode !== 'net') {
+    errors.taxTreatment = uiText.invoicing.reverseChargeNetOnlyError;
+    return;
+  }
+
+  if (context.reverseChargeCustomerEligible !== true) {
+    errors.taxTreatment =
+      uiText.invoicing.reverseChargeCustomerEligibilityError;
+  }
+}
+
+function validatePerformancePeriod(
+  form: NewInvoiceFormState,
+  errors: InvoiceDraftFormErrors,
+): void {
+  if (form.performancePeriodType === 'singleDate') {
+    if (!isValidIsoDate(form.performanceDate.trim())) {
+      errors.performanceDate =
+        uiText.invoicing.validationPerformanceDate;
+    }
+    return;
+  }
+
+  if (form.performancePeriodType !== 'dateRange') {
+    return;
+  }
+
+  const startDate = form.performancePeriodStart.trim();
+  const endDate = form.performancePeriodEnd.trim();
+
+  if (!isValidIsoDate(startDate)) {
+    errors.performancePeriodStart =
+      uiText.invoicing.validationPerformancePeriodStart;
+  }
+  if (!isValidIsoDate(endDate)) {
+    errors.performancePeriodEnd =
+      uiText.invoicing.validationPerformancePeriodEnd;
+  }
+  if (
+    errors.performancePeriodStart === undefined &&
+    errors.performancePeriodEnd === undefined &&
+    endDate < startDate
+  ) {
+    errors.performancePeriodEnd =
+      uiText.invoicing.validationPerformancePeriodOrder;
+  }
 }
 
 function validateDates(

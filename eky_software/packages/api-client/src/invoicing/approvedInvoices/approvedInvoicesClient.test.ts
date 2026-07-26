@@ -213,7 +213,7 @@ describe('approved invoices api client', () => {
       lines: [
         { ...createTestApprovedInvoiceView().lines[0], unit: 'pak' },
         {
-          ...createTestApprovedInvoiceView().lines[0],
+          ...createTestApprovedInvoiceView().lines[0]!,
           id: 'line-2',
           unit: 'ltk',
         },
@@ -224,6 +224,39 @@ describe('approved invoices api client', () => {
     const result = await client.getApprovedInvoice('invoice-1');
 
     expect(result.lines.map((line) => line.unit)).toEqual(['pak', 'ltk']);
+  });
+
+  it('reads reverse charge snapshot fields without normal VAT values', async () => {
+    const requests = createRequestLog();
+    const invoice = createTestApprovedInvoiceView({
+      taxTreatment: 'reverseChargeConstruction',
+      taxTreatmentLabelSnapshot: 'Käännetty verovelvollisuus',
+      taxLegalBasisSnapshot: 'AVL 8 c §',
+      performancePeriod: {
+        type: 'singleDate',
+        date: '2026-06-12',
+      },
+      lines: [
+        {
+          ...createTestApprovedInvoiceView().lines[0]!,
+          vatRateBasisPoints: null,
+          vatCents: 0,
+          grossCents: 10000,
+        },
+      ],
+      totals: {
+        netTotalCents: 10000,
+        vatTotalCents: 0,
+        grossTotalCents: 10000,
+        vatBreakdown: [],
+      },
+      vatBreakdown: [],
+    });
+    const client = createTestClient(requests, { invoice });
+
+    await expect(client.getApprovedInvoice('invoice-1')).resolves.toEqual(
+      invoice,
+    );
   });
 
   it('creates approved invoice PDF metadata through POST /invoices/:id/pdf', async () => {
@@ -989,6 +1022,10 @@ function createTestApprovedInvoiceView(
     reminderPeriodDays: 8,
     latePaymentInterestBasisPoints: 950,
     priceInputMode: 'net',
+    taxTreatment: 'normalVat',
+    taxTreatmentLabelSnapshot: '',
+    taxLegalBasisSnapshot: '',
+    performancePeriod: { type: 'invoiceDate' },
     subject: 'Test invoice',
     orderNumber: 'ORDER-1',
     note: 'Invoice note',
@@ -1150,6 +1187,8 @@ function createTestInvoiceDraft(): InvoiceDraft {
     orderNumber: 'ORDER-1',
     paymentTermDays: 14,
     priceInputMode: 'net',
+    taxTreatment: 'normalVat',
+    performancePeriod: { type: 'invoiceDate' },
     reminderPeriodDays: 8,
     status: 'draft',
     subject: 'Copied invoice',

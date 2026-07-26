@@ -6,40 +6,51 @@ MVP:n toteutusta.
 
 ## Nykyinen Rajaus
 
-Nykyinen Invoicing MVP tukee normaalia ALV-laskutusta. Laskun summat,
-ALV-erittely ja hyväksytyn laskun snapshotit muodostetaan Invoicing-domainin
-laskentasääntöjen kautta.
+Normaali ALV, yrityskohtaiset ALV-kannat, `sent`- ja `cancelled`-tilat sekä
+hyvityslaskut on toteutettu. Laskun summat, ALV-erittely ja hyväksytyn laskun
+snapshotit muodostetaan Invoicing-domainin laskentasääntöjen kautta.
 
-Tässä vaiheessa ei toteuteta:
+Rakennusalan käännetty verovelvollisuus on toteutettu
+`docs/architecture/invoice-tax-treatment-completion-plan.md`-dokumentin
+mukaisena laskutason erikoiskäsittelynä muuttamatta nykyisen `normalVat`-polun
+tuloksia. Toiminto on käyttöliittymässä laskun lisäasetuksissa, ja sen
+tuotantokäytön aineellinen soveltuvuus pitää edelleen varmistaa käyttäjän ja
+kirjanpitäjän toimesta.
 
-- rakennusalan käännettyä ALV:tä
-- ALV-kantataulua
+Tässä kokonaisuudessa ei toteuteta:
+
 - automaattista korkolain mukaista viivästyskorkoa
-- `sent`-, `paid`-, `cancelled`- tai `credited`-tiloja
-- hyvityslaskua
-- uusia migraatioita, API-reittejä tai UI-muutoksia
+- `paid`-tilaa tai maksusuorituksia
+- `vatExempt`- tai `outsideVatScope`-käsittelyä
+- rivikohtaisia sekalaskuja
+- verkkolaskua
 
 ## ALV-Käsittelyt
 
-Normaali ALV on nykyisen MVP:n oletettu käsittely. Muita ALV-käsittelyjä ei saa
+Normaali ALV on nykyisen MVP:n oletettu käsittely. Käännetty
+verovelvollisuus on erillinen eksplisiittinen käsittely. Muita
+ALV-käsittelyjä ei saa
 toteuttaa sotkemalla normaalia ALV-mallia tai tulkitsemalla `0 %`-verokantaa
 automaattisesti erikoistapaukseksi.
 
-Tuleva laskutason tai rivitason käsittelymalli voi olla esimerkiksi:
+Nykyinen laskutason käsittelymalli sisältää:
 
 - `normalVat`
 - `reverseChargeConstruction`
+
+Myöhemmin erikseen päätettäviä käsittelyjä voivat olla:
+
 - `vatExempt`
 - `outsideVatScope`
 
 Nämä ovat eri asioita kuin pelkkä `vatRateBasisPoints`-arvo. Hyväksytylle
-laskulle tallennetaan myöhemmin käytetty ALV-käsittely ja tarvittavat
+laskulle tallennetaan käytetty ALV-käsittely ja tarvittavat
 laskumerkinnät snapshot-tietoina.
 
 ## Rakennusalan Käännetty ALV
 
-Rakennusalan käännetty ALV lisätään myöhemmin hallittuna
-ALV-käsittelynä, jos sitä tarvitaan.
+Rakennusalan käännetty ALV on toteutettu hallittuna
+`reverseChargeConstruction`-käsittelynä.
 
 `reverseChargeConstruction`:
 
@@ -47,12 +58,15 @@ ALV-käsittelynä, jos sitä tarvitaan.
 - ei saa perustua ohjelman arvaukseen asiakkaasta, rivistä tai verokannasta
 - vaatii oikeat laskumerkinnät
 - vaatii ostajan tunnistetiedot
-- vaatii tarkistuksen kirjanpitäjältä tai virallisesta ohjeesta ennen
-  tuotantokäyttöä
+- vaatii tarkistuksen kirjanpitäjältä ennen tuotantokäyttöä
+- käyttää juridisena ostajana laskun customer-snapshotia
+- pitää laskun vastaanottajan erillisenä toimitusosoitteena
+- käyttää laskumerkintöjä `Käännetty verovelvollisuus` ja `AVL 8 c §`
+- ei käytä `0 %`- tai `2550`-placeholderia
 
-Tarkka laskumerkintä, ostajan tunnistetiedot ja lainkohdan esitystapa
-päätetään vasta toteutusvaiheessa. Toteutuksessa tarkistetaan ajantasaiset
-Verohallinnon ohjeet.
+Tarkka persistence-, snapshot-, hyväksyntä-, hyvitys-, PDF- ja testimalli on
+kuvattu completion planissa. Verohallinnon ajantasaiset ohjeet tarkistetaan
+aina ennen tuotantokäyttöä.
 
 ## ALV-Kannat
 
@@ -77,6 +91,11 @@ invoice_vat_rates
 Domainia ei saa kovakoodata vain nykyisiin ALV-kantoihin. Hyväksytyt laskut
 eivät saa muuttua, vaikka ALV-kantalista muuttuu myöhemmin. Hyväksytyllä
 laskulla käytetty ALV-kanta, ALV-käsittely, rivit ja summat ovat snapshot-dataa.
+
+Uusi `normalVat`-lasku ei saa R0-versiossa käyttää `0 %` verokantaa.
+Historiallinen `0 %` snapshot säilyy luettavana, mutta sitä ei tulkita
+uudelleen eikä muuteta automaattisesti. Verottomuus ja verotuksen
+ulkopuolisuus toteutetaan myöhemmin omina käsittelyinään.
 
 ## Viivästyskorko
 

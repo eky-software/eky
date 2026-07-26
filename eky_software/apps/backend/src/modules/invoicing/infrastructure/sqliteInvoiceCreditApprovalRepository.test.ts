@@ -114,6 +114,37 @@ describe('SqliteInvoiceCreditApprovalRepository', () => {
     });
   });
 
+  it('approves a reverse charge credit with inherited tax snapshots and no VAT', async () => {
+    convertFixtureToReverseCharge(database);
+    const repository = new SqliteInvoiceCreditApprovalRepository(database);
+
+    await expect(
+      repository.approveCreditDraft(createInput()),
+    ).resolves.toMatchObject({
+      outcome: 'approved',
+    });
+
+    expect(getCreditInvoice(database)).toMatchObject({
+      invoice_kind: 'credit',
+      credited_invoice_id: 'source-invoice-1',
+      tax_treatment: 'reverseChargeConstruction',
+      tax_treatment_label_snapshot: 'Käännetty verovelvollisuus',
+      tax_legal_basis_snapshot: 'AVL 8 c §',
+      performance_date: '2026-07-01',
+      performance_period_start: null,
+      performance_period_end: null,
+      total_net_cents: 5_000,
+      total_vat_cents: 0,
+      total_gross_cents: 5_000,
+    });
+    expect(getCreditLine(database)).toMatchObject({
+      vat_rate_basis_points: null,
+      net_cents: 5_000,
+      vat_cents: 0,
+      gross_cents: 5_000,
+    });
+  });
+
   it('returns a conflict if the source invoice is no longer sent', async () => {
     database
       .prepare(
@@ -630,6 +661,143 @@ function replaceDraftLineWithManualCredit(
       `,
     )
     .run();
+}
+
+function convertFixtureToReverseCharge(database: DatabaseConnection): void {
+  database.transaction(() => {
+    database
+      .prepare(
+        `
+          DELETE FROM invoice_draft_lines
+          WHERE invoice_draft_id = 'credit-draft-1'
+        `,
+      )
+      .run();
+    database
+      .prepare(
+        `
+          DELETE FROM invoice_lines
+          WHERE invoice_id = 'source-invoice-1'
+        `,
+      )
+      .run();
+    database
+      .prepare(
+        `
+          UPDATE invoices
+          SET
+            tax_treatment = 'reverseChargeConstruction',
+            tax_treatment_label_snapshot = 'Käännetty verovelvollisuus',
+            tax_legal_basis_snapshot = 'AVL 8 c §',
+            performance_date = '2026-07-01',
+            total_vat_cents = 0,
+            total_gross_cents = total_net_cents
+          WHERE id = 'source-invoice-1'
+        `,
+      )
+      .run();
+    database
+      .prepare(
+        `
+          UPDATE invoice_drafts
+          SET
+            tax_treatment = 'reverseChargeConstruction',
+            performance_date = '2026-07-01',
+            vat_total_cents = 0,
+            gross_total_cents = net_total_cents
+          WHERE id = 'credit-draft-1'
+        `,
+      )
+      .run();
+    database
+      .prepare(
+        `
+          INSERT INTO invoice_lines (
+            id,
+            invoice_id,
+            line_order,
+            code,
+            description,
+            quantity_hundredths,
+            unit,
+            unit_price_cents,
+            vat_rate_basis_points,
+            discount_type,
+            discount_value,
+            base_cents,
+            discount_cents,
+            net_cents,
+            vat_cents,
+            gross_cents,
+            created_at
+          )
+          VALUES (
+            'source-line-1',
+            'source-invoice-1',
+            1,
+            'WORK',
+            'Source work',
+            100,
+            'h',
+            10000,
+            NULL,
+            'none',
+            0,
+            10000,
+            0,
+            10000,
+            0,
+            10000,
+            '2026-07-01T10:00:00.000Z'
+          )
+        `,
+      )
+      .run();
+    database
+      .prepare(
+        `
+          INSERT INTO invoice_draft_lines (
+            id,
+            invoice_draft_id,
+            source_invoice_line_id,
+            position,
+            code,
+            description,
+            quantity_hundredths,
+            unit,
+            unit_price_cents,
+            vat_rate_basis_points,
+            discount_type,
+            discount_value,
+            base_cents,
+            discount_cents,
+            net_cents,
+            vat_cents,
+            gross_cents
+          )
+          VALUES (
+            'credit-draft-line-1',
+            'credit-draft-1',
+            'source-line-1',
+            1,
+            'WORK',
+            'Partial credit',
+            50,
+            'h',
+            10000,
+            NULL,
+            'none',
+            0,
+            5000,
+            0,
+            5000,
+            0,
+            5000
+          )
+        `,
+      )
+      .run();
+  })();
 }
 
 function getCreditInvoice(database: DatabaseConnection) {

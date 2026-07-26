@@ -189,6 +189,14 @@ function createTestApp(
   const customerAccessReader = new FakeCustomerAccessReader(
     customerBelongsToCompany,
   );
+  const invoiceCustomerTaxProfileReader = {
+    async getTaxProfile() {
+      return {
+        customerType: 'company',
+        businessId: '1234567-8',
+      };
+    },
+  };
   let approveInput: ApproveInvoiceDraftInput | undefined;
   let getInput: GetInvoiceDraftInput | undefined;
   let deleteInput: DeleteInvoiceDraftInput | undefined;
@@ -225,6 +233,7 @@ function createTestApp(
 
       return saveInvoiceDraft(input, {
         customerAccessReader,
+        invoiceCustomerTaxProfileReader,
         invoiceDraftRepository,
         invoicePaymentSettingsRepository,
       });
@@ -234,6 +243,7 @@ function createTestApp(
 
       return updateInvoiceDraft(input, {
         customerAccessReader,
+        invoiceCustomerTaxProfileReader,
         invoiceDraftRepository,
         invoicePaymentSettingsRepository,
       });
@@ -550,7 +560,7 @@ describe('invoiceDraftRoutes', () => {
     );
   });
 
-  it('ignores request-owned approval fields and returns repository-generated values', async () => {
+  it('rejects request-owned approval fields', async () => {
     const approvedInvoice = createApprovedInvoiceResult({
       invoiceNumber: '20260001',
       referenceNumber: '202600017',
@@ -569,19 +579,55 @@ describe('invoiceDraftRoutes', () => {
         method: 'POST',
       },
     );
-    const body = (await response.json()) as {
-      approvedInvoice: ApprovedInvoiceResult;
-    };
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Invalid approval body.',
+    });
+    expect(testContext.getApproveInput()).toBeUndefined();
+  });
+
+  it('accepts only the explicit reverse charge confirmation in approval body', async () => {
+    const testContext = createTestApp();
+
+    const response = await testContext.app.request(
+      '/invoice-drafts/draft-1/approve',
+      {
+        body: JSON.stringify({
+          reverseChargeEligibilityConfirmed: true,
+        }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      },
+    );
 
     expect(response.status).toBe(200);
-    expect(body).toEqual({ approvedInvoice });
     expect(testContext.getApproveInput()).toMatchObject({
+      actorUserId: 'local-user',
       companyId: 'dev-company',
       draftId: 'draft-1',
-      seriesKey: 'default',
+      reverseChargeEligibilityConfirmed: true,
     });
-    expect(testContext.getApproveInput()).not.toHaveProperty('invoiceNumber');
-    expect(testContext.getApproveInput()).not.toHaveProperty('referenceNumber');
+  });
+
+  it('rejects a non-boolean reverse charge approval confirmation', async () => {
+    const testContext = createTestApp();
+
+    const response = await testContext.app.request(
+      '/invoice-drafts/draft-1/approve',
+      {
+        body: JSON.stringify({
+          reverseChargeEligibilityConfirmed: 'yes',
+        }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Invalid approval body.',
+    });
+    expect(testContext.getApproveInput()).toBeUndefined();
   });
 
   it('returns a generic not-found response when approving an unavailable draft', async () => {

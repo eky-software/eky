@@ -120,7 +120,7 @@ function readCreditDraftLine(value: unknown): CreditInvoiceDraftLineInput {
       ),
       unit: readString(value, 'unit', maximumUnitLength),
       unitPriceCents: readNonnegativeSafeInteger(value, 'unitPriceCents'),
-      vatRateBasisPoints: readNonnegativeSafeInteger(
+      vatRateBasisPoints: readNullableNonnegativeSafeInteger(
         value,
         'vatRateBasisPoints',
       ),
@@ -193,4 +193,17 @@ function readNonnegativeSafeInteger(
     throw new CreditInvoiceDraftRequestValidationError();
   }
   return fieldValue;
+}
+
+function readNullableNonnegativeSafeInteger(
+  value: Record<string, unknown>,
+  fieldName: string,
+): number | null {
+  const fieldValue = value[fieldName];
+
+  if (fieldValue === undefined || fieldValue === null) {
+    return null;
+  }
+
+  return readNonnegativeSafeInteger(value, fieldName);
 }

@@ -14,6 +14,7 @@ import styles from './CreditInvoiceDraftEditorView.module.css';
 interface CreditInvoiceDraftLineEditorProps {
   index: number;
   line: CreditInvoiceDraftLineForm;
+  showVat: boolean;
   availableVatRates: readonly number[];
   onChange(line: CreditInvoiceDraftLineForm): void;
   onRemove(): void;
@@ -22,6 +23,7 @@ interface CreditInvoiceDraftLineEditorProps {
 export function CreditInvoiceDraftLineEditor({
   index,
   line,
+  showVat,
   availableVatRates,
   onChange,
   onRemove,
@@ -113,10 +115,14 @@ export function CreditInvoiceDraftLineEditor({
             label={uiText.invoicing.rowUnitPrice}
             value={formatApprovedInvoiceCurrencyInput(line.unitPrice)}
           />
-          <ReadonlyValue
-            label={uiText.invoicing.rowVat}
-            value={formatApprovedInvoicePercent(line.vatRateBasisPoints)}
-          />
+          {showVat && line.vatRateBasisPoints !== null ? (
+            <ReadonlyValue
+              label={uiText.invoicing.rowVat}
+              value={formatApprovedInvoicePercent(
+                line.vatRateBasisPoints,
+              )}
+            />
+          ) : null}
           <ReadonlyValue
             label={uiText.invoicing.rowDiscountType}
             value={
@@ -150,24 +156,26 @@ export function CreditInvoiceDraftLineEditor({
               value={line.unitPrice}
             />
           </label>
-          <label>
-            <span>{uiText.invoicing.rowVat}</span>
-            <select
-              onChange={(event) =>
-                onChange({
-                  ...line,
-                  vatRateBasisPoints: Number(event.currentTarget.value),
-                })
-              }
-              value={line.vatRateBasisPoints}
-            >
-              {availableVatRates.map((vatRate) => (
-                <option key={vatRate} value={vatRate}>
-                  {formatApprovedInvoicePercent(vatRate)}
-                </option>
-              ))}
-            </select>
-          </label>
+          {showVat ? (
+            <label>
+              <span>{uiText.invoicing.rowVat}</span>
+              <select
+                onChange={(event) =>
+                  onChange({
+                    ...line,
+                    vatRateBasisPoints: Number(event.currentTarget.value),
+                  })
+                }
+                value={line.vatRateBasisPoints ?? ''}
+              >
+                {availableVatRates.map((vatRate) => (
+                  <option key={vatRate} value={vatRate}>
+                    {formatApprovedInvoicePercent(vatRate)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <ReadonlyValue
             label={uiText.invoicing.rowDiscountType}
             value={uiText.invoicing.discountNone}

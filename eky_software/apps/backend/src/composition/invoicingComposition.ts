@@ -70,11 +70,13 @@ import { SqliteInvoicePaymentSettingsRepository } from '../modules/invoicing/inf
 import { SqliteInvoiceVatRateRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceVatRateRepository.js';
 import { SqliteSentInvoiceGroupReader } from '../modules/invoicing/infrastructure/sqliteSentInvoiceGroupReader.js';
 import type { CustomerAccessReader } from '../modules/invoicing/ports/customerAccessReader.js';
+import type { InvoiceCustomerTaxProfileReader } from '../modules/invoicing/ports/invoiceCustomerTaxProfileReader.js';
 import type { InvoiceEmailSettingsReader } from '../modules/invoicing/ports/invoiceEmailSettingsReader.js';
 
 interface InvoicingCompositionOptions {
   companyEmailSecretReader: CompanyEmailSecretReader;
   customerAccessReader: CustomerAccessReader;
+  invoiceCustomerTaxProfileReader: InvoiceCustomerTaxProfileReader;
   database: DatabaseConnection;
   invoiceEmailSettingsReader: InvoiceEmailSettingsReader;
   invoiceDocumentStorageRoot?: string;
@@ -169,12 +171,16 @@ export function createInvoicingComposition(
       saveInvoiceDraft: (input) =>
         saveInvoiceDraft(input, {
           customerAccessReader: options.customerAccessReader,
+          invoiceCustomerTaxProfileReader:
+            options.invoiceCustomerTaxProfileReader,
           invoiceDraftRepository,
           invoicePaymentSettingsRepository,
         }),
       updateInvoiceDraft: (input) =>
         updateInvoiceDraft(input, {
           customerAccessReader: options.customerAccessReader,
+          invoiceCustomerTaxProfileReader:
+            options.invoiceCustomerTaxProfileReader,
           invoiceDraftRepository,
           invoicePaymentSettingsRepository,
         }),

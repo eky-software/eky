@@ -337,6 +337,8 @@ function createCreditDraftView(): CreditInvoiceDraftView {
     reminderPeriodDays: 0,
     latePaymentInterestBasisPoints: 0,
     priceInputMode: 'net',
+    taxTreatment: 'normalVat',
+    performancePeriod: { type: 'invoiceDate' },
     subject: 'Hyvitys laskulle 20260001',
     orderNumber: '',
     note: '',

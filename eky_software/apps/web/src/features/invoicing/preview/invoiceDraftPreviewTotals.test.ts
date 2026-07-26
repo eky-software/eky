@@ -183,18 +183,39 @@ describe('calculateInvoiceDraftPreviewTotals', () => {
       ),
     ).toEqual({ isAvailable: false });
   });
+
+  it('previews reverse charge as net totals without seller VAT', () => {
+    const totals = calculateInvoiceDraftPreviewTotals(
+      createForm({
+        taxTreatment: 'reverseChargeConstruction',
+        vatRateBasisPoints: null,
+        quantity: '2',
+        unitPrice: '50,00',
+      }),
+    );
+
+    expect(totals).toEqual({
+      grossTotalCents: 10000,
+      isAvailable: true,
+      netTotalCents: 10000,
+      vatBreakdown: [],
+      vatTotalCents: 0,
+    });
+  });
 });
 
 function createForm(
   overrides: Partial<InvoiceRowForm> & {
     priceInputMode?: NewInvoiceFormState['priceInputMode'];
     rows?: InvoiceRowForm[];
+    taxTreatment?: NewInvoiceFormState['taxTreatment'];
   } = {},
 ): NewInvoiceFormState {
   return {
     ...createInitialNewInvoiceForm(new Date(2026, 5, 16)),
     lines: overrides.rows ?? [createRow(overrides)],
     priceInputMode: overrides.priceInputMode ?? 'net',
+    taxTreatment: overrides.taxTreatment ?? 'normalVat',
   };
 }
 
@@ -233,7 +254,9 @@ function createRow(overrides: Partial<InvoiceRowForm> = {}): InvoiceRowForm {
     rows,
     rowId,
     'vatRateBasisPoints',
-    overrides.vatRateBasisPoints ?? 2550,
+    overrides.vatRateBasisPoints === undefined
+      ? 2550
+      : overrides.vatRateBasisPoints,
   );
   rows = updateInvoiceRow(
     rows,

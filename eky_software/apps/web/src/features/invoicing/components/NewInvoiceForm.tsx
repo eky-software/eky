@@ -12,6 +12,7 @@ import {
 import { InvoiceBasicInfoSection } from './InvoiceBasicInfoSection.js';
 import { InvoiceRowsEditor } from './InvoiceRowsEditor.js';
 import { InvoiceTotalsPreview } from './InvoiceTotalsPreview.js';
+import { InvoiceTaxTreatmentSection } from './InvoiceTaxTreatmentSection.js';
 import styles from './NewInvoiceForm.module.css';
 import { toNewInvoiceFormStateFromDraft } from '../form/invoiceDraftFormHydration.js';
 import { applyInvoiceCustomerSelection } from '../form/invoiceCustomerDefaults.js';
@@ -29,6 +30,7 @@ import { resolveHourlyRateAutofillConfig } from '../form/invoiceHourlyRatePricin
 import { getDefaultInvoiceVatRateBasisPoints } from '../form/invoiceRowOptions.js';
 import {
   createInitialNewInvoiceForm,
+  applyInvoiceTaxTreatment,
   type NewInvoiceBasicInfoField,
   type NewInvoiceFormState,
   updateNewInvoiceFormField,
@@ -88,6 +90,10 @@ export function NewInvoiceForm({
   const [hasValidated, setHasValidated] = useState(false);
   const [isApprovalConfirmationVisible, setIsApprovalConfirmationVisible] =
     useState(false);
+  const [
+    reverseChargeEligibilityConfirmed,
+    setReverseChargeEligibilityConfirmed,
+  ] = useState(false);
   const [approvalGuardMessage, setApprovalGuardMessage] =
     useState<string | null>(null);
   const saveState = useSaveInvoiceDraft(apiClient, createSaveMode(mode));
@@ -99,8 +105,24 @@ export function NewInvoiceForm({
     manualSavedDraft: saveState.savedDraft,
     mode,
     onDraftAutosaved: handleDraftAutosaved,
+    reverseChargeCustomerEligible:
+      isReverseChargeCustomerEligible(
+        form.customerId,
+        customerListState.customers,
+      ),
   });
-  const validationResult = prepareInvoiceDraftSaveInput(form);
+  const selectedCustomer =
+    customerListState.customers.find(
+      (customer) => customer.id === form.customerId,
+    ) ?? null;
+  const reverseChargeCustomerEligible =
+    isReverseChargeCustomerEligible(
+      form.customerId,
+      customerListState.customers,
+    );
+  const validationResult = prepareInvoiceDraftSaveInput(form, {
+    reverseChargeCustomerEligible,
+  });
   const hourlyRateAutofillConfig = resolveHourlyRateAutofillConfig(
     form.customerId,
     customerListState.customers,
@@ -150,8 +172,30 @@ export function NewInvoiceForm({
     approveState.clearApprovalResult();
     setApprovalGuardMessage(null);
     setIsApprovalConfirmationVisible(false);
+    setReverseChargeEligibilityConfirmed(false);
     setForm(updateForm);
     setFormRevision((currentRevision) => currentRevision + 1);
+  }
+
+  function handleTaxTreatmentChange(
+    taxTreatment: NewInvoiceFormState['taxTreatment'],
+  ): void {
+    const defaultVatRateBasisPoints =
+      getDefaultInvoiceVatRateBasisPoints(
+        invoiceVatRatesState.settings?.vatRates ?? null,
+      );
+
+    if (taxTreatment === 'reverseChargeConstruction') {
+      hasManualPriceInputModeOverride.current = true;
+    }
+
+    handleFormChange((currentForm) =>
+      applyInvoiceTaxTreatment(
+        currentForm,
+        taxTreatment,
+        defaultVatRateBasisPoints,
+      ),
+    );
   }
 
   function handleFieldChange<FieldName extends NewInvoiceBasicInfoField>(
@@ -238,7 +282,9 @@ export function NewInvoiceForm({
   }
 
   async function handleSaveDraft(): Promise<void> {
-    const preparedInput = prepareInvoiceDraftSaveInput(form);
+    const preparedInput = prepareInvoiceDraftSaveInput(form, {
+      reverseChargeCustomerEligible,
+    });
 
     setHasValidated(true);
 
@@ -284,6 +330,7 @@ export function NewInvoiceForm({
     }
 
     setIsApprovalConfirmationVisible(true);
+    setReverseChargeEligibilityConfirmed(false);
   }
 
   async function handleConfirmApproval(): Promise<void> {
@@ -291,7 +338,15 @@ export function NewInvoiceForm({
       return;
     }
 
-    const approvedInvoice = await approveState.approveDraft(mode.draft.id);
+    const approvedInvoice = await approveState.approveDraft(
+      mode.draft.id,
+      form.taxTreatment === 'reverseChargeConstruction'
+        ? {
+            reverseChargeEligibilityConfirmed:
+              reverseChargeEligibilityConfirmed,
+          }
+        : {},
+    );
 
     if (approvedInvoice === null) {
       return;
@@ -453,11 +508,19 @@ export function NewInvoiceForm({
         form={form}
         onFieldChange={handleFieldChange}
       />
+      <InvoiceTaxTreatmentSection
+        errors={displayedErrors}
+        form={form}
+        selectedCustomer={selectedCustomer}
+        onFieldChange={handleFieldChange}
+        onTaxTreatmentChange={handleTaxTreatmentChange}
+      />
       <InvoiceRowsEditor
         errorsByRowId={displayedErrors?.lines}
         hourlyRateShortcut={hourlyRateAutofillConfig.shortcut}
         hourlyRateShortcutErrorMessage={companySettingsState.errorMessage}
         rows={form.lines}
+        taxTreatment={form.taxTreatment}
         vatRates={invoiceVatRatesState.settings?.vatRates ?? null}
         onAdd={handleAddRow}
         onChange={handleRowChange}
@@ -468,8 +531,17 @@ export function NewInvoiceForm({
       {isApprovalConfirmationVisible ? (
         <InvoiceApprovalConfirmation
           isApproving={approveState.isApproving}
+          isReverseCharge={
+            form.taxTreatment === 'reverseChargeConstruction'
+          }
+          isReverseChargeConfirmed={reverseChargeEligibilityConfirmed}
+          legalCustomerBusinessId={selectedCustomer?.businessId ?? ''}
+          legalCustomerName={selectedCustomer?.name ?? ''}
           onCancel={() => setIsApprovalConfirmationVisible(false)}
           onConfirm={() => void handleConfirmApproval()}
+          onReverseChargeConfirmationChange={
+            setReverseChargeEligibilityConfirmed
+          }
         />
       ) : null}
 
@@ -495,6 +567,19 @@ export function NewInvoiceForm({
         </button>
       </footer>
     </form>
+  );
+}
+
+function isReverseChargeCustomerEligible(
+  customerId: string,
+  customers: InvoiceCustomerListState['customers'],
+): boolean {
+  const customer = customers.find((item) => item.id === customerId);
+
+  return (
+    customer !== undefined &&
+    customer.customerType !== 'privatePerson' &&
+    customer.businessId.trim() !== ''
   );
 }
 

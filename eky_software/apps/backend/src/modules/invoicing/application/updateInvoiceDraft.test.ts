@@ -136,13 +136,25 @@ function createStoredDraft(): InvoiceDraft {
     reminderPeriodDays: 8,
     latePaymentInterestBasisPoints: 950,
     priceInputMode: 'net',
+    taxTreatment: 'normalVat',
+    performancePeriod: { type: 'invoiceDate' },
     subject: 'Old subject',
     orderNumber: '',
     note: '',
     deliveryAddressText: '',
     refundIban: '',
     lines,
-    totals: calculateInvoiceTotals(lines),
+    totals: calculateInvoiceTotals(
+      lines.map((line) => {
+        if (line.vatRateBasisPoints === null) {
+          throw new Error('Normal VAT test line requires a VAT rate.');
+        }
+        return {
+          ...line,
+          vatRateBasisPoints: line.vatRateBasisPoints,
+        };
+      }),
+    ),
     createdAt: '2026-06-13T10:00:00.000Z',
     updatedAt: '2026-06-13T10:00:00.000Z',
   };
@@ -201,6 +213,14 @@ function createDependencies(
     customerAccessReader: new FakeCustomerAccessReader(
       options.customerBelongsToCompany ?? true,
     ),
+    invoiceCustomerTaxProfileReader: {
+      async getTaxProfile() {
+        return {
+          customerType: 'company',
+          businessId: '1234567-8',
+        };
+      },
+    },
     invoiceDraftRepository: new FakeInvoiceDraftRepository(
       options.storedDraft,
       options.updateSucceeds,
@@ -265,8 +285,98 @@ describe('updateInvoiceDraft', () => {
       'old-line',
     );
     expect(updatedDraft.totals).toEqual(
-      calculateInvoiceTotals(updatedDraft.lines),
+      calculateInvoiceTotals(
+        updatedDraft.lines.map((line) => {
+          if (line.vatRateBasisPoints === null) {
+            throw new Error('Normal VAT test line requires a VAT rate.');
+          }
+          return {
+            ...line,
+            vatRateBasisPoints: line.vatRateBasisPoints,
+          };
+        }),
+      ),
     );
+  });
+
+  it('updates a standard draft to eligible reverse charge content', async () => {
+    const dependencies = createDependencies({
+      storedDraft: createStoredDraft(),
+    });
+
+    const updatedDraft = await updateInvoiceDraft(
+      createInput({
+        priceInputMode: 'net',
+        taxTreatment: 'reverseChargeConstruction',
+        performancePeriod: {
+          type: 'singleDate',
+          date: '2026-06-14',
+        },
+        lines: [
+          {
+            description: 'Construction service',
+            quantityHundredths: 100,
+            unit: 'h',
+            unitPriceCents: 10_000,
+            discount: { type: 'none' },
+          },
+        ],
+      }),
+      dependencies,
+    );
+
+    expect(updatedDraft).toMatchObject({
+      taxTreatment: 'reverseChargeConstruction',
+      performancePeriod: {
+        type: 'singleDate',
+        date: '2026-06-14',
+      },
+      totals: {
+        netTotalCents: 10_000,
+        vatTotalCents: 0,
+        grossTotalCents: 10_000,
+        vatBreakdown: [],
+      },
+    });
+    expect(updatedDraft.lines[0]).toMatchObject({
+      vatRateBasisPoints: null,
+      vatCents: 0,
+      netCents: 10_000,
+      grossCents: 10_000,
+    });
+  });
+
+  it('does not update reverse charge content for an ineligible customer', async () => {
+    const dependencies = createDependencies({
+      storedDraft: createStoredDraft(),
+    });
+    dependencies.invoiceCustomerTaxProfileReader = {
+      async getTaxProfile() {
+        return { customerType: 'privatePerson', businessId: '' };
+      },
+    };
+
+    await expect(
+      updateInvoiceDraft(
+        createInput({
+          priceInputMode: 'net',
+          taxTreatment: 'reverseChargeConstruction',
+          lines: [
+            {
+              description: 'Construction service',
+              quantityHundredths: 100,
+              unit: 'h',
+              unitPriceCents: 10_000,
+              discount: { type: 'none' },
+            },
+          ],
+        }),
+        dependencies,
+      ),
+    ).rejects.toThrow(
+      'Reverse charge cannot be used for a private customer.',
+    );
+    expect(dependencies.invoiceDraftRepository.updatedDraft).toBeUndefined();
   });
 
   it('preserves the existing late payment interest when update input omits it', async () => {

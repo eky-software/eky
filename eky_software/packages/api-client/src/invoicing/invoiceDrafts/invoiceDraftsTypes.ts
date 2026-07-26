@@ -1,4 +1,11 @@
 export type InvoicePriceInputMode = 'net' | 'gross';
+export type InvoiceTaxTreatment =
+  | 'normalVat'
+  | 'reverseChargeConstruction';
+export type InvoicePerformancePeriod =
+  | { type: 'invoiceDate' }
+  | { type: 'singleDate'; date: string }
+  | { type: 'dateRange'; startDate: string; endDate: string };
 export type InvoiceKind = 'standard' | 'credit';
 export type InvoiceDraftStatus = 'draft';
 export type ApprovedInvoiceStatus = 'approved';
@@ -21,7 +28,7 @@ export interface InvoiceDraftLineInput {
   quantityHundredths: number;
   unit: InvoiceUnit;
   unitPriceCents: number;
-  vatRateBasisPoints: number;
+  vatRateBasisPoints?: number | null;
   discount: InvoiceLineDiscount;
 }
 
@@ -34,6 +41,8 @@ export interface InvoiceDraftInput {
   reminderPeriodDays?: number;
   latePaymentInterestBasisPoints?: number;
   priceInputMode: InvoicePriceInputMode;
+  taxTreatment?: InvoiceTaxTreatment;
+  performancePeriod?: InvoicePerformancePeriod;
   subject?: string;
   orderNumber?: string;
   note?: string;
@@ -49,7 +58,7 @@ export interface InvoiceDraftLine {
   quantityHundredths: number;
   unit: InvoiceUnit;
   unitPriceCents: number;
-  vatRateBasisPoints: number;
+  vatRateBasisPoints: number | null;
   priceInputMode: InvoicePriceInputMode;
   discount: InvoiceLineDiscount;
   baseCents: number;
@@ -85,6 +94,8 @@ export interface InvoiceDraft {
   reminderPeriodDays: number;
   latePaymentInterestBasisPoints: number;
   priceInputMode: InvoicePriceInputMode;
+  taxTreatment: InvoiceTaxTreatment;
+  performancePeriod: InvoicePerformancePeriod;
   subject: string;
   orderNumber: string;
   note: string;
@@ -129,8 +140,15 @@ export interface ApprovedInvoiceResult {
   status: ApprovedInvoiceStatus;
 }
 
+export interface ApproveInvoiceDraftInput {
+  reverseChargeEligibilityConfirmed?: boolean;
+}
+
 export interface InvoiceDraftsApi {
-  approveInvoiceDraft(id: string): Promise<ApprovedInvoiceResult>;
+  approveInvoiceDraft(
+    id: string,
+    input?: ApproveInvoiceDraftInput,
+  ): Promise<ApprovedInvoiceResult>;
   createInvoiceDraft(input: InvoiceDraftInput): Promise<InvoiceDraft>;
   deleteInvoiceDraft(id: string): Promise<void>;
   getInvoiceDraft(id: string): Promise<InvoiceDraft>;

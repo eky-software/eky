@@ -348,6 +348,7 @@ export const uiText = {
   },
   invoicing: {
     addRow: 'Lisää rivi',
+    advancedInvoiceSettings: 'Laskun lisäasetukset',
     approveDraft: 'Hyväksy laskuksi',
     approveDraftConfirmAction: 'Hyväksy laskuksi',
     approveDraftConfirmationIntro:
@@ -400,6 +401,7 @@ export const uiText = {
     billingRecipientHelp:
       'Valinnainen. Jos jätät tyhjäksi, laskun vastaanottaja on sama kuin asiakas.',
     billingRecipientPlaceholder: 'Sama kuin asiakas',
+    businessId: 'Y-tunnus',
     copiedApprovedInvoice: 'Kopioidaan...',
     copyApprovedInvoice: 'Kopioi luonnokseksi',
     copyApprovedInvoiceConfirm:
@@ -741,7 +743,33 @@ export const uiText = {
     priceInputGross: 'Verollinen hinta',
     priceInputMode: 'Hintojen syöttötapa',
     priceInputNet: 'Veroton hinta',
+    performanceDate: 'Suorituspäivä',
+    performancePeriod: 'Palvelun suoritusajankohta',
+    performancePeriodDateRange: 'Laskutusjakso',
+    performancePeriodEnd: 'Jakson päättymispäivä',
+    performancePeriodInvoiceDate: 'Sama kuin laskun päivä',
+    performancePeriodSingleDate: 'Yksittäinen suorituspäivä',
+    performancePeriodStart: 'Jakson alkamispäivä',
     referenceNumber: 'Viitenumero',
+    reverseChargeApprovalConfirmation: (
+      customerName: string,
+      businessId: string,
+    ) =>
+      `Vahvistan, että rakennusalan käännetty verovelvollisuus soveltuu juridiselle ostajalle ${customerName} (${businessId}).`,
+    reverseChargeBusinessIdMissing: 'Y-tunnus puuttuu',
+    reverseChargeCustomerEligibilityError:
+      'Käännetty verovelvollisuus vaatii yritysasiakkaan ja tämän Y-tunnuksen.',
+    reverseChargeCustomerMissing: 'Asiakasta ei ole valittu',
+    reverseChargeLegalCustomer: 'Juridinen ostaja',
+    reverseChargeNetOnlyError:
+      'Käännetty verovelvollisuus sallii vain verottomien hintojen syöttämisen.',
+    reverseChargeNetOnlyHelp:
+      'Käännetyssä verovelvollisuudessa hinnat syötetään verottomina.',
+    reverseChargeNoSellerVat:
+      'Myyjän laskulle lisäämä arvonlisävero on 0,00 €. Ostaja vastaa veron käsittelystä.',
+    reverseChargeWarning:
+      'Valitse tämä vain, kun rakennusalan käännetyn verovelvollisuuden ehdot täyttyvät. Ohjelma ei päättele soveltuvuutta automaattisesti.',
+    reverseChargeWarningTitle: 'Tarkista verokäsittely huolellisesti',
     reopenApprovedInvoiceConfirm:
       'Tämä lasku on jo hyväksytty ja sillä on laskunumero. Muokkaus kirjataan tapahtumahistoriaan ja lasku palautetaan luonnokseksi korjausta varten. Jatketaanko?',
     reopenApprovedInvoiceError:
@@ -818,6 +846,18 @@ export const uiText = {
     vatAmount: 'Vero',
     vatTotal: 'ALV',
     vatBreakdown: 'ALV-erittely',
+    taxTreatment: 'Verokäsittely',
+    taxTreatmentNormalVat: 'Normaali arvonlisävero',
+    taxTreatmentReverseChargeConstruction:
+      'Rakennusalan käännetty verovelvollisuus',
+    taxLegalBasis: 'Veroperuste',
+    validationPerformanceDate: 'Anna kelvollinen suorituspäivä.',
+    validationPerformancePeriodEnd:
+      'Anna kelvollinen laskutusjakson päättymispäivä.',
+    validationPerformancePeriodOrder:
+      'Laskutusjakson päättymispäivä ei saa olla ennen alkamispäivää.',
+    validationPerformancePeriodStart:
+      'Anna kelvollinen laskutusjakson alkamispäivä.',
     vatRate: 'ALV',
     validateForm: 'Tarkista tiedot',
     validationCustomerRequired: 'Valitse laskutettava asiakas.',

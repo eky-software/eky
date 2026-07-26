@@ -8,6 +8,8 @@ import type {
   InvoiceLineDiscount,
   PriceInputMode,
 } from '../domain/invoiceCalculation.js';
+import type { InvoicePerformancePeriod } from '../domain/invoicePerformancePeriod.js';
+import type { InvoiceTaxTreatment } from '../domain/invoiceTaxTreatment.js';
 import { maximumInvoiceUnitLength } from '../domain/invoiceDraftRules.js';
 
 const maximumLineCount = 500;
@@ -24,6 +26,8 @@ const invoiceDraftFields = new Set([
   'reminderPeriodDays',
   'latePaymentInterestBasisPoints',
   'priceInputMode',
+  'taxTreatment',
+  'performancePeriod',
   'subject',
   'orderNumber',
   'note',
@@ -126,6 +130,64 @@ function readPriceInputMode(
   return priceInputMode;
 }
 
+function readTaxTreatment(
+  value: Record<string, unknown>,
+): InvoiceTaxTreatment | undefined {
+  if (!('taxTreatment' in value)) {
+    return undefined;
+  }
+
+  if (
+    value.taxTreatment !== 'normalVat' &&
+    value.taxTreatment !== 'reverseChargeConstruction'
+  ) {
+    throw new InvoiceDraftRequestValidationError();
+  }
+
+  return value.taxTreatment;
+}
+
+function readPerformancePeriod(
+  value: Record<string, unknown>,
+): InvoicePerformancePeriod | undefined {
+  if (!('performancePeriod' in value)) {
+    return undefined;
+  }
+
+  const period = value.performancePeriod;
+
+  if (!isRecord(period) || typeof period.type !== 'string') {
+    throw new InvoiceDraftRequestValidationError();
+  }
+
+  if (period.type === 'invoiceDate') {
+    assertAllowedFields(period, new Set(['type']));
+    return { type: period.type };
+  }
+
+  if (period.type === 'singleDate') {
+    assertAllowedFields(period, new Set(['type', 'date']));
+    return {
+      type: period.type,
+      date: readString(period, 'date', 10),
+    };
+  }
+
+  if (period.type === 'dateRange') {
+    assertAllowedFields(
+      period,
+      new Set(['type', 'startDate', 'endDate']),
+    );
+    return {
+      type: period.type,
+      startDate: readString(period, 'startDate', 10),
+      endDate: readString(period, 'endDate', 10),
+    };
+  }
+
+  throw new InvoiceDraftRequestValidationError();
+}
+
 function readDiscount(value: unknown): InvoiceLineDiscount {
   if (!isRecord(value) || typeof value.type !== 'string') {
     throw new InvoiceDraftRequestValidationError();
@@ -155,13 +217,17 @@ function readDiscount(value: unknown): InvoiceLineDiscount {
   throw new InvoiceDraftRequestValidationError();
 }
 
-function readLine(value: unknown): SaveInvoiceDraftLineInput {
+function readLine(
+  value: unknown,
+  taxTreatment: InvoiceTaxTreatment,
+): SaveInvoiceDraftLineInput {
   if (!isRecord(value)) {
     throw new InvoiceDraftRequestValidationError();
   }
 
   assertAllowedFields(value, invoiceDraftLineFields);
 
+  const vatRateBasisPoints = value.vatRateBasisPoints;
   const line: SaveInvoiceDraftLineInput = {
     description: readString(
       value,
@@ -171,9 +237,20 @@ function readLine(value: unknown): SaveInvoiceDraftLineInput {
     quantityHundredths: readSafeInteger(value, 'quantityHundredths'),
     unit: readString(value, 'unit', maximumInvoiceUnitLength),
     unitPriceCents: readSafeInteger(value, 'unitPriceCents'),
-    vatRateBasisPoints: readSafeInteger(value, 'vatRateBasisPoints'),
     discount: readDiscount(value.discount),
   };
+
+  if (taxTreatment === 'normalVat') {
+    line.vatRateBasisPoints = readSafeInteger(
+      value,
+      'vatRateBasisPoints',
+    );
+  } else if (
+    'vatRateBasisPoints' in value &&
+    vatRateBasisPoints !== null
+  ) {
+    throw new InvoiceDraftRequestValidationError();
+  }
   const code = readOptionalString(value, 'code', maximumShortTextLength);
 
   if (code !== undefined) {
@@ -195,6 +272,7 @@ function parseInvoiceDraftContentRequest(
   if (!Array.isArray(body.lines) || body.lines.length > maximumLineCount) {
     throw new InvoiceDraftRequestValidationError();
   }
+  const taxTreatment = readTaxTreatment(body) ?? 'normalVat';
 
   const input: InvoiceDraftContentInput = {
     customerId: readString(
@@ -204,8 +282,10 @@ function parseInvoiceDraftContentRequest(
     ),
     invoiceDate: readString(body, 'invoiceDate', 10),
     priceInputMode: readPriceInputMode(body),
-    lines: body.lines.map(readLine),
+    taxTreatment,
+    lines: body.lines.map((line) => readLine(line, taxTreatment)),
   };
+  const performancePeriod = readPerformancePeriod(body);
   const billingRecipientCustomerId = readOptionalString(
     body,
     'billingRecipientCustomerId',
@@ -273,6 +353,10 @@ function parseInvoiceDraftContentRequest(
 
   if (deliveryAddressText !== undefined) {
     input.deliveryAddressText = deliveryAddressText;
+  }
+
+  if (performancePeriod !== undefined) {
+    input.performancePeriod = performancePeriod;
   }
 
   return input;

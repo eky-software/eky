@@ -1,4 +1,7 @@
-import type { InvoicePriceInputMode } from '@eky/api-client';
+import type {
+  InvoicePriceInputMode,
+  InvoiceTaxTreatment,
+} from '@eky/api-client';
 
 import {
   createInitialInvoiceRows,
@@ -16,9 +19,14 @@ export interface NewInvoiceFormState {
   note: string;
   orderNumber: string;
   paymentTermDays: string;
+  performanceDate: string;
+  performancePeriodEnd: string;
+  performancePeriodStart: string;
+  performancePeriodType: 'dateRange' | 'invoiceDate' | 'singleDate';
   priceInputMode: InvoicePriceInputMode;
   reminderPeriodDays: string;
   subject: string;
+  taxTreatment: InvoiceTaxTreatment;
 }
 
 export type NewInvoiceBasicInfoField = Exclude<
@@ -40,9 +48,36 @@ export function createInitialNewInvoiceForm(
     note: '',
     orderNumber: '',
     paymentTermDays: '14',
+    performanceDate: '',
+    performancePeriodEnd: '',
+    performancePeriodStart: '',
+    performancePeriodType: 'invoiceDate',
     priceInputMode: 'net',
     reminderPeriodDays: '',
     subject: '',
+    taxTreatment: 'normalVat',
+  };
+}
+
+export function applyInvoiceTaxTreatment(
+  form: NewInvoiceFormState,
+  taxTreatment: InvoiceTaxTreatment,
+  defaultVatRateBasisPoints: number,
+): NewInvoiceFormState {
+  return {
+    ...form,
+    priceInputMode:
+      taxTreatment === 'reverseChargeConstruction'
+        ? 'net'
+        : form.priceInputMode,
+    taxTreatment,
+    lines: form.lines.map((line) => ({
+      ...line,
+      vatRateBasisPoints:
+        taxTreatment === 'reverseChargeConstruction'
+          ? null
+          : line.vatRateBasisPoints ?? defaultVatRateBasisPoints,
+    })),
   };
 }
 

@@ -9,6 +9,7 @@ describe('ApprovedInvoiceLineTable', () => {
     const html = renderToStaticMarkup(
       <ApprovedInvoiceLineTable
         invoiceKind="standard"
+        taxTreatment="normalVat"
         lines={[
           {
             baseCents: 10000,

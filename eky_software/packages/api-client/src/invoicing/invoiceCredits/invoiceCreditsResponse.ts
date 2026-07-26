@@ -1,6 +1,8 @@
 import { EkyApiError, isRecord } from '../../http.js';
 import type {
   InvoiceLineDiscount,
+  InvoicePerformancePeriod,
+  InvoiceTaxTreatment,
   InvoiceTotals,
   InvoiceUnit,
   InvoiceVatBreakdown,
@@ -93,6 +95,8 @@ function parseCreditInvoiceDraft(value: unknown): CreditInvoiceDraft {
       'latePaymentInterestBasisPoints',
     ),
     priceInputMode: parsePriceInputMode(value.priceInputMode),
+    taxTreatment: parseTaxTreatment(value.taxTreatment),
+    performancePeriod: parsePerformancePeriod(value.performancePeriod),
     subject: readString(value, 'subject'),
     orderNumber: readString(value, 'orderNumber'),
     note: readString(value, 'note'),
@@ -143,7 +147,10 @@ function parseCreditLine(value: unknown): CreditInvoiceDraftLine {
     quantityHundredths: readSafeInteger(value, 'quantityHundredths'),
     unit: parseInvoiceUnit(value.unit),
     unitPriceCents: readSafeInteger(value, 'unitPriceCents'),
-    vatRateBasisPoints: readSafeInteger(value, 'vatRateBasisPoints'),
+    vatRateBasisPoints: readNullableSafeInteger(
+      value,
+      'vatRateBasisPoints',
+    ),
     discount: parseDiscount(value.discount),
     baseCents: readSafeInteger(value, 'baseCents'),
     discountCents: readSafeInteger(value, 'discountCents'),
@@ -246,6 +253,47 @@ function parseDiscount(value: unknown): InvoiceLineDiscount {
 function parsePriceInputMode(value: unknown): 'net' | 'gross' {
   if (value === 'net' || value === 'gross') {
     return value;
+  }
+
+  throw invalidCreditInvoiceResponse(value);
+}
+
+function parseTaxTreatment(value: unknown): InvoiceTaxTreatment {
+  if (value === 'normalVat' || value === 'reverseChargeConstruction') {
+    return value;
+  }
+
+  throw invalidCreditInvoiceResponse(value);
+}
+
+function parsePerformancePeriod(value: unknown): InvoicePerformancePeriod {
+  if (!isRecord(value)) {
+    throw invalidCreditInvoiceResponse(value);
+  }
+
+  if (value.type === 'invoiceDate' && Object.keys(value).length === 1) {
+    return { type: 'invoiceDate' };
+  }
+
+  if (
+    value.type === 'singleDate' &&
+    Object.keys(value).length === 2 &&
+    typeof value.date === 'string'
+  ) {
+    return { type: 'singleDate', date: value.date };
+  }
+
+  if (
+    value.type === 'dateRange' &&
+    Object.keys(value).length === 3 &&
+    typeof value.startDate === 'string' &&
+    typeof value.endDate === 'string'
+  ) {
+    return {
+      type: 'dateRange',
+      startDate: value.startDate,
+      endDate: value.endDate,
+    };
   }
 
   throw invalidCreditInvoiceResponse(value);

@@ -10,6 +10,24 @@
   gap: 10px;
 }
 
+.reverseChargeConfirmation {
+  display: flex;
+  max-width: 760px;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid #d9a441;
+  border-radius: var(--radius-sm);
+  background: #fff7df;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.reverseChargeConfirmation input {
+  margin-top: 3px;
+}
+
 .details {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);

@@ -19,6 +19,16 @@
   align-items: center;
 }
 
+.rowWithoutVat {
+  min-width: 856px;
+}
+
+.mainRowWithoutVat {
+  grid-template-columns:
+    44px minmax(260px, 1.8fr) 92px 92px minmax(120px, 0.7fr)
+    132px;
+}
+
 .row input,
 .row select {
   width: 100%;

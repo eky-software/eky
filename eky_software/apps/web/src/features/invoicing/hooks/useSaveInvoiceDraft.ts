@@ -9,6 +9,7 @@ import { useState } from 'react';
 import { toInvoiceDraftInput } from '../form/invoiceDraftFormMapping.js';
 import {
   type InvoiceDraftFormErrors,
+  type InvoiceDraftFormValidationContext,
   validateInvoiceDraftForm,
 } from '../form/invoiceDraftFormValidation.js';
 import type { NewInvoiceFormState } from '../form/newInvoiceFormState.js';
@@ -45,8 +46,9 @@ export interface SaveInvoiceDraftState {
 
 export function prepareInvoiceDraftSaveInput(
   form: NewInvoiceFormState,
+  validationContext: InvoiceDraftFormValidationContext = {},
 ): PreparedInvoiceDraftSave {
-  const validationResult = validateInvoiceDraftForm(form);
+  const validationResult = validateInvoiceDraftForm(form, validationContext);
 
   if (!validationResult.isValid) {
     return {

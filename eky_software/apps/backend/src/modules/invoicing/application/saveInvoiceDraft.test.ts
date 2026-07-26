@@ -97,6 +97,14 @@ function createDependencies(
     customerAccessReader: new FakeCustomerAccessReader(
       customerBelongsToCompany,
     ),
+    invoiceCustomerTaxProfileReader: {
+      async getTaxProfile() {
+        return {
+          customerType: 'company',
+          businessId: '1234567-8',
+        };
+      },
+    },
     invoiceDraftRepository: new FakeInvoiceDraftRepository(),
     invoicePaymentSettingsRepository:
       new FakeInvoicePaymentSettingsRepository(invoicePaymentSettings),
@@ -202,6 +210,177 @@ describe('saveInvoiceDraft', () => {
       ],
     });
     expect(draft.createdAt).toBe(draft.updatedAt);
+  });
+
+  it('saves an eligible reverse charge draft without VAT values', async () => {
+    const dependencies = createDependencies();
+    const taxProfileCalls: Array<{
+      customerId: string;
+      companyId: string;
+    }> = [];
+    dependencies.invoiceCustomerTaxProfileReader = {
+      async getTaxProfile(customerId, companyId) {
+        taxProfileCalls.push({ customerId, companyId });
+        return { customerType: 'company', businessId: '1234567-8' };
+      },
+    };
+
+    const draft = await saveInvoiceDraft(
+      createInput({
+        taxTreatment: 'reverseChargeConstruction',
+        performancePeriod: {
+          type: 'dateRange',
+          startDate: '2026-06-01',
+          endDate: '2026-06-13',
+        },
+        lines: [
+          {
+            description: 'Construction service',
+            quantityHundredths: 100,
+            unit: 'h',
+            unitPriceCents: 10_000,
+            discount: { type: 'none' },
+          },
+        ],
+      }),
+      dependencies,
+    );
+
+    expect(taxProfileCalls).toEqual([
+      { customerId: 'customer-1', companyId: 'dev-company' },
+    ]);
+    expect(draft).toMatchObject({
+      priceInputMode: 'net',
+      taxTreatment: 'reverseChargeConstruction',
+      performancePeriod: {
+        type: 'dateRange',
+        startDate: '2026-06-01',
+        endDate: '2026-06-13',
+      },
+      totals: {
+        netTotalCents: 10_000,
+        vatTotalCents: 0,
+        grossTotalCents: 10_000,
+        vatBreakdown: [],
+      },
+    });
+    expect(draft.lines[0]).toMatchObject({
+      vatRateBasisPoints: null,
+      netCents: 10_000,
+      vatCents: 0,
+      grossCents: 10_000,
+    });
+  });
+
+  it('does not read the customer tax profile for normal VAT drafts', async () => {
+    const dependencies = createDependencies();
+    dependencies.invoiceCustomerTaxProfileReader = {
+      async getTaxProfile() {
+        throw new Error('Normal VAT must not read the tax profile.');
+      },
+    };
+
+    await expect(
+      saveInvoiceDraft(createInput(), dependencies),
+    ).resolves.toBeDefined();
+  });
+
+  it.each([
+    {
+      name: 'a private customer',
+      profile: { customerType: 'privatePerson', businessId: '' },
+      message: 'Reverse charge cannot be used for a private customer.',
+    },
+    {
+      name: 'a customer without a business id',
+      profile: { customerType: 'company', businessId: '   ' },
+      message: 'Reverse charge requires the invoice customer business id.',
+    },
+  ])('rejects reverse charge for $name', async ({ profile, message }) => {
+    const dependencies = createDependencies();
+    dependencies.invoiceCustomerTaxProfileReader = {
+      async getTaxProfile() {
+        return profile;
+      },
+    };
+
+    await expect(
+      saveInvoiceDraft(
+        createInput({
+          taxTreatment: 'reverseChargeConstruction',
+          lines: [
+            {
+              description: 'Construction service',
+              quantityHundredths: 100,
+              unit: 'h',
+              unitPriceCents: 10_000,
+              discount: { type: 'none' },
+            },
+          ],
+        }),
+        dependencies,
+      ),
+    ).rejects.toThrow(message);
+    expect(dependencies.invoiceDraftRepository.savedDraft).toBeUndefined();
+  });
+
+  it('rejects gross input and VAT placeholders on reverse charge drafts', async () => {
+    const dependencies = createDependencies();
+    const reverseLine = {
+      description: 'Construction service',
+      quantityHundredths: 100,
+      unit: 'h',
+      unitPriceCents: 10_000,
+      discount: { type: 'none' as const },
+    };
+
+    await expect(
+      saveInvoiceDraft(
+        createInput({
+          priceInputMode: 'gross',
+          taxTreatment: 'reverseChargeConstruction',
+          lines: [reverseLine],
+        }),
+        dependencies,
+      ),
+    ).rejects.toThrow('Reverse charge invoices must use net price input.');
+    await expect(
+      saveInvoiceDraft(
+        createInput({
+          taxTreatment: 'reverseChargeConstruction',
+          lines: [{ ...reverseLine, vatRateBasisPoints: 0 }],
+        }),
+        dependencies,
+      ),
+    ).rejects.toThrow(
+      'Reverse charge invoice lines cannot contain a VAT rate.',
+    );
+    expect(dependencies.invoiceDraftRepository.savedDraft).toBeUndefined();
+  });
+
+  it('rejects a zero VAT rate on a new normal VAT draft', async () => {
+    const dependencies = createDependencies();
+
+    await expect(
+      saveInvoiceDraft(
+        createInput({
+          lines: [
+            {
+              description: 'Invalid normal VAT line',
+              quantityHundredths: 100,
+              unit: 'h',
+              unitPriceCents: 10_000,
+              vatRateBasisPoints: 0,
+              discount: { type: 'none' },
+            },
+          ],
+        }),
+        dependencies,
+      ),
+    ).rejects.toThrow(
+      'Normal VAT invoice lines require a positive VAT rate.',
+    );
+    expect(dependencies.invoiceDraftRepository.savedDraft).toBeUndefined();
   });
 
   it('keeps a manually provided due date', async () => {

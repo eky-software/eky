@@ -76,6 +76,8 @@ export async function createApp(
     createInvoicingComposition({
       companyEmailSecretReader,
       customerAccessReader: customersComposition.customerAccessReader,
+      invoiceCustomerTaxProfileReader:
+        customersComposition.invoiceCustomerTaxProfileReader,
       database,
       invoiceEmailSettingsReader:
         companySettingsComposition.invoiceEmailSettingsReader,
