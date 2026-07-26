@@ -6,18 +6,22 @@ MVP:n toteutusta.
 
 ## Nykyinen Rajaus
 
-Nykyinen Invoicing MVP tukee normaalia ALV-laskutusta. Laskun summat,
-ALV-erittely ja hyväksytyn laskun snapshotit muodostetaan Invoicing-domainin
-laskentasääntöjen kautta.
+Normaali ALV, yrityskohtaiset ALV-kannat, `sent`- ja `cancelled`-tilat sekä
+hyvityslaskut on toteutettu. Laskun summat, ALV-erittely ja hyväksytyn laskun
+snapshotit muodostetaan Invoicing-domainin laskentasääntöjen kautta.
 
-Tässä vaiheessa ei toteuteta:
+Rakennusalan käännetyn verovelvollisuuden toteutusmalli on päätetty
+dokumentissa
+`docs/architecture/invoice-tax-treatment-completion-plan.md`. Se toteutetaan
+laskutason erikoiskäsittelynä muuttamatta nykyisen `normalVat`-polun tuloksia.
 
-- rakennusalan käännettyä ALV:tä
-- ALV-kantataulua
+Tässä kokonaisuudessa ei toteuteta:
+
 - automaattista korkolain mukaista viivästyskorkoa
-- `sent`-, `paid`-, `cancelled`- tai `credited`-tiloja
-- hyvityslaskua
-- uusia migraatioita, API-reittejä tai UI-muutoksia
+- `paid`-tilaa tai maksusuorituksia
+- `vatExempt`- tai `outsideVatScope`-käsittelyä
+- rivikohtaisia sekalaskuja
+- verkkolaskua
 
 ## ALV-Käsittelyt
 
@@ -47,12 +51,15 @@ ALV-käsittelynä, jos sitä tarvitaan.
 - ei saa perustua ohjelman arvaukseen asiakkaasta, rivistä tai verokannasta
 - vaatii oikeat laskumerkinnät
 - vaatii ostajan tunnistetiedot
-- vaatii tarkistuksen kirjanpitäjältä tai virallisesta ohjeesta ennen
-  tuotantokäyttöä
+- vaatii tarkistuksen kirjanpitäjältä ennen tuotantokäyttöä
+- käyttää juridisena ostajana laskun customer-snapshotia
+- pitää laskun vastaanottajan erillisenä toimitusosoitteena
+- käyttää laskumerkintöjä `Käännetty verovelvollisuus` ja `AVL 8 c §`
+- ei käytä `0 %`- tai `2550`-placeholderia
 
-Tarkka laskumerkintä, ostajan tunnistetiedot ja lainkohdan esitystapa
-päätetään vasta toteutusvaiheessa. Toteutuksessa tarkistetaan ajantasaiset
-Verohallinnon ohjeet.
+Tarkka persistence-, snapshot-, hyväksyntä-, hyvitys-, PDF- ja testimalli on
+kuvattu completion planissa. Verohallinnon ajantasaiset ohjeet tarkistetaan
+aina ennen tuotantokäyttöä.
 
 ## ALV-Kannat
 
@@ -77,6 +84,11 @@ invoice_vat_rates
 Domainia ei saa kovakoodata vain nykyisiin ALV-kantoihin. Hyväksytyt laskut
 eivät saa muuttua, vaikka ALV-kantalista muuttuu myöhemmin. Hyväksytyllä
 laskulla käytetty ALV-kanta, ALV-käsittely, rivit ja summat ovat snapshot-dataa.
+
+Uusi `normalVat`-lasku ei saa R0-versiossa käyttää `0 %` verokantaa.
+Historiallinen `0 %` snapshot säilyy luettavana, mutta sitä ei tulkita
+uudelleen eikä muuteta automaattisesti. Verottomuus ja verotuksen
+ulkopuolisuus toteutetaan myöhemmin omina käsittelyinään.
 
 ## Viivästyskorko
 

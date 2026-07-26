@@ -457,7 +457,7 @@ aktiivisuutta, järjestystä ja yhtä aktiivista oletuskantaa Oma yritys
 -näkymästä. Prosentti- ja euromääräiset alennukset ovat rivikohtaisia;
 arkkitehtuuri jättää tilaa myöhemmälle laskukohtaiselle alennukselle.
 
-Ensimmäisen domain-koodivaiheen testattavat ALV-kannat ovat:
+Ensimmäisen domain-koodivaiheen historialliset testikannat ovat:
 
 - 0,00 % eli 0 basis points
 - 10,00 % eli 1000 basis points
@@ -472,13 +472,36 @@ eksplisiittisiin arvoihin eikä hyväksyttyjen laskujen snapshotteihin.
 
 `14,00 %` eli `1400` basis points oli aiempi alennettu verokanta 31.12.2025 saakka. Se voidaan huomioida myöhemmin historiallisena tai legacy-arvona, jos `invoiceDate`- tai suoritusajankohtaan perustuva vanhojen verokantojen tuki tarvitaan.
 
-Nollaverokanta `0,00 %` ja arvonlisäveroton toiminta eivät ole sama asia. Niiden tarkempi käyttötapa, verokohtelu ja laskulla tarvittava selite ratkaistaan myöhemmin laskutusasetuksissa tai laskurivimallissa.
+Nollaverokanta `0,00 %`, arvonlisäveroton toiminta ja käännetty
+verovelvollisuus eivät ole sama asia. R0-versiossa uusi `normalVat`-lasku ei
+saa käyttää `0 %` verokantaa. Historialliset `0 %` snapshotit säilyvät
+luettavina, mutta vanhaa dataa ei muuteta eikä tulkita automaattisesti
+käännetyksi verovelvollisuudeksi.
 
-Käännetty verovelvollisuus on oma laskutus- ja ALV-käsittelynsä. Sitä ei saa
-päätellä vain arvosta `vatRateBasisPoints: 0`. Jos Ekyyn lisätään esimerkiksi
-rakennusalan käännetty verovelvollisuus, Invoicing tarvitsee myöhemmin
-hallittavan `vatTreatment`-tyyppisen mallin ja hyväksytylle laskulle
-snapshotattavan laskumerkinnän.
+Invoicing omistaa laskutason `InvoiceTaxTreatment`-mallin:
+
+- `normalVat` on oletus ja käyttää nykyistä verokantakohtaista laskentaa
+- `reverseChargeConstruction` on rakennusalan käännetty verovelvollisuus
+
+Käännetty verovelvollisuus ei käytä `vatRateBasisPoints: 0`- tai
+`2550`-placeholderia. Sen riveillä ALV-kanta on persistencessä `NULL`, myyjän
+ALV on nolla, netto ja brutto ovat samat eikä normaalia ALV-erittelyä
+muodosteta. Sekalaskuja ei sallita.
+
+Juridinen ostaja on laskun customer. Billing recipient säilyy erillisenä
+laskun vastaanottajana eikä voi korvata ostajaa. Yksityisasiakas ja puuttuva
+Y-tunnus estävät käännetyn verovelvollisuuden. Ohjelma ei kuitenkaan päättele
+soveltuvuutta asiakastyypistä, Y-tunnuksesta, toimialasta tai rivitekstistä,
+vaan käyttäjän pitää vahvistaa soveltuvuus hyväksynnässä.
+
+Laskun suoritusajankohta mallinnetaan laskutason
+`InvoicePerformancePeriod`-tyyppinä: sama kuin laskun päivä, yksittäinen
+suorituspäivä tai laskutusjakso. Hyväksytty lasku snapshottaa valinnan ja
+hyvityslasku perii sen.
+
+Tarkka malli, migraatio, hyvitysrajat, PDF-merkinnät ja testimatriisi on
+kuvattu dokumentissa
+`docs/architecture/invoice-tax-treatment-completion-plan.md`.
 
 Rivikohtainen laskenta tehdään deterministisesti:
 
