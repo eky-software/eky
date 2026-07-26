@@ -1,4 +1,6 @@
 export type ActivityItemType =
+  | 'companyEmailSecret.configured'
+  | 'companyEmailSecret.removed'
   | 'companySettings.updated'
   | 'customer.activated'
   | 'customer.created'
@@ -10,10 +12,16 @@ export type ActivityItemType =
   | 'invoice.creditDraftCreated'
   | 'invoice.creditReapproved'
   | 'invoice.delivered'
+  | 'invoice.deliveryFailed'
+  | 'invoice.deliveryOutcomeUnknown'
+  | 'invoice.deliveryPending'
   | 'invoice.reapproved'
   | 'invoice.reopenedForEdit';
 
 export type ActivityModule = 'companySettings' | 'customers' | 'invoicing';
+export type ActivityCategory = 'all' | ActivityModule;
+export type ActivityOutcome = 'blocked' | 'failure' | 'success' | 'unknown';
+export type ActivityOutcomeFilter = 'all' | ActivityOutcome;
 
 export interface ActivityItemReference {
   kind: 'customerNumber' | 'invoiceNumber';
@@ -24,6 +32,16 @@ export interface ActivityItem {
   id: string;
   module: ActivityModule;
   occurredAt: string;
+  outcome: ActivityOutcome;
   reference: ActivityItemReference | null;
   type: ActivityItemType;
+}
+
+export interface ActivityPage {
+  activityItems: ActivityItem[];
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+  month: string;
+  page: number;
+  pageSize: number;
 }

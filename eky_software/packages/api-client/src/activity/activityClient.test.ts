@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { createEkyApiClient, EkyApiError } from '../index.js';
 
 describe('activity API client', () => {
-  it('lists the safe activity projection with an optional limit', async () => {
+  it('lists a validated monthly activity page', async () => {
     const requests: string[] = [];
     const client = createEkyApiClient({
       baseUrl: 'http://127.0.0.1:3000/',
@@ -15,26 +15,45 @@ describe('activity API client', () => {
               id: 'customers:event-1',
               module: 'customers',
               occurredAt: '2026-07-27T10:00:00.000Z',
+              outcome: 'success',
               reference: { kind: 'customerNumber', value: '1001' },
               type: 'customer.updated',
             },
           ],
+          hasNextPage: false,
+          hasPreviousPage: false,
+          month: '2026-07',
+          page: 1,
+          pageSize: 20,
         });
       },
     });
 
-    await expect(client.listActivity({ limit: 20 })).resolves.toHaveLength(1);
-    expect(requests).toEqual(['http://127.0.0.1:3000/activity?limit=20']);
+    await expect(
+      client.listActivity({
+        category: 'customers',
+        month: '2026-07',
+        outcome: 'success',
+        page: 1,
+        pageSize: 20,
+      }),
+    ).resolves.toEqual(expect.objectContaining({ page: 1, pageSize: 20 }));
+    expect(requests).toEqual([
+      'http://127.0.0.1:3000/activity?month=2026-07&category=customers&outcome=success&page=1&pageSize=20',
+    ]);
   });
 
-  it('rejects invalid limits before making a request', async () => {
+  it('rejects invalid queries before making a request', async () => {
     const fetchImplementation = async () => jsonResponse({});
     const client = createEkyApiClient({
       baseUrl: '',
       fetch: fetchImplementation,
     });
 
-    await expect(client.listActivity({ limit: 101 })).rejects.toBeInstanceOf(
+    await expect(
+      client.listActivity({ month: '2026-13' }),
+    ).rejects.toBeInstanceOf(EkyApiError);
+    await expect(client.listActivity({ page: 101 })).rejects.toBeInstanceOf(
       EkyApiError,
     );
   });
@@ -49,11 +68,17 @@ describe('activity API client', () => {
               id: 'customers:event-1',
               module: 'customers',
               occurredAt: '2026-07-27T10:00:00.000Z',
+              outcome: 'success',
               rawMetadata: { customerName: 'Must not be exposed' },
               reference: { kind: 'customerNumber', value: '1001' },
               type: 'customer.updated',
             },
           ],
+          hasNextPage: false,
+          hasPreviousPage: false,
+          month: '2026-07',
+          page: 1,
+          pageSize: 20,
         }),
     });
 

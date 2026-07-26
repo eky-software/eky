@@ -4,9 +4,13 @@ import type {
   ActivityItemReference,
   ActivityItemType,
   ActivityModule,
+  ActivityOutcome,
+  ActivityPage,
 } from './activityTypes.js';
 
 const activityItemTypes = new Set<ActivityItemType>([
+  'companyEmailSecret.configured',
+  'companyEmailSecret.removed',
   'companySettings.updated',
   'customer.activated',
   'customer.created',
@@ -18,6 +22,9 @@ const activityItemTypes = new Set<ActivityItemType>([
   'invoice.creditDraftCreated',
   'invoice.creditReapproved',
   'invoice.delivered',
+  'invoice.deliveryFailed',
+  'invoice.deliveryOutcomeUnknown',
+  'invoice.deliveryPending',
   'invoice.reapproved',
   'invoice.reopenedForEdit',
 ]);
@@ -26,26 +33,60 @@ const activityModules = new Set<ActivityModule>([
   'customers',
   'invoicing',
 ]);
+const activityOutcomes = new Set<ActivityOutcome>([
+  'blocked',
+  'failure',
+  'success',
+  'unknown',
+]);
 
-export function readActivityResponse(value: unknown): ActivityItem[] {
+export function readActivityResponse(value: unknown): ActivityPage {
   if (
     !isRecord(value) ||
-    !hasOnlyKeys(value, ['activityItems']) ||
-    !Array.isArray(value.activityItems)
+    !hasOnlyKeys(value, [
+      'activityItems',
+      'hasNextPage',
+      'hasPreviousPage',
+      'month',
+      'page',
+      'pageSize',
+    ]) ||
+    !Array.isArray(value.activityItems) ||
+    typeof value.hasNextPage !== 'boolean' ||
+    typeof value.hasPreviousPage !== 'boolean' ||
+    !isCalendarMonth(value.month) ||
+    !isPositiveInteger(value.page, 100) ||
+    !isPositiveInteger(value.pageSize, 100) ||
+    ![20, 50, 100].includes(value.pageSize)
   ) {
     throw invalidResponse(value);
   }
 
-  return value.activityItems.map(parseActivityItem);
+  return {
+    activityItems: value.activityItems.map(parseActivityItem),
+    hasNextPage: value.hasNextPage,
+    hasPreviousPage: value.hasPreviousPage,
+    month: value.month,
+    page: value.page,
+    pageSize: value.pageSize,
+  };
 }
 
 function parseActivityItem(value: unknown): ActivityItem {
   if (
     !isRecord(value) ||
-    !hasOnlyKeys(value, ['id', 'module', 'occurredAt', 'reference', 'type']) ||
+    !hasOnlyKeys(value, [
+      'id',
+      'module',
+      'occurredAt',
+      'outcome',
+      'reference',
+      'type',
+    ]) ||
     !isBoundedText(value.id, 1, 240) ||
     !isActivityModule(value.module) ||
     !isIsoTimestamp(value.occurredAt) ||
+    !isActivityOutcome(value.outcome) ||
     !isActivityItemType(value.type)
   ) {
     throw invalidResponse(value);
@@ -55,6 +96,7 @@ function parseActivityItem(value: unknown): ActivityItem {
     id: value.id,
     module: value.module,
     occurredAt: value.occurredAt,
+    outcome: value.outcome,
     reference: parseReference(value.reference),
     type: value.type,
   };
@@ -83,11 +125,31 @@ function isActivityModule(value: unknown): value is ActivityModule {
   return typeof value === 'string' && activityModules.has(value as ActivityModule);
 }
 
+function isActivityOutcome(value: unknown): value is ActivityOutcome {
+  return (
+    typeof value === 'string' &&
+    activityOutcomes.has(value as ActivityOutcome)
+  );
+}
+
 function isIsoTimestamp(value: unknown): value is string {
   return (
     isBoundedText(value, 20, 40) &&
     Number.isFinite(Date.parse(value)) &&
     value.endsWith('Z')
+  );
+}
+
+function isCalendarMonth(value: unknown): value is string {
+  return typeof value === 'string' && /^[0-9]{4}-(0[1-9]|1[0-2])$/.test(value);
+}
+
+function isPositiveInteger(value: unknown, maximum: number): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= 1 &&
+    value <= maximum
   );
 }
 

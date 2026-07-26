@@ -3,7 +3,10 @@ import type {
   CustomerActivityEntry,
 } from '../domain/customerActivityEntry.js';
 import type { CustomerAuditAction } from '../domain/customerAuditEvent.js';
-import type { CustomerActivityReader } from '../ports/customerActivityReader.js';
+import type {
+  CustomerActivityCriteria,
+  CustomerActivityReader,
+} from '../ports/customerActivityReader.js';
 
 interface CustomerActivityRow {
   action: CustomerAuditAction;
@@ -16,11 +19,10 @@ export class SqliteCustomerActivityReader implements CustomerActivityReader {
   constructor(private readonly database: DatabaseConnection) {}
 
   async listCustomerActivity(
-    companyId: string,
-    limit: number,
+    criteria: CustomerActivityCriteria,
   ): Promise<CustomerActivityEntry[]> {
     return this.database
-      .prepare<[string, number], CustomerActivityRow>(
+      .prepare<[string, string, string, number], CustomerActivityRow>(
         `
           SELECT
             audit.id,
@@ -31,12 +33,20 @@ export class SqliteCustomerActivityReader implements CustomerActivityReader {
           LEFT JOIN customers
             ON customers.id = audit.customer_id
             AND customers.company_id = audit.company_id
-          WHERE audit.company_id = ?
+          WHERE
+            audit.company_id = ?
+            AND audit.occurred_at >= ?
+            AND audit.occurred_at < ?
           ORDER BY audit.occurred_at DESC, audit.id DESC
           LIMIT ?
         `,
       )
-      .all(companyId, limit)
+      .all(
+        criteria.companyId,
+        criteria.occurredAtFrom,
+        criteria.occurredAtTo,
+        criteria.limit,
+      )
       .map((row) => ({
         action: row.action,
         customerNumber: row.customer_number,

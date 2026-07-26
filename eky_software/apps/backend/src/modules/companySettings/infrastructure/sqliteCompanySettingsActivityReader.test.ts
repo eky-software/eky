@@ -18,14 +18,25 @@ describe('SqliteCompanySettingsActivityReader', () => {
   it('returns only same-company settings activity without field values', async () => {
     insertAudit(database, 'event-1', 'company-1');
     insertAudit(database, 'event-2', 'company-2');
+    insertEmailSecretAudit(database, 'secret-1', 'company-1', 'set');
     const reader = new SqliteCompanySettingsActivityReader(database);
 
     await expect(
-      reader.listCompanySettingsActivity('company-1', 10),
+      reader.listCompanySettingsActivity({
+        companyId: 'company-1',
+        limit: 10,
+        occurredAtFrom: '2026-07-01T00:00:00.000Z',
+        occurredAtTo: '2026-08-01T00:00:00.000Z',
+      }),
     ).resolves.toEqual([
       {
+        action: 'companyEmailSecret.configured',
+        id: 'emailSecret:secret-1',
+        occurredAt: '2026-07-27T11:00:00.000Z',
+      },
+      {
         action: 'companySettings.updated',
-        id: 'event-1',
+        id: 'settings:event-1',
         occurredAt: '2026-07-27T10:00:00.000Z',
       },
     ]);
@@ -48,4 +59,25 @@ function insertAudit(
       `,
     )
     .run(id, companyId);
+}
+
+function insertEmailSecretAudit(
+  database: DatabaseConnection,
+  operationId: string,
+  companyId: string,
+  action: 'remove' | 'set',
+): void {
+  database
+    .prepare(
+      `
+        INSERT INTO company_email_secret_audit_events (
+          operation_id, company_id, actor_id, action, status, started_at,
+          completed_at, failure_code
+        ) VALUES (
+          ?, ?, 'actor-1', ?, 'succeeded', '2026-07-27T10:59:00.000Z',
+          '2026-07-27T11:00:00.000Z', NULL
+        )
+      `,
+    )
+    .run(operationId, companyId, action);
 }

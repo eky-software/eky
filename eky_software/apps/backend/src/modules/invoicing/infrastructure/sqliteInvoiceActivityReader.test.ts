@@ -15,22 +15,83 @@ describe('SqliteInvoiceActivityReader', () => {
 
   it('combines audit and real delivery activity without dry-run events', async () => {
     insertInvoiceAudit(database);
-    insertDeliveryEvent(database, 'delivery-real', 'smtp');
-    insertDeliveryEvent(database, 'delivery-dry-run', 'dryRun');
+    insertDeliveryEvent(database, 'delivery-success', 'smtp', 'succeeded', 11);
+    insertDeliveryEvent(database, 'delivery-failed', 'smtp', 'failed', 12);
+    insertDeliveryEvent(
+      database,
+      'delivery-unknown',
+      'smtp',
+      'outcomeUnknown',
+      13,
+    );
+    insertDeliveryEvent(database, 'delivery-pending', 'smtp', 'attempted', 14);
+    insertDeliveryEvent(database, 'delivery-dry-run', 'dryRun', 'failed', 15);
     const reader = new SqliteInvoiceActivityReader(database);
 
-    await expect(reader.listInvoiceActivity('dev-company', 10)).resolves.toEqual([
+    await expect(reader.listInvoiceActivity({
+      companyId: 'dev-company',
+      limit: 10,
+      occurredAtFrom: '2026-07-01T00:00:00.000Z',
+      occurredAtTo: '2026-08-01T00:00:00.000Z',
+      outcomes: ['success', 'failure', 'unknown'],
+    })).resolves.toEqual([
+      {
+        action: 'invoice.delivery_pending',
+        id: 'delivery-pending',
+        invoiceNumber: '20260001',
+        occurredAt: '2026-07-27T14:00:00.000Z',
+        outcome: 'unknown',
+      },
+      {
+        action: 'invoice.delivery_outcome_unknown',
+        id: 'delivery-unknown',
+        invoiceNumber: '20260001',
+        occurredAt: '2026-07-27T13:00:00.000Z',
+        outcome: 'unknown',
+      },
+      {
+        action: 'invoice.delivery_failed',
+        id: 'delivery-failed',
+        invoiceNumber: '20260001',
+        occurredAt: '2026-07-27T12:00:00.000Z',
+        outcome: 'failure',
+      },
       {
         action: 'invoice.delivered',
-        id: 'delivery-real',
+        id: 'delivery-success',
         invoiceNumber: '20260001',
         occurredAt: '2026-07-27T11:00:00.000Z',
+        outcome: 'success',
       },
       {
         action: 'invoice.approved',
         id: 'audit-1',
         invoiceNumber: '20260001',
         occurredAt: '2026-07-27T10:00:00.000Z',
+        outcome: 'success',
+      },
+    ]);
+  });
+
+  it('filters delivery outcomes before applying the result limit', async () => {
+    insertInvoiceAudit(database);
+    insertDeliveryEvent(database, 'delivery-success', 'smtp', 'succeeded', 11);
+    insertDeliveryEvent(database, 'delivery-failed', 'smtp', 'failed', 12);
+    const reader = new SqliteInvoiceActivityReader(database);
+
+    await expect(reader.listInvoiceActivity({
+      companyId: 'dev-company',
+      limit: 1,
+      occurredAtFrom: '2026-07-01T00:00:00.000Z',
+      occurredAtTo: '2026-08-01T00:00:00.000Z',
+      outcomes: ['failure'],
+    })).resolves.toEqual([
+      {
+        action: 'invoice.delivery_failed',
+        id: 'delivery-failed',
+        invoiceNumber: '20260001',
+        occurredAt: '2026-07-27T12:00:00.000Z',
+        outcome: 'failure',
       },
     ]);
   });
@@ -39,9 +100,13 @@ describe('SqliteInvoiceActivityReader', () => {
     insertInvoiceAudit(database);
     const reader = new SqliteInvoiceActivityReader(database);
 
-    await expect(reader.listInvoiceActivity('other-company', 10)).resolves.toEqual(
-      [],
-    );
+    await expect(reader.listInvoiceActivity({
+      companyId: 'other-company',
+      limit: 10,
+      occurredAtFrom: '2026-07-01T00:00:00.000Z',
+      occurredAtTo: '2026-08-01T00:00:00.000Z',
+      outcomes: ['success'],
+    })).resolves.toEqual([]);
   });
 });
 
@@ -65,6 +130,8 @@ function insertDeliveryEvent(
   database: DatabaseConnection,
   id: string,
   provider: 'dryRun' | 'smtp',
+  status: 'attempted' | 'failed' | 'outcomeUnknown' | 'succeeded',
+  hour: number,
 ): void {
   database
     .prepare(
@@ -75,10 +142,15 @@ function insertDeliveryEvent(
           provider_message_id, safe_error_message, technical_error_code,
           created_at, created_by
         ) VALUES (
-          ?, 'dev-company', 'invoice-1', NULL, 'email', ?, 'succeeded', '', '',
-          '', '', NULL, NULL, NULL, '2026-07-27T11:00:00.000Z', 'actor-1'
+          ?, 'dev-company', 'invoice-1', NULL, 'email', ?, ?, '', '',
+          '', '', NULL, NULL, NULL, ?, 'actor-1'
         )
       `,
     )
-    .run(id, provider);
+    .run(
+      id,
+      provider,
+      status,
+      `2026-07-27T${String(hour).padStart(2, '0')}:00:00.000Z`,
+    );
 }
