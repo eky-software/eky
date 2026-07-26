@@ -16,7 +16,6 @@ describe('InvoiceTaxTreatmentSection', () => {
         errors={undefined}
         form={createInitialNewInvoiceForm(new Date(2026, 6, 26))}
         selectedCustomer={null}
-        onFieldChange={vi.fn()}
         onTaxTreatmentChange={vi.fn()}
       />,
     );
@@ -26,7 +25,7 @@ describe('InvoiceTaxTreatmentSection', () => {
     expect(html).not.toContain('<details open');
   });
 
-  it('shows legal customer details and performance controls for reverse charge', () => {
+  it('shows legal customer details without performance controls for reverse charge', () => {
     const form = applyInvoiceTaxTreatment(
       createInitialNewInvoiceForm(new Date(2026, 6, 26)),
       'reverseChargeConstruction',
@@ -37,7 +36,6 @@ describe('InvoiceTaxTreatmentSection', () => {
         errors={undefined}
         form={form}
         selectedCustomer={createCustomer()}
-        onFieldChange={vi.fn()}
         onTaxTreatmentChange={vi.fn()}
       />,
     );
@@ -47,7 +45,7 @@ describe('InvoiceTaxTreatmentSection', () => {
     expect(html).toContain('Rakennusostaja Oy');
     expect(html).toContain('1234567-8');
     expect(html).toContain(uiText.invoicing.reverseChargeWarningTitle);
-    expect(html).toContain(uiText.invoicing.performancePeriod);
+    expect(html).not.toContain(uiText.invoicing.performancePeriod);
   });
 });
 

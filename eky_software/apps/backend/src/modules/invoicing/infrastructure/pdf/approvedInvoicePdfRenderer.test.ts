@@ -1,7 +1,10 @@
 import PDFDocument from 'pdfkit';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { ApprovedInvoiceViewLine } from '../../domain/approvedInvoiceView.js';
+import type {
+  ApprovedInvoiceView,
+  ApprovedInvoiceViewLine,
+} from '../../domain/approvedInvoiceView.js';
 import {
   formatPdfCents,
   formatPdfDate,
@@ -66,6 +69,75 @@ describe('approved invoice PDF renderer', () => {
     expect(Buffer.from(pdf.subarray(0, 4)).toString('ascii')).toBe('%PDF');
   });
 
+  it('renders a normal VAT single performance date without other additional details', async () => {
+    const { pdf, renderedText } = await renderAndCollectText({
+      deliveryAddressText: '',
+      note: '',
+      performancePeriod: {
+        type: 'singleDate',
+        date: '2026-06-18',
+      },
+    });
+
+    expect(pdf.length).toBeGreaterThan(1000);
+    expect(renderedText).toContain('Suorituspäivä');
+    expect(renderedText.filter((value) => value === '18.06.2026')).toHaveLength(
+      1,
+    );
+    expect(renderedText).toContain('ALV-erittely');
+  });
+
+  it('renders a normal VAT performance range without other additional details', async () => {
+    const { renderedText } = await renderAndCollectText({
+      deliveryAddressText: '',
+      note: '',
+      performancePeriod: {
+        type: 'dateRange',
+        startDate: '2026-06-01',
+        endDate: '2026-06-15',
+      },
+    });
+
+    expect(renderedText).toContain('Laskutusjakso');
+    expect(
+      renderedText.filter((value) => value === '01.06.2026–15.06.2026'),
+    ).toHaveLength(1);
+    expect(renderedText).toContain('ALV-erittely');
+  });
+
+  it('renders an inherited performance period on a credit invoice', async () => {
+    const invoice = createApprovedInvoicePdfSample();
+    const { renderedText } = await renderAndCollectText({
+      creditedInvoiceId: 'source-invoice-1',
+      creditedInvoiceNumber: '20260001',
+      creditedInvoiceDate: '2026-07-01',
+      invoiceKind: 'credit',
+      invoiceNumber: '20260002',
+      performancePeriod: {
+        type: 'singleDate',
+        date: '2026-06-18',
+      },
+      referenceNumber: '',
+      referenceNumberType: 'none',
+      dueDate: invoice.invoiceDate,
+      paymentTermDays: 0,
+      reminderPeriodDays: 0,
+      latePaymentInterestBasisPoints: 0,
+    });
+
+    expect(renderedText).toContain('Suorituspäivä');
+    expect(renderedText).toContain('18.06.2026');
+  });
+
+  it('does not render a separate performance row for the invoice-date default', async () => {
+    const { renderedText } = await renderAndCollectText({
+      performancePeriod: { type: 'invoiceDate' },
+    });
+
+    expect(renderedText).not.toContain('Suorituspäivä');
+    expect(renderedText).not.toContain('Laskutusjakso');
+  });
+
   it('renders reverse charge labels without normal VAT columns or breakdown', async () => {
     const invoice = createApprovedInvoicePdfSample();
     const textSpy = vi.spyOn(PDFDocument.prototype, 'text');
@@ -104,7 +176,10 @@ describe('approved invoice PDF renderer', () => {
       expect(renderedText).toContain('AVL 8 c §');
       expect(renderedText).toContain('Ostajan Y-tunnus');
       expect(renderedText).toContain('1234567-8');
-      expect(renderedText).toContain('01.06.2026–15.06.2026');
+      expect(renderedText).toContain('Laskutusjakso');
+      expect(
+        renderedText.filter((value) => value === '01.06.2026–15.06.2026'),
+      ).toHaveLength(1);
       expect(renderedText).not.toContain('ALV-erittely');
       expect(renderedText).not.toContain('ALV %');
       expect(renderedText).not.toContain('Alv yhteensä');
@@ -133,3 +208,23 @@ describe('approved invoice PDF renderer', () => {
     expect(pdf.length).toBeGreaterThan(0);
   });
 });
+
+async function renderAndCollectText(
+  overrides: Partial<ApprovedInvoiceView>,
+): Promise<{ pdf: Uint8Array; renderedText: unknown[] }> {
+  const textSpy = vi.spyOn(PDFDocument.prototype, 'text');
+
+  try {
+    const pdf = await renderApprovedInvoicePdf({
+      ...createApprovedInvoicePdfSample(),
+      ...overrides,
+    });
+
+    return {
+      pdf,
+      renderedText: textSpy.mock.calls.map(([value]) => value),
+    };
+  } finally {
+    textSpy.mockRestore();
+  }
+}

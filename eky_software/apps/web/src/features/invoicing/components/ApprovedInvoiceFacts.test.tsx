@@ -48,6 +48,55 @@ describe('ApprovedInvoiceFacts', () => {
       uiText.invoicing.creditDraftRefundIban,
     );
   });
+
+  it('shows a normal invoice single performance date once', () => {
+    const html = renderFacts({
+      performancePeriod: {
+        type: 'singleDate',
+        date: '2026-06-18',
+      },
+    });
+
+    expect(html).toContain(uiText.invoicing.performanceDate);
+    expect(html.match(/18\.06\.2026/g)).toHaveLength(1);
+  });
+
+  it('shows a normal invoice performance range once', () => {
+    const html = renderFacts({
+      performancePeriod: {
+        type: 'dateRange',
+        startDate: '2026-06-01',
+        endDate: '2026-06-15',
+      },
+    });
+
+    expect(html).toContain(uiText.invoicing.performancePeriodDateRange);
+    expect(html.match(/01\.06\.2026–15\.06\.2026/g)).toHaveLength(1);
+  });
+
+  it('keeps an inherited performance date visible on a credit invoice', () => {
+    const html = renderFacts({
+      invoiceKind: 'credit',
+      performancePeriod: {
+        type: 'singleDate',
+        date: '2026-06-18',
+      },
+    });
+
+    expect(html).toContain(uiText.invoicing.performanceDate);
+    expect(html).toContain('18.06.2026');
+  });
+
+  it('does not add a separate row when performance follows invoice date', () => {
+    const html = renderFacts({
+      performancePeriod: { type: 'invoiceDate' },
+    });
+
+    expect(html).not.toContain(`${uiText.invoicing.performanceDate}:`);
+    expect(html).not.toContain(
+      `${uiText.invoicing.performancePeriodDateRange}:`,
+    );
+  });
 });
 
 type ApprovedInvoiceFactsProps = React.ComponentProps<

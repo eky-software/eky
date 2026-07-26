@@ -87,6 +87,28 @@ describe('InvoiceBasicInfoSection', () => {
     expect(html).not.toContain('stack');
     expect(html).not.toContain('responseBody');
   });
+
+  it('places the performance period before delivery and note fields', () => {
+    const html = renderToStaticMarkup(
+      <InvoiceBasicInfoSection
+        customerListState={{
+          customers: [createCustomer()],
+          errorMessage: null,
+          isLoading: false,
+        }}
+        errors={undefined}
+        form={createInitialNewInvoiceForm(new Date(2026, 5, 15))}
+        onFieldChange={vi.fn()}
+      />,
+    );
+
+    expect(html.indexOf(uiText.invoicing.performancePeriod)).toBeLessThan(
+      html.indexOf(uiText.invoicing.deliveryAddressText),
+    );
+    expect(html.indexOf(uiText.invoicing.deliveryAddressText)).toBeLessThan(
+      html.indexOf(uiText.invoicing.note),
+    );
+  });
 });
 
 function createCustomer(overrides: Partial<Customer> = {}): Customer {

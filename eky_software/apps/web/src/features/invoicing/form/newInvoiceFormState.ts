@@ -104,6 +104,24 @@ export function updateNewInvoiceFormField<
     };
   }
 
+  if (fieldName === 'performancePeriodType') {
+    const performancePeriodType =
+      value as NewInvoiceFormState['performancePeriodType'];
+
+    return {
+      ...form,
+      performanceDate:
+        performancePeriodType === 'singleDate' ? form.performanceDate : '',
+      performancePeriodEnd:
+        performancePeriodType === 'dateRange' ? form.performancePeriodEnd : '',
+      performancePeriodStart:
+        performancePeriodType === 'dateRange'
+          ? form.performancePeriodStart
+          : '',
+      performancePeriodType,
+    };
+  }
+
   return {
     ...form,
     [fieldName]: value,

@@ -512,7 +512,6 @@ export function NewInvoiceForm({
         errors={displayedErrors}
         form={form}
         selectedCustomer={selectedCustomer}
-        onFieldChange={handleFieldChange}
         onTaxTreatmentChange={handleTaxTreatmentChange}
       />
       <InvoiceRowsEditor

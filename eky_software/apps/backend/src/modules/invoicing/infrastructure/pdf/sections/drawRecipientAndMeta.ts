@@ -84,14 +84,6 @@ export function drawRecipientAndMeta(
         value: invoice.customerBusinessIdSnapshot,
       },
     );
-    const performancePeriod = formatPerformancePeriod(invoice);
-
-    if (performancePeriod !== null) {
-      invoiceMetadata.push({
-        label: 'Suoritus',
-        value: performancePeriod,
-      });
-    }
   }
   const metadataBottom = drawLabelValueLines(
     doc,
@@ -108,20 +100,4 @@ export function drawRecipientAndMeta(
   drawBox(doc, rightX, y, 215, boxHeight);
 
   return y + boxHeight;
-}
-
-function formatPerformancePeriod(
-  invoice: ApprovedInvoiceView,
-): string | null {
-  if (invoice.performancePeriod.type === 'singleDate') {
-    return formatPdfDate(invoice.performancePeriod.date);
-  }
-
-  if (invoice.performancePeriod.type === 'dateRange') {
-    return `${formatPdfDate(invoice.performancePeriod.startDate)}–${formatPdfDate(
-      invoice.performancePeriod.endDate,
-    )}`;
-  }
-
-  return null;
 }

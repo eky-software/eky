@@ -86,7 +86,7 @@ export function ApprovedInvoiceFacts({
         ) : null}
         {performancePeriod.type === 'dateRange' ? (
           <ApprovedInvoiceDefinitionRow
-            label={uiText.invoicing.performancePeriod}
+            label={uiText.invoicing.performancePeriodDateRange}
             value={`${formatApprovedInvoiceDate(
               performancePeriod.startDate,
             )}–${formatApprovedInvoiceDate(performancePeriod.endDate)}`}

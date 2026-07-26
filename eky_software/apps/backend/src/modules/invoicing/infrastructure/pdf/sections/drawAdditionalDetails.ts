@@ -1,5 +1,8 @@
 import type { ApprovedInvoiceView } from '../../../domain/approvedInvoiceView.js';
-import { formatPdfIban } from '../approvedInvoicePdfFormatting.js';
+import {
+  formatPdfDate,
+  formatPdfIban,
+} from '../approvedInvoicePdfFormatting.js';
 import { drawBox, invoicePdfLayout } from '../approvedInvoicePdfLayout.js';
 
 interface AdditionalDetailLine {
@@ -13,6 +16,7 @@ export function drawAdditionalDetails(
   y: number,
 ): number {
   const lines = [
+    createPerformancePeriodLine(invoice),
     { label: 'Toimitus / kohde', value: invoice.deliveryAddressText },
     { label: 'Lisätieto', value: invoice.note },
     {
@@ -23,7 +27,10 @@ export function drawAdditionalDetails(
           : '',
     },
   ];
-  const visibleLines = lines.filter((line) => line.value.trim().length > 0);
+  const visibleLines = lines.filter(
+    (line): line is AdditionalDetailLine =>
+      line !== null && line.value.trim().length > 0,
+  );
 
   if (visibleLines.length === 0) {
     return y;
@@ -58,6 +65,28 @@ export function drawAdditionalDetails(
   );
 
   return y + boxHeight;
+}
+
+function createPerformancePeriodLine(
+  invoice: ApprovedInvoiceView,
+): AdditionalDetailLine | null {
+  if (invoice.performancePeriod.type === 'singleDate') {
+    return {
+      label: 'Suorituspäivä',
+      value: formatPdfDate(invoice.performancePeriod.date),
+    };
+  }
+
+  if (invoice.performancePeriod.type === 'dateRange') {
+    return {
+      label: 'Laskutusjakso',
+      value: `${formatPdfDate(
+        invoice.performancePeriod.startDate,
+      )}–${formatPdfDate(invoice.performancePeriod.endDate)}`,
+    };
+  }
+
+  return null;
 }
 
 function measureRowHeight(

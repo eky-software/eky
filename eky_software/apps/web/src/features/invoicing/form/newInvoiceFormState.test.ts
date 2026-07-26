@@ -103,6 +103,62 @@ describe('createInitialNewInvoiceForm', () => {
     expect(updatedForm.invoiceDate).toBe(form.invoiceDate);
   });
 
+  it('clears stale performance dates when returning to invoice date', () => {
+    const form = {
+      ...createInitialNewInvoiceForm(new Date(2026, 5, 15)),
+      performanceDate: '2026-06-15',
+      performancePeriodEnd: '2026-06-30',
+      performancePeriodStart: '2026-06-01',
+      performancePeriodType: 'dateRange' as const,
+    };
+    const updatedForm = updateNewInvoiceFormField(
+      form,
+      'performancePeriodType',
+      'invoiceDate',
+    );
+
+    expect(updatedForm).toMatchObject({
+      performanceDate: '',
+      performancePeriodEnd: '',
+      performancePeriodStart: '',
+      performancePeriodType: 'invoiceDate',
+    });
+    expect(updatedForm.invoiceDate).toBe(form.invoiceDate);
+    expect(updatedForm.lines).toBe(form.lines);
+  });
+
+  it('keeps only fields belonging to the selected performance variant', () => {
+    const form = {
+      ...createInitialNewInvoiceForm(new Date(2026, 5, 15)),
+      performanceDate: '2026-06-15',
+      performancePeriodEnd: '2026-06-30',
+      performancePeriodStart: '2026-06-01',
+    };
+
+    expect(
+      updateNewInvoiceFormField(
+        form,
+        'performancePeriodType',
+        'singleDate',
+      ),
+    ).toMatchObject({
+      performanceDate: '2026-06-15',
+      performancePeriodEnd: '',
+      performancePeriodStart: '',
+    });
+    expect(
+      updateNewInvoiceFormField(
+        form,
+        'performancePeriodType',
+        'dateRange',
+      ),
+    ).toMatchObject({
+      performanceDate: '',
+      performancePeriodEnd: '2026-06-30',
+      performancePeriodStart: '2026-06-01',
+    });
+  });
+
   it('clears VAT rates and forces net prices for reverse charge', () => {
     const form = {
       ...createInitialNewInvoiceForm(new Date(2026, 5, 15)),

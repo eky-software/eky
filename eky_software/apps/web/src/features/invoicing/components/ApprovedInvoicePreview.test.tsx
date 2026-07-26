@@ -178,7 +178,7 @@ describe('ApprovedInvoicePreview', () => {
 
     expect(html).toContain('Käännetty verovelvollisuus');
     expect(html).toContain('AVL 8 c §');
-    expect(html).toContain('01.06.2026–15.06.2026');
+    expect(html.match(/01\.06\.2026–15\.06\.2026/g)).toHaveLength(1);
     expect(html).toContain(uiText.invoicing.reverseChargeNoSellerVat);
     expect(html).not.toContain(uiText.invoicing.vatBreakdown);
     expect(html).not.toContain('25,50 %');

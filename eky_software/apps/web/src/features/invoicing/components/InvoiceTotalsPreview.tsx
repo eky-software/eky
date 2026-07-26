@@ -4,6 +4,7 @@ import {
   type InvoiceDraftPreviewTotals as InvoiceDraftPreviewTotalsResult,
 } from '../preview/invoiceDraftPreviewTotals.js';
 import type { NewInvoiceFormState } from '../form/newInvoiceFormState.js';
+import { InvoiceDraftAdditionalDetailsPreview } from './InvoiceDraftAdditionalDetailsPreview.js';
 import styles from './InvoiceTotalsPreview.module.css';
 import { uiText } from '../../../i18n/fi.js';
 
@@ -21,6 +22,7 @@ export function InvoiceTotalsPreview({
       <div>
         <h3>{uiText.invoicing.invoiceTotals}</h3>
         <p>{uiText.invoicing.invoiceTotalsPreviewHelp}</p>
+        <InvoiceDraftAdditionalDetailsPreview form={form} />
       </div>
 
       {totals.isAvailable ? (
