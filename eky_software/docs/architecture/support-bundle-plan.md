@@ -3,6 +3,26 @@
 Eky-tukipaketti on käyttäjän vahvistuksella muodostettava, sanitoitu
 diagnostiikka-artifacti. Se ei ole varmuuskopio eikä sisällä business dataa.
 
+## Toteutettu R0-raja
+
+R0-toteutus kulkee seuraavasti:
+
+```text
+Diagnostics UI
+  -> rajattu preload createSupportBundle(), ei argumentteja
+  -> Electron mainin vahvistus ja Save-dialogi
+  -> mainin runtime-sessionilla tekemä sisäinen backend-haku
+  -> tarkka response-validointi
+  -> gzip JSON + SHA-256 section checksumit
+  -> yksityinen väliaikaistiedosto ja lopullinen .ekysupport-tiedosto
+```
+
+Backendin `GET /diagnostics/support-bundle-data` on
+`createSupportBundle`-permissionilla suojattu tekninen read model. Reitti ei
+ole API-clientin julkinen endpoint eikä Electron-rendererin yleisen
+`eky://app`-transportin allowlistissa. Renderer ei voi antaa reitille polkua,
+querya, `companyId`:tä tai runtime-sessionia.
+
 ## Formaatti
 
 - tiedostopääte `.ekysupport`
@@ -19,10 +39,10 @@ diagnostiikka-artifacti. Se ei ole varmuuskopio eikä sisällä business dataa.
 - platform ja architecture ilman käyttäjänimeä
 - tietokannan health- ja migration-yhteenveto ilman polkua
 - operational log -yhteenveto
-- valitun kuukauden tai oletuksena 30 päivän sanitoidut warn/error-eventit
+- viimeisen 30 päivän sanitoidut warn/error-eventit
 - saman aikavälin security-eventit
 - incident index -yhteenvedot
-- sectionChecksums SHA-256
+- SHA-256-checksum jokaiselle dataosiolle
 
 ## Kielletty sisältö
 
@@ -59,3 +79,8 @@ Tukipaketin muodostus vaatii backend-permissionin ja desktop-capabilityn.
 Jokainen event validoidaan ja redaktoidaan uudelleen ennen sisällytystä.
 Paketti ei saa kasvattaa logs-rootin tai käyttäjän valitseman kohteen
 oikeuksia eikä seurata symlinkkejä.
+
+`.ekysupport` ei ole salattu säiliö. Sisältö on minimoitu ja sanitoitu, mutta
+käyttäjä jakaa tiedoston vain harkitusti sovitulle tukitaholle ja poistaa
+ulkoisen kopion, kun käyttötarkoitus päättyy. Eky poistaa vain oman runtimensa
+yli 30 päivää vanhat väliaikaiset tukipakettitiedostot.

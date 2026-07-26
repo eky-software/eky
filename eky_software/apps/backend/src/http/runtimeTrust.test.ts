@@ -56,6 +56,7 @@ describe('backend runtime trust', () => {
         'sendInvoices',
         'viewActivity',
         'viewDiagnostics',
+        'createSupportBundle',
       ],
     });
   });

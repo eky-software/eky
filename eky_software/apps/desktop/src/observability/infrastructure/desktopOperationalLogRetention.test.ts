@@ -29,7 +29,7 @@ describe('maintainDesktopOperationalLogs', () => {
     writeLog(
       logsRoot,
       'desktop',
-      'desktop-warning-error-2024-01-001.jsonl',
+      'desktop-warning-error-2025-01-001.jsonl',
     );
     writeLog(
       logsRoot,
@@ -45,7 +45,7 @@ describe('maintainDesktopOperationalLogs', () => {
     ).toMatchObject({
       deletedByteCount: 2,
       deletedFileCount: 1,
-      oldestRemainingMonth: '2024-01',
+      oldestRemainingMonth: '2025-01',
     });
   });
 });

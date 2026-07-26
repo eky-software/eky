@@ -5,11 +5,15 @@ import type {
 } from '@eky/api-client';
 import { useState } from 'react';
 
-import type { OpenOperationalLogFolder } from '../../../app/desktopBridge.js';
+import type {
+  CreateSupportBundle,
+  OpenOperationalLogFolder,
+} from '../../../app/desktopBridge.js';
 import styles from './DiagnosticsPageView.module.css';
 import { uiText } from '../../../i18n/fi.js';
 
 interface DiagnosticsPageViewProps {
+  createSupportBundle?: CreateSupportBundle;
   errorMessage: string | null;
   events: DiagnosticEventItem[];
   isLoading: boolean;
@@ -17,6 +21,7 @@ interface DiagnosticsPageViewProps {
 }
 
 export function DiagnosticsPageView({
+  createSupportBundle,
   errorMessage,
   events,
   isLoading,
@@ -25,6 +30,9 @@ export function DiagnosticsPageView({
   const [desktopErrorMessage, setDesktopErrorMessage] = useState<
     string | null
   >(null);
+  const [isCreatingSupportBundle, setIsCreatingSupportBundle] =
+    useState(false);
+  const [supportBundleCreated, setSupportBundleCreated] = useState(false);
 
   async function handleOpenLogFolder(): Promise<void> {
     if (openOperationalLogFolder === undefined) {
@@ -39,6 +47,24 @@ export function DiagnosticsPageView({
     }
   }
 
+  async function handleCreateSupportBundle(): Promise<void> {
+    if (createSupportBundle === undefined || isCreatingSupportBundle) {
+      return;
+    }
+
+    setDesktopErrorMessage(null);
+    setSupportBundleCreated(false);
+    setIsCreatingSupportBundle(true);
+    try {
+      const result = await createSupportBundle();
+      setSupportBundleCreated(result === 'created');
+    } catch {
+      setDesktopErrorMessage(uiText.diagnostics.createSupportBundleError);
+    } finally {
+      setIsCreatingSupportBundle(false);
+    }
+  }
+
   return (
     <section
       className={styles.workspace}
@@ -50,19 +76,42 @@ export function DiagnosticsPageView({
           <h1 id="diagnostics-heading">{uiText.diagnostics.heading}</h1>
           <p>{uiText.diagnostics.description}</p>
         </div>
-        {openOperationalLogFolder === undefined ? null : (
-          <button
-            className={styles.secondaryButton}
-            onClick={() => {
-              void handleOpenLogFolder();
-            }}
-            type="button"
-          >
-            {uiText.diagnostics.openLogFolder}
-          </button>
+        {openOperationalLogFolder === undefined &&
+        createSupportBundle === undefined ? null : (
+          <div className={styles.actions}>
+            {openOperationalLogFolder === undefined ? null : (
+              <button
+                className={styles.secondaryButton}
+                onClick={() => {
+                  void handleOpenLogFolder();
+                }}
+                type="button"
+              >
+                {uiText.diagnostics.openLogFolder}
+              </button>
+            )}
+            {createSupportBundle === undefined ? null : (
+              <button
+                disabled={isCreatingSupportBundle}
+                onClick={() => {
+                  void handleCreateSupportBundle();
+                }}
+                type="button"
+              >
+                {isCreatingSupportBundle
+                  ? uiText.diagnostics.creatingSupportBundle
+                  : uiText.diagnostics.createSupportBundle}
+              </button>
+            )}
+          </div>
         )}
       </header>
 
+      {supportBundleCreated ? (
+        <p className={`${styles.message} ${styles.success}`} role="status">
+          {uiText.diagnostics.supportBundleCreated}
+        </p>
+      ) : null}
       {desktopErrorMessage !== null ? (
         <p className={`${styles.message} ${styles.error}`} role="alert">
           {desktopErrorMessage}
@@ -125,12 +174,12 @@ export function DiagnosticsPageView({
 
 function getLevelClass(level: DiagnosticEventLevel): string {
   if (level === 'error') {
-    return styles.errorStatus;
+    return styles.errorStatus!;
   }
   if (level === 'warn') {
-    return styles.warningStatus;
+    return styles.warningStatus!;
   }
-  return styles.infoStatus;
+  return styles.infoStatus!;
 }
 
 function getOutcomeLabel(outcome: DiagnosticEventOutcome): string {

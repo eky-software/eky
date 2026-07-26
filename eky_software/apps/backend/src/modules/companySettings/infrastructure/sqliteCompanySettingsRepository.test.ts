@@ -59,7 +59,7 @@ describe('SqliteCompanySettingsRepository', () => {
       originalSettings,
       createAuditEvent(null, originalSettings),
     );
-    const updatedSettings = {
+    const updatedSettings: CompanySettings = {
       ...originalSettings,
       createdAt: '2026-06-26T00:00:00.000Z',
       hourlyRateShortcut: 'laskutus',

@@ -137,6 +137,17 @@ ja palauttaa rajatun projection. Se ei hyväksy tiedostopolkua tai filenamea
 requestista. Lokikansion avaaminen ja tukipaketin tallennus ovat desktop mainin
 omistamia capabilityja.
 
+R0:ssa tukipaketti muodostetaan vain desktopissa. Backend palauttaa
+permission-rajatun sanitoidun teknisen projektion, mutta renderer ei saa
+sisäistä reittiä, runtime-sessionia, tallennuspolkua tai paketin sisältöä.
+Electron main vahvistaa toiminnon, validoi backend-vastauksen uudelleen ja
+kirjoittaa checksumeilla varustetun `.ekysupport`-artifactin.
+
+R0-observabilityn toteutus sisältää nyt tyypitetyt backend- ja desktop-eventit,
+rotatoidut JSONL-lokit, moduulien audit-kirjoitukset, Activity- ja
+Diagnostics-read modelit, turvallisen lokikansion avauksen sekä sanitoidun
+tukipakettiviennin.
+
 ## Testaus ja failure behavior
 
 - Business audit -virhe rollbackaa saman transaktion kriittisen muutoksen.

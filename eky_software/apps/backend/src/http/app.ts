@@ -276,7 +276,14 @@ export async function createApp(
       invoiceActivityReader: invoicingComposition.invoiceActivityReader,
     }),
   );
-  app.route('/', createDiagnosticsComposition(options.operationalLogsRoot));
+  app.route(
+    '/',
+    createDiagnosticsComposition({
+      appVersion,
+      database,
+      operationalLogsRoot: options.operationalLogsRoot,
+    }),
+  );
 
   app.notFound((context) => {
     logUnknownRoute({

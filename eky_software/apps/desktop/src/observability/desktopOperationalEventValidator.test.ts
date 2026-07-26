@@ -71,6 +71,27 @@ describe('desktop operational event contracts', () => {
     ).toThrow(DesktopOperationalEventValidationError);
   });
 
+  it('requires a safe correlation id for support bundle events', () => {
+    const event = createDesktopOperationalEvent(
+      {
+        correlationId: '00000000-0000-4000-8000-000000000001',
+        eventName: 'supportBundle.creationStarted',
+        stage: 'create',
+      },
+      options,
+    );
+    const { correlationId: _correlationId, ...withoutCorrelationId } = event;
+
+    expect(event).toMatchObject({
+      category: 'supportBundle',
+      correlationId: '00000000-0000-4000-8000-000000000001',
+      eventName: 'supportBundle.creationStarted',
+    });
+    expect(() =>
+      validateDesktopOperationalEvent(withoutCorrelationId),
+    ).toThrow(DesktopOperationalEventValidationError);
+  });
+
   it.each([
     ['password', 'synthetic'],
     ['authorization', 'Bearer synthetic'],

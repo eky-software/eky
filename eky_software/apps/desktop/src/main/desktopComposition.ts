@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 
 import {
@@ -15,6 +16,11 @@ import {
   createOperationalLogFolderCapability,
   type OperationalLogFolderCapability,
 } from '../diagnostics/operationalLogFolderCapability.js';
+import {
+  createSupportBundleCapability,
+  type SupportBundleCapability,
+} from '../supportBundle/supportBundleCapability.js';
+import { removeExpiredSupportBundleTemporaryFiles } from '../supportBundle/supportBundleFileStore.js';
 import {
   createInvoicePdfPreviewWindowController,
   type InvoicePdfPreviewWindowController,
@@ -35,6 +41,7 @@ import {
   loadApplicationWindow,
 } from './applicationWindow.js';
 import { registerApplicationProtocol } from './applicationProtocol.js';
+import { createBackendRequestHeaders } from './protocolPolicy.js';
 import { createInvoiceDeliveryConfirmation } from './invoiceDeliveryConfirmation.js';
 import {
   createPackagedSmokeSecretFileStore,
@@ -113,6 +120,7 @@ export async function startDesktopComposition(
   let operationalLogFolderCapability:
     | OperationalLogFolderCapability
     | undefined;
+  let supportBundleCapability: SupportBundleCapability | undefined;
   let shutdownStarted = false;
 
   const deliveryConfirmation = createInvoiceDeliveryConfirmation(
@@ -131,7 +139,7 @@ export async function startDesktopComposition(
     observer: {
       operationFailed(operation, errorCode) {
         const isReadOperation =
-          operation === 'getCompanyEmailSecret' ||
+          operation === 'readCompanyEmailSecret' ||
           operation === 'hasCompanyEmailSecret';
         desktopOperationalLogger.write(
           createDesktopOperationalEvent(
@@ -302,6 +310,72 @@ export async function startDesktopComposition(
       );
     },
   });
+  supportBundleCapability = createSupportBundleCapability({
+    appVersion: desktopAppVersion,
+    architecture: process.arch,
+    async confirmCreation() {
+      const result = await dialog.showMessageBox(mainWindow, {
+        buttons: ['Peruuta', 'Jatka'],
+        cancelId: 0,
+        defaultId: 0,
+        detail:
+          'Paketti sisältää vain sanitoituja teknisiä tapahtumia, sovellusversiot sekä tietokannan health- ja migraatioyhteenvedon. Se ei sisällä asiakas- tai laskudataa, PDF:iä eikä salaisuuksia.',
+        message: 'Luodaanko Eky-tukipaketti?',
+        noLink: true,
+        title: 'Luo tukipaketti',
+        type: 'warning',
+      });
+      return result.response === 1;
+    },
+    ipcMain,
+    loadBackendData: () =>
+      loadSupportBundleBackendData(
+        `http://127.0.0.1:${backendHandle.port}`,
+        runtimeSessionSecret,
+      ),
+    mainWindow,
+    operationalLogger: desktopOperationalLogger,
+    platform: process.platform,
+    runtimeRoot: dataRoot,
+    async selectTargetPath(defaultFileName) {
+      const result = await dialog.showSaveDialog(mainWindow, {
+        defaultPath: defaultFileName,
+        filters: [
+          {
+            extensions: ['ekysupport'],
+            name: 'Eky-tukipaketti',
+          },
+        ],
+        title: 'Tallenna Eky-tukipaketti',
+      });
+      return result.canceled || result.filePath === ''
+        ? null
+        : result.filePath;
+    },
+    showSafeError() {
+      deliveryConfirmation.showApplicationError(
+        'Tukipakettia ei voitu luoda',
+        'Eky-tukipakettia ei voitu luoda turvallisesti.',
+      );
+    },
+  });
+  try {
+    removeExpiredSupportBundleTemporaryFiles(dataRoot);
+  } catch {
+    desktopOperationalLogger.write(
+      createDesktopOperationalEvent(
+        {
+          correlationId: randomUUID(),
+          errorCode: 'SUPPORT_BUNDLE_RETENTION_FAILED',
+          eventName: 'supportBundle.creationFailed',
+          retryable: true,
+          sideEffectState: 'none',
+          stage: 'retention',
+        },
+        { appVersion: desktopAppVersion },
+      ),
+    );
+  }
   pdfPreviewController = createInvoicePdfPreviewController(
     desktopAppVersion,
     desktopOperationalLogger,
@@ -332,6 +406,8 @@ export async function startDesktopComposition(
       pdfPreviewController = undefined;
       operationalLogFolderCapability?.dispose();
       operationalLogFolderCapability = undefined;
+      supportBundleCapability?.dispose();
+      supportBundleCapability = undefined;
 
       try {
         await backendHandle.stop();
@@ -437,6 +513,50 @@ export async function startDesktopComposition(
   });
 
   return lifecycleHandle;
+}
+
+const maximumSupportBundleBackendBytes = 8 * 1024 * 1024;
+
+async function loadSupportBundleBackendData(
+  backendOrigin: string,
+  runtimeSessionSecret: string,
+): Promise<unknown> {
+  const response = await net.fetch(
+    `${backendOrigin}/diagnostics/support-bundle-data`,
+    {
+      headers: createBackendRequestHeaders(
+        new Headers(),
+        runtimeSessionSecret,
+      ),
+      method: 'GET',
+    },
+  );
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new Error('SUPPORT_BUNDLE_BACKEND_REQUEST_FAILED');
+  }
+  const declaredLength = Number(
+    response.headers.get('content-length') ?? '0',
+  );
+  if (
+    !Number.isFinite(declaredLength) ||
+    declaredLength < 0 ||
+    declaredLength > maximumSupportBundleBackendBytes
+  ) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new Error('SUPPORT_BUNDLE_BACKEND_RESPONSE_TOO_LARGE');
+  }
+
+  const responseBytes = Buffer.from(await response.arrayBuffer());
+  if (responseBytes.byteLength > maximumSupportBundleBackendBytes) {
+    throw new Error('SUPPORT_BUNDLE_BACKEND_RESPONSE_TOO_LARGE');
+  }
+
+  try {
+    return JSON.parse(responseBytes.toString('utf8')) as unknown;
+  } catch {
+    throw new Error('SUPPORT_BUNDLE_BACKEND_RESPONSE_INVALID');
+  }
 }
 
 function createInvoicePdfPreviewController(

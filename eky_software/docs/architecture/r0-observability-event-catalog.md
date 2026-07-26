@@ -48,9 +48,6 @@ instrumentointia.
 
 ### Diagnostiikka
 
-- `supportBundle.creationStarted`
-- `supportBundle.creationCompleted`
-- `supportBundle.creationFailed`
 - `operationalLog.capacityReached`
 - `operationalLog.retentionCompleted`
 
@@ -78,6 +75,9 @@ instrumentointia.
 - `packagedSmoke.completed`
 - `packagedSmoke.failed`
 - `operationalLog.writeFailed`
+- `supportBundle.creationStarted`
+- `supportBundle.creationCompleted`
+- `supportBundle.creationFailed`
 
 ## Module-owned business audit
 

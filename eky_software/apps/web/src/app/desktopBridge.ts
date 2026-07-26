@@ -1,4 +1,5 @@
 export interface EkyDesktopApi {
+  createSupportBundle(): Promise<'cancelled' | 'created'>;
   openInvoicePdf(invoiceId: string): Promise<void>;
   openOperationalLogFolder(): Promise<void>;
 }
@@ -36,4 +37,18 @@ export function getDesktopOperationalLogFolder(
   }
 
   return () => openOperationalLogFolder();
+}
+
+export type CreateSupportBundle = () => Promise<'cancelled' | 'created'>;
+
+export function getDesktopSupportBundleCreator(
+  target: Pick<Window, 'ekyDesktop'> = window,
+): CreateSupportBundle | undefined {
+  const createSupportBundle = target.ekyDesktop?.createSupportBundle;
+
+  if (typeof createSupportBundle !== 'function') {
+    return undefined;
+  }
+
+  return () => createSupportBundle();
 }

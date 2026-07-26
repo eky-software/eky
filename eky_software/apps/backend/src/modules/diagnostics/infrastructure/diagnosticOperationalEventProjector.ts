@@ -77,12 +77,28 @@ const desktopDiagnosticSpecs = Object.freeze({
     'failure',
   ),
   'secretStorage.writeFailed': spec('secretStorage', 'error', 'failure'),
+  'supportBundle.creationCompleted': spec(
+    'supportBundle',
+    'info',
+    'success',
+  ),
+  'supportBundle.creationFailed': spec(
+    'supportBundle',
+    'error',
+    'failure',
+  ),
+  'supportBundle.creationStarted': spec(
+    'supportBundle',
+    'info',
+    'success',
+  ),
 } satisfies Record<string, DesktopDiagnosticSpec>);
 
 const allowedDesktopFields = new Set([
   'appVersion',
   'category',
   'component',
+  'correlationId',
   'deletedByteCount',
   'deletedFileCount',
   'durationMs',

@@ -15,6 +15,7 @@ import {
 import {
   getDesktopInvoicePdfPreview,
   getDesktopOperationalLogFolder,
+  getDesktopSupportBundleCreator,
 } from './desktopBridge.js';
 
 interface AppProps {
@@ -30,6 +31,7 @@ export function App({ apiClient }: AppProps): React.JSX.Element {
   const activeTitle = uiText.modules[activeView];
   const openInvoicePdfPreview = getDesktopInvoicePdfPreview();
   const openOperationalLogFolder = getDesktopOperationalLogFolder();
+  const createSupportBundle = getDesktopSupportBundleCreator();
 
   return (
     <AppLayout activeView={activeView} onViewChange={activateView} title={activeTitle}>
@@ -43,6 +45,9 @@ export function App({ apiClient }: AppProps): React.JSX.Element {
           {...(openOperationalLogFolder === undefined
             ? {}
             : { openOperationalLogFolder })}
+          {...(createSupportBundle === undefined
+            ? {}
+            : { createSupportBundle })}
         />
       ) : null}
       {activeView === 'companySettings' ? (

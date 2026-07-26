@@ -2,24 +2,21 @@ import { randomUUID } from 'node:crypto';
 
 import {
   desktopOperationalEventSpecs,
-  type DesktopOperationalEventFor,
-  type DesktopOperationalEventName,
-  type DesktopOperationalEventPayloadMap,
+  type DesktopOperationalEvent,
+  type DesktopOperationalEventInput,
 } from './desktopOperationalEvent.js';
 import { validateDesktopOperationalEvent } from './desktopOperationalEventValidator.js';
 
 export function createDesktopOperationalEvent<
-  Name extends DesktopOperationalEventName,
+  Input extends DesktopOperationalEventInput,
 >(
-  input: Readonly<
-    { eventName: Name } & DesktopOperationalEventPayloadMap[Name]
-  >,
+  input: Readonly<Input>,
   options: {
     appVersion: string;
     eventId?: string;
     timestamp?: string;
   },
-): DesktopOperationalEventFor<Name> {
+): Extract<DesktopOperationalEvent, { eventName: Input['eventName'] }> {
   const spec = desktopOperationalEventSpecs[input.eventName];
 
   return validateDesktopOperationalEvent({
@@ -32,5 +29,8 @@ export function createDesktopOperationalEvent<
     outcome: spec.outcome,
     schemaVersion: 1,
     timestamp: options.timestamp ?? new Date().toISOString(),
-  }) as DesktopOperationalEventFor<Name>;
+  }) as Extract<
+    DesktopOperationalEvent,
+    { eventName: Input['eventName'] }
+  >;
 }

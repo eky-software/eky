@@ -75,4 +75,25 @@ describe('DiagnosticsPageView', () => {
     expect(browserHtml).not.toContain('Avaa lokikansio');
     expect(desktopHtml).toContain('Avaa lokikansio');
   });
+
+  it('shows support bundle creation only for the desktop capability', () => {
+    const browserHtml = renderToStaticMarkup(
+      <DiagnosticsPageView
+        errorMessage={null}
+        events={[]}
+        isLoading={false}
+      />,
+    );
+    const desktopHtml = renderToStaticMarkup(
+      <DiagnosticsPageView
+        createSupportBundle={async () => 'created'}
+        errorMessage={null}
+        events={[]}
+        isLoading={false}
+      />,
+    );
+
+    expect(browserHtml).not.toContain('Luo tukipaketti');
+    expect(desktopHtml).toContain('Luo tukipaketti');
+  });
 });

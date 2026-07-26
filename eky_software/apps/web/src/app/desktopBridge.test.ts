@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   getDesktopInvoicePdfPreview,
   getDesktopOperationalLogFolder,
+  getDesktopSupportBundleCreator,
   type EkyDesktopApi,
 } from './desktopBridge.js';
 
@@ -11,6 +12,7 @@ describe('desktop bridge', () => {
     const openInvoicePdf = vi.fn(async () => undefined);
     const preview = getDesktopInvoicePdfPreview({
       ekyDesktop: {
+        createSupportBundle: vi.fn(async () => 'cancelled'),
         openInvoicePdf,
         openOperationalLogFolder: vi.fn(async () => undefined),
       },
@@ -39,6 +41,7 @@ describe('desktop bridge', () => {
     const openOperationalLogFolder = vi.fn(async () => undefined);
     const openLogFolder = getDesktopOperationalLogFolder({
       ekyDesktop: {
+        createSupportBundle: vi.fn(async () => 'cancelled'),
         openInvoicePdf: vi.fn(async () => undefined),
         openOperationalLogFolder,
       },
@@ -47,5 +50,19 @@ describe('desktop bridge', () => {
     await openLogFolder?.();
 
     expect(openOperationalLogFolder).toHaveBeenCalledOnce();
+  });
+
+  it('exposes support bundle creation without returning a file path', async () => {
+    const createSupportBundle = vi.fn(async () => 'created' as const);
+    const createBundle = getDesktopSupportBundleCreator({
+      ekyDesktop: {
+        createSupportBundle,
+        openInvoicePdf: vi.fn(async () => undefined),
+        openOperationalLogFolder: vi.fn(async () => undefined),
+      },
+    } as Pick<Window, 'ekyDesktop'>);
+
+    await expect(createBundle?.()).resolves.toBe('created');
+    expect(createSupportBundle).toHaveBeenCalledWith();
   });
 });

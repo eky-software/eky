@@ -29,6 +29,8 @@ const controlCharacterPattern = /[\u0000-\u001f\u007f-\u009f]/g;
 const timestampPattern =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 const monthPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const maximumEventBytes = 16 * 1024;
 
 export class DesktopOperationalEventValidationError extends Error {
@@ -139,6 +141,15 @@ function validatePayloadValue(field: string, value: unknown): void {
     if (typeof value !== 'boolean') {
       throw new DesktopOperationalEventValidationError(
         'Desktop operational event retryable field is invalid.',
+      );
+    }
+    return;
+  }
+
+  if (field === 'correlationId') {
+    if (typeof value !== 'string' || !uuidPattern.test(value)) {
+      throw new DesktopOperationalEventValidationError(
+        'Desktop operational event correlation id is invalid.',
       );
     }
     return;

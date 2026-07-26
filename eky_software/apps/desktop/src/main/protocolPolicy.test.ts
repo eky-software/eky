@@ -25,6 +25,12 @@ describe('desktop protocol policy', () => {
     expect(isAllowedBackendRequest('POST', '/activity')).toBe(false);
     expect(isAllowedBackendRequest('GET', '/diagnostics/events')).toBe(true);
     expect(isAllowedBackendRequest('POST', '/diagnostics/events')).toBe(false);
+    expect(
+      isAllowedBackendRequest(
+        'GET',
+        '/diagnostics/support-bundle-data',
+      ),
+    ).toBe(false);
     expect(isAllowedBackendRequest('PUT', '/invoice-drafts/draft-1')).toBe(true);
     expect(isAllowedBackendRequest('DELETE', '/invoice-drafts/draft-1')).toBe(
       true,

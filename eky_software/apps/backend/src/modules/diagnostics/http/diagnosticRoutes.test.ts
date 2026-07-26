@@ -2,11 +2,22 @@ import { Hono } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
+import type { ListDiagnosticEventsInput } from '../application/listDiagnosticEvents.js';
+import type { PrepareSupportBundleDiagnosticDataInput } from '../application/prepareSupportBundleDiagnosticData.js';
+import type { DiagnosticEventItem } from '../domain/diagnosticEventItem.js';
+import type { SupportBundleDiagnosticData } from '../domain/supportBundleDiagnosticData.js';
 import { createDiagnosticRoutes } from './diagnosticRoutes.js';
+
+type ListDiagnosticEvents = (
+  input: ListDiagnosticEventsInput,
+) => Promise<DiagnosticEventItem[]>;
+type PrepareSupportBundleDiagnosticData = (
+  input: PrepareSupportBundleDiagnosticDataInput,
+) => Promise<SupportBundleDiagnosticData>;
 
 describe('diagnostic routes', () => {
   it('takes trust context from the backend and returns only the projection', async () => {
-    const listDiagnosticEvents = vi.fn().mockResolvedValue([
+    const listDiagnosticEvents = vi.fn<ListDiagnosticEvents>().mockResolvedValue([
       {
         category: 'smtp',
         component: 'backend',
@@ -42,7 +53,7 @@ describe('diagnostic routes', () => {
   });
 
   it('rejects path, company and malformed query input', async () => {
-    const listDiagnosticEvents = vi.fn();
+    const listDiagnosticEvents = vi.fn<ListDiagnosticEvents>();
     const app = createTestApp(listDiagnosticEvents);
 
     expect(
@@ -57,9 +68,41 @@ describe('diagnostic routes', () => {
     );
     expect(listDiagnosticEvents).not.toHaveBeenCalled();
   });
+
+  it('returns support data only through the dedicated permission-checked service', async () => {
+    const prepareSupportBundleDiagnosticData =
+      vi.fn<PrepareSupportBundleDiagnosticData>().mockResolvedValue({
+        backendVersion: '1.2.3',
+        database: {
+          appliedMigrationCount: 35,
+          health: 'ok',
+          latestMigrationName: '035_example.sql',
+        },
+        diagnosticEvents: [],
+        diagnosticPeriodDays: 30,
+        truncated: false,
+      });
+    const app = createTestApp(
+      vi.fn<ListDiagnosticEvents>(),
+      prepareSupportBundleDiagnosticData,
+    );
+
+    const response = await app.request('/diagnostics/support-bundle-data');
+
+    expect(response.status).toBe(200);
+    expect(prepareSupportBundleDiagnosticData).toHaveBeenCalledWith({
+      actorContext: expect.objectContaining({
+        companyId: 'trusted-company',
+      }),
+    });
+  });
 });
 
-function createTestApp(listDiagnosticEvents: ReturnType<typeof vi.fn>) {
+function createTestApp(
+  listDiagnosticEvents: ListDiagnosticEvents,
+  prepareSupportBundleDiagnosticData: PrepareSupportBundleDiagnosticData =
+    vi.fn<PrepareSupportBundleDiagnosticData>(),
+) {
   const app = new Hono<BackendEnvironment>();
   app.use('*', async (context, next) => {
     context.set('actorContext', {
@@ -71,7 +114,12 @@ function createTestApp(listDiagnosticEvents: ReturnType<typeof vi.fn>) {
     context.set('correlationId', 'correlation-1');
     await next();
   });
-  app.route('/', createDiagnosticRoutes({ listDiagnosticEvents }));
+  app.route(
+    '/',
+    createDiagnosticRoutes({
+      listDiagnosticEvents,
+      prepareSupportBundleDiagnosticData,
+    }),
+  );
   return app;
 }
-

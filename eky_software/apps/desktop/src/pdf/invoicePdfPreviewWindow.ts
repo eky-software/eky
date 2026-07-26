@@ -184,9 +184,10 @@ export function createInvoicePdfPreviewWindowController(
     async hasRendererBridgeForSmoke() {
       return options.mainWindow.webContents.executeJavaScript(
         `typeof window.ekyDesktop === 'object' &&
+          typeof window.ekyDesktop.createSupportBundle === 'function' &&
           typeof window.ekyDesktop.openInvoicePdf === 'function' &&
           typeof window.ekyDesktop.openOperationalLogFolder === 'function' &&
-          Object.keys(window.ekyDesktop).length === 2`,
+          Object.keys(window.ekyDesktop).length === 3`,
         true,
       );
     },

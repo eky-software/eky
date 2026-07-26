@@ -4,14 +4,20 @@ import { Hono, type Context } from 'hono';
 import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 import {
   DiagnosticEventValidationError,
+  maximumDiagnosticEventLimit,
   type ListDiagnosticEventsInput,
 } from '../application/listDiagnosticEvents.js';
+import type { PrepareSupportBundleDiagnosticDataInput } from '../application/prepareSupportBundleDiagnosticData.js';
 import type { DiagnosticEventItem } from '../domain/diagnosticEventItem.js';
+import type { SupportBundleDiagnosticData } from '../domain/supportBundleDiagnosticData.js';
 
 interface DiagnosticRouteDependencies {
   listDiagnosticEvents(
     input: ListDiagnosticEventsInput,
   ): Promise<DiagnosticEventItem[]>;
+  prepareSupportBundleDiagnosticData(
+    input: PrepareSupportBundleDiagnosticDataInput,
+  ): Promise<SupportBundleDiagnosticData>;
 }
 
 export function createDiagnosticRoutes(
@@ -45,6 +51,25 @@ export function createDiagnosticRoutes(
     }
   });
 
+  routes.get('/diagnostics/support-bundle-data', async (context) => {
+    if (Object.keys(context.req.query()).length > 0) {
+      return context.json(
+        { error: 'Unsupported support bundle query.' },
+        400,
+      );
+    }
+
+    try {
+      return context.json(
+        await dependencies.prepareSupportBundleDiagnosticData({
+          actorContext: context.get('actorContext'),
+        }),
+      );
+    } catch (error) {
+      return handleKnownError(context, error);
+    }
+  });
+
   return routes;
 }
 
@@ -52,7 +77,8 @@ function parseStrictPositiveInteger(value: string): number | undefined {
   if (!/^[1-9][0-9]{0,2}$/.test(value)) {
     return undefined;
   }
-  return Number(value);
+  const parsed = Number(value);
+  return parsed <= maximumDiagnosticEventLimit ? parsed : undefined;
 }
 
 function handleKnownError(
@@ -67,4 +93,3 @@ function handleKnownError(
   }
   throw error;
 }
-

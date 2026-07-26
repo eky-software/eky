@@ -76,7 +76,7 @@ describe('operational HTTP logging', () => {
     expect(response.status).toBe(500);
     expect(write).toHaveBeenCalledWith(
       expect.objectContaining({
-        errorCode: 'HTTP_HANDLER_FAILED',
+        errorCode: 'HTTP_REQUEST_FAILED',
         eventName: 'http.requestFailed',
       }),
     );

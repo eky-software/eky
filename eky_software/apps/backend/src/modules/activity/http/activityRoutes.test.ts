@@ -2,11 +2,15 @@ import { Hono } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
+import type { ListActivityInput } from '../application/listActivity.js';
+import type { ActivityItem } from '../domain/activityItem.js';
 import { createActivityRoutes } from './activityRoutes.js';
+
+type ListActivity = (input: ListActivityInput) => Promise<ActivityItem[]>;
 
 describe('activity routes', () => {
   it('uses the backend actor context and returns the safe projection', async () => {
-    const listActivity = vi.fn().mockResolvedValue([
+    const listActivity = vi.fn<ListActivity>().mockResolvedValue([
       {
         id: 'customers:event-1',
         module: 'customers',
@@ -38,7 +42,7 @@ describe('activity routes', () => {
   });
 
   it('rejects companyId and malformed limits from the query', async () => {
-    const listActivity = vi.fn();
+    const listActivity = vi.fn<ListActivity>();
     const app = createTestApp(listActivity);
 
     expect((await app.request('/activity?companyId=other')).status).toBe(400);
@@ -48,7 +52,7 @@ describe('activity routes', () => {
   });
 });
 
-function createTestApp(listActivity: ReturnType<typeof vi.fn>) {
+function createTestApp(listActivity: ListActivity) {
   const app = new Hono<BackendEnvironment>();
   app.use('*', async (context, next) => {
     context.set('actorContext', {

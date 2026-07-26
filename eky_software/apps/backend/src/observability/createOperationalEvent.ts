@@ -2,9 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 import {
   backendOperationalEventSpecs,
-  type BackendOperationalEventFor,
-  type BackendOperationalEventName,
-  type BackendOperationalEventPayloadMap,
+  type BackendOperationalEvent,
+  type BackendOperationalEventInput,
 } from './operationalEvent.js';
 import { validateBackendOperationalEvent } from './operationalEventValidator.js';
 
@@ -15,13 +14,11 @@ export interface CreateBackendOperationalEventOptions {
 }
 
 export function createBackendOperationalEvent<
-  Name extends BackendOperationalEventName,
+  Input extends BackendOperationalEventInput,
 >(
-  input: Readonly<
-    { eventName: Name } & BackendOperationalEventPayloadMap[Name]
-  >,
+  input: Readonly<Input>,
   options: CreateBackendOperationalEventOptions,
-): BackendOperationalEventFor<Name> {
+): Extract<BackendOperationalEvent, { eventName: Input['eventName'] }> {
   const spec = backendOperationalEventSpecs[input.eventName];
 
   return validateBackendOperationalEvent({
@@ -34,5 +31,8 @@ export function createBackendOperationalEvent<
     outcome: spec.outcome,
     schemaVersion: 1,
     timestamp: options.timestamp ?? new Date().toISOString(),
-  }) as BackendOperationalEventFor<Name>;
+  }) as Extract<
+    BackendOperationalEvent,
+    { eventName: Input['eventName'] }
+  >;
 }

@@ -28,6 +28,8 @@ const finnishPersonalIdentityCodePattern =
 const isoTimestampPattern =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 const monthPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const maximumEventBytes = 16 * 1024;
 const maximumStringLength = 300;
 const controlCharacterPattern = /[\u0000-\u001f\u007f-\u009f]/g;
@@ -159,6 +161,15 @@ function validatePayload(
       ) {
         throw new OperationalEventValidationError(
           'Operational event side-effect state is invalid.',
+        );
+      }
+      continue;
+    }
+
+    if (field === 'correlationId') {
+      if (typeof fieldValue !== 'string' || !uuidPattern.test(fieldValue)) {
+        throw new OperationalEventValidationError(
+          'Operational event correlation id is invalid.',
         );
       }
       continue;

@@ -7,6 +7,7 @@ export const permissionValues = Object.freeze([
   'sendInvoices',
   'viewActivity',
   'viewDiagnostics',
+  'createSupportBundle',
 ] as const);
 
 export type Permission = (typeof permissionValues)[number];

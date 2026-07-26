@@ -34,6 +34,18 @@ export interface DesktopOperationalEventPayloadMap {
     oldestRemainingMonth?: string;
   };
   'operationalLog.writeFailed': { errorCode: string; stage?: string };
+  'supportBundle.creationStarted': {
+    correlationId: string;
+    stage?: string;
+  };
+  'supportBundle.creationCompleted': {
+    correlationId: string;
+    durationMs?: number;
+    stage?: string;
+  };
+  'supportBundle.creationFailed': FailureFields & {
+    correlationId: string;
+  };
 }
 
 interface FailureFields {
@@ -192,6 +204,24 @@ export const desktopOperationalEventSpecs = Object.freeze({
     'failure',
     ['errorCode', 'stage'],
   ),
+  'supportBundle.creationStarted': spec(
+    'supportBundle',
+    'info',
+    'success',
+    ['correlationId', 'stage'],
+  ),
+  'supportBundle.creationCompleted': spec(
+    'supportBundle',
+    'info',
+    'success',
+    ['correlationId', 'durationMs', 'stage'],
+  ),
+  'supportBundle.creationFailed': spec(
+    'supportBundle',
+    'error',
+    'failure',
+    ['correlationId', ...failureFields],
+  ),
 } satisfies Record<DesktopOperationalEventName, DesktopOperationalEventSpec>);
 
 export const desktopRequiredPayloadFields = Object.freeze({
@@ -222,6 +252,9 @@ export const desktopRequiredPayloadFields = Object.freeze({
     'deletedFileCount',
   ],
   'operationalLog.writeFailed': ['errorCode'],
+  'supportBundle.creationStarted': ['correlationId'],
+  'supportBundle.creationCompleted': ['correlationId'],
+  'supportBundle.creationFailed': ['correlationId', 'errorCode'],
 } satisfies Record<DesktopOperationalEventName, readonly string[]>);
 
 function spec(

@@ -4,6 +4,7 @@ import { Hono, type Context } from 'hono';
 import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 import {
   ActivityValidationError,
+  maximumActivityLimit,
   type ListActivityInput,
 } from '../application/listActivity.js';
 import type { ActivityItem } from '../domain/activityItem.js';
@@ -50,7 +51,8 @@ function parseStrictPositiveInteger(value: string): number | undefined {
   if (!/^[1-9][0-9]{0,2}$/.test(value)) {
     return undefined;
   }
-  return Number(value);
+  const parsed = Number(value);
+  return parsed <= maximumActivityLimit ? parsed : undefined;
 }
 
 function handleKnownError(

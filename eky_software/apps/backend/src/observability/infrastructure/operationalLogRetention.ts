@@ -61,9 +61,12 @@ export function maintainOperationalLogs(options: {
     totalByteCount -= candidate.byteCount;
   }
 
-  result.oldestRemainingMonth = candidates
+  const oldestRemainingMonth = candidates
     .filter((candidate) => candidate.exists)
     .sort(compareOldestFirst)[0]?.month;
+  if (oldestRemainingMonth !== undefined) {
+    result.oldestRemainingMonth = oldestRemainingMonth;
+  }
 
   return result;
 }

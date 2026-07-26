@@ -57,6 +57,10 @@ export const uiText = {
     },
     description:
       'Tekninen näkymä näyttää vain rajatut ja turvalliset tapahtumatiedot.',
+    createSupportBundle: 'Luo tukipaketti',
+    createSupportBundleError:
+      'Tukipakettia ei voitu luoda turvallisesti.',
+    creatingSupportBundle: 'Luodaan tukipakettia...',
     empty: 'Diagnostiikkatapahtumia ei ole vielä.',
     errorCode: 'Virhekoodi',
     event: 'Tapahtuma',
@@ -76,6 +80,7 @@ export const uiText = {
       unknown: 'Epäselvä',
     },
     status: 'Tila',
+    supportBundleCreated: 'Tukipaketti luotiin onnistuneesti.',
   },
   customers: {
     add: 'Lisää',

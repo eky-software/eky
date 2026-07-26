@@ -12,13 +12,14 @@ const options = {
   eventId: 'event-1',
   timestamp: '2026-07-26T20:00:00.000Z',
 };
+const correlationId = '7f62df6c-9122-4ac7-8d0f-b8ed214ee97b';
 
 describe('backend operational event contracts', () => {
   it('creates a typed event with catalog-owned core fields', () => {
     expect(
       createBackendOperationalEvent(
         {
-          correlationId: 'correlation-1',
+          correlationId,
           errorCode: 'REQUEST_FAILED',
           eventName: 'http.requestFailed',
           sideEffectState: 'none',
@@ -30,7 +31,7 @@ describe('backend operational event contracts', () => {
       appVersion: '0.0.0',
       category: 'http',
       component: 'backend',
-      correlationId: 'correlation-1',
+      correlationId,
       errorCode: 'REQUEST_FAILED',
       eventId: 'event-1',
       eventName: 'http.requestFailed',
@@ -66,7 +67,7 @@ describe('backend operational event contracts', () => {
   it('rejects events that omit a required payload field', () => {
     const event = createBackendOperationalEvent(
       {
-        correlationId: 'correlation-1',
+        correlationId,
         eventName: 'http.unknownRoute',
       },
       options,
@@ -76,6 +77,25 @@ describe('backend operational event contracts', () => {
     expect(() =>
       validateBackendOperationalEvent(withoutCorrelationId),
     ).toThrow(OperationalEventValidationError);
+  });
+
+  it('validates correlation ids as UUIDs before generic sensitive-text checks', () => {
+    expect(
+      createBackendOperationalEvent(
+        {
+          correlationId: '010101a0-0000-4000-8000-000000000001',
+          eventName: 'http.requestFailed',
+          errorCode: 'HTTP_REQUEST_FAILED',
+          sideEffectState: 'unknown',
+          stage: 'response',
+        },
+        {
+          appVersion: '0.0.0',
+        },
+      ),
+    ).toMatchObject({
+      correlationId: '010101a0-0000-4000-8000-000000000001',
+    });
   });
 
   it.each([
