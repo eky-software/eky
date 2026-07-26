@@ -67,6 +67,8 @@ export const uiText = {
     loading: 'Ladataan diagnostiikkaa...',
     noErrorCode: 'Ei virhekoodia',
     occurredAt: 'Ajankohta',
+    openLogFolder: 'Avaa lokikansio',
+    openLogFolderError: 'Lokikansiota ei voitu avata turvallisesti.',
     outcomes: {
       blocked: 'Estetty',
       failure: 'Epäonnistui',

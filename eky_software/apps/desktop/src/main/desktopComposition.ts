@@ -8,8 +8,13 @@ import {
   net,
   safeStorage,
   session,
+  shell,
 } from 'electron';
 
+import {
+  createOperationalLogFolderCapability,
+  type OperationalLogFolderCapability,
+} from '../diagnostics/operationalLogFolderCapability.js';
 import {
   createInvoicePdfPreviewWindowController,
   type InvoicePdfPreviewWindowController,
@@ -105,6 +110,9 @@ export async function startDesktopComposition(
   const secretBrokerChannel = new MessageChannelMain();
   let applicationWindow: BrowserWindow | undefined;
   let pdfPreviewController: InvoicePdfPreviewWindowController | undefined;
+  let operationalLogFolderCapability:
+    | OperationalLogFolderCapability
+    | undefined;
   let shutdownStarted = false;
 
   const deliveryConfirmation = createInvoiceDeliveryConfirmation(
@@ -282,6 +290,18 @@ export async function startDesktopComposition(
     },
   );
   const mainWindow = applicationWindow;
+  operationalLogFolderCapability = createOperationalLogFolderCapability({
+    ipcMain,
+    mainWindow,
+    openPath: (path) => shell.openPath(path),
+    runtimeRoot: dataRoot,
+    showSafeError() {
+      deliveryConfirmation.showApplicationError(
+        'Lokikansiota ei voitu avata',
+        'Eky-lokikansiota ei voitu avata turvallisesti.',
+      );
+    },
+  });
   pdfPreviewController = createInvoicePdfPreviewController(
     desktopAppVersion,
     desktopOperationalLogger,
@@ -310,6 +330,8 @@ export async function startDesktopComposition(
       );
       pdfPreviewController?.dispose();
       pdfPreviewController = undefined;
+      operationalLogFolderCapability?.dispose();
+      operationalLogFolderCapability = undefined;
 
       try {
         await backendHandle.stop();

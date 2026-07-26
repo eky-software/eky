@@ -23,6 +23,7 @@ describe('desktop secret broker boundaries', () => {
       `invoicePdfPreviewIpcChannel = '${invoicePdfPreviewIpcChannel}'`,
     );
     expect(preloadSource).toContain('openInvoicePdf');
+    expect(preloadSource).toContain('openOperationalLogFolder');
   });
 
   it('does not expose the broker or secret read operation to web source code', async () => {

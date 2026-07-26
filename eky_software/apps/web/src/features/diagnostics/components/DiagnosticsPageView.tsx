@@ -3,7 +3,9 @@ import type {
   DiagnosticEventLevel,
   DiagnosticEventOutcome,
 } from '@eky/api-client';
+import { useState } from 'react';
 
+import type { OpenOperationalLogFolder } from '../../../app/desktopBridge.js';
 import styles from './DiagnosticsPageView.module.css';
 import { uiText } from '../../../i18n/fi.js';
 
@@ -11,24 +13,61 @@ interface DiagnosticsPageViewProps {
   errorMessage: string | null;
   events: DiagnosticEventItem[];
   isLoading: boolean;
+  openOperationalLogFolder?: OpenOperationalLogFolder;
 }
 
 export function DiagnosticsPageView({
   errorMessage,
   events,
   isLoading,
+  openOperationalLogFolder,
 }: DiagnosticsPageViewProps): React.JSX.Element {
+  const [desktopErrorMessage, setDesktopErrorMessage] = useState<
+    string | null
+  >(null);
+
+  async function handleOpenLogFolder(): Promise<void> {
+    if (openOperationalLogFolder === undefined) {
+      return;
+    }
+
+    setDesktopErrorMessage(null);
+    try {
+      await openOperationalLogFolder();
+    } catch {
+      setDesktopErrorMessage(uiText.diagnostics.openLogFolderError);
+    }
+  }
+
   return (
     <section
       className={styles.workspace}
       aria-labelledby="diagnostics-heading"
     >
       <header className={styles.header}>
-        <span className={styles.kicker}>{uiText.diagnostics.kicker}</span>
-        <h1 id="diagnostics-heading">{uiText.diagnostics.heading}</h1>
-        <p>{uiText.diagnostics.description}</p>
+        <div>
+          <span className={styles.kicker}>{uiText.diagnostics.kicker}</span>
+          <h1 id="diagnostics-heading">{uiText.diagnostics.heading}</h1>
+          <p>{uiText.diagnostics.description}</p>
+        </div>
+        {openOperationalLogFolder === undefined ? null : (
+          <button
+            className={styles.secondaryButton}
+            onClick={() => {
+              void handleOpenLogFolder();
+            }}
+            type="button"
+          >
+            {uiText.diagnostics.openLogFolder}
+          </button>
+        )}
       </header>
 
+      {desktopErrorMessage !== null ? (
+        <p className={`${styles.message} ${styles.error}`} role="alert">
+          {desktopErrorMessage}
+        </p>
+      ) : null}
       {isLoading ? (
         <p className={styles.message}>{uiText.diagnostics.loading}</p>
       ) : null}
@@ -104,4 +143,3 @@ function formatTimestamp(timestamp: string): string {
     timeStyle: 'short',
   }).format(new Date(timestamp));
 }
-

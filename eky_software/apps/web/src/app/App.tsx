@@ -12,7 +12,10 @@ import {
   activateAppView,
   initialAppNavigationState,
 } from './appNavigation.js';
-import { getDesktopInvoicePdfPreview } from './desktopBridge.js';
+import {
+  getDesktopInvoicePdfPreview,
+  getDesktopOperationalLogFolder,
+} from './desktopBridge.js';
 
 interface AppProps {
   apiClient: EkyApiClient;
@@ -26,6 +29,7 @@ export function App({ apiClient }: AppProps): React.JSX.Element {
   const { activeView } = navigation;
   const activeTitle = uiText.modules[activeView];
   const openInvoicePdfPreview = getDesktopInvoicePdfPreview();
+  const openOperationalLogFolder = getDesktopOperationalLogFolder();
 
   return (
     <AppLayout activeView={activeView} onViewChange={activateView} title={activeTitle}>
@@ -34,7 +38,12 @@ export function App({ apiClient }: AppProps): React.JSX.Element {
       ) : null}
       {activeView === 'activity' ? <ActivityPage apiClient={apiClient} /> : null}
       {activeView === 'diagnostics' ? (
-        <DiagnosticsPage apiClient={apiClient} />
+        <DiagnosticsPage
+          apiClient={apiClient}
+          {...(openOperationalLogFolder === undefined
+            ? {}
+            : { openOperationalLogFolder })}
+        />
       ) : null}
       {activeView === 'companySettings' ? (
         <CompanySettingsPage

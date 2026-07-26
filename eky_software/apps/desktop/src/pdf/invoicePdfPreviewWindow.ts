@@ -185,7 +185,8 @@ export function createInvoicePdfPreviewWindowController(
       return options.mainWindow.webContents.executeJavaScript(
         `typeof window.ekyDesktop === 'object' &&
           typeof window.ekyDesktop.openInvoicePdf === 'function' &&
-          Object.keys(window.ekyDesktop).length === 1`,
+          typeof window.ekyDesktop.openOperationalLogFolder === 'function' &&
+          Object.keys(window.ekyDesktop).length === 2`,
         true,
       );
     },

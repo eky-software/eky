@@ -4,7 +4,11 @@
 }
 
 .header {
+  align-items: flex-start;
   border-bottom: 1px solid var(--color-border);
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
   padding-bottom: 10px;
 }
 
@@ -16,6 +20,10 @@
 .header p {
   color: var(--color-text-muted);
   margin: 5px 0 0;
+}
+
+.secondaryButton {
+  flex: 0 0 auto;
 }
 
 .kicker {
@@ -107,4 +115,3 @@
 .infoStatus {
   color: var(--color-text-muted);
 }
-

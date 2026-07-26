@@ -54,5 +54,25 @@ describe('DiagnosticsPageView', () => {
     expect(empty).toContain('Diagnostiikkatapahtumia ei ole');
     expect(error).toContain('role="alert"');
   });
-});
 
+  it('shows the log folder command only when the desktop capability exists', () => {
+    const browserHtml = renderToStaticMarkup(
+      <DiagnosticsPageView
+        errorMessage={null}
+        events={[]}
+        isLoading={false}
+      />,
+    );
+    const desktopHtml = renderToStaticMarkup(
+      <DiagnosticsPageView
+        errorMessage={null}
+        events={[]}
+        isLoading={false}
+        openOperationalLogFolder={async () => undefined}
+      />,
+    );
+
+    expect(browserHtml).not.toContain('Avaa lokikansio');
+    expect(desktopHtml).toContain('Avaa lokikansio');
+  });
+});
