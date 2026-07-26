@@ -1,4 +1,5 @@
 import { CustomerPicker } from './CustomerPicker.js';
+import { InvoicePerformancePeriodSection } from './InvoicePerformancePeriodSection.js';
 import { SelectedCustomerDetails } from './SelectedCustomerDetails.js';
 import type {
   InvoiceDraftFormErrors,
@@ -272,6 +273,46 @@ export function InvoiceBasicInfoSection({
           />
         </label>
 
+        <fieldset className={styles.priceMode}>
+          <legend>{uiText.invoicing.priceInputMode}</legend>
+          <div className="segmented-control">
+            <label>
+              <input
+                checked={form.priceInputMode === 'net'}
+                name="priceInputMode"
+                type="radio"
+                value="net"
+                onChange={() => onFieldChange('priceInputMode', 'net')}
+              />
+              <span>{uiText.invoicing.priceInputNet}</span>
+            </label>
+            <label>
+              <input
+                checked={form.priceInputMode === 'gross'}
+                disabled={
+                  form.taxTreatment === 'reverseChargeConstruction'
+                }
+                name="priceInputMode"
+                type="radio"
+                value="gross"
+                onChange={() => onFieldChange('priceInputMode', 'gross')}
+              />
+              <span>{uiText.invoicing.priceInputGross}</span>
+            </label>
+          </div>
+          {form.taxTreatment === 'reverseChargeConstruction' ? (
+            <small className={styles.fieldHelp}>
+              {uiText.invoicing.reverseChargeNetOnlyHelp}
+            </small>
+          ) : null}
+        </fieldset>
+
+        <InvoicePerformancePeriodSection
+          errors={errors}
+          form={form}
+          onFieldChange={onFieldChange}
+        />
+
         <label className={`${styles.field} ${styles.wideField}`}>
           <span>{uiText.invoicing.deliveryAddressText}</span>
           <textarea
@@ -307,40 +348,6 @@ export function InvoiceBasicInfoSection({
             </small>
           )}
         </label>
-
-        <fieldset className={styles.priceMode}>
-          <legend>{uiText.invoicing.priceInputMode}</legend>
-          <div className="segmented-control">
-            <label>
-              <input
-                checked={form.priceInputMode === 'net'}
-                name="priceInputMode"
-                type="radio"
-                value="net"
-                onChange={() => onFieldChange('priceInputMode', 'net')}
-              />
-              <span>{uiText.invoicing.priceInputNet}</span>
-            </label>
-            <label>
-              <input
-                checked={form.priceInputMode === 'gross'}
-                disabled={
-                  form.taxTreatment === 'reverseChargeConstruction'
-                }
-                name="priceInputMode"
-                type="radio"
-                value="gross"
-                onChange={() => onFieldChange('priceInputMode', 'gross')}
-              />
-              <span>{uiText.invoicing.priceInputGross}</span>
-            </label>
-          </div>
-          {form.taxTreatment === 'reverseChargeConstruction' ? (
-            <small className={styles.fieldHelp}>
-              {uiText.invoicing.reverseChargeNetOnlyHelp}
-            </small>
-          ) : null}
-        </fieldset>
 
         <label className={`${styles.field} ${styles.wideField}`}>
           <span>{uiText.invoicing.note}</span>

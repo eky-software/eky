@@ -87,6 +87,27 @@ describe('prepareInvoiceDraftAutosave', () => {
       },
     });
   });
+
+  it('uses the existing performance period mapping for autosave', () => {
+    const plan = prepareInvoiceDraftAutosave(
+      { type: 'create' },
+      {
+        ...createValidForm(),
+        performancePeriodEnd: '2026-07-31',
+        performancePeriodStart: '2026-07-01',
+        performancePeriodType: 'dateRange',
+      },
+    );
+
+    expect(plan.isValid).toBe(true);
+    if (plan.isValid) {
+      expect(plan.input.performancePeriod).toEqual({
+        type: 'dateRange',
+        startDate: '2026-07-01',
+        endDate: '2026-07-31',
+      });
+    }
+  });
 });
 
 describe('autosaveInvoiceDraftInput', () => {
