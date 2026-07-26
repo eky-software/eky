@@ -72,6 +72,9 @@ import { SqliteSentInvoiceGroupReader } from '../modules/invoicing/infrastructur
 import type { CustomerAccessReader } from '../modules/invoicing/ports/customerAccessReader.js';
 import type { InvoiceCustomerTaxProfileReader } from '../modules/invoicing/ports/invoiceCustomerTaxProfileReader.js';
 import type { InvoiceEmailSettingsReader } from '../modules/invoicing/ports/invoiceEmailSettingsReader.js';
+import { ApprovedInvoiceEmailDeliveryOutcomeUnknownError } from '../modules/invoicing/application/approvedInvoiceEmailDeliveryOutcomeUnknownError.js';
+import { createBackendOperationalEvent } from '../observability/createOperationalEvent.js';
+import type { OperationalLogger } from '../observability/operationalLogger.js';
 
 interface InvoicingCompositionOptions {
   companyEmailSecretReader: CompanyEmailSecretReader;
@@ -80,6 +83,8 @@ interface InvoicingCompositionOptions {
   database: DatabaseConnection;
   invoiceEmailSettingsReader: InvoiceEmailSettingsReader;
   invoiceDocumentStorageRoot?: string;
+  operationalAppVersion: string;
+  operationalLogger: OperationalLogger;
 }
 
 export function createInvoicingComposition(
@@ -131,15 +136,33 @@ export function createInvoicingComposition(
   const invoiceSmtpDeliveryProvider = new DnaInvoiceSmtpDeliveryProvider(
     dnaSmtpEmailDeliveryProvider,
   );
-  const ensureApprovedInvoicePdfDocument = (
+  const ensureApprovedInvoicePdfDocument = async (
     input: GenerateApprovedInvoicePdfDocumentInput,
-  ) =>
-    generateApprovedInvoicePdfDocument(input, {
-      approvedInvoiceReader,
-      invoiceDocumentRepository,
-      invoiceDocumentStorage,
-      renderApprovedInvoicePdf,
-    });
+  ) => {
+    try {
+      return await generateApprovedInvoicePdfDocument(input, {
+        approvedInvoiceReader,
+        invoiceDocumentRepository,
+        invoiceDocumentStorage,
+        renderApprovedInvoicePdf,
+      });
+    } catch (error) {
+      options.operationalLogger.write(
+        createBackendOperationalEvent(
+          {
+            entityType: 'approvedInvoice',
+            errorCode: 'INVOICE_PDF_GENERATION_FAILED',
+            eventName: 'invoicePdf.generationFailed',
+            retryable: true,
+            sideEffectState: 'unknown',
+            stage: 'generate',
+          },
+          { appVersion: options.operationalAppVersion },
+        ),
+      );
+      throw error;
+    }
+  };
   const getApprovedInvoicePdfDocument = (
     input: GetApprovedInvoicePdfDocumentInput,
   ) =>
@@ -274,14 +297,32 @@ export function createInvoicingComposition(
           invoiceEmailSettingsReader: options.invoiceEmailSettingsReader,
           invoiceEmailSendAttemptStore,
         }),
-      prepareApprovedInvoiceEmailSmtp: (input) =>
-        prepareApprovedInvoiceEmailSmtp(input, {
-          approvedInvoiceReader,
-          ensureApprovedInvoicePdfDocument,
-          invoiceDeliveryEventReader: invoiceDeliveryEventRepository,
-          invoiceEmailSendAttemptStore,
-          invoiceEmailSettingsReader: options.invoiceEmailSettingsReader,
-        }),
+      prepareApprovedInvoiceEmailSmtp: async (input) => {
+        try {
+          return await prepareApprovedInvoiceEmailSmtp(input, {
+            approvedInvoiceReader,
+            ensureApprovedInvoicePdfDocument,
+            invoiceDeliveryEventReader: invoiceDeliveryEventRepository,
+            invoiceEmailSendAttemptStore,
+            invoiceEmailSettingsReader: options.invoiceEmailSettingsReader,
+          });
+        } catch (error) {
+          options.operationalLogger.write(
+            createBackendOperationalEvent(
+              {
+                entityType: 'approvedInvoice',
+                errorCode: 'INVOICE_DELIVERY_PREPARE_BLOCKED',
+                eventName: 'invoiceDelivery.prepareBlocked',
+                retryable: false,
+                sideEffectState: 'none',
+                stage: 'prepare',
+              },
+              { appVersion: options.operationalAppVersion },
+            ),
+          );
+          throw error;
+        }
+      },
       sendApprovedInvoiceEmailDryRun: (input) =>
         sendApprovedInvoiceEmailDryRun(input, {
           approvedInvoiceReader,
@@ -299,17 +340,42 @@ export function createInvoicingComposition(
           invoiceEmailSendAttemptStore,
           invoiceSmtpTestDeliveryProvider,
         }),
-      sendApprovedInvoiceEmailSmtp: (input) =>
-        sendApprovedInvoiceEmailSmtp(input, {
-          approvedInvoiceReader,
-          ensureApprovedInvoicePdfDocument,
-          getApprovedInvoicePdfDocument,
-          invoiceDeliveryEventRepository,
-          invoiceEmailDeliveryFinalizer: invoiceDeliveryEventRepository,
-          invoiceEmailSendAttemptStore,
-          invoiceEmailSettingsReader: options.invoiceEmailSettingsReader,
-          invoiceSmtpDeliveryProvider,
-        }),
+      sendApprovedInvoiceEmailSmtp: async (input) => {
+        try {
+          return await sendApprovedInvoiceEmailSmtp(input, {
+            approvedInvoiceReader,
+            ensureApprovedInvoicePdfDocument,
+            getApprovedInvoicePdfDocument,
+            invoiceDeliveryEventRepository,
+            invoiceEmailDeliveryFinalizer: invoiceDeliveryEventRepository,
+            invoiceEmailSendAttemptStore,
+            invoiceEmailSettingsReader: options.invoiceEmailSettingsReader,
+            invoiceSmtpDeliveryProvider,
+          });
+        } catch (error) {
+          const outcomeUnknown =
+            error instanceof ApprovedInvoiceEmailDeliveryOutcomeUnknownError;
+          options.operationalLogger.write(
+            createBackendOperationalEvent(
+              {
+                entityType: 'approvedInvoice',
+                errorCode: outcomeUnknown
+                  ? 'INVOICE_DELIVERY_OUTCOME_UNKNOWN'
+                  : 'INVOICE_DELIVERY_PROVIDER_FAILED',
+                eventName: outcomeUnknown
+                  ? 'invoiceDelivery.outcomeUnknown'
+                  : 'invoiceDelivery.providerFailed',
+                operationId: input.attemptId,
+                retryable: !outcomeUnknown,
+                sideEffectState: outcomeUnknown ? 'unknown' : 'rolledBack',
+                stage: 'smtp',
+              },
+              { appVersion: options.operationalAppVersion },
+            ),
+          );
+          throw error;
+        }
+      },
       reopenApprovedInvoiceForEditing: (input) =>
         reopenApprovedInvoiceForEditing(input, {
           invoiceApprovalRepository,

@@ -14,6 +14,7 @@ describe('desktop backend process messages', () => {
     expect(
       parseDesktopBackendCommand({
         config: {
+          appVersion: '0.0.0',
           backendRoot: resolve(runtimeRoot, 'backend'),
           createSmokePdf: true,
           databaseFilePath: resolve(runtimeRoot, 'data', 'eky.sqlite'),
@@ -25,6 +26,7 @@ describe('desktop backend process messages', () => {
             'database',
             'migrations',
           ),
+          operationalLogsRoot: resolve(runtimeRoot, 'logs'),
           runtimeSessionSecret: 'a'.repeat(43),
           smokePdfPath: resolve(runtimeRoot, 'smoke', 'invoice.pdf'),
         },
@@ -34,11 +36,13 @@ describe('desktop backend process messages', () => {
     expect(
       parseDesktopBackendCommand({
         config: {
+          appVersion: '0.0.0',
           backendRoot: '..\\backend',
           createSmokePdf: true,
           databaseFilePath: 'eky.sqlite',
           invoiceDocumentStorageRoot: 'storage',
           migrationsDirectory: 'migrations',
+          operationalLogsRoot: 'logs',
           runtimeSessionSecret: 'a'.repeat(43),
           smokePdfPath: 'invoice.pdf',
         },
@@ -51,11 +55,13 @@ describe('desktop backend process messages', () => {
     const runtimeRoot = resolve('desktop-test-runtime');
     const createCommand = (runtimeSessionSecret: unknown) => ({
       config: {
+        appVersion: '0.0.0',
         backendRoot: resolve(runtimeRoot, 'backend'),
         createSmokePdf: false,
         databaseFilePath: resolve(runtimeRoot, 'data', 'eky.sqlite'),
         invoiceDocumentStorageRoot: resolve(runtimeRoot, 'storage'),
         migrationsDirectory: resolve(runtimeRoot, 'migrations'),
+        operationalLogsRoot: resolve(runtimeRoot, 'logs'),
         runtimeSessionSecret,
         smokePdfPath: resolve(runtimeRoot, 'smoke', 'invoice.pdf'),
       },

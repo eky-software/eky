@@ -1,8 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { EncryptedSecretFileStore } from './encryptedSecretFile.js';
 import { CompanyEmailSecretBrokerClient } from './secretBrokerClient.js';
-import { startSecretBrokerMain } from './secretBrokerMain.js';
+import {
+  startSecretBrokerMain,
+  type SecretBrokerObserver,
+} from './secretBrokerMain.js';
 import { handleSecretBrokerMessage } from './secretBrokerMain.js';
 import type { SecretBrokerTransport } from './secretBrokerTransport.js';
 import type {
@@ -55,7 +58,9 @@ describe('Electron safeStorage secret broker', () => {
   });
 
   it('fails closed without encryption and never writes the secret', async () => {
+    const operationFailed = vi.fn();
     const harness = createBrokerHarness({
+      operationFailed,
       protector: {
         async decrypt(): Promise<DecryptedString> {
           throw new Error('unavailable');
@@ -76,6 +81,10 @@ describe('Electron safeStorage secret broker', () => {
         expect.objectContaining({ code: 'SECRET_STORAGE_UNAVAILABLE' }),
       );
       await expect(harness.file.readCandidate()).resolves.toBeNull();
+      expect(operationFailed).toHaveBeenCalledWith(
+        'setCompanyEmailSecret',
+        'SECRET_STORAGE_UNAVAILABLE',
+      );
     } finally {
       harness.close();
     }
@@ -169,7 +178,10 @@ describe('Electron safeStorage secret broker', () => {
 });
 
 function createBrokerHarness(
-  options: { protector?: StringProtector } = {},
+  options: {
+    operationFailed?: SecretBrokerObserver['operationFailed'];
+    protector?: StringProtector;
+  } = {},
 ): {
   client: CompanyEmailSecretBrokerClient;
   close(): void;
@@ -179,6 +191,13 @@ function createBrokerHarness(
   const file = new InMemoryEncryptedSecretFile();
   const mainHandle = startSecretBrokerMain({
     encryptedSecretFile: file,
+    ...(options.operationFailed === undefined
+      ? {}
+      : {
+          observer: {
+            operationFailed: options.operationFailed,
+          },
+        }),
     protector: options.protector ?? createXorStringProtector(),
     transport: mainTransport,
   });

@@ -25,7 +25,13 @@ const localOwnerPermissions = Object.freeze([
 export interface BackendEnvironment {
   Variables: {
     actorContext: ActorContext;
+    correlationId: string;
   };
+}
+
+export interface RuntimeTrustObserver {
+  invalidSession(correlationId: string): void;
+  missingSession(correlationId: string): void;
 }
 
 export interface DevelopmentRuntimeTrust {
@@ -64,6 +70,7 @@ export function resolveRuntimeTrust(
 export function createRuntimeTrustMiddleware(
   runtimeTrust: RuntimeTrust,
   localRuntimeIdentity: LocalRuntimeIdentity,
+  observer?: RuntimeTrustObserver,
 ): MiddlewareHandler<BackendEnvironment> {
   assertValidRuntimeTrust(runtimeTrust);
   const actorContext = createLocalActorContext(
@@ -84,6 +91,13 @@ export function createRuntimeTrustMiddleware(
         runtimeTrust.sessionSecret,
       )
     ) {
+      const correlationId = context.get('correlationId');
+      const receivedSession = context.req.header(localRuntimeSessionHeaderName);
+      if (receivedSession === undefined) {
+        observer?.missingSession(correlationId);
+      } else {
+        observer?.invalidSession(correlationId);
+      }
       return context.json({ error: 'Authentication required.' }, 401);
     }
 
