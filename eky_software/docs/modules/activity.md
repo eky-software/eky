@@ -22,6 +22,7 @@ Ensimmäinen projektio sisältää vain:
 - moduulin
 - UTC-aikaleiman
 - valinnaisen asiakasnumeron tai laskunumeron
+- turvallisen lopputuloksen: onnistui, epäonnistui, epäselvä tai estetty
 - projektion sisäisen tapahtumatunnisteen
 
 Projektio ei sisällä nimiä, osoitteita, sähköposteja, puhelinnumeroita,
@@ -30,3 +31,19 @@ raw audit metadataa, teknisiä lokeja, virhepinoja tai salaisuuksia.
 
 Kaikki haut rajataan backendin vahvistaman `ActorContext.companyId`-arvon
 perusteella ja käyttötapaus vaatii erillisen `viewActivity`-oikeuden.
+
+## Kuukausihistoria
+
+Tapahtumat luetaan UTC-kalenterikuukausittain. Julkinen read model tukee
+moduulikategoriaa, turvallista lopputulossuodatusta sekä sivunumeroon ja
+rajattuun sivukokoon perustuvaa selaamista.
+
+Järjestys on vakaa: `occurredAt DESC` ja tasatilanteessa projektion
+tapahtumatunniste `id DESC`. Moduulien readerit suodattavat kuukauden,
+yritysrajan ja lopputuloksen ennen rajausta. Activity yhdistää moduulien
+projektiot eikä tee N+1-hakuja.
+
+Epäonnistuneesta, epäselvästä tai kesken jääneestä laskun toimituksesta
+näytetään vain turvallinen tapahtumatyyppi ja lopputulos. SMTP-virhettä,
+vastaanottajaa, viestin sisältöä tai muuta raakaa toimitusmetadataa ei
+palauteta Activityyn.

@@ -4,14 +4,27 @@ import { Hono, type Context } from 'hono';
 import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 import {
   ActivityValidationError,
-  maximumActivityLimit,
+  activityPageSizes,
+  maximumActivityPage,
   type ListActivityInput,
 } from '../application/listActivity.js';
-import type { ActivityItem } from '../domain/activityItem.js';
+import type {
+  ActivityCategory,
+  ActivityOutcomeFilter,
+  ActivityPage,
+} from '../domain/activityItem.js';
 
 interface ActivityRouteDependencies {
-  listActivity(input: ListActivityInput): Promise<ActivityItem[]>;
+  listActivity(input: ListActivityInput): Promise<ActivityPage>;
 }
+
+const supportedQueryKeys = new Set([
+  'category',
+  'month',
+  'outcome',
+  'page',
+  'pageSize',
+]);
 
 export function createActivityRoutes(
   dependencies: ActivityRouteDependencies,
@@ -20,25 +33,21 @@ export function createActivityRoutes(
 
   routes.get('/activity', async (context) => {
     const query = context.req.query();
-    if (Object.keys(query).some((key) => key !== 'limit')) {
+    if (Object.keys(query).some((key) => !supportedQueryKeys.has(key))) {
       return context.json({ error: 'Unsupported activity query.' }, 400);
     }
 
-    const rawLimit = query.limit;
-    const limit =
-      rawLimit === undefined || rawLimit === ''
-        ? undefined
-        : parseStrictPositiveInteger(rawLimit);
-    if (rawLimit !== undefined && limit === undefined) {
-      return context.json({ error: 'Activity limit is invalid.' }, 400);
+    const parsed = parseQuery(query);
+    if (parsed === null) {
+      return context.json({ error: 'Activity query is invalid.' }, 400);
     }
 
     try {
-      const activityItems = await dependencies.listActivity({
+      const page = await dependencies.listActivity({
         actorContext: context.get('actorContext'),
-        ...(limit === undefined ? {} : { limit }),
+        ...parsed,
       });
-      return context.json({ activityItems });
+      return context.json(page);
     } catch (error) {
       return handleKnownError(context, error);
     }
@@ -47,12 +56,105 @@ export function createActivityRoutes(
   return routes;
 }
 
-function parseStrictPositiveInteger(value: string): number | undefined {
-  if (!/^[1-9][0-9]{0,2}$/.test(value)) {
+interface ParsedActivityQuery {
+  category?: ActivityCategory;
+  month?: string;
+  outcome?: ActivityOutcomeFilter;
+  page?: number;
+  pageSize?: number;
+}
+
+function parseQuery(
+  query: Record<string, string>,
+): ParsedActivityQuery | null {
+  const category = parseOptionalCategory(query.category);
+  const month = parseOptionalMonth(query.month);
+  const outcome = parseOptionalOutcome(query.outcome);
+  const page = parseOptionalInteger(query.page, 1, maximumActivityPage);
+  const pageSize = parseOptionalPageSize(query.pageSize);
+
+  if (
+    category === null ||
+    month === null ||
+    outcome === null ||
+    page === null ||
+    pageSize === null
+  ) {
+    return null;
+  }
+
+  return {
+    ...(category === undefined ? {} : { category }),
+    ...(month === undefined ? {} : { month }),
+    ...(outcome === undefined ? {} : { outcome }),
+    ...(page === undefined ? {} : { page }),
+    ...(pageSize === undefined ? {} : { pageSize }),
+  };
+}
+
+function parseOptionalCategory(
+  value: string | undefined,
+): ActivityCategory | null | undefined {
+  if (value === undefined || value === '') {
     return undefined;
   }
+  return value === 'all' ||
+    value === 'companySettings' ||
+    value === 'customers' ||
+    value === 'invoicing'
+    ? value
+    : null;
+}
+
+function parseOptionalOutcome(
+  value: string | undefined,
+): ActivityOutcomeFilter | null | undefined {
+  if (value === undefined || value === '') {
+    return undefined;
+  }
+  return value === 'all' ||
+    value === 'blocked' ||
+    value === 'failure' ||
+    value === 'success' ||
+    value === 'unknown'
+    ? value
+    : null;
+}
+
+function parseOptionalMonth(value: string | undefined): string | null | undefined {
+  if (value === undefined || value === '') {
+    return undefined;
+  }
+  return /^[0-9]{4}-(0[1-9]|1[0-2])$/.test(value) ? value : null;
+}
+
+function parseOptionalInteger(
+  value: string | undefined,
+  minimum: number,
+  maximum: number,
+): number | null | undefined {
+  if (value === undefined || value === '') {
+    return undefined;
+  }
+  if (!/^[1-9][0-9]{0,2}$/.test(value)) {
+    return null;
+  }
   const parsed = Number(value);
-  return parsed <= maximumActivityLimit ? parsed : undefined;
+  return parsed >= minimum && parsed <= maximum ? parsed : null;
+}
+
+function parseOptionalPageSize(
+  value: string | undefined,
+): number | null | undefined {
+  const parsed = parseOptionalInteger(value, 1, 100);
+  if (parsed === undefined || parsed === null) {
+    return parsed;
+  }
+  return activityPageSizes.includes(
+    parsed as (typeof activityPageSizes)[number],
+  )
+    ? parsed
+    : null;
 }
 
 function handleKnownError(

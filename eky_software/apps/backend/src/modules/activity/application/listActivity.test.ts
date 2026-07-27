@@ -7,6 +7,13 @@ import {
   type ListActivityDependencies,
 } from './listActivity.js';
 
+const actorContext = {
+  actorId: 'actor-1',
+  authenticationMode: 'local' as const,
+  companyId: 'company-1',
+  permissions: ['viewActivity'] as const,
+};
+
 describe('listActivity', () => {
   it('requires viewActivity before invoking readers', async () => {
     const dependencies = createDependencies();
@@ -15,11 +22,10 @@ describe('listActivity', () => {
       listActivity(
         {
           actorContext: {
-            actorId: 'actor-1',
-            authenticationMode: 'local',
-            companyId: 'company-1',
+            ...actorContext,
             permissions: [],
           },
+          month: '2026-07',
         },
         dependencies,
       ),
@@ -29,56 +35,126 @@ describe('listActivity', () => {
     ).not.toHaveBeenCalled();
   });
 
-  it('merges safe projections in newest-first order and applies the limit', async () => {
+  it('merges safe monthly projections in stable newest-first order', async () => {
     const dependencies = createDependencies();
 
     await expect(
       listActivity(
         {
-          actorContext: {
-            actorId: 'actor-1',
-            authenticationMode: 'local',
-            companyId: 'company-1',
-            permissions: ['viewActivity'],
-          },
-          limit: 2,
+          actorContext,
+          month: '2026-07',
+          pageSize: 20,
         },
         dependencies,
       ),
-    ).resolves.toEqual([
-      {
-        id: 'invoicing:invoice-event',
-        module: 'invoicing',
-        occurredAt: '2026-07-27T12:00:00.000Z',
-        reference: { kind: 'invoiceNumber', value: '20260001' },
-        type: 'invoice.delivered',
-      },
-      {
-        id: 'customers:customer-event',
-        module: 'customers',
-        occurredAt: '2026-07-27T11:00:00.000Z',
-        reference: { kind: 'customerNumber', value: '1001' },
-        type: 'customer.updated',
-      },
-    ]);
+    ).resolves.toEqual({
+      activityItems: [
+        {
+          id: 'invoicing:invoice-event',
+          module: 'invoicing',
+          occurredAt: '2026-07-27T12:00:00.000Z',
+          outcome: 'success',
+          reference: { kind: 'invoiceNumber', value: '20260001' },
+          type: 'invoice.delivered',
+        },
+        {
+          id: 'customers:customer-event',
+          module: 'customers',
+          occurredAt: '2026-07-27T11:00:00.000Z',
+          outcome: 'success',
+          reference: { kind: 'customerNumber', value: '1001' },
+          type: 'customer.updated',
+        },
+        {
+          id: 'companySettings:settings-event',
+          module: 'companySettings',
+          occurredAt: '2026-07-27T10:00:00.000Z',
+          outcome: 'success',
+          reference: null,
+          type: 'companySettings.updated',
+        },
+      ],
+      hasNextPage: false,
+      hasPreviousPage: false,
+      month: '2026-07',
+      page: 1,
+      pageSize: 20,
+    });
     expect(
       dependencies.invoiceActivityReader.listInvoiceActivity,
-    ).toHaveBeenCalledWith('company-1', 2);
+    ).toHaveBeenCalledWith({
+      companyId: 'company-1',
+      limit: 21,
+      occurredAtFrom: '2026-07-01T00:00:00.000Z',
+      occurredAtTo: '2026-08-01T00:00:00.000Z',
+      outcomes: ['success', 'failure', 'unknown'],
+    });
   });
 
-  it('rejects limits outside the public boundary before reading data', async () => {
+  it('reads only the selected category and outcome', async () => {
+    const dependencies = createDependencies();
+
+    await listActivity(
+      {
+        actorContext,
+        category: 'invoicing',
+        month: '2026-07',
+        outcome: 'failure',
+      },
+      dependencies,
+    );
+
+    expect(
+      dependencies.customerActivityReader.listCustomerActivity,
+    ).not.toHaveBeenCalled();
+    expect(
+      dependencies.companySettingsActivityReader.listCompanySettingsActivity,
+    ).not.toHaveBeenCalled();
+    expect(
+      dependencies.invoiceActivityReader.listInvoiceActivity,
+    ).toHaveBeenCalledWith(expect.objectContaining({ outcomes: ['failure'] }));
+  });
+
+  it('returns a stable later page without repeating previous items', async () => {
+    const dependencies = createDependencies();
+    dependencies.customerActivityReader.listCustomerActivity = vi
+      .fn()
+      .mockResolvedValue(
+        Array.from({ length: 25 }, (_, index) => ({
+          action: 'customer.updated',
+          customerNumber: String(1000 + index),
+          id: `event-${String(index).padStart(2, '0')}`,
+          occurredAt: new Date(
+            Date.UTC(2026, 6, 27, 12, 0, 25 - index),
+          ).toISOString(),
+        })),
+      );
+
+    const result = await listActivity(
+      {
+        actorContext,
+        category: 'customers',
+        month: '2026-07',
+        page: 2,
+        pageSize: 20,
+      },
+      dependencies,
+    );
+
+    expect(result.activityItems).toHaveLength(5);
+    expect(result.activityItems[0]?.id).toBe('customers:event-20');
+    expect(result.hasNextPage).toBe(false);
+    expect(result.hasPreviousPage).toBe(true);
+  });
+
+  it('rejects invalid query boundaries before reading data', async () => {
     const dependencies = createDependencies();
 
     await expect(
       listActivity(
         {
-          actorContext: {
-            actorId: 'actor-1',
-            authenticationMode: 'local',
-            companyId: 'company-1',
-            permissions: ['viewActivity'],
-          },
-          limit: 101,
+          actorContext,
+          month: '2026-13',
         },
         dependencies,
       ),
@@ -117,6 +193,7 @@ function createDependencies(): ListActivityDependencies {
           id: 'invoice-event',
           invoiceNumber: '20260001',
           occurredAt: '2026-07-27T12:00:00.000Z',
+          outcome: 'success',
         },
       ]),
     },

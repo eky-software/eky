@@ -5,11 +5,15 @@ export {
 } from './client.js';
 export { EkyApiError } from './http.js';
 export type {
+  ActivityCategory,
   ActivityItem,
   ActivityItemReference,
   ActivityItemType,
   ActivityListQuery,
   ActivityModule,
+  ActivityOutcome,
+  ActivityOutcomeFilter,
+  ActivityPage,
 } from './activity/index.js';
 export type {
   DiagnosticEventComponent,

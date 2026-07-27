@@ -33,5 +33,6 @@ diagnostics, customer data, company settings or invoices.
 
 ## Tests
 
-Test permission denial, company isolation, ordering, limits, unknown query
-parameters and the absence of disallowed fields from the public projection.
+Test permission denial, company isolation, UTC month boundaries, category and
+outcome filters, stable pagination, unknown query parameters and the absence
+of disallowed fields from the public projection.

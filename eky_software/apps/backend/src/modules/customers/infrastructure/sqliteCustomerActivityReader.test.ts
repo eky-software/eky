@@ -23,7 +23,12 @@ describe('SqliteCustomerActivityReader', () => {
 
     const reader = new SqliteCustomerActivityReader(database);
 
-    await expect(reader.listCustomerActivity('company-1', 10)).resolves.toEqual([
+    await expect(reader.listCustomerActivity({
+      companyId: 'company-1',
+      limit: 10,
+      occurredAtFrom: '2026-07-01T00:00:00.000Z',
+      occurredAtTo: '2026-08-01T00:00:00.000Z',
+    })).resolves.toEqual([
       {
         action: 'customer.updated',
         customerNumber: '1001',
@@ -31,6 +36,41 @@ describe('SqliteCustomerActivityReader', () => {
         occurredAt: '2026-07-27T10:00:00.000Z',
       },
     ]);
+  });
+
+  it('uses an inclusive start and exclusive end month boundary', async () => {
+    insertCustomer(database, 'customer-1', 'company-1', '1001');
+    insertAuditAt(
+      database,
+      'event-before',
+      'company-1',
+      'customer-1',
+      '2026-06-30T23:59:59.999Z',
+    );
+    insertAuditAt(
+      database,
+      'event-start',
+      'company-1',
+      'customer-1',
+      '2026-07-01T00:00:00.000Z',
+    );
+    insertAuditAt(
+      database,
+      'event-end',
+      'company-1',
+      'customer-1',
+      '2026-08-01T00:00:00.000Z',
+    );
+    const reader = new SqliteCustomerActivityReader(database);
+
+    const entries = await reader.listCustomerActivity({
+      companyId: 'company-1',
+      limit: 10,
+      occurredAtFrom: '2026-07-01T00:00:00.000Z',
+      occurredAtTo: '2026-08-01T00:00:00.000Z',
+    });
+
+    expect(entries.map((entry) => entry.id)).toEqual(['event-start']);
   });
 });
 
@@ -63,6 +103,22 @@ function insertAudit(
   companyId: string,
   customerId: string,
 ): void {
+  insertAuditAt(
+    database,
+    id,
+    companyId,
+    customerId,
+    '2026-07-27T10:00:00.000Z',
+  );
+}
+
+function insertAuditAt(
+  database: DatabaseConnection,
+  id: string,
+  companyId: string,
+  customerId: string,
+  occurredAt: string,
+): void {
   database
     .prepare(
       `
@@ -70,8 +126,8 @@ function insertAudit(
           id, company_id, actor_user_id, customer_id, action,
           changed_field_categories, outcome, occurred_at
         ) VALUES (?, ?, 'actor-1', ?, 'customer.updated', '["status"]',
-          'success', '2026-07-27T10:00:00.000Z')
+          'success', ?)
       `,
     )
-    .run(id, companyId, customerId);
+    .run(id, companyId, customerId, occurredAt);
 }
