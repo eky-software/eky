@@ -146,7 +146,19 @@ kirjoittaa checksumeilla varustetun `.ekysupport`-artifactin.
 R0-observabilityn toteutus sisältää nyt tyypitetyt backend- ja desktop-eventit,
 rotatoidut JSONL-lokit, moduulien audit-kirjoitukset, Activity- ja
 Diagnostics-read modelit, turvallisen lokikansion avauksen sekä sanitoidun
-tukipakettiviennin.
+tukipakettiviennin. Customers-, Company Settings- ja Invoicing-moduulien
+business audit -retention suoritetaan moduulikohtaisten porttien kautta
+startupissa. Invoicing omistaa myös ALV-kantojen, laskunumeroinnin ja
+maksuasetusten auditoinnin, vaikka niiden lomakkeet näkyvät Oma yritys
+-näkymässä.
+
+Operational-writerin kapasiteetti- tai kirjoitusvirhe ei yritä kirjoittaa
+rekursiivisesti samaan streamiin. Siitä muodostetaan rajattu prosessikohtainen
+yhteenveto olemassa olevaan incident-indeksiin. Laskutus- ja SMTP-virheiden
+yksityiskohtaisessa, lyhyemmän retentionin lokissa voidaan käyttää
+vianrajausta varten tarpeellisia `companyId`-, `invoiceId`- ja
+`operationId`-tunnisteita. Niitä ei viedä incident-indeksiin,
+Diagnostics-projektioon tai tukipakettiin.
 
 ## Testaus ja failure behavior
 

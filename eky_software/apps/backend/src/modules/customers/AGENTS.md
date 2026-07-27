@@ -85,6 +85,11 @@ number, not the customer name. Read
 `docs/architecture/observability-and-audit-plan.md` before changing these
 boundaries.
 
+Customers owns the retention adapter for customer audit rows. Startup
+maintenance may delete expired rows only through the narrow module port and
+must not copy customer identifiers or changed-field categories into technical
+logs.
+
 ## Naming
 
 Code is written in English.

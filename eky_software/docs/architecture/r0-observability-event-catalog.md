@@ -49,7 +49,16 @@ instrumentointia.
 ### Diagnostiikka
 
 - `operationalLog.capacityReached`
+- `operationalLog.writeFailed`
 - `operationalLog.retentionCompleted`
+- `businessAudit.retentionCompleted`
+- `businessAudit.retentionFailed`
+
+`operationalLog.capacityReached`- ja `operationalLog.writeFailed`-tilanteista
+kirjoitetaan enintään yksi prosessikohtainen, ei-rekursiivinen yhteenveto
+olemassa olevaan incident-indeksiin per event- ja stream-yhdistelmä.
+Yhteenveto ei sisällä company-, actor- tai entity-tunnisteita eikä
+liiketoimintasisältöä.
 
 ## Desktop operational ja security
 
@@ -87,6 +96,12 @@ Invoicing säilyttää nykyisen `invoice_audit_events`- ja
 `invoice_delivery_events`-omistajuuden. Activity-projektio saa näyttää
 turvalliset hyväksyntä-, lähetys-, peruutus- ja hyvitystapahtumat.
 
+- `invoiceVatRates.updated`
+- `invoiceNumberingSettings.updated`
+- `invoicePaymentSettings.updated`
+
+Laskutusasetusten audit ei tallenna asetusten vanhoja tai uusia arvoja.
+
 ### Customers
 
 - `customer.created`
@@ -105,9 +120,6 @@ Sallitut changed field categories:
 ### Company Settings
 
 - `companySettings.updated`
-- `invoiceVatRates.updated`
-- `invoiceNumberingSettings.updated`
-- `invoicePaymentSettings.updated`
 - `companyEmailSecret.configured`
 - `companyEmailSecret.removed`
 
@@ -118,8 +130,6 @@ Sallitut changed field categories:
 - `contact`
 - `banking`
 - `invoicingDefaults`
-- `vatRates`
-- `numbering`
 - `emailConfiguration`
 
 Audit ei tallenna kenttäarvoja.

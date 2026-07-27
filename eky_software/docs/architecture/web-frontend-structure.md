@@ -73,6 +73,12 @@ Nykyinen malli on sallittu niin kauan kuin navigointi tarkoittaa pääasiassa
 päämoduulin vaihtamista, esimerkiksi Asiakkaat, Laskutus tai Oma yritys.
 Tämä ei ole pysyvä kielto reitityskirjastolle.
 
+Tapahtumat ja Diagnostiikka ovat ylläpidon apunäkymiä. Ne avataan Oma yritys
+-näkymän rajatuilla siirtymäkomennoilla eikä niitä pidetä sivupalkin
+päätoimintoina. Activity- ja Diagnostics-featuret säilyvät silti itsenäisinä
+moduuleina; Company Settings ei importtaa niiden sisäisiä komponentteja,
+hookkeja tai data-access-logiikkaa.
+
 ### Vastuut Ilman Routeria
 
 - `app/` saa valita aktiivisen päämoduulin

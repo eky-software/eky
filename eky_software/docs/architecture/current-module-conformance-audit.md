@@ -190,6 +190,9 @@ muutoksina:
 | Sanitoitu Diagnostics-näkymä | `2ca4bac` |
 | Electron mainin hallitsema turvallinen operational log -kansion avaus | `3610932` |
 | Electron mainin hallitsema sanitoitu tukipakettivienti | `2f016a2` |
+| Tuki- ja historianäkymien ryhmittely Oma yritys -näkymään | `826286d` |
+| Diagnostics-capabilityjen sisällytys Windows-pakettiin | `2e1aa92` |
+| Laskutusasetusten auditointi ja business audit -retention | `bc1bf3e` |
 
 Tukipaketti syntyy vain käyttäjän vahvistuksella ja Electron main -prosessin
 omistaman kapean capabilityn kautta. Renderer ei anna vientipolkua,
@@ -205,3 +208,20 @@ Activity säilyy read-only-koontina eikä omista business audit -kirjoituksia.
 Diagnostics ei palauta raakoja operational eventejä, vaan erillisen
 sanitoidun projection-mallin. Moduulit omistavat edelleen omat atomiset
 business audit -kirjoituksensa.
+
+Observabilityn fix-forward-vaihe täydensi toteutusta seuraavasti:
+
+- Activity tukee kuukautta, moduulikategoriaa, lopputulosta ja rajattua
+  sivutusta sekä näyttää turvallisesti myös epäonnistuneet, epäselvät ja
+  kesken jääneet laskutoimitukset
+- Invoicing omistaa ALV-kantojen, laskunumeroinnin ja maksuasetusten atomiset
+  audit-kirjoitukset
+- Company Settingsin Activity-projektio sisältää sähköpostisalaisuuden
+  valmiit lifecycle-tapahtumat ilman salaisuustietoa
+- Customers-, Company Settings- ja Invoicing-auditien retention kulkee
+  moduulikohtaisten porttien kautta startup-maintenancessa
+- operational-lokin kapasiteetti- ja kirjoitusvirheellä on ei-rekursiivinen,
+  tunnisteeton incident-index-varapolku
+
+Muutokset eivät siirrä audit-taulujen omistajuutta Activitylle eivätkä muuta
+Activityä kirjoittavaksi moduuliksi.

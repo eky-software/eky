@@ -101,6 +101,11 @@ later reconciliation. The row contains only operation metadata, actor, company,
 action, lifecycle timestamps, status, and a safe failure code. Never audit the
 secret, secret hash, secret length, secret reference, or another derived value.
 
+Company Settings owns the retention adapter for its master-data audit and
+email-secret lifecycle audit. Retention must preserve unresolved `pending`
+secret operations and delete completed events only before the documented
+calendar-year cutoff.
+
 `CompanyEmailSecretReader` is backend-only and reserved for an approved email
 delivery provider. It must not be injected into Company Settings HTTP routes,
 the API client, preload, renderer, or web UI.
