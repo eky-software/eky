@@ -116,6 +116,12 @@ export async function runPackagedSmokeCheck(
   }
 
   await assertPackagedDesktopBridge(options.pdfPreviewController);
+  await assertPackagedOperationalLogFolder(options.mainWindow);
+  await assertPackagedDiagnostics(
+    options.mainWindow,
+    options.backend.port,
+    options.runtimeSessionSecret,
+  );
 
   const deleteDraftId = await createDeleteDraftSmokeFixture({
     backendPort: options.backend.port,
@@ -212,6 +218,122 @@ async function assertPackagedDesktopBridge(
   if (!(await pdfPreviewController.hasRendererBridgeForSmoke())) {
     throw new Error('DESKTOP_SMOKE_PRELOAD_BRIDGE_FAILED');
   }
+}
+
+async function assertPackagedOperationalLogFolder(
+  mainWindow: BrowserWindow,
+): Promise<void> {
+  const opened: unknown = await mainWindow.webContents.executeJavaScript(
+    `window.ekyDesktop.openOperationalLogFolder()
+      .then(() => true)
+      .catch(() => false)`,
+    true,
+  );
+
+  if (opened !== true) {
+    throw new Error('DESKTOP_SMOKE_LOG_FOLDER_FAILED');
+  }
+}
+
+async function assertPackagedDiagnostics(
+  mainWindow: BrowserWindow,
+  backendPort: number,
+  runtimeSessionSecret: string,
+): Promise<void> {
+  const response = await fetch(
+    `http://127.0.0.1:${backendPort}/diagnostics/events?limit=200`,
+    {
+      headers: {
+        accept: 'application/json',
+        [localRuntimeSessionHeaderName]: runtimeSessionSecret,
+      },
+      signal: AbortSignal.timeout(5_000),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error('DESKTOP_SMOKE_DIAGNOSTICS_HTTP_FAILED');
+  }
+
+  const body: unknown = await response.json();
+  const diagnosticEvents = readDiagnosticEvents(body);
+
+  if (
+    !diagnosticEvents.some(
+      (eventName) =>
+        eventName === 'backend.started' ||
+        eventName === 'businessAudit.retentionCompleted',
+    )
+  ) {
+    throw new Error('DESKTOP_SMOKE_DIAGNOSTICS_EVENT_FAILED');
+  }
+
+  const uiResult: unknown = await mainWindow.webContents.executeJavaScript(
+    `(async () => {
+      const findButton = (label) =>
+        [...document.querySelectorAll('button')].find(
+          (button) => button.textContent?.trim() === label,
+        );
+      const waitFor = async (condition) => {
+        const deadline = Date.now() + 5000;
+        while (Date.now() < deadline) {
+          const result = condition();
+          if (result) return result;
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        return null;
+      };
+
+      findButton('Oma yritys')?.click();
+      const diagnosticsButton = await waitFor(() => findButton('Diagnostiikka'));
+      diagnosticsButton?.click();
+      const heading = await waitFor(
+        () => document.querySelector('#diagnostics-heading')?.textContent,
+      );
+      const eventVisible = await waitFor(() => {
+        const text = document.body.textContent ?? '';
+        return text.includes('backend.started') ||
+          text.includes('businessAudit.retentionCompleted');
+      });
+      const loadError = (document.body.textContent ?? '').includes(
+        'Diagnostiikkaa ei voitu ladata',
+      );
+      return { eventVisible: Boolean(eventVisible), heading, loadError };
+    })()`,
+    true,
+  );
+
+  if (
+    !isRecord(uiResult) ||
+    uiResult.heading !== 'Diagnostiikka' ||
+    uiResult.eventVisible !== true ||
+    uiResult.loadError !== false
+  ) {
+    throw new Error('DESKTOP_SMOKE_DIAGNOSTICS_VIEW_FAILED');
+  }
+}
+
+function readDiagnosticEvents(value: unknown): string[] {
+  if (
+    !isRecord(value) ||
+    !Array.isArray(value.diagnosticEvents)
+  ) {
+    throw new Error('DESKTOP_SMOKE_DIAGNOSTICS_HTTP_FAILED');
+  }
+
+  return value.diagnosticEvents.map((event) => {
+    if (
+      !isRecord(event) ||
+      typeof event.eventName !== 'string'
+    ) {
+      throw new Error('DESKTOP_SMOKE_DIAGNOSTICS_HTTP_FAILED');
+    }
+    return event.eventName;
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 async function verifyCompanyEmailSecretHttpLifecycle(

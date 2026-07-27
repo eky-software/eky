@@ -36,11 +36,13 @@ import { JsonLineDesktopOperationalLogger } from '../observability/infrastructur
 import { createMainSecretBrokerTransport } from '../secrets/electronSecretBrokerTransport.js';
 import { startSecretBrokerMain } from '../secrets/secretBrokerMain.js';
 import { SafeStorageStringProtector } from '../secrets/safeStorageStringProtector.js';
+import { registerElectronPermissionPolicy } from '../security/electronPermissionPolicy.js';
 import {
   createApplicationWindow,
   loadApplicationWindow,
 } from './applicationWindow.js';
 import { registerApplicationProtocol } from './applicationProtocol.js';
+import { readSafeStartupFailureCode } from './earlyStartup.js';
 import { createBackendRequestHeaders } from './protocolPolicy.js';
 import { createInvoiceDeliveryConfirmation } from './invoiceDeliveryConfirmation.js';
 import {
@@ -87,25 +89,85 @@ export async function startDesktopComposition(
     );
   const desktopStartedAt = Date.now();
   const desktopAppVersion = options.appVersion;
-  desktopOperationalLogger.write(
-    createDesktopOperationalEvent(
-      { eventName: 'desktop.starting' },
-      { appVersion: desktopAppVersion },
-    ),
-  );
-  desktopOperationalLogger.write(
-    createDesktopOperationalEvent(
-      {
-        deletedByteCount: retention.deletedByteCount,
-        deletedFileCount: retention.deletedFileCount,
-        eventName: 'operationalLog.retentionCompleted',
-        ...(retention.oldestRemainingMonth === undefined
-          ? {}
-          : { oldestRemainingMonth: retention.oldestRemainingMonth }),
-      },
-      { appVersion: desktopAppVersion },
-    ),
-  );
+
+  try {
+    desktopOperationalLogger.write(
+      createDesktopOperationalEvent(
+        { eventName: 'desktop.starting' },
+        { appVersion: desktopAppVersion },
+      ),
+    );
+    desktopOperationalLogger.write(
+      createDesktopOperationalEvent(
+        {
+          deletedByteCount: retention.deletedByteCount,
+          deletedFileCount: retention.deletedFileCount,
+          eventName: 'operationalLog.retentionCompleted',
+          ...(retention.oldestRemainingMonth === undefined
+            ? {}
+            : { oldestRemainingMonth: retention.oldestRemainingMonth }),
+        },
+        { appVersion: desktopAppVersion },
+      ),
+    );
+    return await startDesktopCompositionRuntime({
+      backendRoot,
+      dataRoot,
+      desktopAppVersion,
+      desktopOperationalLogger,
+      desktopStartedAt,
+      operationalLogsRoot,
+      options,
+      runtimeSessionSecret,
+      smokeMode,
+    });
+  } catch (error) {
+    const errorCode = readSafeStartupFailureCode(error);
+    try {
+      desktopOperationalLogger.write(
+        createDesktopOperationalEvent(
+          {
+            errorCode,
+            eventName: 'desktop.bootstrapFailed',
+            retryable: false,
+            sideEffectState: 'unknown',
+            stage: 'startup',
+          },
+          { appVersion: desktopAppVersion },
+        ),
+      );
+    } catch {
+      // The safe outer bootstrap boundary remains authoritative.
+    }
+    throw new Error(errorCode);
+  }
+}
+
+interface DesktopCompositionRuntimeOptions {
+  backendRoot: string;
+  dataRoot: string;
+  desktopAppVersion: string;
+  desktopOperationalLogger: DesktopOperationalLogger;
+  desktopStartedAt: number;
+  operationalLogsRoot: string;
+  options: StartDesktopCompositionOptions;
+  runtimeSessionSecret: string;
+  smokeMode: boolean;
+}
+
+async function startDesktopCompositionRuntime({
+  backendRoot,
+  dataRoot,
+  desktopAppVersion,
+  desktopOperationalLogger,
+  desktopStartedAt,
+  operationalLogsRoot,
+  options,
+  runtimeSessionSecret,
+  smokeMode,
+}: DesktopCompositionRuntimeOptions): Promise<
+  DesktopLifecycleHandle | undefined
+> {
   const databaseFilePath = join(dataRoot, 'data', 'eky.sqlite');
   const invoiceDocumentStorageRoot = join(dataRoot, 'storage', 'invoices');
   const secretFilePath = join(
@@ -214,31 +276,10 @@ export async function startDesktopComposition(
     webRoot: join(options.applicationPath, 'web'),
   });
 
-  session.defaultSession.setPermissionRequestHandler(
-    (_webContents, _permission, callback) => {
-      desktopOperationalLogger.write(
-        createDesktopOperationalEvent(
-          {
-            eventName: 'electron.permissionDenied',
-            stage: 'request',
-          },
-          { appVersion: desktopAppVersion },
-        ),
-      );
-      callback(false);
-    },
-  );
-  session.defaultSession.setPermissionCheckHandler(() => {
-    desktopOperationalLogger.write(
-      createDesktopOperationalEvent(
-        {
-          eventName: 'electron.permissionDenied',
-          stage: 'check',
-        },
-        { appVersion: desktopAppVersion },
-      ),
-    );
-    return false;
+  registerElectronPermissionPolicy({
+    appVersion: desktopAppVersion,
+    operationalLogger: desktopOperationalLogger,
+    permissionSession: session.defaultSession,
   });
 
   applicationWindow = createApplicationWindow(
@@ -299,9 +340,16 @@ export async function startDesktopComposition(
   );
   const mainWindow = applicationWindow;
   operationalLogFolderCapability = createOperationalLogFolderCapability({
+    appVersion: desktopAppVersion,
     ipcMain,
     mainWindow,
-    openPath: (path) => shell.openPath(path),
+    openPath: smokeMode
+      ? async (path) =>
+          path === operationalLogsRoot
+            ? ''
+            : 'OPERATIONAL_LOG_FOLDER_SMOKE_ROOT_INVALID'
+      : (path) => shell.openPath(path),
+    operationalLogger: desktopOperationalLogger,
     runtimeRoot: dataRoot,
     showSafeError() {
       deliveryConfirmation.showApplicationError(

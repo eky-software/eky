@@ -43,8 +43,16 @@ sandboxed preview window, and the smoke check verifies that the window paints
 non-blank content in addition to loading the authenticated PDF response. Smoke
 also verifies that the sandbox-compatible CommonJS preload exposes only the
 named PDF preview, operational log folder, and support bundle capabilities to
-the packaged renderer. Smoke data is written under a random operating-system
-temporary directory and removed after the check.
+the packaged renderer. It checks the Diagnostics HTTP endpoint and the actual
+packaged Diagnostics view, and exercises the operational log folder capability
+with a main-process stub so no Explorer window is opened. Smoke data is written
+under a random operating-system temporary directory and removed after the
+check.
+
+Early startup failures are reduced to an allowlisted code for smoke and a
+fixed Finnish message for users. Raw module errors, stack traces, ASAR paths
+and local user paths are not shown. Once the operational logger exists, the
+same boundary records only a safe `desktop.bootstrapFailed` event.
 
 The support bundle capability accepts no renderer arguments. Electron main
 owns the confirmation, backend request with the runtime session, save dialog,

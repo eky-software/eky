@@ -136,4 +136,58 @@ describe('desktop operational event contracts', () => {
 
     expect(event.stage).toBe('shutdownfinally');
   });
+
+  it('allows only the classified permission request fields', () => {
+    const event = createDesktopOperationalEvent(
+      {
+        eventName: 'electron.permissionRequestBlocked',
+        frameClass: 'mainFrame',
+        originClass: 'eky',
+        permissionType: 'notifications',
+        stage: 'request',
+      },
+      options,
+    );
+
+    expect(event).toMatchObject({
+      eventName: 'electron.permissionRequestBlocked',
+      frameClass: 'mainFrame',
+      originClass: 'eky',
+      permissionType: 'notifications',
+    });
+    expect(() =>
+      validateDesktopOperationalEvent({
+        ...event,
+        permissionType: 'https://example.test/private',
+      }),
+    ).toThrow(DesktopOperationalEventValidationError);
+  });
+
+  it('allows only a safe code in a bootstrap failure event', () => {
+    const event = createDesktopOperationalEvent(
+      {
+        errorCode: 'DESKTOP_START_FAILED',
+        eventName: 'desktop.bootstrapFailed',
+        retryable: false,
+        sideEffectState: 'unknown',
+        stage: 'startup',
+      },
+      options,
+    );
+
+    expect(event).toMatchObject({
+      errorCode: 'DESKTOP_START_FAILED',
+      eventName: 'desktop.bootstrapFailed',
+      outcome: 'failure',
+    });
+    expect(() =>
+      createDesktopOperationalEvent(
+        {
+          errorCode: 'C:\\Users\\Example\\application.asar',
+          eventName: 'desktop.bootstrapFailed',
+        },
+        options,
+      ),
+    ).toThrow(DesktopOperationalEventValidationError);
+  });
 });

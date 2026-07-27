@@ -5,9 +5,35 @@ export type DesktopEventOutcome =
   | 'success'
   | 'unknown';
 
+export const desktopPermissionTypes = Object.freeze([
+  'clipboard-read',
+  'clipboard-sanitized-write',
+  'display-capture',
+  'fileSystem',
+  'fullscreen',
+  'geolocation',
+  'idle-detection',
+  'keyboardLock',
+  'media',
+  'mediaKeySystem',
+  'midi',
+  'midiSysex',
+  'notifications',
+  'openExternal',
+  'pointerLock',
+  'speaker-selection',
+  'storage-access',
+  'top-level-storage-access',
+  'window-management',
+  'unknown',
+] as const);
+export type DesktopPermissionType =
+  (typeof desktopPermissionTypes)[number];
+
 export interface DesktopOperationalEventPayloadMap {
   'desktop.starting': Record<never, never>;
   'desktop.started': { durationMs?: number };
+  'desktop.bootstrapFailed': FailureFields;
   'desktop.shutdownStarted': Record<never, never>;
   'desktop.shutdownCompleted': { durationMs?: number };
   'desktop.shutdownFailed': FailureFields;
@@ -21,6 +47,12 @@ export interface DesktopOperationalEventPayloadMap {
   'applicationWindow.navigationBlocked': { stage?: string };
   'applicationWindow.newWindowBlocked': { stage?: string };
   'electron.permissionDenied': { stage?: string };
+  'electron.permissionRequestBlocked': {
+    frameClass: 'mainFrame' | 'subFrame' | 'unknown';
+    originClass: 'eky' | 'external' | 'unknown';
+    permissionType: DesktopPermissionType;
+    stage: 'request';
+  };
   'pdfPreview.openFailed': { entityId?: string; entityType?: string } & FailureFields;
   'secretStorage.decryptFailed': FailureFields;
   'secretStorage.writeFailed': FailureFields;
@@ -34,6 +66,12 @@ export interface DesktopOperationalEventPayloadMap {
     oldestRemainingMonth?: string;
   };
   'operationalLog.writeFailed': { errorCode: string; stage?: string };
+  'operationalLogFolder.opened': {
+    durationMs: number;
+    stage: string;
+  };
+  'operationalLogFolder.openFailed': FailureFields;
+  'operationalLogFolder.requestBlocked': FailureFields;
   'supportBundle.creationStarted': {
     correlationId: string;
     stage?: string;
@@ -109,6 +147,12 @@ const failureFields = [
 export const desktopOperationalEventSpecs = Object.freeze({
   'desktop.starting': spec('runtime', 'info', 'success'),
   'desktop.started': spec('runtime', 'info', 'success', ['durationMs']),
+  'desktop.bootstrapFailed': spec(
+    'runtime',
+    'error',
+    'failure',
+    failureFields,
+  ),
   'desktop.shutdownStarted': spec('runtime', 'info', 'success'),
   'desktop.shutdownCompleted': spec('runtime', 'info', 'success', ['durationMs']),
   'desktop.shutdownFailed': spec('runtime', 'error', 'failure', failureFields),
@@ -159,6 +203,12 @@ export const desktopOperationalEventSpecs = Object.freeze({
     ['stage'],
   ),
   'electron.permissionDenied': spec('security', 'warn', 'blocked', ['stage']),
+  'electron.permissionRequestBlocked': spec(
+    'security',
+    'warn',
+    'blocked',
+    ['frameClass', 'originClass', 'permissionType', 'stage'],
+  ),
   'pdfPreview.openFailed': spec('pdfPreview', 'error', 'failure', [
     ...failureFields,
     'entityId',
@@ -204,6 +254,24 @@ export const desktopOperationalEventSpecs = Object.freeze({
     'failure',
     ['errorCode', 'stage'],
   ),
+  'operationalLogFolder.opened': spec(
+    'operationalLogFolder',
+    'info',
+    'success',
+    ['durationMs', 'stage'],
+  ),
+  'operationalLogFolder.openFailed': spec(
+    'operationalLogFolder',
+    'error',
+    'failure',
+    failureFields,
+  ),
+  'operationalLogFolder.requestBlocked': spec(
+    'security',
+    'warn',
+    'blocked',
+    failureFields,
+  ),
   'supportBundle.creationStarted': spec(
     'supportBundle',
     'info',
@@ -227,6 +295,7 @@ export const desktopOperationalEventSpecs = Object.freeze({
 export const desktopRequiredPayloadFields = Object.freeze({
   'desktop.starting': [],
   'desktop.started': [],
+  'desktop.bootstrapFailed': ['errorCode'],
   'desktop.shutdownStarted': [],
   'desktop.shutdownCompleted': [],
   'desktop.shutdownFailed': ['errorCode'],
@@ -240,6 +309,12 @@ export const desktopRequiredPayloadFields = Object.freeze({
   'applicationWindow.navigationBlocked': [],
   'applicationWindow.newWindowBlocked': [],
   'electron.permissionDenied': [],
+  'electron.permissionRequestBlocked': [
+    'frameClass',
+    'originClass',
+    'permissionType',
+    'stage',
+  ],
   'pdfPreview.openFailed': ['errorCode'],
   'secretStorage.decryptFailed': ['errorCode'],
   'secretStorage.writeFailed': ['errorCode'],
@@ -252,6 +327,9 @@ export const desktopRequiredPayloadFields = Object.freeze({
     'deletedFileCount',
   ],
   'operationalLog.writeFailed': ['errorCode'],
+  'operationalLogFolder.opened': ['durationMs', 'stage'],
+  'operationalLogFolder.openFailed': ['errorCode', 'stage'],
+  'operationalLogFolder.requestBlocked': ['errorCode', 'stage'],
   'supportBundle.creationStarted': ['correlationId'],
   'supportBundle.creationCompleted': ['correlationId'],
   'supportBundle.creationFailed': ['correlationId', 'errorCode'],

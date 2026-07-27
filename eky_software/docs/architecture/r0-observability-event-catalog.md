@@ -64,6 +64,7 @@ liiketoimintasisältöä.
 
 - `desktop.starting`
 - `desktop.started`
+- `desktop.bootstrapFailed`
 - `desktop.shutdownStarted`
 - `desktop.shutdownCompleted`
 - `desktop.shutdownFailed`
@@ -77,6 +78,7 @@ liiketoimintasisältöä.
 - `applicationWindow.navigationBlocked`
 - `applicationWindow.newWindowBlocked`
 - `electron.permissionDenied`
+- `electron.permissionRequestBlocked`
 - `pdfPreview.openFailed`
 - `secretStorage.decryptFailed`
 - `secretStorage.writeFailed`
@@ -84,9 +86,25 @@ liiketoimintasisältöä.
 - `packagedSmoke.completed`
 - `packagedSmoke.failed`
 - `operationalLog.writeFailed`
+- `operationalLogFolder.opened`
+- `operationalLogFolder.openFailed`
+- `operationalLogFolder.requestBlocked`
 - `supportBundle.creationStarted`
 - `supportBundle.creationCompleted`
 - `supportBundle.creationFailed`
+
+`electron.permissionDenied` säilyy vain olemassa olevien lokien
+yhteensopivuuden vuoksi. Tavallinen Chromiumin permission check estetään
+hiljaisesti. Vain varsinainen permission request kirjoittaa deduplikoidun
+`electron.permissionRequestBlocked`-eventin ilman raakaa URL-osoitetta.
+
+Lokikansion capability kirjoittaa vain avatun, epäonnistuneen tai estetyn
+toiminnon tapahtuman. Se ei tallenna absoluuttista polkua tai
+Windows-käyttäjänimeä.
+
+`desktop.bootstrapFailed` sisältää vain allowlistatun virhekoodin. Raw
+virheviestiä, stack tracea, asar- tai käyttäjäpolkua ei kirjoiteta eventtiin
+eikä näytetä käyttäjälle.
 
 ## Module-owned business audit
 

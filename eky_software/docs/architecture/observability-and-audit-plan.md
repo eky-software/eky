@@ -152,6 +152,14 @@ startupissa. Invoicing omistaa myös ALV-kantojen, laskunumeroinnin ja
 maksuasetusten auditoinnin, vaikka niiden lomakkeet näkyvät Oma yritys
 -näkymässä.
 
+Paketoitu smoke todentaa myös Diagnostics-eventtien HTTP- ja UI-ketjun,
+lokikansiocapabilityn stubatun avauksen sekä tarvittavat pakettiartifactit.
+Electronin permission check ei tuota security-lokikohinaa; vain todellinen
+request kirjataan kerran turvallista luokitusta kohden. Varhainen
+desktop-käynnistys rajaa käyttäjä- ja smoke-virheet vakioituihin koodeihin ja
+kirjoittaa loggerin valmistumisen jälkeisestä virheestä turvallisen
+bootstrap-eventin.
+
 Operational-writerin kapasiteetti- tai kirjoitusvirhe ei yritä kirjoittaa
 rekursiivisesti samaan streamiin. Siitä muodostetaan rajattu prosessikohtainen
 yhteenveto olemassa olevaan incident-indeksiin. Laskutus- ja SMTP-virheiden

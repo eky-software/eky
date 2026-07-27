@@ -31,6 +31,30 @@ describe('DiagnosticsPageView', () => {
     expect(html).not.toContain('stack');
   });
 
+  it('renders the business audit retention event exposed by the packaged contract', () => {
+    const html = renderToStaticMarkup(
+      <DiagnosticsPageView
+        errorMessage={null}
+        events={[
+          {
+            category: 'businessAudit',
+            component: 'backend',
+            errorCode: null,
+            eventName: 'businessAudit.retentionCompleted',
+            id: 'backend:event-1',
+            level: 'info',
+            occurredAt: '2026-07-27T12:00:00.000Z',
+            outcome: 'success',
+          },
+        ]}
+        isLoading={false}
+      />,
+    );
+
+    expect(html).toContain('businessAudit.retentionCompleted');
+    expect(html).not.toContain('Diagnostiikkaa ei voitu ladata');
+  });
+
   it('renders loading, empty and safe error states', () => {
     const loading = renderToStaticMarkup(
       <DiagnosticsPageView errorMessage={null} events={[]} isLoading />,
