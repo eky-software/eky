@@ -194,35 +194,12 @@ async function buildWorkspaceArtifacts() {
 }
 
 async function prepareApplicationStage() {
-  await mkdir(join(applicationStage, 'dist'), { recursive: true });
-  await cp(resolve(desktopDirectory, 'dist/main'), join(applicationStage, 'dist/main'), {
-    recursive: true,
-  });
-  await cp(
-    resolve(desktopDirectory, 'dist/preload'),
-    join(applicationStage, 'dist/preload'),
-    { recursive: true },
-  );
-  await cp(resolve(desktopDirectory, 'dist/pdf'), join(applicationStage, 'dist/pdf'), {
+  await cp(resolve(desktopDirectory, 'dist'), join(applicationStage, 'dist'), {
     recursive: true,
   });
   await cp(resolve(repositoryRoot, 'apps/web/dist'), join(applicationStage, 'web'), {
     recursive: true,
   });
-  await cp(
-    resolve(desktopDirectory, 'dist/runtime'),
-    join(applicationStage, 'dist/runtime'),
-    {
-      recursive: true,
-    },
-  );
-  await cp(
-    resolve(desktopDirectory, 'dist/secrets'),
-    join(applicationStage, 'dist/secrets'),
-    {
-      recursive: true,
-    },
-  );
   await cp(
     resolve(desktopDirectory, 'dist/runtime'),
     join(desktopRuntimeStage, 'runtime'),
