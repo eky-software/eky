@@ -105,6 +105,108 @@ describe('FileSystemDiagnosticEventReader', () => {
     await expect(reader.listRecentDiagnosticEvents(10)).resolves.toEqual([]);
   });
 
+  it('projects the packaged startup and retention event contract while ignoring an old unknown line', async () => {
+    const logsRoot = createLogsRoot();
+    const backendEvents = [
+      createBackendOperationalEvent(
+        { eventName: 'backend.starting' },
+        eventOptions('backend-starting', '2026-07-27T09:00:00.000Z'),
+      ),
+      createBackendOperationalEvent(
+        { eventName: 'backend.started' },
+        eventOptions('backend-started', '2026-07-27T09:00:01.000Z'),
+      ),
+      createBackendOperationalEvent(
+        { eventName: 'database.opened' },
+        eventOptions('database-opened', '2026-07-27T09:00:02.000Z'),
+      ),
+      createBackendOperationalEvent(
+        { eventName: 'migration.completed', stage: '036_observability.sql' },
+        eventOptions('migration-completed', '2026-07-27T09:00:03.000Z'),
+      ),
+      createBackendOperationalEvent(
+        {
+          deletedByteCount: 0,
+          deletedFileCount: 0,
+          eventName: 'operationalLog.retentionCompleted',
+        },
+        eventOptions(
+          'operational-retention-completed',
+          '2026-07-27T09:00:04.000Z',
+        ),
+      ),
+      createBackendOperationalEvent(
+        {
+          deletedEventCount: 0,
+          eventName: 'businessAudit.retentionCompleted',
+        },
+        eventOptions(
+          'business-retention-completed',
+          '2026-07-27T09:00:05.000Z',
+        ),
+      ),
+      createBackendOperationalEvent(
+        {
+          errorCode: 'BUSINESS_AUDIT_RETENTION_FAILED',
+          eventName: 'businessAudit.retentionFailed',
+        },
+        eventOptions(
+          'business-retention-failed',
+          '2026-07-27T09:00:06.000Z',
+        ),
+      ),
+    ];
+    writeLines(
+      logsRoot,
+      'backend',
+      'backend-info-2026-07-001.jsonl',
+      backendEvents,
+    );
+    writeLines(
+      logsRoot,
+      'backend',
+      'backend-warning-error-2026-07-001.jsonl',
+      [
+        {
+          ...backendEvents[0],
+          eventId: 'old-unknown-event',
+          eventName: 'backend.legacyUnknown',
+        },
+      ],
+    );
+    writeLines(
+      logsRoot,
+      'desktop',
+      'desktop-info-2026-07-001.jsonl',
+      [
+        createDesktopEvent({
+          eventId: 'desktop-started',
+          eventName: 'desktop.started',
+          timestamp: '2026-07-27T09:00:07.000Z',
+        }),
+      ],
+    );
+
+    const events =
+      await new FileSystemDiagnosticEventReader(
+        logsRoot,
+      ).listRecentDiagnosticEvents(20);
+
+    expect(events.map((event) => event.eventName)).toEqual([
+      'desktop.started',
+      'businessAudit.retentionFailed',
+      'businessAudit.retentionCompleted',
+      'operationalLog.retentionCompleted',
+      'migration.completed',
+      'database.opened',
+      'backend.started',
+      'backend.starting',
+    ]);
+    expect(events).not.toContainEqual(
+      expect.objectContaining({ eventName: 'backend.legacyUnknown' }),
+    );
+  });
+
   it('requires composition to supply an absolute logs root', () => {
     expect(() => new FileSystemDiagnosticEventReader('relative/logs')).toThrow(
       'Diagnostic logs root must be absolute.',
@@ -137,20 +239,29 @@ function writeLines(
 
 function createDesktopEvent(input: {
   eventId: string;
-  eventName: 'electron.permissionDenied';
+  eventName: 'desktop.started' | 'electron.permissionDenied';
   timestamp: string;
 }): Record<string, unknown> {
+  const isPermissionEvent = input.eventName === 'electron.permissionDenied';
+
   return {
     appVersion: '1.0.0',
-    category: 'security',
+    category: isPermissionEvent ? 'security' : 'runtime',
     component: 'desktop',
     eventId: input.eventId,
     eventName: input.eventName,
-    level: 'warn',
-    outcome: 'blocked',
+    level: isPermissionEvent ? 'warn' : 'info',
+    outcome: isPermissionEvent ? 'blocked' : 'success',
     schemaVersion: 1,
-    stage: 'request',
+    ...(isPermissionEvent ? { stage: 'request' } : {}),
     timestamp: input.timestamp,
   };
 }
 
+function eventOptions(eventId: string, timestamp: string) {
+  return {
+    appVersion: '1.0.0',
+    eventId,
+    timestamp,
+  };
+}

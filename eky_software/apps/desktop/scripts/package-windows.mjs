@@ -1,4 +1,5 @@
 import {
+  access,
   cp,
   mkdir,
   readFile,
@@ -236,6 +237,19 @@ async function prepareApplicationStage() {
   );
 }
 
+async function assertPackagedDiagnosticsArtifacts() {
+  for (const relativePath of [
+    'dist/diagnostics/desktopDiagnosticsTypes.js',
+    'dist/diagnostics/operationalLogFolderCapability.js',
+    'dist/main/desktopComposition.js',
+    'dist/preload/index.cjs',
+    'dist/supportBundle/supportBundleCapability.js',
+    'web/index.html',
+  ]) {
+    await access(resolve(applicationStage, relativePath));
+  }
+}
+
 async function applyAndVerifyFuses(executablePath) {
   await flipFuses(executablePath, {
     version: FuseVersion.V1,
@@ -295,6 +309,7 @@ async function packageWindowsSpike() {
   }
 
   await prepareApplicationStage();
+  await assertPackagedDiagnosticsArtifacts();
 
   const packagedPaths = await packager({
     appVersion: '0.0.0',

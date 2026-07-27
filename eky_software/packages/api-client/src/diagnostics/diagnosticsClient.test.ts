@@ -45,37 +45,46 @@ describe('diagnostics API client', () => {
     ).rejects.toBeInstanceOf(EkyApiError);
   });
 
-  it('accepts typed business audit retention events', async () => {
+  it('accepts the packaged startup and retention event contract', async () => {
+    const eventNames = [
+      'backend.starting',
+      'backend.started',
+      'database.opened',
+      'migration.completed',
+      'operationalLog.retentionCompleted',
+      'businessAudit.retentionCompleted',
+      'businessAudit.retentionFailed',
+      'desktop.started',
+    ] as const;
     const client = createEkyApiClient({
       baseUrl: '',
       fetch: async () =>
         jsonResponse({
-          diagnosticEvents: [
-            {
-              category: 'businessAudit',
-              component: 'backend',
-              errorCode: null,
-              eventName: 'businessAudit.retentionCompleted',
-              id: 'backend:event-1',
-              level: 'info',
-              occurredAt: '2026-07-27T12:00:00.000Z',
-              outcome: 'success',
-            },
-            {
-              category: 'businessAudit',
-              component: 'backend',
-              errorCode: 'BUSINESS_AUDIT_RETENTION_FAILED',
-              eventName: 'businessAudit.retentionFailed',
-              id: 'backend:event-2',
-              level: 'warn',
-              occurredAt: '2026-07-27T12:01:00.000Z',
-              outcome: 'failure',
-            },
-          ],
+          diagnosticEvents: eventNames.map((eventName, index) => ({
+            category: diagnosticCategory(eventName),
+            component: eventName === 'desktop.started' ? 'desktop' : 'backend',
+            errorCode:
+              eventName === 'businessAudit.retentionFailed'
+                ? 'BUSINESS_AUDIT_RETENTION_FAILED'
+                : null,
+            eventName,
+            id: `${eventName === 'desktop.started' ? 'desktop' : 'backend'}:event-${String(index + 1)}`,
+            level:
+              eventName === 'businessAudit.retentionFailed' ? 'warn' : 'info',
+            occurredAt: `2026-07-27T12:00:${String(index).padStart(2, '0')}.000Z`,
+            outcome:
+              eventName === 'businessAudit.retentionFailed'
+                ? 'failure'
+                : 'success',
+          })),
         }),
     });
 
-    await expect(client.listDiagnosticEvents()).resolves.toHaveLength(2);
+    await expect(client.listDiagnosticEvents()).resolves.toEqual(
+      eventNames.map((eventName) =>
+        expect.objectContaining({ eventName }),
+      ),
+    );
   });
 
   it('rejects raw metadata and unknown event names', async () => {
@@ -109,4 +118,20 @@ function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), {
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+function diagnosticCategory(eventName: string): string {
+  if (eventName.startsWith('businessAudit.')) {
+    return 'businessAudit';
+  }
+  if (eventName.startsWith('operationalLog.')) {
+    return 'operationalLog';
+  }
+  if (eventName.startsWith('database.')) {
+    return 'database';
+  }
+  if (eventName.startsWith('migration.')) {
+    return 'migration';
+  }
+  return 'runtime';
 }
