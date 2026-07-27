@@ -52,6 +52,7 @@ import {
   type PackagedSmokeConfiguration,
 } from './packagedSmoke.js';
 import { restoreWindowInputFocus } from './windowInputFocus.js';
+import type { DesktopBuildInfo } from '../release/desktopBuildInfo.js';
 
 export interface DesktopLifecycleHandle {
   applicationWindow: BrowserWindow;
@@ -62,6 +63,7 @@ export interface DesktopLifecycleHandle {
 interface StartDesktopCompositionOptions {
   appVersion: string;
   applicationPath: string;
+  buildInfo: Readonly<DesktopBuildInfo>;
   quitApplication(): void;
   resourcesPath: string;
   smokeConfiguration: PackagedSmokeConfiguration;

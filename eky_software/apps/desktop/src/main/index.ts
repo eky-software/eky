@@ -6,6 +6,7 @@ import {
 
 import type { DesktopLifecycleHandle } from './desktopComposition.js';
 import { runSafeDesktopStartup } from './earlyStartup.js';
+import { readDesktopBuildInfo } from '../release/desktopBuildInfoReader.js';
 import {
   createPackagedSmokeConfiguration,
   writePackagedSmokeResult,
@@ -50,9 +51,15 @@ let shutdownStarted = false;
 async function startDesktopRuntime(
   startDesktopComposition: StartDesktopComposition,
 ): Promise<void> {
+  const buildInfo = await readDesktopBuildInfo({
+    applicationPath: app.getAppPath(),
+    appVersion: app.getVersion(),
+    isPackaged: app.isPackaged,
+  });
   desktopLifecycle = await startDesktopComposition({
     appVersion: app.getVersion(),
     applicationPath: app.getAppPath(),
+    buildInfo,
     quitApplication: () => app.quit(),
     resourcesPath: process.resourcesPath,
     smokeConfiguration,

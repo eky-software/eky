@@ -10,7 +10,7 @@ import {
 import { createHash } from 'node:crypto';
 import { dirname, join, relative, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
   flipFuses,
@@ -194,7 +194,7 @@ async function buildWorkspaceArtifacts() {
   ]);
 }
 
-async function prepareApplicationStage() {
+async function prepareApplicationStage(buildInfo) {
   await cp(resolve(desktopDirectory, 'dist'), join(applicationStage, 'dist'), {
     recursive: true,
   });
@@ -228,11 +228,16 @@ async function prepareApplicationStage() {
         name: 'eky-desktop',
         productName: 'Eky',
         type: 'module',
-        version: '0.0.0',
+        version: buildInfo.appVersion,
       },
       null,
       2,
     )}\n`,
+    'utf8',
+  );
+  await writeFile(
+    join(applicationStage, 'dist', 'build-info.json'),
+    `${JSON.stringify(buildInfo, null, 2)}\n`,
     'utf8',
   );
 }
@@ -241,6 +246,7 @@ async function assertPackagedDiagnosticsArtifacts() {
   for (const relativePath of [
     'dist/diagnostics/desktopDiagnosticsTypes.js',
     'dist/diagnostics/operationalLogFolderCapability.js',
+    'dist/build-info.json',
     'dist/main/desktopComposition.js',
     'dist/preload/index.cjs',
     'dist/supportBundle/supportBundleCapability.js',
@@ -296,6 +302,20 @@ async function packageWindowsSpike() {
   await rm(outputDirectory, { force: true, recursive: true });
   await mkdir(stagingRoot, { recursive: true });
   await buildWorkspaceArtifacts();
+  const packageBuildInfoModule = await import(
+    pathToFileURL(
+      resolve(desktopDirectory, 'dist/release/packageBuildInfo.js'),
+    ).href
+  );
+  const desktopPackageMetadata = JSON.parse(
+    await readFile(resolve(desktopDirectory, 'package.json'), 'utf8'),
+  );
+  const appVersion =
+    packageBuildInfoModule.readDesktopPackageVersion(desktopPackageMetadata);
+  const buildInfo = await packageBuildInfoModule.createPackageBuildInfo({
+    appVersion,
+    repositoryRoot,
+  });
   await assertSafeBackendStage();
   await rebuildStagedBetterSqlite();
   const workspaceBindingHashAfterPackaging = await hashFile(
@@ -308,11 +328,11 @@ async function packageWindowsSpike() {
     );
   }
 
-  await prepareApplicationStage();
+  await prepareApplicationStage(buildInfo);
   await assertPackagedDiagnosticsArtifacts();
 
   const packagedPaths = await packager({
-    appVersion: '0.0.0',
+    appVersion,
     arch: 'x64',
     asar: true,
     dir: applicationStage,
