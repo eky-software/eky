@@ -10,6 +10,12 @@ export type OperationalSideEffectState =
   | 'rolledBack'
   | 'unknown';
 
+export interface OperationalRuntimeIdentity {
+  appVersion: string;
+  buildRevision: string;
+  runtimeInstanceId: string;
+}
+
 export interface BackendOperationalEventPayloadMap {
   'backend.starting': Record<never, never>;
   'backend.started': { durationMs?: number };
@@ -99,8 +105,7 @@ export type BackendOperationalEventInput = {
   >;
 }[BackendOperationalEventName];
 
-export interface BackendOperationalEventCore {
-  appVersion: string;
+export interface BackendOperationalEventCore extends OperationalRuntimeIdentity {
   category: string;
   component: 'backend';
   eventId: string;

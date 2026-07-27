@@ -22,6 +22,7 @@ describe('JsonLineIncidentIndex', () => {
 
     index.write({
       appVersion: '0.0.0',
+      buildRevision: '123456789abc',
       component: 'backend',
       errorCode: 'DATABASE_OPEN_FAILED',
       eventName: 'database.openFailed',
@@ -41,6 +42,7 @@ describe('JsonLineIncidentIndex', () => {
     );
     expect(JSON.parse(line)).toEqual({
       appVersion: '0.0.0',
+      buildRevision: '123456789abc',
       component: 'backend',
       errorCode: 'DATABASE_OPEN_FAILED',
       eventName: 'database.openFailed',
@@ -51,6 +53,7 @@ describe('JsonLineIncidentIndex', () => {
     expect(line).not.toContain('companyId');
     expect(line).not.toContain('entityId');
     expect(line).not.toContain('actorUserId');
+    expect(line).not.toContain('runtimeInstanceId');
   });
 
   it('drops malformed entries without throwing', () => {
@@ -61,6 +64,7 @@ describe('JsonLineIncidentIndex', () => {
     expect(() =>
       index.write({
         appVersion: '0.0.0',
+        buildRevision: '123456789abc',
         component: 'backend',
         errorCode: 'person@example.test',
         eventName: 'database.openFailed',

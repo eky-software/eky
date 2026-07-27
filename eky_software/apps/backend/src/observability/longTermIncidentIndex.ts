@@ -1,5 +1,6 @@
 export interface LongTermIncidentIndexEntry {
   appVersion: string;
+  buildRevision: string;
   component: 'backend';
   errorCode: string;
   eventName: string;

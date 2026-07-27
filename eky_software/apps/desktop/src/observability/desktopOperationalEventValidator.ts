@@ -9,12 +9,14 @@ import {
 
 const coreFields = new Set([
   'appVersion',
+  'buildRevision',
   'category',
   'component',
   'eventId',
   'eventName',
   'level',
   'outcome',
+  'runtimeInstanceId',
   'schemaVersion',
   'timestamp',
 ]);
@@ -34,6 +36,7 @@ const monthPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const maximumEventBytes = 16 * 1024;
+const buildRevisionPattern = /^(?:[0-9a-f]{7,40}|development)$/;
 const permissionTypes = new Set(desktopPermissionTypes);
 
 export class DesktopOperationalEventValidationError extends Error {
@@ -89,6 +92,10 @@ export function validateDesktopOperationalEvent(
     normalized.outcome !== spec.outcome ||
     !isIdentifier(normalized.eventId) ||
     !isVersion(normalized.appVersion) ||
+    typeof normalized.buildRevision !== 'string' ||
+    !buildRevisionPattern.test(normalized.buildRevision) ||
+    typeof normalized.runtimeInstanceId !== 'string' ||
+    !uuidPattern.test(normalized.runtimeInstanceId) ||
     typeof normalized.timestamp !== 'string' ||
     !timestampPattern.test(normalized.timestamp) ||
     Number.isNaN(Date.parse(normalized.timestamp))

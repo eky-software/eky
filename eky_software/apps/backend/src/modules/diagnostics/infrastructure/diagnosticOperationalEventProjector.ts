@@ -117,6 +117,7 @@ const desktopDiagnosticSpecs = Object.freeze({
 
 const allowedDesktopFields = new Set([
   'appVersion',
+  'buildRevision',
   'category',
   'component',
   'correlationId',
@@ -136,6 +137,7 @@ const allowedDesktopFields = new Set([
   'originClass',
   'permissionType',
   'retryable',
+  'runtimeInstanceId',
   'schemaVersion',
   'sideEffectState',
   'stage',
@@ -147,6 +149,9 @@ const safeIdentifierPattern = /^[A-Za-z0-9._:-]+$/;
 const timestampPattern =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 const monthPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
+const buildRevisionPattern = /^(?:[0-9a-f]{7,40}|development)$/;
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const maximumEventBytes = 16 * 1024;
 
 export function projectDiagnosticOperationalEvent(
@@ -235,6 +240,10 @@ function validateDesktopEvent(
     value.outcome !== eventSpec.outcome ||
     !isSafeIdentifier(value.eventId, 200) ||
     !isSafeVersion(value.appVersion) ||
+    typeof value.buildRevision !== 'string' ||
+    !buildRevisionPattern.test(value.buildRevision) ||
+    typeof value.runtimeInstanceId !== 'string' ||
+    !uuidPattern.test(value.runtimeInstanceId) ||
     !isTimestamp(value.timestamp)
   ) {
     throw new Error('Diagnostic event core is invalid.');
@@ -275,6 +284,12 @@ function isSafeDesktopField(key: string, value: unknown): boolean {
   }
   if (key === 'appVersion') {
     return isSafeVersion(value);
+  }
+  if (key === 'buildRevision') {
+    return typeof value === 'string' && buildRevisionPattern.test(value);
+  }
+  if (key === 'runtimeInstanceId') {
+    return typeof value === 'string' && uuidPattern.test(value);
   }
   if (
     key === 'component' ||

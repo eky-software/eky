@@ -11,6 +11,7 @@ import {
   type SupportBundleCreationResult,
 } from '../diagnostics/desktopDiagnosticsTypes.js';
 import { createDesktopOperationalEvent } from '../observability/createDesktopOperationalEvent.js';
+import type { DesktopOperationalIdentity } from '../observability/desktopOperationalEvent.js';
 import type { DesktopOperationalLogger } from '../observability/desktopOperationalLogger.js';
 import {
   createSupportBundleArchive,
@@ -28,6 +29,7 @@ interface SupportBundleCapabilityOptions {
   mainWindow: BrowserWindow;
   now?(): Date;
   operationalLogger: DesktopOperationalLogger;
+  operationalIdentity: DesktopOperationalIdentity;
   platform: string;
   runtimeRoot: string;
   selectTargetPath(defaultFileName: string): Promise<string | null>;
@@ -85,7 +87,7 @@ export function createSupportBundleCapability(
               eventName: 'supportBundle.creationStarted',
               stage: 'create',
             },
-            { appVersion: options.appVersion },
+            options.operationalIdentity,
           ),
         );
 
@@ -116,7 +118,7 @@ export function createSupportBundleCapability(
               eventName: 'supportBundle.creationCompleted',
               stage: 'create',
             },
-            { appVersion: options.appVersion },
+            options.operationalIdentity,
           ),
         );
         return 'created';
@@ -132,7 +134,7 @@ export function createSupportBundleCapability(
               sideEffectState: 'unknown',
               stage: 'create',
             },
-            { appVersion: options.appVersion },
+            options.operationalIdentity,
           ),
         );
         options.showSafeError();

@@ -5,7 +5,9 @@ import { IncidentIndexingOperationalLogger } from './incidentIndexingOperational
 
 const eventOptions = {
   appVersion: '0.0.0',
+  buildRevision: '123456789abc',
   eventId: 'event-1',
+  runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
   timestamp: '2026-07-26T20:00:00.000Z',
 };
 
@@ -34,6 +36,7 @@ describe('IncidentIndexingOperationalLogger', () => {
     expect(detailedLogger.write).toHaveBeenCalledTimes(1);
     expect(incidentIndex.write).toHaveBeenCalledWith({
       appVersion: '0.0.0',
+      buildRevision: '123456789abc',
       component: 'backend',
       errorCode: 'INVOICE_PDF_GENERATION_FAILED',
       eventName: 'invoicePdf.generationFailed',
@@ -42,6 +45,9 @@ describe('IncidentIndexingOperationalLogger', () => {
       outcome: 'failure',
       timestamp: '2026-07-26T20:00:00.000Z',
     });
+    expect(incidentIndex.write).not.toHaveBeenCalledWith(
+      expect.objectContaining({ runtimeInstanceId: expect.anything() }),
+    );
   });
 
   it('does not index successful operational events', () => {

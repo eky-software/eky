@@ -1,20 +1,21 @@
 import type { LongTermIncidentIndex } from '../longTermIncidentIndex.js';
+import type { OperationalRuntimeIdentity } from '../operationalEvent.js';
 import type { OperationalLogFailureSink } from './jsonLineOperationalLogger.js';
 import type { BackendOperationalLogStream } from './operationalLogFiles.js';
 
 export class IncidentIndexOperationalLogFailureSink
   implements OperationalLogFailureSink
 {
-  readonly #appVersion: string;
   readonly #incidentIndex: LongTermIncidentIndex;
+  readonly #operationalIdentity: Readonly<OperationalRuntimeIdentity>;
   readonly #recordedFailures = new Set<string>();
 
   constructor(options: {
-    appVersion: string;
+    operationalIdentity: Readonly<OperationalRuntimeIdentity>;
     incidentIndex: LongTermIncidentIndex;
   }) {
-    this.#appVersion = options.appVersion;
     this.#incidentIndex = options.incidentIndex;
+    this.#operationalIdentity = options.operationalIdentity;
   }
 
   recordFailure(input: {
@@ -28,7 +29,8 @@ export class IncidentIndexOperationalLogFailureSink
     this.#recordedFailures.add(failureKey);
 
     this.#incidentIndex.write({
-      appVersion: this.#appVersion,
+      appVersion: this.#operationalIdentity.appVersion,
+      buildRevision: this.#operationalIdentity.buildRevision,
       component: 'backend',
       errorCode: input.errorCode,
       eventName:

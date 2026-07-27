@@ -10,6 +10,7 @@ import {
 } from './backendMessages.js';
 import { createDesktopBackendEnvironment } from './backendEnvironment.js';
 import { createDesktopOperationalEvent } from '../observability/createDesktopOperationalEvent.js';
+import type { DesktopOperationalIdentity } from '../observability/desktopOperationalEvent.js';
 import {
   noOpDesktopOperationalLogger,
   type DesktopOperationalLogger,
@@ -19,8 +20,8 @@ const backendReadinessTimeoutMilliseconds = 30_000;
 const backendShutdownTimeoutMilliseconds = 3_000;
 
 export interface StartDesktopBackendOptions {
-  appVersion?: string;
   config: DesktopBackendStartMessage['config'];
+  operationalIdentity: DesktopOperationalIdentity;
   operationalLogger?: DesktopOperationalLogger;
   runnerPath: string;
   secretBrokerPort: MessagePortMain;
@@ -52,14 +53,13 @@ function waitForExit(
 export function startDesktopBackend(
   options: StartDesktopBackendOptions,
 ): Promise<DesktopBackendHandle> {
-  const appVersion = options.appVersion ?? '0.0.0';
   const operationalLogger =
     options.operationalLogger ?? noOpDesktopOperationalLogger;
   const startedAt = Date.now();
   operationalLogger.write(
     createDesktopOperationalEvent(
       { eventName: 'backendProcess.starting' },
-      { appVersion },
+      options.operationalIdentity,
     ),
   );
 
@@ -84,7 +84,7 @@ export function startDesktopBackend(
             sideEffectState: 'unknown',
             stage: 'readiness',
           },
-          { appVersion },
+          options.operationalIdentity,
         ),
       );
       rejectStart(new Error('BACKEND_READINESS_TIMEOUT'));
@@ -116,7 +116,7 @@ export function startDesktopBackend(
               sideEffectState: 'unknown',
               stage: 'startup',
             },
-            { appVersion },
+            options.operationalIdentity,
           ),
         );
         rejectStart(new Error(status.code));
@@ -131,7 +131,7 @@ export function startDesktopBackend(
             durationMs: Date.now() - startedAt,
             eventName: 'backendProcess.started',
           },
-          { appVersion },
+          options.operationalIdentity,
         ),
       );
       resolveStart({
@@ -162,7 +162,7 @@ export function startDesktopBackend(
                   sideEffectState: 'unknown',
                   stage: 'shutdown',
                 },
-                { appVersion },
+                options.operationalIdentity,
               ),
             );
           }
@@ -183,7 +183,7 @@ export function startDesktopBackend(
               sideEffectState: 'unknown',
               stage: 'startup',
             },
-            { appVersion },
+            options.operationalIdentity,
           ),
         );
         rejectStart(new Error('BACKEND_EXITED_BEFORE_READY'));
@@ -200,7 +200,7 @@ export function startDesktopBackend(
               sideEffectState: 'unknown',
               stage: 'runtime',
             },
-            { appVersion },
+            options.operationalIdentity,
           ),
         );
         unexpectedExitCallback?.();

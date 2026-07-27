@@ -30,6 +30,7 @@ export class IncidentIndexingOperationalLogger implements OperationalLogger {
 
     this.#incidentIndex.write({
       appVersion: event.appVersion,
+      buildRevision: event.buildRevision,
       component: 'backend',
       errorCode,
       eventName: event.eventName,

@@ -112,7 +112,11 @@ function createFixture() {
   const events: DesktopOperationalEvent[] = [];
 
   registerElectronPermissionPolicy({
-    appVersion: '0.0.0',
+    operationalIdentity: {
+      appVersion: '0.0.0',
+      buildRevision: '123456789abc',
+      runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
+    },
     operationalLogger: {
       write(event) {
         events.push(event);

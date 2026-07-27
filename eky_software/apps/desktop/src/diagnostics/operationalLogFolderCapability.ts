@@ -8,15 +8,18 @@ import type {
 } from 'electron';
 
 import { createDesktopOperationalEvent } from '../observability/createDesktopOperationalEvent.js';
-import type { DesktopOperationalEventInput } from '../observability/desktopOperationalEvent.js';
+import type {
+  DesktopOperationalEventInput,
+  DesktopOperationalIdentity,
+} from '../observability/desktopOperationalEvent.js';
 import type { DesktopOperationalLogger } from '../observability/desktopOperationalLogger.js';
 import { openOperationalLogFolderIpcChannel } from './desktopDiagnosticsTypes.js';
 
 interface OperationalLogFolderCapabilityOptions {
-  appVersion: string;
   ipcMain: Pick<IpcMain, 'handle' | 'removeHandler'>;
   mainWindow: BrowserWindow;
   openPath(path: string): Promise<string>;
+  operationalIdentity: DesktopOperationalIdentity;
   operationalLogger: DesktopOperationalLogger;
   runtimeRoot: string;
   showSafeError(): void;
@@ -102,9 +105,7 @@ function writeEvent<Input extends DesktopOperationalEventInput>(
   input: Readonly<Input>,
 ): void {
   options.operationalLogger.write(
-    createDesktopOperationalEvent(input, {
-      appVersion: options.appVersion,
-    }),
+    createDesktopOperationalEvent(input, options.operationalIdentity),
   );
 }
 

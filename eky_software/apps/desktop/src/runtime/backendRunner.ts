@@ -16,6 +16,8 @@ interface StartedBackendServer {
 type StartServer = (options: {
   appOptions: {
     appVersion: string;
+    buildCreatedAt: string;
+    buildDirty: boolean;
     companyEmailSecretReader: {
       getSecret(companyId: string): Promise<string | null>;
     };
@@ -28,6 +30,11 @@ type StartServer = (options: {
     invoiceDocumentStorageRoot: string;
     migrationsDirectory: string;
     operationalLogsRoot: string;
+    operationalIdentity: {
+      appVersion: string;
+      buildRevision: string;
+      runtimeInstanceId: string;
+    };
   };
   hostname: string;
   port: number;
@@ -165,6 +172,8 @@ utilityParentPort.on('message', (event) => {
       backendServer = await serverModule.startServer({
         appOptions: {
           appVersion: command.config.appVersion,
+          buildCreatedAt: command.config.buildCreatedAt,
+          buildDirty: command.config.buildDirty,
           companyEmailSecretReader: {
             getSecret: (companyId) => secretBrokerClient!.getSecret(companyId),
           },
@@ -178,6 +187,11 @@ utilityParentPort.on('message', (event) => {
           invoiceDocumentStorageRoot: command.config.invoiceDocumentStorageRoot,
           migrationsDirectory: command.config.migrationsDirectory,
           operationalLogsRoot: command.config.operationalLogsRoot,
+          operationalIdentity: {
+            appVersion: command.config.appVersion,
+            buildRevision: command.config.buildRevision,
+            runtimeInstanceId: command.config.runtimeInstanceId,
+          },
         },
         hostname: '127.0.0.1',
         port: 0,

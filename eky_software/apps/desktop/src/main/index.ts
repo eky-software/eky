@@ -3,6 +3,7 @@ import {
   dialog,
   protocol,
 } from 'electron';
+import { randomUUID } from 'node:crypto';
 
 import type { DesktopLifecycleHandle } from './desktopComposition.js';
 import { runSafeDesktopStartup } from './earlyStartup.js';
@@ -47,6 +48,7 @@ if (!hasSingleInstanceLock) {
 
 let desktopLifecycle: DesktopLifecycleHandle | undefined;
 let shutdownStarted = false;
+const runtimeInstanceId = randomUUID();
 
 async function startDesktopRuntime(
   startDesktopComposition: StartDesktopComposition,
@@ -62,6 +64,7 @@ async function startDesktopRuntime(
     buildInfo,
     quitApplication: () => app.quit(),
     resourcesPath: process.resourcesPath,
+    runtimeInstanceId,
     smokeConfiguration,
     userDataPath: app.getPath('userData'),
   });

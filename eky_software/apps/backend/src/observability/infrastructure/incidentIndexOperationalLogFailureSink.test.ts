@@ -6,8 +6,12 @@ describe('IncidentIndexOperationalLogFailureSink', () => {
   it('records one non-recursive safe summary for each failure and stream', () => {
     const write = vi.fn();
     const sink = new IncidentIndexOperationalLogFailureSink({
-      appVersion: '1.2.3',
       incidentIndex: { write },
+      operationalIdentity: {
+        appVersion: '1.2.3',
+        buildRevision: '123456789abc',
+        runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
+      },
     });
 
     sink.recordFailure({
@@ -28,6 +32,7 @@ describe('IncidentIndexOperationalLogFailureSink', () => {
       1,
       expect.objectContaining({
         appVersion: '1.2.3',
+        buildRevision: '123456789abc',
         errorCode: 'LOG_CAPACITY_REACHED',
         eventName: 'operationalLog.capacityReached',
         fingerprint: 'LOG_CAPACITY_REACHED:backend-warning-error',

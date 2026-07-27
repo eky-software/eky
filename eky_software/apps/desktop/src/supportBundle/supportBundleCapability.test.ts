@@ -112,6 +112,11 @@ function createFixture(
       webContents,
     } as never,
     now: () => new Date('2026-07-27T12:00:00.000Z'),
+    operationalIdentity: {
+      appVersion: '1.2.3',
+      buildRevision: '123456789abc',
+      runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
+    },
     operationalLogger: {
       write(event) {
         events.push(event);

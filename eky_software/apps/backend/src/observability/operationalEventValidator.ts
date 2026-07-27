@@ -8,12 +8,14 @@ import {
 
 const coreFields = new Set([
   'appVersion',
+  'buildRevision',
   'category',
   'component',
   'eventId',
   'eventName',
   'level',
   'outcome',
+  'runtimeInstanceId',
   'schemaVersion',
   'timestamp',
 ]);
@@ -31,6 +33,7 @@ const monthPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const maximumEventBytes = 16 * 1024;
+const buildRevisionPattern = /^(?:[0-9a-f]{7,40}|development)$/;
 const maximumStringLength = 300;
 const controlCharacterPattern = /[\u0000-\u001f\u007f-\u009f]/g;
 const identifierPattern = /^[A-Za-z0-9._:-]+$/;
@@ -80,6 +83,10 @@ export function validateBackendOperationalEvent(
     normalized.outcome !== spec.outcome ||
     !isSafeIdentifier(normalized.eventId) ||
     !isSafeVersion(normalized.appVersion) ||
+    typeof normalized.buildRevision !== 'string' ||
+    !buildRevisionPattern.test(normalized.buildRevision) ||
+    typeof normalized.runtimeInstanceId !== 'string' ||
+    !uuidPattern.test(normalized.runtimeInstanceId) ||
     typeof normalized.timestamp !== 'string' ||
     !isoTimestampPattern.test(normalized.timestamp) ||
     Number.isNaN(Date.parse(normalized.timestamp))

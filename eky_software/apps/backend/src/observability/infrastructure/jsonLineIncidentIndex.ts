@@ -72,6 +72,7 @@ function validateEntry(
     entry.component !== 'backend' ||
     !['blocked', 'failure', 'unknown'].includes(entry.outcome) ||
     !isSafeText(entry.appVersion, 80) ||
+    !isSafeText(entry.buildRevision, 80) ||
     !isSafeText(entry.errorCode, 120) ||
     !isSafeText(entry.eventName, 120) ||
     !isSafeText(entry.fingerprint, 200) ||

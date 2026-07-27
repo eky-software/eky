@@ -6,11 +6,15 @@ export interface DesktopBackendStartMessage {
   config: {
     appVersion: string;
     backendRoot: string;
+    buildCreatedAt: string;
+    buildDirty: boolean;
+    buildRevision: string;
     createSmokePdf: boolean;
     databaseFilePath: string;
     invoiceDocumentStorageRoot: string;
     migrationsDirectory: string;
     operationalLogsRoot: string;
+    runtimeInstanceId: string;
     runtimeSessionSecret: string;
     smokePdfPath: string;
   };
@@ -68,6 +72,10 @@ function isSafeAbsolutePath(value: unknown): value is string {
   );
 }
 
+const buildRevisionPattern = /^(?:[0-9a-f]{7,40}|development)$/;
+const runtimeInstanceIdPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export function parseDesktopBackendCommand(
   value: unknown,
 ): DesktopBackendCommand | undefined {
@@ -96,7 +104,14 @@ export function parseDesktopBackendCommand(
   if (
     typeof config.appVersion !== 'string' ||
     !/^[A-Za-z0-9.+_-]{1,80}$/.test(config.appVersion) ||
+    typeof config.buildCreatedAt !== 'string' ||
+    new Date(config.buildCreatedAt).toISOString() !== config.buildCreatedAt ||
+    typeof config.buildDirty !== 'boolean' ||
+    typeof config.buildRevision !== 'string' ||
+    !buildRevisionPattern.test(config.buildRevision) ||
     typeof config.createSmokePdf !== 'boolean' ||
+    typeof config.runtimeInstanceId !== 'string' ||
+    !runtimeInstanceIdPattern.test(config.runtimeInstanceId) ||
     !isDesktopRuntimeSession(config.runtimeSessionSecret) ||
     pathKeys.some((key) => !isSafeAbsolutePath(config[key]))
   ) {
@@ -107,11 +122,15 @@ export function parseDesktopBackendCommand(
     config: {
       appVersion: config.appVersion,
       backendRoot: config.backendRoot as string,
+      buildCreatedAt: config.buildCreatedAt,
+      buildDirty: config.buildDirty,
+      buildRevision: config.buildRevision,
       createSmokePdf: config.createSmokePdf,
       databaseFilePath: config.databaseFilePath as string,
       invoiceDocumentStorageRoot: config.invoiceDocumentStorageRoot as string,
       migrationsDirectory: config.migrationsDirectory as string,
       operationalLogsRoot: config.operationalLogsRoot as string,
+      runtimeInstanceId: config.runtimeInstanceId,
       runtimeSessionSecret: config.runtimeSessionSecret,
       smokePdfPath: config.smokePdfPath as string,
     },

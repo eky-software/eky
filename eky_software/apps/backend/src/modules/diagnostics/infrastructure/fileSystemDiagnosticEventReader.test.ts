@@ -38,7 +38,9 @@ describe('FileSystemDiagnosticEventReader', () => {
           },
           {
             appVersion: '1.0.0',
+            buildRevision: '123456789abc',
             eventId: 'backend-event-1',
+            runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
             timestamp: '2026-07-27T10:00:00.000Z',
           },
         ),
@@ -334,12 +336,14 @@ function createDesktopEvent(input: {
 
   return {
     appVersion: '1.0.0',
+    buildRevision: '123456789abc',
     category: isPermissionEvent ? 'security' : 'runtime',
     component: 'desktop',
     eventId: input.eventId,
     eventName: input.eventName,
     level: isPermissionEvent ? 'warn' : 'info',
     outcome: isPermissionEvent ? 'blocked' : 'success',
+    runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
     schemaVersion: 1,
     ...(isPermissionEvent ? { stage: 'request' } : {}),
     timestamp: input.timestamp,
@@ -349,7 +353,9 @@ function createDesktopEvent(input: {
 function eventOptions(eventId: string, timestamp: string) {
   return {
     appVersion: '1.0.0',
+    buildRevision: '123456789abc',
     eventId,
+    runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
     timestamp,
   };
 }
@@ -365,6 +371,7 @@ function createDesktopOperationalEventFixture(input: {
 }): Record<string, unknown> {
   return {
     appVersion: '1.0.0',
+    buildRevision: '123456789abc',
     category: input.category,
     component: 'desktop',
     durationMs: 1,
@@ -375,6 +382,7 @@ function createDesktopOperationalEventFixture(input: {
     eventName: input.eventName,
     level: input.level,
     outcome: input.outcome,
+    runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
     schemaVersion: 1,
     sideEffectState: 'none',
     stage: 'shellOpen',
