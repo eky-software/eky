@@ -299,9 +299,16 @@ export async function startDesktopComposition(
   );
   const mainWindow = applicationWindow;
   operationalLogFolderCapability = createOperationalLogFolderCapability({
+    appVersion: desktopAppVersion,
     ipcMain,
     mainWindow,
-    openPath: (path) => shell.openPath(path),
+    openPath: smokeMode
+      ? async (path) =>
+          path === operationalLogsRoot
+            ? ''
+            : 'OPERATIONAL_LOG_FOLDER_SMOKE_ROOT_INVALID'
+      : (path) => shell.openPath(path),
+    operationalLogger: desktopOperationalLogger,
     runtimeRoot: dataRoot,
     showSafeError() {
       deliveryConfirmation.showApplicationError(

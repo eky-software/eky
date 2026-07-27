@@ -116,6 +116,7 @@ export async function runPackagedSmokeCheck(
   }
 
   await assertPackagedDesktopBridge(options.pdfPreviewController);
+  await assertPackagedOperationalLogFolder(options.mainWindow);
   await assertPackagedDiagnostics(
     options.mainWindow,
     options.backend.port,
@@ -216,6 +217,21 @@ async function assertPackagedDesktopBridge(
 ): Promise<void> {
   if (!(await pdfPreviewController.hasRendererBridgeForSmoke())) {
     throw new Error('DESKTOP_SMOKE_PRELOAD_BRIDGE_FAILED');
+  }
+}
+
+async function assertPackagedOperationalLogFolder(
+  mainWindow: BrowserWindow,
+): Promise<void> {
+  const opened: unknown = await mainWindow.webContents.executeJavaScript(
+    `window.ekyDesktop.openOperationalLogFolder()
+      .then(() => true)
+      .catch(() => false)`,
+    true,
+  );
+
+  if (opened !== true) {
+    throw new Error('DESKTOP_SMOKE_LOG_FOLDER_FAILED');
   }
 }
 

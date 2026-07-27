@@ -112,6 +112,47 @@ describe('diagnostics API client', () => {
       EkyApiError,
     );
   });
+
+  it('accepts the operational log folder capability events', async () => {
+    const client = createEkyApiClient({
+      baseUrl: '',
+      fetch: async () =>
+        jsonResponse({
+          diagnosticEvents: [
+            'operationalLogFolder.opened',
+            'operationalLogFolder.openFailed',
+            'operationalLogFolder.requestBlocked',
+          ].map((eventName, index) => ({
+            category:
+              eventName === 'operationalLogFolder.requestBlocked'
+                ? 'security'
+                : 'operationalLogFolder',
+            component: 'desktop',
+            errorCode:
+              eventName === 'operationalLogFolder.opened'
+                ? null
+                : 'OPERATIONAL_LOG_FOLDER_OPEN_FAILED',
+            eventName,
+            id: `desktop:log-folder-${String(index)}`,
+            level:
+              eventName === 'operationalLogFolder.opened'
+                ? 'info'
+                : eventName === 'operationalLogFolder.requestBlocked'
+                  ? 'warn'
+                  : 'error',
+            occurredAt: `2026-07-27T13:00:0${String(index)}.000Z`,
+            outcome:
+              eventName === 'operationalLogFolder.opened'
+                ? 'success'
+                : eventName === 'operationalLogFolder.requestBlocked'
+                  ? 'blocked'
+                  : 'failure',
+          })),
+        }),
+    });
+
+    await expect(client.listDiagnosticEvents()).resolves.toHaveLength(3);
+  });
 });
 
 function jsonResponse(body: unknown): Response {

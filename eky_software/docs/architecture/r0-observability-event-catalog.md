@@ -84,6 +84,9 @@ liiketoimintasisältöä.
 - `packagedSmoke.completed`
 - `packagedSmoke.failed`
 - `operationalLog.writeFailed`
+- `operationalLogFolder.opened`
+- `operationalLogFolder.openFailed`
+- `operationalLogFolder.requestBlocked`
 - `supportBundle.creationStarted`
 - `supportBundle.creationCompleted`
 - `supportBundle.creationFailed`

@@ -7,12 +7,17 @@ import type {
   IpcMainInvokeEvent,
 } from 'electron';
 
+import { createDesktopOperationalEvent } from '../observability/createDesktopOperationalEvent.js';
+import type { DesktopOperationalEventInput } from '../observability/desktopOperationalEvent.js';
+import type { DesktopOperationalLogger } from '../observability/desktopOperationalLogger.js';
 import { openOperationalLogFolderIpcChannel } from './desktopDiagnosticsTypes.js';
 
 interface OperationalLogFolderCapabilityOptions {
+  appVersion: string;
   ipcMain: Pick<IpcMain, 'handle' | 'removeHandler'>;
   mainWindow: BrowserWindow;
   openPath(path: string): Promise<string>;
+  operationalLogger: DesktopOperationalLogger;
   runtimeRoot: string;
   showSafeError(): void;
 }
@@ -30,23 +35,40 @@ export function createOperationalLogFolderCapability(
   options.ipcMain.handle(
     openOperationalLogFolderIpcChannel,
     async (event, ...args: unknown[]) => {
+      const startedAt = Date.now();
       if (
         !isTrustedMainWindowRequest(event, options.mainWindow) ||
         args.length !== 0
       ) {
+        writeEvent(options, {
+          errorCode: 'OPERATIONAL_LOG_FOLDER_FORBIDDEN',
+          eventName: 'operationalLogFolder.requestBlocked',
+          sideEffectState: 'none',
+          stage: 'ipc',
+        });
         throw new Error('OPERATIONAL_LOG_FOLDER_FORBIDDEN');
       }
 
       try {
         ensureSafeDirectory(logsRoot);
+      } catch {
+        return failOpen(options, startedAt, 'ensureDirectory');
+      }
+
+      try {
         const errorMessage = await options.openPath(logsRoot);
         if (errorMessage.length > 0) {
-          throw new Error('OPERATIONAL_LOG_FOLDER_OPEN_FAILED');
+          return failOpen(options, startedAt, 'shellOpen');
         }
       } catch {
-        options.showSafeError();
-        throw new Error('OPERATIONAL_LOG_FOLDER_OPEN_FAILED');
+        return failOpen(options, startedAt, 'shellOpen');
       }
+
+      writeEvent(options, {
+        durationMs: Date.now() - startedAt,
+        eventName: 'operationalLogFolder.opened',
+        stage: 'shellOpen',
+      });
     },
   );
 
@@ -55,6 +77,34 @@ export function createOperationalLogFolderCapability(
       options.ipcMain.removeHandler(openOperationalLogFolderIpcChannel);
     },
   };
+}
+
+function failOpen(
+  options: OperationalLogFolderCapabilityOptions,
+  startedAt: number,
+  stage: 'ensureDirectory' | 'shellOpen',
+): never {
+  writeEvent(options, {
+    durationMs: Date.now() - startedAt,
+    errorCode: 'OPERATIONAL_LOG_FOLDER_OPEN_FAILED',
+    eventName: 'operationalLogFolder.openFailed',
+    retryable: true,
+    sideEffectState: 'none',
+    stage,
+  });
+  options.showSafeError();
+  throw new Error('OPERATIONAL_LOG_FOLDER_OPEN_FAILED');
+}
+
+function writeEvent(
+  options: OperationalLogFolderCapabilityOptions,
+  input: DesktopOperationalEventInput,
+): void {
+  options.operationalLogger.write(
+    createDesktopOperationalEvent(input, {
+      appVersion: options.appVersion,
+    }),
+  );
 }
 
 export function resolveOperationalLogsRoot(runtimeRoot: string): string {

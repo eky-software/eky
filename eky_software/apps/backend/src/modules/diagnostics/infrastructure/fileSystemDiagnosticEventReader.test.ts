@@ -207,6 +207,69 @@ describe('FileSystemDiagnosticEventReader', () => {
     );
   });
 
+  it('projects the operational log folder capability events without their internal metadata', async () => {
+    const logsRoot = createLogsRoot();
+    writeLines(
+      logsRoot,
+      'desktop',
+      'desktop-warning-error-2026-07-001.jsonl',
+      [
+        createDesktopOperationalEventFixture({
+          category: 'operationalLogFolder',
+          errorCode: 'OPERATIONAL_LOG_FOLDER_OPEN_FAILED',
+          eventId: 'log-folder-failed',
+          eventName: 'operationalLogFolder.openFailed',
+          level: 'error',
+          outcome: 'failure',
+          timestamp: '2026-07-27T10:00:00.000Z',
+        }),
+      ],
+    );
+    writeLines(
+      logsRoot,
+      'security',
+      'desktop-security-2026-07-001.jsonl',
+      [
+        createDesktopOperationalEventFixture({
+          category: 'security',
+          errorCode: 'OPERATIONAL_LOG_FOLDER_FORBIDDEN',
+          eventId: 'log-folder-blocked',
+          eventName: 'operationalLogFolder.requestBlocked',
+          level: 'warn',
+          outcome: 'blocked',
+          timestamp: '2026-07-27T10:01:00.000Z',
+        }),
+      ],
+    );
+    writeLines(
+      logsRoot,
+      'desktop',
+      'desktop-info-2026-07-001.jsonl',
+      [
+        createDesktopOperationalEventFixture({
+          category: 'operationalLogFolder',
+          eventId: 'log-folder-opened',
+          eventName: 'operationalLogFolder.opened',
+          level: 'info',
+          outcome: 'success',
+          timestamp: '2026-07-27T10:02:00.000Z',
+        }),
+      ],
+    );
+
+    const events =
+      await new FileSystemDiagnosticEventReader(
+        logsRoot,
+      ).listRecentDiagnosticEvents(10);
+
+    expect(events.map((event) => event.eventName)).toEqual([
+      'operationalLogFolder.opened',
+      'operationalLogFolder.requestBlocked',
+      'operationalLogFolder.openFailed',
+    ]);
+    expect(JSON.stringify(events)).not.toContain('shellOpen');
+  });
+
   it('requires composition to supply an absolute logs root', () => {
     expect(() => new FileSystemDiagnosticEventReader('relative/logs')).toThrow(
       'Diagnostic logs root must be absolute.',
@@ -263,5 +326,33 @@ function eventOptions(eventId: string, timestamp: string) {
     appVersion: '1.0.0',
     eventId,
     timestamp,
+  };
+}
+
+function createDesktopOperationalEventFixture(input: {
+  category: string;
+  errorCode?: string;
+  eventId: string;
+  eventName: string;
+  level: string;
+  outcome: string;
+  timestamp: string;
+}): Record<string, unknown> {
+  return {
+    appVersion: '1.0.0',
+    category: input.category,
+    component: 'desktop',
+    durationMs: 1,
+    ...(input.errorCode === undefined
+      ? {}
+      : { errorCode: input.errorCode }),
+    eventId: input.eventId,
+    eventName: input.eventName,
+    level: input.level,
+    outcome: input.outcome,
+    schemaVersion: 1,
+    sideEffectState: 'none',
+    stage: 'shellOpen',
+    timestamp: input.timestamp,
   };
 }

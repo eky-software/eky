@@ -67,6 +67,21 @@ const desktopDiagnosticSpecs = Object.freeze({
     'error',
     'failure',
   ),
+  'operationalLogFolder.opened': spec(
+    'operationalLogFolder',
+    'info',
+    'success',
+  ),
+  'operationalLogFolder.openFailed': spec(
+    'operationalLogFolder',
+    'error',
+    'failure',
+  ),
+  'operationalLogFolder.requestBlocked': spec(
+    'security',
+    'warn',
+    'blocked',
+  ),
   'packagedSmoke.completed': spec('packagedSmoke', 'info', 'success'),
   'packagedSmoke.failed': spec('packagedSmoke', 'error', 'failure'),
   'packagedSmoke.started': spec('packagedSmoke', 'info', 'success'),
