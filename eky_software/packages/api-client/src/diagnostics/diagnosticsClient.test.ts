@@ -3,6 +3,39 @@ import { describe, expect, it } from 'vitest';
 import { createEkyApiClient, EkyApiError } from '../index.js';
 
 describe('diagnostics API client', () => {
+  it('reads the strict safe runtime summary contract', async () => {
+    const requests: string[] = [];
+    const client = createEkyApiClient({
+      baseUrl: 'http://127.0.0.1:3000/',
+      fetch: async (input) => {
+        requests.push(input.toString());
+        return jsonResponse(createRuntimeSummary());
+      },
+    });
+
+    await expect(client.getDiagnosticSummary()).resolves.toEqual(
+      createRuntimeSummary(),
+    );
+    expect(requests).toEqual([
+      'http://127.0.0.1:3000/diagnostics/summary',
+    ]);
+  });
+
+  it('rejects paths and unknown fields in a runtime summary', async () => {
+    const client = createEkyApiClient({
+      baseUrl: '',
+      fetch: async () =>
+        jsonResponse({
+          ...createRuntimeSummary(),
+          databaseFilePath: 'C:\\private\\eky.sqlite',
+        }),
+    });
+
+    await expect(client.getDiagnosticSummary()).rejects.toBeInstanceOf(
+      EkyApiError,
+    );
+  });
+
   it('lists the safe projection with a bounded optional limit', async () => {
     const requests: string[] = [];
     const client = createEkyApiClient({
@@ -200,6 +233,30 @@ describe('diagnostics API client', () => {
     await expect(client.listDiagnosticEvents()).resolves.toHaveLength(1);
   });
 });
+
+function createRuntimeSummary() {
+  return {
+    appVersion: '0.1.0-alpha.1',
+    appliedMigrationCount: 42,
+    architecture: 'x64',
+    buildCreatedAt: '2026-07-28T12:00:00.000Z',
+    buildDirty: false,
+    buildRevision: 'abcdef123456',
+    databaseHealth: 'ok',
+    electronVersion: '42.7.0',
+    latestErrorAt: null,
+    latestMigrationName: '042_example.sql',
+    latestSecurityEventAt: null,
+    latestWarningAt: null,
+    nodeVersion: 'v24.11.0',
+    operationalLogNewestMonth: null,
+    operationalLogOldestMonth: null,
+    operationalLogsAvailable: false,
+    operationalLogTotalBytes: 0,
+    platform: 'win32',
+    runtimeInstanceId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+  };
+}
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), {

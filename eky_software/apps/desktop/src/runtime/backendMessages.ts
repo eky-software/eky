@@ -5,15 +5,18 @@ import { isDesktopRuntimeSession } from './runtimeSession.js';
 export interface DesktopBackendStartMessage {
   config: {
     appVersion: string;
+    architecture: string;
     backendRoot: string;
     buildCreatedAt: string;
     buildDirty: boolean;
     buildRevision: string;
     createSmokePdf: boolean;
     databaseFilePath: string;
+    electronVersion: string;
     invoiceDocumentStorageRoot: string;
     migrationsDirectory: string;
     operationalLogsRoot: string;
+    platform: string;
     runtimeInstanceId: string;
     runtimeSessionSecret: string;
     smokePdfPath: string;
@@ -104,12 +107,18 @@ export function parseDesktopBackendCommand(
   if (
     typeof config.appVersion !== 'string' ||
     !/^[A-Za-z0-9.+_-]{1,80}$/.test(config.appVersion) ||
+    typeof config.architecture !== 'string' ||
+    !/^[A-Za-z0-9._-]{1,40}$/.test(config.architecture) ||
     typeof config.buildCreatedAt !== 'string' ||
     new Date(config.buildCreatedAt).toISOString() !== config.buildCreatedAt ||
     typeof config.buildDirty !== 'boolean' ||
     typeof config.buildRevision !== 'string' ||
     !buildRevisionPattern.test(config.buildRevision) ||
     typeof config.createSmokePdf !== 'boolean' ||
+    typeof config.electronVersion !== 'string' ||
+    !/^[A-Za-z0-9.+_-]{1,80}$/.test(config.electronVersion) ||
+    typeof config.platform !== 'string' ||
+    !/^[A-Za-z0-9._-]{1,40}$/.test(config.platform) ||
     typeof config.runtimeInstanceId !== 'string' ||
     !runtimeInstanceIdPattern.test(config.runtimeInstanceId) ||
     !isDesktopRuntimeSession(config.runtimeSessionSecret) ||
@@ -121,15 +130,18 @@ export function parseDesktopBackendCommand(
   return {
     config: {
       appVersion: config.appVersion,
+      architecture: config.architecture,
       backendRoot: config.backendRoot as string,
       buildCreatedAt: config.buildCreatedAt,
       buildDirty: config.buildDirty,
       buildRevision: config.buildRevision,
       createSmokePdf: config.createSmokePdf,
       databaseFilePath: config.databaseFilePath as string,
+      electronVersion: config.electronVersion,
       invoiceDocumentStorageRoot: config.invoiceDocumentStorageRoot as string,
       migrationsDirectory: config.migrationsDirectory as string,
       operationalLogsRoot: config.operationalLogsRoot as string,
+      platform: config.platform,
       runtimeInstanceId: config.runtimeInstanceId,
       runtimeSessionSecret: config.runtimeSessionSecret,
       smokePdfPath: config.smokePdfPath as string,

@@ -16,6 +16,7 @@ interface StartedBackendServer {
 type StartServer = (options: {
   appOptions: {
     appVersion: string;
+    architecture: string;
     buildCreatedAt: string;
     buildDirty: boolean;
     companyEmailSecretReader: {
@@ -27,9 +28,11 @@ type StartServer = (options: {
       setSecret(input: { companyId: string; secret: string }): Promise<void>;
     };
     databaseFilePath: string;
+    electronVersion: string;
     invoiceDocumentStorageRoot: string;
     migrationsDirectory: string;
     operationalLogsRoot: string;
+    platform: string;
     operationalIdentity: {
       appVersion: string;
       buildRevision: string;
@@ -172,6 +175,7 @@ utilityParentPort.on('message', (event) => {
       backendServer = await serverModule.startServer({
         appOptions: {
           appVersion: command.config.appVersion,
+          architecture: command.config.architecture,
           buildCreatedAt: command.config.buildCreatedAt,
           buildDirty: command.config.buildDirty,
           companyEmailSecretReader: {
@@ -184,9 +188,11 @@ utilityParentPort.on('message', (event) => {
             setSecret: (input) => secretBrokerClient!.setSecret(input),
           },
           databaseFilePath: command.config.databaseFilePath,
+          electronVersion: command.config.electronVersion,
           invoiceDocumentStorageRoot: command.config.invoiceDocumentStorageRoot,
           migrationsDirectory: command.config.migrationsDirectory,
           operationalLogsRoot: command.config.operationalLogsRoot,
+          platform: command.config.platform,
           operationalIdentity: {
             appVersion: command.config.appVersion,
             buildRevision: command.config.buildRevision,

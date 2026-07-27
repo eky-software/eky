@@ -22,6 +22,7 @@ export type {
   DiagnosticEventListQuery,
   DiagnosticEventName,
   DiagnosticEventOutcome,
+  RuntimeDiagnosticSummary,
 } from './diagnostics/index.js';
 export type {
   ApprovedInvoiceDocumentMetadata,

@@ -21,6 +21,7 @@ describe('DiagnosticsPageView', () => {
           },
         ]}
         isLoading={false}
+        summary={null}
       />,
     );
 
@@ -48,6 +49,7 @@ describe('DiagnosticsPageView', () => {
           },
         ]}
         isLoading={false}
+        summary={null}
       />,
     );
 
@@ -57,13 +59,19 @@ describe('DiagnosticsPageView', () => {
 
   it('renders loading, empty and safe error states', () => {
     const loading = renderToStaticMarkup(
-      <DiagnosticsPageView errorMessage={null} events={[]} isLoading />,
+      <DiagnosticsPageView
+        errorMessage={null}
+        events={[]}
+        isLoading
+        summary={null}
+      />,
     );
     const empty = renderToStaticMarkup(
       <DiagnosticsPageView
         errorMessage={null}
         events={[]}
         isLoading={false}
+        summary={null}
       />,
     );
     const error = renderToStaticMarkup(
@@ -71,6 +79,7 @@ describe('DiagnosticsPageView', () => {
         errorMessage="Diagnostiikkaa ei voitu ladata."
         events={[]}
         isLoading={false}
+        summary={null}
       />,
     );
 
@@ -85,6 +94,7 @@ describe('DiagnosticsPageView', () => {
         errorMessage={null}
         events={[]}
         isLoading={false}
+        summary={null}
       />,
     );
     const desktopHtml = renderToStaticMarkup(
@@ -93,6 +103,7 @@ describe('DiagnosticsPageView', () => {
         events={[]}
         isLoading={false}
         openOperationalLogFolder={async () => undefined}
+        summary={null}
       />,
     );
 
@@ -106,6 +117,7 @@ describe('DiagnosticsPageView', () => {
         errorMessage={null}
         events={[]}
         isLoading={false}
+        summary={null}
       />,
     );
     const desktopHtml = renderToStaticMarkup(
@@ -114,6 +126,7 @@ describe('DiagnosticsPageView', () => {
         errorMessage={null}
         events={[]}
         isLoading={false}
+        summary={null}
       />,
     );
 

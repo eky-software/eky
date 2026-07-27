@@ -6,6 +6,7 @@ import {
   type DiagnosticEventLevel,
   type DiagnosticEventName,
   type DiagnosticEventOutcome,
+  type RuntimeDiagnosticSummary,
 } from './diagnosticsTypes.js';
 
 const eventNames = new Set<DiagnosticEventName>(diagnosticEventNames);
@@ -28,6 +29,66 @@ export function readDiagnosticsResponse(value: unknown): DiagnosticEventItem[] {
   }
 
   return value.diagnosticEvents.map(readDiagnosticEvent);
+}
+
+export function readDiagnosticSummaryResponse(
+  value: unknown,
+): RuntimeDiagnosticSummary {
+  const keys = [
+    'appVersion',
+    'appliedMigrationCount',
+    'architecture',
+    'buildCreatedAt',
+    'buildDirty',
+    'buildRevision',
+    'databaseHealth',
+    'electronVersion',
+    'latestErrorAt',
+    'latestMigrationName',
+    'latestSecurityEventAt',
+    'latestWarningAt',
+    'nodeVersion',
+    'operationalLogNewestMonth',
+    'operationalLogOldestMonth',
+    'operationalLogsAvailable',
+    'operationalLogTotalBytes',
+    'platform',
+    'runtimeInstanceId',
+  ] as const;
+
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, keys) ||
+    !isVersion(value.appVersion) ||
+    !isNullableNonNegativeInteger(value.appliedMigrationCount) ||
+    !isSafeIdentifier(value.architecture, 40) ||
+    !isTimestamp(value.buildCreatedAt) ||
+    typeof value.buildDirty !== 'boolean' ||
+    typeof value.buildRevision !== 'string' ||
+    !/^(?:[0-9a-f]{7,40}|development)$/.test(value.buildRevision) ||
+    !['failed', 'ok', 'unavailable'].includes(
+      value.databaseHealth as string,
+    ) ||
+    !isNullableVersion(value.electronVersion) ||
+    !isNullableTimestamp(value.latestErrorAt) ||
+    !isNullableMigrationName(value.latestMigrationName) ||
+    !isNullableTimestamp(value.latestSecurityEventAt) ||
+    !isNullableTimestamp(value.latestWarningAt) ||
+    !isVersion(value.nodeVersion) ||
+    !isNullableMonth(value.operationalLogNewestMonth) ||
+    !isNullableMonth(value.operationalLogOldestMonth) ||
+    typeof value.operationalLogsAvailable !== 'boolean' ||
+    !isNonNegativeInteger(value.operationalLogTotalBytes) ||
+    !isSafeIdentifier(value.platform, 40) ||
+    typeof value.runtimeInstanceId !== 'string' ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value.runtimeInstanceId,
+    )
+  ) {
+    throw invalidResponse(value);
+  }
+
+  return value as unknown as RuntimeDiagnosticSummary;
 }
 
 function readDiagnosticEvent(value: unknown): DiagnosticEventItem {
@@ -103,6 +164,55 @@ function isTimestamp(value: unknown): value is string {
   );
 }
 
+function isNullableTimestamp(value: unknown): value is string | null {
+  return value === null || isTimestamp(value);
+}
+
+function isVersion(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= 80 &&
+    /^[A-Za-z0-9.+_-]+$/.test(value)
+  );
+}
+
+function isNullableVersion(value: unknown): value is string | null {
+  return value === null || isVersion(value);
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isSafeInteger(value) &&
+    value >= 0
+  );
+}
+
+function isNullableNonNegativeInteger(
+  value: unknown,
+): value is number | null {
+  return value === null || isNonNegativeInteger(value);
+}
+
+function isNullableMigrationName(value: unknown): value is string | null {
+  return (
+    value === null ||
+    (typeof value === 'string' &&
+      value.length > 0 &&
+      value.length <= 160 &&
+      /^[A-Za-z0-9._-]+$/.test(value))
+  );
+}
+
+function isNullableMonth(value: unknown): value is string | null {
+  return (
+    value === null ||
+    (typeof value === 'string' &&
+      /^\d{4}-(?:0[1-9]|1[0-2])$/.test(value))
+  );
+}
+
 function hasOnlyKeys(
   value: Record<string, unknown>,
   allowedKeys: readonly string[],
@@ -114,4 +224,3 @@ function hasOnlyKeys(
 function invalidResponse(responseBody: unknown): EkyApiError {
   return new EkyApiError('Invalid diagnostics response.', { responseBody });
 }
-

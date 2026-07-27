@@ -1,0 +1,54 @@
+.summary {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  padding: 14px;
+}
+
+.summary h2,
+.summary h3 {
+  margin: 0;
+}
+
+.summary h2 {
+  font-size: 16px;
+}
+
+.summary h3 {
+  font-size: 14px;
+}
+
+.grid {
+  display: grid;
+  gap: 10px 18px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  margin: 12px 0 0;
+}
+
+.value {
+  min-width: 0;
+}
+
+.value dt {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.value dd {
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.logSummary {
+  border-top: 1px solid var(--color-border);
+  margin-top: 14px;
+  padding-top: 12px;
+}
+
+.notice {
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  margin: 14px 0 0;
+  padding-top: 12px;
+}

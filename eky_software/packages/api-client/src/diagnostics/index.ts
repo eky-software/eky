@@ -7,5 +7,5 @@ export type {
   DiagnosticEventName,
   DiagnosticEventOutcome,
   DiagnosticsApi,
+  RuntimeDiagnosticSummary,
 } from './diagnosticsTypes.js';
-

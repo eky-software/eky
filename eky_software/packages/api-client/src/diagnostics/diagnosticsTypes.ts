@@ -90,7 +90,30 @@ export interface DiagnosticEventListQuery {
   limit?: number;
 }
 
+export interface RuntimeDiagnosticSummary {
+  appVersion: string;
+  appliedMigrationCount: number | null;
+  architecture: string;
+  buildCreatedAt: string;
+  buildDirty: boolean;
+  buildRevision: string;
+  databaseHealth: 'failed' | 'ok' | 'unavailable';
+  electronVersion: string | null;
+  latestErrorAt: string | null;
+  latestMigrationName: string | null;
+  latestSecurityEventAt: string | null;
+  latestWarningAt: string | null;
+  nodeVersion: string;
+  operationalLogNewestMonth: string | null;
+  operationalLogOldestMonth: string | null;
+  operationalLogsAvailable: boolean;
+  operationalLogTotalBytes: number;
+  platform: string;
+  runtimeInstanceId: string;
+}
+
 export interface DiagnosticsApi {
+  getDiagnosticSummary(): Promise<RuntimeDiagnosticSummary>;
   listDiagnosticEvents(
     query?: DiagnosticEventListQuery,
   ): Promise<DiagnosticEventItem[]>;

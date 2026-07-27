@@ -42,16 +42,19 @@ const defaultAppVersion = '0.0.0';
 
 export interface CreateAppOptions {
   appVersion?: string;
+  architecture?: string;
   buildCreatedAt?: string;
   buildDirty?: boolean;
   companyEmailSecretReader?: CompanyEmailSecretReader;
   companyEmailSecretStore?: CompanyEmailSecretStore;
   databaseFilePath?: string;
+  electronVersion?: string;
   invoiceDocumentStorageRoot?: string;
   migrationsDirectory?: string;
   operationalLogger?: OperationalLogger;
   operationalIdentity?: Readonly<OperationalRuntimeIdentity>;
   operationalLogsRoot?: string;
+  platform?: string;
   runtimeTrust?: RuntimeTrust;
 }
 
@@ -331,9 +334,16 @@ export async function createApp(
   app.route(
     '/',
     createDiagnosticsComposition({
-      appVersion,
+      buildCreatedAt:
+        options.buildCreatedAt ?? new Date().toISOString(),
+      buildDirty: options.buildDirty ?? true,
       database,
+      electronVersion: options.electronVersion ?? null,
+      operationalIdentity,
       operationalLogsRoot: options.operationalLogsRoot,
+      runtimeArchitecture: options.architecture ?? process.arch,
+      runtimeNodeVersion: process.version,
+      runtimePlatform: options.platform ?? process.platform,
     }),
   );
 

@@ -2,17 +2,22 @@ import {
   EkyApiError,
   type DiagnosticEventItem,
   type EkyApiClient,
+  type RuntimeDiagnosticSummary,
 } from '@eky/api-client';
 import { useEffect, useState } from 'react';
 
 import { getFinnishApiErrorMessage, uiText } from '../../../i18n/fi.js';
 
-type DiagnosticsClient = Pick<EkyApiClient, 'listDiagnosticEvents'>;
+type DiagnosticsClient = Pick<
+  EkyApiClient,
+  'getDiagnosticSummary' | 'listDiagnosticEvents'
+>;
 
 export interface DiagnosticsState {
   errorMessage: string | null;
   events: DiagnosticEventItem[];
   isLoading: boolean;
+  summary: RuntimeDiagnosticSummary | null;
 }
 
 export function useDiagnostics(
@@ -22,17 +27,30 @@ export function useDiagnostics(
     errorMessage: null,
     events: [],
     isLoading: true,
+    summary: null,
   });
 
   useEffect(() => {
     let isCurrent = true;
-    setState({ errorMessage: null, events: [], isLoading: true });
+    setState({
+      errorMessage: null,
+      events: [],
+      isLoading: true,
+      summary: null,
+    });
 
-    void apiClient
-      .listDiagnosticEvents()
-      .then((events) => {
+    void Promise.all([
+      apiClient.getDiagnosticSummary(),
+      apiClient.listDiagnosticEvents(),
+    ])
+      .then(([summary, events]) => {
         if (isCurrent) {
-          setState({ errorMessage: null, events, isLoading: false });
+          setState({
+            errorMessage: null,
+            events,
+            isLoading: false,
+            summary,
+          });
         }
       })
       .catch((error: unknown) => {
@@ -41,6 +59,7 @@ export function useDiagnostics(
             errorMessage: getDiagnosticsErrorMessage(error),
             events: [],
             isLoading: false,
+            summary: null,
           });
         }
       });
@@ -62,4 +81,3 @@ export function getDiagnosticsErrorMessage(error: unknown): string {
   }
   return uiText.diagnostics.loadError;
 }
-

@@ -135,10 +135,13 @@ function createValidConfig(
 ): Record<string, unknown> {
   return {
     appVersion: '0.1.0-alpha.1',
+    architecture: 'x64',
     buildCreatedAt: '2026-07-28T00:00:00.000Z',
     buildDirty: false,
     buildRevision: '123456789abc',
     createSmokePdf: false,
+    electronVersion: '42.6.1',
+    platform: 'win32',
     runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
     runtimeSessionSecret: 'a'.repeat(43),
     ...overrides,

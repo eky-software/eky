@@ -2,6 +2,7 @@ import type {
   DiagnosticEventItem,
   DiagnosticEventLevel,
   DiagnosticEventOutcome,
+  RuntimeDiagnosticSummary,
 } from '@eky/api-client';
 import { useState } from 'react';
 
@@ -11,6 +12,7 @@ import type {
 } from '../../../app/desktopBridge.js';
 import styles from './DiagnosticsPageView.module.css';
 import { uiText } from '../../../i18n/fi.js';
+import { RuntimeDiagnosticSummaryView } from './RuntimeDiagnosticSummaryView.js';
 
 interface DiagnosticsPageViewProps {
   createSupportBundle?: CreateSupportBundle;
@@ -18,6 +20,7 @@ interface DiagnosticsPageViewProps {
   events: DiagnosticEventItem[];
   isLoading: boolean;
   openOperationalLogFolder?: OpenOperationalLogFolder;
+  summary: RuntimeDiagnosticSummary | null;
 }
 
 export function DiagnosticsPageView({
@@ -26,6 +29,7 @@ export function DiagnosticsPageView({
   events,
   isLoading,
   openOperationalLogFolder,
+  summary,
 }: DiagnosticsPageViewProps): React.JSX.Element {
   const [desktopErrorMessage, setDesktopErrorMessage] = useState<
     string | null
@@ -124,6 +128,9 @@ export function DiagnosticsPageView({
         <p className={`${styles.message} ${styles.error}`} role="alert">
           {errorMessage}
         </p>
+      ) : null}
+      {!isLoading && errorMessage === null && summary !== null ? (
+        <RuntimeDiagnosticSummaryView summary={summary} />
       ) : null}
       {!isLoading && errorMessage === null && events.length === 0 ? (
         <p className={styles.message}>{uiText.diagnostics.empty}</p>

@@ -241,11 +241,13 @@ async function startDesktopCompositionRuntime({
     backendHandle = await startDesktopBackend({
       config: {
         appVersion: desktopAppVersion,
+        architecture: process.arch,
         backendRoot,
         buildCreatedAt: options.buildInfo.buildCreatedAt,
         buildDirty: options.buildInfo.buildDirty,
         buildRevision: options.buildInfo.buildRevision,
         createSmokePdf: smokeMode,
+        electronVersion: process.versions.electron,
         databaseFilePath,
         invoiceDocumentStorageRoot,
         migrationsDirectory: join(
@@ -255,6 +257,7 @@ async function startDesktopCompositionRuntime({
           'migrations',
         ),
         operationalLogsRoot,
+        platform: process.platform,
         runtimeInstanceId: options.runtimeInstanceId,
         runtimeSessionSecret,
         smokePdfPath,
@@ -517,11 +520,14 @@ async function startDesktopCompositionRuntime({
     try {
       await loadApplicationWindow(mainWindow);
       await runPackagedSmokeCheck({
+        appVersion: desktopAppVersion,
         backend: backendHandle,
+        buildRevision: options.buildInfo.buildRevision,
         databaseFilePath,
         mainWindow,
         pdfPreviewController,
         runtimeSessionSecret,
+        runtimeInstanceId: options.runtimeInstanceId,
         secretFilePath,
         smokePdfPath,
       });

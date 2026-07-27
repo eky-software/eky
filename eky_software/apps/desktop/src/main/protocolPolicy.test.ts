@@ -24,6 +24,7 @@ describe('desktop protocol policy', () => {
     expect(isAllowedBackendRequest('GET', '/activity')).toBe(true);
     expect(isAllowedBackendRequest('POST', '/activity')).toBe(false);
     expect(isAllowedBackendRequest('GET', '/diagnostics/events')).toBe(true);
+    expect(isAllowedBackendRequest('GET', '/diagnostics/summary')).toBe(true);
     expect(isAllowedBackendRequest('POST', '/diagnostics/events')).toBe(false);
     expect(
       isAllowedBackendRequest(

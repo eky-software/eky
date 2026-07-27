@@ -34,6 +34,7 @@ export function createSupportBundleArchive(
     platform: input.platform,
   };
   const database = input.backendData.database;
+  const runtimeSummary = input.backendData.runtimeSummary;
   const operationalSummary = createOperationalSummary(
     input.backendData.diagnosticEvents,
   );
@@ -52,6 +53,7 @@ export function createSupportBundleArchive(
         diagnosticEvents: checksum(diagnosticEvents),
         incidentSummaries: checksum(incidentSummaries),
         operationalSummary: checksum(operationalSummary),
+        runtimeSummary: checksum(runtimeSummary),
         system: checksum(system),
       },
       supportBundleFormatVersion,
@@ -62,6 +64,7 @@ export function createSupportBundleArchive(
     system,
     database,
     operationalSummary,
+    runtimeSummary,
     incidentSummaries,
     diagnosticEvents,
   };

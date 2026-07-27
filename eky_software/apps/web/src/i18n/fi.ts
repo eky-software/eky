@@ -81,6 +81,10 @@ export const uiText = {
     },
   },
   diagnostics: {
+    buildCreatedAt: 'Koontiaika',
+    buildRevision: 'Build revision',
+    buildState: 'Buildin tila',
+    cleanBuild: 'Puhdas',
     component: 'Osa',
     components: {
       backend: 'Paikallinen palvelu',
@@ -92,6 +96,23 @@ export const uiText = {
     createSupportBundleError:
       'Tukipakettia ei voitu luoda turvallisesti.',
     creatingSupportBundle: 'Luodaan tukipakettia...',
+    database: 'Tietokanta',
+    databaseHealth: {
+      failed: 'Tarkistus epäonnistui',
+      ok: 'Kunnossa',
+      unavailable: 'Ei käytettävissä',
+    },
+    databaseSummary: (
+      migrationCount: number,
+      latestMigrationName: string | null,
+    ) =>
+      latestMigrationName === null
+        ? `${migrationCount} migraatiota`
+        : `${migrationCount} migraatiota, viimeisin ${latestMigrationName}`,
+    desktopLogsOnly:
+      'Tekniset tiedostolokit ovat käytettävissä paketoidussa desktopissa.',
+    dirtyBuild: 'Työpuussa oli muutoksia',
+    electronVersion: 'Electron',
     empty: 'Diagnostiikkatapahtumia ei ole vielä.',
     errorCode: 'Virhekoodi',
     event: 'Tapahtuma',
@@ -100,18 +121,30 @@ export const uiText = {
     loadError:
       'Diagnostiikkaa ei voitu ladata. Yritä hetken kuluttua uudelleen.',
     loading: 'Ladataan diagnostiikkaa...',
+    latestError: 'Viimeisin virhe',
+    latestSecurityEvent: 'Viimeisin turvallisuustapahtuma',
+    latestWarning: 'Viimeisin varoitus',
+    logPeriod: 'Lokien aikaväli',
+    logSize: 'Lokien koko',
+    noData: 'Ei tietoja',
     noErrorCode: 'Ei virhekoodia',
+    nodeVersion: 'Node.js',
     occurredAt: 'Ajankohta',
     openLogFolder: 'Avaa lokikansio',
     openLogFolderError: 'Lokikansiota ei voitu avata turvallisesti.',
+    operationalLogs: 'Tekniset tiedostolokit',
     outcomes: {
       blocked: 'Estetty',
       failure: 'Epäonnistui',
       success: 'Onnistui',
       unknown: 'Epäselvä',
     },
+    runtime: 'Ajonaikainen ympäristö',
+    runtimeInstance: 'Käynnistyskerta',
     status: 'Tila',
+    summaryHeading: 'Järjestelmäyhteenveto',
     supportBundleCreated: 'Tukipaketti luotiin onnistuneesti.',
+    version: 'Versio',
   },
   customers: {
     add: 'Lisää',

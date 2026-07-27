@@ -1,4 +1,5 @@
 import type { DiagnosticEventItem } from './diagnosticEventItem.js';
+import type { RuntimeDiagnosticSummary } from './runtimeDiagnosticSummary.js';
 
 export interface DatabaseDiagnosticSummary {
   appliedMigrationCount: number;
@@ -11,5 +12,6 @@ export interface SupportBundleDiagnosticData {
   database: DatabaseDiagnosticSummary;
   diagnosticEvents: DiagnosticEventItem[];
   diagnosticPeriodDays: number;
+  runtimeSummary: RuntimeDiagnosticSummary;
   truncated: boolean;
 }
