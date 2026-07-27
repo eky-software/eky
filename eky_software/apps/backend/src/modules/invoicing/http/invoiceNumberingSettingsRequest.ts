@@ -1,5 +1,11 @@
-import type { UpdateInvoiceNumberingSettingsInput } from '../application/updateInvoiceNumberingSettings.js';
 import type { InvoiceNumberingMode } from '../domain/invoiceNumbering.js';
+
+export interface UpdateInvoiceNumberingSettingsRequest {
+  firstSequenceNumber: number;
+  fiscalYearStartMonth: number;
+  mode: InvoiceNumberingMode;
+  sequencePadding: number;
+}
 
 const allowedInvoiceNumberingSettingsFields = new Set([
   'mode',
@@ -60,9 +66,7 @@ function readSafeInteger(
 
 export function parseUpdateInvoiceNumberingSettingsRequest(
   body: unknown,
-  companyId: string,
-  now: string,
-): UpdateInvoiceNumberingSettingsInput {
+): UpdateInvoiceNumberingSettingsRequest {
   if (!isRecord(body)) {
     throw new InvoiceNumberingSettingsRequestValidationError();
   }
@@ -70,11 +74,9 @@ export function parseUpdateInvoiceNumberingSettingsRequest(
   assertAllowedFields(body);
 
   return {
-    companyId,
     mode: readInvoiceNumberingMode(body),
     fiscalYearStartMonth: readSafeInteger(body, 'fiscalYearStartMonth'),
     sequencePadding: readSafeInteger(body, 'sequencePadding'),
     firstSequenceNumber: readSafeInteger(body, 'firstSequenceNumber'),
-    now,
   };
 }

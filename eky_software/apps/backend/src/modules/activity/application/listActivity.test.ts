@@ -115,6 +115,41 @@ describe('listActivity', () => {
     ).toHaveBeenCalledWith(expect.objectContaining({ outcomes: ['failure'] }));
   });
 
+  it('maps invoice settings audit to a safe item without a reference', async () => {
+    const dependencies = createDependencies();
+    dependencies.invoiceActivityReader.listInvoiceActivity = vi
+      .fn()
+      .mockResolvedValue([
+        {
+          action: 'invoiceVatRates.updated',
+          id: 'settings-event',
+          invoiceNumber: null,
+          occurredAt: '2026-07-27T12:00:00.000Z',
+          outcome: 'success',
+        },
+      ]);
+
+    await expect(
+      listActivity(
+        {
+          actorContext,
+          category: 'invoicing',
+          month: '2026-07',
+        },
+        dependencies,
+      ),
+    ).resolves.toMatchObject({
+      activityItems: [
+        {
+          id: 'invoicing:settings-event',
+          module: 'invoicing',
+          reference: null,
+          type: 'invoiceVatRates.updated',
+        },
+      ],
+    });
+  });
+
   it('returns a stable later page without repeating previous items', async () => {
     const dependencies = createDependencies();
     dependencies.customerActivityReader.listCustomerActivity = vi

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 
 import { CompanySettingsForm } from './CompanySettingsForm.js';
 import { CompanyEmailSecretPanel } from './CompanyEmailSecretPanel.js';
+import { CompanyOperationsPanel } from './CompanyOperationsPanel.js';
 import { InvoiceNumberingSettingsPanel } from './InvoiceNumberingSettingsPanel.js';
 import { InvoicePaymentSettingsPanel } from './InvoicePaymentSettingsPanel.js';
 import { InvoiceVatRatesPanel } from './InvoiceVatRatesPanel.js';
@@ -34,11 +35,15 @@ type CompanySettingsPageClient = Pick<
 interface CompanySettingsPageProps {
   apiClient: CompanySettingsPageClient;
   isEmailSecretManagementAvailable: boolean;
+  onOpenActivity(): void;
+  onOpenDiagnostics(): void;
 }
 
 export function CompanySettingsPage({
   apiClient,
   isEmailSecretManagementAvailable,
+  onOpenActivity,
+  onOpenDiagnostics,
 }: CompanySettingsPageProps): React.JSX.Element {
   const [form, setForm] = useState<CompanySettingsFormModel>(initialCompanySettingsForm);
   const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
@@ -162,6 +167,10 @@ export function CompanySettingsPage({
           <InvoiceVatRatesPanel apiClient={apiClient} />
           <InvoiceNumberingSettingsPanel apiClient={apiClient} />
           <InvoicePaymentSettingsPanel apiClient={apiClient} />
+          <CompanyOperationsPanel
+            onOpenActivity={onOpenActivity}
+            onOpenDiagnostics={onOpenDiagnostics}
+          />
         </div>
       ) : null}
     </div>

@@ -15,8 +15,11 @@ export type ActivityItemType =
   | 'invoice.deliveryFailed'
   | 'invoice.deliveryOutcomeUnknown'
   | 'invoice.deliveryPending'
+  | 'invoiceNumberingSettings.updated'
+  | 'invoicePaymentSettings.updated'
   | 'invoice.reapproved'
-  | 'invoice.reopenedForEdit';
+  | 'invoice.reopenedForEdit'
+  | 'invoiceVatRates.updated';
 
 export type ActivityModule = 'companySettings' | 'customers' | 'invoicing';
 export type ActivityCategory = 'all' | ActivityModule;

@@ -36,6 +36,37 @@ polkuja. Se sisältää vain:
 - outcome
 - turvallinen fingerprint
 
+## Business-auditin automaattinen retention
+
+Moduulien business audit -tauluja ei käsitellä teknisten JSONL-lokien
+tiedostomaintenancella. Customers, Company Settings ja Invoicing tarjoavat
+omat rajatut retention-porttinsa, ja backendin startup-maintenance koordinoi
+niitä tietämättä audit-rivien sisältöä.
+
+Startupissa poistetaan tapahtumat, joiden tapahtumavuoden jälkeen on
+kulunut seitsemän täyttä kalenterivuotta. Raja lasketaan UTC-vuosina ja poisto
+on tiukasti ennen cutoff-ajankohtaa. Esimerkiksi vuonna 2026 poistetaan ennen
+`2019-01-01T00:00:00.000Z` syntyneet tapahtumat. Vuonna 2026 syntynyt tapahtuma
+voidaan siten poistaa aikaisintaan `2034-01-01T00:00:00.000Z`.
+
+Retention koskee:
+
+- Customers-moduulin customer audit -tapahtumia
+- Company Settingsin master data -auditia
+- Company Settingsin valmiiksi päättyneitä sähköpostisalaisuuden
+  lifecycle-tapahtumia
+- Invoicingin laskutusasetusten auditia
+
+Sähköpostisalaisuuden `pending`-tapahtumaa ei poisteta automaattisesti, koska
+se voi vaatia reconciliation-käsittelyä. Jokainen moduuli tekee omat poistonsa
+transaktiossa. Maintenance on startupissa best effort: virhe lokitetaan
+turvallisena yhteenvetona, mutta se ei estä paikallisen sovelluksen
+käynnistymistä.
+
+Yhteenveto sisältää vain poistettujen tapahtumien kokonaismäärän. Audit-rivien
+company-, actor- tai entity-tunnisteita, sisältöä tai yksittäisiä
+taulukohtaisia määriä ei kopioida tekniseen lokiin.
+
 ## Tiedostorakenne ja rotaatio
 
 Desktop omistaa kiinteän juuren:
@@ -70,7 +101,7 @@ diagnostiikan lukuprojektiossa.
 - Yhdelle component/category/kuukaudelle sallitaan enintään neljä segmenttiä.
 - Kuukausibudjetin täyttyessä info-eventtejä voidaan jättää kirjoittamatta.
 - Warn/error/security priorisoidaan ja kapasiteetista kirjoitetaan yksi
-  turvallinen `logCapacityReached`-yhteenveto.
+  turvallinen `operationalLog.capacityReached`-yhteenveto.
 - Detailed logs -kokonaisbudjetti on 500 MiB.
 - Incident index -budjetti on 25 MiB.
 

@@ -12,6 +12,8 @@ export const diagnosticEventNames = Object.freeze([
   'backendProcess.starting',
   'backendProcess.stopFailed',
   'backendProcess.unexpectedExit',
+  'businessAudit.retentionCompleted',
+  'businessAudit.retentionFailed',
   'businessAudit.writeFailed',
   'database.integrityCheckFailed',
   'database.openFailed',
@@ -88,4 +90,3 @@ export interface DiagnosticsApi {
     query?: DiagnosticEventListQuery,
   ): Promise<DiagnosticEventItem[]>;
 }
-

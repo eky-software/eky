@@ -45,6 +45,39 @@ describe('diagnostics API client', () => {
     ).rejects.toBeInstanceOf(EkyApiError);
   });
 
+  it('accepts typed business audit retention events', async () => {
+    const client = createEkyApiClient({
+      baseUrl: '',
+      fetch: async () =>
+        jsonResponse({
+          diagnosticEvents: [
+            {
+              category: 'businessAudit',
+              component: 'backend',
+              errorCode: null,
+              eventName: 'businessAudit.retentionCompleted',
+              id: 'backend:event-1',
+              level: 'info',
+              occurredAt: '2026-07-27T12:00:00.000Z',
+              outcome: 'success',
+            },
+            {
+              category: 'businessAudit',
+              component: 'backend',
+              errorCode: 'BUSINESS_AUDIT_RETENTION_FAILED',
+              eventName: 'businessAudit.retentionFailed',
+              id: 'backend:event-2',
+              level: 'warn',
+              occurredAt: '2026-07-27T12:01:00.000Z',
+              outcome: 'failure',
+            },
+          ],
+        }),
+    });
+
+    await expect(client.listDiagnosticEvents()).resolves.toHaveLength(2);
+  });
+
   it('rejects raw metadata and unknown event names', async () => {
     const client = createEkyApiClient({
       baseUrl: '',
@@ -77,4 +110,3 @@ function jsonResponse(body: unknown): Response {
     headers: { 'Content-Type': 'application/json' },
   });
 }
-

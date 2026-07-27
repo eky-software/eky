@@ -114,7 +114,10 @@ export async function listActivity(
       module: 'invoicing',
       occurredAt: entry.occurredAt,
       outcome: entry.outcome,
-      reference: { kind: 'invoiceNumber', value: entry.invoiceNumber },
+      reference:
+        entry.invoiceNumber === null
+          ? null
+          : { kind: 'invoiceNumber', value: entry.invoiceNumber },
       type: mapInvoiceAction(entry.action),
     })),
   ].sort(compareActivityItems);
@@ -245,6 +248,9 @@ function compareActivityItems(left: ActivityItem, right: ActivityItem): number {
 
 function mapInvoiceAction(action: InvoiceActivityAction): ActivityItemType {
   const actions: Record<InvoiceActivityAction, ActivityItemType> = {
+    'invoiceNumberingSettings.updated': 'invoiceNumberingSettings.updated',
+    'invoicePaymentSettings.updated': 'invoicePaymentSettings.updated',
+    'invoiceVatRates.updated': 'invoiceVatRates.updated',
     'invoice.approved': 'invoice.approved',
     'invoice.cancelled': 'invoice.cancelled',
     'invoice.credit_approved': 'invoice.creditApproved',

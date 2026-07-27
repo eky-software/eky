@@ -1,3 +1,6 @@
+import type { ActorContext } from '@eky/auth';
+import { requirePermission } from '@eky/permissions';
+
 import {
   defaultInvoiceNumberSeriesKey,
   validateInvoiceNumberingSettings,
@@ -5,6 +8,7 @@ import {
   type InvoiceNumberingSettings,
   type StoredInvoiceNumberingSettings,
 } from '../domain/invoiceNumbering.js';
+import { createInvoiceSettingsAuditEvent } from '../domain/invoiceSettingsAuditEvent.js';
 import type { InvoiceNumberingSettingsRepository } from '../ports/invoiceNumberingSettingsRepository.js';
 import { InvoiceNumberingSettingsError } from './invoiceNumberingSettingsError.js';
 import {
@@ -13,7 +17,7 @@ import {
 } from './invoiceNumberingSettingsView.js';
 
 export interface UpdateInvoiceNumberingSettingsInput {
-  companyId: string;
+  actorContext: ActorContext;
   mode: InvoiceNumberingMode;
   fiscalYearStartMonth: number;
   sequencePadding: number;
@@ -56,10 +60,11 @@ function settingsAreEqual(
 
 function createStoredSettings(
   input: UpdateInvoiceNumberingSettingsInput,
+  companyId: string,
   currentSettings: StoredInvoiceNumberingSettings | undefined,
 ): StoredInvoiceNumberingSettings {
   return {
-    companyId: requireNonEmptyValue(input.companyId, 'Company id'),
+    companyId,
     seriesKey: defaultInvoiceNumberSeriesKey,
     ...toNumberingSettings(input),
     createdAt: currentSettings?.createdAt ?? requireNonEmptyValue(input.now, 'Timestamp'),
@@ -71,9 +76,13 @@ export async function updateInvoiceNumberingSettings(
   input: UpdateInvoiceNumberingSettingsInput,
   invoiceNumberingSettingsRepository: InvoiceNumberingSettingsRepository,
 ): Promise<InvoiceNumberingSettingsView> {
-  const companyId = requireNonEmptyValue(input.companyId, 'Company id');
+  requirePermission(input.actorContext, 'manageInvoiceSettings');
+  const companyId = requireNonEmptyValue(
+    input.actorContext.companyId,
+    'Company id',
+  );
   const now = requireNonEmptyValue(input.now, 'Timestamp');
-  const nextSettings = toNumberingSettings({ ...input, companyId, now });
+  const nextSettings = toNumberingSettings(input);
 
   validateInvoiceNumberingSettings(nextSettings);
 
@@ -105,9 +114,16 @@ export async function updateInvoiceNumberingSettings(
 
   const savedSettings = await invoiceNumberingSettingsRepository.saveSettings(
     createStoredSettings(
-      { ...input, companyId, now },
+      input,
+      companyId,
       currentSettings,
     ),
+    createInvoiceSettingsAuditEvent({
+      action: 'invoiceNumberingSettings.updated',
+      actorUserId: input.actorContext.actorId,
+      companyId,
+      occurredAt: now,
+    }),
   );
 
   validateInvoiceNumberingSettings(savedSettings);

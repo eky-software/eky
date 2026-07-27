@@ -21,6 +21,7 @@ import { createInvoicingComposition } from '../composition/invoicingComposition.
 import type { CompanyEmailSecretReader } from '../modules/companySettings/ports/companyEmailSecretReader.js';
 import type { CompanyEmailSecretStore } from '../modules/companySettings/ports/companyEmailSecretStore.js';
 import { createBackendOperationalEvent } from '../observability/createOperationalEvent.js';
+import { maintainBusinessAuditRetention } from '../observability/application/maintainBusinessAuditRetention.js';
 import { createBackendOperationalLogger } from '../observability/infrastructure/createBackendOperationalLogger.js';
 import { maintainOperationalLogs } from '../observability/infrastructure/operationalLogRetention.js';
 import {
@@ -31,6 +32,9 @@ import {
   createOperationalLoggingMiddleware,
   logUnknownRoute,
 } from './operationalLogging.js';
+import { SqliteCompanySettingsAuditRetention } from '../modules/companySettings/infrastructure/sqliteCompanySettingsAuditRetention.js';
+import { SqliteCustomerAuditRetention } from '../modules/customers/infrastructure/sqliteCustomerAuditRetention.js';
+import { SqliteInvoiceSettingsAuditRetention } from '../modules/invoicing/infrastructure/sqliteInvoiceSettingsAuditRetention.js';
 
 const defaultAppVersion = '0.0.0';
 
@@ -54,7 +58,7 @@ export async function createApp(
     options.operationalLogger ??
     (options.operationalLogsRoot === undefined
       ? noOpOperationalLogger
-      : createBackendOperationalLogger(options.operationalLogsRoot));
+      : createBackendOperationalLogger(options.operationalLogsRoot, appVersion));
   operationalLogger.write(
     createBackendOperationalEvent(
       { eventName: 'backend.starting' },
@@ -183,6 +187,37 @@ export async function createApp(
     );
     database.close();
     throw new Error('Database integrity could not be verified.');
+  }
+
+  try {
+    const retention = await maintainBusinessAuditRetention(new Date(), {
+      companySettingsAuditRetention:
+        new SqliteCompanySettingsAuditRetention(database),
+      customerAuditRetention: new SqliteCustomerAuditRetention(database),
+      invoiceSettingsAuditRetention:
+        new SqliteInvoiceSettingsAuditRetention(database),
+    });
+    operationalLogger.write(
+      createBackendOperationalEvent(
+        {
+          deletedEventCount: retention.deletedEventCount,
+          eventName: 'businessAudit.retentionCompleted',
+        },
+        { appVersion },
+      ),
+    );
+  } catch {
+    operationalLogger.write(
+      createBackendOperationalEvent(
+        {
+          errorCode: 'BUSINESS_AUDIT_RETENTION_FAILED',
+          eventName: 'businessAudit.retentionFailed',
+          sideEffectState: 'unknown',
+          stage: 'startup',
+        },
+        { appVersion },
+      ),
+    );
   }
 
   const localRuntimeIdentity = readLocalRuntimeIdentity(database);

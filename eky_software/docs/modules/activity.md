@@ -47,3 +47,9 @@ Epäonnistuneesta, epäselvästä tai kesken jääneestä laskun toimituksesta
 näytetään vain turvallinen tapahtumatyyppi ja lopputulos. SMTP-virhettä,
 vastaanottajaa, viestin sisältöä tai muuta raakaa toimitusmetadataa ei
 palauteta Activityyn.
+
+Invoicingin projektio sisältää myös ALV-kantojen, laskunumeroinnin ja
+maksuasetusten muutokset ilman asetusten arvoja tai teknistä tunnistetta.
+Company Settingsin projektio yhdistää yrityksen master data -muutokset ja
+sähköpostisalaisuuden valmiit lifecycle-tapahtumat. Salaisuutta, sen pituutta,
+hashia, viitettä tai failure detail -tietoa ei palauteta Activityyn.

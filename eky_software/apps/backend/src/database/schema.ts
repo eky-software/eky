@@ -316,6 +316,15 @@ export interface InvoiceDeliveryEventTable {
   created_by: string;
 }
 
+export interface InvoiceSettingsAuditEventTable {
+  id: string;
+  company_id: string;
+  actor_user_id: string;
+  action: string;
+  outcome: string;
+  occurred_at: string;
+}
+
 export interface SchemaMigrationTable {
   name: string;
   run_at: string;
@@ -329,6 +338,8 @@ export type CompanySettingsRow = CompanySettingsTable;
 export type NewCompanySettingsRow = CompanySettingsTable;
 export type CompanySettingsAuditEventRow = CompanySettingsAuditEventTable;
 export type NewCompanySettingsAuditEventRow = CompanySettingsAuditEventTable;
+export type InvoiceSettingsAuditEventRow = InvoiceSettingsAuditEventTable;
+export type NewInvoiceSettingsAuditEventRow = InvoiceSettingsAuditEventTable;
 export type CompanyEmailSecretAuditEventRow =
   CompanyEmailSecretAuditEventTable;
 export type NewCompanyEmailSecretAuditEventRow =

@@ -1,6 +1,7 @@
-import type {
-  UpdateInvoicePaymentSettingsInput,
-} from '../application/updateInvoicePaymentSettings.js';
+export interface UpdateInvoicePaymentSettingsRequest {
+  defaultLatePaymentInterestBasisPoints: number;
+  defaultReminderPeriodDays: number;
+}
 
 const allowedInvoicePaymentSettingsFields = new Set([
   'defaultLatePaymentInterestBasisPoints',
@@ -43,9 +44,7 @@ function readSafeInteger(
 
 export function parseUpdateInvoicePaymentSettingsRequest(
   body: unknown,
-  companyId: string,
-  now: string,
-): UpdateInvoicePaymentSettingsInput {
+): UpdateInvoicePaymentSettingsRequest {
   if (!isRecord(body)) {
     throw new InvoicePaymentSettingsRequestValidationError();
   }
@@ -53,7 +52,6 @@ export function parseUpdateInvoicePaymentSettingsRequest(
   assertAllowedFields(body);
 
   return {
-    companyId,
     defaultLatePaymentInterestBasisPoints: readSafeInteger(
       body,
       'defaultLatePaymentInterestBasisPoints',
@@ -62,6 +60,5 @@ export function parseUpdateInvoicePaymentSettingsRequest(
       body,
       'defaultReminderPeriodDays',
     ),
-    now,
   };
 }

@@ -33,7 +33,7 @@ function createInvoiceNumberingSettingsRoutes(
         actorId: 'local-owner',
         authenticationMode: 'local',
         companyId: 'dev-company',
-        permissions: [],
+        permissions: ['manageInvoiceSettings'],
       }),
     );
     await next();
@@ -222,7 +222,10 @@ describe('invoiceNumberingSettingsRoutes', () => {
 
     expect(response.status).toBe(200);
     expect(testContext.getUpdateInput()).toMatchObject({
-      companyId: 'dev-company',
+      actorContext: {
+        actorId: 'local-owner',
+        companyId: 'dev-company',
+      },
       mode: 'fiscalYearSequence',
       fiscalYearStartMonth: 2,
       sequencePadding: 5,

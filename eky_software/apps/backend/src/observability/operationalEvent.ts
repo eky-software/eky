@@ -53,6 +53,10 @@ export interface BackendOperationalEventPayloadMap {
   'smtp.deliveryFailed': EntityFailureFields;
   'smtp.deliveryOutcomeUnknown': EntityFailureFields;
   'businessAudit.writeFailed': EntityFailureFields;
+  'businessAudit.retentionCompleted': {
+    deletedEventCount: number;
+  };
+  'businessAudit.retentionFailed': FailureFields;
   'supportBundle.creationStarted': { correlationId: string };
   'supportBundle.creationCompleted': {
     correlationId: string;
@@ -254,6 +258,18 @@ export const backendOperationalEventSpecs = Object.freeze({
     'failure',
     entityFailureFields,
   ),
+  'businessAudit.retentionCompleted': spec(
+    'businessAudit',
+    'info',
+    'success',
+    ['deletedEventCount'],
+  ),
+  'businessAudit.retentionFailed': spec(
+    'businessAudit',
+    'warn',
+    'failure',
+    failureFields,
+  ),
   'supportBundle.creationStarted': spec('supportBundle', 'info', 'success', [
     'correlationId',
   ]),
@@ -319,6 +335,8 @@ export const backendRequiredPayloadFields = Object.freeze({
   'smtp.deliveryFailed': ['errorCode'],
   'smtp.deliveryOutcomeUnknown': ['errorCode'],
   'businessAudit.writeFailed': ['errorCode'],
+  'businessAudit.retentionCompleted': ['deletedEventCount'],
+  'businessAudit.retentionFailed': ['errorCode'],
   'supportBundle.creationStarted': ['correlationId'],
   'supportBundle.creationCompleted': ['correlationId'],
   'supportBundle.creationFailed': ['errorCode'],

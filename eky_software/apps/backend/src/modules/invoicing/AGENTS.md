@@ -85,6 +85,12 @@ Activity readers may expose only company-scoped safe projections such as an
 invoice number and a translation key. Technical incident indexes must not
 contain invoice, customer, actor or company identifiers.
 
+Invoicing owns the audit events for invoice VAT rates, numbering settings and
+payment settings even when their forms are rendered under Company Settings.
+Their values must not be copied into audit rows. Invoicing also owns the
+retention adapter for these setting audit rows; the startup coordinator may
+call only the narrow module port.
+
 Read `docs/architecture/observability-and-audit-plan.md` and
 `docs/architecture/r0-observability-event-catalog.md` before changing audit,
 activity, diagnostics or logging behavior.

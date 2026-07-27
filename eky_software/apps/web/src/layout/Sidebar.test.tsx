@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { Sidebar } from './Sidebar.js';
 
 describe('Sidebar', () => {
-  it('groups activity and diagnostics below company settings', () => {
+  it('keeps operational views out of the primary sidebar', () => {
     const html = renderToStaticMarkup(
       <Sidebar
         activeView="customers"
@@ -15,12 +15,23 @@ describe('Sidebar', () => {
 
     const companySection = html.indexOf('Yritys');
     const companySettings = html.indexOf('Oma yritys');
-    const activity = html.indexOf('Tapahtumat');
-    const diagnostics = html.indexOf('Diagnostiikka');
 
     expect(companySection).toBeGreaterThan(-1);
     expect(companySettings).toBeGreaterThan(companySection);
-    expect(activity).toBeGreaterThan(companySettings);
-    expect(diagnostics).toBeGreaterThan(activity);
+    expect(html).not.toContain('Tapahtumat');
+    expect(html).not.toContain('Diagnostiikka');
+  });
+
+  it('keeps company settings active for its operational subviews', () => {
+    const html = renderToStaticMarkup(
+      <Sidebar
+        activeView="diagnostics"
+        isCollapsed={false}
+        onViewChange={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('aria-current="page"');
+    expect(html).toContain('Oma yritys');
   });
 });

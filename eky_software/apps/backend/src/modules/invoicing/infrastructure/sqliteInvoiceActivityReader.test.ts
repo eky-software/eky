@@ -96,6 +96,29 @@ describe('SqliteInvoiceActivityReader', () => {
     ]);
   });
 
+  it('returns module-owned settings audit without setting values', async () => {
+    insertInvoiceSettingsAudit(database);
+    const reader = new SqliteInvoiceActivityReader(database);
+
+    await expect(
+      reader.listInvoiceActivity({
+        companyId: 'dev-company',
+        limit: 10,
+        occurredAtFrom: '2026-07-01T00:00:00.000Z',
+        occurredAtTo: '2026-08-01T00:00:00.000Z',
+        outcomes: ['success'],
+      }),
+    ).resolves.toEqual([
+      {
+        action: 'invoiceVatRates.updated',
+        id: 'invoice-settings-audit-1',
+        invoiceNumber: null,
+        occurredAt: '2026-07-27T15:00:00.000Z',
+        outcome: 'success',
+      },
+    ]);
+  });
+
   it('does not return another company activity', async () => {
     insertInvoiceAudit(database);
     const reader = new SqliteInvoiceActivityReader(database);
@@ -120,6 +143,22 @@ function insertInvoiceAudit(database: DatabaseConnection): void {
         ) VALUES (
           'audit-1', 'dev-company', 'actor-1', 'invoice.approved', 'draft-1',
           'invoice-1', '20260001', '2026-07-27T10:00:00.000Z'
+        )
+      `,
+    )
+    .run();
+}
+
+function insertInvoiceSettingsAudit(database: DatabaseConnection): void {
+  database
+    .prepare(
+      `
+        INSERT INTO invoice_settings_audit_events (
+          id, company_id, actor_user_id, action, outcome, occurred_at
+        ) VALUES (
+          'invoice-settings-audit-1', 'dev-company', 'actor-1',
+          'invoiceVatRates.updated', 'success',
+          '2026-07-27T15:00:00.000Z'
         )
       `,
     )

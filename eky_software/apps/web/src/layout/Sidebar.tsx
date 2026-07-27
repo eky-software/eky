@@ -37,12 +37,6 @@ const navSections: SidebarNavSection[] = [
         label: uiText.modules.companySettings,
         status: 'available',
       },
-      { id: 'activity', label: uiText.modules.activity, status: 'available' },
-      {
-        id: 'diagnostics',
-        label: uiText.modules.diagnostics,
-        status: 'available',
-      },
     ],
   },
 ];
@@ -77,7 +71,11 @@ export function Sidebar({
             <p className={styles.sectionLabel}>{section.label}</p>
             {section.items.map((module) => (
               <button
-                aria-current={module.id === activeView ? 'page' : undefined}
+                aria-current={
+                  isActiveNavigationItem(module.id, activeView)
+                    ? 'page'
+                    : undefined
+                }
                 className={styles.navItem}
                 disabled={module.status !== 'available'}
                 key={module.label}
@@ -98,4 +96,19 @@ export function Sidebar({
       </nav>
     </aside>
   );
+}
+
+function isActiveNavigationItem(
+  itemId: SidebarNavItem['id'],
+  activeView: AppView,
+): boolean {
+  if (itemId === 'companySettings') {
+    return (
+      activeView === 'companySettings' ||
+      activeView === 'activity' ||
+      activeView === 'diagnostics'
+    );
+  }
+
+  return itemId === activeView;
 }

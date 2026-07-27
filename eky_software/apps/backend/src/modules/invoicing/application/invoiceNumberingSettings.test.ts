@@ -1,9 +1,12 @@
+import { createActorContext } from '@eky/auth';
+import { AuthorizationError } from '@eky/permissions';
 import { describe, expect, it } from 'vitest';
 
 import {
   defaultInvoiceNumberSeriesKey,
   type StoredInvoiceNumberingSettings,
 } from '../domain/invoiceNumbering.js';
+import type { InvoiceSettingsAuditEvent } from '../domain/invoiceSettingsAuditEvent.js';
 import type { InvoiceNumberingSettingsRepository } from '../ports/invoiceNumberingSettingsRepository.js';
 import { getInvoiceNumberingSettings } from './getInvoiceNumberingSettings.js';
 import { InvoiceNumberingSettingsError } from './invoiceNumberingSettingsError.js';
@@ -16,6 +19,7 @@ class FakeInvoiceNumberingSettingsRepository
   implements InvoiceNumberingSettingsRepository
 {
   savedSettings: StoredInvoiceNumberingSettings[] = [];
+  savedAuditEvents: InvoiceSettingsAuditEvent[] = [];
   private readonly settingsByKey = new Map<string, StoredInvoiceNumberingSettings>();
 
   constructor(
@@ -36,6 +40,7 @@ class FakeInvoiceNumberingSettingsRepository
 
   async saveSettings(
     settings: StoredInvoiceNumberingSettings,
+    auditEvent: InvoiceSettingsAuditEvent,
   ): Promise<StoredInvoiceNumberingSettings> {
     const currentSettings = await this.getSettings(
       settings.companyId,
@@ -47,6 +52,7 @@ class FakeInvoiceNumberingSettingsRepository
     };
 
     this.savedSettings.push(savedSettings);
+    this.savedAuditEvents.push(auditEvent);
     this.settingsByKey.set(
       createKey(savedSettings.companyId, savedSettings.seriesKey),
       savedSettings,
@@ -84,7 +90,7 @@ function createUpdateInput(
   overrides: Partial<UpdateInvoiceNumberingSettingsInput> = {},
 ): UpdateInvoiceNumberingSettingsInput {
   return {
-    companyId: 'dev-company',
+    actorContext: createActorContextForCompany('dev-company'),
     mode: 'calendarYearSequence',
     fiscalYearStartMonth: 1,
     sequencePadding: 4,
@@ -171,6 +177,13 @@ describe('invoice numbering settings application services', () => {
         updatedAt: '2026-06-26T10:00:00.000Z',
       },
     ]);
+    expect(repository.savedAuditEvents[0]).toMatchObject({
+      action: 'invoiceNumberingSettings.updated',
+      actorUserId: 'local-owner',
+      companyId: 'dev-company',
+      occurredAt: '2026-06-26T10:00:00.000Z',
+      outcome: 'success',
+    });
   });
 
   it('updates settings before numbering has been used', async () => {
@@ -232,6 +245,25 @@ describe('invoice numbering settings application services', () => {
     });
   });
 
+  it('denies updates without invoice settings permission', async () => {
+    const repository = new FakeInvoiceNumberingSettingsRepository();
+
+    await expect(
+      updateInvoiceNumberingSettings(
+        createUpdateInput({
+          actorContext: createActorContext({
+            actorId: 'user-1',
+            authenticationMode: 'local',
+            companyId: 'dev-company',
+            permissions: [],
+          }),
+        }),
+        repository,
+      ),
+    ).rejects.toBeInstanceOf(AuthorizationError);
+    expect(repository.savedSettings).toEqual([]);
+  });
+
   it('rejects invalid numbering settings', async () => {
     const repository = new FakeInvoiceNumberingSettingsRepository();
 
@@ -262,3 +294,12 @@ describe('invoice numbering settings application services', () => {
     expect(repository.savedSettings).toEqual([]);
   });
 });
+
+function createActorContextForCompany(companyId: string) {
+  return createActorContext({
+    actorId: 'local-owner',
+    authenticationMode: 'local',
+    companyId,
+    permissions: ['manageInvoiceSettings'],
+  });
+}

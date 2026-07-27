@@ -1,0 +1,23 @@
+.panel {
+  display: grid;
+  gap: 16px;
+  box-shadow: none;
+}
+
+.panel h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.description {
+  max-width: 620px;
+  margin: 8px 0 0;
+  color: var(--color-text-muted);
+  line-height: 1.45;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
