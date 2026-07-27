@@ -36,6 +36,7 @@ import { JsonLineDesktopOperationalLogger } from '../observability/infrastructur
 import { createMainSecretBrokerTransport } from '../secrets/electronSecretBrokerTransport.js';
 import { startSecretBrokerMain } from '../secrets/secretBrokerMain.js';
 import { SafeStorageStringProtector } from '../secrets/safeStorageStringProtector.js';
+import { registerElectronPermissionPolicy } from '../security/electronPermissionPolicy.js';
 import {
   createApplicationWindow,
   loadApplicationWindow,
@@ -214,31 +215,10 @@ export async function startDesktopComposition(
     webRoot: join(options.applicationPath, 'web'),
   });
 
-  session.defaultSession.setPermissionRequestHandler(
-    (_webContents, _permission, callback) => {
-      desktopOperationalLogger.write(
-        createDesktopOperationalEvent(
-          {
-            eventName: 'electron.permissionDenied',
-            stage: 'request',
-          },
-          { appVersion: desktopAppVersion },
-        ),
-      );
-      callback(false);
-    },
-  );
-  session.defaultSession.setPermissionCheckHandler(() => {
-    desktopOperationalLogger.write(
-      createDesktopOperationalEvent(
-        {
-          eventName: 'electron.permissionDenied',
-          stage: 'check',
-        },
-        { appVersion: desktopAppVersion },
-      ),
-    );
-    return false;
+  registerElectronPermissionPolicy({
+    appVersion: desktopAppVersion,
+    operationalLogger: desktopOperationalLogger,
+    permissionSession: session.defaultSession,
   });
 
   applicationWindow = createApplicationWindow(

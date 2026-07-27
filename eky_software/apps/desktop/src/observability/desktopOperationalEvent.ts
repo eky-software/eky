@@ -5,6 +5,31 @@ export type DesktopEventOutcome =
   | 'success'
   | 'unknown';
 
+export const desktopPermissionTypes = Object.freeze([
+  'clipboard-read',
+  'clipboard-sanitized-write',
+  'display-capture',
+  'fileSystem',
+  'fullscreen',
+  'geolocation',
+  'idle-detection',
+  'keyboardLock',
+  'media',
+  'mediaKeySystem',
+  'midi',
+  'midiSysex',
+  'notifications',
+  'openExternal',
+  'pointerLock',
+  'speaker-selection',
+  'storage-access',
+  'top-level-storage-access',
+  'window-management',
+  'unknown',
+] as const);
+export type DesktopPermissionType =
+  (typeof desktopPermissionTypes)[number];
+
 export interface DesktopOperationalEventPayloadMap {
   'desktop.starting': Record<never, never>;
   'desktop.started': { durationMs?: number };
@@ -21,6 +46,12 @@ export interface DesktopOperationalEventPayloadMap {
   'applicationWindow.navigationBlocked': { stage?: string };
   'applicationWindow.newWindowBlocked': { stage?: string };
   'electron.permissionDenied': { stage?: string };
+  'electron.permissionRequestBlocked': {
+    frameClass: 'mainFrame' | 'subFrame' | 'unknown';
+    originClass: 'eky' | 'external' | 'unknown';
+    permissionType: DesktopPermissionType;
+    stage: 'request';
+  };
   'pdfPreview.openFailed': { entityId?: string; entityType?: string } & FailureFields;
   'secretStorage.decryptFailed': FailureFields;
   'secretStorage.writeFailed': FailureFields;
@@ -165,6 +196,12 @@ export const desktopOperationalEventSpecs = Object.freeze({
     ['stage'],
   ),
   'electron.permissionDenied': spec('security', 'warn', 'blocked', ['stage']),
+  'electron.permissionRequestBlocked': spec(
+    'security',
+    'warn',
+    'blocked',
+    ['frameClass', 'originClass', 'permissionType', 'stage'],
+  ),
   'pdfPreview.openFailed': spec('pdfPreview', 'error', 'failure', [
     ...failureFields,
     'entityId',
@@ -264,6 +301,12 @@ export const desktopRequiredPayloadFields = Object.freeze({
   'applicationWindow.navigationBlocked': [],
   'applicationWindow.newWindowBlocked': [],
   'electron.permissionDenied': [],
+  'electron.permissionRequestBlocked': [
+    'frameClass',
+    'originClass',
+    'permissionType',
+    'stage',
+  ],
   'pdfPreview.openFailed': ['errorCode'],
   'secretStorage.decryptFailed': ['errorCode'],
   'secretStorage.writeFailed': ['errorCode'],

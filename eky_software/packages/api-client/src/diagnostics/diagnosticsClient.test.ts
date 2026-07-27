@@ -153,6 +153,29 @@ describe('diagnostics API client', () => {
 
     await expect(client.listDiagnosticEvents()).resolves.toHaveLength(3);
   });
+
+  it('accepts the classified desktop permission request event', async () => {
+    const client = createEkyApiClient({
+      baseUrl: '',
+      fetch: async () =>
+        jsonResponse({
+          diagnosticEvents: [
+            {
+              category: 'security',
+              component: 'desktop',
+              errorCode: null,
+              eventName: 'electron.permissionRequestBlocked',
+              id: 'desktop:permission-request-1',
+              level: 'warn',
+              occurredAt: '2026-07-27T13:00:00.000Z',
+              outcome: 'blocked',
+            },
+          ],
+        }),
+    });
+
+    await expect(client.listDiagnosticEvents()).resolves.toHaveLength(1);
+  });
 });
 
 function jsonResponse(body: unknown): Response {

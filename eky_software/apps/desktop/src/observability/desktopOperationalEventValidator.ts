@@ -1,4 +1,5 @@
 import {
+  desktopPermissionTypes,
   desktopOperationalEventSpecs,
   desktopRequiredPayloadFields,
   type DesktopOperationalEvent,
@@ -32,6 +33,7 @@ const monthPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const maximumEventBytes = 16 * 1024;
+const permissionTypes = new Set(desktopPermissionTypes);
 
 export class DesktopOperationalEventValidationError extends Error {
   constructor(message: string) {
@@ -175,8 +177,38 @@ function validatePayloadValue(field: string, value: unknown): void {
   }
 
   if (
+    field === 'permissionType' &&
+    (typeof value !== 'string' || !permissionTypes.has(value))
+  ) {
+    throw new DesktopOperationalEventValidationError(
+      'Desktop operational event permission type is invalid.',
+    );
+  }
+  if (
+    field === 'originClass' &&
+    (typeof value !== 'string' ||
+      !['eky', 'external', 'unknown'].includes(value))
+  ) {
+    throw new DesktopOperationalEventValidationError(
+      'Desktop operational event origin class is invalid.',
+    );
+  }
+  if (
+    field === 'frameClass' &&
+    (typeof value !== 'string' ||
+      !['mainFrame', 'subFrame', 'unknown'].includes(value))
+  ) {
+    throw new DesktopOperationalEventValidationError(
+      'Desktop operational event frame class is invalid.',
+    );
+  }
+
+  if (
     field !== 'sideEffectState' &&
     field !== 'oldestRemainingMonth' &&
+    field !== 'permissionType' &&
+    field !== 'originClass' &&
+    field !== 'frameClass' &&
     (typeof value !== 'string' ||
       value.length === 0 ||
       value.length > 300 ||

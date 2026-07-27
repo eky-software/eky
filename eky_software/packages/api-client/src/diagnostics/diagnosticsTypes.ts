@@ -25,6 +25,7 @@ export const diagnosticEventNames = Object.freeze([
   'desktop.started',
   'desktop.starting',
   'electron.permissionDenied',
+  'electron.permissionRequestBlocked',
   'http.invalidBody',
   'http.requestFailed',
   'http.unknownRoute',

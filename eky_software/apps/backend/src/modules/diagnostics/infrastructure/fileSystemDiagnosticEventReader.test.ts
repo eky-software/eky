@@ -239,6 +239,20 @@ describe('FileSystemDiagnosticEventReader', () => {
           outcome: 'blocked',
           timestamp: '2026-07-27T10:01:00.000Z',
         }),
+        {
+          ...createDesktopOperationalEventFixture({
+            category: 'security',
+            eventId: 'permission-request-blocked',
+            eventName: 'electron.permissionRequestBlocked',
+            level: 'warn',
+            outcome: 'blocked',
+            timestamp: '2026-07-27T10:03:00.000Z',
+          }),
+          frameClass: 'mainFrame',
+          originClass: 'eky',
+          permissionType: 'notifications',
+          stage: 'request',
+        },
       ],
     );
     writeLines(
@@ -263,6 +277,7 @@ describe('FileSystemDiagnosticEventReader', () => {
       ).listRecentDiagnosticEvents(10);
 
     expect(events.map((event) => event.eventName)).toEqual([
+      'electron.permissionRequestBlocked',
       'operationalLogFolder.opened',
       'operationalLogFolder.requestBlocked',
       'operationalLogFolder.openFailed',

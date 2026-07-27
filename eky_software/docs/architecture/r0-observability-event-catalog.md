@@ -77,6 +77,7 @@ liiketoimintasisältöä.
 - `applicationWindow.navigationBlocked`
 - `applicationWindow.newWindowBlocked`
 - `electron.permissionDenied`
+- `electron.permissionRequestBlocked`
 - `pdfPreview.openFailed`
 - `secretStorage.decryptFailed`
 - `secretStorage.writeFailed`
