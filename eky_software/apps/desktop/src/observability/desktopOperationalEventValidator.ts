@@ -2,6 +2,7 @@ import {
   desktopPermissionTypes,
   desktopOperationalEventSpecs,
   desktopRequiredPayloadFields,
+  type DesktopPermissionType,
   type DesktopOperationalEvent,
   type DesktopOperationalEventName,
 } from './desktopOperationalEvent.js';
@@ -178,7 +179,8 @@ function validatePayloadValue(field: string, value: unknown): void {
 
   if (
     field === 'permissionType' &&
-    (typeof value !== 'string' || !permissionTypes.has(value))
+    (typeof value !== 'string' ||
+      !permissionTypes.has(value as DesktopPermissionType))
   ) {
     throw new DesktopOperationalEventValidationError(
       'Desktop operational event permission type is invalid.',

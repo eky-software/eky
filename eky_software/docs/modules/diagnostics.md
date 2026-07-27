@@ -38,6 +38,26 @@ diagnostiikkalista voi olla tyhjä, jos backendille ei ole annettu logs-rootia.
 Lokikansion avaaminen ja tukipaketin tallennus toteutetaan erillisinä Electron
 mainin omistamina, käyttäjän käynnistäminä capabilityina.
 
+Paketoidun desktopin smoke todentaa koko julkisen diagnostiikkaketjun
+JSONL-readerista HTTP-projektioon, API-clientin strict parseriin ja oikeaan
+paketoituun Diagnostiikka-näkymään. Tuntematon vanha JSONL-event voidaan
+ohittaa turvallisesti, mutta HTTP-projektion tuntematon event torjutaan
+clientissä.
+
+Lokikansion avaaminen ei hyväksy rendereriltä polkua. Electron main muodostaa
+kiinteän `userData/runtime/logs`-juuren, tarkistaa trusted main frame
+-kutsujan eikä seuraa symlinkkiä. Smoke käyttää `openPath`-stubia eikä avaa
+Explorer-ikkunaa.
+
+Electronin tavallinen permission check estetään ilman eventtiä. Todellinen
+permission request estetään, luokitellaan ilman raakaa URL:ia ja
+deduplikoidaan saman runtime-käynnistyksen aikana.
+
+Varhaisen desktop-käynnistyksen virhe näyttää vain vakioidun suomenkielisen
+ilmoituksen. Smoke saa vain allowlistatun virhekoodin. Jos operational logger
+on jo käytettävissä, virheestä kirjoitetaan turvallinen
+`desktop.bootstrapFailed`-eventti.
+
 ## Tukipakettiprojektio
 
 Backend tarjoaa tukipakettia varten erillisen `createSupportBundle`-

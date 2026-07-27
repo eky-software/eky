@@ -55,12 +55,13 @@ export function createOperationalLogFolderCapability(
         return failOpen(options, startedAt, 'ensureDirectory');
       }
 
+      let errorMessage: string;
       try {
-        const errorMessage = await options.openPath(logsRoot);
-        if (errorMessage.length > 0) {
-          return failOpen(options, startedAt, 'shellOpen');
-        }
+        errorMessage = await options.openPath(logsRoot);
       } catch {
+        return failOpen(options, startedAt, 'shellOpen');
+      }
+      if (errorMessage.length > 0) {
         return failOpen(options, startedAt, 'shellOpen');
       }
 
@@ -96,9 +97,9 @@ function failOpen(
   throw new Error('OPERATIONAL_LOG_FOLDER_OPEN_FAILED');
 }
 
-function writeEvent(
+function writeEvent<Input extends DesktopOperationalEventInput>(
   options: OperationalLogFolderCapabilityOptions,
-  input: DesktopOperationalEventInput,
+  input: Readonly<Input>,
 ): void {
   options.operationalLogger.write(
     createDesktopOperationalEvent(input, {

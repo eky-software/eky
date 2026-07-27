@@ -162,4 +162,32 @@ describe('desktop operational event contracts', () => {
       }),
     ).toThrow(DesktopOperationalEventValidationError);
   });
+
+  it('allows only a safe code in a bootstrap failure event', () => {
+    const event = createDesktopOperationalEvent(
+      {
+        errorCode: 'DESKTOP_START_FAILED',
+        eventName: 'desktop.bootstrapFailed',
+        retryable: false,
+        sideEffectState: 'unknown',
+        stage: 'startup',
+      },
+      options,
+    );
+
+    expect(event).toMatchObject({
+      errorCode: 'DESKTOP_START_FAILED',
+      eventName: 'desktop.bootstrapFailed',
+      outcome: 'failure',
+    });
+    expect(() =>
+      createDesktopOperationalEvent(
+        {
+          errorCode: 'C:\\Users\\Example\\application.asar',
+          eventName: 'desktop.bootstrapFailed',
+        },
+        options,
+      ),
+    ).toThrow(DesktopOperationalEventValidationError);
+  });
 });

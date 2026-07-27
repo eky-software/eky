@@ -51,6 +51,7 @@ const desktopDiagnosticSpecs = Object.freeze({
   'desktop.shutdownStarted': spec('runtime', 'info', 'success'),
   'desktop.started': spec('runtime', 'info', 'success'),
   'desktop.starting': spec('runtime', 'info', 'success'),
+  'desktop.bootstrapFailed': spec('runtime', 'error', 'failure'),
   'electron.permissionDenied': spec('security', 'warn', 'blocked'),
   'electron.permissionRequestBlocked': spec(
     'security',

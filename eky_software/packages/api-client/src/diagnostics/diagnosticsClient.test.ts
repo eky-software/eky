@@ -176,6 +176,29 @@ describe('diagnostics API client', () => {
 
     await expect(client.listDiagnosticEvents()).resolves.toHaveLength(1);
   });
+
+  it('accepts the safe desktop bootstrap failure projection', async () => {
+    const client = createEkyApiClient({
+      baseUrl: '',
+      fetch: async () =>
+        jsonResponse({
+          diagnosticEvents: [
+            {
+              category: 'runtime',
+              component: 'desktop',
+              errorCode: 'DESKTOP_START_FAILED',
+              eventName: 'desktop.bootstrapFailed',
+              id: 'desktop:bootstrap-failure-1',
+              level: 'error',
+              occurredAt: '2026-07-27T13:00:00.000Z',
+              outcome: 'failure',
+            },
+          ],
+        }),
+    });
+
+    await expect(client.listDiagnosticEvents()).resolves.toHaveLength(1);
+  });
 });
 
 function jsonResponse(body: unknown): Response {

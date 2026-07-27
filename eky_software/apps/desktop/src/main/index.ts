@@ -4,14 +4,15 @@ import {
   protocol,
 } from 'electron';
 
-import {
-  startDesktopComposition,
-  type DesktopLifecycleHandle,
-} from './desktopComposition.js';
+import type { DesktopLifecycleHandle } from './desktopComposition.js';
+import { runSafeDesktopStartup } from './earlyStartup.js';
 import {
   createPackagedSmokeConfiguration,
   writePackagedSmokeResult,
 } from './packagedSmoke.js';
+
+type StartDesktopComposition =
+  typeof import('./desktopComposition.js').startDesktopComposition;
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -46,7 +47,9 @@ if (!hasSingleInstanceLock) {
 let desktopLifecycle: DesktopLifecycleHandle | undefined;
 let shutdownStarted = false;
 
-async function startDesktopRuntime(): Promise<void> {
+async function startDesktopRuntime(
+  startDesktopComposition: StartDesktopComposition,
+): Promise<void> {
   desktopLifecycle = await startDesktopComposition({
     appVersion: app.getVersion(),
     applicationPath: app.getAppPath(),
@@ -84,22 +87,14 @@ app.on('window-all-closed', () => {
 });
 
 if (hasSingleInstanceLock) {
-  void app
-    .whenReady()
-    .then(startDesktopRuntime)
-    .catch((error: unknown) => {
+  void runSafeDesktopStartup({
+    exitApplication: (code) => app.exit(code),
+    loadRuntime: () => import('./desktopComposition.js'),
+    async onFailure(errorCode) {
       if (smokeConfiguration.enabled) {
-        const safeCode =
-          error instanceof Error &&
-          /^(BACKEND|DESKTOP)_[A-Z_]+$/.test(error.message)
-            ? error.message
-            : 'DESKTOP_START_FAILED';
-
-        void writePackagedSmokeResult(smokeConfiguration, {
-          code: safeCode,
+        await writePackagedSmokeResult(smokeConfiguration, {
+          code: errorCode,
           status: 'failed',
-        }).finally(() => {
-          app.exit(1);
         });
         return;
       }
@@ -108,6 +103,8 @@ if (hasSingleInstanceLock) {
         'Eky ei käynnistynyt',
         'Paikallista sovellusta ei voitu käynnistää turvallisesti.',
       );
-      app.exit(1);
-    });
+    },
+    startRuntime: startDesktopRuntime,
+    waitUntilReady: () => app.whenReady(),
+  });
 }

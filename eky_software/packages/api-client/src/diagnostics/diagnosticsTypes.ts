@@ -22,6 +22,7 @@ export const diagnosticEventNames = Object.freeze([
   'desktop.shutdownCompleted',
   'desktop.shutdownFailed',
   'desktop.shutdownStarted',
+  'desktop.bootstrapFailed',
   'desktop.started',
   'desktop.starting',
   'electron.permissionDenied',

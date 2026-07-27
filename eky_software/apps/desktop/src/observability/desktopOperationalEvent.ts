@@ -33,6 +33,7 @@ export type DesktopPermissionType =
 export interface DesktopOperationalEventPayloadMap {
   'desktop.starting': Record<never, never>;
   'desktop.started': { durationMs?: number };
+  'desktop.bootstrapFailed': FailureFields;
   'desktop.shutdownStarted': Record<never, never>;
   'desktop.shutdownCompleted': { durationMs?: number };
   'desktop.shutdownFailed': FailureFields;
@@ -146,6 +147,12 @@ const failureFields = [
 export const desktopOperationalEventSpecs = Object.freeze({
   'desktop.starting': spec('runtime', 'info', 'success'),
   'desktop.started': spec('runtime', 'info', 'success', ['durationMs']),
+  'desktop.bootstrapFailed': spec(
+    'runtime',
+    'error',
+    'failure',
+    failureFields,
+  ),
   'desktop.shutdownStarted': spec('runtime', 'info', 'success'),
   'desktop.shutdownCompleted': spec('runtime', 'info', 'success', ['durationMs']),
   'desktop.shutdownFailed': spec('runtime', 'error', 'failure', failureFields),
@@ -288,6 +295,7 @@ export const desktopOperationalEventSpecs = Object.freeze({
 export const desktopRequiredPayloadFields = Object.freeze({
   'desktop.starting': [],
   'desktop.started': [],
+  'desktop.bootstrapFailed': ['errorCode'],
   'desktop.shutdownStarted': [],
   'desktop.shutdownCompleted': [],
   'desktop.shutdownFailed': ['errorCode'],

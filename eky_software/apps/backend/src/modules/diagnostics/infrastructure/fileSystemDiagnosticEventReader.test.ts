@@ -215,6 +215,15 @@ describe('FileSystemDiagnosticEventReader', () => {
       'desktop-warning-error-2026-07-001.jsonl',
       [
         createDesktopOperationalEventFixture({
+          category: 'runtime',
+          errorCode: 'DESKTOP_START_FAILED',
+          eventId: 'desktop-bootstrap-failed',
+          eventName: 'desktop.bootstrapFailed',
+          level: 'error',
+          outcome: 'failure',
+          timestamp: '2026-07-27T10:04:00.000Z',
+        }),
+        createDesktopOperationalEventFixture({
           category: 'operationalLogFolder',
           errorCode: 'OPERATIONAL_LOG_FOLDER_OPEN_FAILED',
           eventId: 'log-folder-failed',
@@ -277,6 +286,7 @@ describe('FileSystemDiagnosticEventReader', () => {
       ).listRecentDiagnosticEvents(10);
 
     expect(events.map((event) => event.eventName)).toEqual([
+      'desktop.bootstrapFailed',
       'electron.permissionRequestBlocked',
       'operationalLogFolder.opened',
       'operationalLogFolder.requestBlocked',
