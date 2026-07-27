@@ -84,6 +84,39 @@ describe('activity API client', () => {
 
     await expect(client.listActivity()).rejects.toBeInstanceOf(EkyApiError);
   });
+
+  it('accepts a safe invoice settings event without an entity reference', async () => {
+    const client = createEkyApiClient({
+      baseUrl: '',
+      fetch: async () =>
+        jsonResponse({
+          activityItems: [
+            {
+              id: 'invoicing:settings-event',
+              module: 'invoicing',
+              occurredAt: '2026-07-27T10:00:00.000Z',
+              outcome: 'success',
+              reference: null,
+              type: 'invoiceNumberingSettings.updated',
+            },
+          ],
+          hasNextPage: false,
+          hasPreviousPage: false,
+          month: '2026-07',
+          page: 1,
+          pageSize: 20,
+        }),
+    });
+
+    await expect(client.listActivity()).resolves.toMatchObject({
+      activityItems: [
+        {
+          reference: null,
+          type: 'invoiceNumberingSettings.updated',
+        },
+      ],
+    });
+  });
 });
 
 function jsonResponse(body: unknown): Response {

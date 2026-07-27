@@ -1,8 +1,12 @@
+import type { ActorContext } from '@eky/auth';
+import { requirePermission } from '@eky/permissions';
+
 import {
   validateInvoicePaymentSettings,
   type InvoicePaymentSettings,
   type StoredInvoicePaymentSettings,
 } from '../domain/invoicePaymentSettings.js';
+import { createInvoiceSettingsAuditEvent } from '../domain/invoiceSettingsAuditEvent.js';
 import type {
   InvoicePaymentSettingsRepository,
 } from '../ports/invoicePaymentSettingsRepository.js';
@@ -13,7 +17,7 @@ import {
 } from './invoicePaymentSettingsView.js';
 
 export interface UpdateInvoicePaymentSettingsInput {
-  companyId: string;
+  actorContext: ActorContext;
   defaultLatePaymentInterestBasisPoints: number;
   defaultReminderPeriodDays: number;
   now: string;
@@ -41,10 +45,11 @@ function toPaymentSettings(
 
 function createStoredSettings(
   input: UpdateInvoicePaymentSettingsInput,
+  companyId: string,
   currentSettings: StoredInvoicePaymentSettings | undefined,
 ): StoredInvoicePaymentSettings {
   return {
-    companyId: requireNonEmptyValue(input.companyId, 'Company id'),
+    companyId,
     ...toPaymentSettings(input),
     createdAt: currentSettings?.createdAt ?? requireNonEmptyValue(input.now, 'Timestamp'),
     updatedAt: requireNonEmptyValue(input.now, 'Timestamp'),
@@ -55,9 +60,13 @@ export async function updateInvoicePaymentSettings(
   input: UpdateInvoicePaymentSettingsInput,
   invoicePaymentSettingsRepository: InvoicePaymentSettingsRepository,
 ): Promise<InvoicePaymentSettingsView> {
-  const companyId = requireNonEmptyValue(input.companyId, 'Company id');
+  requirePermission(input.actorContext, 'manageInvoiceSettings');
+  const companyId = requireNonEmptyValue(
+    input.actorContext.companyId,
+    'Company id',
+  );
   const now = requireNonEmptyValue(input.now, 'Timestamp');
-  const nextSettings = toPaymentSettings({ ...input, companyId, now });
+  const nextSettings = toPaymentSettings(input);
 
   validateInvoicePaymentSettings(nextSettings);
 
@@ -68,7 +77,13 @@ export async function updateInvoicePaymentSettings(
   }
 
   const savedSettings = await invoicePaymentSettingsRepository.saveSettings(
-    createStoredSettings({ ...input, companyId, now }, currentSettings),
+    createStoredSettings(input, companyId, currentSettings),
+    createInvoiceSettingsAuditEvent({
+      action: 'invoicePaymentSettings.updated',
+      actorUserId: input.actorContext.actorId,
+      companyId,
+      occurredAt: now,
+    }),
   );
 
   validateInvoicePaymentSettings(savedSettings);

@@ -14,8 +14,10 @@ import {
   validateInvoiceSequenceNumber,
 } from '../domain/invoiceNumbering.js';
 import { InvoiceNumberingError } from '../domain/invoiceNumberingError.js';
+import type { InvoiceSettingsAuditEvent } from '../domain/invoiceSettingsAuditEvent.js';
 import type { InvoiceNumberSequenceRepository } from '../ports/invoiceNumberSequenceRepository.js';
 import type { InvoiceNumberingSettingsRepository } from '../ports/invoiceNumberingSettingsRepository.js';
+import { insertInvoiceSettingsAuditEvent } from './invoiceSettingsAuditPersistence.js';
 
 type InvoiceNumberingSettingsSaveParameters = [
   string,
@@ -155,43 +157,53 @@ export class SqliteInvoiceNumberingRepository
 
   async saveSettings(
     settings: StoredInvoiceNumberingSettings,
+    auditEvent: InvoiceSettingsAuditEvent,
   ): Promise<StoredInvoiceNumberingSettings> {
     validateStoredInvoiceNumberingSettings(settings);
 
     const row = toInvoiceNumberingSettingsRow(settings);
 
-    this.database
-      .prepare<InvoiceNumberingSettingsSaveParameters>(
-        `
-          INSERT INTO invoice_numbering_settings (
-            company_id,
-            series_key,
-            mode,
-            fiscal_year_start_month,
-            sequence_padding,
-            first_sequence_number,
-            created_at,
-            updated_at
-          )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(company_id, series_key) DO UPDATE SET
-            mode = excluded.mode,
-            fiscal_year_start_month = excluded.fiscal_year_start_month,
-            sequence_padding = excluded.sequence_padding,
-            first_sequence_number = excluded.first_sequence_number,
-            updated_at = excluded.updated_at
-        `,
-      )
-      .run(
-        row.company_id,
-        row.series_key,
-        row.mode,
-        row.fiscal_year_start_month,
-        row.sequence_padding,
-        row.first_sequence_number,
-        row.created_at,
-        row.updated_at,
-      );
+    const save = this.database.transaction(() => {
+      this.database
+        .prepare<InvoiceNumberingSettingsSaveParameters>(
+          `
+            INSERT INTO invoice_numbering_settings (
+              company_id,
+              series_key,
+              mode,
+              fiscal_year_start_month,
+              sequence_padding,
+              first_sequence_number,
+              created_at,
+              updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(company_id, series_key) DO UPDATE SET
+              mode = excluded.mode,
+              fiscal_year_start_month = excluded.fiscal_year_start_month,
+              sequence_padding = excluded.sequence_padding,
+              first_sequence_number = excluded.first_sequence_number,
+              updated_at = excluded.updated_at
+          `,
+        )
+        .run(
+          row.company_id,
+          row.series_key,
+          row.mode,
+          row.fiscal_year_start_month,
+          row.sequence_padding,
+          row.first_sequence_number,
+          row.created_at,
+          row.updated_at,
+        );
+
+      insertInvoiceSettingsAuditEvent(this.database, auditEvent, {
+        action: 'invoiceNumberingSettings.updated',
+        companyId: settings.companyId,
+      });
+    });
+
+    save();
 
     const savedSettings = await this.getSettings(
       settings.companyId,

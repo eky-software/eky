@@ -131,6 +131,7 @@ function validatePayload(
     if (
       field === 'durationMs' ||
       field === 'deletedByteCount' ||
+      field === 'deletedEventCount' ||
       field === 'deletedFileCount'
     ) {
       if (

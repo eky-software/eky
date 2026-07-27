@@ -8,9 +8,11 @@ import {
   type StoredInvoicePaymentSettings,
 } from '../domain/invoicePaymentSettings.js';
 import { InvoicePaymentSettingsError } from '../domain/invoicePaymentSettingsError.js';
+import type { InvoiceSettingsAuditEvent } from '../domain/invoiceSettingsAuditEvent.js';
 import type {
   InvoicePaymentSettingsRepository,
 } from '../ports/invoicePaymentSettingsRepository.js';
+import { insertInvoiceSettingsAuditEvent } from './invoiceSettingsAuditPersistence.js';
 
 type InvoicePaymentSettingsSaveParameters = [
   string,
@@ -87,37 +89,47 @@ export class SqliteInvoicePaymentSettingsRepository
 
   async saveSettings(
     settings: StoredInvoicePaymentSettings,
+    auditEvent: InvoiceSettingsAuditEvent,
   ): Promise<StoredInvoicePaymentSettings> {
     validateStoredInvoicePaymentSettings(settings);
 
     const row = toInvoicePaymentSettingsRow(settings);
 
-    this.database
-      .prepare<InvoicePaymentSettingsSaveParameters>(
-        `
-          INSERT INTO invoice_payment_settings (
-            company_id,
-            default_late_payment_interest_basis_points,
-            default_reminder_period_days,
-            created_at,
-            updated_at
-          )
-          VALUES (?, ?, ?, ?, ?)
-          ON CONFLICT(company_id) DO UPDATE SET
-            default_late_payment_interest_basis_points =
-              excluded.default_late_payment_interest_basis_points,
-            default_reminder_period_days =
-              excluded.default_reminder_period_days,
-            updated_at = excluded.updated_at
-        `,
-      )
-      .run(
-        row.company_id,
-        row.default_late_payment_interest_basis_points,
-        row.default_reminder_period_days,
-        row.created_at,
-        row.updated_at,
-      );
+    const save = this.database.transaction(() => {
+      this.database
+        .prepare<InvoicePaymentSettingsSaveParameters>(
+          `
+            INSERT INTO invoice_payment_settings (
+              company_id,
+              default_late_payment_interest_basis_points,
+              default_reminder_period_days,
+              created_at,
+              updated_at
+            )
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(company_id) DO UPDATE SET
+              default_late_payment_interest_basis_points =
+                excluded.default_late_payment_interest_basis_points,
+              default_reminder_period_days =
+                excluded.default_reminder_period_days,
+              updated_at = excluded.updated_at
+          `,
+        )
+        .run(
+          row.company_id,
+          row.default_late_payment_interest_basis_points,
+          row.default_reminder_period_days,
+          row.created_at,
+          row.updated_at,
+        );
+
+      insertInvoiceSettingsAuditEvent(this.database, auditEvent, {
+        action: 'invoicePaymentSettings.updated',
+        companyId: settings.companyId,
+      });
+    });
+
+    save();
 
     const savedSettings = await this.getSettings(settings.companyId);
 

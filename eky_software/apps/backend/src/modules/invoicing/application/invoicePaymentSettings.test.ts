@@ -1,8 +1,11 @@
+import { createActorContext } from '@eky/auth';
+import { AuthorizationError } from '@eky/permissions';
 import { describe, expect, it } from 'vitest';
 
 import type {
   StoredInvoicePaymentSettings,
 } from '../domain/invoicePaymentSettings.js';
+import type { InvoiceSettingsAuditEvent } from '../domain/invoiceSettingsAuditEvent.js';
 import type {
   InvoicePaymentSettingsRepository,
 } from '../ports/invoicePaymentSettingsRepository.js';
@@ -11,12 +14,12 @@ import {
   updateInvoicePaymentSettings,
   type UpdateInvoicePaymentSettingsInput,
 } from './updateInvoicePaymentSettings.js';
-import { InvoicePaymentSettingsApplicationError } from './invoicePaymentSettingsError.js';
 
 class FakeInvoicePaymentSettingsRepository
   implements InvoicePaymentSettingsRepository
 {
   savedSettings: StoredInvoicePaymentSettings[] = [];
+  savedAuditEvents: InvoiceSettingsAuditEvent[] = [];
   private readonly settingsByCompanyId = new Map<string, StoredInvoicePaymentSettings>();
 
   constructor(settings: StoredInvoicePaymentSettings[] = []) {
@@ -33,6 +36,7 @@ class FakeInvoicePaymentSettingsRepository
 
   async saveSettings(
     settings: StoredInvoicePaymentSettings,
+    auditEvent: InvoiceSettingsAuditEvent,
   ): Promise<StoredInvoicePaymentSettings> {
     const currentSettings = await this.getSettings(settings.companyId);
     const savedSettings = {
@@ -41,6 +45,7 @@ class FakeInvoicePaymentSettingsRepository
     };
 
     this.savedSettings.push(savedSettings);
+    this.savedAuditEvents.push(auditEvent);
     this.settingsByCompanyId.set(savedSettings.companyId, savedSettings);
 
     return savedSettings;
@@ -64,7 +69,7 @@ function createUpdateInput(
   overrides: Partial<UpdateInvoicePaymentSettingsInput> = {},
 ): UpdateInvoicePaymentSettingsInput {
   return {
-    companyId: 'dev-company',
+    actorContext: createActorContextForCompany('dev-company'),
     defaultLatePaymentInterestBasisPoints: 950,
     defaultReminderPeriodDays: 8,
     now: '2026-06-30T11:00:00.000Z',
@@ -119,6 +124,13 @@ describe('invoice payment settings application services', () => {
         updatedAt: '2026-06-30T11:00:00.000Z',
       },
     ]);
+    expect(repository.savedAuditEvents[0]).toMatchObject({
+      action: 'invoicePaymentSettings.updated',
+      actorUserId: 'local-owner',
+      companyId: 'dev-company',
+      occurredAt: '2026-06-30T11:00:00.000Z',
+      outcome: 'success',
+    });
   });
 
   it('updates payment settings while preserving their createdAt timestamp', async () => {
@@ -145,15 +157,22 @@ describe('invoice payment settings application services', () => {
     });
   });
 
-  it('rejects an empty company id', async () => {
+  it('denies updates without invoice settings permission', async () => {
     const repository = new FakeInvoicePaymentSettingsRepository();
 
     await expect(
       updateInvoicePaymentSettings(
-        createUpdateInput({ companyId: '   ' }),
+        createUpdateInput({
+          actorContext: createActorContext({
+            actorId: 'user-1',
+            authenticationMode: 'local',
+            companyId: 'dev-company',
+            permissions: [],
+          }),
+        }),
         repository,
       ),
-    ).rejects.toThrow(InvoicePaymentSettingsApplicationError);
+    ).rejects.toBeInstanceOf(AuthorizationError);
     expect(repository.savedSettings).toEqual([]);
   });
 
@@ -169,3 +188,12 @@ describe('invoice payment settings application services', () => {
     expect(repository.savedSettings).toEqual([]);
   });
 });
+
+function createActorContextForCompany(companyId: string) {
+  return createActorContext({
+    actorId: 'local-owner',
+    authenticationMode: 'local',
+    companyId,
+    permissions: ['manageInvoiceSettings'],
+  });
+}

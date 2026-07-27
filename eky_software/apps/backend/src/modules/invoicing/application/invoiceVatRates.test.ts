@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import { getInvoiceVatRates } from './getInvoiceVatRates.js';
 import { updateInvoiceVatRates } from './updateInvoiceVatRates.js';
+import type { InvoiceSettingsAuditEvent } from '../domain/invoiceSettingsAuditEvent.js';
 import type { StoredInvoiceVatRate } from '../domain/invoiceVatRates.js';
 import type { InvoiceVatRateRepository } from '../ports/invoiceVatRateRepository.js';
 
@@ -45,6 +46,13 @@ describe('invoice VAT rate application services', () => {
       companyId: 'company-1',
       rateBasisPoints: 2600,
     });
+    expect(repository.lastAuditEvent).toMatchObject({
+      action: 'invoiceVatRates.updated',
+      actorUserId: 'local-owner',
+      companyId: 'company-1',
+      occurredAt: '2026-07-22T18:00:00.000Z',
+      outcome: 'success',
+    });
   });
 
   it('denies access without the invoice settings permission', async () => {
@@ -67,6 +75,7 @@ describe('invoice VAT rate application services', () => {
 class FakeInvoiceVatRateRepository implements InvoiceVatRateRepository {
   rates: StoredInvoiceVatRate[] = [];
   lastCompanyId: string | null = null;
+  lastAuditEvent: InvoiceSettingsAuditEvent | null = null;
   replaceCalls = 0;
 
   async listRates(companyId: string): Promise<StoredInvoiceVatRate[]> {
@@ -76,9 +85,11 @@ class FakeInvoiceVatRateRepository implements InvoiceVatRateRepository {
   async replaceRates(
     companyId: string,
     vatRates: readonly StoredInvoiceVatRate[],
+    auditEvent: InvoiceSettingsAuditEvent,
   ): Promise<StoredInvoiceVatRate[]> {
     this.replaceCalls += 1;
     this.lastCompanyId = companyId;
+    this.lastAuditEvent = auditEvent;
     this.rates = vatRates.map((rate) => ({ ...rate }));
     return this.listRates(companyId);
   }

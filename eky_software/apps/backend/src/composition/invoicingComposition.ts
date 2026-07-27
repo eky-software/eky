@@ -74,6 +74,7 @@ import type { CustomerAccessReader } from '../modules/invoicing/ports/customerAc
 import type { InvoiceCustomerTaxProfileReader } from '../modules/invoicing/ports/invoiceCustomerTaxProfileReader.js';
 import type { InvoiceEmailSettingsReader } from '../modules/invoicing/ports/invoiceEmailSettingsReader.js';
 import type { InvoiceActivityReader } from '../modules/invoicing/ports/invoiceActivityReader.js';
+import { InvoiceSettingsAuditWriteError } from '../modules/invoicing/ports/invoiceSettingsAuditWriteError.js';
 import { ApprovedInvoiceEmailDeliveryOutcomeUnknownError } from '../modules/invoicing/application/approvedInvoiceEmailDeliveryOutcomeUnknownError.js';
 import { createBackendOperationalEvent } from '../observability/createOperationalEvent.js';
 import type { OperationalLogger } from '../observability/operationalLogger.js';
@@ -160,6 +161,8 @@ export function createInvoicingComposition(
       options.operationalLogger.write(
         createBackendOperationalEvent(
           {
+            companyId: input.companyId,
+            entityId: input.invoiceId,
             entityType: 'approvedInvoice',
             errorCode: 'INVOICE_PDF_GENERATION_FAILED',
             eventName: 'invoicePdf.generationFailed',
@@ -320,6 +323,8 @@ export function createInvoicingComposition(
           options.operationalLogger.write(
             createBackendOperationalEvent(
               {
+                companyId: input.actorContext.companyId,
+                entityId: input.invoiceId,
                 entityType: 'approvedInvoice',
                 errorCode: 'INVOICE_DELIVERY_PREPARE_BLOCKED',
                 eventName: 'invoiceDelivery.prepareBlocked',
@@ -368,6 +373,8 @@ export function createInvoicingComposition(
           options.operationalLogger.write(
             createBackendOperationalEvent(
               {
+                companyId: input.actorContext.companyId,
+                entityId: input.invoiceId,
                 entityType: 'approvedInvoice',
                 errorCode: outcomeUnknown
                   ? 'INVOICE_DELIVERY_OUTCOME_UNKNOWN'
@@ -400,7 +407,14 @@ export function createInvoicingComposition(
       getInvoiceNumberingSettings: (input) =>
         getInvoiceNumberingSettings(input, invoiceNumberingRepository),
       updateInvoiceNumberingSettings: (input) =>
-        updateInvoiceNumberingSettings(input, invoiceNumberingRepository),
+        logInvoiceSettingsAuditWriteFailure(
+          () =>
+            updateInvoiceNumberingSettings(
+              input,
+              invoiceNumberingRepository,
+            ),
+          options,
+        ),
     }),
   );
 
@@ -410,7 +424,14 @@ export function createInvoicingComposition(
       getInvoicePaymentSettings: (input) =>
         getInvoicePaymentSettings(input, invoicePaymentSettingsRepository),
       updateInvoicePaymentSettings: (input) =>
-        updateInvoicePaymentSettings(input, invoicePaymentSettingsRepository),
+        logInvoiceSettingsAuditWriteFailure(
+          () =>
+            updateInvoicePaymentSettings(
+              input,
+              invoicePaymentSettingsRepository,
+            ),
+          options,
+        ),
     }),
   );
 
@@ -420,7 +441,10 @@ export function createInvoicingComposition(
       getInvoiceVatRates: (input) =>
         getInvoiceVatRates(input, invoiceVatRateRepository),
       updateInvoiceVatRates: (input) =>
-        updateInvoiceVatRates(input, invoiceVatRateRepository),
+        logInvoiceSettingsAuditWriteFailure(
+          () => updateInvoiceVatRates(input, invoiceVatRateRepository),
+          options,
+        ),
     }),
   );
 
@@ -428,4 +452,37 @@ export function createInvoicingComposition(
     invoiceActivityReader,
     routes,
   };
+}
+
+async function logInvoiceSettingsAuditWriteFailure<T>(
+  operation: () => Promise<T>,
+  options: Pick<
+    InvoicingCompositionOptions,
+    'operationalAppVersion' | 'operationalLogger'
+  >,
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof InvoiceSettingsAuditWriteError) {
+      try {
+        options.operationalLogger.write(
+          createBackendOperationalEvent(
+            {
+              entityType: 'invoiceSettings',
+              errorCode: 'INVOICE_SETTINGS_AUDIT_WRITE_FAILED',
+              eventName: 'businessAudit.writeFailed',
+              sideEffectState: 'rolledBack',
+              stage: 'invoiceSettingsMutation',
+            },
+            { appVersion: options.operationalAppVersion },
+          ),
+        );
+      } catch {
+        // Operational logging must not replace the original safe audit error.
+      }
+    }
+
+    throw error;
+  }
 }

@@ -82,4 +82,26 @@ describe('ActivityPageView', () => {
     expect(html).toContain('Sivu 2');
     expect(html).toContain('Seuraava');
   });
+
+  it('renders invoice settings activity without a technical reference', () => {
+    const html = renderToStaticMarkup(
+      <ActivityPageView
+        {...baseProps}
+        items={[
+          {
+            id: 'invoicing:settings-event',
+            module: 'invoicing',
+            occurredAt: '2026-07-27T10:00:00.000Z',
+            outcome: 'success',
+            reference: null,
+            type: 'invoicePaymentSettings.updated',
+          },
+        ]}
+      />,
+    );
+
+    expect(html).toContain('Laskutuksen maksuehtoja päivitetty');
+    expect(html).toContain('Oma yritys');
+    expect(html).not.toContain('company-');
+  });
 });

@@ -8,8 +8,10 @@ import {
   validateInvoiceVatRates,
   type StoredInvoiceVatRate,
 } from '../domain/invoiceVatRates.js';
+import type { InvoiceSettingsAuditEvent } from '../domain/invoiceSettingsAuditEvent.js';
 import { InvoiceVatRatesError } from '../domain/invoiceVatRatesError.js';
 import type { InvoiceVatRateRepository } from '../ports/invoiceVatRateRepository.js';
+import { insertInvoiceSettingsAuditEvent } from './invoiceSettingsAuditPersistence.js';
 
 type InvoiceVatRateInsertParameters = [
   string,
@@ -54,6 +56,7 @@ export class SqliteInvoiceVatRateRepository
   async replaceRates(
     companyId: string,
     vatRates: readonly StoredInvoiceVatRate[],
+    auditEvent: InvoiceSettingsAuditEvent,
   ): Promise<StoredInvoiceVatRate[]> {
     requireCompanyId(companyId);
     validateInvoiceVatRates(vatRates);
@@ -95,6 +98,11 @@ export class SqliteInvoiceVatRateRepository
           row.updated_at,
         );
       }
+
+      insertInvoiceSettingsAuditEvent(this.database, auditEvent, {
+        action: 'invoiceVatRates.updated',
+        companyId,
+      });
     });
 
     replace();

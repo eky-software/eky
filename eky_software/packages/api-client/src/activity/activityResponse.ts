@@ -25,8 +25,11 @@ const activityItemTypes = new Set<ActivityItemType>([
   'invoice.deliveryFailed',
   'invoice.deliveryOutcomeUnknown',
   'invoice.deliveryPending',
+  'invoiceNumberingSettings.updated',
+  'invoicePaymentSettings.updated',
   'invoice.reapproved',
   'invoice.reopenedForEdit',
+  'invoiceVatRates.updated',
 ]);
 const activityModules = new Set<ActivityModule>([
   'companySettings',

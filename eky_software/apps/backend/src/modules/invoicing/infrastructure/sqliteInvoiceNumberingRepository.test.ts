@@ -13,11 +13,19 @@ import {
   resolveInvoiceNumberSequenceScope,
 } from '../domain/invoiceNumbering.js';
 import { InvoiceNumberingError } from '../domain/invoiceNumberingError.js';
+import type { InvoiceSettingsAuditEvent } from '../domain/invoiceSettingsAuditEvent.js';
 import { SqliteInvoiceNumberingRepository } from './sqliteInvoiceNumberingRepository.js';
 
 const migrationSql = readFileSync(
   new URL(
     '../../../database/migrations/008_create_invoice_numbering.sql',
+    import.meta.url,
+  ),
+  'utf8',
+);
+const auditMigrationSql = readFileSync(
+  new URL(
+    '../../../database/migrations/036_create_invoice_settings_audit_events.sql',
     import.meta.url,
   ),
   'utf8',
@@ -60,6 +68,7 @@ describe('SqliteInvoiceNumberingRepository', () => {
     database = new Database(':memory:');
     database.pragma('foreign_keys = ON');
     database.exec(migrationSql);
+    database.exec(auditMigrationSql);
   });
 
   afterEach(() => {
@@ -106,11 +115,27 @@ describe('SqliteInvoiceNumberingRepository', () => {
     expect(() => insertSettings.run('dev-company', 'secondary')).not.toThrow();
   });
 
+  it('rolls back numbering settings when the audit event cannot be written', async () => {
+    const repository = new SqliteInvoiceNumberingRepository(database);
+
+    await saveSettings(repository, createSettings());
+    database.exec('DROP TABLE invoice_settings_audit_events');
+
+    await expect(
+      saveSettings(repository, createSettings({ sequencePadding: 6 })),
+    ).rejects.toMatchObject({
+      code: 'invoice_settings_audit_write_failed',
+    });
+    await expect(
+      repository.getSettings('dev-company', 'default'),
+    ).resolves.toMatchObject({ sequencePadding: 4 });
+  });
+
   it('saves and reads company-scoped numbering settings', async () => {
     const repository = new SqliteInvoiceNumberingRepository(database);
     const settings = createSettings();
 
-    await expect(repository.saveSettings(settings)).resolves.toEqual(settings);
+    await expect(saveSettings(repository, settings)).resolves.toEqual(settings);
     await expect(
       repository.getSettings('dev-company', 'default'),
     ).resolves.toEqual(settings);
@@ -120,18 +145,27 @@ describe('SqliteInvoiceNumberingRepository', () => {
     await expect(
       repository.getSettings('dev-company', "default' OR 1=1 --"),
     ).resolves.toBeUndefined();
+    expect(readLatestAuditEvent(database)).toMatchObject({
+      action: 'invoiceNumberingSettings.updated',
+      actor_user_id: 'local-owner',
+      company_id: 'dev-company',
+      outcome: 'success',
+    });
   });
 
   it('stores all supported numbering modes through the settings repository', async () => {
     const repository = new SqliteInvoiceNumberingRepository(database);
 
-    await repository.saveSettings(
+    await saveSettings(
+      repository,
       createSettings({ seriesKey: 'plain', mode: 'plainSequence' }),
     );
-    await repository.saveSettings(
+    await saveSettings(
+      repository,
       createSettings({ seriesKey: 'calendar', mode: 'calendarYearSequence' }),
     );
-    await repository.saveSettings(
+    await saveSettings(
+      repository,
       createSettings({
         seriesKey: 'fiscal',
         mode: 'fiscalYearSequence',
@@ -157,12 +191,14 @@ describe('SqliteInvoiceNumberingRepository', () => {
     const repository = new SqliteInvoiceNumberingRepository(database);
 
     await expect(
-      repository.saveSettings(
+      saveSettings(
+        repository,
         createSettings({ sequencePadding: 13 }),
       ),
     ).rejects.toThrow(InvoiceNumberingError);
     await expect(
-      repository.saveSettings(
+      saveSettings(
+        repository,
         createSettings({ seriesKey: 'default;drop' }),
       ),
     ).rejects.toThrow(InvoiceNumberingError);
@@ -179,9 +215,10 @@ describe('SqliteInvoiceNumberingRepository', () => {
   it('updates numbering settings while preserving their createdAt timestamp', async () => {
     const repository = new SqliteInvoiceNumberingRepository(database);
 
-    await repository.saveSettings(createSettings());
+    await saveSettings(repository, createSettings());
     await expect(
-      repository.saveSettings(
+      saveSettings(
+        repository,
         createSettings({
           sequencePadding: 6,
           createdAt: '2026-06-26T10:00:00.000Z',
@@ -202,7 +239,7 @@ describe('SqliteInvoiceNumberingRepository', () => {
     const settings = createSettings();
     const sequence = createSequence();
 
-    await repository.saveSettings(settings);
+    await saveSettings(repository, settings);
 
     await expect(repository.hasUsedNumbering('dev-company', 'default')).resolves.toBe(
       false,
@@ -231,9 +268,9 @@ describe('SqliteInvoiceNumberingRepository', () => {
   it('allows the same sequence scope for different companies and series', async () => {
     const repository = new SqliteInvoiceNumberingRepository(database);
 
-    await repository.saveSettings(createSettings());
-    await repository.saveSettings(createSettings({ seriesKey: 'secondary' }));
-    await repository.saveSettings(createSettings({ companyId: 'other-company' }));
+    await saveSettings(repository, createSettings());
+    await saveSettings(repository, createSettings({ seriesKey: 'secondary' }));
+    await saveSettings(repository, createSettings({ companyId: 'other-company' }));
 
     await repository.saveSequence(createSequence());
     await repository.saveSequence(
@@ -270,7 +307,7 @@ describe('SqliteInvoiceNumberingRepository', () => {
   it('updates sequence state while preserving its createdAt timestamp', async () => {
     const repository = new SqliteInvoiceNumberingRepository(database);
 
-    await repository.saveSettings(createSettings());
+    await saveSettings(repository, createSettings());
     await repository.saveSequence(createSequence());
 
     await expect(
@@ -293,7 +330,7 @@ describe('SqliteInvoiceNumberingRepository', () => {
   it('rejects invalid sequence state before writing it', async () => {
     const repository = new SqliteInvoiceNumberingRepository(database);
 
-    await repository.saveSettings(createSettings());
+    await saveSettings(repository, createSettings());
 
     await expect(
       repository.saveSequence(
@@ -327,8 +364,8 @@ describe('SqliteInvoiceNumberingRepository', () => {
       fiscalYearStartMonth: 2,
     });
 
-    await repository.saveSettings(fiscalSettings);
-    await repository.saveSettings(calendarSettings);
+    await saveSettings(repository, fiscalSettings);
+    await saveSettings(repository, calendarSettings);
 
     await repository.saveSequence(
       createSequence({
@@ -356,3 +393,40 @@ describe('SqliteInvoiceNumberingRepository', () => {
     ).resolves.toMatchObject({ lastSequenceNumber: 42 });
   });
 });
+
+function saveSettings(
+  repository: SqliteInvoiceNumberingRepository,
+  settings: StoredInvoiceNumberingSettings,
+) {
+  return repository.saveSettings(
+    settings,
+    createAuditEvent('invoiceNumberingSettings.updated', settings.companyId),
+  );
+}
+
+function createAuditEvent(
+  action: InvoiceSettingsAuditEvent['action'],
+  companyId: string,
+): InvoiceSettingsAuditEvent {
+  return {
+    action,
+    actorUserId: 'local-owner',
+    companyId,
+    id: `${action}-${companyId}-${Math.random()}`,
+    occurredAt: '2026-07-22T18:00:00.000Z',
+    outcome: 'success',
+  };
+}
+
+function readLatestAuditEvent(database: DatabaseConnection) {
+  return database
+    .prepare(
+      `
+        SELECT action, actor_user_id, company_id, outcome
+        FROM invoice_settings_audit_events
+        ORDER BY occurred_at DESC, id DESC
+        LIMIT 1
+      `,
+    )
+    .get();
+}

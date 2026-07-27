@@ -36,7 +36,7 @@ function createInvoicePaymentSettingsRoutes(
         actorId: 'local-owner',
         authenticationMode: 'local',
         companyId: 'dev-company',
-        permissions: [],
+        permissions: ['manageInvoiceSettings'],
       }),
     );
     await next();
@@ -196,7 +196,10 @@ describe('invoicePaymentSettingsRoutes', () => {
 
     expect(validResponse.status).toBe(200);
     expect(testContext.getUpdateInput()).toMatchObject({
-      companyId: 'dev-company',
+      actorContext: {
+        actorId: 'local-owner',
+        companyId: 'dev-company',
+      },
       defaultLatePaymentInterestBasisPoints: 950,
       defaultReminderPeriodDays: 8,
     });

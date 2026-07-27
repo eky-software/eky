@@ -1,4 +1,7 @@
 export type InvoiceActivityAction =
+  | 'invoiceNumberingSettings.updated'
+  | 'invoicePaymentSettings.updated'
+  | 'invoiceVatRates.updated'
   | 'invoice.approved'
   | 'invoice.cancelled'
   | 'invoice.credit_approved'
@@ -16,7 +19,7 @@ export type InvoiceActivityOutcome = 'failure' | 'success' | 'unknown';
 export interface InvoiceActivityEntry {
   action: InvoiceActivityAction;
   id: string;
-  invoiceNumber: string;
+  invoiceNumber: string | null;
   occurredAt: string;
   outcome: InvoiceActivityOutcome;
 }

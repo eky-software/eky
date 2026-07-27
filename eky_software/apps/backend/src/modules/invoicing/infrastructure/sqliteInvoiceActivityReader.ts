@@ -12,7 +12,7 @@ import type {
 interface InvoiceActivityRow {
   action: InvoiceActivityAction;
   id: string;
-  invoice_number: string;
+  invoice_number: string | null;
   occurred_at: string;
   outcome: InvoiceActivityOutcome;
 }
@@ -26,6 +26,7 @@ export class SqliteInvoiceActivityReader implements InvoiceActivityReader {
     return this.database
       .prepare<
         [
+          string,
           string,
           string,
           string,
@@ -89,6 +90,17 @@ export class SqliteInvoiceActivityReader implements InvoiceActivityReader {
                 'outcomeUnknown'
               )
               AND delivery.provider <> 'dryRun'
+
+            UNION ALL
+
+            SELECT
+              id,
+              action,
+              NULL AS invoice_number,
+              occurred_at,
+              'success' AS outcome
+            FROM invoice_settings_audit_events
+            WHERE company_id = ?
           )
           WHERE
             occurred_at >= ?
@@ -103,6 +115,7 @@ export class SqliteInvoiceActivityReader implements InvoiceActivityReader {
         `,
       )
       .all(
+        criteria.companyId,
         criteria.companyId,
         criteria.companyId,
         criteria.occurredAtFrom,

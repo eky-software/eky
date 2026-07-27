@@ -8,6 +8,7 @@ import {
   type InvoiceVatRateSetting,
   type StoredInvoiceVatRate,
 } from '../domain/invoiceVatRates.js';
+import { createInvoiceSettingsAuditEvent } from '../domain/invoiceSettingsAuditEvent.js';
 import { requireIdentifier } from '../domain/invoiceDraftRules.js';
 import type { InvoiceVatRateRepository } from '../ports/invoiceVatRateRepository.js';
 
@@ -41,6 +42,12 @@ export async function updateInvoiceVatRates(
   const savedRates = await invoiceVatRateRepository.replaceRates(
     companyId,
     storedRates,
+    createInvoiceSettingsAuditEvent({
+      action: 'invoiceVatRates.updated',
+      actorUserId: input.actorContext.actorId,
+      companyId,
+      occurredAt: now,
+    }),
   );
 
   validateInvoiceVatRates(savedRates);

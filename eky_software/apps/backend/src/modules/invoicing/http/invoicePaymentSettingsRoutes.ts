@@ -1,3 +1,4 @@
+import { AuthorizationError } from '@eky/permissions';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 
@@ -78,13 +79,13 @@ export function createInvoicePaymentSettingsRoutes(
       }
 
       try {
-        const input = parseUpdateInvoicePaymentSettingsRequest(
-          body,
-          actorContext.companyId,
-          new Date().toISOString(),
-        );
+        const request = parseUpdateInvoicePaymentSettingsRequest(body);
         const invoicePaymentSettings =
-          await dependencies.updateInvoicePaymentSettings(input);
+          await dependencies.updateInvoicePaymentSettings({
+            ...request,
+            actorContext,
+            now: new Date().toISOString(),
+          });
 
         return context.json({ invoicePaymentSettings });
       } catch (error) {
@@ -94,6 +95,9 @@ export function createInvoicePaymentSettingsRoutes(
           error instanceof InvoicePaymentSettingsError
         ) {
           return context.json({ error: error.message }, 400);
+        }
+        if (error instanceof AuthorizationError) {
+          return context.json({ error: 'Forbidden.' }, 403);
         }
 
         throw error;
