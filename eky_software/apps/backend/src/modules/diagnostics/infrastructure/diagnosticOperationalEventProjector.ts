@@ -4,6 +4,7 @@ import type {
   DiagnosticEventItem,
   DiagnosticEventLevel,
   DiagnosticEventOutcome,
+  DiagnosticEventSideEffectState,
 } from '../domain/diagnosticEventItem.js';
 
 interface DesktopDiagnosticSpec {
@@ -178,6 +179,7 @@ function projectBackendEvent(
   event: BackendOperationalEvent,
 ): DiagnosticEventItem {
   return {
+    ...projectSafeTechnicalContext(event),
     category: event.category,
     component: 'backend',
     errorCode: readErrorCode(event),
@@ -193,6 +195,7 @@ function projectDesktopEvent(
   event: Record<string, unknown>,
 ): DiagnosticEventItem {
   return {
+    ...projectSafeTechnicalContext(event),
     category: event.category as string,
     component: 'desktop',
     errorCode: readErrorCode(event),
@@ -201,6 +204,42 @@ function projectDesktopEvent(
     level: event.level as DiagnosticEventLevel,
     occurredAt: event.timestamp as string,
     outcome: event.outcome as DiagnosticEventOutcome,
+  };
+}
+
+function projectSafeTechnicalContext(
+  event: Record<string, unknown>,
+): Partial<DiagnosticEventItem> {
+  return {
+    ...(isSafeVersion(event.appVersion)
+      ? { appVersion: event.appVersion }
+      : {}),
+    ...(typeof event.buildRevision === 'string' &&
+    buildRevisionPattern.test(event.buildRevision)
+      ? { buildRevision: event.buildRevision }
+      : {}),
+    ...(isUuid(event.correlationId)
+      ? { correlationId: event.correlationId }
+      : {}),
+    ...(isNonNegativeInteger(event.durationMs)
+      ? { durationMs: event.durationMs }
+      : {}),
+    ...(isSafeIdentifier(event.fingerprint, 300)
+      ? { fingerprint: event.fingerprint }
+      : {}),
+    ...(isSafeIdentifier(event.operationId, 300)
+      ? { operationId: event.operationId }
+      : {}),
+    ...(typeof event.retryable === 'boolean'
+      ? { retryable: event.retryable }
+      : {}),
+    ...(isUuid(event.runtimeInstanceId)
+      ? { runtimeInstanceId: event.runtimeInstanceId }
+      : {}),
+    ...(isSideEffectState(event.sideEffectState)
+      ? { sideEffectState: event.sideEffectState }
+      : {}),
+    ...(isSafeIdentifier(event.stage, 300) ? { stage: event.stage } : {}),
   };
 }
 
@@ -309,7 +348,10 @@ function readErrorCode(value: unknown): string | null {
     : null;
 }
 
-function isSafeIdentifier(value: unknown, maximumLength: number): boolean {
+function isSafeIdentifier(
+  value: unknown,
+  maximumLength: number,
+): value is string {
   return (
     typeof value === 'string' &&
     value.length > 0 &&
@@ -318,13 +360,34 @@ function isSafeIdentifier(value: unknown, maximumLength: number): boolean {
   );
 }
 
-function isSafeVersion(value: unknown): boolean {
+function isSafeVersion(value: unknown): value is string {
   return (
     typeof value === 'string' &&
     value.length > 0 &&
     value.length <= 80 &&
     /^[A-Za-z0-9.+_-]+$/.test(value)
   );
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isSafeInteger(value) &&
+    value >= 0
+  );
+}
+
+function isSideEffectState(
+  value: unknown,
+): value is DiagnosticEventSideEffectState {
+  return (
+    typeof value === 'string' &&
+    ['committed', 'none', 'rolledBack', 'unknown'].includes(value)
+  );
+}
+
+function isUuid(value: unknown): value is string {
+  return typeof value === 'string' && uuidPattern.test(value);
 }
 
 function isTimestamp(value: unknown): boolean {

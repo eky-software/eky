@@ -74,16 +74,31 @@ export type DiagnosticEventOutcome =
   | 'failure'
   | 'success'
   | 'unknown';
+export type DiagnosticEventSideEffectState =
+  | 'committed'
+  | 'none'
+  | 'rolledBack'
+  | 'unknown';
 
 export interface DiagnosticEventItem {
+  appVersion?: string;
+  buildRevision?: string;
   category: string;
   component: DiagnosticEventComponent;
+  correlationId?: string;
+  durationMs?: number;
   errorCode: string | null;
   eventName: DiagnosticEventName;
+  fingerprint?: string;
   id: string;
   level: DiagnosticEventLevel;
   occurredAt: string;
+  operationId?: string;
   outcome: DiagnosticEventOutcome;
+  retryable?: boolean;
+  runtimeInstanceId?: string;
+  sideEffectState?: DiagnosticEventSideEffectState;
+  stage?: string;
 }
 
 export interface DiagnosticEventListQuery {

@@ -6,6 +6,7 @@ import {
   type DiagnosticEventLevel,
   type DiagnosticEventName,
   type DiagnosticEventOutcome,
+  type DiagnosticEventSideEffectState,
   type RuntimeDiagnosticSummary,
 } from './diagnosticsTypes.js';
 
@@ -18,6 +19,14 @@ const outcomes = new Set<DiagnosticEventOutcome>([
   'success',
   'unknown',
 ]);
+const sideEffectStates = new Set<DiagnosticEventSideEffectState>([
+  'committed',
+  'none',
+  'rolledBack',
+  'unknown',
+]);
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function readDiagnosticsResponse(value: unknown): DiagnosticEventItem[] {
   if (
@@ -95,37 +104,130 @@ function readDiagnosticEvent(value: unknown): DiagnosticEventItem {
   if (
     !isRecord(value) ||
     !hasOnlyKeys(value, [
+      'appVersion',
+      'buildRevision',
       'category',
       'component',
+      'correlationId',
+      'durationMs',
       'errorCode',
       'eventName',
+      'fingerprint',
       'id',
       'level',
       'occurredAt',
+      'operationId',
       'outcome',
+      'retryable',
+      'runtimeInstanceId',
+      'sideEffectState',
+      'stage',
     ]) ||
+    !isOptionalVersion(value.appVersion) ||
+    !isOptionalBuildRevision(value.buildRevision) ||
     !isSafeIdentifier(value.category, 100) ||
     !isMember(value.component, components) ||
+    !isOptionalUuid(value.correlationId) ||
+    !isOptionalNonNegativeInteger(value.durationMs) ||
     !isMember(value.eventName, eventNames) ||
+    !isOptionalSafeIdentifier(value.fingerprint, 300) ||
     !isSafeIdentifier(value.id, 240) ||
     !isMember(value.level, levels) ||
     !isTimestamp(value.occurredAt) ||
+    !isOptionalSafeIdentifier(value.operationId, 300) ||
     !isMember(value.outcome, outcomes) ||
+    !isOptionalBoolean(value.retryable) ||
+    !isOptionalUuid(value.runtimeInstanceId) ||
+    !isOptionalMember(value.sideEffectState, sideEffectStates) ||
+    !isOptionalSafeIdentifier(value.stage, 300) ||
     !isNullableSafeIdentifier(value.errorCode, 120)
   ) {
     throw invalidResponse(value);
   }
 
   return {
+    ...(value.appVersion === undefined
+      ? {}
+      : { appVersion: value.appVersion }),
+    ...(value.buildRevision === undefined
+      ? {}
+      : { buildRevision: value.buildRevision }),
     category: value.category,
     component: value.component,
+    ...(value.correlationId === undefined
+      ? {}
+      : { correlationId: value.correlationId }),
+    ...(value.durationMs === undefined
+      ? {}
+      : { durationMs: value.durationMs }),
     errorCode: value.errorCode,
     eventName: value.eventName,
+    ...(value.fingerprint === undefined
+      ? {}
+      : { fingerprint: value.fingerprint }),
     id: value.id,
     level: value.level,
     occurredAt: value.occurredAt,
+    ...(value.operationId === undefined
+      ? {}
+      : { operationId: value.operationId }),
     outcome: value.outcome,
+    ...(value.retryable === undefined
+      ? {}
+      : { retryable: value.retryable }),
+    ...(value.runtimeInstanceId === undefined
+      ? {}
+      : { runtimeInstanceId: value.runtimeInstanceId }),
+    ...(value.sideEffectState === undefined
+      ? {}
+      : { sideEffectState: value.sideEffectState }),
+    ...(value.stage === undefined ? {} : { stage: value.stage }),
   };
+}
+
+function isOptionalBoolean(value: unknown): value is boolean | undefined {
+  return value === undefined || typeof value === 'boolean';
+}
+
+function isOptionalBuildRevision(
+  value: unknown,
+): value is string | undefined {
+  return (
+    value === undefined ||
+    (typeof value === 'string' &&
+      /^(?:[0-9a-f]{7,40}|development)$/.test(value))
+  );
+}
+
+function isOptionalMember<Value extends string>(
+  value: unknown,
+  values: ReadonlySet<Value>,
+): value is Value | undefined {
+  return value === undefined || isMember(value, values);
+}
+
+function isOptionalNonNegativeInteger(
+  value: unknown,
+): value is number | undefined {
+  return value === undefined || isNonNegativeInteger(value);
+}
+
+function isOptionalSafeIdentifier(
+  value: unknown,
+  maximumLength: number,
+): value is string | undefined {
+  return value === undefined || isSafeIdentifier(value, maximumLength);
+}
+
+function isOptionalUuid(value: unknown): value is string | undefined {
+  return (
+    value === undefined ||
+    (typeof value === 'string' && uuidPattern.test(value))
+  );
+}
+
+function isOptionalVersion(value: unknown): value is string | undefined {
+  return value === undefined || isVersion(value);
 }
 
 function isMember<Value extends string>(

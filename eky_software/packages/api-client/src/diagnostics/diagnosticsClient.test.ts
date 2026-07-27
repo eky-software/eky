@@ -45,14 +45,24 @@ describe('diagnostics API client', () => {
         return jsonResponse({
           diagnosticEvents: [
             {
+              appVersion: '0.1.0-alpha.1',
+              buildRevision: 'abcdef123456',
               category: 'smtp',
               component: 'backend',
+              correlationId: '11111111-1111-4111-8111-111111111111',
+              durationMs: 120,
               errorCode: 'SMTP_TLS_FAILED',
               eventName: 'smtp.tlsFailed',
+              fingerprint: 'smtp.tlsFailed:SMTP_TLS_FAILED',
               id: 'backend:event-1',
               level: 'error',
               occurredAt: '2026-07-27T12:00:00.000Z',
+              operationId: 'send-attempt-1',
               outcome: 'failure',
+              retryable: true,
+              runtimeInstanceId: '22222222-2222-4222-8222-222222222222',
+              sideEffectState: 'none',
+              stage: 'tlsHandshake',
             },
           ],
         });
@@ -61,7 +71,14 @@ describe('diagnostics API client', () => {
 
     await expect(
       client.listDiagnosticEvents({ limit: 20 }),
-    ).resolves.toHaveLength(1);
+    ).resolves.toEqual([
+      expect.objectContaining({
+        correlationId: '11111111-1111-4111-8111-111111111111',
+        durationMs: 120,
+        retryable: true,
+        stage: 'tlsHandshake',
+      }),
+    ]);
     expect(requests).toEqual([
       'http://127.0.0.1:3000/diagnostics/events?limit=20',
     ]);
@@ -136,6 +153,39 @@ describe('diagnostics API client', () => {
               occurredAt: '2026-07-27T12:00:00.000Z',
               outcome: 'failure',
               rawMetadata: { email: 'must-not-be-exposed@example.test' },
+            },
+          ],
+        }),
+    });
+
+    await expect(client.listDiagnosticEvents()).rejects.toBeInstanceOf(
+      EkyApiError,
+    );
+  });
+
+  it.each([
+    ['correlationId', 'not-a-uuid'],
+    ['runtimeInstanceId', 'not-a-uuid'],
+    ['durationMs', -1],
+    ['retryable', 'true'],
+    ['sideEffectState', 'partlyCommitted'],
+    ['fingerprint', 'contains a space'],
+  ])('rejects invalid optional diagnostic field %s', async (field, value) => {
+    const client = createEkyApiClient({
+      baseUrl: '',
+      fetch: async () =>
+        jsonResponse({
+          diagnosticEvents: [
+            {
+              category: 'smtp',
+              component: 'backend',
+              errorCode: 'SMTP_TLS_FAILED',
+              eventName: 'smtp.tlsFailed',
+              id: 'backend:event-1',
+              level: 'error',
+              occurredAt: '2026-07-27T12:00:00.000Z',
+              outcome: 'failure',
+              [field]: value,
             },
           ],
         }),

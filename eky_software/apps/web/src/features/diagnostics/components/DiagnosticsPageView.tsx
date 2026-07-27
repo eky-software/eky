@@ -12,6 +12,7 @@ import type {
 } from '../../../app/desktopBridge.js';
 import styles from './DiagnosticsPageView.module.css';
 import { uiText } from '../../../i18n/fi.js';
+import { DiagnosticEventDetail } from './DiagnosticEventDetail.js';
 import { RuntimeDiagnosticSummaryView } from './RuntimeDiagnosticSummaryView.js';
 
 interface DiagnosticsPageViewProps {
@@ -145,6 +146,7 @@ export function DiagnosticsPageView({
                 <th>{uiText.diagnostics.event}</th>
                 <th>{uiText.diagnostics.status}</th>
                 <th>{uiText.diagnostics.errorCode}</th>
+                <th>{uiText.diagnostics.details}</th>
               </tr>
             </thead>
             <tbody>
@@ -168,6 +170,9 @@ export function DiagnosticsPageView({
                   </td>
                   <td>
                     {event.errorCode ?? uiText.diagnostics.noErrorCode}
+                  </td>
+                  <td>
+                    <DiagnosticEventDetail event={event} />
                   </td>
                 </tr>
               ))}

@@ -27,6 +27,7 @@ describe('DiagnosticsPageView', () => {
 
     expect(html).toContain('smtp.tlsFailed');
     expect(html).toContain('SMTP_TLS_FAILED');
+    expect(html).toContain('Näytä tiedot');
     expect(html).not.toContain('rawMetadata');
     expect(html).not.toContain('companyId');
     expect(html).not.toContain('stack');
