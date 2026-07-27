@@ -56,6 +56,8 @@ export function App({ apiClient }: AppProps): React.JSX.Element {
           isEmailSecretManagementAvailable={
             openInvoicePdfPreview !== undefined
           }
+          onOpenActivity={() => activateView('activity')}
+          onOpenDiagnostics={() => activateView('diagnostics')}
         />
       ) : null}
       {activeView === 'invoicing' ? (

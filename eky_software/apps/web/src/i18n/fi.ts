@@ -73,8 +73,11 @@ export const uiText = {
       'invoice.deliveryOutcomeUnknown':
         'Laskun toimitustulos jäi epäselväksi',
       'invoice.deliveryPending': 'Laskun toimitus odottaa selvitystä',
+      'invoiceNumberingSettings.updated': 'Laskunumerointia päivitetty',
+      'invoicePaymentSettings.updated': 'Laskutuksen maksuehtoja päivitetty',
       'invoice.reapproved': 'Lasku hyväksytty uudelleen',
       'invoice.reopenedForEdit': 'Lasku palautettu muokattavaksi',
+      'invoiceVatRates.updated': 'Laskutuksen ALV-kantoja päivitetty',
     },
   },
   diagnostics: {
@@ -426,6 +429,10 @@ export const uiText = {
     placeholderStreetAddress: 'Katuosoite 1',
     placeholderVatNumber: 'FI12345678',
     postalCode: 'Postinumero',
+    operationsDescription:
+      'Tarkastele yrityksen tapahtumahistoriaa tai teknisiä tietoja silloin, kun niitä tarvitaan.',
+    operationsKicker: 'Ylläpito',
+    operationsTitle: 'Tuki ja historia',
     save: 'Tallenna',
     saveSuccess: 'Oman yrityksen tiedot tallennettu.',
     saving: 'Tallennetaan',
