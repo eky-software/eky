@@ -13,7 +13,10 @@ liiketoimintadataa eikä desktopin käyttöjärjestelmäcapabilityja.
 
 ## Turvallinen projektio
 
-Julkinen projektio sisältää vain:
+Runtime-yhteenveto sisältää validoidun sovellusversion, build revisionin,
+build-ajan ja dirty-tilan sekä käynnistyskohtaisen runtime instance ID:n.
+
+Julkinen tapahtumaprojektio sisältää vain:
 
 - UTC-aikaleiman
 - tunnetun tapahtumanimen
@@ -24,8 +27,13 @@ Julkinen projektio sisältää vain:
 - projektion sisäisen tapahtumatunnisteen
 
 Projektio ei sisällä raakaa JSONL-riviä, payload-metadataa, stack tracea,
-paikallista polkua, actor-, company-, entity- tai correlation-tunnistetta,
+paikallista polkua, actor-, company- tai entity-tunnistetta,
 liiketoimintasisältöä, yhteystietoja, pankkitietoja eikä salaisuuksia.
+
+Paikallinen, permission-suojattu tapahtumanäkymä saa näyttää vain erikseen
+mallinnetut tekniset `correlationId`-, `operationId`- ja
+`runtimeInstanceId`-tunnisteet. Ne eivät ole käyttäjä-, yritys- tai
+autentikointitietoja eikä niitä viedä pitkäaikaiseen incident-indeksiin.
 
 Backend lukee vain compositionissa annetusta absoluuttisesta Eky logs-rootista.
 HTTP-pyyntö ei voi antaa polkua, tiedostonimeä tai globia. Tuntemattomat

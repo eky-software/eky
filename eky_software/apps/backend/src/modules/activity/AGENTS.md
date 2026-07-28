@@ -25,14 +25,20 @@ diagnostics, customer data, company settings or invoices.
 
 - Read data only through narrow module-owned reader ports.
 - Do not import another module's infrastructure, repository or HTTP code.
-- Do not expose raw audit metadata, changed-field categories, actor ids,
-  customer names, contact data, invoice contents or technical logs.
+- Expose changed-field information only as the documented, module-owned safe
+  category allowlists. Never expose field names, old/new values or raw audit
+  metadata.
+- Do not expose actor ids, customer names, contact data, invoice contents or
+  technical logs.
 - Take `companyId` only from the backend-verified `ActorContext`.
 - Require the dedicated Activity permission in the application service.
 - Keep the HTTP route thin and validate every query parameter.
+- Interpret the selected month as a `Europe/Helsinki` calendar month, convert
+  its local midnight boundaries to UTC, and keep stored timestamps in UTC.
 
 ## Tests
 
-Test permission denial, company isolation, UTC month boundaries, category and
-outcome filters, stable pagination, unknown query parameters and the absence
-of disallowed fields from the public projection.
+Test permission denial, company isolation, Helsinki month boundaries including
+DST transitions, safe category allowlists, outcome filters, stable pagination,
+unknown query parameters and the absence of disallowed fields from the public
+projection.

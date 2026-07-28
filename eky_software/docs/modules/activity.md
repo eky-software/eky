@@ -24,17 +24,30 @@ Ensimmäinen projektio sisältää vain:
 - valinnaisen asiakasnumeron tai laskunumeron
 - turvallisen lopputuloksen: onnistui, epäonnistui, epäselvä tai estetty
 - projektion sisäisen tapahtumatunnisteen
+- Customers- ja Company Settings -päivityksissä valinnaiset, moduulin
+  allowlistasta luetut turvalliset muutoskategoriat
 
 Projektio ei sisällä nimiä, osoitteita, sähköposteja, puhelinnumeroita,
-pankkitietoja, laskurivejä, kenttäarvoja, changed-field-kategorioita, actor-id:tä,
-raw audit metadataa, teknisiä lokeja, virhepinoja tai salaisuuksia.
+pankkitietoja, laskurivejä, kenttänimiä tai -arvoja, actor-id:tä, raw audit
+metadataa, teknisiä lokeja, virhepinoja tai salaisuuksia.
+
+Customersin sallitut kategoriat ovat `identity`, `contact`, `billing`,
+`pricing` ja `status`. Company Settingsin sallitut kategoriat ovat `identity`,
+`address`, `contact`, `banking`, `invoicingDefaults` ja
+`emailConfiguration`. UI näyttää enintään kolme ryhmää ja käyttää sitä
+laajemmalle muutokselle yleistä tekstiä. Tuntematon, kahdentunut tai väärän
+moduulin kategoria torjutaan.
 
 Kaikki haut rajataan backendin vahvistaman `ActorContext.companyId`-arvon
 perusteella ja käyttötapaus vaatii erillisen `viewActivity`-oikeuden.
 
 ## Kuukausihistoria
 
-Tapahtumat luetaan UTC-kalenterikuukausittain. Julkinen read model tukee
+Tapahtuma-aikaleimat säilyvät UTC:ssa, mutta käyttäjän valitsema kuukausi on
+`Europe/Helsinki`-aikavyöhykkeen kalenterikuukausi. Kuukauden paikalliset
+00.00-rajat muunnetaan backendissä UTC-hakuväliksi. Web käyttää samaa
+aikavyöhykettä oletuskuukauden valintaan eikä kummankaan prosessin järjestelmän
+paikallinen aikavyöhyke määrää tulosta. Julkinen read model tukee
 moduulikategoriaa, turvallista lopputulossuodatusta sekä sivunumeroon ja
 rajattuun sivukokoon perustuvaa selaamista.
 

@@ -4,6 +4,10 @@ Tämä on Eky R0:n vakaa lähtöluettelo. Toteutuksen pitää käyttää täsmä
 tyypitettyjä event-nimiä. Uusi nimi lisätään katalogiin ja testeihin ennen
 instrumentointia.
 
+Operational-eventien yhteinen build-konteksti on validoitu `appVersion`,
+`buildRevision` ja käynnistyskohtainen `runtimeInstanceId`. Tunnisteet eivät
+ole käyttöoikeus- tai autentikointitietoja.
+
 ## Backend operational
 
 ### Runtime ja database
@@ -152,8 +156,16 @@ Sallitut changed field categories:
 
 Audit ei tallenna kenttäarvoja.
 
+Activity saa näyttää Customers- ja Company Settings -päivityksistä korkeintaan
+kolme allowlistattua muutoskategoriaa. Laajempi muutos näytetään yleisenä
+usean tietoryhmän päivityksenä. Tuntematon, väärän moduulin tai kahdentunut
+kategoria hylätään API-rajalla. Invoicing-asetusten vakaa action kertoo
+muutoksen ryhmän eikä erillistä vapaata metadataa tarvita.
+
 ## Incident-indexiin oikeuttavat tapahtumat
 
 Vain failure-, blocked- tai turvallisuusmerkityksinen event voidaan tiivistää
 10 vuoden indeksiin. Indeksi ei sisällä actor-, company- tai entity-tunnisteita.
-Onnistuneita business-muutoksia ei indeksoida.
+Onnistuneita business-muutoksia ei indeksoida. Indeksiin ei myöskään viedä
+runtime-, correlation- tai operation-tunnisteita eikä teknisen tapahtuman
+vapaamuotoista sisältöä.

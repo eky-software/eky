@@ -33,8 +33,13 @@ polkuja. Se sisältää vain:
 - errorCode
 - component
 - appVersion
+- buildRevision
 - outcome
 - turvallinen fingerprint
+
+Incident-indeksiin ei kirjoiteta `runtimeInstanceId`-, `correlationId`- tai
+`operationId`-tunnisteita. Ne ovat vain lyhyemmän retentionin paikallista
+vianrajausta varten.
 
 ## Business-auditin automaattinen retention
 
@@ -78,6 +83,10 @@ userData/runtime/logs/
   security/
   incident-index/
 ```
+
+Paketoidussa Windows-sovelluksessa tämä tarkoittaa oletuksena polkua
+`%APPDATA%\Eky\runtime\logs`. Polku on runtime-infrastruktuurin omistama eikä
+sitä hyväksytä rendereriltä tai HTTP-pyynnöstä.
 
 Kuukausitiedostot:
 

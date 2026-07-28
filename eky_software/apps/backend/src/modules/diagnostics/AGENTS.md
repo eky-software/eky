@@ -29,6 +29,9 @@ writing.
   explicitly modelled technical identifiers `correlationId`, `operationId`
   and `runtimeInstanceId`. These identifiers do not belong in the long-term
   incident index.
+- Build version, revision and runtime instance ID are diagnostic context only.
+  Never treat them as authentication, authorization, tenant or integrity
+  proof.
 - Never expose `companyId`, `actorUserId`, `entityId` or an untyped metadata
   object through diagnostics.
 - Require the dedicated diagnostics permission in the application service.
