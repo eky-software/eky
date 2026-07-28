@@ -119,6 +119,24 @@ Kuljetuskerros ei käytä Nodemaileria tai muuta uutta kolmannen osapuolen
 riippuvuutta. Sen rajat ja protokollakäytös testataan synteettisillä arvoilla;
 automaattiset testit eivät muodosta yhteyttä DNA:n palvelimeen.
 
+SMTP:n turvallisuusportti ja diagnostiikka ovat erillisiä vastuita.
+Implicit TLS portissa `465`, `rejectUnauthorized`, sertifikaatin ja hostnamen
+validointi sekä vähintään TLS `1.2` ovat ehdottomia. TLS `1.3` sallitaan.
+Cipherin nimi, sertifikaatin SHA-256-sormenjälki, etä-IP ja IP-perhe ovat
+vain best-effort-diagnostiikkametadataa. Jos TLS-yhteys täyttää turvallisuus-
+portin mutta metadataa ei voida muodostaa turvalliseksi allowlistatuksi
+yhteenvedoksi, SMTP-istunto saa jatkua ilman
+`smtp.connectionSecured`-eventtiä.
+
+Kuljetusvirheet kirjoitetaan tyypitettyinä `smtp.connectionFailed`,
+`smtp.tlsFailed`, `smtp.authenticationFailed`, `smtp.deliveryFailed` tai
+`smtp.deliveryOutcomeUnknown` -eventteinä. Eventin kirjoittaminen on best
+effort eikä saa peittää tai muuttaa providerin varsinaista lopputulosta.
+Detailed-loki ei saa sisältää SMTP-käyttäjänimeä, lähettäjän tai
+vastaanottajan osoitetta, Cc:tä, otsikkoa, viestirunkoa, MIMEä, PDF-dataa tai
+salaisuutta. Etä-IP ja portti eivät siirry Diagnostics-projektioon,
+tukipakettiin tai incident-indeksiin.
+
 Kuljetuksen rajat, kuten viestin, PDF:n, SMTP-vastauksen ja aikakatkaisujen
 enimmäisarvot, pidetään sähköposti-infrastruktuurin omissa tarkasti nimetyissä
 konfiguraatiotiedostoissa. DNA:n kiinteä provider-profiili kuuluu
@@ -758,6 +776,11 @@ riippuvuusarviota ja projektin omistajan nimenomaista hyväksyntää.
    testipolku. Epäonnistunut tai lopputulokseltaan epäselvä lähetys ei muuta
    laskun tilaa. Oikean asiakasdatan tuotantokäyttö odottaa erillistä release
    security gatea.
+
+R0:n SMTP-failure-instrumentointi, turvallisuusportin ja diagnostiikkametadatan
+erotus sekä Diagnostics- ja tukipakettiprojektiot on toteutettu. Tämä
+tekninen toteutus ja dokumentaatio eivät yksin muodosta oikeudellista
+compliance-sertifiointia.
 
 Ensimmäinen oikea SMTP-lähetys saa olla synkroninen. UI näyttää lähetyksen
 olevan käynnissä ja estää saman toiminnon uudelleen pyynnön aikana. Backend

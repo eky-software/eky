@@ -13,7 +13,7 @@ kirjanpitoaineistoa.
 | `operationalWarningError` | warn/error-eventit | 24 kuukautta |
 | `securityDetailed` | rajatut security-eventit | 24 kuukautta |
 | `debugTemporary` | erikseen aktivoitu kehitysdiagnostiikka | 30 päivää |
-| `longTermIncidentIndex` | anonyymi/minimaalinen incident-indeksi | 10 vuotta |
+| `longTermIncidentIndex` | minimoitu incident-indeksi ilman suoria tunnisteita | 10 vuotta |
 | `temporarySupportBundle` | runtimen väliaikainen tukipaketti | 30 päivää |
 
 Käyttäjän itse ulkoiseen kohteeseen tallentamaa tukipakettikopiota Eky ei
@@ -48,9 +48,10 @@ Incident-indeksiin ei kirjoiteta `runtimeInstanceId`-, `correlationId`- tai
 `operationId`-tunnisteita. Ne ovat vain lyhyemmän retentionin paikallista
 vianrajausta varten.
 
-SMTP:n transport-diagnostiikan etä-IP kuuluu vain paikalliseen
-`operationalInfo`-virtaan ja poistuu sen 12 kuukauden retentionilla. Etä-IP:tä
-ei kirjoiteta 10 vuoden incident-indeksiin eikä tukipakettiin.
+SMTP:n transport-diagnostiikan etä-IP kuuluu vain paikalliseen detailed-
+virtaan. Onnistuneessa info-eventissä se poistuu 12 kuukauden ja
+warning/error-eventissä 24 kuukauden retentionilla. Etä-IP:tä ei kirjoiteta
+10 vuoden incident-indeksiin, Diagnostics-projektioon eikä tukipakettiin.
 
 ## Business-auditin automaattinen retention
 

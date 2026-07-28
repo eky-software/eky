@@ -32,6 +32,14 @@ describe('createDnaSmtpOperationalDiagnostics', () => {
 
     diagnostics.recordConnectionSecured(transportDiagnostic);
     diagnostics.recordDeliveryCompleted(transportDiagnostic);
+    diagnostics.recordFailure({
+      durationMs: 31,
+      errorCode: 'SMTP_AUTHENTICATION_FAILED',
+      operationId: 'attempt-1',
+      outcome: 'failed',
+      phase: 'authentication',
+      transportSecurity: transportDiagnostic,
+    });
 
     expect(write).toHaveBeenNthCalledWith(
       1,
@@ -50,6 +58,22 @@ describe('createDnaSmtpOperationalDiagnostics', () => {
         level: 'info',
         stage: 'delivery',
       }),
+    );
+    expect(write).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        ...transportDiagnostic,
+        durationMs: 31,
+        errorCode: 'SMTP_AUTHENTICATION_FAILED',
+        eventName: 'smtp.authenticationFailed',
+        level: 'error',
+        retryable: false,
+        sideEffectState: 'none',
+        stage: 'authentication',
+      }),
+    );
+    expect(JSON.stringify(write.mock.calls)).not.toMatch(
+      /@|password|message|mime|pdf/i,
     );
   });
 
@@ -71,5 +95,73 @@ describe('createDnaSmtpOperationalDiagnostics', () => {
     expect(() =>
       diagnostics.recordConnectionSecured(transportDiagnostic),
     ).not.toThrow();
+    expect(() =>
+      diagnostics.recordFailure({
+        durationMs: 31,
+        errorCode: 'SMTP_TIMEOUT',
+        operationId: 'attempt-1',
+        outcome: 'failed',
+        phase: 'connect',
+      }),
+    ).not.toThrow();
+  });
+
+  it('can emit every public SMTP failure event through the operational logger', () => {
+    const write = vi.fn();
+    const diagnostics = createDnaSmtpOperationalDiagnostics({
+      operationalIdentity: {
+        appVersion: '0.1.0-alpha.1',
+        buildRevision: 'abcdef123456',
+        runtimeInstanceId:
+          '11111111-1111-4111-8111-111111111111',
+      },
+      operationalLogger: { write },
+    });
+    const failures = [
+      {
+        errorCode: 'SMTP_AUTHENTICATION_FAILED' as const,
+        outcome: 'failed' as const,
+        phase: 'authentication',
+      },
+      {
+        errorCode: 'SMTP_CONNECTION_FAILED' as const,
+        outcome: 'failed' as const,
+        phase: 'connect',
+      },
+      {
+        errorCode: 'SMTP_DATA_REJECTED' as const,
+        outcome: 'failed' as const,
+        phase: 'data',
+      },
+      {
+        errorCode: 'SMTP_OUTCOME_UNKNOWN' as const,
+        outcome: 'outcomeUnknown' as const,
+        phase: 'finalAcceptance',
+      },
+      {
+        errorCode: 'SMTP_TLS_FAILED' as const,
+        outcome: 'failed' as const,
+        phase: 'tlsHandshake',
+      },
+    ];
+
+    for (const failure of failures) {
+      diagnostics.recordFailure({
+        ...failure,
+        durationMs: 31,
+        operationId: 'attempt-1',
+        transportSecurity: transportDiagnostic,
+      });
+    }
+
+    expect(
+      write.mock.calls.map(([event]) => event.eventName),
+    ).toEqual([
+      'smtp.authenticationFailed',
+      'smtp.connectionFailed',
+      'smtp.deliveryFailed',
+      'smtp.deliveryOutcomeUnknown',
+      'smtp.tlsFailed',
+    ]);
   });
 });

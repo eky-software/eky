@@ -131,6 +131,37 @@ tukipakettiin tai incident-indeksiin. SMTP-käyttäjänimeä, lähettäjää,
 vastaanottajaa, otsikkoa, runkoa, salasanaa, MIMEä, PDF-tietoa tai
 sertifikaatin raakadataa ei tallenneta.
 
+SMTP:n transport-virheet instrumentoidaan seuraavasti:
+
+| Kuljetusvirhe | Operational-event |
+| --- | --- |
+| TLS-virhe | `smtp.tlsFailed` |
+| autentikoinnin hylkäys tai puuttuva tuettu mekanismi | `smtp.authenticationFailed` |
+| yhteyden muodostusvirhe, connect-vaiheen sulkeutuminen tai aikakatkaisu | `smtp.connectionFailed` |
+| epäselvä lopullinen toimitustulos | `smtp.deliveryOutcomeUnknown` |
+| muut greeting-, envelope-, DATA-, protokolla-, sulkeutumis- ja aikakatkaisuvirheet | `smtp.deliveryFailed` |
+
+Transport-eventti täydentää yleistä
+`invoiceDelivery.providerFailed`/`invoiceDelivery.outcomeUnknown`-eventtiä,
+mutta ei korvaa toimituksen business-eventtiä. Diagnostiikan kirjoitus on best
+effort: sen epäonnistuminen ei muuta SMTP-toimituksen lopputulosta.
+
+SMTP:n ehdottomia turvallisuusportteja ovat implicit TLS portissa 465,
+`rejectUnauthorized`, sertifikaatin ja hostnamen validointi sekä vähintään
+TLS 1.2. TLS 1.3 sallitaan. Cipherin nimi, sertifikaatin sormenjälki, etä-IP
+ja IP-perhe ovat vain diagnostiikkametadataa. Jos turvallinen TLS-yhteys on
+muodostunut mutta metadataa ei voida validoida projektiota varten, lähetys saa
+jatkua ilman transport-yhteenvetoa ja `smtp.connectionSecured`-eventtiä.
+
+Kenttärajat pidetään erillisinä:
+
+| Taso | Sallittu sisältö |
+| --- | --- |
+| paikallinen detailed JSONL | tapahtuman tyypitetyt, allowlistatut tekniset kentät; SMTP:n etä-IP, portti ja operation ID vain tässä tasossa |
+| Diagnostics-UI | uudelleenvalidoitu turvallinen projektio; SMTP:stä profiili, TLS-versio, cipher, sormenjälki, stage ja kesto |
+| tukipaketti | viimeisen 30 päivän warning/error/security-projektio ilman info-eventtejä, etä-IP:tä, porttia tai operation ID:tä |
+| pitkäaikainen incident-indeksi | minimoitu ryhmittely ilman suoria tunnisteita, raw-rivejä tai business-sisältöä |
+
 ## Uuden moduulin observability-portti
 
 Jokaiselle uudelle moduulille määritellään ennen toteutusta:
@@ -185,9 +216,21 @@ bootstrap-eventin.
 R0:n diagnostiikkaperusta on valmis. Tukipaketin formaatti on versio 2,
 30 päivän lähdekatkaisu raportoidaan rehellisesti, incident-indexistä luetaan
 vain minimoituja ryhmäyhteenvetoja ja packaged smoke todentaa oikean
-tukipakettiviennin. Smoke raportoi vain allowlistatun viimeisen vaiheen:
+tukipakettiviennin. Tukipaketin 25 MiB:n kokonaisbudjetissa varataan
+vähintään 5 MiB ydinosioille; diagnostiikkatapahtumien osabudjetti on 16 MiB
+ja incident-yhteenvetojen 4 MiB. Ylityksessä säilytetään uusimmat prefiksit,
+katkaistaan ensin diagnostiikkatapahtumia ja vasta niiden tyhjennyttyä
+incident-yhteenvetoja. Manifesti ja checksumit rakennetaan lopullisesta
+sisällöstä. Smoke raportoi vain allowlistatun viimeisen vaiheen:
 `startup`, `backend`, `diagnostics`, `logFolder`, `supportBundle`,
 `secretStorage`, `pdfPreview` tai `shutdown`.
+
+Kahden tukipakettiadapterin yhteinen tiedostotason vastuu on rajattu
+Diagnostics-moduulin `boundedJsonlSourceReader`-primitiveen. Se omistaa vain
+regular file/no symlink -tarkistuksen, rajatun tail-luvun, osittaisen
+ensimmäisen rivin poiston sekä tavu- ja truncation-tiedot. Tiedostonimimallit,
+hakemistovalinta, tapahtumavalidointi, ryhmittely, deduplikointi ja
+osabudjetit säilyvät erillisissä read model -adaptereissa.
 
 Seuraava observabilityn testausvaihe on dokumentoitu Playwright/E2E-kokonaisuus.
 Playwrightia tai muuta uutta riippuvuutta ei lisätä ilman erillistä

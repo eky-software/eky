@@ -60,6 +60,31 @@ Diagnostics-projektio saa näyttää vain SMTP-profiilin, TLS-version, cipherin
 ja sormenjäljen. Etä-IP, portti ja attempt ID eivät siirry tukipakettiin tai
 incident-indeksiin.
 
+Failure-mapping:
+
+- `SMTP_TLS_FAILED` -> `smtp.tlsFailed`
+- `SMTP_AUTHENTICATION_FAILED` ja `SMTP_AUTHENTICATION_UNAVAILABLE`
+  -> `smtp.authenticationFailed`
+- `SMTP_CONNECTION_FAILED` sekä connect-vaiheen sulkeutuminen ja timeout
+  -> `smtp.connectionFailed`
+- `SMTP_OUTCOME_UNKNOWN` -> `smtp.deliveryOutcomeUnknown`
+- muut greeting-, envelope-, DATA-, protokolla-, sulkeutumis- ja timeout-
+  virheet -> `smtp.deliveryFailed`
+
+Failure-eventti sisältää turvallisen error coden, operation ID:n, stagen,
+keston, retryable- ja side-effect-tilan. Jos TLS-transportin turvallinen
+diagnostiikkayhteenveto on saatavilla, detailed-eventti saa lisäksi
+allowlistatut SMTP-, TLS-, cipher-, sormenjälki- ja etäverkkokentät.
+Diagnostiikkakirjoitus on best effort eikä saa muuttaa toimituksen
+lopputulosta.
+
+Implicit TLS portissa 465, `rejectUnauthorized`, sertifikaatin ja hostnamen
+validointi sekä TLS 1.2/1.3 -raja ovat ehdottomia turvallisuusportteja.
+Cipherin nimi, sormenjälki ja etäverkkokentät ovat diagnostiikkametadataa:
+niiden puuttuminen tai tuntematon turvallinen arvo jättää transport-
+yhteenvedon ja `smtp.connectionSecured`-eventin pois, mutta ei muuta
+turvallista TLS-yhteyttä virheeksi.
+
 ### Diagnostiikka
 
 - `operationalLog.capacityReached`

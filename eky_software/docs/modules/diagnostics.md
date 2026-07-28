@@ -35,6 +35,13 @@ mallinnetut tekniset `correlationId`-, `operationId`- ja
 `runtimeInstanceId`-tunnisteet. Ne eivät ole käyttäjä-, yritys- tai
 autentikointitietoja eikä niitä viedä pitkäaikaiseen incident-indeksiin.
 
+SMTP-transportin Diagnostics-projektio näyttää failure- ja success-
+tapahtumista vain allowlistatut SMTP-profiili-, TLS-versio-, cipher-,
+sertifikaatin sormenjälki-, stage- ja kestokentät silloin, kun ne ovat
+saatavilla. Detailed-lokin etä-IP, portti ja operation ID eivät kuulu
+tukipakettiin tai pitkäaikaiseen incident-indeksiin. Onnistuneet info-eventit
+eivät kuulu tukipakettiin.
+
 Backend lukee vain compositionissa annetusta absoluuttisesta Eky logs-rootista.
 HTTP-pyyntö ei voi antaa polkua, tiedostonimeä tai globia. Tuntemattomat
 tiedostot, symlinkit, katkenneet rivit ja uudelleenvalidoinnin hylkäämät eventit
@@ -76,6 +83,9 @@ permissionilla suojatun read-only-projektion. Se sisältää vain:
 - ajettujen migraatioiden määrän ja viimeisimmän turvallisen migraationimen
 - enintään 5 000 viimeisen 30 päivän sanitoitua warn-, error- tai
   security-diagnostiikkatapahtumaa
+- enintään 16 MiB diagnostiikkatapahtumia ja 4 MiB minimoituja
+  incident-yhteenvetoja 25 MiB:n kokonaisbudjetissa, jossa ydinosioille
+  varataan vähintään 5 MiB
 - tiedon siitä, katkaistiinko tapahtumaosio
 
 Projektio ei palauta tietokantapolkua, business-taulujen rivejä,
@@ -92,3 +102,22 @@ Electron main validoi backend-vastauksen uudelleen, muodostaa
 checksumillisen gzip-pakatun `.ekysupport`-tiedoston ja kirjoittaa sen
 käyttäjän vahvistamaan kohteeseen. Renderer ei anna backend-osoitetta,
 runtime-sessionia, tiedostopolkua eikä tukipaketin sisältöä.
+
+Support bundle -adapterit käyttävät yhtä Diagnostics-moduulin sisäistä
+bounded JSONL -tiedostolukijaa. Primitive omistaa vain regular file/no symlink
+-tarkistuksen, rajatun tail-luvun, osittaisen ensimmäisen rivin poisjätön sekä
+`bytesRead`- ja `sourceTruncated`-tiedot. Tapahtumavalinta, domainvalidointi,
+ryhmittely, deduplikointi ja budjetit säilyvät erillisissä read model
+-adaptereissa.
+
+Jos lopullinen kokobudjetti ylittyy, Electron main säilyttää uusimmat
+prefiksit, katkaisee ensin diagnostiikkatapahtumia ja vasta niiden
+tyhjennyttyä incident-yhteenvetoja. Manifestin truncation-tiedot ja
+checksumit vastaavat aina lopullista sisältöä.
+
+R0:n tekniset retention-ajat ovat info 12 kuukautta,
+warning/error/security 24 kuukautta, minimoitu incident-indeksi ilman suoria
+tunnisteita 10 vuotta ja runtimen väliaikainen tukipaketti 30 päivää.
+Moduulien business audit säilyy tapahtumavuoden ja seitsemän täyden
+kalenterivuoden ajan. Nämä tekniset säännöt eivät yksin ole oikeudellinen
+compliance-sertifiointi.

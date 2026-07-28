@@ -1,7 +1,5 @@
 import { isIP } from 'node:net';
 
-import { SmtpTransportError } from './smtpErrors.js';
-
 export type SmtpTlsVersion = 'TLSv1.2' | 'TLSv1.3';
 export type SmtpRemoteFamily = 'IPv4' | 'IPv6';
 
@@ -37,44 +35,48 @@ const allowedCipherNames = new Set([
 const fingerprint256Pattern =
   /^(?:[0-9A-F]{2}:){31}[0-9A-F]{2}$/;
 
-export function readSmtpTransportSecuritySummary(
+export function tryReadSmtpTransportSecuritySummary(
   socket: SmtpTlsSocketMetadataSource,
   input: {
     smtpProfile: 'dnaSmtp';
     targetPort: 465;
   },
-): SmtpTransportSecuritySummary {
-  const tlsVersion = socket.getProtocol();
-  const cipher = socket.getCipher();
-  const peerCertificate = socket.getPeerCertificate();
-  const remoteAddress = socket.remoteAddress;
-  const remoteAddressVersion =
-    remoteAddress === undefined ? 0 : isIP(remoteAddress);
-  const remoteFamily = socket.remoteFamily;
+): SmtpTransportSecuritySummary | undefined {
+  try {
+    const tlsVersion = socket.getProtocol();
+    const cipher = socket.getCipher();
+    const peerCertificate = socket.getPeerCertificate();
+    const remoteAddress = socket.remoteAddress;
+    const remoteAddressVersion =
+      remoteAddress === undefined ? 0 : isIP(remoteAddress);
+    const remoteFamily = socket.remoteFamily;
 
-  if (
-    (tlsVersion !== 'TLSv1.2' && tlsVersion !== 'TLSv1.3') ||
-    !allowedCipherNames.has(cipher.standardName) ||
-    typeof peerCertificate.fingerprint256 !== 'string' ||
-    !fingerprint256Pattern.test(peerCertificate.fingerprint256) ||
-    remoteAddress === undefined ||
-    remoteAddressVersion === 0 ||
-    (remoteAddressVersion === 4 && remoteFamily !== 'IPv4') ||
-    (remoteAddressVersion === 6 && remoteFamily !== 'IPv6')
-  ) {
-    throw new SmtpTransportError('SMTP_TLS_FAILED', 'connect');
+    if (
+      (tlsVersion !== 'TLSv1.2' && tlsVersion !== 'TLSv1.3') ||
+      !allowedCipherNames.has(cipher.standardName) ||
+      typeof peerCertificate.fingerprint256 !== 'string' ||
+      !fingerprint256Pattern.test(peerCertificate.fingerprint256) ||
+      remoteAddress === undefined ||
+      remoteAddressVersion === 0 ||
+      (remoteAddressVersion === 4 && remoteFamily !== 'IPv4') ||
+      (remoteAddressVersion === 6 && remoteFamily !== 'IPv6')
+    ) {
+      return undefined;
+    }
+
+    const validatedRemoteFamily: SmtpRemoteFamily =
+      remoteAddressVersion === 4 ? 'IPv4' : 'IPv6';
+
+    return Object.freeze({
+      cipherName: cipher.standardName,
+      peerCertificateFingerprint256: peerCertificate.fingerprint256,
+      remoteAddress,
+      remoteFamily: validatedRemoteFamily,
+      smtpProfile: input.smtpProfile,
+      targetPort: input.targetPort,
+      tlsVersion,
+    });
+  } catch {
+    return undefined;
   }
-
-  const validatedRemoteFamily: SmtpRemoteFamily =
-    remoteAddressVersion === 4 ? 'IPv4' : 'IPv6';
-
-  return Object.freeze({
-    cipherName: cipher.standardName,
-    peerCertificateFingerprint256: peerCertificate.fingerprint256,
-    remoteAddress,
-    remoteFamily: validatedRemoteFamily,
-    smtpProfile: input.smtpProfile,
-    targetPort: input.targetPort,
-    tlsVersion,
-  });
 }

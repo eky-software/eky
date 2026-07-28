@@ -115,6 +115,7 @@ export function validateSupportBundleDocument(
     !Number.isSafeInteger(value.database.appliedMigrationCount) ||
     !Array.isArray(value.diagnosticEvents) ||
     !Array.isArray(value.incidentSummaries) ||
+    !hasExpectedMinimizedSmokeIncident(value.incidentSummaries) ||
     !isRecord(value.manifest.sectionChecksums)
   ) {
     throw new Error('DESKTOP_SMOKE_SUPPORT_BUNDLE_INVALID');
@@ -154,6 +155,31 @@ export function validateSupportBundleDocument(
   ) {
     throw new Error('DESKTOP_SMOKE_SUPPORT_BUNDLE_CONTENT_FAILED');
   }
+}
+
+function hasExpectedMinimizedSmokeIncident(values: unknown[]): boolean {
+  const allowedKeys = [
+    'appVersion',
+    'buildRevision',
+    'count',
+    'errorCode',
+    'eventName',
+    'fingerprint',
+    'firstOccurredAt',
+    'lastOccurredAt',
+    'outcome',
+  ] as const;
+
+  return values.some(
+    (value) =>
+      isRecord(value) &&
+      hasOnlyKeys(value, allowedKeys) &&
+      value.eventName === 'applicationWindow.newWindowBlocked' &&
+      value.errorCode === 'DESKTOP_SECURITY_EVENT_BLOCKED' &&
+      value.outcome === 'blocked' &&
+      typeof value.count === 'number' &&
+      value.count >= 1,
+  );
 }
 
 function checksum(value: unknown): string {

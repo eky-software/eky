@@ -116,6 +116,7 @@ describe('DnaSmtpEmailDeliveryProvider', () => {
   });
 
   it('maps SMTP errors without exposing server responses or the password', async () => {
+    const recordFailure = vi.fn();
     const provider = new DnaSmtpEmailDeliveryProvider({
       companyEmailSecretReader: createSecretReader('synthetic-password'),
       transport: async () => {
@@ -124,6 +125,11 @@ describe('DnaSmtpEmailDeliveryProvider', () => {
           'finalAcceptance',
           'outcomeUnknown',
         );
+      },
+      transportDiagnostics: {
+        recordConnectionSecured: vi.fn(),
+        recordDeliveryCompleted: vi.fn(),
+        recordFailure,
       },
     });
 
@@ -134,6 +140,13 @@ describe('DnaSmtpEmailDeliveryProvider', () => {
       technicalErrorCode: 'SMTP_OUTCOME_UNKNOWN',
     });
     expect(JSON.stringify(error)).not.toContain('synthetic-password');
+    expect(recordFailure).toHaveBeenCalledWith({
+      durationMs: expect.any(Number),
+      errorCode: 'SMTP_OUTCOME_UNKNOWN',
+      operationId: 'attempt-1',
+      outcome: 'outcomeUnknown',
+      phase: 'finalAcceptance',
+    });
   });
 
   it('rejects header injection before reading the secret', async () => {
@@ -155,6 +168,7 @@ describe('DnaSmtpEmailDeliveryProvider', () => {
   it('records bounded transport diagnostics for a completed delivery', async () => {
     const recordConnectionSecured = vi.fn();
     const recordDeliveryCompleted = vi.fn();
+    const recordFailure = vi.fn();
     const provider = new DnaSmtpEmailDeliveryProvider({
       companyEmailSecretReader: createSecretReader('synthetic-password'),
       transport: async (_input, options) => {
@@ -171,6 +185,7 @@ describe('DnaSmtpEmailDeliveryProvider', () => {
       transportDiagnostics: {
         recordConnectionSecured,
         recordDeliveryCompleted,
+        recordFailure,
       },
     });
 
@@ -221,12 +236,69 @@ describe('DnaSmtpEmailDeliveryProvider', () => {
         recordDeliveryCompleted() {
           throw new Error('synthetic diagnostics failure');
         },
+        recordFailure() {
+          throw new Error('synthetic diagnostics failure');
+        },
       },
     });
 
     await expect(provider.sendEmail(createCustomerInput())).resolves.toMatchObject({
       deliveredTo: 'customer@example.com',
       providerMessageId: 'synthetic-message-id',
+    });
+  });
+
+  it('preserves a secured transport summary for a later SMTP failure', async () => {
+    const recordFailure = vi.fn();
+    const provider = new DnaSmtpEmailDeliveryProvider({
+      companyEmailSecretReader: createSecretReader('synthetic-password'),
+      transport: async (_input, options) => {
+        options?.onConnectionSecured?.({
+          ...transportSecurity,
+          durationMs: 12,
+        });
+        throw new SmtpTransportError(
+          'SMTP_AUTHENTICATION_FAILED',
+          'authentication',
+        );
+      },
+      transportDiagnostics: {
+        recordConnectionSecured: vi.fn(),
+        recordDeliveryCompleted: vi.fn(),
+        recordFailure,
+      },
+    });
+
+    await expect(provider.sendEmail(createCustomerInput())).rejects.toMatchObject({
+      technicalErrorCode: 'SMTP_AUTHENTICATION_FAILED',
+    });
+    expect(recordFailure).toHaveBeenCalledWith({
+      durationMs: expect.any(Number),
+      errorCode: 'SMTP_AUTHENTICATION_FAILED',
+      operationId: 'attempt-1',
+      outcome: 'failed',
+      phase: 'authentication',
+      transportSecurity,
+    });
+  });
+
+  it('does not change the original SMTP failure when diagnostics fail', async () => {
+    const provider = new DnaSmtpEmailDeliveryProvider({
+      companyEmailSecretReader: createSecretReader('synthetic-password'),
+      transport: async () => {
+        throw new SmtpTransportError('SMTP_TIMEOUT', 'connect');
+      },
+      transportDiagnostics: {
+        recordConnectionSecured: vi.fn(),
+        recordDeliveryCompleted: vi.fn(),
+        recordFailure() {
+          throw new Error('synthetic diagnostics failure');
+        },
+      },
+    });
+
+    await expect(provider.sendEmail(createCustomerInput())).rejects.toMatchObject({
+      technicalErrorCode: 'SMTP_TIMEOUT',
     });
   });
 });

@@ -222,10 +222,34 @@ function validateEventSpecificPayload(
   eventName: BackendOperationalEventName,
   value: Record<string, unknown>,
 ): void {
-  if (
-    eventName !== 'smtp.connectionSecured' &&
-    eventName !== 'smtp.deliveryCompleted'
-  ) {
+  const isSmtpSuccessEvent =
+    eventName === 'smtp.connectionSecured' ||
+    eventName === 'smtp.deliveryCompleted';
+  const isSmtpFailureEvent =
+    eventName === 'smtp.connectionFailed' ||
+    eventName === 'smtp.tlsFailed' ||
+    eventName === 'smtp.authenticationFailed' ||
+    eventName === 'smtp.deliveryFailed' ||
+    eventName === 'smtp.deliveryOutcomeUnknown';
+
+  if (!isSmtpSuccessEvent && !isSmtpFailureEvent) {
+    return;
+  }
+
+  const transportFieldNames = [
+    'cipherName',
+    'peerCertificateFingerprint256',
+    'remoteAddress',
+    'remoteFamily',
+    'smtpProfile',
+    'targetPort',
+    'tlsVersion',
+  ] as const;
+  const hasTransportMetadata = transportFieldNames.some(
+    (fieldName) => value[fieldName] !== undefined,
+  );
+
+  if (isSmtpFailureEvent && !hasTransportMetadata) {
     return;
   }
 

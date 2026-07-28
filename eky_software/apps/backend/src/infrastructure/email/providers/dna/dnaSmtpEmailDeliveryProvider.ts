@@ -7,6 +7,7 @@ import type {
   SmtpMessageDeliveryInput,
   SmtpMessageDeliveryResult,
 } from '../../smtp/smtpTypes.js';
+import { SmtpTransportError } from '../../smtp/smtpErrors.js';
 import type { SmtpTransportSecuritySummary } from '../../smtp/smtpTransportSecurity.js';
 import {
   dnaSmtpConnectionProfile,
@@ -105,6 +106,7 @@ export class DnaSmtpEmailDeliveryProvider {
     const transportDiagnostics =
       this.dependencies.transportDiagnostics ??
       noOpDnaSmtpTransportDiagnostics;
+    let transportSecurity: SmtpTransportSecuritySummary | undefined;
 
     try {
       message = buildInvoiceMimeMessage({
@@ -140,19 +142,21 @@ export class DnaSmtpEmailDeliveryProvider {
         },
         {
           onConnectionSecured: (summary) =>
-            recordTransportDiagnosticSafely(() =>
+            recordTransportDiagnosticSafely(() => {
+              transportSecurity = copyTransportSecuritySummary(summary);
               transportDiagnostics.recordConnectionSecured({
                 ...summary,
                 operationId,
-              }),
-            ),
+              });
+            }),
         },
       );
-      const transportSecurity = result.transportSecurity;
-      if (transportSecurity !== undefined) {
+      transportSecurity = result.transportSecurity ?? transportSecurity;
+      const completedTransportSecurity = transportSecurity;
+      if (completedTransportSecurity !== undefined) {
         recordTransportDiagnosticSafely(() =>
           transportDiagnostics.recordDeliveryCompleted({
-            ...transportSecurity,
+            ...completedTransportSecurity,
             durationMs: Date.now() - startedAt,
             operationId,
           }),
@@ -165,6 +169,21 @@ export class DnaSmtpEmailDeliveryProvider {
         providerMessageId: result.providerMessageId,
       };
     } catch (error) {
+      if (error instanceof SmtpTransportError) {
+        recordTransportDiagnosticSafely(() =>
+          transportDiagnostics.recordFailure({
+            durationMs: Date.now() - startedAt,
+            errorCode: error.code,
+            operationId,
+            outcome: error.outcome,
+            phase: error.phase,
+            ...(transportSecurity === undefined
+              ? {}
+              : { transportSecurity }),
+          }),
+        );
+      }
+
       throw mapDnaSmtpProviderError(error);
     } finally {
       message?.fill(0);
@@ -274,4 +293,19 @@ function recordTransportDiagnosticSafely(operation: () => void): void {
   } catch {
     // Diagnostics must never change SMTP delivery outcomes.
   }
+}
+
+function copyTransportSecuritySummary(
+  summary: SmtpTransportSecuritySummary,
+): SmtpTransportSecuritySummary {
+  return Object.freeze({
+    cipherName: summary.cipherName,
+    peerCertificateFingerprint256:
+      summary.peerCertificateFingerprint256,
+    remoteAddress: summary.remoteAddress,
+    remoteFamily: summary.remoteFamily,
+    smtpProfile: summary.smtpProfile,
+    targetPort: summary.targetPort,
+    tlsVersion: summary.tlsVersion,
+  });
 }

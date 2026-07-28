@@ -1,8 +1,5 @@
 import {
-  closeSync,
   lstatSync,
-  openSync,
-  readSync,
   readdirSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -12,6 +9,7 @@ import type {
   SupportBundleDiagnosticEventReader,
   SupportBundleDiagnosticEventReadResult,
 } from '../ports/supportBundleDiagnosticEventReader.js';
+import { readNewestJsonlLines } from './boundedJsonlSourceReader.js';
 import { projectDiagnosticOperationalEvent } from './diagnosticOperationalEventProjector.js';
 
 const defaultMaximumCandidateFiles = 48;
@@ -96,7 +94,7 @@ export class FileSystemSupportBundleDiagnosticEventReader
         break;
       }
 
-      const result = readNewestLines(
+      const result = readNewestJsonlLines(
         candidate.filePath,
         remainingSourceBytes,
       );
@@ -107,6 +105,9 @@ export class FileSystemSupportBundleDiagnosticEventReader
         const event = parseProjectedEvent(line);
         if (event === null) {
           sourceTruncated = true;
+          continue;
+        }
+        if (event.level === 'info') {
           continue;
         }
         if (
@@ -209,62 +210,6 @@ function listRelevantLogFiles(
     files: files.sort(compareFilesNewestFirst),
     sourceTruncated,
   };
-}
-
-function readNewestLines(
-  filePath: string,
-  maximumBytes: number,
-): {
-  bytesRead: number;
-  lines: string[];
-  sourceTruncated: boolean;
-} {
-  let descriptor: number | undefined;
-
-  try {
-    const metadata = lstatSync(filePath);
-    if (!metadata.isFile() || metadata.isSymbolicLink()) {
-      return { bytesRead: 0, lines: [], sourceTruncated: true };
-    }
-    if (metadata.size === 0) {
-      return { bytesRead: 0, lines: [], sourceTruncated: false };
-    }
-
-    const byteCount = Math.min(metadata.size, maximumBytes);
-    const start = metadata.size - byteCount;
-    const buffer = Buffer.alloc(byteCount);
-    descriptor = openSync(filePath, 'r');
-    const bytesRead = readSync(descriptor, buffer, 0, byteCount, start);
-    let text = buffer.subarray(0, bytesRead).toString('utf8');
-    let sourceTruncated = start > 0 || bytesRead !== byteCount;
-
-    if (start > 0) {
-      const firstNewline = text.indexOf('\n');
-      if (firstNewline < 0) {
-        return { bytesRead, lines: [], sourceTruncated: true };
-      }
-      text = text.slice(firstNewline + 1);
-    }
-
-    if (!text.endsWith('\n')) {
-      sourceTruncated = true;
-    }
-
-    return {
-      bytesRead,
-      lines: text
-        .split(/\r?\n/)
-        .filter((line) => line.trim().length > 0)
-        .reverse(),
-      sourceTruncated,
-    };
-  } catch {
-    return { bytesRead: 0, lines: [], sourceTruncated: true };
-  } finally {
-    if (descriptor !== undefined) {
-      closeSync(descriptor);
-    }
-  }
 }
 
 function parseProjectedEvent(line: string): DiagnosticEventItem | null {

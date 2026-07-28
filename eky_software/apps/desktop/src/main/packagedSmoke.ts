@@ -250,6 +250,7 @@ export async function runPackagedSmokeCheck(
 
   await options.reportStage('logFolder');
   await assertPackagedOperationalLogFolder(options.mainWindow);
+  await assertPackagedBlockedWindowIncident(options.mainWindow);
 
   await options.reportStage('supportBundle');
   await runPackagedSupportBundleSmoke({
@@ -365,6 +366,20 @@ async function assertPackagedOperationalLogFolder(
 
   if (opened !== true) {
     throw new Error('DESKTOP_SMOKE_LOG_FOLDER_FAILED');
+  }
+}
+
+async function assertPackagedBlockedWindowIncident(
+  mainWindow: BrowserWindow,
+): Promise<void> {
+  const blocked: unknown =
+    await mainWindow.webContents.executeJavaScript(
+      `window.open('https://example.invalid', '_blank') === null`,
+      true,
+    );
+
+  if (blocked !== true) {
+    throw new Error('DESKTOP_SMOKE_WINDOW_POLICY_FAILED');
   }
 }
 

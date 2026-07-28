@@ -40,6 +40,14 @@ describe('validateSupportBundleDocument', () => {
       ),
     ).toThrow('DESKTOP_SMOKE_SUPPORT_BUNDLE_INVALID');
   });
+
+  it('rejects an archive without the smoke security incident', () => {
+    const document = createDocument([]);
+
+    expect(() =>
+      validateSupportBundleDocument(document, expectedIdentity),
+    ).toThrow('DESKTOP_SMOKE_SUPPORT_BUNDLE_INVALID');
+  });
 });
 
 const expectedIdentity = {
@@ -48,7 +56,22 @@ const expectedIdentity = {
   runtimeSessionSecret: 'private-runtime-session',
 };
 
-function createDocument(): Record<string, unknown> {
+function createDocument(
+  incidentSummaries = [
+    {
+      appVersion: expectedIdentity.appVersion,
+      buildRevision: expectedIdentity.buildRevision,
+      count: 1,
+      errorCode: 'DESKTOP_SECURITY_EVENT_BLOCKED',
+      eventName: 'applicationWindow.newWindowBlocked',
+      fingerprint:
+        'applicationWindow.newWindowBlocked:DESKTOP_SECURITY_EVENT_BLOCKED',
+      firstOccurredAt: '2026-07-27T12:00:00.000Z',
+      lastOccurredAt: '2026-07-27T12:00:00.000Z',
+      outcome: 'blocked' as const,
+    },
+  ],
+): Record<string, unknown> {
   const archive = createSupportBundleArchive({
     appVersion: expectedIdentity.appVersion,
     architecture: 'x64',
@@ -61,7 +84,7 @@ function createDocument(): Record<string, unknown> {
       },
       diagnosticEvents: [],
       diagnosticPeriodDays: 30,
-      incidentSummaries: [],
+      incidentSummaries,
       incidentSummariesTruncated: false,
       runtimeSummary: {
         appVersion: expectedIdentity.appVersion,

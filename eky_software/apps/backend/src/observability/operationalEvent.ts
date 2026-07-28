@@ -53,13 +53,13 @@ export interface BackendOperationalEventPayloadMap {
   'invoiceDelivery.providerFailed': EntityFailureFields;
   'invoiceDelivery.outcomeUnknown': EntityFailureFields;
   'invoiceDelivery.finalizationFailed': EntityFailureFields;
-  'smtp.connectionFailed': FailureFields;
+  'smtp.connectionFailed': SmtpTransportFailureFields;
   'smtp.connectionSecured': SmtpTransportDiagnosticFields;
-  'smtp.tlsFailed': FailureFields;
-  'smtp.authenticationFailed': FailureFields;
+  'smtp.tlsFailed': SmtpTransportFailureFields;
+  'smtp.authenticationFailed': SmtpTransportFailureFields;
   'smtp.deliveryCompleted': SmtpTransportDiagnosticFields;
-  'smtp.deliveryFailed': EntityFailureFields;
-  'smtp.deliveryOutcomeUnknown': EntityFailureFields;
+  'smtp.deliveryFailed': SmtpTransportFailureFields;
+  'smtp.deliveryOutcomeUnknown': SmtpTransportFailureFields;
   'businessAudit.writeFailed': EntityFailureFields;
   'businessAudit.retentionCompleted': {
     deletedEventCount: number;
@@ -110,6 +110,22 @@ interface SmtpTransportDiagnosticFields {
   stage: string;
   targetPort: 465;
   tlsVersion: 'TLSv1.2' | 'TLSv1.3';
+}
+
+interface SmtpTransportFailureFields {
+  cipherName?: string;
+  durationMs: number;
+  errorCode: string;
+  operationId: string;
+  peerCertificateFingerprint256?: string;
+  remoteAddress?: string;
+  remoteFamily?: 'IPv4' | 'IPv6';
+  retryable: boolean;
+  sideEffectState: 'none' | 'unknown';
+  smtpProfile?: 'dnaSmtp';
+  stage: string;
+  targetPort?: 465;
+  tlsVersion?: 'TLSv1.2' | 'TLSv1.3';
 }
 
 export type BackendOperationalEventName =
@@ -179,6 +195,29 @@ const smtpTransportDiagnosticFields = [
   'stage',
   'targetPort',
   'tlsVersion',
+] as const;
+const smtpTransportFailureFields = [
+  'cipherName',
+  'durationMs',
+  'errorCode',
+  'operationId',
+  'peerCertificateFingerprint256',
+  'remoteAddress',
+  'remoteFamily',
+  'retryable',
+  'sideEffectState',
+  'smtpProfile',
+  'stage',
+  'targetPort',
+  'tlsVersion',
+] as const;
+const smtpTransportFailureRequiredFields = [
+  'durationMs',
+  'errorCode',
+  'operationId',
+  'retryable',
+  'sideEffectState',
+  'stage',
 ] as const;
 
 export const backendOperationalEventSpecs = Object.freeze({
@@ -271,15 +310,30 @@ export const backendOperationalEventSpecs = Object.freeze({
     'failure',
     entityFailureFields,
   ),
-  'smtp.connectionFailed': spec('smtp', 'error', 'failure', failureFields),
+  'smtp.connectionFailed': spec(
+    'smtp',
+    'error',
+    'failure',
+    smtpTransportFailureFields,
+  ),
   'smtp.connectionSecured': spec(
     'smtp',
     'info',
     'success',
     smtpTransportDiagnosticFields,
   ),
-  'smtp.tlsFailed': spec('smtp', 'error', 'failure', failureFields),
-  'smtp.authenticationFailed': spec('smtp', 'error', 'failure', failureFields),
+  'smtp.tlsFailed': spec(
+    'smtp',
+    'error',
+    'failure',
+    smtpTransportFailureFields,
+  ),
+  'smtp.authenticationFailed': spec(
+    'smtp',
+    'error',
+    'failure',
+    smtpTransportFailureFields,
+  ),
   'smtp.deliveryCompleted': spec(
     'smtp',
     'info',
@@ -290,13 +344,13 @@ export const backendOperationalEventSpecs = Object.freeze({
     'smtp',
     'error',
     'failure',
-    entityFailureFields,
+    smtpTransportFailureFields,
   ),
   'smtp.deliveryOutcomeUnknown': spec(
     'smtp',
     'error',
     'unknown',
-    entityFailureFields,
+    smtpTransportFailureFields,
   ),
   'businessAudit.writeFailed': spec(
     'businessAudit',
@@ -375,7 +429,7 @@ export const backendRequiredPayloadFields = Object.freeze({
   'invoiceDelivery.providerFailed': ['errorCode'],
   'invoiceDelivery.outcomeUnknown': ['errorCode'],
   'invoiceDelivery.finalizationFailed': ['errorCode'],
-  'smtp.connectionFailed': ['errorCode'],
+  'smtp.connectionFailed': smtpTransportFailureRequiredFields,
   'smtp.connectionSecured': [
     'cipherName',
     'durationMs',
@@ -388,8 +442,8 @@ export const backendRequiredPayloadFields = Object.freeze({
     'targetPort',
     'tlsVersion',
   ],
-  'smtp.tlsFailed': ['errorCode'],
-  'smtp.authenticationFailed': ['errorCode'],
+  'smtp.tlsFailed': smtpTransportFailureRequiredFields,
+  'smtp.authenticationFailed': smtpTransportFailureRequiredFields,
   'smtp.deliveryCompleted': [
     'cipherName',
     'durationMs',
@@ -402,8 +456,8 @@ export const backendRequiredPayloadFields = Object.freeze({
     'targetPort',
     'tlsVersion',
   ],
-  'smtp.deliveryFailed': ['errorCode'],
-  'smtp.deliveryOutcomeUnknown': ['errorCode'],
+  'smtp.deliveryFailed': smtpTransportFailureRequiredFields,
+  'smtp.deliveryOutcomeUnknown': smtpTransportFailureRequiredFields,
   'businessAudit.writeFailed': ['errorCode'],
   'businessAudit.retentionCompleted': ['deletedEventCount'],
   'businessAudit.retentionFailed': ['errorCode'],

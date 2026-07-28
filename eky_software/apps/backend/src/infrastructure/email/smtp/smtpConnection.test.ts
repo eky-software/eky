@@ -80,6 +80,44 @@ describe('connectImplicitTlsSmtp', () => {
     });
   });
 
+  it.each([
+    {
+      name: 'the certificate fingerprint is unavailable',
+      configure(socket: FakeTlsSocket) {
+        socket.certificateFingerprint256 = undefined;
+      },
+    },
+    {
+      name: 'the negotiated cipher is not in the diagnostic allowlist',
+      configure(socket: FakeTlsSocket) {
+        socket.cipherName = 'TLS_SYNTHETIC_SAFE_CIPHER';
+      },
+    },
+  ])(
+    'keeps an authorized TLS connection when $name',
+    async ({ configure }) => {
+      const socket = new FakeTlsSocket();
+      configure(socket);
+      const connectionPromise = connectImplicitTlsSmtp(
+        {
+          ...createOptions(),
+          diagnosticsProfile: {
+            smtpProfile: 'dnaSmtp',
+            targetPort: 465,
+          },
+          port: 465,
+        },
+        () => socket.asTlsSocket(),
+      );
+
+      socket.emit('secureConnect');
+
+      await expect(connectionPromise).resolves.toMatchObject({
+        transportSecurity: undefined,
+      });
+    },
+  );
+
   it('fails closed when a DNA diagnostics profile does not match the target port', async () => {
     const socket = new FakeTlsSocket();
     const connectionPromise = connectImplicitTlsSmtp(
@@ -104,6 +142,25 @@ describe('connectImplicitTlsSmtp', () => {
     const socket = new FakeTlsSocket();
     socket.authorized = false;
     socket.authorizationError = new Error('synthetic certificate failure');
+    const connectionPromise = connectImplicitTlsSmtp(
+      createOptions(),
+      () => socket.asTlsSocket(),
+    );
+
+    socket.emit('secureConnect');
+
+    await expect(connectionPromise).rejects.toMatchObject({
+      code: 'SMTP_TLS_FAILED',
+    });
+    expect(socket.destroyedByClient).toBe(true);
+  });
+
+  it('fails closed when hostname validation fails', async () => {
+    const socket = new FakeTlsSocket();
+    socket.authorized = false;
+    socket.authorizationError = new Error(
+      'Host: smtp.example.test is not in the certificate alt names',
+    );
     const connectionPromise = connectImplicitTlsSmtp(
       createOptions(),
       () => socket.asTlsSocket(),
@@ -240,6 +297,9 @@ const certificateFingerprint256 = Array.from(
 class FakeTlsSocket extends EventEmitter {
   authorizationError: Error | null | undefined = null;
   authorized = true;
+  certificateFingerprint256: string | undefined =
+    certificateFingerprint256;
+  cipherName = 'TLS_AES_256_GCM_SHA384';
   destroyedByClient = false;
   nextWriteError: Error | undefined;
   protocol: string | null = 'TLSv1.3';
@@ -263,15 +323,15 @@ class FakeTlsSocket extends EventEmitter {
 
   getCipher() {
     return {
-      name: 'TLS_AES_256_GCM_SHA384',
-      standardName: 'TLS_AES_256_GCM_SHA384',
+      name: this.cipherName,
+      standardName: this.cipherName,
       version: 'TLSv1.3',
     };
   }
 
   getPeerCertificate() {
     return {
-      fingerprint256: certificateFingerprint256,
+      fingerprint256: this.certificateFingerprint256,
     };
   }
 

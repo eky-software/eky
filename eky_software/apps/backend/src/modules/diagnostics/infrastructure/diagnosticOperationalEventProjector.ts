@@ -147,6 +147,15 @@ const allowedDesktopFields = new Set([
 const forbiddenKeyPattern =
   /(password|secret|token|cookie|authorization|requestbody|responsebody|mime|emailbody|iban|connectionstring|stack|message|details)/i;
 const safeIdentifierPattern = /^[A-Za-z0-9._:-]+$/;
+const smtpTransportEventNames = new Set([
+  'smtp.authenticationFailed',
+  'smtp.connectionFailed',
+  'smtp.connectionSecured',
+  'smtp.deliveryCompleted',
+  'smtp.deliveryFailed',
+  'smtp.deliveryOutcomeUnknown',
+  'smtp.tlsFailed',
+]);
 const timestampPattern =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 const monthPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -212,8 +221,7 @@ function projectSafeTechnicalContext(
   eventName?: string,
 ): Partial<DiagnosticEventItem> {
   const isSmtpTransportEvent =
-    eventName === 'smtp.connectionSecured' ||
-    eventName === 'smtp.deliveryCompleted';
+    eventName !== undefined && smtpTransportEventNames.has(eventName);
 
   return {
     ...(isSafeVersion(event.appVersion)
