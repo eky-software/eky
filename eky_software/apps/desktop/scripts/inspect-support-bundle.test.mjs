@@ -46,7 +46,10 @@ test('inspects a valid v2 support bundle without exposing event content', () => 
 
   const output = createOutputCapture();
   assert.equal(
-    runSupportBundleInspectorCli([fixture.sourcePath], output),
+    runSupportBundleInspectorCli(
+      ['--', fixture.sourcePath],
+      output,
+    ),
     0,
   );
   assert.match(output.lines.join('\n'), /Checksumit: kunnossa/);

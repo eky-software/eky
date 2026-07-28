@@ -209,6 +209,9 @@ function parseArguments(args) {
 
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
+    if (argument === '--') {
+      continue;
+    }
     if (argument === '--write-json') {
       const value = args[index + 1];
       if (value === undefined || value.startsWith('--')) {
