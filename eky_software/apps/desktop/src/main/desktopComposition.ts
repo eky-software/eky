@@ -51,6 +51,7 @@ import {
   runPackagedSmokeCheck,
   writePackagedSmokeResult,
   type PackagedSmokeConfiguration,
+  type PackagedSmokeStage,
 } from './packagedSmoke.js';
 import { restoreWindowInputFocus } from './windowInputFocus.js';
 import type { DesktopBuildInfo } from '../release/desktopBuildInfo.js';
@@ -68,6 +69,7 @@ interface StartDesktopCompositionOptions {
   quitApplication(): void;
   resourcesPath: string;
   runtimeInstanceId: string;
+  reportSmokeStage(stage: PackagedSmokeStage): Promise<void>;
   smokeConfiguration: PackagedSmokeConfiguration;
   userDataPath: string;
 }
@@ -209,10 +211,6 @@ async function startDesktopCompositionRuntime({
     () => applicationWindow,
   );
 
-  await writePackagedSmokeResult(options.smokeConfiguration, {
-    status: 'started',
-  });
-
   const secretBrokerHandle = startSecretBrokerMain({
     encryptedSecretFile: createPackagedSmokeSecretFileStore(
       secretFilePath,
@@ -246,6 +244,7 @@ async function startDesktopCompositionRuntime({
   let backendHandle;
 
   try {
+    await options.reportSmokeStage('backend');
     backendHandle = await startDesktopBackend({
       config: {
         appVersion: desktopAppVersion,
@@ -397,7 +396,7 @@ async function startDesktopCompositionRuntime({
         cancelId: 0,
         defaultId: 0,
         detail:
-          'Paketti sisältää vain sanitoituja teknisiä tapahtumia, sovellusversiot sekä tietokannan health- ja migraatioyhteenvedon. Se ei sisällä asiakas- tai laskudataa, PDF:iä eikä salaisuuksia.',
+          'Tukipaketti ei ole salattu. Tallenna ja lähetä se vain luotetulle tukihenkilölle.\n\nPaketti sisältää vain sanitoituja teknisiä tapahtumia, sovellusversiot sekä tietokannan health- ja migraatioyhteenvedon. Se ei sisällä asiakas- tai laskudataa, PDF:iä eikä salaisuuksia.',
         message: 'Luodaanko Eky-tukipaketti?',
         noLink: true,
         title: 'Luo tukipaketti',
@@ -547,6 +546,7 @@ async function startDesktopCompositionRuntime({
         supportBundlePath: requireSmokeSupportBundlePath(
           smokeSupportBundlePath,
         ),
+        reportStage: options.reportSmokeStage,
       });
       desktopOperationalLogger.write(
         createDesktopOperationalEvent(
@@ -557,10 +557,12 @@ async function startDesktopCompositionRuntime({
           desktopOperationalIdentity,
         ),
       );
+      await options.reportSmokeStage('shutdown');
+      await lifecycleHandle.shutdown();
       await writePackagedSmokeResult(options.smokeConfiguration, {
+        stage: 'shutdown',
         status: 'ok',
       });
-      await lifecycleHandle.shutdown();
       mainWindow.destroy();
       options.quitApplication();
       return undefined;

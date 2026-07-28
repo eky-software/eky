@@ -21,6 +21,39 @@ export interface PackagedSmokeConfiguration {
   userDataPath: string | undefined;
 }
 
+export const packagedSmokeStages = Object.freeze([
+  'startup',
+  'backend',
+  'diagnostics',
+  'logFolder',
+  'supportBundle',
+  'secretStorage',
+  'pdfPreview',
+  'shutdown',
+] as const);
+
+export type PackagedSmokeStage = (typeof packagedSmokeStages)[number];
+
+export type PackagedSmokeResult =
+  | {
+      stage: PackagedSmokeStage;
+      status: 'started';
+    }
+  | {
+      code: string;
+      stage: PackagedSmokeStage;
+      status: 'failed';
+    }
+  | {
+      stage: 'shutdown';
+      status: 'ok';
+    };
+
+export interface PackagedSmokeProgressReporter {
+  currentStage(): PackagedSmokeStage;
+  reportStage(stage: PackagedSmokeStage): Promise<void>;
+}
+
 interface RunPackagedSmokeCheckOptions {
   appVersion: string;
   backend: DesktopBackendHandle;
@@ -33,6 +66,7 @@ interface RunPackagedSmokeCheckOptions {
   secretFilePath: string;
   smokePdfPath: string;
   supportBundlePath: string;
+  reportStage(stage: PackagedSmokeStage): Promise<void>;
 }
 
 export function createPackagedSmokeConfiguration(options: {
@@ -83,12 +117,41 @@ export function createPackagedSmokeSecretFileStore(
   };
 }
 
+export function createPackagedSmokeProgressReporter(
+  configuration: PackagedSmokeConfiguration,
+): PackagedSmokeProgressReporter {
+  let currentStageIndex = -1;
+
+  return Object.freeze({
+    currentStage() {
+      return packagedSmokeStages[currentStageIndex] ?? 'startup';
+    },
+    async reportStage(stage: PackagedSmokeStage) {
+      const nextStageIndex = packagedSmokeStages.indexOf(stage);
+
+      if (nextStageIndex !== currentStageIndex + 1) {
+        throw new Error('DESKTOP_SMOKE_STAGE_INVALID');
+      }
+
+      await writePackagedSmokeResult(configuration, {
+        stage,
+        status: 'started',
+      });
+      currentStageIndex = nextStageIndex;
+    },
+  });
+}
+
 export async function writePackagedSmokeResult(
   configuration: PackagedSmokeConfiguration,
-  result: { code?: string; status: 'failed' | 'ok' | 'started' },
+  result: PackagedSmokeResult,
 ): Promise<void> {
   if (!configuration.enabled || configuration.root === undefined) {
     return;
+  }
+
+  if (readPackagedSmokeResult(result) === undefined) {
+    throw new Error('DESKTOP_SMOKE_RESULT_INVALID');
   }
 
   const resultDirectory = join(configuration.root, 'result');
@@ -98,6 +161,51 @@ export async function writePackagedSmokeResult(
     join(resultDirectory, 'desktop-smoke-result.json'),
     `${JSON.stringify(result)}\n`,
     'utf8',
+  );
+}
+
+export function readPackagedSmokeResult(
+  value: unknown,
+): PackagedSmokeResult | undefined {
+  if (!isRecord(value) || !isPackagedSmokeStage(value.stage)) {
+    return undefined;
+  }
+
+  if (value.status === 'started') {
+    return { stage: value.stage, status: 'started' };
+  }
+
+  if (value.status === 'ok' && value.stage === 'shutdown') {
+    return { stage: 'shutdown', status: 'ok' };
+  }
+
+  if (
+    value.status === 'failed' &&
+    typeof value.code === 'string' &&
+    /^[A-Z][A-Z0-9_]{0,99}$/.test(value.code)
+  ) {
+    return {
+      code: value.code,
+      stage: value.stage,
+      status: 'failed',
+    };
+  }
+
+  return undefined;
+}
+
+export function createPackagedSmokeTimeoutMessage(value: unknown): string {
+  const stage = readPackagedSmokeResult(value)?.stage ?? 'startup';
+
+  return `Packaged desktop smoke check timed out (stage ${stage}).`;
+}
+
+function isPackagedSmokeStage(
+  value: unknown,
+): value is PackagedSmokeStage {
+  return (
+    typeof value === 'string' &&
+    packagedSmokeStages.some((stage) => stage === value)
   );
 }
 
@@ -121,7 +229,14 @@ export async function runPackagedSmokeCheck(
   }
 
   await assertPackagedDesktopBridge(options.pdfPreviewController);
-  await assertPackagedOperationalLogFolder(options.mainWindow);
+  const deleteDraftId = await createDeleteDraftSmokeFixture({
+    backendPort: options.backend.port,
+    runtimeSessionSecret: options.runtimeSessionSecret,
+  });
+
+  await assertPackagedDeleteTransport(options.mainWindow, deleteDraftId);
+
+  await options.reportStage('diagnostics');
   await assertPackagedDiagnostics(
     options.mainWindow,
     options.backend.port,
@@ -132,6 +247,11 @@ export async function runPackagedSmokeCheck(
       runtimeInstanceId: options.runtimeInstanceId,
     },
   );
+
+  await options.reportStage('logFolder');
+  await assertPackagedOperationalLogFolder(options.mainWindow);
+
+  await options.reportStage('supportBundle');
   await runPackagedSupportBundleSmoke({
     appVersion: options.appVersion,
     buildRevision: options.buildRevision,
@@ -140,17 +260,13 @@ export async function runPackagedSmokeCheck(
     supportBundlePath: options.supportBundlePath,
   });
 
-  const deleteDraftId = await createDeleteDraftSmokeFixture({
-    backendPort: options.backend.port,
-    runtimeSessionSecret: options.runtimeSessionSecret,
-  });
-
-  await assertPackagedDeleteTransport(options.mainWindow, deleteDraftId);
+  await options.reportStage('secretStorage');
   await verifyCompanyEmailSecretHttpLifecycle(
     options.backend.port,
     options.runtimeSessionSecret,
   );
 
+  await options.reportStage('pdfPreview');
   const previewInvoiceId = await createInvoicePdfPreviewSmokeFixture({
     backendPort: options.backend.port,
     runtimeSessionSecret: options.runtimeSessionSecret,
