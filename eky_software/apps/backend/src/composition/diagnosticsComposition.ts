@@ -14,6 +14,10 @@ import {
   emptySupportBundleDiagnosticEventReader,
   FileSystemSupportBundleDiagnosticEventReader,
 } from '../modules/diagnostics/infrastructure/fileSystemSupportBundleDiagnosticEventReader.js';
+import {
+  emptySupportBundleIncidentSummaryReader,
+  FileSystemSupportBundleIncidentSummaryReader,
+} from '../modules/diagnostics/infrastructure/fileSystemSupportBundleIncidentSummaryReader.js';
 import { SqliteSystemDiagnosticSummaryReader } from '../modules/diagnostics/infrastructure/sqliteSystemDiagnosticSummaryReader.js';
 import {
   FileSystemOperationalLogDiagnosticSummaryReader,
@@ -44,6 +48,12 @@ export function createDiagnosticsComposition(
     options.operationalLogsRoot === undefined
       ? emptySupportBundleDiagnosticEventReader
       : new FileSystemSupportBundleDiagnosticEventReader(
+          options.operationalLogsRoot,
+        );
+  const supportBundleIncidentReader =
+    options.operationalLogsRoot === undefined
+      ? emptySupportBundleIncidentSummaryReader
+      : new FileSystemSupportBundleIncidentSummaryReader(
           options.operationalLogsRoot,
         );
   const systemDiagnosticSummaryReader =
@@ -85,6 +95,8 @@ export function createDiagnosticsComposition(
     prepareSupportBundleDiagnosticData: (input) =>
       prepareSupportBundleDiagnosticData(input, {
         supportBundleDiagnosticEventReader: supportBundleReader,
+        supportBundleIncidentSummaryReader:
+          supportBundleIncidentReader,
         getRuntimeDiagnosticSummary: () =>
           readRuntimeSummary(input.actorContext),
       }),

@@ -3,6 +3,7 @@ import { requirePermission } from '@eky/permissions';
 
 import type { SupportBundleDiagnosticData } from '../domain/supportBundleDiagnosticData.js';
 import type { SupportBundleDiagnosticEventReader } from '../ports/supportBundleDiagnosticEventReader.js';
+import type { SupportBundleIncidentSummaryReader } from '../ports/supportBundleIncidentSummaryReader.js';
 import {
   toDatabaseDiagnosticSummary,
   type RuntimeDiagnosticSummary,
@@ -16,6 +17,7 @@ export interface PrepareSupportBundleDiagnosticDataInput {
 
 interface PrepareSupportBundleDiagnosticDataDependencies {
   supportBundleDiagnosticEventReader: SupportBundleDiagnosticEventReader;
+  supportBundleIncidentSummaryReader: SupportBundleIncidentSummaryReader;
   getRuntimeDiagnosticSummary(): Promise<RuntimeDiagnosticSummary>;
   now?(): Date;
 }
@@ -30,13 +32,21 @@ export async function prepareSupportBundleDiagnosticData(
   const earliestTimestamp = new Date(
     now.getTime() - diagnosticPeriodDays * millisecondsPerDay,
   ).toISOString();
-  const diagnosticReadResult =
-    await dependencies.supportBundleDiagnosticEventReader.readSupportBundleDiagnosticEvents(
+  const latestTimestamp = now.toISOString();
+  const [diagnosticReadResult, incidentReadResult] = await Promise.all([
+    dependencies.supportBundleDiagnosticEventReader.readSupportBundleDiagnosticEvents(
       {
         earliestTimestamp,
-        latestTimestamp: now.toISOString(),
+        latestTimestamp,
       },
-    );
+    ),
+    dependencies.supportBundleIncidentSummaryReader.readSupportBundleIncidentSummaries(
+      {
+        earliestTimestamp,
+        latestTimestamp,
+      },
+    ),
+  ]);
   const runtimeSummary = await dependencies.getRuntimeDiagnosticSummary();
   const database = toDatabaseDiagnosticSummary(runtimeSummary);
   if (database === null) {
@@ -48,6 +58,8 @@ export async function prepareSupportBundleDiagnosticData(
     database,
     diagnosticEvents: diagnosticReadResult.diagnosticEvents,
     diagnosticPeriodDays,
+    incidentSummaries: incidentReadResult.incidentSummaries,
+    incidentSummariesTruncated: incidentReadResult.sourceTruncated,
     runtimeSummary,
     truncated: diagnosticReadResult.sourceTruncated,
   };

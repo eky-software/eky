@@ -6,7 +6,7 @@ import type {
   SupportBundleDiagnosticEvent,
 } from './supportBundleBackendData.js';
 
-export const supportBundleFormatVersion = 1;
+export const supportBundleFormatVersion = 2;
 export const maximumUncompressedSupportBundleBytes = 25 * 1024 * 1024;
 
 interface CreateSupportBundleArchiveInput {
@@ -38,9 +38,7 @@ export function createSupportBundleArchive(
   const operationalSummary = createOperationalSummary(
     input.backendData.diagnosticEvents,
   );
-  const incidentSummaries = createIncidentSummaries(
-    input.backendData.diagnosticEvents,
-  );
+  const incidentSummaries = input.backendData.incidentSummaries;
   const diagnosticEvents = input.backendData.diagnosticEvents;
   const document = {
     manifest: {
@@ -57,9 +55,12 @@ export function createSupportBundleArchive(
         system: checksum(system),
       },
       supportBundleFormatVersion,
-      truncatedSections: input.backendData.truncated
-        ? ['diagnosticEvents']
-        : [],
+      truncatedSections: [
+        ...(input.backendData.truncated ? ['diagnosticEvents'] : []),
+        ...(input.backendData.incidentSummariesTruncated
+          ? ['incidentSummaries']
+          : []),
+      ],
     },
     system,
     database,
@@ -99,42 +100,6 @@ function createOperationalSummary(
       warn: events.filter(({ level }) => level === 'warn').length,
     },
   };
-}
-
-function createIncidentSummaries(
-  events: readonly SupportBundleDiagnosticEvent[],
-) {
-  const counts = new Map<
-    string,
-    {
-      count: number;
-      errorCode: string | null;
-      eventName: string;
-      outcome: SupportBundleDiagnosticEvent['outcome'];
-    }
-  >();
-
-  for (const event of events) {
-    const key = `${event.eventName}\u0000${event.errorCode ?? ''}\u0000${event.outcome}`;
-    const existing = counts.get(key);
-    if (existing === undefined) {
-      counts.set(key, {
-        count: 1,
-        errorCode: event.errorCode,
-        eventName: event.eventName,
-        outcome: event.outcome,
-      });
-    } else {
-      existing.count += 1;
-    }
-  }
-
-  return [...counts.values()].sort((left, right) => {
-    const countComparison = right.count - left.count;
-    return countComparison === 0
-      ? left.eventName.localeCompare(right.eventName)
-      : countComparison;
-  });
 }
 
 function sha256(value: string): string {

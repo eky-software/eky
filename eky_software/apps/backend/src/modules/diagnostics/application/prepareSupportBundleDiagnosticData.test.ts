@@ -18,6 +18,24 @@ describe('prepareSupportBundleDiagnosticData', () => {
         sourceTruncated: true,
       }),
     };
+    const supportBundleIncidentSummaryReader = {
+      readSupportBundleIncidentSummaries: vi.fn().mockResolvedValue({
+        incidentSummaries: [
+          {
+            appVersion: '1.2.3',
+            buildRevision: 'abcdef123456',
+            count: 2,
+            errorCode: 'SAFE_ERROR',
+            eventName: 'smtp.deliveryFailed',
+            fingerprint: 'smtp.deliveryFailed:SAFE_ERROR',
+            firstOccurredAt: '2026-07-26T08:00:00.000Z',
+            lastOccurredAt: '2026-07-27T08:00:00.000Z',
+            outcome: 'failure',
+          },
+        ],
+        sourceTruncated: false,
+      }),
+    };
 
     const result = await prepareSupportBundleDiagnosticData(
       {
@@ -30,6 +48,7 @@ describe('prepareSupportBundleDiagnosticData', () => {
       },
       {
         supportBundleDiagnosticEventReader,
+        supportBundleIncidentSummaryReader,
         getRuntimeDiagnosticSummary: async () => createRuntimeSummary(),
         now: () => new Date('2026-07-27T12:00:00.000Z'),
       },
@@ -40,10 +59,18 @@ describe('prepareSupportBundleDiagnosticData', () => {
       'recent-security',
     ]);
     expect(result.truncated).toBe(true);
+    expect(result.incidentSummaries).toHaveLength(1);
+    expect(result.incidentSummariesTruncated).toBe(false);
     expect(result).not.toHaveProperty('companyId');
     expect(result.runtimeSummary.appVersion).toBe('1.2.3');
     expect(
       supportBundleDiagnosticEventReader.readSupportBundleDiagnosticEvents,
+    ).toHaveBeenCalledWith({
+      earliestTimestamp: '2026-06-27T12:00:00.000Z',
+      latestTimestamp: '2026-07-27T12:00:00.000Z',
+    });
+    expect(
+      supportBundleIncidentSummaryReader.readSupportBundleIncidentSummaries,
     ).toHaveBeenCalledWith({
       earliestTimestamp: '2026-06-27T12:00:00.000Z',
       latestTimestamp: '2026-07-27T12:00:00.000Z',
@@ -53,6 +80,9 @@ describe('prepareSupportBundleDiagnosticData', () => {
   it('denies access before reading diagnostics', async () => {
     const supportBundleDiagnosticEventReader = {
       readSupportBundleDiagnosticEvents: vi.fn(),
+    };
+    const supportBundleIncidentSummaryReader = {
+      readSupportBundleIncidentSummaries: vi.fn(),
     };
 
     await expect(
@@ -67,12 +97,16 @@ describe('prepareSupportBundleDiagnosticData', () => {
         },
         {
           supportBundleDiagnosticEventReader,
+          supportBundleIncidentSummaryReader,
           getRuntimeDiagnosticSummary: vi.fn(),
         },
       ),
     ).rejects.toThrow('Permission denied.');
     expect(
       supportBundleDiagnosticEventReader.readSupportBundleDiagnosticEvents,
+    ).not.toHaveBeenCalled();
+    expect(
+      supportBundleIncidentSummaryReader.readSupportBundleIncidentSummaries,
     ).not.toHaveBeenCalled();
   });
 });

@@ -31,8 +31,22 @@ export interface SupportBundleBackendData {
   };
   diagnosticEvents: SupportBundleDiagnosticEvent[];
   diagnosticPeriodDays: 30;
+  incidentSummaries: SupportBundleIncidentSummary[];
+  incidentSummariesTruncated: boolean;
   runtimeSummary: SupportBundleRuntimeSummary;
   truncated: boolean;
+}
+
+export interface SupportBundleIncidentSummary {
+  appVersion: string;
+  buildRevision: string;
+  count: number;
+  errorCode: string;
+  eventName: string;
+  fingerprint: string;
+  firstOccurredAt: string;
+  lastOccurredAt: string;
+  outcome: 'blocked' | 'failure' | 'unknown';
 }
 
 export interface SupportBundleRuntimeSummary {
@@ -58,6 +72,7 @@ export interface SupportBundleRuntimeSummary {
 }
 
 const maximumDiagnosticEvents = 5_000;
+const maximumIncidentSummaries = 5_000;
 const safeIdentifierPattern = /^[A-Za-z0-9._:-]+$/;
 const safeMigrationNamePattern = /^[A-Za-z0-9._-]+$/;
 const uuidPattern =
@@ -73,6 +88,8 @@ export function readSupportBundleBackendData(
       'database',
       'diagnosticEvents',
       'diagnosticPeriodDays',
+      'incidentSummaries',
+      'incidentSummariesTruncated',
       'runtimeSummary',
       'truncated',
     ]) ||
@@ -81,6 +98,9 @@ export function readSupportBundleBackendData(
     !Array.isArray(value.diagnosticEvents) ||
     value.diagnosticEvents.length > maximumDiagnosticEvents ||
     value.diagnosticPeriodDays !== 30 ||
+    !Array.isArray(value.incidentSummaries) ||
+    value.incidentSummaries.length > maximumIncidentSummaries ||
+    typeof value.incidentSummariesTruncated !== 'boolean' ||
     !isRuntimeSummary(value.runtimeSummary) ||
     typeof value.truncated !== 'boolean'
   ) {
@@ -92,9 +112,45 @@ export function readSupportBundleBackendData(
     database: value.database,
     diagnosticEvents: value.diagnosticEvents.map(readDiagnosticEvent),
     diagnosticPeriodDays: 30,
+    incidentSummaries: value.incidentSummaries.map(readIncidentSummary),
+    incidentSummariesTruncated: value.incidentSummariesTruncated,
     runtimeSummary: value.runtimeSummary,
     truncated: value.truncated,
   };
+}
+
+function readIncidentSummary(
+  value: unknown,
+): SupportBundleIncidentSummary {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, [
+      'appVersion',
+      'buildRevision',
+      'count',
+      'errorCode',
+      'eventName',
+      'fingerprint',
+      'firstOccurredAt',
+      'lastOccurredAt',
+      'outcome',
+    ]) ||
+    !isSafeVersion(value.appVersion) ||
+    !isOptionalBuildRevision(value.buildRevision) ||
+    value.buildRevision === undefined ||
+    !isPositiveInteger(value.count) ||
+    !isSafeIdentifier(value.errorCode, 120) ||
+    !isSafeIdentifier(value.eventName, 120) ||
+    !isSafeIdentifier(value.fingerprint, 200) ||
+    !isTimestamp(value.firstOccurredAt) ||
+    !isTimestamp(value.lastOccurredAt) ||
+    value.firstOccurredAt > value.lastOccurredAt ||
+    !['blocked', 'failure', 'unknown'].includes(value.outcome as string)
+  ) {
+    throw new Error('SUPPORT_BUNDLE_BACKEND_DATA_INVALID');
+  }
+
+  return value as unknown as SupportBundleIncidentSummary;
 }
 
 function isRuntimeSummary(
@@ -272,6 +328,10 @@ function isOptionalNonNegativeInteger(
   value: unknown,
 ): value is number | undefined {
   return value === undefined || isNonNegativeInteger(value);
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return isNonNegativeInteger(value) && value > 0;
 }
 
 function isOptionalSafeIdentifier(

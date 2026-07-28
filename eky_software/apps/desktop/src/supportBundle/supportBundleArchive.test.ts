@@ -31,6 +31,20 @@ describe('createSupportBundleArchive', () => {
         },
         diagnosticEvents,
         diagnosticPeriodDays: 30,
+        incidentSummaries: [
+          {
+            appVersion: '1.2.3',
+            buildRevision: 'abcdef123456',
+            count: 3,
+            errorCode: 'SMTP_TLS_FAILED',
+            eventName: 'smtp.tlsFailed',
+            fingerprint: 'smtp.tlsFailed:SMTP_TLS_FAILED',
+            firstOccurredAt: '2026-07-26T12:00:00.000Z',
+            lastOccurredAt: '2026-07-27T12:00:00.000Z',
+            outcome: 'failure',
+          },
+        ],
+        incidentSummariesTruncated: true,
         runtimeSummary: createRuntimeSummary(),
         truncated: false,
       },
@@ -47,7 +61,8 @@ describe('createSupportBundleArchive', () => {
     expect(document).toMatchObject({
       manifest: {
         creationCorrelationId: 'correlation-1',
-        supportBundleFormatVersion: 1,
+        supportBundleFormatVersion: 2,
+        truncatedSections: ['incidentSummaries'],
       },
       system: {
         appVersion: '1.2.3',
@@ -82,6 +97,12 @@ describe('createSupportBundleArchive', () => {
       'operationalSummary',
       'runtimeSummary',
       'system',
+    ]);
+    expect(document.incidentSummaries).toEqual([
+      expect.objectContaining({
+        count: 3,
+        eventName: 'smtp.tlsFailed',
+      }),
     ]);
     expect(serialized).not.toContain('companyId');
     expect(serialized).not.toContain('userData');
