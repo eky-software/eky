@@ -46,18 +46,66 @@ describe('mapSmtpTransportFailureToOperationalEvent', () => {
         eventName: expectedEventName,
         retryable: expectedEventName === 'smtp.connectionFailed',
         sideEffectState:
-          phase === 'finalAcceptance' ? 'unknown' : 'none',
+          errorCode === 'SMTP_OUTCOME_UNKNOWN' ? 'unknown' : 'none',
       });
     },
   );
 
-  it('uses unknown side-effect state for an explicitly unknown outcome', () => {
-    expect(
-      mapSmtpTransportFailureToOperationalEvent({
-        errorCode: 'SMTP_OUTCOME_UNKNOWN',
-        outcome: 'outcomeUnknown',
-        phase: 'data',
-      }),
-    ).toMatchObject({ sideEffectState: 'unknown' });
-  });
+  it.each([
+    {
+      errorCode: 'SMTP_DATA_REJECTED',
+      eventName: 'smtp.deliveryFailed',
+      outcome: 'failed',
+      phase: 'finalAcceptance',
+      sideEffectState: 'none',
+    },
+    {
+      errorCode: 'SMTP_OUTCOME_UNKNOWN',
+      eventName: 'smtp.deliveryOutcomeUnknown',
+      outcome: 'outcomeUnknown',
+      phase: 'finalAcceptance',
+      sideEffectState: 'unknown',
+    },
+    {
+      errorCode: 'SMTP_OUTCOME_UNKNOWN',
+      eventName: 'smtp.deliveryOutcomeUnknown',
+      outcome: 'outcomeUnknown',
+      phase: 'data',
+      sideEffectState: 'unknown',
+    },
+    {
+      errorCode: 'SMTP_AUTHENTICATION_FAILED',
+      eventName: 'smtp.authenticationFailed',
+      outcome: 'failed',
+      phase: 'authentication',
+      sideEffectState: 'none',
+    },
+    {
+      errorCode: 'SMTP_CONNECTION_FAILED',
+      eventName: 'smtp.connectionFailed',
+      outcome: 'failed',
+      phase: 'connect',
+      sideEffectState: 'none',
+    },
+  ] satisfies readonly {
+    errorCode: SmtpErrorCode;
+    eventName: string;
+    outcome: 'failed' | 'outcomeUnknown';
+    phase: string;
+    sideEffectState: 'none' | 'unknown';
+  }[])(
+    'derives $sideEffectState side-effect state from $outcome outcome for $errorCode',
+    ({ errorCode, eventName, outcome, phase, sideEffectState }) => {
+      expect(
+        mapSmtpTransportFailureToOperationalEvent({
+          errorCode,
+          outcome,
+          phase,
+        }),
+      ).toMatchObject({
+        eventName,
+        sideEffectState,
+      });
+    },
+  );
 });
