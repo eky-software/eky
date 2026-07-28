@@ -32,6 +32,14 @@ describe('createDnaSmtpOperationalDiagnostics', () => {
 
     diagnostics.recordConnectionSecured(transportDiagnostic);
     diagnostics.recordDeliveryCompleted(transportDiagnostic);
+    diagnostics.recordFailure({
+      durationMs: 31,
+      errorCode: 'SMTP_AUTHENTICATION_FAILED',
+      operationId: 'attempt-1',
+      outcome: 'failed',
+      phase: 'authentication',
+      transportSecurity: transportDiagnostic,
+    });
 
     expect(write).toHaveBeenNthCalledWith(
       1,
@@ -50,6 +58,22 @@ describe('createDnaSmtpOperationalDiagnostics', () => {
         level: 'info',
         stage: 'delivery',
       }),
+    );
+    expect(write).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        ...transportDiagnostic,
+        durationMs: 31,
+        errorCode: 'SMTP_AUTHENTICATION_FAILED',
+        eventName: 'smtp.authenticationFailed',
+        level: 'error',
+        retryable: false,
+        sideEffectState: 'none',
+        stage: 'authentication',
+      }),
+    );
+    expect(JSON.stringify(write.mock.calls)).not.toMatch(
+      /@|password|message|mime|pdf/i,
     );
   });
 
@@ -70,6 +94,15 @@ describe('createDnaSmtpOperationalDiagnostics', () => {
 
     expect(() =>
       diagnostics.recordConnectionSecured(transportDiagnostic),
+    ).not.toThrow();
+    expect(() =>
+      diagnostics.recordFailure({
+        durationMs: 31,
+        errorCode: 'SMTP_TIMEOUT',
+        operationId: 'attempt-1',
+        outcome: 'failed',
+        phase: 'connect',
+      }),
     ).not.toThrow();
   });
 });
