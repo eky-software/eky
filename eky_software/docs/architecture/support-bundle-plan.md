@@ -30,6 +30,10 @@ querya, `companyId`:tä tai runtime-sessionia.
 - `supportBundleFormatVersion = 2`
 - toteutus Node.js:n `zlib`- ja stream-API:lla ilman uutta riippuvuutta
 - enimmäiskoko ennen pakkausta 25 MiB
+- vähintään 5 MiB varataan manifestille, runtime- ja database-yhteenvedoille
+  sekä muille ydinosioille
+- diagnostiikkatapahtumien osabudjetti on 16 MiB
+- incident-yhteenvetojen osabudjetti on 4 MiB
 - katkaistut osiot ilmoitetaan manifestin `truncatedSections`-kentässä
 
 Version 2 erottaa sanitoidut diagnostiikkatapahtumat ja minimoidut
@@ -63,6 +67,15 @@ segmentit uusimmasta vanhimpaan.
 ilmoitetaan, jos tapahtuma-, tavu-, tiedosto- tai pakettibudjetti täyttyy,
 relevantti lähde on rikkoutunut tai osittain luettu tai reader ei muuten voi
 todistaa koko 30 päivän aikavälin kattavuutta.
+
+Osabudjeteissa ja lopullisessa kokonaisbudjetissa säilytetään aina
+uusimmasta vanhimpaan järjestetty suurin mahtuva prefiksi. Jos lopullinen
+25 MiB:n raja ylittyy ydinosioiden jälkeen, diagnostiikkatapahtumia
+katkaistaan ensin. Incident-yhteenvetoja katkaistaan vasta, kun
+diagnostiikkatapahtumat on tyhjennetty eikä paketti vieläkään mahdu.
+Manifestin truncation-tiedot ja osioiden checksumit lasketaan aina
+lopullisesta sisällöstä. Jos ydinosiot eivät yksin mahdu kokonaisbudjettiin,
+paketin muodostus epäonnistuu turvallisesti.
 
 Incident-index-reader lukee kiinteästä `incident-index`-hakemistosta vain
 nykyisen ja tarvittaessa edellisen vuoden tunnetut tiedostot. Pakettiin
