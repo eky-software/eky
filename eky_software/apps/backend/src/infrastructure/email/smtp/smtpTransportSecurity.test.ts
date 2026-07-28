@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import { readSmtpTransportSecuritySummary } from './smtpTransportSecurity.js';
+import { tryReadSmtpTransportSecuritySummary } from './smtpTransportSecurity.js';
 
 const fingerprint256 = Array.from(
   { length: 32 },
   (_, index) => index.toString(16).padStart(2, '0').toUpperCase(),
 ).join(':');
 
-describe('readSmtpTransportSecuritySummary', () => {
+describe('tryReadSmtpTransportSecuritySummary', () => {
   it('returns a bounded DNA SMTP transport summary for validated TLS metadata', () => {
     expect(
-      readSmtpTransportSecuritySummary(createSocket(), {
+      tryReadSmtpTransportSecuritySummary(createSocket(), {
         smtpProfile: 'dnaSmtp',
         targetPort: 465,
       }),
@@ -46,18 +46,18 @@ describe('readSmtpTransportSecuritySummary', () => {
       name: 'a mismatched remote family',
       override: { remoteFamily: 'IPv6' },
     },
-  ])('fails closed for $name', ({ override }) => {
-    expect(() =>
-      readSmtpTransportSecuritySummary(createSocket(override), {
+  ])('omits the diagnostic summary for $name', ({ override }) => {
+    expect(
+      tryReadSmtpTransportSecuritySummary(createSocket(override), {
         smtpProfile: 'dnaSmtp',
         targetPort: 465,
       }),
-    ).toThrow(expect.objectContaining({ code: 'SMTP_TLS_FAILED' }));
+    ).toBeUndefined();
   });
 
   it('accepts an IPv6 peer only with a matching family', () => {
     expect(
-      readSmtpTransportSecuritySummary(
+      tryReadSmtpTransportSecuritySummary(
         createSocket({
           remoteAddress: '2001:db8::10',
           remoteFamily: 'IPv6',
@@ -71,6 +71,23 @@ describe('readSmtpTransportSecuritySummary', () => {
       remoteAddress: '2001:db8::10',
       remoteFamily: 'IPv6',
     });
+  });
+
+  it('omits diagnostics if the runtime metadata accessor fails', () => {
+    expect(
+      tryReadSmtpTransportSecuritySummary(
+        {
+          ...createSocket(),
+          getCipher() {
+            throw new Error('synthetic metadata failure');
+          },
+        },
+        {
+          smtpProfile: 'dnaSmtp',
+          targetPort: 465,
+        },
+      ),
+    ).toBeUndefined();
   });
 });
 

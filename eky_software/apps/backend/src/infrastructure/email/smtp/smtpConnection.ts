@@ -4,7 +4,7 @@ import { assertSafeSmtpCommand } from './smtpCommand.js';
 import { SmtpTransportError } from './smtpErrors.js';
 import { SmtpReplyParser } from './smtpReplyParser.js';
 import {
-  readSmtpTransportSecuritySummary,
+  tryReadSmtpTransportSecuritySummary,
   type SmtpTransportSecuritySummary,
 } from './smtpTransportSecurity.js';
 import type { SmtpReply } from './smtpTypes.js';
@@ -108,22 +108,20 @@ export async function connectImplicitTlsSmtp(
         return;
       }
 
-      let transportSecurity: SmtpTransportSecuritySummary | undefined;
-      try {
-        if (options.diagnosticsProfile !== undefined) {
-          if (options.port !== options.diagnosticsProfile.targetPort) {
-            throw new SmtpTransportError('SMTP_TLS_FAILED', 'connect');
-          }
-
-          transportSecurity = readSmtpTransportSecuritySummary(
-            socket,
-            options.diagnosticsProfile,
-          );
-        }
-      } catch {
+      if (
+        options.diagnosticsProfile !== undefined &&
+        options.port !== options.diagnosticsProfile.targetPort
+      ) {
         fail(new SmtpTransportError('SMTP_TLS_FAILED', 'connect'));
         return;
       }
+      const transportSecurity =
+        options.diagnosticsProfile === undefined
+          ? undefined
+          : tryReadSmtpTransportSecuritySummary(
+              socket,
+              options.diagnosticsProfile,
+            );
 
       settled = true;
       clearTimeout(timer);
