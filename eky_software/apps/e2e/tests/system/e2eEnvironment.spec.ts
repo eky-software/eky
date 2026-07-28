@@ -102,6 +102,12 @@ test.describe('SYS-ISOLATION-001 @critical @security', () => {
           },
         }),
       ).toThrow('escapes');
+      expect(() =>
+        assertE2eSafetyBoundary({
+          ...validInput,
+          productionUserDataPath: paths.workerRoot,
+        }),
+      ).toThrow('production user data');
     } finally {
       rmSync(runRoot, { force: true, recursive: true });
       rmSync(outsideRoot, { force: true, recursive: true });
@@ -211,6 +217,22 @@ test.describe('managed E2E runtime primitives', () => {
           targetRoot: paths.artifactsRoot,
         }),
       ).toThrow('escapes');
+
+      writeFileSync(
+        paths.runtimeConfigPath,
+        '{"sessionSecret":"synthetic-secret"}\n',
+        'utf8',
+      );
+      expect(() =>
+        collectFailureArtifacts({
+          appVersion: '0.0.0-e2e',
+          buildRevision: 'development',
+          files: [paths.runtimeConfigPath],
+          runRoot,
+          scenarioId: 'SYS-ARTIFACT-001',
+          targetRoot: paths.artifactsRoot,
+        }),
+      ).toThrow('runtime config');
       rmSync(outsideDirectory, { force: true, recursive: true });
     } finally {
       rmSync(runRoot, { force: true, recursive: true });

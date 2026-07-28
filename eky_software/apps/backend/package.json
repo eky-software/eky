@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.build.json && node scripts/copy-migrations.mjs",
+    "e2e:build": "node scripts/clean-e2e-dist.mjs && tsc -p tsconfig.e2e.json && node scripts/copy-e2e-migrations.mjs",
     "dev": "pnpm build && pnpm start",
     "local:approved-invoice-pdf": "pnpm build && node scripts/create-approved-invoice-pdf-from-local.mjs",
     "sample:approved-invoice-pdf": "pnpm build && node scripts/create-approved-invoice-pdf-sample.mjs",

@@ -13,6 +13,7 @@ export function startManagedProcess(input: {
   command: string;
   cwd: string;
   environment: Readonly<Record<string, string | undefined>>;
+  inheritEnvironment?: boolean;
   outputLimitBytes?: number;
   redactedValues?: readonly string[];
 }): ManagedProcess {
@@ -21,7 +22,7 @@ export function startManagedProcess(input: {
     cwd: input.cwd,
     detached: process.platform !== 'win32',
     env: {
-      ...process.env,
+      ...(input.inheritEnvironment === false ? {} : process.env),
       ...input.environment,
     },
     shell: false,

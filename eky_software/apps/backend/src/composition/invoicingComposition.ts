@@ -75,17 +75,29 @@ import type { CustomerAccessReader } from '../modules/invoicing/ports/customerAc
 import type { InvoiceCustomerTaxProfileReader } from '../modules/invoicing/ports/invoiceCustomerTaxProfileReader.js';
 import type { InvoiceEmailSettingsReader } from '../modules/invoicing/ports/invoiceEmailSettingsReader.js';
 import type { InvoiceActivityReader } from '../modules/invoicing/ports/invoiceActivityReader.js';
+import type { InvoiceDocumentStorage } from '../modules/invoicing/ports/invoiceDocumentStorage.js';
+import type { InvoiceEmailDeliveryProvider } from '../modules/invoicing/ports/invoiceEmailDeliveryProvider.js';
+import type { InvoiceSmtpDeliveryProvider } from '../modules/invoicing/ports/invoiceSmtpDeliveryProvider.js';
+import type { InvoiceSmtpTestDeliveryProvider } from '../modules/invoicing/ports/invoiceSmtpTestDeliveryProvider.js';
 import { InvoiceSettingsAuditWriteError } from '../modules/invoicing/ports/invoiceSettingsAuditWriteError.js';
 import { ApprovedInvoiceEmailDeliveryOutcomeUnknownError } from '../modules/invoicing/application/approvedInvoiceEmailDeliveryOutcomeUnknownError.js';
 import { createBackendOperationalEvent } from '../observability/createOperationalEvent.js';
 import type { OperationalRuntimeIdentity } from '../observability/operationalEvent.js';
 import type { OperationalLogger } from '../observability/operationalLogger.js';
 
+export interface InvoicingInfrastructureAdapters {
+  invoiceDocumentStorage?: InvoiceDocumentStorage;
+  invoiceEmailDeliveryProvider?: InvoiceEmailDeliveryProvider;
+  invoiceSmtpDeliveryProvider?: InvoiceSmtpDeliveryProvider;
+  invoiceSmtpTestDeliveryProvider?: InvoiceSmtpTestDeliveryProvider;
+}
+
 interface InvoicingCompositionOptions {
   companyEmailSecretReader: CompanyEmailSecretReader;
   customerAccessReader: CustomerAccessReader;
   invoiceCustomerTaxProfileReader: InvoiceCustomerTaxProfileReader;
   database: DatabaseConnection;
+  infrastructureAdapters?: InvoicingInfrastructureAdapters;
   invoiceEmailSettingsReader: InvoiceEmailSettingsReader;
   invoiceDocumentStorageRoot?: string;
   operationalIdentity: Readonly<OperationalRuntimeIdentity>;
@@ -121,9 +133,10 @@ export function createInvoicingComposition(
   const invoiceDeliveryEventRepository =
     new SqliteInvoiceDeliveryEventRepository(options.database);
   const invoiceDocumentStorage =
-    options.invoiceDocumentStorageRoot === undefined
+    options.infrastructureAdapters?.invoiceDocumentStorage ??
+    (options.invoiceDocumentStorageRoot === undefined
       ? new LocalInvoiceDocumentStorage()
-      : new LocalInvoiceDocumentStorage(options.invoiceDocumentStorageRoot);
+      : new LocalInvoiceDocumentStorage(options.invoiceDocumentStorageRoot));
   const approvedInvoiceReader = new SqliteApprovedInvoiceReader(options.database);
   const invoiceCreditContextReader = new SqliteInvoiceCreditContextReader(
     options.database,
@@ -139,7 +152,9 @@ export function createInvoicingComposition(
   const invoiceVatRateRepository = new SqliteInvoiceVatRateRepository(
     options.database,
   );
-  const invoiceEmailDeliveryProvider = new DryRunInvoiceEmailDeliveryProvider();
+  const invoiceEmailDeliveryProvider =
+    options.infrastructureAdapters?.invoiceEmailDeliveryProvider ??
+    new DryRunInvoiceEmailDeliveryProvider();
   const invoiceEmailSendAttemptStore = new InMemoryInvoiceEmailSendAttemptStore();
   const dnaSmtpEmailDeliveryProvider = new DnaSmtpEmailDeliveryProvider({
     companyEmailSecretReader: options.companyEmailSecretReader,
@@ -149,10 +164,11 @@ export function createInvoicingComposition(
     }),
   });
   const invoiceSmtpTestDeliveryProvider =
+    options.infrastructureAdapters?.invoiceSmtpTestDeliveryProvider ??
     new DnaInvoiceSmtpTestDeliveryProvider(dnaSmtpEmailDeliveryProvider);
-  const invoiceSmtpDeliveryProvider = new DnaInvoiceSmtpDeliveryProvider(
-    dnaSmtpEmailDeliveryProvider,
-  );
+  const invoiceSmtpDeliveryProvider =
+    options.infrastructureAdapters?.invoiceSmtpDeliveryProvider ??
+    new DnaInvoiceSmtpDeliveryProvider(dnaSmtpEmailDeliveryProvider);
   const ensureApprovedInvoicePdfDocument = async (
     input: GenerateApprovedInvoicePdfDocumentInput,
   ) => {

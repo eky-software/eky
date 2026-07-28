@@ -22,6 +22,9 @@ export function collectFailureArtifacts(input: {
 
   for (const sourcePath of input.files) {
     assertPathUnderRoot(sourcePath, runRoot);
+    if (basename(sourcePath) === 'runtime-config.json') {
+      throw new Error('E2E runtime config must not be collected as an artifact.');
+    }
     copyFileSync(sourcePath, join(input.targetRoot, basename(sourcePath)));
   }
 

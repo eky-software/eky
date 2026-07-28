@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "e2e-dist"
+  },
+  "include": ["e2e", "src"],
+  "exclude": ["src/**/*.test.ts", "src/testFixtures/**"]
+}
