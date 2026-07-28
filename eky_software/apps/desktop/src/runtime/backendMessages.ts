@@ -76,6 +76,8 @@ function isSafeAbsolutePath(value: unknown): value is string {
 }
 
 const buildRevisionPattern = /^(?:[0-9a-f]{7,40}|development)$/;
+const utcIsoTimestampPattern =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const runtimeInstanceIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -109,8 +111,7 @@ export function parseDesktopBackendCommand(
     !/^[A-Za-z0-9.+_-]{1,80}$/.test(config.appVersion) ||
     typeof config.architecture !== 'string' ||
     !/^[A-Za-z0-9._-]{1,40}$/.test(config.architecture) ||
-    typeof config.buildCreatedAt !== 'string' ||
-    new Date(config.buildCreatedAt).toISOString() !== config.buildCreatedAt ||
+    !isUtcIsoTimestamp(config.buildCreatedAt) ||
     typeof config.buildDirty !== 'boolean' ||
     typeof config.buildRevision !== 'string' ||
     !buildRevisionPattern.test(config.buildRevision) ||
@@ -148,6 +149,17 @@ export function parseDesktopBackendCommand(
     },
     type: 'start',
   };
+}
+
+function isUtcIsoTimestamp(value: unknown): value is string {
+  if (typeof value !== 'string' || !utcIsoTimestampPattern.test(value)) {
+    return false;
+  }
+
+  const timestamp = Date.parse(value);
+  return (
+    Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value
+  );
 }
 
 export function parseDesktopBackendStatus(
