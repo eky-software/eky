@@ -46,6 +46,18 @@ Nykyisen Windows-paketointipolun suorat desktop-riippuvuudet:
 Electron ja paketointityökalut kuuluvat vain `apps/desktop`-runtimeen. Ne eivät
 vuoda domainiin, application serviceihin, API-clientiin tai web-featureihin.
 
+## Playwright E2E -Testaus
+
+R0:n järjestelmä-, selain- ja Electron development -testauksen suora
+testiriippuvuus on:
+
+- `@playwright/test` 1.61.1, Apache-2.0
+
+Riippuvuus kuuluu vain `apps/e2e`-testipakettiin. R0 asentaa Playwrightin
+Chromium-testibinäärin paikallista ja CI-testausta varten. Playwright,
+testibinääri, E2E-testit ja niiden artefaktit eivät kuulu Eky.exe-pakettiin
+eivätkä production-runtimeen.
+
 Tämä dokumentti ei ole vielä täydellinen automaattisesti muodostettu
 kolmannen osapuolen lisenssi-inventaario. Ennen loppukäyttäjälle jaettavaa
 tuotantojulkaisua suorat ja transitiiviset runtime- sekä paketointiriippuvuudet

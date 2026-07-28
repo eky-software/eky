@@ -8,3 +8,12 @@ apps/desktop/out/
 **/runtime/support-bundles/
 *.ekysupport
 *.ekybackup
+
+# Playwright E2E runtime and reports
+apps/e2e/test-results/
+apps/e2e/playwright-report/
+apps/e2e/.runtime/
+apps/e2e/.artifacts/
+apps/e2e/.auth/
+playwright-report/
+test-results/
