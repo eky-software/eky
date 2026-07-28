@@ -3,6 +3,7 @@ import type { Session } from 'electron';
 import { createDesktopOperationalEvent } from '../observability/createDesktopOperationalEvent.js';
 import {
   desktopPermissionTypes,
+  type DesktopOperationalIdentity,
   type DesktopPermissionType,
 } from '../observability/desktopOperationalEvent.js';
 import type { DesktopOperationalLogger } from '../observability/desktopOperationalLogger.js';
@@ -22,7 +23,7 @@ interface ElectronPermissionSession {
 }
 
 interface ElectronPermissionPolicyOptions {
-  appVersion: string;
+  operationalIdentity: DesktopOperationalIdentity;
   operationalLogger: DesktopOperationalLogger;
   permissionSession: ElectronPermissionSession;
 }
@@ -64,7 +65,7 @@ export function registerElectronPermissionPolicy(
             permissionType,
             stage: 'request',
           },
-          { appVersion: options.appVersion },
+          options.operationalIdentity,
         ),
       );
     },

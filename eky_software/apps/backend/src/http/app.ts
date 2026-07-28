@@ -21,6 +21,8 @@ import { createInvoicingComposition } from '../composition/invoicingComposition.
 import type { CompanyEmailSecretReader } from '../modules/companySettings/ports/companyEmailSecretReader.js';
 import type { CompanyEmailSecretStore } from '../modules/companySettings/ports/companyEmailSecretStore.js';
 import { createBackendOperationalEvent } from '../observability/createOperationalEvent.js';
+import type { OperationalRuntimeIdentity } from '../observability/operationalEvent.js';
+import { resolveOperationalRuntimeIdentity } from '../observability/operationalRuntimeIdentity.js';
 import { maintainBusinessAuditRetention } from '../observability/application/maintainBusinessAuditRetention.js';
 import { createBackendOperationalLogger } from '../observability/infrastructure/createBackendOperationalLogger.js';
 import { maintainOperationalLogs } from '../observability/infrastructure/operationalLogRetention.js';
@@ -40,13 +42,19 @@ const defaultAppVersion = '0.0.0';
 
 export interface CreateAppOptions {
   appVersion?: string;
+  architecture?: string;
+  buildCreatedAt?: string;
+  buildDirty?: boolean;
   companyEmailSecretReader?: CompanyEmailSecretReader;
   companyEmailSecretStore?: CompanyEmailSecretStore;
   databaseFilePath?: string;
+  electronVersion?: string;
   invoiceDocumentStorageRoot?: string;
   migrationsDirectory?: string;
   operationalLogger?: OperationalLogger;
+  operationalIdentity?: Readonly<OperationalRuntimeIdentity>;
   operationalLogsRoot?: string;
+  platform?: string;
   runtimeTrust?: RuntimeTrust;
 }
 
@@ -54,15 +62,24 @@ export async function createApp(
   options: CreateAppOptions = {},
 ): Promise<Hono<BackendEnvironment>> {
   const appVersion = options.appVersion ?? defaultAppVersion;
+  const operationalIdentity = resolveOperationalRuntimeIdentity({
+    appVersion,
+    ...(options.operationalIdentity === undefined
+      ? {}
+      : { operationalIdentity: options.operationalIdentity }),
+  });
   const operationalLogger =
     options.operationalLogger ??
     (options.operationalLogsRoot === undefined
       ? noOpOperationalLogger
-      : createBackendOperationalLogger(options.operationalLogsRoot, appVersion));
+      : createBackendOperationalLogger(
+          options.operationalLogsRoot,
+          operationalIdentity,
+        ));
   operationalLogger.write(
     createBackendOperationalEvent(
       { eventName: 'backend.starting' },
-      { appVersion },
+      operationalIdentity,
     ),
   );
 
@@ -80,7 +97,7 @@ export async function createApp(
             ? {}
             : { oldestRemainingMonth: retention.oldestRemainingMonth }),
         },
-        { appVersion },
+        operationalIdentity,
       ),
     );
   }
@@ -88,7 +105,7 @@ export async function createApp(
   operationalLogger.write(
     createBackendOperationalEvent(
       { eventName: 'database.opening' },
-      { appVersion },
+      operationalIdentity,
     ),
   );
   const databaseStartedAt = Date.now();
@@ -105,7 +122,7 @@ export async function createApp(
           durationMs: Date.now() - databaseStartedAt,
           eventName: 'database.opened',
         },
-        { appVersion },
+        operationalIdentity,
       ),
     );
   } catch {
@@ -118,7 +135,7 @@ export async function createApp(
           sideEffectState: 'none',
           stage: 'open',
         },
-        { appVersion },
+        operationalIdentity,
       ),
     );
     throw new Error('Database could not be opened.');
@@ -128,7 +145,7 @@ export async function createApp(
   operationalLogger.write(
     createBackendOperationalEvent(
       { eventName: 'migration.started', stage: 'startup' },
-      { appVersion },
+      operationalIdentity,
     ),
   );
   try {
@@ -145,7 +162,7 @@ export async function createApp(
           eventName: 'migration.completed',
           stage: 'startup',
         },
-        { appVersion },
+        operationalIdentity,
       ),
     );
   } catch {
@@ -158,7 +175,7 @@ export async function createApp(
           sideEffectState: 'rolledBack',
           stage: 'startup',
         },
-        { appVersion },
+        operationalIdentity,
       ),
     );
     database.close();
@@ -182,7 +199,7 @@ export async function createApp(
           sideEffectState: 'none',
           stage: 'startup',
         },
-        { appVersion },
+        operationalIdentity,
       ),
     );
     database.close();
@@ -203,7 +220,7 @@ export async function createApp(
           deletedEventCount: retention.deletedEventCount,
           eventName: 'businessAudit.retentionCompleted',
         },
-        { appVersion },
+        operationalIdentity,
       ),
     );
   } catch {
@@ -215,7 +232,7 @@ export async function createApp(
           sideEffectState: 'unknown',
           stage: 'startup',
         },
-        { appVersion },
+        operationalIdentity,
       ),
     );
   }
@@ -225,7 +242,10 @@ export async function createApp(
 
   app.use(
     '*',
-    createOperationalLoggingMiddleware({ appVersion, operationalLogger }),
+    createOperationalLoggingMiddleware({
+      operationalIdentity,
+      operationalLogger,
+    }),
   );
   app.use(
     '*',
@@ -240,7 +260,7 @@ export async function createApp(
                 correlationId,
                 eventName: 'runtimeSession.invalid',
               },
-              { appVersion },
+              operationalIdentity,
             ),
           );
         },
@@ -251,7 +271,7 @@ export async function createApp(
                 correlationId,
                 eventName: 'runtimeSession.missing',
               },
-              { appVersion },
+              operationalIdentity,
             ),
           );
         },
@@ -264,13 +284,13 @@ export async function createApp(
   });
 
   const customersComposition = createCustomersComposition({
-    appVersion,
     database,
+    operationalIdentity,
     operationalLogger,
   });
   const companySettingsComposition = createCompanySettingsComposition({
-    appVersion,
     database,
+    operationalIdentity,
     operationalLogger,
     ...(options.companyEmailSecretStore === undefined
       ? {}
@@ -295,7 +315,7 @@ export async function createApp(
     invoiceEmailSettingsReader:
       companySettingsComposition.invoiceEmailSettingsReader,
     operationalLogger,
-    operationalAppVersion: appVersion,
+    operationalIdentity,
     ...(options.invoiceDocumentStorageRoot === undefined
       ? {}
       : { invoiceDocumentStorageRoot: options.invoiceDocumentStorageRoot }),
@@ -314,15 +334,22 @@ export async function createApp(
   app.route(
     '/',
     createDiagnosticsComposition({
-      appVersion,
+      buildCreatedAt:
+        options.buildCreatedAt ?? new Date().toISOString(),
+      buildDirty: options.buildDirty ?? true,
       database,
+      electronVersion: options.electronVersion ?? null,
+      operationalIdentity,
       operationalLogsRoot: options.operationalLogsRoot,
+      runtimeArchitecture: options.architecture ?? process.arch,
+      runtimeNodeVersion: process.version,
+      runtimePlatform: options.platform ?? process.platform,
     }),
   );
 
   app.notFound((context) => {
     logUnknownRoute({
-      appVersion,
+      operationalIdentity,
       correlationId: context.get('correlationId'),
       operationalLogger,
     });

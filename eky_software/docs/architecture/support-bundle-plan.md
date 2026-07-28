@@ -35,7 +35,7 @@ querya, `companyId`:tä tai runtime-sessionia.
 ## Sallittu sisältö
 
 - manifest ja creation correlation ID
-- app- ja backend-versiot
+- app- ja backend-versiot, build revision, build-aika ja dirty-tila
 - platform ja architecture ilman käyttäjänimeä
 - tietokannan health- ja migration-yhteenveto ilman polkua
 - operational log -yhteenveto
@@ -84,3 +84,8 @@ oikeuksia eikä seurata symlinkkejä.
 käyttäjä jakaa tiedoston vain harkitusti sovitulle tukitaholle ja poistaa
 ulkoisen kopion, kun käyttötarkoitus päättyy. Eky poistaa vain oman runtimensa
 yli 30 päivää vanhat väliaikaiset tukipakettitiedostot.
+
+Tukipaketti ei ole Eky-varmuuskopio eikä sitä voi käyttää liiketoimintadatan,
+SQLite-tietokannan, laskujen tai asetusten palauttamiseen. `.ekybackup` kuuluu
+myöhemmin erikseen toteutettavaan backup/restore-polkuun; sitä ei saa sekoittaa
+`.ekysupport`-diagnostiikka-artifactiin.

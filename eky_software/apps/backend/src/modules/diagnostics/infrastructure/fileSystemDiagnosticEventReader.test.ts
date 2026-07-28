@@ -30,15 +30,24 @@ describe('FileSystemDiagnosticEventReader', () => {
       [
         createBackendOperationalEvent(
           {
+            correlationId: '22222222-2222-4222-8222-222222222222',
             companyId: 'must-not-be-returned',
+            durationMs: 42,
             entityId: 'must-not-be-returned',
             entityType: 'invoice',
             errorCode: 'PDF_FAILED',
             eventName: 'invoicePdf.generationFailed',
+            fingerprint: 'invoicePdf.generationFailed:PDF_FAILED',
+            operationId: 'operation-1',
+            retryable: true,
+            sideEffectState: 'none',
+            stage: 'render',
           },
           {
             appVersion: '1.0.0',
+            buildRevision: '123456789abc',
             eventId: 'backend-event-1',
+            runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
             timestamp: '2026-07-27T10:00:00.000Z',
           },
         ),
@@ -61,6 +70,8 @@ describe('FileSystemDiagnosticEventReader', () => {
 
     await expect(reader.listRecentDiagnosticEvents(10)).resolves.toEqual([
       {
+        appVersion: '1.0.0',
+        buildRevision: '123456789abc',
         category: 'security',
         component: 'desktop',
         errorCode: null,
@@ -69,18 +80,33 @@ describe('FileSystemDiagnosticEventReader', () => {
         level: 'warn',
         occurredAt: '2026-07-27T11:00:00.000Z',
         outcome: 'blocked',
+        runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
+        stage: 'request',
       },
       {
+        appVersion: '1.0.0',
+        buildRevision: '123456789abc',
         category: 'invoicePdf',
         component: 'backend',
+        correlationId: '22222222-2222-4222-8222-222222222222',
+        durationMs: 42,
         errorCode: 'PDF_FAILED',
         eventName: 'invoicePdf.generationFailed',
+        fingerprint: 'invoicePdf.generationFailed:PDF_FAILED',
         id: 'backend:backend-event-1',
         level: 'error',
         occurredAt: '2026-07-27T10:00:00.000Z',
+        operationId: 'operation-1',
         outcome: 'failure',
+        retryable: true,
+        runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
+        sideEffectState: 'none',
+        stage: 'render',
       },
     ]);
+    expect(JSON.stringify(await reader.listRecentDiagnosticEvents(10))).not.toContain(
+      'must-not-be-returned',
+    );
   });
 
   it('ignores malformed, sensitive and unknown files without exposing raw data', async () => {
@@ -292,7 +318,15 @@ describe('FileSystemDiagnosticEventReader', () => {
       'operationalLogFolder.requestBlocked',
       'operationalLogFolder.openFailed',
     ]);
-    expect(JSON.stringify(events)).not.toContain('shellOpen');
+    expect(JSON.stringify(events)).not.toContain('frameClass');
+    expect(JSON.stringify(events)).not.toContain('originClass');
+    expect(JSON.stringify(events)).not.toContain('permissionType');
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        eventName: 'operationalLogFolder.opened',
+        stage: 'shellOpen',
+      }),
+    );
   });
 
   it('requires composition to supply an absolute logs root', () => {
@@ -334,12 +368,14 @@ function createDesktopEvent(input: {
 
   return {
     appVersion: '1.0.0',
+    buildRevision: '123456789abc',
     category: isPermissionEvent ? 'security' : 'runtime',
     component: 'desktop',
     eventId: input.eventId,
     eventName: input.eventName,
     level: isPermissionEvent ? 'warn' : 'info',
     outcome: isPermissionEvent ? 'blocked' : 'success',
+    runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
     schemaVersion: 1,
     ...(isPermissionEvent ? { stage: 'request' } : {}),
     timestamp: input.timestamp,
@@ -349,7 +385,9 @@ function createDesktopEvent(input: {
 function eventOptions(eventId: string, timestamp: string) {
   return {
     appVersion: '1.0.0',
+    buildRevision: '123456789abc',
     eventId,
+    runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
     timestamp,
   };
 }
@@ -365,6 +403,7 @@ function createDesktopOperationalEventFixture(input: {
 }): Record<string, unknown> {
   return {
     appVersion: '1.0.0',
+    buildRevision: '123456789abc',
     category: input.category,
     component: 'desktop',
     durationMs: 1,
@@ -375,6 +414,7 @@ function createDesktopOperationalEventFixture(input: {
     eventName: input.eventName,
     level: input.level,
     outcome: input.outcome,
+    runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
     schemaVersion: 1,
     sideEffectState: 'none',
     stage: 'shellOpen',

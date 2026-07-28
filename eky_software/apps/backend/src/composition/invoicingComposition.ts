@@ -77,6 +77,7 @@ import type { InvoiceActivityReader } from '../modules/invoicing/ports/invoiceAc
 import { InvoiceSettingsAuditWriteError } from '../modules/invoicing/ports/invoiceSettingsAuditWriteError.js';
 import { ApprovedInvoiceEmailDeliveryOutcomeUnknownError } from '../modules/invoicing/application/approvedInvoiceEmailDeliveryOutcomeUnknownError.js';
 import { createBackendOperationalEvent } from '../observability/createOperationalEvent.js';
+import type { OperationalRuntimeIdentity } from '../observability/operationalEvent.js';
 import type { OperationalLogger } from '../observability/operationalLogger.js';
 
 interface InvoicingCompositionOptions {
@@ -86,7 +87,7 @@ interface InvoicingCompositionOptions {
   database: DatabaseConnection;
   invoiceEmailSettingsReader: InvoiceEmailSettingsReader;
   invoiceDocumentStorageRoot?: string;
-  operationalAppVersion: string;
+  operationalIdentity: Readonly<OperationalRuntimeIdentity>;
   operationalLogger: OperationalLogger;
 }
 
@@ -170,7 +171,7 @@ export function createInvoicingComposition(
             sideEffectState: 'unknown',
             stage: 'generate',
           },
-          { appVersion: options.operationalAppVersion },
+          options.operationalIdentity,
         ),
       );
       throw error;
@@ -332,7 +333,7 @@ export function createInvoicingComposition(
                 sideEffectState: 'none',
                 stage: 'prepare',
               },
-              { appVersion: options.operationalAppVersion },
+              options.operationalIdentity,
             ),
           );
           throw error;
@@ -387,7 +388,7 @@ export function createInvoicingComposition(
                 sideEffectState: outcomeUnknown ? 'unknown' : 'rolledBack',
                 stage: 'smtp',
               },
-              { appVersion: options.operationalAppVersion },
+              options.operationalIdentity,
             ),
           );
           throw error;
@@ -458,7 +459,7 @@ async function logInvoiceSettingsAuditWriteFailure<T>(
   operation: () => Promise<T>,
   options: Pick<
     InvoicingCompositionOptions,
-    'operationalAppVersion' | 'operationalLogger'
+    'operationalIdentity' | 'operationalLogger'
   >,
 ): Promise<T> {
   try {
@@ -475,7 +476,7 @@ async function logInvoiceSettingsAuditWriteFailure<T>(
               sideEffectState: 'rolledBack',
               stage: 'invoiceSettingsMutation',
             },
-            { appVersion: options.operationalAppVersion },
+            options.operationalIdentity,
           ),
         );
       } catch {

@@ -13,11 +13,12 @@ import type { CustomerActivityReader } from '../modules/customers/ports/customer
 import type { CustomerAccessReader } from '../modules/invoicing/ports/customerAccessReader.js';
 import type { InvoiceCustomerTaxProfileReader } from '../modules/invoicing/ports/invoiceCustomerTaxProfileReader.js';
 import { createBackendOperationalEvent } from '../observability/createOperationalEvent.js';
+import type { OperationalRuntimeIdentity } from '../observability/operationalEvent.js';
 import type { OperationalLogger } from '../observability/operationalLogger.js';
 
 interface CustomersCompositionOptions {
-  appVersion: string;
   database: DatabaseConnection;
+  operationalIdentity: Readonly<OperationalRuntimeIdentity>;
   operationalLogger: OperationalLogger;
 }
 
@@ -80,7 +81,7 @@ async function logAuditWriteFailure<T>(
   operation: () => Promise<T>,
   options: Pick<
     CustomersCompositionOptions,
-    'appVersion' | 'operationalLogger'
+    'operationalIdentity' | 'operationalLogger'
   >,
 ): Promise<T> {
   try {
@@ -97,7 +98,7 @@ async function logAuditWriteFailure<T>(
               sideEffectState: 'rolledBack',
               stage: 'customerMutation',
             },
-            { appVersion: options.appVersion },
+            options.operationalIdentity,
           ),
         );
       } catch {

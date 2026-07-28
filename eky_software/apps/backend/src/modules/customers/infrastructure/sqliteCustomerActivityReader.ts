@@ -2,7 +2,10 @@ import type { DatabaseConnection } from '../../../database/connection/createData
 import type {
   CustomerActivityEntry,
 } from '../domain/customerActivityEntry.js';
-import type { CustomerAuditAction } from '../domain/customerAuditEvent.js';
+import type {
+  CustomerAuditAction,
+  CustomerChangedFieldCategory,
+} from '../domain/customerAuditEvent.js';
 import type {
   CustomerActivityCriteria,
   CustomerActivityReader,
@@ -10,10 +13,20 @@ import type {
 
 interface CustomerActivityRow {
   action: CustomerAuditAction;
+  changed_field_categories: string;
   customer_number: string | null;
   id: string;
   occurred_at: string;
 }
+
+const customerChangeCategories =
+  new Set<CustomerChangedFieldCategory>([
+    'billing',
+    'contact',
+    'identity',
+    'pricing',
+    'status',
+  ]);
 
 export class SqliteCustomerActivityReader implements CustomerActivityReader {
   constructor(private readonly database: DatabaseConnection) {}
@@ -27,6 +40,7 @@ export class SqliteCustomerActivityReader implements CustomerActivityReader {
           SELECT
             audit.id,
             audit.action,
+            audit.changed_field_categories,
             audit.occurred_at,
             customers.customer_number
           FROM customer_audit_events AS audit
@@ -49,9 +63,39 @@ export class SqliteCustomerActivityReader implements CustomerActivityReader {
       )
       .map((row) => ({
         action: row.action,
+        changeCategories: readCustomerChangeCategories(
+          row.changed_field_categories,
+        ),
         customerNumber: row.customer_number,
         id: row.id,
         occurredAt: row.occurred_at,
       }));
   }
+}
+
+function readCustomerChangeCategories(
+  value: string,
+): readonly CustomerChangedFieldCategory[] {
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(value) as unknown;
+  } catch {
+    throw new Error('CUSTOMER_ACTIVITY_CHANGE_CATEGORIES_INVALID');
+  }
+
+  if (
+    !Array.isArray(parsed) ||
+    parsed.length > customerChangeCategories.size ||
+    !parsed.every(
+      (category): category is CustomerChangedFieldCategory =>
+        typeof category === 'string' &&
+        customerChangeCategories.has(category as CustomerChangedFieldCategory),
+    ) ||
+    new Set(parsed).size !== parsed.length
+  ) {
+    throw new Error('CUSTOMER_ACTIVITY_CHANGE_CATEGORIES_INVALID');
+  }
+
+  return Object.freeze([...parsed]);
 }

@@ -157,10 +157,14 @@ function createFixture(runtimeRoot: string) {
   const showSafeError = vi.fn();
   const events: DesktopOperationalEvent[] = [];
   const capability = createOperationalLogFolderCapability({
-    appVersion: '0.0.0',
     ipcMain: { handle, removeHandler } as never,
     mainWindow: mainWindow as never,
     openPath,
+    operationalIdentity: {
+      appVersion: '0.0.0',
+      buildRevision: '123456789abc',
+      runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
+    },
     operationalLogger: {
       write(event) {
         events.push(event);

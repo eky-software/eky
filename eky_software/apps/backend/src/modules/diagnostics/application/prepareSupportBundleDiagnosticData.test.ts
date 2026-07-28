@@ -23,18 +23,9 @@ describe('prepareSupportBundleDiagnosticData', () => {
         },
       },
       {
-        appVersion: '1.2.3',
         diagnosticEventReader,
+        getRuntimeDiagnosticSummary: async () => createRuntimeSummary(),
         now: () => new Date('2026-07-27T12:00:00.000Z'),
-        systemDiagnosticSummaryReader: {
-          async readDatabaseSummary() {
-            return {
-              appliedMigrationCount: 35,
-              health: 'ok' as const,
-              latestMigrationName: '035_example.sql',
-            };
-          },
-        },
       },
     );
 
@@ -43,6 +34,7 @@ describe('prepareSupportBundleDiagnosticData', () => {
       'recent-security',
     ]);
     expect(result).not.toHaveProperty('companyId');
+    expect(result.runtimeSummary.appVersion).toBe('1.2.3');
     expect(diagnosticEventReader.listRecentDiagnosticEvents).toHaveBeenCalledWith(
       10_001,
     );
@@ -64,11 +56,8 @@ describe('prepareSupportBundleDiagnosticData', () => {
           },
         },
         {
-          appVersion: '1.2.3',
           diagnosticEventReader,
-          systemDiagnosticSummaryReader: {
-            readDatabaseSummary: vi.fn(),
-          },
+          getRuntimeDiagnosticSummary: vi.fn(),
         },
       ),
     ).rejects.toThrow('Permission denied.');
@@ -91,5 +80,29 @@ function event(
     level,
     occurredAt,
     outcome: level === 'info' ? ('success' as const) : ('failure' as const),
+  };
+}
+
+function createRuntimeSummary() {
+  return {
+    appVersion: '1.2.3',
+    appliedMigrationCount: 35,
+    architecture: 'x64',
+    buildCreatedAt: '2026-07-27T10:00:00.000Z',
+    buildDirty: false,
+    buildRevision: 'abcdef123456',
+    databaseHealth: 'ok' as const,
+    electronVersion: '42.7.0',
+    latestErrorAt: null,
+    latestMigrationName: '035_example.sql',
+    latestSecurityEventAt: null,
+    latestWarningAt: null,
+    nodeVersion: 'v24.11.0',
+    operationalLogNewestMonth: null,
+    operationalLogOldestMonth: null,
+    operationalLogsAvailable: false,
+    operationalLogTotalBytes: 0,
+    platform: 'win32',
+    runtimeInstanceId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
   };
 }

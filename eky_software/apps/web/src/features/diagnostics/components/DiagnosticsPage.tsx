@@ -8,7 +8,10 @@ import { DiagnosticsPageView } from './DiagnosticsPageView.js';
 import { useDiagnostics } from '../hooks/useDiagnostics.js';
 
 interface DiagnosticsPageProps {
-  apiClient: Pick<EkyApiClient, 'listDiagnosticEvents'>;
+  apiClient: Pick<
+    EkyApiClient,
+    'getDiagnosticSummary' | 'listDiagnosticEvents'
+  >;
   createSupportBundle?: CreateSupportBundle;
   openOperationalLogFolder?: OpenOperationalLogFolder;
 }

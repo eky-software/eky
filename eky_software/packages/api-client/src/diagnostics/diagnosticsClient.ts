@@ -1,5 +1,8 @@
 import { EkyApiError, requestJson } from '../http.js';
-import { readDiagnosticsResponse } from './diagnosticsResponse.js';
+import {
+  readDiagnosticSummaryResponse,
+  readDiagnosticsResponse,
+} from './diagnosticsResponse.js';
 import type {
   DiagnosticEventListQuery,
   DiagnosticsApi,
@@ -12,6 +15,15 @@ export function createDiagnosticsApi(
   baseUrl: string,
 ): DiagnosticsApi {
   return {
+    async getDiagnosticSummary() {
+      return readDiagnosticSummaryResponse(
+        await requestJson(
+          fetchImplementation,
+          baseUrl,
+          '/diagnostics/summary',
+        ),
+      );
+    },
     async listDiagnosticEvents(query: DiagnosticEventListQuery = {}) {
       return readDiagnosticsResponse(
         await requestJson(
@@ -37,4 +49,3 @@ function createDiagnosticsPath(query: DiagnosticEventListQuery): string {
   }
   return `/diagnostics/events?limit=${query.limit}`;
 }
-

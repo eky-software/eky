@@ -104,4 +104,67 @@ describe('ActivityPageView', () => {
     expect(html).toContain('Oma yritys');
     expect(html).not.toContain('company-');
   });
+
+  it('renders safe customer and company change categories without field values', () => {
+    const html = renderToStaticMarkup(
+      <ActivityPageView
+        {...baseProps}
+        items={[
+          {
+            changeCategories: ['contact', 'pricing'],
+            id: 'customers:event-1',
+            module: 'customers',
+            occurredAt: '2026-07-27T10:00:00.000Z',
+            outcome: 'success',
+            reference: { kind: 'customerNumber', value: '1024' },
+            type: 'customer.updated',
+          },
+          {
+            changeCategories: ['banking', 'invoicingDefaults'],
+            id: 'companySettings:event-1',
+            module: 'companySettings',
+            occurredAt: '2026-07-27T09:00:00.000Z',
+            outcome: 'success',
+            reference: null,
+            type: 'companySettings.updated',
+          },
+        ]}
+      />,
+    );
+
+    expect(html).toContain(
+      'Asiakkaan 1024 yhteystietoja ja hinnoittelua päivitetty',
+    );
+    expect(html).toContain(
+      'Oman yrityksen pankkitietoja ja laskutusasetuksia päivitetty',
+    );
+    expect(html).not.toContain('smtpPassword');
+  });
+
+  it('uses a bounded summary when more than three groups changed', () => {
+    const html = renderToStaticMarkup(
+      <ActivityPageView
+        {...baseProps}
+        items={[
+          {
+            changeCategories: [
+              'address',
+              'banking',
+              'contact',
+              'identity',
+            ],
+            id: 'companySettings:event-1',
+            module: 'companySettings',
+            occurredAt: '2026-07-27T09:00:00.000Z',
+            outcome: 'success',
+            reference: null,
+            type: 'companySettings.updated',
+          },
+        ]}
+      />,
+    );
+
+    expect(html).toContain('Useita tietoryhmiä päivitettiin');
+    expect(html).not.toContain('pankkitietoja');
+  });
 });

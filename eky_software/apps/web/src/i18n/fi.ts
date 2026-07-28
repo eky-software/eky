@@ -1,3 +1,11 @@
+function formatFinnishList(items: readonly string[]): string {
+  if (items.length < 2) {
+    return items[0] ?? '';
+  }
+
+  return `${items.slice(0, -1).join(', ')} ja ${items.at(-1)}`;
+}
+
 export const uiText = {
   common: {
     later: 'Myöhemmin',
@@ -22,6 +30,19 @@ export const uiText = {
     invoicing: 'Laskutus',
   },
   activity: {
+    changeCategories: {
+      address: 'osoitetietoja',
+      banking: 'pankkitietoja',
+      billing: 'laskutustietoja',
+      contact: 'yhteystietoja',
+      emailConfiguration: 'sähköpostiasetuksia',
+      identity: 'perustietoja',
+      invoicingDefaults: 'laskutusasetuksia',
+      pricing: 'hinnoittelua',
+      status: 'tilaa',
+    },
+    companySettingsChangeSummary: (categories: readonly string[]) =>
+      `Oman yrityksen ${formatFinnishList(categories)} päivitetty`,
     categories: {
       all: 'Kaikki',
       companySettings: 'Oma yritys',
@@ -30,6 +51,13 @@ export const uiText = {
     },
     category: 'Kategoria',
     customerNumber: 'Asiakas',
+    customerChangeSummary: (
+      customerNumber: string | null,
+      categories: readonly string[],
+    ) =>
+      customerNumber === null
+        ? `Asiakkaan ${formatFinnishList(categories)} päivitetty`
+        : `Asiakkaan ${customerNumber} ${formatFinnishList(categories)} päivitetty`,
     empty: 'Tapahtumia ei ole vielä.',
     event: 'Tapahtuma',
     filters: 'Tapahtumien suodatus',
@@ -50,6 +78,7 @@ export const uiText = {
       unknown: 'Epäselvä',
     },
     month: 'Kuukausi',
+    multipleDataGroupsUpdated: 'Useita tietoryhmiä päivitettiin',
     page: 'Sivu {page}',
     pageSize: 'Rivejä',
     pagination: 'Tapahtumasivut',
@@ -81,7 +110,14 @@ export const uiText = {
     },
   },
   diagnostics: {
+    appVersion: 'Sovellusversio',
+    buildCreatedAt: 'Koontiaika',
+    buildRevision: 'Build revision',
+    buildState: 'Buildin tila',
+    category: 'Luokka',
+    cleanBuild: 'Puhdas',
     component: 'Osa',
+    correlationId: 'Korrelaatiotunniste',
     components: {
       backend: 'Paikallinen palvelu',
       desktop: 'Työpöytäsovellus',
@@ -92,26 +128,72 @@ export const uiText = {
     createSupportBundleError:
       'Tukipakettia ei voitu luoda turvallisesti.',
     creatingSupportBundle: 'Luodaan tukipakettia...',
+    database: 'Tietokanta',
+    databaseHealth: {
+      failed: 'Tarkistus epäonnistui',
+      ok: 'Kunnossa',
+      unavailable: 'Ei käytettävissä',
+    },
+    databaseSummary: (
+      migrationCount: number,
+      latestMigrationName: string | null,
+    ) =>
+      latestMigrationName === null
+        ? `${migrationCount} migraatiota`
+        : `${migrationCount} migraatiota, viimeisin ${latestMigrationName}`,
+    desktopLogsOnly:
+      'Tekniset tiedostolokit ovat käytettävissä paketoidussa desktopissa.',
+    dirtyBuild: 'Työpuussa oli muutoksia',
+    details: 'Tiedot',
+    duration: 'Kesto',
+    durationValue: (durationMs: number) => `${durationMs} ms`,
+    electronVersion: 'Electron',
     empty: 'Diagnostiikkatapahtumia ei ole vielä.',
     errorCode: 'Virhekoodi',
     event: 'Tapahtuma',
+    fingerprint: 'Virheen sormenjälki',
     heading: 'Diagnostiikka',
     kicker: 'Tekninen tila',
     loadError:
       'Diagnostiikkaa ei voitu ladata. Yritä hetken kuluttua uudelleen.',
     loading: 'Ladataan diagnostiikkaa...',
+    latestError: 'Viimeisin virhe',
+    latestSecurityEvent: 'Viimeisin turvallisuustapahtuma',
+    latestWarning: 'Viimeisin varoitus',
+    logPeriod: 'Lokien aikaväli',
+    logSize: 'Lokien koko',
+    noData: 'Ei tietoja',
     noErrorCode: 'Ei virhekoodia',
+    nodeVersion: 'Node.js',
+    no: 'Ei',
     occurredAt: 'Ajankohta',
+    operationId: 'Operaatiotunniste',
     openLogFolder: 'Avaa lokikansio',
     openLogFolderError: 'Lokikansiota ei voitu avata turvallisesti.',
+    operationalLogs: 'Tekniset tiedostolokit',
     outcomes: {
       blocked: 'Estetty',
       failure: 'Epäonnistui',
       success: 'Onnistui',
       unknown: 'Epäselvä',
     },
+    runtime: 'Ajonaikainen ympäristö',
+    runtimeInstance: 'Käynnistyskerta',
+    retryable: 'Voidaanko yrittää uudelleen',
+    showDetails: 'Näytä tiedot',
+    sideEffectState: 'Sivuvaikutusten tila',
+    sideEffectStates: {
+      committed: 'Tallentui',
+      none: 'Ei sivuvaikutuksia',
+      rolledBack: 'Peruttiin',
+      unknown: 'Epäselvä',
+    },
+    stage: 'Vaihe',
     status: 'Tila',
+    summaryHeading: 'Järjestelmäyhteenveto',
     supportBundleCreated: 'Tukipaketti luotiin onnistuneesti.',
+    version: 'Versio',
+    yes: 'Kyllä',
   },
   customers: {
     add: 'Lisää',

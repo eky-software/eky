@@ -4,6 +4,7 @@ import { createApp, type CreateAppOptions } from './app.js';
 import type { RuntimeTrust } from './runtimeTrust.js';
 import { createBackendOperationalEvent } from '../observability/createOperationalEvent.js';
 import { createBackendOperationalLogger } from '../observability/infrastructure/createBackendOperationalLogger.js';
+import { resolveOperationalRuntimeIdentity } from '../observability/operationalRuntimeIdentity.js';
 import {
   noOpOperationalLogger,
   type OperationalLogger,
@@ -70,8 +71,20 @@ export async function startServer(
   const port =
     options.port ?? getServerPort(process.env.PORT);
   const appOptions: CreateAppOptions = { ...options.appOptions };
-  const appVersion = appOptions.appVersion ?? '0.0.0';
-  const operationalLogger = resolveOperationalLogger(appOptions);
+  const operationalIdentity = resolveOperationalRuntimeIdentity({
+    ...(appOptions.appVersion === undefined
+      ? {}
+      : { appVersion: appOptions.appVersion }),
+    ...(appOptions.operationalIdentity === undefined
+      ? {}
+      : { operationalIdentity: appOptions.operationalIdentity }),
+  });
+  appOptions.appVersion = operationalIdentity.appVersion;
+  appOptions.operationalIdentity = operationalIdentity;
+  const operationalLogger = resolveOperationalLogger(
+    appOptions,
+    operationalIdentity,
+  );
   appOptions.operationalLogger = operationalLogger;
 
   if (options.runtimeTrust !== undefined) {
@@ -94,7 +107,7 @@ export async function startServer(
               durationMs: Date.now() - startedAt,
               eventName: 'backend.started',
             },
-            { appVersion },
+            operationalIdentity,
           ),
         );
         resolveStart({
@@ -103,7 +116,7 @@ export async function startServer(
             operationalLogger.write(
               createBackendOperationalEvent(
                 { eventName: 'backend.shutdownStarted' },
-                { appVersion },
+                operationalIdentity,
               ),
             );
             await closeServer(server);
@@ -113,7 +126,7 @@ export async function startServer(
                   durationMs: Date.now() - shutdownStartedAt,
                   eventName: 'backend.shutdownCompleted',
                 },
-                { appVersion },
+                operationalIdentity,
               ),
             );
           },
@@ -129,12 +142,16 @@ export async function startServer(
 
 function resolveOperationalLogger(
   appOptions: CreateAppOptions,
+  operationalIdentity: ReturnType<typeof resolveOperationalRuntimeIdentity>,
 ): OperationalLogger {
   if (appOptions.operationalLogger !== undefined) {
     return appOptions.operationalLogger;
   }
   if (appOptions.operationalLogsRoot !== undefined) {
-    return createBackendOperationalLogger(appOptions.operationalLogsRoot);
+    return createBackendOperationalLogger(
+      appOptions.operationalLogsRoot,
+      operationalIdentity,
+    );
   }
   return noOpOperationalLogger;
 }

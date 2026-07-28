@@ -12,6 +12,7 @@ describe('activity API client', () => {
         return jsonResponse({
           activityItems: [
             {
+              changeCategories: ['contact', 'pricing'],
               id: 'customers:event-1',
               module: 'customers',
               occurredAt: '2026-07-27T10:00:00.000Z',
@@ -83,6 +84,56 @@ describe('activity API client', () => {
     });
 
     await expect(client.listActivity()).rejects.toBeInstanceOf(EkyApiError);
+  });
+
+  it('rejects unknown, duplicate and cross-module change categories', async () => {
+    for (const item of [
+      {
+        changeCategories: ['secret'],
+        module: 'customers',
+      },
+      {
+        changeCategories: ['contact', 'contact'],
+        module: 'customers',
+      },
+      {
+        changeCategories: ['pricing'],
+        module: 'companySettings',
+      },
+      {
+        changeCategories: ['contact'],
+        module: 'invoicing',
+      },
+    ] as const) {
+      const client = createEkyApiClient({
+        baseUrl: '',
+        fetch: async () =>
+          jsonResponse({
+            activityItems: [
+              {
+                ...item,
+                id: `${item.module}:event-1`,
+                occurredAt: '2026-07-27T10:00:00.000Z',
+                outcome: 'success',
+                reference: null,
+                type:
+                  item.module === 'customers'
+                    ? 'customer.updated'
+                    : item.module === 'companySettings'
+                      ? 'companySettings.updated'
+                      : 'invoiceVatRates.updated',
+              },
+            ],
+            hasNextPage: false,
+            hasPreviousPage: false,
+            month: '2026-07',
+            page: 1,
+            pageSize: 20,
+          }),
+      });
+
+      await expect(client.listActivity()).rejects.toBeInstanceOf(EkyApiError);
+    }
   });
 
   it('accepts a safe invoice settings event without an entity reference', async () => {

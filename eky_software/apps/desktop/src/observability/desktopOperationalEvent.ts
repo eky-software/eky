@@ -5,6 +5,12 @@ export type DesktopEventOutcome =
   | 'success'
   | 'unknown';
 
+export interface DesktopOperationalIdentity {
+  appVersion: string;
+  buildRevision: string;
+  runtimeInstanceId: string;
+}
+
 export const desktopPermissionTypes = Object.freeze([
   'clipboard-read',
   'clipboard-sanitized-write',
@@ -104,8 +110,7 @@ export type DesktopOperationalEventInput = {
   >;
 }[DesktopOperationalEventName];
 
-interface DesktopOperationalEventCore {
-  appVersion: string;
+interface DesktopOperationalEventCore extends DesktopOperationalIdentity {
   category: string;
   component: 'desktop';
   eventId: string;

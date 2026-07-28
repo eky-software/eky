@@ -2,3 +2,9 @@ apps/backend/storage/
 apps/desktop/.stage/
 apps/desktop/dist/
 apps/desktop/out/
+
+# Local Eky runtime and diagnostic artifacts
+**/runtime/logs/
+**/runtime/support-bundles/
+*.ekysupport
+*.ekybackup

@@ -93,7 +93,8 @@ Ydinkentät rajataan tapahtuman mukaan:
 
 - UTC-aikaleima, schema-versio ja event ID
 - eventName, category, level, component ja outcome
-- app version
+- app version, build revision ja runtime instance ID tarkasti mallinnetuissa
+  paikallisissa operational-eventeissä
 - tarvittaessa correlation ID, operation ID, stage, turvallinen error code,
   retryable, side-effect state, duration ja fingerprint
 - vain business auditissa tai tarkasti rajatussa activity-projektiossa
@@ -110,6 +111,16 @@ Operational- ja security-lokeissa kielletään:
 
 Sallitut merkkijonot sanitoidaan kontrollimerkeistä. Koko, pituus, taulukon
 alkiomäärä ja sisäkkäisyys rajataan. Tuntematon kenttä tai eventName hylätään.
+
+`appVersion`, `buildRevision` ja `runtimeInstanceId` ovat vianrajaustietoja.
+Ne eivät ole autentikointi-, tenant-, permission- tai artifactin
+allekirjoitustietoja. Runtime-tunniste vaihtuu käynnistyksittäin eikä sitä
+viedä pitkäaikaiseen incident-indeksiin.
+
+Incident-indeksin sallittu build-konteksti on `appVersion`, turvallinen
+`buildRevision`, component, eventName, outcome, errorCode, fingerprint ja
+UTC-aikaleima. Indeksi ei sisällä runtime-, correlation-, operation-, actor-,
+company- tai entity-tunnisteita, paikallisia polkuja tai liiketoimintadataa.
 
 ## Uuden moduulin observability-portti
 
@@ -130,7 +141,9 @@ Jokaiselle uudelle moduulille määritellään ennen toteutusta:
 
 Activity on read-only composition. Se yhdistää moduulien turvallisia
 projektioita erillisten reader-porttien kautta eikä omista audit-kirjoituksia.
-Frontend ei saa raw event metadataa.
+Frontend ei saa raw event metadataa. Customers-moduulin ja oman yrityksen
+asetusten päivityksistä saa välittää vain omistavan moduulin allowlistan
+mukaiset muutoskategoriat ilman kenttänimiä tai vanhoja ja uusia arvoja.
 
 Diagnostics lukee vain kiinteästä Eky logs-rootista, validoi eventit uudelleen
 ja palauttaa rajatun projection. Se ei hyväksy tiedostopolkua tai filenamea

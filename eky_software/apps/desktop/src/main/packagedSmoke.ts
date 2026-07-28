@@ -21,11 +21,14 @@ export interface PackagedSmokeConfiguration {
 }
 
 interface RunPackagedSmokeCheckOptions {
+  appVersion: string;
   backend: DesktopBackendHandle;
+  buildRevision: string;
   databaseFilePath: string;
   mainWindow: BrowserWindow;
   pdfPreviewController: InvoicePdfPreviewWindowController;
   runtimeSessionSecret: string;
+  runtimeInstanceId: string;
   secretFilePath: string;
   smokePdfPath: string;
 }
@@ -121,6 +124,11 @@ export async function runPackagedSmokeCheck(
     options.mainWindow,
     options.backend.port,
     options.runtimeSessionSecret,
+    {
+      appVersion: options.appVersion,
+      buildRevision: options.buildRevision,
+      runtimeInstanceId: options.runtimeInstanceId,
+    },
   );
 
   const deleteDraftId = await createDeleteDraftSmokeFixture({
@@ -239,16 +247,41 @@ async function assertPackagedDiagnostics(
   mainWindow: BrowserWindow,
   backendPort: number,
   runtimeSessionSecret: string,
+  expectedIdentity: {
+    appVersion: string;
+    buildRevision: string;
+    runtimeInstanceId: string;
+  },
 ): Promise<void> {
+  const requestOptions = {
+    headers: {
+      accept: 'application/json',
+      [localRuntimeSessionHeaderName]: runtimeSessionSecret,
+    },
+    signal: AbortSignal.timeout(5_000),
+  };
+  const summaryResponse = await fetch(
+    `http://127.0.0.1:${backendPort}/diagnostics/summary`,
+    requestOptions,
+  );
+
+  if (!summaryResponse.ok) {
+    throw new Error('DESKTOP_SMOKE_DIAGNOSTICS_SUMMARY_HTTP_FAILED');
+  }
+
+  const summary = readDiagnosticSummary(await summaryResponse.json());
+  if (
+    summary.appVersion === '0.0.0' ||
+    summary.appVersion !== expectedIdentity.appVersion ||
+    summary.buildRevision !== expectedIdentity.buildRevision ||
+    summary.runtimeInstanceId !== expectedIdentity.runtimeInstanceId
+  ) {
+    throw new Error('DESKTOP_SMOKE_DIAGNOSTICS_IDENTITY_FAILED');
+  }
+
   const response = await fetch(
     `http://127.0.0.1:${backendPort}/diagnostics/events?limit=200`,
-    {
-      headers: {
-        accept: 'application/json',
-        [localRuntimeSessionHeaderName]: runtimeSessionSecret,
-      },
-      signal: AbortSignal.timeout(5_000),
-    },
+    requestOptions,
   );
 
   if (!response.ok) {
@@ -298,7 +331,14 @@ async function assertPackagedDiagnostics(
       const loadError = (document.body.textContent ?? '').includes(
         'Diagnostiikkaa ei voitu ladata',
       );
-      return { eventVisible: Boolean(eventVisible), heading, loadError };
+      const text = document.body.textContent ?? '';
+      return {
+        eventVisible: Boolean(eventVisible),
+        heading,
+        loadError,
+        revisionVisible: text.includes(${JSON.stringify(expectedIdentity.buildRevision)}),
+        versionVisible: text.includes(${JSON.stringify(expectedIdentity.appVersion)}),
+      };
     })()`,
     true,
   );
@@ -307,10 +347,37 @@ async function assertPackagedDiagnostics(
     !isRecord(uiResult) ||
     uiResult.heading !== 'Diagnostiikka' ||
     uiResult.eventVisible !== true ||
-    uiResult.loadError !== false
+    uiResult.loadError !== false ||
+    uiResult.revisionVisible !== true ||
+    uiResult.versionVisible !== true
   ) {
     throw new Error('DESKTOP_SMOKE_DIAGNOSTICS_VIEW_FAILED');
   }
+}
+
+function readDiagnosticSummary(value: unknown): {
+  appVersion: string;
+  buildRevision: string;
+  runtimeInstanceId: string;
+} {
+  if (
+    !isRecord(value) ||
+    typeof value.appVersion !== 'string' ||
+    typeof value.buildRevision !== 'string' ||
+    !/^[0-9a-f]{7,40}$/.test(value.buildRevision) ||
+    typeof value.runtimeInstanceId !== 'string' ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value.runtimeInstanceId,
+    )
+  ) {
+    throw new Error('DESKTOP_SMOKE_DIAGNOSTICS_SUMMARY_HTTP_FAILED');
+  }
+
+  return {
+    appVersion: value.appVersion,
+    buildRevision: value.buildRevision,
+    runtimeInstanceId: value.runtimeInstanceId,
+  };
 }
 
 function readDiagnosticEvents(value: unknown): string[] {

@@ -170,6 +170,11 @@ teknisen velan purkua tai usean moduulin käyttäytymisen säilyttävää
 refaktorointia, lue myös
 `docs/architecture/codebase-cleanup-roadmap.md`.
 
+Jos työ koskee sovellusversion nostamista, build-identiteettiä,
+release-artifactia, Git-revision välittämistä, dirty-buildia tai runtimen
+jäljitettävyyttä, lue myös
+`docs/architecture/release-versioning-policy.md`.
+
 Jos työ koskee laskutuksen web-käyttöliittymää, laskuluonnoslistaa, Classic-laskutusnäkymää, uuden laskun lomaketta tai laskuluonnoksen avaamista ja muokkaamista webissä, lue myös `docs/architecture/invoicing-ui-roadmap.md`.
 
 Jos työ koskee web-käyttöliittymän ulkoasua, layoutia, komponenttirakennetta, värejä tai Eky-työpöytäkokemusta, lue myös `docs/design/ui-principles.md`.

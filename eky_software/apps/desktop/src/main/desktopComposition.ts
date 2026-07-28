@@ -28,6 +28,7 @@ import {
 import { startDesktopBackend } from '../runtime/backendProcess.js';
 import { createDesktopRuntimeSession } from '../runtime/runtimeSession.js';
 import { createDesktopOperationalEvent } from '../observability/createDesktopOperationalEvent.js';
+import type { DesktopOperationalIdentity } from '../observability/desktopOperationalEvent.js';
 import type { DesktopOperationalLogger } from '../observability/desktopOperationalLogger.js';
 import { maintainDesktopIncidentIndex } from '../observability/infrastructure/desktopIncidentIndexRetention.js';
 import { maintainDesktopOperationalLogs } from '../observability/infrastructure/desktopOperationalLogRetention.js';
@@ -52,6 +53,7 @@ import {
   type PackagedSmokeConfiguration,
 } from './packagedSmoke.js';
 import { restoreWindowInputFocus } from './windowInputFocus.js';
+import type { DesktopBuildInfo } from '../release/desktopBuildInfo.js';
 
 export interface DesktopLifecycleHandle {
   applicationWindow: BrowserWindow;
@@ -62,8 +64,10 @@ export interface DesktopLifecycleHandle {
 interface StartDesktopCompositionOptions {
   appVersion: string;
   applicationPath: string;
+  buildInfo: Readonly<DesktopBuildInfo>;
   quitApplication(): void;
   resourcesPath: string;
+  runtimeInstanceId: string;
   smokeConfiguration: PackagedSmokeConfiguration;
   userDataPath: string;
 }
@@ -89,12 +93,17 @@ export async function startDesktopComposition(
     );
   const desktopStartedAt = Date.now();
   const desktopAppVersion = options.appVersion;
+  const desktopOperationalIdentity = {
+    appVersion: desktopAppVersion,
+    buildRevision: options.buildInfo.buildRevision,
+    runtimeInstanceId: options.runtimeInstanceId,
+  } as const;
 
   try {
     desktopOperationalLogger.write(
       createDesktopOperationalEvent(
         { eventName: 'desktop.starting' },
-        { appVersion: desktopAppVersion },
+        desktopOperationalIdentity,
       ),
     );
     desktopOperationalLogger.write(
@@ -107,13 +116,14 @@ export async function startDesktopComposition(
             ? {}
             : { oldestRemainingMonth: retention.oldestRemainingMonth }),
         },
-        { appVersion: desktopAppVersion },
+        desktopOperationalIdentity,
       ),
     );
     return await startDesktopCompositionRuntime({
       backendRoot,
       dataRoot,
       desktopAppVersion,
+      desktopOperationalIdentity,
       desktopOperationalLogger,
       desktopStartedAt,
       operationalLogsRoot,
@@ -133,7 +143,7 @@ export async function startDesktopComposition(
             sideEffectState: 'unknown',
             stage: 'startup',
           },
-          { appVersion: desktopAppVersion },
+          desktopOperationalIdentity,
         ),
       );
     } catch {
@@ -147,6 +157,7 @@ interface DesktopCompositionRuntimeOptions {
   backendRoot: string;
   dataRoot: string;
   desktopAppVersion: string;
+  desktopOperationalIdentity: DesktopOperationalIdentity;
   desktopOperationalLogger: DesktopOperationalLogger;
   desktopStartedAt: number;
   operationalLogsRoot: string;
@@ -159,6 +170,7 @@ async function startDesktopCompositionRuntime({
   backendRoot,
   dataRoot,
   desktopAppVersion,
+  desktopOperationalIdentity,
   desktopOperationalLogger,
   desktopStartedAt,
   operationalLogsRoot,
@@ -214,7 +226,7 @@ async function startDesktopCompositionRuntime({
               sideEffectState: 'unknown',
               stage: operation,
             },
-            { appVersion: desktopAppVersion },
+            desktopOperationalIdentity,
           ),
         );
       },
@@ -227,11 +239,15 @@ async function startDesktopCompositionRuntime({
 
   try {
     backendHandle = await startDesktopBackend({
-      appVersion: desktopAppVersion,
       config: {
         appVersion: desktopAppVersion,
+        architecture: process.arch,
         backendRoot,
+        buildCreatedAt: options.buildInfo.buildCreatedAt,
+        buildDirty: options.buildInfo.buildDirty,
+        buildRevision: options.buildInfo.buildRevision,
         createSmokePdf: smokeMode,
+        electronVersion: process.versions.electron,
         databaseFilePath,
         invoiceDocumentStorageRoot,
         migrationsDirectory: join(
@@ -241,9 +257,12 @@ async function startDesktopCompositionRuntime({
           'migrations',
         ),
         operationalLogsRoot,
+        platform: process.platform,
+        runtimeInstanceId: options.runtimeInstanceId,
         runtimeSessionSecret,
         smokePdfPath,
       },
+      operationalIdentity: desktopOperationalIdentity,
       operationalLogger: desktopOperationalLogger,
       runnerPath: join(
         options.resourcesPath,
@@ -277,7 +296,7 @@ async function startDesktopCompositionRuntime({
   });
 
   registerElectronPermissionPolicy({
-    appVersion: desktopAppVersion,
+    operationalIdentity: desktopOperationalIdentity,
     operationalLogger: desktopOperationalLogger,
     permissionSession: session.defaultSession,
   });
@@ -296,7 +315,7 @@ async function startDesktopCompositionRuntime({
               sideEffectState: 'none',
               stage: 'load',
             },
-            { appVersion: desktopAppVersion },
+            desktopOperationalIdentity,
           ),
         );
       },
@@ -307,7 +326,7 @@ async function startDesktopCompositionRuntime({
               eventName: 'applicationWindow.navigationBlocked',
               stage: 'will-navigate',
             },
-            { appVersion: desktopAppVersion },
+            desktopOperationalIdentity,
           ),
         );
       },
@@ -318,7 +337,7 @@ async function startDesktopCompositionRuntime({
               eventName: 'applicationWindow.newWindowBlocked',
               stage: 'window-open',
             },
-            { appVersion: desktopAppVersion },
+            desktopOperationalIdentity,
           ),
         );
       },
@@ -332,7 +351,7 @@ async function startDesktopCompositionRuntime({
               sideEffectState: 'unknown',
               stage: 'runtime',
             },
-            { appVersion: desktopAppVersion },
+            desktopOperationalIdentity,
           ),
         );
       },
@@ -340,7 +359,6 @@ async function startDesktopCompositionRuntime({
   );
   const mainWindow = applicationWindow;
   operationalLogFolderCapability = createOperationalLogFolderCapability({
-    appVersion: desktopAppVersion,
     ipcMain,
     mainWindow,
     openPath: smokeMode
@@ -350,6 +368,7 @@ async function startDesktopCompositionRuntime({
             : 'OPERATIONAL_LOG_FOLDER_SMOKE_ROOT_INVALID'
       : (path) => shell.openPath(path),
     operationalLogger: desktopOperationalLogger,
+    operationalIdentity: desktopOperationalIdentity,
     runtimeRoot: dataRoot,
     showSafeError() {
       deliveryConfirmation.showApplicationError(
@@ -382,6 +401,7 @@ async function startDesktopCompositionRuntime({
         runtimeSessionSecret,
       ),
     mainWindow,
+    operationalIdentity: desktopOperationalIdentity,
     operationalLogger: desktopOperationalLogger,
     platform: process.platform,
     runtimeRoot: dataRoot,
@@ -420,12 +440,12 @@ async function startDesktopCompositionRuntime({
           sideEffectState: 'none',
           stage: 'retention',
         },
-        { appVersion: desktopAppVersion },
+        desktopOperationalIdentity,
       ),
     );
   }
   pdfPreviewController = createInvoicePdfPreviewController(
-    desktopAppVersion,
+    desktopOperationalIdentity,
     desktopOperationalLogger,
     mainWindow,
     smokeMode,
@@ -447,7 +467,7 @@ async function startDesktopCompositionRuntime({
       desktopOperationalLogger.write(
         createDesktopOperationalEvent(
           { eventName: 'desktop.shutdownStarted' },
-          { appVersion: desktopAppVersion },
+          desktopOperationalIdentity,
         ),
       );
       pdfPreviewController?.dispose();
@@ -466,7 +486,7 @@ async function startDesktopCompositionRuntime({
               durationMs: Date.now() - shutdownStartedAt,
               eventName: 'desktop.shutdownCompleted',
             },
-            { appVersion: desktopAppVersion },
+            desktopOperationalIdentity,
           ),
         );
       } catch {
@@ -481,7 +501,7 @@ async function startDesktopCompositionRuntime({
               sideEffectState: 'unknown',
               stage: 'shutdown',
             },
-            { appVersion: desktopAppVersion },
+            desktopOperationalIdentity,
           ),
         );
         throw new Error('DESKTOP_SHUTDOWN_FAILED');
@@ -494,17 +514,20 @@ async function startDesktopCompositionRuntime({
     desktopOperationalLogger.write(
       createDesktopOperationalEvent(
         { eventName: 'packagedSmoke.started' },
-        { appVersion: desktopAppVersion },
+        desktopOperationalIdentity,
       ),
     );
     try {
       await loadApplicationWindow(mainWindow);
       await runPackagedSmokeCheck({
+        appVersion: desktopAppVersion,
         backend: backendHandle,
+        buildRevision: options.buildInfo.buildRevision,
         databaseFilePath,
         mainWindow,
         pdfPreviewController,
         runtimeSessionSecret,
+        runtimeInstanceId: options.runtimeInstanceId,
         secretFilePath,
         smokePdfPath,
       });
@@ -514,7 +537,7 @@ async function startDesktopCompositionRuntime({
             durationMs: Date.now() - smokeStartedAt,
             eventName: 'packagedSmoke.completed',
           },
-          { appVersion: desktopAppVersion },
+          desktopOperationalIdentity,
         ),
       );
       await writePackagedSmokeResult(options.smokeConfiguration, {
@@ -535,7 +558,7 @@ async function startDesktopCompositionRuntime({
             sideEffectState: 'unknown',
             stage: 'smoke',
           },
-          { appVersion: desktopAppVersion },
+          desktopOperationalIdentity,
         ),
       );
       throw new Error('PACKAGED_SMOKE_FAILED');
@@ -548,7 +571,7 @@ async function startDesktopCompositionRuntime({
         durationMs: Date.now() - desktopStartedAt,
         eventName: 'desktop.started',
       },
-      { appVersion: desktopAppVersion },
+      desktopOperationalIdentity,
     ),
   );
 
@@ -608,7 +631,7 @@ async function loadSupportBundleBackendData(
 }
 
 function createInvoicePdfPreviewController(
-  appVersion: string,
+  operationalIdentity: DesktopOperationalIdentity,
   operationalLogger: DesktopOperationalLogger,
   mainWindow: BrowserWindow,
   smokeMode: boolean,
@@ -633,7 +656,7 @@ function createInvoicePdfPreviewController(
             sideEffectState: 'none',
             stage: 'open',
           },
-          { appVersion },
+          operationalIdentity,
         ),
       );
       showApplicationError(

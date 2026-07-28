@@ -36,7 +36,9 @@ describe('DesktopIncidentIndexingOperationalLogger', () => {
         },
         {
           appVersion: '0.0.0',
+          buildRevision: '123456789abc',
           eventId: 'desktop-event-1',
+          runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
           timestamp: '2026-07-26T20:00:00.000Z',
         },
       ),
@@ -51,7 +53,9 @@ describe('DesktopIncidentIndexingOperationalLogger', () => {
       'utf8',
     );
     expect(line).toContain('"BACKEND_UNEXPECTED_EXIT"');
+    expect(line).toContain('"buildRevision":"123456789abc"');
     expect(line).not.toContain('eventId');
+    expect(line).not.toContain('runtimeInstanceId');
     expect(line).not.toContain('stage');
   });
 });

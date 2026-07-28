@@ -6,6 +6,7 @@ export type {
   DiagnosticEventListQuery,
   DiagnosticEventName,
   DiagnosticEventOutcome,
+  DiagnosticEventSideEffectState,
   DiagnosticsApi,
+  RuntimeDiagnosticSummary,
 } from './diagnosticsTypes.js';
-

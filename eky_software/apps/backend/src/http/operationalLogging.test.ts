@@ -9,6 +9,12 @@ import {
 } from './operationalLogging.js';
 import type { BackendEnvironment } from './runtimeTrust.js';
 
+const operationalIdentity = {
+  appVersion: '0.0.0',
+  buildRevision: '123456789abc',
+  runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
+} as const;
+
 describe('operational HTTP logging', () => {
   it('accepts only a strictly valid external correlation id', () => {
     const correlationId = '7f62df6c-9122-4ac7-8d0f-b8ed214ee97b';
@@ -25,7 +31,7 @@ describe('operational HTTP logging', () => {
     app.use(
       '*',
       createOperationalLoggingMiddleware({
-        appVersion: '0.0.0',
+        operationalIdentity,
         operationalLogger: {
           write(event) {
             events.push(event);
@@ -63,7 +69,7 @@ describe('operational HTTP logging', () => {
     app.use(
       '*',
       createOperationalLoggingMiddleware({
-        appVersion: '0.0.0',
+        operationalIdentity,
         operationalLogger: { write },
       }),
     );

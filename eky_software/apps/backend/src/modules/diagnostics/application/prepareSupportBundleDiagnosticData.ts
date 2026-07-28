@@ -2,8 +2,11 @@ import type { ActorContext } from '@eky/auth';
 import { requirePermission } from '@eky/permissions';
 
 import type { DiagnosticEventReader } from '../ports/diagnosticEventReader.js';
-import type { SystemDiagnosticSummaryReader } from '../ports/systemDiagnosticSummaryReader.js';
 import type { SupportBundleDiagnosticData } from '../domain/supportBundleDiagnosticData.js';
+import {
+  toDatabaseDiagnosticSummary,
+  type RuntimeDiagnosticSummary,
+} from '../domain/runtimeDiagnosticSummary.js';
 
 const diagnosticPeriodDays = 30;
 const millisecondsPerDay = 24 * 60 * 60 * 1_000;
@@ -15,10 +18,9 @@ export interface PrepareSupportBundleDiagnosticDataInput {
 }
 
 interface PrepareSupportBundleDiagnosticDataDependencies {
-  appVersion: string;
   diagnosticEventReader: DiagnosticEventReader;
+  getRuntimeDiagnosticSummary(): Promise<RuntimeDiagnosticSummary>;
   now?(): Date;
-  systemDiagnosticSummaryReader: SystemDiagnosticSummaryReader;
 }
 
 export async function prepareSupportBundleDiagnosticData(
@@ -42,13 +44,18 @@ export async function prepareSupportBundleDiagnosticData(
         event.level === 'warn' ||
         event.category === 'security'),
   );
+  const runtimeSummary = await dependencies.getRuntimeDiagnosticSummary();
+  const database = toDatabaseDiagnosticSummary(runtimeSummary);
+  if (database === null) {
+    throw new Error('DATABASE_DIAGNOSTIC_SUMMARY_UNAVAILABLE');
+  }
 
   return {
-    backendVersion: dependencies.appVersion,
-    database:
-      await dependencies.systemDiagnosticSummaryReader.readDatabaseSummary(),
+    backendVersion: runtimeSummary.appVersion,
+    database,
     diagnosticEvents: eligibleEvents.slice(0, maximumSupportBundleEvents),
     diagnosticPeriodDays,
+    runtimeSummary,
     truncated:
       candidates.length === readerCandidateLimit ||
       eligibleEvents.length > maximumSupportBundleEvents,

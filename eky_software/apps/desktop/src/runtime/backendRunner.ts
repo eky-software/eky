@@ -16,6 +16,9 @@ interface StartedBackendServer {
 type StartServer = (options: {
   appOptions: {
     appVersion: string;
+    architecture: string;
+    buildCreatedAt: string;
+    buildDirty: boolean;
     companyEmailSecretReader: {
       getSecret(companyId: string): Promise<string | null>;
     };
@@ -25,9 +28,16 @@ type StartServer = (options: {
       setSecret(input: { companyId: string; secret: string }): Promise<void>;
     };
     databaseFilePath: string;
+    electronVersion: string;
     invoiceDocumentStorageRoot: string;
     migrationsDirectory: string;
     operationalLogsRoot: string;
+    platform: string;
+    operationalIdentity: {
+      appVersion: string;
+      buildRevision: string;
+      runtimeInstanceId: string;
+    };
   };
   hostname: string;
   port: number;
@@ -165,6 +175,9 @@ utilityParentPort.on('message', (event) => {
       backendServer = await serverModule.startServer({
         appOptions: {
           appVersion: command.config.appVersion,
+          architecture: command.config.architecture,
+          buildCreatedAt: command.config.buildCreatedAt,
+          buildDirty: command.config.buildDirty,
           companyEmailSecretReader: {
             getSecret: (companyId) => secretBrokerClient!.getSecret(companyId),
           },
@@ -175,9 +188,16 @@ utilityParentPort.on('message', (event) => {
             setSecret: (input) => secretBrokerClient!.setSecret(input),
           },
           databaseFilePath: command.config.databaseFilePath,
+          electronVersion: command.config.electronVersion,
           invoiceDocumentStorageRoot: command.config.invoiceDocumentStorageRoot,
           migrationsDirectory: command.config.migrationsDirectory,
           operationalLogsRoot: command.config.operationalLogsRoot,
+          platform: command.config.platform,
+          operationalIdentity: {
+            appVersion: command.config.appVersion,
+            buildRevision: command.config.buildRevision,
+            runtimeInstanceId: command.config.runtimeInstanceId,
+          },
         },
         hostname: '127.0.0.1',
         port: 0,

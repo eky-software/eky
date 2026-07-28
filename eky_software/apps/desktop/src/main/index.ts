@@ -3,9 +3,11 @@ import {
   dialog,
   protocol,
 } from 'electron';
+import { randomUUID } from 'node:crypto';
 
 import type { DesktopLifecycleHandle } from './desktopComposition.js';
 import { runSafeDesktopStartup } from './earlyStartup.js';
+import { readDesktopBuildInfo } from '../release/desktopBuildInfoReader.js';
 import {
   createPackagedSmokeConfiguration,
   writePackagedSmokeResult,
@@ -46,15 +48,23 @@ if (!hasSingleInstanceLock) {
 
 let desktopLifecycle: DesktopLifecycleHandle | undefined;
 let shutdownStarted = false;
+const runtimeInstanceId = randomUUID();
 
 async function startDesktopRuntime(
   startDesktopComposition: StartDesktopComposition,
 ): Promise<void> {
+  const buildInfo = await readDesktopBuildInfo({
+    applicationPath: app.getAppPath(),
+    appVersion: app.getVersion(),
+    isPackaged: app.isPackaged,
+  });
   desktopLifecycle = await startDesktopComposition({
     appVersion: app.getVersion(),
     applicationPath: app.getAppPath(),
+    buildInfo,
     quitApplication: () => app.quit(),
     resourcesPath: process.resourcesPath,
+    runtimeInstanceId,
     smokeConfiguration,
     userDataPath: app.getPath('userData'),
   });

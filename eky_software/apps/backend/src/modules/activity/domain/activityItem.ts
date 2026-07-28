@@ -25,6 +25,16 @@ export type ActivityModule = 'companySettings' | 'customers' | 'invoicing';
 export type ActivityCategory = 'all' | ActivityModule;
 export type ActivityOutcome = 'blocked' | 'failure' | 'success' | 'unknown';
 export type ActivityOutcomeFilter = 'all' | ActivityOutcome;
+export type ActivityChangeCategory =
+  | 'address'
+  | 'banking'
+  | 'billing'
+  | 'contact'
+  | 'emailConfiguration'
+  | 'identity'
+  | 'invoicingDefaults'
+  | 'pricing'
+  | 'status';
 
 export interface ActivityItemReference {
   kind: 'customerNumber' | 'invoiceNumber';
@@ -32,6 +42,7 @@ export interface ActivityItemReference {
 }
 
 export interface ActivityItem {
+  changeCategories?: readonly ActivityChangeCategory[];
   id: string;
   module: ActivityModule;
   occurredAt: string;

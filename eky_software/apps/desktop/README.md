@@ -23,6 +23,12 @@ pnpm --filter @eky/desktop smoke:windows
 
 The unpacked spike is created under `apps/desktop/out/Eky-win32-x64`.
 
+The packaged application version comes from `apps/desktop/package.json`.
+Packaging writes a validated `dist/build-info.json` containing the version,
+Git revision, UTC build time, and dirty-worktree state. A distributable
+artifact must be built from a clean worktree. Development builds use the
+explicit `development` revision and are marked dirty.
+
 The package command:
 
 - builds web, backend, auth, permissions, and desktop artifacts
@@ -59,3 +65,12 @@ owns the confirmation, backend request with the runtime session, save dialog,
 strict response parsing, archive creation, and file write. Browser development
 does not expose support bundle export. The resulting `.ekysupport` file is a
 sanitized gzip JSON diagnostic artifact, not an encrypted backup.
+
+Operational logs are stored below Electron's fixed user-data root. On Windows
+the default location is `%APPDATA%\Eky\runtime\logs`. The renderer cannot
+choose this path. Every desktop launch creates a new runtime instance ID that
+is shared with its managed backend for diagnostics only; it is not a session,
+user identity, permission, or installation identifier.
+
+See `docs/architecture/release-versioning-policy.md` for version and build
+identity rules.

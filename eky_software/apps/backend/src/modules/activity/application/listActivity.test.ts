@@ -58,6 +58,7 @@ describe('listActivity', () => {
           type: 'invoice.delivered',
         },
         {
+          changeCategories: ['contact', 'pricing'],
           id: 'customers:customer-event',
           module: 'customers',
           occurredAt: '2026-07-27T11:00:00.000Z',
@@ -66,6 +67,7 @@ describe('listActivity', () => {
           type: 'customer.updated',
         },
         {
+          changeCategories: ['contact'],
           id: 'companySettings:settings-event',
           module: 'companySettings',
           occurredAt: '2026-07-27T10:00:00.000Z',
@@ -85,10 +87,27 @@ describe('listActivity', () => {
     ).toHaveBeenCalledWith({
       companyId: 'company-1',
       limit: 21,
-      occurredAtFrom: '2026-07-01T00:00:00.000Z',
-      occurredAtTo: '2026-08-01T00:00:00.000Z',
+      occurredAtFrom: '2026-06-30T21:00:00.000Z',
+      occurredAtTo: '2026-07-31T21:00:00.000Z',
       outcomes: ['success', 'failure', 'unknown'],
     });
+  });
+
+  it('defaults to the Helsinki calendar month', async () => {
+    const dependencies = createDependencies();
+    dependencies.now = () => new Date('2026-07-31T21:30:00.000Z');
+
+    const result = await listActivity({ actorContext }, dependencies);
+
+    expect(result.month).toBe('2026-08');
+    expect(
+      dependencies.invoiceActivityReader.listInvoiceActivity,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        occurredAtFrom: '2026-07-31T21:00:00.000Z',
+        occurredAtTo: '2026-08-31T21:00:00.000Z',
+      }),
+    );
   });
 
   it('reads only the selected category and outcome', async () => {
@@ -157,6 +176,7 @@ describe('listActivity', () => {
       .mockResolvedValue(
         Array.from({ length: 25 }, (_, index) => ({
           action: 'customer.updated',
+          changeCategories: ['contact'],
           customerNumber: String(1000 + index),
           id: `event-${String(index).padStart(2, '0')}`,
           occurredAt: new Date(
@@ -206,6 +226,7 @@ function createDependencies(): ListActivityDependencies {
       listCompanySettingsActivity: vi.fn().mockResolvedValue([
         {
           action: 'companySettings.updated',
+          changeCategories: ['contact'],
           id: 'settings-event',
           occurredAt: '2026-07-27T10:00:00.000Z',
         },
@@ -215,6 +236,7 @@ function createDependencies(): ListActivityDependencies {
       listCustomerActivity: vi.fn().mockResolvedValue([
         {
           action: 'customer.updated',
+          changeCategories: ['contact', 'pricing'],
           customerNumber: '1001',
           id: 'customer-event',
           occurredAt: '2026-07-27T11:00:00.000Z',

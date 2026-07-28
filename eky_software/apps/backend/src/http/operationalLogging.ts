@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { MiddlewareHandler } from 'hono';
 
 import { createBackendOperationalEvent } from '../observability/createOperationalEvent.js';
+import type { OperationalRuntimeIdentity } from '../observability/operationalEvent.js';
 import type { OperationalLogger } from '../observability/operationalLogger.js';
 import type { BackendEnvironment } from './runtimeTrust.js';
 
@@ -12,7 +13,7 @@ const correlationIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function createOperationalLoggingMiddleware(options: {
-  appVersion: string;
+  operationalIdentity: Readonly<OperationalRuntimeIdentity>;
   operationalLogger: OperationalLogger;
 }): MiddlewareHandler<BackendEnvironment> {
   return async (context, next) => {
@@ -34,7 +35,7 @@ export function createOperationalLoggingMiddleware(options: {
             sideEffectState: 'unknown',
             stage: 'handler',
           },
-          { appVersion: options.appVersion },
+          options.operationalIdentity,
         ),
       );
       throw new Error('HTTP request could not be completed.');
@@ -54,7 +55,7 @@ export function createOperationalLoggingMiddleware(options: {
             sideEffectState: 'unknown',
             stage: 'response',
           },
-          { appVersion: options.appVersion },
+          options.operationalIdentity,
         ),
       );
       return;
@@ -68,7 +69,7 @@ export function createOperationalLoggingMiddleware(options: {
             eventName: 'permission.denied',
             stage: 'response',
           },
-          { appVersion: options.appVersion },
+          options.operationalIdentity,
         ),
       );
       return;
@@ -82,7 +83,7 @@ export function createOperationalLoggingMiddleware(options: {
             eventName: 'http.invalidBody',
             stage: 'response',
           },
-          { appVersion: options.appVersion },
+          options.operationalIdentity,
         ),
       );
     }
@@ -90,8 +91,8 @@ export function createOperationalLoggingMiddleware(options: {
 }
 
 export function logUnknownRoute(options: {
-  appVersion: string;
   correlationId: string;
+  operationalIdentity: Readonly<OperationalRuntimeIdentity>;
   operationalLogger: OperationalLogger;
 }): void {
   options.operationalLogger.write(
@@ -101,7 +102,7 @@ export function logUnknownRoute(options: {
         eventName: 'http.unknownRoute',
         stage: 'routing',
       },
-      { appVersion: options.appVersion },
+      options.operationalIdentity,
     ),
   );
 }

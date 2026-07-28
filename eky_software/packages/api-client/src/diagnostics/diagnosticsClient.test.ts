@@ -3,6 +3,39 @@ import { describe, expect, it } from 'vitest';
 import { createEkyApiClient, EkyApiError } from '../index.js';
 
 describe('diagnostics API client', () => {
+  it('reads the strict safe runtime summary contract', async () => {
+    const requests: string[] = [];
+    const client = createEkyApiClient({
+      baseUrl: 'http://127.0.0.1:3000/',
+      fetch: async (input) => {
+        requests.push(input.toString());
+        return jsonResponse(createRuntimeSummary());
+      },
+    });
+
+    await expect(client.getDiagnosticSummary()).resolves.toEqual(
+      createRuntimeSummary(),
+    );
+    expect(requests).toEqual([
+      'http://127.0.0.1:3000/diagnostics/summary',
+    ]);
+  });
+
+  it('rejects paths and unknown fields in a runtime summary', async () => {
+    const client = createEkyApiClient({
+      baseUrl: '',
+      fetch: async () =>
+        jsonResponse({
+          ...createRuntimeSummary(),
+          databaseFilePath: 'C:\\private\\eky.sqlite',
+        }),
+    });
+
+    await expect(client.getDiagnosticSummary()).rejects.toBeInstanceOf(
+      EkyApiError,
+    );
+  });
+
   it('lists the safe projection with a bounded optional limit', async () => {
     const requests: string[] = [];
     const client = createEkyApiClient({
@@ -12,14 +45,24 @@ describe('diagnostics API client', () => {
         return jsonResponse({
           diagnosticEvents: [
             {
+              appVersion: '0.1.0-alpha.1',
+              buildRevision: 'abcdef123456',
               category: 'smtp',
               component: 'backend',
+              correlationId: '11111111-1111-4111-8111-111111111111',
+              durationMs: 120,
               errorCode: 'SMTP_TLS_FAILED',
               eventName: 'smtp.tlsFailed',
+              fingerprint: 'smtp.tlsFailed:SMTP_TLS_FAILED',
               id: 'backend:event-1',
               level: 'error',
               occurredAt: '2026-07-27T12:00:00.000Z',
+              operationId: 'send-attempt-1',
               outcome: 'failure',
+              retryable: true,
+              runtimeInstanceId: '22222222-2222-4222-8222-222222222222',
+              sideEffectState: 'none',
+              stage: 'tlsHandshake',
             },
           ],
         });
@@ -28,7 +71,14 @@ describe('diagnostics API client', () => {
 
     await expect(
       client.listDiagnosticEvents({ limit: 20 }),
-    ).resolves.toHaveLength(1);
+    ).resolves.toEqual([
+      expect.objectContaining({
+        correlationId: '11111111-1111-4111-8111-111111111111',
+        durationMs: 120,
+        retryable: true,
+        stage: 'tlsHandshake',
+      }),
+    ]);
     expect(requests).toEqual([
       'http://127.0.0.1:3000/diagnostics/events?limit=20',
     ]);
@@ -103,6 +153,39 @@ describe('diagnostics API client', () => {
               occurredAt: '2026-07-27T12:00:00.000Z',
               outcome: 'failure',
               rawMetadata: { email: 'must-not-be-exposed@example.test' },
+            },
+          ],
+        }),
+    });
+
+    await expect(client.listDiagnosticEvents()).rejects.toBeInstanceOf(
+      EkyApiError,
+    );
+  });
+
+  it.each([
+    ['correlationId', 'not-a-uuid'],
+    ['runtimeInstanceId', 'not-a-uuid'],
+    ['durationMs', -1],
+    ['retryable', 'true'],
+    ['sideEffectState', 'partlyCommitted'],
+    ['fingerprint', 'contains a space'],
+  ])('rejects invalid optional diagnostic field %s', async (field, value) => {
+    const client = createEkyApiClient({
+      baseUrl: '',
+      fetch: async () =>
+        jsonResponse({
+          diagnosticEvents: [
+            {
+              category: 'smtp',
+              component: 'backend',
+              errorCode: 'SMTP_TLS_FAILED',
+              eventName: 'smtp.tlsFailed',
+              id: 'backend:event-1',
+              level: 'error',
+              occurredAt: '2026-07-27T12:00:00.000Z',
+              outcome: 'failure',
+              [field]: value,
             },
           ],
         }),
@@ -200,6 +283,30 @@ describe('diagnostics API client', () => {
     await expect(client.listDiagnosticEvents()).resolves.toHaveLength(1);
   });
 });
+
+function createRuntimeSummary() {
+  return {
+    appVersion: '0.1.0-alpha.1',
+    appliedMigrationCount: 42,
+    architecture: 'x64',
+    buildCreatedAt: '2026-07-28T12:00:00.000Z',
+    buildDirty: false,
+    buildRevision: 'abcdef123456',
+    databaseHealth: 'ok',
+    electronVersion: '42.7.0',
+    latestErrorAt: null,
+    latestMigrationName: '042_example.sql',
+    latestSecurityEventAt: null,
+    latestWarningAt: null,
+    nodeVersion: 'v24.11.0',
+    operationalLogNewestMonth: null,
+    operationalLogOldestMonth: null,
+    operationalLogsAvailable: false,
+    operationalLogTotalBytes: 0,
+    platform: 'win32',
+    runtimeInstanceId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+  };
+}
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), {

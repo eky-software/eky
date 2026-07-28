@@ -138,7 +138,7 @@ export function ActivityPageView({
             <tbody>
               {items.map((item) => (
                 <tr key={item.id}>
-                  <td>{getActivityLabel(item.type)}</td>
+                  <td>{getActivityLabel(item)}</td>
                   <td>{getReferenceLabel(item)}</td>
                   <td>{uiText.activity.outcomes[item.outcome]}</td>
                   <td>
@@ -174,8 +174,36 @@ export function ActivityPageView({
   );
 }
 
-function getActivityLabel(type: ActivityItem['type']): string {
-  return uiText.activity.types[type];
+function getActivityLabel(item: ActivityItem): string {
+  if (
+    item.changeCategories === undefined ||
+    item.changeCategories.length === 0
+  ) {
+    return uiText.activity.types[item.type];
+  }
+  if (item.changeCategories.length > 3) {
+    return uiText.activity.multipleDataGroupsUpdated;
+  }
+
+  const categoryLabels = item.changeCategories.map(
+    (category) => uiText.activity.changeCategories[category],
+  );
+
+  if (item.type === 'companySettings.updated') {
+    return uiText.activity.companySettingsChangeSummary(categoryLabels);
+  }
+  if (item.type === 'customer.updated') {
+    const customerNumber =
+      item.reference?.kind === 'customerNumber'
+        ? item.reference.value
+        : null;
+    return uiText.activity.customerChangeSummary(
+      customerNumber,
+      categoryLabels,
+    );
+  }
+
+  return uiText.activity.types[item.type];
 }
 
 function getReferenceLabel(item: ActivityItem): string {

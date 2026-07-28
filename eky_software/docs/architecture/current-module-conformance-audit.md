@@ -193,6 +193,12 @@ muutoksina:
 | Tuki- ja historianäkymien ryhmittely Oma yritys -näkymään | `826286d` |
 | Diagnostics-capabilityjen sisällytys Windows-pakettiin | `2e1aa92` |
 | Laskutusasetusten auditointi ja business audit -retention | `bc1bf3e` |
+| Paketoidun artifactin versio- ja build-identiteetti | `41f736c` |
+| Yhteinen käynnistyskohtainen desktop/backend runtime-identiteetti | `ca91f42` |
+| Turvallinen runtime-yhteenveto ja rajattu tapahtumakonteksti Diagnosticsissa | `9441227`, `99bc17d` |
+| Activityn turvalliset moduulikohtaiset muutoskategoriat | `857030d` |
+| Activityn Europe/Helsinki-kalenterikuukaudet | `998bd6e` |
+| Paikallisten runtime- ja diagnostiikka-artifactien Git-suoja | `fa44533` |
 
 Tukipaketti syntyy vain käyttäjän vahvistuksella ja Electron main -prosessin
 omistaman kapean capabilityn kautta. Renderer ei anna vientipolkua,
@@ -225,3 +231,18 @@ Observabilityn fix-forward-vaihe täydensi toteutusta seuraavasti:
 
 Muutokset eivät siirrä audit-taulujen omistajuutta Activitylle eivätkä muuta
 Activityä kirjoittavaksi moduuliksi.
+
+Release identity -kovennuksessa paketoitu build saa validoidun SemVer-version,
+Git-revision, UTC-build-ajan ja dirty-tilan. Electron main ja sen hallitsema
+backend käyttävät samaa käynnistyskohtaista runtime-tunnistetta. Nämä tiedot
+ovat vain diagnostiikkaa eivätkä autentikointi- tai tenant-kontekstia.
+
+Activityn päivitystapahtumat voivat näyttää vain Customers- ja Company
+Settings -moduulien omistamat turvalliset muutoskategoriat ilman kenttänimiä
+tai arvoja. Kuukausirajaus perustuu Helsingin kalenteriin, vaikka aikaleimat
+säilyvät UTC:ssa.
+
+Seuraava observabilityn rajattu paketti on SMTP/TLS-toimituksen
+diagnostiikkakattavuuden tarkistus. Sen jälkeen toteutetaan dokumentoidun
+E2E-strategian ensimmäinen käyttäjäpolku. Kumpaakaan ei yhdistetä tähän
+release identity- ja Activity-kovennukseen.

@@ -1,5 +1,6 @@
 import { EkyApiError, isRecord } from '../http.js';
 import type {
+  ActivityChangeCategory,
   ActivityItem,
   ActivityItemReference,
   ActivityItemType,
@@ -42,6 +43,21 @@ const activityOutcomes = new Set<ActivityOutcome>([
   'success',
   'unknown',
 ]);
+const customerChangeCategories = new Set<ActivityChangeCategory>([
+  'billing',
+  'contact',
+  'identity',
+  'pricing',
+  'status',
+]);
+const companySettingsChangeCategories = new Set<ActivityChangeCategory>([
+  'address',
+  'banking',
+  'contact',
+  'emailConfiguration',
+  'identity',
+  'invoicingDefaults',
+]);
 
 export function readActivityResponse(value: unknown): ActivityPage {
   if (
@@ -79,6 +95,7 @@ function parseActivityItem(value: unknown): ActivityItem {
   if (
     !isRecord(value) ||
     !hasOnlyKeys(value, [
+      'changeCategories',
       'id',
       'module',
       'occurredAt',
@@ -95,7 +112,13 @@ function parseActivityItem(value: unknown): ActivityItem {
     throw invalidResponse(value);
   }
 
+  const changeCategories = parseChangeCategories(
+    value.changeCategories,
+    value.module,
+  );
+
   return {
+    ...(changeCategories === undefined ? {} : { changeCategories }),
     id: value.id,
     module: value.module,
     occurredAt: value.occurredAt,
@@ -103,6 +126,39 @@ function parseActivityItem(value: unknown): ActivityItem {
     reference: parseReference(value.reference),
     type: value.type,
   };
+}
+
+function parseChangeCategories(
+  value: unknown,
+  module: ActivityModule,
+): readonly ActivityChangeCategory[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const allowedCategories =
+    module === 'customers'
+      ? customerChangeCategories
+      : module === 'companySettings'
+        ? companySettingsChangeCategories
+        : undefined;
+
+  if (
+    allowedCategories === undefined ||
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.length > allowedCategories.size ||
+    !value.every(
+      (category): category is ActivityChangeCategory =>
+        typeof category === 'string' &&
+        allowedCategories.has(category as ActivityChangeCategory),
+    ) ||
+    new Set(value).size !== value.length
+  ) {
+    throw invalidResponse(value);
+  }
+
+  return value;
 }
 
 function parseReference(value: unknown): ActivityItemReference | null {

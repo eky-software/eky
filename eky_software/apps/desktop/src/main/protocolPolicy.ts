@@ -17,6 +17,7 @@ const backendRoutes: ReadonlyArray<{
   { methods: new Set(['GET']), pathname: /^\/health$/ },
   { methods: new Set(['GET']), pathname: /^\/activity$/ },
   { methods: new Set(['GET']), pathname: /^\/diagnostics\/events$/ },
+  { methods: new Set(['GET']), pathname: /^\/diagnostics\/summary$/ },
   { methods: new Set(['GET', 'POST']), pathname: /^\/customers$/ },
   { methods: new Set(['PUT']), pathname: new RegExp(`^/customers/${resourceId}$`) },
   { methods: new Set(['GET', 'PUT']), pathname: /^\/company-settings$/ },

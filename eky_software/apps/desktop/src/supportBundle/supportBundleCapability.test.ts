@@ -112,6 +112,11 @@ function createFixture(
       webContents,
     } as never,
     now: () => new Date('2026-07-27T12:00:00.000Z'),
+    operationalIdentity: {
+      appVersion: '1.2.3',
+      buildRevision: '123456789abc',
+      runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
+    },
     operationalLogger: {
       write(event) {
         events.push(event);
@@ -151,6 +156,27 @@ function createBackendData() {
     },
     diagnosticEvents: [],
     diagnosticPeriodDays: 30,
+    runtimeSummary: {
+      appVersion: '0.1.0-alpha.1',
+      appliedMigrationCount: 35,
+      architecture: 'x64',
+      buildCreatedAt: '2026-07-27T10:00:00.000Z',
+      buildDirty: false,
+      buildRevision: 'abcdef123456',
+      databaseHealth: 'ok',
+      electronVersion: '42.7.0',
+      latestErrorAt: null,
+      latestMigrationName: '035_example.sql',
+      latestSecurityEventAt: null,
+      latestWarningAt: null,
+      nodeVersion: 'v24.11.0',
+      operationalLogNewestMonth: '2026-07',
+      operationalLogOldestMonth: '2026-07',
+      operationalLogsAvailable: true,
+      operationalLogTotalBytes: 4_096,
+      platform: 'win32',
+      runtimeInstanceId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+    },
     truncated: false,
   };
 }

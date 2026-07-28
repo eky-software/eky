@@ -8,10 +8,17 @@ import {
   type ListDiagnosticEventsInput,
 } from '../application/listDiagnosticEvents.js';
 import type { PrepareSupportBundleDiagnosticDataInput } from '../application/prepareSupportBundleDiagnosticData.js';
+import type {
+  GetRuntimeDiagnosticSummaryInput,
+} from '../application/getRuntimeDiagnosticSummary.js';
 import type { DiagnosticEventItem } from '../domain/diagnosticEventItem.js';
+import type { RuntimeDiagnosticSummary } from '../domain/runtimeDiagnosticSummary.js';
 import type { SupportBundleDiagnosticData } from '../domain/supportBundleDiagnosticData.js';
 
 interface DiagnosticRouteDependencies {
+  getRuntimeDiagnosticSummary(
+    input: GetRuntimeDiagnosticSummaryInput,
+  ): Promise<RuntimeDiagnosticSummary>;
   listDiagnosticEvents(
     input: ListDiagnosticEventsInput,
   ): Promise<DiagnosticEventItem[]>;
@@ -24,6 +31,22 @@ export function createDiagnosticRoutes(
   dependencies: DiagnosticRouteDependencies,
 ): Hono<BackendEnvironment> {
   const routes = new Hono<BackendEnvironment>();
+
+  routes.get('/diagnostics/summary', async (context) => {
+    if (Object.keys(context.req.query()).length > 0) {
+      return context.json({ error: 'Unsupported diagnostics query.' }, 400);
+    }
+
+    try {
+      return context.json(
+        await dependencies.getRuntimeDiagnosticSummary({
+          actorContext: context.get('actorContext'),
+        }),
+      );
+    } catch (error) {
+      return handleKnownError(context, error);
+    }
+  });
 
   routes.get('/diagnostics/events', async (context) => {
     const query = context.req.query();

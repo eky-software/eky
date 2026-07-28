@@ -17,12 +17,13 @@ import type { CompanyEmailSecretStore } from '../modules/companySettings/ports/c
 import type { CompanySettingsActivityReader } from '../modules/companySettings/ports/companySettingsActivityReader.js';
 import type { InvoiceEmailSettingsReader } from '../modules/invoicing/ports/invoiceEmailSettingsReader.js';
 import { createBackendOperationalEvent } from '../observability/createOperationalEvent.js';
+import type { OperationalRuntimeIdentity } from '../observability/operationalEvent.js';
 import type { OperationalLogger } from '../observability/operationalLogger.js';
 
 interface CompanySettingsCompositionOptions {
-  appVersion: string;
   companyEmailSecretStore?: CompanyEmailSecretStore;
   database: DatabaseConnection;
+  operationalIdentity: Readonly<OperationalRuntimeIdentity>;
   operationalLogger: OperationalLogger;
 }
 
@@ -115,7 +116,7 @@ async function logAuditWriteFailure<T>(
   operation: () => Promise<T>,
   options: Pick<
     CompanySettingsCompositionOptions,
-    'appVersion' | 'operationalLogger'
+    'operationalIdentity' | 'operationalLogger'
   >,
 ): Promise<T> {
   try {
@@ -132,7 +133,7 @@ async function logAuditWriteFailure<T>(
               sideEffectState: 'rolledBack',
               stage: 'companySettingsMutation',
             },
-            { appVersion: options.appVersion },
+            options.operationalIdentity,
           ),
         );
       } catch {

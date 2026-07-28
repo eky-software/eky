@@ -6,6 +6,7 @@ export {
 export { EkyApiError } from './http.js';
 export type {
   ActivityCategory,
+  ActivityChangeCategory,
   ActivityItem,
   ActivityItemReference,
   ActivityItemType,
@@ -22,6 +23,7 @@ export type {
   DiagnosticEventListQuery,
   DiagnosticEventName,
   DiagnosticEventOutcome,
+  RuntimeDiagnosticSummary,
 } from './diagnostics/index.js';
 export type {
   ApprovedInvoiceDocumentMetadata,

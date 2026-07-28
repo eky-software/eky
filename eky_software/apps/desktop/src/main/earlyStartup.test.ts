@@ -75,6 +75,9 @@ describe('safe desktop early startup', () => {
     expect(
       readSafeStartupFailureCode(new Error('PACKAGED_SMOKE_FAILED')),
     ).toBe('PACKAGED_SMOKE_FAILED');
+    expect(
+      readSafeStartupFailureCode(new Error('PACKAGED_BUILD_INFO_INVALID')),
+    ).toBe('PACKAGED_BUILD_INFO_INVALID');
   });
 });
 

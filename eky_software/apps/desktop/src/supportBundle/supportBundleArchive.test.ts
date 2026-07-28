@@ -31,6 +31,7 @@ describe('createSupportBundleArchive', () => {
         },
         diagnosticEvents,
         diagnosticPeriodDays: 30,
+        runtimeSummary: createRuntimeSummary(),
         truncated: false,
       },
       createdAt: new Date('2026-07-27T12:30:00.000Z'),
@@ -79,6 +80,7 @@ describe('createSupportBundleArchive', () => {
       'diagnosticEvents',
       'incidentSummaries',
       'operationalSummary',
+      'runtimeSummary',
       'system',
     ]);
     expect(serialized).not.toContain('companyId');
@@ -87,3 +89,27 @@ describe('createSupportBundleArchive', () => {
     expect(serialized).not.toContain('requestBody');
   });
 });
+
+function createRuntimeSummary() {
+  return {
+    appVersion: '0.1.0-alpha.1',
+    appliedMigrationCount: 35,
+    architecture: 'x64',
+    buildCreatedAt: '2026-07-27T10:00:00.000Z',
+    buildDirty: false,
+    buildRevision: 'abcdef123456',
+    databaseHealth: 'ok' as const,
+    electronVersion: '42.7.0',
+    latestErrorAt: null,
+    latestMigrationName: '035_example.sql',
+    latestSecurityEventAt: null,
+    latestWarningAt: null,
+    nodeVersion: 'v24.11.0',
+    operationalLogNewestMonth: '2026-07',
+    operationalLogOldestMonth: '2026-07',
+    operationalLogsAvailable: true,
+    operationalLogTotalBytes: 4_096,
+    platform: 'win32',
+    runtimeInstanceId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+  };
+}

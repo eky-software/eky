@@ -51,6 +51,7 @@ export class DesktopIncidentIndexingOperationalLogger
           : `${event.eventName}:${errorCode}`;
       const entry = {
         appVersion: event.appVersion,
+        buildRevision: event.buildRevision,
         component: 'desktop',
         errorCode,
         eventName: event.eventName,

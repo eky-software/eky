@@ -1,4 +1,6 @@
 import type { OperationalLogger } from '../operationalLogger.js';
+import type { OperationalRuntimeIdentity } from '../operationalEvent.js';
+import { resolveOperationalRuntimeIdentity } from '../operationalRuntimeIdentity.js';
 import { IncidentIndexingOperationalLogger } from './incidentIndexingOperationalLogger.js';
 import { maintainIncidentIndex } from './incidentIndexRetention.js';
 import { JsonLineIncidentIndex } from './jsonLineIncidentIndex.js';
@@ -7,7 +9,8 @@ import { IncidentIndexOperationalLogFailureSink } from './incidentIndexOperation
 
 export function createBackendOperationalLogger(
   logsRoot: string,
-  appVersion = '0.0.0',
+  operationalIdentity: Readonly<OperationalRuntimeIdentity> =
+    resolveOperationalRuntimeIdentity({}),
 ): OperationalLogger {
   maintainIncidentIndex({ logsRoot });
   const incidentIndex = new JsonLineIncidentIndex(logsRoot);
@@ -15,7 +18,7 @@ export function createBackendOperationalLogger(
   return new IncidentIndexingOperationalLogger(
     new JsonLineOperationalLogger({
       failureSink: new IncidentIndexOperationalLogFailureSink({
-        appVersion,
+        operationalIdentity,
         incidentIndex,
       }),
       logsRoot,

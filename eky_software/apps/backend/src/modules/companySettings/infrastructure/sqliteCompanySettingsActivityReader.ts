@@ -1,5 +1,6 @@
 import type { DatabaseConnection } from '../../../database/connection/createDatabaseConnection.js';
 import type { CompanySettingsActivityEntry } from '../domain/companySettingsActivityEntry.js';
+import type { CompanySettingsChangedFieldCategory } from '../domain/companySettingsAuditEvent.js';
 import type {
   CompanySettingsActivityCriteria,
   CompanySettingsActivityReader,
@@ -7,9 +8,20 @@ import type {
 
 interface CompanySettingsActivityRow {
   action: CompanySettingsActivityEntry['action'];
+  changed_field_categories: string | null;
   id: string;
   occurred_at: string;
 }
+
+const companySettingsChangeCategories =
+  new Set<CompanySettingsChangedFieldCategory>([
+    'address',
+    'banking',
+    'contact',
+    'emailConfiguration',
+    'identity',
+    'invoicingDefaults',
+  ]);
 
 export class SqliteCompanySettingsActivityReader
   implements CompanySettingsActivityReader
@@ -25,11 +37,12 @@ export class SqliteCompanySettingsActivityReader
         CompanySettingsActivityRow
       >(
         `
-          SELECT id, action, occurred_at
+          SELECT id, action, changed_field_categories, occurred_at
           FROM (
             SELECT
               'settings:' || id AS id,
               action,
+              changed_field_categories,
               occurred_at
             FROM company_settings_audit_events
             WHERE
@@ -45,6 +58,7 @@ export class SqliteCompanySettingsActivityReader
                 WHEN 'set' THEN 'companyEmailSecret.configured'
                 ELSE 'companyEmailSecret.removed'
               END AS action,
+              NULL AS changed_field_categories,
               completed_at AS occurred_at
             FROM company_email_secret_audit_events
             WHERE
@@ -68,8 +82,44 @@ export class SqliteCompanySettingsActivityReader
       )
       .map((row) => ({
         action: row.action,
+        changeCategories: readCompanySettingsChangeCategories(
+          row.changed_field_categories,
+        ),
         id: row.id,
         occurredAt: row.occurred_at,
       }));
   }
+}
+
+function readCompanySettingsChangeCategories(
+  value: string | null,
+): readonly CompanySettingsChangedFieldCategory[] {
+  if (value === null) {
+    return Object.freeze([]);
+  }
+
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(value) as unknown;
+  } catch {
+    throw new Error('COMPANY_SETTINGS_ACTIVITY_CHANGE_CATEGORIES_INVALID');
+  }
+
+  if (
+    !Array.isArray(parsed) ||
+    parsed.length > companySettingsChangeCategories.size ||
+    !parsed.every(
+      (category): category is CompanySettingsChangedFieldCategory =>
+        typeof category === 'string' &&
+        companySettingsChangeCategories.has(
+          category as CompanySettingsChangedFieldCategory,
+        ),
+    ) ||
+    new Set(parsed).size !== parsed.length
+  ) {
+    throw new Error('COMPANY_SETTINGS_ACTIVITY_CHANGE_CATEGORIES_INVALID');
+  }
+
+  return Object.freeze([...parsed]);
 }

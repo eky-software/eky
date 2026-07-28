@@ -2,6 +2,7 @@ import type {
   DiagnosticEventItem,
   DiagnosticEventLevel,
   DiagnosticEventOutcome,
+  RuntimeDiagnosticSummary,
 } from '@eky/api-client';
 import { useState } from 'react';
 
@@ -11,6 +12,8 @@ import type {
 } from '../../../app/desktopBridge.js';
 import styles from './DiagnosticsPageView.module.css';
 import { uiText } from '../../../i18n/fi.js';
+import { DiagnosticEventDetail } from './DiagnosticEventDetail.js';
+import { RuntimeDiagnosticSummaryView } from './RuntimeDiagnosticSummaryView.js';
 
 interface DiagnosticsPageViewProps {
   createSupportBundle?: CreateSupportBundle;
@@ -18,6 +21,7 @@ interface DiagnosticsPageViewProps {
   events: DiagnosticEventItem[];
   isLoading: boolean;
   openOperationalLogFolder?: OpenOperationalLogFolder;
+  summary: RuntimeDiagnosticSummary | null;
 }
 
 export function DiagnosticsPageView({
@@ -26,6 +30,7 @@ export function DiagnosticsPageView({
   events,
   isLoading,
   openOperationalLogFolder,
+  summary,
 }: DiagnosticsPageViewProps): React.JSX.Element {
   const [desktopErrorMessage, setDesktopErrorMessage] = useState<
     string | null
@@ -125,6 +130,9 @@ export function DiagnosticsPageView({
           {errorMessage}
         </p>
       ) : null}
+      {!isLoading && errorMessage === null && summary !== null ? (
+        <RuntimeDiagnosticSummaryView summary={summary} />
+      ) : null}
       {!isLoading && errorMessage === null && events.length === 0 ? (
         <p className={styles.message}>{uiText.diagnostics.empty}</p>
       ) : null}
@@ -138,6 +146,7 @@ export function DiagnosticsPageView({
                 <th>{uiText.diagnostics.event}</th>
                 <th>{uiText.diagnostics.status}</th>
                 <th>{uiText.diagnostics.errorCode}</th>
+                <th>{uiText.diagnostics.details}</th>
               </tr>
             </thead>
             <tbody>
@@ -161,6 +170,9 @@ export function DiagnosticsPageView({
                   </td>
                   <td>
                     {event.errorCode ?? uiText.diagnostics.noErrorCode}
+                  </td>
+                  <td>
+                    <DiagnosticEventDetail event={event} />
                   </td>
                 </tr>
               ))}

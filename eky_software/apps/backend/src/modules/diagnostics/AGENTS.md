@@ -24,8 +24,16 @@ writing.
 - Ignore symlinks and files outside the fixed Eky naming convention.
 - Revalidate every JSONL event before projecting it.
 - Do not expose raw log lines, payload metadata, stack traces, local paths,
-  actor, company or entity identifiers, correlation identifiers or secrets.
+  actor, company or entity identifiers or secrets.
+- A local permission-protected diagnostic projection may expose only the
+  explicitly modelled technical identifiers `correlationId`, `operationId`
+  and `runtimeInstanceId`. These identifiers do not belong in the long-term
+  incident index.
+- Build version, revision and runtime instance ID are diagnostic context only.
+  Never treat them as authentication, authorization, tenant or integrity
+  proof.
+- Never expose `companyId`, `actorUserId`, `entityId` or an untyped metadata
+  object through diagnostics.
 - Require the dedicated diagnostics permission in the application service.
 - A malformed or truncated log line must not prevent other events from being
   read.
-

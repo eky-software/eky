@@ -6,6 +6,8 @@ import {
   type DiagnosticEventLevel,
   type DiagnosticEventName,
   type DiagnosticEventOutcome,
+  type DiagnosticEventSideEffectState,
+  type RuntimeDiagnosticSummary,
 } from './diagnosticsTypes.js';
 
 const eventNames = new Set<DiagnosticEventName>(diagnosticEventNames);
@@ -17,6 +19,14 @@ const outcomes = new Set<DiagnosticEventOutcome>([
   'success',
   'unknown',
 ]);
+const sideEffectStates = new Set<DiagnosticEventSideEffectState>([
+  'committed',
+  'none',
+  'rolledBack',
+  'unknown',
+]);
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function readDiagnosticsResponse(value: unknown): DiagnosticEventItem[] {
   if (
@@ -30,41 +40,194 @@ export function readDiagnosticsResponse(value: unknown): DiagnosticEventItem[] {
   return value.diagnosticEvents.map(readDiagnosticEvent);
 }
 
+export function readDiagnosticSummaryResponse(
+  value: unknown,
+): RuntimeDiagnosticSummary {
+  const keys = [
+    'appVersion',
+    'appliedMigrationCount',
+    'architecture',
+    'buildCreatedAt',
+    'buildDirty',
+    'buildRevision',
+    'databaseHealth',
+    'electronVersion',
+    'latestErrorAt',
+    'latestMigrationName',
+    'latestSecurityEventAt',
+    'latestWarningAt',
+    'nodeVersion',
+    'operationalLogNewestMonth',
+    'operationalLogOldestMonth',
+    'operationalLogsAvailable',
+    'operationalLogTotalBytes',
+    'platform',
+    'runtimeInstanceId',
+  ] as const;
+
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, keys) ||
+    !isVersion(value.appVersion) ||
+    !isNullableNonNegativeInteger(value.appliedMigrationCount) ||
+    !isSafeIdentifier(value.architecture, 40) ||
+    !isTimestamp(value.buildCreatedAt) ||
+    typeof value.buildDirty !== 'boolean' ||
+    typeof value.buildRevision !== 'string' ||
+    !/^(?:[0-9a-f]{7,40}|development)$/.test(value.buildRevision) ||
+    !['failed', 'ok', 'unavailable'].includes(
+      value.databaseHealth as string,
+    ) ||
+    !isNullableVersion(value.electronVersion) ||
+    !isNullableTimestamp(value.latestErrorAt) ||
+    !isNullableMigrationName(value.latestMigrationName) ||
+    !isNullableTimestamp(value.latestSecurityEventAt) ||
+    !isNullableTimestamp(value.latestWarningAt) ||
+    !isVersion(value.nodeVersion) ||
+    !isNullableMonth(value.operationalLogNewestMonth) ||
+    !isNullableMonth(value.operationalLogOldestMonth) ||
+    typeof value.operationalLogsAvailable !== 'boolean' ||
+    !isNonNegativeInteger(value.operationalLogTotalBytes) ||
+    !isSafeIdentifier(value.platform, 40) ||
+    typeof value.runtimeInstanceId !== 'string' ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value.runtimeInstanceId,
+    )
+  ) {
+    throw invalidResponse(value);
+  }
+
+  return value as unknown as RuntimeDiagnosticSummary;
+}
+
 function readDiagnosticEvent(value: unknown): DiagnosticEventItem {
   if (
     !isRecord(value) ||
     !hasOnlyKeys(value, [
+      'appVersion',
+      'buildRevision',
       'category',
       'component',
+      'correlationId',
+      'durationMs',
       'errorCode',
       'eventName',
+      'fingerprint',
       'id',
       'level',
       'occurredAt',
+      'operationId',
       'outcome',
+      'retryable',
+      'runtimeInstanceId',
+      'sideEffectState',
+      'stage',
     ]) ||
+    !isOptionalVersion(value.appVersion) ||
+    !isOptionalBuildRevision(value.buildRevision) ||
     !isSafeIdentifier(value.category, 100) ||
     !isMember(value.component, components) ||
+    !isOptionalUuid(value.correlationId) ||
+    !isOptionalNonNegativeInteger(value.durationMs) ||
     !isMember(value.eventName, eventNames) ||
+    !isOptionalSafeIdentifier(value.fingerprint, 300) ||
     !isSafeIdentifier(value.id, 240) ||
     !isMember(value.level, levels) ||
     !isTimestamp(value.occurredAt) ||
+    !isOptionalSafeIdentifier(value.operationId, 300) ||
     !isMember(value.outcome, outcomes) ||
+    !isOptionalBoolean(value.retryable) ||
+    !isOptionalUuid(value.runtimeInstanceId) ||
+    !isOptionalMember(value.sideEffectState, sideEffectStates) ||
+    !isOptionalSafeIdentifier(value.stage, 300) ||
     !isNullableSafeIdentifier(value.errorCode, 120)
   ) {
     throw invalidResponse(value);
   }
 
   return {
+    ...(value.appVersion === undefined
+      ? {}
+      : { appVersion: value.appVersion }),
+    ...(value.buildRevision === undefined
+      ? {}
+      : { buildRevision: value.buildRevision }),
     category: value.category,
     component: value.component,
+    ...(value.correlationId === undefined
+      ? {}
+      : { correlationId: value.correlationId }),
+    ...(value.durationMs === undefined
+      ? {}
+      : { durationMs: value.durationMs }),
     errorCode: value.errorCode,
     eventName: value.eventName,
+    ...(value.fingerprint === undefined
+      ? {}
+      : { fingerprint: value.fingerprint }),
     id: value.id,
     level: value.level,
     occurredAt: value.occurredAt,
+    ...(value.operationId === undefined
+      ? {}
+      : { operationId: value.operationId }),
     outcome: value.outcome,
+    ...(value.retryable === undefined
+      ? {}
+      : { retryable: value.retryable }),
+    ...(value.runtimeInstanceId === undefined
+      ? {}
+      : { runtimeInstanceId: value.runtimeInstanceId }),
+    ...(value.sideEffectState === undefined
+      ? {}
+      : { sideEffectState: value.sideEffectState }),
+    ...(value.stage === undefined ? {} : { stage: value.stage }),
   };
+}
+
+function isOptionalBoolean(value: unknown): value is boolean | undefined {
+  return value === undefined || typeof value === 'boolean';
+}
+
+function isOptionalBuildRevision(
+  value: unknown,
+): value is string | undefined {
+  return (
+    value === undefined ||
+    (typeof value === 'string' &&
+      /^(?:[0-9a-f]{7,40}|development)$/.test(value))
+  );
+}
+
+function isOptionalMember<Value extends string>(
+  value: unknown,
+  values: ReadonlySet<Value>,
+): value is Value | undefined {
+  return value === undefined || isMember(value, values);
+}
+
+function isOptionalNonNegativeInteger(
+  value: unknown,
+): value is number | undefined {
+  return value === undefined || isNonNegativeInteger(value);
+}
+
+function isOptionalSafeIdentifier(
+  value: unknown,
+  maximumLength: number,
+): value is string | undefined {
+  return value === undefined || isSafeIdentifier(value, maximumLength);
+}
+
+function isOptionalUuid(value: unknown): value is string | undefined {
+  return (
+    value === undefined ||
+    (typeof value === 'string' && uuidPattern.test(value))
+  );
+}
+
+function isOptionalVersion(value: unknown): value is string | undefined {
+  return value === undefined || isVersion(value);
 }
 
 function isMember<Value extends string>(
@@ -103,6 +266,55 @@ function isTimestamp(value: unknown): value is string {
   );
 }
 
+function isNullableTimestamp(value: unknown): value is string | null {
+  return value === null || isTimestamp(value);
+}
+
+function isVersion(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= 80 &&
+    /^[A-Za-z0-9.+_-]+$/.test(value)
+  );
+}
+
+function isNullableVersion(value: unknown): value is string | null {
+  return value === null || isVersion(value);
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isSafeInteger(value) &&
+    value >= 0
+  );
+}
+
+function isNullableNonNegativeInteger(
+  value: unknown,
+): value is number | null {
+  return value === null || isNonNegativeInteger(value);
+}
+
+function isNullableMigrationName(value: unknown): value is string | null {
+  return (
+    value === null ||
+    (typeof value === 'string' &&
+      value.length > 0 &&
+      value.length <= 160 &&
+      /^[A-Za-z0-9._-]+$/.test(value))
+  );
+}
+
+function isNullableMonth(value: unknown): value is string | null {
+  return (
+    value === null ||
+    (typeof value === 'string' &&
+      /^\d{4}-(?:0[1-9]|1[0-2])$/.test(value))
+  );
+}
+
 function hasOnlyKeys(
   value: Record<string, unknown>,
   allowedKeys: readonly string[],
@@ -114,4 +326,3 @@ function hasOnlyKeys(
 function invalidResponse(responseBody: unknown): EkyApiError {
   return new EkyApiError('Invalid diagnostics response.', { responseBody });
 }
-

@@ -13,6 +13,7 @@ describe('activity routes', () => {
     const listActivity = vi.fn<ListActivity>().mockResolvedValue({
       activityItems: [
         {
+          changeCategories: ['contact'],
           id: 'customers:event-1',
           module: 'customers',
           occurredAt: '2026-07-27T10:00:00.000Z',
@@ -43,7 +44,13 @@ describe('activity routes', () => {
       pageSize: 20,
     });
     await expect(response.json()).resolves.toEqual(
-      expect.objectContaining({ month: '2026-07', page: 1 }),
+      expect.objectContaining({
+        activityItems: [
+          expect.objectContaining({ changeCategories: ['contact'] }),
+        ],
+        month: '2026-07',
+        page: 1,
+      }),
     );
   });
 

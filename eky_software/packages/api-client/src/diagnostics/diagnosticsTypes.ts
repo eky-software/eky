@@ -74,23 +74,61 @@ export type DiagnosticEventOutcome =
   | 'failure'
   | 'success'
   | 'unknown';
+export type DiagnosticEventSideEffectState =
+  | 'committed'
+  | 'none'
+  | 'rolledBack'
+  | 'unknown';
 
 export interface DiagnosticEventItem {
+  appVersion?: string;
+  buildRevision?: string;
   category: string;
   component: DiagnosticEventComponent;
+  correlationId?: string;
+  durationMs?: number;
   errorCode: string | null;
   eventName: DiagnosticEventName;
+  fingerprint?: string;
   id: string;
   level: DiagnosticEventLevel;
   occurredAt: string;
+  operationId?: string;
   outcome: DiagnosticEventOutcome;
+  retryable?: boolean;
+  runtimeInstanceId?: string;
+  sideEffectState?: DiagnosticEventSideEffectState;
+  stage?: string;
 }
 
 export interface DiagnosticEventListQuery {
   limit?: number;
 }
 
+export interface RuntimeDiagnosticSummary {
+  appVersion: string;
+  appliedMigrationCount: number | null;
+  architecture: string;
+  buildCreatedAt: string;
+  buildDirty: boolean;
+  buildRevision: string;
+  databaseHealth: 'failed' | 'ok' | 'unavailable';
+  electronVersion: string | null;
+  latestErrorAt: string | null;
+  latestMigrationName: string | null;
+  latestSecurityEventAt: string | null;
+  latestWarningAt: string | null;
+  nodeVersion: string;
+  operationalLogNewestMonth: string | null;
+  operationalLogOldestMonth: string | null;
+  operationalLogsAvailable: boolean;
+  operationalLogTotalBytes: number;
+  platform: string;
+  runtimeInstanceId: string;
+}
+
 export interface DiagnosticsApi {
+  getDiagnosticSummary(): Promise<RuntimeDiagnosticSummary>;
   listDiagnosticEvents(
     query?: DiagnosticEventListQuery,
   ): Promise<DiagnosticEventItem[]>;
