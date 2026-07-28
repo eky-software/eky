@@ -6,6 +6,7 @@ import { DryRunInvoiceEmailDeliveryProvider } from '../infrastructure/email/dryR
 import { DnaInvoiceSmtpDeliveryProvider } from '../infrastructure/email/providers/dna/dnaInvoiceSmtpDeliveryProvider.js';
 import { DnaInvoiceSmtpTestDeliveryProvider } from '../infrastructure/email/providers/dna/dnaInvoiceSmtpTestDeliveryProvider.js';
 import { DnaSmtpEmailDeliveryProvider } from '../infrastructure/email/providers/dna/dnaSmtpEmailDeliveryProvider.js';
+import { createDnaSmtpOperationalDiagnostics } from '../infrastructure/email/providers/dna/dnaSmtpOperationalDiagnostics.js';
 import type { CompanyEmailSecretReader } from '../modules/companySettings/ports/companyEmailSecretReader.js';
 import { approveCreditInvoiceDraft } from '../modules/invoicing/application/approveCreditInvoiceDraft.js';
 import { approveInvoiceDraft } from '../modules/invoicing/application/approveInvoiceDraft.js';
@@ -142,6 +143,10 @@ export function createInvoicingComposition(
   const invoiceEmailSendAttemptStore = new InMemoryInvoiceEmailSendAttemptStore();
   const dnaSmtpEmailDeliveryProvider = new DnaSmtpEmailDeliveryProvider({
     companyEmailSecretReader: options.companyEmailSecretReader,
+    transportDiagnostics: createDnaSmtpOperationalDiagnostics({
+      operationalIdentity: options.operationalIdentity,
+      operationalLogger: options.operationalLogger,
+    }),
   });
   const invoiceSmtpTestDeliveryProvider =
     new DnaInvoiceSmtpTestDeliveryProvider(dnaSmtpEmailDeliveryProvider);

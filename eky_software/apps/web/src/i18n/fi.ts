@@ -115,6 +115,7 @@ export const uiText = {
     buildRevision: 'Build revision',
     buildState: 'Buildin tila',
     category: 'Luokka',
+    cipherName: 'TLS-salausmenetelmä',
     cleanBuild: 'Puhdas',
     component: 'Osa',
     correlationId: 'Korrelaatiotunniste',
@@ -171,6 +172,8 @@ export const uiText = {
     openLogFolder: 'Avaa lokikansio',
     openLogFolderError: 'Lokikansiota ei voitu avata turvallisesti.',
     operationalLogs: 'Tekniset tiedostolokit',
+    peerCertificateFingerprint:
+      'Palvelinsertifikaatin SHA-256-sormenjälki',
     outcomes: {
       blocked: 'Estetty',
       failure: 'Epäonnistui',
@@ -188,6 +191,8 @@ export const uiText = {
       rolledBack: 'Peruttiin',
       unknown: 'Epäselvä',
     },
+    smtpProfile: 'SMTP-profiili',
+    tlsVersion: 'TLS-versio',
     stage: 'Vaihe',
     status: 'Tila',
     summaryHeading: 'Järjestelmäyhteenveto',

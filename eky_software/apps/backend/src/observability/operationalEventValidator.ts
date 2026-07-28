@@ -43,6 +43,19 @@ const sideEffectStates = new Set<OperationalSideEffectState>([
   'rolledBack',
   'unknown',
 ]);
+const allowedSmtpCipherNames = new Set([
+  'TLS_AES_128_GCM_SHA256',
+  'TLS_AES_256_GCM_SHA384',
+  'TLS_CHACHA20_POLY1305_SHA256',
+  'TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256',
+  'TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384',
+  'TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256',
+  'TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256',
+  'TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384',
+  'TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256',
+]);
+const fingerprint256Pattern =
+  /^(?:[0-9A-F]{2}:){31}[0-9A-F]{2}$/;
 
 export class OperationalEventValidationError extends Error {
   constructor(message: string) {
@@ -97,6 +110,7 @@ export function validateBackendOperationalEvent(
   }
 
   validatePayload(normalized, spec.payloadFields);
+  validateEventSpecificPayload(eventName, normalized);
   assertRequiredPayloadFields(
     normalized,
     backendRequiredPayloadFields[eventName],
@@ -139,7 +153,8 @@ function validatePayload(
       field === 'durationMs' ||
       field === 'deletedByteCount' ||
       field === 'deletedEventCount' ||
-      field === 'deletedFileCount'
+      field === 'deletedFileCount' ||
+      field === 'targetPort'
     ) {
       if (
         typeof fieldValue !== 'number' ||
@@ -200,6 +215,44 @@ function validatePayload(
         'Operational event text field is invalid.',
       );
     }
+  }
+}
+
+function validateEventSpecificPayload(
+  eventName: BackendOperationalEventName,
+  value: Record<string, unknown>,
+): void {
+  if (
+    eventName !== 'smtp.connectionSecured' &&
+    eventName !== 'smtp.deliveryCompleted'
+  ) {
+    return;
+  }
+
+  const remoteAddressVersion =
+    typeof value.remoteAddress === 'string'
+      ? isIP(value.remoteAddress)
+      : 0;
+  if (
+    value.smtpProfile !== 'dnaSmtp' ||
+    value.targetPort !== 465 ||
+    (value.tlsVersion !== 'TLSv1.2' &&
+      value.tlsVersion !== 'TLSv1.3') ||
+    typeof value.cipherName !== 'string' ||
+    !allowedSmtpCipherNames.has(value.cipherName) ||
+    typeof value.peerCertificateFingerprint256 !== 'string' ||
+    !fingerprint256Pattern.test(
+      value.peerCertificateFingerprint256,
+    ) ||
+    remoteAddressVersion === 0 ||
+    (remoteAddressVersion === 4 && value.remoteFamily !== 'IPv4') ||
+    (remoteAddressVersion === 6 && value.remoteFamily !== 'IPv6') ||
+    value.operationId === undefined ||
+    value.stage === undefined
+  ) {
+    throw new OperationalEventValidationError(
+      'Operational SMTP transport fields are invalid.',
+    );
   }
 }
 
@@ -279,3 +332,4 @@ function assertNoForbiddenKeys(value: Record<string, unknown>): void {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
+import { isIP } from 'node:net';

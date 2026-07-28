@@ -7,6 +7,7 @@ import type {
   SmtpMessageDeliveryInput,
   SmtpMessageDeliveryResult,
 } from '../../smtp/smtpTypes.js';
+import type { SmtpTransportSecuritySummary } from '../../smtp/smtpTransportSecurity.js';
 import {
   dnaSmtpConnectionProfile,
   dnaSmtpSessionTimeouts,
@@ -21,15 +22,25 @@ import type {
   DnaSmtpTestEmailInput,
   DnaSmtpTestEmailResult,
 } from './dnaSmtpTypes.js';
+import {
+  noOpDnaSmtpTransportDiagnostics,
+  type DnaSmtpTransportDiagnostics,
+} from './dnaSmtpTransportDiagnostics.js';
 
 type DnaSmtpTransport = (
   input: SmtpMessageDeliveryInput,
+  options?: {
+    onConnectionSecured?(
+      input: SmtpTransportSecuritySummary & { durationMs: number },
+    ): void;
+  },
 ) => Promise<SmtpMessageDeliveryResult>;
 
 export class DnaSmtpEmailDeliveryProvider {
   constructor(
     private readonly dependencies: {
       companyEmailSecretReader: CompanyEmailSecretReader;
+      transportDiagnostics?: DnaSmtpTransportDiagnostics;
       transport?: DnaSmtpTransport;
     },
   ) {}
@@ -89,6 +100,11 @@ export class DnaSmtpEmailDeliveryProvider {
     username: string;
   }): Promise<Omit<DnaSmtpEmailResult, 'deliveredCc' | 'testMode'>> {
     let message: Buffer | undefined;
+    const operationId = normalizeAttemptId(input.attemptId);
+    const startedAt = Date.now();
+    const transportDiagnostics =
+      this.dependencies.transportDiagnostics ??
+      noOpDnaSmtpTransportDiagnostics;
 
     try {
       message = buildInvoiceMimeMessage({
@@ -101,7 +117,7 @@ export class DnaSmtpEmailDeliveryProvider {
         subject: input.subject,
         to: input.to,
       }, {
-        messageId: `${normalizeAttemptId(input.attemptId)}@${input.senderAddress.slice(
+        messageId: `${operationId}@${input.senderAddress.slice(
           input.senderAddress.lastIndexOf('@') + 1,
         )}`,
       });
@@ -113,14 +129,35 @@ export class DnaSmtpEmailDeliveryProvider {
         throw new DnaSmtpProviderError('DNA_SMTP_SECRET_NOT_CONFIGURED');
       }
 
-      const result = await (this.dependencies.transport ?? defaultTransport)({
-        credentials: { password, username: input.username },
-        envelope: {
-          from: input.senderAddress,
-          recipients: [input.to, ...(input.cc === '' ? [] : [input.cc])],
+      const result = await (this.dependencies.transport ?? defaultTransport)(
+        {
+          credentials: { password, username: input.username },
+          envelope: {
+            from: input.senderAddress,
+            recipients: [input.to, ...(input.cc === '' ? [] : [input.cc])],
+          },
+          message,
         },
-        message,
-      });
+        {
+          onConnectionSecured: (summary) =>
+            recordTransportDiagnosticSafely(() =>
+              transportDiagnostics.recordConnectionSecured({
+                ...summary,
+                operationId,
+              }),
+            ),
+        },
+      );
+      const transportSecurity = result.transportSecurity;
+      if (transportSecurity !== undefined) {
+        recordTransportDiagnosticSafely(() =>
+          transportDiagnostics.recordDeliveryCompleted({
+            ...transportSecurity,
+            durationMs: Date.now() - startedAt,
+            operationId,
+          }),
+        );
+      }
 
       return {
         deliveredTo: input.to,
@@ -216,9 +253,25 @@ function normalizeAttemptId(value: string): string {
 
 async function defaultTransport(
   input: SmtpMessageDeliveryInput,
+  options?: {
+    onConnectionSecured?(
+      input: SmtpTransportSecuritySummary & { durationMs: number },
+    ): void;
+  },
 ): Promise<SmtpMessageDeliveryResult> {
   return deliverSmtpMessage(input, {
     connect: () => connectImplicitTlsSmtp(dnaSmtpConnectionProfile),
+    ...(options?.onConnectionSecured === undefined
+      ? {}
+      : { onConnectionSecured: options.onConnectionSecured }),
     timeouts: dnaSmtpSessionTimeouts,
   });
+}
+
+function recordTransportDiagnosticSafely(operation: () => void): void {
+  try {
+    operation();
+  } catch {
+    // Diagnostics must never change SMTP delivery outcomes.
+  }
 }

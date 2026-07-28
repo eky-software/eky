@@ -109,6 +109,62 @@ describe('FileSystemDiagnosticEventReader', () => {
     );
   });
 
+  it('exposes safe SMTP TLS metadata without the peer address or attempt id', async () => {
+    const logsRoot = createLogsRoot();
+    writeLines(
+      logsRoot,
+      'backend',
+      'backend-info-2026-07-001.jsonl',
+      [
+        createBackendOperationalEvent(
+          {
+            cipherName: 'TLS_AES_256_GCM_SHA384',
+            durationMs: 25,
+            eventName: 'smtp.connectionSecured',
+            operationId: 'attempt-must-not-be-returned',
+            peerCertificateFingerprint256: Array.from(
+              { length: 32 },
+              (_, index) =>
+                index.toString(16).padStart(2, '0').toUpperCase(),
+            ).join(':'),
+            remoteAddress: '192.0.2.10',
+            remoteFamily: 'IPv4',
+            smtpProfile: 'dnaSmtp',
+            stage: 'connect',
+            targetPort: 465,
+            tlsVersion: 'TLSv1.3',
+          },
+          eventOptions(
+            'smtp-secured',
+            '2026-07-27T12:00:00.000Z',
+          ),
+        ),
+      ],
+    );
+
+    const events =
+      await new FileSystemDiagnosticEventReader(
+        logsRoot,
+      ).listRecentDiagnosticEvents(10);
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        cipherName: 'TLS_AES_256_GCM_SHA384',
+        eventName: 'smtp.connectionSecured',
+        peerCertificateFingerprint256: expect.stringMatching(
+          /^(?:[0-9A-F]{2}:){31}[0-9A-F]{2}$/,
+        ),
+        smtpProfile: 'dnaSmtp',
+        tlsVersion: 'TLSv1.3',
+      }),
+    ]);
+    expect(JSON.stringify(events)).not.toContain('192.0.2.10');
+    expect(JSON.stringify(events)).not.toContain(
+      'attempt-must-not-be-returned',
+    );
+    expect(events[0]).not.toHaveProperty('targetPort');
+  });
+
   it('ignores malformed, sensitive and unknown files without exposing raw data', async () => {
     const logsRoot = createLogsRoot();
     writeLines(

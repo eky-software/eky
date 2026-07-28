@@ -95,6 +95,80 @@ describe('diagnostics API client', () => {
     ).rejects.toBeInstanceOf(EkyApiError);
   });
 
+  it('accepts only the public SMTP TLS diagnostic projection', async () => {
+    const peerCertificateFingerprint256 = Array.from(
+      { length: 32 },
+      (_, index) =>
+        index.toString(16).padStart(2, '0').toUpperCase(),
+    ).join(':');
+    const client = createEkyApiClient({
+      baseUrl: '',
+      fetch: async () =>
+        jsonResponse({
+          diagnosticEvents: [
+            {
+              category: 'smtp',
+              cipherName: 'TLS_AES_256_GCM_SHA384',
+              component: 'backend',
+              durationMs: 25,
+              errorCode: null,
+              eventName: 'smtp.connectionSecured',
+              id: 'backend:event-1',
+              level: 'info',
+              occurredAt: '2026-07-27T12:00:00.000Z',
+              outcome: 'success',
+              peerCertificateFingerprint256,
+              smtpProfile: 'dnaSmtp',
+              stage: 'connect',
+              tlsVersion: 'TLSv1.3',
+            },
+          ],
+        }),
+    });
+
+    await expect(client.listDiagnosticEvents()).resolves.toEqual([
+      expect.objectContaining({
+        cipherName: 'TLS_AES_256_GCM_SHA384',
+        eventName: 'smtp.connectionSecured',
+        peerCertificateFingerprint256,
+        smtpProfile: 'dnaSmtp',
+        tlsVersion: 'TLSv1.3',
+      }),
+    ]);
+  });
+
+  it.each([
+    ['remoteAddress', '192.0.2.10'],
+    ['targetPort', 465],
+    ['peerCertificateFingerprint256', 'invalid'],
+    ['smtpProfile', 'other'],
+    ['tlsVersion', 'TLSv1.1'],
+  ])('rejects non-public or invalid SMTP field %s', async (field, value) => {
+    const client = createEkyApiClient({
+      baseUrl: '',
+      fetch: async () =>
+        jsonResponse({
+          diagnosticEvents: [
+            {
+              category: 'smtp',
+              component: 'backend',
+              errorCode: null,
+              eventName: 'smtp.connectionSecured',
+              id: 'backend:event-1',
+              level: 'info',
+              occurredAt: '2026-07-27T12:00:00.000Z',
+              outcome: 'success',
+              [field]: value,
+            },
+          ],
+        }),
+    });
+
+    await expect(client.listDiagnosticEvents()).rejects.toBeInstanceOf(
+      EkyApiError,
+    );
+  });
+
   it('accepts the packaged startup and retention event contract', async () => {
     const eventNames = [
       'backend.starting',

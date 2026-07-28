@@ -51,6 +51,55 @@ describe('connectImplicitTlsSmtp', () => {
     await expect(connectionPromise).resolves.toBeDefined();
   });
 
+  it('captures bounded transport diagnostics only for an explicit DNA profile', async () => {
+    const socket = new FakeTlsSocket();
+    const connectionPromise = connectImplicitTlsSmtp(
+      {
+        ...createOptions(),
+        diagnosticsProfile: {
+          smtpProfile: 'dnaSmtp',
+          targetPort: 465,
+        },
+        port: 465,
+      },
+      () => socket.asTlsSocket(),
+    );
+
+    socket.emit('secureConnect');
+
+    await expect(connectionPromise).resolves.toMatchObject({
+      transportSecurity: {
+        cipherName: 'TLS_AES_256_GCM_SHA384',
+        peerCertificateFingerprint256: certificateFingerprint256,
+        remoteAddress: '192.0.2.10',
+        remoteFamily: 'IPv4',
+        smtpProfile: 'dnaSmtp',
+        targetPort: 465,
+        tlsVersion: 'TLSv1.3',
+      },
+    });
+  });
+
+  it('fails closed when a DNA diagnostics profile does not match the target port', async () => {
+    const socket = new FakeTlsSocket();
+    const connectionPromise = connectImplicitTlsSmtp(
+      {
+        ...createOptions(),
+        diagnosticsProfile: {
+          smtpProfile: 'dnaSmtp',
+          targetPort: 465,
+        },
+      },
+      () => socket.asTlsSocket(),
+    );
+
+    socket.emit('secureConnect');
+
+    await expect(connectionPromise).rejects.toMatchObject({
+      code: 'SMTP_TLS_FAILED',
+    });
+  });
+
   it('fails closed when the certificate is not authorized', async () => {
     const socket = new FakeTlsSocket();
     socket.authorized = false;
@@ -183,12 +232,19 @@ function createOptions() {
   };
 }
 
+const certificateFingerprint256 = Array.from(
+  { length: 32 },
+  (_, index) => index.toString(16).padStart(2, '0').toUpperCase(),
+).join(':');
+
 class FakeTlsSocket extends EventEmitter {
   authorizationError: Error | null | undefined = null;
   authorized = true;
   destroyedByClient = false;
   nextWriteError: Error | undefined;
   protocol: string | null = 'TLSv1.3';
+  remoteAddress = '192.0.2.10';
+  remoteFamily = 'IPv4';
   timeoutMilliseconds: number | undefined;
   writes: Buffer[] = [];
 
@@ -203,6 +259,20 @@ class FakeTlsSocket extends EventEmitter {
 
   getProtocol(): string | null {
     return this.protocol;
+  }
+
+  getCipher() {
+    return {
+      name: 'TLS_AES_256_GCM_SHA384',
+      standardName: 'TLS_AES_256_GCM_SHA384',
+      version: 'TLSv1.3',
+    };
+  }
+
+  getPeerCertificate() {
+    return {
+      fingerprint256: certificateFingerprint256,
+    };
   }
 
   setTimeout(timeoutMilliseconds: number): this {

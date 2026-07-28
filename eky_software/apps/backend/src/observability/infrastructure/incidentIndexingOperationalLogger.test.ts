@@ -66,4 +66,39 @@ describe('IncidentIndexingOperationalLogger', () => {
 
     expect(incidentIndex.write).not.toHaveBeenCalled();
   });
+
+  it('keeps successful SMTP transport metadata out of the incident index', () => {
+    const detailedLogger = { write: vi.fn() };
+    const incidentIndex = { write: vi.fn() };
+    const logger = new IncidentIndexingOperationalLogger(
+      detailedLogger,
+      incidentIndex,
+    );
+
+    logger.write(
+      createBackendOperationalEvent(
+        {
+          cipherName: 'TLS_AES_256_GCM_SHA384',
+          durationMs: 25,
+          eventName: 'smtp.connectionSecured',
+          operationId: 'attempt-1',
+          peerCertificateFingerprint256: Array.from(
+            { length: 32 },
+            (_, index) =>
+              index.toString(16).padStart(2, '0').toUpperCase(),
+          ).join(':'),
+          remoteAddress: '192.0.2.10',
+          remoteFamily: 'IPv4',
+          smtpProfile: 'dnaSmtp',
+          stage: 'connect',
+          targetPort: 465,
+          tlsVersion: 'TLSv1.3',
+        },
+        eventOptions,
+      ),
+    );
+
+    expect(detailedLogger.write).toHaveBeenCalledTimes(1);
+    expect(incidentIndex.write).not.toHaveBeenCalled();
+  });
 });

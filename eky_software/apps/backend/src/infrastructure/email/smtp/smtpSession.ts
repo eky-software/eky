@@ -11,6 +11,7 @@ import {
 import type { SmtpConnection } from './smtpConnection.js';
 import { encodeSmtpData } from './smtpDataEncoder.js';
 import { SmtpTransportError } from './smtpErrors.js';
+import type { SmtpTransportSecuritySummary } from './smtpTransportSecurity.js';
 import type {
   SmtpMessageDeliveryInput,
   SmtpMessageDeliveryResult,
@@ -31,10 +32,14 @@ export async function deliverSmtpMessage(
   input: SmtpMessageDeliveryInput,
   dependencies: {
     connect(): Promise<SmtpConnection>;
+    onConnectionSecured?(
+      input: SmtpTransportSecuritySummary & { durationMs: number },
+    ): void;
     timeouts: SmtpSessionTimeouts;
   },
 ): Promise<SmtpMessageDeliveryResult> {
   const state = new SmtpStateMachine();
+  const startedAt = Date.now();
   const encodedData = encodeSmtpData(input.message);
   const deadline = Date.now() + dependencies.timeouts.totalMilliseconds;
   let connection: SmtpConnection | undefined;
@@ -42,6 +47,13 @@ export async function deliverSmtpMessage(
   try {
     assertEnvelope(input.envelope.recipients);
     connection = await dependencies.connect();
+    if (connection.transportSecurity !== undefined) {
+      notifyConnectionSecured(
+        dependencies.onConnectionSecured,
+        connection.transportSecurity,
+        Date.now() - startedAt,
+      );
+    }
     state.transition('awaitingGreeting');
     expectReply(
       await connection.readReply(
@@ -166,6 +178,9 @@ export async function deliverSmtpMessage(
     return {
       accepted: true,
       providerMessageId: null,
+      ...(connection.transportSecurity === undefined
+        ? {}
+        : { transportSecurity: connection.transportSecurity }),
     };
   } catch (error) {
     state.fail(error);
@@ -178,6 +193,22 @@ export async function deliverSmtpMessage(
   } finally {
     encodedData.fill(0);
     connection?.close();
+  }
+}
+
+function notifyConnectionSecured(
+  listener:
+    | ((
+        input: SmtpTransportSecuritySummary & { durationMs: number },
+      ) => void)
+    | undefined,
+  summary: SmtpTransportSecuritySummary,
+  durationMs: number,
+): void {
+  try {
+    listener?.({ ...summary, durationMs });
+  } catch {
+    // Diagnostics must never change SMTP delivery outcomes.
   }
 }
 

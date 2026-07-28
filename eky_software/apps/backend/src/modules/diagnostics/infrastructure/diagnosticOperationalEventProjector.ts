@@ -179,7 +179,7 @@ function projectBackendEvent(
   event: BackendOperationalEvent,
 ): DiagnosticEventItem {
   return {
-    ...projectSafeTechnicalContext(event),
+    ...projectSafeTechnicalContext(event, event.eventName),
     category: event.category,
     component: 'backend',
     errorCode: readErrorCode(event),
@@ -209,7 +209,12 @@ function projectDesktopEvent(
 
 function projectSafeTechnicalContext(
   event: Record<string, unknown>,
+  eventName?: string,
 ): Partial<DiagnosticEventItem> {
+  const isSmtpTransportEvent =
+    eventName === 'smtp.connectionSecured' ||
+    eventName === 'smtp.deliveryCompleted';
+
   return {
     ...(isSafeVersion(event.appVersion)
       ? { appVersion: event.appVersion }
@@ -217,6 +222,9 @@ function projectSafeTechnicalContext(
     ...(typeof event.buildRevision === 'string' &&
     buildRevisionPattern.test(event.buildRevision)
       ? { buildRevision: event.buildRevision }
+      : {}),
+    ...(isSafeIdentifier(event.cipherName, 100)
+      ? { cipherName: event.cipherName }
       : {}),
     ...(isUuid(event.correlationId)
       ? { correlationId: event.correlationId }
@@ -227,8 +235,17 @@ function projectSafeTechnicalContext(
     ...(isSafeIdentifier(event.fingerprint, 300)
       ? { fingerprint: event.fingerprint }
       : {}),
-    ...(isSafeIdentifier(event.operationId, 300)
+    ...(!isSmtpTransportEvent &&
+    isSafeIdentifier(event.operationId, 300)
       ? { operationId: event.operationId }
+      : {}),
+    ...(isCertificateFingerprint256(
+      event.peerCertificateFingerprint256,
+    )
+      ? {
+          peerCertificateFingerprint256:
+            event.peerCertificateFingerprint256,
+        }
       : {}),
     ...(typeof event.retryable === 'boolean'
       ? { retryable: event.retryable }
@@ -240,7 +257,21 @@ function projectSafeTechnicalContext(
       ? { sideEffectState: event.sideEffectState }
       : {}),
     ...(isSafeIdentifier(event.stage, 300) ? { stage: event.stage } : {}),
+    ...(event.smtpProfile === 'dnaSmtp'
+      ? { smtpProfile: event.smtpProfile }
+      : {}),
+    ...(event.tlsVersion === 'TLSv1.2' ||
+    event.tlsVersion === 'TLSv1.3'
+      ? { tlsVersion: event.tlsVersion }
+      : {}),
   };
+}
+
+function isCertificateFingerprint256(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    /^(?:[0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(value)
+  );
 }
 
 function validateDesktopEvent(

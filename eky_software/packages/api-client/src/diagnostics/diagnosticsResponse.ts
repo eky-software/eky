@@ -107,6 +107,7 @@ function readDiagnosticEvent(value: unknown): DiagnosticEventItem {
       'appVersion',
       'buildRevision',
       'category',
+      'cipherName',
       'component',
       'correlationId',
       'durationMs',
@@ -118,14 +119,18 @@ function readDiagnosticEvent(value: unknown): DiagnosticEventItem {
       'occurredAt',
       'operationId',
       'outcome',
+      'peerCertificateFingerprint256',
       'retryable',
       'runtimeInstanceId',
       'sideEffectState',
       'stage',
+      'smtpProfile',
+      'tlsVersion',
     ]) ||
     !isOptionalVersion(value.appVersion) ||
     !isOptionalBuildRevision(value.buildRevision) ||
     !isSafeIdentifier(value.category, 100) ||
+    !isOptionalSafeIdentifier(value.cipherName, 100) ||
     !isMember(value.component, components) ||
     !isOptionalUuid(value.correlationId) ||
     !isOptionalNonNegativeInteger(value.durationMs) ||
@@ -136,10 +141,15 @@ function readDiagnosticEvent(value: unknown): DiagnosticEventItem {
     !isTimestamp(value.occurredAt) ||
     !isOptionalSafeIdentifier(value.operationId, 300) ||
     !isMember(value.outcome, outcomes) ||
+    !isOptionalCertificateFingerprint256(
+      value.peerCertificateFingerprint256,
+    ) ||
     !isOptionalBoolean(value.retryable) ||
     !isOptionalUuid(value.runtimeInstanceId) ||
     !isOptionalMember(value.sideEffectState, sideEffectStates) ||
     !isOptionalSafeIdentifier(value.stage, 300) ||
+    !isOptionalExactValue(value.smtpProfile, 'dnaSmtp') ||
+    !isOptionalTlsVersion(value.tlsVersion) ||
     !isNullableSafeIdentifier(value.errorCode, 120)
   ) {
     throw invalidResponse(value);
@@ -153,6 +163,9 @@ function readDiagnosticEvent(value: unknown): DiagnosticEventItem {
       ? {}
       : { buildRevision: value.buildRevision }),
     category: value.category,
+    ...(value.cipherName === undefined
+      ? {}
+      : { cipherName: value.cipherName }),
     component: value.component,
     ...(value.correlationId === undefined
       ? {}
@@ -172,6 +185,12 @@ function readDiagnosticEvent(value: unknown): DiagnosticEventItem {
       ? {}
       : { operationId: value.operationId }),
     outcome: value.outcome,
+    ...(value.peerCertificateFingerprint256 === undefined
+      ? {}
+      : {
+          peerCertificateFingerprint256:
+            value.peerCertificateFingerprint256,
+        }),
     ...(value.retryable === undefined
       ? {}
       : { retryable: value.retryable }),
@@ -182,7 +201,40 @@ function readDiagnosticEvent(value: unknown): DiagnosticEventItem {
       ? {}
       : { sideEffectState: value.sideEffectState }),
     ...(value.stage === undefined ? {} : { stage: value.stage }),
+    ...(value.smtpProfile === undefined
+      ? {}
+      : { smtpProfile: value.smtpProfile }),
+    ...(value.tlsVersion === undefined
+      ? {}
+      : { tlsVersion: value.tlsVersion }),
   };
+}
+
+function isOptionalCertificateFingerprint256(
+  value: unknown,
+): value is string | undefined {
+  return (
+    value === undefined ||
+    (typeof value === 'string' &&
+      /^(?:[0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(value))
+  );
+}
+
+function isOptionalExactValue<Value extends string>(
+  value: unknown,
+  expected: Value,
+): value is Value | undefined {
+  return value === undefined || value === expected;
+}
+
+function isOptionalTlsVersion(
+  value: unknown,
+): value is 'TLSv1.2' | 'TLSv1.3' | undefined {
+  return (
+    value === undefined ||
+    value === 'TLSv1.2' ||
+    value === 'TLSv1.3'
+  );
 }
 
 function isOptionalBoolean(value: unknown): value is boolean | undefined {
