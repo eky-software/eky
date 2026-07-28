@@ -29,6 +29,7 @@ export class IncidentIndexOperationalLogFailureSink
     this.#recordedFailures.add(failureKey);
 
     this.#incidentIndex.write({
+      schemaVersion: 1,
       appVersion: this.#operationalIdentity.appVersion,
       buildRevision: this.#operationalIdentity.buildRevision,
       component: 'backend',

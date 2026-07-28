@@ -1,4 +1,5 @@
 export interface LongTermIncidentIndexEntry {
+  schemaVersion: 1;
   appVersion: string;
   buildRevision: string;
   component: 'backend';

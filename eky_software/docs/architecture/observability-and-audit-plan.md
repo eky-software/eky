@@ -5,6 +5,12 @@ turvallisuushavaintojen vastuut. Tavoitteena on diagnosoitava local-first-
 sovellus ilman tarpeetonta henkilötietojen, laskusisällön tai salaisuuksien
 kopiointia lokitiedostoihin.
 
+R0-observability on tuotantoperusta, ei väliaikainen testitoteutus. Uusi
+moduuli käyttää tätä ydinsopimusta eikä rakenna omaa loggeria, event-kuorta,
+retention-mallia tai tukipakettiformaattia uudelleen. Moduuli määrittelee vain
+omat tyypitetyt tapahtumansa ja projektiopäätöksensä alla kuvatun portin
+mukaisesti.
+
 ## Tietosuojan lähtökohta
 
 Eky noudattaa tarkoitussidonnaisuutta, tietojen minimointia, säilytyksen
@@ -86,6 +92,9 @@ Yksi kirjoitin omistaa yhden koherentin tiedostovirran. Backend ja desktop
 saavat omat adapterinsa. Yhteistä toteutusta irrotetaan vasta todennetun
 toiston perusteella. Renderer ei kirjoita tiedostojärjestelmään eikä saa
 lähettää vapaamuotoista lokitekstiä backendille tai Electron mainille.
+Tapahtuma kulkee aina sen omistavan moduulin tai infrastruktuurivastuun
+tyypitetyn sopimuksen kautta. Yleistä `LoggerManager`-palvelua tai
+vapaamuotoista metadataa ei lisätä.
 
 ## Sallitut ja kielletyt tiedot
 
@@ -160,22 +169,27 @@ Kenttärajat pidetään erillisinä:
 | paikallinen detailed JSONL | tapahtuman tyypitetyt, allowlistatut tekniset kentät; SMTP:n etä-IP, portti ja operation ID vain tässä tasossa |
 | Diagnostics-UI | uudelleenvalidoitu turvallinen projektio; SMTP:stä profiili, TLS-versio, cipher, sormenjälki, stage ja kesto |
 | tukipaketti | viimeisen 30 päivän warning/error/security-projektio ilman info-eventtejä, etä-IP:tä, porttia tai operation ID:tä |
-| pitkäaikainen incident-indeksi | minimoitu ryhmittely ilman suoria tunnisteita, raw-rivejä tai business-sisältöä |
+| pitkäaikainen incident-indeksi | minimoitu incident-indeksi ilman suoria tunnisteita, raw-rivejä tai business-sisältöä |
 
 ## Uuden moduulin observability-portti
 
 Jokaiselle uudelle moduulille määritellään ennen toteutusta:
 
 1. moduulin omistama business event catalog
-2. saman transaktion kanssa pakolliset audit-eventit
-3. operational- ja security-event catalog
-4. sallitut ja kielletyt event-kentät
-5. retention class
-6. redaction- ja väärinkäyttötestit
-7. loki- ja audit-virheiden vaikutus business-operaatioon
-8. activity feed -read model
-9. E2E-matriisi
-10. support bundle -sisällytys tai poissulku
+2. operational event catalog
+3. security event catalog
+4. jokaisen tapahtuman omistava moduuli tai infrastruktuurivastuu
+5. transaction ownership: mitkä audit-eventit kuuluvat samaan transaktioon
+6. jokaisen tapahtuman sallitut ja kielletyt kentät
+7. kenttien henkilötieto- ja pseudonyymiluokitus
+8. tarkoitukseen perustuva retention class
+9. Activity-projektio tai perusteltu poissulku
+10. Diagnostics-projektio tai perusteltu poissulku
+11. support bundle -sisällytys tai poissulku
+12. incident-index-kelpoisuus tai poissulku
+13. writer-, audit- ja projektiovirheiden vaikutus business-operaatioon
+14. redaction-, salaisuus-, henkilötieto- ja kontrollimerkkitestit
+15. onnistuvan ja rikkoutuvan polun yksikkö-, integraatio- ja E2E-testit
 
 ## Activity- ja diagnostics-rajat
 
@@ -224,6 +238,12 @@ incident-yhteenvetoja. Manifesti ja checksumit rakennetaan lopullisesta
 sisällöstä. Smoke raportoi vain allowlistatun viimeisen vaiheen:
 `startup`, `backend`, `diagnostics`, `logFolder`, `supportBundle`,
 `secretStorage`, `pdfPreview` tai `shutdown`.
+
+R0:n local-first-lokit ja business auditit eivät ole kryptografisesti
+muuttumaton forensiikka-audit. Kun Eky laajenee usean käyttäjän tai pilven
+käyttöön, arvioidaan erikseen append-only-tallennus, hash chain,
+keskitetty audit-palvelu ja valvottu vienti. Näitä ei jäljitellä nykyisessä
+yhden hallitun koneen toteutuksessa.
 
 Kahden tukipakettiadapterin yhteinen tiedostotason vastuu on rajattu
 Diagnostics-moduulin `boundedJsonlSourceReader`-primitiveen. Se omistaa vain

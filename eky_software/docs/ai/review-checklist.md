@@ -48,6 +48,28 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
 - Korvaako technical log vahingossa moduulin atomisen business auditin?
 - Onko tukipaketti sanitoitu ja erotettu backupista?
 
+### Observability-laajennus
+
+- Onko business-, operational- ja security-event catalog määritelty?
+- Onko jokaisella tapahtumalla selvä omistaja?
+- Onko transaction ownership määritelty kriittiselle business auditille?
+- Ovatko sallitut ja kielletyt kentät tyypitettyjä ilman arbitrary metadataa?
+- Onko henkilötieto- ja pseudonyymiluokitus tehty?
+- Perustuuko retention tapahtuman tarkoitukseen?
+- Onko Activity-projektio tai poissulku päätetty?
+- Onko Diagnostics-projektio tai poissulku päätetty?
+- Onko tukipakettisisällytys tai poissulku päätetty?
+- Onko incident-index-kelpoisuus tai poissulku päätetty?
+- Onko failure behavior päätetty erikseen business auditille ja technical
+  logille?
+- Torjuvatko testit raw errorin, stackin, request bodyn, salaisuudet,
+  henkilötiedot ja tarpeettoman business-sisällön?
+- Kattavatko yksikkö-, integraatio- ja E2E-testit myös rikkoutuvat polut?
+- Käyttääkö muutos yhteistä R0-observabilitysopimusta rakentamatta omaa
+  logger-manageria tai tukipakettiformaattia?
+- Säilyvätkö business audit, technical log ja support bundle erillisinä
+  vastuina?
+
 ## Riippuvuudet
 
 - Lisättiinkö uusi kirjasto?

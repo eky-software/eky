@@ -91,6 +91,45 @@ describe('FileSystemSupportBundleIncidentSummaryReader', () => {
     expect(serialized).not.toContain('runtimeInstanceId');
     expect(serialized).not.toContain('correlationId');
     expect(serialized).not.toContain('operationId');
+    expect(serialized).not.toContain('schemaVersion');
+  });
+
+  it('reads exact legacy v0 rows without rewriting the public summary shape', async () => {
+    const logsRoot = createLogsRoot();
+    const { schemaVersion: _schemaVersion, ...legacyEntry } = incident({
+      component: 'backend',
+      timestamp: '2026-07-27T10:00:00.000Z',
+    });
+    writeIncidentLines(
+      logsRoot,
+      'backend-incident-index-2026.jsonl',
+      [legacyEntry],
+    );
+
+    const result =
+      await new FileSystemSupportBundleIncidentSummaryReader(
+        logsRoot,
+      ).readSupportBundleIncidentSummaries({
+        earliestTimestamp: '2026-06-28T12:00:00.000Z',
+        latestTimestamp: '2026-07-28T12:00:00.000Z',
+      });
+
+    expect(result).toEqual({
+      incidentSummaries: [
+        {
+          appVersion: '0.1.0-alpha.1',
+          buildRevision: 'abcdef123456',
+          count: 1,
+          errorCode: 'DATABASE_OPEN_FAILED',
+          eventName: 'database.openFailed',
+          fingerprint: 'database.openFailed:DATABASE_OPEN_FAILED',
+          firstOccurredAt: '2026-07-27T10:00:00.000Z',
+          lastOccurredAt: '2026-07-27T10:00:00.000Z',
+          outcome: 'failure',
+        },
+      ],
+      sourceTruncated: false,
+    });
   });
 
   it('ignores incidents outside the exact period and unrelated years', async () => {
@@ -166,6 +205,39 @@ describe('FileSystemSupportBundleIncidentSummaryReader', () => {
       sourceTruncated: true,
     });
     expect(JSON.stringify(result)).not.toContain('person@example.test');
+  });
+
+  it('skips unknown versions and malformed versioned rows without exposing source data', async () => {
+    const logsRoot = createLogsRoot();
+    const valid = incident({
+      component: 'backend',
+      timestamp: '2026-07-27T10:00:00.000Z',
+    });
+    const { fingerprint: _fingerprint, ...missingRequiredField } = valid;
+    writeIncidentLines(
+      logsRoot,
+      'backend-incident-index-2026.jsonl',
+      [
+        { ...valid, schemaVersion: 2 },
+        missingRequiredField,
+        { ...valid, unexpected: 'private-value' },
+        { ...valid, component: 'desktop' },
+      ],
+    );
+
+    const result =
+      await new FileSystemSupportBundleIncidentSummaryReader(
+        logsRoot,
+      ).readSupportBundleIncidentSummaries({
+        earliestTimestamp: '2026-06-28T12:00:00.000Z',
+        latestTimestamp: '2026-07-28T12:00:00.000Z',
+      });
+
+    expect(result).toEqual({
+      incidentSummaries: [],
+      sourceTruncated: true,
+    });
+    expect(JSON.stringify(result)).not.toContain('private-value');
   });
 
   it('reports summary and source byte limits as truncation', async () => {
@@ -264,6 +336,7 @@ function incident(input: {
   timestamp: string;
 }) {
   return {
+    schemaVersion: 1,
     appVersion: '0.1.0-alpha.1',
     buildRevision: 'abcdef123456',
     component: input.component,

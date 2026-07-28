@@ -17,7 +17,7 @@ afterEach(() => {
 });
 
 describe('DesktopIncidentIndexingOperationalLogger', () => {
-  it('stores only a minimal anonymous failure projection', () => {
+  it('stores only a versioned minimal failure projection without direct identifiers', () => {
     const root = mkdtempSync(join(tmpdir(), 'eky-desktop-incident-'));
     temporaryDirectories.push(root);
     const logsRoot = join(root, 'logs');
@@ -52,8 +52,13 @@ describe('DesktopIncidentIndexingOperationalLogger', () => {
       ),
       'utf8',
     );
-    expect(line).toContain('"BACKEND_UNEXPECTED_EXIT"');
-    expect(line).toContain('"buildRevision":"123456789abc"');
+    expect(JSON.parse(line)).toMatchObject({
+      schemaVersion: 1,
+      appVersion: '0.0.0',
+      buildRevision: '123456789abc',
+      component: 'desktop',
+      errorCode: 'BACKEND_UNEXPECTED_EXIT',
+    });
     expect(line).not.toContain('eventId');
     expect(line).not.toContain('runtimeInstanceId');
     expect(line).not.toContain('stage');

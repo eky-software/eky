@@ -31,6 +31,7 @@ describe('IncidentIndexOperationalLogFailureSink', () => {
     expect(write).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
+        schemaVersion: 1,
         appVersion: '1.2.3',
         buildRevision: '123456789abc',
         errorCode: 'LOG_CAPACITY_REACHED',

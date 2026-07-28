@@ -1,8 +1,10 @@
 # R0 observability event catalog
 
-Tämä on Eky R0:n vakaa lähtöluettelo. Toteutuksen pitää käyttää täsmällisiä
-tyypitettyjä event-nimiä. Uusi nimi lisätään katalogiin ja testeihin ennen
-instrumentointia.
+Tämä on Eky R0:n vakaa tuotantoperustan lähtöluettelo. Toteutuksen pitää
+käyttää täsmällisiä tyypitettyjä event-nimiä niiden omistavan moduulin tai
+infrastruktuurivastuun kautta. Uusi nimi lisätään katalogiin ja testeihin
+ennen instrumentointia. Moduuli ei rakenna katalogin rinnalle yleistä
+logger-manageria tai arbitrary metadata -kanavaa.
 
 Operational-eventien yhteinen build-konteksti on validoitu `appVersion`,
 `buildRevision` ja käynnistyskohtainen `runtimeInstanceId`. Tunnisteet eivät
@@ -200,7 +202,8 @@ muutoksen ryhmän eikä erillistä vapaata metadataa tarvita.
 ## Incident-indexiin oikeuttavat tapahtumat
 
 Vain failure-, blocked- tai turvallisuusmerkityksinen event voidaan tiivistää
-10 vuoden indeksiin. Indeksi ei sisällä actor-, company- tai entity-tunnisteita.
+10 vuoden minimoituun incident-indeksiin ilman suoria tunnisteita. Indeksi ei
+sisällä actor-, company- tai entity-tunnisteita.
 Onnistuneita business-muutoksia ei indeksoida. Indeksiin ei myöskään viedä
 runtime-, correlation- tai operation-tunnisteita eikä teknisen tapahtuman
 vapaamuotoista sisältöä.

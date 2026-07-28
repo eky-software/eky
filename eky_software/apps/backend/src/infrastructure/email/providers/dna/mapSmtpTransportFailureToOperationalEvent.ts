@@ -27,10 +27,7 @@ export function mapSmtpTransportFailureToOperationalEvent(input: {
     eventName,
     retryable: eventName === 'smtp.connectionFailed',
     sideEffectState:
-      input.outcome === 'outcomeUnknown' ||
-      input.phase === 'finalAcceptance'
-        ? 'unknown'
-        : 'none',
+      input.outcome === 'outcomeUnknown' ? 'unknown' : 'none',
   });
 }
 

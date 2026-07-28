@@ -29,6 +29,7 @@ export class IncidentIndexingOperationalLogger implements OperationalLogger {
         : `${event.eventName}:${errorCode}`;
 
     this.#incidentIndex.write({
+      schemaVersion: 1,
       appVersion: event.appVersion,
       buildRevision: event.buildRevision,
       component: 'backend',

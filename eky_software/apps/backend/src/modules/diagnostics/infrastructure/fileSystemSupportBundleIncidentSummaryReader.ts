@@ -30,6 +30,21 @@ interface IncidentSourceEntry {
   timestamp: string;
 }
 
+const legacyIncidentSourceKeys = [
+  'appVersion',
+  'buildRevision',
+  'component',
+  'errorCode',
+  'eventName',
+  'fingerprint',
+  'outcome',
+  'timestamp',
+] as const;
+const currentIncidentSourceKeys = [
+  ...legacyIncidentSourceKeys,
+  'schemaVersion',
+] as const;
+
 interface IncidentIndexFile {
   component: 'backend' | 'desktop';
   fileName: string;
@@ -216,16 +231,7 @@ function parseIncidentEntry(
     const value = JSON.parse(line) as unknown;
     if (
       !isRecord(value) ||
-      !hasOnlyKeys(value, [
-        'appVersion',
-        'buildRevision',
-        'component',
-        'errorCode',
-        'eventName',
-        'fingerprint',
-        'outcome',
-        'timestamp',
-      ]) ||
+      !hasSupportedIncidentShape(value) ||
       value.component !== expectedComponent ||
       !isSafeText(value.appVersion, 80) ||
       typeof value.buildRevision !== 'string' ||
@@ -245,6 +251,19 @@ function parseIncidentEntry(
   } catch {
     return null;
   }
+}
+
+function hasSupportedIncidentShape(
+  value: Record<string, unknown>,
+): boolean {
+  if (!Object.hasOwn(value, 'schemaVersion')) {
+    return hasOnlyKeys(value, legacyIncidentSourceKeys);
+  }
+
+  return (
+    value.schemaVersion === 1 &&
+    hasOnlyKeys(value, currentIncidentSourceKeys)
+  );
 }
 
 function toSummary(
