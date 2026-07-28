@@ -37,7 +37,7 @@ tietokannan, auditin, operational/security-eventin ja tukipaketin päätöksen.
 | ID | Riski ja tasot | Lähtö / toiminto / fault | Odotus | Tila ja havainnot | Erityinen vuotokielto | Tila |
 |---|---|---|---|---|---|---|
 | SYS-BOOT-001 | P0; system, packaged-smoke | Tyhjä eristetty runtime; käynnistä backend ja web; ei faultia | `/health` 200 ja web latautuu | Kanta syntyy testirootiin; ei business auditia; turvallinen startup-event | Production userData ja oikeat polut | covered-existing |
-| SYS-ISOLATION-001 | P0; system, security | E2E-config; käynnistä kaikilla testipoluilla | Käynnistys onnistuu vain loopbackissa | Kaikki kirjoitukset testirootin alla; poissulku tukipaketista production-poluille | AppData, oikea logs-root, SMTP-secret | planned |
+| SYS-ISOLATION-001 | P0; system, security | E2E-config; käynnistä kaikilla testipoluilla | Käynnistys onnistuu vain loopbackissa | Kaikki kirjoitukset testirootin alla; poissulku tukipaketista production-poluille | AppData, oikea logs-root, SMTP-secret | implemented-e2e |
 | SYS-OUTBOUND-001 | P0; web-e2e, security | Web auki; yritä non-loopback-pyyntöä | Pyyntö estyy ja testi epäonnistuu | Ei ulkoista sivuvaikutusta; turvallinen testihavainto | Ulkoinen payload tai credential | planned |
 | SYS-RESTART-001 | P0; system, recovery | Tallennettu synteettinen data; hallittu restart | Sama data näkyy, vanha session 401/403 | Kanta ja audit säilyvät; runtimeInstanceId vaihtuu | Vanha session ja paikalliset polut | planned |
 
@@ -133,4 +133,3 @@ vain edustavan koko järjestelmän todisteen eikä korvaa unit- tai
 integraatiotestejä. Tapaukset johdetaan invariansseista, luottamusrajoista,
 sivuvaikutuksista, tilakoneista ja todellisista rikkoutumistavoista; määrää ei
 kasvateta satunnaisilla variaatioilla.
-
