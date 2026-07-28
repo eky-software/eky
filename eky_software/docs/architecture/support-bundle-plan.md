@@ -47,13 +47,15 @@ digitaalinen allekirjoitus eivätkä todista artifactin alkuperää.
 - viimeisen 30 päivän sanitoidut warn/error-eventit
 - saman aikavälin security-eventit
 - incident indexistä luetut ryhmitellyt yhteenvedot ilman raw-rivejä
-- SMTP:n onnistuneista transport-eventeistä vain SMTP-profiili, TLS-versio,
-  allowlistattu cipher ja sertifikaatin SHA-256-sormenjälki, jos tapahtuma
-  kuuluu mukaan rajattuun tapahtuma-aineistoon
+- SMTP:n warning/error-tason transport-virheistä vain SMTP-profiili,
+  TLS-versio, allowlistattu cipher ja sertifikaatin SHA-256-sormenjälki,
+  jos turvallinen transport-yhteenveto on saatavilla
 - SHA-256-checksum jokaiselle dataosiolle
 
 Tukipakettia varten on oma reader, joka lukee vain warning/error- ja
 security-virtoja. Info-lokit eivät kuluta sen tiedosto- tai tavubudjettia.
+SMTP:n onnistuneet info-tason transport-eventit eivät kuulu tukipakettiin,
+vaikka info-event olisi virheellisesti päätynyt warning/error-tiedostoon.
 Reader rajaa lähteet täsmällisesti viimeiseen 30 päivään ja käsittelee
 segmentit uusimmasta vanhimpaan.
 

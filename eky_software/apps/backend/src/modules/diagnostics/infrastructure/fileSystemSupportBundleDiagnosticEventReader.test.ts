@@ -131,6 +131,53 @@ describe('FileSystemSupportBundleDiagnosticEventReader', () => {
     expect(result.sourceTruncated).toBe(false);
   });
 
+  it('excludes an SMTP success event even if it is misplaced in a warning stream', async () => {
+    const logsRoot = createLogsRoot();
+    writeLines(
+      logsRoot,
+      'backend',
+      'backend-warning-error-2026-07-001.jsonl',
+      [
+        createBackendOperationalEvent(
+          {
+            cipherName: 'TLS_AES_256_GCM_SHA384',
+            durationMs: 25,
+            eventName: 'smtp.connectionSecured',
+            operationId: 'smtp-success-operation',
+            peerCertificateFingerprint256: Array.from(
+              { length: 32 },
+              (_, index) =>
+                index.toString(16).padStart(2, '0').toUpperCase(),
+            ).join(':'),
+            remoteAddress: '192.0.2.10',
+            remoteFamily: 'IPv4',
+            smtpProfile: 'dnaSmtp',
+            stage: 'connect',
+            targetPort: 465,
+            tlsVersion: 'TLSv1.3',
+          },
+          eventOptions(
+            'misplaced-smtp-success',
+            '2026-07-27T11:00:00.000Z',
+          ),
+        ),
+        backendFailure('relevant', '2026-07-27T10:00:00.000Z'),
+      ],
+    );
+
+    const result =
+      await new FileSystemSupportBundleDiagnosticEventReader(
+        logsRoot,
+      ).readSupportBundleDiagnosticEvents({
+        earliestTimestamp: '2026-06-28T12:00:00.000Z',
+        latestTimestamp: '2026-07-28T12:00:00.000Z',
+      });
+
+    expect(result.diagnosticEvents).toEqual([
+      expect.objectContaining({ id: 'backend:relevant' }),
+    ]);
+  });
+
   it.each([
     {
       fileName: 'backend-warning-error-2026-07-001.jsonl',

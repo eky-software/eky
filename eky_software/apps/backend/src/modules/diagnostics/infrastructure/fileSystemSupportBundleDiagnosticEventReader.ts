@@ -109,6 +109,9 @@ export class FileSystemSupportBundleDiagnosticEventReader
           sourceTruncated = true;
           continue;
         }
+        if (event.level === 'info') {
+          continue;
+        }
         if (
           !isTimestampWithinPeriod(
             event.occurredAt,
