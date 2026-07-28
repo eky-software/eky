@@ -195,6 +195,12 @@ Kun muutos lisää eventin, lokin, auditin, retentionin tai tukipaketin:
 - testaa rotaation, retentionin ja levybudejetin raja-arvot
 - testaa, ettei lokinlukija seuraa symlinkkiä tai hyväksy ulkoista polkua
 - testaa tukipaketin kielletty sisältö myös epäonnistuvissa poluissa
+- testaa tapahtuman omistajuus ja business auditin transaction ownership
+- testaa Activity-, Diagnostics-, tukipaketti- ja incident-index-projektion
+  sisällytys tai poissulku
+- lisää riskin mukaan yksikkö-, integraatio- ja E2E-testi sekä onnistuvaan että
+  rikkoutuvaan polkuun; yhden kerroksen testi ei yksin todista koko
+  observability-ketjun failure behavioria
 
 E2E:n pysyvä strategia on dokumentissa
 `docs/architecture/e2e-testing-strategy.md`. Playwrightia ei lisätä ilman

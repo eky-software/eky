@@ -66,6 +66,16 @@ strict response parsing, archive creation, and file write. Browser development
 does not expose support bundle export. The resulting `.ekysupport` file is a
 sanitized gzip JSON diagnostic artifact, not an encrypted backup.
 
+For local inspection without opening event contents by default, run:
+
+```text
+pnpm support:inspect -- "C:\path\bundle.ekysupport"
+```
+
+The development-only inspector validates the bounded gzip/JSON artifact,
+format version and section checksums. Packaged smoke keeps its own validator;
+the production runtime does not depend on the inspector script.
+
 Operational logs are stored below Electron's fixed user-data root. On Windows
 the default location is `%APPDATA%\Eky\runtime\logs`. The renderer cannot
 choose this path. Every desktop launch creates a new runtime instance ID that

@@ -140,3 +140,27 @@ yhteenvedon, diagnostiikkatapahtumat, todelliset incident-yhteenvedot sekä
 katkaisutiedot. Smoke tarkistaa myös kiellettyjen salaisuuksien,
 henkilötietojen, business-datan, polkujen ja PDF-datan poissulut ja poistaa
 artifactin lopuksi.
+
+## Paikallinen tarkastin
+
+Kehittäjä tai tukihenkilö voi validoida käyttäjän toimittaman tukipaketin
+ilman lisäriippuvuutta:
+
+```text
+pnpm support:inspect -- "C:\polku\paketti.ekysupport"
+```
+
+Komento tarkistaa regular file/no symlink -rajan, pakatun ja puretun
+25 MiB:n kokorajan, gzipin, formaattiversion, tarkat osiot sekä osioiden
+SHA-256-checksumit. Oletustuloste sisältää vain formaatin, luontiajan,
+versio- ja build-tiedot, tietokantayhteenvedon, tapahtumamäärät,
+katkaistut osiot ja checksum-tilan. Se ei tulosta yksittäisiä tapahtumia.
+
+Valinnainen `--write-json "<kohde.json>"` kirjoittaa puretun, salaamattoman
+JSONin ensin saman hakemiston väliaikaistiedostoon ja nimeää sen lopuksi.
+Olemassa olevaa kohdetta ei korvata ilman `--force`-valintaa. Käyttäjä vastaa
+puretun kopion hallitusta säilytyksestä ja poistamisesta.
+
+Tarkastin on kehittäjätyökalu. Packaged smoke säilyttää oman tuotantoartifactin
+luottamusrajaa testaavan validatorinsa eikä tuotantoruntime riipu
+tarkastinskriptistä.

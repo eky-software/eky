@@ -48,6 +48,13 @@ Incident-indeksiin ei kirjoiteta `runtimeInstanceId`-, `correlationId`- tai
 `operationId`-tunnisteita. Ne ovat vain lyhyemmän retentionin paikallista
 vianrajausta varten.
 
+Uudet incident-index-rivit kirjoitetaan `schemaVersion: 1` -muodossa.
+Tarkasti vanhan kenttäjoukon mukaiset versionumerottomat rivit luetaan
+historiallisena v0-muotona ilman uudelleenkirjoitusta. Tuntematon versio,
+puuttuva pakollinen kenttä tai ylimääräinen kenttä ohitetaan ja lähteen
+katkaisu raportoidaan tukipaketissa. Julkinen incident-yhteenveto ei sisällä
+schema-versiota.
+
 SMTP:n transport-diagnostiikan etä-IP kuuluu vain paikalliseen detailed-
 virtaan. Onnistuneessa info-eventissä se poistuu 12 kuukauden ja
 warning/error-eventissä 24 kuukauden retentionilla. Etä-IP:tä ei kirjoiteta
