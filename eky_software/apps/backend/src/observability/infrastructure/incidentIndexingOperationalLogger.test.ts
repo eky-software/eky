@@ -35,6 +35,7 @@ describe('IncidentIndexingOperationalLogger', () => {
 
     expect(detailedLogger.write).toHaveBeenCalledTimes(1);
     expect(incidentIndex.write).toHaveBeenCalledWith({
+      schemaVersion: 1,
       appVersion: '0.0.0',
       buildRevision: '123456789abc',
       component: 'backend',

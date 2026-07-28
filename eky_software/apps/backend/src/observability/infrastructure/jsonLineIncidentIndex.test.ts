@@ -15,12 +15,13 @@ afterEach(() => {
 });
 
 describe('JsonLineIncidentIndex', () => {
-  it('writes only the minimal anonymous incident projection', () => {
+  it('writes only the versioned minimal incident projection without direct identifiers', () => {
     const root = mkdtempSync(join(tmpdir(), 'eky-incident-'));
     temporaryDirectories.push(root);
     const index = new JsonLineIncidentIndex(join(root, 'logs'));
 
     index.write({
+      schemaVersion: 1,
       appVersion: '0.0.0',
       buildRevision: '123456789abc',
       component: 'backend',
@@ -41,6 +42,7 @@ describe('JsonLineIncidentIndex', () => {
       'utf8',
     );
     expect(JSON.parse(line)).toEqual({
+      schemaVersion: 1,
       appVersion: '0.0.0',
       buildRevision: '123456789abc',
       component: 'backend',
@@ -63,6 +65,7 @@ describe('JsonLineIncidentIndex', () => {
 
     expect(() =>
       index.write({
+        schemaVersion: 1,
         appVersion: '0.0.0',
         buildRevision: '123456789abc',
         component: 'backend',

@@ -69,6 +69,7 @@ function validateEntry(
   entry: LongTermIncidentIndexEntry,
 ): LongTermIncidentIndexEntry {
   if (
+    entry.schemaVersion !== 1 ||
     entry.component !== 'backend' ||
     !['blocked', 'failure', 'unknown'].includes(entry.outcome) ||
     !isSafeText(entry.appVersion, 80) ||
@@ -83,7 +84,17 @@ function validateEntry(
     throw new Error('Incident index entry is invalid.');
   }
 
-  return Object.freeze({ ...entry });
+  return Object.freeze({
+    schemaVersion: 1,
+    appVersion: entry.appVersion,
+    buildRevision: entry.buildRevision,
+    component: entry.component,
+    errorCode: entry.errorCode,
+    eventName: entry.eventName,
+    fingerprint: entry.fingerprint,
+    outcome: entry.outcome,
+    timestamp: entry.timestamp,
+  });
 }
 
 function readSafeFileSize(filePath: string): number {

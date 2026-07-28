@@ -50,6 +50,7 @@ export class DesktopIncidentIndexingOperationalLogger
           ? event.fingerprint
           : `${event.eventName}:${errorCode}`;
       const entry = {
+        schemaVersion: 1,
         appVersion: event.appVersion,
         buildRevision: event.buildRevision,
         component: 'desktop',
