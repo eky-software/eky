@@ -87,10 +87,27 @@ describe('listActivity', () => {
     ).toHaveBeenCalledWith({
       companyId: 'company-1',
       limit: 21,
-      occurredAtFrom: '2026-07-01T00:00:00.000Z',
-      occurredAtTo: '2026-08-01T00:00:00.000Z',
+      occurredAtFrom: '2026-06-30T21:00:00.000Z',
+      occurredAtTo: '2026-07-31T21:00:00.000Z',
       outcomes: ['success', 'failure', 'unknown'],
     });
+  });
+
+  it('defaults to the Helsinki calendar month', async () => {
+    const dependencies = createDependencies();
+    dependencies.now = () => new Date('2026-07-31T21:30:00.000Z');
+
+    const result = await listActivity({ actorContext }, dependencies);
+
+    expect(result.month).toBe('2026-08');
+    expect(
+      dependencies.invoiceActivityReader.listInvoiceActivity,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        occurredAtFrom: '2026-07-31T21:00:00.000Z',
+        occurredAtTo: '2026-08-31T21:00:00.000Z',
+      }),
+    );
   });
 
   it('reads only the selected category and outcome', async () => {

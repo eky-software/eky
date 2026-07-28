@@ -6,6 +6,7 @@ import type {
 } from '@eky/api-client';
 import { useMemo, useState } from 'react';
 
+import { getHelsinkiActivityMonth } from '../activityCalendarMonth.js';
 import { ActivityPageView } from './ActivityPageView.js';
 import { useActivity } from '../hooks/useActivity.js';
 
@@ -26,7 +27,7 @@ export function ActivityPage({
 }: ActivityPageProps): React.JSX.Element {
   const [query, setQuery] = useState<ActivityViewQuery>(() => ({
     category: 'all',
-    month: getCurrentMonth(),
+    month: getHelsinkiActivityMonth(),
     outcome: 'all',
     page: 1,
     pageSize: 20,
@@ -61,9 +62,4 @@ export function ActivityPage({
       }}
     />
   );
-}
-
-function getCurrentMonth(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }

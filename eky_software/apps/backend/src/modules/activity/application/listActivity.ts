@@ -15,6 +15,11 @@ import type {
   ActivityOutcomeFilter,
   ActivityPage,
 } from '../domain/activityItem.js';
+import {
+  formatHelsinkiCalendarMonth,
+  getHelsinkiCalendarMonthUtcRange,
+  isActivityCalendarMonth,
+} from './helsinkiCalendarMonth.js';
 
 export const defaultActivityPage = 1;
 export const defaultActivityPageSize = 20;
@@ -52,7 +57,7 @@ export async function listActivity(
 ): Promise<ActivityPage> {
   requirePermission(input.actorContext, 'viewActivity');
   const query = validateQuery(input, dependencies.now?.() ?? new Date());
-  const range = getUtcMonthRange(query.month);
+  const range = getHelsinkiCalendarMonthUtcRange(query.month);
   const readerLimit = query.page * query.pageSize + 1;
   const companyId = input.actorContext.companyId;
   const invoiceOutcomes = getInvoiceOutcomes(query.outcome);
@@ -152,7 +157,7 @@ function validateQuery(
   now: Date,
 ): ValidatedActivityQuery {
   const category = input.category ?? 'all';
-  const month = input.month ?? formatUtcMonth(now);
+  const month = input.month ?? formatHelsinkiCalendarMonth(now);
   const outcome = input.outcome ?? 'all';
   const page = input.page ?? defaultActivityPage;
   const pageSize = input.pageSize ?? defaultActivityPageSize;
@@ -160,7 +165,7 @@ function validateQuery(
   if (!isActivityCategory(category)) {
     throw new ActivityValidationError('Activity category is invalid.');
   }
-  if (!isCalendarMonth(month)) {
+  if (!isActivityCalendarMonth(month)) {
     throw new ActivityValidationError('Activity month is invalid.');
   }
   if (!isActivityOutcomeFilter(outcome)) {
@@ -201,27 +206,6 @@ function isActivityOutcomeFilter(
     value === 'success' ||
     value === 'unknown'
   );
-}
-
-function isCalendarMonth(value: string): boolean {
-  if (!/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(value)) {
-    return false;
-  }
-  const year = Number(value.slice(0, 4));
-  return year >= 2000 && year <= 9999;
-}
-
-function formatUtcMonth(date: Date): string {
-  return date.toISOString().slice(0, 7);
-}
-
-function getUtcMonthRange(month: string): { from: string; to: string } {
-  const year = Number(month.slice(0, 4));
-  const monthIndex = Number(month.slice(5, 7)) - 1;
-  return {
-    from: new Date(Date.UTC(year, monthIndex, 1)).toISOString(),
-    to: new Date(Date.UTC(year, monthIndex + 1, 1)).toISOString(),
-  };
 }
 
 function shouldReadCategory(
