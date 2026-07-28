@@ -8,6 +8,7 @@
   },
   "packageManager": "pnpm@11.1.3",
   "scripts": {
+    "support:inspect": "node apps/desktop/scripts/inspect-support-bundle.mjs",
     "test": "pnpm --recursive test",
     "typecheck": "pnpm --recursive typecheck"
   },
