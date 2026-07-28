@@ -13,6 +13,7 @@ import {
 } from '../secrets/encryptedSecretFile.js';
 import { createDeleteDraftSmokeFixture } from './applicationProtocolSmoke.js';
 import { localRuntimeSessionHeaderName } from './protocolPolicy.js';
+import { runPackagedSupportBundleSmoke } from './packagedSupportBundleSmoke.js';
 
 export interface PackagedSmokeConfiguration {
   enabled: boolean;
@@ -31,6 +32,7 @@ interface RunPackagedSmokeCheckOptions {
   runtimeInstanceId: string;
   secretFilePath: string;
   smokePdfPath: string;
+  supportBundlePath: string;
 }
 
 export function createPackagedSmokeConfiguration(options: {
@@ -130,6 +132,13 @@ export async function runPackagedSmokeCheck(
       runtimeInstanceId: options.runtimeInstanceId,
     },
   );
+  await runPackagedSupportBundleSmoke({
+    appVersion: options.appVersion,
+    buildRevision: options.buildRevision,
+    mainWindow: options.mainWindow,
+    runtimeSessionSecret: options.runtimeSessionSecret,
+    supportBundlePath: options.supportBundlePath,
+  });
 
   const deleteDraftId = await createDeleteDraftSmokeFixture({
     backendPort: options.backend.port,

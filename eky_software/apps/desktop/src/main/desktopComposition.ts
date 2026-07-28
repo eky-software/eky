@@ -188,6 +188,14 @@ async function startDesktopCompositionRuntime({
     'company-email-smtp-v1.dat',
   );
   const smokePdfPath = join(dataRoot, 'smoke', 'approved-invoice-smoke.pdf');
+  const smokeSupportBundlePath =
+    smokeMode && options.smokeConfiguration.root !== undefined
+      ? join(
+          options.smokeConfiguration.root,
+          'support-bundle',
+          'packaged-smoke.ekysupport',
+        )
+      : undefined;
   const secretBrokerChannel = new MessageChannelMain();
   let applicationWindow: BrowserWindow | undefined;
   let pdfPreviewController: InvoicePdfPreviewWindowController | undefined;
@@ -381,6 +389,9 @@ async function startDesktopCompositionRuntime({
     appVersion: desktopAppVersion,
     architecture: process.arch,
     async confirmCreation() {
+      if (smokeMode) {
+        return true;
+      }
       const result = await dialog.showMessageBox(mainWindow, {
         buttons: ['Peruuta', 'Jatka'],
         cancelId: 0,
@@ -406,6 +417,9 @@ async function startDesktopCompositionRuntime({
     platform: process.platform,
     runtimeRoot: dataRoot,
     async selectTargetPath(defaultFileName) {
+      if (smokeSupportBundlePath !== undefined) {
+        return smokeSupportBundlePath;
+      }
       const result = await dialog.showSaveDialog(mainWindow, {
         defaultPath: defaultFileName,
         filters: [
@@ -530,6 +544,9 @@ async function startDesktopCompositionRuntime({
         runtimeInstanceId: options.runtimeInstanceId,
         secretFilePath,
         smokePdfPath,
+        supportBundlePath: requireSmokeSupportBundlePath(
+          smokeSupportBundlePath,
+        ),
       });
       desktopOperationalLogger.write(
         createDesktopOperationalEvent(
@@ -628,6 +645,15 @@ async function loadSupportBundleBackendData(
   } catch {
     throw new Error('SUPPORT_BUNDLE_BACKEND_RESPONSE_INVALID');
   }
+}
+
+function requireSmokeSupportBundlePath(
+  value: string | undefined,
+): string {
+  if (value === undefined) {
+    throw new Error('DESKTOP_SMOKE_SUPPORT_BUNDLE_PATH_MISSING');
+  }
+  return value;
 }
 
 function createInvoicePdfPreviewController(
