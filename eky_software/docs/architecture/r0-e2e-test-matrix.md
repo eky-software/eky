@@ -11,6 +11,8 @@ väitä alemman tason testiä E2E-todisteeksi.
 - `planned`: testitapaus ja tavoite on päätetty, toteutus puuttuu
 - `not-applicable`: perusteltu poissulku
 - `blocked-by-decision`: vaatii omistajan päätöksen ennen toteutusta
+- `failed-finding`: vakaa E2E-regressio todentaa avoimen product-löydöksen;
+  tuotantokorjausta ei tehdä testicheckpointissa ilman omistajan päätöstä
 
 ## Yhteiset odotukset
 
@@ -46,7 +48,7 @@ tietokannan, auditin, operational/security-eventin ja tukipaketin päätöksen.
 | ID | Riski ja tasot | Lähtö / toiminto / fault | Odotus | Tila ja havainnot | Erityinen vuotokielto | Tila |
 |---|---|---|---|---|---|---|
 | CUS-UI-001 | P0; web-e2e | Tyhjä yritys; luo, muokkaa ja hae numerolla sekä osoitteella; refresh | Lomake, lista ja refresh näyttävät tallennetut tiedot | Yksi asiakas ja odotetut auditit; Activity näyttää turvalliset kategoriat | Nimi, osoite tai arvot auditiin/lokiin | planned |
-| CUS-API-001 | P0; integration, system | Tyhjä yritys; create/update/list julkisella API:lla | Sopimuksen mukaiset 2xx-vastaukset | Company-scoped customer ja atomiset auditit | Toisen yrityksen tiedot | covered-existing |
+| CUS-API-001 | P0; integration, system | Tyhjä yritys; create/update/list julkisella API:lla | Sopimuksen mukaiset 2xx-vastaukset | Company-scoped customer ja atomiset auditit | Toisen yrityksen tiedot | implemented-e2e |
 | CUS-TENANT-001 | P0; integration, system, security | Yritykset A ja B; A käyttää B:n customerId:tä | Geneerinen 404/tyhjä listaus sopimuksen mukaan | Ei kirjoitusta eikä väärän tenantin auditia | Resurssin olemassaolo B:ssä | covered-existing |
 | CUS-INPUT-001 | P1; integration, system, security | Tyhjä yritys; rajat, kontrollimerkit ja unknown/mass fields | Turvallinen 400, serveri terve | Ei customer- tai audit-riviä; tarvittaessa turvallinen validation-event | Raw syöte ja injected log line | planned |
 
@@ -55,7 +57,7 @@ tietokannan, auditin, operational/security-eventin ja tukipaketin päätöksen.
 | ID | Riski ja tasot | Lähtö / toiminto / fault | Odotus | Tila ja havainnot | Erityinen vuotokielto | Tila |
 |---|---|---|---|---|---|---|
 | COMPANY-UI-001 | P0; web-e2e | Synteettiset asetukset; muuta yhteystietoja | Tallennus onnistuu ja refresh säilyttää arvot | Master data muuttuu; auditissa vain changed category | Vanhat/uudet arvot auditissa | planned |
-| COMPANY-AUDIT-001 | P0; integration, system | Nykyiset asetukset; muuta pankki- ja sähköpostiasetuksia | 2xx ja turvallinen Activity | Arvot kannassa; auditissa vain sallitut kategoriat; tukipaketti poissulkee arvot | IBAN, sender email, SMTP username | covered-existing |
+| COMPANY-AUDIT-001 | P0; integration, system | Nykyiset asetukset; muuta pankki- ja sähköpostiasetuksia | 2xx ja turvallinen Activity | Arvot kannassa; auditissa vain sallitut kategoriat; tukipaketin poissulku säilyy integraatiotestien todistamana | IBAN, sender email, SMTP username | implemented-e2e |
 | COMPANY-SECRET-001 | P0; integration, electron-e2e, security | Ei testisalaisuutta; aseta, tarkista status, poista ja restart | Renderer näkee vain boolean-tilan | Salaisuus vain fake/safeStorage-testialueella; lifecycle-audit ilman johdannaisia | Secret, hash, pituus, ref tai plaintext | planned |
 
 ## Invoicing
@@ -91,14 +93,14 @@ tietokannan, auditin, operational/security-eventin ja tukipaketin päätöksen.
 
 | ID | Riski ja tasot | Lähtö / toiminto / fault | Odotus | Tila ja havainnot | Erityinen vuotokielto | Tila |
 |---|---|---|---|---|---|---|
-| SEC-SESSION-001 | P0; integration, system, security | Puuttuva, väärä tai toisen runtimen session | Turvallinen 401/403 | Ei DB/audit-muutosta; rajattu security-event | Session-arvo tai header | covered-existing |
+| SEC-SESSION-001 | P0; integration, system, security | Puuttuva, väärä tai toisen runtimen session | Turvallinen 401/403 | Ei DB/audit-muutosta; rajattu security-event | Session-arvo tai header | implemented-e2e |
 | SEC-TENANT-001 | P0; integration, system, security | A yrittää B:n customer/invoicea ja forged companyId:tä | Geneerinen vastaus | Ei väärän tenantin luku-/kirjoitus- tai audit-vaikutusta | B:n resurssin olemassaolo/data | covered-existing |
-| SEC-MASS-001 | P0; integration, system, security | Lisää companyId/status/invoiceNumber/sentAt/actorUserId/unknown fields | 400 eikä kenttiä hyväksytä | Ei tallennusta/auditia; safe validation-event tarvittaessa | Torjutut arvot lokiin | covered-existing |
-| SEC-PROTOTYPE-001 | P1; system, security | `__proto__`, `constructor`, `prototype` syötteissä | 4xx, backend terve | Object.prototype ei muutu; ei tallennusta | Raw corpus | planned |
-| SEC-INJECTION-001 | P0; integration, system, security | SQL/HTML/script/SVG/CRLF-korpus sallittuihin ja kiellettyihin kenttiin | Teksti torjutaan tai käsitellään tekstinä | Parametrisoitu SQL; ei uutta logiriviä; turvallinen support-projektio | Raw payload ja suoritettava markup | planned |
-| SEC-PATH-001 | P0; integration, system, security | Traversal, encoded traversal, Windows/Unix absolute path ja `file://` | 4xx/404 turvallisesti | Ei kirjoitusta testirootin ulkopuolelle | Resolved local path | covered-existing |
-| SEC-SIZE-001 | P1; integration, system, security | Raja, raja+1, pitkä Unicode, iso array ja syvä JSON | Rajattu 4xx, backend terve | Ei tallennusta/auditia; mahdollinen safe size-event | Koko raw body | planned |
-| SEC-METHOD-001 | P1; integration, system, security | Väärä method/content-type, puuttuva content-type, unknown query | Turvallinen 4xx/405 | Ei sivuvaikutusta | Request body/header dump | planned |
+| SEC-MASS-001 | P0; integration, system, security | Lisää companyId/status/invoiceNumber/sentAt/actorUserId/unknown fields | 400 eikä kenttiä hyväksytä | Ei tallennusta/auditia; safe validation-event tarvittaessa | Torjutut arvot lokiin | implemented-e2e |
+| SEC-PROTOTYPE-001 | P1; system, security | `__proto__`, `constructor`, `prototype` syötteissä | 4xx, backend terve | Object.prototype ei muutu; ei tallennusta | Raw corpus | implemented-e2e |
+| SEC-INJECTION-001 | P0; integration, system, security | SQL/HTML/script/SVG/CRLF-korpus sallittuihin ja kiellettyihin kenttiin | Teksti torjutaan tai käsitellään tekstinä | Parametrisoitu SQL; ei uutta logiriviä; support-projektion osuus säilyy alempien testien todistamana | Raw payload ja suoritettava markup | implemented-e2e |
+| SEC-PATH-001 | P0; integration, system, security | Traversal, encoded traversal, Windows/Unix absolute path ja `file://` | 4xx/404 turvallisesti | Ei kirjoitusta testirootin ulkopuolelle | Resolved local path | implemented-e2e |
+| SEC-SIZE-001 | P1; integration, system, security | Raja, raja+1, pitkä Unicode, iso array ja rajattu ylikokoinen body | Rajattu 4xx/413, backend-prosessi ja uusi yhteys terveitä | Ei tallennusta/auditia; mahdollinen safe size-event | Koko raw body | implemented-e2e |
+| SEC-METHOD-001 | P1; integration, system, security | Väärä method/content-type, puuttuva content-type, unknown query | Method ja query torjutaan; JSON media type -raja hyväksyy virheellisesti `text/plain`- tai puuttuvan Content-Typen | Avoin regressio on `test.fail`-odotus; ei tuotantokorjausta tässä checkpointissa | Request body/header dump | failed-finding |
 | SEC-XSS-001 | P0; web-e2e, security | Turvalliseen tekstikenttään markup-korpus; renderöi ja tee PDF | Teksti näkyy tekstinä, ei popupia/egressiä | Tallennus vain validoituna; PDF ei suorita sisältöä | DOM-execution tai external request | planned |
 
 ## Desktop
