@@ -156,6 +156,8 @@ function createBackendData() {
     },
     diagnosticEvents: [],
     diagnosticPeriodDays: 30,
+    incidentSummaries: [],
+    incidentSummariesTruncated: false,
     runtimeSummary: {
       appVersion: '0.1.0-alpha.1',
       appliedMigrationCount: 35,

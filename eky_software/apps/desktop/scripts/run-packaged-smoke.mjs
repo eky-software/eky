@@ -5,6 +5,12 @@ import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import {
+  createPackagedSmokeTimeoutMessage,
+  readPackagedSmokeResult,
+  writePackagedSmokeResult,
+} from '../dist/main/packagedSmoke.js';
+
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const executablePath = resolve(
   scriptDirectory,
@@ -29,13 +35,23 @@ childEnvironment.EKY_DESKTOP_SMOKE_TOKEN = smokeToken;
 
 async function readSmokeResult() {
   try {
-    return JSON.parse(await readFile(smokeResultPath, 'utf8'));
+    return readPackagedSmokeResult(
+      JSON.parse(await readFile(smokeResultPath, 'utf8')),
+    );
   } catch {
     return undefined;
   }
 }
 
 try {
+  await writePackagedSmokeResult(
+    {
+      enabled: true,
+      root: smokeRootDirectory,
+      userDataPath: undefined,
+    },
+    { stage: 'startup', status: 'started' },
+  );
   await new Promise((resolveSmoke, rejectSmoke) => {
     const processHandle = spawn(
       executablePath,
@@ -49,21 +65,15 @@ try {
     const timer = setTimeout(async () => {
       processHandle.kill();
       const smokeResult = await readSmokeResult();
-      const status =
-        typeof smokeResult?.status === 'string'
-          ? smokeResult.status
-          : 'missing';
-      const code =
-        typeof smokeResult?.code === 'string' ? `/${smokeResult.code}` : '';
 
-      rejectSmoke(
-        new Error(`Packaged desktop smoke check timed out (${status}${code}).`),
-      );
+      rejectSmoke(new Error(createPackagedSmokeTimeoutMessage(smokeResult)));
     }, smokeTimeoutMilliseconds);
 
-    processHandle.once('error', (error) => {
+    processHandle.once('error', () => {
       clearTimeout(timer);
-      rejectSmoke(error);
+      rejectSmoke(
+        new Error('Packaged desktop smoke process could not be started.'),
+      );
     });
     processHandle.once('exit', async (code) => {
       clearTimeout(timer);

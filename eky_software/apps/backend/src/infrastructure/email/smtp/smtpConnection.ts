@@ -3,11 +3,19 @@ import { connect, type ConnectionOptions, type TLSSocket } from 'node:tls';
 import { assertSafeSmtpCommand } from './smtpCommand.js';
 import { SmtpTransportError } from './smtpErrors.js';
 import { SmtpReplyParser } from './smtpReplyParser.js';
+import {
+  readSmtpTransportSecuritySummary,
+  type SmtpTransportSecuritySummary,
+} from './smtpTransportSecurity.js';
 import type { SmtpReply } from './smtpTypes.js';
 
 export interface ImplicitTlsSmtpConnectionOptions {
   ca?: Buffer | string;
   connectionTimeoutMilliseconds: number;
+  diagnosticsProfile?: {
+    smtpProfile: 'dnaSmtp';
+    targetPort: 465;
+  };
   host: string;
   idleTimeoutMilliseconds: number;
   minVersion: 'TLSv1.2';
@@ -16,6 +24,7 @@ export interface ImplicitTlsSmtpConnectionOptions {
 }
 
 export interface SmtpConnection {
+  readonly transportSecurity?: SmtpTransportSecuritySummary | undefined;
   close(): void;
   readReply(timeoutMilliseconds: number, phase: string): Promise<SmtpReply>;
   sendCommand(
@@ -85,13 +94,33 @@ export async function connectImplicitTlsSmtp(
         return;
       }
 
-      const protocol = socket.getProtocol();
-
       if (
         !socket.authorized ||
-        socket.authorizationError != null ||
-        (protocol !== 'TLSv1.2' && protocol !== 'TLSv1.3')
+        socket.authorizationError != null
       ) {
+        fail(new SmtpTransportError('SMTP_TLS_FAILED', 'connect'));
+        return;
+      }
+
+      const protocol = socket.getProtocol();
+      if (protocol !== 'TLSv1.2' && protocol !== 'TLSv1.3') {
+        fail(new SmtpTransportError('SMTP_TLS_FAILED', 'connect'));
+        return;
+      }
+
+      let transportSecurity: SmtpTransportSecuritySummary | undefined;
+      try {
+        if (options.diagnosticsProfile !== undefined) {
+          if (options.port !== options.diagnosticsProfile.targetPort) {
+            throw new SmtpTransportError('SMTP_TLS_FAILED', 'connect');
+          }
+
+          transportSecurity = readSmtpTransportSecuritySummary(
+            socket,
+            options.diagnosticsProfile,
+          );
+        }
+      } catch {
         fail(new SmtpTransportError('SMTP_TLS_FAILED', 'connect'));
         return;
       }
@@ -99,7 +128,7 @@ export async function connectImplicitTlsSmtp(
       settled = true;
       clearTimeout(timer);
       socket.setTimeout(options.idleTimeoutMilliseconds);
-      resolve(new TlsSmtpConnection(socket));
+      resolve(new TlsSmtpConnection(socket, transportSecurity));
     });
   });
 }
@@ -118,7 +147,10 @@ class TlsSmtpConnection implements SmtpConnection {
   private readonly replyParser = new SmtpReplyParser();
   private terminalError: SmtpTransportError | undefined;
 
-  constructor(private readonly socket: TLSSocket) {
+  constructor(
+    private readonly socket: TLSSocket,
+    readonly transportSecurity?: SmtpTransportSecuritySummary,
+  ) {
     socket.on('data', (chunk: Buffer) => this.receive(chunk));
     socket.once('error', () => this.failPending(connectionClosedError()));
     socket.once('close', () => this.failPending(connectionClosedError()));

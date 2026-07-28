@@ -166,4 +166,61 @@ describe('backend operational event contracts', () => {
       ),
     ).toThrow(OperationalEventValidationError);
   });
+
+  it('accepts only the bounded SMTP transport diagnostic contract', () => {
+    expect(
+      createBackendOperationalEvent(
+        {
+          ...smtpTransportFields,
+          eventName: 'smtp.connectionSecured',
+          stage: 'connect',
+        },
+        options,
+      ),
+    ).toMatchObject({
+      category: 'smtp',
+      eventName: 'smtp.connectionSecured',
+      level: 'info',
+      outcome: 'success',
+      ...smtpTransportFields,
+      stage: 'connect',
+    });
+  });
+
+  it.each([
+    { cipherName: 'TLS_RSA_WITH_AES_128_CBC_SHA' },
+    { peerCertificateFingerprint256: 'invalid' },
+    { remoteAddress: 'not-an-ip-address' },
+    { remoteAddress: '192.0.2.10', remoteFamily: 'IPv6' },
+    { smtpProfile: 'other' },
+    { targetPort: 587 },
+    { tlsVersion: 'TLSv1.1' },
+  ])('rejects invalid SMTP transport metadata: %o', (override) => {
+    expect(() =>
+      createBackendOperationalEvent(
+        {
+          ...smtpTransportFields,
+          ...override,
+          eventName: 'smtp.deliveryCompleted',
+          stage: 'delivery',
+        } as Parameters<typeof createBackendOperationalEvent>[0],
+        options,
+      ),
+    ).toThrow(OperationalEventValidationError);
+  });
 });
+
+const smtpTransportFields = {
+  cipherName: 'TLS_AES_256_GCM_SHA384',
+  durationMs: 25,
+  operationId: 'attempt-1',
+  peerCertificateFingerprint256: Array.from(
+    { length: 32 },
+    (_, index) => index.toString(16).padStart(2, '0').toUpperCase(),
+  ).join(':'),
+  remoteAddress: '192.0.2.10',
+  remoteFamily: 'IPv4' as const,
+  smtpProfile: 'dnaSmtp' as const,
+  targetPort: 465 as const,
+  tlsVersion: 'TLSv1.3' as const,
+};

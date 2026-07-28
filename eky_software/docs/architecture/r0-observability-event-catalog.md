@@ -44,11 +44,21 @@ ole käyttöoikeus- tai autentikointitietoja.
 - `invoiceDelivery.outcomeUnknown`
 - `invoiceDelivery.finalizationFailed`
 - `smtp.connectionFailed`
+- `smtp.connectionSecured`
 - `smtp.tlsFailed`
 - `smtp.authenticationFailed`
+- `smtp.deliveryCompleted`
 - `smtp.deliveryFailed`
 - `smtp.deliveryOutcomeUnknown`
 - `businessAudit.writeFailed`
+
+`smtp.connectionSecured` ja `smtp.deliveryCompleted` ovat 12 kuukauden
+info-eventtejä. Detailed-loki saa sisältää vain SMTP-profiilin, portin 465,
+TLS-version, allowlistatun cipherin, sertifikaatin SHA-256-sormenjäljen,
+validoidun etä-IP:n ja IP-perheen, attempt ID:n, stagen ja keston.
+Diagnostics-projektio saa näyttää vain SMTP-profiilin, TLS-version, cipherin
+ja sormenjäljen. Etä-IP, portti ja attempt ID eivät siirry tukipakettiin tai
+incident-indeksiin.
 
 ### Diagnostiikka
 

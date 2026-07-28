@@ -43,4 +43,6 @@ export interface SmtpMessageDeliveryInput {
 export interface SmtpMessageDeliveryResult {
   accepted: true;
   providerMessageId: string | null;
+  transportSecurity?: SmtpTransportSecuritySummary;
 }
+import type { SmtpTransportSecuritySummary } from './smtpTransportSecurity.js';

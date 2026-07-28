@@ -2,6 +2,10 @@ import type { SmtpSessionTimeouts } from '../../smtp/smtpSession.js';
 
 export const dnaSmtpConnectionProfile = Object.freeze({
   connectionTimeoutMilliseconds: 10_000,
+  diagnosticsProfile: Object.freeze({
+    smtpProfile: 'dnaSmtp' as const,
+    targetPort: 465 as const,
+  }),
   host: 'smtp.dnamail.fi',
   idleTimeoutMilliseconds: 20_000,
   minVersion: 'TLSv1.2' as const,

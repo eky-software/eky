@@ -20,8 +20,10 @@ const timestampPattern =
 
 interface OperationalLogFile {
   directoryName: string;
+  fileName: string;
   filePath: string;
   month: string;
+  segment: number;
   size: number;
 }
 
@@ -106,15 +108,28 @@ function listOperationalLogFiles(logsRoot: string): OperationalLogFile[] {
       if (metadata !== null) {
         files.push({
           directoryName,
+          fileName: entry.name,
           filePath,
           month: match[2]!,
+          segment: Number(match[3]),
           size: metadata.size,
         });
       }
     }
   }
 
-  return files;
+  return files.sort(compareOperationalLogFilesNewestFirst);
+}
+
+function compareOperationalLogFilesNewestFirst(
+  left: OperationalLogFile,
+  right: OperationalLogFile,
+): number {
+  return (
+    right.month.localeCompare(left.month) ||
+    right.segment - left.segment ||
+    right.fileName.localeCompare(left.fileName)
+  );
 }
 
 function readSafeTailEvents(

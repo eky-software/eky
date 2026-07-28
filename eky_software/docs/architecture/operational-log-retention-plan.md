@@ -19,6 +19,13 @@ kirjanpitoaineistoa.
 Käyttäjän itse ulkoiseen kohteeseen tallentamaa tukipakettikopiota Eky ei
 poista automaattisesti.
 
+Tukipakettiin luetaan vain täsmällisesti viimeisen 30 päivän rajattu
+warning/error- ja security-aineisto sekä saman aikavälin minimoidut
+incident-yhteenvedot. Tämä lukuraja ei pidennä lähdelokien retentionia.
+Runtimen väliaikaiset tukipakettitiedostot poistetaan 30 päivän jälkeen;
+käyttäjän ulkoiseen kohteeseen tallentaman salaamattoman paketin säilytys ja
+poistaminen ovat käyttäjän hallinnassa.
+
 `businessDetailed` voi sisältää pseudonyymejä entity- ja actor-tunnisteita ja
 on siksi henkilötietojen käsittelyä silloin, kun tunniste voidaan yhdistää
 henkilöön. Se on permission- ja company-rajattu. Tavallinen onnistunut
@@ -40,6 +47,10 @@ polkuja. Se sisältää vain:
 Incident-indeksiin ei kirjoiteta `runtimeInstanceId`-, `correlationId`- tai
 `operationId`-tunnisteita. Ne ovat vain lyhyemmän retentionin paikallista
 vianrajausta varten.
+
+SMTP:n transport-diagnostiikan etä-IP kuuluu vain paikalliseen
+`operationalInfo`-virtaan ja poistuu sen 12 kuukauden retentionilla. Etä-IP:tä
+ei kirjoiteta 10 vuoden incident-indeksiin eikä tukipakettiin.
 
 ## Business-auditin automaattinen retention
 

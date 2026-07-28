@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { CompanyEmailSecretReader } from '../../../../modules/companySettings/ports/companyEmailSecretReader.js';
 import { SmtpTransportError } from '../../smtp/smtpErrors.js';
 import type { SmtpMessageDeliveryInput } from '../../smtp/smtpTypes.js';
+import type { SmtpTransportSecuritySummary } from '../../smtp/smtpTransportSecurity.js';
 import { DnaSmtpEmailDeliveryProvider } from './dnaSmtpEmailDeliveryProvider.js';
 import type {
   DnaSmtpEmailInput,
@@ -150,6 +151,97 @@ describe('DnaSmtpEmailDeliveryProvider', () => {
     ).rejects.toMatchObject({ code: 'DNA_SMTP_MESSAGE_INVALID' });
     expect(getSecret).not.toHaveBeenCalled();
   });
+
+  it('records bounded transport diagnostics for a completed delivery', async () => {
+    const recordConnectionSecured = vi.fn();
+    const recordDeliveryCompleted = vi.fn();
+    const provider = new DnaSmtpEmailDeliveryProvider({
+      companyEmailSecretReader: createSecretReader('synthetic-password'),
+      transport: async (_input, options) => {
+        options?.onConnectionSecured?.({
+          ...transportSecurity,
+          durationMs: 12,
+        });
+        return {
+          accepted: true,
+          providerMessageId: 'synthetic-message-id',
+          transportSecurity,
+        };
+      },
+      transportDiagnostics: {
+        recordConnectionSecured,
+        recordDeliveryCompleted,
+      },
+    });
+
+    await provider.sendEmail(createCustomerInput());
+
+    expect(recordConnectionSecured).toHaveBeenCalledWith({
+      ...transportSecurity,
+      durationMs: 12,
+      operationId: 'attempt-1',
+    });
+    expect(recordDeliveryCompleted).toHaveBeenCalledWith({
+      ...transportSecurity,
+      durationMs: expect.any(Number),
+      operationId: 'attempt-1',
+    });
+    expect(
+      JSON.stringify([
+        recordConnectionSecured.mock.calls,
+        recordDeliveryCompleted.mock.calls,
+      ]),
+    ).not.toContain('synthetic-password');
+    expect(
+      JSON.stringify([
+        recordConnectionSecured.mock.calls,
+        recordDeliveryCompleted.mock.calls,
+      ]),
+    ).not.toContain('customer@example.com');
+  });
+
+  it('does not change a successful delivery when diagnostics fail', async () => {
+    const provider = new DnaSmtpEmailDeliveryProvider({
+      companyEmailSecretReader: createSecretReader('synthetic-password'),
+      transport: async (_input, options) => {
+        options?.onConnectionSecured?.({
+          ...transportSecurity,
+          durationMs: 12,
+        });
+        return {
+          accepted: true,
+          providerMessageId: 'synthetic-message-id',
+          transportSecurity,
+        };
+      },
+      transportDiagnostics: {
+        recordConnectionSecured() {
+          throw new Error('synthetic diagnostics failure');
+        },
+        recordDeliveryCompleted() {
+          throw new Error('synthetic diagnostics failure');
+        },
+      },
+    });
+
+    await expect(provider.sendEmail(createCustomerInput())).resolves.toMatchObject({
+      deliveredTo: 'customer@example.com',
+      providerMessageId: 'synthetic-message-id',
+    });
+  });
+});
+
+const transportSecurity: SmtpTransportSecuritySummary = Object.freeze({
+  cipherName: 'TLS_AES_256_GCM_SHA384',
+  peerCertificateFingerprint256: Array.from(
+    { length: 32 },
+    (_, index) => index.toString(16).padStart(2, '0').toUpperCase(),
+  ).join(':'),
+  remoteAddress: '192.0.2.10',
+  remoteFamily: 'IPv4',
+  smtpProfile: 'dnaSmtp',
+  targetPort: 465,
+  tlsVersion: 'TLSv1.3',
 });
 
 function createInput() {

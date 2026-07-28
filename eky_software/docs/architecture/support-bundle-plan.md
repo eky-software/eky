@@ -27,10 +27,15 @@ querya, `companyId`:tä tai runtime-sessionia.
 
 - tiedostopääte `.ekysupport`
 - gzip-pakattu UTF-8 JSON
-- `supportBundleFormatVersion = 1`
+- `supportBundleFormatVersion = 2`
 - toteutus Node.js:n `zlib`- ja stream-API:lla ilman uutta riippuvuutta
 - enimmäiskoko ennen pakkausta 25 MiB
 - katkaistut osiot ilmoitetaan manifestin `truncatedSections`-kentässä
+
+Version 2 erottaa sanitoidut diagnostiikkatapahtumat ja minimoidut
+incident-index-yhteenvedot omiksi checksum-osioikseen. Osioiden SHA-256-
+checksumit havaitsevat tahattoman sisältömuutoksen, mutta ne eivät ole
+digitaalinen allekirjoitus eivätkä todista artifactin alkuperää.
 
 ## Sallittu sisältö
 
@@ -41,8 +46,26 @@ querya, `companyId`:tä tai runtime-sessionia.
 - operational log -yhteenveto
 - viimeisen 30 päivän sanitoidut warn/error-eventit
 - saman aikavälin security-eventit
-- incident index -yhteenvedot
+- incident indexistä luetut ryhmitellyt yhteenvedot ilman raw-rivejä
+- SMTP:n onnistuneista transport-eventeistä vain SMTP-profiili, TLS-versio,
+  allowlistattu cipher ja sertifikaatin SHA-256-sormenjälki, jos tapahtuma
+  kuuluu mukaan rajattuun tapahtuma-aineistoon
 - SHA-256-checksum jokaiselle dataosiolle
+
+Tukipakettia varten on oma reader, joka lukee vain warning/error- ja
+security-virtoja. Info-lokit eivät kuluta sen tiedosto- tai tavubudjettia.
+Reader rajaa lähteet täsmällisesti viimeiseen 30 päivään ja käsittelee
+segmentit uusimmasta vanhimpaan.
+
+`sourceTruncated` välittyy manifestin `truncatedSections`-tiedoksi. Katkaisu
+ilmoitetaan, jos tapahtuma-, tavu-, tiedosto- tai pakettibudjetti täyttyy,
+relevantti lähde on rikkoutunut tai osittain luettu tai reader ei muuten voi
+todistaa koko 30 päivän aikavälin kattavuutta.
+
+Incident-index-reader lukee kiinteästä `incident-index`-hakemistosta vain
+nykyisen ja tarvittaessa edellisen vuoden tunnetut tiedostot. Pakettiin
+palautetaan vain ryhmitelty `eventName`, `errorCode`, `outcome`, versio-,
+build-, fingerprint-, count- ja aikaväliyhteenveto.
 
 ## Kielletty sisältö
 
@@ -50,6 +73,8 @@ querya, `companyId`:tä tai runtime-sessionia.
 - invoice/customer rows tai koko business activity feed
 - nimi, osoite, puhelin, sähköposti, IBAN tai henkilötunnus
 - SMTP-salaisuus, runtime-session, token, cookie tai authorization-header
+- SMTP:n remote IP, target port, attempt/operation ID tai sertifikaatin
+  raakadata
 - sähköpostirunko, MIME tai provider response
 - ympäristömuuttujat, Windows-käyttäjänimi ja userData-polku
 - raw stack tai raw JSONL-rivi
@@ -89,3 +114,14 @@ Tukipaketti ei ole Eky-varmuuskopio eikä sitä voi käyttää liiketoimintadata
 SQLite-tietokannan, laskujen tai asetusten palauttamiseen. `.ekybackup` kuuluu
 myöhemmin erikseen toteutettavaan backup/restore-polkuun; sitä ei saa sekoittaa
 `.ekysupport`-diagnostiikka-artifactiin.
+
+## Paketoitu smoke
+
+Windowsin packaged smoke kutsuu rendererille julkaistua rajattua
+`createSupportBundle()`-toimintoa, käyttää smoke-tilan kiinteää
+väliaikaiskohdetta ja purkaa syntyneen paketin. Se validoi formaattiversion,
+osiokohtaiset checksumit, runtime- ja build-identiteetin, tietokannan
+yhteenvedon, diagnostiikkatapahtumat, todelliset incident-yhteenvedot sekä
+katkaisutiedot. Smoke tarkistaa myös kiellettyjen salaisuuksien,
+henkilötietojen, business-datan, polkujen ja PDF-datan poissulut ja poistaa
+artifactin lopuksi.

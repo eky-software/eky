@@ -8,6 +8,10 @@ describe('DNA SMTP configuration', () => {
   it('locks the first adapter to implicit TLS on the primary DNA host', () => {
     expect(dnaSmtpConnectionProfile).toEqual({
       connectionTimeoutMilliseconds: 10_000,
+      diagnosticsProfile: {
+        smtpProfile: 'dnaSmtp',
+        targetPort: 465,
+      },
       host: 'smtp.dnamail.fi',
       idleTimeoutMilliseconds: 20_000,
       minVersion: 'TLSv1.2',
@@ -19,6 +23,7 @@ describe('DNA SMTP configuration', () => {
   it('exposes no configurable fallback host, STARTTLS, or alternate port', () => {
     expect(Object.keys(dnaSmtpConnectionProfile).sort()).toEqual([
       'connectionTimeoutMilliseconds',
+      'diagnosticsProfile',
       'host',
       'idleTimeoutMilliseconds',
       'minVersion',

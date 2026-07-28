@@ -10,6 +10,7 @@ import { runSafeDesktopStartup } from './earlyStartup.js';
 import { readDesktopBuildInfo } from '../release/desktopBuildInfoReader.js';
 import {
   createPackagedSmokeConfiguration,
+  createPackagedSmokeProgressReporter,
   writePackagedSmokeResult,
 } from './packagedSmoke.js';
 
@@ -35,6 +36,8 @@ const smokeConfiguration = createPackagedSmokeConfiguration({
   tempPath: app.getPath('temp'),
   tokenValue: process.env.EKY_DESKTOP_SMOKE_TOKEN,
 });
+const smokeProgress =
+  createPackagedSmokeProgressReporter(smokeConfiguration);
 
 if (smokeConfiguration.userDataPath !== undefined) {
   app.setPath('userData', smokeConfiguration.userDataPath);
@@ -53,6 +56,7 @@ const runtimeInstanceId = randomUUID();
 async function startDesktopRuntime(
   startDesktopComposition: StartDesktopComposition,
 ): Promise<void> {
+  await smokeProgress.reportStage('startup');
   const buildInfo = await readDesktopBuildInfo({
     applicationPath: app.getAppPath(),
     appVersion: app.getVersion(),
@@ -65,6 +69,7 @@ async function startDesktopRuntime(
     quitApplication: () => app.quit(),
     resourcesPath: process.resourcesPath,
     runtimeInstanceId,
+    reportSmokeStage: (stage) => smokeProgress.reportStage(stage),
     smokeConfiguration,
     userDataPath: app.getPath('userData'),
   });
@@ -104,6 +109,7 @@ if (hasSingleInstanceLock) {
       if (smokeConfiguration.enabled) {
         await writePackagedSmokeResult(smokeConfiguration, {
           code: errorCode,
+          stage: smokeProgress.currentStage(),
           status: 'failed',
         });
         return;

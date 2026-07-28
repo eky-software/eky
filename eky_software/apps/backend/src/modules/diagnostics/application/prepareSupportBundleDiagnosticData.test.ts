@@ -4,13 +4,37 @@ import { prepareSupportBundleDiagnosticData } from './prepareSupportBundleDiagno
 
 describe('prepareSupportBundleDiagnosticData', () => {
   it('requires permission and includes only recent warning, error and security projections', async () => {
-    const diagnosticEventReader = {
-      listRecentDiagnosticEvents: vi.fn().mockResolvedValue([
-        event('recent-error', 'error', 'smtp', '2026-07-27T10:00:00.000Z'),
-        event('recent-info', 'info', 'runtime', '2026-07-27T09:00:00.000Z'),
-        event('recent-security', 'info', 'security', '2026-07-27T08:00:00.000Z'),
-        event('old-error', 'error', 'smtp', '2026-05-01T08:00:00.000Z'),
-      ]),
+    const supportBundleDiagnosticEventReader = {
+      readSupportBundleDiagnosticEvents: vi.fn().mockResolvedValue({
+        diagnosticEvents: [
+          event('recent-error', 'error', 'smtp', '2026-07-27T10:00:00.000Z'),
+          event(
+            'recent-security',
+            'warn',
+            'security',
+            '2026-07-27T08:00:00.000Z',
+          ),
+        ],
+        sourceTruncated: true,
+      }),
+    };
+    const supportBundleIncidentSummaryReader = {
+      readSupportBundleIncidentSummaries: vi.fn().mockResolvedValue({
+        incidentSummaries: [
+          {
+            appVersion: '1.2.3',
+            buildRevision: 'abcdef123456',
+            count: 2,
+            errorCode: 'SAFE_ERROR',
+            eventName: 'smtp.deliveryFailed',
+            fingerprint: 'smtp.deliveryFailed:SAFE_ERROR',
+            firstOccurredAt: '2026-07-26T08:00:00.000Z',
+            lastOccurredAt: '2026-07-27T08:00:00.000Z',
+            outcome: 'failure',
+          },
+        ],
+        sourceTruncated: false,
+      }),
     };
 
     const result = await prepareSupportBundleDiagnosticData(
@@ -23,7 +47,8 @@ describe('prepareSupportBundleDiagnosticData', () => {
         },
       },
       {
-        diagnosticEventReader,
+        supportBundleDiagnosticEventReader,
+        supportBundleIncidentSummaryReader,
         getRuntimeDiagnosticSummary: async () => createRuntimeSummary(),
         now: () => new Date('2026-07-27T12:00:00.000Z'),
       },
@@ -33,16 +58,31 @@ describe('prepareSupportBundleDiagnosticData', () => {
       'recent-error',
       'recent-security',
     ]);
+    expect(result.truncated).toBe(true);
+    expect(result.incidentSummaries).toHaveLength(1);
+    expect(result.incidentSummariesTruncated).toBe(false);
     expect(result).not.toHaveProperty('companyId');
     expect(result.runtimeSummary.appVersion).toBe('1.2.3');
-    expect(diagnosticEventReader.listRecentDiagnosticEvents).toHaveBeenCalledWith(
-      10_001,
-    );
+    expect(
+      supportBundleDiagnosticEventReader.readSupportBundleDiagnosticEvents,
+    ).toHaveBeenCalledWith({
+      earliestTimestamp: '2026-06-27T12:00:00.000Z',
+      latestTimestamp: '2026-07-27T12:00:00.000Z',
+    });
+    expect(
+      supportBundleIncidentSummaryReader.readSupportBundleIncidentSummaries,
+    ).toHaveBeenCalledWith({
+      earliestTimestamp: '2026-06-27T12:00:00.000Z',
+      latestTimestamp: '2026-07-27T12:00:00.000Z',
+    });
   });
 
   it('denies access before reading diagnostics', async () => {
-    const diagnosticEventReader = {
-      listRecentDiagnosticEvents: vi.fn(),
+    const supportBundleDiagnosticEventReader = {
+      readSupportBundleDiagnosticEvents: vi.fn(),
+    };
+    const supportBundleIncidentSummaryReader = {
+      readSupportBundleIncidentSummaries: vi.fn(),
     };
 
     await expect(
@@ -56,12 +96,18 @@ describe('prepareSupportBundleDiagnosticData', () => {
           },
         },
         {
-          diagnosticEventReader,
+          supportBundleDiagnosticEventReader,
+          supportBundleIncidentSummaryReader,
           getRuntimeDiagnosticSummary: vi.fn(),
         },
       ),
     ).rejects.toThrow('Permission denied.');
-    expect(diagnosticEventReader.listRecentDiagnosticEvents).not.toHaveBeenCalled();
+    expect(
+      supportBundleDiagnosticEventReader.readSupportBundleDiagnosticEvents,
+    ).not.toHaveBeenCalled();
+    expect(
+      supportBundleIncidentSummaryReader.readSupportBundleIncidentSummaries,
+    ).not.toHaveBeenCalled();
   });
 });
 

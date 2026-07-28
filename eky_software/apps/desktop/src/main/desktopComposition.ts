@@ -51,6 +51,7 @@ import {
   runPackagedSmokeCheck,
   writePackagedSmokeResult,
   type PackagedSmokeConfiguration,
+  type PackagedSmokeStage,
 } from './packagedSmoke.js';
 import { restoreWindowInputFocus } from './windowInputFocus.js';
 import type { DesktopBuildInfo } from '../release/desktopBuildInfo.js';
@@ -68,6 +69,7 @@ interface StartDesktopCompositionOptions {
   quitApplication(): void;
   resourcesPath: string;
   runtimeInstanceId: string;
+  reportSmokeStage(stage: PackagedSmokeStage): Promise<void>;
   smokeConfiguration: PackagedSmokeConfiguration;
   userDataPath: string;
 }
@@ -188,6 +190,14 @@ async function startDesktopCompositionRuntime({
     'company-email-smtp-v1.dat',
   );
   const smokePdfPath = join(dataRoot, 'smoke', 'approved-invoice-smoke.pdf');
+  const smokeSupportBundlePath =
+    smokeMode && options.smokeConfiguration.root !== undefined
+      ? join(
+          options.smokeConfiguration.root,
+          'support-bundle',
+          'packaged-smoke.ekysupport',
+        )
+      : undefined;
   const secretBrokerChannel = new MessageChannelMain();
   let applicationWindow: BrowserWindow | undefined;
   let pdfPreviewController: InvoicePdfPreviewWindowController | undefined;
@@ -200,10 +210,6 @@ async function startDesktopCompositionRuntime({
   const deliveryConfirmation = createInvoiceDeliveryConfirmation(
     () => applicationWindow,
   );
-
-  await writePackagedSmokeResult(options.smokeConfiguration, {
-    status: 'started',
-  });
 
   const secretBrokerHandle = startSecretBrokerMain({
     encryptedSecretFile: createPackagedSmokeSecretFileStore(
@@ -238,6 +244,7 @@ async function startDesktopCompositionRuntime({
   let backendHandle;
 
   try {
+    await options.reportSmokeStage('backend');
     backendHandle = await startDesktopBackend({
       config: {
         appVersion: desktopAppVersion,
@@ -381,12 +388,15 @@ async function startDesktopCompositionRuntime({
     appVersion: desktopAppVersion,
     architecture: process.arch,
     async confirmCreation() {
+      if (smokeMode) {
+        return true;
+      }
       const result = await dialog.showMessageBox(mainWindow, {
         buttons: ['Peruuta', 'Jatka'],
         cancelId: 0,
         defaultId: 0,
         detail:
-          'Paketti sisältää vain sanitoituja teknisiä tapahtumia, sovellusversiot sekä tietokannan health- ja migraatioyhteenvedon. Se ei sisällä asiakas- tai laskudataa, PDF:iä eikä salaisuuksia.',
+          'Tukipaketti ei ole salattu. Tallenna ja lähetä se vain luotetulle tukihenkilölle.\n\nPaketti sisältää vain sanitoituja teknisiä tapahtumia, sovellusversiot sekä tietokannan health- ja migraatioyhteenvedon. Se ei sisällä asiakas- tai laskudataa, PDF:iä eikä salaisuuksia.',
         message: 'Luodaanko Eky-tukipaketti?',
         noLink: true,
         title: 'Luo tukipaketti',
@@ -406,6 +416,9 @@ async function startDesktopCompositionRuntime({
     platform: process.platform,
     runtimeRoot: dataRoot,
     async selectTargetPath(defaultFileName) {
+      if (smokeSupportBundlePath !== undefined) {
+        return smokeSupportBundlePath;
+      }
       const result = await dialog.showSaveDialog(mainWindow, {
         defaultPath: defaultFileName,
         filters: [
@@ -530,6 +543,10 @@ async function startDesktopCompositionRuntime({
         runtimeInstanceId: options.runtimeInstanceId,
         secretFilePath,
         smokePdfPath,
+        supportBundlePath: requireSmokeSupportBundlePath(
+          smokeSupportBundlePath,
+        ),
+        reportStage: options.reportSmokeStage,
       });
       desktopOperationalLogger.write(
         createDesktopOperationalEvent(
@@ -540,10 +557,12 @@ async function startDesktopCompositionRuntime({
           desktopOperationalIdentity,
         ),
       );
+      await options.reportSmokeStage('shutdown');
+      await lifecycleHandle.shutdown();
       await writePackagedSmokeResult(options.smokeConfiguration, {
+        stage: 'shutdown',
         status: 'ok',
       });
-      await lifecycleHandle.shutdown();
       mainWindow.destroy();
       options.quitApplication();
       return undefined;
@@ -628,6 +647,15 @@ async function loadSupportBundleBackendData(
   } catch {
     throw new Error('SUPPORT_BUNDLE_BACKEND_RESPONSE_INVALID');
   }
+}
+
+function requireSmokeSupportBundlePath(
+  value: string | undefined,
+): string {
+  if (value === undefined) {
+    throw new Error('DESKTOP_SMOKE_SUPPORT_BUNDLE_PATH_MISSING');
+  }
+  return value;
 }
 
 function createInvoicePdfPreviewController(

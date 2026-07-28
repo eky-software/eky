@@ -69,6 +69,69 @@ describe('FileSystemOperationalLogDiagnosticSummaryReader', () => {
       operationalLogTotalBytes: 0,
     });
   });
+
+  it('selects the newest bounded candidates across all log streams', async () => {
+    const root = createRoot();
+    const months = ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05'];
+
+    for (const month of months) {
+      for (const segment of ['001', '002', '003', '004']) {
+        writeLog(root, 'backend', `backend-info-${month}-${segment}.jsonl`, [
+          { level: 'warn', timestamp: `${month}-01T00:00:00.000Z` },
+        ]);
+        writeLog(
+          root,
+          'backend',
+          `backend-warning-error-${month}-${segment}.jsonl`,
+          [{ level: 'warn', timestamp: `${month}-02T00:00:00.000Z` }],
+        );
+        writeLog(root, 'desktop', `desktop-info-${month}-${segment}.jsonl`, [
+          { level: 'warn', timestamp: `${month}-03T00:00:00.000Z` },
+        ]);
+        writeLog(
+          root,
+          'desktop',
+          `desktop-warning-error-${month}-${segment}.jsonl`,
+          [{ level: 'warn', timestamp: `${month}-04T00:00:00.000Z` }],
+        );
+        writeLog(root, 'security', `backend-security-${month}-${segment}.jsonl`, [
+          { level: 'warn', timestamp: `${month}-05T00:00:00.000Z` },
+        ]);
+        writeLog(root, 'security', `desktop-security-${month}-${segment}.jsonl`, [
+          { level: 'warn', timestamp: `${month}-06T00:00:00.000Z` },
+        ]);
+      }
+    }
+
+    writeLog(
+      root,
+      'backend',
+      'backend-warning-error-2026-05-004.jsonl',
+      [{ level: 'error', timestamp: '2026-05-30T10:00:00.000Z' }],
+    );
+    writeLog(
+      root,
+      'desktop',
+      'desktop-warning-error-2026-05-004.jsonl',
+      [{ level: 'warn', timestamp: '2026-05-30T11:00:00.000Z' }],
+    );
+    writeLog(root, 'security', 'desktop-security-2026-05-004.jsonl', [
+      { level: 'warn', timestamp: '2026-05-30T12:00:00.000Z' },
+    ]);
+
+    const result =
+      await new FileSystemOperationalLogDiagnosticSummaryReader(
+        root,
+      ).readOperationalLogSummary();
+
+    expect(result).toMatchObject({
+      latestErrorAt: '2026-05-30T10:00:00.000Z',
+      latestSecurityEventAt: '2026-05-30T12:00:00.000Z',
+      latestWarningAt: '2026-05-30T12:00:00.000Z',
+      operationalLogNewestMonth: '2026-05',
+      operationalLogOldestMonth: '2026-01',
+    });
+  });
 });
 
 function createRoot(): string {

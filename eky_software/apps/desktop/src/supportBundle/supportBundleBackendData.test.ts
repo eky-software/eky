@@ -21,6 +21,57 @@ describe('readSupportBundleBackendData', () => {
         ],
       }),
     ).toThrow('SUPPORT_BUNDLE_BACKEND_DATA_INVALID');
+    expect(() =>
+      readSupportBundleBackendData({
+        ...createValidData(),
+        incidentSummaries: [
+          {
+            ...createValidData().incidentSummaries[0],
+            email: 'person@example.test',
+          },
+        ],
+      }),
+    ).toThrow('SUPPORT_BUNDLE_BACKEND_DATA_INVALID');
+  });
+
+  it('accepts safe TLS metadata and rejects the SMTP peer address', () => {
+    const peerCertificateFingerprint256 = Array.from(
+      { length: 32 },
+      (_, index) =>
+        index.toString(16).padStart(2, '0').toUpperCase(),
+    ).join(':');
+    const validData = createValidData();
+    const tlsEvent = {
+      category: 'smtp',
+      cipherName: 'TLS_AES_256_GCM_SHA384',
+      component: 'backend' as const,
+      durationMs: 25,
+      errorCode: null,
+      eventName: 'smtp.connectionSecured',
+      id: 'backend:smtp-event-1',
+      level: 'info' as const,
+      occurredAt: '2026-07-27T13:00:00.000Z',
+      outcome: 'success' as const,
+      peerCertificateFingerprint256,
+      smtpProfile: 'dnaSmtp' as const,
+      stage: 'connect',
+      tlsVersion: 'TLSv1.3' as const,
+    };
+
+    expect(
+      readSupportBundleBackendData({
+        ...validData,
+        diagnosticEvents: [tlsEvent],
+      }).diagnosticEvents,
+    ).toEqual([tlsEvent]);
+    expect(() =>
+      readSupportBundleBackendData({
+        ...validData,
+        diagnosticEvents: [
+          { ...tlsEvent, remoteAddress: '192.0.2.10' },
+        ],
+      }),
+    ).toThrow('SUPPORT_BUNDLE_BACKEND_DATA_INVALID');
   });
 });
 
@@ -55,6 +106,20 @@ function createValidData() {
       },
     ],
     diagnosticPeriodDays: 30 as const,
+    incidentSummaries: [
+      {
+        appVersion: '0.1.0-alpha.1',
+        buildRevision: 'abcdef123456',
+        count: 2,
+        errorCode: 'SMTP_TLS_FAILED',
+        eventName: 'smtp.tlsFailed',
+        fingerprint: 'smtp.tlsFailed:SMTP_TLS_FAILED',
+        firstOccurredAt: '2026-07-26T12:00:00.000Z',
+        lastOccurredAt: '2026-07-27T12:00:00.000Z',
+        outcome: 'failure' as const,
+      },
+    ],
+    incidentSummariesTruncated: false,
     runtimeSummary: createRuntimeSummary(),
     truncated: false,
   };

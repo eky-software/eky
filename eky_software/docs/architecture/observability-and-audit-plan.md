@@ -122,6 +122,15 @@ Incident-indeksin sallittu build-konteksti on `appVersion`, turvallinen
 UTC-aikaleima. Indeksi ei sisällä runtime-, correlation-, operation-, actor-,
 company- tai entity-tunnisteita, paikallisia polkuja tai liiketoimintadataa.
 
+Onnistuneen DNA SMTP -transportin detailed-loki saa sisältää tarkasti
+validoidun SMTP-profiilin, target-portin 465, TLS 1.2/1.3 -version,
+allowlistatun cipherin, sertifikaatin SHA-256-sormenjäljen, etä-IP:n ja sen
+IP-perheen sekä yritys- ja henkilötiedottoman attempt ID:n. Etä-IP,
+target-portti ja attempt ID eivät siirry Diagnostics-projektioon,
+tukipakettiin tai incident-indeksiin. SMTP-käyttäjänimeä, lähettäjää,
+vastaanottajaa, otsikkoa, runkoa, salasanaa, MIMEä, PDF-tietoa tai
+sertifikaatin raakadataa ei tallenneta.
+
 ## Uuden moduulin observability-portti
 
 Jokaiselle uudelle moduulille määritellään ennen toteutusta:
@@ -172,6 +181,17 @@ request kirjataan kerran turvallista luokitusta kohden. Varhainen
 desktop-käynnistys rajaa käyttäjä- ja smoke-virheet vakioituihin koodeihin ja
 kirjoittaa loggerin valmistumisen jälkeisestä virheestä turvallisen
 bootstrap-eventin.
+
+R0:n diagnostiikkaperusta on valmis. Tukipaketin formaatti on versio 2,
+30 päivän lähdekatkaisu raportoidaan rehellisesti, incident-indexistä luetaan
+vain minimoituja ryhmäyhteenvetoja ja packaged smoke todentaa oikean
+tukipakettiviennin. Smoke raportoi vain allowlistatun viimeisen vaiheen:
+`startup`, `backend`, `diagnostics`, `logFolder`, `supportBundle`,
+`secretStorage`, `pdfPreview` tai `shutdown`.
+
+Seuraava observabilityn testausvaihe on dokumentoitu Playwright/E2E-kokonaisuus.
+Playwrightia tai muuta uutta riippuvuutta ei lisätä ilman erillistä
+riippuvuuspäätöstä.
 
 Operational-writerin kapasiteetti- tai kirjoitusvirhe ei yritä kirjoittaa
 rekursiivisesti samaan streamiin. Siitä muodostetaan rajattu prosessikohtainen

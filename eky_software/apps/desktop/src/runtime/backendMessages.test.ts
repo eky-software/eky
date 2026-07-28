@@ -93,6 +93,38 @@ describe('desktop backend process messages', () => {
     expect(runtimeInstanceId).not.toBe(runtimeSessionSecret);
   });
 
+  it('rejects invalid or non-canonical build timestamps without throwing', () => {
+    const runtimeRoot = resolve('desktop-test-runtime');
+    const createCommand = (buildCreatedAt: unknown) => ({
+      config: createValidConfig({
+        backendRoot: resolve(runtimeRoot, 'backend'),
+        buildCreatedAt,
+        databaseFilePath: resolve(runtimeRoot, 'data', 'eky.sqlite'),
+        invoiceDocumentStorageRoot: resolve(runtimeRoot, 'storage'),
+        migrationsDirectory: resolve(runtimeRoot, 'migrations'),
+        operationalLogsRoot: resolve(runtimeRoot, 'logs'),
+        smokePdfPath: resolve(runtimeRoot, 'smoke', 'invoice.pdf'),
+      }),
+      type: 'start',
+    });
+
+    expect(() =>
+      parseDesktopBackendCommand(createCommand('not-a-date')),
+    ).not.toThrow();
+    expect(
+      parseDesktopBackendCommand(createCommand('not-a-date')),
+    ).toBeUndefined();
+    expect(
+      parseDesktopBackendCommand(createCommand('2026-07-28T03:00:00+03:00')),
+    ).toBeUndefined();
+    expect(
+      parseDesktopBackendCommand(createCommand('2026-07-28T00:00:00Z')),
+    ).toBeUndefined();
+    expect(
+      parseDesktopBackendCommand(createCommand('2026-02-30T00:00:00.000Z')),
+    ).toBeUndefined();
+  });
+
   it('rejects malformed readiness messages', () => {
     expect(
       parseDesktopBackendStatus({ port: 32100, smokePdfCreated: true, type: 'ready' }),

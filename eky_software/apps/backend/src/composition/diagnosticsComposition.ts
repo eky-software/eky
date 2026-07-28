@@ -10,6 +10,14 @@ import {
   emptyDiagnosticEventReader,
   FileSystemDiagnosticEventReader,
 } from '../modules/diagnostics/infrastructure/fileSystemDiagnosticEventReader.js';
+import {
+  emptySupportBundleDiagnosticEventReader,
+  FileSystemSupportBundleDiagnosticEventReader,
+} from '../modules/diagnostics/infrastructure/fileSystemSupportBundleDiagnosticEventReader.js';
+import {
+  emptySupportBundleIncidentSummaryReader,
+  FileSystemSupportBundleIncidentSummaryReader,
+} from '../modules/diagnostics/infrastructure/fileSystemSupportBundleIncidentSummaryReader.js';
 import { SqliteSystemDiagnosticSummaryReader } from '../modules/diagnostics/infrastructure/sqliteSystemDiagnosticSummaryReader.js';
 import {
   FileSystemOperationalLogDiagnosticSummaryReader,
@@ -36,6 +44,18 @@ export function createDiagnosticsComposition(
     options.operationalLogsRoot === undefined
       ? emptyDiagnosticEventReader
       : new FileSystemDiagnosticEventReader(options.operationalLogsRoot);
+  const supportBundleReader =
+    options.operationalLogsRoot === undefined
+      ? emptySupportBundleDiagnosticEventReader
+      : new FileSystemSupportBundleDiagnosticEventReader(
+          options.operationalLogsRoot,
+        );
+  const supportBundleIncidentReader =
+    options.operationalLogsRoot === undefined
+      ? emptySupportBundleIncidentSummaryReader
+      : new FileSystemSupportBundleIncidentSummaryReader(
+          options.operationalLogsRoot,
+        );
   const systemDiagnosticSummaryReader =
     new SqliteSystemDiagnosticSummaryReader(options.database);
   const operationalLogSummaryReader =
@@ -74,7 +94,9 @@ export function createDiagnosticsComposition(
     listDiagnosticEvents: (input) => listDiagnosticEvents(input, reader),
     prepareSupportBundleDiagnosticData: (input) =>
       prepareSupportBundleDiagnosticData(input, {
-        diagnosticEventReader: reader,
+        supportBundleDiagnosticEventReader: supportBundleReader,
+        supportBundleIncidentSummaryReader:
+          supportBundleIncidentReader,
         getRuntimeDiagnosticSummary: () =>
           readRuntimeSummary(input.actorContext),
       }),

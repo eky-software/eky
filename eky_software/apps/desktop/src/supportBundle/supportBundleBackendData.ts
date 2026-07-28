@@ -2,6 +2,7 @@ export interface SupportBundleDiagnosticEvent {
   appVersion?: string;
   buildRevision?: string;
   category: string;
+  cipherName?: string;
   component: 'backend' | 'desktop';
   correlationId?: string;
   durationMs?: number;
@@ -13,10 +14,13 @@ export interface SupportBundleDiagnosticEvent {
   occurredAt: string;
   operationId?: string;
   outcome: 'blocked' | 'failure' | 'success' | 'unknown';
+  peerCertificateFingerprint256?: string;
   retryable?: boolean;
   runtimeInstanceId?: string;
   sideEffectState?: 'committed' | 'none' | 'rolledBack' | 'unknown';
   stage?: string;
+  smtpProfile?: 'dnaSmtp';
+  tlsVersion?: 'TLSv1.2' | 'TLSv1.3';
 }
 
 type SupportBundleSideEffectState =
@@ -31,8 +35,22 @@ export interface SupportBundleBackendData {
   };
   diagnosticEvents: SupportBundleDiagnosticEvent[];
   diagnosticPeriodDays: 30;
+  incidentSummaries: SupportBundleIncidentSummary[];
+  incidentSummariesTruncated: boolean;
   runtimeSummary: SupportBundleRuntimeSummary;
   truncated: boolean;
+}
+
+export interface SupportBundleIncidentSummary {
+  appVersion: string;
+  buildRevision: string;
+  count: number;
+  errorCode: string;
+  eventName: string;
+  fingerprint: string;
+  firstOccurredAt: string;
+  lastOccurredAt: string;
+  outcome: 'blocked' | 'failure' | 'unknown';
 }
 
 export interface SupportBundleRuntimeSummary {
@@ -58,6 +76,7 @@ export interface SupportBundleRuntimeSummary {
 }
 
 const maximumDiagnosticEvents = 5_000;
+const maximumIncidentSummaries = 5_000;
 const safeIdentifierPattern = /^[A-Za-z0-9._:-]+$/;
 const safeMigrationNamePattern = /^[A-Za-z0-9._-]+$/;
 const uuidPattern =
@@ -73,6 +92,8 @@ export function readSupportBundleBackendData(
       'database',
       'diagnosticEvents',
       'diagnosticPeriodDays',
+      'incidentSummaries',
+      'incidentSummariesTruncated',
       'runtimeSummary',
       'truncated',
     ]) ||
@@ -81,6 +102,9 @@ export function readSupportBundleBackendData(
     !Array.isArray(value.diagnosticEvents) ||
     value.diagnosticEvents.length > maximumDiagnosticEvents ||
     value.diagnosticPeriodDays !== 30 ||
+    !Array.isArray(value.incidentSummaries) ||
+    value.incidentSummaries.length > maximumIncidentSummaries ||
+    typeof value.incidentSummariesTruncated !== 'boolean' ||
     !isRuntimeSummary(value.runtimeSummary) ||
     typeof value.truncated !== 'boolean'
   ) {
@@ -92,9 +116,45 @@ export function readSupportBundleBackendData(
     database: value.database,
     diagnosticEvents: value.diagnosticEvents.map(readDiagnosticEvent),
     diagnosticPeriodDays: 30,
+    incidentSummaries: value.incidentSummaries.map(readIncidentSummary),
+    incidentSummariesTruncated: value.incidentSummariesTruncated,
     runtimeSummary: value.runtimeSummary,
     truncated: value.truncated,
   };
+}
+
+function readIncidentSummary(
+  value: unknown,
+): SupportBundleIncidentSummary {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, [
+      'appVersion',
+      'buildRevision',
+      'count',
+      'errorCode',
+      'eventName',
+      'fingerprint',
+      'firstOccurredAt',
+      'lastOccurredAt',
+      'outcome',
+    ]) ||
+    !isSafeVersion(value.appVersion) ||
+    !isOptionalBuildRevision(value.buildRevision) ||
+    value.buildRevision === undefined ||
+    !isPositiveInteger(value.count) ||
+    !isSafeIdentifier(value.errorCode, 120) ||
+    !isSafeIdentifier(value.eventName, 120) ||
+    !isSafeIdentifier(value.fingerprint, 200) ||
+    !isTimestamp(value.firstOccurredAt) ||
+    !isTimestamp(value.lastOccurredAt) ||
+    value.firstOccurredAt > value.lastOccurredAt ||
+    !['blocked', 'failure', 'unknown'].includes(value.outcome as string)
+  ) {
+    throw new Error('SUPPORT_BUNDLE_BACKEND_DATA_INVALID');
+  }
+
+  return value as unknown as SupportBundleIncidentSummary;
 }
 
 function isRuntimeSummary(
@@ -162,6 +222,7 @@ function readDiagnosticEvent(value: unknown): SupportBundleDiagnosticEvent {
       'appVersion',
       'buildRevision',
       'category',
+      'cipherName',
       'component',
       'correlationId',
       'durationMs',
@@ -173,14 +234,18 @@ function readDiagnosticEvent(value: unknown): SupportBundleDiagnosticEvent {
       'occurredAt',
       'operationId',
       'outcome',
+      'peerCertificateFingerprint256',
       'retryable',
       'runtimeInstanceId',
       'sideEffectState',
       'stage',
+      'smtpProfile',
+      'tlsVersion',
     ]) ||
     !isOptionalVersion(value.appVersion) ||
     !isOptionalBuildRevision(value.buildRevision) ||
     !isSafeIdentifier(value.category, 100) ||
+    !isOptionalSafeIdentifier(value.cipherName, 100) ||
     !['backend', 'desktop'].includes(value.component as string) ||
     !isOptionalUuid(value.correlationId) ||
     !isOptionalNonNegativeInteger(value.durationMs) ||
@@ -194,10 +259,15 @@ function readDiagnosticEvent(value: unknown): SupportBundleDiagnosticEvent {
     !['blocked', 'failure', 'success', 'unknown'].includes(
       value.outcome as string,
     ) ||
+    !isOptionalCertificateFingerprint256(
+      value.peerCertificateFingerprint256,
+    ) ||
     !isOptionalBoolean(value.retryable) ||
     !isOptionalUuid(value.runtimeInstanceId) ||
     !isOptionalSideEffectState(value.sideEffectState) ||
-    !isOptionalSafeIdentifier(value.stage, 300)
+    !isOptionalSafeIdentifier(value.stage, 300) ||
+    !isOptionalExactValue(value.smtpProfile, 'dnaSmtp') ||
+    !isOptionalTlsVersion(value.tlsVersion)
   ) {
     throw new Error('SUPPORT_BUNDLE_BACKEND_DATA_INVALID');
   }
@@ -210,6 +280,9 @@ function readDiagnosticEvent(value: unknown): SupportBundleDiagnosticEvent {
       ? {}
       : { buildRevision: value.buildRevision }),
     category: value.category,
+    ...(value.cipherName === undefined
+      ? {}
+      : { cipherName: value.cipherName }),
     component: value.component as 'backend' | 'desktop',
     ...(value.correlationId === undefined
       ? {}
@@ -233,6 +306,12 @@ function readDiagnosticEvent(value: unknown): SupportBundleDiagnosticEvent {
       | 'failure'
       | 'success'
       | 'unknown',
+    ...(value.peerCertificateFingerprint256 === undefined
+      ? {}
+      : {
+          peerCertificateFingerprint256:
+            value.peerCertificateFingerprint256,
+        }),
     ...(value.retryable === undefined
       ? {}
       : { retryable: value.retryable }),
@@ -249,7 +328,40 @@ function readDiagnosticEvent(value: unknown): SupportBundleDiagnosticEvent {
             | 'unknown',
         }),
     ...(value.stage === undefined ? {} : { stage: value.stage }),
+    ...(value.smtpProfile === undefined
+      ? {}
+      : { smtpProfile: value.smtpProfile }),
+    ...(value.tlsVersion === undefined
+      ? {}
+      : { tlsVersion: value.tlsVersion }),
   };
+}
+
+function isOptionalCertificateFingerprint256(
+  value: unknown,
+): value is string | undefined {
+  return (
+    value === undefined ||
+    (typeof value === 'string' &&
+      /^(?:[0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(value))
+  );
+}
+
+function isOptionalExactValue<Value extends string>(
+  value: unknown,
+  expected: Value,
+): value is Value | undefined {
+  return value === undefined || value === expected;
+}
+
+function isOptionalTlsVersion(
+  value: unknown,
+): value is 'TLSv1.2' | 'TLSv1.3' | undefined {
+  return (
+    value === undefined ||
+    value === 'TLSv1.2' ||
+    value === 'TLSv1.3'
+  );
 }
 
 function isOptionalBoolean(
@@ -272,6 +384,10 @@ function isOptionalNonNegativeInteger(
   value: unknown,
 ): value is number | undefined {
   return value === undefined || isNonNegativeInteger(value);
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return isNonNegativeInteger(value) && value > 0;
 }
 
 function isOptionalSafeIdentifier(

@@ -61,4 +61,33 @@ describe('DiagnosticEventDetail', () => {
     expect(html).not.toContain('Korrelaatiotunniste');
     expect(html).not.toContain('Kesto');
   });
+
+  it('renders the public TLS summary without peer network metadata', () => {
+    const html = renderToStaticMarkup(
+      <DiagnosticEventDetail
+        event={{
+          category: 'smtp',
+          cipherName: 'TLS_AES_256_GCM_SHA384',
+          component: 'backend',
+          errorCode: null,
+          eventName: 'smtp.connectionSecured',
+          id: 'backend:event-1',
+          level: 'info',
+          occurredAt: '2026-07-27T12:00:00.000Z',
+          outcome: 'success',
+          peerCertificateFingerprint256:
+            '00:01:02:03:04:05:06:07:08:09:0A:0B:0C:0D:0E:0F:10:11:12:13:14:15:16:17:18:19:1A:1B:1C:1D:1E:1F',
+          smtpProfile: 'dnaSmtp',
+          tlsVersion: 'TLSv1.3',
+        }}
+      />,
+    );
+
+    expect(html).toContain('TLS-versio');
+    expect(html).toContain('TLSv1.3');
+    expect(html).toContain('TLS_AES_256_GCM_SHA384');
+    expect(html).toContain('Palvelinsertifikaatin SHA-256-sormenjälki');
+    expect(html).not.toContain('remoteAddress');
+    expect(html).not.toContain('192.0.2.10');
+  });
 });

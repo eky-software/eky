@@ -57,6 +57,8 @@ export const diagnosticEventNames = Object.freeze([
   'secretStorage.writeFailed',
   'smtp.authenticationFailed',
   'smtp.connectionFailed',
+  'smtp.connectionSecured',
+  'smtp.deliveryCompleted',
   'smtp.deliveryFailed',
   'smtp.deliveryOutcomeUnknown',
   'smtp.tlsFailed',
@@ -84,6 +86,7 @@ export interface DiagnosticEventItem {
   appVersion?: string;
   buildRevision?: string;
   category: string;
+  cipherName?: string;
   component: DiagnosticEventComponent;
   correlationId?: string;
   durationMs?: number;
@@ -95,10 +98,13 @@ export interface DiagnosticEventItem {
   occurredAt: string;
   operationId?: string;
   outcome: DiagnosticEventOutcome;
+  peerCertificateFingerprint256?: string;
   retryable?: boolean;
   runtimeInstanceId?: string;
   sideEffectState?: DiagnosticEventSideEffectState;
   stage?: string;
+  smtpProfile?: 'dnaSmtp';
+  tlsVersion?: 'TLSv1.2' | 'TLSv1.3';
 }
 
 export interface DiagnosticEventListQuery {

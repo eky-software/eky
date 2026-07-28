@@ -121,6 +121,8 @@ describe('diagnostic routes', () => {
         },
         diagnosticEvents: [],
         diagnosticPeriodDays: 30,
+        incidentSummaries: [],
+        incidentSummariesTruncated: false,
         runtimeSummary: createRuntimeSummary(),
         truncated: false,
       });

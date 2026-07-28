@@ -1,8 +1,9 @@
 import type { ActorContext } from '@eky/auth';
 import { requirePermission } from '@eky/permissions';
 
-import type { DiagnosticEventReader } from '../ports/diagnosticEventReader.js';
 import type { SupportBundleDiagnosticData } from '../domain/supportBundleDiagnosticData.js';
+import type { SupportBundleDiagnosticEventReader } from '../ports/supportBundleDiagnosticEventReader.js';
+import type { SupportBundleIncidentSummaryReader } from '../ports/supportBundleIncidentSummaryReader.js';
 import {
   toDatabaseDiagnosticSummary,
   type RuntimeDiagnosticSummary,
@@ -10,15 +11,13 @@ import {
 
 const diagnosticPeriodDays = 30;
 const millisecondsPerDay = 24 * 60 * 60 * 1_000;
-const maximumSupportBundleEvents = 5_000;
-const readerCandidateLimit = 10_001;
-
 export interface PrepareSupportBundleDiagnosticDataInput {
   actorContext: ActorContext;
 }
 
 interface PrepareSupportBundleDiagnosticDataDependencies {
-  diagnosticEventReader: DiagnosticEventReader;
+  supportBundleDiagnosticEventReader: SupportBundleDiagnosticEventReader;
+  supportBundleIncidentSummaryReader: SupportBundleIncidentSummaryReader;
   getRuntimeDiagnosticSummary(): Promise<RuntimeDiagnosticSummary>;
   now?(): Date;
 }
@@ -33,17 +32,21 @@ export async function prepareSupportBundleDiagnosticData(
   const earliestTimestamp = new Date(
     now.getTime() - diagnosticPeriodDays * millisecondsPerDay,
   ).toISOString();
-  const candidates =
-    await dependencies.diagnosticEventReader.listRecentDiagnosticEvents(
-      readerCandidateLimit,
-    );
-  const eligibleEvents = candidates.filter(
-    (event) =>
-      event.occurredAt >= earliestTimestamp &&
-      (event.level === 'error' ||
-        event.level === 'warn' ||
-        event.category === 'security'),
-  );
+  const latestTimestamp = now.toISOString();
+  const [diagnosticReadResult, incidentReadResult] = await Promise.all([
+    dependencies.supportBundleDiagnosticEventReader.readSupportBundleDiagnosticEvents(
+      {
+        earliestTimestamp,
+        latestTimestamp,
+      },
+    ),
+    dependencies.supportBundleIncidentSummaryReader.readSupportBundleIncidentSummaries(
+      {
+        earliestTimestamp,
+        latestTimestamp,
+      },
+    ),
+  ]);
   const runtimeSummary = await dependencies.getRuntimeDiagnosticSummary();
   const database = toDatabaseDiagnosticSummary(runtimeSummary);
   if (database === null) {
@@ -53,11 +56,11 @@ export async function prepareSupportBundleDiagnosticData(
   return {
     backendVersion: runtimeSummary.appVersion,
     database,
-    diagnosticEvents: eligibleEvents.slice(0, maximumSupportBundleEvents),
+    diagnosticEvents: diagnosticReadResult.diagnosticEvents,
     diagnosticPeriodDays,
+    incidentSummaries: incidentReadResult.incidentSummaries,
+    incidentSummariesTruncated: incidentReadResult.sourceTruncated,
     runtimeSummary,
-    truncated:
-      candidates.length === readerCandidateLimit ||
-      eligibleEvents.length > maximumSupportBundleEvents,
+    truncated: diagnosticReadResult.sourceTruncated,
   };
 }

@@ -14,6 +14,13 @@ export function DiagnosticEventDetail({
     detail(uiText.diagnostics.category, event.category),
     detail(uiText.diagnostics.appVersion, event.appVersion),
     detail(uiText.diagnostics.buildRevision, event.buildRevision),
+    detail(uiText.diagnostics.smtpProfile, event.smtpProfile),
+    detail(uiText.diagnostics.tlsVersion, event.tlsVersion),
+    detail(uiText.diagnostics.cipherName, event.cipherName),
+    detail(
+      uiText.diagnostics.peerCertificateFingerprint,
+      event.peerCertificateFingerprint256,
+    ),
     detail(uiText.diagnostics.correlationId, event.correlationId),
     detail(
       uiText.diagnostics.duration,
