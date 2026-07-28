@@ -125,6 +125,12 @@ model because the OS secret store and SQLite cannot share one transaction.
 Read `docs/architecture/observability-and-audit-plan.md` before changing these
 boundaries.
 
+Update the R0 E2E matrix when Company Settings gains a significant setting,
+secret lifecycle action or delivery integration. Include a successful UI/API
+journey, a permission/company denial and a failure/recovery scenario. E2E must
+use only synthetic secret data behind the test composition and must never add
+a secret-read or fault-control HTTP endpoint.
+
 ## Naming
 
 Code is written in English.

@@ -71,6 +71,11 @@ Add or update tests when changing:
 - customer form-facing data contracts
 - customer number, property manager, status, or hourly rate behavior
 
+Update the R0 E2E matrix when Customers gains a significant workflow or trust
+boundary. Keep at least one representative create/update/search journey, one
+permission or company-isolation denial and one persistence failure/recovery
+scenario. Do not add customer test-control HTTP routes.
+
 ## Business Audit
 
 Customers owns its business audit writes. Customer create, update, activate

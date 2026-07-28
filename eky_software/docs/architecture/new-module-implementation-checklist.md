@@ -164,6 +164,15 @@ log ja tukipaketti ovat eri vastuita.
   näkymäpolku.
 - [ ] Pidä yksikkö- ja komponenttitestit toteutuksen vieressä; tee erillinen
   E2E-alue vasta usean kerroksen käyttäjäpoluille.
+- [ ] Päivitä `r0-e2e-test-matrix.md`: vähintään onnistuva käyttäjäpolku,
+  permission-/tenant-esto ja failure-/recovery-polku.
+- [ ] Lisää cross-module E2E -skenaario, jos moduuli lukee tai komentaa toista
+  moduulia sen julkisen portin kautta.
+- [ ] Kirjaa skenaariolle Activity-, Diagnostics-, incident-index- ja support
+  bundle -sisällytys tai poissulku.
+- [ ] Päivitä packaged-smoke- tai Electron development -raja, jos moduuli lisää
+  desktop-capabilityn, uuden IPC-metodin tai uuden privileged main -toiminnon.
+- [ ] Älä lisää moduuliin E2E-reset-, seed- tai fault HTTP -reittejä.
 - [ ] Aja kohdepaketin testit, workspace-testit, typecheck, tarvittavat buildit
   ja `git diff --check`.
 - [ ] Tarkista moduulirajat, importit, entrypointit, Electron-allowlistit,
