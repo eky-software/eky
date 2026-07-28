@@ -13,12 +13,12 @@ describe('support bundle capability', () => {
     );
 
     expect(fixture.selectTargetPath).toHaveBeenCalledWith(
-      'eky-support-2026-07-27.ekysupport',
+      'eky-support-2026-07-27.json.gz',
     );
     expect(fixture.writeArchive).toHaveBeenCalledWith(
       expect.objectContaining({
         runtimeRoot: '/trusted/runtime',
-        targetPath: '/trusted/export/support.ekysupport',
+        targetPath: '/trusted/export/support.json.gz',
       }),
     );
     expect(fixture.events.map(({ eventName }) => eventName)).toEqual([
@@ -91,7 +91,7 @@ function createFixture(
   const webContents = { mainFrame };
   const events: DesktopOperationalEvent[] = [];
   const selectTargetPath = vi.fn(
-    async () => '/trusted/export/support.ekysupport',
+    async () => '/trusted/export/support.json.gz',
   );
   const loadBackendData = vi.fn(async () =>
     options.backendData === undefined

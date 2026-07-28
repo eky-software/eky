@@ -63,18 +63,22 @@ same boundary records only a safe `desktop.bootstrapFailed` event.
 The support bundle capability accepts no renderer arguments. Electron main
 owns the confirmation, backend request with the runtime session, save dialog,
 strict response parsing, archive creation, and file write. Browser development
-does not expose support bundle export. The resulting `.ekysupport` file is a
+does not expose support bundle export. The resulting `.json.gz` file is a
 sanitized gzip JSON diagnostic artifact, not an encrypted backup.
 
 For local inspection without opening event contents by default, run:
 
 ```text
-pnpm support:inspect -- "C:\path\bundle.ekysupport"
+pnpm support:inspect -- "C:\path\eky-support-2026-07-28.json.gz"
 ```
 
 The development-only inspector validates the bounded gzip/JSON artifact,
-format version and section checksums. Packaged smoke keeps its own validator;
-the production runtime does not depend on the inspector script.
+format version and section checksums regardless of the file extension. It also
+accepts legacy `.ekysupport` archives. 7-Zip can extract `.json.gz` directly
+to JSON, but `support:inspect` is the official validation method. Eky does not
+create a ZIP archive or invoke an external Windows compression process.
+Packaged smoke keeps its own validator; the production runtime does not depend
+on the inspector script.
 
 Operational logs are stored below Electron's fixed user-data root. On Windows
 the default location is `%APPDATA%\Eky\runtime\logs`. The renderer cannot

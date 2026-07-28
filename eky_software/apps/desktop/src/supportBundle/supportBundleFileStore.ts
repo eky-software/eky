@@ -13,7 +13,7 @@ import {
 import { dirname, join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-const supportBundleExtension = '.ekysupport';
+const supportBundleExtension = '.json.gz';
 
 interface WriteSupportBundleOptions {
   archive: Buffer;
@@ -48,7 +48,7 @@ export function writeSupportBundleAtomically(
   );
   const adjacentTemporaryPath = join(
     targetDirectory,
-    `.${identifier}.ekysupport.next`,
+    `.${identifier}.json.gz.next`,
   );
 
   try {

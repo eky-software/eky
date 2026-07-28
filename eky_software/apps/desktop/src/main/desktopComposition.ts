@@ -195,7 +195,7 @@ async function startDesktopCompositionRuntime({
       ? join(
           options.smokeConfiguration.root,
           'support-bundle',
-          'packaged-smoke.ekysupport',
+          'packaged-smoke.json.gz',
         )
       : undefined;
   const secretBrokerChannel = new MessageChannelMain();
@@ -423,8 +423,8 @@ async function startDesktopCompositionRuntime({
         defaultPath: defaultFileName,
         filters: [
           {
-            extensions: ['ekysupport'],
-            name: 'Eky-tukipaketti',
+            extensions: ['json.gz'],
+            name: 'Eky-tukipaketti, GZip-pakattu JSON',
           },
         ],
         title: 'Tallenna Eky-tukipaketti',

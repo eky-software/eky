@@ -99,9 +99,10 @@ runtime-sessionilla. Browser-kehityksessä tukipaketin luontitoimintoa ei
 näytetä.
 
 Electron main validoi backend-vastauksen uudelleen, muodostaa
-checksumillisen gzip-pakatun `.ekysupport`-tiedoston ja kirjoittaa sen
+checksumillisen gzip-pakatun `.json.gz`-tiedoston ja kirjoittaa sen
 käyttäjän vahvistamaan kohteeseen. Renderer ei anna backend-osoitetta,
-runtime-sessionia, tiedostopolkua eikä tukipaketin sisältöä.
+runtime-sessionia, tiedostopolkua eikä tukipaketin sisältöä. Legacy-
+`.ekysupport`-paketit säilyvät virallisen tarkastimen tukemina.
 
 Support bundle -adapterit käyttävät yhtä Diagnostics-moduulin sisäistä
 bounded JSONL -tiedostolukijaa. Primitive omistaa vain regular file/no symlink

@@ -58,7 +58,7 @@ describe('createSupportBundleArchive', () => {
     ) as Record<string, unknown>;
     const serialized = JSON.stringify(document);
 
-    expect(archive.fileName).toBe('eky-support-2026-07-27.ekysupport');
+    expect(archive.fileName).toBe('eky-support-2026-07-27.json.gz');
     expect(document).toMatchObject({
       manifest: {
         creationCorrelationId: 'correlation-1',

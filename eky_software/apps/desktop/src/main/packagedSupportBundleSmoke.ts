@@ -114,6 +114,8 @@ export function validateSupportBundleDocument(
     value.database.health !== 'ok' ||
     !Number.isSafeInteger(value.database.appliedMigrationCount) ||
     !Array.isArray(value.diagnosticEvents) ||
+    value.manifest.truncatedSections.includes('diagnosticEvents') ||
+    !hasExpectedSmokeDiagnosticEvent(value.diagnosticEvents) ||
     !Array.isArray(value.incidentSummaries) ||
     !hasExpectedMinimizedSmokeIncident(value.incidentSummaries) ||
     !isRecord(value.manifest.sectionChecksums)
@@ -155,6 +157,20 @@ export function validateSupportBundleDocument(
   ) {
     throw new Error('DESKTOP_SMOKE_SUPPORT_BUNDLE_CONTENT_FAILED');
   }
+}
+
+function hasExpectedSmokeDiagnosticEvent(values: unknown[]): boolean {
+  return values.some(
+    (value) =>
+      isRecord(value) &&
+      value.category === 'security' &&
+      value.component === 'desktop' &&
+      value.errorCode === null &&
+      value.eventName === 'applicationWindow.newWindowBlocked' &&
+      value.level === 'warn' &&
+      value.outcome === 'blocked' &&
+      value.stage === 'window-open',
+  );
 }
 
 function hasExpectedMinimizedSmokeIncident(values: unknown[]): boolean {

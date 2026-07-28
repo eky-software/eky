@@ -216,7 +216,7 @@ function createDocument(input: {
 }
 
 export function createSupportBundleFileName(createdAt: Date): string {
-  return `eky-support-${createdAt.toISOString().slice(0, 10)}.ekysupport`;
+  return `eky-support-${createdAt.toISOString().slice(0, 10)}.json.gz`;
 }
 
 function createOperationalSummary(

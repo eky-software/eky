@@ -208,7 +208,8 @@ R0:ssa tukipaketti muodostetaan vain desktopissa. Backend palauttaa
 permission-rajatun sanitoidun teknisen projektion, mutta renderer ei saa
 sisäistä reittiä, runtime-sessionia, tallennuspolkua tai paketin sisältöä.
 Electron main vahvistaa toiminnon, validoi backend-vastauksen uudelleen ja
-kirjoittaa checksumeilla varustetun `.ekysupport`-artifactin.
+kirjoittaa checksumeilla varustetun `.json.gz`-artifactin. Vanha
+`.ekysupport`-pääte säilyy vain tarkastimen legacy-yhteensopivuutena.
 
 R0-observabilityn toteutus sisältää nyt tyypitetyt backend- ja desktop-eventit,
 rotatoidut JSONL-lokit, moduulien audit-kirjoitukset, Activity- ja
