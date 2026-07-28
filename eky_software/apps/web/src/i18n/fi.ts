@@ -1,3 +1,11 @@
+function formatFinnishList(items: readonly string[]): string {
+  if (items.length < 2) {
+    return items[0] ?? '';
+  }
+
+  return `${items.slice(0, -1).join(', ')} ja ${items.at(-1)}`;
+}
+
 export const uiText = {
   common: {
     later: 'Myöhemmin',
@@ -22,6 +30,19 @@ export const uiText = {
     invoicing: 'Laskutus',
   },
   activity: {
+    changeCategories: {
+      address: 'osoitetietoja',
+      banking: 'pankkitietoja',
+      billing: 'laskutustietoja',
+      contact: 'yhteystietoja',
+      emailConfiguration: 'sähköpostiasetuksia',
+      identity: 'perustietoja',
+      invoicingDefaults: 'laskutusasetuksia',
+      pricing: 'hinnoittelua',
+      status: 'tilaa',
+    },
+    companySettingsChangeSummary: (categories: readonly string[]) =>
+      `Oman yrityksen ${formatFinnishList(categories)} päivitetty`,
     categories: {
       all: 'Kaikki',
       companySettings: 'Oma yritys',
@@ -30,6 +51,13 @@ export const uiText = {
     },
     category: 'Kategoria',
     customerNumber: 'Asiakas',
+    customerChangeSummary: (
+      customerNumber: string | null,
+      categories: readonly string[],
+    ) =>
+      customerNumber === null
+        ? `Asiakkaan ${formatFinnishList(categories)} päivitetty`
+        : `Asiakkaan ${customerNumber} ${formatFinnishList(categories)} päivitetty`,
     empty: 'Tapahtumia ei ole vielä.',
     event: 'Tapahtuma',
     filters: 'Tapahtumien suodatus',
@@ -50,6 +78,7 @@ export const uiText = {
       unknown: 'Epäselvä',
     },
     month: 'Kuukausi',
+    multipleDataGroupsUpdated: 'Useita tietoryhmiä päivitettiin',
     page: 'Sivu {page}',
     pageSize: 'Rivejä',
     pagination: 'Tapahtumasivut',

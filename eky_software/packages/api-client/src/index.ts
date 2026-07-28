@@ -6,6 +6,7 @@ export {
 export { EkyApiError } from './http.js';
 export type {
   ActivityCategory,
+  ActivityChangeCategory,
   ActivityItem,
   ActivityItemReference,
   ActivityItemType,

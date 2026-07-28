@@ -2,6 +2,7 @@ export { createActivityApi } from './activityClient.js';
 export type {
   ActivityApi,
   ActivityCategory,
+  ActivityChangeCategory,
   ActivityItem,
   ActivityItemReference,
   ActivityItemType,

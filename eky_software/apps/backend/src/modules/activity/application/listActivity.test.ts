@@ -58,6 +58,7 @@ describe('listActivity', () => {
           type: 'invoice.delivered',
         },
         {
+          changeCategories: ['contact', 'pricing'],
           id: 'customers:customer-event',
           module: 'customers',
           occurredAt: '2026-07-27T11:00:00.000Z',
@@ -66,6 +67,7 @@ describe('listActivity', () => {
           type: 'customer.updated',
         },
         {
+          changeCategories: ['contact'],
           id: 'companySettings:settings-event',
           module: 'companySettings',
           occurredAt: '2026-07-27T10:00:00.000Z',
@@ -157,6 +159,7 @@ describe('listActivity', () => {
       .mockResolvedValue(
         Array.from({ length: 25 }, (_, index) => ({
           action: 'customer.updated',
+          changeCategories: ['contact'],
           customerNumber: String(1000 + index),
           id: `event-${String(index).padStart(2, '0')}`,
           occurredAt: new Date(
@@ -206,6 +209,7 @@ function createDependencies(): ListActivityDependencies {
       listCompanySettingsActivity: vi.fn().mockResolvedValue([
         {
           action: 'companySettings.updated',
+          changeCategories: ['contact'],
           id: 'settings-event',
           occurredAt: '2026-07-27T10:00:00.000Z',
         },
@@ -215,6 +219,7 @@ function createDependencies(): ListActivityDependencies {
       listCustomerActivity: vi.fn().mockResolvedValue([
         {
           action: 'customer.updated',
+          changeCategories: ['contact', 'pricing'],
           customerNumber: '1001',
           id: 'customer-event',
           occurredAt: '2026-07-27T11:00:00.000Z',

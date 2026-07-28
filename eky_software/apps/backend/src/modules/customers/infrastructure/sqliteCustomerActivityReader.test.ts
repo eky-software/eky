@@ -31,6 +31,7 @@ describe('SqliteCustomerActivityReader', () => {
     })).resolves.toEqual([
       {
         action: 'customer.updated',
+        changeCategories: ['status'],
         customerNumber: '1001',
         id: 'event-1',
         occurredAt: '2026-07-27T10:00:00.000Z',
@@ -71,6 +72,33 @@ describe('SqliteCustomerActivityReader', () => {
     });
 
     expect(entries.map((entry) => entry.id)).toEqual(['event-start']);
+  });
+
+  it('rejects unknown or duplicate audit categories without exposing values', async () => {
+    insertCustomer(database, 'customer-1', 'company-1', '1001');
+    database
+      .prepare(
+        `
+          INSERT INTO customer_audit_events (
+            id, company_id, actor_user_id, customer_id, action,
+            changed_field_categories, outcome, occurred_at
+          ) VALUES (
+            'invalid-event', 'company-1', 'actor-1', 'customer-1',
+            'customer.updated', '["contact","contact"]', 'success',
+            '2026-07-27T10:00:00.000Z'
+          )
+        `,
+      )
+      .run();
+
+    await expect(
+      new SqliteCustomerActivityReader(database).listCustomerActivity({
+        companyId: 'company-1',
+        limit: 10,
+        occurredAtFrom: '2026-07-01T00:00:00.000Z',
+        occurredAtTo: '2026-08-01T00:00:00.000Z',
+      }),
+    ).rejects.toThrow('CUSTOMER_ACTIVITY_CHANGE_CATEGORIES_INVALID');
   });
 });
 

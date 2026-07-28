@@ -91,6 +91,9 @@ export async function listActivity(
 
   const sortedItems = [
     ...customerEntries.map<ActivityItem>((entry) => ({
+      ...(entry.changeCategories.length === 0
+        ? {}
+        : { changeCategories: entry.changeCategories }),
       id: `customers:${entry.id}`,
       module: 'customers',
       occurredAt: entry.occurredAt,
@@ -102,6 +105,9 @@ export async function listActivity(
       type: entry.action,
     })),
     ...companySettingsEntries.map<ActivityItem>((entry) => ({
+      ...(entry.changeCategories.length === 0
+        ? {}
+        : { changeCategories: entry.changeCategories }),
       id: `companySettings:${entry.id}`,
       module: 'companySettings',
       occurredAt: entry.occurredAt,

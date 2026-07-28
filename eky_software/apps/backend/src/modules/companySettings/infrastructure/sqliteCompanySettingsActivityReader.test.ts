@@ -31,15 +31,47 @@ describe('SqliteCompanySettingsActivityReader', () => {
     ).resolves.toEqual([
       {
         action: 'companyEmailSecret.configured',
+        changeCategories: [],
         id: 'emailSecret:secret-1',
         occurredAt: '2026-07-27T11:00:00.000Z',
       },
       {
         action: 'companySettings.updated',
+        changeCategories: ['contact'],
         id: 'settings:event-1',
         occurredAt: '2026-07-27T10:00:00.000Z',
       },
     ]);
+  });
+
+  it('rejects unknown settings categories without returning field values', async () => {
+    database
+      .prepare(
+        `
+          INSERT INTO company_settings_audit_events (
+            id, company_id, actor_user_id, action, changed_field_categories,
+            outcome, occurred_at
+          ) VALUES (
+            'invalid-event', 'company-1', 'actor-1',
+            'companySettings.updated', '["smtpPassword"]', 'success',
+            '2026-07-27T10:00:00.000Z'
+          )
+        `,
+      )
+      .run();
+
+    await expect(
+      new SqliteCompanySettingsActivityReader(
+        database,
+      ).listCompanySettingsActivity({
+        companyId: 'company-1',
+        limit: 10,
+        occurredAtFrom: '2026-07-01T00:00:00.000Z',
+        occurredAtTo: '2026-08-01T00:00:00.000Z',
+      }),
+    ).rejects.toThrow(
+      'COMPANY_SETTINGS_ACTIVITY_CHANGE_CATEGORIES_INVALID',
+    );
   });
 });
 
