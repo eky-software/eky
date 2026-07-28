@@ -4,6 +4,7 @@ import { gunzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 
 import { createSupportBundleArchive } from './supportBundleArchive.js';
+import { supportBundleSizeBudget } from './supportBundleSizeBudget.js';
 
 describe('createSupportBundleArchive', () => {
   it('creates a gzip JSON artifact with only sanitized diagnostics and checksums', () => {
@@ -109,7 +110,217 @@ describe('createSupportBundleArchive', () => {
     expect(serialized).not.toContain('password');
     expect(serialized).not.toContain('requestBody');
   });
+
+  it('enforces the projected section budgets and preserves newest items', () => {
+    const diagnosticEvents = Array.from({ length: 180 }, (_, index) =>
+      createDiagnosticEvent(index, 100_000),
+    );
+    const incidentSummaries = Array.from({ length: 55 }, (_, index) =>
+      createIncidentSummary(index, 80_000),
+    );
+    const document = readArchiveDocument(
+      createSupportBundleArchive(
+        createArchiveInput({ diagnosticEvents, incidentSummaries }),
+      ),
+    );
+
+    expect(
+      Buffer.byteLength(
+        JSON.stringify(document.diagnosticEvents),
+        'utf8',
+      ),
+    ).toBeLessThanOrEqual(
+      supportBundleSizeBudget.diagnosticEventsBytes,
+    );
+    expect(
+      Buffer.byteLength(
+        JSON.stringify(document.incidentSummaries),
+        'utf8',
+      ),
+    ).toBeLessThanOrEqual(
+      supportBundleSizeBudget.incidentSummariesBytes,
+    );
+    expect(document.diagnosticEvents.length).toBeLessThan(
+      diagnosticEvents.length,
+    );
+    expect(document.incidentSummaries.length).toBeLessThan(
+      incidentSummaries.length,
+    );
+    expect(document.diagnosticEvents[0]?.id).toBe('backend:event-0');
+    expect(document.incidentSummaries[0]?.errorCode).toBe('ERROR_0');
+    expect(document.manifest.truncatedSections).toEqual([
+      'diagnosticEvents',
+      'incidentSummaries',
+    ]);
+  });
+
+  it('trims diagnostics first when core headroom makes the final document exceed the limit', () => {
+    const diagnosticEvents = Array.from({ length: 170 }, (_, index) =>
+      createDiagnosticEvent(index, 98_000),
+    );
+    const incidentSummaries = Array.from({ length: 40 }, (_, index) =>
+      createIncidentSummary(index, 95_000),
+    );
+    const input = createArchiveInput({
+      diagnosticEvents,
+      incidentSummaries,
+    });
+    input.backendData.runtimeSummary.nodeVersion = `v${'x'.repeat(
+      6 * 1024 * 1024,
+    )}`;
+    const archive = createSupportBundleArchive(input);
+    const document = readArchiveDocument(archive);
+    const uncompressed = gunzipSync(archive.compressed);
+
+    expect(uncompressed.byteLength).toBeLessThanOrEqual(
+      supportBundleSizeBudget.maximumUncompressedBytes,
+    );
+    expect(document.diagnosticEvents.length).toBeLessThan(
+      diagnosticEvents.length,
+    );
+    expect(document.incidentSummaries.length).toBe(
+      incidentSummaries.length,
+    );
+    expect(document.operationalSummary.eventCount).toBe(
+      document.diagnosticEvents.length,
+    );
+    expect(document.manifest.sectionChecksums.diagnosticEvents).toBe(
+      sha256(document.diagnosticEvents),
+    );
+    expect(document.manifest.sectionChecksums.operationalSummary).toBe(
+      sha256(document.operationalSummary),
+    );
+  });
+
+  it('trims incident summaries only after diagnostics are exhausted', () => {
+    const incidentSummaries = Array.from({ length: 45 }, (_, index) =>
+      createIncidentSummary(index, 90_000),
+    );
+    const input = createArchiveInput({
+      diagnosticEvents: [],
+      incidentSummaries,
+    });
+    input.backendData.runtimeSummary.nodeVersion = `v${'x'.repeat(
+      23 * 1024 * 1024,
+    )}`;
+    const archive = createSupportBundleArchive(input);
+    const document = readArchiveDocument(archive);
+
+    expect(gunzipSync(archive.compressed).byteLength).toBeLessThanOrEqual(
+      supportBundleSizeBudget.maximumUncompressedBytes,
+    );
+    expect(document.diagnosticEvents).toEqual([]);
+    expect(document.incidentSummaries.length).toBeLessThan(
+      incidentSummaries.length,
+    );
+    expect(document.incidentSummaries[0]?.errorCode).toBe('ERROR_0');
+    expect(document.manifest.truncatedSections).toContain(
+      'incidentSummaries',
+    );
+    expect(document.manifest.sectionChecksums.incidentSummaries).toBe(
+      sha256(document.incidentSummaries),
+    );
+  });
+
+  it('fails safely if the bundle core alone exceeds the total budget', () => {
+    const input = createArchiveInput({
+      diagnosticEvents: [],
+      incidentSummaries: [],
+    });
+    input.backendData.runtimeSummary.nodeVersion = `v${'x'.repeat(
+      26 * 1024 * 1024,
+    )}`;
+
+    expect(() => createSupportBundleArchive(input)).toThrow(
+      'SUPPORT_BUNDLE_CORE_TOO_LARGE',
+    );
+  });
 });
+
+interface ArchiveDocument {
+  diagnosticEvents: Array<{ id: string }>;
+  incidentSummaries: Array<{ errorCode: string }>;
+  manifest: {
+    sectionChecksums: Record<string, string>;
+    truncatedSections: string[];
+  };
+  operationalSummary: {
+    eventCount: number;
+  };
+}
+
+function createArchiveInput(input: {
+  diagnosticEvents: ReturnType<typeof createDiagnosticEvent>[];
+  incidentSummaries: ReturnType<typeof createIncidentSummary>[];
+}) {
+  return {
+    appVersion: '0.1.0-alpha.1',
+    architecture: 'x64',
+    backendData: {
+      backendVersion: '0.1.0-alpha.1',
+      database: {
+        appliedMigrationCount: 35,
+        health: 'ok' as const,
+        latestMigrationName: '035_example.sql',
+      },
+      diagnosticEvents: input.diagnosticEvents,
+      diagnosticPeriodDays: 30 as const,
+      incidentSummaries: input.incidentSummaries,
+      incidentSummariesTruncated: false,
+      runtimeSummary: createRuntimeSummary(),
+      truncated: false,
+    },
+    createdAt: new Date('2026-07-27T12:30:00.000Z'),
+    creationCorrelationId: 'correlation-1',
+    platform: 'win32',
+  };
+}
+
+function createDiagnosticEvent(index: number, payloadLength: number) {
+  return {
+    category: 'smtp',
+    component: 'backend' as const,
+    errorCode: 'SMTP_TLS_FAILED',
+    eventName: 'smtp.tlsFailed',
+    fingerprint: `fingerprint-${index}-${'x'.repeat(payloadLength)}`,
+    id: `backend:event-${index}`,
+    level: 'error' as const,
+    occurredAt: new Date(Date.UTC(2026, 6, 27, 12, 0, index)).toISOString(),
+    outcome: 'failure' as const,
+  };
+}
+
+function createIncidentSummary(index: number, payloadLength: number) {
+  return {
+    appVersion: '0.1.0-alpha.1',
+    buildRevision: 'abcdef123456',
+    count: 1,
+    errorCode: `ERROR_${index}`,
+    eventName: 'smtp.deliveryFailed',
+    fingerprint: `fingerprint-${index}-${'x'.repeat(payloadLength)}`,
+    firstOccurredAt: new Date(
+      Date.UTC(2026, 6, 27, 12, 0, index),
+    ).toISOString(),
+    lastOccurredAt: new Date(
+      Date.UTC(2026, 6, 27, 12, 0, index),
+    ).toISOString(),
+    outcome: 'failure' as const,
+  };
+}
+
+function readArchiveDocument(archive: {
+  compressed: Buffer;
+}): ArchiveDocument {
+  return JSON.parse(
+    gunzipSync(archive.compressed).toString('utf8'),
+  ) as ArchiveDocument;
+}
+
+function sha256(value: unknown): string {
+  return createHash('sha256')
+    .update(JSON.stringify(value), 'utf8')
+    .digest('hex');
+}
 
 function createRuntimeSummary() {
   return {
