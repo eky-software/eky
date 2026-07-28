@@ -14,7 +14,7 @@ Diagnostics UI
   -> mainin runtime-sessionilla tekemä sisäinen backend-haku
   -> tarkka response-validointi
   -> gzip JSON + SHA-256 section checksumit
-  -> yksityinen väliaikaistiedosto ja lopullinen .ekysupport-tiedosto
+  -> yksityinen väliaikaistiedosto ja lopullinen .json.gz-tiedosto
 ```
 
 Backendin `GET /diagnostics/support-bundle-data` on
@@ -25,10 +25,13 @@ querya, `companyId`:tä tai runtime-sessionia.
 
 ## Formaatti
 
-- tiedostopääte `.ekysupport`
+- uusien pakettien tiedostopääte `.json.gz`
+- vanha `.ekysupport`-pääte säilyy tarkastimen legacy-yhteensopivuutena
 - gzip-pakattu UTF-8 JSON
 - `supportBundleFormatVersion = 2`
 - toteutus Node.js:n `zlib`- ja stream-API:lla ilman uutta riippuvuutta
+- formaattia ei vaihdeta ZIPiksi eikä Windowsin ulkoista pakkausprosessia
+  kutsuta
 - enimmäiskoko ennen pakkausta 25 MiB
 - vähintään 5 MiB varataan manifestille, runtime- ja database-yhteenvedoille
   sekä muille ydinosioille
@@ -120,7 +123,7 @@ Jokainen event validoidaan ja redaktoidaan uudelleen ennen sisällytystä.
 Paketti ei saa kasvattaa logs-rootin tai käyttäjän valitseman kohteen
 oikeuksia eikä seurata symlinkkejä.
 
-`.ekysupport` ei ole salattu säiliö. Sisältö on minimoitu ja sanitoitu, mutta
+`.json.gz` ei ole salattu säiliö. Sisältö on minimoitu ja sanitoitu, mutta
 käyttäjä jakaa tiedoston vain harkitusti sovitulle tukitaholle ja poistaa
 ulkoisen kopion, kun käyttötarkoitus päättyy. Eky poistaa vain oman runtimensa
 yli 30 päivää vanhat väliaikaiset tukipakettitiedostot.
@@ -128,7 +131,8 @@ yli 30 päivää vanhat väliaikaiset tukipakettitiedostot.
 Tukipaketti ei ole Eky-varmuuskopio eikä sitä voi käyttää liiketoimintadatan,
 SQLite-tietokannan, laskujen tai asetusten palauttamiseen. `.ekybackup` kuuluu
 myöhemmin erikseen toteutettavaan backup/restore-polkuun; sitä ei saa sekoittaa
-`.ekysupport`-diagnostiikka-artifactiin.
+`.json.gz`-diagnostiikka-artifactiin. Vanha `.ekysupport` tarkoittaa samaa
+legacy-tukipakettiformaattia, ei varmuuskopiota.
 
 ## Paketoitu smoke
 
@@ -147,14 +151,21 @@ Kehittäjä tai tukihenkilö voi validoida käyttäjän toimittaman tukipaketin
 ilman lisäriippuvuutta:
 
 ```text
-pnpm support:inspect -- "C:\polku\paketti.ekysupport"
+pnpm support:inspect -- "C:\polku\eky-support-2026-07-28.json.gz"
 ```
 
-Komento tarkistaa regular file/no symlink -rajan, pakatun ja puretun
+`support:inspect` on tukipaketin virallinen tarkistusmenetelmä. Se hyväksyy
+sekä uuden `.json.gz`-päätteen että legacy-`.ekysupport`-päätteen, mutta ei
+päättele paketin luotettavuutta tiedostopäätteestä. Komento tarkistaa regular
+file/no symlink -rajan, pakatun ja puretun
 25 MiB:n kokorajan, gzipin, formaattiversion, tarkat osiot sekä osioiden
 SHA-256-checksumit. Oletustuloste sisältää vain formaatin, luontiajan,
 versio- ja build-tiedot, tietokantayhteenvedon, tapahtumamäärät,
 katkaistut osiot ja checksum-tilan. Se ei tulosta yksittäisiä tapahtumia.
+
+7-Zip voi purkaa `.json.gz`-tiedoston suoraan JSON-tiedostoksi manuaalista
+tarkastelua varten. Purettu JSON ei ole salattu. Sisällön tekninen validointi
+tehdään silti `support:inspect`-komennolla.
 
 Valinnainen `--write-json "<kohde.json>"` kirjoittaa puretun, salaamattoman
 JSONin ensin saman hakemiston väliaikaistiedostoon ja nimeää sen lopuksi.

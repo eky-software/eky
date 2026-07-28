@@ -38,7 +38,7 @@ describe('writeSupportBundleAtomically', () => {
       targetPath,
     });
 
-    expect(readFileSync(`${targetPath}.ekysupport`, 'utf8')).toBe(
+    expect(readFileSync(`${targetPath}.json.gz`, 'utf8')).toBe(
       'safe bundle',
     );
   });
@@ -46,7 +46,7 @@ describe('writeSupportBundleAtomically', () => {
   it('replaces an existing regular support bundle selected by the user', () => {
     const runtimeRoot = createRoot();
     const targetRoot = createRoot();
-    const targetPath = join(targetRoot, 'support.ekysupport');
+    const targetPath = join(targetRoot, 'support.json.gz');
     writeFileSync(targetPath, 'previous bundle');
 
     writeSupportBundleAtomically({
@@ -73,7 +73,7 @@ describe('writeSupportBundleAtomically', () => {
       writeSupportBundleAtomically({
         archive: Buffer.from('safe bundle'),
         runtimeRoot,
-        targetPath: join(linkedDirectory, 'support.ekysupport'),
+        targetPath: join(linkedDirectory, 'support.json.gz'),
       }),
     ).toThrow('SUPPORT_BUNDLE_DIRECTORY_UNSAFE');
   });

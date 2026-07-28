@@ -48,6 +48,25 @@ describe('validateSupportBundleDocument', () => {
       validateSupportBundleDocument(document, expectedIdentity),
     ).toThrow('DESKTOP_SMOKE_SUPPORT_BUNDLE_INVALID');
   });
+
+  it('rejects an archive without the current smoke diagnostic event', () => {
+    const document = createDocument(undefined, []);
+
+    expect(() =>
+      validateSupportBundleDocument(document, expectedIdentity),
+    ).toThrow('DESKTOP_SMOKE_SUPPORT_BUNDLE_INVALID');
+  });
+
+  it('rejects a complete smoke source marked as diagnostic truncated', () => {
+    const document = createDocument();
+    (
+      document.manifest as Record<string, unknown>
+    ).truncatedSections = ['diagnosticEvents'];
+
+    expect(() =>
+      validateSupportBundleDocument(document, expectedIdentity),
+    ).toThrow('DESKTOP_SMOKE_SUPPORT_BUNDLE_INVALID');
+  });
 });
 
 const expectedIdentity = {
@@ -71,6 +90,21 @@ function createDocument(
       outcome: 'blocked' as const,
     },
   ],
+  diagnosticEvents = [
+    {
+      appVersion: expectedIdentity.appVersion,
+      buildRevision: expectedIdentity.buildRevision,
+      category: 'security',
+      component: 'desktop' as const,
+      errorCode: null,
+      eventName: 'applicationWindow.newWindowBlocked',
+      id: 'desktop-smoke-security-event',
+      level: 'warn' as const,
+      occurredAt: '2026-07-27T12:00:00.000Z',
+      outcome: 'blocked' as const,
+      stage: 'window-open',
+    },
+  ],
 ): Record<string, unknown> {
   const archive = createSupportBundleArchive({
     appVersion: expectedIdentity.appVersion,
@@ -82,7 +116,7 @@ function createDocument(
         health: 'ok',
         latestMigrationName: '035_example.sql',
       },
-      diagnosticEvents: [],
+      diagnosticEvents,
       diagnosticPeriodDays: 30,
       incidentSummaries,
       incidentSummariesTruncated: false,

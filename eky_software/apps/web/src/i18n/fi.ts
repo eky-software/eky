@@ -196,7 +196,8 @@ export const uiText = {
     stage: 'Vaihe',
     status: 'Tila',
     summaryHeading: 'Järjestelmäyhteenveto',
-    supportBundleCreated: 'Tukipaketti luotiin onnistuneesti.',
+    supportBundleCreated:
+      'Eky-tukipaketti luotiin GZip-pakattuna JSON-tiedostona. Paketti ei ole salattu. Lähetä se vain luotetulle tukihenkilölle.',
     version: 'Versio',
     yes: 'Kyllä',
   },

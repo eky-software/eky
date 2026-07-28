@@ -27,7 +27,7 @@ test.afterEach(() => {
   }
 });
 
-test('inspects a valid v2 support bundle without exposing event content', () => {
+test('inspects a valid v2 .json.gz support bundle without exposing event content', () => {
   const fixture = createFixture();
   const result = inspectSupportBundle(fixture.sourcePath);
 
@@ -54,6 +54,26 @@ test('inspects a valid v2 support bundle without exposing event content', () => 
   );
   assert.match(output.lines.join('\n'), /Checksumit: kunnossa/);
   assert.doesNotMatch(output.lines.join('\n'), /SMTP_TLS_FAILED/);
+});
+
+test('accepts current .json.gz and legacy .ekysupport archives by content', () => {
+  const current = createFixture();
+  const legacy = createFixture(
+    () => {},
+    {
+      fileName: 'fixture.ekysupport',
+      refreshChecksums: true,
+    },
+  );
+
+  assert.equal(
+    inspectSupportBundle(current.sourcePath).summary.formatVersion,
+    2,
+  );
+  assert.equal(
+    inspectSupportBundle(legacy.sourcePath).summary.formatVersion,
+    2,
+  );
 });
 
 test('rejects a support bundle with a mismatching section checksum', () => {
@@ -211,10 +231,13 @@ test('maps output-exists failures to the documented exit code', () => {
 
 function createFixture(
   mutate = () => {},
-  options = { refreshChecksums: true },
+  options = {},
 ) {
   const root = createRoot();
-  const sourcePath = join(root, 'fixture.ekysupport');
+  const sourcePath = join(
+    root,
+    options.fileName ?? 'fixture.json.gz',
+  );
   const document = createDocument();
   mutate(document);
   if (options.refreshChecksums !== false) {
