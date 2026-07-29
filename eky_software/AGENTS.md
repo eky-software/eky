@@ -86,6 +86,14 @@ lokikansion avaamista tai tukipakettia, lue myös
 `docs/modules/diagnostics.md`, `docs/architecture/operational-log-retention-plan.md`
 ja `docs/architecture/support-bundle-plan.md`.
 
+Jos työ koskee E2E-testejä, Playwrightia, selain- tai Electron development
+-käyttäjäpolkuja, testiruntimea, fault injectionia, hyökkäyssimulaatioita tai
+packaged-smoken testikattavuutta, lue myös
+`docs/architecture/e2e-testing-strategy.md`,
+`docs/architecture/r0-e2e-test-matrix.md` ja
+`docs/architecture/e2e-test-environment.md`. Jos muutat `apps/e2e`-aluetta,
+lue myös sen oma `AGENTS.md`.
+
 Jos työ koskee uuden liiketoimintamoduulin tai moduulikansion perustamista,
 `docs/modules/`-vastuudokumenttia, moduulikohtaista `AGENTS.md`-tiedostoa,
 composition rootia, moduulien välistä luku- tai kirjoitussopimusta,

@@ -74,6 +74,12 @@ the change requires.
 Use synthetic data only. Never place real customer data, invoice data,
 credentials or secrets in tests, fixtures, snapshots or logs.
 
+Update the R0 E2E matrix for every new invoice state transition, delivery
+outcome, correction workflow or cross-module read. Keep representative
+successful lifecycle, permission/company denial, concurrency/idempotency and
+failure/recovery scenarios. E2E uses fake SMTP and isolated document storage;
+never expose invoice reset, seed or fault controls through production HTTP.
+
 ## Observability
 
 Invoicing owns its business audit and delivery events. Critical audit writes

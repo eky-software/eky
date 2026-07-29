@@ -105,6 +105,15 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
 - Testataanko laskenta ja tilasiirtymät?
 - Ovatko testit luettavia?
 - Käyttävätkö testit vain testidataa?
+- Päivitettiinkö R0 E2E -matriisi, jos moduuli, luottamusraja, sivuvaikutus,
+  tilakone tai Electron-capability muuttui?
+- Onko alemman tason kattavuus erotettu rehellisesti toteutetusta E2E:stä?
+- Käyttääkö E2E vain loopbackia, synteettistä dataa, testikohtaista temp-rootia
+  ja fake-adaptereita?
+- Jäävätkö production-build, HTTP-pinta, preload ja renderer vapaiksi
+  testikontrolleista ja fault injectionista?
+- Todistetaanko onnistuvan polun lisäksi permission/tenant-esto sekä
+  failure/recovery-polku oikealla testitasolla?
 
 ## Dokumentaatio
 

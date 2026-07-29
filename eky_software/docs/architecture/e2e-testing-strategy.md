@@ -1,7 +1,9 @@
 # E2E-testausstrategia
 
-Tämä dokumentti määrittelee Eky R0:n tulevan E2E-työpaketin C. Tässä
-observability-työpaketissa ei lisätä Playwrightia eikä uusia riippuvuuksia.
+Tämä dokumentti määrittelee Eky R0:n system-, selain-, Electron development-
+ja packaged-smoke-testitasot. Pysyvä skenaarioluettelo on
+`r0-e2e-test-matrix.md`-tiedostossa ja turvallinen runtime
+`e2e-test-environment.md`-tiedostossa.
 
 ## Testitasot
 
@@ -59,5 +61,21 @@ Työpaketti C kattaa vähintään:
 
 ## Riippuvuuspäätös
 
-Playwright tai muu E2E-riippuvuus arvioidaan ja hyväksytään erikseen ennen
-asennusta. Tämä dokumentti ei ole riippuvuuden hyväksyntä.
+Projektin omistaja on hyväksynyt `@playwright/test`-paketin täsmälleen
+versiona `1.61.1` vain `apps/e2e`-testipakettiin sekä sen Chromium-
+testibinäärin. Selainbinääri ei kuulu Eky.exe-artifactiin.
+
+Hyväksyntä ei kata erillistä `playwright`- tai `playwright-core`-lisäystä eikä
+mitään muuta testikirjastoa. Jos Electron-rajapinta ei ole käytettävissä
+hyväksytyn paketin kautta, työ pysäytetään ennen uuden riippuvuuden lisäämistä.
+
+## Definition of Done
+
+Uusi moduuli tai merkittävä ominaisuus lisää matriisiin vähintään onnistuvan
+polun, permission-/tenant-eston ja failure-/recovery-polun. Cross-module-polku
+ja packaged-turvaraja lisätään silloin, kun muutos niitä koskee.
+
+Invariantit, laskenta, validointi, atomisuus ja laajat rajataulukot testataan
+edelleen alimmalla sopivalla tasolla. E2E-tapaukset valitaan
+luottamusrajoista, tilakoneista, sivuvaikutuksista ja todellisista
+rikkoutumistavoista; niitä ei kasvateta satunnaisilla variaatioilla.

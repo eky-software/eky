@@ -1,0 +1,25 @@
+{
+  "name": "@eky/e2e",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "e2e:prepare": "pnpm --filter @eky/backend e2e:build",
+    "e2e:system": "pnpm e2e:prepare && playwright test --project=system-api",
+    "e2e:web": "playwright test --project=web-chromium",
+    "e2e:web:critical": "playwright test --project=web-chromium --grep @critical",
+    "e2e:security": "playwright test --grep @security",
+    "e2e:fault": "playwright test --grep @fault",
+    "e2e:electron": "playwright test --project=electron-development",
+    "e2e:critical": "playwright test --project=system-api --project=web-chromium --grep @critical",
+    "e2e:all": "pnpm e2e:prepare && playwright test",
+    "report": "playwright show-report playwright-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1"
+  }
+}

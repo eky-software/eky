@@ -36,9 +36,11 @@ invoiceRowFormState.test.ts
 Kun toteutus siirtyy moduulin sisällä, sen testi siirtyy mukana. Yksikkötesteille
 ei luoda juureen toteutusrakennetta peilaavaa yleistä `tests/`-kansiota.
 
-Laajemmat integraatio-, sopimus- ja E2E-testit voidaan myöhemmin sijoittaa omiin
-selkeästi nimettyihin kansioihinsa, jos niiden testattava kokonaisuus ei kuulu
-yhdelle tiedostolle tai moduulin sisäiselle vastuulle.
+Laajemmat integraatio- ja sopimustestit sijoitetaan selkeästi nimettyihin
+vastuualueisiin, jos kokonaisuus ei kuulu yhdelle tiedostolle tai moduulille.
+Usean kerroksen system-, selain- ja Electron development -E2E-testit kuuluvat
+`apps/e2e`-workspaceen. Hardened packaged-artifactin smoke-testit säilyvät
+desktop-paketin omistuksessa.
 
 Yleistä `test-utils`-kaatopaikkaa ei luoda. Toistuva testi-infrastruktuuri
 irrotetaan vasta todelliseen tarpeeseen ja nimetään vastuun mukaan.
@@ -203,5 +205,15 @@ Kun muutos lisää eventin, lokin, auditin, retentionin tai tukipaketin:
   observability-ketjun failure behavioria
 
 E2E:n pysyvä strategia on dokumentissa
-`docs/architecture/e2e-testing-strategy.md`. Playwrightia ei lisätä ilman
-erillistä riippuvuuspäätöstä.
+`docs/architecture/e2e-testing-strategy.md`, skenaariot
+`docs/architecture/r0-e2e-test-matrix.md`-tiedostossa ja runtime-rajat
+`docs/architecture/e2e-test-environment.md`-tiedostossa.
+
+`@playwright/test` on hyväksytty vain `apps/e2e`-pakettiin, täsmälleen
+versiona `1.61.1`. Tämä ei hyväksy muita E2E-riippuvuuksia.
+
+E2E ei korvaa yksikkö- tai integraatiotestiä. Invariantti testataan kattavasti
+alimmalla sopivalla tasolla ja E2E todistaa edustavan koko järjestelmän polun.
+Uusi moduuli tai merkittävä ominaisuus päivittää E2E-matriisiin onnistuvan,
+permission-/tenant-eston ja failure-/recovery-polun sekä tarvittaessa
+cross-module- ja packaged-turvarajan.

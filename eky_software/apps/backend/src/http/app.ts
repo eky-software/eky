@@ -17,7 +17,10 @@ import { createCompanySettingsComposition } from '../composition/companySettings
 import { createCustomersComposition } from '../composition/customersComposition.js';
 import { createActivityComposition } from '../composition/activityComposition.js';
 import { createDiagnosticsComposition } from '../composition/diagnosticsComposition.js';
-import { createInvoicingComposition } from '../composition/invoicingComposition.js';
+import {
+  createInvoicingComposition,
+  type InvoicingInfrastructureAdapters,
+} from '../composition/invoicingComposition.js';
 import type { CompanyEmailSecretReader } from '../modules/companySettings/ports/companyEmailSecretReader.js';
 import type { CompanyEmailSecretStore } from '../modules/companySettings/ports/companyEmailSecretStore.js';
 import { createBackendOperationalEvent } from '../observability/createOperationalEvent.js';
@@ -50,6 +53,7 @@ export interface CreateAppOptions {
   databaseFilePath?: string;
   electronVersion?: string;
   invoiceDocumentStorageRoot?: string;
+  invoicingInfrastructureAdapters?: InvoicingInfrastructureAdapters;
   migrationsDirectory?: string;
   operationalLogger?: OperationalLogger;
   operationalIdentity?: Readonly<OperationalRuntimeIdentity>;
@@ -312,6 +316,12 @@ export async function createApp(
     invoiceCustomerTaxProfileReader:
       customersComposition.invoiceCustomerTaxProfileReader,
     database,
+    ...(options.invoicingInfrastructureAdapters === undefined
+      ? {}
+      : {
+          infrastructureAdapters:
+            options.invoicingInfrastructureAdapters,
+        }),
     invoiceEmailSettingsReader:
       companySettingsComposition.invoiceEmailSettingsReader,
     operationalLogger,

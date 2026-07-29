@@ -1,0 +1,254 @@
+import { createServer } from 'node:http';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { join, resolve } from 'node:path';
+
+import { expect, test } from '@playwright/test';
+
+import {
+  assertE2eSafetyBoundary,
+  assertPathUnderRoot,
+} from '../../src/environment/assertE2eSafetyBoundary.js';
+import { collectFailureArtifacts } from '../../src/environment/collectFailureArtifacts.js';
+import { createE2eRunRoot } from '../../src/environment/createE2eRunRoot.js';
+import { createE2eWorkerPaths } from '../../src/environment/createE2eWorkerPaths.js';
+import { reserveLoopbackPort } from '../../src/environment/reserveLoopbackPort.js';
+import { startManagedProcess } from '../../src/environment/startManagedProcess.js';
+import { stopManagedProcessTree } from '../../src/environment/stopManagedProcessTree.js';
+import { waitForHttpHealth } from '../../src/environment/waitForHttpHealth.js';
+
+test.describe('SYS-ISOLATION-001 @critical @security', () => {
+  test('creates every runtime path under an isolated OS temp root', async () => {
+    const runRoot = createE2eRunRoot();
+    try {
+      const paths = createE2eWorkerPaths(runRoot, 'SYS-ISOLATION-001');
+
+      assertE2eSafetyBoundary({
+        backendHost: '127.0.0.1',
+        environment: { EKY_E2E: '1' },
+        paths,
+        productionUserDataPath: resolve(runRoot, '..', 'production-user-data'),
+        runRoot,
+        smtpAdapter: 'fake',
+        urls: ['http://127.0.0.1:3000', 'http://127.0.0.1:5173'],
+        webHost: '127.0.0.1',
+      });
+
+      for (const path of [
+        paths.workerRoot,
+        paths.documentsRoot,
+        paths.logsRoot,
+        paths.supportBundlesRoot,
+      ]) {
+        expect(path.startsWith(runRoot)).toBe(true);
+        expect(existsSync(path)).toBe(true);
+      }
+    } finally {
+      rmSync(runRoot, { force: true, recursive: true });
+    }
+  });
+
+  test('refuses unsafe marker, host, URL, SMTP and path boundaries', async () => {
+    const runRoot = createE2eRunRoot();
+    const outsideRoot = createE2eRunRoot();
+    try {
+      const paths = createE2eWorkerPaths(runRoot, 'SYS-ISOLATION-002');
+      const validInput = {
+        backendHost: '127.0.0.1',
+        environment: { EKY_E2E: '1' },
+        paths,
+        runRoot,
+        smtpAdapter: 'fake',
+        urls: ['http://127.0.0.1:3000'],
+        webHost: '127.0.0.1',
+      } as const;
+
+      expect(() =>
+        assertE2eSafetyBoundary({
+          ...validInput,
+          environment: {},
+        }),
+      ).toThrow('marker');
+      expect(() =>
+        assertE2eSafetyBoundary({
+          ...validInput,
+          backendHost: '0.0.0.0',
+        }),
+      ).toThrow('loopback');
+      expect(() =>
+        assertE2eSafetyBoundary({
+          ...validInput,
+          smtpAdapter: 'smtp',
+        }),
+      ).toThrow('fake SMTP');
+      expect(() =>
+        assertE2eSafetyBoundary({
+          ...validInput,
+          urls: ['https://example.invalid'],
+        }),
+      ).toThrow('loopback origin');
+      expect(() =>
+        assertE2eSafetyBoundary({
+          ...validInput,
+          paths: {
+            ...paths,
+            logsRoot: outsideRoot,
+          },
+        }),
+      ).toThrow('escapes');
+      expect(() =>
+        assertE2eSafetyBoundary({
+          ...validInput,
+          productionUserDataPath: paths.workerRoot,
+        }),
+      ).toThrow('production user data');
+    } finally {
+      rmSync(runRoot, { force: true, recursive: true });
+      rmSync(outsideRoot, { force: true, recursive: true });
+    }
+  });
+
+  test('rejects symbolic links inside the runtime path', async () => {
+    const runRoot = createE2eRunRoot();
+    const outsideRoot = createE2eRunRoot();
+    try {
+      const linkPath = join(runRoot, 'linked');
+      try {
+        symlinkSync(outsideRoot, linkPath, 'junction');
+      } catch {
+        test.skip(true, 'Symbolic link creation is unavailable.');
+      }
+
+      expect(() => assertPathUnderRoot(linkPath, runRoot)).toThrow(
+        /escapes|symbolic/,
+      );
+    } finally {
+      rmSync(runRoot, { force: true, recursive: true });
+      rmSync(outsideRoot, { force: true, recursive: true });
+    }
+  });
+});
+
+test.describe('managed E2E runtime primitives', () => {
+  test('reserves a loopback port and waits for explicit HTTP health', async () => {
+    const port = await reserveLoopbackPort();
+    const server = createServer((request, response) => {
+      response.statusCode = request.url === '/health' ? 200 : 404;
+      response.end();
+    });
+
+    try {
+      await new Promise<void>((resolveListen, rejectListen) => {
+        server.once('error', rejectListen);
+        server.listen(port, '127.0.0.1', resolveListen);
+      });
+      await waitForHttpHealth(`http://127.0.0.1:${port}/health`);
+    } finally {
+      await new Promise<void>((resolveClose) => {
+        server.close(() => resolveClose());
+      });
+    }
+  });
+
+  test('bounds and redacts managed process output and stops the process', async () => {
+    const secret = 'synthetic-e2e-secret';
+    const managed = startManagedProcess({
+      args: [
+        '-e',
+        `console.log('${secret}'); setInterval(() => {}, 1000);`,
+      ],
+      command: process.execPath,
+      cwd: process.cwd(),
+      environment: { EKY_E2E: '1' },
+      outputLimitBytes: 1_024,
+      redactedValues: [secret],
+    });
+
+    try {
+      await waitForOutput(managed.readStdout);
+      expect(managed.readStdout()).toContain('[REDACTED]');
+      expect(managed.readStdout()).not.toContain(secret);
+    } finally {
+      await stopManagedProcessTree(managed.child);
+    }
+    expect(managed.child.exitCode).not.toBeNull();
+  });
+
+  test('collects only allowlisted files below the run root', async () => {
+    const runRoot = createE2eRunRoot();
+    try {
+      const paths = createE2eWorkerPaths(runRoot, 'SYS-ARTIFACT-001');
+      const logPath = join(paths.logsRoot, 'synthetic.jsonl');
+      writeFileSync(logPath, '{"eventName":"synthetic"}\n', 'utf8');
+
+      const manifestPath = collectFailureArtifacts({
+        appVersion: '0.0.0-e2e',
+        buildRevision: 'development',
+        files: [logPath],
+        runRoot,
+        scenarioId: 'SYS-ARTIFACT-001',
+        targetRoot: paths.artifactsRoot,
+      });
+
+      expect(readFileSync(manifestPath, 'utf8')).toContain(
+        'SYS-ARTIFACT-001',
+      );
+      expect(existsSync(join(paths.artifactsRoot, 'synthetic.jsonl'))).toBe(
+        true,
+      );
+
+      const outsideDirectory = resolve(runRoot, '..', 'outside-artifact');
+      mkdirSync(outsideDirectory, { recursive: true });
+      const outsideFile = join(outsideDirectory, 'outside.txt');
+      writeFileSync(outsideFile, 'outside', 'utf8');
+      expect(() =>
+        collectFailureArtifacts({
+          appVersion: '0.0.0-e2e',
+          buildRevision: 'development',
+          files: [outsideFile],
+          runRoot,
+          scenarioId: 'SYS-ARTIFACT-001',
+          targetRoot: paths.artifactsRoot,
+        }),
+      ).toThrow('escapes');
+
+      writeFileSync(
+        paths.runtimeConfigPath,
+        '{"sessionSecret":"synthetic-secret"}\n',
+        'utf8',
+      );
+      expect(() =>
+        collectFailureArtifacts({
+          appVersion: '0.0.0-e2e',
+          buildRevision: 'development',
+          files: [paths.runtimeConfigPath],
+          runRoot,
+          scenarioId: 'SYS-ARTIFACT-001',
+          targetRoot: paths.artifactsRoot,
+        }),
+      ).toThrow('runtime config');
+      rmSync(outsideDirectory, { force: true, recursive: true });
+    } finally {
+      rmSync(runRoot, { force: true, recursive: true });
+    }
+  });
+});
+
+async function waitForOutput(readOutput: () => string): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    if (readOutput() !== '') {
+      return;
+    }
+    await new Promise((resolveDelay) => {
+      setTimeout(resolveDelay, 20);
+    });
+  }
+  throw new Error('Managed process did not produce output.');
+}

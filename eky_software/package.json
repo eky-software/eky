@@ -10,7 +10,15 @@
   "scripts": {
     "support:inspect": "node apps/desktop/scripts/inspect-support-bundle.mjs",
     "test": "pnpm --recursive test",
-    "typecheck": "pnpm --recursive typecheck"
+    "typecheck": "pnpm --recursive typecheck",
+    "test:e2e:system": "pnpm --filter @eky/e2e e2e:system",
+    "test:e2e:web": "pnpm --filter @eky/e2e e2e:web",
+    "test:e2e:critical": "pnpm --filter @eky/e2e e2e:critical",
+    "test:e2e:security": "pnpm --filter @eky/e2e e2e:security",
+    "test:e2e:fault": "pnpm --filter @eky/e2e e2e:fault",
+    "test:e2e:electron": "pnpm --filter @eky/e2e e2e:electron",
+    "test:e2e:all": "pnpm --filter @eky/e2e e2e:all",
+    "test:e2e:report": "pnpm --filter @eky/e2e report"
   },
   "devDependencies": {
     "typescript": "^6.0.3",

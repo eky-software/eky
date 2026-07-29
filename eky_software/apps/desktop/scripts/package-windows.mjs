@@ -156,6 +156,14 @@ async function assertSafeBackendStage() {
     const isProjectOwnedFile =
       !normalizedPath.startsWith('node_modules/') ||
       normalizedPath.includes('/node_modules/@eky/');
+    const lowerPath = normalizedPath.toLowerCase();
+    const containsE2eArtifact =
+      lowerPath.startsWith('e2e/') ||
+      lowerPath.startsWith('e2e-dist/') ||
+      lowerPath.includes('/e2e/') ||
+      lowerPath.includes('/e2e-dist/') ||
+      lowerPath.includes('e2ebackend') ||
+      lowerPath.includes('e2efaultplan');
 
     return (
       isProjectOwnedFile &&
@@ -163,6 +171,7 @@ async function assertSafeBackendStage() {
         fileName.endsWith('.sqlite') ||
         fileName.endsWith('.pdf') ||
         fileName.includes('.test.') ||
+        containsE2eArtifact ||
         normalizedPath.startsWith('src/') ||
         normalizedPath.includes('/node_modules/@eky/') &&
           normalizedPath.includes('/src/'))
