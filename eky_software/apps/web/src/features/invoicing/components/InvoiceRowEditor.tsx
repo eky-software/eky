@@ -64,7 +64,11 @@ export function InvoiceRowEditor({
   }, [errors?.discountValue, row.discountType]);
 
   return (
-    <div className={`${styles.row} ${showVat ? '' : styles.rowWithoutVat}`}>
+    <div
+      aria-label={`${uiText.invoicing.row} ${position}`}
+      className={`${styles.row} ${showVat ? '' : styles.rowWithoutVat}`}
+      role="group"
+    >
       <div
         className={`${styles.mainRow} ${
           showVat ? '' : styles.mainRowWithoutVat

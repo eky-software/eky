@@ -59,6 +59,9 @@ describe('InvoiceRowsEditor', () => {
   it('renders each row and enables removal when several rows exist', () => {
     const html = renderEditor(addInvoiceRow(createInitialInvoiceRows()));
 
+    expect(html).toContain(`aria-label="${uiText.invoicing.row} 1"`);
+    expect(html).toContain(`aria-label="${uiText.invoicing.row} 2"`);
+    expect(html.match(/role="group"/g)).toHaveLength(2);
     expect(html).toContain('invoice-row-1-description');
     expect(html).toContain('invoice-row-2-description');
     expect(html).not.toContain(
