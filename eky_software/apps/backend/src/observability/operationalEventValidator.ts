@@ -26,7 +26,7 @@ const ibanPattern = /\b[A-Z]{2}\s*\d{2}(?:[\s-]*[A-Z0-9]){11,30}\b/i;
 const bearerPattern = /\bBearer\s+[A-Za-z0-9._~+/=-]+/i;
 const windowsUserPathPattern = /[A-Za-z]:[\\/]+Users[\\/]+[^\\/]+/i;
 const finnishPersonalIdentityCodePattern =
-  /\b\d{6}[+-A]\d{3}[0-9A-Y]\b/i;
+  /\b\d{6}(?:[+-]|A)\d{3}[0-9A-Y]\b/i;
 const isoTimestampPattern =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 const monthPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -37,6 +37,13 @@ const buildRevisionPattern = /^(?:[0-9a-f]{7,40}|development)$/;
 const maximumStringLength = 300;
 const controlCharacterPattern = /[\u0000-\u001f\u007f-\u009f]/g;
 const identifierPattern = /^[A-Za-z0-9._:-]+$/;
+const technicalIdentifierFields = new Set([
+  'actorUserId',
+  'companyId',
+  'entityId',
+  'entityType',
+  'operationId',
+]);
 const sideEffectStates = new Set<OperationalSideEffectState>([
   'committed',
   'none',
@@ -193,6 +200,15 @@ function validatePayload(
       if (typeof fieldValue !== 'string' || !uuidPattern.test(fieldValue)) {
         throw new OperationalEventValidationError(
           'Operational event correlation id is invalid.',
+        );
+      }
+      continue;
+    }
+
+    if (technicalIdentifierFields.has(field)) {
+      if (!isSafeIdentifier(fieldValue)) {
+        throw new OperationalEventValidationError(
+          'Operational event technical identifier is invalid.',
         );
       }
       continue;

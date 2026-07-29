@@ -104,6 +104,28 @@ describe('backend operational event contracts', () => {
     });
   });
 
+  it('validates technical identifiers without mistaking UUIDs for IBAN values', () => {
+    expect(
+      createBackendOperationalEvent(
+        {
+          companyId: 'local-company-fbcf7827d1368a633e4bf90bc304ae10',
+          entityId: '4ecc4df7-dc83-4031-b935-34adaad41f7a',
+          entityType: 'approvedInvoice',
+          errorCode: 'INVOICE_DELIVERY_PREPARE_BLOCKED',
+          eventName: 'invoiceDelivery.prepareBlocked',
+          operationId: 'attempt-1',
+          retryable: false,
+          sideEffectState: 'none',
+          stage: 'prepare',
+        },
+        options,
+      ),
+    ).toMatchObject({
+      companyId: 'local-company-fbcf7827d1368a633e4bf90bc304ae10',
+      entityId: '4ecc4df7-dc83-4031-b935-34adaad41f7a',
+    });
+  });
+
   it.each([
     ['password', 'synthetic-secret'],
     ['details', 'anything'],
@@ -132,6 +154,19 @@ describe('backend operational event contracts', () => {
           errorCode: 'SAFE_ERROR',
           eventName: 'database.openFailed',
           stage,
+        },
+        options,
+      ),
+    ).toThrow(OperationalEventValidationError);
+  });
+
+  it('rejects a Finnish personal identity code in free text', () => {
+    expect(() =>
+      createBackendOperationalEvent(
+        {
+          errorCode: 'SAFE_ERROR',
+          eventName: 'database.openFailed',
+          stage: '010101-123N',
         },
         options,
       ),
