@@ -16,7 +16,8 @@
     "e2e:fault": "pnpm e2e:prepare && playwright test --grep @fault",
     "e2e:electron": "playwright test --project=electron-development",
     "e2e:critical": "pnpm e2e:prepare && playwright test --project=system-api --project=web-chromium --grep @critical",
-    "e2e:all": "pnpm e2e:prepare && playwright test",
+    "e2e:stress": "pnpm e2e:prepare && playwright test --project=endurance-baseline",
+    "e2e:all": "pnpm e2e:prepare && playwright test --project=system-api --project=web-chromium --project=electron-development",
     "report": "playwright show-report playwright-report"
   },
   "devDependencies": {
