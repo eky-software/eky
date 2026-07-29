@@ -1,0 +1,148 @@
+# Riippuvuusturvan lähtötilanne 2026-07
+
+Tämä dokumentti kirjaa Eky-repositorion riippuvuusturvan tarkastuksen ennen
+heinäkuun 2026 rajattuja tietoturvapäivityksiä.
+
+Tarkastettu lähtöcommit on
+`9c47cdf32d60f3cf3d20d48c24ee7d43361c8fad`. Eky-tuoteversio on
+`0.1.0-alpha.1`.
+
+## Tarkastusympäristö
+
+- Node.js `24.11.0`
+- pnpm `11.1.3`
+- asennus onnistui komennolla `pnpm install --frozen-lockfile`
+- `pnpm audit signatures` varmisti kaikkien 203 asennetun paketin
+  rekisteriallekirjoitukset
+- `pnpm audit --json` löysi kolme advisorya
+- `pnpm audit --prod --json` löysi kaksi tuotantoriippuvuuksiin vaikuttavaa
+  advisorya
+- auditissa ei käytetty `--fix`-komentoa eikä overridea
+
+pnpm 11.1.0:sta alkaen virallinen `pnpm audit signatures` tarkistaa
+asennettujen pakettien ECDSA-rekisteriallekirjoitukset rekisterien julkaisemilla
+avaimilla. Tarkistus ei korvaa lockfilea, advisory-auditia, release notes
+-katselmointia tai paketoidun artifactin testausta.
+
+## Suorat tarkastetut versiot
+
+| Käyttö | Paketti | Lähtöversio | Tyyppi | Lisenssi |
+| --- | --- | ---: | --- | --- |
+| Backend HTTP-adapteri | `@hono/node-server` | `2.0.3` | production, direct | MIT |
+| Backend HTTP-framework | `hono` | `4.12.27` | production, direct | MIT |
+| Windows-paketointi | `@electron/packager` | `20.0.2` | development, direct | BSD-2-Clause |
+| Desktop-runtime | `electron` | `42.6.1` | development, direct | MIT |
+
+Muut saatavilla olevat päivitykset ovat tämän turvallisuustehtävän ulkopuolella.
+Erityisesti Electron 43, `better-sqlite3`, React, Vite, TypeScript,
+Playwright ja PDFKit säilyvät tässä vaiheessa ennallaan.
+
+## Löydökset
+
+### GHSA-frvp-7c67-39w9
+
+- vakavuus: moderate
+- paketti: suora production-riippuvuus `@hono/node-server@2.0.3`
+- affected range: `<2.0.5`
+- patched range: `>=2.0.5`
+- riippuvuusketju: `@eky/backend -> @hono/node-server`
+- vaikutus: Windowsin `serve-static` voi käsitellä URL-koodatun kenoviivan
+  polkuerottimena ja ohittaa prefix-middleware-rajan
+- Eky-altistus: Eky ei importoi `@hono/node-server/serve-static`-middlewarea
+  eikä backend tarjoa staattisia tiedostoja tämän adapterin kautta; backend
+  kuuntelee lisäksi vain IPv4-loopbackissa
+- korjaus: päivitä `@hono/node-server` uusimpaan vakaaseen korjattuun
+  2.x-versioon
+
+Virallinen advisory:
+<https://github.com/advisories/GHSA-frvp-7c67-39w9>
+
+### GHSA-9mqv-5hh9-4cgg
+
+- vakavuus: moderate
+- paketti: suora production-riippuvuus `@hono/node-server@2.0.3`
+- affected range: `>=2.0.0 <=2.0.9`
+- patched range: `>=2.0.10`
+- riippuvuusketju: `@eky/backend -> @hono/node-server`
+- vaikutus: keskeytetty virheellinen WebSocket-kättely voi jättää requestin
+  pysyvästi muistiin ja johtaa saatavuushyökkäykseen
+- Eky-altistus: Eky ei käytä `upgradeWebSocket`-reittejä eikä anna
+  `serve`-kutsulle WebSocket-palvelinta; backend kuuntelee vain
+  IPv4-loopbackissa
+- korjaus: päivitä `@hono/node-server` uusimpaan vakaaseen korjattuun
+  2.x-versioon
+
+Virallinen advisory:
+<https://github.com/advisories/GHSA-9mqv-5hh9-4cgg>
+
+### GHSA-mh99-v99m-4gvg / CVE-2026-14257
+
+- vakavuus: high
+- paketti: transitiivinen development-riippuvuus `brace-expansion@5.0.7`
+- affected range: `<=5.0.7`
+- patched range: `>=5.0.8`
+- riippuvuusketju:
+  `@eky/desktop -> @electron/packager -> @electron/asar / @electron/universal
+  -> glob / minimatch -> brace-expansion`
+- vaikutus: hyökkääjän hallitsema poikkeuksellisen pitkä brace-pattern voi
+  kasvattaa muistinkäytön rajatta ja kaataa Node.js-prosessin
+- Eky-altistus: ketju kuuluu vain Windows-paketoinnin build-ympäristöön;
+  paketoija käsittelee Eky-repositorion luotettuja polkuja eikä käyttäjän tai
+  verkon syöttämiä glob-pattern-arvoja. Löydös ei sisälly backendin
+  production-riippuvuuksien auditiin
+- korjaus: päivitä ensin `@electron/packager` uusimpaan vakaaseen
+  20.x-versioon ja varmista auditista sekä lockfile-diffistä, että
+  transitiivinen ketju siirtyy korjattuun versioon
+- pysäytysraja: jos high-löydös jää upstream-päivityksen jälkeen, Electronia ei
+  päivitetä ennen projektin omistajan uutta päätöstä
+
+Virallinen advisory:
+<https://github.com/advisories/GHSA-mh99-v99m-4gvg>
+
+## Nykyiset suojarajat
+
+- backend pakottaa kuunteluosoitteeksi `127.0.0.1`
+- Electron main käynnistää ja sulkee paketoidun backendin hallitusti
+- runtime-session ja `ActorContext` suojaavat arkaluonteiset local-runtime
+  -reitit
+- HTTP-body-rajat, unknown-field-torjunta ja requestin kertalukeminen testataan
+  backendissä ja system E2E -tasolla
+- `@hono/node-server` käyttää oletusarvoista kesken jäävien incoming requestien
+  cleanupia; Eky ei kytke sitä pois
+- Windows-paketointi rakentaa `better-sqlite3`-kopion lukitulle Electron ABI:lle
+  ja tarkistaa tuotantofuset
+
+Nämä rajat pienentävät käytännön altistusta, mutta eivät ole peruste jättää
+korjattavissa olevaa tunnettua haavoittuvuutta riippuvuuspuuhun.
+
+## Päivityssuunnitelma
+
+1. Päivitä `@hono/node-server` versioon `2.0.12` ja `hono` versioon
+   `4.12.32`; varmista runtime-, security-, fault- ja endurance-testit.
+2. Päivitä `@electron/packager` versioon `20.0.4`; tarkista high-ketju,
+   transitiiviset muutokset ja lisenssit ennen jatkoa.
+3. Jos paketointiketju on puhdas, päivitä Electron uusimpaan vakaaseen
+   42.x-patchiin. Tarkastushetkellä versio on `42.8.0`.
+4. Lisää Dependabotin hallittu viikkorytmi ja erillinen vain lukeva
+   dependency-audit-workflow.
+5. Aja lopullinen testaus-, paketointi-, smoke- ja audit-portti.
+
+## CI- ja repository-asetusten lähtötila
+
+Nykyinen SHA-pinnattu CI sisältää tarkistukset:
+
+- `Test, typecheck and build`
+- `System security E2E`
+- `Web critical E2E`
+
+Repositoryn GitHub Advanced Security -asetuksia ei voitu todentaa tästä
+paikallisesta ympäristöstä, koska käytettävissä ei ollut autentikoitua GitHub
+CLI -yhteyttä. Dependency graph, Dependabot alerts ja Dependabot security
+updates tarkistetaan ja kytketään tarvittaessa GitHubin asetuksista
+automaatio-checkpointin yhteydessä.
+
+## Rajaukset
+
+Tähän lähtötiladokumenttiin ei tallenneta auditin raakaa JSON-vastausta,
+rekisteritokeneita, ympäristömuuttujia, paikallisia käyttäjäpolkuja tai muuta
+salassa pidettävää tietoa.
