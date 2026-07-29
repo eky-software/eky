@@ -7,10 +7,14 @@ ja packaged-smoke-testitasot. Pysyvä skenaarioluettelo on
 
 ## Testitasot
 
+- Playwright system API: HTTP-, session-, persistence-, fault- ja
+  recovery-rajat ilman selain-UI:ta.
 - Playwright web: laajat selainpohjaiset käyttäjäpolut.
 - Playwright Electron development: rajatut main/preload/renderer-
   integraatiopolut.
 - Hardened packaged `Eky.exe`: packaged smoke-, recovery- ja capability-testit.
+- Manuaalinen endurance-baseline: rajattu pitkäkestoisempi system- ja
+  web-työkuorma ilman tuotantodataa tai ulkoista verkkoa.
 
 Packaged Electron fuseja tai window security -asetuksia ei heikennetä
 Playwrightin vuoksi. Jos hardened-artifactia ei voida ohjata turvallisesti,
@@ -46,18 +50,55 @@ Jokaiselle moduulille dokumentoidaan:
 - varmistus, ettei virhevastauksessa, lokissa tai tukipaketissa ole salaisuutta
   tai tarpeetonta henkilötietoa
 
+## Nykyinen selain- ja recovery-kattavuus
+
+Nykyinen Playwright-kokonaisuus todistaa eristetyssä runtimessa:
+
+- Customers- ja Company Settings -käyttäjäpolut, refreshin sekä turvallisen
+  Activity- ja Diagnostics-projektion
+- laskuluonnoksen elinkaaren, snapshotin, käännetyn ALV:n, peruutuksen,
+  osahyvityksen, refreshin ja kaksoiskomentojen sivuvaikutusrajat
+- fake SMTP-, PDF-storage-, tietokantatransaktio- ja operational writer
+  -virheet
+- backend-restartin, runtime-sessionin kierron, SQLite-lockista toipumisen,
+  katkenneen JSONL-rivin sekä prosessin ja loopback-portin vapautumisen
+- hostile markup -tekstin turvallisen DOM- ja PDF-käsittelyn ilman ulkoista
+  verkkoliikennettä.
+
+Electron development -E2E, desktopin pitkä soak, backup/restore ja täydellinen
+tenant-matriisi eivät kuulu tähän valmistuneeseen vaiheeseen. Niitä ei merkitä
+matriisissa toteutetuiksi alemman tason testien perusteella.
+
 ## Observabilityn E2E
 
-Työpaketti C kattaa vähintään:
+Nykyinen system- ja web-E2E kattaa:
 
 - business-muutoksen ja activity feed -eventin vastaavuuden
-- lokien kuukausirajan ja retentionin hallitulla testikellolla
 - permission-rajatun diagnostics-näkymän
-- turvallisen lokikansion avauksen desktopissa
-- tukipaketin luonnin, peruutuksen ja checksumit
-- rikkinäisen lokirivin ohittamisen
-- lokikirjoitusvirheen siten, ettei alkuperäinen business-tulos muutu
-- packaged smoke -tarkistuksen logs-rootille ja salaisuuksien poissululle
+- rikkinäisen lokirivin ohittamisen ja tukidatan rehellisen truncation-tilan
+- lokikirjoitusvirheen siten, ettei alkuperäinen business-tulos tai pakollinen
+  audit muutu
+- fake provider -virheiden turvalliset Diagnostics- ja support-projektiot.
+
+Lokien kuukausiraja ja retention testataan alemmilla tasoilla.
+Lokikansion avaaminen ja varsinaisen `.json.gz`-tukipaketin luonti sekä
+checksumit säilyvät desktopin integraatio- ja packaged-smoke-vastuina.
+
+## CI ja endurance
+
+GitHub CI ajaa pull requesteissa, `main`-pusheissa ja käsin käynnistettynä:
+
+- eristetyn system security E2E -joukon
+- Chromiumin kriittiset web-käyttäjäpolut yhdellä workerilla.
+
+Web-job käyttää yhtä CI-retryä vain trace-todisteen keräämiseen ja
+`failOnFlakyTests`-asetusta, joten retryllä vasta läpäisevä testi epäonnistaa
+jobin. Kumpaakaan raskasta E2E-jobia ei ajeta erikseen jokaisessa
+`antsa`-pushissa.
+
+`pnpm test:e2e:stress` on manuaalinen, eikä kuulu jokaiseen pull requestiin.
+Työkuorma ja ensimmäiset vertailuarvot on dokumentoitu tiedostossa
+`e2e-endurance-baseline.md`.
 
 ## Riippuvuuspäätös
 

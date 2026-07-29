@@ -44,22 +44,25 @@ tietokannan, auditin, operational/security-eventin ja tukipaketin päätöksen.
 | WEB-NETWORK-001 | P0; system, security | Selainraja; arvioi sallitut ja estetyt protokollat sekä originit | Vain eristetyt loopback-originit ja dokumentoidut ei-verkkoprotokollat sallitaan | Estetty kohde jää turvalliseksi testihavainnoksi; ei ulkoista sivuvaikutusta | Ulkoinen URL, query tai credential | implemented-e2e |
 | WEB-BOOT-001 | P0; web-e2e | Tyhjä eristetty runtime; käynnistä backend ja Vite, avaa customer workspace | Web latautuu session-proxyn läpi ja näyttää tyhjän tilan | Kanta ja Vite-cache ovat testirootissa; prosessitulosteessa ei ole sessionia | Runtime-session, production-polut ja ulkoinen verkko | implemented-e2e |
 | SYS-OUTBOUND-001 | P0; web-e2e, security | Web auki; yritä non-loopback-pyyntöä | Pyyntö estyy ja testi epäonnistuu | Ei ulkoista sivuvaikutusta; turvallinen testihavainto | Ulkoinen payload tai credential | planned |
-| SYS-RESTART-001 | P0; system, recovery | Tallennettu synteettinen data; hallittu restart | Sama data näkyy, vanha session 401/403 | Kanta ja audit säilyvät; runtimeInstanceId vaihtuu | Vanha session ja paikalliset polut | planned |
+| SYS-RESTART-001 | P0; system, recovery | Tallennettu synteettinen data; hallittu restart | Sama data näkyy, vanha session 401/403 | Kanta ja audit säilyvät; runtimeInstanceId vaihtuu | Vanha session ja paikalliset polut | implemented-e2e |
+| DB-LOCK-001 | P0; system, fault, recovery | Asiakaspäivitys; hallittu SQLite exclusive lock | Turvallinen virhe, backend säilyy terveenä ja uusi päivitys onnistuu lockin vapauttamisen jälkeen | Epäonnistunut kirjoitus ei muuta asiakasta; prosessi ei kaadu | SQL, tietokantapolku ja raw driver error | implemented-e2e |
+| RUNTIME-EXIT-001 | P0; system, recovery | Hallittu backend-stop ja käynnistys samalla vapautetulla loopback-portilla | Vanha prosessi päättyy ja uusi runtime vastaa terveenä | Portti vapautuu; session ei näy prosessitulosteessa; ei orphania | Runtime-session ja paikalliset polut | implemented-e2e |
+| ENDURANCE-BASELINE-001 | P1; system, web-e2e, endurance | 20 backend-kierrosta, 100 customer- ja draft-kierrosta, 50 web-siirtymää ja 25 PDF:ää | Kaikki operaatiot onnistuvat ja mittausraportti syntyy | RSS-, SQLite-, dokumentti- ja lokikoot mitataan; testin hallitsemia prosesseja lopussa 0 | Oikea data, ulkoinen verkko ja oikea SMTP | implemented-e2e |
 
 ## Customers
 
 | ID | Riski ja tasot | Lähtö / toiminto / fault | Odotus | Tila ja havainnot | Erityinen vuotokielto | Tila |
 |---|---|---|---|---|---|---|
-| CUS-UI-001 | P0; web-e2e | Tyhjä yritys; luo, muokkaa ja hae numerolla sekä osoitteella; refresh | Lomake, lista ja refresh näyttävät tallennetut tiedot | Yksi asiakas ja odotetut auditit; Activity näyttää turvalliset kategoriat | Nimi, osoite tai arvot auditiin/lokiin | planned |
+| CUS-UI-001 | P0; web-e2e | Tyhjä yritys; luo, muokkaa ja hae numerolla sekä osoitteella; refresh | Lomake, lista ja refresh näyttävät tallennetut tiedot | Yksi asiakas ja odotetut auditit; Activity näyttää turvalliset kategoriat | Nimi, osoite tai arvot auditiin/lokiin | implemented-e2e |
 | CUS-API-001 | P0; integration, system | Tyhjä yritys; create/update/list julkisella API:lla | Sopimuksen mukaiset 2xx-vastaukset | Company-scoped customer ja atomiset auditit | Toisen yrityksen tiedot | implemented-e2e |
 | CUS-TENANT-001 | P0; integration, system, security | Yritykset A ja B; A käyttää B:n customerId:tä | Geneerinen 404/tyhjä listaus sopimuksen mukaan | Ei kirjoitusta eikä väärän tenantin auditia | Resurssin olemassaolo B:ssä | covered-existing |
-| CUS-INPUT-001 | P1; integration, system, security | Tyhjä yritys; rajat, kontrollimerkit ja unknown/mass fields | Turvallinen 400, serveri terve | Ei customer- tai audit-riviä; tarvittaessa turvallinen validation-event | Raw syöte ja injected log line | planned |
+| CUS-INPUT-001 | P1; integration, system, web-e2e, security | Tyhjä yritys; rajat, Unicode ja hostile markup sekä system-tason unknown/mass fields | Rajat ylittävä syöte torjutaan, sallittu teksti renderöidään tekstinä ja serveri säilyy terveenä | Vain validit customer- ja audit-rivit syntyvät; Activity ja lokit eivät sisällä arvoja | Raw syöte ja injected log line | implemented-e2e |
 
 ## Company Settings
 
 | ID | Riski ja tasot | Lähtö / toiminto / fault | Odotus | Tila ja havainnot | Erityinen vuotokielto | Tila |
 |---|---|---|---|---|---|---|
-| COMPANY-UI-001 | P0; web-e2e | Synteettiset asetukset; muuta yhteystietoja | Tallennus onnistuu ja refresh säilyttää arvot | Master data muuttuu; auditissa vain changed category | Vanhat/uudet arvot auditissa | planned |
+| COMPANY-UI-001 | P0; web-e2e | Synteettiset asetukset; muuta yhteys-, pankki- ja ei-salaisia sähköpostitietoja | Tallennus onnistuu ja refresh säilyttää arvot | Master data muuttuu; auditissa vain changed category | Vanhat/uudet arvot auditissa | implemented-e2e |
 | COMPANY-AUDIT-001 | P0; integration, system | Nykyiset asetukset; muuta pankki- ja sähköpostiasetuksia | 2xx ja turvallinen Activity | Arvot kannassa; auditissa vain sallitut kategoriat; tukipaketin poissulku säilyy integraatiotestien todistamana | IBAN, sender email, SMTP username | implemented-e2e |
 | COMPANY-SECRET-001 | P0; integration, electron-e2e, security | Ei testisalaisuutta; aseta, tarkista status, poista ja restart | Renderer näkee vain boolean-tilan | Salaisuus vain fake/safeStorage-testialueella; lifecycle-audit ilman johdannaisia | Secret, hash, pituus, ref tai plaintext | planned |
 
@@ -67,28 +70,30 @@ tietokannan, auditin, operational/security-eventin ja tukipaketin päätöksen.
 
 | ID | Riski ja tasot | Lähtö / toiminto / fault | Odotus | Tila ja havainnot | Erityinen vuotokielto | Tila |
 |---|---|---|---|---|---|---|
-| INV-LIFECYCLE-001 | P0; web-e2e | Asiakas ja asetukset; draft, rivit, autosave, refresh, approve, PDF ja fake delivery | Näkymä etenee Lähetettyihin | Yksi invoice, numero, PDF, delivery-event ja Activity-ketju | PDF-bytes, email body tai recipient lokiin | planned |
-| INV-SNAPSHOT-001 | P0; integration, web-e2e | Hyväksy lasku; muuta master dataa | Hyväksytty näkymä/PDF säilyy alkuperäisenä | Snapshot ei muutu; master audit erillinen | Uuden master datan sekoittuminen snapshotiin | covered-existing |
-| INV-REVERSE-001 | P0; integration, web-e2e | Yritysasiakas Y-tunnuksella; valitse reverse charge ja vahvista | Netto=brutto, myyjän ALV=0, oikea PDF-merkintä | Treatment ja snapshot tallentuvat; approval audit | Normaali ALV-erittely reverse chargessa | covered-existing |
-| INV-CANCEL-001 | P0; integration, web-e2e | Approved ja toimittamaton; kaksivaiheinen peruutus | Cancelled näkyy, delivery estyy, PDF avautuu | Status cancelled ja yksi audit; ei delivery-eventiä | Uusi toimitusyritys | covered-existing |
-| INV-CREDIT-001 | P0; integration, web-e2e | Sent invoice; osahyvitys, hyväksyntä ja PDF | Ryhmä ja jäljellä oleva määrä oikein, ylihyvitys estyy | Credit snapshot/numero/audit atomisesti | Alkuperäisen muuttaminen tai ylihyvitys | covered-existing |
-| INV-DOUBLECLICK-001 | P0; integration, web-e2e | Valid approve/send; kaksoiskomento | Yksi onnistuva vaikutus | Ei kahta numeroa tai succeeded-eventiä | Kaksoistoimitus | planned |
+| INV-LIFECYCLE-001 | P0; web-e2e | Asiakas ja asetukset; draft, rivit, autosave, refresh, approve, PDF ja fake delivery | Näkymä etenee Lähetettyihin | Yksi invoice, numero, PDF, delivery-event ja Activity-ketju | PDF-bytes, email body tai recipient lokiin | implemented-e2e |
+| INV-SNAPSHOT-001 | P0; integration, web-e2e | Hyväksy lasku; muuta master dataa | Hyväksytty näkymä/PDF säilyy alkuperäisenä | Snapshot ei muutu; master audit erillinen | Uuden master datan sekoittuminen snapshotiin | implemented-e2e |
+| INV-REVERSE-001 | P0; integration, web-e2e | Yritysasiakas Y-tunnuksella; valitse reverse charge ja vahvista | Netto=brutto, myyjän ALV=0, oikea PDF-merkintä | Treatment ja snapshot tallentuvat; approval audit | Normaali ALV-erittely reverse chargessa | implemented-e2e |
+| INV-CANCEL-001 | P0; integration, web-e2e | Approved ja toimittamaton; kaksivaiheinen peruutus | Cancelled näkyy, delivery estyy, PDF avautuu | Status cancelled ja yksi audit; ei delivery-eventiä | Uusi toimitusyritys | implemented-e2e |
+| INV-CREDIT-001 | P0; integration, web-e2e | Sent invoice; osahyvitys, hyväksyntä ja PDF | Ryhmä ja jäljellä oleva määrä oikein, ylihyvitys estyy | Credit snapshot/numero/audit atomisesti | Alkuperäisen muuttaminen tai ylihyvitys | implemented-e2e |
+| INV-DOUBLECLICK-001 | P0; integration, web-e2e | Valid approve/send; kaksoiskomento | Yksi onnistuva vaikutus | Ei kahta numeroa tai succeeded-eventiä | Kaksoistoimitus | implemented-e2e |
+| INV-REFRESH-001 | P0; web-e2e, recovery | Draft-, approved- ja sent-näkymä; selainrefresh | Oikea persisted näkymä palautuu jokaisessa tilassa | Ei ylimääräistä invoicea, numeroa, PDF:ää tai delivery-eventiä | Runtime-session ja tekniset tunnisteet | implemented-e2e |
 | INV-RACE-001 | P0; integration, system, security | Sama draft; kaksi rinnakkaista approve-pyyntöä | Yksi onnistuu tai dokumentoitu idempotentti tulos | Yksi numero, invoice ja audit | Sekvenssin tuplakulutus | covered-existing |
 | INV-AUTH-001 | P0; integration, system, security | Prepared send; expired/reused/mismatched token, invoice, hash tai recipient | Turvallinen 4xx ilman provider-kutsua | Ei eventtiä/finalisointia eikä muutosta | Authorization fingerprint tai session | covered-existing |
-| INV-PDF-FAIL-001 | P0; system, fault | Approved invoice; PDF-write fault | Turvallinen virhe, ei sent-tilaa | Ei osittaista metadataa; diagnostics ja turvallinen support-havainto | Filesystem-polku tai PDF-bytes | planned |
-| INV-SMTP-AUTH-001 | P1; system, fault | Prepared send; fake authentication failure | Turvallinen provider-virhe | Failed event, invoice ei sent; turvallinen retry-semantics | Username tai password | planned |
-| INV-SMTP-TLS-001 | P0; system, fault, security | Prepared send; fake TLS failure | Lähetys estyy, ei fallbackia | Failed/none event sopimuksen mukaan; invoice ei sent | Sertifikaattiraaka-arvo tai secret | planned |
-| INV-SMTP-REJECT-001 | P1; system, fault | Prepared send; fake DATA rejection | Turvallinen failed-tulos | outcome failed, sideEffectState none | SMTP-dialogi tai viestin sisältö | planned |
-| INV-SMTP-UNKNOWN-001 | P0; system, fault, recovery | Prepared send; fake outcomeUnknown final acceptance | Uusi toimitus estyy ratkaisuun asti | Unknown event, invoicea ei varmasti merkitä sent; Activity/Diagnostics eriytetty | Viestin sisältö tai credentials | planned |
+| INV-PDF-FAIL-001 | P0; system, web-e2e, fault | Approved invoice; PDF-write fault | Turvallinen virhe, ei sent-tilaa | Ei osittaista metadataa; diagnostics ja turvallinen support-havainto | Filesystem-polku tai PDF-bytes | implemented-e2e |
+| INV-SMTP-AUTH-001 | P1; system, web-e2e, fault | Prepared send; fake authentication failure | Turvallinen provider-virhe | Failed event, invoice ei sent; turvallinen retry-semantics | Username tai password | implemented-e2e |
+| INV-SMTP-TLS-001 | P0; system, web-e2e, fault, security | Prepared send; fake TLS failure | Lähetys estyy, ei fallbackia | Failed/none event sopimuksen mukaan; invoice ei sent | Sertifikaattiraaka-arvo tai secret | implemented-e2e |
+| INV-SMTP-REJECT-001 | P1; system, web-e2e, fault | Prepared send; fake DATA rejection | Turvallinen failed-tulos | outcome failed, sideEffectState none | SMTP-dialogi tai viestin sisältö | implemented-e2e |
+| INV-SMTP-UNKNOWN-001 | P0; system, web-e2e, fault, recovery | Prepared send; fake outcomeUnknown final acceptance | Uusi toimitus estyy ratkaisuun asti | Unknown event, invoicea ei varmasti merkitä sent; Activity/Diagnostics eriytetty | Viestin sisältö tai credentials | implemented-e2e |
+| DB-ROLLBACK-001 | P0; system, web-e2e, fault, recovery | Draft approval; deterministinen kirjoitusvirhe transaktion keskellä | Turvallinen virhe ja seuraava hyväksyntä onnistuu faultin vapauttamisen jälkeen | Draft, snapshot, numero, sekvenssi, PDF-metadata ja audit palautuvat atomisesti | SQL, tietokantapolku ja raw driver error | implemented-e2e |
 
 ## Observability
 
 | ID | Riski ja tasot | Lähtö / toiminto / fault | Odotus | Tila ja havainnot | Erityinen vuotokielto | Tila |
 |---|---|---|---|---|---|---|
-| OBS-ACTIVITY-001 | P0; integration, web-e2e | Tee business-muutos; avaa Activity | Oikea turvallinen tapahtuma ja järjestys | Omistavan moduulin audit vastaa read modelia | Kenttäarvot, actor id, customer name | covered-existing |
-| OBS-DIAGNOSTICS-001 | P0; integration, web-e2e | Fake failure; avaa Diagnostics oikeudella | Turvallinen technical event ja build-context | Ei business-muutosta; support-sisällytys katalogin mukaan | Business sisältö, raw stack/path | covered-existing |
-| OBS-LOGGER-001 | P0; integration, system, fault | Business-operaatio; operational writer fault | Sovittu business-tulos säilyy | Pakollinen audit säilyy; recursion estyy; safe fallback | Raw error ja payload | covered-existing |
-| OBS-JSONL-001 | P1; integration, system, fault | Validit rivit + katkennut loppurivi | Diagnostics ohittaa rikkinäisen | Muut eventit säilyvät; support ilmoittaa truncationin | Rikkinäinen raw line | covered-existing |
+| OBS-ACTIVITY-001 | P0; integration, web-e2e | Tee business-muutos; avaa Activity | Oikea turvallinen tapahtuma ja järjestys | Omistavan moduulin audit vastaa read modelia | Kenttäarvot, actor id, customer name | implemented-e2e |
+| OBS-DIAGNOSTICS-001 | P0; integration, web-e2e | Fake failure; avaa Diagnostics oikeudella | Turvallinen technical event ja build-context | Ei business-muutosta; support-sisällytys katalogin mukaan | Business sisältö, raw stack/path | implemented-e2e |
+| OBS-LOGGER-001 | P0; integration, system, web-e2e, fault | Business-operaatio; operational writer fault | Sovittu business-tulos säilyy | Pakollinen audit säilyy; recursion estyy; safe fallback | Raw error ja payload | implemented-e2e |
+| OBS-JSONL-001 | P1; integration, system, fault, recovery | Validit rivit + katkennut loppurivi | Diagnostics ohittaa rikkinäisen | Muut eventit säilyvät; support ilmoittaa truncationin | Rikkinäinen raw line | implemented-e2e |
 | OBS-SUPPORT-001 | P0; integration, electron-e2e, fault | Synteettiset eventit; luo `.json.gz` | Inspect hyväksyy ja checksumit täsmäävät | Manifest/projektiot oikein; ei business audit -muutosta | Kielletty data ja AppData-polut | covered-existing |
 | OBS-SUPPORT-LIMIT-001 | P1; integration, system, fault | Lähteet lähellä 25 MiB; luo paketti | Valid paketti ja rehellinen truncation | Uusimmat turvalliset eventit säilyvät | Raja-arvon yli vuotava lähde | covered-existing |
 
@@ -104,7 +109,7 @@ tietokannan, auditin, operational/security-eventin ja tukipaketin päätöksen.
 | SEC-PATH-001 | P0; integration, system, security | Traversal, encoded traversal, Windows/Unix absolute path ja `file://` | 4xx/404 turvallisesti | Ei kirjoitusta testirootin ulkopuolelle | Resolved local path | implemented-e2e |
 | SEC-SIZE-001 | P1; integration, system, security | Raja, raja+1, pitkä Unicode, iso array ja rajattu ylikokoinen body | Rajattu 4xx/413, backend-prosessi ja uusi yhteys terveitä | Ei tallennusta/auditia; mahdollinen safe size-event | Koko raw body | implemented-e2e |
 | SEC-METHOD-001 | P1; integration, system, security | Väärä method/content-type, puuttuva content-type, unknown query | Method ja query torjutaan; non-empty JSON-body vaatii `application/json`-media typen ja virheellinen tai puuttuva media type torjutaan 415-vastauksella | Route-regressiot ja system-E2E kattavat required-, optional- ja forbidden-body-sopimukset ilman expected failureja | Request body/header dump | implemented-e2e |
-| SEC-XSS-001 | P0; web-e2e, security | Turvalliseen tekstikenttään markup-korpus; renderöi ja tee PDF | Teksti näkyy tekstinä, ei popupia/egressiä | Tallennus vain validoituna; PDF ei suorita sisältöä | DOM-execution tai external request | planned |
+| SEC-XSS-001 | P0; web-e2e, security | Turvalliseen tekstikenttään markup-korpus; renderöi ja tee PDF | Teksti näkyy tekstinä, ei popupia/egressiä | Tallennus vain validoituna; PDF ei suorita sisältöä | DOM-execution tai external request | implemented-e2e |
 
 ## Desktop
 

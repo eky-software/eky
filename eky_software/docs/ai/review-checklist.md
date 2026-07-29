@@ -114,6 +114,13 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
   testikontrolleista ja fault injectionista?
 - Todistetaanko onnistuvan polun lisäksi permission/tenant-esto sekä
   failure/recovery-polku oikealla testitasolla?
+- Jäävätkö kriittiset web-E2E:t yhden workerin, loopback-verkon,
+  synteettisen datan ja fake-adapterien rajoihin myös CI:ssä?
+- Tarvitaanko runtime-, persistence-, PDF-, loki- tai prosessimuutoksen jälkeen
+  manuaalinen endurance-baseline, ja verrattiinko tulosta aiempaan ajoon ilman
+  yhdestä koneesta johdettua haurasta absoluuttista muistirajaa?
+- Päättyvätkö kaikki testiharnessin käynnistämät prosessit ja vapautuvatko
+  loopback-portit myös failure- ja restart-polussa?
 
 ## Dokumentaatio
 

@@ -40,3 +40,14 @@ Update `docs/architecture/r0-e2e-test-matrix.md` whenever a scenario is added,
 removed, split, blocked or changes test level. Never label lower-level
 coverage as implemented E2E.
 
+Keep normal E2E and endurance separate:
+
+- system and web projects may run in pull request CI
+- `endurance-baseline` is manual and runs only through
+  `pnpm test:e2e:stress`
+- do not include the endurance project in the ordinary `e2e:all` command
+- record each endurance run as synthetic measurement data, not as a universal
+  production capacity promise
+- do not add process metrics to production HTTP endpoints for testability
+- restart tests must rotate the runtime session, retain only test-scoped
+  persistence and prove that every managed process and port is released

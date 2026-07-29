@@ -62,6 +62,13 @@ Testiruntime käynnistää backendin ja webin hallittuina lapsiprosesseina. Se:
 Satunnaisia odotuksia tai `waitForTimeout`-kutsuja ei käytetä valmiuden
 todistamiseen.
 
+System-fixture voi hallitussa recovery-testissä pysäyttää backendin ja
+käynnistää sen uudelleen samalla testikohtaisella SQLite-kannalla ja samalla
+loopback-portilla. Uusi runtime saa aina uuden sessionin ja
+`runtimeInstanceId`-arvon. Vanha autentikoitu API-context säilytetään vain sen
+todistamiseksi, ettei vanha session enää kelpaa, ja kaikki contextit suljetaan
+fixture-cleanupissa.
+
 ## Selainverkon raja
 
 Selain sallii vain testiruntimen eksplisiittiset loopback-origin-osoitteet.
@@ -128,11 +135,29 @@ tallenneta R0:ssa.
   observability-rajat ilman selain-UI:ta
 - `web-chromium`: käyttäjän kriittiset selainpolut Chromiumilla
 - `electron-development`: rajattu main/preload/renderer-integraatio
+- `endurance-baseline`: vain käsin ajettava rajattu system- ja web-työkuorma
 - packaged smoke: nykyinen hardened Windows -artifact erillisen smoke-runnerin
   kautta, ei Playwrightin ohjaamana
 
 Packaged-artifactin fuseja, sandboxia, preload-rajaa tai navigointipolitiikkaa
 ei heikennetä testauksen vuoksi.
+
+## Endurance-mittaus
+
+`pnpm test:e2e:stress` käyttää samaa eristettyä loopback-, temp-root- ja
+fake-adapterimallia kuin muut E2E-testit. Se mittaa kokonaiskeston, backendin
+RSS:n alussa ja työkuorman jälkeen, SQLite-, dokumentti- ja lokikoot sekä
+testin hallitsemien avoimien prosessien määrän lopussa.
+
+Prosessin RSS luetaan testiharnessissa käyttöjärjestelmän prosessitiedoista.
+Tuotantobackendiin ei lisätä mittausendpointia. Mittaus ei sisällä sessionia,
+komentoriviä, ympäristömuuttujia tai prosessin muistisisältöä.
+
+Jokainen ajo kirjoittaa synteettisen JSON-raportin tiedostoon
+`apps/e2e/test-results/endurance-baseline.json` ja Playwrightin
+HTML-raporttiliitteeseen. `test-results` ei ole tuotantodata- tai
+versionhallintakansio. Ensimmäinen dokumentoitu vertailutaso on
+`e2e-endurance-baseline.md`-tiedostossa.
 
 ## CI-ajojen eristys
 
@@ -149,4 +174,6 @@ toistensa ajoja:
 
 Tavallinen verify-job ajetaan edelleen `antsa`- ja `main`-pusheissa,
 pull requesteissa sekä käsin käynnistettynä. Raskaat E2E-jobit rajataan
-pull requestiin, `main`-pushiin ja käsin käynnistettyyn ajoon.
+pull requestiin, `main`-pushiin ja käsin käynnistettyyn ajoon. Nykyiset raskaat
+jobit ovat `System security E2E` ja `Web critical E2E`. Endurance-baselinea ei
+ajeta automaattisesti CI:ssä.
