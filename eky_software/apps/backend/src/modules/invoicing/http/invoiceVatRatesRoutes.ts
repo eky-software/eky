@@ -2,6 +2,7 @@ import { AuthorizationError } from '@eky/permissions';
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 
+import { readJsonRequestBody } from '../../../http/readJsonRequestBody.js';
 import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 import type { GetInvoiceVatRatesInput } from '../application/getInvoiceVatRates.js';
 import type { InvoiceVatRatesView } from '../application/invoiceVatRatesView.js';
@@ -46,13 +47,15 @@ export function createInvoiceVatRatesRoutes(
         context.json({ error: 'Invoice VAT rates body is too large.' }, 413),
     }),
     async (context) => {
-      let body: unknown;
+      const bodyResult = await readJsonRequestBody(context.req, 'required');
 
-      try {
-        body = await context.req.json();
-      } catch {
-        return context.json({ error: 'Invalid JSON body.' }, 400);
+      if (!bodyResult.ok) {
+        return context.json(
+          { error: bodyResult.message },
+          bodyResult.status,
+        );
       }
+      const body = bodyResult.body;
 
       try {
         const invoiceVatRates = await dependencies.updateInvoiceVatRates({

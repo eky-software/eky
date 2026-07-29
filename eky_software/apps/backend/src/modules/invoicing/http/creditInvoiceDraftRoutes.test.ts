@@ -50,6 +50,9 @@ describe('credit invoice draft routes', () => {
     });
 
     expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Request body is not allowed.',
+    });
     expect(getCreateInput()).toBeUndefined();
   });
 
@@ -170,6 +173,9 @@ describe('credit invoice draft routes', () => {
     );
 
     expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Request body is not allowed.',
+    });
     expect(getApproveInput()).toBeUndefined();
   });
 
@@ -214,7 +220,10 @@ describe('credit invoice draft routes', () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
-      error: 'Invalid credit invoice draft request.',
+      error:
+        raw === true
+          ? 'Invalid JSON body.'
+          : 'Invalid credit invoice draft request.',
     });
     expect(getUpdateInput()).toBeUndefined();
   });

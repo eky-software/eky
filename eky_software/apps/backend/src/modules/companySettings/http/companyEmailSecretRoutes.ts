@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono';
 import { AuthorizationError } from '@eky/permissions';
 
 import { isRecord } from '../../../http/requestBody.js';
+import { readJsonRequestBody } from '../../../http/readJsonRequestBody.js';
 import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 import type { GetCompanyEmailSecretStatusInput } from '../application/getCompanyEmailSecretStatus.js';
 import type { RemoveCompanyEmailSecretInput } from '../application/removeCompanyEmailSecret.js';
@@ -40,13 +41,15 @@ export function createCompanyEmailSecretRoutes(
   });
 
   routes.put('/company-settings/email-secret', async (context) => {
-    let body: unknown;
+    const bodyResult = await readJsonRequestBody(context.req, 'required');
 
-    try {
-      body = await context.req.json();
-    } catch {
-      return context.json({ error: 'Invalid JSON body.' }, 400);
+    if (!bodyResult.ok) {
+      return context.json(
+        { error: bodyResult.message },
+        bodyResult.status,
+      );
     }
+    const body = bodyResult.body;
 
     if (!isEmailSecretRequestBody(body)) {
       return context.json({ error: 'Invalid company email secret body.' }, 400);

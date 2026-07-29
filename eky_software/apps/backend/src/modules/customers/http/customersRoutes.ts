@@ -5,6 +5,7 @@ import {
   getStringField,
   isRecord,
 } from '../../../http/requestBody.js';
+import { readJsonRequestBody } from '../../../http/readJsonRequestBody.js';
 import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 import { CustomerValidationError } from '../domain/customerRules.js';
 import type { CreateCustomerInput } from '../application/createCustomer.js';
@@ -17,6 +18,23 @@ interface CustomersRouteDependencies {
   listCustomers(input: ListCustomersInput): Promise<Customer[]>;
   updateCustomer(input: UpdateCustomerInput): Promise<Customer>;
 }
+
+const allowedCustomerBodyFields = new Set([
+  'businessId',
+  'city',
+  'comment',
+  'customerNumber',
+  'customerNumberMode',
+  'customerType',
+  'email',
+  'hourlyRateOverrideCents',
+  'managedByCustomerId',
+  'name',
+  'phone',
+  'postalCode',
+  'status',
+  'streetAddress',
+]);
 
 function getCustomerNumberMode(body: Record<string, unknown>): string {
   const customerNumberMode = getOptionalStringField(body, 'customerNumberMode');
@@ -36,15 +54,21 @@ export function createCustomersRoutes(
 
   routes.post('/customers', async (context) => {
     const actorContext = context.get('actorContext');
-    let body: unknown;
+    const bodyResult = await readJsonRequestBody(context.req, 'required');
 
-    try {
-      body = await context.req.json();
-    } catch {
-      return context.json({ error: 'Invalid JSON body.' }, 400);
+    if (!bodyResult.ok) {
+      return context.json(
+        { error: bodyResult.message },
+        bodyResult.status,
+      );
     }
+    const body = bodyResult.body;
 
-    if (!isRecord(body) || typeof body.name !== 'string') {
+    if (
+      !isRecord(body) ||
+      hasUnknownCustomerBodyFields(body) ||
+      typeof body.name !== 'string'
+    ) {
       return context.json({ error: 'Customer name is required.' }, 400);
     }
 
@@ -96,15 +120,21 @@ export function createCustomersRoutes(
 
   routes.put('/customers/:id', async (context) => {
     const actorContext = context.get('actorContext');
-    let body: unknown;
+    const bodyResult = await readJsonRequestBody(context.req, 'required');
 
-    try {
-      body = await context.req.json();
-    } catch {
-      return context.json({ error: 'Invalid JSON body.' }, 400);
+    if (!bodyResult.ok) {
+      return context.json(
+        { error: bodyResult.message },
+        bodyResult.status,
+      );
     }
+    const body = bodyResult.body;
 
-    if (!isRecord(body) || typeof body.name !== 'string') {
+    if (
+      !isRecord(body) ||
+      hasUnknownCustomerBodyFields(body) ||
+      typeof body.name !== 'string'
+    ) {
       return context.json({ error: 'Customer name is required.' }, 400);
     }
 
@@ -144,4 +174,12 @@ export function createCustomersRoutes(
   });
 
   return routes;
+}
+
+function hasUnknownCustomerBodyFields(
+  body: Record<string, unknown>,
+): boolean {
+  return Object.keys(body).some(
+    (fieldName) => !allowedCustomerBodyFields.has(fieldName),
+  );
 }

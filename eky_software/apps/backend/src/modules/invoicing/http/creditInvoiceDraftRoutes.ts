@@ -2,6 +2,7 @@ import { AuthorizationError } from '@eky/permissions';
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 
+import { readJsonRequestBody } from '../../../http/readJsonRequestBody.js';
 import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 import type { ApproveCreditInvoiceDraftInput } from '../application/approveCreditInvoiceDraft.js';
 import { ApprovedInvoiceNotFoundError } from '../application/approvedInvoiceNotFoundError.js';
@@ -15,7 +16,6 @@ import { InvoiceCreditError } from '../domain/invoiceCreditError.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
 import {
   CreditInvoiceDraftRequestValidationError,
-  parseEmptyCreditInvoiceDraftRequest,
   parseUpdateCreditInvoiceDraftRequest,
 } from './creditInvoiceDraftRequest.js';
 import { defaultInvoiceNumberSeriesKey } from '../domain/invoiceNumbering.js';
@@ -52,7 +52,14 @@ export function createCreditInvoiceDraftRoutes(
     }),
     async (context) => {
       try {
-        parseEmptyCreditInvoiceDraftRequest(await context.req.text());
+        const bodyResult = await readJsonRequestBody(context.req, 'forbidden');
+
+        if (!bodyResult.ok) {
+          return context.json(
+            { error: bodyResult.message },
+            bodyResult.status,
+          );
+        }
         const creditInvoiceDraft = await dependencies.createCreditInvoiceDraft({
           actorContext: context.get('actorContext'),
           createdAt: new Date().toISOString(),
@@ -88,7 +95,14 @@ export function createCreditInvoiceDraftRoutes(
     }),
     async (context) => {
       try {
-        parseEmptyCreditInvoiceDraftRequest(await context.req.text());
+        const bodyResult = await readJsonRequestBody(context.req, 'forbidden');
+
+        if (!bodyResult.ok) {
+          return context.json(
+            { error: bodyResult.message },
+            bodyResult.status,
+          );
+        }
         const approvedInvoice =
           await dependencies.approveCreditInvoiceDraft({
             actorContext: context.get('actorContext'),
@@ -113,13 +127,15 @@ export function createCreditInvoiceDraftRoutes(
     }),
     async (context) => {
       try {
-        let body: unknown;
+        const bodyResult = await readJsonRequestBody(context.req, 'required');
 
-        try {
-          body = await context.req.json();
-        } catch {
-          throw new CreditInvoiceDraftRequestValidationError();
+        if (!bodyResult.ok) {
+          return context.json(
+            { error: bodyResult.message },
+            bodyResult.status,
+          );
         }
+        const body = bodyResult.body;
 
         const creditInvoiceDraft = await dependencies.updateCreditInvoiceDraft(
           parseUpdateCreditInvoiceDraftRequest(body, {

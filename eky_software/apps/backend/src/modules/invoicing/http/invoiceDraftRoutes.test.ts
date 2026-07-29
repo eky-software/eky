@@ -477,6 +477,61 @@ describe('invoiceDraftRoutes', () => {
     expect(testContext.getSaveInput()).toBeUndefined();
   });
 
+  it.each([
+    { contentType: 'text/plain', label: 'text' },
+    {
+      contentType: 'application/x-www-form-urlencoded',
+      label: 'form data',
+    },
+    {
+      contentType: 'multipart/form-data; boundary=example',
+      label: 'multipart data',
+    },
+  ])('rejects $label before calling the create use case', async ({
+    contentType,
+  }) => {
+    const testContext = createTestApp();
+    const response = await testContext.app.request('/invoice-drafts', {
+      body: JSON.stringify(createValidRequestBody()),
+      headers: { 'Content-Type': contentType },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(415);
+    expect(await response.json()).toEqual({
+      error: 'Content-Type must be application/json.',
+    });
+    expect(testContext.getSaveInput()).toBeUndefined();
+  });
+
+  it('rejects a non-empty create body without a media type', async () => {
+    const testContext = createTestApp();
+    const response = await testContext.app.request(
+      new Request('http://localhost/invoice-drafts', {
+        body: JSON.stringify(createValidRequestBody()),
+        method: 'POST',
+      }),
+    );
+
+    expect(response.status).toBe(415);
+    expect(await response.json()).toEqual({
+      error: 'Content-Type must be application/json.',
+    });
+    expect(testContext.getSaveInput()).toBeUndefined();
+  });
+
+  it('accepts a JSON media type with a charset parameter', async () => {
+    const testContext = createTestApp();
+    const response = await testContext.app.request('/invoice-drafts', {
+      body: JSON.stringify(createValidRequestBody()),
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(201);
+    expect(testContext.getSaveInput()).toBeDefined();
+  });
+
   it('rejects invoice draft bodies that exceed the route size limit', async () => {
     const testContext = createTestApp();
 
@@ -606,6 +661,30 @@ describe('invoiceDraftRoutes', () => {
       companyId: 'dev-company',
       draftId: 'draft-1',
       reverseChargeEligibilityConfirmed: true,
+    });
+  });
+
+  it('requires JSON media type only when approval has a non-empty body', async () => {
+    const testContext = createTestApp();
+    const emptyResponse = await testContext.app.request(
+      '/invoice-drafts/draft-1/approve',
+      { method: 'POST' },
+    );
+    const textResponse = await testContext.app.request(
+      '/invoice-drafts/draft-1/approve',
+      {
+        body: JSON.stringify({
+          reverseChargeEligibilityConfirmed: true,
+        }),
+        headers: { 'Content-Type': 'text/plain' },
+        method: 'POST',
+      },
+    );
+
+    expect(emptyResponse.status).toBe(200);
+    expect(textResponse.status).toBe(415);
+    expect(await textResponse.json()).toEqual({
+      error: 'Content-Type must be application/json.',
     });
   });
 

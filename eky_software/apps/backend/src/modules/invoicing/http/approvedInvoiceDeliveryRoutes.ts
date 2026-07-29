@@ -1,6 +1,7 @@
 import { AuthorizationError } from '@eky/permissions';
 import { Hono } from 'hono';
 
+import { readJsonRequestBody } from '../../../http/readJsonRequestBody.js';
 import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 import { ApprovedInvoiceEmailDeliveryError } from '../application/approvedInvoiceEmailDeliveryError.js';
 import { ApprovedInvoiceEmailDeliveryOutcomeUnknownError } from '../application/approvedInvoiceEmailDeliveryOutcomeUnknownError.js';
@@ -82,7 +83,15 @@ export function createApprovedInvoiceDeliveryRoutes(
   routes.post('/invoices/:id/mark-sent', async (context) => {
     try {
       const actorContext = context.get('actorContext');
-      const body = await context.req.json();
+      const bodyResult = await readJsonRequestBody(context.req, 'required');
+
+      if (!bodyResult.ok) {
+        return context.json(
+          { error: bodyResult.message },
+          bodyResult.status,
+        );
+      }
+      const body = bodyResult.body;
       const manualDelivery = parseApprovedInvoiceManualDeliveryBody(body);
       const invoice = await dependencies.markApprovedInvoiceSent({
         actorContext,
@@ -172,7 +181,15 @@ export function createApprovedInvoiceDeliveryRoutes(
   routes.post('/invoices/:id/email/dry-run/send', async (context) => {
     try {
       const actorContext = context.get('actorContext');
-      const body = await context.req.json();
+      const bodyResult = await readJsonRequestBody(context.req, 'required');
+
+      if (!bodyResult.ok) {
+        return context.json(
+          { error: bodyResult.message },
+          bodyResult.status,
+        );
+      }
+      const body = bodyResult.body;
       const delivery = await dependencies.sendApprovedInvoiceEmailDryRun(
         parseApprovedInvoiceEmailDryRunSendBody(body, {
           actorContext,
@@ -209,7 +226,15 @@ export function createApprovedInvoiceDeliveryRoutes(
   routes.post('/invoices/:id/email/smtp-test/send', async (context) => {
     try {
       const actorContext = context.get('actorContext');
-      const body = await context.req.json();
+      const bodyResult = await readJsonRequestBody(context.req, 'required');
+
+      if (!bodyResult.ok) {
+        return context.json(
+          { error: bodyResult.message },
+          bodyResult.status,
+        );
+      }
+      const body = bodyResult.body;
       const delivery = await dependencies.sendApprovedInvoiceEmailSmtpTest(
         parseApprovedInvoiceEmailSmtpTestSendBody(body, {
           actorContext,
@@ -257,7 +282,15 @@ export function createApprovedInvoiceDeliveryRoutes(
   routes.post('/invoices/:id/email/smtp-test/prepare', async (context) => {
     try {
       const actorContext = context.get('actorContext');
-      const body = await context.req.json();
+      const bodyResult = await readJsonRequestBody(context.req, 'required');
+
+      if (!bodyResult.ok) {
+        return context.json(
+          { error: bodyResult.message },
+          bodyResult.status,
+        );
+      }
+      const body = bodyResult.body;
       const preparation = await dependencies.prepareApprovedInvoiceEmailSmtpTest(
         parseApprovedInvoiceEmailSmtpTestPrepareBody(body, {
           actorContext,
@@ -301,7 +334,15 @@ export function createApprovedInvoiceDeliveryRoutes(
   routes.post('/invoices/:id/email/smtp/send', async (context) => {
     try {
       const actorContext = context.get('actorContext');
-      const body = await context.req.json();
+      const bodyResult = await readJsonRequestBody(context.req, 'required');
+
+      if (!bodyResult.ok) {
+        return context.json(
+          { error: bodyResult.message },
+          bodyResult.status,
+        );
+      }
+      const body = bodyResult.body;
       const delivery = await dependencies.sendApprovedInvoiceEmailSmtp(
         parseApprovedInvoiceEmailSmtpSendBody(body, {
           actorContext,
@@ -349,7 +390,15 @@ export function createApprovedInvoiceDeliveryRoutes(
   routes.post('/invoices/:id/email/smtp/prepare', async (context) => {
     try {
       const actorContext = context.get('actorContext');
-      const body = await context.req.json();
+      const bodyResult = await readJsonRequestBody(context.req, 'required');
+
+      if (!bodyResult.ok) {
+        return context.json(
+          { error: bodyResult.message },
+          bodyResult.status,
+        );
+      }
+      const body = bodyResult.body;
       const preparation = await dependencies.prepareApprovedInvoiceEmailSmtp(
         parseApprovedInvoiceEmailSmtpPrepareBody(body, {
           actorContext,
