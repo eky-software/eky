@@ -294,6 +294,9 @@ export async function createCurrentInvoicePdf(
   page: Page,
 ): Promise<Response | null> {
   const openPdfButton = page.getByRole('button', { name: 'Avaa PDF' });
+  await page
+    .getByRole('button', { name: /^(Avaa PDF|Luo PDF)$/ })
+    .waitFor();
   if (await openPdfButton.isVisible()) {
     return null;
   }
