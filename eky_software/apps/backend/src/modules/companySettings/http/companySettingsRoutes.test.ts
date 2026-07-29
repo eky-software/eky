@@ -125,6 +125,28 @@ describe('companySettingsRoutes', () => {
     expect(body).toEqual({ error: 'Invalid JSON body.' });
   });
 
+  it('rejects oversized settings bodies before calling the route dependencies', async () => {
+    const updateCompanySettings = vi.fn();
+    const app = createAuthenticatedTestApp(createCompanySettingsRoutes({
+      async getCompanySettings(): Promise<CompanySettings> {
+        return createTestCompanySettings();
+      },
+      updateCompanySettings,
+    }));
+
+    const response = await app.request('/company-settings', {
+      body: JSON.stringify({ companyName: 'x'.repeat(16 * 1024) }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'PUT',
+    });
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Company settings body is too large.',
+    });
+    expect(updateCompanySettings).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['emailSmtpHost', 'attacker.example'],
     ['emailSmtpPort', 25],

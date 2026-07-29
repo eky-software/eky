@@ -1,3 +1,5 @@
+import { request as sendHttpRequest } from 'node:http';
+
 import type {
   APIRequestContext,
   APIResponse,
@@ -15,12 +17,13 @@ import {
   type IsolatedBackendHarness,
 } from '../../src/fixtures/isolatedBackendTest.js';
 
-type JsonMethod = 'POST' | 'PUT';
+type JsonMethod = 'DELETE' | 'POST' | 'PUT';
 
 interface RequiredJsonRouteContract {
   acceptedStatuses: readonly number[];
   createValidBody(sequence: number): Record<string, unknown>;
   method: JsonMethod;
+  maximumBodySizeBytes: number;
   name: string;
   path: string;
 }
@@ -28,6 +31,7 @@ interface RequiredJsonRouteContract {
 interface ForbiddenBodyRouteContract {
   emptyBodyStatuses: readonly number[];
   method: JsonMethod;
+  maximumBodySizeBytes: number;
   name: string;
   path: string;
 }
@@ -65,6 +69,7 @@ test('SEC-JSON-001 @security enforces JSON body contracts for every audited muta
     await expectRejectedMissingMediaType(contract, e2eBackend.api);
     await expectMalformedJsonRejected(contract, e2eBackend.api);
     await expectUnknownFieldRejected(contract, e2eBackend.api);
+    await expectBodySizeLimit(contract, e2eBackend.api);
   }
 
   await expectOptionalApprovalContract(e2eBackend.api);
@@ -72,6 +77,7 @@ test('SEC-JSON-001 @security enforces JSON body contracts for every audited muta
   for (const contract of createForbiddenBodyContracts()) {
     await expectForbiddenBodyContract(contract, e2eBackend.api);
   }
+  await expectChunkedBodyLimit(e2eBackend);
 
   expect((await e2eBackend.anonymousApi.get('/health')).status()).toBe(200);
 });
@@ -89,6 +95,7 @@ function createRequiredContracts(input: {
           name: `Synthetic JSON Customer ${String(sequence)} Oy`,
         }),
       method: 'POST',
+      maximumBodySizeBytes: 16 * 1024,
       name: 'create customer',
       path: '/customers',
     },
@@ -100,6 +107,7 @@ function createRequiredContracts(input: {
           name: 'Updated Synthetic JSON Customer Oy',
         }),
       method: 'PUT',
+      maximumBodySizeBytes: 16 * 1024,
       name: 'update customer',
       path: `/customers/${input.customerId}`,
     },
@@ -107,6 +115,7 @@ function createRequiredContracts(input: {
       acceptedStatuses: [200],
       createValidBody: () => createSyntheticCompanySettingsInput(),
       method: 'PUT',
+      maximumBodySizeBytes: 16 * 1024,
       name: 'update company settings',
       path: '/company-settings',
     },
@@ -114,6 +123,7 @@ function createRequiredContracts(input: {
       acceptedStatuses: [200],
       createValidBody: () => ({ secret: 'synthetic-e2e-secret' }),
       method: 'PUT',
+      maximumBodySizeBytes: 4 * 1024,
       name: 'set company email secret',
       path: '/company-settings/email-secret',
     },
@@ -121,6 +131,7 @@ function createRequiredContracts(input: {
       acceptedStatuses: [201],
       createValidBody: () => createSyntheticInvoiceDraftInput(input.customerId),
       method: 'POST',
+      maximumBodySizeBytes: 256 * 1024,
       name: 'create invoice draft',
       path: '/invoice-drafts',
     },
@@ -128,6 +139,7 @@ function createRequiredContracts(input: {
       acceptedStatuses: [200],
       createValidBody: () => createSyntheticInvoiceDraftInput(input.customerId),
       method: 'PUT',
+      maximumBodySizeBytes: 256 * 1024,
       name: 'update invoice draft',
       path: `/invoice-drafts/${input.invoiceDraftId}`,
     },
@@ -140,6 +152,7 @@ function createRequiredContracts(input: {
         subject: 'Synthetic credit',
       }),
       method: 'PUT',
+      maximumBodySizeBytes: 256 * 1024,
       name: 'update credit invoice draft',
       path: '/invoice-drafts/missing-credit-draft/credit',
     },
@@ -157,6 +170,7 @@ function createRequiredContracts(input: {
         ],
       }),
       method: 'PUT',
+      maximumBodySizeBytes: 32 * 1024,
       name: 'update invoice VAT rates',
       path: '/invoice-vat-rates',
     },
@@ -169,6 +183,7 @@ function createRequiredContracts(input: {
         sequencePadding: 4,
       }),
       method: 'PUT',
+      maximumBodySizeBytes: 16 * 1024,
       name: 'update invoice numbering settings',
       path: '/invoice-numbering-settings',
     },
@@ -179,6 +194,7 @@ function createRequiredContracts(input: {
         defaultReminderPeriodDays: 14,
       }),
       method: 'PUT',
+      maximumBodySizeBytes: 16 * 1024,
       name: 'update invoice payment settings',
       path: '/invoice-payment-settings',
     },
@@ -189,6 +205,7 @@ function createRequiredContracts(input: {
         confirmationInvoiceNumber: 'E2E-MISSING',
       }),
       method: 'POST',
+      maximumBodySizeBytes: 8 * 1024,
       name: 'cancel approved invoice',
       path: '/invoices/missing-invoice/cancel',
     },
@@ -196,6 +213,7 @@ function createRequiredContracts(input: {
       acceptedStatuses: [404],
       createValidBody: () => ({ deliveryMethod: 'manual' }),
       method: 'POST',
+      maximumBodySizeBytes: 2 * 1024,
       name: 'mark approved invoice sent',
       path: '/invoices/missing-invoice/mark-sent',
     },
@@ -203,6 +221,7 @@ function createRequiredContracts(input: {
       acceptedStatuses: [404],
       createValidBody: () => emailBody,
       method: 'POST',
+      maximumBodySizeBytes: 96 * 1024,
       name: 'send dry-run invoice email',
       path: '/invoices/missing-invoice/email/dry-run/send',
     },
@@ -210,6 +229,7 @@ function createRequiredContracts(input: {
       acceptedStatuses: [404],
       createValidBody: () => emailSendBody,
       method: 'POST',
+      maximumBodySizeBytes: 96 * 1024,
       name: 'send SMTP test invoice email',
       path: '/invoices/missing-invoice/email/smtp-test/send',
     },
@@ -217,6 +237,7 @@ function createRequiredContracts(input: {
       acceptedStatuses: [404],
       createValidBody: () => emailBody,
       method: 'POST',
+      maximumBodySizeBytes: 96 * 1024,
       name: 'prepare SMTP test invoice email',
       path: '/invoices/missing-invoice/email/smtp-test/prepare',
     },
@@ -224,6 +245,7 @@ function createRequiredContracts(input: {
       acceptedStatuses: [404],
       createValidBody: () => emailSendBody,
       method: 'POST',
+      maximumBodySizeBytes: 96 * 1024,
       name: 'send SMTP invoice email',
       path: '/invoices/missing-invoice/email/smtp/send',
     },
@@ -231,6 +253,7 @@ function createRequiredContracts(input: {
       acceptedStatuses: [404],
       createValidBody: () => emailBody,
       method: 'POST',
+      maximumBodySizeBytes: 96 * 1024,
       name: 'prepare SMTP invoice email',
       path: '/invoices/missing-invoice/email/smtp/prepare',
     },
@@ -242,14 +265,58 @@ function createForbiddenBodyContracts(): ForbiddenBodyRouteContract[] {
     {
       emptyBodyStatuses: [404],
       method: 'POST',
+      maximumBodySizeBytes: 1024,
       name: 'create credit invoice draft',
       path: '/invoices/missing-invoice/credit-draft',
     },
     {
       emptyBodyStatuses: [404],
       method: 'POST',
+      maximumBodySizeBytes: 1024,
       name: 'approve credit invoice draft',
       path: '/invoice-drafts/missing-credit-draft/approve-credit',
+    },
+    {
+      emptyBodyStatuses: [200],
+      method: 'DELETE',
+      maximumBodySizeBytes: 1024,
+      name: 'remove company email secret',
+      path: '/company-settings/email-secret',
+    },
+    {
+      emptyBodyStatuses: [404],
+      method: 'DELETE',
+      maximumBodySizeBytes: 1024,
+      name: 'delete invoice draft',
+      path: '/invoice-drafts/missing-invoice-draft',
+    },
+    {
+      emptyBodyStatuses: [404],
+      method: 'POST',
+      maximumBodySizeBytes: 1024,
+      name: 'generate approved invoice PDF',
+      path: '/invoices/missing-invoice/pdf',
+    },
+    {
+      emptyBodyStatuses: [404],
+      method: 'POST',
+      maximumBodySizeBytes: 1024,
+      name: 'reopen approved invoice',
+      path: '/invoices/missing-invoice/reopen-for-edit',
+    },
+    {
+      emptyBodyStatuses: [404],
+      method: 'POST',
+      maximumBodySizeBytes: 1024,
+      name: 'copy approved invoice to draft',
+      path: '/invoices/missing-invoice/copy-to-draft',
+    },
+    {
+      emptyBodyStatuses: [404],
+      method: 'POST',
+      maximumBodySizeBytes: 1024,
+      name: 'prepare dry-run invoice email',
+      path: '/invoices/missing-invoice/email/dry-run',
     },
   ];
 }
@@ -414,6 +481,28 @@ async function expectOptionalApprovalContract(
 
   const emptyResponse = await api.fetch(path, { method: 'POST' });
   expect(emptyResponse.status()).toBe(404);
+
+  const maximumBody = padJsonBody('{}', 4 * 1024);
+  expect(
+    (await sendRawJson(
+      api,
+      'POST',
+      path,
+      maximumBody,
+      'application/json',
+    )).status(),
+  ).toBe(404);
+  await expectSafeHttpError(
+    await sendRawJson(
+      api,
+      'POST',
+      path,
+      `${maximumBody} `,
+      'application/json',
+      true,
+    ),
+    [413],
+  );
 }
 
 async function expectForbiddenBodyContract(
@@ -452,6 +541,131 @@ async function expectForbiddenBodyContract(
   for (const request of requests) {
     await expectSafeHttpError(await request, [400], ['forbidden-unknown']);
   }
+
+  const maximumBody = '{}'.padEnd(contract.maximumBodySizeBytes, ' ');
+  await expectSafeHttpError(
+    await sendRawJson(
+      api,
+      contract.method,
+      contract.path,
+      maximumBody,
+      'application/json',
+    ),
+    [400],
+  );
+  await expectSafeHttpError(
+    await sendRawJson(
+      api,
+      contract.method,
+      contract.path,
+      `${maximumBody} `,
+      'application/json',
+      true,
+    ),
+    [413],
+  );
+}
+
+async function expectBodySizeLimit(
+  contract: RequiredJsonRouteContract,
+  api: APIRequestContext,
+): Promise<void> {
+  const validBody = JSON.stringify(contract.createValidBody(6));
+  const maximumBody = padJsonBody(
+    validBody,
+    contract.maximumBodySizeBytes,
+  );
+  const acceptedResponse = await sendRawJson(
+    api,
+    contract.method,
+    contract.path,
+    maximumBody,
+    'application/json',
+  );
+
+  expect(
+    contract.acceptedStatuses,
+    `${contract.name} rejected its exact body-size boundary`,
+  ).toContain(acceptedResponse.status());
+
+  await expectSafeHttpError(
+    await sendRawJson(
+      api,
+      contract.method,
+      contract.path,
+      `${maximumBody} `,
+      'application/json',
+      true,
+    ),
+    [413],
+  );
+}
+
+async function expectChunkedBodyLimit(
+  e2eBackend: IsolatedBackendHarness,
+): Promise<void> {
+  const body = JSON.stringify({
+    secret: 'x'.repeat(4 * 1024),
+  });
+  const response = await sendChunkedRequest({
+    body,
+    origin: e2eBackend.backend.backendOrigin,
+    path: '/company-settings/email-secret',
+    sessionSecret: e2eBackend.backend.sessionSecret,
+  });
+
+  expect(response.status).toBe(413);
+  expect(response.body).not.toContain('x'.repeat(100));
+}
+
+function padJsonBody(body: string, sizeBytes: number): string {
+  const bodySizeBytes = Buffer.byteLength(body, 'utf8');
+  if (bodySizeBytes > sizeBytes) {
+    throw new Error('Synthetic JSON body exceeds its configured limit.');
+  }
+
+  return `${body}${' '.repeat(sizeBytes - bodySizeBytes)}`;
+}
+
+function sendChunkedRequest(input: {
+  body: string;
+  origin: string;
+  path: string;
+  sessionSecret: string;
+}): Promise<{ body: string; status: number }> {
+  return new Promise((resolveResponse, rejectResponse) => {
+    const origin = new URL(input.origin);
+    const request = sendHttpRequest(
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Transfer-Encoding': 'chunked',
+          'x-eky-local-session': input.sessionSecret,
+        },
+        hostname: origin.hostname,
+        method: 'PUT',
+        path: input.path,
+        port: origin.port,
+      },
+      (response) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer) => {
+          chunks.push(chunk);
+        });
+        response.once('end', () => {
+          resolveResponse({
+            body: Buffer.concat(chunks).toString('utf8'),
+            status: response.statusCode ?? 0,
+          });
+        });
+      },
+    );
+
+    request.once('error', rejectResponse);
+    const splitIndex = Math.floor(input.body.length / 2);
+    request.write(input.body.slice(0, splitIndex));
+    request.end(input.body.slice(splitIndex));
+  });
 }
 
 function sendRawJson(
@@ -460,11 +674,19 @@ function sendRawJson(
   path: string,
   body: string,
   contentType?: string,
+  closeConnection = false,
 ): Promise<APIResponse> {
+  const headers: Record<string, string> = {};
+  if (contentType !== undefined) {
+    headers['Content-Type'] = contentType;
+  }
+  if (closeConnection) {
+    headers.Connection = 'close';
+  }
+
   return api.fetch(path, {
     data: body,
-    headers:
-      contentType === undefined ? {} : { 'Content-Type': contentType },
+    headers,
     method,
   });
 }

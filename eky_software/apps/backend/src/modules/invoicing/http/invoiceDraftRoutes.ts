@@ -28,6 +28,8 @@ import {
 } from './invoiceDraftRequest.js';
 
 const maximumInvoiceDraftBodySizeBytes = 256 * 1024;
+const maximumInvoiceApprovalBodySizeBytes = 4 * 1024;
+const maximumForbiddenBodySizeBytes = 1024;
 
 interface InvoiceDraftRouteDependencies {
   approveInvoiceDraft(
@@ -113,65 +115,73 @@ export function createInvoiceDraftRoutes(
     }
   });
 
-  routes.post('/invoice-drafts/:id/approve', async (context) => {
-    try {
-      const actorContext = context.get('actorContext');
-      const bodyResult = await readJsonRequestBody(context.req, 'optional');
+  routes.post(
+    '/invoice-drafts/:id/approve',
+    bodyLimit({
+      maxSize: maximumInvoiceApprovalBodySizeBytes,
+      onError: (context) =>
+        context.json({ error: 'Invoice approval body is too large.' }, 413),
+    }),
+    async (context) => {
+      try {
+        const actorContext = context.get('actorContext');
+        const bodyResult = await readJsonRequestBody(context.req, 'optional');
 
-      if (!bodyResult.ok) {
-        return context.json(
-          { error: bodyResult.message },
-          bodyResult.status,
-        );
-      }
-      let reverseChargeEligibilityConfirmed = false;
+        if (!bodyResult.ok) {
+          return context.json(
+            { error: bodyResult.message },
+            bodyResult.status,
+          );
+        }
+        let reverseChargeEligibilityConfirmed = false;
 
-      if (bodyResult.body !== undefined) {
-        const requestBody = bodyResult.body;
-        if (
-          typeof requestBody !== 'object' ||
-          requestBody === null ||
-          Array.isArray(requestBody) ||
-          Object.keys(requestBody).some(
-            (field) => field !== 'reverseChargeEligibilityConfirmed',
-          ) ||
-          ('reverseChargeEligibilityConfirmed' in requestBody &&
-            typeof requestBody.reverseChargeEligibilityConfirmed !==
-              'boolean')
-        ) {
-          return context.json({ error: 'Invalid approval body.' }, 400);
+        if (bodyResult.body !== undefined) {
+          const requestBody = bodyResult.body;
+          if (
+            typeof requestBody !== 'object' ||
+            requestBody === null ||
+            Array.isArray(requestBody) ||
+            Object.keys(requestBody).some(
+              (field) => field !== 'reverseChargeEligibilityConfirmed',
+            ) ||
+            ('reverseChargeEligibilityConfirmed' in requestBody &&
+              typeof requestBody.reverseChargeEligibilityConfirmed !==
+                'boolean')
+          ) {
+            return context.json({ error: 'Invalid approval body.' }, 400);
+          }
+
+          reverseChargeEligibilityConfirmed =
+            'reverseChargeEligibilityConfirmed' in requestBody &&
+            requestBody.reverseChargeEligibilityConfirmed === true;
+        }
+        const approvedInvoice = await dependencies.approveInvoiceDraft({
+          actorUserId: actorContext.actorId,
+          approvedAt: new Date().toISOString(),
+          companyId: actorContext.companyId,
+          draftId: context.req.param('id'),
+          reverseChargeEligibilityConfirmed,
+          seriesKey: defaultInvoiceNumberSeriesKey,
+        });
+
+        return context.json({ approvedInvoice });
+      } catch (error) {
+        if (error instanceof InvoiceDraftNotFoundError) {
+          return context.json({ error: error.message }, 404);
         }
 
-        reverseChargeEligibilityConfirmed =
-          'reverseChargeEligibilityConfirmed' in requestBody &&
-          requestBody.reverseChargeEligibilityConfirmed === true;
-      }
-      const approvedInvoice = await dependencies.approveInvoiceDraft({
-        actorUserId: actorContext.actorId,
-        approvedAt: new Date().toISOString(),
-        companyId: actorContext.companyId,
-        draftId: context.req.param('id'),
-        reverseChargeEligibilityConfirmed,
-        seriesKey: defaultInvoiceNumberSeriesKey,
-      });
+        if (
+          error instanceof ApproveInvoiceDraftError ||
+          error instanceof InvoiceDraftValidationError ||
+          error instanceof InvoiceNumberingError
+        ) {
+          return context.json({ error: error.message }, 400);
+        }
 
-      return context.json({ approvedInvoice });
-    } catch (error) {
-      if (error instanceof InvoiceDraftNotFoundError) {
-        return context.json({ error: error.message }, 404);
+        throw error;
       }
-
-      if (
-        error instanceof ApproveInvoiceDraftError ||
-        error instanceof InvoiceDraftValidationError ||
-        error instanceof InvoiceNumberingError
-      ) {
-        return context.json({ error: error.message }, 400);
-      }
-
-      throw error;
-    }
-  });
+    },
+  );
 
   routes.get('/invoice-drafts/:id', async (context) => {
     try {
@@ -195,27 +205,44 @@ export function createInvoiceDraftRoutes(
     }
   });
 
-  routes.delete('/invoice-drafts/:id', async (context) => {
-    try {
-      const actorContext = context.get('actorContext');
-      await dependencies.deleteInvoiceDraft({
-        companyId: actorContext.companyId,
-        invoiceDraftId: context.req.param('id'),
-      });
+  routes.delete(
+    '/invoice-drafts/:id',
+    bodyLimit({
+      maxSize: maximumForbiddenBodySizeBytes,
+      onError: (context) =>
+        context.json({ error: 'Request body is too large.' }, 413),
+    }),
+    async (context) => {
+      const bodyResult = await readJsonRequestBody(context.req, 'forbidden');
 
-      return context.json({ deleted: true });
-    } catch (error) {
-      if (error instanceof InvoiceDraftNotFoundError) {
-        return context.json({ error: error.message }, 404);
+      if (!bodyResult.ok) {
+        return context.json(
+          { error: bodyResult.message },
+          bodyResult.status,
+        );
       }
 
-      if (error instanceof InvoiceDraftValidationError) {
-        return context.json({ error: error.message }, 400);
-      }
+      try {
+        const actorContext = context.get('actorContext');
+        await dependencies.deleteInvoiceDraft({
+          companyId: actorContext.companyId,
+          invoiceDraftId: context.req.param('id'),
+        });
 
-      throw error;
-    }
-  });
+        return context.json({ deleted: true });
+      } catch (error) {
+        if (error instanceof InvoiceDraftNotFoundError) {
+          return context.json({ error: error.message }, 404);
+        }
+
+        if (error instanceof InvoiceDraftValidationError) {
+          return context.json({ error: error.message }, 400);
+        }
+
+        throw error;
+      }
+    },
+  );
 
   routes.put(
     '/invoice-drafts/:id',

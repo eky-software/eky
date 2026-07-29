@@ -4,7 +4,7 @@ export async function stopManagedProcessTree(
   child: ChildProcess,
   timeoutMilliseconds = 3_000,
 ): Promise<void> {
-  if (child.exitCode !== null || child.pid === undefined) {
+  if (hasExited(child) || child.pid === undefined) {
     return;
   }
 
@@ -23,7 +23,7 @@ export async function stopManagedProcessTree(
   }
 
   await waitForExit(child, timeoutMilliseconds);
-  if (child.exitCode === null) {
+  if (!hasExited(child)) {
     if (process.platform !== 'win32') {
       try {
         process.kill(-child.pid, 'SIGKILL');
@@ -41,7 +41,7 @@ function waitForExit(
   child: ChildProcess,
   timeoutMilliseconds: number,
 ): Promise<void> {
-  if (child.exitCode !== null) {
+  if (hasExited(child)) {
     return Promise.resolve();
   }
 
@@ -52,4 +52,8 @@ function waitForExit(
       resolveExit();
     });
   });
+}
+
+function hasExited(child: ChildProcess): boolean {
+  return child.exitCode !== null || child.signalCode !== null;
 }

@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 
 import {
   getOptionalStringField,
@@ -18,6 +19,13 @@ interface CustomersRouteDependencies {
   listCustomers(input: ListCustomersInput): Promise<Customer[]>;
   updateCustomer(input: UpdateCustomerInput): Promise<Customer>;
 }
+
+const maximumCustomerBodySizeBytes = 16 * 1024;
+const customerBodyLimit = bodyLimit({
+  maxSize: maximumCustomerBodySizeBytes,
+  onError: (context) =>
+    context.json({ error: 'Customer body is too large.' }, 413),
+});
 
 const allowedCustomerBodyFields = new Set([
   'businessId',
@@ -52,7 +60,7 @@ export function createCustomersRoutes(
 ): Hono<BackendEnvironment> {
   const routes = new Hono<BackendEnvironment>();
 
-  routes.post('/customers', async (context) => {
+  routes.post('/customers', customerBodyLimit, async (context) => {
     const actorContext = context.get('actorContext');
     const bodyResult = await readJsonRequestBody(context.req, 'required');
 
@@ -69,7 +77,7 @@ export function createCustomersRoutes(
       hasUnknownCustomerBodyFields(body) ||
       typeof body.name !== 'string'
     ) {
-      return context.json({ error: 'Customer name is required.' }, 400);
+      return context.json({ error: 'Invalid customer body.' }, 400);
     }
 
     const customerNumberMode = getCustomerNumberMode(body);
@@ -118,7 +126,7 @@ export function createCustomersRoutes(
     return context.json({ customers });
   });
 
-  routes.put('/customers/:id', async (context) => {
+  routes.put('/customers/:id', customerBodyLimit, async (context) => {
     const actorContext = context.get('actorContext');
     const bodyResult = await readJsonRequestBody(context.req, 'required');
 
@@ -135,7 +143,7 @@ export function createCustomersRoutes(
       hasUnknownCustomerBodyFields(body) ||
       typeof body.name !== 'string'
     ) {
-      return context.json({ error: 'Customer name is required.' }, 400);
+      return context.json({ error: 'Invalid customer body.' }, 400);
     }
 
     const customerNumber = getStringField(body, 'customerNumber');

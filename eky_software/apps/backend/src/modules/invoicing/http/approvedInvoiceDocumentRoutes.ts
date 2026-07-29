@@ -1,5 +1,7 @@
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 
+import { readJsonRequestBody } from '../../../http/readJsonRequestBody.js';
 import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 import { ApprovedInvoiceDocumentNotFoundError } from '../application/approvedInvoiceDocumentNotFoundError.js';
 import { ApprovedInvoiceNotFoundError } from '../application/approvedInvoiceNotFoundError.js';
@@ -24,33 +26,52 @@ export interface ApprovedInvoiceDocumentRouteDependencies {
   ): Promise<ApprovedInvoiceDocumentMetadata>;
 }
 
+const maximumForbiddenBodySizeBytes = 1024;
+
 export function createApprovedInvoiceDocumentRoutes(
   dependencies: ApprovedInvoiceDocumentRouteDependencies,
 ): Hono<BackendEnvironment> {
   const routes = new Hono<BackendEnvironment>();
 
-  routes.post('/invoices/:id/pdf', async (context) => {
-    try {
-      const actorContext = context.get('actorContext');
-      const document = await dependencies.generateApprovedInvoicePdfDocument({
-        companyId: actorContext.companyId,
-        createdAt: new Date().toISOString(),
-        invoiceId: context.req.param('id'),
-      });
+  routes.post(
+    '/invoices/:id/pdf',
+    bodyLimit({
+      maxSize: maximumForbiddenBodySizeBytes,
+      onError: (context) =>
+        context.json({ error: 'Request body is too large.' }, 413),
+    }),
+    async (context) => {
+      const bodyResult = await readJsonRequestBody(context.req, 'forbidden');
 
-      return context.json({ document });
-    } catch (error) {
-      if (error instanceof ApprovedInvoiceNotFoundError) {
-        return context.json({ error: error.message }, 404);
+      if (!bodyResult.ok) {
+        return context.json(
+          { error: bodyResult.message },
+          bodyResult.status,
+        );
       }
 
-      if (error instanceof InvoiceDraftValidationError) {
-        return context.json({ error: error.message }, 400);
-      }
+      try {
+        const actorContext = context.get('actorContext');
+        const document = await dependencies.generateApprovedInvoicePdfDocument({
+          companyId: actorContext.companyId,
+          createdAt: new Date().toISOString(),
+          invoiceId: context.req.param('id'),
+        });
 
-      throw error;
-    }
-  });
+        return context.json({ document });
+      } catch (error) {
+        if (error instanceof ApprovedInvoiceNotFoundError) {
+          return context.json({ error: error.message }, 404);
+        }
+
+        if (error instanceof InvoiceDraftValidationError) {
+          return context.json({ error: error.message }, 400);
+        }
+
+        throw error;
+      }
+    },
+  );
 
   routes.get('/invoices/:id/pdf', async (context) => {
     try {

@@ -22,6 +22,7 @@ import { defaultInvoiceNumberSeriesKey } from '../domain/invoiceNumbering.js';
 import type { ApprovedCreditInvoiceResult } from '../ports/invoiceCreditApprovalRepository.js';
 
 const maximumCreditDraftBodySizeBytes = 256 * 1024;
+const maximumForbiddenBodySizeBytes = 1024;
 
 export interface CreditInvoiceDraftRouteDependencies {
   approveCreditInvoiceDraft(
@@ -46,7 +47,7 @@ export function createCreditInvoiceDraftRoutes(
   routes.post(
     '/invoices/:id/credit-draft',
     bodyLimit({
-      maxSize: maximumCreditDraftBodySizeBytes,
+      maxSize: maximumForbiddenBodySizeBytes,
       onError: (context) =>
         context.json({ error: 'Credit invoice draft body is too large.' }, 413),
     }),
@@ -89,7 +90,7 @@ export function createCreditInvoiceDraftRoutes(
   routes.post(
     '/invoice-drafts/:id/approve-credit',
     bodyLimit({
-      maxSize: maximumCreditDraftBodySizeBytes,
+      maxSize: maximumForbiddenBodySizeBytes,
       onError: (context) =>
         context.json({ error: 'Credit invoice approval body is too large.' }, 413),
     }),

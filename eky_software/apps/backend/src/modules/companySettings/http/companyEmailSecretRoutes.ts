@@ -1,5 +1,6 @@
 import { Hono, type Context } from 'hono';
 import { AuthorizationError } from '@eky/permissions';
+import { bodyLimit } from 'hono/body-limit';
 
 import { isRecord } from '../../../http/requestBody.js';
 import { readJsonRequestBody } from '../../../http/readJsonRequestBody.js';
@@ -23,6 +24,9 @@ interface CompanyEmailSecretRouteDependencies {
   ): Promise<CompanyEmailSecretStatus>;
 }
 
+const maximumCompanyEmailSecretBodySizeBytes = 4 * 1024;
+const maximumForbiddenBodySizeBytes = 1024;
+
 export function createCompanyEmailSecretRoutes(
   dependencies: CompanyEmailSecretRouteDependencies,
 ): Hono<BackendEnvironment> {
@@ -40,46 +44,74 @@ export function createCompanyEmailSecretRoutes(
     }
   });
 
-  routes.put('/company-settings/email-secret', async (context) => {
-    const bodyResult = await readJsonRequestBody(context.req, 'required');
+  routes.put(
+    '/company-settings/email-secret',
+    bodyLimit({
+      maxSize: maximumCompanyEmailSecretBodySizeBytes,
+      onError: (context) =>
+        context.json({ error: 'Company email secret body is too large.' }, 413),
+    }),
+    async (context) => {
+      const bodyResult = await readJsonRequestBody(context.req, 'required');
 
-    if (!bodyResult.ok) {
-      return context.json(
-        { error: bodyResult.message },
-        bodyResult.status,
-      );
-    }
-    const body = bodyResult.body;
+      if (!bodyResult.ok) {
+        return context.json(
+          { error: bodyResult.message },
+          bodyResult.status,
+        );
+      }
+      const body = bodyResult.body;
 
-    if (!isEmailSecretRequestBody(body)) {
-      return context.json({ error: 'Invalid company email secret body.' }, 400);
-    }
+      if (!isEmailSecretRequestBody(body)) {
+        return context.json(
+          { error: 'Invalid company email secret body.' },
+          400,
+        );
+      }
 
-    try {
-      const emailSecretStatus = await dependencies.setCompanyEmailSecret({
-        actorContext: context.get('actorContext'),
-        occurredAt: new Date().toISOString(),
-        secret: body.secret,
-      });
+      try {
+        const emailSecretStatus = await dependencies.setCompanyEmailSecret({
+          actorContext: context.get('actorContext'),
+          occurredAt: new Date().toISOString(),
+          secret: body.secret,
+        });
 
-      return context.json({ emailSecretStatus });
-    } catch (error) {
-      return mapCompanyEmailSecretError(context, error);
-    }
-  });
+        return context.json({ emailSecretStatus });
+      } catch (error) {
+        return mapCompanyEmailSecretError(context, error);
+      }
+    },
+  );
 
-  routes.delete('/company-settings/email-secret', async (context) => {
-    try {
-      const emailSecretStatus = await dependencies.removeCompanyEmailSecret({
-        actorContext: context.get('actorContext'),
-        occurredAt: new Date().toISOString(),
-      });
+  routes.delete(
+    '/company-settings/email-secret',
+    bodyLimit({
+      maxSize: maximumForbiddenBodySizeBytes,
+      onError: (context) =>
+        context.json({ error: 'Request body is too large.' }, 413),
+    }),
+    async (context) => {
+      const bodyResult = await readJsonRequestBody(context.req, 'forbidden');
 
-      return context.json({ emailSecretStatus });
-    } catch (error) {
-      return mapCompanyEmailSecretError(context, error);
-    }
-  });
+      if (!bodyResult.ok) {
+        return context.json(
+          { error: bodyResult.message },
+          bodyResult.status,
+        );
+      }
+
+      try {
+        const emailSecretStatus = await dependencies.removeCompanyEmailSecret({
+          actorContext: context.get('actorContext'),
+          occurredAt: new Date().toISOString(),
+        });
+
+        return context.json({ emailSecretStatus });
+      } catch (error) {
+        return mapCompanyEmailSecretError(context, error);
+      }
+    },
+  );
 
   return routes;
 }

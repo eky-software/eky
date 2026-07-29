@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { AuthorizationError } from '@eky/permissions';
+import { bodyLimit } from 'hono/body-limit';
 
 import { getOptionalStringField, isRecord } from '../../../http/requestBody.js';
 import { readJsonRequestBody } from '../../../http/readJsonRequestBody.js';
@@ -13,6 +14,13 @@ interface CompanySettingsRouteDependencies {
   getCompanySettings(input: GetCompanySettingsInput): Promise<CompanySettings>;
   updateCompanySettings(input: UpdateCompanySettingsInput): Promise<CompanySettings>;
 }
+
+const maximumCompanySettingsBodySizeBytes = 16 * 1024;
+const companySettingsBodyLimit = bodyLimit({
+  maxSize: maximumCompanySettingsBodySizeBytes,
+  onError: (context) =>
+    context.json({ error: 'Company settings body is too large.' }, 413),
+});
 
 const allowedCompanySettingsBodyFields = new Set([
   'bankName',
@@ -53,7 +61,7 @@ export function createCompanySettingsRoutes(
     return context.json({ companySettings });
   });
 
-  routes.put('/company-settings', async (context) => {
+  routes.put('/company-settings', companySettingsBodyLimit, async (context) => {
     const actorContext = context.get('actorContext');
     const bodyResult = await readJsonRequestBody(context.req, 'required');
 

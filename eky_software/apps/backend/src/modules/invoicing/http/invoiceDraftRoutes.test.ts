@@ -688,6 +688,28 @@ describe('invoiceDraftRoutes', () => {
     });
   });
 
+  it('rejects oversized approval bodies before calling the use case', async () => {
+    const testContext = createTestApp();
+
+    const response = await testContext.app.request(
+      '/invoice-drafts/draft-1/approve',
+      {
+        body: JSON.stringify({
+          reverseChargeEligibilityConfirmed: true,
+          padding: 'x'.repeat(4 * 1024),
+        }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      },
+    );
+
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({
+      error: 'Invoice approval body is too large.',
+    });
+    expect(testContext.getApproveInput()).toBeUndefined();
+  });
+
   it('rejects a non-boolean reverse charge approval confirmation', async () => {
     const testContext = createTestApp();
 
@@ -1137,6 +1159,25 @@ describe('invoiceDraftRoutes', () => {
       invoiceDraftId: createBody.invoiceDraft.id,
     });
     expect(testContext.invoiceDraftRepository.savedDraft).toBeUndefined();
+  });
+
+  it('rejects a body when deleting a draft', async () => {
+    const testContext = createTestApp();
+
+    const response = await testContext.app.request(
+      '/invoice-drafts/draft-1',
+      {
+        body: '{}',
+        headers: { 'Content-Type': 'application/json' },
+        method: 'DELETE',
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Request body is not allowed.',
+    });
+    expect(testContext.getDeleteInput()).toBeUndefined();
   });
 
   it('returns the same generic not-found response for an unavailable delete', async () => {

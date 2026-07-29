@@ -8,7 +8,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "e2e:prepare": "pnpm --filter @eky/backend e2e:build",
+    "e2e:prepare": "pnpm --filter @eky/permissions build && pnpm --filter @eky/auth build && pnpm --filter @eky/backend e2e:build",
     "e2e:system": "pnpm e2e:prepare && playwright test --project=system-api",
     "e2e:web": "playwright test --project=web-chromium",
     "e2e:web:critical": "playwright test --project=web-chromium --grep @critical",

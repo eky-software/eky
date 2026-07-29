@@ -31,6 +31,22 @@ describe('approved invoice document routes', () => {
     });
   });
 
+  it('rejects a body when generating PDF metadata', async () => {
+    const { app, getGenerateInput } = createTestApp({});
+
+    const response = await app.request('/invoices/invoice-1/pdf', {
+      body: '{}',
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Request body is not allowed.',
+    });
+    expect(getGenerateInput()).toBeUndefined();
+  });
+
   it('returns PDF bytes with the existing inline content headers', async () => {
     const pdfDocument = createPdfDocument();
     const { app, getPdfInput } = createTestApp({ pdfDocument });
