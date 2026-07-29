@@ -197,31 +197,23 @@ test('SEC-METHOD-001 @security rejects wrong methods', async ({
 test('SEC-METHOD-001 @security rejects text/plain JSON bodies', async ({
   e2eBackend,
 }) => {
-  test.fail(
-    true,
-    'Known finding: invoice JSON bodies are accepted with text/plain.',
-  );
   const customerId = await createCustomer(e2eBackend);
   const response = await e2eBackend.api.post('/invoice-drafts', {
     data: JSON.stringify(createSyntheticInvoiceDraftInput(customerId)),
     headers: { 'Content-Type': 'text/plain' },
   });
-  await expectSafeHttpError(response, [400, 415]);
+  await expectSafeHttpError(response, [415]);
 });
 
 test('SEC-METHOD-001 @security rejects JSON bodies without a media type', async ({
   e2eBackend,
 }) => {
-  test.fail(
-    true,
-    'Known finding: invoice JSON bodies are accepted without an explicit Content-Type.',
-  );
   const customerId = await createCustomer(e2eBackend);
   const response = await e2eBackend.api.post('/invoice-drafts', {
     data: JSON.stringify(createSyntheticInvoiceDraftInput(customerId)),
     headers: {},
   });
-  await expectSafeHttpError(response, [400, 415]);
+  await expectSafeHttpError(response, [415]);
 });
 
 test('SEC-METHOD-001 @security rejects unsupported query keys and remains healthy', async ({
