@@ -177,7 +177,9 @@ test.describe('managed E2E runtime primitives', () => {
     } finally {
       await stopManagedProcessTree(managed.child);
     }
-    expect(managed.child.exitCode).not.toBeNull();
+    expect(
+      managed.child.exitCode !== null || managed.child.signalCode !== null,
+    ).toBe(true);
   });
 
   test('collects only allowlisted files below the run root', async () => {
