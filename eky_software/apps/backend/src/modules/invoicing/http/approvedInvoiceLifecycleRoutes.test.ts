@@ -77,6 +77,25 @@ describe('approved invoice lifecycle routes', () => {
     expect(getCancelInput()).toBeUndefined();
   });
 
+  it('rejects oversized cancellation bodies before calling the use case', async () => {
+    const { app, getCancelInput } = createTestApp({});
+
+    const response = await app.request('/invoices/invoice-1/cancel', {
+      body: JSON.stringify({
+        cancellationReason: 'x'.repeat(8 * 1024),
+        confirmationInvoiceNumber: '20260001',
+      }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Invoice cancellation body is too large.',
+    });
+    expect(getCancelInput()).toBeUndefined();
+  });
+
   it.each([
     {
       error: new InvoiceCancellationConfirmationError(),
@@ -144,6 +163,33 @@ describe('approved invoice lifecycle routes', () => {
       companyId: 'dev-company',
       invoiceId: 'invoice-1',
     });
+  });
+
+  it.each([
+    {
+      getInput: (result: ReturnType<typeof createTestApp>) =>
+        result.getReopenInput(),
+      path: '/invoices/invoice-1/reopen-for-edit',
+    },
+    {
+      getInput: (result: ReturnType<typeof createTestApp>) =>
+        result.getCopyInput(),
+      path: '/invoices/invoice-1/copy-to-draft',
+    },
+  ])('rejects a body for $path', async ({ getInput, path }) => {
+    const testContext = createTestApp({});
+
+    const response = await testContext.app.request(path, {
+      body: '{}',
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Request body is not allowed.',
+    });
+    expect(getInput(testContext)).toBeUndefined();
   });
 
   it('returns a safe 404 when reopening an invoice outside the company scope', async () => {

@@ -97,6 +97,44 @@ describe('companyEmailSecretRoutes', () => {
     });
   });
 
+  it('rejects oversized secrets before calling the route dependencies', async () => {
+    const setCompanyEmailSecret = vi.fn();
+    const app = createAuthenticatedTestApp(
+      createCompanyEmailSecretRoutes(
+        createDependencies({ setCompanyEmailSecret }),
+      ),
+    );
+
+    const response = await putSecret(app, 'x'.repeat(4 * 1024));
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Company email secret body is too large.',
+    });
+    expect(setCompanyEmailSecret).not.toHaveBeenCalled();
+  });
+
+  it('rejects a body when removing the secret', async () => {
+    const removeCompanyEmailSecret = vi.fn();
+    const app = createAuthenticatedTestApp(
+      createCompanyEmailSecretRoutes(
+        createDependencies({ removeCompanyEmailSecret }),
+      ),
+    );
+
+    const response = await app.request('/company-settings/email-secret', {
+      body: '{}',
+      headers: { 'Content-Type': 'application/json' },
+      method: 'DELETE',
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Request body is not allowed.',
+    });
+    expect(removeCompanyEmailSecret).not.toHaveBeenCalled();
+  });
+
   it.each([
     { companyId: 'other-company', secret: 'synthetic-password' },
     { secret: 'synthetic-password', status: 'configured' },

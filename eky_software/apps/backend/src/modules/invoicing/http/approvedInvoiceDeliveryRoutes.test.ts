@@ -136,6 +136,22 @@ describe('approved invoice delivery routes', () => {
     });
   });
 
+  it('rejects a body when preparing the dry-run preview', async () => {
+    const { app, getEmailInput } = createTestApp({});
+
+    const response = await app.request('/invoices/invoice-1/email/dry-run', {
+      body: '{}',
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Request body is not allowed.',
+    });
+    expect(getEmailInput()).toBeUndefined();
+  });
+
   it('sends a dry-run invoice email with user-edited fields in the company scope', async () => {
     const delivery = createApprovedInvoiceEmailDryRunSendResult();
     const { app, getEmailSendInput } = createTestApp({ emailDelivery: delivery });
@@ -164,6 +180,26 @@ describe('approved invoice delivery routes', () => {
       subject: 'Muokattu laskuotsikko',
       to: 'recipient@example.fi',
     });
+  });
+
+  it('rejects oversized email bodies before calling the use case', async () => {
+    const { app, getEmailSendInput } = createTestApp({});
+
+    const response = await app.request('/invoices/invoice-1/email/dry-run/send', {
+      body: JSON.stringify({
+        body: 'x'.repeat(96 * 1024),
+        subject: 'Lasku',
+        to: 'recipient@example.fi',
+      }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Invoice email body is too large.',
+    });
+    expect(getEmailSendInput()).toBeUndefined();
   });
 
   it('rejects server-owned fields in dry-run email send body', async () => {

@@ -209,7 +209,36 @@ describe('customersRoutes', () => {
     const body = (await response.json()) as { error: string };
 
     expect(response.status).toBe(400);
-    expect(body).toEqual({ error: 'Customer name is required.' });
+    expect(body).toEqual({ error: 'Invalid customer body.' });
+    expect(createCalled).toBe(false);
+  });
+
+  it('rejects oversized customer bodies before calling the route dependencies', async () => {
+    let createCalled = false;
+    const app = createCustomersRoutes({
+      async createCustomer(): Promise<Customer> {
+        createCalled = true;
+
+        throw new Error('createCustomer should not be called');
+      },
+      async listCustomers(): Promise<Customer[]> {
+        return [];
+      },
+      async updateCustomer(): Promise<Customer> {
+        throw new Error('updateCustomer should not be called');
+      },
+    });
+
+    const response = await app.request('/customers', {
+      body: JSON.stringify({ name: 'x'.repeat(16 * 1024) }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Customer body is too large.',
+    });
     expect(createCalled).toBe(false);
   });
 
