@@ -25,14 +25,14 @@ importers:
         specifier: workspace:*
         version: link:../../packages/permissions
       '@hono/node-server':
-        specifier: ^2.0.3
-        version: 2.0.3(hono@4.12.27)
+        specifier: ^2.0.12
+        version: 2.0.12(hono@4.12.32)
       better-sqlite3:
         specifier: 12.11.1
         version: 12.11.1
       hono:
-        specifier: ^4.12.27
-        version: 4.12.27
+        specifier: ^4.12.32
+        version: 4.12.32
       pdfkit:
         specifier: ^0.19.1
         version: 0.19.1
@@ -163,8 +163,8 @@ packages:
   '@emnapi/wasi-threads@1.2.2':
     resolution: {integrity: sha512-c95qOXkHdydNKhscBTebqEC1CVAZpyqOfVfBzQ1qgzyl3gfeldUjIggDbIZgDKsHLgnsM+igH7TJ/eAasaVuMA==}
 
-  '@hono/node-server@2.0.3':
-    resolution: {integrity: sha512-a0jV+/HRe3G5zjFID3zObAQFdkl6zpxTuqktdDDXS3MJKcrZIkB8OkLpNBlY/WXFqv2HF4a0takPej+aNFczWA==}
+  '@hono/node-server@2.0.12':
+    resolution: {integrity: sha512-eWpQYr67tqJLeaSUl0Q+TquuYfUdTibpOJlUMV2FfUP7+KqCC5TufnwnlXL6mobZBJbGAYRd7ZvEBDCbLInjhg==}
     engines: {node: '>=20'}
     peerDependencies:
       hono: ^4
@@ -557,8 +557,8 @@ packages:
   graceful-fs@4.2.11:
     resolution: {integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==}
 
-  hono@4.12.27:
-    resolution: {integrity: sha512-1yrb/+w6HWQJrUCLkJ2IF5jNIPvvFkblV5RNOYl6bV+OA6p9GLcMpHFFGTosSvHvcAUibuUukRqhlYI4z32C7Q==}
+  hono@4.12.32:
+    resolution: {integrity: sha512-XcuyW9qE2kJn07PkecMOBd5Vq/hMy7mmGw+idz1yblbg9N17ijJODrvPkn7/dwL3Kulj8LcRJ69DLOWf91dRUg==}
     engines: {node: '>=16.9.0'}
 
   ieee754@1.2.1:
@@ -1126,9 +1126,9 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
-  '@hono/node-server@2.0.3(hono@4.12.27)':
+  '@hono/node-server@2.0.12(hono@4.12.32)':
     dependencies:
-      hono: 4.12.27
+      hono: 4.12.32
 
   '@jridgewell/sourcemap-codec@1.5.5': {}
 
@@ -1453,7 +1453,7 @@ snapshots:
 
   graceful-fs@4.2.11: {}
 
-  hono@4.12.27: {}
+  hono@4.12.32: {}
 
   ieee754@1.2.1: {}
 
