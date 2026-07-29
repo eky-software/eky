@@ -1,7 +1,9 @@
 import { rmSync } from 'node:fs';
 
 import {
+  request as requestFactory,
   test as base,
+  type APIRequestContext,
   type BrowserContext,
   type Page,
 } from '@playwright/test';
@@ -27,6 +29,7 @@ import { waitForLoopbackPortRelease } from '../environment/waitForLoopbackPortRe
 import { readE2eScenarioId } from './readE2eScenarioId.js';
 
 export interface IsolatedWebHarness {
+  api: APIRequestContext;
   backend: StartedE2eBackend;
   context: BrowserContext;
   page: Page;
@@ -47,6 +50,7 @@ export const test = base.extend<IsolatedWebFixtures>({
     const backendPort = await reserveLoopbackPort();
     const webPort = await reserveLoopbackPort();
     let backend: StartedE2eBackend | undefined;
+    let api: APIRequestContext | undefined;
     let fixtureError: unknown;
     let networkBoundary: E2eBrowserNetworkBoundary | undefined;
     let web: StartedE2eWeb | undefined;
@@ -57,6 +61,13 @@ export const test = base.extend<IsolatedWebFixtures>({
         paths,
         runRoot,
         scenarioId,
+      });
+      api = await requestFactory.newContext({
+        baseURL: backend.backendOrigin,
+        extraHTTPHeaders: {
+          Accept: 'application/json',
+          'x-eky-local-session': backend.sessionSecret,
+        },
       });
       web = await startE2eWebProcess({
         backend,
@@ -70,12 +81,13 @@ export const test = base.extend<IsolatedWebFixtures>({
       });
       await page.goto(web.webOrigin);
 
-      await use({ backend, context, page, paths, runRoot, web });
+      await use({ api, backend, context, page, paths, runRoot, web });
       networkBoundary.assertNoBlockedRequests();
     } catch (error) {
       fixtureError = error;
       throw error;
     } finally {
+      await api?.dispose();
       await web?.stop();
       await backend?.stop();
       try {
