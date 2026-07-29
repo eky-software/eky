@@ -22,6 +22,11 @@ import { reserveLoopbackPort } from '../../src/environment/reserveLoopbackPort.j
 import { startManagedProcess } from '../../src/environment/startManagedProcess.js';
 import { stopManagedProcessTree } from '../../src/environment/stopManagedProcessTree.js';
 import { waitForHttpHealth } from '../../src/environment/waitForHttpHealth.js';
+import { isAllowedE2eBrowserUrl } from '../../src/environment/e2eBrowserNetworkBoundary.js';
+import {
+  createE2eViteBackendProxy,
+  readE2eViteRuntimeConfig,
+} from '../../../web/viteE2eRuntime.js';
 
 test.describe('SYS-ISOLATION-001 @critical @security', () => {
   test('creates every runtime path under an isolated OS temp root', async () => {
@@ -238,6 +243,89 @@ test.describe('managed E2E runtime primitives', () => {
       rmSync(outsideDirectory, { force: true, recursive: true });
     } finally {
       rmSync(runRoot, { force: true, recursive: true });
+    }
+  });
+});
+
+test.describe('isolated web runtime boundaries', () => {
+  test('WEB-CONFIG-001 validates Vite proxy configuration without exposing the session to the renderer', () => {
+    const runRoot = createE2eRunRoot();
+    try {
+      const paths = createE2eWorkerPaths(runRoot, 'WEB-CONFIG-001');
+      const sessionSecret = 'a'.repeat(43);
+      const config = readE2eViteRuntimeConfig({
+        EKY_E2E: '1',
+        EKY_E2E_BACKEND_ORIGIN: 'http://127.0.0.1:34567',
+        EKY_E2E_ENV_ROOT: paths.tempRoot,
+        EKY_E2E_RUNTIME_SESSION: sessionSecret,
+      });
+
+      expect(config).not.toBeNull();
+      if (config === null) {
+        throw new Error('Expected an E2E Vite runtime configuration.');
+      }
+      const proxy = createE2eViteBackendProxy(config);
+      expect(proxy['/customers']).toMatchObject({
+        headers: {
+          'x-eky-local-session': sessionSecret,
+        },
+        target: 'http://127.0.0.1:34567',
+      });
+      expect(() =>
+        readE2eViteRuntimeConfig({
+          EKY_E2E_BACKEND_ORIGIN: 'http://127.0.0.1:34567',
+          EKY_E2E_ENV_ROOT: paths.tempRoot,
+          EKY_E2E_RUNTIME_SESSION: sessionSecret,
+        }),
+      ).toThrow('marker');
+      expect(() =>
+        readE2eViteRuntimeConfig({
+          EKY_E2E: '1',
+          EKY_E2E_BACKEND_ORIGIN: 'https://example.invalid',
+          EKY_E2E_ENV_ROOT: paths.tempRoot,
+          EKY_E2E_RUNTIME_SESSION: sessionSecret,
+        }),
+      ).toThrow('loopback');
+      expect(() =>
+        readE2eViteRuntimeConfig({
+          EKY_E2E: '1',
+          EKY_E2E_BACKEND_ORIGIN: 'http://127.0.0.1:34567',
+          EKY_E2E_ENV_ROOT: paths.tempRoot,
+          EKY_E2E_RUNTIME_SESSION: 'invalid',
+        }),
+      ).toThrow('session');
+    } finally {
+      rmSync(runRoot, { force: true, recursive: true });
+    }
+  });
+
+  test('WEB-NETWORK-001 allows only the isolated origins and non-network document protocols', () => {
+    const allowedOrigins = new Set([
+      'http://127.0.0.1:34567',
+      'http://127.0.0.1:45678',
+    ]);
+
+    for (const allowedUrl of [
+      'http://127.0.0.1:34567/customers',
+      'http://127.0.0.1:45678/@vite/client',
+      'ws://127.0.0.1:45678/?token=synthetic',
+      'about:blank',
+      'data:text/plain,synthetic',
+      'blob:http://127.0.0.1:45678/synthetic-id',
+    ]) {
+      expect(isAllowedE2eBrowserUrl(allowedUrl, allowedOrigins)).toBe(true);
+    }
+
+    for (const blockedUrl of [
+      'https://example.invalid/',
+      'http://127.0.0.1:56789/',
+      'wss://example.invalid/',
+      'blob:https://example.invalid/synthetic-id',
+      'file:///tmp/synthetic',
+      'javascript:alert(1)',
+      'about:config',
+    ]) {
+      expect(isAllowedE2eBrowserUrl(blockedUrl, allowedOrigins)).toBe(false);
     }
   });
 });

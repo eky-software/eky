@@ -68,6 +68,26 @@ Selain sallii vain testiruntimen eksplisiittiset loopback-origin-osoitteet.
 Muu pyyntö keskeytetään ja merkitään testivirheeksi. Telemetriaa tai ulkoista
 testipalvelua ei käytetä.
 
+Web-E2E käynnistää Viten omana hallittuna prosessinaan. Vite saa backend-
+originin ja runtime-sessionin vain testiharnessin validoiduista
+`EKY_E2E`-prosessiarvoista, lisää sessionin Node-puolen same-origin-proxyssa
+eikä julkaise sitä rendererille. Prosessi ei peri tavallista kehitysympäristöä,
+ja Viten `envDir` sekä cache osoittavat testin omaan OS-temp-juureen. Näin
+testi ei lue tavallisia `.env`-tiedostoja eikä käytä portin 3000
+kehitysbackendia.
+
+Selainkontekstissa sallitaan:
+
+- täsmälleen testin oma `http://127.0.0.1:<web-port>`-origin
+- täsmälleen testin oma `http://127.0.0.1:<backend-port>`-origin
+- Vite-HMR:n vastaava loopback-`ws:`-origin
+- `about:blank`
+- verkkoa käyttämättömät `data:`-resurssit
+- vain sallitusta loopback-originista muodostetut `blob:`-resurssit
+
+Muut HTTP-, WebSocket-, `file:`, `javascript:` ja ulkoiset blob-osoitteet
+estetään. Estetty yritys epäonnistaa testin turvallisella kohdeyhteenvedolla.
+
 Hyökkäyssyötteet ovat pieni, versionhallittu ja deterministinen korpus.
 Porttiskannausta, brute forcea, palvelunestotestausta, rajatonta fuzzia tai
 kolmansiin osapuoliin kohdistuvia testejä ei tehdä.

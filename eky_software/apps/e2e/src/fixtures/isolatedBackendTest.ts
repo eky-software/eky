@@ -13,6 +13,7 @@ import { createE2eWorkerPaths } from '../environment/createE2eWorkerPaths.js';
 import type { E2eWorkerPaths } from '../environment/e2eEnvironmentTypes.js';
 import { reserveLoopbackPort } from '../environment/reserveLoopbackPort.js';
 import { startE2eBackendProcess } from '../environment/startE2eBackendProcess.js';
+import { readE2eScenarioId } from './readE2eScenarioId.js';
 
 export interface IsolatedBackendHarness {
   anonymousApi: APIRequestContext;
@@ -28,7 +29,7 @@ interface IsolatedBackendFixtures {
 
 export const test = base.extend<IsolatedBackendFixtures>({
   e2eBackend: async ({}, use, testInfo) => {
-    const scenarioId = readScenarioId(testInfo.title);
+    const scenarioId = readE2eScenarioId(testInfo.title);
     const runRoot = createE2eRunRoot();
     const paths = createE2eWorkerPaths(runRoot, scenarioId);
     let anonymousApi: APIRequestContext | undefined;
@@ -77,15 +78,5 @@ export const test = base.extend<IsolatedBackendFixtures>({
     }
   },
 });
-
-function readScenarioId(title: string): string {
-  const scenarioId = /\b[A-Z]+(?:-[A-Z]+)*-[0-9]{3}\b/.exec(title)?.[0];
-
-  if (scenarioId === undefined) {
-    throw new Error('E2E system test title must contain a scenario id.');
-  }
-
-  return scenarioId;
-}
 
 export { expect } from '@playwright/test';

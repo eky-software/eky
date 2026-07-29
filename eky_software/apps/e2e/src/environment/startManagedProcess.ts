@@ -2,8 +2,12 @@ import { spawn, type ChildProcess } from 'node:child_process';
 
 const defaultOutputLimitBytes = 256 * 1024;
 
+export type ManagedChildProcess = ChildProcess & {
+  on(event: 'exit', listener: () => void): ManagedChildProcess;
+};
+
 export interface ManagedProcess {
-  child: ChildProcess;
+  child: ManagedChildProcess;
   readStderr(): string;
   readStdout(): string;
 }
@@ -40,7 +44,7 @@ export function startManagedProcess(input: {
   });
 
   return {
-    child,
+    child: child as ManagedChildProcess,
     readStderr: stderr.read,
     readStdout: stdout.read,
   };
