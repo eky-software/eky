@@ -8,6 +8,7 @@ import {
   type Page,
 } from '@playwright/test';
 
+import type { E2eFaultPlan } from '../../../backend/e2e/e2eBackendConfig.js';
 import { collectWebFailureArtifacts } from '../environment/collectWebFailureArtifacts.js';
 import { createE2eRunRoot } from '../environment/createE2eRunRoot.js';
 import { createE2eWorkerPaths } from '../environment/createE2eWorkerPaths.js';
@@ -42,8 +43,19 @@ interface IsolatedWebFixtures {
   e2eWeb: IsolatedWebHarness;
 }
 
-export const test = base.extend<IsolatedWebFixtures>({
-  e2eWeb: async ({ context, page }, use, testInfo) => {
+interface IsolatedWebOptions {
+  e2eFaultPlan: E2eFaultPlan;
+}
+
+export const test = base.extend<
+  IsolatedWebFixtures & IsolatedWebOptions
+>({
+  e2eFaultPlan: [{ kind: 'none' }, { option: true }],
+  e2eWeb: async (
+    { context, e2eFaultPlan, page },
+    use,
+    testInfo,
+  ) => {
     const scenarioId = readE2eScenarioId(testInfo.title);
     const runRoot = createE2eRunRoot();
     const paths = createE2eWorkerPaths(runRoot, scenarioId);
@@ -58,6 +70,7 @@ export const test = base.extend<IsolatedWebFixtures>({
     try {
       backend = await startE2eBackendProcess({
         backendPort,
+        faultPlan: e2eFaultPlan,
         paths,
         runRoot,
         scenarioId,

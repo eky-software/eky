@@ -34,7 +34,10 @@ export async function startE2eBackend(
     logsRoot: config.paths.logsRoot,
     operationalIdentity,
   });
-  const fakeSmtpProvider = new E2eFakeSmtpProvider(config.faultPlan);
+  const fakeSmtpProvider = new E2eFakeSmtpProvider(config.faultPlan, {
+    operationalIdentity,
+    operationalLogger,
+  });
   const emailSecretStore = new E2eCompanyEmailSecretStore();
 
   const server = await startServer({
