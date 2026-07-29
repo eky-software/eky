@@ -213,6 +213,35 @@ describe('customersRoutes', () => {
     expect(createCalled).toBe(false);
   });
 
+  it('rejects unknown create fields before calling the route dependencies', async () => {
+    let createCalled = false;
+    const app = createCustomersRoutes({
+      async createCustomer(): Promise<Customer> {
+        createCalled = true;
+
+        throw new Error('createCustomer should not be called');
+      },
+      async listCustomers(): Promise<Customer[]> {
+        return [];
+      },
+      async updateCustomer(): Promise<Customer> {
+        throw new Error('updateCustomer should not be called');
+      },
+    });
+
+    const response = await app.request('/customers', {
+      body: JSON.stringify({
+        name: 'Example Customer Oy',
+        unknownField: true,
+      }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(400);
+    expect(createCalled).toBe(false);
+  });
+
   it('maps customer validation errors to bad request responses', async () => {
     const app = createCustomersRoutes({
       async createCustomer(): Promise<Customer> {
@@ -297,6 +326,36 @@ describe('customersRoutes', () => {
       streetAddress: '  Testikatu 1  ',
     });
     expect(body).toEqual({ customer: updatedCustomer });
+  });
+
+  it('rejects unknown update fields before calling the route dependencies', async () => {
+    let updateCalled = false;
+    const app = createCustomersRoutes({
+      async createCustomer(): Promise<Customer> {
+        throw new Error('createCustomer should not be called');
+      },
+      async listCustomers(): Promise<Customer[]> {
+        return [];
+      },
+      async updateCustomer(): Promise<Customer> {
+        updateCalled = true;
+
+        throw new Error('updateCustomer should not be called');
+      },
+    });
+
+    const response = await app.request('/customers/customer-1', {
+      body: JSON.stringify({
+        customerNumber: '1001',
+        name: 'Example Customer Oy',
+        unknownField: true,
+      }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'PUT',
+    });
+
+    expect(response.status).toBe(400);
+    expect(updateCalled).toBe(false);
   });
 });
 

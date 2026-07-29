@@ -1,6 +1,7 @@
 import { AuthorizationError } from '@eky/permissions';
 import { Hono } from 'hono';
 
+import { readJsonRequestBody } from '../../../http/readJsonRequestBody.js';
 import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 import { ApprovedInvoiceNotFoundError } from '../application/approvedInvoiceNotFoundError.js';
 import type { CancelApprovedInvoiceInput } from '../application/cancelApprovedInvoice.js';
@@ -36,13 +37,15 @@ export function createApprovedInvoiceLifecycleRoutes(
   routes.post('/invoices/:id/cancel', async (context) => {
     try {
       const actorContext = context.get('actorContext');
-      let body: unknown;
+      const bodyResult = await readJsonRequestBody(context.req, 'required');
 
-      try {
-        body = await context.req.json();
-      } catch {
-        throw new InvoiceCancellationRequestValidationError();
+      if (!bodyResult.ok) {
+        return context.json(
+          { error: bodyResult.message },
+          bodyResult.status,
+        );
       }
+      const body = bodyResult.body;
 
       const cancellation = await dependencies.cancelApprovedInvoice(
         parseInvoiceCancellationRequest(body, {

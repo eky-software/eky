@@ -72,7 +72,7 @@ describe('approved invoice lifecycle routes', () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
-      error: 'Invoice cancellation request is invalid.',
+      error: 'Invalid JSON body.',
     });
     expect(getCancelInput()).toBeUndefined();
   });

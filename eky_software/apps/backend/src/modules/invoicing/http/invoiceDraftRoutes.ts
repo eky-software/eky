@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 
+import { readJsonRequestBody } from '../../../http/readJsonRequestBody.js';
 import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 
 import type { ApproveInvoiceDraftInput } from '../application/approveInvoiceDraft.js';
@@ -56,13 +57,15 @@ export function createInvoiceDraftRoutes(
     }),
     async (context) => {
       const actorContext = context.get('actorContext');
-      let body: unknown;
+      const bodyResult = await readJsonRequestBody(context.req, 'required');
 
-      try {
-        body = await context.req.json();
-      } catch {
-        return context.json({ error: 'Invalid JSON body.' }, 400);
+      if (!bodyResult.ok) {
+        return context.json(
+          { error: bodyResult.message },
+          bodyResult.status,
+        );
       }
+      const body = bodyResult.body;
 
       try {
         const input = parseSaveInvoiceDraftRequest(
@@ -113,18 +116,18 @@ export function createInvoiceDraftRoutes(
   routes.post('/invoice-drafts/:id/approve', async (context) => {
     try {
       const actorContext = context.get('actorContext');
-      const requestText = await context.req.text();
+      const bodyResult = await readJsonRequestBody(context.req, 'optional');
+
+      if (!bodyResult.ok) {
+        return context.json(
+          { error: bodyResult.message },
+          bodyResult.status,
+        );
+      }
       let reverseChargeEligibilityConfirmed = false;
 
-      if (requestText.trim() !== '') {
-        let requestBody: unknown;
-
-        try {
-          requestBody = JSON.parse(requestText);
-        } catch {
-          return context.json({ error: 'Invalid JSON body.' }, 400);
-        }
-
+      if (bodyResult.body !== undefined) {
+        const requestBody = bodyResult.body;
         if (
           typeof requestBody !== 'object' ||
           requestBody === null ||
@@ -224,13 +227,15 @@ export function createInvoiceDraftRoutes(
     }),
     async (context) => {
       const actorContext = context.get('actorContext');
-      let body: unknown;
+      const bodyResult = await readJsonRequestBody(context.req, 'required');
 
-      try {
-        body = await context.req.json();
-      } catch {
-        return context.json({ error: 'Invalid JSON body.' }, 400);
+      if (!bodyResult.ok) {
+        return context.json(
+          { error: bodyResult.message },
+          bodyResult.status,
+        );
       }
+      const body = bodyResult.body;
 
       try {
         const input = parseUpdateInvoiceDraftRequest(

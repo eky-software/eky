@@ -37,26 +37,6 @@ export class CreditInvoiceDraftRequestValidationError extends Error {
   }
 }
 
-export function parseEmptyCreditInvoiceDraftRequest(bodyText: string): void {
-  const normalized = bodyText.trim();
-
-  if (normalized === '') {
-    return;
-  }
-
-  let body: unknown;
-
-  try {
-    body = JSON.parse(normalized);
-  } catch {
-    throw new CreditInvoiceDraftRequestValidationError();
-  }
-
-  if (!isRecord(body) || Object.keys(body).length !== 0) {
-    throw new CreditInvoiceDraftRequestValidationError();
-  }
-}
-
 export function parseUpdateCreditInvoiceDraftRequest(
   body: unknown,
   options: {

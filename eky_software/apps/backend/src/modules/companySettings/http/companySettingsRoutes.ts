@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { AuthorizationError } from '@eky/permissions';
 
 import { getOptionalStringField, isRecord } from '../../../http/requestBody.js';
+import { readJsonRequestBody } from '../../../http/readJsonRequestBody.js';
 import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 import type { GetCompanySettingsInput } from '../application/getCompanySettings.js';
 import type { UpdateCompanySettingsInput } from '../application/updateCompanySettings.js';
@@ -12,6 +13,31 @@ interface CompanySettingsRouteDependencies {
   getCompanySettings(input: GetCompanySettingsInput): Promise<CompanySettings>;
   updateCompanySettings(input: UpdateCompanySettingsInput): Promise<CompanySettings>;
 }
+
+const allowedCompanySettingsBodyFields = new Set([
+  'bankName',
+  'bic',
+  'businessId',
+  'city',
+  'companyName',
+  'defaultHourlyRateCents',
+  'email',
+  'emailDeliveryProvider',
+  'emailSenderAddress',
+  'emailSenderName',
+  'emailSmtpHost',
+  'emailSmtpPort',
+  'emailSmtpSecurity',
+  'emailTestRecipientOverride',
+  'emailUsername',
+  'hourlyRateShortcut',
+  'iban',
+  'phone',
+  'postalCode',
+  'streetAddress',
+  'vatNumber',
+  'website',
+]);
 
 export function createCompanySettingsRoutes(
   dependencies: CompanySettingsRouteDependencies,
@@ -29,15 +55,25 @@ export function createCompanySettingsRoutes(
 
   routes.put('/company-settings', async (context) => {
     const actorContext = context.get('actorContext');
-    let body: unknown;
+    const bodyResult = await readJsonRequestBody(context.req, 'required');
 
-    try {
-      body = await context.req.json();
-    } catch {
-      return context.json({ error: 'Invalid JSON body.' }, 400);
+    if (!bodyResult.ok) {
+      return context.json(
+        { error: bodyResult.message },
+        bodyResult.status,
+      );
     }
+    const body = bodyResult.body;
 
     if (!isRecord(body)) {
+      return context.json({ error: 'Invalid company settings body.' }, 400);
+    }
+
+    if (
+      Object.keys(body).some(
+        (fieldName) => !allowedCompanySettingsBodyFields.has(fieldName),
+      )
+    ) {
       return context.json({ error: 'Invalid company settings body.' }, 400);
     }
 

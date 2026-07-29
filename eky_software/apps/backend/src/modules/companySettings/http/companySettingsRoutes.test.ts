@@ -151,6 +151,31 @@ describe('companySettingsRoutes', () => {
     expect(updateCompanySettings).not.toHaveBeenCalled();
   });
 
+  it('rejects unknown settings fields before calling the route dependencies', async () => {
+    const updateCompanySettings = vi.fn();
+    const app = createAuthenticatedTestApp(createCompanySettingsRoutes({
+      async getCompanySettings(): Promise<CompanySettings> {
+        return createTestCompanySettings();
+      },
+      updateCompanySettings,
+    }));
+
+    const response = await app.request('/company-settings', {
+      body: JSON.stringify({
+        companyName: 'Example Builder Oy',
+        unknownField: true,
+      }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'PUT',
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Invalid company settings body.',
+    });
+    expect(updateCompanySettings).not.toHaveBeenCalled();
+  });
+
   it('maps validation errors to bad request responses', async () => {
     const app = createAuthenticatedTestApp(createCompanySettingsRoutes({
       async getCompanySettings(): Promise<CompanySettings> {
