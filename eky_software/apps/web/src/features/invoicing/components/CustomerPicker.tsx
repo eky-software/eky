@@ -57,6 +57,7 @@ export function CustomerPicker({
         onChange={(event) => setSearchQuery(event.target.value)}
       />
       <select
+        aria-label={label}
         aria-describedby={helpId}
         aria-invalid={validationErrorMessage === undefined ? undefined : true}
         disabled={isDisabled}

@@ -1,7 +1,9 @@
-import { spawnSync, type ChildProcess } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
+
+import type { ManagedChildProcess } from './startManagedProcess.js';
 
 export async function stopManagedProcessTree(
-  child: ChildProcess,
+  child: ManagedChildProcess,
   timeoutMilliseconds = 3_000,
 ): Promise<void> {
   if (hasExited(child) || child.pid === undefined) {
@@ -38,7 +40,7 @@ export async function stopManagedProcessTree(
 }
 
 function waitForExit(
-  child: ChildProcess,
+  child: ManagedChildProcess,
   timeoutMilliseconds: number,
 ): Promise<void> {
   if (hasExited(child)) {
@@ -47,13 +49,13 @@ function waitForExit(
 
   return new Promise((resolveExit) => {
     const timer = setTimeout(resolveExit, timeoutMilliseconds);
-    child.once('exit', () => {
+    child.on('exit', () => {
       clearTimeout(timer);
       resolveExit();
     });
   });
 }
 
-function hasExited(child: ChildProcess): boolean {
+function hasExited(child: ManagedChildProcess): boolean {
   return child.exitCode !== null || child.signalCode !== null;
 }

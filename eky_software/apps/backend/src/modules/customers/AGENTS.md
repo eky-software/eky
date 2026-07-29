@@ -76,6 +76,10 @@ boundary. Keep at least one representative create/update/search journey, one
 permission or company-isolation denial and one persistence failure/recovery
 scenario. Do not add customer test-control HTTP routes.
 
+Preserve `CUS-UI-001` and `CUS-INPUT-001` when changing customer create, edit,
+customer-number/address search, refresh or input limits. Business values must
+remain absent from Activity projections and operational logs.
+
 ## Business Audit
 
 Customers owns its business audit writes. Customer create, update, activate

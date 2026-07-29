@@ -131,6 +131,11 @@ journey, a permission/company denial and a failure/recovery scenario. E2E must
 use only synthetic secret data behind the test composition and must never add
 a secret-read or fault-control HTTP endpoint.
 
+Preserve `COMPANY-UI-001` and `COMPANY-AUDIT-001` when changing contact,
+banking or non-secret email settings. The web journey must continue to prove
+refresh persistence while Activity, Diagnostics and operational logs omit
+IBANs, email addresses and old/new master-data values.
+
 ## Naming
 
 Code is written in English.

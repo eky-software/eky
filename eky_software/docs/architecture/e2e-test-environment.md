@@ -62,11 +62,38 @@ Testiruntime käynnistää backendin ja webin hallittuina lapsiprosesseina. Se:
 Satunnaisia odotuksia tai `waitForTimeout`-kutsuja ei käytetä valmiuden
 todistamiseen.
 
+System-fixture voi hallitussa recovery-testissä pysäyttää backendin ja
+käynnistää sen uudelleen samalla testikohtaisella SQLite-kannalla ja samalla
+loopback-portilla. Uusi runtime saa aina uuden sessionin ja
+`runtimeInstanceId`-arvon. Vanha autentikoitu API-context säilytetään vain sen
+todistamiseksi, ettei vanha session enää kelpaa, ja kaikki contextit suljetaan
+fixture-cleanupissa.
+
 ## Selainverkon raja
 
 Selain sallii vain testiruntimen eksplisiittiset loopback-origin-osoitteet.
 Muu pyyntö keskeytetään ja merkitään testivirheeksi. Telemetriaa tai ulkoista
 testipalvelua ei käytetä.
+
+Web-E2E käynnistää Viten omana hallittuna prosessinaan. Vite saa backend-
+originin ja runtime-sessionin vain testiharnessin validoiduista
+`EKY_E2E`-prosessiarvoista, lisää sessionin Node-puolen same-origin-proxyssa
+eikä julkaise sitä rendererille. Prosessi ei peri tavallista kehitysympäristöä,
+ja Viten `envDir` sekä cache osoittavat testin omaan OS-temp-juureen. Näin
+testi ei lue tavallisia `.env`-tiedostoja eikä käytä portin 3000
+kehitysbackendia.
+
+Selainkontekstissa sallitaan:
+
+- täsmälleen testin oma `http://127.0.0.1:<web-port>`-origin
+- täsmälleen testin oma `http://127.0.0.1:<backend-port>`-origin
+- Vite-HMR:n vastaava loopback-`ws:`-origin
+- `about:blank`
+- verkkoa käyttämättömät `data:`-resurssit
+- vain sallitusta loopback-originista muodostetut `blob:`-resurssit
+
+Muut HTTP-, WebSocket-, `file:`, `javascript:` ja ulkoiset blob-osoitteet
+estetään. Estetty yritys epäonnistaa testin turvallisella kohdeyhteenvedolla.
 
 Hyökkäyssyötteet ovat pieni, versionhallittu ja deterministinen korpus.
 Porttiskannausta, brute forcea, palvelunestotestausta, rajatonta fuzzia tai
@@ -108,9 +135,45 @@ tallenneta R0:ssa.
   observability-rajat ilman selain-UI:ta
 - `web-chromium`: käyttäjän kriittiset selainpolut Chromiumilla
 - `electron-development`: rajattu main/preload/renderer-integraatio
+- `endurance-baseline`: vain käsin ajettava rajattu system- ja web-työkuorma
 - packaged smoke: nykyinen hardened Windows -artifact erillisen smoke-runnerin
   kautta, ei Playwrightin ohjaamana
 
 Packaged-artifactin fuseja, sandboxia, preload-rajaa tai navigointipolitiikkaa
 ei heikennetä testauksen vuoksi.
 
+## Endurance-mittaus
+
+`pnpm test:e2e:stress` käyttää samaa eristettyä loopback-, temp-root- ja
+fake-adapterimallia kuin muut E2E-testit. Se mittaa kokonaiskeston, backendin
+RSS:n alussa ja työkuorman jälkeen, SQLite-, dokumentti- ja lokikoot sekä
+testin hallitsemien avoimien prosessien määrän lopussa.
+
+Prosessin RSS luetaan testiharnessissa käyttöjärjestelmän prosessitiedoista.
+Tuotantobackendiin ei lisätä mittausendpointia. Mittaus ei sisällä sessionia,
+komentoriviä, ympäristömuuttujia tai prosessin muistisisältöä.
+
+Jokainen ajo kirjoittaa synteettisen JSON-raportin tiedostoon
+`apps/e2e/test-results/endurance-baseline.json` ja Playwrightin
+HTML-raporttiliitteeseen. `test-results` ei ole tuotantodata- tai
+versionhallintakansio. Ensimmäinen dokumentoitu vertailutaso on
+`e2e-endurance-baseline.md`-tiedostossa.
+
+## CI-ajojen eristys
+
+GitHub Actionsin concurrency-ryhmä sisältää workflow-nimen, tapahtumalajin ja
+haaran tai pull requestin lähdehaaran. Näin eri tapahtumalajit eivät peruuta
+toistensa ajoja:
+
+| Tapahtuma | Ryhmän haaraosa | Uusi saman ryhmän ajo |
+| --- | --- | --- |
+| pull request | PR:n lähdehaara | peruuttaa vain saman PR-ryhmän aiemman ajon |
+| branch push | push-haara | peruuttaa vain saman push-ryhmän aiemman ajon |
+| `main` push | `main` | peruuttaa vain aiemman `main` push -ajon |
+| workflow dispatch | valittu ref | peruuttaa vain saman ref-arvon käsin käynnistetyn ajon |
+
+Tavallinen verify-job ajetaan edelleen `antsa`- ja `main`-pusheissa,
+pull requesteissa sekä käsin käynnistettynä. Raskaat E2E-jobit rajataan
+pull requestiin, `main`-pushiin ja käsin käynnistettyyn ajoon. Nykyiset raskaat
+jobit ovat `System security E2E` ja `Web critical E2E`. Endurance-baselinea ei
+ajeta automaattisesti CI:ssä.

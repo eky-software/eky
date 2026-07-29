@@ -49,5 +49,9 @@ export default defineConfig({
       name: 'electron-development',
       testMatch: /electron\/.*\.spec\.ts/,
     },
+    {
+      name: 'endurance-baseline',
+      testMatch: /stress\/.*\.spec\.ts/,
+    },
   ],
 });

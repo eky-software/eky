@@ -129,7 +129,13 @@ pnpm test
 pnpm typecheck
 pnpm --filter @eky/backend build
 pnpm --filter @eky/web build
+pnpm --filter @eky/desktop build
 ```
+
+Pull requesteissa, `main`-pusheissa ja käsin käynnistetyissä workflow-ajoissa
+CI ajaa lisäksi eristetyn system security E2E -joukon ja Chromiumin kriittiset
+web-käyttäjäpolut. Näitä raskaita E2E-jobeja ei ajeta erikseen jokaisessa
+`antsa`-pushissa.
 
 CI täydentää paikallista testausta, mutta ei korvaa sitä. Muutos testataan
 paikallisesti ennen commitia silloin, kun paikallinen ympäristö sen sallii.
@@ -217,3 +223,10 @@ alimmalla sopivalla tasolla ja E2E todistaa edustavan koko järjestelmän polun.
 Uusi moduuli tai merkittävä ominaisuus päivittää E2E-matriisiin onnistuvan,
 permission-/tenant-eston ja failure-/recovery-polun sekä tarvittaessa
 cross-module- ja packaged-turvarajan.
+
+Manuaalinen `pnpm test:e2e:stress` antaa rajatun endurance-vertailutason. Sitä
+ei ajeta joka pull requestissa eikä sen yksittäisestä muistilukemasta tehdä
+suoraan absoluuttista tuotantorajaa. Skenaarion pitää silti epäonnistua
+rikki menneestä työkuormasta, ulkoisesta verkkoyrityksestä, prosessiorvosta tai
+puuttuvasta cleanupista. Vertailutason työkuorma ja tulkinta dokumentoidaan
+`docs/architecture/e2e-endurance-baseline.md`-tiedostossa.

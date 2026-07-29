@@ -80,6 +80,12 @@ successful lifecycle, permission/company denial, concurrency/idempotency and
 failure/recovery scenarios. E2E uses fake SMTP and isolated document storage;
 never expose invoice reset, seed or fault controls through production HTTP.
 
+Preserve the representative Playwright journeys for lifecycle, immutable
+snapshot, reverse charge, cancellation, credit, refresh, duplicate commands
+and hostile text. Delivery and persistence changes must also preserve the
+typed PDF, fake SMTP, transaction rollback, SQLite lock, operational writer
+and restart/recovery scenarios listed in the R0 E2E matrix.
+
 ## Observability
 
 Invoicing owns its business audit and delivery events. Critical audit writes

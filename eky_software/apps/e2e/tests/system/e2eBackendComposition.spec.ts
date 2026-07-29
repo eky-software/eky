@@ -177,7 +177,10 @@ test.describe('isolated E2E backend composition', () => {
   });
 
   test('fake SMTP returns deterministic success and failure outcomes', async () => {
-    const successfulProvider = new E2eFakeSmtpProvider({ kind: 'none' });
+    const successfulProvider = new E2eFakeSmtpProvider(
+      { kind: 'none' },
+      fakeSmtpOperationalOptions,
+    );
     await expect(successfulProvider.sendEmail(createSmtpInput())).resolves.toEqual(
       expect.objectContaining({
         deliveredTo: 'recipient@example.invalid',
@@ -193,10 +196,13 @@ test.describe('isolated E2E backend composition', () => {
       ['deliveryFailed', 'E2E_SMTP_DELIVERY_FAILED', 'failed'],
       ['outcomeUnknown', 'E2E_SMTP_OUTCOME_UNKNOWN', 'outcomeUnknown'],
     ] as const) {
-      const provider = new E2eFakeSmtpProvider({
-        kind: 'smtp',
-        outcome: fault[0],
-      });
+      const provider = new E2eFakeSmtpProvider(
+        {
+          kind: 'smtp',
+          outcome: fault[0],
+        },
+        fakeSmtpOperationalOptions,
+      );
       const error = await provider
         .sendEmail(createSmtpInput())
         .then(() => null)
@@ -228,6 +234,17 @@ test.describe('isolated E2E backend composition', () => {
     }
   });
 });
+
+const fakeSmtpOperationalOptions = {
+  operationalIdentity: {
+    appVersion: '0.0.0-e2e',
+    buildRevision: 'development',
+    runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
+  },
+  operationalLogger: {
+    write() {},
+  },
+};
 
 function createSmtpInput(): InvoiceSmtpEmailInput {
   return {

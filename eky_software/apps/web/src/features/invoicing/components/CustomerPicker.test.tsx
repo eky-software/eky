@@ -29,6 +29,7 @@ describe('CustomerPicker', () => {
     expect(html).toContain('Esimerkki Asiakas Oy');
     expect(html).toContain('Passiivinen Asiakas Oy');
     expect(html).toContain(uiText.invoicing.customerInactive);
+    expect(html).toContain(`aria-label="${uiText.invoicing.customer}"`);
     expect(html).not.toContain('disabled=""');
   });
 
