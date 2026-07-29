@@ -114,3 +114,19 @@ tallenneta R0:ssa.
 Packaged-artifactin fuseja, sandboxia, preload-rajaa tai navigointipolitiikkaa
 ei heikennetä testauksen vuoksi.
 
+## CI-ajojen eristys
+
+GitHub Actionsin concurrency-ryhmä sisältää workflow-nimen, tapahtumalajin ja
+haaran tai pull requestin lähdehaaran. Näin eri tapahtumalajit eivät peruuta
+toistensa ajoja:
+
+| Tapahtuma | Ryhmän haaraosa | Uusi saman ryhmän ajo |
+| --- | --- | --- |
+| pull request | PR:n lähdehaara | peruuttaa vain saman PR-ryhmän aiemman ajon |
+| branch push | push-haara | peruuttaa vain saman push-ryhmän aiemman ajon |
+| `main` push | `main` | peruuttaa vain aiemman `main` push -ajon |
+| workflow dispatch | valittu ref | peruuttaa vain saman ref-arvon käsin käynnistetyn ajon |
+
+Tavallinen verify-job ajetaan edelleen `antsa`- ja `main`-pusheissa,
+pull requesteissa sekä käsin käynnistettynä. Raskaat E2E-jobit rajataan
+pull requestiin, `main`-pushiin ja käsin käynnistettyyn ajoon.
