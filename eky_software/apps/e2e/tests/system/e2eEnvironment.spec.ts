@@ -124,11 +124,7 @@ test.describe('SYS-ISOLATION-001 @critical @security', () => {
     const outsideRoot = createE2eRunRoot();
     try {
       const linkPath = join(runRoot, 'linked');
-      try {
-        symlinkSync(outsideRoot, linkPath, 'junction');
-      } catch {
-        test.skip(true, 'Symbolic link creation is unavailable.');
-      }
+      symlinkSync(outsideRoot, linkPath, 'junction');
 
       expect(() => assertPathUnderRoot(linkPath, runRoot)).toThrow(
         /escapes|symbolic/,
