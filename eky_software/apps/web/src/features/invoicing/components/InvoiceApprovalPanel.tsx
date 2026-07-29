@@ -28,6 +28,7 @@ export function InvoiceApprovalConfirmation({
     <section
       aria-labelledby="invoice-approval-confirmation-heading"
       className={`message ${styles.panel}`}
+      role="region"
     >
       <div>
         <h3 id="invoice-approval-confirmation-heading">

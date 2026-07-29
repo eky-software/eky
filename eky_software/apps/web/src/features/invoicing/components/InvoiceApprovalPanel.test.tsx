@@ -28,6 +28,7 @@ describe('InvoiceApprovalConfirmation', () => {
     expect(html).toContain(uiText.invoicing.approveDraftConfirmationLock);
     expect(html).toContain(uiText.invoicing.approveDraftConfirmAction);
     expect(html).toContain(uiText.invoicing.cancel);
+    expect(html).toContain('role="region"');
   });
 
   it('shows a loading label while approval is running', () => {
