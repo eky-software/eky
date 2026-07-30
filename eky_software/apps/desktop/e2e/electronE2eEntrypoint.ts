@@ -1,0 +1,118 @@
+import { resolve } from 'node:path';
+
+import { app, protocol } from 'electron';
+
+import {
+  startDesktopComposition,
+  type DesktopLifecycleHandle,
+} from '../src/main/desktopComposition.js';
+import { runSafeDesktopStartup } from '../src/main/earlyStartup.js';
+import { createElectronE2eBackendController } from './electronE2eBackendProcess.js';
+import { readElectronE2eConfig } from './electronE2eConfig.js';
+import { createElectronE2eNativeAdapters } from './electronE2eNativeAdapters.js';
+
+protocol.registerSchemesAsPrivileged([
+  {
+    privileges: {
+      bypassCSP: false,
+      corsEnabled: false,
+      secure: true,
+      standard: true,
+      stream: true,
+      supportFetchAPI: true,
+    },
+    scheme: 'eky',
+  },
+]);
+
+const configPath = process.env.EKY_ELECTRON_E2E_CONFIG;
+if (configPath === undefined) {
+  throw new Error('ELECTRON_E2E_CONFIG_MISSING');
+}
+const config = readElectronE2eConfig(configPath);
+app.setPath('userData', config.paths.userDataPath);
+
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
+  app.quit();
+}
+
+const backendRunnerPath = resolve(
+  import.meta.dirname,
+  'electronE2eBackendRunner.js',
+);
+const backendController = createElectronE2eBackendController(
+  config,
+  backendRunnerPath,
+);
+const nativeAdapters = createElectronE2eNativeAdapters(config);
+let lifecycle: DesktopLifecycleHandle | undefined;
+let shutdownStarted = false;
+
+if (hasSingleInstanceLock) {
+  void runSafeDesktopStartup({
+    exitApplication: (code) => app.exit(code),
+    loadRuntime: async () => ({ startDesktopComposition }),
+    async onFailure() {
+      nativeAdapters.showErrorBox(
+        'Eky ei käynnistynyt',
+        'Paikallista testisovellusta ei voitu käynnistää turvallisesti.',
+      );
+    },
+    async startRuntime() {
+      lifecycle = await startDesktopComposition({
+        appVersion: '0.1.0-alpha.1',
+        applicationPath: config.paths.applicationPath,
+        buildInfo: {
+          appVersion: '0.1.0-alpha.1',
+          buildCreatedAt: '2026-01-01T00:00:00.000Z',
+          buildDirty: false,
+          buildRevision: 'development',
+          schemaVersion: 1,
+        },
+        dependencies: {
+          createRuntimeSession: () => config.backend.sessionSecret,
+          openPath: nativeAdapters.openPath,
+          showErrorBox: nativeAdapters.showErrorBox,
+          showMessageBox: nativeAdapters.showMessageBox,
+          showSaveDialog: nativeAdapters.showSaveDialog,
+          startBackend: backendController.startBackend,
+        },
+        quitApplication: () => app.quit(),
+        resourcesPath: config.paths.resourcesPath,
+        runtimeInstanceId: config.runtimeInstanceId,
+        reportSmokeStage: async () => undefined,
+        smokeConfiguration: {
+          enabled: false,
+          root: undefined,
+          userDataPath: undefined,
+        },
+        userDataPath: config.paths.userDataPath,
+      });
+    },
+    waitUntilReady: () => app.whenReady(),
+  });
+}
+
+app.on('activate', () => lifecycle?.focusApplicationWindow());
+app.on('second-instance', () => lifecycle?.focusApplicationWindow());
+app.on('before-quit', (event) => {
+  if (lifecycle === undefined || shutdownStarted) {
+    return;
+  }
+  event.preventDefault();
+  shutdownStarted = true;
+  void lifecycle.shutdown().finally(() => app.quit());
+});
+app.on('window-all-closed', () => app.quit());
+
+Object.assign(globalThis, {
+  __EKY_ELECTRON_E2E__: Object.freeze({
+    backendIsRunning: () => backendController.isRunning(),
+    killBackendUnexpectedly: () => backendController.killUnexpectedly(),
+    nativeAdapterSnapshot: () => nativeAdapters.snapshot(),
+    runtimeInstanceId: config.runtimeInstanceId,
+    scenarioId: config.scenarioId,
+    userDataPath: config.paths.userDataPath,
+  }),
+});

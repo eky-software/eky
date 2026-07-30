@@ -267,6 +267,30 @@ async function assertPackagedDiagnosticsArtifacts() {
   }
 }
 
+async function assertNoDesktopE2eArtifacts() {
+  const stagedFiles = [
+    ...(await listFiles(applicationStage)),
+    ...(await listFiles(desktopRuntimeStage)),
+  ];
+  const forbiddenFile = stagedFiles.find((filePath) => {
+    const lowerPath = filePath.replaceAll('\\', '/').toLowerCase();
+    return (
+      lowerPath.includes('/e2e/') ||
+      lowerPath.includes('/e2e-dist/') ||
+      lowerPath.includes('electrone2e')
+    );
+  });
+
+  if (forbiddenFile !== undefined) {
+    throw new Error(
+      `Electron E2E artifact reached packaged ASAR staging: ${relative(
+        stagingRoot,
+        forbiddenFile,
+      )}`,
+    );
+  }
+}
+
 async function applyAndVerifyFuses(executablePath) {
   await flipFuses(executablePath, {
     version: FuseVersion.V1,
@@ -351,6 +375,7 @@ async function packageWindowsSpike() {
 
   await prepareApplicationStage(buildInfo);
   await assertPackagedDiagnosticsArtifacts();
+  await assertNoDesktopE2eArtifacts();
 
   const packagedPaths = await packager({
     appVersion,

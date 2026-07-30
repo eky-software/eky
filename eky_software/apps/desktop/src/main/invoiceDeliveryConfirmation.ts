@@ -2,6 +2,7 @@ import {
   dialog,
   type BrowserWindow,
   type MessageBoxOptions,
+  type MessageBoxReturnValue,
 } from 'electron';
 
 import {
@@ -21,8 +22,29 @@ export interface InvoiceDeliveryConfirmation {
   showApplicationError(title: string, message: string): void;
 }
 
+export interface InvoiceDeliveryDialogAdapter {
+  showErrorBox(title: string, message: string): void;
+  showMessageBox(
+    owner: BrowserWindow | undefined,
+    options: MessageBoxOptions,
+  ): Promise<MessageBoxReturnValue>;
+}
+
+const electronInvoiceDeliveryDialogAdapter: InvoiceDeliveryDialogAdapter = {
+  showErrorBox(title, message) {
+    dialog.showErrorBox(title, message);
+  },
+  showMessageBox(owner, options) {
+    return owner === undefined || owner.isDestroyed()
+      ? dialog.showMessageBox(options)
+      : dialog.showMessageBox(owner, options);
+  },
+};
+
 export function createInvoiceDeliveryConfirmation(
   getApplicationWindow: () => BrowserWindow | undefined,
+  dialogAdapter: InvoiceDeliveryDialogAdapter =
+    electronInvoiceDeliveryDialogAdapter,
 ): InvoiceDeliveryConfirmation {
   async function showApplicationMessageBox(
     options: MessageBoxOptions,
@@ -30,10 +52,7 @@ export function createInvoiceDeliveryConfirmation(
     const owner = getApplicationWindow();
 
     try {
-      const result =
-        owner === undefined || owner.isDestroyed()
-          ? await dialog.showMessageBox(options)
-          : await dialog.showMessageBox(owner, options);
+      const result = await dialogAdapter.showMessageBox(owner, options);
 
       return result.response;
     } finally {
@@ -83,11 +102,11 @@ export function createInvoiceDeliveryConfirmation(
       const owner = getApplicationWindow();
 
       if (owner === undefined || owner.isDestroyed()) {
-        dialog.showErrorBox(title, message);
+        dialogAdapter.showErrorBox(title, message);
         return;
       }
 
-      void dialog
+      void dialogAdapter
         .showMessageBox(owner, {
           buttons: ['Sulje'],
           cancelId: 0,
