@@ -42,4 +42,8 @@ function appendInvoiceListSearchParameters(
   if (query.dateTo !== undefined) {
     searchParameters.set('dateTo', query.dateTo);
   }
+
+  if (query.customerId !== undefined) {
+    searchParameters.set('customerId', query.customerId);
+  }
 }

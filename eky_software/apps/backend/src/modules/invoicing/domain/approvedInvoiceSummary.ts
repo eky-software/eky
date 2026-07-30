@@ -28,6 +28,7 @@ export type ApprovedInvoiceListSort =
 
 export interface ApprovedInvoiceSummaryQuery {
   companyId: string;
+  customerId: string | null;
   status: ApprovedInvoiceStatus;
   dateFrom: string | null;
   dateTo: string | null;

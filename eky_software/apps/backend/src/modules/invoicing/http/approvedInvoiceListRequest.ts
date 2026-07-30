@@ -1,10 +1,12 @@
 import type { ListApprovedInvoicesInput } from '../application/listApprovedInvoices.js';
 import type { ListSentInvoiceGroupsInput } from '../application/listSentInvoiceGroups.js';
+import { normalizeOptionalInvoiceListCustomerId } from '../application/invoiceListCustomerFilter.js';
 import type { ApprovedInvoiceListSort } from '../domain/approvedInvoiceSummary.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
 
 const allowedFields = new Set([
   'status',
+  'customerId',
   'dateFrom',
   'dateTo',
   'page',
@@ -27,6 +29,7 @@ export function parseApprovedInvoiceListRequest(
 
   const dateFrom = parseOptionalValue(query.dateFrom);
   const dateTo = parseOptionalValue(query.dateTo);
+  const customerId = normalizeOptionalInvoiceListCustomerId(query.customerId);
 
   return {
     companyId,
@@ -34,6 +37,7 @@ export function parseApprovedInvoiceListRequest(
     page: parseInteger(query.page, 1),
     pageSize: parseInteger(query.pageSize, 20),
     sort: parseSort(query.sort),
+    ...(customerId === null ? {} : { customerId }),
     ...(dateFrom === undefined ? {} : { dateFrom }),
     ...(dateTo === undefined ? {} : { dateTo }),
   };

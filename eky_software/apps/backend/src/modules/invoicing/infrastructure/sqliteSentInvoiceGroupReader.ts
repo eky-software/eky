@@ -21,6 +21,8 @@ type SentInvoiceRootFilterParameters = [
   string | null,
   string | null,
   string | null,
+  string | null,
+  string | null,
 ];
 type SentInvoiceRootListParameters = [
   ...SentInvoiceRootFilterParameters,
@@ -45,6 +47,8 @@ export class SqliteSentInvoiceGroupReader implements SentInvoiceGroupReader {
   ): Promise<SentInvoiceGroupResult> {
     const filterParameters: SentInvoiceRootFilterParameters = [
       query.companyId,
+      query.customerId,
+      query.customerId,
       query.dateFrom,
       query.dateFrom,
       query.dateTo,
@@ -73,6 +77,7 @@ export class SqliteSentInvoiceGroupReader implements SentInvoiceGroupReader {
             root_invoices.company_id = ?
             AND root_invoices.status = 'sent'
             AND root_invoices.invoice_kind = 'standard'
+            AND (? IS NULL OR root_invoices.customer_id = ?)
             AND (? IS NULL OR root_invoices.invoice_date >= ?)
             AND (? IS NULL OR root_invoices.invoice_date <= ?)
             ${getSentInvoiceCreditStateWhereClause(query.creditState)}
@@ -160,6 +165,7 @@ function createSentInvoiceRootQuery(
       root_invoices.company_id = ?
       AND root_invoices.status = 'sent'
       AND root_invoices.invoice_kind = 'standard'
+      AND (? IS NULL OR root_invoices.customer_id = ?)
       AND (? IS NULL OR root_invoices.invoice_date >= ?)
       AND (? IS NULL OR root_invoices.invoice_date <= ?)
       ${getSentInvoiceCreditStateWhereClause(creditState)}

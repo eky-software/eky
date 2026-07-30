@@ -16,6 +16,7 @@ describe('listSentInvoiceGroups', () => {
       listSentInvoiceGroups(
         {
           companyId: 'dev-company',
+          customerId: ' customer-1 ',
           dateFrom: '2026-01-01',
           dateTo: '2026-12-31',
           page: 2,
@@ -33,6 +34,7 @@ describe('listSentInvoiceGroups', () => {
     });
     expect(reader.listSentInvoiceGroups).toHaveBeenCalledWith({
       companyId: 'dev-company',
+      customerId: 'customer-1',
       creditState: 'all',
       dateFrom: '2026-01-01',
       dateTo: '2026-12-31',
@@ -87,6 +89,24 @@ describe('listSentInvoiceGroups', () => {
         {
           companyId: 'dev-company',
           page: 0,
+          pageSize: 20,
+          sort: 'invoiceDateDesc',
+        },
+        reader,
+      ),
+    ).rejects.toBeInstanceOf(InvoiceDraftValidationError);
+    expect(reader.listSentInvoiceGroups).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid customer filter before calling the reader', async () => {
+    const reader = createReader();
+
+    await expect(
+      listSentInvoiceGroups(
+        {
+          companyId: 'dev-company',
+          customerId: 'x'.repeat(201),
+          page: 1,
           pageSize: 20,
           sort: 'invoiceDateDesc',
         },

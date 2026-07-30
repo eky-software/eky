@@ -20,6 +20,7 @@ export function createApprovedInvoiceListQuery(
 ): ApprovedInvoiceSummaryQuery {
   return {
     companyId: 'dev-company',
+    customerId: null,
     status: 'approved',
     dateFrom: null,
     dateTo: null,
@@ -35,6 +36,7 @@ export function createSentInvoiceGroupQuery(
 ): SentInvoiceGroupQuery {
   return {
     companyId: 'dev-company',
+    customerId: null,
     creditState: 'all',
     dateFrom: null,
     dateTo: null,
@@ -71,6 +73,8 @@ export interface InvoiceCloneInput {
   invoiceDate: string;
   dueDate?: string;
   customerNameSnapshot?: string;
+  customerId?: string;
+  billingRecipientCustomerId?: string | null;
 }
 
 export function insertInvoiceClone(
@@ -143,6 +147,11 @@ export function insertInvoiceClone(
     status: input.status,
     customer_name_snapshot:
       input.customerNameSnapshot ?? 'Snapshot Customer Oy',
+    customer_id: input.customerId ?? 'customer-1',
+    billing_recipient_customer_id:
+      input.billingRecipientCustomerId === undefined
+        ? 'billing-1'
+        : input.billingRecipientCustomerId,
     invoice_date: input.invoiceDate,
     due_date: input.dueDate ?? input.invoiceDate,
     total_net_cents: input.totalGrossCents,
