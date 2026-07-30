@@ -83,6 +83,32 @@ Yhden minuutin soak-polun validointi teki 133 työkiertoa, 13 restartia ja 26
 tukipakettia. Se todensi keston ohjauksen ja raportoinnin, mutta ei korvaa
 varsinaista 30 minuutin vertailuajoa.
 
+## Ensimmäinen 30 minuutin Windows-soak
+
+Ensimmäinen täysi 30 minuutin soak ajettiin commitilla
+`a58718aea394f6007adbe697928523a793bb343f` Electron 42.8.0:lla Windowsissa
+31.7.2026 Suomen aikaa. Ajo tehtiin vasta kahden peräkkäisen vihreän puhtaan
+GitHub Windows Electron critical E2E -ajon jälkeen.
+
+| Mittari | Tulos |
+| --- | ---: |
+| Kesto | 1 800 273 ms |
+| Työkierroksia | 3 282 |
+| Runtime-restartteja | 328 |
+| Tukipaketteja | 656 |
+| Prosesseja alussa / lopussa | 5 / 5 |
+| Ikkunoita lopussa | 1 |
+| Working set alussa | 466 248 KiB |
+| Working set lopussa | 508 276 KiB |
+| SQLite | 2 678 784 B |
+| PDF-dokumentit | 3 290 B |
+| Lokit | 2 574 536 B |
+| Backend lopussa | terve |
+
+Yksi vertailuajo ei osoita muistivuotoa tai määritä yleistä muistirajaa.
+Seuraavissa ajoissa arvioidaan erityisesti, palautuvatko prosessi- ja
+ikkunamäärät sekä tasaantuuko working set samanlaisella työkuormalla.
+
 ## Tulkinta
 
 Ensimmäisestä ajosta ei aseteta tiukkaa RSS-rajaa. Electronin working set
@@ -96,6 +122,6 @@ merkkejä ovat sen sijaan:
 - salaisuus tai henkilötieto päätyy raporttiin tai lokiin
 - testi jättää prosesseja tai testihakemistoja käyttöön.
 
-Varsinainen 30 minuutin ajo tehdään ennen ensimmäistä oikean datan
-käyttöönottoa ja merkittävän Electron-, SQLite-, PDF-, safeStorage- tai
+30 minuutin ajo toistetaan ennen ensimmäistä oikean datan käyttöönottoa ja
+merkittävän Electron-, SQLite-, PDF-, safeStorage- tai
 runtime-elinkaarimuutoksen jälkeen.
