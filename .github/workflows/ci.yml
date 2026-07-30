@@ -130,3 +130,43 @@ jobs:
 
       - name: Run critical web E2E journeys
         run: pnpm --filter @eky/e2e e2e:web:critical
+
+  e2e-electron-windows-critical:
+    name: Windows Electron critical E2E
+    if: >-
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: windows-latest
+    timeout-minutes: 25
+
+    defaults:
+      run:
+        working-directory: eky_software
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: eky_software/.node-version
+          package-manager-cache: false
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Package Windows desktop
+        run: pnpm --filter @eky/desktop package:windows
+
+      - name: Run packaged Windows smoke
+        run: pnpm --filter @eky/desktop smoke:windows
+
+      - name: Run critical Electron E2E journeys
+        run: pnpm test:e2e:electron:critical
