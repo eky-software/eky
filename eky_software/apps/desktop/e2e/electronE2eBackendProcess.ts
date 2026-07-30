@@ -13,6 +13,7 @@ interface E2eBackendStatus {
 }
 
 export interface ElectronE2eBackendController {
+  getStartCount(): number;
   isRunning(): boolean;
   killUnexpectedly(): void;
   startBackend(
@@ -28,8 +29,10 @@ export function createElectronE2eBackendController(
   runnerPath: string,
 ): ElectronE2eBackendController {
   let processHandle: UtilityProcess | undefined;
+  let startCount = 0;
 
   return {
+    getStartCount: () => startCount,
     isRunning: () => processHandle !== undefined,
     killUnexpectedly() {
       processHandle?.kill();
@@ -43,6 +46,7 @@ export function createElectronE2eBackendController(
       }
 
       return new Promise((resolveStart, rejectStart) => {
+        startCount += 1;
         const child = utilityProcess.fork(runnerPath, [], {
           env: createE2eUtilityEnvironment(),
           serviceName: 'Eky E2E Fake Backend',

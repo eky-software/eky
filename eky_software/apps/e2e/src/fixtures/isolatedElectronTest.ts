@@ -4,6 +4,7 @@ import {
   readdirSync,
   rmSync,
 } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 
 import {
@@ -31,6 +32,7 @@ import { readE2eScenarioId } from './readE2eScenarioId.js';
 export interface IsolatedElectronHarness {
   api: APIRequestContext;
   electronApp: ElectronApplication;
+  launchSecondInstance(): Promise<void>;
   page: Page;
   paths: E2eWorkerPaths;
   runRoot: string;
@@ -44,6 +46,14 @@ interface IsolatedElectronFixtures {
 interface IsolatedElectronOptions {
   e2eDialogMode: 'accept' | 'cancel';
 }
+
+type ElectronChildProcess = ReturnType<typeof spawn> & {
+  on(event: 'error', listener: (error: Error) => void): ElectronChildProcess;
+  on(
+    event: 'exit',
+    listener: (code: number | null) => void,
+  ): ElectronChildProcess;
+};
 
 export const test = base.extend<
   IsolatedElectronFixtures & IsolatedElectronOptions
@@ -106,7 +116,16 @@ export const test = base.extend<
         },
       });
 
-      await use({ api, electronApp, page, paths, runRoot, runtime });
+      await use({
+        api,
+        electronApp,
+        launchSecondInstance: () =>
+          launchSecondElectronInstance(runtime.configPath, runRoot),
+        page,
+        paths,
+        runRoot,
+        runtime,
+      });
     } finally {
       await api?.dispose();
       await electronApp?.close().catch(() => undefined);
@@ -118,6 +137,46 @@ export const test = base.extend<
     }
   },
 });
+
+function launchSecondElectronInstance(
+  configPath: string,
+  runRoot: string,
+): Promise<void> {
+  return new Promise((resolveLaunch, rejectLaunch) => {
+    const child = spawn(
+      resolveElectronExecutablePath(),
+      [resolveElectronE2eApplicationPath()],
+      {
+        cwd: runRoot,
+        env: createElectronEnvironment(configPath),
+        shell: false,
+        stdio: 'ignore',
+        windowsHide: true,
+      },
+    ) as ElectronChildProcess;
+    const timer = setTimeout(() => {
+      child.kill();
+      rejectLaunch(new Error('Second Electron instance did not exit.'));
+    }, 15_000);
+
+    child.on('error', (error: Error) => {
+      clearTimeout(timer);
+      rejectLaunch(error);
+    });
+    child.on('exit', (code: number | null) => {
+      clearTimeout(timer);
+      if (code === 0) {
+        resolveLaunch();
+        return;
+      }
+      rejectLaunch(
+        new Error(
+          `Second Electron instance exited with code ${String(code)}.`,
+        ),
+      );
+    });
+  });
+}
 
 function appendBoundedOutput(current: string, chunk: Buffer): string {
   return `${current}${chunk.toString('utf8')}`.slice(-64 * 1024);

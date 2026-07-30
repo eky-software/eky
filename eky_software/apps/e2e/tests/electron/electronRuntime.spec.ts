@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 
+import { readElectronMainState } from '../../src/electron/readElectronMainState.js';
 import { test, expect } from '../../src/fixtures/isolatedElectronTest.js';
 
 test('DESK-RUNTIME-001 starts an isolated Electron runtime', async ({
@@ -15,33 +16,16 @@ test('DESK-RUNTIME-001 starts an isolated Electron runtime', async ({
   expect(health.ok()).toBe(true);
   await expect(health.json()).resolves.toEqual({ status: 'ok' });
 
-  const state = await e2eElectron.electronApp.evaluate(() => {
-    const controller = (
-      globalThis as typeof globalThis & {
-        __EKY_ELECTRON_E2E__?: {
-          backendIsRunning(): boolean;
-          runtimeInstanceId: string;
-          scenarioId: string;
-          userDataPath: string;
-        };
-      }
-    ).__EKY_ELECTRON_E2E__;
-    if (controller === undefined) {
-      throw new Error('Electron E2E controller is unavailable.');
-    }
-    return {
-      backendIsRunning: controller.backendIsRunning(),
-      runtimeInstanceId: controller.runtimeInstanceId,
-      scenarioId: controller.scenarioId,
-      userDataPath: controller.userDataPath,
-    };
-  });
+  const state = await readElectronMainState(e2eElectron.electronApp);
 
   expect(state).toEqual({
     backendIsRunning: true,
+    backendStartCount: 1,
     runtimeInstanceId: e2eElectron.runtime.runtimeInstanceId,
     scenarioId: 'DESK-RUNTIME-001',
+    secondInstanceCount: 0,
     userDataPath: e2eElectron.runtime.userDataPath,
+    windowCount: 1,
   });
   expect(state.userDataPath.startsWith(e2eElectron.runRoot)).toBe(true);
 

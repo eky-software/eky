@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 
-import { app, protocol } from 'electron';
+import { app, BrowserWindow, protocol } from 'electron';
 
 import {
   startDesktopComposition,
@@ -48,6 +48,7 @@ const backendController = createElectronE2eBackendController(
 const nativeAdapters = createElectronE2eNativeAdapters(config);
 let lifecycle: DesktopLifecycleHandle | undefined;
 let shutdownStarted = false;
+let secondInstanceCount = 0;
 
 if (hasSingleInstanceLock) {
   void runSafeDesktopStartup({
@@ -95,7 +96,10 @@ if (hasSingleInstanceLock) {
 }
 
 app.on('activate', () => lifecycle?.focusApplicationWindow());
-app.on('second-instance', () => lifecycle?.focusApplicationWindow());
+app.on('second-instance', () => {
+  secondInstanceCount += 1;
+  lifecycle?.focusApplicationWindow();
+});
 app.on('before-quit', (event) => {
   if (lifecycle === undefined || shutdownStarted) {
     return;
@@ -109,10 +113,13 @@ app.on('window-all-closed', () => app.quit());
 Object.assign(globalThis, {
   __EKY_ELECTRON_E2E__: Object.freeze({
     backendIsRunning: () => backendController.isRunning(),
+    backendStartCount: () => backendController.getStartCount(),
     killBackendUnexpectedly: () => backendController.killUnexpectedly(),
     nativeAdapterSnapshot: () => nativeAdapters.snapshot(),
     runtimeInstanceId: config.runtimeInstanceId,
     scenarioId: config.scenarioId,
+    secondInstanceCount: () => secondInstanceCount,
     userDataPath: config.paths.userDataPath,
+    windowCount: () => BrowserWindow.getAllWindows().length,
   }),
 });
