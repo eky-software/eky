@@ -21,6 +21,36 @@ Poikkeavia tapauksia ei testata satunnaisesti vain testimäärän kasvattamiseks
 Testit johdetaan toiminnon luottamusrajoista, liiketoimintasäännöistä ja
 todellisista väärinkäyttö- tai rikkoutumistavoista.
 
+## Checkpoint-Pohjainen Testikadenssi
+
+Laaja ominaisuus jaetaan toiminnallisiin checkpointteihin. Jokaisen checkpointin
+jälkeen ajetaan muuttuneeseen vastuuseen suoraan kohdistuvat testit. Näin
+virhe paikantuu pieneen muutokseen eikä työn loppuun kerätä tietoisesti
+rikkinäistä välitilaa.
+
+Testikadenssi suhteutetaan riskiin:
+
+- jokaisen toiminnallisen checkpointin jälkeen ajetaan muuttuneiden tiedostojen,
+  käyttötapausten, reittien, adapterien ja komponenttien kohdetestit
+- koko workspacen testit, typecheck ja tarvittavat buildit ajetaan, kun
+  checkpointit muodostavat yhden eheän toiminnallisen kokonaisuuden
+- riskiin perustuvat system-, web-, security-, fault- ja critical-E2E-testit
+  ajetaan ennen pull requestin valmistumista
+- Electron-E2E, Windows-paketointi ja packaged smoke ajetaan vain, kun muutos
+  koskee Electronia, desktop-capabilityä, paketointia tai näiden luottamusrajaa
+- stress- ja soak-testit ovat erillisiä manuaalisia release-portteja eikä niitä
+  ajeta tavallisena checkpoint- tai pull request -testinä
+- dokumentaatio-, kommentti- ja selvästi ei-toiminnallinen tyylimuutos voi
+  jättää testit ajamatta, kun syy raportoidaan
+
+Jokaisen commitin ei tarvitse ajaa koko E2E-matriisia. Commit ei kuitenkaan saa
+olla tietoisesti rikkinäinen: sen oman vastuualueen kohdetestien pitää olla
+vihreitä ja julkaistujen sopimusten säilyä käyttökelpoisina.
+
+Checkpoint-kadenssi ei vähennä GitHubin required check -portteja. CI ajaa
+edelleen sille dokumentoidut merge-portit riippumatta paikallisen työn
+checkpoint-jaosta.
+
 ## Testien Sijainti
 
 Yksikkö- ja komponenttitestit pidetään lähtökohtaisesti testattavan tiedoston
