@@ -220,7 +220,8 @@ Tietoturvapäivitykset käsitellään nopeasti, mutta testaten.
 
 ## Automaattinen päivitysvalvonta
 
-Dependabot tarkistaa npm-workspacen ja GitHub Actions -viittaukset viikoittain.
+Dependabot version updates tarkistaa npm-workspacen ja GitHub Actions
+-viittaukset viikoittain `.github/dependabot.yml`-tiedoston mukaisesti.
 Dependabotin avaama pull request on katselmointiehdotus, ei hyväksyntä:
 
 - automaattista mergeä ei käytetä
@@ -239,20 +240,37 @@ GitHub Actions -viittaukset säilytetään commit-SHA:lla lukittuina. Dependabot
 saa ehdottaa SHA:n päivittämistä, mutta muutos katselmoidaan eikä sitä
 mergeytetä automaattisesti.
 
-Erillinen viikoittainen `Dependency security` -workflow:
+Erillinen vain lukeva `Dependency security` -workflow:
 
 - käyttää lukittua lockfilea
-- ajaa `pnpm audit --prod`- ja `pnpm audit` -tarkistukset
+- ajetaan päivittäin klo 02.30 UTC; GitHubin cron ei seuraa
+  Europe/Helsinki-kesäaikaa
+- ajetaan käsin `workflow_dispatch`-toiminnolla
+- ajetaan `main`-pushissa ja `main`-haaraan kohdistuvassa pull requestissa vain,
+  kun package manifest, lockfile, Dependabot-konfiguraatio tai dependency-/CI-
+  workflow muuttuu
+- ajaa `pnpm audit --prod`-, `pnpm audit`- ja
+  `pnpm audit signatures` -tarkistukset
 - ei käytä `audit --fix` -komentoa
 - ei muuta tiedostoja, tee committeja tai avaa päivityksiä
 - käyttää vain `contents: read` -oikeutta
 
-Repositorion omistaja pitää GitHubissa käytössä Dependency graph-,
-Dependabot alerts- ja Dependabot security updates -asetukset. Merge-portteina
-pidetään vähintään nykyiset `Test, typecheck and build`,
-`System security E2E` ja `Web critical E2E` -tarkistukset. Asetukset
-varmistetaan GitHubin käyttöliittymästä, koska niitä ei päätellä pelkistä
-repository-tiedostoista.
+`dependabot.yml` ottaa käyttöön version updates -PR:t, mutta se ei todista
+repositoryn Dependabot-turva-asetusten tilaa. Repositorion omistaja varmistaa
+GitHubissa erikseen:
+
+- Dependency graph
+- Dependabot alerts
+- Dependabot security updates
+
+Tarkistuspolku on repositoryn `Settings` -> `Security` ->
+`Advanced Security`. Jos käytettävissä on autentikoitu read-only GitHub API-
+tarkistus, tilat voidaan varmistaa sillä. Asetuksia ei muuteta automaattisesti
+eikä ilman omistajan erillistä vahvistusta. Ilman tällaista yhteyttä tila
+raportoidaan varmistamattomaksi.
+
+Merge-portteina pidetään vähintään nykyiset `Test, typecheck and build`,
+`System security E2E` ja `Web critical E2E` -tarkistukset.
 
 ## Supply chain -riskit
 

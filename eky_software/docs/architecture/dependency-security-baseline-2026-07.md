@@ -117,15 +117,20 @@ korjattavissa olevaa tunnettua haavoittuvuutta riippuvuuspuuhun.
 
 ## Päivityssuunnitelma
 
-1. Päivitä `@hono/node-server` versioon `2.0.12` ja `hono` versioon
-   `4.12.32`; varmista runtime-, security-, fault- ja endurance-testit.
-2. Päivitä `@electron/packager` versioon `20.0.4`; tarkista high-ketju,
-   transitiiviset muutokset ja lisenssit ennen jatkoa.
-3. Jos paketointiketju on puhdas, päivitä Electron uusimpaan vakaaseen
-   42.x-patchiin. Tarkastushetkellä versio on `42.8.0`.
-4. Lisää Dependabotin hallittu viikkorytmi ja erillinen vain lukeva
-   dependency-audit-workflow.
-5. Aja lopullinen testaus-, paketointi-, smoke- ja audit-portti.
+Heinäkuun rajatut päivitykset on toteutettu:
+
+1. `@hono/node-server` on vähintään `2.0.12` ja `hono` vähintään `4.12.32`.
+2. `@electron/packager` on `20.0.4`.
+3. Electron on tarkasti lukittu versioon `42.8.0`. Sen ainoa
+   paketointiversion lähde on `apps/desktop/package.json`.
+4. Dependabot version updates käyttää hallittua viikkorytmiä ilman
+   automaattimergeä.
+5. Vain lukeva `Dependency security` ajaa production- ja full auditin sekä
+   rekisteriallekirjoitusten tarkistuksen päivittäin, dependency-muutoksissa ja
+   käsin käynnistettynä.
+
+Electron 43, `better-sqlite3`-muutos ja tuotantojulkaisun release-portti ovat
+edelleen erillisiä päätöksiä.
 
 ## CI- ja repository-asetusten lähtötila
 
@@ -135,11 +140,12 @@ Nykyinen SHA-pinnattu CI sisältää tarkistukset:
 - `System security E2E`
 - `Web critical E2E`
 
-Repositoryn GitHub Advanced Security -asetuksia ei voitu todentaa tästä
-paikallisesta ympäristöstä, koska käytettävissä ei ollut autentikoitua GitHub
-CLI -yhteyttä. Dependency graph, Dependabot alerts ja Dependabot security
-updates tarkistetaan ja kytketään tarvittaessa GitHubin asetuksista
-automaatio-checkpointin yhteydessä.
+Repositoryn GitHub Advanced Security -asetusten admin-tasoinen read-only
+varmistus ei ole käytettävissä nykyisellä GitHub-yhteydellä. Siksi Dependency
+graph-, Dependabot alerts- ja Dependabot security updates -tilaa ei väitetä
+varmistetuksi. Omistaja tarkistaa ne repositoryn `Settings` -> `Security` ->
+`Advanced Security` -näkymästä. Asetuksia ei muuteta ilman omistajan erillistä
+vahvistusta.
 
 ## Rajaukset
 
