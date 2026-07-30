@@ -218,6 +218,42 @@ Major-päivitykset vaativat erillisen tarkistuksen.
 
 Tietoturvapäivitykset käsitellään nopeasti, mutta testaten.
 
+## Automaattinen päivitysvalvonta
+
+Dependabot tarkistaa npm-workspacen ja GitHub Actions -viittaukset viikoittain.
+Dependabotin avaama pull request on katselmointiehdotus, ei hyväksyntä:
+
+- automaattista mergeä ei käytetä
+- uusi suora tai transitiivisesti merkittävä riippuvuus käy edelleen läpi
+  tämän dokumentin hyväksyntäportin
+- tavallisten versionpäivitysten cooldown on patchille 3, minorille 7 ja
+  majorille 30 päivää
+- cooldown ei viivästytä Dependabotin security-päivityksiä
+- major-päivitykset pysyvät yksittäisinä pull requesteina
+- Electron, `better-sqlite3`, `@electron/*`, Hono, PDFKit, Playwright,
+  TypeScript, Vite ja Reactin Vite-plugin käsitellään yksittäisinä
+  päivityksinä myös patch- ja minor-tasolla
+- muut yhteensopivat patch- ja minor-päivitykset voidaan ryhmitellä
+
+GitHub Actions -viittaukset säilytetään commit-SHA:lla lukittuina. Dependabot
+saa ehdottaa SHA:n päivittämistä, mutta muutos katselmoidaan eikä sitä
+mergeytetä automaattisesti.
+
+Erillinen viikoittainen `Dependency security` -workflow:
+
+- käyttää lukittua lockfilea
+- ajaa `pnpm audit --prod`- ja `pnpm audit` -tarkistukset
+- ei käytä `audit --fix` -komentoa
+- ei muuta tiedostoja, tee committeja tai avaa päivityksiä
+- käyttää vain `contents: read` -oikeutta
+
+Repositorion omistaja pitää GitHubissa käytössä Dependency graph-,
+Dependabot alerts- ja Dependabot security updates -asetukset. Merge-portteina
+pidetään vähintään nykyiset `Test, typecheck and build`,
+`System security E2E` ja `Web critical E2E` -tarkistukset. Asetukset
+varmistetaan GitHubin käyttöliittymästä, koska niitä ei päätellä pelkistä
+repository-tiedostoista.
+
 ## Supply chain -riskit
 
 NPM-ekosysteemissä riippuvuudet voivat tuoda supply chain -riskejä.
