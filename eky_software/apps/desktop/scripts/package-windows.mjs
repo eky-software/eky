@@ -21,7 +21,7 @@ import {
 } from '@electron/fuses';
 import { packager } from '@electron/packager';
 
-const electronVersion = '42.6.1';
+const electronVersion = '42.8.0';
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const desktopDirectory = resolve(scriptDirectory, '..');
 const repositoryRoot = resolve(desktopDirectory, '../..');
