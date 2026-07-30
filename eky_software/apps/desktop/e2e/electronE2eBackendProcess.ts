@@ -156,7 +156,14 @@ function createE2eUtilityEnvironment(): Record<string, string> {
     EKY_E2E: '1',
     NODE_ENV: 'test',
   };
-  for (const key of ['PATH', 'SystemRoot', 'TEMP', 'TMP', 'WINDIR']) {
+  for (const key of [
+    'EKY_ELECTRON_E2E_RUN_ROOT',
+    'PATH',
+    'SystemRoot',
+    'TEMP',
+    'TMP',
+    'WINDIR',
+  ]) {
     const entry = Object.entries(process.env).find(
       ([sourceKey, value]) =>
         sourceKey.toLowerCase() === key.toLowerCase() && value !== undefined,

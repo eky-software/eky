@@ -79,7 +79,7 @@ export function readE2eBackendConfig(
     throw new Error('E2E backend config is invalid.');
   }
   const config = parseE2eBackendConfig(parsed);
-  assertRuntimePaths(config, configPath);
+  assertRuntimePaths(config, configPath, environment);
 
   return config;
 }
@@ -236,10 +236,19 @@ function parseFaultPlan(value: unknown): E2eFaultPlan {
 function assertRuntimePaths(
   config: E2eBackendConfig,
   configPath: string,
+  environment: Readonly<Record<string, string | undefined>>,
 ): void {
-  const allowedTempRoot = realpathSync(resolve(tmpdir(), 'eky-e2e'));
   const runtimeRoot = requireRealDirectory(config.runtimeRoot);
-  assertDescendant(runtimeRoot, allowedTempRoot, false);
+  const electronRuntimeRoot = environment.EKY_ELECTRON_E2E_RUN_ROOT;
+  if (electronRuntimeRoot === undefined) {
+    const allowedTempRoot = realpathSync(resolve(tmpdir(), 'eky-e2e'));
+    assertDescendant(runtimeRoot, allowedTempRoot, false);
+  } else if (
+    !isAbsolute(electronRuntimeRoot) ||
+    requireRealDirectory(electronRuntimeRoot) !== runtimeRoot
+  ) {
+    throw new Error('E2E backend runtime root is invalid.');
+  }
   assertDescendant(realpathSync(configPath), runtimeRoot, true);
 
   for (const path of [

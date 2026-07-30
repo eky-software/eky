@@ -4,7 +4,6 @@ import {
   realpathSync,
 } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
-import { tmpdir } from 'node:os';
 
 export interface ElectronE2eConfig {
   backend: {
@@ -61,7 +60,7 @@ export function readElectronE2eConfig(
   }
 
   const config = parseElectronE2eConfig(parsed);
-  assertElectronE2ePaths(config, configPath);
+  assertElectronE2ePaths(config, configPath, environment);
   return config;
 }
 
@@ -152,10 +151,17 @@ function parseElectronE2eConfig(value: unknown): ElectronE2eConfig {
 function assertElectronE2ePaths(
   config: ElectronE2eConfig,
   configPath: string,
+  environment: Readonly<Record<string, string | undefined>>,
 ): void {
-  const allowedRoot = realpathSync(resolve(tmpdir(), 'eky-e2e'));
   const runtimeRoot = requireRealDirectory(config.runtimeRoot);
-  assertDescendant(runtimeRoot, allowedRoot, false);
+  const expectedRuntimeRoot = environment.EKY_ELECTRON_E2E_RUN_ROOT;
+  if (
+    expectedRuntimeRoot === undefined ||
+    !isAbsolute(expectedRuntimeRoot) ||
+    requireRealDirectory(expectedRuntimeRoot) !== runtimeRoot
+  ) {
+    throw new Error('Electron E2E runtime root is invalid.');
+  }
 
   for (const directoryPath of [
     config.paths.applicationPath,
