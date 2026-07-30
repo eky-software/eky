@@ -26,6 +26,7 @@ export function createElectronE2eRuntime(input: {
   dialogMode?: 'accept' | 'cancel';
   paths: E2eWorkerPaths;
   scenarioId: string;
+  startupMode?: 'backendStartFailure' | 'normal';
 }): ElectronE2eRuntime {
   const applicationPath = createPrivateDirectory(
     join(input.paths.workerRoot, 'desktop-application'),
@@ -99,6 +100,7 @@ export function createElectronE2eRuntime(input: {
     runtimeInstanceId,
     runtimeRoot: input.paths.workerRoot,
     scenarioId: input.scenarioId,
+    startupMode: input.startupMode ?? 'normal',
   };
   writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, {
     encoding: 'utf8',

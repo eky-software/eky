@@ -4,6 +4,7 @@ import type {
   DesktopBackendHandle,
   StartDesktopBackendOptions,
 } from '../src/runtime/backendProcess.js';
+import { createDesktopOperationalEvent } from '../src/observability/createDesktopOperationalEvent.js';
 import type { ElectronE2eConfig } from './electronE2eConfig.js';
 
 interface E2eBackendStatus {
@@ -47,6 +48,12 @@ export function createElectronE2eBackendController(
 
       return new Promise((resolveStart, rejectStart) => {
         startCount += 1;
+        options.operationalLogger?.write(
+          createDesktopOperationalEvent(
+            { eventName: 'backendProcess.starting' },
+            options.operationalIdentity,
+          ),
+        );
         const child = utilityProcess.fork(runnerPath, [], {
           env: createE2eUtilityEnvironment(),
           serviceName: 'Eky E2E Fake Backend',
@@ -93,6 +100,14 @@ export function createElectronE2eBackendController(
 
           ready = true;
           clearTimeout(timer);
+          options.operationalLogger?.write(
+            createDesktopOperationalEvent(
+              {
+                eventName: 'backendProcess.started',
+              },
+              options.operationalIdentity,
+            ),
+          );
           resolveStart({
             onUnexpectedExit(callback) {
               unexpectedExitCallback = callback;
@@ -116,6 +131,18 @@ export function createElectronE2eBackendController(
             return;
           }
           if (!stopping) {
+            options.operationalLogger?.write(
+              createDesktopOperationalEvent(
+                {
+                  errorCode: 'BACKEND_UNEXPECTED_EXIT',
+                  eventName: 'backendProcess.unexpectedExit',
+                  retryable: true,
+                  sideEffectState: 'unknown',
+                  stage: 'runtime',
+                },
+                options.operationalIdentity,
+              ),
+            );
             unexpectedExitCallback?.();
           }
         });

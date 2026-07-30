@@ -35,6 +35,10 @@ export interface IsolatedElectronHarness {
   launchSecondInstance(): Promise<void>;
   page: Page;
   paths: E2eWorkerPaths;
+  restart(): Promise<{
+    previousRuntimeInstanceId: string;
+    previousSessionSecret: string;
+  }>;
   runRoot: string;
   runtime: ElectronE2eRuntime;
 }
@@ -63,8 +67,8 @@ export const test = base.extend<
     const scenarioId = readE2eScenarioId(testInfo.title);
     const runRoot = createE2eRunRoot();
     const paths = createE2eWorkerPaths(runRoot, scenarioId);
-    const backendPort = await reserveLoopbackPort();
-    const runtime = createElectronE2eRuntime({
+    let backendPort = await reserveLoopbackPort();
+    let runtime = createElectronE2eRuntime({
       backendPort,
       dialogMode: e2eDialogMode,
       paths,
@@ -76,56 +80,67 @@ export const test = base.extend<
     let electronStdout = '';
 
     try {
-      electronApp = await electron.launch({
-        args: [resolveElectronE2eApplicationPath()],
-        cwd: runRoot,
-        env: createElectronEnvironment(runtime.configPath),
-        executablePath: resolveElectronExecutablePath(),
-        timeout: 45_000,
-      });
-      const electronProcess = electronApp.process();
-      electronProcess.stderr?.on('data', (chunk: Buffer) => {
-        electronStderr = appendBoundedOutput(electronStderr, chunk);
-      });
-      electronProcess.stdout?.on('data', (chunk: Buffer) => {
-        electronStdout = appendBoundedOutput(electronStdout, chunk);
-      });
-      let page: Page;
-      try {
-        page = await electronApp.firstWindow();
-      } catch {
-        const safeDiagnostics = readSafeElectronDiagnostics(
-          runtime.userDataPath,
-          runtime.observationsPath,
-        );
-        const diagnostics = [electronStdout, electronStderr, safeDiagnostics]
-          .filter((output) => output !== '')
-          .join('\n');
-        throw new Error(
-          diagnostics === ''
-            ? 'Electron E2E window was not created.'
-            : `Electron E2E window was not created.\n${diagnostics}`,
-        );
-      }
-      await page.waitForLoadState('domcontentloaded');
-      api = await requestFactory.newContext({
-        baseURL: `http://127.0.0.1:${String(backendPort)}`,
-        extraHTTPHeaders: {
-          Accept: 'application/json',
-          'x-eky-local-session': runtime.sessionSecret,
+      const launched = await launchElectronRuntime({
+        appendStderr(chunk) {
+          electronStderr = appendBoundedOutput(electronStderr, chunk);
         },
+        appendStdout(chunk) {
+          electronStdout = appendBoundedOutput(electronStdout, chunk);
+        },
+        runRoot,
+        runtime,
       });
+      electronApp = launched.electronApp;
+      api = await createElectronApi(backendPort, runtime.sessionSecret);
 
-      await use({
+      const harness: IsolatedElectronHarness = {
         api,
         electronApp,
         launchSecondInstance: () =>
           launchSecondElectronInstance(runtime.configPath, runRoot),
-        page,
+        page: launched.page,
         paths,
+        async restart() {
+          const previousRuntimeInstanceId = runtime.runtimeInstanceId;
+          const previousSessionSecret = runtime.sessionSecret;
+
+          await harness.api.dispose();
+          await harness.electronApp.close().catch(() => undefined);
+          await waitForLoopbackPortRelease(backendPort);
+
+          backendPort = await reserveLoopbackPort();
+          runtime = createElectronE2eRuntime({
+            backendPort,
+            dialogMode: e2eDialogMode,
+            paths,
+            scenarioId,
+          });
+          electronStderr = '';
+          electronStdout = '';
+          const restarted = await launchElectronRuntime({
+            appendStderr(chunk) {
+              electronStderr = appendBoundedOutput(electronStderr, chunk);
+            },
+            appendStdout(chunk) {
+              electronStdout = appendBoundedOutput(electronStdout, chunk);
+            },
+            runRoot,
+            runtime,
+          });
+          electronApp = restarted.electronApp;
+          api = await createElectronApi(backendPort, runtime.sessionSecret);
+          harness.api = api;
+          harness.electronApp = restarted.electronApp;
+          harness.page = restarted.page;
+          harness.runtime = runtime;
+
+          return { previousRuntimeInstanceId, previousSessionSecret };
+        },
         runRoot,
         runtime,
-      });
+      };
+
+      await use(harness);
     } finally {
       await api?.dispose();
       await electronApp?.close().catch(() => undefined);
@@ -137,6 +152,54 @@ export const test = base.extend<
     }
   },
 });
+
+async function launchElectronRuntime(input: {
+  appendStderr(chunk: Buffer): void;
+  appendStdout(chunk: Buffer): void;
+  runRoot: string;
+  runtime: ElectronE2eRuntime;
+}): Promise<{ electronApp: ElectronApplication; page: Page }> {
+  const electronApp = await electron.launch({
+    args: [resolveElectronE2eApplicationPath()],
+    cwd: input.runRoot,
+    env: createElectronEnvironment(input.runtime.configPath),
+    executablePath: resolveElectronExecutablePath(),
+    timeout: 45_000,
+  });
+  const electronProcess = electronApp.process();
+  electronProcess.stderr?.on('data', input.appendStderr);
+  electronProcess.stdout?.on('data', input.appendStdout);
+
+  try {
+    const page = await electronApp.firstWindow();
+    await page.waitForLoadState('domcontentloaded');
+    return { electronApp, page };
+  } catch {
+    const safeDiagnostics = readSafeElectronDiagnostics(
+      input.runtime.userDataPath,
+      input.runtime.observationsPath,
+    );
+    await electronApp.close().catch(() => undefined);
+    throw new Error(
+      safeDiagnostics === ''
+        ? 'Electron E2E window was not created.'
+        : `Electron E2E window was not created.\n${safeDiagnostics}`,
+    );
+  }
+}
+
+function createElectronApi(
+  backendPort: number,
+  sessionSecret: string,
+): Promise<APIRequestContext> {
+  return requestFactory.newContext({
+    baseURL: `http://127.0.0.1:${String(backendPort)}`,
+    extraHTTPHeaders: {
+      Accept: 'application/json',
+      'x-eky-local-session': sessionSecret,
+    },
+  });
+}
 
 function launchSecondElectronInstance(
   configPath: string,

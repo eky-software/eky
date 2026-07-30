@@ -50,6 +50,14 @@ let lifecycle: DesktopLifecycleHandle | undefined;
 let shutdownStarted = false;
 let secondInstanceCount = 0;
 
+function getPdfPreviewWindows(): BrowserWindow[] {
+  return BrowserWindow.getAllWindows().filter((window) =>
+    /^eky:\/\/app\/invoices\/[A-Za-z0-9_-]{1,100}\/pdf$/u.test(
+      window.webContents.getURL(),
+    ),
+  );
+}
+
 if (hasSingleInstanceLock) {
   void runSafeDesktopStartup({
     exitApplication: (code) => app.exit(code),
@@ -77,7 +85,12 @@ if (hasSingleInstanceLock) {
           showErrorBox: nativeAdapters.showErrorBox,
           showMessageBox: nativeAdapters.showMessageBox,
           showSaveDialog: nativeAdapters.showSaveDialog,
-          startBackend: backendController.startBackend,
+          startBackend:
+            config.startupMode === 'backendStartFailure'
+              ? async () => {
+                  throw new Error('BACKEND_READINESS_TIMEOUT');
+                }
+              : backendController.startBackend,
         },
         quitApplication: () => app.quit(),
         resourcesPath: config.paths.resourcesPath,
@@ -114,8 +127,15 @@ Object.assign(globalThis, {
   __EKY_ELECTRON_E2E__: Object.freeze({
     backendIsRunning: () => backendController.isRunning(),
     backendStartCount: () => backendController.getStartCount(),
+    closePdfPreviewWindows: () => {
+      for (const window of getPdfPreviewWindows()) {
+        window.close();
+      }
+    },
     killBackendUnexpectedly: () => backendController.killUnexpectedly(),
     nativeAdapterSnapshot: () => nativeAdapters.snapshot(),
+    pdfPreviewUrls: () =>
+      getPdfPreviewWindows().map((window) => window.webContents.getURL()),
     runtimeInstanceId: config.runtimeInstanceId,
     scenarioId: config.scenarioId,
     secondInstanceCount: () => secondInstanceCount,
