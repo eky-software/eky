@@ -222,6 +222,14 @@ test('DESK-SUPPORT-001 @critical and DESK-LOGFOLDER-001 use owned local paths', 
       }),
     ]),
   );
+  expect(document.incidentSummaries).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        errorCode: 'DESKTOP_SECURITY_EVENT_BLOCKED',
+        eventName: 'applicationWindow.newWindowBlocked',
+      }),
+    ]),
+  );
   assertSupportBundleChecksums(document);
   expect(JSON.stringify(document)).not.toContain(secret);
   expect(JSON.stringify(document)).not.toContain(
