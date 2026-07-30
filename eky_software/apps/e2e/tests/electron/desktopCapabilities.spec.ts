@@ -22,7 +22,9 @@ import {
   createElectronE2eRuntime,
   resolveElectronE2eApplicationPath,
   resolveElectronExecutablePath,
+  type ElectronE2eRuntime,
 } from '../../src/environment/createElectronE2eRuntime.js';
+import { assertElectronLaunchPrerequisites } from '../../src/environment/assertElectronLaunchPrerequisites.js';
 import { createE2eRunRoot } from '../../src/environment/createE2eRunRoot.js';
 import { createE2eWorkerPaths } from '../../src/environment/createE2eWorkerPaths.js';
 import { reserveLoopbackPort } from '../../src/environment/reserveLoopbackPort.js';
@@ -335,7 +337,7 @@ test('DESK-BOOTFAIL-001 @fault exposes only an allowlisted startup failure', asy
   });
 
   try {
-    const result = await runElectronProcess(runtime.configPath, runRoot);
+    const result = await runElectronProcess(runtime, runRoot);
     expect(result.exitCode).toBe(1);
     expect(result.output).not.toContain('node_modules');
     expect(result.output).not.toContain('Users\\');
@@ -440,16 +442,24 @@ function runSupportInspector(path: string): void {
 }
 
 function runElectronProcess(
-  configPath: string,
+  runtime: ElectronE2eRuntime,
   runRoot: string,
 ): Promise<{ exitCode: number | null; output: string }> {
+  assertElectronLaunchPrerequisites({
+    applicationPath: resolveElectronE2eApplicationPath(),
+    configPath: runtime.configPath,
+    cwd: runRoot,
+    executablePath: resolveElectronExecutablePath(),
+    profileDirectories: [runtime.userDataPath],
+    runRoot,
+  });
   return new Promise((resolveProcess, rejectProcess) => {
     const child = spawn(
       resolveElectronExecutablePath(),
       [resolveElectronE2eApplicationPath()],
       {
         cwd: runRoot,
-        env: createElectronProcessEnvironment(configPath),
+        env: createElectronProcessEnvironment(runtime.configPath),
         shell: false,
         windowsHide: true,
       },

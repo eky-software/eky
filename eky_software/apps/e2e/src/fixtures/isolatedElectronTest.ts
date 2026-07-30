@@ -22,6 +22,7 @@ import {
   resolveElectronExecutablePath,
   type ElectronE2eRuntime,
 } from '../environment/createElectronE2eRuntime.js';
+import { assertElectronLaunchPrerequisites } from '../environment/assertElectronLaunchPrerequisites.js';
 import { createE2eRunRoot } from '../environment/createE2eRunRoot.js';
 import { createE2eWorkerPaths } from '../environment/createE2eWorkerPaths.js';
 import type { E2eWorkerPaths } from '../environment/e2eEnvironmentTypes.js';
@@ -97,7 +98,7 @@ export const test = base.extend<
         api,
         electronApp,
         launchSecondInstance: () =>
-          launchSecondElectronInstance(runtime.configPath, runRoot),
+          launchSecondElectronInstance(runtime, runRoot),
         page: launched.page,
         paths,
         async restart() {
@@ -159,6 +160,7 @@ async function launchElectronRuntime(input: {
   runRoot: string;
   runtime: ElectronE2eRuntime;
 }): Promise<{ electronApp: ElectronApplication; page: Page }> {
+  assertElectronRuntimeLaunchPrerequisites(input.runtime, input.runRoot);
   const electronApp = await electron.launch({
     args: [resolveElectronE2eApplicationPath()],
     cwd: input.runRoot,
@@ -202,16 +204,17 @@ function createElectronApi(
 }
 
 function launchSecondElectronInstance(
-  configPath: string,
+  runtime: ElectronE2eRuntime,
   runRoot: string,
 ): Promise<void> {
+  assertElectronRuntimeLaunchPrerequisites(runtime, runRoot);
   return new Promise((resolveLaunch, rejectLaunch) => {
     const child = spawn(
       resolveElectronExecutablePath(),
       [resolveElectronE2eApplicationPath()],
       {
         cwd: runRoot,
-        env: createElectronEnvironment(configPath),
+        env: createElectronEnvironment(runtime.configPath),
         shell: false,
         stdio: 'ignore',
         windowsHide: true,
@@ -238,6 +241,20 @@ function launchSecondElectronInstance(
         ),
       );
     });
+  });
+}
+
+function assertElectronRuntimeLaunchPrerequisites(
+  runtime: ElectronE2eRuntime,
+  runRoot: string,
+): void {
+  assertElectronLaunchPrerequisites({
+    applicationPath: resolveElectronE2eApplicationPath(),
+    configPath: runtime.configPath,
+    cwd: runRoot,
+    executablePath: resolveElectronExecutablePath(),
+    profileDirectories: [runtime.userDataPath],
+    runRoot,
   });
 }
 
