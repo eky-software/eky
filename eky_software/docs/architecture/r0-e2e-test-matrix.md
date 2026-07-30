@@ -126,7 +126,7 @@ tietokannan, auditin, operational/security-eventin ja tukipaketin päätöksen.
 | DESK-BACKEND-EXIT-001 | P0; electron-e2e, fault, recovery | Utility-backend lopetetaan odottamatta | Sovellus sulkeutuu hallitusti ja uusi runtime käynnistyy | Turvallinen unexpected-exit-event; backend palautuu terveeksi | Stack, paikallinen polku ja session | implemented-e2e |
 | DESK-BOOTFAIL-001 | P0; electron-e2e, fault | Development bootstrap fault | Turvallinen viesti ja hallittu exit | Ei osittaista runtimea; turvallinen startup failure-event | Stack ja paikallinen polku | implemented-e2e |
 | DESK-ENDURANCE-001 | P1; electron-e2e, endurance | 200 moduulisiirtymää, 50 laskuavausta, 100 PDF-sykliä, 20 tukipakettia, 30 secret-sykliä ja 20 restartia | Työkuorma valmistuu ja synteettinen mittausraportti syntyy | Lopussa yksi ikkuna, hallittu prosessimäärä, terve backend ja ei secret-jäämää | Oikea data, salaisuus, session ja production-polut | implemented-e2e |
-| DESK-SOAK-001 | P1; electron-e2e, endurance | Manuaalinen 30 minuutin toistuva UI-, PDF-, secret-, support- ja restart-kuorma | Työkuorma säilyy terveenä ja raportoi prosessi-, muisti- ja tiedostomittarit | Yhden minuutin duration-polku validoitu; ensimmäinen 30 minuutin release-baseline tekemättä | Oikea data, salaisuus, session ja production-polut | implemented-e2e |
+| DESK-SOAK-001 | P1; electron-e2e, endurance | Manuaalinen 30 minuutin toistuva UI-, PDF-, secret-, support- ja restart-kuorma | Työkuorma säilyy terveenä ja raportoi prosessi-, muisti- ja tiedostomittarit | 30 minuutin Windows-baseline valmis: 3 282 kierrosta, 328 restartia, 656 tukipakettia, lopussa 5 prosessia, 1 ikkuna ja terve backend | Oikea data, salaisuus, session ja production-polut | implemented-e2e |
 
 ## Definition of Done
 

@@ -71,8 +71,9 @@ permission-pyynnöt, yhden instanssin, PDF-esikatselun, safeStorage-salaisuuden,
 tukipaketin, lokikansion, restartin sekä backendin odottamattoman ja
 käynnistysvaiheen virheen. Packaged smoke säilyy erillisenä hardened-
 artifactin porttina. Täydellinen backup/restore- ja tenant-matriisi sekä
-30 minuutin Electron-soakin ensimmäinen vertailuajo ovat vielä erillisiä
-release-checkpointeja.
+pilvi-identiteetin tenant-matriisi ovat vielä erillisiä release-
+checkpointteja. Ensimmäinen 30 minuutin Electron-soak on dokumentoitu
+`e2e-desktop-endurance-baseline.md`-tiedostossa.
 
 ## Observabilityn E2E
 
@@ -102,12 +103,52 @@ Playwright-jobit käyttävät yhtä CI-retryä vain trace-todisteen keräämisee
 `failOnFlakyTests`-asetusta, joten retryllä vasta läpäisevä testi epäonnistaa
 jobin. Raskaita E2E-jobeja ei ajeta erikseen jokaisessa `antsa`-pushissa.
 
+Pull requestin `main`-mergeportin required status check -joukko on:
+
+- `CI / Test, typecheck and build`
+- `CI / System security E2E`
+- `CI / Web critical E2E`
+- `CI / Windows Electron critical E2E`.
+
+`Dependency security / Audit dependencies` on lisäksi pakollinen
+riippuvuus-, lockfile-, Dependabot- tai workflow-muutoksissa. Nykyinen
+polkurajattu Dependency security -workflow ei sovellu ehdottomaksi GitHubin
+branch protection -checkiksi ennen kuin se ajetaan jokaisessa pull requestissa;
+sen vihreä tulos tarkistetaan niissä muutoksissa, joissa workflow käynnistyy.
+Checkien nimiä ei muuteta hiljaisesti, koska branch protection viittaa
+GitHubissa täsmällisiin check-nimiin.
+
 `pnpm test:e2e:stress` on manuaalinen, eikä kuulu jokaiseen pull requestiin.
 System/web-työkuorma ja ensimmäiset vertailuarvot on dokumentoitu tiedostossa
 `e2e-endurance-baseline.md`. Electronin rajattu stress-baseline ajetaan
 komennolla `pnpm test:e2e:desktop-stress` ja 30 minuutin manuaalinen soak
 komennolla `pnpm test:e2e:desktop-soak`. Desktop-mittarit ja tulkintasäännöt
 ovat tiedostossa `e2e-desktop-endurance-baseline.md`.
+
+## Nykyisten moduulien jäädytetty E2E-perusta
+
+Commit `a58718aea394f6007adbe697928523a793bb343f` jäädyttää Customers-,
+Company Settings-, Invoicing-, Activity-, Diagnostics- ja Desktop-runtime-
+kokonaisuuksien nykyisen E2E-perustan. GitHub CI run 287:n ensimmäinen ajo ja
+erillisellä puhtaalla Windows-runnerilla tehty toinen Windows Electron
+critical E2E -ajo olivat vihreitä. Tämän jälkeen myös paikallinen 30 minuutin
+desktop-soak valmistui vihreänä.
+
+Jäädytys tarkoittaa, että:
+
+- olemassa olevia matriisiskenaarioita tai niiden turvarajoja ei poisteta,
+  ohiteta tai heikennetä vain uuden ominaisuuden toteutuksen helpottamiseksi
+- timeout-, retry-, sandbox-, session-, tenant- ja permission-sääntöjä ei
+  löysennetä ilman erillistä dokumentoitua päätöstä
+- uusi ominaisuus laajentaa matriisia omilla onnistumis-, esto- ja
+  failure/recovery-polkuillaan
+- testin toteutus voidaan refaktoroida, kun skenaarion sopimus ja havaittava
+  käyttäytyminen säilyvät
+- löydetty regressio korjataan tuotantokoodissa tai kirjataan rehellisesti
+  findingiksi; testiä ei muuteta peittämään regressiota.
+
+Seuraava Customer Overview -ominaisuus rakennetaan tämän perustan päälle eikä
+avaa nykyisten moduulien valmiita turvarajoja uudelleen ilman todettua syytä.
 
 ## Riippuvuuspäätös
 
