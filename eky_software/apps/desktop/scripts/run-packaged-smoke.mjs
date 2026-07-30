@@ -10,6 +10,7 @@ import {
   readPackagedSmokeResult,
   writePackagedSmokeResult,
 } from '../dist/main/packagedSmoke.js';
+import { readDesktopElectronVersion } from './read-desktop-electron-version.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const executablePath = resolve(
@@ -28,6 +29,7 @@ const smokeResultPath = resolve(
   smokeRootDirectory,
   'result/desktop-smoke-result.json',
 );
+const expectedElectronVersion = await readDesktopElectronVersion();
 
 delete childEnvironment.ELECTRON_RUN_AS_NODE;
 childEnvironment.ELECTRON_ENABLE_SECURITY_WARNINGS = 'true';
@@ -89,7 +91,11 @@ try {
         return;
       }
 
-      if (code !== 0 || smokeResult?.status !== 'ok') {
+      if (
+        code !== 0 ||
+        smokeResult?.status !== 'ok' ||
+        smokeResult.electronVersion !== expectedElectronVersion
+      ) {
         const safeCode =
           typeof smokeResult?.code === 'string'
             ? smokeResult.code

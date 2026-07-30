@@ -12,8 +12,25 @@ import { createE2eInvoiceDocumentStorage } from './e2eInvoiceDocumentStorage.js'
 import { createE2eOperationalLogger } from './e2eOperationalLogger.js';
 import { installE2eDatabaseFault } from './installE2eDatabaseFault.js';
 
+interface E2eBackendSecretReader {
+  getSecret(companyId: string): Promise<string | null>;
+}
+
+interface E2eBackendSecretStore {
+  hasSecret(companyId: string): Promise<boolean>;
+  removeSecret(companyId: string): Promise<void>;
+  setSecret(input: { companyId: string; secret: string }): Promise<void>;
+}
+
+export interface StartE2eBackendOptions {
+  companyEmailSecretReader?: E2eBackendSecretReader;
+  companyEmailSecretStore?: E2eBackendSecretStore;
+  runtimeInstanceId?: string;
+}
+
 export async function startE2eBackend(
   configPath: string,
+  options: StartE2eBackendOptions = {},
 ): Promise<{ config: E2eBackendConfig; server: StartedServer }> {
   const config = readE2eBackendConfig(configPath);
   await installE2eDatabaseFault({
@@ -26,7 +43,7 @@ export async function startE2eBackend(
     operationalIdentity: {
       appVersion: '0.0.0-e2e',
       buildRevision: 'development',
-      runtimeInstanceId: randomUUID(),
+      runtimeInstanceId: options.runtimeInstanceId ?? randomUUID(),
     },
   });
   const operationalLogger = createE2eOperationalLogger({
@@ -39,12 +56,16 @@ export async function startE2eBackend(
     operationalLogger,
   });
   const emailSecretStore = new E2eCompanyEmailSecretStore();
+  const companyEmailSecretReader =
+    options.companyEmailSecretReader ?? emailSecretStore;
+  const companyEmailSecretStore =
+    options.companyEmailSecretStore ?? emailSecretStore;
 
   const server = await startServer({
     appOptions: {
       appVersion: operationalIdentity.appVersion,
-      companyEmailSecretReader: emailSecretStore,
-      companyEmailSecretStore: emailSecretStore,
+      companyEmailSecretReader,
+      companyEmailSecretStore,
       databaseFilePath: config.paths.databaseFilePath,
       invoiceDocumentStorageRoot: config.paths.documentsRoot,
       invoicingInfrastructureAdapters: {

@@ -149,15 +149,25 @@ CI:
 - käyttää GitHub Action -toiminnoille lukittuja commit-SHA-versioita
 - ei tee deployta eikä kirjoita liiketoimintadataa
 
-Viikoittainen `Dependency security` -workflow täydentää merge-CI:tä ajamalla
-sekä production- että koko riippuvuuspuun auditin. Se ei päivitä riippuvuuksia
-automaattisesti eikä käytä `audit --fix` -komentoa.
+Päivittäinen ja dependency-muutoksista käynnistyvä `Dependency security`
+-workflow täydentää merge-CI:tä ajamalla production- ja koko riippuvuuspuun
+auditin sekä rekisteriallekirjoitusten tarkistuksen. Se ei päivitä
+riippuvuuksia automaattisesti, käytä `audit --fix` -komentoa tai kirjoita
+repositoryyn. Päivittäinen cron on UTC-ajassa eikä seuraa automaattisesti
+Europe/Helsinki-kesäaikaa.
 
 Dependabotin avaama päivitys-PR käy läpi saman riskiperusteisen paikallisen ja
 CI-testauksen kuin käsin tehty päivitys. Vähimmäisportteina ovat
 `Test, typecheck and build`, `System security E2E` ja `Web critical E2E`.
 Electron-, native addon- ja Windows-paketointimuutoksissa ajetaan lisäksi
 Windows package sekä packaged smoke sovitun testimatriisin mukaan.
+
+Dependabot version updates syntyy `.github/dependabot.yml`-tiedoston
+viikkorytmistä eikä niitä mergeytetä automaattisesti. Security updates ei
+käytä tavallisten versionpäivitysten cooldownia. Repositorion omistaja
+varmistaa GitHubin `Settings` -> `Security` -> `Advanced Security` -näkymästä
+Dependency graph-, Dependabot alerts- ja Dependabot security updates -tilat.
+Ilman autentikoitua read-only-varmistusta niiden ei väitetä olevan käytössä.
 
 Vihreä CI ei yksin todista liiketoimintasäännön tai turvallisuusmallin olevan
 oikea. Katselmoinnissa tarkistetaan edelleen testien laatu, puuttuvat negatiiviset

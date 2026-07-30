@@ -10,6 +10,10 @@ import {
   safeStorage,
   session,
   shell,
+  type MessageBoxOptions,
+  type MessageBoxReturnValue,
+  type SaveDialogOptions,
+  type SaveDialogReturnValue,
 } from 'electron';
 
 import {
@@ -25,7 +29,11 @@ import {
   createInvoicePdfPreviewWindowController,
   type InvoicePdfPreviewWindowController,
 } from '../pdf/invoicePdfPreviewWindow.js';
-import { startDesktopBackend } from '../runtime/backendProcess.js';
+import {
+  startDesktopBackend,
+  type DesktopBackendHandle,
+  type StartDesktopBackendOptions,
+} from '../runtime/backendProcess.js';
 import { createDesktopRuntimeSession } from '../runtime/runtimeSession.js';
 import { createDesktopOperationalEvent } from '../observability/createDesktopOperationalEvent.js';
 import type { DesktopOperationalIdentity } from '../observability/desktopOperationalEvent.js';
@@ -45,7 +53,10 @@ import {
 import { registerApplicationProtocol } from './applicationProtocol.js';
 import { readSafeStartupFailureCode } from './earlyStartup.js';
 import { createBackendRequestHeaders } from './protocolPolicy.js';
-import { createInvoiceDeliveryConfirmation } from './invoiceDeliveryConfirmation.js';
+import {
+  createInvoiceDeliveryConfirmation,
+  type InvoiceDeliveryDialogAdapter,
+} from './invoiceDeliveryConfirmation.js';
 import {
   createPackagedSmokeSecretFileStore,
   runPackagedSmokeCheck,
@@ -62,10 +73,28 @@ export interface DesktopLifecycleHandle {
   shutdown(): Promise<void>;
 }
 
-interface StartDesktopCompositionOptions {
+export interface DesktopCompositionDependencies {
+  createRuntimeSession(): string;
+  openPath(path: string): Promise<string>;
+  showErrorBox(title: string, message: string): void;
+  showMessageBox(
+    owner: BrowserWindow | undefined,
+    options: MessageBoxOptions,
+  ): Promise<MessageBoxReturnValue>;
+  showSaveDialog(
+    owner: BrowserWindow,
+    options: SaveDialogOptions,
+  ): Promise<SaveDialogReturnValue>;
+  startBackend(
+    options: StartDesktopBackendOptions,
+  ): Promise<DesktopBackendHandle>;
+}
+
+export interface StartDesktopCompositionOptions {
   appVersion: string;
   applicationPath: string;
   buildInfo: Readonly<DesktopBuildInfo>;
+  dependencies?: Partial<DesktopCompositionDependencies>;
   quitApplication(): void;
   resourcesPath: string;
   runtimeInstanceId: string;
@@ -74,11 +103,30 @@ interface StartDesktopCompositionOptions {
   userDataPath: string;
 }
 
+const defaultDesktopCompositionDependencies: DesktopCompositionDependencies = {
+  createRuntimeSession: createDesktopRuntimeSession,
+  openPath: (path) => shell.openPath(path),
+  showErrorBox(title, message) {
+    dialog.showErrorBox(title, message);
+  },
+  showMessageBox(owner, options) {
+    return owner === undefined || owner.isDestroyed()
+      ? dialog.showMessageBox(options)
+      : dialog.showMessageBox(owner, options);
+  },
+  showSaveDialog: (owner, options) => dialog.showSaveDialog(owner, options),
+  startBackend: startDesktopBackend,
+};
+
 export async function startDesktopComposition(
   options: StartDesktopCompositionOptions,
 ): Promise<DesktopLifecycleHandle | undefined> {
+  const dependencies = {
+    ...defaultDesktopCompositionDependencies,
+    ...options.dependencies,
+  };
   const smokeMode = options.smokeConfiguration.enabled;
-  const runtimeSessionSecret = createDesktopRuntimeSession();
+  const runtimeSessionSecret = dependencies.createRuntimeSession();
   const backendRoot = join(options.resourcesPath, 'backend');
   const dataRoot = join(options.userDataPath, 'runtime');
   const operationalLogsRoot = join(dataRoot, 'logs');
@@ -130,6 +178,7 @@ export async function startDesktopComposition(
       desktopStartedAt,
       operationalLogsRoot,
       options,
+      dependencies,
       runtimeSessionSecret,
       smokeMode,
     });
@@ -162,6 +211,7 @@ interface DesktopCompositionRuntimeOptions {
   desktopOperationalIdentity: DesktopOperationalIdentity;
   desktopOperationalLogger: DesktopOperationalLogger;
   desktopStartedAt: number;
+  dependencies: DesktopCompositionDependencies;
   operationalLogsRoot: string;
   options: StartDesktopCompositionOptions;
   runtimeSessionSecret: string;
@@ -175,6 +225,7 @@ async function startDesktopCompositionRuntime({
   desktopOperationalIdentity,
   desktopOperationalLogger,
   desktopStartedAt,
+  dependencies,
   operationalLogsRoot,
   options,
   runtimeSessionSecret,
@@ -207,8 +258,13 @@ async function startDesktopCompositionRuntime({
   let supportBundleCapability: SupportBundleCapability | undefined;
   let shutdownStarted = false;
 
+  const deliveryDialogAdapter: InvoiceDeliveryDialogAdapter = {
+    showErrorBox: dependencies.showErrorBox,
+    showMessageBox: dependencies.showMessageBox,
+  };
   const deliveryConfirmation = createInvoiceDeliveryConfirmation(
     () => applicationWindow,
+    deliveryDialogAdapter,
   );
 
   const secretBrokerHandle = startSecretBrokerMain({
@@ -245,7 +301,7 @@ async function startDesktopCompositionRuntime({
 
   try {
     await options.reportSmokeStage('backend');
-    backendHandle = await startDesktopBackend({
+    backendHandle = await dependencies.startBackend({
       config: {
         appVersion: desktopAppVersion,
         architecture: process.arch,
@@ -285,7 +341,7 @@ async function startDesktopCompositionRuntime({
   }
 
   backendHandle.onUnexpectedExit(() => {
-    dialog.showErrorBox(
+    dependencies.showErrorBox(
       'Eky suljettiin',
       'Paikallinen palvelu pysähtyi odottamatta. Sovellus suljetaan turvallisesti.',
     );
@@ -373,7 +429,7 @@ async function startDesktopCompositionRuntime({
           path === operationalLogsRoot
             ? ''
             : 'OPERATIONAL_LOG_FOLDER_SMOKE_ROOT_INVALID'
-      : (path) => shell.openPath(path),
+      : dependencies.openPath,
     operationalLogger: desktopOperationalLogger,
     operationalIdentity: desktopOperationalIdentity,
     runtimeRoot: dataRoot,
@@ -391,7 +447,7 @@ async function startDesktopCompositionRuntime({
       if (smokeMode) {
         return true;
       }
-      const result = await dialog.showMessageBox(mainWindow, {
+      const result = await dependencies.showMessageBox(mainWindow, {
         buttons: ['Peruuta', 'Jatka'],
         cancelId: 0,
         defaultId: 0,
@@ -419,7 +475,7 @@ async function startDesktopCompositionRuntime({
       if (smokeSupportBundlePath !== undefined) {
         return smokeSupportBundlePath;
       }
-      const result = await dialog.showSaveDialog(mainWindow, {
+      const result = await dependencies.showSaveDialog(mainWindow, {
         defaultPath: defaultFileName,
         filters: [
           {
@@ -560,6 +616,7 @@ async function startDesktopCompositionRuntime({
       await options.reportSmokeStage('shutdown');
       await lifecycleHandle.shutdown();
       await writePackagedSmokeResult(options.smokeConfiguration, {
+        electronVersion: process.versions.electron,
         stage: 'shutdown',
         status: 'ok',
       });
@@ -595,7 +652,7 @@ async function startDesktopCompositionRuntime({
   );
 
   void loadApplicationWindow(mainWindow).catch(() => {
-    dialog.showErrorBox(
+    dependencies.showErrorBox(
       'Eky ei käynnistynyt',
       'Käyttöliittymää ei voitu ladata turvallisesti.',
     );

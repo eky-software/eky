@@ -1,6 +1,8 @@
 apps/backend/storage/
 apps/backend/e2e-dist/
 apps/desktop/.stage/
+apps/desktop/e2e-backend-stage/
+apps/desktop/e2e-dist/
 apps/desktop/dist/
 apps/desktop/out/
 

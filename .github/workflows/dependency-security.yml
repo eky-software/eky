@@ -2,8 +2,27 @@ name: Dependency security
 
 on:
   schedule:
-    - cron: "30 2 * * 1"
+    # 02:30 UTC daily. GitHub cron does not follow Europe/Helsinki DST.
+    - cron: "30 2 * * *"
   workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - eky_software/**/package.json
+      - eky_software/pnpm-lock.yaml
+      - .github/dependabot.yml
+      - .github/workflows/dependency-security.yml
+      - .github/workflows/ci.yml
+  push:
+    branches:
+      - main
+    paths:
+      - eky_software/**/package.json
+      - eky_software/pnpm-lock.yaml
+      - .github/dependabot.yml
+      - .github/workflows/dependency-security.yml
+      - .github/workflows/ci.yml
 
 permissions:
   contents: read
@@ -45,3 +64,6 @@ jobs:
 
       - name: Audit all dependencies
         run: pnpm audit
+
+      - name: Verify package registry signatures
+        run: pnpm audit signatures

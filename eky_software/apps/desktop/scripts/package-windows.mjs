@@ -21,7 +21,9 @@ import {
 } from '@electron/fuses';
 import { packager } from '@electron/packager';
 
-const electronVersion = '42.8.0';
+import { readDesktopElectronVersion } from './read-desktop-electron-version.mjs';
+
+const electronVersion = await readDesktopElectronVersion();
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const desktopDirectory = resolve(scriptDirectory, '..');
 const repositoryRoot = resolve(desktopDirectory, '../..');
@@ -265,6 +267,30 @@ async function assertPackagedDiagnosticsArtifacts() {
   }
 }
 
+async function assertNoDesktopE2eArtifacts() {
+  const stagedFiles = [
+    ...(await listFiles(applicationStage)),
+    ...(await listFiles(desktopRuntimeStage)),
+  ];
+  const forbiddenFile = stagedFiles.find((filePath) => {
+    const lowerPath = filePath.replaceAll('\\', '/').toLowerCase();
+    return (
+      lowerPath.includes('/e2e/') ||
+      lowerPath.includes('/e2e-dist/') ||
+      lowerPath.includes('electrone2e')
+    );
+  });
+
+  if (forbiddenFile !== undefined) {
+    throw new Error(
+      `Electron E2E artifact reached packaged ASAR staging: ${relative(
+        stagingRoot,
+        forbiddenFile,
+      )}`,
+    );
+  }
+}
+
 async function applyAndVerifyFuses(executablePath) {
   await flipFuses(executablePath, {
     version: FuseVersion.V1,
@@ -296,6 +322,16 @@ async function applyAndVerifyFuses(executablePath) {
     if (fuseWire[fuse] !== expectedState) {
       throw new Error(`Electron fuse ${String(fuse)} was not set as expected.`);
     }
+  }
+}
+
+async function assertPackagedElectronVersion(packagedPath) {
+  const packagedElectronVersion = (
+    await readFile(join(packagedPath, 'version'), 'utf8')
+  ).trim();
+
+  if (packagedElectronVersion !== electronVersion) {
+    throw new Error('Packaged Electron version did not match package metadata.');
   }
 }
 
@@ -339,6 +375,7 @@ async function packageWindowsSpike() {
 
   await prepareApplicationStage(buildInfo);
   await assertPackagedDiagnosticsArtifacts();
+  await assertNoDesktopE2eArtifacts();
 
   const packagedPaths = await packager({
     appVersion,
@@ -367,6 +404,7 @@ async function packageWindowsSpike() {
   const packagedPath = packagedPaths[0];
   const executablePath = join(packagedPath, 'Eky.exe');
 
+  await assertPackagedElectronVersion(packagedPath);
   await applyAndVerifyFuses(executablePath);
   console.log(`Packaged Windows spike: ${packagedPath}`);
 }

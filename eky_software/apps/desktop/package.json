@@ -6,9 +6,11 @@
   "main": "dist/main/index.js",
   "scripts": {
     "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.build.json",
+    "e2e:build": "node scripts/clean-e2e-dist.mjs && tsc -p tsconfig.e2e.json && node scripts/write-electron-e2e-package.mjs",
+    "e2e:prepare-backend": "node scripts/prepare-electron-e2e-backend.mjs",
     "package:windows": "node scripts/package-windows.mjs",
     "smoke:windows": "node scripts/run-packaged-smoke.mjs",
-    "test": "vitest run src && node --test scripts/inspect-support-bundle.test.mjs",
+    "test": "vitest run src && node --test scripts/inspect-support-bundle.test.mjs scripts/read-desktop-electron-version.test.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {

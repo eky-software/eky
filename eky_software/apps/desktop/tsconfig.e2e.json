@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "e2e-dist",
+    "types": ["electron", "node"]
+  },
+  "include": ["e2e", "src"],
+  "exclude": ["src/**/*.test.ts"]
+}

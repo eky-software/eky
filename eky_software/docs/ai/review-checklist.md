@@ -74,10 +74,19 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
 
 - Lisättiinkö uusi kirjasto?
 - Onko Dependabot-PR käsitelty ehdotuksena ilman automaattista mergeä?
+- Säilyvätkö Dependabot version updates viikkorytmissä ja security updates
+  tavallisen version-cooldownin ulkopuolella?
 - Tarkistettiinko package- ja lockfile-diffistä suorat sekä transitiiviset
   muutokset, eikä vain Dependabotin otsikkoa?
 - Ajettiinko dependency- tai lockfile-muutoksen jälkeen tuotantoriippuvuuksien audit?
 - Ajettiinko tarvittaessa koko audit ja registry-allekirjoitusten tarkistus?
+- Käynnistyikö read-only `Dependency security` dependency-PR:stä tai
+  dependency-main-pushista, ja onko sen päivittäinen UTC-ajo sekä
+  `workflow_dispatch` säilynyt?
+- Onko Dependency graph-, Dependabot alerts- ja Dependabot security updates
+  -tila varmennettu autentikoidulla read-only-kutsulla tai repositoryn
+  `Settings` -> `Security` -> `Advanced Security` -näkymästä ilman
+  perusteetonta oletusta?
 - Jäikö tunnettu haavoittuvuus, ja onko sen riski sekä korjaussuunnitelma dokumentoitu?
 - Onko uusi riippuvuus perusteltu?
 - Onko lisenssi tarkistettu?

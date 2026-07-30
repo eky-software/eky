@@ -7,6 +7,9 @@ const isCi = Boolean(
     }
   ).process?.env?.CI,
 );
+const isDesktopSoak = process.argv.some((argument) =>
+  argument.includes('@soak'),
+);
 
 export default defineConfig({
   testDir: './tests',
@@ -17,7 +20,7 @@ export default defineConfig({
   retries: isCi ? 1 : 0,
   failOnFlakyTests: isCi,
   timeout: 60_000,
-  globalTimeout: 30 * 60_000,
+  globalTimeout: isDesktopSoak ? 40 * 60_000 : 30 * 60_000,
   expect: {
     timeout: 10_000,
   },
@@ -48,6 +51,10 @@ export default defineConfig({
     {
       name: 'electron-development',
       testMatch: /electron\/.*\.spec\.ts/,
+    },
+    {
+      name: 'electron-endurance',
+      testMatch: /electron-stress\/.*\.spec\.ts/,
     },
     {
       name: 'endurance-baseline',

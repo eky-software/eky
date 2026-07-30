@@ -42,9 +42,11 @@ coverage as implemented E2E.
 
 Keep normal E2E and endurance separate:
 
-- system and web projects may run in pull request CI
-- `endurance-baseline` is manual and runs only through
-  `pnpm test:e2e:stress`
+- system, web and the critical Electron development project may run in pull
+  request CI
+- `endurance-baseline` is manual and runs only through `pnpm test:e2e:stress`
+- `electron-endurance` is manual and runs only through
+  `pnpm test:e2e:desktop-stress` or `pnpm test:e2e:desktop-soak`
 - do not include the endurance project in the ordinary `e2e:all` command
 - record each endurance run as synthetic measurement data, not as a universal
   production capacity promise
