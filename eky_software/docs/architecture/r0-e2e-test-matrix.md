@@ -64,7 +64,7 @@ tietokannan, auditin, operational/security-eventin ja tukipaketin päätöksen.
 |---|---|---|---|---|---|---|
 | COMPANY-UI-001 | P0; web-e2e | Synteettiset asetukset; muuta yhteys-, pankki- ja ei-salaisia sähköpostitietoja | Tallennus onnistuu ja refresh säilyttää arvot | Master data muuttuu; auditissa vain changed category | Vanhat/uudet arvot auditissa | implemented-e2e |
 | COMPANY-AUDIT-001 | P0; integration, system | Nykyiset asetukset; muuta pankki- ja sähköpostiasetuksia | 2xx ja turvallinen Activity | Arvot kannassa; auditissa vain sallitut kategoriat; tukipaketin poissulku säilyy integraatiotestien todistamana | IBAN, sender email, SMTP username | implemented-e2e |
-| COMPANY-SECRET-001 | P0; integration, electron-e2e, security | Ei testisalaisuutta; aseta, tarkista status, poista ja restart | Renderer näkee vain boolean-tilan | Salaisuus vain fake/safeStorage-testialueella; lifecycle-audit ilman johdannaisia | Secret, hash, pituus, ref tai plaintext | planned |
+| COMPANY-SECRET-001 | P0; integration, electron-e2e, security | Ei testisalaisuutta; aseta, tarkista status, poista ja restart | Renderer näkee vain boolean-tilan | Salaisuus vain safeStorage-testialueella; salattu blob säilyy restartissa ja kaikki slotit poistuvat | Secret, hash, pituus, ref tai plaintext | implemented-e2e |
 
 ## Invoicing
 
@@ -115,15 +115,18 @@ tietokannan, auditin, operational/security-eventin ja tukipaketin päätöksen.
 
 | ID | Riski ja tasot | Lähtö / toiminto / fault | Odotus | Tila ja havainnot | Erityinen vuotokielto | Tila |
 |---|---|---|---|---|---|---|
-| DESK-BRIDGE-001 | P0; integration, electron-e2e, security | Development shell; tarkista preload surface | Vain dokumentoidut metodit; Node/process/require/fs puuttuvat | Ei business-muutosta; security-event vain rikkomuksesta | Raw IPC ja runtime-session | covered-existing |
-| DESK-NAV-001 | P0; integration, electron-e2e, security | Yritä external navigation/window.open/webview | Kaikki estyvät | Deduplikoitu turvallinen security-event | Pitkä/raw URL tai query-secret | covered-existing |
-| DESK-PERMISSION-001 | P1; integration, electron-e2e, security | Permission check/request | Estyy ilman kohinaa | Ei OS-oikeutta; deduplikoitu event | Raw URL tai device detail | covered-existing |
-| DESK-PDF-001 | P0; integration, electron-e2e | Approved PDF; avaa invoiceId:llä ja sulje | Suojattu ikkuna renderöi PDF:n | Ei DB-muutosta; ikkuna poistuu rekisteristä | URL, path, session tai header rendererille | covered-existing |
-| DESK-SECRET-001 | P0; integration, electron-e2e, security | Synteettinen secret; set/status/remove/restart | Renderer näkee vain tilan | Testialueen salattu blob ja turvallinen lifecycle-audit | Secret, hash, length tai ref | covered-existing |
-| DESK-SUPPORT-001 | P0; packaged-smoke, electron-e2e | Synteettiset logit; stubattu save dialog | `.json.gz` syntyy ja inspect hyväksyy | Checksumit/projektiot oikein | Salaisuus, PII ja production path | covered-existing |
-| DESK-LOGFOLDER-001 | P1; integration, electron-e2e | Stubbaa openPath; paina avauskomentoa | Main avaa vain testilokijuuren | Ei DB/auditia; renderer ei lähetä polkua | Filesystem path rendererille | covered-existing |
-| DESK-RESTART-001 | P0; packaged-smoke, electron-e2e, recovery | Hallittu shutdown ja restart samalla testidatalla | Data säilyy, UI palautuu | Backend sammuu; runtimeInstanceId vaihtuu; ei orphania | Vanha runtime-session | planned |
-| DESK-BOOTFAIL-001 | P0; electron-e2e, fault | Development bootstrap fault | Turvallinen viesti ja hallittu exit | Ei osittaista runtimea; turvallinen startup failure-event | Stack ja paikallinen polku | planned |
+| DESK-BRIDGE-001 | P0; integration, electron-e2e, security | Development shell; tarkista preload surface | Vain dokumentoidut metodit; Node/process/require/fs puuttuvat | Ei business-muutosta; security-event vain rikkomuksesta | Raw IPC ja runtime-session | implemented-e2e |
+| DESK-NAV-001 | P0; integration, electron-e2e, security | Yritä external navigation/window.open/webview | Kaikki estyvät | Deduplikoitu turvallinen security-event | Pitkä/raw URL tai query-secret | implemented-e2e |
+| DESK-PERMISSION-001 | P1; integration, electron-e2e, security | Permission check/request | Estyy ilman kohinaa | Ei OS-oikeutta; deduplikoitu event | Raw URL tai device detail | implemented-e2e |
+| DESK-PDF-001 | P0; integration, electron-e2e | Approved PDF; avaa invoiceId:llä ja sulje | Suojattu ikkuna renderöi PDF:n | Ei DB-muutosta; ikkuna poistuu rekisteristä | URL, path, session tai header rendererille | implemented-e2e |
+| DESK-SECRET-001 | P0; integration, electron-e2e, security | Synteettinen secret; set/status/remove/restart | Renderer näkee vain tilan | Testialueen salattu blob säilyy restartissa ja poistuu slotteineen | Secret, hash, length tai ref | implemented-e2e |
+| DESK-SUPPORT-001 | P0; packaged-smoke, electron-e2e | Synteettiset logit; stubattu save dialog | `.json.gz` syntyy ja inspect hyväksyy myös legacy-päätteen | Checksumit/projektiot oikein | Salaisuus, PII ja production path | implemented-e2e |
+| DESK-LOGFOLDER-001 | P1; integration, electron-e2e | Stubbaa openPath; paina avauskomentoa | Main avaa vain testilokijuuren | Ei DB/auditia; renderer ei lähetä polkua | Filesystem path rendererille | implemented-e2e |
+| DESK-RESTART-001 | P0; packaged-smoke, electron-e2e, recovery | Hallittu shutdown ja restart samalla testidatalla | Data säilyy, UI palautuu | Backend sammuu; runtimeInstanceId vaihtuu; vanha session torjutaan | Vanha runtime-session | implemented-e2e |
+| DESK-BACKEND-EXIT-001 | P0; electron-e2e, fault, recovery | Utility-backend lopetetaan odottamatta | Sovellus sulkeutuu hallitusti ja uusi runtime käynnistyy | Turvallinen unexpected-exit-event; backend palautuu terveeksi | Stack, paikallinen polku ja session | implemented-e2e |
+| DESK-BOOTFAIL-001 | P0; electron-e2e, fault | Development bootstrap fault | Turvallinen viesti ja hallittu exit | Ei osittaista runtimea; turvallinen startup failure-event | Stack ja paikallinen polku | implemented-e2e |
+| DESK-ENDURANCE-001 | P1; electron-e2e, endurance | 200 moduulisiirtymää, 50 laskuavausta, 100 PDF-sykliä, 20 tukipakettia, 30 secret-sykliä ja 20 restartia | Työkuorma valmistuu ja synteettinen mittausraportti syntyy | Lopussa yksi ikkuna, hallittu prosessimäärä, terve backend ja ei secret-jäämää | Oikea data, salaisuus, session ja production-polut | implemented-e2e |
+| DESK-SOAK-001 | P1; electron-e2e, endurance | Manuaalinen 30 minuutin toistuva UI-, PDF-, secret-, support- ja restart-kuorma | Työkuorma säilyy terveenä ja raportoi prosessi-, muisti- ja tiedostomittarit | Yhden minuutin duration-polku validoitu; ensimmäinen 30 minuutin release-baseline tekemättä | Oikea data, salaisuus, session ja production-polut | implemented-e2e |
 
 ## Definition of Done
 

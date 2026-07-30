@@ -14,7 +14,8 @@ ja packaged-smoke-testitasot. Pysyvä skenaarioluettelo on
   integraatiopolut.
 - Hardened packaged `Eky.exe`: packaged smoke-, recovery- ja capability-testit.
 - Manuaalinen endurance-baseline: rajattu pitkäkestoisempi system- ja
-  web-työkuorma ilman tuotantodataa tai ulkoista verkkoa.
+  web-työkuorma sekä erillinen Electron stress- ja soak-työkuorma ilman
+  tuotantodataa tai ulkoista verkkoa.
 
 Packaged Electron fuseja tai window security -asetuksia ei heikennetä
 Playwrightin vuoksi. Jos hardened-artifactia ei voida ohjata turvallisesti,
@@ -65,9 +66,13 @@ Nykyinen Playwright-kokonaisuus todistaa eristetyssä runtimessa:
 - hostile markup -tekstin turvallisen DOM- ja PDF-käsittelyn ilman ulkoista
   verkkoliikennettä.
 
-Electron development -E2E, desktopin pitkä soak, backup/restore ja täydellinen
-tenant-matriisi eivät kuulu tähän valmistuneeseen vaiheeseen. Niitä ei merkitä
-matriisissa toteutetuiksi alemman tason testien perusteella.
+Electron development -E2E kattaa nyt preload-rajan, navigoinnin,
+permission-pyynnöt, yhden instanssin, PDF-esikatselun, safeStorage-salaisuuden,
+tukipaketin, lokikansion, restartin sekä backendin odottamattoman ja
+käynnistysvaiheen virheen. Packaged smoke säilyy erillisenä hardened-
+artifactin porttina. Täydellinen backup/restore- ja tenant-matriisi sekä
+30 minuutin Electron-soakin ensimmäinen vertailuajo ovat vielä erillisiä
+release-checkpointeja.
 
 ## Observabilityn E2E
 
@@ -89,16 +94,20 @@ checksumit säilyvät desktopin integraatio- ja packaged-smoke-vastuina.
 GitHub CI ajaa pull requesteissa, `main`-pusheissa ja käsin käynnistettynä:
 
 - eristetyn system security E2E -joukon
-- Chromiumin kriittiset web-käyttäjäpolut yhdellä workerilla.
+- Chromiumin kriittiset web-käyttäjäpolut yhdellä workerilla
+- Windows-paketoinnin, packaged smoken ja kriittiset Electron development
+  -käyttäjäpolut yhdellä workerilla.
 
-Web-job käyttää yhtä CI-retryä vain trace-todisteen keräämiseen ja
+Playwright-jobit käyttävät yhtä CI-retryä vain trace-todisteen keräämiseen ja
 `failOnFlakyTests`-asetusta, joten retryllä vasta läpäisevä testi epäonnistaa
-jobin. Kumpaakaan raskasta E2E-jobia ei ajeta erikseen jokaisessa
-`antsa`-pushissa.
+jobin. Raskaita E2E-jobeja ei ajeta erikseen jokaisessa `antsa`-pushissa.
 
 `pnpm test:e2e:stress` on manuaalinen, eikä kuulu jokaiseen pull requestiin.
-Työkuorma ja ensimmäiset vertailuarvot on dokumentoitu tiedostossa
-`e2e-endurance-baseline.md`.
+System/web-työkuorma ja ensimmäiset vertailuarvot on dokumentoitu tiedostossa
+`e2e-endurance-baseline.md`. Electronin rajattu stress-baseline ajetaan
+komennolla `pnpm test:e2e:desktop-stress` ja 30 minuutin manuaalinen soak
+komennolla `pnpm test:e2e:desktop-soak`. Desktop-mittarit ja tulkintasäännöt
+ovat tiedostossa `e2e-desktop-endurance-baseline.md`.
 
 ## Riippuvuuspäätös
 

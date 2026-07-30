@@ -135,6 +135,7 @@ tallenneta R0:ssa.
   observability-rajat ilman selain-UI:ta
 - `web-chromium`: käyttäjän kriittiset selainpolut Chromiumilla
 - `electron-development`: rajattu main/preload/renderer-integraatio
+- `electron-endurance`: vain käsin ajettavat Electron stress- ja soak-testit
 - `endurance-baseline`: vain käsin ajettava rajattu system- ja web-työkuorma
 - packaged smoke: nykyinen hardened Windows -artifact erillisen smoke-runnerin
   kautta, ei Playwrightin ohjaamana
@@ -159,6 +160,15 @@ HTML-raporttiliitteeseen. `test-results` ei ole tuotantodata- tai
 versionhallintakansio. Ensimmäinen dokumentoitu vertailutaso on
 `e2e-endurance-baseline.md`-tiedostossa.
 
+`pnpm test:e2e:desktop-stress` käyttää eristettyä Electron
+development-runtimea ja mittaa prosessi- ja ikkunamäärän, Electron-prosessien
+yhteenlasketun working setin sekä desktopin SQLite-, dokumentti- ja
+lokikoot. `pnpm test:e2e:desktop-soak` käyttää samaa turvallista runtimea
+oletuksena 30 minuuttia. Molemmat ovat manuaalisia, eivätkä kuulu
+`e2e:all`-komentoon tai pull request -CI:hin. Desktopin työkuorma ja
+vertailutaso on dokumentoitu tiedostossa
+`e2e-desktop-endurance-baseline.md`.
+
 ## CI-ajojen eristys
 
 GitHub Actionsin concurrency-ryhmä sisältää workflow-nimen, tapahtumalajin ja
@@ -175,5 +185,8 @@ toistensa ajoja:
 Tavallinen verify-job ajetaan edelleen `antsa`- ja `main`-pusheissa,
 pull requesteissa sekä käsin käynnistettynä. Raskaat E2E-jobit rajataan
 pull requestiin, `main`-pushiin ja käsin käynnistettyyn ajoon. Nykyiset raskaat
-jobit ovat `System security E2E` ja `Web critical E2E`. Endurance-baselinea ei
-ajeta automaattisesti CI:ssä.
+jobit ovat `System security E2E`, `Web critical E2E` ja
+`Windows Electron critical E2E`. Windows-jobi paketoi desktop-sovelluksen,
+ajaa packaged smoken ja sen jälkeen kriittiset Electron development -testit
+yhdellä workerilla. Endurance-baselineja tai soakia ei ajeta automaattisesti
+CI:ssä.
