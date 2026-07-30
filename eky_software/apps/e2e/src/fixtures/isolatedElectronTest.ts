@@ -19,7 +19,6 @@ import {
 import {
   createElectronE2eRuntime,
   resolveElectronE2eApplicationPath,
-  resolveElectronExecutablePath,
   type ElectronE2eRuntime,
 } from '../environment/createElectronE2eRuntime.js';
 import { assertElectronLaunchPrerequisites } from '../environment/assertElectronLaunchPrerequisites.js';
@@ -29,6 +28,7 @@ import { createE2eRunRoot } from '../environment/createE2eRunRoot.js';
 import { createE2eWorkerPaths } from '../environment/createE2eWorkerPaths.js';
 import type { E2eWorkerPaths } from '../environment/e2eEnvironmentTypes.js';
 import { reserveLoopbackPort } from '../environment/reserveLoopbackPort.js';
+import { resolveElectronE2eExecutable } from '../environment/resolveElectronE2eExecutable.js';
 import { waitForLoopbackPortRelease } from '../environment/waitForLoopbackPortRelease.js';
 import { readE2eScenarioId } from './readE2eScenarioId.js';
 
@@ -171,7 +171,7 @@ async function launchElectronRuntime(input: {
       profile: input.runtime.profile,
       runRoot: input.runtime.runtimeRoot,
     }),
-    executablePath: resolveElectronExecutablePath(),
+    executablePath: resolveElectronE2eExecutable(),
     timeout: 45_000,
   });
   const electronProcess = electronApp.process();
@@ -216,7 +216,7 @@ function launchSecondElectronInstance(
   assertElectronRuntimeLaunchPrerequisites(runtime, runRoot);
   return new Promise((resolveLaunch, rejectLaunch) => {
     const child = spawn(
-      resolveElectronExecutablePath(),
+      resolveElectronE2eExecutable(),
       [resolveElectronE2eApplicationPath()],
       {
         cwd: runRoot,
@@ -262,7 +262,7 @@ function assertElectronRuntimeLaunchPrerequisites(
     applicationPath: resolveElectronE2eApplicationPath(),
     configPath: runtime.configPath,
     cwd: runRoot,
-    executablePath: resolveElectronExecutablePath(),
+    executablePath: resolveElectronE2eExecutable(),
     profileDirectories: listElectronE2eProfileDirectories(runtime.profile),
     runRoot,
   });

@@ -127,20 +127,6 @@ export function createElectronE2eRuntime(input: {
   };
 }
 
-export function resolveElectronExecutablePath(): string {
-  const electronDist = resolve(
-    repositoryRoot,
-    'apps/desktop/node_modules/electron/dist',
-  );
-  if (process.platform === 'win32') {
-    return join(electronDist, 'electron.exe');
-  }
-  if (process.platform === 'darwin') {
-    return join(electronDist, 'Electron.app', 'Contents', 'MacOS', 'Electron');
-  }
-  return join(electronDist, 'electron');
-}
-
 export function resolveElectronE2eApplicationPath(): string {
   return resolve(repositoryRoot, 'apps/desktop/e2e-dist');
 }

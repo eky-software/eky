@@ -21,7 +21,6 @@ import {
 import {
   createElectronE2eRuntime,
   resolveElectronE2eApplicationPath,
-  resolveElectronExecutablePath,
   type ElectronE2eRuntime,
 } from '../../src/environment/createElectronE2eRuntime.js';
 import { assertElectronLaunchPrerequisites } from '../../src/environment/assertElectronLaunchPrerequisites.js';
@@ -30,6 +29,7 @@ import { listElectronE2eProfileDirectories } from '../../src/environment/createE
 import { createE2eRunRoot } from '../../src/environment/createE2eRunRoot.js';
 import { createE2eWorkerPaths } from '../../src/environment/createE2eWorkerPaths.js';
 import { reserveLoopbackPort } from '../../src/environment/reserveLoopbackPort.js';
+import { resolveElectronE2eExecutable } from '../../src/environment/resolveElectronE2eExecutable.js';
 import { waitForLoopbackPortRelease } from '../../src/environment/waitForLoopbackPortRelease.js';
 import { test, expect } from '../../src/fixtures/isolatedElectronTest.js';
 import { createApprovedInvoiceWithPdf } from '../../src/journeys/invoicingApiJourney.js';
@@ -451,13 +451,13 @@ function runElectronProcess(
     applicationPath: resolveElectronE2eApplicationPath(),
     configPath: runtime.configPath,
     cwd: runRoot,
-    executablePath: resolveElectronExecutablePath(),
+    executablePath: resolveElectronE2eExecutable(),
     profileDirectories: listElectronE2eProfileDirectories(runtime.profile),
     runRoot,
   });
   return new Promise((resolveProcess, rejectProcess) => {
     const child = spawn(
-      resolveElectronExecutablePath(),
+      resolveElectronE2eExecutable(),
       [resolveElectronE2eApplicationPath()],
       {
         cwd: runRoot,
