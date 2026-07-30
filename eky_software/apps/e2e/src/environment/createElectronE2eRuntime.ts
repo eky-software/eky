@@ -7,13 +7,19 @@ import {
 import { join, resolve } from 'node:path';
 
 import type { E2eWorkerPaths } from './e2eEnvironmentTypes.js';
+import {
+  createElectronE2eProfile,
+  type ElectronE2eProfilePaths,
+} from './createElectronE2eProfile.js';
 import { writeE2eBackendConfig } from './writeE2eBackendConfig.js';
 
 export interface ElectronE2eRuntime {
   backendPort: number;
   configPath: string;
   observationsPath: string;
+  profile: ElectronE2eProfilePaths;
   runtimeInstanceId: string;
+  runtimeRoot: string;
   sessionSecret: string;
   supportBundlePath: string;
   userDataPath: string;
@@ -31,6 +37,7 @@ export function createElectronE2eRuntime(input: {
   const applicationPath = createPrivateDirectory(
     join(input.paths.workerRoot, 'desktop-application'),
   );
+  const profile = createElectronE2eProfile(input.paths.workerRoot);
   const resourcesPath = createPrivateDirectory(
     join(input.paths.workerRoot, 'desktop-resources'),
   );
@@ -111,7 +118,9 @@ export function createElectronE2eRuntime(input: {
     backendPort: input.backendPort,
     configPath,
     observationsPath,
+    profile,
     runtimeInstanceId,
+    runtimeRoot: input.paths.workerRoot,
     sessionSecret: backendConfig.backend.sessionSecret,
     supportBundlePath,
     userDataPath,

@@ -25,6 +25,8 @@ import {
   type ElectronE2eRuntime,
 } from '../../src/environment/createElectronE2eRuntime.js';
 import { assertElectronLaunchPrerequisites } from '../../src/environment/assertElectronLaunchPrerequisites.js';
+import { createElectronEnvironment } from '../../src/environment/createElectronEnvironment.js';
+import { listElectronE2eProfileDirectories } from '../../src/environment/createElectronE2eProfile.js';
 import { createE2eRunRoot } from '../../src/environment/createE2eRunRoot.js';
 import { createE2eWorkerPaths } from '../../src/environment/createE2eWorkerPaths.js';
 import { reserveLoopbackPort } from '../../src/environment/reserveLoopbackPort.js';
@@ -450,7 +452,7 @@ function runElectronProcess(
     configPath: runtime.configPath,
     cwd: runRoot,
     executablePath: resolveElectronExecutablePath(),
-    profileDirectories: [runtime.userDataPath],
+    profileDirectories: listElectronE2eProfileDirectories(runtime.profile),
     runRoot,
   });
   return new Promise((resolveProcess, rejectProcess) => {
@@ -459,7 +461,11 @@ function runElectronProcess(
       [resolveElectronE2eApplicationPath()],
       {
         cwd: runRoot,
-        env: createElectronProcessEnvironment(runtime.configPath),
+        env: createElectronEnvironment({
+          configPath: runtime.configPath,
+          profile: runtime.profile,
+          runRoot: runtime.runtimeRoot,
+        }),
         shell: false,
         windowsHide: true,
       },
@@ -483,24 +489,4 @@ function runElectronProcess(
       resolveProcess({ exitCode, output });
     });
   });
-}
-
-function createElectronProcessEnvironment(
-  configPath: string,
-): Record<string, string> {
-  const environment: Record<string, string> = {
-    EKY_E2E: '1',
-    EKY_ELECTRON_E2E_CONFIG: configPath,
-    NODE_ENV: 'test',
-  };
-  for (const key of ['PATH', 'SystemRoot', 'TEMP', 'TMP', 'WINDIR']) {
-    const entry = Object.entries(process.env).find(
-      ([sourceKey, value]) =>
-        sourceKey.toLowerCase() === key.toLowerCase() && value !== undefined,
-    );
-    if (entry?.[1] !== undefined) {
-      environment[key] = entry[1];
-    }
-  }
-  return environment;
 }

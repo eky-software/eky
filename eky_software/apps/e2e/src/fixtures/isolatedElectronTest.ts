@@ -23,6 +23,8 @@ import {
   type ElectronE2eRuntime,
 } from '../environment/createElectronE2eRuntime.js';
 import { assertElectronLaunchPrerequisites } from '../environment/assertElectronLaunchPrerequisites.js';
+import { createElectronEnvironment } from '../environment/createElectronEnvironment.js';
+import { listElectronE2eProfileDirectories } from '../environment/createElectronE2eProfile.js';
 import { createE2eRunRoot } from '../environment/createE2eRunRoot.js';
 import { createE2eWorkerPaths } from '../environment/createE2eWorkerPaths.js';
 import type { E2eWorkerPaths } from '../environment/e2eEnvironmentTypes.js';
@@ -164,7 +166,11 @@ async function launchElectronRuntime(input: {
   const electronApp = await electron.launch({
     args: [resolveElectronE2eApplicationPath()],
     cwd: input.runRoot,
-    env: createElectronEnvironment(input.runtime.configPath),
+    env: createElectronEnvironment({
+      configPath: input.runtime.configPath,
+      profile: input.runtime.profile,
+      runRoot: input.runtime.runtimeRoot,
+    }),
     executablePath: resolveElectronExecutablePath(),
     timeout: 45_000,
   });
@@ -214,7 +220,11 @@ function launchSecondElectronInstance(
       [resolveElectronE2eApplicationPath()],
       {
         cwd: runRoot,
-        env: createElectronEnvironment(runtime.configPath),
+        env: createElectronEnvironment({
+          configPath: runtime.configPath,
+          profile: runtime.profile,
+          runRoot: runtime.runtimeRoot,
+        }),
         shell: false,
         stdio: 'ignore',
         windowsHide: true,
@@ -253,7 +263,7 @@ function assertElectronRuntimeLaunchPrerequisites(
     configPath: runtime.configPath,
     cwd: runRoot,
     executablePath: resolveElectronExecutablePath(),
-    profileDirectories: [runtime.userDataPath],
+    profileDirectories: listElectronE2eProfileDirectories(runtime.profile),
     runRoot,
   });
 }
@@ -329,26 +339,6 @@ function appendSafeJsonLineSummaries(
       // Invalid test diagnostics are omitted instead of exposing raw content.
     }
   }
-}
-
-function createElectronEnvironment(
-  configPath: string,
-): Record<string, string> {
-  const environment: Record<string, string> = {
-    EKY_E2E: '1',
-    EKY_ELECTRON_E2E_CONFIG: configPath,
-    NODE_ENV: 'test',
-  };
-  for (const key of ['PATH', 'SystemRoot', 'TEMP', 'TMP', 'WINDIR']) {
-    const entry = Object.entries(process.env).find(
-      ([sourceKey, value]) =>
-        sourceKey.toLowerCase() === key.toLowerCase() && value !== undefined,
-    );
-    if (entry?.[1] !== undefined) {
-      environment[key] = entry[1];
-    }
-  }
-  return environment;
 }
 
 export { expect } from '@playwright/test';
