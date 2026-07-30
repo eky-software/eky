@@ -51,10 +51,13 @@ let shutdownStarted = false;
 let secondInstanceCount = 0;
 
 function getPdfPreviewWindows(): BrowserWindow[] {
-  return BrowserWindow.getAllWindows().filter((window) =>
-    /^eky:\/\/app\/invoices\/[A-Za-z0-9_-]{1,100}\/pdf$/u.test(
-      window.webContents.getURL(),
-    ),
+  return BrowserWindow.getAllWindows().filter(
+    (window) =>
+      !window.isDestroyed() &&
+      !window.webContents.isDestroyed() &&
+      /^eky:\/\/app\/invoices\/[A-Za-z0-9_-]{1,100}\/pdf$/u.test(
+        window.webContents.getURL(),
+      ),
   );
 }
 
@@ -136,6 +139,19 @@ Object.assign(globalThis, {
     nativeAdapterSnapshot: () => nativeAdapters.snapshot(),
     pdfPreviewUrls: () =>
       getPdfPreviewWindows().map((window) => window.webContents.getURL()),
+    processMetrics: () => {
+      const metrics = app.getAppMetrics();
+      return {
+        backendIsRunning: backendController.isRunning(),
+        backendStartCount: backendController.getStartCount(),
+        processCount: metrics.length,
+        totalWorkingSetSizeKilobytes: metrics.reduce(
+          (total, metric) => total + metric.memory.workingSetSize,
+          0,
+        ),
+        windowCount: BrowserWindow.getAllWindows().length,
+      };
+    },
     runtimeInstanceId: config.runtimeInstanceId,
     scenarioId: config.scenarioId,
     secondInstanceCount: () => secondInstanceCount,

@@ -17,6 +17,8 @@
     "e2e:fault": "pnpm e2e:prepare && playwright test --grep @fault",
     "e2e:electron": "pnpm e2e:electron:prepare && playwright test --project=electron-development",
     "e2e:electron:critical": "pnpm e2e:electron:prepare && playwright test --project=electron-development --grep @critical --workers=1",
+    "e2e:desktop-stress": "pnpm e2e:electron:prepare && playwright test --project=electron-endurance --grep @desktop-stress --workers=1",
+    "e2e:desktop-soak": "pnpm e2e:electron:prepare && playwright test --project=electron-endurance --grep @soak --workers=1",
     "e2e:critical": "pnpm e2e:prepare && playwright test --project=system-api --project=web-chromium --grep @critical",
     "e2e:stress": "pnpm e2e:prepare && playwright test --project=endurance-baseline",
     "e2e:all": "pnpm e2e:electron:prepare && playwright test --project=system-api --project=web-chromium --project=electron-development",

@@ -7,6 +7,14 @@ export interface ElectronNativeAdapterSnapshot {
   saveDialogCount: number;
 }
 
+export interface ElectronProcessMetricsSnapshot {
+  backendIsRunning: boolean;
+  backendStartCount: number;
+  processCount: number;
+  totalWorkingSetSizeKilobytes: number;
+  windowCount: number;
+}
+
 export function closeElectronPdfPreviews(
   electronApp: ElectronApplication,
 ): Promise<void> {
@@ -71,9 +79,26 @@ export function readElectronPdfPreviewUrls(
   });
 }
 
+export function readElectronProcessMetrics(
+  electronApp: ElectronApplication,
+): Promise<ElectronProcessMetricsSnapshot> {
+  return electronApp.evaluate(() => {
+    const controller = (
+      globalThis as typeof globalThis & {
+        __EKY_ELECTRON_E2E__?: ElectronE2eController;
+      }
+    ).__EKY_ELECTRON_E2E__;
+    if (controller === undefined) {
+      throw new Error('Electron E2E controller is unavailable.');
+    }
+    return controller.processMetrics();
+  });
+}
+
 interface ElectronE2eController {
   closePdfPreviewWindows(): void;
   killBackendUnexpectedly(): void;
   nativeAdapterSnapshot(): ElectronNativeAdapterSnapshot;
   pdfPreviewUrls(): readonly string[];
+  processMetrics(): ElectronProcessMetricsSnapshot;
 }

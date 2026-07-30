@@ -19,6 +19,8 @@
     "test:e2e:stress": "pnpm --filter @eky/e2e e2e:stress",
     "test:e2e:electron": "pnpm --filter @eky/e2e e2e:electron",
     "test:e2e:electron:critical": "pnpm --filter @eky/e2e e2e:electron:critical",
+    "test:e2e:desktop-stress": "pnpm --filter @eky/e2e e2e:desktop-stress",
+    "test:e2e:desktop-soak": "pnpm --filter @eky/e2e e2e:desktop-soak",
     "test:e2e:all": "pnpm --filter @eky/e2e e2e:all",
     "test:e2e:report": "pnpm --filter @eky/e2e report"
   },
