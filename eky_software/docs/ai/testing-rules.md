@@ -149,6 +149,16 @@ CI:
 - käyttää GitHub Action -toiminnoille lukittuja commit-SHA-versioita
 - ei tee deployta eikä kirjoita liiketoimintadataa
 
+Viikoittainen `Dependency security` -workflow täydentää merge-CI:tä ajamalla
+sekä production- että koko riippuvuuspuun auditin. Se ei päivitä riippuvuuksia
+automaattisesti eikä käytä `audit --fix` -komentoa.
+
+Dependabotin avaama päivitys-PR käy läpi saman riskiperusteisen paikallisen ja
+CI-testauksen kuin käsin tehty päivitys. Vähimmäisportteina ovat
+`Test, typecheck and build`, `System security E2E` ja `Web critical E2E`.
+Electron-, native addon- ja Windows-paketointimuutoksissa ajetaan lisäksi
+Windows package sekä packaged smoke sovitun testimatriisin mukaan.
+
 Vihreä CI ei yksin todista liiketoimintasäännön tai turvallisuusmallin olevan
 oikea. Katselmoinnissa tarkistetaan edelleen testien laatu, puuttuvat negatiiviset
 tapaukset ja nykyisen local-MVP:n dokumentoidut turvallisuusrajat.

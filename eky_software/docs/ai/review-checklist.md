@@ -73,12 +73,18 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
 ## Riippuvuudet
 
 - Lisättiinkö uusi kirjasto?
+- Onko Dependabot-PR käsitelty ehdotuksena ilman automaattista mergeä?
+- Tarkistettiinko package- ja lockfile-diffistä suorat sekä transitiiviset
+  muutokset, eikä vain Dependabotin otsikkoa?
 - Ajettiinko dependency- tai lockfile-muutoksen jälkeen tuotantoriippuvuuksien audit?
+- Ajettiinko tarvittaessa koko audit ja registry-allekirjoitusten tarkistus?
 - Jäikö tunnettu haavoittuvuus, ja onko sen riski sekä korjaussuunnitelma dokumentoitu?
 - Onko uusi riippuvuus perusteltu?
 - Onko lisenssi tarkistettu?
 - Voidaanko kirjasto eristää sisäisen kerroksen taakse?
 - Onko transitiivisten riippuvuuksien määrä hyväksyttävä?
+- Vaatiiko Electron-, native addon-, paketointi- tai testityökalupäivitys
+  alustakohtaisen buildin, packaged smoken tai E2E-portin?
 - Päivittyikö `dependency-policy.md`, jos sääntö muuttui?
 
 ## Koodi

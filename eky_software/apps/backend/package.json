@@ -21,9 +21,9 @@
   "dependencies": {
     "@eky/auth": "workspace:*",
     "@eky/permissions": "workspace:*",
-    "@hono/node-server": "^2.0.3",
+    "@hono/node-server": "^2.0.12",
     "better-sqlite3": "12.11.1",
-    "hono": "^4.12.27",
+    "hono": "^4.12.32",
     "pdfkit": "^0.19.1"
   },
   "devDependencies": {
