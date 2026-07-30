@@ -1,8 +1,8 @@
 # Customer overview plan
 
-Tämä dokumentti kuvaa asiakkaan koontinäkymän ensimmäisen suunnittelulinjan.
-
-Tämä ei ole vielä toteutussuunnitelma uudelle koodille. Tavoite on erottaa asiakaskortiston lista ja yhden asiakkaan koontinäkymä toisistaan ennen kuin customer-moduulia, kohteita, työmääräyksiä tai laskutusta laajennetaan.
+Tämä dokumentti kuvaa asiakkaan koontinäkymän hyväksytyn ensimmäisen
+toteutuslinjan. Tavoite on erottaa asiakaskortiston lista ja yhden asiakkaan
+työtila toisistaan muuttamatta moduulien omistajuutta.
 
 ## Tausta
 
@@ -63,24 +63,36 @@ Customers-moduuli ei omista:
 
 Koontinäkymä saa myöhemmin näyttää näiden moduulien tietoja, mutta niiden kirjoittavat toiminnot kuuluvat edelleen omiin moduuleihinsa.
 
-## Customer Overview -Ajatus
+## Hyväksytty Työtilamalli
 
-Kun asiakas avataan, tulevaisuudessa voidaan näyttää asiakkaan koontinäkymä.
+Asiakaslistasta avataan asiakaskortti koko työalueelle. Myös uuden asiakkaan
+luonti käyttää koko työalueen lomaketta. Nykyinen sivupaneeli on välivaihe ja
+poistetaan koko työalueen mallin toteutuksessa.
 
-Ensimmäinen lopullista koontia kohti vievä näkymä voi sisältää:
+Customers-featuren keskitetyt sisäiset näkymätilat ovat:
 
-- perustiedot
-- kohteet
-- avoimet työmääräykset
-- viimeisimmät tapahtumat
-- hinnoittelun lähtötiedot, kuten asiakaskohtainen tuntihinta tai tieto oletustuntihinnan käytöstä
-- laskutustilanne
-- muistiinpanot
-- mahdollinen historia tai aikajana
+```text
+list
+create
+overview
+edit
+```
 
-Ensimmäisessä kevyessä rungossa voidaan näyttää vain asiakkaan perustiedot.
+Ensimmäisessä toteutuksessa ei lisätä routeria eikä pysyvää resurssi-URL:ia.
 
-Myöhemmissä vaiheissa näkymä voi lukea dataa useasta moduulista hallitusti esimerkiksi read servicejen, readonly-porttien tai reporting/read model -tyyppisen kerroksen kautta.
+Ensimmäinen varsinainen koonti sisältää:
+
+- asiakkaan perustiedot, yhteystiedot ja osoitteen
+- tilan, asiakastyypin ja asiakasnumeron
+- taloyhtiön ja isännöitsijätoimiston suhteen tarvittaessa
+- asiakaskohtaisen tuntihinnan tai käytetyn nykyisen Company Settings
+  -oletushinnan
+- Customers-moduulin turvallisen asiakaskohtaisen historian
+- Invoicing-moduulin omistamat asiakaskohtaiset laskulistat
+
+Sites ja Work Orders lisätään myöhemmin niiden omistavien moduulien
+read modelien kautta. Customers ei ennakoi niiden tietomallia eikä omista
+niiden dataa koontinäkymän vuoksi.
 
 ## Asiakaskortin Työskentelytila
 
@@ -98,9 +110,9 @@ Työskentelymalli:
 - lopullisessa mallissa olemassa olevan asiakkaan ylläpitoon ei jää erillistä
   pientä sivupaneelin pikamuokkausikkunaa
 
-Uuden asiakkaan luonti voi säilyä omana rajattuna lomaketyönkulkunaan.
-Nykyinen olemassa olevan asiakkaan sivupaneelimuokkaus on välivaihe ennen
-varsinaisen asiakaskortin toteutusta.
+Uuden asiakkaan luonti on erillinen `create`-tila samalla koko työalueella.
+Onnistunut luonti avaa uuden asiakkaan `overview`-tilaan. Nykyistä
+sivupaneelirakennetta ei säilytetä luontiin eikä muokkaukseen.
 
 ## Moduulirajat
 
@@ -132,13 +144,9 @@ Esimerkiksi:
 
 Koontinäkymä ei saa olla oikopolku, jolla UI tai AI-agentti kirjoittaa suoraan toisen moduulin dataan.
 
-## Vaiheistus
+## Ensimmäinen Toteutus
 
-Mahdollinen eteneminen:
-
-### Vaihe 1: Asiakaslista, Luonti Ja Muokkaus
-
-Nykyinen customer MVP:
+Nykyinen Customer MVP säilyttää:
 
 - asiakaslista
 - haku
@@ -147,13 +155,7 @@ Nykyinen customer MVP:
 - uuden asiakkaan luonti
 - olemassa olevan asiakkaan perustietojen muokkaus
 
-Tämä vaihe on asiakaskortiston käytännön pohja.
-
-### Vaihe 2: Kevyt Customer Overview -Runko
-
-Lisätään asiakkaan koontinäkymän kevyt runko.
-
-Ensimmäinen runko voi näyttää vain:
+Koko työalueen asiakaskortti lisää:
 
 - asiakkaan perustiedot
 - asiakasnumeron
@@ -162,11 +164,17 @@ Ensimmäinen runko voi näyttää vain:
 - osoitteen
 - tilan
 - isännöitsijä/taloyhtiö-suhteen, jos se liittyy asiakkaaseen
-- asiakaskohtaisen tuntihinnan tai tiedon siitä, että käytetään oman yrityksen oletustuntihintaa, jos hinnoittelukenttä on toteutettu
+- asiakaskohtaisen tuntihinnan tai tiedon nykyisen oman yrityksen
+  oletustuntihinnan käytöstä
+- laskut, jotka Invoicing rajaa laskun `customerId`-arvolla
+- turvallisen Customers-historian asiakkaan luonnista, päivityksistä,
+  aktivoinnista ja passivoinnista
 
-Tässä vaiheessa näkymä ei vielä näytä kohteita, työmääräyksiä tai laskutusta.
+Asiakkaan master data pysyy käytettävissä, vaikka lasku- tai historiaosion
+lataus epäonnistuisi. Jokaisella osiolla on oma loading-, empty- ja turvallinen
+error-tila.
 
-### Vaihe 3: Sites / Kohteet
+### Myöhemmin: Sites / Kohteet
 
 Kun kohteet-moduuli suunnitellaan ja toteutetaan, customer overview voi näyttää asiakkaan kohteet.
 
@@ -174,7 +182,7 @@ Kohteet pysyvät sites-moduulin omistuksessa.
 
 Customer overview saa lukea kohteet hallitusta rajapinnasta.
 
-### Vaihe 4: Work Orders / Työmääräykset
+### Myöhemmin: Work Orders / Työmääräykset
 
 Kun työmääräykset-moduuli suunnitellaan ja toteutetaan, customer overview voi näyttää:
 
@@ -184,31 +192,26 @@ Kun työmääräykset-moduuli suunnitellaan ja toteutetaan, customer overview vo
 
 Työmääräykset pysyvät work orders -moduulin omistuksessa.
 
-### Vaihe 5: Tapahtumahistoria
+### Myöhemmin: Laajempi Historia
 
-Kun työ- ja materiaalikirjaukset ovat olemassa, customer overview voi näyttää hallitun historian tai aikajanan.
+Ensimmäinen historia on tarkoituksella Customers-moduulin omistama ja sisältää
+vain turvalliset asiakasauditin projektiot. Work Orders, Work Entries ja
+Material Entries voivat myöhemmin tarjota omat rajatut projektiot.
+Koontinäkymä ei kopioi globaalia Activity-näkymää eikä muodosta rajaamatonta
+moduulien välistä tapahtumavirtaa.
 
-Historia voi myöhemmin yhdistää esimerkiksi:
+### Nyt: Laskutuskooste
 
-- työmääräykset
-- tuntikirjaukset
-- materiaalikirjaukset
-- tärkeät asiakastapahtumat
+Invoicing on jo olemassa, joten asiakaskohtaiset laskut kuuluvat ensimmäiseen
+varsinaiseen koontiin. Invoicing omistaa luonnosten, hyväksyttyjen,
+lähetettyjen, osahyvitettyjen, kokonaan hyvitettyjen ja peruttujen laskujen
+listasemantiikan. Suodatus perustuu laskun `customerId`-arvoon, ei
+valinnaiseen laskun vastaanottajaan. Hyvityslaskut säilyvät Invoicingin
+omistamassa ryhmittelyssä.
 
-Historia ei saa muuttua epämääräiseksi tapahtumakasaksi ilman moduulirajoja.
-
-### Vaihe 6: Laskutuskooste
-
-Kun laskutusmoduuli on olemassa, customer overview voi näyttää laskutuksen koosteita, esimerkiksi:
-
-- avoimet laskut
-- viimeisimmät laskut
-- maksutilanne
-- laskuttamattomat työt myöhemmin, jos tähän tehdään oma hallittu näkymä
-
-Laskut ja laskurivit pysyvät invoicing-moduulin omistuksessa.
-
-Kooste voi sisältää sekä manuaalisesti luotuja laskuja että myöhemmin työmääräyksistä muodostettuja laskuja. Customer overview ei saa olettaa, että laskulla on aina kohde tai työmääräys.
+Customers-web käyttää julkisia API-client-sopimuksia ja tyypitettyä
+app-navigation callbackia laskun avaamiseen Invoicingissa. Se ei importtaa
+Invoicing-featuren sisäisiä komponentteja tai tilaa.
 
 ## Työmääräysten Merkitys
 
@@ -239,49 +242,21 @@ Sen pitää tukea nopeaa ymmärrystä:
 - mitä asiakkaalle on viimeksi tehty
 - mitä asiakkaan kanssa pitää seuraavaksi huomioida
 
-Ensimmäinen näkymä pidetään kuitenkin kevyenä.
-
-Koontinäkymää ei rakenneta isoksi dashboardiksi ennen kuin kohteet, työmääräykset ja laskutus ovat olemassa.
-
-## Seuraava Käytännön Valinta
-
-Tämän suunnitelman jälkeen seuraava päätös on:
-
-```text
-Rakennetaanko ensin pieni Customer Overview -runko
-vai
-siirrytäänkö ensin Sites / Kohteet -moduulin suunnitteluun?
-```
-
-Molemmat ovat sallittuja polkuja.
-
-Kevyt Customer Overview -runko voi auttaa hahmottamaan yhden asiakkaan kokonaisuutta ennen uusia moduuleita.
-
-Sites / Kohteet -moduuli voi olla luonteva seuraava moduuli, koska se vastaa kysymykseen:
-
-```text
-missä työ tehdään
-```
-
-Tämä dokumentti ei vielä päätä kumpaa polkua seurataan.
+Ensimmäinen näkymä pidetään työohjelmamaisena ja helposti luettavana. Se ei ole
+dashboard eikä siirrä tulevien moduulien vastuuta Customersiin.
 
 ## Rajaukset
 
-Tässä dokumentissa ei tehdä:
+Ensimmäisessä toteutuksessa ei lisätä:
 
-- uutta koodia
-- tietokantamuutoksia
-- uusia API-reittejä
-- uusia riippuvuuksia
-- uutta UI-kirjastoa
-- `packages/ui`-pakettia
-- Zodia
-- React Hook Formia
-- sites-moduulin toteutusta
-- työmääräysmoduulin toteutusta
-- laskutusmoduulin toteutusta
-- company settings -moduulin toteutusta
-- hinnoittelulogiikan toteutusta
+- uutta customer overview -taulua tai jättimäistä koontiaggregaattia
+- uusia riippuvuuksia tai UI-kirjastoa
+- React Routeria
+- `packages/ui`-paketin aktivointia
+- Sites- tai Work Orders -moduulin toteutusta
+- Customersin omistamaa laskudataa tai JOINia Invoicing-infrastructureen
+- globaalia Activity-kopiota
+- uuden laskun luontia asiakaskortilta
 
 ## Liittyvät Dokumentit
 

@@ -33,7 +33,7 @@ Nykyisessä näkymässä:
 
 Tämä ei tarkoita, että HTML, CSS tai React olisi väärä valinta. Ongelma on käyttöliittymärakenne: data vietiin koko pinon läpi ennen kuin asiakaskortiston työskentelymalli muotoiltiin.
 
-## Uusi Näkymämalli
+## Hyväksytty Näkymämalli
 
 Asiakaskortisto ei ole ensisijaisesti pitkä lomake.
 
@@ -41,16 +41,16 @@ Asiakaskortisto on ensisijaisesti lista asiakkaista.
 
 Uusi asiakas -lomake on toiminto, joka avataan tarvittaessa.
 
-Suunniteltu perusrakenne:
+Hyväksytty perusrakenne:
 
 ```text
 Asiakaskortisto
   -> otsikko ja lyhyt kuvaus
   -> Uusi asiakas -painike
   -> iso asiakaslista
-  -> sivupaneeli tai erillinen lomakealue uuden asiakkaan lisäämiseen
-  -> nykyisessä välivaiheessa asiakasrivi voi avata saman paneelin muokkaamiseen
-  -> lopullisessa mallissa asiakasrivi avaa varsinaisen asiakaskortin koko työalueelle
+  -> Uusi asiakas avaa koko työalueen create-tilan
+  -> asiakasrivi avaa koko työalueen asiakaskortin lukutilaan
+  -> Muokkaa avaa saman kortin tiedot edit-tilaan
 ```
 
 Nykyinen pitkä lomake ei saa olla aina näkymän pääsisältö.
@@ -63,8 +63,8 @@ Asiakkaat-päänäkymän ensimmäinen rakenne:
 - lyhyt kuvaus näkymän tarkoituksesta
 - ensisijainen toiminto: Uusi asiakas
 - pääsisältö: asiakaslista isona työalueena
-- lomake näkyy vain, kun käyttäjä aloittaa uuden asiakkaan lisäämisen
-- olemassa oleva asiakas avataan lopullisessa mallissa asiakaskortin lukutilaan
+- lomake näkyy vain koko työalueen create- tai edit-tilassa
+- olemassa oleva asiakas avataan asiakaskortin lukutilaan
 
 Tämä vastaa Eky UI -periaatetta: ohjelma on työpöytä, ei lomakesivu tai landing page.
 
@@ -91,16 +91,8 @@ Y-tunnus, koko osoite, kommentti ja muut laajemmat tiedot kuuluvat myöhemmin:
 
 ## Uusi Asiakas -Lomake
 
-Uusi asiakas -lomake avataan vasta, kun käyttäjä painaa Uusi asiakas -toimintoa.
-
-Nykyisessä välivaiheessa samaa paneelirakennetta voidaan käyttää olemassa olevan
-asiakkaan muokkaamiseen. Tämä ei ole lopullinen olemassa olevan asiakkaan
-työskentelymalli.
-
-Ensimmäinen toteutus voi olla:
-
-- oikean reunan sivupaneeli
-- tai selkeä erillinen lomakealue päälistan rinnalla
+Uusi asiakas -lomake avataan vasta, kun käyttäjä painaa Uusi asiakas
+-toimintoa. Lomake käyttää koko työaluetta sivupaneelin sijaan.
 
 Lomaketta ei pidä näyttää aina isona pääsisältönä.
 
@@ -131,9 +123,9 @@ Ensimmäisessä UX-korjauksessa lomakkeen pitää tuntua ohjatulta työtoiminnol
 
 ## Lopullinen Asiakaskortti
 
-Asiakaslistasta avataan tulevaisuudessa yksi varsinainen asiakaskortti koko
-työalueelle. Lopullisessa mallissa olemassa olevan asiakkaan ylläpitoa varten ei
-pidetä erillistä pientä sivupaneelin pikamuokkausikkunaa.
+Asiakaslistasta avataan yksi varsinainen asiakaskortti koko työalueelle.
+Olemassa olevan asiakkaan ylläpitoa varten ei pidetä erillistä pientä
+sivupaneelin pikamuokkausikkunaa.
 
 Asiakaskortin työskentelymalli:
 
@@ -145,10 +137,13 @@ Asiakaskortin työskentelymalli:
 5. `Peruuta` hylkää tallentamattomat muutokset ja palauttaa asiakaskortin
    lukutilaan.
 
-Asiakaskorttiin voidaan myöhemmin tuoda koosteina asiakkaan laskut, kohteet,
-työmääräykset, tunnit, materiaalit ja historia. Tarkempi koontimalli ja
-moduulien omistajuus on kuvattu dokumentissa
-`docs/architecture/customer-overview-plan.md`.
+Ensimmäinen varsinainen asiakaskortti näyttää jo asiakaskohtaiset laskut,
+koska Invoicing-moduuli on toteutettu. Laskut luetaan vain Invoicingin
+julkisista, yritys- ja asiakasrajatuista sopimuksista. Asiakaskortin historia
+näyttää vain Customers-moduulin turvallisen asiakaskohtaisen audit-projektion.
+Sites ja Work Orders lisätään myöhemmin niiden omistavien moduulien read
+modelien kautta. Tarkempi koontimalli ja moduulien omistajuus on kuvattu
+dokumentissa `docs/architecture/customer-overview-plan.md`.
 
 ## Asiakasnumero
 
@@ -198,7 +193,7 @@ Myöhempi koodityö tehdään pienissä vaiheissa:
 
 1. `customer-ui-ux-plan.md` hyväksytään.
 2. `docs/modules/customers.md` päivitetään asiakasnumeron auto/manual-linjalla.
-3. UI refaktoroidaan lista + sivupaneeli -malliin ilman backend-muutosta, jos mahdollista.
+3. UI refaktoroidaan lista + koko työalueen create/read/edit -malliin.
 4. Backendiin lisätään automaattinen asiakasnumeron luonti.
 5. `packages/api-client` päivitetään.
 6. UI päivitetään käyttämään auto/manual-mallia.
@@ -210,17 +205,14 @@ Ensimmäisessä toimivassa toteutuksessa automaattinen asiakasnumero muodostetaa
 
 ## Rajaukset
 
-Tässä UX-korjauslinjassa ei tehdä vielä:
+Tässä UX-korjauslinjassa ei tehdä:
 
 - asiakkaan poistoa
-- hakua
-- suodatusta
-- paginointia
-- varsinaista asiakaskortin details-näkymää
 - sites-moduulia
-- laskutusta
-- authia
-- syncia
+- work orders -moduulia
+- uutta laskua asiakaskortilta
+- auth- tai sync-mallin muutosta
+- pysyvää URL-reititystä
 
 Ei lisätä:
 
@@ -254,8 +246,8 @@ Asiakaskortiston pitää tukea päivittäistä työskentelyä:
 
 - lista ensin
 - toiminto tarvittaessa
-- asiakasrivi avaa olemassa olevan asiakkaan tiedot muokattavaksi
-- yksityiskohdat erikseen
+- asiakasrivi avaa olemassa olevan asiakkaan lukutilaan
+- yksityiskohdat, laskut ja turvallinen historia näkyvät samalla työalueella
 - ei kenttäseinää pääsisältönä
 
 ## Liittyvät Dokumentit

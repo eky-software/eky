@@ -20,13 +20,16 @@ Ensimmäinen rajattu web customer UI -pala on kuvattu dokumentissa `docs/archite
 
 Customer UI:n käyttökokemuksen korjaus nykyisestä teknisestä kenttäläpiviennistä oikeaksi asiakaskortistonäkymäksi on kuvattu dokumentissa `docs/architecture/customer-ui-ux-plan.md`.
 
-Asiakkaan myöhempi koontinäkymä ja suhde muiden moduulien tietoihin on kuvattu dokumentissa `docs/architecture/customer-overview-plan.md`.
+Asiakkaan koontinäkymä ja suhde muiden moduulien tietoihin on kuvattu dokumentissa `docs/architecture/customer-overview-plan.md`.
 
 Nykyinen customer-toteutus laajentaa teknisen mallipolun Customer MVP -asiakaskortistoksi.
 
 Se ei vielä ole koko lopullinen asiakashallintamoduuli.
 
-Nykyinen Customer MVP tukee asiakkaiden listaamista, uuden asiakkaan luontia ja olemassa olevan asiakkaan perustietojen muokkaamista.
+Nykyinen Customer MVP tukee asiakkaiden listaamista, uuden asiakkaan luontia ja
+olemassa olevan asiakkaan perustietojen muokkaamista. Hyväksytty seuraava
+UI-malli avaa create-, read- ja edit-tilat koko työalueelle eikä säilytä
+välivaiheen sivupaneelia.
 
 ## Moduuli Omistaa
 
@@ -346,21 +349,24 @@ Toteutusjärjestys:
 Customer UI:n seuraava UX-korjaus tehdään dokumenttien
 `docs/architecture/customer-ui-ux-plan.md` ja
 `docs/architecture/customer-overview-plan.md` mukaisesti: asiakaslista on
-pääsisältö ja uuden asiakkaan lomake avataan tarvittaessa erilliseen paneeliin
-tai lomakealueeseen.
+pääsisältö, ja uuden asiakkaan luonti sekä olemassa olevan asiakkaan read/edit
+-tilat avataan koko työalueelle. Sivupaneelimalli poistetaan.
 
-Nykyinen olemassa olevan asiakkaan paneelimuokkaus on välivaihe. Lopullisessa
-mallissa asiakas avataan koko työalueen asiakaskorttiin, joka on oletuksena
-lukutilassa. `Muokkaa` avaa samat perustiedot muokattaviksi, ja `Tallenna` sekä
-`Peruuta` palauttavat näkymän lukutilaan.
+Ensimmäinen varsinainen asiakaskortti näyttää myös asiakaskohtaiset laskut,
+koska Invoicing-moduuli on olemassa. Customers ei omista, JOINaa tai kirjoita
+laskudataa, vaan käyttää Invoicingin julkisia, yritys- ja asiakasrajattuja
+lukusopimuksia. Asiakaskortin historia on Customersin oma turvallinen projektio
+asiakkaan luonnista, päivityksistä, aktivoinnista ja passivoinnista ilman
+kenttäarvoja tai yhteystietoja.
 
-Asiakaskortti voi myöhemmin näyttää muiden moduulien koosteita, mutta tämä ei
-siirrä laskujen, kohteiden, työmääräysten, tuntien, materiaalien tai historian
-omistajuutta customers-moduulille.
+Sites ja Work Orders lisätään myöhemmin niiden omistavien moduulien read
+modelien kautta. Koontinäkymä ei siirrä laskujen, kohteiden, työmääräysten,
+tuntien, materiaalien tai niiden historian omistajuutta Customers-moduulille.
 
 Ei lisätä uusia riippuvuuksia ilman erillistä päätöstä.
 
-Ei lisätä Zodia, React Hook Formia, UI-kirjastoa, `packages/ui`-pakettia, sites-moduulia tai laskutusta tämän muutoksen yhteydessä.
+Ei lisätä Zodia, React Hook Formia, UI-kirjastoa, `packages/ui`-pakettia,
+sites- tai work orders -moduulia tämän muutoksen yhteydessä.
 
 ## Avoimet Kysymykset
 
