@@ -560,6 +560,7 @@ async function startDesktopCompositionRuntime({
       await options.reportSmokeStage('shutdown');
       await lifecycleHandle.shutdown();
       await writePackagedSmokeResult(options.smokeConfiguration, {
+        electronVersion: process.versions.electron,
         stage: 'shutdown',
         status: 'ok',
       });

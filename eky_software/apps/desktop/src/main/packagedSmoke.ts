@@ -45,6 +45,7 @@ export type PackagedSmokeResult =
       status: 'failed';
     }
   | {
+      electronVersion: string;
       stage: 'shutdown';
       status: 'ok';
     };
@@ -175,8 +176,19 @@ export function readPackagedSmokeResult(
     return { stage: value.stage, status: 'started' };
   }
 
-  if (value.status === 'ok' && value.stage === 'shutdown') {
-    return { stage: 'shutdown', status: 'ok' };
+  if (
+    value.status === 'ok' &&
+    value.stage === 'shutdown' &&
+    typeof value.electronVersion === 'string' &&
+    /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(
+      value.electronVersion,
+    )
+  ) {
+    return {
+      electronVersion: value.electronVersion,
+      stage: 'shutdown',
+      status: 'ok',
+    };
   }
 
   if (

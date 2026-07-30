@@ -21,7 +21,9 @@ import {
 } from '@electron/fuses';
 import { packager } from '@electron/packager';
 
-const electronVersion = '42.8.0';
+import { readDesktopElectronVersion } from './read-desktop-electron-version.mjs';
+
+const electronVersion = await readDesktopElectronVersion();
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const desktopDirectory = resolve(scriptDirectory, '..');
 const repositoryRoot = resolve(desktopDirectory, '../..');
@@ -299,6 +301,16 @@ async function applyAndVerifyFuses(executablePath) {
   }
 }
 
+async function assertPackagedElectronVersion(packagedPath) {
+  const packagedElectronVersion = (
+    await readFile(join(packagedPath, 'version'), 'utf8')
+  ).trim();
+
+  if (packagedElectronVersion !== electronVersion) {
+    throw new Error('Packaged Electron version did not match package metadata.');
+  }
+}
+
 async function packageWindowsSpike() {
   const workspaceBetterSqliteBinding = resolve(
     repositoryRoot,
@@ -367,6 +379,7 @@ async function packageWindowsSpike() {
   const packagedPath = packagedPaths[0];
   const executablePath = join(packagedPath, 'Eky.exe');
 
+  await assertPackagedElectronVersion(packagedPath);
   await applyAndVerifyFuses(executablePath);
   console.log(`Packaged Windows spike: ${packagedPath}`);
 }

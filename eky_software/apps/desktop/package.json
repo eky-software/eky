@@ -8,7 +8,7 @@
     "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.build.json",
     "package:windows": "node scripts/package-windows.mjs",
     "smoke:windows": "node scripts/run-packaged-smoke.mjs",
-    "test": "vitest run src && node --test scripts/inspect-support-bundle.test.mjs",
+    "test": "vitest run src && node --test scripts/inspect-support-bundle.test.mjs scripts/read-desktop-electron-version.test.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {

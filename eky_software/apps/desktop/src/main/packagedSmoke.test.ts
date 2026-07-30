@@ -106,6 +106,24 @@ describe('packaged smoke progress', () => {
     ).toBeUndefined();
     expect(
       readPackagedSmokeResult({
+        electronVersion: '42.8.0',
+        stage: 'shutdown',
+        status: 'ok',
+      }),
+    ).toEqual({
+      electronVersion: '42.8.0',
+      stage: 'shutdown',
+      status: 'ok',
+    });
+    expect(
+      readPackagedSmokeResult({
+        electronVersion: '^42.8.0',
+        stage: 'shutdown',
+        status: 'ok',
+      }),
+    ).toBeUndefined();
+    expect(
+      readPackagedSmokeResult({
         stage: 'backend',
         status: 'ok',
       }),
