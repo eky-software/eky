@@ -82,6 +82,51 @@ describe('customer invoice rows', () => {
       },
     });
   });
+
+  it('labels an uncredited paid invoice as paid', () => {
+    const rootInvoice = createApprovedInvoice({
+      paidAmountCents: 12_400,
+      paidOn: '2026-08-20',
+      paymentSource: 'manual',
+      paymentState: 'paid',
+    });
+    const rows = toSentRows([
+      {
+        creditInvoices: [],
+        creditStatus: 'none',
+        remainingCreditableGrossCents: 12_400,
+        rootInvoice,
+      },
+    ]);
+
+    expect(rows[0]?.status).toBe('Maksettu');
+  });
+
+  it('keeps paid as an additional status for a credited root invoice', () => {
+    const rootInvoice = createApprovedInvoice({
+      paidAmountCents: 6_200,
+      paidOn: '2026-08-20',
+      paymentSource: 'manual',
+      paymentState: 'paid',
+    });
+    const rows = toSentRows([
+      {
+        creditInvoices: [
+          createApprovedInvoice({
+            creditedInvoiceId: rootInvoice.id,
+            id: 'credit-1',
+            invoiceKind: 'credit',
+            invoiceNumber: '2026002',
+          }),
+        ],
+        creditStatus: 'partial',
+        remainingCreditableGrossCents: 6_200,
+        rootInvoice,
+      },
+    ]);
+
+    expect(rows[0]?.status).toBe('Osittain hyvitetty · Maksettu');
+  });
 });
 
 function createApprovedInvoice(
@@ -104,6 +149,11 @@ function createApprovedInvoice(
     referenceNumber: '20260013',
     status: 'sent',
     updatedAt: '2026-08-01T10:00:00.000Z',
+    paymentState:
+      overrides.invoiceKind === 'credit' ? 'notApplicable' : 'unpaid',
+    paidOn: null,
+    paidAmountCents: null,
+    paymentSource: null,
     ...overrides,
   };
 }

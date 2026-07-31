@@ -351,6 +351,11 @@ function createApprovedInvoiceView(
     },
     updatedAt: '2026-07-10T09:00:00.000Z',
     vatBreakdown: [],
+    paymentState:
+      overrides.invoiceKind === 'credit' ? 'notApplicable' : 'unpaid',
+    paidOn: null,
+    paidAmountCents: null,
+    paymentSource: null,
     cancelledAt: null,
     cancelledBy: null,
     cancellationReason: null,

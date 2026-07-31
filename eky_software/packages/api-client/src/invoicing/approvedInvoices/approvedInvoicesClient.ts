@@ -13,6 +13,7 @@ import {
   readApprovedInvoiceEmailSmtpSendResponse,
   readApprovedInvoiceEmailPreviewResponse,
   readInvoiceDeliveryEventListResponse,
+  readInvoicePaymentResponse,
   readApprovedInvoiceListResponse,
   readApprovedInvoiceResponse,
   readInvoiceCreditContextResponse,
@@ -35,6 +36,8 @@ import type {
   ApprovedInvoiceView,
   InvoiceDeliveryEventSummary,
   InvoiceCreditContext,
+  InvoicePaymentSummary,
+  MarkInvoicePaidInput,
   ReopenedApprovedInvoice,
   SentInvoiceGroupListPage,
 } from './approvedInvoicesTypes.js';
@@ -180,6 +183,26 @@ export function createApprovedInvoicesApi(
       return readApprovedInvoiceResponse(responseBody);
     },
 
+    async markInvoicePaid(
+      id,
+      input: MarkInvoicePaidInput,
+    ): Promise<InvoicePaymentSummary> {
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        `/invoices/${encodeURIComponent(id)}/payment`,
+        {
+          body: JSON.stringify({ paidOn: input.paidOn }),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          method: 'PUT',
+        },
+      );
+
+      return readInvoicePaymentResponse(responseBody);
+    },
+
     async prepareApprovedInvoiceEmailDryRun(id) {
       const responseBody = await requestJson(
         fetchImplementation,
@@ -304,6 +327,17 @@ export function createApprovedInvoicesApi(
       );
 
       return readReopenedApprovedInvoiceResponse(responseBody);
+    },
+
+    async revertInvoicePaidMark(id): Promise<InvoicePaymentSummary> {
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        `/invoices/${encodeURIComponent(id)}/payment`,
+        { method: 'DELETE' },
+      );
+
+      return readInvoicePaymentResponse(responseBody);
     },
   };
 }

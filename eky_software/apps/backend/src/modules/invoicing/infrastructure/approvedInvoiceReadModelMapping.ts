@@ -12,6 +12,7 @@ import type { InvoiceLineDiscount } from '../domain/invoiceCalculation.js';
 import type { InvoiceUnit } from '../domain/invoiceDraft.js';
 import type { InvoiceKind } from '../domain/invoiceKind.js';
 import type { InvoiceNumberingMode } from '../domain/invoiceNumbering.js';
+import type { InvoicePaymentReadModel } from '../domain/invoicePayment.js';
 import { fromInvoicePerformancePeriodColumns } from '../domain/invoicePerformancePeriod.js';
 import type { ReferenceNumberType } from '../domain/invoiceReferenceNumber.js';
 import { resolveInvoiceTaxTreatment } from '../domain/invoiceTaxTreatment.js';
@@ -56,6 +57,7 @@ export function toApprovedInvoiceSummary(
     approvedAt: invoice.approved_at,
     updatedAt: invoice.updated_at,
     cancelledAt: invoice.cancelled_at,
+    ...toInvoicePaymentReadModel(invoice),
   };
 }
 
@@ -155,7 +157,52 @@ export function toApprovedInvoiceView(
     cancelledAt: invoice.cancelled_at,
     cancelledBy: invoice.cancelled_by,
     cancellationReason: invoice.cancellation_reason,
+    ...toInvoicePaymentReadModel(invoice),
   };
+}
+
+function toInvoicePaymentReadModel(
+  invoice: InvoiceRow,
+): InvoicePaymentReadModel {
+  if (invoice.invoice_kind === 'credit') {
+    return {
+      paidAmountCents: null,
+      paidOn: null,
+      paymentSource: null,
+      paymentState: 'notApplicable',
+    };
+  }
+
+  if (
+    invoice.payment_state === 'unpaid' &&
+    invoice.paid_on === null &&
+    invoice.paid_amount_cents === null &&
+    invoice.payment_source === null
+  ) {
+    return {
+      paidAmountCents: null,
+      paidOn: null,
+      paymentSource: null,
+      paymentState: 'unpaid',
+    };
+  }
+
+  if (
+    invoice.payment_state === 'paid' &&
+    invoice.paid_on !== null &&
+    invoice.paid_amount_cents !== null &&
+    invoice.paid_amount_cents > 0 &&
+    invoice.payment_source === 'manual'
+  ) {
+    return {
+      paidAmountCents: invoice.paid_amount_cents,
+      paidOn: invoice.paid_on,
+      paymentSource: 'manual',
+      paymentState: 'paid',
+    };
+  }
+
+  throw new Error('Invoice payment state is invalid.');
 }
 
 function toApprovedInvoiceViewLine(line: InvoiceLineRow): ApprovedInvoiceViewLine {

@@ -12,6 +12,14 @@ export type ApprovedInvoiceNumberingMode =
   | 'plainSequence';
 export type ApprovedInvoiceReferenceNumberType = 'finnishDomestic' | 'none';
 export type ApprovedInvoicePriceInputMode = 'net' | 'gross';
+export type InvoicePaymentState = 'unpaid' | 'paid' | 'notApplicable';
+export type InvoicePaymentSource = 'manual';
+export interface InvoicePaymentReadModel {
+  paymentState: InvoicePaymentState;
+  paidOn: string | null;
+  paidAmountCents: number | null;
+  paymentSource: InvoicePaymentSource | null;
+}
 export type KnownApprovedInvoiceUnit = 'h' | 'kpl' | 'pv' | 'km' | 'erä' | 'pak';
 export type ApprovedInvoiceUnit = KnownApprovedInvoiceUnit | (string & {});
 
@@ -52,7 +60,7 @@ export interface ApprovedInvoiceTotals {
   vatBreakdown: ApprovedInvoiceVatBreakdown[];
 }
 
-export interface ApprovedInvoiceView {
+export interface ApprovedInvoiceView extends InvoicePaymentReadModel {
   id: string;
   invoiceKind: ApprovedInvoiceKind;
   creditedInvoiceId: string | null;
@@ -126,7 +134,7 @@ export interface ApprovedInvoiceView {
   cancellationReason: string | null;
 }
 
-export interface ApprovedInvoiceSummary {
+export interface ApprovedInvoiceSummary extends InvoicePaymentReadModel {
   id: string;
   invoiceKind: ApprovedInvoiceKind;
   creditedInvoiceId: string | null;
@@ -175,6 +183,7 @@ export type SentInvoiceCreditStateFilter =
   | 'all'
   | 'uncredited'
   | 'credited';
+export type SentInvoicePaymentStateFilter = 'all' | 'unpaid' | 'paid';
 
 export interface SentInvoiceGroup {
   rootInvoice: ApprovedInvoiceSummary;
@@ -196,6 +205,7 @@ export type SentInvoiceGroupListQuery = Omit<
   'status'
 > & {
   creditState?: SentInvoiceCreditStateFilter;
+  paymentState?: SentInvoicePaymentStateFilter;
 };
 
 export interface SentInvoiceGroupListPage {
@@ -209,6 +219,19 @@ export interface SentInvoiceGroupListPage {
 export interface ReopenedApprovedInvoice {
   invoiceId: string;
   invoiceDraftId: string;
+}
+
+export interface MarkInvoicePaidInput {
+  paidOn: string;
+}
+
+export interface InvoicePaymentSummary {
+  invoiceId: string;
+  invoiceNumber: string;
+  paymentState: 'unpaid' | 'paid';
+  paidOn: string | null;
+  paidAmountCents: number | null;
+  paymentSource: InvoicePaymentSource | null;
 }
 
 export interface CancelApprovedInvoiceInput {
@@ -410,6 +433,10 @@ export interface ApprovedInvoicesApi {
   listInvoiceDeliveryEvents(
     id: string,
   ): Promise<InvoiceDeliveryEventSummary[]>;
+  markInvoicePaid(
+    id: string,
+    input: MarkInvoicePaidInput,
+  ): Promise<InvoicePaymentSummary>;
   markApprovedInvoiceSent(
     id: string,
     deliveryMethod: InvoiceManualDeliveryMethod,
@@ -438,4 +465,5 @@ export interface ApprovedInvoicesApi {
     input: ApprovedInvoiceEmailSmtpSendInput,
   ): Promise<ApprovedInvoiceEmailSmtpSendResult>;
   reopenApprovedInvoiceForEditing(id: string): Promise<ReopenedApprovedInvoice>;
+  revertInvoicePaidMark(id: string): Promise<InvoicePaymentSummary>;
 }

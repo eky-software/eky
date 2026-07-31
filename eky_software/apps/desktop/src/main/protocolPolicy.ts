@@ -64,6 +64,10 @@ const backendRoutes: ReadonlyArray<{
     pathname: new RegExp(`^/invoices/${resourceId}/delivery-events$`),
   },
   {
+    methods: new Set(['DELETE', 'PUT']),
+    pathname: new RegExp(`^/invoices/${resourceId}/payment$`),
+  },
+  {
     methods: new Set(['GET', 'POST']),
     pathname: new RegExp(`^/invoices/${resourceId}/pdf$`),
   },

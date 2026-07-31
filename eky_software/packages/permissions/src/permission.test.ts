@@ -8,6 +8,7 @@ describe('permissionValues', () => {
       'manageCompanySettings',
       'manageInvoiceSettings',
       'manageInvoiceCorrections',
+      'manageInvoicePayments',
       'manageCompanyEmailSettings',
       'manageCompanyEmailSecret',
       'sendInvoices',
@@ -21,6 +22,7 @@ describe('permissionValues', () => {
     expect(isPermission('sendInvoices')).toBe(true);
     expect(isPermission('manageInvoiceSettings')).toBe(true);
     expect(isPermission('manageInvoiceCorrections')).toBe(true);
+    expect(isPermission('manageInvoicePayments')).toBe(true);
     expect(isPermission('viewActivity')).toBe(true);
     expect(isPermission('viewDiagnostics')).toBe(true);
     expect(isPermission('createSupportBundle')).toBe(true);

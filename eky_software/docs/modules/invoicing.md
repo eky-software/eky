@@ -95,6 +95,8 @@ lähetettyjen laskujen korjausperiaatteiden muistilista on kuvattu dokumentissa
 - Invoice
 - InvoiceLine
 - InvoiceStatus
+- InvoicePaymentState
+- InvoicePaymentSource
 - Vat
 - PaymentTerm
 - CreditInvoice
@@ -108,13 +110,16 @@ Nykyisen laskun elinkaaren tilat:
 - sent
 - cancelled
 
-Myöhemmät tilat:
-
-- paid
-
 Hyvitystila `none | partial | full` johdetaan alkuperäislaskun ja sen
 ei-peruttujen hyvityslaskujen snapshot-summista. Sitä ei mallinneta
 toimitustilan kanssa kilpailevaksi `credited`-statukseksi.
+
+Maksutila `unpaid | paid` on elinkaari- ja toimitustilasta erillinen
+Invoicingin omistama projektio. Hyvityslaskun julkinen read model käyttää
+arvoa `notApplicable`. Maksutila ei muuta `sent`-tilaa, hyväksytyn laskun
+snapshot-summia tai hyvitystilaa. Manuaalisen maksuseurannan pysyvät säännöt
+on kuvattu dokumentissa
+`docs/architecture/invoice-payment-tracking-plan.md`.
 
 Tilasiirtymät määritellään domain-säännöillä.
 
@@ -595,7 +600,7 @@ Nykyinen Oma yritys on laajemman Asetukset-kokonaisuuden ensimmäinen osa. Käyt
 
 ## R0-Closeout
 
-Laskutuksen nykyinen R0-laajuus on toteutettu:
+Laskutuksen nykyinen R0-laajuus sisältää:
 
 - normaali ALV (`normalVat`)
 - rakennusalan käännetty ALV (`reverseChargeConstruction`)
@@ -609,9 +614,13 @@ Suoritusajankohta kuuluu laskun perustietoihin eikä tax treatment
 -lisäasetukseen. `sent`, `cancelled` ja hyvityslasku eivät enää ole tulevia
 R0-toimintoja.
 
+Manuaalinen `unpaid | paid`-maksutila, append-only-maksuhistoria sekä
+Laskutuksen ja asiakaskortin Maksetut-näkymät kuuluvat nyt R0-laajuuteen.
+Pankkitapahtumien automaattinen kohdistaminen jää myöhemmäksi.
+
 Myöhempään laajuuteen jäävät:
 
-- `paid` ja maksutapahtumien kohdistaminen
+- osamaksut ja pankkitapahtumien automaattinen kohdistaminen
 - verkkolasku
 - `vatExempt` ja `outsideVatScope`
 - automaattinen perintä

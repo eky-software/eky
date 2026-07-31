@@ -23,6 +23,7 @@ export type CustomerInvoicePageKey =
   | 'cancelled'
   | 'credited'
   | 'drafts'
+  | 'paid'
   | 'sent';
 
 interface CustomerInvoicePages {
@@ -30,6 +31,7 @@ interface CustomerInvoicePages {
   cancelled: number;
   credited: number;
   drafts: number;
+  paid: number;
   sent: number;
 }
 
@@ -47,6 +49,7 @@ export interface CustomerInvoiceOverviewState {
   drafts: CustomerInvoicePage<InvoiceDraftSummary>;
   errorMessage: string | null;
   isLoading: boolean;
+  paid: CustomerInvoicePage<SentInvoiceGroup>;
   sent: CustomerInvoicePage<SentInvoiceGroup>;
   goToPage(key: CustomerInvoicePageKey, page: number): void;
 }
@@ -56,6 +59,7 @@ const initialPages: CustomerInvoicePages = {
   cancelled: 1,
   credited: 1,
   drafts: 1,
+  paid: 1,
   sent: 1,
 };
 
@@ -69,6 +73,9 @@ export function useCustomerInvoices(
     createEmptyPage<ApprovedInvoiceSummary>,
   );
   const [sentPage, setSentPage] = useState(
+    createEmptyPage<SentInvoiceGroup>,
+  );
+  const [paidPage, setPaidPage] = useState(
     createEmptyPage<SentInvoiceGroup>,
   );
   const [creditedPage, setCreditedPage] = useState(
@@ -91,6 +98,7 @@ export function useCustomerInvoices(
       setDrafts([]);
       setApprovedPage(createEmptyPage());
       setSentPage(createEmptyPage());
+      setPaidPage(createEmptyPage());
       setCreditedPage(createEmptyPage());
       setCancelledPage(createEmptyPage());
       setErrorMessage(null);
@@ -110,9 +118,10 @@ export function useCustomerInvoices(
           loadedDrafts,
           loadedApprovedPage,
           loadedSentPage,
+          loadedPaidPage,
           loadedCreditedPage,
           loadedCancelledPage,
-        ] = await Promise.all([
+        ] = await Promise.allSettled([
           apiClient.listInvoiceDrafts({ customerId: activeCustomerId }),
           apiClient.listApprovedInvoices(
             createApprovedQuery(
@@ -125,13 +134,23 @@ export function useCustomerInvoices(
             createSentQuery(
               activeCustomerId,
               'uncredited',
+              'unpaid',
               pages.sent,
             ),
           ),
           apiClient.listSentInvoiceGroups(
             createSentQuery(
               activeCustomerId,
+              'uncredited',
+              'paid',
+              pages.paid,
+            ),
+          ),
+          apiClient.listSentInvoiceGroups(
+            createSentQuery(
+              activeCustomerId,
               'credited',
+              'all',
               pages.credited,
             ),
           ),
@@ -148,22 +167,43 @@ export function useCustomerInvoices(
           return;
         }
 
-        setDrafts(loadedDrafts);
-        setApprovedPage(toApprovedCustomerInvoicePage(loadedApprovedPage));
-        setSentPage(toSentCustomerInvoicePage(loadedSentPage));
-        setCreditedPage(toSentCustomerInvoicePage(loadedCreditedPage));
-        setCancelledPage(toApprovedCustomerInvoicePage(loadedCancelledPage));
-      } catch (error) {
-        if (requestSequence.current !== requestId) {
-          return;
-        }
+        setDrafts(getSettledValue(loadedDrafts, []));
+        setApprovedPage(
+          mapSettledPage(
+            loadedApprovedPage,
+            toApprovedCustomerInvoicePage,
+          ),
+        );
+        setSentPage(
+          mapSettledPage(loadedSentPage, toSentCustomerInvoicePage),
+        );
+        setPaidPage(
+          mapSettledPage(loadedPaidPage, toSentCustomerInvoicePage),
+        );
+        setCreditedPage(
+          mapSettledPage(loadedCreditedPage, toSentCustomerInvoicePage),
+        );
+        setCancelledPage(
+          mapSettledPage(
+            loadedCancelledPage,
+            toApprovedCustomerInvoicePage,
+          ),
+        );
 
-        setDrafts([]);
-        setApprovedPage(createEmptyPage());
-        setSentPage(createEmptyPage());
-        setCreditedPage(createEmptyPage());
-        setCancelledPage(createEmptyPage());
-        setErrorMessage(getCustomerInvoiceErrorMessage(error));
+        const failedResult = [
+          loadedDrafts,
+          loadedApprovedPage,
+          loadedSentPage,
+          loadedPaidPage,
+          loadedCreditedPage,
+          loadedCancelledPage,
+        ].find((result) => result.status === 'rejected');
+
+        setErrorMessage(
+          failedResult?.status === 'rejected'
+            ? getCustomerInvoiceErrorMessage(failedResult.reason)
+            : null,
+        );
       } finally {
         if (requestSequence.current === requestId) {
           setIsLoading(false);
@@ -199,6 +239,7 @@ export function useCustomerInvoices(
     },
     errorMessage,
     isLoading,
+    paid: paidPage,
     sent: sentPage,
     goToPage(key, page) {
       if (!Number.isSafeInteger(page) || page < 1) {
@@ -230,6 +271,7 @@ function createApprovedQuery(
 function createSentQuery(
   customerId: string,
   creditState: 'credited' | 'uncredited',
+  paymentState: 'all' | 'paid' | 'unpaid',
   page: number,
 ) {
   return {
@@ -237,8 +279,25 @@ function createSentQuery(
     customerId,
     page,
     pageSize: PAGE_SIZE,
+    paymentState,
     sort: 'invoiceDateDesc' as const,
   };
+}
+
+function getSettledValue<T>(
+  result: PromiseSettledResult<T>,
+  fallback: T,
+): T {
+  return result.status === 'fulfilled' ? result.value : fallback;
+}
+
+function mapSettledPage<TInput, TOutput>(
+  result: PromiseSettledResult<TInput>,
+  map: (value: TInput) => CustomerInvoicePage<TOutput>,
+): CustomerInvoicePage<TOutput> {
+  return result.status === 'fulfilled'
+    ? map(result.value)
+    : createEmptyPage();
 }
 
 function createEmptyPage<T>(): CustomerInvoicePage<T> {

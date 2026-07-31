@@ -89,11 +89,12 @@ describe('approved invoices api client', () => {
         dateFrom: '2026-01-01',
         page: 1,
         pageSize: 20,
+        paymentState: 'paid',
         sort: 'invoiceDateDesc',
       }),
     ).resolves.toEqual(invoiceGroupPage);
     expect(requests[0]?.input).toBe(
-      '/sent-invoice-groups?page=1&pageSize=20&sort=invoiceDateDesc&dateFrom=2026-01-01&customerId=customer%2F1&creditState=credited',
+      '/sent-invoice-groups?page=1&pageSize=20&sort=invoiceDateDesc&dateFrom=2026-01-01&customerId=customer%2F1&creditState=credited&paymentState=paid',
     );
     expect(requests[0]?.input).not.toContain('status=');
     expect(requests[0]?.input).not.toContain('companyId=');
@@ -421,6 +422,67 @@ describe('approved invoices api client', () => {
           },
           body: JSON.stringify({ deliveryMethod: 'print' }),
           method: 'POST',
+        },
+      },
+    ]);
+  });
+
+  it('marks an invoice paid with only the user-owned payment date', async () => {
+    const requests = createRequestLog();
+    const payment = {
+      invoiceId: 'invoice-1',
+      invoiceNumber: '20260001',
+      paymentState: 'paid',
+      paidOn: '2026-07-31',
+      paidAmountCents: 12_550,
+      paymentSource: 'manual',
+    } as const;
+    const client = createTestClient(requests, { payment });
+
+    await expect(
+      client.markInvoicePaid('invoice/1', {
+        paidOn: '2026-07-31',
+        paidAmountCents: 1,
+        paymentSource: 'manual',
+      } as never),
+    ).resolves.toEqual(payment);
+
+    expect(requests).toEqual([
+      {
+        input: '/invoices/invoice%2F1/payment',
+        init: {
+          body: JSON.stringify({ paidOn: '2026-07-31' }),
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          method: 'PUT',
+        },
+      },
+    ]);
+  });
+
+  it('reverts an invoice paid mark without a request body', async () => {
+    const requests = createRequestLog();
+    const payment = {
+      invoiceId: 'invoice-1',
+      invoiceNumber: '20260001',
+      paymentState: 'unpaid',
+      paidOn: null,
+      paidAmountCents: null,
+      paymentSource: null,
+    } as const;
+    const client = createTestClient(requests, { payment });
+
+    await expect(
+      client.revertInvoicePaidMark('invoice/1'),
+    ).resolves.toEqual(payment);
+    expect(requests).toEqual([
+      {
+        input: '/invoices/invoice%2F1/payment',
+        init: {
+          headers: { Accept: 'application/json' },
+          method: 'DELETE',
         },
       },
     ]);
@@ -818,6 +880,36 @@ describe('approved invoices api client', () => {
     ).rejects.toBeInstanceOf(EkyApiError);
   });
 
+  it('rejects malformed and not-applicable payment mutation responses', async () => {
+    const invalidPayments = [
+      {
+        invoiceId: 'invoice-1',
+        invoiceNumber: '20260001',
+        paymentState: 'paid',
+        paidOn: null,
+        paidAmountCents: 12_550,
+        paymentSource: 'manual',
+      },
+      {
+        invoiceId: 'invoice-1',
+        invoiceNumber: '20260001',
+        paymentState: 'notApplicable',
+        paidOn: null,
+        paidAmountCents: null,
+        paymentSource: null,
+      },
+    ];
+
+    for (const payment of invalidPayments) {
+      const requests = createRequestLog();
+      const client = createTestClient(requests, { payment });
+
+      await expect(
+        client.markInvoicePaid('invoice-1', { paidOn: '2026-07-31' }),
+      ).rejects.toBeInstanceOf(EkyApiError);
+    }
+  });
+
   it('rejects a malformed dry-run email response', async () => {
     const requests = createRequestLog();
     const client = createTestClient(requests, {
@@ -970,6 +1062,21 @@ function createTestClient(
 function createTestApprovedInvoiceView(
   overrides: Partial<ApprovedInvoiceView> = {},
 ): ApprovedInvoiceView {
+  const payment =
+    overrides.invoiceKind === 'credit'
+      ? {
+          paymentState: 'notApplicable' as const,
+          paidOn: null,
+          paidAmountCents: null,
+          paymentSource: null,
+        }
+      : {
+          paymentState: 'unpaid' as const,
+          paidOn: null,
+          paidAmountCents: null,
+          paymentSource: null,
+        };
+
   return {
     id: 'invoice-1',
     invoiceKind: 'standard',
@@ -1079,6 +1186,7 @@ function createTestApprovedInvoiceView(
     cancelledAt: null,
     cancelledBy: null,
     cancellationReason: null,
+    ...payment,
     ...overrides,
   };
 }
@@ -1214,6 +1322,21 @@ function createTestInvoiceDraft(): InvoiceDraft {
 function createTestApprovedInvoiceSummary(
   overrides: Partial<ApprovedInvoiceSummary> = {},
 ): ApprovedInvoiceSummary {
+  const payment =
+    overrides.invoiceKind === 'credit'
+      ? {
+          paymentState: 'notApplicable' as const,
+          paidOn: null,
+          paidAmountCents: null,
+          paymentSource: null,
+        }
+      : {
+          paymentState: 'unpaid' as const,
+          paidOn: null,
+          paidAmountCents: null,
+          paymentSource: null,
+        };
+
   return {
     id: 'invoice-1',
     invoiceKind: 'standard',
@@ -1231,6 +1354,7 @@ function createTestApprovedInvoiceSummary(
     approvedAt: '2026-06-13T10:00:00.000Z',
     cancelledAt: null,
     updatedAt: '2026-06-13T10:00:00.000Z',
+    ...payment,
     ...overrides,
   };
 }

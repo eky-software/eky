@@ -43,6 +43,30 @@ describe('SentInvoiceGroupList', () => {
 
     expect(html).toContain(uiText.invoicing.statusCredited);
   });
+
+  it('shows paid only for an uncredited paid root invoice', () => {
+    const html = renderToStaticMarkup(
+      <SentInvoiceGroupList
+        groups={[
+          createGroup({
+            creditInvoices: [],
+            creditStatus: 'none',
+            rootInvoice: createSummary({
+              paidAmountCents: 12_550,
+              paidOn: '2026-07-31',
+              paymentSource: 'manual',
+              paymentState: 'paid',
+            }),
+          }),
+        ]}
+        listLabel={uiText.invoicing.paidInvoiceList}
+        onOpenApprovedInvoice={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain(uiText.invoicing.statusPaid);
+    expect(html).not.toContain(uiText.invoicing.statusCredited);
+  });
 });
 
 function createGroup(
@@ -88,6 +112,11 @@ function createSummary(
     referenceNumber: '202600017',
     status: 'sent',
     updatedAt: '2026-07-01T10:00:00.000Z',
+    paymentState:
+      overrides.invoiceKind === 'credit' ? 'notApplicable' : 'unpaid',
+    paidOn: null,
+    paidAmountCents: null,
+    paymentSource: null,
     ...overrides,
   };
 }

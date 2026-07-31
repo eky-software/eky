@@ -5,6 +5,7 @@ import {
   getCustomerStatusLabel,
   getCustomerTypeLabel,
 } from './customerDisplay.js';
+import type { CustomerDefaultHourlyRateState } from './customerDefaultHourlyRateState.js';
 import styles from './CustomerOverview.module.css';
 import { centsToEuroInput } from '../../shared/money/hourlyRateInput.js';
 import { uiText } from '../../i18n/fi.js';
@@ -12,31 +13,25 @@ import { uiText } from '../../i18n/fi.js';
 interface CustomerOverviewProps {
   customer: Customer;
   customers: Customer[];
-  defaultHourlyRateCents: number | null;
-  onBack(): void;
+  defaultHourlyRateState: CustomerDefaultHourlyRateState;
   onEdit(): void;
 }
 
 export function CustomerOverview({
   customer,
   customers,
-  defaultHourlyRateCents,
-  onBack,
+  defaultHourlyRateState,
   onEdit,
 }: CustomerOverviewProps): React.JSX.Element {
   const propertyManager = customers.find(
     (candidate) => candidate.id === customer.managedByCustomerId,
   );
-  const effectiveHourlyRateCents =
-    customer.hourlyRateOverrideCents ?? defaultHourlyRateCents;
+  const pricing = getCustomerPricing(customer, defaultHourlyRateState);
 
   return (
     <article className={styles.overview} aria-labelledby="customer-overview-heading">
       <header className={styles.header}>
         <div className={styles.heading}>
-          <button className="ghost-button" onClick={onBack} type="button">
-            {uiText.customers.backToCustomerList}
-          </button>
           <div>
             <p className="eyebrow">{uiText.customers.customerCard}</p>
             <h2 id="customer-overview-heading">{customer.name}</h2>
@@ -105,16 +100,14 @@ export function CustomerOverview({
         <CustomerOverviewSection heading={uiText.customers.pricing}>
           <CustomerFact
             label={uiText.customers.hourlyRate}
-            value={formatHourlyRate(effectiveHourlyRateCents)}
+            value={pricing.value}
           />
-          <CustomerFact
-            label={uiText.customers.pricingSource}
-            value={
-              customer.hourlyRateOverrideCents === null
-                ? uiText.customers.companyDefaultPricing
-                : uiText.customers.customerSpecificPricing
-            }
-          />
+          {pricing.source === null ? null : (
+            <CustomerFact
+              label={uiText.customers.pricingSource}
+              value={pricing.source}
+            />
+          )}
         </CustomerOverviewSection>
 
         <CustomerOverviewSection
@@ -190,4 +183,47 @@ function formatHourlyRate(value: number | null): string {
   }
 
   return `${centsToEuroInput(value)} €/h`;
+}
+
+interface CustomerPricing {
+  source: string | null;
+  value: string;
+}
+
+function getCustomerPricing(
+  customer: Customer,
+  defaultHourlyRateState: CustomerDefaultHourlyRateState,
+): CustomerPricing {
+  if (customer.hourlyRateOverrideCents !== null) {
+    return {
+      source: uiText.customers.customerSpecificPricing,
+      value: formatHourlyRate(customer.hourlyRateOverrideCents),
+    };
+  }
+
+  if (defaultHourlyRateState.status === 'loading') {
+    return {
+      source: null,
+      value: uiText.customers.defaultHourlyRateLoading,
+    };
+  }
+
+  if (defaultHourlyRateState.status === 'failed') {
+    return {
+      source: null,
+      value: uiText.customers.defaultHourlyRateLoadError,
+    };
+  }
+
+  if (defaultHourlyRateState.valueCents === null) {
+    return {
+      source: uiText.customers.defaultHourlyRateNotConfigured,
+      value: uiText.customers.noValue,
+    };
+  }
+
+  return {
+    source: uiText.customers.companyDefaultPricing,
+    value: formatHourlyRate(defaultHourlyRateState.valueCents),
+  };
 }

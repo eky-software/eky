@@ -6,6 +6,7 @@ import type {
 import type { InvoiceUnit } from './invoiceDraft.js';
 import type { InvoiceKind } from './invoiceKind.js';
 import type { InvoiceNumberingMode } from './invoiceNumbering.js';
+import type { InvoicePaymentReadModel } from './invoicePayment.js';
 import type { InvoicePerformancePeriod } from './invoicePerformancePeriod.js';
 import type { ReferenceNumberType } from './invoiceReferenceNumber.js';
 import type { InvoiceTaxTreatment } from './invoiceTaxTreatment.js';
@@ -37,7 +38,7 @@ export interface ApprovedInvoiceVatBreakdown {
   grossCents: number;
 }
 
-export interface ApprovedInvoiceView {
+export interface ApprovedInvoiceView extends InvoicePaymentReadModel {
   id: string;
   companyId: string;
   sourceDraftId: string;

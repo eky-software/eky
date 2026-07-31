@@ -168,6 +168,45 @@ describe('activity API client', () => {
       ],
     });
   });
+
+  it('accepts a safe invoice payment event with an invoice reference', async () => {
+    const client = createEkyApiClient({
+      baseUrl: '',
+      fetch: async () =>
+        jsonResponse({
+          activityItems: [
+            {
+              id: 'invoicing:payment-event',
+              module: 'invoicing',
+              occurredAt: '2026-07-27T10:00:00.000Z',
+              outcome: 'success',
+              reference: {
+                kind: 'invoiceNumber',
+                value: '20260001',
+              },
+              type: 'invoice.paymentMarkReverted',
+            },
+          ],
+          hasNextPage: false,
+          hasPreviousPage: false,
+          month: '2026-07',
+          page: 1,
+          pageSize: 20,
+        }),
+    });
+
+    await expect(client.listActivity()).resolves.toMatchObject({
+      activityItems: [
+        {
+          reference: {
+            kind: 'invoiceNumber',
+            value: '20260001',
+          },
+          type: 'invoice.paymentMarkReverted',
+        },
+      ],
+    });
+  });
 });
 
 function jsonResponse(body: unknown): Response {

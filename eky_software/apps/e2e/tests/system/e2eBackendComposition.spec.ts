@@ -137,6 +137,11 @@ test.describe('isolated E2E backend composition', () => {
         {
           failOnCall: 1,
           kind: 'databaseWriteFailed',
+          operation: 'markInvoicePaidEvent',
+        },
+        {
+          failOnCall: 1,
+          kind: 'databaseWriteFailed',
           operation: 'updateCustomer',
         },
         {

@@ -2,6 +2,7 @@ export const permissionValues = Object.freeze([
   'manageCompanySettings',
   'manageInvoiceSettings',
   'manageInvoiceCorrections',
+  'manageInvoicePayments',
   'manageCompanyEmailSettings',
   'manageCompanyEmailSecret',
   'sendInvoices',

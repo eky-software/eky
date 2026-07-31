@@ -1,7 +1,8 @@
 import type { ApprovedInvoiceStatus } from './approvedInvoice.js';
 import type { InvoiceKind } from './invoiceKind.js';
+import type { InvoicePaymentReadModel } from './invoicePayment.js';
 
-export interface ApprovedInvoiceSummary {
+export interface ApprovedInvoiceSummary extends InvoicePaymentReadModel {
   id: string;
   invoiceKind: InvoiceKind;
   creditedInvoiceId: string | null;

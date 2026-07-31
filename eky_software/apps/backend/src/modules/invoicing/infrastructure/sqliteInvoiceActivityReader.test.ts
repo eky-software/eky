@@ -119,6 +119,50 @@ describe('SqliteInvoiceActivityReader', () => {
     ]);
   });
 
+  it('projects payment events without payment, actor or customer details', async () => {
+    insertPaymentEvent(
+      database,
+      'payment-paid',
+      'paymentMarkedPaid',
+      '2026-07-27T16:00:00.000Z',
+    );
+    insertPaymentEvent(
+      database,
+      'payment-reverted',
+      'paymentMarkReverted',
+      '2026-07-27T17:00:00.000Z',
+    );
+    const reader = new SqliteInvoiceActivityReader(database);
+
+    const entries = await reader.listInvoiceActivity({
+      companyId: 'dev-company',
+      limit: 10,
+      occurredAtFrom: '2026-07-01T00:00:00.000Z',
+      occurredAtTo: '2026-08-01T00:00:00.000Z',
+      outcomes: ['success'],
+    });
+
+    expect(entries).toEqual([
+      {
+        action: 'invoice.payment_mark_reverted',
+        id: 'payment-reverted',
+        invoiceNumber: '20260001',
+        occurredAt: '2026-07-27T17:00:00.000Z',
+        outcome: 'success',
+      },
+      {
+        action: 'invoice.payment_marked_paid',
+        id: 'payment-paid',
+        invoiceNumber: '20260001',
+        occurredAt: '2026-07-27T16:00:00.000Z',
+        outcome: 'success',
+      },
+    ]);
+    expect(JSON.stringify(entries)).not.toContain('actor-payment-private');
+    expect(JSON.stringify(entries)).not.toContain('2026-07-25');
+    expect(JSON.stringify(entries)).not.toContain('12345');
+  });
+
   it('does not return another company activity', async () => {
     insertInvoiceAudit(database);
     const reader = new SqliteInvoiceActivityReader(database);
@@ -192,4 +236,25 @@ function insertDeliveryEvent(
       status,
       `2026-07-27T${String(hour).padStart(2, '0')}:00:00.000Z`,
     );
+}
+
+function insertPaymentEvent(
+  database: DatabaseConnection,
+  id: string,
+  action: 'paymentMarkedPaid' | 'paymentMarkReverted',
+  occurredAt: string,
+): void {
+  database
+    .prepare(
+      `
+        INSERT INTO invoice_payment_events (
+          id, company_id, invoice_id, actor_user_id, action, payment_source,
+          paid_on, amount_cents, occurred_at
+        ) VALUES (
+          ?, 'dev-company', 'invoice-1', 'actor-payment-private', ?, 'manual',
+          '2026-07-25', 12345, ?
+        )
+      `,
+    )
+    .run(id, action, occurredAt);
 }

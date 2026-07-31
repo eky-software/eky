@@ -17,10 +17,10 @@ tuloksia. Toiminto on käyttöliittymässä laskun lisäasetuksissa, ja sen
 tuotantokäytön aineellinen soveltuvuus pitää edelleen varmistaa käyttäjän ja
 kirjanpitäjän toimesta.
 
-Tässä kokonaisuudessa ei toteuteta:
+Tässä ALV- ja korjauskokonaisuudessa ei toteuteta:
 
 - automaattista korkolain mukaista viivästyskorkoa
-- `paid`-tilaa tai maksusuorituksia
+- maksusuoritusten automaattista pankkikohdistusta
 - `vatExempt`- tai `outsideVatScope`-käsittelyä
 - rivikohtaisia sekalaskuja
 - verkkolaskua
@@ -139,5 +139,11 @@ R0:ssa toteutettu sääntö:
 - `cancelled` ja hyvityksen tilat säilyttävät alkuperäisen snapshotin sekä
   audit trailin
 
-Myöhempiä tiloja tai työnkulkuja ovat `paid`, maksujen kohdistus ja
-automaattinen perintä.
+Manuaalinen maksuseuranta toteutetaan elinkaaresta erillisenä
+`unpaid | paid`-maksutilana dokumentin
+`docs/architecture/invoice-payment-tracking-plan.md` mukaisesti. Se ei lisää
+`paid`-arvoa `InvoiceStatus`-tilakoneeseen eikä muuta hyvitys- tai
+korjaussemantiikkaa.
+
+Myöhempiä työnkulkuja ovat pankkisuoritusten automaattinen kohdistus,
+palautusten seuranta ja automaattinen perintä.

@@ -24,6 +24,10 @@ export function serializeSentInvoiceGroupListQuery(
     searchParameters.set('creditState', query.creditState);
   }
 
+  if (query.paymentState !== undefined) {
+    searchParameters.set('paymentState', query.paymentState);
+  }
+
   return searchParameters.toString();
 }
 

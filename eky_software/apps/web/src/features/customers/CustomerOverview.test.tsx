@@ -57,8 +57,7 @@ describe('CustomerOverview', () => {
       <CustomerOverview
         customer={housingCompany}
         customers={[housingCompany, propertyManager]}
-        defaultHourlyRateCents={null}
-        onBack={() => undefined}
+        defaultHourlyRateState={{ status: 'loaded', valueCents: null }}
         onEdit={() => undefined}
       />,
     );
@@ -75,6 +74,43 @@ describe('CustomerOverview', () => {
     expect(html).not.toContain('<select');
     expect(html).not.toContain('<textarea');
   });
+
+  it('keeps a missing company default distinct from a loading failure', () => {
+    const customer = createCustomer({ hourlyRateOverrideCents: null });
+    const missingHtml = renderOverview(customer);
+    const failedHtml = renderToStaticMarkup(
+      <CustomerOverview
+        customer={customer}
+        customers={[customer]}
+        defaultHourlyRateState={{ status: 'failed' }}
+        onEdit={() => undefined}
+      />,
+    );
+
+    expect(missingHtml).toContain(
+      'Oman yrityksen oletustuntihintaa ei ole asetettu',
+    );
+    expect(failedHtml).toContain(
+      'Oman yrityksen oletustuntihintaa ei voitu ladata',
+    );
+    expect(failedHtml).not.toContain(
+      'Oman yrityksen oletustuntihintaa ei ole asetettu',
+    );
+  });
+
+  it('shows a bounded loading state for the company default', () => {
+    const customer = createCustomer({ hourlyRateOverrideCents: null });
+    const html = renderToStaticMarkup(
+      <CustomerOverview
+        customer={customer}
+        customers={[customer]}
+        defaultHourlyRateState={{ status: 'loading' }}
+        onEdit={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('Ladataan oletustuntihintaa...');
+  });
 });
 
 function renderOverview(
@@ -85,8 +121,10 @@ function renderOverview(
     <CustomerOverview
       customer={customer}
       customers={[customer]}
-      defaultHourlyRateCents={defaultHourlyRateCents}
-      onBack={() => undefined}
+      defaultHourlyRateState={{
+        status: 'loaded',
+        valueCents: defaultHourlyRateCents,
+      }}
       onEdit={() => undefined}
     />,
   );

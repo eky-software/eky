@@ -21,6 +21,7 @@ interface InvoiceWorkspaceListViewProps {
   draftErrorMessage: string | null;
   isCustomerListLoading: boolean;
   isDraftListLoading: boolean;
+  paidInvoicePageState: ApprovedInvoicePageState;
   pendingDeleteDraftId: string | null;
   sentInvoicePageState: ApprovedInvoicePageState;
   onCancelDeleteDraft(): void;
@@ -43,6 +44,7 @@ export function InvoiceWorkspaceListView({
   draftErrorMessage,
   isCustomerListLoading,
   isDraftListLoading,
+  paidInvoicePageState,
   pendingDeleteDraftId,
   sentInvoicePageState,
   onCancelDeleteDraft,
@@ -119,13 +121,13 @@ export function InvoiceWorkspaceListView({
       />
 
       <ApprovedInvoiceListSection
-        countLabel={uiText.invoicing.cancelledInvoiceCount}
-        emptyMessage={uiText.invoicing.cancelledInvoicesEmpty}
-        kicker={uiText.invoicing.cancelledInvoices}
-        listLabel={uiText.invoicing.cancelledInvoiceList}
-        loadingMessage={uiText.invoicing.cancelledInvoicesLoading}
-        pageState={cancelledInvoicePageState}
-        title={uiText.invoicing.cancelledInvoiceList}
+        countLabel={uiText.invoicing.paidInvoiceCount}
+        emptyMessage={uiText.invoicing.paidInvoicesEmpty}
+        kicker={uiText.invoicing.paidInvoices}
+        listLabel={uiText.invoicing.paidInvoiceList}
+        loadingMessage={uiText.invoicing.paidInvoicesLoading}
+        pageState={paidInvoicePageState}
+        title={uiText.invoicing.paidInvoiceList}
         onOpenApprovedInvoice={onOpenApprovedInvoice}
       />
 
@@ -137,6 +139,17 @@ export function InvoiceWorkspaceListView({
         loadingMessage={uiText.invoicing.creditedInvoicesLoading}
         pageState={creditedInvoicePageState}
         title={uiText.invoicing.creditedInvoiceList}
+        onOpenApprovedInvoice={onOpenApprovedInvoice}
+      />
+
+      <ApprovedInvoiceListSection
+        countLabel={uiText.invoicing.cancelledInvoiceCount}
+        emptyMessage={uiText.invoicing.cancelledInvoicesEmpty}
+        kicker={uiText.invoicing.cancelledInvoices}
+        listLabel={uiText.invoicing.cancelledInvoiceList}
+        loadingMessage={uiText.invoicing.cancelledInvoicesLoading}
+        pageState={cancelledInvoicePageState}
+        title={uiText.invoicing.cancelledInvoiceList}
         onOpenApprovedInvoice={onOpenApprovedInvoice}
       />
     </div>

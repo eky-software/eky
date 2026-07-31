@@ -836,6 +836,11 @@ function createApprovedInvoiceView(
     createdAt: '2026-06-13T10:00:00.000Z',
     approvedAt: '2026-06-13T10:00:00.000Z',
     updatedAt: '2026-06-13T10:00:00.000Z',
+    paymentState:
+      overrides.invoiceKind === 'credit' ? 'notApplicable' : 'unpaid',
+    paidOn: null,
+    paidAmountCents: null,
+    paymentSource: null,
     cancelledAt: null,
     cancelledBy: null,
     cancellationReason: null,

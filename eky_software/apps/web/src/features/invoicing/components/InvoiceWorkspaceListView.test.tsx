@@ -94,14 +94,34 @@ describe('InvoiceWorkspaceListView', () => {
         totalCount: 1,
         totalPages: 1,
       }),
+      paidInvoicePageState: createApprovedInvoicePageState({
+        invoiceGroups: [
+          createSentInvoiceGroup({
+            rootInvoice: createApprovedInvoiceSummary({
+              id: 'invoice-paid',
+              invoiceNumber: '20260003',
+              paidAmountCents: 17_884,
+              paidOn: '2026-07-20',
+              paymentSource: 'manual',
+              paymentState: 'paid',
+              status: 'sent',
+            }),
+            creditInvoices: [],
+            creditStatus: 'none',
+            remainingCreditableGrossCents: 17_884,
+          }),
+        ],
+        totalCount: 1,
+        totalPages: 1,
+      }),
       sentInvoicePageState: createApprovedInvoicePageState({
         invoiceGroups: [
           createSentInvoiceGroup({
             rootInvoice: createApprovedInvoiceSummary({
-            id: 'invoice-2',
-            invoiceNumber: '20260002',
-            status: 'sent',
-          }),
+              id: 'invoice-2',
+              invoiceNumber: '20260002',
+              status: 'sent',
+            }),
             creditInvoices: [],
             creditStatus: 'none',
             remainingCreditableGrossCents: 17_884,
@@ -119,6 +139,10 @@ describe('InvoiceWorkspaceListView', () => {
       `aria-label="${uiText.invoicing.sentInvoiceList}"`,
     );
     const sentInvoice = html.indexOf('Laskunumero 20260002');
+    const paidListStart = html.indexOf(
+      `aria-label="${uiText.invoicing.paidInvoiceList}"`,
+    );
+    const paidInvoice = html.indexOf('Laskunumero 20260003');
     const cancelledListStart = html.indexOf(
       `aria-label="${uiText.invoicing.cancelledInvoiceList}"`,
     );
@@ -130,8 +154,11 @@ describe('InvoiceWorkspaceListView', () => {
     expect(approvedInvoice).toBeGreaterThan(approvedListStart);
     expect(sentListStart).toBeGreaterThan(approvedInvoice);
     expect(sentInvoice).toBeGreaterThan(sentListStart);
-    expect(cancelledListStart).toBeGreaterThan(sentInvoice);
-    expect(creditedListStart).toBeGreaterThan(cancelledListStart);
+    expect(paidListStart).toBeGreaterThan(sentInvoice);
+    expect(paidInvoice).toBeGreaterThan(paidListStart);
+    expect(creditedListStart).toBeGreaterThan(paidInvoice);
+    expect(cancelledListStart).toBeGreaterThan(creditedListStart);
+    expect(html).toContain(uiText.invoicing.statusPaid);
     expect(html).toContain(uiText.invoicing.creditStatusPartial);
     expect(html).not.toContain(uiText.invoicing.copyApprovedInvoice);
   });
@@ -196,6 +223,7 @@ function renderView(
       draftErrorMessage={null}
       isCustomerListLoading={false}
       isDraftListLoading={false}
+      paidInvoicePageState={createApprovedInvoicePageState()}
       pendingDeleteDraftId={null}
       sentInvoicePageState={createApprovedInvoicePageState()}
       onCancelDeleteDraft={vi.fn()}
@@ -303,6 +331,11 @@ function createApprovedInvoiceSummary(
     approvedAt: '2026-06-13T18:00:00.000Z',
     cancelledAt: null,
     updatedAt: '2026-06-13T18:00:00.000Z',
+    paymentState:
+      overrides.invoiceKind === 'credit' ? 'notApplicable' : 'unpaid',
+    paidOn: null,
+    paidAmountCents: null,
+    paymentSource: null,
     ...overrides,
   };
 }

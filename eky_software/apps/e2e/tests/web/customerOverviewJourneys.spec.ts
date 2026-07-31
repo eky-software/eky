@@ -71,7 +71,7 @@ test('CUS-OVERVIEW-002 @critical preserves list state through overview, edit can
   ).toBeVisible();
 
   await e2eWeb.page
-    .getByRole('button', { name: 'Takaisin asiakaslistaan' })
+    .getByRole('button', { name: '← Asiakaslistaan', exact: true })
     .click();
   await expect(e2eWeb.page.getByLabel('Hae asiakasta')).toHaveValue(
     'OVERVIEW-1001',
@@ -86,7 +86,50 @@ test('CUS-OVERVIEW-002 @critical preserves list state through overview, edit can
   ).toHaveAttribute('aria-pressed', 'true');
 });
 
-test('CUS-OVERVIEW-003 CUS-OVERVIEW-006 @critical @cross-module shows customer-owned invoice states and opens invoicing targets', async ({
+test('CUS-OVERVIEW-008 @critical keeps customer details usable when company pricing fails', async ({
+  e2eWeb,
+}) => {
+  const customer = await createCustomer(e2eWeb.api, {
+    customerNumber: 'E2E-PRICING-FAIL',
+    hourlyRateOverrideCents: null,
+    name: 'Pricing Failure Customer Oy',
+  });
+
+  await e2eWeb.page.route('**/company-settings', async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({ message: 'Synthetic internal detail' }),
+      contentType: 'application/json',
+      status: 500,
+    });
+  });
+  await e2eWeb.page.reload();
+  await openCustomerOverview(e2eWeb.page, customer);
+
+  await expect(
+    e2eWeb.page.getByText(
+      'Oman yrityksen oletustuntihintaa ei voitu ladata.',
+    ),
+  ).toBeVisible();
+  await expect(
+    e2eWeb.page.getByRole('heading', { level: 3, name: 'Yhteystiedot' }),
+  ).toBeVisible();
+  await expect(
+    e2eWeb.page.getByRole('heading', {
+      level: 2,
+      name: 'Asiakkaan laskut',
+    }),
+  ).toBeVisible();
+  await expect(
+    e2eWeb.page.getByRole('navigation', {
+      name: 'Asiakaskortin navigointi',
+    }),
+  ).toBeVisible();
+  await expect(
+    e2eWeb.page.getByText('Synthetic internal detail'),
+  ).toHaveCount(0);
+});
+
+test('CUS-OVERVIEW-003 CUS-OVERVIEW-006 CUS-OVERVIEW-007 @critical @cross-module shows mutually exclusive customer-owned invoice states and opens invoicing targets', async ({
   e2eWeb,
 }) => {
   const selectedCustomer = await seedInvoiceJourneyPrerequisites(e2eWeb, {
@@ -114,12 +157,20 @@ test('CUS-OVERVIEW-003 CUS-OVERVIEW-006 @critical @cross-module shows customer-o
     'Overview sent',
   );
   await markInvoiceSent(e2eWeb.api, sent.id);
+  const paid = await createApprovedInvoice(
+    e2eWeb.api,
+    selectedCustomer.customerId,
+    'Overview paid',
+  );
+  await markInvoiceSent(e2eWeb.api, paid.id);
+  await markInvoicePaid(e2eWeb.api, paid.id);
   const creditedSource = await createApprovedInvoice(
     e2eWeb.api,
     selectedCustomer.customerId,
     'Overview credited source',
   );
   await markInvoiceSent(e2eWeb.api, creditedSource.id);
+  await markInvoicePaid(e2eWeb.api, creditedSource.id);
   const creditInvoice = await createFullCreditInvoice(
     e2eWeb.api,
     creditedSource.id,
@@ -147,6 +198,7 @@ test('CUS-OVERVIEW-003 CUS-OVERVIEW-006 @critical @cross-module shows customer-o
     'Luonnokset',
     'Hyväksytyt ja toimitusta odottavat',
     'Lähetetyt',
+    'Maksetut',
     'Hyvitetyt ja osittain hyvitetyt',
     'Perutut',
   ]) {
@@ -155,7 +207,31 @@ test('CUS-OVERVIEW-003 CUS-OVERVIEW-006 @critical @cross-module shows customer-o
     ).toBeVisible();
   }
   await expect(e2eWeb.page.getByText(approved.number)).toBeVisible();
-  await expect(e2eWeb.page.getByText(sent.number)).toBeVisible();
+  const sentSection = e2eWeb.page.getByRole('region', {
+    name: 'Lähetetyt',
+  });
+  const paidSection = e2eWeb.page.getByRole('region', {
+    name: 'Maksetut',
+  });
+  const creditedSection = e2eWeb.page.getByRole('region', {
+    name: 'Hyvitetyt ja osittain hyvitetyt',
+  });
+  await expect(sentSection.getByText(sent.number, { exact: true })).toBeVisible();
+  await expect(paidSection.getByText(paid.number, { exact: true })).toBeVisible();
+  await expect(
+    creditedSection.getByText(creditedSource.number, { exact: true }),
+  ).toBeVisible();
+  await expect(
+    creditedSection.getByText('Kokonaan hyvitetty · Maksettu', {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(sentSection.getByText(paid.number, { exact: true })).toHaveCount(
+    0,
+  );
+  await expect(
+    paidSection.getByText(creditedSource.number, { exact: true }),
+  ).toHaveCount(0);
   await expect(e2eWeb.page.getByText(creditInvoice.number)).toBeVisible();
   await expect(e2eWeb.page.getByText(cancelled.number)).toBeVisible();
   await expect(e2eWeb.page.getByText(otherInvoice.number)).toHaveCount(0);
@@ -326,6 +402,16 @@ async function markInvoiceSent(
     data: { deliveryMethod: 'manual' },
   });
   expect(sentResponse.status()).toBe(200);
+}
+
+async function markInvoicePaid(
+  api: APIRequestContext,
+  invoiceId: string,
+): Promise<void> {
+  const response = await api.put(`/invoices/${invoiceId}/payment`, {
+    data: { paidOn: '2026-07-30' },
+  });
+  expect(response.status()).toBe(200);
 }
 
 async function createFullCreditInvoice(

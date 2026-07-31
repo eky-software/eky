@@ -9,6 +9,7 @@ type DatabaseFaultOperation = Extract<
 
 const triggerNamesByOperation = Object.freeze({
   approveInvoice: ['_e2e_fail_approve_invoice'],
+  markInvoicePaidEvent: ['_e2e_fail_mark_invoice_paid_event'],
   updateCompanySettings: [
     '_e2e_fail_insert_company_settings',
     '_e2e_fail_update_company_settings',

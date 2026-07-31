@@ -25,6 +25,7 @@ export function CustomerInvoicesSection({
     'approved',
   );
   const sentRows = toSentRows(invoiceState.sent.items);
+  const paidRows = toSentRows(invoiceState.paid.items);
   const creditedRows = toSentRows(invoiceState.credited.items);
   const cancelledRows = toApprovedRows(
     invoiceState.cancelled.items,
@@ -36,6 +37,7 @@ export function CustomerInvoicesSection({
     draftRows.length === 0 &&
     approvedRows.length === 0 &&
     sentRows.length === 0 &&
+    paidRows.length === 0 &&
     creditedRows.length === 0 &&
     cancelledRows.length === 0;
 
@@ -65,7 +67,7 @@ export function CustomerInvoicesSection({
         <p className="message">{uiText.customers.invoiceEmpty}</p>
       ) : null}
 
-      {!invoiceState.isLoading && invoiceState.errorMessage === null ? (
+      {!invoiceState.isLoading ? (
         <div className={styles.categories}>
           <CustomerInvoiceCategory
             heading={uiText.customers.invoiceCategories.drafts}
@@ -114,6 +116,20 @@ export function CustomerInvoicesSection({
             rows={sentRows}
             totalCount={invoiceState.sent.totalCount}
             totalPages={invoiceState.sent.totalPages}
+          />
+          <CustomerInvoiceCategory
+            heading={uiText.customers.invoiceCategories.paid}
+            onNextPage={() =>
+              invoiceState.goToPage('paid', invoiceState.paid.page + 1)
+            }
+            onOpenInvoice={onOpenInvoice}
+            onPreviousPage={() =>
+              invoiceState.goToPage('paid', invoiceState.paid.page - 1)
+            }
+            page={invoiceState.paid.page}
+            rows={paidRows}
+            totalCount={invoiceState.paid.totalCount}
+            totalPages={invoiceState.paid.totalPages}
           />
           <CustomerInvoiceCategory
             heading={uiText.customers.invoiceCategories.credited}
@@ -187,7 +203,7 @@ function CustomerInvoiceCategory({
   }
 
   return (
-    <section className={styles.category}>
+    <section aria-label={heading} className={styles.category}>
       <header className={styles.categoryHeader}>
         <h3>{heading}</h3>
         <span className="count-badge">{totalCount}</span>

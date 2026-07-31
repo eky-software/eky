@@ -51,6 +51,7 @@ describe('backend runtime trust', () => {
         'manageCompanySettings',
         'manageInvoiceSettings',
         'manageInvoiceCorrections',
+        'manageInvoicePayments',
         'manageCompanyEmailSettings',
         'manageCompanyEmailSecret',
         'sendInvoices',

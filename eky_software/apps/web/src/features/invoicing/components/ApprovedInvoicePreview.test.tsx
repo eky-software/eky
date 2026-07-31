@@ -232,7 +232,10 @@ function renderPreview(
       isLoadingDeliveryEvents={false}
       isPdfAvailable={options.isPdfAvailable ?? false}
       isReopening={false}
+      isUpdatingPayment={false}
       markSentErrorMessage={null}
+      paymentMutationErrorMessage={null}
+      paymentMutationSuccessMessage={null}
       pdfErrorMessage={options.pdfErrorMessage ?? null}
       reopenErrorMessage={null}
       onBack={vi.fn()}
@@ -242,10 +245,12 @@ function renderPreview(
       onCreatePdf={vi.fn()}
       onEditInvoice={vi.fn()}
       onMarkSent={vi.fn()}
+      onMarkInvoicePaid={vi.fn()}
       onOpenPdf={vi.fn()}
       onOpenRelatedDraft={vi.fn()}
       onOpenRelatedInvoice={vi.fn()}
       onPrepareEmail={vi.fn()}
+      onRevertInvoicePaidMark={vi.fn()}
       onSendEmailDryRun={vi.fn()}
       onSendEmailSmtp={vi.fn()}
       onSendEmailSmtpTest={vi.fn()}
@@ -371,6 +376,11 @@ function createApprovedInvoiceView(
       vatTotalCents: 2550,
     },
     updatedAt: '2026-06-13T10:00:00.000Z',
+    paymentState:
+      overrides.invoiceKind === 'credit' ? 'notApplicable' : 'unpaid',
+    paidOn: null,
+    paidAmountCents: null,
+    paymentSource: null,
     cancelledAt: null,
     cancelledBy: null,
     cancellationReason: null,

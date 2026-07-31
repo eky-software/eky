@@ -17,6 +17,7 @@ export interface ApprovedInvoiceListState {
   approved: ApprovedInvoicePageState;
   cancelled: ApprovedInvoicePageState;
   credited: ApprovedInvoicePageState;
+  paid: ApprovedInvoicePageState;
   sent: ApprovedInvoicePageState;
   refreshApprovedInvoices(): Promise<void>;
 }
@@ -59,12 +60,21 @@ export function useApprovedInvoices(
     'sent',
     fiscalYearStartMonth,
     'uncredited',
+    'unpaid',
+  );
+  const paid = useApprovedInvoicePage(
+    apiClient,
+    'sent',
+    fiscalYearStartMonth,
+    'uncredited',
+    'paid',
   );
   const credited = useApprovedInvoicePage(
     apiClient,
     'sent',
     fiscalYearStartMonth,
     'credited',
+    'all',
   );
   const cancelled = useApprovedInvoicePage(
     apiClient,
@@ -75,15 +85,23 @@ export function useApprovedInvoices(
     await Promise.all([
       approved.refresh(),
       sent.refresh(),
+      paid.refresh(),
       cancelled.refresh(),
       credited.refresh(),
     ]);
-  }, [approved.refresh, cancelled.refresh, credited.refresh, sent.refresh]);
+  }, [
+    approved.refresh,
+    cancelled.refresh,
+    credited.refresh,
+    paid.refresh,
+    sent.refresh,
+  ]);
 
   return {
     approved,
     cancelled,
     credited,
+    paid,
     sent,
     refreshApprovedInvoices,
   };

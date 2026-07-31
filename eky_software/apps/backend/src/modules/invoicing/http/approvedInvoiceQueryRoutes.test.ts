@@ -93,6 +93,7 @@ describe('approved invoice query routes', () => {
       dateFrom: '2026-01-01',
       page: 2,
       pageSize: 50,
+      paymentState: 'all',
       sort: 'invoiceDateDesc',
     });
 
@@ -120,11 +121,36 @@ describe('approved invoice query routes', () => {
       creditState: 'credited',
       page: 1,
       pageSize: 20,
+      paymentState: 'all',
       sort: 'invoiceDateDesc',
     });
 
     const invalidResponse = await app.request(
       '/sent-invoice-groups?creditState=other',
+    );
+
+    expect(invalidResponse.status).toBe(400);
+  });
+
+  it('validates the sent invoice payment-state filter', async () => {
+    const { app, getSentGroupInput } = createTestApp({});
+
+    const response = await app.request(
+      '/sent-invoice-groups?paymentState=paid',
+    );
+
+    expect(response.status).toBe(200);
+    expect(getSentGroupInput()).toEqual({
+      companyId: 'dev-company',
+      creditState: 'all',
+      page: 1,
+      pageSize: 20,
+      paymentState: 'paid',
+      sort: 'invoiceDateDesc',
+    });
+
+    const invalidResponse = await app.request(
+      '/sent-invoice-groups?paymentState=other',
     );
 
     expect(invalidResponse.status).toBe(400);
@@ -320,6 +346,10 @@ function createApprovedInvoiceSummary(): ApprovedInvoiceSummary {
     referenceNumber: '202600017',
     status: 'approved',
     updatedAt: '2026-06-13T10:00:00.000Z',
+    paymentState: 'unpaid',
+    paidOn: null,
+    paidAmountCents: null,
+    paymentSource: null,
     cancelledAt: null,
   };
 }
@@ -431,6 +461,10 @@ function createApprovedInvoiceView(): ApprovedInvoiceView {
         vatRateBasisPoints: 2550,
       },
     ],
+    paymentState: 'unpaid',
+    paidOn: null,
+    paidAmountCents: null,
+    paymentSource: null,
     cancelledAt: null,
     cancelledBy: null,
     cancellationReason: null,

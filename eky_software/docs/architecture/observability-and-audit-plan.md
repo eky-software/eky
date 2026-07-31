@@ -219,6 +219,11 @@ business audit -retention suoritetaan moduulikohtaisten porttien kautta
 startupissa. Invoicing omistaa myös ALV-kantojen, laskunumeroinnin ja
 maksuasetusten auditoinnin, vaikka niiden lomakkeet näkyvät Oma yritys
 -näkymässä.
+Laskun manuaalisen maksutilan append-only-tapahtumat kuuluvat samoin
+Invoicingille. Activity saa niistä vain laskunumeron, tapahtuma-ajan ja
+allowlistatun toiminnon. Maksupäivä, euromäärä, maksulähde, actor-tunniste,
+pankkitieto ja asiakastieto eivät siirry Activity-projektioon, teknisiin
+lokeihin, Diagnosticsiin, incident-indeksiin tai tukipakettiin.
 
 Paketoitu smoke todentaa myös Diagnostics-eventtien HTTP- ja UI-ketjun,
 lokikansiocapabilityn stubatun avauksen sekä tarvittavat pakettiartifactit.

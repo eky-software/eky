@@ -23,6 +23,8 @@ type SentInvoiceRootFilterParameters = [
   string | null,
   string | null,
   string | null,
+  string,
+  string,
 ];
 type SentInvoiceRootListParameters = [
   ...SentInvoiceRootFilterParameters,
@@ -53,6 +55,8 @@ export class SqliteSentInvoiceGroupReader implements SentInvoiceGroupReader {
       query.dateFrom,
       query.dateTo,
       query.dateTo,
+      query.paymentState,
+      query.paymentState,
     ];
     const orderBy = getApprovedInvoiceListOrderBy(query.sort);
     const rootInvoiceQuery = createSentInvoiceRootQuery(
@@ -80,6 +84,7 @@ export class SqliteSentInvoiceGroupReader implements SentInvoiceGroupReader {
             AND (? IS NULL OR root_invoices.customer_id = ?)
             AND (? IS NULL OR root_invoices.invoice_date >= ?)
             AND (? IS NULL OR root_invoices.invoice_date <= ?)
+            AND (? = 'all' OR root_invoices.payment_state = ?)
             ${getSentInvoiceCreditStateWhereClause(query.creditState)}
         `,
       )
@@ -168,6 +173,7 @@ function createSentInvoiceRootQuery(
       AND (? IS NULL OR root_invoices.customer_id = ?)
       AND (? IS NULL OR root_invoices.invoice_date >= ?)
       AND (? IS NULL OR root_invoices.invoice_date <= ?)
+      AND (? = 'all' OR root_invoices.payment_state = ?)
       ${getSentInvoiceCreditStateWhereClause(creditState)}
     ORDER BY ${orderBy}
     LIMIT ? OFFSET ?

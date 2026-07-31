@@ -69,6 +69,7 @@ function renderPage(
     | 'invoiceVatRatesState'
     | 'invoiceDeliveryEventListState'
     | 'invoiceCreditContextState'
+    | 'invoicePaymentState'
     | 'markApprovedInvoiceSentState'
     | 'reopenApprovedInvoiceState'
     | 'sendApprovedInvoiceEmailState'
@@ -85,9 +86,11 @@ function renderPage(
     | 'onDraftSaved'
     | 'onEditApprovedInvoice'
     | 'onMarkApprovedInvoiceSent'
+    | 'onMarkInvoicePaid'
     | 'onOpenApprovedInvoice'
     | 'onOpenApprovedInvoicePdf'
     | 'onPrepareApprovedInvoiceEmail'
+    | 'onRevertInvoicePaidMark'
     | 'onSendApprovedInvoiceEmailDryRun'
     | 'onSendApprovedInvoiceEmailSmtp'
     | 'onSendApprovedInvoiceEmailSmtpTest'
@@ -112,6 +115,7 @@ function renderPage(
         | 'invoiceVatRatesState'
         | 'invoiceDeliveryEventListState'
         | 'invoiceCreditContextState'
+        | 'invoicePaymentState'
         | 'markApprovedInvoiceSentState'
         | 'reopenApprovedInvoiceState'
         | 'sendApprovedInvoiceEmailState'
@@ -128,9 +132,11 @@ function renderPage(
         | 'onDraftSaved'
         | 'onEditApprovedInvoice'
         | 'onMarkApprovedInvoiceSent'
+        | 'onMarkInvoicePaid'
         | 'onOpenApprovedInvoice'
         | 'onOpenApprovedInvoicePdf'
         | 'onPrepareApprovedInvoiceEmail'
+        | 'onRevertInvoicePaidMark'
         | 'onSendApprovedInvoiceEmailDryRun'
         | 'onSendApprovedInvoiceEmailSmtp'
         | 'onSendApprovedInvoiceEmailSmtpTest'
@@ -172,6 +178,14 @@ function renderPage(
       invoiceVatRatesState={createInvoiceVatRatesState()}
       invoiceDeliveryEventListState={createInvoiceDeliveryEventListState()}
       invoiceCreditContextState={createInvoiceCreditContextState()}
+      invoicePaymentState={{
+        clearStatus: vi.fn(),
+        errorMessage: null,
+        isUpdating: false,
+        markPaid: vi.fn(async () => null),
+        revertPaidMark: vi.fn(async () => null),
+        successMessage: null,
+      }}
       markApprovedInvoiceSentState={createMarkApprovedInvoiceSentState()}
       reopenApprovedInvoiceState={createReopenApprovedInvoiceState()}
       sendApprovedInvoiceEmailState={createSendApprovedInvoiceEmailState()}
@@ -192,9 +206,11 @@ function renderPage(
       onDraftSaved={vi.fn()}
       onEditApprovedInvoice={vi.fn()}
       onMarkApprovedInvoiceSent={vi.fn()}
+      onMarkInvoicePaid={vi.fn()}
       onOpenApprovedInvoice={vi.fn()}
       onOpenApprovedInvoicePdf={vi.fn()}
       onPrepareApprovedInvoiceEmail={vi.fn()}
+      onRevertInvoicePaidMark={vi.fn()}
       onSendApprovedInvoiceEmailDryRun={vi.fn()}
       onSendApprovedInvoiceEmailSmtp={vi.fn()}
       onSendApprovedInvoiceEmailSmtpTest={vi.fn()}
@@ -297,6 +313,7 @@ function createApprovedInvoiceListState(
     approved: createApprovedInvoicePageState(),
     cancelled: createApprovedInvoicePageState(),
     credited: createApprovedInvoicePageState(),
+    paid: createApprovedInvoicePageState(),
     refreshApprovedInvoices: vi.fn(),
     sent: createApprovedInvoicePageState(),
     ...overrides,

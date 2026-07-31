@@ -6,6 +6,7 @@ import type {
   ApprovedInvoiceReferenceNumberType,
   ApprovedInvoiceUnit,
   ApprovedInvoiceViewStatus,
+  InvoicePaymentReadModel,
 } from './approvedInvoicesTypes.js';
 
 export function parseInvoiceKind(value: unknown): ApprovedInvoiceKind {
@@ -74,6 +75,53 @@ export function readSafeInteger(
 
   if (typeof fieldValue === 'number' && Number.isSafeInteger(fieldValue)) {
     return fieldValue;
+  }
+
+  throw invalidApprovedInvoiceResponse(value);
+}
+
+export function readNullableSafeInteger(
+  value: Record<string, unknown>,
+  fieldName: string,
+): number | null {
+  const fieldValue = value[fieldName];
+
+  if (fieldValue === null) {
+    return null;
+  }
+
+  return readSafeInteger(value, fieldName);
+}
+
+export function parseInvoicePaymentReadModel(
+  value: Record<string, unknown>,
+  invoiceKind: ApprovedInvoiceKind,
+): InvoicePaymentReadModel {
+  const paymentState = value.paymentState;
+  const paidOn = readNullableString(value, 'paidOn');
+  const paidAmountCents = readNullableSafeInteger(value, 'paidAmountCents');
+  const paymentSource = value.paymentSource;
+
+  if (
+    paymentState === 'paid' &&
+    invoiceKind === 'standard' &&
+    paidOn !== null &&
+    paidOn.length > 0 &&
+    paidAmountCents !== null &&
+    paidAmountCents > 0 &&
+    paymentSource === 'manual'
+  ) {
+    return { paidAmountCents, paidOn, paymentSource, paymentState };
+  }
+
+  if (
+    ((paymentState === 'unpaid' && invoiceKind === 'standard') ||
+      (paymentState === 'notApplicable' && invoiceKind === 'credit')) &&
+    paidOn === null &&
+    paidAmountCents === null &&
+    paymentSource === null
+  ) {
+    return { paidAmountCents, paidOn, paymentSource, paymentState };
   }
 
   throw invalidApprovedInvoiceResponse(value);

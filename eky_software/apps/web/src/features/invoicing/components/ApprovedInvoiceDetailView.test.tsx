@@ -84,6 +84,62 @@ describe('ApprovedInvoiceDetailView', () => {
     expect(html).not.toContain('responseBody');
     expect(html).not.toContain('stack');
   });
+
+  it('renders the remaining amount and manual paid action for a sent invoice', () => {
+    const html = renderDetail({
+      creditContextState: {
+        creditContext: {
+          activeCreditDraftId: null,
+          creditInvoices: [],
+          creditStatus: 'none',
+          remainingCreditableGrossCents: 12_550,
+          sourceInvoiceId: 'invoice-1',
+        },
+        errorMessage: null,
+        isLoading: false,
+      },
+      invoiceState: {
+        approvedInvoice: createApprovedInvoiceView({ status: 'sent' }),
+        errorMessage: null,
+        isLoading: false,
+      },
+    });
+
+    expect(html).toContain(uiText.invoicing.invoicePaymentTitle);
+    expect(html).toContain(uiText.invoicing.invoicePaymentUnpaid);
+    expect(html).toContain(uiText.invoicing.invoicePaymentRemainingAmount);
+    expect(html).toContain('125,50');
+    expect(html).toContain(uiText.invoicing.markInvoicePaid);
+  });
+
+  it('renders paid details and keeps technical payment errors hidden', () => {
+    const html = renderDetail({
+      invoiceState: {
+        approvedInvoice: createApprovedInvoiceView({
+          paidAmountCents: 12_550,
+          paidOn: '2026-07-31',
+          paymentSource: 'manual',
+          paymentState: 'paid',
+          status: 'sent',
+        }),
+        errorMessage: null,
+        isLoading: false,
+      },
+      paymentState: {
+        errorMessage: uiText.invoicing.invoicePaymentUpdateError,
+        isUpdating: false,
+        successMessage: null,
+      },
+    });
+
+    expect(html).toContain(uiText.invoicing.invoicePaymentPaid);
+    expect(html).toContain('31.07.2026');
+    expect(html).toContain(uiText.invoicing.invoicePaymentSourceManual);
+    expect(html).toContain(uiText.invoicing.revertInvoicePaymentMark);
+    expect(html).toContain(uiText.invoicing.invoicePaymentUpdateError);
+    expect(html).not.toContain('responseBody');
+    expect(html).not.toContain('stack');
+  });
 });
 
 type ApprovedInvoiceDetailViewProps = React.ComponentProps<
@@ -132,6 +188,11 @@ function renderDetail(
         isLoading: false,
       }}
       markSentState={{ errorMessage: null, isMarkingSent: false }}
+      paymentState={{
+        errorMessage: null,
+        isUpdating: false,
+        successMessage: null,
+      }}
       pdfState={{ document: null, errorMessage: null, isCreating: false }}
       reopenState={{ errorMessage: null, isReopening: false }}
       onBack={vi.fn()}
@@ -141,10 +202,12 @@ function renderDetail(
       onCreatePdf={vi.fn()}
       onEditInvoice={vi.fn()}
       onMarkSent={vi.fn()}
+      onMarkInvoicePaid={vi.fn()}
       onOpenPdf={vi.fn()}
       onOpenRelatedDraft={vi.fn()}
       onOpenRelatedInvoice={vi.fn()}
       onPrepareEmail={vi.fn()}
+      onRevertInvoicePaidMark={vi.fn()}
       onSendEmailDryRun={vi.fn()}
       onSendEmailSmtp={vi.fn()}
       onSendEmailSmtpTest={vi.fn()}
@@ -254,6 +317,11 @@ function createApprovedInvoiceView(
       vatTotalCents: 2550,
     },
     updatedAt: '2026-06-13T10:00:00.000Z',
+    paymentState:
+      overrides.invoiceKind === 'credit' ? 'notApplicable' : 'unpaid',
+    paidOn: null,
+    paidAmountCents: null,
+    paymentSource: null,
     cancelledAt: null,
     cancelledBy: null,
     cancellationReason: null,

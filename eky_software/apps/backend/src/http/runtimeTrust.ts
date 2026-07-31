@@ -17,6 +17,7 @@ const localOwnerPermissions = Object.freeze([
   'manageCompanySettings',
   'manageInvoiceSettings',
   'manageInvoiceCorrections',
+  'manageInvoicePayments',
   'manageCompanyEmailSettings',
   'manageCompanyEmailSecret',
   'sendInvoices',

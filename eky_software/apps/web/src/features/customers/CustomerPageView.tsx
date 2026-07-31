@@ -12,6 +12,7 @@ import {
   initialCustomerListViewState,
 } from './customerListViewState.js';
 import type { CustomerInvoiceNavigationTarget } from './customerInvoiceNavigation.js';
+import type { CustomerDefaultHourlyRateState } from './customerDefaultHourlyRateState.js';
 import { CustomerOverviewWorkspace } from './CustomerOverviewWorkspace.js';
 import {
   initialCustomerForm,
@@ -55,9 +56,8 @@ export function CustomerPage({
   const [customerForm, setCustomerForm] =
     useState<CustomerFormModel>(initialCustomerForm);
   const [customerDetail, setCustomerDetail] = useState<Customer | null>(null);
-  const [defaultHourlyRateCents, setDefaultHourlyRateCents] = useState<
-    number | null
-  >(null);
+  const [defaultHourlyRateState, setDefaultHourlyRateState] =
+    useState<CustomerDefaultHourlyRateState>({ status: 'loading' });
   const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
   const [detailErrorMessage, setDetailErrorMessage] = useState<string | null>(
     null,
@@ -121,15 +121,20 @@ export function CustomerPage({
     let isActive = true;
 
     async function loadCompanyDefault(): Promise<void> {
+      setDefaultHourlyRateState({ status: 'loading' });
+
       try {
         const companySettings = await apiClient.getCompanySettings();
 
         if (isActive) {
-          setDefaultHourlyRateCents(companySettings.defaultHourlyRateCents);
+          setDefaultHourlyRateState({
+            status: 'loaded',
+            valueCents: companySettings.defaultHourlyRateCents,
+          });
         }
       } catch {
         if (isActive) {
-          setDefaultHourlyRateCents(null);
+          setDefaultHourlyRateState({ status: 'failed' });
         }
       }
     }
@@ -388,7 +393,7 @@ export function CustomerPage({
           activityState={activityState}
           customer={customerDetail}
           customers={customers}
-          defaultHourlyRateCents={defaultHourlyRateCents}
+          defaultHourlyRateState={defaultHourlyRateState}
           errorMessage={detailErrorMessage}
           invoiceState={invoiceState}
           isLoading={isDetailLoading}

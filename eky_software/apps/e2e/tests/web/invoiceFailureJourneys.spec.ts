@@ -250,6 +250,93 @@ test.describe('invoice approval database fault', () => {
   });
 });
 
+test.describe('invoice payment event database fault', () => {
+  test.use({
+    e2eFaultPlan: {
+      failOnCall: 1,
+      kind: 'databaseWriteFailed',
+      operation: 'markInvoicePaidEvent',
+    },
+  });
+
+  test('INV-PAYMENT-006 @critical @fault rolls back the payment projection when the append-only event write fails', async ({
+    e2eWeb,
+  }) => {
+    const approved = await createSentInvoiceForPaymentFault(e2eWeb);
+    const failedResponse = await e2eWeb.api.put(
+      `/invoices/${approved.invoiceId}/payment`,
+      { data: { paidOn: '2026-07-30' } },
+    );
+
+    expect(failedResponse.status()).toBe(500);
+    const failureText = await failedResponse.text();
+    expect(failureText).not.toContain('E2E_DATABASE_WRITE_FAILED');
+    expect(failureText).not.toContain('SQL');
+    expect(
+      readE2eSqliteRows(
+        e2eWeb.paths.databaseFilePath,
+        `
+          SELECT payment_state, paid_on, paid_amount_cents, payment_source
+          FROM invoices
+          WHERE id = ?
+        `,
+        approved.invoiceId,
+      ),
+    ).toEqual([
+      {
+        paid_amount_cents: null,
+        paid_on: null,
+        payment_source: null,
+        payment_state: 'unpaid',
+      },
+    ]);
+    expect(
+      readE2eSqliteRows(
+        e2eWeb.paths.databaseFilePath,
+        `
+          SELECT COUNT(*) AS count
+          FROM invoice_payment_events
+          WHERE invoice_id = ?
+        `,
+        approved.invoiceId,
+      ),
+    ).toEqual([{ count: 0 }]);
+
+    releaseE2eDatabaseFault(
+      e2eWeb.paths.databaseFilePath,
+      'markInvoicePaidEvent',
+    );
+    const successfulResponse = await e2eWeb.api.put(
+      `/invoices/${approved.invoiceId}/payment`,
+      { data: { paidOn: '2026-07-30' } },
+    );
+    expect(successfulResponse.status()).toBe(200);
+    expect(
+      readE2eSqliteRows(
+        e2eWeb.paths.databaseFilePath,
+        `
+          SELECT payment_state
+          FROM invoices
+          WHERE id = ?
+        `,
+        approved.invoiceId,
+      ),
+    ).toEqual([{ payment_state: 'paid' }]);
+    expect(
+      readE2eSqliteRows(
+        e2eWeb.paths.databaseFilePath,
+        `
+          SELECT COUNT(*) AS count
+          FROM invoice_payment_events
+          WHERE invoice_id = ? AND action = 'paymentMarkedPaid'
+        `,
+        approved.invoiceId,
+      ),
+    ).toEqual([{ count: 1 }]);
+    expect((await e2eWeb.api.get('/health')).status()).toBe(200);
+  });
+});
+
 test.describe('operational log writer fault', () => {
   test.use({ e2eFaultPlan: { kind: 'operationalLogWriteFailed' } });
 
@@ -307,6 +394,25 @@ async function createApprovedInvoiceWithPdf(
   });
   const approved = await approveCurrentInvoiceDraft(e2eWeb.page);
   await createCurrentInvoicePdf(e2eWeb.page);
+  return approved;
+}
+
+async function createSentInvoiceForPaymentFault(
+  e2eWeb: IsolatedWebHarness,
+) {
+  const customer = await seedInvoiceJourneyPrerequisites(e2eWeb);
+  await createInvoiceDraftThroughUi(e2eWeb.page, {
+    customerId: customer.customerId,
+    subject: 'E2E payment event rollback',
+  });
+  const approved = await approveCurrentInvoiceDraft(e2eWeb.page);
+  await createCurrentInvoicePdf(e2eWeb.page);
+  const sentResponse = await e2eWeb.api.post(
+    `/invoices/${approved.invoiceId}/mark-sent`,
+    { data: { deliveryMethod: 'manual' } },
+  );
+  expect(sentResponse.status()).toBe(200);
+
   return approved;
 }
 

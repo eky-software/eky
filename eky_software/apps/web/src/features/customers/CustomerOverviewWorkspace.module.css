@@ -1,0 +1,15 @@
+.workspace {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.navigation {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+}
+
+.navigation button {
+  min-height: 36px;
+}

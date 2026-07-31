@@ -2,6 +2,7 @@ import { isRecord } from '../../http.js';
 import {
   invalidApprovedInvoiceResponse,
   parseInvoiceKind,
+  parseInvoicePaymentReadModel,
   parseInvoiceStatus,
   parseInvoiceUnit,
   parseNumberingMode,
@@ -180,9 +181,11 @@ export function parseApprovedInvoiceView(value: unknown): ApprovedInvoiceView {
     throw invalidApprovedInvoiceResponse(value);
   }
 
+  const invoiceKind = parseInvoiceKind(value.invoiceKind);
+
   return {
     id: readString(value, 'id'),
-    invoiceKind: parseInvoiceKind(value.invoiceKind),
+    invoiceKind,
     creditedInvoiceId: readNullableString(value, 'creditedInvoiceId'),
     creditedInvoiceNumber: readNullableString(value, 'creditedInvoiceNumber'),
     creditedInvoiceDate: readNullableString(value, 'creditedInvoiceDate'),
@@ -294,6 +297,7 @@ export function parseApprovedInvoiceView(value: unknown): ApprovedInvoiceView {
     cancelledAt: readNullableString(value, 'cancelledAt'),
     cancelledBy: readNullableString(value, 'cancelledBy'),
     cancellationReason: readNullableString(value, 'cancellationReason'),
+    ...parseInvoicePaymentReadModel(value, invoiceKind),
   };
 }
 
@@ -304,9 +308,11 @@ export function parseApprovedInvoiceSummary(
     throw invalidApprovedInvoiceResponse(value);
   }
 
+  const invoiceKind = parseInvoiceKind(value.invoiceKind);
+
   return {
     id: readString(value, 'id'),
-    invoiceKind: parseInvoiceKind(value.invoiceKind),
+    invoiceKind,
     creditedInvoiceId: readNullableString(value, 'creditedInvoiceId'),
     invoiceNumber: readString(value, 'invoiceNumber'),
     referenceNumber: readString(value, 'referenceNumber'),
@@ -324,6 +330,7 @@ export function parseApprovedInvoiceSummary(
     approvedAt: readString(value, 'approvedAt'),
     updatedAt: readString(value, 'updatedAt'),
     cancelledAt: readNullableString(value, 'cancelledAt'),
+    ...parseInvoicePaymentReadModel(value, invoiceKind),
   };
 }
 
