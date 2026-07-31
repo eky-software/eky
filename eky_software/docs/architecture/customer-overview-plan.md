@@ -164,9 +164,13 @@ Koko työalueen asiakaskortti lisää:
 - osoitteen
 - tilan
 - isännöitsijä/taloyhtiö-suhteen, jos se liittyy asiakkaaseen
+- isännöitsijätoimiston hallinnoimat taloyhtiöt Customersin nykyisestä
+  yritysrajatusta read modelista
 - asiakaskohtaisen tuntihinnan tai tiedon nykyisen oman yrityksen
   oletustuntihinnan käytöstä
 - laskut, jotka Invoicing rajaa laskun `customerId`-arvolla
+- isännöitsijätoimiston erilliset taloyhtiölaskut, joissa se on laskulle
+  tallennettu vastaanottaja
 - turvallisen Customers-historian asiakkaan luonnista, päivityksistä,
   aktivoinnista ja passivoinnista
 
@@ -205,9 +209,33 @@ moduulien välistä tapahtumavirtaa.
 Invoicing on jo olemassa, joten asiakaskohtaiset laskut kuuluvat ensimmäiseen
 varsinaiseen koontiin. Invoicing omistaa luonnosten, hyväksyttyjen,
 lähetettyjen, maksettujen, osahyvitettyjen, kokonaan hyvitettyjen ja peruttujen
-laskujen listasemantiikan. Suodatus perustuu laskun `customerId`-arvoon, ei
-valinnaiseen laskun vastaanottajaan. Hyvityslaskut ja maksutila säilyvät
-Invoicingin omistamassa ryhmittelyssä.
+laskujen listasemantiikan. Asiakkaan omien laskujen suodatus perustuu aina
+laskun `customerId`-arvoon. Hyvityslaskut ja maksutila säilyvät Invoicingin
+omistamassa ryhmittelyssä.
+
+Laskun juridinen asiakasomistajuus ja laskun vastaanottaminen ovat eri
+vastuita:
+
+- `customerId` määrittää juridisen asiakkaan ja asiakaskortin, jonka omiin
+  laskuihin lasku kuuluu
+- `billingRecipientCustomerId` määrittää laskulle tallennetun erillisen
+  vastaanottajan
+- vastaanottajana oleva isännöitsijätoimisto ei omista taloyhtiön laskua eikä
+  lasku näy sen omassa `customerId`-rajatussa laskulistassa
+- isännöitsijätoimiston kortilla vastaanotetut taloyhtiölaskut näytetään
+  erillisessä `Taloyhtiöiden laskut vastaanottajana` -read modelissa
+- recipient-read model näyttää laskun varsinaisena asiakkaana laskulle
+  tallennetun customer-snapshotin
+- vastaanottajalasku päätellään laskulle tallennetusta
+  `billingRecipientCustomerId`-arvosta, ei Customersin nykyisestä
+  `managedByCustomerId`-suhteesta
+- historiallinen vastaanottajalasku säilyy isännöitsijän recipient-listassa,
+  vaikka taloyhtiön nykyinen isännöitsijäsuhde myöhemmin muuttuisi
+- luonnokset jätetään ensimmäisen recipient-overview-version ulkopuolelle
+
+Recipient-listaus on Invoicingin yritysrajattu julkinen read model. Customers
+ei JOINaa laskutuksen tauluja eikä kopioi lasku- tai snapshot-dataa omaan
+persistenssiinsä.
 
 Nykyisessä toteutuksessa asiakaskortin pääkategoriat ovat:
 

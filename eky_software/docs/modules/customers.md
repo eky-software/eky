@@ -286,13 +286,20 @@ Lasku voi ottaa asiakkaan tiedoista snapshotin, jotta vanhan laskun tiedot eivä
 
 Lasku tai laskurivi ottaa myöhemmin snapshotin myös käytetystä tuntihinnasta.
 
-Laskutuksessa erotetaan myöhemmin varsinainen asiakas (`customerId`) ja
+Laskutuksessa erotetaan varsinainen asiakas (`customerId`) ja
 valinnainen laskun vastaanottaja (`billingRecipientCustomerId`). Jos vastaanottaja
 puuttuu, laskun vastaanottaja on sama kuin asiakas. Taloyhtiö voi siis olla työn
 tai laskun asiakas, ja isännöitsijätoimisto voi olla laskun vastaanottaja, jos
 käyttäjä valitsee sen laskulla. Tämä ei muuta Customers-moduulin omistajuutta:
 Customers omistaa edelleen asiakas-master-datan, ja Invoicing omistaa laskulle
 tallennetut vastaanottaja- ja asiakassnapshotit.
+
+Asiakaskortin omat laskut perustuvat aina `customerId`-arvoon. Erillinen
+vastaanottaja ei saa laskua omiin laskuihinsa. Isännöitsijätoimiston kortilla
+voidaan näyttää erillinen Invoicingin omistama read model niistä
+taloyhtiölaskuista, joiden tallennettu `billingRecipientCustomerId` viittaa
+isännöitsijään. Tämä historiallinen näkyvyys ei seuraa Customersin nykyistä
+`managedByCustomerId`-suhdetta eikä muuta laskun juridista omistajuutta.
 
 Tarkempi malli on dokumentissa `docs/architecture/invoice-print-data-foundation-plan.md`.
 
@@ -355,9 +362,12 @@ pääsisältö, ja uuden asiakkaan luonti sekä olemassa olevan asiakkaan read/e
 Ensimmäinen varsinainen asiakaskortti näyttää myös asiakaskohtaiset laskut,
 koska Invoicing-moduuli on olemassa. Customers ei omista, JOINaa tai kirjoita
 laskudataa, vaan käyttää Invoicingin julkisia, yritys- ja asiakasrajattuja
-lukusopimuksia. Asiakaskortin historia on Customersin oma turvallinen projektio
-asiakkaan luonnista, päivityksistä, aktivoinnista ja passivoinnista ilman
-kenttäarvoja tai yhteystietoja.
+lukusopimuksia. Isännöitsijätoimiston erillinen vastaanottajalaskujen paneeli
+käyttää Invoicingin `companyId + billingRecipientCustomerId` -rajattua read
+modelia ja jättää luonnokset ensimmäisessä versiossa ulkopuolelle.
+Asiakaskortin historia on Customersin oma turvallinen projektio asiakkaan
+luonnista, päivityksistä, aktivoinnista ja passivoinnista ilman kenttäarvoja
+tai yhteystietoja.
 
 Sites ja Work Orders lisätään myöhemmin niiden omistavien moduulien read
 modelien kautta. Koontinäkymä ei siirrä laskujen, kohteiden, työmääräysten,

@@ -499,6 +499,26 @@ Y-tunnus estävät käännetyn verovelvollisuuden. Ohjelma ei kuitenkaan päätt
 soveltuvuutta asiakastyypistä, Y-tunnuksesta, toimialasta tai rivitekstistä,
 vaan käyttäjän pitää vahvistaa soveltuvuus hyväksynnässä.
 
+Sama omistajuusraja koskee laskulistauksia:
+
+- `customerId` määrittää juridisen asiakkaan ja asiakkaan omat laskut
+- `billingRecipientCustomerId` määrittää erillisen laskun vastaanottajan
+- lasku ei siirry vastaanottajan omaksi laskuksi
+- Invoicing voi tarjota vastaanottajalle erillisen yritysrajatun read modelin
+  hyväksytyistä ja lähetetyistä laskuista
+- recipient-read model rajaa pois tapaukset, joissa juridinen asiakas ja
+  vastaanottaja ovat sama asiakas
+- recipient-read model käyttää laskulle tallennettua vastaanottajatunnistetta
+  ja customer-snapshotia eikä päättele suhdetta Customersin nykyisestä
+  `managedByCustomerId`-arvosta
+- nykyisen asiakassuhteen muuttaminen ei muuta historiallisten laskujen
+  vastaanottajanäkymää
+- luonnoksia ei näytetä ensimmäisessä recipient-overview-versiossa
+
+`customerId`- ja `billingRecipientCustomerId`-suodattimia ei saa käyttää
+samassa listauspyynnössä. Molemmat rajataan aina backendin vahvistaman
+`companyId`-kontekstin sisälle.
+
 Laskun suoritusajankohta mallinnetaan laskutason
 `InvoicePerformancePeriod`-tyyppinä: sama kuin laskun päivä, yksittäinen
 suorituspäivä tai laskutusjakso. Hyväksytty lasku snapshottaa valinnan ja
