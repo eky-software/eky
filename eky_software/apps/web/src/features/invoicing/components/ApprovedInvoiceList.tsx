@@ -1,11 +1,11 @@
 import type { ApprovedInvoiceSummary } from '@eky/api-client';
 
-import {
-  formatApprovedInvoiceDate,
-  formatApprovedInvoicePresentedCurrency,
-} from '../approved/approvedInvoiceFormatting.js';
 import styles from './InvoiceDraftList.module.css';
 import { uiText } from '../../../i18n/fi.js';
+import {
+  InvoiceListTable,
+  type InvoiceListTableLabels,
+} from '../../../shared/invoiceList/index.js';
 
 interface ApprovedInvoiceListProps {
   approvedInvoices: ApprovedInvoiceSummary[];
@@ -43,24 +43,16 @@ export function ApprovedInvoiceList({
   }
 
   return (
-    <div
-      aria-label={listLabel}
-      className={`${styles.table} ${styles.invoiceStatusTable}`}
-      role="table"
-    >
-      <div className={`${styles.row} ${styles.head}`} role="row">
-        <span role="columnheader">{uiText.invoicing.invoice}</span>
-        <span role="columnheader">{uiText.invoicing.customer}</span>
-        <span role="columnheader">{uiText.invoicing.invoiceDate}</span>
-        <span role="columnheader">{uiText.invoicing.dueDate}</span>
-        <span className={styles.totalHeader} role="columnheader">
-          {uiText.invoicing.total}
-        </span>
-        <span role="columnheader">{uiText.invoicing.status}</span>
-      </div>
-      {approvedInvoices.map((invoice) => (
-        <div className={styles.row} key={invoice.id} role="row">
-          <div className={styles.mainCell} role="cell">
+    <InvoiceListTable
+      ariaLabel={listLabel}
+      labels={invoiceListLabels}
+      rows={approvedInvoices.map((invoice) => ({
+        customer: formatApprovedInvoiceCustomer(invoice),
+        dueDate: invoice.dueDate,
+        invoiceDate: invoice.invoiceDate,
+        key: invoice.id,
+        reference: (
+          <div className={styles.mainCell}>
             <button
               className={styles.openButton}
               onClick={() => onOpenApprovedInvoice(invoice.id)}
@@ -72,31 +64,23 @@ export function ApprovedInvoiceList({
               {invoice.invoiceNumber}
             </button>
           </div>
-          <span role="cell">
-            {formatApprovedInvoiceCustomer(invoice)}
-          </span>
-          <time dateTime={invoice.invoiceDate} role="cell">
-            {formatApprovedInvoiceDate(invoice.invoiceDate)}
-          </time>
-          <time dateTime={invoice.dueDate} role="cell">
-            {formatApprovedInvoiceDate(invoice.dueDate)}
-          </time>
-          <strong className={styles.total} role="cell">
-            {formatApprovedInvoicePresentedCurrency(
-              invoice.grossTotalCents,
-              invoice.invoiceKind,
-            )}
-          </strong>
-          <span className="status-pill status-pill-active" role="cell">
+        ),
+        status: (
+          <span className="status-pill status-pill-active">
             {invoice.status === 'cancelled'
               ? uiText.invoicing.statusCancelled
               : invoice.status === 'sent'
                 ? uiText.invoicing.statusSent
                 : uiText.invoicing.statusApproved}
           </span>
-        </div>
-      ))}
-    </div>
+        ),
+        totalCents:
+          invoice.invoiceKind === 'credit'
+            ? -Math.abs(invoice.grossTotalCents)
+            : invoice.grossTotalCents,
+      }))}
+      showCustomer
+    />
   );
 }
 
@@ -105,3 +89,15 @@ function formatApprovedInvoiceCustomer(
 ): string {
   return `${invoice.customerNumberSnapshot} – ${invoice.customerNameSnapshot}`;
 }
+
+const invoiceListLabels: InvoiceListTableLabels = {
+  actions: uiText.customers.actions,
+  creditRelation: uiText.customers.creditRelation,
+  customer: uiText.invoicing.customer,
+  dueDate: uiText.invoicing.dueDate,
+  invoice: uiText.invoicing.invoice,
+  invoiceDate: uiText.invoicing.invoiceDate,
+  paidOn: uiText.invoicing.invoicePaymentDate,
+  status: uiText.invoicing.status,
+  total: uiText.invoicing.total,
+};

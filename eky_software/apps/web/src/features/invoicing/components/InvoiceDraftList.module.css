@@ -27,12 +27,6 @@
   background: var(--color-surface);
 }
 
-.invoiceStatusTable .row {
-  grid-template-columns:
-    minmax(220px, 1.6fr) minmax(160px, 1fr) minmax(110px, 0.75fr)
-    minmax(110px, 0.75fr) minmax(110px, 0.75fr) minmax(90px, 0.6fr);
-}
-
 .row:first-child {
   border-top: 0;
 }

@@ -28,51 +28,6 @@
   font-size: 0.95rem;
 }
 
-.tableFrame {
-  max-width: 100%;
-  overflow-x: auto;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-}
-
-.table {
-  width: 100%;
-  min-width: 900px;
-  border-collapse: collapse;
-  font-size: 0.84rem;
-}
-
-.table th,
-.table td {
-  padding: 9px 10px;
-  border-bottom: 1px solid var(--color-border);
-  text-align: left;
-  vertical-align: middle;
-}
-
-.table th {
-  color: var(--color-text-muted);
-  background: var(--color-surface-subtle);
-  font-size: 0.76rem;
-  text-transform: uppercase;
-}
-
-.table tr:last-child td {
-  border-bottom: 0;
-}
-
-.amount,
-.table th:nth-child(4) {
-  text-align: right;
-  white-space: nowrap;
-}
-
-.openCell {
-  width: 1%;
-  text-align: right;
-  white-space: nowrap;
-}
-
 .pagination {
   display: flex;
   gap: 10px;
