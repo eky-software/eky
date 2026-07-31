@@ -9,7 +9,7 @@ import {
   type IsolatedWebHarness,
 } from '../../src/fixtures/isolatedWebTest.js';
 
-test('CUS-UI-001 @critical creates, edits, searches and reloads a customer', async ({
+test('CUS-UI-001 CUS-OVERVIEW-001 @critical creates, edits, searches and reloads a customer', async ({
   e2eWeb,
 }) => {
   await createCustomerThroughUi(e2eWeb.page, {
@@ -19,9 +19,14 @@ test('CUS-UI-001 @critical creates, edits, searches and reloads a customer', asy
     name: 'Synteettinen Asiakas Oy',
   });
 
-  await e2eWeb.page
-    .getByRole('button', { name: /E2E-2101.*Synteettinen Asiakas Oy/ })
-    .click();
+  await expect(
+    e2eWeb.page.getByRole('heading', {
+      level: 2,
+      name: 'Synteettinen Asiakas Oy',
+    }),
+  ).toBeVisible();
+  await expect(e2eWeb.page.getByLabel('Nimi *')).toHaveCount(0);
+  await e2eWeb.page.getByRole('button', { name: 'Muokkaa' }).click();
   await e2eWeb.page.getByLabel('Nimi *').fill('Muokattu Asiakas Oy');
   await e2eWeb.page
     .getByLabel('Katuosoite')
@@ -33,7 +38,16 @@ test('CUS-UI-001 @critical creates, edits, searches and reloads a customer', asy
   );
   await e2eWeb.page.getByRole('button', { name: 'Tallenna muutokset' }).click();
   expect((await updateResponse).status()).toBe(200);
+  await expect(
+    e2eWeb.page.getByRole('heading', {
+      level: 2,
+      name: 'Muokattu Asiakas Oy',
+    }),
+  ).toBeVisible();
 
+  await e2eWeb.page
+    .getByRole('button', { name: 'Takaisin asiakaslistaan' })
+    .click();
   const search = e2eWeb.page.getByLabel('Hae asiakasta');
   await search.fill('E2E-2101');
   await expect(
@@ -118,6 +132,9 @@ test('CUS-INPUT-001 @security enforces bounded text and renders hostile text lit
     customerNumber: 'E2E-MAX',
     name: maximumName,
   });
+  await e2eWeb.page
+    .getByRole('button', { name: 'Takaisin asiakaslistaan' })
+    .click();
 
   await openNewCustomerForm(e2eWeb.page, 'E2E-OVERFLOW');
   await fillCustomerFields(e2eWeb.page, {
@@ -156,7 +173,10 @@ test('CUS-INPUT-001 @security enforces bounded text and renders hostile text lit
   });
 
   await expect(
-    e2eWeb.page.getByRole('button', { name: new RegExp(escapeRegExp(hostileName)) }),
+    e2eWeb.page.getByRole('heading', {
+      level: 2,
+      name: hostileName,
+    }),
   ).toBeVisible();
   expect(
     await e2eWeb.page.evaluate(
@@ -167,6 +187,9 @@ test('CUS-INPUT-001 @security enforces bounded text and renders hostile text lit
     ),
   ).toBe(false);
   expect(popupCount).toBe(0);
+  await e2eWeb.page
+    .getByRole('button', { name: 'Takaisin asiakaslistaan' })
+    .click();
 
   const listResponse = await e2eWeb.api.get('/customers');
   expect(listResponse.status()).toBe(200);
@@ -393,7 +416,7 @@ async function createCustomerThroughUi(
   await page.getByRole('button', { name: 'Lisää', exact: true }).click();
   expect((await createResponse).status()).toBe(201);
   await expect(
-    page.getByRole('button', { name: new RegExp(escapeRegExp(input.name)) }),
+    page.getByRole('heading', { level: 2, name: input.name }),
   ).toBeVisible();
 }
 

@@ -18,6 +18,7 @@ export interface SentInvoiceGroup {
 
 export interface SentInvoiceGroupQuery {
   companyId: string;
+  customerId: string | null;
   creditState: SentInvoiceCreditStateFilter;
   dateFrom: string | null;
   dateTo: string | null;

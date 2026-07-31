@@ -42,12 +42,13 @@ describe('approved invoice query routes', () => {
     });
 
     const response = await app.request(
-      '/invoices?status=sent&dateFrom=2026-01-01&dateTo=2026-12-31&page=2&pageSize=50&sort=customerNameAsc',
+      '/invoices?status=sent&customerId=customer-1&dateFrom=2026-01-01&dateTo=2026-12-31&page=2&pageSize=50&sort=customerNameAsc',
     );
 
     expect(response.status).toBe(200);
     expect(getListInput()).toEqual({
       companyId: 'dev-company',
+      customerId: 'customer-1',
       status: 'sent',
       dateFrom: '2026-01-01',
       dateTo: '2026-12-31',
@@ -81,12 +82,13 @@ describe('approved invoice query routes', () => {
     const { app, getSentGroupInput } = createTestApp({});
 
     const response = await app.request(
-      '/sent-invoice-groups?dateFrom=2026-01-01&page=2&pageSize=50',
+      '/sent-invoice-groups?customerId=customer-1&dateFrom=2026-01-01&page=2&pageSize=50',
     );
 
     expect(response.status).toBe(200);
     expect(getSentGroupInput()).toEqual({
       companyId: 'dev-company',
+      customerId: 'customer-1',
       creditState: 'all',
       dateFrom: '2026-01-01',
       page: 2,
@@ -126,6 +128,17 @@ describe('approved invoice query routes', () => {
     );
 
     expect(invalidResponse.status).toBe(400);
+  });
+
+  it.each([
+    '/invoices?customerId=',
+    `/invoices?customerId=${'x'.repeat(201)}`,
+  ])('rejects an invalid customer filter: %s', async (path) => {
+    const { app } = createTestApp({});
+
+    const response = await app.request(path);
+
+    expect(response.status).toBe(400);
   });
 
   it('returns a credit context in the trusted company scope', async () => {

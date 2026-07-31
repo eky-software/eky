@@ -188,6 +188,143 @@ describe('SqliteSentInvoiceGroupReader', () => {
     });
   });
 
+  it('filters root invoices by customer and preserves their credit groups', async () => {
+    insertInvoiceClone(database, {
+      id: 'invoice-customer-2',
+      sourceDraftId: 'draft-customer-2',
+      invoiceKind: 'standard',
+      creditedInvoiceId: null,
+      invoiceNumber: '20260002',
+      status: 'sent',
+      totalGrossCents: 20_000,
+      invoiceDate: '2026-06-14',
+      customerId: 'customer-2',
+      billingRecipientCustomerId: 'customer-1',
+    });
+    insertInvoiceClone(database, {
+      id: 'credit-customer-1',
+      sourceDraftId: 'credit-draft-customer-1',
+      invoiceKind: 'credit',
+      creditedInvoiceId: 'invoice-1',
+      invoiceNumber: '20260003',
+      status: 'sent',
+      totalGrossCents: 10_000,
+      invoiceDate: '2026-06-15',
+      customerId: 'customer-1',
+    });
+
+    await expect(
+      reader.listSentInvoiceGroups(
+        createSentInvoiceGroupQuery({ customerId: 'customer-1' }),
+      ),
+    ).resolves.toMatchObject({
+      groups: [
+        {
+          rootInvoice: { id: 'invoice-1' },
+          creditInvoices: [{ id: 'credit-customer-1' }],
+          creditStatus: 'partial',
+        },
+      ],
+      totalCount: 1,
+    });
+    await expect(
+      reader.listSentInvoiceGroups(
+        createSentInvoiceGroupQuery({ customerId: 'customer-2' }),
+      ),
+    ).resolves.toMatchObject({
+      groups: [
+        {
+          rootInvoice: { id: 'invoice-customer-2' },
+          creditInvoices: [],
+        },
+      ],
+      totalCount: 1,
+    });
+    await expect(
+      reader.listSentInvoiceGroups(
+        createSentInvoiceGroupQuery({ customerId: 'unknown-customer' }),
+      ),
+    ).resolves.toEqual({ groups: [], totalCount: 0 });
+    await expect(
+      reader.listSentInvoiceGroups(
+        createSentInvoiceGroupQuery({
+          customerId: "customer-1' OR 1=1 --",
+        }),
+      ),
+    ).resolves.toEqual({ groups: [], totalCount: 0 });
+  });
+
+  it('applies customer filtering consistently to page results and total count', async () => {
+    insertInvoiceClone(database, {
+      id: 'invoice-customer-1-b',
+      sourceDraftId: 'draft-customer-1-b',
+      invoiceKind: 'standard',
+      creditedInvoiceId: null,
+      invoiceNumber: '20260002',
+      status: 'sent',
+      totalGrossCents: 20_000,
+      invoiceDate: '2026-06-14',
+      customerId: 'customer-1',
+    });
+    insertInvoiceClone(database, {
+      id: 'invoice-customer-2',
+      sourceDraftId: 'draft-customer-2',
+      invoiceKind: 'standard',
+      creditedInvoiceId: null,
+      invoiceNumber: '20260003',
+      status: 'sent',
+      totalGrossCents: 20_000,
+      invoiceDate: '2026-06-15',
+      customerId: 'customer-2',
+    });
+
+    await expect(
+      reader.listSentInvoiceGroups(
+        createSentInvoiceGroupQuery({
+          customerId: 'customer-1',
+          limit: 1,
+          offset: 1,
+        }),
+      ),
+    ).resolves.toMatchObject({
+      groups: [{ rootInvoice: { id: 'invoice-1' } }],
+      totalCount: 2,
+    });
+  });
+
+  it('preserves full-credit status inside a customer-filtered group', async () => {
+    insertInvoiceClone(database, {
+      id: 'credit-full',
+      sourceDraftId: 'credit-draft-full',
+      invoiceKind: 'credit',
+      creditedInvoiceId: 'invoice-1',
+      invoiceNumber: '20260002',
+      status: 'sent',
+      totalGrossCents: 35_100,
+      invoiceDate: '2026-06-14',
+      customerId: 'customer-1',
+    });
+
+    await expect(
+      reader.listSentInvoiceGroups(
+        createSentInvoiceGroupQuery({
+          customerId: 'customer-1',
+          creditState: 'credited',
+        }),
+      ),
+    ).resolves.toMatchObject({
+      groups: [
+        {
+          rootInvoice: { id: 'invoice-1' },
+          creditInvoices: [{ id: 'credit-full' }],
+          creditStatus: 'full',
+          remainingCreditableGrossCents: 0,
+        },
+      ],
+      totalCount: 1,
+    });
+  });
+
   it('does not return sent invoice groups outside the company scope', async () => {
     await expect(
       reader.listSentInvoiceGroups(

@@ -217,6 +217,141 @@ describe('SqliteApprovedInvoiceReader', () => {
     ]);
   });
 
+  it('filters by invoice customer instead of the billing recipient', async () => {
+    insertInvoiceClone(database, {
+      id: 'invoice-customer-2',
+      sourceDraftId: 'draft-customer-2',
+      invoiceKind: 'standard',
+      creditedInvoiceId: null,
+      invoiceNumber: '20260002',
+      status: 'approved',
+      totalGrossCents: 20_000,
+      invoiceDate: '2026-06-14',
+      customerId: 'customer-2',
+      billingRecipientCustomerId: 'customer-1',
+    });
+
+    await expect(
+      reader.listApprovedInvoiceSummaries(
+        createApprovedInvoiceListQuery({ customerId: 'customer-1' }),
+      ),
+    ).resolves.toMatchObject({
+      invoices: [{ id: 'invoice-1' }],
+      totalCount: 1,
+    });
+    await expect(
+      reader.listApprovedInvoiceSummaries(
+        createApprovedInvoiceListQuery({ customerId: 'customer-2' }),
+      ),
+    ).resolves.toMatchObject({
+      invoices: [{ id: 'invoice-customer-2' }],
+      totalCount: 1,
+    });
+    await expect(
+      reader.listApprovedInvoiceSummaries(
+        createApprovedInvoiceListQuery({ customerId: 'unknown-customer' }),
+      ),
+    ).resolves.toEqual({ invoices: [], totalCount: 0 });
+    await expect(
+      reader.listApprovedInvoiceSummaries(
+        createApprovedInvoiceListQuery({
+          customerId: "customer-1' OR 1=1 --",
+        }),
+      ),
+    ).resolves.toEqual({ invoices: [], totalCount: 0 });
+  });
+
+  it('applies the customer filter to credit and cancelled invoice summaries', async () => {
+    insertInvoiceClone(database, {
+      id: 'credit-invoice-customer-1',
+      sourceDraftId: 'credit-draft-customer-1',
+      invoiceKind: 'credit',
+      creditedInvoiceId: 'invoice-1',
+      invoiceNumber: '20260002',
+      status: 'approved',
+      totalGrossCents: 10_000,
+      invoiceDate: '2026-06-14',
+      customerId: 'customer-1',
+    });
+    insertInvoiceClone(database, {
+      id: 'cancelled-invoice-customer-1',
+      sourceDraftId: 'cancelled-draft-customer-1',
+      invoiceKind: 'standard',
+      creditedInvoiceId: null,
+      invoiceNumber: '20260003',
+      status: 'cancelled',
+      totalGrossCents: 20_000,
+      invoiceDate: '2026-06-15',
+      customerId: 'customer-1',
+    });
+    insertInvoiceClone(database, {
+      id: 'cancelled-invoice-customer-2',
+      sourceDraftId: 'cancelled-draft-customer-2',
+      invoiceKind: 'standard',
+      creditedInvoiceId: null,
+      invoiceNumber: '20260004',
+      status: 'cancelled',
+      totalGrossCents: 30_000,
+      invoiceDate: '2026-06-16',
+      customerId: 'customer-2',
+    });
+
+    await expect(
+      reader.listApprovedInvoiceSummaries(
+        createApprovedInvoiceListQuery({ customerId: 'customer-1' }),
+      ),
+    ).resolves.toMatchObject({
+      invoices: [
+        { id: 'credit-invoice-customer-1', invoiceKind: 'credit' },
+        { id: 'invoice-1', invoiceKind: 'standard' },
+      ],
+      totalCount: 2,
+    });
+    await expect(
+      reader.listApprovedInvoiceSummaries(
+        createApprovedInvoiceListQuery({
+          customerId: 'customer-1',
+          status: 'cancelled',
+        }),
+      ),
+    ).resolves.toMatchObject({
+      invoices: [{ id: 'cancelled-invoice-customer-1' }],
+      totalCount: 1,
+    });
+  });
+
+  it('keeps the customer filter inside the trusted company scope', async () => {
+    insertInvoiceClone(database, {
+      id: 'other-company-invoice',
+      sourceDraftId: 'other-company-draft',
+      invoiceKind: 'standard',
+      creditedInvoiceId: null,
+      invoiceNumber: '20260002',
+      status: 'approved',
+      totalGrossCents: 20_000,
+      invoiceDate: '2026-06-14',
+      customerId: 'customer-1',
+    });
+    database
+      .prepare(
+        `
+          UPDATE invoices
+          SET company_id = 'other-company'
+          WHERE id = 'other-company-invoice'
+        `,
+      )
+      .run();
+
+    await expect(
+      reader.listApprovedInvoiceSummaries(
+        createApprovedInvoiceListQuery({ customerId: 'customer-1' }),
+      ),
+    ).resolves.toMatchObject({
+      invoices: [{ id: 'invoice-1' }],
+      totalCount: 1,
+    });
+  });
+
   it('does not reveal detail or summaries outside the company scope', async () => {
     await expect(
       reader.getApprovedInvoiceById('other-company', 'invoice-1'),

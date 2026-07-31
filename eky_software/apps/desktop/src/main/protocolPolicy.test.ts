@@ -21,6 +21,13 @@ describe('desktop protocol policy', () => {
 
   it('allows only explicitly named backend routes and methods', () => {
     expect(isAllowedBackendRequest('GET', '/customers')).toBe(true);
+    expect(isAllowedBackendRequest('GET', '/customers/customer-1')).toBe(true);
+    expect(
+      isAllowedBackendRequest('GET', '/customers/customer-1/activity'),
+    ).toBe(true);
+    expect(
+      isAllowedBackendRequest('POST', '/customers/customer-1/activity'),
+    ).toBe(false);
     expect(isAllowedBackendRequest('GET', '/activity')).toBe(true);
     expect(isAllowedBackendRequest('POST', '/activity')).toBe(false);
     expect(isAllowedBackendRequest('GET', '/diagnostics/events')).toBe(true);

@@ -1,18 +1,33 @@
 import { createActorContext } from '@eky/auth';
+import { AuthorizationError } from '@eky/permissions';
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 
 import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 
 import type { CreateCustomerInput } from '../application/createCustomer.js';
+import type { GetCustomerInput } from '../application/getCustomer.js';
+import type { ListCustomerHistoryInput } from '../application/listCustomerHistory.js';
 import type { ListCustomersInput } from '../application/listCustomers.js';
 import type { UpdateCustomerInput } from '../application/updateCustomer.js';
 import type { Customer } from '../domain/customer.js';
+import type { CustomerHistoryPage } from '../domain/customerHistory.js';
+import { CustomerNotFoundError } from '../application/customerReadErrors.js';
 import { CustomerValidationError } from '../domain/customerRules.js';
 import { createCustomersRoutes as createCustomersRouteHandlers } from './customersRoutes.js';
 
 function createCustomersRoutes(
-  dependencies: Parameters<typeof createCustomersRouteHandlers>[0],
+  dependencies: Omit<
+    Parameters<typeof createCustomersRouteHandlers>[0],
+    'getCustomer' | 'listCustomerHistory'
+  > &
+    Partial<
+      Pick<
+        Parameters<typeof createCustomersRouteHandlers>[0],
+        'getCustomer' | 'listCustomerHistory'
+      >
+    >,
+  permissions: readonly 'viewActivity'[] = [],
 ): Hono<BackendEnvironment> {
   const app = new Hono<BackendEnvironment>();
   app.use('*', async (context, next) => {
@@ -22,12 +37,23 @@ function createCustomersRoutes(
         actorId: 'local-owner',
         authenticationMode: 'local',
         companyId: 'dev-company',
-        permissions: [],
+        permissions,
       }),
     );
     await next();
   });
-  app.route('/', createCustomersRouteHandlers(dependencies));
+  app.route(
+    '/',
+    createCustomersRouteHandlers({
+      async getCustomer(): Promise<Customer> {
+        throw new Error('getCustomer should not be called');
+      },
+      async listCustomerHistory(): Promise<CustomerHistoryPage> {
+        throw new Error('listCustomerHistory should not be called');
+      },
+      ...dependencies,
+    }),
+  );
 
   return app;
 }
@@ -56,6 +82,158 @@ describe('customersRoutes', () => {
     expect(response.status).toBe(200);
     expect(listInput).toEqual({ companyId: 'dev-company' });
     expect(body).toEqual({ customers });
+  });
+
+  it('gets one customer through ActorContext without accepting companyId', async () => {
+    const customer = createTestCustomer();
+    let getInput: GetCustomerInput | undefined;
+    const app = createCustomersRoutes({
+      async createCustomer(): Promise<Customer> {
+        throw new Error('createCustomer should not be called');
+      },
+      async getCustomer(input) {
+        getInput = input;
+        return customer;
+      },
+      async listCustomers(): Promise<Customer[]> {
+        return [];
+      },
+      async updateCustomer(): Promise<Customer> {
+        throw new Error('updateCustomer should not be called');
+      },
+    });
+
+    const response = await app.request(
+      '/customers/customer-1',
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ customer });
+    expect(getInput).toEqual({
+      actorContext: expect.objectContaining({ companyId: 'dev-company' }),
+      customerId: 'customer-1',
+    });
+  });
+
+  it('returns the same safe not-found response for scoped customer misses', async () => {
+    const app = createCustomersRoutes({
+      async createCustomer(): Promise<Customer> {
+        throw new Error('createCustomer should not be called');
+      },
+      async getCustomer() {
+        throw new CustomerNotFoundError();
+      },
+      async listCustomers(): Promise<Customer[]> {
+        return [];
+      },
+      async updateCustomer(): Promise<Customer> {
+        throw new Error('updateCustomer should not be called');
+      },
+    });
+
+    const response = await app.request(
+      '/customers/customer-in-another-company',
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Customer not found.',
+    });
+  });
+
+  it('lists only the selected customer activity with safe pagination', async () => {
+    let historyInput: ListCustomerHistoryInput | undefined;
+    const customerActivityPage: CustomerHistoryPage = {
+      activityEntries: [
+        {
+          action: 'customer.updated',
+          changeCategories: ['contact'],
+          id: 'event-1',
+          occurredAt: '2026-07-01T00:00:00.000Z',
+        },
+      ],
+      hasNextPage: false,
+      hasPreviousPage: true,
+      page: 2,
+      pageSize: 20,
+    };
+    const app = createCustomersRoutes(
+      {
+        async createCustomer(): Promise<Customer> {
+          throw new Error('createCustomer should not be called');
+        },
+        async listCustomerHistory(input) {
+          historyInput = input;
+          return customerActivityPage;
+        },
+        async listCustomers(): Promise<Customer[]> {
+          return [];
+        },
+        async updateCustomer(): Promise<Customer> {
+          throw new Error('updateCustomer should not be called');
+        },
+      },
+      ['viewActivity'],
+    );
+
+    const response = await app.request(
+      '/customers/customer-1/activity?page=2&pageSize=20',
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ customerActivityPage });
+    expect(historyInput).toEqual({
+      actorContext: expect.objectContaining({
+        companyId: 'dev-company',
+        permissions: ['viewActivity'],
+      }),
+      customerId: 'customer-1',
+      page: 2,
+      pageSize: 20,
+    });
+  });
+
+  it('rejects unsupported and invalid customer activity queries', async () => {
+    const app = createCustomersRoutes({
+      async createCustomer(): Promise<Customer> {
+        throw new Error('createCustomer should not be called');
+      },
+      async listCustomers(): Promise<Customer[]> {
+        return [];
+      },
+      async updateCustomer(): Promise<Customer> {
+        throw new Error('updateCustomer should not be called');
+      },
+    });
+
+    expect(
+      (await app.request('/customers/customer-1/activity?companyId=other')).status,
+    ).toBe(400);
+    expect(
+      (await app.request('/customers/customer-1/activity?pageSize=100')).status,
+    ).toBe(400);
+  });
+
+  it('denies customer activity without the required permission', async () => {
+    const app = createCustomersRoutes({
+      async createCustomer(): Promise<Customer> {
+        throw new Error('createCustomer should not be called');
+      },
+      async listCustomerHistory() {
+        throw new AuthorizationError();
+      },
+      async listCustomers(): Promise<Customer[]> {
+        return [];
+      },
+      async updateCustomer(): Promise<Customer> {
+        throw new Error('updateCustomer should not be called');
+      },
+    });
+
+    const response = await app.request('/customers/customer-1/activity');
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: 'Forbidden.' });
   });
 
   it('creates a customer through the route dependencies', async () => {

@@ -16,6 +16,7 @@ describe('listApprovedInvoices', () => {
       listApprovedInvoices(
         {
           companyId: 'dev-company',
+          customerId: ' customer-1 ',
           status: 'sent',
           dateFrom: '2026-01-01',
           dateTo: '2026-12-31',
@@ -34,6 +35,7 @@ describe('listApprovedInvoices', () => {
     });
     expect(reader.listApprovedInvoiceSummaries).toHaveBeenCalledWith({
       companyId: 'dev-company',
+      customerId: 'customer-1',
       status: 'sent',
       dateFrom: '2026-01-01',
       dateTo: '2026-12-31',
@@ -93,6 +95,28 @@ describe('listApprovedInvoices', () => {
       ),
     ).rejects.toBeInstanceOf(InvoiceDraftValidationError);
   });
+
+  it.each(['', 'x'.repeat(201)])(
+    'rejects an invalid customer filter before calling the reader: %s',
+    async (customerId) => {
+      const reader = createReader();
+
+      await expect(
+        listApprovedInvoices(
+          {
+            companyId: 'dev-company',
+            customerId,
+            status: 'approved',
+            page: 1,
+            pageSize: 20,
+            sort: 'invoiceDateDesc',
+          },
+          reader,
+        ),
+      ).rejects.toBeInstanceOf(InvoiceDraftValidationError);
+      expect(reader.listApprovedInvoiceSummaries).not.toHaveBeenCalled();
+    },
+  );
 });
 
 function createReader(): ApprovedInvoiceReader {

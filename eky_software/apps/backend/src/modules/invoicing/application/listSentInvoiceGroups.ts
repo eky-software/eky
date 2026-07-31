@@ -5,10 +5,12 @@ import type {
 } from '../domain/sentInvoiceGroup.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
 import type { SentInvoiceGroupReader } from '../ports/sentInvoiceGroupReader.js';
+import { normalizeOptionalInvoiceListCustomerId } from './invoiceListCustomerFilter.js';
 import { validateApprovedInvoiceListInput } from './listApprovedInvoices.js';
 
 export interface ListSentInvoiceGroupsInput {
   companyId: string;
+  customerId?: string;
   creditState?: SentInvoiceCreditStateFilter;
   dateFrom?: string;
   dateTo?: string;
@@ -22,6 +24,7 @@ export async function listSentInvoiceGroups(
   reader: SentInvoiceGroupReader,
 ): Promise<SentInvoiceGroupListPage> {
   validateApprovedInvoiceListInput({ ...input, status: 'sent' });
+  const customerId = normalizeOptionalInvoiceListCustomerId(input.customerId);
   const creditState = input.creditState ?? 'all';
 
   if (
@@ -37,6 +40,7 @@ export async function listSentInvoiceGroups(
   const offset = (input.page - 1) * input.pageSize;
   const result = await reader.listSentInvoiceGroups({
     companyId: input.companyId,
+    customerId,
     creditState,
     dateFrom: input.dateFrom ?? null,
     dateTo: input.dateTo ?? null,

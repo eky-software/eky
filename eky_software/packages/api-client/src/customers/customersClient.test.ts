@@ -34,6 +34,102 @@ describe('createEkyApiClient', () => {
     ]);
   });
 
+  it('gets one customer through GET /customers/:id', async () => {
+    const customer = createTestCustomer();
+    const requests: string[] = [];
+    const client = createEkyApiClient({
+      baseUrl: '',
+      fetch: async (input) => {
+        requests.push(input.toString());
+        return jsonResponse({ customer });
+      },
+    });
+
+    await expect(client.getCustomer('customer-1')).resolves.toEqual(customer);
+    expect(requests).toEqual(['/customers/customer-1']);
+  });
+
+  it('lists a strict customer activity page with safe query controls', async () => {
+    const customerActivityPage = {
+      activityEntries: [
+        {
+          action: 'customer.updated',
+          changeCategories: ['contact'],
+          id: 'event-1',
+          occurredAt: '2026-07-01T00:00:00.000Z',
+        },
+      ],
+      hasNextPage: false,
+      hasPreviousPage: true,
+      page: 2,
+      pageSize: 20,
+    } as const;
+    const requests: string[] = [];
+    const client = createEkyApiClient({
+      baseUrl: '',
+      fetch: async (input) => {
+        requests.push(input.toString());
+        return jsonResponse({ customerActivityPage });
+      },
+    });
+
+    await expect(
+      client.listCustomerActivity('customer-1', {
+        page: 2,
+        pageSize: 20,
+      }),
+    ).resolves.toEqual(customerActivityPage);
+    expect(requests).toEqual([
+      '/customers/customer-1/activity?page=2&pageSize=20',
+    ]);
+  });
+
+  it('rejects invalid customer activity queries before making a request', async () => {
+    let requested = false;
+    const client = createEkyApiClient({
+      baseUrl: '',
+      fetch: async () => {
+        requested = true;
+        return jsonResponse({});
+      },
+    });
+
+    await expect(
+      client.listCustomerActivity('customer-1', {
+        page: 0,
+      }),
+    ).rejects.toBeInstanceOf(EkyApiError);
+    expect(requested).toBe(false);
+  });
+
+  it('rejects customer activity responses containing non-allowlisted data', async () => {
+    const client = createEkyApiClient({
+      baseUrl: '',
+      fetch: async () =>
+        jsonResponse({
+          customerActivityPage: {
+            activityEntries: [
+              {
+                action: 'customer.updated',
+                changeCategories: ['contact'],
+                email: 'must-not-be-exposed@example.invalid',
+                id: 'event-1',
+                occurredAt: '2026-07-01T00:00:00.000Z',
+              },
+            ],
+            hasNextPage: false,
+            hasPreviousPage: false,
+            page: 1,
+            pageSize: 20,
+          },
+        }),
+    });
+
+    await expect(
+      client.listCustomerActivity('customer-1'),
+    ).rejects.toBeInstanceOf(EkyApiError);
+  });
+
   it('creates a customer through POST /customers', async () => {
     const customer = createTestCustomer();
     const input = {

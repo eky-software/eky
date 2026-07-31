@@ -29,6 +29,7 @@ describe('approved invoices api client', () => {
     const client = createTestClient(requests, { invoicePage });
 
     const result = await client.listApprovedInvoices({
+      customerId: 'customer/1',
       dateFrom: '2026-06-01',
       dateTo: '2026-06-30',
       page: 2,
@@ -41,7 +42,7 @@ describe('approved invoices api client', () => {
     expect(requests).toEqual([
       {
         input:
-          '/invoices?status=approved&page=2&pageSize=20&sort=customerNameAsc&dateFrom=2026-06-01&dateTo=2026-06-30',
+          '/invoices?status=approved&page=2&pageSize=20&sort=customerNameAsc&dateFrom=2026-06-01&dateTo=2026-06-30&customerId=customer%2F1',
         init: {
           headers: {
             Accept: 'application/json',
@@ -83,6 +84,7 @@ describe('approved invoices api client', () => {
 
     await expect(
       client.listSentInvoiceGroups({
+        customerId: 'customer/1',
         creditState: 'credited',
         dateFrom: '2026-01-01',
         page: 1,
@@ -91,7 +93,7 @@ describe('approved invoices api client', () => {
       }),
     ).resolves.toEqual(invoiceGroupPage);
     expect(requests[0]?.input).toBe(
-      '/sent-invoice-groups?page=1&pageSize=20&sort=invoiceDateDesc&dateFrom=2026-01-01&creditState=credited',
+      '/sent-invoice-groups?page=1&pageSize=20&sort=invoiceDateDesc&dateFrom=2026-01-01&customerId=customer%2F1&creditState=credited',
     );
     expect(requests[0]?.input).not.toContain('status=');
     expect(requests[0]?.input).not.toContain('companyId=');

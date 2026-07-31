@@ -19,7 +19,14 @@ const backendRoutes: ReadonlyArray<{
   { methods: new Set(['GET']), pathname: /^\/diagnostics\/events$/ },
   { methods: new Set(['GET']), pathname: /^\/diagnostics\/summary$/ },
   { methods: new Set(['GET', 'POST']), pathname: /^\/customers$/ },
-  { methods: new Set(['PUT']), pathname: new RegExp(`^/customers/${resourceId}$`) },
+  {
+    methods: new Set(['GET', 'PUT']),
+    pathname: new RegExp(`^/customers/${resourceId}$`),
+  },
+  {
+    methods: new Set(['GET']),
+    pathname: new RegExp(`^/customers/${resourceId}/activity$`),
+  },
   { methods: new Set(['GET', 'PUT']), pathname: /^\/company-settings$/ },
   {
     methods: new Set(['DELETE', 'GET', 'PUT']),

@@ -83,6 +83,11 @@ export type {
 export type {
   CreateCustomerRequest,
   Customer,
+  CustomerActivityAction,
+  CustomerActivityChangeCategory,
+  CustomerActivityEntry,
+  CustomerActivityPage,
+  CustomerActivityQuery,
   CustomerStatus,
   CustomerType,
   UpdateCustomerRequest,

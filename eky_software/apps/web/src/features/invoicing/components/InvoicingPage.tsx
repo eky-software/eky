@@ -7,6 +7,7 @@ import type {
   CancelApprovedInvoiceInput,
   EkyApiClient,
   InvoiceDraft,
+  InvoiceKind,
   UpdateCreditInvoiceDraftInput,
 } from '@eky/api-client';
 
@@ -38,16 +39,17 @@ import { useCancelApprovedInvoice } from '../hooks/useCancelApprovedInvoice.js';
 import { useCreditInvoiceDraft } from '../hooks/useCreditInvoiceDraft.js';
 import { useApproveCreditInvoiceDraft } from '../hooks/useApproveCreditInvoiceDraft.js';
 import { useInvoiceCreditContext } from '../hooks/useInvoiceCreditContext.js';
+import type { InvoicingNavigationRequest } from '../invoicingNavigation.js';
 
 interface InvoicingPageProps {
   apiClient: EkyApiClient;
-  navigationRevision: number;
+  navigationRequest: InvoicingNavigationRequest;
   openInvoicePdfPreview?(invoiceId: string): Promise<void>;
 }
 
 export function InvoicingPage({
   apiClient,
-  navigationRevision,
+  navigationRequest,
   openInvoicePdfPreview,
 }: InvoicingPageProps): React.JSX.Element {
   const draftState = useInvoiceDrafts(apiClient);
@@ -80,7 +82,7 @@ export function InvoicingPage({
   const [pendingDeleteDraftId, setPendingDeleteDraftId] = useState<
     string | null
   >(null);
-  const previousNavigationRevision = useRef(navigationRevision);
+  const previousNavigationRevision = useRef(-1);
   const [activeView, dispatch] = useReducer(
     reduceInvoicingPageMode,
     'draftList',
@@ -107,11 +109,15 @@ export function InvoicingPage({
     dispatch({ type: 'showDraftList' });
   }
 
-  function handleOpenDraft(id: string): void {
+  function handleOpenDraft(
+    id: string,
+    requestedInvoiceKind?: InvoiceKind,
+  ): void {
     invoiceCreditContextState.clearCreditContext();
     const draft = draftState.drafts.find((item) => item.id === id);
+    const invoiceKind = requestedInvoiceKind ?? draft?.invoiceKind;
 
-    if (draft?.invoiceKind === 'credit') {
+    if (invoiceKind === 'credit') {
       approvedInvoiceState.clearApprovedInvoice();
       draftEditorState.clearDraft();
       approveCreditInvoiceDraftState.clearError();
@@ -393,13 +399,29 @@ export function InvoicingPage({
   }
 
   useEffect(() => {
-    if (previousNavigationRevision.current === navigationRevision) {
+    if (
+      previousNavigationRevision.current === navigationRequest.revision
+    ) {
       return;
     }
 
-    previousNavigationRevision.current = navigationRevision;
-    handleBackToDrafts();
-  }, [navigationRevision]);
+    previousNavigationRevision.current = navigationRequest.revision;
+
+    if (navigationRequest.target === null) {
+      handleBackToDrafts();
+      return;
+    }
+
+    if (navigationRequest.target.type === 'draft') {
+      handleOpenDraft(
+        navigationRequest.target.id,
+        navigationRequest.target.invoiceKind,
+      );
+      return;
+    }
+
+    void handleOpenApprovedInvoice(navigationRequest.target.id);
+  }, [navigationRequest]);
 
   return (
     <InvoicingPageView

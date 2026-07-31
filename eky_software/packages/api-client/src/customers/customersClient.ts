@@ -1,10 +1,14 @@
 import { EkyApiError, isRecord, requestJson } from '../http.js';
 import type {
   Customer,
+  CustomerActivityPage,
+  CustomerActivityQuery,
   CustomersApi,
-  CustomerStatus,
-  CustomerType,
 } from './customersTypes.js';
+import {
+  parseCustomer,
+  parseCustomerActivityPage,
+} from './customersResponse.js';
 
 export function createCustomersApi(
   fetchImplementation: typeof fetch,
@@ -30,6 +34,47 @@ export function createCustomersApi(
       }
 
       return parseCustomer(responseBody.customer);
+    },
+
+    async getCustomer(id): Promise<Customer> {
+      const customerId = requireCustomerId(id);
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        `/customers/${customerId}`,
+      );
+
+      if (
+        !isRecord(responseBody) ||
+        Object.keys(responseBody).some((key) => key !== 'customer')
+      ) {
+        throw new EkyApiError('Invalid customer response.', { responseBody });
+      }
+
+      return parseCustomer(responseBody.customer);
+    },
+
+    async listCustomerActivity(id, query = {}): Promise<CustomerActivityPage> {
+      const customerId = requireCustomerId(id);
+      const queryString = serializeCustomerActivityQuery(query);
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        `/customers/${customerId}/activity${queryString}`,
+      );
+
+      if (
+        !isRecord(responseBody) ||
+        Object.keys(responseBody).some(
+          (key) => key !== 'customerActivityPage',
+        )
+      ) {
+        throw new EkyApiError('Invalid customer activity response.', {
+          responseBody,
+        });
+      }
+
+      return parseCustomerActivityPage(responseBody.customerActivityPage);
     },
 
     async listCustomers(): Promise<Customer[]> {
@@ -69,75 +114,39 @@ export function createCustomersApi(
   };
 }
 
-function parseCustomer(value: unknown): Customer {
+function requireCustomerId(value: string): string {
+  if (!/^[A-Za-z0-9_-]{1,100}$/.test(value)) {
+    throw new EkyApiError('Customer id is invalid.');
+  }
+
+  return value;
+}
+
+function serializeCustomerActivityQuery(query: CustomerActivityQuery): string {
   if (
-    !isRecord(value) ||
-    typeof value.id !== 'string' ||
-    typeof value.companyId !== 'string' ||
-    typeof value.customerNumber !== 'string' ||
-    typeof value.name !== 'string' ||
-    typeof value.customerType !== 'string' ||
-    typeof value.businessId !== 'string' ||
-    typeof value.streetAddress !== 'string' ||
-    typeof value.postalCode !== 'string' ||
-    typeof value.city !== 'string' ||
-    typeof value.email !== 'string' ||
-    typeof value.managedByCustomerId !== 'string' ||
-    typeof value.phone !== 'string' ||
-    typeof value.comment !== 'string' ||
-    !isNullableNumber(value.hourlyRateOverrideCents) ||
-    typeof value.status !== 'string' ||
-    typeof value.createdAt !== 'string' ||
-    typeof value.updatedAt !== 'string'
+    query.page !== undefined &&
+    (!Number.isSafeInteger(query.page) || query.page < 1 || query.page > 100)
   ) {
-    throw new EkyApiError('Invalid customer response.', {
-      responseBody: value,
-    });
+    throw new EkyApiError('Customer activity query is invalid.');
   }
-
-  return {
-    id: value.id,
-    companyId: value.companyId,
-    customerNumber: value.customerNumber,
-    name: value.name,
-    customerType: parseCustomerType(value.customerType),
-    businessId: value.businessId,
-    streetAddress: value.streetAddress,
-    postalCode: value.postalCode,
-    city: value.city,
-    email: value.email,
-    managedByCustomerId: value.managedByCustomerId,
-    phone: value.phone,
-    comment: value.comment,
-    hourlyRateOverrideCents: value.hourlyRateOverrideCents,
-    status: parseCustomerStatus(value.status),
-    createdAt: value.createdAt,
-    updatedAt: value.updatedAt,
-  };
-}
-
-function isNullableNumber(value: unknown): value is number | null {
-  return value === null || typeof value === 'number';
-}
-
-function parseCustomerStatus(value: string): CustomerStatus {
-  if (value === 'active' || value === 'inactive') {
-    return value;
-  }
-
-  throw new EkyApiError('Invalid customer response.', { responseBody: value });
-}
-
-function parseCustomerType(value: string): CustomerType {
   if (
-    value === 'company' ||
-    value === 'housingCompany' ||
-    value === 'other' ||
-    value === 'privatePerson' ||
-    value === 'propertyManager'
+    query.pageSize !== undefined &&
+    query.pageSize !== 20 &&
+    query.pageSize !== 50
   ) {
-    return value;
+    throw new EkyApiError('Customer activity query is invalid.');
   }
 
-  throw new EkyApiError('Invalid customer response.', { responseBody: value });
+  const searchParameters = new URLSearchParams();
+
+  if (query.page !== undefined) {
+    searchParameters.set('page', String(query.page));
+  }
+  if (query.pageSize !== undefined) {
+    searchParameters.set('pageSize', String(query.pageSize));
+  }
+
+  const serialized = searchParameters.toString();
+
+  return serialized.length === 0 ? '' : `?${serialized}`;
 }

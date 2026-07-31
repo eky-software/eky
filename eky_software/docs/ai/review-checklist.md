@@ -110,6 +110,19 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
 ## Testit
 
 - Tarvitaanko testi?
+- Jaettiinko laaja työ toiminnallisiin checkpointteihin, joiden jälkeen
+  muuttuneen vastuun kohdetestit ajettiin?
+- Ajettiinko workspace-testit, typecheck ja tarvittavat buildit, kun
+  checkpointit muodostivat eheän toiminnallisen kokonaisuuden?
+- Valittiinko system-, web-, security-, fault- ja critical-E2E-testit muutoksen
+  todellisten luottamusrajojen ja riskien perusteella ennen pull requestia?
+- Rajattiinko Electron-E2E, Windows-paketointi ja packaged smoke vain
+  Electron-, paketointi- tai desktop-capability-muutoksiin?
+- Jätettiinkö stress- ja soak-testit erillisiksi manuaalisiksi release-porteiksi?
+- Jos dokumentaatio- tai tyylimuutoksessa ei ajettu testejä, raportoitiinko
+  perustelu?
+- Onko jokainen commit oman vastuualueensa osalta käyttökelpoinen ilman
+  tietoisesti rikkinäistä välitilaa?
 - Lisättiinkö testi kriittiseen logiikkaan?
 - Testataanko virhetilat?
 - Testataanko käyttöoikeudet backendissä?

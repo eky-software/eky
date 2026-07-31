@@ -3,10 +3,13 @@ import { Hono } from 'hono';
 import type { DatabaseConnection } from '../database/connection/createDatabaseConnection.js';
 import type { BackendEnvironment } from '../http/runtimeTrust.js';
 import { createCustomer } from '../modules/customers/application/createCustomer.js';
+import { getCustomer } from '../modules/customers/application/getCustomer.js';
+import { listCustomerHistory } from '../modules/customers/application/listCustomerHistory.js';
 import { listCustomers } from '../modules/customers/application/listCustomers.js';
 import { updateCustomer } from '../modules/customers/application/updateCustomer.js';
 import { createCustomersRoutes } from '../modules/customers/http/customersRoutes.js';
 import { SqliteCustomerActivityReader } from '../modules/customers/infrastructure/sqliteCustomerActivityReader.js';
+import { SqliteCustomerHistoryReader } from '../modules/customers/infrastructure/sqliteCustomerHistoryReader.js';
 import { SqliteCustomerRepository } from '../modules/customers/infrastructure/sqliteCustomerRepository.js';
 import { CustomerAuditWriteError } from '../modules/customers/ports/customerAuditWriteError.js';
 import type { CustomerActivityReader } from '../modules/customers/ports/customerActivityReader.js';
@@ -36,6 +39,9 @@ export function createCustomersComposition(
   const customerActivityReader = new SqliteCustomerActivityReader(
     options.database,
   );
+  const customerHistoryReader = new SqliteCustomerHistoryReader(
+    options.database,
+  );
   const customerAccessReader: CustomerAccessReader = {
     async belongsToCompany(customerId, companyId) {
       const customer = await customerRepository.findById(companyId, customerId);
@@ -61,6 +67,12 @@ export function createCustomersComposition(
         () => createCustomer(input, customerRepository),
         options,
       ),
+    getCustomer: (input) => getCustomer(input, customerRepository),
+    listCustomerHistory: (input) =>
+      listCustomerHistory(input, {
+        customerDetailReader: customerRepository,
+        customerHistoryReader,
+      }),
     listCustomers: (input) => listCustomers(input, customerRepository),
     updateCustomer: (input) =>
       logAuditWriteFailure(

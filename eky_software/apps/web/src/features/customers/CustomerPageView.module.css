@@ -7,23 +7,5 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: 18px;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-}
-
-.viewGrid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 18px;
-  align-items: start;
-}
-
-.viewGridWithSidePanel {
-  grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
-}
-
-@media (max-width: 860px) {
-  .viewGrid,
-  .viewGridWithSidePanel {
-    grid-template-columns: 1fr;
-  }
+  background: var(--color-surface);
 }
