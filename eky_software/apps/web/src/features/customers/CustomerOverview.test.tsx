@@ -41,6 +41,16 @@ describe('CustomerOverview', () => {
     expect(html).toContain('Oman yrityksen oletustuntihinta');
   });
 
+  it('shows invoice creation only for an active customer', () => {
+    const activeHtml = renderOverview(createCustomer());
+    const inactiveHtml = renderOverview(
+      createCustomer({ status: 'inactive' }),
+    );
+
+    expect(activeHtml).toContain('Luo lasku');
+    expect(inactiveHtml).not.toContain('Luo lasku');
+  });
+
   it('shows the related property manager for a housing company', () => {
     const propertyManager = createCustomer({
       customerNumber: '2001',
@@ -58,6 +68,7 @@ describe('CustomerOverview', () => {
         customer={housingCompany}
         customers={[housingCompany, propertyManager]}
         defaultHourlyRateState={{ status: 'loaded', valueCents: null }}
+        onCreateInvoice={() => undefined}
         onEdit={() => undefined}
         onOpenRelatedCustomer={() => undefined}
       />,
@@ -88,6 +99,7 @@ describe('CustomerOverview', () => {
         customer={propertyManager}
         customers={[propertyManager, housingCompany]}
         defaultHourlyRateState={{ status: 'loaded', valueCents: null }}
+        onCreateInvoice={() => undefined}
         onEdit={() => undefined}
         onOpenRelatedCustomer={() => undefined}
       />,
@@ -114,6 +126,7 @@ describe('CustomerOverview', () => {
         customer={housingCompany}
         customers={[housingCompany, propertyManager]}
         defaultHourlyRateState={{ status: 'loaded', valueCents: null }}
+        onCreateInvoice={() => undefined}
         onEdit={() => undefined}
         onOpenRelatedCustomer={() => undefined}
       />,
@@ -140,6 +153,7 @@ describe('CustomerOverview', () => {
         customer={customer}
         customers={[customer]}
         defaultHourlyRateState={{ status: 'failed' }}
+        onCreateInvoice={() => undefined}
         onEdit={() => undefined}
         onOpenRelatedCustomer={() => undefined}
       />,
@@ -163,6 +177,7 @@ describe('CustomerOverview', () => {
         customer={customer}
         customers={[customer]}
         defaultHourlyRateState={{ status: 'loading' }}
+        onCreateInvoice={() => undefined}
         onEdit={() => undefined}
         onOpenRelatedCustomer={() => undefined}
       />,
@@ -184,6 +199,7 @@ function renderOverview(
         status: 'loaded',
         valueCents: defaultHourlyRateCents,
       }}
+      onCreateInvoice={() => undefined}
       onEdit={() => undefined}
       onOpenRelatedCustomer={() => undefined}
     />,

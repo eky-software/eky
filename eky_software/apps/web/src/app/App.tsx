@@ -41,6 +41,15 @@ export function App({ apiClient }: AppProps): React.JSX.Element {
           navigationRequest={{
             revision: navigation.customerNavigationRevision,
           }}
+          onCreateInvoice={(customerId) =>
+            activateView({
+              target: {
+                customerId,
+                type: 'createInvoiceForCustomer',
+              },
+              type: 'openInvoicingTarget',
+            })
+          }
           onOpenInvoice={(target) =>
             activateView({
               target,

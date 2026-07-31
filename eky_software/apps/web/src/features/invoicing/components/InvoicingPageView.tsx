@@ -41,6 +41,7 @@ import type { SendApprovedInvoiceEmailDryRunState } from '../hooks/useSendApprov
 import type { SendApprovedInvoiceEmailSmtpState } from '../hooks/useSendApprovedInvoiceEmailSmtp.js';
 import type { SendApprovedInvoiceEmailSmtpTestState } from '../hooks/useSendApprovedInvoiceEmailSmtpTest.js';
 import { uiText } from '../../../i18n/fi.js';
+import { MessageBanner } from '../../../shared/ui/index.js';
 
 interface InvoicingPageViewProps {
   activeView: InvoicingPageMode;
@@ -61,6 +62,7 @@ interface InvoicingPageViewProps {
   draftEditorState: InvoiceDraftEditorState;
   invoicePaymentDefaultsState: InvoicePaymentDefaultsState;
   invoiceVatRatesState: InvoiceVatRatesState;
+  initialCustomerId: string | null;
   invoiceDeliveryEventListState: InvoiceDeliveryEventListState;
   invoiceCreditContextState: InvoiceCreditContextState;
   invoicePaymentState: InvoicePaymentMutationState;
@@ -71,6 +73,7 @@ interface InvoicingPageViewProps {
   sendApprovedInvoiceEmailState: SendApprovedInvoiceEmailDryRunState;
   sendApprovedInvoiceEmailSmtpState: SendApprovedInvoiceEmailSmtpState;
   sendApprovedInvoiceEmailSmtpTestState: SendApprovedInvoiceEmailSmtpTestState;
+  navigationErrorMessage: string | null;
   onBackToDrafts(): void;
   onApproveCreditInvoiceDraft(
     invoiceDraftId: string,
@@ -132,6 +135,7 @@ export function InvoicingPageView({
   draftEditorState,
   invoicePaymentDefaultsState,
   invoiceVatRatesState,
+  initialCustomerId,
   invoiceDeliveryEventListState,
   invoiceCreditContextState,
   invoicePaymentState,
@@ -144,6 +148,7 @@ export function InvoicingPageView({
   sendApprovedInvoiceEmailState,
   sendApprovedInvoiceEmailSmtpState,
   sendApprovedInvoiceEmailSmtpTestState,
+  navigationErrorMessage,
   onBackToDrafts,
   onApproveCreditInvoiceDraft,
   onCancelApprovedInvoice,
@@ -178,6 +183,10 @@ export function InvoicingPageView({
           <p>{uiText.invoicing.description}</p>
         </div>
       </section>
+
+      {navigationErrorMessage !== null ? (
+        <MessageBanner variant="error">{navigationErrorMessage}</MessageBanner>
+      ) : null}
 
       {activeView === 'draftList' ? (
         <InvoiceWorkspaceListView
@@ -216,6 +225,9 @@ export function InvoicingPageView({
           editorMode={activeView === 'newInvoice' ? 'create' : 'edit'}
           invoicePaymentDefaultsState={invoicePaymentDefaultsState}
           invoiceVatRatesState={invoiceVatRatesState}
+          initialCustomerId={
+            activeView === 'newInvoice' ? initialCustomerId : null
+          }
           isDraftLoading={
             activeView === 'editInvoice' && draftEditorState.isLoading
           }

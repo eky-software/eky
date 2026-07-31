@@ -48,12 +48,14 @@ type CustomerPageClient = Pick<
 interface CustomerPageProps {
   apiClient: CustomerPageClient;
   navigationRequest: CustomerNavigationRequest;
+  onCreateInvoice(customerId: string): void;
   onOpenInvoice(target: CustomerInvoiceNavigationTarget): void;
 }
 
 export function CustomerPage({
   apiClient,
   navigationRequest,
+  onCreateInvoice,
   onOpenInvoice,
 }: CustomerPageProps): React.JSX.Element {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -438,6 +440,7 @@ export function CustomerPage({
           invoiceState={invoiceState}
           isLoading={isDetailLoading}
           onBack={returnToCustomerList}
+          onCreateInvoice={onCreateInvoice}
           onEdit={openEditWorkspace}
           onOpenInvoice={onOpenInvoice}
           onOpenRelatedCustomer={openRelatedCustomer}

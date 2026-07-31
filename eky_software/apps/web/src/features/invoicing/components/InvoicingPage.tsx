@@ -40,7 +40,11 @@ import { useCreditInvoiceDraft } from '../hooks/useCreditInvoiceDraft.js';
 import { useApproveCreditInvoiceDraft } from '../hooks/useApproveCreditInvoiceDraft.js';
 import { useInvoiceCreditContext } from '../hooks/useInvoiceCreditContext.js';
 import { useInvoicePayment } from '../hooks/useInvoicePayment.js';
-import type { InvoicingNavigationRequest } from '../invoicingNavigation.js';
+import {
+  resolveActiveInvoiceCustomerId,
+  type InvoicingNavigationRequest,
+} from '../invoicingNavigation.js';
+import { uiText } from '../../../i18n/fi.js';
 
 interface InvoicingPageProps {
   apiClient: EkyApiClient;
@@ -84,6 +88,12 @@ export function InvoicingPage({
   const [pendingDeleteDraftId, setPendingDeleteDraftId] = useState<
     string | null
   >(null);
+  const [initialCustomerId, setInitialCustomerId] = useState<string | null>(
+    null,
+  );
+  const [navigationErrorMessage, setNavigationErrorMessage] = useState<
+    string | null
+  >(null);
   const previousNavigationRevision = useRef(-1);
   const [activeView, dispatch] = useReducer(
     reduceInvoicingPageMode,
@@ -91,6 +101,8 @@ export function InvoicingPage({
   );
 
   function handleBackToDrafts(): void {
+    setInitialCustomerId(null);
+    setNavigationErrorMessage(null);
     approvedInvoiceState.clearApprovedInvoice();
     draftEditorState.clearDraft();
     deleteState.clearError();
@@ -110,6 +122,12 @@ export function InvoicingPage({
     invoicePaymentState.clearStatus();
     setPendingDeleteDraftId(null);
     dispatch({ type: 'showDraftList' });
+  }
+
+  function handleOpenNewInvoice(customerId: string | null): void {
+    handleBackToDrafts();
+    setInitialCustomerId(customerId);
+    dispatch({ type: 'openNewInvoice' });
   }
 
   function handleOpenDraft(
@@ -449,12 +467,43 @@ export function InvoicingPage({
       return;
     }
 
-    previousNavigationRevision.current = navigationRequest.revision;
-
     if (navigationRequest.target === null) {
+      previousNavigationRevision.current = navigationRequest.revision;
       handleBackToDrafts();
       return;
     }
+
+    if (
+      navigationRequest.target.type === 'createInvoiceForCustomer'
+    ) {
+      if (customerListState.isLoading) {
+        return;
+      }
+
+      previousNavigationRevision.current = navigationRequest.revision;
+      const customerId = resolveActiveInvoiceCustomerId(
+        customerListState.customers,
+        navigationRequest.target.customerId,
+      );
+
+      if (
+        customerListState.errorMessage !== null ||
+        customerId === null
+      ) {
+        handleBackToDrafts();
+        setNavigationErrorMessage(
+          uiText.invoicing.createInvoiceCustomerUnavailable,
+        );
+        return;
+      }
+
+      handleOpenNewInvoice(customerId);
+      return;
+    }
+
+    previousNavigationRevision.current = navigationRequest.revision;
+    setInitialCustomerId(null);
+    setNavigationErrorMessage(null);
 
     if (navigationRequest.target.type === 'draft') {
       handleOpenDraft(
@@ -465,7 +514,12 @@ export function InvoicingPage({
     }
 
     void handleOpenApprovedInvoice(navigationRequest.target.id);
-  }, [navigationRequest]);
+  }, [
+    customerListState.customers,
+    customerListState.errorMessage,
+    customerListState.isLoading,
+    navigationRequest,
+  ]);
 
   return (
     <InvoicingPageView
@@ -487,6 +541,7 @@ export function InvoicingPage({
       draftEditorState={draftEditorState}
       invoicePaymentDefaultsState={invoicePaymentDefaultsState}
       invoiceVatRatesState={invoiceVatRatesState}
+      initialCustomerId={initialCustomerId}
       invoiceDeliveryEventListState={invoiceDeliveryEventListState}
       invoiceCreditContextState={invoiceCreditContextState}
       invoicePaymentState={invoicePaymentState}
@@ -499,6 +554,7 @@ export function InvoicingPage({
         sendApprovedInvoiceEmailSmtpTestState
       }
       sendApprovedInvoiceEmailSmtpState={sendApprovedInvoiceEmailSmtpState}
+      navigationErrorMessage={navigationErrorMessage}
       onBackToDrafts={handleBackToDrafts}
       onApproveCreditInvoiceDraft={(id, input) =>
         void handleApproveCreditInvoiceDraft(id, input)
@@ -550,7 +606,7 @@ export function InvoicingPage({
         void handleSaveCreditInvoiceDraft(id, input)
       }
       onRequestDeleteDraft={handleRequestDeleteDraft}
-      onNewInvoice={() => dispatch({ type: 'openNewInvoice' })}
+      onNewInvoice={() => handleOpenNewInvoice(null)}
     />
   );
 }

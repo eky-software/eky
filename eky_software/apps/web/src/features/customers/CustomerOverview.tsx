@@ -15,6 +15,7 @@ interface CustomerOverviewProps {
   customer: Customer;
   customers: Customer[];
   defaultHourlyRateState: CustomerDefaultHourlyRateState;
+  onCreateInvoice(customerId: string): void;
   onEdit(): void;
   onOpenRelatedCustomer(customerId: string): void;
 }
@@ -23,6 +24,7 @@ export function CustomerOverview({
   customer,
   customers,
   defaultHourlyRateState,
+  onCreateInvoice,
   onEdit,
   onOpenRelatedCustomer,
 }: CustomerOverviewProps): React.JSX.Element {
@@ -56,6 +58,15 @@ export function CustomerOverview({
           <span className={`status-pill status-pill-${customer.status}`}>
             {getCustomerStatusLabel(customer.status)}
           </span>
+          {customer.status === 'active' ? (
+            <button
+              className="ghost-button"
+              onClick={() => onCreateInvoice(customer.id)}
+              type="button"
+            >
+              {uiText.customers.createInvoice}
+            </button>
+          ) : null}
           <button onClick={onEdit} type="button">
             {uiText.customers.edit}
           </button>

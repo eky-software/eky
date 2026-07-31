@@ -47,6 +47,32 @@ describe('InvoicingPageView', () => {
     expect(html).not.toContain('required=""');
   });
 
+  it('renders a safe customer navigation error without technical details', () => {
+    const html = renderPage({
+      activeView: 'draftList',
+      customerListState: {
+        customers: [],
+        errorMessage: null,
+        isLoading: false,
+      },
+      drafts: [],
+      draftErrorMessage: null,
+      isDraftListLoading: false,
+      draftEditorState: createDraftEditorState(),
+      navigationErrorMessage:
+        uiText.invoicing.createInvoiceCustomerUnavailable,
+      onBackToDrafts: vi.fn(),
+      onOpenDraft: vi.fn(),
+      onNewInvoice: vi.fn(),
+    });
+
+    expect(html).toContain(
+      uiText.invoicing.createInvoiceCustomerUnavailable,
+    );
+    expect(html).not.toContain('customer-does-not-exist');
+    expect(html).not.toContain('stack');
+  });
+
 });
 
 type InvoicingPageViewProps = React.ComponentProps<typeof InvoicingPageView>;
@@ -67,10 +93,12 @@ function renderPage(
     | 'deleteState'
     | 'invoicePaymentDefaultsState'
     | 'invoiceVatRatesState'
+    | 'initialCustomerId'
     | 'invoiceDeliveryEventListState'
     | 'invoiceCreditContextState'
     | 'invoicePaymentState'
     | 'markApprovedInvoiceSentState'
+    | 'navigationErrorMessage'
     | 'reopenApprovedInvoiceState'
     | 'sendApprovedInvoiceEmailState'
     | 'sendApprovedInvoiceEmailSmtpState'
@@ -113,10 +141,12 @@ function renderPage(
         | 'deleteState'
         | 'invoicePaymentDefaultsState'
         | 'invoiceVatRatesState'
+        | 'initialCustomerId'
         | 'invoiceDeliveryEventListState'
         | 'invoiceCreditContextState'
         | 'invoicePaymentState'
         | 'markApprovedInvoiceSentState'
+        | 'navigationErrorMessage'
         | 'reopenApprovedInvoiceState'
         | 'sendApprovedInvoiceEmailState'
         | 'sendApprovedInvoiceEmailSmtpState'
@@ -176,6 +206,7 @@ function renderPage(
       deleteState={createDeleteState()}
       invoicePaymentDefaultsState={createInvoicePaymentDefaultsState()}
       invoiceVatRatesState={createInvoiceVatRatesState()}
+      initialCustomerId={null}
       invoiceDeliveryEventListState={createInvoiceDeliveryEventListState()}
       invoiceCreditContextState={createInvoiceCreditContextState()}
       invoicePaymentState={{
@@ -187,6 +218,7 @@ function renderPage(
         successMessage: null,
       }}
       markApprovedInvoiceSentState={createMarkApprovedInvoiceSentState()}
+      navigationErrorMessage={null}
       reopenApprovedInvoiceState={createReopenApprovedInvoiceState()}
       sendApprovedInvoiceEmailState={createSendApprovedInvoiceEmailState()}
       sendApprovedInvoiceEmailSmtpState={

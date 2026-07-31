@@ -63,6 +63,7 @@ interface NewInvoiceFormProps {
   companySettingsState: InvoiceCompanySettingsState;
   invoicePaymentDefaultsState: InvoicePaymentDefaultsState;
   invoiceVatRatesState: InvoiceVatRatesState;
+  initialCustomerId: string | null;
   mode: NewInvoiceFormMode;
   onBack(): void;
   onDraftApproved(approvedInvoice: ApprovedInvoiceResult): void;
@@ -76,6 +77,7 @@ export function NewInvoiceForm({
   companySettingsState,
   invoicePaymentDefaultsState,
   invoiceVatRatesState,
+  initialCustomerId,
   mode,
   onBack,
   onDraftApproved,
@@ -83,7 +85,13 @@ export function NewInvoiceForm({
   onOpenApprovedInvoice,
 }: NewInvoiceFormProps): React.JSX.Element {
   const [form, setForm] = useState(() =>
-    createInitialForm(mode, invoiceVatRatesState.settings?.vatRates ?? null),
+    createInitialForm(
+      mode,
+      invoiceVatRatesState.settings?.vatRates ?? null,
+      initialCustomerId,
+      customerListState.customers,
+      companySettingsState.companySettings,
+    ),
   );
   const hasManualPriceInputModeOverride = useRef(mode.type === 'edit');
   const [formRevision, setFormRevision] = useState(0);
@@ -585,6 +593,9 @@ function isReverseChargeCustomerEligible(
 function createInitialForm(
   mode: NewInvoiceFormMode,
   vatRates: Parameters<typeof getDefaultInvoiceVatRateBasisPoints>[0],
+  initialCustomerId: string | null,
+  customers: InvoiceCustomerListState['customers'],
+  companySettings: InvoiceCompanySettingsState['companySettings'],
 ): NewInvoiceFormState {
   if (mode.type === 'edit') {
     return toNewInvoiceFormStateFromDraft(mode.draft);
@@ -593,10 +604,20 @@ function createInitialForm(
   const form = createInitialNewInvoiceForm();
   const defaultVatRateBasisPoints = getDefaultInvoiceVatRateBasisPoints(vatRates);
 
-  return {
+  const formWithVatRate = {
     ...form,
     lines: form.lines.map((line) => ({ ...line, vatRateBasisPoints: defaultVatRateBasisPoints })),
   };
+
+  return initialCustomerId === null
+    ? formWithVatRate
+    : applyInvoiceCustomerSelection(
+        formWithVatRate,
+        customers,
+        companySettings,
+        initialCustomerId,
+        true,
+      );
 }
 
 function createSaveMode(mode: NewInvoiceFormMode): InvoiceDraftSaveMode {

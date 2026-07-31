@@ -82,6 +82,10 @@ myöhemmin rajattuna vaiheena.
 
 Tila: asiakasvalinta ja tuntihinnan pikavalinta on toteutettu. Valitun
 asiakkaan asiakaskortin tiedot näytetään laskulomakkeella tiiviinä koosteena.
+Uusi lasku voidaan avata aktiivisen asiakkaan asiakaskortilta
+app-navigationin kautta. Invoicing varmistaa asiakkaan omasta yritysrajatusta
+asiakaslistastaan ja käyttää samaa tavallista uuden laskun lomaketta sekä
+oletuspolkuja kuin Laskutus-näkymän Uusi lasku -toiminto.
 Käyttäjän Company Settingsiin määrittämä nimike voi ehdottaa riville kerran
 asiakaskohtaisen tuntihinnan tai sen puuttuessa oman yrityksen
 oletustuntihinnan. Käsin muokattua tai tallennetusta luonnoksesta ladattua

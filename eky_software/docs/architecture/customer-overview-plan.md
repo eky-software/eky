@@ -314,7 +314,14 @@ Ensimmäisessä toteutuksessa ei lisätä:
 - Sites- tai Work Orders -moduulin toteutusta
 - Customersin omistamaa laskudataa tai JOINia Invoicing-infrastructureen
 - globaalia Activity-kopiota
-- uuden laskun luontia asiakaskortilta
+
+Asiakaskortilta voidaan aloittaa uusi lasku aktiiviselle asiakkaalle. Customers
+välittää app-navigationille vain asiakkaan tunnisteen eikä tunne
+laskulomaketta, Invoicingin statea tai hookkeja. App-kerros vaihtaa
+Laskutus-moduuliin, jossa Invoicing varmistaa tunnisteen omasta
+yritysrajatusta asiakaslistastaan ennen normaalin uuden laskun lomakkeen
+avaamista. Passiivinen, vanhentunut tai nykyisen yritysrajauksen ulkopuolelle
+jäävä tunniste ei avaa lomaketta.
 
 ## Liittyvät Dokumentit
 

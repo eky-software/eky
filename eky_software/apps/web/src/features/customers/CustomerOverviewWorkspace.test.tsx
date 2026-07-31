@@ -49,6 +49,7 @@ const baseProps = {
   },
   isLoading: false,
   onBack: () => undefined,
+  onCreateInvoice: () => undefined,
   onEdit: () => undefined,
   onOpenInvoice: () => undefined,
   onOpenRelatedCustomer: () => undefined,

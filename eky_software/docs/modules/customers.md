@@ -304,6 +304,13 @@ Paneeli näyttää hyväksytyt, lähetetyt, maksetut, hyvitetyt ja perutut lasku
 laskulle tallennetun customer-snapshotin nimellä ja asiakasnumerolla.
 Luonnokset eivät kuulu vastaanottajalaskujen ensimmäiseen versioon.
 
+Aktiivisen asiakkaan asiakaskortilta voidaan pyytää uuden laskun avaamista.
+Customers välittää app-navigationille vain `customerId`-arvon eikä importtaa
+Invoicingin lomakkeita, statea, hookkeja tai infrastructurea. Invoicing
+ratkaisee asiakkaan omasta yritysrajatusta asiakaslistastaan ja käyttää
+normaaleja laskun asiakas-, vastaanottaja-, hinta-, maksu- ja ALV-oletuksia.
+Passiiviselle tai listasta puuttuvalle asiakkaalle ei avata laskulomaketta.
+
 Tarkempi malli on dokumentissa `docs/architecture/invoice-print-data-foundation-plan.md`.
 
 ## Rajataan Myöhemmäksi

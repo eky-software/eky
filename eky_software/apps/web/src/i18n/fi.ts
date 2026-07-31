@@ -242,6 +242,7 @@ export const uiText = {
     billingRecipientInvoices: 'Taloyhtiöiden laskut vastaanottajana',
     cancel: 'Peruuta',
     created: 'Luotu',
+    createInvoice: 'Luo lasku',
     city: 'Kaupunki',
     close: 'Sulje',
     comment: 'Kommentti',
@@ -802,6 +803,8 @@ export const uiText = {
     customerInactive: 'passivoitu',
     customerLoadError:
       'Asiakkaita ei voitu ladata. Yritä hetken kuluttua uudelleen.',
+    createInvoiceCustomerUnavailable:
+      'Laskua ei voitu avata valitulle asiakkaalle. Asiakas voi olla poistunut käytöstä tai sitä ei löytynyt.',
     customerLoading: 'Ladataan asiakkaita...',
     customerNotFound: 'Asiakasta ei löytynyt',
     customerLoadingHelp: 'Asiakaslista haetaan paikalliselta backendiltä.',

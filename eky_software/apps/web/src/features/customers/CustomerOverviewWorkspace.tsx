@@ -23,6 +23,7 @@ interface CustomerOverviewWorkspaceProps {
   invoiceState: CustomerInvoiceOverviewState;
   isLoading: boolean;
   onBack(): void;
+  onCreateInvoice(customerId: string): void;
   onEdit(): void;
   onOpenInvoice(target: CustomerInvoiceNavigationTarget): void;
   onOpenRelatedCustomer(customerId: string): void;
@@ -38,6 +39,7 @@ export function CustomerOverviewWorkspace({
   invoiceState,
   isLoading,
   onBack,
+  onCreateInvoice,
   onEdit,
   onOpenInvoice,
   onOpenRelatedCustomer,
@@ -93,6 +95,7 @@ export function CustomerOverviewWorkspace({
         customer={customer}
         customers={customers}
         defaultHourlyRateState={defaultHourlyRateState}
+        onCreateInvoice={onCreateInvoice}
         onEdit={onEdit}
         onOpenRelatedCustomer={onOpenRelatedCustomer}
       />

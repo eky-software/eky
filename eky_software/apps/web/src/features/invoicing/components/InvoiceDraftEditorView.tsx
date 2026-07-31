@@ -23,6 +23,7 @@ interface InvoiceDraftEditorViewProps {
   editorMode: 'create' | 'edit';
   invoicePaymentDefaultsState: InvoicePaymentDefaultsState;
   invoiceVatRatesState: InvoiceVatRatesState;
+  initialCustomerId: string | null;
   isDraftLoading: boolean;
   onBack(): void;
   onDraftApproved(approvedInvoice: ApprovedInvoiceResult): void;
@@ -39,6 +40,7 @@ export function InvoiceDraftEditorView({
   editorMode,
   invoicePaymentDefaultsState,
   invoiceVatRatesState,
+  initialCustomerId,
   isDraftLoading,
   onBack,
   onDraftApproved,
@@ -84,6 +86,7 @@ export function InvoiceDraftEditorView({
       customerListState={customerListState}
       invoicePaymentDefaultsState={invoicePaymentDefaultsState}
       invoiceVatRatesState={invoiceVatRatesState}
+      initialCustomerId={initialCustomerId}
       mode={
         editorMode === 'create'
           ? { type: 'create' }
