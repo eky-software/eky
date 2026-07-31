@@ -287,6 +287,18 @@ export function CustomerPage({
     });
   }
 
+  function openRelatedCustomer(customerId: string): void {
+    if (!customers.some((customer) => customer.id === customerId)) {
+      return;
+    }
+
+    setSaveErrorMessage(null);
+    dispatchWorkspace({
+      customerId,
+      type: 'showCustomerOverview',
+    });
+  }
+
   function openEditWorkspace(): void {
     if (customerDetail === null) {
       return;
@@ -420,6 +432,7 @@ export function CustomerPage({
           onBack={returnToCustomerList}
           onEdit={openEditWorkspace}
           onOpenInvoice={onOpenInvoice}
+          onOpenRelatedCustomer={openRelatedCustomer}
         />
       ) : null}
     </div>

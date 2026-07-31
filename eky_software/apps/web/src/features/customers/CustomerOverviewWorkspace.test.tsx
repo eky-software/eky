@@ -36,6 +36,7 @@ const baseProps = {
   onBack: () => undefined,
   onEdit: () => undefined,
   onOpenInvoice: () => undefined,
+  onOpenRelatedCustomer: () => undefined,
 };
 
 describe('CustomerOverviewWorkspace', () => {

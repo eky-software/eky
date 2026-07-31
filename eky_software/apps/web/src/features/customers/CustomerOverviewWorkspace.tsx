@@ -22,6 +22,7 @@ interface CustomerOverviewWorkspaceProps {
   onBack(): void;
   onEdit(): void;
   onOpenInvoice(target: CustomerInvoiceNavigationTarget): void;
+  onOpenRelatedCustomer(customerId: string): void;
 }
 
 export function CustomerOverviewWorkspace({
@@ -35,6 +36,7 @@ export function CustomerOverviewWorkspace({
   onBack,
   onEdit,
   onOpenInvoice,
+  onOpenRelatedCustomer,
 }: CustomerOverviewWorkspaceProps): React.JSX.Element {
   const navigation = (
     <nav
@@ -88,6 +90,7 @@ export function CustomerOverviewWorkspace({
         customers={customers}
         defaultHourlyRateState={defaultHourlyRateState}
         onEdit={onEdit}
+        onOpenRelatedCustomer={onOpenRelatedCustomer}
       />
       <CustomerInvoicesSection
         invoiceState={invoiceState}

@@ -6,6 +6,7 @@ import {
   getCustomerTypeLabel,
 } from './customerDisplay.js';
 import type { CustomerDefaultHourlyRateState } from './customerDefaultHourlyRateState.js';
+import { ManagedHousingCompaniesSection } from './ManagedHousingCompaniesSection.js';
 import styles from './CustomerOverview.module.css';
 import { centsToEuroInput } from '../../shared/money/hourlyRateInput.js';
 import { uiText } from '../../i18n/fi.js';
@@ -15,6 +16,7 @@ interface CustomerOverviewProps {
   customers: Customer[];
   defaultHourlyRateState: CustomerDefaultHourlyRateState;
   onEdit(): void;
+  onOpenRelatedCustomer(customerId: string): void;
 }
 
 export function CustomerOverview({
@@ -22,9 +24,19 @@ export function CustomerOverview({
   customers,
   defaultHourlyRateState,
   onEdit,
+  onOpenRelatedCustomer,
 }: CustomerOverviewProps): React.JSX.Element {
   const propertyManager = customers.find(
-    (candidate) => candidate.id === customer.managedByCustomerId,
+    (candidate) =>
+      candidate.companyId === customer.companyId &&
+      candidate.id === customer.managedByCustomerId &&
+      candidate.customerType === 'propertyManager',
+  );
+  const managedHousingCompanies = customers.filter(
+    (candidate) =>
+      candidate.companyId === customer.companyId &&
+      candidate.customerType === 'housingCompany' &&
+      candidate.managedByCustomerId === customer.id,
   );
   const pricing = getCustomerPricing(customer, defaultHourlyRateState);
 
@@ -69,16 +81,19 @@ export function CustomerOverview({
             value={getCustomerStatusLabel(customer.status)}
           />
           {customer.customerType === 'housingCompany' ? (
-            <CustomerFact
-              label={uiText.customers.managedByPropertyManager}
-              value={
-                propertyManager === undefined
-                  ? ''
-                  : `${propertyManager.customerNumber} · ${propertyManager.name}`
-              }
+            <CustomerRelationshipFact
+              customer={propertyManager}
+              onOpenRelatedCustomer={onOpenRelatedCustomer}
             />
           ) : null}
         </CustomerOverviewSection>
+
+        {customer.customerType === 'propertyManager' ? (
+          <ManagedHousingCompaniesSection
+            housingCompanies={managedHousingCompanies}
+            onOpenCustomer={onOpenRelatedCustomer}
+          />
+        ) : null}
 
         <CustomerOverviewSection heading={uiText.customers.contactInformation}>
           <CustomerFact label={uiText.customers.email} value={customer.email} />
@@ -136,6 +151,38 @@ export function CustomerOverview({
         </CustomerOverviewSection>
       </div>
     </article>
+  );
+}
+
+interface CustomerRelationshipFactProps {
+  customer: Customer | undefined;
+  onOpenRelatedCustomer(customerId: string): void;
+}
+
+function CustomerRelationshipFact({
+  customer,
+  onOpenRelatedCustomer,
+}: CustomerRelationshipFactProps): React.JSX.Element {
+  return (
+    <div className={styles.fact}>
+      <dt>{uiText.customers.managedByPropertyManager}</dt>
+      <dd>
+        {customer === undefined ? (
+          uiText.customers.noPropertyManager
+        ) : (
+          <button
+            aria-label={uiText.customers.openCustomerCardWithName(
+              customer.name,
+            )}
+            className={styles.relationshipLink}
+            onClick={() => onOpenRelatedCustomer(customer.id)}
+            type="button"
+          >
+            {customer.customerNumber} · {customer.name}
+          </button>
+        )}
+      </dd>
+    </div>
   );
 }
 

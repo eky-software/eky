@@ -59,11 +59,68 @@ describe('CustomerOverview', () => {
         customers={[housingCompany, propertyManager]}
         defaultHourlyRateState={{ status: 'loaded', valueCents: null }}
         onEdit={() => undefined}
+        onOpenRelatedCustomer={() => undefined}
       />,
     );
 
     expect(html).toContain('Isännöitsijätoimisto');
     expect(html).toContain('2001 · Selkeä Isännöinti Oy');
+    expect(html).toContain(
+      'aria-label="Avaa asiakaskortti Selkeä Isännöinti Oy"',
+    );
+  });
+
+  it('shows managed housing companies on a property manager card', () => {
+    const propertyManager = createCustomer({
+      customerType: 'propertyManager',
+      id: 'property-manager-1',
+      name: 'Selkeä Isännöinti Oy',
+    });
+    const housingCompany = createCustomer({
+      customerNumber: '2002',
+      customerType: 'housingCompany',
+      id: 'housing-company-1',
+      managedByCustomerId: propertyManager.id,
+      name: 'Asunto Oy Esimerkkipiha',
+    });
+    const html = renderToStaticMarkup(
+      <CustomerOverview
+        customer={propertyManager}
+        customers={[propertyManager, housingCompany]}
+        defaultHourlyRateState={{ status: 'loaded', valueCents: null }}
+        onEdit={() => undefined}
+        onOpenRelatedCustomer={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('Hallinnoidut taloyhtiöt');
+    expect(html).toContain('2002');
+    expect(html).toContain('Asunto Oy Esimerkkipiha');
+  });
+
+  it('does not resolve a related customer from another company', () => {
+    const propertyManager = createCustomer({
+      companyId: 'another-company',
+      customerType: 'propertyManager',
+      id: 'property-manager-1',
+      name: 'Vieraan yrityksen isännöitsijä',
+    });
+    const housingCompany = createCustomer({
+      customerType: 'housingCompany',
+      managedByCustomerId: propertyManager.id,
+    });
+    const html = renderToStaticMarkup(
+      <CustomerOverview
+        customer={housingCompany}
+        customers={[housingCompany, propertyManager]}
+        defaultHourlyRateState={{ status: 'loaded', valueCents: null }}
+        onEdit={() => undefined}
+        onOpenRelatedCustomer={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('Ei valittu');
+    expect(html).not.toContain('Vieraan yrityksen isännöitsijä');
   });
 
   it('shows an inactive customer as read-only without editable controls', () => {
@@ -84,6 +141,7 @@ describe('CustomerOverview', () => {
         customers={[customer]}
         defaultHourlyRateState={{ status: 'failed' }}
         onEdit={() => undefined}
+        onOpenRelatedCustomer={() => undefined}
       />,
     );
 
@@ -106,6 +164,7 @@ describe('CustomerOverview', () => {
         customers={[customer]}
         defaultHourlyRateState={{ status: 'loading' }}
         onEdit={() => undefined}
+        onOpenRelatedCustomer={() => undefined}
       />,
     );
 
@@ -126,6 +185,7 @@ function renderOverview(
         valueCents: defaultHourlyRateCents,
       }}
       onEdit={() => undefined}
+      onOpenRelatedCustomer={() => undefined}
     />,
   );
 }

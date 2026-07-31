@@ -316,6 +316,7 @@ export const uiText = {
     loading: 'Ladataan asiakkaita...',
     manualCustomerNumber: 'Syötä itse',
     managedByPropertyManager: 'Isännöitsijätoimisto',
+    managedHousingCompaniesHeading: 'Hallinnoidut taloyhtiöt',
     managedHousingCompanies: 'hallinnoitua taloyhtiötä',
     name: 'Nimi',
     newCustomer: 'Uusi asiakas',
@@ -328,6 +329,9 @@ export const uiText = {
     openInvoice: 'Avaa lasku',
     openInvoiceWithNumber: (invoiceNumber: string) =>
       `Avaa lasku ${invoiceNumber}`,
+    openCustomerCard: 'Avaa',
+    openCustomerCardWithName: (customerName: string) =>
+      `Avaa asiakaskortti ${customerName}`,
     openInInvoicing: 'Avaa laskutuksessa',
     organization: 'Yritys',
     other: 'Muu',
