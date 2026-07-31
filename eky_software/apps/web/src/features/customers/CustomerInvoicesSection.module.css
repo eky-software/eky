@@ -7,6 +7,27 @@
   gap: 18px;
 }
 
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin: 0 0 16px;
+}
+
+.control {
+  display: grid;
+  gap: 4px;
+  min-width: 170px;
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.control select {
+  min-height: 36px;
+}
+
 .category {
   min-width: 0;
 }

@@ -47,6 +47,10 @@ describe('CustomerInvoicesSection', () => {
     expect(html).toContain('Luonnokset');
     expect(html).toContain('124,00');
     expect(html).toContain('Avaa laskutuksessa');
+    expect(html).toContain('Rivejä osiossa');
+    expect(html).toContain('Uusimmat ensin');
+    expect(html).toContain('<option value="5" selected="">5</option>');
+    expect(html).not.toContain('Asiakas A–Ö');
   });
 
   it('keeps an invoice read error inside the invoice section', () => {
@@ -72,6 +76,8 @@ describe('CustomerInvoicesSection', () => {
     );
     expect(html).toContain('Maksetut');
     expect(html).toContain('20260010');
+    expect(html).toContain('Maksupäivä');
+    expect(html).toContain('12.08.2026');
     expect(html).not.toContain('responseBody');
   });
 });
@@ -85,8 +91,12 @@ function createInvoiceState(): CustomerInvoiceOverviewState {
     errorMessage: null,
     goToPage: () => undefined,
     isLoading: false,
+    pageSize: 5,
     paid: createEmptyPage(),
     sent: createEmptyPage(),
+    setPageSize: () => undefined,
+    setSort: () => undefined,
+    sort: 'invoiceDateDesc',
   };
 }
 

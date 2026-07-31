@@ -9,11 +9,19 @@ import type { CustomerInvoiceNavigationTarget } from './customerInvoiceNavigatio
 import styles from './CustomerInvoicesSection.module.css';
 import { uiText } from '../../i18n/fi.js';
 import {
+  InvoiceListPageSizeSelect,
   InvoiceListPagination,
+  InvoiceListSortSelect,
   InvoiceListTable,
   type InvoiceListTableLabels,
+  type InvoiceListSortOption,
 } from '../../shared/invoiceList/index.js';
 import { MessageBanner } from '../../shared/ui/index.js';
+import {
+  customerInvoicePageSizes,
+  isCustomerInvoiceListPageSize,
+  isCustomerInvoiceListSort,
+} from './customerInvoiceListState.js';
 
 interface CustomerInvoicesSectionProps {
   invoiceState: CustomerInvoiceOverviewState;
@@ -70,6 +78,37 @@ export function CustomerInvoicesSection({
       ) : null}
       {isEmpty ? (
         <p className="message">{uiText.customers.invoiceEmpty}</p>
+      ) : null}
+
+      {!invoiceState.isLoading && !isEmpty ? (
+        <div
+          aria-label={uiText.customers.invoiceListControls}
+          className={styles.controls}
+          role="group"
+        >
+          <InvoiceListSortSelect
+            className={styles.control}
+            label={uiText.invoicing.listSort}
+            onChange={(value) => {
+              if (isCustomerInvoiceListSort(value)) {
+                invoiceState.setSort(value);
+              }
+            }}
+            options={customerInvoiceSortOptions}
+            value={invoiceState.sort}
+          />
+          <InvoiceListPageSizeSelect
+            className={styles.control}
+            label={uiText.customers.invoicePageSize}
+            onChange={(value) => {
+              if (isCustomerInvoiceListPageSize(value)) {
+                invoiceState.setPageSize(value);
+              }
+            }}
+            options={customerInvoicePageSizes}
+            value={invoiceState.pageSize}
+          />
+        </div>
       ) : null}
 
       {!invoiceState.isLoading ? (
@@ -133,6 +172,7 @@ export function CustomerInvoicesSection({
             }
             page={invoiceState.paid.page}
             rows={paidRows}
+            showPaidOn
             totalCount={invoiceState.paid.totalCount}
             totalPages={invoiceState.paid.totalPages}
           />
@@ -189,6 +229,7 @@ interface CustomerInvoiceCategoryProps {
   onPreviousPage(): void;
   page: number;
   rows: CustomerInvoiceRow[];
+  showPaidOn?: boolean;
   totalCount: number;
   totalPages: number;
 }
@@ -200,6 +241,7 @@ function CustomerInvoiceCategory({
   onPreviousPage,
   page,
   rows,
+  showPaidOn = false,
   totalCount,
   totalPages,
 }: CustomerInvoiceCategoryProps): React.JSX.Element | null {
@@ -230,6 +272,7 @@ function CustomerInvoiceCategory({
           dueDate: row.dueDate,
           invoiceDate: row.date,
           key: row.id,
+          paidOn: row.paidOn,
           reference: row.reference,
           status: row.status,
           totalCents: row.isCredit
@@ -238,6 +281,7 @@ function CustomerInvoiceCategory({
         }))}
         showActions
         showCreditRelation
+        showPaidOn={showPaidOn}
       />
       {totalPages > 1 ? (
         <InvoiceListPagination
@@ -267,3 +311,18 @@ const customerInvoiceListLabels: InvoiceListTableLabels = {
   status: uiText.customers.status,
   total: uiText.customers.total,
 };
+
+const customerInvoiceSortOptions: readonly InvoiceListSortOption[] = [
+  {
+    label: uiText.invoicing.listSortNewest,
+    value: 'invoiceDateDesc',
+  },
+  {
+    label: uiText.invoicing.listSortOldest,
+    value: 'invoiceDateAsc',
+  },
+  {
+    label: uiText.invoicing.listSortDueDate,
+    value: 'dueDateAsc',
+  },
+];
