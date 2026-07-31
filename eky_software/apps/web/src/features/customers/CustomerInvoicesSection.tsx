@@ -13,6 +13,7 @@ import {
   InvoiceListPagination,
   InvoiceListSortSelect,
   InvoiceListTable,
+  formatInvoiceListDate,
   type InvoiceListTableLabels,
   type InvoiceListSortOption,
 } from '../../shared/invoiceList/index.js';
@@ -172,7 +173,6 @@ export function CustomerInvoicesSection({
             }
             page={invoiceState.paid.page}
             rows={paidRows}
-            showPaidOn
             totalCount={invoiceState.paid.totalCount}
             totalPages={invoiceState.paid.totalPages}
           />
@@ -229,7 +229,6 @@ interface CustomerInvoiceCategoryProps {
   onPreviousPage(): void;
   page: number;
   rows: CustomerInvoiceRow[];
-  showPaidOn?: boolean;
   totalCount: number;
   totalPages: number;
 }
@@ -241,7 +240,6 @@ function CustomerInvoiceCategory({
   onPreviousPage,
   page,
   rows,
-  showPaidOn = false,
   totalCount,
   totalPages,
 }: CustomerInvoiceCategoryProps): React.JSX.Element | null {
@@ -261,27 +259,37 @@ function CustomerInvoiceCategory({
         rows={rows.map((row) => ({
           action: (
             <button
-              className="ghost-button"
+              aria-label={uiText.customers.openInvoiceWithNumber(
+                row.reference,
+              )}
+              className={`ghost-button ${styles.openInvoiceButton}`}
               onClick={() => onOpenInvoice(row.target)}
               type="button"
             >
-              {uiText.customers.openInInvoicing}
+              {uiText.customers.openInvoice}
             </button>
           ),
           creditRelation: row.relation,
           dueDate: row.dueDate,
           invoiceDate: row.date,
           key: row.id,
-          paidOn: row.paidOn,
           reference: row.reference,
           status: row.status,
+          statusDetail:
+            row.paidOn === null ? undefined : (
+              <span>
+                {uiText.invoicing.invoicePaymentDate}{' '}
+                <time dateTime={row.paidOn}>
+                  {formatInvoiceListDate(row.paidOn)}
+                </time>
+              </span>
+            ),
           totalCents: row.isCredit
             ? -Math.abs(row.grossTotalCents)
             : row.grossTotalCents,
         }))}
         showActions
         showCreditRelation
-        showPaidOn={showPaidOn}
       />
       {totalPages > 1 ? (
         <InvoiceListPagination
@@ -307,7 +315,6 @@ const customerInvoiceListLabels: InvoiceListTableLabels = {
   dueDate: uiText.customers.dueDate,
   invoice: uiText.customers.invoice,
   invoiceDate: uiText.customers.invoiceDate,
-  paidOn: uiText.invoicing.invoicePaymentDate,
   status: uiText.customers.status,
   total: uiText.customers.total,
 };

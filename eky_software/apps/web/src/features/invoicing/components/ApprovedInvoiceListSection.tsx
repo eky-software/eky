@@ -23,7 +23,6 @@ interface ApprovedInvoiceListSectionProps {
   listLabel: string;
   loadingMessage: string;
   pageState: ApprovedInvoicePageState;
-  showPaidOn?: boolean;
   title: string;
   onOpenApprovedInvoice(id: string): void;
 }
@@ -37,7 +36,6 @@ export function ApprovedInvoiceListSection({
   listLabel,
   loadingMessage,
   pageState,
-  showPaidOn = false,
   title,
   onOpenApprovedInvoice,
 }: ApprovedInvoiceListSectionProps): React.JSX.Element {
@@ -135,7 +133,6 @@ export function ApprovedInvoiceListSection({
           groups={pageState.invoiceGroups}
           listLabel={listLabel}
           onOpenApprovedInvoice={onOpenApprovedInvoice}
-          showPaidOn={showPaidOn}
         />
       ) : (
         <ApprovedInvoiceList

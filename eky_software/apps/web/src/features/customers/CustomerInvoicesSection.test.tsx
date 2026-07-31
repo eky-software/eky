@@ -46,7 +46,7 @@ describe('CustomerInvoicesSection', () => {
     expect(html).toContain('Asiakkaan laskut');
     expect(html).toContain('Luonnokset');
     expect(html).toContain('124,00');
-    expect(html).toContain('Avaa laskutuksessa');
+    expect(html).toContain('>Avaa lasku</button>');
     expect(html).toContain('Rivejä osiossa');
     expect(html).toContain('Uusimmat ensin');
     expect(html).toContain('<option value="5" selected="">5</option>');
@@ -78,6 +78,7 @@ describe('CustomerInvoicesSection', () => {
     expect(html).toContain('20260010');
     expect(html).toContain('Maksupäivä');
     expect(html).toContain('12.08.2026');
+    expect(html).not.toContain('scope="col">Maksupäivä</th>');
     expect(html).not.toContain('responseBody');
   });
 });

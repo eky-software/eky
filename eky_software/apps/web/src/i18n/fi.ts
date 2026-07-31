@@ -325,6 +325,9 @@ export const uiText = {
     noPropertyManager: 'Ei valittu',
     noManagedHousingCompanies: 'Ei taloyhtiöitä',
     oneManagedHousingCompany: '1 taloyhtiö',
+    openInvoice: 'Avaa lasku',
+    openInvoiceWithNumber: (invoiceNumber: string) =>
+      `Avaa lasku ${invoiceNumber}`,
     openInInvoicing: 'Avaa laskutuksessa',
     organization: 'Yritys',
     other: 'Muu',

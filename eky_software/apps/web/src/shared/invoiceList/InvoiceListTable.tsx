@@ -13,7 +13,6 @@ export interface InvoiceListTableLabels {
   dueDate: string;
   invoice: string;
   invoiceDate: string;
-  paidOn: string;
   status: string;
   total: string;
 }
@@ -26,9 +25,9 @@ export interface InvoiceListTableRow {
   dueDate: string | null;
   invoiceDate: string;
   key: string;
-  paidOn?: string | null;
   reference: ReactNode;
   status: ReactNode;
+  statusDetail?: ReactNode;
   totalCents: number;
 }
 
@@ -39,7 +38,6 @@ interface InvoiceListTableProps {
   showActions?: boolean;
   showCreditRelation?: boolean;
   showCustomer?: boolean;
-  showPaidOn?: boolean;
 }
 
 export function InvoiceListTable({
@@ -49,7 +47,6 @@ export function InvoiceListTable({
   showActions = false,
   showCreditRelation = false,
   showCustomer = false,
-  showPaidOn = false,
 }: InvoiceListTableProps): React.JSX.Element {
   return (
     <div className={styles.frame}>
@@ -59,7 +56,6 @@ export function InvoiceListTable({
           {showCustomer ? <col className={styles.customerColumn} /> : null}
           <col className={styles.dateColumn} />
           <col className={styles.dateColumn} />
-          {showPaidOn ? <col className={styles.dateColumn} /> : null}
           <col className={styles.totalColumn} />
           <col className={styles.statusColumn} />
           {showCreditRelation ? (
@@ -73,7 +69,6 @@ export function InvoiceListTable({
             {showCustomer ? <th scope="col">{labels.customer}</th> : null}
             <th scope="col">{labels.invoiceDate}</th>
             <th scope="col">{labels.dueDate}</th>
-            {showPaidOn ? <th scope="col">{labels.paidOn}</th> : null}
             <th className={styles.numeric} scope="col">
               {labels.total}
             </th>
@@ -105,21 +100,19 @@ export function InvoiceListTable({
                   </time>
                 )}
               </td>
-              {showPaidOn ? (
-                <td>
-                  {row.paidOn === null || row.paidOn === undefined ? (
-                    '–'
-                  ) : (
-                    <time dateTime={row.paidOn}>
-                      {formatInvoiceListDate(row.paidOn)}
-                    </time>
-                  )}
-                </td>
-              ) : null}
               <td className={`${styles.numeric} ${styles.total}`}>
                 {formatInvoiceListCurrency(row.totalCents)}
               </td>
-              <td>{row.status}</td>
+              <td>
+                <div className={styles.status}>
+                  {row.status}
+                  {row.statusDetail ? (
+                    <span className={styles.statusDetail}>
+                      {row.statusDetail}
+                    </span>
+                  ) : null}
+                </div>
+              </td>
               {showCreditRelation ? <td>{row.creditRelation || '–'}</td> : null}
               {showActions ? (
                 <td className={styles.action}>{row.action}</td>
