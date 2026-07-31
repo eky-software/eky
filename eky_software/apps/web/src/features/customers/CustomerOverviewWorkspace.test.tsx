@@ -4,13 +4,33 @@ import { describe, expect, it } from 'vitest';
 import { CustomerOverviewWorkspace } from './CustomerOverviewWorkspace.js';
 
 const baseProps = {
+  activityState: {
+    activityEntries: [],
+    errorMessage: null,
+    goToPage: () => undefined,
+    hasNextPage: false,
+    hasPreviousPage: false,
+    isLoading: false,
+    page: 1,
+  },
   customer: null,
   customers: [],
   defaultHourlyRateCents: null,
   errorMessage: null,
+  invoiceState: {
+    approved: createEmptyPage(),
+    cancelled: createEmptyPage(),
+    credited: createEmptyPage(),
+    drafts: createEmptyPage(),
+    errorMessage: null,
+    goToPage: () => undefined,
+    isLoading: false,
+    sent: createEmptyPage(),
+  },
   isLoading: false,
   onBack: () => undefined,
   onEdit: () => undefined,
+  onOpenInvoice: () => undefined,
 };
 
 describe('CustomerOverviewWorkspace', () => {
@@ -34,3 +54,12 @@ describe('CustomerOverviewWorkspace', () => {
     expect(html).toContain('Takaisin asiakaslistaan');
   });
 });
+
+function createEmptyPage() {
+  return {
+    items: [],
+    page: 1,
+    totalCount: 0,
+    totalPages: 0,
+  };
+}

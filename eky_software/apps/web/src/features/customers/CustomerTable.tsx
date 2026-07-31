@@ -16,7 +16,7 @@ import { uiText } from '../../i18n/fi.js';
 interface CustomerTableProps {
   customers: Customer[];
   customerGroups: CustomerListGroup[];
-  expandedPropertyManagerIds: Set<string>;
+  expandedPropertyManagerIds: ReadonlySet<string>;
   sortState: CustomerSortState;
   onCustomerSelect(customer: Customer): void;
   onPropertyManagerToggle(customerId: string): void;

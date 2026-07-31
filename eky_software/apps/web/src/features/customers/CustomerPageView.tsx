@@ -11,6 +11,7 @@ import {
   customerListViewReducer,
   initialCustomerListViewState,
 } from './customerListViewState.js';
+import type { CustomerInvoiceNavigationTarget } from './customerInvoiceNavigation.js';
 import { CustomerOverviewWorkspace } from './CustomerOverviewWorkspace.js';
 import {
   initialCustomerForm,
@@ -23,6 +24,8 @@ import {
   customerWorkspaceReducer,
   initialCustomerWorkspaceState,
 } from './customerWorkspaceState.js';
+import { useCustomerActivity } from './hooks/useCustomerActivity.js';
+import { useCustomerInvoices } from './hooks/useCustomerInvoices.js';
 import styles from './CustomerPageView.module.css';
 import { getFinnishApiErrorMessage, uiText } from '../../i18n/fi.js';
 
@@ -31,16 +34,22 @@ type CustomerPageClient = Pick<
   | 'createCustomer'
   | 'getCompanySettings'
   | 'getCustomer'
+  | 'listApprovedInvoices'
+  | 'listCustomerActivity'
   | 'listCustomers'
+  | 'listInvoiceDrafts'
+  | 'listSentInvoiceGroups'
   | 'updateCustomer'
 >;
 
 interface CustomerPageProps {
   apiClient: CustomerPageClient;
+  onOpenInvoice(target: CustomerInvoiceNavigationTarget): void;
 }
 
 export function CustomerPage({
   apiClient,
+  onOpenInvoice,
 }: CustomerPageProps): React.JSX.Element {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerForm, setCustomerForm] =
@@ -69,6 +78,8 @@ export function CustomerPage({
     workspaceState.mode === 'overview' || workspaceState.mode === 'edit'
       ? workspaceState.customerId
       : null;
+  const activityState = useCustomerActivity(apiClient, selectedCustomerId);
+  const invoiceState = useCustomerInvoices(apiClient, selectedCustomerId);
   const propertyManagerCustomers = customers.filter(
     (customer) => customer.customerType === 'propertyManager',
   );
@@ -138,6 +149,7 @@ export function CustomerPage({
       return;
     }
 
+    const customerId = selectedCustomerId;
     let isActive = true;
     setCustomerDetail(null);
     setDetailErrorMessage(null);
@@ -145,7 +157,7 @@ export function CustomerPage({
 
     async function loadCustomerDetail(): Promise<void> {
       try {
-        const loadedCustomer = await apiClient.getCustomer(selectedCustomerId);
+        const loadedCustomer = await apiClient.getCustomer(customerId);
 
         if (isActive) {
           setCustomerDetail(loadedCustomer);
@@ -373,13 +385,16 @@ export function CustomerPage({
 
       {workspaceState.mode === 'overview' ? (
         <CustomerOverviewWorkspace
+          activityState={activityState}
           customer={customerDetail}
           customers={customers}
           defaultHourlyRateCents={defaultHourlyRateCents}
           errorMessage={detailErrorMessage}
+          invoiceState={invoiceState}
           isLoading={isDetailLoading}
           onBack={returnToCustomerList}
           onEdit={openEditWorkspace}
+          onOpenInvoice={onOpenInvoice}
         />
       ) : null}
     </div>

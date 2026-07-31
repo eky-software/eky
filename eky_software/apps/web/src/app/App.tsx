@@ -36,7 +36,15 @@ export function App({ apiClient }: AppProps): React.JSX.Element {
   return (
     <AppLayout activeView={activeView} onViewChange={activateView} title={activeTitle}>
       {activeView === 'customers' ? (
-        <CustomerPage apiClient={apiClient} />
+        <CustomerPage
+          apiClient={apiClient}
+          onOpenInvoice={(target) =>
+            activateView({
+              target,
+              type: 'openInvoicingTarget',
+            })
+          }
+        />
       ) : null}
       {activeView === 'activity' ? <ActivityPage apiClient={apiClient} /> : null}
       {activeView === 'diagnostics' ? (
@@ -63,7 +71,10 @@ export function App({ apiClient }: AppProps): React.JSX.Element {
       {activeView === 'invoicing' ? (
         <InvoicingPage
           apiClient={apiClient}
-          navigationRevision={navigation.invoicingNavigationRevision}
+          navigationRequest={{
+            revision: navigation.invoicingNavigationRevision,
+            target: navigation.invoicingNavigationTarget,
+          }}
           {...(openInvoicePdfPreview === undefined
             ? {}
             : { openInvoicePdfPreview })}
