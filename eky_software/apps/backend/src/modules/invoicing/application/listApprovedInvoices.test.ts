@@ -76,6 +76,8 @@ describe('listApprovedInvoices', () => {
 
   it.each([
     { page: 0, pageSize: 20, status: 'approved', sort: 'invoiceDateDesc' },
+    { page: 1, pageSize: 4, status: 'approved', sort: 'invoiceDateDesc' },
+    { page: 1, pageSize: 6, status: 'approved', sort: 'invoiceDateDesc' },
     { page: 1, pageSize: 25, status: 'approved', sort: 'invoiceDateDesc' },
     { page: 1, pageSize: 20, status: 'unknown', sort: 'invoiceDateDesc' },
     { page: 1, pageSize: 20, status: 'approved', sort: 'unknown' },

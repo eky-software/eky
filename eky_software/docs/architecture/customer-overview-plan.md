@@ -231,6 +231,15 @@ Kategoriarajojen ja laskutukseen avaamisen järjestelmätodiste on
 `CUS-OVERVIEW-007` testissä
 `apps/e2e/tests/web/customerOverviewJourneys.spec.ts`.
 
+Asiakaskortin laskukokonaisuudella on yksi yhteinen lajittelu- ja
+sivukokovalinta. Oletussivukoko on 5, ja vaihtoehdot ovat 5, 20 ja 50.
+Valinnan muuttaminen palauttaa kaikki kategoriat sivulle 1, mutta luonnosten,
+hyväksyttyjen, lähetettyjen, maksettujen, hyvitettyjen ja peruttujen
+kategoriakohtainen sivutus säilyy sen jälkeen itsenäisenä. Maksetut näyttävät
+snapshot/read model -tiedon mukaisen maksupäivän. Customers ei omista eikä
+kopioi laskutuksen tietoa, vaan käyttää Invoicingin julkisia rajattuja
+listausrajapintoja `companyId + customerId` -rajassa.
+
 ## Työmääräysten Merkitys
 
 Työmääräykset kannattaa pitää erillisenä moduulina.

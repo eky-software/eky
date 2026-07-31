@@ -5,6 +5,7 @@ import {
   InvoiceListTable,
   type InvoiceListTableLabels,
 } from './InvoiceListTable.js';
+import styles from './InvoiceListTable.module.css';
 
 const labels: InvoiceListTableLabels = {
   actions: 'Toiminnot',
@@ -54,6 +55,10 @@ describe('InvoiceListTable', () => {
     expect(html).toContain('aria-label="Toiminnot"');
     expect(html).toContain('dateTime="2026-07-18"');
     expect(html).toContain('123,45');
+    expect(html).toContain(`<th class="${styles.numeric}" scope="col">`);
+    expect(html).toContain(
+      `<td class="${styles.numeric} ${styles.total}">`,
+    );
   });
 
   it('omits unused columns from compact invoice lists', () => {

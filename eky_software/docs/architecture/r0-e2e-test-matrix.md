@@ -65,6 +65,7 @@ tietokannan, auditin, operational/security-eventin ja tukipaketin päätöksen.
 | CUS-OVERVIEW-006 | P0; web-e2e, cross-module | Avaa asiakkaan luonnos ja hyväksytty lasku laskutuksessa | App-taso vaihtaa moduulin ja avaa oikean resurssin kertakäyttöpyynnöllä | Customers ei omista eikä importtaa Invoicingin sisäistä UI-statea | Raaka URL, companyId tai tarpeeton invoice-data navigointipyynnössä | implemented-e2e |
 | CUS-OVERVIEW-007 | P0; web-e2e, cross-module | Asiakkaalla maksamaton sent, maksettu ja credited+paid | Lähetetyt, Maksetut ja Hyvitetyt ovat toisensa poissulkevia; lasku avautuu Invoicingissa | Backend-sivutus ja companyId + customerId -raja säilyvät | Maksu- tai laskudatan kopiointi Customersiin | implemented-e2e |
 | CUS-OVERVIEW-008 | P1; web-e2e, recovery | Company Settingsin oletustuntihinnan luku epäonnistuu asiakaskortilla | Rajattu hinnoitteluvirhe; asiakkaan tiedot, laskut, historia ja paluunavigointi säilyvät | Puuttuva oletus ja latausvirhe erotetaan | Tekninen backend-virhe | implemented-e2e |
+| CUS-OVERVIEW-009 | P0; web-e2e, cross-module | Asiakkaalla vähintään 6 maksettua laskua | Oletuksena näkyy 5; kategoriakohtainen sivutus, sivukoko ja lajittelu toimivat; maksupäivä näkyy asiakaskortilla ja Laskutuksessa | Invoicingin server-side queryt ja Customersin draft-sivutus noudattavat samaa rajattua kontrollia | Toisen asiakkaan laskut, customerName-lajittelu tai tyhjä maksettu-päivä | implemented-e2e |
 
 ## Company Settings
 

@@ -282,6 +282,13 @@ edelleen erillisen päätöksen.
 
 Esimerkiksi `shared/money/hourlyRateInput.ts` muuntaa web-lomakkeiden tuntihintasyötteen eurojen ja senttien välillä.
 
+`shared/invoiceList/` on web-local laskulistojen esitysprimitivi. Se omistaa
+semanttisen taulukkorungon, valinnaiset esityssarakkeet, listaohjainten
+esityskomponentit sekä päivämäärä- ja valuuttaformaatoinnin. Se ei omista
+laskutuksen tiloja, suodatuksia, sivutusta, kyselyitä tai Customers- ja
+Invoicing-featureiden liiketoimintapäätöksiä. Kokonaisuus ei ole uusi
+liiketoimintamoduuli eikä `packages/ui`-paketin aktivointi.
+
 `shared/` ei ole uusi yleinen utils-kansio.
 
 Älä luo:
