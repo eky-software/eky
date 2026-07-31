@@ -209,7 +209,7 @@ laskujen listasemantiikan. Suodatus perustuu laskun `customerId`-arvoon, ei
 valinnaiseen laskun vastaanottajaan. Hyvityslaskut ja maksutila säilyvät
 Invoicingin omistamassa ryhmittelyssä.
 
-Maksuseurannan jälkeen asiakaskortin pääkategoriat ovat:
+Nykyisessä toteutuksessa asiakaskortin pääkategoriat ovat:
 
 - Lähetetyt: hyvittämätön ja maksamaton standardilasku
 - Maksetut: hyvittämätön ja maksettu standardilasku
@@ -226,6 +226,10 @@ Invoicing-featuren sisäisiä komponentteja tai tilaa.
 
 Manuaalisen maksuseurannan tarkempi sopimus on dokumentissa
 `docs/architecture/invoice-payment-tracking-plan.md`.
+
+Kategoriarajojen ja laskutukseen avaamisen järjestelmätodiste on
+`CUS-OVERVIEW-007` testissä
+`apps/e2e/tests/web/customerOverviewJourneys.spec.ts`.
 
 ## Työmääräysten Merkitys
 

@@ -73,6 +73,14 @@ function resolveTriggers(
           tableName: 'invoices',
         },
       ];
+    case 'markInvoicePaidEvent':
+      return [
+        {
+          action: 'INSERT',
+          name: '_e2e_fail_mark_invoice_paid_event',
+          tableName: 'invoice_payment_events',
+        },
+      ];
     case 'updateCustomer':
       return [
         {

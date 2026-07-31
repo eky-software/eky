@@ -8,6 +8,16 @@ Maksuseuranta kuuluu Invoicing-moduulille. Se ei muuta hyväksytyn laskun
 snapshot-summia, toimitustapahtumia, laskunumeroa, viitenumeroa, PDF:ää tai
 laskun toimitustilaa.
 
+## Toteutustila
+
+Manuaalinen `unpaid | paid`-maksuseuranta on toteutettu local-R0-laajuudessa.
+Toteutus sisältää nykytilaprojektion, append-only-maksuhistorian, HTTP- ja
+API-client-sopimukset, Activity-projektion sekä Laskutuksen ja asiakaskortin
+käyttöliittymät.
+
+Pankki-integraatio, osamaksut ja palautusten seuranta ovat edelleen
+myöhempää laajuutta.
+
 ## Tilamalli
 
 Laskun elinkaari ja toimitustila säilyvät erillään maksutilasta:
@@ -198,7 +208,7 @@ pankkitoiminto. Sitä ei päätellä hyvityslaskusta automaattisesti.
 
 ## HTTP Ja Julkinen Read Model
 
-Suunniteltu HTTP-sopimus:
+Toteutettu HTTP-sopimus:
 
 ```text
 PUT /invoices/:id/payment
@@ -302,7 +312,7 @@ moniprosessikilpailut vaativat omat päätöksensä. Ensimmäisen version
 
 ## Testausmatriisi
 
-Vähintään seuraavat invarianssit todistetaan:
+Seuraavat invarianssit on todistettu:
 
 - sent standardilasku voidaan merkitä maksetuksi
 - maksumerkintä voidaan poistaa ja historia säilyy
@@ -318,3 +328,17 @@ Vähintään seuraavat invarianssit todistetaan:
 
 Tarkemmat E2E-tapaukset ovat dokumentissa
 `docs/architecture/r0-e2e-test-matrix.md`.
+
+Edustavat järjestelmätestit sijaitsevat tiedostoissa:
+
+- `apps/e2e/tests/web/invoicePaymentJourneys.spec.ts`
+- `apps/e2e/tests/system/invoicePaymentBoundaries.spec.ts`
+- `apps/e2e/tests/web/invoiceFailureJourneys.spec.ts`
+- `apps/e2e/tests/web/customerOverviewJourneys.spec.ts`
+
+Local-runtime käyttää system-E2E:ssä tarkoituksella yhtä `local-owner`-actoria.
+Siksi puuttuvan `manageInvoicePayments`-permissionin `403`-raja ja toisen
+yrityksen rajaus todistetaan application-, HTTP- ja repository-
+integraatiotesteissä. System-E2E todistaa session-, geneerisen `404`- ja
+tilarajat ilman erillistä test-only-roolia tai pyynnöstä vaihdettavaa
+`companyId`:tä.

@@ -84,9 +84,15 @@ export function toSentRows(
             ),
       status:
         group.creditStatus === 'partial'
-          ? uiText.customers.invoiceStatuses.partiallyCredited
+          ? addPaidStatus(
+              uiText.customers.invoiceStatuses.partiallyCredited,
+              group.rootInvoice.paymentState,
+            )
           : group.creditStatus === 'full'
-            ? uiText.customers.invoiceStatuses.fullyCredited
+            ? addPaidStatus(
+                uiText.customers.invoiceStatuses.fullyCredited,
+                group.rootInvoice.paymentState,
+              )
             : group.rootInvoice.paymentState === 'paid'
               ? uiText.customers.invoiceStatuses.paid
               : uiText.customers.invoiceStatuses.sent,
@@ -127,4 +133,13 @@ function getCreditRelation(invoice: ApprovedInvoiceSummary): string {
   }
 
   return uiText.customers.creditInvoice;
+}
+
+function addPaidStatus(
+  creditStatus: string,
+  paymentState: ApprovedInvoiceSummary['paymentState'],
+): string {
+  return paymentState === 'paid'
+    ? `${creditStatus} · ${uiText.customers.invoiceStatuses.paid}`
+    : creditStatus;
 }

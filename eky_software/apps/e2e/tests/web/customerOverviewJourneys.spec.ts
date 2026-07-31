@@ -129,7 +129,7 @@ test('CUS-OVERVIEW-008 @critical keeps customer details usable when company pric
   ).toHaveCount(0);
 });
 
-test('CUS-OVERVIEW-003 CUS-OVERVIEW-006 @critical @cross-module shows customer-owned invoice states and opens invoicing targets', async ({
+test('CUS-OVERVIEW-003 CUS-OVERVIEW-006 CUS-OVERVIEW-007 @critical @cross-module shows mutually exclusive customer-owned invoice states and opens invoicing targets', async ({
   e2eWeb,
 }) => {
   const selectedCustomer = await seedInvoiceJourneyPrerequisites(e2eWeb, {
@@ -157,12 +157,20 @@ test('CUS-OVERVIEW-003 CUS-OVERVIEW-006 @critical @cross-module shows customer-o
     'Overview sent',
   );
   await markInvoiceSent(e2eWeb.api, sent.id);
+  const paid = await createApprovedInvoice(
+    e2eWeb.api,
+    selectedCustomer.customerId,
+    'Overview paid',
+  );
+  await markInvoiceSent(e2eWeb.api, paid.id);
+  await markInvoicePaid(e2eWeb.api, paid.id);
   const creditedSource = await createApprovedInvoice(
     e2eWeb.api,
     selectedCustomer.customerId,
     'Overview credited source',
   );
   await markInvoiceSent(e2eWeb.api, creditedSource.id);
+  await markInvoicePaid(e2eWeb.api, creditedSource.id);
   const creditInvoice = await createFullCreditInvoice(
     e2eWeb.api,
     creditedSource.id,
@@ -190,6 +198,7 @@ test('CUS-OVERVIEW-003 CUS-OVERVIEW-006 @critical @cross-module shows customer-o
     'Luonnokset',
     'Hyväksytyt ja toimitusta odottavat',
     'Lähetetyt',
+    'Maksetut',
     'Hyvitetyt ja osittain hyvitetyt',
     'Perutut',
   ]) {
@@ -198,7 +207,31 @@ test('CUS-OVERVIEW-003 CUS-OVERVIEW-006 @critical @cross-module shows customer-o
     ).toBeVisible();
   }
   await expect(e2eWeb.page.getByText(approved.number)).toBeVisible();
-  await expect(e2eWeb.page.getByText(sent.number)).toBeVisible();
+  const sentSection = e2eWeb.page.getByRole('region', {
+    name: 'Lähetetyt',
+  });
+  const paidSection = e2eWeb.page.getByRole('region', {
+    name: 'Maksetut',
+  });
+  const creditedSection = e2eWeb.page.getByRole('region', {
+    name: 'Hyvitetyt ja osittain hyvitetyt',
+  });
+  await expect(sentSection.getByText(sent.number, { exact: true })).toBeVisible();
+  await expect(paidSection.getByText(paid.number, { exact: true })).toBeVisible();
+  await expect(
+    creditedSection.getByText(creditedSource.number, { exact: true }),
+  ).toBeVisible();
+  await expect(
+    creditedSection.getByText('Kokonaan hyvitetty · Maksettu', {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(sentSection.getByText(paid.number, { exact: true })).toHaveCount(
+    0,
+  );
+  await expect(
+    paidSection.getByText(creditedSource.number, { exact: true }),
+  ).toHaveCount(0);
   await expect(e2eWeb.page.getByText(creditInvoice.number)).toBeVisible();
   await expect(e2eWeb.page.getByText(cancelled.number)).toBeVisible();
   await expect(e2eWeb.page.getByText(otherInvoice.number)).toHaveCount(0);
@@ -369,6 +402,16 @@ async function markInvoiceSent(
     data: { deliveryMethod: 'manual' },
   });
   expect(sentResponse.status()).toBe(200);
+}
+
+async function markInvoicePaid(
+  api: APIRequestContext,
+  invoiceId: string,
+): Promise<void> {
+  const response = await api.put(`/invoices/${invoiceId}/payment`, {
+    data: { paidOn: '2026-07-30' },
+  });
+  expect(response.status()).toBe(200);
 }
 
 async function createFullCreditInvoice(

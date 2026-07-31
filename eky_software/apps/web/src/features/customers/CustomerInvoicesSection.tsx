@@ -203,7 +203,7 @@ function CustomerInvoiceCategory({
   }
 
   return (
-    <section className={styles.category}>
+    <section aria-label={heading} className={styles.category}>
       <header className={styles.categoryHeader}>
         <h3>{heading}</h3>
         <span className="count-badge">{totalCount}</span>

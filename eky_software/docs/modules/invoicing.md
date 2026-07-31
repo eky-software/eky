@@ -614,8 +614,9 @@ Suoritusajankohta kuuluu laskun perustietoihin eikä tax treatment
 -lisäasetukseen. `sent`, `cancelled` ja hyvityslasku eivät enää ole tulevia
 R0-toimintoja.
 
-Seuraava rajattu Invoicing-vaihe on manuaalisen `unpaid | paid`-maksutilan
-toteutus. Pankkitapahtumien automaattinen kohdistaminen jää myöhemmäksi.
+Manuaalinen `unpaid | paid`-maksutila, append-only-maksuhistoria sekä
+Laskutuksen ja asiakaskortin Maksetut-näkymät kuuluvat nyt R0-laajuuteen.
+Pankkitapahtumien automaattinen kohdistaminen jää myöhemmäksi.
 
 Myöhempään laajuuteen jäävät:
 

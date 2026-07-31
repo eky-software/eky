@@ -61,7 +61,10 @@ test('INV-CREDIT-001 @critical creates a bounded partial credit and groups it wi
     e2eWeb.page.getByText('Osittain hyvitetty', { exact: true }),
   ).toBeVisible();
   await expect(
-    e2eWeb.page.getByText('163,15 €', { exact: true }),
+    e2eWeb.page
+      .getByText('Hyvitettävissä jäljellä', { exact: true })
+      .locator('..')
+      .getByText('163,15 €', { exact: true }),
   ).toBeVisible();
 
   const contextResponse = await e2eWeb.api.get(

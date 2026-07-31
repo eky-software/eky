@@ -46,7 +46,7 @@ test('CUS-UI-001 CUS-OVERVIEW-001 @critical creates, edits, searches and reloads
   ).toBeVisible();
 
   await e2eWeb.page
-    .getByRole('button', { name: 'Takaisin asiakaslistaan' })
+    .getByRole('button', { name: '← Asiakaslistaan' })
     .click();
   const search = e2eWeb.page.getByLabel('Hae asiakasta');
   await search.fill('E2E-2101');
@@ -133,7 +133,7 @@ test('CUS-INPUT-001 @security enforces bounded text and renders hostile text lit
     name: maximumName,
   });
   await e2eWeb.page
-    .getByRole('button', { name: 'Takaisin asiakaslistaan' })
+    .getByRole('button', { name: '← Asiakaslistaan' })
     .click();
 
   await openNewCustomerForm(e2eWeb.page, 'E2E-OVERFLOW');
@@ -188,7 +188,7 @@ test('CUS-INPUT-001 @security enforces bounded text and renders hostile text lit
   ).toBe(false);
   expect(popupCount).toBe(0);
   await e2eWeb.page
-    .getByRole('button', { name: 'Takaisin asiakaslistaan' })
+    .getByRole('button', { name: '← Asiakaslistaan' })
     .click();
 
   const listResponse = await e2eWeb.api.get('/customers');
