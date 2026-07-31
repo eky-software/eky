@@ -76,6 +76,54 @@ describe('approved invoices api client', () => {
     );
   });
 
+  it('serializes the billing-recipient list filter without a company id', async () => {
+    const requests = createRequestLog();
+    const invoicePage = {
+      invoices: [],
+      page: 1,
+      pageSize: 5,
+      totalCount: 0,
+      totalPages: 0,
+    } as const;
+    const client = createTestClient(requests, { invoicePage });
+
+    await client.listApprovedInvoices({
+      billingRecipientCustomerId: 'property/manager-1',
+      page: 1,
+      pageSize: 5,
+      sort: 'invoiceDateDesc',
+      status: 'approved',
+    });
+
+    expect(requests[0]?.input).toBe(
+      '/invoices?status=approved&page=1&pageSize=5&sort=invoiceDateDesc&billingRecipientCustomerId=property%2Fmanager-1',
+    );
+    expect(requests[0]?.input).not.toContain('companyId=');
+  });
+
+  it('rejects combined customer and billing-recipient query filters', async () => {
+    const client = createTestClient(createRequestLog(), {
+      invoicePage: {
+        invoices: [],
+        page: 1,
+        pageSize: 5,
+        totalCount: 0,
+        totalPages: 0,
+      },
+    });
+
+    await expect(
+      client.listApprovedInvoices({
+        customerId: 'customer-1',
+        billingRecipientCustomerId: 'property-manager-1',
+        page: 1,
+        pageSize: 5,
+        sort: 'invoiceDateDesc',
+        status: 'approved',
+      }),
+    ).rejects.toThrow('Invoice list customer filters cannot be combined.');
+  });
+
   it('accepts five-row sent invoice group pages', async () => {
     const requests = createRequestLog();
     const invoiceGroupPage = {
@@ -96,6 +144,30 @@ describe('approved invoices api client', () => {
     ).resolves.toEqual(invoiceGroupPage);
     expect(requests[0]?.input).toBe(
       '/sent-invoice-groups?page=1&pageSize=5&sort=dueDateAsc',
+    );
+  });
+
+  it('serializes the billing-recipient filter for sent invoice groups', async () => {
+    const requests = createRequestLog();
+    const client = createTestClient(requests, {
+      invoiceGroupPage: {
+        groups: [],
+        page: 1,
+        pageSize: 5,
+        totalCount: 0,
+        totalPages: 0,
+      },
+    });
+
+    await client.listSentInvoiceGroups({
+      billingRecipientCustomerId: 'property/manager-1',
+      page: 1,
+      pageSize: 5,
+      sort: 'invoiceDateDesc',
+    });
+
+    expect(requests[0]?.input).toBe(
+      '/sent-invoice-groups?page=1&pageSize=5&sort=invoiceDateDesc&billingRecipientCustomerId=property%2Fmanager-1',
     );
   });
 

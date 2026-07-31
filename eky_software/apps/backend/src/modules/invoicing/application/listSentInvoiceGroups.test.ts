@@ -35,6 +35,7 @@ describe('listSentInvoiceGroups', () => {
     expect(reader.listSentInvoiceGroups).toHaveBeenCalledWith({
       companyId: 'dev-company',
       customerId: 'customer-1',
+      billingRecipientCustomerId: null,
       creditState: 'all',
       dateFrom: '2026-01-01',
       dateTo: '2026-12-31',
@@ -43,6 +44,47 @@ describe('listSentInvoiceGroups', () => {
       paymentState: 'all',
       sort: 'invoiceDateDesc',
     });
+  });
+
+  it('passes a normalized billing-recipient filter to the grouped reader', async () => {
+    const reader = createReader();
+
+    await listSentInvoiceGroups(
+      {
+        companyId: 'dev-company',
+        billingRecipientCustomerId: ' property-manager-1 ',
+        page: 1,
+        pageSize: 20,
+        sort: 'invoiceDateDesc',
+      },
+      reader,
+    );
+
+    expect(reader.listSentInvoiceGroups).toHaveBeenCalledWith(
+      expect.objectContaining({
+        billingRecipientCustomerId: 'property-manager-1',
+        customerId: null,
+      }),
+    );
+  });
+
+  it('rejects combined customer and billing-recipient filters before reading', async () => {
+    const reader = createReader();
+
+    await expect(
+      listSentInvoiceGroups(
+        {
+          companyId: 'dev-company',
+          customerId: 'customer-1',
+          billingRecipientCustomerId: 'property-manager-1',
+          page: 1,
+          pageSize: 20,
+          sort: 'invoiceDateDesc',
+        },
+        reader,
+      ),
+    ).rejects.toBeInstanceOf(InvoiceDraftValidationError);
+    expect(reader.listSentInvoiceGroups).not.toHaveBeenCalled();
   });
 
   it('passes the requested credit-state filter to the reader', async () => {

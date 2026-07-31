@@ -24,6 +24,8 @@ type ApprovedInvoiceListFilterParameters = [
   string | null,
   string | null,
   string | null,
+  string | null,
+  string | null,
 ];
 type ApprovedInvoiceListParameters = [
   ...ApprovedInvoiceListFilterParameters,
@@ -61,6 +63,8 @@ export class SqliteApprovedInvoiceReader implements ApprovedInvoiceReader {
       query.status,
       query.customerId,
       query.customerId,
+      query.billingRecipientCustomerId,
+      query.billingRecipientCustomerId,
       query.dateFrom,
       query.dateFrom,
       query.dateTo,
@@ -76,6 +80,13 @@ export class SqliteApprovedInvoiceReader implements ApprovedInvoiceReader {
             company_id = ?
             AND status = ?
             AND (? IS NULL OR customer_id = ?)
+            AND (
+              ? IS NULL
+              OR (
+                billing_recipient_customer_id = ?
+                AND customer_id <> billing_recipient_customer_id
+              )
+            )
             AND (? IS NULL OR invoice_date >= ?)
             AND (? IS NULL OR invoice_date <= ?)
           ORDER BY ${orderBy}
@@ -93,6 +104,13 @@ export class SqliteApprovedInvoiceReader implements ApprovedInvoiceReader {
             company_id = ?
             AND status = ?
             AND (? IS NULL OR customer_id = ?)
+            AND (
+              ? IS NULL
+              OR (
+                billing_recipient_customer_id = ?
+                AND customer_id <> billing_recipient_customer_id
+              )
+            )
             AND (? IS NULL OR invoice_date >= ?)
             AND (? IS NULL OR invoice_date <= ?)
         `,

@@ -21,6 +21,7 @@ export function createApprovedInvoiceListQuery(
   return {
     companyId: 'dev-company',
     customerId: null,
+    billingRecipientCustomerId: null,
     status: 'approved',
     dateFrom: null,
     dateTo: null,
@@ -37,6 +38,7 @@ export function createSentInvoiceGroupQuery(
   return {
     companyId: 'dev-company',
     customerId: null,
+    billingRecipientCustomerId: null,
     creditState: 'all',
     paymentState: 'all',
     dateFrom: null,

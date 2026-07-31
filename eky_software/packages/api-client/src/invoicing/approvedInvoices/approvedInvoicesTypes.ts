@@ -163,6 +163,7 @@ export type ApprovedInvoiceListPageSize = 5 | 20 | 50 | 100;
 export interface ApprovedInvoiceListQuery {
   status: ApprovedInvoiceViewStatus;
   customerId?: string;
+  billingRecipientCustomerId?: string;
   page: number;
   pageSize: ApprovedInvoiceListPageSize;
   sort: ApprovedInvoiceListSort;

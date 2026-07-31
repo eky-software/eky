@@ -6,12 +6,13 @@ import type {
 } from '../domain/sentInvoiceGroup.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
 import type { SentInvoiceGroupReader } from '../ports/sentInvoiceGroupReader.js';
-import { normalizeOptionalInvoiceListCustomerId } from './invoiceListCustomerFilter.js';
+import { normalizeInvoiceListCustomerFilters } from './invoiceListCustomerFilter.js';
 import { validateApprovedInvoiceListInput } from './listApprovedInvoices.js';
 
 export interface ListSentInvoiceGroupsInput {
   companyId: string;
   customerId?: string;
+  billingRecipientCustomerId?: string;
   creditState?: SentInvoiceCreditStateFilter;
   paymentState?: SentInvoicePaymentStateFilter;
   dateFrom?: string;
@@ -26,7 +27,8 @@ export async function listSentInvoiceGroups(
   reader: SentInvoiceGroupReader,
 ): Promise<SentInvoiceGroupListPage> {
   validateApprovedInvoiceListInput({ ...input, status: 'sent' });
-  const customerId = normalizeOptionalInvoiceListCustomerId(input.customerId);
+  const { billingRecipientCustomerId, customerId } =
+    normalizeInvoiceListCustomerFilters(input);
   const creditState = input.creditState ?? 'all';
   const paymentState = input.paymentState ?? 'all';
 
@@ -54,6 +56,7 @@ export async function listSentInvoiceGroups(
   const result = await reader.listSentInvoiceGroups({
     companyId: input.companyId,
     customerId,
+    billingRecipientCustomerId,
     creditState,
     paymentState,
     dateFrom: input.dateFrom ?? null,

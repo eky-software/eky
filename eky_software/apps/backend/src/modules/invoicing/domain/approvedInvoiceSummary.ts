@@ -38,6 +38,7 @@ export function isApprovedInvoiceListPageSize(
 export interface ApprovedInvoiceSummaryQuery {
   companyId: string;
   customerId: string | null;
+  billingRecipientCustomerId: string | null;
   status: ApprovedInvoiceStatus;
   dateFrom: string | null;
   dateTo: string | null;
