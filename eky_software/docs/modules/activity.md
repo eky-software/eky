@@ -63,6 +63,10 @@ palauteta Activityyn.
 
 Invoicingin projektio sisältää myös ALV-kantojen, laskunumeroinnin ja
 maksuasetusten muutokset ilman asetusten arvoja tai teknistä tunnistetta.
+Manuaalisesta laskun maksumerkinnästä ja sen poistamisesta projektio näyttää
+vain laskunumeron, tapahtuma-ajan ja turvallisen toiminnon. Maksupäivää,
+euromäärää, maksulähdettä, actor-tunnistetta, pankkitietoa tai asiakastietoa ei
+palauteta Activityyn.
 Company Settingsin projektio yhdistää yrityksen master data -muutokset ja
 sähköpostisalaisuuden valmiit lifecycle-tapahtumat. Salaisuutta, sen pituutta,
 hashia, viitettä tai failure detail -tietoa ei palauteta Activityyn.

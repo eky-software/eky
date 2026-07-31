@@ -31,6 +31,7 @@ export class SqliteInvoiceActivityReader implements InvoiceActivityReader {
           string,
           string,
           string,
+          string,
           number,
           number,
           number,
@@ -101,6 +102,23 @@ export class SqliteInvoiceActivityReader implements InvoiceActivityReader {
               'success' AS outcome
             FROM invoice_settings_audit_events
             WHERE company_id = ?
+
+            UNION ALL
+
+            SELECT
+              payment.id,
+              CASE payment.action
+                WHEN 'paymentMarkedPaid' THEN 'invoice.payment_marked_paid'
+                ELSE 'invoice.payment_mark_reverted'
+              END AS action,
+              invoices.invoice_number,
+              payment.occurred_at,
+              'success' AS outcome
+            FROM invoice_payment_events AS payment
+            INNER JOIN invoices
+              ON invoices.id = payment.invoice_id
+              AND invoices.company_id = payment.company_id
+            WHERE payment.company_id = ?
           )
           WHERE
             occurred_at >= ?
@@ -115,6 +133,7 @@ export class SqliteInvoiceActivityReader implements InvoiceActivityReader {
         `,
       )
       .all(
+        criteria.companyId,
         criteria.companyId,
         criteria.companyId,
         criteria.companyId,

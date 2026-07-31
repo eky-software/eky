@@ -250,6 +250,8 @@ function mapInvoiceAction(action: InvoiceActivityAction): ActivityItemType {
     'invoice.delivery_failed': 'invoice.deliveryFailed',
     'invoice.delivery_outcome_unknown': 'invoice.deliveryOutcomeUnknown',
     'invoice.delivery_pending': 'invoice.deliveryPending',
+    'invoice.payment_mark_reverted': 'invoice.paymentMarkReverted',
+    'invoice.payment_marked_paid': 'invoice.paymentMarkedPaid',
     'invoice.reapproved': 'invoice.reapproved',
     'invoice.reopened_for_edit': 'invoice.reopenedForEdit',
   };

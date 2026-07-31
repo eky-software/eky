@@ -169,6 +169,41 @@ describe('listActivity', () => {
     });
   });
 
+  it('maps invoice payment activity to safe public event types', async () => {
+    const dependencies = createDependencies();
+    dependencies.invoiceActivityReader.listInvoiceActivity = vi
+      .fn()
+      .mockResolvedValue([
+        {
+          action: 'invoice.payment_marked_paid',
+          id: 'payment-event',
+          invoiceNumber: '20260001',
+          occurredAt: '2026-07-27T12:00:00.000Z',
+          outcome: 'success',
+        },
+      ]);
+
+    await expect(
+      listActivity(
+        {
+          actorContext,
+          category: 'invoicing',
+          month: '2026-07',
+        },
+        dependencies,
+      ),
+    ).resolves.toMatchObject({
+      activityItems: [
+        {
+          id: 'invoicing:payment-event',
+          module: 'invoicing',
+          reference: { kind: 'invoiceNumber', value: '20260001' },
+          type: 'invoice.paymentMarkedPaid',
+        },
+      ],
+    });
+  });
+
   it('returns a stable later page without repeating previous items', async () => {
     const dependencies = createDependencies();
     dependencies.customerActivityReader.listCustomerActivity = vi

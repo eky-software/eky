@@ -11,6 +11,8 @@ export type InvoiceActivityAction =
   | 'invoice.delivery_failed'
   | 'invoice.delivery_outcome_unknown'
   | 'invoice.delivery_pending'
+  | 'invoice.payment_mark_reverted'
+  | 'invoice.payment_marked_paid'
   | 'invoice.reapproved'
   | 'invoice.reopened_for_edit';
 

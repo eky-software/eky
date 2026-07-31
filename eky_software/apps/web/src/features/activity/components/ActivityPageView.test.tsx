@@ -105,6 +105,30 @@ describe('ActivityPageView', () => {
     expect(html).not.toContain('company-');
   });
 
+  it('renders safe invoice payment activity without payment details', () => {
+    const html = renderToStaticMarkup(
+      <ActivityPageView
+        {...baseProps}
+        items={[
+          {
+            id: 'invoicing:payment-event',
+            module: 'invoicing',
+            occurredAt: '2026-07-27T10:00:00.000Z',
+            outcome: 'success',
+            reference: { kind: 'invoiceNumber', value: '20260001' },
+            type: 'invoice.paymentMarkedPaid',
+          },
+        ]}
+      />,
+    );
+
+    expect(html).toContain('Lasku merkitty maksetuksi');
+    expect(html).toContain('Lasku 20260001');
+    expect(html).not.toContain('123,45');
+    expect(html).not.toContain('actor-');
+    expect(html).not.toContain('IBAN');
+  });
+
   it('renders safe customer and company change categories without field values', () => {
     const html = renderToStaticMarkup(
       <ActivityPageView

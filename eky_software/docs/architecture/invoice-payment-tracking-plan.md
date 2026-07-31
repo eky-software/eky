@@ -276,6 +276,11 @@ eivät saa näyttää:
 - mahdollista tulevaa bank transaction id:tä
 - laskun tai asiakkaan muuta sisältöä
 
+Ensimmäinen Activity-projektio lukee `invoice_payment_events`-taulua suoraan
+Invoicingin yritysrajatulla readerilla. Julkiset tapahtumatyypit ovat
+`invoice.paymentMarkedPaid` ja `invoice.paymentMarkReverted`. Projektio ei
+palauta maksutapahtuman muita sarakkeita.
+
 Tavallinen domain-konflikti ei muodosta incident-index-tapausta. Tekninen
 transaktiovirhe voidaan kirjata turvallisena failure-eventinä ilman
 business-dataa.

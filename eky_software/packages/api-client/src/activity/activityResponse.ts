@@ -26,6 +26,8 @@ const activityItemTypes = new Set<ActivityItemType>([
   'invoice.deliveryFailed',
   'invoice.deliveryOutcomeUnknown',
   'invoice.deliveryPending',
+  'invoice.paymentMarkReverted',
+  'invoice.paymentMarkedPaid',
   'invoiceNumberingSettings.updated',
   'invoicePaymentSettings.updated',
   'invoice.reapproved',

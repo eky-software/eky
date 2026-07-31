@@ -102,6 +102,8 @@ export const uiText = {
       'invoice.deliveryOutcomeUnknown':
         'Laskun toimitustulos jäi epäselväksi',
       'invoice.deliveryPending': 'Laskun toimitus odottaa selvitystä',
+      'invoice.paymentMarkReverted': 'Laskun maksumerkintä poistettu',
+      'invoice.paymentMarkedPaid': 'Lasku merkitty maksetuksi',
       'invoiceNumberingSettings.updated': 'Laskunumerointia päivitetty',
       'invoicePaymentSettings.updated': 'Laskutuksen maksuehtoja päivitetty',
       'invoice.reapproved': 'Lasku hyväksytty uudelleen',
