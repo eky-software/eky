@@ -71,7 +71,7 @@ test('CUS-OVERVIEW-002 @critical preserves list state through overview, edit can
   ).toBeVisible();
 
   await e2eWeb.page
-    .getByRole('button', { name: 'Takaisin asiakaslistaan' })
+    .getByRole('button', { name: '← Asiakaslistaan', exact: true })
     .click();
   await expect(e2eWeb.page.getByLabel('Hae asiakasta')).toHaveValue(
     'OVERVIEW-1001',
@@ -84,6 +84,49 @@ test('CUS-OVERVIEW-002 @critical preserves list state through overview, edit can
       .getByLabel('Asiakastyypin valinta')
       .getByRole('button', { name: /^Yritys / }),
   ).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('CUS-OVERVIEW-008 @critical keeps customer details usable when company pricing fails', async ({
+  e2eWeb,
+}) => {
+  const customer = await createCustomer(e2eWeb.api, {
+    customerNumber: 'E2E-PRICING-FAIL',
+    hourlyRateOverrideCents: null,
+    name: 'Pricing Failure Customer Oy',
+  });
+
+  await e2eWeb.page.route('**/company-settings', async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({ message: 'Synthetic internal detail' }),
+      contentType: 'application/json',
+      status: 500,
+    });
+  });
+  await e2eWeb.page.reload();
+  await openCustomerOverview(e2eWeb.page, customer);
+
+  await expect(
+    e2eWeb.page.getByText(
+      'Oman yrityksen oletustuntihintaa ei voitu ladata.',
+    ),
+  ).toBeVisible();
+  await expect(
+    e2eWeb.page.getByRole('heading', { level: 3, name: 'Yhteystiedot' }),
+  ).toBeVisible();
+  await expect(
+    e2eWeb.page.getByRole('heading', {
+      level: 2,
+      name: 'Asiakkaan laskut',
+    }),
+  ).toBeVisible();
+  await expect(
+    e2eWeb.page.getByRole('navigation', {
+      name: 'Asiakaskortin navigointi',
+    }),
+  ).toBeVisible();
+  await expect(
+    e2eWeb.page.getByText('Synthetic internal detail'),
+  ).toHaveCount(0);
 });
 
 test('CUS-OVERVIEW-003 CUS-OVERVIEW-006 @critical @cross-module shows customer-owned invoice states and opens invoicing targets', async ({

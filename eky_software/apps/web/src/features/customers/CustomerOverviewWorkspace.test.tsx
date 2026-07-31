@@ -15,7 +15,7 @@ const baseProps = {
   },
   customer: null,
   customers: [],
-  defaultHourlyRateCents: null,
+  defaultHourlyRateState: { status: 'loaded' as const, valueCents: null },
   errorMessage: null,
   invoiceState: {
     approved: createEmptyPage(),
@@ -51,7 +51,16 @@ describe('CustomerOverviewWorkspace', () => {
     );
 
     expect(html).toContain('Asiakaskorttia ei voitu ladata.');
-    expect(html).toContain('Takaisin asiakaslistaan');
+    expect(html).toContain('← Asiakaslistaan');
+  });
+
+  it('keeps customer list navigation available while loading', () => {
+    const html = renderToStaticMarkup(
+      <CustomerOverviewWorkspace {...baseProps} isLoading />,
+    );
+
+    expect(html).toContain('nav');
+    expect(html).toContain('← Asiakaslistaan');
   });
 });
 

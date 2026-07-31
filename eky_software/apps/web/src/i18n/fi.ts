@@ -240,7 +240,9 @@ export const uiText = {
     customer: 'Asiakas',
     customerActivity: 'Asiakkaan tapahtumat',
     customerCard: 'Asiakaskortti',
+    customerCardNavigation: 'Asiakaskortin navigointi',
     customerInvoices: 'Asiakkaan laskut',
+    customerListNavigation: '← Asiakaslistaan',
     customerList: 'Asiakaslista',
     customerModule: 'Asiakasmoduuli',
     customerNumber: 'Asiakasnumero',
@@ -252,6 +254,11 @@ export const uiText = {
     customerTypeFilter: 'Asiakastyypin valinta',
     customerWorkspace: 'Asiakastyötila',
     companyDefaultPricing: 'Oman yrityksen oletustuntihinta',
+    defaultHourlyRateLoadError:
+      'Oman yrityksen oletustuntihintaa ei voitu ladata.',
+    defaultHourlyRateLoading: 'Ladataan oletustuntihintaa...',
+    defaultHourlyRateNotConfigured:
+      'Oman yrityksen oletustuntihintaa ei ole asetettu',
     customerSpecificPricing: 'Asiakaskohtainen tuntihinta',
     description:
       'Täällä ylläpidetään asiakkaiden perustietoja ja asiakasryhmiä. Voit tarkastella yrityksiä, taloyhtiöitä, isännöitsijätoimistoja ja yksityisasiakkaita omissa näkymissään.',
