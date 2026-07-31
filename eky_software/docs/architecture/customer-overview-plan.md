@@ -204,14 +204,28 @@ moduulien välistä tapahtumavirtaa.
 
 Invoicing on jo olemassa, joten asiakaskohtaiset laskut kuuluvat ensimmäiseen
 varsinaiseen koontiin. Invoicing omistaa luonnosten, hyväksyttyjen,
-lähetettyjen, osahyvitettyjen, kokonaan hyvitettyjen ja peruttujen laskujen
-listasemantiikan. Suodatus perustuu laskun `customerId`-arvoon, ei
-valinnaiseen laskun vastaanottajaan. Hyvityslaskut säilyvät Invoicingin
-omistamassa ryhmittelyssä.
+lähetettyjen, maksettujen, osahyvitettyjen, kokonaan hyvitettyjen ja peruttujen
+laskujen listasemantiikan. Suodatus perustuu laskun `customerId`-arvoon, ei
+valinnaiseen laskun vastaanottajaan. Hyvityslaskut ja maksutila säilyvät
+Invoicingin omistamassa ryhmittelyssä.
+
+Maksuseurannan jälkeen asiakaskortin pääkategoriat ovat:
+
+- Lähetetyt: hyvittämätön ja maksamaton standardilasku
+- Maksetut: hyvittämätön ja maksettu standardilasku
+- Hyvitetyt: hyvitetty standardilasku maksutilasta riippumatta
+
+Maksettu ja myöhemmin hyvitetty lasku näkyy vain Hyvitetyt-kategoriassa ja voi
+saada `Maksettu`-lisämerkinnän. Asiakaskortti ei laske maksutilaa tai
+jäljellä olevaa saatavaa itse. Maksutilan listausvirhe ei saa piilottaa
+asiakkaan master dataa tai muuta jo onnistuneesti ladattua koontitietoa.
 
 Customers-web käyttää julkisia API-client-sopimuksia ja tyypitettyä
 app-navigation callbackia laskun avaamiseen Invoicingissa. Se ei importtaa
 Invoicing-featuren sisäisiä komponentteja tai tilaa.
+
+Manuaalisen maksuseurannan tarkempi sopimus on dokumentissa
+`docs/architecture/invoice-payment-tracking-plan.md`.
 
 ## Työmääräysten Merkitys
 

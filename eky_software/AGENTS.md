@@ -160,6 +160,10 @@ lähetyslokia, sähköpostin send-endpointtia, dry-run-send-polun auditointia ta
 lähetetyn laskun uudelleenlähetystä, lue myös
 `docs/architecture/invoice-delivery-events-plan.md`.
 
+Jos työ koskee laskun maksutilaa, manuaalista maksumerkintää, maksumerkinnän
+poistoa, maksettujen laskujen listausta tai tulevaa pankkikohdistusta, lue myös
+`docs/architecture/invoice-payment-tracking-plan.md`.
+
 Jos työ koskee laskun sähköpostilähetystä, SMTP/Gmail/Microsoft-provideria,
 dry-run-sähköpostia, sähköpostiasetuksia, sähköpostisalaisuuksia, OAuth-tokenia,
 Windows Credential Manageria, Secret Manageria tai sähköpostiproviderin

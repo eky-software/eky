@@ -16,6 +16,8 @@ Also read the documents required by the task, including at minimum:
 
 Approval, numbering, snapshot, PDF, delivery and email work also requires the
 corresponding architecture documents named in the root `AGENTS.md`.
+Payment tracking work also requires
+`docs/architecture/invoice-payment-tracking-plan.md`.
 
 ## Responsibility
 
@@ -51,6 +53,12 @@ trusted as identity or company boundaries.
 Application services that require a permission must enforce it in the backend
 with deny-by-default behavior. Do not rely on a hidden or disabled UI action as
 authorization.
+
+Invoice lifecycle/delivery status and payment state are separate concepts.
+Do not add `paid` to `InvoiceStatus`, derive payment from delivery events or
+accept a paid amount from the client. Invoicing calculates the payable amount
+from its approved invoice and credit snapshots. The current payment projection
+and append-only payment event must be written in one transaction.
 
 ## Cross-Module Contracts
 
@@ -92,6 +100,10 @@ Invoicing owns its business audit and delivery events. Critical audit writes
 remain in the same transaction as the invoice transition. Operational logs
 must not replace these tables or contain invoice content, customer contact
 data, IBAN values, email bodies, PDF bytes, secrets, raw errors or stacks.
+
+Invoicing also owns invoice payment events. Activity may project the invoice
+number, event time and safe action, but not the paid amount, actor identifier,
+bank data or future bank transaction identifiers.
 
 Activity readers may expose only company-scoped safe projections such as an
 invoice number and a translation key. Technical incident indexes must not
