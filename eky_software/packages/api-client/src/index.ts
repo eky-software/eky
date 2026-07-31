@@ -67,12 +67,18 @@ export type {
   InvoiceDeliveryProvider,
   InvoiceDeliveryStatus,
   InvoiceManualDeliveryMethod,
+  InvoicePaymentReadModel,
+  InvoicePaymentSource,
+  InvoicePaymentState,
+  InvoicePaymentSummary,
+  MarkInvoicePaidInput,
   ReopenedApprovedInvoice,
   SentInvoiceCreditStateFilter,
   SentInvoiceCreditStatus,
   SentInvoiceGroup,
   SentInvoiceGroupListPage,
   SentInvoiceGroupListQuery,
+  SentInvoicePaymentStateFilter,
 } from './invoicing/approvedInvoices/index.js';
 export type {
   CompanyEmailSecretStatus,

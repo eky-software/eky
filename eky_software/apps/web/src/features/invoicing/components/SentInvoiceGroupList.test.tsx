@@ -88,6 +88,11 @@ function createSummary(
     referenceNumber: '202600017',
     status: 'sent',
     updatedAt: '2026-07-01T10:00:00.000Z',
+    paymentState:
+      overrides.invoiceKind === 'credit' ? 'notApplicable' : 'unpaid',
+    paidOn: null,
+    paidAmountCents: null,
+    paymentSource: null,
     ...overrides,
   };
 }

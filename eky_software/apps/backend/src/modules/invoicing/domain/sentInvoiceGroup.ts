@@ -8,6 +8,7 @@ export type SentInvoiceCreditStateFilter =
   | 'all'
   | 'uncredited'
   | 'credited';
+export type SentInvoicePaymentStateFilter = 'all' | 'unpaid' | 'paid';
 
 export interface SentInvoiceGroup {
   rootInvoice: ApprovedInvoiceSummary;
@@ -20,6 +21,7 @@ export interface SentInvoiceGroupQuery {
   companyId: string;
   customerId: string | null;
   creditState: SentInvoiceCreditStateFilter;
+  paymentState: SentInvoicePaymentStateFilter;
   dateFrom: string | null;
   dateTo: string | null;
   limit: number;

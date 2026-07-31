@@ -36,6 +36,10 @@ describe('SqliteApprovedInvoiceReader', () => {
       referenceNumber: '202600017',
       referenceNumberType: 'finnishDomestic',
       status: 'approved',
+      paymentState: 'unpaid',
+      paidOn: null,
+      paidAmountCents: null,
+      paymentSource: null,
       companyNameSnapshot: 'Snapshot Builder Oy',
       companyVatNumberSnapshot: 'FI76543210',
       companyIbanSnapshot: 'FI2112345600000785',
@@ -156,6 +160,10 @@ describe('SqliteApprovedInvoiceReader', () => {
       creditedInvoiceId: 'invoice-1',
       creditedInvoiceNumber: '20260001',
       creditedInvoiceDate: '2026-06-13',
+      paymentState: 'notApplicable',
+      paidOn: null,
+      paidAmountCents: null,
+      paymentSource: null,
     });
   });
 

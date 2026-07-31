@@ -13,7 +13,11 @@ const allowedFields = new Set([
   'pageSize',
   'sort',
 ]);
-const sentGroupAllowedFields = new Set([...allowedFields, 'creditState']);
+const sentGroupAllowedFields = new Set([
+  ...allowedFields,
+  'creditState',
+  'paymentState',
+]);
 
 export function parseApprovedInvoiceListRequest(
   companyId: string,
@@ -55,7 +59,7 @@ export function parseSentInvoiceGroupListRequest(
     }
   }
 
-  const { creditState, ...listQuery } = query;
+  const { creditState, paymentState, ...listQuery } = query;
   const { status: _status, ...input } = parseApprovedInvoiceListRequest(
     companyId,
     { ...listQuery, status: 'sent' },
@@ -64,6 +68,7 @@ export function parseSentInvoiceGroupListRequest(
   return {
     ...input,
     creditState: parseSentInvoiceCreditState(creditState),
+    paymentState: parseSentInvoicePaymentState(paymentState),
   };
 }
 
@@ -80,6 +85,22 @@ function parseSentInvoiceCreditState(
 
   throw new InvoiceDraftValidationError(
     'Sent invoice group credit state is invalid.',
+  );
+}
+
+function parseSentInvoicePaymentState(
+  value: string | undefined,
+): 'all' | 'unpaid' | 'paid' {
+  if (value === undefined || value === 'all') {
+    return 'all';
+  }
+
+  if (value === 'unpaid' || value === 'paid') {
+    return value;
+  }
+
+  throw new InvoiceDraftValidationError(
+    'Sent invoice group payment state is invalid.',
   );
 }
 

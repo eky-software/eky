@@ -14,6 +14,10 @@ import {
   type ApprovedInvoiceLifecycleRouteDependencies,
 } from './approvedInvoiceLifecycleRoutes.js';
 import {
+  createApprovedInvoicePaymentRoutes,
+  type ApprovedInvoicePaymentRouteDependencies,
+} from './approvedInvoicePaymentRoutes.js';
+import {
   createApprovedInvoiceQueryRoutes,
   type ApprovedInvoiceQueryRouteDependencies,
 } from './approvedInvoiceQueryRoutes.js';
@@ -22,6 +26,7 @@ interface ApprovedInvoiceRouteDependencies
   extends ApprovedInvoiceDeliveryRouteDependencies,
     ApprovedInvoiceDocumentRouteDependencies,
     ApprovedInvoiceLifecycleRouteDependencies,
+    ApprovedInvoicePaymentRouteDependencies,
     ApprovedInvoiceQueryRouteDependencies {}
 
 export function createApprovedInvoiceRoutes(
@@ -31,6 +36,7 @@ export function createApprovedInvoiceRoutes(
   routes.route('/', createApprovedInvoiceQueryRoutes(dependencies));
   routes.route('/', createApprovedInvoiceDocumentRoutes(dependencies));
   routes.route('/', createApprovedInvoiceLifecycleRoutes(dependencies));
+  routes.route('/', createApprovedInvoicePaymentRoutes(dependencies));
   routes.route('/', createApprovedInvoiceDeliveryRoutes(dependencies));
 
   return routes;

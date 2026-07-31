@@ -193,6 +193,11 @@ function createApprovedInvoiceSummary(
     status: 'approved',
     cancelledAt: null,
     updatedAt: '2026-06-13T10:00:00.000Z',
+    paymentState:
+      overrides.invoiceKind === 'credit' ? 'notApplicable' : 'unpaid',
+    paidOn: null,
+    paidAmountCents: null,
+    paymentSource: null,
     ...overrides,
   };
 }

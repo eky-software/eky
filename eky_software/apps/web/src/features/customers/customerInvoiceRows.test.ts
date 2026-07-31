@@ -104,6 +104,11 @@ function createApprovedInvoice(
     referenceNumber: '20260013',
     status: 'sent',
     updatedAt: '2026-08-01T10:00:00.000Z',
+    paymentState:
+      overrides.invoiceKind === 'credit' ? 'notApplicable' : 'unpaid',
+    paidOn: null,
+    paidAmountCents: null,
+    paymentSource: null,
     ...overrides,
   };
 }

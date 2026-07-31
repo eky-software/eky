@@ -35,10 +35,12 @@ import { listSentInvoiceGroups } from '../modules/invoicing/application/listSent
 import { listInvoiceDeliveryEvents } from '../modules/invoicing/application/listInvoiceDeliveryEvents.js';
 import { listInvoiceDrafts } from '../modules/invoicing/application/listInvoiceDrafts.js';
 import { markApprovedInvoiceSent } from '../modules/invoicing/application/markApprovedInvoiceSent.js';
+import { markInvoicePaid } from '../modules/invoicing/application/markInvoicePaid.js';
 import { prepareApprovedInvoiceEmailDryRun } from '../modules/invoicing/application/prepareApprovedInvoiceEmailDryRun.js';
 import { prepareApprovedInvoiceEmailSmtp } from '../modules/invoicing/application/prepareApprovedInvoiceEmailSmtp.js';
 import { prepareApprovedInvoiceEmailSmtpTest } from '../modules/invoicing/application/prepareApprovedInvoiceEmailSmtpTest.js';
 import { reopenApprovedInvoiceForEditing } from '../modules/invoicing/application/reopenApprovedInvoiceForEditing.js';
+import { revertInvoicePaidMark } from '../modules/invoicing/application/revertInvoicePaidMark.js';
 import { saveInvoiceDraft } from '../modules/invoicing/application/saveInvoiceDraft.js';
 import { sendApprovedInvoiceEmailDryRun } from '../modules/invoicing/application/sendApprovedInvoiceEmailDryRun.js';
 import { sendApprovedInvoiceEmailSmtp } from '../modules/invoicing/application/sendApprovedInvoiceEmailSmtp.js';
@@ -69,6 +71,7 @@ import { SqliteInvoiceDraftRepository } from '../modules/invoicing/infrastructur
 import { SqliteInvoiceActivityReader } from '../modules/invoicing/infrastructure/sqliteInvoiceActivityReader.js';
 import { SqliteInvoiceNumberingRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceNumberingRepository.js';
 import { SqliteInvoicePaymentSettingsRepository } from '../modules/invoicing/infrastructure/sqliteInvoicePaymentSettingsRepository.js';
+import { SqliteInvoicePaymentRepository } from '../modules/invoicing/infrastructure/sqliteInvoicePaymentRepository.js';
 import { SqliteInvoiceVatRateRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceVatRateRepository.js';
 import { SqliteSentInvoiceGroupReader } from '../modules/invoicing/infrastructure/sqliteSentInvoiceGroupReader.js';
 import type { CustomerAccessReader } from '../modules/invoicing/ports/customerAccessReader.js';
@@ -149,6 +152,9 @@ export function createInvoicingComposition(
   );
   const invoicePaymentSettingsRepository =
     new SqliteInvoicePaymentSettingsRepository(options.database);
+  const invoicePaymentRepository = new SqliteInvoicePaymentRepository(
+    options.database,
+  );
   const invoiceVatRateRepository = new SqliteInvoiceVatRateRepository(
     options.database,
   );
@@ -319,6 +325,11 @@ export function createInvoicingComposition(
           invoiceDeliveryEventReader: invoiceDeliveryEventRepository,
           invoiceManualDeliveryFinalizer: invoiceDeliveryEventRepository,
         }),
+      markInvoicePaid: (input) =>
+        markInvoicePaid(input, {
+          clock: { now: () => new Date() },
+          invoicePaymentRepository,
+        }),
       prepareApprovedInvoiceEmailDryRun: (input) =>
         prepareApprovedInvoiceEmailDryRun(input, {
           approvedInvoiceReader,
@@ -419,6 +430,11 @@ export function createInvoicingComposition(
         reopenApprovedInvoiceForEditing(input, {
           invoiceApprovalRepository,
           invoiceDocumentStorage,
+        }),
+      revertInvoicePaidMark: (input) =>
+        revertInvoicePaidMark(input, {
+          clock: { now: () => new Date() },
+          invoicePaymentRepository,
         }),
     }),
   );

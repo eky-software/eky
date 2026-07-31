@@ -1,5 +1,6 @@
 export const invoicePaymentStateValues = ['unpaid', 'paid'] as const;
 export type InvoicePaymentState = (typeof invoicePaymentStateValues)[number];
+export type InvoicePaymentReadState = InvoicePaymentState | 'notApplicable';
 
 export const invoicePaymentSourceValues = ['manual'] as const;
 export type InvoicePaymentSource = (typeof invoicePaymentSourceValues)[number];
@@ -25,6 +26,13 @@ export interface InvoicePaymentSummary {
   invoiceId: string;
   invoiceNumber: string;
   paymentState: InvoicePaymentState;
+  paidOn: string | null;
+  paidAmountCents: number | null;
+  paymentSource: InvoicePaymentSource | null;
+}
+
+export interface InvoicePaymentReadModel {
+  paymentState: InvoicePaymentReadState;
   paidOn: string | null;
   paidAmountCents: number | null;
   paymentSource: InvoicePaymentSource | null;

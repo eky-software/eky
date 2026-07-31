@@ -81,6 +81,21 @@ describe('desktop protocol policy', () => {
       isAllowedBackendRequest('POST', '/invoices/invoice-1/delivery-events'),
     ).toBe(false);
     expect(
+      isAllowedBackendRequest('PUT', '/invoices/invoice-1/payment'),
+    ).toBe(true);
+    expect(
+      isAllowedBackendRequest('DELETE', '/invoices/invoice-1/payment'),
+    ).toBe(true);
+    expect(
+      isAllowedBackendRequest('GET', '/invoices/invoice-1/payment'),
+    ).toBe(false);
+    expect(
+      isAllowedBackendRequest('PUT', '/invoices/invoice%2F1/payment'),
+    ).toBe(false);
+    expect(
+      isAllowedBackendRequest('PUT', '/invoices/invoice-1/payment/extra'),
+    ).toBe(false);
+    expect(
       isAllowedBackendRequest(
         'POST',
         '/invoices/invoice-1/email/smtp/send/extra',

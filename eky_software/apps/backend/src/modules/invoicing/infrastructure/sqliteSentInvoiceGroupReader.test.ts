@@ -188,6 +188,62 @@ describe('SqliteSentInvoiceGroupReader', () => {
     });
   });
 
+  it('filters paid and unpaid root invoices identically in page and count queries', async () => {
+    insertSentRoot(database, 'invoice-2', 'draft-2', '20260002', '2026-06-14');
+    database
+      .prepare(
+        `
+          UPDATE invoices
+          SET
+            payment_state = 'paid',
+            paid_on = '2026-07-31',
+            paid_amount_cents = total_gross_cents,
+            payment_source = 'manual',
+            payment_recorded_at = '2026-07-31T10:00:00.000Z',
+            payment_recorded_by = 'local-owner'
+          WHERE id = 'invoice-1'
+        `,
+      )
+      .run();
+
+    await expect(
+      reader.listSentInvoiceGroups(
+        createSentInvoiceGroupQuery({ paymentState: 'paid' }),
+      ),
+    ).resolves.toMatchObject({
+      groups: [
+        {
+          rootInvoice: {
+            id: 'invoice-1',
+            paidAmountCents: 35_100,
+            paidOn: '2026-07-31',
+            paymentSource: 'manual',
+            paymentState: 'paid',
+          },
+        },
+      ],
+      totalCount: 1,
+    });
+    await expect(
+      reader.listSentInvoiceGroups(
+        createSentInvoiceGroupQuery({ paymentState: 'unpaid' }),
+      ),
+    ).resolves.toMatchObject({
+      groups: [
+        {
+          rootInvoice: {
+            id: 'invoice-2',
+            paidAmountCents: null,
+            paidOn: null,
+            paymentSource: null,
+            paymentState: 'unpaid',
+          },
+        },
+      ],
+      totalCount: 1,
+    });
+  });
+
   it('filters root invoices by customer and preserves their credit groups', async () => {
     insertInvoiceClone(database, {
       id: 'invoice-customer-2',

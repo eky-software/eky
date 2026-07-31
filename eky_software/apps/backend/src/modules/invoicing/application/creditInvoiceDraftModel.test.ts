@@ -295,6 +295,11 @@ function createSourceInvoice(
     referenceNumber: '202600017',
     referenceNumberType: 'finnishDomestic',
     reminderPeriodDays: 8,
+    paymentState:
+      overrides.invoiceKind === 'credit' ? 'notApplicable' : 'unpaid',
+    paidOn: null,
+    paidAmountCents: null,
+    paymentSource: null,
     sequenceNumber: 1,
     sequenceScope: 'calendar-year:2026',
     seriesKey: 'default',

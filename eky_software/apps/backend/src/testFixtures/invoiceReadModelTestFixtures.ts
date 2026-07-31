@@ -38,6 +38,7 @@ export function createSentInvoiceGroupQuery(
     companyId: 'dev-company',
     customerId: null,
     creditState: 'all',
+    paymentState: 'all',
     dateFrom: null,
     dateTo: null,
     limit: 20,

@@ -40,6 +40,7 @@ describe('listSentInvoiceGroups', () => {
       dateTo: '2026-12-31',
       limit: 20,
       offset: 20,
+      paymentState: 'all',
       sort: 'invoiceDateDesc',
     });
   });
@@ -63,6 +64,25 @@ describe('listSentInvoiceGroups', () => {
     );
   });
 
+  it('passes the requested payment-state filter to the reader', async () => {
+    const reader = createReader();
+
+    await listSentInvoiceGroups(
+      {
+        companyId: 'dev-company',
+        page: 1,
+        pageSize: 20,
+        paymentState: 'paid',
+        sort: 'invoiceDateDesc',
+      },
+      reader,
+    );
+
+    expect(reader.listSentInvoiceGroups).toHaveBeenCalledWith(
+      expect.objectContaining({ paymentState: 'paid' }),
+    );
+  });
+
   it('rejects an unsupported credit-state filter before calling the reader', async () => {
     const reader = createReader();
 
@@ -73,6 +93,24 @@ describe('listSentInvoiceGroups', () => {
           creditState: 'other' as 'credited',
           page: 1,
           pageSize: 20,
+          sort: 'invoiceDateDesc',
+        },
+        reader,
+      ),
+    ).rejects.toBeInstanceOf(InvoiceDraftValidationError);
+    expect(reader.listSentInvoiceGroups).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unsupported payment-state filter before calling the reader', async () => {
+    const reader = createReader();
+
+    await expect(
+      listSentInvoiceGroups(
+        {
+          companyId: 'dev-company',
+          page: 1,
+          pageSize: 20,
+          paymentState: 'other' as 'paid',
           sort: 'invoiceDateDesc',
         },
         reader,
