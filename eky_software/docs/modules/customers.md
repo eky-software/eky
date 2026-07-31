@@ -296,10 +296,13 @@ tallennetut vastaanottaja- ja asiakassnapshotit.
 
 Asiakaskortin omat laskut perustuvat aina `customerId`-arvoon. Erillinen
 vastaanottaja ei saa laskua omiin laskuihinsa. Isännöitsijätoimiston kortilla
-voidaan näyttää erillinen Invoicingin omistama read model niistä
+näytetään erillinen Invoicingin omistama read model niistä
 taloyhtiölaskuista, joiden tallennettu `billingRecipientCustomerId` viittaa
 isännöitsijään. Tämä historiallinen näkyvyys ei seuraa Customersin nykyistä
 `managedByCustomerId`-suhdetta eikä muuta laskun juridista omistajuutta.
+Paneeli näyttää hyväksytyt, lähetetyt, maksetut, hyvitetyt ja perutut laskut
+laskulle tallennetun customer-snapshotin nimellä ja asiakasnumerolla.
+Luonnokset eivät kuulu vastaanottajalaskujen ensimmäiseen versioon.
 
 Tarkempi malli on dokumentissa `docs/architecture/invoice-print-data-foundation-plan.md`.
 

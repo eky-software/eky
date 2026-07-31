@@ -235,7 +235,10 @@ vastuita:
 
 Recipient-listaus on Invoicingin yritysrajattu julkinen read model. Customers
 ei JOINaa laskutuksen tauluja eikä kopioi lasku- tai snapshot-dataa omaan
-persistenssiinsä.
+persistenssiinsä. Isännöitsijätoimiston asiakaskortin oma paneeli käyttää tätä
+read modelia erillisellä loading-, empty- ja turvallisella error-tilalla.
+Paneelin virhe ei piilota customer-master-dataa, hallinnoituja taloyhtiöitä,
+asiakkaan omia laskuja tai tapahtumahistoriaa.
 
 Nykyisessä toteutuksessa asiakaskortin pääkategoriat ovat:
 

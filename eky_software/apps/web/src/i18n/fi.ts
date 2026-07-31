@@ -231,6 +231,15 @@ export const uiText = {
     backToCustomerOverview: 'Takaisin asiakaskortille',
     basicInformation: 'Perustiedot',
     businessId: 'Y-tunnus',
+    billingRecipientInvoiceEmpty:
+      'Isännöitsijätoimistolla ei ole taloyhtiöiden laskuja vastaanottajana.',
+    billingRecipientInvoiceListControls:
+      'Vastaanottajana saatujen taloyhtiölaskujen asetukset',
+    billingRecipientInvoiceLoadError:
+      'Vastaanottajana saatuja taloyhtiölaskuja ei voitu ladata. Yritä hetken kuluttua uudelleen.',
+    billingRecipientInvoiceLoading:
+      'Ladataan vastaanottajana saatuja taloyhtiölaskuja...',
+    billingRecipientInvoices: 'Taloyhtiöiden laskut vastaanottajana',
     cancel: 'Peruuta',
     created: 'Luotu',
     city: 'Kaupunki',

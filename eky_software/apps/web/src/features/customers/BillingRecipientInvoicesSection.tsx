@@ -1,11 +1,15 @@
-import type { CustomerInvoiceOverviewState } from './hooks/useCustomerInvoices.js';
-import {
-  toApprovedRows,
-  toDraftRows,
-  toSentRows,
-} from './customerInvoiceRows.js';
 import { CustomerInvoiceCategory } from './CustomerInvoiceCategory.js';
 import type { CustomerInvoiceNavigationTarget } from './customerInvoiceNavigation.js';
+import {
+  toApprovedRows,
+  toSentRows,
+} from './customerInvoiceRows.js';
+import {
+  customerInvoicePageSizes,
+  isCustomerInvoiceListPageSize,
+  isCustomerInvoiceListSort,
+} from './customerInvoiceListState.js';
+import type { BillingRecipientInvoiceOverviewState } from './hooks/useBillingRecipientInvoices.js';
 import styles from './CustomerInvoicesSection.module.css';
 import { uiText } from '../../i18n/fi.js';
 import {
@@ -14,22 +18,16 @@ import {
   type InvoiceListSortOption,
 } from '../../shared/invoiceList/index.js';
 import { MessageBanner } from '../../shared/ui/index.js';
-import {
-  customerInvoicePageSizes,
-  isCustomerInvoiceListPageSize,
-  isCustomerInvoiceListSort,
-} from './customerInvoiceListState.js';
 
-interface CustomerInvoicesSectionProps {
-  invoiceState: CustomerInvoiceOverviewState;
+interface BillingRecipientInvoicesSectionProps {
+  invoiceState: BillingRecipientInvoiceOverviewState;
   onOpenInvoice(target: CustomerInvoiceNavigationTarget): void;
 }
 
-export function CustomerInvoicesSection({
+export function BillingRecipientInvoicesSection({
   invoiceState,
   onOpenInvoice,
-}: CustomerInvoicesSectionProps): React.JSX.Element {
-  const draftRows = toDraftRows(invoiceState.drafts.items);
+}: BillingRecipientInvoicesSectionProps): React.JSX.Element {
   const approvedRows = toApprovedRows(
     invoiceState.approved.items,
     'approved',
@@ -44,7 +42,6 @@ export function CustomerInvoicesSection({
   const isEmpty =
     !invoiceState.isLoading &&
     invoiceState.errorMessage === null &&
-    draftRows.length === 0 &&
     approvedRows.length === 0 &&
     sentRows.length === 0 &&
     paidRows.length === 0 &&
@@ -53,20 +50,22 @@ export function CustomerInvoicesSection({
 
   return (
     <section
-      aria-labelledby="customer-invoices-heading"
+      aria-labelledby="billing-recipient-invoices-heading"
       className={`panel ${styles.panel}`}
     >
       <div className="panel-header">
         <div>
           <p className="panel-kicker">{uiText.customers.invoicing}</p>
-          <h2 id="customer-invoices-heading">
-            {uiText.customers.customerInvoices}
+          <h2 id="billing-recipient-invoices-heading">
+            {uiText.customers.billingRecipientInvoices}
           </h2>
         </div>
       </div>
 
       {invoiceState.isLoading ? (
-        <p className="message">{uiText.customers.invoiceLoading}</p>
+        <p className="message">
+          {uiText.customers.billingRecipientInvoiceLoading}
+        </p>
       ) : null}
       {invoiceState.errorMessage !== null ? (
         <MessageBanner variant="error">
@@ -74,12 +73,14 @@ export function CustomerInvoicesSection({
         </MessageBanner>
       ) : null}
       {isEmpty ? (
-        <p className="message">{uiText.customers.invoiceEmpty}</p>
+        <p className="message">
+          {uiText.customers.billingRecipientInvoiceEmpty}
+        </p>
       ) : null}
 
       {!invoiceState.isLoading && !isEmpty ? (
         <div
-          aria-label={uiText.customers.invoiceListControls}
+          aria-label={uiText.customers.billingRecipientInvoiceListControls}
           className={styles.controls}
           role="group"
         >
@@ -91,7 +92,7 @@ export function CustomerInvoicesSection({
                 invoiceState.setSort(value);
               }
             }}
-            options={customerInvoiceSortOptions}
+            options={billingRecipientInvoiceSortOptions}
             value={invoiceState.sort}
           />
           <InvoiceListPageSizeSelect
@@ -111,20 +112,6 @@ export function CustomerInvoicesSection({
       {!invoiceState.isLoading ? (
         <div className={styles.categories}>
           <CustomerInvoiceCategory
-            heading={uiText.customers.invoiceCategories.drafts}
-            onNextPage={() =>
-              invoiceState.goToPage('drafts', invoiceState.drafts.page + 1)
-            }
-            onOpenInvoice={onOpenInvoice}
-            onPreviousPage={() =>
-              invoiceState.goToPage('drafts', invoiceState.drafts.page - 1)
-            }
-            page={invoiceState.drafts.page}
-            rows={draftRows}
-            totalCount={invoiceState.drafts.totalCount}
-            totalPages={invoiceState.drafts.totalPages}
-          />
-          <CustomerInvoiceCategory
             heading={uiText.customers.invoiceCategories.approved}
             onNextPage={() =>
               invoiceState.goToPage(
@@ -141,6 +128,7 @@ export function CustomerInvoicesSection({
             }
             page={invoiceState.approved.page}
             rows={approvedRows}
+            showCustomer
             totalCount={invoiceState.approved.totalCount}
             totalPages={invoiceState.approved.totalPages}
           />
@@ -155,6 +143,7 @@ export function CustomerInvoicesSection({
             }
             page={invoiceState.sent.page}
             rows={sentRows}
+            showCustomer
             totalCount={invoiceState.sent.totalCount}
             totalPages={invoiceState.sent.totalPages}
           />
@@ -169,6 +158,7 @@ export function CustomerInvoicesSection({
             }
             page={invoiceState.paid.page}
             rows={paidRows}
+            showCustomer
             totalCount={invoiceState.paid.totalCount}
             totalPages={invoiceState.paid.totalPages}
           />
@@ -189,6 +179,7 @@ export function CustomerInvoicesSection({
             }
             page={invoiceState.credited.page}
             rows={creditedRows}
+            showCustomer
             totalCount={invoiceState.credited.totalCount}
             totalPages={invoiceState.credited.totalPages}
           />
@@ -209,6 +200,7 @@ export function CustomerInvoicesSection({
             }
             page={invoiceState.cancelled.page}
             rows={cancelledRows}
+            showCustomer
             totalCount={invoiceState.cancelled.totalCount}
             totalPages={invoiceState.cancelled.totalPages}
           />
@@ -218,7 +210,7 @@ export function CustomerInvoicesSection({
   );
 }
 
-const customerInvoiceSortOptions: readonly InvoiceListSortOption[] = [
+const billingRecipientInvoiceSortOptions: readonly InvoiceListSortOption[] = [
   {
     label: uiText.invoicing.listSortNewest,
     value: 'invoiceDateDesc',

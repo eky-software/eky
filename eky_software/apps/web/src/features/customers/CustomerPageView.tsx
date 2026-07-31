@@ -27,6 +27,7 @@ import {
   initialCustomerWorkspaceState,
 } from './customerWorkspaceState.js';
 import { useCustomerActivity } from './hooks/useCustomerActivity.js';
+import { useBillingRecipientInvoices } from './hooks/useBillingRecipientInvoices.js';
 import { useCustomerInvoices } from './hooks/useCustomerInvoices.js';
 import styles from './CustomerPageView.module.css';
 import { getFinnishApiErrorMessage, uiText } from '../../i18n/fi.js';
@@ -84,6 +85,12 @@ export function CustomerPage({
       : null;
   const activityState = useCustomerActivity(apiClient, selectedCustomerId);
   const invoiceState = useCustomerInvoices(apiClient, selectedCustomerId);
+  const billingRecipientInvoiceState = useBillingRecipientInvoices(
+    apiClient,
+    customerDetail?.customerType === 'propertyManager'
+      ? customerDetail.id
+      : null,
+  );
   const propertyManagerCustomers = customers.filter(
     (customer) => customer.customerType === 'propertyManager',
   );
@@ -423,6 +430,7 @@ export function CustomerPage({
       {workspaceState.mode === 'overview' ? (
         <CustomerOverviewWorkspace
           activityState={activityState}
+          billingRecipientInvoiceState={billingRecipientInvoiceState}
           customer={customerDetail}
           customers={customers}
           defaultHourlyRateState={defaultHourlyRateState}

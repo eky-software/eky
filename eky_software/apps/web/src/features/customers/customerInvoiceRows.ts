@@ -8,6 +8,7 @@ import type { CustomerInvoiceNavigationTarget } from './customerInvoiceNavigatio
 import { uiText } from '../../i18n/fi.js';
 
 export interface CustomerInvoiceRow {
+  customer: string;
   date: string;
   dueDate: string;
   grossTotalCents: number;
@@ -24,6 +25,7 @@ export function toDraftRows(
   drafts: readonly InvoiceDraftSummary[],
 ): CustomerInvoiceRow[] {
   return drafts.map((draft) => ({
+    customer: '',
     date: draft.invoiceDate,
     dueDate: draft.dueDate,
     grossTotalCents: draft.grossTotalCents,
@@ -49,6 +51,7 @@ export function toApprovedRows(
   status: 'approved' | 'cancelled',
 ): CustomerInvoiceRow[] {
   return invoices.map((invoice) => ({
+    customer: formatInvoiceCustomer(invoice),
     date: invoice.invoiceDate,
     dueDate: invoice.dueDate,
     grossTotalCents: invoice.grossTotalCents,
@@ -73,6 +76,7 @@ export function toSentRows(
 ): CustomerInvoiceRow[] {
   return groups.flatMap((group) => {
     const rootRow: CustomerInvoiceRow = {
+      customer: formatInvoiceCustomer(group.rootInvoice),
       date: group.rootInvoice.invoiceDate,
       dueDate: group.rootInvoice.dueDate,
       grossTotalCents: group.rootInvoice.grossTotalCents,
@@ -107,6 +111,7 @@ export function toSentRows(
     };
     const creditRows = group.creditInvoices.map(
       (creditInvoice): CustomerInvoiceRow => ({
+        customer: formatInvoiceCustomer(creditInvoice),
         date: creditInvoice.invoiceDate,
         dueDate: creditInvoice.dueDate,
         grossTotalCents: creditInvoice.grossTotalCents,
@@ -127,6 +132,10 @@ export function toSentRows(
 
     return [rootRow, ...creditRows];
   });
+}
+
+function formatInvoiceCustomer(invoice: ApprovedInvoiceSummary): string {
+  return `${invoice.customerNumberSnapshot} – ${invoice.customerNameSnapshot}`;
 }
 
 function getCreditRelation(invoice: ApprovedInvoiceSummary): string {

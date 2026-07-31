@@ -1,11 +1,13 @@
 import type { Customer } from '@eky/api-client';
 
+import { BillingRecipientInvoicesSection } from './BillingRecipientInvoicesSection.js';
 import { CustomerActivitySection } from './CustomerActivitySection.js';
 import type { CustomerInvoiceNavigationTarget } from './customerInvoiceNavigation.js';
 import type { CustomerDefaultHourlyRateState } from './customerDefaultHourlyRateState.js';
 import { CustomerInvoicesSection } from './CustomerInvoicesSection.js';
 import { CustomerOverview } from './CustomerOverview.js';
 import type { CustomerActivityState } from './hooks/useCustomerActivity.js';
+import type { BillingRecipientInvoiceOverviewState } from './hooks/useBillingRecipientInvoices.js';
 import type { CustomerInvoiceOverviewState } from './hooks/useCustomerInvoices.js';
 import styles from './CustomerOverviewWorkspace.module.css';
 import { uiText } from '../../i18n/fi.js';
@@ -13,6 +15,7 @@ import { MessageBanner } from '../../shared/ui/index.js';
 
 interface CustomerOverviewWorkspaceProps {
   activityState: CustomerActivityState;
+  billingRecipientInvoiceState: BillingRecipientInvoiceOverviewState;
   customer: Customer | null;
   customers: Customer[];
   defaultHourlyRateState: CustomerDefaultHourlyRateState;
@@ -27,6 +30,7 @@ interface CustomerOverviewWorkspaceProps {
 
 export function CustomerOverviewWorkspace({
   activityState,
+  billingRecipientInvoiceState,
   customer,
   customers,
   defaultHourlyRateState,
@@ -96,6 +100,12 @@ export function CustomerOverviewWorkspace({
         invoiceState={invoiceState}
         onOpenInvoice={onOpenInvoice}
       />
+      {customer.customerType === 'propertyManager' ? (
+        <BillingRecipientInvoicesSection
+          invoiceState={billingRecipientInvoiceState}
+          onOpenInvoice={onOpenInvoice}
+        />
+      ) : null}
       <CustomerActivitySection activityState={activityState} />
     </div>
   );
