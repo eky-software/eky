@@ -25,6 +25,7 @@ const baseProps = {
     errorMessage: null,
     goToPage: () => undefined,
     isLoading: false,
+    paid: createEmptyPage(),
     sent: createEmptyPage(),
   },
   isLoading: false,

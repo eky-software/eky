@@ -87,7 +87,9 @@ export function toSentRows(
           ? uiText.customers.invoiceStatuses.partiallyCredited
           : group.creditStatus === 'full'
             ? uiText.customers.invoiceStatuses.fullyCredited
-            : uiText.customers.invoiceStatuses.sent,
+            : group.rootInvoice.paymentState === 'paid'
+              ? uiText.customers.invoiceStatuses.paid
+              : uiText.customers.invoiceStatuses.sent,
       target: {
         id: group.rootInvoice.id,
         type: 'approvedInvoice',

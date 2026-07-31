@@ -14,6 +14,7 @@ import type { CancelApprovedInvoiceState } from '../hooks/useCancelApprovedInvoi
 import type { CopyApprovedInvoiceState } from '../hooks/useCopyApprovedInvoiceToDraft.js';
 import type { InvoiceDeliveryEventListState } from '../hooks/useInvoiceDeliveryEvents.js';
 import type { InvoiceCreditContextState } from '../hooks/useInvoiceCreditContext.js';
+import type { InvoicePaymentMutationState } from '../hooks/useInvoicePayment.js';
 import type { MarkApprovedInvoiceSentState } from '../hooks/useMarkApprovedInvoiceSent.js';
 import type { ReopenApprovedInvoiceState } from '../hooks/useReopenApprovedInvoiceForEditing.js';
 import type { SendApprovedInvoiceEmailDryRunState } from '../hooks/useSendApprovedInvoiceEmailDryRun.js';
@@ -57,6 +58,10 @@ type ReopenApprovedInvoiceViewState = Pick<
   ReopenApprovedInvoiceState,
   'errorMessage' | 'isReopening'
 >;
+type InvoicePaymentMutationViewState = Pick<
+  InvoicePaymentMutationState,
+  'errorMessage' | 'isUpdating' | 'successMessage'
+>;
 type EmailSendViewState = Pick<
   SendApprovedInvoiceEmailDryRunState,
   'errorMessage' | 'isSending' | 'successMessage'
@@ -84,6 +89,7 @@ interface ApprovedInvoiceDetailViewProps {
   emailSmtpUnavailableMessage: string | null;
   invoiceState: ApprovedInvoiceReadViewState;
   markSentState: MarkApprovedInvoiceSentViewState;
+  paymentState: InvoicePaymentMutationViewState;
   pdfState: ApprovedInvoicePdfViewState;
   reopenState: ReopenApprovedInvoiceViewState;
   onBack(): void;
@@ -93,10 +99,12 @@ interface ApprovedInvoiceDetailViewProps {
   onCreatePdf(id: string): void;
   onEditInvoice(id: string): void;
   onMarkSent(id: string): void;
+  onMarkInvoicePaid(id: string, paidOn: string): void;
   onOpenPdf(id: string): void;
   onOpenRelatedDraft(id: string): void;
   onOpenRelatedInvoice(id: string): void;
   onPrepareEmail(id: string): void;
+  onRevertInvoicePaidMark(id: string): void;
   onSendEmailDryRun(
     id: string,
     input: ApprovedInvoiceEmailDryRunSendInput,
@@ -125,6 +133,7 @@ export function ApprovedInvoiceDetailView({
   emailSmtpUnavailableMessage,
   invoiceState,
   markSentState,
+  paymentState,
   pdfState,
   reopenState,
   onBack,
@@ -134,10 +143,12 @@ export function ApprovedInvoiceDetailView({
   onCreatePdf,
   onEditInvoice,
   onMarkSent,
+  onMarkInvoicePaid,
   onOpenPdf,
   onOpenRelatedDraft,
   onOpenRelatedInvoice,
   onPrepareEmail,
+  onRevertInvoicePaidMark,
   onSendEmailDryRun,
   onSendEmailSmtp,
   onSendEmailSmtpTest,
@@ -207,10 +218,13 @@ export function ApprovedInvoiceDetailView({
       isPdfAvailable={pdfState.document !== null}
       isPreparingEmail={emailState.isPreparing}
       isReopening={reopenState.isReopening}
+      isUpdatingPayment={paymentState.isUpdating}
       isSendingEmailDryRun={emailSendState.isSending}
       isSendingEmailSmtp={emailSmtpState.isSending}
       isSendingEmailSmtpTest={emailSmtpTestState.isSending}
       markSentErrorMessage={markSentState.errorMessage}
+      paymentMutationErrorMessage={paymentState.errorMessage}
+      paymentMutationSuccessMessage={paymentState.successMessage}
       pdfErrorMessage={pdfState.errorMessage}
       reopenErrorMessage={reopenState.errorMessage}
       onBack={onBack}
@@ -220,10 +234,12 @@ export function ApprovedInvoiceDetailView({
       onCreatePdf={onCreatePdf}
       onEditInvoice={onEditInvoice}
       onMarkSent={onMarkSent}
+      onMarkInvoicePaid={onMarkInvoicePaid}
       onOpenPdf={onOpenPdf}
       onOpenRelatedDraft={onOpenRelatedDraft}
       onOpenRelatedInvoice={onOpenRelatedInvoice}
       onPrepareEmail={onPrepareEmail}
+      onRevertInvoicePaidMark={onRevertInvoicePaidMark}
       onSendEmailDryRun={onSendEmailDryRun}
       onSendEmailSmtp={onSendEmailSmtp}
       onSendEmailSmtpTest={onSendEmailSmtpTest}

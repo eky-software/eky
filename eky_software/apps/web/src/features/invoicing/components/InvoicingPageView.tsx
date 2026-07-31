@@ -33,6 +33,7 @@ import type { InvoiceDeliveryEventListState } from '../hooks/useInvoiceDeliveryE
 import type { InvoiceCreditContextState } from '../hooks/useInvoiceCreditContext.js';
 import type { InvoiceDraftEditorState } from '../hooks/useInvoiceDraftEditor.js';
 import type { InvoicePaymentDefaultsState } from '../hooks/useInvoicePaymentDefaults.js';
+import type { InvoicePaymentMutationState } from '../hooks/useInvoicePayment.js';
 import type { InvoiceVatRatesState } from '../hooks/useInvoiceVatRates.js';
 import type { MarkApprovedInvoiceSentState } from '../hooks/useMarkApprovedInvoiceSent.js';
 import type { ReopenApprovedInvoiceState } from '../hooks/useReopenApprovedInvoiceForEditing.js';
@@ -62,6 +63,7 @@ interface InvoicingPageViewProps {
   invoiceVatRatesState: InvoiceVatRatesState;
   invoiceDeliveryEventListState: InvoiceDeliveryEventListState;
   invoiceCreditContextState: InvoiceCreditContextState;
+  invoicePaymentState: InvoicePaymentMutationState;
   markApprovedInvoiceSentState: MarkApprovedInvoiceSentState;
   isDraftListLoading: boolean;
   pendingDeleteDraftId: string | null;
@@ -88,8 +90,10 @@ interface InvoicingPageViewProps {
   onOpenApprovedInvoice(id: string): void;
   onEditApprovedInvoice(id: string): void;
   onMarkApprovedInvoiceSent(id: string): void;
+  onMarkInvoicePaid(id: string, paidOn: string): void;
   onOpenApprovedInvoicePdf(id: string): void;
   onPrepareApprovedInvoiceEmail(id: string): void;
+  onRevertInvoicePaidMark(id: string): void;
   onSendApprovedInvoiceEmailDryRun(
     id: string,
     input: ApprovedInvoiceEmailDryRunSendInput,
@@ -130,6 +134,7 @@ export function InvoicingPageView({
   invoiceVatRatesState,
   invoiceDeliveryEventListState,
   invoiceCreditContextState,
+  invoicePaymentState,
   markApprovedInvoiceSentState,
   drafts,
   draftErrorMessage,
@@ -152,8 +157,10 @@ export function InvoicingPageView({
   onOpenApprovedInvoice,
   onEditApprovedInvoice,
   onMarkApprovedInvoiceSent,
+  onMarkInvoicePaid,
   onOpenApprovedInvoicePdf,
   onPrepareApprovedInvoiceEmail,
+  onRevertInvoicePaidMark,
   onSendApprovedInvoiceEmailDryRun,
   onSendApprovedInvoiceEmailSmtp,
   onSendApprovedInvoiceEmailSmtpTest,
@@ -185,6 +192,7 @@ export function InvoicingPageView({
           draftErrorMessage={draftErrorMessage}
           isCustomerListLoading={customerListState.isLoading}
           isDraftListLoading={isDraftListLoading}
+          paidInvoicePageState={approvedInvoiceListState.paid}
           pendingDeleteDraftId={pendingDeleteDraftId}
           sentInvoicePageState={approvedInvoiceListState.sent}
           onCancelDeleteDraft={onCancelDeleteDraft}
@@ -295,6 +303,11 @@ export function InvoicingPageView({
             errorMessage: markApprovedInvoiceSentState.errorMessage,
             isMarkingSent: markApprovedInvoiceSentState.isMarkingSent,
           }}
+          paymentState={{
+            errorMessage: invoicePaymentState.errorMessage,
+            isUpdating: invoicePaymentState.isUpdating,
+            successMessage: invoicePaymentState.successMessage,
+          }}
           pdfState={{
             document: approvedInvoicePdfState.document,
             errorMessage: approvedInvoicePdfState.errorMessage,
@@ -311,10 +324,12 @@ export function InvoicingPageView({
           onCreatePdf={onCreateApprovedInvoicePdf}
           onEditInvoice={onEditApprovedInvoice}
           onMarkSent={onMarkApprovedInvoiceSent}
+          onMarkInvoicePaid={onMarkInvoicePaid}
           onOpenPdf={onOpenApprovedInvoicePdf}
           onOpenRelatedDraft={onOpenDraft}
           onOpenRelatedInvoice={onOpenApprovedInvoice}
           onPrepareEmail={onPrepareApprovedInvoiceEmail}
+          onRevertInvoicePaidMark={onRevertInvoicePaidMark}
           onSendEmailDryRun={onSendApprovedInvoiceEmailDryRun}
           onSendEmailSmtp={onSendApprovedInvoiceEmailSmtp}
           onSendEmailSmtpTest={onSendApprovedInvoiceEmailSmtpTest}

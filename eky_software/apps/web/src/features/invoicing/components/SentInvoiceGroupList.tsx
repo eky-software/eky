@@ -76,7 +76,9 @@ export function SentInvoiceGroupList({
               ? uiText.invoicing.statusCredited
               : group.creditStatus === 'partial'
                 ? uiText.invoicing.creditStatusPartial
-                : uiText.invoicing.statusSent}
+                : group.rootInvoice.paymentState === 'paid'
+                  ? uiText.invoicing.statusPaid
+                  : uiText.invoicing.statusSent}
           </span>
         </div>,
         ...group.creditInvoices.map((creditInvoice) => (

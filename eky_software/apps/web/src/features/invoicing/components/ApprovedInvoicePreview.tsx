@@ -18,6 +18,7 @@ import { ApprovedInvoicePaymentDetails } from './ApprovedInvoicePaymentDetails.j
 import { ApprovedInvoiceTotals } from './ApprovedInvoiceTotals.js';
 import { InvoiceDeliveryHistory } from './InvoiceDeliveryHistory.js';
 import { InvoiceCreditRelations } from './InvoiceCreditRelations.js';
+import { InvoicePaymentPanel } from './InvoicePaymentPanel.js';
 import styles from './ApprovedInvoicePreview.module.css';
 import { uiText } from '../../../i18n/fi.js';
 
@@ -38,6 +39,7 @@ interface ApprovedInvoicePreviewProps {
   isSendingEmailSmtpTest: boolean;
   isPdfAvailable: boolean;
   isReopening: boolean;
+  isUpdatingPayment: boolean;
   markSentErrorMessage: string | null;
   email: ApprovedInvoiceEmailPreviewData | null;
   emailErrorMessage: string | null;
@@ -54,6 +56,8 @@ interface ApprovedInvoicePreviewProps {
   deliveryEventsErrorMessage: string | null;
   isLoadingDeliveryEvents: boolean;
   pdfErrorMessage: string | null;
+  paymentMutationErrorMessage: string | null;
+  paymentMutationSuccessMessage: string | null;
   reopenErrorMessage: string | null;
   onBack(): void;
   onCancelInvoice(id: string, input: CancelApprovedInvoiceInput): void;
@@ -62,10 +66,12 @@ interface ApprovedInvoicePreviewProps {
   onCreatePdf(id: string): void;
   onEditInvoice(id: string): void;
   onMarkSent(id: string): void;
+  onMarkInvoicePaid(id: string, paidOn: string): void;
   onOpenPdf(id: string): void;
   onOpenRelatedDraft(id: string): void;
   onOpenRelatedInvoice(id: string): void;
   onPrepareEmail(id: string): void;
+  onRevertInvoicePaidMark(id: string): void;
   onSendEmailDryRun(
     id: string,
     input: ApprovedInvoiceEmailDryRunSendInput,
@@ -97,6 +103,7 @@ export function ApprovedInvoicePreview({
   isSendingEmailSmtpTest,
   isPdfAvailable,
   isReopening,
+  isUpdatingPayment,
   markSentErrorMessage,
   email,
   emailErrorMessage,
@@ -113,6 +120,8 @@ export function ApprovedInvoicePreview({
   deliveryEventsErrorMessage,
   isLoadingDeliveryEvents,
   pdfErrorMessage,
+  paymentMutationErrorMessage,
+  paymentMutationSuccessMessage,
   reopenErrorMessage,
   onBack,
   onCancelInvoice,
@@ -121,10 +130,12 @@ export function ApprovedInvoicePreview({
   onCreatePdf,
   onEditInvoice,
   onMarkSent,
+  onMarkInvoicePaid,
   onOpenPdf,
   onOpenRelatedDraft,
   onOpenRelatedInvoice,
   onPrepareEmail,
+  onRevertInvoicePaidMark,
   onSendEmailDryRun,
   onSendEmailSmtp,
   onSendEmailSmtpTest,
@@ -177,6 +188,18 @@ export function ApprovedInvoicePreview({
         isLoading={isLoadingCreditContext}
         onOpenDraft={onOpenRelatedDraft}
         onOpenInvoice={onOpenRelatedInvoice}
+      />
+
+      <InvoicePaymentPanel
+        creditContext={creditContext}
+        creditContextErrorMessage={creditContextErrorMessage}
+        invoice={invoice}
+        isLoadingCreditContext={isLoadingCreditContext}
+        isUpdating={isUpdatingPayment}
+        mutationErrorMessage={paymentMutationErrorMessage}
+        mutationSuccessMessage={paymentMutationSuccessMessage}
+        onMarkPaid={onMarkInvoicePaid}
+        onRevertPaidMark={onRevertInvoicePaidMark}
       />
 
       {!isCancelled && email !== null ? (

@@ -39,6 +39,7 @@ import { useCancelApprovedInvoice } from '../hooks/useCancelApprovedInvoice.js';
 import { useCreditInvoiceDraft } from '../hooks/useCreditInvoiceDraft.js';
 import { useApproveCreditInvoiceDraft } from '../hooks/useApproveCreditInvoiceDraft.js';
 import { useInvoiceCreditContext } from '../hooks/useInvoiceCreditContext.js';
+import { useInvoicePayment } from '../hooks/useInvoicePayment.js';
 import type { InvoicingNavigationRequest } from '../invoicingNavigation.js';
 
 interface InvoicingPageProps {
@@ -79,6 +80,7 @@ export function InvoicingPage({
   const approveCreditInvoiceDraftState =
     useApproveCreditInvoiceDraft(apiClient);
   const invoiceCreditContextState = useInvoiceCreditContext(apiClient);
+  const invoicePaymentState = useInvoicePayment(apiClient);
   const [pendingDeleteDraftId, setPendingDeleteDraftId] = useState<
     string | null
   >(null);
@@ -105,6 +107,7 @@ export function InvoicingPage({
     creditInvoiceDraftState.clearDraft();
     approveCreditInvoiceDraftState.clearError();
     invoiceCreditContextState.clearCreditContext();
+    invoicePaymentState.clearStatus();
     setPendingDeleteDraftId(null);
     dispatch({ type: 'showDraftList' });
   }
@@ -114,6 +117,7 @@ export function InvoicingPage({
     requestedInvoiceKind?: InvoiceKind,
   ): void {
     invoiceCreditContextState.clearCreditContext();
+    invoicePaymentState.clearStatus();
     const draft = draftState.drafts.find((item) => item.id === id);
     const invoiceKind = requestedInvoiceKind ?? draft?.invoiceKind;
 
@@ -160,6 +164,7 @@ export function InvoicingPage({
     invoiceDeliveryEventListState.clearEvents();
     cancelApprovedInvoiceState.clearError();
     invoiceCreditContextState.clearCreditContext();
+    invoicePaymentState.clearStatus();
     setPendingDeleteDraftId(null);
     dispatch({ type: 'openApprovedInvoice' });
     const invoice = await approvedInvoiceState.openApprovedInvoice(id);
@@ -242,6 +247,45 @@ export function InvoicingPage({
     void invoiceCreditContextState.loadCreditContext(id);
     void approvedInvoiceListState.refreshApprovedInvoices();
     void invoiceDeliveryEventListState.loadEvents(id);
+  }
+
+  async function handleMarkInvoicePaid(
+    id: string,
+    paidOn: string,
+  ): Promise<void> {
+    const payment = await invoicePaymentState.markPaid(id, paidOn);
+    const currentInvoice = approvedInvoiceState.approvedInvoice;
+
+    if (payment === null || currentInvoice?.id !== id) {
+      return;
+    }
+
+    approvedInvoiceState.replaceApprovedInvoice({
+      ...currentInvoice,
+      paidAmountCents: payment.paidAmountCents,
+      paidOn: payment.paidOn,
+      paymentSource: payment.paymentSource,
+      paymentState: payment.paymentState,
+    });
+    void approvedInvoiceListState.refreshApprovedInvoices();
+  }
+
+  async function handleRevertInvoicePaidMark(id: string): Promise<void> {
+    const payment = await invoicePaymentState.revertPaidMark(id);
+    const currentInvoice = approvedInvoiceState.approvedInvoice;
+
+    if (payment === null || currentInvoice?.id !== id) {
+      return;
+    }
+
+    approvedInvoiceState.replaceApprovedInvoice({
+      ...currentInvoice,
+      paidAmountCents: payment.paidAmountCents,
+      paidOn: payment.paidOn,
+      paymentSource: payment.paymentSource,
+      paymentState: payment.paymentState,
+    });
+    void approvedInvoiceListState.refreshApprovedInvoices();
   }
 
   async function handleCopyApprovedInvoiceToDraft(id: string): Promise<void> {
@@ -445,6 +489,7 @@ export function InvoicingPage({
       invoiceVatRatesState={invoiceVatRatesState}
       invoiceDeliveryEventListState={invoiceDeliveryEventListState}
       invoiceCreditContextState={invoiceCreditContextState}
+      invoicePaymentState={invoicePaymentState}
       markApprovedInvoiceSentState={markApprovedInvoiceSentState}
       isDraftListLoading={draftState.isLoading}
       pendingDeleteDraftId={pendingDeleteDraftId}
@@ -479,11 +524,17 @@ export function InvoicingPage({
       onMarkApprovedInvoiceSent={(id) =>
         void handleMarkApprovedInvoiceSent(id)
       }
+      onMarkInvoicePaid={(id, paidOn) =>
+        void handleMarkInvoicePaid(id, paidOn)
+      }
       onOpenApprovedInvoicePdf={(id) =>
         void handleOpenApprovedInvoicePdf(id)
       }
       onPrepareApprovedInvoiceEmail={(id) =>
         void handlePrepareApprovedInvoiceEmail(id)
+      }
+      onRevertInvoicePaidMark={(id) =>
+        void handleRevertInvoicePaidMark(id)
       }
       onSendApprovedInvoiceEmailDryRun={(id, input) =>
         void handleSendApprovedInvoiceEmailDryRun(id, input)

@@ -88,6 +88,52 @@ describe('loadApprovedInvoicePage', () => {
       creditState: 'uncredited',
       page: 1,
       pageSize: 20,
+      paymentState: 'all',
+      sort: 'invoiceDateDesc',
+    });
+  });
+
+  it('loads paid invoices with an explicit payment-state filter', async () => {
+    const rootInvoice = createApprovedInvoiceSummary({
+      paidAmountCents: 12_550,
+      paidOn: '2026-07-31',
+      paymentSource: 'manual',
+      paymentState: 'paid',
+      status: 'sent',
+    });
+    const page: SentInvoiceGroupListPage = {
+      groups: [
+        {
+          creditInvoices: [],
+          creditStatus: 'none',
+          remainingCreditableGrossCents: 12_550,
+          rootInvoice,
+        },
+      ],
+      page: 1,
+      pageSize: 20,
+      totalCount: 1,
+      totalPages: 1,
+    };
+    const apiClient = {
+      listApprovedInvoices: vi.fn(),
+      listSentInvoiceGroups: vi.fn(async () => page),
+    };
+
+    await expect(
+      loadSentInvoiceGroupPage(
+        apiClient,
+        createDefaultApprovedInvoiceListControls(),
+        1,
+        'uncredited',
+        'paid',
+      ),
+    ).resolves.toEqual(page);
+    expect(apiClient.listSentInvoiceGroups).toHaveBeenCalledWith({
+      creditState: 'uncredited',
+      page: 1,
+      pageSize: 20,
+      paymentState: 'paid',
       sort: 'invoiceDateDesc',
     });
   });

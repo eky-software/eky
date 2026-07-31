@@ -290,6 +290,7 @@ export const uiText = {
       cancelled: 'Perutut',
       credited: 'Hyvitetyt ja osittain hyvitetyt',
       drafts: 'Luonnokset',
+      paid: 'Maksetut',
       sent: 'Lähetetyt',
     },
     invoiceDate: 'Päiväys',
@@ -306,6 +307,7 @@ export const uiText = {
       draft: 'Luonnos',
       fullyCredited: 'Kokonaan hyvitetty',
       partiallyCredited: 'Osittain hyvitetty',
+      paid: 'Maksettu',
       sent: 'Lähetetty',
     },
     invoicing: 'Laskutus',
@@ -720,6 +722,8 @@ export const uiText = {
     creditedInvoices: 'Hyvitetyt',
     creditedInvoicesEmpty: 'Hyvitettyjä tai osittain hyvitettyjä laskuja ei ole.',
     creditedInvoicesLoading: 'Ladataan hyvitettyjä laskuja...',
+    confirmInvoicePaid: 'Merkitse maksetuksi',
+    confirmRevertInvoicePayment: 'Poista maksumerkintä',
     creditDraftFacts: 'Hyvitysluonnoksen perustiedot',
     creditDraftHelp: (invoiceNumber: string, invoiceDate: string) =>
       `Hyvitys kohdistuu laskuun ${invoiceNumber}, päiväys ${invoiceDate}. Backend laskee hyvityksen lopulliset summat alkuperäisen laskun snapshotista.`,
@@ -1083,6 +1087,13 @@ export const uiText = {
     sentInvoicesLoading: 'Ladataan lähetettyjä laskuja...',
     sentInvoiceListLoadError:
       'Lähetettyjä laskuja ei voitu ladata. Yritä hetken kuluttua uudelleen.',
+    paidInvoiceCount: 'Maksettujen laskujen määrä',
+    paidInvoiceList: 'Maksetut laskut',
+    paidInvoiceListLoadError:
+      'Maksettuja laskuja ei voitu ladata. Yritä hetken kuluttua uudelleen.',
+    paidInvoices: 'Maksetut',
+    paidInvoicesEmpty: 'Maksettuja laskuja ei ole vielä.',
+    paidInvoicesLoading: 'Ladataan maksettuja laskuja...',
     openDraftError:
       'Laskuluonnosta ei voitu avata. Yritä hetken kuluttua uudelleen.',
     openDraftPrompt: 'Valitse avattava laskuluonnos listasta.',
@@ -1094,7 +1105,34 @@ export const uiText = {
     statusCredited: 'Hyvitetty',
     statusCreditDraft: 'Hyvitysluonnos',
     statusDraft: 'Luonnos',
+    statusPaid: 'Maksettu',
     statusSent: 'Lähetetty',
+    invoicePaymentAmount: 'Maksettu määrä',
+    invoicePaymentConflictError:
+      'Laskun maksutila on muuttunut tai laskua ei voi merkitä maksetuksi.',
+    invoicePaymentDate: 'Maksupäivä',
+    invoicePaymentDateError: 'Tarkista maksupäivä.',
+    invoicePaymentEligibilityLoading:
+      'Tarkistetaan jäljellä oleva maksettava määrä...',
+    invoicePaymentMarkedSuccess: 'Lasku merkittiin maksetuksi.',
+    invoicePaymentPaid: 'Maksettu',
+    invoicePaymentPermissionError:
+      'Sinulla ei ole oikeutta muuttaa laskun maksutilaa.',
+    invoicePaymentRemainingAmount: 'Jäljellä maksettavaa',
+    invoicePaymentRevertedSuccess: 'Maksumerkintä poistettiin.',
+    invoicePaymentSource: 'Merkintätapa',
+    invoicePaymentSourceManual: 'Manuaalinen merkintä',
+    invoicePaymentTitle: 'Maksutila',
+    invoicePaymentUnpaid: 'Avoin',
+    invoicePaymentUpdateError:
+      'Laskun maksutilaa ei voitu päivittää. Yritä hetken kuluttua uudelleen.',
+    markInvoicePaid: 'Merkitse maksetuksi',
+    markInvoicePaidConfirmation:
+      'Vahvista laskunumero, jäljellä oleva määrä ja maksupäivä ennen merkintää.',
+    revertInvoicePaymentConfirmation:
+      'Poistetaanko maksumerkintä? Maksuhistoria säilyy tapahtumissa.',
+    revertInvoicePaymentMark: 'Poista maksumerkintä',
+    updatingInvoicePayment: 'Päivitetään maksutilaa...',
     subject: 'Aihe',
     subjectFallback: 'Nimetön laskuluonnos',
     subjectPlaceholder: 'Laskutuksen aihe',

@@ -82,6 +82,25 @@ describe('customer invoice rows', () => {
       },
     });
   });
+
+  it('labels an uncredited paid invoice as paid', () => {
+    const rootInvoice = createApprovedInvoice({
+      paidAmountCents: 12_400,
+      paidOn: '2026-08-20',
+      paymentSource: 'manual',
+      paymentState: 'paid',
+    });
+    const rows = toSentRows([
+      {
+        creditInvoices: [],
+        creditStatus: 'none',
+        remainingCreditableGrossCents: 12_400,
+        rootInvoice,
+      },
+    ]);
+
+    expect(rows[0]?.status).toBe('Maksettu');
+  });
 });
 
 function createApprovedInvoice(
