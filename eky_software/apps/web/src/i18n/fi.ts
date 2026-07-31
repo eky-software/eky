@@ -316,7 +316,7 @@ export const uiText = {
     loading: 'Ladataan asiakkaita...',
     manualCustomerNumber: 'Syötä itse',
     managedByPropertyManager: 'Isännöitsijätoimisto',
-    managedHousingCompanies: 'taloyhtiötä',
+    managedHousingCompanies: 'hallinnoitua taloyhtiötä',
     name: 'Nimi',
     newCustomer: 'Uusi asiakas',
     newCustomerAction: 'Uusi asiakas',
@@ -324,7 +324,7 @@ export const uiText = {
     noValue: 'Ei asetettu',
     noPropertyManager: 'Ei valittu',
     noManagedHousingCompanies: 'Ei taloyhtiöitä',
-    oneManagedHousingCompany: '1 taloyhtiö',
+    oneManagedHousingCompany: '1 hallinnoitu taloyhtiö',
     openInvoice: 'Avaa lasku',
     openInvoiceWithNumber: (invoiceNumber: string) =>
       `Avaa lasku ${invoiceNumber}`,

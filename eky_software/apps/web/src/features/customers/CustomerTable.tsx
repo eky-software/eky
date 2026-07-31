@@ -68,7 +68,6 @@ export function CustomerTable({
             sortState={sortState}
           />
         </span>
-        <span role="columnheader" aria-label={uiText.customers.actions} />
       </div>
       {customerGroups.map(({ customer, managedHousingCompanies }) => (
         <CustomerTableGroup
@@ -104,103 +103,104 @@ function CustomerTableGroup({
 }: CustomerTableGroupProps): React.JSX.Element {
   const isPropertyManager = customer.customerType === 'propertyManager';
   const hasManagedHousingCompanies = managedHousingCompanies.length > 0;
+  const relationshipRegionId = `managed-housing-companies-${customer.id}`;
 
   return (
     <div className={styles.group}>
-      <div className={`${styles.row} ${styles.buttonRow}`}>
-        <CustomerOpenButton
+      <div className={styles.row} role="row">
+        <CustomerMainCell
           customer={customer}
           customers={customers}
+          hasManagedHousingCompanies={hasManagedHousingCompanies}
+          isExpanded={isExpanded}
           managedHousingCompanyCount={managedHousingCompanies.length}
           onCustomerSelect={onCustomerSelect}
+          onPropertyManagerToggle={onPropertyManagerToggle}
+          relationshipRegionId={relationshipRegionId}
         />
-        {isPropertyManager ? (
-          <button
-            aria-expanded={isExpanded}
-            aria-label={
-              isExpanded
-                ? uiText.customers.collapseManagedHousingCompanies
-                : uiText.customers.expandManagedHousingCompanies
-            }
-            className={styles.expandButton}
-            disabled={!hasManagedHousingCompanies}
-            onClick={() => onPropertyManagerToggle(customer.id)}
-            type="button"
-          >
-            {isExpanded ? '-' : '+'}
-          </button>
-        ) : null}
+        <span role="cell">{getCustomerTypeLabel(customer.customerType)}</span>
+        <span role="cell">{customer.city || '-'}</span>
+        <span role="cell">{getPrimaryContact(customer)}</span>
+        <CustomerStatusCell customer={customer} />
       </div>
       {isPropertyManager && isExpanded
-        ? managedHousingCompanies.map((housingCompany) => (
-            <CustomerChildRow
-              customer={housingCompany}
-              key={housingCompany.id}
-              onCustomerSelect={onCustomerSelect}
-            />
-          ))
+        ? (
+            <div id={relationshipRegionId}>
+              {managedHousingCompanies.map((housingCompany) => (
+                <CustomerChildRow
+                  customer={housingCompany}
+                  key={housingCompany.id}
+                  onCustomerSelect={onCustomerSelect}
+                />
+              ))}
+            </div>
+          )
         : null}
     </div>
-  );
-}
-
-interface CustomerOpenButtonProps {
-  customer: Customer;
-  customers: Customer[];
-  managedHousingCompanyCount: number;
-  onCustomerSelect(customer: Customer): void;
-}
-
-function CustomerOpenButton({
-  customer,
-  customers,
-  managedHousingCompanyCount,
-  onCustomerSelect,
-}: CustomerOpenButtonProps): React.JSX.Element {
-  return (
-    <button
-      className={styles.openButton}
-      onClick={() => onCustomerSelect(customer)}
-      type="button"
-    >
-      <CustomerMainCell
-        customer={customer}
-        customers={customers}
-        managedHousingCompanyCount={managedHousingCompanyCount}
-      />
-      <span role="cell">{getCustomerTypeLabel(customer.customerType)}</span>
-      <span role="cell">{customer.city || '-'}</span>
-      <span role="cell">{getPrimaryContact(customer)}</span>
-      <CustomerStatusCell customer={customer} />
-    </button>
   );
 }
 
 interface CustomerMainCellProps {
   customer: Customer;
   customers: Customer[];
+  hasManagedHousingCompanies: boolean;
+  isExpanded: boolean;
   managedHousingCompanyCount: number;
+  onCustomerSelect(customer: Customer): void;
+  onPropertyManagerToggle(customerId: string): void;
+  relationshipRegionId: string;
 }
 
 function CustomerMainCell({
   customer,
   customers,
+  hasManagedHousingCompanies,
+  isExpanded,
   managedHousingCompanyCount,
+  onCustomerSelect,
+  onPropertyManagerToggle,
+  relationshipRegionId,
 }: CustomerMainCellProps): React.JSX.Element {
   return (
-    <span className={styles.mainCell}>
-      <span className={styles.number}>{customer.customerNumber}</span>
-      <strong>{customer.name}</strong>
+    <div className={styles.mainCell} role="cell">
+      <button
+        className={styles.customerButton}
+        onClick={() => onCustomerSelect(customer)}
+        type="button"
+      >
+        <span className={styles.number}>{customer.customerNumber}</span>
+        <strong>{customer.name}</strong>
+      </button>
       {customer.customerType === 'propertyManager' ? (
-        <span className={styles.secondary}>
-          {formatManagedHousingCompanyCount(managedHousingCompanyCount)}
-        </span>
+        hasManagedHousingCompanies ? (
+          <button
+            aria-controls={relationshipRegionId}
+            aria-expanded={isExpanded}
+            aria-label={
+              isExpanded
+                ? uiText.customers.collapseManagedHousingCompanies
+                : uiText.customers.expandManagedHousingCompanies
+            }
+            className={styles.relationshipButton}
+            onClick={() => onPropertyManagerToggle(customer.id)}
+            type="button"
+          >
+            <span aria-hidden="true" className={styles.chevron}>
+              {isExpanded ? '▾' : '›'}
+            </span>
+            {formatManagedHousingCompanyCount(managedHousingCompanyCount)}
+          </button>
+        ) : (
+          <span className={styles.secondary}>
+            {formatManagedHousingCompanyCount(0)}
+          </span>
+        )
       ) : customer.customerType === 'housingCompany' ? (
         <span className={styles.secondary}>
           {getCustomerRelationshipLabel(customer, customers)}
         </span>
       ) : null}
-    </span>
+    </div>
   );
 }
 
@@ -214,22 +214,26 @@ function CustomerChildRow({
   onCustomerSelect,
 }: CustomerChildRowProps): React.JSX.Element {
   return (
-    <button
-      className={`${styles.row} ${styles.button} ${styles.childRow}`}
-      onClick={() => onCustomerSelect(customer)}
-      type="button"
-    >
-      <span className={styles.mainCell}>
-        <span className={styles.number}>{customer.customerNumber}</span>
-        <strong>{customer.name}</strong>
-        <span className={styles.secondary}>{uiText.customers.housingCompany}</span>
-      </span>
+    <div className={`${styles.row} ${styles.childRow}`} role="row">
+      <div className={`${styles.mainCell} ${styles.childMainCell}`} role="cell">
+        <span aria-hidden="true" className={styles.relationshipLine} />
+        <button
+          className={styles.customerButton}
+          onClick={() => onCustomerSelect(customer)}
+          type="button"
+        >
+          <span className={styles.number}>{customer.customerNumber}</span>
+          <strong>{customer.name}</strong>
+        </button>
+        <span className={styles.secondary}>
+          {uiText.customers.housingCompany}
+        </span>
+      </div>
       <span role="cell">{getCustomerTypeLabel(customer.customerType)}</span>
       <span role="cell">{customer.city || '-'}</span>
       <span role="cell">{getPrimaryContact(customer)}</span>
       <CustomerStatusCell customer={customer} />
-      <span role="cell" />
-    </button>
+    </div>
   );
 }
 
