@@ -226,10 +226,8 @@ test('CUS-OVERVIEW-003 CUS-OVERVIEW-006 CUS-OVERVIEW-007 @critical @cross-module
     creditedSection.getByText(creditedSource.number, { exact: true }),
   ).toBeVisible();
   await expect(
-    creditedSection.getByText('Kokonaan hyvitetty · Maksettu', {
-      exact: true,
-    }),
-  ).toBeVisible();
+    creditedSection.getByRole('row').filter({ hasText: creditedSource.number }),
+  ).toContainText('Kokonaan hyvitetty · Maksettu');
   await expect(sentSection.getByText(paid.number, { exact: true })).toHaveCount(
     0,
   );
@@ -244,7 +242,7 @@ test('CUS-OVERVIEW-003 CUS-OVERVIEW-006 CUS-OVERVIEW-007 @critical @cross-module
     .getByRole('row')
     .filter({ hasText: 'Overview draft' });
   await draftRow
-    .getByRole('button', { name: 'Avaa laskutuksessa' })
+    .getByRole('button', { name: 'Avaa lasku Luonnos' })
     .click();
   await expect(
     e2eWeb.page.getByRole('heading', {
@@ -265,7 +263,7 @@ test('CUS-OVERVIEW-003 CUS-OVERVIEW-006 CUS-OVERVIEW-007 @critical @cross-module
     .getByRole('row')
     .filter({ hasText: approved.number });
   await approvedRow
-    .getByRole('button', { name: 'Avaa laskutuksessa' })
+    .getByRole('button', { name: `Avaa lasku ${approved.number}` })
     .click();
   await expect(
     e2eWeb.page.getByRole('heading', {
@@ -371,7 +369,7 @@ test('CUS-OVERVIEW-009 @critical @cross-module pages and sorts paid customer inv
     name: 'Maksetut',
   });
   await expect(
-    paidSection.getByRole('button', { name: 'Avaa laskutuksessa' }),
+    paidSection.getByRole('button', { name: /^Avaa lasku / }),
   ).toHaveCount(5);
   await expect(
     paidSection.getByText(paidInvoices[5]!.number, { exact: true }),
@@ -381,8 +379,10 @@ test('CUS-OVERVIEW-009 @critical @cross-module pages and sorts paid customer inv
   ).toHaveCount(0);
   await expect(
     paidSection.getByRole('columnheader', { name: 'Maksupäivä' }),
+  ).toHaveCount(0);
+  await expect(
+    paidSection.getByText('Maksupäivä 26.07.2026'),
   ).toBeVisible();
-  await expect(paidSection.getByText('26.07.2026')).toBeVisible();
 
   await paidSection.getByRole('button', { name: 'Seuraava' }).click();
   await expect(
@@ -391,7 +391,7 @@ test('CUS-OVERVIEW-009 @critical @cross-module pages and sorts paid customer inv
 
   await e2eWeb.page.getByLabel('Rivejä osiossa').selectOption('20');
   await expect(
-    paidSection.getByRole('button', { name: 'Avaa laskutuksessa' }),
+    paidSection.getByRole('button', { name: /^Avaa lasku / }),
   ).toHaveCount(6);
 
   await e2eWeb.page
@@ -407,8 +407,8 @@ test('CUS-OVERVIEW-009 @critical @cross-module pages and sorts paid customer inv
   });
   await expect(
     paidTable.getByRole('columnheader', { name: 'Maksupäivä' }),
-  ).toBeVisible();
-  await expect(paidTable.getByText('26.07.2026')).toBeVisible();
+  ).toHaveCount(0);
+  await expect(paidTable.getByText('Maksupäivä 26.07.2026')).toBeVisible();
 });
 
 async function createCustomer(

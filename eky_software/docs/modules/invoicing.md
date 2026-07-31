@@ -519,6 +519,12 @@ Sama omistajuusraja koskee laskulistauksia:
 samassa listauspyynnössä. Molemmat rajataan aina backendin vahvistaman
 `companyId`-kontekstin sisälle.
 
+Recipient-listaus on server-side Invoicing-read model. Sitä ei saa muodostaa
+Customers-UI:ssa lataamalla laajempaa laskulistaa ja suodattamalla rivejä
+selaimessa. Juridisen asiakkaan ja vastaanottajan erottelu todistetaan
+`CUS-RECIPIENT-001`-selaintestillä ja toisen yrityksen vuotamattomuus
+`CUS-RECIPIENT-002`-system-testillä.
+
 Laskun suoritusajankohta mallinnetaan laskutason
 `InvoicePerformancePeriod`-tyyppinä: sama kuin laskun päivä, yksittäinen
 suorituspäivä tai laskutusjakso. Hyväksytty lasku snapshottaa valinnan ja

@@ -30,6 +30,10 @@ It owns:
 
 It does not own invoices, work orders, work entries, material entries, inventory, reports, or company settings default hourly rate.
 
+`managedByCustomerId` describes the current customer master-data relationship.
+Do not use it to infer historical invoice ownership or billing recipients.
+Those semantics and projections belong to Invoicing.
+
 ## Layer Rules
 
 Keep the module onion intact:

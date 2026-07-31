@@ -23,6 +23,9 @@ describe('CustomerTable', () => {
     expect(html).toContain(
       'aria-controls="managed-housing-companies-property-manager-1"',
     );
+    expect(html).toContain(
+      'aria-label="Sulje taloyhtiöt: 1 hallinnoitu taloyhtiö"',
+    );
     expect(html).toContain('1 hallinnoitu taloyhtiö');
     expect(html).toContain('Asunto Oy Sininen Kulma');
     expect(html).toContain('status-pill-active');

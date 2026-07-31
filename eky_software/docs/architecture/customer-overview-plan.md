@@ -174,6 +174,13 @@ Koko työalueen asiakaskortti lisää:
 - turvallisen Customers-historian asiakkaan luonnista, päivityksistä,
   aktivoinnista ja passivoinnista
 
+Asiakaslistassa isännöitsijätoimiston hallinnoimat taloyhtiöt avataan erillisellä
+disclosure-painikkeella. Painike näyttää suhteen lukumäärän, toimii
+näppäimistöllä eikä korvaa asiakaskortin avaavaa toimintoa. Isännöitsijän
+asiakaskortti listaa hallinnoidut taloyhtiöt ja taloyhtiön kortti linkittää
+nykyiseen isännöitsijään. Näiden linkkien kautta siirtyminen ei nollaa
+asiakaslistan hakua, suodatinta, lajittelua tai avattuja suhderyhmiä.
+
 Asiakkaan master data pysyy käytettävissä, vaikka lasku- tai historiaosion
 lataus epäonnistuisi. Jokaisella osiolla on oma loading-, empty- ja turvallinen
 error-tila.
@@ -262,6 +269,14 @@ Kategoriarajojen ja laskutukseen avaamisen järjestelmätodiste on
 `CUS-OVERVIEW-007` testissä
 `apps/e2e/tests/web/customerOverviewJourneys.spec.ts`.
 
+Asiakassuhteiden disclosure- ja navigointipolut todistetaan
+`CUS-REL-001`-, `CUS-REL-002`- ja `CUS-REL-003`-skenaarioilla.
+Juridisen asiakkaan omien laskujen ja vastaanottajalaskujen erottelu
+todistetaan `CUS-RECIPIENT-001`-skenaariolla sekä yritysraja
+`CUS-RECIPIENT-002`-skenaariolla. Nämä skenaariot sijaitsevat tiedostoissa
+`apps/e2e/tests/web/customerRelationshipJourneys.spec.ts` ja
+`apps/e2e/tests/system/customerRecipientTenantBoundary.spec.ts`.
+
 Asiakaskortin laskukokonaisuudella on yksi yhteinen lajittelu- ja
 sivukokovalinta. Oletussivukoko on 5, ja vaihtoehdot ovat 5, 20 ja 50.
 Valinnan muuttaminen palauttaa kaikki kategoriat sivulle 1, mutta luonnosten,
@@ -322,6 +337,11 @@ Laskutus-moduuliin, jossa Invoicing varmistaa tunnisteen omasta
 yritysrajatusta asiakaslistastaan ennen normaalin uuden laskun lomakkeen
 avaamista. Passiivinen, vanhentunut tai nykyisen yritysrajauksen ulkopuolelle
 jäävä tunniste ei avaa lomaketta.
+
+Onnistunut ja estetty asiakaskortilta aloitettava laskutuspolku todistetaan
+`CUS-INVOICE-001`- ja `CUS-INVOICE-002`-skenaarioilla. Selain ei lähetä tässä
+polussa `companyId`-arvoa, vaan yritysraja muodostuu backendin vahvistamasta
+kontekstista.
 
 ## Liittyvät Dokumentit
 

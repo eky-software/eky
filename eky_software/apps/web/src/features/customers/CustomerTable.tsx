@@ -161,6 +161,9 @@ function CustomerMainCell({
   onPropertyManagerToggle,
   relationshipRegionId,
 }: CustomerMainCellProps): React.JSX.Element {
+  const managedHousingCompanyCountLabel =
+    formatManagedHousingCompanyCount(managedHousingCompanyCount);
+
   return (
     <div className={styles.mainCell} role="cell">
       <button
@@ -176,11 +179,10 @@ function CustomerMainCell({
           <button
             aria-controls={relationshipRegionId}
             aria-expanded={isExpanded}
-            aria-label={
-              isExpanded
-                ? uiText.customers.collapseManagedHousingCompanies
-                : uiText.customers.expandManagedHousingCompanies
-            }
+            aria-label={`${isExpanded
+              ? uiText.customers.collapseManagedHousingCompanies
+              : uiText.customers.expandManagedHousingCompanies
+            }: ${managedHousingCompanyCountLabel}`}
             className={styles.relationshipButton}
             onClick={() => onPropertyManagerToggle(customer.id)}
             type="button"
@@ -188,7 +190,7 @@ function CustomerMainCell({
             <span aria-hidden="true" className={styles.chevron}>
               {isExpanded ? '▾' : '›'}
             </span>
-            {formatManagedHousingCompanyCount(managedHousingCompanyCount)}
+            {managedHousingCompanyCountLabel}
           </button>
         ) : (
           <span className={styles.secondary}>
