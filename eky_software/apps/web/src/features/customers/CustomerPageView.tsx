@@ -3,11 +3,15 @@ import {
   type Customer,
   type EkyApiClient,
 } from '@eky/api-client';
-import { useEffect, useState } from 'react';
+import { useEffect, useReducer, useState } from 'react';
 
 import { CustomerForm } from './CustomerForm.js';
 import { CustomerList } from './CustomerList.js';
-import { createDummyCustomerForm } from './customerDummyData.js';
+import {
+  customerListViewReducer,
+  initialCustomerListViewState,
+} from './customerListViewState.js';
+import { CustomerOverviewWorkspace } from './CustomerOverviewWorkspace.js';
 import {
   initialCustomerForm,
   toCreateCustomerRequest,
@@ -15,27 +19,56 @@ import {
   toUpdateCustomerRequest,
   type CustomerFormModel,
 } from './customerFormModel.js';
+import {
+  customerWorkspaceReducer,
+  initialCustomerWorkspaceState,
+} from './customerWorkspaceState.js';
 import styles from './CustomerPageView.module.css';
 import { getFinnishApiErrorMessage, uiText } from '../../i18n/fi.js';
 
 type CustomerPageClient = Pick<
   EkyApiClient,
-  'createCustomer' | 'listCustomers' | 'updateCustomer'
+  | 'createCustomer'
+  | 'getCompanySettings'
+  | 'getCustomer'
+  | 'listCustomers'
+  | 'updateCustomer'
 >;
 
 interface CustomerPageProps {
   apiClient: CustomerPageClient;
 }
 
-export function CustomerPage({ apiClient }: CustomerPageProps): React.JSX.Element {
+export function CustomerPage({
+  apiClient,
+}: CustomerPageProps): React.JSX.Element {
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [customerForm, setCustomerForm] = useState<CustomerFormModel>(initialCustomerForm);
+  const [customerForm, setCustomerForm] =
+    useState<CustomerFormModel>(initialCustomerForm);
+  const [customerDetail, setCustomerDetail] = useState<Customer | null>(null);
+  const [defaultHourlyRateCents, setDefaultHourlyRateCents] = useState<
+    number | null
+  >(null);
   const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
+  const [detailErrorMessage, setDetailErrorMessage] = useState<string | null>(
+    null,
+  );
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
-  const [panelMode, setPanelMode] = useState<'create' | 'edit' | null>(null);
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [listViewState, dispatchListView] = useReducer(
+    customerListViewReducer,
+    initialCustomerListViewState,
+  );
+  const [workspaceState, dispatchWorkspace] = useReducer(
+    customerWorkspaceReducer,
+    initialCustomerWorkspaceState,
+  );
+  const selectedCustomerId =
+    workspaceState.mode === 'overview' || workspaceState.mode === 'edit'
+      ? workspaceState.customerId
+      : null;
   const propertyManagerCustomers = customers.filter(
     (customer) => customer.customerType === 'propertyManager',
   );
@@ -55,7 +88,9 @@ export function CustomerPage({ apiClient }: CustomerPageProps): React.JSX.Elemen
         }
       } catch (error) {
         if (isActive) {
-          setLoadErrorMessage(getErrorMessage(error));
+          setLoadErrorMessage(
+            getSafeErrorMessage(error, uiText.customers.fallbackError),
+          );
         }
       } finally {
         if (isActive) {
@@ -71,6 +106,70 @@ export function CustomerPage({ apiClient }: CustomerPageProps): React.JSX.Elemen
     };
   }, [apiClient]);
 
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadCompanyDefault(): Promise<void> {
+      try {
+        const companySettings = await apiClient.getCompanySettings();
+
+        if (isActive) {
+          setDefaultHourlyRateCents(companySettings.defaultHourlyRateCents);
+        }
+      } catch {
+        if (isActive) {
+          setDefaultHourlyRateCents(null);
+        }
+      }
+    }
+
+    void loadCompanyDefault();
+
+    return () => {
+      isActive = false;
+    };
+  }, [apiClient]);
+
+  useEffect(() => {
+    if (selectedCustomerId === null) {
+      setCustomerDetail(null);
+      setDetailErrorMessage(null);
+      setIsDetailLoading(false);
+      return;
+    }
+
+    let isActive = true;
+    setCustomerDetail(null);
+    setDetailErrorMessage(null);
+    setIsDetailLoading(true);
+
+    async function loadCustomerDetail(): Promise<void> {
+      try {
+        const loadedCustomer = await apiClient.getCustomer(selectedCustomerId);
+
+        if (isActive) {
+          setCustomerDetail(loadedCustomer);
+        }
+      } catch (error) {
+        if (isActive) {
+          setDetailErrorMessage(
+            getSafeErrorMessage(error, uiText.customers.customerLoadError),
+          );
+        }
+      } finally {
+        if (isActive) {
+          setIsDetailLoading(false);
+        }
+      }
+    }
+
+    void loadCustomerDetail();
+
+    return () => {
+      isActive = false;
+    };
+  }, [apiClient, selectedCustomerId]);
+
   async function handleCreateCustomer(): Promise<void> {
     if (isSaving) {
       return;
@@ -80,21 +179,31 @@ export function CustomerPage({ apiClient }: CustomerPageProps): React.JSX.Elemen
     setSaveErrorMessage(null);
 
     try {
-      const createdCustomer = await apiClient.createCustomer(toCreateCustomerRequest(customerForm));
+      const createdCustomer = await apiClient.createCustomer(
+        toCreateCustomerRequest(customerForm),
+      );
 
-      setCustomers((currentCustomers) => [...currentCustomers, createdCustomer]);
+      setCustomers((currentCustomers) => [
+        ...currentCustomers,
+        createdCustomer,
+      ]);
+      setCustomerDetail(createdCustomer);
       setCustomerForm(initialCustomerForm);
-      setPanelMode(null);
-      setSelectedCustomerId(null);
+      dispatchWorkspace({
+        customerId: createdCustomer.id,
+        type: 'showCustomerOverview',
+      });
     } catch (error) {
-      setSaveErrorMessage(getErrorMessage(error));
+      setSaveErrorMessage(
+        getSafeErrorMessage(error, uiText.customers.fallbackError),
+      );
     } finally {
       setIsSaving(false);
     }
   }
 
   async function handleUpdateCustomer(): Promise<void> {
-    if (isSaving || selectedCustomerId === null) {
+    if (isSaving || workspaceState.mode !== 'edit') {
       return;
     }
 
@@ -103,7 +212,7 @@ export function CustomerPage({ apiClient }: CustomerPageProps): React.JSX.Elemen
 
     try {
       const updatedCustomer = await apiClient.updateCustomer(
-        selectedCustomerId,
+        workspaceState.customerId,
         toUpdateCustomerRequest(customerForm),
       );
 
@@ -112,44 +221,71 @@ export function CustomerPage({ apiClient }: CustomerPageProps): React.JSX.Elemen
           customer.id === updatedCustomer.id ? updatedCustomer : customer,
         ),
       );
+      setCustomerDetail(updatedCustomer);
       setCustomerForm(initialCustomerForm);
-      setPanelMode(null);
-      setSelectedCustomerId(null);
+      dispatchWorkspace({
+        customerId: updatedCustomer.id,
+        type: 'showCustomerOverview',
+      });
     } catch (error) {
-      setSaveErrorMessage(getErrorMessage(error));
+      setSaveErrorMessage(
+        getSafeErrorMessage(error, uiText.customers.fallbackError),
+      );
     } finally {
       setIsSaving(false);
     }
   }
 
-  function openCreatePanel(): void {
+  function openCreateWorkspace(): void {
     setSaveErrorMessage(null);
-    setSelectedCustomerId(null);
     setCustomerForm(initialCustomerForm);
-    setPanelMode('create');
+    dispatchWorkspace({ type: 'createCustomer' });
   }
 
-  function openEditPanel(customer: Customer): void {
+  function openCustomerOverview(customer: Customer): void {
     setSaveErrorMessage(null);
-    setSelectedCustomerId(customer.id);
-    setCustomerForm(toCustomerForm(customer));
-    setPanelMode('edit');
+    dispatchWorkspace({
+      customerId: customer.id,
+      type: 'showCustomerOverview',
+    });
   }
 
-  function closePanel(): void {
+  function openEditWorkspace(): void {
+    if (customerDetail === null) {
+      return;
+    }
+
+    setSaveErrorMessage(null);
+    setCustomerForm(toCustomerForm(customerDetail));
+    dispatchWorkspace({
+      customerId: customerDetail.id,
+      type: 'editCustomer',
+    });
+  }
+
+  function returnFromForm(): void {
     if (isSaving) {
       return;
     }
 
     setSaveErrorMessage(null);
-    setSelectedCustomerId(null);
     setCustomerForm(initialCustomerForm);
-    setPanelMode(null);
+
+    if (workspaceState.mode === 'edit') {
+      dispatchWorkspace({
+        customerId: workspaceState.customerId,
+        type: 'showCustomerOverview',
+      });
+      return;
+    }
+
+    dispatchWorkspace({ type: 'showCustomerList' });
   }
 
-  function fillDummyCustomer(): void {
+  function returnToCustomerList(): void {
     setSaveErrorMessage(null);
-    setCustomerForm(createDummyCustomerForm(propertyManagerCustomers));
+    setCustomerForm(initialCustomerForm);
+    dispatchWorkspace({ type: 'showCustomerList' });
   }
 
   function handleCustomerFormFieldChange(
@@ -167,49 +303,90 @@ export function CustomerPage({ apiClient }: CustomerPageProps): React.JSX.Elemen
 
   return (
     <div className={styles.workspace}>
-      <section className={`page-intro ${styles.pageHeader}`}>
-        <div>
-          <p className="eyebrow">{uiText.customers.customerWorkspace}</p>
-          <h2>{uiText.customers.customerRegister}</h2>
-          <p>{uiText.customers.description}</p>
-        </div>
-      </section>
-
-      <div
-        className={
-          panelMode === null
-            ? styles.viewGrid
-            : `${styles.viewGrid} ${styles.viewGridWithSidePanel}`
-        }
-      >
-        <CustomerList
-          customers={customers}
-          errorMessage={loadErrorMessage}
-          isLoading={isLoading}
-          onCreateClick={openCreatePanel}
-          onCustomerSelect={openEditPanel}
-        />
-        {panelMode !== null ? (
-          <CustomerForm
-            errorMessage={saveErrorMessage}
-            form={customerForm}
-            isSaving={isSaving}
-            mode={panelMode}
-            onCancel={closePanel}
-            onFillDummy={panelMode === 'create' ? fillDummyCustomer : undefined}
-            onFieldChange={handleCustomerFormFieldChange}
-            onSubmit={() =>
-              panelMode === 'create' ? void handleCreateCustomer() : void handleUpdateCustomer()
+      {workspaceState.mode === 'list' ? (
+        <>
+          <section className={`page-intro ${styles.pageHeader}`}>
+            <div>
+              <p className="eyebrow">
+                {uiText.customers.customerWorkspace}
+              </p>
+              <h2>{uiText.customers.customerRegister}</h2>
+              <p>{uiText.customers.description}</p>
+            </div>
+          </section>
+          <CustomerList
+            activeFilter={listViewState.activeFilter}
+            customers={customers}
+            errorMessage={loadErrorMessage}
+            expandedPropertyManagerIds={
+              listViewState.expandedPropertyManagerIds
             }
-            propertyManagers={propertyManagerCustomers}
+            isLoading={isLoading}
+            onActiveFilterChange={(activeFilter) =>
+              dispatchListView({ activeFilter, type: 'changeFilter' })
+            }
+            onCreateClick={openCreateWorkspace}
+            onCustomerSelect={openCustomerOverview}
+            onPropertyManagerToggle={(customerId) =>
+              dispatchListView({
+                customerId,
+                type: 'togglePropertyManager',
+              })
+            }
+            onSearchQueryChange={(searchQuery) =>
+              dispatchListView({ searchQuery, type: 'changeSearchQuery' })
+            }
+            onSortChange={(sortKey) =>
+              dispatchListView({ sortKey, type: 'updateSort' })
+            }
+            searchQuery={listViewState.searchQuery}
+            sortState={listViewState.sortState}
           />
-        ) : null}
-      </div>
+        </>
+      ) : null}
+
+      {workspaceState.mode === 'create' ? (
+        <CustomerForm
+          errorMessage={saveErrorMessage}
+          form={customerForm}
+          isSaving={isSaving}
+          mode="create"
+          onCancel={returnFromForm}
+          onFieldChange={handleCustomerFormFieldChange}
+          onSubmit={() => void handleCreateCustomer()}
+          propertyManagers={propertyManagerCustomers}
+        />
+      ) : null}
+
+      {workspaceState.mode === 'edit' ? (
+        <CustomerForm
+          errorMessage={saveErrorMessage}
+          form={customerForm}
+          isSaving={isSaving}
+          mode="edit"
+          onCancel={returnFromForm}
+          onFieldChange={handleCustomerFormFieldChange}
+          onSubmit={() => void handleUpdateCustomer()}
+          propertyManagers={propertyManagerCustomers}
+        />
+      ) : null}
+
+      {workspaceState.mode === 'overview' ? (
+        <CustomerOverviewWorkspace
+          customer={customerDetail}
+          customers={customers}
+          defaultHourlyRateCents={defaultHourlyRateCents}
+          errorMessage={detailErrorMessage}
+          isLoading={isDetailLoading}
+          onBack={returnToCustomerList}
+          onEdit={openEditWorkspace}
+        />
+      ) : null}
     </div>
   );
 }
 
-function getErrorMessage(error: unknown): string {
+function getSafeErrorMessage(error: unknown, fallbackMessage: string): string {
   if (error instanceof EkyApiError) {
     return getFinnishApiErrorMessage(error.message);
   }
@@ -218,9 +395,5 @@ function getErrorMessage(error: unknown): string {
     return uiText.customers.invalidHourlyRate;
   }
 
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return uiText.customers.fallbackError;
+  return fallbackMessage;
 }

@@ -1,9 +1,7 @@
 import type { Customer } from '@eky/api-client';
-import { useState } from 'react';
 
 import { groupCustomersForList, type CustomerListFilter } from './customerListGrouping.js';
 import {
-  getNextCustomerSortState,
   sortCustomers,
   type CustomerSortKey,
   type CustomerSortState,
@@ -16,50 +14,39 @@ import { CustomerTypeFilter } from './CustomerTypeFilter.js';
 import { uiText } from '../../i18n/fi.js';
 
 interface CustomerListProps {
+  activeFilter: CustomerListFilter;
   customers: Customer[];
   errorMessage: string | null;
+  expandedPropertyManagerIds: ReadonlySet<string>;
   isLoading: boolean;
+  onActiveFilterChange(activeFilter: CustomerListFilter): void;
   onCreateClick(): void;
   onCustomerSelect(customer: Customer): void;
+  onPropertyManagerToggle(customerId: string): void;
+  onSearchQueryChange(searchQuery: string): void;
+  onSortChange(sortKey: CustomerSortKey): void;
+  searchQuery: string;
+  sortState: CustomerSortState;
 }
 
 export function CustomerList({
+  activeFilter,
   customers,
   errorMessage,
+  expandedPropertyManagerIds,
   isLoading,
+  onActiveFilterChange,
   onCreateClick,
   onCustomerSelect,
+  onPropertyManagerToggle,
+  onSearchQueryChange,
+  onSortChange,
+  searchQuery,
+  sortState,
 }: CustomerListProps): React.JSX.Element {
-  const [activeFilter, setActiveFilter] = useState<CustomerListFilter>('all');
-  const [expandedPropertyManagerIds, setExpandedPropertyManagerIds] = useState<Set<string>>(
-    () => new Set(),
-  );
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sortState, setSortState] = useState<CustomerSortState>({
-    direction: 'asc',
-    key: 'name',
-  });
   const searchedCustomers = searchCustomers(customers, searchQuery);
   const sortedCustomers = sortCustomers(searchedCustomers, sortState);
   const customerGroups = groupCustomersForList(sortedCustomers, activeFilter);
-
-  function togglePropertyManager(customerId: string): void {
-    setExpandedPropertyManagerIds((currentIds) => {
-      const nextIds = new Set(currentIds);
-
-      if (nextIds.has(customerId)) {
-        nextIds.delete(customerId);
-      } else {
-        nextIds.add(customerId);
-      }
-
-      return nextIds;
-    });
-  }
-
-  function updateSort(nextSortKey: CustomerSortKey): void {
-    setSortState((currentSort) => getNextCustomerSortState(currentSort, nextSortKey));
-  }
 
   return (
     <section className={`panel ${styles.panel}`} aria-labelledby="customer-list-heading">
@@ -84,8 +71,8 @@ export function CustomerList({
 
       {customers.length > 0 ? (
         <CustomerListToolbar
-          onSearchQueryChange={setSearchQuery}
-          onSortChange={updateSort}
+          onSearchQueryChange={onSearchQueryChange}
+          onSortChange={onSortChange}
           searchQuery={searchQuery}
           sortState={sortState}
         />
@@ -95,7 +82,7 @@ export function CustomerList({
         <CustomerTypeFilter
           activeFilter={activeFilter}
           customers={searchedCustomers}
-          onFilterChange={setActiveFilter}
+          onFilterChange={onActiveFilterChange}
         />
       ) : null}
 
@@ -105,8 +92,8 @@ export function CustomerList({
           customers={customers}
           expandedPropertyManagerIds={expandedPropertyManagerIds}
           onCustomerSelect={onCustomerSelect}
-          onPropertyManagerToggle={togglePropertyManager}
-          onSortChange={updateSort}
+          onPropertyManagerToggle={onPropertyManagerToggle}
+          onSortChange={onSortChange}
           sortState={sortState}
         />
       ) : null}

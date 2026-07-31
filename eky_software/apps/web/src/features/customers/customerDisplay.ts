@@ -39,6 +39,19 @@ export function getCustomerStatusLabel(status: Customer['status']): string {
   return status === 'active' ? uiText.customers.active : uiText.customers.inactive;
 }
 
+export function formatCustomerTimestamp(timestamp: string): string {
+  const date = new Date(timestamp);
+
+  if (Number.isNaN(date.getTime())) {
+    return uiText.customers.noValue;
+  }
+
+  return new Intl.DateTimeFormat('fi-FI', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(date);
+}
+
 export function getPrimaryContact(customer: Customer): string {
   return customer.email || customer.phone || '-';
 }
