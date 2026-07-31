@@ -402,6 +402,7 @@ async function updateCustomerMasterDataThroughUi(
   await page
     .getByRole('button', { name: /Synthetic Invoice Customer Oy/ })
     .click();
+  await page.getByRole('button', { name: 'Muokkaa' }).click();
   await page.getByLabel('Nimi *').fill('Changed Customer Oy');
   await page.getByLabel('Katuosoite').fill('Changed Street 99');
   const responsePromise = page.waitForResponse(

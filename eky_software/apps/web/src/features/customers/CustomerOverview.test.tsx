@@ -66,6 +66,15 @@ describe('CustomerOverview', () => {
     expect(html).toContain('Isännöitsijätoimisto');
     expect(html).toContain('2001 · Selkeä Isännöinti Oy');
   });
+
+  it('shows an inactive customer as read-only without editable controls', () => {
+    const html = renderOverview(createCustomer({ status: 'inactive' }));
+
+    expect(html).toContain('Passivoitu');
+    expect(html).not.toContain('<input');
+    expect(html).not.toContain('<select');
+    expect(html).not.toContain('<textarea');
+  });
 });
 
 function renderOverview(
