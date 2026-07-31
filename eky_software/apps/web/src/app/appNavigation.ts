@@ -9,12 +9,14 @@ export type AppView =
 
 export interface AppNavigationState {
   activeView: AppView;
+  customerNavigationRevision: number;
   invoicingNavigationRevision: number;
   invoicingNavigationTarget: InvoicingNavigationTarget | null;
 }
 
 export const initialAppNavigationState: AppNavigationState = {
   activeView: 'customers',
+  customerNavigationRevision: 0,
   invoicingNavigationRevision: 0,
   invoicingNavigationTarget: null,
 };
@@ -32,6 +34,7 @@ export function activateAppView(
 ): AppNavigationState {
   if (typeof action !== 'string') {
     return {
+      ...state,
       activeView: 'invoicing',
       invoicingNavigationRevision: state.invoicingNavigationRevision + 1,
       invoicingNavigationTarget: action.target,
@@ -45,6 +48,13 @@ export function activateAppView(
       ...state,
       invoicingNavigationRevision: state.invoicingNavigationRevision + 1,
       invoicingNavigationTarget: null,
+    };
+  }
+
+  if (view === 'customers' && state.activeView === 'customers') {
+    return {
+      ...state,
+      customerNavigationRevision: state.customerNavigationRevision + 1,
     };
   }
 

@@ -11,6 +11,7 @@ describe('activateAppView', () => {
       activateAppView(initialAppNavigationState, 'invoicing'),
     ).toEqual({
       activeView: 'invoicing',
+      customerNavigationRevision: 0,
       invoicingNavigationRevision: 0,
       invoicingNavigationTarget: null,
     });
@@ -19,6 +20,7 @@ describe('activateAppView', () => {
   it('opens the read-only activity view without changing invoicing state', () => {
     expect(activateAppView(initialAppNavigationState, 'activity')).toEqual({
       activeView: 'activity',
+      customerNavigationRevision: 0,
       invoicingNavigationRevision: 0,
       invoicingNavigationTarget: null,
     });
@@ -27,6 +29,16 @@ describe('activateAppView', () => {
   it('opens diagnostics without changing invoicing state', () => {
     expect(activateAppView(initialAppNavigationState, 'diagnostics')).toEqual({
       activeView: 'diagnostics',
+      customerNavigationRevision: 0,
+      invoicingNavigationRevision: 0,
+      invoicingNavigationTarget: null,
+    });
+  });
+
+  it('signals a return to the customer list when customers is selected again', () => {
+    expect(activateAppView(initialAppNavigationState, 'customers')).toEqual({
+      activeView: 'customers',
+      customerNavigationRevision: 1,
       invoicingNavigationRevision: 0,
       invoicingNavigationTarget: null,
     });
@@ -40,6 +52,7 @@ describe('activateAppView', () => {
 
     expect(activateAppView(invoicingState, 'invoicing')).toEqual({
       activeView: 'invoicing',
+      customerNavigationRevision: 0,
       invoicingNavigationRevision: 1,
       invoicingNavigationTarget: null,
     });
@@ -56,6 +69,7 @@ describe('activateAppView', () => {
       }),
     ).toEqual({
       activeView: 'invoicing',
+      customerNavigationRevision: 0,
       invoicingNavigationRevision: 1,
       invoicingNavigationTarget: {
         id: 'invoice-1',

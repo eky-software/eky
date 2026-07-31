@@ -70,9 +70,13 @@ test('CUS-OVERVIEW-002 @critical preserves list state through overview, edit can
     }),
   ).toBeVisible();
 
-  await e2eWeb.page
-    .getByRole('button', { name: '← Asiakaslistaan', exact: true })
-    .click();
+  await e2eWeb.page.getByRole('button', { name: 'Asiakkaat' }).click();
+  await expect(
+    e2eWeb.page.getByRole('heading', {
+      level: 2,
+      name: 'Asiakaskortisto',
+    }),
+  ).toBeVisible();
   await expect(e2eWeb.page.getByLabel('Hae asiakasta')).toHaveValue(
     'OVERVIEW-1001',
   );
