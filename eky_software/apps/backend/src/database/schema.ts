@@ -250,6 +250,12 @@ export interface InvoiceTable {
   cancelled_at: string | null;
   cancelled_by: string | null;
   cancellation_reason: string | null;
+  payment_state: string;
+  paid_on: string | null;
+  paid_amount_cents: number | null;
+  payment_source: string | null;
+  payment_recorded_at: string | null;
+  payment_recorded_by: string | null;
 }
 
 export interface InvoiceLineTable {
@@ -325,6 +331,18 @@ export interface InvoiceSettingsAuditEventTable {
   occurred_at: string;
 }
 
+export interface InvoicePaymentEventTable {
+  id: string;
+  company_id: string;
+  invoice_id: string;
+  actor_user_id: string;
+  action: string;
+  payment_source: string;
+  paid_on: string;
+  amount_cents: number;
+  occurred_at: string;
+}
+
 export interface SchemaMigrationTable {
   name: string;
   run_at: string;
@@ -358,7 +376,15 @@ export type NewInvoicePaymentSettingsRow = InvoicePaymentSettingsTable;
 export type InvoiceVatRateRow = InvoiceVatRateTable;
 export type NewInvoiceVatRateRow = InvoiceVatRateTable;
 export type InvoiceRow = InvoiceTable;
-export type NewInvoiceRow = InvoiceTable;
+export type NewInvoiceRow = Omit<
+  InvoiceTable,
+  | 'paid_amount_cents'
+  | 'paid_on'
+  | 'payment_recorded_at'
+  | 'payment_recorded_by'
+  | 'payment_source'
+  | 'payment_state'
+>;
 export type InvoiceLineRow = InvoiceLineTable;
 export type NewInvoiceLineRow = InvoiceLineTable;
 export type InvoiceAuditEventRow = InvoiceAuditEventTable;
@@ -367,3 +393,5 @@ export type InvoiceDocumentRow = InvoiceDocumentTable;
 export type NewInvoiceDocumentRow = InvoiceDocumentTable;
 export type InvoiceDeliveryEventRow = InvoiceDeliveryEventTable;
 export type NewInvoiceDeliveryEventRow = InvoiceDeliveryEventTable;
+export type InvoicePaymentEventRow = InvoicePaymentEventTable;
+export type NewInvoicePaymentEventRow = InvoicePaymentEventTable;
