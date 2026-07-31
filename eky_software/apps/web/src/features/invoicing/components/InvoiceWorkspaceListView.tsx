@@ -127,6 +127,7 @@ export function InvoiceWorkspaceListView({
         listLabel={uiText.invoicing.paidInvoiceList}
         loadingMessage={uiText.invoicing.paidInvoicesLoading}
         pageState={paidInvoicePageState}
+        showPaidOn
         title={uiText.invoicing.paidInvoiceList}
         onOpenApprovedInvoice={onOpenApprovedInvoice}
       />

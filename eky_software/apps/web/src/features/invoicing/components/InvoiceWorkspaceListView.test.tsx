@@ -159,6 +159,8 @@ describe('InvoiceWorkspaceListView', () => {
     expect(creditedListStart).toBeGreaterThan(paidInvoice);
     expect(cancelledListStart).toBeGreaterThan(creditedListStart);
     expect(html).toContain(uiText.invoicing.statusPaid);
+    expect(html).toContain(uiText.invoicing.invoicePaymentDate);
+    expect(html).toContain('20.07.2026');
     expect(html).toContain(uiText.invoicing.creditStatusPartial);
     expect(html).not.toContain(uiText.invoicing.copyApprovedInvoice);
   });

@@ -14,12 +14,14 @@ interface SentInvoiceGroupListProps {
   groups: SentInvoiceGroup[];
   listLabel: string;
   onOpenApprovedInvoice(id: string): void;
+  showPaidOn?: boolean;
 }
 
 export function SentInvoiceGroupList({
   groups,
   listLabel,
   onOpenApprovedInvoice,
+  showPaidOn = false,
 }: SentInvoiceGroupListProps): React.JSX.Element {
   return (
     <InvoiceListTable
@@ -31,6 +33,7 @@ export function SentInvoiceGroupList({
           dueDate: group.rootInvoice.dueDate,
           invoiceDate: group.rootInvoice.invoiceDate,
           key: group.rootInvoice.id,
+          paidOn: group.rootInvoice.paidOn,
           reference: (
             <div className={tableStyles.mainCell}>
               <button
@@ -95,6 +98,7 @@ export function SentInvoiceGroupList({
         ),
       ])}
       showCustomer
+      showPaidOn={showPaidOn}
     />
   );
 }

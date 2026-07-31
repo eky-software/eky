@@ -9,7 +9,7 @@ import { normalizeOptionalInvoiceListCustomerId } from './invoiceListCustomerFil
 
 const maximumCompanyIdLength = 120;
 const maximumPage = 1_000_000;
-const allowedPageSizes = new Set([20, 50, 100]);
+const allowedPageSizes = new Set([5, 20, 50, 100]);
 const allowedSorts = new Set<ApprovedInvoiceListSort>([
   'invoiceDateDesc',
   'invoiceDateAsc',

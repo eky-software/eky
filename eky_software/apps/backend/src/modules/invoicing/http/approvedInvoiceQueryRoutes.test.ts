@@ -64,6 +64,21 @@ describe('approved invoice query routes', () => {
     expect(tenantOverrideResponse.status).toBe(400);
   });
 
+  it('accepts the compact five-row invoice page size', async () => {
+    const { app, getListInput } = createTestApp({
+      invoicePage: createApprovedInvoiceListPage([]),
+    });
+
+    const response = await app.request('/invoices?page=2&pageSize=5');
+
+    expect(response.status).toBe(200);
+    expect(getListInput()).toMatchObject({
+      companyId: 'dev-company',
+      page: 2,
+      pageSize: 5,
+    });
+  });
+
   it('returns an approved invoice by id in the trusted company scope', async () => {
     const invoice = createApprovedInvoiceView();
     const { app, getInput } = createTestApp({ invoice });

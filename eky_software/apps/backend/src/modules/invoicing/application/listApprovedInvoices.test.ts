@@ -45,6 +45,35 @@ describe('listApprovedInvoices', () => {
     });
   });
 
+  it('accepts the compact five-row page size', async () => {
+    const reader = createReader();
+    vi.mocked(reader.listApprovedInvoiceSummaries).mockResolvedValue({
+      invoices: [],
+      totalCount: 11,
+    });
+
+    await expect(
+      listApprovedInvoices(
+        {
+          companyId: 'dev-company',
+          status: 'approved',
+          page: 2,
+          pageSize: 5,
+          sort: 'invoiceDateDesc',
+        },
+        reader,
+      ),
+    ).resolves.toMatchObject({
+      page: 2,
+      pageSize: 5,
+      totalCount: 11,
+      totalPages: 3,
+    });
+    expect(reader.listApprovedInvoiceSummaries).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 5, offset: 5 }),
+    );
+  });
+
   it.each([
     { page: 0, pageSize: 20, status: 'approved', sort: 'invoiceDateDesc' },
     { page: 1, pageSize: 25, status: 'approved', sort: 'invoiceDateDesc' },

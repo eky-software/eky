@@ -158,7 +158,7 @@ export type ApprovedInvoiceListSort =
   | 'invoiceDateAsc'
   | 'dueDateAsc'
   | 'customerNameAsc';
-export type ApprovedInvoiceListPageSize = 20 | 50 | 100;
+export type ApprovedInvoiceListPageSize = 5 | 20 | 50 | 100;
 
 export interface ApprovedInvoiceListQuery {
   status: ApprovedInvoiceViewStatus;

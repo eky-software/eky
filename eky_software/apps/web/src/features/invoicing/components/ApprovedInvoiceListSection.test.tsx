@@ -25,6 +25,7 @@ describe('ApprovedInvoiceListSection', () => {
     expect(html).toContain(uiText.invoicing.listPeriodFiscalYear);
     expect(html).toContain(uiText.invoicing.listSortNewest);
     expect(html).toContain(uiText.invoicing.listSortCustomer);
+    expect(html).toContain('value="5"');
     expect(html).toContain('value="20"');
     expect(html).toContain('value="50"');
     expect(html).toContain('value="100"');

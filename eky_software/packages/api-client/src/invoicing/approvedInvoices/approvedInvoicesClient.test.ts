@@ -52,6 +52,30 @@ describe('approved invoices api client', () => {
     ]);
   });
 
+  it('accepts and serializes the compact five-row page size', async () => {
+    const requests = createRequestLog();
+    const invoicePage = {
+      invoices: [],
+      page: 1,
+      pageSize: 5,
+      totalCount: 0,
+      totalPages: 0,
+    } as const;
+    const client = createTestClient(requests, { invoicePage });
+
+    await expect(
+      client.listApprovedInvoices({
+        page: 1,
+        pageSize: 5,
+        sort: 'invoiceDateDesc',
+        status: 'approved',
+      }),
+    ).resolves.toEqual(invoicePage);
+    expect(requests[0]?.input).toBe(
+      '/invoices?status=approved&page=1&pageSize=5&sort=invoiceDateDesc',
+    );
+  });
+
   it('lists sent invoice groups through the dedicated root-paginated route', async () => {
     const requests = createRequestLog();
     const rootInvoice = createTestApprovedInvoiceSummary({
