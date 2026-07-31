@@ -52,6 +52,53 @@ describe('approved invoices api client', () => {
     ]);
   });
 
+  it('accepts and serializes the compact five-row page size', async () => {
+    const requests = createRequestLog();
+    const invoicePage = {
+      invoices: [],
+      page: 1,
+      pageSize: 5,
+      totalCount: 0,
+      totalPages: 0,
+    } as const;
+    const client = createTestClient(requests, { invoicePage });
+
+    await expect(
+      client.listApprovedInvoices({
+        page: 1,
+        pageSize: 5,
+        sort: 'invoiceDateDesc',
+        status: 'approved',
+      }),
+    ).resolves.toEqual(invoicePage);
+    expect(requests[0]?.input).toBe(
+      '/invoices?status=approved&page=1&pageSize=5&sort=invoiceDateDesc',
+    );
+  });
+
+  it('accepts five-row sent invoice group pages', async () => {
+    const requests = createRequestLog();
+    const invoiceGroupPage = {
+      groups: [],
+      page: 1,
+      pageSize: 5,
+      totalCount: 0,
+      totalPages: 0,
+    } as const;
+    const client = createTestClient(requests, { invoiceGroupPage });
+
+    await expect(
+      client.listSentInvoiceGroups({
+        page: 1,
+        pageSize: 5,
+        sort: 'dueDateAsc',
+      }),
+    ).resolves.toEqual(invoiceGroupPage);
+    expect(requests[0]?.input).toBe(
+      '/sent-invoice-groups?page=1&pageSize=5&sort=dueDateAsc',
+    );
+  });
+
   it('lists sent invoice groups through the dedicated root-paginated route', async () => {
     const requests = createRequestLog();
     const rootInvoice = createTestApprovedInvoiceSummary({
@@ -818,22 +865,25 @@ describe('approved invoices api client', () => {
     ).rejects.toBeInstanceOf(EkyApiError);
   });
 
-  it('rejects malformed approved invoice pagination metadata', async () => {
-    const requests = createRequestLog();
-    const client = createTestClient(requests, {
-      invoicePage: {
-        invoices: [],
-        page: 1,
-        pageSize: 25,
-        totalCount: 0,
-        totalPages: 0,
-      },
-    });
+  it.each([4, 6, 25])(
+    'rejects malformed approved invoice page size %i',
+    async (pageSize) => {
+      const requests = createRequestLog();
+      const client = createTestClient(requests, {
+        invoicePage: {
+          invoices: [],
+          page: 1,
+          pageSize,
+          totalCount: 0,
+          totalPages: 0,
+        },
+      });
 
-    await expect(
-      client.listApprovedInvoices(createApprovedInvoiceListQuery()),
-    ).rejects.toBeInstanceOf(EkyApiError);
-  });
+      await expect(
+        client.listApprovedInvoices(createApprovedInvoiceListQuery()),
+      ).rejects.toBeInstanceOf(EkyApiError);
+    },
+  );
 
   it('rejects a malformed reopen response', async () => {
     const requests = createRequestLog();

@@ -61,10 +61,13 @@ describe('SentInvoiceGroupList', () => {
         ]}
         listLabel={uiText.invoicing.paidInvoiceList}
         onOpenApprovedInvoice={vi.fn()}
+        showPaidOn
       />,
     );
 
     expect(html).toContain(uiText.invoicing.statusPaid);
+    expect(html).toContain(uiText.invoicing.invoicePaymentDate);
+    expect(html).toContain('31.07.2026');
     expect(html).not.toContain(uiText.invoicing.statusCredited);
   });
 });

@@ -241,7 +241,8 @@ export async function loadSentInvoiceGroupPage(
         (creditState === 'uncredited' && group.creditStatus !== 'none') ||
         (creditState === 'credited' && group.creditStatus === 'none') ||
         (paymentState === 'paid' &&
-          group.rootInvoice.paymentState !== 'paid') ||
+          (group.rootInvoice.paymentState !== 'paid' ||
+            group.rootInvoice.paidOn === null)) ||
         (paymentState === 'unpaid' &&
           group.rootInvoice.paymentState !== 'unpaid'),
     )

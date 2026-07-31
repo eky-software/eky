@@ -3,7 +3,7 @@ import {
   type Customer,
   type EkyApiClient,
 } from '@eky/api-client';
-import { useEffect, useReducer, useState } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
 
 import { CustomerForm } from './CustomerForm.js';
 import { CustomerList } from './CustomerList.js';
@@ -12,6 +12,7 @@ import {
   initialCustomerListViewState,
 } from './customerListViewState.js';
 import type { CustomerInvoiceNavigationTarget } from './customerInvoiceNavigation.js';
+import type { CustomerNavigationRequest } from './customerNavigation.js';
 import type { CustomerDefaultHourlyRateState } from './customerDefaultHourlyRateState.js';
 import { CustomerOverviewWorkspace } from './CustomerOverviewWorkspace.js';
 import {
@@ -45,11 +46,13 @@ type CustomerPageClient = Pick<
 
 interface CustomerPageProps {
   apiClient: CustomerPageClient;
+  navigationRequest: CustomerNavigationRequest;
   onOpenInvoice(target: CustomerInvoiceNavigationTarget): void;
 }
 
 export function CustomerPage({
   apiClient,
+  navigationRequest,
   onOpenInvoice,
 }: CustomerPageProps): React.JSX.Element {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -74,6 +77,7 @@ export function CustomerPage({
     customerWorkspaceReducer,
     initialCustomerWorkspaceState,
   );
+  const previousNavigationRevision = useRef(navigationRequest.revision);
   const selectedCustomerId =
     workspaceState.mode === 'overview' || workspaceState.mode === 'edit'
       ? workspaceState.customerId
@@ -83,6 +87,22 @@ export function CustomerPage({
   const propertyManagerCustomers = customers.filter(
     (customer) => customer.customerType === 'propertyManager',
   );
+
+  useEffect(() => {
+    if (
+      previousNavigationRevision.current === navigationRequest.revision
+    ) {
+      return;
+    }
+
+    previousNavigationRevision.current = navigationRequest.revision;
+    setCustomerDetail(null);
+    setCustomerForm(initialCustomerForm);
+    setDetailErrorMessage(null);
+    setSaveErrorMessage(null);
+    setIsDetailLoading(false);
+    dispatchWorkspace({ type: 'showCustomerList' });
+  }, [navigationRequest.revision]);
 
   useEffect(() => {
     let isActive = true;

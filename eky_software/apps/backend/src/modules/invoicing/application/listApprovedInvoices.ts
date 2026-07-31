@@ -1,7 +1,8 @@
 import type { ApprovedInvoiceStatus } from '../domain/approvedInvoice.js';
-import type {
-  ApprovedInvoiceListPage,
-  ApprovedInvoiceListSort,
+import {
+  isApprovedInvoiceListPageSize,
+  type ApprovedInvoiceListPage,
+  type ApprovedInvoiceListSort,
 } from '../domain/approvedInvoiceSummary.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
@@ -9,7 +10,6 @@ import { normalizeOptionalInvoiceListCustomerId } from './invoiceListCustomerFil
 
 const maximumCompanyIdLength = 120;
 const maximumPage = 1_000_000;
-const allowedPageSizes = new Set([20, 50, 100]);
 const allowedSorts = new Set<ApprovedInvoiceListSort>([
   'invoiceDateDesc',
   'invoiceDateAsc',
@@ -91,7 +91,10 @@ export function validateApprovedInvoiceListInput(
     throw new InvoiceDraftValidationError('Invoice list page is invalid.');
   }
 
-  if (!Number.isSafeInteger(input.pageSize) || !allowedPageSizes.has(input.pageSize)) {
+  if (
+    !Number.isSafeInteger(input.pageSize) ||
+    !isApprovedInvoiceListPageSize(input.pageSize)
+  ) {
     throw new InvoiceDraftValidationError('Invoice list page size is invalid.');
   }
 

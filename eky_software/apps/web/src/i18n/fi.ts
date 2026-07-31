@@ -299,6 +299,8 @@ export const uiText = {
     invoiceLoadError:
       'Asiakkaan laskuja ei voitu ladata. Yritä hetken kuluttua uudelleen.',
     invoiceLoading: 'Ladataan asiakkaan laskuja...',
+    invoiceListControls: 'Asiakkaan laskulistan asetukset',
+    invoicePageSize: 'Rivejä osiossa',
     invoicePagination: 'laskusivut',
     invoiceStatuses: {
       approved: 'Hyväksytty',

@@ -13,6 +13,7 @@ export interface CustomerInvoiceRow {
   grossTotalCents: number;
   id: string;
   isCredit: boolean;
+  paidOn: string | null;
   reference: string;
   relation: string;
   status: string;
@@ -23,11 +24,12 @@ export function toDraftRows(
   drafts: readonly InvoiceDraftSummary[],
 ): CustomerInvoiceRow[] {
   return drafts.map((draft) => ({
-    date: draft.updatedAt,
+    date: draft.invoiceDate,
     dueDate: draft.dueDate,
     grossTotalCents: draft.grossTotalCents,
     id: draft.id,
     isCredit: draft.invoiceKind === 'credit',
+    paidOn: null,
     reference: uiText.customers.invoiceDraft,
     relation:
       draft.invoiceKind === 'credit'
@@ -52,6 +54,7 @@ export function toApprovedRows(
     grossTotalCents: invoice.grossTotalCents,
     id: invoice.id,
     isCredit: invoice.invoiceKind === 'credit',
+    paidOn: invoice.paidOn,
     reference: invoice.invoiceNumber,
     relation: getCreditRelation(invoice),
     status:
@@ -75,6 +78,7 @@ export function toSentRows(
       grossTotalCents: group.rootInvoice.grossTotalCents,
       id: group.rootInvoice.id,
       isCredit: false,
+      paidOn: group.rootInvoice.paidOn,
       reference: group.rootInvoice.invoiceNumber,
       relation:
         group.creditInvoices.length === 0
@@ -108,6 +112,7 @@ export function toSentRows(
         grossTotalCents: creditInvoice.grossTotalCents,
         id: creditInvoice.id,
         isCredit: true,
+        paidOn: null,
         reference: creditInvoice.invoiceNumber,
         relation: uiText.customers.creditsInvoice(
           group.rootInvoice.invoiceNumber,

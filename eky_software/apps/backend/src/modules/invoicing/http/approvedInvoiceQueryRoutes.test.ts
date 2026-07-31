@@ -64,6 +64,43 @@ describe('approved invoice query routes', () => {
     expect(tenantOverrideResponse.status).toBe(400);
   });
 
+  it('accepts the compact five-row invoice page size', async () => {
+    const { app, getListInput } = createTestApp({
+      invoicePage: createApprovedInvoiceListPage([]),
+    });
+
+    const response = await app.request('/invoices?page=2&pageSize=5');
+
+    expect(response.status).toBe(200);
+    expect(getListInput()).toMatchObject({
+      companyId: 'dev-company',
+      page: 2,
+      pageSize: 5,
+    });
+
+    const sentResponse = await app.request(
+      '/sent-invoice-groups?page=2&pageSize=5',
+    );
+
+    expect(sentResponse.status).toBe(200);
+  });
+
+  it.each([4, 6])('rejects unsupported compact page size %i', async (pageSize) => {
+    const { app } = createTestApp({
+      invoicePage: createApprovedInvoiceListPage([]),
+    });
+
+    const invoiceResponse = await app.request(
+      `/invoices?pageSize=${pageSize}`,
+    );
+    const sentResponse = await app.request(
+      `/sent-invoice-groups?pageSize=${pageSize}`,
+    );
+
+    expect(invoiceResponse.status).toBe(400);
+    expect(sentResponse.status).toBe(400);
+  });
+
   it('returns an approved invoice by id in the trusted company scope', async () => {
     const invoice = createApprovedInvoiceView();
     const { app, getInput } = createTestApp({ invoice });

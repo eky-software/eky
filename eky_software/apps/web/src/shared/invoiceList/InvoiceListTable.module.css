@@ -1,0 +1,83 @@
+.frame {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.table {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 0.84rem;
+}
+
+.table th,
+.table td {
+  overflow: hidden;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.table th {
+  color: var(--color-text-muted);
+  background: var(--color-surface-subtle);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.referenceColumn {
+  width: 23%;
+}
+
+.customerColumn {
+  width: 20%;
+}
+
+.dateColumn {
+  width: 12%;
+}
+
+.totalColumn {
+  width: 14%;
+}
+
+.statusColumn {
+  width: 13%;
+}
+
+.relationColumn {
+  width: 22%;
+}
+
+.actionColumn {
+  width: 150px;
+}
+
+.reference {
+  color: var(--color-text);
+  font-weight: 800;
+}
+
+.numeric {
+  text-align: right !important;
+}
+
+.total {
+  color: var(--color-text);
+  font-weight: 800;
+}
+
+.action {
+  text-align: right !important;
+}

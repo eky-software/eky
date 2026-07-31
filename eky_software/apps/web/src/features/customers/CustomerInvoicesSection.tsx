@@ -8,7 +8,20 @@ import {
 import type { CustomerInvoiceNavigationTarget } from './customerInvoiceNavigation.js';
 import styles from './CustomerInvoicesSection.module.css';
 import { uiText } from '../../i18n/fi.js';
+import {
+  InvoiceListPageSizeSelect,
+  InvoiceListPagination,
+  InvoiceListSortSelect,
+  InvoiceListTable,
+  type InvoiceListTableLabels,
+  type InvoiceListSortOption,
+} from '../../shared/invoiceList/index.js';
 import { MessageBanner } from '../../shared/ui/index.js';
+import {
+  customerInvoicePageSizes,
+  isCustomerInvoiceListPageSize,
+  isCustomerInvoiceListSort,
+} from './customerInvoiceListState.js';
 
 interface CustomerInvoicesSectionProps {
   invoiceState: CustomerInvoiceOverviewState;
@@ -65,6 +78,37 @@ export function CustomerInvoicesSection({
       ) : null}
       {isEmpty ? (
         <p className="message">{uiText.customers.invoiceEmpty}</p>
+      ) : null}
+
+      {!invoiceState.isLoading && !isEmpty ? (
+        <div
+          aria-label={uiText.customers.invoiceListControls}
+          className={styles.controls}
+          role="group"
+        >
+          <InvoiceListSortSelect
+            className={styles.control}
+            label={uiText.invoicing.listSort}
+            onChange={(value) => {
+              if (isCustomerInvoiceListSort(value)) {
+                invoiceState.setSort(value);
+              }
+            }}
+            options={customerInvoiceSortOptions}
+            value={invoiceState.sort}
+          />
+          <InvoiceListPageSizeSelect
+            className={styles.control}
+            label={uiText.customers.invoicePageSize}
+            onChange={(value) => {
+              if (isCustomerInvoiceListPageSize(value)) {
+                invoiceState.setPageSize(value);
+              }
+            }}
+            options={customerInvoicePageSizes}
+            value={invoiceState.pageSize}
+          />
+        </div>
       ) : null}
 
       {!invoiceState.isLoading ? (
@@ -128,6 +172,7 @@ export function CustomerInvoicesSection({
             }
             page={invoiceState.paid.page}
             rows={paidRows}
+            showPaidOn
             totalCount={invoiceState.paid.totalCount}
             totalPages={invoiceState.paid.totalPages}
           />
@@ -184,6 +229,7 @@ interface CustomerInvoiceCategoryProps {
   onPreviousPage(): void;
   page: number;
   rows: CustomerInvoiceRow[];
+  showPaidOn?: boolean;
   totalCount: number;
   totalPages: number;
 }
@@ -195,6 +241,7 @@ function CustomerInvoiceCategory({
   onPreviousPage,
   page,
   rows,
+  showPaidOn = false,
   totalCount,
   totalPages,
 }: CustomerInvoiceCategoryProps): React.JSX.Element | null {
@@ -208,110 +255,74 @@ function CustomerInvoiceCategory({
         <h3>{heading}</h3>
         <span className="count-badge">{totalCount}</span>
       </header>
-      <div className={styles.tableFrame}>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th>{uiText.customers.invoice}</th>
-              <th>{uiText.customers.invoiceDate}</th>
-              <th>{uiText.customers.dueDate}</th>
-              <th>{uiText.customers.total}</th>
-              <th>{uiText.customers.status}</th>
-              <th>{uiText.customers.creditRelation}</th>
-              <th aria-label={uiText.customers.actions} />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <CustomerInvoiceTableRow
-                key={row.id}
-                onOpenInvoice={onOpenInvoice}
-                row={row}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <InvoiceListTable
+        ariaLabel={heading}
+        labels={customerInvoiceListLabels}
+        rows={rows.map((row) => ({
+          action: (
+            <button
+              className="ghost-button"
+              onClick={() => onOpenInvoice(row.target)}
+              type="button"
+            >
+              {uiText.customers.openInInvoicing}
+            </button>
+          ),
+          creditRelation: row.relation,
+          dueDate: row.dueDate,
+          invoiceDate: row.date,
+          key: row.id,
+          paidOn: row.paidOn,
+          reference: row.reference,
+          status: row.status,
+          totalCents: row.isCredit
+            ? -Math.abs(row.grossTotalCents)
+            : row.grossTotalCents,
+        }))}
+        showActions
+        showCreditRelation
+        showPaidOn={showPaidOn}
+      />
       {totalPages > 1 ? (
-        <nav
-          aria-label={`${heading} ${uiText.customers.invoicePagination}`}
+        <InvoiceListPagination
+          ariaLabel={`${heading} ${uiText.customers.invoicePagination}`}
           className={styles.pagination}
-        >
-          <button
-            className="ghost-button"
-            disabled={page <= 1}
-            onClick={onPreviousPage}
-            type="button"
-          >
-            {uiText.customers.previousPage}
-          </button>
-          <span>{uiText.customers.page(page, totalPages)}</span>
-          <button
-            className="ghost-button"
-            disabled={page >= totalPages}
-            onClick={onNextPage}
-            type="button"
-          >
-            {uiText.customers.nextPage}
-          </button>
-        </nav>
+          nextLabel={uiText.customers.nextPage}
+          onNextPage={onNextPage}
+          onPreviousPage={onPreviousPage}
+          page={page}
+          pageLabel={uiText.customers.page(page, totalPages)}
+          previousLabel={uiText.customers.previousPage}
+          totalPages={totalPages}
+        />
       ) : null}
     </section>
   );
 }
 
-interface CustomerInvoiceTableRowProps {
-  onOpenInvoice(target: CustomerInvoiceNavigationTarget): void;
-  row: CustomerInvoiceRow;
-}
+const customerInvoiceListLabels: InvoiceListTableLabels = {
+  actions: uiText.customers.actions,
+  creditRelation: uiText.customers.creditRelation,
+  customer: uiText.invoicing.customer,
+  dueDate: uiText.customers.dueDate,
+  invoice: uiText.customers.invoice,
+  invoiceDate: uiText.customers.invoiceDate,
+  paidOn: uiText.invoicing.invoicePaymentDate,
+  status: uiText.customers.status,
+  total: uiText.customers.total,
+};
 
-function CustomerInvoiceTableRow({
-  onOpenInvoice,
-  row,
-}: CustomerInvoiceTableRowProps): React.JSX.Element {
-  return (
-    <tr>
-      <td>
-        <strong>{row.reference}</strong>
-      </td>
-      <td>{formatCustomerInvoiceDate(row.date)}</td>
-      <td>{formatCustomerInvoiceDate(row.dueDate)}</td>
-      <td className={styles.amount}>
-        {formatCustomerInvoiceCurrency(
-          row.isCredit ? -Math.abs(row.grossTotalCents) : row.grossTotalCents,
-        )}
-      </td>
-      <td>{row.status}</td>
-      <td>{row.relation || '-'}</td>
-      <td className={styles.openCell}>
-        <button
-          className="ghost-button"
-          onClick={() => onOpenInvoice(row.target)}
-          type="button"
-        >
-          {uiText.customers.openInInvoicing}
-        </button>
-      </td>
-    </tr>
-  );
-}
-
-const customerInvoiceCurrencyFormatter = new Intl.NumberFormat('fi-FI', {
-  currency: 'EUR',
-  style: 'currency',
-});
-
-function formatCustomerInvoiceCurrency(cents: number): string {
-  return customerInvoiceCurrencyFormatter.format(cents / 100);
-}
-
-function formatCustomerInvoiceDate(value: string): string {
-  const datePart = value.slice(0, 10);
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(datePart);
-
-  if (match === null) {
-    return value;
-  }
-
-  return `${match[3]}.${match[2]}.${match[1]}`;
-}
+const customerInvoiceSortOptions: readonly InvoiceListSortOption[] = [
+  {
+    label: uiText.invoicing.listSortNewest,
+    value: 'invoiceDateDesc',
+  },
+  {
+    label: uiText.invoicing.listSortOldest,
+    value: 'invoiceDateAsc',
+  },
+  {
+    label: uiText.invoicing.listSortDueDate,
+    value: 'dueDateAsc',
+  },
+];

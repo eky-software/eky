@@ -9,6 +9,12 @@ import styles from './ApprovedInvoiceListSection.module.css';
 import type { ApprovedInvoicePeriodMode } from '../approved/approvedInvoiceListFilters.js';
 import type { ApprovedInvoicePageState } from '../hooks/useApprovedInvoicePage.js';
 import { uiText } from '../../../i18n/fi.js';
+import {
+  InvoiceListPageSizeSelect,
+  InvoiceListPagination,
+  InvoiceListSortSelect,
+  type InvoiceListSortOption,
+} from '../../../shared/invoiceList/index.js';
 
 interface ApprovedInvoiceListSectionProps {
   countLabel: string;
@@ -17,11 +23,12 @@ interface ApprovedInvoiceListSectionProps {
   listLabel: string;
   loadingMessage: string;
   pageState: ApprovedInvoicePageState;
+  showPaidOn?: boolean;
   title: string;
   onOpenApprovedInvoice(id: string): void;
 }
 
-const pageSizes: ApprovedInvoiceListPageSize[] = [20, 50, 100];
+const pageSizes: ApprovedInvoiceListPageSize[] = [5, 20, 50, 100];
 
 export function ApprovedInvoiceListSection({
   countLabel,
@@ -30,6 +37,7 @@ export function ApprovedInvoiceListSection({
   listLabel,
   loadingMessage,
   pageState,
+  showPaidOn = false,
   title,
   onOpenApprovedInvoice,
 }: ApprovedInvoiceListSectionProps): React.JSX.Element {
@@ -99,48 +107,25 @@ export function ApprovedInvoiceListSection({
           </label>
         ) : null}
 
-        <label className={styles.control}>
-          <span>{uiText.invoicing.listSort}</span>
-          <select
-            onChange={(event) =>
-              pageState.setSort(
-                event.currentTarget.value as ApprovedInvoiceListSort,
-              )
-            }
-            value={pageState.controls.sort}
-          >
-            <option value="invoiceDateDesc">
-              {uiText.invoicing.listSortNewest}
-            </option>
-            <option value="invoiceDateAsc">
-              {uiText.invoicing.listSortOldest}
-            </option>
-            <option value="dueDateAsc">
-              {uiText.invoicing.listSortDueDate}
-            </option>
-            <option value="customerNameAsc">
-              {uiText.invoicing.listSortCustomer}
-            </option>
-          </select>
-        </label>
+        <InvoiceListSortSelect
+          className={styles.control}
+          label={uiText.invoicing.listSort}
+          onChange={(value) =>
+            pageState.setSort(value as ApprovedInvoiceListSort)
+          }
+          options={sortOptions}
+          value={pageState.controls.sort}
+        />
 
-        <label className={`${styles.control} ${styles.pageSizeControl}`}>
-          <span>{uiText.invoicing.listPageSize}</span>
-          <select
-            onChange={(event) =>
-              pageState.setPageSize(
-                Number(event.currentTarget.value) as ApprovedInvoiceListPageSize,
-              )
-            }
-            value={pageState.controls.pageSize}
-          >
-            {pageSizes.map((pageSize) => (
-              <option key={pageSize} value={pageSize}>
-                {pageSize}
-              </option>
-            ))}
-          </select>
-        </label>
+        <InvoiceListPageSizeSelect
+          className={`${styles.control} ${styles.pageSizeControl}`}
+          label={uiText.invoicing.listPageSize}
+          onChange={(value) =>
+            pageState.setPageSize(value as ApprovedInvoiceListPageSize)
+          }
+          options={pageSizes}
+          value={pageState.controls.pageSize}
+        />
       </div>
 
       {pageState.invoiceGroups.length > 0 &&
@@ -150,6 +135,7 @@ export function ApprovedInvoiceListSection({
           groups={pageState.invoiceGroups}
           listLabel={listLabel}
           onOpenApprovedInvoice={onOpenApprovedInvoice}
+          showPaidOn={showPaidOn}
         />
       ) : (
         <ApprovedInvoiceList
@@ -164,38 +150,45 @@ export function ApprovedInvoiceListSection({
       )}
 
       {pageState.totalCount > 0 ? (
-        <nav
+        <InvoiceListPagination
+          ariaLabel={uiText.invoicing.listPages}
           className={styles.pagination}
-          aria-label={uiText.invoicing.listPages}
-        >
-          <button
-            className="secondary-action"
-            disabled={pageState.isLoading || pageState.controls.page <= 1}
-            onClick={() => pageState.goToPage(pageState.controls.page - 1)}
-            type="button"
-          >
-            {uiText.invoicing.listPreviousPage}
-          </button>
-          <span>
-            {uiText.invoicing.listPageLabel(
-              pageState.controls.page,
-              visibleTotalPages,
-            )}
-          </span>
-          <button
-            className="secondary-action"
-            disabled={
-              pageState.isLoading ||
-              pageState.totalPages === 0 ||
-              pageState.controls.page >= pageState.totalPages
-            }
-            onClick={() => pageState.goToPage(pageState.controls.page + 1)}
-            type="button"
-          >
-            {uiText.invoicing.listNextPage}
-          </button>
-        </nav>
+          disabled={pageState.isLoading}
+          nextLabel={uiText.invoicing.listNextPage}
+          onNextPage={() =>
+            pageState.goToPage(pageState.controls.page + 1)
+          }
+          onPreviousPage={() =>
+            pageState.goToPage(pageState.controls.page - 1)
+          }
+          page={pageState.controls.page}
+          pageLabel={uiText.invoicing.listPageLabel(
+            pageState.controls.page,
+            visibleTotalPages,
+          )}
+          previousLabel={uiText.invoicing.listPreviousPage}
+          totalPages={pageState.totalPages}
+        />
       ) : null}
     </section>
   );
 }
+
+const sortOptions: InvoiceListSortOption[] = [
+  {
+    label: uiText.invoicing.listSortNewest,
+    value: 'invoiceDateDesc',
+  },
+  {
+    label: uiText.invoicing.listSortOldest,
+    value: 'invoiceDateAsc',
+  },
+  {
+    label: uiText.invoicing.listSortDueDate,
+    value: 'dueDateAsc',
+  },
+  {
+    label: uiText.invoicing.listSortCustomer,
+    value: 'customerNameAsc',
+  },
+];

@@ -38,6 +38,9 @@ export function App({ apiClient }: AppProps): React.JSX.Element {
       {activeView === 'customers' ? (
         <CustomerPage
           apiClient={apiClient}
+          navigationRequest={{
+            revision: navigation.customerNavigationRevision,
+          }}
           onOpenInvoice={(target) =>
             activateView({
               target,

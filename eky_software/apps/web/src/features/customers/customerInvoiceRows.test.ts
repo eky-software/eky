@@ -34,6 +34,7 @@ describe('customer invoice rows', () => {
       invoiceKind: 'standard',
       type: 'draft',
     });
+    expect(rows[0]?.date).toBe('2026-08-01');
   });
 
   it('keeps credit notes with their root invoice and exposes both', () => {
@@ -100,6 +101,7 @@ describe('customer invoice rows', () => {
     ]);
 
     expect(rows[0]?.status).toBe('Maksettu');
+    expect(rows[0]?.paidOn).toBe('2026-08-20');
   });
 
   it('keeps paid as an additional status for a credited root invoice', () => {

@@ -70,9 +70,13 @@ test('CUS-OVERVIEW-002 @critical preserves list state through overview, edit can
     }),
   ).toBeVisible();
 
-  await e2eWeb.page
-    .getByRole('button', { name: '← Asiakaslistaan', exact: true })
-    .click();
+  await e2eWeb.page.getByRole('button', { name: 'Asiakkaat' }).click();
+  await expect(
+    e2eWeb.page.getByRole('heading', {
+      level: 2,
+      name: 'Asiakaskortisto',
+    }),
+  ).toBeVisible();
   await expect(e2eWeb.page.getByLabel('Hae asiakasta')).toHaveValue(
     'OVERVIEW-1001',
   );
@@ -321,6 +325,92 @@ test('CUS-OVERVIEW-005 @security keeps customer activity allowlisted and value-f
   expect(unknownInvoiceResponse.status()).toBe(404);
 });
 
+test('CUS-OVERVIEW-009 @critical @cross-module pages and sorts paid customer invoices with payment dates', async ({
+  e2eWeb,
+}) => {
+  const selectedCustomer = await seedInvoiceJourneyPrerequisites(e2eWeb, {
+    customerInput: {
+      customerNumber: 'E2E-OVERVIEW-PAID',
+      name: 'Paid Invoice Overview Oy',
+    },
+  });
+  const paidInvoices: ApprovedInvoiceIdentity[] = [];
+
+  for (let index = 1; index <= 6; index += 1) {
+    const day = String(index).padStart(2, '0');
+    const dueDay = String(index + 14).padStart(2, '0');
+    const paidDay = String(index + 20).padStart(2, '0');
+    const invoice = await createApprovedInvoice(
+      e2eWeb.api,
+      selectedCustomer.customerId,
+      `Paid overview ${day}`,
+      {
+        dueDate: `2026-07-${dueDay}`,
+        invoiceDate: `2026-07-${day}`,
+      },
+    );
+
+    await markInvoiceSent(e2eWeb.api, invoice.id);
+    await markInvoicePaid(e2eWeb.api, invoice.id, `2026-07-${paidDay}`);
+    paidInvoices.push(invoice);
+  }
+
+  await e2eWeb.page.reload();
+  await openCustomerOverview(e2eWeb.page, {
+    id: selectedCustomer.customerId,
+    name: selectedCustomer.customerName,
+    number: selectedCustomer.customerNumber,
+  });
+
+  await expect(e2eWeb.page.getByLabel('Rivejä osiossa')).toHaveValue('5');
+  await expect(e2eWeb.page.getByLabel('Järjestys')).toHaveValue(
+    'invoiceDateDesc',
+  );
+
+  const paidSection = e2eWeb.page.getByRole('region', {
+    name: 'Maksetut',
+  });
+  await expect(
+    paidSection.getByRole('button', { name: 'Avaa laskutuksessa' }),
+  ).toHaveCount(5);
+  await expect(
+    paidSection.getByText(paidInvoices[5]!.number, { exact: true }),
+  ).toBeVisible();
+  await expect(
+    paidSection.getByText(paidInvoices[0]!.number, { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    paidSection.getByRole('columnheader', { name: 'Maksupäivä' }),
+  ).toBeVisible();
+  await expect(paidSection.getByText('26.07.2026')).toBeVisible();
+
+  await paidSection.getByRole('button', { name: 'Seuraava' }).click();
+  await expect(
+    paidSection.getByText(paidInvoices[0]!.number, { exact: true }),
+  ).toBeVisible();
+
+  await e2eWeb.page.getByLabel('Rivejä osiossa').selectOption('20');
+  await expect(
+    paidSection.getByRole('button', { name: 'Avaa laskutuksessa' }),
+  ).toHaveCount(6);
+
+  await e2eWeb.page
+    .getByLabel('Järjestys')
+    .selectOption('invoiceDateAsc');
+  await expect(paidSection.getByRole('row').nth(1)).toContainText(
+    paidInvoices[0]!.number,
+  );
+
+  await e2eWeb.page.getByRole('button', { name: 'Laskutus' }).click();
+  const paidTable = e2eWeb.page.getByRole('table', {
+    name: 'Maksetut laskut',
+  });
+  await expect(
+    paidTable.getByRole('columnheader', { name: 'Maksupäivä' }),
+  ).toBeVisible();
+  await expect(paidTable.getByText('26.07.2026')).toBeVisible();
+});
+
 async function createCustomer(
   api: APIRequestContext,
   overrides: Record<string, unknown>,
@@ -378,8 +468,12 @@ async function createApprovedInvoice(
   api: APIRequestContext,
   customerId: string,
   subject: string,
+  overrides: Record<string, unknown> = {},
 ): Promise<ApprovedInvoiceIdentity> {
-  const draft = await createDraft(api, customerId, { subject });
+  const draft = await createDraft(api, customerId, {
+    ...overrides,
+    subject,
+  });
   const response = await api.post(`/invoice-drafts/${draft.id}/approve`);
   expect(response.status()).toBe(200);
   const body = (await response.json()) as {
@@ -407,9 +501,10 @@ async function markInvoiceSent(
 async function markInvoicePaid(
   api: APIRequestContext,
   invoiceId: string,
+  paidOn = '2026-07-30',
 ): Promise<void> {
   const response = await api.put(`/invoices/${invoiceId}/payment`, {
-    data: { paidOn: '2026-07-30' },
+    data: { paidOn },
   });
   expect(response.status()).toBe(200);
 }

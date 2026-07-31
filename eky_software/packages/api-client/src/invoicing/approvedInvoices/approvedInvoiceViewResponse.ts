@@ -14,6 +14,7 @@ import {
 } from './approvedInvoiceResponsePrimitives.js';
 import type {
   ApprovedInvoiceListPage,
+  ApprovedInvoiceListPageSize,
   ApprovedInvoiceLine,
   ApprovedInvoiceLineDiscount,
   ApprovedInvoiceSummary,
@@ -157,8 +158,10 @@ export function readInvoiceCreditContextResponse(
   };
 }
 
-function isApprovedInvoicePageSize(value: number): value is 20 | 50 | 100 {
-  return value === 20 || value === 50 || value === 100;
+function isApprovedInvoicePageSize(
+  value: number,
+): value is ApprovedInvoiceListPageSize {
+  return value === 5 || value === 20 || value === 50 || value === 100;
 }
 
 export function readApprovedInvoiceResponse(

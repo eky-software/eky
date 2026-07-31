@@ -27,6 +27,14 @@ export type ApprovedInvoiceListSort =
   | 'dueDateAsc'
   | 'customerNameAsc';
 
+export type ApprovedInvoiceListPageSize = 5 | 20 | 50 | 100;
+
+export function isApprovedInvoiceListPageSize(
+  value: number,
+): value is ApprovedInvoiceListPageSize {
+  return value === 5 || value === 20 || value === 50 || value === 100;
+}
+
 export interface ApprovedInvoiceSummaryQuery {
   companyId: string;
   customerId: string | null;

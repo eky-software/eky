@@ -138,6 +138,44 @@ describe('loadApprovedInvoicePage', () => {
     });
   });
 
+  it('rejects a paid invoice page without a paid date', async () => {
+    const rootInvoice = createApprovedInvoiceSummary({
+      paidAmountCents: 12_550,
+      paidOn: null,
+      paymentSource: 'manual',
+      paymentState: 'paid',
+      status: 'sent',
+    });
+    const page = {
+      groups: [
+        {
+          creditInvoices: [],
+          creditStatus: 'none' as const,
+          remainingCreditableGrossCents: 12_550,
+          rootInvoice,
+        },
+      ],
+      page: 1,
+      pageSize: 20 as const,
+      totalCount: 1,
+      totalPages: 1,
+    };
+    const apiClient = {
+      listApprovedInvoices: vi.fn(),
+      listSentInvoiceGroups: vi.fn(async () => page),
+    };
+
+    await expect(
+      loadSentInvoiceGroupPage(
+        apiClient,
+        createDefaultApprovedInvoiceListControls(),
+        1,
+        'uncredited',
+        'paid',
+      ),
+    ).rejects.toThrow('Sent invoice group page does not match its request.');
+  });
+
   it('rejects a sent group that does not match the requested credit section', async () => {
     const rootInvoice = createApprovedInvoiceSummary({ status: 'sent' });
     const mismatchPage: SentInvoiceGroupListPage = {
