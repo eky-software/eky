@@ -130,6 +130,21 @@ test.describe('isolated E2E backend composition', () => {
         { kind: 'pdfStorageWriteFailed' },
         { kind: 'operationalLogWriteFailed' },
         {
+          failOnCall: 1,
+          kind: 'databaseWriteFailed',
+          operation: 'activateInvoiceNumberingSeriesEvent',
+        },
+        {
+          failOnCall: 1,
+          kind: 'databaseWriteFailed',
+          operation: 'activateInvoiceNumberingSeriesPointer',
+        },
+        {
+          failOnCall: 1,
+          kind: 'databaseWriteFailed',
+          operation: 'activateInvoiceNumberingSeriesSettings',
+        },
+        {
           failOnCall: 2,
           kind: 'databaseWriteFailed',
           operation: 'approveInvoice',

@@ -34,6 +34,7 @@ export async function installE2eDatabaseFault(input: {
       database.exec(`
         CREATE TRIGGER ${trigger.name}
         BEFORE ${trigger.action} ON ${trigger.tableName}
+        ${trigger.when === undefined ? '' : `WHEN ${trigger.when}`}
         BEGIN
           UPDATE _e2e_fault_state
           SET call_count = call_count + 1
@@ -63,8 +64,34 @@ function resolveTriggers(
   action: 'INSERT' | 'UPDATE';
   name: string;
   tableName: string;
+  when?: string;
 }[] {
   switch (operation) {
+    case 'activateInvoiceNumberingSeriesEvent':
+      return [
+        {
+          action: 'INSERT',
+          name: '_e2e_fail_activate_invoice_numbering_series_event',
+          tableName: 'invoice_numbering_series_events',
+        },
+      ];
+    case 'activateInvoiceNumberingSeriesPointer':
+      return [
+        {
+          action: 'UPDATE',
+          name: '_e2e_fail_activate_invoice_numbering_series_pointer',
+          tableName: 'invoice_numbering_active_series',
+        },
+      ];
+    case 'activateInvoiceNumberingSeriesSettings':
+      return [
+        {
+          action: 'INSERT',
+          name: '_e2e_fail_activate_invoice_numbering_series_settings',
+          tableName: 'invoice_numbering_settings',
+          when: "NEW.series_key <> 'default'",
+        },
+      ];
     case 'approveInvoice':
       return [
         {

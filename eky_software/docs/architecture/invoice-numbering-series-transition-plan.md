@@ -11,7 +11,18 @@ Dokumentin lähtöcommit on `e1ed183`.
 
 ## Tila Ja Omistajapäätös
 
-Checkpoint A eli nykytilan auditointi ja arkkitehtuurisuunnitelma on tehty.
+Checkpointit A-D on toteutettu. Checkpoint E:n riskiperusteiset security-,
+fault- ja concurrency-E2E-todisteet on lisätty, ja kokonaisuus suljetaan
+release-tarkistuksilla.
+
+Toteutuksen päävaiheet:
+
+- `cc0445a`: törmäyksettömän aloitusnumeron domain-todistus
+- `3442902`: aktiivisen sarjan pointer, immutable asetukset ja append-only
+  vaihtohistoria
+- `af8a4bf`: aktiivisen sarjan käyttö standardi- ja
+  hyvityslaskuhyväksynnöissä
+- nykyinen vaihe: HTTP-, API-client-, Classic-UI-, Activity- ja E2E-rajat
 
 Projektin omistaja on päättänyt, että näkyvä laskunumero säilyy kokonaan
 numeerisena eikä siihen lisätä näkyvää sarjatunnistetta. Uuden sarjan
@@ -69,9 +80,10 @@ Tässä kokonaisuudessa ei:
 
 ### Asetukset Ja Sekvenssit
 
-`invoice_numbering_settings` sisältää useita rivejä teknisen
-`(company_id, series_key)`-avaimen perusteella. Nykyinen application- ja
-HTTP-polku käyttää kuitenkin vain `defaultInvoiceNumberSeriesKey`-arvoa.
+`invoice_numbering_settings` sisälsi jo lähtötilanteessa useita rivejä
+teknisen `(company_id, series_key)`-avaimen perusteella. Ennen tätä
+kokonaisuutta application- ja HTTP-polku käytti vain
+`defaultInvoiceNumberSeriesKey`-arvoa.
 
 `invoice_number_sequences` erottaa etenemän avaimella:
 
@@ -108,8 +120,10 @@ Nämä historialliset arvot säilytetään.
 
 ### Standardi- Ja Hyvityslaskun Hyväksyntä
 
-Standardilaskun ja hyvityslaskun HTTP-reitit antavat tällä hetkellä
+Standardilaskun ja hyvityslaskun HTTP-reitit antoivat lähtötilanteessa
 hyväksyntäpalvelulle kovakoodatun `defaultInvoiceNumberSeriesKey`-arvon.
+Toteutettu hyväksyntä lukee aktiivisen pointerin oman write-transaktionsa
+sisällä.
 
 Repositoryt tekevät numeron varauksen, snapshotin, laskurivit,
 audit-tapahtuman ja luonnoksen lukituksen SQLite-transaktiossa. Hyvityslasku
@@ -171,7 +185,7 @@ Uusi migraatio lisää taulut muuttamatta vanhoja migraatioita.
 
 ### `invoice_numbering_active_series`
 
-Suunnitellut kentät:
+Toteutetut kentät:
 
 - `company_id` primary key
 - `active_series_key`
@@ -196,20 +210,21 @@ pointeria tai sen osoittamaa asetusriviä ei löydy.
 
 ### `invoice_numbering_series_events`
 
-Suunnitellut kentät:
+Toteutetut kentät:
 
 - `id`
 - `company_id`
 - `actor_user_id`
 - `previous_series_key`
 - `next_series_key`
-- `reason`
+- `reason_code`
+- `reason_note`
 - `occurred_at`
 
 Taulu on append-only. SQLite-migraatio lisää triggerit, jotka estävät
 `UPDATE`- ja `DELETE`-operaatiot.
 
-`reason`:
+Muutossyy:
 
 - on pakollinen
 - trimmataan ja pituus rajataan
@@ -241,16 +256,18 @@ Uusi käyttötapaus on:
 activateInvoiceNumberingSeries
 ```
 
-Syöte sisältää vähintään:
+Syöte sisältää:
 
 - uudet numerointiasetukset
-- muutossyyn
-- UI:n viimeksi lukeman aktiivisen sarjan avaimen
+- rajatun syykoodin ja valinnaisen syyn tarkennuksen
 - UI:n viimeksi lukeman revision
 - täsmällisen vahvistusarvon
 - backendin vahvistaman `ActorContext`-kontekstin
 
 Tekninen `nextSeriesKey` generoidaan backendissä. Käyttäjä ei kirjoita sitä.
+Aktiivisen sarjan tekninen avain luetaan repositoryssa luotetulla
+`companyId`-rajauksella ja sidotaan samaan optimistic concurrency
+-transaktioon revisionin kanssa. Sitä ei oteta requestista.
 
 ## Törmäyksettömän Aloitusnumeron Todistus
 
@@ -280,9 +297,13 @@ sarja voisi millä tahansa tuetulla vuosiprefixillä tai plain-mallissa tuottaa.
 Pelkkä seuraavan laskun esikatselu ei ole turvallisuustodiste.
 
 Vahvistusarvo ei ole boolean. Backend vaatii kiinteän, i18n-avaimen kautta
-UI:ssa näytettävän tekstin täsmällisen arvon. Lopullinen suomenkielinen
-vahvistusteksti lukitaan ennen Checkpoint D:tä. Oletustoiminto on aina
-`Peruuta`.
+UI:ssa näytettävän tekstin täsmällisen arvon:
+
+```text
+OTA UUSI LASKUNUMEROSARJA KÄYTTÖÖN
+```
+
+Oletustoiminto on aina `Peruuta`.
 
 ## Aktivointitransaktio
 
@@ -295,7 +316,7 @@ Järjestys:
 1. tarkista `manageInvoiceNumberingSeries`
 2. validoi backendin vahvistama yritys ja actor
 3. lue aktiivinen sarja ja revision
-4. torju stale `currentActiveSeriesKey` tai revision
+4. torju muuttunut aktiivinen sarja tai stale revision
 5. validoi uudet asetukset, syy ja vahvistusteksti
 6. generoi uusi tekninen `seriesKey`
 7. lisää uusi asetusrivi
@@ -316,7 +337,7 @@ Aktivointi ei:
 
 ## Approval-Transaktioiden Muutos
 
-Checkpoint C poistaa standardi- ja hyvityslaskujen kovakoodatun
+Checkpoint C poisti standardi- ja hyvityslaskujen kovakoodatun
 `default`-sarjan.
 
 Molemmissa poluissa aktiivinen pointer:
@@ -338,10 +359,19 @@ Reapproval:
 
 ## HTTP- Ja API-Sopimus
 
-Tarkat endpointit päätetään Checkpoint D:ssä. Sopimuksen pitää erottaa:
+Toteutetut endpointit:
 
-- aktiivisen sarjan ja historian read model
-- uuden sarjan aktivointikomento
+- `GET /invoice-numbering-series`
+- `GET /invoice-numbering-series/activation-preview`
+- `POST /invoice-numbering-series/activate`
+
+Read model palauttaa aktiivisen sarjan julkiset asetukset, revisionin,
+vahvistustekstin ja read-only-historian. Se ei palauta teknisiä
+`seriesKey`-arvoja, actoria tai vapaamuotoista muutossyytä.
+
+Esikatselu laskee backendissä pienimmän turvallisen aloitusnumeron eikä varaa
+numeroa. Aktivointikomento luo uuden teknisen sarjan ja vaihtaa pointerin
+atomisesti.
 
 Aktivointipyyntö käyttää nykyistä JSON body -sopimusta:
 
@@ -495,6 +525,14 @@ turvallista Invoicingin projectionia oman porttinsa kautta.
 - `INV-NUMBERING-SERIES-004 @fault`: transaktion keskivaiheen rollback
 - `INV-NUMBERING-SERIES-005 @concurrency`: sarjanvaihto ja approvalit eivät
   tuota duplikaatteja tai epäselvää sarjajäsenyyttä
+- `INV-NUMBERING-SERIES-006 @critical`: reapproval säilyttää alkuperäisen
+  laskun numeron, viitteen, sarjan ja sequence-tilan
+- `INV-NUMBERING-SERIES-007 @critical`: lähetetystä laskusta kopioitu uusi
+  luonnos saa hyväksynnässä aktiivisen uuden sarjan
+- `INV-NUMBERING-SERIES-UI-001 @critical`: selain käy läpi esikatselun,
+  kaksivaiheisen vahvistuksen ja onnistuneen aktivoinnin
+- `INV-NUMBERING-SERIES-DESKTOP-001 @critical`: sama rajattu käyttäjäpolku
+  toimii Electron-kuoren ja local-session-rajan läpi
 
 ## Checkpointit
 
@@ -507,34 +545,42 @@ turvallista Invoicingin projectionia oman porttinsa kautta.
 
 ### B: Persistence Ja Domain
 
-Tehdään vasta nimiavaruuspäätöksen jälkeen:
+Valmis:
 
-- uusi migraatio
-- domain-malli
+- immutable migraatio
+- domain-malli ja collision-free-laskenta
 - transition-portti ja erillinen SQLite-adapteri
-- permission
-- application service
+- `manageInvoiceNumberingSeries`-permission
+- preview- ja activation-application servicet
 
 ### C: Approval Ja Rinnakkaisuus
 
-- aktiivinen pointer approval-transaktioihin
-- standardi- ja hyvityslaskut
-- reapproval-regressiot
-- SQLite-rinnakkaisuustestit
+Valmis:
+
+- aktiivinen pointer approval-transaktioissa
+- standardi- ja hyvityslaskut käyttävät aktiivista sarjaa
+- reapproval säilyttää alkuperäisen sarjan ja numeron
+- SQLite-rinnakkaisuus- ja regressiotestit
 
 ### D: HTTP, API Ja UI
 
-- read model ja aktivointikomento
-- API-client
+Valmis:
+
+- read model, esikatselu ja aktivointikomento
+- strict API-client
 - kaksivaiheinen Classic-UI
-- Activity-projection
+- tietoja minimoiva Activity-projektio
 
 ### E: Testit Ja Release-Portti
 
-- koko laskutuksen raha- ja korjausmatriisi
-- security-, fault- ja concurrency-E2E
-- backend-, api-client-, web- ja desktop-buildit
-- Windows package ja packaged smoke
+Valmis, kun tämän vaiheen release-tarkistukset ovat vihreät:
+
+- system-E2E kattaa onnistumisen, standardi- ja hyvityslaskun, security-,
+  fault-, concurrency-, reapproval- ja copy-polut
+- web- ja Electron-E2E kattavat kaksivaiheisen käyttöliittymävahvistuksen
+- koko laskutuksen raha- ja korjausmatriisi ajetaan regressiona
+- backend-, api-client-, web- ja desktop-buildit tarkistetaan
+- Windows package ja packaged smoke sulkevat release-portin
 
 ## Omistajapäätöksen Tila
 
