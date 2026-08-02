@@ -4,7 +4,11 @@ import { DatabaseSync } from 'node:sqlite';
 
 import { createBackendOperationalEvent } from '../../../backend/src/observability/createOperationalEvent.js';
 import { readE2eSqliteRows } from '../../src/assertions/readE2eSqliteRows.js';
-import { createSyntheticCustomerInput } from '../../src/data/syntheticBusinessInputs.js';
+import {
+  createSyntheticCompanySettingsInput,
+  createSyntheticCustomerInput,
+  createSyntheticInvoiceDraftInput,
+} from '../../src/data/syntheticBusinessInputs.js';
 import { waitForLoopbackPortRelease } from '../../src/environment/waitForLoopbackPortRelease.js';
 import {
   expect,
@@ -64,6 +68,84 @@ test('SYS-RESTART-001 @critical @recovery preserves data and audit while rotatin
       'SELECT COUNT(*) AS count FROM customer_audit_events',
     ),
   ).toEqual([{ count: 1 }]);
+});
+
+test('INV-DRAFT-DELETE-RESTART-001 @critical @recovery keeps a deleted autosaved draft absent after restart', async ({
+  e2eBackend,
+}) => {
+  expect(
+    (
+      await e2eBackend.api.put('/company-settings', {
+        data: createSyntheticCompanySettingsInput(),
+      })
+    ).status(),
+  ).toBe(200);
+  const customerResponse = await e2eBackend.api.post('/customers', {
+    data: createSyntheticCustomerInput({
+      customerNumber: 'E2E-DELETE-1001',
+      name: 'Synthetic Deleted Draft Customer Oy',
+    }),
+  });
+  expect(customerResponse.status()).toBe(201);
+  const customerId = String(
+    ((await customerResponse.json()) as { customer: { id: string } }).customer
+      .id,
+  );
+  const draftResponse = await e2eBackend.api.post('/invoice-drafts', {
+    data: createSyntheticInvoiceDraftInput(customerId, {
+      subject: 'Synthetic autosaved draft deleted before restart',
+    }),
+  });
+  expect(draftResponse.status()).toBe(201);
+  const draftId = String(
+    ((await draftResponse.json()) as { invoiceDraft: { id: string } })
+      .invoiceDraft.id,
+  );
+  expect((await e2eBackend.api.get(`/invoice-drafts/${draftId}`)).status()).toBe(
+    200,
+  );
+
+  const deleteResponse = await e2eBackend.api.delete(
+    `/invoice-drafts/${draftId}`,
+  );
+  expect(deleteResponse.status()).toBe(200);
+  await expect(deleteResponse.json()).resolves.toEqual({ deleted: true });
+  expect((await e2eBackend.api.get('/invoice-drafts')).status()).toBe(200);
+  await expect(
+    (await e2eBackend.api.get('/invoice-drafts')).json(),
+  ).resolves.toEqual({ invoiceDrafts: [] });
+
+  const restarted = await e2eBackend.restartBackend();
+  const listAfterRestart = await restarted.api.get('/invoice-drafts');
+  expect(listAfterRestart.status()).toBe(200);
+  await expect(listAfterRestart.json()).resolves.toEqual({
+    invoiceDrafts: [],
+  });
+  expect(
+    (await restarted.api.get(`/invoice-drafts/${draftId}`)).status(),
+  ).toBe(404);
+  expect(
+    readE2eSqliteRows(
+      e2eBackend.paths.databaseFilePath,
+      'SELECT COUNT(*) AS count FROM invoice_drafts WHERE id = ?',
+      draftId,
+    ),
+  ).toEqual([{ count: 0 }]);
+  expect(
+    readE2eSqliteRows(
+      e2eBackend.paths.databaseFilePath,
+      'SELECT COUNT(*) AS count FROM invoice_audit_events WHERE draft_id = ?',
+      draftId,
+    ),
+  ).toEqual([{ count: 0 }]);
+
+  const diagnosticsResponse = await restarted.api.get(
+    '/diagnostics/events?limit=200',
+  );
+  expect(diagnosticsResponse.status()).toBe(200);
+  const diagnostics = JSON.stringify(await diagnosticsResponse.json());
+  expect(diagnostics).not.toContain(draftId);
+  expect(diagnostics).not.toContain('invoiceDraft.deleteFailed');
 });
 
 test('OBS-JSONL-001 @critical @fault @recovery ignores a truncated final JSONL row and reports the source honestly', async ({

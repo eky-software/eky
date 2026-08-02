@@ -131,6 +131,10 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
 - Testataanko virheelliset, liian pitkät ja raja-arvot sisältävät syötteet?
 - Testataanko relevantit injektio- ja tietovuotopolut?
 - Testataanko laskenta ja tilasiirtymät?
+- Jos työnkulussa on useita peräkkäisiä tilasiirtymiä, todistaako nimetty
+  ketjutesti niiden yhteistoiminnan ja pysyvän tilan?
+- Onko relevantit vierekkäiset siirtymät tarkistettu, kuten
+  reopen/reapprove, delivery/resend, payment/credit ja delete/restart?
 - Ovatko testit luettavia?
 - Käyttävätkö testit vain testidataa?
 - Päivitettiinkö R0 E2E -matriisi, jos moduuli, luottamusraja, sivuvaikutus,

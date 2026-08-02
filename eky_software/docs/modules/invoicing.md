@@ -16,6 +16,12 @@ Ensimmäisen manuaalisen laskuluonnos-MVP:n rajaus, classic-käyttöliittymä ja
 
 Laskun hyväksynnän, virallisen laskunumeron, numerointisarjojen, snapshotin ja auditoinnin periaatteet on kuvattu dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
 
+Käytetyn numerointisarjan hallittu korvaaminen uudella immutable-sarjalla,
+aktiivisen sarjan pointer ja append-only-vaihtohistoria on suunniteltu
+dokumentissa
+`docs/architecture/invoice-numbering-series-transition-plan.md`. Toteutus ei
+resetoi tai avaa vanhaa sarjaa muokattavaksi.
+
 Hyväksytyn laskun katselu-, print- ja PDF-polun tarvitsemat data- ja snapshot-valmiudet on kuvattu dokumentissa `docs/architecture/invoice-print-data-foundation-plan.md`.
 
 PDF-polun ensimmäinen teknologiakokeilu ja sisäisten PDF-apujen rajaus on
