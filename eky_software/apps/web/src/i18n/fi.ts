@@ -231,8 +231,18 @@ export const uiText = {
     backToCustomerOverview: 'Takaisin asiakaskortille',
     basicInformation: 'Perustiedot',
     businessId: 'Y-tunnus',
+    billingRecipientInvoiceEmpty:
+      'Isännöitsijätoimistolla ei ole taloyhtiöiden laskuja vastaanottajana.',
+    billingRecipientInvoiceListControls:
+      'Vastaanottajana saatujen taloyhtiölaskujen asetukset',
+    billingRecipientInvoiceLoadError:
+      'Vastaanottajana saatuja taloyhtiölaskuja ei voitu ladata. Yritä hetken kuluttua uudelleen.',
+    billingRecipientInvoiceLoading:
+      'Ladataan vastaanottajana saatuja taloyhtiölaskuja...',
+    billingRecipientInvoices: 'Taloyhtiöiden laskut vastaanottajana',
     cancel: 'Peruuta',
     created: 'Luotu',
+    createInvoice: 'Luo lasku',
     city: 'Kaupunki',
     close: 'Sulje',
     comment: 'Kommentti',
@@ -254,7 +264,6 @@ export const uiText = {
     customers: 'Asiakkaat',
     customerType: 'Asiakastyyppi',
     customerTypeFilter: 'Asiakastyypin valinta',
-    customerWorkspace: 'Asiakastyötila',
     companyDefaultPricing: 'Oman yrityksen oletustuntihinta',
     defaultHourlyRateLoadError:
       'Oman yrityksen oletustuntihintaa ei voitu ladata.',
@@ -262,8 +271,6 @@ export const uiText = {
     defaultHourlyRateNotConfigured:
       'Oman yrityksen oletustuntihintaa ei ole asetettu',
     customerSpecificPricing: 'Asiakaskohtainen tuntihinta',
-    description:
-      'Täällä ylläpidetään asiakkaiden perustietoja ja asiakasryhmiä. Voit tarkastella yrityksiä, taloyhtiöitä, isännöitsijätoimistoja ja yksityisasiakkaita omissa näkymissään.',
     email: 'Sähköposti',
     edit: 'Muokkaa',
     editCustomer: 'Muokkaa asiakasta',
@@ -316,7 +323,8 @@ export const uiText = {
     loading: 'Ladataan asiakkaita...',
     manualCustomerNumber: 'Syötä itse',
     managedByPropertyManager: 'Isännöitsijätoimisto',
-    managedHousingCompanies: 'taloyhtiötä',
+    managedHousingCompaniesHeading: 'Hallinnoidut taloyhtiöt',
+    managedHousingCompanies: 'hallinnoitua taloyhtiötä',
     name: 'Nimi',
     newCustomer: 'Uusi asiakas',
     newCustomerAction: 'Uusi asiakas',
@@ -324,7 +332,13 @@ export const uiText = {
     noValue: 'Ei asetettu',
     noPropertyManager: 'Ei valittu',
     noManagedHousingCompanies: 'Ei taloyhtiöitä',
-    oneManagedHousingCompany: '1 taloyhtiö',
+    oneManagedHousingCompany: '1 hallinnoitu taloyhtiö',
+    openInvoice: 'Avaa lasku',
+    openInvoiceWithNumber: (invoiceNumber: string) =>
+      `Avaa lasku ${invoiceNumber}`,
+    openCustomerCard: 'Avaa',
+    openCustomerCardWithName: (customerName: string) =>
+      `Avaa asiakaskortti ${customerName}`,
     openInInvoicing: 'Avaa laskutuksessa',
     organization: 'Yritys',
     other: 'Muu',
@@ -398,8 +412,6 @@ export const uiText = {
     defaultHourlyRate: 'Oletustuntihinta €/h',
     defaultHourlyRateHelp:
       'Jos asiakkaalle ei ole asetettu omaa tuntihintaa, laskutuksen pikavalinta käyttää tätä hintaa.',
-    description:
-      'Täällä ylläpidetään ohjelmaa käyttävän yrityksen perustietoja, oletustuntihintaa ja laskutuksen tuntityön pikavalintaa.',
     email: 'Sähköposti',
     emailDeliveryProvider: 'Sähköpostin lähetystapa',
     emailDeliverySettings: 'Sähköpostiasetukset',
@@ -450,7 +462,7 @@ export const uiText = {
     emailUsername: 'SMTP-käyttäjätunnus',
     fallbackError: 'Jotain meni vikaan.',
     formDescription:
-      'Täytä oman yrityksen tiedot ja tuntityön oletukset. Pankki- ja verkkolaskuasetukset lisätään myöhemmin erillisinä vaiheina.',
+      'Hallinnoi yrityksen perustietoja sekä laskutus-, maksu- ja sähköpostiasetuksia.',
     formHeading: 'Oman yrityksen tiedot',
     formKicker: 'Asetukset',
     hourlyRateShortcut: 'Tuntityön pikavalinta',
@@ -606,11 +618,9 @@ export const uiText = {
     saveSuccess: 'Oman yrityksen tiedot tallennettu.',
     saving: 'Tallennetaan',
     streetAddress: 'Katuosoite',
-    title: 'Oma yritys',
     vatNumber: 'ALV-tunnus',
     vatNumberHelp:
       'Valinnainen. Tämä tallennetaan myöhemmin hyväksytylle laskulle myyjän ALV-tunnukseksi.',
-    workspace: 'Yritysasetukset',
     yes: 'Kyllä',
   },
   invoicing: {
@@ -786,6 +796,8 @@ export const uiText = {
     customerInactive: 'passivoitu',
     customerLoadError:
       'Asiakkaita ei voitu ladata. Yritä hetken kuluttua uudelleen.',
+    createInvoiceCustomerUnavailable:
+      'Laskua ei voitu avata valitulle asiakkaalle. Asiakas voi olla poistunut käytöstä tai sitä ei löytynyt.',
     customerLoading: 'Ladataan asiakkaita...',
     customerNotFound: 'Asiakasta ei löytynyt',
     customerLoadingHelp: 'Asiakaslista haetaan paikalliselta backendiltä.',
@@ -799,8 +811,6 @@ export const uiText = {
     companySettingsLoadError:
       'Tuntihinnan pikavalintaa ei voitu ladata. Voit syöttää hinnan käsin.',
     selectedCustomerKicker: 'Valittu asiakas',
-    description:
-      'Täällä käsitellään laskuluonnoksia. Ensimmäinen näkymä kokoaa tallennetut luonnokset selkeäksi työlistaksi.',
     draftCount: 'Laskuluonnosten määrä',
     draftList: 'Laskuluonnoslista',
     drafts: 'Luonnokset',
@@ -1138,7 +1148,6 @@ export const uiText = {
     subject: 'Aihe',
     subjectFallback: 'Nimetön laskuluonnos',
     subjectPlaceholder: 'Laskutuksen aihe',
-    title: 'Laskutus',
     total: 'Yhteensä',
     unitBatch: 'erä',
     unitDay: 'pv',
@@ -1193,7 +1202,6 @@ export const uiText = {
       'Syötä yksikkö 1–8 merkillä. Sallitut merkit ovat kirjaimet, numerot, piste ja väliviiva.',
     validationUnitPriceInvalid:
       'Syötä yksikköhinta nollana tai positiivisena euromääränä.',
-    workspace: 'Laskutustyötila',
   },
   apiErrors: {
     'API request failed.': 'API-pyyntö epäonnistui.',

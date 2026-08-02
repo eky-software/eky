@@ -275,6 +275,7 @@ function createApprovedInvoiceSummary(
     invoiceNumber: '20260001',
     referenceNumber: '202600017',
     status: 'approved',
+    subject: 'Ikkunatyö',
     cancelledAt: null,
     updatedAt: '2026-06-13T10:00:00.000Z',
     paymentState:

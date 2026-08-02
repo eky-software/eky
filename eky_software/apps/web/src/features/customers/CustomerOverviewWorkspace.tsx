@@ -1,11 +1,14 @@
 import type { Customer } from '@eky/api-client';
 
+import { BillingRecipientInvoicesSection } from './BillingRecipientInvoicesSection.js';
 import { CustomerActivitySection } from './CustomerActivitySection.js';
 import type { CustomerInvoiceNavigationTarget } from './customerInvoiceNavigation.js';
 import type { CustomerDefaultHourlyRateState } from './customerDefaultHourlyRateState.js';
 import { CustomerInvoicesSection } from './CustomerInvoicesSection.js';
 import { CustomerOverview } from './CustomerOverview.js';
+import { CustomerRecordInformationSection } from './CustomerRecordInformationSection.js';
 import type { CustomerActivityState } from './hooks/useCustomerActivity.js';
+import type { BillingRecipientInvoiceOverviewState } from './hooks/useBillingRecipientInvoices.js';
 import type { CustomerInvoiceOverviewState } from './hooks/useCustomerInvoices.js';
 import styles from './CustomerOverviewWorkspace.module.css';
 import { uiText } from '../../i18n/fi.js';
@@ -13,6 +16,7 @@ import { MessageBanner } from '../../shared/ui/index.js';
 
 interface CustomerOverviewWorkspaceProps {
   activityState: CustomerActivityState;
+  billingRecipientInvoiceState: BillingRecipientInvoiceOverviewState;
   customer: Customer | null;
   customers: Customer[];
   defaultHourlyRateState: CustomerDefaultHourlyRateState;
@@ -20,12 +24,15 @@ interface CustomerOverviewWorkspaceProps {
   invoiceState: CustomerInvoiceOverviewState;
   isLoading: boolean;
   onBack(): void;
+  onCreateInvoice(customerId: string): void;
   onEdit(): void;
   onOpenInvoice(target: CustomerInvoiceNavigationTarget): void;
+  onOpenRelatedCustomer(customerId: string): void;
 }
 
 export function CustomerOverviewWorkspace({
   activityState,
+  billingRecipientInvoiceState,
   customer,
   customers,
   defaultHourlyRateState,
@@ -33,8 +40,10 @@ export function CustomerOverviewWorkspace({
   invoiceState,
   isLoading,
   onBack,
+  onCreateInvoice,
   onEdit,
   onOpenInvoice,
+  onOpenRelatedCustomer,
 }: CustomerOverviewWorkspaceProps): React.JSX.Element {
   const navigation = (
     <nav
@@ -87,12 +96,21 @@ export function CustomerOverviewWorkspace({
         customer={customer}
         customers={customers}
         defaultHourlyRateState={defaultHourlyRateState}
+        onCreateInvoice={onCreateInvoice}
         onEdit={onEdit}
+        onOpenRelatedCustomer={onOpenRelatedCustomer}
       />
       <CustomerInvoicesSection
         invoiceState={invoiceState}
         onOpenInvoice={onOpenInvoice}
       />
+      {customer.customerType === 'propertyManager' ? (
+        <BillingRecipientInvoicesSection
+          invoiceState={billingRecipientInvoiceState}
+          onOpenInvoice={onOpenInvoice}
+        />
+      ) : null}
+      <CustomerRecordInformationSection customer={customer} />
       <CustomerActivitySection activityState={activityState} />
     </div>
   );

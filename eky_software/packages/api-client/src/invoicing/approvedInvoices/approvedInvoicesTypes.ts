@@ -145,6 +145,7 @@ export interface ApprovedInvoiceSummary extends InvoicePaymentReadModel {
   customerNumberSnapshot: string;
   customerNameSnapshot: string;
   billingRecipientNameSnapshot: string;
+  subject: string;
   invoiceDate: string;
   dueDate: string;
   grossTotalCents: number;
@@ -163,6 +164,7 @@ export type ApprovedInvoiceListPageSize = 5 | 20 | 50 | 100;
 export interface ApprovedInvoiceListQuery {
   status: ApprovedInvoiceViewStatus;
   customerId?: string;
+  billingRecipientCustomerId?: string;
   page: number;
   pageSize: ApprovedInvoiceListPageSize;
   sort: ApprovedInvoiceListSort;

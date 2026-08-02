@@ -77,4 +77,24 @@ describe('activateAppView', () => {
       },
     });
   });
+
+  it('creates a revisioned invoice creation request with only the customer id', () => {
+    expect(
+      activateAppView(initialAppNavigationState, {
+        target: {
+          customerId: 'customer-1',
+          type: 'createInvoiceForCustomer',
+        },
+        type: 'openInvoicingTarget',
+      }),
+    ).toEqual({
+      activeView: 'invoicing',
+      customerNavigationRevision: 0,
+      invoicingNavigationRevision: 1,
+      invoicingNavigationTarget: {
+        customerId: 'customer-1',
+        type: 'createInvoiceForCustomer',
+      },
+    });
+  });
 });

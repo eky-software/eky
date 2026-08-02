@@ -224,11 +224,14 @@ test('INV-PAYMENT-004 @cross-module uses the remaining amount after a partial cr
   await expect(
     creditedSection.getByText(sourceInvoice.invoiceNumber, { exact: true }),
   ).toBeVisible();
-  await expect(
-    creditedSection.getByText('Osittain hyvitetty · Maksettu', {
-      exact: true,
-    }),
-  ).toBeVisible();
+  const creditedInvoiceRow = creditedSection.getByRole('row', {
+    name: new RegExp(escapeRegExp(sourceInvoice.invoiceNumber)),
+  });
+  const creditedInvoiceStatus = creditedInvoiceRow.getByRole('cell').nth(4);
+  await expect(creditedInvoiceStatus).toContainText(
+    'Osittain hyvitetty · Maksettu',
+  );
+  await expect(creditedInvoiceStatus).toContainText('Maksupäivä 30.07.2026');
   await expect(
     e2eWeb.page.getByRole('heading', { level: 3, name: 'Maksetut' }),
   ).toHaveCount(0);

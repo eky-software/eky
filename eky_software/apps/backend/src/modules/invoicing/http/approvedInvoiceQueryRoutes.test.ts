@@ -64,6 +64,42 @@ describe('approved invoice query routes', () => {
     expect(tenantOverrideResponse.status).toBe(400);
   });
 
+  it('forwards a billing-recipient filter and rejects ambiguous ownership filters', async () => {
+    const { app, getListInput, getSentGroupInput } = createTestApp({
+      invoicePage: createApprovedInvoiceListPage([]),
+    });
+
+    const approvedResponse = await app.request(
+      '/invoices?status=approved&billingRecipientCustomerId=property-manager-1',
+    );
+
+    expect(approvedResponse.status).toBe(200);
+    expect(getListInput()).toMatchObject({
+      companyId: 'dev-company',
+      billingRecipientCustomerId: 'property-manager-1',
+    });
+
+    const sentResponse = await app.request(
+      '/sent-invoice-groups?billingRecipientCustomerId=property-manager-1',
+    );
+
+    expect(sentResponse.status).toBe(200);
+    expect(getSentGroupInput()).toMatchObject({
+      companyId: 'dev-company',
+      billingRecipientCustomerId: 'property-manager-1',
+    });
+
+    const ambiguousApprovedResponse = await app.request(
+      '/invoices?customerId=customer-1&billingRecipientCustomerId=property-manager-1',
+    );
+    const ambiguousSentResponse = await app.request(
+      '/sent-invoice-groups?customerId=customer-1&billingRecipientCustomerId=property-manager-1',
+    );
+
+    expect(ambiguousApprovedResponse.status).toBe(400);
+    expect(ambiguousSentResponse.status).toBe(400);
+  });
+
   it('accepts the compact five-row invoice page size', async () => {
     const { app, getListInput } = createTestApp({
       invoicePage: createApprovedInvoiceListPage([]),
@@ -196,6 +232,8 @@ describe('approved invoice query routes', () => {
   it.each([
     '/invoices?customerId=',
     `/invoices?customerId=${'x'.repeat(201)}`,
+    '/invoices?billingRecipientCustomerId=',
+    `/invoices?billingRecipientCustomerId=${'x'.repeat(201)}`,
   ])('rejects an invalid customer filter: %s', async (path) => {
     const { app } = createTestApp({});
 
@@ -382,6 +420,7 @@ function createApprovedInvoiceSummary(): ApprovedInvoiceSummary {
     invoiceNumber: '20260001',
     referenceNumber: '202600017',
     status: 'approved',
+    subject: 'Test invoice',
     updatedAt: '2026-06-13T10:00:00.000Z',
     paymentState: 'unpaid',
     paidOn: null,

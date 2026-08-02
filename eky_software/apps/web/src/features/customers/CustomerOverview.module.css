@@ -83,6 +83,22 @@
   white-space: pre-wrap;
 }
 
+.relationshipLink {
+  width: fit-content;
+  max-width: 100%;
+  border: 0;
+  padding: 0;
+  color: var(--color-primary-dark);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+
+.relationshipLink:hover,
+.relationshipLink:focus-visible {
+  text-decoration: underline;
+}
+
 .wideSection {
   grid-column: 1 / -1;
 }

@@ -54,6 +54,13 @@ Application services that require a permission must enforce it in the backend
 with deny-by-default behavior. Do not rely on a hidden or disabled UI action as
 authorization.
 
+Invoice list ownership and recipient projections are separate. `customerId`
+selects invoices legally owned by the customer, while
+`billingRecipientCustomerId` selects the separately stored billing recipient.
+Do not combine these filters, infer recipient invoices from the current
+Customers relationship or implement recipient filtering in the client. Both
+read paths remain scoped by the backend-verified `companyId`.
+
 Invoice lifecycle/delivery status and payment state are separate concepts.
 Do not add `paid` to `InvoiceStatus`, derive payment from delivery events or
 accept a paid amount from the client. Invoicing calculates the payable amount

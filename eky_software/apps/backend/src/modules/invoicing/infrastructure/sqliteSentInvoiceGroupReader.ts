@@ -23,6 +23,8 @@ type SentInvoiceRootFilterParameters = [
   string | null,
   string | null,
   string | null,
+  string | null,
+  string | null,
   string,
   string,
 ];
@@ -51,6 +53,8 @@ export class SqliteSentInvoiceGroupReader implements SentInvoiceGroupReader {
       query.companyId,
       query.customerId,
       query.customerId,
+      query.billingRecipientCustomerId,
+      query.billingRecipientCustomerId,
       query.dateFrom,
       query.dateFrom,
       query.dateTo,
@@ -82,6 +86,14 @@ export class SqliteSentInvoiceGroupReader implements SentInvoiceGroupReader {
             AND root_invoices.status = 'sent'
             AND root_invoices.invoice_kind = 'standard'
             AND (? IS NULL OR root_invoices.customer_id = ?)
+            AND (
+              ? IS NULL
+              OR (
+                root_invoices.billing_recipient_customer_id = ?
+                AND root_invoices.customer_id
+                  <> root_invoices.billing_recipient_customer_id
+              )
+            )
             AND (? IS NULL OR root_invoices.invoice_date >= ?)
             AND (? IS NULL OR root_invoices.invoice_date <= ?)
             AND (? = 'all' OR root_invoices.payment_state = ?)
@@ -171,6 +183,14 @@ function createSentInvoiceRootQuery(
       AND root_invoices.status = 'sent'
       AND root_invoices.invoice_kind = 'standard'
       AND (? IS NULL OR root_invoices.customer_id = ?)
+      AND (
+        ? IS NULL
+        OR (
+          root_invoices.billing_recipient_customer_id = ?
+          AND root_invoices.customer_id
+            <> root_invoices.billing_recipient_customer_id
+        )
+      )
       AND (? IS NULL OR root_invoices.invoice_date >= ?)
       AND (? IS NULL OR root_invoices.invoice_date <= ?)
       AND (? = 'all' OR root_invoices.payment_state = ?)

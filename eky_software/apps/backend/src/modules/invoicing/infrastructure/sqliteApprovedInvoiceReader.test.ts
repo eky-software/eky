@@ -119,7 +119,13 @@ describe('SqliteApprovedInvoiceReader', () => {
     await expect(
       reader.listApprovedInvoiceSummaries(createApprovedInvoiceListQuery()),
     ).resolves.toMatchObject({
-      invoices: [{ id: 'invoice-1', status: 'approved' }],
+      invoices: [
+        {
+          id: 'invoice-1',
+          status: 'approved',
+          subject: 'Snapshot invoice',
+        },
+      ],
       totalCount: 1,
     });
     await expect(
@@ -328,6 +334,71 @@ describe('SqliteApprovedInvoiceReader', () => {
     });
   });
 
+  it('filters by the persisted billing recipient without changing invoice ownership', async () => {
+    insertInvoiceClone(database, {
+      id: 'recipient-invoice',
+      sourceDraftId: 'recipient-draft',
+      invoiceKind: 'standard',
+      creditedInvoiceId: null,
+      invoiceNumber: '20260002',
+      status: 'approved',
+      totalGrossCents: 20_000,
+      invoiceDate: '2026-06-14',
+      customerId: 'housing-company-2',
+      billingRecipientCustomerId: 'billing-1',
+      customerNameSnapshot: 'Snapshot Housing Company 2',
+    });
+    insertInvoiceClone(database, {
+      id: 'recipient-is-owner',
+      sourceDraftId: 'recipient-owner-draft',
+      invoiceKind: 'standard',
+      creditedInvoiceId: null,
+      invoiceNumber: '20260003',
+      status: 'approved',
+      totalGrossCents: 30_000,
+      invoiceDate: '2026-06-15',
+      customerId: 'billing-1',
+      billingRecipientCustomerId: 'billing-1',
+      customerNameSnapshot: 'Snapshot Property Manager',
+    });
+
+    await expect(
+      reader.listApprovedInvoiceSummaries(
+        createApprovedInvoiceListQuery({
+          billingRecipientCustomerId: 'billing-1',
+        }),
+      ),
+    ).resolves.toMatchObject({
+      invoices: [
+        {
+          id: 'recipient-invoice',
+          customerId: 'housing-company-2',
+          customerNameSnapshot: 'Snapshot Housing Company 2',
+        },
+        {
+          id: 'invoice-1',
+          customerId: 'customer-1',
+          customerNameSnapshot: 'Snapshot Customer Oy',
+        },
+      ],
+      totalCount: 2,
+    });
+    await expect(
+      reader.listApprovedInvoiceSummaries(
+        createApprovedInvoiceListQuery({
+          billingRecipientCustomerId: 'unknown-recipient',
+        }),
+      ),
+    ).resolves.toEqual({ invoices: [], totalCount: 0 });
+    await expect(
+      reader.listApprovedInvoiceSummaries(
+        createApprovedInvoiceListQuery({
+          billingRecipientCustomerId: "billing-1' OR 1=1 --",
+        }),
+      ),
+    ).resolves.toEqual({ invoices: [], totalCount: 0 });
+  });
+
   it('keeps the customer filter inside the trusted company scope', async () => {
     insertInvoiceClone(database, {
       id: 'other-company-invoice',
@@ -382,6 +453,16 @@ describe('SqliteApprovedInvoiceReader', () => {
     ).resolves.toMatchObject({
       customerNameSnapshot: 'Snapshot Customer Oy',
       companyNameSnapshot: 'Snapshot Builder Oy',
+    });
+    await expect(
+      reader.listApprovedInvoiceSummaries(
+        createApprovedInvoiceListQuery({
+          billingRecipientCustomerId: 'billing-1',
+        }),
+      ),
+    ).resolves.toMatchObject({
+      invoices: [{ id: 'invoice-1' }],
+      totalCount: 1,
     });
   });
 });

@@ -6,7 +6,7 @@ import {
 } from '../domain/approvedInvoiceSummary.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
-import { normalizeOptionalInvoiceListCustomerId } from './invoiceListCustomerFilter.js';
+import { normalizeInvoiceListCustomerFilters } from './invoiceListCustomerFilter.js';
 
 const maximumCompanyIdLength = 120;
 const maximumPage = 1_000_000;
@@ -20,6 +20,7 @@ const allowedSorts = new Set<ApprovedInvoiceListSort>([
 export interface ListApprovedInvoicesInput {
   companyId: string;
   customerId?: string;
+  billingRecipientCustomerId?: string;
   status: ApprovedInvoiceStatus;
   dateFrom?: string;
   dateTo?: string;
@@ -33,7 +34,8 @@ export async function listApprovedInvoices(
   approvedInvoiceReader: ApprovedInvoiceReader,
 ): Promise<ApprovedInvoiceListPage> {
   validateApprovedInvoiceListInput(input);
-  const customerId = normalizeOptionalInvoiceListCustomerId(input.customerId);
+  const { billingRecipientCustomerId, customerId } =
+    normalizeInvoiceListCustomerFilters(input);
 
   const offset = (input.page - 1) * input.pageSize;
 
@@ -44,6 +46,7 @@ export async function listApprovedInvoices(
   const result = await approvedInvoiceReader.listApprovedInvoiceSummaries({
     companyId: input.companyId,
     customerId,
+    billingRecipientCustomerId,
     status: input.status,
     dateFrom: input.dateFrom ?? null,
     dateTo: input.dateTo ?? null,

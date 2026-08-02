@@ -27,6 +27,7 @@ import {
   initialCustomerWorkspaceState,
 } from './customerWorkspaceState.js';
 import { useCustomerActivity } from './hooks/useCustomerActivity.js';
+import { useBillingRecipientInvoices } from './hooks/useBillingRecipientInvoices.js';
 import { useCustomerInvoices } from './hooks/useCustomerInvoices.js';
 import styles from './CustomerPageView.module.css';
 import { getFinnishApiErrorMessage, uiText } from '../../i18n/fi.js';
@@ -47,12 +48,14 @@ type CustomerPageClient = Pick<
 interface CustomerPageProps {
   apiClient: CustomerPageClient;
   navigationRequest: CustomerNavigationRequest;
+  onCreateInvoice(customerId: string): void;
   onOpenInvoice(target: CustomerInvoiceNavigationTarget): void;
 }
 
 export function CustomerPage({
   apiClient,
   navigationRequest,
+  onCreateInvoice,
   onOpenInvoice,
 }: CustomerPageProps): React.JSX.Element {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -84,6 +87,12 @@ export function CustomerPage({
       : null;
   const activityState = useCustomerActivity(apiClient, selectedCustomerId);
   const invoiceState = useCustomerInvoices(apiClient, selectedCustomerId);
+  const billingRecipientInvoiceState = useBillingRecipientInvoices(
+    apiClient,
+    customerDetail?.customerType === 'propertyManager'
+      ? customerDetail.id
+      : null,
+  );
   const propertyManagerCustomers = customers.filter(
     (customer) => customer.customerType === 'propertyManager',
   );
@@ -287,6 +296,18 @@ export function CustomerPage({
     });
   }
 
+  function openRelatedCustomer(customerId: string): void {
+    if (!customers.some((customer) => customer.id === customerId)) {
+      return;
+    }
+
+    setSaveErrorMessage(null);
+    dispatchWorkspace({
+      customerId,
+      type: 'showCustomerOverview',
+    });
+  }
+
   function openEditWorkspace(): void {
     if (customerDetail === null) {
       return;
@@ -341,45 +362,32 @@ export function CustomerPage({
   return (
     <div className={styles.workspace}>
       {workspaceState.mode === 'list' ? (
-        <>
-          <section className={`page-intro ${styles.pageHeader}`}>
-            <div>
-              <p className="eyebrow">
-                {uiText.customers.customerWorkspace}
-              </p>
-              <h2>{uiText.customers.customerRegister}</h2>
-              <p>{uiText.customers.description}</p>
-            </div>
-          </section>
-          <CustomerList
-            activeFilter={listViewState.activeFilter}
-            customers={customers}
-            errorMessage={loadErrorMessage}
-            expandedPropertyManagerIds={
-              listViewState.expandedPropertyManagerIds
-            }
-            isLoading={isLoading}
-            onActiveFilterChange={(activeFilter) =>
-              dispatchListView({ activeFilter, type: 'changeFilter' })
-            }
-            onCreateClick={openCreateWorkspace}
-            onCustomerSelect={openCustomerOverview}
-            onPropertyManagerToggle={(customerId) =>
-              dispatchListView({
-                customerId,
-                type: 'togglePropertyManager',
-              })
-            }
-            onSearchQueryChange={(searchQuery) =>
-              dispatchListView({ searchQuery, type: 'changeSearchQuery' })
-            }
-            onSortChange={(sortKey) =>
-              dispatchListView({ sortKey, type: 'updateSort' })
-            }
-            searchQuery={listViewState.searchQuery}
-            sortState={listViewState.sortState}
-          />
-        </>
+        <CustomerList
+          activeFilter={listViewState.activeFilter}
+          customers={customers}
+          errorMessage={loadErrorMessage}
+          expandedPropertyManagerIds={listViewState.expandedPropertyManagerIds}
+          isLoading={isLoading}
+          onActiveFilterChange={(activeFilter) =>
+            dispatchListView({ activeFilter, type: 'changeFilter' })
+          }
+          onCreateClick={openCreateWorkspace}
+          onCustomerSelect={openCustomerOverview}
+          onPropertyManagerToggle={(customerId) =>
+            dispatchListView({
+              customerId,
+              type: 'togglePropertyManager',
+            })
+          }
+          onSearchQueryChange={(searchQuery) =>
+            dispatchListView({ searchQuery, type: 'changeSearchQuery' })
+          }
+          onSortChange={(sortKey) =>
+            dispatchListView({ sortKey, type: 'updateSort' })
+          }
+          searchQuery={listViewState.searchQuery}
+          sortState={listViewState.sortState}
+        />
       ) : null}
 
       {workspaceState.mode === 'create' ? (
@@ -411,6 +419,7 @@ export function CustomerPage({
       {workspaceState.mode === 'overview' ? (
         <CustomerOverviewWorkspace
           activityState={activityState}
+          billingRecipientInvoiceState={billingRecipientInvoiceState}
           customer={customerDetail}
           customers={customers}
           defaultHourlyRateState={defaultHourlyRateState}
@@ -418,8 +427,10 @@ export function CustomerPage({
           invoiceState={invoiceState}
           isLoading={isDetailLoading}
           onBack={returnToCustomerList}
+          onCreateInvoice={onCreateInvoice}
           onEdit={openEditWorkspace}
           onOpenInvoice={onOpenInvoice}
+          onOpenRelatedCustomer={openRelatedCustomer}
         />
       ) : null}
     </div>

@@ -61,13 +61,15 @@ describe('SentInvoiceGroupList', () => {
         ]}
         listLabel={uiText.invoicing.paidInvoiceList}
         onOpenApprovedInvoice={vi.fn()}
-        showPaidOn
       />,
     );
 
     expect(html).toContain(uiText.invoicing.statusPaid);
     expect(html).toContain(uiText.invoicing.invoicePaymentDate);
     expect(html).toContain('31.07.2026');
+    expect(html).not.toContain(
+      `scope="col">${uiText.invoicing.invoicePaymentDate}</th>`,
+    );
     expect(html).not.toContain(uiText.invoicing.statusCredited);
   });
 });
@@ -114,6 +116,7 @@ function createSummary(
     invoiceNumber: '20260001',
     referenceNumber: '202600017',
     status: 'sent',
+    subject: 'Ikkunatyö',
     updatedAt: '2026-07-01T10:00:00.000Z',
     paymentState:
       overrides.invoiceKind === 'credit' ? 'notApplicable' : 'unpaid',

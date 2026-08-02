@@ -35,6 +35,13 @@ function appendInvoiceListSearchParameters(
   searchParameters: URLSearchParams,
   query: SentInvoiceGroupListQuery,
 ): void {
+  if (
+    query.customerId !== undefined &&
+    query.billingRecipientCustomerId !== undefined
+  ) {
+    throw new Error('Invoice list customer filters cannot be combined.');
+  }
+
   searchParameters.set('page', String(query.page));
   searchParameters.set('pageSize', String(query.pageSize));
   searchParameters.set('sort', query.sort);
@@ -49,5 +56,12 @@ function appendInvoiceListSearchParameters(
 
   if (query.customerId !== undefined) {
     searchParameters.set('customerId', query.customerId);
+  }
+
+  if (query.billingRecipientCustomerId !== undefined) {
+    searchParameters.set(
+      'billingRecipientCustomerId',
+      query.billingRecipientCustomerId,
+    );
   }
 }

@@ -35,6 +35,7 @@ describe('customer invoice rows', () => {
       type: 'draft',
     });
     expect(rows[0]?.date).toBe('2026-08-01');
+    expect(rows[0]?.subject).toBe('Ikkunatyö');
   });
 
   it('keeps credit notes with their root invoice and exposes both', () => {
@@ -65,7 +66,7 @@ describe('customer invoice rows', () => {
     expect(rows[1]).toMatchObject({
       isCredit: true,
       reference: '2026002',
-      relation: 'Hyvittää laskua 2026001',
+      subject: 'Ikkunatyö',
     });
   });
 
@@ -150,6 +151,7 @@ function createApprovedInvoice(
     invoiceNumber: '2026001',
     referenceNumber: '20260013',
     status: 'sent',
+    subject: 'Ikkunatyö',
     updatedAt: '2026-08-01T10:00:00.000Z',
     paymentState:
       overrides.invoiceKind === 'credit' ? 'notApplicable' : 'unpaid',

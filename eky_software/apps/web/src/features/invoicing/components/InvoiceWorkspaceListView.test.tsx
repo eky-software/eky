@@ -327,6 +327,7 @@ function createApprovedInvoiceSummary(
     customerNumberSnapshot: '1001',
     customerNameSnapshot: 'Esimerkki Asiakas Oy',
     billingRecipientNameSnapshot: 'Esimerkki Asiakas Oy',
+    subject: 'Ikkunatyö',
     invoiceDate: '2026-06-13',
     dueDate: '2026-06-27',
     grossTotalCents: 17_884,

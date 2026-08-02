@@ -91,6 +91,7 @@ function createCreditContext(): InvoiceCreditContext {
         invoiceNumber: '20260002',
         referenceNumber: '',
         status: 'approved',
+        subject: 'Työn hyvitys',
         customerId: 'customer-1',
         customerNumberSnapshot: '1001',
         customerNameSnapshot: 'Asiakas Oy',

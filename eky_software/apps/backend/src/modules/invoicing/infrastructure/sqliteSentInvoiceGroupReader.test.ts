@@ -310,6 +310,92 @@ describe('SqliteSentInvoiceGroupReader', () => {
     ).resolves.toEqual({ groups: [], totalCount: 0 });
   });
 
+  it('filters paginated roots by persisted billing recipient and excludes recipient-owned invoices', async () => {
+    insertInvoiceClone(database, {
+      id: 'recipient-root',
+      sourceDraftId: 'recipient-root-draft',
+      invoiceKind: 'standard',
+      creditedInvoiceId: null,
+      invoiceNumber: '20260002',
+      status: 'sent',
+      totalGrossCents: 20_000,
+      invoiceDate: '2026-06-12',
+      customerId: 'housing-company-2',
+      billingRecipientCustomerId: 'billing-1',
+      customerNameSnapshot: 'Snapshot Housing Company 2',
+    });
+    insertInvoiceClone(database, {
+      id: 'recipient-is-owner',
+      sourceDraftId: 'recipient-owner-draft',
+      invoiceKind: 'standard',
+      creditedInvoiceId: null,
+      invoiceNumber: '20260003',
+      status: 'sent',
+      totalGrossCents: 30_000,
+      invoiceDate: '2026-06-15',
+      customerId: 'billing-1',
+      billingRecipientCustomerId: 'billing-1',
+    });
+    insertInvoiceClone(database, {
+      id: 'recipient-credit',
+      sourceDraftId: 'recipient-credit-draft',
+      invoiceKind: 'credit',
+      creditedInvoiceId: 'invoice-1',
+      invoiceNumber: '20260004',
+      status: 'sent',
+      totalGrossCents: 10_000,
+      invoiceDate: '2026-06-16',
+      customerId: 'customer-1',
+      billingRecipientCustomerId: 'billing-1',
+    });
+
+    await expect(
+      reader.listSentInvoiceGroups(
+        createSentInvoiceGroupQuery({
+          billingRecipientCustomerId: 'billing-1',
+          limit: 1,
+          offset: 1,
+        }),
+      ),
+    ).resolves.toMatchObject({
+      groups: [
+        {
+          rootInvoice: {
+            id: 'recipient-root',
+            customerId: 'housing-company-2',
+            customerNameSnapshot: 'Snapshot Housing Company 2',
+          },
+          creditInvoices: [],
+        },
+      ],
+      totalCount: 2,
+    });
+    await expect(
+      reader.listSentInvoiceGroups(
+        createSentInvoiceGroupQuery({
+          billingRecipientCustomerId: 'billing-1',
+          creditState: 'credited',
+        }),
+      ),
+    ).resolves.toMatchObject({
+      groups: [
+        {
+          rootInvoice: { id: 'invoice-1' },
+          creditInvoices: [{ id: 'recipient-credit' }],
+          creditStatus: 'partial',
+        },
+      ],
+      totalCount: 1,
+    });
+    await expect(
+      reader.listSentInvoiceGroups(
+        createSentInvoiceGroupQuery({
+          billingRecipientCustomerId: "billing-1' OR 1=1 --",
+        }),
+      ),
+    ).resolves.toEqual({ groups: [], totalCount: 0 });
+  });
+
   it('applies customer filtering consistently to page results and total count', async () => {
     insertInvoiceClone(database, {
       id: 'invoice-customer-1-b',

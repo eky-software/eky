@@ -79,5 +79,28 @@
 }
 
 .action {
+  box-sizing: border-box;
+  max-width: 100%;
   text-align: right !important;
+  white-space: normal !important;
+}
+
+.action > * {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+.status {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.statusDetail {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

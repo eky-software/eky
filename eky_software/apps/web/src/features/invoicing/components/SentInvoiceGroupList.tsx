@@ -5,6 +5,7 @@ import styles from './SentInvoiceGroupList.module.css';
 import { uiText } from '../../../i18n/fi.js';
 import {
   formatInvoiceListCurrency,
+  formatInvoiceListDate,
   InvoiceListTable,
   type InvoiceListTableLabels,
   type InvoiceListTableRow,
@@ -14,14 +15,12 @@ interface SentInvoiceGroupListProps {
   groups: SentInvoiceGroup[];
   listLabel: string;
   onOpenApprovedInvoice(id: string): void;
-  showPaidOn?: boolean;
 }
 
 export function SentInvoiceGroupList({
   groups,
   listLabel,
   onOpenApprovedInvoice,
-  showPaidOn = false,
 }: SentInvoiceGroupListProps): React.JSX.Element {
   return (
     <InvoiceListTable
@@ -33,7 +32,6 @@ export function SentInvoiceGroupList({
           dueDate: group.rootInvoice.dueDate,
           invoiceDate: group.rootInvoice.invoiceDate,
           key: group.rootInvoice.id,
-          paidOn: group.rootInvoice.paidOn,
           reference: (
             <div className={tableStyles.mainCell}>
               <button
@@ -66,6 +64,15 @@ export function SentInvoiceGroupList({
                     : uiText.invoicing.statusSent}
             </span>
           ),
+          statusDetail:
+            group.rootInvoice.paidOn === null ? undefined : (
+              <span>
+                {uiText.invoicing.invoicePaymentDate}{' '}
+                <time dateTime={group.rootInvoice.paidOn}>
+                  {formatInvoiceListDate(group.rootInvoice.paidOn)}
+                </time>
+              </span>
+            ),
           totalCents: group.rootInvoice.grossTotalCents,
         },
         ...group.creditInvoices.map(
@@ -98,7 +105,6 @@ export function SentInvoiceGroupList({
         ),
       ])}
       showCustomer
-      showPaidOn={showPaidOn}
     />
   );
 }
@@ -116,7 +122,6 @@ const invoiceListLabels: InvoiceListTableLabels = {
   dueDate: uiText.invoicing.dueDate,
   invoice: uiText.invoicing.invoice,
   invoiceDate: uiText.invoicing.invoiceDate,
-  paidOn: uiText.invoicing.invoicePaymentDate,
   status: uiText.invoicing.status,
   total: uiText.invoicing.total,
 };

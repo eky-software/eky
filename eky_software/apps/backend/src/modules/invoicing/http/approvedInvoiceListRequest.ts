@@ -1,6 +1,6 @@
 import type { ListApprovedInvoicesInput } from '../application/listApprovedInvoices.js';
 import type { ListSentInvoiceGroupsInput } from '../application/listSentInvoiceGroups.js';
-import { normalizeOptionalInvoiceListCustomerId } from '../application/invoiceListCustomerFilter.js';
+import { normalizeInvoiceListCustomerFilters } from '../application/invoiceListCustomerFilter.js';
 import {
   isApprovedInvoiceListPageSize,
   type ApprovedInvoiceListSort,
@@ -10,6 +10,7 @@ import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationErr
 const allowedFields = new Set([
   'status',
   'customerId',
+  'billingRecipientCustomerId',
   'dateFrom',
   'dateTo',
   'page',
@@ -36,7 +37,18 @@ export function parseApprovedInvoiceListRequest(
 
   const dateFrom = parseOptionalValue(query.dateFrom);
   const dateTo = parseOptionalValue(query.dateTo);
-  const customerId = normalizeOptionalInvoiceListCustomerId(query.customerId);
+  const { billingRecipientCustomerId, customerId } =
+    normalizeInvoiceListCustomerFilters({
+      ...(query.customerId === undefined
+        ? {}
+        : { customerId: query.customerId }),
+      ...(query.billingRecipientCustomerId === undefined
+        ? {}
+        : {
+            billingRecipientCustomerId:
+              query.billingRecipientCustomerId,
+          }),
+    });
 
   const pageSize = parseInteger(query.pageSize, 20);
 
@@ -53,6 +65,9 @@ export function parseApprovedInvoiceListRequest(
     pageSize,
     sort: parseSort(query.sort),
     ...(customerId === null ? {} : { customerId }),
+    ...(billingRecipientCustomerId === null
+      ? {}
+      : { billingRecipientCustomerId }),
     ...(dateFrom === undefined ? {} : { dateFrom }),
     ...(dateTo === undefined ? {} : { dateTo }),
   };

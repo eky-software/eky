@@ -18,6 +18,53 @@ describe('InvoiceDraftEditorView', () => {
     expect(html).not.toContain(uiText.invoicing.openDraftError);
   });
 
+  it.each([
+    ['company', 'Yritysasiakas'],
+    ['housingCompany', 'Asunto Oy Asiakas'],
+    ['propertyManager', 'Isännöinti Asiakas Oy'],
+  ] as const)(
+    'preselects an active %s customer from invoicing customer data',
+    (customerType, customerName) => {
+      const customer = createCustomer({ customerType, name: customerName });
+      const html = renderEditor({
+        customerListState: {
+          customers: [customer],
+          errorMessage: null,
+          isLoading: false,
+        },
+        editorMode: 'create',
+        initialCustomerId: customer.id,
+      });
+
+      expect(html).toContain(
+        `<option value="${customer.id}" selected="">1001 – ${customerName}</option>`,
+      );
+    },
+  );
+
+  it('uses the normal gross price default for a preselected private customer', () => {
+    const customer = createCustomer({
+      customerType: 'privatePerson',
+      name: 'Yksityisasiakas',
+    });
+    const html = renderEditor({
+      customerListState: {
+        customers: [customer],
+        errorMessage: null,
+        isLoading: false,
+      },
+      editorMode: 'create',
+      initialCustomerId: customer.id,
+    });
+
+    expect(html).toContain(
+      `<option value="${customer.id}" selected="">1001 – Yksityisasiakas</option>`,
+    );
+    expect(html).toContain(
+      'name="priceInputMode" checked="" value="gross"',
+    );
+  });
+
   it('renders the loading state while an invoice draft is opening', () => {
     const html = renderEditor({ isDraftLoading: true });
 
@@ -76,6 +123,7 @@ function renderEditor(
       editorMode="edit"
       invoicePaymentDefaultsState={createInvoicePaymentDefaultsState()}
       invoiceVatRatesState={createInvoiceVatRatesState()}
+      initialCustomerId={null}
       isDraftLoading={false}
       onBack={vi.fn()}
       onDraftApproved={vi.fn()}
@@ -169,7 +217,7 @@ function createCustomerListState(): InvoiceDraftEditorViewProps['customerListSta
   };
 }
 
-function createCustomer(): Customer {
+function createCustomer(overrides: Partial<Customer> = {}): Customer {
   return {
     businessId: '1234567-8',
     city: 'Helsinki',
@@ -188,6 +236,7 @@ function createCustomer(): Customer {
     status: 'active',
     streetAddress: 'Testikatu 1',
     updatedAt: '2026-06-13T18:00:00.000Z',
+    ...overrides,
   };
 }
 

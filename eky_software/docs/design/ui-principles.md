@@ -183,6 +183,13 @@ on kuvattu dokumentissa `docs/architecture/web-frontend-structure.md`.
 
 Työaluekortteja käytetään oikeisiin työpintoihin, ei koristeeksi.
 
+Päämoduulin nimeä ja yleistä tarkoitusta ei toisteta erillisessä
+esittelypaneelissa, kun `TopBar` ja ensimmäisen työpinnan oma otsikko kertovat
+jo käyttäjän sijainnin ja tehtävän. Pysyvä ohjeteksti sijoitetaan vain siihen
+työvaiheeseen, tyhjään tilaan tai poikkeustilanteeseen, jossa se auttaa
+käyttäjää tekemään päätöksen. Näin Classic-työtila säilyy tiiviinä eikä
+päivittäinen käyttö ala muistuttaa esittelysivua.
+
 ## Desktop Ensin
 
 Eky on ensin työpöytäkäyttöön suunnattu ERP-työkalu.

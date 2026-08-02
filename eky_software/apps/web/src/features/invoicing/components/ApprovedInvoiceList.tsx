@@ -97,7 +97,6 @@ const invoiceListLabels: InvoiceListTableLabels = {
   dueDate: uiText.invoicing.dueDate,
   invoice: uiText.invoicing.invoice,
   invoiceDate: uiText.invoicing.invoiceDate,
-  paidOn: uiText.invoicing.invoicePaymentDate,
   status: uiText.invoicing.status,
   total: uiText.invoicing.total,
 };

@@ -18,3 +18,29 @@ export function normalizeOptionalInvoiceListCustomerId(
 
   return normalizedCustomerId;
 }
+
+export interface InvoiceListCustomerFilters {
+  customerId: string | null;
+  billingRecipientCustomerId: string | null;
+}
+
+export function normalizeInvoiceListCustomerFilters(input: {
+  customerId?: string;
+  billingRecipientCustomerId?: string;
+}): InvoiceListCustomerFilters {
+  if (
+    input.customerId !== undefined &&
+    input.billingRecipientCustomerId !== undefined
+  ) {
+    throw new InvoiceDraftValidationError(
+      'Invoice list customer filters cannot be combined.',
+    );
+  }
+
+  return {
+    customerId: normalizeOptionalInvoiceListCustomerId(input.customerId),
+    billingRecipientCustomerId: normalizeOptionalInvoiceListCustomerId(
+      input.billingRecipientCustomerId,
+    ),
+  };
+}

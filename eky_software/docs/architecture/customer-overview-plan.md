@@ -164,15 +164,31 @@ Koko työalueen asiakaskortti lisää:
 - osoitteen
 - tilan
 - isännöitsijä/taloyhtiö-suhteen, jos se liittyy asiakkaaseen
+- isännöitsijätoimiston hallinnoimat taloyhtiöt Customersin nykyisestä
+  yritysrajatusta read modelista
 - asiakaskohtaisen tuntihinnan tai tiedon nykyisen oman yrityksen
   oletustuntihinnan käytöstä
 - laskut, jotka Invoicing rajaa laskun `customerId`-arvolla
+- isännöitsijätoimiston erilliset taloyhtiölaskut, joissa se on laskulle
+  tallennettu vastaanottaja
 - turvallisen Customers-historian asiakkaan luonnista, päivityksistä,
   aktivoinnista ja passivoinnista
+
+Asiakaslistassa isännöitsijätoimiston hallinnoimat taloyhtiöt avataan erillisellä
+disclosure-painikkeella. Painike näyttää suhteen lukumäärän, toimii
+näppäimistöllä eikä korvaa asiakaskortin avaavaa toimintoa. Isännöitsijän
+asiakaskortti listaa hallinnoidut taloyhtiöt ja taloyhtiön kortti linkittää
+nykyiseen isännöitsijään. Näiden linkkien kautta siirtyminen ei nollaa
+asiakaslistan hakua, suodatinta, lajittelua tai avattuja suhderyhmiä.
 
 Asiakkaan master data pysyy käytettävissä, vaikka lasku- tai historiaosion
 lataus epäonnistuisi. Jokaisella osiolla on oma loading-, empty- ja turvallinen
 error-tila.
+
+Tietueen tekniset elinkaaritiedot, kuten luonti- ja päivitysaika, näytetään
+koontinäkymässä juuri asiakkaan tapahtumahistorian edellä. Ne eivät katkaise
+asiakkaan perustietojen, suhteiden ja laskutustietojen muodostamaa työskentely-
+kokonaisuutta.
 
 ### Myöhemmin: Sites / Kohteet
 
@@ -205,9 +221,42 @@ moduulien välistä tapahtumavirtaa.
 Invoicing on jo olemassa, joten asiakaskohtaiset laskut kuuluvat ensimmäiseen
 varsinaiseen koontiin. Invoicing omistaa luonnosten, hyväksyttyjen,
 lähetettyjen, maksettujen, osahyvitettyjen, kokonaan hyvitettyjen ja peruttujen
-laskujen listasemantiikan. Suodatus perustuu laskun `customerId`-arvoon, ei
-valinnaiseen laskun vastaanottajaan. Hyvityslaskut ja maksutila säilyvät
-Invoicingin omistamassa ryhmittelyssä.
+laskujen listasemantiikan. Asiakkaan omien laskujen suodatus perustuu aina
+laskun `customerId`-arvoon. Hyvityslaskut ja maksutila säilyvät Invoicingin
+omistamassa ryhmittelyssä.
+
+Laskun juridinen asiakasomistajuus ja laskun vastaanottaminen ovat eri
+vastuita:
+
+- `customerId` määrittää juridisen asiakkaan ja asiakaskortin, jonka omiin
+  laskuihin lasku kuuluu
+- `billingRecipientCustomerId` määrittää laskulle tallennetun erillisen
+  vastaanottajan
+- vastaanottajana oleva isännöitsijätoimisto ei omista taloyhtiön laskua eikä
+  lasku näy sen omassa `customerId`-rajatussa laskulistassa
+- isännöitsijätoimiston kortilla vastaanotetut taloyhtiölaskut näytetään
+  erillisessä `Taloyhtiöiden laskut vastaanottajana` -read modelissa
+- recipient-read model näyttää laskun varsinaisena asiakkaana laskulle
+  tallennetun customer-snapshotin
+- vastaanottajalasku päätellään laskulle tallennetusta
+  `billingRecipientCustomerId`-arvosta, ei Customersin nykyisestä
+  `managedByCustomerId`-suhteesta
+- historiallinen vastaanottajalasku säilyy isännöitsijän recipient-listassa,
+  vaikka taloyhtiön nykyinen isännöitsijäsuhde myöhemmin muuttuisi
+- luonnokset jätetään ensimmäisen recipient-overview-version ulkopuolelle
+
+Recipient-listaus on Invoicingin yritysrajattu julkinen read model. Customers
+ei JOINaa laskutuksen tauluja eikä kopioi lasku- tai snapshot-dataa omaan
+persistenssiinsä. Isännöitsijätoimiston asiakaskortin oma paneeli käyttää tätä
+read modelia erillisellä loading-, empty- ja turvallisella error-tilalla.
+Paneelin virhe ei piilota customer-master-dataa, hallinnoituja taloyhtiöitä,
+asiakkaan omia laskuja tai tapahtumahistoriaa.
+
+Isännöitsijätoimiston hallinnoimat taloyhtiöt näytetään asiakaskortilla
+yrityksen omien perustietojen, yhteystietojen, osoitteen, hinnoittelun,
+lisätietojen jälkeen, juuri ennen laskutuskoosteita. Näin yrityksen omat tiedot
+muodostavat yhden kokonaisuuden ja siihen liittyvät taloyhtiösuhteet johdattavat
+luontevasti laskutustietoihin.
 
 Nykyisessä toteutuksessa asiakaskortin pääkategoriat ovat:
 
@@ -224,12 +273,27 @@ Customers-web käyttää julkisia API-client-sopimuksia ja tyypitettyä
 app-navigation callbackia laskun avaamiseen Invoicingissa. Se ei importtaa
 Invoicing-featuren sisäisiä komponentteja tai tilaa.
 
+Asiakaskortin laskutaulukko pidetään tarkoituksella tiiviinä. Rivillä näytetään
+laskunumero tai luonnosmerkintä, valinnainen aihe sen alla, päiväys, eräpäivä,
+summa, tila ja tarvittaessa maksupäivä sekä avaustoiminto. Hyvitysluonnos tai
+hyvityslasku tunnistetaan laskunumeron yhteydessä. Erillistä
+`Hyvityssuhde`-saraketta ei näytetä asiakaskortilla; hyvityksen tarkka suhde
+alkuperäiseen laskuun kuuluu laskun detail-näkymään.
+
 Manuaalisen maksuseurannan tarkempi sopimus on dokumentissa
 `docs/architecture/invoice-payment-tracking-plan.md`.
 
 Kategoriarajojen ja laskutukseen avaamisen järjestelmätodiste on
 `CUS-OVERVIEW-007` testissä
 `apps/e2e/tests/web/customerOverviewJourneys.spec.ts`.
+
+Asiakassuhteiden disclosure- ja navigointipolut todistetaan
+`CUS-REL-001`-, `CUS-REL-002`- ja `CUS-REL-003`-skenaarioilla.
+Juridisen asiakkaan omien laskujen ja vastaanottajalaskujen erottelu
+todistetaan `CUS-RECIPIENT-001`-skenaariolla sekä yritysraja
+`CUS-RECIPIENT-002`-skenaariolla. Nämä skenaariot sijaitsevat tiedostoissa
+`apps/e2e/tests/web/customerRelationshipJourneys.spec.ts` ja
+`apps/e2e/tests/system/customerRecipientTenantBoundary.spec.ts`.
 
 Asiakaskortin laskukokonaisuudella on yksi yhteinen lajittelu- ja
 sivukokovalinta. Oletussivukoko on 5, ja vaihtoehdot ovat 5, 20 ja 50.
@@ -283,7 +347,19 @@ Ensimmäisessä toteutuksessa ei lisätä:
 - Sites- tai Work Orders -moduulin toteutusta
 - Customersin omistamaa laskudataa tai JOINia Invoicing-infrastructureen
 - globaalia Activity-kopiota
-- uuden laskun luontia asiakaskortilta
+
+Asiakaskortilta voidaan aloittaa uusi lasku aktiiviselle asiakkaalle. Customers
+välittää app-navigationille vain asiakkaan tunnisteen eikä tunne
+laskulomaketta, Invoicingin statea tai hookkeja. App-kerros vaihtaa
+Laskutus-moduuliin, jossa Invoicing varmistaa tunnisteen omasta
+yritysrajatusta asiakaslistastaan ennen normaalin uuden laskun lomakkeen
+avaamista. Passiivinen, vanhentunut tai nykyisen yritysrajauksen ulkopuolelle
+jäävä tunniste ei avaa lomaketta.
+
+Onnistunut ja estetty asiakaskortilta aloitettava laskutuspolku todistetaan
+`CUS-INVOICE-001`- ja `CUS-INVOICE-002`-skenaarioilla. Selain ei lähetä tässä
+polussa `companyId`-arvoa, vaan yritysraja muodostuu backendin vahvistamasta
+kontekstista.
 
 ## Liittyvät Dokumentit
 

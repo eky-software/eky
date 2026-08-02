@@ -36,6 +36,7 @@ describe('listApprovedInvoices', () => {
     expect(reader.listApprovedInvoiceSummaries).toHaveBeenCalledWith({
       companyId: 'dev-company',
       customerId: 'customer-1',
+      billingRecipientCustomerId: null,
       status: 'sent',
       dateFrom: '2026-01-01',
       dateTo: '2026-12-31',
@@ -43,6 +44,49 @@ describe('listApprovedInvoices', () => {
       offset: 20,
       sort: 'invoiceDateDesc',
     });
+  });
+
+  it('passes a normalized billing-recipient filter without changing ownership', async () => {
+    const reader = createReader();
+
+    await listApprovedInvoices(
+      {
+        companyId: 'dev-company',
+        billingRecipientCustomerId: ' property-manager-1 ',
+        status: 'approved',
+        page: 1,
+        pageSize: 20,
+        sort: 'invoiceDateDesc',
+      },
+      reader,
+    );
+
+    expect(reader.listApprovedInvoiceSummaries).toHaveBeenCalledWith(
+      expect.objectContaining({
+        billingRecipientCustomerId: 'property-manager-1',
+        customerId: null,
+      }),
+    );
+  });
+
+  it('rejects combined customer and billing-recipient filters before reading', async () => {
+    const reader = createReader();
+
+    await expect(
+      listApprovedInvoices(
+        {
+          companyId: 'dev-company',
+          customerId: 'customer-1',
+          billingRecipientCustomerId: 'property-manager-1',
+          status: 'approved',
+          page: 1,
+          pageSize: 20,
+          sort: 'invoiceDateDesc',
+        },
+        reader,
+      ),
+    ).rejects.toBeInstanceOf(InvoiceDraftValidationError);
+    expect(reader.listApprovedInvoiceSummaries).not.toHaveBeenCalled();
   });
 
   it('accepts the compact five-row page size', async () => {
@@ -127,16 +171,24 @@ describe('listApprovedInvoices', () => {
     ).rejects.toBeInstanceOf(InvoiceDraftValidationError);
   });
 
-  it.each(['', 'x'.repeat(201)])(
-    'rejects an invalid customer filter before calling the reader: %s',
-    async (customerId) => {
+  it.each([
+    { field: 'customerId' as const, value: '' },
+    { field: 'customerId' as const, value: 'x'.repeat(201) },
+    { field: 'billingRecipientCustomerId' as const, value: '' },
+    {
+      field: 'billingRecipientCustomerId' as const,
+      value: 'x'.repeat(201),
+    },
+  ])(
+    'rejects an invalid $field filter before calling the reader',
+    async ({ field, value }) => {
       const reader = createReader();
 
       await expect(
         listApprovedInvoices(
           {
             companyId: 'dev-company',
-            customerId,
+            [field]: value,
             status: 'approved',
             page: 1,
             pageSize: 20,

@@ -327,6 +327,7 @@ export function parseApprovedInvoiceSummary(
       value,
       'billingRecipientNameSnapshot',
     ),
+    subject: readString(value, 'subject'),
     invoiceDate: readString(value, 'invoiceDate'),
     dueDate: readString(value, 'dueDate'),
     grossTotalCents: readSafeInteger(value, 'grossTotalCents'),

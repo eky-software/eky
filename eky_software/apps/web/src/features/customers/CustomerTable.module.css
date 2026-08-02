@@ -9,7 +9,7 @@
   display: grid;
   grid-template-columns:
     minmax(220px, 1.7fr) minmax(140px, 1fr) minmax(110px, 0.8fr)
-    minmax(160px, 1fr) minmax(108px, 0.65fr) 42px;
+    minmax(160px, 1fr) minmax(108px, 0.65fr);
   gap: 12px;
   align-items: center;
   min-width: 900px;
@@ -23,78 +23,75 @@
   border-top: 0;
 }
 
-.button {
-  width: 100%;
-  border: 0;
-  border-top: 1px solid var(--color-border);
-  border-radius: 0;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
 .group {
   display: grid;
 }
 
-.buttonRow {
+.customerButton {
   display: grid;
-  grid-template-columns:
-    minmax(220px, 1.7fr) minmax(140px, 1fr) minmax(110px, 0.8fr)
-    minmax(160px, 1fr) minmax(108px, 0.65fr) 42px;
-  padding: 0;
-}
-
-.openButton {
-  display: grid;
-  grid-column: 1 / 6;
-  grid-template-columns:
-    minmax(220px, 1.7fr) minmax(140px, 1fr) minmax(110px, 0.8fr)
-    minmax(160px, 1fr) minmax(108px, 0.65fr);
-  gap: 12px;
-  align-items: center;
-  width: 100%;
-  min-height: 46px;
+  justify-items: start;
+  width: fit-content;
+  max-width: 100%;
   border: 0;
   border-radius: 0;
-  padding: 0 14px;
+  padding: 0;
   color: inherit;
   background: transparent;
   text-align: left;
 }
 
-.expandButton {
-  grid-column: 6;
-  right: 12px;
-  display: grid;
-  width: 30px;
-  min-height: 30px;
-  place-items: center;
-  border: 1px solid var(--color-border-strong);
-  border-radius: 999px;
-  padding: 0;
+.customerButton:hover,
+.customerButton:focus-visible {
   color: var(--color-primary-dark);
-  background: var(--color-surface);
-  font-size: 1rem;
-  line-height: 1;
+  text-decoration: underline;
 }
 
-.expandButton:disabled {
-  color: var(--color-text-muted);
-  background: var(--color-surface-muted);
+.relationshipButton {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  width: fit-content;
+  min-height: 24px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 0;
+  color: var(--color-primary-dark);
+  background: transparent;
+  font-size: 0.8rem;
+  font-weight: 750;
+}
+
+.relationshipButton:hover,
+.relationshipButton:focus-visible {
+  background: #eaf2fd;
+  text-decoration: underline;
+}
+
+.chevron {
+  width: 14px;
+  font-size: 1rem;
+  line-height: 1;
+  text-align: center;
 }
 
 .childRow {
   border-top-style: dashed;
-  padding-left: 36px;
   background: #fbfdff;
 }
 
-.button:hover,
-.button:focus-visible,
-.openButton:hover,
-.openButton:focus-visible {
-  background: #f4f8fe;
+.childMainCell {
+  position: relative;
+  padding-left: 28px;
+}
+
+.relationshipLine {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 8px;
+  width: 12px;
+  border-bottom: 1px solid var(--color-border-strong);
+  border-left: 1px solid var(--color-border-strong);
 }
 
 .head {
@@ -161,7 +158,7 @@
   font-weight: 800;
 }
 
-.mainCell strong {
+.customerButton strong {
   overflow: hidden;
   color: var(--color-text);
   font-size: 0.95rem;
@@ -179,16 +176,6 @@
     grid-template-columns: 1fr;
     gap: 4px;
     padding: 12px;
-  }
-
-  .buttonRow {
-    min-width: 900px;
-  }
-
-  .openButton {
-    grid-template-columns: 1fr;
-    gap: 4px;
-    padding: 12px 54px 12px 12px;
   }
 
   .head {
