@@ -23,6 +23,7 @@ import {
 import type {
   ActivateInvoiceNumberingSeriesPersistenceInput,
   ActivateInvoiceNumberingSeriesPersistenceResult,
+  InvoiceNumberingSeriesActivationPreviewCriteria,
   InvoiceNumberingSeriesRepository,
 } from '../ports/invoiceNumberingSeriesRepository.js';
 import {
@@ -96,6 +97,23 @@ export class SqliteInvoiceNumberingSeriesRepository
     return this.readOverview(companyId);
   }
 
+  async getActivationPreview(
+    criteria: InvoiceNumberingSeriesActivationPreviewCriteria,
+  ) {
+    requireCompanyId(criteria.companyId);
+
+    if (this.readActiveSeries(criteria.companyId) === undefined) {
+      return undefined;
+    }
+
+    return calculateMinimumSafeInvoiceSequenceNumber({
+      existingInvoiceNumbers: this.readExistingInvoiceNumbers(
+        criteria.companyId,
+      ),
+      target: criteria.target,
+    });
+  }
+
   async activate(
     input: ActivateInvoiceNumberingSeriesPersistenceInput,
   ): Promise<ActivateInvoiceNumberingSeriesPersistenceResult> {
@@ -130,18 +148,10 @@ export class SqliteInvoiceNumberingSeriesRepository
           return { outcome: 'conflict' };
         }
 
-        const existingInvoiceNumbers = this.database
-          .prepare<CompanyParameters, InvoiceNumberRow>(
-            `
-              SELECT invoice_number
-              FROM invoices
-              WHERE company_id = ?
-            `,
-          )
-          .all(input.nextSettings.companyId)
-          .map((row) => row.invoice_number);
         const safeStart = calculateMinimumSafeInvoiceSequenceNumber({
-          existingInvoiceNumbers,
+          existingInvoiceNumbers: this.readExistingInvoiceNumbers(
+            input.nextSettings.companyId,
+          ),
           target: {
             mode: input.nextSettings.mode,
             fiscalYearStartMonth: input.nextSettings.fiscalYearStartMonth,
@@ -231,6 +241,19 @@ export class SqliteInvoiceNumberingSeriesRepository
         `,
       )
       .get(companyId);
+  }
+
+  private readExistingInvoiceNumbers(companyId: string): string[] {
+    return this.database
+      .prepare<CompanyParameters, InvoiceNumberRow>(
+        `
+          SELECT invoice_number
+          FROM invoices
+          WHERE company_id = ?
+        `,
+      )
+      .all(companyId)
+      .map((row) => row.invoice_number);
   }
 
   private readOverview(

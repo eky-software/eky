@@ -19,8 +19,13 @@ Laskun hyväksynnän, virallisen laskunumeron, numerointisarjojen, snapshotin ja
 Käytetyn numerointisarjan hallittu korvaaminen uudella immutable-sarjalla,
 aktiivisen sarjan pointer ja append-only-vaihtohistoria on suunniteltu
 dokumentissa
-`docs/architecture/invoice-numbering-series-transition-plan.md`. Toteutus ei
-resetoi tai avaa vanhaa sarjaa muokattavaksi.
+`docs/architecture/invoice-numbering-series-transition-plan.md`. Toteutettu
+poikkeuspolku laskee backendissä pienimmän törmäyksettömän aloitusnumeron,
+vaatii täsmällisen vahvistuksen ja vaihtaa aktiivisen pointerin atomisesti.
+Se ei resetoi, poista, uudelleenaktivoi tai avaa vanhaa sarjaa muokattavaksi.
+Aktivointi ei varaa laskunumeroa. Standardi- ja hyvityslaskun hyväksyntä
+käyttävät transaktion sisällä luettua aktiivista sarjaa, mutta reapproval
+säilyttää laskun alkuperäisen sarjan ja numeron.
 
 Hyväksytyn laskun katselu-, print- ja PDF-polun tarvitsemat data- ja snapshot-valmiudet on kuvattu dokumentissa `docs/architecture/invoice-print-data-foundation-plan.md`.
 

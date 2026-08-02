@@ -14,6 +14,7 @@ import type {
 import { activateInvoiceNumberingSeries } from './activateInvoiceNumberingSeries.js';
 import { getInvoiceNumberingSeriesOverview } from './getInvoiceNumberingSeriesOverview.js';
 import { InvoiceNumberingSeriesError } from './invoiceNumberingSeriesError.js';
+import { previewInvoiceNumberingSeriesActivation } from './previewInvoiceNumberingSeriesActivation.js';
 
 class FakeInvoiceNumberingSeriesRepository
   implements InvoiceNumberingSeriesRepository
@@ -30,6 +31,16 @@ class FakeInvoiceNumberingSeriesRepository
 
   async getOverview(): Promise<InvoiceNumberingSeriesOverview | undefined> {
     return this.overview;
+  }
+
+  async getActivationPreview() {
+    return this.overview === undefined
+      ? undefined
+      : {
+          capacity: 'available' as const,
+          maximumSequenceNumber: 999_999,
+          minimumSafeFirstSequenceNumber: 100,
+        };
   }
 
   async activate(
@@ -62,10 +73,30 @@ describe('invoice numbering series application services', () => {
       ),
     ).resolves.toMatchObject({
       activeSeries: {
-        seriesKey: 'default',
         mode: 'calendarYearSequence',
       },
       revision: 1,
+    });
+  });
+
+  it('returns a backend-calculated activation preview bound to its date', async () => {
+    await expect(
+      previewInvoiceNumberingSeriesActivation(
+        {
+          actorContext: createActorContextForCompany('dev-company'),
+          fiscalYearStartMonth: 1,
+          mode: 'calendarYearSequence',
+          previewDate: '2026-08-02',
+          sequencePadding: 4,
+        },
+        new FakeInvoiceNumberingSeriesRepository(),
+      ),
+    ).resolves.toEqual({
+      capacity: 'available',
+      maximumSequenceNumber: 999_999,
+      minimumFirstSequenceNumber: 100,
+      previewDate: '2026-08-02',
+      previewInvoiceNumber: '20260100',
     });
   });
 
@@ -102,7 +133,6 @@ describe('invoice numbering series application services', () => {
       ),
     ).resolves.toMatchObject({
       activeSeries: {
-        seriesKey: 'series-generated',
         firstSequenceNumber: 100,
       },
       revision: 2,
@@ -191,7 +221,6 @@ function createActivationInput(
   return {
     actorContext: createActorContextForCompany('dev-company'),
     confirmation: activateInvoiceNumberingSeriesConfirmation,
-    currentActiveSeriesKey: 'default',
     currentRevision: 1,
     firstSequenceNumber: 100,
     fiscalYearStartMonth: 1,

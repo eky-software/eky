@@ -86,9 +86,21 @@ Ensimmäiset toteutetut local-owner-permissionit ovat:
 
 - `manageCompanySettings`
 - `manageInvoiceSettings`
+- `manageInvoiceNumberingSeries`
+- `manageInvoiceCorrections`
+- `manageInvoicePayments`
 - `manageCompanyEmailSettings`
 - `manageCompanyEmailSecret`
 - `sendInvoices`
+- `viewActivity`
+- `viewDiagnostics`
+- `createSupportBundle`
+
+`manageInvoiceNumberingSeries` on käytetyn laskunumerosarjan korvaavan uuden
+sarjan korkean kitkan poikkeustoiminto. Se ei sisälly
+`manageInvoiceSettings`-oikeuteen implisiittisesti. Backend vaatii oikeuden
+sekä esikatselussa että aktivoinnissa ja ottaa yrityksen sekä actorin vain
+vahvistetusta `ActorContext`-kontekstista.
 
 Local ownerin oikeudet luetellaan eksplisiittisesti. Uuden permission-arvon
 lisääminen `packages/permissions`-pakettiin ei saa automaattisesti antaa sitä

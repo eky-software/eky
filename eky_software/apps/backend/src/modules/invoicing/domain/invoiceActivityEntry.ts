@@ -1,5 +1,6 @@
 export type InvoiceActivityAction =
   | 'invoiceNumberingSettings.updated'
+  | 'invoiceNumberingSeries.activated'
   | 'invoicePaymentSettings.updated'
   | 'invoiceVatRates.updated'
   | 'invoice.approved'

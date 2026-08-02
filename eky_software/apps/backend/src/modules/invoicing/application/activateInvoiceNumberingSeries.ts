@@ -23,7 +23,6 @@ import {
 export interface ActivateInvoiceNumberingSeriesInput {
   actorContext: ActorContext;
   confirmation: string;
-  currentActiveSeriesKey: string;
   currentRevision: number;
   firstSequenceNumber: number;
   fiscalYearStartMonth: number;
@@ -63,11 +62,29 @@ export async function activateInvoiceNumberingSeries(
   const companyId = requireNonEmpty(input.actorContext.companyId);
   const actorUserId = requireNonEmpty(input.actorContext.actorId);
   const now = requireNonEmpty(input.now);
+  const currentOverview = await dependencies.repository.getOverview(companyId);
+
+  if (currentOverview === undefined) {
+    throw new InvoiceNumberingSeriesError(
+      'notFound',
+      'Invoice numbering series was not found.',
+    );
+  }
+
+  if (currentOverview.activeSeries.revision !== input.currentRevision) {
+    throw new InvoiceNumberingSeriesError(
+      'conflict',
+      'Invoice numbering series changed before activation.',
+    );
+  }
+
+  validateInvoiceNumberingActiveSeries(currentOverview.activeSeries);
+  const currentActiveSeriesKey = currentOverview.activeSeries.activeSeriesKey;
   const nextSeriesKey = dependencies.createSeriesKey();
   const eventId = dependencies.createEventId();
   const reasonNote = normalizeInvoiceNumberingSeriesReasonNote(input.reasonNote);
 
-  validateInvoiceNumberSeriesKey(input.currentActiveSeriesKey);
+  validateInvoiceNumberSeriesKey(currentActiveSeriesKey);
   validateInvoiceNumberSeriesKey(nextSeriesKey);
   validateInvoiceNumberingSettings({
     mode: input.mode,
@@ -87,7 +104,7 @@ export async function activateInvoiceNumberingSeries(
     id: eventId,
     companyId,
     actorUserId,
-    previousSeriesKey: input.currentActiveSeriesKey,
+    previousSeriesKey: currentActiveSeriesKey,
     nextSeriesKey,
     reasonCode: input.reasonCode,
     reasonNote,
@@ -110,7 +127,7 @@ export async function activateInvoiceNumberingSeries(
   const result = await dependencies.repository.activate({
     activeSeries,
     event,
-    expectedActiveSeriesKey: input.currentActiveSeriesKey,
+    expectedActiveSeriesKey: currentActiveSeriesKey,
     expectedRevision: input.currentRevision,
     nextSettings,
   });

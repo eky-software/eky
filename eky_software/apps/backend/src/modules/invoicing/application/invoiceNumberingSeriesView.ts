@@ -1,8 +1,10 @@
 import type { InvoiceNumberingMode } from '../domain/invoiceNumbering.js';
-import type { InvoiceNumberingSeriesOverview } from '../domain/invoiceNumberingSeries.js';
+import {
+  activateInvoiceNumberingSeriesConfirmation,
+  type InvoiceNumberingSeriesOverview,
+} from '../domain/invoiceNumberingSeries.js';
 
 export interface InvoiceNumberingSeriesSettingsView {
-  seriesKey: string;
   mode: InvoiceNumberingMode;
   fiscalYearStartMonth: number;
   sequencePadding: number;
@@ -19,6 +21,7 @@ export interface InvoiceNumberingSeriesOverviewView {
   activeSeries: InvoiceNumberingSeriesSettingsView & {
     activatedAt: string;
   };
+  activationConfirmationText: string;
   history: InvoiceNumberingSeriesHistoryView[];
   revision: number;
 }
@@ -31,6 +34,7 @@ export function toInvoiceNumberingSeriesOverviewView(
       ...toSettingsView(overview.activeSettings),
       activatedAt: overview.activeSeries.updatedAt,
     },
+    activationConfirmationText: activateInvoiceNumberingSeriesConfirmation,
     history: overview.history.map((entry) => ({
       previousSeries: toSettingsView(entry.settings),
       replacedAt: entry.event.occurredAt,
@@ -43,7 +47,6 @@ function toSettingsView(
   settings: InvoiceNumberingSeriesOverview['activeSettings'],
 ): InvoiceNumberingSeriesSettingsView {
   return {
-    seriesKey: settings.seriesKey,
     mode: settings.mode,
     fiscalYearStartMonth: settings.fiscalYearStartMonth,
     sequencePadding: settings.sequencePadding,

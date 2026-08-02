@@ -111,6 +111,33 @@ describe('desktop protocol policy', () => {
     expect(isAllowedBackendRequest('GET', '/invoice-vat-rates')).toBe(true);
     expect(isAllowedBackendRequest('PUT', '/invoice-vat-rates')).toBe(true);
     expect(isAllowedBackendRequest('POST', '/invoice-vat-rates')).toBe(false);
+    expect(isAllowedBackendRequest('GET', '/invoice-numbering-series')).toBe(
+      true,
+    );
+    expect(
+      isAllowedBackendRequest(
+        'GET',
+        '/invoice-numbering-series/activation-preview',
+      ),
+    ).toBe(true);
+    expect(
+      isAllowedBackendRequest(
+        'POST',
+        '/invoice-numbering-series/activation-preview',
+      ),
+    ).toBe(false);
+    expect(
+      isAllowedBackendRequest('POST', '/invoice-numbering-series/activate'),
+    ).toBe(true);
+    expect(
+      isAllowedBackendRequest('GET', '/invoice-numbering-series/activate'),
+    ).toBe(false);
+    expect(
+      isAllowedBackendRequest(
+        'POST',
+        '/invoice-numbering-series/activate/extra',
+      ),
+    ).toBe(false);
     expect(isAllowedBackendRequest('GET', '/unknown')).toBe(false);
     expect(isAllowedBackendRequest('GET', '/customers/%2e%2e/secret')).toBe(false);
   });

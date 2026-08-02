@@ -169,6 +169,39 @@ describe('activity API client', () => {
     });
   });
 
+  it('accepts a safe numbering series activation without technical metadata', async () => {
+    const client = createEkyApiClient({
+      baseUrl: '',
+      fetch: async () =>
+        jsonResponse({
+          activityItems: [
+            {
+              id: 'invoicing:numbering-series-event',
+              module: 'invoicing',
+              occurredAt: '2026-08-02T20:00:00.000Z',
+              outcome: 'success',
+              reference: null,
+              type: 'invoiceNumberingSeries.activated',
+            },
+          ],
+          hasNextPage: false,
+          hasPreviousPage: false,
+          month: '2026-08',
+          page: 1,
+          pageSize: 20,
+        }),
+    });
+
+    await expect(client.listActivity()).resolves.toMatchObject({
+      activityItems: [
+        {
+          reference: null,
+          type: 'invoiceNumberingSeries.activated',
+        },
+      ],
+    });
+  });
+
   it('accepts a safe invoice payment event with an invoice reference', async () => {
     const client = createEkyApiClient({
       baseUrl: '',

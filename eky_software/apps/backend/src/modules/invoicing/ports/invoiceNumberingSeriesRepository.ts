@@ -1,5 +1,9 @@
 import type { StoredInvoiceNumberingSettings } from '../domain/invoiceNumbering.js';
 import type {
+  InvoiceNumberingSeriesCandidate,
+  MinimumSafeInvoiceSequenceNumberResult,
+} from '../domain/calculateMinimumSafeInvoiceSequenceNumber.js';
+import type {
   InvoiceNumberingActiveSeries,
   InvoiceNumberingSeriesEvent,
   InvoiceNumberingSeriesOverview,
@@ -22,10 +26,18 @@ export type ActivateInvoiceNumberingSeriesPersistenceResult =
       outcome: 'conflict' | 'notFound' | 'unsafeFirstSequenceNumber';
     };
 
+export interface InvoiceNumberingSeriesActivationPreviewCriteria {
+  companyId: string;
+  target: InvoiceNumberingSeriesCandidate;
+}
+
 export interface InvoiceNumberingSeriesRepository {
   getOverview(
     companyId: string,
   ): Promise<InvoiceNumberingSeriesOverview | undefined>;
+  getActivationPreview(
+    criteria: InvoiceNumberingSeriesActivationPreviewCriteria,
+  ): Promise<MinimumSafeInvoiceSequenceNumberResult | undefined>;
   activate(
     input: ActivateInvoiceNumberingSeriesPersistenceInput,
   ): Promise<ActivateInvoiceNumberingSeriesPersistenceResult>;

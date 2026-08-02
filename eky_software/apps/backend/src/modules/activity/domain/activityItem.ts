@@ -18,6 +18,7 @@ export type ActivityItemType =
   | 'invoice.paymentMarkReverted'
   | 'invoice.paymentMarkedPaid'
   | 'invoiceNumberingSettings.updated'
+  | 'invoiceNumberingSeries.activated'
   | 'invoicePaymentSettings.updated'
   | 'invoice.reapproved'
   | 'invoice.reopenedForEdit'

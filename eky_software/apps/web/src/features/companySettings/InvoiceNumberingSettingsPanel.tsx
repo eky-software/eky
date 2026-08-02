@@ -2,6 +2,7 @@ import type { EkyApiClient } from '@eky/api-client';
 import { useEffect, useState } from 'react';
 
 import { InvoiceNumberingSettingsForm } from './InvoiceNumberingSettingsForm.js';
+import { InvoiceNumberingSeriesTransitionPanel } from './InvoiceNumberingSeriesTransitionPanel.js';
 import {
   hasInvoiceNumberingSettingsValidationErrors,
   initialInvoiceNumberingSettingsForm,
@@ -17,7 +18,11 @@ import { uiText } from '../../i18n/fi.js';
 interface InvoiceNumberingSettingsPanelProps {
   apiClient: Pick<
     EkyApiClient,
-    'getInvoiceNumberingSettings' | 'updateInvoiceNumberingSettings'
+    | 'activateInvoiceNumberingSeries'
+    | 'getInvoiceNumberingSeriesOverview'
+    | 'getInvoiceNumberingSettings'
+    | 'previewInvoiceNumberingSeriesActivation'
+    | 'updateInvoiceNumberingSettings'
   >;
 }
 
@@ -88,6 +93,10 @@ export function InvoiceNumberingSettingsPanel({
         {numberingSettingsState.errorMessage}
       </p>
     );
+  }
+
+  if (numberingSettingsState.settings?.hasUsedNumbering) {
+    return <InvoiceNumberingSeriesTransitionPanel apiClient={apiClient} />;
   }
 
   return (

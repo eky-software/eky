@@ -19,12 +19,15 @@ import { MessageBanner } from '../../shared/ui/index.js';
 
 type CompanySettingsPageClient = Pick<
   EkyApiClient,
+  | 'activateInvoiceNumberingSeries'
   | 'getCompanyEmailSecretStatus'
   | 'getCompanySettings'
+  | 'getInvoiceNumberingSeriesOverview'
   | 'getInvoiceNumberingSettings'
   | 'getInvoicePaymentSettings'
   | 'getInvoiceVatRates'
   | 'removeCompanyEmailSecret'
+  | 'previewInvoiceNumberingSeriesActivation'
   | 'setCompanyEmailSecret'
   | 'updateCompanySettings'
   | 'updateInvoiceNumberingSettings'

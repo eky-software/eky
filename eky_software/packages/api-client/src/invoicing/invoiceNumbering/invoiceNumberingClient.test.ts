@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   createEkyApiClient,
   EkyApiError,
+  type ActivateInvoiceNumberingSeriesRequest,
   type InvoiceNumberingSettingsView,
+  type InvoiceNumberingSeriesOverviewView,
   type UpdateInvoiceNumberingSettingsRequest,
 } from '../../index.js';
 
@@ -124,6 +126,96 @@ describe('invoice numbering settings api client', () => {
       status: 400,
     });
   });
+
+  it('gets the public numbering series overview without internal keys', async () => {
+    const requests = createRequestLog();
+    const invoiceNumberingSeriesOverview = createTestSeriesOverview();
+    const client = createTestClient(requests, {
+      invoiceNumberingSeriesOverview,
+    });
+
+    await expect(client.getInvoiceNumberingSeriesOverview()).resolves.toEqual(
+      invoiceNumberingSeriesOverview,
+    );
+    expect(requests[0]?.input).toBe('/invoice-numbering-series');
+    expect(
+      JSON.stringify(invoiceNumberingSeriesOverview),
+    ).not.toContain('seriesKey');
+  });
+
+  it('gets a date-bound safe start preview using only supported query values', async () => {
+    const requests = createRequestLog();
+    const invoiceNumberingSeriesActivationPreview = {
+      capacity: 'available',
+      maximumSequenceNumber: 9999,
+      minimumFirstSequenceNumber: 100,
+      previewDate: '2026-08-02',
+      previewInvoiceNumber: '20260100',
+    };
+    const client = createTestClient(requests, {
+      invoiceNumberingSeriesActivationPreview,
+    });
+
+    await expect(
+      client.previewInvoiceNumberingSeriesActivation({
+        mode: 'calendarYearSequence',
+        fiscalYearStartMonth: 1,
+        sequencePadding: 4,
+        previewDate: '2026-08-02',
+      }),
+    ).resolves.toEqual(invoiceNumberingSeriesActivationPreview);
+    expect(requests[0]?.input).toBe(
+      '/invoice-numbering-series/activation-preview?mode=calendarYearSequence&fiscalYearStartMonth=1&sequencePadding=4&previewDate=2026-08-02',
+    );
+  });
+
+  it('activates a series through a whitelisted POST body', async () => {
+    const requests = createRequestLog();
+    const invoiceNumberingSeriesOverview = createTestSeriesOverview({
+      revision: 2,
+    });
+    const input: ActivateInvoiceNumberingSeriesRequest = {
+      confirmation: 'OTA UUSI LASKUNUMEROSARJA KÄYTTÖÖN',
+      currentRevision: 1,
+      firstSequenceNumber: 100,
+      fiscalYearStartMonth: 1,
+      mode: 'calendarYearSequence',
+      reasonCode: 'accountingRequirement',
+      reasonNote: 'Kirjanpidon vaatima muutos',
+      sequencePadding: 4,
+    };
+    const unsafeInput = {
+      ...input,
+      companyId: 'other-company',
+      actorUserId: 'other-user',
+      seriesKey: 'chosen-by-browser',
+      now: '2020-01-01T00:00:00.000Z',
+    } as unknown as ActivateInvoiceNumberingSeriesRequest;
+    const client = createTestClient(requests, {
+      invoiceNumberingSeriesOverview,
+    }, 201);
+
+    await expect(
+      client.activateInvoiceNumberingSeries(unsafeInput),
+    ).resolves.toEqual(invoiceNumberingSeriesOverview);
+    expect(requests[0]?.input).toBe('/invoice-numbering-series/activate');
+    expect(requests[0]?.init?.method).toBe('POST');
+    expect(readRequestBody(requests[0])).toEqual(input);
+  });
+
+  it('rejects extra technical fields in numbering series responses', async () => {
+    const requests = createRequestLog();
+    const client = createTestClient(requests, {
+      invoiceNumberingSeriesOverview: {
+        ...createTestSeriesOverview(),
+        seriesKey: 'internal',
+      },
+    });
+
+    await expect(
+      client.getInvoiceNumberingSeriesOverview(),
+    ).rejects.toBeInstanceOf(EkyApiError);
+  });
 });
 
 interface RecordedRequest {
@@ -177,6 +269,36 @@ function createTestSettings(
     firstSequenceNumber: 1,
     hasUsedNumbering: false,
     isPersisted: false,
+    ...overrides,
+  };
+}
+
+function createTestSeriesOverview(
+  overrides: Partial<InvoiceNumberingSeriesOverviewView> = {},
+): InvoiceNumberingSeriesOverviewView {
+  return {
+    activeSeries: {
+      mode: 'calendarYearSequence',
+      fiscalYearStartMonth: 1,
+      sequencePadding: 4,
+      firstSequenceNumber: 1,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      activatedAt: '2026-01-01T00:00:00.000Z',
+    },
+    activationConfirmationText: 'OTA UUSI LASKUNUMEROSARJA KÄYTTÖÖN',
+    history: [
+      {
+        previousSeries: {
+          mode: 'plainSequence',
+          fiscalYearStartMonth: 1,
+          sequencePadding: 3,
+          firstSequenceNumber: 1,
+          createdAt: '2025-01-01T00:00:00.000Z',
+        },
+        replacedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ],
+    revision: 1,
     ...overrides,
   };
 }

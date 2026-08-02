@@ -67,6 +67,14 @@ accept a paid amount from the client. Invoicing calculates the payable amount
 from its approved invoice and credit snapshots. The current payment projection
 and append-only payment event must be written in one transaction.
 
+Used invoice numbering series are immutable history. A controlled transition
+creates a new settings row and changes the active pointer atomically; it must
+not reset, delete, reactivate or update an old series, allocate an invoice
+number, or accept company, actor or technical series identifiers from the
+request. Standard and credit approvals resolve the active series inside their
+write transaction. Reapproval preserves the invoice's original series and
+numbering snapshot.
+
 ## Cross-Module Contracts
 
 Customer membership checks use Invoicing's `CustomerAccessReader` port.

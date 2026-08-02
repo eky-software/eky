@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { Hono } from 'hono';
 
 import type { DatabaseConnection } from '../database/connection/createDatabaseConnection.js';
@@ -10,6 +12,7 @@ import { createDnaSmtpOperationalDiagnostics } from '../infrastructure/email/pro
 import type { CompanyEmailSecretReader } from '../modules/companySettings/ports/companyEmailSecretReader.js';
 import { approveCreditInvoiceDraft } from '../modules/invoicing/application/approveCreditInvoiceDraft.js';
 import { approveInvoiceDraft } from '../modules/invoicing/application/approveInvoiceDraft.js';
+import { activateInvoiceNumberingSeries } from '../modules/invoicing/application/activateInvoiceNumberingSeries.js';
 import { cancelApprovedInvoice } from '../modules/invoicing/application/cancelApprovedInvoice.js';
 import { createCreditInvoiceDraft } from '../modules/invoicing/application/createCreditInvoiceDraft.js';
 import { copyApprovedInvoiceToDraft } from '../modules/invoicing/application/copyApprovedInvoiceToDraft.js';
@@ -28,6 +31,7 @@ import { getInvoiceDraft } from '../modules/invoicing/application/getInvoiceDraf
 import { getCreditInvoiceDraft } from '../modules/invoicing/application/getCreditInvoiceDraft.js';
 import { getInvoiceCreditContext } from '../modules/invoicing/application/getInvoiceCreditContext.js';
 import { getInvoiceNumberingSettings } from '../modules/invoicing/application/getInvoiceNumberingSettings.js';
+import { getInvoiceNumberingSeriesOverview } from '../modules/invoicing/application/getInvoiceNumberingSeriesOverview.js';
 import { getInvoicePaymentSettings } from '../modules/invoicing/application/getInvoicePaymentSettings.js';
 import { getInvoiceVatRates } from '../modules/invoicing/application/getInvoiceVatRates.js';
 import { listApprovedInvoices } from '../modules/invoicing/application/listApprovedInvoices.js';
@@ -39,6 +43,7 @@ import { markInvoicePaid } from '../modules/invoicing/application/markInvoicePai
 import { prepareApprovedInvoiceEmailDryRun } from '../modules/invoicing/application/prepareApprovedInvoiceEmailDryRun.js';
 import { prepareApprovedInvoiceEmailSmtp } from '../modules/invoicing/application/prepareApprovedInvoiceEmailSmtp.js';
 import { prepareApprovedInvoiceEmailSmtpTest } from '../modules/invoicing/application/prepareApprovedInvoiceEmailSmtpTest.js';
+import { previewInvoiceNumberingSeriesActivation } from '../modules/invoicing/application/previewInvoiceNumberingSeriesActivation.js';
 import { reopenApprovedInvoiceForEditing } from '../modules/invoicing/application/reopenApprovedInvoiceForEditing.js';
 import { revertInvoicePaidMark } from '../modules/invoicing/application/revertInvoicePaidMark.js';
 import { saveInvoiceDraft } from '../modules/invoicing/application/saveInvoiceDraft.js';
@@ -54,6 +59,7 @@ import { createApprovedInvoiceRoutes } from '../modules/invoicing/http/approvedI
 import { createInvoiceDraftRoutes } from '../modules/invoicing/http/invoiceDraftRoutes.js';
 import { createCreditInvoiceDraftRoutes } from '../modules/invoicing/http/creditInvoiceDraftRoutes.js';
 import { createInvoiceNumberingSettingsRoutes } from '../modules/invoicing/http/invoiceNumberingSettingsRoutes.js';
+import { createInvoiceNumberingSeriesRoutes } from '../modules/invoicing/http/invoiceNumberingSeriesRoutes.js';
 import { createInvoicePaymentSettingsRoutes } from '../modules/invoicing/http/invoicePaymentSettingsRoutes.js';
 import { createInvoiceVatRatesRoutes } from '../modules/invoicing/http/invoiceVatRatesRoutes.js';
 import { InMemoryInvoiceEmailSendAttemptStore } from '../modules/invoicing/infrastructure/inMemoryInvoiceEmailSendAttemptStore.js';
@@ -70,6 +76,7 @@ import { SqliteInvoiceDocumentRepository } from '../modules/invoicing/infrastruc
 import { SqliteInvoiceDraftRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceDraftRepository.js';
 import { SqliteInvoiceActivityReader } from '../modules/invoicing/infrastructure/sqliteInvoiceActivityReader.js';
 import { SqliteInvoiceNumberingRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceNumberingRepository.js';
+import { SqliteInvoiceNumberingSeriesRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceNumberingSeriesRepository.js';
 import { SqliteInvoicePaymentSettingsRepository } from '../modules/invoicing/infrastructure/sqliteInvoicePaymentSettingsRepository.js';
 import { SqliteInvoicePaymentRepository } from '../modules/invoicing/infrastructure/sqliteInvoicePaymentRepository.js';
 import { SqliteInvoiceVatRateRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceVatRateRepository.js';
@@ -150,6 +157,8 @@ export function createInvoicingComposition(
   const invoiceNumberingRepository = new SqliteInvoiceNumberingRepository(
     options.database,
   );
+  const invoiceNumberingSeriesRepository =
+    new SqliteInvoiceNumberingSeriesRepository(options.database);
   const invoicePaymentSettingsRepository =
     new SqliteInvoicePaymentSettingsRepository(options.database);
   const invoicePaymentRepository = new SqliteInvoicePaymentRepository(
@@ -452,6 +461,28 @@ export function createInvoicingComposition(
               invoiceNumberingRepository,
             ),
           options,
+        ),
+    }),
+  );
+
+  routes.route(
+    '/',
+    createInvoiceNumberingSeriesRoutes({
+      activateInvoiceNumberingSeries: (input) =>
+        activateInvoiceNumberingSeries(input, {
+          createEventId: randomUUID,
+          createSeriesKey: () => `series-${randomUUID()}`,
+          repository: invoiceNumberingSeriesRepository,
+        }),
+      getInvoiceNumberingSeriesOverview: (input) =>
+        getInvoiceNumberingSeriesOverview(
+          input,
+          invoiceNumberingSeriesRepository,
+        ),
+      previewInvoiceNumberingSeriesActivation: (input) =>
+        previewInvoiceNumberingSeriesActivation(
+          input,
+          invoiceNumberingSeriesRepository,
         ),
     }),
   );
