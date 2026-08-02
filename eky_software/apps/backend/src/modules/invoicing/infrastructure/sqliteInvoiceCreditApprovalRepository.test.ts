@@ -65,6 +65,82 @@ describe('SqliteInvoiceCreditApprovalRepository', () => {
     });
   });
 
+  it('uses the active numbering series for a credit approval', async () => {
+    database
+      .prepare(
+        `
+          INSERT INTO invoice_numbering_settings (
+            company_id,
+            series_key,
+            mode,
+            fiscal_year_start_month,
+            sequence_padding,
+            first_sequence_number,
+            created_at,
+            updated_at
+          )
+          VALUES (
+            'company-1',
+            'series-2',
+            'calendarYearSequence',
+            1,
+            4,
+            100,
+            '2026-07-23T11:00:00.000Z',
+            '2026-07-23T11:00:00.000Z'
+          )
+        `,
+      )
+      .run();
+    database
+      .prepare(
+        `
+          UPDATE invoice_numbering_active_series
+          SET
+            active_series_key = 'series-2',
+            revision = revision + 1,
+            updated_at = '2026-07-23T11:00:00.000Z',
+            updated_by = 'user-1'
+          WHERE company_id = 'company-1'
+        `,
+      )
+      .run();
+    const repository = new SqliteInvoiceCreditApprovalRepository(database);
+
+    await expect(repository.approveCreditDraft(createInput())).resolves.toMatchObject({
+      outcome: 'approved',
+      invoice: {
+        invoiceNumber: '20260100',
+        sequenceNumber: 100,
+        sequenceScope: 'calendar-year:2026',
+      },
+    });
+
+    expect(getCreditInvoice(database)).toMatchObject({
+      invoice_number: '20260100',
+      sequence_number: 100,
+      sequence_scope: 'calendar-year:2026',
+      series_key: 'series-2',
+    });
+    expect(
+      database
+        .prepare<
+          [string, string],
+          { last_sequence_number: number; sequence_scope: string }
+        >(
+          `
+            SELECT last_sequence_number, sequence_scope
+            FROM invoice_number_sequences
+            WHERE company_id = ? AND series_key = ?
+          `,
+        )
+        .get('company-1', 'series-2'),
+    ).toEqual({
+      last_sequence_number: 100,
+      sequence_scope: 'calendar-year:2026',
+    });
+  });
+
   it('rechecks cumulative credit capacity inside the transaction', async () => {
     insertPreviousCredit(database, 60);
     const repository = new SqliteInvoiceCreditApprovalRepository(database);
@@ -204,7 +280,6 @@ function createInput(): ApproveCreditInvoiceDraftPersistenceInput {
     companyId: 'company-1',
     draftId: 'credit-draft-1',
     invoiceId: 'credit-invoice-1',
-    seriesKey: 'default',
   };
 }
 
@@ -231,6 +306,26 @@ function insertFixture(database: DatabaseConnection): void {
           1,
           '2026-01-01T00:00:00.000Z',
           '2026-01-01T00:00:00.000Z'
+        )
+      `,
+    )
+    .run();
+  database
+    .prepare(
+      `
+        INSERT INTO invoice_numbering_active_series (
+          company_id,
+          active_series_key,
+          revision,
+          updated_at,
+          updated_by
+        )
+        VALUES (
+          'company-1',
+          'default',
+          1,
+          '2026-01-01T00:00:00.000Z',
+          'user-1'
         )
       `,
     )

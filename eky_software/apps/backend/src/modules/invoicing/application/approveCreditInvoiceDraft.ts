@@ -4,7 +4,6 @@ import { requirePermission } from '@eky/permissions';
 
 import { InvoiceCreditError } from '../domain/invoiceCreditError.js';
 import { requireIdentifier } from '../domain/invoiceDraftRules.js';
-import { validateInvoiceNumberSeriesKey } from '../domain/invoiceNumbering.js';
 import type {
   ApprovedCreditInvoiceResult,
   InvoiceCreditApprovalRepository,
@@ -16,7 +15,6 @@ export interface ApproveCreditInvoiceDraftInput {
   actorContext: ActorContext;
   approvedAt: string;
   draftId: string;
-  seriesKey: string;
 }
 
 export interface ApproveCreditInvoiceDraftDependencies {
@@ -42,12 +40,6 @@ export async function approveCreditInvoiceDraft(
     'Company id',
   );
   const draftId = requireIdentifier(input.draftId, 'Invoice draft id');
-  const seriesKey = requireIdentifier(
-    input.seriesKey,
-    'Invoice number series key',
-  );
-
-  validateInvoiceNumberSeriesKey(seriesKey);
 
   let result;
 
@@ -60,7 +52,6 @@ export async function approveCreditInvoiceDraft(
         companyId,
         draftId,
         invoiceId: randomUUID(),
-        seriesKey,
       });
   } catch (error) {
     if (error instanceof InvoiceCreditError) {

@@ -60,6 +60,11 @@ const migrationNames = [
   '031_add_invoice_corrections.sql',
   '032_add_credit_refund_iban.sql',
   '033_add_invoice_tax_treatments.sql',
+  '034_create_customer_audit_events.sql',
+  '035_create_company_settings_audit_events.sql',
+  '036_create_invoice_settings_audit_events.sql',
+  '037_add_invoice_payment_tracking.sql',
+  '038_create_invoice_numbering_series_transitions.sql',
 ];
 
 const migrationSql = migrationNames.map((migrationName) =>
@@ -219,7 +224,6 @@ function createApprovalInput(
     draftId: 'draft-1',
     invoiceId: 'invoice-1',
     reverseChargeEligibilityConfirmed: false,
-    seriesKey: 'default',
     ...overrides,
   };
 }
@@ -384,6 +388,43 @@ function insertNumberingSettings(
       overrides.mode ?? 'calendarYearSequence',
       overrides.firstSequenceNumber ?? 1,
     );
+
+  if ((overrides.seriesKey ?? 'default') === 'default') {
+    database
+      .prepare(
+        `
+          INSERT INTO invoice_numbering_active_series (
+            company_id,
+            active_series_key,
+            revision,
+            updated_at,
+            updated_by
+          )
+          VALUES (?, 'default', 1, 'updated', 'user-1')
+          ON CONFLICT (company_id) DO NOTHING
+        `,
+      )
+      .run(overrides.companyId ?? 'dev-company');
+  }
+}
+
+function activateNumberingSeries(
+  database: DatabaseConnection,
+  seriesKey: string,
+): void {
+  database
+    .prepare(
+      `
+        UPDATE invoice_numbering_active_series
+        SET
+          active_series_key = ?,
+          revision = revision + 1,
+          updated_at = 'series-changed',
+          updated_by = 'user-1'
+        WHERE company_id = 'dev-company'
+      `,
+    )
+    .run(seriesKey);
 }
 
 function getInvoice(
@@ -599,6 +640,98 @@ describe('SqliteInvoiceApprovalRepository', () => {
       sequence_scope: 'calendar-year:2027',
       series_key: 'default',
     });
+  });
+
+  it('uses the active numbering series for a new approval', async () => {
+    insertNumberingSettings(database, {
+      firstSequenceNumber: 100,
+      seriesKey: 'series-2',
+    });
+    activateNumberingSeries(database, 'series-2');
+    const repository = new SqliteInvoiceApprovalRepository(database);
+
+    await saveDraft(database, createDraft());
+
+    await expect(repository.approveDraft(createApprovalInput())).resolves.toMatchObject({
+      invoiceNumber: '20270100',
+      sequenceNumber: 100,
+      sequenceScope: 'calendar-year:2027',
+    });
+
+    expect(getInvoice(database, 'invoice-1')).toMatchObject({
+      invoice_number: '20270100',
+      sequence_number: 100,
+      sequence_scope: 'calendar-year:2027',
+      series_key: 'series-2',
+    });
+    expect(
+      database
+        .prepare<
+          [string, string],
+          InvoiceNumberSequenceRow
+        >(
+          `
+            SELECT *
+            FROM invoice_number_sequences
+            WHERE company_id = ? AND series_key = ?
+          `,
+        )
+        .get('dev-company', 'series-2'),
+    ).toMatchObject({
+      last_sequence_number: 100,
+      sequence_scope: 'calendar-year:2027',
+    });
+    expect(
+      database
+        .prepare<[string, string], InvoiceNumberSequenceRow>(
+          `
+            SELECT *
+            FROM invoice_number_sequences
+            WHERE company_id = ? AND series_key = ?
+          `,
+        )
+        .get('dev-company', 'default'),
+    ).toBeUndefined();
+  });
+
+  it('serializes two approvals without duplicate numbers or sequence gaps', async () => {
+    const repository = new SqliteInvoiceApprovalRepository(database);
+    await saveDraft(database, createDraft());
+    await saveDraft(
+      database,
+      createDraft(
+        {
+          id: 'draft-2',
+          createdAt: '2027-01-15T08:01:00.000Z',
+          updatedAt: '2027-01-15T08:01:00.000Z',
+        },
+        [createLine('draft-2-line-1', 1)],
+      ),
+    );
+
+    const results = await Promise.all([
+      repository.approveDraft(createApprovalInput()),
+      repository.approveDraft(
+        createApprovalInput({
+          approvedAt: '2027-01-15T12:00:01.000Z',
+          auditEventId: 'audit-2',
+          draftId: 'draft-2',
+          invoiceId: 'invoice-2',
+        }),
+      ),
+    ]);
+
+    expect(results.map((result) => result?.invoiceNumber)).toEqual([
+      '20270001',
+      '20270002',
+    ]);
+    expect(new Set(results.map((result) => result?.invoiceNumber)).size).toBe(2);
+    expect(getSequence(database)).toMatchObject({
+      last_sequence_number: 2,
+      sequence_scope: 'calendar-year:2027',
+      series_key: 'default',
+    });
+    expect(getAuditEvents(database)).toHaveLength(2);
   });
 
   it('requires explicit confirmation before approving reverse charge', async () => {
@@ -1390,6 +1523,21 @@ describe('SqliteInvoiceApprovalRepository', () => {
       }),
     ).resolves.toMatchObject({ draftId: 'draft-1' });
 
+    const sequenceRowsBeforeReapproval = database
+      .prepare<[], InvoiceNumberSequenceRow>(
+        `
+          SELECT *
+          FROM invoice_number_sequences
+          ORDER BY company_id, series_key, sequence_scope
+        `,
+      )
+      .all();
+    insertNumberingSettings(database, {
+      firstSequenceNumber: 100,
+      seriesKey: 'series-2',
+    });
+    activateNumberingSeries(database, 'series-2');
+
     const updatedDraft = createDraft(
       {
         note: 'Updated invoice note',
@@ -1430,6 +1578,9 @@ describe('SqliteInvoiceApprovalRepository', () => {
       invoice_number: '20270001',
       note: 'Updated invoice note',
       reference_number: '202700014',
+      sequence_number: 1,
+      sequence_scope: 'calendar-year:2027',
+      series_key: 'default',
       status: 'approved',
       total_gross_cents: updatedDraft.totals.grossTotalCents,
     });
@@ -1440,9 +1591,17 @@ describe('SqliteInvoiceApprovalRepository', () => {
       quantity_hundredths: 200,
       unit_price_cents: 12_000,
     });
-    expect(getSequence(database)).toMatchObject({
-      last_sequence_number: 1,
-    });
+    expect(
+      database
+        .prepare<[], InvoiceNumberSequenceRow>(
+          `
+            SELECT *
+            FROM invoice_number_sequences
+            ORDER BY company_id, series_key, sequence_scope
+          `,
+        )
+        .all(),
+    ).toEqual(sequenceRowsBeforeReapproval);
     expect(getAuditEvents(database).map((event) => event.action)).toEqual([
       'invoice.approved',
       'invoice.reopened_for_edit',
@@ -1750,13 +1909,24 @@ describe('SqliteInvoiceApprovalRepository', () => {
     });
   });
 
-  it('requires numbering settings before approving a draft', async () => {
+  it('requires valid active numbering settings before approving a draft', async () => {
     const repository = new SqliteInvoiceApprovalRepository(database);
 
     await saveDraft(database, createDraft());
+    database.pragma('foreign_keys = OFF');
+    database
+      .prepare(
+        `
+          UPDATE invoice_numbering_active_series
+          SET active_series_key = 'missing-series'
+          WHERE company_id = 'dev-company'
+        `,
+      )
+      .run();
+    database.pragma('foreign_keys = ON');
 
     await expect(
-      repository.approveDraft(createApprovalInput({ seriesKey: 'missing' })),
+      repository.approveDraft(createApprovalInput()),
     ).rejects.toThrow(ApproveInvoiceDraftError);
 
     expect(getInvoice(database, 'invoice-1')).toBeUndefined();

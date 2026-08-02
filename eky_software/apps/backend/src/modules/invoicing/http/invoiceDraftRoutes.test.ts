@@ -585,7 +585,7 @@ describe('invoiceDraftRoutes', () => {
     });
   });
 
-  it('approves a draft using the backend company context and default numbering series', async () => {
+  it('approves a draft using only the backend company context', async () => {
     const approvedInvoice = createApprovedInvoiceResult({
       draftId: 'draft-1',
       invoiceId: 'invoice-1',
@@ -608,8 +608,8 @@ describe('invoiceDraftRoutes', () => {
       actorUserId: 'local-user',
       companyId: 'dev-company',
       draftId: 'draft-1',
-      seriesKey: 'default',
     });
+    expect(testContext.getApproveInput()).not.toHaveProperty('seriesKey');
     expect(testContext.getApproveInput()?.approvedAt).toEqual(
       expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
     );
