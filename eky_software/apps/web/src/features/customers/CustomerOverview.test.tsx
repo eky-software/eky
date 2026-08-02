@@ -24,8 +24,7 @@ describe('CustomerOverview', () => {
     expect(html).toContain('72,50 €/h');
     expect(html).toContain('Asiakaskohtainen tuntihinta');
     expect(html).toContain('Sovittu yhteydenotto sähköpostilla.');
-    expect(html).toContain('Luotu');
-    expect(html).toContain('Päivitetty');
+    expect(html).not.toContain('Tietueen tiedot');
     expect(html).not.toContain('<input');
     expect(html).not.toContain('<select');
     expect(html).not.toContain('<textarea');

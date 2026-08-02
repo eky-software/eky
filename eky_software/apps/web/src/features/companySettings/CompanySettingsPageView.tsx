@@ -132,14 +132,6 @@ export function CompanySettingsPage({
 
   return (
     <div className={styles.workspace}>
-      <section className={`page-intro ${styles.pageHeader}`}>
-        <div>
-          <p className="eyebrow">{uiText.companySettings.workspace}</p>
-          <h2>{uiText.companySettings.title}</h2>
-          <p>{uiText.companySettings.description}</p>
-        </div>
-      </section>
-
       {loadErrorMessage ? (
         <MessageBanner variant="error">{loadErrorMessage}</MessageBanner>
       ) : null}

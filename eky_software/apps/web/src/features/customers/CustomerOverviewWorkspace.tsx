@@ -6,6 +6,7 @@ import type { CustomerInvoiceNavigationTarget } from './customerInvoiceNavigatio
 import type { CustomerDefaultHourlyRateState } from './customerDefaultHourlyRateState.js';
 import { CustomerInvoicesSection } from './CustomerInvoicesSection.js';
 import { CustomerOverview } from './CustomerOverview.js';
+import { CustomerRecordInformationSection } from './CustomerRecordInformationSection.js';
 import type { CustomerActivityState } from './hooks/useCustomerActivity.js';
 import type { BillingRecipientInvoiceOverviewState } from './hooks/useBillingRecipientInvoices.js';
 import type { CustomerInvoiceOverviewState } from './hooks/useCustomerInvoices.js';
@@ -109,6 +110,7 @@ export function CustomerOverviewWorkspace({
           onOpenInvoice={onOpenInvoice}
         />
       ) : null}
+      <CustomerRecordInformationSection customer={customer} />
       <CustomerActivitySection activityState={activityState} />
     </div>
   );

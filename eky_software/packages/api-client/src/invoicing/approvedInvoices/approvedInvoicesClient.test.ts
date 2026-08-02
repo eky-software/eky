@@ -1470,6 +1470,7 @@ function createTestApprovedInvoiceSummary(
     customerNumberSnapshot: '1001',
     customerNameSnapshot: 'Example Customer Oy',
     billingRecipientNameSnapshot: 'Billing Recipient Oy',
+    subject: 'Test invoice',
     invoiceDate: '2026-06-13',
     dueDate: '2026-06-27',
     grossTotalCents: 12550,

@@ -36,6 +36,28 @@ export function CustomerInvoiceCategory({
     return null;
   }
 
+  const getReference = (row: CustomerInvoiceRow): React.JSX.Element => {
+    const creditLabel = row.isCredit
+      ? row.target.type === 'draft'
+        ? uiText.customers.creditDraft
+        : uiText.customers.creditInvoice
+      : null;
+    const subject = row.subject.trim();
+
+    return (
+      <span className={styles.invoiceReference}>
+        <span>{row.reference}</span>
+        {creditLabel !== null || subject.length > 0 ? (
+          <span className={styles.invoiceReferenceDetail}>
+            {creditLabel}
+            {creditLabel !== null && subject.length > 0 ? ' · ' : null}
+            {subject}
+          </span>
+        ) : null}
+      </span>
+    );
+  };
+
   return (
     <section aria-label={heading} className={styles.category}>
       <header className={styles.categoryHeader}>
@@ -58,12 +80,11 @@ export function CustomerInvoiceCategory({
               {uiText.customers.openInvoice}
             </button>
           ),
-          creditRelation: row.relation,
           customer: row.customer,
           dueDate: row.dueDate,
           invoiceDate: row.date,
           key: row.id,
-          reference: row.reference,
+          reference: getReference(row),
           status: row.status,
           statusDetail:
             row.paidOn === null ? undefined : (
@@ -79,7 +100,6 @@ export function CustomerInvoiceCategory({
             : row.grossTotalCents,
         }))}
         showActions
-        showCreditRelation
         showCustomer={showCustomer}
       />
       {totalPages > 1 ? (

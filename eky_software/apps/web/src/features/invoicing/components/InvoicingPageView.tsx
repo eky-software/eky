@@ -176,14 +176,6 @@ export function InvoicingPageView({
 }: InvoicingPageViewProps): React.JSX.Element {
   return (
     <div className={styles.workspace}>
-      <section className={`page-intro ${styles.pageHeader}`}>
-        <div>
-          <p className="eyebrow">{uiText.invoicing.workspace}</p>
-          <h2>{uiText.invoicing.title}</h2>
-          <p>{uiText.invoicing.description}</p>
-        </div>
-      </section>
-
       {navigationErrorMessage !== null ? (
         <MessageBanner variant="error">{navigationErrorMessage}</MessageBanner>
       ) : null}

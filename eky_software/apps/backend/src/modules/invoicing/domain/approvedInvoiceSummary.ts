@@ -13,6 +13,7 @@ export interface ApprovedInvoiceSummary extends InvoicePaymentReadModel {
   customerNumberSnapshot: string;
   customerNameSnapshot: string;
   billingRecipientNameSnapshot: string;
+  subject: string;
   invoiceDate: string;
   dueDate: string;
   grossTotalCents: number;

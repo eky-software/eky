@@ -1,7 +1,6 @@
 import type { Customer } from '@eky/api-client';
 
 import {
-  formatCustomerTimestamp,
   getCustomerStatusLabel,
   getCustomerTypeLabel,
 } from './customerDisplay.js';
@@ -99,13 +98,6 @@ export function CustomerOverview({
           ) : null}
         </CustomerOverviewSection>
 
-        {customer.customerType === 'propertyManager' ? (
-          <ManagedHousingCompaniesSection
-            housingCompanies={managedHousingCompanies}
-            onOpenCustomer={onOpenRelatedCustomer}
-          />
-        ) : null}
-
         <CustomerOverviewSection heading={uiText.customers.contactInformation}>
           <CustomerFact label={uiText.customers.email} value={customer.email} />
           <CustomerFact label={uiText.customers.phone} value={customer.phone} />
@@ -147,19 +139,12 @@ export function CustomerOverview({
           />
         </CustomerOverviewSection>
 
-        <CustomerOverviewSection
-          className={styles.wideSection}
-          heading={uiText.customers.recordInformation}
-        >
-          <CustomerFact
-            label={uiText.customers.created}
-            value={formatCustomerTimestamp(customer.createdAt)}
+        {customer.customerType === 'propertyManager' ? (
+          <ManagedHousingCompaniesSection
+            housingCompanies={managedHousingCompanies}
+            onOpenCustomer={onOpenRelatedCustomer}
           />
-          <CustomerFact
-            label={uiText.customers.updated}
-            value={formatCustomerTimestamp(customer.updatedAt)}
-          />
-        </CustomerOverviewSection>
+        ) : null}
       </div>
     </article>
   );

@@ -116,6 +116,7 @@ function createSummary(
     invoiceNumber: '20260001',
     referenceNumber: '202600017',
     status: 'sent',
+    subject: 'Ikkunatyö',
     updatedAt: '2026-07-01T10:00:00.000Z',
     paymentState:
       overrides.invoiceKind === 'credit' ? 'notApplicable' : 'unpaid',

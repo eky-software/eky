@@ -109,6 +109,37 @@ describe('CustomerOverviewWorkspace', () => {
     );
   });
 
+  it('places managed housing companies before invoices and record information before history', () => {
+    const propertyManager = createCustomer({
+      customerType: 'propertyManager',
+      id: 'property-manager-1',
+    });
+    const housingCompany = createCustomer({
+      customerNumber: '2001',
+      customerType: 'housingCompany',
+      id: 'housing-company-1',
+      managedByCustomerId: propertyManager.id,
+      name: 'Asunto Oy Esimerkkipiha',
+    });
+    const html = renderToStaticMarkup(
+      <CustomerOverviewWorkspace
+        {...baseProps}
+        customer={propertyManager}
+        customers={[propertyManager, housingCompany]}
+      />,
+    );
+
+    expect(html.indexOf('Hallinnoidut taloyhtiöt')).toBeLessThan(
+      html.indexOf('Asiakkaan laskut'),
+    );
+    expect(html.indexOf('Asiakkaan laskut')).toBeLessThan(
+      html.indexOf('Tietueen tiedot'),
+    );
+    expect(html.indexOf('Tietueen tiedot')).toBeLessThan(
+      html.indexOf('Asiakkaan tapahtumat'),
+    );
+  });
+
   it('keeps customer master data visible when recipient invoices fail', () => {
     const propertyManager = createCustomer({
       customerType: 'propertyManager',

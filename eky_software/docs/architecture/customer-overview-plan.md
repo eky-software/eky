@@ -185,6 +185,11 @@ Asiakkaan master data pysyy käytettävissä, vaikka lasku- tai historiaosion
 lataus epäonnistuisi. Jokaisella osiolla on oma loading-, empty- ja turvallinen
 error-tila.
 
+Tietueen tekniset elinkaaritiedot, kuten luonti- ja päivitysaika, näytetään
+koontinäkymässä juuri asiakkaan tapahtumahistorian edellä. Ne eivät katkaise
+asiakkaan perustietojen, suhteiden ja laskutustietojen muodostamaa työskentely-
+kokonaisuutta.
+
 ### Myöhemmin: Sites / Kohteet
 
 Kun kohteet-moduuli suunnitellaan ja toteutetaan, customer overview voi näyttää asiakkaan kohteet.
@@ -247,6 +252,12 @@ read modelia erillisellä loading-, empty- ja turvallisella error-tilalla.
 Paneelin virhe ei piilota customer-master-dataa, hallinnoituja taloyhtiöitä,
 asiakkaan omia laskuja tai tapahtumahistoriaa.
 
+Isännöitsijätoimiston hallinnoimat taloyhtiöt näytetään asiakaskortilla
+yrityksen omien perustietojen, yhteystietojen, osoitteen, hinnoittelun,
+lisätietojen jälkeen, juuri ennen laskutuskoosteita. Näin yrityksen omat tiedot
+muodostavat yhden kokonaisuuden ja siihen liittyvät taloyhtiösuhteet johdattavat
+luontevasti laskutustietoihin.
+
 Nykyisessä toteutuksessa asiakaskortin pääkategoriat ovat:
 
 - Lähetetyt: hyvittämätön ja maksamaton standardilasku
@@ -261,6 +272,13 @@ asiakkaan master dataa tai muuta jo onnistuneesti ladattua koontitietoa.
 Customers-web käyttää julkisia API-client-sopimuksia ja tyypitettyä
 app-navigation callbackia laskun avaamiseen Invoicingissa. Se ei importtaa
 Invoicing-featuren sisäisiä komponentteja tai tilaa.
+
+Asiakaskortin laskutaulukko pidetään tarkoituksella tiiviinä. Rivillä näytetään
+laskunumero tai luonnosmerkintä, valinnainen aihe sen alla, päiväys, eräpäivä,
+summa, tila ja tarvittaessa maksupäivä sekä avaustoiminto. Hyvitysluonnos tai
+hyvityslasku tunnistetaan laskunumeron yhteydessä. Erillistä
+`Hyvityssuhde`-saraketta ei näytetä asiakaskortilla; hyvityksen tarkka suhde
+alkuperäiseen laskuun kuuluu laskun detail-näkymään.
 
 Manuaalisen maksuseurannan tarkempi sopimus on dokumentissa
 `docs/architecture/invoice-payment-tracking-plan.md`.

@@ -217,6 +217,11 @@ test('CUS-RECIPIENT-001 @critical @cross-module separates owned and recipient in
     ),
   ).toBeVisible();
   await expect(
+    recipientInvoices.getByText('Taloyhtiön vastaanottajalasku', {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
     recipientInvoices.getByText(propertyManagerOwnInvoice.number, {
       exact: true,
     }),
@@ -431,7 +436,6 @@ async function expectInvoiceTableHeaders(
     'Eräpäivä',
     'Yhteensä',
     'Tila',
-    'Hyvityssuhde',
   ];
 
   for (const header of expectedHeaders) {
@@ -439,6 +443,9 @@ async function expectInvoiceTableHeaders(
       table.getByRole('columnheader', { name: header, exact: true }),
     ).toBeVisible();
   }
+  await expect(
+    table.getByRole('columnheader', { name: 'Hyvityssuhde', exact: true }),
+  ).toHaveCount(0);
 }
 
 function escapeRegExp(value: string): string {

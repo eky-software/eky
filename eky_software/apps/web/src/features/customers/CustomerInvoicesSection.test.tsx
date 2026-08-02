@@ -45,12 +45,14 @@ describe('CustomerInvoicesSection', () => {
 
     expect(html).toContain('Asiakkaan laskut');
     expect(html).toContain('Luonnokset');
+    expect(html).toContain('Ikkunatyö');
     expect(html).toContain('124,00');
     expect(html).toContain('>Avaa lasku</button>');
     expect(html).toContain('Rivejä osiossa');
     expect(html).toContain('Uusimmat ensin');
     expect(html).toContain('<option value="5" selected="">5</option>');
     expect(html).not.toContain('Asiakas A–Ö');
+    expect(html).not.toContain('Hyvityssuhde');
   });
 
   it('keeps an invoice read error inside the invoice section', () => {
@@ -79,7 +81,43 @@ describe('CustomerInvoicesSection', () => {
     expect(html).toContain('Maksupäivä');
     expect(html).toContain('12.08.2026');
     expect(html).not.toContain('scope="col">Maksupäivä</th>');
+    expect(html).not.toContain('Hyvityssuhde');
     expect(html).not.toContain('responseBody');
+  });
+
+  it('identifies a credit invoice beside its number without a relation column', () => {
+    const invoiceState = createInvoiceState();
+    invoiceState.approved = {
+      items: [
+        createPaidInvoiceSummary({
+          creditedInvoiceId: 'invoice-original',
+          id: 'invoice-credit',
+          invoiceKind: 'credit',
+          invoiceNumber: '20260011',
+          paidAmountCents: null,
+          paidOn: null,
+          paymentSource: null,
+          paymentState: 'notApplicable',
+          status: 'approved',
+          subject: 'Työn hyvitys',
+        }),
+      ],
+      page: 1,
+      totalCount: 1,
+      totalPages: 1,
+    };
+
+    const html = renderToStaticMarkup(
+      <CustomerInvoicesSection
+        invoiceState={invoiceState}
+        onOpenInvoice={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('20260011');
+    expect(html).toContain('Hyvityslasku');
+    expect(html).toContain('Työn hyvitys');
+    expect(html).not.toContain('Hyvityssuhde');
   });
 });
 
@@ -119,7 +157,9 @@ function createPaidInvoiceGroup(): SentInvoiceGroup {
   };
 }
 
-function createPaidInvoiceSummary(): ApprovedInvoiceSummary {
+function createPaidInvoiceSummary(
+  overrides: Partial<ApprovedInvoiceSummary> = {},
+): ApprovedInvoiceSummary {
   return {
     approvedAt: '2026-08-01T10:00:00.000Z',
     billingRecipientNameSnapshot: 'Esimerkki Oy',
@@ -140,6 +180,8 @@ function createPaidInvoiceSummary(): ApprovedInvoiceSummary {
     paymentState: 'paid',
     referenceNumber: '202600106',
     status: 'sent',
+    subject: 'Ikkunatyö',
     updatedAt: '2026-08-12T10:00:00.000Z',
+    ...overrides,
   };
 }

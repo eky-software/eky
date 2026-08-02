@@ -119,7 +119,13 @@ describe('SqliteApprovedInvoiceReader', () => {
     await expect(
       reader.listApprovedInvoiceSummaries(createApprovedInvoiceListQuery()),
     ).resolves.toMatchObject({
-      invoices: [{ id: 'invoice-1', status: 'approved' }],
+      invoices: [
+        {
+          id: 'invoice-1',
+          status: 'approved',
+          subject: 'Snapshot invoice',
+        },
+      ],
       totalCount: 1,
     });
     await expect(

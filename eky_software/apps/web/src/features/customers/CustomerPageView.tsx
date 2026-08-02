@@ -362,45 +362,32 @@ export function CustomerPage({
   return (
     <div className={styles.workspace}>
       {workspaceState.mode === 'list' ? (
-        <>
-          <section className={`page-intro ${styles.pageHeader}`}>
-            <div>
-              <p className="eyebrow">
-                {uiText.customers.customerWorkspace}
-              </p>
-              <h2>{uiText.customers.customerRegister}</h2>
-              <p>{uiText.customers.description}</p>
-            </div>
-          </section>
-          <CustomerList
-            activeFilter={listViewState.activeFilter}
-            customers={customers}
-            errorMessage={loadErrorMessage}
-            expandedPropertyManagerIds={
-              listViewState.expandedPropertyManagerIds
-            }
-            isLoading={isLoading}
-            onActiveFilterChange={(activeFilter) =>
-              dispatchListView({ activeFilter, type: 'changeFilter' })
-            }
-            onCreateClick={openCreateWorkspace}
-            onCustomerSelect={openCustomerOverview}
-            onPropertyManagerToggle={(customerId) =>
-              dispatchListView({
-                customerId,
-                type: 'togglePropertyManager',
-              })
-            }
-            onSearchQueryChange={(searchQuery) =>
-              dispatchListView({ searchQuery, type: 'changeSearchQuery' })
-            }
-            onSortChange={(sortKey) =>
-              dispatchListView({ sortKey, type: 'updateSort' })
-            }
-            searchQuery={listViewState.searchQuery}
-            sortState={listViewState.sortState}
-          />
-        </>
+        <CustomerList
+          activeFilter={listViewState.activeFilter}
+          customers={customers}
+          errorMessage={loadErrorMessage}
+          expandedPropertyManagerIds={listViewState.expandedPropertyManagerIds}
+          isLoading={isLoading}
+          onActiveFilterChange={(activeFilter) =>
+            dispatchListView({ activeFilter, type: 'changeFilter' })
+          }
+          onCreateClick={openCreateWorkspace}
+          onCustomerSelect={openCustomerOverview}
+          onPropertyManagerToggle={(customerId) =>
+            dispatchListView({
+              customerId,
+              type: 'togglePropertyManager',
+            })
+          }
+          onSearchQueryChange={(searchQuery) =>
+            dispatchListView({ searchQuery, type: 'changeSearchQuery' })
+          }
+          onSortChange={(sortKey) =>
+            dispatchListView({ sortKey, type: 'updateSort' })
+          }
+          searchQuery={listViewState.searchQuery}
+          sortState={listViewState.sortState}
+        />
       ) : null}
 
       {workspaceState.mode === 'create' ? (

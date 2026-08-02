@@ -165,6 +165,7 @@ function createApprovedInvoice(): ApprovedInvoiceSummary {
     paymentState: 'unpaid',
     referenceNumber: '20260013',
     status: 'approved',
+    subject: 'Ikkunatyö',
     updatedAt: '2026-08-01T10:00:00.000Z',
   };
 }

@@ -16,8 +16,8 @@ export interface CustomerInvoiceRow {
   isCredit: boolean;
   paidOn: string | null;
   reference: string;
-  relation: string;
   status: string;
+  subject: string;
   target: CustomerInvoiceNavigationTarget;
 }
 
@@ -33,11 +33,8 @@ export function toDraftRows(
     isCredit: draft.invoiceKind === 'credit',
     paidOn: null,
     reference: uiText.customers.invoiceDraft,
-    relation:
-      draft.invoiceKind === 'credit'
-        ? uiText.customers.creditDraft
-        : draft.subject,
     status: uiText.customers.invoiceStatuses.draft,
+    subject: draft.subject,
     target: {
       id: draft.id,
       invoiceKind: draft.invoiceKind,
@@ -59,11 +56,11 @@ export function toApprovedRows(
     isCredit: invoice.invoiceKind === 'credit',
     paidOn: invoice.paidOn,
     reference: invoice.invoiceNumber,
-    relation: getCreditRelation(invoice),
     status:
       status === 'approved'
         ? uiText.customers.invoiceStatuses.approved
         : uiText.customers.invoiceStatuses.cancelled,
+    subject: invoice.subject,
     target: {
       id: invoice.id,
       type: 'approvedInvoice',
@@ -84,12 +81,6 @@ export function toSentRows(
       isCredit: false,
       paidOn: group.rootInvoice.paidOn,
       reference: group.rootInvoice.invoiceNumber,
-      relation:
-        group.creditInvoices.length === 0
-          ? ''
-          : uiText.customers.creditInvoiceRelation(
-              group.creditInvoices.map((invoice) => invoice.invoiceNumber),
-            ),
       status:
         group.creditStatus === 'partial'
           ? addPaidStatus(
@@ -104,6 +95,7 @@ export function toSentRows(
             : group.rootInvoice.paymentState === 'paid'
               ? uiText.customers.invoiceStatuses.paid
               : uiText.customers.invoiceStatuses.sent,
+      subject: group.rootInvoice.subject,
       target: {
         id: group.rootInvoice.id,
         type: 'approvedInvoice',
@@ -119,10 +111,8 @@ export function toSentRows(
         isCredit: true,
         paidOn: null,
         reference: creditInvoice.invoiceNumber,
-        relation: uiText.customers.creditsInvoice(
-          group.rootInvoice.invoiceNumber,
-        ),
         status: uiText.customers.invoiceStatuses.creditInvoice,
+        subject: creditInvoice.subject,
         target: {
           id: creditInvoice.id,
           type: 'approvedInvoice',
@@ -136,17 +126,6 @@ export function toSentRows(
 
 function formatInvoiceCustomer(invoice: ApprovedInvoiceSummary): string {
   return `${invoice.customerNumberSnapshot} – ${invoice.customerNameSnapshot}`;
-}
-
-function getCreditRelation(invoice: ApprovedInvoiceSummary): string {
-  if (
-    invoice.invoiceKind !== 'credit' ||
-    invoice.creditedInvoiceId === null
-  ) {
-    return '';
-  }
-
-  return uiText.customers.creditInvoice;
 }
 
 function addPaidStatus(

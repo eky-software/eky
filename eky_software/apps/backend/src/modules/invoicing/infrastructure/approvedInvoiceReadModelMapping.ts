@@ -51,6 +51,7 @@ export function toApprovedInvoiceSummary(
     customerNumberSnapshot: invoice.customer_number_snapshot,
     customerNameSnapshot: invoice.customer_name_snapshot,
     billingRecipientNameSnapshot: invoice.billing_recipient_name_snapshot,
+    subject: invoice.subject,
     invoiceDate: invoice.invoice_date,
     dueDate: invoice.due_date,
     grossTotalCents: invoice.total_gross_cents,
