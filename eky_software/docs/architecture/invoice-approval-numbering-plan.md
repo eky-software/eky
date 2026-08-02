@@ -7,6 +7,11 @@ Tämä dokumentti koskee vaihetta, jossa tallennetusta laskuluonnoksesta tulee
 hyväksytty lasku. Luonnoksen luonti, muokkaus ja automaattitallennus on kuvattu
 dokumentissa `docs/architecture/invoicing-mvp-implementation-plan.md`.
 
+Käytetyn laskunumerosarjan hallittu korvaaminen uudella, vanhan sarjan
+säilyttävällä sarjalla on suunniteltu dokumentissa
+`docs/architecture/invoice-numbering-series-transition-plan.md`. Kyseinen
+poikkeuspolku ei ole numeroinnin resetointi tai käytetyn sarjan muokkaus.
+
 Hyväksytyn laskun katselu-, print- ja PDF-polun tarvitsemat tarkemmat myyjä-,
 asiakas-, vastaanottaja-, toimitus- ja maksutietojen snapshotit on kuvattu
 dokumentissa `docs/architecture/invoice-print-data-foundation-plan.md`.
