@@ -24,6 +24,10 @@ export interface ApprovedInvoiceIdentity {
   invoiceNumber: string;
 }
 
+export interface CopiedInvoiceDraftIdentity {
+  draftId: string;
+}
+
 interface InvoiceLineUiInput {
   description: string;
   quantity: string;
@@ -137,7 +141,9 @@ export async function createInvoiceDraftThroughUi(
     await page
       .getByLabel('Suoritusajankohta')
       .selectOption('singleDate');
-    await page.getByLabel('Suorituspäivä').fill(input.performancePeriod.date);
+    await page
+      .getByLabel('Suorituspäivä', { exact: true })
+      .fill(input.performancePeriod.date);
   }
   if (input.performancePeriod?.type === 'dateRange') {
     await page
@@ -290,6 +296,40 @@ export async function cancelCurrentApprovedInvoice(
   return response;
 }
 
+export async function copyCurrentInvoiceToDraft(
+  page: Page,
+): Promise<CopiedInvoiceDraftIdentity> {
+  await page.getByRole('button', { name: 'Kopioi luonnokseksi' }).click();
+  await page
+    .getByText(
+      'Kopioidaanko lasku uudeksi luonnokseksi? Uusi luonnos saa myöhemmin oman laskunumeron ja viitenumeron.',
+      { exact: true },
+    )
+    .waitFor();
+
+  const responsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      /\/invoices\/[^/]+\/copy-to-draft$/.test(
+        new URL(response.url()).pathname,
+      ),
+  );
+  await page
+    .getByRole('button', { name: 'Kopioi luonnokseksi' })
+    .last()
+    .click();
+  const response = await responsePromise;
+  assertHttpStatus(response.status(), 201, 'invoice copy');
+  const body = (await response.json()) as {
+    invoiceDraft: { id: string };
+  };
+  await page
+    .getByRole('heading', { level: 2, name: 'Muokkaa laskuluonnosta' })
+    .waitFor();
+
+  return { draftId: body.invoiceDraft.id };
+}
+
 export async function createCurrentInvoicePdf(
   page: Page,
 ): Promise<Response | null> {
@@ -314,12 +354,78 @@ export async function createCurrentInvoicePdf(
   return response;
 }
 
+export async function markCurrentInvoiceSentManually(
+  page: Page,
+): Promise<Response> {
+  await page
+    .getByRole('button', { name: 'Merkitse käsin toimitetuksi' })
+    .click();
+  await page
+    .getByText(
+      'Merkitäänkö lasku käsin toimitetuksi? Lähetettyä laskua ei voi enää palauttaa muokattavaksi.',
+      { exact: true },
+    )
+    .waitFor();
+
+  const responsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      /\/invoices\/[^/]+\/mark-sent$/.test(
+        new URL(response.url()).pathname,
+      ),
+  );
+  await page
+    .getByRole('button', { name: 'Merkitse käsin toimitetuksi' })
+    .last()
+    .click();
+  const response = await responsePromise;
+  assertHttpStatus(response.status(), 200, 'manual invoice delivery');
+  await page.getByText('Lähetetty', { exact: true }).waitFor();
+
+  return response;
+}
+
+export async function reopenCurrentInvoiceForEditing(
+  page: Page,
+): Promise<string> {
+  await page.getByRole('button', { name: 'Muokkaa laskua' }).click();
+  await page
+    .getByText(
+      'Tämä lasku on jo hyväksytty ja sillä on laskunumero. Muokkaus kirjataan tapahtumahistoriaan ja lasku palautetaan luonnokseksi korjausta varten. Jatketaanko?',
+      { exact: true },
+    )
+    .waitFor();
+
+  const responsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      /\/invoices\/[^/]+\/reopen-for-edit$/.test(
+        new URL(response.url()).pathname,
+      ),
+  );
+  await page
+    .getByRole('button', { name: 'Muokkaa laskua' })
+    .last()
+    .click();
+  const response = await responsePromise;
+  assertHttpStatus(response.status(), 200, 'invoice reopen');
+  const body = (await response.json()) as { invoiceDraftId: string };
+  await page
+    .getByRole('heading', { level: 2, name: 'Muokkaa laskuluonnosta' })
+    .waitFor();
+
+  return body.invoiceDraftId;
+}
+
 export async function sendCurrentInvoiceThroughFakeSmtp(
   page: Page,
-  options: { clickCount?: number } = {},
+  options: { clickCount?: number; resend?: boolean } = {},
 ): Promise<Response> {
   await page.getByRole('button', { name: 'Valmistele sähköposti' }).click();
   await page.getByRole('heading', { name: 'Sähköpostin esikatselu' }).waitFor();
+  const sendButtonName = options.resend
+    ? 'Lähetä uudelleen'
+    : 'Lähetä lasku';
 
   const responsePromise = page.waitForResponse(
     (response) =>
@@ -329,12 +435,16 @@ export async function sendCurrentInvoiceThroughFakeSmtp(
       ),
   );
   await page
-    .getByRole('button', { name: 'Lähetä lasku' })
+    .getByRole('button', { name: sendButtonName, exact: true })
     .click({ clickCount: options.clickCount ?? 1 });
   const response = await responsePromise;
   assertHttpStatus(response.status(), 200, 'invoice email delivery');
   await page
-    .getByText('Lasku lähetettiin ja merkittiin lähetetyksi.')
+    .getByText(
+      options.resend
+        ? 'Lasku lähetettiin uudelleen.'
+        : 'Lasku lähetettiin ja merkittiin lähetetyksi.',
+    )
     .waitFor();
 
   return response;
