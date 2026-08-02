@@ -74,7 +74,7 @@ test('CUS-OVERVIEW-002 @critical preserves list state through overview, edit can
   await expect(
     e2eWeb.page.getByRole('heading', {
       level: 2,
-      name: 'Asiakaskortisto',
+      name: 'Asiakaslista',
     }),
   ).toBeVisible();
   await expect(e2eWeb.page.getByLabel('Hae asiakasta')).toHaveValue(
