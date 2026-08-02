@@ -9,13 +9,14 @@ muuteta eikä poisteta.
 
 Dokumentin lähtöcommit on `e1ed183`.
 
-## Tila Ja Päätösportti
+## Tila Ja Omistajapäätös
 
 Checkpoint A eli nykytilan auditointi ja arkkitehtuurisuunnitelma on tehty.
 
-Persistence-, domain-, approval-, HTTP-, API-client- ja UI-toteutusta ei
-aloiteta ennen näkyvien laskunumeroiden nimiavaruudesta tehtävää projektin
-omistajan päätöstä.
+Projektin omistaja on päättänyt, että näkyvä laskunumero säilyy kokonaan
+numeerisena eikä siihen lisätä näkyvää sarjatunnistetta. Uuden sarjan
+käyttöönotto perustuu backendin laskemaan, todistetusti törmäyksettömään
+`firstSequenceNumber`-arvoon.
 
 Nykyinen `seriesKey` on tekninen tunniste. Se tallennetaan hyväksytylle
 laskulle, mutta se ei näy laskunumerossa. Nykyinen näkyvä laskunumero
@@ -29,20 +30,13 @@ muodostetaan vain seuraavista:
 Tämän vuoksi uusi tekninen `seriesKey` ei yksin estä uuden sarjan näkyviä
 laskunumeroita törmäämästä vanhoihin numeroihin.
 
-Ennen Checkpoint B:tä pitää valita yksi seuraavista:
+Backend laskee vähimmäisarvon kaikista yrityksen olemassa olevista näkyvistä
+laskunumeroista ja uuden sarjan asetuksista. Käyttäjä saa valita lasketun
+minimin tai sitä suuremman arvon, mutta ei pienempää arvoa. Jos turvallista
+aloitusarvoa ei voida todistaa tai sarjan kapasiteetti on loppunut, aktivointi
+estetään.
 
-1. Laskunumeroon lisätään näkyvä sarjatunniste. Tunnisteen muoto, laskulla
-   näkyvä esitys ja vaikutus suomalaiseen viitenumeroon päätetään erikseen.
-   Nykyinen viitenumeropolku hyväksyy vain numeerisen laskunumeron, joten
-   tekstimuotoista prefixiä ei saa lisätä hiljaisesti.
-2. Näkyvä laskunumero pidetään ennallaan ja uusi sarja vaatii todistetusti
-   törmäyksettömän `firstSequenceNumber`-arvon. Turvallisen säännön pitää
-   kattaa myös tulevat saman sarjan numerot, eri numerointimallit,
-   tilikausirajat ja taannehtivasti päivätyt laskut. Pelkkä ensimmäisen
-   ehdokasnumeron tarkistus ei riitä.
-
-Jos kumpaakaan vaihtoehtoa ei voida todistaa turvalliseksi, ominaisuutta ei
-toteuteta.
+Vanhaa sarjaa ei resetoida, avata, poisteta tai aktivoida uudelleen.
 
 ## Tavoite
 
@@ -257,6 +251,33 @@ Syöte sisältää vähintään:
 - backendin vahvistaman `ActorContext`-kontekstin
 
 Tekninen `nextSeriesKey` generoidaan backendissä. Käyttäjä ei kirjoita sitä.
+
+## Törmäyksettömän Aloitusnumeron Todistus
+
+Puhdas Invoicing-domainin laskenta saa syötteenä uuden sarjan numerointimallin,
+tilikauden aloituskuukauden, paddingin sekä yrityksen kaikki olemassa olevat
+näkyvät laskunumerot. Vertailu tehdään sisäisesti `BigInt`-arvoilla.
+
+Laskenta tarkistaa:
+
+- jokainen historiallinen laskunumero sisältää vain numeroita ja on enintään
+  19 numeron mittainen
+- plain-mallissa kaikki uuden sarjan padding-säännöllä myöhemmin tuotettavissa
+  olevat numerot
+- kalenteri- ja tilikausimalleissa kaikki tuetut vuosiprefixit, myös
+  taannehtivasti päivättyjen laskujen mahdolliset prefixit
+- myös aloitusnumeron jälkeen myöhemmin syntyvät törmäykset
+- etunollat ja paddingin ylittymisen
+- suomalaisen viitenumeron 19 numeron base-rajan
+- JavaScriptin turvallisen kokonaisluvun rajan
+
+Vuosipohjaisessa numeroinnissa neljän numeron vuosiosan jälkeen
+sekvenssiosalle jää enintään 15 numeroa. Plain-mallissa yläraja on
+`Number.MAX_SAFE_INTEGER`, koska se on 19 numeron rajaa tiukempi.
+
+Minimi on yksi suurempi kuin suurin historiallinen sekvenssi, jonka uusi
+sarja voisi millä tahansa tuetulla vuosiprefixillä tai plain-mallissa tuottaa.
+Pelkkä seuraavan laskun esikatselu ei ole turvallisuustodiste.
 
 Vahvistusarvo ei ole boolean. Backend vaatii kiinteän, i18n-avaimen kautta
 UI:ssa näytettävän tekstin täsmällisen arvon. Lopullinen suomenkielinen
@@ -481,7 +502,8 @@ turvallista Invoicingin projectionia oman porttinsa kautta.
 
 - nykytila auditoitu
 - pysyvä malli ja turvallisuusrajat kuvattu
-- näkyvän laskunumeron päätösportti avoinna
+- näkyvä numero päätetty pitää numeerisena
+- collision-free-jatkopolku hyväksytty
 
 ### B: Persistence Ja Domain
 
@@ -514,13 +536,8 @@ Tehdään vasta nimiavaruuspäätöksen jälkeen:
 - backend-, api-client-, web- ja desktop-buildit
 - Windows package ja packaged smoke
 
-## Avoin Omistajapäätös
+## Omistajapäätöksen Tila
 
-Ennen Checkpoint B:tä projektin omistaja päättää:
-
-1. lisätäänkö näkyvä, viitenumeron kanssa yhteensopivaksi erikseen
-   suunniteltava sarjatunniste
-2. vai rajoitetaanko sarjanvaihto collision-free
-   `firstSequenceNumber` -jatkopoluksi
-
-Koodia ei toteuteta tämän päätöksen ohi.
+Päätös on tehty: uusi näkyvä sarjatunniste ei kuulu malliin.
+Sarjanvaihto sallitaan vain backendin todistamalla collision-free
+`firstSequenceNumber`-jatkopolulla.

@@ -4,7 +4,7 @@ export type ReferenceNumberType = 'finnishDomestic' | 'none';
 
 const finnishDomesticReferenceWeights = [7, 3, 1] as const;
 const maximumFinnishDomesticReferenceNumberLength = 20;
-const maximumFinnishDomesticReferenceBaseLength =
+export const maximumFinnishDomesticReferenceBaseLength =
   maximumFinnishDomesticReferenceNumberLength - 1;
 
 export function createFinnishDomesticReferenceNumber(baseDigits: string): string {
