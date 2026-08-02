@@ -30,6 +30,13 @@ const auditMigrationSql = readFileSync(
   ),
   'utf8',
 );
+const seriesMigrationSql = readFileSync(
+  new URL(
+    '../../../database/migrations/038_create_invoice_numbering_series_transitions.sql',
+    import.meta.url,
+  ),
+  'utf8',
+);
 
 function createSettings(
   overrides: Partial<StoredInvoiceNumberingSettings> = {},
@@ -69,6 +76,14 @@ describe('SqliteInvoiceNumberingRepository', () => {
     database.pragma('foreign_keys = ON');
     database.exec(migrationSql);
     database.exec(auditMigrationSql);
+    database.exec(`
+      CREATE TABLE invoices (
+        company_id TEXT NOT NULL,
+        series_key TEXT NOT NULL,
+        invoice_number TEXT NOT NULL
+      );
+    `);
+    database.exec(seriesMigrationSql);
   });
 
   afterEach(() => {
@@ -151,6 +166,58 @@ describe('SqliteInvoiceNumberingRepository', () => {
       company_id: 'dev-company',
       outcome: 'success',
     });
+    expect(
+      database
+        .prepare<
+          [string],
+          {
+            active_series_key: string;
+            revision: number;
+            updated_by: string;
+          }
+        >(
+          `
+            SELECT active_series_key, revision, updated_by
+            FROM invoice_numbering_active_series
+            WHERE company_id = ?
+          `,
+        )
+        .get('dev-company'),
+    ).toEqual({
+      active_series_key: 'default',
+      revision: 1,
+      updated_by: 'local-owner',
+    });
+  });
+
+  it('rolls back initial settings when the active pointer cannot be written', async () => {
+    const repository = new SqliteInvoiceNumberingRepository(database);
+    database.exec(`
+      CREATE TRIGGER fail_initial_numbering_pointer
+      BEFORE INSERT ON invoice_numbering_active_series
+      BEGIN
+        SELECT RAISE(ABORT, 'synthetic pointer failure');
+      END;
+    `);
+
+    await expect(saveSettings(repository, createSettings())).rejects.toThrow(
+      'synthetic pointer failure',
+    );
+
+    expect(
+      database
+        .prepare<[], { count: number }>(
+          'SELECT COUNT(*) AS count FROM invoice_numbering_settings',
+        )
+        .get()?.count,
+    ).toBe(0);
+    expect(
+      database
+        .prepare<[], { count: number }>(
+          'SELECT COUNT(*) AS count FROM invoice_settings_audit_events',
+        )
+        .get()?.count,
+    ).toBe(0);
   });
 
   it('stores all supported numbering modes through the settings repository', async () => {

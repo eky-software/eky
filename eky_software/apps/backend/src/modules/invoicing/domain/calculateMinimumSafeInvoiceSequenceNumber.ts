@@ -22,7 +22,6 @@ export interface MinimumSafeInvoiceSequenceNumberResult {
   minimumSafeFirstSequenceNumber: number | null;
 }
 
-const minimumSupportedInvoiceYear = 1;
 const maximumSupportedInvoiceYear = 9999;
 const maximumYearPrefixLength = String(maximumSupportedInvoiceYear).length;
 const maximumYearBasedSequenceDigits =
@@ -85,21 +84,21 @@ function isSupportedYearPrefix(
   prefixText: string,
   target: InvoiceNumberingSeriesCandidate,
 ): boolean {
-  if (!/^\d+$/.test(prefixText)) {
+  if (!/^\d{4}$/.test(prefixText)) {
     return false;
   }
 
   const prefix = Number(prefixText);
 
-  if (!Number.isSafeInteger(prefix) || String(prefix) !== prefixText) {
+  if (!Number.isSafeInteger(prefix)) {
     return false;
   }
 
   const minimumPrefix =
     target.mode === 'fiscalYearSequence' &&
     target.fiscalYearStartMonth > 1
-      ? minimumSupportedInvoiceYear - 1
-      : minimumSupportedInvoiceYear;
+      ? 0
+      : 1;
 
   return prefix >= minimumPrefix && prefix <= maximumSupportedInvoiceYear;
 }
@@ -117,34 +116,21 @@ function findLargestCollidingSequenceNumber(
     );
   }
 
-  let largestCollision: bigint | undefined;
-  const maximumPrefixLength = Math.min(
-    maximumYearPrefixLength,
-    invoiceNumber.length - 1,
-  );
-
-  for (let prefixLength = 1; prefixLength <= maximumPrefixLength; prefixLength += 1) {
-    const prefixText = invoiceNumber.slice(0, prefixLength);
-
-    if (!isSupportedYearPrefix(prefixText, target)) {
-      continue;
-    }
-
-    const sequenceNumber = parseProducedSequenceNumber(
-      invoiceNumber.slice(prefixLength),
-      target.sequencePadding,
-      maximumSequenceNumber,
-    );
-
-    if (
-      sequenceNumber !== undefined &&
-      (largestCollision === undefined || sequenceNumber > largestCollision)
-    ) {
-      largestCollision = sequenceNumber;
-    }
+  if (invoiceNumber.length <= maximumYearPrefixLength) {
+    return undefined;
   }
 
-  return largestCollision;
+  const prefixText = invoiceNumber.slice(0, maximumYearPrefixLength);
+
+  if (!isSupportedYearPrefix(prefixText, target)) {
+    return undefined;
+  }
+
+  return parseProducedSequenceNumber(
+    invoiceNumber.slice(maximumYearPrefixLength),
+    target.sequencePadding,
+    maximumSequenceNumber,
+  );
 }
 
 export function calculateMinimumSafeInvoiceSequenceNumber(

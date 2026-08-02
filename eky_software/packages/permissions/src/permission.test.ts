@@ -7,6 +7,7 @@ describe('permissionValues', () => {
     expect(permissionValues).toEqual([
       'manageCompanySettings',
       'manageInvoiceSettings',
+      'manageInvoiceNumberingSeries',
       'manageInvoiceCorrections',
       'manageInvoicePayments',
       'manageCompanyEmailSettings',
@@ -21,6 +22,7 @@ describe('permissionValues', () => {
   it('recognizes only known permission values', () => {
     expect(isPermission('sendInvoices')).toBe(true);
     expect(isPermission('manageInvoiceSettings')).toBe(true);
+    expect(isPermission('manageInvoiceNumberingSeries')).toBe(true);
     expect(isPermission('manageInvoiceCorrections')).toBe(true);
     expect(isPermission('manageInvoicePayments')).toBe(true);
     expect(isPermission('viewActivity')).toBe(true);

@@ -6,6 +6,7 @@ import type {
   NewInvoiceNumberSequenceRow,
 } from '../../../database/schema.js';
 import {
+  defaultInvoiceNumberSeriesKey,
   type InvoiceNumberSequenceState,
   type StoredInvoiceNumberingSettings,
   validateInvoiceNumberSequenceScope,
@@ -35,6 +36,13 @@ type InvoiceNumberSequenceSaveParameters = [
   string,
   string,
   number,
+  string,
+  string,
+];
+
+type InvoiceNumberingActiveSeriesInsertParameters = [
+  string,
+  string,
   string,
   string,
 ];
@@ -196,6 +204,29 @@ export class SqliteInvoiceNumberingRepository
           row.created_at,
           row.updated_at,
         );
+
+      if (settings.seriesKey === defaultInvoiceNumberSeriesKey) {
+        this.database
+          .prepare<InvoiceNumberingActiveSeriesInsertParameters>(
+            `
+              INSERT INTO invoice_numbering_active_series (
+                company_id,
+                active_series_key,
+                revision,
+                updated_at,
+                updated_by
+              )
+              VALUES (?, ?, 1, ?, ?)
+              ON CONFLICT(company_id) DO NOTHING
+            `,
+          )
+          .run(
+            settings.companyId,
+            settings.seriesKey,
+            settings.updatedAt,
+            auditEvent.actorUserId,
+          );
+      }
 
       insertInvoiceSettingsAuditEvent(this.database, auditEvent, {
         action: 'invoiceNumberingSettings.updated',

@@ -97,6 +97,28 @@ describe('calculateMinimumSafeInvoiceSequenceNumber', () => {
     ).toBe(10);
   });
 
+  it('does not reinterpret a four-digit year prefix as a shorter year', () => {
+    expect(
+      calculateMinimumSafeInvoiceSequenceNumber({
+        existingInvoiceNumbers: ['20260042'],
+        target: calendarTarget,
+      }).minimumSafeFirstSequenceNumber,
+    ).toBe(43);
+  });
+
+  it('supports the zero fiscal-year prefix produced by a year-one invoice', () => {
+    expect(
+      calculateMinimumSafeInvoiceSequenceNumber({
+        existingInvoiceNumbers: ['00000009'],
+        target: {
+          mode: 'fiscalYearSequence',
+          fiscalYearStartMonth: 2,
+          sequencePadding: 4,
+        },
+      }).minimumSafeFirstSequenceNumber,
+    ).toBe(10);
+  });
+
   it('handles leading zeroes according to the target padding', () => {
     expect(
       calculateMinimumSafeInvoiceSequenceNumber({
