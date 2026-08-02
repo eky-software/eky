@@ -190,7 +190,9 @@ Dependabotin avaama päivitys-PR käy läpi saman riskiperusteisen paikallisen j
 CI-testauksen kuin käsin tehty päivitys. Vähimmäisportteina ovat
 `Test, typecheck and build`, `System security E2E` ja `Web critical E2E`.
 Electron-, native addon- ja Windows-paketointimuutoksissa ajetaan lisäksi
-Windows package sekä packaged smoke sovitun testimatriisin mukaan.
+`Windows Electron critical E2E`, Windows package sekä packaged smoke sovitun
+testimatriisin mukaan. Samat neljä nimettyä required check -porttia ovat
+käytössä, kun muutoksen riskit koskevat kaikkia niiden suojaamia rajoja.
 
 Dependabot version updates syntyy `.github/dependabot.yml`-tiedoston
 viikkorytmistä eikä niitä mergeytetä automaattisesti. Security updates ei
@@ -273,6 +275,12 @@ alimmalla sopivalla tasolla ja E2E todistaa edustavan koko järjestelmän polun.
 Uusi moduuli tai merkittävä ominaisuus päivittää E2E-matriisiin onnistuvan,
 permission-/tenant-eston ja failure-/recovery-polun sekä tarvittaessa
 cross-module- ja packaged-turvarajan.
+
+Kun olennainen työnkulku koostuu useasta peräkkäisestä tilasiirtymästä,
+lisää sille nimetty ketjutesti korkeimmalla käytännöllisellä testitasolla.
+Ketjutesti todistaa, että vierekkäiset siirtymät, niiden pysyvä tila ja
+sivuvaikutukset toimivat yhdessä. Se ei korvaa yksittäisten siirtymien
+domain-, application-, repository-, HTTP- tai turvallisuustestejä.
 
 Manuaalinen `pnpm test:e2e:stress` antaa rajatun endurance-vertailutason. Sitä
 ei ajeta joka pull requestissa eikä sen yksittäisestä muistilukemasta tehdä
