@@ -11,13 +11,13 @@
     "e2e:prepare-electron-runtime": "pnpm exec install-electron --no && node scripts/assert-electron-development-runtime.mjs",
     "package:windows": "node scripts/package-windows.mjs",
     "smoke:windows": "node scripts/run-packaged-smoke.mjs",
-    "test": "vitest run src && node --test scripts/electron-development-runtime.test.mjs scripts/inspect-support-bundle.test.mjs scripts/read-desktop-electron-version.test.mjs",
+    "test": "vitest run src && node --test scripts/electron-development-runtime.test.mjs scripts/inspect-support-bundle.test.mjs scripts/read-desktop-electron-version.test.mjs scripts/staged-better-sqlite-runtime.test.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
     "@electron/fuses": "2.1.3",
     "@electron/packager": "20.0.4",
     "@types/node": "^24.12.4",
-    "electron": "42.8.0"
+    "electron": "43.2.0"
   }
 }

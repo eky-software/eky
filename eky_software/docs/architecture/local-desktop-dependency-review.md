@@ -1,8 +1,9 @@
 # Local Desktop Dependency Review
 
 Tämä dokumentti kirjaa `apps/desktop`-paketointispiken ensimmäisen rajatun
-riippuvuuspäätöksen. Arvio on tehty 14.7.2026. Versiot tarkistetaan uudelleen
-ennen tuotantojulkaisua, allekirjoitusta tai automaattipäivityksen toteutusta.
+riippuvuuspäätöksen 14.7.2026 sekä Electron 43 / better-sqlite3 13
+-yhteensopivuuden varmennuksen 3.8.2026. Versiot tarkistetaan uudelleen ennen
+tuotantojulkaisua, allekirjoitusta tai automaattipäivityksen toteutusta.
 
 ## Rajaus
 
@@ -10,7 +11,8 @@ Ensimmäisessä spikessä tarvitaan vain:
 
 - Electron-runtimen Windows x64 -binääri
 - sovellushakemiston paketointi Electron-artifactiksi
-- `better-sqlite3`-native addonin uudelleenrakennus Electronin ABI:lle
+- `better-sqlite3`-native addonin paketoidun Windows x64 N-API-runtimen
+  varmennus
 - production-fusejen lukitseminen
 
 Installeria, makeria, julkaisua, automaattipäivitystä, code signingia tai
@@ -23,8 +25,8 @@ Spikessä käytetään tarkasti lukittuja development-riippuvuuksia vain
 
 | Paketti | Versio | Vastuu |
 | --- | --- | --- |
-| `electron` | `42.6.1` | desktop-runtime ja Windows-binääri |
-| `@electron/packager` | `20.0.2` | rajattu paketoitu sovellushakemisto |
+| `electron` | `43.2.0` | desktop-runtime ja Windows-binääri |
+| `@electron/packager` | `20.0.4` | rajattu paketoitu sovellushakemisto |
 | `@electron/fuses` | `2.1.3` | production-fusejen lukitseminen |
 
 Paketit eivät kuulu domainiin, application serviceihin, API-clientiin,
@@ -32,32 +34,34 @@ web-featureihin tai backendin liiketoimintamoduuleihin.
 
 Electronin asennusskripti lataa version mukaisen binäärin. Siksi
 `pnpm-workspace.yaml` sallii build/install-skriptin eksplisiittisesti vain
-nimetylle `electron`-paketille nykyisen `better-sqlite3`-poikkeuksen rinnalla.
+nimetylle `electron`-paketille. `better-sqlite3`-asennusskriptiä ei ajeta:
+paketointi käyttää ja validoi version `13.0.2` mukana toimitetun Windows x64
+N-API-binäärin.
 
-### Electron 42 Ja `better-sqlite3`
+### Electron 43 Ja `better-sqlite3`
 
-Dependency review aloitettiin `better-sqlite3 12.10.0` -versiolla, joka ei
-tukenut Electron 42/43:n muuttunutta V8 External API:a. `better-sqlite3
-12.11.1` korjaa Electron 42:n Windows-käännön ja on saatavilla virallisesta
-npm-rekisteristä. GitHubissa 3.7.2026 julkaistu `better-sqlite3 12.11.2` lisää
-Electron 43 -esikäännökset, mutta 14.7.2026 kyseistä versiota ei vielä löydy
-npm-rekisteristä. Eky ei ota tuotantopohjaan julkaisemattomia GitHub-tarball-
-tai binääriartefakteja.
+Ensimmäinen spike käytti Electron `42.6.1`- ja `better-sqlite3 12.11.1`
+-versioita. Tämä historiallinen yhdistelmä tarvitsi Electronin ABI:lle
+rakennetun staged-binäärin.
 
-Spike käyttää siksi Electron `42.6.1`- ja `better-sqlite3 12.11.1`
--versioita. Electron 42:n ilmoitettu EOL on 20.10.2026. Native-ajuri lukitaan
-tarkkaan versioon ja rakennetaan vain paketointihakemiston staged-kopiossa
-kohde-Electronin ABI:lle. Paketointiputki etsii paketin pnpm-virtuaalivarastosta
-paketin nimen perusteella eikä kovakoodatusta versiollisesta hakemistopolusta.
+Nykyinen varmennettu yhdistelmä on Electron `43.2.0` ja `better-sqlite3
+13.0.2`. better-sqlite3 13 käyttää paketin mukana toimitettua N-API-binääriä,
+joten paketointi ei enää:
 
-Ennen isälle jaettavaa tuotantoversiota pitää edelleen:
+- skannaa pnpm-virtuaalivarastoa native-paketin löytämiseksi
+- aja `prebuild-install`-työkalua
+- rakenna staged-kopiota Electronin ABI:lle.
 
-1. tarkistaa, onko Electron 43:a tukeva `better-sqlite3 12.11.2` tai uudempi
-   julkaistu npm-rekisteriin
-2. nostaa Electron uusimpaan valitun SQLite-ajurin virallisesti tukemaan
-   vakaaseen versioon
-3. ajaa Windows package- ja smoke-testit uudelleen
-4. tarkistaa Electronin ja transitiivisten riippuvuuksien turvallisuustila
+Paketointiputki ratkaisee moduulin paketinhallinnan normaalilla
+resoluutiolla, kopioi tuotantoriippuvuudet hallitusti ja validoi paketoidun
+Windows x64 N-API-binäärin ennen artifactin hyväksymistä. Yhdistelmä on
+varmennettu Electron-runtimessa, oikean paikallisen SQLite-tietokannan
+turvallisella kopiolla, Windows-paketoinnilla, smoke- ja Electron-E2E-testeillä
+sekä stressi- ja soak-ajoilla.
+
+Ennen isälle jaettavaa tuotantoversiota pitää edelleen ajaa Windows package-
+ja smoke-testit sekä riippuvuus- ja turvallisuusaudit aina valituille tarkasti
+lukituille runtimeversioille.
 
 Eky ei ylläpidä omaa `better-sqlite3`-C++-forkkia yhteensopivuusrajojen
 kiertämiseksi.
@@ -72,15 +76,14 @@ pienellä riippuvuuspinnalla:
 - paketoitu React/Vite-renderer
 - hallittu backend-prosessi
 - SQLite ja migraatiot
-- `better-sqlite3` Electronin ABI:lla
+- `better-sqlite3` Electronin N-API-runtimessa
 - PDFKit
 - turvallinen Electron-konfiguraatio ja fuses
 
 Suora Packager/Fuses-yhdistelmä pitää tämän todentamisen rajattuna.
-`better-sqlite3`-paketin oma staged `prebuild-install`-työkalu asentaa vain
-paketointihakemiston kopioon Electron-version kanssa yhteensopivan binäärin.
-Paketointiputki tarkistaa SHA-256-tiivisteellä, ettei työtilan Node-binääri
-muutu. Erillistä native-rebuild-riippuvuutta ei siksi tarvita.
+`better-sqlite3 13.0.2`:n mukana toimitettava Windows x64 N-API-binääri
+kopioidaan production-riippuvuuksien mukana ja validoidaan ennen paketointia.
+Erillistä native-rebuild- tai prebuild-install-riippuvuutta ei tarvita.
 Forge tai muu installer-/update-työkalu arvioidaan uudelleen vasta, kun
 paketoitu runtime on toimiva ja julkaisutapa, code signing sekä päivityskanava
 on päätetty.
@@ -93,8 +96,8 @@ on päätetty.
 - Paketoitava backend rajataan `files`-allowlistalla build-tuotokseen.
 - Kehityksen SQLite-tiedostot, `.env`-tiedostot, sample-PDF:t, testit ja
   storage-hakemistot eivät saa päätyä artifactiin.
-- `better-sqlite3` rakennetaan vain staging-kopiossa Electronille; workspace-
-  asennusta ei rikota Node-kehityksen ABI:n osalta.
+- `better-sqlite3`-paketin mukana toimitettu N-API-binääri validoidaan sekä
+  tavallisessa Node-kehitysajossa että paketoidussa Electron-runtimessa.
 - Paketoidun artifactin sisältö tarkastetaan smoke-testissä ennen hyväksyntää.
 - Production-fuset lukitaan vasta paketoituun binääriin.
 - Artifact ei ole loppukäyttäjälle jaettava tuotantoversio ennen code signingia,

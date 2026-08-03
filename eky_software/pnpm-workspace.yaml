@@ -3,5 +3,5 @@ packages:
   - "packages/*"
 injectWorkspacePackages: true
 allowBuilds:
-  better-sqlite3: true
+  better-sqlite3: false
   electron: true

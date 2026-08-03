@@ -69,6 +69,39 @@ test('DESK-RUNTIME-001 starts an isolated Electron runtime', async ({
   });
 });
 
+test('DESK-RUNTIME-002 @critical identifies the approved Electron 43 runtime', async ({
+  e2eElectron,
+}) => {
+  const runtimeVersions = await e2eElectron.electronApp.evaluate(() => ({
+    chrome: process.versions.chrome,
+    electron: process.versions.electron,
+    napi: process.versions.napi,
+    node: process.versions.node,
+    v8: process.versions.v8,
+  }));
+
+  expect(runtimeVersions).toEqual({
+    chrome: '150.0.7871.129',
+    electron: '43.2.0',
+    napi: '10',
+    node: '24.18.0',
+    v8: '15.0.1240245-electron.0',
+  });
+
+  const diagnosticsResponse = await e2eElectron.api.get(
+    '/diagnostics/summary',
+  );
+  expect(diagnosticsResponse.status()).toBe(200);
+  await expect(diagnosticsResponse.json()).resolves.toEqual(
+    expect.objectContaining({
+      appliedMigrationCount: 38,
+      databaseHealth: 'ok',
+      electronVersion: null,
+      nodeVersion: 'v24.18.0',
+    }),
+  );
+});
+
 function isDescendant(candidate: string, root: string): boolean {
   const relativePath = relative(root, candidate);
   return (

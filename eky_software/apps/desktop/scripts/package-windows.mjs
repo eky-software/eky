@@ -7,7 +7,6 @@ import {
   rm,
   writeFile,
 } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
 import { dirname, join, relative, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -22,6 +21,10 @@ import {
 import { packager } from '@electron/packager';
 
 import { readDesktopElectronVersion } from './read-desktop-electron-version.mjs';
+import {
+  inspectStagedBetterSqliteRuntime,
+  verifyStagedBetterSqliteDatabase,
+} from './staged-better-sqlite-runtime.mjs';
 
 const electronVersion = await readDesktopElectronVersion();
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -79,58 +82,6 @@ async function listFiles(directory) {
   }
 
   return files;
-}
-
-async function hashFile(filePath) {
-  const contents = await readFile(filePath);
-  return createHash('sha256').update(contents).digest('hex');
-}
-
-async function findSinglePnpmPackageDirectory(rootDirectory, packageName) {
-  const virtualStore = resolve(rootDirectory, 'node_modules/.pnpm');
-  const entries = await readdir(virtualStore, { withFileTypes: true });
-  const matches = entries.filter(
-    (entry) => entry.isDirectory() && entry.name.startsWith(`${packageName}@`),
-  );
-
-  if (matches.length !== 1 || matches[0] === undefined) {
-    throw new Error(
-      `Expected one staged ${packageName} package, found ${String(matches.length)}.`,
-    );
-  }
-
-  return resolve(virtualStore, matches[0].name);
-}
-
-async function rebuildStagedBetterSqlite() {
-  const betterSqlitePackageDirectory = await findSinglePnpmPackageDirectory(
-    backendStage,
-    'better-sqlite3',
-  );
-  const prebuildInstallPackageDirectory = await findSinglePnpmPackageDirectory(
-    backendStage,
-    'prebuild-install',
-  );
-  const betterSqliteModuleDirectory = resolve(
-    betterSqlitePackageDirectory,
-    'node_modules/better-sqlite3',
-  );
-  const prebuildInstallEntryPoint = resolve(
-    prebuildInstallPackageDirectory,
-    'node_modules/prebuild-install/bin.js',
-  );
-
-  await run(
-    process.execPath,
-    [
-      prebuildInstallEntryPoint,
-      '--arch=x64',
-      '--platform=win32',
-      '--runtime=electron',
-      `--target=${electronVersion}`,
-    ],
-    { cwd: betterSqliteModuleDirectory },
-  );
 }
 
 async function assertSafeBackendStage() {
@@ -336,13 +287,6 @@ async function assertPackagedElectronVersion(packagedPath) {
 }
 
 async function packageWindowsSpike() {
-  const workspaceBetterSqliteBinding = resolve(
-    repositoryRoot,
-    'apps/backend/node_modules/better-sqlite3/build/Release/better_sqlite3.node',
-  );
-  const workspaceBindingHashBeforePackaging = await hashFile(
-    workspaceBetterSqliteBinding,
-  );
   await rm(stagingRoot, { force: true, recursive: true });
   await rm(outputDirectory, { force: true, recursive: true });
   await mkdir(stagingRoot, { recursive: true });
@@ -362,16 +306,11 @@ async function packageWindowsSpike() {
     repositoryRoot,
   });
   await assertSafeBackendStage();
-  await rebuildStagedBetterSqlite();
-  const workspaceBindingHashAfterPackaging = await hashFile(
-    workspaceBetterSqliteBinding,
+  const runtime = await inspectStagedBetterSqliteRuntime({ backendStage });
+  const sqliteVersion = await verifyStagedBetterSqliteDatabase({ backendStage });
+  console.log(
+    `Validated staged better-sqlite3 ${runtime.version} (SQLite ${sqliteVersion}).`,
   );
-
-  if (workspaceBindingHashAfterPackaging !== workspaceBindingHashBeforePackaging) {
-    throw new Error(
-      'Desktop packaging modified the workspace better-sqlite3 binding.',
-    );
-  }
 
   await prepareApplicationStage(buildInfo);
   await assertPackagedDiagnosticsArtifacts();

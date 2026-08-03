@@ -109,6 +109,49 @@ Yksi vertailuajo ei osoita muistivuotoa tai määritä yleistä muistirajaa.
 Seuraavissa ajoissa arvioidaan erityisesti, palautuvatko prosessi- ja
 ikkunamäärät sekä tasaantuuko working set samanlaisella työkuormalla.
 
+## Electron 43 -yhteensopivuusvertailu
+
+Electron `43.2.0`- ja better-sqlite3 `13.0.2` -yhteensopivuuspäivityksen
+jälkeinen stress-ajo tehtiin Windowsissa 3.8.2026:
+
+| Mittari | Electron 42.8.0 | Electron 43.2.0 |
+| --- | ---: | ---: |
+| Kesto | 62 615 ms | 61 379 ms |
+| Prosesseja alussa / lopussa | 5 / 5 | 5 / 5 |
+| Ikkunoita lopussa | 1 | 1 |
+| Working set alussa | 467 348 KiB | 450 072 KiB |
+| Working set lopussa | 456 200 KiB | 442 884 KiB |
+| SQLite | 352 256 B | 401 408 B |
+| PDF-dokumentit | 3 290 B | 3 290 B |
+| Lokit | 143 956 B | 143 954 B |
+
+Työkuorma säilyi samana: 200 moduulisiirtymää, 50 laskun detail-avausta,
+100 PDF-esikatselusykliä, 20 tukipakettia, 30 salaisuuskiertoa ja 20
+runtime-restarttia. Prosessi- ja ikkunamäärät palautuivat lähtötasolle eikä
+PDF-ikkunoita tai salaisuustiedostoa jäänyt avoimeksi.
+
+Täysi Electron `43.2.0` -soak ajettiin samana päivänä:
+
+| Mittari | Electron 42.8.0 | Electron 43.2.0 |
+| --- | ---: | ---: |
+| Kesto | 1 800 273 ms | 1 801 472 ms |
+| Työkierroksia | 3 282 | 3 250 |
+| Runtime-restartteja | 328 | 325 |
+| Tukipaketteja | 656 | 650 |
+| Prosesseja alussa / lopussa | 5 / 5 | 5 / 5 |
+| Ikkunoita lopussa | 1 | 1 |
+| Working set alussa | 466 248 KiB | 454 164 KiB |
+| Working set lopussa | 508 276 KiB | 452 992 KiB |
+| SQLite | 2 678 784 B | 2 723 840 B |
+| PDF-dokumentit | 3 290 B | 3 290 B |
+| Lokit | 2 574 536 B | 2 551 033 B |
+| Backend lopussa | terve | terve |
+
+Kierrosmäärän pieni vaihtelu johtuu aikarajattuun testiin yhden ajon aikana
+mahtuvasta työmäärästä. Yksi vertailu ei muodosta yleistä suorituskyky- tai
+muistirajaa, mutta tässä ajossa ei havaittu prosessi-, ikkuna- tai working
+set -kasvua, joka viittaisi Electron 43 -päivityksen aiheuttamaan vuotoon.
+
 ## Tulkinta
 
 Ensimmäisestä ajosta ei aseteta tiukkaa RSS-rajaa. Electronin working set
