@@ -16,6 +16,7 @@ export interface ElectronE2eConfig {
   marker: 'EKY_E2E';
   paths: {
     applicationPath: string;
+    invoicePdfArchiveDirectoryPath: string;
     observationsPath: string;
     resourcesPath: string;
     supportBundlePath: string;
@@ -109,6 +110,7 @@ function parseElectronE2eConfig(value: unknown): ElectronE2eConfig {
   const paths = requireRecord(root.paths);
   requireExactKeys(paths, [
     'applicationPath',
+    'invoicePdfArchiveDirectoryPath',
     'observationsPath',
     'resourcesPath',
     'supportBundlePath',
@@ -116,6 +118,7 @@ function parseElectronE2eConfig(value: unknown): ElectronE2eConfig {
   ]);
   if (
     !isSafeAbsolutePath(paths.applicationPath) ||
+    !isSafeAbsolutePath(paths.invoicePdfArchiveDirectoryPath) ||
     !isSafeAbsolutePath(paths.observationsPath) ||
     !isSafeAbsolutePath(paths.resourcesPath) ||
     !isSafeAbsolutePath(paths.supportBundlePath) ||
@@ -136,6 +139,8 @@ function parseElectronE2eConfig(value: unknown): ElectronE2eConfig {
     marker: 'EKY_E2E',
     paths: {
       applicationPath: paths.applicationPath,
+      invoicePdfArchiveDirectoryPath:
+        paths.invoicePdfArchiveDirectoryPath,
       observationsPath: paths.observationsPath,
       resourcesPath: paths.resourcesPath,
       supportBundlePath: paths.supportBundlePath,
@@ -165,6 +170,7 @@ function assertElectronE2ePaths(
 
   for (const directoryPath of [
     config.paths.applicationPath,
+    config.paths.invoicePdfArchiveDirectoryPath,
     config.paths.resourcesPath,
     config.paths.userDataPath,
     dirname(config.paths.observationsPath),

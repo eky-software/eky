@@ -87,6 +87,7 @@ if (hasSingleInstanceLock) {
           openPath: nativeAdapters.openPath,
           showErrorBox: nativeAdapters.showErrorBox,
           showMessageBox: nativeAdapters.showMessageBox,
+          showOpenDialog: nativeAdapters.showOpenDialog,
           showSaveDialog: nativeAdapters.showSaveDialog,
           startBackend:
             config.startupMode === 'backendStartFailure'

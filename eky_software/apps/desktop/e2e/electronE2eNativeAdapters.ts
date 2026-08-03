@@ -5,6 +5,8 @@ import type {
   BrowserWindow,
   MessageBoxOptions,
   MessageBoxReturnValue,
+  OpenDialogOptions,
+  OpenDialogReturnValue,
   SaveDialogOptions,
   SaveDialogReturnValue,
 } from 'electron';
@@ -14,12 +16,17 @@ import type { ElectronE2eConfig } from './electronE2eConfig.js';
 
 type NativeAdapterDependencies = Pick<
   DesktopCompositionDependencies,
-  'openPath' | 'showErrorBox' | 'showMessageBox' | 'showSaveDialog'
+  | 'openPath'
+  | 'showErrorBox'
+  | 'showMessageBox'
+  | 'showOpenDialog'
+  | 'showSaveDialog'
 >;
 
 export interface ElectronE2eNativeAdapterSnapshot {
   errorBoxCount: number;
   messageBoxCount: number;
+  openDialogCount: number;
   openedPaths: readonly string[];
   saveDialogCount: number;
 }
@@ -32,6 +39,7 @@ export function createElectronE2eNativeAdapters(
   const openedPaths: string[] = [];
   let errorBoxCount = 0;
   let messageBoxCount = 0;
+  let openDialogCount = 0;
   let saveDialogCount = 0;
   const expectedLogsRoot = resolve(
     config.paths.userDataPath,
@@ -77,6 +85,17 @@ export function createElectronE2eNativeAdapters(
       record({ operation: 'showMessageBox', response });
       return { checkboxChecked: false, response };
     },
+    async showOpenDialog(
+      _owner: BrowserWindow,
+      _options: OpenDialogOptions,
+    ): Promise<OpenDialogReturnValue> {
+      openDialogCount += 1;
+      record({ operation: 'showOpenDialog' });
+      return {
+        canceled: false,
+        filePaths: [config.paths.invoicePdfArchiveDirectoryPath],
+      };
+    },
     async showSaveDialog(
       _owner: BrowserWindow,
       _options: SaveDialogOptions,
@@ -92,6 +111,7 @@ export function createElectronE2eNativeAdapters(
       return {
         errorBoxCount,
         messageBoxCount,
+        openDialogCount,
         openedPaths: [...openedPaths],
         saveDialogCount,
       };

@@ -7,6 +7,7 @@ import { requireIdentifier } from '../domain/invoiceDraftRules.js';
 import { withCalculatedApprovedInvoiceVatBreakdown } from '../domain/invoiceViewTotals.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
+import type { DeliveredInvoiceArchiveQueueFailureReporter } from '../ports/deliveredInvoiceArchiveQueueFailureReporter.js';
 import type { DeliveredInvoiceArchiveTaskSink } from '../ports/deliveredInvoiceArchiveTaskSink.js';
 import type { InvoiceDeliveryEventReader } from '../ports/invoiceDeliveryEventReader.js';
 import type { InvoiceManualDeliveryFinalizer } from '../ports/invoiceManualDeliveryFinalizer.js';
@@ -25,6 +26,7 @@ export interface MarkApprovedInvoiceSentInput {
 
 export interface MarkApprovedInvoiceSentDependencies {
   approvedInvoiceReader: ApprovedInvoiceReader;
+  deliveredInvoiceArchiveQueueFailureReporter: DeliveredInvoiceArchiveQueueFailureReporter;
   deliveredInvoiceArchiveTaskSink: DeliveredInvoiceArchiveTaskSink;
   ensureApprovedInvoicePdfDocument(
     input: GenerateApprovedInvoicePdfDocumentInput,
@@ -99,6 +101,7 @@ export async function markApprovedInvoiceSent(
       invoice: currentInvoice,
     },
     dependencies.deliveredInvoiceArchiveTaskSink,
+    dependencies.deliveredInvoiceArchiveQueueFailureReporter,
   );
 
   return withCalculatedApprovedInvoiceVatBreakdown({

@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { link, open, readFile, rm, stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { requireExistingDirectory } from './invoicePdfArchiveConfig.js';
+import { finalizeInvoicePdfArchiveFile } from './invoicePdfArchiveFileFinalization.js';
 import {
   InvoicePdfArchiveError,
   maximumArchivedInvoicePdfBytes,
@@ -120,17 +121,12 @@ async function writePdfAtomically(
   );
 
   try {
-    const handle = await open(temporaryPath, 'wx', 0o600);
-
     try {
-      await handle.writeFile(content);
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-
-    try {
-      await link(temporaryPath, finalPath);
+      await finalizeInvoicePdfArchiveFile({
+        content,
+        finalPath,
+        temporaryPath,
+      });
     } catch (error) {
       if (isNodeError(error) && error.code === 'EEXIST') {
         const existing = await readExistingPdf(finalPath);
@@ -153,8 +149,6 @@ async function writePdfAtomically(
       throw error;
     }
     throw new InvoicePdfArchiveError('ARCHIVE_STORAGE_FAILED', true);
-  } finally {
-    await rm(temporaryPath, { force: true }).catch(() => undefined);
   }
 }
 

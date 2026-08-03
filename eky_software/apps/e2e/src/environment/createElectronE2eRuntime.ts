@@ -16,6 +16,7 @@ import { writeE2eBackendConfig } from './writeE2eBackendConfig.js';
 export interface ElectronE2eRuntime {
   backendPort: number;
   configPath: string;
+  invoicePdfArchiveDirectoryPath: string;
   observationsPath: string;
   profile: ElectronE2eProfilePaths;
   runtimeInstanceId: string;
@@ -83,6 +84,9 @@ export function createElectronE2eRuntime(input: {
     input.paths.artifactsRoot,
     'electron-observations.jsonl',
   );
+  const invoicePdfArchiveDirectoryPath = createPrivateDirectory(
+    join(input.paths.artifactsRoot, 'invoice-pdf-archive'),
+  );
   const supportBundlePath = join(
     input.paths.supportBundlesRoot,
     'electron-support-bundle.json.gz',
@@ -99,6 +103,7 @@ export function createElectronE2eRuntime(input: {
     marker: 'EKY_E2E',
     paths: {
       applicationPath,
+      invoicePdfArchiveDirectoryPath,
       observationsPath,
       resourcesPath,
       supportBundlePath,
@@ -117,6 +122,7 @@ export function createElectronE2eRuntime(input: {
   return {
     backendPort: input.backendPort,
     configPath,
+    invoicePdfArchiveDirectoryPath,
     observationsPath,
     profile,
     runtimeInstanceId,

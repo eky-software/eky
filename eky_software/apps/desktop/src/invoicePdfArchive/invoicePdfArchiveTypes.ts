@@ -6,6 +6,7 @@ export type InvoicePdfArchiveInvoiceKind = 'credit' | 'standard';
 export const invoicePdfArchiveSafeErrorCodes = Object.freeze([
   'ARCHIVE_CONFIG_INVALID',
   'ARCHIVE_DIRECTORY_UNAVAILABLE',
+  'ARCHIVE_DIRECTORY_UNSUPPORTED',
   'ARCHIVE_DOCUMENT_INVALID',
   'ARCHIVE_FILE_CONFLICT',
   'ARCHIVE_JOURNAL_INVALID',

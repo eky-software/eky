@@ -29,6 +29,13 @@ Print-layout, PDF ja sähköpostilähetys eivät saa hakea muuttuvaa dataa suora
 `Company Settings`- tai `Customers`-master-tauluista. Ne käyttävät hyväksytylle
 laskulle tallennettua snapshotia.
 
+Post-pilot-vaiheessa arvioitava suomalainen virtuaaliviivakoodi muodostetaan
+samasta hyväksytyn laskun maksutietojen snapshotista. Mahdollinen graafinen
+viivakoodi on PDF-rendererin esitysvastuu eikä saa muodostaa tai muuttaa
+maksudataa itse. Formaatti tarkistetaan ajantasaisesta pankkialan lähteestä ja
+mahdollinen uusi viivakoodiriippuvuus hyväksytään erikseen. Vaiheistus on
+kirjattu dokumenttiin `docs/architecture/local-backup-and-restore-plan.md`.
+
 Hyväksytyn laskun read model on toteutettu ensimmäisenä lukupolkuna:
 
 ```text

@@ -453,6 +453,11 @@ turvallisen näyttönimen, enabled-tilan, odottavien määrän, viimeisimmän
 onnistumisajan ja sallitun virhekoodin. Selainversio näyttää vain
 desktop-saatavuuden eikä jäljittele tiedostojärjestelmätoimintoa.
 
+Valittu kansio otetaan käyttöön vasta, kun Electron main on todistanut siinä
+saman exclusive temp + write + `fsync` + hard-link -finalisoinnin, jota oikea
+laskuarkistointi käyttää. Epäonnistunut probe ei tallenna konekohtaista
+asetusta eikä paljasta polkua rendererille tai virhevastaukseen.
+
 Tarkka malli on dokumentissa
 `docs/architecture/local-invoice-pdf-archive-plan.md`.
 

@@ -3,6 +3,7 @@ import type { ElectronApplication } from '@playwright/test';
 export interface ElectronNativeAdapterSnapshot {
   errorBoxCount: number;
   messageBoxCount: number;
+  openDialogCount: number;
   openedPaths: readonly string[];
   saveDialogCount: number;
 }

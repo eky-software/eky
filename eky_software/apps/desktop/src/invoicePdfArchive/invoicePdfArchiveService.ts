@@ -1,6 +1,7 @@
 import { basename } from 'node:path';
 
 import { InvoicePdfArchiveConfigStore } from './invoicePdfArchiveConfig.js';
+import { probeInvoicePdfArchiveDirectory } from './invoicePdfArchiveDirectoryProbe.js';
 import {
   copyInvoicePdfToArchive,
   type LoadInvoicePdfArchiveDocument,
@@ -44,11 +45,15 @@ export class InvoicePdfArchiveService {
       loadDocument: LoadInvoicePdfArchiveDocument;
       now?: () => Date;
       observer?: InvoicePdfArchiveObserver;
+      probeDirectory?: (directoryPath: string) => Promise<void>;
     },
   ) {}
 
   async chooseDirectory(directoryPath: string): Promise<InvoicePdfArchiveStatus> {
     return this.runExclusive(async () => {
+      await (
+        this.dependencies.probeDirectory ?? probeInvoicePdfArchiveDirectory
+      )(directoryPath);
       await this.dependencies.configStore.enable(directoryPath);
       await this.retryPendingInternal(false);
       return this.getStatusInternal();

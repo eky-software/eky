@@ -11,6 +11,7 @@ import { InvoicePdfArchiveJournalStore } from './invoicePdfArchiveJournal.js';
 import { createInvoicePdfArchiveRuntimePaths } from './invoicePdfArchivePaths.js';
 import { InvoicePdfArchiveService } from './invoicePdfArchiveService.js';
 import type { InvoicePdfArchiveTask } from './invoicePdfArchiveTypes.js';
+import { InvoicePdfArchiveError } from './invoicePdfArchiveTypes.js';
 
 const temporaryRoots: string[] = [];
 
@@ -59,6 +60,31 @@ describe('InvoicePdfArchiveService', () => {
       lastSafeErrorCode: 'ARCHIVE_STORAGE_FAILED',
       pendingCount: 1,
     });
+  });
+
+  it('does not persist a selected directory when the finalization probe fails', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'eky-archive-service-probe-'));
+    temporaryRoots.push(root);
+    const archiveRoot = join(root, 'archive');
+    await mkdir(archiveRoot);
+    const paths = createInvoicePdfArchiveRuntimePaths(root);
+    const configStore = new InvoicePdfArchiveConfigStore(paths.configFilePath);
+    const service = new InvoicePdfArchiveService({
+      configStore,
+      journalStore: new InvoicePdfArchiveJournalStore(paths.journalFilePath),
+      loadDocument: vi.fn(),
+      probeDirectory: vi.fn(async () => {
+        throw new InvoicePdfArchiveError(
+          'ARCHIVE_DIRECTORY_UNSUPPORTED',
+          false,
+        );
+      }),
+    });
+
+    await expect(service.chooseDirectory(archiveRoot)).rejects.toMatchObject({
+      code: 'ARCHIVE_DIRECTORY_UNSUPPORTED',
+    });
+    await expect(configStore.read()).resolves.toBeNull();
   });
 
   it('does not automatically retry conflicts', async () => {

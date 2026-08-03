@@ -126,6 +126,33 @@ describe('backend operational event contracts', () => {
     });
   });
 
+  it('keeps invoice archive queue failures free of business identifiers', () => {
+    const event = createBackendOperationalEvent(
+      {
+        errorCode: 'INVOICE_PDF_ARCHIVE_QUEUE_FAILED',
+        eventName: 'invoicePdfArchive.queueFailed',
+        retryable: true,
+        sideEffectState: 'none',
+        stage: 'queue',
+      },
+      options,
+    );
+
+    expect(event).toMatchObject({
+      category: 'invoicePdfArchive',
+      errorCode: 'INVOICE_PDF_ARCHIVE_QUEUE_FAILED',
+      eventName: 'invoicePdfArchive.queueFailed',
+      level: 'warn',
+      outcome: 'failure',
+      retryable: true,
+      sideEffectState: 'none',
+      stage: 'queue',
+    });
+    expect(event).not.toHaveProperty('companyId');
+    expect(event).not.toHaveProperty('entityId');
+    expect(event).not.toHaveProperty('operationId');
+  });
+
   it.each([
     ['password', 'synthetic-secret'],
     ['details', 'anything'],

@@ -22,9 +22,23 @@ interface E2eBackendSecretStore {
   setSecret(input: { companyId: string; secret: string }): Promise<void>;
 }
 
+interface E2eDeliveredInvoiceArchiveTaskSink {
+  queueDeliveredInvoiceArchiveTask(input: {
+    createdAt: string;
+    deliveryEventId: string;
+    documentId: string;
+    expectedPdfSha256: string;
+    expectedPdfSize: number;
+    invoiceId: string;
+    invoiceKind: 'credit' | 'standard';
+    invoiceNumber: string;
+  }): Promise<void>;
+}
+
 export interface StartE2eBackendOptions {
   companyEmailSecretReader?: E2eBackendSecretReader;
   companyEmailSecretStore?: E2eBackendSecretStore;
+  deliveredInvoiceArchiveTaskSink?: E2eDeliveredInvoiceArchiveTaskSink;
   runtimeInstanceId?: string;
 }
 
@@ -66,6 +80,12 @@ export async function startE2eBackend(
       appVersion: operationalIdentity.appVersion,
       companyEmailSecretReader,
       companyEmailSecretStore,
+      ...(options.deliveredInvoiceArchiveTaskSink === undefined
+        ? {}
+        : {
+            deliveredInvoiceArchiveTaskSink:
+              options.deliveredInvoiceArchiveTaskSink,
+          }),
       databaseFilePath: config.paths.databaseFilePath,
       invoiceDocumentStorageRoot: config.paths.documentsRoot,
       invoicingInfrastructureAdapters: {
