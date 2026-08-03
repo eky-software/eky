@@ -7,12 +7,14 @@ import { requireIdentifier } from '../domain/invoiceDraftRules.js';
 import { withCalculatedApprovedInvoiceVatBreakdown } from '../domain/invoiceViewTotals.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
+import type { DeliveredInvoiceArchiveTaskSink } from '../ports/deliveredInvoiceArchiveTaskSink.js';
 import type { InvoiceDeliveryEventReader } from '../ports/invoiceDeliveryEventReader.js';
 import type { InvoiceManualDeliveryFinalizer } from '../ports/invoiceManualDeliveryFinalizer.js';
 import { InvoiceDeliveryConflictError } from './invoiceDeliveryConflictError.js';
 import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
 import type { GenerateApprovedInvoicePdfDocumentInput } from './generateApprovedInvoicePdfDocument.js';
 import { requireInvoiceDeliveryEligible } from './requireInvoiceDeliveryEligible.js';
+import { queueDeliveredInvoiceArchiveTaskSafely } from './queueDeliveredInvoiceArchiveTaskSafely.js';
 
 export interface MarkApprovedInvoiceSentInput {
   actorContext: ActorContext;
@@ -23,6 +25,7 @@ export interface MarkApprovedInvoiceSentInput {
 
 export interface MarkApprovedInvoiceSentDependencies {
   approvedInvoiceReader: ApprovedInvoiceReader;
+  deliveredInvoiceArchiveTaskSink: DeliveredInvoiceArchiveTaskSink;
   ensureApprovedInvoicePdfDocument(
     input: GenerateApprovedInvoicePdfDocumentInput,
   ): Promise<ApprovedInvoiceDocumentMetadata>;
@@ -70,6 +73,7 @@ export async function markApprovedInvoiceSent(
     createdAt: markedSentAt,
     invoiceId,
   });
+  const deliveryEventId = randomUUID();
 
   const completion =
     await dependencies.invoiceManualDeliveryFinalizer.completeManualDelivery({
@@ -77,7 +81,7 @@ export async function markApprovedInvoiceSent(
       auditEventId: randomUUID(),
       companyId,
       deliveredAt: markedSentAt,
-      deliveryEventId: randomUUID(),
+      deliveryEventId,
       deliveryMethod: input.deliveryMethod,
       documentId: document.id,
       invoiceId,
@@ -86,6 +90,16 @@ export async function markApprovedInvoiceSent(
   if (completion === undefined) {
     throw new ApprovedInvoiceNotFoundError();
   }
+
+  await queueDeliveredInvoiceArchiveTaskSafely(
+    {
+      createdAt: markedSentAt,
+      deliveryEventId,
+      document,
+      invoice: currentInvoice,
+    },
+    dependencies.deliveredInvoiceArchiveTaskSink,
+  );
 
   return withCalculatedApprovedInvoiceVatBreakdown({
     ...currentInvoice,

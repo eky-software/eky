@@ -29,6 +29,11 @@ Mandatory boundaries:
   local customer/invoice data
 - keep browser development available through `apps/web`
 - add no desktop dependency without a documented dependency/security review
+- keep delivered invoice PDF archive paths, journal data and file operations
+  in Electron main; the renderer may receive only the documented safe status
+  and named zero-argument capabilities
+- keep the invoice archive broker private between the backend utility process
+  and Electron main; never add the raw path or archive task to public HTTP
 
 Oikeaa SMTP-tunnusta saa käyttää vain erikseen hyväksytyssä, salatussa ja
 käyttäjän vahvistamassa Electron-polussa. Testilähetys pakotetaan määritettyyn

@@ -17,7 +17,7 @@ describe('desktop secret broker boundaries', () => {
 
     expect(preloadSource).not.toMatch(/safeStorage|secretBroker|MessagePort/i);
     expect(preloadSource).not.toMatch(/node:fs|shell|process\.|openUrl|openFile|rawIpc/i);
-    expect(preloadSource.match(/ipcRenderer\.invoke/g)).toHaveLength(3);
+    expect(preloadSource.match(/ipcRenderer\.invoke/g)).toHaveLength(8);
     expect(preloadSource).toContain('invoicePdfPreviewIpcChannel');
     expect(preloadSource).toContain(
       `invoicePdfPreviewIpcChannel = '${invoicePdfPreviewIpcChannel}'`,
@@ -25,6 +25,11 @@ describe('desktop secret broker boundaries', () => {
     expect(preloadSource).toContain('openInvoicePdf');
     expect(preloadSource).toContain('openOperationalLogFolder');
     expect(preloadSource).toContain('createSupportBundle');
+    expect(preloadSource).toContain('getInvoicePdfArchiveStatus');
+    expect(preloadSource).toContain('chooseInvoicePdfArchiveDirectory');
+    expect(preloadSource).toContain('openInvoicePdfArchiveDirectory');
+    expect(preloadSource).toContain('disableInvoicePdfArchive');
+    expect(preloadSource).toContain('retryPendingInvoicePdfArchiveTasks');
   });
 
   it('does not expose the broker or secret read operation to web source code', async () => {

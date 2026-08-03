@@ -55,6 +55,30 @@ export async function createDeleteDraftSmokeFixture(
   return readNestedIdentifier(draftResponse, 'invoiceDraft', 'id');
 }
 
+export async function markInvoiceDeliveredForArchiveSmoke(input: {
+  backendPort: number;
+  invoiceId: string;
+  runtimeSessionSecret: string;
+}): Promise<void> {
+  const response = await fetch(
+    `http://127.0.0.1:${input.backendPort}/invoices/${encodeURIComponent(input.invoiceId)}/mark-sent`,
+    {
+      body: JSON.stringify({ deliveryMethod: 'manual' }),
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/json',
+        [localRuntimeSessionHeaderName]: input.runtimeSessionSecret,
+      },
+      method: 'POST',
+      signal: AbortSignal.timeout(10_000),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error('DESKTOP_SMOKE_INVOICE_ARCHIVE_DELIVERY_FAILED');
+  }
+}
+
 function createSmokeRequest(
   backendPort: number,
   runtimeSessionSecret: string,

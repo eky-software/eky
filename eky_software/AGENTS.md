@@ -154,6 +154,11 @@ SMTP/Gmail/Microsoft-sähköpostiadaptereita, `sent`-tilaa, laskun kopiointia,
 peruutusta, hyvityslaskua tai lähetyslokia, lue myös
 `docs/architecture/invoice-delivery-plan.md`.
 
+Jos työ koskee toimitetun lasku-PDF:n valinnaista paikallista arkistokopiota,
+käyttäjän valitsemaa desktop-kansiota, arkistoinnin retry-journalia tai
+backendin ja Electron main -prosessin välistä arkistointibrokeria, lue myös
+`docs/architecture/local-invoice-pdf-archive-plan.md`.
+
 Jos työ koskee hyväksytyn laskun peruutusta, hyvitysluonnosta, koko- tai
 osahyvitystä, hyvityksen kumulatiivista laskentaa, hyvityslaskun hyväksyntää,
 hyvityksen PDF:ää tai alkuperäislaskun ja hyvitysten ryhmittelyä, lue myös

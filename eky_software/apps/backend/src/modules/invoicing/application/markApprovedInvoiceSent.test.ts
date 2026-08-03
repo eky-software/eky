@@ -21,12 +21,16 @@ describe('markApprovedInvoiceSent', () => {
     const completeManualDelivery = vi.fn(async () => ({
       updatedAt: sentInvoice.updatedAt,
     }));
+    const queueDeliveredInvoiceArchiveTask = vi.fn(async () => undefined);
 
     await expect(
       markApprovedInvoiceSent(createInput(), {
         approvedInvoiceReader: {
           getApprovedInvoiceById,
           listApprovedInvoiceSummaries: vi.fn(),
+        },
+        deliveredInvoiceArchiveTaskSink: {
+          queueDeliveredInvoiceArchiveTask,
         },
         ensureApprovedInvoicePdfDocument,
         invoiceDeliveryEventReader: createDeliveryEventReader(false),
@@ -50,6 +54,19 @@ describe('markApprovedInvoiceSent', () => {
       invoiceId: 'invoice-1',
     });
     expect(getApprovedInvoiceById).toHaveBeenCalledOnce();
+    expect(queueDeliveredInvoiceArchiveTask).toHaveBeenCalledWith(
+      expect.objectContaining({
+        createdAt: '2026-07-08T10:00:00.000Z',
+        deliveryEventId: expectUuid(),
+        documentId: 'document-1',
+        expectedPdfSha256: '0'.repeat(64),
+        expectedPdfSize: 2048,
+        invoiceId: 'invoice-1',
+        invoiceKind: 'standard',
+        invoiceNumber: '20260001',
+        taskId: expectUuid(),
+      }),
+    );
   });
 
   it('does not finalize manual delivery when PDF ensuring fails', async () => {
@@ -60,6 +77,7 @@ describe('markApprovedInvoiceSent', () => {
         approvedInvoiceReader: createReader(
           createApprovedInvoiceView({ status: 'approved' }),
         ),
+        deliveredInvoiceArchiveTaskSink: createArchiveTaskSink(),
         ensureApprovedInvoicePdfDocument: vi.fn(async () => {
           throw new Error('PDF could not be generated.');
         }),
@@ -79,6 +97,7 @@ describe('markApprovedInvoiceSent', () => {
     await expect(
       markApprovedInvoiceSent(createInput(), {
         approvedInvoiceReader: createReader(sentInvoice),
+        deliveredInvoiceArchiveTaskSink: createArchiveTaskSink(),
         ensureApprovedInvoicePdfDocument,
         invoiceDeliveryEventReader: createDeliveryEventReader(false),
         invoiceManualDeliveryFinalizer: { completeManualDelivery },
@@ -95,6 +114,7 @@ describe('markApprovedInvoiceSent', () => {
     await expect(
       markApprovedInvoiceSent(createInput(), {
         approvedInvoiceReader: createReader(undefined),
+        deliveredInvoiceArchiveTaskSink: createArchiveTaskSink(),
         ensureApprovedInvoicePdfDocument: vi.fn(),
         invoiceDeliveryEventReader: createDeliveryEventReader(false),
         invoiceManualDeliveryFinalizer: { completeManualDelivery },
@@ -114,6 +134,7 @@ describe('markApprovedInvoiceSent', () => {
         approvedInvoiceReader: createReader(
           createApprovedInvoiceView({ status: 'cancelled' }),
         ),
+        deliveredInvoiceArchiveTaskSink: createArchiveTaskSink(),
         ensureApprovedInvoicePdfDocument,
         invoiceDeliveryEventReader,
         invoiceManualDeliveryFinalizer: { completeManualDelivery },
@@ -145,6 +166,7 @@ describe('markApprovedInvoiceSent', () => {
             getApprovedInvoiceById,
             listApprovedInvoiceSummaries: vi.fn(),
           },
+          deliveredInvoiceArchiveTaskSink: createArchiveTaskSink(),
           ensureApprovedInvoicePdfDocument: vi.fn(),
           invoiceDeliveryEventReader: createDeliveryEventReader(false),
           invoiceManualDeliveryFinalizer: {
@@ -166,6 +188,7 @@ describe('markApprovedInvoiceSent', () => {
         approvedInvoiceReader: createReader(
           createApprovedInvoiceView({ status: 'approved' }),
         ),
+        deliveredInvoiceArchiveTaskSink: createArchiveTaskSink(),
         ensureApprovedInvoicePdfDocument,
         invoiceDeliveryEventReader: createDeliveryEventReader(true),
         invoiceManualDeliveryFinalizer: { completeManualDelivery },
@@ -174,6 +197,32 @@ describe('markApprovedInvoiceSent', () => {
 
     expect(ensureApprovedInvoicePdfDocument).not.toHaveBeenCalled();
     expect(completeManualDelivery).not.toHaveBeenCalled();
+  });
+
+  it('keeps a successful manual delivery successful when local archival fails', async () => {
+    const sentInvoice = createApprovedInvoiceView({ status: 'sent' });
+
+    await expect(
+      markApprovedInvoiceSent(createInput(), {
+        approvedInvoiceReader: createReader(
+          createApprovedInvoiceView({ status: 'approved' }),
+        ),
+        deliveredInvoiceArchiveTaskSink: {
+          queueDeliveredInvoiceArchiveTask: vi.fn(async () => {
+            throw new Error('local archive unavailable');
+          }),
+        },
+        ensureApprovedInvoicePdfDocument: vi.fn(async () =>
+          createDocumentMetadata(),
+        ),
+        invoiceDeliveryEventReader: createDeliveryEventReader(false),
+        invoiceManualDeliveryFinalizer: {
+          completeManualDelivery: vi.fn(async () => ({
+            updatedAt: sentInvoice.updatedAt,
+          })),
+        },
+      }),
+    ).resolves.toStrictEqual(sentInvoice);
   });
 });
 
@@ -205,6 +254,12 @@ function createDeliveryEventReader(hasUnresolvedEvent: boolean) {
   return {
     hasUnresolvedDeliveryEvent: vi.fn(async () => hasUnresolvedEvent),
     listDeliveryEvents: vi.fn(async () => []),
+  };
+}
+
+function createArchiveTaskSink() {
+  return {
+    queueDeliveredInvoiceArchiveTask: vi.fn(async () => undefined),
   };
 }
 

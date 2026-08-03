@@ -472,6 +472,32 @@ export const uiText = {
       'Kun kirjoitat tämän sanan laskurivin nimikkeeksi, tuntihinta ehdotetaan kerran automaattisesti. Tyhjä kenttä poistaa pikavalinnan käytöstä.',
     invoiceNumberingDefaultInfo:
       'Näytetään oletusasetukset. Tallenna asetukset, jos haluat ottaa ne käyttöön ennen ensimmäisen laskun hyväksyntää.',
+    invoicePdfArchiveChangeDirectory: 'Vaihda kansio',
+    invoicePdfArchiveChooseDirectory: 'Valitse kansio',
+    invoicePdfArchiveConflict:
+      'Samanniminen mutta eri sisältöinen PDF on jo kansiossa. Eky ei ylikirjoita tiedostoa. Tarkista kansio ja yritä uudelleen.',
+    invoicePdfArchiveDescription:
+      'Eky voi tallentaa onnistuneesti toimitetusta laskusta ylimääräisen PDF-kopion valitsemaasi paikalliseen kansioon. Toiminto ei korvaa varmuuskopiointia.',
+    invoicePdfArchiveDesktopOnly:
+      'Paikallinen PDF-kopiointi on käytettävissä vain Eky-työpöytäsovelluksessa.',
+    invoicePdfArchiveDirectory: 'Valittu kansio',
+    invoicePdfArchiveDisable: 'Poista käytöstä',
+    invoicePdfArchiveDisabled: 'Ei käytössä',
+    invoicePdfArchiveEnabled: 'Käytössä',
+    invoicePdfArchiveHeading: 'Toimitettujen laskujen PDF-kopiot',
+    invoicePdfArchiveKicker: 'Paikallinen arkisto',
+    invoicePdfArchiveLastSaved: 'Viimeisin onnistunut kopio',
+    invoicePdfArchiveLoadError:
+      'PDF-kopioinnin tilaa ei voitu tarkistaa turvallisesti.',
+    invoicePdfArchiveLoading: 'Tarkistetaan PDF-kopioinnin tilaa...',
+    invoicePdfArchiveOpenDirectory: 'Avaa kansio',
+    invoicePdfArchiveOperationError:
+      'PDF-kopiointia ei voitu käsitellä turvallisesti. Yritä uudelleen.',
+    invoicePdfArchivePending: 'Odottavia kopioita',
+    invoicePdfArchivePendingError:
+      'Kaikkia PDF-kopioita ei voitu tallentaa. Tarkista valitun kansion saatavuus ja yritä uudelleen.',
+    invoicePdfArchiveRetry: 'Yritä odottavia uudelleen',
+    invoicePdfArchiveStatus: 'Tila',
     invoiceNumberingDescription:
       'Määritä, miten viralliset laskunumerot muodostetaan hyväksynnässä. Varsinainen laskunumero annetaan vasta, kun lasku hyväksytään.',
     invoiceNumberingFirstSequenceNumber: 'Ensimmäinen numero',

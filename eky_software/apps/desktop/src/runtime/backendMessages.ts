@@ -45,6 +45,7 @@ export interface DesktopBackendFailedMessage {
 }
 
 export type DesktopBackendFailureCode =
+  | 'BACKEND_INVOICE_PDF_ARCHIVE_BROKER_FAILED'
   | 'BACKEND_MODULE_IMPORT_FAILED'
   | 'BACKEND_SECRET_BROKER_FAILED'
   | 'BACKEND_SERVER_START_FAILED'
@@ -55,6 +56,7 @@ export type DesktopBackendStatusMessage =
   | DesktopBackendReadyMessage;
 
 const backendFailureCodes = new Set<DesktopBackendFailureCode>([
+  'BACKEND_INVOICE_PDF_ARCHIVE_BROKER_FAILED',
   'BACKEND_MODULE_IMPORT_FAILED',
   'BACKEND_SECRET_BROKER_FAILED',
   'BACKEND_SERVER_START_FAILED',

@@ -46,6 +46,14 @@ Laskun toimitustapahtumien, lähetyslokin, delivery event -mallin ja
 send-polun auditointiperiaatteet on kuvattu dokumentissa
 `docs/architecture/invoice-delivery-events-plan.md`.
 
+Toimitetun lasku-PDF:n valinnainen local desktop -arkistokopio on kuvattu
+dokumentissa `docs/architecture/local-invoice-pdf-archive-plan.md`.
+Invoicing jonottaa täsmälliseen delivery eventiin ja current
+PDF-dokumenttiin sidotun tehtävän vasta durableen `succeeded`-tilaan
+viimeistellyn SMTP-, manual- tai print-toimituksen jälkeen. Moduuli ei tunne
+paikallista kansiota, tiedostonimeä, Electronia tai retry-journalia.
+Arkistointivirhe ei muuta toimituksen tulosta eikä laskun `sent`-tilaa.
+
 Sähköpostilähetyksen provider-malli, dry-run-vaihe, SMTP/Gmail-linja ja
 salaisuuksien hallinta on kuvattu dokumentissa
 `docs/architecture/email-delivery-and-secrets-plan.md`.
@@ -99,6 +107,8 @@ lähetettyjen laskujen korjausperiaatteiden muistilista on kuvattu dokumentissa
 - varastosaldoja
 - SMTP-salasanoja, OAuth-tokeneita tai teknisten email-providerien salaisuuksia
 - yleistä backend email infrastructure -toteutusta
+- käyttäjän paikallista PDF-arkistokansiota, arkiston tiedostoja tai
+  desktopin retry-journalia
 
 ## Tärkeitä käsitteitä
 

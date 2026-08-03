@@ -1,17 +1,21 @@
 import { randomBytes } from 'node:crypto';
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import type { BrowserWindow } from 'electron';
 
 import { createInvoicePdfPreviewSmokeFixture } from '../pdf/invoicePdfPreviewSmoke.js';
 import type { InvoicePdfPreviewWindowController } from '../pdf/invoicePdfPreviewWindow.js';
+import type { InvoicePdfArchiveService } from '../invoicePdfArchive/invoicePdfArchiveService.js';
 import type { DesktopBackendHandle } from '../runtime/backendProcess.js';
 import {
   EncryptedSecretFile,
   type EncryptedSecretFileStore,
 } from '../secrets/encryptedSecretFile.js';
-import { createDeleteDraftSmokeFixture } from './applicationProtocolSmoke.js';
+import {
+  createDeleteDraftSmokeFixture,
+  markInvoiceDeliveredForArchiveSmoke,
+} from './applicationProtocolSmoke.js';
 import { localRuntimeSessionHeaderName } from './protocolPolicy.js';
 import { runPackagedSupportBundleSmoke } from './packagedSupportBundleSmoke.js';
 
@@ -28,6 +32,7 @@ export const packagedSmokeStages = Object.freeze([
   'logFolder',
   'supportBundle',
   'secretStorage',
+  'invoicePdfArchive',
   'pdfPreview',
   'shutdown',
 ] as const);
@@ -61,6 +66,11 @@ interface RunPackagedSmokeCheckOptions {
   buildRevision: string;
   databaseFilePath: string;
   mainWindow: BrowserWindow;
+  invoicePdfArchiveDirectoryPath: string;
+  invoicePdfArchiveService: Pick<
+    InvoicePdfArchiveService,
+    'chooseDirectory' | 'getStatus'
+  >;
   pdfPreviewController: InvoicePdfPreviewWindowController;
   runtimeSessionSecret: string;
   runtimeInstanceId: string;
@@ -279,12 +289,27 @@ export async function runPackagedSmokeCheck(
     options.runtimeSessionSecret,
   );
 
-  await options.reportStage('pdfPreview');
+  await options.reportStage('invoicePdfArchive');
+  await mkdir(options.invoicePdfArchiveDirectoryPath, { recursive: true });
+  await options.invoicePdfArchiveService.chooseDirectory(
+    options.invoicePdfArchiveDirectoryPath,
+  );
   const previewInvoiceId = await createInvoicePdfPreviewSmokeFixture({
     backendPort: options.backend.port,
     runtimeSessionSecret: options.runtimeSessionSecret,
   });
+  await markInvoiceDeliveredForArchiveSmoke({
+    backendPort: options.backend.port,
+    invoiceId: previewInvoiceId,
+    runtimeSessionSecret: options.runtimeSessionSecret,
+  });
+  await assertPackagedInvoicePdfArchive({
+    directoryPath: options.invoicePdfArchiveDirectoryPath,
+    mainWindow: options.mainWindow,
+    service: options.invoicePdfArchiveService,
+  });
 
+  await options.reportStage('pdfPreview');
   await options.pdfPreviewController.openForSmoke(previewInvoiceId);
   options.pdfPreviewController.close();
 
@@ -307,6 +332,61 @@ export async function runPackagedSmokeCheck(
 
       throw error;
     }
+  }
+}
+
+async function assertPackagedInvoicePdfArchive(input: {
+  directoryPath: string;
+  mainWindow: BrowserWindow;
+  service: Pick<InvoicePdfArchiveService, 'getStatus'>;
+}): Promise<void> {
+  const status = await input.service.getStatus();
+
+  if (
+    !status.enabled ||
+    status.pendingCount !== 0 ||
+    status.lastArchivedAt === null ||
+    status.lastSafeErrorCode !== null
+  ) {
+    throw new Error('DESKTOP_SMOKE_INVOICE_ARCHIVE_STATUS_FAILED');
+  }
+
+  const fileNames = await readdir(input.directoryPath);
+  const invoicePdfFiles = fileNames.filter((fileName) =>
+    /^Lasku-\d{1,50}\.pdf$/.test(fileName),
+  );
+
+  if (invoicePdfFiles.length !== 1) {
+    throw new Error('DESKTOP_SMOKE_INVOICE_ARCHIVE_FILE_FAILED');
+  }
+  const fileName = invoicePdfFiles[0];
+
+  if (fileName === undefined) {
+    throw new Error('DESKTOP_SMOKE_INVOICE_ARCHIVE_FILE_FAILED');
+  }
+  const content = await readFile(join(input.directoryPath, fileName));
+
+  if (content.subarray(0, 5).toString('ascii') !== '%PDF-') {
+    throw new Error('DESKTOP_SMOKE_INVOICE_ARCHIVE_FILE_FAILED');
+  }
+
+  const bridgeStatus: unknown =
+    await input.mainWindow.webContents.executeJavaScript(
+      `window.ekyDesktop.getInvoicePdfArchiveStatus()`,
+      true,
+    );
+
+  if (
+    !isRecord(bridgeStatus) ||
+    bridgeStatus.enabled !== true ||
+    bridgeStatus.pendingCount !== 0 ||
+    typeof bridgeStatus.displayName !== 'string' ||
+    bridgeStatus.displayName.length === 0 ||
+    Object.keys(bridgeStatus).some((key) =>
+      ['directoryPath', 'path', 'rawPath'].includes(key),
+    )
+  ) {
+    throw new Error('DESKTOP_SMOKE_INVOICE_ARCHIVE_BRIDGE_FAILED');
   }
 }
 

@@ -60,6 +60,17 @@ export interface DesktopOperationalEventPayloadMap {
     stage: 'request';
   };
   'pdfPreview.openFailed': { entityId?: string; entityType?: string } & FailureFields;
+  'invoicePdfArchive.taskQueued': Record<never, never>;
+  'invoicePdfArchive.copySucceeded': {
+    attemptCount: number;
+    durationMs: number;
+  };
+  'invoicePdfArchive.copyFailed': FailureFields & {
+    attemptCount: number;
+  };
+  'invoicePdfArchive.configurationChanged': {
+    stage: 'disabled' | 'enabled';
+  };
   'secretStorage.decryptFailed': FailureFields;
   'secretStorage.writeFailed': FailureFields;
   'packagedSmoke.started': Record<never, never>;
@@ -219,6 +230,29 @@ export const desktopOperationalEventSpecs = Object.freeze({
     'entityId',
     'entityType',
   ]),
+  'invoicePdfArchive.taskQueued': spec(
+    'invoicePdfArchive',
+    'info',
+    'success',
+  ),
+  'invoicePdfArchive.copySucceeded': spec(
+    'invoicePdfArchive',
+    'info',
+    'success',
+    ['attemptCount', 'durationMs'],
+  ),
+  'invoicePdfArchive.copyFailed': spec(
+    'invoicePdfArchive',
+    'warn',
+    'failure',
+    ['attemptCount', ...failureFields],
+  ),
+  'invoicePdfArchive.configurationChanged': spec(
+    'invoicePdfArchive',
+    'info',
+    'success',
+    ['stage'],
+  ),
   'secretStorage.decryptFailed': spec(
     'secretStorage',
     'error',
@@ -321,6 +355,10 @@ export const desktopRequiredPayloadFields = Object.freeze({
     'stage',
   ],
   'pdfPreview.openFailed': ['errorCode'],
+  'invoicePdfArchive.taskQueued': [],
+  'invoicePdfArchive.copySucceeded': ['attemptCount', 'durationMs'],
+  'invoicePdfArchive.copyFailed': ['attemptCount', 'errorCode'],
+  'invoicePdfArchive.configurationChanged': ['stage'],
   'secretStorage.decryptFailed': ['errorCode'],
   'secretStorage.writeFailed': ['errorCode'],
   'packagedSmoke.started': [],
