@@ -268,10 +268,11 @@ Paikallinen checkpoint valmistui 3.8.2026:
 - stressi- ja 30 minuutin soak-ajot eivät osoittaneet prosessi-, ikkuna- tai
   working set -vuotoa.
 
-GitHub CI ja Dependabot-PR:n sulkeminen tehdään vasta, kun hallittu haara
-pushataan ja korvaava PR avataan. Tämä paikallinen checkpoint ei poista
-installer-, code signing-, automaattipäivitys- tai muuta release security gate
--vaatimusta eikä merkitse artifactia tuotantovalmiiksi.
+Hallitun korvaavan haaran pitää läpäistä GitHub CI ennen mergeä, ja päällekkäinen
+Dependabot-PR suljetaan vasta korvaavan PR:n hyväksymisen jälkeen. Paikallinen
+checkpoint tai vihreä CI ei poista installer-, code signing-,
+automaattipäivitys- tai muuta release security gate -vaatimusta eikä merkitse
+artifactia tuotantovalmiiksi.
 
 ## Pakolliset pysäytysehdot
 

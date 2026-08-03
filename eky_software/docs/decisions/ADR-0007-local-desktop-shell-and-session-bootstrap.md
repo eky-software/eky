@@ -338,7 +338,9 @@ Haitat ja riskit:
 - Electronin, Chromiumin ja npm-riippuvuuksien tietoturvapäivitykset pitää
   käsitellä nopeasti
 - väärin avattu Node-/IPC-raja nostaa XSS-haavoittuvuuden vaikutusta
-- native Node addonit pitää rakentaa ja testata Electronin ABI:lle
+- native Node addonien yhteensopivuus kohde-Electronin kanssa pitää validoida;
+  ensisijainen malli on tuettu N-API-runtime ja tarvittaessa tarkasti
+  kohdistettu ABI-rakennus
 
 ### Tauri ja Node-backend Sidecarina
 

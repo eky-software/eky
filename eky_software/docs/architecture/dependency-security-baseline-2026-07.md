@@ -115,14 +115,14 @@ Virallinen advisory:
 Nämä rajat pienentävät käytännön altistusta, mutta eivät ole peruste jättää
 korjattavissa olevaa tunnettua haavoittuvuutta riippuvuuspuuhun.
 
-## Päivityssuunnitelma
+## Heinäkuun Lähtötilanteen Päivityssuunnitelma
 
-Heinäkuun rajatut päivitykset on toteutettu:
+Heinäkuun Electron 42 -lähtötilanteen rajatut päivitykset toteutettiin:
 
 1. `@hono/node-server` on vähintään `2.0.12` ja `hono` vähintään `4.12.32`.
 2. `@electron/packager` on `20.0.4`.
-3. Electron on tarkasti lukittu versioon `42.8.0`. Sen ainoa
-   paketointiversion lähde on `apps/desktop/package.json`.
+3. Electron lukittiin lähtötilanteessa versioon `42.8.0`. Sen ainoa
+   paketointiversion lähde oli ja on `apps/desktop/package.json`.
 4. Dependabot version updates käyttää hallittua viikkorytmiä ilman
    automaattimergeä.
 5. Vain lukeva `Dependency security` ajaa production- ja full auditin sekä

@@ -4,6 +4,10 @@ Read the root `AGENTS.md`, ADR-0007, the local desktop implementation plan,
 the local desktop dependency review, the local runtime trust plan, and the
 security principles before changing this package.
 
+When changing Electron, `better-sqlite3`, N-API packaging, or native-runtime
+compatibility, also read the Electron 43 / better-sqlite3 13 compatibility
+plan and preserve its checkpoint-based validation model.
+
 `apps/desktop` is an infrastructure/runtime shell. It may own Electron window
 configuration, packaged resource paths, backend process lifecycle, a narrowly
 validated desktop transport, and packaging scripts.

@@ -117,6 +117,10 @@ PDFKitin yhteensopivuuden todentamista, lue myös
 `docs/architecture/local-desktop-implementation-plan.md` ja
 `docs/architecture/local-desktop-dependency-review.md`.
 
+Jos työ koskee Electron-version, `better-sqlite3`-version, N-API-paketoinnin
+tai desktopin native-runtimen yhteensopivuuden muuttamista, lue lisäksi
+`docs/architecture/electron-43-better-sqlite3-13-compatibility-plan.md`.
+
 Jos työ koskee tietokantaa, query layeria, repository-portteja, tietokanta-adaptereita, SQLitea, PostgreSQL:ää tai tietomallin moduuliomistusta, lue myös `docs/decisions/ADR-0006-local-database-and-query-layer.md`.
 
 Jos työ koskee ensimmäisen paikallisen tietokantapinon toteutusta, SQLite-ajuria, SQL-kyselyitä, migraatiomallia tai paikallisen SQLite-tiedoston sijaintia, lue myös `docs/architecture/local-database-implementation-plan.md`.

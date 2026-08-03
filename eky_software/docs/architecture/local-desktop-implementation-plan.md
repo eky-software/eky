@@ -179,7 +179,7 @@ Siinä tarkistetaan vähintään:
 - Windows maker-/installer-vaihtoehdot
 - lisenssit ja transitiivisten riippuvuuksien määrä
 - tunnetut haavoittuvuudet ja tuotantoriippuvuuksien audit
-- `better-sqlite3`-native addonin Electron ABI -yhteensopivuus
+- `better-sqlite3`-native addonin Electron N-API- tai ABI-yhteensopivuus
 - PDFKitin, migraatioiden ja backend-buildin paketointi
 - koodiallekirjoituksen, ASAR-integriteetin, fuses-asetusten ja myöhemmän
   automaattipäivityksen tuki
