@@ -184,6 +184,34 @@ export class SqliteInvoiceApprovalQueries {
       : toNumberingSettings(companyId, seriesKey, row);
   }
 
+  getActiveNumberingSettings(
+    companyId: string,
+  ): StoredInvoiceNumberingSettings | undefined {
+    const row = this.database
+      .prepare<[string], InvoiceNumberingSettingsRow & { series_key: string }>(
+        `
+          SELECT
+            settings.series_key,
+            settings.mode,
+            settings.fiscal_year_start_month,
+            settings.sequence_padding,
+            settings.first_sequence_number,
+            settings.created_at,
+            settings.updated_at
+          FROM invoice_numbering_active_series AS active
+          INNER JOIN invoice_numbering_settings AS settings
+            ON settings.company_id = active.company_id
+            AND settings.series_key = active.active_series_key
+          WHERE active.company_id = ?
+        `,
+      )
+      .get(companyId);
+
+    return row === undefined
+      ? undefined
+      : toNumberingSettings(companyId, row.series_key, row);
+  }
+
   getNumberSequence(
     companyId: string,
     seriesKey: string,

@@ -21,6 +21,10 @@ describe('developmentBackendProxy', () => {
       changeOrigin: true,
       target: 'http://127.0.0.1:3000',
     });
+    expect(proxy['/invoice-numbering-series']).toEqual({
+      changeOrigin: true,
+      target: 'http://127.0.0.1:3000',
+    });
   });
 
   it('defines every proxy path only once', () => {

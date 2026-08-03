@@ -22,6 +22,9 @@ export type E2eFaultPlan =
       failOnCall: number;
       kind: 'databaseWriteFailed';
       operation:
+        | 'activateInvoiceNumberingSeriesEvent'
+        | 'activateInvoiceNumberingSeriesPointer'
+        | 'activateInvoiceNumberingSeriesSettings'
         | 'approveInvoice'
         | 'markInvoicePaidEvent'
         | 'updateCompanySettings'
@@ -210,6 +213,9 @@ function parseFaultPlan(value: unknown): E2eFaultPlan {
   if (fault.kind === 'databaseWriteFailed') {
     requireExactKeys(fault, ['failOnCall', 'kind', 'operation']);
     if (
+      fault.operation !== 'activateInvoiceNumberingSeriesEvent' &&
+      fault.operation !== 'activateInvoiceNumberingSeriesPointer' &&
+      fault.operation !== 'activateInvoiceNumberingSeriesSettings' &&
       fault.operation !== 'approveInvoice' &&
       fault.operation !== 'markInvoicePaidEvent' &&
       fault.operation !== 'updateCompanySettings' &&

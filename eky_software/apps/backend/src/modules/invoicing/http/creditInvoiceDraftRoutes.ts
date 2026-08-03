@@ -18,7 +18,6 @@ import {
   CreditInvoiceDraftRequestValidationError,
   parseUpdateCreditInvoiceDraftRequest,
 } from './creditInvoiceDraftRequest.js';
-import { defaultInvoiceNumberSeriesKey } from '../domain/invoiceNumbering.js';
 import type { ApprovedCreditInvoiceResult } from '../ports/invoiceCreditApprovalRepository.js';
 
 const maximumCreditDraftBodySizeBytes = 256 * 1024;
@@ -109,7 +108,6 @@ export function createCreditInvoiceDraftRoutes(
             actorContext: context.get('actorContext'),
             approvedAt: new Date().toISOString(),
             draftId: context.req.param('id'),
-            seriesKey: defaultInvoiceNumberSeriesKey,
           });
 
         return context.json({ approvedInvoice });

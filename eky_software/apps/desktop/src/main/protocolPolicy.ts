@@ -104,6 +104,14 @@ const backendRoutes: ReadonlyArray<{
     pathname: /^\/invoice-numbering-settings$/,
   },
   {
+    methods: new Set(['GET']),
+    pathname: /^\/invoice-numbering-series(?:\/activation-preview)?$/,
+  },
+  {
+    methods: new Set(['POST']),
+    pathname: /^\/invoice-numbering-series\/activate$/,
+  },
+  {
     methods: new Set(['GET', 'PUT']),
     pathname: /^\/invoice-payment-settings$/,
   },

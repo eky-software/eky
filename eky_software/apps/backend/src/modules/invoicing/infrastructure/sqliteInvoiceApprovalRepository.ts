@@ -37,6 +37,7 @@ import {
   createInvoiceLineRows,
   createInvoiceRow,
   createReapprovedInvoiceRow,
+  type NumberedApproveInvoiceDraftPersistenceInput,
 } from './invoiceApprovalPersistenceRows.js';
 import { SqliteInvoiceApprovalQueries } from './sqliteInvoiceApprovalQueries.js';
 import { SqliteInvoiceApprovalSnapshotReader } from './sqliteInvoiceApprovalSnapshotReader.js';
@@ -64,7 +65,7 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
       this.approveDraftWithinTransaction(input),
     );
 
-    return approveTransaction();
+    return approveTransaction.immediate();
   }
 
   async reopenApprovedInvoiceForEditing(
@@ -149,18 +150,19 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
     lines: InvoiceDraftLineTable[],
     totals: InvoiceTotals,
   ): ApprovedInvoiceResult {
-    const settings = this.queries.getNumberingSettings(
-      input.companyId,
-      input.seriesKey,
-    );
+    const settings = this.queries.getActiveNumberingSettings(input.companyId);
 
     if (settings === undefined) {
       throw new ApproveInvoiceDraftError(
-        'Invoice numbering settings were not found.',
+        'Active invoice numbering settings were not found.',
       );
     }
 
     validateInvoiceNumberingSettings(settings);
+    const numberedInput: NumberedApproveInvoiceDraftPersistenceInput = {
+      ...input,
+      seriesKey: settings.seriesKey,
+    };
 
     const sequenceScope = resolveInvoiceNumberSequenceScope(
       settings,
@@ -168,7 +170,7 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
     );
     const currentSequence = this.queries.getNumberSequence(
       input.companyId,
-      input.seriesKey,
+      settings.seriesKey,
       sequenceScope,
     );
     const sequenceNumber =
@@ -192,7 +194,7 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
     });
     this.requireTaxTreatmentSnapshotEligibility(draft, snapshot);
     const invoiceRow = createInvoiceRow(
-      input,
+      numberedInput,
       draft,
       totals,
       settings,
@@ -203,9 +205,9 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
       referenceNumberType,
       snapshot,
     );
-    const lineRows = createInvoiceLineRows(input, lines);
+    const lineRows = createInvoiceLineRows(numberedInput, lines);
     const auditEventRow = createAuditEventRow(
-      input,
+      numberedInput,
       invoiceNumber,
       'invoice.approved',
       input.approvedAt,
@@ -213,7 +215,7 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
 
     this.statements.upsertNumberSequence({
       company_id: input.companyId,
-      series_key: input.seriesKey,
+      series_key: settings.seriesKey,
       sequence_scope: sequenceScope,
       last_sequence_number: sequenceNumber,
       created_at: currentSequence?.created_at ?? input.approvedAt,
@@ -222,7 +224,7 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
     this.statements.insertInvoice(invoiceRow);
     this.statements.insertInvoiceLines(lineRows);
     this.statements.insertAuditEvent(auditEventRow);
-    this.statements.markDraftApproved(input);
+    this.statements.markDraftApproved(numberedInput);
 
     return {
       invoiceId: input.invoiceId,
@@ -250,9 +252,10 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
       customerId: draft.customer_id,
     });
     this.requireTaxTreatmentSnapshotEligibility(draft, snapshot);
-    const reapprovedInput = {
+    const reapprovedInput: NumberedApproveInvoiceDraftPersistenceInput = {
       ...input,
       invoiceId: reopenedInvoice.id,
+      seriesKey: reopenedInvoice.series_key,
     };
     const invoiceRow = createReapprovedInvoiceRow(
       reapprovedInput,

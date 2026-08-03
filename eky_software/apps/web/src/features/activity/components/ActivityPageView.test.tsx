@@ -105,6 +105,29 @@ describe('ActivityPageView', () => {
     expect(html).not.toContain('company-');
   });
 
+  it('renders numbering series activation without technical series details', () => {
+    const html = renderToStaticMarkup(
+      <ActivityPageView
+        {...baseProps}
+        items={[
+          {
+            id: 'invoicing:numbering-series-event',
+            module: 'invoicing',
+            occurredAt: '2026-08-02T20:00:00.000Z',
+            outcome: 'success',
+            reference: null,
+            type: 'invoiceNumberingSeries.activated',
+          },
+        ]}
+      />,
+    );
+
+    expect(html).toContain('Uusi laskunumerosarja otettu käyttöön');
+    expect(html).toContain('Oma yritys');
+    expect(html).not.toContain('series-');
+    expect(html).not.toContain('actor-');
+  });
+
   it('renders safe invoice payment activity without payment details', () => {
     const html = renderToStaticMarkup(
       <ActivityPageView

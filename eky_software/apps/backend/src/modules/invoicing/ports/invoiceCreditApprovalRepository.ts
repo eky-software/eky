@@ -7,7 +7,6 @@ export interface ApproveCreditInvoiceDraftPersistenceInput {
   companyId: string;
   draftId: string;
   invoiceId: string;
-  seriesKey: string;
 }
 
 export interface ApprovedCreditInvoiceResult {

@@ -32,6 +32,7 @@ export class SqliteInvoiceActivityReader implements InvoiceActivityReader {
           string,
           string,
           string,
+          string,
           number,
           number,
           number,
@@ -106,6 +107,17 @@ export class SqliteInvoiceActivityReader implements InvoiceActivityReader {
             UNION ALL
 
             SELECT
+              id,
+              'invoiceNumberingSeries.activated' AS action,
+              NULL AS invoice_number,
+              occurred_at,
+              'success' AS outcome
+            FROM invoice_numbering_series_events
+            WHERE company_id = ?
+
+            UNION ALL
+
+            SELECT
               payment.id,
               CASE payment.action
                 WHEN 'paymentMarkedPaid' THEN 'invoice.payment_marked_paid'
@@ -133,6 +145,7 @@ export class SqliteInvoiceActivityReader implements InvoiceActivityReader {
         `,
       )
       .all(
+        criteria.companyId,
         criteria.companyId,
         criteria.companyId,
         criteria.companyId,

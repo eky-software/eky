@@ -19,7 +19,6 @@ import type { InvoiceDraft } from '../domain/invoiceDraft.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
 import type { InvoiceDraftSummary } from '../domain/invoiceDraftSummary.js';
 import { InvoiceNumberingError } from '../domain/invoiceNumberingError.js';
-import { defaultInvoiceNumberSeriesKey } from '../domain/invoiceNumbering.js';
 import type { ApprovedInvoiceResult } from '../ports/invoiceApprovalRepository.js';
 import {
   InvoiceDraftRequestValidationError,
@@ -161,7 +160,6 @@ export function createInvoiceDraftRoutes(
           companyId: actorContext.companyId,
           draftId: context.req.param('id'),
           reverseChargeEligibilityConfirmed,
-          seriesKey: defaultInvoiceNumberSeriesKey,
         });
 
         return context.json({ approvedInvoice });

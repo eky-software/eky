@@ -6,6 +6,7 @@ import {
   type APIRequestContext,
 } from '@playwright/test';
 
+import type { E2eFaultPlan } from '../../../backend/e2e/e2eBackendConfig.js';
 import type { StartedE2eBackend } from '../environment/startE2eBackendProcess.js';
 import { collectBackendFailureArtifacts } from '../environment/collectBackendFailureArtifacts.js';
 import { createE2eRunRoot } from '../environment/createE2eRunRoot.js';
@@ -32,8 +33,15 @@ interface IsolatedBackendFixtures {
   e2eBackend: IsolatedBackendHarness;
 }
 
-export const test = base.extend<IsolatedBackendFixtures>({
-  e2eBackend: async ({}, use, testInfo) => {
+interface IsolatedBackendOptions {
+  e2eFaultPlan: E2eFaultPlan;
+}
+
+export const test = base.extend<
+  IsolatedBackendFixtures & IsolatedBackendOptions
+>({
+  e2eFaultPlan: [{ kind: 'none' }, { option: true }],
+  e2eBackend: async ({ e2eFaultPlan }, use, testInfo) => {
     const scenarioId = readE2eScenarioId(testInfo.title);
     const runRoot = createE2eRunRoot();
     const paths = createE2eWorkerPaths(runRoot, scenarioId);
@@ -47,6 +55,7 @@ export const test = base.extend<IsolatedBackendFixtures>({
       backendPort = await reserveLoopbackPort();
       backend = await startE2eBackendProcess({
         backendPort,
+        faultPlan: e2eFaultPlan,
         paths,
         runRoot,
         scenarioId,

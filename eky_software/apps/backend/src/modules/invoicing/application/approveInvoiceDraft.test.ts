@@ -49,7 +49,6 @@ function createInput(
     approvedAt: '2026-06-25T10:00:00.000Z',
     companyId: 'dev-company',
     draftId: 'draft-1',
-    seriesKey: 'default',
     ...overrides,
   };
 }
@@ -94,7 +93,6 @@ describe('approveInvoiceDraft', () => {
           /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
         ),
         reverseChargeEligibilityConfirmed: false,
-        seriesKey: 'default',
       },
     ]);
   });
@@ -143,7 +141,7 @@ describe('approveInvoiceDraft', () => {
     const repository = new FakeInvoiceApprovalRepository(createResult());
 
     await expect(
-      approveInvoiceDraft(createInput({ seriesKey: 'default;drop' }), {
+      approveInvoiceDraft(createInput({ draftId: '   ' }), {
         invoiceApprovalRepository: repository,
       }),
     ).rejects.toThrow();

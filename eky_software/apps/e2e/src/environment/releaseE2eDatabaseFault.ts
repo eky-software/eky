@@ -8,6 +8,15 @@ type DatabaseFaultOperation = Extract<
 >['operation'];
 
 const triggerNamesByOperation = Object.freeze({
+  activateInvoiceNumberingSeriesEvent: [
+    '_e2e_fail_activate_invoice_numbering_series_event',
+  ],
+  activateInvoiceNumberingSeriesPointer: [
+    '_e2e_fail_activate_invoice_numbering_series_pointer',
+  ],
+  activateInvoiceNumberingSeriesSettings: [
+    '_e2e_fail_activate_invoice_numbering_series_settings',
+  ],
   approveInvoice: ['_e2e_fail_approve_invoice'],
   markInvoicePaidEvent: ['_e2e_fail_mark_invoice_paid_event'],
   updateCompanySettings: [

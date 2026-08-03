@@ -169,6 +169,41 @@ describe('listActivity', () => {
     });
   });
 
+  it('maps invoice numbering series activation without technical series data', async () => {
+    const dependencies = createDependencies();
+    dependencies.invoiceActivityReader.listInvoiceActivity = vi
+      .fn()
+      .mockResolvedValue([
+        {
+          action: 'invoiceNumberingSeries.activated',
+          id: 'numbering-series-event',
+          invoiceNumber: null,
+          occurredAt: '2026-07-27T12:00:00.000Z',
+          outcome: 'success',
+        },
+      ]);
+
+    await expect(
+      listActivity(
+        {
+          actorContext,
+          category: 'invoicing',
+          month: '2026-07',
+        },
+        dependencies,
+      ),
+    ).resolves.toMatchObject({
+      activityItems: [
+        {
+          id: 'invoicing:numbering-series-event',
+          module: 'invoicing',
+          reference: null,
+          type: 'invoiceNumberingSeries.activated',
+        },
+      ],
+    });
+  });
+
   it('maps invoice payment activity to safe public event types', async () => {
     const dependencies = createDependencies();
     dependencies.invoiceActivityReader.listInvoiceActivity = vi

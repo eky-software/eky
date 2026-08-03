@@ -360,6 +360,14 @@ Laskutusasetuksissa voidaan näyttää esimerkiksi:
 
 Näiden UI-sijainti voi olla käyttäjän kannalta Oma yritys / Asetukset -kokonaisuudessa, mutta niiden domain-omistaja on Invoicing. Oma yritys -näkymä ei saa muodostaa laskunumeroita tai omistaa numerointisarjojen sääntöjä, vaikka se näyttäisi niiden lomakkeen käyttäjälle. Kun laskunumerointia on jo käytetty, Oma yritys -näkymän normaali numerointilomake lukitaan ja käyttäjälle näytetään varoitus, jotta laskunumerohistoriaa ei rikota. Laskunumeroinnin, hyväksynnän, snapshotin ja auditoinnin tarkempi periaate on kuvattu dokumentissa `docs/architecture/invoice-approval-numbering-plan.md`.
 
+Käytetyn sarjan hallittu korvaaminen näytetään samassa näkymässä erillisenä
+Invoicingin omistamana kaksivaiheisena poikkeustoimintona. Company Settings
+ei muodosta teknistä sarja-avainta, laske turvallista aloitusnumeroa eikä
+päättele aktivoinnin onnistumista paikallisesti. UI näyttää backendin
+esikatselun, vaatii täsmällisen vahvistustekstin ja hakee aktivoinnin jälkeen
+read-only-historian uudelleen. Vanhalle sarjalle ei tarjota muokkausta,
+poistoa, resetointia tai uudelleenaktivointia.
+
 Oma yritys omistaa yrityksen pankkitilien master datan. Ensimmäiset kentät ovat:
 
 - `iban`

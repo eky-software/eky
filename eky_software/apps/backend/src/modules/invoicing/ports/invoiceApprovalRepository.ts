@@ -10,7 +10,6 @@ export interface ApproveInvoiceDraftPersistenceInput {
   draftId: string;
   invoiceId: string;
   reverseChargeEligibilityConfirmed: boolean;
-  seriesKey: string;
 }
 
 export interface ApprovedInvoiceResult {

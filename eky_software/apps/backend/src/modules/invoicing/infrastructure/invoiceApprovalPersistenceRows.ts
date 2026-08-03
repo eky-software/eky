@@ -29,6 +29,11 @@ import type {
 } from '../ports/invoiceApprovalRepository.js';
 import type { InvoiceApprovalSnapshotData } from '../ports/invoiceApprovalSnapshotReader.js';
 
+export interface NumberedApproveInvoiceDraftPersistenceInput
+  extends ApproveInvoiceDraftPersistenceInput {
+  seriesKey: string;
+}
+
 interface InvoiceAuditEventSource {
   actorUserId: string;
   auditEventId: string;
@@ -96,7 +101,7 @@ export function toNumberingSettings(
 }
 
 export function createInvoiceRow(
-  input: ApproveInvoiceDraftPersistenceInput,
+  input: NumberedApproveInvoiceDraftPersistenceInput,
   draft: InvoiceDraftTable,
   totals: InvoiceTotals,
   settings: StoredInvoiceNumberingSettings,
@@ -196,7 +201,7 @@ export function createInvoiceRow(
 }
 
 export function createReapprovedInvoiceRow(
-  input: ApproveInvoiceDraftPersistenceInput,
+  input: NumberedApproveInvoiceDraftPersistenceInput,
   draft: InvoiceDraftTable,
   totals: InvoiceTotals,
   existingInvoice: InvoiceRow,
@@ -233,7 +238,7 @@ export function createReapprovedInvoiceRow(
 }
 
 export function createInvoiceLineRows(
-  input: ApproveInvoiceDraftPersistenceInput,
+  input: NumberedApproveInvoiceDraftPersistenceInput,
   lines: InvoiceDraftLineTable[],
 ): NewInvoiceLineRow[] {
   return lines.map((line) => {

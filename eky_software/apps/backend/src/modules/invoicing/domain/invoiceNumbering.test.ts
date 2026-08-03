@@ -190,6 +190,22 @@ describe('formatInvoiceNumber', () => {
     ).toBe('20280001');
   });
 
+  it('keeps year-based invoice number prefixes four digits wide', () => {
+    expect(
+      formatInvoiceNumber(calendarYearSequenceSettings, '0001-01-01', 1),
+    ).toBe('00010001');
+    expect(
+      formatInvoiceNumber(
+        {
+          ...fiscalYearSequenceSettings,
+          fiscalYearStartMonth: 2,
+        },
+        '0001-01-01',
+        1,
+      ),
+    ).toBe('00000001');
+  });
+
   it('keeps calendar year sequence independent from fiscal year start month', () => {
     expect(
       formatInvoiceNumber(

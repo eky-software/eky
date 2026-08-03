@@ -247,7 +247,7 @@ export function formatInvoiceNumber(
 
   if (settings.mode === 'calendarYearSequence') {
     const calendarYear = getCalendarYearForInvoiceDate(invoiceDate);
-    return `${calendarYear}${sequencePart}`;
+    return `${String(calendarYear).padStart(4, '0')}${sequencePart}`;
   }
 
   const fiscalYear = getFiscalYearForInvoiceDate(
@@ -255,5 +255,5 @@ export function formatInvoiceNumber(
     settings.fiscalYearStartMonth,
   );
 
-  return `${fiscalYear}${sequencePart}`;
+  return `${String(fiscalYear).padStart(4, '0')}${sequencePart}`;
 }

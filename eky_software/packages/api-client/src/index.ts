@@ -129,8 +129,15 @@ export type {
   InvoiceVatBreakdown,
 } from './invoicing/invoiceDrafts/index.js';
 export type {
+  ActivateInvoiceNumberingSeriesRequest,
   InvoiceNumberingSettingsMode,
   InvoiceNumberingSettingsView,
+  InvoiceNumberingSeriesActivationPreviewQuery,
+  InvoiceNumberingSeriesActivationPreviewView,
+  InvoiceNumberingSeriesHistoryView,
+  InvoiceNumberingSeriesOverviewView,
+  InvoiceNumberingSeriesReasonCode,
+  InvoiceNumberingSeriesSettingsView,
   UpdateInvoiceNumberingSettingsRequest,
 } from './invoicing/invoiceNumbering/index.js';
 export type {

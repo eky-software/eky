@@ -119,6 +119,34 @@ describe('SqliteInvoiceActivityReader', () => {
     ]);
   });
 
+  it('projects numbering series activation without audit-only details', async () => {
+    insertInvoiceNumberingSeriesEvent(database);
+    const reader = new SqliteInvoiceActivityReader(database);
+
+    const entries = await reader.listInvoiceActivity({
+      companyId: 'dev-company',
+      limit: 10,
+      occurredAtFrom: '2026-07-01T00:00:00.000Z',
+      occurredAtTo: '2026-09-01T00:00:00.000Z',
+      outcomes: ['success'],
+    });
+
+    expect(entries).toEqual([
+      {
+        action: 'invoiceNumberingSeries.activated',
+        id: 'numbering-series-event-1',
+        invoiceNumber: null,
+        occurredAt: '2026-08-02T20:00:00.000Z',
+        outcome: 'success',
+      },
+    ]);
+    expect(JSON.stringify(entries)).not.toContain('actor-numbering-private');
+    expect(JSON.stringify(entries)).not.toContain('series-private');
+    expect(JSON.stringify(entries)).not.toContain(
+      'Kirjanpitäjän luottamuksellinen perustelu',
+    );
+  });
+
   it('projects payment events without payment, actor or customer details', async () => {
     insertPaymentEvent(
       database,
@@ -203,6 +231,47 @@ function insertInvoiceSettingsAudit(database: DatabaseConnection): void {
           'invoice-settings-audit-1', 'dev-company', 'actor-1',
           'invoiceVatRates.updated', 'success',
           '2026-07-27T15:00:00.000Z'
+        )
+      `,
+    )
+    .run();
+}
+
+function insertInvoiceNumberingSeriesEvent(
+  database: DatabaseConnection,
+): void {
+  database
+    .prepare(
+      `
+        INSERT INTO invoice_numbering_settings (
+          company_id, series_key, mode, fiscal_year_start_month,
+          sequence_padding, first_sequence_number, created_at, updated_at
+        ) VALUES
+          (
+            'dev-company', 'default', 'calendarYearSequence', 1,
+            4, 1, '2026-01-01T00:00:00.000Z',
+            '2026-01-01T00:00:00.000Z'
+          ),
+          (
+            'dev-company', 'series-private-next', 'plainSequence', 1,
+            5, 100, '2026-08-02T20:00:00.000Z',
+            '2026-08-02T20:00:00.000Z'
+          )
+      `,
+    )
+    .run();
+  database
+    .prepare(
+      `
+        INSERT INTO invoice_numbering_series_events (
+          id, company_id, actor_user_id, previous_series_key,
+          next_series_key, reason_code, reason_note, occurred_at
+        ) VALUES (
+          'numbering-series-event-1', 'dev-company',
+          'actor-numbering-private', 'default', 'series-private-next',
+          'accountingRequirement',
+          'Kirjanpitäjän luottamuksellinen perustelu',
+          '2026-08-02T20:00:00.000Z'
         )
       `,
     )

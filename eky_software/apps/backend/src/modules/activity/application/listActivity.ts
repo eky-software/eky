@@ -239,6 +239,7 @@ function compareActivityItems(left: ActivityItem, right: ActivityItem): number {
 function mapInvoiceAction(action: InvoiceActivityAction): ActivityItemType {
   const actions: Record<InvoiceActivityAction, ActivityItemType> = {
     'invoiceNumberingSettings.updated': 'invoiceNumberingSettings.updated',
+    'invoiceNumberingSeries.activated': 'invoiceNumberingSeries.activated',
     'invoicePaymentSettings.updated': 'invoicePaymentSettings.updated',
     'invoiceVatRates.updated': 'invoiceVatRates.updated',
     'invoice.approved': 'invoice.approved',

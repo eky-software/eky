@@ -105,6 +105,8 @@ export const uiText = {
       'invoice.paymentMarkReverted': 'Laskun maksumerkintä poistettu',
       'invoice.paymentMarkedPaid': 'Lasku merkitty maksetuksi',
       'invoiceNumberingSettings.updated': 'Laskunumerointia päivitetty',
+      'invoiceNumberingSeries.activated':
+        'Uusi laskunumerosarja otettu käyttöön',
       'invoicePaymentSettings.updated': 'Laskutuksen maksuehtoja päivitetty',
       'invoice.reapproved': 'Lasku hyväksytty uudelleen',
       'invoice.reopenedForEdit': 'Lasku palautettu muokattavaksi',
@@ -510,6 +512,68 @@ export const uiText = {
     invoiceNumberingSequencePaddingHelp:
       'Esimerkiksi arvo 3 muodostaa sarjan numerot muodossa 001, 002 ja 003.',
     invoiceNumberingSeriesKey: 'Sarja',
+    invoiceNumberingSeriesActivate: 'Ota uusi sarja käyttöön',
+    invoiceNumberingSeriesActivating: 'Otetaan käyttöön...',
+    invoiceNumberingSeriesActivatedAt: 'Otettu käyttöön',
+    invoiceNumberingSeriesActivationError:
+      'Uutta laskunumerosarjaa ei voitu ottaa käyttöön. Tarkista tiedot ja yritä uudelleen.',
+    invoiceNumberingSeriesActivationSuccess:
+      'Uusi laskunumerosarja otettiin käyttöön.',
+    invoiceNumberingSeriesActive: 'Nykyinen aktiivinen numerointisarja',
+    invoiceNumberingSeriesCancel: 'Peruuta',
+    invoiceNumberingSeriesChosenFirstNumber: 'Uuden sarjan ensimmäinen numero',
+    invoiceNumberingSeriesConfigureHeading:
+      '1. Määritä uusi numerointisarja',
+    invoiceNumberingSeriesConfirmationLabel:
+      'Kirjoita vahvistusteksti täsmälleen tässä muodossa:',
+    invoiceNumberingSeriesConfirmHeading:
+      '2. Tarkista ja vahvista muutos',
+    invoiceNumberingSeriesConflictError:
+      'Numerointitiedot muuttuivat tai aloitusnumero ei ole enää turvallinen. Lataa näkymä uudelleen ja tarkista tiedot.',
+    invoiceNumberingSeriesContinue: 'Jatka vahvistukseen',
+    invoiceNumberingSeriesCurrent: 'Nykyinen sarja',
+    invoiceNumberingSeriesDescription:
+      'Käytössä olevaa sarjaa ei muuteta. Tarvittaessa voit ottaa uuden sarjan käyttöön hallitusti; vanhat laskut ja sarjahistoria säilyvät ennallaan.',
+    invoiceNumberingSeriesExhausted:
+      'Näillä asetuksilla ei voida muodostaa turvallista uutta numerosarjaa.',
+    invoiceNumberingSeriesHistory: 'Aiemmat numerointisarjat',
+    invoiceNumberingSeriesIrreversibleWarning:
+      'Muutos ottaa käyttöön kokonaan uuden laskunumerosarjan. Vanhaa sarjaa ei voi palauttaa aktiiviseksi eikä jo annettuja laskunumeroita muuteta.',
+    invoiceNumberingSeriesLoadError:
+      'Laskunumerosarjoja ei voitu ladata. Yritä hetken kuluttua uudelleen.',
+    invoiceNumberingSeriesLoading: 'Ladataan laskunumerosarjoja...',
+    invoiceNumberingSeriesMinimum: 'Pienin turvallinen aloitusnumero:',
+    invoiceNumberingSeriesNew: 'Uusi sarja',
+    invoiceNumberingSeriesNumberPreview: 'Esimerkkilaskunumero:',
+    invoiceNumberingSeriesPreviewAction: 'Laske turvallinen aloitusnumero',
+    invoiceNumberingSeriesPreviewDate: 'Esikatselun päivämäärä',
+    invoiceNumberingSeriesPreviewError:
+      'Turvallista aloitusnumeroa ei voitu tarkistaa. Yritä hetken kuluttua uudelleen.',
+    invoiceNumberingSeriesPreviewLoading: 'Tarkistetaan...',
+    invoiceNumberingSeriesPreviewWarning:
+      'Esikatselu ei varaa numeroa. Backend tarkistaa turvallisen aloituksen uudelleen vasta käyttöönoton transaktiossa.',
+    invoiceNumberingSeriesReason: 'Muutoksen syy',
+    invoiceNumberingSeriesReasonNote: 'Syyn tarkennus (valinnainen)',
+    invoiceNumberingSeriesReasons: {
+      legalRequirement: 'Lakisääteinen vaatimus',
+      accountingRequirement: 'Kirjanpidon vaatimus',
+      organizationalChange: 'Organisaatiomuutos',
+      other: 'Muu perusteltu syy',
+    },
+    invoiceNumberingSeriesReplacedAt: 'Korvattu',
+    invoiceNumberingSeriesValidation: {
+      firstSequenceNumberInvalid:
+        'Ensimmäisen numeron pitää olla vähintään 1.',
+      fiscalYearStartMonthInvalid:
+        'Tilikauden aloituskuukauden pitää olla välillä 1-12.',
+      modeInvalid: 'Valitse kelvollinen numerointitapa.',
+      reasonNoteInvalid:
+        'Syyn tarkennus saa olla enintään 500 turvallista merkkiä.',
+      safeFirstSequenceNumberRequired:
+        'Valitse backendin laskema turvallinen vähimmäisnumero tai sitä suurempi numero.',
+      sequencePaddingInvalid:
+        'Numeron vähimmäispituuden pitää olla välillä 0-12.',
+    },
     invoiceNumberingSettings: 'Numerointiasetukset',
     invoiceNumberingUsedWarning:
       'Numerointia on jo käytetty. Asetuksia ei voi muuttaa normaalisti, jotta laskunumerohistoria ei rikkoudu.',

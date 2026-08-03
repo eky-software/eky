@@ -46,6 +46,11 @@ interface PreviousCreditAllocationRow {
   gross_cents: number;
 }
 
+interface NumberedApproveCreditInvoiceDraftPersistenceInput
+  extends ApproveCreditInvoiceDraftPersistenceInput {
+  seriesKey: string;
+}
+
 export class SqliteInvoiceCreditApprovalRepository
   implements InvoiceCreditApprovalRepository
 {
@@ -64,7 +69,7 @@ export class SqliteInvoiceCreditApprovalRepository
       this.approveCreditDraftWithinTransaction(input),
     );
 
-    return transaction();
+    return transaction.immediate();
   }
 
   private approveCreditDraftWithinTransaction(
@@ -118,18 +123,21 @@ export class SqliteInvoiceCreditApprovalRepository
       previousAllocations,
       draftLines,
     );
-    const settings = this.approvalQueries.getNumberingSettings(
+    const settings = this.approvalQueries.getActiveNumberingSettings(
       input.companyId,
-      input.seriesKey,
     );
 
     if (settings === undefined) {
       throw new ApproveInvoiceDraftError(
-        'Invoice numbering settings were not found.',
+        'Active invoice numbering settings were not found.',
       );
     }
 
     validateInvoiceNumberingSettings(settings);
+    const numberedInput: NumberedApproveCreditInvoiceDraftPersistenceInput = {
+      ...input,
+      seriesKey: settings.seriesKey,
+    };
 
     const sequenceScope = resolveInvoiceNumberSequenceScope(
       settings,
@@ -137,7 +145,7 @@ export class SqliteInvoiceCreditApprovalRepository
     );
     const currentSequence = this.approvalQueries.getNumberSequence(
       input.companyId,
-      input.seriesKey,
+      settings.seriesKey,
       sequenceScope,
     );
     const sequenceNumber =
@@ -153,7 +161,7 @@ export class SqliteInvoiceCreditApprovalRepository
       sequenceNumber,
     );
     const invoiceRow = createCreditInvoiceRow(
-      input,
+      numberedInput,
       draft,
       sourceInvoice,
       invoiceNumber,
@@ -163,7 +171,7 @@ export class SqliteInvoiceCreditApprovalRepository
       calculated.totals,
     );
     const lineRows = createCreditInvoiceLineRows(
-      input,
+      numberedInput,
       draftLines,
       sourceLines,
       calculated.lines,
@@ -171,7 +179,7 @@ export class SqliteInvoiceCreditApprovalRepository
 
     this.approvalStatements.upsertNumberSequence({
       company_id: input.companyId,
-      series_key: input.seriesKey,
+      series_key: settings.seriesKey,
       sequence_scope: sequenceScope,
       last_sequence_number: sequenceNumber,
       created_at: currentSequence?.created_at ?? input.approvedAt,
@@ -181,13 +189,13 @@ export class SqliteInvoiceCreditApprovalRepository
     this.approvalStatements.insertInvoiceLines(lineRows);
     this.approvalStatements.insertAuditEvent(
       createAuditEventRow(
-        input,
+        numberedInput,
         invoiceNumber,
         'invoice.credit_approved',
         input.approvedAt,
       ),
     );
-    this.approvalStatements.markDraftApproved(input);
+    this.approvalStatements.markDraftApproved(numberedInput);
 
     return {
       outcome: 'approved',
@@ -474,7 +482,7 @@ function hasMatchingTaxTreatment(
 }
 
 function createCreditInvoiceRow(
-  input: ApproveCreditInvoiceDraftPersistenceInput,
+  input: NumberedApproveCreditInvoiceDraftPersistenceInput,
   draft: InvoiceDraftTable,
   sourceInvoice: InvoiceRow,
   invoiceNumber: string,
@@ -524,7 +532,7 @@ function createCreditInvoiceRow(
 }
 
 function createCreditInvoiceLineRows(
-  input: ApproveCreditInvoiceDraftPersistenceInput,
+  input: NumberedApproveCreditInvoiceDraftPersistenceInput,
   draftLines: readonly InvoiceDraftLineTable[],
   sourceLines: readonly InvoiceLineRow[],
   calculatedLines: readonly CalculatedCreditDraftLine[],

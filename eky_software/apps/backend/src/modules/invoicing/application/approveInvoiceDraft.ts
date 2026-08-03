@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
 import { requireIdentifier } from '../domain/invoiceDraftRules.js';
-import { validateInvoiceNumberSeriesKey } from '../domain/invoiceNumbering.js';
 import type {
   ApprovedInvoiceResult,
   InvoiceApprovalRepository,
@@ -14,7 +13,6 @@ export interface ApproveInvoiceDraftInput {
   companyId: string;
   draftId: string;
   reverseChargeEligibilityConfirmed?: boolean;
-  seriesKey: string;
 }
 
 export interface ApproveInvoiceDraftDependencies {
@@ -27,11 +25,8 @@ export async function approveInvoiceDraft(
 ): Promise<ApprovedInvoiceResult> {
   const companyId = requireIdentifier(input.companyId, 'Company id');
   const draftId = requireIdentifier(input.draftId, 'Invoice draft id');
-  const seriesKey = requireIdentifier(input.seriesKey, 'Invoice number series key');
   const actorUserId = requireIdentifier(input.actorUserId, 'Actor user id');
   const approvedAt = requireIdentifier(input.approvedAt, 'Approval timestamp');
-
-  validateInvoiceNumberSeriesKey(seriesKey);
 
   const approvedInvoice =
     await dependencies.invoiceApprovalRepository.approveDraft({
@@ -43,7 +38,6 @@ export async function approveInvoiceDraft(
       invoiceId: randomUUID(),
       reverseChargeEligibilityConfirmed:
         input.reverseChargeEligibilityConfirmed === true,
-      seriesKey,
     });
 
   if (approvedInvoice === undefined) {

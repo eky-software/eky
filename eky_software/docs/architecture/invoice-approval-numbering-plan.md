@@ -514,8 +514,12 @@ Jos numerointia on jo käytetty:
   asetuksia ei saa muuttaa, elleivät uudet arvot ole täsmälleen samat kuin nykyiset.
 ```
 
-Sama-arvoinen tallennus saa olla idempotentti. Varsinainen hallittu "muuta
-numerointia käytön jälkeen" -toiminto suunnitellaan myöhemmin erikseen.
+Sama-arvoinen tallennus saa olla idempotentti. Käytön jälkeistä muutosta ei
+tehdä avaamalla tätä lomaketta tai muuttamalla vanhaa sarjaa. Toteutettu
+poikkeuspolku luo uuden immutable-sarjan, todistaa backendissä
+törmäyksettömän aloitusnumeron ja vaihtaa aktiivisen sarjan pointerin
+atomisesti. Tarkka malli on kuvattu dokumentissa
+`docs/architecture/invoice-numbering-series-transition-plan.md`.
 
 Periaatteet:
 
@@ -523,7 +527,8 @@ Periaatteet:
 - samaa laskunumeroa ei saa syntyä kahdesti samalle yritykselle ja sarjalle
 - seuraavaa numeroa ei saa asettaa pienemmäksi kuin seuraava vapaa numero
 - suurempi hyppy voidaan sallia vahvalla varoituksella
-- suurempi rakennemuutos voidaan myöhemmin toteuttaa uutena numerointisarjana
+- suurempi rakennemuutos toteutetaan uutena numerointisarjana hallitun
+  poikkeuspolun kautta
 - muutos ei tapahdu vain vaihtamalla kenttiä, vaan vaatii vahvistetun toiminnon
 
 Repository voi teknisesti tallentaa asetukset, mutta application/service-kerros

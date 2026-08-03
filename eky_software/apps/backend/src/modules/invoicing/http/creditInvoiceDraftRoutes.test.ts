@@ -152,8 +152,8 @@ describe('credit invoice draft routes', () => {
         companyId: 'dev-company',
       },
       draftId: 'draft-1',
-      seriesKey: 'default',
     });
+    expect(getApproveInput()).not.toHaveProperty('seriesKey');
     expect(getApproveInput()?.approvedAt).toEqual(expect.any(String));
   });
 

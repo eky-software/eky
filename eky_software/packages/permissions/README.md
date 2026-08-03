@@ -14,5 +14,11 @@ Backend tekee lopulliset käyttöoikeuspäätökset.
 
 Käyttöoikeuksien oletusmalli on deny by default.
 
-Ensimmäinen toteutus sisältää vain sähköpostipolun tarvitsemat permissionit.
+Nykyinen toteutus sisältää toimintokohtaisia permissioneja muun muassa
+yritysasetuksille, laskutusasetuksille, numerointisarjan hallitulle vaihdolle,
+laskujen korjauksille ja maksuille, sähköpostipolulle, Activitylle,
+diagnostiikalle ja tukipaketille. Local ownerin oikeudet luetellaan erikseen
+backendin local identity -adapterissa; uuden permission-arvon lisääminen tähän
+pakettiin ei anna oikeutta automaattisesti.
+
 Rooli- ja käyttäjähallinta lisätään myöhemmin erillisen päätöksen perusteella.

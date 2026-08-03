@@ -159,6 +159,25 @@ export interface InvoiceNumberSequenceTable {
   updated_at: string;
 }
 
+export interface InvoiceNumberingActiveSeriesTable {
+  company_id: string;
+  active_series_key: string;
+  revision: number;
+  updated_at: string;
+  updated_by: string;
+}
+
+export interface InvoiceNumberingSeriesEventTable {
+  id: string;
+  company_id: string;
+  actor_user_id: string;
+  previous_series_key: string;
+  next_series_key: string;
+  reason_code: string;
+  reason_note: string | null;
+  occurred_at: string;
+}
+
 export interface InvoicePaymentSettingsTable {
   company_id: string;
   default_late_payment_interest_basis_points: number;
@@ -371,6 +390,14 @@ export type InvoiceNumberingSettingsRow = InvoiceNumberingSettingsTable;
 export type NewInvoiceNumberingSettingsRow = InvoiceNumberingSettingsTable;
 export type InvoiceNumberSequenceRow = InvoiceNumberSequenceTable;
 export type NewInvoiceNumberSequenceRow = InvoiceNumberSequenceTable;
+export type InvoiceNumberingActiveSeriesRow =
+  InvoiceNumberingActiveSeriesTable;
+export type NewInvoiceNumberingActiveSeriesRow =
+  InvoiceNumberingActiveSeriesTable;
+export type InvoiceNumberingSeriesEventRow =
+  InvoiceNumberingSeriesEventTable;
+export type NewInvoiceNumberingSeriesEventRow =
+  InvoiceNumberingSeriesEventTable;
 export type InvoicePaymentSettingsRow = InvoicePaymentSettingsTable;
 export type NewInvoicePaymentSettingsRow = InvoicePaymentSettingsTable;
 export type InvoiceVatRateRow = InvoiceVatRateTable;

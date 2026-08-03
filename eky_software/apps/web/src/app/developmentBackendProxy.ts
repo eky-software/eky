@@ -6,6 +6,7 @@ export const developmentBackendProxyPaths = [
   '/invoice-drafts',
   '/invoices',
   '/invoice-numbering-settings',
+  '/invoice-numbering-series',
   '/invoice-payment-settings',
   '/invoice-vat-rates',
   '/sent-invoice-groups',
