@@ -29,9 +29,14 @@ test('DESK-BRIDGE-001 @critical @security isolates the renderer bridge', async (
 
   expect(boundary).toEqual({
     desktopKeys: [
+      'chooseInvoicePdfArchiveDirectory',
       'createSupportBundle',
+      'disableInvoicePdfArchive',
+      'getInvoicePdfArchiveStatus',
       'openInvoicePdf',
+      'openInvoicePdfArchiveDirectory',
       'openOperationalLogFolder',
+      'retryPendingInvoicePdfArchiveTasks',
     ],
     hasFilesystemBridge: false,
     hasRawIpc: false,
