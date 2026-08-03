@@ -215,6 +215,24 @@ Checkpoint E valmistui 3.8.2026:
   lokimittareita Electron 42.8.0 -lähtötasoon
 - varmista, ettei prosesseja, portteja tai testiprofiileja jää käyttöön.
 
+Checkpoint F valmistui 3.8.2026:
+
+- desktop-stress valmistui 61 379 millisekunnissa samalla kuormalla kuin
+  Electron 42.8.0 -lähtötaso
+- stressin prosessimäärä palautui `5 -> 5`, ikkunamäärä yhteen ja working set
+  laski `450 072 -> 442 884 KiB`
+- täysi 30 minuutin soak teki 3 250 työkiertoa, 325 runtime-restarttia ja 650
+  tukipakettia
+- soakin prosessimäärä palautui `5 -> 5`, ikkunamäärä yhteen ja working set
+  laski `454 164 -> 452 992 KiB`
+- backend oli lopussa terve eikä avoimia PDF-ikkunoita tai
+  salaisuustiedostoa jäänyt
+- tulokset eivät osoittaneet Electron 43 -päivityksen aiheuttamaa
+  prosessi-, ikkuna- tai working set -vuotoa
+- vertailusta ei asetettu yhden ajon perusteella uutta yleistä muistirajaa
+- tarkat tulokset kirjattiin dokumenttiin
+  `docs/architecture/e2e-desktop-endurance-baseline.md`.
+
 ### G. Dokumentointi ja release-portti
 
 - päivitä desktopin dependency review, toteutussuunnitelma, README,
