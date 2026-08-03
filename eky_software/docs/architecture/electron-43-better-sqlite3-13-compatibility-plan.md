@@ -185,6 +185,28 @@ Checkpoint D valmistui 3.8.2026:
 - älä hyväksy tulosta, joka onnistuu vain retryllä
 - älä tee oikeaa DNA SMTP -verkkotestiä tässä työssä.
 
+Checkpoint E valmistui 3.8.2026:
+
+- Electron main process varmisti runtimeversiot Electron `43.2.0`, Node
+  `24.18.0`, Chromium `150.0.7871.129`, V8
+  `15.0.1240245-electron.0` ja N-API `10`
+- desktopin 165 testiä sekä desktop- ja E2E-typecheck onnistuivat
+- Electron critical E2E oli 18/18 vihreä kahdella peräkkäisellä ajolla ilman
+  retryä
+- critical-polku varmisti runtime-sessionin, ActorContextin, rajatun
+  preload-rajapinnan, profiili- ja navigointirajat, safeStoragen,
+  salaisuusbrokerin, PDF-esikatselun, tukipaketin, operational-lokit,
+  restartin ja laskunumerosarjan natiivin vahvistuksen
+- desktop-stress avasi ja sulki PDF-esikatselun 100 kertaa sekä palautui
+  lopussa viiteen Electron-prosessiin ja yhteen pääikkunaan ilman avoimia
+  PDF-ikkunoita
+- Windows x64 -paketti rakennettiin Electron `43.2.0`:lla ja
+  better-sqlite3 `13.0.2` / SQLite `3.53.4` -runtimella
+- sama paketti läpäisi packaged-smoken kolmesti peräkkäin erillisillä
+  puhtailla testiprofiileilla ilman retryä
+- oikeaa SMTP-yhteyttä, oikeita salaisuuksia tai oikeaa asiakasdataa ei
+  käytetty.
+
 ### F. Stress ja soak
 
 - aja desktop-stress
