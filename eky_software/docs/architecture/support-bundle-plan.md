@@ -57,6 +57,10 @@ digitaalinen allekirjoitus eivätkä todista artifactin alkuperää.
 - SMTP:n warning/error-tason transport-virheistä vain SMTP-profiili,
   TLS-versio, allowlistattu cipher ja sertifikaatin SHA-256-sormenjälki,
   jos turvallinen transport-yhteenveto on saatavilla
+- `invoicePdfArchive.queueFailed` vain tapahtuman allowlistatulla
+  virhekoodilla, vaiheella, outcome-arvolla, retryable- ja
+  side-effect-tilalla; ei lasku-, dokumentti-, toimitus-, yritys- tai
+  polkutunnisteita
 - SHA-256-checksum jokaiselle dataosiolle
 
 Tukipakettia varten on oma reader, joka lukee vain warning/error- ja
@@ -95,6 +99,8 @@ build-, fingerprint-, count- ja aikaväliyhteenveto.
   raakadata
 - sähköpostirunko, MIME tai provider response
 - ympäristömuuttujat, Windows-käyttäjänimi ja userData-polku
+- PDF-arkiston kohdepolku, laskunumero, invoice/document/delivery event id,
+  PDF-tiiviste tai arkistointibrokerin raw error
 - raw stack tai raw JSONL-rivi
 
 ## Desktop-flow
@@ -133,6 +139,9 @@ SQLite-tietokannan, laskujen tai asetusten palauttamiseen. `.ekybackup` kuuluu
 myöhemmin erikseen toteutettavaan backup/restore-polkuun; sitä ei saa sekoittaa
 `.json.gz`-diagnostiikka-artifactiin. Vanha `.ekysupport` tarkoittaa samaa
 legacy-tukipakettiformaattia, ei varmuuskopiota.
+
+Backup/Restore-polun suunnitteluperusta on dokumentissa
+`docs/architecture/local-backup-and-restore-plan.md`.
 
 ## Paketoitu smoke
 

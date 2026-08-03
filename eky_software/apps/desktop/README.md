@@ -86,5 +86,14 @@ choose this path. Every desktop launch creates a new runtime instance ID that
 is shared with its managed backend for diagnostics only; it is not a session,
 user identity, permission, or installation identifier.
 
+The optional delivered-invoice PDF archive is machine-local and owned by
+Electron main. A selected directory is persisted only after the application
+proves the exact exclusive-temp, write, fsync and hard-link finalization used
+for real archive copies. Archive delivery tasks survive restart in a bounded
+retry journal. A missing directory leaves the already completed invoice
+delivery unchanged, while an existing file with different content is treated
+as a non-overwriting conflict. The renderer receives neither the raw path nor
+invoice, document or delivery identifiers through the archive status API.
+
 See `docs/architecture/release-versioning-policy.md` for version and build
 identity rules.

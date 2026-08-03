@@ -438,6 +438,18 @@ korjausta.
     Invoicingin kapeaa sink-porttia, yksityistä utility process -> main
     -brokeria ja main-prosessin omistamaa native-kansionvalintaa. Renderer ei
     saa raakaa polkua, eikä arkistointivirhe peru onnistunutta toimitusta.
+16. Arkistokansion valinta käyttää ennen configin tallennusta samaa
+    exclusive-temp-, `fsync`- ja hard-link-finalisointia kuin oikea PDF-kopio.
+    Electron-E2E todistaa erikseen deliveryä muuttamattoman failure-polun,
+    restart-recoveryn ja no-overwrite-conflictin.
+
+R0 käyttää ADR-0008:n mukaista yhtä paikallista profiilia, yhtä SQLite-kantaa
+ja yhtä yritystä. Useat paikalliset yritysprofiilit ovat post-pilot-
+ominaisuus, jossa vain yksi profiili saa olla auki kerrallaan ja edellisen
+backend, SQLite-yhteys sekä runtime-session suljetaan ennen seuraavan avaamista.
+Backup/Restore-tuotantokoodi toteutetaan erikseen
+`local-backup-and-restore-plan.md`-suunnitelman mukaan ennen oikean datan
+R0-käyttöönottoa.
 
 ## Liittyvät Dokumentit
 
@@ -449,8 +461,10 @@ korjausta.
 - `docs/architecture/local-desktop-dependency-review.md`
 - `docs/architecture/local-runtime-trust-and-authorization-plan.md`
 - `docs/architecture/local-invoice-pdf-archive-plan.md`
+- `docs/architecture/local-backup-and-restore-plan.md`
 - `docs/architecture/security-principles.md`
 - `docs/decisions/ADR-0003-technical-foundation.md`
 - `docs/decisions/ADR-0004-local-backend-runtime.md`
 - `docs/decisions/ADR-0006-local-database-and-query-layer.md`
 - `docs/decisions/ADR-0007-local-desktop-shell-and-session-bootstrap.md`
+- `docs/decisions/ADR-0008-local-desktop-company-workspaces.md`

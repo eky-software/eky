@@ -19,6 +19,7 @@ import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import { normalizeDeliveryProviderMessageId } from '../domain/invoiceDeliveryEventRules.js';
 import { requireIdentifier } from '../domain/invoiceDraftRules.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
+import type { DeliveredInvoiceArchiveQueueFailureReporter } from '../ports/deliveredInvoiceArchiveQueueFailureReporter.js';
 import type { DeliveredInvoiceArchiveTaskSink } from '../ports/deliveredInvoiceArchiveTaskSink.js';
 import type { InvoiceDeliveryEventRepository } from '../ports/invoiceDeliveryEventRepository.js';
 import type { InvoiceEmailDeliveryFinalizer } from '../ports/invoiceEmailDeliveryFinalizer.js';
@@ -58,6 +59,7 @@ export interface SendApprovedInvoiceEmailSmtpResult {
 
 export interface SendApprovedInvoiceEmailSmtpDependencies {
   approvedInvoiceReader: ApprovedInvoiceReader;
+  deliveredInvoiceArchiveQueueFailureReporter: DeliveredInvoiceArchiveQueueFailureReporter;
   deliveredInvoiceArchiveTaskSink: DeliveredInvoiceArchiveTaskSink;
   ensureApprovedInvoicePdfDocument(
     input: GenerateApprovedInvoicePdfDocumentInput,
@@ -326,6 +328,7 @@ async function deliverPreparedInvoiceEmail(
       invoice: input.invoice,
     },
     input.dependencies.deliveredInvoiceArchiveTaskSink,
+    input.dependencies.deliveredInvoiceArchiveQueueFailureReporter,
   );
 
   return {

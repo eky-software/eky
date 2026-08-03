@@ -145,16 +145,21 @@ describe('sendApprovedInvoiceEmailSmtp', () => {
   });
 
   it('keeps a successful SMTP delivery successful when local archival fails', async () => {
+    const dependencies = createDependencies({
+      queueDeliveredInvoiceArchiveTask: vi.fn(async () => {
+        throw new Error('local archive unavailable');
+      }),
+    });
     const result = await sendApprovedInvoiceEmailSmtp(
       createInput(),
-      createDependencies({
-        queueDeliveredInvoiceArchiveTask: vi.fn(async () => {
-          throw new Error('local archive unavailable');
-        }),
-      }),
+      dependencies,
     );
 
     expect(result.invoice.status).toBe('sent');
+    expect(
+      dependencies.deliveredInvoiceArchiveQueueFailureReporter
+        .reportQueueFailure,
+    ).toHaveBeenCalledOnce();
   });
 
   it('records outcomeUnknown and never marks the invoice sent', async () => {
@@ -386,6 +391,9 @@ function createDependencies(options: {
     approvedInvoiceReader: {
       getApprovedInvoiceById: vi.fn(async () => createInvoice(getStatus())),
       listApprovedInvoiceSummaries: vi.fn(),
+    },
+    deliveredInvoiceArchiveQueueFailureReporter: {
+      reportQueueFailure: vi.fn(),
     },
     deliveredInvoiceArchiveTaskSink: {
       queueDeliveredInvoiceArchiveTask:

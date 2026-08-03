@@ -75,7 +75,10 @@ export function createElectronE2eBackendController(
               runtimeInstanceId: config.runtimeInstanceId,
               type: 'start',
             },
-            [options.secretBrokerPort],
+            [
+              options.secretBrokerPort,
+              options.invoicePdfArchiveBrokerPort,
+            ],
           );
         });
         child.on('message', (value) => {

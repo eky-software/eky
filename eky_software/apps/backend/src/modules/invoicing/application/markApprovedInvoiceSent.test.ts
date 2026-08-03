@@ -29,6 +29,8 @@ describe('markApprovedInvoiceSent', () => {
           getApprovedInvoiceById,
           listApprovedInvoiceSummaries: vi.fn(),
         },
+        deliveredInvoiceArchiveQueueFailureReporter:
+          createArchiveQueueFailureReporter(),
         deliveredInvoiceArchiveTaskSink: {
           queueDeliveredInvoiceArchiveTask,
         },
@@ -77,6 +79,8 @@ describe('markApprovedInvoiceSent', () => {
         approvedInvoiceReader: createReader(
           createApprovedInvoiceView({ status: 'approved' }),
         ),
+        deliveredInvoiceArchiveQueueFailureReporter:
+          createArchiveQueueFailureReporter(),
         deliveredInvoiceArchiveTaskSink: createArchiveTaskSink(),
         ensureApprovedInvoicePdfDocument: vi.fn(async () => {
           throw new Error('PDF could not be generated.');
@@ -97,6 +101,8 @@ describe('markApprovedInvoiceSent', () => {
     await expect(
       markApprovedInvoiceSent(createInput(), {
         approvedInvoiceReader: createReader(sentInvoice),
+        deliveredInvoiceArchiveQueueFailureReporter:
+          createArchiveQueueFailureReporter(),
         deliveredInvoiceArchiveTaskSink: createArchiveTaskSink(),
         ensureApprovedInvoicePdfDocument,
         invoiceDeliveryEventReader: createDeliveryEventReader(false),
@@ -114,6 +120,8 @@ describe('markApprovedInvoiceSent', () => {
     await expect(
       markApprovedInvoiceSent(createInput(), {
         approvedInvoiceReader: createReader(undefined),
+        deliveredInvoiceArchiveQueueFailureReporter:
+          createArchiveQueueFailureReporter(),
         deliveredInvoiceArchiveTaskSink: createArchiveTaskSink(),
         ensureApprovedInvoicePdfDocument: vi.fn(),
         invoiceDeliveryEventReader: createDeliveryEventReader(false),
@@ -134,6 +142,8 @@ describe('markApprovedInvoiceSent', () => {
         approvedInvoiceReader: createReader(
           createApprovedInvoiceView({ status: 'cancelled' }),
         ),
+        deliveredInvoiceArchiveQueueFailureReporter:
+          createArchiveQueueFailureReporter(),
         deliveredInvoiceArchiveTaskSink: createArchiveTaskSink(),
         ensureApprovedInvoicePdfDocument,
         invoiceDeliveryEventReader,
@@ -166,6 +176,8 @@ describe('markApprovedInvoiceSent', () => {
             getApprovedInvoiceById,
             listApprovedInvoiceSummaries: vi.fn(),
           },
+          deliveredInvoiceArchiveQueueFailureReporter:
+            createArchiveQueueFailureReporter(),
           deliveredInvoiceArchiveTaskSink: createArchiveTaskSink(),
           ensureApprovedInvoicePdfDocument: vi.fn(),
           invoiceDeliveryEventReader: createDeliveryEventReader(false),
@@ -188,6 +200,8 @@ describe('markApprovedInvoiceSent', () => {
         approvedInvoiceReader: createReader(
           createApprovedInvoiceView({ status: 'approved' }),
         ),
+        deliveredInvoiceArchiveQueueFailureReporter:
+          createArchiveQueueFailureReporter(),
         deliveredInvoiceArchiveTaskSink: createArchiveTaskSink(),
         ensureApprovedInvoicePdfDocument,
         invoiceDeliveryEventReader: createDeliveryEventReader(true),
@@ -201,12 +215,14 @@ describe('markApprovedInvoiceSent', () => {
 
   it('keeps a successful manual delivery successful when local archival fails', async () => {
     const sentInvoice = createApprovedInvoiceView({ status: 'sent' });
+    const queueFailureReporter = createArchiveQueueFailureReporter();
 
     await expect(
       markApprovedInvoiceSent(createInput(), {
         approvedInvoiceReader: createReader(
           createApprovedInvoiceView({ status: 'approved' }),
         ),
+        deliveredInvoiceArchiveQueueFailureReporter: queueFailureReporter,
         deliveredInvoiceArchiveTaskSink: {
           queueDeliveredInvoiceArchiveTask: vi.fn(async () => {
             throw new Error('local archive unavailable');
@@ -223,6 +239,7 @@ describe('markApprovedInvoiceSent', () => {
         },
       }),
     ).resolves.toStrictEqual(sentInvoice);
+    expect(queueFailureReporter.reportQueueFailure).toHaveBeenCalledOnce();
   });
 });
 
@@ -260,6 +277,12 @@ function createDeliveryEventReader(hasUnresolvedEvent: boolean) {
 function createArchiveTaskSink() {
   return {
     queueDeliveredInvoiceArchiveTask: vi.fn(async () => undefined),
+  };
+}
+
+function createArchiveQueueFailureReporter() {
+  return {
+    reportQueueFailure: vi.fn(),
   };
 }
 

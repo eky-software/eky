@@ -129,12 +129,29 @@ Portti ei tunne:
 - PDF-tiedoston lopullista arkistonimeä
 
 Arkistointivirhe tai brokerin poissaolo ei saa perua jo onnistunutta
-toimitusta. Virhe palautetaan vain turvallisena teknisenä tuloksena, jonka
-desktop-UI voi näyttää varoituksena.
+toimitusta. Queue-vaiheen epäonnistuminen käsitellään best effort -rajalla:
+se ei muuta toimituksen vastausta, delivery eventin terminal-tilaa tai
+laskun `sent`-tilaa eikä estä seuraavan toimituksen arkistotehtävää.
 
 Arkistointivirhe eristetään `queueDeliveredInvoiceArchiveTaskSafely`-rajalla:
 jo onnistunut toimitus ja `sent`-tila eivät peruunnu, vaikka brokeri,
 konfiguraatio, kohdekansio tai kopiointi epäonnistuisi.
+
+Jos tehtävää ei saada annettua brokerille, backend yrittää kirjata
+`invoicePdfArchive.queueFailed`-operational-eventin. Myös tämän
+event-kirjoituksen virhe eristetään alkuperäisestä toimituksesta. Eventissä
+saavat olla vain:
+
+- turvallinen kiinteä `errorCode`
+- `stage = queue`
+- failure-outcome
+- `retryable = true`
+- `sideEffectState = none`
+- normaali runtime- ja build-identiteetti
+
+Eventissä ei saa olla yritys-, lasku-, toimitus-, dokumentti- tai
+asiakastunnisteita, laskunumeroa, tiivistettä, polkua, sähköpostia tai raakaa
+virheviestiä.
 
 ## Paikallinen config
 
@@ -157,8 +174,24 @@ schema-versio, suhteellinen polku, puuttuva kansio ja tiedostoksi muuttunut
 kohde torjutaan turvallisesti.
 
 Polku hyväksytään vain Electron mainin native `showOpenDialog` -valinnasta.
-Config kirjoitetaan temp-tiedoston ja atomisen rename-operaation kautta.
-Rikkoutunut config ei käynnistä arkistointia.
+Ennen configin tallennusta Electron main todistaa kohteen kyvykkyyden samalla
+finalisointiprimitiivillä kuin oikeassa laskukopiossa:
+
+1. samaan kohdehakemistoon luodaan yksinoikeudella väliaikaistiedosto
+2. synteettinen sisältö kirjoitetaan ja `fsync` suoritetaan
+3. väliaikaistiedosto hard-linkitetään lopulliseen probe-nimeen
+4. molemmat probe-tiedostot poistetaan
+
+Open-, write-, `fsync`-, hard-link- tai cleanup-vaiheen epäonnistuminen
+torjuu asetuksen tallennuksen turvallisella
+`ARCHIVE_DIRECTORY_UNSUPPORTED`-virheellä. Virhe ei paljasta polkua, eikä
+epäonnistuneesta valinnasta jää configia voimaan. Probe ei takaa kohteen
+tulevaa saatavuutta, joten kohde revalidoidaan edelleen jokaisella
+arkistointiyrityksellä.
+
+Config kirjoitetaan oman config-store-sopimuksensa mukaisesti
+väliaikaistiedoston ja atomisen rename-operaation kautta. Rikkoutunut config
+ei käynnistä arkistointia.
 
 Tavalliset käyttäjän valitsemat paikalliset kansiot, OneDrive-kansiot,
 removable drive -kohteet sekä Windowsin junction/reparse-kohteet sallitaan
@@ -222,8 +255,17 @@ Tiedostonimi muodostetaan vain validoidusta laskunumerosta ja laskulajista:
 Asiakkaan nimeä, aihetta tai vapaata tekstiä ei käytetä tiedostonimessä.
 
 Kirjoitus tehdään samaan kohdekansioon exclusive temp-tiedostolla,
-`fsync`-operaatiolla ja atomisella rename-operaatiolla. Virheen jälkeen
-temp-tiedosto poistetaan.
+`fsync`-operaatiolla ja hard-link-finalisoinnilla:
+
+1. temp avataan `wx`-tilassa
+2. PDF kirjoitetaan ja synkronoidaan levylle
+3. temp hard-linkitetään lopulliseen nimeen, jolloin olemassa olevaa
+   lopullista tiedostoa ei voi korvata
+4. temp poistetaan
+
+PDF-kopion finalisointia ei kuvata atomisena rename-operaationa. Hard-link-
+raja säilyttää no-overwrite-invariantin myös kilpailutilanteessa.
+Virheen jälkeen temp-tiedosto poistetaan best effort -periaatteella.
 
 Jos lopullinen tiedosto on jo olemassa:
 
@@ -290,6 +332,8 @@ Toteutuksen pitää kattaa vähintään:
 
 - configin ja journalin strict parsing sekä atomiset kirjoitukset
 - kansion native-valinta, peruutus ja katoaminen valinnan jälkeen
+- kohdekansion exact-finalization-probe onnistumis-, read-only/open-,
+  hard-link- ja katoamistilanteissa ilman tiedostojäämiä
 - preload/IPC deny-by-default -raja
 - web ilman capabilitya
 - SMTP-, manual- ja print-success
@@ -310,3 +354,12 @@ broker-protokollan, luotetun renderer-frame-rajan, PDF:n identiteetin ja
 eheyden tarkistuksen, idempotentin kopioinnin, conflict-tilan,
 uudelleenyritykset, selainfallbackin sekä data-minimoidut operational eventit.
 Windows-paketoinnin ja packaged smoken pitää säilyä vihreänä ennen julkaisua.
+
+Electron development -E2E:n pysyvät arkistointiskenaariot ovat:
+
+- `ARCHIVE-PDF-FAILURE-001`: toimitus onnistuu, mutta poistettu kohde jättää
+  taskin retry-journaliin muuttamatta laskun `sent`-tilaa
+- `ARCHIVE-PDF-RECOVERY-001`: restartin jälkeen palautettu kohde käsitellään
+  manuaalisella retryllä ja tarkka PDF syntyy
+- `ARCHIVE-PDF-CONFLICT-001`: eri sisältöinen lopullinen tiedosto säilyy
+  muuttumattomana eikä conflict-taskia yritetä restartissa automaattisesti

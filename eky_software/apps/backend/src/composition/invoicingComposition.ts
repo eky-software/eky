@@ -173,6 +173,22 @@ export function createInvoicingComposition(
     options.infrastructureAdapters?.invoiceEmailDeliveryProvider ??
     new DryRunInvoiceEmailDeliveryProvider();
   const invoiceEmailSendAttemptStore = new InMemoryInvoiceEmailSendAttemptStore();
+  const deliveredInvoiceArchiveQueueFailureReporter = {
+    reportQueueFailure() {
+      options.operationalLogger.write(
+        createBackendOperationalEvent(
+          {
+            errorCode: 'INVOICE_PDF_ARCHIVE_QUEUE_FAILED',
+            eventName: 'invoicePdfArchive.queueFailed',
+            retryable: true,
+            sideEffectState: 'none',
+            stage: 'queue',
+          },
+          options.operationalIdentity,
+        ),
+      );
+    },
+  };
   const dnaSmtpEmailDeliveryProvider = new DnaSmtpEmailDeliveryProvider({
     companyEmailSecretReader: options.companyEmailSecretReader,
     transportDiagnostics: createDnaSmtpOperationalDiagnostics({
@@ -332,6 +348,7 @@ export function createInvoicingComposition(
       markApprovedInvoiceSent: (input) =>
         markApprovedInvoiceSent(input, {
           approvedInvoiceReader,
+          deliveredInvoiceArchiveQueueFailureReporter,
           deliveredInvoiceArchiveTaskSink:
             options.deliveredInvoiceArchiveTaskSink,
           ensureApprovedInvoicePdfDocument,
@@ -405,6 +422,7 @@ export function createInvoicingComposition(
         try {
           return await sendApprovedInvoiceEmailSmtp(input, {
             approvedInvoiceReader,
+            deliveredInvoiceArchiveQueueFailureReporter,
             deliveredInvoiceArchiveTaskSink:
               options.deliveredInvoiceArchiveTaskSink,
             ensureApprovedInvoicePdfDocument,

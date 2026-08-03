@@ -68,12 +68,17 @@ Nykyinen Playwright-kokonaisuus todistaa eristetyssä runtimessa:
 
 Electron development -E2E kattaa nyt preload-rajan, navigoinnin,
 permission-pyynnöt, yhden instanssin, PDF-esikatselun, safeStorage-salaisuuden,
-tukipaketin, lokikansion, restartin sekä backendin odottamattoman ja
-käynnistysvaiheen virheen. Packaged smoke säilyy erillisenä hardened-
-artifactin porttina. Täydellinen backup/restore- ja tenant-matriisi sekä
-pilvi-identiteetin tenant-matriisi ovat vielä erillisiä release-
-checkpointteja. Ensimmäinen 30 minuutin Electron-soak on dokumentoitu
-`e2e-desktop-endurance-baseline.md`-tiedostossa.
+tukipaketin, lokikansion, lasku-PDF:n paikallisen arkistokopion
+failure/recovery/conflict-polut, restartin sekä backendin odottamattoman ja
+käynnistysvaiheen virheen. Arkistointiskenaariot todistavat, että onnistunut
+toimitus säilyy arkistovirheessä, pending-task palautuu restartin jälkeen ja
+eri sisältöistä olemassa olevaa tiedostoa ei korvata tai yritetä
+automaattisesti uudelleen.
+
+Packaged smoke säilyy erillisenä hardened-artifactin porttina. Täydellinen
+backup/restore- ja tenant-matriisi sekä pilvi-identiteetin tenant-matriisi ovat
+vielä erillisiä release-checkpointteja. Ensimmäinen 30 minuutin Electron-soak
+on dokumentoitu `e2e-desktop-endurance-baseline.md`-tiedostossa.
 
 ## Observabilityn E2E
 

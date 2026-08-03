@@ -171,6 +171,19 @@ Kenttärajat pidetään erillisinä:
 | tukipaketti | viimeisen 30 päivän warning/error/security-projektio ilman info-eventtejä, etä-IP:tä, porttia tai operation ID:tä |
 | pitkäaikainen incident-indeksi | minimoitu incident-indeksi ilman suoria tunnisteita, raw-rivejä tai business-sisältöä |
 
+Toimitetun lasku-PDF:n paikallisen arkistotehtävän queue-virhe kirjataan
+`invoicePdfArchive.queueFailed`-eventtinä vain, jos arkistointibrokeri ei
+vastaanota tehtävää onnistuneen toimituksen jälkeen. Event on best effort eikä
+muuta delivery eventin terminal-tilaa tai laskun `sent`-tilaa. Sen sallittu
+payload on kiinteä turvallinen `errorCode`, `stage = queue`, failure-outcome,
+`retryable = true`, `sideEffectState = none` sekä normaali runtime- ja
+build-identiteetti.
+
+Queue-eventissä ei saa olla company-, invoice-, delivery event-, document-,
+customer- tai operation-tunnistetta, laskunumeroa, PDF-tiivistettä,
+paikallista polkua, sähköpostia tai raakaa virheviestiä. Tämän eventin
+kirjoitusvirhe ei saa korvata alkuperäisen toimituksen onnistunutta tulosta.
+
 ## Uuden moduulin observability-portti
 
 Jokaiselle uudelle moduulille määritellään ennen toteutusta:

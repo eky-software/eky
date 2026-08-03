@@ -53,6 +53,12 @@ PDF-dokumenttiin sidotun tehtävän vasta durableen `succeeded`-tilaan
 viimeistellyn SMTP-, manual- tai print-toimituksen jälkeen. Moduuli ei tunne
 paikallista kansiota, tiedostonimeä, Electronia tai retry-journalia.
 Arkistointivirhe ei muuta toimituksen tulosta eikä laskun `sent`-tilaa.
+Jos tehtävän queue-vaihe epäonnistuu, Invoicing yrittää kirjata vain
+minimoidun `invoicePdfArchive.queueFailed`-operational-eventin. Siinä ei ole
+company-, invoice-, delivery event- tai document-tunnisteita, laskunumeroa,
+polkua tai muuta business dataa. Myös eventin kirjoitusvirhe eristetään
+onnistuneesta toimituksesta, ja seuraavat toimitukset voivat edelleen jonottaa
+omat tehtävänsä.
 
 Sähköpostilähetyksen provider-malli, dry-run-vaihe, SMTP/Gmail-linja ja
 salaisuuksien hallinta on kuvattu dokumentissa

@@ -49,6 +49,7 @@ export interface BackendOperationalEventPayloadMap {
   'invoicePdf.generationFailed': EntityFailureFields;
   'invoicePdf.storageFailed': EntityFailureFields;
   'invoicePdf.missingFile': EntityFailureFields;
+  'invoicePdfArchive.queueFailed': FailureFields;
   'invoiceDelivery.prepareBlocked': EntityFailureFields;
   'invoiceDelivery.providerFailed': EntityFailureFields;
   'invoiceDelivery.outcomeUnknown': EntityFailureFields;
@@ -286,6 +287,12 @@ export const backendOperationalEventSpecs = Object.freeze({
     'failure',
     entityFailureFields,
   ),
+  'invoicePdfArchive.queueFailed': spec(
+    'invoicePdfArchive',
+    'warn',
+    'failure',
+    failureFields,
+  ),
   'invoiceDelivery.prepareBlocked': spec(
     'invoiceDelivery',
     'warn',
@@ -425,6 +432,12 @@ export const backendRequiredPayloadFields = Object.freeze({
   'invoicePdf.generationFailed': ['errorCode'],
   'invoicePdf.storageFailed': ['errorCode'],
   'invoicePdf.missingFile': ['errorCode'],
+  'invoicePdfArchive.queueFailed': [
+    'errorCode',
+    'retryable',
+    'sideEffectState',
+    'stage',
+  ],
   'invoiceDelivery.prepareBlocked': ['errorCode'],
   'invoiceDelivery.providerFailed': ['errorCode'],
   'invoiceDelivery.outcomeUnknown': ['errorCode'],

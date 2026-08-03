@@ -86,6 +86,12 @@ lokikansion avaamista tai tukipakettia, lue myös
 `docs/modules/diagnostics.md`, `docs/architecture/operational-log-retention-plan.md`
 ja `docs/architecture/support-bundle-plan.md`.
 
+Jos työ koskee paikallisen business-datan varmuuskopiointia, palautusta,
+`.ekybackup`-formaattia, restore-stagingia tai profiilin rollbackia, lue myös
+`docs/architecture/local-backup-and-restore-plan.md`. Tukipakettia tai
+toimitettujen laskujen valinnaista PDF-arkistokansiota ei saa käsitellä
+varmuuskopiona.
+
 Jos työ koskee E2E-testejä, Playwrightia, selain- tai Electron development
 -käyttäjäpolkuja, testiruntimea, fault injectionia, hyökkäyssimulaatioita tai
 packaged-smoken testikattavuutta, lue myös
@@ -109,6 +115,11 @@ Jos työ koskee paikallista backend-runtimea, pilvibackendin ajotapaa, backend-f
 Jos työ koskee local desktop -paketointia, Electronia, Tauria, desktop shelliä,
 backend-prosessin hallintaa, preload-/IPC-rajaa tai local-sessionin bootstrapia,
 lue myös `docs/decisions/ADR-0007-local-desktop-shell-and-session-bootstrap.md`.
+
+Jos työ koskee paikallisia yritystyötiloja, useita paikallisia profiileja,
+profiilin vaihtoa, profiilikohtaisia tietokantoja tai local desktopin
+multi-company-mallia, lue myös
+`docs/decisions/ADR-0008-local-desktop-company-workspaces.md`.
 
 Jos työ koskee Electron-runtimen ensimmäistä toteutusta, `apps/desktop`-
 rakennetta, Electronin development- ja production-profiileja, Windows-

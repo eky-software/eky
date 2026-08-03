@@ -3,6 +3,8 @@ import { pathToFileURL } from 'node:url';
 
 import { CompanyEmailSecretBrokerClient } from '../src/secrets/secretBrokerClient.js';
 import { createUtilitySecretBrokerTransport } from '../src/secrets/electronSecretBrokerTransport.js';
+import { InvoicePdfArchiveBrokerClient } from '../src/invoicePdfArchive/invoicePdfArchiveBrokerClient.js';
+import { createInvoicePdfArchiveBrokerTransport } from '../src/invoicePdfArchive/electronInvoicePdfArchiveBrokerTransport.js';
 
 interface E2eBackendServer {
   close(): Promise<void>;
@@ -15,6 +17,7 @@ interface StartE2eBackend {
     options: {
       companyEmailSecretReader: CompanyEmailSecretBrokerClient;
       companyEmailSecretStore: CompanyEmailSecretBrokerClient;
+      deliveredInvoiceArchiveTaskSink: InvoicePdfArchiveBrokerClient;
       runtimeInstanceId: string;
     },
   ): Promise<{ server: E2eBackendServer }>;
@@ -23,6 +26,7 @@ interface StartE2eBackend {
 const parentPort = process.parentPort;
 let server: E2eBackendServer | undefined;
 let secretBrokerClient: CompanyEmailSecretBrokerClient | undefined;
+let invoicePdfArchiveBrokerClient: InvoicePdfArchiveBrokerClient | undefined;
 let startAttempted = false;
 
 parentPort.on('message', (event) => {
@@ -38,15 +42,19 @@ parentPort.on('message', (event) => {
 
   void (async () => {
     try {
-      if (process.env.EKY_E2E !== '1' || event.ports.length !== 1) {
+      if (process.env.EKY_E2E !== '1' || event.ports.length !== 2) {
         throw new Error('ELECTRON_E2E_BACKEND_BOUNDARY_INVALID');
       }
       const brokerPort = event.ports[0];
-      if (brokerPort === undefined) {
+      const archiveBrokerPort = event.ports[1];
+      if (brokerPort === undefined || archiveBrokerPort === undefined) {
         throw new Error('ELECTRON_E2E_SECRET_BROKER_MISSING');
       }
       secretBrokerClient = new CompanyEmailSecretBrokerClient(
         createUtilitySecretBrokerTransport(brokerPort),
+      );
+      invoicePdfArchiveBrokerClient = new InvoicePdfArchiveBrokerClient(
+        createInvoicePdfArchiveBrokerTransport(archiveBrokerPort),
       );
       const repositoryRoot = resolve(import.meta.dirname, '../../../..');
       const modulePath = resolve(
@@ -63,12 +71,14 @@ parentPort.on('message', (event) => {
       const started = await module.startE2eBackend(command.configPath, {
         companyEmailSecretReader: secretBrokerClient,
         companyEmailSecretStore: secretBrokerClient,
+        deliveredInvoiceArchiveTaskSink: invoicePdfArchiveBrokerClient,
         runtimeInstanceId: command.runtimeInstanceId,
       });
       server = started.server;
       parentPort.postMessage({ port: server.port, type: 'ready' });
     } catch {
       secretBrokerClient?.close();
+      invoicePdfArchiveBrokerClient?.close();
       parentPort.postMessage({
         code: 'ELECTRON_E2E_BACKEND_START_FAILED',
         type: 'failed',
@@ -80,6 +90,7 @@ parentPort.on('message', (event) => {
 async function shutdown(): Promise<void> {
   await server?.close().catch(() => undefined);
   secretBrokerClient?.close();
+  invoicePdfArchiveBrokerClient?.close();
   process.exit(0);
 }
 
