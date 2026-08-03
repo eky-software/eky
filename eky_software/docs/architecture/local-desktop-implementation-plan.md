@@ -15,6 +15,10 @@ prepare/send-polku ja `sent`-tilasiirtymä on toteutettu 17.7.2026. Toteutus ei
 vielä sisällä tuotantojulkaisun release security gatea, installeria, code
 signingia tai automaattipäivitystä.
 
+Electron `43.2.0`- ja better-sqlite3 `13.0.2` -yhdistelmä on varmennettu
+3.8.2026. Paketointi käyttää better-sqlite3:n mukana toimitettua Windows x64
+N-API-binääriä eikä enää rakenna staged-kopiota Electron ABI:lle.
+
 Salatun secret-tiedoston kirjoitus ja palautuminen on kovennettu 15.7.2026
 deterministisillä next- ja backup-sloteilla. Paketoitu Windows-smoke varmistaa
 synteettisen salaisuuden broker- ja HTTP set/status/remove-elinkaaren, ettei
@@ -30,7 +34,7 @@ Toteutettu spike todentaa Windows x64 -artifactissa:
 - käyttöjärjestelmän varaaman `127.0.0.1`-loopback-portin
 - uuden SQLite-tiedoston ja kaikkien migraatioiden luonnin erilliseen
   väliaikaiseen sovellusdatahakemistoon
-- staged-kopiossa Electronin ABI:lle rakennetun `better-sqlite3`-moduulin
+- paketoidun `better-sqlite3 13.0.2` Windows x64 N-API-moduulin
 - synteettisen lasku-PDF:n tuottamisen paketoidulla PDFKit-pinolla
 - turvallisuusasetusten ja production-fusejen automaattisen tarkistuksen
 - sen, ettei pakettiin kopioida kehityksen tietokantoja, PDF-artifakteja,
@@ -48,14 +52,12 @@ paketoidut UI-resurssit ja välittää vain eksplisiittisesti allowlistatut
 backend-reitit ja HTTP-metodit. Preload ei tässä vaiheessa paljasta rendererille
 yhtään Node-, tiedosto-, prosessi- tai yleistä IPC-API:a.
 
-Package-spike ei ole loppukäyttäjän release. Spike käyttää virallisesta
-npm-rekisteristä saatavia Electron 42.6.1- ja `better-sqlite3 12.11.1`
--versioita. `better-sqlite3 12.11.1` korjaa Electron 42:n Windows-käännön.
-Electron 43:een siirrytään heti, kun sitä tukeva `better-sqlite3 12.11.2` tai
-uudempi versio on julkaistu myös npm-rekisteriin ja Windows package- sekä
-smoke-testit läpäisevät päivityksen. Installer, code signing, tavallisen
-Windows-käyttäjän manuaalinen hyväksymistesti, visuaalinen PDF-tarkistus ja
-päivityskanava ovat edelleen avoimia toimitusvaiheita.
+Package-spike ei ole loppukäyttäjän release. Nykyinen varmennettu runtime
+käyttää virallisesta npm-rekisteristä saatavia Electron `43.2.0`- ja
+`better-sqlite3 13.0.2` -versioita. Windows package-, smoke-, Electron-E2E-,
+stressi- ja soak-testit läpäisevät yhdistelmän. Installer, code signing,
+tavallisen Windows-käyttäjän manuaalinen hyväksymistesti ja päivityskanava
+ovat edelleen avoimia toimitusvaiheita.
 
 ## Tavoite
 
@@ -346,7 +348,7 @@ vasta, kun Windows-artifactista on todennettu synteettisellä datalla vähintä�
 - SQLite-tiedosto syntyy hallittuun, Gitin ja web-resurssien ulkopuoliseen
   sovellusdatahakemistoon
 - migraatiot toimivat uudessa tyhjässä tietokannassa
-- `better-sqlite3` toimii kohde-Electronin ABI:lla
+- `better-sqlite3` toimii kohde-Electronin N-API-runtimessa
 - nykyinen synteettinen asiakas- tai laskutuspolku toimii end-to-end
 - PDFKit tuottaa avattavan synteettisen PDF:n hallittuun datahakemistoon
 - ääkköset ja laskun fontit renderöityvät oikein

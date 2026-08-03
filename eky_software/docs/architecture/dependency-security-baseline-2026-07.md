@@ -109,8 +109,8 @@ Virallinen advisory:
   backendissä ja system E2E -tasolla
 - `@hono/node-server` käyttää oletusarvoista kesken jäävien incoming requestien
   cleanupia; Eky ei kytke sitä pois
-- Windows-paketointi rakentaa `better-sqlite3`-kopion lukitulle Electron ABI:lle
-  ja tarkistaa tuotantofuset
+- Windows-paketointi validoi tarkasti lukitun `better-sqlite3`-runtimen
+  native-binäärin ja tarkistaa tuotantofuset
 
 Nämä rajat pienentävät käytännön altistusta, mutta eivät ole peruste jättää
 korjattavissa olevaa tunnettua haavoittuvuutta riippuvuuspuuhun.
@@ -129,8 +129,38 @@ Heinäkuun rajatut päivitykset on toteutettu:
    rekisteriallekirjoitusten tarkistuksen päivittäin, dependency-muutoksissa ja
    käsin käynnistettynä.
 
-Electron 43, `better-sqlite3`-muutos ja tuotantojulkaisun release-portti ovat
-edelleen erillisiä päätöksiä.
+Electron 43- ja `better-sqlite3` 13 -muutos toteutettiin myöhemmin erillisenä
+päätöksenä. Tuotantojulkaisun release-portti on edelleen erillinen päätös.
+
+## Electron 43 -yhteensopivuuspäivitys 3.8.2026
+
+Heinäkuun lähtötilanteen jälkeen desktop-runtime päivitettiin tarkasti
+lukittuihin versioihin:
+
+- Electron `43.2.0`
+- `better-sqlite3 13.0.2`
+- `@electron/packager 20.0.4`
+- `@electron/fuses 2.1.3`.
+
+better-sqlite3 13 toimittaa Windows x64 N-API-binäärin osana pakettia.
+Paketointiputkesta poistettiin pnpm-virtuaalivaraston skannaus,
+`prebuild-install` ja staged ABI-uudelleenrakennus. Asennusskripti sallitaan
+edelleen vain Electronille; better-sqlite3:n install-skriptiä ei ajeta.
+
+Päivityksen jälkeen:
+
+- `pnpm audit --prod` ja `pnpm audit` eivät raportoineet tunnettuja
+  haavoittuvuuksia
+- `pnpm audit signatures` varmisti 167 paketin rekisteriallekirjoitukset
+- riippuvuuspuussa oli yksi Electron `43.2.0` ja yksi better-sqlite3 `13.0.2`
+- synteettinen tietokanta, paikallisen tietokannan turvallinen kopio,
+  migraatiot, foreign key- ja integrity-tarkistus sekä rollback varmennettiin
+- Windows package, paketoitu smoke, Electron critical E2E, PDF-esikatselu,
+  safeStorage, fake SMTP, tukipaketti sekä stressi- ja soak-ajot läpäistiin.
+
+Päivitys ei muuta Eky-tuoteversiota `0.1.0-alpha.1` eikä poista installer-,
+code signing-, automaattipäivitys- tai muun release security gate -työn
+tarvetta.
 
 ## CI- ja repository-asetusten lähtötila
 

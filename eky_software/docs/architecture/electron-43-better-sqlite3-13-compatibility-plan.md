@@ -241,6 +241,38 @@ Checkpoint F valmistui 3.8.2026:
 - Dependabot-PR #180 suljetaan vasta hallitun korvaavan PR:n avaamisen jälkeen
 - muutosta ei merkitä tuotantovalmiiksi ennen dokumentoitua release-porttia.
 
+Paikallinen checkpoint valmistui 3.8.2026:
+
+- dependency review, toteutussuunnitelma, desktop README,
+  riippuvuusturvallisuuden historiallinen baseline, lisenssit,
+  endurance-baseline ja E2E-matriisi kuvaavat toteutunutta Electron 43 /
+  better-sqlite3 13 N-API -mallia
+- `pnpm install --frozen-lockfile` onnistui ilman muutoksia
+- production- ja full-audit eivät raportoineet tunnettuja haavoittuvuuksia,
+  ja 167 asennetun paketin rekisteriallekirjoitukset varmennettiin
+- riippuvuuspuussa oli yksi Electron `43.2.0` ja yksi better-sqlite3 `13.0.2`
+- workspace-testit olivat vihreät: backend 1132, web 569, API-client 140,
+  desktop 165 sekä auth- ja permission-testit
+- workspace-typecheck sekä backend-, web- ja desktop-buildit onnistuivat;
+  API-clientillä ei ole erillistä build-skriptiä, joten sen sopimus
+  varmennettiin testeillä ja typecheckillä
+- system E2E oli 43/43, web E2E 41/41, security E2E 24/24, fault E2E 15/15,
+  system/web critical 51/51 ja Electron critical 18/18
+- Windows x64 -paketointi validoi better-sqlite3 `13.0.2` / SQLite `3.53.4`
+  -runtimen ja paketoitu smoke läpäisi ajon ensimmäisellä yrityksellä
+- checkpoint E:n sama Windows-artifact läpäisi lisäksi kolme peräkkäistä
+  packaged-smoke-ajoa
+- paikallisen tietokannan turvallinen kopiotarkistus säilytti alkuperäisen
+  tiedoston hashin ja läpäisi migraatio-, foreign key-, integrity- ja
+  rollback-tarkistukset
+- stressi- ja 30 minuutin soak-ajot eivät osoittaneet prosessi-, ikkuna- tai
+  working set -vuotoa.
+
+GitHub CI ja Dependabot-PR:n sulkeminen tehdään vasta, kun hallittu haara
+pushataan ja korvaava PR avataan. Tämä paikallinen checkpoint ei poista
+installer-, code signing-, automaattipäivitys- tai muuta release security gate
+-vaatimusta eikä merkitse artifactia tuotantovalmiiksi.
+
 ## Pakolliset pysäytysehdot
 
 Työ pysäytetään välittömästi ennen seuraavaa checkpointia, jos:

@@ -9,8 +9,8 @@ backend requests in the main process, and lets the backend create ActorContext
 only after verification. This is still not a production release and must not
 be used with real customer data before the remaining release-security phases
 are complete. A real SMTP credential may be used only through the encrypted
-secret-store path for an explicit, confirmed DNA test-recipient check. That
-controlled test path is not yet the customer delivery flow.
+secret-store path. Confirmed customer delivery is implemented, but real-data
+use remains blocked until the documented release-security gates are complete.
 
 ## Commands
 
@@ -33,7 +33,7 @@ The package command:
 
 - builds web, backend, auth, permissions, and desktop artifacts
 - deploys only the backend production files
-- rebuilds the staged `better-sqlite3` copy for the pinned Electron ABI
+- validates and packages the bundled `better-sqlite3` Windows x64 N-API runtime
 - packages the renderer into ASAR
 - copies backend and utility-process runtime as explicit resources
 - applies and verifies production Electron fuses
