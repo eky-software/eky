@@ -59,8 +59,8 @@ importers:
         specifier: ^24.12.4
         version: 24.12.4
       electron:
-        specifier: 42.8.0
-        version: 42.8.0
+        specifier: 43.0.0
+        version: 43.0.0
 
   apps/e2e:
     devDependencies:
@@ -115,6 +115,10 @@ packages:
 
   '@electron-internal/extract-zip@1.0.4':
     resolution: {integrity: sha512-Zr1Vs7E9tpCNhZHDAbFVXc2gEVCG9RqPDjrno5+bdgB6LRAuvgyMHJut4NCVyYwtAieapMzc3fiQ3CSTi75ARg==}
+    engines: {node: '>=22.12.0'}
+
+  '@electron-internal/extract-zip@1.0.5':
+    resolution: {integrity: sha512-+bqFCP98pLI0Tt0XQo1TmlXtwjWchISndDOxCkEcIuUgXWpBnLyRI+2DU+mesvnMMX6L1XDqYNA0lXNDHd/yiA==}
     engines: {node: '>=22.12.0'}
 
   '@electron/asar@4.2.1':
@@ -468,8 +472,8 @@ packages:
   dfa@1.2.0:
     resolution: {integrity: sha512-ED3jP8saaweFTjeGX8HQPjeC1YYyZs98jGNZx6IiBvxW7JG5v492kamAQB3m2wop07CvU/RQmzcKr6bgcC5D/Q==}
 
-  electron@42.8.0:
-    resolution: {integrity: sha512-lgeUDjUuUzUSBchBudmjCZ8ApeYdVneMi17nLRMdfxGw7FyLFligsLtIF+dL3UoNnOsupAwdqVNJCK5MFE82kQ==}
+  electron@43.0.0:
+    resolution: {integrity: sha512-PV60GsWU6qufhuOhw3n+Yix3WPDcqDtBqE8orbEQGQGHEkgp9o/JCPgb7L4vIL0r1HnfPdqSRtboOTqbDkcFDQ==}
     engines: {node: '>= 22.12.0'}
     hasBin: true
 
@@ -1030,6 +1034,8 @@ snapshots:
 
   '@electron-internal/extract-zip@1.0.4': {}
 
+  '@electron-internal/extract-zip@1.0.5': {}
+
   '@electron/asar@4.2.1':
     dependencies:
       glob: 13.0.6
@@ -1362,9 +1368,9 @@ snapshots:
 
   dfa@1.2.0: {}
 
-  electron@42.8.0:
+  electron@43.0.0:
     dependencies:
-      '@electron-internal/extract-zip': 1.0.4
+      '@electron-internal/extract-zip': 1.0.5
       '@electron/get': 5.1.0
       '@types/node': 24.12.4
     transitivePeerDependencies:
