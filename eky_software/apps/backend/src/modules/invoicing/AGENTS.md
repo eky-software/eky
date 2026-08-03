@@ -82,6 +82,13 @@ Invoice email settings use Invoicing's `InvoiceEmailSettingsReader` port.
 Cross-module writes must call the owning module's application contract and may
 not update its tables directly.
 
+Delivered invoice PDF archiving uses the narrow
+`DeliveredInvoiceArchiveTaskSink` application port only after a durable
+successful delivery. Invoicing may provide the exact delivery event,
+document identity, expected size/hash, invoice identity and number, but it
+must not know the desktop archive path, renderer, Electron, local file name
+or retry journal. Archive failure must never roll back a successful delivery.
+
 The current approval snapshot adapter's parameterized, company-scoped reads
 from customer and company settings tables are a documented persistence
 exception in `docs/architecture/current-module-conformance-audit.md`. Do not

@@ -82,6 +82,7 @@ import { SqliteInvoicePaymentRepository } from '../modules/invoicing/infrastruct
 import { SqliteInvoiceVatRateRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceVatRateRepository.js';
 import { SqliteSentInvoiceGroupReader } from '../modules/invoicing/infrastructure/sqliteSentInvoiceGroupReader.js';
 import type { CustomerAccessReader } from '../modules/invoicing/ports/customerAccessReader.js';
+import type { DeliveredInvoiceArchiveTaskSink } from '../modules/invoicing/ports/deliveredInvoiceArchiveTaskSink.js';
 import type { InvoiceCustomerTaxProfileReader } from '../modules/invoicing/ports/invoiceCustomerTaxProfileReader.js';
 import type { InvoiceEmailSettingsReader } from '../modules/invoicing/ports/invoiceEmailSettingsReader.js';
 import type { InvoiceActivityReader } from '../modules/invoicing/ports/invoiceActivityReader.js';
@@ -105,6 +106,7 @@ export interface InvoicingInfrastructureAdapters {
 interface InvoicingCompositionOptions {
   companyEmailSecretReader: CompanyEmailSecretReader;
   customerAccessReader: CustomerAccessReader;
+  deliveredInvoiceArchiveTaskSink: DeliveredInvoiceArchiveTaskSink;
   invoiceCustomerTaxProfileReader: InvoiceCustomerTaxProfileReader;
   database: DatabaseConnection;
   infrastructureAdapters?: InvoicingInfrastructureAdapters;
@@ -330,6 +332,8 @@ export function createInvoicingComposition(
       markApprovedInvoiceSent: (input) =>
         markApprovedInvoiceSent(input, {
           approvedInvoiceReader,
+          deliveredInvoiceArchiveTaskSink:
+            options.deliveredInvoiceArchiveTaskSink,
           ensureApprovedInvoicePdfDocument,
           invoiceDeliveryEventReader: invoiceDeliveryEventRepository,
           invoiceManualDeliveryFinalizer: invoiceDeliveryEventRepository,
@@ -401,6 +405,8 @@ export function createInvoicingComposition(
         try {
           return await sendApprovedInvoiceEmailSmtp(input, {
             approvedInvoiceReader,
+            deliveredInvoiceArchiveTaskSink:
+              options.deliveredInvoiceArchiveTaskSink,
             ensureApprovedInvoicePdfDocument,
             getApprovedInvoicePdfDocument,
             invoiceDeliveryEventRepository,

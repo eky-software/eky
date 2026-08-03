@@ -14,6 +14,7 @@ import {
 } from './appNavigation.js';
 import {
   getDesktopInvoicePdfPreview,
+  getDesktopInvoicePdfArchive,
   getDesktopOperationalLogFolder,
   getDesktopSupportBundleCreator,
 } from './desktopBridge.js';
@@ -30,6 +31,7 @@ export function App({ apiClient }: AppProps): React.JSX.Element {
   const { activeView } = navigation;
   const activeTitle = uiText.modules[activeView];
   const openInvoicePdfPreview = getDesktopInvoicePdfPreview();
+  const invoicePdfArchiveCapability = getDesktopInvoicePdfArchive();
   const openOperationalLogFolder = getDesktopOperationalLogFolder();
   const createSupportBundle = getDesktopSupportBundleCreator();
 
@@ -76,6 +78,9 @@ export function App({ apiClient }: AppProps): React.JSX.Element {
           isEmailSecretManagementAvailable={
             openInvoicePdfPreview !== undefined
           }
+          {...(invoicePdfArchiveCapability === undefined
+            ? {}
+            : { invoicePdfArchiveCapability })}
           onOpenActivity={() => activateView('activity')}
           onOpenDiagnostics={() => activateView('diagnostics')}
         />

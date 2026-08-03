@@ -132,6 +132,7 @@ function validatePayloadValue(field: string, value: unknown): void {
 
   if (
     field === 'durationMs' ||
+    field === 'attemptCount' ||
     field === 'deletedByteCount' ||
     field === 'deletedFileCount'
   ) {

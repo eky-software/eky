@@ -12,6 +12,8 @@ import {
   shell,
   type MessageBoxOptions,
   type MessageBoxReturnValue,
+  type OpenDialogOptions,
+  type OpenDialogReturnValue,
   type SaveDialogOptions,
   type SaveDialogReturnValue,
 } from 'electron';
@@ -45,6 +47,18 @@ import { JsonLineDesktopOperationalLogger } from '../observability/infrastructur
 import { createMainSecretBrokerTransport } from '../secrets/electronSecretBrokerTransport.js';
 import { startSecretBrokerMain } from '../secrets/secretBrokerMain.js';
 import { SafeStorageStringProtector } from '../secrets/safeStorageStringProtector.js';
+import { createInvoicePdfArchiveRuntimePaths } from '../invoicePdfArchive/invoicePdfArchivePaths.js';
+import { InvoicePdfArchiveConfigStore } from '../invoicePdfArchive/invoicePdfArchiveConfig.js';
+import { InvoicePdfArchiveJournalStore } from '../invoicePdfArchive/invoicePdfArchiveJournal.js';
+import { InvoicePdfArchiveService } from '../invoicePdfArchive/invoicePdfArchiveService.js';
+import { InvoicePdfArchiveError } from '../invoicePdfArchive/invoicePdfArchiveTypes.js';
+import { createInvoicePdfArchiveBackendLoader } from '../invoicePdfArchive/invoicePdfArchiveBackendLoader.js';
+import { createInvoicePdfArchiveBrokerTransport } from '../invoicePdfArchive/electronInvoicePdfArchiveBrokerTransport.js';
+import { startInvoicePdfArchiveBrokerMain } from '../invoicePdfArchive/invoicePdfArchiveBrokerMain.js';
+import {
+  createInvoicePdfArchiveCapability,
+  type InvoicePdfArchiveCapability,
+} from '../invoicePdfArchive/invoicePdfArchiveCapability.js';
 import { registerElectronPermissionPolicy } from '../security/electronPermissionPolicy.js';
 import {
   createApplicationWindow,
@@ -81,6 +95,10 @@ export interface DesktopCompositionDependencies {
     owner: BrowserWindow | undefined,
     options: MessageBoxOptions,
   ): Promise<MessageBoxReturnValue>;
+  showOpenDialog(
+    owner: BrowserWindow,
+    options: OpenDialogOptions,
+  ): Promise<OpenDialogReturnValue>;
   showSaveDialog(
     owner: BrowserWindow,
     options: SaveDialogOptions,
@@ -114,6 +132,7 @@ const defaultDesktopCompositionDependencies: DesktopCompositionDependencies = {
       ? dialog.showMessageBox(options)
       : dialog.showMessageBox(owner, options);
   },
+  showOpenDialog: (owner, options) => dialog.showOpenDialog(owner, options),
   showSaveDialog: (owner, options) => dialog.showSaveDialog(owner, options),
   startBackend: startDesktopBackend,
 };
@@ -250,10 +269,14 @@ async function startDesktopCompositionRuntime({
         )
       : undefined;
   const secretBrokerChannel = new MessageChannelMain();
+  const invoicePdfArchiveBrokerChannel = new MessageChannelMain();
   let applicationWindow: BrowserWindow | undefined;
   let pdfPreviewController: InvoicePdfPreviewWindowController | undefined;
   let operationalLogFolderCapability:
     | OperationalLogFolderCapability
+    | undefined;
+  let invoicePdfArchiveCapability:
+    | InvoicePdfArchiveCapability
     | undefined;
   let supportBundleCapability: SupportBundleCapability | undefined;
   let shutdownStarted = false;
@@ -296,8 +319,71 @@ async function startDesktopCompositionRuntime({
     protector: new SafeStorageStringProtector(safeStorage),
     transport: createMainSecretBrokerTransport(secretBrokerChannel.port1),
   });
-
-  let backendHandle;
+  const invoicePdfArchivePaths =
+    createInvoicePdfArchiveRuntimePaths(dataRoot);
+  let backendHandle: DesktopBackendHandle | undefined;
+  const invoicePdfArchiveService = new InvoicePdfArchiveService({
+    configStore: new InvoicePdfArchiveConfigStore(
+      invoicePdfArchivePaths.configFilePath,
+    ),
+    journalStore: new InvoicePdfArchiveJournalStore(
+      invoicePdfArchivePaths.journalFilePath,
+    ),
+    observer: {
+      copyFailed({ attemptCount, durationMs, errorCode }) {
+        desktopOperationalLogger.write(
+          createDesktopOperationalEvent(
+            {
+              attemptCount,
+              durationMs,
+              errorCode,
+              eventName: 'invoicePdfArchive.copyFailed',
+              retryable: errorCode !== 'ARCHIVE_FILE_CONFLICT',
+              sideEffectState: 'none',
+            },
+            desktopOperationalIdentity,
+          ),
+        );
+      },
+      copySucceeded({ attemptCount, durationMs }) {
+        desktopOperationalLogger.write(
+          createDesktopOperationalEvent(
+            {
+              attemptCount,
+              durationMs,
+              eventName: 'invoicePdfArchive.copySucceeded',
+            },
+            desktopOperationalIdentity,
+          ),
+        );
+      },
+      taskQueued() {
+        desktopOperationalLogger.write(
+          createDesktopOperationalEvent(
+            { eventName: 'invoicePdfArchive.taskQueued' },
+            desktopOperationalIdentity,
+          ),
+        );
+      },
+    },
+    async loadDocument(task) {
+      if (backendHandle === undefined) {
+        throw new InvoicePdfArchiveError('ARCHIVE_REQUEST_FAILED', true);
+      }
+      return createInvoicePdfArchiveBackendLoader({
+        backendOrigin: `http://127.0.0.1:${backendHandle.port}`,
+        fetchImplementation: (url, init) => net.fetch(url, init),
+        runtimeSessionSecret,
+      })(task);
+    },
+  });
+  const invoicePdfArchiveBrokerHandle =
+    startInvoicePdfArchiveBrokerMain({
+      service: invoicePdfArchiveService,
+      transport: createInvoicePdfArchiveBrokerTransport(
+        invoicePdfArchiveBrokerChannel.port1,
+      ),
+    });
 
   try {
     await options.reportSmokeStage('backend');
@@ -327,6 +413,8 @@ async function startDesktopCompositionRuntime({
       },
       operationalIdentity: desktopOperationalIdentity,
       operationalLogger: desktopOperationalLogger,
+      invoicePdfArchiveBrokerPort:
+        invoicePdfArchiveBrokerChannel.port2,
       runnerPath: join(
         options.resourcesPath,
         'desktop-runtime',
@@ -336,6 +424,7 @@ async function startDesktopCompositionRuntime({
       secretBrokerPort: secretBrokerChannel.port2,
     });
   } catch (error) {
+    invoicePdfArchiveBrokerHandle.close();
     secretBrokerHandle.close();
     throw error;
   }
@@ -347,6 +436,7 @@ async function startDesktopCompositionRuntime({
     );
     options.quitApplication();
   });
+  void invoicePdfArchiveService.retryPending(true).catch(() => undefined);
 
   registerApplicationProtocol({
     backendOrigin: `http://127.0.0.1:${backendHandle.port}`,
@@ -437,6 +527,73 @@ async function startDesktopCompositionRuntime({
       deliveryConfirmation.showApplicationError(
         'Lokikansiota ei voitu avata',
         'Eky-lokikansiota ei voitu avata turvallisesti.',
+      );
+    },
+  });
+  invoicePdfArchiveCapability = createInvoicePdfArchiveCapability({
+    async confirmChange() {
+      if (smokeMode) {
+        return true;
+      }
+      const result = await dependencies.showMessageBox(mainWindow, {
+        buttons: ['Peruuta', 'Vaihda kansio'],
+        cancelId: 0,
+        defaultId: 0,
+        detail:
+          'Uusi kansio koskee vain tämän jälkeen arkistoitavia laskuja ja odottavia kopioita. Aiemmin kopioituja PDF-tiedostoja ei siirretä.',
+        message: 'Vaihdatko laskujen PDF-kopiokansion?',
+        noLink: true,
+        title: 'Vaihda PDF-kopiokansio',
+        type: 'warning',
+      });
+      return result.response === 1;
+    },
+    async confirmDisable() {
+      if (smokeMode) {
+        return true;
+      }
+      const result = await dependencies.showMessageBox(mainWindow, {
+        buttons: ['Peruuta', 'Poista käytöstä'],
+        cancelId: 0,
+        defaultId: 0,
+        detail:
+          'Jo tallennetut PDF-kopiot säilyvät valitussa kansiossa. Odottavat kopiot säilyvät Ekyssä ja niitä voidaan yrittää uudelleen, kun ominaisuus otetaan myöhemmin käyttöön.',
+        message: 'Poistetaanko laskujen paikallinen PDF-kopiointi käytöstä?',
+        noLink: true,
+        title: 'Poista PDF-kopiointi käytöstä',
+        type: 'warning',
+      });
+      return result.response === 1;
+    },
+    ipcMain,
+    mainWindow,
+    onConfigurationChanged(stage) {
+      desktopOperationalLogger.write(
+        createDesktopOperationalEvent(
+          {
+            eventName: 'invoicePdfArchive.configurationChanged',
+            stage,
+          },
+          desktopOperationalIdentity,
+        ),
+      );
+    },
+    openPath: dependencies.openPath,
+    async selectDirectory() {
+      const result = await dependencies.showOpenDialog(mainWindow, {
+        message: 'Valitse kansio toimitettujen laskujen PDF-kopioille',
+        properties: ['openDirectory', 'createDirectory'],
+        title: 'Valitse PDF-kopiokansio',
+      });
+      return result.canceled || result.filePaths.length !== 1
+        ? null
+        : result.filePaths[0] ?? null;
+    },
+    service: invoicePdfArchiveService,
+    showSafeError() {
+      deliveryConfirmation.showApplicationError(
+        'PDF-kopiota ei voitu käsitellä',
+        'Laskujen paikallista PDF-kopiota ei voitu käsitellä turvallisesti.',
       );
     },
   });
@@ -543,11 +700,14 @@ async function startDesktopCompositionRuntime({
       pdfPreviewController = undefined;
       operationalLogFolderCapability?.dispose();
       operationalLogFolderCapability = undefined;
+      invoicePdfArchiveCapability?.dispose();
+      invoicePdfArchiveCapability = undefined;
       supportBundleCapability?.dispose();
       supportBundleCapability = undefined;
 
       try {
         await backendHandle.stop();
+        invoicePdfArchiveBrokerHandle.close();
         secretBrokerHandle.close();
         desktopOperationalLogger.write(
           createDesktopOperationalEvent(
@@ -559,6 +719,7 @@ async function startDesktopCompositionRuntime({
           ),
         );
       } catch {
+        invoicePdfArchiveBrokerHandle.close();
         secretBrokerHandle.close();
         desktopOperationalLogger.write(
           createDesktopOperationalEvent(
@@ -593,6 +754,11 @@ async function startDesktopCompositionRuntime({
         backend: backendHandle,
         buildRevision: options.buildInfo.buildRevision,
         databaseFilePath,
+        invoicePdfArchiveDirectoryPath: join(
+          requireSmokeRoot(options.smokeConfiguration.root),
+          'invoice-pdf-archive',
+        ),
+        invoicePdfArchiveService,
         mainWindow,
         pdfPreviewController,
         runtimeSessionSecret,
@@ -713,6 +879,14 @@ function requireSmokeSupportBundlePath(
     throw new Error('DESKTOP_SMOKE_SUPPORT_BUNDLE_PATH_MISSING');
   }
   return value;
+}
+
+function requireSmokeRoot(root: string | undefined): string {
+  if (root === undefined) {
+    throw new Error('DESKTOP_SMOKE_ROOT_MISSING');
+  }
+
+  return root;
 }
 
 function createInvoicePdfPreviewController(

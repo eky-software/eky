@@ -20,6 +20,7 @@ import type {
 import type { InvoiceEmailDeliveryFinalizer } from '../ports/invoiceEmailDeliveryFinalizer.js';
 import type { InvoiceEmailSendAttemptStore } from '../ports/invoiceEmailSendAttemptStore.js';
 import type { InvoiceSmtpDeliveryProvider } from '../ports/invoiceSmtpDeliveryProvider.js';
+import type { DeliveredInvoiceArchiveTaskSink } from '../ports/deliveredInvoiceArchiveTaskSink.js';
 import { InvoiceSmtpDeliveryError } from '../ports/invoiceSmtpDeliveryProvider.js';
 import { InMemoryInvoiceEmailSendAttemptStore } from '../infrastructure/inMemoryInvoiceEmailSendAttemptStore.js';
 
@@ -68,15 +69,16 @@ describe('sendApprovedInvoiceEmailSmtp', () => {
       };
     });
 
-    const result = await sendApprovedInvoiceEmailSmtp(
-      createInput(),
-      createDependencies({
+    const dependencies = createDependencies({
         completeSuccessfulEmailDelivery,
         getStatus: () => currentStatus,
         pdfContent,
         repository,
         sendEmail,
-      }),
+      });
+    const result = await sendApprovedInvoiceEmailSmtp(
+      createInput(),
+      dependencies,
     );
 
     expect(repository.events[0]).toEqual(
@@ -96,6 +98,19 @@ describe('sendApprovedInvoiceEmailSmtp', () => {
     expect(result.invoice.status).toBe('sent');
     expect(result.resend).toBe(false);
     expect(pdfContent.every((value) => value === 0)).toBe(true);
+    expect(
+      dependencies.deliveredInvoiceArchiveTaskSink
+        .queueDeliveredInvoiceArchiveTask,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        createdAt: '2026-07-17T22:00:00.000Z',
+        deliveryEventId: 'attempt-1',
+        documentId: 'document-1',
+        invoiceId: 'invoice-1',
+        invoiceKind: 'standard',
+        invoiceNumber: '20260001',
+      }),
+    );
   });
 
   it('records a definite failure without finalizing or changing invoice status', async () => {
@@ -127,6 +142,19 @@ describe('sendApprovedInvoiceEmailSmtp', () => {
       }),
     ]);
     expect(completeSuccessfulEmailDelivery).not.toHaveBeenCalled();
+  });
+
+  it('keeps a successful SMTP delivery successful when local archival fails', async () => {
+    const result = await sendApprovedInvoiceEmailSmtp(
+      createInput(),
+      createDependencies({
+        queueDeliveredInvoiceArchiveTask: vi.fn(async () => {
+          throw new Error('local archive unavailable');
+        }),
+      }),
+    );
+
+    expect(result.invoice.status).toBe('sent');
   });
 
   it('records outcomeUnknown and never marks the invoice sent', async () => {
@@ -337,6 +365,7 @@ function createDependencies(options: {
   getStatus?: () => ApprovedInvoiceView['status'];
   pdfContent?: Buffer;
   repository?: FakeDeliveryEventRepository;
+  queueDeliveredInvoiceArchiveTask?: DeliveredInvoiceArchiveTaskSink['queueDeliveredInvoiceArchiveTask'];
   sendEmail?: InvoiceSmtpDeliveryProvider['sendEmail'];
 } = {}) {
   const repository = options.repository ?? new FakeDeliveryEventRepository();
@@ -357,6 +386,11 @@ function createDependencies(options: {
     approvedInvoiceReader: {
       getApprovedInvoiceById: vi.fn(async () => createInvoice(getStatus())),
       listApprovedInvoiceSummaries: vi.fn(),
+    },
+    deliveredInvoiceArchiveTaskSink: {
+      queueDeliveredInvoiceArchiveTask:
+        options.queueDeliveredInvoiceArchiveTask ??
+        vi.fn(async () => undefined),
     },
     ensureApprovedInvoicePdfDocument: vi.fn(async () => documentMetadata),
     getApprovedInvoicePdfDocument: vi.fn(async () => ({
@@ -414,6 +448,7 @@ function createInvoice(
 ): ApprovedInvoiceView {
   return {
     id: 'invoice-1',
+    invoiceKind: 'standard',
     invoiceNumber: '20260001',
     status,
   } as ApprovedInvoiceView;

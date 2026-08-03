@@ -1,0 +1,53 @@
+.panel {
+  display: grid;
+  gap: 16px;
+  box-shadow: none;
+}
+
+.panel h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.description {
+  max-width: 680px;
+  margin: 8px 0 0;
+  color: var(--color-text-muted);
+  line-height: 1.45;
+}
+
+.statusGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 20px;
+  margin: 0;
+}
+
+.statusGrid div {
+  min-width: 0;
+}
+
+.statusGrid dt {
+  margin-bottom: 4px;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.statusGrid dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-weight: 700;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+@media (max-width: 680px) {
+  .statusGrid {
+    grid-template-columns: 1fr;
+  }
+}

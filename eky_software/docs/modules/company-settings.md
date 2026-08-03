@@ -441,6 +441,21 @@ asetuksia, vaikka niiden lomakkeet näytetään local-MVP:ssä Oma yritys
 -näkymässä. ALV-kantojen ensimmäinen yrityskohtainen hallintapolku on
 toteutettu. Muutos ei päivitä hyväksyttyjen laskujen ALV-snapshotteja.
 
+## Toimitettujen laskujen paikallinen PDF-kopio
+
+Oma yritys -näkymä voi näyttää desktop-only-hallintapaneelin toimitettujen
+laskujen valinnaiselle PDF-kopiolle. Paneelin sijainti Company Settings
+-näkymässä ei tee asetuksesta Company Settings -master dataa.
+
+Electron main omistaa konekohtaisen raakapolun, native-kansionvalinnan,
+asetustiedoston, retry-journalin ja kansion avaamisen. Renderer saa vain
+turvallisen näyttönimen, enabled-tilan, odottavien määrän, viimeisimmän
+onnistumisajan ja sallitun virhekoodin. Selainversio näyttää vain
+desktop-saatavuuden eikä jäljittele tiedostojärjestelmätoimintoa.
+
+Tarkka malli on dokumentissa
+`docs/architecture/local-invoice-pdf-archive-plan.md`.
+
 Nämä ovat todennäköisiä tulevia tarpeita, mutta ne eivät kuulu ensimmäiseen suunnitteluvaiheeseen.
 
 ## Suhde Muihin Dokumentteihin
@@ -456,3 +471,4 @@ Liittyvät dokumentit:
 - `docs/architecture/customer-overview-plan.md`
 - `docs/architecture/company-settings-implementation-plan.md`
 - `docs/architecture/invoice-print-data-foundation-plan.md`
+- `docs/architecture/local-invoice-pdf-archive-plan.md`

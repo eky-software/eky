@@ -194,4 +194,37 @@ describe('desktop operational event contracts', () => {
       ),
     ).toThrow(DesktopOperationalEventValidationError);
   });
+
+  it('accepts only data-minimized invoice PDF archive events', () => {
+    const event = createDesktopOperationalEvent(
+      {
+        attemptCount: 2,
+        durationMs: 35,
+        errorCode: 'ARCHIVE_DIRECTORY_UNAVAILABLE',
+        eventName: 'invoicePdfArchive.copyFailed',
+        retryable: true,
+        sideEffectState: 'none',
+      },
+      options,
+    );
+
+    expect(event).toMatchObject({
+      attemptCount: 2,
+      category: 'invoicePdfArchive',
+      eventName: 'invoicePdfArchive.copyFailed',
+      level: 'warn',
+    });
+    expect(() =>
+      validateDesktopOperationalEvent({
+        ...event,
+        invoiceNumber: '20260001',
+      }),
+    ).toThrow(DesktopOperationalEventValidationError);
+    expect(() =>
+      validateDesktopOperationalEvent({
+        ...event,
+        attemptCount: -1,
+      }),
+    ).toThrow(DesktopOperationalEventValidationError);
+  });
 });

@@ -19,6 +19,7 @@ import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import { normalizeDeliveryProviderMessageId } from '../domain/invoiceDeliveryEventRules.js';
 import { requireIdentifier } from '../domain/invoiceDraftRules.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
+import type { DeliveredInvoiceArchiveTaskSink } from '../ports/deliveredInvoiceArchiveTaskSink.js';
 import type { InvoiceDeliveryEventRepository } from '../ports/invoiceDeliveryEventRepository.js';
 import type { InvoiceEmailDeliveryFinalizer } from '../ports/invoiceEmailDeliveryFinalizer.js';
 import type {
@@ -30,6 +31,7 @@ import {
   InvoiceSmtpDeliveryError,
   type InvoiceSmtpDeliveryProvider,
 } from '../ports/invoiceSmtpDeliveryProvider.js';
+import { queueDeliveredInvoiceArchiveTaskSafely } from './queueDeliveredInvoiceArchiveTaskSafely.js';
 
 export interface SendApprovedInvoiceEmailSmtpInput {
   actorContext: ActorContext;
@@ -56,6 +58,7 @@ export interface SendApprovedInvoiceEmailSmtpResult {
 
 export interface SendApprovedInvoiceEmailSmtpDependencies {
   approvedInvoiceReader: ApprovedInvoiceReader;
+  deliveredInvoiceArchiveTaskSink: DeliveredInvoiceArchiveTaskSink;
   ensureApprovedInvoicePdfDocument(
     input: GenerateApprovedInvoicePdfDocumentInput,
   ): Promise<ApprovedInvoiceDocumentMetadata>;
@@ -314,6 +317,16 @@ async function deliverPreparedInvoiceEmail(
 
     throw new ApprovedInvoiceEmailDeliveryOutcomeUnknownError();
   }
+
+  await queueDeliveredInvoiceArchiveTaskSafely(
+    {
+      createdAt: input.sentAt,
+      deliveryEventId: deliveryEvent.id,
+      document: input.pdfDocument.metadata,
+      invoice: input.invoice,
+    },
+    input.dependencies.deliveredInvoiceArchiveTaskSink,
+  );
 
   return {
     deliveredCc: providerResult.deliveredCc,

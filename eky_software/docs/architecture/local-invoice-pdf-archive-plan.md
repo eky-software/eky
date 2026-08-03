@@ -2,12 +2,16 @@
 
 ## Tila
 
-Suunnitelma on hyväksyntää odottavassa toteutusportissa.
+Ensimmäinen rajattu local desktop -toteutus on valmis.
 
-Nykyinen delivery-rajapinta ei vielä välitä Electron main -prosessille
-kaikkia täsmällisen arkistointitehtävän muodostamiseen tarvittavia tietoja.
-Toteutusta ei saa jatkaa renderer-oletuksella, uusimman tapahtuman
-arvaamisella tai raakaa paikallista polkua kuljettavalla API-sopimuksella.
+Invoicing application -kerros välittää onnistuneen, durableen terminal-tilaan
+viimeistellyn toimituksen täsmällisen arkistointitehtävän
+`DeliveredInvoiceArchiveTaskSink`-portille. Electron main omistaa konekohtaisen
+asetuksen, retry-journalin, loopback-latauksen, validoinnin ja levykirjoituksen.
+Renderer saa vain viisi nimettyä capability-toimintoa eikä raakaa polkua.
+
+Julkiset HTTP-endpointit, API-responset, tietokantaskeema ja
+Company Settings -master data eivät muuttuneet.
 
 ## Tavoite
 
@@ -83,28 +87,16 @@ Arkistointia ei käynnistetä:
 Uudelleenlähetys samasta dokumentista on idempotentti. Historiallisia
 laskuja ei kopioida automaattisesti ensimmäisessä versiossa.
 
-## Havaittu sopimusaukko
+## Ratkaistu sisäinen sopimusraja
 
-Nykyinen oikean SMTP-lähetyksen typed response sisältää
-`deliveryEventId`:n ja laskun read modelin, mutta ei toimitetun dokumentin
-`documentId`-, SHA-256- tai size-identiteettiä.
+Julkisia toimitusvastauksia ei laajennettu dokumentin tunnisteella, hashilla
+tai koolla. Renderer ei muodosta arkistotehtävää eikä päättele toimitettua
+dokumenttia listajärjestyksestä.
 
-Nykyinen manuaalisen ja tulostustoimituksen response sisältää vain
-päivitetyn laskun. Delivery eventin tunniste luodaan application-palvelussa
-eikä sitä palauteta kutsujalle.
+## Toteutettu sisäinen sopimus
 
-Delivery event -listauksen julkinen summary ei sisällä dokumentin
-identiteettiä. Uusimman tapahtuman valitseminen ajan tai listajärjestyksen
-perusteella olisi kilpailutilanteille altis eikä todistaisi, että arkistoitava
-PDF on juuri toimitettu dokumentti.
-
-Tämän vuoksi renderer ei voi turvallisesti muodostaa arkistotehtävää
-nykyisistä julkisista vastauksista.
-
-## Suositeltu sisäinen sopimus
-
-Suositeltu jatkoratkaisu on kapea, Electronista riippumaton
-`DeliveredInvoiceArchiveTaskSink`-tyyppinen Invoicing-application-portti.
+Kapea, Electronista riippumaton `DeliveredInvoiceArchiveTaskSink` on
+Invoicing-application-portti.
 
 Käyttötapaus kutsuu porttia vasta, kun:
 
@@ -140,9 +132,9 @@ Arkistointivirhe tai brokerin poissaolo ei saa perua jo onnistunutta
 toimitusta. Virhe palautetaan vain turvallisena teknisenä tuloksena, jonka
 desktop-UI voi näyttää varoituksena.
 
-Tämä ratkaisu säilyttää nykyiset HTTP-endpointit ja API-responset. Se vaatii
-projektin omistajan hyväksynnän uutena backendin ja desktop-runtimen
-sisäisenä porttina ennen toteutusta.
+Arkistointivirhe eristetään `queueDeliveredInvoiceArchiveTaskSafely`-rajalla:
+jo onnistunut toimitus ja `sent`-tila eivät peruunnu, vaikka brokeri,
+konfiguraatio, kohdekansio tai kopiointi epäonnistuisi.
 
 ## Paikallinen config
 
@@ -313,3 +305,8 @@ Toteutuksen pitää kattaa vähintään:
 Testit käyttävät vain synteettisiä PDF:iä, temp-kansioita ja loopbackia.
 Oikeaa SMTP-verkkotestiä tai asiakasdataa ei käytetä.
 
+Ensimmäinen toteutus kattaa configin ja journalin palautumisen, tiukan
+broker-protokollan, luotetun renderer-frame-rajan, PDF:n identiteetin ja
+eheyden tarkistuksen, idempotentin kopioinnin, conflict-tilan,
+uudelleenyritykset, selainfallbackin sekä data-minimoidut operational eventit.
+Windows-paketoinnin ja packaged smoken pitää säilyä vihreänä ennen julkaisua.

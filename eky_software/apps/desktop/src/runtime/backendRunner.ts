@@ -7,6 +7,8 @@ import { parseDesktopBackendCommand } from './backendMessages.js';
 import type { DesktopBackendFailureCode } from './backendMessages.js';
 import { CompanyEmailSecretBrokerClient } from '../secrets/secretBrokerClient.js';
 import { createUtilitySecretBrokerTransport } from '../secrets/electronSecretBrokerTransport.js';
+import { InvoicePdfArchiveBrokerClient } from '../invoicePdfArchive/invoicePdfArchiveBrokerClient.js';
+import { createInvoicePdfArchiveBrokerTransport } from '../invoicePdfArchive/electronInvoicePdfArchiveBrokerTransport.js';
 
 interface StartedBackendServer {
   close(): Promise<void>;
@@ -26,6 +28,19 @@ type StartServer = (options: {
       hasSecret(companyId: string): Promise<boolean>;
       removeSecret(companyId: string): Promise<void>;
       setSecret(input: { companyId: string; secret: string }): Promise<void>;
+    };
+    deliveredInvoiceArchiveTaskSink: {
+      queueDeliveredInvoiceArchiveTask(input: {
+        createdAt: string;
+        deliveryEventId: string;
+        documentId: string;
+        expectedPdfSha256: string;
+        expectedPdfSize: number;
+        invoiceId: string;
+        invoiceKind: 'credit' | 'standard';
+        invoiceNumber: string;
+        taskId: string;
+      }): Promise<void>;
     };
     databaseFilePath: string;
     electronVersion: string;
@@ -49,6 +64,7 @@ type StartServer = (options: {
 
 let backendServer: StartedBackendServer | undefined;
 let secretBrokerClient: CompanyEmailSecretBrokerClient | undefined;
+let invoicePdfArchiveBrokerClient: InvoicePdfArchiveBrokerClient | undefined;
 let startAttempted = false;
 const utilityParentPort = process.parentPort;
 
@@ -126,6 +142,7 @@ utilityParentPort.on('message', (event) => {
     void (async () => {
       await backendServer?.close();
       secretBrokerClient?.close();
+      invoicePdfArchiveBrokerClient?.close();
       process.exit(0);
     })();
     return;
@@ -142,16 +159,26 @@ utilityParentPort.on('message', (event) => {
 
     try {
       const brokerPort = event.ports[0];
+      const archiveBrokerPort = event.ports[1];
 
-      if (event.ports.length !== 1 || brokerPort === undefined) {
+      if (event.ports.length !== 2 || brokerPort === undefined) {
         failureCode = 'BACKEND_SECRET_BROKER_FAILED';
-        throw new Error('Secret broker port is unavailable.');
+        throw new Error('A private backend broker port is unavailable.');
+      }
+      if (archiveBrokerPort === undefined) {
+        failureCode = 'BACKEND_INVOICE_PDF_ARCHIVE_BROKER_FAILED';
+        throw new Error('A private backend broker port is unavailable.');
       }
 
       secretBrokerClient = new CompanyEmailSecretBrokerClient(
         createUtilitySecretBrokerTransport(brokerPort),
       );
+      failureCode = 'BACKEND_INVOICE_PDF_ARCHIVE_BROKER_FAILED';
+      invoicePdfArchiveBrokerClient = new InvoicePdfArchiveBrokerClient(
+        createInvoicePdfArchiveBrokerTransport(archiveBrokerPort),
+      );
 
+      failureCode = 'BACKEND_MODULE_IMPORT_FAILED';
       const serverModule = (await import(
         pathToFileURL(join(command.config.backendRoot, 'dist/http/server.js')).href
       )) as { startServer?: StartServer };
@@ -186,6 +213,12 @@ utilityParentPort.on('message', (event) => {
             removeSecret: (companyId) =>
               secretBrokerClient!.removeSecret(companyId),
             setSecret: (input) => secretBrokerClient!.setSecret(input),
+          },
+          deliveredInvoiceArchiveTaskSink: {
+            queueDeliveredInvoiceArchiveTask: (input) =>
+              invoicePdfArchiveBrokerClient!.queueDeliveredInvoiceArchiveTask(
+                input,
+              ),
           },
           databaseFilePath: command.config.databaseFilePath,
           electronVersion: command.config.electronVersion,

@@ -177,6 +177,13 @@ async function prepareApplicationStage(buildInfo) {
       recursive: true,
     },
   );
+  await cp(
+    resolve(desktopDirectory, 'dist/invoicePdfArchive'),
+    join(desktopRuntimeStage, 'invoicePdfArchive'),
+    {
+      recursive: true,
+    },
+  );
   await writeFile(
     join(desktopRuntimeStage, 'package.json'),
     `${JSON.stringify({ private: true, type: 'module' }, null, 2)}\n`,
@@ -215,6 +222,14 @@ async function assertPackagedDiagnosticsArtifacts() {
     'web/index.html',
   ]) {
     await access(resolve(applicationStage, relativePath));
+  }
+
+  for (const relativePath of [
+    'invoicePdfArchive/invoicePdfArchiveBrokerClient.js',
+    'invoicePdfArchive/invoicePdfArchiveBrokerProtocol.js',
+    'invoicePdfArchive/electronInvoicePdfArchiveBrokerTransport.js',
+  ]) {
+    await access(resolve(desktopRuntimeStage, relativePath));
   }
 }
 

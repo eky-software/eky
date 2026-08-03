@@ -23,6 +23,10 @@ import {
 } from '../composition/invoicingComposition.js';
 import type { CompanyEmailSecretReader } from '../modules/companySettings/ports/companyEmailSecretReader.js';
 import type { CompanyEmailSecretStore } from '../modules/companySettings/ports/companyEmailSecretStore.js';
+import {
+  noOpDeliveredInvoiceArchiveTaskSink,
+  type DeliveredInvoiceArchiveTaskSink,
+} from '../modules/invoicing/ports/deliveredInvoiceArchiveTaskSink.js';
 import { createBackendOperationalEvent } from '../observability/createOperationalEvent.js';
 import type { OperationalRuntimeIdentity } from '../observability/operationalEvent.js';
 import { resolveOperationalRuntimeIdentity } from '../observability/operationalRuntimeIdentity.js';
@@ -50,6 +54,7 @@ export interface CreateAppOptions {
   buildDirty?: boolean;
   companyEmailSecretReader?: CompanyEmailSecretReader;
   companyEmailSecretStore?: CompanyEmailSecretStore;
+  deliveredInvoiceArchiveTaskSink?: DeliveredInvoiceArchiveTaskSink;
   databaseFilePath?: string;
   electronVersion?: string;
   invoiceDocumentStorageRoot?: string;
@@ -313,6 +318,9 @@ export async function createApp(
   const invoicingComposition = createInvoicingComposition({
     companyEmailSecretReader,
     customerAccessReader: customersComposition.customerAccessReader,
+    deliveredInvoiceArchiveTaskSink:
+      options.deliveredInvoiceArchiveTaskSink ??
+      noOpDeliveredInvoiceArchiveTaskSink,
     invoiceCustomerTaxProfileReader:
       customersComposition.invoiceCustomerTaxProfileReader,
     database,

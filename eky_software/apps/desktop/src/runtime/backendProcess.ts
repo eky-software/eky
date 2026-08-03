@@ -21,6 +21,7 @@ const backendShutdownTimeoutMilliseconds = 3_000;
 
 export interface StartDesktopBackendOptions {
   config: DesktopBackendStartMessage['config'];
+  invoicePdfArchiveBrokerPort: MessagePortMain;
   operationalIdentity: DesktopOperationalIdentity;
   operationalLogger?: DesktopOperationalLogger;
   runnerPath: string;
@@ -93,7 +94,10 @@ export function startDesktopBackend(
     processHandle.once('spawn', () => {
       processHandle.postMessage(
         { config: options.config, type: 'start' },
-        [options.secretBrokerPort],
+        [
+          options.secretBrokerPort,
+          options.invoicePdfArchiveBrokerPort,
+        ],
       );
     });
     processHandle.on('message', (value) => {

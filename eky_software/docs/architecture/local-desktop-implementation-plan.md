@@ -144,6 +144,7 @@ apps/desktop/
   src/
     main/
     preload/
+    invoicePdfArchive/
     pdf/
     runtime/
     secrets/
@@ -155,6 +156,8 @@ Vastuut:
 
 - `main/` omistaa Electron-ikkunan, prosessien elinkaaren ja privileged IPC:n
 - `preload/` paljastaa rendererille vain nimetyn desktop-transportin
+- `invoicePdfArchive/` omistaa konekohtaisen configin, retry-journalin,
+  täsmällisen PDF-validoinnin ja yksityisen main/utility-process-brokerin
 - `pdf/` omistaa laskun PDF-esikatselun kapean IPC-sopimuksen, URL-politiikan
   ja suojatun esikatseluikkunan elinkaaren
 - `runtime/` kokoaa session-bootstrapin, backend-prosessin ja polkuadapterit
@@ -431,6 +434,10 @@ korjausta.
     current PDF:ää, delivery event -auditointia ja atomista
     `approved` -> `sent` -tilasiirtymää. Oikean asiakasdatan käyttö odottaa
     erillistä release security gatea.
+15. Valinnainen toimitetun lasku-PDF:n paikallinen arkistokopio käyttää
+    Invoicingin kapeaa sink-porttia, yksityistä utility process -> main
+    -brokeria ja main-prosessin omistamaa native-kansionvalintaa. Renderer ei
+    saa raakaa polkua, eikä arkistointivirhe peru onnistunutta toimitusta.
 
 ## Liittyvät Dokumentit
 
@@ -441,6 +448,7 @@ korjausta.
 - `docs/architecture/local-database-implementation-plan.md`
 - `docs/architecture/local-desktop-dependency-review.md`
 - `docs/architecture/local-runtime-trust-and-authorization-plan.md`
+- `docs/architecture/local-invoice-pdf-archive-plan.md`
 - `docs/architecture/security-principles.md`
 - `docs/decisions/ADR-0003-technical-foundation.md`
 - `docs/decisions/ADR-0004-local-backend-runtime.md`

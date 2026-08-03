@@ -7,6 +7,8 @@ import { CompanyOperationsPanel } from './CompanyOperationsPanel.js';
 import { InvoiceNumberingSettingsPanel } from './InvoiceNumberingSettingsPanel.js';
 import { InvoicePaymentSettingsPanel } from './InvoicePaymentSettingsPanel.js';
 import { InvoiceVatRatesPanel } from './InvoiceVatRatesPanel.js';
+import { InvoicePdfArchivePanel } from './InvoicePdfArchivePanel.js';
+import type { InvoicePdfArchiveCapability } from '../../app/desktopBridge.js';
 import {
   initialCompanySettingsForm,
   toCompanySettingsForm,
@@ -37,6 +39,7 @@ type CompanySettingsPageClient = Pick<
 
 interface CompanySettingsPageProps {
   apiClient: CompanySettingsPageClient;
+  invoicePdfArchiveCapability?: InvoicePdfArchiveCapability;
   isEmailSecretManagementAvailable: boolean;
   onOpenActivity(): void;
   onOpenDiagnostics(): void;
@@ -44,6 +47,7 @@ interface CompanySettingsPageProps {
 
 export function CompanySettingsPage({
   apiClient,
+  invoicePdfArchiveCapability,
   isEmailSecretManagementAvailable,
   onOpenActivity,
   onOpenDiagnostics,
@@ -162,6 +166,11 @@ export function CompanySettingsPage({
           <InvoiceVatRatesPanel apiClient={apiClient} />
           <InvoiceNumberingSettingsPanel apiClient={apiClient} />
           <InvoicePaymentSettingsPanel apiClient={apiClient} />
+          <InvoicePdfArchivePanel
+            {...(invoicePdfArchiveCapability === undefined
+              ? {}
+              : { capability: invoicePdfArchiveCapability })}
+          />
           <CompanyOperationsPanel
             onOpenActivity={onOpenActivity}
             onOpenDiagnostics={onOpenDiagnostics}
