@@ -16,7 +16,8 @@
     "start": "node --env-file-if-exists=../../.env dist/index.js",
     "pretest": "pnpm --filter @eky/permissions build && pnpm --filter @eky/auth build",
     "test": "vitest run src",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "verify:sqlite-upgrade-copy": "pnpm build && node scripts/verify-sqlite-upgrade-copy.mjs"
   },
   "dependencies": {
     "@eky/auth": "workspace:*",

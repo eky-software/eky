@@ -153,6 +153,25 @@ Jos paikallisen tietokannan polkua ei voida ratkaista luotettavasti backendin
 nykyisestä konfiguraatiosta, työ pysäytetään ja omistajalta pyydetään polku.
 Käyttäjäprofiilia ei etsitä rekursiivisesti.
 
+Checkpoint D valmistui 3.8.2026:
+
+- kaikki 38 migraatiota ajettiin synteettiselle tyhjälle tietokannalle
+- synteettinen E2E-elinkaari kattoi yritysasetukset, asiakkaan,
+  laskuluonnoksen, hyväksynnän, PDF-metadatan, manuaalisen toimituksen,
+  maksumerkinnän, täyden hyvityksen, numerointisarjan vaihdon ja backendin
+  uudelleenkäynnistyksen
+- `integrity_check`, `foreign_key_check`, transaktion rollback sekä
+  sulkemisen jälkeinen uudelleenavaus onnistuivat
+- suljetusta paikallisesta tietokannasta tehtiin tavutasoinen väliaikainen
+  kopio; vain kopiolle ajettiin migraatiot ja kirjoittavat tarkistukset
+- alkuperäisen tiedoston SHA-256 säilyi muuttumattomana ennen ja jälkeen
+  kopiotarkistuksen
+- nykyisten liiketoimintataulujen rivimäärät säilyivät migraatiossa
+  muuttumattomina; paikallisen kannan sisältöä, polkua tai hashia ei
+  tulostettu eikä kirjattu dokumentaatioon
+- käytetty SQLite-runtime oli `3.53.4`; päivityksessä ei havaittu Ekyyn
+  vaikuttavaa SQL-, migraatio-, transaktio- tai close/reopen-regressiota.
+
 ### E. Electron 43 -ominaisuudet ja Windows-artefakti
 
 - varmista runtime-session, ActorContext, preload/IPC, navigointirajat ja fuses
