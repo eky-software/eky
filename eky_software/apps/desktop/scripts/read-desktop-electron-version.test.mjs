@@ -31,5 +31,5 @@ for (const [name, value] of [
 }
 
 test('reads the repository desktop package as the only Electron version source', async () => {
-  assert.equal(await readDesktopElectronVersion(), '42.8.0');
+  assert.equal(await readDesktopElectronVersion(), '43.2.0');
 });

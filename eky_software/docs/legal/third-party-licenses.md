@@ -39,12 +39,18 @@ PDFKit-polun nykytila:
 
 Nykyisen Windows-paketointipolun suorat desktop-riippuvuudet:
 
-- `electron` 42.8.0, MIT
+- `electron` 43.2.0, MIT
 - `@electron/packager` 20.0.4, BSD-2-Clause
 - `@electron/fuses` 2.1.3, MIT
 
 Electron ja paketointityökalut kuuluvat vain `apps/desktop`-runtimeen. Ne eivät
 vuoda domainiin, application serviceihin, API-clientiin tai web-featureihin.
+
+Paikallisen backendin suora SQLite-riippuvuus on `better-sqlite3` 13.0.2
+(MIT). Versio käyttää upstream-pakettiin sisältyviä alustakohtaisia N-API
+-binäärejä ja tuo transitiivisesti `node-addon-api` 8.9.1 -paketin (MIT).
+Vanhan `prebuild-install`-ketjun transitiiviset paketit poistuivat
+lockfilesta. Eky ei käännä ajuria lähdekoodista loppukäyttäjän koneella.
 
 ## Playwright E2E -Testaus
 
