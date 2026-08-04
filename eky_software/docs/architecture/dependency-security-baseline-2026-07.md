@@ -162,6 +162,26 @@ Päivitys ei muuta Eky-tuoteversiota `0.1.0-alpha.1` eikä poista installer-,
 code signing-, automaattipäivitys- tai muun release security gate -työn
 tarvetta.
 
+## Hono-tietoturvapäivitys 4.8.2026
+
+Päivittäinen `Dependency security` -workflow havaitsi
+`GHSA-8j4g-w8fx-2239`-advisoryn, joka koski Hono-versioita `<4.12.34`.
+Kyseessä oli CORS-middlewareen kohdistuva ReDoS-riski
+`Access-Control-Request-Headers`-otsakkeen käsittelyssä.
+
+Suora backend-riippuvuus päivitettiin versiosta `4.12.33` versioon
+`4.12.34`. Sama korjattu versio lukittui myös
+`@hono/node-server`-riippuvuuden peer-ketjuun. Päivityksen jälkeen:
+
+- `pnpm audit --prod` ei raportoinut tunnettuja haavoittuvuuksia
+- `pnpm audit` ei raportoinut tunnettuja haavoittuvuuksia
+- `pnpm audit signatures` varmisti 165 paketin rekisteriallekirjoitukset.
+
+Workflow toimi tässä tilanteessa tarkoitetulla tavalla: päivittäinen audit
+havaitsi uuden advisoryn ennen Dependabotin seuraavaa hallittua
+versionpäivityskierrosta. Dependabot-asetuksia tai automaattimergeä ei tämän
+vuoksi muutettu.
+
 ## CI- ja repository-asetusten lähtötila
 
 Nykyinen SHA-pinnattu CI sisältää tarkistukset:
