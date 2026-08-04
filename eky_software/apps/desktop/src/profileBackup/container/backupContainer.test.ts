@@ -30,7 +30,7 @@ afterEach(async () => {
 });
 
 describe('encrypted backup container', () => {
-  it('writes, authenticates and parses a deterministic complete payload', async () => {
+  it('BACKUP-CONTAINER-001 @security writes, authenticates and parses a deterministic complete payload', async () => {
     const fixture = await createFixture();
 
     const written = await writeBackupContainer({
@@ -105,7 +105,7 @@ describe('encrypted backup container', () => {
     },
   );
 
-  it('uses the same safe authentication error for a wrong password or modified tag', async () => {
+  it('BACKUP-AUTH-001 @security uses the same safe authentication error for a wrong password or modified tag', async () => {
     const wrongPasswordFixture = await createFixture();
     await writeFixture(wrongPasswordFixture);
 

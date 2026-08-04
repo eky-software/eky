@@ -59,7 +59,7 @@ describe('portable profile backup', () => {
     ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
-  it('never overwrites an existing destination', async () => {
+  it('BACKUP-WRITER-001 @critical never overwrites an existing destination', async () => {
     const fixture = await createFixture();
     await writeFile(fixture.destinationPath, 'existing backup');
 

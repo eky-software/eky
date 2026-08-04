@@ -54,14 +54,24 @@ describe('profile backup source entries', () => {
       .toBe(true);
   });
 
-  it('rejects unknown files instead of silently including them', async () => {
-    const root = await createSnapshotRoot();
-    await writeFile(join(root, 'unexpected.txt'), 'not authoritative');
+  it.each([
+    'company-email-secret.dat',
+    'operational-log.jsonl',
+    'invoice-pdf-archive-config.json',
+  ])(
+    'BACKUP-PRIVACY-001 @security rejects non-business runtime file %s instead of silently including it',
+    async (fileName) => {
+      const root = await createSnapshotRoot();
+      await writeFile(
+        join(root, fileName),
+        'synthetic private runtime data that must never be included',
+      );
 
-    await expect(
-      createProfileBackupSourceEntries(root),
-    ).rejects.toThrow('PROFILE_BACKUP_SOURCE_INVALID');
-  });
+      await expect(
+        createProfileBackupSourceEntries(root),
+      ).rejects.toThrow('PROFILE_BACKUP_SOURCE_INVALID');
+    },
+  );
 
   it.runIf(process.platform !== 'win32')(
     'rejects symbolic links and hard-linked files',

@@ -12,7 +12,7 @@ const testSalt = Buffer.from(
 );
 
 describe('backup key derivation', () => {
-  it('matches the fixed synthetic Node 24 scrypt vector', async () => {
+  it('BACKUP-KDF-001 @security matches the fixed synthetic Node 24 scrypt vector', async () => {
     const key = await deriveBackupKey({
       kdfProfileId: 1,
       password: testPassword,

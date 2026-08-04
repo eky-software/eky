@@ -27,7 +27,7 @@ afterEach(async () => {
 });
 
 describe('recovery point rotation service', () => {
-  it('journals and removes old points after a replacement exists', async () => {
+  it('RECOVERY-ROTATION-001 journals and removes old points after a replacement exists', async () => {
     const fixture = await createFixture(
       Array.from({ length: 9 }, (_, index) =>
         createPoint(index + 1),

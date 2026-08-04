@@ -32,7 +32,7 @@ afterEach(async () => {
 });
 
 describe('recovery point service', () => {
-  it('creates a validated automatic point only after the healthy snapshot check', async () => {
+  it('RECOVERY-POINT-001 @critical creates a validated automatic point only after the healthy snapshot check', async () => {
     const fixture = await createFixture();
 
     await expect(fixture.service.checkAutomatic()).resolves.toEqual(
@@ -107,7 +107,7 @@ describe('recovery point service', () => {
     ]);
   });
 
-  it('reports unavailable without plaintext fallback when key protection fails', async () => {
+  it('RECOVERY-POINT-002 @fault reports unavailable without plaintext fallback when key protection fails', async () => {
     const failure = Object.assign(new Error('safe failure'), {
       code: 'RECOVERY_POINT_KEY_PROTECTION_UNAVAILABLE',
     });

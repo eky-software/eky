@@ -25,7 +25,7 @@ afterEach(async () => {
 });
 
 describe('profile restore staging service', () => {
-  it('creates a pre-restore point and retains a validated same-profile staging tree', async () => {
+  it('RESTORE-STAGE-001 @critical creates a pre-restore point and retains a validated same-profile staging tree', async () => {
     const fixture = await createFixture();
     const inspection = await fixture.service.inspect({
       containerPath: fixture.containerPath,
@@ -86,7 +86,7 @@ describe('profile restore staging service', () => {
     });
   });
 
-  it('rejects a foreign profile over a non-empty installation and removes staging', async () => {
+  it('RESTORE-CROSS-COMPANY-001 @security rejects a foreign profile over a non-empty installation and removes staging', async () => {
     const fixture = await createFixture({
       activeProfileIsEmpty: false,
       profileMatchesActive: false,
