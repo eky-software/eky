@@ -119,6 +119,9 @@ describe('profile snapshot broker boundary', () => {
         async createProfileSnapshot() {
           throw new Error('PROFILE_SNAPSHOT_DATABASE_FAILED');
         },
+        async validateProfileSnapshot() {
+          return createFakeValidation();
+        },
       },
       transport: transports.backend,
     });
@@ -146,6 +149,9 @@ describe('profile snapshot broker boundary', () => {
         async createProfileSnapshot() {
           throw new Error('PROFILE_SNAPSHOT_ARTIFACTS_FAILED');
         },
+        async validateProfileSnapshot() {
+          return createFakeValidation();
+        },
       },
       transport: transports.backend,
     });
@@ -159,6 +165,28 @@ describe('profile snapshot broker boundary', () => {
       code: 'PROFILE_SNAPSHOT_ARTIFACTS_FAILED',
     });
     await client.endMaintenance(operationId);
+
+    client.close();
+    backend.close();
+  });
+
+  it('returns bounded validation metadata without profile identifiers leaking to the renderer boundary', async () => {
+    const transports = createTransportPair();
+    const maintenance = new FakeProfileMaintenance();
+    const backend = startProfileSnapshotBrokerBackend({
+      maintenance,
+      snapshot: createFakeSnapshotService(),
+      transport: transports.backend,
+    });
+    const client = new ProfileSnapshotBrokerClient(transports.main, 1_000);
+    const operationId = randomUUID();
+
+    await expect(
+      client.validateProfileSnapshot(operationId),
+    ).resolves.toEqual({
+      ...createFakeValidation(),
+      type: 'profileSnapshotValidation',
+    });
 
     client.close();
     backend.close();
@@ -184,6 +212,14 @@ function createFakeSnapshotService(): {
       totalPages: number;
     };
   }>;
+  validateProfileSnapshot(operationId: string): Promise<{
+    artifactCount: number;
+    artifactTotalByteSize: number;
+    databaseHealth: 'healthy';
+    migrationChainIdentity: string;
+    profileId: string;
+    profileMatchesActive: boolean;
+  }>;
   operationIds: string[];
 } {
   const operationIds: string[] = [];
@@ -208,7 +244,22 @@ function createFakeSnapshotService(): {
         },
       };
     },
+    async validateProfileSnapshot(operationId) {
+      operationIds.push(operationId);
+      return createFakeValidation();
+    },
     operationIds,
+  };
+}
+
+function createFakeValidation() {
+  return {
+    artifactCount: 1,
+    artifactTotalByteSize: 2_048,
+    databaseHealth: 'healthy' as const,
+    migrationChainIdentity: 'c'.repeat(64),
+    profileId: 'd'.repeat(64),
+    profileMatchesActive: true,
   };
 }
 

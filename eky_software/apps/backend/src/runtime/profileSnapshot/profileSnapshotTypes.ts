@@ -29,6 +29,25 @@ export interface ProfileSnapshotService {
   ): Promise<ProfileSnapshotMetadata>;
 }
 
+export interface ProfileSnapshotValidationMetadata {
+  artifactCount: number;
+  artifactTotalByteSize: number;
+  databaseHealth: 'healthy';
+  migrationChainIdentity: string;
+  profileId: string;
+  profileMatchesActive: boolean;
+}
+
+export interface ProfileSnapshotValidationService {
+  validateProfileSnapshot(
+    operationId: string,
+  ): Promise<ProfileSnapshotValidationMetadata>;
+}
+
+export interface ProfileSnapshotRuntimeService
+  extends ProfileSnapshotService,
+    ProfileSnapshotValidationService {}
+
 export interface SqliteProfileSnapshotService {
   createSqliteSnapshot(
     input: CreateProfileSnapshotInput,
@@ -36,6 +55,6 @@ export interface SqliteProfileSnapshotService {
 }
 
 export interface ProfileSnapshotServiceRegistration {
-  register(service: ProfileSnapshotService): void;
+  register(service: ProfileSnapshotRuntimeService): void;
   stagingRoot: string;
 }

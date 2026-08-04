@@ -1,15 +1,10 @@
 import { createHash } from 'node:crypto';
-import {
-  createReadStream,
-  readdirSync,
-  promises as fileSystem,
-} from 'node:fs';
+import { createReadStream, promises as fileSystem } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
-
-import Database from 'better-sqlite3';
 
 import type { DatabaseConnection } from '../../database/connection/createDatabaseConnection.js';
 import type { ProfileMaintenanceState } from '../profileMaintenance/profileMaintenanceState.js';
+import { inspectSqliteProfileDatabase } from './inspectSqliteProfileDatabase.js';
 import type {
   CreateProfileSnapshotInput,
   SqliteProfileSnapshotService as SqliteProfileSnapshotServiceContract,
@@ -18,7 +13,6 @@ import type {
 
 const operationIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const migrationFileNamePattern = /^\d{3}_[A-Za-z0-9_]+\.sql$/;
 const maximumSqliteSnapshotBytes = 20 * 1024 * 1024 * 1024;
 const sqliteSnapshotLogicalPath = 'profile.sqlite';
 const sqliteSnapshotTimeoutMilliseconds = 2 * 60_000;
@@ -109,7 +103,7 @@ export class SqliteProfileSnapshotService
         throw new Error('PROFILE_SNAPSHOT_DATABASE_INVALID');
       }
 
-      verifySqliteSnapshot(
+      inspectSqliteProfileDatabase(
         destinationFilePath,
         this.dependencies.migrationsDirectory,
       );
@@ -155,64 +149,6 @@ export function createSqliteProfileSnapshotService(input: {
     migrationsDirectory: input.migrationsDirectory,
     stagingRoot: input.stagingRoot,
   });
-}
-
-function verifySqliteSnapshot(
-  databaseFilePath: string,
-  migrationsDirectory: string,
-): void {
-  const snapshot = new Database(databaseFilePath, {
-    fileMustExist: true,
-    readonly: true,
-  });
-
-  try {
-    const integrityResult: unknown = snapshot.pragma('integrity_check', {
-      simple: true,
-    });
-    const foreignKeyRows = snapshot.pragma('foreign_key_check') as unknown[];
-
-    if (integrityResult !== 'ok' || foreignKeyRows.length !== 0) {
-      throw new Error('PROFILE_SNAPSHOT_DATABASE_INVALID');
-    }
-
-    const expectedMigrations = readExpectedMigrationNames(
-      migrationsDirectory,
-    );
-    const appliedMigrations = snapshot
-      .prepare<[], { name: string }>(
-        'SELECT name FROM schema_migrations ORDER BY name',
-      )
-      .all()
-      .map(({ name }) => name);
-
-    if (
-      appliedMigrations.length !== expectedMigrations.length ||
-      appliedMigrations.some(
-        (migration, index) => migration !== expectedMigrations[index],
-      )
-    ) {
-      throw new Error('PROFILE_SNAPSHOT_MIGRATIONS_INVALID');
-    }
-  } finally {
-    snapshot.close();
-  }
-}
-
-function readExpectedMigrationNames(migrationsDirectory: string): string[] {
-  if (!isAbsolute(migrationsDirectory)) {
-    throw new Error('PROFILE_SNAPSHOT_MIGRATIONS_INVALID');
-  }
-
-  return readdirSync(migrationsDirectory)
-    .filter((fileName: string) => fileName.endsWith('.sql'))
-    .sort()
-    .map((fileName: string) => {
-      if (!migrationFileNamePattern.test(fileName)) {
-        throw new Error('PROFILE_SNAPSHOT_MIGRATIONS_INVALID');
-      }
-      return fileName;
-    });
 }
 
 async function assertPrivateStagingRoot(stagingRoot: string): Promise<void> {

@@ -290,10 +290,17 @@ async function startDesktopCompositionRuntime({
   let supportBundleCapability: SupportBundleCapability | undefined;
   let shutdownStarted = false;
 
-  await mkdir(profileSnapshotPaths.stagingRoot, {
-    mode: 0o700,
-    recursive: true,
-  });
+  await Promise.all(
+    [
+      profileSnapshotPaths.quarantineRoot,
+      profileSnapshotPaths.stagingRoot,
+    ].map((path) =>
+      mkdir(path, {
+        mode: 0o700,
+        recursive: true,
+      }),
+    ),
+  );
 
   const deliveryDialogAdapter: InvoiceDeliveryDialogAdapter = {
     showErrorBox: dependencies.showErrorBox,

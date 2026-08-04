@@ -46,6 +46,14 @@ interface BackendProfileSnapshotService {
     operationId: string;
     signal: AbortSignal;
   }): Promise<BackendProfileSnapshotMetadata>;
+  validateProfileSnapshot(operationId: string): Promise<{
+    artifactCount: number;
+    artifactTotalByteSize: number;
+    databaseHealth: 'healthy';
+    migrationChainIdentity: string;
+    profileId: string;
+    profileMatchesActive: boolean;
+  }>;
 }
 
 type StartServer = (options: {
@@ -258,6 +266,14 @@ utilityParentPort.on('message', (event) => {
               throw new Error('PROFILE_SNAPSHOT_DATABASE_FAILED');
             }
             return profileSnapshotService.createProfileSnapshot(input);
+          },
+          validateProfileSnapshot: (operationId) => {
+            if (profileSnapshotService === undefined) {
+              throw new Error('PROFILE_SNAPSHOT_VALIDATION_FAILED');
+            }
+            return profileSnapshotService.validateProfileSnapshot(
+              operationId,
+            );
           },
         },
         transport: createProfileSnapshotBrokerTransport(

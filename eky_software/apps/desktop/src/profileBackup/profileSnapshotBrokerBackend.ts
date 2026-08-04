@@ -38,6 +38,14 @@ export function startProfileSnapshotBrokerBackend(input: {
         totalPages: number;
       };
     }>;
+    validateProfileSnapshot(operationId: string): Promise<{
+      artifactCount: number;
+      artifactTotalByteSize: number;
+      databaseHealth: 'healthy';
+      migrationChainIdentity: string;
+      profileId: string;
+      profileMatchesActive: boolean;
+    }>;
   };
   transport: ProfileSnapshotBrokerTransport;
 }): { close(): void } {
@@ -103,6 +111,21 @@ export function startProfileSnapshotBrokerBackend(input: {
               result: {
                 ...snapshot,
                 type: 'profileSnapshot',
+              },
+            });
+            return;
+          } else if (request.operation === 'validateProfileSnapshot') {
+            const validation =
+              await input.snapshot.validateProfileSnapshot(
+                request.operationId,
+              );
+            input.transport.send({
+              ok: true,
+              protocolVersion: profileSnapshotBrokerProtocolVersion,
+              requestId: request.requestId,
+              result: {
+                ...validation,
+                type: 'profileSnapshotValidation',
               },
             });
             return;
@@ -174,6 +197,9 @@ function mapError(error: unknown): ProfileSnapshotBrokerErrorCode {
     }
     if (error.message === 'PROFILE_SNAPSHOT_ARTIFACTS_FAILED') {
       return 'PROFILE_SNAPSHOT_ARTIFACTS_FAILED';
+    }
+    if (error.message === 'PROFILE_SNAPSHOT_VALIDATION_FAILED') {
+      return 'PROFILE_SNAPSHOT_VALIDATION_FAILED';
     }
   }
 

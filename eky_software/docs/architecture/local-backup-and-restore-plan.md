@@ -2,8 +2,25 @@
 
 ## Tila
 
-Arkkitehtuuripäätös on hyväksytty ADR-0009:ssä. Backup-, restore- ja
-palautuspistetuotantokoodia ei ole vielä toteutettu.
+Arkkitehtuuripäätös on hyväksytty ADR-0009:ssä.
+
+Toteutettu 4.8.2026 mennessä:
+
+- backendin yksityinen maintenance- ja snapshot-broker
+- `better-sqlite3` backup API:lla tehtävä SQLite-snapshot
+- Invoicingin auktoritatiivisten current PDF -artifactien staging ja katalogi
+- versionoitu portable `.ekybackup` v1 -container, AES-256-GCM ja lukittu
+  scrypt-profiili
+- desktop mainin inspector, joka autentikoi containerin ennen JSON-parsintaa
+  ja purkaa sisällön vain yksityiseen karanteeniin
+- backendin staged snapshot -validointi: integrity, foreign keys,
+  migraatioketju, profiili-identiteetti, artifact-katalogi, PDF-signatuurit,
+  koot, checksumit ja suljettu tiedostojoukko
+
+Portable writerin käyttäjäpolku, machine-local recovery point, restore-
+aktivointi ja käyttöliittymä ovat vielä toteuttamatta. Valmiit perustat eivät
+siis vielä muodosta käyttäjälle luvattavaa varmuuskopiointi- ja
+palautusominaisuutta.
 
 Dokumentoitu ja automaattisesti testattu palautuspolku on yhden hallitun
 oikeaa dataa käyttävän R0-asennuksen release gate. Toteutus tehdään
@@ -244,13 +261,12 @@ Ensisijainen tutkittava malli on:
 5. snapshotin integrity ja foreign keys tarkistetaan erillisestä tiedostosta
 6. runtime palaa käyttöön vasta kun snapshot-vaihe on valmis
 
-Ennen valintaa pitää varmistaa käytetyn `better-sqlite3`-version API,
-keskeytyssemantiikka, WAL-käyttäytyminen, progress/cancellation ja Windows-
-paketointi testeillä. Jos tätä ei voida todistaa, fallback on backendin ja
-SQLite-yhteyden hallittu sulkeminen snapshotin ajaksi.
-
-Dokumentti ei väitä kumpaakaan mallia toteutetuksi tai lopullisesti valituksi
-ennen kokeellista varmennusta.
+`better-sqlite3 13.0.2` backup API:n WAL-käyttäytyminen, progress/cancellation,
+snapshotin erillinen integrity- ja foreign-key-tarkistus sekä Windows-
+yhteensopivuus on varmennettu automaattisilla testeillä. Tämä on valittu R0:n
+SQLite-snapshot-malliksi. Jos myöhempi ajuri- tai Electron-päivitys rikkoo
+todennetun yhteensopivuuden, release estetään ja fallbackina arvioidaan
+backendin ja SQLite-yhteyden hallittua sulkemista snapshotin ajaksi.
 
 ## Maintenance-tila
 

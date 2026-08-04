@@ -122,6 +122,24 @@ export class ProfileSnapshotBrokerClient {
     });
   }
 
+  validateProfileSnapshot(operationId: string): Promise<
+    Extract<
+      ProfileSnapshotBrokerSuccessResult,
+      { type: 'profileSnapshotValidation' }
+    >
+  > {
+    return this.request('validateProfileSnapshot', operationId).then(
+      (result) => {
+        if (result.type !== 'profileSnapshotValidation') {
+          throw new ProfileSnapshotBrokerError(
+            'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
+          );
+        }
+        return result;
+      },
+    );
+  }
+
   private request(
     operation: ProfileMaintenanceBrokerOperation,
     operationId?: string,

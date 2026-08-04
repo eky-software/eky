@@ -37,6 +37,16 @@ describe('profile snapshot broker protocol', () => {
       operationId,
     });
     expect(
+      createProfileSnapshotBrokerRequest({
+        operation: 'validateProfileSnapshot',
+        operationId,
+        requestId,
+      }),
+    ).toMatchObject({
+      operation: 'validateProfileSnapshot',
+      operationId,
+    });
+    expect(
       parseProfileSnapshotBrokerRequest({
         operation: 'openFile',
         path: 'C:\\private',
@@ -138,6 +148,35 @@ describe('profile snapshot broker protocol', () => {
         },
       }),
     ).toBeUndefined();
+    expect(
+      parseProfileSnapshotBrokerResponse({
+        ok: true,
+        protocolVersion: profileSnapshotBrokerProtocolVersion,
+        requestId,
+        result: {
+          artifactCount: 2,
+          artifactTotalByteSize: 4_096,
+          databaseHealth: 'healthy',
+          migrationChainIdentity: 'c'.repeat(64),
+          profileId: 'd'.repeat(64),
+          profileMatchesActive: false,
+          type: 'profileSnapshotValidation',
+        },
+      }),
+    ).toEqual({
+      ok: true,
+      protocolVersion: profileSnapshotBrokerProtocolVersion,
+      requestId,
+      result: {
+        artifactCount: 2,
+        artifactTotalByteSize: 4_096,
+        databaseHealth: 'healthy',
+        migrationChainIdentity: 'c'.repeat(64),
+        profileId: 'd'.repeat(64),
+        profileMatchesActive: false,
+        type: 'profileSnapshotValidation',
+      },
+    });
     expect(
       parseProfileSnapshotBrokerResponse({
         ok: true,

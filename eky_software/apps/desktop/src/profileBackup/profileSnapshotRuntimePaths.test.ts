@@ -9,6 +9,7 @@ describe('profile snapshot runtime paths', () => {
     const runtimeRoot = resolve('desktop-runtime');
 
     expect(createProfileSnapshotRuntimePaths(runtimeRoot)).toEqual({
+      quarantineRoot: join(runtimeRoot, 'private-backup-quarantine'),
       stagingRoot: join(runtimeRoot, 'private-backup-staging'),
     });
   });

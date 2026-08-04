@@ -20,6 +20,7 @@ import {
   createSqliteProfileSnapshotService,
   SqliteProfileSnapshotService,
 } from './createSqliteProfileSnapshot.js';
+import { inspectSqliteProfileDatabase } from './inspectSqliteProfileDatabase.js';
 
 const temporaryRoots: string[] = [];
 
@@ -36,6 +37,12 @@ describe('SQLite profile snapshot', () => {
     const fixture = await createFixture();
     const operationId = randomUUID();
 
+    expect(() =>
+      inspectSqliteProfileDatabase(
+        fixture.database.name,
+        fixture.migrationsDirectory,
+      ),
+    ).not.toThrow();
     await fixture.maintenanceState.begin(operationId, 1_000);
     const metadata = await fixture.service.createSqliteSnapshot({
       operationId,
@@ -224,6 +231,13 @@ async function createFixture(): Promise<{
       name TEXT PRIMARY KEY,
       run_at TEXT NOT NULL
     );
+    CREATE TABLE local_runtime_identity (
+      singleton_key TEXT PRIMARY KEY,
+      installation_id TEXT NOT NULL,
+      company_id TEXT NOT NULL,
+      actor_id TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
     CREATE TABLE probe (value TEXT NOT NULL);
   `);
   database
@@ -232,6 +246,19 @@ async function createFixture(): Promise<{
   database
     .prepare('INSERT INTO probe (value) VALUES (?)')
     .run('committed-in-wal');
+  database
+    .prepare(
+      `
+        INSERT INTO local_runtime_identity (
+          singleton_key,
+          installation_id,
+          company_id,
+          actor_id,
+          created_at
+        ) VALUES ('local-runtime', ?, 'company-1', 'local-owner', ?)
+      `,
+    )
+    .run('a'.repeat(32), '2026-08-04T00:00:00.000Z');
 
   const maintenanceState = new ProfileMaintenanceState();
 

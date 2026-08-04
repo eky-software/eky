@@ -48,6 +48,7 @@ import { createProfileMaintenanceMiddleware } from './profileMaintenance.js';
 import { ProfileMaintenanceState } from '../runtime/profileMaintenance/profileMaintenanceState.js';
 import { createConsistentProfileSnapshotService } from '../runtime/profileSnapshot/createConsistentProfileSnapshot.js';
 import type { ProfileSnapshotServiceRegistration } from '../runtime/profileSnapshot/profileSnapshotTypes.js';
+import { StagedProfileSnapshotValidationService } from '../runtime/profileSnapshot/validateProfileSnapshot.js';
 
 const defaultAppVersion = '0.0.0';
 
@@ -359,16 +360,26 @@ export async function createApp(
         'Profile snapshot runtime paths must be configured.',
       );
     }
-    options.profileSnapshotServiceRegistration.register(
-      createConsistentProfileSnapshotService({
+    const snapshotService = createConsistentProfileSnapshotService({
         catalog: invoicingComposition.invoiceBackupArtifactCatalog,
         database,
         invoiceDocumentStorageRoot: options.invoiceDocumentStorageRoot,
         maintenanceState: profileMaintenanceState,
         migrationsDirectory: options.migrationsDirectory,
         stagingRoot: options.profileSnapshotServiceRegistration.stagingRoot,
-      }),
-    );
+      });
+    const validationService =
+      new StagedProfileSnapshotValidationService({
+        activeDatabase: database,
+        migrationsDirectory: options.migrationsDirectory,
+        stagingRoot: options.profileSnapshotServiceRegistration.stagingRoot,
+      });
+    options.profileSnapshotServiceRegistration.register({
+      createProfileSnapshot: (input) =>
+        snapshotService.createProfileSnapshot(input),
+      validateProfileSnapshot: (operationId) =>
+        validationService.validateProfileSnapshot(operationId),
+    });
   }
 
   app.route('/', invoicingComposition.routes);

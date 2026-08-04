@@ -1,4 +1,4 @@
-export const profileSnapshotBrokerProtocolVersion = 1;
+export const profileSnapshotBrokerProtocolVersion = 2;
 
 const requestIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -10,14 +10,16 @@ export type ProfileMaintenanceBrokerOperation =
   | 'beginProfileMaintenance'
   | 'createProfileSnapshot'
   | 'endProfileMaintenance'
-  | 'getProfileMaintenanceStatus';
+  | 'getProfileMaintenanceStatus'
+  | 'validateProfileSnapshot';
 
 export type ProfileSnapshotBrokerRequest =
   | {
       operation:
         | 'beginProfileMaintenance'
         | 'createProfileSnapshot'
-        | 'endProfileMaintenance';
+        | 'endProfileMaintenance'
+        | 'validateProfileSnapshot';
       operationId: string;
       protocolVersion: typeof profileSnapshotBrokerProtocolVersion;
       requestId: string;
@@ -34,6 +36,7 @@ export type ProfileSnapshotBrokerErrorCode =
   | 'PROFILE_MAINTENANCE_TIMEOUT'
   | 'PROFILE_SNAPSHOT_ARTIFACTS_FAILED'
   | 'PROFILE_SNAPSHOT_DATABASE_FAILED'
+  | 'PROFILE_SNAPSHOT_VALIDATION_FAILED'
   | 'PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID'
   | 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE';
 
@@ -66,6 +69,14 @@ export type ProfileSnapshotBrokerResponse =
           totalPages: number;
         };
         type: 'profileSnapshot';
+      } | {
+        artifactCount: number;
+        artifactTotalByteSize: number;
+        databaseHealth: 'healthy';
+        migrationChainIdentity: string;
+        profileId: string;
+        profileMatchesActive: boolean;
+        type: 'profileSnapshotValidation';
       };
     };
 
@@ -125,7 +136,8 @@ export function parseProfileSnapshotBrokerRequest(
   if (
     (value.operation !== 'beginProfileMaintenance' &&
       value.operation !== 'createProfileSnapshot' &&
-      value.operation !== 'endProfileMaintenance') ||
+      value.operation !== 'endProfileMaintenance' &&
+      value.operation !== 'validateProfileSnapshot') ||
     !hasExactKeys(value, [
       'operation',
       'operationId',
@@ -224,6 +236,43 @@ export function parseProfileSnapshotBrokerResponse(
     };
   }
 
+  if (
+    value.result.type === 'profileSnapshotValidation' &&
+    hasExactKeys(value.result, [
+      'artifactCount',
+      'artifactTotalByteSize',
+      'databaseHealth',
+      'migrationChainIdentity',
+      'profileId',
+      'profileMatchesActive',
+      'type',
+    ]) &&
+    isBoundedNonNegativeSafeInteger(value.result.artifactCount, 100_000) &&
+    isBoundedNonNegativeSafeInteger(
+      value.result.artifactTotalByteSize,
+      20 * 1024 * 1024 * 1024,
+    ) &&
+    value.result.databaseHealth === 'healthy' &&
+    isSha256(value.result.migrationChainIdentity) &&
+    isSha256(value.result.profileId) &&
+    typeof value.result.profileMatchesActive === 'boolean'
+  ) {
+    return {
+      ok: true,
+      protocolVersion: profileSnapshotBrokerProtocolVersion,
+      requestId: value.requestId,
+      result: {
+        artifactCount: value.result.artifactCount,
+        artifactTotalByteSize: value.result.artifactTotalByteSize,
+        databaseHealth: 'healthy',
+        migrationChainIdentity: value.result.migrationChainIdentity,
+        profileId: value.result.profileId,
+        profileMatchesActive: value.result.profileMatchesActive,
+        type: 'profileSnapshotValidation',
+      },
+    };
+  }
+
   return undefined;
 }
 
@@ -242,9 +291,14 @@ function isErrorCode(value: unknown): value is ProfileSnapshotBrokerErrorCode {
     value === 'PROFILE_MAINTENANCE_TIMEOUT' ||
     value === 'PROFILE_SNAPSHOT_ARTIFACTS_FAILED' ||
     value === 'PROFILE_SNAPSHOT_DATABASE_FAILED' ||
+    value === 'PROFILE_SNAPSHOT_VALIDATION_FAILED' ||
     value === 'PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID' ||
     value === 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE'
   );
+}
+
+function isSha256(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 }
 
 function isArtifactCatalogMetadata(value: unknown): value is {
