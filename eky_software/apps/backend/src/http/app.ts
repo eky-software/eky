@@ -44,6 +44,8 @@ import {
 import { SqliteCompanySettingsAuditRetention } from '../modules/companySettings/infrastructure/sqliteCompanySettingsAuditRetention.js';
 import { SqliteCustomerAuditRetention } from '../modules/customers/infrastructure/sqliteCustomerAuditRetention.js';
 import { SqliteInvoiceSettingsAuditRetention } from '../modules/invoicing/infrastructure/sqliteInvoiceSettingsAuditRetention.js';
+import { createProfileMaintenanceMiddleware } from './profileMaintenance.js';
+import { ProfileMaintenanceState } from '../runtime/profileMaintenance/profileMaintenanceState.js';
 
 const defaultAppVersion = '0.0.0';
 
@@ -64,6 +66,7 @@ export interface CreateAppOptions {
   operationalIdentity?: Readonly<OperationalRuntimeIdentity>;
   operationalLogsRoot?: string;
   platform?: string;
+  profileMaintenanceState?: ProfileMaintenanceState;
   runtimeTrust?: RuntimeTrust;
 }
 
@@ -247,6 +250,8 @@ export async function createApp(
   }
 
   const localRuntimeIdentity = readLocalRuntimeIdentity(database);
+  const profileMaintenanceState =
+    options.profileMaintenanceState ?? new ProfileMaintenanceState();
   const app = new Hono<BackendEnvironment>();
 
   app.use(
@@ -287,6 +292,7 @@ export async function createApp(
       },
     ),
   );
+  app.use('*', createProfileMaintenanceMiddleware(profileMaintenanceState));
 
   app.get('/health', (context) => {
     return context.json({ status: 'ok' });

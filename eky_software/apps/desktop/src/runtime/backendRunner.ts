@@ -9,10 +9,20 @@ import { CompanyEmailSecretBrokerClient } from '../secrets/secretBrokerClient.js
 import { createUtilitySecretBrokerTransport } from '../secrets/electronSecretBrokerTransport.js';
 import { InvoicePdfArchiveBrokerClient } from '../invoicePdfArchive/invoicePdfArchiveBrokerClient.js';
 import { createInvoicePdfArchiveBrokerTransport } from '../invoicePdfArchive/electronInvoicePdfArchiveBrokerTransport.js';
+import { createProfileSnapshotBrokerTransport } from '../profileBackup/electronProfileSnapshotBrokerTransport.js';
+import { startProfileSnapshotBrokerBackend } from '../profileBackup/profileSnapshotBrokerBackend.js';
 
 interface StartedBackendServer {
   close(): Promise<void>;
   port: number;
+}
+
+interface BackendProfileMaintenanceState {
+  begin(operationId: string, timeoutMilliseconds: number): Promise<void>;
+  end(operationId: string): void;
+  forceEnd(): void;
+  getStatus(): 'busy' | 'normal';
+  tryBeginBusinessWrite(): (() => void) | undefined;
 }
 
 type StartServer = (options: {
@@ -53,6 +63,7 @@ type StartServer = (options: {
       buildRevision: string;
       runtimeInstanceId: string;
     };
+    profileMaintenanceState: BackendProfileMaintenanceState;
   };
   hostname: string;
   port: number;
@@ -65,6 +76,7 @@ type StartServer = (options: {
 let backendServer: StartedBackendServer | undefined;
 let secretBrokerClient: CompanyEmailSecretBrokerClient | undefined;
 let invoicePdfArchiveBrokerClient: InvoicePdfArchiveBrokerClient | undefined;
+let profileSnapshotBrokerHandle: { close(): void } | undefined;
 let startAttempted = false;
 const utilityParentPort = process.parentPort;
 
@@ -143,6 +155,7 @@ utilityParentPort.on('message', (event) => {
       await backendServer?.close();
       secretBrokerClient?.close();
       invoicePdfArchiveBrokerClient?.close();
+      profileSnapshotBrokerHandle?.close();
       process.exit(0);
     })();
     return;
@@ -160,13 +173,18 @@ utilityParentPort.on('message', (event) => {
     try {
       const brokerPort = event.ports[0];
       const archiveBrokerPort = event.ports[1];
+      const profileSnapshotBrokerPort = event.ports[2];
 
-      if (event.ports.length !== 2 || brokerPort === undefined) {
+      if (event.ports.length !== 3 || brokerPort === undefined) {
         failureCode = 'BACKEND_SECRET_BROKER_FAILED';
         throw new Error('A private backend broker port is unavailable.');
       }
       if (archiveBrokerPort === undefined) {
         failureCode = 'BACKEND_INVOICE_PDF_ARCHIVE_BROKER_FAILED';
+        throw new Error('A private backend broker port is unavailable.');
+      }
+      if (profileSnapshotBrokerPort === undefined) {
+        failureCode = 'BACKEND_PROFILE_SNAPSHOT_BROKER_FAILED';
         throw new Error('A private backend broker port is unavailable.');
       }
 
@@ -186,6 +204,30 @@ utilityParentPort.on('message', (event) => {
       if (typeof serverModule.startServer !== 'function') {
         throw new Error('Backend start function is unavailable.');
       }
+
+      failureCode = 'BACKEND_PROFILE_SNAPSHOT_BROKER_FAILED';
+      const maintenanceModule = (await import(
+        pathToFileURL(
+          join(
+            command.config.backendRoot,
+            'dist/runtime/profileMaintenance/profileMaintenanceState.js',
+          ),
+        ).href
+      )) as {
+        ProfileMaintenanceState?: new () => BackendProfileMaintenanceState;
+      };
+
+      if (maintenanceModule.ProfileMaintenanceState === undefined) {
+        throw new Error('Profile maintenance state is unavailable.');
+      }
+      const profileMaintenanceState =
+        new maintenanceModule.ProfileMaintenanceState();
+      profileSnapshotBrokerHandle = startProfileSnapshotBrokerBackend({
+        maintenance: profileMaintenanceState,
+        transport: createProfileSnapshotBrokerTransport(
+          profileSnapshotBrokerPort,
+        ),
+      });
 
       let smokeSecretBrokerVerified = false;
 
@@ -231,6 +273,7 @@ utilityParentPort.on('message', (event) => {
             buildRevision: command.config.buildRevision,
             runtimeInstanceId: command.config.runtimeInstanceId,
           },
+          profileMaintenanceState,
         },
         hostname: '127.0.0.1',
         port: 0,
@@ -261,6 +304,7 @@ utilityParentPort.on('message', (event) => {
       });
     } catch {
       secretBrokerClient?.close();
+      profileSnapshotBrokerHandle?.close();
       utilityParentPort.postMessage({ code: failureCode, type: 'failed' });
     }
   })();

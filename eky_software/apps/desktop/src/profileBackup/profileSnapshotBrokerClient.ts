@@ -1,0 +1,167 @@
+import { randomUUID } from 'node:crypto';
+
+import {
+  createProfileSnapshotBrokerRequest,
+  parseProfileSnapshotBrokerResponse,
+  readProfileSnapshotBrokerRequestId,
+  type ProfileMaintenanceBrokerOperation,
+  type ProfileSnapshotBrokerErrorCode,
+} from './profileSnapshotBrokerProtocol.js';
+import type { ProfileSnapshotBrokerTransport } from './profileSnapshotBrokerTransport.js';
+
+const defaultRequestTimeoutMilliseconds = 35_000;
+
+export class ProfileSnapshotBrokerError extends Error {
+  constructor(readonly code: ProfileSnapshotBrokerErrorCode) {
+    super(code);
+    this.name = 'ProfileSnapshotBrokerError';
+  }
+}
+
+export class ProfileSnapshotBrokerClient {
+  private closed = false;
+  private readonly pending = new Map<
+    string,
+    {
+      reject(error: Error): void;
+      resolve(status: 'busy' | 'normal'): void;
+      timer: ReturnType<typeof setTimeout>;
+    }
+  >();
+  private readonly unsubscribe: () => void;
+
+  constructor(
+    private readonly transport: ProfileSnapshotBrokerTransport,
+    private readonly requestTimeoutMilliseconds =
+      defaultRequestTimeoutMilliseconds,
+  ) {
+    this.unsubscribe = transport.subscribe((value) => this.receive(value));
+  }
+
+  beginMaintenance(operationId: string): Promise<'busy'> {
+    return this.request('beginProfileMaintenance', operationId).then(
+      (status) => {
+        if (status !== 'busy') {
+          throw new ProfileSnapshotBrokerError(
+            'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
+          );
+        }
+        return status;
+      },
+    );
+  }
+
+  close(): void {
+    if (this.closed) {
+      return;
+    }
+
+    this.closed = true;
+    this.unsubscribe();
+    this.transport.close();
+
+    for (const pending of this.pending.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(
+        new ProfileSnapshotBrokerError(
+          'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
+        ),
+      );
+    }
+    this.pending.clear();
+  }
+
+  endMaintenance(operationId: string): Promise<'normal'> {
+    return this.request('endProfileMaintenance', operationId).then(
+      (status) => {
+        if (status !== 'normal') {
+          throw new ProfileSnapshotBrokerError(
+            'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
+          );
+        }
+        return status;
+      },
+    );
+  }
+
+  getStatus(): Promise<'busy' | 'normal'> {
+    return this.request('getProfileMaintenanceStatus');
+  }
+
+  private request(
+    operation: ProfileMaintenanceBrokerOperation,
+    operationId?: string,
+  ): Promise<'busy' | 'normal'> {
+    if (this.closed) {
+      return Promise.reject(
+        new ProfileSnapshotBrokerError(
+          'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
+        ),
+      );
+    }
+
+    const requestId = randomUUID();
+    const request = createProfileSnapshotBrokerRequest({
+      operation,
+      ...(operationId === undefined ? {} : { operationId }),
+      requestId,
+    });
+
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(requestId);
+        reject(
+          new ProfileSnapshotBrokerError(
+            'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
+          ),
+        );
+      }, this.requestTimeoutMilliseconds);
+      this.pending.set(requestId, { reject, resolve, timer });
+
+      try {
+        this.transport.send(request);
+      } catch {
+        clearTimeout(timer);
+        this.pending.delete(requestId);
+        reject(
+          new ProfileSnapshotBrokerError(
+            'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
+          ),
+        );
+      }
+    });
+  }
+
+  private receive(value: unknown): void {
+    const requestId = readProfileSnapshotBrokerRequestId(value);
+
+    if (requestId === undefined) {
+      return;
+    }
+
+    const pending = this.pending.get(requestId);
+
+    if (pending === undefined) {
+      return;
+    }
+
+    const response = parseProfileSnapshotBrokerResponse(value);
+    clearTimeout(pending.timer);
+    this.pending.delete(requestId);
+
+    if (response === undefined) {
+      pending.reject(
+        new ProfileSnapshotBrokerError(
+          'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
+        ),
+      );
+      return;
+    }
+    if (!response.ok) {
+      pending.reject(new ProfileSnapshotBrokerError(response.errorCode));
+      return;
+    }
+
+    pending.resolve(response.result.status);
+  }
+}

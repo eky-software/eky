@@ -80,6 +80,8 @@ import {
 } from './packagedSmoke.js';
 import { restoreWindowInputFocus } from './windowInputFocus.js';
 import type { DesktopBuildInfo } from '../release/desktopBuildInfo.js';
+import { createProfileSnapshotBrokerTransport } from '../profileBackup/electronProfileSnapshotBrokerTransport.js';
+import { ProfileSnapshotBrokerClient } from '../profileBackup/profileSnapshotBrokerClient.js';
 
 export interface DesktopLifecycleHandle {
   applicationWindow: BrowserWindow;
@@ -270,6 +272,10 @@ async function startDesktopCompositionRuntime({
       : undefined;
   const secretBrokerChannel = new MessageChannelMain();
   const invoicePdfArchiveBrokerChannel = new MessageChannelMain();
+  const profileSnapshotBrokerChannel = new MessageChannelMain();
+  const profileSnapshotBrokerClient = new ProfileSnapshotBrokerClient(
+    createProfileSnapshotBrokerTransport(profileSnapshotBrokerChannel.port1),
+  );
   let applicationWindow: BrowserWindow | undefined;
   let pdfPreviewController: InvoicePdfPreviewWindowController | undefined;
   let operationalLogFolderCapability:
@@ -415,6 +421,7 @@ async function startDesktopCompositionRuntime({
       operationalLogger: desktopOperationalLogger,
       invoicePdfArchiveBrokerPort:
         invoicePdfArchiveBrokerChannel.port2,
+      profileSnapshotBrokerPort: profileSnapshotBrokerChannel.port2,
       runnerPath: join(
         options.resourcesPath,
         'desktop-runtime',
@@ -423,7 +430,10 @@ async function startDesktopCompositionRuntime({
       ),
       secretBrokerPort: secretBrokerChannel.port2,
     });
+    await profileSnapshotBrokerClient.getStatus();
   } catch (error) {
+    await backendHandle?.stop().catch(() => undefined);
+    profileSnapshotBrokerClient.close();
     invoicePdfArchiveBrokerHandle.close();
     secretBrokerHandle.close();
     throw error;
@@ -704,6 +714,7 @@ async function startDesktopCompositionRuntime({
       invoicePdfArchiveCapability = undefined;
       supportBundleCapability?.dispose();
       supportBundleCapability = undefined;
+      profileSnapshotBrokerClient.close();
 
       try {
         await backendHandle.stop();
