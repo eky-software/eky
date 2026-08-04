@@ -21,6 +21,7 @@ export interface DesktopBackendStartMessage {
     runtimeInstanceId: string;
     runtimeSessionSecret: string;
     smokePdfPath: string;
+    verifySmokeSecretBroker: boolean;
   };
   type: 'start';
 }
@@ -129,6 +130,7 @@ export function parseDesktopBackendCommand(
     typeof config.runtimeInstanceId !== 'string' ||
     !runtimeInstanceIdPattern.test(config.runtimeInstanceId) ||
     !isDesktopRuntimeSession(config.runtimeSessionSecret) ||
+    typeof config.verifySmokeSecretBroker !== 'boolean' ||
     pathKeys.some((key) => !isSafeAbsolutePath(config[key]))
   ) {
     return undefined;
@@ -154,6 +156,7 @@ export function parseDesktopBackendCommand(
       runtimeInstanceId: config.runtimeInstanceId,
       runtimeSessionSecret: config.runtimeSessionSecret,
       smokePdfPath: config.smokePdfPath as string,
+      verifySmokeSecretBroker: config.verifySmokeSecretBroker,
     },
     type: 'start',
   };

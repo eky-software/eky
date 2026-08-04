@@ -4,7 +4,15 @@ const allowedStartupFailureCodes = new Set([
   'DESKTOP_START_FAILED',
   'PACKAGED_BUILD_INFO_INVALID',
   'PACKAGED_SMOKE_FAILED',
+  'PROFILE_MAINTENANCE_BUSY',
+  'PROFILE_MAINTENANCE_OPERATION_MISMATCH',
+  'PROFILE_MAINTENANCE_TIMEOUT',
   'PROFILE_RESTORE_RECOVERY_REQUIRED',
+  'PROFILE_SNAPSHOT_ARTIFACTS_FAILED',
+  'PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID',
+  'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
+  'PROFILE_SNAPSHOT_DATABASE_FAILED',
+  'PROFILE_SNAPSHOT_VALIDATION_FAILED',
 ]);
 
 export interface DesktopRuntimeModule<Runtime> {
@@ -40,8 +48,14 @@ export async function runSafeDesktopStartup<Runtime>(
 }
 
 export function readSafeStartupFailureCode(error: unknown): string {
-  return error instanceof Error &&
-    allowedStartupFailureCodes.has(error.message)
+  return error instanceof Error && isSafeStartupFailureCode(error.message)
     ? error.message
     : 'DESKTOP_START_FAILED';
+}
+
+function isSafeStartupFailureCode(value: string): boolean {
+  return (
+    allowedStartupFailureCodes.has(value) ||
+    /^DESKTOP_SMOKE_[A-Z0-9_]{1,80}$/.test(value)
+  );
 }

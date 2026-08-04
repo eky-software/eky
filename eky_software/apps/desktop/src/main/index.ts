@@ -32,6 +32,9 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 const smokeConfiguration = createPackagedSmokeConfiguration({
+  hasRestoredProfileSwitch: app.commandLine.hasSwitch(
+    'desktop-smoke-restored',
+  ),
   hasSmokeSwitch: app.commandLine.hasSwitch('desktop-smoke'),
   tempPath: app.getPath('temp'),
   tokenValue: process.env.EKY_DESKTOP_SMOKE_TOKEN,
@@ -56,7 +59,11 @@ const runtimeInstanceId = randomUUID();
 async function startDesktopRuntime(
   startDesktopComposition: StartDesktopComposition,
 ): Promise<void> {
-  await smokeProgress.reportStage('startup');
+  await smokeProgress.reportStage(
+    smokeConfiguration.phase === 'restoredProfile'
+      ? 'restoredStartup'
+      : 'startup',
+  );
   const buildInfo = await readDesktopBuildInfo({
     applicationPath: app.getAppPath(),
     appVersion: app.getVersion(),
@@ -68,6 +75,10 @@ async function startDesktopRuntime(
     buildInfo,
     quitApplication: () => app.quit(),
     relaunchApplication() {
+      if (smokeConfiguration.enabled) {
+        app.quit();
+        return;
+      }
       app.relaunch();
       app.quit();
     },

@@ -21,6 +21,7 @@ import { runPackagedSupportBundleSmoke } from './packagedSupportBundleSmoke.js';
 
 export interface PackagedSmokeConfiguration {
   enabled: boolean;
+  phase: 'initial' | 'restoredProfile';
   root: string | undefined;
   userDataPath: string | undefined;
 }
@@ -34,6 +35,18 @@ export const packagedSmokeStages = Object.freeze([
   'secretStorage',
   'invoicePdfArchive',
   'pdfPreview',
+  'profileBackup',
+  'profileSnapshotMaintenance',
+  'profileSnapshotCreated',
+  'profileSnapshotCaptured',
+  'profileBackupVerified',
+  'profileMutationCreated',
+  'profileRestore',
+  'restoreRestart',
+  'restoredStartup',
+  'restoredBackend',
+  'profileComparison',
+  'secondBackup',
   'shutdown',
 ] as const);
 
@@ -81,6 +94,7 @@ interface RunPackagedSmokeCheckOptions {
 }
 
 export function createPackagedSmokeConfiguration(options: {
+  hasRestoredProfileSwitch?: boolean;
   hasSmokeSwitch: boolean;
   tempPath: string;
   tokenValue: string | undefined;
@@ -94,6 +108,10 @@ export function createPackagedSmokeConfiguration(options: {
 
   return {
     enabled,
+    phase:
+      enabled && options.hasRestoredProfileSwitch === true
+        ? 'restoredProfile'
+        : 'initial',
     root,
     userDataPath: enabled && root !== undefined ? join(root, 'user-data') : undefined,
   };
@@ -131,7 +149,10 @@ export function createPackagedSmokeSecretFileStore(
 export function createPackagedSmokeProgressReporter(
   configuration: PackagedSmokeConfiguration,
 ): PackagedSmokeProgressReporter {
-  let currentStageIndex = -1;
+  let currentStageIndex =
+    configuration.phase === 'restoredProfile'
+      ? packagedSmokeStages.indexOf('restoreRestart')
+      : -1;
 
   return Object.freeze({
     currentStage() {
@@ -311,7 +332,7 @@ export async function runPackagedSmokeCheck(
 
   await options.reportStage('pdfPreview');
   await options.pdfPreviewController.openForSmoke(previewInvoiceId);
-  options.pdfPreviewController.close();
+  await options.pdfPreviewController.closeForSmoke();
 
   for (const path of [
     options.secretFilePath,

@@ -92,7 +92,10 @@ import {
   type ProfileBackupCapability,
 } from '../profileBackup/profileBackupCapability.js';
 import type { ProfileBackupInspectionSummary } from '../profileBackup/profileBackupInspectionTypes.js';
-import { ProfileSnapshotBrokerClient } from '../profileBackup/profileSnapshotBrokerClient.js';
+import {
+  ProfileSnapshotBrokerClient,
+  ProfileSnapshotBrokerError,
+} from '../profileBackup/profileSnapshotBrokerClient.js';
 import { createProfileSnapshotRuntimePaths } from '../profileBackup/profileSnapshotRuntimePaths.js';
 import { RecoveryPointCleanShutdownMarker } from '../profileBackup/recoveryPoint/recoveryPointCleanShutdownMarker.js';
 import { RecoveryPointKeyProtector } from '../profileBackup/recoveryPoint/recoveryPointKeyProtector.js';
@@ -105,6 +108,11 @@ import { ProfileRestoreActivationService } from '../profileBackup/restore/profil
 import { ProfileRestoreActivationTransaction } from '../profileBackup/restore/profileRestoreActivationTransaction.js';
 import { ProfileRestoreStagingService } from '../profileBackup/restore/profileRestoreStagingService.js';
 import { ProfileRestoreStartupRecovery } from '../profileBackup/restore/profileRestoreStartupRecovery.js';
+import {
+  runPackagedProfileBackupAfterRestore,
+  runPackagedProfileBackupBeforeRestore,
+  verifyPackagedRestoredDatabaseBeforeBackend,
+} from '../profileBackup/packagedProfileBackupSmoke.js';
 
 export interface DesktopLifecycleHandle {
   applicationWindow: BrowserWindow;
@@ -378,6 +386,18 @@ async function startDesktopCompositionRuntime({
   );
   const profileRestoreStartupMode =
     await profileRestoreStartupRecovery.prepareBeforeBackend();
+  if (
+    smokeMode &&
+    options.smokeConfiguration.phase === 'restoredProfile'
+  ) {
+    if (profileRestoreStartupMode !== 'validateRestoredProfile') {
+      throw new Error('DESKTOP_SMOKE_RESTORE_STARTUP_MODE_FAILED');
+    }
+    await verifyPackagedRestoredDatabaseBeforeBackend({
+      activeDatabasePath: databaseFilePath,
+      smokeRoot: requireSmokeRoot(options.smokeConfiguration.root),
+    });
+  }
 
   const deliveryDialogAdapter: InvoiceDeliveryDialogAdapter = {
     showErrorBox: dependencies.showErrorBox,
@@ -484,7 +504,11 @@ async function startDesktopCompositionRuntime({
     });
 
   try {
-    await options.reportSmokeStage('backend');
+    await options.reportSmokeStage(
+      options.smokeConfiguration.phase === 'restoredProfile'
+        ? 'restoredBackend'
+        : 'backend',
+    );
     backendHandle = await dependencies.startBackend({
       config: {
         appVersion: desktopAppVersion,
@@ -509,6 +533,8 @@ async function startDesktopCompositionRuntime({
         runtimeInstanceId: options.runtimeInstanceId,
         runtimeSessionSecret,
         smokePdfPath,
+        verifySmokeSecretBroker:
+          smokeMode && options.smokeConfiguration.phase === 'initial',
       },
       operationalIdentity: desktopOperationalIdentity,
       operationalLogger: desktopOperationalLogger,
@@ -555,10 +581,15 @@ async function startDesktopCompositionRuntime({
 
   backendHandle.onUnexpectedExit(() => {
     void recoveryPointScheduler.stopChecks();
-    dependencies.showErrorBox(
-      'Eky suljettiin',
-      'Paikallinen palvelu pysähtyi odottamatta. Sovellus suljetaan turvallisesti.',
-    );
+    if (shutdownStarted) {
+      return;
+    }
+    if (!smokeMode) {
+      dependencies.showErrorBox(
+        'Eky suljettiin',
+        'Paikallinen palvelu pysähtyi odottamatta. Sovellus suljetaan turvallisesti.',
+      );
+    }
     options.quitApplication();
   });
   void invoicePdfArchiveService.retryPending(true).catch(() => undefined);
@@ -1048,27 +1079,57 @@ async function startDesktopCompositionRuntime({
       ),
     );
     try {
-      await loadApplicationWindow(mainWindow);
-      await runPackagedSmokeCheck({
-        appVersion: desktopAppVersion,
-        backend: backendHandle,
-        buildRevision: options.buildInfo.buildRevision,
-        databaseFilePath,
-        invoicePdfArchiveDirectoryPath: join(
-          requireSmokeRoot(options.smokeConfiguration.root),
-          'invoice-pdf-archive',
-        ),
-        invoicePdfArchiveService,
-        mainWindow,
-        pdfPreviewController,
-        runtimeSessionSecret,
-        runtimeInstanceId: options.runtimeInstanceId,
-        secretFilePath,
-        smokePdfPath,
-        supportBundlePath: requireSmokeSupportBundlePath(
-          smokeSupportBundlePath,
-        ),
+      const smokeRoot = requireSmokeRoot(
+        options.smokeConfiguration.root,
+      );
+
+      if (options.smokeConfiguration.phase === 'initial') {
+        await loadApplicationWindow(mainWindow);
+        await runPackagedSmokeCheck({
+          appVersion: desktopAppVersion,
+          backend: backendHandle,
+          buildRevision: options.buildInfo.buildRevision,
+          databaseFilePath,
+          invoicePdfArchiveDirectoryPath: join(
+            smokeRoot,
+            'invoice-pdf-archive',
+          ),
+          invoicePdfArchiveService,
+          mainWindow,
+          pdfPreviewController,
+          runtimeSessionSecret,
+          runtimeInstanceId: options.runtimeInstanceId,
+          secretFilePath,
+          smokePdfPath,
+          supportBundlePath: requireSmokeSupportBundlePath(
+            smokeSupportBundlePath,
+          ),
+          reportStage: options.reportSmokeStage,
+        });
+        await runPackagedProfileBackupBeforeRestore({
+          backupService: portableProfileBackupService,
+          backendPort: backendHandle.port,
+          profileSnapshotClient: profileSnapshotBrokerClient,
+          reportStage: options.reportSmokeStage,
+          restoreActivationService: profileRestoreActivationService,
+          restoreStagingService: profileRestoreStagingService,
+          runtimeInstanceId: options.runtimeInstanceId,
+          runtimeSessionSecret,
+          smokeRoot,
+          stagingRoot: profileSnapshotPaths.stagingRoot,
+        });
+        return undefined;
+      }
+
+      await runPackagedProfileBackupAfterRestore({
+        backupService: portableProfileBackupService,
+        backendPort: backendHandle.port,
+        profileSnapshotClient: profileSnapshotBrokerClient,
         reportStage: options.reportSmokeStage,
+        runtimeInstanceId: options.runtimeInstanceId,
+        runtimeSessionSecret,
+        smokeRoot,
+        stagingRoot: profileSnapshotPaths.stagingRoot,
       });
       desktopOperationalLogger.write(
         createDesktopOperationalEvent(
@@ -1089,12 +1150,19 @@ async function startDesktopCompositionRuntime({
       mainWindow.destroy();
       options.quitApplication();
       return undefined;
-    } catch {
+    } catch (error) {
+      const errorCode =
+        error instanceof ProfileSnapshotBrokerError
+          ? error.code
+          : error instanceof Error &&
+              /^DESKTOP_SMOKE_[A-Z0-9_]{1,80}$/.test(error.message)
+            ? error.message
+          : 'PACKAGED_SMOKE_FAILED';
       desktopOperationalLogger.write(
         createDesktopOperationalEvent(
           {
             durationMs: Date.now() - smokeStartedAt,
-            errorCode: 'PACKAGED_SMOKE_FAILED',
+            errorCode,
             eventName: 'packagedSmoke.failed',
             retryable: false,
             sideEffectState: 'unknown',
@@ -1103,7 +1171,7 @@ async function startDesktopCompositionRuntime({
           desktopOperationalIdentity,
         ),
       );
-      throw new Error('PACKAGED_SMOKE_FAILED');
+      throw new Error(errorCode);
     }
   }
 

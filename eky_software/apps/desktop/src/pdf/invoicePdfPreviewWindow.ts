@@ -31,6 +31,7 @@ interface ActiveInvoicePdfPreview {
 
 export interface InvoicePdfPreviewWindowController {
   close(): void;
+  closeForSmoke(): Promise<void>;
   dispose(): void;
   hasRendererBridgeForSmoke(): Promise<boolean>;
   openForSmoke(invoiceId: string): Promise<void>;
@@ -171,6 +172,19 @@ export function createInvoicePdfPreviewWindowController(
       }
 
       activePreview = undefined;
+    },
+    async closeForSmoke() {
+      const preview = activePreview;
+
+      if (preview === undefined || preview.window.isDestroyed()) {
+        activePreview = undefined;
+        return;
+      }
+
+      await new Promise<void>((resolveClose) => {
+        preview.window.once('closed', resolveClose);
+        preview.window.close();
+      });
     },
     dispose() {
       options.ipcMain.removeHandler(invoicePdfPreviewIpcChannel);

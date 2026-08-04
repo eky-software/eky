@@ -78,6 +78,21 @@ describe('safe desktop early startup', () => {
     expect(
       readSafeStartupFailureCode(new Error('PACKAGED_BUILD_INFO_INVALID')),
     ).toBe('PACKAGED_BUILD_INFO_INVALID');
+    expect(
+      readSafeStartupFailureCode(
+        new Error('PROFILE_SNAPSHOT_ARTIFACTS_FAILED'),
+      ),
+    ).toBe('PROFILE_SNAPSHOT_ARTIFACTS_FAILED');
+    expect(
+      readSafeStartupFailureCode(
+        new Error('DESKTOP_SMOKE_RESTORE_COMPARISON_FAILED'),
+      ),
+    ).toBe('DESKTOP_SMOKE_RESTORE_COMPARISON_FAILED');
+    expect(
+      readSafeStartupFailureCode(
+        new Error('DESKTOP_SMOKE_FAILED\nC:\\Users\\Example\\secret.txt'),
+      ),
+    ).toBe('DESKTOP_START_FAILED');
   });
 });
 

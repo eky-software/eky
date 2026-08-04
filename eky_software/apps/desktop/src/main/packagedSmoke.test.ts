@@ -50,6 +50,7 @@ describe('packaged smoke progress', () => {
   it('rejects unknown, skipped and repeated stages', async () => {
     const reporter = createPackagedSmokeProgressReporter({
       enabled: false,
+      phase: 'initial',
       root: undefined,
       userDataPath: undefined,
     });
@@ -65,6 +66,23 @@ describe('packaged smoke progress', () => {
     await expect(
       reporter.reportStage('startup'),
     ).rejects.toThrow('DESKTOP_SMOKE_STAGE_INVALID');
+  });
+
+  it('continues a restored profile run after the restart boundary', async () => {
+    const reporter = createPackagedSmokeProgressReporter({
+      enabled: false,
+      phase: 'restoredProfile',
+      root: undefined,
+      userDataPath: undefined,
+    });
+
+    await reporter.reportStage('restoredStartup');
+    await reporter.reportStage('restoredBackend');
+    await reporter.reportStage('profileComparison');
+    await reporter.reportStage('secondBackup');
+    await reporter.reportStage('shutdown');
+
+    expect(reporter.currentStage()).toBe('shutdown');
   });
 
   it('reports only the last safe stage in timeout messages', () => {

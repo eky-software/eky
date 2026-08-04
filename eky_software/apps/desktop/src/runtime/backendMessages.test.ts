@@ -193,6 +193,7 @@ function createValidConfig(
     platform: 'win32',
     runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
     runtimeSessionSecret: 'a'.repeat(43),
+    verifySmokeSecretBroker: false,
     ...overrides,
   };
 }

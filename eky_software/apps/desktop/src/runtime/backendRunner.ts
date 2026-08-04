@@ -309,7 +309,7 @@ utilityParentPort.on('message', (event) => {
 
       let smokeSecretBrokerVerified = false;
 
-      if (command.config.createSmokePdf) {
+      if (command.config.verifySmokeSecretBroker) {
         failureCode = 'BACKEND_SECRET_BROKER_FAILED';
         smokeSecretBrokerVerified = await verifySecretBroker(secretBrokerClient);
 

@@ -17,7 +17,7 @@ const executablePath = resolve(
   scriptDirectory,
   '../out/Eky-win32-x64/Eky.exe',
 );
-const smokeTimeoutMilliseconds = 60_000;
+const smokeTimeoutMilliseconds = 120_000;
 const childEnvironment = { ...process.env };
 const smokeToken = randomBytes(16).toString('hex');
 const smokeRootDirectory = resolve(
@@ -49,15 +49,32 @@ try {
   await writePackagedSmokeResult(
     {
       enabled: true,
+      phase: 'initial',
       root: smokeRootDirectory,
       userDataPath: undefined,
     },
     { stage: 'startup', status: 'started' },
   );
+  await runSmokePhase(['--desktop-smoke'], 'restoreRestart');
+  await runSmokePhase(
+    ['--desktop-smoke', '--desktop-smoke-restored'],
+    'shutdown',
+  );
+  console.log('Packaged Windows smoke check passed.');
+} finally {
+  await rm(smokeRootDirectory, {
+    force: true,
+    maxRetries: 20,
+    recursive: true,
+    retryDelay: 100,
+  });
+}
+
+async function runSmokePhase(argumentsList, expectedStage) {
   await new Promise((resolveSmoke, rejectSmoke) => {
     const processHandle = spawn(
       executablePath,
-      ['--desktop-smoke'],
+      argumentsList,
       {
         env: childEnvironment,
         shell: false,
@@ -93,8 +110,12 @@ try {
 
       if (
         code !== 0 ||
-        smokeResult?.status !== 'ok' ||
-        smokeResult.electronVersion !== expectedElectronVersion
+        smokeResult.stage !== expectedStage ||
+        (expectedStage === 'shutdown' &&
+          (smokeResult.status !== 'ok' ||
+            smokeResult.electronVersion !== expectedElectronVersion)) ||
+        (expectedStage === 'restoreRestart' &&
+          smokeResult.status !== 'started')
       ) {
         const safeCode =
           typeof smokeResult?.code === 'string'
@@ -108,15 +129,7 @@ try {
         return;
       }
 
-      console.log('Packaged Windows smoke check passed.');
       resolveSmoke();
     });
-  });
-} finally {
-  await rm(smokeRootDirectory, {
-    force: true,
-    maxRetries: 20,
-    recursive: true,
-    retryDelay: 100,
   });
 }
