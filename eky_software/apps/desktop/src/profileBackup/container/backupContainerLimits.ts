@@ -7,4 +7,3 @@ export const maximumBackupPathBytes = 1_024;
 export const maximumManifestBytes = 64 * 1024 * 1024;
 export const maximumManifestTextBytes = 1_024;
 export const backupStreamChunkBytes = 64 * 1024;
-

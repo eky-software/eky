@@ -275,4 +275,3 @@ function isTrustedPasswordWindowRequest(
     event.senderFrame === passwordWindow.webContents.mainFrame
   );
 }
-

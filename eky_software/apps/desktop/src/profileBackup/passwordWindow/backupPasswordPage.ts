@@ -89,4 +89,3 @@ function createBackupPasswordPageUrl(): string {
 
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
-

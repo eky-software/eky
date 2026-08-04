@@ -7,4 +7,3 @@ export interface BackupManifest {
   migrationChainIdentity: string;
   profileId: string;
 }
-

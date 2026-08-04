@@ -6,4 +6,3 @@ export type BackupPasswordSubmissionResult =
       accepted: false;
       errorCode: 'PASSWORD_INVALID' | 'PASSWORD_MISMATCH';
     };
-

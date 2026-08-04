@@ -139,4 +139,3 @@ function pathsAreEqual(first: string, second: string): boolean {
     ? firstResolved.toLowerCase() === secondResolved.toLowerCase()
     : firstResolved === secondResolved;
 }
-

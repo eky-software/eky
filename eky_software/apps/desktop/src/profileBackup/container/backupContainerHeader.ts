@@ -121,4 +121,3 @@ function validateHeaderFields(input: BackupContainerHeader): void {
     throw new Error('BACKUP_CONTAINER_HEADER_INVALID');
   }
 }
-

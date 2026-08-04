@@ -172,4 +172,3 @@ function readEntryType(value: number): BackupContainerEntryType {
   }
   throw new Error('BACKUP_ENTRY_INVALID');
 }
-

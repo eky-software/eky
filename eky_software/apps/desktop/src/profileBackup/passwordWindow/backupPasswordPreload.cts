@@ -135,4 +135,3 @@ function requireElement<T extends HTMLElement>(id: string): T {
   }
   return element as T;
 }
-

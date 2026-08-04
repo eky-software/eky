@@ -198,4 +198,3 @@ function validateText(value: string): void {
     throw new Error('BACKUP_MANIFEST_INVALID');
   }
 }
-

@@ -14,4 +14,3 @@ export const backupEntryHeaderLength = 48;
 
 export const backupManifestMagic = Buffer.from('EKYMNF01', 'ascii');
 export const backupManifestVersion = 1;
-

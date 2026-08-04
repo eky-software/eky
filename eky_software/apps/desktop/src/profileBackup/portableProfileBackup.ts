@@ -334,4 +334,3 @@ function readSafeErrorCode(error: unknown): string {
   }
   return 'PROFILE_BACKUP_OPERATION_FAILED';
 }
-
