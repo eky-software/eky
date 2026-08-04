@@ -40,7 +40,7 @@ export class SqliteInvoiceBackupArtifactCatalog
             document.size_bytes,
             invoice.id AS bound_invoice_id
           FROM invoice_documents AS document
-          LEFT JOIN approved_invoices AS invoice
+          LEFT JOIN invoices AS invoice
             ON invoice.id = document.invoice_id
             AND invoice.company_id = document.company_id
           ORDER BY document.id

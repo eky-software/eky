@@ -27,7 +27,7 @@ const migrationSql = `
     actor_id TEXT NOT NULL,
     created_at TEXT NOT NULL
   );
-  CREATE TABLE approved_invoices (
+  CREATE TABLE invoices (
     id TEXT NOT NULL,
     company_id TEXT NOT NULL,
     PRIMARY KEY (id)
@@ -43,7 +43,7 @@ const migrationSql = `
     sha256 TEXT NOT NULL,
     size_bytes INTEGER NOT NULL,
     created_at TEXT NOT NULL,
-    FOREIGN KEY (invoice_id) REFERENCES approved_invoices (id)
+    FOREIGN KEY (invoice_id) REFERENCES invoices (id)
   );
 `;
 const openDatabases: Database.Database[] = [];
@@ -148,7 +148,7 @@ describe('staged profile snapshot validation', () => {
     );
 
     expect(result.activeProfileIsEmpty).toBe(false);
-    expect(JSON.stringify(result)).not.toContain('approved_invoices');
+    expect(JSON.stringify(result)).not.toContain('invoices');
   });
 
   it.each([
@@ -182,7 +182,7 @@ describe('staged profile snapshot validation', () => {
     const database = new Database(fixture.databasePath);
     database.pragma('foreign_keys = OFF');
     database
-      .prepare('DELETE FROM approved_invoices WHERE id = ?')
+      .prepare('DELETE FROM invoices WHERE id = ?')
       .run('invoice-1');
     database.close();
 
@@ -227,7 +227,7 @@ describe('staged profile snapshot validation', () => {
     },
   );
 
-  it('rejects invalid operation identifiers before filesystem access', async () => {
+  it('RESTORE-PATH-001 @security rejects invalid operation identifiers before filesystem access', async () => {
     const fixture = await createFixture();
 
     await expect(
@@ -370,7 +370,7 @@ function createProfileDatabase(
   if (includeArtifact) {
     database
       .prepare(
-        'INSERT INTO approved_invoices (id, company_id) VALUES (?, ?)',
+        'INSERT INTO invoices (id, company_id) VALUES (?, ?)',
       )
       .run('invoice-1', companyId);
     database

@@ -68,7 +68,7 @@ function createDatabase(): Database.Database {
   const database = new Database(':memory:');
   databases.push(database);
   database.exec(`
-    CREATE TABLE approved_invoices (
+    CREATE TABLE invoices (
       id TEXT NOT NULL,
       company_id TEXT NOT NULL,
       PRIMARY KEY (id)
@@ -96,7 +96,7 @@ function insertInvoice(
 ): void {
   database
     .prepare(
-      'INSERT INTO approved_invoices (id, company_id) VALUES (?, ?)',
+      'INSERT INTO invoices (id, company_id) VALUES (?, ?)',
     )
     .run(invoiceId, companyId);
 }

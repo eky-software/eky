@@ -45,7 +45,7 @@ describe('active profile validation', () => {
         .prepare('UPDATE invoice_documents SET storage_path = ?')
         .run('../escape.pdf');
     }],
-  ])('fails closed for %s', async (_name, mutate) => {
+  ])('BACKUP-MISSING-DOCUMENT-001 @fault fails closed for %s', async (_name, mutate) => {
     const fixture = await createFixture();
     await mutate(fixture);
 
@@ -57,7 +57,7 @@ describe('active profile validation', () => {
   it('rejects a foreign-key-invalid active database', async () => {
     const fixture = await createFixture();
     fixture.database.pragma('foreign_keys = OFF');
-    fixture.database.prepare('DELETE FROM approved_invoices').run();
+    fixture.database.prepare('DELETE FROM invoices').run();
 
     await expect(
       fixture.service.validateActiveProfile(),
@@ -90,7 +90,7 @@ async function createFixture(): Promise<Fixture> {
   databases.push(database);
   database.pragma('foreign_keys = ON');
   database.exec(`
-    CREATE TABLE approved_invoices (
+    CREATE TABLE invoices (
       id TEXT NOT NULL,
       company_id TEXT NOT NULL,
       PRIMARY KEY (id)
@@ -106,12 +106,12 @@ async function createFixture(): Promise<Fixture> {
       sha256 TEXT NOT NULL,
       size_bytes INTEGER NOT NULL,
       created_at TEXT NOT NULL,
-      FOREIGN KEY (invoice_id) REFERENCES approved_invoices (id)
+      FOREIGN KEY (invoice_id) REFERENCES invoices (id)
     );
   `);
   database
     .prepare(
-      `INSERT INTO approved_invoices (id, company_id) VALUES (?, ?)`,
+      `INSERT INTO invoices (id, company_id) VALUES (?, ?)`,
     )
     .run('invoice-1', 'company-1');
   database

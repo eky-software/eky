@@ -33,7 +33,7 @@ afterEach(async () => {
 });
 
 describe('SQLite profile snapshot', () => {
-  it('backs up WAL data and verifies integrity, migrations and metadata', async () => {
+  it('BACKUP-SNAPSHOT-001 @critical backs up WAL data and verifies integrity, migrations and metadata', async () => {
     const fixture = await createFixture();
     const operationId = randomUUID();
 
