@@ -163,10 +163,27 @@ Salaus käyttää:
 - jokaiselle salaukselle uniikkia nonce-arvoa
 - täyttä authentication tag -arvoa
 
-Tarkat `scrypt`-parametrit valitaan ja versionoidaan vasta benchmarkin jälkeen.
-Reader hyväksyy vain tunnetun parametriversion ja ennalta rajatut
-resurssiarvot. Tällä estetään sekä liian heikko avaimenjohto että
-haitallisesti ylimitoitettu KDF.
+Portable container v1 käyttää KDF-profiilia 1:
+
+- `scrypt`
+- `N = 2^17`
+- `r = 8`
+- `p = 1`
+- 32 tavun avain
+- eksplisiittinen `maxmem = 256 MiB`
+
+Windows x64 / Node 24 -kehitysympäristössä 4.8.2026 tehty viiden ajon
+benchmark antoi mediaaneiksi `2^15`:lle 55,1 ms, `2^16`:lle 111,3 ms ja
+`2^17`:lle 246,4 ms. Arvioidut scrypt-muistikustannukset olivat vastaavasti
+32, 64 ja 128 MiB. Profiili 1 valittiin vahvimmaksi nykyisellä koneella
+käytännölliseksi osoittautuneeksi vaihtoehdoksi. Valinta on vielä varmennettava
+paketoidussa Electron-main/utility-ajossa pilottilaitetta vastaavalla Windows
+x64 -ympäristöllä ennen R0-release gaten sulkemista.
+
+Reader hyväksyy vain tunnetun parametriversion ja koodiin lukitut
+resurssiarvot. Container ei sisällä vapaasti luotettavaa `N/r/p`-
+yhdistelmää. Tällä estetään sekä liian heikko avaimenjohto että haitallisesti
+ylimitoitettu KDF ennen raskaan työn aloittamista.
 
 Käyttäjälle ei tarjota salaamatonta fallbackia. Salaus- tai
 satunnaislukugeneraattorin virhe keskeyttää backupin.
