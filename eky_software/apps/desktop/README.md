@@ -12,8 +12,14 @@ are complete. A real SMTP credential may be used only through the encrypted
 secret-store path. Confirmed customer delivery is implemented, but real-data
 use remains blocked until the documented release-security gates are complete.
 
-Encrypted backup/recovery-point and Windows installer/update architecture is
-accepted, but none of those production capabilities is implemented yet.
+Encrypted portable backup and machine-local encrypted recovery-point creation,
+health checking, scheduling, rotation, private restore staging, crash-safe
+activation and rollback are implemented behind Electron main process
+boundaries. Oma yritys exposes only the named desktop backup/restore
+capabilities. The hardened Windows smoke proves the encrypted backup ->
+inspect -> restore -> second process -> exact database/PDF comparison chain,
+a new runtime session and machine-local secret continuity with synthetic data.
+Windows installer/update architecture is accepted but remains unimplemented.
 The current unpacked `out/Eky-win32-x64` directory is a development/package
 artifact, not an installer or an automatically updating release.
 
@@ -59,6 +65,16 @@ packaged Diagnostics view, and exercises the operational log folder capability
 with a main-process stub so no Explorer window is opened. Smoke data is written
 under a random operating-system temporary directory and removed after the
 check.
+
+The packaged smoke uses two Electron processes for restore acceptance. The
+first process creates and inspects an encrypted synthetic profile backup,
+mutates the active profile, sets a synthetic `safeStorage` SMTP secret, stages
+the restore and activates it. The runner then starts a second process against
+the restored profile. Before backend startup it compares the exact SQLite file
+with the backup hash; after startup it compares the authoritative invoice PDF
+catalog, proves that the later mutation disappeared, that the machine-local
+secret remained outside the backup, and that the runtime session changed. It
+then creates and inspects a second backup and removes the synthetic secret.
 
 Early startup failures are reduced to an allowlisted code for smoke and a
 fixed Finnish message for users. Raw module errors, stack traces, ASAR paths

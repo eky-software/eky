@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import {
@@ -80,6 +81,38 @@ import {
 } from './packagedSmoke.js';
 import { restoreWindowInputFocus } from './windowInputFocus.js';
 import type { DesktopBuildInfo } from '../release/desktopBuildInfo.js';
+import { createProfileSnapshotBrokerTransport } from '../profileBackup/electronProfileSnapshotBrokerTransport.js';
+import {
+  createBackupPasswordWindowController,
+  type BackupPasswordWindowController,
+} from '../profileBackup/passwordWindow/backupPasswordWindow.js';
+import { PortableProfileBackupService } from '../profileBackup/portableProfileBackup.js';
+import {
+  createProfileBackupCapability,
+  type ProfileBackupCapability,
+} from '../profileBackup/profileBackupCapability.js';
+import type { ProfileBackupInspectionSummary } from '../profileBackup/profileBackupInspectionTypes.js';
+import {
+  ProfileSnapshotBrokerClient,
+  ProfileSnapshotBrokerError,
+} from '../profileBackup/profileSnapshotBrokerClient.js';
+import { createProfileSnapshotRuntimePaths } from '../profileBackup/profileSnapshotRuntimePaths.js';
+import { RecoveryPointCleanShutdownMarker } from '../profileBackup/recoveryPoint/recoveryPointCleanShutdownMarker.js';
+import { RecoveryPointKeyProtector } from '../profileBackup/recoveryPoint/recoveryPointKeyProtector.js';
+import { RecoveryPointRotationService } from '../profileBackup/recoveryPoint/recoveryPointRotationService.js';
+import { RecoveryPointScheduler } from '../profileBackup/recoveryPoint/recoveryPointScheduler.js';
+import { RecoveryPointService } from '../profileBackup/recoveryPoint/recoveryPointService.js';
+import { RecoveryPointStore } from '../profileBackup/recoveryPoint/recoveryPointStore.js';
+import { ProfileRestoreActivationJournalStore } from '../profileBackup/restore/profileRestoreActivationJournalStore.js';
+import { ProfileRestoreActivationService } from '../profileBackup/restore/profileRestoreActivationService.js';
+import { ProfileRestoreActivationTransaction } from '../profileBackup/restore/profileRestoreActivationTransaction.js';
+import { ProfileRestoreStagingService } from '../profileBackup/restore/profileRestoreStagingService.js';
+import { ProfileRestoreStartupRecovery } from '../profileBackup/restore/profileRestoreStartupRecovery.js';
+import {
+  runPackagedProfileBackupAfterRestore,
+  runPackagedProfileBackupBeforeRestore,
+  verifyPackagedRestoredDatabaseBeforeBackend,
+} from '../profileBackup/packagedProfileBackupSmoke.js';
 
 export interface DesktopLifecycleHandle {
   applicationWindow: BrowserWindow;
@@ -114,6 +147,7 @@ export interface StartDesktopCompositionOptions {
   buildInfo: Readonly<DesktopBuildInfo>;
   dependencies?: Partial<DesktopCompositionDependencies>;
   quitApplication(): void;
+  relaunchApplication(): void;
   resourcesPath: string;
   runtimeInstanceId: string;
   reportSmokeStage(stage: PackagedSmokeStage): Promise<void>;
@@ -254,6 +288,27 @@ async function startDesktopCompositionRuntime({
 > {
   const databaseFilePath = join(dataRoot, 'data', 'eky.sqlite');
   const invoiceDocumentStorageRoot = join(dataRoot, 'storage', 'invoices');
+  const profileSnapshotPaths = createProfileSnapshotRuntimePaths(dataRoot);
+  const profileRestoreActivationJournalStore =
+    new ProfileRestoreActivationJournalStore(
+      profileSnapshotPaths.restoreActivationJournalPath,
+    );
+  const profileRestoreActivationTransaction =
+    new ProfileRestoreActivationTransaction({
+      journalStore: profileRestoreActivationJournalStore,
+      paths: {
+        activeDatabasePath: databaseFilePath,
+        activeDocumentsRoot: invoiceDocumentStorageRoot,
+        failedRoot: profileSnapshotPaths.restoreFailedRoot,
+        rollbackRoot: profileSnapshotPaths.restoreRollbackRoot,
+        stagingRoot: profileSnapshotPaths.stagingRoot,
+      },
+    });
+  const profileRestoreStartupRecovery =
+    new ProfileRestoreStartupRecovery({
+      journalStore: profileRestoreActivationJournalStore,
+      transaction: profileRestoreActivationTransaction,
+    });
   const secretFilePath = join(
     dataRoot,
     'secrets',
@@ -270,6 +325,39 @@ async function startDesktopCompositionRuntime({
       : undefined;
   const secretBrokerChannel = new MessageChannelMain();
   const invoicePdfArchiveBrokerChannel = new MessageChannelMain();
+  const profileSnapshotBrokerChannel = new MessageChannelMain();
+  const profileSnapshotBrokerClient = new ProfileSnapshotBrokerClient(
+    createProfileSnapshotBrokerTransport(profileSnapshotBrokerChannel.port1),
+  );
+  const safeStorageStringProtector = new SafeStorageStringProtector(
+    safeStorage,
+  );
+  const recoveryPointStore = new RecoveryPointStore({
+    keyProtector: new RecoveryPointKeyProtector(
+      safeStorageStringProtector,
+    ),
+    quarantineRoot: profileSnapshotPaths.quarantineRoot,
+    recoveryRoot: profileSnapshotPaths.recoveryPointsRoot,
+    stagingRoot: profileSnapshotPaths.stagingRoot,
+    validator: profileSnapshotBrokerClient,
+  });
+  const recoveryPointRotation = new RecoveryPointRotationService({
+    recoveryRoot: profileSnapshotPaths.recoveryPointsRoot,
+    store: recoveryPointStore,
+  });
+  const recoveryPointService = new RecoveryPointService({
+    appVersion: desktopAppVersion,
+    profileSnapshotClient: profileSnapshotBrokerClient,
+    rotation: recoveryPointRotation,
+    stagingRoot: profileSnapshotPaths.stagingRoot,
+    store: recoveryPointStore,
+  });
+  const recoveryPointScheduler = new RecoveryPointScheduler({
+    cleanShutdownMarker: new RecoveryPointCleanShutdownMarker(
+      profileSnapshotPaths.recoveryPointCleanShutdownMarkerPath,
+    ),
+    recoveryPointService,
+  });
   let applicationWindow: BrowserWindow | undefined;
   let pdfPreviewController: InvoicePdfPreviewWindowController | undefined;
   let operationalLogFolderCapability:
@@ -279,7 +367,37 @@ async function startDesktopCompositionRuntime({
     | InvoicePdfArchiveCapability
     | undefined;
   let supportBundleCapability: SupportBundleCapability | undefined;
+  let backupPasswordWindowController:
+    | BackupPasswordWindowController
+    | undefined;
+  let profileBackupCapability: ProfileBackupCapability | undefined;
   let shutdownStarted = false;
+
+  await Promise.all(
+    [
+      profileSnapshotPaths.quarantineRoot,
+      profileSnapshotPaths.stagingRoot,
+    ].map((path) =>
+      mkdir(path, {
+        mode: 0o700,
+        recursive: true,
+      }),
+    ),
+  );
+  const profileRestoreStartupMode =
+    await profileRestoreStartupRecovery.prepareBeforeBackend();
+  if (
+    smokeMode &&
+    options.smokeConfiguration.phase === 'restoredProfile'
+  ) {
+    if (profileRestoreStartupMode !== 'validateRestoredProfile') {
+      throw new Error('DESKTOP_SMOKE_RESTORE_STARTUP_MODE_FAILED');
+    }
+    await verifyPackagedRestoredDatabaseBeforeBackend({
+      activeDatabasePath: databaseFilePath,
+      smokeRoot: requireSmokeRoot(options.smokeConfiguration.root),
+    });
+  }
 
   const deliveryDialogAdapter: InvoiceDeliveryDialogAdapter = {
     showErrorBox: dependencies.showErrorBox,
@@ -316,7 +434,7 @@ async function startDesktopCompositionRuntime({
         );
       },
     },
-    protector: new SafeStorageStringProtector(safeStorage),
+    protector: safeStorageStringProtector,
     transport: createMainSecretBrokerTransport(secretBrokerChannel.port1),
   });
   const invoicePdfArchivePaths =
@@ -386,7 +504,11 @@ async function startDesktopCompositionRuntime({
     });
 
   try {
-    await options.reportSmokeStage('backend');
+    await options.reportSmokeStage(
+      options.smokeConfiguration.phase === 'restoredProfile'
+        ? 'restoredBackend'
+        : 'backend',
+    );
     backendHandle = await dependencies.startBackend({
       config: {
         appVersion: desktopAppVersion,
@@ -407,14 +529,18 @@ async function startDesktopCompositionRuntime({
         ),
         operationalLogsRoot,
         platform: process.platform,
+        profileSnapshotStagingRoot: profileSnapshotPaths.stagingRoot,
         runtimeInstanceId: options.runtimeInstanceId,
         runtimeSessionSecret,
         smokePdfPath,
+        verifySmokeSecretBroker:
+          smokeMode && options.smokeConfiguration.phase === 'initial',
       },
       operationalIdentity: desktopOperationalIdentity,
       operationalLogger: desktopOperationalLogger,
       invoicePdfArchiveBrokerPort:
         invoicePdfArchiveBrokerChannel.port2,
+      profileSnapshotBrokerPort: profileSnapshotBrokerChannel.port2,
       runnerPath: join(
         options.resourcesPath,
         'desktop-runtime',
@@ -423,17 +549,47 @@ async function startDesktopCompositionRuntime({
       ),
       secretBrokerPort: secretBrokerChannel.port2,
     });
+    await profileSnapshotBrokerClient.getStatus();
+    const restoreStartupResult =
+      await profileRestoreStartupRecovery.validateAfterBackend({
+        mode: profileRestoreStartupMode,
+        stopBackend: () => backendHandle!.stop(),
+        async validateActiveProfile() {
+          await profileSnapshotBrokerClient.validateActiveProfile();
+          await assertBackendHealth(
+            `http://127.0.0.1:${backendHandle!.port}`,
+            runtimeSessionSecret,
+          );
+        },
+      });
+    if (restoreStartupResult === 'relaunchRequired') {
+      profileSnapshotBrokerClient.close();
+      invoicePdfArchiveBrokerHandle.close();
+      secretBrokerHandle.close();
+      options.relaunchApplication();
+      return undefined;
+    }
+    await recoveryPointScheduler.start();
   } catch (error) {
+    await recoveryPointScheduler.stopChecks().catch(() => undefined);
+    await backendHandle?.stop().catch(() => undefined);
+    profileSnapshotBrokerClient.close();
     invoicePdfArchiveBrokerHandle.close();
     secretBrokerHandle.close();
     throw error;
   }
 
   backendHandle.onUnexpectedExit(() => {
-    dependencies.showErrorBox(
-      'Eky suljettiin',
-      'Paikallinen palvelu pysähtyi odottamatta. Sovellus suljetaan turvallisesti.',
-    );
+    void recoveryPointScheduler.stopChecks();
+    if (shutdownStarted) {
+      return;
+    }
+    if (!smokeMode) {
+      dependencies.showErrorBox(
+        'Eky suljettiin',
+        'Paikallinen palvelu pysähtyi odottamatta. Sovellus suljetaan turvallisesti.',
+      );
+    }
     options.quitApplication();
   });
   void invoicePdfArchiveService.retryPending(true).catch(() => undefined);
@@ -653,6 +809,172 @@ async function startDesktopCompositionRuntime({
       );
     },
   });
+  backupPasswordWindowController =
+    createBackupPasswordWindowController({
+      createWindow: (windowOptions) =>
+        new BrowserWindow(windowOptions),
+      ipcMain,
+      parentWindow: mainWindow,
+      preloadPath: join(
+        options.applicationPath,
+        'dist',
+        'profileBackup',
+        'passwordWindow',
+        'backupPasswordPreload.cjs',
+      ),
+    });
+  const portableProfileBackupService =
+    new PortableProfileBackupService({
+      appVersion: desktopAppVersion,
+      forbiddenRoots: [
+        dataRoot,
+        options.applicationPath,
+        options.resourcesPath,
+      ],
+      profileSnapshotClient: profileSnapshotBrokerClient,
+      quarantineRoot: profileSnapshotPaths.quarantineRoot,
+      stagingRoot: profileSnapshotPaths.stagingRoot,
+    });
+  const profileRestoreStagingService =
+    new ProfileRestoreStagingService({
+      profileSnapshotClient: profileSnapshotBrokerClient,
+      quarantineRoot: profileSnapshotPaths.quarantineRoot,
+      recoveryPointService,
+      stagingRoot: profileSnapshotPaths.stagingRoot,
+    });
+  const profileRestoreActivationService =
+    new ProfileRestoreActivationService({
+      profileSnapshotClient: profileSnapshotBrokerClient,
+      relaunchApplication: options.relaunchApplication,
+      stagingService: profileRestoreStagingService,
+      async stopBusinessRuntime() {
+        await recoveryPointScheduler.stopChecks();
+        await backendHandle!.stop();
+      },
+      transaction: profileRestoreActivationTransaction,
+    });
+  profileBackupCapability = createProfileBackupCapability({
+    backupService: portableProfileBackupService,
+    async confirmRestoreActivation(restore) {
+      const result = await dependencies.showMessageBox(mainWindow, {
+        buttons: [
+          'Peruuta',
+          'Korvaa tiedot ja käynnistä Eky uudelleen',
+        ],
+        cancelId: 0,
+        defaultId: 0,
+        detail: [
+          formatProfileBackupSummary(restore.summary),
+          '',
+          'Palautusta edeltävä konekohtainen palautuspiste on luotu.',
+          'Eky sulkee nykyisen työtilan ja käynnistyy uudelleen.',
+        ].join('\n'),
+        message:
+          'Vahvista vielä tietojen korvaaminen ja uudelleenkäynnistys.',
+        noLink: true,
+        title: 'Palauta Eky-varmuuskopio',
+        type: 'warning',
+      });
+      return result.response === 1;
+    },
+    async confirmRestoreReplacement(summary) {
+      const result = await dependencies.showMessageBox(mainWindow, {
+        buttons: ['Peruuta', 'Jatka palautuksen valmisteluun'],
+        cancelId: 0,
+        defaultId: 0,
+        detail: [
+          formatProfileBackupSummary(summary),
+          '',
+          'Nykyinen paikallinen yritystyötila korvataan varmuuskopion tiedoilla.',
+          'Ennen korvaamista Eky luo konekohtaisen palautuspisteen.',
+        ].join('\n'),
+        message: 'Haluatko valmistella varmuuskopion palautuksen?',
+        noLink: true,
+        title: 'Palauta Eky-varmuuskopio',
+        type: 'warning',
+      });
+      return result.response === 1;
+    },
+    ipcMain,
+    mainWindow,
+    operationalIdentity: desktopOperationalIdentity,
+    operationalLogger: desktopOperationalLogger,
+    passwordWindow: backupPasswordWindowController,
+    recoveryPointService,
+    restoreActivationService: profileRestoreActivationService,
+    restoreStagingService: profileRestoreStagingService,
+    async selectBackupSource() {
+      const result = await dependencies.showOpenDialog(mainWindow, {
+        filters: [
+          {
+            extensions: ['ekybackup'],
+            name: 'Eky-varmuuskopio',
+          },
+        ],
+        message: 'Valitse tarkistettava Eky-varmuuskopio',
+        properties: ['openFile'],
+        title: 'Tarkista Eky-varmuuskopio',
+      });
+      return result.canceled || result.filePaths.length !== 1
+        ? null
+        : result.filePaths[0] ?? null;
+    },
+    async selectBackupTarget(defaultFileName) {
+      const result = await dependencies.showSaveDialog(mainWindow, {
+        defaultPath: defaultFileName,
+        filters: [
+          {
+            extensions: ['ekybackup'],
+            name: 'Salattu Eky-varmuuskopio',
+          },
+        ],
+        title: 'Tallenna salattu Eky-varmuuskopio',
+      });
+      return result.canceled || result.filePath === ''
+        ? null
+        : result.filePath;
+    },
+    async selectRestoreSource() {
+      const result = await dependencies.showOpenDialog(mainWindow, {
+        filters: [
+          {
+            extensions: ['ekybackup'],
+            name: 'Salattu Eky-varmuuskopio',
+          },
+        ],
+        message: 'Valitse palautettava Eky-varmuuskopio',
+        properties: ['openFile'],
+        title: 'Palauta Eky-varmuuskopiosta',
+      });
+      return result.canceled || result.filePaths.length !== 1
+        ? null
+        : result.filePaths[0] ?? null;
+    },
+    showSafeError(kind) {
+      if (kind === 'recoveryPoint') {
+        deliveryConfirmation.showApplicationError(
+          'Palautuspistettä ei voitu luoda',
+          'Konekohtaista palautuspistettä ei voitu luoda turvallisesti.',
+        );
+        return;
+      }
+      if (kind === 'restore') {
+        deliveryConfirmation.showApplicationError(
+          'Varmuuskopiota ei voitu palauttaa',
+          'Palautusta ei voitu valmistella tai käynnistää turvallisesti. Nykyisiä tietoja ei korvattu.',
+        );
+        return;
+      }
+      deliveryConfirmation.showApplicationError(
+        kind === 'create'
+          ? 'Varmuuskopiota ei voitu luoda'
+          : 'Varmuuskopiota ei voitu tarkistaa',
+        kind === 'create'
+          ? 'Salattua varmuuskopiota ei voitu luoda turvallisesti.'
+          : 'Varmuuskopion salasana, eheys tai sisältö ei läpäissyt tarkistusta.',
+      );
+    },
+  });
   try {
     removeExpiredSupportBundleTemporaryFiles(dataRoot);
   } catch {
@@ -704,9 +1026,16 @@ async function startDesktopCompositionRuntime({
       invoicePdfArchiveCapability = undefined;
       supportBundleCapability?.dispose();
       supportBundleCapability = undefined;
+      profileBackupCapability?.dispose();
+      profileBackupCapability = undefined;
+      backupPasswordWindowController?.dispose();
+      backupPasswordWindowController = undefined;
 
       try {
+        await recoveryPointScheduler.stopChecks();
         await backendHandle.stop();
+        await recoveryPointScheduler.markCleanShutdown();
+        profileSnapshotBrokerClient.close();
         invoicePdfArchiveBrokerHandle.close();
         secretBrokerHandle.close();
         desktopOperationalLogger.write(
@@ -719,6 +1048,8 @@ async function startDesktopCompositionRuntime({
           ),
         );
       } catch {
+        await recoveryPointScheduler.stopChecks().catch(() => undefined);
+        profileSnapshotBrokerClient.close();
         invoicePdfArchiveBrokerHandle.close();
         secretBrokerHandle.close();
         desktopOperationalLogger.write(
@@ -748,27 +1079,57 @@ async function startDesktopCompositionRuntime({
       ),
     );
     try {
-      await loadApplicationWindow(mainWindow);
-      await runPackagedSmokeCheck({
-        appVersion: desktopAppVersion,
-        backend: backendHandle,
-        buildRevision: options.buildInfo.buildRevision,
-        databaseFilePath,
-        invoicePdfArchiveDirectoryPath: join(
-          requireSmokeRoot(options.smokeConfiguration.root),
-          'invoice-pdf-archive',
-        ),
-        invoicePdfArchiveService,
-        mainWindow,
-        pdfPreviewController,
-        runtimeSessionSecret,
-        runtimeInstanceId: options.runtimeInstanceId,
-        secretFilePath,
-        smokePdfPath,
-        supportBundlePath: requireSmokeSupportBundlePath(
-          smokeSupportBundlePath,
-        ),
+      const smokeRoot = requireSmokeRoot(
+        options.smokeConfiguration.root,
+      );
+
+      if (options.smokeConfiguration.phase === 'initial') {
+        await loadApplicationWindow(mainWindow);
+        await runPackagedSmokeCheck({
+          appVersion: desktopAppVersion,
+          backend: backendHandle,
+          buildRevision: options.buildInfo.buildRevision,
+          databaseFilePath,
+          invoicePdfArchiveDirectoryPath: join(
+            smokeRoot,
+            'invoice-pdf-archive',
+          ),
+          invoicePdfArchiveService,
+          mainWindow,
+          pdfPreviewController,
+          runtimeSessionSecret,
+          runtimeInstanceId: options.runtimeInstanceId,
+          secretFilePath,
+          smokePdfPath,
+          supportBundlePath: requireSmokeSupportBundlePath(
+            smokeSupportBundlePath,
+          ),
+          reportStage: options.reportSmokeStage,
+        });
+        await runPackagedProfileBackupBeforeRestore({
+          backupService: portableProfileBackupService,
+          backendPort: backendHandle.port,
+          profileSnapshotClient: profileSnapshotBrokerClient,
+          reportStage: options.reportSmokeStage,
+          restoreActivationService: profileRestoreActivationService,
+          restoreStagingService: profileRestoreStagingService,
+          runtimeInstanceId: options.runtimeInstanceId,
+          runtimeSessionSecret,
+          smokeRoot,
+          stagingRoot: profileSnapshotPaths.stagingRoot,
+        });
+        return undefined;
+      }
+
+      await runPackagedProfileBackupAfterRestore({
+        backupService: portableProfileBackupService,
+        backendPort: backendHandle.port,
+        profileSnapshotClient: profileSnapshotBrokerClient,
         reportStage: options.reportSmokeStage,
+        runtimeInstanceId: options.runtimeInstanceId,
+        runtimeSessionSecret,
+        smokeRoot,
+        stagingRoot: profileSnapshotPaths.stagingRoot,
       });
       desktopOperationalLogger.write(
         createDesktopOperationalEvent(
@@ -789,12 +1150,19 @@ async function startDesktopCompositionRuntime({
       mainWindow.destroy();
       options.quitApplication();
       return undefined;
-    } catch {
+    } catch (error) {
+      const errorCode =
+        error instanceof ProfileSnapshotBrokerError
+          ? error.code
+          : error instanceof Error &&
+              /^DESKTOP_SMOKE_[A-Z0-9_]{1,80}$/.test(error.message)
+            ? error.message
+          : 'PACKAGED_SMOKE_FAILED';
       desktopOperationalLogger.write(
         createDesktopOperationalEvent(
           {
             durationMs: Date.now() - smokeStartedAt,
-            errorCode: 'PACKAGED_SMOKE_FAILED',
+            errorCode,
             eventName: 'packagedSmoke.failed',
             retryable: false,
             sideEffectState: 'unknown',
@@ -803,7 +1171,7 @@ async function startDesktopCompositionRuntime({
           desktopOperationalIdentity,
         ),
       );
-      throw new Error('PACKAGED_SMOKE_FAILED');
+      throw new Error(errorCode);
     }
   }
 
@@ -829,6 +1197,54 @@ async function startDesktopCompositionRuntime({
 }
 
 const maximumSupportBundleBackendBytes = 8 * 1024 * 1024;
+const maximumHealthResponseBytes = 1_024;
+
+async function assertBackendHealth(
+  backendOrigin: string,
+  runtimeSessionSecret: string,
+): Promise<void> {
+  const response = await net.fetch(`${backendOrigin}/health`, {
+    headers: createBackendRequestHeaders(
+      new Headers(),
+      runtimeSessionSecret,
+    ),
+    method: 'GET',
+  });
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new Error('PROFILE_RESTORE_HEALTH_FAILED');
+  }
+  const declaredLength = Number(
+    response.headers.get('content-length') ?? '0',
+  );
+  if (
+    !Number.isFinite(declaredLength) ||
+    declaredLength < 0 ||
+    declaredLength > maximumHealthResponseBytes
+  ) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new Error('PROFILE_RESTORE_HEALTH_FAILED');
+  }
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (bytes.byteLength > maximumHealthResponseBytes) {
+    throw new Error('PROFILE_RESTORE_HEALTH_FAILED');
+  }
+  try {
+    const value = JSON.parse(bytes.toString('utf8')) as unknown;
+    if (
+      typeof value !== 'object' ||
+      value === null ||
+      Array.isArray(value) ||
+      Object.keys(value).length !== 1 ||
+      !('status' in value) ||
+      value.status !== 'ok'
+    ) {
+      throw new Error('PROFILE_RESTORE_HEALTH_FAILED');
+    }
+  } catch {
+    throw new Error('PROFILE_RESTORE_HEALTH_FAILED');
+  }
+}
 
 async function loadSupportBundleBackendData(
   backendOrigin: string,
@@ -935,4 +1351,27 @@ function createInvoicePdfPreviewController(
       return available;
     },
   });
+}
+
+function formatProfileBackupSummary(
+  summary: ProfileBackupInspectionSummary,
+): string {
+  const createdAt = new Intl.DateTimeFormat('fi-FI', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date(summary.createdAt));
+  const sizeInMegabytes = (
+    summary.totalBusinessByteSize /
+    (1024 * 1024)
+  ).toLocaleString('fi-FI', {
+    maximumFractionDigits: 1,
+    minimumFractionDigits: 1,
+  });
+
+  return [
+    `Varmuuskopio luotu: ${createdAt}`,
+    `Eky-versio: ${summary.appVersion}`,
+    `Laskuasiakirjoja: ${summary.documentCount}`,
+    `Tietojen koko: ${sizeInMegabytes} Mt`,
+  ].join('\n');
 }

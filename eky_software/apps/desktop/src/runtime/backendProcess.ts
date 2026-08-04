@@ -24,6 +24,7 @@ export interface StartDesktopBackendOptions {
   invoicePdfArchiveBrokerPort: MessagePortMain;
   operationalIdentity: DesktopOperationalIdentity;
   operationalLogger?: DesktopOperationalLogger;
+  profileSnapshotBrokerPort: MessagePortMain;
   runnerPath: string;
   secretBrokerPort: MessagePortMain;
 }
@@ -97,6 +98,7 @@ export function startDesktopBackend(
         [
           options.secretBrokerPort,
           options.invoicePdfArchiveBrokerPort,
+          options.profileSnapshotBrokerPort,
         ],
       );
     });

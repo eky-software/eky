@@ -2,12 +2,96 @@
 
 ## Tila
 
-Arkkitehtuuripäätös on hyväksytty ADR-0009:ssä. Backup-, restore- ja
-palautuspistetuotantokoodia ei ole vielä toteutettu.
+Arkkitehtuuripäätös on hyväksytty ADR-0009:ssä.
 
-Dokumentoitu ja automaattisesti testattu palautuspolku on yhden hallitun
-oikeaa dataa käyttävän R0-asennuksen release gate. Toteutus tehdään
-rajattuina vaiheina ennen oikean asiakas- tai laskutusdatan käyttöönottoa.
+Toteutettu 4.8.2026 mennessä:
+
+- backendin yksityinen maintenance- ja snapshot-broker
+- `better-sqlite3` backup API:lla tehtävä SQLite-snapshot
+- Invoicingin auktoritatiivisten current PDF -artifactien staging ja katalogi
+- versionoitu portable `.ekybackup` v1 -container, AES-256-GCM ja lukittu
+  scrypt-profiili
+- desktop mainin inspector, joka autentikoi containerin ennen JSON-parsintaa
+  ja purkaa sisällön vain yksityiseen karanteeniin
+- main-owned kertakäyttöinen backup-salasanaikkuna sekä portable writerin
+  Save-dialog-, salaus- ja self-inspection-polku
+- konekohtaisen palautuspisteen erillinen `EKYRCV01`-container, satunnainen
+  data-avain ja Electron `safeStorage` -suojattu avainenvelope
+- palautuspisteiden strict index, health-tarkistus, automaattinen 24 tunnin
+  ajastus, nimetty manual/pre-restore/pre-update/pre-migration-rajapinta,
+  crash-safe rotaatiojournal ja puhtaan sammutuksen merkki
+- backendin staged snapshot -validointi: integrity, foreign keys,
+  migraatioketju, profiili-identiteetti, artifact-katalogi, PDF-signatuurit,
+  koot, checksumit ja suljettu tiedostojoukko
+- kaksivaiheinen restore-staging: kertakäyttöinen tarkastusvaltuutus,
+  tarkastetun containerin SHA-256-sidonta, uusi salasanakysely, pakollinen
+  pre-restore-palautuspiste ja aktiivisesta profiilista erillinen yksityinen
+  staging-juuri
+- aktiivisen palautuskohteen backend-tarkistus: saman profiilin backup
+  sallitaan, mutta vieras profiili vain asennukseen, jossa ei ole lainkaan
+  business-, audit- tai muuta käyttäjädataa
+- crash-safe aktivointijournal, rajattu Windows rename -retry ja rollback
+  jokaisen aktivointivaiheen virheessä
+- Oma yritys -näkymän desktop-only backup-, inspect- ja restore-capabilityt
+- kaksiprosessinen hardened Windows packaged smoke, joka tekee salatun
+  backupin, palauttaa sen, käynnistää uuden runtime-sessionin ja vertaa
+  tietokannan sekä kaikkien auktoritatiivisten lasku-PDF:ien identiteetit
+- paketoitu todistus siitä, että backupin jälkeen lisätty business-muutos
+  poistuu palautuksessa mutta konekohtainen `safeStorage`-SMTP-salaisuus
+  säilyy eikä sitä tuoda backupista
+
+Dokumentoitu ja automaattisesti testattu palautuspolku muodostaa yhden
+hallitun oikeaa dataa käyttävän R0-asennuksen release gaten. Toteutus ei yksin
+avaa oikean datan käyttöönottoa, vaan lopullisen testimatriisin pitää olla
+vihreä samalla release-kandidaatilla. Portti pidetään jatkossa suljettuna
+ajamalla riskiperusteiset testit aina backup-, restore-, runtime- tai
+business-artifact-rajojen muuttuessa.
+
+## Checkpoint J: toteutus dokumentoitu
+
+R0:n salatun paikallisen backup/restore-ketjun toteutus on dokumentoitu
+4.8.2026. Portable container on versio `v1`, se käyttää AES-256-GCM:ää,
+16 tavun autentikointitagia ja canonical headeria AAD:na. Lukittu
+`scrypt`-profiili on `N = 2^17`, `r = 8`, `p = 1`; Windows x64 -benchmarkin
+mediaani oli noin 246,4 ms.
+
+Snapshot muodostetaan yhden maintenance-operaation sisällä
+`better-sqlite3` backup API:lla. Invoicing luetteloi erillisellä
+backup-catalog-portilla kaikki tietokannan auktoritatiiviset
+`invoice_documents`-artifactit. Puuttuva viitattu tiedosto estää backupin,
+eikä tuntematonta storage-tiedostoa lisätä hiljaisesti.
+
+Restore etenee authenticated inspect -> private staging -> pre-restore
+recovery point -> activation journal -> backend restart ->
+integrity/health-tarkistus. Aktivointivirhe palauttaa vanhan profiilin
+idempotentin journalin avulla. Windowsin väliaikaiset tiedostolukot saavat
+vain rajatun, nimetyille virhekoodeille sallitun retry-polun; levytila-,
+validointi- tai muu virhe ei muutu retryksi tai osittaiseksi palautukseksi.
+
+Machine-local recovery pointit ovat `safeStorage`-suojattuja, konekohtaisia ja
+eri artifacteja kuin siirrettävä `.ekybackup`. Niiden daily/weekly/monthly-
+rotaatio, levybudjetti sekä aktiivisten pre-restore/pre-update-pisteiden suoja
+on testattu.
+
+Kaksiprosessinen packaged smoke käyttää vain synteettistä profiilia. Prosessi
+1 tallentaa ennen palautusta vain hashit ja tekniset testitunnisteet,
+aktivoi palautuksen ja päättyy. Prosessi 2 käynnistyy samasta palautetusta
+profiilista, todistaa uuden runtime-sessionin, tietokannan ja PDF-artifactien
+tarkan vastaavuuden, backupin jälkeisen mutaation poistumisen sekä
+backupista poissuljetun SMTP-salaisuuden jatkuvuuden. Smoke-tilatiedosto ei
+sisällä salasanaa, sessionia, raakaa polkua eikä business dataa.
+
+Tämä checkpoint ei toteuta Windows-installeria, code signingia,
+automaattipäivitystä, pilvivarmuuskopiota, osapalautusta tai usean profiilin
+yhdistämistä. Ne säilyvät erillisten hyväksyntä- ja release-porttien takana.
+
+Ennen kuin oikean datan R0-portti voidaan merkitä suljetuksi samalla
+release-kandidaatilla, ajetaan vielä koko workspace-verifiointi,
+riippuvuusauditit, kaikki E2E-ryhmät, Windows-paketointi, liitteen mukaiset
+kolme packaged-smoke-skenaariota, backup/restore-endurance,
+`test:e2e:desktop-stress` ja 30 minuutin desktop-soak. Aiemmat yleiset
+endurance- ja soak-baselinet eivät yksin korvaa tätä
+backup/restore-kohtaista hyväksyntää.
 
 ## Tavoite ja rajaus
 
@@ -131,17 +215,29 @@ turvalliseen tunnistamiseen ja purkuun tarvittavat kentät:
 
 - magic bytes
 - container format version
+- otsakkeen pituus
 - encryption algorithm identifier
 - KDF identifier ja parametriversio
-- rajatut KDF-parametrit
 - salt
 - nonce
-- authentication tag
-- salatun payloadin rajattu pituus
+- salatun payloadin rajattu pituus unsigned 64-bit -arvona
+- mahdolliset pakolliset nollaksi vaaditut reserved-kentät
 
 Otsake ei sisällä henkilötietoa, yritystunnistetta, polkua, backupin
-kuvausta tai vapaamuotoista metadataa. Koko versionoitu otsake sidotaan
-AES-256-GCM-salaukseen AAD-tietona.
+kuvausta, luontiaikaa, tiedostonimiä, manifestia tai vapaamuotoista metadataa.
+Koko versionoitu kanoninen otsake sidotaan AES-256-GCM-salaukseen
+byte-for-byte AAD-tietona.
+
+Containerin järjestys on täsmälleen:
+
+1. kanoninen authenticated header
+2. ciphertext
+3. 16 tavun authentication tag
+
+Authentication tag ei kuulu otsakkeeseen eikä AAD-tietoon. Parser vaatii
+täsmällisen tagipituuden ja torjuu kaiken tagin jälkeisen ylimääräisen datan.
+Kaikki pituudet tarkistetaan ennen muistivarausta, eikä containerin otsakkeesta
+lueta vapaasti luotettavia kryptografiaparametreja.
 
 Salaus käyttää:
 
@@ -151,18 +247,40 @@ Salaus käyttää:
 - jokaiselle salaukselle uniikkia nonce-arvoa
 - täyttä authentication tag -arvoa
 
-Tarkat `scrypt`-parametrit valitaan ja versionoidaan vasta benchmarkin jälkeen.
-Reader hyväksyy vain tunnetun parametriversion ja ennalta rajatut
-resurssiarvot. Tällä estetään sekä liian heikko avaimenjohto että
-haitallisesti ylimitoitettu KDF.
+Portable container v1 käyttää KDF-profiilia 1:
+
+- `scrypt`
+- `N = 2^17`
+- `r = 8`
+- `p = 1`
+- 32 tavun avain
+- eksplisiittinen `maxmem = 256 MiB`
+
+Windows x64 / Node 24 -kehitysympäristössä 4.8.2026 tehty viiden ajon
+benchmark antoi mediaaneiksi `2^15`:lle 55,1 ms, `2^16`:lle 111,3 ms ja
+`2^17`:lle 246,4 ms. Arvioidut scrypt-muistikustannukset olivat vastaavasti
+32, 64 ja 128 MiB. Profiili 1 valittiin vahvimmaksi nykyisellä koneella
+käytännölliseksi osoittautuneeksi vaihtoehdoksi. Valinta on vielä varmennettava
+paketoidussa Electron-main/utility-ajossa pilottilaitetta vastaavalla Windows
+x64 -ympäristöllä ennen R0-release gaten sulkemista.
+
+Reader hyväksyy vain tunnetun parametriversion ja koodiin lukitut
+resurssiarvot. Container ei sisällä vapaasti luotettavaa `N/r/p`-
+yhdistelmää. Tällä estetään sekä liian heikko avaimenjohto että haitallisesti
+ylimitoitettu KDF ennen raskaan työn aloittamista.
 
 Käyttäjälle ei tarjota salaamatonta fallbackia. Salaus- tai
 satunnaislukugeneraattorin virhe keskeyttää backupin.
 
 ## Salasanan lifecycle
 
-- salasana kysytään native/main-prosessin hallitsemassa vahvistetussa
-  toimintopolussa
+- tavallinen application renderer ei saa salasanaa
+- Electron main avaa erillisen kertakäyttöisen password BrowserWindowin
+- password window käyttää sandboxia ja context isolationia, poistaa
+  Node-integraation eikä saa backend-pääsyä
+- ikkunassa ei sallita navigointia, popup-ikkunoita tai production-devtoolsia
+- minimaalinen preload sallii vain submit- ja cancel-toiminnot
+- salasana välitetään mainille kerran ja ikkuna tuhotaan heti
 - renderer ei tallenna salasanaa sovellusstateen, local storageen tai lokiin
 - salasanaa ei välitetä URL:ssa, komentorivillä tai ympäristömuuttujassa
 - salasanaa, johdettua avainta ja selväkielistä payloadia pidetään muistissa
@@ -174,6 +292,26 @@ satunnaislukugeneraattorin virhe keskeyttää backupin.
 Käyttöliittymä varmistaa salasanan kahdella syötöllä ja kertoo ennen vientiä,
 että unohtunutta salasanaa ei voi palauttaa. Lopullinen salasanapolitiikka
 päätetään toteutusvaiheen turvallisuus- ja käytettävyystestissä.
+
+## Private plaintext staging
+
+Private plaintext staging sallitaan vain snapshot-, inspect- tai restore-
+operaation ajaksi Electron mainin omistamassa `userData`-alueen yksityisessä
+runtime-juuressa. Se ei ole käyttäjän varmuuskopiotiedosto, eikä levylle jätetä
+monoliittista selväkielistä backup-payloadia.
+
+Restore-staging sisältää business-profiilidataa, joten siihen sovelletaan samoja
+polku-, käyttöoikeus-, symlink-, reparse point- ja lokitussääntöjä kuin
+aktiiviseen profiiliin. Operaation onnistuminen ja epäonnistuminen siivoavat
+stagingin best effort -mallilla. Desktopin käynnistys tunnistaa ja siivoaa
+keskeytyksestä jääneet tunnetut temp- ja staging-slotit ennen normaalin
+business-runtimen avaamista.
+
+## Null-sääntö
+
+Uudet backup-, manifest-, journal- ja IPC-sopimukset torjuvat `null`-arvon,
+ellei kenttä ole eksplisiittisesti nullable. Väärää JSON-tyyppiä ei muunnetta
+hiljaisesti tyhjäksi, puuttuvaksi tai oletusarvoksi.
 
 ## SQLite-snapshot
 
@@ -190,13 +328,12 @@ Ensisijainen tutkittava malli on:
 5. snapshotin integrity ja foreign keys tarkistetaan erillisestä tiedostosta
 6. runtime palaa käyttöön vasta kun snapshot-vaihe on valmis
 
-Ennen valintaa pitää varmistaa käytetyn `better-sqlite3`-version API,
-keskeytyssemantiikka, WAL-käyttäytyminen, progress/cancellation ja Windows-
-paketointi testeillä. Jos tätä ei voida todistaa, fallback on backendin ja
-SQLite-yhteyden hallittu sulkeminen snapshotin ajaksi.
-
-Dokumentti ei väitä kumpaakaan mallia toteutetuksi tai lopullisesti valituksi
-ennen kokeellista varmennusta.
+`better-sqlite3 13.0.2` backup API:n WAL-käyttäytyminen, progress/cancellation,
+snapshotin erillinen integrity- ja foreign-key-tarkistus sekä Windows-
+yhteensopivuus on varmennettu automaattisilla testeillä. Tämä on valittu R0:n
+SQLite-snapshot-malliksi. Jos myöhempi ajuri- tai Electron-päivitys rikkoo
+todennetun yhteensopivuuden, release estetään ja fallbackina arvioidaan
+backendin ja SQLite-yhteyden hallittua sulkemista snapshotin ajaksi.
 
 ## Maintenance-tila
 
@@ -246,9 +383,43 @@ mutta eri containeria ja avainmallia:
 - `safeStorage`-virhe estää pisteen luonnin
 - palautuspistettä ei voi viedä siirrettävänä backupina
 
-Ajastus ja rotaatio noudattavat ADR-0009:ää. Tarkat päivittäisten,
-viikoittaisten ja kuukausittaisten pisteiden määrät sekä levybudjetti
-määritetään toteutusvaiheessa.
+Palautuspisteet sijaitsevat
+`userData/runtime/recovery-points/<profile-id>/`-juuressa. Ne eivät sijaitse
+aktiivisen datan, dokumenttien, lokien tai sovelluspaketin juuressa, eikä
+palautuspiste saa koskaan sisältää muita palautuspisteitä.
+
+Automaattinen tarkistus tehdään terveessä käynnistyksessä ja sen jälkeen
+rajatulla tunnin välein ajettavalla schedulerilla. Uusi automaattinen piste
+luodaan aikaisintaan 24 tuntia viimeisimmästä validoidusta hyvästä pisteestä.
+Jokainen tarkistus hankkii backendin maintenance-lukon ja validoi uuden
+SQLite- ja business-artifact-snapshotin ennen kuin sitä voidaan pitää uutena
+hyvänä pisteenä. Unclean startup ei siten snapshottaa epäiltyä profiilia
+hyväksi ilman integrity-, foreign key-, migration-, profiili- ja
+artifact-tarkistuksia.
+
+R0-retention on:
+
+- 7 uusinta päivittäistä
+- 4 uusinta viikoittaista
+- 6 uusinta kuukausittaista
+- 3 uusinta pre-update/pre-migration-pistettä
+- 2 uusinta pre-restore-pistettä
+- 3 uusinta manuaalista pistettä
+- uusin validoitu hyvä piste on aina suojattu
+- uusin pre-update- ja pre-restore-piste sekä aktiiviseksi ilmoitettu
+  pre-operation-piste ovat aina suojattuja
+- profiilikohtainen absoluuttinen levybudjetti on 2 GiB
+
+Budjetti poistaa vanhimmat suojaamattomat pisteet. Suojattua pistettä ei
+poisteta budjetin ylityksessä, vaan tila muuttuu turvalliseksi
+`protectedPointsExceedBudget`-varoitukseksi. Poistot kirjataan ennen
+ensimmäistä poistamista versionoituun rotaatiojournaliin ja keskeytynyt
+rotaatio jatkuu idempotentisti seuraavassa tarkistuksessa.
+
+Puhtaan sammutuksen merkki kirjoitetaan vasta backendin onnistuneen hallitun
+sammutuksen jälkeen. Markerissa on vain formaattiversio ja ISO-aikaleima.
+Väärä rakenne, puuttuva merkki tai kesken jäänyt marker-korvaus tulkitaan
+unclean shutdowniksi.
 
 ## Inspector
 
@@ -287,6 +458,19 @@ Restore tehdään vain täysin suljettuun uuteen staging-profiiliin:
 10. document storage -checksumit ja tietokantaviittaukset tarkistetaan
 11. business-invariantit tarkistetaan moduulien nimetyillä validointirajoilla
 
+Tarkastus ja staging ovat eri vahvistusvaiheita. Tarkastus säilyttää vain
+kertakäyttöisen tunnisteen, lähdepolun, containerin SHA-256-tiivisteen,
+turvallisen yhteenvedon ja lyhyen vanhenemisajan. Salasanaa tai johdettua
+avainta ei säilytetä. Staging pyytää salasanan uudelleen, kuluttaa
+tarkastustunnisteen, muodostaa ennen purkua onnistuneen pre-restore-pisteen ja
+hylkää lähteen, jos container on vaihtunut tarkastuksen jälkeen.
+
+Stagingiin kirjoitetään vain uusiin final-polkujen `next`-tiedostoihin.
+Tiedostot synkronoidaan ennen final-nimeä, olemassa olevaa final-polkuja ei
+korvata ja valmistuneelta tiedostolta vaaditaan tavallinen tiedostotyyppi sekä
+yksi linkki. Epäonnistunut staging poistetaan kokonaan best effort -siivouksen
+sijaan hallitun operaation omasta yksityisestä juuresta.
+
 Restore ei:
 
 - kirjoita aktiiviseen profiiliin
@@ -324,6 +508,11 @@ R0:ssa:
 - toisesta asennuksesta tuotu backup voidaan palauttaa vain tyhjään
   asennukseen
 - eri yrityksen profiilin päälle ei palauteta eikä tietoja yhdistetä
+
+Tyhjä asennus tarkoittaa backendin tarkistamaa profiilia, jossa tunnetut
+runtime-infrastruktuuritaulut voivat olla olemassa, mutta yhdessäkään muussa
+taulussa ei ole rivejä. Renderer ei päätä tyhjyyttä eikä saa taulu- tai
+yritystietoja tämän tarkistuksen tuloksena.
 
 Myöhempi multi-profile-malli voi tukea palautusta uutena yritysprofiilina.
 Se ei kuulu tähän toteutusvaiheeseen.
@@ -503,6 +692,7 @@ eivät Backup/Restore-polkuun.
 - `docs/ai/testing-rules.md`
 - `docs/architecture/e2e-test-environment.md`
 - `docs/architecture/e2e-testing-strategy.md`
+- `docs/architecture/local-backup-artifact-inventory.md`
 - `docs/architecture/local-desktop-implementation-plan.md`
 - `docs/architecture/local-invoice-pdf-archive-plan.md`
 - `docs/architecture/r0-e2e-test-matrix.md`

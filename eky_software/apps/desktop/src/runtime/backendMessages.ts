@@ -17,9 +17,11 @@ export interface DesktopBackendStartMessage {
     migrationsDirectory: string;
     operationalLogsRoot: string;
     platform: string;
+    profileSnapshotStagingRoot: string;
     runtimeInstanceId: string;
     runtimeSessionSecret: string;
     smokePdfPath: string;
+    verifySmokeSecretBroker: boolean;
   };
   type: 'start';
 }
@@ -47,6 +49,7 @@ export interface DesktopBackendFailedMessage {
 export type DesktopBackendFailureCode =
   | 'BACKEND_INVOICE_PDF_ARCHIVE_BROKER_FAILED'
   | 'BACKEND_MODULE_IMPORT_FAILED'
+  | 'BACKEND_PROFILE_SNAPSHOT_BROKER_FAILED'
   | 'BACKEND_SECRET_BROKER_FAILED'
   | 'BACKEND_SERVER_START_FAILED'
   | 'BACKEND_SMOKE_PDF_FAILED';
@@ -58,6 +61,7 @@ export type DesktopBackendStatusMessage =
 const backendFailureCodes = new Set<DesktopBackendFailureCode>([
   'BACKEND_INVOICE_PDF_ARCHIVE_BROKER_FAILED',
   'BACKEND_MODULE_IMPORT_FAILED',
+  'BACKEND_PROFILE_SNAPSHOT_BROKER_FAILED',
   'BACKEND_SECRET_BROKER_FAILED',
   'BACKEND_SERVER_START_FAILED',
   'BACKEND_SMOKE_PDF_FAILED',
@@ -105,6 +109,7 @@ export function parseDesktopBackendCommand(
     'invoiceDocumentStorageRoot',
     'migrationsDirectory',
     'operationalLogsRoot',
+    'profileSnapshotStagingRoot',
     'smokePdfPath',
   ] as const;
 
@@ -125,6 +130,7 @@ export function parseDesktopBackendCommand(
     typeof config.runtimeInstanceId !== 'string' ||
     !runtimeInstanceIdPattern.test(config.runtimeInstanceId) ||
     !isDesktopRuntimeSession(config.runtimeSessionSecret) ||
+    typeof config.verifySmokeSecretBroker !== 'boolean' ||
     pathKeys.some((key) => !isSafeAbsolutePath(config[key]))
   ) {
     return undefined;
@@ -145,9 +151,12 @@ export function parseDesktopBackendCommand(
       migrationsDirectory: config.migrationsDirectory as string,
       operationalLogsRoot: config.operationalLogsRoot as string,
       platform: config.platform,
+      profileSnapshotStagingRoot:
+        config.profileSnapshotStagingRoot as string,
       runtimeInstanceId: config.runtimeInstanceId,
       runtimeSessionSecret: config.runtimeSessionSecret,
       smokePdfPath: config.smokePdfPath as string,
+      verifySmokeSecretBroker: config.verifySmokeSecretBroker,
     },
     type: 'start',
   };

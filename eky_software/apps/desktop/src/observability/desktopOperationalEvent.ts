@@ -101,6 +101,26 @@ export interface DesktopOperationalEventPayloadMap {
   'supportBundle.creationFailed': FailureFields & {
     correlationId: string;
   };
+  'backup.started': {
+    correlationId: string;
+    stage: 'portable';
+  };
+  'backup.completed': {
+    correlationId: string;
+    durationMs?: number;
+    stage: 'portable';
+  };
+  'backup.failed': FailureFields & {
+    correlationId: string;
+  };
+  'backup.inspectionCompleted': {
+    correlationId: string;
+    durationMs?: number;
+    stage: 'portable';
+  };
+  'backup.inspectionFailed': FailureFields & {
+    correlationId: string;
+  };
 }
 
 interface FailureFields {
@@ -329,6 +349,28 @@ export const desktopOperationalEventSpecs = Object.freeze({
     'failure',
     ['correlationId', ...failureFields],
   ),
+  'backup.started': spec('backup', 'info', 'success', [
+    'correlationId',
+    'stage',
+  ]),
+  'backup.completed': spec('backup', 'info', 'success', [
+    'correlationId',
+    'durationMs',
+    'stage',
+  ]),
+  'backup.failed': spec('backup', 'error', 'failure', [
+    'correlationId',
+    ...failureFields,
+  ]),
+  'backup.inspectionCompleted': spec('backup', 'info', 'success', [
+    'correlationId',
+    'durationMs',
+    'stage',
+  ]),
+  'backup.inspectionFailed': spec('backup', 'warn', 'failure', [
+    'correlationId',
+    ...failureFields,
+  ]),
 } satisfies Record<DesktopOperationalEventName, DesktopOperationalEventSpec>);
 
 export const desktopRequiredPayloadFields = Object.freeze({
@@ -376,6 +418,11 @@ export const desktopRequiredPayloadFields = Object.freeze({
   'supportBundle.creationStarted': ['correlationId'],
   'supportBundle.creationCompleted': ['correlationId'],
   'supportBundle.creationFailed': ['correlationId', 'errorCode'],
+  'backup.started': ['correlationId', 'stage'],
+  'backup.completed': ['correlationId', 'stage'],
+  'backup.failed': ['correlationId', 'errorCode'],
+  'backup.inspectionCompleted': ['correlationId', 'stage'],
+  'backup.inspectionFailed': ['correlationId', 'errorCode'],
 } satisfies Record<DesktopOperationalEventName, readonly string[]>);
 
 function spec(

@@ -31,6 +31,7 @@ interface ActiveInvoicePdfPreview {
 
 export interface InvoicePdfPreviewWindowController {
   close(): void;
+  closeForSmoke(): Promise<void>;
   dispose(): void;
   hasRendererBridgeForSmoke(): Promise<boolean>;
   openForSmoke(invoiceId: string): Promise<void>;
@@ -172,6 +173,19 @@ export function createInvoicePdfPreviewWindowController(
 
       activePreview = undefined;
     },
+    async closeForSmoke() {
+      const preview = activePreview;
+
+      if (preview === undefined || preview.window.isDestroyed()) {
+        activePreview = undefined;
+        return;
+      }
+
+      await new Promise<void>((resolveClose) => {
+        preview.window.once('closed', resolveClose);
+        preview.window.close();
+      });
+    },
     dispose() {
       options.ipcMain.removeHandler(invoicePdfPreviewIpcChannel);
 
@@ -184,15 +198,21 @@ export function createInvoicePdfPreviewWindowController(
     async hasRendererBridgeForSmoke() {
       return options.mainWindow.webContents.executeJavaScript(
         `typeof window.ekyDesktop === 'object' &&
+          typeof window.ekyDesktop.activatePreparedProfileRestore === 'function' &&
           typeof window.ekyDesktop.chooseInvoicePdfArchiveDirectory === 'function' &&
+          typeof window.ekyDesktop.createEncryptedProfileBackup === 'function' &&
+          typeof window.ekyDesktop.createManualRecoveryPoint === 'function' &&
           typeof window.ekyDesktop.createSupportBundle === 'function' &&
           typeof window.ekyDesktop.disableInvoicePdfArchive === 'function' &&
           typeof window.ekyDesktop.getInvoicePdfArchiveStatus === 'function' &&
+          typeof window.ekyDesktop.getProfileBackupStatus === 'function' &&
+          typeof window.ekyDesktop.inspectEncryptedProfileBackup === 'function' &&
           typeof window.ekyDesktop.openInvoicePdf === 'function' &&
           typeof window.ekyDesktop.openInvoicePdfArchiveDirectory === 'function' &&
           typeof window.ekyDesktop.openOperationalLogFolder === 'function' &&
+          typeof window.ekyDesktop.prepareEncryptedProfileRestore === 'function' &&
           typeof window.ekyDesktop.retryPendingInvoicePdfArchiveTasks === 'function' &&
-          Object.keys(window.ekyDesktop).length === 8`,
+          Object.keys(window.ekyDesktop).length === 14`,
         true,
       );
     },

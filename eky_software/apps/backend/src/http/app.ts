@@ -44,6 +44,12 @@ import {
 import { SqliteCompanySettingsAuditRetention } from '../modules/companySettings/infrastructure/sqliteCompanySettingsAuditRetention.js';
 import { SqliteCustomerAuditRetention } from '../modules/customers/infrastructure/sqliteCustomerAuditRetention.js';
 import { SqliteInvoiceSettingsAuditRetention } from '../modules/invoicing/infrastructure/sqliteInvoiceSettingsAuditRetention.js';
+import { createProfileMaintenanceMiddleware } from './profileMaintenance.js';
+import { ProfileMaintenanceState } from '../runtime/profileMaintenance/profileMaintenanceState.js';
+import { createConsistentProfileSnapshotService } from '../runtime/profileSnapshot/createConsistentProfileSnapshot.js';
+import type { ProfileSnapshotServiceRegistration } from '../runtime/profileSnapshot/profileSnapshotTypes.js';
+import { StagedProfileSnapshotValidationService } from '../runtime/profileSnapshot/validateProfileSnapshot.js';
+import { CurrentActiveProfileValidationService } from '../runtime/profileSnapshot/validateActiveProfile.js';
 
 const defaultAppVersion = '0.0.0';
 
@@ -64,6 +70,8 @@ export interface CreateAppOptions {
   operationalIdentity?: Readonly<OperationalRuntimeIdentity>;
   operationalLogsRoot?: string;
   platform?: string;
+  profileMaintenanceState?: ProfileMaintenanceState;
+  profileSnapshotServiceRegistration?: ProfileSnapshotServiceRegistration;
   runtimeTrust?: RuntimeTrust;
 }
 
@@ -247,6 +255,9 @@ export async function createApp(
   }
 
   const localRuntimeIdentity = readLocalRuntimeIdentity(database);
+  const profileMaintenanceState =
+    options.profileMaintenanceState ?? new ProfileMaintenanceState();
+
   const app = new Hono<BackendEnvironment>();
 
   app.use(
@@ -287,6 +298,7 @@ export async function createApp(
       },
     ),
   );
+  app.use('*', createProfileMaintenanceMiddleware(profileMaintenanceState));
 
   app.get('/health', (context) => {
     return context.json({ status: 'ok' });
@@ -338,6 +350,47 @@ export async function createApp(
       ? {}
       : { invoiceDocumentStorageRoot: options.invoiceDocumentStorageRoot }),
   });
+
+  if (options.profileSnapshotServiceRegistration !== undefined) {
+    if (
+      options.migrationsDirectory === undefined ||
+      options.invoiceDocumentStorageRoot === undefined
+    ) {
+      database.close();
+      throw new Error(
+        'Profile snapshot runtime paths must be configured.',
+      );
+    }
+    const snapshotService = createConsistentProfileSnapshotService({
+        catalog: invoicingComposition.invoiceBackupArtifactCatalog,
+        database,
+        invoiceDocumentStorageRoot: options.invoiceDocumentStorageRoot,
+        maintenanceState: profileMaintenanceState,
+        migrationsDirectory: options.migrationsDirectory,
+        stagingRoot: options.profileSnapshotServiceRegistration.stagingRoot,
+      });
+    const validationService =
+      new StagedProfileSnapshotValidationService({
+        activeDatabase: database,
+        migrationsDirectory: options.migrationsDirectory,
+        stagingRoot: options.profileSnapshotServiceRegistration.stagingRoot,
+      });
+    const activeValidationService =
+      new CurrentActiveProfileValidationService(
+        database,
+        options.invoiceDocumentStorageRoot,
+      );
+    options.profileSnapshotServiceRegistration.register({
+      createProfileSnapshot: (input) =>
+        snapshotService.createProfileSnapshot(input),
+      prepareProfileRestoreActivation: (operationId) =>
+        validationService.prepareProfileRestoreActivation(operationId),
+      validateActiveProfile: () =>
+        activeValidationService.validateActiveProfile(),
+      validateProfileSnapshot: (operationId) =>
+        validationService.validateProfileSnapshot(operationId),
+    });
+  }
 
   app.route('/', invoicingComposition.routes);
   app.route(

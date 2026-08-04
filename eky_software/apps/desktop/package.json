@@ -6,6 +6,7 @@
   "main": "dist/main/index.js",
   "scripts": {
     "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.build.json",
+    "backup:scrypt-benchmark": "node scripts/benchmark-backup-scrypt.mjs",
     "e2e:build": "node scripts/clean-e2e-dist.mjs && tsc -p tsconfig.e2e.json && node scripts/write-electron-e2e-package.mjs",
     "e2e:prepare-backend": "node scripts/prepare-electron-e2e-backend.mjs",
     "e2e:prepare-electron-runtime": "pnpm exec install-electron --no && node scripts/assert-electron-development-runtime.mjs",

@@ -16,6 +16,7 @@ import {
   getDesktopInvoicePdfPreview,
   getDesktopInvoicePdfArchive,
   getDesktopOperationalLogFolder,
+  getDesktopProfileProtection,
   getDesktopSupportBundleCreator,
 } from './desktopBridge.js';
 
@@ -32,6 +33,7 @@ export function App({ apiClient }: AppProps): React.JSX.Element {
   const activeTitle = uiText.modules[activeView];
   const openInvoicePdfPreview = getDesktopInvoicePdfPreview();
   const invoicePdfArchiveCapability = getDesktopInvoicePdfArchive();
+  const profileProtectionCapability = getDesktopProfileProtection();
   const openOperationalLogFolder = getDesktopOperationalLogFolder();
   const createSupportBundle = getDesktopSupportBundleCreator();
 
@@ -81,6 +83,9 @@ export function App({ apiClient }: AppProps): React.JSX.Element {
           {...(invoicePdfArchiveCapability === undefined
             ? {}
             : { invoicePdfArchiveCapability })}
+          {...(profileProtectionCapability === undefined
+            ? {}
+            : { profileProtectionCapability })}
           onOpenActivity={() => activateView('activity')}
           onOpenDiagnostics={() => activateView('diagnostics')}
         />

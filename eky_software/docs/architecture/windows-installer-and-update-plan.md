@@ -2,7 +2,9 @@
 
 ## 1. Tila
 
-Arkkitehtuuripäätös on hyväksytty ADR-0010:ssä. Installeria,
+Arkkitehtuuripäätös on hyväksytty ADR-0010:ssä. ADR-0009:n salattu
+backup/restore, recovery pointit, aktivointijournal ja Windows packaged
+restore -todistus ovat toteutettu 4.8.2026. Installeria,
 päivitysorkestrointia, code signingia tai update-UI:ta ei ole vielä toteutettu.
 Installeriteknologiaa tai uutta riippuvuutta ei ole valittu.
 
@@ -134,6 +136,13 @@ Versionoitu manifesti sisältää vähintään:
 Manifesti käyttää suljettua skeemaa, kokorajoja ja tarkkaa version
 parsimista. Unknown fields, duplicate keys, poikkeavat app identity -arvot,
 väärä platform/architecture ja liian suuri artifacti torjutaan.
+
+Package SHA-256 ei ole itseään sisältävä tiiviste. R0:n myöhempi installer
+käyttää package-artifactista erillistä sidecar-manifestia tai muuta
+ei-itseviittaavaa signed envelope -mallia. Manifesti tai envelope voi olla
+allekirjoitettu ja viitata paketin nimeen, kokoon ja SHA-256-arvoon, mutta sitä
+ei sisällytetä samaan tavujonoon, jonka tiiviste tarkistetaan. Installeria,
+allekirjoitusta tai update-koodia ei toteuteta backup/restore-vaiheessa.
 
 Build identity ei ole digitaalinen allekirjoitus.
 

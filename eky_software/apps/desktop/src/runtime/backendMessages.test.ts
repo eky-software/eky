@@ -26,6 +26,10 @@ describe('desktop backend process messages', () => {
             'migrations',
           ),
           operationalLogsRoot: resolve(runtimeRoot, 'logs'),
+          profileSnapshotStagingRoot: resolve(
+            runtimeRoot,
+            'private-backup-staging',
+          ),
           smokePdfPath: resolve(runtimeRoot, 'smoke', 'invoice.pdf'),
         }),
         type: 'start',
@@ -40,6 +44,7 @@ describe('desktop backend process messages', () => {
           invoiceDocumentStorageRoot: 'storage',
           migrationsDirectory: 'migrations',
           operationalLogsRoot: 'logs',
+          profileSnapshotStagingRoot: 'backup-staging',
           smokePdfPath: 'invoice.pdf',
         }),
         type: 'start',
@@ -57,6 +62,10 @@ describe('desktop backend process messages', () => {
         invoiceDocumentStorageRoot: resolve(runtimeRoot, 'storage'),
         migrationsDirectory: resolve(runtimeRoot, 'migrations'),
         operationalLogsRoot: resolve(runtimeRoot, 'logs'),
+        profileSnapshotStagingRoot: resolve(
+          runtimeRoot,
+          'private-backup-staging',
+        ),
         runtimeSessionSecret,
         smokePdfPath: resolve(runtimeRoot, 'smoke', 'invoice.pdf'),
       }),
@@ -79,6 +88,10 @@ describe('desktop backend process messages', () => {
         invoiceDocumentStorageRoot: resolve(runtimeRoot, 'storage'),
         migrationsDirectory: resolve(runtimeRoot, 'migrations'),
         operationalLogsRoot: resolve(runtimeRoot, 'logs'),
+        profileSnapshotStagingRoot: resolve(
+          runtimeRoot,
+          'private-backup-staging',
+        ),
         runtimeInstanceId,
         runtimeSessionSecret,
         smokePdfPath: resolve(runtimeRoot, 'smoke', 'invoice.pdf'),
@@ -103,6 +116,10 @@ describe('desktop backend process messages', () => {
         invoiceDocumentStorageRoot: resolve(runtimeRoot, 'storage'),
         migrationsDirectory: resolve(runtimeRoot, 'migrations'),
         operationalLogsRoot: resolve(runtimeRoot, 'logs'),
+        profileSnapshotStagingRoot: resolve(
+          runtimeRoot,
+          'private-backup-staging',
+        ),
         smokePdfPath: resolve(runtimeRoot, 'smoke', 'invoice.pdf'),
       }),
       type: 'start',
@@ -176,6 +193,7 @@ function createValidConfig(
     platform: 'win32',
     runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
     runtimeSessionSecret: 'a'.repeat(43),
+    verifySmokeSecretBroker: false,
     ...overrides,
   };
 }

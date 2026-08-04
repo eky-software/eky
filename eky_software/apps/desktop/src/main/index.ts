@@ -32,6 +32,9 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 const smokeConfiguration = createPackagedSmokeConfiguration({
+  hasRestoredProfileSwitch: app.commandLine.hasSwitch(
+    'desktop-smoke-restored',
+  ),
   hasSmokeSwitch: app.commandLine.hasSwitch('desktop-smoke'),
   tempPath: app.getPath('temp'),
   tokenValue: process.env.EKY_DESKTOP_SMOKE_TOKEN,
@@ -56,7 +59,11 @@ const runtimeInstanceId = randomUUID();
 async function startDesktopRuntime(
   startDesktopComposition: StartDesktopComposition,
 ): Promise<void> {
-  await smokeProgress.reportStage('startup');
+  await smokeProgress.reportStage(
+    smokeConfiguration.phase === 'restoredProfile'
+      ? 'restoredStartup'
+      : 'startup',
+  );
   const buildInfo = await readDesktopBuildInfo({
     applicationPath: app.getAppPath(),
     appVersion: app.getVersion(),
@@ -67,6 +74,14 @@ async function startDesktopRuntime(
     applicationPath: app.getAppPath(),
     buildInfo,
     quitApplication: () => app.quit(),
+    relaunchApplication() {
+      if (smokeConfiguration.enabled) {
+        app.quit();
+        return;
+      }
+      app.relaunch();
+      app.quit();
+    },
     resourcesPath: process.resourcesPath,
     runtimeInstanceId,
     reportSmokeStage: (stage) => smokeProgress.reportStage(stage),
@@ -116,8 +131,12 @@ if (hasSingleInstanceLock) {
       }
 
       dialog.showErrorBox(
-        'Eky ei käynnistynyt',
-        'Paikallista sovellusta ei voitu käynnistää turvallisesti.',
+        errorCode === 'PROFILE_RESTORE_RECOVERY_REQUIRED'
+          ? 'Palautus vaatii tarkistuksen'
+          : 'Eky ei käynnistynyt',
+        errorCode === 'PROFILE_RESTORE_RECOVERY_REQUIRED'
+          ? 'Varmuuskopion palautusta ei voitu viimeistellä tai perua turvallisesti. Eky ei avaa yritystietoja ennen tilanteen tarkistamista.'
+          : 'Paikallista sovellusta ei voitu käynnistää turvallisesti.',
       );
     },
     startRuntime: startDesktopRuntime,

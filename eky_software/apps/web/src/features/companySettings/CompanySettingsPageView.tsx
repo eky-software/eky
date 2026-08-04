@@ -8,7 +8,11 @@ import { InvoiceNumberingSettingsPanel } from './InvoiceNumberingSettingsPanel.j
 import { InvoicePaymentSettingsPanel } from './InvoicePaymentSettingsPanel.js';
 import { InvoiceVatRatesPanel } from './InvoiceVatRatesPanel.js';
 import { InvoicePdfArchivePanel } from './InvoicePdfArchivePanel.js';
-import type { InvoicePdfArchiveCapability } from '../../app/desktopBridge.js';
+import { ProfileBackupPanel } from './ProfileBackupPanel.js';
+import type {
+  InvoicePdfArchiveCapability,
+  ProfileProtectionCapability,
+} from '../../app/desktopBridge.js';
 import {
   initialCompanySettingsForm,
   toCompanySettingsForm,
@@ -43,6 +47,7 @@ interface CompanySettingsPageProps {
   isEmailSecretManagementAvailable: boolean;
   onOpenActivity(): void;
   onOpenDiagnostics(): void;
+  profileProtectionCapability?: ProfileProtectionCapability;
 }
 
 export function CompanySettingsPage({
@@ -51,6 +56,7 @@ export function CompanySettingsPage({
   isEmailSecretManagementAvailable,
   onOpenActivity,
   onOpenDiagnostics,
+  profileProtectionCapability,
 }: CompanySettingsPageProps): React.JSX.Element {
   const [form, setForm] = useState<CompanySettingsFormModel>(initialCompanySettingsForm);
   const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
@@ -170,6 +176,11 @@ export function CompanySettingsPage({
             {...(invoicePdfArchiveCapability === undefined
               ? {}
               : { capability: invoicePdfArchiveCapability })}
+          />
+          <ProfileBackupPanel
+            {...(profileProtectionCapability === undefined
+              ? {}
+              : { capability: profileProtectionCapability })}
           />
           <CompanyOperationsPanel
             onOpenActivity={onOpenActivity}

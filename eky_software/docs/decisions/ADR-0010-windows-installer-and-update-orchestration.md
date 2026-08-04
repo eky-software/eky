@@ -78,6 +78,12 @@ Paikallisessa päivityksessä tarkistetaan vähintään:
 - paketin koko ja SHA-256
 - tiukasti validoitu versionoitu manifesti
 
+Paketin SHA-256 ei saa olla itseään sisältävä tiiviste. Myöhempi R0-installer
+käyttää package-artifactista erillistä sidecar-manifestia tai muuta
+ei-itseviittaavaa, allekirjoitettavaa envelope-rakennetta. Manifesti nimeää ja
+tiivistää paketin, mutta ei sijaitse samassa tavujonossa, jonka SHA-256-arvon se
+itse ilmoittaa.
+
 Laajassa tai verkon kautta tehtävässä jakelussa vaaditaan lisäksi
 allekirjoitettu julkaisu, tunnettu publisher, HTTPS-lähde ja erikseen
 validoitu pakettiallekirjoitus ennen suorittamista.
@@ -184,6 +190,13 @@ Rajoitteet:
 - ensimmäinen pilotti ei vielä tarjoa automaattista etäpäivitystä
 - business- ja binary-rollback ovat kaksi erillistä mekanismia
 - uusi versio voidaan hyväksyä vasta terveellä ensimmäisellä käynnistyksellä
+
+ADR-0009:n salattu backup, konekohtaiset recovery pointit, restore staging,
+aktivointijournal, rollback ja kaksiprosessinen Windows packaged smoke ovat
+toteutettu 4.8.2026. Tämä sulkee installerin business-data recovery
+-esiehdon, mutta ei hyväksy installeria, code signingia, update-manifestia,
+binary rollbackia tai automaattipäivitystä. Ne ovat tämän ADR:n seuraava
+erillinen toteutus- ja release-portti.
 
 ## Ei toteuteta tässä päätöksessä
 
