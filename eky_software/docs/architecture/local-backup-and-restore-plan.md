@@ -540,6 +540,7 @@ eivät Backup/Restore-polkuun.
 - `docs/ai/testing-rules.md`
 - `docs/architecture/e2e-test-environment.md`
 - `docs/architecture/e2e-testing-strategy.md`
+- `docs/architecture/local-backup-artifact-inventory.md`
 - `docs/architecture/local-desktop-implementation-plan.md`
 - `docs/architecture/local-invoice-pdf-archive-plan.md`
 - `docs/architecture/r0-e2e-test-matrix.md`
