@@ -10,6 +10,7 @@ import type {
   CreateSupportBundle,
   OpenOperationalLogFolder,
 } from '../../../app/desktopBridge.js';
+import { formatFinnishDateTime } from '../../../shared/date/formatFinnishDateTime.js';
 import styles from './DiagnosticsPageView.module.css';
 import { uiText } from '../../../i18n/fi.js';
 import { DiagnosticEventDetail } from './DiagnosticEventDetail.js';
@@ -199,8 +200,5 @@ function getOutcomeLabel(outcome: DiagnosticEventOutcome): string {
 }
 
 function formatTimestamp(timestamp: string): string {
-  return new Intl.DateTimeFormat('fi-FI', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(new Date(timestamp));
+  return formatFinnishDateTime(timestamp) ?? timestamp;
 }

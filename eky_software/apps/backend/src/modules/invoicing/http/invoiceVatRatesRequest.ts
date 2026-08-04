@@ -1,3 +1,7 @@
+import {
+  hasOnlyAllowedFields,
+  isRecord,
+} from '../../../http/requestBody.js';
 import type { InvoiceVatRateSetting } from '../domain/invoiceVatRates.js';
 
 const allowedBodyFields = new Set(['vatRates']);
@@ -19,7 +23,7 @@ export class InvoiceVatRatesRequestValidationError extends Error {
 export function parseUpdateInvoiceVatRatesRequest(
   body: unknown,
 ): InvoiceVatRateSetting[] {
-  if (!isRecord(body) || hasUnknownFields(body, allowedBodyFields)) {
+  if (!isRecord(body) || !hasOnlyAllowedFields(body, allowedBodyFields)) {
     throw new InvoiceVatRatesRequestValidationError();
   }
 
@@ -31,7 +35,7 @@ export function parseUpdateInvoiceVatRatesRequest(
 }
 
 function parseRate(value: unknown): InvoiceVatRateSetting {
-  if (!isRecord(value) || hasUnknownFields(value, allowedRateFields)) {
+  if (!isRecord(value) || !hasOnlyAllowedFields(value, allowedRateFields)) {
     throw new InvoiceVatRatesRequestValidationError();
   }
 
@@ -54,15 +58,4 @@ function parseRate(value: unknown): InvoiceVatRateSetting {
     isDefault: value.isDefault,
     sortOrder: value.sortOrder,
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function hasUnknownFields(
-  value: Record<string, unknown>,
-  allowedFields: ReadonlySet<string>,
-): boolean {
-  return Object.keys(value).some((fieldName) => !allowedFields.has(fieldName));
 }

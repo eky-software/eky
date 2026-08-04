@@ -7,6 +7,7 @@ import type {
 import type { ActivityViewQuery } from './ActivityPage.js';
 import styles from './ActivityPageView.module.css';
 import { uiText } from '../../../i18n/fi.js';
+import { formatFinnishDateTime } from '../../../shared/date/formatFinnishDateTime.js';
 
 interface ActivityPageViewProps {
   errorMessage: string | null;
@@ -218,8 +219,5 @@ function getReferenceLabel(item: ActivityItem): string {
 }
 
 function formatActivityTimestamp(timestamp: string): string {
-  return new Intl.DateTimeFormat('fi-FI', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(new Date(timestamp));
+  return formatFinnishDateTime(timestamp) ?? timestamp;
 }

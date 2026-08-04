@@ -1,19 +1,12 @@
-const invoiceListCurrencyFormatter = new Intl.NumberFormat('fi-FI', {
-  currency: 'EUR',
-  style: 'currency',
-});
+import { formatFinnishCalendarDate } from '../date/formatFinnishCalendarDate.js';
+import { formatEuroCents } from '../money/formatEuroCents.js';
 
 export function formatInvoiceListCurrency(cents: number): string {
-  return invoiceListCurrencyFormatter.format(cents / 100);
+  return formatEuroCents(cents);
 }
 
 export function formatInvoiceListDate(value: string): string {
   const datePart = value.slice(0, 10);
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(datePart);
 
-  if (match === null) {
-    return value;
-  }
-
-  return `${match[3]}.${match[2]}.${match[1]}`;
+  return formatFinnishCalendarDate(datePart) ?? value;
 }

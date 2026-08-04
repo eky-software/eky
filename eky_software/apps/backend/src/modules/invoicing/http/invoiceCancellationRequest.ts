@@ -1,3 +1,7 @@
+import {
+  hasOnlyAllowedFields,
+  isRecord,
+} from '../../../http/requestBody.js';
 import type { CancelApprovedInvoiceInput } from '../application/cancelApprovedInvoice.js';
 
 const allowedFields = new Set([
@@ -21,7 +25,7 @@ export function parseInvoiceCancellationRequest(
 ): CancelApprovedInvoiceInput {
   if (
     !isRecord(value) ||
-    Object.keys(value).some((fieldName) => !allowedFields.has(fieldName)) ||
+    !hasOnlyAllowedFields(value, allowedFields) ||
     typeof value.cancellationReason !== 'string' ||
     typeof value.confirmationInvoiceNumber !== 'string'
   ) {
@@ -33,8 +37,4 @@ export function parseInvoiceCancellationRequest(
     cancellationReason: value.cancellationReason,
     confirmationInvoiceNumber: value.confirmationInvoiceNumber,
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

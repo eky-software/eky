@@ -1,24 +1,15 @@
 import type { InvoiceDraftStatus } from '@eky/api-client';
 
 import { uiText } from '../../../i18n/fi.js';
-
-const euroFormatter = new Intl.NumberFormat('fi-FI', {
-  currency: 'EUR',
-  style: 'currency',
-});
+import { formatFinnishCalendarDate } from '../../../shared/date/formatFinnishCalendarDate.js';
+import { formatEuroCents } from '../../../shared/money/formatEuroCents.js';
 
 export function formatInvoiceDraftCurrency(cents: number): string {
-  return euroFormatter.format(cents / 100);
+  return formatEuroCents(cents);
 }
 
 export function formatInvoiceDraftDate(date: string): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-
-  if (!match) {
-    return date;
-  }
-
-  return `${match[3]}.${match[2]}.${match[1]}`;
+  return formatFinnishCalendarDate(date) ?? date;
 }
 
 export function getInvoiceDraftSubject(subject: string): string {

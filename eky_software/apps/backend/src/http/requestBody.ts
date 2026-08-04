@@ -2,17 +2,33 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-export function getOptionalStringField(
-  body: Record<string, unknown>,
-  fieldName: string,
-): string {
-  const value = body[fieldName];
+export function hasOnlyAllowedFields(
+  value: Record<string, unknown>,
+  allowedFields: ReadonlySet<string>,
+): boolean {
+  return Object.keys(value).every((fieldName) => allowedFields.has(fieldName));
+}
 
-  if (value === undefined || value === null) {
-    return '';
+export function readOptionalStringFields<FieldName extends string>(
+  body: Record<string, unknown>,
+  fieldNames: readonly FieldName[],
+): Record<FieldName, string> | null {
+  const fields = {} as Record<FieldName, string>;
+
+  for (const fieldName of fieldNames) {
+    const value = body[fieldName];
+
+    if (value === undefined || value === null) {
+      fields[fieldName] = '';
+      continue;
+    }
+    if (typeof value !== 'string') {
+      return null;
+    }
+    fields[fieldName] = value;
   }
 
-  return typeof value === 'string' ? value : '';
+  return fields;
 }
 
 export function getStringField(

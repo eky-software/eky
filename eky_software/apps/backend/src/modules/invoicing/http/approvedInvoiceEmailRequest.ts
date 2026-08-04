@@ -1,5 +1,9 @@
 import type { ActorContext } from '@eky/auth';
 
+import {
+  hasOnlyAllowedFields,
+  isRecord,
+} from '../../../http/requestBody.js';
 import type {
   SendApprovedInvoiceEmailDryRunInput,
 } from '../application/sendApprovedInvoiceEmailDryRun.js';
@@ -157,15 +161,11 @@ function parseApprovedInvoiceEmailFields(
   return input;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function assertAllowedFields(
   value: Record<string, unknown>,
   allowedFields: ReadonlySet<string>,
 ): void {
-  if (Object.keys(value).some((fieldName) => !allowedFields.has(fieldName))) {
+  if (!hasOnlyAllowedFields(value, allowedFields)) {
     throw new ApprovedInvoiceEmailRequestValidationError();
   }
 }

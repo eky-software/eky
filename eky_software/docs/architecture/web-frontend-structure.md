@@ -282,9 +282,20 @@ edelleen erillisen päätöksen.
 
 Esimerkiksi `shared/money/hourlyRateInput.ts` muuntaa web-lomakkeiden tuntihintasyötteen eurojen ja senttien välillä.
 
+`shared/money/formatEuroCents.ts` omistaa sentteinä saadun rahasumman
+suomenkielisen euroesityksen. Se ei laske laskun summia eikä muuta backendin
+auktoritatiivista rahadataa.
+
+`shared/date/` omistaa usean web-featuren aidosti jakamat kalenteripäivän ja
+aikaleiman esitysmuunnokset. Eky local -liiketoimintapäivä käyttää tällä
+hetkellä yhtä nimettyä `Europe/Helsinki`-aikavyöhykettä eikä riipu tietokoneen
+vaihtuvasta aikavyöhykeasetuksesta. Mahdollinen yrityskohtainen aikavyöhyke
+vaatii myöhemmin erillisen Company Settings-, tietomalli- ja API-päätöksen.
+
 `shared/invoiceList/` on web-local laskulistojen esitysprimitivi. Se omistaa
 semanttisen taulukkorungon, valinnaiset esityssarakkeet, listaohjainten
-esityskomponentit sekä päivämäärä- ja valuuttaformaatoinnin. Se ei omista
+esityskomponentit sekä listakohtaiset formatointisopimukset yhteisiä date- ja
+money-primitiivejä käyttäen. Se ei omista
 laskutuksen tiloja, suodatuksia, sivutusta, kyselyitä tai Customers- ja
 Invoicing-featureiden liiketoimintapäätöksiä. Kokonaisuus ei ole uusi
 liiketoimintamoduuli eikä `packages/ui`-paketin aktivointi.

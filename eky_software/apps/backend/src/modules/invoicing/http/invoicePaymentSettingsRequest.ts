@@ -1,3 +1,8 @@
+import {
+  hasOnlyAllowedFields,
+  isRecord,
+} from '../../../http/requestBody.js';
+
 export interface UpdateInvoicePaymentSettingsRequest {
   defaultLatePaymentInterestBasisPoints: number;
   defaultReminderPeriodDays: number;
@@ -15,16 +20,8 @@ export class InvoicePaymentSettingsRequestValidationError extends Error {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function assertAllowedFields(value: Record<string, unknown>): void {
-  if (
-    Object.keys(value).some(
-      (fieldName) => !allowedInvoicePaymentSettingsFields.has(fieldName),
-    )
-  ) {
+  if (!hasOnlyAllowedFields(value, allowedInvoicePaymentSettingsFields)) {
     throw new InvoicePaymentSettingsRequestValidationError();
   }
 }

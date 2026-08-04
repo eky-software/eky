@@ -1,6 +1,7 @@
 import { AuthorizationError } from '@eky/permissions';
 import { Hono, type Context } from 'hono';
 
+import { parseOptionalBoundedPositiveIntegerQuery } from '../../../http/parseOptionalBoundedPositiveIntegerQuery.js';
 import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 import {
   ActivityValidationError,
@@ -70,7 +71,11 @@ function parseQuery(
   const category = parseOptionalCategory(query.category);
   const month = parseOptionalMonth(query.month);
   const outcome = parseOptionalOutcome(query.outcome);
-  const page = parseOptionalInteger(query.page, 1, maximumActivityPage);
+  const page = parseOptionalBoundedPositiveIntegerQuery(
+    query.page,
+    1,
+    maximumActivityPage,
+  );
   const pageSize = parseOptionalPageSize(query.pageSize);
 
   if (
@@ -128,25 +133,10 @@ function parseOptionalMonth(value: string | undefined): string | null | undefine
   return /^[0-9]{4}-(0[1-9]|1[0-2])$/.test(value) ? value : null;
 }
 
-function parseOptionalInteger(
-  value: string | undefined,
-  minimum: number,
-  maximum: number,
-): number | null | undefined {
-  if (value === undefined || value === '') {
-    return undefined;
-  }
-  if (!/^[1-9][0-9]{0,2}$/.test(value)) {
-    return null;
-  }
-  const parsed = Number(value);
-  return parsed >= minimum && parsed <= maximum ? parsed : null;
-}
-
 function parseOptionalPageSize(
   value: string | undefined,
 ): number | null | undefined {
-  const parsed = parseOptionalInteger(value, 1, 100);
+  const parsed = parseOptionalBoundedPositiveIntegerQuery(value, 1, 100);
   if (parsed === undefined || parsed === null) {
     return parsed;
   }

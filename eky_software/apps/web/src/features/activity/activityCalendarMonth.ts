@@ -1,8 +1,8 @@
-export const activityBusinessTimeZone = 'Europe/Helsinki';
+import { ekyBusinessTimeZone } from '../../shared/date/businessTimeZone.js';
 
 const helsinkiMonthFormatter = new Intl.DateTimeFormat('en-CA', {
   month: '2-digit',
-  timeZone: activityBusinessTimeZone,
+  timeZone: ekyBusinessTimeZone,
   year: 'numeric',
 });
 

@@ -1,3 +1,7 @@
+import {
+  hasOnlyAllowedFields,
+  isRecord,
+} from '../../../http/requestBody.js';
 import type { InvoiceNumberingMode } from '../domain/invoiceNumbering.js';
 
 export interface UpdateInvoiceNumberingSettingsRequest {
@@ -21,16 +25,8 @@ export class InvoiceNumberingSettingsRequestValidationError extends Error {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function assertAllowedFields(value: Record<string, unknown>): void {
-  if (
-    Object.keys(value).some(
-      (fieldName) => !allowedInvoiceNumberingSettingsFields.has(fieldName),
-    )
-  ) {
+  if (!hasOnlyAllowedFields(value, allowedInvoiceNumberingSettingsFields)) {
     throw new InvoiceNumberingSettingsRequestValidationError();
   }
 }
