@@ -311,6 +311,15 @@ Backup-, restore-, installer- tai update-polun onnistumista ei todisteta vain
 mockilla tai selain-E2E:llä. Windowsin tiedosto-, prosessi-, `safeStorage`- ja
 paketointirajat vaativat packaged-testin.
 
+Restorea muuttava packaged-testi käynnistää vähintään kaksi eri
+Electron-prosessia samaa synteettistä palautettua profiilia vasten. Sen pitää
+todistaa palautetun tietokannan identiteetti ennen backendin avausta,
+auktoritatiiviset business-artifactit restartin jälkeen, uuden
+runtime-sessionin kelvollisuus, vanhan session vaihtuminen, backupin jälkeisen
+mutaation poistuminen ja konekohtaisen salaisuuden poissulku portable
+backupista. Prosessien välinen testitila saa sisältää vain synteettisiä hasheja
+ja tunnisteita.
+
 30 minuutin soak on pakollinen vain, kun muutos koskee runtimea, native
 addonia, prosessien elinkaarta, pitkäkestoista tiedosto-operaatiota tai
 release gatea. Tavallinen domain-, UI- tai docs-muutos ei vaadi soakia.

@@ -192,11 +192,17 @@ Nykyinen tietomalli pystyy yksiselitteisesti luetteloimaan kaikki tällä hetkel
 auktoritatiiviset PDF:t `invoice_documents`-taulusta. Writerin toteuttaminen ei
 edellytä koko `userData`-hakemiston kopiointia eikä schema-muutosta.
 
-Ennen writeria toteutetaan Invoicing-local backup catalog -portti, puuttuvan
-DB-viitatun artifactin fail-closed-validointi ja orpojen tiedostojen turvallinen
-diagnostiikka. Jos tuleva audit löytää muun ei-uudelleenmuodostettavan
-business-artifactin, writerin käyttöönotto pysäytetään kunnes inventaario ja
-owner-portti on päivitetty.
+Invoicing-local backup catalog -portti, puuttuvan DB-viitatun artifactin
+fail-closed-validointi ja suljettu snapshot-tiedostojoukko on toteutettu.
+SQLite-adapteri lukee nykyisen `invoices`/`invoice_documents`-mallin eikä
+backup-infrastruktuuri arvaa artifacteja storage-hakemistosta.
+
+Hardened Windows packaged smoke muodostaa edustavan synteettisen profiilin,
+luo ja tarkastaa salatun backupin, palauttaa profiilin ja vertaa sekä
+tietokannan että katalogissa olevien PDF-tiedostojen SHA-256-tiivisteet
+uudessa prosessissa. Jos tuleva audit löytää muun
+ei-uudelleenmuodostettavan business-artifactin, backupin release gate
+avautuu uudelleen, kunnes inventaario ja moduulin owner-portti on päivitetty.
 
 ## Liittyvät dokumentit
 

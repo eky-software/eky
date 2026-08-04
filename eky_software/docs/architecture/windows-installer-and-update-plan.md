@@ -2,7 +2,9 @@
 
 ## 1. Tila
 
-Arkkitehtuuripäätös on hyväksytty ADR-0010:ssä. Installeria,
+Arkkitehtuuripäätös on hyväksytty ADR-0010:ssä. ADR-0009:n salattu
+backup/restore, recovery pointit, aktivointijournal ja Windows packaged
+restore -todistus ovat toteutettu 4.8.2026. Installeria,
 päivitysorkestrointia, code signingia tai update-UI:ta ei ole vielä toteutettu.
 Installeriteknologiaa tai uutta riippuvuutta ei ole valittu.
 

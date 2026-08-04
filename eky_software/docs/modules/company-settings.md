@@ -484,6 +484,13 @@ tiedostojärjestelmätoimintoa.
 Arkkitehtuurirajat on kuvattu ADR-0009:ssä ja dokumentissa
 `docs/architecture/local-backup-and-restore-plan.md`.
 
+Desktop-only Backup/Restore-kortti on toteutettu. Se näyttää turvallisen tilan
+ja käyttää Electron mainin omistamia native-dialogeja, kertakäyttöistä
+salasanaikkunaa, inspector- ja restore-capabilityja. Selainversio näyttää
+ominaisuuden desktop-saatavuuden eikä tarjoa rikkinäisiä tiedostopainikkeita.
+Tämä UI-sijainti ei siirrä backup- tai recovery-dataa Company Settings
+-master dataan.
+
 Nämä ovat todennäköisiä tulevia tarpeita, mutta ne eivät kuulu ensimmäiseen suunnitteluvaiheeseen.
 
 ## Suhde Muihin Dokumentteihin

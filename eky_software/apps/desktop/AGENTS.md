@@ -51,6 +51,17 @@ Mandatory boundaries:
   pre-update recovery point exists
 - launch an external installer/updater with a fixed executable and separate
   validated arguments; never construct a shell command string
+- preserve the two-process hardened Windows backup/restore smoke when changing
+  profile paths, backup containers, recovery points, activation, rollback,
+  backend startup, runtime sessions, `safeStorage`, SQLite or business
+  artifact ownership
+- packaged restore verification must compare the restored database before the
+  backend opens it, compare authoritative artifacts after restart, reject the
+  old runtime session and prove that machine-local secrets are not imported
+  from the portable backup
+- smoke coordination state may contain only synthetic hashes and identifiers;
+  never store a backup password, runtime session, raw path or business data in
+  it
 
 Oikeaa SMTP-tunnusta saa käyttää vain erikseen hyväksytyssä, salatussa ja
 käyttäjän vahvistamassa Electron-polussa. Testilähetys pakotetaan määritettyyn

@@ -141,9 +141,9 @@ yli 30 päivää vanhat väliaikaiset tukipakettitiedostot.
 
 Tukipaketti ei ole Eky-varmuuskopio eikä sitä voi käyttää liiketoimintadatan,
 SQLite-tietokannan, laskujen tai asetusten palauttamiseen. `.ekybackup`
-kuuluu ADR-0009:ssä hyväksyttyyn mutta vielä toteuttamattomaan salattuun
-backup/restore-polkuun; sitä ei saa sekoittaa `.json.gz`-diagnostiikka-
-artifactiin. Vanha `.ekysupport` tarkoittaa samaa legacy-
+kuuluu ADR-0009:n toteutettuun, aina salattuun backup/restore-polkuun; sitä ei
+saa sekoittaa salaamattomaan `.json.gz`-diagnostiikka-artifactiin. Vanha
+`.ekysupport` tarkoittaa samaa legacy-
 tukipakettiformaattia, ei varmuuskopiota.
 
 Backup/Restore-polun suunnitteluperusta on dokumentissa

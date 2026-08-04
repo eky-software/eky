@@ -170,6 +170,12 @@ log ja tukipaketti ovat eri vastuita.
   moduulia sen julkisen portin kautta.
 - [ ] Kirjaa skenaariolle Activity-, Diagnostics-, incident-index- ja support
   bundle -sisällytys tai poissulku.
+- [ ] Ilmoita moduulin backup inclusion/exclusion ja nimeä kaikki sen
+  auktoritatiiviset tietokanta- ja tiedostoartifactit.
+- [ ] Määritä moduulin kapea snapshot/catalog-portti, restore-validator,
+  formaattiyhteensopivuus ja vähintään yksi recovery-regressiotesti.
+- [ ] Älä anna yhteisen backup-infrastruktuurin arvailla moduulin tiedostoja
+  globaalista `userData`- tai storage-juuresta.
 - [ ] Päivitä packaged-smoke- tai Electron development -raja, jos moduuli lisää
   desktop-capabilityn, uuden IPC-metodin tai uuden privileged main -toiminnon.
 - [ ] Älä lisää moduuliin E2E-reset-, seed- tai fault HTTP -reittejä.

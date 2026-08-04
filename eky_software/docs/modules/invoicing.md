@@ -686,3 +686,16 @@ JSONL-loki ei korvaa laskutuksen audit trailia.
 
 Observabilityn yhteiset rajat ovat dokumentissa
 `docs/architecture/observability-and-audit-plan.md`.
+
+## Backup-artifactien omistajuus
+
+Invoicing omistaa lasku-PDF:ien auktoritatiivisen backup-catalog-portin.
+Portti luetteloi kaikki snapshotin `invoice_documents`-rivit riippumatta
+siitä, onko lasku hyväksytty, lähetetty, hyvitetty, peruttu tai
+uudelleenhyväksytty. Backup-infrastruktuuri ei selaa storagea arvaamalla.
+
+Puuttuva tietokannan viittaama PDF estää backupin. Tuntematonta orpoa
+storage-tiedostoa ei lisätä backupiin eikä poisteta backup-operaation
+sivuvaikutuksena. Uusi ei-uudelleenmuodostettava Invoicing-artifact vaatii
+catalog-, snapshot-, restore-validator- ja recovery-testipäivityksen ennen
+käyttöönottoa.

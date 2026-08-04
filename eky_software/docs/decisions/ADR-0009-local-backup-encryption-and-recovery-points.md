@@ -42,12 +42,11 @@ kentät. Tagia, yritystietoa, polkua, luontiaikaa, tiedostonimeä tai manifestia
 ei sijoiteta otsakkeeseen. Parser torjuu väärän tagipituuden ja kaiken tagin
 jälkeisen ylimääräisen datan.
 
-Tarkkoja `scrypt`-parametreja ei arvata tässä päätöksessä. Ne valitaan
-toteutusvaiheessa kohde-Windows-laitteella tehdyn muistinkäyttö- ja
-suorituskykybenchmarkin sekä turvallisuusarvion perusteella. Parametrit
-versionoidaan artifactissa, niille asetetaan turvalliset minimi- ja
-maksimirajat ja liian heikko tai resurssien käytöllä palvelunestoon pyrkivä
-arvo torjutaan.
+`scrypt`-profiili valittiin kohde-Windows-laitteen muistinkäyttö- ja
+suorituskykybenchmarkin sekä turvallisuusarvion perusteella:
+`N = 2^17`, `r = 8`, `p = 1`. Profiili versionoidaan artifactissa,
+parametrirajat validoidaan ennen `scrypt`-kutsua ja tuntematon, liian heikko
+tai resurssien käytöllä palvelunestoon pyrkivä arvo torjutaan.
 
 Salasanaa, johdettua avainta tai selväkielistä varmuuskopiosisältöä ei
 tallenneta levylle, lokiin, diagnostiikkaan, tukipakettiin, komentoriville,
@@ -190,9 +189,33 @@ Salasanapolitiikka, memory-hard-parametrit, brute-force-rajojen
 käyttökokemus ja mahdollinen turvallinen salasanan vahvuusohjaus täsmennetään
 ennen tuotantokoodia.
 
+## Toteutuksen tila 4.8.2026
+
+Päätös on toteutettu yhden local desktop -profiilin R0-laajuuteen:
+
+- `.ekybackup` container `v1`, AES-256-GCM, canonical header AAD:na ja
+  16 tavun authentication tag tiedoston lopussa
+- `scrypt`-profiili `N = 2^17`, `r = 8`, `p = 1`; Windows x64 -benchmarkin
+  mediaani noin 246,4 ms
+- maintenance-rajattu SQLite- ja business-artifact-snapshot
+- inspector-before-writer, self-inspection ja no-overwrite
+- `safeStorage`-suojatut recovery pointit sekä rotaatio
+- private restore staging, pre-restore-piste, aktivointijournal ja rollback
+- Electron mainin rajatut backup/restore-capabilityt ja Oma yritys -UI
+- kaksiprosessinen hardened Windows packaged smoke, joka todistaa restoren,
+  restartin, hashit, uuden sessionin ja salaisuuksien poissulun.
+
+Toteutus ei muuta päätöksen luottamusrajaa: renderer ei saa salasanaa,
+avainta, manifestia, raakaa polkua tai journalia. Portable backup ei sisällä
+SMTP-salaisuutta, lokia, support bundlea, PDF-arkistointiasetusta tai
+konekohtaista runtime-dataa.
+
+Toteutuksen tila ei yksin avaa oikean datan release-porttia. Lopullinen
+workspace-, audit-, E2E-, Windows package-, packaged restore-, endurance- ja
+soak-matriisi ajetaan samalla release-kandidaatilla ennen käyttöönottoa.
+
 ## Ei toteuteta tässä päätöksessä
 
-- backup-, restore- tai palautuspistetuotantokoodia
 - käyttäjän valitsemaa salaamatonta varmuuskopiota
 - pilvivarmuuskopiota
 - automaattista palautusta ilman käyttäjän tai update coordinatorin hallittua
@@ -200,7 +223,7 @@ ennen tuotantokoodia.
 - osapalautusta
 - multi-profile-käyttöliittymää
 - uutta kryptografia- tai pakkausriippuvuutta
-- tarkkoja `scrypt`-parametreja ilman benchmarkia
+- Windows-installeria tai automaattipäivitystä
 
 ## Liittyvät dokumentit
 

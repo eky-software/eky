@@ -30,14 +30,68 @@ Toteutettu 4.8.2026 mennessä:
 - aktiivisen palautuskohteen backend-tarkistus: saman profiilin backup
   sallitaan, mutta vieras profiili vain asennukseen, jossa ei ole lainkaan
   business-, audit- tai muuta käyttäjädataa
+- crash-safe aktivointijournal, rajattu Windows rename -retry ja rollback
+  jokaisen aktivointivaiheen virheessä
+- Oma yritys -näkymän desktop-only backup-, inspect- ja restore-capabilityt
+- kaksiprosessinen hardened Windows packaged smoke, joka tekee salatun
+  backupin, palauttaa sen, käynnistää uuden runtime-sessionin ja vertaa
+  tietokannan sekä kaikkien auktoritatiivisten lasku-PDF:ien identiteetit
+- paketoitu todistus siitä, että backupin jälkeen lisätty business-muutos
+  poistuu palautuksessa mutta konekohtainen `safeStorage`-SMTP-salaisuus
+  säilyy eikä sitä tuoda backupista
 
-Crash-safe aktivointi ja rollback sekä Backup/Restore-käyttöliittymä ovat
-vielä toteuttamatta. Valmiit backup-, palautuspiste- ja staging-polut eivät
-siis vielä muodosta käyttäjälle luvattavaa palautusominaisuutta.
+Dokumentoitu ja automaattisesti testattu palautuspolku muodostaa yhden
+hallitun oikeaa dataa käyttävän R0-asennuksen release gaten. Toteutus ei yksin
+avaa oikean datan käyttöönottoa, vaan lopullisen testimatriisin pitää olla
+vihreä samalla release-kandidaatilla. Portti pidetään jatkossa suljettuna
+ajamalla riskiperusteiset testit aina backup-, restore-, runtime- tai
+business-artifact-rajojen muuttuessa.
 
-Dokumentoitu ja automaattisesti testattu palautuspolku on yhden hallitun
-oikeaa dataa käyttävän R0-asennuksen release gate. Toteutus tehdään
-rajattuina vaiheina ennen oikean asiakas- tai laskutusdatan käyttöönottoa.
+## Checkpoint J: toteutus dokumentoitu
+
+R0:n salatun paikallisen backup/restore-ketjun toteutus on dokumentoitu
+4.8.2026. Portable container on versio `v1`, se käyttää AES-256-GCM:ää,
+16 tavun autentikointitagia ja canonical headeria AAD:na. Lukittu
+`scrypt`-profiili on `N = 2^17`, `r = 8`, `p = 1`; Windows x64 -benchmarkin
+mediaani oli noin 246,4 ms.
+
+Snapshot muodostetaan yhden maintenance-operaation sisällä
+`better-sqlite3` backup API:lla. Invoicing luetteloi erillisellä
+backup-catalog-portilla kaikki tietokannan auktoritatiiviset
+`invoice_documents`-artifactit. Puuttuva viitattu tiedosto estää backupin,
+eikä tuntematonta storage-tiedostoa lisätä hiljaisesti.
+
+Restore etenee authenticated inspect -> private staging -> pre-restore
+recovery point -> activation journal -> backend restart ->
+integrity/health-tarkistus. Aktivointivirhe palauttaa vanhan profiilin
+idempotentin journalin avulla. Windowsin väliaikaiset tiedostolukot saavat
+vain rajatun, nimetyille virhekoodeille sallitun retry-polun; levytila-,
+validointi- tai muu virhe ei muutu retryksi tai osittaiseksi palautukseksi.
+
+Machine-local recovery pointit ovat `safeStorage`-suojattuja, konekohtaisia ja
+eri artifacteja kuin siirrettävä `.ekybackup`. Niiden daily/weekly/monthly-
+rotaatio, levybudjetti sekä aktiivisten pre-restore/pre-update-pisteiden suoja
+on testattu.
+
+Kaksiprosessinen packaged smoke käyttää vain synteettistä profiilia. Prosessi
+1 tallentaa ennen palautusta vain hashit ja tekniset testitunnisteet,
+aktivoi palautuksen ja päättyy. Prosessi 2 käynnistyy samasta palautetusta
+profiilista, todistaa uuden runtime-sessionin, tietokannan ja PDF-artifactien
+tarkan vastaavuuden, backupin jälkeisen mutaation poistumisen sekä
+backupista poissuljetun SMTP-salaisuuden jatkuvuuden. Smoke-tilatiedosto ei
+sisällä salasanaa, sessionia, raakaa polkua eikä business dataa.
+
+Tämä checkpoint ei toteuta Windows-installeria, code signingia,
+automaattipäivitystä, pilvivarmuuskopiota, osapalautusta tai usean profiilin
+yhdistämistä. Ne säilyvät erillisten hyväksyntä- ja release-porttien takana.
+
+Ennen kuin oikean datan R0-portti voidaan merkitä suljetuksi samalla
+release-kandidaatilla, ajetaan vielä koko workspace-verifiointi,
+riippuvuusauditit, kaikki E2E-ryhmät, Windows-paketointi, liitteen mukaiset
+kolme packaged-smoke-skenaariota, backup/restore-endurance,
+`test:e2e:desktop-stress` ja 30 minuutin desktop-soak. Aiemmat yleiset
+endurance- ja soak-baselinet eivät yksin korvaa tätä
+backup/restore-kohtaista hyväksyntää.
 
 ## Tavoite ja rajaus
 

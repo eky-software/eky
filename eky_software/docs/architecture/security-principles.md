@@ -93,6 +93,13 @@ yritysprofiilia tai installerin konekohtaista journalia.
 
 Tarkat päätökset ovat ADR-0009:ssä ja ADR-0010:ssä.
 
+ADR-0009:n R0-toteutus on lisäksi todistettava hardened Windows package
+-artifactilla kahdessa prosessissa. Testi vertaa palautetun SQLite-tiedoston
+ennen backendin avausta, auktoritatiiviset PDF:t restartin jälkeen, uuden
+runtime-sessionin, backupin jälkeisen mutaation poistumisen ja konekohtaisen
+salaisuuden säilymisen backupin ulkopuolella. Testin koordinaatiotila ei saa
+sisältää salasanaa, sessionia, raakaa polkua tai business dataa.
+
 ## Autentikointi
 
 Firebase Auth on alustava valinta käyttäjän tunnistamiseen.

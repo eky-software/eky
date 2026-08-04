@@ -132,6 +132,15 @@ komennolla `pnpm test:e2e:desktop-stress` ja 30 minuutin manuaalinen soak
 komennolla `pnpm test:e2e:desktop-soak`. Desktop-mittarit ja tulkintasäännöt
 ovat tiedostossa `e2e-desktop-endurance-baseline.md`.
 
+Backup/restore-release gate käyttää lisäksi hardened Windows packaged smokea
+kahdessa peräkkäisessä Electron-prosessissa. Ensimmäinen prosessi tekee
+synteettisestä profiilista salatun backupin ja aktivoi palautuksen. Toinen
+prosessi todistaa ennen backendin avausta palautetun SQLite-tiedoston tarkan
+hashin ja startupin jälkeen auktoritatiiviset PDF:t, kadonneen
+backupin jälkeisen mutaation, uuden runtime-sessionin sekä backupista
+poissuljetun konekohtaisen salaisuuden jatkuvuuden. Smoke ei käytä oikeaa
+asiakasdataa, oikeaa salasanaa tai ulkoista verkkoa.
+
 ## Nykyisten moduulien jäädytetty E2E-perusta
 
 Commit `a58718aea394f6007adbe697928523a793bb343f` jäädyttää Customers-,

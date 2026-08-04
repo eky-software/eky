@@ -283,17 +283,30 @@ vianrajausta varten tarpeellisia `companyId`-, `invoiceId`- ja
 `operationId`-tunnisteita. Niitä ei viedä incident-indeksiin,
 Diagnostics-projektioon tai tukipakettiin.
 
-## Tulevat backup-, restore- ja update-tapahtumat
+## Backup-, restore- ja update-tapahtumat
 
-ADR-0009:n ja ADR-0010:n myöhemmät toteutukset tarvitsevat tekniset
-tapahtumaperheet:
+ADR-0009:n portable backup -capability käyttää toteutettuja, suljetun
+kenttäsopimuksen operational eventejä:
 
-- `backup.*`
+- `backup.started`
+- `backup.completed`
+- `backup.failed`
+- `backup.inspectionCompleted`
+- `backup.inspectionFailed`
+
+Ne sisältävät vain nimetyn vaiheen tai turvallisen virhekoodin ja
+korrelaatiotunnisteen. Portable backupin sisältöä, salaustietoja tai raakaa
+polkua ei kirjata.
+
+Restore-, recovery point- ja update-lifecyclejen tulevat käyttäjälle
+merkitykselliset operational eventit vaativat vielä erillisen event catalog
+-päätöksen. Varatut tapahtumaperheet ovat:
+
 - `restore.*`
 - `recoveryPoint.*`
 - `update.*`
 
-Tarkkoja event-nimiä, outcome-arvoja tai retentionia ei lukita ennen kuin
+Niiden tarkkoja event-nimiä, outcome-arvoja tai retentionia ei lukita ennen kuin
 application/use case-, transaction ownership- ja failure behavior -rajat on
 mallinnettu. Tapahtumat noudattavat nykyistä yhteistä event envelopea eivätkä
 luo omaa loggeria tai vapaamuotoista metadataa.

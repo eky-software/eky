@@ -177,6 +177,12 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
   vain backup-tiedoston syntyminen?
 - Kattavatko restore-testit stagingin, aktivoinnin, restartin jokaisessa
   journalivaiheessa ja rollbackin?
+- Vertaako packaged restore palautetun tietokannan ennen backendin avausta ja
+  auktoritatiiviset tiedostoartifactit uudessa prosessissa?
+- Todistaako restore, että backupin ulkopuolinen konekohtainen salaisuus ei
+  tule backupista eikä katoa palautuksessa?
+- Sisältääkö packaged-smoken prosessien välinen tila vain synteettisiä hasheja
+  ja tunnisteita ilman salasanaa, sessionia, polkua tai business dataa?
 - Kattavatko update-testit suoran Setup-polun, sovelluksesta käynnistetyn
   päivityksen, migration-failuren, health-failuren ja binary rollbackin?
 

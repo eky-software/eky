@@ -265,6 +265,20 @@ Ennen muutoksen hyväksymistä tarkista vähintään:
 
 Jos jokin kohta jää epäselväksi, kyseistä vaikutusaluetta ei toteuteta ennen projektin omistajan päätöstä.
 
+## Backup- ja palautusportti
+
+Uuden moduulin tai pysyvän tiedostoartifactin pitää ilmoittaa
+backup inclusion/exclusion, auktoritatiivinen sisältö, snapshot-portti,
+restore-validator, formaattiyhteensopivuus ja recovery-testi. Yhteinen
+backup-infrastruktuuri ei arvaa moduulin tiedostoja tai kopioi koko
+`userData`-juurta.
+
+Backup-, restore-, SQLite-, business-artifact-, `safeStorage`-, desktop
+process lifecycle- tai aktiivisen profiilin polkua muuttava työ vaatii
+alemman tason testien lisäksi hardened Windows packaged backup -> inspect ->
+restore -> restart -> compare -todistuksen synteettisellä profiililla.
+Installer ja automaattipäivitys ovat tästä erillisiä hyväksyntäportteja.
+
 ## Dokumentaation roolit
 
 `docs/product/` kertoo mitä yritys tekee ja miksi ohjelmisto rakennetaan.
