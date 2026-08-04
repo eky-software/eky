@@ -26,11 +26,21 @@ aina salattu:
 - avain johdetaan salasanasta `scrypt`-avaimenjohtamisfunktiolla
 - jokaisella varmuuskopiolla on kryptografisesti satunnainen salt
 - jokaisella salauksella on uniikki nonce
-- GCM authentication tag säilytetään kokonaisena
-- versionoitu otsake sidotaan salaukseen additional authenticated data
-  -tietona
+- GCM authentication tag säilytetään kokonaisena 16 tavun trailerina
+- tag ei kuulu otsakkeeseen eikä additional authenticated data -tietoon
+- versionoitu kanoninen otsake sidotaan salaukseen byte-for-byte additional
+  authenticated data -tietona
 - salaamattomassa otsakkeessa ei ole yrityksen nimeä, `companyId`:tä,
   paikallista polkua tai muuta henkilötietoa
+
+Containerin järjestys on täsmälleen kanoninen otsake, salattu payload ja
+16 tavun authentication tag. Otsake sisältää vain formaatin turvalliseen
+tunnistamiseen ja purkamiseen tarvittavat rajatut kentät: magic bytes,
+container-version, otsakkeen pituuden, cipher- ja KDF-profiilit, salt-arvon,
+nonce-arvon, ciphertext-pituuden sekä mahdolliset nollaksi vaaditut reserved-
+kentät. Tagia, yritystietoa, polkua, luontiaikaa, tiedostonimeä tai manifestia
+ei sijoiteta otsakkeeseen. Parser torjuu väärän tagipituuden ja kaiken tagin
+jälkeisen ylimääräisen datan.
 
 Tarkkoja `scrypt`-parametreja ei arvata tässä päätöksessä. Ne valitaan
 toteutusvaiheessa kohde-Windows-laitteella tehdyn muistinkäyttö- ja
@@ -43,6 +53,14 @@ Salasanaa, johdettua avainta tai selväkielistä varmuuskopiosisältöä ei
 tallenneta levylle, lokiin, diagnostiikkaan, tukipakettiin, komentoriville,
 URL:iin tai ympäristömuuttujaan. Selväkielisen datan ja avainmateriaalin
 elinikä prosessimuistissa pidetään mahdollisimman lyhyenä.
+
+Tavallinen application renderer ei saa varmuuskopion salasanaa. Electron main
+avaa salasanan luontia ja syöttämistä varten erillisen kertakäyttöisen
+BrowserWindowin, jossa sandbox ja context isolation ovat käytössä,
+Node-integraatio on pois käytöstä eikä ikkunalla ole backend-pääsyä,
+navigointia tai yleistä IPC:tä. Ikkunan oma minimaalinen preload sallii vain
+submit- ja cancel-toiminnot. Salasana välitetään mainille kerran ja ikkuna
+tuhotaan heti operaation päättyessä.
 
 Unohtuneelle varmuuskopiosalasanalle ei tehdä takaovea tai palautusavainta.
 Käyttöliittymän pitää kertoa ennen varmuuskopion luontia, ettei Eky voi

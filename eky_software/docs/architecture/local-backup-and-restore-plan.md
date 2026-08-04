@@ -131,17 +131,29 @@ turvalliseen tunnistamiseen ja purkuun tarvittavat kentät:
 
 - magic bytes
 - container format version
+- otsakkeen pituus
 - encryption algorithm identifier
 - KDF identifier ja parametriversio
-- rajatut KDF-parametrit
 - salt
 - nonce
-- authentication tag
-- salatun payloadin rajattu pituus
+- salatun payloadin rajattu pituus unsigned 64-bit -arvona
+- mahdolliset pakolliset nollaksi vaaditut reserved-kentät
 
 Otsake ei sisällä henkilötietoa, yritystunnistetta, polkua, backupin
-kuvausta tai vapaamuotoista metadataa. Koko versionoitu otsake sidotaan
-AES-256-GCM-salaukseen AAD-tietona.
+kuvausta, luontiaikaa, tiedostonimiä, manifestia tai vapaamuotoista metadataa.
+Koko versionoitu kanoninen otsake sidotaan AES-256-GCM-salaukseen
+byte-for-byte AAD-tietona.
+
+Containerin järjestys on täsmälleen:
+
+1. kanoninen authenticated header
+2. ciphertext
+3. 16 tavun authentication tag
+
+Authentication tag ei kuulu otsakkeeseen eikä AAD-tietoon. Parser vaatii
+täsmällisen tagipituuden ja torjuu kaiken tagin jälkeisen ylimääräisen datan.
+Kaikki pituudet tarkistetaan ennen muistivarausta, eikä containerin otsakkeesta
+lueta vapaasti luotettavia kryptografiaparametreja.
 
 Salaus käyttää:
 
@@ -161,8 +173,13 @@ satunnaislukugeneraattorin virhe keskeyttää backupin.
 
 ## Salasanan lifecycle
 
-- salasana kysytään native/main-prosessin hallitsemassa vahvistetussa
-  toimintopolussa
+- tavallinen application renderer ei saa salasanaa
+- Electron main avaa erillisen kertakäyttöisen password BrowserWindowin
+- password window käyttää sandboxia ja context isolationia, poistaa
+  Node-integraation eikä saa backend-pääsyä
+- ikkunassa ei sallita navigointia, popup-ikkunoita tai production-devtoolsia
+- minimaalinen preload sallii vain submit- ja cancel-toiminnot
+- salasana välitetään mainille kerran ja ikkuna tuhotaan heti
 - renderer ei tallenna salasanaa sovellusstateen, local storageen tai lokiin
 - salasanaa ei välitetä URL:ssa, komentorivillä tai ympäristömuuttujassa
 - salasanaa, johdettua avainta ja selväkielistä payloadia pidetään muistissa
@@ -174,6 +191,26 @@ satunnaislukugeneraattorin virhe keskeyttää backupin.
 Käyttöliittymä varmistaa salasanan kahdella syötöllä ja kertoo ennen vientiä,
 että unohtunutta salasanaa ei voi palauttaa. Lopullinen salasanapolitiikka
 päätetään toteutusvaiheen turvallisuus- ja käytettävyystestissä.
+
+## Private plaintext staging
+
+Private plaintext staging sallitaan vain snapshot-, inspect- tai restore-
+operaation ajaksi Electron mainin omistamassa `userData`-alueen yksityisessä
+runtime-juuressa. Se ei ole käyttäjän varmuuskopiotiedosto, eikä levylle jätetä
+monoliittista selväkielistä backup-payloadia.
+
+Restore-staging sisältää business-profiilidataa, joten siihen sovelletaan samoja
+polku-, käyttöoikeus-, symlink-, reparse point- ja lokitussääntöjä kuin
+aktiiviseen profiiliin. Operaation onnistuminen ja epäonnistuminen siivoavat
+stagingin best effort -mallilla. Desktopin käynnistys tunnistaa ja siivoaa
+keskeytyksestä jääneet tunnetut temp- ja staging-slotit ennen normaalin
+business-runtimen avaamista.
+
+## Null-sääntö
+
+Uudet backup-, manifest-, journal- ja IPC-sopimukset torjuvat `null`-arvon,
+ellei kenttä ole eksplisiittisesti nullable. Väärää JSON-tyyppiä ei muunnetta
+hiljaisesti tyhjäksi, puuttuvaksi tai oletusarvoksi.
 
 ## SQLite-snapshot
 

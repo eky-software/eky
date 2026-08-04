@@ -135,6 +135,13 @@ Manifesti käyttää suljettua skeemaa, kokorajoja ja tarkkaa version
 parsimista. Unknown fields, duplicate keys, poikkeavat app identity -arvot,
 väärä platform/architecture ja liian suuri artifacti torjutaan.
 
+Package SHA-256 ei ole itseään sisältävä tiiviste. R0:n myöhempi installer
+käyttää package-artifactista erillistä sidecar-manifestia tai muuta
+ei-itseviittaavaa signed envelope -mallia. Manifesti tai envelope voi olla
+allekirjoitettu ja viitata paketin nimeen, kokoon ja SHA-256-arvoon, mutta sitä
+ei sisällytetä samaan tavujonoon, jonka tiiviste tarkistetaan. Installeria,
+allekirjoitusta tai update-koodia ei toteuteta backup/restore-vaiheessa.
+
 Build identity ei ole digitaalinen allekirjoitus.
 
 ## 10. Pre-update-palautuspiste
