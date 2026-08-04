@@ -218,6 +218,7 @@ async function assertPackagedDiagnosticsArtifacts() {
     'dist/build-info.json',
     'dist/main/desktopComposition.js',
     'dist/preload/index.cjs',
+    'dist/profileBackup/passwordWindow/backupPasswordPreload.cjs',
     'dist/supportBundle/supportBundleCapability.js',
     'web/index.html',
   ]) {

@@ -146,9 +146,16 @@ function createDesktopApi(
 ): EkyDesktopApi {
   return {
     chooseInvoicePdfArchiveDirectory: vi.fn(async () => disabledStatus),
+    createEncryptedProfileBackup: vi.fn(async () => 'cancelled'),
     createSupportBundle: vi.fn(async () => 'cancelled' as const),
     disableInvoicePdfArchive: vi.fn(async () => disabledStatus),
     getInvoicePdfArchiveStatus: vi.fn(async () => disabledStatus),
+    getProfileBackupStatus: vi.fn(async () => ({
+      operationState: 'idle',
+    })),
+    inspectEncryptedProfileBackup: vi.fn(async () => ({
+      status: 'cancelled',
+    })),
     openInvoicePdf: vi.fn(async () => undefined),
     openInvoicePdfArchiveDirectory: vi.fn(async () => undefined),
     openOperationalLogFolder: vi.fn(async () => undefined),

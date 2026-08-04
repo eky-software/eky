@@ -133,6 +133,11 @@ liiketoimintasisältöä.
 - `supportBundle.creationStarted`
 - `supportBundle.creationCompleted`
 - `supportBundle.creationFailed`
+- `backup.started`
+- `backup.completed`
+- `backup.failed`
+- `backup.inspectionCompleted`
+- `backup.inspectionFailed`
 
 `electron.permissionDenied` säilyy vain olemassa olevien lokien
 yhteensopivuuden vuoksi. Tavallinen Chromiumin permission check estetään
@@ -142,6 +147,11 @@ hiljaisesti. Vain varsinainen permission request kirjoittaa deduplikoidun
 Lokikansion capability kirjoittaa vain avatun, epäonnistuneen tai estetyn
 toiminnon tapahtuman. Se ei tallenna absoluuttista polkua tai
 Windows-käyttäjänimeä.
+
+Portable-varmuuskopion tapahtumat sisältävät vain operaation
+korrelaatiotunnisteen, rajatun vaiheen, keston ja turvallisen virhekoodin.
+Niihin ei kirjoiteta kohde- tai lähdepolkua, yritystunnistetta, manifestia,
+salasanaa eikä salt-, nonce- tai authentication tag -arvoja.
 
 `desktop.bootstrapFailed` sisältää vain allowlistatun virhekoodin. Raw
 virheviestiä, stack tracea, asar- tai käyttäjäpolkua ei kirjoiteta eventtiin

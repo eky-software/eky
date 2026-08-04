@@ -1,8 +1,11 @@
 export interface EkyDesktopApi {
   chooseInvoicePdfArchiveDirectory(): Promise<unknown>;
+  createEncryptedProfileBackup(): Promise<unknown>;
   createSupportBundle(): Promise<'cancelled' | 'created'>;
   disableInvoicePdfArchive(): Promise<unknown>;
   getInvoicePdfArchiveStatus(): Promise<unknown>;
+  getProfileBackupStatus(): Promise<unknown>;
+  inspectEncryptedProfileBackup(): Promise<unknown>;
   openInvoicePdf(invoiceId: string): Promise<void>;
   openInvoicePdfArchiveDirectory(): Promise<void>;
   openOperationalLogFolder(): Promise<void>;

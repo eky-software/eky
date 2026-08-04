@@ -82,6 +82,15 @@ import {
 import { restoreWindowInputFocus } from './windowInputFocus.js';
 import type { DesktopBuildInfo } from '../release/desktopBuildInfo.js';
 import { createProfileSnapshotBrokerTransport } from '../profileBackup/electronProfileSnapshotBrokerTransport.js';
+import {
+  createBackupPasswordWindowController,
+  type BackupPasswordWindowController,
+} from '../profileBackup/passwordWindow/backupPasswordWindow.js';
+import { PortableProfileBackupService } from '../profileBackup/portableProfileBackup.js';
+import {
+  createProfileBackupCapability,
+  type ProfileBackupCapability,
+} from '../profileBackup/profileBackupCapability.js';
 import { ProfileSnapshotBrokerClient } from '../profileBackup/profileSnapshotBrokerClient.js';
 import { createProfileSnapshotRuntimePaths } from '../profileBackup/profileSnapshotRuntimePaths.js';
 
@@ -288,6 +297,10 @@ async function startDesktopCompositionRuntime({
     | InvoicePdfArchiveCapability
     | undefined;
   let supportBundleCapability: SupportBundleCapability | undefined;
+  let backupPasswordWindowController:
+    | BackupPasswordWindowController
+    | undefined;
+  let profileBackupCapability: ProfileBackupCapability | undefined;
   let shutdownStarted = false;
 
   await Promise.all(
@@ -679,6 +692,81 @@ async function startDesktopCompositionRuntime({
       );
     },
   });
+  backupPasswordWindowController =
+    createBackupPasswordWindowController({
+      createWindow: (windowOptions) =>
+        new BrowserWindow(windowOptions),
+      ipcMain,
+      parentWindow: mainWindow,
+      preloadPath: join(
+        options.applicationPath,
+        'dist',
+        'profileBackup',
+        'passwordWindow',
+        'backupPasswordPreload.cjs',
+      ),
+    });
+  const portableProfileBackupService =
+    new PortableProfileBackupService({
+      appVersion: desktopAppVersion,
+      forbiddenRoots: [
+        dataRoot,
+        options.applicationPath,
+        options.resourcesPath,
+      ],
+      profileSnapshotClient: profileSnapshotBrokerClient,
+      quarantineRoot: profileSnapshotPaths.quarantineRoot,
+      stagingRoot: profileSnapshotPaths.stagingRoot,
+    });
+  profileBackupCapability = createProfileBackupCapability({
+    backupService: portableProfileBackupService,
+    ipcMain,
+    mainWindow,
+    operationalIdentity: desktopOperationalIdentity,
+    operationalLogger: desktopOperationalLogger,
+    passwordWindow: backupPasswordWindowController,
+    async selectBackupSource() {
+      const result = await dependencies.showOpenDialog(mainWindow, {
+        filters: [
+          {
+            extensions: ['ekybackup'],
+            name: 'Eky-varmuuskopio',
+          },
+        ],
+        message: 'Valitse tarkistettava Eky-varmuuskopio',
+        properties: ['openFile'],
+        title: 'Tarkista Eky-varmuuskopio',
+      });
+      return result.canceled || result.filePaths.length !== 1
+        ? null
+        : result.filePaths[0] ?? null;
+    },
+    async selectBackupTarget(defaultFileName) {
+      const result = await dependencies.showSaveDialog(mainWindow, {
+        defaultPath: defaultFileName,
+        filters: [
+          {
+            extensions: ['ekybackup'],
+            name: 'Salattu Eky-varmuuskopio',
+          },
+        ],
+        title: 'Tallenna salattu Eky-varmuuskopio',
+      });
+      return result.canceled || result.filePath === ''
+        ? null
+        : result.filePath;
+    },
+    showSafeError(kind) {
+      deliveryConfirmation.showApplicationError(
+        kind === 'create'
+          ? 'Varmuuskopiota ei voitu luoda'
+          : 'Varmuuskopiota ei voitu tarkistaa',
+        kind === 'create'
+          ? 'Salattua varmuuskopiota ei voitu luoda turvallisesti.'
+          : 'Varmuuskopion salasana, eheys tai sisältö ei läpäissyt tarkistusta.',
+      );
+    },
+  });
   try {
     removeExpiredSupportBundleTemporaryFiles(dataRoot);
   } catch {
@@ -730,6 +818,10 @@ async function startDesktopCompositionRuntime({
       invoicePdfArchiveCapability = undefined;
       supportBundleCapability?.dispose();
       supportBundleCapability = undefined;
+      profileBackupCapability?.dispose();
+      profileBackupCapability = undefined;
+      backupPasswordWindowController?.dispose();
+      backupPasswordWindowController = undefined;
       profileSnapshotBrokerClient.close();
 
       try {
