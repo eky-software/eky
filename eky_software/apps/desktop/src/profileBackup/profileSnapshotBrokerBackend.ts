@@ -19,9 +19,21 @@ export interface ProfileMaintenanceService {
 
 export function startProfileSnapshotBrokerBackend(input: {
   maintenance: ProfileMaintenanceService;
+  snapshot: {
+    createSqliteSnapshot(input: {
+      operationId: string;
+      signal: AbortSignal;
+    }): Promise<{
+      databaseByteSize: number;
+      logicalPath: 'profile.sqlite';
+      sha256: string;
+      totalPages: number;
+    }>;
+  };
   transport: ProfileSnapshotBrokerTransport;
 }): { close(): void } {
   let activeOperationId: string | undefined;
+  let activeSnapshotAbortController: AbortController | undefined;
   let autoReleaseTimer: ReturnType<typeof setTimeout> | undefined;
   let closed = false;
   let operationQueue = Promise.resolve();
@@ -68,6 +80,23 @@ export function startProfileSnapshotBrokerBackend(input: {
                 clearActiveOperation();
               }
             }, maximumMaintenanceDurationMilliseconds);
+          } else if (request.operation === 'createSqliteSnapshot') {
+            activeSnapshotAbortController = new AbortController();
+            const snapshot = await input.snapshot.createSqliteSnapshot({
+              operationId: request.operationId,
+              signal: activeSnapshotAbortController.signal,
+            });
+            activeSnapshotAbortController = undefined;
+            input.transport.send({
+              ok: true,
+              protocolVersion: profileSnapshotBrokerProtocolVersion,
+              requestId: request.requestId,
+              result: {
+                ...snapshot,
+                type: 'sqliteSnapshot',
+              },
+            });
+            return;
           } else if (request.operation === 'endProfileMaintenance') {
             input.maintenance.end(request.operationId);
             clearActiveOperation();
@@ -77,9 +106,13 @@ export function startProfileSnapshotBrokerBackend(input: {
             ok: true,
             protocolVersion: profileSnapshotBrokerProtocolVersion,
             requestId: request.requestId,
-            result: { status: input.maintenance.getStatus() },
+            result: {
+              status: input.maintenance.getStatus(),
+              type: 'maintenanceStatus',
+            },
           });
         } catch (error) {
+          activeSnapshotAbortController = undefined;
           input.transport.send(
             createErrorResponse(request.requestId, mapError(error)),
           );
@@ -88,6 +121,8 @@ export function startProfileSnapshotBrokerBackend(input: {
       .catch(() => undefined);
   });
   const unsubscribeClose = input.transport.subscribeClose(() => {
+    activeSnapshotAbortController?.abort();
+    activeSnapshotAbortController = undefined;
     if (activeOperationId !== undefined) {
       input.maintenance.forceEnd();
       clearActiveOperation();
@@ -103,6 +138,8 @@ export function startProfileSnapshotBrokerBackend(input: {
       closed = true;
       unsubscribe();
       unsubscribeClose();
+      activeSnapshotAbortController?.abort();
+      activeSnapshotAbortController = undefined;
       if (activeOperationId !== undefined) {
         input.maintenance.forceEnd();
         clearActiveOperation();
@@ -122,6 +159,9 @@ function mapError(error: unknown): ProfileSnapshotBrokerErrorCode {
     }
     if (error.name === 'ProfileMaintenanceOperationMismatchError') {
       return 'PROFILE_MAINTENANCE_OPERATION_MISMATCH';
+    }
+    if (error.message === 'PROFILE_SNAPSHOT_DATABASE_FAILED') {
+      return 'PROFILE_SNAPSHOT_DATABASE_FAILED';
     }
   }
 

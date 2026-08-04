@@ -82,6 +82,10 @@ export class ProfileMaintenanceState {
     return this.activeOperationId === undefined ? 'normal' : 'busy';
   }
 
+  isActiveOperation(operationId: string): boolean {
+    return this.activeOperationId === operationId;
+  }
+
   tryBeginBusinessWrite(): ReleaseBusinessWrite | undefined {
     if (this.activeOperationId !== undefined) {
       return undefined;

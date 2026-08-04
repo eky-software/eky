@@ -7,12 +7,16 @@ const maximumMessageBytes = 1_024;
 
 export type ProfileMaintenanceBrokerOperation =
   | 'beginProfileMaintenance'
+  | 'createSqliteSnapshot'
   | 'endProfileMaintenance'
   | 'getProfileMaintenanceStatus';
 
 export type ProfileSnapshotBrokerRequest =
   | {
-      operation: 'beginProfileMaintenance' | 'endProfileMaintenance';
+      operation:
+        | 'beginProfileMaintenance'
+        | 'createSqliteSnapshot'
+        | 'endProfileMaintenance';
       operationId: string;
       protocolVersion: typeof profileSnapshotBrokerProtocolVersion;
       requestId: string;
@@ -27,6 +31,7 @@ export type ProfileSnapshotBrokerErrorCode =
   | 'PROFILE_MAINTENANCE_BUSY'
   | 'PROFILE_MAINTENANCE_OPERATION_MISMATCH'
   | 'PROFILE_MAINTENANCE_TIMEOUT'
+  | 'PROFILE_SNAPSHOT_DATABASE_FAILED'
   | 'PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID'
   | 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE';
 
@@ -43,6 +48,13 @@ export type ProfileSnapshotBrokerResponse =
       requestId: string;
       result: {
         status: 'busy' | 'normal';
+        type: 'maintenanceStatus';
+      } | {
+        databaseByteSize: number;
+        logicalPath: 'profile.sqlite';
+        sha256: string;
+        totalPages: number;
+        type: 'sqliteSnapshot';
       };
     };
 
@@ -101,6 +113,7 @@ export function parseProfileSnapshotBrokerRequest(
 
   if (
     (value.operation !== 'beginProfileMaintenance' &&
+      value.operation !== 'createSqliteSnapshot' &&
       value.operation !== 'endProfileMaintenance') ||
     !hasExactKeys(value, [
       'operation',
@@ -157,18 +170,57 @@ export function parseProfileSnapshotBrokerResponse(
       'result',
     ]) ||
     !isRecord(value.result) ||
-    !hasExactKeys(value.result, ['status']) ||
-    (value.result.status !== 'busy' && value.result.status !== 'normal')
+    typeof value.result.type !== 'string'
   ) {
     return undefined;
   }
 
-  return {
-    ok: true,
-    protocolVersion: profileSnapshotBrokerProtocolVersion,
-    requestId: value.requestId,
-    result: { status: value.result.status },
-  };
+  if (
+    value.result.type === 'maintenanceStatus' &&
+    hasExactKeys(value.result, ['status', 'type']) &&
+    (value.result.status === 'busy' || value.result.status === 'normal')
+  ) {
+    return {
+      ok: true,
+      protocolVersion: profileSnapshotBrokerProtocolVersion,
+      requestId: value.requestId,
+      result: {
+        status: value.result.status,
+        type: 'maintenanceStatus',
+      },
+    };
+  }
+
+  if (
+    value.result.type === 'sqliteSnapshot' &&
+    hasExactKeys(value.result, [
+      'databaseByteSize',
+      'logicalPath',
+      'sha256',
+      'totalPages',
+      'type',
+    ]) &&
+    isBoundedPositiveSafeInteger(value.result.databaseByteSize) &&
+    value.result.logicalPath === 'profile.sqlite' &&
+    typeof value.result.sha256 === 'string' &&
+    /^[a-f0-9]{64}$/.test(value.result.sha256) &&
+    isBoundedPositiveSafeInteger(value.result.totalPages)
+  ) {
+    return {
+      ok: true,
+      protocolVersion: profileSnapshotBrokerProtocolVersion,
+      requestId: value.requestId,
+      result: {
+        databaseByteSize: value.result.databaseByteSize,
+        logicalPath: 'profile.sqlite',
+        sha256: value.result.sha256,
+        totalPages: value.result.totalPages,
+        type: 'sqliteSnapshot',
+      },
+    };
+  }
+
+  return undefined;
 }
 
 export function readProfileSnapshotBrokerRequestId(
@@ -184,8 +236,18 @@ function isErrorCode(value: unknown): value is ProfileSnapshotBrokerErrorCode {
     value === 'PROFILE_MAINTENANCE_BUSY' ||
     value === 'PROFILE_MAINTENANCE_OPERATION_MISMATCH' ||
     value === 'PROFILE_MAINTENANCE_TIMEOUT' ||
+    value === 'PROFILE_SNAPSHOT_DATABASE_FAILED' ||
     value === 'PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID' ||
     value === 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE'
+  );
+}
+
+function isBoundedPositiveSafeInteger(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isSafeInteger(value) &&
+    value >= 1 &&
+    value <= 20 * 1024 * 1024 * 1024
   );
 }
 

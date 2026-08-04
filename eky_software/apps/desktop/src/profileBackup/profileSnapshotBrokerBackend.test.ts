@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest';
 
 import {
   ProfileSnapshotBrokerClient,
-  ProfileSnapshotBrokerError,
 } from './profileSnapshotBrokerClient.js';
 import { startProfileSnapshotBrokerBackend } from './profileSnapshotBrokerBackend.js';
 import type { ProfileSnapshotBrokerTransport } from './profileSnapshotBrokerTransport.js';
@@ -15,6 +14,7 @@ describe('profile snapshot broker boundary', () => {
     const maintenance = new FakeProfileMaintenance();
     const backend = startProfileSnapshotBrokerBackend({
       maintenance,
+      snapshot: createFakeSnapshotService(),
       transport: transports.backend,
     });
     const client = new ProfileSnapshotBrokerClient(transports.main, 1_000);
@@ -35,6 +35,7 @@ describe('profile snapshot broker boundary', () => {
     const maintenance = new FakeProfileMaintenance();
     const backend = startProfileSnapshotBrokerBackend({
       maintenance,
+      snapshot: createFakeSnapshotService(),
       transport: transports.backend,
     });
     const client = new ProfileSnapshotBrokerClient(transports.main, 1_000);
@@ -43,12 +44,12 @@ describe('profile snapshot broker boundary', () => {
     await client.beginMaintenance(firstOperationId);
     await expect(
       client.beginMaintenance(randomUUID()),
-    ).rejects.toMatchObject<Partial<ProfileSnapshotBrokerError>>({
+    ).rejects.toMatchObject({
       code: 'PROFILE_MAINTENANCE_BUSY',
     });
     await expect(
       client.endMaintenance(randomUUID()),
-    ).rejects.toMatchObject<Partial<ProfileSnapshotBrokerError>>({
+    ).rejects.toMatchObject({
       code: 'PROFILE_MAINTENANCE_OPERATION_MISMATCH',
     });
 
@@ -61,6 +62,7 @@ describe('profile snapshot broker boundary', () => {
     const maintenance = new FakeProfileMaintenance();
     const backend = startProfileSnapshotBrokerBackend({
       maintenance,
+      snapshot: createFakeSnapshotService(),
       transport: transports.backend,
     });
     const client = new ProfileSnapshotBrokerClient(transports.main, 1_000);
@@ -71,7 +73,90 @@ describe('profile snapshot broker boundary', () => {
     expect(maintenance.status).toBe('normal');
     client.close();
   });
+
+  it('returns only bounded metadata for a verified SQLite snapshot', async () => {
+    const transports = createTransportPair();
+    const maintenance = new FakeProfileMaintenance();
+    const snapshot = createFakeSnapshotService();
+    const backend = startProfileSnapshotBrokerBackend({
+      maintenance,
+      snapshot,
+      transport: transports.backend,
+    });
+    const client = new ProfileSnapshotBrokerClient(transports.main, 1_000);
+    const operationId = randomUUID();
+
+    await client.beginMaintenance(operationId);
+    await expect(client.createSqliteSnapshot(operationId)).resolves.toEqual({
+      databaseByteSize: 8_192,
+      logicalPath: 'profile.sqlite',
+      sha256: 'a'.repeat(64),
+      totalPages: 2,
+      type: 'sqliteSnapshot',
+    });
+    expect(snapshot.operationIds).toEqual([operationId]);
+    await client.endMaintenance(operationId);
+
+    client.close();
+    backend.close();
+  });
+
+  it('maps snapshot failures without exposing backend details', async () => {
+    const transports = createTransportPair();
+    const maintenance = new FakeProfileMaintenance();
+    const backend = startProfileSnapshotBrokerBackend({
+      maintenance,
+      snapshot: {
+        async createSqliteSnapshot() {
+          throw new Error('PROFILE_SNAPSHOT_DATABASE_FAILED');
+        },
+      },
+      transport: transports.backend,
+    });
+    const client = new ProfileSnapshotBrokerClient(transports.main, 1_000);
+    const operationId = randomUUID();
+
+    await client.beginMaintenance(operationId);
+    await expect(
+      client.createSqliteSnapshot(operationId),
+    ).rejects.toMatchObject({
+      code: 'PROFILE_SNAPSHOT_DATABASE_FAILED',
+    });
+    await client.endMaintenance(operationId);
+
+    client.close();
+    backend.close();
+  });
 });
+
+function createFakeSnapshotService(): {
+  createSqliteSnapshot(input: {
+    operationId: string;
+    signal: AbortSignal;
+  }): Promise<{
+    databaseByteSize: number;
+    logicalPath: 'profile.sqlite';
+    sha256: string;
+    totalPages: number;
+  }>;
+  operationIds: string[];
+} {
+  const operationIds: string[] = [];
+
+  return {
+    async createSqliteSnapshot({ operationId, signal }) {
+      expect(signal.aborted).toBe(false);
+      operationIds.push(operationId);
+      return {
+        databaseByteSize: 8_192,
+        logicalPath: 'profile.sqlite',
+        sha256: 'a'.repeat(64),
+        totalPages: 2,
+      };
+    },
+    operationIds,
+  };
+}
 
 class FakeProfileMaintenance {
   status: 'busy' | 'normal' = 'normal';

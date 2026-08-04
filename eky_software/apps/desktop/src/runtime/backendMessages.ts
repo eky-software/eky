@@ -17,6 +17,7 @@ export interface DesktopBackendStartMessage {
     migrationsDirectory: string;
     operationalLogsRoot: string;
     platform: string;
+    profileSnapshotStagingRoot: string;
     runtimeInstanceId: string;
     runtimeSessionSecret: string;
     smokePdfPath: string;
@@ -107,6 +108,7 @@ export function parseDesktopBackendCommand(
     'invoiceDocumentStorageRoot',
     'migrationsDirectory',
     'operationalLogsRoot',
+    'profileSnapshotStagingRoot',
     'smokePdfPath',
   ] as const;
 
@@ -147,6 +149,8 @@ export function parseDesktopBackendCommand(
       migrationsDirectory: config.migrationsDirectory as string,
       operationalLogsRoot: config.operationalLogsRoot as string,
       platform: config.platform,
+      profileSnapshotStagingRoot:
+        config.profileSnapshotStagingRoot as string,
       runtimeInstanceId: config.runtimeInstanceId,
       runtimeSessionSecret: config.runtimeSessionSecret,
       smokePdfPath: config.smokePdfPath as string,

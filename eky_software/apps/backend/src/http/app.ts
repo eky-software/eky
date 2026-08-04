@@ -46,6 +46,8 @@ import { SqliteCustomerAuditRetention } from '../modules/customers/infrastructur
 import { SqliteInvoiceSettingsAuditRetention } from '../modules/invoicing/infrastructure/sqliteInvoiceSettingsAuditRetention.js';
 import { createProfileMaintenanceMiddleware } from './profileMaintenance.js';
 import { ProfileMaintenanceState } from '../runtime/profileMaintenance/profileMaintenanceState.js';
+import { createSqliteProfileSnapshotService } from '../runtime/profileSnapshot/createSqliteProfileSnapshot.js';
+import type { ProfileSnapshotServiceRegistration } from '../runtime/profileSnapshot/profileSnapshotTypes.js';
 
 const defaultAppVersion = '0.0.0';
 
@@ -67,6 +69,7 @@ export interface CreateAppOptions {
   operationalLogsRoot?: string;
   platform?: string;
   profileMaintenanceState?: ProfileMaintenanceState;
+  profileSnapshotServiceRegistration?: ProfileSnapshotServiceRegistration;
   runtimeTrust?: RuntimeTrust;
 }
 
@@ -252,6 +255,23 @@ export async function createApp(
   const localRuntimeIdentity = readLocalRuntimeIdentity(database);
   const profileMaintenanceState =
     options.profileMaintenanceState ?? new ProfileMaintenanceState();
+
+  if (options.profileSnapshotServiceRegistration !== undefined) {
+    if (options.migrationsDirectory === undefined) {
+      database.close();
+      throw new Error(
+        'Profile snapshot migrations directory must be configured.',
+      );
+    }
+    options.profileSnapshotServiceRegistration.register(
+      createSqliteProfileSnapshotService({
+        database,
+        maintenanceState: profileMaintenanceState,
+        migrationsDirectory: options.migrationsDirectory,
+        stagingRoot: options.profileSnapshotServiceRegistration.stagingRoot,
+      }),
+    );
+  }
   const app = new Hono<BackendEnvironment>();
 
   app.use(

@@ -25,6 +25,20 @@ interface BackendProfileMaintenanceState {
   tryBeginBusinessWrite(): (() => void) | undefined;
 }
 
+interface BackendSqliteProfileSnapshotMetadata {
+  databaseByteSize: number;
+  logicalPath: 'profile.sqlite';
+  sha256: string;
+  totalPages: number;
+}
+
+interface BackendProfileSnapshotService {
+  createSqliteSnapshot(input: {
+    operationId: string;
+    signal: AbortSignal;
+  }): Promise<BackendSqliteProfileSnapshotMetadata>;
+}
+
 type StartServer = (options: {
   appOptions: {
     appVersion: string;
@@ -64,6 +78,10 @@ type StartServer = (options: {
       runtimeInstanceId: string;
     };
     profileMaintenanceState: BackendProfileMaintenanceState;
+    profileSnapshotServiceRegistration: {
+      register(service: BackendProfileSnapshotService): void;
+      stagingRoot: string;
+    };
   };
   hostname: string;
   port: number;
@@ -77,6 +95,7 @@ let backendServer: StartedBackendServer | undefined;
 let secretBrokerClient: CompanyEmailSecretBrokerClient | undefined;
 let invoicePdfArchiveBrokerClient: InvoicePdfArchiveBrokerClient | undefined;
 let profileSnapshotBrokerHandle: { close(): void } | undefined;
+let profileSnapshotService: BackendProfileSnapshotService | undefined;
 let startAttempted = false;
 const utilityParentPort = process.parentPort;
 
@@ -224,6 +243,14 @@ utilityParentPort.on('message', (event) => {
         new maintenanceModule.ProfileMaintenanceState();
       profileSnapshotBrokerHandle = startProfileSnapshotBrokerBackend({
         maintenance: profileMaintenanceState,
+        snapshot: {
+          createSqliteSnapshot: (input) => {
+            if (profileSnapshotService === undefined) {
+              throw new Error('PROFILE_SNAPSHOT_DATABASE_FAILED');
+            }
+            return profileSnapshotService.createSqliteSnapshot(input);
+          },
+        },
         transport: createProfileSnapshotBrokerTransport(
           profileSnapshotBrokerPort,
         ),
@@ -274,6 +301,12 @@ utilityParentPort.on('message', (event) => {
             runtimeInstanceId: command.config.runtimeInstanceId,
           },
           profileMaintenanceState,
+          profileSnapshotServiceRegistration: {
+            register(service) {
+              profileSnapshotService = service;
+            },
+            stagingRoot: command.config.profileSnapshotStagingRoot,
+          },
         },
         hostname: '127.0.0.1',
         port: 0,

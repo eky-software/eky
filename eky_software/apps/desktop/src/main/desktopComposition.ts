@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import {
@@ -82,6 +83,7 @@ import { restoreWindowInputFocus } from './windowInputFocus.js';
 import type { DesktopBuildInfo } from '../release/desktopBuildInfo.js';
 import { createProfileSnapshotBrokerTransport } from '../profileBackup/electronProfileSnapshotBrokerTransport.js';
 import { ProfileSnapshotBrokerClient } from '../profileBackup/profileSnapshotBrokerClient.js';
+import { createProfileSnapshotRuntimePaths } from '../profileBackup/profileSnapshotRuntimePaths.js';
 
 export interface DesktopLifecycleHandle {
   applicationWindow: BrowserWindow;
@@ -256,6 +258,7 @@ async function startDesktopCompositionRuntime({
 > {
   const databaseFilePath = join(dataRoot, 'data', 'eky.sqlite');
   const invoiceDocumentStorageRoot = join(dataRoot, 'storage', 'invoices');
+  const profileSnapshotPaths = createProfileSnapshotRuntimePaths(dataRoot);
   const secretFilePath = join(
     dataRoot,
     'secrets',
@@ -286,6 +289,11 @@ async function startDesktopCompositionRuntime({
     | undefined;
   let supportBundleCapability: SupportBundleCapability | undefined;
   let shutdownStarted = false;
+
+  await mkdir(profileSnapshotPaths.stagingRoot, {
+    mode: 0o700,
+    recursive: true,
+  });
 
   const deliveryDialogAdapter: InvoiceDeliveryDialogAdapter = {
     showErrorBox: dependencies.showErrorBox,
@@ -413,6 +421,7 @@ async function startDesktopCompositionRuntime({
         ),
         operationalLogsRoot,
         platform: process.platform,
+        profileSnapshotStagingRoot: profileSnapshotPaths.stagingRoot,
         runtimeInstanceId: options.runtimeInstanceId,
         runtimeSessionSecret,
         smokePdfPath,

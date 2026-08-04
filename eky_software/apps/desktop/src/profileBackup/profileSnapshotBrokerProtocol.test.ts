@@ -27,6 +27,16 @@ describe('profile snapshot broker protocol', () => {
       requestId,
     });
     expect(
+      createProfileSnapshotBrokerRequest({
+        operation: 'createSqliteSnapshot',
+        operationId,
+        requestId,
+      }),
+    ).toMatchObject({
+      operation: 'createSqliteSnapshot',
+      operationId,
+    });
+    expect(
       parseProfileSnapshotBrokerRequest({
         operation: 'openFile',
         path: 'C:\\private',
@@ -68,6 +78,44 @@ describe('profile snapshot broker protocol', () => {
   it('rejects malformed and over-specified responses', () => {
     const requestId = randomUUID();
 
+    expect(
+      parseProfileSnapshotBrokerResponse({
+        ok: true,
+        protocolVersion: profileSnapshotBrokerProtocolVersion,
+        requestId,
+        result: {
+          databaseByteSize: 8_192,
+          logicalPath: 'profile.sqlite',
+          sha256: 'a'.repeat(64),
+          totalPages: 2,
+          type: 'sqliteSnapshot',
+        },
+      }),
+    ).toMatchObject({
+      ok: true,
+      result: {
+        databaseByteSize: 8_192,
+        logicalPath: 'profile.sqlite',
+        sha256: 'a'.repeat(64),
+        totalPages: 2,
+        type: 'sqliteSnapshot',
+      },
+    });
+    expect(
+      parseProfileSnapshotBrokerResponse({
+        ok: true,
+        protocolVersion: profileSnapshotBrokerProtocolVersion,
+        requestId,
+        result: {
+          databaseByteSize: 8_192,
+          filePath: 'C:\\private\\profile.sqlite',
+          logicalPath: 'profile.sqlite',
+          sha256: 'a'.repeat(64),
+          totalPages: 2,
+          type: 'sqliteSnapshot',
+        },
+      }),
+    ).toBeUndefined();
     expect(
       parseProfileSnapshotBrokerResponse({
         ok: true,

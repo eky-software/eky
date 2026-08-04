@@ -6,10 +6,16 @@ import {
   readProfileSnapshotBrokerRequestId,
   type ProfileMaintenanceBrokerOperation,
   type ProfileSnapshotBrokerErrorCode,
+  type ProfileSnapshotBrokerResponse,
 } from './profileSnapshotBrokerProtocol.js';
 import type { ProfileSnapshotBrokerTransport } from './profileSnapshotBrokerTransport.js';
 
 const defaultRequestTimeoutMilliseconds = 35_000;
+
+type ProfileSnapshotBrokerSuccessResult = Extract<
+  ProfileSnapshotBrokerResponse,
+  { ok: true }
+>['result'];
 
 export class ProfileSnapshotBrokerError extends Error {
   constructor(readonly code: ProfileSnapshotBrokerErrorCode) {
@@ -24,7 +30,7 @@ export class ProfileSnapshotBrokerClient {
     string,
     {
       reject(error: Error): void;
-      resolve(status: 'busy' | 'normal'): void;
+      resolve(result: ProfileSnapshotBrokerSuccessResult): void;
       timer: ReturnType<typeof setTimeout>;
     }
   >();
@@ -40,13 +46,31 @@ export class ProfileSnapshotBrokerClient {
 
   beginMaintenance(operationId: string): Promise<'busy'> {
     return this.request('beginProfileMaintenance', operationId).then(
-      (status) => {
-        if (status !== 'busy') {
+      (result) => {
+        if (
+          result.type !== 'maintenanceStatus' ||
+          result.status !== 'busy'
+        ) {
           throw new ProfileSnapshotBrokerError(
             'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
           );
         }
-        return status;
+        return result.status;
+      },
+    );
+  }
+
+  createSqliteSnapshot(operationId: string): Promise<
+    Extract<ProfileSnapshotBrokerSuccessResult, { type: 'sqliteSnapshot' }>
+  > {
+    return this.request('createSqliteSnapshot', operationId).then(
+      (result) => {
+        if (result.type !== 'sqliteSnapshot') {
+          throw new ProfileSnapshotBrokerError(
+            'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
+          );
+        }
+        return result;
       },
     );
   }
@@ -73,25 +97,35 @@ export class ProfileSnapshotBrokerClient {
 
   endMaintenance(operationId: string): Promise<'normal'> {
     return this.request('endProfileMaintenance', operationId).then(
-      (status) => {
-        if (status !== 'normal') {
+      (result) => {
+        if (
+          result.type !== 'maintenanceStatus' ||
+          result.status !== 'normal'
+        ) {
           throw new ProfileSnapshotBrokerError(
             'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
           );
         }
-        return status;
+        return result.status;
       },
     );
   }
 
   getStatus(): Promise<'busy' | 'normal'> {
-    return this.request('getProfileMaintenanceStatus');
+    return this.request('getProfileMaintenanceStatus').then((result) => {
+      if (result.type !== 'maintenanceStatus') {
+        throw new ProfileSnapshotBrokerError(
+          'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
+        );
+      }
+      return result.status;
+    });
   }
 
   private request(
     operation: ProfileMaintenanceBrokerOperation,
     operationId?: string,
-  ): Promise<'busy' | 'normal'> {
+  ): Promise<ProfileSnapshotBrokerSuccessResult> {
     if (this.closed) {
       return Promise.reject(
         new ProfileSnapshotBrokerError(
@@ -162,6 +196,6 @@ export class ProfileSnapshotBrokerClient {
       return;
     }
 
-    pending.resolve(response.result.status);
+    pending.resolve(response.result);
   }
 }
