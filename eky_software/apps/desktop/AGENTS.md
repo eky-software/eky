@@ -34,6 +34,23 @@ Mandatory boundaries:
   and named zero-argument capabilities
 - keep the invoice archive broker private between the backend utility process
   and Electron main; never add the raw path or archive task to public HTTP
+- keep backup, restore, recovery-point and update orchestration in Electron
+  main infrastructure; business modules expose only narrowly named snapshot or
+  validation ports
+- never expose a backup password, derived key, recovery-point key, raw
+  manifest or local backup/update path to the renderer
+- never accept encryption parameters, an executable, process arguments, a
+  URL or an installer command from the renderer
+- never write a plaintext portable backup or silently fall back when
+  encryption or `safeStorage` is unavailable
+- keep restore staging, profile activation, rollback and update journals
+  private to the desktop runtime; do not expose them through public HTTP
+- the installer owns application binaries only and must not mutate or delete
+  business data, logs, secrets, recovery points or external PDF archives
+- do not start an update that can migrate business data before a validated
+  pre-update recovery point exists
+- launch an external installer/updater with a fixed executable and separate
+  validated arguments; never construct a shell command string
 
 Oikeaa SMTP-tunnusta saa käyttää vain erikseen hyväksytyssä, salatussa ja
 käyttäjän vahvistamassa Electron-polussa. Testilähetys pakotetaan määritettyyn

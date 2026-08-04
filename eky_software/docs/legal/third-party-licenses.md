@@ -57,7 +57,7 @@ lockfilesta. Eky ei käännä ajuria lähdekoodista loppukäyttäjän koneella.
 R0:n järjestelmä-, selain- ja Electron development -testauksen suora
 testiriippuvuus on:
 
-- `@playwright/test` 1.61.1, Apache-2.0
+- `@playwright/test` 1.62.1, Apache-2.0
 
 Riippuvuus kuuluu vain `apps/e2e`-testipakettiin. R0 asentaa Playwrightin
 Chromium-testibinäärin paikallista ja CI-testausta varten. Playwright,

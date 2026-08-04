@@ -48,6 +48,13 @@ Käynnistys estetään, jos:
 E2E ei käytä oikeita salaisuuksia, SMTP-yhteyttä, DNS-kyselyitä, asiakas- tai
 laskudataa, käyttäjän SQLite-kantaa eikä production-runtime-sessionia.
 
+Tulevat backup/restore- ja installer/update-E2E:t lisäävät saman
+testikohtaisen juuren alle omat `backups`, `recovery-points`, `staging` ja
+`update`-hakemistonsa. Niitä ei saa koskaan osoittaa `%APPDATA%\Eky`-
+hakemistoon, oikeaan asennushakemistoon tai käyttäjän valitsemaan
+tuotantokohteeseen. Windows-installerin E2E käyttää eristettyä testiasennusta
+ja synteettistä profiilia.
+
 ## Prosessien elinkaari
 
 Testiruntime käynnistää backendin ja webin hallittuina lapsiprosesseina. Se:

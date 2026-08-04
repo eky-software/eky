@@ -49,6 +49,24 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
   testattu?
 - Korvaako technical log vahingossa moduulin atomisen business auditin?
 - Onko tukipaketti sanitoitu ja erotettu backupista?
+- Onko siirrettävä backup aina salattu ilman plaintext-fallbackia?
+- Ovatko siirrettävä backup, konekohtainen palautuspiste, tukipaketti ja
+  lasku-PDF:n arkistokopio eri vastuita?
+- Tekeekö restore kaiken staging-profiiliin ennen aktiivisen profiilin
+  vaihtoa?
+- Estetäänkö traversal, symlink, junction, reparse point ja osittainen
+  aktiivisen profiilin korvaus?
+- Onko backup-salasana, avainmateriaali, payload ja paikallinen polku poissa
+  rendereristä, lokeista ja tukipaketista?
+- Vaatiiko schemaa muuttava päivitys validoidun pre-update-palautuspisteen?
+- Omistaako asennin vain binaarit eikä business dataa, salaisuuksia tai
+  palautuspisteitä?
+- Käynnistääkö Electron main updaterin ilman shell-merkkijonoa ja ilman
+  rendererin antamia polkuja, URL:eja tai argumentteja?
+- Erotetaanko asennuksen onnistuminen uuden version first-start-
+  hyväksynnästä?
+- Onko business-datan rollback erotettu binary rollbackista ilman reverse
+  SQL -migraatiota?
 
 ### Observability-laajennus
 
@@ -155,6 +173,12 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
   yhdestä koneesta johdettua haurasta absoluuttista muistirajaa?
 - Päättyvätkö kaikki testiharnessin käynnistämät prosessit ja vapautuvatko
   loopback-portit myös failure- ja restart-polussa?
+- Todistetaanko backupin palautettavuus hardened Windows -artifactilla eikä
+  vain backup-tiedoston syntyminen?
+- Kattavatko restore-testit stagingin, aktivoinnin, restartin jokaisessa
+  journalivaiheessa ja rollbackin?
+- Kattavatko update-testit suoran Setup-polun, sovelluksesta käynnistetyn
+  päivityksen, migration-failuren, health-failuren ja binary rollbackin?
 
 ## Dokumentaatio
 

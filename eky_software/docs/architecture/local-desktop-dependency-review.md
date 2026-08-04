@@ -18,6 +18,11 @@ Ensimmäisessä spikessä tarvitaan vain:
 Installeria, makeria, julkaisua, automaattipäivitystä, code signingia tai
 salaisuuksien käsittelyä ei lisätä tässä vaiheessa.
 
+ADR-0010 määrittelee myöhemmän Windows-asennuksen ja päivitysorkestroinnin
+arkkitehtuurin. Se ei valitse installeria, makeria tai updater-riippuvuutta.
+Teknologiavalinta vaatii edelleen tämän dokumentin periaatteiden mukaisen
+uuden dependency- ja security-arvion.
+
 ## Valitut Riippuvuudet
 
 Spikessä käytetään tarkasti lukittuja development-riippuvuuksia vain
@@ -119,6 +124,10 @@ paketointispikessä.
 Valitut kolme riippuvuutta hyväksytään vain local desktop -paketointispikeen.
 Uusi desktop-riippuvuus, installer, maker, updater tai salaisuuksiin liittyvä
 kirjasto vaatii uuden rajatun dependency- ja security-arvion.
+
+Installer- ja update-vaihtoehtojen päätösmatriisi sekä testausportti on
+kuvattu dokumentissa
+`docs/architecture/windows-installer-and-update-plan.md`.
 
 SMTP-salaisuuden local-MVP-tallennukseen ei lisätä uutta keyring- tai native-
 riippuvuutta. Toteutus käyttää jo hyväksytyn Electron-runtimen sisäänrakennettua

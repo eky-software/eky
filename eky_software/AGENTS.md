@@ -87,10 +87,21 @@ lokikansion avaamista tai tukipakettia, lue myös
 ja `docs/architecture/support-bundle-plan.md`.
 
 Jos työ koskee paikallisen business-datan varmuuskopiointia, palautusta,
-`.ekybackup`-formaattia, restore-stagingia tai profiilin rollbackia, lue myös
+`.ekybackup`-formaattia, salattua siirrettävää varmuuskopiota, konekohtaista
+palautuspistettä, restore-stagingia tai profiilin rollbackia, lue myös
+`docs/decisions/ADR-0009-local-backup-encryption-and-recovery-points.md` ja
 `docs/architecture/local-backup-and-restore-plan.md`. Tukipakettia tai
 toimitettujen laskujen valinnaista PDF-arkistokansiota ei saa käsitellä
 varmuuskopiona.
+
+Jos työ koskee Windows-asenninta, Setup-päivitystä, sovelluksesta
+käynnistettävää päivitystä, update coordinatoria, päivitysjournalia,
+pre-update-palautuspistettä, binary rollbackia, code signingia tai
+julkaisukanavaa, lue myös
+`docs/decisions/ADR-0010-windows-installer-and-update-orchestration.md`,
+`docs/architecture/windows-installer-and-update-plan.md`,
+`docs/architecture/release-versioning-policy.md` ja
+`docs/architecture/local-desktop-dependency-review.md`.
 
 Jos työ koskee E2E-testejä, Playwrightia, selain- tai Electron development
 -käyttäjäpolkuja, testiruntimea, fault injectionia, hyökkäyssimulaatioita tai
