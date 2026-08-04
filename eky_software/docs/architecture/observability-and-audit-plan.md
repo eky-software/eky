@@ -283,6 +283,25 @@ vianrajausta varten tarpeellisia `companyId`-, `invoiceId`- ja
 `operationId`-tunnisteita. Niitä ei viedä incident-indeksiin,
 Diagnostics-projektioon tai tukipakettiin.
 
+## Tulevat backup-, restore- ja update-tapahtumat
+
+ADR-0009:n ja ADR-0010:n myöhemmät toteutukset tarvitsevat tekniset
+tapahtumaperheet:
+
+- `backup.*`
+- `restore.*`
+- `recoveryPoint.*`
+- `update.*`
+
+Tarkkoja event-nimiä, outcome-arvoja tai retentionia ei lukita ennen kuin
+application/use case-, transaction ownership- ja failure behavior -rajat on
+mallinnettu. Tapahtumat noudattavat nykyistä yhteistä event envelopea eivätkä
+luo omaa loggeria tai vapaamuotoista metadataa.
+
+Tapahtumiin ei saa tallentaa backup- tai update-payloadia, salasanaa,
+avainmateriaalia, salt/nonce/tag-arvoja, manifestia, raakaa paikallista
+polkua, installer commandia, yrityksen nimeä tai business dataa.
+
 ## Testaus ja failure behavior
 
 - Business audit -virhe rollbackaa saman transaktion kriittisen muutoksen.

@@ -101,6 +101,11 @@ build-, fingerprint-, count- ja aikaväliyhteenveto.
 - ympäristömuuttujat, Windows-käyttäjänimi ja userData-polku
 - PDF-arkiston kohdepolku, laskunumero, invoice/document/delivery event id,
   PDF-tiiviste tai arkistointibrokerin raw error
+- `.ekybackup`-payload tai sen salattu sisältö
+- backupin salt, nonce, authentication tag, salasana tai johdettu avain
+- konekohtainen palautuspiste tai sen suojattu avainmateriaali
+- restore-staging-profiili, backup/restore-journal tai raaka polku
+- päivityspaketti, installer command tai update-journal
 - raw stack tai raw JSONL-rivi
 
 ## Desktop-flow
@@ -135,10 +140,11 @@ ulkoisen kopion, kun käyttötarkoitus päättyy. Eky poistaa vain oman runtimen
 yli 30 päivää vanhat väliaikaiset tukipakettitiedostot.
 
 Tukipaketti ei ole Eky-varmuuskopio eikä sitä voi käyttää liiketoimintadatan,
-SQLite-tietokannan, laskujen tai asetusten palauttamiseen. `.ekybackup` kuuluu
-myöhemmin erikseen toteutettavaan backup/restore-polkuun; sitä ei saa sekoittaa
-`.json.gz`-diagnostiikka-artifactiin. Vanha `.ekysupport` tarkoittaa samaa
-legacy-tukipakettiformaattia, ei varmuuskopiota.
+SQLite-tietokannan, laskujen tai asetusten palauttamiseen. `.ekybackup`
+kuuluu ADR-0009:ssä hyväksyttyyn mutta vielä toteuttamattomaan salattuun
+backup/restore-polkuun; sitä ei saa sekoittaa `.json.gz`-diagnostiikka-
+artifactiin. Vanha `.ekysupport` tarkoittaa samaa legacy-
+tukipakettiformaattia, ei varmuuskopiota.
 
 Backup/Restore-polun suunnitteluperusta on dokumentissa
 `docs/architecture/local-backup-and-restore-plan.md`.

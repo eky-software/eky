@@ -400,6 +400,11 @@ Tuotantojulkaisua ennen vaaditaan kuitenkin:
 Desktop-päivitys ei saa vaihtaa tietokantaskeemaa ilman migraatioita eikä
 ohittaa release security gate -tarkistusta.
 
+Myöhemmin hyväksytty ADR-0010 määrittelee Windows-asentajan ja
+päivitysorkestroinnin tarkemman vastuun. ADR-0009 määrittelee ennen
+migraatiota vaadittavan palautuspisteen. Installer- tai updater-
+tuotantokoodia ei ole vielä toteutettu.
+
 ## Seuraukset
 
 Päätös:

@@ -69,6 +69,30 @@ Paikalliset tietokantatiedostot, varmuuskopiot ja `.env`-tiedostot pidetään Gi
 
 Jos tuotantoympäristöön liittyvä tieto auttaa hyökkääjää suoraan, sitä ei dokumentoida julkiseen repositoryyn.
 
+Backup- ja päivitysarkkitehtuurin yleiset periaatteet saa dokumentoida
+julkisesti. Repositoryyn ei kuitenkaan tallenneta oikeaa `.ekybackup`-
+tiedostoa, palautuspistettä, päivityspakettia, allekirjoitusavainta,
+backup-salasanaa, kryptografista avainmateriaalia, paikallista
+yritysprofiilia tai installerin konekohtaista journalia.
+
+## Backup-, restore- ja päivitysturvallisuus
+
+- siirrettävä business-datan varmuuskopio on aina autentikoidusti salattu
+- konekohtainen palautuspiste ei ole siirrettävä backup
+- restore validoi artifactin ja käyttää staging-profiilia ennen aktiivisen
+  profiilin vaihtoa
+- schemaa muuttava päivitys vaatii validoidun palautuspisteen
+- käynnissä oleva sovellus ei korvaa omia binaarejaan
+- renderer ei saa backup-, restore- tai update-polkuja, avaimia, URL:eja tai
+  prosessiargumentteja
+- asennin ei omista eikä poista business dataa
+- update-artifactin eheys ja myöhemmin julkaisijan identiteetti validoidaan
+  ennen suoritusta
+- virhetilanne ei saa johtaa salaamattomaan fallbackiin, osittaiseen restoreen
+  tai reverse SQL -migraatioon
+
+Tarkat päätökset ovat ADR-0009:ssä ja ADR-0010:ssä.
+
 ## Autentikointi
 
 Firebase Auth on alustava valinta käyttäjän tunnistamiseen.

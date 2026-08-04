@@ -75,10 +75,12 @@ toimitus säilyy arkistovirheessä, pending-task palautuu restartin jälkeen ja
 eri sisältöistä olemassa olevaa tiedostoa ei korvata tai yritetä
 automaattisesti uudelleen.
 
-Packaged smoke säilyy erillisenä hardened-artifactin porttina. Täydellinen
-backup/restore- ja tenant-matriisi sekä pilvi-identiteetin tenant-matriisi ovat
-vielä erillisiä release-checkpointteja. Ensimmäinen 30 minuutin Electron-soak
-on dokumentoitu `e2e-desktop-endurance-baseline.md`-tiedostossa.
+Packaged smoke säilyy erillisenä hardened-artifactin porttina. Backup/restore-
+ja installer/update-arkkitehtuuri on hyväksytty, mutta niiden
+tuotantokoodia tai E2E-polkuja ei ole vielä toteutettu. Ne ovat oikean datan
+R0-release-checkpointteja. Pilvi-identiteetin tenant-matriisi on myöhempi
+erillinen checkpoint. Ensimmäinen 30 minuutin Electron-soak on dokumentoitu
+`e2e-desktop-endurance-baseline.md`-tiedostossa.
 
 ## Observabilityn E2E
 
@@ -157,9 +159,10 @@ avaa nykyisten moduulien valmiita turvarajoja uudelleen ilman todettua syytä.
 
 ## Riippuvuuspäätös
 
-Projektin omistaja on hyväksynyt `@playwright/test`-paketin täsmälleen
-versiona `1.61.1` vain `apps/e2e`-testipakettiin sekä sen Chromium-
-testibinäärin. Selainbinääri ei kuulu Eky.exe-artifactiin.
+Projektin omistaja on hyväksynyt `@playwright/test`-paketin vain `apps/e2e`-
+testipakettiin täsmälleen sen `package.json`-tiedostoon lukitulla versiolla
+sekä vastaavan Chromium-testibinäärin. Selainbinääri ei kuulu
+Eky.exe-artifactiin.
 
 Hyväksyntä ei kata erillistä `playwright`- tai `playwright-core`-lisäystä eikä
 mitään muuta testikirjastoa. Jos Electron-rajapinta ei ole käytettävissä

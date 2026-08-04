@@ -33,7 +33,8 @@ Keep helpers responsibility-specific. Do not create generic `utils`,
 grounds before concrete duplication exists.
 
 The only dependency approved for this package at foundation time is
-`@playwright/test` version `1.61.1`. No other dependency may be added without
+`@playwright/test` at the exact version pinned in this package's
+`package.json`. No other dependency may be added without
 the repository dependency approval gate.
 
 Update `docs/architecture/r0-e2e-test-matrix.md` whenever a scenario is added,

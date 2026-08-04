@@ -12,6 +12,11 @@ are complete. A real SMTP credential may be used only through the encrypted
 secret-store path. Confirmed customer delivery is implemented, but real-data
 use remains blocked until the documented release-security gates are complete.
 
+Encrypted backup/recovery-point and Windows installer/update architecture is
+accepted, but none of those production capabilities is implemented yet.
+The current unpacked `out/Eky-win32-x64` directory is a development/package
+artifact, not an installer or an automatically updating release.
+
 ## Commands
 
 From the repository root on Windows:
@@ -96,4 +101,10 @@ as a non-overwriting conflict. The renderer receives neither the raw path nor
 invoice, document or delivery identifiers through the archive status API.
 
 See `docs/architecture/release-versioning-policy.md` for version and build
-identity rules.
+identity rules. Backup/restore and installer/update boundaries are documented
+in:
+
+- `docs/decisions/ADR-0009-local-backup-encryption-and-recovery-points.md`
+- `docs/architecture/local-backup-and-restore-plan.md`
+- `docs/decisions/ADR-0010-windows-installer-and-update-orchestration.md`
+- `docs/architecture/windows-installer-and-update-plan.md`

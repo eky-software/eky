@@ -56,6 +56,69 @@ Runtime-tunniste:
 - saa näkyä vain erikseen mallinnetussa paikallisessa diagnostiikassa
 - ei kuulu pitkäaikaiseen incident-indeksiin
 
+## Sovellusidentiteetti ja asennus
+
+Puhdas asennus ja päivitys käyttävät samaa vakaata Eky-
+sovellusidentiteettiä. Version, build revisionin tai release-kanavan muutos ei
+saa luoda uutta `userData`-juurta tai siirtää business dataa
+asennushakemistoon.
+
+Jaeltava Windows-paketti sisältää tiukasti validoitavan versionoidun
+manifestin, jossa on vähintään:
+
+- app identity
+- app version ja build revision
+- platform ja architecture
+- release channel
+- paketin koko ja SHA-256
+- manifest format version
+
+Build identity todistaa jäljitettävyyden, ei artifactin alkuperää tai eheyttä.
+Digitaalinen allekirjoitus, tunnettu publisher ja allekirjoitettu
+päivitysmanifesti ovat erillisiä laajemman jakelun turvallisuustodisteita.
+
+## Release-kanavat
+
+Suunnitellut kanavat ovat:
+
+- `development`: paikallinen dirty tai muuten ei-jaettava kehitysbuild
+- `pilot`: hallitulle testilaitteelle tarkoitettu rajattu R0-julkaisu
+- `stable`: myöhempi allekirjoitettu ja laajemman release gaten läpäissyt
+  julkaisu
+
+Kanavaa ei päätellä pelkästä SemVer prerelease -tunnisteesta. Manifestin,
+paketin ja päivitysjournalin kanavien pitää vastata toisiaan.
+
+## Version vertailu ja downgrade
+
+Päivityspolku käyttää SemVer-vertailua:
+
+- uudempi yhteensopiva versio voidaan hyväksyä manifestin ja release gaten
+  jälkeen
+- sama versio torjutaan normaalina päivityksenä, ellei kyse ole erikseen
+  hyväksytystä repair-polusta
+- downgrade estetään oletuksena
+- downgrade ei koskaan aja reverse SQL -migraatiota
+- mahdollinen binary rollback käyttää edellisen version binaareja vain
+  yhdessä yhteensopivaksi palautetun pre-update-yritysprofiilin kanssa
+
+## Jaettavan artifactin portti
+
+Dirty-buildia ei jaeta. Release-artifacti muodostetaan puhtaasta,
+jäljitettävästä commitista, ja paketin build-infon, manifestin sekä desktop-
+paketin version pitää täsmätä.
+
+Yhden hallitun pilottilaitteen mahdollinen allekirjoittamaton artifacti vaatii
+projektin omistajan erillisen päätöksen. Laajempi jakelu vaatii code signing-,
+publisher-, installer-, rollback- ja päivitysketjun hyväksynnän.
+
 Build-revision, versionumero ja runtime-tunniste eivät yksin todista artifactin
-alkuperää. Laajemman jakelun allekirjoitus- ja päivitysketju käsitellään
-erillisessä release security gate -vaiheessa.
+alkuperää. Windows-asennus- ja päivitysrajat on määritelty ADR-0010:ssä ja
+`docs/architecture/windows-installer-and-update-plan.md`-dokumentissa.
+
+## Liittyvät dokumentit
+
+- `docs/architecture/local-desktop-dependency-review.md`
+- `docs/architecture/local-desktop-implementation-plan.md`
+- `docs/architecture/windows-installer-and-update-plan.md`
+- `docs/decisions/ADR-0010-windows-installer-and-update-orchestration.md`

@@ -267,8 +267,9 @@ E2E:n pysyvä strategia on dokumentissa
 `docs/architecture/r0-e2e-test-matrix.md`-tiedostossa ja runtime-rajat
 `docs/architecture/e2e-test-environment.md`-tiedostossa.
 
-`@playwright/test` on hyväksytty vain `apps/e2e`-pakettiin, täsmälleen
-versiona `1.61.1`. Tämä ei hyväksy muita E2E-riippuvuuksia.
+`@playwright/test` on hyväksytty vain `apps/e2e`-pakettiin, täsmälleen sen
+`package.json`-tiedostoon lukitulla versiolla. Tämä ei hyväksy muita
+E2E-riippuvuuksia.
 
 E2E ei korvaa yksikkö- tai integraatiotestiä. Invariantti testataan kattavasti
 alimmalla sopivalla tasolla ja E2E todistaa edustavan koko järjestelmän polun.
@@ -288,3 +289,28 @@ suoraan absoluuttista tuotantorajaa. Skenaarion pitää silti epäonnistua
 rikki menneestä työkuormasta, ulkoisesta verkkoyrityksestä, prosessiorvosta tai
 puuttuvasta cleanupista. Vertailutason työkuorma ja tulkinta dokumentoidaan
 `docs/architecture/e2e-endurance-baseline.md`-tiedostossa.
+
+## Backup-, restore- ja päivitystestit
+
+Backup/Restore testataan usealla tasolla:
+
+- unit: container, manifesti, KDF-parametrirajat, polut, rotaatio ja tilakone
+- integration: SQLite-snapshot, filesystem, `safeStorage`, staging ja rollback
+- Electron E2E: native-dialogin capabilityt ja rendererin rajat
+- hardened packaged Windows: oikea backup -> inspect -> restore -> restart
+  synteettisellä profiililla
+
+Installer/Update testataan:
+
+- unit: manifesti, version/kanavan vertailu ja journalisiirtymät
+- integration: maintenance-lukko, shutdown, handoff ja first-start
+- Windows package: clean install, upgrade, migration failure sekä business-
+  ja binary-rollback
+
+Backup-, restore-, installer- tai update-polun onnistumista ei todisteta vain
+mockilla tai selain-E2E:llä. Windowsin tiedosto-, prosessi-, `safeStorage`- ja
+paketointirajat vaativat packaged-testin.
+
+30 minuutin soak on pakollinen vain, kun muutos koskee runtimea, native
+addonia, prosessien elinkaarta, pitkäkestoista tiedosto-operaatiota tai
+release gatea. Tavallinen domain-, UI- tai docs-muutos ei vaadi soakia.

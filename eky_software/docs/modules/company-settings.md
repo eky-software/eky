@@ -461,6 +461,29 @@ asetusta eikä paljasta polkua rendererille tai virhevastaukseen.
 Tarkka malli on dokumentissa
 `docs/architecture/local-invoice-pdf-archive-plan.md`.
 
+## Varmuuskopiointi ja palautus Oma yritys -näkymässä
+
+Oma yritys -näkymä voi näyttää desktop-only-kortin
+`Varmuuskopiointi ja palautus`. Sijainti ei tee backup-salasanasta,
+backup-artifactista, palautuspisteestä, konekohtaisesta polusta tai
+restore-journalista Company Settings -master dataa.
+
+Company Settings -tauluun ei tallenneta:
+
+- backup-salasanaa tai johdettua avainta
+- `.ekybackup`-artifactia tai sen payloadia
+- palautuspisteen salattua dataa tai `safeStorage`-avainta
+- backup-, restore- tai activation-journalia
+- käyttäjän valitsemaa raakaa tiedostopolkua
+
+Electron main omistaa native-dialogit ja privileged tiedosto-operaatiot.
+Renderer saa vain turvallisen tilan sekä nimetyt backup-, inspect- ja
+restore-capabilityt. Selainversio ei jäljittele paikallista
+tiedostojärjestelmätoimintoa.
+
+Arkkitehtuurirajat on kuvattu ADR-0009:ssä ja dokumentissa
+`docs/architecture/local-backup-and-restore-plan.md`.
+
 Nämä ovat todennäköisiä tulevia tarpeita, mutta ne eivät kuulu ensimmäiseen suunnitteluvaiheeseen.
 
 ## Suhde Muihin Dokumentteihin
@@ -476,4 +499,6 @@ Liittyvät dokumentit:
 - `docs/architecture/customer-overview-plan.md`
 - `docs/architecture/company-settings-implementation-plan.md`
 - `docs/architecture/invoice-print-data-foundation-plan.md`
+- `docs/architecture/local-backup-and-restore-plan.md`
 - `docs/architecture/local-invoice-pdf-archive-plan.md`
+- `docs/decisions/ADR-0009-local-backup-encryption-and-recovery-points.md`

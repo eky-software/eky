@@ -15,6 +15,12 @@ prepare/send-polku ja `sent`-tilasiirtymä on toteutettu 17.7.2026. Toteutus ei
 vielä sisällä tuotantojulkaisun release security gatea, installeria, code
 signingia tai automaattipäivitystä.
 
+Windows-asennuksen ja päivitysorkestroinnin arkkitehtuuriperusta on hyväksytty
+ADR-0010:ssä. Salatun backupin ja konekohtaisten palautuspisteiden perusta on
+hyväksytty ADR-0009:ssä. Installeria, update coordinatoria, palautuspisteitä,
+backup/restore-tuotantokoodia tai code signingia ei ole vielä toteutettu eikä
+installeriteknologiaa ole valittu.
+
 Electron `43.2.0`- ja better-sqlite3 `13.0.2` -yhdistelmä on varmennettu
 3.8.2026. Paketointi käyttää better-sqlite3:n mukana toimitettua Windows x64
 N-API-binääriä eikä enää rakenna staged-kopiota Electron ABI:lle.
@@ -399,10 +405,12 @@ Testit eivät käytä oikeaa asiakasdataa, SMTP-salasanaa tai muuta salaisuutta.
 - laajaa installer- tai päivitys-UI:ta
 - liiketoimintalogiikan siirtämistä Electroniin
 
-Automaattipäivitys, allekirjoitettu julkaisu, tietokannan varmuuskopiointi ja
-rollback suunnitellaan erikseen onnistuneen paketointispiken jälkeen. Oikea
-data tai SMTP-salaisuus ei saa odottaa jälkikäteen tehtävää turvallisuuden
-korjausta.
+Automaattipäivityksen, allekirjoitetun julkaisun, salatun varmuuskopioinnin ja
+rollbackin arkkitehtuurit on suunniteltu ADR-0009:n, ADR-0010:n,
+`local-backup-and-restore-plan.md`- ja
+`windows-installer-and-update-plan.md`-dokumenttien mukaan. Tuotantokoodi,
+installeriteknologia ja release gate ovat edelleen toteuttamatta. Oikea data
+ei saa odottaa jälkikäteen tehtävää backup- tai recovery-korjausta.
 
 ## Toteutusjärjestys
 
@@ -462,9 +470,12 @@ R0-käyttöönottoa.
 - `docs/architecture/local-runtime-trust-and-authorization-plan.md`
 - `docs/architecture/local-invoice-pdf-archive-plan.md`
 - `docs/architecture/local-backup-and-restore-plan.md`
+- `docs/architecture/windows-installer-and-update-plan.md`
 - `docs/architecture/security-principles.md`
 - `docs/decisions/ADR-0003-technical-foundation.md`
 - `docs/decisions/ADR-0004-local-backend-runtime.md`
 - `docs/decisions/ADR-0006-local-database-and-query-layer.md`
 - `docs/decisions/ADR-0007-local-desktop-shell-and-session-bootstrap.md`
 - `docs/decisions/ADR-0008-local-desktop-company-workspaces.md`
+- `docs/decisions/ADR-0009-local-backup-encryption-and-recovery-points.md`
+- `docs/decisions/ADR-0010-windows-installer-and-update-orchestration.md`
