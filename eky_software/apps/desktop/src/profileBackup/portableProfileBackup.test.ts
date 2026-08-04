@@ -254,6 +254,7 @@ function createValidation(overrides: {
   artifactCount?: number;
 } = {}) {
   return {
+    activeProfileIsEmpty: false,
     artifactCount: overrides.artifactCount ?? 0,
     artifactTotalByteSize: 0,
     databaseHealth: 'healthy' as const,

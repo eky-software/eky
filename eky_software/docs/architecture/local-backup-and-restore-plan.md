@@ -23,10 +23,17 @@ Toteutettu 4.8.2026 mennessä:
 - backendin staged snapshot -validointi: integrity, foreign keys,
   migraatioketju, profiili-identiteetti, artifact-katalogi, PDF-signatuurit,
   koot, checksumit ja suljettu tiedostojoukko
+- kaksivaiheinen restore-staging: kertakäyttöinen tarkastusvaltuutus,
+  tarkastetun containerin SHA-256-sidonta, uusi salasanakysely, pakollinen
+  pre-restore-palautuspiste ja aktiivisesta profiilista erillinen yksityinen
+  staging-juuri
+- aktiivisen palautuskohteen backend-tarkistus: saman profiilin backup
+  sallitaan, mutta vieras profiili vain asennukseen, jossa ei ole lainkaan
+  business-, audit- tai muuta käyttäjädataa
 
-Restore-staging, crash-safe aktivointi ja rollback sekä Backup/Restore-
-käyttöliittymä ovat vielä toteuttamatta. Valmiit backup- ja palautuspistepolut
-eivät siis vielä muodosta käyttäjälle luvattavaa palautusominaisuutta.
+Crash-safe aktivointi ja rollback sekä Backup/Restore-käyttöliittymä ovat
+vielä toteuttamatta. Valmiit backup-, palautuspiste- ja staging-polut eivät
+siis vielä muodosta käyttäjälle luvattavaa palautusominaisuutta.
 
 Dokumentoitu ja automaattisesti testattu palautuspolku on yhden hallitun
 oikeaa dataa käyttävän R0-asennuksen release gate. Toteutus tehdään
@@ -397,6 +404,19 @@ Restore tehdään vain täysin suljettuun uuteen staging-profiiliin:
 10. document storage -checksumit ja tietokantaviittaukset tarkistetaan
 11. business-invariantit tarkistetaan moduulien nimetyillä validointirajoilla
 
+Tarkastus ja staging ovat eri vahvistusvaiheita. Tarkastus säilyttää vain
+kertakäyttöisen tunnisteen, lähdepolun, containerin SHA-256-tiivisteen,
+turvallisen yhteenvedon ja lyhyen vanhenemisajan. Salasanaa tai johdettua
+avainta ei säilytetä. Staging pyytää salasanan uudelleen, kuluttaa
+tarkastustunnisteen, muodostaa ennen purkua onnistuneen pre-restore-pisteen ja
+hylkää lähteen, jos container on vaihtunut tarkastuksen jälkeen.
+
+Stagingiin kirjoitetään vain uusiin final-polkujen `next`-tiedostoihin.
+Tiedostot synkronoidaan ennen final-nimeä, olemassa olevaa final-polkuja ei
+korvata ja valmistuneelta tiedostolta vaaditaan tavallinen tiedostotyyppi sekä
+yksi linkki. Epäonnistunut staging poistetaan kokonaan best effort -siivouksen
+sijaan hallitun operaation omasta yksityisestä juuresta.
+
 Restore ei:
 
 - kirjoita aktiiviseen profiiliin
@@ -434,6 +454,11 @@ R0:ssa:
 - toisesta asennuksesta tuotu backup voidaan palauttaa vain tyhjään
   asennukseen
 - eri yrityksen profiilin päälle ei palauteta eikä tietoja yhdistetä
+
+Tyhjä asennus tarkoittaa backendin tarkistamaa profiilia, jossa tunnetut
+runtime-infrastruktuuritaulut voivat olla olemassa, mutta yhdessäkään muussa
+taulussa ei ole rivejä. Renderer ei päätä tyhjyyttä eikä saa taulu- tai
+yritystietoja tämän tarkistuksen tuloksena.
 
 Myöhempi multi-profile-malli voi tukea palautusta uutena yritysprofiilina.
 Se ei kuulu tähän toteutusvaiheeseen.

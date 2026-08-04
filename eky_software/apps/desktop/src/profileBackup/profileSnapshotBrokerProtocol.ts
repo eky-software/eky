@@ -70,6 +70,7 @@ export type ProfileSnapshotBrokerResponse =
         };
         type: 'profileSnapshot';
       } | {
+        activeProfileIsEmpty: boolean;
         artifactCount: number;
         artifactTotalByteSize: number;
         databaseHealth: 'healthy';
@@ -239,6 +240,7 @@ export function parseProfileSnapshotBrokerResponse(
   if (
     value.result.type === 'profileSnapshotValidation' &&
     hasExactKeys(value.result, [
+      'activeProfileIsEmpty',
       'artifactCount',
       'artifactTotalByteSize',
       'databaseHealth',
@@ -247,6 +249,7 @@ export function parseProfileSnapshotBrokerResponse(
       'profileMatchesActive',
       'type',
     ]) &&
+    typeof value.result.activeProfileIsEmpty === 'boolean' &&
     isBoundedNonNegativeSafeInteger(value.result.artifactCount, 100_000) &&
     isBoundedNonNegativeSafeInteger(
       value.result.artifactTotalByteSize,
@@ -262,6 +265,7 @@ export function parseProfileSnapshotBrokerResponse(
       protocolVersion: profileSnapshotBrokerProtocolVersion,
       requestId: value.requestId,
       result: {
+        activeProfileIsEmpty: value.result.activeProfileIsEmpty,
         artifactCount: value.result.artifactCount,
         artifactTotalByteSize: value.result.artifactTotalByteSize,
         databaseHealth: 'healthy',

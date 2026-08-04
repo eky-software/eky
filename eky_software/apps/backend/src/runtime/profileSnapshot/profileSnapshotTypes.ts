@@ -30,6 +30,7 @@ export interface ProfileSnapshotService {
 }
 
 export interface ProfileSnapshotValidationMetadata {
+  activeProfileIsEmpty: boolean;
   artifactCount: number;
   artifactTotalByteSize: number;
   databaseHealth: 'healthy';

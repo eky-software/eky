@@ -227,6 +227,7 @@ async function createFixture(options: {
       async validateProfileSnapshot() {
         calls.push('validate');
         return {
+          activeProfileIsEmpty: false,
           artifactCount: 0,
           artifactTotalByteSize: 0,
           databaseHealth: 'healthy' as const,

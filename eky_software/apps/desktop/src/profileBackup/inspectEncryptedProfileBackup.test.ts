@@ -259,6 +259,7 @@ class FakeValidator {
   async validateProfileSnapshot(operationId: string) {
     this.operationIds.push(operationId);
     return {
+      activeProfileIsEmpty: false,
       artifactCount: 1,
       artifactTotalByteSize: 30,
       databaseHealth: 'healthy' as const,

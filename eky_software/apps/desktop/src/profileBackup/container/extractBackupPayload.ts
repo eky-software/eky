@@ -1,8 +1,15 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { promises as fileSystem } from 'node:fs';
 import type { BigIntStats } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import {
+  basename,
+  dirname,
+  join,
+  relative,
+  resolve,
+  sep,
+} from 'node:path';
 
 import type {
   ParsedBackupContainerEntry,
@@ -119,7 +126,13 @@ async function extractEntry(input: {
     dirname(destinationPath),
   );
 
-  const destination = await fileSystem.open(destinationPath, 'wx', 0o600);
+  const temporaryPath = join(
+    dirname(destinationPath),
+    `.${basename(destinationPath)}.${randomUUID()}.next`,
+  );
+  assertContainedPath(input.operationRoot, temporaryPath);
+  const destination = await fileSystem.open(temporaryPath, 'wx', 0o600);
+  let finalized = false;
   try {
     const hash = createHash('sha256');
     const buffer = Buffer.allocUnsafe(backupStreamChunkBytes);
@@ -156,7 +169,26 @@ async function extractEntry(input: {
     await destination.close();
   }
 
-  await fileSystem.chmod(destinationPath, 0o400);
+  try {
+    await fileSystem.chmod(temporaryPath, 0o400);
+    await fileSystem.link(temporaryPath, destinationPath);
+    finalized = true;
+  } finally {
+    await fileSystem.rm(temporaryPath, { force: true });
+  }
+
+  if (!finalized) {
+    throw new Error('BACKUP_WRITE_FAILED');
+  }
+
+  const finalMetadata = await fileSystem.lstat(destinationPath);
+  if (
+    !finalMetadata.isFile() ||
+    finalMetadata.isSymbolicLink() ||
+    finalMetadata.nlink !== 1
+  ) {
+    throw new Error('BACKUP_STAGING_INVALID');
+  }
 }
 
 async function assertContainedDirectoryChain(

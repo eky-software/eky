@@ -152,6 +152,7 @@ async function createFixture(options: {
     stagingRoot,
     validator: {
       validateProfileSnapshot: vi.fn(async () => ({
+        activeProfileIsEmpty: false,
         artifactCount: 0,
         artifactTotalByteSize: 0,
         databaseHealth: 'healthy' as const,

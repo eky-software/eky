@@ -13,6 +13,7 @@ import type {
   ProfileSnapshotValidationMetadata,
   ProfileSnapshotValidationService,
 } from './profileSnapshotTypes.js';
+import { isActiveProfileRestoreTargetEmpty } from './inspectActiveProfileRestoreTarget.js';
 import { validateProfileArtifactCatalog } from './validateProfileArtifactCatalog.js';
 
 const operationIdPattern =
@@ -88,6 +89,9 @@ export class StagedProfileSnapshotValidationService
         });
 
         return {
+          activeProfileIsEmpty: isActiveProfileRestoreTargetEmpty(
+            this.dependencies.activeDatabase,
+          ),
           artifactCount: artifacts.artifactCount,
           artifactTotalByteSize: artifacts.artifactTotalByteSize,
           databaseHealth: 'healthy',

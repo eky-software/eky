@@ -39,6 +39,7 @@ export function startProfileSnapshotBrokerBackend(input: {
       };
     }>;
     validateProfileSnapshot(operationId: string): Promise<{
+      activeProfileIsEmpty: boolean;
       artifactCount: number;
       artifactTotalByteSize: number;
       databaseHealth: 'healthy';

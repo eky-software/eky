@@ -47,6 +47,7 @@ interface BackendProfileSnapshotService {
     signal: AbortSignal;
   }): Promise<BackendProfileSnapshotMetadata>;
   validateProfileSnapshot(operationId: string): Promise<{
+    activeProfileIsEmpty: boolean;
     artifactCount: number;
     artifactTotalByteSize: number;
     databaseHealth: 'healthy';

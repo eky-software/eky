@@ -213,6 +213,7 @@ function createFakeSnapshotService(): {
     };
   }>;
   validateProfileSnapshot(operationId: string): Promise<{
+    activeProfileIsEmpty: boolean;
     artifactCount: number;
     artifactTotalByteSize: number;
     databaseHealth: 'healthy';
@@ -254,6 +255,7 @@ function createFakeSnapshotService(): {
 
 function createFakeValidation() {
   return {
+    activeProfileIsEmpty: false,
     artifactCount: 1,
     artifactTotalByteSize: 2_048,
     databaseHealth: 'healthy' as const,

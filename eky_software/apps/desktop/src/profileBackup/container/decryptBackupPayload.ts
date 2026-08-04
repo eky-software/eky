@@ -1,4 +1,4 @@
-import { createDecipheriv } from 'node:crypto';
+import { createDecipheriv, createHash } from 'node:crypto';
 import { promises as fileSystem } from 'node:fs';
 import type { BigIntStats } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
@@ -17,6 +17,7 @@ import { backupStreamChunkBytes } from './backupContainerLimits.js';
 import { deriveBackupKey } from './deriveBackupKey.js';
 
 export interface DecryptBackupPayloadResult {
+  containerSha256: string;
   header: BackupContainerHeader;
   plaintextByteLength: bigint;
 }
@@ -51,6 +52,7 @@ export async function decryptBackupPayload(input: {
       backupContainerHeaderLength,
       0,
     );
+    const containerHash = createHash('sha256').update(encodedHeader);
     const header = decodeBackupContainerHeader(encodedHeader);
 
     if (
@@ -107,6 +109,7 @@ export async function decryptBackupPayload(input: {
       if (bytesRead !== requested) {
         throw new Error('BACKUP_CONTAINER_LENGTH_INVALID');
       }
+      containerHash.update(buffer.subarray(0, bytesRead));
       const decrypted = decipher.update(buffer.subarray(0, bytesRead));
       await writeComplete(destination, decrypted, destinationOffset);
       sourceOffset += bytesRead;
@@ -135,7 +138,9 @@ export async function decryptBackupPayload(input: {
     await destination.close();
     destination = undefined;
     await fileSystem.chmod(input.quarantinePath, 0o400);
+    containerHash.update(authenticationTag);
     return {
+      containerSha256: containerHash.digest('hex'),
       header,
       plaintextByteLength: BigInt(destinationOffset),
     };

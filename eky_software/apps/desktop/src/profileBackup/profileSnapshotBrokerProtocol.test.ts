@@ -154,6 +154,7 @@ describe('profile snapshot broker protocol', () => {
         protocolVersion: profileSnapshotBrokerProtocolVersion,
         requestId,
         result: {
+          activeProfileIsEmpty: false,
           artifactCount: 2,
           artifactTotalByteSize: 4_096,
           databaseHealth: 'healthy',
@@ -168,6 +169,7 @@ describe('profile snapshot broker protocol', () => {
       protocolVersion: profileSnapshotBrokerProtocolVersion,
       requestId,
       result: {
+        activeProfileIsEmpty: false,
         artifactCount: 2,
         artifactTotalByteSize: 4_096,
         databaseHealth: 'healthy',

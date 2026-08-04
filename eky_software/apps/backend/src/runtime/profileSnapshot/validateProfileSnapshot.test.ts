@@ -66,6 +66,7 @@ describe('staged profile snapshot validation', () => {
     await expect(
       fixture.service.validateProfileSnapshot(fixture.operationId),
     ).resolves.toEqual({
+      activeProfileIsEmpty: true,
       artifactCount: 1,
       artifactTotalByteSize: fixture.pdfBytes.byteLength,
       databaseHealth: 'healthy',
@@ -86,6 +87,17 @@ describe('staged profile snapshot validation', () => {
 
     expect(result.profileMatchesActive).toBe(false);
     expect(JSON.stringify(result)).not.toContain('other-company');
+  });
+
+  it('reports a non-empty active profile without exposing table details', async () => {
+    const fixture = await createFixture({ activeHasInvoice: true });
+
+    const result = await fixture.service.validateProfileSnapshot(
+      fixture.operationId,
+    );
+
+    expect(result.activeProfileIsEmpty).toBe(false);
+    expect(JSON.stringify(result)).not.toContain('approved_invoices');
   });
 
   it.each([
@@ -185,7 +197,10 @@ interface Fixture {
 }
 
 async function createFixture(
-  options: { stagedCompanyId?: string } = {},
+  options: {
+    activeHasInvoice?: boolean;
+    stagedCompanyId?: string;
+  } = {},
 ): Promise<Fixture> {
   const root = await mkdtemp(join(tmpdir(), 'eky-profile-validation-'));
   temporaryRoots.push(root);
@@ -211,7 +226,8 @@ async function createFixture(
   const activeDatabase = createProfileDatabase(
     ':memory:',
     'company-1',
-    false,
+    options.activeHasInvoice ?? false,
+    pdfBytes,
   );
   openDatabases.push(activeDatabase);
   const stagedDatabase = createProfileDatabase(
