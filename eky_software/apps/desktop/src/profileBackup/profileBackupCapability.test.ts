@@ -5,9 +5,12 @@ import {
   createProfileBackupCapability,
 } from './profileBackupCapability.js';
 import {
+  activatePreparedProfileRestoreIpcChannel,
+  createManualRecoveryPointIpcChannel,
   createProfileBackupIpcChannel,
   getProfileBackupStatusIpcChannel,
   inspectProfileBackupIpcChannel,
+  prepareProfileRestoreIpcChannel,
 } from './portableProfileBackupTypes.js';
 
 describe('profile backup capability', () => {
@@ -47,7 +50,19 @@ describe('profile backup capability', () => {
         fixture.trustedEvent,
       ),
     ).toEqual({
-      operationState: 'idle',
+      portableBackup: {
+        latestSuccessfulPortableBackupAt: null,
+        operationState: 'idle',
+      },
+      recoveryPoints: {
+        availability: 'available',
+        budgetState: 'withinBudget',
+        latestValidatedGoodAt: null,
+        nextAutomaticCheckAt: null,
+        operationState: 'idle',
+        pointCount: 0,
+      },
+      restoreOperationState: 'idle',
     });
     await expect(
       fixture.invoke(
@@ -88,6 +103,85 @@ describe('profile backup capability', () => {
     expect(fixture.inspect).not.toHaveBeenCalled();
   });
 
+  it('prepares and activates restore through two main-owned confirmations', async () => {
+    const fixture = createFixture();
+
+    await expect(
+      fixture.invoke(
+        prepareProfileRestoreIpcChannel,
+        fixture.trustedEvent,
+      ),
+    ).resolves.toEqual({
+      status: 'inspected',
+      summary: inspectionSummary,
+    });
+    expect(fixture.restoreInspect).toHaveBeenCalledWith({
+      containerPath: 'C:\\Backups\\Restore.ekybackup',
+      password: 'Synthetic backup password 2026!',
+    });
+
+    await expect(
+      fixture.invoke(
+        activatePreparedProfileRestoreIpcChannel,
+        fixture.trustedEvent,
+      ),
+    ).resolves.toBe('relaunching');
+    expect(fixture.confirmRestoreReplacement).toHaveBeenCalledWith(
+      inspectionSummary,
+    );
+    expect(fixture.restoreStage).toHaveBeenCalledWith({
+      inspectionId: '22222222-2222-4222-8222-222222222222',
+      password: 'Synthetic backup password 2026!',
+    });
+    expect(fixture.confirmRestoreActivation).toHaveBeenCalledWith({
+      operationId: '33333333-3333-4333-8333-333333333333',
+      summary: inspectionSummary,
+      targetDisposition: 'replaceActiveProfile',
+    });
+    expect(fixture.activateRestore).toHaveBeenCalledWith(
+      '33333333-3333-4333-8333-333333333333',
+    );
+  });
+
+  it('discards staged data when the exact second confirmation is cancelled', async () => {
+    const fixture = createFixture({
+      confirmRestoreActivation: false,
+    });
+
+    await fixture.invoke(
+      prepareProfileRestoreIpcChannel,
+      fixture.trustedEvent,
+    );
+    await expect(
+      fixture.invoke(
+        activatePreparedProfileRestoreIpcChannel,
+        fixture.trustedEvent,
+      ),
+    ).resolves.toBe('cancelled');
+
+    expect(fixture.discardPreparedRestore).toHaveBeenCalledWith(
+      '33333333-3333-4333-8333-333333333333',
+    );
+    expect(fixture.activateRestore).not.toHaveBeenCalled();
+  });
+
+  it('creates a recovery point without returning its internal artifact identity', async () => {
+    const fixture = createFixture();
+
+    await expect(
+      fixture.invoke(
+        createManualRecoveryPointIpcChannel,
+        fixture.trustedEvent,
+      ),
+    ).resolves.toMatchObject({
+      recoveryPoints: {
+        availability: 'available',
+        pointCount: 0,
+      },
+    });
+    expect(fixture.createManualRecoveryPoint).toHaveBeenCalledWith();
+  });
+
   it('rejects another renderer and removes every handler on dispose', async () => {
     const fixture = createFixture();
 
@@ -111,6 +205,15 @@ describe('profile backup capability', () => {
     expect(fixture.removeHandler).toHaveBeenCalledWith(
       getProfileBackupStatusIpcChannel,
     );
+    expect(fixture.removeHandler).toHaveBeenCalledWith(
+      prepareProfileRestoreIpcChannel,
+    );
+    expect(fixture.removeHandler).toHaveBeenCalledWith(
+      activatePreparedProfileRestoreIpcChannel,
+    );
+    expect(fixture.removeHandler).toHaveBeenCalledWith(
+      createManualRecoveryPointIpcChannel,
+    );
   });
 });
 
@@ -126,6 +229,9 @@ const inspectionSummary = {
 };
 
 function createFixture(options: {
+  confirmRestoreActivation?: boolean;
+  confirmRestoreReplacement?: boolean;
+  restoreSourcePath?: string | null;
   sourcePath?: string | null;
   targetPath?: string | null;
 } = {}) {
@@ -155,12 +261,40 @@ function createFixture(options: {
         ? 'C:\\Backups\\Eky.ekybackup'
         : options.targetPath,
   );
+  const selectRestoreSource = vi.fn(
+    async () =>
+      options.restoreSourcePath === undefined
+        ? 'C:\\Backups\\Restore.ekybackup'
+        : options.restoreSourcePath,
+  );
+  const confirmRestoreActivation = vi.fn(
+    async () => options.confirmRestoreActivation ?? true,
+  );
+  const confirmRestoreReplacement = vi.fn(
+    async () => options.confirmRestoreReplacement ?? true,
+  );
+  const createManualRecoveryPoint = vi.fn(async () => ({
+    artifactId: 'not-exposed',
+  }));
+  const restoreInspect = vi.fn(async () => ({
+    inspectionId: '22222222-2222-4222-8222-222222222222',
+    summary: inspectionSummary,
+  }));
+  const restoreStage = vi.fn(async () => ({
+    operationId: '33333333-3333-4333-8333-333333333333',
+    summary: inspectionSummary,
+    targetDisposition: 'replaceActiveProfile' as const,
+  }));
+  const discardPreparedRestore = vi.fn(async () => undefined);
+  const activateRestore = vi.fn(async () => 'relaunching' as const);
   const capability = createProfileBackupCapability({
     backupService: {
       create,
       getStatus: () => ({ operationState: 'idle' }),
       inspect,
     },
+    confirmRestoreActivation,
+    confirmRestoreReplacement,
     ipcMain: {
       handle(channel, handler) {
         handlers.set(channel, handler as never);
@@ -182,14 +316,37 @@ function createFixture(options: {
       dispose: vi.fn(),
       requestPassword,
     },
+    recoveryPointService: {
+      createManual: createManualRecoveryPoint as never,
+      getStatus: () => ({
+        availability: 'available',
+        budgetState: 'withinBudget',
+        operationState: 'idle',
+        pointCount: 0,
+      }),
+    },
+    restoreActivationService: {
+      activate: activateRestore,
+    },
+    restoreStagingService: {
+      discardPreparedRestore,
+      inspect: restoreInspect,
+      stage: restoreStage,
+    },
     selectBackupSource,
     selectBackupTarget,
+    selectRestoreSource,
     showSafeError: vi.fn(),
   });
 
   return {
+    activateRestore,
     capability,
+    confirmRestoreActivation,
+    confirmRestoreReplacement,
     create,
+    createManualRecoveryPoint,
+    discardPreparedRestore,
     inspect,
     invoke(channel: string, event: IpcMainInvokeEvent, ...args: unknown[]) {
       const handler = handlers.get(channel);
@@ -201,8 +358,11 @@ function createFixture(options: {
     mainFrame,
     removeHandler,
     requestPassword,
+    restoreInspect,
+    restoreStage,
     selectBackupSource,
     selectBackupTarget,
+    selectRestoreSource,
     trustedEvent: {
       sender: webContents,
       senderFrame: mainFrame,

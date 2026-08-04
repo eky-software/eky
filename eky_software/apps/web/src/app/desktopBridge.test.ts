@@ -4,6 +4,7 @@ import {
   getDesktopInvoicePdfArchive,
   getDesktopInvoicePdfPreview,
   getDesktopOperationalLogFolder,
+  getDesktopProfileProtection,
   getDesktopSupportBundleCreator,
   type EkyDesktopApi,
 } from './desktopBridge.js';
@@ -123,6 +124,81 @@ describe('desktop bridge', () => {
       'Invalid invoice PDF archive status.',
     );
   });
+
+  it('exposes the narrow profile protection capability', async () => {
+    const activatePreparedProfileRestore = vi.fn(
+      async () => 'cancelled' as const,
+    );
+    const createEncryptedProfileBackup = vi.fn(
+      async () => 'created' as const,
+    );
+    const createManualRecoveryPoint = vi.fn(async () => protectionStatus);
+    const getProfileBackupStatus = vi.fn(async () => protectionStatus);
+    const inspectEncryptedProfileBackup = vi.fn(
+      async () => inspectedBackup,
+    );
+    const prepareEncryptedProfileRestore = vi.fn(
+      async () => inspectedBackup,
+    );
+    const capability = getDesktopProfileProtection({
+      ekyDesktop: createDesktopApi({
+        activatePreparedProfileRestore,
+        createEncryptedProfileBackup,
+        createManualRecoveryPoint,
+        getProfileBackupStatus,
+        inspectEncryptedProfileBackup,
+        prepareEncryptedProfileRestore,
+      }),
+    });
+
+    await expect(capability?.getStatus()).resolves.toEqual(protectionStatus);
+    await expect(capability?.createBackup()).resolves.toBe('created');
+    await expect(capability?.inspectBackup()).resolves.toEqual(
+      inspectedBackup,
+    );
+    await expect(capability?.prepareRestore()).resolves.toEqual(
+      inspectedBackup,
+    );
+    await expect(capability?.createRecoveryPoint()).resolves.toEqual(
+      protectionStatus,
+    );
+    await expect(capability?.activatePreparedRestore()).resolves.toBe(
+      'cancelled',
+    );
+  });
+
+  it('rejects unsafe profile protection data from desktop main', async () => {
+    const capability = getDesktopProfileProtection({
+      ekyDesktop: createDesktopApi({
+        getProfileBackupStatus: vi.fn(async () => ({
+          ...protectionStatus,
+          rawPath: 'C:\\Private\\profile',
+        })),
+      }),
+    });
+
+    await expect(capability?.getStatus()).rejects.toThrow(
+      'Invalid profile protection status.',
+    );
+  });
+
+  it('rejects backup summaries that expose internal fields', async () => {
+    const capability = getDesktopProfileProtection({
+      ekyDesktop: createDesktopApi({
+        inspectEncryptedProfileBackup: vi.fn(async () => ({
+          ...inspectedBackup,
+          summary: {
+            ...inspectedBackup.summary,
+            companyId: 'private-company',
+          },
+        })),
+      }),
+    });
+
+    await expect(capability?.inspectBackup()).rejects.toThrow(
+      'Invalid profile backup inspection result.',
+    );
+  });
 });
 
 const enabledStatus = {
@@ -141,12 +217,44 @@ const disabledStatus = {
   pendingCount: 0,
 };
 
+const protectionStatus = {
+  portableBackup: {
+    latestSuccessfulPortableBackupAt: '2026-08-04T18:00:00.000Z',
+    operationState: 'idle' as const,
+  },
+  recoveryPoints: {
+    availability: 'available' as const,
+    budgetState: 'withinBudget' as const,
+    latestValidatedGoodAt: '2026-08-04T17:00:00.000Z',
+    nextAutomaticCheckAt: '2026-08-05T17:00:00.000Z',
+    operationState: 'idle' as const,
+    pointCount: 3,
+  },
+  restoreOperationState: 'idle' as const,
+};
+
+const inspectedBackup = {
+  status: 'inspected' as const,
+  summary: {
+    appVersion: '0.1.0',
+    compatibilityStatus: 'compatible' as const,
+    createdAt: '2026-08-04T18:00:00.000Z',
+    databaseHealth: 'healthy' as const,
+    documentCount: 4,
+    formatVersion: 1 as const,
+    profileMatchStatus: 'same' as const,
+    totalBusinessByteSize: 1024,
+  },
+};
+
 function createDesktopApi(
   overrides: Partial<EkyDesktopApi> = {},
 ): EkyDesktopApi {
   return {
+    activatePreparedProfileRestore: vi.fn(async () => 'cancelled'),
     chooseInvoicePdfArchiveDirectory: vi.fn(async () => disabledStatus),
     createEncryptedProfileBackup: vi.fn(async () => 'cancelled'),
+    createManualRecoveryPoint: vi.fn(async () => protectionStatus),
     createSupportBundle: vi.fn(async () => 'cancelled' as const),
     disableInvoicePdfArchive: vi.fn(async () => disabledStatus),
     getInvoicePdfArchiveStatus: vi.fn(async () => disabledStatus),
@@ -159,6 +267,9 @@ function createDesktopApi(
     openInvoicePdf: vi.fn(async () => undefined),
     openInvoicePdfArchiveDirectory: vi.fn(async () => undefined),
     openOperationalLogFolder: vi.fn(async () => undefined),
+    prepareEncryptedProfileRestore: vi.fn(async () => ({
+      status: 'cancelled',
+    })),
     retryPendingInvoicePdfArchiveTasks: vi.fn(async () => disabledStatus),
     ...overrides,
   };

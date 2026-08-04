@@ -1,6 +1,8 @@
 export interface EkyDesktopApi {
+  activatePreparedProfileRestore(): Promise<unknown>;
   chooseInvoicePdfArchiveDirectory(): Promise<unknown>;
   createEncryptedProfileBackup(): Promise<unknown>;
+  createManualRecoveryPoint(): Promise<unknown>;
   createSupportBundle(): Promise<'cancelled' | 'created'>;
   disableInvoicePdfArchive(): Promise<unknown>;
   getInvoicePdfArchiveStatus(): Promise<unknown>;
@@ -9,6 +11,7 @@ export interface EkyDesktopApi {
   openInvoicePdf(invoiceId: string): Promise<void>;
   openInvoicePdfArchiveDirectory(): Promise<void>;
   openOperationalLogFolder(): Promise<void>;
+  prepareEncryptedProfileRestore(): Promise<unknown>;
   retryPendingInvoicePdfArchiveTasks(): Promise<unknown>;
 }
 
@@ -17,6 +20,14 @@ declare global {
     ekyDesktop?: EkyDesktopApi;
   }
 }
+
+export { getDesktopProfileProtection } from './desktopProfileProtection.js';
+export type {
+  ProfileBackupInspectionResult,
+  ProfileBackupInspectionSummary,
+  ProfileProtectionCapability,
+  ProfileProtectionStatus,
+} from './desktopProfileProtection.js';
 
 export type OpenInvoicePdfPreview = (invoiceId: string) => Promise<void>;
 
@@ -176,11 +187,14 @@ function isSafeDisplayName(value: unknown): value is string | null {
 }
 
 function isTimestampOrNull(value: unknown): value is string | null {
+  return value === null || isTimestamp(value);
+}
+
+function isTimestamp(value: unknown): value is string {
   return (
-    value === null ||
-    (typeof value === 'string' &&
-      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value) &&
-      !Number.isNaN(Date.parse(value)))
+    typeof value === 'string' &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value) &&
+    !Number.isNaN(Date.parse(value))
   );
 }
 

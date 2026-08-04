@@ -21,10 +21,18 @@ const inspectProfileBackupIpcChannel =
   'eky:profile-backup:inspect-portable';
 const getProfileBackupStatusIpcChannel =
   'eky:profile-backup:get-status';
+const prepareProfileRestoreIpcChannel =
+  'eky:profile-backup:prepare-restore';
+const activatePreparedProfileRestoreIpcChannel =
+  'eky:profile-backup:activate-restore';
+const createManualRecoveryPointIpcChannel =
+  'eky:profile-backup:create-recovery-point';
 
 interface EkyDesktopApi {
+  activatePreparedProfileRestore(): Promise<unknown>;
   chooseInvoicePdfArchiveDirectory(): Promise<unknown>;
   createEncryptedProfileBackup(): Promise<unknown>;
+  createManualRecoveryPoint(): Promise<unknown>;
   createSupportBundle(): Promise<'cancelled' | 'created'>;
   disableInvoicePdfArchive(): Promise<unknown>;
   getInvoicePdfArchiveStatus(): Promise<unknown>;
@@ -33,15 +41,22 @@ interface EkyDesktopApi {
   openInvoicePdf(invoiceId: string): Promise<void>;
   openInvoicePdfArchiveDirectory(): Promise<void>;
   openOperationalLogFolder(): Promise<void>;
+  prepareEncryptedProfileRestore(): Promise<unknown>;
   retryPendingInvoicePdfArchiveTasks(): Promise<unknown>;
 }
 
 const ekyDesktopApi: EkyDesktopApi = Object.freeze({
+  activatePreparedProfileRestore() {
+    return ipcRenderer.invoke(activatePreparedProfileRestoreIpcChannel);
+  },
   chooseInvoicePdfArchiveDirectory() {
     return ipcRenderer.invoke(chooseInvoicePdfArchiveDirectoryIpcChannel);
   },
   createEncryptedProfileBackup() {
     return ipcRenderer.invoke(createProfileBackupIpcChannel);
+  },
+  createManualRecoveryPoint() {
+    return ipcRenderer.invoke(createManualRecoveryPointIpcChannel);
   },
   createSupportBundle() {
     return ipcRenderer.invoke(createSupportBundleIpcChannel);
@@ -66,6 +81,9 @@ const ekyDesktopApi: EkyDesktopApi = Object.freeze({
   },
   openOperationalLogFolder() {
     return ipcRenderer.invoke(openOperationalLogFolderIpcChannel);
+  },
+  prepareEncryptedProfileRestore() {
+    return ipcRenderer.invoke(prepareProfileRestoreIpcChannel);
   },
   retryPendingInvoicePdfArchiveTasks() {
     return ipcRenderer.invoke(retryPendingInvoicePdfArchiveTasksIpcChannel);

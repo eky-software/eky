@@ -498,6 +498,68 @@ export const uiText = {
       'Kaikkia PDF-kopioita ei voitu tallentaa. Tarkista valitun kansion saatavuus ja yritä uudelleen.',
     invoicePdfArchiveRetry: 'Yritä odottavia uudelleen',
     invoicePdfArchiveStatus: 'Tila',
+    profileBackupAppVersion: 'Eky-versio',
+    profileBackupArchiveExcluded:
+      'Toimitettujen laskujen valinnainen PDF-arkistokansio ei kuulu varmuuskopioon.',
+    profileBackupBusinessDataSize: 'Tietojen koko',
+    profileBackupCreate: 'Luo varmuuskopio',
+    profileBackupCreatedAt: 'Luotu',
+    profileBackupCreateSuccess:
+      'Salattu varmuuskopio luotiin ja tarkistettiin onnistuneesti.',
+    profileBackupDescription:
+      'Suojaa paikallisen yritystyötilan tietokannan ja Ekyssä säilytettävät laskuasiakirjat salattuun varmuuskopioon.',
+    profileBackupDesktopOnly:
+      'Varmuuskopiointi ja palautus ovat käytettävissä vain Eky-työpöytäsovelluksessa.',
+    profileBackupDocumentCount: 'Laskuasiakirjoja',
+    profileBackupHeading: 'Varmuuskopiointi ja palautus',
+    profileBackupInspect: 'Tarkista varmuuskopio',
+    profileBackupInspectionHeading: 'Tarkistettu varmuuskopio',
+    profileBackupInspectSuccess:
+      'Varmuuskopion salasana, eheys ja sisältö tarkistettiin onnistuneesti.',
+    profileBackupKicker: 'Tietojen suojaus',
+    profileBackupLatestSuccessful: 'Viimeisin siirrettävä varmuuskopio:',
+    profileBackupLoadError:
+      'Varmuuskopioinnin tilaa ei voitu tarkistaa turvallisesti.',
+    profileBackupLoading: 'Tarkistetaan varmuuskopioinnin tilaa...',
+    profileBackupOperationError:
+      'Toimintoa ei voitu suorittaa turvallisesti. Nykyisiä yritystietoja ei korvattu.',
+    profileBackupPasswordWarning:
+      'Varmuuskopion unohtunutta salasanaa ei voida palauttaa.',
+    profileBackupPortableDescription:
+      'Siirrettävä varmuuskopio suojataan itse valitsemallasi salasanalla.',
+    profileBackupPortableHeading: 'Siirrettävä salattu varmuuskopio',
+    profileBackupProfileDifferent: 'Toinen tai tyhjä yritystyötila',
+    profileBackupProfileMatch: 'Työtilan vastaavuus',
+    profileBackupProfileSame: 'Nykyinen yritystyötila',
+    profileBackupRestore: 'Palauta varmuuskopiosta',
+    profileBackupSecretExcluded:
+      'SMTP-salasanaa tai muita käyttöjärjestelmän salaisuuksia ei sisällytetä varmuuskopioon.',
+    profileRecoveryPointCreate: 'Luo palautuspiste nyt',
+    profileRecoveryPointCreateSuccess:
+      'Konekohtainen palautuspiste luotiin ja tarkistettiin.',
+    profileRecoveryPointsAvailable: 'Käytettävissä',
+    profileRecoveryPointsBudgetWarning:
+      'Suojatut palautuspisteet käyttävät tavallista enemmän levytilaa. Eky säilyttää ne turvallisuussyistä.',
+    profileRecoveryPointsCount: 'Palautuspisteitä',
+    profileRecoveryPointsHeading: 'Automaattiset palautuspisteet',
+    profileRecoveryPointsLatest: 'Viimeisin tarkistettu',
+    profileRecoveryPointsNextCheck: 'Seuraava automaattinen tarkistus',
+    profileRecoveryPointsNone: 'Ei vielä palautuspistettä',
+    profileRecoveryPointsNotScheduled: 'Ei ajastettua tarkistusta',
+    profileRecoveryPointsEncryptionUnavailable:
+      'Käyttöjärjestelmän turvallinen salaus ei ole saatavilla. Palautuspisteitä ei luoda salaamattomana.',
+    profileRecoveryPointsStatus: 'Tila',
+    profileRecoveryPointsUnavailable: 'Ei käytettävissä',
+    profileRestoreActivate: 'Korvaa tiedot ja käynnistä uudelleen',
+    profileRestoreRecoveryPointNote:
+      'Eky luo ennen korvaamista konekohtaisen palautuspisteen nykyisistä tiedoista.',
+    profileRestoreReplacementWarning:
+      'Palautus korvaa nykyisen paikallisen yritystyötilan varmuuskopion tiedoilla.',
+    profileRestoreRestarting:
+      'Palautus käynnistyi. Eky käynnistyy uudelleen.',
+    profileRestoreRestartNote:
+      'Palautuksen aktivointi sulkee nykyisen työtilan ja käynnistää Eky-sovelluksen uudelleen.',
+    profileRestoreSummaryHeading: 'Palautettava varmuuskopio',
     invoiceNumberingDescription:
       'Määritä, miten viralliset laskunumerot muodostetaan hyväksynnässä. Varsinainen laskunumero annetaan vasta, kun lasku hyväksytään.',
     invoiceNumberingFirstSequenceNumber: 'Ensimmäinen numero',

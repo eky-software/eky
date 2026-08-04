@@ -91,6 +91,7 @@ import {
   createProfileBackupCapability,
   type ProfileBackupCapability,
 } from '../profileBackup/profileBackupCapability.js';
+import type { ProfileBackupInspectionSummary } from '../profileBackup/profileBackupInspectionTypes.js';
 import { ProfileSnapshotBrokerClient } from '../profileBackup/profileSnapshotBrokerClient.js';
 import { createProfileSnapshotRuntimePaths } from '../profileBackup/profileSnapshotRuntimePaths.js';
 import { RecoveryPointCleanShutdownMarker } from '../profileBackup/recoveryPoint/recoveryPointCleanShutdownMarker.js';
@@ -823,11 +824,54 @@ async function startDesktopCompositionRuntime({
     });
   profileBackupCapability = createProfileBackupCapability({
     backupService: portableProfileBackupService,
+    async confirmRestoreActivation(restore) {
+      const result = await dependencies.showMessageBox(mainWindow, {
+        buttons: [
+          'Peruuta',
+          'Korvaa tiedot ja käynnistä Eky uudelleen',
+        ],
+        cancelId: 0,
+        defaultId: 0,
+        detail: [
+          formatProfileBackupSummary(restore.summary),
+          '',
+          'Palautusta edeltävä konekohtainen palautuspiste on luotu.',
+          'Eky sulkee nykyisen työtilan ja käynnistyy uudelleen.',
+        ].join('\n'),
+        message:
+          'Vahvista vielä tietojen korvaaminen ja uudelleenkäynnistys.',
+        noLink: true,
+        title: 'Palauta Eky-varmuuskopio',
+        type: 'warning',
+      });
+      return result.response === 1;
+    },
+    async confirmRestoreReplacement(summary) {
+      const result = await dependencies.showMessageBox(mainWindow, {
+        buttons: ['Peruuta', 'Jatka palautuksen valmisteluun'],
+        cancelId: 0,
+        defaultId: 0,
+        detail: [
+          formatProfileBackupSummary(summary),
+          '',
+          'Nykyinen paikallinen yritystyötila korvataan varmuuskopion tiedoilla.',
+          'Ennen korvaamista Eky luo konekohtaisen palautuspisteen.',
+        ].join('\n'),
+        message: 'Haluatko valmistella varmuuskopion palautuksen?',
+        noLink: true,
+        title: 'Palauta Eky-varmuuskopio',
+        type: 'warning',
+      });
+      return result.response === 1;
+    },
     ipcMain,
     mainWindow,
     operationalIdentity: desktopOperationalIdentity,
     operationalLogger: desktopOperationalLogger,
     passwordWindow: backupPasswordWindowController,
+    recoveryPointService,
+    restoreActivationService: profileRestoreActivationService,
+    restoreStagingService: profileRestoreStagingService,
     async selectBackupSource() {
       const result = await dependencies.showOpenDialog(mainWindow, {
         filters: [
@@ -859,7 +903,37 @@ async function startDesktopCompositionRuntime({
         ? null
         : result.filePath;
     },
+    async selectRestoreSource() {
+      const result = await dependencies.showOpenDialog(mainWindow, {
+        filters: [
+          {
+            extensions: ['ekybackup'],
+            name: 'Salattu Eky-varmuuskopio',
+          },
+        ],
+        message: 'Valitse palautettava Eky-varmuuskopio',
+        properties: ['openFile'],
+        title: 'Palauta Eky-varmuuskopiosta',
+      });
+      return result.canceled || result.filePaths.length !== 1
+        ? null
+        : result.filePaths[0] ?? null;
+    },
     showSafeError(kind) {
+      if (kind === 'recoveryPoint') {
+        deliveryConfirmation.showApplicationError(
+          'Palautuspistettä ei voitu luoda',
+          'Konekohtaista palautuspistettä ei voitu luoda turvallisesti.',
+        );
+        return;
+      }
+      if (kind === 'restore') {
+        deliveryConfirmation.showApplicationError(
+          'Varmuuskopiota ei voitu palauttaa',
+          'Palautusta ei voitu valmistella tai käynnistää turvallisesti. Nykyisiä tietoja ei korvattu.',
+        );
+        return;
+      }
       deliveryConfirmation.showApplicationError(
         kind === 'create'
           ? 'Varmuuskopiota ei voitu luoda'
@@ -1209,4 +1283,27 @@ function createInvoicePdfPreviewController(
       return available;
     },
   });
+}
+
+function formatProfileBackupSummary(
+  summary: ProfileBackupInspectionSummary,
+): string {
+  const createdAt = new Intl.DateTimeFormat('fi-FI', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date(summary.createdAt));
+  const sizeInMegabytes = (
+    summary.totalBusinessByteSize /
+    (1024 * 1024)
+  ).toLocaleString('fi-FI', {
+    maximumFractionDigits: 1,
+    minimumFractionDigits: 1,
+  });
+
+  return [
+    `Varmuuskopio luotu: ${createdAt}`,
+    `Eky-versio: ${summary.appVersion}`,
+    `Laskuasiakirjoja: ${summary.documentCount}`,
+    `Tietojen koko: ${sizeInMegabytes} Mt`,
+  ].join('\n');
 }
