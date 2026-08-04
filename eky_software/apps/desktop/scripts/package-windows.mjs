@@ -36,6 +36,12 @@ const backendStage = resolve(stagingRoot, 'backend');
 const desktopRuntimeStage = resolve(stagingRoot, 'desktop-runtime');
 const outputDirectory = resolve(desktopDirectory, 'out');
 const pnpmCliPath = process.env.npm_execpath;
+const profileSnapshotRuntimeFiles = [
+  'electronProfileSnapshotBrokerTransport.js',
+  'profileSnapshotBrokerBackend.js',
+  'profileSnapshotBrokerProtocol.js',
+  'profileSnapshotBrokerTransport.js',
+];
 
 function run(command, args, options = {}) {
   return new Promise((resolveRun, rejectRun) => {
@@ -184,6 +190,15 @@ async function prepareApplicationStage(buildInfo) {
       recursive: true,
     },
   );
+  await mkdir(join(desktopRuntimeStage, 'profileBackup'), {
+    recursive: true,
+  });
+  for (const fileName of profileSnapshotRuntimeFiles) {
+    await cp(
+      resolve(desktopDirectory, 'dist/profileBackup', fileName),
+      join(desktopRuntimeStage, 'profileBackup', fileName),
+    );
+  }
   await writeFile(
     join(desktopRuntimeStage, 'package.json'),
     `${JSON.stringify({ private: true, type: 'module' }, null, 2)}\n`,
@@ -229,6 +244,9 @@ async function assertPackagedDiagnosticsArtifacts() {
     'invoicePdfArchive/invoicePdfArchiveBrokerClient.js',
     'invoicePdfArchive/invoicePdfArchiveBrokerProtocol.js',
     'invoicePdfArchive/electronInvoicePdfArchiveBrokerTransport.js',
+    ...profileSnapshotRuntimeFiles.map(
+      (fileName) => `profileBackup/${fileName}`,
+    ),
   ]) {
     await access(resolve(desktopRuntimeStage, relativePath));
   }

@@ -12,10 +12,13 @@ are complete. A real SMTP credential may be used only through the encrypted
 secret-store path. Confirmed customer delivery is implemented, but real-data
 use remains blocked until the documented release-security gates are complete.
 
-Encrypted backup/recovery-point and Windows installer/update architecture is
-accepted, but none of those production capabilities is implemented yet.
-The current unpacked `out/Eky-win32-x64` directory is a development/package
-artifact, not an installer or an automatically updating release.
+Encrypted portable backup and machine-local encrypted recovery-point creation,
+health checking, scheduling, and rotation are implemented behind Electron main
+process boundaries. Restore activation and rollback are not yet implemented, so
+backup/recovery is not yet an R0-ready user promise. Windows installer/update
+architecture is accepted but remains unimplemented. The current unpacked
+`out/Eky-win32-x64` directory is a development/package artifact, not an
+installer or an automatically updating release.
 
 ## Commands
 

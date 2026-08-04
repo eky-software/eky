@@ -17,9 +17,10 @@ signingia tai automaattipäivitystä.
 
 Windows-asennuksen ja päivitysorkestroinnin arkkitehtuuriperusta on hyväksytty
 ADR-0010:ssä. Salatun backupin ja konekohtaisten palautuspisteiden perusta on
-hyväksytty ADR-0009:ssä. Installeria, update coordinatoria, palautuspisteitä,
-backup/restore-tuotantokoodia tai code signingia ei ole vielä toteutettu eikä
-installeriteknologiaa ole valittu.
+hyväksytty ADR-0009:ssä. Salattu portable backup sekä konekohtaisen
+palautuspisteen luonti, health-tarkistus, ajastus ja rotaatio on toteutettu
+4.8.2026. Restore-aktivointia, installeria, update coordinatoria tai code
+signingia ei ole vielä toteutettu eikä installeriteknologiaa ole valittu.
 
 Electron `43.2.0`- ja better-sqlite3 `13.0.2` -yhdistelmä on varmennettu
 3.8.2026. Paketointi käyttää better-sqlite3:n mukana toimitettua Windows x64

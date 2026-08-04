@@ -93,6 +93,12 @@ import {
 } from '../profileBackup/profileBackupCapability.js';
 import { ProfileSnapshotBrokerClient } from '../profileBackup/profileSnapshotBrokerClient.js';
 import { createProfileSnapshotRuntimePaths } from '../profileBackup/profileSnapshotRuntimePaths.js';
+import { RecoveryPointCleanShutdownMarker } from '../profileBackup/recoveryPoint/recoveryPointCleanShutdownMarker.js';
+import { RecoveryPointKeyProtector } from '../profileBackup/recoveryPoint/recoveryPointKeyProtector.js';
+import { RecoveryPointRotationService } from '../profileBackup/recoveryPoint/recoveryPointRotationService.js';
+import { RecoveryPointScheduler } from '../profileBackup/recoveryPoint/recoveryPointScheduler.js';
+import { RecoveryPointService } from '../profileBackup/recoveryPoint/recoveryPointService.js';
+import { RecoveryPointStore } from '../profileBackup/recoveryPoint/recoveryPointStore.js';
 
 export interface DesktopLifecycleHandle {
   applicationWindow: BrowserWindow;
@@ -288,6 +294,35 @@ async function startDesktopCompositionRuntime({
   const profileSnapshotBrokerClient = new ProfileSnapshotBrokerClient(
     createProfileSnapshotBrokerTransport(profileSnapshotBrokerChannel.port1),
   );
+  const safeStorageStringProtector = new SafeStorageStringProtector(
+    safeStorage,
+  );
+  const recoveryPointStore = new RecoveryPointStore({
+    keyProtector: new RecoveryPointKeyProtector(
+      safeStorageStringProtector,
+    ),
+    quarantineRoot: profileSnapshotPaths.quarantineRoot,
+    recoveryRoot: profileSnapshotPaths.recoveryPointsRoot,
+    stagingRoot: profileSnapshotPaths.stagingRoot,
+    validator: profileSnapshotBrokerClient,
+  });
+  const recoveryPointRotation = new RecoveryPointRotationService({
+    recoveryRoot: profileSnapshotPaths.recoveryPointsRoot,
+    store: recoveryPointStore,
+  });
+  const recoveryPointService = new RecoveryPointService({
+    appVersion: desktopAppVersion,
+    profileSnapshotClient: profileSnapshotBrokerClient,
+    rotation: recoveryPointRotation,
+    stagingRoot: profileSnapshotPaths.stagingRoot,
+    store: recoveryPointStore,
+  });
+  const recoveryPointScheduler = new RecoveryPointScheduler({
+    cleanShutdownMarker: new RecoveryPointCleanShutdownMarker(
+      profileSnapshotPaths.recoveryPointCleanShutdownMarkerPath,
+    ),
+    recoveryPointService,
+  });
   let applicationWindow: BrowserWindow | undefined;
   let pdfPreviewController: InvoicePdfPreviewWindowController | undefined;
   let operationalLogFolderCapability:
@@ -350,7 +385,7 @@ async function startDesktopCompositionRuntime({
         );
       },
     },
-    protector: new SafeStorageStringProtector(safeStorage),
+    protector: safeStorageStringProtector,
     transport: createMainSecretBrokerTransport(secretBrokerChannel.port1),
   });
   const invoicePdfArchivePaths =
@@ -460,7 +495,9 @@ async function startDesktopCompositionRuntime({
       secretBrokerPort: secretBrokerChannel.port2,
     });
     await profileSnapshotBrokerClient.getStatus();
+    await recoveryPointScheduler.start();
   } catch (error) {
+    await recoveryPointScheduler.stopChecks().catch(() => undefined);
     await backendHandle?.stop().catch(() => undefined);
     profileSnapshotBrokerClient.close();
     invoicePdfArchiveBrokerHandle.close();
@@ -469,6 +506,7 @@ async function startDesktopCompositionRuntime({
   }
 
   backendHandle.onUnexpectedExit(() => {
+    void recoveryPointScheduler.stopChecks();
     dependencies.showErrorBox(
       'Eky suljettiin',
       'Paikallinen palvelu pysähtyi odottamatta. Sovellus suljetaan turvallisesti.',
@@ -822,10 +860,12 @@ async function startDesktopCompositionRuntime({
       profileBackupCapability = undefined;
       backupPasswordWindowController?.dispose();
       backupPasswordWindowController = undefined;
-      profileSnapshotBrokerClient.close();
 
       try {
+        await recoveryPointScheduler.stopChecks();
         await backendHandle.stop();
+        await recoveryPointScheduler.markCleanShutdown();
+        profileSnapshotBrokerClient.close();
         invoicePdfArchiveBrokerHandle.close();
         secretBrokerHandle.close();
         desktopOperationalLogger.write(
@@ -838,6 +878,8 @@ async function startDesktopCompositionRuntime({
           ),
         );
       } catch {
+        await recoveryPointScheduler.stopChecks().catch(() => undefined);
+        profileSnapshotBrokerClient.close();
         invoicePdfArchiveBrokerHandle.close();
         secretBrokerHandle.close();
         desktopOperationalLogger.write(

@@ -10,6 +10,12 @@ describe('profile snapshot runtime paths', () => {
 
     expect(createProfileSnapshotRuntimePaths(runtimeRoot)).toEqual({
       quarantineRoot: join(runtimeRoot, 'private-backup-quarantine'),
+      recoveryPointCleanShutdownMarkerPath: join(
+        runtimeRoot,
+        'recovery-point-state',
+        'clean-shutdown-v1.json',
+      ),
+      recoveryPointsRoot: join(runtimeRoot, 'recovery-points'),
       stagingRoot: join(runtimeRoot, 'private-backup-staging'),
     });
   });

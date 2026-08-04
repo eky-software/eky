@@ -13,14 +13,20 @@ Toteutettu 4.8.2026 mennessä:
   scrypt-profiili
 - desktop mainin inspector, joka autentikoi containerin ennen JSON-parsintaa
   ja purkaa sisällön vain yksityiseen karanteeniin
+- main-owned kertakäyttöinen backup-salasanaikkuna sekä portable writerin
+  Save-dialog-, salaus- ja self-inspection-polku
+- konekohtaisen palautuspisteen erillinen `EKYRCV01`-container, satunnainen
+  data-avain ja Electron `safeStorage` -suojattu avainenvelope
+- palautuspisteiden strict index, health-tarkistus, automaattinen 24 tunnin
+  ajastus, nimetty manual/pre-restore/pre-update/pre-migration-rajapinta,
+  crash-safe rotaatiojournal ja puhtaan sammutuksen merkki
 - backendin staged snapshot -validointi: integrity, foreign keys,
   migraatioketju, profiili-identiteetti, artifact-katalogi, PDF-signatuurit,
   koot, checksumit ja suljettu tiedostojoukko
 
-Portable writerin käyttäjäpolku, machine-local recovery point, restore-
-aktivointi ja käyttöliittymä ovat vielä toteuttamatta. Valmiit perustat eivät
-siis vielä muodosta käyttäjälle luvattavaa varmuuskopiointi- ja
-palautusominaisuutta.
+Restore-staging, crash-safe aktivointi ja rollback sekä Backup/Restore-
+käyttöliittymä ovat vielä toteuttamatta. Valmiit backup- ja palautuspistepolut
+eivät siis vielä muodosta käyttäjälle luvattavaa palautusominaisuutta.
 
 Dokumentoitu ja automaattisesti testattu palautuspolku on yhden hallitun
 oikeaa dataa käyttävän R0-asennuksen release gate. Toteutus tehdään
@@ -316,9 +322,43 @@ mutta eri containeria ja avainmallia:
 - `safeStorage`-virhe estää pisteen luonnin
 - palautuspistettä ei voi viedä siirrettävänä backupina
 
-Ajastus ja rotaatio noudattavat ADR-0009:ää. Tarkat päivittäisten,
-viikoittaisten ja kuukausittaisten pisteiden määrät sekä levybudjetti
-määritetään toteutusvaiheessa.
+Palautuspisteet sijaitsevat
+`userData/runtime/recovery-points/<profile-id>/`-juuressa. Ne eivät sijaitse
+aktiivisen datan, dokumenttien, lokien tai sovelluspaketin juuressa, eikä
+palautuspiste saa koskaan sisältää muita palautuspisteitä.
+
+Automaattinen tarkistus tehdään terveessä käynnistyksessä ja sen jälkeen
+rajatulla tunnin välein ajettavalla schedulerilla. Uusi automaattinen piste
+luodaan aikaisintaan 24 tuntia viimeisimmästä validoidusta hyvästä pisteestä.
+Jokainen tarkistus hankkii backendin maintenance-lukon ja validoi uuden
+SQLite- ja business-artifact-snapshotin ennen kuin sitä voidaan pitää uutena
+hyvänä pisteenä. Unclean startup ei siten snapshottaa epäiltyä profiilia
+hyväksi ilman integrity-, foreign key-, migration-, profiili- ja
+artifact-tarkistuksia.
+
+R0-retention on:
+
+- 7 uusinta päivittäistä
+- 4 uusinta viikoittaista
+- 6 uusinta kuukausittaista
+- 3 uusinta pre-update/pre-migration-pistettä
+- 2 uusinta pre-restore-pistettä
+- 3 uusinta manuaalista pistettä
+- uusin validoitu hyvä piste on aina suojattu
+- uusin pre-update- ja pre-restore-piste sekä aktiiviseksi ilmoitettu
+  pre-operation-piste ovat aina suojattuja
+- profiilikohtainen absoluuttinen levybudjetti on 2 GiB
+
+Budjetti poistaa vanhimmat suojaamattomat pisteet. Suojattua pistettä ei
+poisteta budjetin ylityksessä, vaan tila muuttuu turvalliseksi
+`protectedPointsExceedBudget`-varoitukseksi. Poistot kirjataan ennen
+ensimmäistä poistamista versionoituun rotaatiojournaliin ja keskeytynyt
+rotaatio jatkuu idempotentisti seuraavassa tarkistuksessa.
+
+Puhtaan sammutuksen merkki kirjoitetaan vasta backendin onnistuneen hallitun
+sammutuksen jälkeen. Markerissa on vain formaattiversio ja ISO-aikaleima.
+Väärä rakenne, puuttuva merkki tai kesken jäänyt marker-korvaus tulkitaan
+unclean shutdowniksi.
 
 ## Inspector
 
