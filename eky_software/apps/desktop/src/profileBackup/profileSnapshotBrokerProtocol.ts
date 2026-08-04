@@ -1,4 +1,4 @@
-export const profileSnapshotBrokerProtocolVersion = 2;
+export const profileSnapshotBrokerProtocolVersion = 4;
 
 const requestIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -11,6 +11,8 @@ export type ProfileMaintenanceBrokerOperation =
   | 'createProfileSnapshot'
   | 'endProfileMaintenance'
   | 'getProfileMaintenanceStatus'
+  | 'prepareProfileRestoreActivation'
+  | 'validateActiveProfile'
   | 'validateProfileSnapshot';
 
 export type ProfileSnapshotBrokerRequest =
@@ -19,13 +21,14 @@ export type ProfileSnapshotBrokerRequest =
         | 'beginProfileMaintenance'
         | 'createProfileSnapshot'
         | 'endProfileMaintenance'
+        | 'prepareProfileRestoreActivation'
         | 'validateProfileSnapshot';
       operationId: string;
       protocolVersion: typeof profileSnapshotBrokerProtocolVersion;
       requestId: string;
     }
   | {
-      operation: 'getProfileMaintenanceStatus';
+      operation: 'getProfileMaintenanceStatus' | 'validateActiveProfile';
       protocolVersion: typeof profileSnapshotBrokerProtocolVersion;
       requestId: string;
     };
@@ -36,6 +39,7 @@ export type ProfileSnapshotBrokerErrorCode =
   | 'PROFILE_MAINTENANCE_TIMEOUT'
   | 'PROFILE_SNAPSHOT_ARTIFACTS_FAILED'
   | 'PROFILE_SNAPSHOT_DATABASE_FAILED'
+  | 'PROFILE_RESTORE_ACTIVATION_PREPARATION_FAILED'
   | 'PROFILE_SNAPSHOT_VALIDATION_FAILED'
   | 'PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID'
   | 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE';
@@ -54,6 +58,11 @@ export type ProfileSnapshotBrokerResponse =
       result: {
         status: 'busy' | 'normal';
         type: 'maintenanceStatus';
+      } | {
+        artifactCount: number;
+        artifactTotalByteSize: number;
+        databaseHealth: 'healthy';
+        type: 'activeProfileValidation';
       } | {
         artifactCatalog: {
           artifactCount: number;
@@ -78,6 +87,10 @@ export type ProfileSnapshotBrokerResponse =
         profileId: string;
         profileMatchesActive: boolean;
         type: 'profileSnapshotValidation';
+      } | {
+        artifactCount: number;
+        artifactTotalByteSize: number;
+        type: 'profileRestoreActivationPrepared';
       };
     };
 
@@ -87,7 +100,8 @@ export function createProfileSnapshotBrokerRequest(input: {
   requestId: string;
 }): ProfileSnapshotBrokerRequest {
   const value =
-    input.operation === 'getProfileMaintenanceStatus'
+    input.operation === 'getProfileMaintenanceStatus' ||
+    input.operation === 'validateActiveProfile'
       ? {
           operation: input.operation,
           protocolVersion: profileSnapshotBrokerProtocolVersion,
@@ -120,7 +134,10 @@ export function parseProfileSnapshotBrokerRequest(
     return undefined;
   }
 
-  if (value.operation === 'getProfileMaintenanceStatus') {
+  if (
+    value.operation === 'getProfileMaintenanceStatus' ||
+    value.operation === 'validateActiveProfile'
+  ) {
     return hasExactKeys(value, [
       'operation',
       'protocolVersion',
@@ -138,6 +155,7 @@ export function parseProfileSnapshotBrokerRequest(
     (value.operation !== 'beginProfileMaintenance' &&
       value.operation !== 'createProfileSnapshot' &&
       value.operation !== 'endProfileMaintenance' &&
+      value.operation !== 'prepareProfileRestoreActivation' &&
       value.operation !== 'validateProfileSnapshot') ||
     !hasExactKeys(value, [
       'operation',
@@ -216,6 +234,34 @@ export function parseProfileSnapshotBrokerResponse(
   }
 
   if (
+    value.result.type === 'activeProfileValidation' &&
+    hasExactKeys(value.result, [
+      'artifactCount',
+      'artifactTotalByteSize',
+      'databaseHealth',
+      'type',
+    ]) &&
+    isBoundedNonNegativeSafeInteger(value.result.artifactCount, 100_000) &&
+    isBoundedNonNegativeSafeInteger(
+      value.result.artifactTotalByteSize,
+      20 * 1024 * 1024 * 1024,
+    ) &&
+    value.result.databaseHealth === 'healthy'
+  ) {
+    return {
+      ok: true,
+      protocolVersion: profileSnapshotBrokerProtocolVersion,
+      requestId: value.requestId,
+      result: {
+        artifactCount: value.result.artifactCount,
+        artifactTotalByteSize: value.result.artifactTotalByteSize,
+        databaseHealth: 'healthy',
+        type: 'activeProfileValidation',
+      },
+    };
+  }
+
+  if (
     value.result.type === 'profileSnapshot' &&
     hasExactKeys(value.result, [
       'artifactCatalog',
@@ -233,6 +279,31 @@ export function parseProfileSnapshotBrokerResponse(
         artifactCatalog: value.result.artifactCatalog,
         database: value.result.database,
         type: 'profileSnapshot',
+      },
+    };
+  }
+
+  if (
+    value.result.type === 'profileRestoreActivationPrepared' &&
+    hasExactKeys(value.result, [
+      'artifactCount',
+      'artifactTotalByteSize',
+      'type',
+    ]) &&
+    isBoundedNonNegativeSafeInteger(value.result.artifactCount, 100_000) &&
+    isBoundedNonNegativeSafeInteger(
+      value.result.artifactTotalByteSize,
+      20 * 1024 * 1024 * 1024,
+    )
+  ) {
+    return {
+      ok: true,
+      protocolVersion: profileSnapshotBrokerProtocolVersion,
+      requestId: value.requestId,
+      result: {
+        artifactCount: value.result.artifactCount,
+        artifactTotalByteSize: value.result.artifactTotalByteSize,
+        type: 'profileRestoreActivationPrepared',
       },
     };
   }
@@ -295,6 +366,7 @@ function isErrorCode(value: unknown): value is ProfileSnapshotBrokerErrorCode {
     value === 'PROFILE_MAINTENANCE_TIMEOUT' ||
     value === 'PROFILE_SNAPSHOT_ARTIFACTS_FAILED' ||
     value === 'PROFILE_SNAPSHOT_DATABASE_FAILED' ||
+    value === 'PROFILE_RESTORE_ACTIVATION_PREPARATION_FAILED' ||
     value === 'PROFILE_SNAPSHOT_VALIDATION_FAILED' ||
     value === 'PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID' ||
     value === 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE'

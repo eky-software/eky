@@ -122,6 +122,41 @@ export class ProfileSnapshotBrokerClient {
     });
   }
 
+  validateActiveProfile(): Promise<
+    Extract<
+      ProfileSnapshotBrokerSuccessResult,
+      { type: 'activeProfileValidation' }
+    >
+  > {
+    return this.request('validateActiveProfile').then((result) => {
+      if (result.type !== 'activeProfileValidation') {
+        throw new ProfileSnapshotBrokerError(
+          'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
+        );
+      }
+      return result;
+    });
+  }
+
+  prepareProfileRestoreActivation(operationId: string): Promise<
+    Extract<
+      ProfileSnapshotBrokerSuccessResult,
+      { type: 'profileRestoreActivationPrepared' }
+    >
+  > {
+    return this.request(
+      'prepareProfileRestoreActivation',
+      operationId,
+    ).then((result) => {
+      if (result.type !== 'profileRestoreActivationPrepared') {
+        throw new ProfileSnapshotBrokerError(
+          'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
+        );
+      }
+      return result;
+    });
+  }
+
   validateProfileSnapshot(operationId: string): Promise<
     Extract<
       ProfileSnapshotBrokerSuccessResult,

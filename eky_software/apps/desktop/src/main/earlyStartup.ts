@@ -4,6 +4,7 @@ const allowedStartupFailureCodes = new Set([
   'DESKTOP_START_FAILED',
   'PACKAGED_BUILD_INFO_INVALID',
   'PACKAGED_SMOKE_FAILED',
+  'PROFILE_RESTORE_RECOVERY_REQUIRED',
 ]);
 
 export interface DesktopRuntimeModule<Runtime> {

@@ -16,6 +16,19 @@ describe('profile snapshot runtime paths', () => {
         'clean-shutdown-v1.json',
       ),
       recoveryPointsRoot: join(runtimeRoot, 'recovery-points'),
+      restoreActivationJournalPath: join(
+        runtimeRoot,
+        'profile-restore-state',
+        'profile-restore-activation-journal-v1.json',
+      ),
+      restoreFailedRoot: join(
+        runtimeRoot,
+        'failed-profile-restores',
+      ),
+      restoreRollbackRoot: join(
+        runtimeRoot,
+        'profile-restore-rollback',
+      ),
       stagingRoot: join(runtimeRoot, 'private-backup-staging'),
     });
   });

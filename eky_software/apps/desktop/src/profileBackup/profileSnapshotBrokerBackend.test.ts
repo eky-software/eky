@@ -119,6 +119,15 @@ describe('profile snapshot broker boundary', () => {
         async createProfileSnapshot() {
           throw new Error('PROFILE_SNAPSHOT_DATABASE_FAILED');
         },
+        async prepareProfileRestoreActivation() {
+          return {
+            artifactCount: 0,
+            artifactTotalByteSize: 0,
+          };
+        },
+        async validateActiveProfile() {
+          return createFakeActiveValidation();
+        },
         async validateProfileSnapshot() {
           return createFakeValidation();
         },
@@ -148,6 +157,15 @@ describe('profile snapshot broker boundary', () => {
       snapshot: {
         async createProfileSnapshot() {
           throw new Error('PROFILE_SNAPSHOT_ARTIFACTS_FAILED');
+        },
+        async prepareProfileRestoreActivation() {
+          return {
+            artifactCount: 0,
+            artifactTotalByteSize: 0,
+          };
+        },
+        async validateActiveProfile() {
+          return createFakeActiveValidation();
         },
         async validateProfileSnapshot() {
           return createFakeValidation();
@@ -191,6 +209,50 @@ describe('profile snapshot broker boundary', () => {
     client.close();
     backend.close();
   });
+
+  it('validates the active profile without exposing document identities or paths', async () => {
+    const transports = createTransportPair();
+    const maintenance = new FakeProfileMaintenance();
+    const backend = startProfileSnapshotBrokerBackend({
+      maintenance,
+      snapshot: createFakeSnapshotService(),
+      transport: transports.backend,
+    });
+    const client = new ProfileSnapshotBrokerClient(transports.main, 1_000);
+
+    await expect(client.validateActiveProfile()).resolves.toEqual({
+      ...createFakeActiveValidation(),
+      type: 'activeProfileValidation',
+    });
+
+    client.close();
+    backend.close();
+  });
+
+  it('prepares restore artifacts without exposing backend paths', async () => {
+    const transports = createTransportPair();
+    const maintenance = new FakeProfileMaintenance();
+    const snapshot = createFakeSnapshotService();
+    const backend = startProfileSnapshotBrokerBackend({
+      maintenance,
+      snapshot,
+      transport: transports.backend,
+    });
+    const client = new ProfileSnapshotBrokerClient(transports.main, 1_000);
+    const operationId = randomUUID();
+
+    await expect(
+      client.prepareProfileRestoreActivation(operationId),
+    ).resolves.toEqual({
+      artifactCount: 1,
+      artifactTotalByteSize: 2_048,
+      type: 'profileRestoreActivationPrepared',
+    });
+    expect(JSON.stringify(snapshot)).not.toContain('storage');
+
+    client.close();
+    backend.close();
+  });
 });
 
 function createFakeSnapshotService(): {
@@ -211,6 +273,15 @@ function createFakeSnapshotService(): {
       sha256: string;
       totalPages: number;
     };
+  }>;
+  prepareProfileRestoreActivation(operationId: string): Promise<{
+    artifactCount: number;
+    artifactTotalByteSize: number;
+  }>;
+  validateActiveProfile(): Promise<{
+    artifactCount: number;
+    artifactTotalByteSize: number;
+    databaseHealth: 'healthy';
   }>;
   validateProfileSnapshot(operationId: string): Promise<{
     activeProfileIsEmpty: boolean;
@@ -249,7 +320,25 @@ function createFakeSnapshotService(): {
       operationIds.push(operationId);
       return createFakeValidation();
     },
+    async validateActiveProfile() {
+      return createFakeActiveValidation();
+    },
+    async prepareProfileRestoreActivation(operationId) {
+      operationIds.push(operationId);
+      return {
+        artifactCount: 1,
+        artifactTotalByteSize: 2_048,
+      };
+    },
     operationIds,
+  };
+}
+
+function createFakeActiveValidation() {
+  return {
+    artifactCount: 1,
+    artifactTotalByteSize: 2_048,
+    databaseHealth: 'healthy' as const,
   };
 }
 

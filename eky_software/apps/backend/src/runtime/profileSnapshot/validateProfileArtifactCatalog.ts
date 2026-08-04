@@ -19,6 +19,13 @@ const maximumTextBytes = 1_024;
 const pdfSignature = Buffer.from('%PDF-', 'ascii');
 const sha256Pattern = /^[a-f0-9]{64}$/;
 
+export interface ValidatedProfileArtifact {
+  byteSize: number;
+  logicalPath: string;
+  sha256: string;
+  storagePath: string;
+}
+
 interface StagedArtifactCatalogEntry {
   byteSize: number;
   fileName: string;
@@ -44,6 +51,7 @@ interface StagedArtifactCatalogEntry {
 export interface ProfileArtifactCatalogValidation {
   artifactCount: number;
   artifactTotalByteSize: number;
+  artifacts: readonly ValidatedProfileArtifact[];
 }
 
 export async function validateProfileArtifactCatalog(input: {
@@ -86,6 +94,7 @@ export async function validateProfileArtifactCatalog(input: {
     'profile.sqlite',
     artifactCatalogLogicalPath,
   ]);
+  const validatedArtifacts: ValidatedProfileArtifact[] = [];
   let artifactTotalByteSize = 0;
 
   for (let index = 0; index < expectedItems.length; index += 1) {
@@ -114,6 +123,9 @@ export async function validateProfileArtifactCatalog(input: {
     ) {
       throw new Error('PROFILE_SNAPSHOT_ARTIFACTS_INVALID');
     }
+    if (!isSafeLogicalPath(actual.restoreValidationIdentity.storagePath)) {
+      throw new Error('PROFILE_SNAPSHOT_ARTIFACTS_INVALID');
+    }
 
     artifactTotalByteSize += inspected.byteSize;
     if (
@@ -122,12 +134,19 @@ export async function validateProfileArtifactCatalog(input: {
     ) {
       throw new Error('PROFILE_SNAPSHOT_ARTIFACTS_INVALID');
     }
+    validatedArtifacts.push({
+      byteSize: actual.byteSize,
+      logicalPath: actual.logicalPath,
+      sha256: actual.sha256,
+      storagePath: actual.restoreValidationIdentity.storagePath,
+    });
   }
 
   await assertFilesystemClosure(input.operationRoot, expectedFiles);
   return {
     artifactCount: catalog.length,
     artifactTotalByteSize,
+    artifacts: validatedArtifacts,
   };
 }
 

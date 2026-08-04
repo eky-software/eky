@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
   chmod,
+  lstat,
   mkdir,
   mkdtemp,
   readFile,
@@ -74,6 +75,56 @@ describe('staged profile snapshot validation', () => {
       profileId: createProfileBackupIdentity('company-1'),
       profileMatchesActive: true,
     });
+  });
+
+  it('materializes a writable activation database and validated document tree', async () => {
+    const fixture = await createFixture();
+
+    await expect(
+      fixture.service.prepareProfileRestoreActivation(
+        fixture.operationId,
+      ),
+    ).resolves.toEqual({
+      artifactCount: 1,
+      artifactTotalByteSize: fixture.pdfBytes.byteLength,
+    });
+
+    const restoredPdfPath = join(
+      fixture.operationRoot,
+      'activation',
+      'storage',
+      'invoices',
+      'company-1',
+      'invoice-1',
+      'approved-invoice.pdf',
+    );
+    await expect(readFile(restoredPdfPath)).resolves.toEqual(
+      fixture.pdfBytes,
+    );
+    await expect(lstat(restoredPdfPath)).resolves.toMatchObject({
+      nlink: 1,
+    });
+    const writableDatabase = new Database(fixture.databasePath);
+    writableDatabase.close();
+  });
+
+  it('never overwrites an existing activation tree', async () => {
+    const fixture = await createFixture();
+    const activationRoot = join(
+      fixture.operationRoot,
+      'activation',
+      'storage',
+      'invoices',
+    );
+    await mkdir(activationRoot, { recursive: true });
+
+    await expect(
+      fixture.service.prepareProfileRestoreActivation(
+        fixture.operationId,
+      ),
+    ).rejects.toThrow(
+      'PROFILE_RESTORE_ACTIVATION_PREPARATION_FAILED',
+    );
   });
 
   it('reports a foreign profile without exposing the source company id', async () => {

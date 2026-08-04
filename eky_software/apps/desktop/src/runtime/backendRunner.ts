@@ -42,10 +42,19 @@ interface BackendProfileSnapshotMetadata {
 }
 
 interface BackendProfileSnapshotService {
+  validateActiveProfile(): Promise<{
+    artifactCount: number;
+    artifactTotalByteSize: number;
+    databaseHealth: 'healthy';
+  }>;
   createProfileSnapshot(input: {
     operationId: string;
     signal: AbortSignal;
   }): Promise<BackendProfileSnapshotMetadata>;
+  prepareProfileRestoreActivation(operationId: string): Promise<{
+    artifactCount: number;
+    artifactTotalByteSize: number;
+  }>;
   validateProfileSnapshot(operationId: string): Promise<{
     activeProfileIsEmpty: boolean;
     artifactCount: number;
@@ -267,6 +276,22 @@ utilityParentPort.on('message', (event) => {
               throw new Error('PROFILE_SNAPSHOT_DATABASE_FAILED');
             }
             return profileSnapshotService.createProfileSnapshot(input);
+          },
+          prepareProfileRestoreActivation: (operationId) => {
+            if (profileSnapshotService === undefined) {
+              throw new Error(
+                'PROFILE_RESTORE_ACTIVATION_PREPARATION_FAILED',
+              );
+            }
+            return profileSnapshotService.prepareProfileRestoreActivation(
+              operationId,
+            );
+          },
+          validateActiveProfile: () => {
+            if (profileSnapshotService === undefined) {
+              throw new Error('ACTIVE_PROFILE_VALIDATION_FAILED');
+            }
+            return profileSnapshotService.validateActiveProfile();
           },
           validateProfileSnapshot: (operationId) => {
             if (profileSnapshotService === undefined) {

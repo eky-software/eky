@@ -99,6 +99,11 @@ import { RecoveryPointRotationService } from '../profileBackup/recoveryPoint/rec
 import { RecoveryPointScheduler } from '../profileBackup/recoveryPoint/recoveryPointScheduler.js';
 import { RecoveryPointService } from '../profileBackup/recoveryPoint/recoveryPointService.js';
 import { RecoveryPointStore } from '../profileBackup/recoveryPoint/recoveryPointStore.js';
+import { ProfileRestoreActivationJournalStore } from '../profileBackup/restore/profileRestoreActivationJournalStore.js';
+import { ProfileRestoreActivationService } from '../profileBackup/restore/profileRestoreActivationService.js';
+import { ProfileRestoreActivationTransaction } from '../profileBackup/restore/profileRestoreActivationTransaction.js';
+import { ProfileRestoreStagingService } from '../profileBackup/restore/profileRestoreStagingService.js';
+import { ProfileRestoreStartupRecovery } from '../profileBackup/restore/profileRestoreStartupRecovery.js';
 
 export interface DesktopLifecycleHandle {
   applicationWindow: BrowserWindow;
@@ -133,6 +138,7 @@ export interface StartDesktopCompositionOptions {
   buildInfo: Readonly<DesktopBuildInfo>;
   dependencies?: Partial<DesktopCompositionDependencies>;
   quitApplication(): void;
+  relaunchApplication(): void;
   resourcesPath: string;
   runtimeInstanceId: string;
   reportSmokeStage(stage: PackagedSmokeStage): Promise<void>;
@@ -274,6 +280,26 @@ async function startDesktopCompositionRuntime({
   const databaseFilePath = join(dataRoot, 'data', 'eky.sqlite');
   const invoiceDocumentStorageRoot = join(dataRoot, 'storage', 'invoices');
   const profileSnapshotPaths = createProfileSnapshotRuntimePaths(dataRoot);
+  const profileRestoreActivationJournalStore =
+    new ProfileRestoreActivationJournalStore(
+      profileSnapshotPaths.restoreActivationJournalPath,
+    );
+  const profileRestoreActivationTransaction =
+    new ProfileRestoreActivationTransaction({
+      journalStore: profileRestoreActivationJournalStore,
+      paths: {
+        activeDatabasePath: databaseFilePath,
+        activeDocumentsRoot: invoiceDocumentStorageRoot,
+        failedRoot: profileSnapshotPaths.restoreFailedRoot,
+        rollbackRoot: profileSnapshotPaths.restoreRollbackRoot,
+        stagingRoot: profileSnapshotPaths.stagingRoot,
+      },
+    });
+  const profileRestoreStartupRecovery =
+    new ProfileRestoreStartupRecovery({
+      journalStore: profileRestoreActivationJournalStore,
+      transaction: profileRestoreActivationTransaction,
+    });
   const secretFilePath = join(
     dataRoot,
     'secrets',
@@ -349,6 +375,8 @@ async function startDesktopCompositionRuntime({
       }),
     ),
   );
+  const profileRestoreStartupMode =
+    await profileRestoreStartupRecovery.prepareBeforeBackend();
 
   const deliveryDialogAdapter: InvoiceDeliveryDialogAdapter = {
     showErrorBox: dependencies.showErrorBox,
@@ -495,6 +523,25 @@ async function startDesktopCompositionRuntime({
       secretBrokerPort: secretBrokerChannel.port2,
     });
     await profileSnapshotBrokerClient.getStatus();
+    const restoreStartupResult =
+      await profileRestoreStartupRecovery.validateAfterBackend({
+        mode: profileRestoreStartupMode,
+        stopBackend: () => backendHandle!.stop(),
+        async validateActiveProfile() {
+          await profileSnapshotBrokerClient.validateActiveProfile();
+          await assertBackendHealth(
+            `http://127.0.0.1:${backendHandle!.port}`,
+            runtimeSessionSecret,
+          );
+        },
+      });
+    if (restoreStartupResult === 'relaunchRequired') {
+      profileSnapshotBrokerClient.close();
+      invoicePdfArchiveBrokerHandle.close();
+      secretBrokerHandle.close();
+      options.relaunchApplication();
+      return undefined;
+    }
     await recoveryPointScheduler.start();
   } catch (error) {
     await recoveryPointScheduler.stopChecks().catch(() => undefined);
@@ -756,6 +803,24 @@ async function startDesktopCompositionRuntime({
       quarantineRoot: profileSnapshotPaths.quarantineRoot,
       stagingRoot: profileSnapshotPaths.stagingRoot,
     });
+  const profileRestoreStagingService =
+    new ProfileRestoreStagingService({
+      profileSnapshotClient: profileSnapshotBrokerClient,
+      quarantineRoot: profileSnapshotPaths.quarantineRoot,
+      recoveryPointService,
+      stagingRoot: profileSnapshotPaths.stagingRoot,
+    });
+  const profileRestoreActivationService =
+    new ProfileRestoreActivationService({
+      profileSnapshotClient: profileSnapshotBrokerClient,
+      relaunchApplication: options.relaunchApplication,
+      stagingService: profileRestoreStagingService,
+      async stopBusinessRuntime() {
+        await recoveryPointScheduler.stopChecks();
+        await backendHandle!.stop();
+      },
+      transaction: profileRestoreActivationTransaction,
+    });
   profileBackupCapability = createProfileBackupCapability({
     backupService: portableProfileBackupService,
     ipcMain,
@@ -990,6 +1055,54 @@ async function startDesktopCompositionRuntime({
 }
 
 const maximumSupportBundleBackendBytes = 8 * 1024 * 1024;
+const maximumHealthResponseBytes = 1_024;
+
+async function assertBackendHealth(
+  backendOrigin: string,
+  runtimeSessionSecret: string,
+): Promise<void> {
+  const response = await net.fetch(`${backendOrigin}/health`, {
+    headers: createBackendRequestHeaders(
+      new Headers(),
+      runtimeSessionSecret,
+    ),
+    method: 'GET',
+  });
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new Error('PROFILE_RESTORE_HEALTH_FAILED');
+  }
+  const declaredLength = Number(
+    response.headers.get('content-length') ?? '0',
+  );
+  if (
+    !Number.isFinite(declaredLength) ||
+    declaredLength < 0 ||
+    declaredLength > maximumHealthResponseBytes
+  ) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new Error('PROFILE_RESTORE_HEALTH_FAILED');
+  }
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (bytes.byteLength > maximumHealthResponseBytes) {
+    throw new Error('PROFILE_RESTORE_HEALTH_FAILED');
+  }
+  try {
+    const value = JSON.parse(bytes.toString('utf8')) as unknown;
+    if (
+      typeof value !== 'object' ||
+      value === null ||
+      Array.isArray(value) ||
+      Object.keys(value).length !== 1 ||
+      !('status' in value) ||
+      value.status !== 'ok'
+    ) {
+      throw new Error('PROFILE_RESTORE_HEALTH_FAILED');
+    }
+  } catch {
+    throw new Error('PROFILE_RESTORE_HEALTH_FAILED');
+  }
+}
 
 async function loadSupportBundleBackendData(
   backendOrigin: string,

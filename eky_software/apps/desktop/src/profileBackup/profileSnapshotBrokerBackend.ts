@@ -20,6 +20,11 @@ export interface ProfileMaintenanceService {
 export function startProfileSnapshotBrokerBackend(input: {
   maintenance: ProfileMaintenanceService;
   snapshot: {
+    validateActiveProfile(): Promise<{
+      artifactCount: number;
+      artifactTotalByteSize: number;
+      databaseHealth: 'healthy';
+    }>;
     createProfileSnapshot(input: {
       operationId: string;
       signal: AbortSignal;
@@ -35,8 +40,12 @@ export function startProfileSnapshotBrokerBackend(input: {
         databaseByteSize: number;
         logicalPath: 'profile.sqlite';
         sha256: string;
-        totalPages: number;
+      totalPages: number;
       };
+    }>;
+    prepareProfileRestoreActivation(operationId: string): Promise<{
+      artifactCount: number;
+      artifactTotalByteSize: number;
     }>;
     validateProfileSnapshot(operationId: string): Promise<{
       activeProfileIsEmpty: boolean;
@@ -115,6 +124,19 @@ export function startProfileSnapshotBrokerBackend(input: {
               },
             });
             return;
+          } else if (request.operation === 'validateActiveProfile') {
+            const validation =
+              await input.snapshot.validateActiveProfile();
+            input.transport.send({
+              ok: true,
+              protocolVersion: profileSnapshotBrokerProtocolVersion,
+              requestId: request.requestId,
+              result: {
+                ...validation,
+                type: 'activeProfileValidation',
+              },
+            });
+            return;
           } else if (request.operation === 'validateProfileSnapshot') {
             const validation =
               await input.snapshot.validateProfileSnapshot(
@@ -127,6 +149,23 @@ export function startProfileSnapshotBrokerBackend(input: {
               result: {
                 ...validation,
                 type: 'profileSnapshotValidation',
+              },
+            });
+            return;
+          } else if (
+            request.operation === 'prepareProfileRestoreActivation'
+          ) {
+            const prepared =
+              await input.snapshot.prepareProfileRestoreActivation(
+                request.operationId,
+              );
+            input.transport.send({
+              ok: true,
+              protocolVersion: profileSnapshotBrokerProtocolVersion,
+              requestId: request.requestId,
+              result: {
+                ...prepared,
+                type: 'profileRestoreActivationPrepared',
               },
             });
             return;
@@ -199,7 +238,16 @@ function mapError(error: unknown): ProfileSnapshotBrokerErrorCode {
     if (error.message === 'PROFILE_SNAPSHOT_ARTIFACTS_FAILED') {
       return 'PROFILE_SNAPSHOT_ARTIFACTS_FAILED';
     }
+    if (
+      error.message ===
+      'PROFILE_RESTORE_ACTIVATION_PREPARATION_FAILED'
+    ) {
+      return 'PROFILE_RESTORE_ACTIVATION_PREPARATION_FAILED';
+    }
     if (error.message === 'PROFILE_SNAPSHOT_VALIDATION_FAILED') {
+      return 'PROFILE_SNAPSHOT_VALIDATION_FAILED';
+    }
+    if (error.message === 'ACTIVE_PROFILE_VALIDATION_FAILED') {
       return 'PROFILE_SNAPSHOT_VALIDATION_FAILED';
     }
   }

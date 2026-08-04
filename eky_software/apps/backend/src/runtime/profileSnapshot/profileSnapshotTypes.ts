@@ -45,9 +45,32 @@ export interface ProfileSnapshotValidationService {
   ): Promise<ProfileSnapshotValidationMetadata>;
 }
 
+export interface ProfileRestoreActivationPreparationMetadata {
+  artifactCount: number;
+  artifactTotalByteSize: number;
+}
+
+export interface ProfileRestoreActivationPreparationService {
+  prepareProfileRestoreActivation(
+    operationId: string,
+  ): Promise<ProfileRestoreActivationPreparationMetadata>;
+}
+
+export interface ActiveProfileValidationMetadata {
+  artifactCount: number;
+  artifactTotalByteSize: number;
+  databaseHealth: 'healthy';
+}
+
+export interface ActiveProfileValidationService {
+  validateActiveProfile(): Promise<ActiveProfileValidationMetadata>;
+}
+
 export interface ProfileSnapshotRuntimeService
-  extends ProfileSnapshotService,
-    ProfileSnapshotValidationService {}
+  extends ActiveProfileValidationService,
+    ProfileSnapshotService,
+    ProfileSnapshotValidationService,
+    ProfileRestoreActivationPreparationService {}
 
 export interface SqliteProfileSnapshotService {
   createSqliteSnapshot(

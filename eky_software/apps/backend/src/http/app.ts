@@ -49,6 +49,7 @@ import { ProfileMaintenanceState } from '../runtime/profileMaintenance/profileMa
 import { createConsistentProfileSnapshotService } from '../runtime/profileSnapshot/createConsistentProfileSnapshot.js';
 import type { ProfileSnapshotServiceRegistration } from '../runtime/profileSnapshot/profileSnapshotTypes.js';
 import { StagedProfileSnapshotValidationService } from '../runtime/profileSnapshot/validateProfileSnapshot.js';
+import { CurrentActiveProfileValidationService } from '../runtime/profileSnapshot/validateActiveProfile.js';
 
 const defaultAppVersion = '0.0.0';
 
@@ -374,9 +375,18 @@ export async function createApp(
         migrationsDirectory: options.migrationsDirectory,
         stagingRoot: options.profileSnapshotServiceRegistration.stagingRoot,
       });
+    const activeValidationService =
+      new CurrentActiveProfileValidationService(
+        database,
+        options.invoiceDocumentStorageRoot,
+      );
     options.profileSnapshotServiceRegistration.register({
       createProfileSnapshot: (input) =>
         snapshotService.createProfileSnapshot(input),
+      prepareProfileRestoreActivation: (operationId) =>
+        validationService.prepareProfileRestoreActivation(operationId),
+      validateActiveProfile: () =>
+        activeValidationService.validateActiveProfile(),
       validateProfileSnapshot: (operationId) =>
         validationService.validateProfileSnapshot(operationId),
     });

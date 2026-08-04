@@ -67,6 +67,10 @@ async function startDesktopRuntime(
     applicationPath: app.getAppPath(),
     buildInfo,
     quitApplication: () => app.quit(),
+    relaunchApplication() {
+      app.relaunch();
+      app.quit();
+    },
     resourcesPath: process.resourcesPath,
     runtimeInstanceId,
     reportSmokeStage: (stage) => smokeProgress.reportStage(stage),
@@ -116,8 +120,12 @@ if (hasSingleInstanceLock) {
       }
 
       dialog.showErrorBox(
-        'Eky ei käynnistynyt',
-        'Paikallista sovellusta ei voitu käynnistää turvallisesti.',
+        errorCode === 'PROFILE_RESTORE_RECOVERY_REQUIRED'
+          ? 'Palautus vaatii tarkistuksen'
+          : 'Eky ei käynnistynyt',
+        errorCode === 'PROFILE_RESTORE_RECOVERY_REQUIRED'
+          ? 'Varmuuskopion palautusta ei voitu viimeistellä tai perua turvallisesti. Eky ei avaa yritystietoja ennen tilanteen tarkistamista.'
+          : 'Paikallista sovellusta ei voitu käynnistää turvallisesti.',
       );
     },
     startRuntime: startDesktopRuntime,

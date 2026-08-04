@@ -38,6 +38,16 @@ describe('profile snapshot broker protocol', () => {
     });
     expect(
       createProfileSnapshotBrokerRequest({
+        operation: 'prepareProfileRestoreActivation',
+        operationId,
+        requestId,
+      }),
+    ).toMatchObject({
+      operation: 'prepareProfileRestoreActivation',
+      operationId,
+    });
+    expect(
+      createProfileSnapshotBrokerRequest({
         operation: 'validateProfileSnapshot',
         operationId,
         requestId,
@@ -45,6 +55,16 @@ describe('profile snapshot broker protocol', () => {
     ).toMatchObject({
       operation: 'validateProfileSnapshot',
       operationId,
+    });
+    expect(
+      createProfileSnapshotBrokerRequest({
+        operation: 'validateActiveProfile',
+        requestId,
+      }),
+    ).toEqual({
+      operation: 'validateActiveProfile',
+      protocolVersion: profileSnapshotBrokerProtocolVersion,
+      requestId,
     });
     expect(
       parseProfileSnapshotBrokerRequest({
@@ -122,6 +142,50 @@ describe('profile snapshot broker protocol', () => {
           logicalPath: 'profile.sqlite',
         },
         type: 'profileSnapshot',
+      },
+    });
+    expect(
+      parseProfileSnapshotBrokerResponse({
+        ok: true,
+        protocolVersion: profileSnapshotBrokerProtocolVersion,
+        requestId,
+        result: {
+          artifactCount: 2,
+          artifactTotalByteSize: 4_096,
+          type: 'profileRestoreActivationPrepared',
+        },
+      }),
+    ).toEqual({
+      ok: true,
+      protocolVersion: profileSnapshotBrokerProtocolVersion,
+      requestId,
+      result: {
+        artifactCount: 2,
+        artifactTotalByteSize: 4_096,
+        type: 'profileRestoreActivationPrepared',
+      },
+    });
+    expect(
+      parseProfileSnapshotBrokerResponse({
+        ok: true,
+        protocolVersion: profileSnapshotBrokerProtocolVersion,
+        requestId,
+        result: {
+          artifactCount: 2,
+          artifactTotalByteSize: 4_096,
+          databaseHealth: 'healthy',
+          type: 'activeProfileValidation',
+        },
+      }),
+    ).toEqual({
+      ok: true,
+      protocolVersion: profileSnapshotBrokerProtocolVersion,
+      requestId,
+      result: {
+        artifactCount: 2,
+        artifactTotalByteSize: 4_096,
+        databaseHealth: 'healthy',
+        type: 'activeProfileValidation',
       },
     });
     expect(
