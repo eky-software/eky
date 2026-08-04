@@ -1,13 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  activityBusinessTimeZone,
-  getHelsinkiActivityMonth,
-} from './activityCalendarMonth.js';
+import { ekyBusinessTimeZone } from '../../shared/date/businessTimeZone.js';
+import { getHelsinkiActivityMonth } from './activityCalendarMonth.js';
 
 describe('getHelsinkiActivityMonth', () => {
   it('uses the documented business time zone', () => {
-    expect(activityBusinessTimeZone).toBe('Europe/Helsinki');
+    expect(ekyBusinessTimeZone).toBe('Europe/Helsinki');
   });
 
   it('matches the backend month at the UTC-to-Helsinki month boundary', () => {

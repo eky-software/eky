@@ -1,6 +1,7 @@
 import type { RuntimeDiagnosticSummary } from '@eky/api-client';
 
 import { uiText } from '../../../i18n/fi.js';
+import { formatFinnishDateTime } from '../../../shared/date/formatFinnishDateTime.js';
 import styles from './RuntimeDiagnosticSummaryView.module.css';
 
 interface RuntimeDiagnosticSummaryViewProps {
@@ -152,8 +153,5 @@ function formatOptionalTimestamp(timestamp: string | null): string {
 }
 
 function formatTimestamp(timestamp: string): string {
-  return new Intl.DateTimeFormat('fi-FI', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(new Date(timestamp));
+  return formatFinnishDateTime(timestamp) ?? timestamp;
 }

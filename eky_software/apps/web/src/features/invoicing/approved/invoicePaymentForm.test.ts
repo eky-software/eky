@@ -1,13 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  getHelsinkiPaymentDate,
-  invoicePaymentBusinessTimeZone,
-} from './invoicePaymentForm.js';
+import { ekyBusinessTimeZone } from '../../../shared/date/businessTimeZone.js';
+import { getHelsinkiPaymentDate } from './invoicePaymentForm.js';
 
 describe('getHelsinkiPaymentDate', () => {
   it('uses the Helsinki calendar date at the UTC day boundary', () => {
-    expect(invoicePaymentBusinessTimeZone).toBe('Europe/Helsinki');
+    expect(ekyBusinessTimeZone).toBe('Europe/Helsinki');
     expect(
       getHelsinkiPaymentDate(new Date('2026-07-30T20:59:59.999Z')),
     ).toBe('2026-07-30');

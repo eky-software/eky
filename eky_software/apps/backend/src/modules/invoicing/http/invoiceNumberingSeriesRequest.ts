@@ -1,3 +1,7 @@
+import {
+  hasOnlyAllowedFields,
+  isRecord,
+} from '../../../http/requestBody.js';
 import type { ActivateInvoiceNumberingSeriesInput } from '../application/activateInvoiceNumberingSeries.js';
 import type { PreviewInvoiceNumberingSeriesActivationInput } from '../application/previewInvoiceNumberingSeriesActivation.js';
 import {
@@ -44,7 +48,7 @@ export class InvoiceNumberingSeriesRequestValidationError extends Error {
 export function parseActivateInvoiceNumberingSeriesRequest(
   body: unknown,
 ): ActivateInvoiceNumberingSeriesRequest {
-  if (!isRecord(body) || !hasOnlyFields(body, activationFields)) {
+  if (!isRecord(body) || !hasOnlyAllowedFields(body, activationFields)) {
     throw new InvoiceNumberingSeriesRequestValidationError();
   }
 
@@ -90,17 +94,6 @@ export function parseInvoiceNumberingSeriesActivationPreviewQuery(
     previewDate: readIsoCalendarDate(searchParams.get('previewDate')),
     sequencePadding: readIntegerText(searchParams.get('sequencePadding')),
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function hasOnlyFields(
-  value: Record<string, unknown>,
-  allowedFields: ReadonlySet<string>,
-): boolean {
-  return Object.keys(value).every((fieldName) => allowedFields.has(fieldName));
 }
 
 function readMode(value: unknown): InvoiceNumberingMode {

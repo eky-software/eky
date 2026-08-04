@@ -30,6 +30,8 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
 - Kirjataanko kriittinen toiminto audit logiin?
 - Estetäänkö toisen yrityksen datan käyttö?
 - Onko syötteen tyyppi, muoto, pituus, rajat ja sallittu arvojoukko validoitu backendissä?
+- Hylätäänkö väärä JSON-kenttätyyppi ennen application serviceä ilman
+  hiljaista muunnosta puuttuvaksi tai tyhjäksi arvoksi?
 - Onko request bodyn ja tiedostojen kokorajat arvioitu?
 - Voiko syöte vaikuttaa SQL:ään, HTTP-otsakkeisiin, tiedostopolkuihin, lokiin tai renderöityyn sisältöön?
 - Ovatko virhevastaus ja lokitus turvallisia ilman stack trace-, salaisuus- tai henkilötietovuotoa?

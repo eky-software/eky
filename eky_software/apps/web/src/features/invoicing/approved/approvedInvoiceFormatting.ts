@@ -5,13 +5,11 @@ import type {
 } from '@eky/api-client';
 
 import { uiText } from '../../../i18n/fi.js';
-import {
-  formatInvoiceDraftCurrency,
-  formatInvoiceDraftDate,
-} from '../drafts/invoiceDraftFormatting.js';
+import { formatFinnishCalendarDate } from '../../../shared/date/formatFinnishCalendarDate.js';
+import { formatEuroCents } from '../../../shared/money/formatEuroCents.js';
 
 export function formatApprovedInvoiceCurrency(cents: number): string {
-  return formatInvoiceDraftCurrency(cents);
+  return formatEuroCents(cents);
 }
 
 export function formatApprovedInvoicePresentedCurrency(
@@ -24,7 +22,7 @@ export function formatApprovedInvoicePresentedCurrency(
 }
 
 export function formatApprovedInvoiceDate(date: string): string {
-  return formatInvoiceDraftDate(date);
+  return formatFinnishCalendarDate(date) ?? date;
 }
 
 export function formatApprovedInvoiceQuantity(quantityHundredths: number): string {

@@ -1,7 +1,7 @@
 import { createActorContext } from '@eky/auth';
 import { AuthorizationError } from '@eky/permissions';
 import { Hono } from 'hono';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 
@@ -449,6 +449,37 @@ describe('customersRoutes', () => {
     expect(createCalled).toBe(false);
   });
 
+  it.each([123, true, [], {}])(
+    'rejects wrong optional string type %# without creating a customer',
+    async (invalidValue) => {
+      const createCustomer = vi.fn();
+      const app = createCustomersRoutes({
+        createCustomer,
+        async listCustomers(): Promise<Customer[]> {
+          return [];
+        },
+        async updateCustomer(): Promise<Customer> {
+          throw new Error('updateCustomer should not be called');
+        },
+      });
+
+      const response = await app.request('/customers', {
+        body: JSON.stringify({
+          email: invalidValue,
+          name: 'Example Customer Oy',
+        }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      });
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: 'Invalid customer body.',
+      });
+      expect(createCustomer).not.toHaveBeenCalled();
+    },
+  );
+
   it('maps customer validation errors to bad request responses', async () => {
     const app = createCustomersRoutes({
       async createCustomer(): Promise<Customer> {
@@ -533,6 +564,65 @@ describe('customersRoutes', () => {
       streetAddress: '  Testikatu 1  ',
     });
     expect(body).toEqual({ customer: updatedCustomer });
+  });
+
+  it.each([123, true, [], {}])(
+    'rejects wrong optional string type %# without updating a customer',
+    async (invalidValue) => {
+      const updateCustomer = vi.fn();
+      const app = createCustomersRoutes({
+        async createCustomer(): Promise<Customer> {
+          throw new Error('createCustomer should not be called');
+        },
+        async listCustomers(): Promise<Customer[]> {
+          return [];
+        },
+        updateCustomer,
+      });
+
+      const response = await app.request('/customers/customer-1', {
+        body: JSON.stringify({
+          customerNumber: '1001',
+          email: invalidValue,
+          name: 'Example Customer Oy',
+        }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'PUT',
+      });
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: 'Invalid customer body.',
+      });
+      expect(updateCustomer).not.toHaveBeenCalled();
+    },
+  );
+
+  it('preserves the required customer number response without updating', async () => {
+    const updateCustomer = vi.fn();
+    const app = createCustomersRoutes({
+      async createCustomer(): Promise<Customer> {
+        throw new Error('createCustomer should not be called');
+      },
+      async listCustomers(): Promise<Customer[]> {
+        return [];
+      },
+      updateCustomer,
+    });
+
+    const response = await app.request('/customers/customer-1', {
+      body: JSON.stringify({
+        name: 'Example Customer Oy',
+      }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'PUT',
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Customer number is required.',
+    });
+    expect(updateCustomer).not.toHaveBeenCalled();
   });
 
   it('rejects unknown update fields before calling the route dependencies', async () => {

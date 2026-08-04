@@ -2,6 +2,7 @@ import type { InvoiceDeliveryEventSummary } from '@eky/api-client';
 
 import styles from './InvoiceDeliveryHistory.module.css';
 import { uiText } from '../../../i18n/fi.js';
+import { formatFinnishDateTime } from '../../../shared/date/formatFinnishDateTime.js';
 
 interface InvoiceDeliveryHistoryProps {
   errorMessage: string | null;
@@ -74,14 +75,7 @@ export function InvoiceDeliveryHistory({
 }
 
 function formatDeliveryTime(value: string): string {
-  const date = new Date(value);
-
-  return Number.isNaN(date.getTime())
-    ? value
-    : new Intl.DateTimeFormat('fi-FI', {
-        dateStyle: 'short',
-        timeStyle: 'short',
-      }).format(date);
+  return formatFinnishDateTime(value) ?? value;
 }
 
 function deliveryMethodLabel(

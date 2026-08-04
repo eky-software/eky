@@ -238,6 +238,9 @@ Jokaisessa koodi-, API-, data-, integraatio- tai riippuvuusmuutoksessa tarkistet
 - muuttuuko luottamusraja tai palvelun verkkonäkyvyys
 - mitkä syötteet tulevat frontendistä, mobiilista, tiedostosta, integraatiosta, webhookista tai AI-agentilta
 - validoidaanko syötteen tyyppi, muoto, pituus, lukurajat ja sallittu arvojoukko backendissä
+- hylätäänkö JSON-kentän väärä tyyppi ennen application serviceä sen sijaan,
+  että numero, boolean, taulukko tai objekti muunnettaisiin puuttuvaksi tai
+  tyhjäksi arvoksi
 - tulevatko käyttäjän identiteetti, yritysjäsenyys ja `companyId` luotetusta backend-kontekstista
 - estetäänkö toisen yrityksen dataan pääsy sekä luku- että kirjoituspoluissa
 - onko käyttöoikeus deny by default

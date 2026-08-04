@@ -115,6 +115,41 @@ test('SEC-INJECTION-001 @security preserves allowed text literally without log i
   expect(secondCreate.status()).toBe(201);
 });
 
+test('SEC-TYPE-001 @security rejects wrong string field types without persistence', async ({
+  e2eBackend,
+}) => {
+  const companySettingsBefore = await e2eBackend.api.get('/company-settings');
+  expect(companySettingsBefore.status()).toBe(200);
+  const companySettingsBodyBefore = await companySettingsBefore.json();
+
+  for (const invalidValue of [123, true, [], {}]) {
+    const customerResponse = await e2eBackend.api.post('/customers', {
+      data: {
+        ...createSyntheticCustomerInput(),
+        email: invalidValue,
+      },
+    });
+    await expectSafeHttpError(customerResponse, [400]);
+
+    const settingsResponse = await e2eBackend.api.put('/company-settings', {
+      data: {
+        companyName: invalidValue,
+      },
+    });
+    await expectSafeHttpError(settingsResponse, [400]);
+  }
+
+  const customersResponse = await e2eBackend.api.get('/customers');
+  expect(customersResponse.status()).toBe(200);
+  await expect(customersResponse.json()).resolves.toEqual({ customers: [] });
+
+  const companySettingsAfter = await e2eBackend.api.get('/company-settings');
+  expect(companySettingsAfter.status()).toBe(200);
+  await expect(companySettingsAfter.json()).resolves.toEqual(
+    companySettingsBodyBefore,
+  );
+});
+
 test('SEC-PATH-001 @security rejects traversal and absolute resource identifiers without writes', async ({
   e2eBackend,
 }) => {

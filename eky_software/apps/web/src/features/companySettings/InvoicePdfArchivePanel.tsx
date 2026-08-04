@@ -5,6 +5,7 @@ import type {
   InvoicePdfArchiveStatus,
 } from '../../app/desktopBridge.js';
 import { uiText } from '../../i18n/fi.js';
+import { formatFinnishDateTime } from '../../shared/date/formatFinnishDateTime.js';
 import { MessageBanner } from '../../shared/ui/index.js';
 import styles from './InvoicePdfArchivePanel.module.css';
 
@@ -239,10 +240,7 @@ export function InvoicePdfArchivePanelView({
 }
 
 function formatTimestamp(value: string): string {
-  return new Intl.DateTimeFormat('fi-FI', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(new Date(value));
+  return formatFinnishDateTime(value) ?? value;
 }
 
 function readArchiveErrorMessage(errorCode: string): string {

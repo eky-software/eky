@@ -1,3 +1,7 @@
+import {
+  hasOnlyAllowedFields,
+  isRecord,
+} from '../../../http/requestBody.js';
 import type {
   SaveInvoiceDraftInput,
   SaveInvoiceDraftLineInput,
@@ -44,6 +48,16 @@ const invoiceDraftLineFields = new Set([
   'vatRateBasisPoints',
   'discount',
 ]);
+const invoiceDatePerformancePeriodFields = new Set(['type']);
+const singleDatePerformancePeriodFields = new Set(['type', 'date']);
+const dateRangePerformancePeriodFields = new Set([
+  'type',
+  'startDate',
+  'endDate',
+]);
+const noDiscountFields = new Set(['type']);
+const percentageDiscountFields = new Set(['type', 'basisPoints']);
+const fixedDiscountFields = new Set(['type', 'amountCents']);
 
 export class InvoiceDraftRequestValidationError extends Error {
   constructor() {
@@ -52,15 +66,11 @@ export class InvoiceDraftRequestValidationError extends Error {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function assertAllowedFields(
   value: Record<string, unknown>,
   allowedFields: ReadonlySet<string>,
 ): void {
-  if (Object.keys(value).some((fieldName) => !allowedFields.has(fieldName))) {
+  if (!hasOnlyAllowedFields(value, allowedFields)) {
     throw new InvoiceDraftRequestValidationError();
   }
 }
@@ -161,12 +171,12 @@ function readPerformancePeriod(
   }
 
   if (period.type === 'invoiceDate') {
-    assertAllowedFields(period, new Set(['type']));
+    assertAllowedFields(period, invoiceDatePerformancePeriodFields);
     return { type: period.type };
   }
 
   if (period.type === 'singleDate') {
-    assertAllowedFields(period, new Set(['type', 'date']));
+    assertAllowedFields(period, singleDatePerformancePeriodFields);
     return {
       type: period.type,
       date: readString(period, 'date', 10),
@@ -174,10 +184,7 @@ function readPerformancePeriod(
   }
 
   if (period.type === 'dateRange') {
-    assertAllowedFields(
-      period,
-      new Set(['type', 'startDate', 'endDate']),
-    );
+    assertAllowedFields(period, dateRangePerformancePeriodFields);
     return {
       type: period.type,
       startDate: readString(period, 'startDate', 10),
@@ -194,12 +201,12 @@ function readDiscount(value: unknown): InvoiceLineDiscount {
   }
 
   if (value.type === 'none') {
-    assertAllowedFields(value, new Set(['type']));
+    assertAllowedFields(value, noDiscountFields);
     return { type: 'none' };
   }
 
   if (value.type === 'percentage') {
-    assertAllowedFields(value, new Set(['type', 'basisPoints']));
+    assertAllowedFields(value, percentageDiscountFields);
     return {
       type: 'percentage',
       basisPoints: readSafeInteger(value, 'basisPoints'),
@@ -207,7 +214,7 @@ function readDiscount(value: unknown): InvoiceLineDiscount {
   }
 
   if (value.type === 'fixed') {
-    assertAllowedFields(value, new Set(['type', 'amountCents']));
+    assertAllowedFields(value, fixedDiscountFields);
     return {
       type: 'fixed',
       amountCents: readSafeInteger(value, 'amountCents'),

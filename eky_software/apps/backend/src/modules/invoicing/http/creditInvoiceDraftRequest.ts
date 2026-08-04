@@ -1,5 +1,9 @@
 import type { ActorContext } from '@eky/auth';
 
+import {
+  hasOnlyAllowedFields,
+  isRecord,
+} from '../../../http/requestBody.js';
 import type { CreditInvoiceDraftLineInput } from '../application/creditInvoiceDraftModel.js';
 import type { UpdateCreditInvoiceDraftInput } from '../application/updateCreditInvoiceDraft.js';
 
@@ -110,15 +114,11 @@ function readCreditDraftLine(value: unknown): CreditInvoiceDraftLineInput {
   throw new CreditInvoiceDraftRequestValidationError();
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function assertAllowedFields(
   value: Record<string, unknown>,
   allowedFields: ReadonlySet<string>,
 ): void {
-  if (Object.keys(value).some((fieldName) => !allowedFields.has(fieldName))) {
+  if (!hasOnlyAllowedFields(value, allowedFields)) {
     throw new CreditInvoiceDraftRequestValidationError();
   }
 }

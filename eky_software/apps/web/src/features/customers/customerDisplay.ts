@@ -1,6 +1,7 @@
 import type { Customer } from '@eky/api-client';
 
 import { uiText } from '../../i18n/fi.js';
+import { formatFinnishDateTime } from '../../shared/date/formatFinnishDateTime.js';
 import type { CustomerListFilter } from './customerListGrouping.js';
 
 export function getCustomerListFilters(): CustomerListFilter[] {
@@ -40,16 +41,7 @@ export function getCustomerStatusLabel(status: Customer['status']): string {
 }
 
 export function formatCustomerTimestamp(timestamp: string): string {
-  const date = new Date(timestamp);
-
-  if (Number.isNaN(date.getTime())) {
-    return uiText.customers.noValue;
-  }
-
-  return new Intl.DateTimeFormat('fi-FI', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(date);
+  return formatFinnishDateTime(timestamp) ?? uiText.customers.noValue;
 }
 
 export function getPrimaryContact(customer: Customer): string {

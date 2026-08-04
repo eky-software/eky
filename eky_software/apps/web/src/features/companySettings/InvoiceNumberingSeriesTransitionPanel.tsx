@@ -14,6 +14,8 @@ import {
 } from './invoiceNumberingSeriesTransitionFormModel.js';
 import { useInvoiceNumberingSeriesTransition } from './hooks/useInvoiceNumberingSeriesTransition.js';
 import { uiText } from '../../i18n/fi.js';
+import { formatFinnishDateTime } from '../../shared/date/formatFinnishDateTime.js';
+import { getBusinessCalendarDate } from '../../shared/date/getBusinessCalendarDate.js';
 
 type TransitionClient = Pick<
   EkyApiClient,
@@ -40,7 +42,7 @@ export function InvoiceNumberingSeriesTransitionPanel({
       setForm(
         createInvoiceNumberingSeriesTransitionForm(
           state.overview,
-          new Date().toISOString().slice(0, 10),
+          getBusinessCalendarDate(new Date()),
         ),
       );
     }
@@ -54,7 +56,7 @@ export function InvoiceNumberingSeriesTransitionPanel({
     setForm(
       createInvoiceNumberingSeriesTransitionForm(
         state.overview,
-        new Date().toISOString().slice(0, 10),
+        getBusinessCalendarDate(new Date()),
       ),
     );
     setPreview(null);
@@ -140,7 +142,7 @@ export function InvoiceNumberingSeriesTransitionPanel({
       setForm(
         createInvoiceNumberingSeriesTransitionForm(
           activated,
-          new Date().toISOString().slice(0, 10),
+          getBusinessCalendarDate(new Date()),
         ),
       );
       setPreview(null);
@@ -262,8 +264,5 @@ function SeriesOverview({
 }
 
 function formatTimestamp(value: string): string {
-  return new Intl.DateTimeFormat('fi-FI', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(new Date(value));
+  return formatFinnishDateTime(value) ?? value;
 }

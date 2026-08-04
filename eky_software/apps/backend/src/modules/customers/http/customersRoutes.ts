@@ -2,11 +2,7 @@ import { AuthorizationError } from '@eky/permissions';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 
-import {
-  getOptionalStringField,
-  getStringField,
-  isRecord,
-} from '../../../http/requestBody.js';
+import { parseOptionalBoundedPositiveIntegerQuery } from '../../../http/parseOptionalBoundedPositiveIntegerQuery.js';
 import { readJsonRequestBody } from '../../../http/readJsonRequestBody.js';
 import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 import { CustomerValidationError } from '../domain/customerRules.js';
@@ -25,6 +21,10 @@ import {
   CustomerNotFoundError,
   CustomerReadValidationError,
 } from '../application/customerReadErrors.js';
+import {
+  parseCreateCustomerRequest,
+  parseUpdateCustomerRequest,
+} from './customerRequest.js';
 
 interface CustomersRouteDependencies {
   createCustomer(input: CreateCustomerInput): Promise<Customer>;
@@ -43,34 +43,7 @@ const customerBodyLimit = bodyLimit({
     context.json({ error: 'Customer body is too large.' }, 413),
 });
 
-const allowedCustomerBodyFields = new Set([
-  'businessId',
-  'city',
-  'comment',
-  'customerNumber',
-  'customerNumberMode',
-  'customerType',
-  'email',
-  'hourlyRateOverrideCents',
-  'managedByCustomerId',
-  'name',
-  'phone',
-  'postalCode',
-  'status',
-  'streetAddress',
-]);
 const supportedCustomerHistoryQueryKeys = new Set(['page', 'pageSize']);
-
-function getCustomerNumberMode(body: Record<string, unknown>): string {
-  const customerNumberMode = getOptionalStringField(body, 'customerNumberMode');
-  const customerNumber = getStringField(body, 'customerNumber');
-
-  if (customerNumberMode.length > 0) {
-    return customerNumberMode;
-  }
-
-  return customerNumber === undefined ? 'auto' : 'manual';
-}
 
 export function createCustomersRoutes(
   dependencies: CustomersRouteDependencies,
@@ -87,40 +60,17 @@ export function createCustomersRoutes(
         bodyResult.status,
       );
     }
-    const body = bodyResult.body;
+    const parsedBody = parseCreateCustomerRequest(bodyResult.body);
 
-    if (
-      !isRecord(body) ||
-      hasUnknownCustomerBodyFields(body) ||
-      typeof body.name !== 'string'
-    ) {
+    if (parsedBody === null) {
       return context.json({ error: 'Invalid customer body.' }, 400);
     }
-
-    const customerNumberMode = getCustomerNumberMode(body);
-    const customerNumber = getStringField(body, 'customerNumber');
 
     try {
       const createCustomerInput: CreateCustomerInput = {
         actorContext,
-        businessId: getOptionalStringField(body, 'businessId'),
-        city: getOptionalStringField(body, 'city'),
-        comment: getOptionalStringField(body, 'comment'),
-        customerNumberMode,
-        customerType: getOptionalStringField(body, 'customerType') || 'company',
-        email: getOptionalStringField(body, 'email'),
-        hourlyRateOverrideCents: body.hourlyRateOverrideCents,
-        managedByCustomerId: getOptionalStringField(body, 'managedByCustomerId'),
-        name: body.name,
-        phone: getOptionalStringField(body, 'phone'),
-        postalCode: getOptionalStringField(body, 'postalCode'),
-        status: getOptionalStringField(body, 'status') || 'active',
-        streetAddress: getOptionalStringField(body, 'streetAddress'),
+        ...parsedBody,
       };
-
-      if (customerNumber !== undefined) {
-        createCustomerInput.customerNumber = customerNumber;
-      }
 
       const customer = await dependencies.createCustomer(createCustomerInput);
 
@@ -154,7 +104,7 @@ export function createCustomersRoutes(
       return context.json({ error: 'Unsupported customer activity query.' }, 400);
     }
 
-    const page = parseOptionalInteger(
+    const page = parseOptionalBoundedPositiveIntegerQuery(
       query.page,
       1,
       maximumCustomerHistoryPage,
@@ -224,39 +174,25 @@ export function createCustomersRoutes(
         bodyResult.status,
       );
     }
-    const body = bodyResult.body;
+    const parsedBodyResult = parseUpdateCustomerRequest(bodyResult.body);
 
-    if (
-      !isRecord(body) ||
-      hasUnknownCustomerBodyFields(body) ||
-      typeof body.name !== 'string'
-    ) {
-      return context.json({ error: 'Invalid customer body.' }, 400);
-    }
-
-    const customerNumber = getStringField(body, 'customerNumber');
-
-    if (customerNumber === undefined) {
-      return context.json({ error: 'Customer number is required.' }, 400);
+    if (!parsedBodyResult.ok) {
+      return context.json(
+        {
+          error:
+            parsedBodyResult.reason === 'customerNumberRequired'
+              ? 'Customer number is required.'
+              : 'Invalid customer body.',
+        },
+        400,
+      );
     }
 
     try {
       const customer = await dependencies.updateCustomer({
         actorContext,
-        businessId: getOptionalStringField(body, 'businessId'),
-        city: getOptionalStringField(body, 'city'),
-        comment: getOptionalStringField(body, 'comment'),
-        customerNumber,
-        customerType: getOptionalStringField(body, 'customerType') || 'company',
-        email: getOptionalStringField(body, 'email'),
-        hourlyRateOverrideCents: body.hourlyRateOverrideCents,
         id: context.req.param('id'),
-        managedByCustomerId: getOptionalStringField(body, 'managedByCustomerId'),
-        name: body.name,
-        phone: getOptionalStringField(body, 'phone'),
-        postalCode: getOptionalStringField(body, 'postalCode'),
-        status: getOptionalStringField(body, 'status') || 'active',
-        streetAddress: getOptionalStringField(body, 'streetAddress'),
+        ...parsedBodyResult.input,
       });
 
       return context.json({ customer });
@@ -272,27 +208,10 @@ export function createCustomersRoutes(
   return routes;
 }
 
-function parseOptionalInteger(
-  value: string | undefined,
-  minimum: number,
-  maximum: number,
-): number | null | undefined {
-  if (value === undefined || value === '') {
-    return undefined;
-  }
-  if (!/^[1-9][0-9]{0,2}$/.test(value)) {
-    return null;
-  }
-
-  const parsed = Number(value);
-
-  return parsed >= minimum && parsed <= maximum ? parsed : null;
-}
-
 function parseOptionalCustomerHistoryPageSize(
   value: string | undefined,
 ): number | null | undefined {
-  const parsed = parseOptionalInteger(value, 1, 50);
+  const parsed = parseOptionalBoundedPositiveIntegerQuery(value, 1, 50);
 
   if (parsed === undefined || parsed === null) {
     return parsed;
@@ -303,12 +222,4 @@ function parseOptionalCustomerHistoryPageSize(
   )
     ? parsed
     : null;
-}
-
-function hasUnknownCustomerBodyFields(
-  body: Record<string, unknown>,
-): boolean {
-  return Object.keys(body).some(
-    (fieldName) => !allowedCustomerBodyFields.has(fieldName),
-  );
 }
