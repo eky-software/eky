@@ -20,14 +20,23 @@ export interface ProfileMaintenanceService {
 export function startProfileSnapshotBrokerBackend(input: {
   maintenance: ProfileMaintenanceService;
   snapshot: {
-    createSqliteSnapshot(input: {
+    createProfileSnapshot(input: {
       operationId: string;
       signal: AbortSignal;
     }): Promise<{
-      databaseByteSize: number;
-      logicalPath: 'profile.sqlite';
-      sha256: string;
-      totalPages: number;
+      artifactCatalog: {
+        artifactCount: number;
+        artifactTotalByteSize: number;
+        catalogByteSize: number;
+        logicalPath: 'snapshot-catalog-v1.json';
+        sha256: string;
+      };
+      database: {
+        databaseByteSize: number;
+        logicalPath: 'profile.sqlite';
+        sha256: string;
+        totalPages: number;
+      };
     }>;
   };
   transport: ProfileSnapshotBrokerTransport;
@@ -80,9 +89,9 @@ export function startProfileSnapshotBrokerBackend(input: {
                 clearActiveOperation();
               }
             }, maximumMaintenanceDurationMilliseconds);
-          } else if (request.operation === 'createSqliteSnapshot') {
+          } else if (request.operation === 'createProfileSnapshot') {
             activeSnapshotAbortController = new AbortController();
-            const snapshot = await input.snapshot.createSqliteSnapshot({
+            const snapshot = await input.snapshot.createProfileSnapshot({
               operationId: request.operationId,
               signal: activeSnapshotAbortController.signal,
             });
@@ -93,7 +102,7 @@ export function startProfileSnapshotBrokerBackend(input: {
               requestId: request.requestId,
               result: {
                 ...snapshot,
-                type: 'sqliteSnapshot',
+                type: 'profileSnapshot',
               },
             });
             return;
@@ -162,6 +171,9 @@ function mapError(error: unknown): ProfileSnapshotBrokerErrorCode {
     }
     if (error.message === 'PROFILE_SNAPSHOT_DATABASE_FAILED') {
       return 'PROFILE_SNAPSHOT_DATABASE_FAILED';
+    }
+    if (error.message === 'PROFILE_SNAPSHOT_ARTIFACTS_FAILED') {
+      return 'PROFILE_SNAPSHOT_ARTIFACTS_FAILED';
     }
   }
 

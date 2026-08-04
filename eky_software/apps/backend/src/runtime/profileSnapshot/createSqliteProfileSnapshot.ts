@@ -11,8 +11,8 @@ import Database from 'better-sqlite3';
 import type { DatabaseConnection } from '../../database/connection/createDatabaseConnection.js';
 import type { ProfileMaintenanceState } from '../profileMaintenance/profileMaintenanceState.js';
 import type {
-  CreateSqliteProfileSnapshotInput,
-  ProfileSnapshotService,
+  CreateProfileSnapshotInput,
+  SqliteProfileSnapshotService as SqliteProfileSnapshotServiceContract,
   SqliteProfileSnapshotMetadata,
 } from './profileSnapshotTypes.js';
 
@@ -39,7 +39,9 @@ interface SqliteProfileSnapshotDependencies {
   stagingRoot: string;
 }
 
-export class SqliteProfileSnapshotService implements ProfileSnapshotService {
+export class SqliteProfileSnapshotService
+  implements SqliteProfileSnapshotServiceContract
+{
   private readonly now: () => number;
   private readonly stagingRoot: string;
 
@@ -54,7 +56,7 @@ export class SqliteProfileSnapshotService implements ProfileSnapshotService {
   }
 
   async createSqliteSnapshot(
-    input: CreateSqliteProfileSnapshotInput,
+    input: CreateProfileSnapshotInput,
   ): Promise<SqliteProfileSnapshotMetadata> {
     if (
       !operationIdPattern.test(input.operationId) ||

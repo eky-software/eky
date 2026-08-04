@@ -75,6 +75,7 @@ import { SqliteInvoiceDeliveryEventRepository } from '../modules/invoicing/infra
 import { SqliteInvoiceDocumentRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceDocumentRepository.js';
 import { SqliteInvoiceDraftRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceDraftRepository.js';
 import { SqliteInvoiceActivityReader } from '../modules/invoicing/infrastructure/sqliteInvoiceActivityReader.js';
+import { SqliteInvoiceBackupArtifactCatalog } from '../modules/invoicing/infrastructure/sqliteInvoiceBackupArtifactCatalog.js';
 import { SqliteInvoiceNumberingRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceNumberingRepository.js';
 import { SqliteInvoiceNumberingSeriesRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceNumberingSeriesRepository.js';
 import { SqliteInvoicePaymentSettingsRepository } from '../modules/invoicing/infrastructure/sqliteInvoicePaymentSettingsRepository.js';
@@ -86,6 +87,7 @@ import type { DeliveredInvoiceArchiveTaskSink } from '../modules/invoicing/ports
 import type { InvoiceCustomerTaxProfileReader } from '../modules/invoicing/ports/invoiceCustomerTaxProfileReader.js';
 import type { InvoiceEmailSettingsReader } from '../modules/invoicing/ports/invoiceEmailSettingsReader.js';
 import type { InvoiceActivityReader } from '../modules/invoicing/ports/invoiceActivityReader.js';
+import type { InvoiceBackupArtifactCatalog } from '../modules/invoicing/ports/invoiceBackupArtifactCatalog.js';
 import type { InvoiceDocumentStorage } from '../modules/invoicing/ports/invoiceDocumentStorage.js';
 import type { InvoiceEmailDeliveryProvider } from '../modules/invoicing/ports/invoiceEmailDeliveryProvider.js';
 import type { InvoiceSmtpDeliveryProvider } from '../modules/invoicing/ports/invoiceSmtpDeliveryProvider.js';
@@ -118,6 +120,7 @@ interface InvoicingCompositionOptions {
 
 interface InvoicingComposition {
   invoiceActivityReader: InvoiceActivityReader;
+  invoiceBackupArtifactCatalog: InvoiceBackupArtifactCatalog;
   routes: Hono<BackendEnvironment>;
 }
 
@@ -142,6 +145,8 @@ export function createInvoicingComposition(
   const invoiceDocumentRepository = new SqliteInvoiceDocumentRepository(
     options.database,
   );
+  const invoiceBackupArtifactCatalog =
+    new SqliteInvoiceBackupArtifactCatalog(options.database);
   const invoiceDeliveryEventRepository =
     new SqliteInvoiceDeliveryEventRepository(options.database);
   const invoiceDocumentStorage =
@@ -543,6 +548,7 @@ export function createInvoicingComposition(
 
   return {
     invoiceActivityReader,
+    invoiceBackupArtifactCatalog,
     routes,
   };
 }

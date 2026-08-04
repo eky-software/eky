@@ -3,11 +3,12 @@ export const profileSnapshotBrokerProtocolVersion = 1;
 const requestIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const operationIdPattern = requestIdPattern;
+const maximumArtifactCatalogBytes = 64 * 1024 * 1024;
 const maximumMessageBytes = 1_024;
 
 export type ProfileMaintenanceBrokerOperation =
   | 'beginProfileMaintenance'
-  | 'createSqliteSnapshot'
+  | 'createProfileSnapshot'
   | 'endProfileMaintenance'
   | 'getProfileMaintenanceStatus';
 
@@ -15,7 +16,7 @@ export type ProfileSnapshotBrokerRequest =
   | {
       operation:
         | 'beginProfileMaintenance'
-        | 'createSqliteSnapshot'
+        | 'createProfileSnapshot'
         | 'endProfileMaintenance';
       operationId: string;
       protocolVersion: typeof profileSnapshotBrokerProtocolVersion;
@@ -31,6 +32,7 @@ export type ProfileSnapshotBrokerErrorCode =
   | 'PROFILE_MAINTENANCE_BUSY'
   | 'PROFILE_MAINTENANCE_OPERATION_MISMATCH'
   | 'PROFILE_MAINTENANCE_TIMEOUT'
+  | 'PROFILE_SNAPSHOT_ARTIFACTS_FAILED'
   | 'PROFILE_SNAPSHOT_DATABASE_FAILED'
   | 'PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID'
   | 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE';
@@ -50,11 +52,20 @@ export type ProfileSnapshotBrokerResponse =
         status: 'busy' | 'normal';
         type: 'maintenanceStatus';
       } | {
-        databaseByteSize: number;
-        logicalPath: 'profile.sqlite';
-        sha256: string;
-        totalPages: number;
-        type: 'sqliteSnapshot';
+        artifactCatalog: {
+          artifactCount: number;
+          artifactTotalByteSize: number;
+          catalogByteSize: number;
+          logicalPath: 'snapshot-catalog-v1.json';
+          sha256: string;
+        };
+        database: {
+          databaseByteSize: number;
+          logicalPath: 'profile.sqlite';
+          sha256: string;
+          totalPages: number;
+        };
+        type: 'profileSnapshot';
       };
     };
 
@@ -113,7 +124,7 @@ export function parseProfileSnapshotBrokerRequest(
 
   if (
     (value.operation !== 'beginProfileMaintenance' &&
-      value.operation !== 'createSqliteSnapshot' &&
+      value.operation !== 'createProfileSnapshot' &&
       value.operation !== 'endProfileMaintenance') ||
     !hasExactKeys(value, [
       'operation',
@@ -192,30 +203,23 @@ export function parseProfileSnapshotBrokerResponse(
   }
 
   if (
-    value.result.type === 'sqliteSnapshot' &&
+    value.result.type === 'profileSnapshot' &&
     hasExactKeys(value.result, [
-      'databaseByteSize',
-      'logicalPath',
-      'sha256',
-      'totalPages',
+      'artifactCatalog',
+      'database',
       'type',
     ]) &&
-    isBoundedPositiveSafeInteger(value.result.databaseByteSize) &&
-    value.result.logicalPath === 'profile.sqlite' &&
-    typeof value.result.sha256 === 'string' &&
-    /^[a-f0-9]{64}$/.test(value.result.sha256) &&
-    isBoundedPositiveSafeInteger(value.result.totalPages)
+    isArtifactCatalogMetadata(value.result.artifactCatalog) &&
+    isDatabaseMetadata(value.result.database)
   ) {
     return {
       ok: true,
       protocolVersion: profileSnapshotBrokerProtocolVersion,
       requestId: value.requestId,
       result: {
-        databaseByteSize: value.result.databaseByteSize,
-        logicalPath: 'profile.sqlite',
-        sha256: value.result.sha256,
-        totalPages: value.result.totalPages,
-        type: 'sqliteSnapshot',
+        artifactCatalog: value.result.artifactCatalog,
+        database: value.result.database,
+        type: 'profileSnapshot',
       },
     };
   }
@@ -236,18 +240,87 @@ function isErrorCode(value: unknown): value is ProfileSnapshotBrokerErrorCode {
     value === 'PROFILE_MAINTENANCE_BUSY' ||
     value === 'PROFILE_MAINTENANCE_OPERATION_MISMATCH' ||
     value === 'PROFILE_MAINTENANCE_TIMEOUT' ||
+    value === 'PROFILE_SNAPSHOT_ARTIFACTS_FAILED' ||
     value === 'PROFILE_SNAPSHOT_DATABASE_FAILED' ||
     value === 'PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID' ||
     value === 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE'
   );
 }
 
-function isBoundedPositiveSafeInteger(value: unknown): value is number {
+function isArtifactCatalogMetadata(value: unknown): value is {
+  artifactCount: number;
+  artifactTotalByteSize: number;
+  catalogByteSize: number;
+  logicalPath: 'snapshot-catalog-v1.json';
+  sha256: string;
+} {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, [
+      'artifactCount',
+      'artifactTotalByteSize',
+      'catalogByteSize',
+      'logicalPath',
+      'sha256',
+    ]) &&
+    isBoundedNonNegativeSafeInteger(value.artifactCount, 100_000) &&
+    isBoundedNonNegativeSafeInteger(
+      value.artifactTotalByteSize,
+      20 * 1024 * 1024 * 1024,
+    ) &&
+    isBoundedPositiveSafeInteger(
+      value.catalogByteSize,
+      maximumArtifactCatalogBytes,
+    ) &&
+    value.logicalPath === 'snapshot-catalog-v1.json' &&
+    typeof value.sha256 === 'string' &&
+    /^[a-f0-9]{64}$/.test(value.sha256)
+  );
+}
+
+function isDatabaseMetadata(value: unknown): value is {
+  databaseByteSize: number;
+  logicalPath: 'profile.sqlite';
+  sha256: string;
+  totalPages: number;
+} {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, [
+      'databaseByteSize',
+      'logicalPath',
+      'sha256',
+      'totalPages',
+    ]) &&
+    isBoundedPositiveSafeInteger(value.databaseByteSize) &&
+    value.logicalPath === 'profile.sqlite' &&
+    typeof value.sha256 === 'string' &&
+    /^[a-f0-9]{64}$/.test(value.sha256) &&
+    isBoundedPositiveSafeInteger(value.totalPages)
+  );
+}
+
+function isBoundedPositiveSafeInteger(
+  value: unknown,
+  maximum = 20 * 1024 * 1024 * 1024,
+): value is number {
   return (
     typeof value === 'number' &&
     Number.isSafeInteger(value) &&
     value >= 1 &&
-    value <= 20 * 1024 * 1024 * 1024
+    value <= maximum
+  );
+}
+
+function isBoundedNonNegativeSafeInteger(
+  value: unknown,
+  maximum: number,
+): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isSafeInteger(value) &&
+    value >= 0 &&
+    value <= maximum
   );
 }
 

@@ -74,7 +74,7 @@ describe('profile snapshot broker boundary', () => {
     client.close();
   });
 
-  it('returns only bounded metadata for a verified SQLite snapshot', async () => {
+  it('returns only bounded metadata for a consistent profile snapshot', async () => {
     const transports = createTransportPair();
     const maintenance = new FakeProfileMaintenance();
     const snapshot = createFakeSnapshotService();
@@ -87,12 +87,21 @@ describe('profile snapshot broker boundary', () => {
     const operationId = randomUUID();
 
     await client.beginMaintenance(operationId);
-    await expect(client.createSqliteSnapshot(operationId)).resolves.toEqual({
-      databaseByteSize: 8_192,
-      logicalPath: 'profile.sqlite',
-      sha256: 'a'.repeat(64),
-      totalPages: 2,
-      type: 'sqliteSnapshot',
+    await expect(client.createProfileSnapshot(operationId)).resolves.toEqual({
+      artifactCatalog: {
+        artifactCount: 1,
+        artifactTotalByteSize: 2_048,
+        catalogByteSize: 512,
+        logicalPath: 'snapshot-catalog-v1.json',
+        sha256: 'b'.repeat(64),
+      },
+      database: {
+        databaseByteSize: 8_192,
+        logicalPath: 'profile.sqlite',
+        sha256: 'a'.repeat(64),
+        totalPages: 2,
+      },
+      type: 'profileSnapshot',
     });
     expect(snapshot.operationIds).toEqual([operationId]);
     await client.endMaintenance(operationId);
@@ -107,7 +116,7 @@ describe('profile snapshot broker boundary', () => {
     const backend = startProfileSnapshotBrokerBackend({
       maintenance,
       snapshot: {
-        async createSqliteSnapshot() {
+        async createProfileSnapshot() {
           throw new Error('PROFILE_SNAPSHOT_DATABASE_FAILED');
         },
       },
@@ -118,9 +127,36 @@ describe('profile snapshot broker boundary', () => {
 
     await client.beginMaintenance(operationId);
     await expect(
-      client.createSqliteSnapshot(operationId),
+      client.createProfileSnapshot(operationId),
     ).rejects.toMatchObject({
       code: 'PROFILE_SNAPSHOT_DATABASE_FAILED',
+    });
+    await client.endMaintenance(operationId);
+
+    client.close();
+    backend.close();
+  });
+
+  it('maps artifact failures without exposing storage details', async () => {
+    const transports = createTransportPair();
+    const maintenance = new FakeProfileMaintenance();
+    const backend = startProfileSnapshotBrokerBackend({
+      maintenance,
+      snapshot: {
+        async createProfileSnapshot() {
+          throw new Error('PROFILE_SNAPSHOT_ARTIFACTS_FAILED');
+        },
+      },
+      transport: transports.backend,
+    });
+    const client = new ProfileSnapshotBrokerClient(transports.main, 1_000);
+    const operationId = randomUUID();
+
+    await client.beginMaintenance(operationId);
+    await expect(
+      client.createProfileSnapshot(operationId),
+    ).rejects.toMatchObject({
+      code: 'PROFILE_SNAPSHOT_ARTIFACTS_FAILED',
     });
     await client.endMaintenance(operationId);
 
@@ -130,28 +166,46 @@ describe('profile snapshot broker boundary', () => {
 });
 
 function createFakeSnapshotService(): {
-  createSqliteSnapshot(input: {
+  createProfileSnapshot(input: {
     operationId: string;
     signal: AbortSignal;
   }): Promise<{
-    databaseByteSize: number;
-    logicalPath: 'profile.sqlite';
-    sha256: string;
-    totalPages: number;
+    artifactCatalog: {
+      artifactCount: number;
+      artifactTotalByteSize: number;
+      catalogByteSize: number;
+      logicalPath: 'snapshot-catalog-v1.json';
+      sha256: string;
+    };
+    database: {
+      databaseByteSize: number;
+      logicalPath: 'profile.sqlite';
+      sha256: string;
+      totalPages: number;
+    };
   }>;
   operationIds: string[];
 } {
   const operationIds: string[] = [];
 
   return {
-    async createSqliteSnapshot({ operationId, signal }) {
+    async createProfileSnapshot({ operationId, signal }) {
       expect(signal.aborted).toBe(false);
       operationIds.push(operationId);
       return {
-        databaseByteSize: 8_192,
-        logicalPath: 'profile.sqlite',
-        sha256: 'a'.repeat(64),
-        totalPages: 2,
+        artifactCatalog: {
+          artifactCount: 1,
+          artifactTotalByteSize: 2_048,
+          catalogByteSize: 512,
+          logicalPath: 'snapshot-catalog-v1.json',
+          sha256: 'b'.repeat(64),
+        },
+        database: {
+          databaseByteSize: 8_192,
+          logicalPath: 'profile.sqlite',
+          sha256: 'a'.repeat(64),
+          totalPages: 2,
+        },
       };
     },
     operationIds,

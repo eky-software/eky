@@ -25,18 +25,27 @@ interface BackendProfileMaintenanceState {
   tryBeginBusinessWrite(): (() => void) | undefined;
 }
 
-interface BackendSqliteProfileSnapshotMetadata {
-  databaseByteSize: number;
-  logicalPath: 'profile.sqlite';
-  sha256: string;
-  totalPages: number;
+interface BackendProfileSnapshotMetadata {
+  artifactCatalog: {
+    artifactCount: number;
+    artifactTotalByteSize: number;
+    catalogByteSize: number;
+    logicalPath: 'snapshot-catalog-v1.json';
+    sha256: string;
+  };
+  database: {
+    databaseByteSize: number;
+    logicalPath: 'profile.sqlite';
+    sha256: string;
+    totalPages: number;
+  };
 }
 
 interface BackendProfileSnapshotService {
-  createSqliteSnapshot(input: {
+  createProfileSnapshot(input: {
     operationId: string;
     signal: AbortSignal;
-  }): Promise<BackendSqliteProfileSnapshotMetadata>;
+  }): Promise<BackendProfileSnapshotMetadata>;
 }
 
 type StartServer = (options: {
@@ -244,11 +253,11 @@ utilityParentPort.on('message', (event) => {
       profileSnapshotBrokerHandle = startProfileSnapshotBrokerBackend({
         maintenance: profileMaintenanceState,
         snapshot: {
-          createSqliteSnapshot: (input) => {
+          createProfileSnapshot: (input) => {
             if (profileSnapshotService === undefined) {
               throw new Error('PROFILE_SNAPSHOT_DATABASE_FAILED');
             }
-            return profileSnapshotService.createSqliteSnapshot(input);
+            return profileSnapshotService.createProfileSnapshot(input);
           },
         },
         transport: createProfileSnapshotBrokerTransport(

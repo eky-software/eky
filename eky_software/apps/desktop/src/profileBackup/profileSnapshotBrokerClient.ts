@@ -60,12 +60,12 @@ export class ProfileSnapshotBrokerClient {
     );
   }
 
-  createSqliteSnapshot(operationId: string): Promise<
-    Extract<ProfileSnapshotBrokerSuccessResult, { type: 'sqliteSnapshot' }>
+  createProfileSnapshot(operationId: string): Promise<
+    Extract<ProfileSnapshotBrokerSuccessResult, { type: 'profileSnapshot' }>
   > {
-    return this.request('createSqliteSnapshot', operationId).then(
+    return this.request('createProfileSnapshot', operationId).then(
       (result) => {
-        if (result.type !== 'sqliteSnapshot') {
+        if (result.type !== 'profileSnapshot') {
           throw new ProfileSnapshotBrokerError(
             'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
           );

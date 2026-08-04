@@ -5,14 +5,33 @@ export interface SqliteProfileSnapshotMetadata {
   totalPages: number;
 }
 
-export interface CreateSqliteProfileSnapshotInput {
+export interface ProfileSnapshotArtifactCatalogMetadata {
+  artifactCount: number;
+  artifactTotalByteSize: number;
+  catalogByteSize: number;
+  logicalPath: 'snapshot-catalog-v1.json';
+  sha256: string;
+}
+
+export interface ProfileSnapshotMetadata {
+  artifactCatalog: ProfileSnapshotArtifactCatalogMetadata;
+  database: SqliteProfileSnapshotMetadata;
+}
+
+export interface CreateProfileSnapshotInput {
   operationId: string;
   signal: AbortSignal;
 }
 
 export interface ProfileSnapshotService {
+  createProfileSnapshot(
+    input: CreateProfileSnapshotInput,
+  ): Promise<ProfileSnapshotMetadata>;
+}
+
+export interface SqliteProfileSnapshotService {
   createSqliteSnapshot(
-    input: CreateSqliteProfileSnapshotInput,
+    input: CreateProfileSnapshotInput,
   ): Promise<SqliteProfileSnapshotMetadata>;
 }
 

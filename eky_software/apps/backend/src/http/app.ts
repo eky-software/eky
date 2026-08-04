@@ -46,7 +46,7 @@ import { SqliteCustomerAuditRetention } from '../modules/customers/infrastructur
 import { SqliteInvoiceSettingsAuditRetention } from '../modules/invoicing/infrastructure/sqliteInvoiceSettingsAuditRetention.js';
 import { createProfileMaintenanceMiddleware } from './profileMaintenance.js';
 import { ProfileMaintenanceState } from '../runtime/profileMaintenance/profileMaintenanceState.js';
-import { createSqliteProfileSnapshotService } from '../runtime/profileSnapshot/createSqliteProfileSnapshot.js';
+import { createConsistentProfileSnapshotService } from '../runtime/profileSnapshot/createConsistentProfileSnapshot.js';
 import type { ProfileSnapshotServiceRegistration } from '../runtime/profileSnapshot/profileSnapshotTypes.js';
 
 const defaultAppVersion = '0.0.0';
@@ -256,22 +256,6 @@ export async function createApp(
   const profileMaintenanceState =
     options.profileMaintenanceState ?? new ProfileMaintenanceState();
 
-  if (options.profileSnapshotServiceRegistration !== undefined) {
-    if (options.migrationsDirectory === undefined) {
-      database.close();
-      throw new Error(
-        'Profile snapshot migrations directory must be configured.',
-      );
-    }
-    options.profileSnapshotServiceRegistration.register(
-      createSqliteProfileSnapshotService({
-        database,
-        maintenanceState: profileMaintenanceState,
-        migrationsDirectory: options.migrationsDirectory,
-        stagingRoot: options.profileSnapshotServiceRegistration.stagingRoot,
-      }),
-    );
-  }
   const app = new Hono<BackendEnvironment>();
 
   app.use(
@@ -364,6 +348,28 @@ export async function createApp(
       ? {}
       : { invoiceDocumentStorageRoot: options.invoiceDocumentStorageRoot }),
   });
+
+  if (options.profileSnapshotServiceRegistration !== undefined) {
+    if (
+      options.migrationsDirectory === undefined ||
+      options.invoiceDocumentStorageRoot === undefined
+    ) {
+      database.close();
+      throw new Error(
+        'Profile snapshot runtime paths must be configured.',
+      );
+    }
+    options.profileSnapshotServiceRegistration.register(
+      createConsistentProfileSnapshotService({
+        catalog: invoicingComposition.invoiceBackupArtifactCatalog,
+        database,
+        invoiceDocumentStorageRoot: options.invoiceDocumentStorageRoot,
+        maintenanceState: profileMaintenanceState,
+        migrationsDirectory: options.migrationsDirectory,
+        stagingRoot: options.profileSnapshotServiceRegistration.stagingRoot,
+      }),
+    );
+  }
 
   app.route('/', invoicingComposition.routes);
   app.route(

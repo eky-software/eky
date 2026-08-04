@@ -28,12 +28,12 @@ describe('profile snapshot broker protocol', () => {
     });
     expect(
       createProfileSnapshotBrokerRequest({
-        operation: 'createSqliteSnapshot',
+        operation: 'createProfileSnapshot',
         operationId,
         requestId,
       }),
     ).toMatchObject({
-      operation: 'createSqliteSnapshot',
+      operation: 'createProfileSnapshot',
       operationId,
     });
     expect(
@@ -84,21 +84,34 @@ describe('profile snapshot broker protocol', () => {
         protocolVersion: profileSnapshotBrokerProtocolVersion,
         requestId,
         result: {
-          databaseByteSize: 8_192,
-          logicalPath: 'profile.sqlite',
-          sha256: 'a'.repeat(64),
-          totalPages: 2,
-          type: 'sqliteSnapshot',
+          artifactCatalog: {
+            artifactCount: 1,
+            artifactTotalByteSize: 2_048,
+            catalogByteSize: 512,
+            logicalPath: 'snapshot-catalog-v1.json',
+            sha256: 'b'.repeat(64),
+          },
+          database: {
+            databaseByteSize: 8_192,
+            logicalPath: 'profile.sqlite',
+            sha256: 'a'.repeat(64),
+            totalPages: 2,
+          },
+          type: 'profileSnapshot',
         },
       }),
     ).toMatchObject({
       ok: true,
       result: {
-        databaseByteSize: 8_192,
-        logicalPath: 'profile.sqlite',
-        sha256: 'a'.repeat(64),
-        totalPages: 2,
-        type: 'sqliteSnapshot',
+        artifactCatalog: {
+          artifactCount: 1,
+          artifactTotalByteSize: 2_048,
+        },
+        database: {
+          databaseByteSize: 8_192,
+          logicalPath: 'profile.sqlite',
+        },
+        type: 'profileSnapshot',
       },
     });
     expect(
@@ -107,12 +120,21 @@ describe('profile snapshot broker protocol', () => {
         protocolVersion: profileSnapshotBrokerProtocolVersion,
         requestId,
         result: {
-          databaseByteSize: 8_192,
+          artifactCatalog: {
+            artifactCount: 1,
+            artifactTotalByteSize: 2_048,
+            catalogByteSize: 512,
+            logicalPath: 'snapshot-catalog-v1.json',
+            sha256: 'b'.repeat(64),
+          },
+          database: {
+            databaseByteSize: 8_192,
+            logicalPath: 'profile.sqlite',
+            sha256: 'a'.repeat(64),
+            totalPages: 2,
+          },
           filePath: 'C:\\private\\profile.sqlite',
-          logicalPath: 'profile.sqlite',
-          sha256: 'a'.repeat(64),
-          totalPages: 2,
-          type: 'sqliteSnapshot',
+          type: 'profileSnapshot',
         },
       }),
     ).toBeUndefined();
