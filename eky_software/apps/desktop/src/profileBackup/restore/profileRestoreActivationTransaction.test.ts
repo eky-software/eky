@@ -40,7 +40,7 @@ afterEach(async () => {
 });
 
 describe('profile restore activation transaction', () => {
-  it('switches database and document slots and clears accepted rollback data', async () => {
+  it('RESTORE-ACTIVATE-001 @critical switches database and document slots and clears accepted rollback data', async () => {
     const fixture = await createFixture();
 
     await fixture.transaction.prepare(operationId);
@@ -88,7 +88,7 @@ describe('profile restore activation transaction', () => {
   );
 
   it.each(interruptiblePhases)(
-    'rolls back to the old profile after interruption at %s',
+    'RESTORE-ROLLBACK-001 @fault rolls back to the old profile after interruption at %s',
     async (interruptedPhase) => {
       const fixture = await createFixture({
         interruptedPhase,

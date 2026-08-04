@@ -4,7 +4,6 @@ import {
   mkdir,
   open,
   realpath,
-  rename,
   rm,
 } from 'node:fs/promises';
 import {
@@ -19,6 +18,7 @@ import type {
   ProfileRestoreActivationPhase,
 } from './profileRestoreActivationJournal.js';
 import type { ProfileRestoreActivationJournalStore } from './profileRestoreActivationJournalStore.js';
+import { renameProfilePathWithRetry } from './profileRestoreFileMove.js';
 
 const operationIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -456,7 +456,7 @@ async function moveOptionalSlot(input: {
   }
 
   await createPrivateDirectory(dirname(input.destinationPath));
-  await rename(input.sourcePath, input.destinationPath);
+  await renameProfilePathWithRetry(input);
   await syncDirectories([
     dirname(input.sourcePath),
     dirname(input.destinationPath),
@@ -485,7 +485,7 @@ async function moveRequiredSlot(input: {
   }
 
   await createPrivateDirectory(dirname(input.destinationPath));
-  await rename(input.sourcePath, input.destinationPath);
+  await renameProfilePathWithRetry(input);
   await syncDirectories([
     dirname(input.sourcePath),
     dirname(input.destinationPath),
@@ -540,7 +540,10 @@ async function rollbackSlot(input: {
   }
 
   await createPrivateDirectory(dirname(input.activePath));
-  await rename(input.rollbackPath, input.activePath);
+  await renameProfilePathWithRetry({
+    destinationPath: input.activePath,
+    sourcePath: input.rollbackPath,
+  });
   await syncDirectories([
     dirname(input.rollbackPath),
     dirname(input.activePath),
