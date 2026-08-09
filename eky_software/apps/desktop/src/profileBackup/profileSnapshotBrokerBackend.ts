@@ -255,7 +255,7 @@ function mapError(error: unknown): ProfileSnapshotBrokerErrorCode {
     return 'PROFILE_SNAPSHOT_VALIDATION_FAILED';
   }
 
-  return 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE';
+  return 'PROFILE_SNAPSHOT_BROKER_OPERATION_FAILED';
 }
 
 function readErrorProperty(
