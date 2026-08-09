@@ -207,6 +207,7 @@ export async function openApprovedInvoiceFromList(
   page: Page,
   invoiceNumber: string,
 ): Promise<void> {
+  const pdfMetadataResponsePromise = waitForApprovedInvoicePdfMetadata(page);
   await page
     .getByRole('button', {
       name: `Laskunumero ${invoiceNumber}`,
@@ -219,6 +220,7 @@ export async function openApprovedInvoiceFromList(
       name: `Lasku ${invoiceNumber}`,
     })
     .waitFor();
+  await assertApprovedInvoicePdfMetadataResponse(pdfMetadataResponsePromise);
 }
 
 export async function approveCurrentInvoiceDraft(
@@ -259,6 +261,10 @@ export async function approveCurrentInvoiceDraft(
     };
   };
 
+  const pdfMetadataResponsePromise = waitForApprovedInvoicePdfMetadata(
+    page,
+    responseBody.approvedInvoice.invoiceId,
+  );
   await page
     .getByRole('button', { name: 'Avaa hyväksytty lasku' })
     .click();
@@ -267,8 +273,37 @@ export async function approveCurrentInvoiceDraft(
       name: `Lasku ${responseBody.approvedInvoice.invoiceNumber}`,
     })
     .waitFor();
+  await assertApprovedInvoicePdfMetadataResponse(pdfMetadataResponsePromise);
 
   return responseBody.approvedInvoice;
+}
+
+function waitForApprovedInvoicePdfMetadata(
+  page: Page,
+  invoiceId?: string,
+): Promise<Response> {
+  return page.waitForResponse((response) => {
+    if (response.request().method() !== 'GET') {
+      return false;
+    }
+
+    const pathname = new URL(response.url()).pathname;
+    return invoiceId === undefined
+      ? /\/invoices\/[^/]+\/pdf\/metadata$/.test(pathname)
+      : pathname ===
+          `/invoices/${encodeURIComponent(invoiceId)}/pdf/metadata`;
+  });
+}
+
+async function assertApprovedInvoicePdfMetadataResponse(
+  responsePromise: Promise<Response>,
+): Promise<void> {
+  const response = await responsePromise;
+  if (response.status() !== 200 && response.status() !== 404) {
+    throw new Error(
+      `Approved invoice PDF metadata returned unexpected status ${response.status()}.`,
+    );
+  }
 }
 
 export async function cancelCurrentApprovedInvoice(
