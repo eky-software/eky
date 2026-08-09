@@ -213,6 +213,55 @@ describe('FileSystemSupportBundleDiagnosticEventReader', () => {
     );
   });
 
+  it('includes a portable backup failure but excludes its info-level completion', async () => {
+    const logsRoot = createLogsRoot();
+    writeLines(
+      logsRoot,
+      'desktop',
+      'desktop-info-2026-08-001.jsonl',
+      [
+        desktopBackupEvent(
+          'backup-completed',
+          'backup.completed',
+          '2026-08-09T10:00:00.000Z',
+        ),
+      ],
+    );
+    writeLines(
+      logsRoot,
+      'desktop',
+      'desktop-warning-error-2026-08-001.jsonl',
+      [
+        desktopBackupEvent(
+          'backup-failed',
+          'backup.failed',
+          '2026-08-09T10:01:00.000Z',
+        ),
+      ],
+    );
+
+    const result =
+      await new FileSystemSupportBundleDiagnosticEventReader(
+        logsRoot,
+      ).readSupportBundleDiagnosticEvents({
+        earliestTimestamp: '2026-07-10T12:00:00.000Z',
+        latestTimestamp: '2026-08-09T12:00:00.000Z',
+      });
+
+    expect(result).toEqual({
+      diagnosticEvents: [
+        expect.objectContaining({
+          correlationId: '33333333-3333-4333-8333-333333333333',
+          errorCode: 'PROFILE_BACKUP_CREATE_FAILED',
+          eventName: 'backup.failed',
+          stage: 'portable',
+        }),
+      ],
+      sourceTruncated: false,
+    });
+    expect(JSON.stringify(result)).not.toContain('backup.completed');
+  });
+
   it.each([
     {
       fileName: 'backend-warning-error-2026-07-001.jsonl',
@@ -390,6 +439,38 @@ function desktopRecoveryFailure(eventId: string, timestamp: string) {
     schemaVersion: 1,
     sideEffectState: 'unknown',
     stage: 'creation',
+    timestamp,
+  };
+}
+
+function desktopBackupEvent(
+  eventId: string,
+  eventName: 'backup.completed' | 'backup.failed',
+  timestamp: string,
+) {
+  const failed = eventName === 'backup.failed';
+
+  return {
+    appVersion: '1.0.0',
+    buildRevision: '123456789abc',
+    category: 'backup',
+    component: 'desktop',
+    correlationId: '33333333-3333-4333-8333-333333333333',
+    durationMs: 42,
+    ...(failed
+      ? {
+          errorCode: 'PROFILE_BACKUP_CREATE_FAILED',
+          retryable: true,
+          sideEffectState: 'unknown',
+        }
+      : {}),
+    eventId,
+    eventName,
+    level: failed ? 'error' : 'info',
+    outcome: failed ? 'failure' : 'success',
+    runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
+    schemaVersion: 1,
+    stage: 'portable',
     timestamp,
   };
 }

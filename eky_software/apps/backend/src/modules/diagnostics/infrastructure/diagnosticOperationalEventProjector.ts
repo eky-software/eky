@@ -47,6 +47,11 @@ const desktopDiagnosticSpecs = Object.freeze({
     'error',
     'failure',
   ),
+  'backup.completed': spec('backup', 'info', 'success'),
+  'backup.failed': spec('backup', 'error', 'failure'),
+  'backup.inspectionCompleted': spec('backup', 'info', 'success'),
+  'backup.inspectionFailed': spec('backup', 'warn', 'failure'),
+  'backup.started': spec('backup', 'info', 'success'),
   'desktop.shutdownCompleted': spec('runtime', 'info', 'success'),
   'desktop.shutdownFailed': spec('runtime', 'error', 'failure'),
   'desktop.shutdownStarted': spec('runtime', 'info', 'success'),
@@ -183,6 +188,11 @@ const recoveryPointKinds = new Set([
   'weekly',
 ]);
 const recoveryEventStages = Object.freeze({
+  'backup.completed': ['portable'],
+  'backup.failed': ['portable'],
+  'backup.inspectionCompleted': ['portable'],
+  'backup.inspectionFailed': ['portable'],
+  'backup.started': ['portable'],
   'recoveryPoint.completed': ['creation'],
   'recoveryPoint.failed': ['automaticCheck', 'creation'],
   'recoveryPoint.started': ['creation'],

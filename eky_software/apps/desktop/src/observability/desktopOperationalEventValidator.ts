@@ -41,6 +41,11 @@ const buildRevisionPattern = /^(?:[0-9a-f]{7,40}|development)$/;
 const permissionTypes = new Set(desktopPermissionTypes);
 const recoveryPointKindSet = new Set<string>(recoveryPointKinds);
 const recoveryEventStages = Object.freeze({
+  'backup.started': ['portable'],
+  'backup.completed': ['portable'],
+  'backup.failed': ['portable'],
+  'backup.inspectionCompleted': ['portable'],
+  'backup.inspectionFailed': ['portable'],
   'recoveryPoint.started': ['creation'],
   'recoveryPoint.completed': ['creation'],
   'recoveryPoint.failed': ['automaticCheck', 'creation'],

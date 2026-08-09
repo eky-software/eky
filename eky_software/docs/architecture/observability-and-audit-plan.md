@@ -311,6 +311,28 @@ formaattia tai raakasisältöä ei projisoida. Korrelaatiotunniste ei siirry
 incident-indeksiin, mutta se saa säilyä lyhyen retentionin Diagnostics-
 projektiossa ja sanitoidussa tukipaketissa nykyisen kenttäsopimuksen mukaan.
 
+Profiilisuojauksen tapahtumien näkyvyys noudattaa seuraavaa suljettua
+vastuumatriisia. `Kyllä` tarkoittaa nimenomaan sanitoitua teknistä
+projektiota, ei lähdetapahtuman tai backup-sisällön kopiointia.
+
+| Tapahtumaperhe | Yksityiskohtainen JSONL | Diagnostics | Tukipaketti | Incident-index | Activity | Business audit |
+| --- | --- | --- | --- | --- | --- | --- |
+| `backup.*` success/info | Kyllä | Kyllä | Ei | Ei | Ei | Ei |
+| `backup.*` failure/warn/error | Kyllä | Kyllä | Kyllä | Vain error-tason minimoitu yhteenveto | Ei | Ei |
+| `recoveryPoint.*` success/info | Kyllä | Kyllä | Ei | Ei | Ei | Ei |
+| `recoveryPoint.*` failure/warn/error | Kyllä | Kyllä | Kyllä | Vain error-tason minimoitu yhteenveto | Ei | Ei |
+| `restore.*` success/info | Kyllä | Kyllä | Ei | Ei | Ei | Ei |
+| `restore.*` failure/warn/error | Kyllä | Kyllä | Kyllä | Vain error-tason minimoitu yhteenveto | Ei | Ei |
+
+Diagnostics ja tukipaketti saavat näistä tapahtumista vain suljetun teknisen
+kenttäjoukon: eventin identiteetin, teknisen UUID-korrelaation,
+allowlistatun vaiheen, keston, turvallisen virhekoodin, `retryable`-arvon,
+`sideEffectState`-arvon ja recovery point -tyypin silloin kun tapahtuman
+sopimus sitä edellyttää. Incident-index ei sisällä korrelaatiotunnistetta.
+Polku, tiedostonimi, manifesti, salasana, avainmateriaali, salt, nonce, tag,
+profiili-, yritys-, lasku-, dokumentti- tai artifact-tunniste, checksum,
+raakavirhe, stack trace tai vapaa metadata hylätään kokonaan.
+
 Update-lifecycle säilyy vielä varattuna `update.*`-perheenä ja vaatii oman
 event catalog -päätöksensä ennen instrumentointia.
 

@@ -385,6 +385,56 @@ describe('FileSystemDiagnosticEventReader', () => {
     );
   });
 
+  it('projects completed and failed portable backup lifecycle events', async () => {
+    const logsRoot = createLogsRoot();
+    writeLines(
+      logsRoot,
+      'desktop',
+      'desktop-info-2026-08-001.jsonl',
+      [
+        createDesktopBackupEvent({
+          eventId: 'backup-completed',
+          eventName: 'backup.completed',
+          timestamp: '2026-08-09T10:00:00.000Z',
+        }),
+      ],
+    );
+    writeLines(
+      logsRoot,
+      'desktop',
+      'desktop-warning-error-2026-08-001.jsonl',
+      [
+        createDesktopBackupEvent({
+          eventId: 'backup-failed',
+          eventName: 'backup.failed',
+          timestamp: '2026-08-09T10:01:00.000Z',
+        }),
+      ],
+    );
+
+    const events =
+      await new FileSystemDiagnosticEventReader(
+        logsRoot,
+      ).listRecentDiagnosticEvents(10);
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        category: 'backup',
+        errorCode: 'PROFILE_BACKUP_CREATE_FAILED',
+        eventName: 'backup.failed',
+        level: 'error',
+        stage: 'portable',
+      }),
+      expect.objectContaining({
+        category: 'backup',
+        errorCode: null,
+        eventName: 'backup.completed',
+        level: 'info',
+        stage: 'portable',
+      }),
+    ]);
+  });
+
   it('requires composition to supply an absolute logs root', () => {
     expect(() => new FileSystemDiagnosticEventReader('relative/logs')).toThrow(
       'Diagnostic logs root must be absolute.',
@@ -434,6 +484,38 @@ function createDesktopEvent(input: {
     runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
     schemaVersion: 1,
     ...(isPermissionEvent ? { stage: 'request' } : {}),
+    timestamp: input.timestamp,
+  };
+}
+
+function createDesktopBackupEvent(input: {
+  eventId: string;
+  eventName: 'backup.completed' | 'backup.failed';
+  timestamp: string;
+}): Record<string, unknown> {
+  const failed = input.eventName === 'backup.failed';
+
+  return {
+    appVersion: '1.0.0',
+    buildRevision: '123456789abc',
+    category: 'backup',
+    component: 'desktop',
+    correlationId: '33333333-3333-4333-8333-333333333333',
+    durationMs: 42,
+    ...(failed
+      ? {
+          errorCode: 'PROFILE_BACKUP_CREATE_FAILED',
+          retryable: true,
+          sideEffectState: 'unknown',
+        }
+      : {}),
+    eventId: input.eventId,
+    eventName: input.eventName,
+    level: failed ? 'error' : 'info',
+    outcome: failed ? 'failure' : 'success',
+    runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
+    schemaVersion: 1,
+    stage: 'portable',
     timestamp: input.timestamp,
   };
 }

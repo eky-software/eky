@@ -123,6 +123,7 @@ export interface DesktopOperationalEventPayloadMap {
   };
   'backup.failed': FailureFields & {
     correlationId: string;
+    stage: 'portable';
   };
   'backup.inspectionCompleted': {
     correlationId: string;
@@ -131,6 +132,7 @@ export interface DesktopOperationalEventPayloadMap {
   };
   'backup.inspectionFailed': FailureFields & {
     correlationId: string;
+    stage: 'portable';
   };
   'recoveryPoint.started': {
     correlationId: string;
@@ -551,9 +553,9 @@ export const desktopRequiredPayloadFields = Object.freeze({
   'supportBundle.creationFailed': ['correlationId', 'errorCode'],
   'backup.started': ['correlationId', 'stage'],
   'backup.completed': ['correlationId', 'stage'],
-  'backup.failed': ['correlationId', 'errorCode'],
+  'backup.failed': ['correlationId', 'errorCode', 'stage'],
   'backup.inspectionCompleted': ['correlationId', 'stage'],
-  'backup.inspectionFailed': ['correlationId', 'errorCode'],
+  'backup.inspectionFailed': ['correlationId', 'errorCode', 'stage'],
   'recoveryPoint.started': [
     'correlationId',
     'recoveryPointKind',

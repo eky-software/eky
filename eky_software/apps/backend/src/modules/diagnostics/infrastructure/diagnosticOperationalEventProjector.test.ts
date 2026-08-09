@@ -92,7 +92,107 @@ describe('projectDiagnosticOperationalEvent', () => {
       }),
     ).toBeNull();
   });
+
+  it.each([
+    {
+      errorCode: undefined,
+      eventName: 'backup.completed',
+      level: 'info',
+      outcome: 'success',
+      retryable: undefined,
+      sideEffectState: undefined,
+    },
+    {
+      errorCode: 'PROFILE_BACKUP_CREATE_FAILED',
+      eventName: 'backup.failed',
+      level: 'error',
+      outcome: 'failure',
+      retryable: true,
+      sideEffectState: 'unknown',
+    },
+  ] as const)('projects safe portable backup metadata for $eventName', (fields) => {
+    const event = createDesktopBackupEvent(fields);
+
+    expect(projectDiagnosticOperationalEvent(event)).toEqual(
+      expect.objectContaining({
+        category: 'backup',
+        correlationId: '33333333-3333-4333-8333-333333333333',
+        durationMs: 42,
+        eventName: fields.eventName,
+        stage: 'portable',
+      }),
+    );
+  });
+
+  it.each([
+    ['path', 'C:\\Users\\Example\\backup.ekybackup'],
+    ['fileName', 'private-backup.ekybackup'],
+    ['manifest', { entries: ['private'] }],
+    ['password', 'not-a-real-secret'],
+    ['key', 'not-a-real-key'],
+    ['salt', 'not-a-real-salt'],
+    ['nonce', 'not-a-real-nonce'],
+    ['tag', 'not-a-real-tag'],
+    ['profileId', 'profile-private'],
+    ['companyId', 'company-private'],
+    ['invoiceId', 'invoice-private'],
+    ['documentId', 'document-private'],
+    ['artifactId', 'artifact-private'],
+    ['checksum', 'checksum-private'],
+    ['metadata', { arbitrary: true }],
+    ['customerName', 'Test Customer'],
+    ['stack', 'synthetic stack'],
+  ])('rejects backup field %s outside the closed projection', (field, value) => {
+    expect(
+      projectDiagnosticOperationalEvent({
+        ...createDesktopBackupEvent({
+          errorCode: 'PROFILE_BACKUP_CREATE_FAILED',
+          eventName: 'backup.failed',
+          level: 'error',
+          outcome: 'failure',
+          retryable: true,
+          sideEffectState: 'unknown',
+        }),
+        [field]: value,
+      }),
+    ).toBeNull();
+  });
 });
+
+function createDesktopBackupEvent(fields: {
+  errorCode: string | undefined;
+  eventName: 'backup.completed' | 'backup.failed';
+  level: 'error' | 'info';
+  outcome: 'failure' | 'success';
+  retryable: boolean | undefined;
+  sideEffectState: 'unknown' | undefined;
+}) {
+  return {
+    appVersion: '1.0.0',
+    buildRevision: '123456789abc',
+    category: 'backup',
+    component: 'desktop',
+    correlationId: '33333333-3333-4333-8333-333333333333',
+    durationMs: 42,
+    ...(fields.errorCode === undefined
+      ? {}
+      : { errorCode: fields.errorCode }),
+    eventId: `desktop-${fields.eventName}`,
+    eventName: fields.eventName,
+    level: fields.level,
+    outcome: fields.outcome,
+    ...(fields.retryable === undefined
+      ? {}
+      : { retryable: fields.retryable }),
+    runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
+    schemaVersion: 1,
+    ...(fields.sideEffectState === undefined
+      ? {}
+      : { sideEffectState: fields.sideEffectState }),
+    stage: 'portable',
+    timestamp: '2026-08-09T12:00:00.000Z',
+  };
+}
 
 function createDesktopRecoveryEvent() {
   return {
