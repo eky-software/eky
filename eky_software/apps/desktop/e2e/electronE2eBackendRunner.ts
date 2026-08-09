@@ -5,6 +5,8 @@ import { CompanyEmailSecretBrokerClient } from '../src/secrets/secretBrokerClien
 import { createUtilitySecretBrokerTransport } from '../src/secrets/electronSecretBrokerTransport.js';
 import { InvoicePdfArchiveBrokerClient } from '../src/invoicePdfArchive/invoicePdfArchiveBrokerClient.js';
 import { createInvoicePdfArchiveBrokerTransport } from '../src/invoicePdfArchive/electronInvoicePdfArchiveBrokerTransport.js';
+import { startProfileSnapshotBrokerBackend } from '../src/profileBackup/profileSnapshotBrokerBackend.js';
+import { createProfileSnapshotBrokerTransport } from '../src/profileBackup/electronProfileSnapshotBrokerTransport.js';
 
 interface E2eBackendServer {
   close(): Promise<void>;
@@ -18,15 +20,27 @@ interface StartE2eBackend {
       companyEmailSecretReader: CompanyEmailSecretBrokerClient;
       companyEmailSecretStore: CompanyEmailSecretBrokerClient;
       deliveredInvoiceArchiveTaskSink: InvoicePdfArchiveBrokerClient;
+      profileSnapshotStagingRoot: string;
       runtimeInstanceId: string;
     },
-  ): Promise<{ server: E2eBackendServer }>;
+  ): Promise<{
+    profileSnapshotRuntime?: {
+      maintenance: Parameters<
+        typeof startProfileSnapshotBrokerBackend
+      >[0]['maintenance'];
+      service: Parameters<
+        typeof startProfileSnapshotBrokerBackend
+      >[0]['snapshot'];
+    };
+    server: E2eBackendServer;
+  }>;
 }
 
 const parentPort = process.parentPort;
 let server: E2eBackendServer | undefined;
 let secretBrokerClient: CompanyEmailSecretBrokerClient | undefined;
 let invoicePdfArchiveBrokerClient: InvoicePdfArchiveBrokerClient | undefined;
+let profileSnapshotBrokerHandle: { close(): void } | undefined;
 let startAttempted = false;
 
 parentPort.on('message', (event) => {
@@ -42,12 +56,17 @@ parentPort.on('message', (event) => {
 
   void (async () => {
     try {
-      if (process.env.EKY_E2E !== '1' || event.ports.length !== 2) {
+      if (process.env.EKY_E2E !== '1' || event.ports.length !== 3) {
         throw new Error('ELECTRON_E2E_BACKEND_BOUNDARY_INVALID');
       }
       const brokerPort = event.ports[0];
       const archiveBrokerPort = event.ports[1];
-      if (brokerPort === undefined || archiveBrokerPort === undefined) {
+      const profileSnapshotBrokerPort = event.ports[2];
+      if (
+        brokerPort === undefined ||
+        archiveBrokerPort === undefined ||
+        profileSnapshotBrokerPort === undefined
+      ) {
         throw new Error('ELECTRON_E2E_SECRET_BROKER_MISSING');
       }
       secretBrokerClient = new CompanyEmailSecretBrokerClient(
@@ -72,13 +91,30 @@ parentPort.on('message', (event) => {
         companyEmailSecretReader: secretBrokerClient,
         companyEmailSecretStore: secretBrokerClient,
         deliveredInvoiceArchiveTaskSink: invoicePdfArchiveBrokerClient,
+        profileSnapshotStagingRoot: resolve(
+          process.env.EKY_ELECTRON_E2E_RUN_ROOT!,
+          'desktop-user-data',
+          'runtime',
+          'private-backup-staging',
+        ),
         runtimeInstanceId: command.runtimeInstanceId,
+      });
+      if (started.profileSnapshotRuntime === undefined) {
+        throw new Error('ELECTRON_E2E_PROFILE_SNAPSHOT_RUNTIME_MISSING');
+      }
+      profileSnapshotBrokerHandle = startProfileSnapshotBrokerBackend({
+        maintenance: started.profileSnapshotRuntime.maintenance,
+        snapshot: started.profileSnapshotRuntime.service,
+        transport: createProfileSnapshotBrokerTransport(
+          profileSnapshotBrokerPort,
+        ),
       });
       server = started.server;
       parentPort.postMessage({ port: server.port, type: 'ready' });
     } catch {
       secretBrokerClient?.close();
       invoicePdfArchiveBrokerClient?.close();
+      profileSnapshotBrokerHandle?.close();
       parentPort.postMessage({
         code: 'ELECTRON_E2E_BACKEND_START_FAILED',
         type: 'failed',
@@ -91,6 +127,7 @@ async function shutdown(): Promise<void> {
   await server?.close().catch(() => undefined);
   secretBrokerClient?.close();
   invoicePdfArchiveBrokerClient?.close();
+  profileSnapshotBrokerHandle?.close();
   process.exit(0);
 }
 

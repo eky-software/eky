@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 
 import { startServer, type StartedServer } from '../src/http/server.js';
 import { resolveOperationalRuntimeIdentity } from '../src/observability/operationalRuntimeIdentity.js';
@@ -11,6 +12,8 @@ import { E2eFakeSmtpProvider } from './e2eFakeSmtpProvider.js';
 import { createE2eInvoiceDocumentStorage } from './e2eInvoiceDocumentStorage.js';
 import { createE2eOperationalLogger } from './e2eOperationalLogger.js';
 import { installE2eDatabaseFault } from './installE2eDatabaseFault.js';
+import { ProfileMaintenanceState } from '../src/runtime/profileMaintenance/profileMaintenanceState.js';
+import type { ProfileSnapshotRuntimeService } from '../src/runtime/profileSnapshot/profileSnapshotTypes.js';
 
 interface E2eBackendSecretReader {
   getSecret(companyId: string): Promise<string | null>;
@@ -39,13 +42,23 @@ export interface StartE2eBackendOptions {
   companyEmailSecretReader?: E2eBackendSecretReader;
   companyEmailSecretStore?: E2eBackendSecretStore;
   deliveredInvoiceArchiveTaskSink?: E2eDeliveredInvoiceArchiveTaskSink;
+  profileSnapshotStagingRoot?: string;
   runtimeInstanceId?: string;
+}
+
+export interface E2eProfileSnapshotRuntime {
+  maintenance: ProfileMaintenanceState;
+  service: ProfileSnapshotRuntimeService;
 }
 
 export async function startE2eBackend(
   configPath: string,
   options: StartE2eBackendOptions = {},
-): Promise<{ config: E2eBackendConfig; server: StartedServer }> {
+): Promise<{
+  config: E2eBackendConfig;
+  profileSnapshotRuntime?: E2eProfileSnapshotRuntime;
+  server: StartedServer;
+}> {
   const config = readE2eBackendConfig(configPath);
   await installE2eDatabaseFault({
     databaseFilePath: config.paths.databaseFilePath,
@@ -74,6 +87,27 @@ export async function startE2eBackend(
     options.companyEmailSecretReader ?? emailSecretStore;
   const companyEmailSecretStore =
     options.companyEmailSecretStore ?? emailSecretStore;
+  const profileSnapshotStagingRoot = options.profileSnapshotStagingRoot;
+  let profileMaintenanceState: ProfileMaintenanceState | undefined;
+  let profileSnapshotService: ProfileSnapshotRuntimeService | undefined;
+  const profileSnapshotAppOptions = (() => {
+    if (profileSnapshotStagingRoot === undefined) {
+      return {};
+    }
+    profileMaintenanceState = new ProfileMaintenanceState();
+    return {
+      migrationsDirectory: fileURLToPath(
+        new URL('../src/database/migrations/', import.meta.url),
+      ),
+      profileMaintenanceState,
+      profileSnapshotServiceRegistration: {
+        register(service: ProfileSnapshotRuntimeService) {
+          profileSnapshotService = service;
+        },
+        stagingRoot: profileSnapshotStagingRoot,
+      },
+    };
+  })();
 
   const server = await startServer({
     appOptions: {
@@ -99,6 +133,7 @@ export async function startE2eBackend(
       operationalIdentity,
       operationalLogger,
       operationalLogsRoot: config.paths.logsRoot,
+      ...profileSnapshotAppOptions,
       runtimeTrust: {
         mode: 'localSession',
         sessionSecret: config.backend.sessionSecret,
@@ -108,5 +143,25 @@ export async function startE2eBackend(
     port: config.backend.port,
   });
 
-  return { config, server };
+  if (
+    profileMaintenanceState !== undefined &&
+    profileSnapshotService === undefined
+  ) {
+    await server.close();
+    throw new Error('E2E profile snapshot runtime was not registered.');
+  }
+
+  return {
+    config,
+    ...(profileMaintenanceState === undefined ||
+    profileSnapshotService === undefined
+      ? {}
+      : {
+          profileSnapshotRuntime: {
+            maintenance: profileMaintenanceState,
+            service: profileSnapshotService,
+          },
+        }),
+    server,
+  };
 }

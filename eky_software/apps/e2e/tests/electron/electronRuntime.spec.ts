@@ -62,9 +62,20 @@ test('DESK-RUNTIME-001 starts an isolated Electron runtime', async ({
   expect(rendererBoundary).toEqual({
     e2eConfigVisible: false,
     exposedDesktopKeys: [
+      'activatePreparedProfileRestore',
+      'chooseInvoicePdfArchiveDirectory',
+      'createEncryptedProfileBackup',
+      'createManualRecoveryPoint',
       'createSupportBundle',
+      'disableInvoicePdfArchive',
+      'getInvoicePdfArchiveStatus',
+      'getProfileBackupStatus',
+      'inspectEncryptedProfileBackup',
       'openInvoicePdf',
+      'openInvoicePdfArchiveDirectory',
       'openOperationalLogFolder',
+      'prepareEncryptedProfileRestore',
+      'retryPendingInvoicePdfArchiveTasks',
     ],
   });
 });
