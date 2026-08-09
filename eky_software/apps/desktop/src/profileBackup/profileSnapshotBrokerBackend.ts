@@ -254,6 +254,13 @@ function mapError(error: unknown): ProfileSnapshotBrokerErrorCode {
   ) {
     return 'PROFILE_SNAPSHOT_VALIDATION_FAILED';
   }
+  if (
+    message === 'PROFILE_SNAPSHOT_PATH_INVALID' ||
+    message === 'PROFILE_SNAPSHOT_STAGING_INVALID' ||
+    message === 'PROFILE_SNAPSHOT_DESTINATION_EXISTS'
+  ) {
+    return 'PROFILE_SNAPSHOT_STAGING_FAILED';
+  }
 
   return 'PROFILE_SNAPSHOT_BROKER_OPERATION_FAILED';
 }

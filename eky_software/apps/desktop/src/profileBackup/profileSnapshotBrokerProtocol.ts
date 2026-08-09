@@ -43,6 +43,7 @@ export type ProfileSnapshotBrokerErrorCode =
   | 'PROFILE_SNAPSHOT_VALIDATION_FAILED'
   | 'PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID'
   | 'PROFILE_SNAPSHOT_BROKER_OPERATION_FAILED'
+  | 'PROFILE_SNAPSHOT_STAGING_FAILED'
   | 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE';
 
 export interface ProfileSnapshotBrokerReady {
@@ -405,6 +406,7 @@ function isErrorCode(value: unknown): value is ProfileSnapshotBrokerErrorCode {
     value === 'PROFILE_SNAPSHOT_VALIDATION_FAILED' ||
     value === 'PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID' ||
     value === 'PROFILE_SNAPSHOT_BROKER_OPERATION_FAILED' ||
+    value === 'PROFILE_SNAPSHOT_STAGING_FAILED' ||
     value === 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE'
   );
 }

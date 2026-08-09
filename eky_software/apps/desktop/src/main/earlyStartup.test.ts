@@ -90,6 +90,11 @@ describe('safe desktop early startup', () => {
     ).toBe('PROFILE_SNAPSHOT_BROKER_OPERATION_FAILED');
     expect(
       readSafeStartupFailureCode(
+        new Error('PROFILE_SNAPSHOT_STAGING_FAILED'),
+      ),
+    ).toBe('PROFILE_SNAPSHOT_STAGING_FAILED');
+    expect(
+      readSafeStartupFailureCode(
         new Error('DESKTOP_SMOKE_RESTORE_COMPARISON_FAILED'),
       ),
     ).toBe('DESKTOP_SMOKE_RESTORE_COMPARISON_FAILED');
