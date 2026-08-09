@@ -8,12 +8,6 @@ on:
   pull_request:
     branches:
       - main
-    paths:
-      - eky_software/**/package.json
-      - eky_software/pnpm-lock.yaml
-      - .github/dependabot.yml
-      - .github/workflows/dependency-security.yml
-      - .github/workflows/ci.yml
   push:
     branches:
       - main
