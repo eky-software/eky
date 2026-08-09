@@ -8,6 +8,11 @@ import type {
   RecoveryPointIndexEntry,
   RecoveryPointKind,
 } from './recoveryPointIndexStore.js';
+import {
+  noOpProfileRecoveryOperationalObserver,
+  observeProfileRecoverySafely,
+  type ProfileRecoveryOperationalObserver,
+} from '../profileRecoveryOperationalObserver.js';
 import type { RecoveryPointRotationService } from './recoveryPointRotationService.js';
 import type { RecoveryPointStore } from './recoveryPointStore.js';
 
@@ -34,6 +39,7 @@ interface RecoveryPointServiceDependencies {
   appVersion: string;
   now?(): Date;
   operationIdFactory?(): string;
+  observer?: ProfileRecoveryOperationalObserver;
   profileSnapshotClient: Pick<
     ProfileSnapshotBrokerClient,
     | 'beginMaintenance'
@@ -64,9 +70,11 @@ export class RecoveryPointService {
     private readonly dependencies: RecoveryPointServiceDependencies,
   ) {}
 
-  checkAutomatic(): Promise<RecoveryPointIndexEntry | undefined> {
+  checkAutomatic(
+    correlationId = this.createOperationId(),
+  ): Promise<RecoveryPointIndexEntry | undefined> {
     return this.runExclusive('checking', async () =>
-      this.withHealthySnapshot(async (snapshot) => {
+      this.withHealthySnapshot(correlationId, async (snapshot) => {
         await this.dependencies.rotation.resumePending(
           snapshot.validation.profileId,
         );
@@ -77,10 +85,23 @@ export class RecoveryPointService {
         if (!isAutomaticPointDue(points, this.now())) {
           return undefined;
         }
-        return this.persistSnapshot(
-          snapshot,
-          chooseAutomaticPointKind(points, this.now()),
-        );
+        const kind = chooseAutomaticPointKind(points, this.now());
+        const startedAt = Date.now();
+        this.observe({
+          correlationId,
+          eventName: 'recoveryPoint.started',
+          recoveryPointKind: kind,
+          stage: 'creation',
+        });
+        const point = await this.persistSnapshot(snapshot, kind);
+        this.observe({
+          correlationId,
+          durationMs: Date.now() - startedAt,
+          eventName: 'recoveryPoint.completed',
+          recoveryPointKind: kind,
+          stage: 'creation',
+        });
+        return point;
       }),
     );
   }
@@ -122,10 +143,42 @@ export class RecoveryPointService {
   private createNamedPoint(
     kind: 'manual' | 'preRestore' | 'preUpdate',
   ): Promise<RecoveryPointIndexEntry> {
+    const correlationId = this.createOperationId();
+    const startedAt = Date.now();
+    this.observe({
+      correlationId,
+      eventName: 'recoveryPoint.started',
+      recoveryPointKind: kind,
+      stage: 'creation',
+    });
     return this.runExclusive('creating', () =>
-      this.withHealthySnapshot((snapshot) =>
+      this.withHealthySnapshot(correlationId, (snapshot) =>
         this.persistSnapshot(snapshot, kind),
       ),
+    ).then(
+      (point) => {
+        this.observe({
+          correlationId,
+          durationMs: Date.now() - startedAt,
+          eventName: 'recoveryPoint.completed',
+          recoveryPointKind: kind,
+          stage: 'creation',
+        });
+        return point;
+      },
+      (error: unknown) => {
+        this.observe({
+          correlationId,
+          durationMs: Date.now() - startedAt,
+          errorCode: readSafeErrorCode(error),
+          eventName: 'recoveryPoint.failed',
+          recoveryPointKind: kind,
+          retryable: true,
+          sideEffectState: 'unknown',
+          stage: 'creation',
+        });
+        throw error;
+      },
     );
   }
 
@@ -166,10 +219,9 @@ export class RecoveryPointService {
   }
 
   private async withHealthySnapshot<T>(
+    operationId: string,
     useSnapshot: (snapshot: HealthySnapshot) => Promise<T>,
   ): Promise<T> {
-    const operationId =
-      this.dependencies.operationIdFactory?.() ?? randomUUID();
     if (!operationIdPattern.test(operationId)) {
       throw new Error('RECOVERY_POINT_OPERATION_INVALID');
     }
@@ -235,6 +287,25 @@ export class RecoveryPointService {
 
   private now(): Date {
     return this.dependencies.now?.() ?? new Date();
+  }
+
+  private createOperationId(): string {
+    const operationId =
+      this.dependencies.operationIdFactory?.() ?? randomUUID();
+    if (!operationIdPattern.test(operationId)) {
+      throw new Error('RECOVERY_POINT_OPERATION_INVALID');
+    }
+    return operationId;
+  }
+
+  private observe(
+    event: Parameters<ProfileRecoveryOperationalObserver['observe']>[0],
+  ): void {
+    observeProfileRecoverySafely(
+      this.dependencies.observer ??
+        noOpProfileRecoveryOperationalObserver,
+      event,
+    );
   }
 
   private async runExclusive<T>(

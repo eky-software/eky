@@ -108,6 +108,15 @@ build-, fingerprint-, count- ja aikaväliyhteenveto.
 - päivityspaketti, installer command tai update-journal
 - raw stack tai raw JSONL-rivi
 
+Recovery point- ja restore-eventeistä tukipakettiin saa tulla vain
+Diagnostics-readerin uudelleenvalidoima nykyinen sanitoitu projektio:
+event-nimi, app/build/runtime-konteksti, satunnainen `correlationId`,
+allowlistattu stage, kesto, turvallinen error code, retryable- ja
+side-effect-tila. Recovery point -kind voidaan säilyttää vain, jos se on
+katalogin allowlistalla. Incident-yhteenveto ei sisällä correlation-,
+operation- tai entity-tunnisteita. Raakaa journalia, manifestia, polkua,
+salaisuuksia tai business-tunnisteita ei sisällytetä.
+
 ## Desktop-flow
 
 1. Käyttäjä valitsee `Luo tukipaketti`.

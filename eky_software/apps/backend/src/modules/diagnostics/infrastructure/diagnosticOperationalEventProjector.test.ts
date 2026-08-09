@@ -59,7 +59,60 @@ describe('projectDiagnosticOperationalEvent', () => {
       }),
     );
   });
+
+  it('projects only allowlisted recovery metadata', () => {
+    const event = createDesktopRecoveryEvent();
+
+    expect(projectDiagnosticOperationalEvent(event)).toEqual(
+      expect.objectContaining({
+        correlationId: '22222222-2222-4222-8222-222222222222',
+        eventName: 'recoveryPoint.completed',
+        recoveryPointKind: 'preRestore',
+        stage: 'creation',
+      }),
+    );
+    expect(
+      projectDiagnosticOperationalEvent({
+        ...event,
+        manifest: { entries: ['private'] },
+      }),
+    ).toBeNull();
+    expect(
+      projectDiagnosticOperationalEvent({
+        ...event,
+        stage: 'C:\\Users\\Example\\backup',
+      }),
+    ).toBeNull();
+    expect(
+      projectDiagnosticOperationalEvent({
+        ...event,
+        category: 'restore',
+        eventName: 'restore.stagingCompleted',
+        stage: 'staging',
+      }),
+    ).toBeNull();
+  });
 });
+
+function createDesktopRecoveryEvent() {
+  return {
+    appVersion: '1.0.0',
+    buildRevision: '123456789abc',
+    category: 'recoveryPoint',
+    component: 'desktop',
+    correlationId: '22222222-2222-4222-8222-222222222222',
+    durationMs: 25,
+    eventId: 'desktop-recovery-event',
+    eventName: 'recoveryPoint.completed',
+    level: 'info',
+    outcome: 'success',
+    recoveryPointKind: 'preRestore',
+    runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
+    schemaVersion: 1,
+    stage: 'creation',
+    timestamp: '2026-07-28T12:00:00.000Z',
+  };
+}
 
 function createSmtpEvent(eventName: (typeof smtpEventNames)[number]) {
   const transportMetadata = {

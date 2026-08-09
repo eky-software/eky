@@ -6,6 +6,7 @@ export type {
   DiagnosticEventListQuery,
   DiagnosticEventName,
   DiagnosticEventOutcome,
+  DiagnosticRecoveryPointKind,
   DiagnosticEventSideEffectState,
   DiagnosticsApi,
   RuntimeDiagnosticSummary,

@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { RecoveryPointIndexEntry } from './recoveryPointIndexStore.js';
+import type { ProfileRecoveryOperationalEvent } from '../profileRecoveryOperationalObserver.js';
 import {
   chooseAutomaticPointKind,
   isAutomaticPointDue,
@@ -124,6 +125,26 @@ describe('recovery point service', () => {
       operationState: 'idle',
       pointCount: 0,
     });
+    expect(fixture.events).toEqual([
+      expect.objectContaining({
+        eventName: 'recoveryPoint.started',
+        recoveryPointKind: 'manual',
+      }),
+      expect.objectContaining({
+        errorCode: 'RECOVERY_POINT_KEY_PROTECTION_UNAVAILABLE',
+        eventName: 'recoveryPoint.failed',
+        recoveryPointKind: 'manual',
+      }),
+    ]);
+  });
+
+  it('keeps recovery authoritative when the operational observer fails', async () => {
+    const fixture = await createFixture({ observerThrows: true });
+
+    await expect(fixture.service.createManual()).resolves.toEqual(
+      fixture.createdPoint,
+    );
+    expect(fixture.create).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -165,6 +186,7 @@ describe('automatic recovery point classification', () => {
 async function createFixture(options: {
   createFailure?: Error;
   existingPoints?: RecoveryPointIndexEntry[];
+  observerThrows?: boolean;
   profileMatchesActive?: boolean;
 } = {}) {
   const stagingRoot = await mkdtemp(
@@ -175,6 +197,7 @@ async function createFixture(options: {
   const calls: string[] = [];
   const existingPoints = options.existingPoints ?? [];
   const createdPoint = createPoint('monthly', now.toISOString());
+  const events: ProfileRecoveryOperationalEvent[] = [];
   let persisted = false;
   const create = vi.fn(async () => {
     calls.push('create');
@@ -188,6 +211,14 @@ async function createFixture(options: {
     appVersion: '0.1.0-alpha.1',
     now: () => new Date(now),
     operationIdFactory: () => operationId,
+    observer: {
+      observe(event) {
+        if (options.observerThrows) {
+          throw new Error('SYNTHETIC_OBSERVER_FAILURE');
+        }
+        events.push(event);
+      },
+    },
     profileSnapshotClient: {
       async beginMaintenance() {
         calls.push('begin');
@@ -268,6 +299,7 @@ async function createFixture(options: {
     calls,
     create,
     createdPoint,
+    events,
     service,
   };
 }

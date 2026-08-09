@@ -15,6 +15,13 @@ export interface SupportBundleDiagnosticEvent {
   operationId?: string;
   outcome: 'blocked' | 'failure' | 'success' | 'unknown';
   peerCertificateFingerprint256?: string;
+  recoveryPointKind?:
+    | 'daily'
+    | 'manual'
+    | 'monthly'
+    | 'preRestore'
+    | 'preUpdate'
+    | 'weekly';
   retryable?: boolean;
   runtimeInstanceId?: string;
   sideEffectState?: 'committed' | 'none' | 'rolledBack' | 'unknown';
@@ -235,6 +242,7 @@ function readDiagnosticEvent(value: unknown): SupportBundleDiagnosticEvent {
       'operationId',
       'outcome',
       'peerCertificateFingerprint256',
+      'recoveryPointKind',
       'retryable',
       'runtimeInstanceId',
       'sideEffectState',
@@ -262,6 +270,7 @@ function readDiagnosticEvent(value: unknown): SupportBundleDiagnosticEvent {
     !isOptionalCertificateFingerprint256(
       value.peerCertificateFingerprint256,
     ) ||
+    !isOptionalRecoveryPointKind(value.recoveryPointKind) ||
     !isOptionalBoolean(value.retryable) ||
     !isOptionalUuid(value.runtimeInstanceId) ||
     !isOptionalSideEffectState(value.sideEffectState) ||
@@ -312,6 +321,9 @@ function readDiagnosticEvent(value: unknown): SupportBundleDiagnosticEvent {
           peerCertificateFingerprint256:
             value.peerCertificateFingerprint256,
         }),
+    ...(value.recoveryPointKind === undefined
+      ? {}
+      : { recoveryPointKind: value.recoveryPointKind }),
     ...(value.retryable === undefined
       ? {}
       : { retryable: value.retryable }),
@@ -335,6 +347,17 @@ function readDiagnosticEvent(value: unknown): SupportBundleDiagnosticEvent {
       ? {}
       : { tlsVersion: value.tlsVersion }),
   };
+}
+
+function isOptionalRecoveryPointKind(
+  value: unknown,
+): value is SupportBundleDiagnosticEvent['recoveryPointKind'] {
+  return (
+    value === undefined ||
+    ['daily', 'manual', 'monthly', 'preRestore', 'preUpdate', 'weekly'].includes(
+      value as string,
+    )
+  );
 }
 
 function isOptionalCertificateFingerprint256(

@@ -3,12 +3,15 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ProfileRestoreActivationService } from './profileRestoreActivationService.js';
+import type { ProfileRecoveryOperationalEvent } from '../profileRecoveryOperationalObserver.js';
 
 describe('profile restore activation service', () => {
   it('revalidates, materializes and stops the runtime before activation', async () => {
     const order: string[] = [];
+    const events: ProfileRecoveryOperationalEvent[] = [];
     const operationId = randomUUID();
     const service = new ProfileRestoreActivationService({
+      observer: { observe: (event) => events.push(event) },
       profileSnapshotClient: {
         beginMaintenance: vi.fn(async () => {
           order.push('maintenance');
@@ -72,6 +75,13 @@ describe('profile restore activation service', () => {
       'activate',
       'relaunch',
     ]);
+    expect(events).toEqual([
+      {
+        correlationId: operationId,
+        eventName: 'restore.activationStarted',
+        stage: 'activation',
+      },
+    ]);
   });
 
   it('does not stop or mutate the active profile when target identity changed', async () => {
@@ -121,11 +131,13 @@ describe('profile restore activation service', () => {
 
   it('rolls back and relaunches when activation fails after shutdown', async () => {
     const operationId = randomUUID();
+    const events: ProfileRecoveryOperationalEvent[] = [];
     const rollback = vi.fn(async () =>
       createJournal(operationId, 'rolledBack'),
     );
     const relaunchApplication = vi.fn();
     const service = new ProfileRestoreActivationService({
+      observer: { observe: (event) => events.push(event) },
       profileSnapshotClient: createSnapshotClient(),
       relaunchApplication,
       stagingService: {
@@ -150,6 +162,22 @@ describe('profile restore activation service', () => {
     );
     expect(rollback).toHaveBeenCalledTimes(1);
     expect(relaunchApplication).toHaveBeenCalledTimes(1);
+    expect(events).toEqual([
+      expect.objectContaining({
+        correlationId: operationId,
+        eventName: 'restore.activationStarted',
+      }),
+      expect.objectContaining({
+        correlationId: operationId,
+        eventName: 'restore.rollbackStarted',
+        stage: 'activationRollback',
+      }),
+      expect.objectContaining({
+        correlationId: operationId,
+        eventName: 'restore.rollbackCompleted',
+        stage: 'activationRollback',
+      }),
+    ]);
   });
 });
 

@@ -178,6 +178,41 @@ describe('FileSystemSupportBundleDiagnosticEventReader', () => {
     ]);
   });
 
+  it('includes only the sanitized recovery failure projection', async () => {
+    const logsRoot = createLogsRoot();
+    writeLines(
+      logsRoot,
+      'desktop',
+      'desktop-warning-error-2026-07-001.jsonl',
+      [
+        desktopRecoveryFailure(
+          'recovery-failure',
+          '2026-07-27T10:00:00.000Z',
+        ),
+      ],
+    );
+
+    const result =
+      await new FileSystemSupportBundleDiagnosticEventReader(
+        logsRoot,
+      ).readSupportBundleDiagnosticEvents({
+        earliestTimestamp: '2026-06-28T12:00:00.000Z',
+        latestTimestamp: '2026-07-28T12:00:00.000Z',
+      });
+
+    expect(result.diagnosticEvents).toEqual([
+      expect.objectContaining({
+        correlationId: '22222222-2222-4222-8222-222222222222',
+        eventName: 'recoveryPoint.failed',
+        recoveryPointKind: 'daily',
+        stage: 'creation',
+      }),
+    ]);
+    expect(JSON.stringify(result)).not.toMatch(
+      /(?:operationId|profileId|companyId|artifactId|manifest|path)/i,
+    );
+  });
+
   it.each([
     {
       fileName: 'backend-warning-error-2026-07-001.jsonl',
@@ -333,6 +368,28 @@ function desktopSecurity(eventId: string, timestamp: string) {
     runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
     schemaVersion: 1,
     stage: 'request',
+    timestamp,
+  };
+}
+
+function desktopRecoveryFailure(eventId: string, timestamp: string) {
+  return {
+    appVersion: '1.0.0',
+    buildRevision: '123456789abc',
+    category: 'recoveryPoint',
+    component: 'desktop',
+    correlationId: '22222222-2222-4222-8222-222222222222',
+    errorCode: 'RECOVERY_POINT_SOURCE_UNHEALTHY',
+    eventId,
+    eventName: 'recoveryPoint.failed',
+    level: 'warn',
+    outcome: 'failure',
+    recoveryPointKind: 'daily',
+    retryable: true,
+    runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
+    schemaVersion: 1,
+    sideEffectState: 'unknown',
+    stage: 'creation',
     timestamp,
   };
 }

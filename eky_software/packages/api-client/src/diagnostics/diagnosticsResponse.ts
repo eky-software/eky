@@ -120,6 +120,7 @@ function readDiagnosticEvent(value: unknown): DiagnosticEventItem {
       'operationId',
       'outcome',
       'peerCertificateFingerprint256',
+      'recoveryPointKind',
       'retryable',
       'runtimeInstanceId',
       'sideEffectState',
@@ -144,6 +145,7 @@ function readDiagnosticEvent(value: unknown): DiagnosticEventItem {
     !isOptionalCertificateFingerprint256(
       value.peerCertificateFingerprint256,
     ) ||
+    !isOptionalRecoveryPointKind(value.recoveryPointKind) ||
     !isOptionalBoolean(value.retryable) ||
     !isOptionalUuid(value.runtimeInstanceId) ||
     !isOptionalMember(value.sideEffectState, sideEffectStates) ||
@@ -191,6 +193,9 @@ function readDiagnosticEvent(value: unknown): DiagnosticEventItem {
           peerCertificateFingerprint256:
             value.peerCertificateFingerprint256,
         }),
+    ...(value.recoveryPointKind === undefined
+      ? {}
+      : { recoveryPointKind: value.recoveryPointKind }),
     ...(value.retryable === undefined
       ? {}
       : { retryable: value.retryable }),
@@ -208,6 +213,24 @@ function readDiagnosticEvent(value: unknown): DiagnosticEventItem {
       ? {}
       : { tlsVersion: value.tlsVersion }),
   };
+}
+
+function isOptionalRecoveryPointKind(
+  value: unknown,
+): value is
+  | 'daily'
+  | 'manual'
+  | 'monthly'
+  | 'preRestore'
+  | 'preUpdate'
+  | 'weekly'
+  | undefined {
+  return (
+    value === undefined ||
+    ['daily', 'manual', 'monthly', 'preRestore', 'preUpdate', 'weekly'].includes(
+      value as string,
+    )
+  );
 }
 
 function isOptionalCertificateFingerprint256(

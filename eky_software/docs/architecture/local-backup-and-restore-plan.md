@@ -543,14 +543,18 @@ Renderer ei saa:
 
 ## Observability ja audit
 
-Tulevat tekniset tapahtumaperheet ovat:
+Tekniset tapahtumaperheet ovat:
 
 - `backup.*`
 - `restore.*`
 - `recoveryPoint.*`
 
-Tarkkoja event-nimiä ei lukita ennen use case- ja transaction ownership
--toteutusta. Tapahtumissa ei ole:
+Portable backupin sekä recovery point- ja restore-lifecyclejen tarkat nimet,
+vaiheet ja kentät on lukittu
+`docs/architecture/r0-observability-event-catalog.md`-dokumentissa.
+Aktivointijournalin satunnaista teknistä operation UUID:ta käytetään
+prosessien yli vain eventin `correlationId`-kenttänä. Journalin formaatti ei
+muutu eikä journalia projisoida sellaisenaan. Tapahtumissa ei ole:
 
 - backupin payloadia tai salattua sisältöä
 - salasanaa, salt-arvoa, nonce-arvoa, tagia tai johdettua avainta
@@ -559,9 +563,10 @@ Tarkkoja event-nimiä ei lukita ennen use case- ja transaction ownership
 - manifestia
 - SQLite- tai filesystem-virhettä
 
-Backupin ja restoren käyttäjän aloittama, business-datan saatavuuteen
-vaikuttava operaatio tarvitsee turvallisen audit- tai activity-päätöksen.
-Tekniset vaihe- ja failure-tiedot kuuluvat Diagnosticsiin.
+Backupin, restoren ja recovery pointin tekniset vaihe- ja failure-tiedot
+kuuluvat Diagnosticsiin. Niistä ei kirjoiteta Activity-tapahtumaa tai
+business auditia palautettavaan SQLite-kantaan. Operational-lokituksen virhe
+ei saa muuttaa varsinaisen operaation tulosta.
 
 ## Testausportti
 

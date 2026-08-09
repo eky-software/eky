@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ProfileRestoreStartupRecovery } from './profileRestoreStartupRecovery.js';
+import type { ProfileRecoveryOperationalEvent } from '../profileRecoveryOperationalObserver.js';
 
 describe('profile restore startup recovery', () => {
   it('finishes an interrupted activation before starting the backend', async () => {
@@ -25,6 +26,7 @@ describe('profile restore startup recovery', () => {
 
   it('accepts a healthy restored profile only after active validation', async () => {
     const operationId = randomUUID();
+    const events: ProfileRecoveryOperationalEvent[] = [];
     const transaction = createTransaction(operationId);
     const recovery = new ProfileRestoreStartupRecovery({
       journalStore: {
@@ -32,9 +34,13 @@ describe('profile restore startup recovery', () => {
           createJournal(operationId, 'validationStarting'),
         ),
       },
+      observer: { observe: (event) => events.push(event) },
       transaction,
     });
 
+    await expect(recovery.prepareBeforeBackend()).resolves.toBe(
+      'validateRestoredProfile',
+    );
     await expect(
       recovery.validateAfterBackend({
         mode: 'validateRestoredProfile',
@@ -43,10 +49,18 @@ describe('profile restore startup recovery', () => {
       }),
     ).resolves.toBe('ready');
     expect(transaction.accept).toHaveBeenCalledTimes(1);
+    expect(events).toEqual([
+      expect.objectContaining({
+        correlationId: operationId,
+        eventName: 'restore.validationCompleted',
+        stage: 'restoredProfile',
+      }),
+    ]);
   });
 
   it('rolls back an unhealthy restored profile and requests a fresh process', async () => {
     const operationId = randomUUID();
+    const events: ProfileRecoveryOperationalEvent[] = [];
     const transaction = createTransaction(operationId);
     const stopBackend = vi.fn();
     const recovery = new ProfileRestoreStartupRecovery({
@@ -55,9 +69,13 @@ describe('profile restore startup recovery', () => {
           createJournal(operationId, 'validationStarting'),
         ),
       },
+      observer: { observe: (event) => events.push(event) },
       transaction,
     });
 
+    await expect(recovery.prepareBeforeBackend()).resolves.toBe(
+      'validateRestoredProfile',
+    );
     await expect(
       recovery.validateAfterBackend({
         mode: 'validateRestoredProfile',
@@ -69,6 +87,22 @@ describe('profile restore startup recovery', () => {
     ).resolves.toBe('relaunchRequired');
     expect(stopBackend).toHaveBeenCalledTimes(1);
     expect(transaction.rollback).toHaveBeenCalledTimes(1);
+    expect(events).toEqual([
+      expect.objectContaining({
+        correlationId: operationId,
+        eventName: 'restore.validationFailed',
+      }),
+      expect.objectContaining({
+        correlationId: operationId,
+        eventName: 'restore.rollbackStarted',
+        stage: 'startupRollback',
+      }),
+      expect.objectContaining({
+        correlationId: operationId,
+        eventName: 'restore.rollbackCompleted',
+        stage: 'startupRollback',
+      }),
+    ]);
   });
 
   it('fails safe when the rolled-back profile is not healthy', async () => {

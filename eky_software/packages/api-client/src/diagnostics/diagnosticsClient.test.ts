@@ -95,6 +95,39 @@ describe('diagnostics API client', () => {
     ).rejects.toBeInstanceOf(EkyApiError);
   });
 
+  it('reads the safe recovery diagnostic projection', async () => {
+    const client = createEkyApiClient({
+      baseUrl: '',
+      fetch: async () =>
+        jsonResponse({
+          diagnosticEvents: [
+            {
+              category: 'recoveryPoint',
+              component: 'desktop',
+              correlationId: '33333333-3333-4333-8333-333333333333',
+              errorCode: 'RECOVERY_POINT_SOURCE_UNHEALTHY',
+              eventName: 'recoveryPoint.failed',
+              id: 'desktop:recovery-event-1',
+              level: 'warn',
+              occurredAt: '2026-07-27T12:00:00.000Z',
+              outcome: 'failure',
+              recoveryPointKind: 'daily',
+              retryable: true,
+              sideEffectState: 'unknown',
+              stage: 'creation',
+            },
+          ],
+        }),
+    });
+
+    await expect(client.listDiagnosticEvents()).resolves.toEqual([
+      expect.objectContaining({
+        eventName: 'recoveryPoint.failed',
+        recoveryPointKind: 'daily',
+      }),
+    ]);
+  });
+
   it('accepts only the public SMTP TLS diagnostic projection', async () => {
     const peerCertificateFingerprint256 = Array.from(
       { length: 32 },

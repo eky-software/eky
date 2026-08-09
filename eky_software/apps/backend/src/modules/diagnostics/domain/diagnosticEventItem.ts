@@ -10,6 +10,13 @@ export type DiagnosticEventSideEffectState =
   | 'none'
   | 'rolledBack'
   | 'unknown';
+export type DiagnosticRecoveryPointKind =
+  | 'daily'
+  | 'manual'
+  | 'monthly'
+  | 'preRestore'
+  | 'preUpdate'
+  | 'weekly';
 
 export interface DiagnosticEventItem {
   appVersion?: string;
@@ -28,6 +35,7 @@ export interface DiagnosticEventItem {
   operationId?: string;
   outcome: DiagnosticEventOutcome;
   peerCertificateFingerprint256?: string;
+  recoveryPointKind?: DiagnosticRecoveryPointKind;
   retryable?: boolean;
   runtimeInstanceId?: string;
   sideEffectState?: DiagnosticEventSideEffectState;

@@ -9,6 +9,7 @@ import {
   writeBackupContainer,
   type BackupContainerSourceEntry,
 } from '../container/backupContainerWriter.js';
+import type { ProfileRecoveryOperationalEvent } from '../profileRecoveryOperationalObserver.js';
 import { ProfileRestoreStagingService } from './profileRestoreStagingService.js';
 
 const password = 'Eky restore staging password 2026!';
@@ -43,6 +44,16 @@ describe('profile restore staging service', () => {
       targetDisposition: 'replaceActiveProfile',
     });
     expect(fixture.events).toEqual(['preRestore', 'validate']);
+    expect(fixture.operationalEvents).toEqual([
+      expect.objectContaining({
+        eventName: 'restore.inspectionCompleted',
+        stage: 'inspection',
+      }),
+      expect.objectContaining({
+        eventName: 'restore.stagingCompleted',
+        stage: 'staging',
+      }),
+    ]);
     await expect(
       fileSystem.readFile(
         join(
@@ -107,6 +118,12 @@ describe('profile restore staging service', () => {
     await expect(
       fileSystem.readdir(fixture.stagingRoot),
     ).resolves.toEqual([]);
+    expect(fixture.operationalEvents.at(-1)).toEqual(
+      expect.objectContaining({
+        errorCode: 'PROFILE_RESTORE_TARGET_NOT_EMPTY',
+        eventName: 'restore.stagingFailed',
+      }),
+    );
   });
 
   it('rejects a different valid container selected after inspection', async () => {
@@ -186,6 +203,7 @@ interface Fixture {
   events: string[];
   now: Date;
   operationIds: string[];
+  operationalEvents: ProfileRecoveryOperationalEvent[];
   service: ProfileRestoreStagingService;
   sourceEntries: BackupContainerSourceEntry[];
   stagingRoot: string;
@@ -243,6 +261,7 @@ async function createFixture(
   ];
   const operationIds = [randomUUID(), randomUUID(), randomUUID()];
   const events: string[] = [];
+  const operationalEvents: ProfileRecoveryOperationalEvent[] = [];
   const now = new Date('2026-08-04T12:00:00.000Z');
   const containerPath = join(root, 'backup.ekybackup');
   const fixtureBase = {
@@ -251,6 +270,7 @@ async function createFixture(
     events,
     now,
     operationIds,
+    operationalEvents,
     sourceEntries,
     stagingRoot,
   };
@@ -274,6 +294,7 @@ async function createFixture(
     ...fixtureBase,
     service: new ProfileRestoreStagingService({
       now: () => now,
+      observer: { observe: (event) => operationalEvents.push(event) },
       operationIdFactory: () => operationIds[operationIndex++]!,
       profileSnapshotClient: { validateProfileSnapshot },
       quarantineRoot,

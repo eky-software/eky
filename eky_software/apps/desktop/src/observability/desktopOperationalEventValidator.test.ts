@@ -227,4 +227,41 @@ describe('desktop operational event contracts', () => {
       }),
     ).toThrow(DesktopOperationalEventValidationError);
   });
+
+  it('accepts only catalogued recovery metadata', () => {
+    const event = createDesktopOperationalEvent(
+      {
+        correlationId: '22222222-2222-4222-8222-222222222222',
+        durationMs: 25,
+        eventName: 'recoveryPoint.completed',
+        recoveryPointKind: 'preRestore',
+        stage: 'creation',
+      },
+      options,
+    );
+
+    expect(event).toMatchObject({
+      category: 'recoveryPoint',
+      recoveryPointKind: 'preRestore',
+      stage: 'creation',
+    });
+    expect(() =>
+      validateDesktopOperationalEvent({
+        ...event,
+        stage: 'C:\\Users\\Example\\backup',
+      }),
+    ).toThrow(DesktopOperationalEventValidationError);
+    expect(() =>
+      validateDesktopOperationalEvent({
+        ...event,
+        recoveryPointKind: 'customerInvoice',
+      }),
+    ).toThrow(DesktopOperationalEventValidationError);
+    expect(() =>
+      validateDesktopOperationalEvent({
+        ...event,
+        manifest: { entries: ['private'] },
+      }),
+    ).toThrow(DesktopOperationalEventValidationError);
+  });
 });

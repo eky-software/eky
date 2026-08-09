@@ -136,6 +136,7 @@ tietokannan, auditin, operational/security-eventin ja tukipaketin päätöksen.
 | OBS-JSONL-001 | P1; integration, system, fault, recovery | Validit rivit + katkennut loppurivi | Diagnostics ohittaa rikkinäisen | Muut eventit säilyvät; support ilmoittaa truncationin | Rikkinäinen raw line | implemented-e2e |
 | OBS-SUPPORT-001 | P0; integration, electron-e2e, fault | Synteettiset eventit; luo `.json.gz` | Inspect hyväksyy ja checksumit täsmäävät | Manifest/projektiot oikein; ei business audit -muutosta | Kielletty data ja AppData-polut | covered-existing |
 | OBS-SUPPORT-LIMIT-001 | P1; integration, system, fault | Lähteet lähellä 25 MiB; luo paketti | Valid paketti ja rehellinen truncation | Uusimmat turvalliset eventit säilyvät | Raja-arvon yli vuotava lähde | covered-existing |
+| OBS-RECOVERY-001 | P0; unit, integration, electron-e2e, recovery | Luo recovery point; inspect, stage ja aktivoi restore; validoi restartin jälkeen; injektoi validation- ja logger-virheet | Katalogin lifecycle-eventit syntyvät allowlistatuilla kentillä ja cross-restart-korrelaatio säilyy | Logger-virhe ei muuta operaatiota; rollback raportoidaan; Diagnostics/support näyttävät vain sanitoidun projektion | Polut, profiili-/yritys-/artifact-tunnisteet, journal, manifesti, checksumit, salaisuudet ja raw error | implemented-integration |
 
 ## Security
 

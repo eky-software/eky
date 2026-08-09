@@ -36,6 +36,17 @@ export const desktopPermissionTypes = Object.freeze([
 export type DesktopPermissionType =
   (typeof desktopPermissionTypes)[number];
 
+export const recoveryPointKinds = Object.freeze([
+  'daily',
+  'manual',
+  'monthly',
+  'preRestore',
+  'preUpdate',
+  'weekly',
+] as const);
+export type RecoveryPointOperationalKind =
+  (typeof recoveryPointKinds)[number];
+
 export interface DesktopOperationalEventPayloadMap {
   'desktop.starting': Record<never, never>;
   'desktop.started': { durationMs?: number };
@@ -120,6 +131,66 @@ export interface DesktopOperationalEventPayloadMap {
   };
   'backup.inspectionFailed': FailureFields & {
     correlationId: string;
+  };
+  'recoveryPoint.started': {
+    correlationId: string;
+    recoveryPointKind: RecoveryPointOperationalKind;
+    stage: 'creation';
+  };
+  'recoveryPoint.completed': {
+    correlationId: string;
+    durationMs?: number;
+    recoveryPointKind: RecoveryPointOperationalKind;
+    stage: 'creation';
+  };
+  'recoveryPoint.failed': FailureFields & {
+    correlationId: string;
+    recoveryPointKind?: RecoveryPointOperationalKind;
+    stage: 'automaticCheck' | 'creation';
+  };
+  'restore.inspectionCompleted': {
+    correlationId: string;
+    durationMs?: number;
+    stage: 'inspection';
+  };
+  'restore.inspectionFailed': FailureFields & {
+    correlationId: string;
+    stage: 'inspection';
+  };
+  'restore.stagingCompleted': {
+    correlationId: string;
+    durationMs?: number;
+    stage: 'staging';
+  };
+  'restore.stagingFailed': FailureFields & {
+    correlationId: string;
+    stage: 'staging';
+  };
+  'restore.activationStarted': {
+    correlationId: string;
+    stage: 'activation';
+  };
+  'restore.validationCompleted': {
+    correlationId: string;
+    durationMs?: number;
+    stage: 'restoredProfile' | 'rolledBackProfile';
+  };
+  'restore.validationFailed': FailureFields & {
+    correlationId: string;
+    stage: 'restoredProfile' | 'rolledBackProfile';
+  };
+  'restore.rollbackStarted': {
+    correlationId: string;
+    stage: 'activationRollback' | 'startupRollback';
+  };
+  'restore.rollbackCompleted': {
+    correlationId: string;
+    durationMs?: number;
+    stage: 'activationRollback' | 'startupRollback';
+  };
+  'restore.rollbackFailed': FailureFields & {
+    correlationId: string;
+    stage: 'activationRollback' | 'startupRollback';
   };
 }
 
@@ -371,6 +442,66 @@ export const desktopOperationalEventSpecs = Object.freeze({
     'correlationId',
     ...failureFields,
   ]),
+  'recoveryPoint.started': spec('recoveryPoint', 'info', 'success', [
+    'correlationId',
+    'recoveryPointKind',
+    'stage',
+  ]),
+  'recoveryPoint.completed': spec('recoveryPoint', 'info', 'success', [
+    'correlationId',
+    'durationMs',
+    'recoveryPointKind',
+    'stage',
+  ]),
+  'recoveryPoint.failed': spec('recoveryPoint', 'warn', 'failure', [
+    'correlationId',
+    'recoveryPointKind',
+    ...failureFields,
+  ]),
+  'restore.inspectionCompleted': spec('restore', 'info', 'success', [
+    'correlationId',
+    'durationMs',
+    'stage',
+  ]),
+  'restore.inspectionFailed': spec('restore', 'warn', 'failure', [
+    'correlationId',
+    ...failureFields,
+  ]),
+  'restore.stagingCompleted': spec('restore', 'info', 'success', [
+    'correlationId',
+    'durationMs',
+    'stage',
+  ]),
+  'restore.stagingFailed': spec('restore', 'error', 'failure', [
+    'correlationId',
+    ...failureFields,
+  ]),
+  'restore.activationStarted': spec('restore', 'info', 'success', [
+    'correlationId',
+    'stage',
+  ]),
+  'restore.validationCompleted': spec('restore', 'info', 'success', [
+    'correlationId',
+    'durationMs',
+    'stage',
+  ]),
+  'restore.validationFailed': spec('restore', 'error', 'failure', [
+    'correlationId',
+    ...failureFields,
+  ]),
+  'restore.rollbackStarted': spec('restore', 'warn', 'success', [
+    'correlationId',
+    'stage',
+  ]),
+  'restore.rollbackCompleted': spec('restore', 'warn', 'success', [
+    'correlationId',
+    'durationMs',
+    'stage',
+  ]),
+  'restore.rollbackFailed': spec('restore', 'error', 'failure', [
+    'correlationId',
+    ...failureFields,
+  ]),
 } satisfies Record<DesktopOperationalEventName, DesktopOperationalEventSpec>);
 
 export const desktopRequiredPayloadFields = Object.freeze({
@@ -423,6 +554,27 @@ export const desktopRequiredPayloadFields = Object.freeze({
   'backup.failed': ['correlationId', 'errorCode'],
   'backup.inspectionCompleted': ['correlationId', 'stage'],
   'backup.inspectionFailed': ['correlationId', 'errorCode'],
+  'recoveryPoint.started': [
+    'correlationId',
+    'recoveryPointKind',
+    'stage',
+  ],
+  'recoveryPoint.completed': [
+    'correlationId',
+    'recoveryPointKind',
+    'stage',
+  ],
+  'recoveryPoint.failed': ['correlationId', 'errorCode', 'stage'],
+  'restore.inspectionCompleted': ['correlationId', 'stage'],
+  'restore.inspectionFailed': ['correlationId', 'errorCode', 'stage'],
+  'restore.stagingCompleted': ['correlationId', 'stage'],
+  'restore.stagingFailed': ['correlationId', 'errorCode', 'stage'],
+  'restore.activationStarted': ['correlationId', 'stage'],
+  'restore.validationCompleted': ['correlationId', 'stage'],
+  'restore.validationFailed': ['correlationId', 'errorCode', 'stage'],
+  'restore.rollbackStarted': ['correlationId', 'stage'],
+  'restore.rollbackCompleted': ['correlationId', 'stage'],
+  'restore.rollbackFailed': ['correlationId', 'errorCode', 'stage'],
 } satisfies Record<DesktopOperationalEventName, readonly string[]>);
 
 function spec(

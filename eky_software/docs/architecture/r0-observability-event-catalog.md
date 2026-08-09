@@ -138,6 +138,19 @@ liiketoimintasisältöä.
 - `backup.failed`
 - `backup.inspectionCompleted`
 - `backup.inspectionFailed`
+- `recoveryPoint.started`
+- `recoveryPoint.completed`
+- `recoveryPoint.failed`
+- `restore.inspectionCompleted`
+- `restore.inspectionFailed`
+- `restore.stagingCompleted`
+- `restore.stagingFailed`
+- `restore.activationStarted`
+- `restore.validationCompleted`
+- `restore.validationFailed`
+- `restore.rollbackStarted`
+- `restore.rollbackCompleted`
+- `restore.rollbackFailed`
 
 `electron.permissionDenied` säilyy vain olemassa olevien lokien
 yhteensopivuuden vuoksi. Tavallinen Chromiumin permission check estetään
@@ -152,6 +165,33 @@ Portable-varmuuskopion tapahtumat sisältävät vain operaation
 korrelaatiotunnisteen, rajatun vaiheen, keston ja turvallisen virhekoodin.
 Niihin ei kirjoiteta kohde- tai lähdepolkua, yritystunnistetta, manifestia,
 salasanaa eikä salt-, nonce- tai authentication tag -arvoja.
+
+Recovery point -tapahtumien sallitut vaiheet ovat `automaticCheck` ja
+`creation`. Luodun pisteen allowlistattu kind on `daily`, `weekly`, `monthly`,
+`manual`, `preRestore` tai `preUpdate`. Restore-tapahtumien sallitut vaiheet
+ovat `inspection`, `staging`, `activation`, `restoredProfile`,
+`rolledBackProfile`, `activationRollback` ja `startupRollback`.
+
+Restoren stagingissa luotu journalin `operationId` on satunnainen tekninen
+UUID. Samaa arvoa saa käyttää prosessien yli vain operational-eventin
+`correlationId`-kenttänä, jotta aktivointi, seuraavan prosessin validointi ja
+mahdollinen rollback voidaan yhdistää. Sitä ei julkaista eventissä
+`operationId`:nä, se ei ole backupin operation ID, eikä sitä viedä
+incident-indeksiin. Raakaa aktivointijournalia ei lueta Diagnosticsiin tai
+tukipakettiin.
+
+Näiden eventien sallittu metadata rajoittuu korrelaatiotunnisteeseen,
+allowlistattuun vaiheeseen ja recovery point -kindiin, kestoon, turvalliseen
+virhekoodiin, retryable- ja side-effect-tilaan sekä yhteiseen validoituun
+app/build/runtime-identiteettiin. Salasana, avain, salt, nonce, tag, manifesti,
+entry- tai paikallinen polku, `profileId`, `companyId`, `invoiceId`,
+`documentId`, `artifactId`, checksum-lista, journalin raakasisältö, raw Error
+ja stack ovat kiellettyjä.
+
+Recovery point- ja restore-eventit ovat teknistä Diagnostics-dataa. Niistä
+ei muodosteta Activity-tapahtumaa eikä palautettavaan SQLite-kantaan
+kirjoiteta business auditia. Operational-writerin virhe ei saa muuttaa
+backupin, restoren, validoinnin tai rollbackin lopputulosta.
 
 `desktop.bootstrapFailed` sisältää vain allowlistatun virhekoodin. Raw
 virheviestiä, stack tracea, asar- tai käyttäjäpolkua ei kirjoiteta eventtiin
