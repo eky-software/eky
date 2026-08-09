@@ -280,6 +280,48 @@ describe('profile snapshot broker boundary', () => {
     backend.close();
   });
 
+  it('maps allowlisted errors from dynamically loaded backend realms', async () => {
+    const transports = createTransportPair();
+    const maintenance = new FakeProfileMaintenance();
+    const backend = startProfileSnapshotBrokerBackend({
+      maintenance,
+      snapshot: {
+        async createProfileSnapshot() {
+          throw Object.freeze({
+            message: 'PROFILE_SNAPSHOT_DATABASE_FAILED',
+            name: 'Error',
+          });
+        },
+        async prepareProfileRestoreActivation() {
+          return {
+            artifactCount: 0,
+            artifactTotalByteSize: 0,
+          };
+        },
+        async validateActiveProfile() {
+          return createFakeActiveValidation();
+        },
+        async validateProfileSnapshot() {
+          return createFakeValidation();
+        },
+      },
+      transport: transports.backend,
+    });
+    const client = new ProfileSnapshotBrokerClient(transports.main, 1_000);
+    const operationId = randomUUID();
+
+    await client.beginMaintenance(operationId);
+    await expect(
+      client.createProfileSnapshot(operationId),
+    ).rejects.toMatchObject({
+      code: 'PROFILE_SNAPSHOT_DATABASE_FAILED',
+    });
+    await client.endMaintenance(operationId);
+
+    client.close();
+    backend.close();
+  });
+
   it('maps artifact failures without exposing storage details', async () => {
     const transports = createTransportPair();
     const maintenance = new FakeProfileMaintenance();
