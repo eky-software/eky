@@ -58,4 +58,42 @@ describe('JsonLineDesktopOperationalLogger', () => {
       ),
     ).toContain('"applicationWindow.navigationBlocked"');
   });
+
+  it('writes only allowlisted recovery metadata to JSONL', () => {
+    const root = mkdtempSync(join(tmpdir(), 'eky-recovery-log-'));
+    temporaryDirectories.push(root);
+    const logsRoot = join(root, 'logs');
+    const logger = new JsonLineDesktopOperationalLogger({ logsRoot });
+
+    logger.write(
+      createDesktopOperationalEvent(
+        {
+          correlationId: '22222222-2222-4222-8222-222222222222',
+          errorCode: 'PROFILE_RESTORE_VALIDATION_FAILED',
+          eventName: 'restore.validationFailed',
+          retryable: false,
+          sideEffectState: 'unknown',
+          stage: 'restoredProfile',
+        },
+        eventOptions,
+      ),
+    );
+
+    const line = readFileSync(
+      join(
+        logsRoot,
+        'desktop',
+        'desktop-warning-error-2026-07-001.jsonl',
+      ),
+      'utf8',
+    );
+    expect(JSON.parse(line)).toMatchObject({
+      correlationId: '22222222-2222-4222-8222-222222222222',
+      eventName: 'restore.validationFailed',
+      stage: 'restoredProfile',
+    });
+    expect(line).not.toMatch(
+      /(?:operationId|profileId|companyId|artifactId|manifest|password|path)/i,
+    );
+  });
 });

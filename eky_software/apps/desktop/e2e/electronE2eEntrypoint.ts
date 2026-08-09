@@ -97,11 +97,16 @@ if (hasSingleInstanceLock) {
               : backendController.startBackend,
         },
         quitApplication: () => app.quit(),
+        relaunchApplication() {
+          app.relaunch();
+          app.quit();
+        },
         resourcesPath: config.paths.resourcesPath,
         runtimeInstanceId: config.runtimeInstanceId,
         reportSmokeStage: async () => undefined,
         smokeConfiguration: {
           enabled: false,
+          phase: 'initial',
           root: undefined,
           userDataPath: undefined,
         },

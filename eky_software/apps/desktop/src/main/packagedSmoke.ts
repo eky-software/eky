@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
+import { realpathSync } from 'node:fs';
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import type { BrowserWindow } from 'electron';
 
@@ -42,9 +43,12 @@ export const packagedSmokeStages = Object.freeze([
   'profileBackupVerified',
   'profileMutationCreated',
   'profileRestore',
+  'profileRestoreStaged',
   'restoreRestart',
   'restoredStartup',
+  'restoreActivationJournalLoaded',
   'restoredBackend',
+  'restoredSessionValidated',
   'profileComparison',
   'secondBackup',
   'shutdown',
@@ -71,6 +75,14 @@ export type PackagedSmokeResult =
 export interface PackagedSmokeProgressReporter {
   currentStage(): PackagedSmokeStage;
   reportStage(stage: PackagedSmokeStage): Promise<void>;
+}
+
+export function resolvePackagedSmokeTempPath(tempPath: string): string {
+  try {
+    return realpathSync.native(resolve(tempPath));
+  } catch {
+    throw new Error('DESKTOP_SMOKE_PATH_INVALID');
+  }
 }
 
 interface RunPackagedSmokeCheckOptions {
@@ -103,7 +115,11 @@ export function createPackagedSmokeConfiguration(options: {
   const root =
     token === undefined
       ? undefined
-      : join(options.tempPath, 'eky-desktop-smoke', token);
+      : join(
+          resolvePackagedSmokeTempPath(options.tempPath),
+          'eky-desktop-smoke',
+          token,
+        );
   const enabled = token !== undefined && options.hasSmokeSwitch;
 
   return {
@@ -241,6 +257,20 @@ export function createPackagedSmokeTimeoutMessage(value: unknown): string {
   const stage = readPackagedSmokeResult(value)?.stage ?? 'startup';
 
   return `Packaged desktop smoke check timed out (stage ${stage}).`;
+}
+
+export function createPackagedSmokeFailureMessage(
+  value: unknown,
+  processExitCode: number | null,
+): string {
+  const result = readPackagedSmokeResult(value);
+  const code =
+    result?.status === 'failed'
+      ? result.code
+      : 'DESKTOP_SMOKE_FAILED';
+  const stage = result?.stage ?? 'startup';
+
+  return `Packaged desktop smoke check failed (${code}, stage ${stage}, process code ${String(processExitCode)}).`;
 }
 
 function isPackagedSmokeStage(

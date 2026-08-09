@@ -73,6 +73,40 @@ describe('readSupportBundleBackendData', () => {
       }),
     ).toThrow('SUPPORT_BUNDLE_BACKEND_DATA_INVALID');
   });
+
+  it('accepts only the allowlisted recovery point projection', () => {
+    const validData = createValidData();
+    const recoveryEvent = {
+      category: 'recoveryPoint',
+      component: 'desktop' as const,
+      correlationId: '33333333-3333-4333-8333-333333333333',
+      errorCode: 'RECOVERY_POINT_SOURCE_UNHEALTHY',
+      eventName: 'recoveryPoint.failed',
+      id: 'desktop:recovery-event-1',
+      level: 'warn' as const,
+      occurredAt: '2026-07-27T13:00:00.000Z',
+      outcome: 'failure' as const,
+      recoveryPointKind: 'daily' as const,
+      retryable: true,
+      sideEffectState: 'unknown' as const,
+      stage: 'creation',
+    };
+
+    expect(
+      readSupportBundleBackendData({
+        ...validData,
+        diagnosticEvents: [recoveryEvent],
+      }).diagnosticEvents,
+    ).toEqual([recoveryEvent]);
+    expect(() =>
+      readSupportBundleBackendData({
+        ...validData,
+        diagnosticEvents: [
+          { ...recoveryEvent, manifest: { entries: ['private'] } },
+        ],
+      }),
+    ).toThrow('SUPPORT_BUNDLE_BACKEND_DATA_INVALID');
+  });
 });
 
 function createValidData() {

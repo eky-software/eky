@@ -108,6 +108,7 @@ import { ProfileRestoreActivationService } from '../profileBackup/restore/profil
 import { ProfileRestoreActivationTransaction } from '../profileBackup/restore/profileRestoreActivationTransaction.js';
 import { ProfileRestoreStagingService } from '../profileBackup/restore/profileRestoreStagingService.js';
 import { ProfileRestoreStartupRecovery } from '../profileBackup/restore/profileRestoreStartupRecovery.js';
+import { createProfileRecoveryOperationalObserver } from '../profileBackup/profileRecoveryOperationalObserver.js';
 import {
   runPackagedProfileBackupAfterRestore,
   runPackagedProfileBackupBeforeRestore,
@@ -289,6 +290,11 @@ async function startDesktopCompositionRuntime({
   const databaseFilePath = join(dataRoot, 'data', 'eky.sqlite');
   const invoiceDocumentStorageRoot = join(dataRoot, 'storage', 'invoices');
   const profileSnapshotPaths = createProfileSnapshotRuntimePaths(dataRoot);
+  const profileRecoveryOperationalObserver =
+    createProfileRecoveryOperationalObserver({
+      operationalIdentity: desktopOperationalIdentity,
+      operationalLogger: desktopOperationalLogger,
+    });
   const profileRestoreActivationJournalStore =
     new ProfileRestoreActivationJournalStore(
       profileSnapshotPaths.restoreActivationJournalPath,
@@ -307,6 +313,7 @@ async function startDesktopCompositionRuntime({
   const profileRestoreStartupRecovery =
     new ProfileRestoreStartupRecovery({
       journalStore: profileRestoreActivationJournalStore,
+      observer: profileRecoveryOperationalObserver,
       transaction: profileRestoreActivationTransaction,
     });
   const secretFilePath = join(
@@ -347,6 +354,7 @@ async function startDesktopCompositionRuntime({
   });
   const recoveryPointService = new RecoveryPointService({
     appVersion: desktopAppVersion,
+    observer: profileRecoveryOperationalObserver,
     profileSnapshotClient: profileSnapshotBrokerClient,
     rotation: recoveryPointRotation,
     stagingRoot: profileSnapshotPaths.stagingRoot,
@@ -356,6 +364,7 @@ async function startDesktopCompositionRuntime({
     cleanShutdownMarker: new RecoveryPointCleanShutdownMarker(
       profileSnapshotPaths.recoveryPointCleanShutdownMarkerPath,
     ),
+    observer: profileRecoveryOperationalObserver,
     recoveryPointService,
   });
   let applicationWindow: BrowserWindow | undefined;
@@ -397,6 +406,7 @@ async function startDesktopCompositionRuntime({
       activeDatabasePath: databaseFilePath,
       smokeRoot: requireSmokeRoot(options.smokeConfiguration.root),
     });
+    await options.reportSmokeStage('restoreActivationJournalLoaded');
   }
 
   const deliveryDialogAdapter: InvoiceDeliveryDialogAdapter = {
@@ -549,6 +559,7 @@ async function startDesktopCompositionRuntime({
       ),
       secretBrokerPort: secretBrokerChannel.port2,
     });
+    await profileSnapshotBrokerClient.waitUntilReady();
     await profileSnapshotBrokerClient.getStatus();
     const restoreStartupResult =
       await profileRestoreStartupRecovery.validateAfterBackend({
@@ -837,6 +848,7 @@ async function startDesktopCompositionRuntime({
     });
   const profileRestoreStagingService =
     new ProfileRestoreStagingService({
+      observer: profileRecoveryOperationalObserver,
       profileSnapshotClient: profileSnapshotBrokerClient,
       quarantineRoot: profileSnapshotPaths.quarantineRoot,
       recoveryPointService,
@@ -844,6 +856,7 @@ async function startDesktopCompositionRuntime({
     });
   const profileRestoreActivationService =
     new ProfileRestoreActivationService({
+      observer: profileRecoveryOperationalObserver,
       profileSnapshotClient: profileSnapshotBrokerClient,
       relaunchApplication: options.relaunchApplication,
       stagingService: profileRestoreStagingService,

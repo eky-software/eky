@@ -298,22 +298,31 @@ Ne sisältävät vain nimetyn vaiheen tai turvallisen virhekoodin ja
 korrelaatiotunnisteen. Portable backupin sisältöä, salaustietoja tai raakaa
 polkua ei kirjata.
 
-Restore-, recovery point- ja update-lifecyclejen tulevat käyttäjälle
-merkitykselliset operational eventit vaativat vielä erillisen event catalog
--päätöksen. Varatut tapahtumaperheet ovat:
+Recovery point- ja restore-lifecyclejen tarkat R0-eventit on lukittu
+`r0-observability-event-catalog.md`-dokumentissa. Recovery point -palvelu
+raportoi luomisen alun ja tuloksen. Scheduler säilyy best effort -mallina,
+mutta automaattisen tarkistuksen epäonnistuminen ei jää näkymättömäksi.
+Restore staging, aktivointi, seuraavan prosessin validointi ja rollback
+raportoivat vain katalogin allowlistatut tekniset vaiheet.
 
-- `restore.*`
-- `recoveryPoint.*`
-- `update.*`
+Cross-restart-korrelaatio käyttää aktivointijournalin jo omistamaa
+satunnaista teknistä UUID:ta vain eventin `correlationId`-kenttänä. Journalin
+formaattia tai raakasisältöä ei projisoida. Korrelaatiotunniste ei siirry
+incident-indeksiin, mutta se saa säilyä lyhyen retentionin Diagnostics-
+projektiossa ja sanitoidussa tukipaketissa nykyisen kenttäsopimuksen mukaan.
 
-Niiden tarkkoja event-nimiä, outcome-arvoja tai retentionia ei lukita ennen kuin
-application/use case-, transaction ownership- ja failure behavior -rajat on
-mallinnettu. Tapahtumat noudattavat nykyistä yhteistä event envelopea eivätkä
-luo omaa loggeria tai vapaamuotoista metadataa.
+Update-lifecycle säilyy vielä varattuna `update.*`-perheenä ja vaatii oman
+event catalog -päätöksensä ennen instrumentointia.
 
 Tapahtumiin ei saa tallentaa backup- tai update-payloadia, salasanaa,
 avainmateriaalia, salt/nonce/tag-arvoja, manifestia, raakaa paikallista
 polkua, installer commandia, yrityksen nimeä tai business dataa.
+
+Restore- ja recovery point -eventit kuuluvat Diagnosticsiin, eivät
+Activityyn. Niiden vuoksi ei kirjoiteta business auditia aktiiviseen eikä
+palautettavaan SQLite-kantaan. Operational-writerin virhe on best effort
+-rajan sisäinen eikä saa muuttaa backup-, restore-, validation- tai
+rollback-operaation tulosta.
 
 ## Testaus ja failure behavior
 

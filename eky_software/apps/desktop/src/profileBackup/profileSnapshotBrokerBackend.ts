@@ -1,4 +1,5 @@
 import {
+  createProfileSnapshotBrokerReady,
   parseProfileSnapshotBrokerRequest,
   profileSnapshotBrokerProtocolVersion,
   readProfileSnapshotBrokerRequestId,
@@ -200,6 +201,7 @@ export function startProfileSnapshotBrokerBackend(input: {
       clearActiveOperation();
     }
   });
+  input.transport.send(createProfileSnapshotBrokerReady());
 
   return {
     close() {
@@ -222,37 +224,62 @@ export function startProfileSnapshotBrokerBackend(input: {
 }
 
 function mapError(error: unknown): ProfileSnapshotBrokerErrorCode {
-  if (error instanceof Error) {
-    if (error.name === 'ProfileMaintenanceBusyError') {
-      return 'PROFILE_MAINTENANCE_BUSY';
-    }
-    if (error.name === 'ProfileMaintenanceTimeoutError') {
-      return 'PROFILE_MAINTENANCE_TIMEOUT';
-    }
-    if (error.name === 'ProfileMaintenanceOperationMismatchError') {
-      return 'PROFILE_MAINTENANCE_OPERATION_MISMATCH';
-    }
-    if (error.message === 'PROFILE_SNAPSHOT_DATABASE_FAILED') {
-      return 'PROFILE_SNAPSHOT_DATABASE_FAILED';
-    }
-    if (error.message === 'PROFILE_SNAPSHOT_ARTIFACTS_FAILED') {
-      return 'PROFILE_SNAPSHOT_ARTIFACTS_FAILED';
-    }
-    if (
-      error.message ===
-      'PROFILE_RESTORE_ACTIVATION_PREPARATION_FAILED'
-    ) {
-      return 'PROFILE_RESTORE_ACTIVATION_PREPARATION_FAILED';
-    }
-    if (error.message === 'PROFILE_SNAPSHOT_VALIDATION_FAILED') {
-      return 'PROFILE_SNAPSHOT_VALIDATION_FAILED';
-    }
-    if (error.message === 'ACTIVE_PROFILE_VALIDATION_FAILED') {
-      return 'PROFILE_SNAPSHOT_VALIDATION_FAILED';
-    }
+  const name = readErrorProperty(error, 'name');
+  const message = readErrorProperty(error, 'message');
+
+  if (name === 'ProfileMaintenanceBusyError') {
+    return 'PROFILE_MAINTENANCE_BUSY';
+  }
+  if (name === 'ProfileMaintenanceTimeoutError') {
+    return 'PROFILE_MAINTENANCE_TIMEOUT';
+  }
+  if (
+    name === 'ProfileMaintenanceOperationMismatchError' ||
+    message === 'PROFILE_MAINTENANCE_OPERATION_MISMATCH'
+  ) {
+    return 'PROFILE_MAINTENANCE_OPERATION_MISMATCH';
+  }
+  if (message === 'PROFILE_SNAPSHOT_DATABASE_FAILED') {
+    return 'PROFILE_SNAPSHOT_DATABASE_FAILED';
+  }
+  if (message === 'PROFILE_SNAPSHOT_ARTIFACTS_FAILED') {
+    return 'PROFILE_SNAPSHOT_ARTIFACTS_FAILED';
+  }
+  if (message === 'PROFILE_RESTORE_ACTIVATION_PREPARATION_FAILED') {
+    return 'PROFILE_RESTORE_ACTIVATION_PREPARATION_FAILED';
+  }
+  if (
+    message === 'PROFILE_SNAPSHOT_VALIDATION_FAILED' ||
+    message === 'ACTIVE_PROFILE_VALIDATION_FAILED'
+  ) {
+    return 'PROFILE_SNAPSHOT_VALIDATION_FAILED';
+  }
+  if (
+    message === 'PROFILE_SNAPSHOT_PATH_INVALID' ||
+    message === 'PROFILE_SNAPSHOT_STAGING_INVALID' ||
+    message === 'PROFILE_SNAPSHOT_DESTINATION_EXISTS'
+  ) {
+    return 'PROFILE_SNAPSHOT_STAGING_FAILED';
   }
 
-  return 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE';
+  return 'PROFILE_SNAPSHOT_BROKER_OPERATION_FAILED';
+}
+
+function readErrorProperty(
+  error: unknown,
+  property: 'message' | 'name',
+): string | undefined {
+  if (
+    typeof error !== 'object' ||
+    error === null ||
+    !(property in error)
+  ) {
+    return undefined;
+  }
+
+  const value = (error as Record<string, unknown>)[property];
+
+  return typeof value === 'string' ? value : undefined;
 }
 
 function createErrorResponse(

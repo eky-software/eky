@@ -78,6 +78,7 @@ export function createElectronE2eBackendController(
             [
               options.secretBrokerPort,
               options.invoicePdfArchiveBrokerPort,
+              options.profileSnapshotBrokerPort,
             ],
           );
         });

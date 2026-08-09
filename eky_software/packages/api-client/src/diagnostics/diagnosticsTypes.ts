@@ -51,6 +51,19 @@ export const diagnosticEventNames = Object.freeze([
   'packagedSmoke.started',
   'pdfPreview.openFailed',
   'permission.denied',
+  'recoveryPoint.completed',
+  'recoveryPoint.failed',
+  'recoveryPoint.started',
+  'restore.activationStarted',
+  'restore.inspectionCompleted',
+  'restore.inspectionFailed',
+  'restore.rollbackCompleted',
+  'restore.rollbackFailed',
+  'restore.rollbackStarted',
+  'restore.stagingCompleted',
+  'restore.stagingFailed',
+  'restore.validationCompleted',
+  'restore.validationFailed',
   'runtimeSession.invalid',
   'runtimeSession.missing',
   'secretStorage.decryptFailed',
@@ -81,6 +94,13 @@ export type DiagnosticEventSideEffectState =
   | 'none'
   | 'rolledBack'
   | 'unknown';
+export type DiagnosticRecoveryPointKind =
+  | 'daily'
+  | 'manual'
+  | 'monthly'
+  | 'preRestore'
+  | 'preUpdate'
+  | 'weekly';
 
 export interface DiagnosticEventItem {
   appVersion?: string;
@@ -99,6 +119,7 @@ export interface DiagnosticEventItem {
   operationId?: string;
   outcome: DiagnosticEventOutcome;
   peerCertificateFingerprint256?: string;
+  recoveryPointKind?: DiagnosticRecoveryPointKind;
   retryable?: boolean;
   runtimeInstanceId?: string;
   sideEffectState?: DiagnosticEventSideEffectState;

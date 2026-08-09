@@ -2,6 +2,7 @@ import {
   desktopPermissionTypes,
   desktopOperationalEventSpecs,
   desktopRequiredPayloadFields,
+  recoveryPointKinds,
   type DesktopPermissionType,
   type DesktopOperationalEvent,
   type DesktopOperationalEventName,
@@ -38,6 +39,39 @@ const uuidPattern =
 const maximumEventBytes = 16 * 1024;
 const buildRevisionPattern = /^(?:[0-9a-f]{7,40}|development)$/;
 const permissionTypes = new Set(desktopPermissionTypes);
+const recoveryPointKindSet = new Set<string>(recoveryPointKinds);
+const recoveryEventStages = Object.freeze({
+  'recoveryPoint.started': ['creation'],
+  'recoveryPoint.completed': ['creation'],
+  'recoveryPoint.failed': ['automaticCheck', 'creation'],
+  'restore.inspectionCompleted': ['inspection'],
+  'restore.inspectionFailed': ['inspection'],
+  'restore.stagingCompleted': ['staging'],
+  'restore.stagingFailed': ['staging'],
+  'restore.activationStarted': ['activation'],
+  'restore.validationCompleted': [
+    'restoredProfile',
+    'rolledBackProfile',
+  ],
+  'restore.validationFailed': [
+    'restoredProfile',
+    'rolledBackProfile',
+  ],
+  'restore.rollbackStarted': [
+    'activationRollback',
+    'startupRollback',
+  ],
+  'restore.rollbackCompleted': [
+    'activationRollback',
+    'startupRollback',
+  ],
+  'restore.rollbackFailed': [
+    'activationRollback',
+    'startupRollback',
+  ],
+} as const satisfies Partial<
+  Record<DesktopOperationalEventName, readonly string[]>
+>);
 
 export class DesktopOperationalEventValidationError extends Error {
   constructor(message: string) {
@@ -106,7 +140,7 @@ export function validateDesktopOperationalEvent(
   }
 
   for (const field of spec.payloadFields) {
-    validatePayloadValue(field, normalized[field]);
+    validatePayloadValue(eventName, field, normalized[field]);
   }
   for (const field of desktopRequiredPayloadFields[eventName]) {
     if (normalized[field] === undefined) {
@@ -125,7 +159,11 @@ export function validateDesktopOperationalEvent(
   return Object.freeze(normalized) as DesktopOperationalEvent;
 }
 
-function validatePayloadValue(field: string, value: unknown): void {
+function validatePayloadValue(
+  eventName: DesktopOperationalEventName,
+  field: string,
+  value: unknown,
+): void {
   if (value === undefined) {
     return;
   }
@@ -161,6 +199,30 @@ function validatePayloadValue(field: string, value: unknown): void {
     if (typeof value !== 'string' || !uuidPattern.test(value)) {
       throw new DesktopOperationalEventValidationError(
         'Desktop operational event correlation id is invalid.',
+      );
+    }
+    return;
+  }
+
+  if (field === 'recoveryPointKind') {
+    if (
+      typeof value !== 'string' ||
+      !recoveryPointKindSet.has(value)
+    ) {
+      throw new DesktopOperationalEventValidationError(
+        'Desktop operational event recovery point kind is invalid.',
+      );
+    }
+    return;
+  }
+
+  if (field === 'stage' && eventName in recoveryEventStages) {
+    const allowedStages = recoveryEventStages[
+      eventName as keyof typeof recoveryEventStages
+    ] as readonly string[];
+    if (typeof value !== 'string' || !allowedStages.includes(value)) {
+      throw new DesktopOperationalEventValidationError(
+        'Desktop operational event recovery stage is invalid.',
       );
     }
     return;
@@ -219,6 +281,7 @@ function validatePayloadValue(field: string, value: unknown): void {
     field !== 'permissionType' &&
     field !== 'originClass' &&
     field !== 'frameClass' &&
+    field !== 'recoveryPointKind' &&
     (typeof value !== 'string' ||
       value.length === 0 ||
       value.length > 300 ||

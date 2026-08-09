@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -6,10 +6,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   createPackagedSmokeConfiguration,
+  createPackagedSmokeFailureMessage,
   createPackagedSmokeProgressReporter,
   createPackagedSmokeTimeoutMessage,
   packagedSmokeStages,
   readPackagedSmokeResult,
+  resolvePackagedSmokeTempPath,
 } from './packagedSmoke.js';
 
 describe('packaged smoke progress', () => {
@@ -47,6 +49,61 @@ describe('packaged smoke progress', () => {
     }
   });
 
+  it('canonicalizes the smoke temp root before deriving runtime paths', async () => {
+    const temporaryDirectory = await mkdtemp(
+      join(tmpdir(), 'eky-packaged-smoke-path-test-'),
+    );
+    temporaryDirectories.push(temporaryDirectory);
+    const nestedDirectory = join(temporaryDirectory, 'nested');
+    await mkdir(nestedDirectory);
+    const nonCanonicalTempPath = join(nestedDirectory, '..');
+    const canonicalTempPath = resolvePackagedSmokeTempPath(temporaryDirectory);
+
+    const configuration = createPackagedSmokeConfiguration({
+      hasSmokeSwitch: true,
+      tempPath: nonCanonicalTempPath,
+      tokenValue: 'b'.repeat(32),
+    });
+
+    expect(configuration.root).toBe(
+      join(canonicalTempPath, 'eky-desktop-smoke', 'b'.repeat(32)),
+    );
+    expect(configuration.userDataPath).toBe(
+      join(
+        canonicalTempPath,
+        'eky-desktop-smoke',
+        'b'.repeat(32),
+        'user-data',
+      ),
+    );
+  });
+
+  it('rejects an unavailable smoke temp root without exposing its path', () => {
+    const unavailablePath = join(
+      tmpdir(),
+      `eky-packaged-smoke-missing-${'c'.repeat(32)}`,
+    );
+
+    expect(() => resolvePackagedSmokeTempPath(unavailablePath)).toThrow(
+      'DESKTOP_SMOKE_PATH_INVALID',
+    );
+  });
+
+  it('does not resolve the temp root when packaged smoke is disabled', () => {
+    expect(
+      createPackagedSmokeConfiguration({
+        hasSmokeSwitch: false,
+        tempPath: 'C:\\private\\path-that-does-not-exist',
+        tokenValue: undefined,
+      }),
+    ).toEqual({
+      enabled: false,
+      phase: 'initial',
+      root: undefined,
+      userDataPath: undefined,
+    });
+  });
+
   it('rejects unknown, skipped and repeated stages', async () => {
     const reporter = createPackagedSmokeProgressReporter({
       enabled: false,
@@ -77,7 +134,9 @@ describe('packaged smoke progress', () => {
     });
 
     await reporter.reportStage('restoredStartup');
+    await reporter.reportStage('restoreActivationJournalLoaded');
     await reporter.reportStage('restoredBackend');
+    await reporter.reportStage('restoredSessionValidated');
     await reporter.reportStage('profileComparison');
     await reporter.reportStage('secondBackup');
     await reporter.reportStage('shutdown');
@@ -101,6 +160,34 @@ describe('packaged smoke progress', () => {
         status: 'started',
       }),
     ).toBe('Packaged desktop smoke check timed out (stage startup).');
+  });
+
+  it('reports only the safe smoke code and stage in failure messages', () => {
+    expect(
+      createPackagedSmokeFailureMessage(
+        {
+          code: 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
+          stage: 'profileSnapshotMaintenance',
+          status: 'failed',
+        },
+        1,
+      ),
+    ).toBe(
+      'Packaged desktop smoke check failed (PROFILE_SNAPSHOT_BROKER_UNAVAILABLE, stage profileSnapshotMaintenance, process code 1).',
+    );
+
+    expect(
+      createPackagedSmokeFailureMessage(
+        {
+          code: 'C:\\Users\\Example\\secret',
+          stage: 'C:\\Users\\Example\\secret',
+          status: 'failed',
+        },
+        null,
+      ),
+    ).toBe(
+      'Packaged desktop smoke check failed (DESKTOP_SMOKE_FAILED, stage startup, process code null).',
+    );
   });
 
   it('accepts only allowlisted result shapes', () => {

@@ -1,3 +1,10 @@
+import { randomUUID } from 'node:crypto';
+
+import {
+  noOpProfileRecoveryOperationalObserver,
+  observeProfileRecoverySafely,
+  type ProfileRecoveryOperationalObserver,
+} from '../profileRecoveryOperationalObserver.js';
 import type { RecoveryPointCleanShutdownMarker } from './recoveryPointCleanShutdownMarker.js';
 import type { RecoveryPointService } from './recoveryPointService.js';
 
@@ -15,7 +22,9 @@ export class RecoveryPointScheduler {
         RecoveryPointCleanShutdownMarker,
         'consume' | 'markClean'
       >;
+      correlationIdFactory?(): string;
       now?(): Date;
+      observer?: ProfileRecoveryOperationalObserver;
       recoveryPointService: Pick<
         RecoveryPointService,
         'checkAutomatic'
@@ -57,10 +66,27 @@ export class RecoveryPointScheduler {
     if (this.currentCheck !== undefined) {
       return this.currentCheck;
     }
+    const correlationId =
+      this.dependencies.correlationIdFactory?.() ?? randomUUID();
+    const startedAt = Date.now();
     const check = this.dependencies.recoveryPointService
-      .checkAutomatic()
+      .checkAutomatic(correlationId)
       .then(() => undefined)
-      .catch(() => undefined)
+      .catch((error: unknown) => {
+        observeProfileRecoverySafely(
+          this.dependencies.observer ??
+            noOpProfileRecoveryOperationalObserver,
+          {
+            correlationId,
+            durationMs: Date.now() - startedAt,
+            errorCode: readSafeErrorCode(error),
+            eventName: 'recoveryPoint.failed',
+            retryable: true,
+            sideEffectState: 'unknown',
+            stage: 'automaticCheck',
+          },
+        );
+      })
       .finally(() => {
         if (this.currentCheck === check) {
           this.currentCheck = undefined;
@@ -79,6 +105,24 @@ export class RecoveryPointScheduler {
     }
     return value;
   }
+}
+
+function readSafeErrorCode(error: unknown): string {
+  if (
+    error instanceof Error &&
+    'code' in error &&
+    typeof error.code === 'string' &&
+    /^[A-Z][A-Z0-9_]{2,100}$/.test(error.code)
+  ) {
+    return error.code;
+  }
+  if (
+    error instanceof Error &&
+    /^[A-Z][A-Z0-9_]{2,100}$/.test(error.message)
+  ) {
+    return error.message;
+  }
+  return 'RECOVERY_POINT_AUTOMATIC_CHECK_FAILED';
 }
 
 export const recoveryPointCheckIntervalMilliseconds =

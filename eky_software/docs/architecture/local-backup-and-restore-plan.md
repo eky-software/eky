@@ -85,13 +85,65 @@ Tämä checkpoint ei toteuta Windows-installeria, code signingia,
 automaattipäivitystä, pilvivarmuuskopiota, osapalautusta tai usean profiilin
 yhdistämistä. Ne säilyvät erillisten hyväksyntä- ja release-porttien takana.
 
-Ennen kuin oikean datan R0-portti voidaan merkitä suljetuksi samalla
-release-kandidaatilla, ajetaan vielä koko workspace-verifiointi,
-riippuvuusauditit, kaikki E2E-ryhmät, Windows-paketointi, liitteen mukaiset
-kolme packaged-smoke-skenaariota, backup/restore-endurance,
-`test:e2e:desktop-stress` ja 30 minuutin desktop-soak. Aiemmat yleiset
-endurance- ja soak-baselinet eivät yksin korvaa tätä
-backup/restore-kohtaista hyväksyntää.
+## Checkpoint K: backup/recovery-releasekandidaatti todennettu paikallisesti
+
+Backup/restore-release gate -korjauskierros valmistui paikallisesti 9.8.2026
+baseline-commitista `166177e2228731f3a9b3287668bb5cc9f5045495` alkaneella
+`fix/backup-release-gate`-haaralla.
+
+Windows packaged smoke -virheen juurisyy oli profile snapshot -brokerin
+protokollaraja: desktop saattoi lähettää ensimmäisen pyynnön ennen kuin
+backend-pää oli asentanut MessagePort-listenerinsä. Protokollaversio 5 lisää
+eksplisiittisen `profileSnapshotBrokerReady`-handshaken. Client ei lähetä
+pyyntöjä ennen validoitua ready-viestiä, ja transportin sulkeutuminen hylkää
+sekä readiness-odottajan että kaikki pending-pyynnöt rajatulla turvallisella
+virhekoodilla. Korjaus ei käytä satunnaista sleepiä, yleistä retryä tai
+pidennettyä timeoutia.
+
+Korjauskierroksen rajatut commitit ovat:
+
+- `dc34969`: broker readiness ja protocol-regressiot
+- `70984bb`: packaged profile broker lifecycle -todiste
+- `d9823d0`: vain transitiivinen development-riippuvuus `nanoid`
+  `3.3.16 -> 3.3.17`
+- `cf36816`: recovery point- ja restore-operational-eventit
+- `aac8ee3`: Dependency security jokaiselle `main`-pull requestille
+- `d37b2f2` ja `8a67543`: Electron-E2E:n todellinen kolmen brokerin composition
+- `7de4e29`: hyväksytyn laskun PDF-metadatan E2E-synkronointi ilman sleepejä
+
+Samalla koodikandidaatilla paikallisesti vihreiksi todettiin:
+
+- `pnpm audit --prod`, `pnpm audit` ja `pnpm audit signatures`; tunnettuja
+  haavoittuvuuksia ei löytynyt ja 165 rekisteriallekirjoitusta varmistui
+- workspace-testit, typecheck sekä backend-, web- ja desktop-buildit
+- system E2E 44/44, web E2E 41/41, security E2E 25/25 ja fault E2E 16/16
+- system/web critical E2E 51/51 kahdesti
+- Electron development E2E 27/27 ja Electron critical E2E 21/21 kahdesti
+- Windows package Electron 43.2.0:lla, `better-sqlite3 13.0.2`:lla ja
+  SQLite 3.53.4:llä
+- packaged smoke toistettuna kymmenen kertaa eri testirooteilla: 9406, 9088,
+  9345, 9095, 9275, 9053, 9242, 9078, 9249 ja 9184 ms
+- desktop stress: 200 moduulisiirtymää, 50 laskun avausta, 100 PDF-avausta,
+  20 tukipakettia, 30 secret set/remove -sykliä ja 20 backend-restartia
+- 30 minuutin desktop-soak: 3010 sykliä, 301 restartia, 602 tukipakettia,
+  sama prosessi- ja ikkunamäärä lopussa sekä noin 1,6 MiB working set -kasvu
+
+Backup-polun regressiot kattavat salatun containerin ja kiinteän Node 24
+`scrypt`-vektorin, väärän salasanan, header/ciphertext/tag-mutaatiot,
+manifesti-, schema- ja profiilirajat, plaintext-jäämien puuttumisen,
+inspectionin, stagingin, recovery point -failuret, same/foreign/empty target
+-rajat, activation journalin keskeytykset, rollbackin, restart-validoinnin sekä
+packaged backup -> inspect -> restore -> restart -> compare -ketjun.
+
+Recovery- ja restore-eventit näkyvät vain Diagnosticsissa ja tukipaketin
+sanitoidussa projektiossa. Testit torjuvat polut, manifestit, salaisuudet,
+business-datan ja tunnisteet operational-lokeista ja incident-indeksistä.
+Lokitusvirhe ei muuta backupin tai restoren lopputulosta.
+
+Paikallinen release-todiste ei yksin avaa oikean datan käyttöönottoa.
+Pull requestin kaikkien GitHub-checkien pitää vielä olla vihreitä ja projektin
+omistajan pitää hyväksyä merge. Windows installer, code signing ja
+automaattipäivitys säilyvät ADR-0010:n erillisen distribution-portin takana.
 
 ## Tavoite ja rajaus
 
@@ -543,14 +595,18 @@ Renderer ei saa:
 
 ## Observability ja audit
 
-Tulevat tekniset tapahtumaperheet ovat:
+Tekniset tapahtumaperheet ovat:
 
 - `backup.*`
 - `restore.*`
 - `recoveryPoint.*`
 
-Tarkkoja event-nimiä ei lukita ennen use case- ja transaction ownership
--toteutusta. Tapahtumissa ei ole:
+Portable backupin sekä recovery point- ja restore-lifecyclejen tarkat nimet,
+vaiheet ja kentät on lukittu
+`docs/architecture/r0-observability-event-catalog.md`-dokumentissa.
+Aktivointijournalin satunnaista teknistä operation UUID:ta käytetään
+prosessien yli vain eventin `correlationId`-kenttänä. Journalin formaatti ei
+muutu eikä journalia projisoida sellaisenaan. Tapahtumissa ei ole:
 
 - backupin payloadia tai salattua sisältöä
 - salasanaa, salt-arvoa, nonce-arvoa, tagia tai johdettua avainta
@@ -559,9 +615,10 @@ Tarkkoja event-nimiä ei lukita ennen use case- ja transaction ownership
 - manifestia
 - SQLite- tai filesystem-virhettä
 
-Backupin ja restoren käyttäjän aloittama, business-datan saatavuuteen
-vaikuttava operaatio tarvitsee turvallisen audit- tai activity-päätöksen.
-Tekniset vaihe- ja failure-tiedot kuuluvat Diagnosticsiin.
+Backupin, restoren ja recovery pointin tekniset vaihe- ja failure-tiedot
+kuuluvat Diagnosticsiin. Niistä ei kirjoiteta Activity-tapahtumaa tai
+business auditia palautettavaan SQLite-kantaan. Operational-lokituksen virhe
+ei saa muuttaa varsinaisen operaation tulosta.
 
 ## Testausportti
 

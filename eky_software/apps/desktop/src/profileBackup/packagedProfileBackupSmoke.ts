@@ -80,6 +80,7 @@ interface PackagedProfileBackupSmokeState {
   expectedEntries: readonly SmokeEntry[];
   formatVersion: 1;
   originalRuntimeInstanceId: string;
+  originalRuntimeSessionSha256: string;
 }
 
 export async function runPackagedProfileBackupBeforeRestore(
@@ -137,10 +138,14 @@ export async function runPackagedProfileBackupBeforeRestore(
     ),
   );
   assertEntriesEqual(stagedEntries, expectedEntries);
+  await options.reportStage('profileRestoreStaged');
   await writeSmokeState(options.smokeRoot, {
     expectedEntries,
     formatVersion: smokeStateFormatVersion,
     originalRuntimeInstanceId: options.runtimeInstanceId,
+    originalRuntimeSessionSha256: createHash('sha256')
+      .update(options.runtimeSessionSecret, 'utf8')
+      .digest('hex'),
   });
 
   await options.reportStage('restoreRestart');
@@ -150,13 +155,18 @@ export async function runPackagedProfileBackupBeforeRestore(
 export async function runPackagedProfileBackupAfterRestore(
   options: PackagedProfileRestoreVerificationOptions,
 ): Promise<void> {
-  await options.reportStage('profileComparison');
   const state = await readSmokeState(options.smokeRoot);
 
   assertPackagedRestoreSessionChanged(
     state.originalRuntimeInstanceId,
     options.runtimeInstanceId,
+    state.originalRuntimeSessionSha256,
+    createHash('sha256')
+      .update(options.runtimeSessionSecret, 'utf8')
+      .digest('hex'),
   );
+  await options.reportStage('restoredSessionValidated');
+  await options.reportStage('profileComparison');
 
   const restoredEntries = await captureActiveProfileEntries({
     profileSnapshotClient: options.profileSnapshotClient,
@@ -270,8 +280,13 @@ export async function verifyPackagedRestoredDatabaseBeforeBackend(
 export function assertPackagedRestoreSessionChanged(
   originalRuntimeInstanceId: string,
   restoredRuntimeInstanceId: string,
+  originalRuntimeSessionSha256: string,
+  restoredRuntimeSessionSha256: string,
 ): void {
-  if (originalRuntimeInstanceId === restoredRuntimeInstanceId) {
+  if (
+    originalRuntimeInstanceId === restoredRuntimeInstanceId ||
+    originalRuntimeSessionSha256 === restoredRuntimeSessionSha256
+  ) {
     throw new Error('DESKTOP_SMOKE_RESTORE_SESSION_FAILED');
   }
 }
@@ -561,6 +576,8 @@ async function readSmokeState(
     !isRecord(value) ||
     value.formatVersion !== smokeStateFormatVersion ||
     typeof value.originalRuntimeInstanceId !== 'string' ||
+    typeof value.originalRuntimeSessionSha256 !== 'string' ||
+    !/^[a-f0-9]{64}$/u.test(value.originalRuntimeSessionSha256) ||
     !Array.isArray(value.expectedEntries)
   ) {
     throw new Error('DESKTOP_SMOKE_RESTORE_STATE_FAILED');
@@ -570,6 +587,7 @@ async function readSmokeState(
     expectedEntries,
     formatVersion: smokeStateFormatVersion,
     originalRuntimeInstanceId: value.originalRuntimeInstanceId,
+    originalRuntimeSessionSha256: value.originalRuntimeSessionSha256,
   };
 }
 

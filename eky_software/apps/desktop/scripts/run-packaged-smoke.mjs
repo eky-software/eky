@@ -6,8 +6,10 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  createPackagedSmokeFailureMessage,
   createPackagedSmokeTimeoutMessage,
   readPackagedSmokeResult,
+  resolvePackagedSmokeTempPath,
   writePackagedSmokeResult,
 } from '../dist/main/packagedSmoke.js';
 import { readDesktopElectronVersion } from './read-desktop-electron-version.mjs';
@@ -21,7 +23,7 @@ const smokeTimeoutMilliseconds = 120_000;
 const childEnvironment = { ...process.env };
 const smokeToken = randomBytes(16).toString('hex');
 const smokeRootDirectory = resolve(
-  tmpdir(),
+  resolvePackagedSmokeTempPath(tmpdir()),
   'eky-desktop-smoke',
   smokeToken,
 );
@@ -117,14 +119,8 @@ async function runSmokePhase(argumentsList, expectedStage) {
         (expectedStage === 'restoreRestart' &&
           smokeResult.status !== 'started')
       ) {
-        const safeCode =
-          typeof smokeResult?.code === 'string'
-            ? smokeResult.code
-            : 'DESKTOP_SMOKE_FAILED';
         rejectSmoke(
-          new Error(
-            `Packaged desktop smoke check failed (${safeCode}, code ${String(code)}).`,
-          ),
+          new Error(createPackagedSmokeFailureMessage(smokeResult, code)),
         );
         return;
       }

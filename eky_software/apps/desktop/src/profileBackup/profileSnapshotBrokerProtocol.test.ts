@@ -3,13 +3,39 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 
 import {
+  createProfileSnapshotBrokerReady,
   createProfileSnapshotBrokerRequest,
+  parseProfileSnapshotBrokerReady,
   parseProfileSnapshotBrokerRequest,
   parseProfileSnapshotBrokerResponse,
   profileSnapshotBrokerProtocolVersion,
 } from './profileSnapshotBrokerProtocol.js';
 
 describe('profile snapshot broker protocol', () => {
+  it('accepts only the exact versioned ready handshake', () => {
+    expect(
+      parseProfileSnapshotBrokerReady(
+        createProfileSnapshotBrokerReady(),
+      ),
+    ).toEqual({
+      protocolVersion: profileSnapshotBrokerProtocolVersion,
+      type: 'profileSnapshotBrokerReady',
+    });
+    expect(
+      parseProfileSnapshotBrokerReady({
+        protocolVersion: profileSnapshotBrokerProtocolVersion - 1,
+        type: 'profileSnapshotBrokerReady',
+      }),
+    ).toBeUndefined();
+    expect(
+      parseProfileSnapshotBrokerReady({
+        path: 'C:\\private',
+        protocolVersion: profileSnapshotBrokerProtocolVersion,
+        type: 'profileSnapshotBrokerReady',
+      }),
+    ).toBeUndefined();
+  });
+
   it('accepts only the named maintenance operations and exact fields', () => {
     const requestId = randomUUID();
     const operationId = randomUUID();

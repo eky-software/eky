@@ -75,12 +75,15 @@ toimitus säilyy arkistovirheessä, pending-task palautuu restartin jälkeen ja
 eri sisältöistä olemassa olevaa tiedostoa ei korvata tai yritetä
 automaattisesti uudelleen.
 
-Packaged smoke säilyy erillisenä hardened-artifactin porttina. Backup/restore-
-ja installer/update-arkkitehtuuri on hyväksytty, mutta niiden
-tuotantokoodia tai E2E-polkuja ei ole vielä toteutettu. Ne ovat oikean datan
-R0-release-checkpointteja. Pilvi-identiteetin tenant-matriisi on myöhempi
-erillinen checkpoint. Ensimmäinen 30 minuutin Electron-soak on dokumentoitu
-`e2e-desktop-endurance-baseline.md`-tiedostossa.
+Packaged smoke säilyy erillisenä hardened-artifactin porttina. Salattu
+backup/restore-, recovery point-, activation journal- ja rollback-polku on
+toteutettu ja todennettu kaksiprosessisella Windows packaged -testillä.
+Installer/update-arkkitehtuuri on hyväksytty, mutta sen tuotantokoodi ja
+E2E-polut ovat edelleen oma myöhempi distribution-checkpoint. Pilvi-
+identiteetin tenant-matriisi on myöhempi erillinen checkpoint. Ensimmäinen
+30 minuutin Electron-soak on dokumentoitu
+`e2e-desktop-endurance-baseline.md`-tiedostossa ja backup/restore-kohtainen
+release-todiste `local-backup-and-restore-plan.md`-tiedostossa.
 
 ## Observabilityn E2E
 
@@ -117,11 +120,11 @@ Pull requestin `main`-mergeportin required status check -joukko on:
 - `CI / Web critical E2E`
 - `CI / Windows Electron critical E2E`.
 
-`Dependency security / Audit dependencies` on lisäksi pakollinen
-riippuvuus-, lockfile-, Dependabot- tai workflow-muutoksissa. Nykyinen
-polkurajattu Dependency security -workflow ei sovellu ehdottomaksi GitHubin
-branch protection -checkiksi ennen kuin se ajetaan jokaisessa pull requestissa;
-sen vihreä tulos tarkistetaan niissä muutoksissa, joissa workflow käynnistyy.
+`Dependency security / Audit dependencies` ajetaan jokaisessa `main`-haaraan
+kohdistuvassa pull requestissa ja se soveltuu branch protectionin required
+check -ehdokkaaksi. Repositorion todellinen ruleset varmistetaan GitHubista
+ennen kuin checkiä väitetään pakolliseksi; paikallinen dokumentaatio ei muuta
+GitHub-asetuksia.
 Checkien nimiä ei muuteta hiljaisesti, koska branch protection viittaa
 GitHubissa täsmällisiin check-nimiin.
 

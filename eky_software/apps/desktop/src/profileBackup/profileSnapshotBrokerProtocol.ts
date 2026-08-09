@@ -1,4 +1,4 @@
-export const profileSnapshotBrokerProtocolVersion = 4;
+export const profileSnapshotBrokerProtocolVersion = 6;
 
 const requestIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -42,7 +42,14 @@ export type ProfileSnapshotBrokerErrorCode =
   | 'PROFILE_RESTORE_ACTIVATION_PREPARATION_FAILED'
   | 'PROFILE_SNAPSHOT_VALIDATION_FAILED'
   | 'PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID'
+  | 'PROFILE_SNAPSHOT_BROKER_OPERATION_FAILED'
+  | 'PROFILE_SNAPSHOT_STAGING_FAILED'
   | 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE';
+
+export interface ProfileSnapshotBrokerReady {
+  protocolVersion: typeof profileSnapshotBrokerProtocolVersion;
+  type: 'profileSnapshotBrokerReady';
+}
 
 export type ProfileSnapshotBrokerResponse =
   | {
@@ -119,6 +126,35 @@ export function createProfileSnapshotBrokerRequest(input: {
     throw new Error('PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID');
   }
   return request;
+}
+
+export function createProfileSnapshotBrokerReady(): ProfileSnapshotBrokerReady {
+  return {
+    protocolVersion: profileSnapshotBrokerProtocolVersion,
+    type: 'profileSnapshotBrokerReady',
+  };
+}
+
+export function isProfileSnapshotBrokerReadyCandidate(
+  value: unknown,
+): boolean {
+  return (
+    isRecord(value) && value.type === 'profileSnapshotBrokerReady'
+  );
+}
+
+export function parseProfileSnapshotBrokerReady(
+  value: unknown,
+): ProfileSnapshotBrokerReady | undefined {
+  return isRecord(value) &&
+    hasExactKeys(value, ['protocolVersion', 'type']) &&
+    value.protocolVersion === profileSnapshotBrokerProtocolVersion &&
+    value.type === 'profileSnapshotBrokerReady'
+    ? {
+        protocolVersion: profileSnapshotBrokerProtocolVersion,
+        type: 'profileSnapshotBrokerReady',
+      }
+    : undefined;
 }
 
 export function parseProfileSnapshotBrokerRequest(
@@ -369,6 +405,8 @@ function isErrorCode(value: unknown): value is ProfileSnapshotBrokerErrorCode {
     value === 'PROFILE_RESTORE_ACTIVATION_PREPARATION_FAILED' ||
     value === 'PROFILE_SNAPSHOT_VALIDATION_FAILED' ||
     value === 'PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID' ||
+    value === 'PROFILE_SNAPSHOT_BROKER_OPERATION_FAILED' ||
+    value === 'PROFILE_SNAPSHOT_STAGING_FAILED' ||
     value === 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE'
   );
 }

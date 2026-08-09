@@ -93,6 +93,23 @@ const desktopDiagnosticSpecs = Object.freeze({
   'packagedSmoke.failed': spec('packagedSmoke', 'error', 'failure'),
   'packagedSmoke.started': spec('packagedSmoke', 'info', 'success'),
   'pdfPreview.openFailed': spec('pdfPreview', 'error', 'failure'),
+  'recoveryPoint.completed': spec(
+    'recoveryPoint',
+    'info',
+    'success',
+  ),
+  'recoveryPoint.failed': spec('recoveryPoint', 'warn', 'failure'),
+  'recoveryPoint.started': spec('recoveryPoint', 'info', 'success'),
+  'restore.activationStarted': spec('restore', 'info', 'success'),
+  'restore.inspectionCompleted': spec('restore', 'info', 'success'),
+  'restore.inspectionFailed': spec('restore', 'warn', 'failure'),
+  'restore.rollbackCompleted': spec('restore', 'warn', 'success'),
+  'restore.rollbackFailed': spec('restore', 'error', 'failure'),
+  'restore.rollbackStarted': spec('restore', 'warn', 'success'),
+  'restore.stagingCompleted': spec('restore', 'info', 'success'),
+  'restore.stagingFailed': spec('restore', 'error', 'failure'),
+  'restore.validationCompleted': spec('restore', 'info', 'success'),
+  'restore.validationFailed': spec('restore', 'error', 'failure'),
   'secretStorage.decryptFailed': spec(
     'secretStorage',
     'error',
@@ -137,6 +154,7 @@ const allowedDesktopFields = new Set([
   'outcome',
   'originClass',
   'permissionType',
+  'recoveryPointKind',
   'retryable',
   'runtimeInstanceId',
   'schemaVersion',
@@ -156,6 +174,29 @@ const smtpTransportEventNames = new Set([
   'smtp.deliveryOutcomeUnknown',
   'smtp.tlsFailed',
 ]);
+const recoveryPointKinds = new Set([
+  'daily',
+  'manual',
+  'monthly',
+  'preRestore',
+  'preUpdate',
+  'weekly',
+]);
+const recoveryEventStages = Object.freeze({
+  'recoveryPoint.completed': ['creation'],
+  'recoveryPoint.failed': ['automaticCheck', 'creation'],
+  'recoveryPoint.started': ['creation'],
+  'restore.activationStarted': ['activation'],
+  'restore.inspectionCompleted': ['inspection'],
+  'restore.inspectionFailed': ['inspection'],
+  'restore.rollbackCompleted': ['activationRollback', 'startupRollback'],
+  'restore.rollbackFailed': ['activationRollback', 'startupRollback'],
+  'restore.rollbackStarted': ['activationRollback', 'startupRollback'],
+  'restore.stagingCompleted': ['staging'],
+  'restore.stagingFailed': ['staging'],
+  'restore.validationCompleted': ['restoredProfile', 'rolledBackProfile'],
+  'restore.validationFailed': ['restoredProfile', 'rolledBackProfile'],
+} as const);
 const timestampPattern =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 const monthPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -255,6 +296,18 @@ function projectSafeTechnicalContext(
             event.peerCertificateFingerprint256,
         }
       : {}),
+    ...(typeof event.recoveryPointKind === 'string' &&
+    recoveryPointKinds.has(event.recoveryPointKind)
+      ? {
+          recoveryPointKind: event.recoveryPointKind as
+            | 'daily'
+            | 'manual'
+            | 'monthly'
+            | 'preRestore'
+            | 'preUpdate'
+            | 'weekly',
+        }
+      : {}),
     ...(typeof event.retryable === 'boolean'
       ? { retryable: event.retryable }
       : {}),
@@ -327,7 +380,47 @@ function validateDesktopEvent(
     throw new Error('Diagnostic event core is invalid.');
   }
 
+  validateRecoveryEvent(value);
+
   return value;
+}
+
+function validateRecoveryEvent(value: Record<string, unknown>): void {
+  if (
+    typeof value.eventName !== 'string' ||
+    !(value.eventName in recoveryEventStages)
+  ) {
+    return;
+  }
+
+  const stages = recoveryEventStages[
+    value.eventName as keyof typeof recoveryEventStages
+  ] as readonly string[];
+  if (
+    !isUuid(value.correlationId) ||
+    typeof value.stage !== 'string' ||
+    !stages.includes(value.stage)
+  ) {
+    throw new Error('Diagnostic recovery event is invalid.');
+  }
+
+  if (
+    (value.eventName === 'recoveryPoint.started' ||
+      value.eventName === 'recoveryPoint.completed') &&
+    (typeof value.recoveryPointKind !== 'string' ||
+      !recoveryPointKinds.has(value.recoveryPointKind))
+  ) {
+    throw new Error('Diagnostic recovery event kind is invalid.');
+  }
+
+  if (
+    value.recoveryPointKind !== undefined &&
+    value.eventName !== 'recoveryPoint.started' &&
+    value.eventName !== 'recoveryPoint.completed' &&
+    value.eventName !== 'recoveryPoint.failed'
+  ) {
+    throw new Error('Diagnostic recovery event kind is not allowed.');
+  }
 }
 
 function isSafeDesktopField(key: string, value: unknown): boolean {
@@ -344,6 +437,9 @@ function isSafeDesktopField(key: string, value: unknown): boolean {
   }
   if (key === 'retryable') {
     return typeof value === 'boolean';
+  }
+  if (key === 'recoveryPointKind') {
+    return typeof value === 'string' && recoveryPointKinds.has(value);
   }
   if (key === 'schemaVersion') {
     return value === 1;
