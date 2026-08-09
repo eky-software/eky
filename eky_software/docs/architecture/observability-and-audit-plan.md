@@ -303,7 +303,12 @@ Recovery point- ja restore-lifecyclejen tarkat R0-eventit on lukittu
 raportoi luomisen alun ja tuloksen. Scheduler säilyy best effort -mallina,
 mutta automaattisen tarkistuksen epäonnistuminen ei jää näkymättömäksi.
 Restore staging, aktivointi, seuraavan prosessin validointi ja rollback
-raportoivat vain katalogin allowlistatut tekniset vaiheet.
+raportoivat vain katalogin allowlistatut tekniset vaiheet. Aktivoinnin
+epäonnistuminen päättyy `restore.activationFailed`-tapahtumaan ennen
+mahdollisen rollbackin alkua. Failed-safe-journal, rollbackatun profiilin
+epäonnistunut validointi tai epäonnistunut rollback tuottaa lisäksi
+`restore.recoveryRequired`-tapahtuman, koska business-UI:ta ei silloin saa
+avata turvallisesti.
 
 Cross-restart-korrelaatio käyttää aktivointijournalin jo omistamaa
 satunnaista teknistä UUID:ta vain eventin `correlationId`-kenttänä. Journalin

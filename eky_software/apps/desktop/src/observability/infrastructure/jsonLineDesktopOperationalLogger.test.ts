@@ -96,4 +96,42 @@ describe('JsonLineDesktopOperationalLogger', () => {
       /(?:operationId|profileId|companyId|artifactId|manifest|password|path)/i,
     );
   });
+
+  it('writes a minimized terminal restore event to JSONL', () => {
+    const root = mkdtempSync(join(tmpdir(), 'eky-terminal-restore-log-'));
+    temporaryDirectories.push(root);
+    const logsRoot = join(root, 'logs');
+    const logger = new JsonLineDesktopOperationalLogger({ logsRoot });
+
+    logger.write(
+      createDesktopOperationalEvent(
+        {
+          correlationId: '22222222-2222-4222-8222-222222222222',
+          errorCode: 'PROFILE_RESTORE_RECOVERY_REQUIRED',
+          eventName: 'restore.recoveryRequired',
+          retryable: false,
+          sideEffectState: 'unknown',
+          stage: 'failedSafeJournal',
+        },
+        eventOptions,
+      ),
+    );
+
+    const line = readFileSync(
+      join(
+        logsRoot,
+        'desktop',
+        'desktop-warning-error-2026-07-001.jsonl',
+      ),
+      'utf8',
+    );
+    expect(JSON.parse(line)).toMatchObject({
+      correlationId: '22222222-2222-4222-8222-222222222222',
+      eventName: 'restore.recoveryRequired',
+      stage: 'failedSafeJournal',
+    });
+    expect(line).not.toMatch(
+      /(?:journalPhase|operationId|profileId|companyId|manifest|password|path)/i,
+    );
+  });
 });

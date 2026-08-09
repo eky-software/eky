@@ -157,7 +157,90 @@ describe('projectDiagnosticOperationalEvent', () => {
       }),
     ).toBeNull();
   });
+
+  it.each([
+    {
+      durationMs: 42,
+      errorCode: 'PROFILE_RESTORE_ACTIVATION_FAILED',
+      eventName: 'restore.activationFailed',
+      stage: 'activation',
+    },
+    {
+      durationMs: undefined,
+      errorCode: 'PROFILE_RESTORE_RECOVERY_REQUIRED',
+      eventName: 'restore.recoveryRequired',
+      stage: 'failedSafeJournal',
+    },
+  ] as const)('projects closed restore metadata for $eventName', (fields) => {
+    expect(
+      projectDiagnosticOperationalEvent(
+        createDesktopRestoreFailureEvent(fields),
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        category: 'restore',
+        correlationId: '44444444-4444-4444-8444-444444444444',
+        errorCode: fields.errorCode,
+        eventName: fields.eventName,
+        retryable: false,
+        sideEffectState: 'unknown',
+        stage: fields.stage,
+      }),
+    );
+  });
+
+  it.each([
+    ['journalPhase', 'failedSafe'],
+    ['path', 'C:\\Users\\Example\\profile'],
+    ['profileId', 'profile-private'],
+    ['companyId', 'company-private'],
+    ['manifest', { entries: ['private'] }],
+    ['password', 'not-a-real-secret'],
+  ])('rejects restore field %s outside the closed projection', (field, value) => {
+    expect(
+      projectDiagnosticOperationalEvent({
+        ...createDesktopRestoreFailureEvent({
+          durationMs: undefined,
+          errorCode: 'PROFILE_RESTORE_RECOVERY_REQUIRED',
+          eventName: 'restore.recoveryRequired',
+          stage: 'failedSafeJournal',
+        }),
+        [field]: value,
+      }),
+    ).toBeNull();
+  });
 });
+
+function createDesktopRestoreFailureEvent(fields: {
+  durationMs: number | undefined;
+  errorCode:
+    | 'PROFILE_RESTORE_ACTIVATION_FAILED'
+    | 'PROFILE_RESTORE_RECOVERY_REQUIRED';
+  eventName: 'restore.activationFailed' | 'restore.recoveryRequired';
+  stage: 'activation' | 'failedSafeJournal';
+}) {
+  return {
+    appVersion: '1.0.0',
+    buildRevision: '123456789abc',
+    category: 'restore',
+    component: 'desktop',
+    correlationId: '44444444-4444-4444-8444-444444444444',
+    ...(fields.durationMs === undefined
+      ? {}
+      : { durationMs: fields.durationMs }),
+    errorCode: fields.errorCode,
+    eventId: `desktop-${fields.eventName}`,
+    eventName: fields.eventName,
+    level: 'error',
+    outcome: 'failure',
+    retryable: false,
+    runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
+    schemaVersion: 1,
+    sideEffectState: 'unknown',
+    stage: fields.stage,
+    timestamp: '2026-08-09T20:00:00.000Z',
+  };
+}
 
 function createDesktopBackupEvent(fields: {
   errorCode: string | undefined;

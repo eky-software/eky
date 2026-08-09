@@ -38,6 +38,7 @@ export class ProfileRestoreStartupRecovery {
     }
     this.activeCorrelationId = journal.operationId;
     if (journal.phase === 'failedSafe') {
+      this.observeRecoveryRequired('failedSafeJournal');
       throw new Error('PROFILE_RESTORE_RECOVERY_REQUIRED');
     }
     if (journal.phase === 'accepted') {
@@ -103,6 +104,7 @@ export class ProfileRestoreStartupRecovery {
         .then(() => input.stopBackend())
         .catch(() => undefined);
       if (input.mode === 'validateRolledBackProfile') {
+        this.observeRecoveryRequired('rolledBackProfile');
         throw new Error('PROFILE_RESTORE_RECOVERY_REQUIRED');
       }
       await this.rollbackOrFail('startupRollback');
@@ -143,6 +145,7 @@ export class ProfileRestoreStartupRecovery {
           sideEffectState: 'unknown',
           stage,
         });
+        this.observeRecoveryRequired(stage);
       }
       throw new Error('PROFILE_RESTORE_RECOVERY_REQUIRED');
     }
@@ -180,6 +183,24 @@ export class ProfileRestoreStartupRecovery {
         ...event,
         correlationId: this.activeCorrelationId,
       } as Parameters<ProfileRecoveryOperationalObserver['observe']>[0]);
+    }
+  }
+
+  private observeRecoveryRequired(
+    stage:
+      | 'failedSafeJournal'
+      | 'rolledBackProfile'
+      | 'startupRollback',
+  ): void {
+    if (this.activeCorrelationId !== undefined) {
+      this.observe({
+        correlationId: this.activeCorrelationId,
+        errorCode: 'PROFILE_RESTORE_RECOVERY_REQUIRED',
+        eventName: 'restore.recoveryRequired',
+        retryable: false,
+        sideEffectState: 'unknown',
+        stage,
+      });
     }
   }
 }

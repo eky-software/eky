@@ -105,12 +105,14 @@ const desktopDiagnosticSpecs = Object.freeze({
   ),
   'recoveryPoint.failed': spec('recoveryPoint', 'warn', 'failure'),
   'recoveryPoint.started': spec('recoveryPoint', 'info', 'success'),
+  'restore.activationFailed': spec('restore', 'error', 'failure'),
   'restore.activationStarted': spec('restore', 'info', 'success'),
   'restore.inspectionCompleted': spec('restore', 'info', 'success'),
   'restore.inspectionFailed': spec('restore', 'warn', 'failure'),
   'restore.rollbackCompleted': spec('restore', 'warn', 'success'),
   'restore.rollbackFailed': spec('restore', 'error', 'failure'),
   'restore.rollbackStarted': spec('restore', 'warn', 'success'),
+  'restore.recoveryRequired': spec('restore', 'error', 'failure'),
   'restore.stagingCompleted': spec('restore', 'info', 'success'),
   'restore.stagingFailed': spec('restore', 'error', 'failure'),
   'restore.validationCompleted': spec('restore', 'info', 'success'),
@@ -196,12 +198,19 @@ const recoveryEventStages = Object.freeze({
   'recoveryPoint.completed': ['creation'],
   'recoveryPoint.failed': ['automaticCheck', 'creation'],
   'recoveryPoint.started': ['creation'],
+  'restore.activationFailed': ['activation'],
   'restore.activationStarted': ['activation'],
   'restore.inspectionCompleted': ['inspection'],
   'restore.inspectionFailed': ['inspection'],
   'restore.rollbackCompleted': ['activationRollback', 'startupRollback'],
   'restore.rollbackFailed': ['activationRollback', 'startupRollback'],
   'restore.rollbackStarted': ['activationRollback', 'startupRollback'],
+  'restore.recoveryRequired': [
+    'activationRollback',
+    'failedSafeJournal',
+    'rolledBackProfile',
+    'startupRollback',
+  ],
   'restore.stagingCompleted': ['staging'],
   'restore.stagingFailed': ['staging'],
   'restore.validationCompleted': ['restoredProfile', 'rolledBackProfile'],
@@ -430,6 +439,25 @@ function validateRecoveryEvent(value: Record<string, unknown>): void {
     value.eventName !== 'recoveryPoint.failed'
   ) {
     throw new Error('Diagnostic recovery event kind is not allowed.');
+  }
+
+  if (
+    value.eventName === 'restore.activationFailed' &&
+    (!isNonNegativeInteger(value.durationMs) ||
+      !isSafeIdentifier(value.errorCode, 300) ||
+      typeof value.retryable !== 'boolean' ||
+      !isSideEffectState(value.sideEffectState))
+  ) {
+    throw new Error('Diagnostic restore activation failure is invalid.');
+  }
+
+  if (
+    value.eventName === 'restore.recoveryRequired' &&
+    (value.errorCode !== 'PROFILE_RESTORE_RECOVERY_REQUIRED' ||
+      value.retryable !== false ||
+      value.sideEffectState !== 'unknown')
+  ) {
+    throw new Error('Diagnostic restore recovery-required event is invalid.');
   }
 }
 

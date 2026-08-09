@@ -264,4 +264,75 @@ describe('desktop operational event contracts', () => {
       }),
     ).toThrow(DesktopOperationalEventValidationError);
   });
+
+  it('requires the closed restore activation failure contract', () => {
+    const event = createDesktopOperationalEvent(
+      {
+        correlationId: '22222222-2222-4222-8222-222222222222',
+        durationMs: 25,
+        errorCode: 'PROFILE_RESTORE_ACTIVATION_FAILED',
+        eventName: 'restore.activationFailed',
+        retryable: false,
+        sideEffectState: 'none',
+        stage: 'activation',
+      },
+      options,
+    );
+
+    expect(event).toMatchObject({
+      category: 'restore',
+      eventName: 'restore.activationFailed',
+      level: 'error',
+      outcome: 'failure',
+    });
+    const withoutDuration = Object.fromEntries(
+      Object.entries(event).filter(([key]) => key !== 'durationMs'),
+    );
+    expect(() => validateDesktopOperationalEvent(withoutDuration)).toThrow(
+      DesktopOperationalEventValidationError,
+    );
+    expect(() =>
+      validateDesktopOperationalEvent({
+        ...event,
+        stage: 'startupRollback',
+      }),
+    ).toThrow(DesktopOperationalEventValidationError);
+  });
+
+  it('allows recovery-required only with minimized failed-safe metadata', () => {
+    const event = createDesktopOperationalEvent(
+      {
+        correlationId: '22222222-2222-4222-8222-222222222222',
+        errorCode: 'PROFILE_RESTORE_RECOVERY_REQUIRED',
+        eventName: 'restore.recoveryRequired',
+        retryable: false,
+        sideEffectState: 'unknown',
+        stage: 'failedSafeJournal',
+      },
+      options,
+    );
+
+    expect(event).toMatchObject({
+      eventName: 'restore.recoveryRequired',
+      stage: 'failedSafeJournal',
+    });
+    expect(() =>
+      validateDesktopOperationalEvent({
+        ...event,
+        journalPhase: 'failedSafe',
+      }),
+    ).toThrow(DesktopOperationalEventValidationError);
+    expect(() =>
+      validateDesktopOperationalEvent({
+        ...event,
+        retryable: true,
+      }),
+    ).toThrow(DesktopOperationalEventValidationError);
+    expect(() =>
+      validateDesktopOperationalEvent({
+        ...event,
+        stage: 'staging',
+      }),
+    ).toThrow(DesktopOperationalEventValidationError);
+  });
 });

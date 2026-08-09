@@ -52,4 +52,27 @@ describe('profile recovery operational observer', () => {
       }),
     ).not.toThrow();
   });
+
+  it('writes only the closed recovery-required fields', () => {
+    const write = vi.fn();
+    const observer = createProfileRecoveryOperationalObserver({
+      operationalIdentity: identity,
+      operationalLogger: { write },
+    });
+
+    observer.observe({
+      correlationId: '22222222-2222-4222-8222-222222222222',
+      errorCode: 'PROFILE_RESTORE_RECOVERY_REQUIRED',
+      eventName: 'restore.recoveryRequired',
+      retryable: false,
+      sideEffectState: 'unknown',
+      stage: 'startupRollback',
+    });
+
+    const serialized = JSON.stringify(write.mock.calls);
+    expect(serialized).toContain('restore.recoveryRequired');
+    expect(serialized).not.toMatch(
+      /(?:journalPhase|profileId|companyId|invoiceId|manifest|password|path)/i,
+    );
+  });
 });

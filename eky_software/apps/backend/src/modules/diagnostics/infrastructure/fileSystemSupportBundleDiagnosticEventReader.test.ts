@@ -262,6 +262,44 @@ describe('FileSystemSupportBundleDiagnosticEventReader', () => {
     expect(JSON.stringify(result)).not.toContain('backup.completed');
   });
 
+  it('includes only minimized terminal restore failure metadata', async () => {
+    const logsRoot = createLogsRoot();
+    writeLines(
+      logsRoot,
+      'desktop',
+      'desktop-warning-error-2026-08-001.jsonl',
+      [
+        desktopRestoreRecoveryRequiredEvent(
+          'restore-recovery-required',
+          '2026-08-09T10:02:00.000Z',
+        ),
+      ],
+    );
+
+    const result =
+      await new FileSystemSupportBundleDiagnosticEventReader(
+        logsRoot,
+      ).readSupportBundleDiagnosticEvents({
+        earliestTimestamp: '2026-07-10T12:00:00.000Z',
+        latestTimestamp: '2026-08-09T12:00:00.000Z',
+      });
+
+    expect(result).toEqual({
+      diagnosticEvents: [
+        expect.objectContaining({
+          correlationId: '44444444-4444-4444-8444-444444444444',
+          errorCode: 'PROFILE_RESTORE_RECOVERY_REQUIRED',
+          eventName: 'restore.recoveryRequired',
+          stage: 'failedSafeJournal',
+        }),
+      ],
+      sourceTruncated: false,
+    });
+    expect(JSON.stringify(result)).not.toMatch(
+      /(?:journalPhase|operationId|profileId|companyId|manifest|password|path)/i,
+    );
+  });
+
   it.each([
     {
       fileName: 'backend-warning-error-2026-07-001.jsonl',
@@ -471,6 +509,30 @@ function desktopBackupEvent(
     runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
     schemaVersion: 1,
     stage: 'portable',
+    timestamp,
+  };
+}
+
+function desktopRestoreRecoveryRequiredEvent(
+  eventId: string,
+  timestamp: string,
+) {
+  return {
+    appVersion: '1.0.0',
+    buildRevision: '123456789abc',
+    category: 'restore',
+    component: 'desktop',
+    correlationId: '44444444-4444-4444-8444-444444444444',
+    errorCode: 'PROFILE_RESTORE_RECOVERY_REQUIRED',
+    eventId,
+    eventName: 'restore.recoveryRequired',
+    level: 'error',
+    outcome: 'failure',
+    retryable: false,
+    runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
+    schemaVersion: 1,
+    sideEffectState: 'unknown',
+    stage: 'failedSafeJournal',
     timestamp,
   };
 }
