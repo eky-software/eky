@@ -549,6 +549,7 @@ async function startDesktopCompositionRuntime({
       ),
       secretBrokerPort: secretBrokerChannel.port2,
     });
+    await profileSnapshotBrokerClient.waitUntilReady();
     await profileSnapshotBrokerClient.getStatus();
     const restoreStartupResult =
       await profileRestoreStartupRecovery.validateAfterBackend({

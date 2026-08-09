@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 import {
   createProfileSnapshotBrokerRequest,
+  isProfileSnapshotBrokerReadyCandidate,
+  parseProfileSnapshotBrokerReady,
   parseProfileSnapshotBrokerResponse,
   readProfileSnapshotBrokerRequestId,
   type ProfileMaintenanceBrokerOperation,
@@ -34,14 +36,31 @@ export class ProfileSnapshotBrokerClient {
       timer: ReturnType<typeof setTimeout>;
     }
   >();
-  private readonly unsubscribe: () => void;
+  private unsubscribe: () => void = () => undefined;
+  private unsubscribeClose: () => void = () => undefined;
+  private ready = false;
+  private readyPromise: Promise<void>;
+  private rejectReady!: (error: Error) => void;
+  private resolveReady!: () => void;
+  private readyTimer: ReturnType<typeof setTimeout>;
 
   constructor(
     private readonly transport: ProfileSnapshotBrokerTransport,
     private readonly requestTimeoutMilliseconds =
       defaultRequestTimeoutMilliseconds,
   ) {
+    this.readyPromise = new Promise<void>((resolve, reject) => {
+      this.resolveReady = resolve;
+      this.rejectReady = reject;
+    });
+    void this.readyPromise.catch(() => undefined);
+    this.readyTimer = setTimeout(() => {
+      this.failConnection();
+    }, this.requestTimeoutMilliseconds);
     this.unsubscribe = transport.subscribe((value) => this.receive(value));
+    this.unsubscribeClose = transport.subscribeClose(() => {
+      this.failConnection();
+    });
   }
 
   beginMaintenance(operationId: string): Promise<'busy'> {
@@ -82,17 +101,9 @@ export class ProfileSnapshotBrokerClient {
 
     this.closed = true;
     this.unsubscribe();
+    this.unsubscribeClose();
     this.transport.close();
-
-    for (const pending of this.pending.values()) {
-      clearTimeout(pending.timer);
-      pending.reject(
-        new ProfileSnapshotBrokerError(
-          'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
-        ),
-      );
-    }
-    this.pending.clear();
+    this.rejectConnectionWaiters();
   }
 
   endMaintenance(operationId: string): Promise<'normal'> {
@@ -120,6 +131,10 @@ export class ProfileSnapshotBrokerClient {
       }
       return result.status;
     });
+  }
+
+  waitUntilReady(): Promise<void> {
+    return this.readyPromise;
   }
 
   validateActiveProfile(): Promise<
@@ -175,10 +190,12 @@ export class ProfileSnapshotBrokerClient {
     );
   }
 
-  private request(
+  private async request(
     operation: ProfileMaintenanceBrokerOperation,
     operationId?: string,
   ): Promise<ProfileSnapshotBrokerSuccessResult> {
+    await this.waitUntilReady();
+
     if (this.closed) {
       return Promise.reject(
         new ProfileSnapshotBrokerError(
@@ -220,6 +237,19 @@ export class ProfileSnapshotBrokerClient {
   }
 
   private receive(value: unknown): void {
+    if (isProfileSnapshotBrokerReadyCandidate(value)) {
+      if (parseProfileSnapshotBrokerReady(value) === undefined) {
+        this.failConnection();
+        return;
+      }
+      if (!this.ready) {
+        this.ready = true;
+        clearTimeout(this.readyTimer);
+        this.resolveReady();
+      }
+      return;
+    }
+
     const requestId = readProfileSnapshotBrokerRequestId(value);
 
     if (requestId === undefined) {
@@ -250,5 +280,33 @@ export class ProfileSnapshotBrokerClient {
     }
 
     pending.resolve(response.result);
+  }
+
+  private failConnection(): void {
+    if (this.closed) {
+      return;
+    }
+
+    this.closed = true;
+    this.unsubscribe();
+    this.unsubscribeClose();
+    this.transport.close();
+    this.rejectConnectionWaiters();
+  }
+
+  private rejectConnectionWaiters(): void {
+    clearTimeout(this.readyTimer);
+    const error = new ProfileSnapshotBrokerError(
+      'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
+    );
+
+    if (!this.ready) {
+      this.rejectReady(error);
+    }
+    for (const pending of this.pending.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(error);
+    }
+    this.pending.clear();
   }
 }

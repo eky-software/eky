@@ -1,4 +1,5 @@
 import {
+  createProfileSnapshotBrokerReady,
   parseProfileSnapshotBrokerRequest,
   profileSnapshotBrokerProtocolVersion,
   readProfileSnapshotBrokerRequestId,
@@ -200,6 +201,7 @@ export function startProfileSnapshotBrokerBackend(input: {
       clearActiveOperation();
     }
   });
+  input.transport.send(createProfileSnapshotBrokerReady());
 
   return {
     close() {

@@ -5,10 +5,141 @@ import { describe, expect, it } from 'vitest';
 import {
   ProfileSnapshotBrokerClient,
 } from './profileSnapshotBrokerClient.js';
+import { profileSnapshotBrokerProtocolVersion } from './profileSnapshotBrokerProtocol.js';
 import { startProfileSnapshotBrokerBackend } from './profileSnapshotBrokerBackend.js';
 import type { ProfileSnapshotBrokerTransport } from './profileSnapshotBrokerTransport.js';
 
 describe('profile snapshot broker boundary', () => {
+  it('waits for broker readiness before sending the immediate first status request', async () => {
+    const transports = createTransportPair();
+    const client = new ProfileSnapshotBrokerClient(transports.main, 1_000);
+    const status = client.getStatus();
+    const backend = startProfileSnapshotBrokerBackend({
+      maintenance: new FakeProfileMaintenance(),
+      snapshot: createFakeSnapshotService(),
+      transport: transports.backend,
+    });
+
+    await expect(status).resolves.toBe('normal');
+
+    client.close();
+    backend.close();
+  });
+
+  it('rejects requests when the transport closes before readiness', async () => {
+    const transports = createTransportPair();
+    const client = new ProfileSnapshotBrokerClient(transports.main, 1_000);
+
+    transports.backend.close();
+
+    await expect(client.getStatus()).rejects.toMatchObject({
+      code: 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
+    });
+    client.close();
+  });
+
+  it('rejects an unknown ready protocol version without sending a request', async () => {
+    const transports = createTransportPair();
+    const client = new ProfileSnapshotBrokerClient(transports.main, 1_000);
+
+    transports.backend.send({
+      protocolVersion: profileSnapshotBrokerProtocolVersion + 1,
+      type: 'profileSnapshotBrokerReady',
+    });
+
+    await expect(client.getStatus()).rejects.toMatchObject({
+      code: 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
+    });
+    client.close();
+  });
+
+  it('rejects pending requests immediately when the broker transport closes', async () => {
+    const transports = createTransportPair();
+    const maintenance = new FakeProfileMaintenance();
+    const backend = startProfileSnapshotBrokerBackend({
+      maintenance: {
+        begin: () => new Promise<void>(() => undefined),
+        end: (operationId) => maintenance.end(operationId),
+        forceEnd: () => maintenance.forceEnd(),
+        getStatus: () => maintenance.getStatus(),
+      },
+      snapshot: createFakeSnapshotService(),
+      transport: transports.backend,
+    });
+    const client = new ProfileSnapshotBrokerClient(transports.main, 1_000);
+    await client.waitUntilReady();
+    const pending = client.beginMaintenance(randomUUID());
+
+    transports.backend.close();
+
+    await expect(pending).rejects.toMatchObject({
+      code: 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
+    });
+    client.close();
+    backend.close();
+  });
+
+  it('rejects malformed and wrong-type responses without leaving requests pending', async () => {
+    const malformedTransports = createTransportPair();
+    const malformedClient = new ProfileSnapshotBrokerClient(
+      malformedTransports.main,
+      1_000,
+    );
+    installDirectResponder(malformedTransports.backend, (requestId) => ({
+      ok: true,
+      protocolVersion: profileSnapshotBrokerProtocolVersion,
+      requestId,
+      result: { type: 'unexpected' },
+    }));
+
+    await expect(malformedClient.getStatus()).rejects.toMatchObject({
+      code: 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
+    });
+    malformedClient.close();
+
+    const wrongTypeTransports = createTransportPair();
+    const wrongTypeClient = new ProfileSnapshotBrokerClient(
+      wrongTypeTransports.main,
+      1_000,
+    );
+    installDirectResponder(wrongTypeTransports.backend, (requestId) => ({
+      ok: true,
+      protocolVersion: profileSnapshotBrokerProtocolVersion,
+      requestId,
+      result: {
+        artifactCount: 0,
+        artifactTotalByteSize: 0,
+        databaseHealth: 'healthy',
+        type: 'activeProfileValidation',
+      },
+    }));
+
+    await expect(wrongTypeClient.getStatus()).rejects.toMatchObject({
+      code: 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
+    });
+    wrongTypeClient.close();
+  });
+
+  it('starts cleanly again after the previous broker is closed', async () => {
+    for (let index = 0; index < 2; index += 1) {
+      const transports = createTransportPair();
+      const backend = startProfileSnapshotBrokerBackend({
+        maintenance: new FakeProfileMaintenance(),
+        snapshot: createFakeSnapshotService(),
+        transport: transports.backend,
+      });
+      const client = new ProfileSnapshotBrokerClient(
+        transports.main,
+        1_000,
+      );
+
+      await expect(client.getStatus()).resolves.toBe('normal');
+
+      client.close();
+      backend.close();
+    }
+  });
+
   it('starts and ends one maintenance operation through the private protocol', async () => {
     const transports = createTransportPair();
     const maintenance = new FakeProfileMaintenance();
@@ -392,39 +523,84 @@ function createTransportPair(): {
   backend: ProfileSnapshotBrokerTransport;
   main: ProfileSnapshotBrokerTransport;
 } {
-  const mainListeners = new Set<(value: unknown) => void>();
-  const backendListeners = new Set<(value: unknown) => void>();
-  let closed = false;
+  const main = createTransportState();
+  const backend = createTransportState();
 
   const createTransport = (
-    ownListeners: Set<(value: unknown) => void>,
-    peerListeners: Set<(value: unknown) => void>,
+    own: TransportState,
+    peer: TransportState,
   ): ProfileSnapshotBrokerTransport => ({
     close() {
-      closed = true;
-      ownListeners.clear();
+      if (own.closed) {
+        return;
+      }
+      own.closed = true;
+      own.listeners.clear();
+      queueMicrotask(() => {
+        for (const listener of peer.closeListeners) {
+          listener();
+        }
+      });
     },
     send(value) {
-      if (closed) {
+      if (own.closed || peer.closed) {
         throw new Error('closed');
       }
       queueMicrotask(() => {
-        for (const listener of peerListeners) {
+        if (peer.closed) {
+          return;
+        }
+        for (const listener of peer.listeners) {
           listener(value);
         }
       });
     },
     subscribe(listener) {
-      ownListeners.add(listener);
-      return () => ownListeners.delete(listener);
+      own.listeners.add(listener);
+      return () => own.listeners.delete(listener);
     },
-    subscribeClose() {
-      return () => undefined;
+    subscribeClose(listener) {
+      own.closeListeners.add(listener);
+      return () => own.closeListeners.delete(listener);
     },
   });
 
   return {
-    backend: createTransport(backendListeners, mainListeners),
-    main: createTransport(mainListeners, backendListeners),
+    backend: createTransport(backend, main),
+    main: createTransport(main, backend),
   };
+}
+
+interface TransportState {
+  closeListeners: Set<() => void>;
+  closed: boolean;
+  listeners: Set<(value: unknown) => void>;
+}
+
+function createTransportState(): TransportState {
+  return {
+    closeListeners: new Set(),
+    closed: false,
+    listeners: new Set(),
+  };
+}
+
+function installDirectResponder(
+  backend: ProfileSnapshotBrokerTransport,
+  createResponse: (requestId: string) => unknown,
+): void {
+  backend.subscribe((value) => {
+    if (
+      typeof value === 'object' &&
+      value !== null &&
+      'requestId' in value &&
+      typeof value.requestId === 'string'
+    ) {
+      backend.send(createResponse(value.requestId));
+    }
+  });
+  backend.send({
+    protocolVersion: profileSnapshotBrokerProtocolVersion,
+    type: 'profileSnapshotBrokerReady',
+  });
 }
