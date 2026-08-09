@@ -136,6 +136,16 @@ profiilin vaihtoa, profiilikohtaisia tietokantoja tai local desktopin
 multi-company-mallia, lue myös
 `docs/decisions/ADR-0008-local-desktop-company-workspaces.md`.
 
+Jos työ koskee toista ihmiskäyttäjää, käyttäjähallintaa, kirjautumista,
+User- tai Employee/Worker-identiteettiä, yritysjäsenyyttä, rooleja,
+permissionien laajentamista, mobiilikirjautumista, etänä tehtävää
+business-kirjoitusta tai kirjoittavaa AI-actoria, lue myös
+`docs/product/user-roles.md`,
+`docs/architecture/local-runtime-trust-and-authorization-plan.md` ja
+`docs/architecture/module-integration-matrix.md`. Näitä toimintoja ei
+toteuteta ennen projektin omistajan hyväksymää Users / Identity /
+Memberships / Roles / Permissions -vaihetta.
+
 Jos työ koskee Electron-runtimen ensimmäistä toteutusta, `apps/desktop`-
 rakennetta, Electronin development- ja production-profiileja, Windows-
 paketointispikeä, desktop-transporttia tai paketoidun backendin, SQLiten ja

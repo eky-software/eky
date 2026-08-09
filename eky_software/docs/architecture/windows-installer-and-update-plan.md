@@ -8,6 +8,12 @@ restore -todistus ovat toteutettu 4.8.2026. Installeria,
 päivitysorkestrointia, code signingia tai update-UI:ta ei ole vielä toteutettu.
 Installeriteknologiaa tai uutta riippuvuutta ei ole valittu.
 
+10.8.2026 valmistunut teknologiakatselmus suosittelee R0-prototyypin
+ensisijaiseksi ehdokkaaksi per-user Windows Installer -MSI:tä nykyisen
+kovennetun Packager-outputin ympärillä. Tarkka WiX-versio, lisenssi ja uusi
+build tool vaativat vielä projektin omistajan erillisen riippuvuuspäätöksen.
+Suositus ei muuta ADR-0010:n hyväksyttyä rajaa eikä aloita toteutusta.
+
 ## 2. Tavoite
 
 Eky Localille tehdään hallittu Windows-asennus- ja päivityspolku, joka:
@@ -87,7 +93,7 @@ Asennin ei:
 Käyttäjäpolku:
 
 1. käyttäjä avaa `Tuki ja historia` -> `Sovellus ja päivitykset`
-2. valitsee paikallisen Eky-päivityspaketin native-dialogilla
+2. valitsee paikallisen Eky-sidecar-manifestin native-dialogilla
 3. Update Coordinator tarkistaa paketin ja näyttää turvallisen yhteenvedon
 4. käyttäjä vahvistaa päivityksen
 5. Eky muodostaa pre-update-palautuspisteen
@@ -98,6 +104,14 @@ Käyttäjäpolku:
 10. first-start maintenance hyväksyy tai hylkää päivityksen
 
 R0:ssa päivitystä ei käynnistetä automaattisesti ilman käyttäjän vahvistusta.
+
+Renderer pyytää vain nimettyä `selectLocalUpdatePackage`-tyyppistä
+capabilityä. Electron main avaa native-dialogin manifestille, lukee suljetun
+manifestin ja johtaa sen samassa hakemistossa olevan paketin nimen vain
+validoidusta `packageFilename`-kentästä. Renderer ei saa manifestin tai
+paketin raakaa polkua, executablea, URL:ia, komentoriviä tai
+prosessioikeutta. R0:ssa ei valita executablea suoraan eikä käytetä yleistä
+`openFile`-capabilityä.
 
 ## 8. Suora Setup-päivitys
 
@@ -145,6 +159,20 @@ ei sisällytetä samaan tavujonoon, jonka tiiviste tarkistetaan. Installeria,
 allekirjoitusta tai update-koodia ei toteuteta backup/restore-vaiheessa.
 
 Build identity ei ole digitaalinen allekirjoitus.
+
+Teknologiakatselmuksen ehdottama R0-artifact-layout on:
+
+```text
+release/
+  Eky-Setup-<version>-pilot-x64.msi
+  Eky-Setup-<version>-pilot-x64.manifest.json
+```
+
+Sama täysi MSI palvelee clean installia, repairia ja major upgradea. R0 ei
+käytä deltaa tai patch-pakettia. Sidecar-manifestin ja MSI:n basename,
+app identity, versio, kanava, arkkitehtuuri, koko ja SHA-256 sidotaan
+toisiinsa ennen käyttäjän vahvistusta ja tarkistetaan uudelleen välittömästi
+ennen installer handoffia.
 
 ## 10. Pre-update-palautuspiste
 
@@ -331,19 +359,59 @@ Backup/Restore sijoitetaan erillään:
 UI ei näytä raakaa polkua, asentajan komentoa, journalia, sessionia tai
 teknistä virhettä. Päivityksen vahvistus kertoo, että sovellus sulkeutuu.
 
-## 22. Observability ja audit
+## 22. Tuleva update-composition
+
+Toteutus jaetaan ilman business-moduulien riippuvuuksia:
+
+```text
+apps/desktop/src/update/
+  updatePackageManifest.ts
+  updatePackageInspector.ts
+  localUpdateSource.ts
+  updateJournalStore.ts
+  updateCoordinator.ts
+  installerLauncher.ts
+  firstStartUpdateRecovery.ts
+  updateOperationalObserver.ts
+```
+
+Update Coordinator saa compositionista vain seuraavat kapeat portit:
+
+- `PreUpdateRecoveryPort`
+- `RuntimeMaintenancePort`
+- `RuntimeShutdownPort`
+- `InstallerLauncher`
+- `UpdateJournalStore`
+- `BuildIdentityReader`
+- `ActiveProfileProtectionPort`.
+
+Se ei saa backupin crypto storea, recovery pointin sisäistä polkua,
+tietokantakahvaa, rendererin polkua, installer command stringiä eikä
+business-moduulin repositorya. `LocalUpdateSource` palauttaa main-prosessin
+sisäisen, validoidun package-handlen eikä raakapolkua rendererille.
+
+Nykyinen `desktopComposition.ts` kokoaa myös Profile Protectionin ja on jo
+selvästi suuri composition root. Ennen update-tuotantokoodia arvioidaan
+käyttäytymistä muuttamaton `profileProtectionComposition.ts`-erotus. Sen
+tarkoitus on antaa edellä mainitut kapeat portit eikä avata recovery-servicen
+sisäisiä riippuvuuksia Update Coordinatorille. Refaktorointi tehdään omassa
+commitissa nykyisten packaged backup/restore-testien suojassa.
+
+## 23. Observability ja audit
 
 Tuleva tekninen tapahtumaperhe on `update.*`. Tarkat event-nimet lukitaan
 vasta transaction ownership- ja failure behavior -päätöksessä.
 
-Sallitut tiedot voivat olla:
+Sallitut tiedot ovat vain:
 
+- korrelaatiotunniste
 - nykyinen ja kohdeversio
 - release-kanava
-- turvallinen vaihe
-- outcome
-- rajattu tekninen virhekoodi
-- build revision
+- allowlistattu vaihe
+- kesto millisekunteina
+- rajattu tekninen virhekoodi ja retryable-luokitus
+- `sideEffectState`
+- nykyisen politiikan sallima build revision/runtime identity
 
 Kiellettyjä ovat:
 
@@ -354,11 +422,17 @@ Kiellettyjä ovat:
 - backup- tai palautuspistepayload
 - salaisuus tai session
 - raw process output, stack tai filesystem error
+- vapaa metadata
 
 Päivitysjournalia tai pakettia ei lisätä tukipakettiin. Tukipaketti voi
 sisältää vain sanitoidun tilayhteenvedon ja turvalliset tapahtumat.
 
-## 23. Testaus
+Virhekoodien käyttäjä- ja tukitoimet omistaa
+`windows-update-operational-runbook.md`. Tuotantokoodiin ei lisätä
+`update.*`-eventName-arvoja ennen transaction ownership-, stage allowlist-
+ja failure behavior -päätöstä.
+
+## 24. Testaus
 
 ### Manifesti ja paketti
 
@@ -398,20 +472,40 @@ sisältää vain sanitoidun tilayhteenvedon ja turvalliset tapahtumat.
 ### Windows release gate
 
 - puhdas asennus tavallisella Windows-käyttäjällä
+- toinen saman version asennus ja repair
 - päivitys edellisestä tuetusta versiosta
+- sama versio ja eksplisiittisesti torjuttu downgrade
+- väärä app identity ja väärä arkkitehtuuri
+- hash mismatch ja paketin vaihto tarkistuksen jälkeen
+- pre-update recovery point -virhe ennen runtime-sulkua
+- runtime shutdown timeout
+- installer spawn failure ja non-zero exit
+- keskeytys jokaisen journalivaiheen jälkeen
+- first-start migration-, integrity-, foreign key- ja health-failure
+- business rollback ja binary rollback erikseen sekä yhdessä
+- vanhan runtime-sessionin torjunta
 - polut, joissa on välilyöntejä ja Unicodea
 - asennus hakemistoon ilman kirjoitusoikeutta
 - levy täynnä ja virustorjunnan aiheuttama tiedostolukko
 - uninstall säilyttää business datan
+- reinstall löytää saman profiilin ilman installerin dataetsintää
+- asennuksesta ei jää orphan-prosesseja
 - dirty-buildia ei jaeta
 - hardened fuses, ASAR integrity, native addon ja PDF toimivat
 - packaged smoke ja kriittinen Electron-E2E päivityksen jälkeen
 - palautuspiste -> päivitys -> migraatio -> restart -> business-datan vertailu
+- synteettisen SQLite-kannan ja kaikkien auktoritatiivisten PDF:ien hashit
+  täsmäävät ennen ja jälkeen onnistuneen päivityksen
 
 Testit käyttävät vain synteettistä dataa eivätkä ulkoista verkkoa ennen
 etäpäivitysvaiheen erillistä hyväksyntää.
 
-## 24. Riippuvuus- ja turvallisuusportti
+Ensimmäinen installer-toteutus käyttää yhtä aktiivista profiilia. Portit ja
+testifixturet eivät silti saa kovakoodata yhtä ikuista `userData`- tai
+runtime-polkua: tuleva profile registry antaa aktiivisen profiilin suojatun
+handlen compositionille.
+
+## 25. Riippuvuus- ja turvallisuusportti
 
 Ennen installeriteknologian valintaa vertaillaan vähintään:
 
@@ -436,7 +530,7 @@ Arvioidaan:
 Mitään riippuvuutta ei asenneta tai lockfilea muuteta ilman projektin
 omistajan erillistä hyväksyntää.
 
-## 25. Ei ensimmäisessä toteutuksessa
+## 26. Ei ensimmäisessä toteutuksessa
 
 - etäpäivitystä
 - automaattista hiljaista päivitystä
@@ -508,6 +602,8 @@ legal-vaatimusten täyttymistä.
 - `docs/architecture/release-versioning-policy.md`
 - `docs/architecture/r0-e2e-test-matrix.md`
 - `docs/architecture/security-principles.md`
+- `docs/architecture/windows-installer-technology-review.md`
+- `docs/architecture/windows-update-operational-runbook.md`
 - `docs/decisions/ADR-0007-local-desktop-shell-and-session-bootstrap.md`
 - `docs/decisions/ADR-0009-local-backup-encryption-and-recovery-points.md`
 - `docs/decisions/ADR-0010-windows-installer-and-update-orchestration.md`

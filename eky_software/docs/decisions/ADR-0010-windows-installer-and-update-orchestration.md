@@ -218,6 +218,8 @@ erillinen toteutus- ja release-portti.
 - `docs/architecture/local-desktop-implementation-plan.md`
 - `docs/architecture/release-versioning-policy.md`
 - `docs/architecture/windows-installer-and-update-plan.md`
+- `docs/architecture/windows-installer-technology-review.md`
+- `docs/architecture/windows-update-operational-runbook.md`
 - `docs/decisions/ADR-0007-local-desktop-shell-and-session-bootstrap.md`
 - `docs/decisions/ADR-0008-local-desktop-company-workspaces.md`
 - `docs/decisions/ADR-0009-local-backup-encryption-and-recovery-points.md`
