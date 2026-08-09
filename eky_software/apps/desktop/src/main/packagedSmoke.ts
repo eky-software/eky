@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
+import { realpathSync } from 'node:fs';
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import type { BrowserWindow } from 'electron';
 
@@ -76,6 +77,14 @@ export interface PackagedSmokeProgressReporter {
   reportStage(stage: PackagedSmokeStage): Promise<void>;
 }
 
+export function resolvePackagedSmokeTempPath(tempPath: string): string {
+  try {
+    return realpathSync.native(resolve(tempPath));
+  } catch {
+    throw new Error('DESKTOP_SMOKE_PATH_INVALID');
+  }
+}
+
 interface RunPackagedSmokeCheckOptions {
   appVersion: string;
   backend: DesktopBackendHandle;
@@ -106,7 +115,11 @@ export function createPackagedSmokeConfiguration(options: {
   const root =
     token === undefined
       ? undefined
-      : join(options.tempPath, 'eky-desktop-smoke', token);
+      : join(
+          resolvePackagedSmokeTempPath(options.tempPath),
+          'eky-desktop-smoke',
+          token,
+        );
   const enabled = token !== undefined && options.hasSmokeSwitch;
 
   return {

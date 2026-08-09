@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -11,6 +11,7 @@ import {
   createPackagedSmokeTimeoutMessage,
   packagedSmokeStages,
   readPackagedSmokeResult,
+  resolvePackagedSmokeTempPath,
 } from './packagedSmoke.js';
 
 describe('packaged smoke progress', () => {
@@ -46,6 +47,61 @@ describe('packaged smoke progress', () => {
         status: 'started',
       });
     }
+  });
+
+  it('canonicalizes the smoke temp root before deriving runtime paths', async () => {
+    const temporaryDirectory = await mkdtemp(
+      join(tmpdir(), 'eky-packaged-smoke-path-test-'),
+    );
+    temporaryDirectories.push(temporaryDirectory);
+    const nestedDirectory = join(temporaryDirectory, 'nested');
+    await mkdir(nestedDirectory);
+    const nonCanonicalTempPath = join(nestedDirectory, '..');
+    const canonicalTempPath = resolvePackagedSmokeTempPath(temporaryDirectory);
+
+    const configuration = createPackagedSmokeConfiguration({
+      hasSmokeSwitch: true,
+      tempPath: nonCanonicalTempPath,
+      tokenValue: 'b'.repeat(32),
+    });
+
+    expect(configuration.root).toBe(
+      join(canonicalTempPath, 'eky-desktop-smoke', 'b'.repeat(32)),
+    );
+    expect(configuration.userDataPath).toBe(
+      join(
+        canonicalTempPath,
+        'eky-desktop-smoke',
+        'b'.repeat(32),
+        'user-data',
+      ),
+    );
+  });
+
+  it('rejects an unavailable smoke temp root without exposing its path', () => {
+    const unavailablePath = join(
+      tmpdir(),
+      `eky-packaged-smoke-missing-${'c'.repeat(32)}`,
+    );
+
+    expect(() => resolvePackagedSmokeTempPath(unavailablePath)).toThrow(
+      'DESKTOP_SMOKE_PATH_INVALID',
+    );
+  });
+
+  it('does not resolve the temp root when packaged smoke is disabled', () => {
+    expect(
+      createPackagedSmokeConfiguration({
+        hasSmokeSwitch: false,
+        tempPath: 'C:\\private\\path-that-does-not-exist',
+        tokenValue: undefined,
+      }),
+    ).toEqual({
+      enabled: false,
+      phase: 'initial',
+      root: undefined,
+      userDataPath: undefined,
+    });
   });
 
   it('rejects unknown, skipped and repeated stages', async () => {

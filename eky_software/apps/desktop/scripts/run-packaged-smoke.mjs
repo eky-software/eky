@@ -9,6 +9,7 @@ import {
   createPackagedSmokeFailureMessage,
   createPackagedSmokeTimeoutMessage,
   readPackagedSmokeResult,
+  resolvePackagedSmokeTempPath,
   writePackagedSmokeResult,
 } from '../dist/main/packagedSmoke.js';
 import { readDesktopElectronVersion } from './read-desktop-electron-version.mjs';
@@ -22,7 +23,7 @@ const smokeTimeoutMilliseconds = 120_000;
 const childEnvironment = { ...process.env };
 const smokeToken = randomBytes(16).toString('hex');
 const smokeRootDirectory = resolve(
-  tmpdir(),
+  resolvePackagedSmokeTempPath(tmpdir()),
   'eky-desktop-smoke',
   smokeToken,
 );
