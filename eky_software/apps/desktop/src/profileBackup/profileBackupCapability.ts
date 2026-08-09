@@ -6,7 +6,6 @@ import type {
   IpcMainInvokeEvent,
 } from 'electron';
 
-import { createDesktopOperationalEvent } from '../observability/createDesktopOperationalEvent.js';
 import type { DesktopOperationalIdentity } from '../observability/desktopOperationalEvent.js';
 import type { DesktopOperationalLogger } from '../observability/desktopOperationalLogger.js';
 import type { BackupPasswordWindowController } from './passwordWindow/backupPasswordWindow.js';
@@ -27,6 +26,7 @@ import {
   type ProfileProtectionStatus,
 } from './portableProfileBackupTypes.js';
 import { createProfileProtectionStatus } from './profileProtectionStatus.js';
+import { createProfileBackupOperationalObserver } from './profileBackupOperationalObserver.js';
 import { createProfileRestoreCapabilityController } from './profileRestoreCapabilityController.js';
 import type { ProfileRestoreActivationService } from './restore/profileRestoreActivationService.js';
 import type {
@@ -82,6 +82,10 @@ export function createProfileBackupCapability(
   options: ProfileBackupCapabilityOptions,
 ): ProfileBackupCapability {
   let activeOperation = false;
+  const operationalObserver = createProfileBackupOperationalObserver({
+    operationalIdentity: options.operationalIdentity,
+    operationalLogger: options.operationalLogger,
+  });
   const restoreController = createProfileRestoreCapabilityController({
     confirmActivation: options.confirmRestoreActivation,
     confirmReplacement: options.confirmRestoreReplacement,
@@ -124,48 +128,33 @@ export function createProfileBackupCapability(
 
         const correlationId = randomUUID();
         const startedAt = Date.now();
-        options.operationalLogger.write(
-          createDesktopOperationalEvent(
-            {
-              correlationId,
-              eventName: 'backup.started',
-              stage: 'portable',
-            },
-            options.operationalIdentity,
-          ),
-        );
+        operationalObserver.observe({
+          correlationId,
+          eventName: 'backup.started',
+          stage: 'portable',
+        });
         try {
           await options.backupService.create({
             destinationPath: targetPath,
             password,
           });
-          options.operationalLogger.write(
-            createDesktopOperationalEvent(
-              {
-                correlationId,
-                durationMs: Date.now() - startedAt,
-                eventName: 'backup.completed',
-                stage: 'portable',
-              },
-              options.operationalIdentity,
-            ),
-          );
+          operationalObserver.observe({
+            correlationId,
+            durationMs: Date.now() - startedAt,
+            eventName: 'backup.completed',
+            stage: 'portable',
+          });
           return 'created';
         } catch {
-          options.operationalLogger.write(
-            createDesktopOperationalEvent(
-              {
-                correlationId,
-                durationMs: Date.now() - startedAt,
-                errorCode: 'PROFILE_BACKUP_CREATE_FAILED',
-                eventName: 'backup.failed',
-                retryable: true,
-                sideEffectState: 'unknown',
-                stage: 'portable',
-              },
-              options.operationalIdentity,
-            ),
-          );
+          operationalObserver.observe({
+            correlationId,
+            durationMs: Date.now() - startedAt,
+            errorCode: 'PROFILE_BACKUP_CREATE_FAILED',
+            eventName: 'backup.failed',
+            retryable: true,
+            sideEffectState: 'unknown',
+            stage: 'portable',
+          });
           options.showSafeError('create');
           throw new Error('PROFILE_BACKUP_CREATE_FAILED');
         }
@@ -194,33 +183,23 @@ export function createProfileBackupCapability(
             containerPath: sourcePath,
             password,
           });
-          options.operationalLogger.write(
-            createDesktopOperationalEvent(
-              {
-                correlationId,
-                durationMs: Date.now() - startedAt,
-                eventName: 'backup.inspectionCompleted',
-                stage: 'portable',
-              },
-              options.operationalIdentity,
-            ),
-          );
+          operationalObserver.observe({
+            correlationId,
+            durationMs: Date.now() - startedAt,
+            eventName: 'backup.inspectionCompleted',
+            stage: 'portable',
+          });
           return { status: 'inspected', summary };
         } catch {
-          options.operationalLogger.write(
-            createDesktopOperationalEvent(
-              {
-                correlationId,
-                durationMs: Date.now() - startedAt,
-                errorCode: 'PROFILE_BACKUP_INSPECTION_FAILED',
-                eventName: 'backup.inspectionFailed',
-                retryable: false,
-                sideEffectState: 'none',
-                stage: 'portable',
-              },
-              options.operationalIdentity,
-            ),
-          );
+          operationalObserver.observe({
+            correlationId,
+            durationMs: Date.now() - startedAt,
+            errorCode: 'PROFILE_BACKUP_INSPECTION_FAILED',
+            eventName: 'backup.inspectionFailed',
+            retryable: false,
+            sideEffectState: 'none',
+            stage: 'portable',
+          });
           options.showSafeError('inspect');
           throw new Error('PROFILE_BACKUP_INSPECTION_FAILED');
         }

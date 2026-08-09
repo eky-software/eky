@@ -103,6 +103,68 @@ describe('profile backup capability', () => {
     expect(fixture.inspect).not.toHaveBeenCalled();
   });
 
+  it('keeps successful backup and inspection authoritative when logging fails', async () => {
+    const fixture = createFixture({
+      operationalLoggerThrows: true,
+    });
+
+    await expect(
+      fixture.invoke(
+        createProfileBackupIpcChannel,
+        fixture.trustedEvent,
+      ),
+    ).resolves.toBe('created');
+    await expect(
+      fixture.invoke(
+        inspectProfileBackupIpcChannel,
+        fixture.trustedEvent,
+      ),
+    ).resolves.toEqual({
+      status: 'inspected',
+      summary: inspectionSummary,
+    });
+  });
+
+  it('preserves the backup error and releases the operation lock when failure logging also fails', async () => {
+    const fixture = createFixture({
+      createFails: true,
+      operationalLoggerThrows: true,
+    });
+
+    await expect(
+      fixture.invoke(
+        createProfileBackupIpcChannel,
+        fixture.trustedEvent,
+      ),
+    ).rejects.toThrow('PROFILE_BACKUP_CREATE_FAILED');
+    expect(fixture.showSafeError).toHaveBeenCalledWith('create');
+
+    await expect(
+      fixture.invoke(
+        inspectProfileBackupIpcChannel,
+        fixture.trustedEvent,
+      ),
+    ).resolves.toEqual({
+      status: 'inspected',
+      summary: inspectionSummary,
+    });
+  });
+
+  it('preserves the inspection error when its failure log cannot be written', async () => {
+    const fixture = createFixture({
+      inspectFails: true,
+      operationalLoggerThrows: true,
+    });
+
+    await expect(
+      fixture.invoke(
+        inspectProfileBackupIpcChannel,
+        fixture.trustedEvent,
+      ),
+    ).rejects.toThrow('PROFILE_BACKUP_INSPECTION_FAILED');
+    expect(fixture.showSafeError).toHaveBeenCalledWith('inspect');
+  });
+
   it('prepares and activates restore through two main-owned confirmations', async () => {
     const fixture = createFixture();
 
@@ -231,6 +293,9 @@ const inspectionSummary = {
 function createFixture(options: {
   confirmRestoreActivation?: boolean;
   confirmRestoreReplacement?: boolean;
+  createFails?: boolean;
+  inspectFails?: boolean;
+  operationalLoggerThrows?: boolean;
   restoreSourcePath?: string | null;
   sourcePath?: string | null;
   targetPath?: string | null;
@@ -244,8 +309,18 @@ function createFixture(options: {
   const removeHandler = vi.fn((channel: string) => {
     handlers.delete(channel);
   });
-  const create = vi.fn(async () => inspectionSummary);
-  const inspect = vi.fn(async () => inspectionSummary);
+  const create = vi.fn(async () => {
+    if (options.createFails === true) {
+      throw new Error('SYNTHETIC_PRIVATE_BACKUP_FAILURE');
+    }
+    return inspectionSummary;
+  });
+  const inspect = vi.fn(async () => {
+    if (options.inspectFails === true) {
+      throw new Error('SYNTHETIC_PRIVATE_INSPECTION_FAILURE');
+    }
+    return inspectionSummary;
+  });
   const requestPassword = vi.fn(
     async () => 'Synthetic backup password 2026!',
   );
@@ -287,6 +362,12 @@ function createFixture(options: {
   }));
   const discardPreparedRestore = vi.fn(async () => undefined);
   const activateRestore = vi.fn(async () => 'relaunching' as const);
+  const operationalWrite = vi.fn(() => {
+    if (options.operationalLoggerThrows === true) {
+      throw new Error('SYNTHETIC_LOG_WRITE_FAILURE');
+    }
+  });
+  const showSafeError = vi.fn();
   const capability = createProfileBackupCapability({
     backupService: {
       create,
@@ -311,7 +392,7 @@ function createFixture(options: {
       buildRevision: 'development',
       runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
     },
-    operationalLogger: { write: vi.fn() },
+    operationalLogger: { write: operationalWrite },
     passwordWindow: {
       dispose: vi.fn(),
       requestPassword,
@@ -336,7 +417,7 @@ function createFixture(options: {
     selectBackupSource,
     selectBackupTarget,
     selectRestoreSource,
-    showSafeError: vi.fn(),
+    showSafeError,
   });
 
   return {
@@ -363,6 +444,7 @@ function createFixture(options: {
     selectBackupSource,
     selectBackupTarget,
     selectRestoreSource,
+    showSafeError,
     trustedEvent: {
       sender: webContents,
       senderFrame: mainFrame,

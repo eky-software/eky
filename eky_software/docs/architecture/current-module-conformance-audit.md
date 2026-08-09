@@ -119,6 +119,10 @@ repositoryjen tai HTTP-riippuvuuksien yksityiskohtaista sidontaa.
 | Customers-composition ja `CustomerAccessReader`-raja | `a0325d1` |
 | Company Settings -composition ja `InvoiceEmailSettingsReader`-raja | `6109130` |
 | PR #143: Invoicingin SQLite read model -vastuiden ja mappingien jako | `4eb809c`, `bc2ed0b` |
+| Ylläpidettävä moduulien integraatiomatriisi | `d87cea4` |
+| Portable backup -lifecycle Diagnosticsissa ja tukipaketissa | `dbb60b9` |
+| Profile Protection -loggerin eristys operaation lopputuloksesta | `22f0c76` |
+| Restoren suljetut `activationFailed`- ja `recoveryRequired`-päätetilat | `b496ece` |
 
 Invoicingin moduulikohtainen ohje ja nykytilan referenssit viimeistellään tämän
 dokumentaatiovaiheen yhteydessä.
@@ -246,3 +250,22 @@ Seuraava observabilityn rajattu paketti on SMTP/TLS-toimituksen
 diagnostiikkakattavuuden tarkistus. Sen jälkeen toteutetaan dokumentoidun
 E2E-strategian ensimmäinen käyttäjäpolku. Kumpaakaan ei yhdistetä tähän
 release identity- ja Activity-kovennukseen.
+
+## Profile Protection -observabilityn yhdenmukaisuus
+
+Profile Protection / Backup / Restore on kirjattu ylläpidettävään
+`module-integration-matrix.md`-karttaan omana platform-kyvykkyytenään. Portable
+backupin lifecycle näkyy turvallisena teknisenä projektiona Diagnosticsissa ja
+tukipaketissa. Loggerin tai observerin virhe ei muuta backupin, restoren,
+rollbackin tai startup-recoveryn lopputulosta.
+
+Epäonnistunut restore-aktivointi suljetaan täsmälleen yhdellä
+`restore.activationFailed`-tapahtumalla. Jos rollback, failed-safe-journal,
+rolled-back-profiilin validointi tai startup-rollback jättää tilan manuaalista
+palautusta vaativaksi, ketju saa lisäksi `restore.recoveryRequired`-tapahtuman.
+Korrelaatio säilyy tarvittaessa prosessien yli, mutta incident index ei sisällä
+correlation-, runtime-, company-, profile- tai artifact-tunnisteita.
+
+Muutokset eivät lisää Profile Protectionille business auditia tai Activity-
+projektiota. Ne eivät muuta backup-formaattia, skeemaa, migraatioita,
+permissioneja, endpointteja, riippuvuuksia tai lockfilea.

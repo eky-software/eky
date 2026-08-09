@@ -123,6 +123,7 @@ export interface DesktopOperationalEventPayloadMap {
   };
   'backup.failed': FailureFields & {
     correlationId: string;
+    stage: 'portable';
   };
   'backup.inspectionCompleted': {
     correlationId: string;
@@ -131,6 +132,7 @@ export interface DesktopOperationalEventPayloadMap {
   };
   'backup.inspectionFailed': FailureFields & {
     correlationId: string;
+    stage: 'portable';
   };
   'recoveryPoint.started': {
     correlationId: string;
@@ -170,6 +172,10 @@ export interface DesktopOperationalEventPayloadMap {
     correlationId: string;
     stage: 'activation';
   };
+  'restore.activationFailed': FailureFields & {
+    correlationId: string;
+    stage: 'activation';
+  };
   'restore.validationCompleted': {
     correlationId: string;
     durationMs?: number;
@@ -191,6 +197,14 @@ export interface DesktopOperationalEventPayloadMap {
   'restore.rollbackFailed': FailureFields & {
     correlationId: string;
     stage: 'activationRollback' | 'startupRollback';
+  };
+  'restore.recoveryRequired': FailureFields & {
+    correlationId: string;
+    stage:
+      | 'activationRollback'
+      | 'failedSafeJournal'
+      | 'rolledBackProfile'
+      | 'startupRollback';
   };
 }
 
@@ -480,6 +494,10 @@ export const desktopOperationalEventSpecs = Object.freeze({
     'correlationId',
     'stage',
   ]),
+  'restore.activationFailed': spec('restore', 'error', 'failure', [
+    'correlationId',
+    ...failureFields,
+  ]),
   'restore.validationCompleted': spec('restore', 'info', 'success', [
     'correlationId',
     'durationMs',
@@ -499,6 +517,10 @@ export const desktopOperationalEventSpecs = Object.freeze({
     'stage',
   ]),
   'restore.rollbackFailed': spec('restore', 'error', 'failure', [
+    'correlationId',
+    ...failureFields,
+  ]),
+  'restore.recoveryRequired': spec('restore', 'error', 'failure', [
     'correlationId',
     ...failureFields,
   ]),
@@ -551,9 +573,9 @@ export const desktopRequiredPayloadFields = Object.freeze({
   'supportBundle.creationFailed': ['correlationId', 'errorCode'],
   'backup.started': ['correlationId', 'stage'],
   'backup.completed': ['correlationId', 'stage'],
-  'backup.failed': ['correlationId', 'errorCode'],
+  'backup.failed': ['correlationId', 'errorCode', 'stage'],
   'backup.inspectionCompleted': ['correlationId', 'stage'],
-  'backup.inspectionFailed': ['correlationId', 'errorCode'],
+  'backup.inspectionFailed': ['correlationId', 'errorCode', 'stage'],
   'recoveryPoint.started': [
     'correlationId',
     'recoveryPointKind',
@@ -570,11 +592,26 @@ export const desktopRequiredPayloadFields = Object.freeze({
   'restore.stagingCompleted': ['correlationId', 'stage'],
   'restore.stagingFailed': ['correlationId', 'errorCode', 'stage'],
   'restore.activationStarted': ['correlationId', 'stage'],
+  'restore.activationFailed': [
+    'correlationId',
+    'durationMs',
+    'errorCode',
+    'retryable',
+    'sideEffectState',
+    'stage',
+  ],
   'restore.validationCompleted': ['correlationId', 'stage'],
   'restore.validationFailed': ['correlationId', 'errorCode', 'stage'],
   'restore.rollbackStarted': ['correlationId', 'stage'],
   'restore.rollbackCompleted': ['correlationId', 'stage'],
   'restore.rollbackFailed': ['correlationId', 'errorCode', 'stage'],
+  'restore.recoveryRequired': [
+    'correlationId',
+    'errorCode',
+    'retryable',
+    'sideEffectState',
+    'stage',
+  ],
 } satisfies Record<DesktopOperationalEventName, readonly string[]>);
 
 function spec(

@@ -105,4 +105,96 @@ describe('DesktopIncidentIndexingOperationalLogger', () => {
       /(?:correlationId|operationId|entityId|runtimeInstanceId)/,
     );
   });
+
+  it('stores a portable backup failure without its correlation identifier', () => {
+    const root = mkdtempSync(join(tmpdir(), 'eky-backup-incident-'));
+    temporaryDirectories.push(root);
+    const logsRoot = join(root, 'logs');
+    const logger = new DesktopIncidentIndexingOperationalLogger(
+      new JsonLineDesktopOperationalLogger({ logsRoot }),
+      logsRoot,
+    );
+
+    logger.write(
+      createDesktopOperationalEvent(
+        {
+          correlationId: '33333333-3333-4333-8333-333333333333',
+          errorCode: 'PROFILE_BACKUP_CREATE_FAILED',
+          eventName: 'backup.failed',
+          retryable: true,
+          sideEffectState: 'unknown',
+          stage: 'portable',
+        },
+        {
+          appVersion: '0.0.0',
+          buildRevision: '123456789abc',
+          eventId: 'desktop-event-3',
+          runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
+          timestamp: '2026-08-09T20:00:00.000Z',
+        },
+      ),
+    );
+
+    const line = readFileSync(
+      join(
+        logsRoot,
+        'incident-index',
+        'desktop-incident-index-2026.jsonl',
+      ),
+      'utf8',
+    );
+    expect(JSON.parse(line)).toMatchObject({
+      errorCode: 'PROFILE_BACKUP_CREATE_FAILED',
+      eventName: 'backup.failed',
+    });
+    expect(line).not.toMatch(
+      /(?:correlationId|operationId|entityId|runtimeInstanceId)/,
+    );
+  });
+
+  it('minimizes recovery-required without journal or correlation metadata', () => {
+    const root = mkdtempSync(join(tmpdir(), 'eky-recovery-required-incident-'));
+    temporaryDirectories.push(root);
+    const logsRoot = join(root, 'logs');
+    const logger = new DesktopIncidentIndexingOperationalLogger(
+      new JsonLineDesktopOperationalLogger({ logsRoot }),
+      logsRoot,
+    );
+
+    logger.write(
+      createDesktopOperationalEvent(
+        {
+          correlationId: '44444444-4444-4444-8444-444444444444',
+          errorCode: 'PROFILE_RESTORE_RECOVERY_REQUIRED',
+          eventName: 'restore.recoveryRequired',
+          retryable: false,
+          sideEffectState: 'unknown',
+          stage: 'startupRollback',
+        },
+        {
+          appVersion: '0.0.0',
+          buildRevision: '123456789abc',
+          eventId: 'desktop-event-4',
+          runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
+          timestamp: '2026-08-09T20:00:00.000Z',
+        },
+      ),
+    );
+
+    const line = readFileSync(
+      join(
+        logsRoot,
+        'incident-index',
+        'desktop-incident-index-2026.jsonl',
+      ),
+      'utf8',
+    );
+    expect(JSON.parse(line)).toMatchObject({
+      errorCode: 'PROFILE_RESTORE_RECOVERY_REQUIRED',
+      eventName: 'restore.recoveryRequired',
+    });
+    expect(line).not.toMatch(
+      /(?:correlationId|operationId|runtimeInstanceId|journal|stage)/i,
+    );
+  });
 });

@@ -115,7 +115,11 @@ Jos työ koskee uuden liiketoimintamoduulin tai moduulikansion perustamista,
 `docs/modules/`-vastuudokumenttia, moduulikohtaista `AGENTS.md`-tiedostoa,
 composition rootia, moduulien välistä luku- tai kirjoitussopimusta,
 repository-, HTTP-, application- tai frontend-rakennetta, lue myös
-`docs/architecture/new-module-implementation-checklist.md`.
+`docs/architecture/new-module-implementation-checklist.md`. Jos työ koskee
+uutta moduulia, moduulin omistajuutta, composition rootia, julkista porttia,
+cross-module-lukua tai -kirjoitusta tai moduulin backup/restore-sopimusta, lue
+ja päivitä tarvittaessa myös
+`docs/architecture/module-integration-matrix.md`.
 
 Jos työ koskee teknistä perustaa, skeleton-rakennetta, local-first-mallia, pilvivalmiutta tai synkronointia, lue myös `docs/decisions/ADR-0003-technical-foundation.md`.
 

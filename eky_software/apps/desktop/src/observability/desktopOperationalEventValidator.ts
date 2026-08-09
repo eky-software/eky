@@ -41,6 +41,11 @@ const buildRevisionPattern = /^(?:[0-9a-f]{7,40}|development)$/;
 const permissionTypes = new Set(desktopPermissionTypes);
 const recoveryPointKindSet = new Set<string>(recoveryPointKinds);
 const recoveryEventStages = Object.freeze({
+  'backup.started': ['portable'],
+  'backup.completed': ['portable'],
+  'backup.failed': ['portable'],
+  'backup.inspectionCompleted': ['portable'],
+  'backup.inspectionFailed': ['portable'],
   'recoveryPoint.started': ['creation'],
   'recoveryPoint.completed': ['creation'],
   'recoveryPoint.failed': ['automaticCheck', 'creation'],
@@ -49,6 +54,7 @@ const recoveryEventStages = Object.freeze({
   'restore.stagingCompleted': ['staging'],
   'restore.stagingFailed': ['staging'],
   'restore.activationStarted': ['activation'],
+  'restore.activationFailed': ['activation'],
   'restore.validationCompleted': [
     'restoredProfile',
     'rolledBackProfile',
@@ -67,6 +73,12 @@ const recoveryEventStages = Object.freeze({
   ],
   'restore.rollbackFailed': [
     'activationRollback',
+    'startupRollback',
+  ],
+  'restore.recoveryRequired': [
+    'activationRollback',
+    'failedSafeJournal',
+    'rolledBackProfile',
     'startupRollback',
   ],
 } as const satisfies Partial<
@@ -149,6 +161,7 @@ export function validateDesktopOperationalEvent(
       );
     }
   }
+  validateRecoveryEventSemantics(eventName, normalized);
 
   if (Buffer.byteLength(JSON.stringify(normalized), 'utf8') > maximumEventBytes) {
     throw new DesktopOperationalEventValidationError(
@@ -157,6 +170,22 @@ export function validateDesktopOperationalEvent(
   }
 
   return Object.freeze(normalized) as DesktopOperationalEvent;
+}
+
+function validateRecoveryEventSemantics(
+  eventName: DesktopOperationalEventName,
+  event: Record<string, unknown>,
+): void {
+  if (
+    eventName === 'restore.recoveryRequired' &&
+    (event.errorCode !== 'PROFILE_RESTORE_RECOVERY_REQUIRED' ||
+      event.retryable !== false ||
+      event.sideEffectState !== 'unknown')
+  ) {
+    throw new DesktopOperationalEventValidationError(
+      'Desktop operational recovery-required event is invalid.',
+    );
+  }
 }
 
 function validatePayloadValue(

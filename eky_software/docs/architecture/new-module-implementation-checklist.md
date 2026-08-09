@@ -18,6 +18,9 @@ korvaa niitä.
   cross-module-riippuvuuksille.
 - [ ] Tarkista kohdekansion `AGENTS.md`-tarve ja päivitä dokumentaation
   pakollinen lukulista, jos uusi vastuu sitä edellyttää.
+- [ ] Lisää uudelle moduulille oma rivi
+  `docs/architecture/module-integration-matrix.md`-dokumenttiin ennen
+  cross-module-toteutusta.
 - [ ] Varmista ennen asennusta projektin omistajan nimenomainen hyväksyntä
   jokaiselle uudelle riippuvuudelle sekä `package.json`- tai lockfile-muutokselle.
 
@@ -96,6 +99,9 @@ Nykytilan yksityiskohtainen arvio ja hyväksytyt poikkeukset ovat dokumentissa
 
 ## Moduulien Välinen Yhteistyö
 
+- [ ] Päivitä integraatiomatriisin tarjoaja- ja kuluttajarivit, jos julkinen
+  cross-module-sopimus muuttuu. Tavallinen moduulin sisäinen toteutusmuutos ei
+  vaadi matriisidiffiä.
 - [ ] Moduuli ei importtaa toisen moduulin infrastructurea, repository-
   adapteria, HTTP-handleria tai sisäistä UI-komponenttia.
 - [ ] Cross-module-luku tehdään omistavan moduulin tarjoaman kapean reader-portin
@@ -189,6 +195,7 @@ log ja tukipaketti ovat eri vastuita.
 
 - `docs/architecture/base-architecture.md`
 - `docs/architecture/module-boundaries.md`
+- `docs/architecture/module-integration-matrix.md`
 - `docs/architecture/dependency-policy.md`
 - `docs/architecture/security-principles.md`
 - `docs/architecture/codebase-cleanup-roadmap.md`

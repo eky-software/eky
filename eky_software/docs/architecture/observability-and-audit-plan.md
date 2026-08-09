@@ -303,13 +303,40 @@ Recovery point- ja restore-lifecyclejen tarkat R0-eventit on lukittu
 raportoi luomisen alun ja tuloksen. Scheduler säilyy best effort -mallina,
 mutta automaattisen tarkistuksen epäonnistuminen ei jää näkymättömäksi.
 Restore staging, aktivointi, seuraavan prosessin validointi ja rollback
-raportoivat vain katalogin allowlistatut tekniset vaiheet.
+raportoivat vain katalogin allowlistatut tekniset vaiheet. Aktivoinnin
+epäonnistuminen päättyy `restore.activationFailed`-tapahtumaan ennen
+mahdollisen rollbackin alkua. Failed-safe-journal, rollbackatun profiilin
+epäonnistunut validointi tai epäonnistunut rollback tuottaa lisäksi
+`restore.recoveryRequired`-tapahtuman, koska business-UI:ta ei silloin saa
+avata turvallisesti.
 
 Cross-restart-korrelaatio käyttää aktivointijournalin jo omistamaa
 satunnaista teknistä UUID:ta vain eventin `correlationId`-kenttänä. Journalin
 formaattia tai raakasisältöä ei projisoida. Korrelaatiotunniste ei siirry
 incident-indeksiin, mutta se saa säilyä lyhyen retentionin Diagnostics-
 projektiossa ja sanitoidussa tukipaketissa nykyisen kenttäsopimuksen mukaan.
+
+Profiilisuojauksen tapahtumien näkyvyys noudattaa seuraavaa suljettua
+vastuumatriisia. `Kyllä` tarkoittaa nimenomaan sanitoitua teknistä
+projektiota, ei lähdetapahtuman tai backup-sisällön kopiointia.
+
+| Tapahtumaperhe | Yksityiskohtainen JSONL | Diagnostics | Tukipaketti | Incident-index | Activity | Business audit |
+| --- | --- | --- | --- | --- | --- | --- |
+| `backup.*` success/info | Kyllä | Kyllä | Ei | Ei | Ei | Ei |
+| `backup.*` failure/warn/error | Kyllä | Kyllä | Kyllä | Vain error-tason minimoitu yhteenveto | Ei | Ei |
+| `recoveryPoint.*` success/info | Kyllä | Kyllä | Ei | Ei | Ei | Ei |
+| `recoveryPoint.*` failure/warn/error | Kyllä | Kyllä | Kyllä | Vain error-tason minimoitu yhteenveto | Ei | Ei |
+| `restore.*` success/info | Kyllä | Kyllä | Ei | Ei | Ei | Ei |
+| `restore.*` failure/warn/error | Kyllä | Kyllä | Kyllä | Vain error-tason minimoitu yhteenveto | Ei | Ei |
+
+Diagnostics ja tukipaketti saavat näistä tapahtumista vain suljetun teknisen
+kenttäjoukon: eventin identiteetin, teknisen UUID-korrelaation,
+allowlistatun vaiheen, keston, turvallisen virhekoodin, `retryable`-arvon,
+`sideEffectState`-arvon ja recovery point -tyypin silloin kun tapahtuman
+sopimus sitä edellyttää. Incident-index ei sisällä korrelaatiotunnistetta.
+Polku, tiedostonimi, manifesti, salasana, avainmateriaali, salt, nonce, tag,
+profiili-, yritys-, lasku-, dokumentti- tai artifact-tunniste, checksum,
+raakavirhe, stack trace tai vapaa metadata hylätään kokonaan.
 
 Update-lifecycle säilyy vielä varattuna `update.*`-perheenä ja vaatii oman
 event catalog -päätöksensä ennen instrumentointia.

@@ -169,6 +169,12 @@ describe('profile restore activation service', () => {
       }),
       expect.objectContaining({
         correlationId: operationId,
+        errorCode: 'PROFILE_RESTORE_ACTIVATION_FAILED',
+        eventName: 'restore.activationFailed',
+        stage: 'activation',
+      }),
+      expect.objectContaining({
+        correlationId: operationId,
         eventName: 'restore.rollbackStarted',
         stage: 'activationRollback',
       }),
@@ -178,6 +184,185 @@ describe('profile restore activation service', () => {
         stage: 'activationRollback',
       }),
     ]);
+  });
+
+  it.each([
+    'maintenance',
+    'revalidation',
+    'preparation',
+    'transactionPrepare',
+    'runtimeStop',
+    'activationAdvance',
+  ] as const)(
+    'writes exactly one terminal activation failure at %s',
+    async (failurePoint) => {
+      const operationId = randomUUID();
+      const events: ProfileRecoveryOperationalEvent[] = [];
+      const failAt = (point: typeof failurePoint): void => {
+        if (failurePoint === point) {
+          throw new Error('PROFILE_RESTORE_SYNTHETIC_FAILURE');
+        }
+      };
+      const service = new ProfileRestoreActivationService({
+        observer: { observe: (event) => events.push(event) },
+        profileSnapshotClient: {
+          beginMaintenance: vi.fn(async () => {
+            failAt('maintenance');
+            return 'busy' as const;
+          }),
+          endMaintenance: vi.fn(async () => 'normal' as const),
+          prepareProfileRestoreActivation: vi.fn(async () => {
+            failAt('preparation');
+            return {
+              artifactCount: 0,
+              artifactTotalByteSize: 0,
+              type: 'profileRestoreActivationPrepared' as const,
+            };
+          }),
+          validateProfileSnapshot: vi.fn(async () => {
+            failAt('revalidation');
+            return {
+              activeProfileIsEmpty: false,
+              artifactCount: 0,
+              artifactTotalByteSize: 0,
+              databaseHealth: 'healthy' as const,
+              migrationChainIdentity: 'a'.repeat(64),
+              profileId: 'b'.repeat(64),
+              profileMatchesActive: true,
+              type: 'profileSnapshotValidation' as const,
+            };
+          }),
+        },
+        relaunchApplication: vi.fn(),
+        stagingService: {
+          getPreparedRestore: () => ({
+            operationId,
+            summary: createSummary(),
+            targetDisposition: 'replaceActiveProfile',
+          }),
+        },
+        stopBusinessRuntime: vi.fn(async () => {
+          failAt('runtimeStop');
+        }),
+        transaction: {
+          advanceToValidation: vi.fn(async () => {
+            failAt('activationAdvance');
+            return createJournal(operationId, 'validationStarting');
+          }),
+          prepare: vi.fn(async () => {
+            failAt('transactionPrepare');
+          }),
+          rollback: vi.fn(async () =>
+            createJournal(operationId, 'rolledBack'),
+          ),
+        },
+      });
+
+      if (failurePoint === 'activationAdvance') {
+        await expect(service.activate(operationId)).resolves.toBe(
+          'relaunching',
+        );
+      } else {
+        await expect(service.activate(operationId)).rejects.toMatchObject({
+          code: 'PROFILE_RESTORE_ACTIVATION_FAILED',
+        });
+      }
+
+      expect(
+        events.filter(
+          ({ eventName }) => eventName === 'restore.activationFailed',
+        ),
+      ).toEqual([
+        expect.objectContaining({
+          correlationId: operationId,
+          errorCode: 'PROFILE_RESTORE_SYNTHETIC_FAILURE',
+          retryable: false,
+          stage: 'activation',
+        }),
+      ]);
+    },
+  );
+
+  it('reports recovery required when activation rollback fails', async () => {
+    const operationId = randomUUID();
+    const events: ProfileRecoveryOperationalEvent[] = [];
+    const service = new ProfileRestoreActivationService({
+      observer: { observe: (event) => events.push(event) },
+      profileSnapshotClient: createSnapshotClient(),
+      relaunchApplication: vi.fn(),
+      stagingService: {
+        getPreparedRestore: () => ({
+          operationId,
+          summary: createSummary(),
+          targetDisposition: 'replaceActiveProfile',
+        }),
+      },
+      stopBusinessRuntime: vi.fn(),
+      transaction: {
+        advanceToValidation: vi.fn(async () => {
+          throw new Error('interrupted');
+        }),
+        prepare: vi.fn(),
+        rollback: vi.fn(async () => {
+          throw new Error('rollback interrupted');
+        }),
+      },
+    });
+
+    await expect(service.activate(operationId)).rejects.toMatchObject({
+      code: 'PROFILE_RESTORE_RECOVERY_REQUIRED',
+    });
+    expect(events.map(({ eventName }) => eventName)).toEqual([
+      'restore.activationStarted',
+      'restore.activationFailed',
+      'restore.rollbackStarted',
+      'restore.rollbackFailed',
+      'restore.recoveryRequired',
+    ]);
+    expect(events.at(-1)).toEqual({
+      correlationId: operationId,
+      errorCode: 'PROFILE_RESTORE_RECOVERY_REQUIRED',
+      eventName: 'restore.recoveryRequired',
+      retryable: false,
+      sideEffectState: 'unknown',
+      stage: 'activationRollback',
+    });
+  });
+
+  it('keeps activation rollback authoritative when a custom observer throws', async () => {
+    const operationId = randomUUID();
+    const rollback = vi.fn(async () =>
+      createJournal(operationId, 'rolledBack'),
+    );
+    const service = new ProfileRestoreActivationService({
+      observer: {
+        observe() {
+          throw new Error('SYNTHETIC_LOG_WRITE_FAILURE');
+        },
+      },
+      profileSnapshotClient: createSnapshotClient(),
+      relaunchApplication: vi.fn(),
+      stagingService: {
+        getPreparedRestore: () => ({
+          operationId,
+          summary: createSummary(),
+          targetDisposition: 'replaceActiveProfile',
+        }),
+      },
+      stopBusinessRuntime: vi.fn(),
+      transaction: {
+        advanceToValidation: vi.fn(async () => {
+          throw new Error('PROFILE_RESTORE_ACTIVATION_FAILED');
+        }),
+        prepare: vi.fn(),
+        rollback,
+      },
+    });
+
+    await expect(service.activate(operationId)).resolves.toBe(
+      'relaunching',
+    );
+    expect(rollback).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -107,6 +107,7 @@ describe('profile restore startup recovery', () => {
 
   it('fails safe when the rolled-back profile is not healthy', async () => {
     const operationId = randomUUID();
+    const events: ProfileRecoveryOperationalEvent[] = [];
     const transaction = createTransaction(operationId);
     const recovery = new ProfileRestoreStartupRecovery({
       journalStore: {
@@ -114,9 +115,13 @@ describe('profile restore startup recovery', () => {
           createJournal(operationId, 'rolledBack'),
         ),
       },
+      observer: { observe: (event) => events.push(event) },
       transaction,
     });
 
+    await expect(recovery.prepareBeforeBackend()).resolves.toBe(
+      'validateRolledBackProfile',
+    );
     await expect(
       recovery.validateAfterBackend({
         mode: 'validateRolledBackProfile',
@@ -127,6 +132,79 @@ describe('profile restore startup recovery', () => {
       }),
     ).rejects.toThrow('PROFILE_RESTORE_RECOVERY_REQUIRED');
     expect(transaction.clearRolledBack).not.toHaveBeenCalled();
+    expect(events).toEqual([
+      expect.objectContaining({
+        correlationId: operationId,
+        eventName: 'restore.validationFailed',
+        stage: 'rolledBackProfile',
+      }),
+      {
+        correlationId: operationId,
+        errorCode: 'PROFILE_RESTORE_RECOVERY_REQUIRED',
+        eventName: 'restore.recoveryRequired',
+        retryable: false,
+        sideEffectState: 'unknown',
+        stage: 'rolledBackProfile',
+      },
+    ]);
+  });
+
+  it('reports a failed-safe startup journal before blocking startup', async () => {
+    const operationId = randomUUID();
+    const events: ProfileRecoveryOperationalEvent[] = [];
+    const recovery = new ProfileRestoreStartupRecovery({
+      journalStore: {
+        read: vi.fn(async () => createJournal(operationId, 'failedSafe')),
+      },
+      observer: { observe: (event) => events.push(event) },
+      transaction: createTransaction(operationId),
+    });
+
+    await expect(recovery.prepareBeforeBackend()).rejects.toThrow(
+      'PROFILE_RESTORE_RECOVERY_REQUIRED',
+    );
+    expect(events).toEqual([
+      {
+        correlationId: operationId,
+        errorCode: 'PROFILE_RESTORE_RECOVERY_REQUIRED',
+        eventName: 'restore.recoveryRequired',
+        retryable: false,
+        sideEffectState: 'unknown',
+        stage: 'failedSafeJournal',
+      },
+    ]);
+  });
+
+  it('reports recovery required when startup rollback fails', async () => {
+    const operationId = randomUUID();
+    const events: ProfileRecoveryOperationalEvent[] = [];
+    const transaction = createTransaction(operationId);
+    transaction.rollback.mockRejectedValueOnce(new Error('synthetic'));
+    const recovery = new ProfileRestoreStartupRecovery({
+      journalStore: {
+        read: vi.fn(async () =>
+          createJournal(operationId, 'rollbackStarting'),
+        ),
+      },
+      observer: { observe: (event) => events.push(event) },
+      transaction,
+    });
+
+    await expect(recovery.prepareBeforeBackend()).rejects.toThrow(
+      'PROFILE_RESTORE_RECOVERY_REQUIRED',
+    );
+    expect(events.map(({ eventName }) => eventName)).toEqual([
+      'restore.rollbackStarted',
+      'restore.rollbackFailed',
+      'restore.recoveryRequired',
+    ]);
+    expect(events.at(-1)).toEqual(
+      expect.objectContaining({
+        correlationId: operationId,
+        eventName: 'restore.recoveryRequired',
+        stage: 'startupRollback',
+      }),
+    );
   });
 });
 
@@ -147,6 +225,8 @@ function createJournal(
   operationId: string,
   phase:
     | 'currentDatabaseMoved'
+    | 'failedSafe'
+    | 'rollbackStarting'
     | 'rolledBack'
     | 'validationStarting',
 ) {

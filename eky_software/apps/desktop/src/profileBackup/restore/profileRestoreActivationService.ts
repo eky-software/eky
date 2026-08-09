@@ -65,6 +65,7 @@ export class ProfileRestoreActivationService {
     }
 
     this.active = true;
+    const activationStartedAt = Date.now();
     this.observe({
       correlationId: operationId,
       eventName: 'restore.activationStarted',
@@ -96,7 +97,16 @@ export class ProfileRestoreActivationService {
       await this.dependencies.transaction.advanceToValidation();
       this.dependencies.relaunchApplication();
       return 'relaunching';
-    } catch {
+    } catch (error) {
+      this.observe({
+        correlationId: operationId,
+        durationMs: Date.now() - activationStartedAt,
+        errorCode: readSafeActivationErrorCode(error),
+        eventName: 'restore.activationFailed',
+        retryable: false,
+        sideEffectState: runtimeStopped ? 'unknown' : 'none',
+        stage: 'activation',
+      });
       if (maintenanceActive) {
         await this.dependencies.profileSnapshotClient
           .endMaintenance(operationId)
@@ -129,6 +139,14 @@ export class ProfileRestoreActivationService {
             sideEffectState: 'unknown',
             stage: 'activationRollback',
           });
+          this.observe({
+            correlationId: operationId,
+            errorCode: 'PROFILE_RESTORE_RECOVERY_REQUIRED',
+            eventName: 'restore.recoveryRequired',
+            retryable: false,
+            sideEffectState: 'unknown',
+            stage: 'activationRollback',
+          });
           throw new ProfileRestoreActivationError(
             'PROFILE_RESTORE_RECOVERY_REQUIRED',
           );
@@ -151,6 +169,16 @@ export class ProfileRestoreActivationService {
       event,
     );
   }
+}
+
+function readSafeActivationErrorCode(error: unknown): string {
+  if (
+    error instanceof Error &&
+    /^[A-Z][A-Z0-9_]{2,100}$/.test(error.message)
+  ) {
+    return error.message;
+  }
+  return 'PROFILE_RESTORE_ACTIVATION_FAILED';
 }
 
 function assertPreparedTargetStillValid(

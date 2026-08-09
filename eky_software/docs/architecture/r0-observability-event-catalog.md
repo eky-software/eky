@@ -146,11 +146,13 @@ liiketoimintasisältöä.
 - `restore.stagingCompleted`
 - `restore.stagingFailed`
 - `restore.activationStarted`
+- `restore.activationFailed`
 - `restore.validationCompleted`
 - `restore.validationFailed`
 - `restore.rollbackStarted`
 - `restore.rollbackCompleted`
 - `restore.rollbackFailed`
+- `restore.recoveryRequired`
 
 `electron.permissionDenied` säilyy vain olemassa olevien lokien
 yhteensopivuuden vuoksi. Tavallinen Chromiumin permission check estetään
@@ -170,7 +172,25 @@ Recovery point -tapahtumien sallitut vaiheet ovat `automaticCheck` ja
 `creation`. Luodun pisteen allowlistattu kind on `daily`, `weekly`, `monthly`,
 `manual`, `preRestore` tai `preUpdate`. Restore-tapahtumien sallitut vaiheet
 ovat `inspection`, `staging`, `activation`, `restoredProfile`,
-`rolledBackProfile`, `activationRollback` ja `startupRollback`.
+`rolledBackProfile`, `activationRollback`, `startupRollback` ja
+`failedSafeJournal`. `restore.activationFailed` käyttää aina vaihetta
+`activation`. `restore.recoveryRequired` sallitaan vain failed-safe-journalin,
+rollbackatun profiilin epäonnistuneen validoinnin tai epäonnistuneen
+activation/startup-rollbackin yhteydessä.
+
+`restore.activationFailed` kirjoitetaan täsmälleen kerran aktivoinnin
+epäonnistuessa ennen mahdollista rollbackia. Se sisältää vain teknisen
+UUID-korrelaation, vaiheen, keston, turvallisen virhekoodin, `retryable`-arvon
+ja `sideEffectState`-arvon. Rollbackia vaativan epäonnistumisen järjestys on
+`restore.activationStarted` -> `restore.activationFailed` ->
+`restore.rollbackStarted` -> `restore.rollbackCompleted` tai
+`restore.rollbackFailed`.
+
+`restore.recoveryRequired` tarkoittaa, ettei business-UI:ta voida avata
+turvallisesti ilman manuaalista palautusta. Sen virhekoodi on aina
+`PROFILE_RESTORE_RECOVERY_REQUIRED`, `retryable` on `false` ja
+`sideEffectState` on `unknown`. Tapahtumaan ei kopioida journal phasea vapaana
+tekstinä eikä journalin sisältöä.
 
 Restoren stagingissa luotu journalin `operationId` on satunnainen tekninen
 UUID. Samaa arvoa saa käyttää prosessien yli vain operational-eventin

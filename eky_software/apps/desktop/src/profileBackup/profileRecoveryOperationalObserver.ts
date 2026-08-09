@@ -10,12 +10,14 @@ type ProfileRecoveryEventName =
   | 'recoveryPoint.completed'
   | 'recoveryPoint.failed'
   | 'recoveryPoint.started'
+  | 'restore.activationFailed'
   | 'restore.activationStarted'
   | 'restore.inspectionCompleted'
   | 'restore.inspectionFailed'
   | 'restore.rollbackCompleted'
   | 'restore.rollbackFailed'
   | 'restore.rollbackStarted'
+  | 'restore.recoveryRequired'
   | 'restore.stagingCompleted'
   | 'restore.stagingFailed'
   | 'restore.validationCompleted'
@@ -65,6 +67,8 @@ function createProfileRecoveryEvent(
       return createDesktopOperationalEvent(event, identity);
     case 'restore.activationStarted':
       return createDesktopOperationalEvent(event, identity);
+    case 'restore.activationFailed':
+      return createDesktopOperationalEvent(event, identity);
     case 'restore.inspectionCompleted':
       return createDesktopOperationalEvent(event, identity);
     case 'restore.inspectionFailed':
@@ -74,6 +78,8 @@ function createProfileRecoveryEvent(
     case 'restore.rollbackFailed':
       return createDesktopOperationalEvent(event, identity);
     case 'restore.rollbackStarted':
+      return createDesktopOperationalEvent(event, identity);
+    case 'restore.recoveryRequired':
       return createDesktopOperationalEvent(event, identity);
     case 'restore.stagingCompleted':
       return createDesktopOperationalEvent(event, identity);
