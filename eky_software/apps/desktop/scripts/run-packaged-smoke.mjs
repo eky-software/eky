@@ -6,6 +6,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  createPackagedSmokeFailureMessage,
   createPackagedSmokeTimeoutMessage,
   readPackagedSmokeResult,
   writePackagedSmokeResult,
@@ -117,14 +118,8 @@ async function runSmokePhase(argumentsList, expectedStage) {
         (expectedStage === 'restoreRestart' &&
           smokeResult.status !== 'started')
       ) {
-        const safeCode =
-          typeof smokeResult?.code === 'string'
-            ? smokeResult.code
-            : 'DESKTOP_SMOKE_FAILED';
         rejectSmoke(
-          new Error(
-            `Packaged desktop smoke check failed (${safeCode}, code ${String(code)}).`,
-          ),
+          new Error(createPackagedSmokeFailureMessage(smokeResult, code)),
         );
         return;
       }

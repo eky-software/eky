@@ -246,6 +246,20 @@ export function createPackagedSmokeTimeoutMessage(value: unknown): string {
   return `Packaged desktop smoke check timed out (stage ${stage}).`;
 }
 
+export function createPackagedSmokeFailureMessage(
+  value: unknown,
+  processExitCode: number | null,
+): string {
+  const result = readPackagedSmokeResult(value);
+  const code =
+    result?.status === 'failed'
+      ? result.code
+      : 'DESKTOP_SMOKE_FAILED';
+  const stage = result?.stage ?? 'startup';
+
+  return `Packaged desktop smoke check failed (${code}, stage ${stage}, process code ${String(processExitCode)}).`;
+}
+
 function isPackagedSmokeStage(
   value: unknown,
 ): value is PackagedSmokeStage {

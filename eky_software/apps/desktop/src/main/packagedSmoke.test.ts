@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   createPackagedSmokeConfiguration,
+  createPackagedSmokeFailureMessage,
   createPackagedSmokeProgressReporter,
   createPackagedSmokeTimeoutMessage,
   packagedSmokeStages,
@@ -103,6 +104,34 @@ describe('packaged smoke progress', () => {
         status: 'started',
       }),
     ).toBe('Packaged desktop smoke check timed out (stage startup).');
+  });
+
+  it('reports only the safe smoke code and stage in failure messages', () => {
+    expect(
+      createPackagedSmokeFailureMessage(
+        {
+          code: 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
+          stage: 'profileSnapshotMaintenance',
+          status: 'failed',
+        },
+        1,
+      ),
+    ).toBe(
+      'Packaged desktop smoke check failed (PROFILE_SNAPSHOT_BROKER_UNAVAILABLE, stage profileSnapshotMaintenance, process code 1).',
+    );
+
+    expect(
+      createPackagedSmokeFailureMessage(
+        {
+          code: 'C:\\Users\\Example\\secret',
+          stage: 'C:\\Users\\Example\\secret',
+          status: 'failed',
+        },
+        null,
+      ),
+    ).toBe(
+      'Packaged desktop smoke check failed (DESKTOP_SMOKE_FAILED, stage startup, process code null).',
+    );
   });
 
   it('accepts only allowlisted result shapes', () => {
