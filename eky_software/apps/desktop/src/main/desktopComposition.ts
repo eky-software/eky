@@ -397,6 +397,7 @@ async function startDesktopCompositionRuntime({
       activeDatabasePath: databaseFilePath,
       smokeRoot: requireSmokeRoot(options.smokeConfiguration.root),
     });
+    await options.reportSmokeStage('restoreActivationJournalLoaded');
   }
 
   const deliveryDialogAdapter: InvoiceDeliveryDialogAdapter = {

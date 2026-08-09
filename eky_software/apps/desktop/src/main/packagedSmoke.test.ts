@@ -77,7 +77,9 @@ describe('packaged smoke progress', () => {
     });
 
     await reporter.reportStage('restoredStartup');
+    await reporter.reportStage('restoreActivationJournalLoaded');
     await reporter.reportStage('restoredBackend');
+    await reporter.reportStage('restoredSessionValidated');
     await reporter.reportStage('profileComparison');
     await reporter.reportStage('secondBackup');
     await reporter.reportStage('shutdown');

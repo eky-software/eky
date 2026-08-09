@@ -42,12 +42,24 @@ describe('packaged profile backup smoke', () => {
       assertPackagedRestoreSessionChanged(
         'original-runtime',
         'restored-runtime',
+        'a'.repeat(64),
+        'b'.repeat(64),
       ),
     ).not.toThrow();
     expect(() =>
       assertPackagedRestoreSessionChanged(
         'same-runtime',
         'same-runtime',
+        'a'.repeat(64),
+        'b'.repeat(64),
+      ),
+    ).toThrow('DESKTOP_SMOKE_RESTORE_SESSION_FAILED');
+    expect(() =>
+      assertPackagedRestoreSessionChanged(
+        'original-runtime',
+        'restored-runtime',
+        'a'.repeat(64),
+        'a'.repeat(64),
       ),
     ).toThrow('DESKTOP_SMOKE_RESTORE_SESSION_FAILED');
   });
@@ -108,6 +120,7 @@ describe('packaged profile backup smoke', () => {
         ],
         formatVersion: 1,
         originalRuntimeInstanceId: 'synthetic-runtime-id',
+        originalRuntimeSessionSha256: 'a'.repeat(64),
       })}\n`,
       'utf8',
     );
