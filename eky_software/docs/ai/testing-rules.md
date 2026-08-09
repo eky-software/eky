@@ -278,6 +278,12 @@ Uusi moduuli tai merkittävä ominaisuus päivittää E2E-matriisiin onnistuvan,
 permission-/tenant-eston ja failure-/recovery-polun sekä tarvittaessa
 cross-module- ja packaged-turvarajan.
 
+Uuden moduulin, platform-kyvykkyyden tai cross-module-sopimuksen testit
+johdetaan myös `docs/architecture/module-integration-matrix.md`-dokumentista.
+Testit varmistavat matriisiin kirjatut omistajuus-, permission-, audit-,
+Diagnostics-, support bundle-, incident index-, backup- ja restore-rajat.
+Matriisi ei korvaa moduulin omia invariansseja tai alempien tasojen testejä.
+
 Kun olennainen työnkulku koostuu useasta peräkkäisestä tilasiirtymästä,
 lisää sille nimetty ketjutesti korkeimmalla käytännöllisellä testitasolla.
 Ketjutesti todistaa, että vierekkäiset siirtymät, niiden pysyvä tila ja
@@ -320,6 +326,23 @@ runtime-sessionin kelvollisuus, vanhan session vaihtuminen, backupin jälkeisen
 mutaation poistuminen ja konekohtaisen salaisuuden poissulku portable
 backupista. Prosessien välinen testitila saa sisältää vain synteettisiä hasheja
 ja tunnisteita.
+
+Backup- ja restore-observability testataan lisäksi tapahtumasopimuksen,
+projektion ja operaation eristämisen tasoilla:
+
+- jokaisella epäonnistuvalla lifecycle-polulla on täsmälleen yksi nimetty
+  päätetapahtuma
+- loggerin tai observerin virhe ei muuta backupin, restoren tai rollbackin
+  lopputulosta
+- manuaalista palautusta vaativa tila tuottaa erillisen
+  `restore.recoveryRequired`-tapahtuman
+- Diagnostics, support bundle ja incident index noudattavat omia
+  allowlist- ja minimointisääntöjään myös restartin yli
+- profile protection -tapahtumia ei kirjoiteta business auditiin eikä näytetä
+  Activityssa
+- polut, profiili-, yritys- ja artifact-tunnisteet, journalit, manifestit,
+  checksumit, salaisuudet ja raw errorit torjutaan tai minimoidaan lähteen
+  vaatimusten mukaan
 
 30 minuutin soak on pakollinen vain, kun muutos koskee runtimea, native
 addonia, prosessien elinkaarta, pitkäkestoista tiedosto-operaatiota tai
