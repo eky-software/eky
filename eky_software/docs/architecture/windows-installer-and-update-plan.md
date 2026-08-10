@@ -122,6 +122,46 @@ Paikallinen pilot-profiili auditoidaan Eky suljettuna copy-only-työkalulla.
 Audit ei korjaa, nollaa tai tulosta business-dataa. Profiilin käsittelystä
 päätetään vasta turvallisen luokituksen jälkeen.
 
+Production-profiilia ei muodosteta kopioimalla kehitys-, E2E-, smoke- tai
+pilot-testiprofiilia eikä poistamalla siitä jälkikäteen tunnettua testidataa.
+Lopullinen profiili syntyy tyhjänä hallitulla bootstrapilla, ja testaus tehdään
+siitä erillisessä profiilissa tai käyttöjärjestelmärajassa.
+
+Lopullisen production-profiilin ensimmäinen hyväksytty lasku on oikea.
+Sama artifacti on sitä ennen testattu erillisellä synteettisellä profiililla,
+erillisellä Windows-käyttäjällä tai virtuaalikoneessa.
+
+Nykyinen paikallinen pilot-paketointi ei vielä täytä "build once, test once,
+distribute the same bytes" -release-sääntöä. Ensimmäinen installer-pipeline
+muodostaa yhden artifactin, sitoo sen manifestiin ja SHA-256-arvoon, ajaa
+hyväksytyt testit juuri sille artifactille ja jakelee saman artifactin ilman
+paikallista uudelleenrakennusta.
+
+### Production-datan ja backupin sisältöraja
+
+Siirrettävä business-backup ei kopioi tai arkistoi koko Electron
+`userData`-juurta. Backupin mukaan tulevat vain:
+
+- aktiivisen yritysprofiilin SQLite-tietokanta
+- moduuliomistajien backup-sopimuksissa auktoritatiivisiksi ilmoittamat
+  hyväksyttyjen laskujen PDF:t ja muut business-artifactit
+
+Backupin ulkopuolelle jäävät:
+
+- SMTP-salaisuus ja muut `safeStorage`-blobit
+- operational- ja security-lokit
+- tukipaketit
+- konekohtaiset recovery pointit
+- backup-, restore-, arkistointi- ja päivitysjournalit
+- konekohtaiset asetukset
+- installerit ja release-binaarit
+- synteettinen testi-, E2E-, smoke- ja fixture-data
+
+Yhteinen backup-infrastruktuuri ei etsi tiedostoja heuristisesti eikä oleta
+kaikkea `userData`-sisältöä auktoritatiiviseksi. Uusi moduuli tai pysyvä
+business-artifact ilmoittaa oman inclusion/exclusion-, snapshot-, restore-
+validator- ja recovery-sopimuksensa ennen kuin se voidaan ottaa backupiin.
+
 ## 6. Olemassa olevan asennuksen päivitys
 
 Päivitys säilyttää saman sovellusidentiteetin ja `userData`-juuren. Asennin
