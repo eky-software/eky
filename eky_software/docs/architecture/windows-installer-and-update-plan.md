@@ -26,8 +26,8 @@ Suositus ei muuta ADR-0010:n hyväksyttyä rajaa eikä aloita toteutusta.
 | --- | --- | --- |
 | A1 Dependency gate alignment | valmis (`ae445c8`) | Read-only audit jokaiselle `main`-PR:lle, dependency-polkuun rajatulle `main`-pushille, päivittäin ja käsin; ei automaattimergeä |
 | A2 Migration manifest continuity | valmis (`a824114`) | Migraatiot alkavat `001`:stä ja jatkuvat katkeamatta; nykyinen 38 migraation ketju on regressiotestattu |
-| A3 Migration failure semantics | valmis | Startup raportoi vaiheen ja tämän ajon valmistuneiden migraatioiden määrän; koko ajon sivuvaikutustila on aina `unknown` |
-| A4 Package inventory final audit | odottaa | Installer-payloadin suljettu tiedostoinventaario viimeistellään |
+| A3 Migration failure semantics | valmis (`cab05c0`) | Startup raportoi vaiheen ja tämän ajon valmistuneiden migraatioiden määrän; koko ajon sivuvaikutustila on aina `unknown` |
+| A4 Package inventory final audit | valmis | Installer-payload torjuu Eky-runtimejäämät, yksityisavaimet ja service-account-tunnisteet sekä vaatii vendor-jäämille täsmällisen katselmoinnin |
 | A5 MSI version contract | odottaa | Sovellusversio ja Windows Installer -tuoteversio erotetaan |
 | A6 Package trust and private staging | odottaa | Vain uudelleen varmennettu yksityinen staging-artifacti voidaan suorittaa |
 | A7 WiX dependency decision | odottaa omistajan päätöstä | Työkalua ei asenneta eikä MSI:tä aloiteta ennen erillistä hyväksyntää |
@@ -109,6 +109,18 @@ ympäristötiedostoa, salaisuutta, E2E-runtimea, fixtureä, testiä, lähdehakem
 eikä oikeaa käyttäjäprofiilia. Backend deployataan linkittömänä hoisted-
 rakenteena, ja symboliset linkit torjutaan jokaisessa inventoidussa vaiheessa.
 Packaged-smoke-helperit sallitaan vain täsmällisestä nimilistasta.
+
+Lopullinen inventaario torjuu Eky-omisteiset `.json.gz`-, `.log`-, `.bak`-,
+`.backup`-, `.dmp`- ja `.pem`-jäämät. Yksityisavaimet (`.key`, `.p12`,
+`.pfx` ja private key -sisältöinen PEM) sekä rakenteeltaan tai nimeltään
+service account -tunnisteita vastaavat JSON-tiedostot torjutaan omistajasta
+riippumatta. Vastaavan vendor-runtime-artifactin löytyminen pysäyttää buildin
+katselmointia varten; sitä ei sallita yleisellä päätesäännöllä, vaan vasta
+tarvittaessa täsmällisellä polkukohtaisella allowlist-päätöksellä.
+
+Inventory-hashin tiedostojärjestys perustuu normalisoitujen loogisten polkujen
+locale-riippumattomaan koodipistejärjestykseen. Hashin toistettavuus ei siten
+riipu build-koneen kieli- tai locale-asetuksesta.
 
 Inventaario torjuu lisäksi Eky-projektin omat source mapit ja valvoo jokaiselle
 stagelle erikseen tiedostomäärää, kokonaiskokoa, loogisen UTF-8-polun pituutta,

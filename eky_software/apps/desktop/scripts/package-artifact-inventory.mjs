@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { lstat, readdir } from 'node:fs/promises';
+import { lstat, readFile, readdir } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 
 const smokeAllowlist = new Set([
@@ -16,6 +16,8 @@ const validStages = new Set([
   'desktopRuntimeStage',
   'packagedApp',
 ]);
+const reviewedVendorSensitiveArtifactAllowlist = new Set([]);
+const maximumCredentialJsonInspectionBytes = 1_048_576;
 const stageLimits = Object.freeze({
   applicationStage: Object.freeze({
     maximumDirectoryDepth: 5,
@@ -68,10 +70,6 @@ export async function inspectPackageArtifactInventory({ root, stage }) {
 
   for (const file of files) {
     const logicalPath = relative(root, file).split(sep).join('/');
-    const reason = classifyForbiddenArtifact(logicalPath, stage);
-    if (reason !== undefined) {
-      throw new PackageArtifactInventoryError(reason);
-    }
     const pathBytes = Buffer.from(logicalPath, 'utf8');
     if (pathBytes.byteLength > limits.maximumLogicalPathBytes) {
       throw new PackageArtifactInventoryError('LOGICAL_PATH');
@@ -80,6 +78,19 @@ export async function inspectPackageArtifactInventory({ root, stage }) {
       throw new PackageArtifactInventoryError('DIRECTORY_DEPTH');
     }
     const metadata = await lstat(file);
+    const contentReason = await classifyForbiddenArtifactContents({
+      file,
+      logicalPath,
+      size: metadata.size,
+      stage,
+    });
+    if (contentReason !== undefined) {
+      throw new PackageArtifactInventoryError(contentReason);
+    }
+    const reason = classifyForbiddenArtifact(logicalPath, stage);
+    if (reason !== undefined) {
+      throw new PackageArtifactInventoryError(reason);
+    }
     if (
       isProjectOwnedArtifact(logicalPath, stage) &&
       metadata.size > limits.maximumProjectOwnedFileBytes
@@ -115,6 +126,12 @@ export function classifyForbiddenArtifact(logicalPath, stage) {
   const fileName = segments.at(-1) ?? '';
   const isProjectOwned = isProjectOwnedArtifact(normalized, stage);
 
+  if (/\.(?:key|p12|pfx)$/.test(fileName)) {
+    return 'PRIVATE_KEY_ARTIFACT';
+  }
+  if (isServiceAccountJsonFileName(fileName)) {
+    return 'SERVICE_ACCOUNT_ARTIFACT';
+  }
   if (/\.(?:sqlite|sqlite3|db)(?:-(?:wal|shm))?$/.test(fileName)) {
     return 'DATABASE';
   }
@@ -152,12 +169,78 @@ export function classifyForbiddenArtifact(logicalPath, stage) {
   if (isProjectOwned && fileName.endsWith('.map')) {
     return 'PROJECT_SOURCE_MAP';
   }
+  if (
+    isProjectOwned &&
+    /(?:\.json\.gz|\.(?:log|bak|backup|dmp|pem))$/.test(fileName)
+  ) {
+    return 'PROJECT_RUNTIME_OR_SENSITIVE_ARTIFACT';
+  }
+  if (
+    !isProjectOwned &&
+    /(?:\.json\.gz|\.(?:log|bak|backup|dmp|pem))$/.test(fileName) &&
+    !reviewedVendorSensitiveArtifactAllowlist.has(lowerPath)
+  ) {
+    return 'VENDOR_SENSITIVE_ARTIFACT_REVIEW_REQUIRED';
+  }
   if (isProjectOwned && /smoke/i.test(normalized)) {
     if (stage !== 'applicationStage' || !smokeAllowlist.has(normalized)) {
       return 'UNAPPROVED_SMOKE_HELPER';
     }
   }
   return undefined;
+}
+
+async function classifyForbiddenArtifactContents({
+  file,
+  logicalPath,
+  size,
+  stage,
+}) {
+  const lowerPath = logicalPath.replaceAll('\\', '/').toLowerCase();
+
+  if (lowerPath.endsWith('.pem')) {
+    const content = await readFile(file, 'utf8');
+    if (/-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----/.test(content)) {
+      return 'PRIVATE_KEY_ARTIFACT';
+    }
+  }
+
+  if (!lowerPath.endsWith('.json')) {
+    return undefined;
+  }
+  if (size > maximumCredentialJsonInspectionBytes) {
+    return isProjectOwnedArtifact(logicalPath, stage)
+      ? undefined
+      : 'VENDOR_CREDENTIAL_JSON_REVIEW_REQUIRED';
+  }
+
+  try {
+    const value = JSON.parse(await readFile(file, 'utf8'));
+    if (isServiceAccountJson(value)) {
+      return 'SERVICE_ACCOUNT_ARTIFACT';
+    }
+  } catch {
+    // Non-JSON content with a .json suffix is handled by its owning runtime.
+  }
+  return undefined;
+}
+
+function isServiceAccountJsonFileName(fileName) {
+  return (
+    fileName.endsWith('.json') &&
+    /(?:^|[-_.])service[-_.]?account(?:[-_.]|$)/.test(fileName)
+  );
+}
+
+function isServiceAccountJson(value) {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    value.type === 'service_account' &&
+    typeof value.client_email === 'string' &&
+    typeof value.private_key === 'string'
+  );
 }
 
 function isProjectOwnedArtifact(logicalPath, stage) {
@@ -196,9 +279,11 @@ async function listRegularFiles(root) {
     }
   };
   await visit(root);
-  return result.sort((left, right) =>
-    relative(root, left).localeCompare(relative(root, right), 'en'),
-  );
+  return result.sort((left, right) => {
+    const leftPath = relative(root, left).split(sep).join('/');
+    const rightPath = relative(root, right).split(sep).join('/');
+    return leftPath < rightPath ? -1 : leftPath > rightPath ? 1 : 0;
+  });
 }
 
 async function hashFile(path) {
