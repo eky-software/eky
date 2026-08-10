@@ -116,6 +116,27 @@ Build-revision, versionumero ja runtime-tunniste eivät yksin todista artifactin
 alkuperää. Windows-asennus- ja päivitysrajat on määritelty ADR-0010:ssä ja
 `docs/architecture/windows-installer-and-update-plan.md`-dokumentissa.
 
+### Nykyinen pilot-paketoinnin portti
+
+`pnpm --filter @eky/desktop package:windows` säilyy paikallisen
+kehityspaketin komentona. Se ei ole jakelukelpoinen release-todiste.
+
+`pnpm --filter @eky/desktop package:windows:pilot` muodostaa ennen varsinaista
+installeria käytettävän unpacked pilot -artifactin ja torjuu:
+
+- dirty worktreen
+- build revisionin ja Git HEAD:n ristiriidan
+- epäkelvon SemVer-version
+- muun release-kanavan kuin `pilot`
+- version ja build-infon ristiriidan
+- puuttuvan tai muuttuneen pilot-manifestin
+- application-, backend-, desktop-runtime- tai final package -inventaarion
+  epäonnistumisen
+
+Manifesti ja inventaario todistavat suljetun sisällön sekä jäljitettävyyden,
+eivät vielä publisheria tai digitaalista alkuperää. Varsinainen installer-
+manifesti, code signing ja `stable`-kanava kuuluvat myöhempään release gateen.
+
 ## Liittyvät dokumentit
 
 - `docs/architecture/local-desktop-dependency-review.md`

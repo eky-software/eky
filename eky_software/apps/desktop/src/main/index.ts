@@ -2,12 +2,15 @@ import {
   app,
   dialog,
   protocol,
+  shell,
 } from 'electron';
 import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
 
 import type { DesktopLifecycleHandle } from './desktopComposition.js';
 import { runSafeDesktopStartup } from './earlyStartup.js';
 import { readDesktopBuildInfo } from '../release/desktopBuildInfoReader.js';
+import { showProfileRestoreRecoveryDialog } from './profileRestoreRecoveryDialog.js';
 import {
   createPackagedSmokeConfiguration,
   createPackagedSmokeProgressReporter,
@@ -130,13 +133,18 @@ if (hasSingleInstanceLock) {
         return;
       }
 
+      if (errorCode === 'PROFILE_RESTORE_RECOVERY_REQUIRED') {
+        await showProfileRestoreRecoveryDialog({
+          logsRoot: join(app.getPath('userData'), 'runtime', 'logs'),
+          openPath: (path) => shell.openPath(path),
+          showMessageBox: (options) => dialog.showMessageBox(options),
+        });
+        return;
+      }
+
       dialog.showErrorBox(
-        errorCode === 'PROFILE_RESTORE_RECOVERY_REQUIRED'
-          ? 'Palautus vaatii tarkistuksen'
-          : 'Eky ei käynnistynyt',
-        errorCode === 'PROFILE_RESTORE_RECOVERY_REQUIRED'
-          ? 'Varmuuskopion palautusta ei voitu viimeistellä tai perua turvallisesti. Eky ei avaa yritystietoja ennen tilanteen tarkistamista.'
-          : 'Paikallista sovellusta ei voitu käynnistää turvallisesti.',
+        'Eky ei käynnistynyt',
+        'Paikallista sovellusta ei voitu käynnistää turvallisesti.',
       );
     },
     startRuntime: startDesktopRuntime,

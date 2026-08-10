@@ -28,6 +28,23 @@ Hyväksyntä ei tapahdu:
 - luonnoksen esikatselussa
 - laskurivien tai summien muokkauksessa
 
+### Julkaisukelpoisuuden portti
+
+Hyväksyntä ja uudelleenhyväksyntä vaativat, että hyväksytylle laskulle
+snapshotattavat myyjän, asiakkaan, vastaanottajan ja maksamisen perustiedot
+ovat valmiit. Vähimmäisrajat ovat:
+
+- myyjän nimi, Y-tunnus, ALV-tunnus, täydellinen osoite ja IBAN
+- asiakkaan nimi ja täydellinen osoite
+- laskun vastaanottajan nimi ja täydellinen osoite
+
+Invoicing tarkistaa tämän backendissä snapshot-datasta ennen
+laskunumerosarjan etenemää, invoice- tai line-rivejä, draft-linkitystä ja
+auditia. Epäonnistuminen palauttaa vain turvallisen puutteellisten tietojen
+virheen eikä paljasta snapshot-arvoja. Julkaisukelpoisuuden portti ei estä
+Company Settings- tai Customer-master-datan keskeneräistä tallentamista; se
+estää vain virallisen laskun muodostamisen keskeneräisistä tiedoista.
+
 Ensimmäinen toteutus voi sisältää yksittäisen luonnoksen hyväksyntätoiminnon:
 
 ```text
@@ -664,6 +681,8 @@ Laskun hyväksyntä tehdään yhdessä backendin hallitussa transaktiossa.
 Samaan transaktioon kuuluvat:
 
 - luonnoksen validointi
+- myyjän, asiakkaan, vastaanottajan ja maksutietojen julkaisukelpoisuuden
+  tarkistus ennen ensimmäistä kirjoitusta
 - laskunumeron varaus
 - viitenumeron muodostus
 - invoice snapshotin luonti

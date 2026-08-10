@@ -7,6 +7,7 @@ describe('desktop backend environment', () => {
     expect(
       createDesktopBackendEnvironment({
         API_TOKEN: 'must-not-leak',
+        DATABASE_FILE_PATH: 'must-not-control-desktop.sqlite',
         Path: 'C:\\Windows\\System32',
         SystemRoot: 'C:\\Windows',
         TEMP: 'C:\\Temp',

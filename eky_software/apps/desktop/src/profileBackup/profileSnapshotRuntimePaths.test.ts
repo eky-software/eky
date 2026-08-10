@@ -9,6 +9,11 @@ describe('profile snapshot runtime paths', () => {
     const runtimeRoot = resolve('desktop-runtime');
 
     expect(createProfileSnapshotRuntimePaths(runtimeRoot)).toEqual({
+      portableBackupStatusPath: join(
+        runtimeRoot,
+        'profile-backup-state',
+        'portable-backup-status-v1.json',
+      ),
       quarantineRoot: join(runtimeRoot, 'private-backup-quarantine'),
       recoveryPointCleanShutdownMarkerPath: join(
         runtimeRoot,

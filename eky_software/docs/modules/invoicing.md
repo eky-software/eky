@@ -88,6 +88,7 @@ lähetettyjen laskujen korjausperiaatteiden muistilista on kuvattu dokumentissa
 - laskurivit
 - laskun tilat
 - laskunumeroinnin
+- laskun hyväksymisen julkaisukelpoisuusrajan
 - hyväksytyn laskun viitenumeron
 - ALV-käsittelyn
 - maksuehdot
@@ -127,6 +128,25 @@ lähetettyjen laskujen korjausperiaatteiden muistilista on kuvattu dokumentissa
 - Vat
 - PaymentTerm
 - CreditInvoice
+
+## Laskun julkaisukelpoisuus ennen hyväksyntää
+
+Invoicing omistaa laskun hyväksymistä ja uudelleenhyväksymistä edeltävän
+julkaisukelpoisuussäännön. Company Settings ja Customers saavat säilyttää
+keskeneräisiä master-tietoja, mutta virallista laskua ei muodosteta ennen
+kuin snapshotiin on saatavilla vähintään:
+
+- myyjän nimi, Y-tunnus, ALV-tunnus, katuosoite, postinumero ja kaupunki
+- myyjän IBAN-maksutili
+- asiakkaan nimi, katuosoite, postinumero ja kaupunki
+- laskun vastaanottajan nimi, katuosoite, postinumero ja kaupunki
+
+Sääntö tarkistetaan backendissä sekä ensimmäisessä hyväksynnässä että
+uudelleenhyväksynnässä ennen laskunumeron varaamista tai mitään kirjoitusta.
+Puuttuva tieto torjuu hyväksynnän turvallisella yleisvirheellä. Se ei kuluta
+laskunumeroa, muuta luonnosta, luo laskua tai laskurivejä eikä kirjoita
+audit-tapahtumaa. Vanhojen hyväksyttyjen laskujen snapshotit eivät muutu,
+vaikka master-data myöhemmin täydentyy tai muuttuu.
 
 ## Laskun tilat
 

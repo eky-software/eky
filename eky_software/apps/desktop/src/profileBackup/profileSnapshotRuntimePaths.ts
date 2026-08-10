@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 
 export interface ProfileSnapshotRuntimePaths {
+  portableBackupStatusPath: string;
   quarantineRoot: string;
   recoveryPointCleanShutdownMarkerPath: string;
   recoveryPointsRoot: string;
@@ -14,6 +15,11 @@ export function createProfileSnapshotRuntimePaths(
   runtimeRoot: string,
 ): ProfileSnapshotRuntimePaths {
   return {
+    portableBackupStatusPath: join(
+      runtimeRoot,
+      'profile-backup-state',
+      'portable-backup-status-v1.json',
+    ),
     quarantineRoot: join(runtimeRoot, 'private-backup-quarantine'),
     recoveryPointCleanShutdownMarkerPath: join(
       runtimeRoot,

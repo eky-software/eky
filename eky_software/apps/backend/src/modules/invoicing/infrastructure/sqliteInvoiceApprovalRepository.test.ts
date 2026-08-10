@@ -642,6 +642,60 @@ describe('SqliteInvoiceApprovalRepository', () => {
     });
   });
 
+  it.each([
+    ['seller identity', 'company_settings', 'company_name'],
+    ['seller business id', 'company_settings', 'business_id'],
+    ['seller VAT number', 'company_settings', 'vat_number'],
+    ['seller address', 'company_settings', 'street_address'],
+    ['seller payment account', 'company_settings', 'iban'],
+    ['customer identity', 'customers', 'name'],
+    ['customer address', 'customers', 'postal_code'],
+  ] as const)(
+    'rejects approval without complete %s before reserving a number',
+    async (_boundary, tableName, columnName) => {
+      const repository = new SqliteInvoiceApprovalRepository(database);
+      await saveDraft(database, createDraft());
+      database
+        .prepare(
+          `UPDATE ${tableName} SET ${columnName} = '' WHERE company_id = ?`,
+        )
+        .run('dev-company');
+
+      await expect(
+        repository.approveDraft(createApprovalInput()),
+      ).rejects.toEqual(
+        new ApproveInvoiceDraftError('Invoice information is incomplete.'),
+      );
+
+      expect(getSequence(database)).toBeUndefined();
+      expect(getInvoice(database, 'invoice-1')).toBeUndefined();
+      expect(getInvoiceLines(database, 'invoice-1')).toEqual([]);
+      expect(getAuditEvents(database)).toEqual([]);
+      expect(
+        database
+          .prepare<
+            [string],
+            {
+              approved_at: string | null;
+              approved_invoice_id: string | null;
+              status: string;
+            }
+          >(
+            `
+              SELECT approved_at, approved_invoice_id, status
+              FROM invoice_drafts
+              WHERE id = ?
+            `,
+          )
+          .get('draft-1'),
+      ).toEqual({
+        approved_at: null,
+        approved_invoice_id: null,
+        status: 'draft',
+      });
+    },
+  );
+
   it('uses the active numbering series for a new approval', async () => {
     insertNumberingSettings(database, {
       firstSequenceNumber: 100,
@@ -1607,6 +1661,56 @@ describe('SqliteInvoiceApprovalRepository', () => {
       'invoice.reopened_for_edit',
       'invoice.reapproved',
     ]);
+  });
+
+  it('keeps a reopened invoice untouched when current issuance data is incomplete', async () => {
+    const repository = new SqliteInvoiceApprovalRepository(database);
+
+    await saveDraft(database, createDraft());
+    await repository.approveDraft(createApprovalInput());
+    await repository.reopenApprovedInvoiceForEditing({
+      actorUserId: 'user-1',
+      auditEventId: 'audit-reopen-1',
+      companyId: 'dev-company',
+      invoiceId: 'invoice-1',
+      reopenedAt: '2027-01-15T13:00:00.000Z',
+    });
+    const invoiceBefore = getInvoice(database, 'invoice-1');
+    const linesBefore = getInvoiceLines(database, 'invoice-1');
+    const sequenceBefore = getSequence(database);
+    const auditBefore = getAuditEvents(database);
+    database
+      .prepare(
+        `UPDATE company_settings SET iban = '' WHERE company_id = ?`,
+      )
+      .run('dev-company');
+
+    await expect(
+      repository.approveDraft(
+        createApprovalInput({
+          approvedAt: '2027-01-15T15:00:00.000Z',
+          auditEventId: 'audit-reapproved-1',
+          invoiceId: 'unused-new-invoice-id',
+        }),
+      ),
+    ).rejects.toEqual(
+      new ApproveInvoiceDraftError('Invoice information is incomplete.'),
+    );
+
+    expect(getInvoice(database, 'invoice-1')).toEqual(invoiceBefore);
+    expect(getInvoiceLines(database, 'invoice-1')).toEqual(linesBefore);
+    expect(getSequence(database)).toEqual(sequenceBefore);
+    expect(getAuditEvents(database)).toEqual(auditBefore);
+    expect(
+      database
+        .prepare<
+          [string],
+          { approved_at: string | null; status: string }
+        >(
+          'SELECT approved_at, status FROM invoice_drafts WHERE id = ?',
+        )
+        .get('draft-1'),
+    ).toEqual({ approved_at: null, status: 'draft' });
   });
 
   it('does not reapprove a draft when its existing invoice is no longer reopened for editing', async () => {

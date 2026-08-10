@@ -40,15 +40,19 @@ Oman järjestelmän avulla voidaan:
 
 ## Ensimmäinen MVP
 
-Ensimmäinen MVP keskittyy:
+Nykyinen local desktop -MVP sisältää:
 
-- kirjautumiseen
-- pääkäyttäjänäkymään
 - asiakaskortistoon
-- kohteisiin tai työmaihin
 - perinteiseen laskunkirjoitukseen
 - laskuluonnoksiin
-- laskun tiloihin
+- hyväksynnän, laskunumeroinnin ja immutable snapshotit
+- PDF:n, sähköposti- ja manuaalisen toimituksen sekä toimitushistorian
+- maksutilan, peruutuksen ja koko- tai osahyvityksen
+- salatun paikallisen backup/restore-ketjun
+
+Kohteet, työmääräykset, työntekijät ja mobiilikirjaukset ovat seuraavia
+liiketoimintamoduuleita. Installer, code signing ja hallittu päivityspolku ovat
+erillisiä desktop-jakelun vaiheita.
 
 ## Pitkän aikavälin suunta
 
@@ -81,10 +85,8 @@ Perusrakenne tehdään niin, että järjestelmä voidaan myöhemmin ottaa käytt
 
 ## Avoimet liiketoimintakysymykset
 
-- Miten laskutus tapahtuu nykyään?
 - Laskutetaanko tuntityötä, materiaaleja, urakoita vai näiden yhdistelmiä?
 - Onko asiakkaana yksityisiä, yrityksiä, taloyhtiöitä vai kaikkia?
-- Tarvitaanko heti PDF-lasku?
 - Tarvitaanko verkkolasku myöhemmin?
 - Kuka saa hyväksyä laskun?
 - Miten työaika kirjataan nykyään?

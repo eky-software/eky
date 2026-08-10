@@ -38,6 +38,7 @@ import {
   type StartDesktopBackendOptions,
 } from '../runtime/backendProcess.js';
 import { createDesktopRuntimeSession } from '../runtime/runtimeSession.js';
+import { createDesktopProfilePaths } from '../runtime/desktopProfilePaths.js';
 import { createDesktopOperationalEvent } from '../observability/createDesktopOperationalEvent.js';
 import type { DesktopOperationalIdentity } from '../observability/desktopOperationalEvent.js';
 import type { DesktopOperationalLogger } from '../observability/desktopOperationalLogger.js';
@@ -82,16 +83,9 @@ import {
 import { restoreWindowInputFocus } from './windowInputFocus.js';
 import type { DesktopBuildInfo } from '../release/desktopBuildInfo.js';
 import { createProfileSnapshotBrokerTransport } from '../profileBackup/electronProfileSnapshotBrokerTransport.js';
-import {
-  createBackupPasswordWindowController,
-  type BackupPasswordWindowController,
-} from '../profileBackup/passwordWindow/backupPasswordWindow.js';
-import { PortableProfileBackupService } from '../profileBackup/portableProfileBackup.js';
-import {
-  createProfileBackupCapability,
-  type ProfileBackupCapability,
-} from '../profileBackup/profileBackupCapability.js';
-import type { ProfileBackupInspectionSummary } from '../profileBackup/profileBackupInspectionTypes.js';
+import type { BackupPasswordWindowController } from '../profileBackup/passwordWindow/backupPasswordWindow.js';
+import type { ProfileBackupCapability } from '../profileBackup/profileBackupCapability.js';
+import { createProfileBackupComposition } from '../profileBackup/profileBackupComposition.js';
 import {
   ProfileSnapshotBrokerClient,
   ProfileSnapshotBrokerError,
@@ -104,9 +98,7 @@ import { RecoveryPointScheduler } from '../profileBackup/recoveryPoint/recoveryP
 import { RecoveryPointService } from '../profileBackup/recoveryPoint/recoveryPointService.js';
 import { RecoveryPointStore } from '../profileBackup/recoveryPoint/recoveryPointStore.js';
 import { ProfileRestoreActivationJournalStore } from '../profileBackup/restore/profileRestoreActivationJournalStore.js';
-import { ProfileRestoreActivationService } from '../profileBackup/restore/profileRestoreActivationService.js';
 import { ProfileRestoreActivationTransaction } from '../profileBackup/restore/profileRestoreActivationTransaction.js';
-import { ProfileRestoreStagingService } from '../profileBackup/restore/profileRestoreStagingService.js';
 import { ProfileRestoreStartupRecovery } from '../profileBackup/restore/profileRestoreStartupRecovery.js';
 import { createProfileRecoveryOperationalObserver } from '../profileBackup/profileRecoveryOperationalObserver.js';
 import {
@@ -182,7 +174,8 @@ export async function startDesktopComposition(
   const smokeMode = options.smokeConfiguration.enabled;
   const runtimeSessionSecret = dependencies.createRuntimeSession();
   const backendRoot = join(options.resourcesPath, 'backend');
-  const dataRoot = join(options.userDataPath, 'runtime');
+  const profilePaths = createDesktopProfilePaths(options.userDataPath);
+  const dataRoot = profilePaths.runtimeRoot;
   const operationalLogsRoot = join(dataRoot, 'logs');
   const retention = maintainDesktopOperationalLogs({
     logsRoot: operationalLogsRoot,
@@ -287,8 +280,8 @@ async function startDesktopCompositionRuntime({
 }: DesktopCompositionRuntimeOptions): Promise<
   DesktopLifecycleHandle | undefined
 > {
-  const databaseFilePath = join(dataRoot, 'data', 'eky.sqlite');
-  const invoiceDocumentStorageRoot = join(dataRoot, 'storage', 'invoices');
+  const { databaseFilePath, invoiceDocumentStorageRoot } =
+    createDesktopProfilePaths(options.userDataPath);
   const profileSnapshotPaths = createProfileSnapshotRuntimePaths(dataRoot);
   const profileRecoveryOperationalObserver =
     createProfileRecoveryOperationalObserver({
@@ -820,150 +813,36 @@ async function startDesktopCompositionRuntime({
       );
     },
   });
-  backupPasswordWindowController =
-    createBackupPasswordWindowController({
-      createWindow: (windowOptions) =>
-        new BrowserWindow(windowOptions),
+  const profileBackupComposition =
+    await createProfileBackupComposition({
+      appVersion: desktopAppVersion,
+      createWindow: (windowOptions) => new BrowserWindow(windowOptions),
+      forbiddenRoots: [
+        dataRoot,
+        options.applicationPath,
+        options.resourcesPath,
+      ],
       ipcMain,
-      parentWindow: mainWindow,
-      preloadPath: join(
+      mainWindow,
+      operationalIdentity: desktopOperationalIdentity,
+      operationalLogger: desktopOperationalLogger,
+      passwordPreloadPath: join(
         options.applicationPath,
         'dist',
         'profileBackup',
         'passwordWindow',
         'backupPasswordPreload.cjs',
       ),
-    });
-  const portableProfileBackupService =
-    new PortableProfileBackupService({
-      appVersion: desktopAppVersion,
-      forbiddenRoots: [
-        dataRoot,
-        options.applicationPath,
-        options.resourcesPath,
-      ],
+      paths: profileSnapshotPaths,
+      profileRecoveryOperationalObserver,
       profileSnapshotClient: profileSnapshotBrokerClient,
-      quarantineRoot: profileSnapshotPaths.quarantineRoot,
-      stagingRoot: profileSnapshotPaths.stagingRoot,
-    });
-  const profileRestoreStagingService =
-    new ProfileRestoreStagingService({
-      observer: profileRecoveryOperationalObserver,
-      profileSnapshotClient: profileSnapshotBrokerClient,
-      quarantineRoot: profileSnapshotPaths.quarantineRoot,
       recoveryPointService,
-      stagingRoot: profileSnapshotPaths.stagingRoot,
-    });
-  const profileRestoreActivationService =
-    new ProfileRestoreActivationService({
-      observer: profileRecoveryOperationalObserver,
-      profileSnapshotClient: profileSnapshotBrokerClient,
       relaunchApplication: options.relaunchApplication,
-      stagingService: profileRestoreStagingService,
-      async stopBusinessRuntime() {
-        await recoveryPointScheduler.stopChecks();
-        await backendHandle!.stop();
-      },
-      transaction: profileRestoreActivationTransaction,
-    });
-  profileBackupCapability = createProfileBackupCapability({
-    backupService: portableProfileBackupService,
-    async confirmRestoreActivation(restore) {
-      const result = await dependencies.showMessageBox(mainWindow, {
-        buttons: [
-          'Peruuta',
-          'Korvaa tiedot ja käynnistä Eky uudelleen',
-        ],
-        cancelId: 0,
-        defaultId: 0,
-        detail: [
-          formatProfileBackupSummary(restore.summary),
-          '',
-          'Palautusta edeltävä konekohtainen palautuspiste on luotu.',
-          'Eky sulkee nykyisen työtilan ja käynnistyy uudelleen.',
-        ].join('\n'),
-        message:
-          'Vahvista vielä tietojen korvaaminen ja uudelleenkäynnistys.',
-        noLink: true,
-        title: 'Palauta Eky-varmuuskopio',
-        type: 'warning',
-      });
-      return result.response === 1;
-    },
-    async confirmRestoreReplacement(summary) {
-      const result = await dependencies.showMessageBox(mainWindow, {
-        buttons: ['Peruuta', 'Jatka palautuksen valmisteluun'],
-        cancelId: 0,
-        defaultId: 0,
-        detail: [
-          formatProfileBackupSummary(summary),
-          '',
-          'Nykyinen paikallinen yritystyötila korvataan varmuuskopion tiedoilla.',
-          'Ennen korvaamista Eky luo konekohtaisen palautuspisteen.',
-        ].join('\n'),
-        message: 'Haluatko valmistella varmuuskopion palautuksen?',
-        noLink: true,
-        title: 'Palauta Eky-varmuuskopio',
-        type: 'warning',
-      });
-      return result.response === 1;
-    },
-    ipcMain,
-    mainWindow,
-    operationalIdentity: desktopOperationalIdentity,
-    operationalLogger: desktopOperationalLogger,
-    passwordWindow: backupPasswordWindowController,
-    recoveryPointService,
-    restoreActivationService: profileRestoreActivationService,
-    restoreStagingService: profileRestoreStagingService,
-    async selectBackupSource() {
-      const result = await dependencies.showOpenDialog(mainWindow, {
-        filters: [
-          {
-            extensions: ['ekybackup'],
-            name: 'Eky-varmuuskopio',
-          },
-        ],
-        message: 'Valitse tarkistettava Eky-varmuuskopio',
-        properties: ['openFile'],
-        title: 'Tarkista Eky-varmuuskopio',
-      });
-      return result.canceled || result.filePaths.length !== 1
-        ? null
-        : result.filePaths[0] ?? null;
-    },
-    async selectBackupTarget(defaultFileName) {
-      const result = await dependencies.showSaveDialog(mainWindow, {
-        defaultPath: defaultFileName,
-        filters: [
-          {
-            extensions: ['ekybackup'],
-            name: 'Salattu Eky-varmuuskopio',
-          },
-        ],
-        title: 'Tallenna salattu Eky-varmuuskopio',
-      });
-      return result.canceled || result.filePath === ''
-        ? null
-        : result.filePath;
-    },
-    async selectRestoreSource() {
-      const result = await dependencies.showOpenDialog(mainWindow, {
-        filters: [
-          {
-            extensions: ['ekybackup'],
-            name: 'Salattu Eky-varmuuskopio',
-          },
-        ],
-        message: 'Valitse palautettava Eky-varmuuskopio',
-        properties: ['openFile'],
-        title: 'Palauta Eky-varmuuskopiosta',
-      });
-      return result.canceled || result.filePaths.length !== 1
-        ? null
-        : result.filePaths[0] ?? null;
-    },
-    showSafeError(kind) {
+      restoreActivationTransaction: profileRestoreActivationTransaction,
+      showMessageBox: dependencies.showMessageBox,
+      showOpenDialog: dependencies.showOpenDialog,
+      showSaveDialog: dependencies.showSaveDialog,
+      showSafeError(kind) {
       if (kind === 'recoveryPoint') {
         deliveryConfirmation.showApplicationError(
           'Palautuspistettä ei voitu luoda',
@@ -986,8 +865,21 @@ async function startDesktopCompositionRuntime({
           ? 'Salattua varmuuskopiota ei voitu luoda turvallisesti.'
           : 'Varmuuskopion salasana, eheys tai sisältö ei läpäissyt tarkistusta.',
       );
-    },
-  });
+      },
+      async stopBusinessRuntime() {
+        await recoveryPointScheduler.stopChecks();
+        await backendHandle!.stop();
+      },
+    });
+  backupPasswordWindowController =
+    profileBackupComposition.backupPasswordWindowController;
+  profileBackupCapability =
+    profileBackupComposition.profileBackupCapability;
+  const {
+    portableProfileBackupService,
+    profileRestoreActivationService,
+    profileRestoreStagingService,
+  } = profileBackupComposition;
   try {
     removeExpiredSupportBundleTemporaryFiles(dataRoot);
   } catch {
@@ -1364,27 +1256,4 @@ function createInvoicePdfPreviewController(
       return available;
     },
   });
-}
-
-function formatProfileBackupSummary(
-  summary: ProfileBackupInspectionSummary,
-): string {
-  const createdAt = new Intl.DateTimeFormat('fi-FI', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(new Date(summary.createdAt));
-  const sizeInMegabytes = (
-    summary.totalBusinessByteSize /
-    (1024 * 1024)
-  ).toLocaleString('fi-FI', {
-    maximumFractionDigits: 1,
-    minimumFractionDigits: 1,
-  });
-
-  return [
-    `Varmuuskopio luotu: ${createdAt}`,
-    `Eky-versio: ${summary.appVersion}`,
-    `Laskuasiakirjoja: ${summary.documentCount}`,
-    `Tietojen koko: ${sizeInMegabytes} Mt`,
-  ].join('\n');
 }

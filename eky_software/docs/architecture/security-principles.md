@@ -297,11 +297,16 @@ Ennen oikean asiakas- tai laskutusdatan käyttöä ja ennen verkkoon tai pilveen
 - salattu liikenne
 - audit trail kriittisille muutoksille
 - varmuuskopioiden ja paikallisen tietokannan suojaus
+- tuettu ja päivitetty Windows, rajattu käyttäjätili, automaattinen
+  näytönlukitus sekä BitLocker tai Device Encryption oikeaa dataa käyttävällä
+  local desktop -laitteella
 - turvallinen virheenkäsittely ja lokitus
 - dependency audit ja tunnettuja haavoittuvuuksia koskeva käsittely
 - palautus-, päivitys- ja tietoturvapoikkeaman toimintamalli
 
 Tämän portin puuttuvia kohtia ei saa korvata sillä oletuksella, että hyökkääjä ei tunne arkkitehtuuria tai lähdekoodia.
+R0-pilottilaitteen tarkka hyväksyntälista on dokumentissa
+`docs/architecture/windows-installer-and-update-plan.md`.
 
 ## Kiellettyjä ratkaisuja
 

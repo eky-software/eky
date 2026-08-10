@@ -5,6 +5,10 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import { writeBackupContainer } from './container/backupContainerWriter.js';
 import { createProfileBackupSourceEntries } from './createProfileBackupSourceEntries.js';
 import {
+  finalizePortableProfileBackup,
+  PortableBackupFinalizationError,
+} from './finalizePortableProfileBackup.js';
+import {
   inspectEncryptedProfileBackup,
   ProfileBackupInspectionError,
   type ProfileBackupInspectionSummary,
@@ -34,8 +38,15 @@ export class PortableProfileBackupError extends Error {
 interface PortableProfileBackupDependencies {
   appVersion: string;
   forbiddenRoots: readonly string[];
+  initialLatestSuccessfulPortableBackupAt?: string;
   now?(): Date;
   operationIdFactory?(): string;
+  recordSuccessfulBackup?(input: {
+    appVersion: string;
+    backupFormatVersion: 1;
+    completedAt: string;
+    validationStatus: 'validated';
+  }): Promise<void>;
   profileSnapshotClient: Pick<
     ProfileSnapshotBrokerClient,
     | 'beginMaintenance'
@@ -54,7 +65,10 @@ export class PortableProfileBackupService {
 
   constructor(
     private readonly dependencies: PortableProfileBackupDependencies,
-  ) {}
+  ) {
+    this.latestSuccessfulPortableBackupAt =
+      dependencies.initialLatestSuccessfulPortableBackupAt;
+  }
 
   async create(input: {
     destinationPath: string;
@@ -109,7 +123,10 @@ export class PortableProfileBackupService {
           },
           password: input.password,
         });
-        await fileSystem.link(temporaryPath, destinationPath);
+        await finalizePortableProfileBackup(
+          temporaryPath,
+          destinationPath,
+        );
         finalized = true;
         await fileSystem.rm(temporaryPath, { force: true });
 
@@ -134,9 +151,26 @@ export class PortableProfileBackupService {
         );
         maintenanceStarted = false;
         completed = true;
-        this.latestSuccessfulPortableBackupAt = this.now().toISOString();
+        const completedAt = this.now().toISOString();
+        this.latestSuccessfulPortableBackupAt = completedAt;
+        await this.dependencies
+          .recordSuccessfulBackup?.({
+            appVersion: summary.appVersion,
+            backupFormatVersion: summary.formatVersion,
+            completedAt,
+            validationStatus: 'validated',
+          })
+          .catch(() => undefined);
         return summary;
       } catch (error) {
+        if (
+          error instanceof PortableBackupFinalizationError &&
+          error.code === 'destinationExists'
+        ) {
+          throw new PortableProfileBackupError(
+            'PROFILE_BACKUP_DESTINATION_INVALID',
+          );
+        }
         if (
           error instanceof PortableProfileBackupError ||
           error instanceof ProfileBackupInspectionError
