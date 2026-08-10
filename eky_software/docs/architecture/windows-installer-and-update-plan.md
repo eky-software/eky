@@ -20,6 +20,18 @@ kovennetun Packager-outputin ympärillä. Tarkka WiX-versio, lisenssi ja uusi
 build tool vaativat vielä projektin omistajan erillisen riippuvuuspäätöksen.
 Suositus ei muuta ADR-0010:n hyväksyttyä rajaa eikä aloita toteutusta.
 
+### Installer entry -checkpointit
+
+| Checkpoint | Tila | Huomio |
+| --- | --- | --- |
+| A1 Dependency gate alignment | valmis | Read-only audit jokaiselle `main`-PR:lle, dependency-polkuun rajatulle `main`-pushille, päivittäin ja käsin; ei automaattimergeä |
+| A2 Migration manifest continuity | odottaa | Migraatioiden pitää alkaa `001`:stä ja jatkua katkeamatta |
+| A3 Migration failure semantics | odottaa | Migraation sivuvaikutustila raportoidaan konservatiivisesti |
+| A4 Package inventory final audit | odottaa | Installer-payloadin suljettu tiedostoinventaario viimeistellään |
+| A5 MSI version contract | odottaa | Sovellusversio ja Windows Installer -tuoteversio erotetaan |
+| A6 Package trust and private staging | odottaa | Vain uudelleen varmennettu yksityinen staging-artifacti voidaan suorittaa |
+| A7 WiX dependency decision | odottaa omistajan päätöstä | Työkalua ei asenneta eikä MSI:tä aloiteta ennen erillistä hyväksyntää |
+
 ## 2. Tavoite
 
 Eky Localille tehdään hallittu Windows-asennus- ja päivityspolku, joka:

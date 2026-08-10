@@ -246,14 +246,15 @@ Erillinen vain lukeva `Dependency security` -workflow:
 - ajetaan päivittäin klo 02.30 UTC; GitHubin cron ei seuraa
   Europe/Helsinki-kesäaikaa
 - ajetaan käsin `workflow_dispatch`-toiminnolla
-- ajetaan `main`-pushissa ja `main`-haaraan kohdistuvassa pull requestissa vain,
-  kun package manifest, lockfile, Dependabot-konfiguraatio tai dependency-/CI-
-  workflow muuttuu
+- ajetaan jokaisessa `main`-haaraan kohdistuvassa pull requestissa
+- ajetaan `main`-pushissa vain, kun package manifest, lockfile,
+  Dependabot-konfiguraatio tai dependency-/CI-workflow muuttuu
 - ajaa `pnpm audit --prod`-, `pnpm audit`- ja
   `pnpm audit signatures` -tarkistukset
 - ei käytä `audit --fix` -komentoa
 - ei muuta tiedostoja, tee committeja tai avaa päivityksiä
 - käyttää vain `contents: read` -oikeutta
+- ei mergeä Dependabot- tai muita päivitys-PR:iä automaattisesti
 
 `dependabot.yml` ottaa käyttöön version updates -PR:t, mutta se ei todista
 repositoryn Dependabot-turva-asetusten tilaa. Repositorion omistaja varmistaa

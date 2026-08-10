@@ -104,9 +104,10 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
   muutokset, eikä vain Dependabotin otsikkoa?
 - Ajettiinko dependency- tai lockfile-muutoksen jälkeen tuotantoriippuvuuksien audit?
 - Ajettiinko tarvittaessa koko audit ja registry-allekirjoitusten tarkistus?
-- Käynnistyikö read-only `Dependency security` dependency-PR:stä tai
-  dependency-main-pushista, ja onko sen päivittäinen UTC-ajo sekä
-  `workflow_dispatch` säilynyt?
+- Käynnistyikö read-only `Dependency security` jokaisesta `main`-PR:stä ja
+  dependency-polkuun osuvasta `main`-pushista, ja onko sen päivittäinen UTC-ajo
+  sekä `workflow_dispatch` säilynyt?
+- Säilyikö dependency-päivitysten automaattinen merge pois käytöstä?
 - Onko Dependency graph-, Dependabot alerts- ja Dependabot security updates
   -tila varmennettu autentikoidulla read-only-kutsulla tai repositoryn
   `Settings` -> `Security` -> `Advanced Security` -näkymästä ilman
