@@ -27,8 +27,8 @@ Suositus ei muuta ADR-0010:n hyväksyttyä rajaa eikä aloita toteutusta.
 | A1 Dependency gate alignment | valmis (`ae445c8`) | Read-only audit jokaiselle `main`-PR:lle, dependency-polkuun rajatulle `main`-pushille, päivittäin ja käsin; ei automaattimergeä |
 | A2 Migration manifest continuity | valmis (`a824114`) | Migraatiot alkavat `001`:stä ja jatkuvat katkeamatta; nykyinen 38 migraation ketju on regressiotestattu |
 | A3 Migration failure semantics | valmis (`cab05c0`) | Startup raportoi vaiheen ja tämän ajon valmistuneiden migraatioiden määrän; koko ajon sivuvaikutustila on aina `unknown` |
-| A4 Package inventory final audit | valmis | Installer-payload torjuu Eky-runtimejäämät, yksityisavaimet ja service-account-tunnisteet sekä vaatii vendor-jäämille täsmällisen katselmoinnin |
-| A5 MSI version contract | odottaa | Sovellusversio ja Windows Installer -tuoteversio erotetaan |
+| A4 Package inventory final audit | valmis (`1436442`) | Installer-payload torjuu Eky-runtimejäämät, yksityisavaimet ja service-account-tunnisteet sekä vaatii vendor-jäämille täsmällisen katselmoinnin |
+| A5 MSI version contract | valmis | Täysi SemVer `appVersion` ja monotoninen numeerinen `msiProductVersion` ovat eri release-sopimuksia |
 | A6 Package trust and private staging | odottaa | Vain uudelleen varmennettu yksityinen staging-artifacti voidaan suorittaa |
 | A7 WiX dependency decision | odottaa omistajan päätöstä | Työkalua ei asenneta eikä MSI:tä aloiteta ennen erillistä hyväksyntää |
 
@@ -253,6 +253,7 @@ Versionoitu manifesti sisältää vähintään:
 - manifest format version
 - app identity
 - app version
+- numeerinen MSI product version muodossa `major.minor.build`
 - build revision ja build identity
 - platform
 - architecture
@@ -290,6 +291,13 @@ käytä deltaa tai patch-pakettia. Sidecar-manifestin ja MSI:n basename,
 app identity, versio, kanava, arkkitehtuuri, koko ja SHA-256 sidotaan
 toisiinsa ennen käyttäjän vahvistusta ja tarkistetaan uudelleen välittömästi
 ennen installer handoffia.
+
+Sama `appVersion` ja `msiProductVersion`-pari saa viitata vain samaan
+jaeltuun MSI-tavujonoon. Sen uudelleenajo on eksplisiittinen repair, ei uusi
+release. Muuttunut payload vaatii uuden SemVer-version ja monotonisesti
+suuremman MSI-tuoteversion. MSI-tuoteversiota ei johdeta commit-määrästä,
+build-ajasta tai kellosta. Downgrade torjutaan sekä SemVer- että MSI-version
+perusteella.
 
 ## 10. Pre-update-palautuspiste
 
