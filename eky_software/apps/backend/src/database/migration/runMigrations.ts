@@ -1,9 +1,13 @@
-import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import type { DatabaseConnection } from '../connection/createDatabaseConnection.js';
-import type { SchemaMigrationTable } from '../schema.js';
+import { readMigrationManifest } from './migrationManifest.js';
+import {
+  prepareMigrationHistoryForRun,
+  recordAppliedMigrationMetadata,
+  type MigrationReleaseIdentity,
+} from './migrationMetadata.js';
 
 const defaultMigrationsDirectory = fileURLToPath(
   new URL('../migrations/', import.meta.url),
@@ -11,7 +15,14 @@ const defaultMigrationsDirectory = fileURLToPath(
 
 export interface RunMigrationsOptions {
   migrationsDirectory?: string;
+  now?: () => Date;
+  releaseIdentity?: MigrationReleaseIdentity;
 }
+
+const developmentReleaseIdentity: MigrationReleaseIdentity = {
+  appVersion: '0.0.0',
+  buildRevision: 'development',
+};
 
 export async function runMigrations(
   database: DatabaseConnection,
@@ -20,39 +31,47 @@ export async function runMigrations(
   const migrationsDirectory = resolve(
     options.migrationsDirectory ?? defaultMigrationsDirectory,
   );
+  const manifest = readMigrationManifest(migrationsDirectory);
+  const releaseIdentity =
+    options.releaseIdentity ?? developmentReleaseIdentity;
+  const now = options.now ?? (() => new Date());
+  const initialRecordedAt = readRecordedAt(now);
+  const appliedMigrationNames = prepareMigrationHistoryForRun(
+    database,
+    manifest,
+    releaseIdentity,
+    initialRecordedAt,
+  );
 
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS schema_migrations (
-      name TEXT PRIMARY KEY,
-      run_at TEXT NOT NULL
-    );
-  `);
-
-  const appliedMigrations = database
-    .prepare<[], Pick<SchemaMigrationTable, 'name'>>('SELECT name FROM schema_migrations')
-    .all();
-
-  const appliedMigrationNames = new Set(appliedMigrations.map((migration) => migration.name));
-  const migrationFileNames = readdirSync(migrationsDirectory)
-    .filter((fileName) => fileName.endsWith('.sql'))
-    .sort();
-
-  for (const migrationFileName of migrationFileNames) {
-    if (appliedMigrationNames.has(migrationFileName)) {
+  for (const migration of manifest) {
+    if (appliedMigrationNames.has(migration.fileName)) {
       continue;
     }
 
-    const migrationSql = readFileSync(resolve(migrationsDirectory, migrationFileName), 'utf8');
+    const recordedAt = readRecordedAt(now);
 
     const runMigration = database.transaction(() => {
-      database.exec(migrationSql);
+      database.exec(migration.content.toString('utf8'));
       database
         .prepare<[string, string]>(
           'INSERT INTO schema_migrations (name, run_at) VALUES (?, ?)',
         )
-        .run(migrationFileName, new Date().toISOString());
+        .run(migration.fileName, recordedAt);
+      recordAppliedMigrationMetadata(database, {
+        entry: migration,
+        recordedAt,
+        releaseIdentity,
+      });
     });
 
     runMigration();
+  }
+}
+
+function readRecordedAt(now: () => Date): string {
+  try {
+    return now().toISOString();
+  } catch {
+    throw new Error('MIGRATION_RECORDED_AT_INVALID');
   }
 }

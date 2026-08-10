@@ -148,21 +148,39 @@ Paikallinen SQLite-tietokantatiedosto ei ole versionhallinnassa.
 Kevyt migration runner on toteutettu. Se ajaa migraatiot järjestyksessä ja
 kirjaa `schema_migrations`-tauluun migraation nimen sekä ajoajan.
 
-Nykyinen taulu ei kuitenkaan säilytä historiallisesti ajetun SQL-sisällön
-checksumia. Siksi lähdekansion nykyisestä sisällöstä laskettu chain identity
-ei yksin todista, että vanha tiedosto on muuttumaton sen ajamisen jälkeen.
+Migration runner ylläpitää lisäksi teknistä
+`schema_migration_metadata`-taulua. Taulu ei kuulu liiketoimintamoduulille,
+eikä sitä lisätä numeroituna business-migraationa: runner luo ja validoi sen
+ennen pending-migraatioita, jotta myös sitä edeltävä historia voidaan sitoa
+muuttumattomaan ketjuun.
 
-Ennen ensimmäistä oikean business-profiilin N -> N+1 -päivitystä toteutetaan
-erikseen hyväksyttävä immutability-malli:
+Jokaisesta migraatiosta tallennetaan:
 
 - migration name ja SQL-sisällön SHA-256
 - järjestetyn migration chainin identity
-- migraation ajaneen release/buildin identity
-- historiallisten migraatioiden append-only-politiikka
-- mismatchin torjunta ennen ensimmäistä schema-kirjoitusta
-- validoitu pre-migration recovery point
+- metadataversionumero
+- metadata origin `applied` tai `legacy_baseline`
+- tallennuksen tehneen release/buildin identity ja aikaleima
 
-Tämä checkpoint ei muuta nykyistä skeemaa.
+Uusi migraatio, sen `schema_migrations`-rivi ja metadata-rivi kirjoitetaan
+samassa transaktiossa. Runner torjuu ennen pending-migraation SQL-kirjoitusta
+muuttuneen historiallisen SQL:n, katkenneen ketjun, puuttuvan tai ylimääräisen
+metadata-rivin, epäkelvon järjestyksen, saman migraationumeron uudelleenkäytön
+sekä epäkelvon release-identiteetin.
+
+Vanha tarkasti nykyisen migration manifestin prefixiä vastaava tietokanta
+ankkuroidaan ensimmäisellä uudella käynnistyksellä `legacy_baseline`-tilaan.
+Tallennettu release/build kertoo tällöin baseline-tarkistuksen tehneen buildin,
+ei migraation alkuperäistä ajoversiota, jota vanhasta tietokannasta ei voida
+luotettavasti päätellä. Prefixistä poikkeavaa vanhaa historiaa ei ankkuroida.
+
+Historiallisia SQL-migraatioita ei muokata. Ketjun SHA-256-algoritmi on sama
+versionoitu `Eky migration chain v1` -algoritmi, jota backup-manifesti käyttää.
+Ensimmäinen oikean business-profiilin N -> N+1 -päivitys vaatii tämän lisäksi
+validoidun pre-migration recovery pointin ja hyväksytyn first-start-polun.
+
+Tämä checkpoint lisää vain teknisen migration metadata -taulun. Se ei muuta
+liiketoimintatauluja eikä vanhoja SQL-migraatiotiedostoja.
 
 Ensimmäinen mahdollinen migraatiotiedosto:
 

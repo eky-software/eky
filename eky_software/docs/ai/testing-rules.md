@@ -310,6 +310,9 @@ Backup/Restore testataan usealla tasolla:
 Installer/Update testataan:
 
 - unit: manifesti, version/kanavan vertailu ja journalisiirtymät
+- migration: source checksum, ketjun jatkuvuus, legacy-baseline, duplicate
+  ordinal, release/build identity sekä SQL/history/metadata-mismatch ennen
+  ensimmäistä pending schema -kirjoitusta
 - integration: maintenance-lukko, shutdown, handoff ja first-start
 - Windows package: clean install, upgrade, migration failure sekä business-
   ja binary-rollback

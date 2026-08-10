@@ -29,6 +29,9 @@ Toteutettu 4.8.2026 mennessä:
 - backendin staged snapshot -validointi: integrity, foreign keys,
   migraatioketju, profiili-identiteetti, artifact-katalogi, PDF-signatuurit,
   koot, checksumit ja suljettu tiedostojoukko
+- tietokantaan tallennettu migration source checksum- ja chain metadata;
+  snapshot ja restore hyväksyvät ketjun vain, kun tietokannan metadata,
+  packaged SQL-manifesti ja backupin chain identity vastaavat toisiaan
 - kaksivaiheinen restore-staging: kertakäyttöinen tarkastusvaltuutus,
   tarkastetun containerin SHA-256-sidonta, uusi salasanakysely, pakollinen
   pre-restore-palautuspiste ja aktiivisesta profiilista erillinen yksityinen
@@ -503,6 +506,8 @@ Inspector ei luota tiedostopäätteeseen. Se:
 - torjuu duplicate-, unknown-, absolute- ja traversal-polut
 - tarkistaa jokaisen koon ja SHA-256-checksumin
 - vertaa backup-, app- ja migration-yhteensopivuudet erillisinä päätöksinä
+- vaatii SQLiteen tallennetun migration metadatan vastaamaan packaged
+  SQL-manifestia; pelkkä backup-manifestin chain-arvo ei riitä
 - ei pura business-sisältöä aktiiviseen profiiliin
 - palauttaa käyttäjälle turvallisen yhteenvetotilan ilman yritysdataa
 
@@ -666,6 +671,8 @@ ei saa muuttaa varsinaisen operaation tulosta.
 - hallitun close-fallbackin restart
 - SQLite integrity ja foreign keys
 - migration chainin upgrade ja downgrade-esto
+- puuttuva, ylimääräinen tai muutettu migration metadata sekä historiallinen
+  SQL-mismatch
 - puuttuva, ylimääräinen ja väärän checksum-arvon artifacti
 - PDF-viittauksen ja artifactin ristiriita
 - salaisuuksien, lokien, support bundlen, archive configin ja journalien

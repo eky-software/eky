@@ -8,6 +8,12 @@ restore -todistus ovat toteutettu 4.8.2026. Installeria,
 päivitysorkestrointia, code signingia tai update-UI:ta ei ole vielä toteutettu.
 Installeriteknologiaa tai uutta riippuvuutta ei ole valittu.
 
+Migration runnerin SHA-256-checksum-, chain identity- ja release/build-
+metadata on toteutettu 10.8.2026. Historiallinen mismatch torjutaan ennen
+pending-migraation SQL-kirjoitusta, ja legacy-kanta ankkuroidaan erikseen
+`legacy_baseline`-tilaan. Tämä ei vielä avaa N -> N+1 -päivityspolkua ilman
+pre-migration-palautuspistettä ja first-start-orkestrointia.
+
 10.8.2026 valmistunut teknologiakatselmus suosittelee R0-prototyypin
 ensisijaiseksi ehdokkaaksi per-user Windows Installer -MSI:tä nykyisen
 kovennetun Packager-outputin ympärillä. Tarkka WiX-versio, lisenssi ja uusi
@@ -345,9 +351,11 @@ Migraatiot ovat immutable ja vain eteenpäin ajettavia:
 - jo jaettua migraatiota ei muokata
 - uutta versiota ei hyväksytä katkenneella migration chainilla
 - migration alkaa vasta validoidun palautuspisteen jälkeen
-- ensimmäinen oikea N -> N+1 pysyy estettynä, kunnes `schema_migrations`-
-  malliin on päätetty historiallinen SQL-checksum, chain identity ja
-  release/build identity; mismatch torjutaan ennen schema-kirjoitusta
+- `schema_migrations`-historia sidotaan teknisessä metadatataulussa SQL-
+  checksumiin, ketjuidentiteettiin ja tallentaneeseen release/buildiin
+- mismatch torjutaan ennen pending-migraation schema-kirjoitusta
+- ensimmäinen oikea N -> N+1 pysyy estettynä, kunnes validoitu pre-migration-
+  palautuspiste ja first-start maintenance ympäröivät migration runnerin
 - virhe jättää uuden profiloitilan hyväksymättä
 - rollback palauttaa profiilin pre-update-pisteestä
 - reverse SQL -migraatiota ei ajeta

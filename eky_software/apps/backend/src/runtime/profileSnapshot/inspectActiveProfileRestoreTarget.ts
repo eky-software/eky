@@ -2,6 +2,7 @@ import type { DatabaseConnection } from '../../database/connection/createDatabas
 
 const restoreInfrastructureTables = new Set([
   'local_runtime_identity',
+  'schema_migration_metadata',
   'schema_migrations',
 ]);
 

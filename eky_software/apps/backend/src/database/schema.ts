@@ -367,6 +367,17 @@ export interface SchemaMigrationTable {
   run_at: string;
 }
 
+export interface SchemaMigrationMetadataTable {
+  migration_name: string;
+  metadata_version: number;
+  source_sha256: string;
+  chain_sha256: string;
+  metadata_origin: string;
+  recorded_app_version: string;
+  recorded_build_revision: string;
+  recorded_at: string;
+}
+
 export type CustomerRow = CustomerTable;
 export type NewCustomerRow = CustomerTable;
 export type CustomerAuditEventRow = CustomerAuditEventTable;
