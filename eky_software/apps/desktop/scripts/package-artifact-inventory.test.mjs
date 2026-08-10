@@ -104,6 +104,108 @@ test('distinguishes packaged third-party source from Eky-owned source', async ()
   );
 });
 
+test('rejects Eky-owned source maps but includes vendor maps in the inventory', async () => {
+  const root = await createStageFixture(
+    'node_modules/external-package/index.js.map',
+    'vendor map one',
+  );
+  const first = await inspectPackageArtifactInventory({
+    root,
+    stage: 'backendStage',
+  });
+  await writeFixture(
+    root,
+    'node_modules/external-package/index.js.map',
+    'vendor map two',
+  );
+  const second = await inspectPackageArtifactInventory({
+    root,
+    stage: 'backendStage',
+  });
+
+  assert.equal(first.fileCount, 1);
+  assert.notEqual(first.identity, second.identity);
+
+  await writeFixture(root, 'dist/index.js.map', 'project map');
+  await assert.rejects(
+    inspectPackageArtifactInventory({ root, stage: 'backendStage' }),
+    /PROJECT_SOURCE_MAP/,
+  );
+});
+
+test('enforces the application-stage file count boundary', async () => {
+  const root = await createStageFixture('dist/file-000.js', 'safe');
+  await Promise.all(
+    Array.from({ length: 192 }, (_, index) =>
+      writeFixture(
+        root,
+        `dist/file-${String(index + 1).padStart(3, '0')}.js`,
+        'safe',
+      ),
+    ),
+  );
+
+  await assert.rejects(
+    inspectPackageArtifactInventory({ root, stage: 'applicationStage' }),
+    /FILE_COUNT/,
+  );
+});
+
+test('enforces stage-specific path, depth, file and total byte boundaries', async () => {
+  const longPathRoot = await createStageFixture(
+    `dist/${'a'.repeat(90)}.js`,
+    'safe',
+  );
+  await assert.rejects(
+    inspectPackageArtifactInventory({
+      root: longPathRoot,
+      stage: 'applicationStage',
+    }),
+    /LOGICAL_PATH/,
+  );
+
+  const deepRoot = await createStageFixture(
+    'one/two/three/four/five/six/seven.js',
+    'safe',
+  );
+  await assert.rejects(
+    inspectPackageArtifactInventory({
+      root: deepRoot,
+      stage: 'applicationStage',
+    }),
+    /DIRECTORY_DEPTH/,
+  );
+
+  const largeFileRoot = await createStageFixture(
+    'dist/oversized.js',
+    Buffer.alloc(1_048_577),
+  );
+  await assert.rejects(
+    inspectPackageArtifactInventory({
+      root: largeFileRoot,
+      stage: 'applicationStage',
+    }),
+    /PROJECT_FILE_SIZE/,
+  );
+
+  const totalSizeRoot = await createStageFixture(
+    'node_modules/vendor/first.bin',
+    Buffer.alloc(1_100_000),
+  );
+  await writeFixture(
+    totalSizeRoot,
+    'node_modules/vendor/second.bin',
+    Buffer.alloc(1_100_000),
+  );
+  await assert.rejects(
+    inspectPackageArtifactInventory({
+      root: totalSizeRoot,
+      stage: 'applicationStage',
+    }),
+    /SIZE/,
+  );
+});
+
 async function createStageFixture(name, content) {
   const root = await mkdtemp(join(tmpdir(), 'eky-package-inventory-'));
   temporaryDirectories.push(root);
@@ -114,5 +216,9 @@ async function createStageFixture(name, content) {
 async function writeFixture(root, name, content) {
   const path = join(root, ...name.split('/'));
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, content, 'utf8');
+  await writeFile(
+    path,
+    content,
+    typeof content === 'string' ? 'utf8' : undefined,
+  );
 }

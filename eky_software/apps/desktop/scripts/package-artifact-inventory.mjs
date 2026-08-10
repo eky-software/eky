@@ -16,6 +16,36 @@ const validStages = new Set([
   'desktopRuntimeStage',
   'packagedApp',
 ]);
+const stageLimits = Object.freeze({
+  applicationStage: Object.freeze({
+    maximumDirectoryDepth: 5,
+    maximumFileCount: 192,
+    maximumLogicalPathBytes: 96,
+    maximumProjectOwnedFileBytes: 1_048_576,
+    maximumTotalBytes: 2_097_152,
+  }),
+  backendStage: Object.freeze({
+    maximumDirectoryDepth: 9,
+    maximumFileCount: 2_700,
+    maximumLogicalPathBytes: 128,
+    maximumProjectOwnedFileBytes: 262_144,
+    maximumTotalBytes: 67_108_864,
+  }),
+  desktopRuntimeStage: Object.freeze({
+    maximumDirectoryDepth: 3,
+    maximumFileCount: 64,
+    maximumLogicalPathBytes: 96,
+    maximumProjectOwnedFileBytes: 262_144,
+    maximumTotalBytes: 1_048_576,
+  }),
+  packagedApp: Object.freeze({
+    maximumDirectoryDepth: 11,
+    maximumFileCount: 2_800,
+    maximumLogicalPathBytes: 160,
+    maximumProjectOwnedFileBytes: 2_097_152,
+    maximumTotalBytes: 536_870_912,
+  }),
+});
 
 export class PackageArtifactInventoryError extends Error {
   constructor(reason) {
@@ -29,6 +59,10 @@ export async function inspectPackageArtifactInventory({ root, stage }) {
     throw new PackageArtifactInventoryError('STAGE');
   }
   const files = await listRegularFiles(root);
+  const limits = stageLimits[stage];
+  if (files.length > limits.maximumFileCount) {
+    throw new PackageArtifactInventoryError('FILE_COUNT');
+  }
   const hash = createHash('sha256').update('Eky package inventory v1\0');
   let totalByteSize = 0;
 
@@ -38,13 +72,28 @@ export async function inspectPackageArtifactInventory({ root, stage }) {
     if (reason !== undefined) {
       throw new PackageArtifactInventoryError(reason);
     }
+    const pathBytes = Buffer.from(logicalPath, 'utf8');
+    if (pathBytes.byteLength > limits.maximumLogicalPathBytes) {
+      throw new PackageArtifactInventoryError('LOGICAL_PATH');
+    }
+    if (logicalPath.split('/').length - 1 > limits.maximumDirectoryDepth) {
+      throw new PackageArtifactInventoryError('DIRECTORY_DEPTH');
+    }
     const metadata = await lstat(file);
+    if (
+      isProjectOwnedArtifact(logicalPath, stage) &&
+      metadata.size > limits.maximumProjectOwnedFileBytes
+    ) {
+      throw new PackageArtifactInventoryError('PROJECT_FILE_SIZE');
+    }
     totalByteSize += metadata.size;
-    if (!Number.isSafeInteger(totalByteSize)) {
+    if (
+      !Number.isSafeInteger(totalByteSize) ||
+      totalByteSize > limits.maximumTotalBytes
+    ) {
       throw new PackageArtifactInventoryError('SIZE');
     }
     const fileHash = await hashFile(file);
-    const pathBytes = Buffer.from(logicalPath, 'utf8');
     const lengths = Buffer.alloc(12);
     lengths.writeUInt32BE(pathBytes.byteLength, 0);
     lengths.writeBigUInt64BE(BigInt(metadata.size), 4);
@@ -64,10 +113,7 @@ export function classifyForbiddenArtifact(logicalPath, stage) {
   const lowerPath = normalized.toLowerCase();
   const segments = lowerPath.split('/');
   const fileName = segments.at(-1) ?? '';
-  const nearestNodeModulesIndex = segments.lastIndexOf('node_modules');
-  const isProjectOwned =
-    nearestNodeModulesIndex === -1 ||
-    segments[nearestNodeModulesIndex + 1] === '@eky';
+  const isProjectOwned = isProjectOwnedArtifact(normalized, stage);
 
   if (/\.(?:sqlite|sqlite3|db)(?:-(?:wal|shm))?$/.test(fileName)) {
     return 'DATABASE';
@@ -103,12 +149,32 @@ export function classifyForbiddenArtifact(logicalPath, stage) {
   ) {
     return 'SOURCE_OR_TEST_ARTIFACT';
   }
+  if (isProjectOwned && fileName.endsWith('.map')) {
+    return 'PROJECT_SOURCE_MAP';
+  }
   if (isProjectOwned && /smoke/i.test(normalized)) {
     if (stage !== 'applicationStage' || !smokeAllowlist.has(normalized)) {
       return 'UNAPPROVED_SMOKE_HELPER';
     }
   }
   return undefined;
+}
+
+function isProjectOwnedArtifact(logicalPath, stage) {
+  const normalized = logicalPath.replaceAll('\\', '/').toLowerCase();
+  const segments = normalized.split('/');
+  const nearestNodeModulesIndex = segments.lastIndexOf('node_modules');
+  if (nearestNodeModulesIndex !== -1) {
+    return segments[nearestNodeModulesIndex + 1] === '@eky';
+  }
+  if (stage !== 'packagedApp') {
+    return true;
+  }
+  return (
+    normalized === 'resources/app.asar' ||
+    normalized.startsWith('resources/backend/') ||
+    normalized.startsWith('resources/desktop-runtime/')
+  );
 }
 
 async function listRegularFiles(root) {

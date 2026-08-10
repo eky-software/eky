@@ -92,6 +92,27 @@ eikä oikeaa käyttäjäprofiilia. Backend deployataan linkittömänä hoisted-
 rakenteena, ja symboliset linkit torjutaan jokaisessa inventoidussa vaiheessa.
 Packaged-smoke-helperit sallitaan vain täsmällisestä nimilistasta.
 
+Inventaario torjuu lisäksi Eky-projektin omat source mapit ja valvoo jokaiselle
+stagelle erikseen tiedostomäärää, kokonaiskokoa, loogisen UTF-8-polun pituutta,
+hakemistosyvyyttä ja yksittäisen projektin omistaman tiedoston kokoa. Kolmannen
+osapuolen `node_modules`-sourcemappeja ei poisteta tai hyväksytä sokkona: ne
+kuuluvat inventory-hashiin sekä määrä- ja kokorajoihin.
+
+10.8.2026 puhtaan nyky-artifactin mittaus ja sen päälle asetettu hallittu
+marginaali ovat:
+
+| Stage | Mitattu tiedostomäärä / raja | Mitattu koko / raja | UTF-8-polku / raja | Hakemistosyvyys / raja | Suurin projektitiedosto / raja |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `applicationStage` | 138 / 192 | 1 238 626 B / 2 MiB | 69 / 96 B | 3 / 5 | 602 826 B / 1 MiB |
+| `backendStage` | 2 298 / 2 700 | 50 736 073 B / 64 MiB | 90 / 128 B | 7 / 9 | 50 261 B / 256 KiB |
+| `desktopRuntimeStage` | 36 / 64 | 119 315 B / 1 MiB | 61 / 96 B | 1 / 3 | 11 961 B / 256 KiB |
+| `packagedApp` | 2 409 / 2 800 | 416 286 887 B / 512 MiB | 108 / 160 B | 9 / 11 | 1 276 118 B / 2 MiB |
+
+Rajoja ei nosteta vain siksi, että uusi artifacti ei mahdu niihin. Ylitys
+vaatii paketin sisällön tarkastuksen, perustellun dokumenttipäivityksen ja
+uuden puhtaan baseline-mittauksen. Pilot-manifestin nykyistä formaattia ei
+muuteta tällä kovennuksella.
+
 Normaali `package:windows` jää kehityskäyttöön. Erillinen
 `package:windows:pilot` vaatii puhtaan ja HEADiin sidotun buildin, `pilot`-
 kanavan, suljetun inventaarion ja validoidun pilot-sidecar-manifestin.
