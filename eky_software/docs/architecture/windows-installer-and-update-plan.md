@@ -28,8 +28,8 @@ Suositus ei muuta ADR-0010:n hyväksyttyä rajaa eikä aloita toteutusta.
 | A2 Migration manifest continuity | valmis (`a824114`) | Migraatiot alkavat `001`:stä ja jatkuvat katkeamatta; nykyinen 38 migraation ketju on regressiotestattu |
 | A3 Migration failure semantics | valmis (`cab05c0`) | Startup raportoi vaiheen ja tämän ajon valmistuneiden migraatioiden määrän; koko ajon sivuvaikutustila on aina `unknown` |
 | A4 Package inventory final audit | valmis (`1436442`) | Installer-payload torjuu Eky-runtimejäämät, yksityisavaimet ja service-account-tunnisteet sekä vaatii vendor-jäämille täsmällisen katselmoinnin |
-| A5 MSI version contract | valmis | Täysi SemVer `appVersion` ja monotoninen numeerinen `msiProductVersion` ovat eri release-sopimuksia |
-| A6 Package trust and private staging | odottaa | Vain uudelleen varmennettu yksityinen staging-artifacti voidaan suorittaa |
+| A5 MSI version contract | valmis (`7aa1213`) | Täysi SemVer `appVersion` ja monotoninen numeerinen `msiProductVersion` ovat eri release-sopimuksia |
+| A6 Package trust and private staging | valmis | Vain uudelleen varmennettu yksityinen staging-artifacti voidaan suorittaa |
 | A7 WiX dependency decision | odottaa omistajan päätöstä | Työkalua ei asenneta eikä MSI:tä aloiteta ennen erillistä hyväksyntää |
 
 ## 2. Tavoite
@@ -230,6 +230,62 @@ paketin raakaa polkua, executablea, URL:ia, komentoriviä tai
 prosessioikeutta. R0:ssa ei valita executablea suoraan eikä käytetä yleistä
 `openFile`-capabilityä.
 
+### Package trust ja yksityinen staging
+
+Paikallista MSI-pakettia ei suoriteta suoraan USB-muistilta, latauskansiosta
+tai muusta käyttäjän valitsemasta lähdehakemistosta. Electron main omistaa
+koko luottamusrajan:
+
+1. käyttäjä valitsee vain sidecar-manifestin native-dialogilla
+2. main validoi suljetun manifestin ja johtaa MSI:n nimen itse
+3. main tarkistaa lähde-MSI:n identiteetin, koon, SHA-256-tiivisteen ja
+   käytettävissä olevan allekirjoitusnäytön
+4. main kopioi manifestin ja MSI:n Eky-private update staging -alueelle
+5. staging-kirjoitus viimeistellään ja synkronoidaan ennen käyttöä
+6. main lukee staged manifestin ja MSI:n uudelleen sekä toistaa kaikki
+   tarkistukset staged tavuista
+7. päivitysjournal sidotaan täsmälleen tähän staged artifactiin
+8. vain uudelleen varmennettu staged MSI voidaan antaa installer handoffiin.
+
+Kopiointi ei siirrä luottamusta automaattisesti. Jos lähde muuttuu tarkistuksen
+aikana, staged tavut eivät vastaa manifestia tai stagingia ei voida viimeistellä
+turvallisesti, päivitys keskeytetään ennen palautuspistettä, runtime-sulkua ja
+asentajan käynnistystä. Vanhat ja keskeneräiset staging-slotit siivotaan
+versionoidun journalin perusteella; mielivaltaista käyttäjäpolkua ei säilytetä
+journalissa tai lokissa.
+
+Renderer saa vain turvallisen tarkistus- ja etenemistilan. Se ei saa lähde- tai
+staging-polkua, tiedostonimeen perustuvaa executable-oikeutta, paketin tavuja,
+manifestin allekirjoitusta eikä prosessiargumentteja.
+
+Päivitysjournal sitoo vähintään:
+
+- `appVersion`-kohdeversion
+- `msiProductVersion`-kohdeversion
+- package identityn ja tarkasti validoidun tiedostonimen
+- tavukoon
+- SHA-256-tiivisteen
+- release-kanavan ja arkkitehtuurin
+- myöhemmin hyväksyttävän publisher- ja allekirjoitusidentiteetin.
+
+SHA-256 todistaa vain, että MSI:n tavut vastaavat manifestissa ilmoitettuja
+tavuja. Se ei todista manifestin tai paketin julkaisijaa. Normaali in-app update
+ei saa käynnistää allekirjoittamatonta pakettia ilman projektin omistajan
+erikseen hyväksymää trust anchor -mallia. Mahdollinen allekirjoittamaton
+prototyyppi on sallittu vain eristetyssä synteettisen datan VM/CI-ympäristössä.
+Sen ajo tavallisella käyttäjäkoneella vaatii erillisen nimenomaisen päätöksen
+eikä sellainen päätös avaa normaalia in-app update -polkua.
+
+Ennen jaeltavaa päivitystä arvioidaan ja lukitaan:
+
+- MSI:n ja Eky-binaarien Authenticode-allekirjoitus sekä RFC 3161 -aikaleima
+- allekirjoitetun sidecar-manifestin tai muun signed envelope -mallin trust
+  anchor ja avainkierto
+- tarkka publisher-identiteetin validointi ennen stagingia ja uudelleen juuri
+  ennen handoffia
+- release-allekirjoitusavaimen säilytys kokonaan repositorion, sovelluksen,
+  backupin, stagingin ja käyttäjän business-profiilin ulkopuolella.
+
 ## 8. Suora Setup-päivitys
 
 Käyttäjä voi käynnistää uuden Setup-ohjelman myös Eky-sovelluksen
@@ -330,6 +386,10 @@ Tarkat nimet lukitaan toteutuksessa. Siirtymät ovat monotonic ja idempotentteja
 Journal ei sisällä yritysdataa, raakaa polkua, salaisuutta tai vapaamuotoista
 asentajan outputia.
 
+Journalin package identity -kentät ovat suljettuja ja niiden pitää vastata
+staged artifactista juuri ennen handoffia uudelleen laskettuja arvoja. Pelkkä
+aiemmin lähdetiedostosta laskettu tiiviste ei riitä.
+
 ## 12. Hallittu shutdown
 
 Ennen asentajan käynnistystä:
@@ -347,8 +407,10 @@ Pakotettu kill on viimeinen fallback ja jättää journalin
 
 ## 13. Handoff ulkoiselle asentajalle
 
-Main käynnistää vain ennalta validoidun artifactin:
+Main käynnistää installer handoffin vain ennalta validoidulle artifactille:
 
+- handoff saa MSI-poluksi vain Eky-private stagingista uudelleen varmennetun
+  artifactin
 - `shell: false`
 - executable ja argumentit erillisinä arvoina
 - ei rendererin antamaa argumenttia
@@ -438,6 +500,9 @@ journalin avulla.
 
 Isän yhdellä hallitulla pilottilaitteella allekirjoittamaton paikallinen
 artifacti voidaan hyväksyä vain projektin omistajan erillisellä päätöksellä.
+Tämä poikkeus ei salli allekirjoittamatonta normaalia in-app update -polkua:
+paketin pitää edelleen tulla erikseen hyväksytystä trust anchor -mallista tai
+se asennetaan vain dokumentoituna manuaalisena pilot-toimenpiteenä.
 Laajempi jakelu vaatii:
 
 - Windows code signing -sertifikaatin

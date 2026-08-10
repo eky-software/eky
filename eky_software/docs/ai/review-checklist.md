@@ -67,6 +67,15 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
   palautuspisteitä?
 - Käynnistääkö Electron main updaterin ilman shell-merkkijonoa ja ilman
   rendererin antamia polkuja, URL:eja tai argumentteja?
+- Kopioidaanko paikallinen update-paketti Eky-private stagingiin ja
+  varmennetaanko staged tavut uudelleen ennen installer handoffia?
+- Sitooko päivitysjournalin package identity koon, SHA-256:n, app-version,
+  MSI-tuoteversion ja myöhemmän publisher-identiteetin samaan staged
+  artifactiin?
+- Erotetaanko tavujen eheys julkaisijan identiteetistä niin, ettei SHA-256:ta
+  käsitellä allekirjoituksena?
+- Estyykö allekirjoittamaton normaali in-app update ilman erikseen hyväksyttyä
+  trust anchor -mallia?
 - Erotetaanko asennuksen onnistuminen uuden version first-start-
   hyväksynnästä?
 - Onko business-datan rollback erotettu binary rollbackista ilman reverse

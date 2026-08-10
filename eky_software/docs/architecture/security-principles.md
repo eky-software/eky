@@ -86,8 +86,13 @@ yritysprofiilia tai installerin konekohtaista journalia.
 - renderer ei saa backup-, restore- tai update-polkuja, avaimia, URL:eja tai
   prosessiargumentteja
 - asennin ei omista eikä poista business dataa
-- update-artifactin eheys ja myöhemmin julkaisijan identiteetti validoidaan
-  ennen suoritusta
+- paikallista update-artifactia ei suoriteta USB-/käyttäjäpolusta, vaan
+  Electron main kopioi sen Eky-private stagingiin ja varmentaa staged tavut
+  uudelleen ennen handoffia
+- update-artifactin eheys ja julkaisijan identiteetti ovat eri todisteita:
+  SHA-256 ei korvaa Authenticodea tai allekirjoitettua manifestia
+- normaali in-app update ei suorita allekirjoittamatonta pakettia ilman
+  erikseen hyväksyttyä trust anchor -mallia
 - virhetilanne ei saa johtaa salaamattomaan fallbackiin, osittaiseen restoreen
   tai reverse SQL -migraatioon
 
