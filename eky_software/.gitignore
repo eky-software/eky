@@ -5,6 +5,9 @@ apps/desktop/e2e-backend-stage/
 apps/desktop/e2e-dist/
 apps/desktop/dist/
 apps/desktop/out/
+apps/desktop/installer/bin/
+apps/desktop/installer/obj/
+apps/desktop/installer/wix/GeneratedPayload.wxs
 
 # Local Eky runtime and diagnostic artifacts
 **/runtime/logs/

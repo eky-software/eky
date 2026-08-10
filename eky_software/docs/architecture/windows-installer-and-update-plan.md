@@ -6,7 +6,6 @@ Arkkitehtuuripäätös on hyväksytty ADR-0010:ssä. ADR-0009:n salattu
 backup/restore, recovery pointit, aktivointijournal ja Windows packaged
 restore -todistus ovat toteutettu 4.8.2026. Installeria,
 päivitysorkestrointia, code signingia tai update-UI:ta ei ole vielä toteutettu.
-Installeriteknologiaa tai uutta riippuvuutta ei ole valittu.
 
 Migration runnerin SHA-256-checksum-, chain identity- ja release/build-
 metadata on toteutettu 10.8.2026. Historiallinen mismatch torjutaan ennen
@@ -14,11 +13,13 @@ pending-migraation SQL-kirjoitusta, ja legacy-kanta ankkuroidaan erikseen
 `legacy_baseline`-tilaan. Tämä ei vielä avaa N -> N+1 -päivityspolkua ilman
 pre-migration-palautuspistettä ja first-start-orkestrointia.
 
-10.8.2026 valmistunut teknologiakatselmus suosittelee R0-prototyypin
-ensisijaiseksi ehdokkaaksi per-user Windows Installer -MSI:tä nykyisen
-kovennetun Packager-outputin ympärillä. Tarkka WiX-versio, lisenssi ja uusi
-build tool vaativat vielä projektin omistajan erillisen riippuvuuspäätöksen.
-Suositus ei muuta ADR-0010:n hyväksyttyä rajaa eikä aloita toteutusta.
+Projektin omistaja hyväksyi 10.8.2026 ensimmäiseen per-user x64 MSI-
+prototyyppiin `WixToolset.Sdk` 7.0.0:n, .NET SDK 10.0.302:n ja SHA-lukitun
+virallisen `actions/setup-dotnet`-actionin build-työkaluiksi. Omistaja hyväksyi
+WiX 7:n MS-RL- ja OSMF EULA -ehdot ja vastaa mahdollisen ylläpitomaksun
+soveltuvuuden selvittämisestä. Hyväksyntä ei kata WiX-extensioneita, custom
+actioneita, Burnia, runtime-riippuvuutta tai allekirjoittamattoman prototyypin
+jakelua oikeaan käyttöön.
 
 ### Installer entry -checkpointit
 
@@ -30,7 +31,17 @@ Suositus ei muuta ADR-0010:n hyväksyttyä rajaa eikä aloita toteutusta.
 | A4 Package inventory final audit | valmis (`1436442`) | Installer-payload torjuu Eky-runtimejäämät, yksityisavaimet ja service-account-tunnisteet sekä vaatii vendor-jäämille täsmällisen katselmoinnin |
 | A5 MSI version contract | valmis (`7aa1213`) | Täysi SemVer `appVersion` ja monotoninen numeerinen `msiProductVersion` ovat eri release-sopimuksia |
 | A6 Package trust and private staging | valmis (`ae070e5`) | Vain uudelleen varmennettu yksityinen staging-artifacti voidaan suorittaa |
-| A7 WiX dependency decision | raportti valmis, odottaa omistajan päätöstä | `WixToolset.Sdk` 7.0.0-, .NET SDK 10.0.302-, OSMF EULA- ja CI-portti on kuvattu teknologiakatselmuksessa; mitään ei ole asennettu |
+| A7 WiX dependency decision | hyväksytty 10.8.2026 | `WixToolset.Sdk` 7.0.0, .NET SDK 10.0.302, SHA-lukittu `actions/setup-dotnet`, MS-RL ja OSMF EULA hyväksyttiin rajattuun per-user x64 -prototyyppiin |
+
+### Per-user MSI -prototyypin checkpointit
+
+| Checkpoint | Tila | Huomio |
+| --- | --- | --- |
+| B1 Installer composition | valmis (checkpoint-commit) | Installerin build-työkalut, suljettu release-konfiguraatio sekä version, identiteetin ja sidecar-manifestin sopimukset |
+| B2 Identity and install root | odottaa | Vakaa UpgradeCode, versiokohtainen ProductCode, vakaat component-GUIDit ja `%LOCALAPPDATA%\\Programs\\Eky` |
+| B3 Install, repair and uninstall | odottaa | Puhdas asennus, repair, uninstall/reinstall ja business-datan säilyminen |
+| B4 Two-version upgrade | odottaa | Kahden synteettisen version major upgrade, downgrade-esto, rollback ja Windows-virhepolut |
+| B5 Build once and sidecar | odottaa | MSI rakennetaan kerran, validoidaan, sidotaan SHA-256-sidecariin ja julkaistaan täsmälleen samoina tavuina |
 
 ## 2. Tavoite
 

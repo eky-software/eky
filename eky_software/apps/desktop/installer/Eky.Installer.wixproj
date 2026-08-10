@@ -1,0 +1,10 @@
+<Project Sdk="WixToolset.Sdk/7.0.0">
+  <PropertyGroup>
+    <InstallerPlatform>x64</InstallerPlatform>
+    <OutputName>Eky</OutputName>
+    <OutputType>Package</OutputType>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
+    <SuppressValidation>false</SuppressValidation>
+  </PropertyGroup>
+</Project>
