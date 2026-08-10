@@ -40,8 +40,34 @@ export async function showProfileRestoreRecoveryDialog(
     return;
   }
 
-  await (options.ensureDirectory ?? ensureDirectory)(options.logsRoot);
-  await options.openPath(options.logsRoot);
+  while (!(await tryOpenLogsRoot(options))) {
+    const retryResult = await options.showMessageBox({
+      buttons: ['Sulje', 'Yritä uudelleen'],
+      cancelId: 0,
+      defaultId: 0,
+      detail:
+        'Eky ei avaa yritystietoja ennen tilanteen tarkistamista. Voit yrittää lokikansion avaamista uudelleen tai sulkea sovelluksen.',
+      message: 'Lokikansiota ei voitu avata.',
+      noLink: true,
+      title: 'Lokikansiota ei voitu avata',
+      type: 'error',
+    });
+
+    if (retryResult.response !== 1) {
+      return;
+    }
+  }
+}
+
+async function tryOpenLogsRoot(
+  options: ProfileRestoreRecoveryDialogOptions,
+): Promise<boolean> {
+  try {
+    await (options.ensureDirectory ?? ensureDirectory)(options.logsRoot);
+    return (await options.openPath(options.logsRoot)).length === 0;
+  } catch {
+    return false;
+  }
 }
 
 async function ensureDirectory(path: string): Promise<void> {
