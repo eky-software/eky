@@ -102,6 +102,7 @@ interface RunPackagedSmokeCheckOptions {
   secretFilePath: string;
   smokePdfPath: string;
   supportBundlePath: string;
+  writeBackupDiagnosticFixture(): void;
   reportStage(stage: PackagedSmokeStage): Promise<void>;
 }
 
@@ -309,6 +310,7 @@ export async function runPackagedSmokeCheck(
 
   await assertPackagedDeleteTransport(options.mainWindow, deleteDraftId);
 
+  options.writeBackupDiagnosticFixture();
   await options.reportStage('diagnostics');
   await assertPackagedDiagnostics(
     options.mainWindow,
@@ -579,7 +581,8 @@ async function assertPackagedDiagnostics(
       (eventName) =>
         eventName === 'backend.started' ||
         eventName === 'businessAudit.retentionCompleted',
-    )
+    ) ||
+    !diagnosticEvents.includes('backup.completed')
   ) {
     throw new Error('DESKTOP_SMOKE_DIAGNOSTICS_EVENT_FAILED');
   }
@@ -608,8 +611,7 @@ async function assertPackagedDiagnostics(
       );
       const eventVisible = await waitFor(() => {
         const text = document.body.textContent ?? '';
-        return text.includes('backend.started') ||
-          text.includes('businessAudit.retentionCompleted');
+        return text.includes('backup.completed');
       });
       const loadError = (document.body.textContent ?? '').includes(
         'Diagnostiikkaa ei voitu ladata',

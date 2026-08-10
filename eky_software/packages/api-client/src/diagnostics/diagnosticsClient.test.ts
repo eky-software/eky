@@ -128,6 +128,58 @@ describe('diagnostics API client', () => {
     ]);
   });
 
+  it('accepts the portable backup and restore recovery event contracts', async () => {
+    const eventNames = [
+      'backup.started',
+      'backup.completed',
+      'backup.failed',
+      'backup.inspectionCompleted',
+      'backup.inspectionFailed',
+      'restore.activationFailed',
+      'restore.recoveryRequired',
+    ] as const;
+    const client = createEkyApiClient({
+      baseUrl: '',
+      fetch: async () =>
+        jsonResponse({
+          diagnosticEvents: eventNames.map((eventName, index) => {
+            const failed =
+              eventName === 'backup.failed' ||
+              eventName === 'backup.inspectionFailed' ||
+              eventName === 'restore.activationFailed' ||
+              eventName === 'restore.recoveryRequired';
+
+            return {
+              category: eventName.startsWith('backup.') ? 'backup' : 'restore',
+              component: 'desktop',
+              correlationId: '33333333-3333-4333-8333-333333333333',
+              errorCode: failed ? 'PROFILE_RECOVERY_FAILED' : null,
+              eventName,
+              id: `desktop:profile-event-${String(index + 1)}`,
+              level: failed ? 'error' : 'info',
+              occurredAt: `2026-08-09T10:00:0${String(index)}.000Z`,
+              outcome: failed ? 'failure' : 'success',
+              ...(failed
+                ? {
+                    retryable: false,
+                    sideEffectState: 'unknown',
+                  }
+                : {}),
+              stage: eventName.startsWith('backup.')
+                ? 'portable'
+                : 'activation',
+            };
+          }),
+        }),
+    });
+
+    await expect(client.listDiagnosticEvents()).resolves.toEqual(
+      eventNames.map((eventName) =>
+        expect.objectContaining({ eventName }),
+      ),
+    );
+  });
+
   it('accepts only the public SMTP TLS diagnostic projection', async () => {
     const peerCertificateFingerprint256 = Array.from(
       { length: 32 },
