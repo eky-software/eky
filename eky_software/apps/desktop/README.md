@@ -40,6 +40,7 @@ pnpm --filter @eky/desktop installer:build
 pnpm --filter @eky/desktop installer:inspect -- -MsiPath <path-to-msi>
 pnpm --filter @eky/desktop installer:lifecycle -- -MsiPath <path-to-msi> -PayloadRoot <path-to-payload> -ProductCode <product-code>
 pnpm --filter @eky/desktop installer:release
+pnpm --filter @eky/desktop installer:verify-restore-lock
 pnpm --filter @eky/desktop installer:verify-release
 pnpm --filter @eky/desktop installer:release-lifecycle
 pnpm --filter @eky/desktop installer:build-upgrade-fixture
@@ -70,6 +71,18 @@ identity, Git revision, byte size, and SHA-256. `installer:verify-release`
 rechecks the same bytes without rebuilding, and `installer:release-lifecycle`
 uses only that verified MSI for install, repair, and uninstall checks. The CI
 gate does not yet upload, sign, or distribute the prototype artifacts.
+
+The locked WiX restore runs twice and rejects any `packages.lock.json` drift.
+Only the documented per-user `ICE91` warning is suppressed; every other WiX
+or ICE warning fails the build. Upgrade tests reuse the exact bound N MSI,
+exercise N -> N+1 while the Electron main and utility/backend processes are
+running, and verify that uninstall removes installer-owned HKCU and ARP state.
+WiX and .NET build tools are never part of the MSI runtime payload.
+
+The sidecar status `unsigned-prototype` and its SHA-256 prove byte integrity,
+not publisher trust. A future signed release must sign before creating the
+final hash and manifest, and all lifecycle tests must then use those exact
+signed bytes.
 
 The current application version remains the prerelease SemVer
 `0.1.0-alpha.1`. Windows Installer separately compares the numeric MSI

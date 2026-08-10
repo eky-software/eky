@@ -108,3 +108,60 @@ function Assert-EkyPathEventuallyAbsent {
     Start-Sleep -Milliseconds 100
   }
 }
+
+function Get-EkyArpEntries {
+  param([string[]]$ProductCodes = @())
+
+  $normalizedCodes = @(
+    $ProductCodes | ForEach-Object { "{$($_.Trim('{}').ToUpperInvariant())}" }
+  )
+  $entries = @()
+  foreach ($root in @(
+    'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+    'HKCU:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+  )) {
+    if (!(Test-Path -LiteralPath $root -PathType Container)) {
+      continue
+    }
+    foreach ($key in Get-ChildItem -LiteralPath $root -ErrorAction Stop) {
+      $properties = Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction Stop
+      $productCodeMatches = $normalizedCodes -contains $key.PSChildName.ToUpperInvariant()
+      if ($productCodeMatches -or $properties.DisplayName -eq 'Eky') {
+        $entries += [pscustomobject]@{
+          DisplayName = $properties.DisplayName
+          KeyPath = $key.PSPath
+          ProductCode = $key.PSChildName.ToUpperInvariant()
+        }
+      }
+    }
+  }
+  return @($entries)
+}
+
+function Assert-EkyInstallerRegistrationPresent {
+  param([Parameter(Mandatory = $true)][string]$ProductCode)
+
+  $installerRegistryRoot = 'HKCU:\Software\Eky\Installer'
+  if (!(Test-Path -LiteralPath $installerRegistryRoot -PathType Container)) {
+    throw 'INSTALLER_OWNED_REGISTRY_MISSING'
+  }
+  $entries = @(Get-EkyArpEntries -ProductCodes @($ProductCode))
+  $normalizedCode = "{$($ProductCode.Trim('{}').ToUpperInvariant())}"
+  if (
+    $entries.Count -ne 1 -or
+    $entries[0].ProductCode -ne $normalizedCode
+  ) {
+    throw 'INSTALLER_ARP_REGISTRATION_MISSING_OR_AMBIGUOUS'
+  }
+}
+
+function Assert-EkyInstallerRegistrationAbsent {
+  param([string[]]$ProductCodes = @())
+
+  if (Test-Path -LiteralPath 'HKCU:\Software\Eky\Installer') {
+    throw 'INSTALLER_OWNED_REGISTRY_REMAINS'
+  }
+  if (@(Get-EkyArpEntries -ProductCodes $ProductCodes).Count -ne 0) {
+    throw 'INSTALLER_ARP_REGISTRATION_REMAINS'
+  }
+}

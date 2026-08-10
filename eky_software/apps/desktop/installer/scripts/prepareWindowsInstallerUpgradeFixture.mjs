@@ -3,14 +3,18 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { createInstallerProductCode } from '../installerIdentity.mjs';
+import { readInstallerReleaseGitState } from '../installerReleaseContext.mjs';
 import {
   parseMsiProductVersion,
   readInstallerReleaseConfig,
 } from '../installerVersion.mjs';
 import { buildWindowsInstaller } from './buildWindowsInstaller.mjs';
+import { createInstallerSidecarPath } from './releaseWindowsInstaller.mjs';
+import { verifyWindowsInstallerRelease } from './verifyWindowsInstallerRelease.mjs';
 
 const installerDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const desktopDirectory = resolve(installerDirectory, '..');
+const repositoryRoot = resolve(desktopDirectory, '..', '..');
 const currentReleaseConfigPath = join(
   installerDirectory,
   'installer-release.json',
@@ -18,6 +22,7 @@ const currentReleaseConfigPath = join(
 const currentDesktopPackagePath = join(desktopDirectory, 'package.json');
 const payloadRoot = join(desktopDirectory, 'out', 'Eky-win32-x64');
 const fixtureRoot = join(installerDirectory, 'artifacts', 'upgrade-fixture');
+const releaseArtifactsRoot = join(installerDirectory, 'artifacts');
 
 export function createUpgradeFixtureAppVersion(currentVersion) {
   if (typeof currentVersion !== 'string' || currentVersion.includes('+')) {
@@ -49,7 +54,6 @@ export async function prepareWindowsInstallerUpgradeFixture() {
       currentRelease.msiProductVersion,
     ),
   });
-  const currentArtifactsRoot = join(fixtureRoot, 'current');
   const nextArtifactsRoot = join(fixtureRoot, 'next');
   const inputRoot = join(fixtureRoot, 'input');
   const rollbackPayloadRoot = join(fixtureRoot, 'rollback-payload');
@@ -69,21 +73,24 @@ export async function prepareWindowsInstallerUpgradeFixture() {
     'utf8',
   );
 
-  const currentBuild = await buildWindowsInstaller({
-    artifactsRoot: currentArtifactsRoot,
+  const currentMsiPath = join(
+    releaseArtifactsRoot,
+    `Eky-${currentRelease.appVersion}-x64.msi`,
+  );
+  const currentManifestPath = createInstallerSidecarPath(currentMsiPath);
+  const buildRevision = await readInstallerReleaseGitState({ repositoryRoot });
+  const currentReleaseArtifact = await verifyWindowsInstallerRelease({
+    buildRevision,
+    installerPath: currentMsiPath,
+    manifestPath: currentManifestPath,
+    release: currentRelease,
   });
   const nextBuild = await buildWindowsInstaller({
     artifactsRoot: nextArtifactsRoot,
     desktopPackagePath: nextDesktopPackagePath,
     releaseConfigPath: nextReleaseConfigPath,
   });
-  if (
-    currentBuild.payloadFileCount !== nextBuild.payloadFileCount ||
-    currentBuild.inventory.fileCount !== nextBuild.inventory.fileCount ||
-    currentBuild.inventory.identity !== nextBuild.inventory.identity ||
-    currentBuild.inventory.stage !== nextBuild.inventory.stage ||
-    currentBuild.inventory.totalByteSize !== nextBuild.inventory.totalByteSize
-  ) {
+  if (nextBuild.inventory.stage !== 'packagedApp') {
     throw new Error('INSTALLER_UPGRADE_FIXTURE_PAYLOAD_MISMATCH');
   }
   await cloneDirectoryWithHardLinks(payloadRoot, rollbackPayloadRoot);
@@ -105,30 +112,34 @@ export async function prepareWindowsInstallerUpgradeFixture() {
     payloadRoot: rollbackPayloadRoot,
     releaseConfigPath: nextReleaseConfigPath,
   });
-  if (rollbackBuild.payloadFileCount !== currentBuild.payloadFileCount + 1) {
+  if (rollbackBuild.payloadFileCount !== nextBuild.payloadFileCount + 1) {
     throw new Error('INSTALLER_UPGRADE_ROLLBACK_FIXTURE_PAYLOAD_INVALID');
   }
 
   const fixture = Object.freeze({
     current: Object.freeze({
-      appVersion: currentBuild.release.appVersion,
-      msiPath: currentBuild.artifact,
-      msiProductVersion: currentBuild.release.msiProductVersion,
-      productCode: currentBuild.productCode,
+      appVersion: currentRelease.appVersion,
+      msiPath: currentReleaseArtifact.installerPath,
+      msiProductVersion: currentRelease.msiProductVersion,
+      packageSha256: currentReleaseArtifact.manifest.packageSha256,
+      productCode: createInstallerProductCode(currentRelease.msiProductVersion),
+      source: 'release',
     }),
-    fixtureFormatVersion: 1,
+    fixtureFormatVersion: 2,
     next: Object.freeze({
       appVersion: nextBuild.release.appVersion,
       msiPath: nextBuild.artifact,
       msiProductVersion: nextBuild.release.msiProductVersion,
       productCode: nextBuild.productCode,
+      source: 'synthetic-upgrade',
     }),
-    payloadFileCount: currentBuild.payloadFileCount,
+    payloadFileCount: nextBuild.payloadFileCount,
     payloadRoot,
     rollback: Object.freeze({
       msiPath: rollbackBuild.artifact,
       payloadFileCount: rollbackBuild.payloadFileCount,
       productCode: rollbackBuild.productCode,
+      source: 'synthetic-rollback',
     }),
   });
   const fixturePath = join(fixtureRoot, 'fixture.json');

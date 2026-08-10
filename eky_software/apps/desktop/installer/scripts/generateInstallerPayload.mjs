@@ -17,6 +17,12 @@ const requiredPayloadPaths = Object.freeze([
   'resources/app.asar',
   'resources/backend/dist/index.js',
 ]);
+const forbiddenBuildToolFileNames = new Set([
+  'dotnet.exe',
+  'msbuild.exe',
+  'nuget.exe',
+  'wix.exe',
+]);
 
 export async function generateInstallerPayload({
   outputPath = defaultOutputPath,
@@ -29,9 +35,25 @@ export async function generateInstallerPayload({
   });
   const files = await listPayloadFiles(resolvedPayloadRoot);
   assertRequiredPayload(files);
+  assertNoBuildTools(files);
   const xml = renderPayloadWxs(files);
   await writeFile(outputPath, xml, 'utf8');
   return Object.freeze({ inventory, outputPath, payloadFileCount: files.length });
+}
+
+export function assertNoBuildTools(files) {
+  for (const { logicalPath } of files) {
+    const normalizedPath = logicalPath.toLowerCase();
+    const fileName = normalizedPath.split('/').at(-1);
+    if (
+      forbiddenBuildToolFileNames.has(fileName) ||
+      normalizedPath.endsWith('.nupkg') ||
+      normalizedPath.includes('/wixtoolset.sdk/') ||
+      normalizedPath.startsWith('wixtoolset.sdk/')
+    ) {
+      throw new Error('INSTALLER_PAYLOAD_BUILD_TOOL_FORBIDDEN');
+    }
+  }
 }
 
 export function renderPayloadWxs(files) {

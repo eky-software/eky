@@ -194,6 +194,13 @@ upgrade-fixture-testien jälkeen. CI ei tässä vaiheessa lataa MSI:tä
 release-jakeluun eikä väitä allekirjoittamatonta prototyyppiä julkaistuksi
 artifactiksi.
 
+Upgrade-fixture käyttää N-versiona juuri tätä sidecarilla sidottua MSI:tä eikä
+rakenna release-N:ää uudelleen. Synteettiset N+1- ja rollback-paketit ovat
+erillisiä testiartifacteja. Tulevassa allekirjoitetussa releaseputkessa signing
+tehdään ennen lopullista SHA-256-tiivistettä ja manifestia; lifecycle- ja
+upgrade-portit käyttävät sen jälkeen täsmälleen samoja allekirjoitettuja
+tavuja. Nykyinen `unsigned-prototype`-sidecar ei väitä publisher trustia.
+
 ### Production-profiilin puhtaus
 
 Lopullinen production-profiili luodaan tyhjästä sovelluksen hallitulla

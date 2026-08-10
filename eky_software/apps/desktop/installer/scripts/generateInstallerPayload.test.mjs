@@ -4,7 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'node:test';
 
-import { generateInstallerPayload } from './generateInstallerPayload.mjs';
+import {
+  assertNoBuildTools,
+  generateInstallerPayload,
+} from './generateInstallerPayload.mjs';
 
 const temporaryDirectories = [];
 
@@ -54,6 +57,28 @@ test('escapes directory and file names in generated XML', async () => {
   const xml = await readFile(outputPath, 'utf8');
   assert.match(xml, /Name="vendor &amp; tools"/);
   assert.match(xml, /a&amp;b\.txt/);
+});
+
+test('rejects installer build tools from the application payload', () => {
+  for (const logicalPath of [
+    'dotnet.exe',
+    'tools/MSBuild.exe',
+    'tools/NuGet.exe',
+    'tools/wix.exe',
+    'packages/WixToolset.Sdk/7.0.0/tool.dll',
+    'packages/WixToolset.Sdk.7.0.0.nupkg',
+  ]) {
+    assert.throws(
+      () => assertNoBuildTools([{ logicalPath }]),
+      /INSTALLER_PAYLOAD_BUILD_TOOL_FORBIDDEN/,
+    );
+  }
+  assert.doesNotThrow(() =>
+    assertNoBuildTools([
+      { logicalPath: 'Eky.exe' },
+      { logicalPath: 'resources/backend/dist/index.js' },
+    ]),
+  );
 });
 
 async function createPayloadFixture() {

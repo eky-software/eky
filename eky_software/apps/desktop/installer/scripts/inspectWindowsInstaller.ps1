@@ -63,6 +63,39 @@ function Get-TableCount {
   }
 }
 
+function Get-TableStringValues {
+  param(
+    [Parameter(Mandatory = $true)]$Database,
+    [Parameter(Mandatory = $true)][string]$TableName,
+    [Parameter(Mandatory = $true)][string]$ColumnName
+  )
+
+  $view = $null
+  $record = $null
+  $values = @()
+  try {
+    $view = $Database.OpenView(
+      "SELECT ``$ColumnName`` FROM ``$TableName``"
+    )
+    [void]$view.Execute()
+    while ($null -ne ($record = $view.Fetch())) {
+      $values += $record.StringData(1)
+      [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($record)
+      $record = $null
+    }
+  }
+  finally {
+    if ($null -ne $record) {
+      [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($record)
+    }
+    if ($null -ne $view) {
+      [void]$view.Close()
+      [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($view)
+    }
+  }
+  return @($values)
+}
+
 function Get-Properties {
   param([Parameter(Mandatory = $true)]$Database)
 
@@ -189,6 +222,8 @@ try {
   }
 
   $fileCount = Get-TableCount -Database $database -TableName 'File'
+  $fileNames = Get-TableStringValues -Database $database -TableName 'File' `
+    -ColumnName 'FileName'
   $componentCount = Get-TableCount -Database $database -TableName 'Component'
   $registryCount = Get-TableCount -Database $database -TableName 'Registry'
   $removeFileCount = Get-TableCount -Database $database -TableName 'RemoveFile'
@@ -200,6 +235,16 @@ try {
   Assert-Equal $registryCount $componentCount 'INSTALLER_REGISTRY_KEYPATH_COUNT_INVALID'
   Assert-Equal $shortcutCount 1 'INSTALLER_SHORTCUT_COUNT_INVALID'
   Assert-Equal $customActionCount 0 'INSTALLER_CUSTOM_ACTION_FORBIDDEN'
+  foreach ($fileNameValue in $fileNames) {
+    $fileName = ($fileNameValue -split '\|')[-1].ToLowerInvariant()
+    if (
+      $fileName -in @('dotnet.exe', 'msbuild.exe', 'nuget.exe', 'wix.exe') -or
+      $fileName.EndsWith('.nupkg') -or
+      $fileName.StartsWith('wixtoolset.sdk')
+    ) {
+      throw "INSTALLER_BUILD_TOOL_PAYLOAD_FORBIDDEN:$fileName"
+    }
+  }
   if ($removeFileCount -lt 3) {
     throw 'INSTALLER_DIRECTORY_CLEANUP_INCOMPLETE'
   }
@@ -212,6 +257,7 @@ try {
 
   [ordered]@{
     componentCount = $componentCount
+    buildToolPayloadFiles = 0
     customActionCount = $customActionCount
     fileCount = $fileCount
     installRoot = '%LOCALAPPDATA%\Programs\Eky'

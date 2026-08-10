@@ -39,6 +39,7 @@ function Install-Eky {
   $script:installedByThisTest = $true
   Assert-EkyInstalledPayload -InstallRoot $installRoot `
     -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
+  Assert-EkyInstallerRegistrationPresent -ProductCode $normalizedProductCode
 }
 
 function Uninstall-Eky {
@@ -60,6 +61,7 @@ function Uninstall-Eky {
   if (Test-Path -LiteralPath $shortcutPath) {
     throw 'INSTALLER_UNINSTALL_SHORTCUT_REMAINS'
   }
+  Assert-EkyInstallerRegistrationAbsent -ProductCodes @($normalizedProductCode)
 }
 
 try {
@@ -72,6 +74,7 @@ try {
   if (@(Get-Process -Name 'Eky' -ErrorAction SilentlyContinue).Count -ne 0) {
     throw 'INSTALLER_LIFECYCLE_RUNNING_PROCESS_FORBIDDEN'
   }
+  Assert-EkyInstallerRegistrationAbsent -ProductCodes @($normalizedProductCode)
 
   New-Item -ItemType Directory -Path $logRoot | Out-Null
   $payloadInventory = Get-EkyDirectoryInventory -Root $resolvedPayloadRoot
@@ -115,6 +118,8 @@ try {
     reinstall = $true
     repair = $true
     shortcutRemoved = $true
+    installerRegistryRemoved = $true
+    arpRegistrationRemoved = $true
     uninstall = $true
   } | ConvertTo-Json -Compress
 }

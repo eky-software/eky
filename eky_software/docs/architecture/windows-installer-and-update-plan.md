@@ -43,7 +43,8 @@ jakelua oikeaan käyttöön.
 | B2 Identity and install root | valmis (`986d0b6`) | Vakaa UpgradeCode, versiokohtainen ProductCode, vakaat component-GUIDit, per-user `%LOCALAPPDATA%\\Programs\\Eky` ja read-only MSI-inspektori |
 | B3 Install, repair and uninstall | valmis (`94b4479`) | Puhdas asennus, pakotettu repair, uninstall/reinstall sekä business-datan ja poistettavuuden todennus |
 | B4 Two-version upgrade | valmis (`496d409`) | Kahden synteettisen version major upgrade, downgrade-esto, rollback ja Windows-virhepolut |
-| B5 Build once and sidecar | valmis (checkpoint-commit) | MSI rakennetaan kerran, validoidaan ja sidotaan täsmälleen samoihin tavuihin SHA-256-sidecarilla; CI ei vielä julkaise artifactia |
+| B5 Build once and sidecar | valmis (`f0f2e2f`) | MSI rakennetaan kerran, validoidaan ja sidotaan täsmälleen samoihin tavuihin SHA-256-sidecarilla; CI ei vielä julkaise artifactia |
+| B6 Release gate hardening | toteutuksessa | Lukittu restore toistetaan ilman lock-driftiä, vain ICE91 suppressataan, uninstall todentaa HKCU/ARP-siivouksen ja N -> N+1 testataan käynnissä olevalla Eky- ja utility-prosessilla samoista sidotuista N-tavuista |
 
 B2-prototyypin MSI sisältää vain nykyisen kovennetun Windows-payloadin,
 rekisteripohjaiset per-user key pathit, MSI:n omistamien asennushakemistojen
@@ -53,7 +54,10 @@ scope-, install root-, komponentti-, tiedosto-, rekisteri-, RemoveFile- ja
 shortcut-sopimukset sekä sen, ettei paketissa ole custom actioneita tai
 business-datan tunnettuja standardihakemistoja.
 
-WiX:n ICE-validointi ajetaan eikä sitä poisteta käytöstä. Puhtaasti per-user-
+WiX:n ICE-validointi ajetaan eikä sitä poisteta käytöstä. Vain täsmällinen
+`ICE91` on suppressattu WiX-projektissa; yleistä warning suppressionia ei
+käytetä ja kaikki muut WiX- sekä ICE-varoitukset käsitellään buildin
+pysäyttävinä virheinä. Puhtaasti per-user-
 scopeen rajattu prototyyppi tuottaa yhden ICE91-varoituksen jokaisesta
 payload-tiedostosta, koska tiedostojen hakemistopolku ei vaihdu mahdollisen
 `ALLUSERS`-arvon mukaan. Paketti ei tue per-machine-asennusta eikä aseta
@@ -67,7 +71,8 @@ Testi asentaa MSI:n hiljaisesti ilman restartia, vertaa kaikki asennetut
 payload-tiedostot alkuperäiseen paketoituun artifactiin SHA-256-arvoilla,
 poistaa yhden rajatun tiedoston ja todentaa pakotetun Windows Installer
 repairin. Tämän jälkeen testi todentaa uninstallin, reinstallin, uuden
-uninstallin, pikakuvakkeen poistumisen sekä olemassa olevan `%APPDATA%\\Eky`-
+uninstallin, pikakuvakkeen, installerin oman `HKCU\\Software\\Eky\\Installer`-
+avaimen ja Windowsin ARP-merkinnän poistumisen sekä olemassa olevan `%APPDATA%\\Eky`-
 profiilin muuttumattomuuden. Onnistuneen ajon yksityiset temp-lokit poistetaan;
 epäonnistuneen ajon lokit jätetään paikallista vianmääritystä varten.
 
@@ -78,18 +83,20 @@ valita installerille toista payloadia. Unicode- ja välilyöntiyhteensopivuus
 todennetaan siirtämällä MSI testissä tällaiseen lähdepolkuun, ei muuttamalla
 asennusjuurta.
 
-B4 rakentaa nykyisen N-version ja synteettisen N+1-version täsmälleen samasta
-kovennetusta payloadista. Jokainen build käyttää omaa artifact- ja
-WiX-intermediate-hakemistoaan, jotta myöhempi fixture-build ei voi muuttaa jo
-rakennetun MSI:n tavuja tai hardlinkkejä. Rollback-testiä varten rakennetaan
-vain testissä N+1-MSI, jonka payloadissa on yksi synteettinen probe-tiedosto;
-fixture ei kuulu jaeltavaan artifactiin.
+B4/B6 käyttää nykyisenä N-versiona B5:n jo kerran rakentamaa ja sidecarilla
+sidottua release-MSI:tä. Upgrade-fixture ei rakenna N-versiota uudelleen.
+Vain synteettinen N+1 ja erillinen rollback-probe-MSI rakennetaan omiin
+fixture- ja WiX-intermediate-hakemistoihinsa. Fixture ei kuulu jaeltavaan
+artifactiin, ja N-MSI:n SHA-256 tarkistetaan ennen upgrade-testiä sekä sen
+jälkeen.
 
 Major upgrade käyttää `RemoveExistingProducts`-toimintoa `InstallExecute`-
 toiminnon jälkeen ja ennen `InstallFinalize`-toimintoa. Read-only MSI-
 inspektori valvoo tämän sekvenssin. B4-todistus kattaa N -> N+1 -päivityksen,
 vanhemman version downgrade-eston, hallitun N+1-asennusvirheen ja Windows
-Installerin binary rollbackin takaisin N-versioon, Unicode- ja välilyöntejä
+Installerin binary rollbackin takaisin N-versioon, käynnissä olevan Electron-
+mainin ja Electron utility/backend-prosessin aikaisen suoran päivitysyrityksen,
+Unicode- ja välilyöntejä
 sisältävän MSI-lähdepolun sekä lopullisen uninstallin. `%APPDATA%\\Eky`-
 business-data inventoidaan ennen testiä ja todetaan muuttumattomaksi jokaisen
 vaiheen jälkeen.
@@ -102,11 +109,24 @@ Manifesti kirjoitetaan vasta, kun samat MSI-tavut ovat läpäisseet tarkastuksen
 Myöhemmät lifecycle- ja fixture-testit eivät saa rakentaa jaeltavaa MSI:tä
 uudelleen, ja release-MSI:n tavut varmennetaan vielä testien jälkeen.
 
-Windows CI ajaa installer-testit, kovennetun pilot-paketoinnin, lukitun WiX-
-restoren, build-once-releaseportin, install/repair/uninstall-elinkaaren sekä
+Windows CI ajaa installer-testit, kovennetun pilot-paketoinnin, kaksi
+peräkkäistä lukittua WiX-restorea muuttamatta `packages.lock.json`-tiedostoa,
+build-once-releaseportin, install/repair/uninstall-elinkaaren sekä
 synteettisen N -> N+1-, downgrade- ja rollback-todistuksen. CI ei tässä
 checkpointissa lataa artifactia julkaisuun, allekirjoita sitä tai tee siitä
 oikealle käyttäjälle jaettavaa releasea.
+
+CI käyttää .NET SDK:ta `global.json`-sopimuksella `10.0.302`,
+`rollForward: disable` ja `allowPrerelease: false`. Virallinen
+`actions/setup-dotnet` on täsmällisesti releaseen `v5.4.0` kuuluvaan
+40-merkkiseen commit-SHA:han
+`26b0ec14cb23fa6904739307f278c14f94c95bf1` lukittu. Floating tagia tai
+automaattista major-vaihtoa ei sallita tässä installer-portissa.
+
+Restore käyttää vain `NuGet.Config`-tiedostossa sallittua nuget.org-lähdettä,
+pakettilähdekartoitusta, vaadittua allekirjoitusvalidointia ja FireGiantin
+nimettyä signer-varmennetta. WiX- ja .NET-build-työkaluja ei pakata Eky MSI:n
+runtime-payloadiin.
 
 ## 2. Tavoite
 
@@ -589,6 +609,13 @@ Laajempi jakelu vaatii:
 - release-prosessin, joka ei allekirjoita dirty-buildia
 
 Code signing -salaisuus ei kuulu repoon, sovellukseen tai backupiin.
+
+Nykyinen sidecarin `unsigned-prototype` ja SHA-256 todistavat vain suljetun
+prototyyppipaketin eheyden, eivät publisher trustia. Tulevassa signing-
+releaseportissa järjestys on: build -> inspect -> sign -> allekirjoituksen ja
+timestampin validointi -> lopullinen hash ja manifesti -> samojen
+allekirjoitettujen tavujen lifecycle- ja upgrade-testit. Allekirjoituksen
+jälkeen aiempaa tavuihin sidottua hashia tai manifestia ei saa käyttää.
 
 ## 20. Tuleva etäpäivitys
 

@@ -42,7 +42,7 @@ Rajattu installer-build käyttää lisäksi erikseen hyväksyttyjä build-työka
 | --- | --- | --- |
 | `WixToolset.Sdk` | `7.0.0` | Per-user x64 MSI:n deterministinen muodostaminen |
 | .NET SDK | `10.0.302` | WiX SDK -projektin lukittu build-runtime |
-| `actions/setup-dotnet` | `26b0ec14cb23fa6904739307f278c14f94c95bf1` | Hyväksytyn .NET SDK:n SHA-lukittu CI-bootstrap |
+| `actions/setup-dotnet` | `v5.4.0` / `26b0ec14cb23fa6904739307f278c14f94c95bf1` | Hyväksytyn .NET SDK:n täyteen 40-merkkiseen SHA:han lukittu CI-bootstrap; floating tagia ei käytetä |
 
 Projektin omistaja hyväksyi nämä työkalut 10.8.2026 vain rajattuun per-user
 x64 MSI -prototyyppiin sekä hyväksyi WiX 7:n MS-RL- ja OSMF EULA -ehdot.

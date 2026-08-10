@@ -216,12 +216,8 @@ jobs:
       - name: Package clean Windows pilot payload
         run: pnpm --filter @eky/desktop package:windows:pilot
 
-      - name: Restore locked WiX toolchain
-        run: >-
-          dotnet restore apps/desktop/installer/Eky.Installer.wixproj
-          --locked-mode
-          --configfile apps/desktop/installer/NuGet.Config
-          --verbosity minimal
+      - name: Restore locked WiX toolchain twice without lock drift
+        run: pnpm --filter @eky/desktop installer:verify-restore-lock
 
       - name: Build, inspect and bind MSI release once
         run: pnpm --filter @eky/desktop installer:release
@@ -232,7 +228,7 @@ jobs:
       - name: Verify install, repair and uninstall lifecycle
         run: pnpm --filter @eky/desktop installer:release-lifecycle
 
-      - name: Build synthetic upgrade fixtures
+      - name: Build synthetic N+1 and rollback fixtures from the bound N release
         run: pnpm --filter @eky/desktop installer:build-upgrade-fixture
 
       - name: Verify major upgrade, downgrade rejection and rollback
