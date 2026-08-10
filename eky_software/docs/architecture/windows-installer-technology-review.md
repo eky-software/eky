@@ -4,7 +4,10 @@
 
 Tämä arvio on 10.8.2026 tehty päätösportti. Se ei hyväksy riippuvuutta,
 installeria, update-koodia, allekirjoitusavainta eikä release-artifactia.
-Nykyinen baseline on `b50ec33fcddc03b20fbd09c9555099e415c2381f`.
+Teknologiakatselmuksen baseline on
+`b50ec33fcddc03b20fbd09c9555099e415c2381f`. Installer entry -ohjelman A7-
+raportti on viimeistelty A6-commitin
+`ae070e5bf8f012df341ed580bfbe998d552700e8` päälle.
 
 Arvioidun desktop-pinon olennaiset versiot ovat:
 
@@ -182,6 +185,110 @@ Jos WiX:n lisenssi, per-user-prototyyppi tai kahden version rollback ei läpäis
 porttia, toteutus pysähtyy. Seuraava arvioitava R0-ehdokas on Forge Squirrel,
 ei Ekyyn käsin kirjoitettu tiedostokorvaaja.
 
+## A7: täsmällinen riippuvuusehdotus
+
+Jos projektin omistaja hyväksyy WiX-polun, ensimmäisen rajatun prototyypin
+ehdotus on:
+
+- build-only `WixToolset.Sdk` `7.0.0` täsmäversiona installerin omassa
+  SDK-tyylisessä `.wixproj`-projektissa
+- .NET SDK `10.0.302` täsmäversiona repojuuren `global.json`-lukituksella;
+  .NET 10 on LTS-versio, kun taas .NET 8:n tuki päättyy 10.11.2026
+- CI:ssä virallinen `actions/setup-dotnet` vain immutable commit SHA:lla ja
+  täsmälleen samalle .NET SDK -versiolle; actionin lopullinen SHA
+  tarkistetaan riippuvuuden toteutushetkellä
+- ei globaalia `wix`-työkaluasennusta, esiversioita, WiX extension -paketteja,
+  Burn-bootstrapperia, patcheja eikä custom actioneita ensimmäisessä
+  prototyypissä
+- vain x64 per-user MSI nykyisen kovennetun Packager-payloadin ympärille.
+
+`WixToolset.Sdk` on virallisen dokumentaation ensisijainen komentorivillä
+rakennettava SDK-malli. NuGet ilmoittaa versiolle `7.0.0`, ettei paketilla ole
+ilmoitettuja NuGet-riippuvuuksia. Paketti sisältää silti build-työkalun
+binäärit, joten sen toimitusketjua ei tulkita riippuvuudettomaksi. WiX ja
+.NET SDK jäävät build-ympäristöön; niitä ei paketoida Eky-runtimen
+Node-, Electron- tai backend-riippuvuuksiksi.
+
+Tämä ehdotus on yksi riippuvuuspäätöskokonaisuus. Hyväksyntä tarvitaan
+erikseen vähintään `WixToolset.Sdk`-paketille, .NET SDK -build-työkalulle ja
+CI:n `actions/setup-dotnet`-actionille ennen tiedostojen lisäämistä tai
+pakettien lataamista.
+
+### Lisenssi ja OSMF
+
+WiX:n lähdekoodi on Microsoft Reciprocal License -lisenssillä. Virallisen
+WiX 7.0.0 -binäärijulkaisun ja `WixToolset.Sdk`-paketin käyttö edellyttää
+lisäksi OSMF EULA -ehtojen hyväksymistä. EULA:n mukaan maksu koskee
+tulonhankintaan liittyvää käyttöä, jos käyttäjän vuotuinen bruttotulo
+on vähintään 10 000 Yhdysvaltain dollaria; alle rajan oleva käyttäjä on
+ehdon mukaan vapautettu maksusta. Ehto, soveltuva käyttäjä ja mahdollinen
+maksu on yritys- ja oikeudellinen omistajapäätös, ei tekninen oletus.
+
+Projektin omistajan pitää ennen latausta vahvistaa kirjallisesti:
+
+- hyväksytäänkö MS-RL ja WiX 7.0.0:n OSMF EULA
+- kenen tulot ja käyttö ratkaisevat maksun soveltumisen
+- maksetaanko mahdollinen ylläpitomaksu, jos raja täyttyy
+- saako virallista valmiiksi käännettyä WiX-binäärijulkaisua käyttää
+  Eky-buildissä.
+
+Tämä dokumentti ei ole oikeudellinen neuvonta eikä hyväksy ehtoja
+projektin omistajan puolesta. Omaa WiX-käännöstä lähdekoodista ei valita
+kiertotieksi: se kasvattaisi build-, provenance- ja ylläpitopintaa ja vaatisi
+oman erillisen päätöksen.
+
+### Provenance ja eheys
+
+Hyväksytyssä prototyypissä:
+
+- paketti palautetaan vain NuGet.orgin virallisesta
+  `WixToolset.Sdk/7.0.0`-lähteestä
+- NuGetin `signatureValidationMode=require` ja virallisen WiX-ohjeen
+  `trustedSigners`-raja otetaan käyttöön; julkaisuhetken sertifikaatin
+  fingerprint tarkistetaan uudelleen eikä vanhaa arvoa hyväksytä sokkona
+- installer-projekti käyttää täsmäversiota ja NuGet lock -tiedostoa
+- palautetun paketin allekirjoitus, NuGetin content hash ja lopullisen MSI:n
+  SHA-256 tallennetaan build-näyttöön
+- development- tai GitHub Packages -feedejä, wildcard-versioita tai
+  allekirjoittamattomia paikallisia WiX-binäärejä ei käytetä.
+
+Virallinen GitHub release ei tarjoa tässä katselmuksessa erillistä
+standalone-checksumlistaa, joten pelkkä release-sivun asset-linkki ei riitä
+luottamusankkuriksi. NuGet-allekirjoitus ja lukittu package content hash ovat
+ensisijainen build-provenance-malli.
+
+### MSI-authoroinnin turvallisuusrajat
+
+Ensimmäinen prototyyppi todistaa ilman custom actioneita:
+
+- `perUser`-scopen ilman elevationia
+- vakaan `UpgradeCode`-arvon sekä julkaisuittain vaihtuvan `ProductCode`-
+  arvon
+- `MajorUpgrade`-mallin, jossa downgrade estyy ja samaa MSI:n kolmen osan
+  `ProductVersion`-arvoa ei kohdella upgrade-poluksi
+- `RemoveExistingProducts`-ajoituksen `afterInstallInitialize`, jotta vanhan
+  version poisto kuuluu rollbackiin, jos uuden asennus epäonnistuu
+- vakaat component-rajat, GUIDit ja key pathit kahden oikean version välillä
+- clean install-, repair-, major upgrade-, keskeytys-, uninstall- ja
+  downgrade-estotestit
+- ettei MSI lue, kirjoita tai poista Electron `userData`-juurta,
+  yritysprofiilia, backupia, salaisuuksia, lokeja tai business-artifacteja.
+
+Windows Installerin custom actioneita ei käytetä business-datan,
+migraatioiden, backupin, first-start-validoinnin tai binary rollbackin
+ohjaamiseen. Nämä pysyvät Eky Update Coordinatorin ja nykyisten moduulien
+vastuulla. Jos custom action osoittautuu myöhemmin välttämättömäksi, se on
+uusi arkkitehtuuri- ja turvallisuuspäätös rollback-vastapareineen.
+
+### Poistettavuus
+
+Jos prototyyppi hylätään, WiX poistetaan poistamalla vain hyväksytyssä
+spikessä lisätyt installer-lähteet, `.wixproj`, `global.json`, NuGet-
+luottamus- ja lock-tiedostot sekä CI-askeleet. Eky-runtimen `package.json`,
+pnpm-lockfile, domain-, application-, database- ja web-sopimukset eivät saa
+riippua WiXistä. Paikallinen NuGet-cache voi jää build-koneelle, mutta se ei
+ole runtime- tai release-artifactin osa.
+
 ## Binary rollback -malli
 
 Binary rollbackissa on kaksi eri rajaa:
@@ -234,9 +341,18 @@ Tämä arvio ei muuta `package.json`- tai lockfile-tiedostoja.
 - [Electron Forge Squirrel maker](https://www.electronforge.io/config/makers/squirrel.windows)
 - [Electron Forge releases](https://github.com/electron/forge/releases)
 - [WiX Toolset](https://docs.firegiant.com/wix/)
-- [WiX releases](https://github.com/wixtoolset/wix/releases)
-- [WiX Package scope](https://docs.firegiant.com/wix/schema/wxs/package/)
+- [WiX 7.0.0 release](https://github.com/wixtoolset/wix/releases/tag/v7.0.0)
+- [WiX MSBuild SDK](https://docs.firegiant.com/wix/using-wix/)
+- [WixToolset.Sdk 7.0.0](https://www.nuget.org/packages/WixToolset.Sdk/7.0.0)
+- [WiX source license](https://github.com/wixtoolset/wix/blob/main/LICENSE.TXT)
+- [WiX 7.0.0 OSMF EULA](https://github.com/wixtoolset/wix/blob/v7.0.0/OSMFEULA.txt)
+- [WiX Package scope](https://docs.firegiant.com/wix/schema/wxs/packagescopetype/)
 - [WiX MajorUpgrade](https://docs.firegiant.com/wix/schema/wxs/majorupgrade/)
+- [WiX package signing](https://docs.firegiant.com/wix/tools/signing/)
+- [.NET 10 downloads](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
+- [.NET lifecycle](https://learn.microsoft.com/en-ie/lifecycle/products/microsoft-net-and-net-core)
+- [Windows Installer component rules](https://learn.microsoft.com/en-us/windows/win32/msi/organizing-applications-into-components)
+- [Windows Installer rollback custom actions](https://learn.microsoft.com/en-us/windows/win32/msi/rollback-custom-actions)
 - [Windows Installer rollback](https://learn.microsoft.com/en-us/windows/win32/msi/rollback-installation)
 - [msiexec](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/msiexec)
 - [Authenticode timestamping](https://learn.microsoft.com/en-us/windows/win32/seccrypto/time-stamping-authenticode-signatures)
@@ -245,8 +361,10 @@ Tämä arvio ei muuta `package.json`- tai lockfile-tiedostoja.
 
 ## Avoimet omistajapäätökset
 
-- hyväksytäänkö WiX/MSI prototyyppiin uutena build toolina
-- mikä WiX-versio ja lisenssimalli hyväksytään valintahetkellä
+- hyväksytäänkö `WixToolset.Sdk` `7.0.0`, .NET SDK `10.0.302` ja
+  SHA-lukittu virallinen `actions/setup-dotnet` yhtenä build tool -porttina
+- hyväksytäänkö WiX 7.0.0:n MS-RL- ja OSMF EULA -ehdot ja miten
+  mahdollisen ylläpitomaksun soveltuminen vahvistetaan
 - vaaditaanko code signing jo yhden koneen R0-pilotissa
 - säilytetäänkö edellinen MSI automaattisesti vai pyydetäänkö käyttäjää
   säilyttämään se suljetussa release-kansiossa

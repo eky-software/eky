@@ -29,8 +29,8 @@ Suositus ei muuta ADR-0010:n hyväksyttyä rajaa eikä aloita toteutusta.
 | A3 Migration failure semantics | valmis (`cab05c0`) | Startup raportoi vaiheen ja tämän ajon valmistuneiden migraatioiden määrän; koko ajon sivuvaikutustila on aina `unknown` |
 | A4 Package inventory final audit | valmis (`1436442`) | Installer-payload torjuu Eky-runtimejäämät, yksityisavaimet ja service-account-tunnisteet sekä vaatii vendor-jäämille täsmällisen katselmoinnin |
 | A5 MSI version contract | valmis (`7aa1213`) | Täysi SemVer `appVersion` ja monotoninen numeerinen `msiProductVersion` ovat eri release-sopimuksia |
-| A6 Package trust and private staging | valmis | Vain uudelleen varmennettu yksityinen staging-artifacti voidaan suorittaa |
-| A7 WiX dependency decision | odottaa omistajan päätöstä | Työkalua ei asenneta eikä MSI:tä aloiteta ennen erillistä hyväksyntää |
+| A6 Package trust and private staging | valmis (`ae070e5`) | Vain uudelleen varmennettu yksityinen staging-artifacti voidaan suorittaa |
+| A7 WiX dependency decision | raportti valmis, odottaa omistajan päätöstä | `WixToolset.Sdk` 7.0.0-, .NET SDK 10.0.302-, OSMF EULA- ja CI-portti on kuvattu teknologiakatselmuksessa; mitään ei ole asennettu |
 
 ## 2. Tavoite
 
