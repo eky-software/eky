@@ -64,7 +64,7 @@ export function renderPayloadWxs(files) {
     '    </DirectoryRef>',
     '  </Fragment>',
     '  <Fragment>',
-    '    <DirectoryRef Id="INSTALLFOLDER">',
+    '    <DirectoryRef Id="EkyInstallFolder">',
     ...renderDirectoryComponent(
       directoryComponentByPath.get('install-root'),
       3,
@@ -240,7 +240,7 @@ function renderFileComponent(file, component, depth) {
   ];
   if (file.logicalPath === 'Eky.exe') {
     lines.push(
-      `${indent}    <Shortcut Id="EkyStartMenuShortcut" Directory="ApplicationProgramsFolder" Name="Eky" Description="Eky" WorkingDirectory="INSTALLFOLDER" />`,
+      `${indent}    <Shortcut Id="EkyStartMenuShortcut" Directory="ApplicationProgramsFolder" Name="Eky" Description="Eky" WorkingDirectory="EkyInstallFolder" />`,
     );
   }
   lines.push(

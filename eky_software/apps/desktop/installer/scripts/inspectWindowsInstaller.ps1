@@ -116,6 +116,33 @@ function Get-Directories {
   return ,$directories
 }
 
+function Get-ActionSequence {
+  param(
+    [Parameter(Mandatory = $true)]$Database,
+    [Parameter(Mandatory = $true)][string]$Action
+  )
+
+  $view = $Database.OpenView(
+    "SELECT ``Sequence`` FROM ``InstallExecuteSequence`` WHERE ``Action`` = '$Action'"
+  )
+  $record = $null
+  try {
+    [void]$view.Execute()
+    $record = $view.Fetch()
+    if ($null -eq $record) {
+      throw "INSTALLER_SEQUENCE_ACTION_MISSING:$Action"
+    }
+    return $record.IntegerData(1)
+  }
+  finally {
+    if ($null -ne $record) {
+      [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($record)
+    }
+    [void]$view.Close()
+    [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($view)
+  }
+}
+
 $resolvedMsiPath = (Resolve-Path -LiteralPath $MsiPath).Path
 if ([System.IO.Path]::GetExtension($resolvedMsiPath) -ne '.msi') {
   throw 'INSTALLER_INSPECTION_MSI_REQUIRED'
@@ -128,6 +155,12 @@ try {
   $database = $installer.OpenDatabase($resolvedMsiPath, 0)
   $properties = Get-Properties -Database $database
   $directories = Get-Directories -Database $database
+  $installExecuteSequence = Get-ActionSequence -Database $database `
+    -Action 'InstallExecute'
+  $installFinalizeSequence = Get-ActionSequence -Database $database `
+    -Action 'InstallFinalize'
+  $removeExistingProductsSequence = Get-ActionSequence -Database $database `
+    -Action 'RemoveExistingProducts'
 
   Assert-Equal $properties['ProductName'] 'Eky' 'INSTALLER_PRODUCT_NAME_INVALID'
   Assert-Equal $properties['Manufacturer'] 'Eky' 'INSTALLER_MANUFACTURER_INVALID'
@@ -142,8 +175,8 @@ try {
     throw 'INSTALLER_SCOPE_DUAL_PURPOSE_FORBIDDEN'
   }
 
-  Assert-Equal $directories['INSTALLFOLDER'].Parent 'EkyProgramsDirectory' 'INSTALLER_ROOT_PARENT_INVALID'
-  Assert-Equal $directories['INSTALLFOLDER'].Name 'Eky' 'INSTALLER_ROOT_NAME_INVALID'
+  Assert-Equal $directories['EkyInstallFolder'].Parent 'EkyProgramsDirectory' 'INSTALLER_ROOT_PARENT_INVALID'
+  Assert-Equal $directories['EkyInstallFolder'].Name 'Eky' 'INSTALLER_ROOT_NAME_INVALID'
   Assert-Equal $directories['EkyProgramsDirectory'].Parent 'LocalAppDataFolder' 'INSTALLER_PROGRAMS_PARENT_INVALID'
   Assert-Equal $directories['EkyProgramsDirectory'].Name 'Programs' 'INSTALLER_PROGRAMS_NAME_INVALID'
   Assert-Equal $directories['ApplicationProgramsFolder'].Parent 'ProgramMenuFolder' 'INSTALLER_SHORTCUT_PARENT_INVALID'
@@ -170,6 +203,12 @@ try {
   if ($removeFileCount -lt 3) {
     throw 'INSTALLER_DIRECTORY_CLEANUP_INCOMPLETE'
   }
+  if (
+    $removeExistingProductsSequence -le $installExecuteSequence -or
+    $removeExistingProductsSequence -ge $installFinalizeSequence
+  ) {
+    throw 'INSTALLER_MAJOR_UPGRADE_SEQUENCE_INVALID'
+  }
 
   [ordered]@{
     componentCount = $componentCount
@@ -180,6 +219,7 @@ try {
     productCode = $properties['ProductCode']
     productVersion = $properties['ProductVersion']
     removeFileCount = $removeFileCount
+    removeExistingProductsSequence = $removeExistingProductsSequence
     scope = 'perUser'
     shortcutCount = $shortcutCount
     upgradeCode = $properties['UpgradeCode']

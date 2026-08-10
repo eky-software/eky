@@ -15,12 +15,12 @@
       AllowSameVersionUpgrades="no"
       DowngradeErrorMessage="Uudempi Eky-versio on jo asennettu. Vanhempaa versiota ei voi asentaa sen päälle."
       IgnoreRemoveFailure="no"
-      Schedule="afterInstallInitialize" />
+      Schedule="afterInstallExecute" />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
 
     <StandardDirectory Id="LocalAppDataFolder">
       <Directory Id="EkyProgramsDirectory" Name="Programs">
-        <Directory Id="INSTALLFOLDER" Name="Eky" />
+        <Directory Id="EkyInstallFolder" Name="Eky" />
       </Directory>
     </StandardDirectory>
 

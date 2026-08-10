@@ -4,8 +4,10 @@
 
 Arkkitehtuuripäätös on hyväksytty ADR-0010:ssä. ADR-0009:n salattu
 backup/restore, recovery pointit, aktivointijournal ja Windows packaged
-restore -todistus ovat toteutettu 4.8.2026. Installeria,
-päivitysorkestrointia, code signingia tai update-UI:ta ei ole vielä toteutettu.
+restore -todistus ovat toteutettu 4.8.2026. Rajattu per-user x64 MSI-
+prototyyppi on toteutettu ja sen install-, repair-, uninstall-, major upgrade-,
+downgrade-esto- ja binary rollback -rajat on todennettu synteettisellä datalla.
+Päivitysorkestrointia, code signingia tai update-UI:ta ei ole vielä toteutettu.
 
 Migration runnerin SHA-256-checksum-, chain identity- ja release/build-
 metadata on toteutettu 10.8.2026. Historiallinen mismatch torjutaan ennen
@@ -39,8 +41,8 @@ jakelua oikeaan käyttöön.
 | --- | --- | --- |
 | B1 Installer composition | valmis (`436949f`) | Installerin build-työkalut, suljettu release-konfiguraatio sekä version, identiteetin ja sidecar-manifestin sopimukset |
 | B2 Identity and install root | valmis (`986d0b6`) | Vakaa UpgradeCode, versiokohtainen ProductCode, vakaat component-GUIDit, per-user `%LOCALAPPDATA%\\Programs\\Eky` ja read-only MSI-inspektori |
-| B3 Install, repair and uninstall | valmis (checkpoint-commit) | Puhdas asennus, pakotettu repair, uninstall/reinstall sekä business-datan ja poistettavuuden todennus |
-| B4 Two-version upgrade | odottaa | Kahden synteettisen version major upgrade, downgrade-esto, rollback ja Windows-virhepolut |
+| B3 Install, repair and uninstall | valmis (`94b4479`) | Puhdas asennus, pakotettu repair, uninstall/reinstall sekä business-datan ja poistettavuuden todennus |
+| B4 Two-version upgrade | valmis (checkpoint-commit) | Kahden synteettisen version major upgrade, downgrade-esto, rollback ja Windows-virhepolut |
 | B5 Build once and sidecar | odottaa | MSI rakennetaan kerran, validoidaan, sidotaan SHA-256-sidecariin ja julkaistaan täsmälleen samoina tavuina |
 
 B2-prototyypin MSI sisältää vain nykyisen kovennetun Windows-payloadin,
@@ -68,6 +70,29 @@ repairin. Tämän jälkeen testi todentaa uninstallin, reinstallin, uuden
 uninstallin, pikakuvakkeen poistumisen sekä olemassa olevan `%APPDATA%\\Eky`-
 profiilin muuttumattomuuden. Onnistuneen ajon yksityiset temp-lokit poistetaan;
 epäonnistuneen ajon lokit jätetään paikallista vianmääritystä varten.
+
+MSI:n asennushakemiston tunniste on tarkoituksella yksityinen
+`EkyInstallFolder`, ei julkinen uppercase MSI-property. Komentorivi ei voi
+ohittaa kiinteää per-user-asennusjuurta `%LOCALAPPDATA%\\Programs\\Eky` eikä
+valita installerille toista payloadia. Unicode- ja välilyöntiyhteensopivuus
+todennetaan siirtämällä MSI testissä tällaiseen lähdepolkuun, ei muuttamalla
+asennusjuurta.
+
+B4 rakentaa nykyisen N-version ja synteettisen N+1-version täsmälleen samasta
+kovennetusta payloadista. Jokainen build käyttää omaa artifact- ja
+WiX-intermediate-hakemistoaan, jotta myöhempi fixture-build ei voi muuttaa jo
+rakennetun MSI:n tavuja tai hardlinkkejä. Rollback-testiä varten rakennetaan
+vain testissä N+1-MSI, jonka payloadissa on yksi synteettinen probe-tiedosto;
+fixture ei kuulu jaeltavaan artifactiin.
+
+Major upgrade käyttää `RemoveExistingProducts`-toimintoa `InstallExecute`-
+toiminnon jälkeen ja ennen `InstallFinalize`-toimintoa. Read-only MSI-
+inspektori valvoo tämän sekvenssin. B4-todistus kattaa N -> N+1 -päivityksen,
+vanhemman version downgrade-eston, hallitun N+1-asennusvirheen ja Windows
+Installerin binary rollbackin takaisin N-versioon, Unicode- ja välilyöntejä
+sisältävän MSI-lähdepolun sekä lopullisen uninstallin. `%APPDATA%\\Eky`-
+business-data inventoidaan ennen testiä ja todetaan muuttumattomaksi jokaisen
+vaiheen jälkeen.
 
 ## 2. Tavoite
 

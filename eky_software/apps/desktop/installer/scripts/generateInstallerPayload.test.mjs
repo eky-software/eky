@@ -34,6 +34,8 @@ test('generates deterministic per-file components without absolute source paths'
   assert.match(firstXml, /Source="\$\(EkyPayloadRoot\)\\Eky\.exe"/);
   assert.match(firstXml, /EkyStartMenuShortcut/);
   assert.match(firstXml, /DirectoryRef Id="EkyProgramsDirectory"/);
+  assert.match(firstXml, /DirectoryRef Id="EkyInstallFolder"/);
+  assert.doesNotMatch(firstXml, /INSTALLFOLDER/);
   assert.match(firstXml, /DirectoryRef Id="ApplicationProgramsFolder"/);
   const fileComponents =
     firstXml.match(/<Component Id="Cmp_[\s\S]*?<\/Component>/g) ?? [];

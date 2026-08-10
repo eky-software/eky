@@ -11,6 +11,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'windowsInstallerTestSupport.ps1')
 
 $resolvedMsiPath = (Resolve-Path -LiteralPath $MsiPath).Path
 $resolvedPayloadRoot = (Resolve-Path -LiteralPath $PayloadRoot).Path
@@ -23,78 +24,11 @@ $installer = New-Object -ComObject WindowsInstaller.Installer
 $installedByThisTest = $false
 $completed = $false
 
-function Get-ProductState {
-  param([Parameter(Mandatory = $true)][string]$Code)
-
-  try {
-    return $installer.ProductState($Code)
-  }
-  catch {
-    return -1
-  }
-}
-
-function Invoke-MsiExec {
-  param(
-    [Parameter(Mandatory = $true)][string[]]$Arguments,
-    [Parameter(Mandatory = $true)][string]$Operation
-  )
-
-  $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $Arguments `
-    -NoNewWindow -Wait -PassThru
-  if ($process.ExitCode -ne 0) {
-    throw "INSTALLER_LIFECYCLE_$($Operation.ToUpperInvariant())_FAILED:$($process.ExitCode)"
-  }
-}
-
-function Get-DirectoryInventory {
-  param([Parameter(Mandatory = $true)][string]$Root)
-
-  if (!(Test-Path -LiteralPath $Root -PathType Container)) {
-    return @()
-  }
-  $resolvedRoot = (Resolve-Path -LiteralPath $Root).Path
-  return @(
-    Get-ChildItem -LiteralPath $resolvedRoot -File -Recurse -Force |
-      Sort-Object FullName |
-      ForEach-Object {
-        $relativePath = $_.FullName.Substring($resolvedRoot.Length).TrimStart('\')
-        $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
-        "$relativePath|$($_.Length)|$hash"
-      }
-  )
-}
-
-function Assert-InventoryEqual {
-  param(
-    [Parameter(Mandatory = $true)][object[]]$Actual,
-    [Parameter(Mandatory = $true)][object[]]$Expected,
-    [Parameter(Mandatory = $true)][string]$Code
-  )
-
-  if ($Actual.Count -ne $Expected.Count) {
-    throw "$Code`: file count mismatch"
-  }
-  for ($index = 0; $index -lt $Expected.Count; $index += 1) {
-    if ($Actual[$index] -ne $Expected[$index]) {
-      throw "$Code`: content mismatch"
-    }
-  }
-}
-
-function Assert-InstalledPayload {
-  $installedInventory = Get-DirectoryInventory -Root $installRoot
-  Assert-InventoryEqual $installedInventory $payloadInventory 'INSTALLER_PAYLOAD_MISMATCH'
-  if (!(Test-Path -LiteralPath $shortcutPath -PathType Leaf)) {
-    throw 'INSTALLER_SHORTCUT_MISSING'
-  }
-}
-
 function Install-Eky {
   param([Parameter(Mandatory = $true)][string]$LogName)
 
   $logPath = Join-Path $logRoot $LogName
-  Invoke-MsiExec -Operation 'install' -Arguments @(
+  Invoke-EkyMsiExec -Operation 'lifecycle_install' -Arguments @(
     '/i',
     "`"$resolvedMsiPath`"",
     '/qn',
@@ -103,14 +37,15 @@ function Install-Eky {
     "`"$logPath`""
   )
   $script:installedByThisTest = $true
-  Assert-InstalledPayload
+  Assert-EkyInstalledPayload -InstallRoot $installRoot `
+    -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
 }
 
 function Uninstall-Eky {
   param([Parameter(Mandatory = $true)][string]$LogName)
 
   $logPath = Join-Path $logRoot $LogName
-  Invoke-MsiExec -Operation 'uninstall' -Arguments @(
+  Invoke-EkyMsiExec -Operation 'lifecycle_uninstall' -Arguments @(
     '/x',
     $normalizedProductCode,
     '/qn',
@@ -128,7 +63,7 @@ function Uninstall-Eky {
 }
 
 try {
-  if ((Get-ProductState -Code $normalizedProductCode) -ge 1) {
+  if ((Get-EkyProductState -Installer $installer -Code $normalizedProductCode) -ge 1) {
     throw 'INSTALLER_LIFECYCLE_EXISTING_PRODUCT_FORBIDDEN'
   }
   if (Test-Path -LiteralPath $installRoot) {
@@ -139,8 +74,8 @@ try {
   }
 
   New-Item -ItemType Directory -Path $logRoot | Out-Null
-  $payloadInventory = Get-DirectoryInventory -Root $resolvedPayloadRoot
-  $businessDataInventoryBefore = Get-DirectoryInventory -Root $businessDataRoot
+  $payloadInventory = Get-EkyDirectoryInventory -Root $resolvedPayloadRoot
+  $businessDataInventoryBefore = Get-EkyDirectoryInventory -Root $businessDataRoot
 
   Install-Eky -LogName 'install.log'
 
@@ -149,7 +84,7 @@ try {
   if (Test-Path -LiteralPath $repairTarget) {
     throw 'INSTALLER_REPAIR_FIXTURE_DELETE_FAILED'
   }
-  Invoke-MsiExec -Operation 'repair' -Arguments @(
+  Invoke-EkyMsiExec -Operation 'lifecycle_repair' -Arguments @(
     '/fa',
     $normalizedProductCode,
     '/qn',
@@ -157,17 +92,18 @@ try {
     '/l*v',
     "`"$(Join-Path $logRoot 'repair.log')`""
   )
-  Assert-InstalledPayload
+  Assert-EkyInstalledPayload -InstallRoot $installRoot `
+    -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
 
   Uninstall-Eky -LogName 'uninstall.log'
-  Assert-InventoryEqual (Get-DirectoryInventory -Root $businessDataRoot) `
+  Assert-EkyInventoryEqual (Get-EkyDirectoryInventory -Root $businessDataRoot) `
     $businessDataInventoryBefore 'INSTALLER_BUSINESS_DATA_CHANGED'
 
   Install-Eky -LogName 'reinstall.log'
-  Assert-InventoryEqual (Get-DirectoryInventory -Root $businessDataRoot) `
+  Assert-EkyInventoryEqual (Get-EkyDirectoryInventory -Root $businessDataRoot) `
     $businessDataInventoryBefore 'INSTALLER_BUSINESS_DATA_CHANGED'
   Uninstall-Eky -LogName 'reinstall-uninstall.log'
-  Assert-InventoryEqual (Get-DirectoryInventory -Root $businessDataRoot) `
+  Assert-EkyInventoryEqual (Get-EkyDirectoryInventory -Root $businessDataRoot) `
     $businessDataInventoryBefore 'INSTALLER_BUSINESS_DATA_CHANGED'
 
   $completed = $true
@@ -185,7 +121,7 @@ try {
 finally {
   if ($installedByThisTest) {
     try {
-      Invoke-MsiExec -Operation 'cleanup' -Arguments @(
+      Invoke-EkyMsiExec -Operation 'lifecycle_cleanup' -Arguments @(
         '/x',
         $normalizedProductCode,
         '/qn',
