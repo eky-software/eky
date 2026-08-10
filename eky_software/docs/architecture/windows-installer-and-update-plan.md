@@ -75,6 +75,32 @@ Puhdas asennus:
 
 Installer ei kirjoita suoraan SQLite-tauluihin.
 
+### Production profile and packaging cleanliness -checkpoint
+
+Ennen ensimmäistä installer-pilottia erotetaan ja todennetaan neljä runtimea:
+
+- backend/browser-kehityksen `eky-dev.sqlite` tai development `.env` -polku
+- testikohtainen private E2E `eky-e2e.sqlite`
+- vain validoidulla switch+token-parilla aktivoituva packaged smoke tempissä
+- normaali desktop `userData/runtime/data/eky.sqlite` ilman env-fallbackia
+
+Nykyinen Windows-paketointi inventoi `applicationStage`-, `backendStage`-,
+`desktopRuntimeStage`- ja lopullisen unpacked package -hakemiston. Pakettiin ei
+saa päästä tietokantaa, lasku-PDF:ää, backupia, tukipakettia, lokia,
+ympäristötiedostoa, salaisuutta, E2E-runtimea, fixtureä, testiä, lähdehakemistoa
+eikä oikeaa käyttäjäprofiilia. Backend deployataan linkittömänä hoisted-
+rakenteena, ja symboliset linkit torjutaan jokaisessa inventoidussa vaiheessa.
+Packaged-smoke-helperit sallitaan vain täsmällisestä nimilistasta.
+
+Normaali `package:windows` jää kehityskäyttöön. Erillinen
+`package:windows:pilot` vaatii puhtaan ja HEADiin sidotun buildin, `pilot`-
+kanavan, suljetun inventaarion ja validoidun pilot-sidecar-manifestin.
+Kyse ei vielä ole installerista.
+
+Paikallinen pilot-profiili auditoidaan Eky suljettuna copy-only-työkalulla.
+Audit ei korjaa, nollaa tai tulosta business-dataa. Profiilin käsittelystä
+päätetään vasta turvallisen luokituksen jälkeen.
+
 ## 6. Olemassa olevan asennuksen päivitys
 
 Päivitys säilyttää saman sovellusidentiteetin ja `userData`-juuren. Asennin
@@ -258,6 +284,9 @@ Migraatiot ovat immutable ja vain eteenpäin ajettavia:
 - jo jaettua migraatiota ei muokata
 - uutta versiota ei hyväksytä katkenneella migration chainilla
 - migration alkaa vasta validoidun palautuspisteen jälkeen
+- ensimmäinen oikea N -> N+1 pysyy estettynä, kunnes `schema_migrations`-
+  malliin on päätetty historiallinen SQL-checksum, chain identity ja
+  release/build identity; mismatch torjutaan ennen schema-kirjoitusta
 - virhe jättää uuden profiloitilan hyväksymättä
 - rollback palauttaa profiilin pre-update-pisteestä
 - reverse SQL -migraatiota ei ajeta
@@ -545,6 +574,32 @@ omistajan erillistä hyväksyntää.
 - uutta installeririippuvuutta ennen hyväksyntäporttia
 
 ## Release gate -luokitus
+
+### R0-pilottilaitteen suojaus
+
+Oikeaa asiakas- tai laskutusdataa käyttävä paikallinen pilottilaite vaatii
+ennen käyttöönottoa vähintään:
+
+- tuetun ja tietoturvapäivityksillä ajan tasalla olevan Windows-version
+- nimetyn, salasanalla suojatun Windows-käyttäjätilin ja automaattisen
+  näytönlukituksen
+- BitLockerin tai Windows Device Encryptionin aktiiviselle järjestelmälevylle
+  ja muulle levylle, jolla Eky-profiili tai paikalliset lasku-PDF:t sijaitsevat
+- rajatut Windows-tiedosto-oikeudet Eky `userData`- ja profiilijuurille
+- ajantasaisen haittaohjelmasuojauksen ja palomuurin
+- vahvistuksen, ettei local backend ole saavutettavissa loopbackin ulkopuolelta
+- onnistuneen salatun siirrettävän backupin ja palautusharjoituksen erillisellä
+  medialla
+
+Aktiivinen SQLite-tietokanta ja current PDF:t ovat käytön aikana paikallista
+business-dataa, eivät `.ekybackup`-containerin sisällä. Niiden at-rest-suoja
+perustuu Windows-käyttäjärajaan, tiedosto-oikeuksiin ja koko levyn salaukseen.
+Samaan Windows-käyttäjäkontekstiin päässyt haittaohjelma on jäännösriski, jota
+backup-salaus tai Electron `safeStorage` ei poista.
+
+Jos laite ei teknisesti tue levyjen salausta, oikean datan käyttöönotto
+pysäytetään erilliseen omistajan dokumentoituun riski- ja laitepäätökseen.
+Poikkeusta ei tulkita automaattiseksi hyväksynnäksi.
 
 Yhden hallitun oikeaa dataa käyttävän koneen R0-portteja ovat:
 

@@ -145,11 +145,24 @@ Migraatiot ovat versionhallinnassa.
 
 Paikallinen SQLite-tietokantatiedosto ei ole versionhallinnassa.
 
-Myöhemmin voidaan toteuttaa kevyt migration runner, joka:
+Kevyt migration runner on toteutettu. Se ajaa migraatiot järjestyksessä ja
+kirjaa `schema_migrations`-tauluun migraation nimen sekä ajoajan.
 
-- ajaa migraatiot järjestyksessä
-- pitää kirjaa ajetuista migraatioista
-- käyttää esimerkiksi `schema_migrations`-taulua
+Nykyinen taulu ei kuitenkaan säilytä historiallisesti ajetun SQL-sisällön
+checksumia. Siksi lähdekansion nykyisestä sisällöstä laskettu chain identity
+ei yksin todista, että vanha tiedosto on muuttumaton sen ajamisen jälkeen.
+
+Ennen ensimmäistä oikean business-profiilin N -> N+1 -päivitystä toteutetaan
+erikseen hyväksyttävä immutability-malli:
+
+- migration name ja SQL-sisällön SHA-256
+- järjestetyn migration chainin identity
+- migraation ajaneen release/buildin identity
+- historiallisten migraatioiden append-only-politiikka
+- mismatchin torjunta ennen ensimmäistä schema-kirjoitusta
+- validoitu pre-migration recovery point
+
+Tämä checkpoint ei muuta nykyistä skeemaa.
 
 Ensimmäinen mahdollinen migraatiotiedosto:
 

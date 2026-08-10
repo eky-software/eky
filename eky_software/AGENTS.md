@@ -90,7 +90,10 @@ Jos työ koskee paikallisen business-datan varmuuskopiointia, palautusta,
 `.ekybackup`-formaattia, salattua siirrettävää varmuuskopiota, konekohtaista
 palautuspistettä, restore-stagingia tai profiilin rollbackia, lue myös
 `docs/decisions/ADR-0009-local-backup-encryption-and-recovery-points.md` ja
-`docs/architecture/local-backup-and-restore-plan.md`. Tukipakettia tai
+`docs/architecture/local-backup-and-restore-plan.md`. Jos työ koskee
+palautuksen keskeytymisen tai rollbackin jälkeen vaadittavaa manuaalista
+tarkistusta, lue myös
+`docs/architecture/local-restore-recovery-runbook.md`. Tukipakettia tai
 toimitettujen laskujen valinnaista PDF-arkistokansiota ei saa käsitellä
 varmuuskopiona.
 

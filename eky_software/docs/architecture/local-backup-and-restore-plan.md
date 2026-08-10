@@ -15,6 +15,11 @@ Toteutettu 4.8.2026 mennessä:
   ja purkaa sisällön vain yksityiseen karanteeniin
 - main-owned kertakäyttöinen backup-salasanaikkuna sekä portable writerin
   Save-dialog-, salaus- ja self-inspection-polku
+- siirrettävän backupin no-overwrite-finalisointi tavallisena
+  tiedostokopiona ilman hard link -vaatimusta, jotta kohde voi olla myös
+  NTFS-, exFAT- tai FAT32-taltio
+- viimeisimmän validoidun siirrettävän backupin turvallinen konekohtainen
+  tilatieto ilman polkua, tiedostonimeä, profiili- tai yritystunnistetta
 - konekohtaisen palautuspisteen erillinen `EKYRCV01`-container, satunnainen
   data-avain ja Electron `safeStorage` -suojattu avainenvelope
 - palautuspisteiden strict index, health-tarkistus, automaattinen 24 tunnin
@@ -207,6 +212,9 @@ migraatioita.
 Näiden vastuiden yhteinen composition kuuluu Electron mainin
 infrastructure-kerrokseen. Backend- ja moduuliportit tarjoavat vain oman
 auktoritatiivisen datansa snapshot- tai validointikyvykkyyden.
+Desktopin backup-, inspect-, restore- ja recovery point -koostaminen on
+erotettu omaan `profileBackupComposition`-vastuuseensa; composition ei muuta
+palvelujen eikä IPC-capabilityjen omistajuutta.
 
 ## Siirrettävän backupin sisältö
 
@@ -415,8 +423,10 @@ session- ja `ActorContext`-rajat säilyvät.
 6. SQLite-snapshot ja auktoritatiiviset artifactit kerätään tunnetuista
    profiilijuurista
 7. manifesti, koot ja checksumit muodostetaan
-8. sisältö salataan yksityiseen väliaikaistiedostoon
-9. tiedosto synkronoidaan ja finalisoidaan ilman hiljaista ylikirjoitusta
+8. sisältö salataan kohdekansion väliaikaistiedostoon; myös kesken jäänyt
+   artifacti on salattu
+9. salattu artifacti kopioidaan `no-overwrite`-ehdolla lopulliseen nimeen ja
+   synkronoidaan ilman hard linkiä tai olemassa olevan tiedoston korvaamista
 10. valmis artifacti avataan inspectorilla ja todennetaan ennen onnistumista
 11. temp ja avainmateriaali poistetaan best effort -mallilla
 12. maintenance-lukko vapautetaan
@@ -585,6 +595,14 @@ Kortti näyttää vain:
 - tiiviin huomautuksen salasanan palauttamattomuudesta ja paikallisen
   palautuspisteen konekohtaisuudesta
 
+Viimeisimmän onnistuneen siirrettävän backupin aika tallennetaan
+konekohtaisena, tiukasti validoituna tilatietona. Se kertoo, että Eky on
+luonut ja tarkistanut backupin kyseisenä ajankohtana. Se ei sisällä eikä
+paljasta kohdepolkua, tiedostonimeä, yritystä, profiilia tai salasanaa, eikä
+se todista, että käyttäjä ei olisi myöhemmin poistanut ulkoista tiedostoa.
+Tilatiedon kirjoitusvirhe ei saa muuttaa jo onnistuneen ja self-inspectoidun
+backupin tulosta.
+
 Renderer ei saa:
 
 - tiedostopolkua
@@ -657,6 +675,10 @@ ei saa muuttaa varsinaisen operaation tulosta.
 - täysi levy, read-only-kohde ja oikeuksien muuttuminen kesken operaation
 - no-overwrite ja olemassa olevan eri backupin säilyminen
 - temp-finalisoinnin keskeytys jokaisessa vaiheessa
+- tavallinen tiedostokopio ilman hard linkiä ja kilpailevan kohdetiedoston
+  no-overwrite-suoja
+- vähintään yksi manuaalinen Windows-hyväksyntä oikealle FAT32- tai
+  exFAT-USB-medialle ennen R0-oikean datan käyttöönottoa
 
 ### Restore ja rollback
 
@@ -698,6 +720,8 @@ ei saa muuttaa varsinaisen operaation tulosta.
 
 Varmuuskopiota ei pidetä toimivana ennen kuin palautus ja rollback on
 automaattisesti todennettu. Testit käyttävät vain synteettistä dataa.
+Jos käynnistys pysähtyy recovery-required-tilaan, jatkotoimet tehdään
+`docs/architecture/local-restore-recovery-runbook.md`-ohjeen mukaan.
 
 ## Toteutusjärjestys
 
@@ -752,6 +776,7 @@ eivät Backup/Restore-polkuun.
 - `docs/architecture/local-backup-artifact-inventory.md`
 - `docs/architecture/local-desktop-implementation-plan.md`
 - `docs/architecture/local-invoice-pdf-archive-plan.md`
+- `docs/architecture/local-restore-recovery-runbook.md`
 - `docs/architecture/r0-e2e-test-matrix.md`
 - `docs/architecture/security-principles.md`
 - `docs/architecture/support-bundle-plan.md`

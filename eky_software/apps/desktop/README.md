@@ -29,10 +29,25 @@ From the repository root on Windows:
 
 ```text
 pnpm --filter @eky/desktop package:windows
+pnpm --filter @eky/desktop package:windows:pilot
 pnpm --filter @eky/desktop smoke:windows
+pnpm --filter @eky/desktop profile:audit
 ```
 
 The unpacked spike is created under `apps/desktop/out/Eky-win32-x64`.
+
+`package:windows` remains the development packaging command and may produce a
+dirty, explicitly non-distributable build. `package:windows:pilot` is the
+stricter pre-installer gate: it requires a clean worktree, matching Git HEAD,
+valid SemVer/build identity, the `pilot` channel, a closed artifact inventory
+and a validated sidecar manifest. This still produces an unpacked pilot
+application, not an installer.
+
+`profile:audit` is a Windows-only, copy-only local profile audit. Close Eky
+before running it. The command never opens the active SQLite database for
+writing and reports only bounded counts, health states and one of the
+documented safe classifications. It does not print company, customer, invoice,
+email, bank, secret or filesystem values and never repairs or resets a profile.
 
 The packaged application version comes from `apps/desktop/package.json`.
 Packaging writes a validated `dist/build-info.json` containing the version,
@@ -43,11 +58,30 @@ explicit `development` revision and are marked dirty.
 The package command:
 
 - builds web, backend, auth, permissions, and desktop artifacts
-- deploys only the backend production files
+- deploys only the backend production files as a hoisted, link-free tree
 - validates and packages the bundled `better-sqlite3` Windows x64 N-API runtime
 - packages the renderer into ASAR
 - copies backend and utility-process runtime as explicit resources
 - applies and verifies production Electron fuses
+- inventories application, backend, desktop-runtime and final package trees
+  and rejects databases, business PDFs, backups, support/log artifacts,
+  environment files, secret blobs, tests, fixtures, source directories and
+  symbolic links
+
+## Runtime data isolation
+
+- normal desktop: `%APPDATA%/Eky/runtime/data/eky.sqlite` through Electron's
+  resolved `userData` path
+- packaged smoke: private canonicalized OS temp root, enabled only by the
+  smoke switch and valid token
+- browser/backend development: `apps/backend/data/eky-dev.sqlite` or the
+  development `.env` override
+- E2E: test-owned private `eky-e2e.sqlite`
+
+Only the first path is the normal local business profile. None of these paths
+belongs to the installer payload. The clean pilot profile is a separately
+audited runtime profile on the managed pilot machine, not data copied into the
+application package.
 
 The smoke command starts the packaged backend through Electron
 `utilityProcess`, runs SQLite migrations into the application data directory,

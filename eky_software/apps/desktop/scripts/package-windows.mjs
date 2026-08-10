@@ -8,8 +8,9 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { promisify } from 'node:util';
 
 import {
   flipFuses,
@@ -21,12 +22,19 @@ import {
 import { packager } from '@electron/packager';
 
 import { readDesktopElectronVersion } from './read-desktop-electron-version.mjs';
+import { inspectPackageArtifactInventory } from './package-artifact-inventory.mjs';
+import {
+  assertPilotBuildPreconditions,
+  createPilotArtifactManifest,
+  readPilotArtifactManifest,
+} from './pilot-build-gate.mjs';
 import {
   inspectStagedBetterSqliteRuntime,
   verifyStagedBetterSqliteDatabase,
 } from './staged-better-sqlite-runtime.mjs';
 
 const electronVersion = await readDesktopElectronVersion();
+const execFileAsync = promisify(execFile);
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const desktopDirectory = resolve(scriptDirectory, '..');
 const repositoryRoot = resolve(desktopDirectory, '../..');
@@ -36,6 +44,7 @@ const backendStage = resolve(stagingRoot, 'backend');
 const desktopRuntimeStage = resolve(stagingRoot, 'desktop-runtime');
 const outputDirectory = resolve(desktopDirectory, 'out');
 const pnpmCliPath = process.env.npm_execpath;
+const pilotBuild = process.argv.slice(2).includes('--pilot');
 const profileSnapshotRuntimeFiles = [
   'electronProfileSnapshotBrokerTransport.js',
   'profileSnapshotBrokerBackend.js',
@@ -108,43 +117,6 @@ async function assertSafeBackendStage() {
       )}`,
     );
   }
-
-  const forbiddenFile = files.find((filePath) => {
-    const normalizedPath = relative(backendStage, filePath).replaceAll('\\', '/');
-    const fileName = normalizedPath.slice(normalizedPath.lastIndexOf('/') + 1);
-    const isProjectOwnedFile =
-      !normalizedPath.startsWith('node_modules/') ||
-      normalizedPath.includes('/node_modules/@eky/');
-    const lowerPath = normalizedPath.toLowerCase();
-    const containsE2eArtifact =
-      lowerPath.startsWith('e2e/') ||
-      lowerPath.startsWith('e2e-dist/') ||
-      lowerPath.includes('/e2e/') ||
-      lowerPath.includes('/e2e-dist/') ||
-      lowerPath.includes('e2ebackend') ||
-      lowerPath.includes('e2efaultplan');
-
-    return (
-      isProjectOwnedFile &&
-      (fileName.startsWith('.env') ||
-        fileName.endsWith('.sqlite') ||
-        fileName.endsWith('.pdf') ||
-        fileName.includes('.test.') ||
-        containsE2eArtifact ||
-        normalizedPath.startsWith('src/') ||
-        normalizedPath.includes('/node_modules/@eky/') &&
-          normalizedPath.includes('/src/'))
-    );
-  });
-
-  if (forbiddenFile !== undefined) {
-    throw new Error(
-      `Forbidden development artifact in backend stage: ${relative(
-        backendStage,
-        forbiddenFile,
-      )}`,
-    );
-  }
 }
 
 async function buildWorkspaceArtifacts() {
@@ -154,6 +126,7 @@ async function buildWorkspaceArtifacts() {
   await runPnpm(['--filter', '@eky/web', 'build']);
   await runPnpm(['--filter', '@eky/desktop', 'build']);
   await runPnpm([
+    '--config.node-linker=hoisted',
     '--filter',
     '@eky/backend',
     'deploy',
@@ -252,30 +225,6 @@ async function assertPackagedDiagnosticsArtifacts() {
   }
 }
 
-async function assertNoDesktopE2eArtifacts() {
-  const stagedFiles = [
-    ...(await listFiles(applicationStage)),
-    ...(await listFiles(desktopRuntimeStage)),
-  ];
-  const forbiddenFile = stagedFiles.find((filePath) => {
-    const lowerPath = filePath.replaceAll('\\', '/').toLowerCase();
-    return (
-      lowerPath.includes('/e2e/') ||
-      lowerPath.includes('/e2e-dist/') ||
-      lowerPath.includes('electrone2e')
-    );
-  });
-
-  if (forbiddenFile !== undefined) {
-    throw new Error(
-      `Electron E2E artifact reached packaged ASAR staging: ${relative(
-        stagingRoot,
-        forbiddenFile,
-      )}`,
-    );
-  }
-}
-
 async function applyAndVerifyFuses(executablePath) {
   await flipFuses(executablePath, {
     version: FuseVersion.V1,
@@ -321,6 +270,9 @@ async function assertPackagedElectronVersion(packagedPath) {
 }
 
 async function packageWindowsSpike() {
+  if (process.argv.slice(2).some((argument) => argument !== '--pilot')) {
+    throw new Error('Unsupported Windows package argument.');
+  }
   await rm(stagingRoot, { force: true, recursive: true });
   await rm(outputDirectory, { force: true, recursive: true });
   await mkdir(stagingRoot, { recursive: true });
@@ -339,7 +291,22 @@ async function packageWindowsSpike() {
     appVersion,
     repositoryRoot,
   });
+  let currentHead;
+  if (pilotBuild) {
+    currentHead = (
+      await execFileAsync('git', ['rev-parse', 'HEAD'], {
+        cwd: repositoryRoot,
+        encoding: 'utf8',
+        windowsHide: true,
+      })
+    ).stdout.trim();
+    assertPilotBuildPreconditions({ buildInfo, currentHead });
+  }
   await assertSafeBackendStage();
+  await inspectPackageArtifactInventory({
+    root: backendStage,
+    stage: 'backendStage',
+  });
   const runtime = await inspectStagedBetterSqliteRuntime({ backendStage });
   const sqliteVersion = await verifyStagedBetterSqliteDatabase({ backendStage });
   console.log(
@@ -348,7 +315,14 @@ async function packageWindowsSpike() {
 
   await prepareApplicationStage(buildInfo);
   await assertPackagedDiagnosticsArtifacts();
-  await assertNoDesktopE2eArtifacts();
+  await inspectPackageArtifactInventory({
+    root: applicationStage,
+    stage: 'applicationStage',
+  });
+  await inspectPackageArtifactInventory({
+    root: desktopRuntimeStage,
+    stage: 'desktopRuntimeStage',
+  });
 
   const packagedPaths = await packager({
     appVersion,
@@ -379,6 +353,26 @@ async function packageWindowsSpike() {
 
   await assertPackagedElectronVersion(packagedPath);
   await applyAndVerifyFuses(executablePath);
+  const packagedInventory = await inspectPackageArtifactInventory({
+    root: packagedPath,
+    stage: 'packagedApp',
+  });
+  if (pilotBuild) {
+    assertPilotBuildPreconditions({ buildInfo, currentHead });
+    const manifest = createPilotArtifactManifest({
+      buildInfo,
+      inventory: packagedInventory,
+    });
+    const manifestPath = join(
+      outputDirectory,
+      'Eky-win32-x64.pilot-manifest.json',
+    );
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+    await readPilotArtifactManifest(manifestPath, {
+      buildInfo,
+      inventory: packagedInventory,
+    });
+  }
   console.log(`Packaged Windows spike: ${packagedPath}`);
 }
 

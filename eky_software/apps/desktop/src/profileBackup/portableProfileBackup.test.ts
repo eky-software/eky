@@ -23,6 +23,13 @@ const migrationChainIdentity = 'a'.repeat(64);
 const profileId = 'b'.repeat(64);
 const roots: string[] = [];
 
+type RecordSuccessfulBackup = (input: {
+  appVersion: string;
+  backupFormatVersion: 1;
+  completedAt: string;
+  validationStatus: 'validated';
+}) => Promise<void>;
+
 afterEach(async () => {
   await Promise.all(
     roots.splice(0).map((root) =>
@@ -50,6 +57,12 @@ describe('portable profile backup', () => {
     ).toBe('EKYBKP01');
     expect(fixture.beginMaintenance).toHaveBeenCalledTimes(1);
     expect(fixture.endMaintenance).toHaveBeenCalledTimes(1);
+    expect(fixture.recordSuccessfulBackup).toHaveBeenCalledWith({
+      appVersion: '0.1.0-alpha.1',
+      backupFormatVersion: 1,
+      completedAt: '2026-08-04T12:00:00.000Z',
+      validationStatus: 'validated',
+    });
     expect(fixture.service.getStatus()).toEqual({
       latestSuccessfulPortableBackupAt: '2026-08-04T12:00:00.000Z',
       operationState: 'idle',
@@ -151,6 +164,34 @@ describe('portable profile backup', () => {
       'backup.EKYBACKUP',
     );
   });
+
+  it('restores the latest successful timestamp without storing a destination path', async () => {
+    const fixture = await createFixture({
+      initialLatestSuccessfulPortableBackupAt:
+        '2026-07-01T10:00:00.000Z',
+    });
+
+    expect(fixture.service.getStatus()).toEqual({
+      latestSuccessfulPortableBackupAt: '2026-07-01T10:00:00.000Z',
+      operationState: 'idle',
+    });
+  });
+
+  it('keeps a validated backup successful if safe status persistence is unavailable', async () => {
+    const fixture = await createFixture({
+      recordSuccessfulBackup: vi.fn(async () => {
+        throw new Error('synthetic status persistence failure');
+      }),
+    });
+
+    await expect(
+      fixture.service.create({
+        destinationPath: fixture.destinationPath,
+        password,
+      }),
+    ).resolves.toMatchObject({ databaseHealth: 'healthy' });
+    await expect(readFile(fixture.destinationPath)).resolves.toBeDefined();
+  });
 });
 
 const firstOperationId = '11111111-1111-4111-8111-111111111111';
@@ -159,6 +200,8 @@ const temporaryOperationId = '33333333-3333-4333-8333-333333333333';
 
 async function createFixture(options: {
   forbiddenRoots?: readonly string[];
+  initialLatestSuccessfulPortableBackupAt?: string;
+  recordSuccessfulBackup?: RecordSuccessfulBackup;
   validationByOperationId?: Record<
     string,
     ReturnType<typeof createValidation>
@@ -223,9 +266,17 @@ async function createFixture(options: {
     inspectionOperationId,
     temporaryOperationId,
   ];
+  const recordSuccessfulBackup: RecordSuccessfulBackup =
+    options.recordSuccessfulBackup ?? vi.fn(async () => undefined);
   const service = new PortableProfileBackupService({
     appVersion: '0.1.0-alpha.1',
     forbiddenRoots: options.forbiddenRoots ?? [stagingRoot],
+    ...(options.initialLatestSuccessfulPortableBackupAt === undefined
+      ? {}
+      : {
+          initialLatestSuccessfulPortableBackupAt:
+            options.initialLatestSuccessfulPortableBackupAt,
+        }),
     now: () => new Date('2026-08-04T12:00:00.000Z'),
     operationIdFactory: () => operationIds.shift()!,
     profileSnapshotClient: {
@@ -235,6 +286,7 @@ async function createFixture(options: {
       validateProfileSnapshot,
     },
     quarantineRoot,
+    recordSuccessfulBackup,
     stagingRoot,
   });
 
@@ -243,6 +295,7 @@ async function createFixture(options: {
     destinationPath: join(destinationDirectory, 'backup.ekybackup'),
     endMaintenance,
     quarantineRoot,
+    recordSuccessfulBackup,
     releaseSnapshot,
     service,
     snapshotStarted,
