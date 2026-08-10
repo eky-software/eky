@@ -67,7 +67,7 @@ Jaeltava Windows-paketti sisältää tiukasti validoitavan versionoidun
 manifestin, jossa on vähintään:
 
 - app identity
-- app version ja build revision
+- app version, MSI product version ja build revision
 - platform ja architecture
 - release channel
 - paketin koko ja SHA-256
@@ -76,6 +76,37 @@ manifestin, jossa on vähintään:
 Build identity todistaa jäljitettävyyden, ei artifactin alkuperää tai eheyttä.
 Digitaalinen allekirjoitus, tunnettu publisher ja allekirjoitettu
 päivitysmanifesti ovat erillisiä laajemman jakelun turvallisuustodisteita.
+
+### SemVer ja Windows Installer -tuoteversio
+
+Windows-jakelulla on kaksi eri versiota, joiden vastuita ei yhdistetä:
+
+- `appVersion` on käyttäjälle ja runtimelle näkyvä täysi SemVer, esimerkiksi
+  `0.1.0-alpha.1`
+- `msiProductVersion` on Windows Installerin käyttämä kolmiosainen numeerinen
+  `major.minor.build`-arvo.
+
+`msiProductVersion` ei ole SemVerin tekstimuunnos eikä sitä johdeta Git-
+commitien määrästä, build-ajasta tai paikallisen koneen kellosta. Se annetaan
+release-prosessissa tarkoituksellisesti ja sen pitää olla jokaista uutta
+jaeltua MSI-versiota varten aikaisempaa suurempi. Toteutuksen validaattori
+rajaa kaikki kolme osaa valitun Windows Installer -työkaluketjun hyväksymiin
+numeerisiin rajoihin.
+
+Yksi jaeltu `appVersion` ja `msiProductVersion`-pari vastaa yhtä täsmällistä
+MSI-artifactia. Samaa `appVersion`-arvoa ei käytetä eri payloadille:
+
+- saman täsmällisen artifactin uudelleenajo on vain eksplisiittinen repair
+- muuttunut payload vaatii uuden `appVersion`-arvon ja suuremman
+  `msiProductVersion`-arvon
+- normaali päivitys vaatii sekä hyväksytyn SemVer-siirtymän että kasvavan
+  MSI-tuoteversion
+- downgrade estetään oletuksena molempien versiosopimusten tasolla.
+
+Release-manifesti sisältää molemmat arvot. Desktopin build-info ja käyttäjälle
+näkyvä versio käyttävät `appVersion`-arvoa; MSI:n `ProductVersion` käyttää vain
+`msiProductVersion`-arvoa. Kumpikaan ei yksin todista paketin alkuperää tai
+publisheria.
 
 ## Release-kanavat
 

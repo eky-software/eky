@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { runMigrations } from './runMigrations.js';
+import { MigrationRunError } from './migrationRunError.js';
 
 const temporaryDirectories: string[] = [];
 const releaseIdentity = {
@@ -122,7 +123,12 @@ describe('runMigrations', () => {
         now: () => recordedAt,
         releaseIdentity,
       }),
-    ).rejects.toThrow('MIGRATION_HISTORY_INVALID');
+    ).rejects.toMatchObject({
+      completedMigrationCount: 0,
+      errorCode: 'MIGRATION_HISTORY_PREPARATION_FAILED',
+      failureStage: 'historyPreparation',
+      sideEffectState: 'unknown',
+    });
 
     expect(tableExists(database, 'pending_table')).toBe(false);
     expect(readAppliedMigrationNames(database)).toEqual([
@@ -169,7 +175,12 @@ describe('runMigrations', () => {
         now: () => recordedAt,
         releaseIdentity,
       }),
-    ).rejects.toThrow('MIGRATION_HISTORY_INVALID');
+    ).rejects.toMatchObject({
+      completedMigrationCount: 0,
+      errorCode: 'MIGRATION_HISTORY_PREPARATION_FAILED',
+      failureStage: 'historyPreparation',
+      sideEffectState: 'unknown',
+    });
 
     expect(tableExists(database, 'pending_table')).toBe(false);
     database.close();
@@ -201,7 +212,12 @@ describe('runMigrations', () => {
         now: () => recordedAt,
         releaseIdentity,
       }),
-    ).rejects.toThrow('MIGRATION_HISTORY_INVALID');
+    ).rejects.toMatchObject({
+      completedMigrationCount: 0,
+      errorCode: 'MIGRATION_HISTORY_PREPARATION_FAILED',
+      failureStage: 'historyPreparation',
+      sideEffectState: 'unknown',
+    });
 
     expect(tableExists(database, 'schema_migration_metadata')).toBe(false);
     expect(tableExists(database, 'first_table')).toBe(false);
@@ -224,7 +240,12 @@ describe('runMigrations', () => {
         now: () => recordedAt,
         releaseIdentity,
       }),
-    ).rejects.toThrow('MIGRATION_MANIFEST_INVALID');
+    ).rejects.toMatchObject({
+      completedMigrationCount: 0,
+      errorCode: 'MIGRATION_MANIFEST_FAILED',
+      failureStage: 'manifest',
+      sideEffectState: 'unknown',
+    });
 
     expect(tableExists(database, 'schema_migrations')).toBe(false);
     expect(tableExists(database, 'first_table')).toBe(false);
@@ -248,7 +269,12 @@ describe('runMigrations', () => {
           buildRevision: releaseIdentity.buildRevision,
         },
       }),
-    ).rejects.toThrow('MIGRATION_RELEASE_IDENTITY_INVALID');
+    ).rejects.toMatchObject({
+      completedMigrationCount: 0,
+      errorCode: 'MIGRATION_HISTORY_PREPARATION_FAILED',
+      failureStage: 'historyPreparation',
+      sideEffectState: 'unknown',
+    });
 
     expect(tableExists(database, 'schema_migrations')).toBe(false);
     expect(tableExists(database, 'desktop_spike')).toBe(false);
@@ -293,6 +319,39 @@ describe('runMigrations', () => {
       '001_create_spike_table.sql',
     ]);
     expect(readMetadataRows(database)).toHaveLength(1);
+    database.close();
+  });
+
+  it('reports completed migrations conservatively when a later migration fails', async () => {
+    const directory = await createMigrationDirectory({
+      '001_create_completed_table.sql':
+        'CREATE TABLE completed_table (id TEXT PRIMARY KEY);',
+      '002_create_broken_table.sql': 'CREATE TABLE broken syntax;',
+    });
+    const database = new Database(':memory:');
+
+    const failure = await runMigrations(database, {
+      migrationsDirectory: directory,
+      now: () => recordedAt,
+      releaseIdentity,
+    }).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(MigrationRunError);
+    expect(failure).toMatchObject({
+      completedMigrationCount: 1,
+      errorCode: 'MIGRATION_EXECUTION_FAILED',
+      failureStage: 'migrationExecution',
+      message: 'Database migration run failed.',
+      sideEffectState: 'unknown',
+    });
+    expect(tableExists(database, 'completed_table')).toBe(true);
+    expect(tableExists(database, 'broken')).toBe(false);
+    expect(readAppliedMigrationNames(database)).toEqual([
+      '001_create_completed_table.sql',
+    ]);
+    expect(JSON.stringify(failure)).not.toContain(
+      '002_create_broken_table.sql',
+    );
     database.close();
   });
 });

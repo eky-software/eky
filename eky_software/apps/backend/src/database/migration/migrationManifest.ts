@@ -20,6 +20,8 @@ export function readMigrationManifest(
     .sort();
   const migrationOrdinals = new Set<string>();
 
+  assertContinuousMigrationOrdinals(migrationFileNames);
+
   const sourceEntries = migrationFileNames.map((fileName) => {
     if (!migrationFileNamePattern.test(fileName)) {
       throw new Error('MIGRATION_MANIFEST_INVALID');
@@ -46,6 +48,25 @@ export function readMigrationManifest(
       sourceEntries.slice(0, index + 1),
     ),
   }));
+}
+
+function assertContinuousMigrationOrdinals(
+  migrationFileNames: readonly string[],
+): void {
+  if (migrationFileNames.length === 0) {
+    throw new Error('MIGRATION_MANIFEST_INVALID');
+  }
+
+  migrationFileNames.forEach((fileName, index) => {
+    if (!migrationFileNamePattern.test(fileName)) {
+      throw new Error('MIGRATION_MANIFEST_INVALID');
+    }
+
+    const expectedOrdinal = String(index + 1).padStart(3, '0');
+    if (fileName.slice(0, 3) !== expectedOrdinal) {
+      throw new Error('MIGRATION_MANIFEST_INVALID');
+    }
+  });
 }
 
 export function createMigrationChainIdentity(

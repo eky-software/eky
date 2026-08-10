@@ -67,6 +67,15 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
   palautuspisteitä?
 - Käynnistääkö Electron main updaterin ilman shell-merkkijonoa ja ilman
   rendererin antamia polkuja, URL:eja tai argumentteja?
+- Kopioidaanko paikallinen update-paketti Eky-private stagingiin ja
+  varmennetaanko staged tavut uudelleen ennen installer handoffia?
+- Sitooko päivitysjournalin package identity koon, SHA-256:n, app-version,
+  MSI-tuoteversion ja myöhemmän publisher-identiteetin samaan staged
+  artifactiin?
+- Erotetaanko tavujen eheys julkaisijan identiteetistä niin, ettei SHA-256:ta
+  käsitellä allekirjoituksena?
+- Estyykö allekirjoittamaton normaali in-app update ilman erikseen hyväksyttyä
+  trust anchor -mallia?
 - Erotetaanko asennuksen onnistuminen uuden version first-start-
   hyväksynnästä?
 - Onko business-datan rollback erotettu binary rollbackista ilman reverse
@@ -104,9 +113,10 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
   muutokset, eikä vain Dependabotin otsikkoa?
 - Ajettiinko dependency- tai lockfile-muutoksen jälkeen tuotantoriippuvuuksien audit?
 - Ajettiinko tarvittaessa koko audit ja registry-allekirjoitusten tarkistus?
-- Käynnistyikö read-only `Dependency security` dependency-PR:stä tai
-  dependency-main-pushista, ja onko sen päivittäinen UTC-ajo sekä
-  `workflow_dispatch` säilynyt?
+- Käynnistyikö read-only `Dependency security` jokaisesta `main`-PR:stä ja
+  dependency-polkuun osuvasta `main`-pushista, ja onko sen päivittäinen UTC-ajo
+  sekä `workflow_dispatch` säilynyt?
+- Säilyikö dependency-päivitysten automaattinen merge pois käytöstä?
 - Onko Dependency graph-, Dependabot alerts- ja Dependabot security updates
   -tila varmennettu autentikoidulla read-only-kutsulla tai repositoryn
   `Settings` -> `Security` -> `Advanced Security` -näkymästä ilman

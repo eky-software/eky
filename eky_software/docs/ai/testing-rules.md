@@ -179,13 +179,14 @@ CI:
 - käyttää GitHub Action -toiminnoille lukittuja commit-SHA-versioita
 - ei tee deployta eikä kirjoita liiketoimintadataa
 
-Päivittäinen, jokaisessa `main`-pull requestissa ja dependency-muutoksista
-käynnistyvä `Dependency security` -workflow täydentää merge-CI:tä ajamalla
-production- ja koko riippuvuuspuun auditin sekä rekisteriallekirjoitusten
-tarkistuksen. Se ei päivitä
-riippuvuuksia automaattisesti, käytä `audit --fix` -komentoa tai kirjoita
-repositoryyn. Päivittäinen cron on UTC-ajassa eikä seuraa automaattisesti
-Europe/Helsinki-kesäaikaa.
+Päivittäinen ja käsin käynnistettävä `Dependency security` -workflow ajetaan
+jokaisessa `main`-pull requestissa. `main`-pushissa se käynnistyy vain
+dependency-polun package manifest-, lockfile-, Dependabot- tai dependency-/CI-
+workflow-muutoksista. Workflow täydentää merge-CI:tä ajamalla production- ja
+koko riippuvuuspuun auditin sekä rekisteriallekirjoitusten tarkistuksen. Se ei
+päivitä riippuvuuksia automaattisesti, käytä `audit --fix` -komentoa tai
+kirjoita repositoryyn. Päivittäinen cron on UTC-ajassa eikä seuraa
+automaattisesti Europe/Helsinki-kesäaikaa.
 
 Dependabotin avaama päivitys-PR käy läpi saman riskiperusteisen paikallisen ja
 CI-testauksen kuin käsin tehty päivitys. Vähimmäisportteina ovat

@@ -35,6 +35,90 @@ for (const [name, content] of [
   });
 }
 
+for (const name of [
+  'runtime.json.gz',
+  'runtime.log',
+  'runtime.bak',
+  'runtime.backup',
+  'runtime.dmp',
+  'runtime.pem',
+]) {
+  test(`rejects an Eky-owned ${name} artifact`, async () => {
+    const root = await createStageFixture(`dist/${name}`, 'sensitive');
+
+    await assert.rejects(
+      inspectPackageArtifactInventory({ root, stage: 'applicationStage' }),
+      /PROJECT_RUNTIME_OR_SENSITIVE_ARTIFACT/,
+    );
+  });
+}
+
+for (const name of ['private.key', 'identity.p12', 'identity.pfx']) {
+  test(`rejects a vendor-owned ${name} artifact`, async () => {
+    const root = await createStageFixture(
+      `node_modules/external-package/${name}`,
+      'private',
+    );
+
+    await assert.rejects(
+      inspectPackageArtifactInventory({ root, stage: 'backendStage' }),
+      /PRIVATE_KEY_ARTIFACT/,
+    );
+  });
+}
+
+test('rejects a renamed vendor private key in PEM format', async () => {
+  const root = await createStageFixture(
+    'node_modules/external-package/runtime.pem',
+    '-----BEGIN PRIVATE KEY-----\nprivate\n-----END PRIVATE KEY-----',
+  );
+
+  await assert.rejects(
+    inspectPackageArtifactInventory({ root, stage: 'backendStage' }),
+    /PRIVATE_KEY_ARTIFACT/,
+  );
+});
+
+test('requires an explicit review before allowing a vendor sensitive artifact', async () => {
+  const root = await createStageFixture(
+    'node_modules/external-package/runtime.log',
+    'vendor runtime data',
+  );
+
+  await assert.rejects(
+    inspectPackageArtifactInventory({ root, stage: 'backendStage' }),
+    /VENDOR_SENSITIVE_ARTIFACT_REVIEW_REQUIRED/,
+  );
+});
+
+test('rejects service-account credentials regardless of file name or owner', async () => {
+  const root = await createStageFixture(
+    'node_modules/external-package/runtime-config.json',
+    JSON.stringify({
+      client_email: 'synthetic@example.invalid',
+      private_key: 'synthetic-private-key',
+      type: 'service_account',
+    }),
+  );
+
+  await assert.rejects(
+    inspectPackageArtifactInventory({ root, stage: 'backendStage' }),
+    /SERVICE_ACCOUNT_ARTIFACT/,
+  );
+});
+
+test('rejects service-account-like JSON file names before reading contents', async () => {
+  const root = await createStageFixture(
+    'node_modules/external-package/test-service-account.json',
+    '{}',
+  );
+
+  await assert.rejects(
+    inspectPackageArtifactInventory({ root, stage: 'backendStage' }),
+    /SERVICE_ACCOUNT_ARTIFACT/,
+  );
+});
+
 test('allows only the exact named packaged smoke helpers', async () => {
   const root = await createStageFixture(
     'dist/main/packagedSmoke.js',
@@ -67,6 +151,27 @@ test('returns a stable bounded inventory without exposing file contents', async 
   assert.equal(first.fileCount, 1);
   assert.match(first.identity, /^[a-f0-9]{64}$/);
   assert.doesNotMatch(JSON.stringify(first), /safe content|dist\/main/);
+});
+
+test('uses a locale-independent logical path order for inventory identity', async () => {
+  const firstRoot = await createStageFixture('dist/z.js', 'z');
+  await writeFixture(firstRoot, 'dist/10.js', 'ten');
+  await writeFixture(firstRoot, 'dist/2.js', 'two');
+
+  const secondRoot = await createStageFixture('dist/2.js', 'two');
+  await writeFixture(secondRoot, 'dist/10.js', 'ten');
+  await writeFixture(secondRoot, 'dist/z.js', 'z');
+
+  const first = await inspectPackageArtifactInventory({
+    root: firstRoot,
+    stage: 'applicationStage',
+  });
+  const second = await inspectPackageArtifactInventory({
+    root: secondRoot,
+    stage: 'applicationStage',
+  });
+
+  assert.equal(first.identity, second.identity);
 });
 
 test('rejects symbolic links from every package stage', async () => {

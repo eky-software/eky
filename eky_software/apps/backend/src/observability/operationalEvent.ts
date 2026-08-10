@@ -27,7 +27,7 @@ export interface BackendOperationalEventPayloadMap {
   'database.integrityCheckFailed': FailureFields;
   'migration.started': { stage?: string };
   'migration.completed': { durationMs?: number; stage?: string };
-  'migration.failed': FailureFields;
+  'migration.failed': MigrationFailureFields;
   'http.requestFailed': FailureFields;
   'http.unknownRoute': { correlationId: string; stage?: string };
   'http.invalidBody': { correlationId: string; stage?: string };
@@ -90,6 +90,18 @@ interface FailureFields {
   retryable?: boolean;
   sideEffectState?: OperationalSideEffectState;
   stage?: string;
+}
+
+interface MigrationFailureFields {
+  completedMigrationCount: number;
+  durationMs?: number;
+  errorCode: string;
+  failureStage:
+    | 'historyPreparation'
+    | 'manifest'
+    | 'migrationExecution'
+    | 'unknown';
+  sideEffectState: 'unknown';
 }
 
 interface EntityFailureFields extends FailureFields {
@@ -177,6 +189,13 @@ const failureFields = [
   'sideEffectState',
   'stage',
 ] as const;
+const migrationFailureFields = [
+  'completedMigrationCount',
+  'durationMs',
+  'errorCode',
+  'failureStage',
+  'sideEffectState',
+] as const;
 const entityFailureFields = [
   ...failureFields,
   'companyId',
@@ -240,7 +259,12 @@ export const backendOperationalEventSpecs = Object.freeze({
     'durationMs',
     'stage',
   ]),
-  'migration.failed': spec('migration', 'error', 'failure', failureFields),
+  'migration.failed': spec(
+    'migration',
+    'error',
+    'failure',
+    migrationFailureFields,
+  ),
   'http.requestFailed': spec('http', 'error', 'failure', failureFields),
   'http.unknownRoute': spec('http', 'warn', 'blocked', [
     'correlationId',
@@ -421,7 +445,12 @@ export const backendRequiredPayloadFields = Object.freeze({
   'database.integrityCheckFailed': ['errorCode'],
   'migration.started': [],
   'migration.completed': [],
-  'migration.failed': ['errorCode'],
+  'migration.failed': [
+    'completedMigrationCount',
+    'errorCode',
+    'failureStage',
+    'sideEffectState',
+  ],
   'http.requestFailed': ['errorCode'],
   'http.unknownRoute': ['correlationId'],
   'http.invalidBody': ['correlationId'],

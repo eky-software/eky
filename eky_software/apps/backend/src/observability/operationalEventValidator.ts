@@ -158,6 +158,7 @@ function validatePayload(
 
     if (
       field === 'durationMs' ||
+      field === 'completedMigrationCount' ||
       field === 'deletedByteCount' ||
       field === 'deletedEventCount' ||
       field === 'deletedFileCount' ||

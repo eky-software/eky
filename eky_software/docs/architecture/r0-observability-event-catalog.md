@@ -26,6 +26,14 @@ ole käyttöoikeus- tai autentikointitietoja.
 - `migration.completed`
 - `migration.failed`
 
+`migration.failed` ei väitä koko startup-ajon peruuntuneen. Yksi migraatio
+suoritetaan yhdessä transaktiossa, mutta aikaisemmin saman käynnistyksen aikana
+valmistuneet migraatiot voivat jo olla pysyviä. Tapahtuman
+`sideEffectState` on siksi aina `unknown`. Sallittu lisämetadata on vain
+allowlistattu `failureStage`, turvallinen `errorCode`, tämän ajon aikana
+valmistuneiden migraatioiden lukumäärä ja kesto. SQL:ää, migraation nimeä,
+tiedostopolkua, tietokantavirhettä tai stackia ei kirjata.
+
 ### HTTP ja authorization
 
 - `http.requestFailed`
