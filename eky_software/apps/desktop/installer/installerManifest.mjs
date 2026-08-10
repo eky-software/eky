@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { readFile, stat, writeFile } from 'node:fs/promises';
+import { lstat, readFile, writeFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 
 import { INSTALLER_APP_IDENTITY } from './installerIdentity.mjs';
@@ -36,7 +36,8 @@ export async function createInstallerManifest({
   release,
   signing = unsignedPrototypeSigning(),
 }) {
-  const packageStat = await stat(installerPath);
+  await assertRegularInstallerFile(installerPath);
+  const packageIdentity = await hashFileSha256(installerPath);
   return validateInstallerManifest({
     appIdentity: release.appIdentity,
     appVersion: release.appVersion,
@@ -46,8 +47,8 @@ export async function createInstallerManifest({
     msiProductVersion: release.msiProductVersion,
     packageFilename: basename(installerPath),
     packageKind: 'windows-installer-msi',
-    packageSha256: await hashFileSha256(installerPath),
-    packageSize: packageStat.size,
+    packageSha256: packageIdentity.sha256,
+    packageSize: packageIdentity.size,
     platform: release.platform,
     releaseChannel: release.releaseChannel,
     signing,
@@ -56,25 +57,60 @@ export async function createInstallerManifest({
 
 async function hashFileSha256(path) {
   const hash = createHash('sha256');
+  let size = 0;
   for await (const chunk of createReadStream(path)) {
     hash.update(chunk);
+    size += chunk.length;
   }
-  return hash.digest('hex');
+  return Object.freeze({ sha256: hash.digest('hex'), size });
 }
 
 export async function writeInstallerManifest(path, manifest) {
   const validated = validateInstallerManifest(manifest);
-  await writeFile(path, `${JSON.stringify(validated, null, 2)}\n`, 'utf8');
+  await writeFile(path, `${JSON.stringify(validated, null, 2)}\n`, {
+    encoding: 'utf8',
+    flag: 'wx',
+  });
 }
 
 export async function readInstallerManifest(path) {
   let value;
   try {
+    await assertRegularManifestFile(path);
     value = JSON.parse(await readFile(path, 'utf8'));
   } catch {
     throw new Error('INSTALLER_MANIFEST_MISSING_OR_INVALID');
   }
   return validateInstallerManifest(value);
+}
+
+export async function verifyInstallerManifestPackage({
+  expectedBuildRevision,
+  expectedRelease,
+  installerPath,
+  manifest,
+}) {
+  const validated = validateInstallerManifest(manifest);
+  if (
+    validated.packageFilename !== basename(installerPath) ||
+    (expectedBuildRevision !== undefined &&
+      validated.buildRevision !== expectedBuildRevision) ||
+    (expectedRelease !== undefined &&
+      !matchesRelease(validated, expectedRelease))
+  ) {
+    throw new Error('INSTALLER_MANIFEST_RELEASE_MISMATCH');
+  }
+
+  await assertRegularInstallerFile(installerPath);
+  const packageIdentity = await hashFileSha256(installerPath);
+  await assertRegularInstallerFile(installerPath);
+  if (
+    packageIdentity.size !== validated.packageSize ||
+    packageIdentity.sha256 !== validated.packageSha256
+  ) {
+    throw new Error('INSTALLER_PACKAGE_DOES_NOT_MATCH_MANIFEST');
+  }
+  return validated;
 }
 
 export function validateInstallerManifest(value) {
@@ -126,6 +162,36 @@ function isValidSigning(value) {
     value.thumbprint === null &&
     value.timestamped === false
   );
+}
+
+function matchesRelease(manifest, release) {
+  return (
+    manifest.appIdentity === release.appIdentity &&
+    manifest.appVersion === release.appVersion &&
+    manifest.architecture === release.architecture &&
+    manifest.msiProductVersion === release.msiProductVersion &&
+    manifest.platform === release.platform &&
+    manifest.releaseChannel === release.releaseChannel &&
+    manifest.packageFilename === `Eky-${release.appVersion}-x64.msi`
+  );
+}
+
+async function assertRegularInstallerFile(path) {
+  try {
+    const metadata = await lstat(path);
+    if (metadata.isSymbolicLink() || !metadata.isFile() || metadata.size < 1) {
+      throw new Error('INSTALLER_PACKAGE_MISSING_OR_INVALID');
+    }
+  } catch {
+    throw new Error('INSTALLER_PACKAGE_MISSING_OR_INVALID');
+  }
+}
+
+async function assertRegularManifestFile(path) {
+  const metadata = await lstat(path);
+  if (metadata.isSymbolicLink() || !metadata.isFile() || metadata.size < 1) {
+    throw new Error('INSTALLER_MANIFEST_MISSING_OR_INVALID');
+  }
 }
 
 function isRecord(value) {

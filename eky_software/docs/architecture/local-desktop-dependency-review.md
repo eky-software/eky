@@ -15,8 +15,10 @@ Ensimmäisessä spikessä tarvitaan vain:
   varmennus
 - production-fusejen lukitseminen
 
-Installeria, makeria, julkaisua, automaattipäivitystä, code signingia tai
-salaisuuksien käsittelyä ei lisätä tässä vaiheessa.
+Ensimmäisessä historiallisessa paketointispikessä ei lisätty installeria,
+makeria, julkaisua, automaattipäivitystä, code signingia tai salaisuuksien
+käsittelyä. Myöhemmin erikseen hyväksytty rajattu MSI-prototyyppi on kuvattu
+alla ja Windows installer -suunnitelmassa.
 
 ADR-0010 määrittelee myöhemmän Windows-asennuksen ja päivitysorkestroinnin
 arkkitehtuurin. Se ei valitse installeria, makeria tai updater-riippuvuutta.
@@ -33,6 +35,21 @@ Spikessä käytetään tarkasti lukittuja development-riippuvuuksia vain
 | `electron` | `43.2.0` | desktop-runtime ja Windows-binääri |
 | `@electron/packager` | `20.0.4` | rajattu paketoitu sovellushakemisto |
 | `@electron/fuses` | `2.1.3` | production-fusejen lukitseminen |
+
+Rajattu installer-build käyttää lisäksi erikseen hyväksyttyjä build-työkaluja:
+
+| Työkalu | Versio / pin | Vastuu |
+| --- | --- | --- |
+| `WixToolset.Sdk` | `7.0.0` | Per-user x64 MSI:n deterministinen muodostaminen |
+| .NET SDK | `10.0.302` | WiX SDK -projektin lukittu build-runtime |
+| `actions/setup-dotnet` | `26b0ec14cb23fa6904739307f278c14f94c95bf1` | Hyväksytyn .NET SDK:n SHA-lukittu CI-bootstrap |
+
+Projektin omistaja hyväksyi nämä työkalut 10.8.2026 vain rajattuun per-user
+x64 MSI -prototyyppiin sekä hyväksyi WiX 7:n MS-RL- ja OSMF EULA -ehdot.
+Omistaja vastaa mahdollisen ylläpitomaksun soveltuvuuden selvittämisestä.
+Hyväksyntä ei kata WiX-extensioneita, custom actioneita, Burnia, uutta
+runtime-riippuvuutta, code signingia tai allekirjoittamattoman prototyypin
+jakelua oikeaan käyttöön.
 
 Paketit eivät kuulu domainiin, application serviceihin, API-clientiin,
 web-featureihin tai backendin liiketoimintamoduuleihin.
@@ -106,7 +123,7 @@ on päätetty.
 - Paketoidun artifactin sisältö tarkastetaan smoke-testissä ennen hyväksyntää.
 - Production-fuset lukitaan vasta paketoituun binääriin.
 - Artifact ei ole loppukäyttäjälle jaettava tuotantoversio ennen code signingia,
-  installer-päätöstä ja release-putken tarkistuksia.
+  release-putken jäljellä olevia tarkistuksia ja erillistä jakelupäätöstä.
 
 ## Lisenssit Ja Ylläpito
 

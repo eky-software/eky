@@ -42,8 +42,8 @@ jakelua oikeaan käyttöön.
 | B1 Installer composition | valmis (`436949f`) | Installerin build-työkalut, suljettu release-konfiguraatio sekä version, identiteetin ja sidecar-manifestin sopimukset |
 | B2 Identity and install root | valmis (`986d0b6`) | Vakaa UpgradeCode, versiokohtainen ProductCode, vakaat component-GUIDit, per-user `%LOCALAPPDATA%\\Programs\\Eky` ja read-only MSI-inspektori |
 | B3 Install, repair and uninstall | valmis (`94b4479`) | Puhdas asennus, pakotettu repair, uninstall/reinstall sekä business-datan ja poistettavuuden todennus |
-| B4 Two-version upgrade | valmis (checkpoint-commit) | Kahden synteettisen version major upgrade, downgrade-esto, rollback ja Windows-virhepolut |
-| B5 Build once and sidecar | odottaa | MSI rakennetaan kerran, validoidaan, sidotaan SHA-256-sidecariin ja julkaistaan täsmälleen samoina tavuina |
+| B4 Two-version upgrade | valmis (`496d409`) | Kahden synteettisen version major upgrade, downgrade-esto, rollback ja Windows-virhepolut |
+| B5 Build once and sidecar | valmis (checkpoint-commit) | MSI rakennetaan kerran, validoidaan ja sidotaan täsmälleen samoihin tavuihin SHA-256-sidecarilla; CI ei vielä julkaise artifactia |
 
 B2-prototyypin MSI sisältää vain nykyisen kovennetun Windows-payloadin,
 rekisteripohjaiset per-user key pathit, MSI:n omistamien asennushakemistojen
@@ -93,6 +93,20 @@ Installerin binary rollbackin takaisin N-versioon, Unicode- ja välilyöntejä
 sisältävän MSI-lähdepolun sekä lopullisen uninstallin. `%APPDATA%\\Eky`-
 business-data inventoidaan ennen testiä ja todetaan muuttumattomaksi jokaisen
 vaiheen jälkeen.
+
+B5:n release-komento vaatii puhtaan työpuun ja täyden Git HEAD -revision.
+Komento rakentaa jaeltavan MSI:n kerran, tarkastaa MSI:n read-only-
+inspektorilla ja sitoo tiedostonimen, koon, SHA-256-tiivisteen, release-
+identiteetin sekä Git-revision erilliseen suljettuun sidecar-manifestiin.
+Manifesti kirjoitetaan vasta, kun samat MSI-tavut ovat läpäisseet tarkastuksen.
+Myöhemmät lifecycle- ja fixture-testit eivät saa rakentaa jaeltavaa MSI:tä
+uudelleen, ja release-MSI:n tavut varmennetaan vielä testien jälkeen.
+
+Windows CI ajaa installer-testit, kovennetun pilot-paketoinnin, lukitun WiX-
+restoren, build-once-releaseportin, install/repair/uninstall-elinkaaren sekä
+synteettisen N -> N+1-, downgrade- ja rollback-todistuksen. CI ei tässä
+checkpointissa lataa artifactia julkaisuun, allekirjoita sitä tai tee siitä
+oikealle käyttäjälle jaettavaa releasea.
 
 ## 2. Tavoite
 
@@ -400,8 +414,8 @@ Teknologiakatselmuksen ehdottama R0-artifact-layout on:
 
 ```text
 release/
-  Eky-Setup-<version>-pilot-x64.msi
-  Eky-Setup-<version>-pilot-x64.manifest.json
+  Eky-<appVersion>-x64.msi
+  Eky-<appVersion>-x64.manifest.json
 ```
 
 Sama täysi MSI palvelee clean installia, repairia ja major upgradea. R0 ei

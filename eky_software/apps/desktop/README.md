@@ -39,6 +39,9 @@ pnpm --filter @eky/desktop installer:test
 pnpm --filter @eky/desktop installer:build
 pnpm --filter @eky/desktop installer:inspect -- -MsiPath <path-to-msi>
 pnpm --filter @eky/desktop installer:lifecycle -- -MsiPath <path-to-msi> -PayloadRoot <path-to-payload> -ProductCode <product-code>
+pnpm --filter @eky/desktop installer:release
+pnpm --filter @eky/desktop installer:verify-release
+pnpm --filter @eky/desktop installer:release-lifecycle
 pnpm --filter @eky/desktop installer:build-upgrade-fixture
 pnpm --filter @eky/desktop installer:upgrade -- -FixturePath <path-to-fixture.json>
 ```
@@ -59,6 +62,19 @@ It never owns or searches `%APPDATA%\\Eky`, SQLite databases, profiles,
 business PDFs, logs, safeStorage secrets, backups, recovery points, support
 bundles, or an external invoice PDF archive. The current unsigned MSI is an
 engineering prototype and must not be distributed for real-data use.
+
+`installer:release` requires a clean worktree and full Git HEAD revision. It
+builds the MSI exactly once, runs the read-only MSI inspector, and then writes
+a closed `.manifest.json` sidecar bound to the exact MSI filename, release
+identity, Git revision, byte size, and SHA-256. `installer:verify-release`
+rechecks the same bytes without rebuilding, and `installer:release-lifecycle`
+uses only that verified MSI for install, repair, and uninstall checks. The CI
+gate does not yet upload, sign, or distribute the prototype artifacts.
+
+The current application version remains the prerelease SemVer
+`0.1.0-alpha.1`. Windows Installer separately compares the numeric MSI
+ProductVersion `0.1.1`. Removing `alpha` is a future explicit stable-release
+decision, not an installer formatting change.
 
 `profile:audit` is a Windows-only, copy-only local profile audit. Close Eky
 before running it. The command never opens the active SQLite database for
