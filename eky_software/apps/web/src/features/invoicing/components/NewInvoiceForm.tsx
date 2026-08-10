@@ -9,6 +9,7 @@ import {
   InvoiceApprovalConfirmation,
   InvoiceApprovalSuccessPanel,
 } from './InvoiceApprovalPanel.js';
+import { InvoiceIssuanceReadinessPanel } from './InvoiceIssuanceReadinessPanel.js';
 import { InvoiceBasicInfoSection } from './InvoiceBasicInfoSection.js';
 import { InvoiceRowsEditor } from './InvoiceRowsEditor.js';
 import { InvoiceTotalsPreview } from './InvoiceTotalsPreview.js';
@@ -41,6 +42,7 @@ import type { InvoicePaymentDefaultsState } from '../hooks/useInvoicePaymentDefa
 import type { InvoiceVatRatesState } from '../hooks/useInvoiceVatRates.js';
 import { useApproveInvoiceDraft } from '../hooks/useApproveInvoiceDraft.js';
 import { useInvoiceDraftAutosave } from '../hooks/useInvoiceDraftAutosave.js';
+import { useInvoiceIssuanceReadiness } from '../hooks/useInvoiceIssuanceReadiness.js';
 import {
   prepareInvoiceDraftSaveInput,
   useSaveInvoiceDraft,
@@ -54,7 +56,10 @@ export type NewInvoiceFormMode =
 
 export type NewInvoiceFormClient = Pick<
   EkyApiClient,
-  'approveInvoiceDraft' | 'createInvoiceDraft' | 'updateInvoiceDraft'
+  | 'approveInvoiceDraft'
+  | 'createInvoiceDraft'
+  | 'getInvoiceIssuanceReadiness'
+  | 'updateInvoiceDraft'
 >;
 
 interface NewInvoiceFormProps {
@@ -106,6 +111,7 @@ export function NewInvoiceForm({
     useState<string | null>(null);
   const saveState = useSaveInvoiceDraft(apiClient, createSaveMode(mode));
   const approveState = useApproveInvoiceDraft(apiClient);
+  const issuanceReadinessState = useInvoiceIssuanceReadiness(apiClient);
   const autosaveState = useInvoiceDraftAutosave({
     apiClient,
     form,
@@ -178,6 +184,7 @@ export function NewInvoiceForm({
   ): void {
     saveState.clearSaveResult();
     approveState.clearApprovalResult();
+    issuanceReadinessState.clearReadiness();
     setApprovalGuardMessage(null);
     setIsApprovalConfirmationVisible(false);
     setReverseChargeEligibilityConfirmed(false);
@@ -323,7 +330,7 @@ export function NewInvoiceForm({
     setFormRevision((currentRevision) => currentRevision + 1);
   }
 
-  function handleRequestApproval(): void {
+  async function handleRequestApproval(): Promise<void> {
     approveState.clearApprovalResult();
     setApprovalGuardMessage(null);
 
@@ -333,6 +340,15 @@ export function NewInvoiceForm({
 
     if (autosaveState.status !== 'saved' || saveState.isSaving) {
       setApprovalGuardMessage(uiText.invoicing.approveDraftUnsavedChanges);
+      setIsApprovalConfirmationVisible(false);
+      return;
+    }
+
+    const readiness = await issuanceReadinessState.checkReadiness(
+      mode.draft.id,
+    );
+
+    if (readiness === null || !readiness.isReady) {
       setIsApprovalConfirmationVisible(false);
       return;
     }
@@ -479,6 +495,22 @@ export function NewInvoiceForm({
         </p>
       ) : null}
 
+      {issuanceReadinessState.errorMessage !== null ? (
+        <p
+          className={`message error-message ${styles.validationMessage}`}
+          role="alert"
+        >
+          {issuanceReadinessState.errorMessage}
+        </p>
+      ) : null}
+
+      {issuanceReadinessState.readiness !== null &&
+      !issuanceReadinessState.readiness.isReady ? (
+        <InvoiceIssuanceReadinessPanel
+          issues={issuanceReadinessState.readiness.issues}
+        />
+      ) : null}
+
       {invoicePaymentDefaultsState.errorMessage !== null ? (
         <p
           className={`message error-message ${styles.validationMessage}`}
@@ -556,11 +588,17 @@ export function NewInvoiceForm({
         {canShowApprovalAction ? (
           <button
             className="ghost-button"
-            disabled={isSaving || approveState.isApproving}
-            onClick={handleRequestApproval}
+            disabled={
+              isSaving ||
+              approveState.isApproving ||
+              issuanceReadinessState.isChecking
+            }
+            onClick={() => void handleRequestApproval()}
             type="button"
           >
-            {uiText.invoicing.approveDraft}
+            {issuanceReadinessState.isChecking
+              ? uiText.invoicing.invoiceIssuanceReadinessChecking
+              : uiText.invoicing.approveDraft}
           </button>
         ) : null}
         <button className="ghost-button" onClick={onBack} type="button">

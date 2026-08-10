@@ -148,6 +148,20 @@ laskunumeroa, muuta luonnosta, luo laskua tai laskurivejä eikä kirjoita
 audit-tapahtumaa. Vanhojen hyväksyttyjen laskujen snapshotit eivät muutu,
 vaikka master-data myöhemmin täydentyy tai muuttuu.
 
+Web voi ennen käyttäjän hyväksyntävahvistusta pyytää standardiluonnoksen
+julkaisukelpoisuuden read-only-projektion reitiltä
+`GET /invoice-drafts/:id/issuance-readiness`. Reitti on yritysrajattu ja
+palauttaa vain `isReady`-arvon sekä Invoicingin tuntemat puutekoodit. Se ei
+palauta Company Settings- tai Customer-master-dataa, varaa laskunumeroa,
+muuta luonnosta tai kirjoita audit-tapahtumaa. UI muuntaa puutekoodit
+turvallisiksi suomenkielisiksi korjausohjeiksi.
+
+Read-only-tarkistus on vain käyttäjän ennakko-ohjaus. Se ei ole
+hyväksyntävaltuutus eikä korvaa hyväksyntä- tai uudelleenhyväksyntätransaktion
+sisällä tehtävää samaan domain-sääntöön perustuvaa tarkistusta. Master-data
+voi muuttua lukupyynnön jälkeen, joten varsinainen hyväksyntä tarkistaa
+julkaisukelpoisuuden aina uudelleen ennen ensimmäistä kirjoitusta.
+
 ## Laskun tilat
 
 Nykyisen laskun elinkaaren tilat:

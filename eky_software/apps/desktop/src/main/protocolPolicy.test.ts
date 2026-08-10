@@ -45,6 +45,18 @@ describe('desktop protocol policy', () => {
     );
     expect(isAllowedBackendRequest('DELETE', '/invoice-drafts')).toBe(false);
     expect(
+      isAllowedBackendRequest(
+        'GET',
+        '/invoice-drafts/draft-1/issuance-readiness',
+      ),
+    ).toBe(true);
+    expect(
+      isAllowedBackendRequest(
+        'POST',
+        '/invoice-drafts/draft-1/issuance-readiness',
+      ),
+    ).toBe(false);
+    expect(
       isAllowedBackendRequest('DELETE', '/invoice-drafts/draft-1/extra'),
     ).toBe(false);
     expect(isAllowedBackendRequest('POST', '/invoices/invoice-1/email/dry-run/send')).toBe(

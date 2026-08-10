@@ -7,6 +7,8 @@ import type {
   InvoiceNumberingMode,
   InvoiceReferenceNumberType,
   InvoiceDraftSummary,
+  InvoiceIssuanceReadiness,
+  InvoiceIssuanceReadinessIssue,
   InvoiceLineDiscount,
   InvoicePerformancePeriod,
   InvoicePriceInputMode,
@@ -15,6 +17,18 @@ import type {
   InvoiceUnit,
   InvoiceVatBreakdown,
 } from './invoiceDraftsTypes.js';
+
+const invoiceIssuanceReadinessIssues = new Set<InvoiceIssuanceReadinessIssue>([
+  'billingRecipientAddressMissing',
+  'billingRecipientNameMissing',
+  'companyAddressMissing',
+  'companyBusinessIdMissing',
+  'companyIbanMissing',
+  'companyNameMissing',
+  'companyVatNumberMissing',
+  'customerAddressMissing',
+  'customerNameMissing',
+]);
 
 export function readApproveInvoiceDraftResponse(
   responseBody: unknown,
@@ -32,6 +46,39 @@ export function readInvoiceDraftResponse(responseBody: unknown): InvoiceDraft {
   }
 
   return parseInvoiceDraft(responseBody.invoiceDraft);
+}
+
+export function readInvoiceIssuanceReadinessResponse(
+  responseBody: unknown,
+): InvoiceIssuanceReadiness {
+  if (
+    !isRecord(responseBody) ||
+    !isRecord(responseBody.invoiceIssuanceReadiness) ||
+    typeof responseBody.invoiceIssuanceReadiness.isReady !== 'boolean' ||
+    !Array.isArray(responseBody.invoiceIssuanceReadiness.issues)
+  ) {
+    throw invalidInvoiceDraftResponse(responseBody);
+  }
+
+  const issues = responseBody.invoiceIssuanceReadiness.issues.map((issue) => {
+    if (
+      typeof issue !== 'string' ||
+      !invoiceIssuanceReadinessIssues.has(
+        issue as InvoiceIssuanceReadinessIssue,
+      )
+    ) {
+      throw invalidInvoiceDraftResponse(responseBody);
+    }
+
+    return issue as InvoiceIssuanceReadinessIssue;
+  });
+  const isReady = responseBody.invoiceIssuanceReadiness.isReady;
+
+  if (isReady !== (issues.length === 0)) {
+    throw invalidInvoiceDraftResponse(responseBody);
+  }
+
+  return { isReady, issues };
 }
 
 export function readDeleteInvoiceDraftResponse(responseBody: unknown): void {

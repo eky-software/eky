@@ -14,6 +14,7 @@ import {
   getInvoiceDraft,
   type GetInvoiceDraftInput,
 } from '../application/getInvoiceDraft.js';
+import type { GetInvoiceIssuanceReadinessInput } from '../application/getInvoiceIssuanceReadiness.js';
 import {
   listInvoiceDrafts,
   type ListInvoiceDraftsInput,
@@ -199,6 +200,7 @@ function createTestApp(
   };
   let approveInput: ApproveInvoiceDraftInput | undefined;
   let getInput: GetInvoiceDraftInput | undefined;
+  let issuanceReadinessInput: GetInvoiceIssuanceReadinessInput | undefined;
   let deleteInput: DeleteInvoiceDraftInput | undefined;
   let listInput: ListInvoiceDraftsInput | undefined;
   let saveInput: SaveInvoiceDraftInput | undefined;
@@ -222,6 +224,13 @@ function createTestApp(
       getInput = input;
 
       return getInvoiceDraft(input, invoiceDraftRepository);
+    },
+    async getInvoiceIssuanceReadiness(input) {
+      issuanceReadinessInput = input;
+      return {
+        isReady: true,
+        issues: [],
+      };
     },
     async listInvoiceDrafts(input) {
       listInput = input;
@@ -256,6 +265,7 @@ function createTestApp(
     invoiceDraftRepository,
     getApproveInput: () => approveInput,
     getGetInput: () => getInput,
+    getIssuanceReadinessInput: () => issuanceReadinessInput,
     getDeleteInput: () => deleteInput,
     getListInput: () => listInput,
     getSaveInput: () => saveInput,
@@ -1205,6 +1215,23 @@ describe('invoiceDraftRoutes', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Invoice draft id is invalid.',
+    });
+  });
+
+  it('reads issuance readiness through the trusted company context', async () => {
+    const testContext = createTestApp();
+
+    const response = await testContext.app.request(
+      '/invoice-drafts/draft-1/issuance-readiness?companyId=other-company',
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      invoiceIssuanceReadiness: { isReady: true, issues: [] },
+    });
+    expect(testContext.getIssuanceReadinessInput()).toEqual({
+      companyId: 'dev-company',
+      invoiceDraftId: 'draft-1',
     });
   });
 });

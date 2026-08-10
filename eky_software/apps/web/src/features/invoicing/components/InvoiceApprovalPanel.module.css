@@ -10,6 +10,13 @@
   gap: 10px;
 }
 
+.issueList {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding-left: 22px;
+}
+
 .reverseChargeConfirmation {
   display: flex;
   max-width: 760px;

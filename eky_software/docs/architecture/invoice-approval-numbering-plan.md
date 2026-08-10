@@ -45,6 +45,13 @@ virheen eikä paljasta snapshot-arvoja. Julkaisukelpoisuuden portti ei estä
 Company Settings- tai Customer-master-datan keskeneräistä tallentamista; se
 estää vain virallisen laskun muodostamisen keskeneräisistä tiedoista.
 
+Käyttöliittymän ennakkotarkistus käyttää yritysrajattua read-only-read modelia,
+joka palauttaa vain valmiustilan ja nimetyt puutekoodit. Ennakkotarkistus ei
+varaa numeroa, kirjoita auditia tai palauta snapshot- tai master-dataa. Sen
+tulos ei kelpaa hyväksyntävaltuutukseksi: hyväksyntä ja uudelleenhyväksyntä
+tarkistavat saman Invoicing-domain-säännön aina uudelleen transaktion sisällä
+ennen ensimmäistä kirjoitusta.
+
 Ensimmäinen toteutus voi sisältää yksittäisen luonnoksen hyväksyntätoiminnon:
 
 ```text

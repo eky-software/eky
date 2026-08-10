@@ -27,6 +27,11 @@ export type InvoiceIssuanceReadinessIssue =
   | 'customerAddressMissing'
   | 'customerNameMissing';
 
+export interface InvoiceIssuanceReadiness {
+  isReady: boolean;
+  issues: InvoiceIssuanceReadinessIssue[];
+}
+
 export function findInvoiceIssuanceReadinessIssues(
   data: InvoiceIssuanceReadinessData,
 ): InvoiceIssuanceReadinessIssue[] {
