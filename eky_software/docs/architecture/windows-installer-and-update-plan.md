@@ -25,8 +25,8 @@ Suositus ei muuta ADR-0010:n hyväksyttyä rajaa eikä aloita toteutusta.
 | Checkpoint | Tila | Huomio |
 | --- | --- | --- |
 | A1 Dependency gate alignment | valmis (`ae445c8`) | Read-only audit jokaiselle `main`-PR:lle, dependency-polkuun rajatulle `main`-pushille, päivittäin ja käsin; ei automaattimergeä |
-| A2 Migration manifest continuity | valmis | Migraatiot alkavat `001`:stä ja jatkuvat katkeamatta; nykyinen 38 migraation ketju on regressiotestattu |
-| A3 Migration failure semantics | odottaa | Migraation sivuvaikutustila raportoidaan konservatiivisesti |
+| A2 Migration manifest continuity | valmis (`a824114`) | Migraatiot alkavat `001`:stä ja jatkuvat katkeamatta; nykyinen 38 migraation ketju on regressiotestattu |
+| A3 Migration failure semantics | valmis | Startup raportoi vaiheen ja tämän ajon valmistuneiden migraatioiden määrän; koko ajon sivuvaikutustila on aina `unknown` |
 | A4 Package inventory final audit | odottaa | Installer-payloadin suljettu tiedostoinventaario viimeistellään |
 | A5 MSI version contract | odottaa | Sovellusversio ja Windows Installer -tuoteversio erotetaan |
 | A6 Package trust and private staging | odottaa | Vain uudelleen varmennettu yksityinen staging-artifacti voidaan suorittaa |

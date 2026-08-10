@@ -2,7 +2,11 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import type { DatabaseConnection } from '../connection/createDatabaseConnection.js';
-import { readMigrationManifest } from './migrationManifest.js';
+import {
+  readMigrationManifest,
+  type MigrationManifestEntry,
+} from './migrationManifest.js';
+import { MigrationRunError } from './migrationRunError.js';
 import {
   prepareMigrationHistoryForRun,
   recordAppliedMigrationMetadata,
@@ -31,40 +35,68 @@ export async function runMigrations(
   const migrationsDirectory = resolve(
     options.migrationsDirectory ?? defaultMigrationsDirectory,
   );
-  const manifest = readMigrationManifest(migrationsDirectory);
+  let manifest: MigrationManifestEntry[];
+  try {
+    manifest = readMigrationManifest(migrationsDirectory);
+  } catch {
+    throw new MigrationRunError({
+      completedMigrationCount: 0,
+      errorCode: 'MIGRATION_MANIFEST_FAILED',
+      failureStage: 'manifest',
+    });
+  }
   const releaseIdentity =
     options.releaseIdentity ?? developmentReleaseIdentity;
   const now = options.now ?? (() => new Date());
-  const initialRecordedAt = readRecordedAt(now);
-  const appliedMigrationNames = prepareMigrationHistoryForRun(
-    database,
-    manifest,
-    releaseIdentity,
-    initialRecordedAt,
-  );
+  let appliedMigrationNames: Set<string>;
+  try {
+    const initialRecordedAt = readRecordedAt(now);
+    appliedMigrationNames = prepareMigrationHistoryForRun(
+      database,
+      manifest,
+      releaseIdentity,
+      initialRecordedAt,
+    );
+  } catch {
+    throw new MigrationRunError({
+      completedMigrationCount: 0,
+      errorCode: 'MIGRATION_HISTORY_PREPARATION_FAILED',
+      failureStage: 'historyPreparation',
+    });
+  }
+  let completedMigrationCount = 0;
 
   for (const migration of manifest) {
     if (appliedMigrationNames.has(migration.fileName)) {
       continue;
     }
 
-    const recordedAt = readRecordedAt(now);
+    try {
+      const recordedAt = readRecordedAt(now);
 
-    const runMigration = database.transaction(() => {
-      database.exec(migration.content.toString('utf8'));
-      database
-        .prepare<[string, string]>(
-          'INSERT INTO schema_migrations (name, run_at) VALUES (?, ?)',
-        )
-        .run(migration.fileName, recordedAt);
-      recordAppliedMigrationMetadata(database, {
-        entry: migration,
-        recordedAt,
-        releaseIdentity,
+      const runMigration = database.transaction(() => {
+        database.exec(migration.content.toString('utf8'));
+        database
+          .prepare<[string, string]>(
+            'INSERT INTO schema_migrations (name, run_at) VALUES (?, ?)',
+          )
+          .run(migration.fileName, recordedAt);
+        recordAppliedMigrationMetadata(database, {
+          entry: migration,
+          recordedAt,
+          releaseIdentity,
+        });
       });
-    });
 
-    runMigration();
+      runMigration();
+      completedMigrationCount += 1;
+    } catch {
+      throw new MigrationRunError({
+        completedMigrationCount,
+        errorCode: 'MIGRATION_EXECUTION_FAILED',
+        failureStage: 'migrationExecution',
+      });
+    }
   }
 }
 

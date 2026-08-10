@@ -13,6 +13,7 @@ import {
 } from '../database/connection/createDatabaseConnection.js';
 import { readLocalRuntimeIdentity } from '../database/localRuntimeIdentityReader.js';
 import { runMigrations } from '../database/migration/runMigrations.js';
+import { MigrationRunError } from '../database/migration/migrationRunError.js';
 import { createCompanySettingsComposition } from '../composition/companySettingsComposition.js';
 import { createCustomersComposition } from '../composition/customersComposition.js';
 import { createActivityComposition } from '../composition/activityComposition.js';
@@ -188,15 +189,26 @@ export async function createApp(
         operationalIdentity,
       ),
     );
-  } catch {
+  } catch (error) {
+    const migrationFailure =
+      error instanceof MigrationRunError
+        ? error
+        : {
+            completedMigrationCount: 0,
+            errorCode: 'MIGRATION_RUN_FAILED',
+            failureStage: 'unknown' as const,
+            sideEffectState: 'unknown' as const,
+          };
     operationalLogger.write(
       createBackendOperationalEvent(
         {
+          completedMigrationCount:
+            migrationFailure.completedMigrationCount,
           durationMs: Date.now() - migrationStartedAt,
-          errorCode: 'MIGRATION_FAILED',
+          errorCode: migrationFailure.errorCode,
           eventName: 'migration.failed',
-          sideEffectState: 'rolledBack',
-          stage: 'startup',
+          failureStage: migrationFailure.failureStage,
+          sideEffectState: migrationFailure.sideEffectState,
         },
         operationalIdentity,
       ),
