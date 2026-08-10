@@ -38,8 +38,8 @@ jakelua oikeaan käyttöön.
 | Checkpoint | Tila | Huomio |
 | --- | --- | --- |
 | B1 Installer composition | valmis (`436949f`) | Installerin build-työkalut, suljettu release-konfiguraatio sekä version, identiteetin ja sidecar-manifestin sopimukset |
-| B2 Identity and install root | valmis (checkpoint-commit) | Vakaa UpgradeCode, versiokohtainen ProductCode, vakaat component-GUIDit, per-user `%LOCALAPPDATA%\\Programs\\Eky` ja read-only MSI-inspektori |
-| B3 Install, repair and uninstall | odottaa | Puhdas asennus, repair, uninstall/reinstall ja business-datan säilyminen |
+| B2 Identity and install root | valmis (`986d0b6`) | Vakaa UpgradeCode, versiokohtainen ProductCode, vakaat component-GUIDit, per-user `%LOCALAPPDATA%\\Programs\\Eky` ja read-only MSI-inspektori |
+| B3 Install, repair and uninstall | valmis (checkpoint-commit) | Puhdas asennus, pakotettu repair, uninstall/reinstall sekä business-datan ja poistettavuuden todennus |
 | B4 Two-version upgrade | odottaa | Kahden synteettisen version major upgrade, downgrade-esto, rollback ja Windows-virhepolut |
 | B5 Build once and sidecar | odottaa | MSI rakennetaan kerran, validoidaan, sidotaan SHA-256-sidecariin ja julkaistaan täsmälleen samoina tavuina |
 
@@ -58,6 +58,16 @@ payload-tiedostosta, koska tiedostojen hakemistopolku ei vaihdu mahdollisen
 `ALLUSERS`- tai dual-purpose `MSIINSTALLPERUSER` -ominaisuutta, joten varoitus
 on tässä rajatussa prototyypissä tunnettu scope-huomio. Muut ICE-virheet ja
 -varoitustyypit käsitellään ennen checkpointin hyväksymistä.
+
+B3-elinkaaritesti kieltäytyy ajosta, jos samalla ProductCodella rekisteröity
+Eky, olemassa oleva install root tai käynnissä oleva Eky-prosessi havaitaan.
+Testi asentaa MSI:n hiljaisesti ilman restartia, vertaa kaikki asennetut
+payload-tiedostot alkuperäiseen paketoituun artifactiin SHA-256-arvoilla,
+poistaa yhden rajatun tiedoston ja todentaa pakotetun Windows Installer
+repairin. Tämän jälkeen testi todentaa uninstallin, reinstallin, uuden
+uninstallin, pikakuvakkeen poistumisen sekä olemassa olevan `%APPDATA%\\Eky`-
+profiilin muuttumattomuuden. Onnistuneen ajon yksityiset temp-lokit poistetaan;
+epäonnistuneen ajon lokit jätetään paikallista vianmääritystä varten.
 
 ## 2. Tavoite
 

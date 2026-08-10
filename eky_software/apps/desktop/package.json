@@ -13,6 +13,7 @@
     "installer:test": "node --test installer/installerIdentity.test.mjs installer/installerManifest.test.mjs installer/installerVersion.test.mjs installer/scripts/generateInstallerPayload.test.mjs",
     "installer:build": "node installer/scripts/buildWindowsInstaller.mjs",
     "installer:inspect": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File installer/scripts/inspectWindowsInstaller.ps1",
+    "installer:lifecycle": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File installer/scripts/testWindowsInstallerLifecycle.ps1",
     "package:windows": "node scripts/package-windows.mjs",
     "package:windows:pilot": "node scripts/package-windows.mjs --pilot",
     "profile:audit": "node scripts/audit-production-profile.mjs",
