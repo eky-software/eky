@@ -109,33 +109,37 @@ function Assert-EkyPathEventuallyAbsent {
   }
 }
 
-function Get-EkyArpEntries {
+function Get-EkyProductRegistrations {
   param([string[]]$ProductCodes = @())
 
-  $normalizedCodes = @(
-    $ProductCodes | ForEach-Object { "{$($_.Trim('{}').ToUpperInvariant())}" }
-  )
-  $entries = @()
-  foreach ($root in @(
-    'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
-    'HKCU:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
-  )) {
-    if (!(Test-Path -LiteralPath $root -PathType Container)) {
-      continue
-    }
-    foreach ($key in Get-ChildItem -LiteralPath $root -ErrorAction Stop) {
-      $properties = Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction Stop
-      $productCodeMatches = $normalizedCodes -contains $key.PSChildName.ToUpperInvariant()
-      if ($productCodeMatches -or $properties.DisplayName -eq 'Eky') {
-        $entries += [pscustomobject]@{
-          DisplayName = $properties.DisplayName
-          KeyPath = $key.PSPath
-          ProductCode = $key.PSChildName.ToUpperInvariant()
+  $installer = $null
+  $registrations = @()
+  try {
+    $installer = New-Object -ComObject WindowsInstaller.Installer
+    foreach ($productCode in $ProductCodes) {
+      $normalizedCode = "{$($productCode.Trim('{}').ToUpperInvariant())}"
+      if ((Get-EkyProductState -Installer $installer -Code $normalizedCode) -lt 1) {
+        continue
+      }
+      try {
+        $registrations += [pscustomobject]@{
+          LocalPackage = $installer.ProductInfo($normalizedCode, 'LocalPackage')
+          ProductCode = $normalizedCode
+          ProductName = $installer.ProductInfo($normalizedCode, 'ProductName')
+          ProductVersion = $installer.ProductInfo($normalizedCode, 'VersionString')
         }
+      }
+      catch {
+        throw 'INSTALLER_PRODUCT_REGISTRATION_UNREADABLE'
       }
     }
   }
-  return @($entries)
+  finally {
+    if ($null -ne $installer) {
+      [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($installer)
+    }
+  }
+  return @($registrations)
 }
 
 function Assert-EkyInstallerRegistrationPresent {
@@ -145,11 +149,14 @@ function Assert-EkyInstallerRegistrationPresent {
   if (!(Test-Path -LiteralPath $installerRegistryRoot -PathType Container)) {
     throw 'INSTALLER_OWNED_REGISTRY_MISSING'
   }
-  $entries = @(Get-EkyArpEntries -ProductCodes @($ProductCode))
+  $entries = @(Get-EkyProductRegistrations -ProductCodes @($ProductCode))
   $normalizedCode = "{$($ProductCode.Trim('{}').ToUpperInvariant())}"
   if (
     $entries.Count -ne 1 -or
-    $entries[0].ProductCode -ne $normalizedCode
+    $entries[0].ProductCode -ne $normalizedCode -or
+    $entries[0].ProductName -ne 'Eky' -or
+    [string]::IsNullOrWhiteSpace($entries[0].ProductVersion) -or
+    !(Test-Path -LiteralPath $entries[0].LocalPackage -PathType Leaf)
   ) {
     throw 'INSTALLER_ARP_REGISTRATION_MISSING_OR_AMBIGUOUS'
   }
@@ -161,7 +168,7 @@ function Assert-EkyInstallerRegistrationAbsent {
   if (Test-Path -LiteralPath 'HKCU:\Software\Eky\Installer') {
     throw 'INSTALLER_OWNED_REGISTRY_REMAINS'
   }
-  if (@(Get-EkyArpEntries -ProductCodes $ProductCodes).Count -ne 0) {
+  if (@(Get-EkyProductRegistrations -ProductCodes $ProductCodes).Count -ne 0) {
     throw 'INSTALLER_ARP_REGISTRATION_REMAINS'
   }
 }
