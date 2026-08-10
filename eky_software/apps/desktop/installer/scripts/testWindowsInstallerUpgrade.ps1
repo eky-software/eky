@@ -217,7 +217,7 @@ try {
   $nextMsiPath = Resolve-FixtureMsi -Path $fixture.next.msiPath -Role 'next'
   $rollbackMsiPath = Resolve-FixtureMsi -Path $fixture.rollback.msiPath -Role 'rollback'
   if (
-    (Get-FileHash -LiteralPath $currentMsiPath -Algorithm SHA256).Hash.ToLowerInvariant() -ne
+    (Get-EkyFileSha256 -Path $currentMsiPath).ToLowerInvariant() -ne
     $fixture.current.packageSha256
   ) {
     throw 'INSTALLER_UPGRADE_RELEASE_BYTES_CHANGED'

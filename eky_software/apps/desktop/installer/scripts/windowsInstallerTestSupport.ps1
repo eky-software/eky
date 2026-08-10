@@ -1,5 +1,20 @@
 Set-StrictMode -Version Latest
 
+function Get-EkyFileSha256 {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  $stream = [System.IO.File]::OpenRead($Path)
+  $algorithm = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    $hash = $algorithm.ComputeHash($stream)
+    return [System.BitConverter]::ToString($hash).Replace('-', '')
+  }
+  finally {
+    $algorithm.Dispose()
+    $stream.Dispose()
+  }
+}
+
 function Get-EkyProductState {
   param(
     [Parameter(Mandatory = $true)]$Installer,
@@ -55,7 +70,7 @@ function Get-EkyDirectoryInventory {
       Sort-Object FullName |
       ForEach-Object {
         $relativePath = $_.FullName.Substring($resolvedRoot.Length).TrimStart('\')
-        $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+        $hash = Get-EkyFileSha256 -Path $_.FullName
         "$relativePath|$($_.Length)|$hash"
       }
   )

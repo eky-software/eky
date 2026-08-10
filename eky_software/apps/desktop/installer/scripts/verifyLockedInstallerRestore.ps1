@@ -14,7 +14,16 @@ function Get-LockHash {
   if (!(Test-Path -LiteralPath $lockPath -PathType Leaf)) {
     throw 'INSTALLER_RESTORE_LOCK_MISSING'
   }
-  return (Get-FileHash -LiteralPath $lockPath -Algorithm SHA256).Hash
+  $stream = [System.IO.File]::OpenRead($lockPath)
+  $algorithm = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    $hash = $algorithm.ComputeHash($stream)
+    return [System.BitConverter]::ToString($hash).Replace('-', '')
+  }
+  finally {
+    $algorithm.Dispose()
+    $stream.Dispose()
+  }
 }
 
 function Invoke-LockedRestore {

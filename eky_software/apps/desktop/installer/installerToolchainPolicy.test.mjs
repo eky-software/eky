@@ -57,3 +57,18 @@ test('allows only the approved signed NuGet source and exact setup-dotnet SHA', 
   assert.match(ci, /dotnet-version: 10\.0\.302/);
   assert.doesNotMatch(ci, /actions\/setup-dotnet@v\d/);
 });
+
+test('uses runtime-independent SHA-256 APIs in Windows installer gates', async () => {
+  const scripts = await Promise.all(
+    [
+      'scripts/verifyLockedInstallerRestore.ps1',
+      'scripts/windowsInstallerTestSupport.ps1',
+      'scripts/testWindowsInstallerUpgrade.ps1',
+    ].map((path) => readFile(join(installerDirectory, path), 'utf8')),
+  );
+  const source = scripts.join('\n');
+
+  assert.doesNotMatch(source, /Get-FileHash/);
+  assert.match(source, /System\.Security\.Cryptography\.SHA256/);
+  assert.match(source, /System\.IO\.File.*OpenRead/);
+});
