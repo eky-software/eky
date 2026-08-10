@@ -15,9 +15,10 @@ Toteutettu 4.8.2026 mennessä:
   ja purkaa sisällön vain yksityiseen karanteeniin
 - main-owned kertakäyttöinen backup-salasanaikkuna sekä portable writerin
   Save-dialog-, salaus- ja self-inspection-polku
-- siirrettävän backupin no-overwrite-finalisointi tavallisena
-  tiedostokopiona ilman hard link -vaatimusta, jotta kohde voi olla myös
-  NTFS-, exFAT- tai FAT32-taltio
+- siirrettävän backupin no-overwrite-finalisointi täysin kirjoitetystä
+  sibling-`.partial`-tiedostosta: NTFS:llä ensisijaisesti hard linkillä ja
+  exFAT-/FAT32-yhteensopivana fallbackina tavallisella
+  `COPYFILE_EXCL`-tiedostokopiolla
 - viimeisimmän validoidun siirrettävän backupin turvallinen konekohtainen
   tilatieto ilman polkua, tiedostonimeä, profiili- tai yritystunnistetta
 - konekohtaisen palautuspisteen erillinen `EKYRCV01`-container, satunnainen
@@ -423,10 +424,14 @@ session- ja `ActorContext`-rajat säilyvät.
 6. SQLite-snapshot ja auktoritatiiviset artifactit kerätään tunnetuista
    profiilijuurista
 7. manifesti, koot ja checksumit muodostetaan
-8. sisältö salataan kohdekansion väliaikaistiedostoon; myös kesken jäänyt
-   artifacti on salattu
-9. salattu artifacti kopioidaan `no-overwrite`-ehdolla lopulliseen nimeen ja
-   synkronoidaan ilman hard linkiä tai olemassa olevan tiedoston korvaamista
+8. sisältö salataan kohdekansion uniikkiin sibling-`.partial`-tiedostoon;
+   myös kesken jäänyt artifacti on salattu eikä näytä valmiilta
+   `.ekybackup`-tiedostolta
+9. täysin kirjoitettu ja synkronoitu artifacti julkaistaan lopulliseen nimeen
+   `no-overwrite`-ehdolla: NTFS:llä ensisijaisesti hard linkillä ja
+   exFAT-/FAT32-yhteensopivana fallbackina tavallisella
+   `COPYFILE_EXCL`-kopiolla; olemassa olevaa lopullista tiedostoa ei poisteta,
+   korvata tai nimetä automaattisesti sivuun
 10. valmis artifacti avataan inspectorilla ja todennetaan ennen onnistumista
 11. temp ja avainmateriaali poistetaan best effort -mallilla
 12. maintenance-lukko vapautetaan
@@ -675,10 +680,20 @@ ei saa muuttaa varsinaisen operaation tulosta.
 - täysi levy, read-only-kohde ja oikeuksien muuttuminen kesken operaation
 - no-overwrite ja olemassa olevan eri backupin säilyminen
 - temp-finalisoinnin keskeytys jokaisessa vaiheessa
-- tavallinen tiedostokopio ilman hard linkiä ja kilpailevan kohdetiedoston
-  no-overwrite-suoja
+- NTFS:n hard link -julkaisu sekä exFAT-/FAT32-yhteensopiva tavallinen
+  tiedostokopio ja kilpailevan kohdetiedoston no-overwrite-suoja
 - vähintään yksi manuaalinen Windows-hyväksyntä oikealle FAT32- tai
   exFAT-USB-medialle ennen R0-oikean datan käyttöönottoa
+
+Hard link -julkaisu tekee NTFS:n hakemistomerkinnän vasta valmiista,
+synkronoidusta containerista. Tavallisen kopioinnin fallbackista ei tehdä
+yleistä virtakatkosatomisuusväitettä exFAT- tai FAT32-taltiolle. Fyysisen
+median release-portti pysyy avoimena, kunnes samalla release-artifactilla on
+ajettu `create -> inspect -> safe eject -> reconnect -> inspect -> restore ->
+restart -> compare` erikseen NTFS:llä, exFATilla ja FAT32:lla silloin, kun
+artifacti mahtuu FAT32:n tiedostokokorajaan. Inspector torjuu katkenneen tai
+muuttuneen containerin; Eky ei poista, korvaa tai nimeä sivuun olemassa olevaa
+lopullista `.ekybackup`-tiedostoa automaattisesti.
 
 ### Restore ja rollback
 

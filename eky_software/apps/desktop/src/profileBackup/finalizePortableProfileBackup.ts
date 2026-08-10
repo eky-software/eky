@@ -1,8 +1,9 @@
 import { constants } from 'node:fs';
-import { chmod, copyFile, open, rm } from 'node:fs/promises';
+import { chmod, copyFile, link, open, rm } from 'node:fs/promises';
 
 interface PortableBackupFinalizationFileOperations {
   copyWithoutOverwrite(sourcePath: string, destinationPath: string): Promise<void>;
+  linkWithoutOverwrite(sourcePath: string, destinationPath: string): Promise<void>;
   protectReadOnly(path: string): Promise<void>;
   remove(path: string): Promise<void>;
   setWritable(path: string): Promise<void>;
@@ -12,6 +13,9 @@ interface PortableBackupFinalizationFileOperations {
 const defaultFileOperations: PortableBackupFinalizationFileOperations = {
   copyWithoutOverwrite(sourcePath, destinationPath) {
     return copyFile(sourcePath, destinationPath, constants.COPYFILE_EXCL);
+  },
+  linkWithoutOverwrite(sourcePath, destinationPath) {
+    return link(sourcePath, destinationPath);
   },
   protectReadOnly(path) {
     return chmod(path, 0o400);
@@ -48,6 +52,20 @@ export async function finalizePortableProfileBackup(
   let destinationCreated = false;
 
   try {
+    try {
+      await fileOperations.linkWithoutOverwrite(
+        temporaryPath,
+        destinationPath,
+      );
+      destinationCreated = true;
+      await fileOperations.protectReadOnly(destinationPath);
+      return;
+    } catch (error) {
+      if (!isHardLinkUnsupported(error)) {
+        throw error;
+      }
+    }
+
     await fileOperations.copyWithoutOverwrite(
       temporaryPath,
       destinationPath,
@@ -70,4 +88,13 @@ export async function finalizePortableProfileBackup(
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error;
+}
+
+function isHardLinkUnsupported(error: unknown): boolean {
+  return (
+    isNodeError(error) &&
+    ['ENOSYS', 'ENOTSUP', 'EOPNOTSUPP', 'EPERM', 'EXDEV'].includes(
+      error.code ?? '',
+    )
+  );
 }
