@@ -72,3 +72,14 @@ test('uses runtime-independent SHA-256 APIs in Windows installer gates', async (
   assert.match(source, /System\.Security\.Cryptography\.SHA256/);
   assert.match(source, /System\.IO\.File.*OpenRead/);
 });
+
+test('keeps empty installer directory inventories as comparable arrays', async () => {
+  const support = await readFile(
+    join(installerDirectory, 'scripts/windowsInstallerTestSupport.ps1'),
+    'utf8',
+  );
+
+  assert.match(support, /return ,@\(\)/);
+  assert.match(support, /return ,\$inventory/);
+  assert.equal((support.match(/AllowEmptyCollection/g) ?? []).length, 2);
+});

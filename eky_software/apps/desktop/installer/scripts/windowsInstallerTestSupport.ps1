@@ -62,10 +62,10 @@ function Get-EkyDirectoryInventory {
   param([Parameter(Mandatory = $true)][string]$Root)
 
   if (!(Test-Path -LiteralPath $Root -PathType Container)) {
-    return @()
+    return ,@()
   }
   $resolvedRoot = (Resolve-Path -LiteralPath $Root).Path
-  return @(
+  $inventory = @(
     Get-ChildItem -LiteralPath $resolvedRoot -File -Recurse -Force |
       Sort-Object FullName |
       ForEach-Object {
@@ -74,12 +74,13 @@ function Get-EkyDirectoryInventory {
         "$relativePath|$($_.Length)|$hash"
       }
   )
+  return ,$inventory
 }
 
 function Assert-EkyInventoryEqual {
   param(
-    [Parameter(Mandatory = $true)][object[]]$Actual,
-    [Parameter(Mandatory = $true)][object[]]$Expected,
+    [Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]]$Actual,
+    [Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]]$Expected,
     [Parameter(Mandatory = $true)][string]$Code
   )
 
