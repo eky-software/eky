@@ -6,6 +6,7 @@ import type {
 } from '../../../database/schema.js';
 import { ApproveInvoiceDraftError } from '../application/approveInvoiceDraftError.js';
 import type { InvoiceTotals } from '../domain/invoiceCalculation.js';
+import { findInvoiceIssuanceReadinessIssues } from '../domain/invoiceIssuanceReadiness.js';
 import {
   requireReverseChargeCustomerEligibility,
   resolveInvoiceTaxTreatment,
@@ -192,6 +193,7 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
       companyId: input.companyId,
       customerId: draft.customer_id,
     });
+    this.requireIssuanceReadiness(snapshot);
     this.requireTaxTreatmentSnapshotEligibility(draft, snapshot);
     const invoiceRow = createInvoiceRow(
       numberedInput,
@@ -251,6 +253,7 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
       companyId: input.companyId,
       customerId: draft.customer_id,
     });
+    this.requireIssuanceReadiness(snapshot);
     this.requireTaxTreatmentSnapshotEligibility(draft, snapshot);
     const reapprovedInput: NumberedApproveInvoiceDraftPersistenceInput = {
       ...input,
@@ -312,6 +315,16 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
     } catch {
       throw new ApproveInvoiceDraftError(
         'Reverse charge invoice customer is not eligible.',
+      );
+    }
+  }
+
+  private requireIssuanceReadiness(
+    snapshot: ReturnType<InvoiceApprovalSnapshotReader['getSnapshotData']>,
+  ): void {
+    if (findInvoiceIssuanceReadinessIssues(snapshot).length > 0) {
+      throw new ApproveInvoiceDraftError(
+        'Invoice information is incomplete.',
       );
     }
   }

@@ -35,7 +35,7 @@ Laajempi ERP-polku ei ole perinteisen laskunkirjoituksen edellytys.
 
 ## Perinteinen laskunkirjoitus
 
-Ensimmäisessä MVP:ssä voidaan toteuttaa perinteinen laskunkirjoitus.
+Nykyinen local desktop -MVP tukee perinteistä laskunkirjoitusta.
 
 Virta:
 
@@ -45,7 +45,11 @@ Virta:
 4. järjestelmä laskee summat ja ALV:n
 5. käyttäjä tallentaa laskuluonnoksen
 6. käyttäjä hyväksyy laskun
-7. lasku voidaan myöhemmin tulostaa tai lähettää
+7. hyväksytystä snapshotista muodostetaan current PDF
+8. lasku toimitetaan käyttäjän vahvistamalla sähköpostilla tai merkitään
+   manuaalisesti toimitetuksi
+9. toimitettu lasku voidaan merkitä maksetuksi
+10. virheellinen toimitettu lasku korjataan peruutus- tai hyvityspolulla
 
 Tämä malli muistuttaa perinteistä laskutusohjelmaa.
 
@@ -129,11 +133,15 @@ Päätetyt ensimmäiset periaatteet:
   -lähetyksellä, ja vain varmasti onnistunut toimitus muuttaa laskun `sent`-
   tilaan
 - PDF:n avaaminen tai tulostaminen ei yksin merkitse laskua lähetetyksi
+- lähetetty lasku voidaan peruuttaa vain dokumentoiduilla rajoilla tai hyvittää
+  koko- tai osahyvityksenä; hyvityslasku saa oman numeron ja viittaa
+  alkuperäiseen laskuun
+- toimitettu lasku voidaan merkitä maksetuksi ja maksumerkintä voidaan poistaa
+  hallitulla auditointipolulla
 
 Jäljellä olevat avoimet kysymykset:
 
 - tarvitaanko verkkolasku myöhemmin?
-- miten hyvityslaskut käsitellään?
 - kuka saa hyväksyä laskun?
 - kuka saa lähettää laskun?
 - tarvitaanko myöhemmin muita sähköposti- tai toimitusprovidereita?
