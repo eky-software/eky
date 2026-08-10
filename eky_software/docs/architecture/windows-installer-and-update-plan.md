@@ -44,7 +44,7 @@ jakelua oikeaan käyttöön.
 | B3 Install, repair and uninstall | valmis (`94b4479`) | Puhdas asennus, pakotettu repair, uninstall/reinstall sekä business-datan ja poistettavuuden todennus |
 | B4 Two-version upgrade | valmis (`496d409`) | Kahden synteettisen version major upgrade, downgrade-esto, rollback ja Windows-virhepolut |
 | B5 Build once and sidecar | valmis (`f0f2e2f`) | MSI rakennetaan kerran, validoidaan ja sidotaan täsmälleen samoihin tavuihin SHA-256-sidecarilla; CI ei vielä julkaise artifactia |
-| B6 Release gate hardening | toteutuksessa | Lukittu restore toistetaan ilman lock-driftiä, vain ICE91 suppressataan, uninstall todentaa HKCU/ARP-siivouksen ja N -> N+1 testataan käynnissä olevalla Eky- ja utility-prosessilla samoista sidotuista N-tavuista |
+| B6 Release gate hardening | valmis (`0db338b`) | Lukittu restore toistetaan ilman lock-driftiä, vain ICE91 suppressataan, uninstall todentaa HKCU/ARP-siivouksen ja N -> N+1 testataan käynnissä olevalla Eky- ja utility-prosessilla samoista sidotuista N-tavuista |
 
 B2-prototyypin MSI sisältää vain nykyisen kovennetun Windows-payloadin,
 rekisteripohjaiset per-user key pathit, MSI:n omistamien asennushakemistojen
