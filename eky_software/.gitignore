@@ -8,6 +8,7 @@ apps/desktop/out/
 apps/desktop/installer/bin/
 apps/desktop/installer/obj/
 apps/desktop/installer/wix/GeneratedPayload.wxs
+apps/desktop/installer/artifacts/
 
 # Local Eky runtime and diagnostic artifacts
 **/runtime/logs/

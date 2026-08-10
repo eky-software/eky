@@ -1,10 +1,12 @@
 <Project Sdk="WixToolset.Sdk/7.0.0">
   <PropertyGroup>
     <InstallerPlatform>x64</InstallerPlatform>
-    <OutputName>Eky</OutputName>
+    <AcceptEula>wix7</AcceptEula>
+    <OutputName>Eky-$(EkyAppVersion)-x64</OutputName>
     <OutputType>Package</OutputType>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
     <SuppressValidation>false</SuppressValidation>
+    <DefineConstants>EkyAppVersion=$(EkyAppVersion);EkyMsiProductVersion=$(EkyMsiProductVersion);EkyPayloadRoot=$(EkyPayloadRoot);EkyProductCode=$(EkyProductCode);EkyUpgradeCode=$(EkyUpgradeCode)</DefineConstants>
   </PropertyGroup>
 </Project>

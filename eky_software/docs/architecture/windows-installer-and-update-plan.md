@@ -37,11 +37,27 @@ jakelua oikeaan käyttöön.
 
 | Checkpoint | Tila | Huomio |
 | --- | --- | --- |
-| B1 Installer composition | valmis (checkpoint-commit) | Installerin build-työkalut, suljettu release-konfiguraatio sekä version, identiteetin ja sidecar-manifestin sopimukset |
-| B2 Identity and install root | odottaa | Vakaa UpgradeCode, versiokohtainen ProductCode, vakaat component-GUIDit ja `%LOCALAPPDATA%\\Programs\\Eky` |
+| B1 Installer composition | valmis (`436949f`) | Installerin build-työkalut, suljettu release-konfiguraatio sekä version, identiteetin ja sidecar-manifestin sopimukset |
+| B2 Identity and install root | valmis (checkpoint-commit) | Vakaa UpgradeCode, versiokohtainen ProductCode, vakaat component-GUIDit, per-user `%LOCALAPPDATA%\\Programs\\Eky` ja read-only MSI-inspektori |
 | B3 Install, repair and uninstall | odottaa | Puhdas asennus, repair, uninstall/reinstall ja business-datan säilyminen |
 | B4 Two-version upgrade | odottaa | Kahden synteettisen version major upgrade, downgrade-esto, rollback ja Windows-virhepolut |
 | B5 Build once and sidecar | odottaa | MSI rakennetaan kerran, validoidaan, sidotaan SHA-256-sidecariin ja julkaistaan täsmälleen samoina tavuina |
+
+B2-prototyypin MSI sisältää vain nykyisen kovennetun Windows-payloadin,
+rekisteripohjaiset per-user key pathit, MSI:n omistamien asennushakemistojen
+tyhjien kansioiden poistomerkinnät ja yhden Start Menu -pikakuvakkeen.
+Read-only-inspektori varmistaa ProductCode-, UpgradeCode-, ProductVersion-,
+scope-, install root-, komponentti-, tiedosto-, rekisteri-, RemoveFile- ja
+shortcut-sopimukset sekä sen, ettei paketissa ole custom actioneita tai
+business-datan tunnettuja standardihakemistoja.
+
+WiX:n ICE-validointi ajetaan eikä sitä poisteta käytöstä. Puhtaasti per-user-
+scopeen rajattu prototyyppi tuottaa yhden ICE91-varoituksen jokaisesta
+payload-tiedostosta, koska tiedostojen hakemistopolku ei vaihdu mahdollisen
+`ALLUSERS`-arvon mukaan. Paketti ei tue per-machine-asennusta eikä aseta
+`ALLUSERS`- tai dual-purpose `MSIINSTALLPERUSER` -ominaisuutta, joten varoitus
+on tässä rajatussa prototyypissä tunnettu scope-huomio. Muut ICE-virheet ja
+-varoitustyypit käsitellään ennen checkpointin hyväksymistä.
 
 ## 2. Tavoite
 
