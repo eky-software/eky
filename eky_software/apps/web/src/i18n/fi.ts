@@ -1008,6 +1008,25 @@ export const uiText = {
     invoiceEmailDryRunValidationError:
       'Tarkista vastaanottaja, kopio, otsikko ja viestin sisältö.',
     invoiceEmailNoRecipient: 'Vastaanottajan sähköpostia ei ole asetettu',
+    invoiceIssuanceReadinessChecking: 'Tarkistetaan tietoja...',
+    invoiceIssuanceReadinessError:
+      'Laskun hyväksyntävalmiutta ei voitu tarkistaa. Yritä hetken kuluttua uudelleen.',
+    invoiceIssuanceReadinessIntro:
+      'Täydennä seuraavat tiedot ennen laskun hyväksymistä:',
+    invoiceIssuanceReadinessIssue: {
+      billingRecipientAddressMissing:
+        'Täydennä laskun vastaanottajan osoite asiakaskortille.',
+      billingRecipientNameMissing:
+        'Täydennä laskun vastaanottajan nimi asiakaskortille.',
+      companyAddressMissing: 'Täydennä oman yrityksen osoite.',
+      companyBusinessIdMissing: 'Täydennä oman yrityksen Y-tunnus.',
+      companyIbanMissing: 'Täydennä oman yrityksen IBAN-tilinumero.',
+      companyNameMissing: 'Täydennä oman yrityksen nimi.',
+      companyVatNumberMissing: 'Täydennä oman yrityksen ALV-tunnus.',
+      customerAddressMissing: 'Täydennä asiakkaan osoite asiakaskortille.',
+      customerNameMissing: 'Täydennä asiakkaan nimi asiakaskortille.',
+    },
+    invoiceIssuanceReadinessTitle: 'Laskun tiedot ovat puutteelliset',
     invoiceEmailPrepare: 'Valmistele sähköposti',
     invoiceEmailPrepareError:
       'Sähköpostiluonnosta ei voitu valmistella. Yritä hetken kuluttua uudelleen.',

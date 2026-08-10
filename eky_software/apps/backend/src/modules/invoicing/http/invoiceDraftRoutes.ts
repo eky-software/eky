@@ -8,6 +8,7 @@ import type { ApproveInvoiceDraftInput } from '../application/approveInvoiceDraf
 import { ApproveInvoiceDraftError } from '../application/approveInvoiceDraftError.js';
 import type { DeleteInvoiceDraftInput } from '../application/deleteInvoiceDraft.js';
 import type { GetInvoiceDraftInput } from '../application/getInvoiceDraft.js';
+import type { GetInvoiceIssuanceReadinessInput } from '../application/getInvoiceIssuanceReadiness.js';
 import { InvoiceDraftNotFoundError } from '../application/invoiceDraftNotFoundError.js';
 import type { ListInvoiceDraftsInput } from '../application/listInvoiceDrafts.js';
 import type {
@@ -18,6 +19,7 @@ import { InvoiceCalculationError } from '../domain/invoiceCalculationError.js';
 import type { InvoiceDraft } from '../domain/invoiceDraft.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
 import type { InvoiceDraftSummary } from '../domain/invoiceDraftSummary.js';
+import type { InvoiceIssuanceReadiness } from '../domain/invoiceIssuanceReadiness.js';
 import { InvoiceNumberingError } from '../domain/invoiceNumberingError.js';
 import type { ApprovedInvoiceResult } from '../ports/invoiceApprovalRepository.js';
 import {
@@ -36,6 +38,9 @@ interface InvoiceDraftRouteDependencies {
   ): Promise<ApprovedInvoiceResult>;
   deleteInvoiceDraft(input: DeleteInvoiceDraftInput): Promise<void>;
   getInvoiceDraft(input: GetInvoiceDraftInput): Promise<InvoiceDraft>;
+  getInvoiceIssuanceReadiness(
+    input: GetInvoiceIssuanceReadinessInput,
+  ): Promise<InvoiceIssuanceReadiness>;
   listInvoiceDrafts(
     input: ListInvoiceDraftsInput,
   ): Promise<InvoiceDraftSummary[]>;
@@ -89,6 +94,29 @@ export function createInvoiceDraftRoutes(
       }
     },
   );
+
+  routes.get('/invoice-drafts/:id/issuance-readiness', async (context) => {
+    try {
+      const actorContext = context.get('actorContext');
+      const invoiceIssuanceReadiness =
+        await dependencies.getInvoiceIssuanceReadiness({
+          companyId: actorContext.companyId,
+          invoiceDraftId: context.req.param('id'),
+        });
+
+      return context.json({ invoiceIssuanceReadiness });
+    } catch (error) {
+      if (error instanceof InvoiceDraftNotFoundError) {
+        return context.json({ error: error.message }, 404);
+      }
+
+      if (error instanceof InvoiceDraftValidationError) {
+        return context.json({ error: error.message }, 400);
+      }
+
+      throw error;
+    }
+  });
 
   routes.get('/invoice-drafts', async (context) => {
     try {

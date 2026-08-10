@@ -118,6 +118,8 @@ export type {
   InvoiceDraftStatus,
   InvoiceDraftSummary,
   InvoiceKind,
+  InvoiceIssuanceReadiness,
+  InvoiceIssuanceReadinessIssue,
   InvoiceLineDiscount,
   InvoiceNumberingMode,
   InvoicePriceInputMode,

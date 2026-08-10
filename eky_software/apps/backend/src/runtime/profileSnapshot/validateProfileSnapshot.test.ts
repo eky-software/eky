@@ -15,6 +15,7 @@ import { dirname, join } from 'node:path';
 import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { runMigrations } from '../../database/migration/runMigrations.js';
 import { createProfileBackupIdentity } from './inspectSqliteProfileDatabase.js';
 import { StagedProfileSnapshotValidationService } from './validateProfileSnapshot.js';
 
@@ -203,6 +204,29 @@ describe('staged profile snapshot validation', () => {
     ).rejects.toThrow('PROFILE_SNAPSHOT_VALIDATION_FAILED');
   });
 
+  it('rejects staged data with missing migration metadata', async () => {
+    const fixture = await createFixture();
+    const database = new Database(fixture.databasePath);
+    database.exec('DELETE FROM schema_migration_metadata;');
+    database.close();
+
+    await expect(
+      fixture.service.validateProfileSnapshot(fixture.operationId),
+    ).rejects.toThrow('PROFILE_SNAPSHOT_VALIDATION_FAILED');
+  });
+
+  it('rejects staged data after historical migration SQL changes', async () => {
+    const fixture = await createFixture();
+    await writeFile(
+      join(fixture.migrationsDirectory, migrationName),
+      `${migrationSql}\nCREATE TABLE changed_history (id TEXT PRIMARY KEY);`,
+    );
+
+    await expect(
+      fixture.service.validateProfileSnapshot(fixture.operationId),
+    ).rejects.toThrow('PROFILE_SNAPSHOT_VALIDATION_FAILED');
+  });
+
   it('rejects a corrupt SQLite file', async () => {
     const fixture = await createFixture();
     await writeFile(fixture.databasePath, 'not a sqlite database');
@@ -274,18 +298,20 @@ async function createFixture(
   await mkdir(migrationsDirectory, { mode: 0o700 });
   await writeFile(join(migrationsDirectory, migrationName), migrationSql);
 
-  const activeDatabase = createProfileDatabase(
+  const activeDatabase = await createProfileDatabase(
     ':memory:',
     'company-1',
     options.activeHasInvoice ?? false,
     pdfBytes,
+    migrationsDirectory,
   );
   openDatabases.push(activeDatabase);
-  const stagedDatabase = createProfileDatabase(
+  const stagedDatabase = await createProfileDatabase(
     databasePath,
     options.stagedCompanyId ?? 'company-1',
     true,
     pdfBytes,
+    migrationsDirectory,
   );
   stagedDatabase.close();
 
@@ -336,23 +362,15 @@ async function createFixture(
   };
 }
 
-function createProfileDatabase(
+async function createProfileDatabase(
   path: string,
   companyId: string,
   includeArtifact: boolean,
-  pdfBytes = Buffer.alloc(0),
-): Database.Database {
+  pdfBytes: Buffer,
+  migrationsDirectory: string,
+): Promise<Database.Database> {
   const database = new Database(path);
-  database.exec(`
-    CREATE TABLE schema_migrations (
-      name TEXT PRIMARY KEY,
-      run_at TEXT NOT NULL
-    );
-    ${migrationSql}
-  `);
-  database
-    .prepare('INSERT INTO schema_migrations (name, run_at) VALUES (?, ?)')
-    .run(migrationName, '2026-08-04T00:00:00.000Z');
+  await runMigrations(database, { migrationsDirectory });
   database
     .prepare(
       `

@@ -13,6 +13,8 @@ export type {
   InvoiceNumberingMode,
   InvoiceDraftSummary,
   InvoiceKind,
+  InvoiceIssuanceReadiness,
+  InvoiceIssuanceReadinessIssue,
   InvoiceLineDiscount,
   InvoicePriceInputMode,
   InvoicePerformancePeriod,

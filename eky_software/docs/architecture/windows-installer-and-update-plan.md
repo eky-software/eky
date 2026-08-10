@@ -8,6 +8,12 @@ restore -todistus ovat toteutettu 4.8.2026. Installeria,
 päivitysorkestrointia, code signingia tai update-UI:ta ei ole vielä toteutettu.
 Installeriteknologiaa tai uutta riippuvuutta ei ole valittu.
 
+Migration runnerin SHA-256-checksum-, chain identity- ja release/build-
+metadata on toteutettu 10.8.2026. Historiallinen mismatch torjutaan ennen
+pending-migraation SQL-kirjoitusta, ja legacy-kanta ankkuroidaan erikseen
+`legacy_baseline`-tilaan. Tämä ei vielä avaa N -> N+1 -päivityspolkua ilman
+pre-migration-palautuspistettä ja first-start-orkestrointia.
+
 10.8.2026 valmistunut teknologiakatselmus suosittelee R0-prototyypin
 ensisijaiseksi ehdokkaaksi per-user Windows Installer -MSI:tä nykyisen
 kovennetun Packager-outputin ympärillä. Tarkka WiX-versio, lisenssi ja uusi
@@ -92,6 +98,27 @@ eikä oikeaa käyttäjäprofiilia. Backend deployataan linkittömänä hoisted-
 rakenteena, ja symboliset linkit torjutaan jokaisessa inventoidussa vaiheessa.
 Packaged-smoke-helperit sallitaan vain täsmällisestä nimilistasta.
 
+Inventaario torjuu lisäksi Eky-projektin omat source mapit ja valvoo jokaiselle
+stagelle erikseen tiedostomäärää, kokonaiskokoa, loogisen UTF-8-polun pituutta,
+hakemistosyvyyttä ja yksittäisen projektin omistaman tiedoston kokoa. Kolmannen
+osapuolen `node_modules`-sourcemappeja ei poisteta tai hyväksytä sokkona: ne
+kuuluvat inventory-hashiin sekä määrä- ja kokorajoihin.
+
+10.8.2026 puhtaan nyky-artifactin mittaus ja sen päälle asetettu hallittu
+marginaali ovat:
+
+| Stage | Mitattu tiedostomäärä / raja | Mitattu koko / raja | UTF-8-polku / raja | Hakemistosyvyys / raja | Suurin projektitiedosto / raja |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `applicationStage` | 138 / 192 | 1 238 626 B / 2 MiB | 69 / 96 B | 3 / 5 | 602 826 B / 1 MiB |
+| `backendStage` | 2 298 / 2 700 | 50 736 073 B / 64 MiB | 90 / 128 B | 7 / 9 | 50 261 B / 256 KiB |
+| `desktopRuntimeStage` | 36 / 64 | 119 315 B / 1 MiB | 61 / 96 B | 1 / 3 | 11 961 B / 256 KiB |
+| `packagedApp` | 2 409 / 2 800 | 416 286 887 B / 512 MiB | 108 / 160 B | 9 / 11 | 1 276 118 B / 2 MiB |
+
+Rajoja ei nosteta vain siksi, että uusi artifacti ei mahdu niihin. Ylitys
+vaatii paketin sisällön tarkastuksen, perustellun dokumenttipäivityksen ja
+uuden puhtaan baseline-mittauksen. Pilot-manifestin nykyistä formaattia ei
+muuteta tällä kovennuksella.
+
 Normaali `package:windows` jää kehityskäyttöön. Erillinen
 `package:windows:pilot` vaatii puhtaan ja HEADiin sidotun buildin, `pilot`-
 kanavan, suljetun inventaarion ja validoidun pilot-sidecar-manifestin.
@@ -100,6 +127,46 @@ Kyse ei vielä ole installerista.
 Paikallinen pilot-profiili auditoidaan Eky suljettuna copy-only-työkalulla.
 Audit ei korjaa, nollaa tai tulosta business-dataa. Profiilin käsittelystä
 päätetään vasta turvallisen luokituksen jälkeen.
+
+Production-profiilia ei muodosteta kopioimalla kehitys-, E2E-, smoke- tai
+pilot-testiprofiilia eikä poistamalla siitä jälkikäteen tunnettua testidataa.
+Lopullinen profiili syntyy tyhjänä hallitulla bootstrapilla, ja testaus tehdään
+siitä erillisessä profiilissa tai käyttöjärjestelmärajassa.
+
+Lopullisen production-profiilin ensimmäinen hyväksytty lasku on oikea.
+Sama artifacti on sitä ennen testattu erillisellä synteettisellä profiililla,
+erillisellä Windows-käyttäjällä tai virtuaalikoneessa.
+
+Nykyinen paikallinen pilot-paketointi ei vielä täytä "build once, test once,
+distribute the same bytes" -release-sääntöä. Ensimmäinen installer-pipeline
+muodostaa yhden artifactin, sitoo sen manifestiin ja SHA-256-arvoon, ajaa
+hyväksytyt testit juuri sille artifactille ja jakelee saman artifactin ilman
+paikallista uudelleenrakennusta.
+
+### Production-datan ja backupin sisältöraja
+
+Siirrettävä business-backup ei kopioi tai arkistoi koko Electron
+`userData`-juurta. Backupin mukaan tulevat vain:
+
+- aktiivisen yritysprofiilin SQLite-tietokanta
+- moduuliomistajien backup-sopimuksissa auktoritatiivisiksi ilmoittamat
+  hyväksyttyjen laskujen PDF:t ja muut business-artifactit
+
+Backupin ulkopuolelle jäävät:
+
+- SMTP-salaisuus ja muut `safeStorage`-blobit
+- operational- ja security-lokit
+- tukipaketit
+- konekohtaiset recovery pointit
+- backup-, restore-, arkistointi- ja päivitysjournalit
+- konekohtaiset asetukset
+- installerit ja release-binaarit
+- synteettinen testi-, E2E-, smoke- ja fixture-data
+
+Yhteinen backup-infrastruktuuri ei etsi tiedostoja heuristisesti eikä oleta
+kaikkea `userData`-sisältöä auktoritatiiviseksi. Uusi moduuli tai pysyvä
+business-artifact ilmoittaa oman inclusion/exclusion-, snapshot-, restore-
+validator- ja recovery-sopimuksensa ennen kuin se voidaan ottaa backupiin.
 
 ## 6. Olemassa olevan asennuksen päivitys
 
@@ -284,9 +351,11 @@ Migraatiot ovat immutable ja vain eteenpäin ajettavia:
 - jo jaettua migraatiota ei muokata
 - uutta versiota ei hyväksytä katkenneella migration chainilla
 - migration alkaa vasta validoidun palautuspisteen jälkeen
-- ensimmäinen oikea N -> N+1 pysyy estettynä, kunnes `schema_migrations`-
-  malliin on päätetty historiallinen SQL-checksum, chain identity ja
-  release/build identity; mismatch torjutaan ennen schema-kirjoitusta
+- `schema_migrations`-historia sidotaan teknisessä metadatataulussa SQL-
+  checksumiin, ketjuidentiteettiin ja tallentaneeseen release/buildiin
+- mismatch torjutaan ennen pending-migraation schema-kirjoitusta
+- ensimmäinen oikea N -> N+1 pysyy estettynä, kunnes validoitu pre-migration-
+  palautuspiste ja first-start maintenance ympäröivät migration runnerin
 - virhe jättää uuden profiloitilan hyväksymättä
 - rollback palauttaa profiilin pre-update-pisteestä
 - reverse SQL -migraatiota ei ajeta

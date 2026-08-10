@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { runMigrations } from '../../database/migration/runMigrations.js';
 import { ProfileMaintenanceState } from '../profileMaintenance/profileMaintenanceState.js';
 import {
   createSqliteProfileSnapshotService,
@@ -219,30 +220,23 @@ async function createFixture(): Promise<{
   await chmod(stagingRoot, 0o700);
   await writeFile(
     join(migrationsDirectory, '001_create_probe.sql'),
-    'CREATE TABLE probe (value TEXT NOT NULL);',
+    `
+      CREATE TABLE local_runtime_identity (
+        singleton_key TEXT PRIMARY KEY,
+        installation_id TEXT NOT NULL,
+        company_id TEXT NOT NULL,
+        actor_id TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE probe (value TEXT NOT NULL);
+    `,
     'utf8',
   );
 
   const database = new Database(databasePath);
   database.pragma('foreign_keys = ON');
   database.pragma('journal_mode = WAL');
-  database.exec(`
-    CREATE TABLE schema_migrations (
-      name TEXT PRIMARY KEY,
-      run_at TEXT NOT NULL
-    );
-    CREATE TABLE local_runtime_identity (
-      singleton_key TEXT PRIMARY KEY,
-      installation_id TEXT NOT NULL,
-      company_id TEXT NOT NULL,
-      actor_id TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    );
-    CREATE TABLE probe (value TEXT NOT NULL);
-  `);
-  database
-    .prepare('INSERT INTO schema_migrations (name, run_at) VALUES (?, ?)')
-    .run('001_create_probe.sql', new Date().toISOString());
+  await runMigrations(database, { migrationsDirectory });
   database
     .prepare('INSERT INTO probe (value) VALUES (?)')
     .run('committed-in-wal');

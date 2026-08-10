@@ -120,6 +120,43 @@ describe('verifySqliteUpgradeCopy', () => {
     ).rejects.toThrow('active sidecar');
     database.close();
   });
+
+  it('anchors legacy metadata on the copy without changing the source', async () => {
+    const directory = await createTemporaryDirectory();
+    const sourceDatabaseFilePath = join(directory, 'legacy.sqlite');
+    const database = createDatabaseConnection({
+      databaseFilePath: sourceDatabaseFilePath,
+    });
+    await runMigrations(database);
+    database.exec('DROP TABLE schema_migration_metadata;');
+    database.close();
+    const sourceHashBefore = await sha256(sourceDatabaseFilePath);
+
+    await expect(
+      verifySqliteUpgradeCopy(sourceDatabaseFilePath),
+    ).resolves.toMatchObject({
+      migrationCount: 38,
+      originalHashUnchanged: true,
+    });
+
+    expect(await sha256(sourceDatabaseFilePath)).toBe(sourceHashBefore);
+    const reopenedSource = createDatabaseConnection({
+      databaseFilePath: sourceDatabaseFilePath,
+    });
+    expect(
+      reopenedSource
+        .prepare(
+          `
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'table'
+              AND name = 'schema_migration_metadata'
+          `,
+        )
+        .get(),
+    ).toBeUndefined();
+    reopenedSource.close();
+  });
 });
 
 async function createTemporaryDirectory(): Promise<string> {

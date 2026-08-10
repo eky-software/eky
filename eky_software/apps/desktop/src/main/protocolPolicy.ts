@@ -42,6 +42,12 @@ const backendRoutes: ReadonlyArray<{
     pathname: new RegExp(`^/invoice-drafts/${resourceId}/approve$`),
   },
   {
+    methods: new Set(['GET']),
+    pathname: new RegExp(
+      `^/invoice-drafts/${resourceId}/issuance-readiness$`,
+    ),
+  },
+  {
     methods: new Set(['GET', 'PUT']),
     pathname: new RegExp(`^/invoice-drafts/${resourceId}/credit$`),
   },

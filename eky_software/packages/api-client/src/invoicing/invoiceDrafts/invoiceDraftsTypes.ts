@@ -144,6 +144,22 @@ export interface ApproveInvoiceDraftInput {
   reverseChargeEligibilityConfirmed?: boolean;
 }
 
+export type InvoiceIssuanceReadinessIssue =
+  | 'billingRecipientAddressMissing'
+  | 'billingRecipientNameMissing'
+  | 'companyAddressMissing'
+  | 'companyBusinessIdMissing'
+  | 'companyIbanMissing'
+  | 'companyNameMissing'
+  | 'companyVatNumberMissing'
+  | 'customerAddressMissing'
+  | 'customerNameMissing';
+
+export interface InvoiceIssuanceReadiness {
+  isReady: boolean;
+  issues: InvoiceIssuanceReadinessIssue[];
+}
+
 export interface InvoiceDraftsApi {
   approveInvoiceDraft(
     id: string,
@@ -152,6 +168,7 @@ export interface InvoiceDraftsApi {
   createInvoiceDraft(input: InvoiceDraftInput): Promise<InvoiceDraft>;
   deleteInvoiceDraft(id: string): Promise<void>;
   getInvoiceDraft(id: string): Promise<InvoiceDraft>;
+  getInvoiceIssuanceReadiness(id: string): Promise<InvoiceIssuanceReadiness>;
   listInvoiceDrafts(
     query?: InvoiceDraftListQuery,
   ): Promise<InvoiceDraftSummary[]>;

@@ -258,6 +258,10 @@ function createApiClient(): InvoicingPageViewProps['apiClient'] {
   return {
     approveInvoiceDraft: vi.fn(),
     createInvoiceDraft: vi.fn(),
+    getInvoiceIssuanceReadiness: vi.fn(async () => ({
+      isReady: true,
+      issues: [],
+    })),
     updateInvoiceDraft: vi.fn(),
   };
 }

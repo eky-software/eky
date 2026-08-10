@@ -80,6 +80,49 @@ describe('invoice drafts api client', () => {
     ]);
   });
 
+  it('gets and validates issuance readiness through its read-only route', async () => {
+    const requests = createRequestLog();
+    const client = createTestClient(requests, {
+      invoiceIssuanceReadiness: {
+        isReady: false,
+        issues: ['companyIbanMissing'],
+      },
+    });
+
+    await expect(
+      client.getInvoiceIssuanceReadiness('draft/1'),
+    ).resolves.toEqual({
+      isReady: false,
+      issues: ['companyIbanMissing'],
+    });
+    expect(requests[0]?.input).toBe(
+      '/invoice-drafts/draft%2F1/issuance-readiness',
+    );
+    expect(requests[0]?.init?.method).toBeUndefined();
+  });
+
+  it('rejects unknown or contradictory issuance readiness responses', async () => {
+    const unknownIssueClient = createTestClient(createRequestLog(), {
+      invoiceIssuanceReadiness: {
+        isReady: false,
+        issues: ['technicalDatabaseDetailsMissing'],
+      },
+    });
+    const contradictoryClient = createTestClient(createRequestLog(), {
+      invoiceIssuanceReadiness: {
+        isReady: true,
+        issues: ['companyIbanMissing'],
+      },
+    });
+
+    await expect(
+      unknownIssueClient.getInvoiceIssuanceReadiness('draft-1'),
+    ).rejects.toBeInstanceOf(EkyApiError);
+    await expect(
+      contradictoryClient.getInvoiceIssuanceReadiness('draft-1'),
+    ).rejects.toBeInstanceOf(EkyApiError);
+  });
+
   it('accepts package and short custom units in draft responses', async () => {
     const requests = createRequestLog();
     const invoiceDraft = {

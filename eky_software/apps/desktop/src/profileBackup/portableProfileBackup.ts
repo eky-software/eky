@@ -20,7 +20,7 @@ import type {
 } from './portableProfileBackupTypes.js';
 
 const portableBackupExtension = '.ekybackup';
-const temporaryFileSuffix = '.next';
+const temporaryFileSuffix = '.partial';
 
 export type PortableProfileBackupErrorCode =
   | 'PROFILE_BACKUP_BUSY'

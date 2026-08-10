@@ -137,6 +137,34 @@ Manifesti ja inventaario todistavat suljetun sisällön sekä jäljitettävyyden
 eivät vielä publisheria tai digitaalista alkuperää. Varsinainen installer-
 manifesti, code signing ja `stable`-kanava kuuluvat myöhempään release gateen.
 
+### Pilot-artifactin alkuperä
+
+Nykyinen paikallinen `package:windows:pilot`-komento todentaa puhtaan työpuun,
+HEAD-revision, build-infon, manifestin ja suljetun paketti-inventaarion. Se ei
+vielä todista, että käyttäjälle annettu artifacti on täsmälleen sama tavujono,
+jonka CI testasi. Paikallisesti CI-ajon jälkeen uudelleen rakennettua pakettia
+ei saa nimetä CI-testatuksi release-artifactiksi, vaikka lähdecommit olisi sama.
+
+Ensimmäisen installer- ja päivityspolun release pipeline muodostaa artifactin
+vain kerran, testaa juuri sen artifactin ja julkaisee saman hashilla sidotun
+artifactin ilman paikallista uudelleenrakennusta. Manifesti, package inventory,
+testitulokset ja myöhempi allekirjoitus sidotaan samaan artifactiin.
+
+### Production-profiilin puhtaus
+
+Lopullinen production-profiili luodaan tyhjästä sovelluksen hallitulla
+bootstrapilla. Siihen ei kopioida eikä myöhemmin poistamalla "puhdisteta"
+synteettisiä asiakkaita, laskuja, sähköposteja, salaisuuksia, smoke-fixturejä
+tai muuta testidataa.
+
+Lopullisen production-profiilin ensimmäinen hyväksytty lasku on oikea.
+Sama artifacti on sitä ennen testattu erillisellä synteettisellä profiililla,
+erillisellä Windows-käyttäjällä tai virtuaalikoneessa.
+
+Production-profiili, testiprofiili ja release-artifact ovat eri asioita.
+Release-artifact ei sisällä profiilia tai business dataa, eikä testi- tai
+production-profiilia käytetä artifactin alkuperän todisteena.
+
 ## Liittyvät dokumentit
 
 - `docs/architecture/local-desktop-dependency-review.md`

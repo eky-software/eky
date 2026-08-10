@@ -16,7 +16,10 @@ import {
 } from '../connection/createDatabaseConnection.js';
 import { runMigrations } from '../migration/runMigrations.js';
 
-const ignoredCountComparisonTables = new Set(['schema_migrations']);
+const ignoredCountComparisonTables = new Set([
+  'schema_migration_metadata',
+  'schema_migrations',
+]);
 const safeTableNamePattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export interface SqliteUpgradeCopyVerification {

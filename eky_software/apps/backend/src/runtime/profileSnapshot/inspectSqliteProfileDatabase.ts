@@ -1,14 +1,13 @@
 import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { isAbsolute } from 'node:path';
 
 import Database from 'better-sqlite3';
 
 import { readLocalRuntimeIdentity } from '../../database/localRuntimeIdentityReader.js';
+import { readMigrationManifest } from '../../database/migration/migrationManifest.js';
+import { inspectMigrationHistory } from '../../database/migration/migrationMetadata.js';
 
-const migrationFileNamePattern = /^\d{3}_[A-Za-z0-9_]+\.sql$/;
 const profileIdentityDomain = 'Eky profile identity v1\0';
-const migrationIdentityDomain = 'Eky migration chain v1\0';
 
 export interface SqliteProfileDatabaseInspection {
   migrationChainIdentity: string;
@@ -38,17 +37,16 @@ export function inspectSqliteProfileDatabase(
       throw new Error('PROFILE_SNAPSHOT_DATABASE_INVALID');
     }
 
-    const expectedMigrations = readExpectedMigrations(migrationsDirectory);
-    const appliedMigrations = database
-      .prepare<[], { name: string }>(
-        'SELECT name FROM schema_migrations ORDER BY name',
-      )
-      .all()
-      .map(({ name }) => name);
+    const expectedMigrations = readMigrationManifest(migrationsDirectory);
+    const migrationHistory = inspectMigrationHistory(
+      database,
+      expectedMigrations,
+    );
 
     if (
-      appliedMigrations.length !== expectedMigrations.length ||
-      appliedMigrations.some(
+      migrationHistory.appliedMigrationNames.length !==
+        expectedMigrations.length ||
+      migrationHistory.appliedMigrationNames.some(
         (migration, index) =>
           migration !== expectedMigrations[index]?.fileName,
       )
@@ -59,9 +57,7 @@ export function inspectSqliteProfileDatabase(
     const identity = readLocalRuntimeIdentity(database);
 
     return {
-      migrationChainIdentity: createMigrationChainIdentity(
-        expectedMigrations,
-      ),
+      migrationChainIdentity: migrationHistory.migrationChainIdentity,
       profileId: createProfileBackupIdentity(identity.companyId),
     };
   } finally {
@@ -74,48 +70,4 @@ export function createProfileBackupIdentity(companyId: string): string {
     .update(profileIdentityDomain, 'utf8')
     .update(companyId, 'utf8')
     .digest('hex');
-}
-
-interface ExpectedMigration {
-  content: Buffer;
-  fileName: string;
-}
-
-function readExpectedMigrations(
-  migrationsDirectory: string,
-): ExpectedMigration[] {
-  return readdirSync(migrationsDirectory)
-    .filter((fileName: string) => fileName.endsWith('.sql'))
-    .sort()
-    .map((fileName: string) => {
-      if (!migrationFileNamePattern.test(fileName)) {
-        throw new Error('PROFILE_SNAPSHOT_MIGRATIONS_INVALID');
-      }
-
-      return {
-        content: readFileSync(join(migrationsDirectory, fileName)),
-        fileName,
-      };
-    });
-}
-
-function createMigrationChainIdentity(
-  migrations: readonly ExpectedMigration[],
-): string {
-  const hash = createHash('sha256').update(
-    migrationIdentityDomain,
-    'utf8',
-  );
-
-  for (const migration of migrations) {
-    const fileName = Buffer.from(migration.fileName, 'utf8');
-    const lengths = Buffer.alloc(8);
-    lengths.writeUInt32BE(fileName.byteLength, 0);
-    lengths.writeUInt32BE(migration.content.byteLength, 4);
-    hash.update(lengths);
-    hash.update(fileName);
-    hash.update(migration.content);
-  }
-
-  return hash.digest('hex');
 }

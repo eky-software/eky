@@ -1009,6 +1009,19 @@ async function startDesktopCompositionRuntime({
           supportBundlePath: requireSmokeSupportBundlePath(
             smokeSupportBundlePath,
           ),
+          writeBackupDiagnosticFixture() {
+            desktopOperationalLogger.write(
+              createDesktopOperationalEvent(
+                {
+                  correlationId: randomUUID(),
+                  durationMs: 1,
+                  eventName: 'backup.completed',
+                  stage: 'portable',
+                },
+                desktopOperationalIdentity,
+              ),
+            );
+          },
           reportStage: options.reportSmokeStage,
         });
         await runPackagedProfileBackupBeforeRestore({

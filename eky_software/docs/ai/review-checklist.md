@@ -59,6 +59,10 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
 - Onko backup-salasana, avainmateriaali, payload ja paikallinen polku poissa
   rendereristä, lokeista ja tukipaketista?
 - Vaatiiko schemaa muuttava päivitys validoidun pre-update-palautuspisteen?
+- Vastaavatko `schema_migrations`, migration metadata ja packaged SQL-
+  manifesti toisiaan ennen pending-migraation ensimmäistä kirjoitusta?
+- Säilyvätkö legacy-baseline ja uutena ajettu migraatio erotettavina ilman
+  tekaistua historiallista release-identiteettiä?
 - Omistaako asennin vain binaarit eikä business dataa, salaisuuksia tai
   palautuspisteitä?
 - Käynnistääkö Electron main updaterin ilman shell-merkkijonoa ja ilman

@@ -28,6 +28,7 @@ import {
 } from '../modules/invoicing/application/getApprovedInvoicePdfDocument.js';
 import { getApprovedInvoicePdfMetadata } from '../modules/invoicing/application/getApprovedInvoicePdfMetadata.js';
 import { getInvoiceDraft } from '../modules/invoicing/application/getInvoiceDraft.js';
+import { getInvoiceIssuanceReadiness } from '../modules/invoicing/application/getInvoiceIssuanceReadiness.js';
 import { getCreditInvoiceDraft } from '../modules/invoicing/application/getCreditInvoiceDraft.js';
 import { getInvoiceCreditContext } from '../modules/invoicing/application/getInvoiceCreditContext.js';
 import { getInvoiceNumberingSettings } from '../modules/invoicing/application/getInvoiceNumberingSettings.js';
@@ -74,6 +75,7 @@ import { SqliteInvoiceCreditDraftRepository } from '../modules/invoicing/infrast
 import { SqliteInvoiceDeliveryEventRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceDeliveryEventRepository.js';
 import { SqliteInvoiceDocumentRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceDocumentRepository.js';
 import { SqliteInvoiceDraftRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceDraftRepository.js';
+import { SqliteInvoiceIssuanceReadinessReader } from '../modules/invoicing/infrastructure/sqliteInvoiceIssuanceReadinessReader.js';
 import { SqliteInvoiceActivityReader } from '../modules/invoicing/infrastructure/sqliteInvoiceActivityReader.js';
 import { SqliteInvoiceBackupArtifactCatalog } from '../modules/invoicing/infrastructure/sqliteInvoiceBackupArtifactCatalog.js';
 import { SqliteInvoiceNumberingRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceNumberingRepository.js';
@@ -132,6 +134,8 @@ export function createInvoicingComposition(
     options.database,
   );
   const invoiceDraftRepository = new SqliteInvoiceDraftRepository(options.database);
+  const invoiceIssuanceReadinessReader =
+    new SqliteInvoiceIssuanceReadinessReader(options.database);
   const invoiceApprovalRepository = new SqliteInvoiceApprovalRepository(
     options.database,
   );
@@ -262,6 +266,8 @@ export function createInvoicingComposition(
       deleteInvoiceDraft: (input) =>
         deleteInvoiceDraft(input, invoiceDraftRepository),
       getInvoiceDraft: (input) => getInvoiceDraft(input, invoiceDraftRepository),
+      getInvoiceIssuanceReadiness: (input) =>
+        getInvoiceIssuanceReadiness(input, invoiceIssuanceReadinessReader),
       listInvoiceDrafts: (input) =>
         listInvoiceDrafts(input, invoiceDraftRepository),
       saveInvoiceDraft: (input) =>

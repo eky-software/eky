@@ -4,12 +4,14 @@ import {
   readDeleteInvoiceDraftResponse,
   readInvoiceDraftListResponse,
   readInvoiceDraftResponse,
+  readInvoiceIssuanceReadinessResponse,
 } from './invoiceDraftsResponse.js';
 import { serializeInvoiceDraftInput } from './invoiceDraftsSerialization.js';
 import type {
   ApprovedInvoiceResult,
   InvoiceDraft,
   InvoiceDraftInput,
+  InvoiceIssuanceReadiness,
   InvoiceDraftsApi,
   InvoiceDraftSummary,
 } from './invoiceDraftsTypes.js';
@@ -72,6 +74,18 @@ export function createInvoiceDraftsApi(
       );
 
       return readInvoiceDraftResponse(responseBody);
+    },
+
+    async getInvoiceIssuanceReadiness(
+      id,
+    ): Promise<InvoiceIssuanceReadiness> {
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        `/invoice-drafts/${encodeURIComponent(id)}/issuance-readiness`,
+      );
+
+      return readInvoiceIssuanceReadinessResponse(responseBody);
     },
 
     async listInvoiceDrafts(query = {}): Promise<InvoiceDraftSummary[]> {

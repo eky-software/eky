@@ -168,9 +168,15 @@ export async function createApp(
   try {
     await runMigrations(
       database,
-      options.migrationsDirectory === undefined
-        ? {}
-        : { migrationsDirectory: options.migrationsDirectory },
+      {
+        ...(options.migrationsDirectory === undefined
+          ? {}
+          : { migrationsDirectory: options.migrationsDirectory }),
+        releaseIdentity: {
+          appVersion: operationalIdentity.appVersion,
+          buildRevision: operationalIdentity.buildRevision,
+        },
+      },
     );
     operationalLogger.write(
       createBackendOperationalEvent(
