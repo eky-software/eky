@@ -77,7 +77,7 @@ export async function readInstallerManifest(path) {
   let value;
   try {
     await assertRegularManifestFile(path);
-    value = JSON.parse(await readFile(path, 'utf8'));
+    value = parseInstallerManifestJson(await readFile(path, 'utf8'));
   } catch {
     throw new Error('INSTALLER_MANIFEST_MISSING_OR_INVALID');
   }
@@ -123,7 +123,7 @@ export function validateInstallerManifest(value) {
     typeof value.appVersion !== 'string' ||
     typeof value.msiProductVersion !== 'string' ||
     !revisionPattern.test(value.buildRevision) ||
-    !['pilot', 'stable'].includes(value.releaseChannel) ||
+    value.releaseChannel !== 'pilot' ||
     value.platform !== 'win32' ||
     value.architecture !== 'x64' ||
     value.packageKind !== 'windows-installer-msi' ||
@@ -196,4 +196,121 @@ async function assertRegularManifestFile(path) {
 
 function isRecord(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseInstallerManifestJson(source) {
+  const value = JSON.parse(source);
+  assertNoDuplicateJsonObjectKeys(source);
+  return value;
+}
+
+function assertNoDuplicateJsonObjectKeys(source) {
+  let offset = 0;
+
+  function skipWhitespace() {
+    while (/\s/u.test(source[offset] ?? '')) {
+      offset += 1;
+    }
+  }
+
+  function readString() {
+    const start = offset;
+    offset += 1;
+    while (offset < source.length) {
+      if (source[offset] === '\\') {
+        offset += 2;
+        continue;
+      }
+      if (source[offset] === '"') {
+        offset += 1;
+        return JSON.parse(source.slice(start, offset));
+      }
+      offset += 1;
+    }
+    throw new Error('INSTALLER_MANIFEST_MISSING_OR_INVALID');
+  }
+
+  function readValue() {
+    skipWhitespace();
+    if (source[offset] === '{') {
+      readObject();
+      return;
+    }
+    if (source[offset] === '[') {
+      readArray();
+      return;
+    }
+    if (source[offset] === '"') {
+      readString();
+      return;
+    }
+    while (
+      offset < source.length &&
+      !/[\s,\]}]/u.test(source[offset])
+    ) {
+      offset += 1;
+    }
+  }
+
+  function readObject() {
+    const keys = new Set();
+    offset += 1;
+    skipWhitespace();
+    if (source[offset] === '}') {
+      offset += 1;
+      return;
+    }
+    while (offset < source.length) {
+      skipWhitespace();
+      const key = readString();
+      if (keys.has(key)) {
+        throw new Error('INSTALLER_MANIFEST_MISSING_OR_INVALID');
+      }
+      keys.add(key);
+      skipWhitespace();
+      if (source[offset] !== ':') {
+        throw new Error('INSTALLER_MANIFEST_MISSING_OR_INVALID');
+      }
+      offset += 1;
+      readValue();
+      skipWhitespace();
+      if (source[offset] === '}') {
+        offset += 1;
+        return;
+      }
+      if (source[offset] !== ',') {
+        throw new Error('INSTALLER_MANIFEST_MISSING_OR_INVALID');
+      }
+      offset += 1;
+    }
+    throw new Error('INSTALLER_MANIFEST_MISSING_OR_INVALID');
+  }
+
+  function readArray() {
+    offset += 1;
+    skipWhitespace();
+    if (source[offset] === ']') {
+      offset += 1;
+      return;
+    }
+    while (offset < source.length) {
+      readValue();
+      skipWhitespace();
+      if (source[offset] === ']') {
+        offset += 1;
+        return;
+      }
+      if (source[offset] !== ',') {
+        throw new Error('INSTALLER_MANIFEST_MISSING_OR_INVALID');
+      }
+      offset += 1;
+    }
+    throw new Error('INSTALLER_MANIFEST_MISSING_OR_INVALID');
+  }
+
+  readValue();
+  skipWhitespace();
+  if (offset !== source.length) {
+    throw new Error('INSTALLER_MANIFEST_MISSING_OR_INVALID');
+  }
 }
