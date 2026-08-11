@@ -62,8 +62,11 @@ describe('Windows installer update handoff', () => {
       },
       vi.fn(() => processHandle) as never,
     );
+    const rejection = expect(result).rejects.toThrow(
+      WindowsInstallerHandoffError,
+    );
     processHandle.emit('error', new Error('synthetic failure'));
-    await expect(result).rejects.toThrow(WindowsInstallerHandoffError);
+    await rejection;
   });
 });
 

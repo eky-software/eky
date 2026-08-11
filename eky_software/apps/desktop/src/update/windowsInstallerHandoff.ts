@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { isAbsolute, join, resolve } from 'node:path';
+import { win32 } from 'node:path';
 
 type SpawnProcess = typeof spawn;
 
@@ -46,19 +46,19 @@ export function resolveWindowsInstallerExecutable(
   if (
     systemRoot === undefined ||
     systemRoot.includes('\0') ||
-    !isAbsolute(systemRoot) ||
-    resolve(systemRoot) !== systemRoot
+    !win32.isAbsolute(systemRoot) ||
+    win32.resolve(systemRoot) !== systemRoot
   ) {
     throw new WindowsInstallerHandoffError();
   }
-  return join(systemRoot, 'System32', 'msiexec.exe');
+  return win32.join(systemRoot, 'System32', 'msiexec.exe');
 }
 
 function assertSafePackagePath(packagePath: string): void {
   if (
     packagePath.includes('\0') ||
-    !isAbsolute(packagePath) ||
-    resolve(packagePath) !== packagePath ||
+    !win32.isAbsolute(packagePath) ||
+    win32.resolve(packagePath) !== packagePath ||
     !packagePath.toLowerCase().endsWith('.msi')
   ) {
     throw new WindowsInstallerHandoffError();
