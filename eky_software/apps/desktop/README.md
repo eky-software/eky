@@ -19,9 +19,12 @@ boundaries. Oma yritys exposes only the named desktop backup/restore
 capabilities. The hardened Windows smoke proves the encrypted backup ->
 inspect -> restore -> second process -> exact database/PDF comparison chain,
 a new runtime session and machine-local secret continuity with synthetic data.
-Windows installer/update architecture is accepted but remains unimplemented.
-The current unpacked `out/Eky-win32-x64` directory is a development/package
-artifact, not an installer or an automatically updating release.
+A restricted per-user x64 MSI prototype is implemented. Its install, repair,
+uninstall, two-version major upgrade, downgrade rejection, and Windows
+Installer binary rollback boundaries are verified with synthetic data. The
+update coordinator, code signing, and automatic update path remain
+unimplemented. The unpacked `out/Eky-win32-x64` directory is still a
+development/package artifact rather than an automatically updating release.
 
 ## Commands
 
@@ -32,6 +35,16 @@ pnpm --filter @eky/desktop package:windows
 pnpm --filter @eky/desktop package:windows:pilot
 pnpm --filter @eky/desktop smoke:windows
 pnpm --filter @eky/desktop profile:audit
+pnpm --filter @eky/desktop installer:test
+pnpm --filter @eky/desktop installer:build
+pnpm --filter @eky/desktop installer:inspect -- -MsiPath <path-to-msi>
+pnpm --filter @eky/desktop installer:lifecycle -- -MsiPath <path-to-msi> -PayloadRoot <path-to-payload> -ProductCode <product-code>
+pnpm --filter @eky/desktop installer:release
+pnpm --filter @eky/desktop installer:verify-restore-lock
+pnpm --filter @eky/desktop installer:verify-release
+pnpm --filter @eky/desktop installer:release-lifecycle
+pnpm --filter @eky/desktop installer:build-upgrade-fixture
+pnpm --filter @eky/desktop installer:upgrade -- -FixturePath <path-to-fixture.json>
 ```
 
 The unpacked spike is created under `apps/desktop/out/Eky-win32-x64`.
@@ -42,6 +55,39 @@ stricter pre-installer gate: it requires a clean worktree, matching Git HEAD,
 valid SemVer/build identity, the `pilot` channel, a closed artifact inventory
 and a validated sidecar manifest. This still produces an unpacked pilot
 application, not an installer.
+
+The MSI is built from the exact hardened `out/Eky-win32-x64` payload and owns
+only application binaries, static resources, its fixed per-user installation
+root under `%LOCALAPPDATA%\\Programs\\Eky`, and the Eky Start Menu shortcut.
+It never owns or searches `%APPDATA%\\Eky`, SQLite databases, profiles,
+business PDFs, logs, safeStorage secrets, backups, recovery points, support
+bundles, or an external invoice PDF archive. The current unsigned MSI is an
+engineering prototype and must not be distributed for real-data use.
+
+`installer:release` requires a clean worktree and full Git HEAD revision. It
+builds the MSI exactly once, runs the read-only MSI inspector, and then writes
+a closed `.manifest.json` sidecar bound to the exact MSI filename, release
+identity, Git revision, byte size, and SHA-256. `installer:verify-release`
+rechecks the same bytes without rebuilding, and `installer:release-lifecycle`
+uses only that verified MSI for install, repair, and uninstall checks. The CI
+gate does not yet upload, sign, or distribute the prototype artifacts.
+
+The locked WiX restore runs twice and rejects any `packages.lock.json` drift.
+Only the documented per-user `ICE91` warning is suppressed; every other WiX
+or ICE warning fails the build. Upgrade tests reuse the exact bound N MSI,
+exercise N -> N+1 while the Electron main and utility/backend processes are
+running, and verify that uninstall removes installer-owned HKCU and ARP state.
+WiX and .NET build tools are never part of the MSI runtime payload.
+
+The sidecar status `unsigned-prototype` and its SHA-256 prove byte integrity,
+not publisher trust. A future signed release must sign before creating the
+final hash and manifest, and all lifecycle tests must then use those exact
+signed bytes.
+
+The current application version remains the prerelease SemVer
+`0.1.0-alpha.1`. Windows Installer separately compares the numeric MSI
+ProductVersion `0.1.1`. Removing `alpha` is a future explicit stable-release
+decision, not an installer formatting change.
 
 `profile:audit` is a Windows-only, copy-only local profile audit. Close Eky
 before running it. The command never opens the active SQLite database for

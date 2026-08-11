@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" RequiredVersion="7.0.0">
+  <Package
+    Name="Eky"
+    Manufacturer="Eky"
+    Version="$(EkyMsiProductVersion)"
+    ProductCode="$(EkyProductCode)"
+    UpgradeCode="$(EkyUpgradeCode)"
+    Language="1035"
+    Scope="perUser"
+    InstallerVersion="500"
+    Compressed="yes">
+    <MajorUpgrade
+      AllowDowngrades="no"
+      AllowSameVersionUpgrades="no"
+      DowngradeErrorMessage="Uudempi Eky-versio on jo asennettu. Vanhempaa versiota ei voi asentaa sen päälle."
+      IgnoreRemoveFailure="no"
+      Schedule="afterInstallExecute" />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="EkyProgramsDirectory" Name="Programs">
+        <Directory Id="EkyInstallFolder" Name="Eky" />
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="Eky" />
+    </StandardDirectory>
+
+    <Feature
+      Id="MainFeature"
+      Title="Eky"
+      Level="1"
+      AllowAbsent="no"
+      AllowAdvertise="no">
+      <ComponentGroupRef Id="EkyPayloadComponents" />
+    </Feature>
+  </Package>
+</Wix>

@@ -93,6 +93,13 @@ jaeltua MSI-versiota varten aikaisempaa suurempi. Toteutuksen validaattori
 rajaa kaikki kolme osaa valitun Windows Installer -työkaluketjun hyväksymiin
 numeerisiin rajoihin.
 
+Nykyisen installer-prototyypin sovellusversio on `0.1.0-alpha.1` ja MSI:n
+Windows-vertailuversio `0.1.1`. `alpha` kuuluu tarkoituksella käyttäjälle ja
+runtimelle näkyvään ennakkoversioon, mutta sitä ei voi eikä pidä sisällyttää
+MSI:n numeeriseen `ProductVersion`-kenttään. Ennakkoversiotunniste poistetaan
+vasta erillisellä stable-release-päätöksellä, ei installerin teknisenä
+sivuvaikutuksena.
+
 Yksi jaeltu `appVersion` ja `msiProductVersion`-pari vastaa yhtä täsmällistä
 MSI-artifactia. Samaa `appVersion`-arvoa ei käytetä eri payloadille:
 
@@ -180,6 +187,19 @@ Ensimmäisen installer- ja päivityspolun release pipeline muodostaa artifactin
 vain kerran, testaa juuri sen artifactin ja julkaisee saman hashilla sidotun
 artifactin ilman paikallista uudelleenrakennusta. Manifesti, package inventory,
 testitulokset ja myöhempi allekirjoitus sidotaan samaan artifactiin.
+
+Nykyinen Windows MSI -release gate toteuttaa build-once-, inspect- ja
+SHA-256-sidecar-sidonnan. Se varmentaa samat MSI-tavut vielä lifecycle- ja
+upgrade-fixture-testien jälkeen. CI ei tässä vaiheessa lataa MSI:tä
+release-jakeluun eikä väitä allekirjoittamatonta prototyyppiä julkaistuksi
+artifactiksi.
+
+Upgrade-fixture käyttää N-versiona juuri tätä sidecarilla sidottua MSI:tä eikä
+rakenna release-N:ää uudelleen. Synteettiset N+1- ja rollback-paketit ovat
+erillisiä testiartifacteja. Tulevassa allekirjoitetussa releaseputkessa signing
+tehdään ennen lopullista SHA-256-tiivistettä ja manifestia; lifecycle- ja
+upgrade-portit käyttävät sen jälkeen täsmälleen samoja allekirjoitettuja
+tavuja. Nykyinen `unsigned-prototype`-sidecar ei väitä publisher trustia.
 
 ### Production-profiilin puhtaus
 

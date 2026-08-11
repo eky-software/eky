@@ -4,9 +4,10 @@
 
 Arkkitehtuuripäätös on hyväksytty ADR-0010:ssä. ADR-0009:n salattu
 backup/restore, recovery pointit, aktivointijournal ja Windows packaged
-restore -todistus ovat toteutettu 4.8.2026. Installeria,
-päivitysorkestrointia, code signingia tai update-UI:ta ei ole vielä toteutettu.
-Installeriteknologiaa tai uutta riippuvuutta ei ole valittu.
+restore -todistus ovat toteutettu 4.8.2026. Rajattu per-user x64 MSI-
+prototyyppi on toteutettu ja sen install-, repair-, uninstall-, major upgrade-,
+downgrade-esto- ja binary rollback -rajat on todennettu synteettisellä datalla.
+Päivitysorkestrointia, code signingia tai update-UI:ta ei ole vielä toteutettu.
 
 Migration runnerin SHA-256-checksum-, chain identity- ja release/build-
 metadata on toteutettu 10.8.2026. Historiallinen mismatch torjutaan ennen
@@ -14,11 +15,13 @@ pending-migraation SQL-kirjoitusta, ja legacy-kanta ankkuroidaan erikseen
 `legacy_baseline`-tilaan. Tämä ei vielä avaa N -> N+1 -päivityspolkua ilman
 pre-migration-palautuspistettä ja first-start-orkestrointia.
 
-10.8.2026 valmistunut teknologiakatselmus suosittelee R0-prototyypin
-ensisijaiseksi ehdokkaaksi per-user Windows Installer -MSI:tä nykyisen
-kovennetun Packager-outputin ympärillä. Tarkka WiX-versio, lisenssi ja uusi
-build tool vaativat vielä projektin omistajan erillisen riippuvuuspäätöksen.
-Suositus ei muuta ADR-0010:n hyväksyttyä rajaa eikä aloita toteutusta.
+Projektin omistaja hyväksyi 10.8.2026 ensimmäiseen per-user x64 MSI-
+prototyyppiin `WixToolset.Sdk` 7.0.0:n, .NET SDK 10.0.302:n ja SHA-lukitun
+virallisen `actions/setup-dotnet`-actionin build-työkaluiksi. Omistaja hyväksyi
+WiX 7:n MS-RL- ja OSMF EULA -ehdot ja vastaa mahdollisen ylläpitomaksun
+soveltuvuuden selvittämisestä. Hyväksyntä ei kata WiX-extensioneita, custom
+actioneita, Burnia, runtime-riippuvuutta tai allekirjoittamattoman prototyypin
+jakelua oikeaan käyttöön.
 
 ### Installer entry -checkpointit
 
@@ -30,7 +33,100 @@ Suositus ei muuta ADR-0010:n hyväksyttyä rajaa eikä aloita toteutusta.
 | A4 Package inventory final audit | valmis (`1436442`) | Installer-payload torjuu Eky-runtimejäämät, yksityisavaimet ja service-account-tunnisteet sekä vaatii vendor-jäämille täsmällisen katselmoinnin |
 | A5 MSI version contract | valmis (`7aa1213`) | Täysi SemVer `appVersion` ja monotoninen numeerinen `msiProductVersion` ovat eri release-sopimuksia |
 | A6 Package trust and private staging | valmis (`ae070e5`) | Vain uudelleen varmennettu yksityinen staging-artifacti voidaan suorittaa |
-| A7 WiX dependency decision | raportti valmis, odottaa omistajan päätöstä | `WixToolset.Sdk` 7.0.0-, .NET SDK 10.0.302-, OSMF EULA- ja CI-portti on kuvattu teknologiakatselmuksessa; mitään ei ole asennettu |
+| A7 WiX dependency decision | hyväksytty 10.8.2026 | `WixToolset.Sdk` 7.0.0, .NET SDK 10.0.302, SHA-lukittu `actions/setup-dotnet`, MS-RL ja OSMF EULA hyväksyttiin rajattuun per-user x64 -prototyyppiin |
+
+### Per-user MSI -prototyypin checkpointit
+
+| Checkpoint | Tila | Huomio |
+| --- | --- | --- |
+| B1 Installer composition | valmis (`436949f`) | Installerin build-työkalut, suljettu release-konfiguraatio sekä version, identiteetin ja sidecar-manifestin sopimukset |
+| B2 Identity and install root | valmis (`986d0b6`) | Vakaa UpgradeCode, versiokohtainen ProductCode, vakaat component-GUIDit, per-user `%LOCALAPPDATA%\\Programs\\Eky` ja read-only MSI-inspektori |
+| B3 Install, repair and uninstall | valmis (`94b4479`) | Puhdas asennus, pakotettu repair, uninstall/reinstall sekä business-datan ja poistettavuuden todennus |
+| B4 Two-version upgrade | valmis (`496d409`) | Kahden synteettisen version major upgrade, downgrade-esto, rollback ja Windows-virhepolut |
+| B5 Build once and sidecar | valmis (`f0f2e2f`) | MSI rakennetaan kerran, validoidaan ja sidotaan täsmälleen samoihin tavuihin SHA-256-sidecarilla; CI ei vielä julkaise artifactia |
+| B6 Release gate hardening | valmis (`0db338b`) | Lukittu restore toistetaan ilman lock-driftiä, vain ICE91 suppressataan, uninstall todentaa HKCU/ARP-siivouksen ja N -> N+1 testataan käynnissä olevalla Eky- ja utility-prosessilla samoista sidotuista N-tavuista |
+
+B2-prototyypin MSI sisältää vain nykyisen kovennetun Windows-payloadin,
+rekisteripohjaiset per-user key pathit, MSI:n omistamien asennushakemistojen
+tyhjien kansioiden poistomerkinnät ja yhden Start Menu -pikakuvakkeen.
+Read-only-inspektori varmistaa ProductCode-, UpgradeCode-, ProductVersion-,
+scope-, install root-, komponentti-, tiedosto-, rekisteri-, RemoveFile- ja
+shortcut-sopimukset sekä sen, ettei paketissa ole custom actioneita tai
+business-datan tunnettuja standardihakemistoja.
+
+WiX:n ICE-validointi ajetaan eikä sitä poisteta käytöstä. Vain täsmällinen
+`ICE91` on suppressattu WiX-projektissa; yleistä warning suppressionia ei
+käytetä ja kaikki muut WiX- sekä ICE-varoitukset käsitellään buildin
+pysäyttävinä virheinä. Puhtaasti per-user-
+scopeen rajattu prototyyppi tuottaa yhden ICE91-varoituksen jokaisesta
+payload-tiedostosta, koska tiedostojen hakemistopolku ei vaihdu mahdollisen
+`ALLUSERS`-arvon mukaan. Paketti ei tue per-machine-asennusta eikä aseta
+`ALLUSERS`- tai dual-purpose `MSIINSTALLPERUSER` -ominaisuutta, joten varoitus
+on tässä rajatussa prototyypissä tunnettu scope-huomio. Muut ICE-virheet ja
+-varoitustyypit käsitellään ennen checkpointin hyväksymistä.
+
+B3-elinkaaritesti kieltäytyy ajosta, jos samalla ProductCodella rekisteröity
+Eky, olemassa oleva install root tai käynnissä oleva Eky-prosessi havaitaan.
+Testi asentaa MSI:n hiljaisesti ilman restartia, vertaa kaikki asennetut
+payload-tiedostot alkuperäiseen paketoituun artifactiin SHA-256-arvoilla,
+poistaa yhden rajatun tiedoston ja todentaa pakotetun Windows Installer
+repairin. Tämän jälkeen testi todentaa uninstallin, reinstallin, uuden
+uninstallin, pikakuvakkeen, installerin oman `HKCU\\Software\\Eky\\Installer`-
+avaimen ja Windowsin ARP-merkinnän poistumisen sekä olemassa olevan `%APPDATA%\\Eky`-
+profiilin muuttumattomuuden. Onnistuneen ajon yksityiset temp-lokit poistetaan;
+epäonnistuneen ajon lokit jätetään paikallista vianmääritystä varten.
+
+MSI:n asennushakemiston tunniste on tarkoituksella yksityinen
+`EkyInstallFolder`, ei julkinen uppercase MSI-property. Komentorivi ei voi
+ohittaa kiinteää per-user-asennusjuurta `%LOCALAPPDATA%\\Programs\\Eky` eikä
+valita installerille toista payloadia. Unicode- ja välilyöntiyhteensopivuus
+todennetaan siirtämällä MSI testissä tällaiseen lähdepolkuun, ei muuttamalla
+asennusjuurta.
+
+B4/B6 käyttää nykyisenä N-versiona B5:n jo kerran rakentamaa ja sidecarilla
+sidottua release-MSI:tä. Upgrade-fixture ei rakenna N-versiota uudelleen.
+Vain synteettinen N+1 ja erillinen rollback-probe-MSI rakennetaan omiin
+fixture- ja WiX-intermediate-hakemistoihinsa. Fixture ei kuulu jaeltavaan
+artifactiin, ja N-MSI:n SHA-256 tarkistetaan ennen upgrade-testiä sekä sen
+jälkeen.
+
+Major upgrade käyttää `RemoveExistingProducts`-toimintoa `InstallExecute`-
+toiminnon jälkeen ja ennen `InstallFinalize`-toimintoa. Read-only MSI-
+inspektori valvoo tämän sekvenssin. B4-todistus kattaa N -> N+1 -päivityksen,
+vanhemman version downgrade-eston, hallitun N+1-asennusvirheen ja Windows
+Installerin binary rollbackin takaisin N-versioon, käynnissä olevan Electron-
+mainin ja Electron utility/backend-prosessin aikaisen suoran päivitysyrityksen,
+Unicode- ja välilyöntejä
+sisältävän MSI-lähdepolun sekä lopullisen uninstallin. `%APPDATA%\\Eky`-
+business-data inventoidaan ennen testiä ja todetaan muuttumattomaksi jokaisen
+vaiheen jälkeen.
+
+B5:n release-komento vaatii puhtaan työpuun ja täyden Git HEAD -revision.
+Komento rakentaa jaeltavan MSI:n kerran, tarkastaa MSI:n read-only-
+inspektorilla ja sitoo tiedostonimen, koon, SHA-256-tiivisteen, release-
+identiteetin sekä Git-revision erilliseen suljettuun sidecar-manifestiin.
+Manifesti kirjoitetaan vasta, kun samat MSI-tavut ovat läpäisseet tarkastuksen.
+Myöhemmät lifecycle- ja fixture-testit eivät saa rakentaa jaeltavaa MSI:tä
+uudelleen, ja release-MSI:n tavut varmennetaan vielä testien jälkeen.
+
+Windows CI ajaa installer-testit, kovennetun pilot-paketoinnin, kaksi
+peräkkäistä lukittua WiX-restorea muuttamatta `packages.lock.json`-tiedostoa,
+build-once-releaseportin, install/repair/uninstall-elinkaaren sekä
+synteettisen N -> N+1-, downgrade- ja rollback-todistuksen. CI ei tässä
+checkpointissa lataa artifactia julkaisuun, allekirjoita sitä tai tee siitä
+oikealle käyttäjälle jaettavaa releasea.
+
+CI käyttää .NET SDK:ta `global.json`-sopimuksella `10.0.302`,
+`rollForward: disable` ja `allowPrerelease: false`. Virallinen
+`actions/setup-dotnet` on täsmällisesti releaseen `v5.4.0` kuuluvaan
+40-merkkiseen commit-SHA:han
+`26b0ec14cb23fa6904739307f278c14f94c95bf1` lukittu. Floating tagia tai
+automaattista major-vaihtoa ei sallita tässä installer-portissa.
+
+Restore käyttää vain `NuGet.Config`-tiedostossa sallittua nuget.org-lähdettä,
+pakettilähdekartoitusta, vaadittua allekirjoitusvalidointia ja FireGiantin
+nimettyä signer-varmennetta. WiX- ja .NET-build-työkaluja ei pakata Eky MSI:n
+runtime-payloadiin.
 
 ## 2. Tavoite
 
@@ -338,8 +434,8 @@ Teknologiakatselmuksen ehdottama R0-artifact-layout on:
 
 ```text
 release/
-  Eky-Setup-<version>-pilot-x64.msi
-  Eky-Setup-<version>-pilot-x64.manifest.json
+  Eky-<appVersion>-x64.msi
+  Eky-<appVersion>-x64.manifest.json
 ```
 
 Sama täysi MSI palvelee clean installia, repairia ja major upgradea. R0 ei
@@ -513,6 +609,13 @@ Laajempi jakelu vaatii:
 - release-prosessin, joka ei allekirjoita dirty-buildia
 
 Code signing -salaisuus ei kuulu repoon, sovellukseen tai backupiin.
+
+Nykyinen sidecarin `unsigned-prototype` ja SHA-256 todistavat vain suljetun
+prototyyppipaketin eheyden, eivät publisher trustia. Tulevassa signing-
+releaseportissa järjestys on: build -> inspect -> sign -> allekirjoituksen ja
+timestampin validointi -> lopullinen hash ja manifesti -> samojen
+allekirjoitettujen tavujen lifecycle- ja upgrade-testit. Allekirjoituksen
+jälkeen aiempaa tavuihin sidottua hashia tai manifestia ei saa käyttää.
 
 ## 20. Tuleva etäpäivitys
 

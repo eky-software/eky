@@ -318,6 +318,13 @@ Installer/Update testataan:
 - Windows package: clean install, upgrade, migration failure sekä business-
   ja binary-rollback
 
+Windows MSI -release gate rakentaa jaeltavan prototyyppi-MSI:n vain kerran,
+tarkastaa sen ja sitoo täsmälleen samat tavut Git-revisioon, release-
+identiteettiin, tiedostonimeen, kokoon ja SHA-256-tiivisteeseen suljetulla
+sidecar-manifestilla. Lifecycle-testit käyttävät tätä varmennettua MSI:tä.
+Synteettiset upgrade- ja rollback-fixturet rakennetaan erikseen, minkä jälkeen
+alkuperäisen release-MSI:n tavut varmennetaan uudelleen ilman rebuildiä.
+
 Backup-, restore-, installer- tai update-polun onnistumista ei todisteta vain
 mockilla tai selain-E2E:llä. Windowsin tiedosto-, prosessi-, `safeStorage`- ja
 paketointirajat vaativat packaged-testin.
