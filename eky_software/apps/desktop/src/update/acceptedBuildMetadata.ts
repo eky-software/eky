@@ -1,3 +1,5 @@
+import { isSemVer } from '../release/desktopBuildInfo.js';
+
 const fields = new Set([
   'acceptedAt',
   'appVersion',
@@ -5,7 +7,6 @@ const fields = new Set([
   'formatVersion',
   'releaseChannel',
 ]);
-const semVerPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const revisionPattern = /^[0-9a-f]{7,40}$/;
 
 export interface AcceptedBuildMetadata {
@@ -20,7 +21,7 @@ export function parseAcceptedBuildMetadata(value: unknown): Readonly<AcceptedBui
   if (!isRecord(value) || Object.keys(value).length !== fields.size ||
     Object.keys(value).some((key) => !fields.has(key)) ||
     value.formatVersion !== 1 || value.releaseChannel !== 'pilot' ||
-    typeof value.appVersion !== 'string' || !semVerPattern.test(value.appVersion) ||
+    typeof value.appVersion !== 'string' || !isSemVer(value.appVersion) ||
     typeof value.buildRevision !== 'string' || !revisionPattern.test(value.buildRevision) ||
     typeof value.acceptedAt !== 'string' || !isUtcTimestamp(value.acceptedAt)) {
     throw new Error('ACCEPTED_BUILD_METADATA_INVALID');

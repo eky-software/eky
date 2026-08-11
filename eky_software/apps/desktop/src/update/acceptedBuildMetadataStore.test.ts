@@ -12,7 +12,7 @@ import {
 const roots: string[] = [];
 const metadata = {
   acceptedAt: '2026-08-11T18:00:00.000Z',
-  appVersion: '0.2.0',
+  appVersion: '0.2.0-alpha.1',
   buildRevision: 'abcdef012345',
   formatVersion: 1 as const,
   releaseChannel: 'pilot' as const,
@@ -64,7 +64,7 @@ describe('accepted build metadata store', () => {
       store.write({ ...metadata, installerPath: 'C:/private.msi' } as never),
     ).rejects.toThrow('ACCEPTED_BUILD_METADATA_INVALID');
     await expect(
-      store.write({ ...metadata, appVersion: '0.2.0-alpha.1' }),
+      store.write({ ...metadata, appVersion: 'v0.2.0' }),
     ).rejects.toThrow('ACCEPTED_BUILD_METADATA_INVALID');
     expect(() => new AcceptedBuildMetadataStore('accepted-build-v1.json')).toThrow(
       'ACCEPTED_BUILD_METADATA_UNAVAILABLE',
