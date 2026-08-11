@@ -51,6 +51,12 @@ Mandatory boundaries:
   pre-update recovery point exists
 - launch an external installer/updater with a fixed executable and separate
   validated arguments; never construct a shell command string
+- keep the R0 `localUnsignedPilot` trust policy behind a named desktop port;
+  it accepts only the pilot channel, local media and explicit confirmation,
+  and must never be generalized into stable, network, background or silent
+  updates
+- never present an unsigned sidecar or SHA-256 hash as publisher trust, and do
+  not weaken SmartScreen, Defender or other operating-system protections
 - preserve the two-process hardened Windows backup/restore smoke when changing
   profile paths, backup containers, recovery points, activation, rollback,
   backend startup, runtime sessions, `safeStorage`, SQLite or business

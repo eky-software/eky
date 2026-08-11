@@ -89,6 +89,13 @@ Lisää testit aina, kun muutos koskee:
 - audit trailia
 - tietomallin muunnoksia
 - kriittisiä työnkulkuja
+- release- ja update-manifestin kanava-, identity-, koko-, hash- ja
+  allekirjoitustilan rajoja sekä muuttuneita tavuja
+
+Paikallisen allekirjoittamattoman pilotin testeissä todistetaan lisäksi, että
+`unsigned-prototype` hyväksytään vain `pilot`-kanavalla, `stable` torjutaan,
+symlinkit ja tuntemattomat kentät torjutaan eikä samaa versiota hyväksytä eri
+tavuille. Testit eivät saa nimetä hash-todistetta publisher-luottamukseksi.
 
 ## Yksikkötestit
 

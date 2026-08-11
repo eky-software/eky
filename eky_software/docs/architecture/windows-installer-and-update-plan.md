@@ -367,10 +367,13 @@ Päivitysjournal sitoo vähintään:
 SHA-256 todistaa vain, että MSI:n tavut vastaavat manifestissa ilmoitettuja
 tavuja. Se ei todista manifestin tai paketin julkaisijaa. Normaali in-app update
 ei saa käynnistää allekirjoittamatonta pakettia ilman projektin omistajan
-erikseen hyväksymää trust anchor -mallia. Mahdollinen allekirjoittamaton
-prototyyppi on sallittu vain eristetyssä synteettisen datan VM/CI-ympäristössä.
-Sen ajo tavallisella käyttäjäkoneella vaatii erillisen nimenomaisen päätöksen
-eikä sellainen päätös avaa normaalia in-app update -polkua.
+erikseen hyväksymää trust anchor -mallia. Projektin omistaja on hyväksynyt
+ensimmäiselle yhdelle hallitulle laitteelle ADR-0010:n rajatun
+`localUnsignedPilot`-mallin: vain `pilot`-kanava, paikallinen tiedosto tai
+tarkistettu USB-media, käyttäjän nimenomainen vahvistus, private staging ja
+staged tavujen uusintavarmennus. Malli ei salli verkosta lataamista,
+taustapäivitystä, hiljaista päivitystä, `stable`-kanavaa tai suojauksien
+ohittamista.
 
 Ennen jaeltavaa päivitystä arvioidaan ja lukitaan:
 
@@ -595,10 +598,10 @@ journalin avulla.
 ## 19. Code signing
 
 Isän yhdellä hallitulla pilottilaitteella allekirjoittamaton paikallinen
-artifacti voidaan hyväksyä vain projektin omistajan erillisellä päätöksellä.
-Tämä poikkeus ei salli allekirjoittamatonta normaalia in-app update -polkua:
-paketin pitää edelleen tulla erikseen hyväksytystä trust anchor -mallista tai
-se asennetaan vain dokumentoituna manuaalisena pilot-toimenpiteenä.
+artifacti hyväksytään vain ADR-0010:n `localUnsignedPilot`-mallissa. Se käyttää
+`pilot`-kanavaa, suljettua manifestia, tarkistettua SHA-256:ta, yksityistä
+stagingia ja käyttäjän vahvistusta. `unsigned-prototype` ei todista
+julkaisijaa. `stable`-kanava ja laajempi jakelu eivät hyväksy tätä mallia.
 Laajempi jakelu vaatii:
 
 - Windows code signing -sertifikaatin

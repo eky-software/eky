@@ -93,6 +93,12 @@ yritysprofiilia tai installerin konekohtaista journalia.
   SHA-256 ei korvaa Authenticodea tai allekirjoitettua manifestia
 - normaali in-app update ei suorita allekirjoittamatonta pakettia ilman
   erikseen hyväksyttyä trust anchor -mallia
+- hyväksytty R0:n `localUnsignedPilot`-malli koskee vain yhtä hallittua
+  laitetta, `pilot`-kanavaa, paikallista tiedostoa tai tarkistettua USB-mediaa
+  ja käyttäjän vahvistamaa asennusta; se ei salli verkko-, tausta-, hiljaista
+  tai `stable`-päivitystä eikä väitä publisher-luottamusta
+- SmartScreeniä, Defenderiä, sertifikaattitarkistuksia tai muuta
+  käyttöjärjestelmän suojausta ei poisteta paikallisen pilotin vuoksi
 - virhetilanne ei saa johtaa salaamattomaan fallbackiin, osittaiseen restoreen
   tai reverse SQL -migraatioon
 

@@ -160,6 +160,31 @@ Tuleva etäpäivitys vaatii ennen käyttöönottoa:
 
 Automaattista hiljaista päivitystä ei oteta käyttöön R0:ssa.
 
+## R0:n paikallinen allekirjoittamaton pilotti
+
+Projektin omistaja on hyväksynyt ensimmäisen yhden käyttäjän ja yhden
+hallinnoidun laitteen R0-pilotin rajatuksi `localUnsignedPilot`-
+luottamusmalliksi. Malli koskee vain `pilot`-kanavaa ja paikallisesti
+toimitettua MSI-pakettia:
+
+- paketti siirretään hallitulla paikallisella tiedostolla tai erikseen
+  tarkistetulla USB-medialla
+- käyttäjä valitsee ja vahvistaa päivityksen itse
+- verkosta lataamista, taustapäivitystä ja hiljaista päivitystä ei sallita
+- MSI, suljettu sidecar-manifesti ja erillinen SHA-256-tiedosto pidetään
+  yhtenä jakamattomana release-kokonaisuutena
+- lähde- ja staging-tavut varmennetaan manifestista ennen suorittamista
+- nykyinen ja edellinen hyväksytty release-kokonaisuus säilytetään binary
+  rollbackia varten
+- `unsigned-prototype` kertoo allekirjoituksen puuttumisesta eikä väitä
+  publisher-luottamusta, Authenticodea tai Windowsin varoitusten ohittamista.
+
+Mallia ei saa käyttää `stable`-kanavalla, laajemmassa jakelussa tai toisella
+laitteella ilman uutta omistajapäätöstä. SmartScreeniä, Defenderiä tai muuta
+käyttöjärjestelmän suojausta ei poisteta tai heikennetä. Code signing,
+publisher-identiteetti ja ohjelmiston oikeudellinen omistajuus ovat tästä
+pilotista erillisiä päätöksiä.
+
 ## Tausta ja perustelut
 
 Eky on local-first-ohjelma, jossa tietokanta ja auktoritatiiviset lasku-
