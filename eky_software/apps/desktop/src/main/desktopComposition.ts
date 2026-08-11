@@ -82,6 +82,7 @@ import {
 } from './packagedSmoke.js';
 import { restoreWindowInputFocus } from './windowInputFocus.js';
 import type { DesktopBuildInfo } from '../release/desktopBuildInfo.js';
+import type { DesktopReleaseInfo } from '../release/desktopReleaseInfo.js';
 import { createProfileSnapshotBrokerTransport } from '../profileBackup/electronProfileSnapshotBrokerTransport.js';
 import type { BackupPasswordWindowController } from '../profileBackup/passwordWindow/backupPasswordWindow.js';
 import type { ProfileBackupCapability } from '../profileBackup/profileBackupCapability.js';
@@ -138,6 +139,7 @@ export interface StartDesktopCompositionOptions {
   appVersion: string;
   applicationPath: string;
   buildInfo: Readonly<DesktopBuildInfo>;
+  releaseInfo: Readonly<DesktopReleaseInfo> | undefined;
   dependencies?: Partial<DesktopCompositionDependencies>;
   quitApplication(): void;
   relaunchApplication(): void;

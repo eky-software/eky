@@ -22,6 +22,8 @@ import {
 import { packager } from '@electron/packager';
 
 import { readDesktopElectronVersion } from './read-desktop-electron-version.mjs';
+import { INSTALLER_UPGRADE_CODE } from '../installer/installerIdentity.mjs';
+import { readInstallerReleaseConfig } from '../installer/installerVersion.mjs';
 import { inspectPackageArtifactInventory } from './package-artifact-inventory.mjs';
 import {
   assertPilotBuildPreconditions,
@@ -136,7 +138,7 @@ async function buildWorkspaceArtifacts() {
   ]);
 }
 
-async function prepareApplicationStage(buildInfo) {
+async function prepareApplicationStage(buildInfo, releaseInfo) {
   await cp(resolve(desktopDirectory, 'dist'), join(applicationStage, 'dist'), {
     recursive: true,
   });
@@ -198,6 +200,11 @@ async function prepareApplicationStage(buildInfo) {
     `${JSON.stringify(buildInfo, null, 2)}\n`,
     'utf8',
   );
+  await writeFile(
+    join(applicationStage, 'dist', 'release-info.json'),
+    `${JSON.stringify(releaseInfo, null, 2)}\n`,
+    'utf8',
+  );
   await mkdir(updateRuntimeStage, { recursive: true });
   await cp(
     resolve(
@@ -213,6 +220,7 @@ async function assertPackagedDiagnosticsArtifacts() {
     'dist/diagnostics/desktopDiagnosticsTypes.js',
     'dist/diagnostics/operationalLogFolderCapability.js',
     'dist/build-info.json',
+    'dist/release-info.json',
     'dist/main/desktopComposition.js',
     'dist/preload/index.cjs',
     'dist/profileBackup/passwordWindow/backupPasswordPreload.cjs',
@@ -299,9 +307,24 @@ async function packageWindowsSpike() {
   );
   const appVersion =
     packageBuildInfoModule.readDesktopPackageVersion(desktopPackageMetadata);
+  const installerRelease = await readInstallerReleaseConfig(
+    resolve(desktopDirectory, 'installer/installer-release.json'),
+    resolve(desktopDirectory, 'package.json'),
+  );
   const buildInfo = await packageBuildInfoModule.createPackageBuildInfo({
     appVersion,
     repositoryRoot,
+  });
+  const releaseInfo = Object.freeze({
+    appIdentity: installerRelease.appIdentity,
+    appVersion: installerRelease.appVersion,
+    architecture: installerRelease.architecture,
+    buildRevision: buildInfo.buildRevision,
+    msiProductVersion: installerRelease.msiProductVersion,
+    platform: installerRelease.platform,
+    releaseChannel: installerRelease.releaseChannel,
+    schemaVersion: 1,
+    upgradeCode: INSTALLER_UPGRADE_CODE,
   });
   let currentHead;
   if (pilotBuild) {
@@ -325,7 +348,7 @@ async function packageWindowsSpike() {
     `Validated staged better-sqlite3 ${runtime.version} (SQLite ${sqliteVersion}).`,
   );
 
-  await prepareApplicationStage(buildInfo);
+  await prepareApplicationStage(buildInfo, releaseInfo);
   await assertPackagedDiagnosticsArtifacts();
   await inspectPackageArtifactInventory({
     root: applicationStage,

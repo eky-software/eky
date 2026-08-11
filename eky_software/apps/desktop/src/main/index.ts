@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import type { DesktopLifecycleHandle } from './desktopComposition.js';
 import { runSafeDesktopStartup } from './earlyStartup.js';
 import { readDesktopBuildInfo } from '../release/desktopBuildInfoReader.js';
+import { readDesktopReleaseInfo } from '../release/desktopReleaseInfoReader.js';
 import { showProfileRestoreRecoveryDialog } from './profileRestoreRecoveryDialog.js';
 import {
   createPackagedSmokeConfiguration,
@@ -72,10 +73,16 @@ async function startDesktopRuntime(
     appVersion: app.getVersion(),
     isPackaged: app.isPackaged,
   });
+  const releaseInfo = await readDesktopReleaseInfo({
+    applicationPath: app.getAppPath(),
+    appVersion: app.getVersion(),
+    isPackaged: app.isPackaged,
+  });
   desktopLifecycle = await startDesktopComposition({
     appVersion: app.getVersion(),
     applicationPath: app.getAppPath(),
     buildInfo,
+    releaseInfo,
     quitApplication: () => app.quit(),
     relaunchApplication() {
       if (smokeConfiguration.enabled) {
