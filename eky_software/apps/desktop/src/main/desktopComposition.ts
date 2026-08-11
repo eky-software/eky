@@ -69,6 +69,7 @@ import {
 import { registerApplicationProtocol } from './applicationProtocol.js';
 import { readSafeStartupFailureCode } from './earlyStartup.js';
 import { createBackendRequestHeaders } from './protocolPolicy.js';
+import { assertDifferentRuntimeSessionRejected } from './runtimeSessionAcceptanceValidation.js';
 import {
   createInvoiceDeliveryConfirmation,
   type InvoiceDeliveryDialogAdapter,
@@ -646,6 +647,7 @@ async function startDesktopCompositionRuntime({
       await assertDifferentRuntimeSessionRejected({
         backendOrigin: `http://127.0.0.1:${backendHandle.port}`,
         createRuntimeSession: dependencies.createRuntimeSession,
+        fetchImplementation: (url, init) => net.fetch(url, init),
         runtimeSessionSecret,
       });
       await firstStartUpdateCoordinator.acceptAfterBackendReady();
@@ -1277,33 +1279,6 @@ async function assertBackendHealth(
     }
   } catch {
     throw new Error('PROFILE_RESTORE_HEALTH_FAILED');
-  }
-}
-
-async function assertDifferentRuntimeSessionRejected(input: {
-  backendOrigin: string;
-  createRuntimeSession(): string;
-  runtimeSessionSecret: string;
-}): Promise<void> {
-  let rejectedSession = input.createRuntimeSession();
-  for (
-    let attempt = 0;
-    attempt < 2 && rejectedSession === input.runtimeSessionSecret;
-    attempt += 1
-  ) {
-    rejectedSession = input.createRuntimeSession();
-  }
-  if (rejectedSession === input.runtimeSessionSecret) {
-    throw new Error('FIRST_START_SESSION_VALIDATION_FAILED');
-  }
-
-  const response = await net.fetch(`${input.backendOrigin}/health`, {
-    headers: createBackendRequestHeaders(new Headers(), rejectedSession),
-    method: 'GET',
-  });
-  await response.body?.cancel().catch(() => undefined);
-  if (response.status !== 401) {
-    throw new Error('FIRST_START_SESSION_VALIDATION_FAILED');
   }
 }
 

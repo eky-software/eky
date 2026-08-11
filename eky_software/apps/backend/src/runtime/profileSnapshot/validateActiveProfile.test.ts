@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { runMigrations } from '../../database/migration/runMigrations.js';
 import { CurrentActiveProfileValidationService } from './validateActiveProfile.js';
 
 const roots: string[] = [];
@@ -23,6 +24,26 @@ afterEach(async () => {
 });
 
 describe('active profile validation', () => {
+  it('validates a freshly migrated profile without business artifacts', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'eky-active-profile-empty-'));
+    roots.push(root);
+    const database = new Database(':memory:');
+    databases.push(database);
+    database.pragma('foreign_keys = ON');
+    await runMigrations(database);
+
+    const service = new CurrentActiveProfileValidationService(
+      database,
+      join(root, 'storage', 'invoices'),
+    );
+
+    await expect(service.validateActiveProfile()).resolves.toEqual({
+      artifactCount: 0,
+      artifactTotalByteSize: 0,
+      databaseHealth: 'healthy',
+    });
+  });
+
   it('validates every database-owned PDF from active storage', async () => {
     const fixture = await createFixture();
 
