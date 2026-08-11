@@ -2,6 +2,7 @@ import {
   lstat,
   mkdir,
   mkdtemp,
+  open,
   readFile,
   readdir,
   rename,
@@ -30,15 +31,18 @@ import {
   type LocalUnsignedPilotUpdatePackageManifest,
 } from './updatePackageManifest.js';
 import type {
+  LocalUpdateCacheSlotRole,
   LocalUpdatePackageRole,
   UpdatePackageTrustPolicy,
 } from './updatePackageTrustPolicy.js';
+import { verifyLocalUnsignedPilotSharedIdentity } from './localUnsignedPilotUpdatePackageTrustPolicy.js';
 import type { WindowsInstallerIdentity } from './windowsInstallerIdentity.js';
 import type { WindowsRegularFileMetadata } from './windowsRegularFileMetadata.js';
 
 const manifestCacheFilename = 'package.manifest.json';
 const metadataCacheFilename = 'slot-metadata.json';
 const metadataNextFilename = 'slot-metadata.next';
+const metadataBackupFilename = 'slot-metadata.backup';
 const metadataMaxBytes = 16 * 1024;
 const freeSpaceReserveBytes = 8 * 1024 * 1024;
 export const LOCAL_UPDATE_CACHE_TOTAL_MAX_BYTES =
@@ -51,6 +55,21 @@ export interface LocalUpdatePackageSummary {
   releaseChannel: 'pilot';
   role: LocalUpdatePackageRole;
   signingStatus: 'unsigned-prototype';
+}
+
+export interface LocalUpdateExpectedPackageIdentity {
+  appVersion: string;
+  buildRevision: string;
+  msiProductVersion: string;
+  packageSha256: string;
+  packageSize: number;
+}
+
+export interface RevalidatedLocalUpdatePackageHandle {
+  appVersion: string;
+  buildRevision: string;
+  msiProductVersion: string;
+  packagePath: string;
 }
 
 interface LocalUpdatePackageCacheOptions {
@@ -148,6 +167,111 @@ export class LocalUpdatePackageCache {
     });
   }
 
+  async revalidateJournalPackage(input: {
+    expectedIdentity: Readonly<LocalUpdateExpectedPackageIdentity>;
+    role: LocalUpdateCacheSlotRole;
+  }): Promise<Readonly<RevalidatedLocalUpdatePackageHandle>> {
+    return this.runExclusive(async () => {
+      await this.ensureCacheRoot();
+      return this.validateJournalSlot(
+        input.role,
+        this.slotPath(input.role),
+        input.expectedIdentity,
+        new Set([input.role]),
+      );
+    });
+  }
+
+  async promoteAcceptedCandidate(input: {
+    candidateIdentity: Readonly<LocalUpdateExpectedPackageIdentity>;
+    currentIdentity: Readonly<LocalUpdateExpectedPackageIdentity>;
+  }): Promise<void> {
+    return this.runExclusive(async () => {
+      await this.ensureCacheRoot();
+      const currentPath = this.slotPath('current');
+      const candidatePath = this.slotPath('candidate');
+      const previousPath = this.slotPath('previous');
+      const currentExists = await pathExists(currentPath);
+      const candidateExists = await pathExists(candidatePath);
+      const previousExists = await pathExists(previousPath);
+
+      if (currentExists && candidateExists) {
+        await this.validateJournalSlot(
+          'current',
+          currentPath,
+          input.currentIdentity,
+          new Set(['current']),
+        );
+        await this.validateJournalSlot(
+          'candidate',
+          candidatePath,
+          input.candidateIdentity,
+          new Set(['candidate']),
+        );
+        if (previousExists) {
+          await assertSlotDirectory(previousPath);
+          await rm(previousPath, { recursive: true });
+          await syncDirectory(this.options.cacheRoot);
+        }
+        await rename(currentPath, previousPath);
+        await syncDirectory(this.options.cacheRoot);
+      } else if (
+        currentExists ||
+        !candidateExists ||
+        !previousExists
+      ) {
+        if (!(currentExists && previousExists && !candidateExists)) {
+          throw new LocalUpdatePackageCacheError();
+        }
+      }
+
+      if (await pathExists(candidatePath)) {
+        await this.validateJournalSlot(
+          'previous',
+          previousPath,
+          input.currentIdentity,
+          new Set(['current', 'previous']),
+        );
+        await this.validateJournalSlot(
+          'candidate',
+          candidatePath,
+          input.candidateIdentity,
+          new Set(['candidate']),
+        );
+        await rename(candidatePath, currentPath);
+        await syncDirectory(this.options.cacheRoot);
+      }
+
+      const current = await this.validateJournalSlot(
+        'current',
+        currentPath,
+        input.candidateIdentity,
+        new Set(['candidate', 'current']),
+      );
+      const previous = await this.validateJournalSlot(
+        'previous',
+        previousPath,
+        input.currentIdentity,
+        new Set(['current', 'previous']),
+      );
+      await this.writeMetadata(currentPath, current.manifest, 'current');
+      await this.writeMetadata(previousPath, previous.manifest, 'previous');
+      await syncDirectory(this.options.cacheRoot);
+      await this.validateJournalSlot(
+        'current',
+        currentPath,
+        input.candidateIdentity,
+        new Set(['current']),
+      );
+      await this.validateJournalSlot(
+        'previous',
+        previousPath,
+        input.currentIdentity,
+        new Set(['previous']),
+      );
+    });
+  }
+
   private async readAndVerifySource(input: {
     manifestPath: string;
     role: LocalUpdatePackageRole;
@@ -211,13 +335,7 @@ export class LocalUpdatePackageCache {
     if (!directory.isDirectory() || directory.isSymbolicLink()) {
       throw new LocalUpdatePackageCacheError();
     }
-    const metadataBytes = await readBoundedFile(
-      join(slotPath, metadataCacheFilename),
-      metadataMaxBytes,
-    );
-    const metadata = parseLocalUpdateCacheMetadata(
-      JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(metadataBytes)),
-    );
+    const metadata = await readSlotMetadata(slotPath);
     if (metadata.role !== role) {
       throw new LocalUpdatePackageCacheError();
     }
@@ -236,11 +354,74 @@ export class LocalUpdatePackageCache {
     return metadata;
   }
 
+  private async validateJournalSlot(
+    role: LocalUpdateCacheSlotRole,
+    slotPath: string,
+    expectedIdentity: Readonly<LocalUpdateExpectedPackageIdentity>,
+    acceptedMetadataRoles: ReadonlySet<LocalUpdateCacheSlotRole>,
+  ): Promise<
+    Readonly<RevalidatedLocalUpdatePackageHandle> & {
+      manifest: Readonly<LocalUnsignedPilotUpdatePackageManifest>;
+    }
+  > {
+    const directory = await lstat(slotPath);
+    if (!directory.isDirectory() || directory.isSymbolicLink()) {
+      throw new LocalUpdatePackageCacheError();
+    }
+    const metadata = await readSlotMetadata(slotPath);
+    if (!acceptedMetadataRoles.has(metadata.role)) {
+      throw new LocalUpdatePackageCacheError();
+    }
+    const manifestPath = join(slotPath, manifestCacheFilename);
+    const manifest = parseUpdatePackageManifestBytes(
+      await readBoundedFile(
+        manifestPath,
+        UPDATE_PACKAGE_MANIFEST_MAX_BYTES,
+      ),
+    );
+    assertMetadataMatchesManifest(metadata, manifest);
+    assertExpectedPackageIdentity(expectedIdentity, manifest);
+    const packagePath = join(slotPath, manifest.packageFilename);
+    const installerIdentity = await this.validatePackageFiles(
+      manifestPath,
+      packagePath,
+    );
+    verifyLocalUnsignedPilotSharedIdentity({
+      installerIdentity,
+      manifest,
+      releaseInfo: this.options.releaseInfo,
+    });
+    return Object.freeze({
+      appVersion: manifest.appVersion,
+      buildRevision: manifest.buildRevision,
+      manifest,
+      msiProductVersion: manifest.msiProductVersion,
+      packagePath,
+    });
+  }
+
   private async validateStagedFiles(
     role: LocalUpdatePackageRole,
     manifestPath: string,
     packagePath: string,
   ): Promise<void> {
+    const manifest = parseUpdatePackageManifestBytes(await readFile(manifestPath));
+    const installerIdentity = await this.validatePackageFiles(
+      manifestPath,
+      packagePath,
+    );
+    this.options.trustPolicy.verifyPackage({
+      installerIdentity,
+      manifest,
+      releaseInfo: this.options.releaseInfo,
+      role,
+    });
+  }
+
+  private async validatePackageFiles(
+    manifestPath: string,
+    packagePath: string,
+  ): Promise<Readonly<WindowsInstallerIdentity>> {
     const manifestBefore = await readLocalUpdateSourceSnapshot(
       manifestPath,
       this.options.inspectRegularFile,
@@ -268,19 +449,13 @@ export class LocalUpdatePackageCache {
     if (packageBefore.size !== identity.size) {
       throw new LocalUpdatePackageCacheError();
     }
-    const installerIdentity = await this.options.inspectInstaller(packagePath);
-    this.options.trustPolicy.verifyPackage({
-      installerIdentity,
-      manifest,
-      releaseInfo: this.options.releaseInfo,
-      role,
-    });
+    return this.options.inspectInstaller(packagePath);
   }
 
   private async writeMetadata(
     stagingPath: string,
     manifest: Readonly<LocalUnsignedPilotUpdatePackageManifest>,
-    role: LocalUpdatePackageRole,
+    role: LocalUpdateCacheSlotRole,
   ): Promise<void> {
     const metadata = parseLocalUpdateCacheMetadata({
       appVersion: manifest.appVersion,
@@ -294,11 +469,36 @@ export class LocalUpdatePackageCache {
       schemaVersion: 1,
     });
     const nextPath = join(stagingPath, metadataNextFilename);
+    const currentPath = join(stagingPath, metadataCacheFilename);
+    const backupPath = join(stagingPath, metadataBackupFilename);
+    await rm(nextPath, { force: true });
+    await rm(backupPath, { force: true });
     await writeExclusiveSyncedFile(
       nextPath,
       Buffer.from(`${JSON.stringify(metadata)}\n`, 'utf8'),
     );
-    await rename(nextPath, join(stagingPath, metadataCacheFilename));
+    let previousMoved = false;
+    try {
+      await rename(currentPath, backupPath);
+      previousMoved = true;
+    } catch (error) {
+      if (!isNodeError(error) || error.code !== 'ENOENT') {
+        throw error;
+      }
+    }
+    try {
+      await rename(nextPath, currentPath);
+      await syncDirectory(stagingPath);
+    } catch (error) {
+      if (previousMoved) {
+        await rename(backupPath, currentPath).catch(() => undefined);
+      }
+      throw error;
+    }
+    if (previousMoved) {
+      await rm(backupPath, { force: true });
+      await syncDirectory(stagingPath);
+    }
   }
 
   private async assertCapacity(packageSize: number): Promise<void> {
@@ -324,7 +524,7 @@ export class LocalUpdatePackageCache {
     }
   }
 
-  private slotPath(role: LocalUpdatePackageRole): string {
+  private slotPath(role: LocalUpdateCacheSlotRole): string {
     return join(this.options.cacheRoot, role);
   }
 
@@ -346,6 +546,46 @@ export class LocalUpdatePackageCache {
   }
 }
 
+async function readSlotMetadata(
+  slotPath: string,
+): Promise<Readonly<LocalUpdateCacheMetadata>> {
+  const currentPath = join(slotPath, metadataCacheFilename);
+  const nextPath = join(slotPath, metadataNextFilename);
+  const backupPath = join(slotPath, metadataBackupFilename);
+  if (await pathExists(currentPath)) {
+    const metadata = await parseMetadataFile(currentPath);
+    await rm(nextPath, { force: true });
+    await rm(backupPath, { force: true });
+    return metadata;
+  }
+  if (await pathExists(backupPath)) {
+    const metadata = await parseMetadataFile(backupPath);
+    await rename(backupPath, currentPath);
+    await rm(nextPath, { force: true });
+    await syncDirectory(slotPath);
+    return metadata;
+  }
+  if (await pathExists(nextPath)) {
+    const metadata = await parseMetadataFile(nextPath);
+    await rename(nextPath, currentPath);
+    await syncDirectory(slotPath);
+    return metadata;
+  }
+  throw new LocalUpdatePackageCacheError();
+}
+
+async function parseMetadataFile(
+  path: string,
+): Promise<Readonly<LocalUpdateCacheMetadata>> {
+  return parseLocalUpdateCacheMetadata(
+    JSON.parse(
+      new TextDecoder('utf-8', { fatal: true }).decode(
+        await readBoundedFile(path, metadataMaxBytes),
+      ),
+    ),
+  );
+}
+
 async function readBoundedFile(path: string, maximumBytes: number): Promise<Buffer> {
   const metadata = await lstat(path);
   if (
@@ -357,6 +597,25 @@ async function readBoundedFile(path: string, maximumBytes: number): Promise<Buff
     throw new LocalUpdatePackageCacheError();
   }
   return readFile(path);
+}
+
+async function assertSlotDirectory(path: string): Promise<void> {
+  const metadata = await lstat(path);
+  if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+    throw new LocalUpdatePackageCacheError();
+  }
+}
+
+async function syncDirectory(path: string): Promise<void> {
+  if (process.platform === 'win32') {
+    return;
+  }
+  const directory = await open(path, 'r');
+  try {
+    await directory.sync();
+  } finally {
+    await directory.close();
+  }
 }
 
 async function readCacheSize(root: string): Promise<number> {
@@ -410,6 +669,21 @@ function assertPackageIdentity(
   }
 }
 
+function assertExpectedPackageIdentity(
+  expected: Readonly<LocalUpdateExpectedPackageIdentity>,
+  manifest: Readonly<LocalUnsignedPilotUpdatePackageManifest>,
+): void {
+  if (
+    expected.appVersion !== manifest.appVersion ||
+    expected.buildRevision !== manifest.buildRevision ||
+    expected.msiProductVersion !== manifest.msiProductVersion ||
+    expected.packageSha256 !== manifest.packageSha256 ||
+    expected.packageSize !== manifest.packageSize
+  ) {
+    throw new LocalUpdatePackageCacheError();
+  }
+}
+
 function assertMetadataMatchesManifest(
   metadata: Readonly<LocalUpdateCacheMetadata>,
   manifest: Readonly<LocalUnsignedPilotUpdatePackageManifest>,
@@ -445,4 +719,8 @@ function createSafeSummary(
     role,
     signingStatus: 'unsigned-prototype',
   });
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && 'code' in error;
 }

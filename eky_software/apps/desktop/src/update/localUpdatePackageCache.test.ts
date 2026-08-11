@@ -1,9 +1,11 @@
 import { createHash } from 'node:crypto';
 import {
   appendFile,
+  mkdir,
   mkdtemp,
   readFile,
   readdir,
+  rename,
   rm,
   stat,
   writeFile,
@@ -204,6 +206,101 @@ describe('local update package cache', () => {
       LocalUpdatePackageCacheError,
     );
   });
+
+  it('revalidates journal-bound package identity without applying running-version ordering', async () => {
+    const fixture = await createFixture({
+      appVersion: '0.1.0-alpha.2',
+      buildRevision: 'abcdef012345',
+      msiProductVersion: '0.1.2',
+    });
+    const cache = createCache(fixture.cacheRoot);
+    await cache.stageSelectedPackage({
+      manifestPath: fixture.manifestPath,
+      role: 'candidate',
+    });
+    const expectedIdentity = expectedIdentityOf(fixture.manifest);
+    await expect(
+      cache.revalidateJournalPackage({
+        expectedIdentity,
+        role: 'candidate',
+      }),
+    ).resolves.toMatchObject({
+      appVersion: '0.1.0-alpha.2',
+      buildRevision: 'abcdef012345',
+      msiProductVersion: '0.1.2',
+    });
+    await expect(
+      cache.revalidateJournalPackage({
+        expectedIdentity: {
+          ...expectedIdentity,
+          packageSha256: 'f'.repeat(64),
+        },
+        role: 'candidate',
+      }),
+    ).rejects.toThrow(LocalUpdatePackageCacheError);
+  });
+
+  it('promotes candidate to current and keeps the prior current as previous', async () => {
+    const pair = await createCurrentAndCandidatePair();
+    await pair.cache.promoteAcceptedCandidate({
+      candidateIdentity: expectedIdentityOf(pair.candidate.manifest),
+      currentIdentity: expectedIdentityOf(pair.current.manifest),
+    });
+
+    expect((await readdir(pair.current.cacheRoot)).sort()).toEqual([
+      'current',
+      'previous',
+    ]);
+    await expect(
+      pair.cache.revalidateJournalPackage({
+        expectedIdentity: expectedIdentityOf(pair.candidate.manifest),
+        role: 'current',
+      }),
+    ).resolves.toMatchObject({ appVersion: '0.1.0-alpha.2' });
+    await expect(
+      pair.cache.revalidateJournalPackage({
+        expectedIdentity: expectedIdentityOf(pair.current.manifest),
+        role: 'previous',
+      }),
+    ).resolves.toMatchObject({ appVersion: releaseInfo.appVersion });
+  });
+
+  it('resumes promotion after either durable directory rename', async () => {
+    for (const interruption of ['afterCurrentRename', 'afterCandidateRename']) {
+      const pair = await createCurrentAndCandidatePair();
+      await rename(
+        join(pair.current.cacheRoot, 'current'),
+        join(pair.current.cacheRoot, 'previous'),
+      );
+      if (interruption === 'afterCandidateRename') {
+        await rename(
+          join(pair.current.cacheRoot, 'candidate'),
+          join(pair.current.cacheRoot, 'current'),
+        );
+      }
+
+      await pair.cache.promoteAcceptedCandidate({
+        candidateIdentity: expectedIdentityOf(pair.candidate.manifest),
+        currentIdentity: expectedIdentityOf(pair.current.manifest),
+      });
+      expect((await readdir(pair.current.cacheRoot)).sort()).toEqual([
+        'current',
+        'previous',
+      ]);
+      await expect(
+        pair.cache.revalidateJournalPackage({
+          expectedIdentity: expectedIdentityOf(pair.candidate.manifest),
+          role: 'current',
+        }),
+      ).resolves.toBeDefined();
+      await expect(
+        pair.cache.revalidateJournalPackage({
+          expectedIdentity: expectedIdentityOf(pair.current.manifest),
+          role: 'previous',
+        }),
+      ).resolves.toBeDefined();
+    }
+  });
 });
 
 interface FixtureOptions {
@@ -212,16 +309,21 @@ interface FixtureOptions {
   msiProductVersion?: string;
 }
 
-async function createFixture(options: FixtureOptions = {}) {
-  const root = await mkdtemp(join(tmpdir(), 'eky-update-cache-'));
-  roots.push(root);
-  const sourceRoot = join(root, 'source');
-  const cacheRoot = join(root, 'cache');
-  await import('node:fs/promises').then(({ mkdir }) => mkdir(sourceRoot));
+async function createFixture(
+  options: FixtureOptions = {},
+  shared?: { cacheRoot: string; root: string },
+) {
+  const root = shared?.root ?? await mkdtemp(join(tmpdir(), 'eky-update-cache-'));
+  if (shared === undefined) {
+    roots.push(root);
+  }
   const appVersion = options.appVersion ?? releaseInfo.appVersion;
   const buildRevision = options.buildRevision ?? releaseInfo.buildRevision;
   const msiProductVersion =
     options.msiProductVersion ?? releaseInfo.msiProductVersion;
+  const sourceRoot = join(root, `source-${appVersion}`);
+  const cacheRoot = shared?.cacheRoot ?? join(root, 'cache');
+  await mkdir(sourceRoot);
   const packageFilename = `Eky-${appVersion}-x64.msi`;
   const packagePath = join(sourceRoot, packageFilename);
   const packageBytes = Buffer.from(
@@ -251,7 +353,45 @@ async function createFixture(options: FixtureOptions = {}) {
   };
   const manifestPath = join(sourceRoot, `Eky-${appVersion}-x64.manifest.json`);
   await writeFile(manifestPath, `${JSON.stringify(manifest)}\n`);
-  return { cacheRoot, manifestPath, packagePath, root };
+  return { cacheRoot, manifest, manifestPath, packagePath, root };
+}
+
+async function createCurrentAndCandidatePair() {
+  const current = await createFixture();
+  const candidate = await createFixture(
+    {
+      appVersion: '0.1.0-alpha.2',
+      buildRevision: 'abcdef012345',
+      msiProductVersion: '0.1.2',
+    },
+    current,
+  );
+  const cache = createCache(current.cacheRoot);
+  await cache.stageSelectedPackage({
+    manifestPath: current.manifestPath,
+    role: 'current',
+  });
+  await cache.stageSelectedPackage({
+    manifestPath: candidate.manifestPath,
+    role: 'candidate',
+  });
+  return { cache, candidate, current };
+}
+
+function expectedIdentityOf(manifest: {
+  appVersion: string;
+  buildRevision: string;
+  msiProductVersion: string;
+  packageSha256: string;
+  packageSize: number;
+}) {
+  return {
+    appVersion: manifest.appVersion,
+    buildRevision: manifest.buildRevision,
+    msiProductVersion: manifest.msiProductVersion,
+    packageSha256: manifest.packageSha256,
+    packageSize: manifest.packageSize,
+  };
 }
 
 function createCache(
