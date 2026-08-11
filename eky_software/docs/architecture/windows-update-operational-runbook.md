@@ -14,7 +14,7 @@ tausta- ja hiljainen päivitys ovat kiellettyjä. `unsigned-prototype` ei ole
 publisher trust, joten `stable`-kanavaa tai laajempaa jakelua ei avata tällä
 runbookilla.
 
-Electron main säilyttää myöhemmin rajatun `current/candidate/previous`-
+Electron main säilyttää C1:stä alkaen rajatun `current/candidate/previous`-
 pakettivälimuistin. Sitä ei lueta Windows Installerin cachesta, backupista tai
 käyttäjän USB-polusta rollbackin hetkellä, vaan jokaisen slotin manifesti ja
 MSI-tavut varmennetaan uudelleen ennen käyttöä. Välimuisti ei kuulu
@@ -32,6 +32,22 @@ C1:n operational-raja päättyy paketin tarkastukseen, private stagingiin ja
 `current`-paketin rekisteröintiin. C1 ei käynnistä Windows Installeria,
 muodosta pre-update-palautuspistettä, sulje runtimea, kirjoita varsinaista
 update-journalia tai muuta business-dataa.
+
+## C1 Local Update Foundation 11.8.2026
+
+C1 validoi strict runtime-codecilla paikallisen sidecar-manifestin, tarkistaa
+MSI:n sisäisen Windows Installer -identiteetin staattisella read-only-
+komennolla, sitoo paketin nykyiseen release identityyn ja soveltaa
+`localUnsignedPilot`-trust-policya. Hyväksytty paketti kopioidaan suoratoistona
+Electron `userData` -juuren yksityiseen update-cacheen, jossa current- ja
+candidate-slotit päivitetään crash-safe metadatalla. Renderer pyytää vain
+nollaparametrisen `selectLocalUpdate()`-toiminnon eikä saa tiedostopolkua,
+manifestia, hashia, MSI:tä tai suorituskomentoa.
+
+C1 ei vielä kirjoita operational-eventtejä. Eventtikatalogi, päivitysyrityksen
+korrelaatio ja update-journal kuuluvat C2/C3:n erilliseen transaction ownership
+-päätökseen. C1:n epäonnistuminen ei käynnistä asentajaa, sulje runtimea,
+muodosta palautuspistettä tai koske business-dataan.
 
 ## Omistajuus
 
