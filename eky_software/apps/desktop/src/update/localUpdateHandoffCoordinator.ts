@@ -13,6 +13,10 @@ import {
   type UpdateJournalPackageIdentity,
 } from './updateJournal.js';
 import type { UpdateJournalStore } from './updateJournalStore.js';
+import {
+  noOpUpdateOperationalObserver,
+  type UpdateOperationalObserver,
+} from './updateOperationalObserver.js';
 
 interface LocalUpdateHandoffCoordinatorDependencies {
   cache: Pick<
@@ -25,6 +29,7 @@ interface LocalUpdateHandoffCoordinatorDependencies {
   ): Promise<void>;
   now?(): Date;
   operationIdFactory?(): string;
+  observer?: UpdateOperationalObserver;
   profileProtection: Pick<
     UpdateProfileProtection,
     | 'createValidatedPreUpdatePoint'
@@ -52,6 +57,9 @@ export class LocalUpdateHandoffCoordinator {
   prepareConfirmedUpdate(): Promise<Readonly<UpdateJournal>> {
     return this.runExclusive(async () => {
       let journal: Readonly<UpdateJournal> | undefined;
+      const correlationId = this.createOperationId();
+      const startedAt = Date.now();
+      this.notifyStarted(correlationId, 'preUpdateRecovery');
       try {
         await this.assertJournalCanBeReplaced();
         const [currentIdentity, candidateIdentity] = await Promise.all([
@@ -60,7 +68,7 @@ export class LocalUpdateHandoffCoordinator {
         ]);
         journal = createPreparedJournal({
           candidateIdentity,
-          correlationId: this.createOperationId(),
+          correlationId,
           currentIdentity,
           now: this.now(),
         });
@@ -75,9 +83,21 @@ export class LocalUpdateHandoffCoordinator {
           state: 'recoveryPointValidated',
         });
         await this.dependencies.journalStore.write(journal);
+        this.notifyCompleted(
+          correlationId,
+          startedAt,
+          'preUpdateRecovery',
+        );
         return journal;
       } catch {
         await this.writeFailedJournal(journal);
+        this.notifyFailed({
+          correlationId,
+          errorCode: 'UPDATE_RECOVERY_POINT_FAILED',
+          sideEffectState: 'none',
+          stage: 'preUpdateRecovery',
+          startedAt,
+        });
         throw new LocalUpdateHandoffError();
       }
     });
@@ -88,6 +108,9 @@ export class LocalUpdateHandoffCoordinator {
       let journal: Readonly<UpdateJournal> | undefined;
       let maintenanceStarted = false;
       let runtimeStopped = false;
+      let activeStage: 'installerHandoff' | 'runtimeShutdown' =
+        'installerHandoff';
+      let stageStartedAt = Date.now();
       try {
         journal = await this.dependencies.journalStore.read();
         if (
@@ -97,6 +120,7 @@ export class LocalUpdateHandoffCoordinator {
         ) {
           throw new LocalUpdateHandoffError();
         }
+        this.notifyStarted(journal.correlationId, 'installerHandoff');
         const candidate =
           await this.dependencies.cache.revalidateJournalPackage({
             expectedIdentity: {
@@ -115,8 +139,18 @@ export class LocalUpdateHandoffCoordinator {
           state: 'runtimeStopping',
         });
         await this.dependencies.journalStore.write(journal);
+        activeStage = 'runtimeShutdown';
+        stageStartedAt = Date.now();
+        this.notifyStarted(journal.correlationId, activeStage);
         await this.dependencies.shutdownRuntime();
+        this.notifyCompleted(
+          journal.correlationId,
+          stageStartedAt,
+          activeStage,
+        );
         runtimeStopped = true;
+        activeStage = 'installerHandoff';
+        stageStartedAt = Date.now();
         journal = transitionUpdateJournal(journal, {
           at: this.now(),
           handoffAttemptCount: 1,
@@ -124,6 +158,11 @@ export class LocalUpdateHandoffCoordinator {
         });
         await this.dependencies.journalStore.write(journal);
         await this.dependencies.launchInstaller(candidate);
+        this.notifyCompleted(
+          journal.correlationId,
+          stageStartedAt,
+          activeStage,
+        );
       } catch {
         if (maintenanceStarted && !runtimeStopped && journal !== undefined) {
           await this.dependencies.profileProtection
@@ -131,6 +170,18 @@ export class LocalUpdateHandoffCoordinator {
             .catch(() => undefined);
         }
         await this.writeFailedJournal(journal);
+        if (journal !== undefined) {
+          this.notifyFailed({
+            correlationId: journal.correlationId,
+            errorCode:
+              activeStage === 'runtimeShutdown'
+                ? 'UPDATE_SHUTDOWN_TIMEOUT'
+                : 'UPDATE_INSTALLER_START_FAILED',
+            sideEffectState: runtimeStopped ? 'unknown' : 'none',
+            stage: activeStage,
+            startedAt: stageStartedAt,
+          });
+        }
         throw new LocalUpdateHandoffError();
       }
     });
@@ -190,6 +241,57 @@ export class LocalUpdateHandoffCoordinator {
         }),
       )
       .catch(() => undefined);
+  }
+
+  private notifyStarted(
+    correlationId: string,
+    stage: 'installerHandoff' | 'preUpdateRecovery' | 'runtimeShutdown',
+  ): void {
+    try {
+      (this.dependencies.observer ?? noOpUpdateOperationalObserver)
+        .operationStarted({ correlationId, stage });
+    } catch {
+      // Operational logging does not control the update transaction.
+    }
+  }
+
+  private notifyCompleted(
+    correlationId: string,
+    startedAt: number,
+    stage: 'installerHandoff' | 'preUpdateRecovery' | 'runtimeShutdown',
+  ): void {
+    try {
+      (this.dependencies.observer ?? noOpUpdateOperationalObserver)
+        .operationCompleted({
+          correlationId,
+          durationMs: Math.max(0, Date.now() - startedAt),
+          stage,
+        });
+    } catch {
+      // Operational logging does not control the update transaction.
+    }
+  }
+
+  private notifyFailed(input: {
+    correlationId: string;
+    errorCode: string;
+    sideEffectState: 'none' | 'unknown';
+    stage: 'installerHandoff' | 'preUpdateRecovery' | 'runtimeShutdown';
+    startedAt: number;
+  }): void {
+    try {
+      (this.dependencies.observer ?? noOpUpdateOperationalObserver)
+        .operationFailed({
+          correlationId: input.correlationId,
+          durationMs: Math.max(0, Date.now() - input.startedAt),
+          errorCode: input.errorCode,
+          retryable: false,
+          sideEffectState: input.sideEffectState,
+          stage: input.stage,
+        });
+    } catch {
+      // Operational logging does not control the update transaction.
+    }
   }
 }
 

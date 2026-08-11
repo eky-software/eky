@@ -98,6 +98,12 @@ describe('local update handoff coordinator', () => {
     );
     expect(fixture.launchInstaller).not.toHaveBeenCalled();
     expect(fixture.currentJournal?.state).toBe('failed');
+    expect(fixture.operationFailed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        errorCode: 'UPDATE_SHUTDOWN_TIMEOUT',
+        stage: 'runtimeShutdown',
+      }),
+    );
   });
 
   it('fails preparation without shutdown when profile validation fails', async () => {
@@ -147,6 +153,9 @@ function createFixture(options: {
   const launchInstaller = vi.fn(async () => {
     options.onLaunch?.();
   });
+  const operationCompleted = vi.fn();
+  const operationFailed = vi.fn();
+  const operationStarted = vi.fn();
   const coordinator = new LocalUpdateHandoffCoordinator({
     cache: {
       async readExpectedPackageIdentity(role) {
@@ -179,6 +188,11 @@ function createFixture(options: {
     },
     launchInstaller,
     now: createClock(),
+    observer: {
+      operationCompleted,
+      operationFailed,
+      operationStarted,
+    },
     operationIdFactory: () =>
       '22222222-2222-4222-8222-222222222222',
     profileProtection: {
@@ -198,6 +212,9 @@ function createFixture(options: {
     },
     launchInstaller,
     leaveMaintenance,
+    operationCompleted,
+    operationFailed,
+    operationStarted,
     shutdownRuntime,
     states,
     validateActiveProfile,

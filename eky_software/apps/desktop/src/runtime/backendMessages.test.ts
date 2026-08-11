@@ -8,6 +8,55 @@ import {
 } from './backendMessages.js';
 
 describe('desktop backend process messages', () => {
+  it('accepts only exact private migration gate decisions', () => {
+    expect(parseDesktopBackendCommand({ type: 'continueStartup' })).toEqual({
+      type: 'continueStartup',
+    });
+    expect(parseDesktopBackendCommand({ type: 'abortStartup' })).toEqual({
+      type: 'abortStartup',
+    });
+    expect(
+      parseDesktopBackendCommand({
+        path: 'C:\\private',
+        type: 'continueStartup',
+      }),
+    ).toBeUndefined();
+  });
+
+  it('accepts only bounded pathless migration startup inspections', () => {
+    expect(
+      parseDesktopBackendStatus({
+        inspection: {
+          appliedMigrationCount: 41,
+          migrationChainIdentity: 'a'.repeat(64),
+          pendingMigrationCount: 1,
+          profileState: 'existing',
+        },
+        type: 'migrationGateReady',
+      }),
+    ).toEqual({
+      inspection: {
+        appliedMigrationCount: 41,
+        migrationChainIdentity: 'a'.repeat(64),
+        pendingMigrationCount: 1,
+        profileState: 'existing',
+      },
+      type: 'migrationGateReady',
+    });
+    expect(
+      parseDesktopBackendStatus({
+        inspection: {
+          appliedMigrationCount: 0,
+          databaseFilePath: 'C:\\private\\profile.sqlite',
+          migrationChainIdentity: '',
+          pendingMigrationCount: 42,
+          profileState: 'empty',
+        },
+        type: 'migrationGateReady',
+      }),
+    ).toBeUndefined();
+  });
+
   it('accepts only absolute trusted runtime paths', () => {
     const runtimeRoot = resolve('desktop-test-runtime');
 

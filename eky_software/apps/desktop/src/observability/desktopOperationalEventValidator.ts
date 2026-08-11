@@ -3,6 +3,7 @@ import {
   desktopOperationalEventSpecs,
   desktopRequiredPayloadFields,
   recoveryPointKinds,
+  updateOperationalStages,
   type DesktopPermissionType,
   type DesktopOperationalEvent,
   type DesktopOperationalEventName,
@@ -40,6 +41,7 @@ const maximumEventBytes = 16 * 1024;
 const buildRevisionPattern = /^(?:[0-9a-f]{7,40}|development)$/;
 const permissionTypes = new Set(desktopPermissionTypes);
 const recoveryPointKindSet = new Set<string>(recoveryPointKinds);
+const updateOperationalStageSet = new Set<string>(updateOperationalStages);
 const recoveryEventStages = Object.freeze({
   'backup.started': ['portable'],
   'backup.completed': ['portable'],
@@ -252,6 +254,18 @@ function validatePayloadValue(
     if (typeof value !== 'string' || !allowedStages.includes(value)) {
       throw new DesktopOperationalEventValidationError(
         'Desktop operational event recovery stage is invalid.',
+      );
+    }
+    return;
+  }
+
+  if (field === 'stage' && eventName.startsWith('update.')) {
+    if (
+      typeof value !== 'string' ||
+      !updateOperationalStageSet.has(value)
+    ) {
+      throw new DesktopOperationalEventValidationError(
+        'Desktop operational update stage is invalid.',
       );
     }
     return;

@@ -109,11 +109,17 @@ import {
 } from '../profileBackup/packagedProfileBackupSmoke.js';
 import {
   createLocalUpdateFoundationComposition,
+  createLocalUpdatePackageCacheComposition,
 } from '../update/localUpdateFoundationComposition.js';
 import type { LocalUpdateSelectionCapability } from '../update/localUpdateSelectionCapability.js';
 import { createLocalUpdateRuntimePaths } from '../update/localUpdateRuntimePaths.js';
+import { AcceptedBuildMetadataStore } from '../update/acceptedBuildMetadataStore.js';
+import { readEncryptedSecretStorageIdentity } from '../update/encryptedSecretStorageIdentity.js';
+import { FirstStartUpdateCoordinator } from '../update/firstStartUpdateCoordinator.js';
+import { createProfileProtectionComposition } from '../update/profileProtectionComposition.js';
 import { UpdateJournalStore } from '../update/updateJournalStore.js';
 import { readUpdateProtectedRecoveryPointReferences } from '../update/updateRecoveryPointProtection.js';
+import { createUpdateOperationalObserver } from '../update/updateOperationalObserver.js';
 
 export interface DesktopLifecycleHandle {
   applicationWindow: BrowserWindow;
@@ -327,6 +333,10 @@ async function startDesktopCompositionRuntime({
     'secrets',
     'company-email-smtp-v1.dat',
   );
+  const encryptedSecretFile = createPackagedSmokeSecretFileStore(
+    secretFilePath,
+    smokeMode,
+  );
   const smokePdfPath = join(dataRoot, 'smoke', 'approved-invoice-smoke.pdf');
   const smokeSupportBundlePath =
     smokeMode && options.smokeConfiguration.root !== undefined
@@ -375,6 +385,39 @@ async function startDesktopCompositionRuntime({
     observer: profileRecoveryOperationalObserver,
     recoveryPointService,
   });
+  const updateProfileProtection = createProfileProtectionComposition({
+    profileSnapshotClient: profileSnapshotBrokerClient,
+    recoveryPointService,
+    updateJournalStore,
+  });
+  const localUpdatePackageCache =
+    options.releaseInfo === undefined
+      ? undefined
+      : createLocalUpdatePackageCacheComposition({
+          releaseInfo: options.releaseInfo,
+          resourcesPath: options.resourcesPath,
+          systemRoot: process.env.SystemRoot,
+          userDataPath: options.userDataPath,
+        });
+  const firstStartUpdateCoordinator =
+    options.releaseInfo === undefined || localUpdatePackageCache === undefined
+      ? undefined
+      : new FirstStartUpdateCoordinator({
+          acceptedBuildStore: new AcceptedBuildMetadataStore(
+            localUpdateRuntimePaths.acceptedBuildMetadataPath,
+          ),
+          buildInfo: options.buildInfo,
+          cache: localUpdatePackageCache,
+          journalStore: updateJournalStore,
+          observer: createUpdateOperationalObserver({
+            identity: desktopOperationalIdentity,
+            logger: desktopOperationalLogger,
+          }),
+          profileProtection: updateProfileProtection,
+          readSecretStorageIdentity: () =>
+            readEncryptedSecretStorageIdentity(encryptedSecretFile),
+          releaseInfo: options.releaseInfo,
+        });
   let applicationWindow: BrowserWindow | undefined;
   let pdfPreviewController: InvoicePdfPreviewWindowController | undefined;
   let operationalLogFolderCapability:
@@ -430,10 +473,7 @@ async function startDesktopCompositionRuntime({
   );
 
   const secretBrokerHandle = startSecretBrokerMain({
-    encryptedSecretFile: createPackagedSmokeSecretFileStore(
-      secretFilePath,
-      smokeMode,
-    ),
+    encryptedSecretFile,
     observer: {
       operationFailed(operation, errorCode) {
         const isReadOperation =
@@ -531,6 +571,13 @@ async function startDesktopCompositionRuntime({
         : 'backend',
     );
     backendHandle = await dependencies.startBackend({
+      async beforeMigrations(inspection) {
+        if (firstStartUpdateCoordinator === undefined) {
+          return;
+        }
+        await profileSnapshotBrokerClient.waitUntilReady();
+        await firstStartUpdateCoordinator.beforeMigrations(inspection);
+      },
       config: {
         appVersion: desktopAppVersion,
         architecture: process.arch,
@@ -590,6 +637,18 @@ async function startDesktopCompositionRuntime({
       secretBrokerHandle.close();
       options.relaunchApplication();
       return undefined;
+    }
+    await assertBackendHealth(
+      `http://127.0.0.1:${backendHandle.port}`,
+      runtimeSessionSecret,
+    );
+    if (firstStartUpdateCoordinator !== undefined) {
+      await assertDifferentRuntimeSessionRejected({
+        backendOrigin: `http://127.0.0.1:${backendHandle.port}`,
+        createRuntimeSession: dependencies.createRuntimeSession,
+        runtimeSessionSecret,
+      });
+      await firstStartUpdateCoordinator.acceptAfterBackendReady();
     }
     await recoveryPointScheduler.start();
   } catch (error) {
@@ -692,6 +751,9 @@ async function startDesktopCompositionRuntime({
   if (options.releaseInfo !== undefined) {
     localUpdateSelectionCapability =
       createLocalUpdateFoundationComposition({
+        ...(localUpdatePackageCache === undefined
+          ? {}
+          : { cache: localUpdatePackageCache }),
         ipcMain,
         mainWindow,
         releaseInfo: options.releaseInfo,
@@ -1043,6 +1105,8 @@ async function startDesktopCompositionRuntime({
       if (options.smokeConfiguration.phase === 'initial') {
         await loadApplicationWindow(mainWindow);
         await runPackagedSmokeCheck({
+          acceptedBuildMetadataPath:
+            localUpdateRuntimePaths.acceptedBuildMetadataPath,
           appVersion: desktopAppVersion,
           backend: backendHandle,
           buildRevision: options.buildInfo.buildRevision,
@@ -1213,6 +1277,33 @@ async function assertBackendHealth(
     }
   } catch {
     throw new Error('PROFILE_RESTORE_HEALTH_FAILED');
+  }
+}
+
+async function assertDifferentRuntimeSessionRejected(input: {
+  backendOrigin: string;
+  createRuntimeSession(): string;
+  runtimeSessionSecret: string;
+}): Promise<void> {
+  let rejectedSession = input.createRuntimeSession();
+  for (
+    let attempt = 0;
+    attempt < 2 && rejectedSession === input.runtimeSessionSecret;
+    attempt += 1
+  ) {
+    rejectedSession = input.createRuntimeSession();
+  }
+  if (rejectedSession === input.runtimeSessionSecret) {
+    throw new Error('FIRST_START_SESSION_VALIDATION_FAILED');
+  }
+
+  const response = await net.fetch(`${input.backendOrigin}/health`, {
+    headers: createBackendRequestHeaders(new Headers(), rejectedSession),
+    method: 'GET',
+  });
+  await response.body?.cancel().catch(() => undefined);
+  if (response.status !== 401) {
+    throw new Error('FIRST_START_SESSION_VALIDATION_FAILED');
   }
 }
 

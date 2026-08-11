@@ -335,4 +335,37 @@ describe('desktop operational event contracts', () => {
       }),
     ).toThrow(DesktopOperationalEventValidationError);
   });
+
+  it('accepts only minimized update lifecycle events with a closed stage', () => {
+    const event = createDesktopOperationalEvent(
+      {
+        correlationId: '22222222-2222-4222-8222-222222222222',
+        durationMs: 42,
+        errorCode: 'UPDATE_FIRST_START_FAILED',
+        eventName: 'update.operationFailed',
+        retryable: false,
+        sideEffectState: 'unknown',
+        stage: 'firstStartValidation',
+      },
+      options,
+    );
+
+    expect(event).toMatchObject({
+      category: 'update',
+      eventName: 'update.operationFailed',
+      stage: 'firstStartValidation',
+    });
+    expect(() =>
+      validateDesktopOperationalEvent({
+        ...event,
+        stage: 'C:\\Users\\Example\\update',
+      }),
+    ).toThrow(DesktopOperationalEventValidationError);
+    expect(() =>
+      validateDesktopOperationalEvent({
+        ...event,
+        packageSha256: 'a'.repeat(64),
+      }),
+    ).toThrow(DesktopOperationalEventValidationError);
+  });
 });

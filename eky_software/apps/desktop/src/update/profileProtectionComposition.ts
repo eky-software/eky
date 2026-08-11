@@ -29,7 +29,7 @@ interface ProfileProtectionCompositionDependencies {
     RecoveryPointService,
     'createPreMigration' | 'createPreUpdate'
   >;
-  restoreRecoveryPoint(reference: string): Promise<void>;
+  restoreRecoveryPoint?(reference: string): Promise<void>;
   updateJournalStore: Pick<UpdateJournalStore, 'read'>;
 }
 
@@ -63,6 +63,9 @@ export function createProfileProtectionComposition(
     },
     async restoreRecoveryPoint(recoveryPointReference: string) {
       assertRecoveryPointReference(recoveryPointReference);
+      if (dependencies.restoreRecoveryPoint === undefined) {
+        throw new Error('UPDATE_ROLLBACK_NOT_IMPLEMENTED');
+      }
       await dependencies.restoreRecoveryPoint(recoveryPointReference);
     },
     async validateActiveProfile() {

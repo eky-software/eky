@@ -14,6 +14,10 @@ import {
 import { readLocalRuntimeIdentity } from '../database/localRuntimeIdentityReader.js';
 import { runMigrations } from '../database/migration/runMigrations.js';
 import { MigrationRunError } from '../database/migration/migrationRunError.js';
+import {
+  inspectMigrationStartupState,
+  type MigrationStartupInspection,
+} from '../database/migration/inspectMigrationStartupState.js';
 import { createCompanySettingsComposition } from '../composition/companySettingsComposition.js';
 import { createCustomersComposition } from '../composition/customersComposition.js';
 import { createActivityComposition } from '../composition/activityComposition.js';
@@ -51,6 +55,7 @@ import { createConsistentProfileSnapshotService } from '../runtime/profileSnapsh
 import type { ProfileSnapshotServiceRegistration } from '../runtime/profileSnapshot/profileSnapshotTypes.js';
 import { StagedProfileSnapshotValidationService } from '../runtime/profileSnapshot/validateProfileSnapshot.js';
 import { CurrentActiveProfileValidationService } from '../runtime/profileSnapshot/validateActiveProfile.js';
+import { SqliteInvoiceBackupArtifactCatalog } from '../modules/invoicing/infrastructure/sqliteInvoiceBackupArtifactCatalog.js';
 
 const defaultAppVersion = '0.0.0';
 
@@ -74,6 +79,9 @@ export interface CreateAppOptions {
   profileMaintenanceState?: ProfileMaintenanceState;
   profileSnapshotServiceRegistration?: ProfileSnapshotServiceRegistration;
   runtimeTrust?: RuntimeTrust;
+  beforeMigrations?: (
+    inspection: Readonly<MigrationStartupInspection>,
+  ) => Promise<void>;
 }
 
 export async function createApp(
@@ -157,6 +165,48 @@ export async function createApp(
       ),
     );
     throw new Error('Database could not be opened.');
+  }
+
+  const profileMaintenanceState =
+    options.profileMaintenanceState ?? new ProfileMaintenanceState();
+
+  if (options.profileSnapshotServiceRegistration !== undefined) {
+    if (
+      options.migrationsDirectory === undefined ||
+      options.invoiceDocumentStorageRoot === undefined
+    ) {
+      database.close();
+      throw new Error(
+        'Profile snapshot runtime paths must be configured.',
+      );
+    }
+    registerProfileSnapshotServices({
+      database,
+      invoiceDocumentStorageRoot: options.invoiceDocumentStorageRoot,
+      migrationsDirectory: options.migrationsDirectory,
+      profileMaintenanceState,
+      registration: options.profileSnapshotServiceRegistration,
+    });
+  }
+
+  if (options.beforeMigrations !== undefined) {
+    if (options.migrationsDirectory === undefined) {
+      database.close();
+      throw new Error('Migration startup paths must be configured.');
+    }
+
+    try {
+      const inspection = inspectMigrationStartupState(
+        database,
+        options.migrationsDirectory,
+      );
+      await options.beforeMigrations(inspection);
+    } catch {
+      database.close();
+      throw new Error(
+        'Database migration startup gate could not be completed.',
+      );
+    }
   }
 
   const migrationStartedAt = Date.now();
@@ -273,9 +323,6 @@ export async function createApp(
   }
 
   const localRuntimeIdentity = readLocalRuntimeIdentity(database);
-  const profileMaintenanceState =
-    options.profileMaintenanceState ?? new ProfileMaintenanceState();
-
   const app = new Hono<BackendEnvironment>();
 
   app.use(
@@ -369,47 +416,6 @@ export async function createApp(
       : { invoiceDocumentStorageRoot: options.invoiceDocumentStorageRoot }),
   });
 
-  if (options.profileSnapshotServiceRegistration !== undefined) {
-    if (
-      options.migrationsDirectory === undefined ||
-      options.invoiceDocumentStorageRoot === undefined
-    ) {
-      database.close();
-      throw new Error(
-        'Profile snapshot runtime paths must be configured.',
-      );
-    }
-    const snapshotService = createConsistentProfileSnapshotService({
-        catalog: invoicingComposition.invoiceBackupArtifactCatalog,
-        database,
-        invoiceDocumentStorageRoot: options.invoiceDocumentStorageRoot,
-        maintenanceState: profileMaintenanceState,
-        migrationsDirectory: options.migrationsDirectory,
-        stagingRoot: options.profileSnapshotServiceRegistration.stagingRoot,
-      });
-    const validationService =
-      new StagedProfileSnapshotValidationService({
-        activeDatabase: database,
-        migrationsDirectory: options.migrationsDirectory,
-        stagingRoot: options.profileSnapshotServiceRegistration.stagingRoot,
-      });
-    const activeValidationService =
-      new CurrentActiveProfileValidationService(
-        database,
-        options.invoiceDocumentStorageRoot,
-      );
-    options.profileSnapshotServiceRegistration.register({
-      createProfileSnapshot: (input) =>
-        snapshotService.createProfileSnapshot(input),
-      prepareProfileRestoreActivation: (operationId) =>
-        validationService.prepareProfileRestoreActivation(operationId),
-      validateActiveProfile: () =>
-        activeValidationService.validateActiveProfile(),
-      validateProfileSnapshot: (operationId) =>
-        validationService.validateProfileSnapshot(operationId),
-    });
-  }
-
   app.route('/', invoicingComposition.routes);
   app.route(
     '/',
@@ -446,4 +452,40 @@ export async function createApp(
   });
 
   return app;
+}
+
+function registerProfileSnapshotServices(input: {
+  database: DatabaseConnection;
+  invoiceDocumentStorageRoot: string;
+  migrationsDirectory: string;
+  profileMaintenanceState: ProfileMaintenanceState;
+  registration: ProfileSnapshotServiceRegistration;
+}): void {
+  const snapshotService = createConsistentProfileSnapshotService({
+    catalog: new SqliteInvoiceBackupArtifactCatalog(input.database),
+    database: input.database,
+    invoiceDocumentStorageRoot: input.invoiceDocumentStorageRoot,
+    maintenanceState: input.profileMaintenanceState,
+    migrationsDirectory: input.migrationsDirectory,
+    stagingRoot: input.registration.stagingRoot,
+  });
+  const validationService = new StagedProfileSnapshotValidationService({
+    activeDatabase: input.database,
+    migrationsDirectory: input.migrationsDirectory,
+    stagingRoot: input.registration.stagingRoot,
+  });
+  const activeValidationService = new CurrentActiveProfileValidationService(
+    input.database,
+    input.invoiceDocumentStorageRoot,
+  );
+  input.registration.register({
+    createProfileSnapshot: (request) =>
+      snapshotService.createProfileSnapshot(request),
+    prepareProfileRestoreActivation: (operationId) =>
+      validationService.prepareProfileRestoreActivation(operationId),
+    validateActiveProfile: () =>
+      activeValidationService.validateActiveProfile(),
+    validateProfileSnapshot: (operationId) =>
+      validationService.validateProfileSnapshot(operationId),
+  });
 }

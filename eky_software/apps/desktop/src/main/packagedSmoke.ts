@@ -13,6 +13,7 @@ import {
   EncryptedSecretFile,
   type EncryptedSecretFileStore,
 } from '../secrets/encryptedSecretFile.js';
+import { AcceptedBuildMetadataStore } from '../update/acceptedBuildMetadataStore.js';
 import {
   createDeleteDraftSmokeFixture,
   markInvoiceDeliveredForArchiveSmoke,
@@ -86,6 +87,7 @@ export function resolvePackagedSmokeTempPath(tempPath: string): string {
 }
 
 interface RunPackagedSmokeCheckOptions {
+  acceptedBuildMetadataPath: string;
   appVersion: string;
   backend: DesktopBackendHandle;
   buildRevision: string;
@@ -286,6 +288,18 @@ function isPackagedSmokeStage(
 export async function runPackagedSmokeCheck(
   options: RunPackagedSmokeCheckOptions,
 ): Promise<void> {
+  const acceptedBuild = await new AcceptedBuildMetadataStore(
+    options.acceptedBuildMetadataPath,
+  ).read();
+  if (
+    acceptedBuild === undefined ||
+    acceptedBuild.appVersion !== options.appVersion ||
+    acceptedBuild.buildRevision !== options.buildRevision ||
+    acceptedBuild.releaseChannel !== 'pilot'
+  ) {
+    throw new Error('DESKTOP_SMOKE_FIRST_START_ACCEPTANCE_FAILED');
+  }
+
   const healthResponse = await fetch(
     `http://127.0.0.1:${options.backend.port}/health`,
     { signal: AbortSignal.timeout(5_000) },
