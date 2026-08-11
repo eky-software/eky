@@ -2,11 +2,11 @@
 
 ## Tila
 
-Tämä on tulevan Update Coordinatorin docs-first runbook. R0:n ensimmäinen
+Tämä on C2:ssa toteutettavan Update Coordinatorin runbook. R0:n ensimmäinen
 luottamusmalli on ADR-0010:n yhden hallitun laitteen `localUnsignedPilot`.
-Tuotantokoodissa ei ole vielä `update.*`-eventtejä eikä tässä dokumentissa
-lukita eventName-arvoja. Tarkat nimet hyväksytään vasta transaction ownership-
-ja failure behavior -toteutuspäätöksessä.
+Ensimmäiset `update.*`-eventit lisätään vain C2:n nimeämille valmistelu-,
+shutdown-, handoff- ja first-start-vaiheille. Tapahtumat eivät sisällä polkuja,
+paketin tiivisteitä, profiilitunnisteita, sessionia tai installer-outputia.
 
 Pilotissa paketti tulee vain paikallisesta release-arkistosta tai erikseen
 hash-tarkistetulta USB-medialta. Käyttäjä vahvistaa päivityksen. Verkko-,
@@ -48,6 +48,24 @@ C1 ei vielä kirjoita operational-eventtejä. Eventtikatalogi, päivitysyritykse
 korrelaatio ja update-journal kuuluvat C2/C3:n erilliseen transaction ownership
 -päätökseen. C1:n epäonnistuminen ei käynnistä asentajaa, sulje runtimea,
 muodosta palautuspistettä tai koske business-dataan.
+
+## C2 journal- ja first-start-raja
+
+C2 kirjoittaa `awaitingFirstStart`-tilan ja fsyncaa journalin ennen
+`msiexec`-prosessin käynnistämistä. Erillistä `installerLaunched`-tilaa ei
+käytetä. Yksi operaatio saa tehdä enintään yhden handoff-yrityksen, eikä
+runtime käynnistä asentajaa automaattisesti uudelleen epäselvän tuloksen
+jälkeen.
+
+Journalin `rollbackRequired`-tila pysäyttää C2:ssa business-UI:n ja ohjaa
+turvalliseen yleisvirheeseen. Varsinainen business- ja binary-rollback kuuluu
+C3:een. C2 ei yritä palautusta hiljaisesti eikä jatka migraatioita
+ratkaisemattomasta tilasta.
+
+First-start tarkistaa in-app-päivityksen journalin ja package-slotit ennen
+normaalia backendia. Suora Setup käyttää erillistä yksityistä read-only-
+preflightia; sitä ei toteuteta julkisena endpointina, renderer-toimintona tai
+yleisenä migrations-ohituksena.
 
 ## Omistajuus
 

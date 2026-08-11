@@ -18,7 +18,7 @@ update-UI:ta ei ole vielä toteutettu.
 | --- | --- | --- |
 | C0 Electron cold-start baseline | valmis 11.8.2026 | `DESK-PDF-001` ajettiin 10 kertaa retries=0 ja Electron critical kahdesti puhtaasti; aiemman flaken juurisyytä ei väitetä korjatuksi |
 | C1 Local Update Foundation | valmis 11.8.2026 | Manifestin runtime-codec, vaihdettava trust-policy, native selection, private staging/cache ja nykyisen rollback-paketin rekisteröinti; ei MSI:n käynnistystä eikä business-dataa |
-| C2 Update Orchestration and First Start | odottaa | Aloitetaan vasta C1:n vihreän mergen ja haarojen synkronoinnin jälkeen |
+| C2 Update Orchestration and First Start | työn alla | C1 on yhdistetty; C2 toteuttaa yksityisen orkestroinnin ja first-start-portin ilman käyttäjälle avattua päivitys-UI:ta tai rollbackia |
 | C3 Recovery, Compatibility and Pilot Release | odottaa | Aloitetaan vasta C2:n vihreän mergen ja haarojen synkronoinnin jälkeen |
 
 Migration runnerin SHA-256-checksum-, chain identity- ja release/build-
@@ -533,12 +533,11 @@ Jos palautuspistettä ei voida muodostaa, päivitystä ei aloiteta.
 
 ## 11. Päivitysjournal
 
-Yksityinen journal on versionoitu tilakone, esimerkiksi:
+Yksityinen C2-journal on versionoitu tilakone:
 
 - `prepared`
 - `recoveryPointValidated`
 - `runtimeStopping`
-- `installerLaunched`
 - `awaitingFirstStart`
 - `firstStartValidating`
 - `accepted`
@@ -546,13 +545,30 @@ Yksityinen journal on versionoitu tilakone, esimerkiksi:
 - `rolledBack`
 - `failed`
 
-Tarkat nimet lukitaan toteutuksessa. Siirtymät ovat monotonic ja idempotentteja.
+`installerLaunched` ei ole erillinen journalitila. Journal kirjoitetaan ja
+synkronoidaan `awaitingFirstStart`-tilaan ennen ulkoisen MSI-prosessin
+käynnistämistä. Näin myös spawnin tai prosessin kaatumisen jälkeinen tila on
+yksiselitteinen. Siirtymät ovat monotonic ja idempotentteja. Yksi journal saa
+sisältää enintään yhden installer-handoff-yrityksen; automaattista
+uudelleenyritystä ei tehdä.
+
+`rollbackRequired` ja `rolledBack` kuuluvat journalin suljettuun formaattiin,
+mutta varsinainen business- tai binary-rollback toteutetaan vasta C3:ssa. C2
+ei avaa business-UI:ta ratkaisemattomassa first-start-tilassa eikä yritä
+korjata profiilia hiljaisesti.
 Journal ei sisällä yritysdataa, raakaa polkua, salaisuutta tai vapaamuotoista
 asentajan outputia.
 
 Journalin package identity -kentät ovat suljettuja ja niiden pitää vastata
 staged artifactista juuri ennen handoffia uudelleen laskettuja arvoja. Pelkkä
 aiemmin lähdetiedostosta laskettu tiiviste ei riitä.
+
+Journalissa saa olla vain korrelaatiotunniste, nykyisen ja kohdebuildin
+turvallinen versio- ja paketti-identiteetti, julkaisukanava, palautuspisteen
+opaque-viite, tila, turvalliset aikaleimat ja rajattu attempt count. Journal ei
+saa sisältää polkua, `companyId`- tai `profileId`-arvoa, business-dataa,
+palautuspisteen sisältöä, salaisuutta, sessionia, komentoriviä tai asentajan
+outputia.
 
 ## 12. Hallittu shutdown
 
@@ -568,6 +584,10 @@ Ennen asentajan käynnistystä:
 
 Pakotettu kill on viimeinen fallback ja jättää journalin
 `rollbackRequired`- tai `failed`-tilaan.
+
+C2:n installer-handoff ei saa jatkua, jos graceful shutdown ei valmistu
+määräajassa. Pakotettu kill voi olla tavallisen sovellussulun viimeinen
+suojakeino, mutta se ei ole onnistunut päivityksen shutdown-kuittaus.
 
 ## 13. Handoff ulkoiselle asentajalle
 
@@ -602,6 +622,26 @@ Uusi versio avaa ennen normaalia UI:ta maintenance-polun:
 
 Renderer ei avaudu normaaliin business-tilaan ennen hyväksyntää.
 
+First-start-preflight on Electron mainin ja yksityisen backend utilityn
+välinen suljettu käynnistyspolku. Se ei ole julkinen HTTP-endpoint,
+renderer-capability tai yleinen `skipMigrations`-kytkin.
+
+Update Coordinatorin journalin sisältävä in-app-päivitys vaatii ennen normaalia
+backendia, että käynnissä oleva build vastaa journalin kohdebuildia,
+`current`- ja `candidate`-slotit ovat uudelleen varmennetut ja journalin
+pre-update-piste löytyy sekä läpäisee tarkistuksen. Journal siirtyy tämän
+jälkeen `firstStartValidating`-tilaan.
+
+Suora Setup ilman journalia käyttää read-only-preflightia. Tyhjä clean install
+ei tarvitse pre-migration-pistettä. Olemassa olevasta profiilista tarkistetaan
+migraatioketjun prefix ja pending-migraatiot ennen ensimmäistä SQL-kirjoitusta.
+Jos pending-migraatioita on, validoitu pre-migration-palautuspiste on pakollinen
+ennen tavallisen backendin ja `runMigrations`-polun käynnistystä.
+
+Asennuskohtainen hyväksytyn buildin metadata sisältää vain turvallisen build-
+identiteetin ja hyväksyntäajan. Se ei ole business-dataa eikä kuulu portable
+backupiin.
+
 ## 15. Migraatiot
 
 Migraatiot ovat immutable ja vain eteenpäin ajettavia:
@@ -629,6 +669,16 @@ Päivitys on hyväksytty vasta, kun:
 - `/health` palauttaa odotetun turvallisen vastauksen
 - runtime-session toimii
 - vähintään rajattu packaged startup smoke onnistuu
+
+Lisäksi C2 tarkistaa migration chainin ja sallitut forward-migraatiot,
+`integrity_check`- ja foreign key -tulokset, auktoritatiivisen
+PDF/dokumentticlosuren, SMTP-salaisuuden säilymisen, cache-slotit sekä sen,
+että uusi runtime-session toimii eikä edellisen prosessin session kelpaa.
+
+Vasta hyväksynnän jälkeen `candidate` ylennetään `current`-slotiksi, vanha
+`current` siirtyy `previous`-slotiksi, vanha `previous` poistetaan crash-safe-
+rotaation kautta, pre-update-piste vapautetaan normaaliin rotaatioon, journal
+siirtyy `accepted`-tilaan ja business-UI voidaan avata.
 
 Asentajan exit code yksin ei riitä.
 
