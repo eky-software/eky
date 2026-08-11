@@ -33,7 +33,14 @@ function Get-Properties {
   return ,$properties
 }
 
-$resolvedMsiPath = (Resolve-Path -LiteralPath $MsiPath).Path
+$msiItem = Get-Item -LiteralPath $MsiPath -Force
+if (
+  $msiItem.PSIsContainer -or
+  (($msiItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
+) {
+  throw 'UPDATE_MSI_REGULAR_FILE_REQUIRED'
+}
+$resolvedMsiPath = $msiItem.FullName
 if ([System.IO.Path]::GetExtension($resolvedMsiPath) -ne '.msi') {
   throw 'UPDATE_MSI_REQUIRED'
 }

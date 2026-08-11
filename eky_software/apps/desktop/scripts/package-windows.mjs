@@ -213,6 +213,13 @@ async function prepareApplicationStage(buildInfo, releaseInfo) {
     ),
     join(updateRuntimeStage, 'inspectWindowsInstallerIdentity.ps1'),
   );
+  await cp(
+    resolve(
+      desktopDirectory,
+      'resources/update/inspectWindowsRegularFile.ps1',
+    ),
+    join(updateRuntimeStage, 'inspectWindowsRegularFile.ps1'),
+  );
 }
 
 async function assertPackagedDiagnosticsArtifacts() {
@@ -243,6 +250,7 @@ async function assertPackagedDiagnosticsArtifacts() {
   await access(
     resolve(updateRuntimeStage, 'inspectWindowsInstallerIdentity.ps1'),
   );
+  await access(resolve(updateRuntimeStage, 'inspectWindowsRegularFile.ps1'));
 }
 
 async function applyAndVerifyFuses(executablePath) {

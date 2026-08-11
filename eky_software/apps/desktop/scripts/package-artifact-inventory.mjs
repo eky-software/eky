@@ -43,10 +43,10 @@ const stageLimits = Object.freeze({
   }),
   updateRuntimeStage: Object.freeze({
     maximumDirectoryDepth: 1,
-    maximumFileCount: 1,
+    maximumFileCount: 2,
     maximumLogicalPathBytes: 64,
     maximumProjectOwnedFileBytes: 32_768,
-    maximumTotalBytes: 32_768,
+    maximumTotalBytes: 64_000,
   }),
   packagedApp: Object.freeze({
     maximumDirectoryDepth: 11,
