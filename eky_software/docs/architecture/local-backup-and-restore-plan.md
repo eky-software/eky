@@ -266,6 +266,8 @@ Backupiin ei sisällytetä:
 - välimuisteja, temp-tiedostoja tai E2E/smoke-dataa
 - Electron-binaareja, sovelluspakettia, asenninta tai riippuvuuksia
 - päivityspakettia tai installer-komentoa
+- Update Coordinatorin `current`-, `candidate`- tai `previous`-
+  pakettivälimuistia, installer-sidecaria tai checksum-tiedostoa
 - pilvisalaisuuksia tai tulevan cloud identityn tokeneita
 
 Salaisuudet otetaan palautuksen jälkeen käyttöön erillisellä turvallisella

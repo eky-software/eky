@@ -385,6 +385,36 @@ Ennen jaeltavaa päivitystä arvioidaan ja lukitaan:
 - release-allekirjoitusavaimen säilytys kokonaan repositorion, sovelluksen,
   backupin, stagingin ja käyttäjän business-profiilin ulkopuolella.
 
+### Paikallinen rollback-pakettivälimuisti
+
+Update Coordinator käyttää Electron mainin omistamaa, asennuskohtaista
+teknistä pakettivälimuistia. Se ei kuulu yritysprofiiliin eikä ole business
+dataa. Välimuistissa on kolme loogista slottia:
+
+- `current`: käynnissä olevan N-version tarkistettu MSI, manifesti ja checksum
+- `candidate`: valittu ja private stagingiin kopioitu N+1-kokonaisuus
+- `previous`: hyväksyntää edeltävä N-kokonaisuus binary rollbackia varten.
+
+Ennen N -> N+1 -päivitystä `current` varmennetaan manifestista ja sen pitää
+vastata käynnissä olevan sovelluksen identityä, versiota, build revisionia,
+platformia ja arkkitehtuuria. Ensimmäisellä käyttökerralla `current` voidaan
+bootstrapata vain Electron mainin native-dialogilla valitusta manifestista;
+renderer ei saa polkua tai tavuja. Candidate varmennetaan lähteessä ja staged
+kopiosta. Vasta first-start-hyväksynnän jälkeen vanha current siirtyy
+previous-slotiksi ja candidate current-slotiksi.
+
+Windows Installerin omaa cachea ei käytetä ainoana rollback-lähteenä.
+Current- ja previous-kokonaisuudet varmennetaan aina uudelleen juuri ennen
+käyttöä. Välimuistilla on toteutuksessa lukittava koko- ja levybudjetti,
+keskeytyksenkestävä slotinvaihto sekä sääntö, joka säilyttää enintään
+rollbackiin tarvittavan nykyisen ja edellisen hyväksytyn kokonaisuuden.
+
+Tämä cache ei kuulu `.ekybackup`-varmuuskopioon, konekohtaiseen recovery
+pointiin, tukipakettiin, lasku-PDF-arkistoon, Activityyn tai business auditiin.
+Se kuuluu vain Update Coordinatorin tekniseen lifecycleen. Sallittu sanitoitu
+tila voidaan myöhemmin projisoida Diagnosticsiin erikseen hyväksytyn event
+catalogin kautta.
+
 ## 8. Suora Setup-päivitys
 
 Käyttäjä voi käynnistää uuden Setup-ohjelman myös Eky-sovelluksen
