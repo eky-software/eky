@@ -97,6 +97,7 @@ if (hasSingleInstanceLock) {
               : backendController.startBackend,
         },
         quitApplication: () => app.quit(),
+        releaseInfo: undefined,
         relaunchApplication() {
           app.relaunch();
           app.quit();
