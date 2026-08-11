@@ -240,6 +240,21 @@ describe('local update package cache', () => {
     ).rejects.toThrow(LocalUpdatePackageCacheError);
   });
 
+  it('returns a bounded package identity without exposing a cached path', async () => {
+    const fixture = await createFixture();
+    const cache = createCache(fixture.cacheRoot);
+    await cache.stageSelectedPackage({
+      manifestPath: fixture.manifestPath,
+      role: 'current',
+    });
+
+    const identity = await cache.readExpectedPackageIdentity('current');
+
+    expect(identity).toEqual(expectedIdentityOf(fixture.manifest));
+    expect(JSON.stringify(identity)).not.toContain(fixture.root);
+    expect(Object.isFrozen(identity)).toBe(true);
+  });
+
   it('promotes candidate to current and keeps the prior current as previous', async () => {
     const pair = await createCurrentAndCandidatePair();
     await pair.cache.promoteAcceptedCandidate({

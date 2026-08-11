@@ -115,6 +115,22 @@ export class LocalUpdatePackageCache {
     });
   }
 
+  async readExpectedPackageIdentity(
+    role: LocalUpdatePackageRole,
+  ): Promise<Readonly<LocalUpdateExpectedPackageIdentity>> {
+    return this.runExclusive(async () => {
+      await this.ensureCacheRoot();
+      const metadata = await this.validateSlot(role, this.slotPath(role));
+      return Object.freeze({
+        appVersion: metadata.appVersion,
+        buildRevision: metadata.buildRevision,
+        msiProductVersion: metadata.msiProductVersion,
+        packageSha256: metadata.packageSha256,
+        packageSize: metadata.packageSize,
+      });
+    });
+  }
+
   async stageSelectedPackage(input: {
     manifestPath: string;
     role: LocalUpdatePackageRole;
