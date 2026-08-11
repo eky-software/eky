@@ -236,3 +236,6 @@ jobs:
 
       - name: Reverify exact MSI release bytes after lifecycle tests
         run: pnpm --filter @eky/desktop installer:verify-release
+
+      - name: Create the local unsigned pilot bundle from verified bytes
+        run: pnpm --filter @eky/desktop installer:local-pilot-bundle
