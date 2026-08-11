@@ -536,6 +536,26 @@ Jos palautuspistettä ei voida muodostaa, päivitystä ei aloiteta.
 
 ## 11. Päivitysjournal
 
+### C3A:n installation-scoped state
+
+Päivitysjournal ja hyväksytyn buildin metadata ovat asennuskohtaisia, eivät
+aktiivisen yritysprofiilin business-dataa. Niiden auktoritatiivinen sijainti on
+Electronin `userData`-juuren `update-state`-hakemisto. Profiilin runtime-juuren
+vanha `update-state` on vain C2-yhteensopivuuslähde, eikä sitä sisällytetä
+portable backupiin tai palauteta yritysprofiilin mukana.
+
+Legacy-siirto tehdään ennen muun päivitystilan tulkintaa seuraavasti:
+
+1. uusi installation-scoped tila luetaan ensin
+2. legacy-arvo luetaan vain, jos vastaava uusi arvo puuttuu
+3. legacy-arvo validoidaan samalla suljetulla codecilla kuin uusi tila
+4. arvo kirjoitetaan uuteen sijaintiin crash-safe-mallilla ja luetaan takaisin
+5. legacy-arvo poistetaan vasta täsmällisen verifioinnin jälkeen
+6. ristiriita, vioittunut arvo tai osittainen siirto pysäyttää käynnistyksen
+
+Siirto on idempotentti. Lokit eivät sisällä polkuja, yritys- tai
+profiilitunnisteita, journalin sisältöä tai package-hashia.
+
 Yksityinen C2-journal on versionoitu tilakone:
 
 - `prepared`
@@ -652,6 +672,42 @@ ei tarvitse pre-migration-pistettä. Olemassa olevasta profiilista tarkistetaan
 migraatioketjun prefix ja pending-migraatiot ennen ensimmäistä SQL-kirjoitusta.
 Jos pending-migraatioita on, validoitu pre-migration-palautuspiste on pakollinen
 ennen tavallisen backendin ja `runMigrations`-polun käynnistystä.
+
+C3A:ssa suoran Setupin olemassa olevaa profiilia koskeva migraatiopäätös
+kirjoitetaan pysyväksi ennen ensimmäistä pending-migraation SQL-kirjoitusta.
+Suljettu recovery-record sisältää vain formaattiversion, teknisen korrelaation,
+edellisen hyväksytyn buildin, kohdebuildin, opaque pre-migration-viitteen,
+migraatioprefixin identiteetin, lähtötilan applied-määrän, turvallisen tilan,
+rajatun attempt countin ja UTC-aikaleimat. Se ei sisällä polkuja,
+`companyId`-/`profileId`-arvoja, SQL:aa, manifestia, business-dataa,
+salaisuuksia, sessionia tai raakaa virhettä.
+
+Jos prosessi pysähtyy esimerkiksi yhden migraation jälkeen, seuraava käynnistys
+ei jatka arvaamalla uusinta tilaa. Se vertaa read-only-startup-inspectionia
+alkuperäiseen prefixiin ja pysyvään recordiin sekä palauttaa aina recordissa
+sidotun alkuperäisen pre-migration-pisteen tai siirtyy `failedSafe`-tilaan.
+Uutta palautuspistettä ei luoda osittain migroidusta profiilista.
+
+### Installer not applied / cancelled
+
+`awaitingFirstStart` ei yksin todista, että MSI vaihtoi binaarit. Jos käynnissä
+oleva build, hyväksytty build ja current-cache vastaavat yhä vanhaa versiota,
+migraatioprefix ei ole muuttunut ja aktiivinen profiili validoituu terveeksi,
+journal suljetaan turvalliseen `installerNotApplied`-tilaan. Pre-update-suoja
+vapautetaan vasta tämän päätöksen jälkeen ja candidate säilytetään uutta
+käyttäjän käynnistämää yritystä varten. Eriävä, mixed tai muuten epäselvä tila
+siirtyy `failedSafe`-tilaan; automaattista installer-uusintaa ei tehdä.
+
+### Rajatut cache-operaatiot
+
+Päivityscachella ei ole yleistä clear- tai repair-komentoa. Candidate voidaan
+hylätä vain, kun yksikään ratkaisematon journal ei viittaa siihen, ja poisto
+kohdistuu täsmälleen yksityisen cache-juuren validoituun candidate-slotiin.
+Current voidaan korjata vain käyttäjän native-dialogilla valitsemasta suljetun
+manifestin paketista, joka läpäisee täyden trust- ja identity-validoinnin ja
+vastaa täsmälleen käynnissä olevaa hyväksyttyä releasea. Ratkaisematon journal
+estää molemmat operaatiot. Current- ja previous-slotit eivät muutu candidatea
+hylättäessä.
 
 Asennuskohtainen hyväksytyn buildin metadata sisältää vain turvallisen build-
 identiteetin ja hyväksyntäajan. Se ei ole business-dataa eikä kuulu portable

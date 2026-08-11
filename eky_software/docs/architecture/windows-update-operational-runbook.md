@@ -87,6 +87,30 @@ jättää turvallisen ylimääräisen suojauksen, ei peruuta jo committoitua
 hyväksyntää. Varsinainen rollback ja käyttäjälle avattava update-toiminto
 kuuluvat C3:een.
 
+## C3A recovery state -raja
+
+Update state on asennuskohtainen ja sijaitsee Electronin `userData/update-state`
+-hakemistossa. Profiilikohtainen vanha sijainti on vain kerran luettava,
+tiukasti validoitava legacy-lähde. Vioittunutta tai keskenään ristiriitaista
+tilaa ei yhdistetä eikä korjata arvaamalla.
+
+Suoran Setupin pending-migraatioilla on oma pysyvä recovery-record ennen
+ensimmäistä SQL-kirjoitusta. Keskeytyksen jälkeinen käynnistys käyttää vain
+recordissa sidottua alkuperäistä pre-migration-pistettä. Recordia, polkua,
+profiilitunnistetta, SQL:aa tai package identityä ei kirjoiteta operatiiviseen
+lokiin.
+
+Jos MSI peruttiin tai sitä ei sovellettu ja vanha hyväksytty build sekä
+migraatioprefix ovat todistettavasti ennallaan, journal voidaan sulkea
+`installerNotApplied`-tilaan. Candidate säilyy. Epäselvä tai mixed-versiotila
+on `failedSafe`, eikä siitä avata business-UI:ta.
+
+SystemRoot hyväksytään installer-inspectioniin vain kanonisena absoluuttisena
+Windows-juurena: `win32.resolve(systemRoot) === systemRoot`. ProductCode
+johdetaan buildissä deterministisesti nimialueesta `product/<msiProductVersion>`.
+Runtime tarkistaa saman identiteetin omalla pienellä helperillä; build-scriptiä
+ei importata runtimeen.
+
 ## Omistajuus
 
 Update Coordinator omistaa yhden päivitysyrityksen teknisen lifecycle-
@@ -148,6 +172,8 @@ toteutusta.
 | `UPDATE_BUSINESS_ROLLBACK_FAILED` | Pre-update-profiilia ei saatu palautettua terveeksi | Business-datan käytettävyys epävarma | Ei | Lopeta ohjelman käyttö ja ota yhteys tukeen | Käytä ADR-0009:n recovery-required-menettelyä | business rollback | Kyllä |
 | `UPDATE_BINARY_ROLLBACK_FAILED` | Edellistä binaariversiota ei saatu palautettua | Palautettu business data voi olla kunnossa, mutta sovellus ei ole käyttövalmis | Ei | Lopeta ohjelman käyttö ja ota yhteys tukeen | Asenna journalissa sidottu allekirjoitettu edellinen versio hallitusti | binary rollback | Kyllä |
 | `UPDATE_STATE_INCONSISTENT` | Journalin ja runtime/build identityn tila ei täsmää | Vaikutus epäselvä | Ei | Älä jatka käyttöä | Tarkista journalin turvallinen yhteenveto ja recovery pointin tila | mikä tahansa | Kyllä |
+| `UPDATE_DIRECT_SETUP_RECOVERY_REQUIRED` | Suora Setup keskeytyi pending-migraation aikana | Alkuperäinen pre-migration-piste on suojattu | Ei ennen palautusta | Sulje Eky ja käynnistä palautuspolku | Palauta recordissa sidottu piste; älä jatka migraatioita | direct Setup first-start | Kyllä |
+| `UPDATE_INSTALLER_NOT_APPLIED` | MSI peruttiin tai ei vaihtanut hyväksyttyä buildia | Business-data ja vanha build todistettavasti ennallaan | Kyllä uutena käyttäjän vahvistamana yrityksenä | Voit jatkaa vanhan version käyttöä | Säilytä candidate, sulje journal turvallisesti | installer handoff | Ei |
 
 ## Tukipaketin raja
 
