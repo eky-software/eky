@@ -47,6 +47,15 @@ export const recoveryPointKinds = Object.freeze([
 export type RecoveryPointOperationalKind =
   (typeof recoveryPointKinds)[number];
 
+export const updateOperationalStages = Object.freeze([
+  'firstStartValidation',
+  'installerHandoff',
+  'preUpdateRecovery',
+  'runtimeShutdown',
+] as const);
+export type UpdateOperationalStage =
+  (typeof updateOperationalStages)[number];
+
 export interface DesktopOperationalEventPayloadMap {
   'desktop.starting': Record<never, never>;
   'desktop.started': { durationMs?: number };
@@ -205,6 +214,19 @@ export interface DesktopOperationalEventPayloadMap {
       | 'failedSafeJournal'
       | 'rolledBackProfile'
       | 'startupRollback';
+  };
+  'update.operationStarted': {
+    correlationId: string;
+    stage: UpdateOperationalStage;
+  };
+  'update.operationCompleted': {
+    correlationId: string;
+    durationMs: number;
+    stage: UpdateOperationalStage;
+  };
+  'update.operationFailed': FailureFields & {
+    correlationId: string;
+    stage: UpdateOperationalStage;
   };
 }
 
@@ -524,6 +546,19 @@ export const desktopOperationalEventSpecs = Object.freeze({
     'correlationId',
     ...failureFields,
   ]),
+  'update.operationStarted': spec('update', 'info', 'success', [
+    'correlationId',
+    'stage',
+  ]),
+  'update.operationCompleted': spec('update', 'info', 'success', [
+    'correlationId',
+    'durationMs',
+    'stage',
+  ]),
+  'update.operationFailed': spec('update', 'error', 'failure', [
+    'correlationId',
+    ...failureFields,
+  ]),
 } satisfies Record<DesktopOperationalEventName, DesktopOperationalEventSpec>);
 
 export const desktopRequiredPayloadFields = Object.freeze({
@@ -607,6 +642,20 @@ export const desktopRequiredPayloadFields = Object.freeze({
   'restore.rollbackFailed': ['correlationId', 'errorCode', 'stage'],
   'restore.recoveryRequired': [
     'correlationId',
+    'errorCode',
+    'retryable',
+    'sideEffectState',
+    'stage',
+  ],
+  'update.operationStarted': ['correlationId', 'stage'],
+  'update.operationCompleted': [
+    'correlationId',
+    'durationMs',
+    'stage',
+  ],
+  'update.operationFailed': [
+    'correlationId',
+    'durationMs',
     'errorCode',
     'retryable',
     'sideEffectState',

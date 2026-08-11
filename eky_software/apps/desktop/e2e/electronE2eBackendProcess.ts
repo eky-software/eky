@@ -4,6 +4,7 @@ import type {
   DesktopBackendHandle,
   StartDesktopBackendOptions,
 } from '../src/runtime/backendProcess.js';
+import { waitForBackendShutdown } from '../src/runtime/backendShutdown.js';
 import { createDesktopOperationalEvent } from '../src/observability/createDesktopOperationalEvent.js';
 import type { ElectronE2eConfig } from './electronE2eConfig.js';
 
@@ -117,15 +118,27 @@ export function createElectronE2eBackendController(
               unexpectedExitCallback = callback;
             },
             port: status.port,
-            async stop() {
-              if (stopping) {
-                return;
-              }
-              stopping = true;
-              child.postMessage({ type: 'shutdown' });
-              await waitForExit(child, shutdownTimeoutMilliseconds);
+            stop() {
+              return stopBackend(true);
+            },
+            stopForUpdate() {
+              return stopBackend(false);
             },
           });
+
+          async function stopBackend(
+            forceAfterTimeout: boolean,
+          ): Promise<void> {
+            if (stopping) {
+              throw new Error('ELECTRON_E2E_BACKEND_STOP_ALREADY_STARTED');
+            }
+            stopping = true;
+            child.postMessage({ type: 'shutdown' });
+            await waitForBackendShutdown(child, {
+              forceAfterTimeout,
+              timeoutMilliseconds: shutdownTimeoutMilliseconds,
+            });
+          }
         });
         child.once('exit', () => {
           clearTimeout(timer);
@@ -195,20 +208,4 @@ function parseE2eBackendStatus(value: unknown): E2eBackendStatus | undefined {
     return { code: record.code, type: 'failed' };
   }
   return undefined;
-}
-
-function waitForExit(
-  child: UtilityProcess,
-  timeoutMilliseconds: number,
-): Promise<void> {
-  return new Promise((resolveExit) => {
-    const timer = setTimeout(() => {
-      child.kill();
-      resolveExit();
-    }, timeoutMilliseconds);
-    child.once('exit', () => {
-      clearTimeout(timer);
-      resolveExit();
-    });
-  });
 }

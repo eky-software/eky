@@ -62,6 +62,24 @@ afterEach(async () => {
 });
 
 describe('staged profile snapshot validation', () => {
+  it('can be composed before the first profile migrations run', async () => {
+    const root = await mkdtemp(
+      join(tmpdir(), 'eky-profile-validation-empty-'),
+    );
+    temporaryRoots.push(root);
+    const activeDatabase = new Database(':memory:');
+    openDatabases.push(activeDatabase);
+
+    expect(
+      () =>
+        new StagedProfileSnapshotValidationService({
+          activeDatabase,
+          migrationsDirectory: join(root, 'migrations'),
+          stagingRoot: join(root, 'staging'),
+        }),
+    ).not.toThrow();
+  });
+
   it('validates SQLite identity, migrations and every invoice PDF', async () => {
     const fixture = await createFixture();
 

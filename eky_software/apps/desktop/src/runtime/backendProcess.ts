@@ -15,11 +15,19 @@ import {
   noOpDesktopOperationalLogger,
   type DesktopOperationalLogger,
 } from '../observability/desktopOperationalLogger.js';
+import { waitForBackendShutdown } from './backendShutdown.js';
 
 const backendReadinessTimeoutMilliseconds = 30_000;
+const backendMigrationGateTimeoutMilliseconds = 5 * 60_000;
 const backendShutdownTimeoutMilliseconds = 3_000;
 
 export interface StartDesktopBackendOptions {
+  beforeMigrations(inspection: {
+    appliedMigrationCount: number;
+    migrationChainIdentity: string;
+    pendingMigrationCount: number;
+    profileState: 'empty' | 'existing';
+  }): Promise<void>;
   config: DesktopBackendStartMessage['config'];
   invoicePdfArchiveBrokerPort: MessagePortMain;
   operationalIdentity: DesktopOperationalIdentity;
@@ -33,23 +41,7 @@ export interface DesktopBackendHandle {
   onUnexpectedExit(callback: () => void): void;
   port: number;
   stop(): Promise<void>;
-}
-
-function waitForExit(
-  processHandle: UtilityProcess,
-  timeout: number,
-): Promise<'exited' | 'killedAfterTimeout'> {
-  return new Promise((resolveExit) => {
-    const timer = setTimeout(() => {
-      processHandle.kill();
-      resolveExit('killedAfterTimeout');
-    }, timeout);
-
-    processHandle.once('exit', () => {
-      clearTimeout(timer);
-      resolveExit('exited');
-    });
-  });
+  stopForUpdate(): Promise<void>;
 }
 
 export function startDesktopBackend(
@@ -74,7 +66,7 @@ export function startDesktopBackend(
     let ready = false;
     let stopping = false;
     let unexpectedExitCallback: (() => void) | undefined;
-    const readinessTimer = setTimeout(() => {
+    const handleReadinessTimeout = () => {
       processHandle.kill();
       operationalLogger.write(
         createDesktopOperationalEvent(
@@ -90,7 +82,12 @@ export function startDesktopBackend(
         ),
       );
       rejectStart(new Error('BACKEND_READINESS_TIMEOUT'));
-    }, backendReadinessTimeoutMilliseconds);
+    };
+    let readinessTimer = setTimeout(
+      handleReadinessTimeout,
+      backendReadinessTimeoutMilliseconds,
+    );
+    let migrationGatePending = false;
 
     processHandle.once('spawn', () => {
       processHandle.postMessage(
@@ -106,6 +103,41 @@ export function startDesktopBackend(
       const status = parseDesktopBackendStatus(value);
 
       if (status === undefined || ready) {
+        return;
+      }
+
+      if (status.type === 'migrationGateReady') {
+        if (migrationGatePending) {
+          processHandle.postMessage({ type: 'abortStartup' });
+          return;
+        }
+        migrationGatePending = true;
+        clearTimeout(readinessTimer);
+        readinessTimer = setTimeout(
+          handleReadinessTimeout,
+          backendMigrationGateTimeoutMilliseconds,
+        );
+        void options
+          .beforeMigrations(status.inspection)
+          .then(() => {
+            if (!migrationGatePending || ready) {
+              return;
+            }
+            migrationGatePending = false;
+            clearTimeout(readinessTimer);
+            readinessTimer = setTimeout(
+              handleReadinessTimeout,
+              backendReadinessTimeoutMilliseconds,
+            );
+            processHandle.postMessage({ type: 'continueStartup' });
+          })
+          .catch(() => {
+            if (!migrationGatePending || ready) {
+              return;
+            }
+            migrationGatePending = false;
+            processHandle.postMessage({ type: 'abortStartup' });
+          });
         return;
       }
 
@@ -129,6 +161,7 @@ export function startDesktopBackend(
         return;
       }
 
+      migrationGatePending = false;
       ready = true;
       clearTimeout(readinessTimer);
       operationalLogger.write(
@@ -145,35 +178,42 @@ export function startDesktopBackend(
           unexpectedExitCallback = callback;
         },
         port: status.port,
-        async stop() {
-          if (stopping) {
-            return;
-          }
-
-          stopping = true;
-          const stopStartedAt = Date.now();
-          processHandle.postMessage({ type: 'shutdown' });
-          const exitOutcome = await waitForExit(
-            processHandle,
-            backendShutdownTimeoutMilliseconds,
-          );
-          if (exitOutcome === 'killedAfterTimeout') {
-            operationalLogger.write(
-              createDesktopOperationalEvent(
-                {
-                  durationMs: Date.now() - stopStartedAt,
-                  errorCode: 'BACKEND_STOP_FAILED',
-                  eventName: 'backendProcess.stopFailed',
-                  retryable: false,
-                  sideEffectState: 'unknown',
-                  stage: 'shutdown',
-                },
-                options.operationalIdentity,
-              ),
-            );
-          }
+        stop() {
+          return stopBackend(true);
+        },
+        stopForUpdate() {
+          return stopBackend(false);
         },
       });
+
+      async function stopBackend(forceAfterTimeout: boolean): Promise<void> {
+        if (stopping) {
+          throw new Error('BACKEND_STOP_ALREADY_STARTED');
+        }
+
+        stopping = true;
+        const stopStartedAt = Date.now();
+        processHandle.postMessage({ type: 'shutdown' });
+        const exitOutcome = await waitForBackendShutdown(processHandle, {
+          forceAfterTimeout,
+          timeoutMilliseconds: backendShutdownTimeoutMilliseconds,
+        });
+        if (exitOutcome === 'forced') {
+          operationalLogger.write(
+            createDesktopOperationalEvent(
+              {
+                durationMs: Date.now() - stopStartedAt,
+                errorCode: 'BACKEND_STOP_FAILED',
+                eventName: 'backendProcess.stopFailed',
+                retryable: false,
+                sideEffectState: 'unknown',
+                stage: 'shutdown',
+              },
+              options.operationalIdentity,
+            ),
+          );
+        }
+      }
     });
     processHandle.once('exit', () => {
       clearTimeout(readinessTimer);

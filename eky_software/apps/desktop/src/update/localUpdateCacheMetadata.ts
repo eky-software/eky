@@ -1,4 +1,4 @@
-import type { LocalUpdatePackageRole } from './updatePackageTrustPolicy.js';
+import type { LocalUpdateCacheSlotRole } from './updatePackageTrustPolicy.js';
 
 const fields = new Set([
   'appVersion',
@@ -25,7 +25,7 @@ export interface LocalUpdateCacheMetadata {
   packageFilename: string;
   packageSha256: string;
   packageSize: number;
-  role: LocalUpdatePackageRole;
+  role: LocalUpdateCacheSlotRole;
   schemaVersion: 1;
 }
 
@@ -44,7 +44,9 @@ export function parseLocalUpdateCacheMetadata(
     Object.keys(value).length !== fields.size ||
     Object.keys(value).some((key) => !fields.has(key)) ||
     value.schemaVersion !== 1 ||
-    (value.role !== 'current' && value.role !== 'candidate') ||
+    (value.role !== 'current' &&
+      value.role !== 'candidate' &&
+      value.role !== 'previous') ||
     typeof value.appVersion !== 'string' ||
     !semVerPattern.test(value.appVersion) ||
     typeof value.buildRevision !== 'string' ||

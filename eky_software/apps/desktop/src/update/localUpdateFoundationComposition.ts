@@ -16,6 +16,7 @@ import {
 import { readWindowsRegularFileMetadata } from './windowsRegularFileMetadata.js';
 
 interface LocalUpdateFoundationCompositionOptions {
+  cache?: LocalUpdatePackageCache;
   ipcMain: Pick<IpcMain, 'handle' | 'removeHandler'>;
   mainWindow: BrowserWindow;
   releaseInfo: Readonly<DesktopReleaseInfo>;
@@ -26,37 +27,49 @@ interface LocalUpdateFoundationCompositionOptions {
   userDataPath: string;
 }
 
-export function createLocalUpdateFoundationComposition(
-  options: LocalUpdateFoundationCompositionOptions,
-): LocalUpdateSelectionCapability {
+export interface LocalUpdatePackageCacheCompositionOptions {
+  releaseInfo: Readonly<DesktopReleaseInfo>;
+  resourcesPath: string;
+  systemRoot: string | undefined;
+  userDataPath: string;
+}
+
+export function createLocalUpdatePackageCacheComposition(
+  options: LocalUpdatePackageCacheCompositionOptions,
+): LocalUpdatePackageCache {
   const cacheRoot = resolve(options.userDataPath, 'update-cache');
   const inspectorRoot = join(options.resourcesPath, 'update-runtime');
-  const installerInspectorScriptPath = join(
-    inspectorRoot,
-    'inspectWindowsInstallerIdentity.ps1',
-  );
-  const regularFileInspectorScriptPath = join(
-    inspectorRoot,
-    'inspectWindowsRegularFile.ps1',
-  );
   const powershellPath = resolveWindowsPowerShellPath(options.systemRoot);
-  const cache = new LocalUpdatePackageCache({
+  return new LocalUpdatePackageCache({
     cacheRoot,
     inspectInstaller: (msiPath) =>
       readWindowsInstallerIdentity({
-        inspectorScriptPath: installerInspectorScriptPath,
+        inspectorScriptPath: join(
+          inspectorRoot,
+          'inspectWindowsInstallerIdentity.ps1',
+        ),
         msiPath,
         powershellPath,
       }),
     inspectRegularFile: (filePath) =>
       readWindowsRegularFileMetadata({
         filePath,
-        inspectorScriptPath: regularFileInspectorScriptPath,
+        inspectorScriptPath: join(
+          inspectorRoot,
+          'inspectWindowsRegularFile.ps1',
+        ),
         powershellPath,
       }),
     releaseInfo: options.releaseInfo,
     trustPolicy: new LocalUnsignedPilotUpdatePackageTrustPolicy(),
   });
+}
+
+export function createLocalUpdateFoundationComposition(
+  options: LocalUpdateFoundationCompositionOptions,
+): LocalUpdateSelectionCapability {
+  const cache =
+    options.cache ?? createLocalUpdatePackageCacheComposition(options);
 
   return createLocalUpdateSelectionCapability({
     cache,
@@ -66,4 +79,3 @@ export function createLocalUpdateFoundationComposition(
     showSafeError: options.showSafeError,
   });
 }
-

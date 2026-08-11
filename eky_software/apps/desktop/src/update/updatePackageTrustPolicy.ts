@@ -3,6 +3,7 @@ import type { LocalUnsignedPilotUpdatePackageManifest } from './updatePackageMan
 import type { WindowsInstallerIdentity } from './windowsInstallerIdentity.js';
 
 export type LocalUpdatePackageRole = 'candidate' | 'current';
+export type LocalUpdateCacheSlotRole = LocalUpdatePackageRole | 'previous';
 
 export interface TrustedLocalUpdatePackage {
   manifest: Readonly<LocalUnsignedPilotUpdatePackageManifest>;

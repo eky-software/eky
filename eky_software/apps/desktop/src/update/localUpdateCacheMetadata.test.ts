@@ -20,9 +20,12 @@ const validMetadata = {
 describe('local update cache metadata', () => {
   it('accepts only the exact safe schema', () => {
     expect(parseLocalUpdateCacheMetadata(validMetadata)).toEqual(validMetadata);
+    expect(
+      parseLocalUpdateCacheMetadata({ ...validMetadata, role: 'previous' }),
+    ).toEqual({ ...validMetadata, role: 'previous' });
     for (const value of [
       { ...validMetadata, sourcePath: 'C:/unsafe' },
-      { ...validMetadata, role: 'previous' },
+      { ...validMetadata, role: 'rollback' },
       { ...validMetadata, packageSize: 0 },
       { ...validMetadata, createdAt: 'today' },
       { ...validMetadata, packageFilename: '../Eky.msi' },

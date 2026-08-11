@@ -28,6 +28,19 @@ export class LocalUnsignedPilotUpdatePackageTrustPolicy
   }
 }
 
+export function verifyLocalUnsignedPilotSharedIdentity(
+  input: Pick<
+    Parameters<UpdatePackageTrustPolicy['verifyPackage']>[0],
+    'installerIdentity' | 'manifest' | 'releaseInfo'
+  >,
+): void {
+  try {
+    assertSharedIdentity({ ...input, role: 'current' });
+  } catch {
+    throw new UpdatePackageTrustError();
+  }
+}
+
 function assertSharedIdentity(
   input: Parameters<UpdatePackageTrustPolicy['verifyPackage']>[0],
 ): void {

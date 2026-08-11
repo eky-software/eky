@@ -72,6 +72,12 @@ type StartServer = (options: {
     architecture: string;
     buildCreatedAt: string;
     buildDirty: boolean;
+    beforeMigrations(inspection: {
+      appliedMigrationCount: number;
+      migrationChainIdentity: string;
+      pendingMigrationCount: number;
+      profileState: 'empty' | 'existing';
+    }): Promise<void>;
     companyEmailSecretReader: {
       getSecret(companyId: string): Promise<string | null>;
     };
@@ -124,7 +130,39 @@ let invoicePdfArchiveBrokerClient: InvoicePdfArchiveBrokerClient | undefined;
 let profileSnapshotBrokerHandle: { close(): void } | undefined;
 let profileSnapshotService: BackendProfileSnapshotService | undefined;
 let startAttempted = false;
+let migrationGateDecision:
+  | {
+      reject(error: Error): void;
+      resolve(): void;
+      timer: ReturnType<typeof setTimeout>;
+    }
+  | undefined;
 const utilityParentPort = process.parentPort;
+const migrationGateDecisionTimeoutMilliseconds = 5 * 60_000;
+
+function waitForMigrationGateDecision(inspection: {
+  appliedMigrationCount: number;
+  migrationChainIdentity: string;
+  pendingMigrationCount: number;
+  profileState: 'empty' | 'existing';
+}): Promise<void> {
+  if (migrationGateDecision !== undefined) {
+    return Promise.reject(new Error('MIGRATION_GATE_ALREADY_PENDING'));
+  }
+
+  utilityParentPort.postMessage({
+    inspection,
+    type: 'migrationGateReady',
+  });
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      migrationGateDecision = undefined;
+      reject(new Error('MIGRATION_GATE_DECISION_TIMEOUT'));
+    }, migrationGateDecisionTimeoutMilliseconds);
+    migrationGateDecision = { reject, resolve, timer };
+  });
+}
 
 async function verifySecretBroker(
   client: CompanyEmailSecretBrokerClient,
@@ -195,6 +233,24 @@ async function createSmokePdf(
 
 utilityParentPort.on('message', (event) => {
   const command = parseDesktopBackendCommand(event.data);
+
+  if (
+    command?.type === 'continueStartup' ||
+    command?.type === 'abortStartup'
+  ) {
+    const decision = migrationGateDecision;
+    if (decision === undefined) {
+      return;
+    }
+    migrationGateDecision = undefined;
+    clearTimeout(decision.timer);
+    if (command.type === 'continueStartup') {
+      decision.resolve();
+    } else {
+      decision.reject(new Error('MIGRATION_GATE_ABORTED'));
+    }
+    return;
+  }
 
   if (command?.type === 'shutdown') {
     void (async () => {
@@ -319,12 +375,19 @@ utilityParentPort.on('message', (event) => {
       }
 
       failureCode = 'BACKEND_SERVER_START_FAILED';
+      let migrationGateCompleted = false;
       backendServer = await serverModule.startServer({
         appOptions: {
           appVersion: command.config.appVersion,
           architecture: command.config.architecture,
           buildCreatedAt: command.config.buildCreatedAt,
           buildDirty: command.config.buildDirty,
+          async beforeMigrations(inspection) {
+            failureCode = 'BACKEND_MIGRATION_STARTUP_GATE_FAILED';
+            await waitForMigrationGateDecision(inspection);
+            migrationGateCompleted = true;
+            failureCode = 'BACKEND_SERVER_START_FAILED';
+          },
           companyEmailSecretReader: {
             getSecret: (companyId) => secretBrokerClient!.getSecret(companyId),
           },
@@ -366,6 +429,10 @@ utilityParentPort.on('message', (event) => {
           sessionSecret: command.config.runtimeSessionSecret,
         },
       });
+      if (!migrationGateCompleted) {
+        failureCode = 'BACKEND_MIGRATION_STARTUP_GATE_FAILED';
+        throw new Error('Migration startup gate was not completed.');
+      }
       let smokePdfCreated = false;
 
       if (command.config.createSmokePdf) {
@@ -387,6 +454,10 @@ utilityParentPort.on('message', (event) => {
         type: 'ready',
       });
     } catch {
+      if (migrationGateDecision !== undefined) {
+        clearTimeout(migrationGateDecision.timer);
+        migrationGateDecision = undefined;
+      }
       secretBrokerClient?.close();
       profileSnapshotBrokerHandle?.close();
       utilityParentPort.postMessage({ code: failureCode, type: 'failed' });

@@ -65,9 +65,50 @@ describe('recovery point rotation service', () => {
     ).resolves.toBe(2);
     await expect(fixture.journalStore.read()).resolves.toBeUndefined();
   });
+
+  it('keeps a journal-protected point across later rotation runs', async () => {
+    const points = Array.from({ length: 9 }, (_, index) =>
+      createPoint(index + 1),
+    );
+    const protectedArtifactId = points[0]!.artifactId;
+    const fixture = await createFixture(points, {
+      readDurableProtectedArtifactIds: async () => [protectedArtifactId],
+    });
+
+    await fixture.service.maintain(profileId);
+
+    expect(fixture.remove).not.toHaveBeenCalledWith(
+      profileId,
+      protectedArtifactId,
+    );
+  });
+
+  it('fails closed before deletion when durable protection cannot be read', async () => {
+    const fixture = await createFixture(
+      Array.from({ length: 9 }, (_, index) => createPoint(index + 1)),
+      {
+        readDurableProtectedArtifactIds: async () => {
+          throw new Error('UPDATE_JOURNAL_INVALID');
+        },
+      },
+    );
+
+    await expect(fixture.service.maintain(profileId)).rejects.toThrow(
+      'UPDATE_JOURNAL_INVALID',
+    );
+    expect(fixture.remove).not.toHaveBeenCalled();
+    await expect(fixture.journalStore.read()).resolves.toBeUndefined();
+  });
 });
 
-async function createFixture(points: RecoveryPointIndexEntry[]) {
+async function createFixture(
+  points: RecoveryPointIndexEntry[],
+  options: {
+    readDurableProtectedArtifactIds?(
+      profileId: string,
+    ): Promise<readonly string[]>;
+  } = {},
+) {
   const recoveryRoot = await mkdtemp(
     join(tmpdir(), 'eky-recovery-rotation-'),
   );
@@ -76,6 +117,7 @@ async function createFixture(points: RecoveryPointIndexEntry[]) {
   await mkdir(profileRoot, { mode: 0o700, recursive: true });
   const remove = vi.fn(async () => undefined);
   const service = new RecoveryPointRotationService({
+    ...options,
     recoveryRoot,
     store: {
       list: vi.fn(async () => points),

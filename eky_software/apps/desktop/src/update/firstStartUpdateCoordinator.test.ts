@@ -1,0 +1,400 @@
+import { describe, expect, it, vi } from 'vitest';
+
+import {
+  FirstStartUpdateCoordinator,
+  FirstStartUpdateError,
+  type MigrationStartupInspection,
+} from './firstStartUpdateCoordinator.js';
+import type { UpdateJournal } from './updateJournal.js';
+
+const recoveryPointReference = '11111111-1111-4111-8111-111111111111';
+const preMigrationPointReference = '33333333-3333-4333-8333-333333333333';
+const currentIdentity = {
+  buildRevision: 'aaaaaaaaaaaa',
+  msiProductVersion: '0.1.0',
+  packageSha256: 'a'.repeat(64),
+  packageSize: 1_024,
+};
+const candidateIdentity = {
+  buildRevision: 'bbbbbbbbbbbb',
+  msiProductVersion: '0.2.0',
+  packageSha256: 'b'.repeat(64),
+  packageSize: 2_048,
+};
+const releaseInfo = {
+  appIdentity: 'Eky' as const,
+  appVersion: '0.2.0',
+  architecture: 'x64' as const,
+  buildRevision: candidateIdentity.buildRevision,
+  msiProductVersion: candidateIdentity.msiProductVersion,
+  platform: 'win32' as const,
+  releaseChannel: 'pilot' as const,
+  schemaVersion: 1 as const,
+  upgradeCode: '11111111-1111-4111-8111-111111111111',
+};
+
+describe('first-start update coordinator', () => {
+  it('accepts a clean initial install without creating a recovery point', async () => {
+    const fixture = createFixture();
+
+    await fixture.coordinator.beforeMigrations(createInspection('empty', 38));
+    expect(fixture.createValidatedPreMigrationPoint).not.toHaveBeenCalled();
+    expect(fixture.acceptedWrites).toHaveLength(0);
+
+    await fixture.coordinator.acceptAfterBackendReady();
+
+    expect(fixture.acceptedWrites).toEqual([
+      expect.objectContaining({
+        appVersion: '0.2.0',
+        buildRevision: candidateIdentity.buildRevision,
+      }),
+    ]);
+    expect(fixture.validateActiveProfile).toHaveBeenCalledOnce();
+  });
+
+  it('creates a validated pre-migration point before a direct Setup upgrade', async () => {
+    const fixture = createFixture({
+      acceptedBuild: {
+        acceptedAt: '2026-08-10T18:00:00.000Z',
+        appVersion: '0.1.0',
+        buildRevision: currentIdentity.buildRevision,
+        formatVersion: 1,
+        releaseChannel: 'pilot',
+      },
+    });
+
+    await fixture.coordinator.beforeMigrations(
+      createInspection('existing', 1),
+    );
+    expect(fixture.createValidatedPreMigrationPoint).toHaveBeenCalledOnce();
+
+    await fixture.coordinator.acceptAfterBackendReady();
+    expect(fixture.releaseProtectedPoint).toHaveBeenCalledWith(
+      preMigrationPointReference,
+    );
+  });
+
+  it('keeps an already accepted build read-only at the migration gate', async () => {
+    const fixture = createFixture({
+      acceptedBuild: acceptedCandidateBuild(),
+      journal: createJournal('accepted'),
+    });
+
+    await fixture.coordinator.beforeMigrations(
+      createInspection('existing', 0),
+    );
+    await fixture.coordinator.acceptAfterBackendReady();
+
+    expect(fixture.acceptedWrites).toHaveLength(0);
+    expect(fixture.validateActiveProfile).not.toHaveBeenCalled();
+    expect(fixture.promoteAcceptedCandidate).not.toHaveBeenCalled();
+  });
+
+  it('rejects pending migrations under an already accepted build', async () => {
+    const fixture = createFixture({
+      acceptedBuild: acceptedCandidateBuild(),
+      journal: createJournal('accepted'),
+    });
+
+    await expect(
+      fixture.coordinator.beforeMigrations(
+        createInspection('existing', 1),
+      ),
+    ).rejects.toThrow(FirstStartUpdateError);
+    expect(fixture.createValidatedPreMigrationPoint).not.toHaveBeenCalled();
+  });
+
+  it('validates, migrates and atomically accepts a coordinated update', async () => {
+    const fixture = createFixture({
+      acceptedBuild: {
+        acceptedAt: '2026-08-10T18:00:00.000Z',
+        appVersion: '0.1.0',
+        buildRevision: currentIdentity.buildRevision,
+        formatVersion: 1,
+        releaseChannel: 'pilot',
+      },
+      journal: createJournal('awaitingFirstStart'),
+    });
+
+    await fixture.coordinator.beforeMigrations(
+      createInspection('existing', 1),
+    );
+    expect(fixture.journalStates).toEqual(['firstStartValidating']);
+
+    await fixture.coordinator.acceptAfterBackendReady();
+
+    expect(fixture.promoteAcceptedCandidate).toHaveBeenCalledOnce();
+    expect(fixture.journalStates).toEqual([
+      'firstStartValidating',
+      'accepted',
+    ]);
+    expect(fixture.releaseProtectedPoint).toHaveBeenCalledWith(
+      recoveryPointReference,
+    );
+    expect(fixture.releaseProtectedPoint).toHaveBeenCalledWith(
+      preMigrationPointReference,
+    );
+    expect(fixture.operationStarted).toHaveBeenCalledWith({
+      correlationId: '22222222-2222-4222-8222-222222222222',
+      stage: 'firstStartValidation',
+    });
+    expect(fixture.operationCompleted).toHaveBeenCalledWith(
+      expect.objectContaining({
+        correlationId: '22222222-2222-4222-8222-222222222222',
+        stage: 'firstStartValidation',
+      }),
+    );
+  });
+
+  it('resumes after an interrupted accepted cache rotation without rotating twice', async () => {
+    const fixture = createFixture({
+      acceptedBuild: {
+        acceptedAt: '2026-08-10T18:00:00.000Z',
+        appVersion: '0.1.0',
+        buildRevision: currentIdentity.buildRevision,
+        formatVersion: 1,
+        releaseChannel: 'pilot',
+      },
+      cacheAlreadyRotated: true,
+      journal: createJournal('firstStartValidating'),
+    });
+
+    await fixture.coordinator.beforeMigrations(
+      createInspection('existing', 0),
+    );
+    await fixture.coordinator.acceptAfterBackendReady();
+
+    expect(fixture.promoteAcceptedCandidate).not.toHaveBeenCalled();
+    expect(fixture.journalStates).toEqual(['accepted']);
+  });
+
+  it('keeps a committed acceptance when retention cleanup must be retried later', async () => {
+    const fixture = createFixture({
+      acceptedBuild: {
+        acceptedAt: '2026-08-10T18:00:00.000Z',
+        appVersion: '0.1.0',
+        buildRevision: currentIdentity.buildRevision,
+        formatVersion: 1,
+        releaseChannel: 'pilot',
+      },
+      journal: createJournal('awaitingFirstStart'),
+      releaseFails: true,
+    });
+
+    await fixture.coordinator.beforeMigrations(
+      createInspection('existing', 1),
+    );
+    await expect(
+      fixture.coordinator.acceptAfterBackendReady(),
+    ).resolves.toBeUndefined();
+
+    expect(fixture.acceptedWrites).toHaveLength(1);
+    expect(fixture.journalStates).toEqual([
+      'firstStartValidating',
+      'accepted',
+    ]);
+    expect(fixture.releaseProtectedPoint).toHaveBeenCalledTimes(2);
+  });
+
+  it('marks the journal rollback-required when post-start validation fails', async () => {
+    const fixture = createFixture({
+      acceptedBuild: {
+        acceptedAt: '2026-08-10T18:00:00.000Z',
+        appVersion: '0.1.0',
+        buildRevision: currentIdentity.buildRevision,
+        formatVersion: 1,
+        releaseChannel: 'pilot',
+      },
+      journal: createJournal('awaitingFirstStart'),
+      secretChanges: true,
+    });
+    await fixture.coordinator.beforeMigrations(
+      createInspection('existing', 0),
+    );
+
+    await expect(
+      fixture.coordinator.acceptAfterBackendReady(),
+    ).rejects.toThrow(FirstStartUpdateError);
+
+    expect(fixture.acceptedWrites).toHaveLength(0);
+    expect(fixture.journalStates).toEqual([
+      'firstStartValidating',
+      'rollbackRequired',
+    ]);
+    expect(fixture.operationFailed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        errorCode: 'UPDATE_FIRST_START_FAILED',
+        sideEffectState: 'unknown',
+        stage: 'firstStartValidation',
+      }),
+    );
+  });
+
+  it('fails closed before migrations when the installed build does not match the journal', async () => {
+    const fixture = createFixture({
+      journal: {
+        ...createJournal('awaitingFirstStart'),
+        targetVersion: '0.3.0',
+      },
+    });
+
+    await expect(
+      fixture.coordinator.beforeMigrations(
+        createInspection('existing', 1),
+      ),
+    ).rejects.toThrow(FirstStartUpdateError);
+    expect(fixture.journalStates).toEqual(['rollbackRequired']);
+    expect(fixture.createValidatedPreMigrationPoint).not.toHaveBeenCalled();
+  });
+});
+
+function createFixture(options: {
+  acceptedBuild?: ReturnType<typeof acceptedCandidateBuild>;
+  cacheAlreadyRotated?: boolean;
+  journal?: Readonly<UpdateJournal>;
+  releaseFails?: boolean;
+  secretChanges?: boolean;
+} = {}) {
+  let journal = options.journal;
+  let cacheRotated = options.cacheAlreadyRotated ?? false;
+  let secretReadCount = 0;
+  const acceptedWrites: unknown[] = [];
+  const journalStates: string[] = [];
+  const createValidatedPreMigrationPoint = vi.fn(
+    async () => preMigrationPointReference,
+  );
+  const releaseProtectedPoint = vi.fn(async () => {
+    if (options.releaseFails) {
+      throw new Error('retention cleanup deferred');
+    }
+  });
+  const validateActiveProfile = vi.fn(async () => ({
+    artifactCount: 1,
+    artifactTotalByteSize: 100,
+    databaseHealth: 'healthy' as const,
+  }));
+  const promoteAcceptedCandidate = vi.fn(async () => {
+    cacheRotated = true;
+  });
+  const operationCompleted = vi.fn();
+  const operationFailed = vi.fn();
+  const operationStarted = vi.fn();
+  const coordinator = new FirstStartUpdateCoordinator({
+    acceptedBuildStore: {
+      read: async () => options.acceptedBuild,
+      async write(metadata) {
+        acceptedWrites.push(metadata);
+      },
+    },
+    buildInfo: {
+      buildDirty: false,
+      buildRevision: candidateIdentity.buildRevision,
+    },
+    cache: {
+      promoteAcceptedCandidate,
+      async revalidateJournalPackage(input) {
+        const expectsCandidate =
+          input.expectedIdentity.appVersion === '0.2.0';
+        const valid = cacheRotated
+          ? (input.role === 'current' && expectsCandidate) ||
+            (input.role === 'previous' && !expectsCandidate)
+          : (input.role === 'current' && !expectsCandidate) ||
+            (input.role === 'candidate' && expectsCandidate);
+        if (!valid) {
+          throw new Error('slot mismatch');
+        }
+        return {
+          appVersion: input.expectedIdentity.appVersion,
+          buildRevision: input.expectedIdentity.buildRevision,
+          msiProductVersion: input.expectedIdentity.msiProductVersion,
+          packagePath: 'C:\\private\\Eky.msi',
+        };
+      },
+    },
+    journalStore: {
+      read: async () => journal,
+      async write(next) {
+        journal = next;
+        journalStates.push(next.state);
+      },
+    },
+    now: createClock(),
+    observer: {
+      operationCompleted,
+      operationFailed,
+      operationStarted,
+    },
+    operationIdFactory: () =>
+      '44444444-4444-4444-8444-444444444444',
+    profileProtection: {
+      createValidatedPreMigrationPoint,
+      releaseProtectedPoint,
+      validateActiveProfile,
+    },
+    async readSecretStorageIdentity() {
+      secretReadCount += 1;
+      return options.secretChanges && secretReadCount > 1
+        ? 'b'.repeat(64)
+        : 'a'.repeat(64);
+    },
+    releaseInfo,
+  });
+  return {
+    acceptedWrites,
+    coordinator,
+    createValidatedPreMigrationPoint,
+    journalStates,
+    operationCompleted,
+    operationFailed,
+    operationStarted,
+    promoteAcceptedCandidate,
+    releaseProtectedPoint,
+    validateActiveProfile,
+  };
+}
+
+function createInspection(
+  profileState: MigrationStartupInspection['profileState'],
+  pendingMigrationCount: number,
+): MigrationStartupInspection {
+  return {
+    appliedMigrationCount: profileState === 'empty' ? 0 : 37,
+    migrationChainIdentity: 'a'.repeat(64),
+    pendingMigrationCount,
+    profileState,
+  };
+}
+
+function createJournal(state: UpdateJournal['state']): UpdateJournal {
+  return {
+    candidatePackageIdentity: candidateIdentity,
+    correlationId: '22222222-2222-4222-8222-222222222222',
+    createdAt: '2026-08-11T18:00:00.000Z',
+    currentPackageIdentity: currentIdentity,
+    currentVersion: '0.1.0',
+    formatVersion: 1,
+    handoffAttemptCount: 1,
+    recoveryPointReference,
+    releaseChannel: 'pilot',
+    revision: 4,
+    state,
+    targetVersion: '0.2.0',
+    updatedAt: '2026-08-11T18:03:00.000Z',
+  };
+}
+
+function acceptedCandidateBuild() {
+  return {
+    acceptedAt: '2026-08-11T18:04:00.000Z',
+    appVersion: '0.2.0',
+    buildRevision: candidateIdentity.buildRevision,
+    formatVersion: 1 as const,
+    releaseChannel: 'pilot' as const,
+  };
+}
+
+function createClock(): () => Date {
+  let minute = 5;
+  return () =>
+    new Date(`2026-08-11T18:${String(minute++).padStart(2, '0')}:00.000Z`);
+}

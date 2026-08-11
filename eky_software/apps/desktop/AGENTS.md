@@ -62,6 +62,19 @@ Mandatory boundaries:
 - C1 may inspect and private-stage a candidate and register a matching current
   rollback package, but it must not launch MSI, stop the runtime, create a
   pre-update point, write the orchestration journal or mutate business data
+- keep the C2 migration gate private between Electron main and the packaged
+  backend startup protocol; never expose first-start, migration continuation,
+  accepted-build metadata or update-journal controls to the renderer or public
+  HTTP
+- C2 may prepare and test the guarded installer handoff internally, but it must
+  not expose a runnable update capability or open business UI from an
+  unresolved first-start state before the C3 rollback and pilot-release gates
+- update shutdown must complete gracefully before installer handoff; a forced
+  backend kill is an ordinary shutdown fallback only and never a successful
+  update-shutdown acknowledgement
+- commit accepted-build and accepted-journal state before best-effort recovery
+  protection cleanup; cleanup failure may leave an extra protected point but
+  must not turn a committed acceptance into rollback-required state
 - never present an unsigned sidecar or SHA-256 hash as publisher trust, and do
   not weaken SmartScreen, Defender or other operating-system protections
 - preserve the two-process hardened Windows backup/restore smoke when changing
