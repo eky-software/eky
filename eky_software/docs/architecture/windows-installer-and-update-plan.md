@@ -7,7 +7,19 @@ backup/restore, recovery pointit, aktivointijournal ja Windows packaged
 restore -todistus ovat toteutettu 4.8.2026. Rajattu per-user x64 MSI-
 prototyyppi on toteutettu ja sen install-, repair-, uninstall-, major upgrade-,
 downgrade-esto- ja binary rollback -rajat on todennettu synteettisellä datalla.
-Päivitysorkestrointia, code signingia tai update-UI:ta ei ole vielä toteutettu.
+Local Update Foundation tarkistaa paikallisen manifestin ja MSI-identiteetin,
+soveltaa vaihdettavaa trust-policya ja rekisteröi hyväksytyn paketin Electron
+mainin yksityiseen tekniseen cacheen. Päivitysorkestrointia, code signingia tai
+update-UI:ta ei ole vielä toteutettu.
+
+### Local Update Program -checkpointit
+
+| Checkpoint | Tila | Huomio |
+| --- | --- | --- |
+| C0 Electron cold-start baseline | valmis 11.8.2026 | `DESK-PDF-001` ajettiin 10 kertaa retries=0 ja Electron critical kahdesti puhtaasti; aiemman flaken juurisyytä ei väitetä korjatuksi |
+| C1 Local Update Foundation | valmis 11.8.2026 | Manifestin runtime-codec, vaihdettava trust-policy, native selection, private staging/cache ja nykyisen rollback-paketin rekisteröinti; ei MSI:n käynnistystä eikä business-dataa |
+| C2 Update Orchestration and First Start | odottaa | Aloitetaan vasta C1:n vihreän mergen ja haarojen synkronoinnin jälkeen |
+| C3 Recovery, Compatibility and Pilot Release | odottaa | Aloitetaan vasta C2:n vihreän mergen ja haarojen synkronoinnin jälkeen |
 
 Migration runnerin SHA-256-checksum-, chain identity- ja release/build-
 metadata on toteutettu 10.8.2026. Historiallinen mismatch torjutaan ennen
@@ -318,8 +330,8 @@ Käyttäjäpolku:
 
 R0:ssa päivitystä ei käynnistetä automaattisesti ilman käyttäjän vahvistusta.
 
-Renderer pyytää vain nimettyä `selectLocalUpdatePackage`-tyyppistä
-capabilityä. Electron main avaa native-dialogin manifestille, lukee suljetun
+Renderer pyytää vain nimetyn nollaparametrisen `selectLocalUpdate()`-
+capabilityn. Electron main avaa native-dialogin manifestille, lukee suljetun
 manifestin ja johtaa sen samassa hakemistossa olevan paketin nimen vain
 validoidusta `packageFilename`-kentästä. Renderer ei saa manifestin tai
 paketin raakaa polkua, executablea, URL:ia, komentoriviä tai
@@ -414,6 +426,29 @@ pointiin, tukipakettiin, lasku-PDF-arkistoon, Activityyn tai business auditiin.
 Se kuuluu vain Update Coordinatorin tekniseen lifecycleen. Sallittu sanitoitu
 tila voidaan myöhemmin projisoida Diagnosticsiin erikseen hyväksytyn event
 catalogin kautta.
+
+### C1:n vastuuraja
+
+C1 saa valita, tarkastaa ja private stagingiin kopioida `candidate`-paketin
+sekä rekisteröidä käynnissä olevaa buildia vastaavan `current`-paketin.
+Candidate säilytetään vain rajatun cache-budjetin ja crash-safe
+slot-metadatan mukaan. Käyttäjän vahvistus kuuluu myöhempään C2-orkestrointiin;
+C1 ei käynnistä MSI:tä, sulje runtimea, muodosta pre-update-pistettä, kirjoita
+päivitysjournalia, aja first-start-polkuja eikä muuta business-dataa.
+
+Päivitystoiminto pidetään tavalliselta käyttäjältä piilossa tai poistettuna
+käytöstä C3:n pilot release -porttiin asti. C1:n capabilityt eivät anna
+rendererille polkuja, manifestia, MSI-tavuja, executablea tai argumentteja.
+
+C1 toteutettiin checkpoint-commiteilla `f76bb9e`, `be2026c`, `329b07b`,
+`137753d`, `404e960`, `caeee86`, `995764c` ja `b4525b0`. Testit kattavat
+tiukan manifesti- ja MSI-identiteettisopimuksen, saman version ja downgrade-
+paketin, väärän release-identiteetin, arkkitehtuurin ja asennusscopen,
+hash- ja kokomismatchin, lähdetiedoston mutaation, keskeytyneen ja levytilaan
+epäonnistuvan kopion, reparse-rajat, vioittuneet slotit sekä rendererin
+nollaparametrisen capability-rajan. Development-E2E antaa release identityn
+eksplisiittisesti puuttuvana, joten se ei aktivoi paketoidun releasen update-
+foundationia vahingossa.
 
 ## 8. Suora Setup-päivitys
 

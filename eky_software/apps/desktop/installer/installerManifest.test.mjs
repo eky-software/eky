@@ -14,6 +14,8 @@ import { afterEach, test } from 'node:test';
 
 import {
   createInstallerManifest,
+  INSTALLER_MANIFEST_MAX_BYTES,
+  parseInstallerManifestBytes,
   readInstallerManifest,
   validateInstallerManifest,
   verifyInstallerManifestPackage,
@@ -255,6 +257,43 @@ test('rejects symbolic links as installer manifests', async (t) => {
   }
   await assert.rejects(
     readInstallerManifest(linkPath),
+    /INSTALLER_MANIFEST_MISSING_OR_INVALID/,
+  );
+});
+
+test('uses the canonical manifest codec fixture corpus', async () => {
+  const fixtures = JSON.parse(
+    await readFile(
+      new URL('./fixtures/installerManifestCodecFixtures.json', import.meta.url),
+      'utf8',
+    ),
+  );
+
+  for (const fixture of fixtures) {
+    const parse = () =>
+      parseInstallerManifestBytes(Buffer.from(fixture.source, 'utf8'));
+    if (fixture.accepted) {
+      assert.doesNotThrow(parse, fixture.name);
+    } else {
+      assert.throws(
+        parse,
+        /INSTALLER_MANIFEST_MISSING_OR_INVALID/,
+        fixture.name,
+      );
+    }
+  }
+});
+
+test('rejects oversized and invalid UTF-8 manifest bytes before parsing', () => {
+  assert.throws(
+    () =>
+      parseInstallerManifestBytes(
+        Buffer.alloc(INSTALLER_MANIFEST_MAX_BYTES + 1, 0x20),
+      ),
+    /INSTALLER_MANIFEST_MISSING_OR_INVALID/,
+  );
+  assert.throws(
+    () => parseInstallerManifestBytes(Uint8Array.from([0xc3, 0x28])),
     /INSTALLER_MANIFEST_MISSING_OR_INVALID/,
   );
 });

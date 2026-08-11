@@ -55,6 +55,13 @@ Mandatory boundaries:
   it accepts only the pilot channel, local media and explicit confirmation,
   and must never be generalized into stable, network, background or silent
   updates
+- the C1 local update foundation may expose only the zero-argument
+  `selectLocalUpdate()` capability; Electron main owns the native manifest
+  dialog and renderer receives only a safe summary without paths, manifest
+  payload, MSI bytes, executable or arguments
+- C1 may inspect and private-stage a candidate and register a matching current
+  rollback package, but it must not launch MSI, stop the runtime, create a
+  pre-update point, write the orchestration journal or mutate business data
 - never present an unsigned sidecar or SHA-256 hash as publisher trust, and do
   not weaken SmartScreen, Defender or other operating-system protections
 - preserve the two-process hardened Windows backup/restore smoke when changing

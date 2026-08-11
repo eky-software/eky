@@ -14,6 +14,7 @@ const validStages = new Set([
   'applicationStage',
   'backendStage',
   'desktopRuntimeStage',
+  'updateRuntimeStage',
   'packagedApp',
 ]);
 const reviewedVendorSensitiveArtifactAllowlist = new Set([]);
@@ -39,6 +40,13 @@ const stageLimits = Object.freeze({
     maximumLogicalPathBytes: 96,
     maximumProjectOwnedFileBytes: 262_144,
     maximumTotalBytes: 1_048_576,
+  }),
+  updateRuntimeStage: Object.freeze({
+    maximumDirectoryDepth: 1,
+    maximumFileCount: 2,
+    maximumLogicalPathBytes: 64,
+    maximumProjectOwnedFileBytes: 32_768,
+    maximumTotalBytes: 64_000,
   }),
   packagedApp: Object.freeze({
     maximumDirectoryDepth: 11,
@@ -256,7 +264,8 @@ function isProjectOwnedArtifact(logicalPath, stage) {
   return (
     normalized === 'resources/app.asar' ||
     normalized.startsWith('resources/backend/') ||
-    normalized.startsWith('resources/desktop-runtime/')
+    normalized.startsWith('resources/desktop-runtime/') ||
+    normalized.startsWith('resources/update-runtime/')
   );
 }
 

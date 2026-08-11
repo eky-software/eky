@@ -185,6 +185,13 @@ käyttöjärjestelmän suojausta ei poisteta tai heikennetä. Code signing,
 publisher-identiteetti ja ohjelmiston oikeudellinen omistajuus ovat tästä
 pilotista erillisiä päätöksiä.
 
+Luottamusmalli toteutetaan vaihdettavan `UpdatePackageTrustPolicy`-portin
+takana. R0 käyttää vain
+`LocalUnsignedPilotUpdatePackageTrustPolicy`-toteutusta. Tuleva
+`AuthenticodeUpdatePackageTrustPolicy` vaatii erillisen päätöksen eikä kuulu
+R0:n paikalliseen pilottiin. Paketin SHA-256-tiiviste osoittaa vain tavujen
+vastaavuuden manifestiin, ei julkaisijan identiteettiä.
+
 ## Tausta ja perustelut
 
 Eky on local-first-ohjelma, jossa tietokanta ja auktoritatiiviset lasku-

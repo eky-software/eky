@@ -4,10 +4,15 @@ import { lstat, readFile, writeFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 
 import { INSTALLER_APP_IDENTITY } from './installerIdentity.mjs';
-import { parseMsiProductVersion } from './installerVersion.mjs';
+import {
+  parseAppVersion,
+  parseMsiProductVersion,
+} from './installerVersion.mjs';
 
 const sha256Pattern = /^[0-9a-f]{64}$/;
 const revisionPattern = /^[0-9a-f]{7,40}$/;
+export const INSTALLER_MANIFEST_MAX_BYTES = 64 * 1024;
+export const INSTALLER_PACKAGE_MAX_BYTES = 512 * 1024 * 1024;
 const manifestFields = new Set([
   'appIdentity',
   'appVersion',
@@ -77,7 +82,7 @@ export async function readInstallerManifest(path) {
   let value;
   try {
     await assertRegularManifestFile(path);
-    value = parseInstallerManifestJson(await readFile(path, 'utf8'));
+    value = parseInstallerManifestBytes(await readFile(path));
   } catch {
     throw new Error('INSTALLER_MANIFEST_MISSING_OR_INVALID');
   }
@@ -128,15 +133,19 @@ export function validateInstallerManifest(value) {
     value.architecture !== 'x64' ||
     value.packageKind !== 'windows-installer-msi' ||
     typeof value.packageFilename !== 'string' ||
-    !/^Eky-[0-9A-Za-z.+-]+-x64\.msi$/.test(value.packageFilename) ||
     !Number.isSafeInteger(value.packageSize) ||
     value.packageSize < 1 ||
+    value.packageSize > INSTALLER_PACKAGE_MAX_BYTES ||
     !sha256Pattern.test(value.packageSha256) ||
     !isValidSigning(value.signing)
   ) {
     throw new Error('INSTALLER_MANIFEST_MISSING_OR_INVALID');
   }
+  parseAppVersion(value.appVersion);
   parseMsiProductVersion(value.msiProductVersion);
+  if (value.packageFilename !== `Eky-${value.appVersion}-x64.msi`) {
+    throw new Error('INSTALLER_MANIFEST_MISSING_OR_INVALID');
+  }
   return Object.freeze({
     ...value,
     signing: Object.freeze({ ...value.signing }),
@@ -198,10 +207,22 @@ function isRecord(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function parseInstallerManifestJson(source) {
-  const value = JSON.parse(source);
-  assertNoDuplicateJsonObjectKeys(source);
-  return value;
+export function parseInstallerManifestBytes(bytes) {
+  if (
+    !(bytes instanceof Uint8Array) ||
+    bytes.byteLength < 1 ||
+    bytes.byteLength > INSTALLER_MANIFEST_MAX_BYTES
+  ) {
+    throw new Error('INSTALLER_MANIFEST_MISSING_OR_INVALID');
+  }
+  try {
+    const source = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    const value = JSON.parse(source);
+    assertNoDuplicateJsonObjectKeys(source);
+    return validateInstallerManifest(value);
+  } catch {
+    throw new Error('INSTALLER_MANIFEST_MISSING_OR_INVALID');
+  }
 }
 
 function assertNoDuplicateJsonObjectKeys(source) {

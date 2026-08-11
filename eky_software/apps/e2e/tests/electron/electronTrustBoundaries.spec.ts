@@ -43,6 +43,7 @@ test('DESK-BRIDGE-001 @critical @security isolates the renderer bridge', async (
       'openOperationalLogFolder',
       'prepareEncryptedProfileRestore',
       'retryPendingInvoicePdfArchiveTasks',
+      'selectLocalUpdate',
     ],
     hasFilesystemBridge: false,
     hasRawIpc: false,

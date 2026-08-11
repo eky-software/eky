@@ -13,6 +13,7 @@ export interface EkyDesktopApi {
   openOperationalLogFolder(): Promise<void>;
   prepareEncryptedProfileRestore(): Promise<unknown>;
   retryPendingInvoicePdfArchiveTasks(): Promise<unknown>;
+  selectLocalUpdate(): Promise<unknown>;
 }
 
 declare global {

@@ -27,6 +27,13 @@ export function parseMsiProductVersion(value) {
   return Object.freeze(parts);
 }
 
+export function parseAppVersion(value) {
+  if (typeof value !== 'string' || !semVerPattern.test(value)) {
+    throw new Error('APP_VERSION_INVALID');
+  }
+  return value;
+}
+
 export function compareMsiProductVersions(left, right) {
   const leftParts = parseMsiProductVersion(left);
   const rightParts = parseMsiProductVersion(right);

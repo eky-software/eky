@@ -82,6 +82,7 @@ import {
 } from './packagedSmoke.js';
 import { restoreWindowInputFocus } from './windowInputFocus.js';
 import type { DesktopBuildInfo } from '../release/desktopBuildInfo.js';
+import type { DesktopReleaseInfo } from '../release/desktopReleaseInfo.js';
 import { createProfileSnapshotBrokerTransport } from '../profileBackup/electronProfileSnapshotBrokerTransport.js';
 import type { BackupPasswordWindowController } from '../profileBackup/passwordWindow/backupPasswordWindow.js';
 import type { ProfileBackupCapability } from '../profileBackup/profileBackupCapability.js';
@@ -106,6 +107,10 @@ import {
   runPackagedProfileBackupBeforeRestore,
   verifyPackagedRestoredDatabaseBeforeBackend,
 } from '../profileBackup/packagedProfileBackupSmoke.js';
+import {
+  createLocalUpdateFoundationComposition,
+} from '../update/localUpdateFoundationComposition.js';
+import type { LocalUpdateSelectionCapability } from '../update/localUpdateSelectionCapability.js';
 
 export interface DesktopLifecycleHandle {
   applicationWindow: BrowserWindow;
@@ -138,6 +143,7 @@ export interface StartDesktopCompositionOptions {
   appVersion: string;
   applicationPath: string;
   buildInfo: Readonly<DesktopBuildInfo>;
+  releaseInfo: Readonly<DesktopReleaseInfo> | undefined;
   dependencies?: Partial<DesktopCompositionDependencies>;
   quitApplication(): void;
   relaunchApplication(): void;
@@ -369,6 +375,9 @@ async function startDesktopCompositionRuntime({
     | InvoicePdfArchiveCapability
     | undefined;
   let supportBundleCapability: SupportBundleCapability | undefined;
+  let localUpdateSelectionCapability:
+    | LocalUpdateSelectionCapability
+    | undefined;
   let backupPasswordWindowController:
     | BackupPasswordWindowController
     | undefined;
@@ -671,6 +680,38 @@ async function startDesktopCompositionRuntime({
     },
   );
   const mainWindow = applicationWindow;
+  if (options.releaseInfo !== undefined) {
+    localUpdateSelectionCapability =
+      createLocalUpdateFoundationComposition({
+        ipcMain,
+        mainWindow,
+        releaseInfo: options.releaseInfo,
+        resourcesPath: options.resourcesPath,
+        async selectManifestPath() {
+          const result = await dependencies.showOpenDialog(mainWindow, {
+            filters: [
+              {
+                extensions: ['json'],
+                name: 'Eky-päivityksen manifesti',
+              },
+            ],
+            properties: ['openFile'],
+            title: 'Valitse paikallinen Eky-päivitys',
+          });
+          return result.canceled || result.filePaths.length !== 1
+            ? null
+            : result.filePaths[0] ?? null;
+        },
+        showSafeError() {
+          deliveryConfirmation.showApplicationError(
+            'Päivityspakettia ei voitu tarkistaa',
+            'Paikallista Eky-päivityspakettia ei voitu tarkistaa tai tallentaa turvallisesti.',
+          );
+        },
+        systemRoot: process.env.SystemRoot,
+        userDataPath: options.userDataPath,
+      });
+  }
   operationalLogFolderCapability = createOperationalLogFolderCapability({
     ipcMain,
     mainWindow,
@@ -931,6 +972,8 @@ async function startDesktopCompositionRuntime({
       invoicePdfArchiveCapability = undefined;
       supportBundleCapability?.dispose();
       supportBundleCapability = undefined;
+      localUpdateSelectionCapability?.dispose();
+      localUpdateSelectionCapability = undefined;
       profileBackupCapability?.dispose();
       profileBackupCapability = undefined;
       backupPasswordWindowController?.dispose();

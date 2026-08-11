@@ -76,6 +76,7 @@ test('DESK-RUNTIME-001 starts an isolated Electron runtime', async ({
       'openOperationalLogFolder',
       'prepareEncryptedProfileRestore',
       'retryPendingInvoicePdfArchiveTasks',
+      'selectLocalUpdate',
     ],
   });
 });
