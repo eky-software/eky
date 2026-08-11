@@ -40,7 +40,6 @@ const activationDocumentsLogicalPath = join(
 export class StagedProfileSnapshotValidationService
   implements ProfileSnapshotValidationService
 {
-  private readonly activeProfileId: string;
   private readonly stagingRoot: string;
 
   constructor(
@@ -57,9 +56,6 @@ export class StagedProfileSnapshotValidationService
       throw new Error('PROFILE_SNAPSHOT_VALIDATION_FAILED');
     }
     this.stagingRoot = resolve(dependencies.stagingRoot);
-    this.activeProfileId = createProfileBackupIdentity(
-      readLocalRuntimeIdentity(dependencies.activeDatabase).companyId,
-    );
   }
 
   async validateProfileSnapshot(
@@ -142,6 +138,10 @@ export class StagedProfileSnapshotValidationService
       throw new Error('PROFILE_SNAPSHOT_VALIDATION_FAILED');
     }
 
+    const activeProfileId = createProfileBackupIdentity(
+      readLocalRuntimeIdentity(this.dependencies.activeDatabase).companyId,
+    );
+
     const operationRoot = join(this.stagingRoot, operationId);
     const databasePath = join(operationRoot, databaseLogicalPath);
     assertContainedPath(this.stagingRoot, operationRoot);
@@ -193,7 +193,7 @@ export class StagedProfileSnapshotValidationService
               databaseInspection.migrationChainIdentity,
             profileId: databaseInspection.profileId,
             profileMatchesActive:
-              databaseInspection.profileId === this.activeProfileId,
+              databaseInspection.profileId === activeProfileId,
           },
         };
       } finally {
