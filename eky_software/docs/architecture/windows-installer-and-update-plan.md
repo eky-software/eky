@@ -9,8 +9,11 @@ prototyyppi on toteutettu ja sen install-, repair-, uninstall-, major upgrade-,
 downgrade-esto- ja binary rollback -rajat on todennettu synteettisellä datalla.
 Local Update Foundation tarkistaa paikallisen manifestin ja MSI-identiteetin,
 soveltaa vaihdettavaa trust-policya ja rekisteröi hyväksytyn paketin Electron
-mainin yksityiseen tekniseen cacheen. Päivitysorkestrointia, code signingia tai
-update-UI:ta ei ole vielä toteutettu.
+mainin yksityiseen tekniseen cacheen. Yksityinen C2-orkestrointi,
+pre-update/pre-migration-suoja, crash-safe journal, guarded installer handoff
+sekä UI:ta edeltävä first-start-hyväksyntä on toteutettu. Code signingia,
+käyttäjälle avattua update-UI:ta tai varsinaista business/binary-rollbackia ei
+ole vielä toteutettu.
 
 ### Local Update Program -checkpointit
 
@@ -18,7 +21,7 @@ update-UI:ta ei ole vielä toteutettu.
 | --- | --- | --- |
 | C0 Electron cold-start baseline | valmis 11.8.2026 | `DESK-PDF-001` ajettiin 10 kertaa retries=0 ja Electron critical kahdesti puhtaasti; aiemman flaken juurisyytä ei väitetä korjatuksi |
 | C1 Local Update Foundation | valmis 11.8.2026 | Manifestin runtime-codec, vaihdettava trust-policy, native selection, private staging/cache ja nykyisen rollback-paketin rekisteröinti; ei MSI:n käynnistystä eikä business-dataa |
-| C2 Update Orchestration and First Start | työn alla | C1 on yhdistetty; C2 toteuttaa yksityisen orkestroinnin ja first-start-portin ilman käyttäjälle avattua päivitys-UI:ta tai rollbackia |
+| C2 Update Orchestration and First Start | valmis 11.8.2026 | Yksityinen migration gate, pre-update/pre-migration recovery, crash-safe journal, graceful-only handoff, accepted-build-metadata ja UI:ta edeltävä first-start-hyväksyntä; ei käyttäjälle avattua päivitys-UI:ta tai rollbackia |
 | C3 Recovery, Compatibility and Pilot Release | odottaa | Aloitetaan vasta C2:n vihreän mergen ja haarojen synkronoinnin jälkeen |
 
 Migration runnerin SHA-256-checksum-, chain identity- ja release/build-
@@ -563,6 +566,13 @@ Journalin package identity -kentät ovat suljettuja ja niiden pitää vastata
 staged artifactista juuri ennen handoffia uudelleen laskettuja arvoja. Pelkkä
 aiemmin lähdetiedostosta laskettu tiiviste ei riitä.
 
+C2:n hyväksyntä kirjoittaa ensin accepted-build-metadatan ja koordinoidussa
+päivityksessä `accepted`-journalin. Vasta tämän jälkeen pre-update- ja
+pre-migration-pisteiden rotaatiosuoja vapautetaan best-effort-siivouksena.
+Siivousvirhe saa jättää ylimääräisen suojatun pisteen myöhempää
+idempotenttia siivousta varten, mutta se ei saa muuttaa jo committoitua
+hyväksyntää `rollbackRequired`-tilaan.
+
 Journalissa saa olla vain korrelaatiotunniste, nykyisen ja kohdebuildin
 turvallinen versio- ja paketti-identiteetti, julkaisukanava, palautuspisteen
 opaque-viite, tila, turvalliset aikaleimat ja rajattu attempt count. Journal ei
@@ -604,6 +614,11 @@ Main käynnistää installer handoffin vain ennalta validoidulle artifactille:
 
 Asentajalle välitetään vain sen tarvitsema minimoitu, dokumentoitu tieto.
 Business-datan polkua ei välitetä.
+
+C2:ssa handoff-moottori ja sen testit ovat sisäisiä. Niitä ei vielä kytketä
+renderer-capabilityyn tai tavallisen käyttäjän ajettavaan komentoon, koska C3:n
+business- ja binary-rollback sekä pilot release -portti puuttuvat. Tämä estää
+osittaisen päivityspolun avaamisen vahingossa.
 
 ## 14. First-start maintenance
 
@@ -681,6 +696,14 @@ rotaation kautta, pre-update-piste vapautetaan normaaliin rotaatioon, journal
 siirtyy `accepted`-tilaan ja business-UI voidaan avata.
 
 Asentajan exit code yksin ei riitä.
+
+C2:n toteutetut tekniset operational-eventit ovat
+`update.operationStarted`, `update.operationCompleted` ja
+`update.operationFailed`. Niiden stage on suljetusti jokin arvoista
+`preUpdateRecovery`, `runtimeShutdown`, `installerHandoff` tai
+`firstStartValidation`. Eventit sisältävät vain teknisen korrelaation,
+keston ja turvallisen lopputilan; observerin virhe ei muuta päivitystransaktion
+tulosta.
 
 ## 17. Business-datan rollback
 

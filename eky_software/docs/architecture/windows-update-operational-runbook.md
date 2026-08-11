@@ -67,6 +67,26 @@ normaalia backendia. Suora Setup käyttää erillistä yksityistä read-only-
 preflightia; sitä ei toteuteta julkisena endpointina, renderer-toimintona tai
 yleisenä migrations-ohituksena.
 
+C2 on toteutettu yksityisenä runtime-ketjuna. Backend pysähtyy ennen
+migraatioita `migrationGateReady`-tilaan ja jatkaa vain Electron mainin
+validoidulla `continueStartup`-päätöksellä. Päätös ei sisällä polkua,
+sessionia, SQL:aa tai business-dataa. Virhe, timeout tai `abortStartup`
+estää migraatiot ja business-UI:n.
+
+Suora Setup luokitellaan read-onlyna tyhjäksi tai olemassa olevaksi
+profiiliksi. Olemassa oleva profiili saa ajaa pending-migraatiot vasta
+validoidun pre-migration-pisteen jälkeen. Koordinoitu päivitys vaatii
+journalissa sidotun pre-update-pisteen sekä uudelleen validoidut current- ja
+candidate-slotit. First-start hyväksyy buildin vasta migration-, integrity-,
+foreign-key-, artifact-closure-, backend readiness-, health-, uuden sessionin,
+vanhan sessionin torjunnan, SMTP-salaisuuden identiteetin ja cache-rotaation
+tarkistusten jälkeen.
+
+Hyväksynnän jälkeinen recovery-protection-siivous on best effort. Sen virhe
+jättää turvallisen ylimääräisen suojauksen, ei peruuta jo committoitua
+hyväksyntää. Varsinainen rollback ja käyttäjälle avattava update-toiminto
+kuuluvat C3:een.
+
 ## Omistajuus
 
 Update Coordinator omistaa yhden päivitysyrityksen teknisen lifecycle-
@@ -92,23 +112,26 @@ Kiellettyjä ovat raaka polku, komentorivi, executable, URL queryineen,
 installer stdout/stderr, business data, `companyId`, backup- tai recovery-
 payload, salaisuus, runtime-session, stack ja vapaa metadata.
 
-## Stage-allowlist
+## C2 operational-eventit ja stage-allowlist
 
-Lopulliset nimet lukitaan toteutuksessa. Semanttisesti sallittuja vaiheita
-ovat enintään:
+C2 kirjoittaa vain seuraavia nimettyjä teknisiä tapahtumia:
 
-- package inspection
-- user confirmation
-- pre-update recovery
-- runtime maintenance
-- runtime shutdown
-- installer handoff
-- awaiting first start
-- first-start validation
-- business rollback
-- binary rollback
-- accepted
-- failed safe.
+- `update.operationStarted`
+- `update.operationCompleted`
+- `update.operationFailed`
+
+C2:n suljettu stage-allowlist on:
+
+- `preUpdateRecovery`
+- `runtimeShutdown`
+- `installerHandoff`
+- `firstStartValidation`
+
+Failure-eventissä sallitaan vain allowlistattu turvallinen `errorCode`,
+`retryable` ja `sideEffectState`. Polkua, paketin tiivistettä, journalia,
+recovery-viitettä, sessionia, installer-outputia tai vapaata metadataa ei
+kirjoiteta. C3 lukitsee rollback-vaiheiden eventit erikseen ennen niiden
+toteutusta.
 
 ## Error code -runbook
 
