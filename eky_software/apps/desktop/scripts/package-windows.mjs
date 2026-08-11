@@ -42,6 +42,7 @@ const stagingRoot = resolve(desktopDirectory, '.stage');
 const applicationStage = resolve(stagingRoot, 'application');
 const backendStage = resolve(stagingRoot, 'backend');
 const desktopRuntimeStage = resolve(stagingRoot, 'desktop-runtime');
+const updateRuntimeStage = resolve(stagingRoot, 'update-runtime');
 const outputDirectory = resolve(desktopDirectory, 'out');
 const pnpmCliPath = process.env.npm_execpath;
 const pilotBuild = process.argv.slice(2).includes('--pilot');
@@ -197,6 +198,14 @@ async function prepareApplicationStage(buildInfo) {
     `${JSON.stringify(buildInfo, null, 2)}\n`,
     'utf8',
   );
+  await mkdir(updateRuntimeStage, { recursive: true });
+  await cp(
+    resolve(
+      desktopDirectory,
+      'resources/update/inspectWindowsInstallerIdentity.ps1',
+    ),
+    join(updateRuntimeStage, 'inspectWindowsInstallerIdentity.ps1'),
+  );
 }
 
 async function assertPackagedDiagnosticsArtifacts() {
@@ -223,6 +232,9 @@ async function assertPackagedDiagnosticsArtifacts() {
   ]) {
     await access(resolve(desktopRuntimeStage, relativePath));
   }
+  await access(
+    resolve(updateRuntimeStage, 'inspectWindowsInstallerIdentity.ps1'),
+  );
 }
 
 async function applyAndVerifyFuses(executablePath) {
@@ -323,6 +335,10 @@ async function packageWindowsSpike() {
     root: desktopRuntimeStage,
     stage: 'desktopRuntimeStage',
   });
+  await inspectPackageArtifactInventory({
+    root: updateRuntimeStage,
+    stage: 'updateRuntimeStage',
+  });
 
   const packagedPaths = await packager({
     appVersion,
@@ -331,7 +347,7 @@ async function packageWindowsSpike() {
     dir: applicationStage,
     electronVersion,
     executableName: 'Eky',
-    extraResource: [backendStage, desktopRuntimeStage],
+    extraResource: [backendStage, desktopRuntimeStage, updateRuntimeStage],
     name: 'Eky',
     out: outputDirectory,
     overwrite: true,
