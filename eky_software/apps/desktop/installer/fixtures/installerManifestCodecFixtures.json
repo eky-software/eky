@@ -1,0 +1,42 @@
+[
+  {
+    "name": "valid local unsigned pilot manifest",
+    "accepted": true,
+    "source": "{\"appIdentity\":\"Eky\",\"appVersion\":\"0.1.0-alpha.1\",\"architecture\":\"x64\",\"buildRevision\":\"123456789abc\",\"manifestFormatVersion\":1,\"msiProductVersion\":\"0.1.1\",\"packageFilename\":\"Eky-0.1.0-alpha.1-x64.msi\",\"packageKind\":\"windows-installer-msi\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"packageSize\":123,\"platform\":\"win32\",\"releaseChannel\":\"pilot\",\"signing\":{\"publisher\":null,\"status\":\"unsigned-prototype\",\"thumbprint\":null,\"timestamped\":false}}"
+  },
+  {
+    "name": "duplicate top level key",
+    "accepted": false,
+    "source": "{\"appIdentity\":\"Eky\",\"appIdentity\":\"Other\"}"
+  },
+  {
+    "name": "duplicate signing key",
+    "accepted": false,
+    "source": "{\"appIdentity\":\"Eky\",\"appVersion\":\"0.1.0-alpha.1\",\"architecture\":\"x64\",\"buildRevision\":\"123456789abc\",\"manifestFormatVersion\":1,\"msiProductVersion\":\"0.1.1\",\"packageFilename\":\"Eky-0.1.0-alpha.1-x64.msi\",\"packageKind\":\"windows-installer-msi\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"packageSize\":123,\"platform\":\"win32\",\"releaseChannel\":\"pilot\",\"signing\":{\"publisher\":null,\"status\":\"unsigned-prototype\",\"status\":\"signed\",\"thumbprint\":null,\"timestamped\":false}}"
+  },
+  {
+    "name": "unknown field",
+    "accepted": false,
+    "source": "{\"appIdentity\":\"Eky\",\"appVersion\":\"0.1.0-alpha.1\",\"architecture\":\"x64\",\"buildRevision\":\"123456789abc\",\"manifestFormatVersion\":1,\"msiProductVersion\":\"0.1.1\",\"packageFilename\":\"Eky-0.1.0-alpha.1-x64.msi\",\"packageKind\":\"windows-installer-msi\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"packageSize\":123,\"platform\":\"win32\",\"releaseChannel\":\"pilot\",\"signing\":{\"publisher\":null,\"status\":\"unsigned-prototype\",\"thumbprint\":null,\"timestamped\":false},\"path\":\"C:/unsafe\"}"
+  },
+  {
+    "name": "stable unsigned channel",
+    "accepted": false,
+    "source": "{\"appIdentity\":\"Eky\",\"appVersion\":\"0.1.0-alpha.1\",\"architecture\":\"x64\",\"buildRevision\":\"123456789abc\",\"manifestFormatVersion\":1,\"msiProductVersion\":\"0.1.1\",\"packageFilename\":\"Eky-0.1.0-alpha.1-x64.msi\",\"packageKind\":\"windows-installer-msi\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"packageSize\":123,\"platform\":\"win32\",\"releaseChannel\":\"stable\",\"signing\":{\"publisher\":null,\"status\":\"unsigned-prototype\",\"thumbprint\":null,\"timestamped\":false}}"
+  },
+  {
+    "name": "false publisher claim",
+    "accepted": false,
+    "source": "{\"appIdentity\":\"Eky\",\"appVersion\":\"0.1.0-alpha.1\",\"architecture\":\"x64\",\"buildRevision\":\"123456789abc\",\"manifestFormatVersion\":1,\"msiProductVersion\":\"0.1.1\",\"packageFilename\":\"Eky-0.1.0-alpha.1-x64.msi\",\"packageKind\":\"windows-installer-msi\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"packageSize\":123,\"platform\":\"win32\",\"releaseChannel\":\"pilot\",\"signing\":{\"publisher\":\"Eky\",\"status\":\"unsigned-prototype\",\"thumbprint\":null,\"timestamped\":false}}"
+  },
+  {
+    "name": "invalid app semver",
+    "accepted": false,
+    "source": "{\"appIdentity\":\"Eky\",\"appVersion\":\"01.0.0\",\"architecture\":\"x64\",\"buildRevision\":\"123456789abc\",\"manifestFormatVersion\":1,\"msiProductVersion\":\"0.1.1\",\"packageFilename\":\"Eky-01.0.0-x64.msi\",\"packageKind\":\"windows-installer-msi\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"packageSize\":123,\"platform\":\"win32\",\"releaseChannel\":\"pilot\",\"signing\":{\"publisher\":null,\"status\":\"unsigned-prototype\",\"thumbprint\":null,\"timestamped\":false}}"
+  },
+  {
+    "name": "filename does not match app version",
+    "accepted": false,
+    "source": "{\"appIdentity\":\"Eky\",\"appVersion\":\"0.1.0-alpha.1\",\"architecture\":\"x64\",\"buildRevision\":\"123456789abc\",\"manifestFormatVersion\":1,\"msiProductVersion\":\"0.1.1\",\"packageFilename\":\"Eky-0.1.0-alpha.2-x64.msi\",\"packageKind\":\"windows-installer-msi\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"packageSize\":123,\"platform\":\"win32\",\"releaseChannel\":\"pilot\",\"signing\":{\"publisher\":null,\"status\":\"unsigned-prototype\",\"thumbprint\":null,\"timestamped\":false}}"
+  }
+]
