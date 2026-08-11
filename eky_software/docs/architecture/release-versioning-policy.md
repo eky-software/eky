@@ -146,9 +146,12 @@ Dirty-buildia ei jaeta. Release-artifacti muodostetaan puhtaasta,
 jäljitettävästä commitista, ja paketin build-infon, manifestin sekä desktop-
 paketin version pitää täsmätä.
 
-Yhden hallitun pilottilaitteen mahdollinen allekirjoittamaton artifacti vaatii
-projektin omistajan erillisen päätöksen. Laajempi jakelu vaatii code signing-,
-publisher-, installer-, rollback- ja päivitysketjun hyväksynnän.
+Projektin omistaja on hyväksynyt yhden hallitun pilottilaitteen
+allekirjoittamattoman artifactin vain ADR-0010:n `localUnsignedPilot`-mallissa.
+Tällaisen manifestin `releaseChannel` on aina `pilot` ja allekirjoitustila aina
+`unsigned-prototype`. `stable` ei hyväksy allekirjoittamatonta artifactia.
+Laajempi jakelu vaatii code signing-, publisher-, installer-, rollback- ja
+päivitysketjun erillisen hyväksynnän.
 
 Build-revision, versionumero ja runtime-tunniste eivät yksin todista artifactin
 alkuperää. Windows-asennus- ja päivitysrajat on määritelty ADR-0010:ssä ja
@@ -200,6 +203,13 @@ erillisiä testiartifacteja. Tulevassa allekirjoitetussa releaseputkessa signing
 tehdään ennen lopullista SHA-256-tiivistettä ja manifestia; lifecycle- ja
 upgrade-portit käyttävät sen jälkeen täsmälleen samoja allekirjoitettuja
 tavuja. Nykyinen `unsigned-prototype`-sidecar ei väitä publisher trustia.
+
+Paikallisen pilotin jakelukokonaisuus sisältää täsmälleen MSI:n, sen
+sidecar-manifestin ja MSI-tavut nimeävän SHA-256-tiedoston. Julkaisun nimeä tai
+versiota ei käytetä uudelleen eri tavuille. Paikalliseen release-arkistoon ja
+USB-medialle kopioidut tavut tarkistetaan hashilla kopioinnin jälkeen. Vähintään
+nykyinen ja edellinen hyväksytty kokonaisuus säilytetään hallittua rollbackia
+varten.
 
 ### Production-profiilin puhtaus
 

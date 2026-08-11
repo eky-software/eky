@@ -2,10 +2,23 @@
 
 ## Tila
 
-Tämä on tulevan Update Coordinatorin docs-first runbook. Tuotantokoodissa ei
-ole vielä `update.*`-eventtejä eikä tässä dokumentissa lukita eventName-arvoja.
-Tarkat nimet hyväksytään vasta transaction ownership- ja failure behavior
--toteutuspäätöksessä.
+Tämä on tulevan Update Coordinatorin docs-first runbook. R0:n ensimmäinen
+luottamusmalli on ADR-0010:n yhden hallitun laitteen `localUnsignedPilot`.
+Tuotantokoodissa ei ole vielä `update.*`-eventtejä eikä tässä dokumentissa
+lukita eventName-arvoja. Tarkat nimet hyväksytään vasta transaction ownership-
+ja failure behavior -toteutuspäätöksessä.
+
+Pilotissa paketti tulee vain paikallisesta release-arkistosta tai erikseen
+hash-tarkistetulta USB-medialta. Käyttäjä vahvistaa päivityksen. Verkko-,
+tausta- ja hiljainen päivitys ovat kiellettyjä. `unsigned-prototype` ei ole
+publisher trust, joten `stable`-kanavaa tai laajempaa jakelua ei avata tällä
+runbookilla.
+
+Electron main säilyttää myöhemmin rajatun `current/candidate/previous`-
+pakettivälimuistin. Sitä ei lueta Windows Installerin cachesta, backupista tai
+käyttäjän USB-polusta rollbackin hetkellä, vaan jokaisen slotin manifesti ja
+MSI-tavut varmennetaan uudelleen ennen käyttöä. Välimuisti ei kuulu
+Diagnosticsin tukipakettiin tai Activityyn.
 
 ## Omistajuus
 

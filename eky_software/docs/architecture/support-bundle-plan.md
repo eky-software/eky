@@ -105,7 +105,8 @@ build-, fingerprint-, count- ja aikaväliyhteenveto.
 - backupin salt, nonce, authentication tag, salasana tai johdettu avain
 - konekohtainen palautuspiste tai sen suojattu avainmateriaali
 - restore-staging-profiili, backup/restore-journal tai raaka polku
-- päivityspaketti, installer command tai update-journal
+- päivityspaketti, rollback-pakettivälimuisti, installer manifest/checksum,
+  installer command tai update-journal
 - raw stack tai raw JSONL-rivi
 
 Recovery point- ja restore-eventeistä tukipakettiin saa tulla vain

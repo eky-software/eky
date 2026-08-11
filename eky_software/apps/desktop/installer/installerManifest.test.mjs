@@ -174,4 +174,87 @@ test('rejects unknown fields and false signing claims', () => {
       }),
     /INSTALLER_MANIFEST_MISSING_OR_INVALID/,
   );
+  for (const invalidSigning of [
+    { ...base.signing, publisher: 'Eky' },
+    { ...base.signing, thumbprint: 'a'.repeat(40) },
+    { ...base.signing, timestamped: true },
+    { ...base.signing, publisher: undefined },
+  ]) {
+    assert.throws(
+      () => validateInstallerManifest({ ...base, signing: invalidSigning }),
+      /INSTALLER_MANIFEST_MISSING_OR_INVALID/,
+    );
+  }
+  assert.throws(
+    () => validateInstallerManifest({ ...base, releaseChannel: 'stable' }),
+    /INSTALLER_MANIFEST_MISSING_OR_INVALID/,
+  );
+  assert.throws(
+    () => validateInstallerManifest({ ...base, packageFilename: null }),
+    /INSTALLER_MANIFEST_MISSING_OR_INVALID/,
+  );
+});
+
+test('rejects empty manifests and duplicate JSON object keys', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'eky-installer-manifest-'));
+  temporaryDirectories.push(root);
+  const manifestPath = join(root, 'Eky.manifest.json');
+
+  await writeFile(manifestPath, '', 'utf8');
+  await assert.rejects(
+    readInstallerManifest(manifestPath),
+    /INSTALLER_MANIFEST_MISSING_OR_INVALID/,
+  );
+
+  const duplicateTopLevel = `{"appIdentity":"Eky","appIdentity":"Other"}`;
+  await writeFile(manifestPath, duplicateTopLevel, 'utf8');
+  await assert.rejects(
+    readInstallerManifest(manifestPath),
+    /INSTALLER_MANIFEST_MISSING_OR_INVALID/,
+  );
+
+  const duplicateNested = JSON.stringify({
+    appIdentity: 'Eky',
+    appVersion: '0.1.0-alpha.1',
+    architecture: 'x64',
+    buildRevision: '123456789abc',
+    manifestFormatVersion: 1,
+    msiProductVersion: '0.1.1',
+    packageFilename: 'Eky-0.1.0-alpha.1-x64.msi',
+    packageKind: 'windows-installer-msi',
+    packageSha256: 'a'.repeat(64),
+    packageSize: 123,
+    platform: 'win32',
+    releaseChannel: 'pilot',
+    signing: '__SIGNING__',
+  }).replace(
+    '"__SIGNING__"',
+    '{"status":"unsigned-prototype","status":"signed","publisher":null,"thumbprint":null,"timestamped":false}',
+  );
+  await writeFile(manifestPath, duplicateNested, 'utf8');
+  await assert.rejects(
+    readInstallerManifest(manifestPath),
+    /INSTALLER_MANIFEST_MISSING_OR_INVALID/,
+  );
+});
+
+test('rejects symbolic links as installer manifests', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'eky-installer-manifest-'));
+  temporaryDirectories.push(root);
+  const targetPath = join(root, 'manifest-target.json');
+  const linkPath = join(root, 'Eky.manifest.json');
+  await writeFile(targetPath, '{}', 'utf8');
+  try {
+    await symlink(targetPath, linkPath, 'file');
+  } catch (error) {
+    if (error?.code === 'EPERM') {
+      t.skip('Symbolic link creation is not permitted in this Windows context.');
+      return;
+    }
+    throw error;
+  }
+  await assert.rejects(
+    readInstallerManifest(linkPath),
+    /INSTALLER_MANIFEST_MISSING_OR_INVALID/,
+  );
 });

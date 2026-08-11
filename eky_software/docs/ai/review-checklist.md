@@ -76,6 +76,11 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
   käsitellä allekirjoituksena?
 - Estyykö allekirjoittamaton normaali in-app update ilman erikseen hyväksyttyä
   trust anchor -mallia?
+- Jos käytössä on R0:n `localUnsignedPilot`, onko se rajattu `pilot`-kanavaan,
+  yhteen hallittuun laitteeseen, paikalliseen mediaan ja käyttäjän
+  vahvistukseen ilman verkko-, tausta-, hiljaista tai `stable`-polkua?
+- Väittääkö dokumentaatio tai UI virheellisesti SHA-256:ta, sidecaria tai
+  `unsigned-prototype`-tilaa publisher-luottamukseksi?
 - Erotetaanko asennuksen onnistuminen uuden version first-start-
   hyväksynnästä?
 - Onko business-datan rollback erotettu binary rollbackista ilman reverse
