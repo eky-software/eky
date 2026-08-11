@@ -66,14 +66,17 @@ export class LocalUpdateHandoffCoordinator {
           this.dependencies.cache.readExpectedPackageIdentity('current'),
           this.dependencies.cache.readExpectedPackageIdentity('candidate'),
         ]);
+        const profileValidation =
+          await this.dependencies.profileProtection.validateActiveProfile();
         journal = createPreparedJournal({
           candidateIdentity,
           correlationId,
           currentIdentity,
           now: this.now(),
+          preUpdateMigrationChainIdentity:
+            profileValidation.migrationChainIdentity,
         });
         await this.dependencies.journalStore.write(journal);
-        await this.dependencies.profileProtection.validateActiveProfile();
         const recoveryPointReference =
           await this.dependencies.profileProtection
             .createValidatedPreUpdatePoint();
@@ -133,7 +136,14 @@ export class LocalUpdateHandoffCoordinator {
           journal.correlationId,
         );
         maintenanceStarted = true;
-        await this.dependencies.profileProtection.validateActiveProfile();
+        const profileValidation =
+          await this.dependencies.profileProtection.validateActiveProfile();
+        if (
+          profileValidation.migrationChainIdentity !==
+            journal.preUpdateMigrationChainIdentity
+        ) {
+          throw new LocalUpdateHandoffError();
+        }
         journal = transitionUpdateJournal(journal, {
           at: this.now(),
           state: 'runtimeStopping',
@@ -195,6 +205,7 @@ export class LocalUpdateHandoffCoordinator {
     if (
       current.state !== 'accepted' &&
       current.state !== 'failed' &&
+      current.state !== 'installerNotApplied' &&
       current.state !== 'rolledBack'
     ) {
       throw new LocalUpdateHandoffError();
@@ -300,6 +311,7 @@ function createPreparedJournal(input: {
   correlationId: string;
   currentIdentity: Readonly<LocalUpdateExpectedPackageIdentity>;
   now: string;
+  preUpdateMigrationChainIdentity: string;
 }): Readonly<UpdateJournal> {
   return parseUpdateJournal({
     candidatePackageIdentity: toJournalIdentity(input.candidateIdentity),
@@ -309,6 +321,8 @@ function createPreparedJournal(input: {
     currentVersion: input.currentIdentity.appVersion,
     formatVersion: 1,
     handoffAttemptCount: 0,
+    preUpdateMigrationChainIdentity:
+      input.preUpdateMigrationChainIdentity,
     releaseChannel: 'pilot',
     revision: 1,
     state: 'prepared',

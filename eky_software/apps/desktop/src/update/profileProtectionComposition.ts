@@ -18,6 +18,7 @@ export interface UpdateProfileProtection {
     artifactCount: number;
     artifactTotalByteSize: number;
     databaseHealth: 'healthy';
+    migrationChainIdentity: string;
   }>;
 }
 
@@ -78,6 +79,7 @@ export function createProfileProtectionComposition(
         artifactCount: validation.artifactCount,
         artifactTotalByteSize: validation.artifactTotalByteSize,
         databaseHealth: validation.databaseHealth,
+        migrationChainIdentity: validation.migrationChainIdentity,
       });
     },
   });

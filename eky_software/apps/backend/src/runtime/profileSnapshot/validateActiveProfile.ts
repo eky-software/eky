@@ -24,6 +24,7 @@ export class CurrentActiveProfileValidationService
   constructor(
     private readonly database: DatabaseConnection,
     invoiceDocumentStorageRoot: string,
+    private readonly readMigrationChainIdentity: () => string,
   ) {
     if (!isAbsolute(invoiceDocumentStorageRoot)) {
       throw new Error('ACTIVE_PROFILE_VALIDATION_FAILED');
@@ -71,6 +72,7 @@ export class CurrentActiveProfileValidationService
         artifactCount: artifacts.length,
         artifactTotalByteSize,
         databaseHealth: 'healthy',
+        migrationChainIdentity: this.readMigrationChainIdentity(),
       };
     } catch {
       throw new Error('ACTIVE_PROFILE_VALIDATION_FAILED');

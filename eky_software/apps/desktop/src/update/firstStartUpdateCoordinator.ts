@@ -37,6 +37,7 @@ interface FirstStartProfileProtection {
     artifactCount: number;
     artifactTotalByteSize: number;
     databaseHealth: 'healthy';
+    migrationChainIdentity: string;
   }>;
 }
 
@@ -65,6 +66,7 @@ interface FirstStartUpdateCoordinatorDependencies {
 
 type FirstStartMode =
   | { kind: 'coordinated'; journal: Readonly<UpdateJournal>; rotated: boolean }
+  | { kind: 'installerNotApplied'; journal: Readonly<UpdateJournal> }
   | {
       kind: 'directSetup';
       recovery?: Readonly<DirectSetupMigrationRecovery>;
@@ -98,6 +100,7 @@ export class FirstStartUpdateCoordinator {
     }
 
     let coordinatedJournal: Readonly<UpdateJournal> | undefined;
+    let installerNotAppliedJournal: Readonly<UpdateJournal> | undefined;
     let directSetupRecovery: Readonly<DirectSetupMigrationRecovery> | undefined;
     try {
       const [journal, acceptedBuild, storedDirectSetupRecovery] = await Promise.all([
@@ -127,8 +130,20 @@ export class FirstStartUpdateCoordinator {
       }
 
       if (journal !== undefined && journal.state !== 'accepted') {
-        coordinatedJournal = journal;
-        this.mode = await this.prepareCoordinatedFirstStart(journal);
+        installerNotAppliedJournal = journal;
+        const runningJournalBuild = this.classifyRunningJournalBuild(journal);
+        if (runningJournalBuild === 'target') {
+          installerNotAppliedJournal = undefined;
+          coordinatedJournal = journal;
+          this.mode = await this.prepareCoordinatedFirstStart(journal);
+        } else {
+          installerNotAppliedJournal = journal;
+          this.mode = await this.prepareInstallerNotApplied({
+            acceptedBuild,
+            inspection,
+            journal,
+          });
+        }
       } else {
         if (
           journal?.state === 'accepted' &&
@@ -155,7 +170,7 @@ export class FirstStartUpdateCoordinator {
       if (
         inspection.profileState === 'existing' &&
         inspection.pendingMigrationCount > 0 &&
-        this.mode.kind !== 'directSetup'
+        this.mode.kind === 'coordinated'
       ) {
         this.preMigrationPointReference =
           await this.dependencies.profileProtection
@@ -165,6 +180,9 @@ export class FirstStartUpdateCoordinator {
       this.migrationGateCompleted = true;
     } catch {
       await this.markRollbackRequired(coordinatedJournal);
+      await this.markInstallerNotAppliedFailedSafe(
+        installerNotAppliedJournal,
+      );
       await this.markDirectSetupRecoveryRequired(directSetupRecovery);
       this.notifyOperationFailed();
       throw new FirstStartUpdateError();
@@ -184,7 +202,15 @@ export class FirstStartUpdateCoordinator {
     const coordinatedJournal =
       mode.kind === 'coordinated' ? mode.journal : undefined;
     try {
-      await this.dependencies.profileProtection.validateActiveProfile();
+      const activeProfile =
+        await this.dependencies.profileProtection.validateActiveProfile();
+      if (
+        mode.kind === 'installerNotApplied' &&
+        activeProfile.migrationChainIdentity !==
+          mode.journal.preUpdateMigrationChainIdentity
+      ) {
+        throw new FirstStartUpdateError();
+      }
       if (
         (await this.dependencies.readSecretStorageIdentity()) !==
         this.secretStorageIdentity
@@ -227,13 +253,15 @@ export class FirstStartUpdateCoordinator {
         );
       }
 
-      await this.dependencies.acceptedBuildStore.write({
-        acceptedAt: this.now(),
-        appVersion: this.dependencies.releaseInfo.appVersion,
-        buildRevision: this.dependencies.releaseInfo.buildRevision,
-        formatVersion: 1,
-        releaseChannel: 'pilot',
-      });
+      if (mode.kind !== 'installerNotApplied') {
+        await this.dependencies.acceptedBuildStore.write({
+          acceptedAt: this.now(),
+          appVersion: this.dependencies.releaseInfo.appVersion,
+          buildRevision: this.dependencies.releaseInfo.buildRevision,
+          formatVersion: 1,
+          releaseChannel: 'pilot',
+        });
+      }
 
       if (mode.kind === 'coordinated') {
         const acceptedJournal = transitionUpdateJournal(mode.journal, {
@@ -241,12 +269,22 @@ export class FirstStartUpdateCoordinator {
           state: 'accepted',
         });
         await this.dependencies.journalStore.write(acceptedJournal);
+      } else if (mode.kind === 'installerNotApplied') {
+        await this.dependencies.journalStore.write(
+          transitionUpdateJournal(mode.journal, {
+            at: this.now(),
+            state: 'installerNotApplied',
+          }),
+        );
       }
       if (acceptedDirectSetupRecovery !== undefined) {
         await this.dependencies.directSetupRecoveryStore.clear();
       }
     } catch {
       await this.markRollbackRequired(coordinatedJournal);
+      await this.markInstallerNotAppliedFailedSafe(
+        mode.kind === 'installerNotApplied' ? mode.journal : undefined,
+      );
       await this.markDirectSetupRecoveryRequired(
         mode.kind === 'directSetup' ? mode.recovery : undefined,
       );
@@ -256,6 +294,59 @@ export class FirstStartUpdateCoordinator {
 
     await this.releaseRecoveryPointProtectionAfterAcceptance(mode);
     this.notifyOperationCompleted();
+  }
+
+  private classifyRunningJournalBuild(
+    journal: Readonly<UpdateJournal>,
+  ): 'current' | 'target' {
+    const runningVersion = this.dependencies.releaseInfo.appVersion;
+    const runningRevision = this.dependencies.releaseInfo.buildRevision;
+    if (
+      runningVersion === journal.targetVersion &&
+      runningRevision === journal.candidatePackageIdentity.buildRevision
+    ) {
+      return 'target';
+    }
+    if (
+      runningVersion === journal.currentVersion &&
+      runningRevision === journal.currentPackageIdentity.buildRevision
+    ) {
+      return 'current';
+    }
+    throw new FirstStartUpdateError();
+  }
+
+  private async prepareInstallerNotApplied(input: {
+    acceptedBuild:
+      | { appVersion: string; buildRevision: string }
+      | undefined;
+    inspection: Readonly<MigrationStartupInspection>;
+    journal: Readonly<UpdateJournal>;
+  }): Promise<FirstStartMode> {
+    const { acceptedBuild, inspection, journal } = input;
+    if (
+      (journal.state !== 'awaitingFirstStart' && journal.state !== 'failed') ||
+      journal.handoffAttemptCount !== 1 ||
+      journal.recoveryPointReference === undefined ||
+      journal.preUpdateMigrationChainIdentity === undefined ||
+      acceptedBuild?.appVersion !== journal.currentVersion ||
+      acceptedBuild.buildRevision !==
+        journal.currentPackageIdentity.buildRevision ||
+      inspection.profileState !== 'existing' ||
+      inspection.pendingMigrationCount !== 0 ||
+      inspection.migrationChainIdentity !==
+        journal.preUpdateMigrationChainIdentity
+    ) {
+      throw new FirstStartUpdateError();
+    }
+    await this.dependencies.cache.revalidateJournalPackage({
+      expectedIdentity: toExpectedIdentity(
+        journal.currentVersion,
+        journal.currentPackageIdentity,
+      ),
+      role: 'current',
+    });
+    return { journal, kind: 'installerNotApplied' };
   }
 
   private async prepareCoordinatedFirstStart(
@@ -544,11 +635,32 @@ export class FirstStartUpdateCoordinator {
       .catch(() => undefined);
   }
 
+  private async markInstallerNotAppliedFailedSafe(
+    journal: Readonly<UpdateJournal> | undefined,
+  ): Promise<void> {
+    if (
+      journal === undefined ||
+      journal.state === 'failedSafe' ||
+      journal.state === 'installerNotApplied'
+    ) {
+      return;
+    }
+    await this.dependencies.journalStore
+      .write(
+        transitionUpdateJournal(journal, {
+          at: this.now(),
+          state: 'failedSafe',
+        }),
+      )
+      .catch(() => undefined);
+  }
+
   private async releaseRecoveryPointProtectionAfterAcceptance(
     mode: Exclude<FirstStartMode, { kind: 'normal' }>,
   ): Promise<void> {
     const references = [
-      ...(mode.kind === 'coordinated'
+      ...(mode.kind === 'coordinated' ||
+      mode.kind === 'installerNotApplied'
         ? [requireRecoveryPointReference(mode.journal)]
         : []),
       ...(this.preMigrationPointReference === undefined

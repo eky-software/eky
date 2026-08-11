@@ -37,6 +37,12 @@ const releaseInfo = {
   schemaVersion: 1 as const,
   upgradeCode: '11111111-1111-4111-8111-111111111111',
 };
+const currentReleaseInfo = {
+  ...releaseInfo,
+  appVersion: '0.1.0',
+  buildRevision: currentIdentity.buildRevision,
+  msiProductVersion: currentIdentity.msiProductVersion,
+};
 
 describe('first-start update coordinator', () => {
   it('accepts a clean initial install without creating a recovery point', async () => {
@@ -329,17 +335,96 @@ describe('first-start update coordinator', () => {
         createInspection('existing', 1),
       ),
     ).rejects.toThrow(FirstStartUpdateError);
-    expect(fixture.journalStates).toEqual(['rollbackRequired']);
+    expect(fixture.journalStates).toEqual(['failedSafe']);
     expect(fixture.createValidatedPreMigrationPoint).not.toHaveBeenCalled();
+  });
+
+  it('records installer-not-applied when the current build returns after installer cancellation', async () => {
+    const fixture = createFixture({
+      acceptedBuild: acceptedCurrentBuild(),
+      journal: createJournal('awaitingFirstStart'),
+      runningReleaseInfo: currentReleaseInfo,
+    });
+
+    await fixture.coordinator.beforeMigrations(
+      createInspection('existing', 0),
+    );
+    await fixture.coordinator.acceptAfterBackendReady();
+
+    expect(fixture.journalStates).toEqual(['installerNotApplied']);
+    expect(fixture.acceptedWrites).toHaveLength(0);
+    expect(fixture.promoteAcceptedCandidate).not.toHaveBeenCalled();
+    expect(fixture.releaseProtectedPoint).toHaveBeenCalledWith(
+      recoveryPointReference,
+    );
+  });
+
+  it('resolves a failed handoff as installer-not-applied when the current build is intact', async () => {
+    const fixture = createFixture({
+      acceptedBuild: acceptedCurrentBuild(),
+      journal: createJournal('failed'),
+      runningReleaseInfo: currentReleaseInfo,
+    });
+
+    await fixture.coordinator.beforeMigrations(
+      createInspection('existing', 0),
+    );
+    await fixture.coordinator.acceptAfterBackendReady();
+
+    expect(fixture.journalStates).toEqual(['installerNotApplied']);
+    expect(fixture.acceptedWrites).toHaveLength(0);
+    expect(fixture.promoteAcceptedCandidate).not.toHaveBeenCalled();
+  });
+
+  it('fails safe when the current build returns with a changed migration chain', async () => {
+    const fixture = createFixture({
+      acceptedBuild: acceptedCurrentBuild(),
+      journal: createJournal('awaitingFirstStart'),
+      runningReleaseInfo: currentReleaseInfo,
+    });
+    const changedInspection = {
+      ...createInspection('existing', 0),
+      migrationChainIdentity: 'c'.repeat(64),
+    };
+
+    await expect(
+      fixture.coordinator.beforeMigrations(changedInspection),
+    ).rejects.toThrow(FirstStartUpdateError);
+
+    expect(fixture.journalStates).toEqual(['failedSafe']);
+    expect(fixture.acceptedWrites).toHaveLength(0);
+    expect(fixture.promoteAcceptedCandidate).not.toHaveBeenCalled();
+  });
+
+  it('fails safe when post-start validation observes a changed migration chain', async () => {
+    const fixture = createFixture({
+      acceptedBuild: acceptedCurrentBuild(),
+      activeMigrationChainIdentity: 'c'.repeat(64),
+      journal: createJournal('awaitingFirstStart'),
+      runningReleaseInfo: currentReleaseInfo,
+    });
+    await fixture.coordinator.beforeMigrations(
+      createInspection('existing', 0),
+    );
+
+    await expect(
+      fixture.coordinator.acceptAfterBackendReady(),
+    ).rejects.toThrow(FirstStartUpdateError);
+
+    expect(fixture.journalStates).toEqual(['failedSafe']);
+    expect(fixture.acceptedWrites).toHaveLength(0);
+    expect(fixture.promoteAcceptedCandidate).not.toHaveBeenCalled();
   });
 });
 
 function createFixture(options: {
   acceptedBuild?: ReturnType<typeof acceptedCandidateBuild>;
+  activeMigrationChainIdentity?: string;
   cacheAlreadyRotated?: boolean;
   directSetupRecovery?: Readonly<DirectSetupMigrationRecovery>;
   journal?: Readonly<UpdateJournal>;
   releaseFails?: boolean;
+  runningReleaseInfo?: typeof releaseInfo;
   secretChanges?: boolean;
 } = {}) {
   let journal = options.journal;
@@ -362,6 +447,8 @@ function createFixture(options: {
     artifactCount: 1,
     artifactTotalByteSize: 100,
     databaseHealth: 'healthy' as const,
+    migrationChainIdentity:
+      options.activeMigrationChainIdentity ?? 'a'.repeat(64),
   }));
   const promoteAcceptedCandidate = vi.fn(async () => {
     cacheRotated = true;
@@ -378,7 +465,8 @@ function createFixture(options: {
     },
     buildInfo: {
       buildDirty: false,
-      buildRevision: candidateIdentity.buildRevision,
+      buildRevision:
+        (options.runningReleaseInfo ?? releaseInfo).buildRevision,
     },
     cache: {
       promoteAcceptedCandidate,
@@ -439,7 +527,7 @@ function createFixture(options: {
         ? 'b'.repeat(64)
         : 'a'.repeat(64);
     },
-    releaseInfo,
+    releaseInfo: options.runningReleaseInfo ?? releaseInfo,
   });
   return {
     acceptedWrites,
@@ -478,6 +566,7 @@ function createJournal(state: UpdateJournal['state']): UpdateJournal {
     currentVersion: '0.1.0',
     formatVersion: 1,
     handoffAttemptCount: 1,
+    preUpdateMigrationChainIdentity: 'a'.repeat(64),
     recoveryPointReference,
     releaseChannel: 'pilot',
     revision: 4,

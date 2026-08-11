@@ -477,6 +477,11 @@ function registerProfileSnapshotServices(input: {
   const activeValidationService = new CurrentActiveProfileValidationService(
     input.database,
     input.invoiceDocumentStorageRoot,
+    () =>
+      inspectMigrationStartupState(
+        input.database,
+        input.migrationsDirectory,
+      ).migrationChainIdentity,
   );
   input.registration.register({
     createProfileSnapshot: (request) =>

@@ -35,12 +35,14 @@ describe('active profile validation', () => {
     const service = new CurrentActiveProfileValidationService(
       database,
       join(root, 'storage', 'invoices'),
+      () => 'c'.repeat(64),
     );
 
     await expect(service.validateActiveProfile()).resolves.toEqual({
       artifactCount: 0,
       artifactTotalByteSize: 0,
       databaseHealth: 'healthy',
+      migrationChainIdentity: 'c'.repeat(64),
     });
   });
 
@@ -51,6 +53,7 @@ describe('active profile validation', () => {
       artifactCount: 1,
       artifactTotalByteSize: fixture.pdf.byteLength,
       databaseHealth: 'healthy',
+      migrationChainIdentity: 'c'.repeat(64),
     });
   });
 
@@ -172,6 +175,7 @@ async function createFixture(): Promise<Fixture> {
     service: new CurrentActiveProfileValidationService(
       database,
       storageRoot,
+      () => 'c'.repeat(64),
     ),
   };
 }

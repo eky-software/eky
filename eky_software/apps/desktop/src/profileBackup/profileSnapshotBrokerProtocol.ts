@@ -69,6 +69,7 @@ export type ProfileSnapshotBrokerResponse =
         artifactCount: number;
         artifactTotalByteSize: number;
         databaseHealth: 'healthy';
+        migrationChainIdentity: string;
         type: 'activeProfileValidation';
       } | {
         artifactCatalog: {
@@ -275,6 +276,7 @@ export function parseProfileSnapshotBrokerResponse(
       'artifactCount',
       'artifactTotalByteSize',
       'databaseHealth',
+      'migrationChainIdentity',
       'type',
     ]) &&
     isBoundedNonNegativeSafeInteger(value.result.artifactCount, 100_000) &&
@@ -282,7 +284,8 @@ export function parseProfileSnapshotBrokerResponse(
       value.result.artifactTotalByteSize,
       20 * 1024 * 1024 * 1024,
     ) &&
-    value.result.databaseHealth === 'healthy'
+    value.result.databaseHealth === 'healthy' &&
+    isSha256(value.result.migrationChainIdentity)
   ) {
     return {
       ok: true,
@@ -292,6 +295,7 @@ export function parseProfileSnapshotBrokerResponse(
         artifactCount: value.result.artifactCount,
         artifactTotalByteSize: value.result.artifactTotalByteSize,
         databaseHealth: 'healthy',
+        migrationChainIdentity: value.result.migrationChainIdentity,
         type: 'activeProfileValidation',
       },
     };
