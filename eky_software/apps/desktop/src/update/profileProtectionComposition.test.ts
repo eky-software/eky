@@ -88,6 +88,9 @@ function createFixture(
   const endMaintenance = vi.fn(async () => 'normal' as const);
   const restoreRecoveryPoint = vi.fn(async () => undefined);
   const protection = createProfileProtectionComposition({
+    directSetupRecoveryStore: {
+      read: vi.fn(async () => undefined),
+    },
     profileSnapshotClient: {
       beginMaintenance,
       endMaintenance,

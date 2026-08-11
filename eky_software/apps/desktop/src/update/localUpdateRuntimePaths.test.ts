@@ -15,6 +15,12 @@ describe('local update runtime paths', () => {
           'update-state',
           'accepted-build-v1.json',
         ),
+      directSetupMigrationRecoveryPath:
+        join(
+          '/private/user-data',
+          'update-state',
+          'direct-setup-migration-recovery-v1.json',
+        ),
       journalPath:
         join(
           '/private/user-data',

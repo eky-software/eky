@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { UpdateJournal } from './updateJournal.js';
+import { createDirectSetupMigrationRecovery } from './directSetupMigrationRecovery.js';
 import { readUpdateProtectedRecoveryPointReferences } from './updateRecoveryPointProtection.js';
 
 const recoveryPointReference =
@@ -38,6 +39,33 @@ describe('update recovery point protection', () => {
         read: async () => undefined,
       }),
     ).resolves.toEqual([]);
+  });
+
+  it('protects a direct Setup point independently of the coordinated journal', async () => {
+    const directReference = '33333333-3333-4333-8333-333333333333';
+    await expect(
+      readUpdateProtectedRecoveryPointReferences(
+        { read: async () => undefined },
+        {
+          read: async () =>
+            createDirectSetupMigrationRecovery({
+              appliedMigrationCount: 37,
+              at: '2026-08-11T18:00:00.000Z',
+              correlationId: '44444444-4444-4444-8444-444444444444',
+              migrationPrefixIdentity: 'a'.repeat(64),
+              previousAcceptedBuildIdentity: {
+                appVersion: '0.1.0',
+                buildRevision: 'aaaaaaaaaaaa',
+              },
+              recoveryPointReference: directReference,
+              runningTargetBuildIdentity: {
+                appVersion: '0.2.0',
+                buildRevision: 'bbbbbbbbbbbb',
+              },
+            }),
+        },
+      ),
+    ).resolves.toEqual([directReference]);
   });
 });
 

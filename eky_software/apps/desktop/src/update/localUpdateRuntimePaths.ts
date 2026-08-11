@@ -2,9 +2,11 @@ import { join } from 'node:path';
 
 import { acceptedBuildMetadataFileName } from './acceptedBuildMetadataStore.js';
 import { updateJournalFileName } from './updateJournalStore.js';
+import { directSetupMigrationRecoveryFileName } from './directSetupMigrationRecoveryStore.js';
 
 export interface LocalUpdateRuntimePaths {
   acceptedBuildMetadataPath: string;
+  directSetupMigrationRecoveryPath: string;
   journalPath: string;
   legacyAcceptedBuildMetadataPath: string;
   legacyJournalPath: string;
@@ -22,6 +24,10 @@ export function createLocalUpdateRuntimePaths(
     acceptedBuildMetadataPath: join(
       stateRoot,
       acceptedBuildMetadataFileName,
+    ),
+    directSetupMigrationRecoveryPath: join(
+      stateRoot,
+      directSetupMigrationRecoveryFileName,
     ),
     journalPath: join(stateRoot, updateJournalFileName),
     legacyAcceptedBuildMetadataPath: join(

@@ -6,6 +6,11 @@ import {
   type MigrationStartupInspection,
 } from './firstStartUpdateCoordinator.js';
 import type { UpdateJournal } from './updateJournal.js';
+import {
+  createDirectSetupMigrationRecovery,
+  transitionDirectSetupMigrationRecovery,
+  type DirectSetupMigrationRecovery,
+} from './directSetupMigrationRecovery.js';
 
 const recoveryPointReference = '11111111-1111-4111-8111-111111111111';
 const preMigrationPointReference = '33333333-3333-4333-8333-333333333333';
@@ -67,8 +72,89 @@ describe('first-start update coordinator', () => {
       createInspection('existing', 1),
     );
     expect(fixture.createValidatedPreMigrationPoint).toHaveBeenCalledOnce();
+    expect(fixture.directRecoveryStates).toEqual([
+      'prepared',
+      'migrationRunning',
+    ]);
 
     await fixture.coordinator.acceptAfterBackendReady();
+    expect(fixture.directRecoveryStates).toEqual([
+      'prepared',
+      'migrationRunning',
+      'accepted',
+      'cleared',
+    ]);
+    expect(fixture.releaseProtectedPoint).toHaveBeenCalledWith(
+      preMigrationPointReference,
+    );
+  });
+
+  it('reuses the original recovery point after a crash before migration side effects', async () => {
+    const fixture = createFixture({
+      acceptedBuild: acceptedCurrentBuild(),
+      directSetupRecovery: createDirectSetupRunningRecovery(),
+    });
+
+    await fixture.coordinator.beforeMigrations(
+      createInspection('existing', 1),
+    );
+
+    expect(fixture.createValidatedPreMigrationPoint).not.toHaveBeenCalled();
+    expect(fixture.directRecoveryWrites.at(-1)).toEqual(
+      expect.objectContaining({
+        attemptCount: 2,
+        recoveryPointReference: preMigrationPointReference,
+        state: 'migrationRunning',
+      }),
+    );
+  });
+
+  it('requires recovery instead of replacing the point after partial migration', async () => {
+    const fixture = createFixture({
+      acceptedBuild: acceptedCurrentBuild(),
+      directSetupRecovery: createDirectSetupRunningRecovery(),
+    });
+    const changedInspection = {
+      ...createInspection('existing', 1),
+      appliedMigrationCount: 38,
+      migrationChainIdentity: 'c'.repeat(64),
+    };
+
+    await expect(
+      fixture.coordinator.beforeMigrations(changedInspection),
+    ).rejects.toThrow(FirstStartUpdateError);
+
+    expect(fixture.createValidatedPreMigrationPoint).not.toHaveBeenCalled();
+    expect(fixture.directRecoveryStates).toEqual(['recoveryRequired']);
+    expect(fixture.directRecoveryWrites.at(-1)).toEqual(
+      expect.objectContaining({
+        recoveryPointReference: preMigrationPointReference,
+        state: 'recoveryRequired',
+      }),
+    );
+  });
+
+  it('finishes acceptance after a crash between direct recovery commit and cleanup', async () => {
+    const acceptedRecovery = transitionDirectSetupMigrationRecovery(
+      createDirectSetupRunningRecovery(),
+      {
+        at: '2026-08-11T18:04:00.000Z',
+        state: 'accepted',
+      },
+    );
+    const fixture = createFixture({
+      acceptedBuild: acceptedCurrentBuild(),
+      directSetupRecovery: acceptedRecovery,
+    });
+
+    await fixture.coordinator.beforeMigrations(
+      createInspection('existing', 0),
+    );
+    await fixture.coordinator.acceptAfterBackendReady();
+
+    expect(fixture.createValidatedPreMigrationPoint).not.toHaveBeenCalled();
+    expect(fixture.acceptedWrites).toHaveLength(1);
+    expect(fixture.directRecoveryStates).toEqual(['cleared']);
     expect(fixture.releaseProtectedPoint).toHaveBeenCalledWith(
       preMigrationPointReference,
     );
@@ -251,6 +337,7 @@ describe('first-start update coordinator', () => {
 function createFixture(options: {
   acceptedBuild?: ReturnType<typeof acceptedCandidateBuild>;
   cacheAlreadyRotated?: boolean;
+  directSetupRecovery?: Readonly<DirectSetupMigrationRecovery>;
   journal?: Readonly<UpdateJournal>;
   releaseFails?: boolean;
   secretChanges?: boolean;
@@ -259,6 +346,9 @@ function createFixture(options: {
   let cacheRotated = options.cacheAlreadyRotated ?? false;
   let secretReadCount = 0;
   const acceptedWrites: unknown[] = [];
+  let directSetupRecovery = options.directSetupRecovery;
+  const directRecoveryStates: string[] = [];
+  const directRecoveryWrites: Readonly<DirectSetupMigrationRecovery>[] = [];
   const journalStates: string[] = [];
   const createValidatedPreMigrationPoint = vi.fn(
     async () => preMigrationPointReference,
@@ -311,6 +401,18 @@ function createFixture(options: {
         };
       },
     },
+    directSetupRecoveryStore: {
+      async clear() {
+        directSetupRecovery = undefined;
+        directRecoveryStates.push('cleared');
+      },
+      read: async () => directSetupRecovery,
+      async write(next) {
+        directSetupRecovery = next;
+        directRecoveryWrites.push(next);
+        directRecoveryStates.push(next.state);
+      },
+    },
     journalStore: {
       read: async () => journal,
       async write(next) {
@@ -343,6 +445,8 @@ function createFixture(options: {
     acceptedWrites,
     coordinator,
     createValidatedPreMigrationPoint,
+    directRecoveryStates,
+    directRecoveryWrites,
     journalStates,
     operationCompleted,
     operationFailed,
@@ -391,6 +495,40 @@ function acceptedCandidateBuild() {
     formatVersion: 1 as const,
     releaseChannel: 'pilot' as const,
   };
+}
+
+function acceptedCurrentBuild() {
+  return {
+    acceptedAt: '2026-08-10T18:00:00.000Z',
+    appVersion: '0.1.0',
+    buildRevision: currentIdentity.buildRevision,
+    formatVersion: 1 as const,
+    releaseChannel: 'pilot' as const,
+  };
+}
+
+function createDirectSetupRunningRecovery() {
+  return transitionDirectSetupMigrationRecovery(
+    createDirectSetupMigrationRecovery({
+      appliedMigrationCount: 37,
+      at: '2026-08-11T18:00:00.000Z',
+      correlationId: '44444444-4444-4444-8444-444444444444',
+      migrationPrefixIdentity: 'a'.repeat(64),
+      previousAcceptedBuildIdentity: {
+        appVersion: '0.1.0',
+        buildRevision: currentIdentity.buildRevision,
+      },
+      recoveryPointReference: preMigrationPointReference,
+      runningTargetBuildIdentity: {
+        appVersion: releaseInfo.appVersion,
+        buildRevision: releaseInfo.buildRevision,
+      },
+    }),
+    {
+      at: '2026-08-11T18:01:00.000Z',
+      state: 'migrationRunning',
+    },
+  );
 }
 
 function createClock(): () => Date {

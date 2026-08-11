@@ -1,5 +1,6 @@
 import type { ProfileSnapshotBrokerClient } from '../profileBackup/profileSnapshotBrokerClient.js';
 import type { RecoveryPointService } from '../profileBackup/recoveryPoint/recoveryPointService.js';
+import type { DirectSetupMigrationRecoveryStore } from './directSetupMigrationRecoveryStore.js';
 import type { UpdateJournalStore } from './updateJournalStore.js';
 import { readUpdateProtectedRecoveryPointReferences } from './updateRecoveryPointProtection.js';
 
@@ -30,6 +31,7 @@ interface ProfileProtectionCompositionDependencies {
     'createPreMigration' | 'createPreUpdate'
   >;
   restoreRecoveryPoint?(reference: string): Promise<void>;
+  directSetupRecoveryStore: Pick<DirectSetupMigrationRecoveryStore, 'read'>;
   updateJournalStore: Pick<UpdateJournalStore, 'read'>;
 }
 
@@ -56,6 +58,7 @@ export function createProfileProtectionComposition(
       const protectedReferences =
         await readUpdateProtectedRecoveryPointReferences(
           dependencies.updateJournalStore,
+          dependencies.directSetupRecoveryStore,
         );
       if (protectedReferences.includes(recoveryPointReference)) {
         throw new Error('UPDATE_RECOVERY_POINT_STILL_PROTECTED');

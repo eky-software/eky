@@ -114,6 +114,7 @@ import {
 } from '../update/localUpdateFoundationComposition.js';
 import type { LocalUpdateSelectionCapability } from '../update/localUpdateSelectionCapability.js';
 import { createLocalUpdateRuntimePaths } from '../update/localUpdateRuntimePaths.js';
+import { DirectSetupMigrationRecoveryStore } from '../update/directSetupMigrationRecoveryStore.js';
 import { migrateLegacyLocalUpdateState } from '../update/migrateLegacyLocalUpdateState.js';
 import { AcceptedBuildMetadataStore } from '../update/acceptedBuildMetadataStore.js';
 import { readEncryptedSecretStorageIdentity } from '../update/encryptedSecretStorageIdentity.js';
@@ -310,6 +311,10 @@ async function startDesktopCompositionRuntime({
   const acceptedBuildMetadataStore = new AcceptedBuildMetadataStore(
     localUpdateRuntimePaths.acceptedBuildMetadataPath,
   );
+  const directSetupMigrationRecoveryStore =
+    new DirectSetupMigrationRecoveryStore(
+      localUpdateRuntimePaths.directSetupMigrationRecoveryPath,
+    );
   await migrateLegacyLocalUpdateState({
     acceptedBuild: {
       current: acceptedBuildMetadataStore,
@@ -388,7 +393,10 @@ async function startDesktopCompositionRuntime({
   });
   const recoveryPointRotation = new RecoveryPointRotationService({
     readDurableProtectedArtifactIds: () =>
-      readUpdateProtectedRecoveryPointReferences(updateJournalStore),
+      readUpdateProtectedRecoveryPointReferences(
+        updateJournalStore,
+        directSetupMigrationRecoveryStore,
+      ),
     recoveryRoot: profileSnapshotPaths.recoveryPointsRoot,
     store: recoveryPointStore,
   });
@@ -408,6 +416,7 @@ async function startDesktopCompositionRuntime({
     recoveryPointService,
   });
   const updateProfileProtection = createProfileProtectionComposition({
+    directSetupRecoveryStore: directSetupMigrationRecoveryStore,
     profileSnapshotClient: profileSnapshotBrokerClient,
     recoveryPointService,
     updateJournalStore,
@@ -428,6 +437,7 @@ async function startDesktopCompositionRuntime({
           acceptedBuildStore: acceptedBuildMetadataStore,
           buildInfo: options.buildInfo,
           cache: localUpdatePackageCache,
+          directSetupRecoveryStore: directSetupMigrationRecoveryStore,
           journalStore: updateJournalStore,
           observer: createUpdateOperationalObserver({
             identity: desktopOperationalIdentity,

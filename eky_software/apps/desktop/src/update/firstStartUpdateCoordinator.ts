@@ -16,6 +16,12 @@ import {
   noOpUpdateOperationalObserver,
   type UpdateOperationalObserver,
 } from './updateOperationalObserver.js';
+import {
+  createDirectSetupMigrationRecovery,
+  transitionDirectSetupMigrationRecovery,
+  type DirectSetupMigrationRecovery,
+} from './directSetupMigrationRecovery.js';
+import type { DirectSetupMigrationRecoveryStore } from './directSetupMigrationRecoveryStore.js';
 
 export interface MigrationStartupInspection {
   appliedMigrationCount: number;
@@ -44,6 +50,10 @@ interface FirstStartUpdateCoordinatorDependencies {
     LocalUpdatePackageCache,
     'promoteAcceptedCandidate' | 'revalidateJournalPackage'
   >;
+  directSetupRecoveryStore: Pick<
+    DirectSetupMigrationRecoveryStore,
+    'clear' | 'read' | 'write'
+  >;
   journalStore: Pick<UpdateJournalStore, 'read' | 'write'>;
   now?(): Date;
   operationIdFactory?(): string;
@@ -55,7 +65,11 @@ interface FirstStartUpdateCoordinatorDependencies {
 
 type FirstStartMode =
   | { kind: 'coordinated'; journal: Readonly<UpdateJournal>; rotated: boolean }
-  | { kind: 'directSetup' | 'initialInstall' | 'normal' };
+  | {
+      kind: 'directSetup';
+      recovery?: Readonly<DirectSetupMigrationRecovery>;
+    }
+  | { kind: 'initialInstall' | 'normal' };
 
 export class FirstStartUpdateError extends Error {
   constructor() {
@@ -84,13 +98,18 @@ export class FirstStartUpdateCoordinator {
     }
 
     let coordinatedJournal: Readonly<UpdateJournal> | undefined;
+    let directSetupRecovery: Readonly<DirectSetupMigrationRecovery> | undefined;
     try {
-      const [journal, acceptedBuild] = await Promise.all([
+      const [journal, acceptedBuild, storedDirectSetupRecovery] = await Promise.all([
         this.dependencies.journalStore.read(),
         this.dependencies.acceptedBuildStore.read(),
+        this.dependencies.directSetupRecoveryStore.read(),
       ]);
+      directSetupRecovery = storedDirectSetupRecovery;
       this.operationCorrelationId =
-        journal !== undefined && journal.state !== 'accepted'
+        directSetupRecovery !== undefined
+          ? directSetupRecovery.correlationId
+          : journal !== undefined && journal.state !== 'accepted'
           ? journal.correlationId
           : (this.dependencies.operationIdFactory ?? randomUUID)();
       this.operationStartedAt = Date.now();
@@ -98,6 +117,14 @@ export class FirstStartUpdateCoordinator {
       this.assertPackagedBuildIdentity();
       this.secretStorageIdentity =
         await this.dependencies.readSecretStorageIdentity();
+
+      if (
+        directSetupRecovery !== undefined &&
+        journal !== undefined &&
+        journal.state !== 'accepted'
+      ) {
+        throw new FirstStartUpdateError();
+      }
 
       if (journal !== undefined && journal.state !== 'accepted') {
         coordinatedJournal = journal;
@@ -112,7 +139,11 @@ export class FirstStartUpdateCoordinator {
         ) {
           throw new FirstStartUpdateError();
         }
-        this.mode = this.resolveDirectSetupMode(acceptedBuild);
+        this.mode = await this.prepareUncoordinatedFirstStart({
+          acceptedBuild,
+          directSetupRecovery,
+          inspection,
+        });
       }
 
       if (
@@ -123,7 +154,8 @@ export class FirstStartUpdateCoordinator {
       }
       if (
         inspection.profileState === 'existing' &&
-        inspection.pendingMigrationCount > 0
+        inspection.pendingMigrationCount > 0 &&
+        this.mode.kind !== 'directSetup'
       ) {
         this.preMigrationPointReference =
           await this.dependencies.profileProtection
@@ -133,6 +165,7 @@ export class FirstStartUpdateCoordinator {
       this.migrationGateCompleted = true;
     } catch {
       await this.markRollbackRequired(coordinatedJournal);
+      await this.markDirectSetupRecoveryRequired(directSetupRecovery);
       this.notifyOperationFailed();
       throw new FirstStartUpdateError();
     }
@@ -175,6 +208,25 @@ export class FirstStartUpdateCoordinator {
         await this.assertAcceptedRotation(mode.journal);
       }
 
+      const acceptedDirectSetupRecovery =
+        mode.kind === 'directSetup' && mode.recovery !== undefined
+          ? mode.recovery.state === 'accepted'
+            ? mode.recovery
+            : transitionDirectSetupMigrationRecovery(mode.recovery, {
+                at: this.now(),
+                state: 'accepted',
+              })
+          : undefined;
+      if (
+        mode.kind === 'directSetup' &&
+        acceptedDirectSetupRecovery !== undefined &&
+        acceptedDirectSetupRecovery !== mode.recovery
+      ) {
+        await this.dependencies.directSetupRecoveryStore.write(
+          acceptedDirectSetupRecovery,
+        );
+      }
+
       await this.dependencies.acceptedBuildStore.write({
         acceptedAt: this.now(),
         appVersion: this.dependencies.releaseInfo.appVersion,
@@ -190,8 +242,14 @@ export class FirstStartUpdateCoordinator {
         });
         await this.dependencies.journalStore.write(acceptedJournal);
       }
+      if (acceptedDirectSetupRecovery !== undefined) {
+        await this.dependencies.directSetupRecoveryStore.clear();
+      }
     } catch {
       await this.markRollbackRequired(coordinatedJournal);
+      await this.markDirectSetupRecoveryRequired(
+        mode.kind === 'directSetup' ? mode.recovery : undefined,
+      );
       this.notifyOperationFailed();
       throw new FirstStartUpdateError();
     }
@@ -280,6 +338,140 @@ export class FirstStartUpdateCoordinator {
     return { kind: 'directSetup' };
   }
 
+  private async prepareUncoordinatedFirstStart(input: {
+    acceptedBuild:
+      | {
+          appVersion: string;
+          buildRevision: string;
+        }
+      | undefined;
+    directSetupRecovery:
+      | Readonly<DirectSetupMigrationRecovery>
+      | undefined;
+    inspection: Readonly<MigrationStartupInspection>;
+  }): Promise<FirstStartMode> {
+    if (input.directSetupRecovery?.state === 'accepted') {
+      this.assertDirectSetupRecoveryIdentity(
+        input.directSetupRecovery,
+        input.acceptedBuild,
+        true,
+      );
+      if (input.inspection.pendingMigrationCount !== 0) {
+        throw new FirstStartUpdateError();
+      }
+      this.preMigrationPointReference =
+        input.directSetupRecovery.recoveryPointReference;
+      return { kind: 'directSetup', recovery: input.directSetupRecovery };
+    }
+
+    const mode = this.resolveDirectSetupMode(input.acceptedBuild);
+    if (input.directSetupRecovery !== undefined) {
+      if (mode.kind !== 'directSetup') {
+        throw new FirstStartUpdateError();
+      }
+      return {
+        kind: 'directSetup',
+        recovery: await this.resumeDirectSetupRecovery(
+          input.directSetupRecovery,
+          input.acceptedBuild,
+          input.inspection,
+        ),
+      };
+    }
+    if (
+      mode.kind !== 'directSetup' ||
+      input.inspection.profileState !== 'existing' ||
+      input.inspection.pendingMigrationCount === 0
+    ) {
+      return mode;
+    }
+    if (input.acceptedBuild === undefined) {
+      throw new FirstStartUpdateError();
+    }
+
+    const recoveryPointReference =
+      await this.dependencies.profileProtection.createValidatedPreMigrationPoint();
+    const prepared = createDirectSetupMigrationRecovery({
+      appliedMigrationCount: input.inspection.appliedMigrationCount,
+      at: this.now(),
+      correlationId: requireOperationCorrelationId(
+        this.operationCorrelationId,
+      ),
+      migrationPrefixIdentity: input.inspection.migrationChainIdentity,
+      previousAcceptedBuildIdentity: {
+        appVersion: input.acceptedBuild.appVersion,
+        buildRevision: input.acceptedBuild.buildRevision,
+      },
+      recoveryPointReference,
+      runningTargetBuildIdentity: {
+        appVersion: this.dependencies.releaseInfo.appVersion,
+        buildRevision: this.dependencies.releaseInfo.buildRevision,
+      },
+    });
+    await this.dependencies.directSetupRecoveryStore.write(prepared);
+    const running = transitionDirectSetupMigrationRecovery(prepared, {
+      at: this.now(),
+      state: 'migrationRunning',
+    });
+    await this.dependencies.directSetupRecoveryStore.write(running);
+    this.preMigrationPointReference = recoveryPointReference;
+    return { kind: 'directSetup', recovery: running };
+  }
+
+  private async resumeDirectSetupRecovery(
+    recovery: Readonly<DirectSetupMigrationRecovery>,
+    acceptedBuild: { appVersion: string; buildRevision: string } | undefined,
+    inspection: Readonly<MigrationStartupInspection>,
+  ): Promise<Readonly<DirectSetupMigrationRecovery>> {
+    this.assertDirectSetupRecoveryIdentity(recovery, acceptedBuild, false);
+    if (
+      (recovery.state !== 'prepared' &&
+        recovery.state !== 'migrationRunning') ||
+      inspection.profileState !== 'existing' ||
+      inspection.appliedMigrationCount !== recovery.appliedMigrationCount ||
+      inspection.migrationChainIdentity !== recovery.migrationPrefixIdentity ||
+      inspection.pendingMigrationCount === 0
+    ) {
+      throw new FirstStartUpdateError();
+    }
+    const running = transitionDirectSetupMigrationRecovery(recovery, {
+      at: this.now(),
+      attemptCount: recovery.attemptCount + 1,
+      state: 'migrationRunning',
+    });
+    await this.dependencies.directSetupRecoveryStore.write(running);
+    this.preMigrationPointReference = recovery.recoveryPointReference;
+    return running;
+  }
+
+  private assertDirectSetupRecoveryIdentity(
+    recovery: Readonly<DirectSetupMigrationRecovery>,
+    acceptedBuild: { appVersion: string; buildRevision: string } | undefined,
+    allowAcceptedTarget: boolean,
+  ): void {
+    const matchesPrevious =
+      acceptedBuild?.appVersion ===
+        recovery.previousAcceptedBuildIdentity.appVersion &&
+      acceptedBuild.buildRevision ===
+        recovery.previousAcceptedBuildIdentity.buildRevision;
+    const matchesTarget =
+      allowAcceptedTarget &&
+      acceptedBuild?.appVersion ===
+        recovery.runningTargetBuildIdentity.appVersion &&
+      acceptedBuild.buildRevision ===
+        recovery.runningTargetBuildIdentity.buildRevision;
+    if (
+      acceptedBuild === undefined ||
+      (!matchesPrevious && !matchesTarget) ||
+      recovery.runningTargetBuildIdentity.appVersion !==
+        this.dependencies.releaseInfo.appVersion ||
+      recovery.runningTargetBuildIdentity.buildRevision !==
+        this.dependencies.releaseInfo.buildRevision
+    ) {
+      throw new FirstStartUpdateError();
+    }
+  }
+
   private assertPackagedBuildIdentity(): void {
     if (
       this.dependencies.buildInfo.buildDirty ||
@@ -326,6 +518,27 @@ export class FirstStartUpdateCoordinator {
         transitionUpdateJournal(journal, {
           at: this.now(),
           state: 'rollbackRequired',
+        }),
+      )
+      .catch(() => undefined);
+  }
+
+  private async markDirectSetupRecoveryRequired(
+    recovery: Readonly<DirectSetupMigrationRecovery> | undefined,
+  ): Promise<void> {
+    if (
+      recovery === undefined ||
+      recovery.state === 'accepted' ||
+      recovery.state === 'failedSafe' ||
+      recovery.state === 'recoveryRequired'
+    ) {
+      return;
+    }
+    await this.dependencies.directSetupRecoveryStore
+      .write(
+        transitionDirectSetupMigrationRecovery(recovery, {
+          at: this.now(),
+          state: 'recoveryRequired',
         }),
       )
       .catch(() => undefined);
@@ -438,4 +651,11 @@ function requireRecoveryPointReference(
     throw new FirstStartUpdateError();
   }
   return journal.recoveryPointReference;
+}
+
+function requireOperationCorrelationId(value: string | undefined): string {
+  if (value === undefined) {
+    throw new FirstStartUpdateError();
+  }
+  return value;
 }
