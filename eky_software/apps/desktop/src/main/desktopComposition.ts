@@ -111,6 +111,9 @@ import {
   createLocalUpdateFoundationComposition,
 } from '../update/localUpdateFoundationComposition.js';
 import type { LocalUpdateSelectionCapability } from '../update/localUpdateSelectionCapability.js';
+import { createLocalUpdateRuntimePaths } from '../update/localUpdateRuntimePaths.js';
+import { UpdateJournalStore } from '../update/updateJournalStore.js';
+import { readUpdateProtectedRecoveryPointReferences } from '../update/updateRecoveryPointProtection.js';
 
 export interface DesktopLifecycleHandle {
   applicationWindow: BrowserWindow;
@@ -289,6 +292,10 @@ async function startDesktopCompositionRuntime({
   const { databaseFilePath, invoiceDocumentStorageRoot } =
     createDesktopProfilePaths(options.userDataPath);
   const profileSnapshotPaths = createProfileSnapshotRuntimePaths(dataRoot);
+  const localUpdateRuntimePaths = createLocalUpdateRuntimePaths(dataRoot);
+  const updateJournalStore = new UpdateJournalStore(
+    localUpdateRuntimePaths.journalPath,
+  );
   const profileRecoveryOperationalObserver =
     createProfileRecoveryOperationalObserver({
       operationalIdentity: desktopOperationalIdentity,
@@ -348,6 +355,8 @@ async function startDesktopCompositionRuntime({
     validator: profileSnapshotBrokerClient,
   });
   const recoveryPointRotation = new RecoveryPointRotationService({
+    readDurableProtectedArtifactIds: () =>
+      readUpdateProtectedRecoveryPointReferences(updateJournalStore),
     recoveryRoot: profileSnapshotPaths.recoveryPointsRoot,
     store: recoveryPointStore,
   });

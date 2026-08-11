@@ -11,6 +11,8 @@ import {
 } from './recoveryPointRetention.js';
 
 const profileIdPattern = /^[a-f0-9]{64}$/;
+const artifactIdPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export interface RecoveryPointRotationResult {
   budgetExceededAfterRotation: boolean;
@@ -22,6 +24,9 @@ export class RecoveryPointRotationService {
   constructor(
     private readonly dependencies: {
       diskBudgetBytes?: number;
+      readDurableProtectedArtifactIds?(
+        profileId: string,
+      ): Promise<readonly string[]>;
       recoveryRoot: string;
       store: Pick<RecoveryPointStore, 'list' | 'remove'>;
     },
@@ -35,8 +40,18 @@ export class RecoveryPointRotationService {
     const journalStore = this.createJournalStore(profileId);
     await this.resume(profileId, journalStore);
     const points = await this.dependencies.store.list(profileId);
+    const durableProtectedArtifactIds =
+      await this.dependencies.readDurableProtectedArtifactIds?.(
+        profileId,
+      ) ?? [];
+    assertArtifactIds(durableProtectedArtifactIds);
     const plan = planRecoveryPointRetention(points, {
-      activeProtectedArtifactIds,
+      activeProtectedArtifactIds: [
+        ...new Set([
+          ...activeProtectedArtifactIds,
+          ...durableProtectedArtifactIds,
+        ]),
+      ],
       diskBudgetBytes:
         this.dependencies.diskBudgetBytes ??
         recoveryPointDiskBudgetBytes,
@@ -105,6 +120,15 @@ export class RecoveryPointRotationService {
     }
     await journalStore.clear();
     return originalCount;
+  }
+}
+
+function assertArtifactIds(artifactIds: readonly string[]): void {
+  if (
+    artifactIds.length > 8 ||
+    artifactIds.some((artifactId) => !artifactIdPattern.test(artifactId))
+  ) {
+    throw new Error('RECOVERY_POINT_ROTATION_INVALID');
   }
 }
 
