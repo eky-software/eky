@@ -70,6 +70,19 @@ describe('accepted build metadata store', () => {
       'ACCEPTED_BUILD_METADATA_UNAVAILABLE',
     );
   });
+
+  it('clears current and interrupted write slots idempotently', async () => {
+    const filePath = await createPath();
+    await writeSlot(filePath, metadata);
+    await writeSlot(`${filePath}.next`, metadata);
+    await writeSlot(`${filePath}.backup`, metadata);
+    const store = new AcceptedBuildMetadataStore(filePath);
+
+    await store.clear();
+    await store.clear();
+
+    await expect(store.read()).resolves.toBeUndefined();
+  });
 });
 
 async function createPath(): Promise<string> {

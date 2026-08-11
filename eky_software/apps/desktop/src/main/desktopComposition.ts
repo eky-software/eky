@@ -114,6 +114,7 @@ import {
 } from '../update/localUpdateFoundationComposition.js';
 import type { LocalUpdateSelectionCapability } from '../update/localUpdateSelectionCapability.js';
 import { createLocalUpdateRuntimePaths } from '../update/localUpdateRuntimePaths.js';
+import { migrateLegacyLocalUpdateState } from '../update/migrateLegacyLocalUpdateState.js';
 import { AcceptedBuildMetadataStore } from '../update/acceptedBuildMetadataStore.js';
 import { readEncryptedSecretStorageIdentity } from '../update/encryptedSecretStorageIdentity.js';
 import { FirstStartUpdateCoordinator } from '../update/firstStartUpdateCoordinator.js';
@@ -299,10 +300,30 @@ async function startDesktopCompositionRuntime({
   const { databaseFilePath, invoiceDocumentStorageRoot } =
     createDesktopProfilePaths(options.userDataPath);
   const profileSnapshotPaths = createProfileSnapshotRuntimePaths(dataRoot);
-  const localUpdateRuntimePaths = createLocalUpdateRuntimePaths(dataRoot);
+  const localUpdateRuntimePaths = createLocalUpdateRuntimePaths({
+    legacyRuntimeRoot: dataRoot,
+    userDataPath: options.userDataPath,
+  });
   const updateJournalStore = new UpdateJournalStore(
     localUpdateRuntimePaths.journalPath,
   );
+  const acceptedBuildMetadataStore = new AcceptedBuildMetadataStore(
+    localUpdateRuntimePaths.acceptedBuildMetadataPath,
+  );
+  await migrateLegacyLocalUpdateState({
+    acceptedBuild: {
+      current: acceptedBuildMetadataStore,
+      legacy: new AcceptedBuildMetadataStore(
+        localUpdateRuntimePaths.legacyAcceptedBuildMetadataPath,
+      ),
+    },
+    journal: {
+      current: updateJournalStore,
+      legacy: new UpdateJournalStore(
+        localUpdateRuntimePaths.legacyJournalPath,
+      ),
+    },
+  });
   const profileRecoveryOperationalObserver =
     createProfileRecoveryOperationalObserver({
       operationalIdentity: desktopOperationalIdentity,
@@ -404,9 +425,7 @@ async function startDesktopCompositionRuntime({
     options.releaseInfo === undefined || localUpdatePackageCache === undefined
       ? undefined
       : new FirstStartUpdateCoordinator({
-          acceptedBuildStore: new AcceptedBuildMetadataStore(
-            localUpdateRuntimePaths.acceptedBuildMetadataPath,
-          ),
+          acceptedBuildStore: acceptedBuildMetadataStore,
           buildInfo: options.buildInfo,
           cache: localUpdatePackageCache,
           journalStore: updateJournalStore,

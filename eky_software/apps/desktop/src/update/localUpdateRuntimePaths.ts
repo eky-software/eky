@@ -6,17 +6,28 @@ import { updateJournalFileName } from './updateJournalStore.js';
 export interface LocalUpdateRuntimePaths {
   acceptedBuildMetadataPath: string;
   journalPath: string;
+  legacyAcceptedBuildMetadataPath: string;
+  legacyJournalPath: string;
 }
 
 export function createLocalUpdateRuntimePaths(
-  runtimeRoot: string,
+  input: {
+    legacyRuntimeRoot: string;
+    userDataPath: string;
+  },
 ): LocalUpdateRuntimePaths {
-  const stateRoot = join(runtimeRoot, 'update-state');
+  const stateRoot = join(input.userDataPath, 'update-state');
+  const legacyStateRoot = join(input.legacyRuntimeRoot, 'update-state');
   return {
     acceptedBuildMetadataPath: join(
       stateRoot,
       acceptedBuildMetadataFileName,
     ),
     journalPath: join(stateRoot, updateJournalFileName),
+    legacyAcceptedBuildMetadataPath: join(
+      legacyStateRoot,
+      acceptedBuildMetadataFileName,
+    ),
+    legacyJournalPath: join(legacyStateRoot, updateJournalFileName),
   };
 }
