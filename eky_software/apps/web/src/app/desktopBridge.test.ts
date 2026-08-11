@@ -271,6 +271,7 @@ function createDesktopApi(
       status: 'cancelled',
     })),
     retryPendingInvoicePdfArchiveTasks: vi.fn(async () => disabledStatus),
+    selectLocalUpdate: vi.fn(async () => ({ status: 'cancelled' })),
     ...overrides,
   };
 }

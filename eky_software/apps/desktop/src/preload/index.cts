@@ -27,6 +27,7 @@ const activatePreparedProfileRestoreIpcChannel =
   'eky:profile-backup:activate-restore';
 const createManualRecoveryPointIpcChannel =
   'eky:profile-backup:create-recovery-point';
+const selectLocalUpdateIpcChannel = 'eky:update:select-local';
 
 interface EkyDesktopApi {
   activatePreparedProfileRestore(): Promise<unknown>;
@@ -43,6 +44,7 @@ interface EkyDesktopApi {
   openOperationalLogFolder(): Promise<void>;
   prepareEncryptedProfileRestore(): Promise<unknown>;
   retryPendingInvoicePdfArchiveTasks(): Promise<unknown>;
+  selectLocalUpdate(): Promise<unknown>;
 }
 
 const ekyDesktopApi: EkyDesktopApi = Object.freeze({
@@ -87,6 +89,9 @@ const ekyDesktopApi: EkyDesktopApi = Object.freeze({
   },
   retryPendingInvoicePdfArchiveTasks() {
     return ipcRenderer.invoke(retryPendingInvoicePdfArchiveTasksIpcChannel);
+  },
+  selectLocalUpdate() {
+    return ipcRenderer.invoke(selectLocalUpdateIpcChannel);
   },
 });
 
