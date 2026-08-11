@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import {
@@ -22,6 +23,24 @@ test('keeps upgrade identity stable while product identity changes by version', 
     createInstallerProductCode('0.1.1'),
     createInstallerProductCode('0.1.2'),
   );
+});
+
+test('matches the canonical runtime ProductCode contract corpus', async () => {
+  const fixtures = JSON.parse(
+    await readFile(
+      new URL(
+        './fixtures/installerProductCodeContractFixtures.json',
+        import.meta.url,
+      ),
+      'utf8',
+    ),
+  );
+  for (const fixture of fixtures) {
+    assert.equal(
+      createInstallerProductCode(fixture.msiProductVersion),
+      fixture.productCode,
+    );
+  }
 });
 
 test('normalizes component identity without depending on Windows separators', () => {

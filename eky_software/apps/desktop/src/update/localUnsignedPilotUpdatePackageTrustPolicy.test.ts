@@ -5,6 +5,7 @@ import { LocalUnsignedPilotUpdatePackageTrustPolicy } from './localUnsignedPilot
 import type { LocalUnsignedPilotUpdatePackageManifest } from './updatePackageManifest.js';
 import { UpdatePackageTrustError } from './updatePackageTrustPolicy.js';
 import type { WindowsInstallerIdentity } from './windowsInstallerIdentity.js';
+import { createExpectedWindowsInstallerProductCode } from './windowsInstallerProductCode.js';
 
 const releaseInfo: DesktopReleaseInfo = {
   appIdentity: 'Eky',
@@ -40,7 +41,7 @@ const manifest: LocalUnsignedPilotUpdatePackageManifest = {
 const installerIdentity: WindowsInstallerIdentity = {
   architecture: 'x64',
   packageScope: 'perUser',
-  productCode: '{02F99C94-ECBD-48A4-8117-1DE7F55C1E09}',
+  productCode: `{${createExpectedWindowsInstallerProductCode('0.1.1')}}`,
   productVersion: '0.1.1',
   upgradeCode: '{302530B2-D950-41F5-8397-264B485FEE9A}',
 };
@@ -68,6 +69,9 @@ describe('local unsigned pilot update package trust policy', () => {
         policy.verifyPackage({
           installerIdentity: {
             ...installerIdentity,
+            productCode: `{${createExpectedWindowsInstallerProductCode(
+              changedManifest.msiProductVersion,
+            )}}`,
             productVersion: changedManifest.msiProductVersion,
           },
           manifest: changedManifest as LocalUnsignedPilotUpdatePackageManifest,
@@ -89,7 +93,13 @@ describe('local unsigned pilot update package trust policy', () => {
     } as LocalUnsignedPilotUpdatePackageManifest;
     expect(
       policy.verifyPackage({
-        installerIdentity: { ...installerIdentity, productVersion: '0.1.2' },
+        installerIdentity: {
+          ...installerIdentity,
+          productCode: `{${createExpectedWindowsInstallerProductCode(
+            '0.1.2',
+          )}}`,
+          productVersion: '0.1.2',
+        },
         manifest: candidate,
         releaseInfo,
         role: 'candidate',
@@ -106,6 +116,9 @@ describe('local unsigned pilot update package trust policy', () => {
         policy.verifyPackage({
           installerIdentity: {
             ...installerIdentity,
+            productCode: `{${createExpectedWindowsInstallerProductCode(
+              changedManifest.msiProductVersion,
+            )}}`,
             productVersion: changedManifest.msiProductVersion,
           },
           manifest: changedManifest as LocalUnsignedPilotUpdatePackageManifest,
@@ -121,6 +134,10 @@ describe('local unsigned pilot update package trust policy', () => {
       { ...installerIdentity, packageScope: 'perMachine' },
       { ...installerIdentity, architecture: 'x86' },
       { ...installerIdentity, productVersion: '0.1.2' },
+      {
+        ...installerIdentity,
+        productCode: '{02F99C94-ECBD-48A4-8117-1DE7F55C1E09}',
+      },
       {
         ...installerIdentity,
         upgradeCode: '{02F99C94-ECBD-48A4-8117-1DE7F55C1E09}',

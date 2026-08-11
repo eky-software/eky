@@ -3,6 +3,8 @@ import { lstat } from 'node:fs/promises';
 import { win32 } from 'node:path';
 import { promisify } from 'node:util';
 
+import { requireCanonicalWindowsSystemRoot } from './windowsSystemRoot.js';
+
 const execFileAsync = promisify(execFile);
 const outputMaxBytes = 8 * 1024;
 const inspectionTimeoutMilliseconds = 10_000;
@@ -91,20 +93,17 @@ export async function readWindowsInstallerIdentity(
 export function resolveWindowsPowerShellPath(
   systemRoot: string | undefined,
 ): string {
-  if (
-    systemRoot === undefined ||
-    !win32.isAbsolute(systemRoot) ||
-    systemRoot.includes('\0')
-  ) {
+  try {
+    return win32.join(
+      requireCanonicalWindowsSystemRoot(systemRoot),
+      'System32',
+      'WindowsPowerShell',
+      'v1.0',
+      'powershell.exe',
+    );
+  } catch {
     throw new WindowsInstallerIdentityInspectionError();
   }
-  return win32.join(
-    systemRoot,
-    'System32',
-    'WindowsPowerShell',
-    'v1.0',
-    'powershell.exe',
-  );
 }
 
 export function parseWindowsInstallerIdentity(

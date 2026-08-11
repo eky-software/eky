@@ -99,6 +99,9 @@ describe('Windows Installer identity inspection', () => {
       WindowsInstallerIdentityInspectionError,
     );
     expect(() =>
+      resolveWindowsPowerShellPath('C:\\Windows\\..\\Windows'),
+    ).toThrow(WindowsInstallerIdentityInspectionError);
+    expect(() =>
       parseWindowsInstallerIdentity({ ...validIdentity, productVersion: '1' }),
     ).toThrow(WindowsInstallerIdentityInspectionError);
   });

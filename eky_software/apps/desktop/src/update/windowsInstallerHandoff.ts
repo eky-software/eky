@@ -1,6 +1,8 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { win32 } from 'node:path';
 
+import { requireCanonicalWindowsSystemRoot } from './windowsSystemRoot.js';
+
 type SpawnProcess = typeof spawn;
 
 export interface WindowsInstallerHandoffInput {
@@ -43,15 +45,15 @@ export function launchWindowsInstallerForUpdate(
 export function resolveWindowsInstallerExecutable(
   systemRoot: string | undefined,
 ): string {
-  if (
-    systemRoot === undefined ||
-    systemRoot.includes('\0') ||
-    !win32.isAbsolute(systemRoot) ||
-    win32.resolve(systemRoot) !== systemRoot
-  ) {
+  try {
+    return win32.join(
+      requireCanonicalWindowsSystemRoot(systemRoot),
+      'System32',
+      'msiexec.exe',
+    );
+  } catch {
     throw new WindowsInstallerHandoffError();
   }
-  return win32.join(systemRoot, 'System32', 'msiexec.exe');
 }
 
 function assertSafePackagePath(packagePath: string): void {
