@@ -9,6 +9,15 @@ prototyyppi on toteutettu ja sen install-, repair-, uninstall-, major upgrade-,
 downgrade-esto- ja binary rollback -rajat on todennettu synteettisellä datalla.
 Päivitysorkestrointia, code signingia tai update-UI:ta ei ole vielä toteutettu.
 
+### Local Update Program -checkpointit
+
+| Checkpoint | Tila | Huomio |
+| --- | --- | --- |
+| C0 Electron cold-start baseline | valmis 11.8.2026 | `DESK-PDF-001` ajettiin 10 kertaa retries=0 ja Electron critical kahdesti puhtaasti; aiemman flaken juurisyytä ei väitetä korjatuksi |
+| C1 Local Update Foundation | käynnissä | Manifestin runtime-codec, vaihdettava trust-policy, native selection, private staging/cache ja nykyisen rollback-paketin rekisteröinti; ei MSI:n käynnistystä eikä business-dataa |
+| C2 Update Orchestration and First Start | odottaa | Aloitetaan vasta C1:n vihreän mergen ja haarojen synkronoinnin jälkeen |
+| C3 Recovery, Compatibility and Pilot Release | odottaa | Aloitetaan vasta C2:n vihreän mergen ja haarojen synkronoinnin jälkeen |
+
 Migration runnerin SHA-256-checksum-, chain identity- ja release/build-
 metadata on toteutettu 10.8.2026. Historiallinen mismatch torjutaan ennen
 pending-migraation SQL-kirjoitusta, ja legacy-kanta ankkuroidaan erikseen
@@ -318,8 +327,8 @@ Käyttäjäpolku:
 
 R0:ssa päivitystä ei käynnistetä automaattisesti ilman käyttäjän vahvistusta.
 
-Renderer pyytää vain nimettyä `selectLocalUpdatePackage`-tyyppistä
-capabilityä. Electron main avaa native-dialogin manifestille, lukee suljetun
+Renderer pyytää vain nimetyn nollaparametrisen `selectLocalUpdate()`-
+capabilityn. Electron main avaa native-dialogin manifestille, lukee suljetun
 manifestin ja johtaa sen samassa hakemistossa olevan paketin nimen vain
 validoidusta `packageFilename`-kentästä. Renderer ei saa manifestin tai
 paketin raakaa polkua, executablea, URL:ia, komentoriviä tai
@@ -414,6 +423,19 @@ pointiin, tukipakettiin, lasku-PDF-arkistoon, Activityyn tai business auditiin.
 Se kuuluu vain Update Coordinatorin tekniseen lifecycleen. Sallittu sanitoitu
 tila voidaan myöhemmin projisoida Diagnosticsiin erikseen hyväksytyn event
 catalogin kautta.
+
+### C1:n vastuuraja
+
+C1 saa valita, tarkastaa ja private stagingiin kopioida `candidate`-paketin
+sekä rekisteröidä käynnissä olevaa buildia vastaavan `current`-paketin.
+Candidate säilytetään vain rajatun cache-budjetin ja crash-safe
+slot-metadatan mukaan. Käyttäjän vahvistus kuuluu myöhempään C2-orkestrointiin;
+C1 ei käynnistä MSI:tä, sulje runtimea, muodosta pre-update-pistettä, kirjoita
+päivitysjournalia, aja first-start-polkuja eikä muuta business-dataa.
+
+Päivitystoiminto pidetään tavalliselta käyttäjältä piilossa tai poistettuna
+käytöstä C3:n pilot release -porttiin asti. C1:n capabilityt eivät anna
+rendererille polkuja, manifestia, MSI-tavuja, executablea tai argumentteja.
 
 ## 8. Suora Setup-päivitys
 

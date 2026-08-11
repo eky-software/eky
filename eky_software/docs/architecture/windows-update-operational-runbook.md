@@ -20,6 +20,19 @@ käyttäjän USB-polusta rollbackin hetkellä, vaan jokaisen slotin manifesti ja
 MSI-tavut varmennetaan uudelleen ennen käyttöä. Välimuisti ei kuulu
 Diagnosticsin tukipakettiin tai Activityyn.
 
+## C0 baseline 11.8.2026
+
+Ennen Local Update Foundation -tuotantokoodia `DESK-PDF-001` ajettiin
+kymmenen kertaa peräkkäin tuoreella eristetyllä profiililla, Playwright
+`retries=0`-asetuksella. Lisäksi koko Electron critical -joukko ajettiin
+kahdesti puhtaasti. Kaikki ajot läpäisivät. Havainto on baseline, ei väite
+aiemmin GitHub CI:ssä nähdyn ikkunanluontiflaken juurisyykorjauksesta.
+
+C1:n operational-raja päättyy paketin tarkastukseen, private stagingiin ja
+`current`-paketin rekisteröintiin. C1 ei käynnistä Windows Installeria,
+muodosta pre-update-palautuspistettä, sulje runtimea, kirjoita varsinaista
+update-journalia tai muuta business-dataa.
+
 ## Omistajuus
 
 Update Coordinator omistaa yhden päivitysyrityksen teknisen lifecycle-
