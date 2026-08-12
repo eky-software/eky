@@ -14,6 +14,12 @@ describe('update recovery point protection', () => {
     'awaitingFirstStart',
     'firstStartValidating',
     'rollbackRequired',
+    'businessRollbackStarting',
+    'businessRollbackCompleted',
+    'binaryRollbackPrepared',
+    'awaitingRollbackFirstStart',
+    'failedSafe',
+    'recoveryRequired',
   ] as const)('protects the referenced point in %s state', async (state) => {
     await expect(
       readUpdateProtectedRecoveryPointReferences({

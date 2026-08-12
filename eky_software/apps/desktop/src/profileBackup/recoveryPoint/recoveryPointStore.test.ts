@@ -21,6 +21,8 @@ const roots: string[] = [];
 const artifactId = '11111111-1111-4111-8111-111111111111';
 const inspectionOperationId =
   '22222222-2222-4222-8222-222222222222';
+const restoreOperationId =
+  '33333333-3333-4333-8333-333333333333';
 const profileId = 'a'.repeat(64);
 const migrationChainIdentity = 'b'.repeat(64);
 const snapshotCreatedAt = '2026-04-05T12:00:00.000Z';
@@ -101,6 +103,65 @@ describe('recovery point store', () => {
       }),
     ).rejects.toThrow();
     await expect(fixture.store.list(profileId)).resolves.toEqual([]);
+  });
+
+  it('stages only the exact validated pre-update point for restore', async () => {
+    const fixture = await createFixture();
+    await fixture.store.create({
+      entries: fixture.entries,
+      kind: 'preUpdate',
+      manifest: {
+        appVersion: '0.1.0-alpha.1',
+        createdAtEpochMilliseconds: BigInt(
+          Date.parse(snapshotCreatedAt),
+        ),
+        migrationChainIdentity,
+        profileId,
+      },
+      validatedAt: '2026-08-04T12:01:00.000Z',
+    });
+
+    const staged = await fixture.store.stageForRestore({
+      artifactId,
+      expectedMigrationChainIdentity: migrationChainIdentity,
+      operationId: restoreOperationId,
+    });
+
+    expect(staged).toMatchObject({
+      appVersion: '0.1.0-alpha.1',
+      documentCount: 0,
+      migrationChainIdentity,
+      profileId,
+      profileMatchesActive: true,
+    });
+    await expect(
+      readFile(join(staged.operationRoot, 'profile.sqlite'), 'utf8'),
+    ).resolves.toBe('synthetic-sqlite-profile');
+  });
+
+  it('rejects a non-pre-update point as an update rollback source', async () => {
+    const fixture = await createFixture();
+    await fixture.store.create({
+      entries: fixture.entries,
+      kind: 'manual',
+      manifest: {
+        appVersion: '0.1.0-alpha.1',
+        createdAtEpochMilliseconds: BigInt(
+          Date.parse(snapshotCreatedAt),
+        ),
+        migrationChainIdentity,
+        profileId,
+      },
+      validatedAt: '2026-08-04T12:01:00.000Z',
+    });
+
+    await expect(
+      fixture.store.stageForRestore({
+        artifactId,
+        expectedMigrationChainIdentity: migrationChainIdentity,
+        operationId: restoreOperationId,
+      }),
+    ).rejects.toThrow('RECOVERY_POINT_RESTORE_SOURCE_INVALID');
   });
 });
 

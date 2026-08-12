@@ -210,12 +210,33 @@ describe('staged profile snapshot validation', () => {
     ).rejects.toThrow('PROFILE_SNAPSHOT_VALIDATION_FAILED');
   });
 
-  it('rejects a migration-chain mismatch', async () => {
+  it('accepts an exact historical migration prefix for update rollback', async () => {
     const fixture = await createFixture();
     await writeFile(
       join(fixture.migrationsDirectory, '002_unapplied.sql'),
       'CREATE TABLE unapplied (id TEXT PRIMARY KEY);',
     );
+
+    await expect(
+      fixture.service.validateProfileSnapshot(fixture.operationId),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        databaseHealth: 'healthy',
+        migrationChainIdentity: expect.stringMatching(/^[a-f0-9]{64}$/),
+      }),
+    );
+  });
+
+  it('rejects a staged database with a migration outside the packaged manifest', async () => {
+    const fixture = await createFixture();
+    const database = new Database(fixture.databasePath);
+    database.exec('PRAGMA foreign_keys = OFF;');
+    database
+      .prepare(
+        'INSERT INTO schema_migrations (name, run_at) VALUES (?, ?)',
+      )
+      .run('999_future.sql', '2026-08-12T00:00:00.000Z');
+    database.close();
 
     await expect(
       fixture.service.validateProfileSnapshot(fixture.operationId),

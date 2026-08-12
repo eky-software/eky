@@ -318,6 +318,113 @@ describe('local update package cache', () => {
     }
   });
 
+  it('normalizes unrotated rollback packages idempotently', async () => {
+    const pair = await createCurrentAndCandidatePair();
+
+    await expect(
+      pair.cache.normalizeRolledBackPackages({
+        candidateIdentity: expectedIdentityOf(pair.candidate.manifest),
+        currentIdentity: expectedIdentityOf(pair.current.manifest),
+      }),
+    ).resolves.toMatchObject({
+      appVersion: releaseInfo.appVersion,
+    });
+    await expect(
+      pair.cache.normalizeRolledBackPackages({
+        candidateIdentity: expectedIdentityOf(pair.candidate.manifest),
+        currentIdentity: expectedIdentityOf(pair.current.manifest),
+      }),
+    ).resolves.toMatchObject({ appVersion: releaseInfo.appVersion });
+
+    expect((await readdir(pair.current.cacheRoot)).sort()).toEqual([
+      'candidate',
+      'current',
+    ]);
+  });
+
+  it('restores the exact previous package after accepted candidate rotation', async () => {
+    const pair = await createCurrentAndCandidatePair();
+    await pair.cache.promoteAcceptedCandidate({
+      candidateIdentity: expectedIdentityOf(pair.candidate.manifest),
+      currentIdentity: expectedIdentityOf(pair.current.manifest),
+    });
+
+    await pair.cache.normalizeRolledBackPackages({
+      candidateIdentity: expectedIdentityOf(pair.candidate.manifest),
+      currentIdentity: expectedIdentityOf(pair.current.manifest),
+    });
+
+    expect((await readdir(pair.current.cacheRoot)).sort()).toEqual([
+      'candidate',
+      'current',
+    ]);
+    await expect(
+      pair.cache.revalidateJournalPackage({
+        expectedIdentity: expectedIdentityOf(pair.current.manifest),
+        role: 'current',
+      }),
+    ).resolves.toBeDefined();
+    await expect(
+      pair.cache.revalidateJournalPackage({
+        expectedIdentity: expectedIdentityOf(pair.candidate.manifest),
+        role: 'candidate',
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it('resumes rollback normalization after either durable directory rename', async () => {
+    for (const interruption of ['afterCurrentRename', 'afterPreviousRename']) {
+      const pair = await createCurrentAndCandidatePair();
+      await pair.cache.promoteAcceptedCandidate({
+        candidateIdentity: expectedIdentityOf(pair.candidate.manifest),
+        currentIdentity: expectedIdentityOf(pair.current.manifest),
+      });
+      await rename(
+        join(pair.current.cacheRoot, 'current'),
+        join(pair.current.cacheRoot, '.rollback-candidate-next'),
+      );
+      if (interruption === 'afterPreviousRename') {
+        await rename(
+          join(pair.current.cacheRoot, 'previous'),
+          join(pair.current.cacheRoot, 'current'),
+        );
+      }
+
+      await pair.cache.normalizeRolledBackPackages({
+        candidateIdentity: expectedIdentityOf(pair.candidate.manifest),
+        currentIdentity: expectedIdentityOf(pair.current.manifest),
+      });
+
+      expect((await readdir(pair.current.cacheRoot)).sort()).toEqual([
+        'candidate',
+        'current',
+      ]);
+    }
+  });
+
+  it('rejects a mismatched rollback identity without rotating package slots', async () => {
+    const pair = await createCurrentAndCandidatePair();
+    await pair.cache.promoteAcceptedCandidate({
+      candidateIdentity: expectedIdentityOf(pair.candidate.manifest),
+      currentIdentity: expectedIdentityOf(pair.current.manifest),
+    });
+
+    await expect(
+      pair.cache.normalizeRolledBackPackages({
+        candidateIdentity: expectedIdentityOf(pair.candidate.manifest),
+        currentIdentity: {
+          ...expectedIdentityOf(pair.current.manifest),
+          packageSha256: 'f'.repeat(64),
+        },
+      }),
+    ).rejects.toThrow(LocalUpdatePackageCacheError);
+
+    expect((await readdir(pair.current.cacheRoot)).sort()).toEqual([
+      'current',
+      'previous',
+    ]);
+  });
+
   it('discards a corrupted candidate without changing current or previous', async () => {
     const pair = await createCurrentAndCandidatePair();
     await pair.cache.promoteAcceptedCandidate({

@@ -17,6 +17,7 @@ export interface SqliteProfileDatabaseInspection {
 export function inspectSqliteProfileDatabase(
   databaseFilePath: string,
   migrationsDirectory: string,
+  options: { allowHistoricalMigrationPrefix?: boolean } = {},
 ): SqliteProfileDatabaseInspection {
   if (!isAbsolute(databaseFilePath) || !isAbsolute(migrationsDirectory)) {
     throw new Error('PROFILE_SNAPSHOT_DATABASE_INVALID');
@@ -44,12 +45,9 @@ export function inspectSqliteProfileDatabase(
     );
 
     if (
+      !options.allowHistoricalMigrationPrefix &&
       migrationHistory.appliedMigrationNames.length !==
-        expectedMigrations.length ||
-      migrationHistory.appliedMigrationNames.some(
-        (migration, index) =>
-          migration !== expectedMigrations[index]?.fileName,
-      )
+        expectedMigrations.length
     ) {
       throw new Error('PROFILE_SNAPSHOT_MIGRATIONS_INVALID');
     }

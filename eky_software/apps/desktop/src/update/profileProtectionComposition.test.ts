@@ -69,14 +69,21 @@ describe('update profile protection composition', () => {
     const fixture = createFixture();
 
     await expect(
-      fixture.protection.restoreRecoveryPoint('not-an-artifact'),
+      fixture.protection.restoreRecoveryPoint({
+        expectedMigrationChainIdentity: 'a'.repeat(64),
+        operationId: '22222222-2222-4222-8222-222222222222',
+        recoveryPointReference: 'not-an-artifact',
+      }),
     ).rejects.toThrow('UPDATE_RECOVERY_POINT_INVALID');
     expect(fixture.restoreRecoveryPoint).not.toHaveBeenCalled();
 
-    await fixture.protection.restoreRecoveryPoint(recoveryPointReference);
-    expect(fixture.restoreRecoveryPoint).toHaveBeenCalledWith(
+    const input = {
+      expectedMigrationChainIdentity: 'a'.repeat(64),
+      operationId: '22222222-2222-4222-8222-222222222222',
       recoveryPointReference,
-    );
+    };
+    await fixture.protection.restoreRecoveryPoint(input);
+    expect(fixture.restoreRecoveryPoint).toHaveBeenCalledWith(input);
   });
 });
 
@@ -87,7 +94,7 @@ function createFixture(
 ) {
   const beginMaintenance = vi.fn(async () => 'busy' as const);
   const endMaintenance = vi.fn(async () => 'normal' as const);
-  const restoreRecoveryPoint = vi.fn(async () => undefined);
+  const restoreRecoveryPoint = vi.fn(async () => 'relaunching' as const);
   const protection = createProfileProtectionComposition({
     directSetupRecoveryStore: {
       read: vi.fn(async () => undefined),

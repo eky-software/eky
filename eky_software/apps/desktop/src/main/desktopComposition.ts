@@ -33,8 +33,10 @@ import {
   type InvoicePdfPreviewWindowController,
 } from '../pdf/invoicePdfPreviewWindow.js';
 import {
+  DesktopBackendStartupStoppedError,
   startDesktopBackend,
   type DesktopBackendHandle,
+  type DesktopBackendStartupControl,
   type StartDesktopBackendOptions,
 } from '../runtime/backendProcess.js';
 import { createDesktopRuntimeSession } from '../runtime/runtimeSession.js';
@@ -100,7 +102,9 @@ import { RecoveryPointScheduler } from '../profileBackup/recoveryPoint/recoveryP
 import { RecoveryPointService } from '../profileBackup/recoveryPoint/recoveryPointService.js';
 import { RecoveryPointStore } from '../profileBackup/recoveryPoint/recoveryPointStore.js';
 import { ProfileRestoreActivationJournalStore } from '../profileBackup/restore/profileRestoreActivationJournalStore.js';
+import { ProfileRestoreActivationService } from '../profileBackup/restore/profileRestoreActivationService.js';
 import { ProfileRestoreActivationTransaction } from '../profileBackup/restore/profileRestoreActivationTransaction.js';
+import { RecoveryPointRestoreStagingService } from '../profileBackup/restore/recoveryPointRestoreStagingService.js';
 import { ProfileRestoreStartupRecovery } from '../profileBackup/restore/profileRestoreStartupRecovery.js';
 import { createProfileRecoveryOperationalObserver } from '../profileBackup/profileRecoveryOperationalObserver.js';
 import {
@@ -123,6 +127,10 @@ import { createProfileProtectionComposition } from '../update/profileProtectionC
 import { UpdateJournalStore } from '../update/updateJournalStore.js';
 import { readUpdateProtectedRecoveryPointReferences } from '../update/updateRecoveryPointProtection.js';
 import { createUpdateOperationalObserver } from '../update/updateOperationalObserver.js';
+import { UpdateBusinessRollbackCoordinator } from '../update/updateBusinessRollbackCoordinator.js';
+import { UpdateBinaryRollbackCoordinator } from '../update/updateBinaryRollbackCoordinator.js';
+import { resolveStartupRecoveryAuthority } from '../update/startupRecoveryAuthority.js';
+import { launchWindowsInstallerForUpdate } from '../update/windowsInstallerHandoff.js';
 
 export interface DesktopLifecycleHandle {
   applicationWindow: BrowserWindow;
@@ -415,10 +423,43 @@ async function startDesktopCompositionRuntime({
     observer: profileRecoveryOperationalObserver,
     recoveryPointService,
   });
+  let backendStartupControl: DesktopBackendStartupControl | undefined;
+  let updateRecoveryRelaunchRequested = false;
+  let updateBinaryRollbackHandoffRequested = false;
+  const recoveryPointRestoreStagingService =
+    new RecoveryPointRestoreStagingService({
+      store: recoveryPointStore,
+    });
+  const updateRestoreActivationService =
+    new ProfileRestoreActivationService({
+      observer: profileRecoveryOperationalObserver,
+      profileSnapshotClient: profileSnapshotBrokerClient,
+      relaunchApplication() {
+        updateRecoveryRelaunchRequested = true;
+        options.relaunchApplication();
+      },
+      stagingService: recoveryPointRestoreStagingService,
+      async stopBusinessRuntime() {
+        if (backendStartupControl === undefined) {
+          throw new Error('UPDATE_ROLLBACK_RUNTIME_UNAVAILABLE');
+        }
+        await backendStartupControl.stopStartupRuntime();
+      },
+      transaction: profileRestoreActivationTransaction,
+    });
   const updateProfileProtection = createProfileProtectionComposition({
     directSetupRecoveryStore: directSetupMigrationRecoveryStore,
     profileSnapshotClient: profileSnapshotBrokerClient,
     recoveryPointService,
+    async restoreRecoveryPoint(input) {
+      await recoveryPointRestoreStagingService.stage({
+        artifactId: input.recoveryPointReference,
+        expectedMigrationChainIdentity:
+          input.expectedMigrationChainIdentity,
+        operationId: input.operationId,
+      });
+      return updateRestoreActivationService.activate(input.operationId);
+    },
     updateJournalStore,
   });
   const localUpdatePackageCache =
@@ -446,6 +487,27 @@ async function startDesktopCompositionRuntime({
           profileProtection: updateProfileProtection,
           readSecretStorageIdentity: () =>
             readEncryptedSecretStorageIdentity(encryptedSecretFile),
+          releaseInfo: options.releaseInfo,
+        });
+  const updateBusinessRollbackCoordinator =
+    options.releaseInfo === undefined
+      ? undefined
+      : new UpdateBusinessRollbackCoordinator({
+          journalStore: updateJournalStore,
+          profileProtection: updateProfileProtection,
+          releaseInfo: options.releaseInfo,
+        });
+  const updateBinaryRollbackCoordinator =
+    options.releaseInfo === undefined || localUpdatePackageCache === undefined
+      ? undefined
+      : new UpdateBinaryRollbackCoordinator({
+          cache: localUpdatePackageCache,
+          journalStore: updateJournalStore,
+          launchInstaller: (rollbackPackage) =>
+            launchWindowsInstallerForUpdate({
+              packagePath: rollbackPackage.packagePath,
+              systemRoot: process.env.SystemRoot,
+            }),
           releaseInfo: options.releaseInfo,
         });
   let applicationWindow: BrowserWindow | undefined;
@@ -477,6 +539,15 @@ async function startDesktopCompositionRuntime({
       }),
     ),
   );
+  const [pendingProfileRestoreJournal, pendingUpdateJournal] =
+    await Promise.all([
+      profileRestoreActivationJournalStore.read(),
+      updateJournalStore.read(),
+    ]);
+  const startupRecoveryAuthority = resolveStartupRecoveryAuthority({
+    profileRestoreJournal: pendingProfileRestoreJournal,
+    updateJournal: pendingUpdateJournal,
+  });
   const profileRestoreStartupMode =
     await profileRestoreStartupRecovery.prepareBeforeBackend();
   if (
@@ -601,11 +672,75 @@ async function startDesktopCompositionRuntime({
         : 'backend',
     );
     backendHandle = await dependencies.startBackend({
-      async beforeMigrations(inspection) {
+      async beforeMigrations(inspection, control) {
+        backendStartupControl = control;
+        await profileSnapshotBrokerClient.waitUntilReady();
+        if (startupRecoveryAuthority === 'updateBusinessRollback') {
+          if (updateBusinessRollbackCoordinator === undefined) {
+            throw new Error('UPDATE_BUSINESS_ROLLBACK_RECOVERY_REQUIRED');
+          }
+          const restoreResult =
+            await profileRestoreStartupRecovery.validateAfterBackend({
+              mode: profileRestoreStartupMode,
+              stopBackend: control.stopStartupRuntime,
+              async validateActiveProfile() {
+                await updateProfileProtection.validateActiveProfile();
+              },
+            });
+          if (restoreResult === 'relaunchRequired') {
+            updateRecoveryRelaunchRequested = true;
+            options.relaunchApplication();
+            return;
+          }
+          if (profileRestoreStartupMode === 'validateRolledBackProfile') {
+            await updateBusinessRollbackCoordinator
+              .requireRecoveryAfterRestoreRollback();
+          }
+          if (profileRestoreStartupMode !== 'validateRestoredProfile') {
+            throw new Error('UPDATE_BUSINESS_ROLLBACK_RECOVERY_REQUIRED');
+          }
+        }
+        if (
+          startupRecoveryAuthority !== 'updateBusinessRollback' &&
+          updateBusinessRollbackCoordinator !== undefined
+        ) {
+          const rollback =
+            await updateBusinessRollbackCoordinator.startIfRequired(
+              inspection,
+            );
+          if (rollback === 'relaunching') {
+            return;
+          }
+        }
+        const rollbackJournal = await updateJournalStore.read();
+        if (
+          rollbackJournal?.state === 'businessRollbackStarting' ||
+          rollbackJournal?.state === 'businessRollbackCompleted'
+        ) {
+          if (
+            updateBusinessRollbackCoordinator === undefined ||
+            updateBinaryRollbackCoordinator === undefined
+          ) {
+            throw new Error('UPDATE_BINARY_ROLLBACK_RECOVERY_REQUIRED');
+          }
+          await updateBusinessRollbackCoordinator
+            .completeAfterProfileValidation({ inspection });
+          await control.stopStartupRuntime();
+          const binaryRollback =
+            await updateBinaryRollbackCoordinator.startIfRequired();
+          if (binaryRollback !== 'launched') {
+            throw new Error('UPDATE_BINARY_ROLLBACK_RECOVERY_REQUIRED');
+          }
+          updateBinaryRollbackHandoffRequested = true;
+          options.quitApplication();
+          return;
+        }
+        if (updateBinaryRollbackCoordinator !== undefined) {
+          await updateBinaryRollbackCoordinator.startIfRequired();
+        }
         if (firstStartUpdateCoordinator === undefined) {
           return;
         }
-        await profileSnapshotBrokerClient.waitUntilReady();
         await firstStartUpdateCoordinator.beforeMigrations(inspection);
       },
       config: {
@@ -688,6 +823,22 @@ async function startDesktopCompositionRuntime({
     profileSnapshotBrokerClient.close();
     invoicePdfArchiveBrokerHandle.close();
     secretBrokerHandle.close();
+    if (
+      error instanceof DesktopBackendStartupStoppedError &&
+      (updateRecoveryRelaunchRequested ||
+        updateBinaryRollbackHandoffRequested)
+    ) {
+      return undefined;
+    }
+    if (
+      firstStartUpdateCoordinator !== undefined &&
+      (await firstStartUpdateCoordinator
+        .recoverFromStartupFailure()
+        .catch(() => false))
+    ) {
+      options.relaunchApplication();
+      return undefined;
+    }
     throw error;
   }
 

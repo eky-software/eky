@@ -49,7 +49,9 @@ interface FirstStartUpdateCoordinatorDependencies {
   };
   cache: Pick<
     LocalUpdatePackageCache,
-    'promoteAcceptedCandidate' | 'revalidateJournalPackage'
+    | 'normalizeRolledBackPackages'
+    | 'promoteAcceptedCandidate'
+    | 'revalidateJournalPackage'
   >;
   directSetupRecoveryStore: Pick<
     DirectSetupMigrationRecoveryStore,
@@ -67,6 +69,7 @@ interface FirstStartUpdateCoordinatorDependencies {
 type FirstStartMode =
   | { kind: 'coordinated'; journal: Readonly<UpdateJournal>; rotated: boolean }
   | { kind: 'installerNotApplied'; journal: Readonly<UpdateJournal> }
+  | { kind: 'rollback'; journal: Readonly<UpdateJournal> }
   | {
       kind: 'directSetup';
       recovery?: Readonly<DirectSetupMigrationRecovery>;
@@ -101,6 +104,7 @@ export class FirstStartUpdateCoordinator {
 
     let coordinatedJournal: Readonly<UpdateJournal> | undefined;
     let installerNotAppliedJournal: Readonly<UpdateJournal> | undefined;
+    let rollbackJournal: Readonly<UpdateJournal> | undefined;
     let directSetupRecovery: Readonly<DirectSetupMigrationRecovery> | undefined;
     try {
       const [journal, acceptedBuild, storedDirectSetupRecovery] = await Promise.all([
@@ -137,12 +141,22 @@ export class FirstStartUpdateCoordinator {
           coordinatedJournal = journal;
           this.mode = await this.prepareCoordinatedFirstStart(journal);
         } else {
-          installerNotAppliedJournal = journal;
-          this.mode = await this.prepareInstallerNotApplied({
-            acceptedBuild,
-            inspection,
-            journal,
-          });
+          if (journal.state === 'awaitingRollbackFirstStart') {
+            installerNotAppliedJournal = undefined;
+            rollbackJournal = journal;
+            this.mode = await this.prepareRollbackFirstStart({
+              acceptedBuild,
+              inspection,
+              journal,
+            });
+          } else {
+            installerNotAppliedJournal = journal;
+            this.mode = await this.prepareInstallerNotApplied({
+              acceptedBuild,
+              inspection,
+              journal,
+            });
+          }
         }
       } else {
         if (
@@ -183,6 +197,7 @@ export class FirstStartUpdateCoordinator {
       await this.markInstallerNotAppliedFailedSafe(
         installerNotAppliedJournal,
       );
+      await this.markRollbackRecoveryRequired(rollbackJournal);
       await this.markDirectSetupRecoveryRequired(directSetupRecovery);
       this.notifyOperationFailed();
       throw new FirstStartUpdateError();
@@ -205,7 +220,7 @@ export class FirstStartUpdateCoordinator {
       const activeProfile =
         await this.dependencies.profileProtection.validateActiveProfile();
       if (
-        mode.kind === 'installerNotApplied' &&
+        (mode.kind === 'installerNotApplied' || mode.kind === 'rollback') &&
         activeProfile.migrationChainIdentity !==
           mode.journal.preUpdateMigrationChainIdentity
       ) {
@@ -276,6 +291,13 @@ export class FirstStartUpdateCoordinator {
             state: 'installerNotApplied',
           }),
         );
+      } else if (mode.kind === 'rollback') {
+        await this.dependencies.journalStore.write(
+          transitionUpdateJournal(mode.journal, {
+            at: this.now(),
+            state: 'rolledBack',
+          }),
+        );
       }
       if (acceptedDirectSetupRecovery !== undefined) {
         await this.dependencies.directSetupRecoveryStore.clear();
@@ -284,6 +306,9 @@ export class FirstStartUpdateCoordinator {
       await this.markRollbackRequired(coordinatedJournal);
       await this.markInstallerNotAppliedFailedSafe(
         mode.kind === 'installerNotApplied' ? mode.journal : undefined,
+      );
+      await this.markRollbackRecoveryRequired(
+        mode.kind === 'rollback' ? mode.journal : undefined,
       );
       await this.markDirectSetupRecoveryRequired(
         mode.kind === 'directSetup' ? mode.recovery : undefined,
@@ -294,6 +319,25 @@ export class FirstStartUpdateCoordinator {
 
     await this.releaseRecoveryPointProtectionAfterAcceptance(mode);
     this.notifyOperationCompleted();
+  }
+
+  async recoverFromStartupFailure(): Promise<boolean> {
+    const mode = this.mode;
+    if (mode?.kind === 'coordinated') {
+      await this.markRollbackRequired(mode.journal);
+    } else if (mode?.kind === 'rollback') {
+      await this.markRollbackRecoveryRequired(mode.journal);
+    } else if (mode?.kind === 'directSetup') {
+      await this.markDirectSetupRecoveryRequired(mode.recovery);
+    }
+
+    const journal = await this.dependencies.journalStore.read();
+    return (
+      journal?.state === 'rollbackRequired' &&
+      journal.targetVersion === this.dependencies.releaseInfo.appVersion &&
+      journal.candidatePackageIdentity.buildRevision ===
+        this.dependencies.releaseInfo.buildRevision
+    );
   }
 
   private classifyRunningJournalBuild(
@@ -347,6 +391,49 @@ export class FirstStartUpdateCoordinator {
       role: 'current',
     });
     return { journal, kind: 'installerNotApplied' };
+  }
+
+  private async prepareRollbackFirstStart(input: {
+    acceptedBuild:
+      | { appVersion: string; buildRevision: string }
+      | undefined;
+    inspection: Readonly<MigrationStartupInspection>;
+    journal: Readonly<UpdateJournal>;
+  }): Promise<FirstStartMode> {
+    const { acceptedBuild, inspection, journal } = input;
+    const acceptedBuildMatchesCurrent =
+      acceptedBuild?.appVersion === journal.currentVersion &&
+      acceptedBuild.buildRevision ===
+        journal.currentPackageIdentity.buildRevision;
+    const acceptedBuildMatchesCandidate =
+      acceptedBuild?.appVersion === journal.targetVersion &&
+      acceptedBuild.buildRevision ===
+        journal.candidatePackageIdentity.buildRevision;
+    if (
+      journal.state !== 'awaitingRollbackFirstStart' ||
+      journal.handoffAttemptCount !== 1 ||
+      journal.binaryRollbackAttemptCount !== 1 ||
+      journal.recoveryPointReference === undefined ||
+      journal.preUpdateMigrationChainIdentity === undefined ||
+      (!acceptedBuildMatchesCurrent && !acceptedBuildMatchesCandidate) ||
+      inspection.profileState !== 'existing' ||
+      inspection.pendingMigrationCount !== 0 ||
+      inspection.migrationChainIdentity !==
+        journal.preUpdateMigrationChainIdentity
+    ) {
+      throw new FirstStartUpdateError();
+    }
+    await this.dependencies.cache.normalizeRolledBackPackages({
+      candidateIdentity: toExpectedIdentity(
+        journal.targetVersion,
+        journal.candidatePackageIdentity,
+      ),
+      currentIdentity: toExpectedIdentity(
+        journal.currentVersion,
+        journal.currentPackageIdentity,
+      ),
+    });
+    return { journal, kind: 'rollback' };
   }
 
   private async prepareCoordinatedFirstStart(
@@ -655,12 +742,33 @@ export class FirstStartUpdateCoordinator {
       .catch(() => undefined);
   }
 
+  private async markRollbackRecoveryRequired(
+    journal: Readonly<UpdateJournal> | undefined,
+  ): Promise<void> {
+    if (
+      journal === undefined ||
+      journal.state === 'recoveryRequired' ||
+      journal.state === 'rolledBack'
+    ) {
+      return;
+    }
+    await this.dependencies.journalStore
+      .write(
+        transitionUpdateJournal(journal, {
+          at: this.now(),
+          state: 'recoveryRequired',
+        }),
+      )
+      .catch(() => undefined);
+  }
+
   private async releaseRecoveryPointProtectionAfterAcceptance(
     mode: Exclude<FirstStartMode, { kind: 'normal' }>,
   ): Promise<void> {
     const references = [
       ...(mode.kind === 'coordinated' ||
-      mode.kind === 'installerNotApplied'
+      mode.kind === 'installerNotApplied' ||
+      mode.kind === 'rollback'
         ? [requireRecoveryPointReference(mode.journal)]
         : []),
       ...(this.preMigrationPointReference === undefined

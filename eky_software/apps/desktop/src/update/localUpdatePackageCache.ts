@@ -46,6 +46,7 @@ const metadataBackupFilename = 'slot-metadata.backup';
 const metadataMaxBytes = 16 * 1024;
 const currentRepairNextDirectory = '.current-repair-next';
 const currentRepairBackupDirectory = '.current-repair-backup';
+const rollbackCandidateNextDirectory = '.rollback-candidate-next';
 const freeSpaceReserveBytes = 8 * 1024 * 1024;
 export const LOCAL_UPDATE_CACHE_TOTAL_MAX_BYTES =
   3 * UPDATE_PACKAGE_MAX_BYTES + 4 * UPDATE_PACKAGE_MANIFEST_MAX_BYTES;
@@ -350,6 +351,103 @@ export class LocalUpdatePackageCache {
     });
   }
 
+  async normalizeRolledBackPackages(input: {
+    candidateIdentity: Readonly<LocalUpdateExpectedPackageIdentity>;
+    currentIdentity: Readonly<LocalUpdateExpectedPackageIdentity>;
+  }): Promise<Readonly<RevalidatedLocalUpdatePackageHandle>> {
+    return this.runExclusive(async () => {
+      await this.ensureCacheRoot();
+      const currentPath = this.slotPath('current');
+      const candidatePath = this.slotPath('candidate');
+      const previousPath = this.slotPath('previous');
+      const candidateNextPath = join(
+        this.options.cacheRoot,
+        rollbackCandidateNextDirectory,
+      );
+
+      await this.resumeInterruptedRollbackNormalization({
+        candidateNextPath,
+        candidatePath,
+        currentPath,
+        previousPath,
+      });
+
+      const currentIsRollbackTarget = await this.slotMatchesIdentity({
+        acceptedMetadataRoles: new Set(['current', 'previous']),
+        expectedIdentity: input.currentIdentity,
+        path: currentPath,
+        role: 'current',
+      });
+      const currentIsFailedCandidate = await this.slotMatchesIdentity({
+        acceptedMetadataRoles: new Set(['candidate', 'current']),
+        expectedIdentity: input.candidateIdentity,
+        path: currentPath,
+        role: 'current',
+      });
+      const candidateIsFailedCandidate = await this.slotMatchesIdentity({
+        acceptedMetadataRoles: new Set(['candidate', 'current']),
+        expectedIdentity: input.candidateIdentity,
+        path: candidatePath,
+        role: 'candidate',
+      });
+      const previousIsRollbackTarget = await this.slotMatchesIdentity({
+        acceptedMetadataRoles: new Set(['current', 'previous']),
+        expectedIdentity: input.currentIdentity,
+        path: previousPath,
+        role: 'previous',
+      });
+
+      if (currentIsRollbackTarget && candidateIsFailedCandidate) {
+        if (await pathExists(previousPath)) {
+          if (!previousIsRollbackTarget) {
+            throw new LocalUpdatePackageCacheError();
+          }
+          await removeOwnedDirectory(previousPath);
+          await syncDirectory(this.options.cacheRoot);
+        }
+      } else if (
+        currentIsFailedCandidate &&
+        previousIsRollbackTarget &&
+        !(await pathExists(candidatePath))
+      ) {
+        await rename(currentPath, candidateNextPath);
+        await syncDirectory(this.options.cacheRoot);
+        await rename(previousPath, currentPath);
+        await syncDirectory(this.options.cacheRoot);
+        await rename(candidateNextPath, candidatePath);
+        await syncDirectory(this.options.cacheRoot);
+      } else {
+        throw new LocalUpdatePackageCacheError();
+      }
+
+      const current = await this.validateJournalSlot(
+        'current',
+        currentPath,
+        input.currentIdentity,
+        new Set(['current', 'previous']),
+      );
+      const candidate = await this.validateJournalSlot(
+        'candidate',
+        candidatePath,
+        input.candidateIdentity,
+        new Set(['candidate', 'current']),
+      );
+      await this.writeMetadata(currentPath, current.manifest, 'current');
+      await this.writeMetadata(candidatePath, candidate.manifest, 'candidate');
+      await syncDirectory(this.options.cacheRoot);
+      await removeOwnedDirectoryIfPresent(previousPath);
+      await removeOwnedDirectoryIfPresent(candidateNextPath);
+      await syncDirectory(this.options.cacheRoot);
+
+      return this.validateJournalSlot(
+        'current',
+        currentPath,
+        input.currentIdentity,
+        new Set(['current']),
+      );
+    });
+  }
+
   private async readAndVerifySource(input: {
     manifestPath: string;
     role: LocalUpdatePackageRole;
@@ -472,6 +570,53 @@ export class LocalUpdatePackageCache {
       await this.validateSlot('current', currentPath);
       await removeOwnedDirectory(backupPath);
       await syncDirectory(this.options.cacheRoot);
+    }
+  }
+
+  private async resumeInterruptedRollbackNormalization(input: {
+    candidateNextPath: string;
+    candidatePath: string;
+    currentPath: string;
+    previousPath: string;
+  }): Promise<void> {
+    const candidateNextExists = await pathExists(input.candidateNextPath);
+    if (!candidateNextExists) {
+      return;
+    }
+    await assertSlotDirectory(input.candidateNextPath);
+    if (!(await pathExists(input.currentPath))) {
+      if (!(await pathExists(input.previousPath))) {
+        throw new LocalUpdatePackageCacheError();
+      }
+      await rename(input.previousPath, input.currentPath);
+      await syncDirectory(this.options.cacheRoot);
+    }
+    if (await pathExists(input.candidatePath)) {
+      throw new LocalUpdatePackageCacheError();
+    }
+    await rename(input.candidateNextPath, input.candidatePath);
+    await syncDirectory(this.options.cacheRoot);
+  }
+
+  private async slotMatchesIdentity(input: {
+    acceptedMetadataRoles: ReadonlySet<LocalUpdateCacheSlotRole>;
+    expectedIdentity: Readonly<LocalUpdateExpectedPackageIdentity>;
+    path: string;
+    role: LocalUpdateCacheSlotRole;
+  }): Promise<boolean> {
+    if (!(await pathExists(input.path))) {
+      return false;
+    }
+    try {
+      await this.validateJournalSlot(
+        input.role,
+        input.path,
+        input.expectedIdentity,
+        input.acceptedMetadataRoles,
+      );
+      return true;
+    } catch {
+      return false;
     }
   }
 

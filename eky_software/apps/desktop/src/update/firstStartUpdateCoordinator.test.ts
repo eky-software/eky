@@ -322,6 +322,38 @@ describe('first-start update coordinator', () => {
     );
   });
 
+  it('requests a relaunch when the coordinated backend fails after the migration gate', async () => {
+    const fixture = createFixture({
+      acceptedBuild: acceptedCurrentBuild(),
+      journal: createJournal('awaitingFirstStart'),
+    });
+    await fixture.coordinator.beforeMigrations(
+      createInspection('existing', 1),
+    );
+
+    await expect(
+      fixture.coordinator.recoverFromStartupFailure(),
+    ).resolves.toBe(true);
+    expect(fixture.journalStates).toEqual([
+      'firstStartValidating',
+      'rollbackRequired',
+    ]);
+  });
+
+  it('does not turn an ordinary startup failure into update rollback', async () => {
+    const fixture = createFixture({
+      acceptedBuild: acceptedCandidateBuild(),
+    });
+    await fixture.coordinator.beforeMigrations(
+      createInspection('existing', 0),
+    );
+
+    await expect(
+      fixture.coordinator.recoverFromStartupFailure(),
+    ).resolves.toBe(false);
+    expect(fixture.journalStates).toEqual([]);
+  });
+
   it('fails closed before migrations when the installed build does not match the journal', async () => {
     const fixture = createFixture({
       journal: {
@@ -415,6 +447,77 @@ describe('first-start update coordinator', () => {
     expect(fixture.acceptedWrites).toHaveLength(0);
     expect(fixture.promoteAcceptedCandidate).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['current', acceptedCurrentBuild()],
+    ['candidate', acceptedCandidateBuild()],
+  ] as const)(
+    'accepts the exact old build after rollback when accepted metadata still names %s',
+    async (_acceptedState, acceptedBuild) => {
+      const fixture = createFixture({
+        acceptedBuild,
+        cacheAlreadyRotated: true,
+        journal: createJournal('awaitingRollbackFirstStart'),
+        runningReleaseInfo: currentReleaseInfo,
+      });
+
+      await fixture.coordinator.beforeMigrations(
+        createInspection('existing', 0),
+      );
+      await fixture.coordinator.acceptAfterBackendReady();
+
+      expect(fixture.normalizeRolledBackPackages).toHaveBeenCalledOnce();
+      expect(fixture.promoteAcceptedCandidate).not.toHaveBeenCalled();
+      expect(fixture.journalStates).toEqual(['rolledBack']);
+      expect(fixture.acceptedWrites).toEqual([
+        expect.objectContaining({
+          appVersion: currentReleaseInfo.appVersion,
+          buildRevision: currentReleaseInfo.buildRevision,
+        }),
+      ]);
+      expect(fixture.releaseProtectedPoint).toHaveBeenCalledWith(
+        recoveryPointReference,
+      );
+    },
+  );
+
+  it('requires recovery when the old build sees a changed rollback profile', async () => {
+    const fixture = createFixture({
+      acceptedBuild: acceptedCurrentBuild(),
+      journal: createJournal('awaitingRollbackFirstStart'),
+      runningReleaseInfo: currentReleaseInfo,
+    });
+
+    await expect(
+      fixture.coordinator.beforeMigrations({
+        ...createInspection('existing', 0),
+        migrationChainIdentity: 'c'.repeat(64),
+      }),
+    ).rejects.toThrow(FirstStartUpdateError);
+
+    expect(fixture.journalStates).toEqual(['recoveryRequired']);
+    expect(fixture.normalizeRolledBackPackages).not.toHaveBeenCalled();
+    expect(fixture.acceptedWrites).toHaveLength(0);
+  });
+
+  it('requires recovery when secret storage changes across rollback validation', async () => {
+    const fixture = createFixture({
+      acceptedBuild: acceptedCurrentBuild(),
+      journal: createJournal('awaitingRollbackFirstStart'),
+      runningReleaseInfo: currentReleaseInfo,
+      secretChanges: true,
+    });
+    await fixture.coordinator.beforeMigrations(
+      createInspection('existing', 0),
+    );
+
+    await expect(
+      fixture.coordinator.acceptAfterBackendReady(),
+    ).rejects.toThrow(FirstStartUpdateError);
+
+    expect(fixture.journalStates).toEqual(['recoveryRequired']);
+    expect(fixture.acceptedWrites).toHaveLength(0);
+  });
 });
 
 function createFixture(options: {
@@ -453,6 +556,15 @@ function createFixture(options: {
   const promoteAcceptedCandidate = vi.fn(async () => {
     cacheRotated = true;
   });
+  const normalizeRolledBackPackages = vi.fn(async () => {
+    cacheRotated = false;
+    return {
+      appVersion: currentReleaseInfo.appVersion,
+      buildRevision: currentReleaseInfo.buildRevision,
+      msiProductVersion: currentReleaseInfo.msiProductVersion,
+      packagePath: 'C:\\private\\Eky-current.msi',
+    };
+  });
   const operationCompleted = vi.fn();
   const operationFailed = vi.fn();
   const operationStarted = vi.fn();
@@ -469,6 +581,7 @@ function createFixture(options: {
         (options.runningReleaseInfo ?? releaseInfo).buildRevision,
     },
     cache: {
+      normalizeRolledBackPackages,
       promoteAcceptedCandidate,
       async revalidateJournalPackage(input) {
         const expectsCandidate =
@@ -536,6 +649,7 @@ function createFixture(options: {
     directRecoveryStates,
     directRecoveryWrites,
     journalStates,
+    normalizeRolledBackPackages,
     operationCompleted,
     operationFailed,
     operationStarted,

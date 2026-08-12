@@ -27,7 +27,7 @@ export interface StartDesktopBackendOptions {
     migrationChainIdentity: string;
     pendingMigrationCount: number;
     profileState: 'empty' | 'existing';
-  }): Promise<void>;
+  }, control: DesktopBackendStartupControl): Promise<void>;
   config: DesktopBackendStartMessage['config'];
   invoicePdfArchiveBrokerPort: MessagePortMain;
   operationalIdentity: DesktopOperationalIdentity;
@@ -35,6 +35,17 @@ export interface StartDesktopBackendOptions {
   profileSnapshotBrokerPort: MessagePortMain;
   runnerPath: string;
   secretBrokerPort: MessagePortMain;
+}
+
+export interface DesktopBackendStartupControl {
+  stopStartupRuntime(): Promise<void>;
+}
+
+export class DesktopBackendStartupStoppedError extends Error {
+  constructor() {
+    super('The backend startup runtime was stopped by the desktop coordinator.');
+    this.name = 'DesktopBackendStartupStoppedError';
+  }
 }
 
 export interface DesktopBackendHandle {
@@ -65,6 +76,7 @@ export function startDesktopBackend(
     });
     let ready = false;
     let stopping = false;
+    let startupStopRequested = false;
     let unexpectedExitCallback: (() => void) | undefined;
     const handleReadinessTimeout = () => {
       processHandle.kill();
@@ -88,6 +100,38 @@ export function startDesktopBackend(
       backendReadinessTimeoutMilliseconds,
     );
     let migrationGatePending = false;
+    let migrationGateTask: Promise<'completed' | 'failed'> | undefined;
+
+    async function stopBackend(forceAfterTimeout: boolean): Promise<void> {
+      if (stopping) {
+        throw new Error('BACKEND_STOP_ALREADY_STARTED');
+      }
+
+      stopping = true;
+      migrationGatePending = false;
+      clearTimeout(readinessTimer);
+      const stopStartedAt = Date.now();
+      processHandle.postMessage({ type: 'shutdown' });
+      const exitOutcome = await waitForBackendShutdown(processHandle, {
+        forceAfterTimeout,
+        timeoutMilliseconds: backendShutdownTimeoutMilliseconds,
+      });
+      if (exitOutcome === 'forced') {
+        operationalLogger.write(
+          createDesktopOperationalEvent(
+            {
+              durationMs: Date.now() - stopStartedAt,
+              errorCode: 'BACKEND_STOP_FAILED',
+              eventName: 'backendProcess.stopFailed',
+              retryable: false,
+              sideEffectState: 'unknown',
+              stage: 'shutdown',
+            },
+            options.operationalIdentity,
+          ),
+        );
+      }
+    }
 
     processHandle.once('spawn', () => {
       processHandle.postMessage(
@@ -117,11 +161,19 @@ export function startDesktopBackend(
           handleReadinessTimeout,
           backendMigrationGateTimeoutMilliseconds,
         );
-        void options
-          .beforeMigrations(status.inspection)
+        const task = options
+          .beforeMigrations(status.inspection, {
+            async stopStartupRuntime() {
+              if (ready || !migrationGatePending || stopping) {
+                throw new Error('BACKEND_STARTUP_STOP_INVALID');
+              }
+              startupStopRequested = true;
+              await stopBackend(false);
+            },
+          })
           .then(() => {
             if (!migrationGatePending || ready) {
-              return;
+              return 'completed' as const;
             }
             migrationGatePending = false;
             clearTimeout(readinessTimer);
@@ -130,14 +182,22 @@ export function startDesktopBackend(
               backendReadinessTimeoutMilliseconds,
             );
             processHandle.postMessage({ type: 'continueStartup' });
+            return 'completed' as const;
           })
           .catch(() => {
             if (!migrationGatePending || ready) {
-              return;
+              return 'failed' as const;
             }
             migrationGatePending = false;
             processHandle.postMessage({ type: 'abortStartup' });
+            return 'failed' as const;
           });
+        migrationGateTask = task;
+        void task.finally(() => {
+          if (migrationGateTask === task) {
+            migrationGateTask = undefined;
+          }
+        });
         return;
       }
 
@@ -185,40 +245,30 @@ export function startDesktopBackend(
           return stopBackend(false);
         },
       });
-
-      async function stopBackend(forceAfterTimeout: boolean): Promise<void> {
-        if (stopping) {
-          throw new Error('BACKEND_STOP_ALREADY_STARTED');
-        }
-
-        stopping = true;
-        const stopStartedAt = Date.now();
-        processHandle.postMessage({ type: 'shutdown' });
-        const exitOutcome = await waitForBackendShutdown(processHandle, {
-          forceAfterTimeout,
-          timeoutMilliseconds: backendShutdownTimeoutMilliseconds,
-        });
-        if (exitOutcome === 'forced') {
-          operationalLogger.write(
-            createDesktopOperationalEvent(
-              {
-                durationMs: Date.now() - stopStartedAt,
-                errorCode: 'BACKEND_STOP_FAILED',
-                eventName: 'backendProcess.stopFailed',
-                retryable: false,
-                sideEffectState: 'unknown',
-                stage: 'shutdown',
-              },
-              options.operationalIdentity,
-            ),
-          );
-        }
-      }
     });
     processHandle.once('exit', () => {
       clearTimeout(readinessTimer);
 
       if (!ready) {
+        if (stopping && startupStopRequested) {
+          const settleStoppedStartup = (
+            outcome: 'completed' | 'failed',
+          ): void => {
+            if (outcome === 'completed') {
+              rejectStart(new DesktopBackendStartupStoppedError());
+            } else {
+              rejectStart(
+                new Error('BACKEND_MIGRATION_STARTUP_GATE_FAILED'),
+              );
+            }
+          };
+          if (migrationGateTask === undefined) {
+            settleStoppedStartup('failed');
+          } else {
+            void migrationGateTask.then(settleStoppedStartup);
+          }
+          return;
+        }
         operationalLogger.write(
           createDesktopOperationalEvent(
             {

@@ -8,6 +8,12 @@ const protectedStates: ReadonlySet<UpdateJournalState> = new Set([
   'awaitingFirstStart',
   'firstStartValidating',
   'rollbackRequired',
+  'businessRollbackStarting',
+  'businessRollbackCompleted',
+  'binaryRollbackPrepared',
+  'awaitingRollbackFirstStart',
+  'failedSafe',
+  'recoveryRequired',
 ]);
 
 export async function readUpdateProtectedRecoveryPointReferences(
