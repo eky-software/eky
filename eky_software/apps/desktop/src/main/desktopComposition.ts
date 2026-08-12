@@ -125,8 +125,8 @@ import { AcceptedBuildMetadataStore } from '../update/acceptedBuildMetadataStore
 import { readEncryptedSecretStorageIdentity } from '../update/encryptedSecretStorageIdentity.js';
 import {
   FirstStartUpdateCoordinator,
-  FirstStartUpdateError,
 } from '../update/firstStartUpdateCoordinator.js';
+import { readFirstStartPreMigrationFailureStage } from '../update/firstStartUpdateFailureStage.js';
 import { createProfileProtectionComposition } from '../update/profileProtectionComposition.js';
 import { UpdateJournalStore } from '../update/updateJournalStore.js';
 import { readUpdateProtectedRecoveryPointReferences } from '../update/updateRecoveryPointProtection.js';
@@ -957,7 +957,14 @@ async function startDesktopCompositionRuntime({
           return;
         }
         packagedUpdateFailureStage = 'firstStartPreMigration';
-        await firstStartUpdateCoordinator.beforeMigrations(inspection);
+        try {
+          await firstStartUpdateCoordinator.beforeMigrations(inspection);
+        } catch (error) {
+          packagedUpdateFailureStage =
+            readFirstStartPreMigrationFailureStage(error) ??
+            packagedUpdateFailureStage;
+          throw error;
+        }
         packagedUpdateFailureStage = 'backendRuntimeReadiness';
       },
       config: {
@@ -1066,10 +1073,8 @@ async function startDesktopCompositionRuntime({
         await writePackagedUpdateSmokeFailure(
           options.updateSmokeConfiguration,
           'DESKTOP_UPDATE_SMOKE_UNEXPECTED_RECOVERY_REQUIRED',
-          error instanceof FirstStartUpdateError &&
-            error.failureStage !== 'acceptance'
-            ? error.failureStage
-            : packagedUpdateFailureStage,
+          readFirstStartPreMigrationFailureStage(error) ??
+            packagedUpdateFailureStage,
         );
         options.quitApplication();
         return undefined;
