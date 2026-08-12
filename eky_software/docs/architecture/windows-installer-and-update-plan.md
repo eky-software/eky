@@ -24,6 +24,14 @@ matrix remains a closed release gate, kunnes täsmälleen samat sidotut MSI-
 tavut läpäisevät koko Windows-portin. Fyysisen median manuaalinen tarkistus ja
 code signing ovat edelleen auki.
 
+Restore-forward-polun erillinen `RESTORE-MIGRATION-ROLLBACK-001`-integraatio-
+todiste on valmis 13.8.2026. Se ajaa backendin oikean migration runnerin,
+todistaa yhden pending-migraation valmistumisen ennen seuraavan
+epäonnistumista sekä palauttaa ennen restorea olleen N+1-tietokannan ja PDF:n
+byte-for-byte.
+Integraatiotodiste täydentää C3C-harnessia mutta ei merkitse kuuden packaged-
+skenaarion Windows-porttia hyväksytyksi.
+
 ### Local Update Program -checkpointit
 
 | Checkpoint | Tila | Huomio |

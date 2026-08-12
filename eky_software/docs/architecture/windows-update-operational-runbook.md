@@ -273,6 +273,13 @@ lopuksi paikallisen pilot-bundlen samoista varmennetuista release-tavuista.
 Paikallisesti myöhemmin uudelleen rakennettua MSI:tä ei saa kutsua CI:n
 testaamaksi tavujonoksi.
 
+Cross-layer-skenaario `RESTORE-MIGRATION-ROLLBACK-001` todistaa lisäksi, että
+N-version backupin forward-migraatiossa yksi migraatio voi valmistua ja
+seuraava epäonnistua, minkä jälkeen restore activation palauttaa aiemman
+N+1-profiilin ja relaunch validoi sen. Tämä integraatiotodiste ei yksin sulje
+packaged Windows -porttia eikä korvaa yllä lueteltuja kerran rakennetuilla
+MSI-tavuilla ajettavia skenaarioita.
+
 ## Fyysisen median pilot-portti (tekemättä)
 
 Tätä porttia ei suoriteta automaattisesti eikä sen valmistumista saa päätellä

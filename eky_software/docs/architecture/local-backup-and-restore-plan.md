@@ -84,6 +84,14 @@ päällekkäistä update- tai direct Setup -palautuspistettä. Ratkaisematon
 update journal tai `DirectSetupMigrationRecovery` estää restore-first-startin
 etenemisen fail-closed-periaatteella.
 
+`RESTORE-MIGRATION-ROLLBACK-001` todistaa cross-layer-integraatiotestissä,
+että validin N-version backupin ensimmäinen pending-migraatio voi valmistua ja
+seuraava epäonnistua ilman palautusrajan rikkoutumista. Backend ei tällöin
+valmistu käyttöön, activation transaction palauttaa ennen restorea olleen
+N+1-tietokannan ja PDF:t täsmälleen samoina tavuina, ja vasta onnistunut
+seuraavan käynnistyksen validointi poistaa `rolledBack`-journalin. Tämä ei
+korvaa edelleen avointa packaged Windows -hyväksyntäporttia.
+
 Machine-local recovery pointit ovat `safeStorage`-suojattuja, konekohtaisia ja
 eri artifacteja kuin siirrettävä `.ekybackup`. Niiden daily/weekly/monthly-
 rotaatio, levybudjetti sekä aktiivisten pre-restore/pre-update-pisteiden suoja
