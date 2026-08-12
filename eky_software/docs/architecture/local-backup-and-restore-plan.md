@@ -592,7 +592,8 @@ Restore ei:
 
 Kun staging-profiili on täysin validoitu:
 
-1. aktiivisesta profiilista tehdään validoitu pre-restore-palautuspiste
+1. activation transaction sitoo nykyisen aktiivisen profiilin journalissa
+   operaatiokohtaiseen rollback-rootiin
 2. business-komennot estetään
 3. backend, SQLite, brokerit ja runtime-session suljetaan ADR-0008:n mukaan
 4. staging-profiili vaihdetaan atomisesti aktiiviseksi
@@ -602,8 +603,16 @@ Kun staging-profiili on täysin validoitu:
 8. backend readiness ja health tarkistetaan
 9. käyttöliittymä avataan vasta onnistumisen jälkeen
 
-Epäonnistumisessa uusi runtime suljetaan ja pre-restore-piste palautetaan.
-Rollback hyväksytään vasta, kun vanha profiili käynnistyy terveenä.
+Vanhan N-backupin forward-migraatiot sallitaan N+1-runtimessa vain aktiivisen
+`ProfileRestoreActivationJournal`-transaktion aikana ja vain, kun migraatiohistoria
+on nykyisen manifestin täsmällinen historiallinen prefiksi. Update- tai direct
+Setup -journalin ratkaisematon tila estää tämän polun. Restore ei muodosta
+toista recovery pointia eikä muuta jo hyväksytyn N+1-buildin metadataa.
+
+Epäonnistumisessa uusi runtime suljetaan ja activation transaction palauttaa
+rollback-rootista ennen restorea olleen profiilin. Rollback hyväksytään vasta,
+kun vanha profiili käynnistyy terveenä. Hyväksytyksi kirjattua restorea ei saa
+myöhemmän cleanup-virheen vuoksi avata uudelleen rollback-tilaan.
 
 Aktivointijournalissa ei ole yritysdataa, salaisuutta tai rendererille
 palautettavaa polkua. Vaiheen pitää olla idempotentti restartin jälkeen.

@@ -87,6 +87,12 @@ Mandatory boundaries:
 - persist direct-Setup migration recovery before the first pending migration
   write; a restart must restore the originally bound pre-migration point or
   stop failed-safe, never create a new point from partially migrated data
+- allow restored historical-profile forward migrations only when the private
+  profile-restore startup authority, a `validationStarting` activation journal
+  and the exact current-manifest prefix proof all agree; the activation
+  transaction rollback root remains the only restore rollback authority
+- once a restore activation journal is durably accepted, a later cleanup
+  failure must not reopen it as rollback-required
 - distinguish an installer that was not applied from a candidate first start
   only with accepted-build, running-build, cache and migration-prefix proof;
   mixed or unknown state must remain failed-safe

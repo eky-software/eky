@@ -18,8 +18,11 @@ capabilityt ovat toteutettu. C3B:n koordinoitu kahden MSI-version binary-
 rollback on todennettu Windows Installerilla: epäonnistunut N-palautus korjaa
 N+1:n takaisin eikä jätä mixed-version-asennusjuurta. C3C:n koko business-
 profiilin, PDF-artifactien, runtime-sessionin, suoran Setupin ja vanhan backupin
-final packaged -matriisi on toteutettu Windows MSI release gateen. Fyysisen
-median manuaalinen tarkistus ja code signing ovat edelleen auki.
+final packaged -matriisin toteutus on valmis, mutta hyväksyntä odottaa
+(`Implementation complete, acceptance pending`). Packaged Windows update
+matrix remains a closed release gate, kunnes täsmälleen samat sidotut MSI-
+tavut läpäisevät koko Windows-portin. Fyysisen median manuaalinen tarkistus ja
+code signing ovat edelleen auki.
 
 ### Local Update Program -checkpointit
 
@@ -28,7 +31,7 @@ median manuaalinen tarkistus ja code signing ovat edelleen auki.
 | C0 Electron cold-start baseline | valmis 11.8.2026 | `DESK-PDF-001` ajettiin 10 kertaa retries=0 ja Electron critical kahdesti puhtaasti; aiemman flaken juurisyytä ei väitetä korjatuksi |
 | C1 Local Update Foundation | valmis 11.8.2026 | Manifestin runtime-codec, vaihdettava trust-policy, native selection, private staging/cache ja nykyisen rollback-paketin rekisteröinti; ei MSI:n käynnistystä eikä business-dataa |
 | C2 Update Orchestration and First Start | valmis 11.8.2026 | Yksityinen migration gate, pre-update/pre-migration recovery, crash-safe journal, graceful-only handoff, accepted-build-metadata ja UI:ta edeltävä first-start-hyväksyntä; ei käyttäjälle avattua päivitys-UI:ta tai rollbackia |
-| C3 Recovery, Compatibility and Pilot Release | automatisoitu matriisi valmis, manuaaliportit auki | C3B:n business/binary-rollback, täsmällisen rollback-paketin valinta, recovery-only-tila, koordinoitu MSI-palautus, C3C:n paikallinen update-UI ja final packaged -matriisi ovat toteutettu; fyysinen media ja code signing ovat kesken |
+| C3 Recovery, Compatibility and Pilot Release | toteutus valmis, hyväksyntä odottaa | C3B:n business/binary-rollback, täsmällisen rollback-paketin valinta, recovery-only-tila, koordinoitu MSI-palautus, C3C:n paikallinen update-UI ja final packaged -harness ovat toteutettu; packaged Windows -matriisi on edelleen suljettu release gate, ja fyysinen media sekä code signing ovat kesken |
 
 Ensimmäisen kokonaisen C3C-pilotin release-identiteetti on
 `appVersion 0.1.0-alpha.2` ja `msiProductVersion 0.1.2`. Se on edelleen
@@ -610,6 +613,18 @@ hyväksyä nykyisen packaged manifestin täsmällisen historiallisen prefiksin.
 Valinta ei ole pyynnön mukana tuleva yleinen lippu, eikä sitä voi kutsua
 rendereristä, julkisesta HTTP-rajasta tai business-moduulista.
 
+Portable restore saa ajaa vanhasta N-backupista puuttuvat forward-migraatiot
+N+1-runtimessa vain, kun startup-auktoriteetti on `profileRestore`, activation
+journal on `validationStarting`-vaiheessa, muissa päivitys- tai suoran Setupin
+poluissa ei ole ratkaisemattomia auktoriteetteja ja tietokanta on nykyisen
+manifestin
+täsmällinen historiallinen prefiksi. Restore ei kirjoita accepted-build-
+metadataa eikä muodosta toista palautuspistettä. Activation transactionin
+rollback-root on polun ainoa palautusauktoriteetti. Migraatio- tai backend-
+käynnistysvirhe ennen readinessia palauttaa sitä kautta ennen restorea olleen
+profiilin; hyväksytyksi kirjattua restorea ei saa myöhemmän cleanup-virheen
+vuoksi avata uudelleen rollback-tilaan.
+
 ## 11. Päivitysjournal
 
 ### C3A:n installation-scoped state
@@ -1008,12 +1023,16 @@ tietokantakahvaa, rendererin polkua, installer command stringiä eikä
 business-moduulin repositorya. `LocalUpdateSource` palauttaa main-prosessin
 sisäisen, validoidun package-handlen eikä raakapolkua rendererille.
 
-Nykyinen `desktopComposition.ts` kokoaa myös Profile Protectionin ja on jo
-selvästi suuri composition root. Ennen update-tuotantokoodia arvioidaan
-käyttäytymistä muuttamaton `profileProtectionComposition.ts`-erotus. Sen
-tarkoitus on antaa edellä mainitut kapeat portit eikä avata recovery-servicen
-sisäisiä riippuvuuksia Update Coordinatorille. Refaktorointi tehdään omassa
-commitissa nykyisten packaged backup/restore-testien suojassa.
+Nykyinen `desktopComposition.ts` kokoaa Profile Protectionin lisäksi useita
+startup recovery- ja packaged smoke -vastuita ja on jo selvästi suuri
+composition root. Sitä ei refaktoroida kesken C3C-portin. Kun C3C:n packaged-
+hyväksyntä on valmis, arvioidaan omana käyttäytymistä muuttamattomana cleanup-
+eränä ainakin `startupRecoveryComposition.ts`- ja
+`packagedUpdateSmokeComposition.ts`-rajat sekä tarvittaessa nykyisen Profile
+Protection -koostamisen tarkennus. Erotusten tarkoitus on antaa vain kapeat
+portit, ei avata recovery- tai smoke-palvelujen sisäisiä riippuvuuksia.
+Refaktorointi tehdään nykyisten packaged update- ja backup/restore-testien
+suojassa vasta release gaten jälkeen.
 
 ## 23. Observability ja audit
 

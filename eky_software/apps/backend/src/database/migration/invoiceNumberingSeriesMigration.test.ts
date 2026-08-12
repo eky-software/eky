@@ -127,7 +127,6 @@ describe('invoice numbering series migration', () => {
       expect(migrated.pragma('foreign_key_check')).toEqual([]);
       migrated.close();
     },
-    15_000,
   );
 
   it('supports an empty database and does not invent a settings row', () => {

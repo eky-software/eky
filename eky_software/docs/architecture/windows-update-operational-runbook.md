@@ -248,6 +248,13 @@ sisällytetä sellaisenaan.
 
 ## C3C:n automatisoitu packaged-todiste
 
+Tämän harnessin toteutus on valmis, mutta hyväksyntä odottaa
+(`Implementation complete, acceptance pending`). Packaged Windows update
+matrix remains a closed release gate. Alla kuvattu todistus on hyväksytty
+vasta, kun koko matriisi läpäisee Windows-portin samoilla kerran rakennetuilla
+ja SHA-256-sidecarilla sidotuilla MSI-tavuilla; pelkkä harnessin olemassaolo tai
+yksittäinen vihreä skenaario ei sulje porttia.
+
 Windows MSI release gate rakentaa release-MSI:n kerran ja käyttää samoja
 SHA-256-sidecarilla sidottuja tavuja inspect-, install-, repair-, uninstall-,
 upgrade-, downgrade-esto- ja rollback-tarkistuksissa. Samassa puhtaassa
