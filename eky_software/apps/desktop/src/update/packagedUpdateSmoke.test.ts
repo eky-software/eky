@@ -115,6 +115,39 @@ describe('packaged update smoke result boundary', () => {
     },
   );
 
+  it.each([
+    {
+      expectedCode: 'DESKTOP_UPDATE_SMOKE_PACKAGE_STAGE_FAILED',
+      failingStep: 'stage' as const,
+    },
+    {
+      expectedCode: 'DESKTOP_UPDATE_SMOKE_PREPARATION_FAILED',
+      failingStep: 'prepare' as const,
+    },
+    {
+      expectedCode: 'DESKTOP_UPDATE_SMOKE_HANDOFF_FAILED',
+      failingStep: 'handoff' as const,
+    },
+  ])(
+    'reports only the named prepare failure stage: $expectedCode',
+    async ({ expectedCode, failingStep }) => {
+      const configuration = await createConfiguration('prepareSuccess');
+      const dependencies = createPrepareSmokeDependencies(
+        configuration,
+        failingStep,
+      );
+
+      await expect(runPackagedUpdateSmoke(dependencies)).rejects.toThrow(
+        expectedCode,
+      );
+      expect(await readResult(configuration)).toEqual({
+        code: expectedCode,
+        phase: 'prepareSuccess',
+        status: 'failed',
+      });
+    },
+  );
+
   it('rejects extra result fields and malformed fingerprints', () => {
     expect(
       readPackagedUpdateSmokeResult({
@@ -256,4 +289,39 @@ function createFailingSmokeDependencies(
     runtimeSessionSecret: 'synthetic-session-secret',
     shutdownAndQuit: async () => undefined,
   } as Parameters<typeof runPackagedUpdateSmoke>[0];
+}
+
+function createPrepareSmokeDependencies(
+  configuration: PackagedUpdateSmokeConfiguration,
+  failingStep: 'handoff' | 'prepare' | 'stage',
+): Parameters<typeof runPackagedUpdateSmoke>[0] {
+  const dependencies = createFailingSmokeDependencies(
+    configuration,
+    new Error('unused'),
+  );
+  dependencies.cache.stageSelectedPackage = async () => {
+    if (failingStep === 'stage') {
+      throw new Error('raw package staging failure');
+    }
+    return {
+      appVersion: '0.1.0-alpha.2',
+      buildRevision: 'b'.repeat(40),
+      msiProductVersion: '0.1.2',
+      releaseChannel: 'pilot',
+      role: 'candidate',
+      signingStatus: 'unsigned-prototype',
+    };
+  };
+  dependencies.handoffCoordinator.prepareConfirmedUpdate = async () => {
+    if (failingStep === 'prepare') {
+      throw new Error('raw recovery point failure');
+    }
+    return {} as never;
+  };
+  dependencies.handoffCoordinator.handoffPreparedUpdate = async () => {
+    if (failingStep === 'handoff') {
+      throw new Error('raw installer handoff failure');
+    }
+  };
+  return dependencies;
 }

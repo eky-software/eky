@@ -185,7 +185,7 @@ async function runCoordinatedSuccess(scenario) {
   const seed = await installAndSeedCurrent(scenario);
   const before = await createBusinessInventory(scenario.root);
   const handoff = await runApplicationPhase(scenario, 'prepareSuccess');
-  assertResultStatus(handoff, 'handoffReady');
+  assertPackagedUpdateSmokeResultStatus(handoff, 'handoffReady');
   await installFixturePackage(scenario, 'next', 'coordinated-success-next');
   await assertInstalledPackage(scenario, 'next');
   const result = await runApplicationPhase(scenario, 'verifySuccess');
@@ -203,7 +203,7 @@ async function runCoordinatedCancel(scenario) {
   const seed = await installAndSeedCurrent(scenario);
   const before = await createBusinessInventory(scenario.root);
   const handoff = await runApplicationPhase(scenario, 'prepareCancel');
-  assertResultStatus(handoff, 'handoffReady');
+  assertPackagedUpdateSmokeResultStatus(handoff, 'handoffReady');
   const first = await runApplicationPhase(scenario, 'verifyCancel');
   assertOkResult(first, {
     appVersion: scenario.packages.current.appVersion,
@@ -229,7 +229,7 @@ async function runCoordinatedRollback(scenario) {
   const seed = await installAndSeedCurrent(scenario);
   const before = await createBusinessInventory(scenario.root);
   const handoff = await runApplicationPhase(scenario, 'prepareFailure');
-  assertResultStatus(handoff, 'handoffReady');
+  assertPackagedUpdateSmokeResultStatus(handoff, 'handoffReady');
   await installFixturePackage(scenario, 'failure', 'coordinated-failure');
   await assertInstalledPackage(scenario, 'failure');
 
@@ -342,7 +342,7 @@ async function runBackupForwardRestore(scenario) {
     pdfSha256: seed.pdfSha256,
   });
   const restore = await runApplicationPhase(scenario, 'restoreBackup');
-  assertResultStatus(restore, 'restoreReady');
+  assertPackagedUpdateSmokeResultStatus(restore, 'restoreReady');
 
   let finalResult;
   for (let attempt = 1; attempt <= 4 && finalResult === undefined; attempt += 1) {
@@ -652,8 +652,11 @@ function assertOkResult(result, expected) {
   }
 }
 
-function assertResultStatus(result, status) {
+export function assertPackagedUpdateSmokeResultStatus(result, status) {
   if (result?.status !== status) {
+    if (result?.status === 'failed') {
+      throw new Error(`PACKAGED_UPDATE_E2E_APPLICATION_${result.code}`);
+    }
     throw new Error('PACKAGED_UPDATE_E2E_STATUS_EXPECTATION_FAILED');
   }
 }

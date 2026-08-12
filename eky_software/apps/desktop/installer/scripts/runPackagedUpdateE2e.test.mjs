@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  assertPackagedUpdateSmokeResultStatus,
   createPackagedUpdateSmokeInvocation,
   createWindowsInstallerArguments,
   directoryInventoriesEqual,
@@ -95,6 +96,27 @@ describe('packaged update E2E runner boundaries', () => {
         new Map([...expected, ['unknown.dll', 'd'.repeat(64)]]),
       ),
       false,
+    );
+  });
+
+  it('preserves a safe application failure code in status diagnostics', () => {
+    assert.doesNotThrow(() =>
+      assertPackagedUpdateSmokeResultStatus(
+        { appVersion: '1.2.3', phase: 'prepareSuccess', status: 'handoffReady' },
+        'handoffReady',
+      ),
+    );
+    assert.throws(
+      () =>
+        assertPackagedUpdateSmokeResultStatus(
+          {
+            code: 'DESKTOP_UPDATE_SMOKE_PREPARE_FAILED',
+            phase: 'prepareSuccess',
+            status: 'failed',
+          },
+          'handoffReady',
+        ),
+      /PACKAGED_UPDATE_E2E_APPLICATION_DESKTOP_UPDATE_SMOKE_PREPARE_FAILED/,
     );
   });
 });

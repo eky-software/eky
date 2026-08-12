@@ -387,12 +387,18 @@ async function prepareUpdate(
   dependencies: PackagedUpdateSmokeDependencies,
   role: 'failure' | 'next',
 ): Promise<void> {
-  await dependencies.cache.stageSelectedPackage({
-    manifestPath: packageManifestPath(dependencies, role),
-    role: 'candidate',
-  });
-  await dependencies.handoffCoordinator.prepareConfirmedUpdate();
-  await dependencies.handoffCoordinator.handoffPreparedUpdate();
+  await runSmokeStep('DESKTOP_UPDATE_SMOKE_PACKAGE_STAGE_FAILED', () =>
+    dependencies.cache.stageSelectedPackage({
+      manifestPath: packageManifestPath(dependencies, role),
+      role: 'candidate',
+    }),
+  );
+  await runSmokeStep('DESKTOP_UPDATE_SMOKE_PREPARATION_FAILED', () =>
+    dependencies.handoffCoordinator.prepareConfirmedUpdate(),
+  );
+  await runSmokeStep('DESKTOP_UPDATE_SMOKE_HANDOFF_FAILED', () =>
+    dependencies.handoffCoordinator.handoffPreparedUpdate(),
+  );
 }
 
 async function verifyDirectSetupState(
