@@ -9,6 +9,7 @@ import {
   readPackagedUpdateSmokeResult,
   writePackagedUpdateSmokeFailure,
   writePackagedUpdateSmokeHandoffResult,
+  writePackagedUpdateSmokePreviousSetupResult,
 } from './packagedUpdateSmoke.js';
 
 const roots: string[] = [];
@@ -40,6 +41,18 @@ describe('packaged update smoke result boundary', () => {
     await expect(
       writePackagedUpdateSmokeHandoffResult(configuration, '1.2.3'),
     ).rejects.toThrow('DESKTOP_UPDATE_SMOKE_HANDOFF_INVALID');
+  });
+
+  it('writes only a bounded previous Setup status for direct recovery', async () => {
+    const configuration = await createConfiguration('verifyDirectFailure');
+
+    await writePackagedUpdateSmokePreviousSetupResult(configuration, '1.2.3');
+
+    expect(await readResult(configuration)).toEqual({
+      appVersion: '1.2.3',
+      phase: 'verifyDirectFailure',
+      status: 'previousSetupReady',
+    });
   });
 
   it('writes a safe startup failure without raw error details', async () => {

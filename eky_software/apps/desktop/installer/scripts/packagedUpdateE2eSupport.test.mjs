@@ -110,6 +110,17 @@ describe('packaged update E2E support', () => {
       ).journalState,
       'accepted',
     );
+    assert.equal(
+      parsePackagedUpdateSmokeResult(
+        {
+          appVersion: '0.0.0-update-fixture.3',
+          phase: 'verifyDirectFailure',
+          status: 'previousSetupReady',
+        },
+        'verifyDirectFailure',
+      ).status,
+      'previousSetupReady',
+    );
   });
 });
 

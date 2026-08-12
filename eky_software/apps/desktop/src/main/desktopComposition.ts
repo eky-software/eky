@@ -143,6 +143,7 @@ import type { PackagedUpdateSmokeConfiguration } from '../update/packagedUpdateS
 import {
   runPackagedUpdateSmoke,
   writePackagedUpdateSmokeHandoffResult,
+  writePackagedUpdateSmokePreviousSetupResult,
 } from '../update/packagedUpdateSmoke.js';
 
 export interface DesktopLifecycleHandle {
@@ -629,6 +630,17 @@ async function startDesktopCompositionRuntime({
         options.releaseInfo,
       ))
   ) {
+    if (
+      options.updateSmokeConfiguration.enabled &&
+      pendingDirectSetupRecovery.state === 'awaitingPreviousBuild'
+    ) {
+      await writePackagedUpdateSmokePreviousSetupResult(
+        options.updateSmokeConfiguration,
+        desktopAppVersion,
+      );
+      options.quitApplication();
+      return undefined;
+    }
     return createUpdateRecoveryComposition({
       applicationPath: options.applicationPath,
       architecture: process.arch,

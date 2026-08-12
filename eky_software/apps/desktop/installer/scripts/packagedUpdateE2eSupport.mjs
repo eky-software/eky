@@ -74,7 +74,9 @@ export function parsePackagedUpdateSmokeResult(value, expectedPhase) {
     throw new Error('PACKAGED_UPDATE_E2E_RESULT_INVALID');
   }
   if (
-    (value.status === 'handoffReady' || value.status === 'restoreReady') &&
+    (value.status === 'handoffReady' ||
+      value.status === 'previousSetupReady' ||
+      value.status === 'restoreReady') &&
     hasExactFields(value, new Set(['appVersion', 'phase', 'status'])) &&
     typeof value.appVersion === 'string' &&
     appVersionPattern.test(value.appVersion)

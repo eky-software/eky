@@ -30,7 +30,7 @@ export type PackagedUpdateSmokeResult =
   | {
       appVersion: string;
       phase: PackagedUpdateSmokePhase;
-      status: 'handoffReady' | 'restoreReady';
+      status: 'handoffReady' | 'previousSetupReady' | 'restoreReady';
     }
   | {
       acceptedVersion: string;
@@ -195,6 +195,23 @@ export async function writePackagedUpdateSmokeRestoreResult(
   });
 }
 
+export async function writePackagedUpdateSmokePreviousSetupResult(
+  configuration: PackagedUpdateSmokeConfiguration,
+  appVersion: string,
+): Promise<void> {
+  if (
+    !configuration.enabled ||
+    configuration.phase !== 'verifyDirectFailure'
+  ) {
+    throw new Error('DESKTOP_UPDATE_SMOKE_PREVIOUS_SETUP_INVALID');
+  }
+  await writePackagedUpdateSmokeResult(configuration, {
+    appVersion,
+    phase: configuration.phase,
+    status: 'previousSetupReady',
+  });
+}
+
 export async function writePackagedUpdateSmokeFailure(
   configuration: PackagedUpdateSmokeConfiguration,
   errorCode: string,
@@ -245,7 +262,9 @@ export function readPackagedUpdateSmokeResult(
     return undefined;
   }
   if (
-    (value.status === 'handoffReady' || value.status === 'restoreReady') &&
+    (value.status === 'handoffReady' ||
+      value.status === 'previousSetupReady' ||
+      value.status === 'restoreReady') &&
     typeof value.appVersion === 'string' &&
     Object.keys(value).length === 3
   ) {
