@@ -208,17 +208,6 @@ export class FirstStartUpdateCoordinator {
       ) {
         throw new FirstStartUpdateError('preMigrationPendingMigrations');
       }
-      if (
-        inspection.profileState === 'existing' &&
-        inspection.pendingMigrationCount > 0 &&
-        this.mode.kind === 'coordinated'
-      ) {
-        failureStage = 'preMigrationRecoveryPoint';
-        this.preMigrationPointReference =
-          await this.dependencies.profileProtection
-            .createValidatedPreMigrationPoint();
-      }
-
       this.migrationGateCompleted = true;
     } catch (error) {
       await this.markRollbackRequired(coordinatedJournal);

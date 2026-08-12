@@ -77,6 +77,13 @@ idempotentin journalin avulla. Windowsin väliaikaiset tiedostolukot saavat
 vain rajatun, nimetyille virhekoodeille sallitun retry-polun; levytila-,
 validointi- tai muu virhe ei muutu retryksi tai osittaiseksi palautukseksi.
 
+Portable restoren ainoa palautusauktoriteetti aktivoinnin ja sitä seuraavan
+ensikäynnistyksen aikana on `ProfileRestoreActivationJournal`-tietueeseen
+sidottu aktivointitransaktion rollback-root. Restore-polku ei muodosta
+päällekkäistä update- tai direct Setup -palautuspistettä. Ratkaisematon
+update journal tai `DirectSetupMigrationRecovery` estää restore-first-startin
+etenemisen fail-closed-periaatteella.
+
 Machine-local recovery pointit ovat `safeStorage`-suojattuja, konekohtaisia ja
 eri artifacteja kuin siirrettävä `.ekybackup`. Niiden daily/weekly/monthly-
 rotaatio, levybudjetti sekä aktiivisten pre-restore/pre-update-pisteiden suoja

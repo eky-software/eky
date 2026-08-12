@@ -572,6 +572,26 @@ Pre-update-piste:
 
 Jos palautuspistettä ei voida muodostaa, päivitystä ei aloiteta.
 
+### Yksi palautusauktoriteetti per käynnistyspolku
+
+First-start- ja rollback-polut eivät muodosta päällekkäisiä
+palautusauktoriteetteja:
+
+- sovelluksesta koordinoitu päivitys käyttää durable update journalissa
+  sidottua ja validoitua `preUpdate`-palautuspistettä
+- suora Setup ilman update journalia käyttää durable
+  `DirectSetupMigrationRecovery`-tietueeseen sidottua validoitua
+  `preMigration`-palautuspistettä
+- portable backup restore käyttää
+  `ProfileRestoreActivationJournal`-aktivointitransaktion rollback-rootia.
+
+Koordinoitu first-start ei luo pending-migraatioita varten toista vain
+prosessimuistissa säilyvää `preMigration`-pistettä. Journalin
+`preUpdate`-viite on tämän polun ainoa business-profiilin
+palautusauktoriteetti, ja se on todistettava uudelleen ennen ensimmäistä
+SQL-kirjoitusta. Direct Setupin ja portable restoren omat auktoriteetit eivät
+saa olla samanaikaisesti ratkaisemattomia update journalin kanssa.
+
 ## 11. Päivitysjournal
 
 ### C3A:n installation-scoped state
@@ -625,8 +645,9 @@ staged artifactista juuri ennen handoffia uudelleen laskettuja arvoja. Pelkkä
 aiemmin lähdetiedostosta laskettu tiiviste ei riitä.
 
 C2:n hyväksyntä kirjoittaa ensin accepted-build-metadatan ja koordinoidussa
-päivityksessä `accepted`-journalin. Vasta tämän jälkeen pre-update- ja
-pre-migration-pisteiden rotaatiosuoja vapautetaan best-effort-siivouksena.
+päivityksessä `accepted`-journalin. Vasta tämän jälkeen kyseisen polun
+auktoritatiivisen palautuspisteen rotaatiosuoja vapautetaan
+best-effort-siivouksena.
 Siivousvirhe saa jättää ylimääräisen suojatun pisteen myöhempää
 idempotenttia siivousta varten, mutta se ei saa muuttaa jo committoitua
 hyväksyntää `rollbackRequired`-tilaan.

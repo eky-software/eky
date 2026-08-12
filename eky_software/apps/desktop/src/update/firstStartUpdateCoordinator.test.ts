@@ -253,6 +253,7 @@ describe('first-start update coordinator', () => {
       createInspection('existing', 1),
     );
     expect(fixture.journalStates).toEqual(['firstStartValidating']);
+    expect(fixture.createValidatedPreMigrationPoint).not.toHaveBeenCalled();
 
     await fixture.coordinator.acceptAfterBackendReady();
 
@@ -263,9 +264,6 @@ describe('first-start update coordinator', () => {
     ]);
     expect(fixture.releaseProtectedPoint).toHaveBeenCalledWith(
       recoveryPointReference,
-    );
-    expect(fixture.releaseProtectedPoint).toHaveBeenCalledWith(
-      preMigrationPointReference,
     );
     expect(fixture.operationStarted).toHaveBeenCalledWith({
       correlationId: '22222222-2222-4222-8222-222222222222',
@@ -369,7 +367,7 @@ describe('first-start update coordinator', () => {
       'firstStartValidating',
       'accepted',
     ]);
-    expect(fixture.releaseProtectedPoint).toHaveBeenCalledTimes(2);
+    expect(fixture.releaseProtectedPoint).toHaveBeenCalledOnce();
   });
 
   it('marks the journal rollback-required when post-start validation fails', async () => {
