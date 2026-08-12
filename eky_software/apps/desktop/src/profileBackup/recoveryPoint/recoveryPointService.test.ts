@@ -146,6 +146,39 @@ describe('recovery point service', () => {
     );
     expect(fixture.create).toHaveBeenCalledTimes(1);
   });
+
+  it('uses historical-prefix compatibility only for the pre-migration point', async () => {
+    const fixture = await createFixture();
+
+    await expect(fixture.service.createPreMigration()).resolves.toEqual(
+      fixture.createdPoint,
+    );
+
+    expect(fixture.calls).toEqual([
+      'begin',
+      'preMigrationSnapshot',
+      'validate',
+      'create',
+      'rotate',
+      'list',
+      'end',
+    ]);
+  });
+
+  it('keeps manual, pre-update and pre-restore points on exact snapshot validation', async () => {
+    const operations = [
+      (service: RecoveryPointService) => service.createManual(),
+      (service: RecoveryPointService) => service.createPreUpdate(),
+      (service: RecoveryPointService) => service.createPreRestore(),
+    ];
+
+    for (const operation of operations) {
+      const fixture = await createFixture();
+      await operation(fixture.service);
+      expect(fixture.calls).toContain('snapshot');
+      expect(fixture.calls).not.toContain('preMigrationSnapshot');
+    }
+  });
 });
 
 describe('automatic recovery point classification', () => {
@@ -207,6 +240,32 @@ async function createFixture(options: {
     persisted = true;
     return createdPoint;
   });
+  const createSnapshotMetadata = async () => {
+    await mkdir(operationRoot, { mode: 0o700, recursive: true });
+    await Promise.all([
+      writeFile(join(operationRoot, 'profile.sqlite'), 'database'),
+      writeFile(
+        join(operationRoot, 'snapshot-catalog-v1.json'),
+        '{"artifacts":[]}',
+      ),
+    ]);
+    return {
+      artifactCatalog: {
+        artifactCount: 0,
+        artifactTotalByteSize: 0,
+        catalogByteSize: 16,
+        logicalPath: 'snapshot-catalog-v1.json' as const,
+        sha256: 'c'.repeat(64),
+      },
+      database: {
+        databaseByteSize: 8,
+        logicalPath: 'profile.sqlite' as const,
+        sha256: 'd'.repeat(64),
+        totalPages: 1,
+      },
+      type: 'profileSnapshot' as const,
+    };
+  };
   const service = new RecoveryPointService({
     appVersion: '0.1.0-alpha.1',
     now: () => new Date(now),
@@ -224,32 +283,13 @@ async function createFixture(options: {
         calls.push('begin');
         return 'busy';
       },
+      async createPreMigrationProfileSnapshot() {
+        calls.push('preMigrationSnapshot');
+        return createSnapshotMetadata();
+      },
       async createProfileSnapshot() {
         calls.push('snapshot');
-        await mkdir(operationRoot, { mode: 0o700, recursive: true });
-        await Promise.all([
-          writeFile(join(operationRoot, 'profile.sqlite'), 'database'),
-          writeFile(
-            join(operationRoot, 'snapshot-catalog-v1.json'),
-            '{"artifacts":[]}',
-          ),
-        ]);
-        return {
-          artifactCatalog: {
-            artifactCount: 0,
-            artifactTotalByteSize: 0,
-            catalogByteSize: 16,
-            logicalPath: 'snapshot-catalog-v1.json' as const,
-            sha256: 'c'.repeat(64),
-          },
-          database: {
-            databaseByteSize: 8,
-            logicalPath: 'profile.sqlite' as const,
-            sha256: 'd'.repeat(64),
-            totalPages: 1,
-          },
-          type: 'profileSnapshot' as const,
-        };
+        return createSnapshotMetadata();
       },
       async endMaintenance() {
         calls.push('end');

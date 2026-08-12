@@ -6,7 +6,7 @@ import type { DatabaseConnection } from '../../database/connection/createDatabas
 import type { ProfileMaintenanceState } from '../profileMaintenance/profileMaintenanceState.js';
 import { inspectSqliteProfileDatabase } from './inspectSqliteProfileDatabase.js';
 import type {
-  CreateProfileSnapshotInput,
+  CreateSqliteProfileSnapshotInput,
   SqliteProfileSnapshotService as SqliteProfileSnapshotServiceContract,
   SqliteProfileSnapshotMetadata,
 } from './profileSnapshotTypes.js';
@@ -50,7 +50,7 @@ export class SqliteProfileSnapshotService
   }
 
   async createSqliteSnapshot(
-    input: CreateProfileSnapshotInput,
+    input: CreateSqliteProfileSnapshotInput,
   ): Promise<SqliteProfileSnapshotMetadata> {
     if (
       !operationIdPattern.test(input.operationId) ||
@@ -106,6 +106,10 @@ export class SqliteProfileSnapshotService
       inspectSqliteProfileDatabase(
         destinationFilePath,
         this.dependencies.migrationsDirectory,
+        {
+          allowHistoricalMigrationPrefix:
+            input.migrationPolicy === 'compatibleHistoricalPrefix',
+        },
       );
       await syncFile(destinationFilePath);
       const sha256 = await calculateSha256(destinationFilePath);

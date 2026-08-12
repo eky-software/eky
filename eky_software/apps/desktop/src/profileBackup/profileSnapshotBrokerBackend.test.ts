@@ -242,12 +242,37 @@ describe('profile snapshot broker boundary', () => {
     backend.close();
   });
 
+  it('routes pre-migration snapshots through the dedicated private operation', async () => {
+    const transports = createTransportPair();
+    const maintenance = new FakeProfileMaintenance();
+    const snapshot = createFakeSnapshotService();
+    const backend = startProfileSnapshotBrokerBackend({
+      maintenance,
+      snapshot,
+      transport: transports.backend,
+    });
+    const client = new ProfileSnapshotBrokerClient(transports.main, 1_000);
+    const operationId = randomUUID();
+
+    await client.beginMaintenance(operationId);
+    await expect(
+      client.createPreMigrationProfileSnapshot(operationId),
+    ).resolves.toMatchObject({ type: 'profileSnapshot' });
+    expect(snapshot.operationIds).toEqual([]);
+    expect(snapshot.preMigrationOperationIds).toEqual([operationId]);
+    await client.endMaintenance(operationId);
+
+    client.close();
+    backend.close();
+  });
+
   it('maps snapshot failures without exposing backend details', async () => {
     const transports = createTransportPair();
     const maintenance = new FakeProfileMaintenance();
     const backend = startProfileSnapshotBrokerBackend({
       maintenance,
       snapshot: {
+        ...createFakeSnapshotService(),
         async createProfileSnapshot() {
           throw new Error('PROFILE_SNAPSHOT_DATABASE_FAILED');
         },
@@ -287,6 +312,7 @@ describe('profile snapshot broker boundary', () => {
     const backend = startProfileSnapshotBrokerBackend({
       maintenance,
       snapshot: {
+        ...createFakeSnapshotService(),
         async createProfileSnapshot() {
           throw Object.freeze({
             message: 'PROFILE_SNAPSHOT_DATABASE_FAILED',
@@ -329,6 +355,7 @@ describe('profile snapshot broker boundary', () => {
     const backend = startProfileSnapshotBrokerBackend({
       maintenance,
       snapshot: {
+        ...createFakeSnapshotService(),
         async createProfileSnapshot() {
           throw new Error('D:\\private\\unexpected-backend-detail');
         },
@@ -369,6 +396,7 @@ describe('profile snapshot broker boundary', () => {
     const backend = startProfileSnapshotBrokerBackend({
       maintenance,
       snapshot: {
+        ...createFakeSnapshotService(),
         async createProfileSnapshot() {
           throw new Error('PROFILE_SNAPSHOT_STAGING_INVALID');
         },
@@ -409,6 +437,7 @@ describe('profile snapshot broker boundary', () => {
     const backend = startProfileSnapshotBrokerBackend({
       maintenance,
       snapshot: {
+        ...createFakeSnapshotService(),
         async createProfileSnapshot() {
           throw new Error('PROFILE_SNAPSHOT_ARTIFACTS_FAILED');
         },
@@ -510,6 +539,24 @@ describe('profile snapshot broker boundary', () => {
 });
 
 function createFakeSnapshotService(): {
+  createPreMigrationProfileSnapshot(input: {
+    operationId: string;
+    signal: AbortSignal;
+  }): Promise<{
+    artifactCatalog: {
+      artifactCount: number;
+      artifactTotalByteSize: number;
+      catalogByteSize: number;
+      logicalPath: 'snapshot-catalog-v1.json';
+      sha256: string;
+    };
+    database: {
+      databaseByteSize: number;
+      logicalPath: 'profile.sqlite';
+      sha256: string;
+      totalPages: number;
+    };
+  }>;
   createProfileSnapshot(input: {
     operationId: string;
     signal: AbortSignal;
@@ -548,10 +595,31 @@ function createFakeSnapshotService(): {
     profileMatchesActive: boolean;
   }>;
   operationIds: string[];
+  preMigrationOperationIds: string[];
 } {
   const operationIds: string[] = [];
+  const preMigrationOperationIds: string[] = [];
 
   return {
+    async createPreMigrationProfileSnapshot({ operationId, signal }) {
+      expect(signal.aborted).toBe(false);
+      preMigrationOperationIds.push(operationId);
+      return {
+        artifactCatalog: {
+          artifactCount: 1,
+          artifactTotalByteSize: 2_048,
+          catalogByteSize: 512,
+          logicalPath: 'snapshot-catalog-v1.json',
+          sha256: 'b'.repeat(64),
+        },
+        database: {
+          databaseByteSize: 8_192,
+          logicalPath: 'profile.sqlite',
+          sha256: 'a'.repeat(64),
+          totalPages: 2,
+        },
+      };
+    },
     async createProfileSnapshot({ operationId, signal }) {
       expect(signal.aborted).toBe(false);
       operationIds.push(operationId);
@@ -586,6 +654,7 @@ function createFakeSnapshotService(): {
       };
     },
     operationIds,
+    preMigrationOperationIds,
   };
 }
 

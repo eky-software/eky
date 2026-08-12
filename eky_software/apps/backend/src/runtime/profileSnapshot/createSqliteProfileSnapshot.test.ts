@@ -46,6 +46,7 @@ describe('SQLite profile snapshot', () => {
     ).not.toThrow();
     await fixture.maintenanceState.begin(operationId, 1_000);
     const metadata = await fixture.service.createSqliteSnapshot({
+      migrationPolicy: 'exactCurrentManifest',
       operationId,
       signal: new AbortController().signal,
     });
@@ -96,6 +97,7 @@ describe('SQLite profile snapshot', () => {
 
     await expect(
       fixture.service.createSqliteSnapshot({
+        migrationPolicy: 'exactCurrentManifest',
         operationId,
         signal: new AbortController().signal,
       }),
@@ -116,6 +118,7 @@ describe('SQLite profile snapshot', () => {
 
     await expect(
       fixture.service.createSqliteSnapshot({
+        migrationPolicy: 'exactCurrentManifest',
         operationId,
         signal: controller.signal,
       }),
@@ -140,6 +143,7 @@ describe('SQLite profile snapshot', () => {
 
     await expect(
       fixture.service.createSqliteSnapshot({
+        migrationPolicy: 'exactCurrentManifest',
         operationId,
         signal: new AbortController().signal,
       }),
@@ -150,6 +154,135 @@ describe('SQLite profile snapshot', () => {
 
     fixture.maintenanceState.end(operationId);
     fixture.database.close();
+  });
+
+  it('allows an exact historical prefix only for a pre-migration snapshot', async () => {
+    const fixture = await createFixture();
+    const operationId = randomUUID();
+    await writeFile(
+      join(fixture.migrationsDirectory, '002_pending.sql'),
+      'CREATE TABLE pending (id TEXT PRIMARY KEY);',
+      'utf8',
+    );
+    await fixture.maintenanceState.begin(operationId, 1_000);
+
+    await expect(
+      fixture.service.createSqliteSnapshot({
+        migrationPolicy: 'compatibleHistoricalPrefix',
+        operationId,
+        signal: new AbortController().signal,
+      }),
+    ).resolves.toMatchObject({
+      databaseByteSize: expect.any(Number),
+      logicalPath: 'profile.sqlite',
+      sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
+    expect(() =>
+      inspectSqliteProfileDatabase(
+        join(fixture.stagingRoot, operationId, 'profile.sqlite'),
+        fixture.migrationsDirectory,
+        { allowHistoricalMigrationPrefix: true },
+      ),
+    ).not.toThrow();
+
+    fixture.maintenanceState.end(operationId);
+    fixture.database.close();
+  });
+
+  it('rejects changed historical SQL from a pre-migration snapshot', async () => {
+    const fixture = await createFixture();
+    const migrationPath = join(
+      fixture.migrationsDirectory,
+      '001_create_probe.sql',
+    );
+    await writeFile(
+      migrationPath,
+      `${await readFile(migrationPath, 'utf8')}\nCREATE TABLE changed_history (id TEXT);`,
+      'utf8',
+    );
+
+    await expectPreMigrationSnapshotRejected(fixture);
+  });
+
+  it.each([
+    ['source', 'source_sha256'],
+    ['chain', 'chain_sha256'],
+  ] as const)(
+    'rejects a changed stored %s hash from a pre-migration snapshot',
+    async (_name, column) => {
+      const fixture = await createFixture();
+      fixture.database
+        .prepare(
+          `UPDATE schema_migration_metadata SET ${column} = ?`,
+        )
+        .run('f'.repeat(64));
+
+      await expectPreMigrationSnapshotRejected(fixture);
+    },
+  );
+
+  it('rejects a missing middle migration from a pre-migration snapshot', async () => {
+    const fixture = await createFixtureWithThreeAppliedMigrations();
+    fixture.database.pragma('foreign_keys = OFF');
+    fixture.database
+      .prepare(
+        'DELETE FROM schema_migration_metadata WHERE migration_name = ?',
+      )
+      .run('002_pending.sql');
+    fixture.database
+      .prepare('DELETE FROM schema_migrations WHERE name = ?')
+      .run('002_pending.sql');
+    fixture.database.pragma('foreign_keys = ON');
+
+    await expectPreMigrationSnapshotRejected(fixture);
+  });
+
+  it('rejects reordered migration metadata from a pre-migration snapshot', async () => {
+    const fixture = await createFixtureWithThreeAppliedMigrations();
+    const rows = fixture.database
+      .prepare<
+        [],
+        {
+          chain_sha256: string;
+          migration_name: string;
+          source_sha256: string;
+        }
+      >(
+        `
+          SELECT migration_name, source_sha256, chain_sha256
+          FROM schema_migration_metadata
+          WHERE migration_name IN ('002_pending.sql', '003_pending.sql')
+          ORDER BY migration_name
+        `,
+      )
+      .all();
+    expect(rows).toHaveLength(2);
+    fixture.database
+      .prepare(
+        `
+          UPDATE schema_migration_metadata
+          SET source_sha256 = ?, chain_sha256 = ?
+          WHERE migration_name = ?
+        `,
+      )
+      .run(
+        rows[1]!.source_sha256,
+        rows[1]!.chain_sha256,
+        rows[0]!.migration_name,
+      );
+
+    await expectPreMigrationSnapshotRejected(fixture);
+  });
+
+  it('rejects a future-version database from a pre-migration snapshot', async () => {
+    const fixture = await createFixture();
+    fixture.database
+      .prepare(
+        'INSERT INTO schema_migrations (name, run_at) VALUES (?, ?)',
+      )
+      .run('999_future.sql', '2026-08-12T00:00:00.000Z');
+
+    await expectPreMigrationSnapshotRejected(fixture);
   });
 
   it('does not overwrite or remove a pre-existing operation directory', async () => {
@@ -163,6 +296,7 @@ describe('SQLite profile snapshot', () => {
 
     await expect(
       fixture.service.createSqliteSnapshot({
+        migrationPolicy: 'exactCurrentManifest',
         operationId,
         signal: new AbortController().signal,
       }),
@@ -192,6 +326,7 @@ describe('SQLite profile snapshot', () => {
 
     await expect(
       service.createSqliteSnapshot({
+        migrationPolicy: 'exactCurrentManifest',
         operationId,
         signal: new AbortController().signal,
       }),
@@ -268,6 +403,47 @@ async function createFixture(): Promise<{
     }),
     stagingRoot,
   };
+}
+
+async function createFixtureWithThreeAppliedMigrations(): Promise<
+  Awaited<ReturnType<typeof createFixture>>
+> {
+  const fixture = await createFixture();
+  await writeFile(
+    join(fixture.migrationsDirectory, '002_pending.sql'),
+    'CREATE TABLE pending_2 (id TEXT PRIMARY KEY);',
+    'utf8',
+  );
+  await writeFile(
+    join(fixture.migrationsDirectory, '003_pending.sql'),
+    'CREATE TABLE pending_3 (id TEXT PRIMARY KEY);',
+    'utf8',
+  );
+  await runMigrations(fixture.database, {
+    migrationsDirectory: fixture.migrationsDirectory,
+  });
+  return fixture;
+}
+
+async function expectPreMigrationSnapshotRejected(
+  fixture: Awaited<ReturnType<typeof createFixture>>,
+): Promise<void> {
+  const operationId = randomUUID();
+  await fixture.maintenanceState.begin(operationId, 1_000);
+
+  await expect(
+    fixture.service.createSqliteSnapshot({
+      migrationPolicy: 'compatibleHistoricalPrefix',
+      operationId,
+      signal: new AbortController().signal,
+    }),
+  ).rejects.toThrow('PROFILE_SNAPSHOT_DATABASE_FAILED');
+  await expect(
+    lstat(join(fixture.stagingRoot, operationId)),
+  ).rejects.toMatchObject({ code: 'ENOENT' });
+
+  fixture.maintenanceState.end(operationId);
+  fixture.database.close();
 }
 
 async function createTemporaryRoot(prefix: string): Promise<string> {

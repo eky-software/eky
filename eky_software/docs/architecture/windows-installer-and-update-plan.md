@@ -592,6 +592,14 @@ palautusauktoriteetti, ja se on todistettava uudelleen ennen ensimmäistä
 SQL-kirjoitusta. Direct Setupin ja portable restoren omat auktoriteetit eivät
 saa olla samanaikaisesti ratkaisemattomia update journalin kanssa.
 
+Koordinoidun päivityksen journalissa sidottu `preUpdate`-piste muodostetaan
+tavallisella exact-current-manifest-snapshotilla. Suoran Setupin
+`preMigration`-piste käyttää sen sijaan yksityisen broker-protokollan nimettyä
+`createPreMigrationProfileSnapshot`-operaatiota. Vain tämä operaatio saa
+hyväksyä nykyisen packaged manifestin täsmällisen historiallisen prefiksin.
+Valinta ei ole pyynnön mukana tuleva yleinen lippu, eikä sitä voi kutsua
+rendereristä, julkisesta HTTP-rajasta tai business-moduulista.
+
 ## 11. Päivitysjournal
 
 ### C3A:n installation-scoped state
@@ -730,7 +738,11 @@ Suora Setup ilman journalia käyttää read-only-preflightia. Tyhjä clean insta
 ei tarvitse pre-migration-pistettä. Olemassa olevasta profiilista tarkistetaan
 migraatioketjun prefix ja pending-migraatiot ennen ensimmäistä SQL-kirjoitusta.
 Jos pending-migraatioita on, validoitu pre-migration-palautuspiste on pakollinen
-ennen tavallisen backendin ja `runMigrations`-polun käynnistystä.
+ennen tavallisen backendin ja `runMigrations`-polun käynnistystä. Pisteen
+snapshot hyväksyy vain manifestin alusta alkavan, nimiltään, järjestykseltään,
+source SHA-256- ja chain SHA-256 -arvoiltaan täsmällisen historiallisen
+prefiksin. Changed-history-, missing-middle-, reordered- ja future-tilat
+estävät päivityksen ennen SQL-kirjoitusta.
 
 C3A:ssa suoran Setupin olemassa olevaa profiilia koskeva migraatiopäätös
 kirjoitetaan pysyväksi ennen ensimmäistä pending-migraation SQL-kirjoitusta.

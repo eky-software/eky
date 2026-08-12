@@ -63,6 +63,18 @@ describe('profile snapshot broker protocol', () => {
       operationId,
     });
     expect(
+      parseProfileSnapshotBrokerRequest(
+        createProfileSnapshotBrokerRequest({
+          operation: 'createPreMigrationProfileSnapshot',
+          operationId,
+          requestId,
+        }),
+      ),
+    ).toMatchObject({
+      operation: 'createPreMigrationProfileSnapshot',
+      operationId,
+    });
+    expect(
       createProfileSnapshotBrokerRequest({
         operation: 'prepareProfileRestoreActivation',
         operationId,
@@ -96,6 +108,23 @@ describe('profile snapshot broker protocol', () => {
       parseProfileSnapshotBrokerRequest({
         operation: 'openFile',
         path: 'C:\\private',
+        protocolVersion: profileSnapshotBrokerProtocolVersion,
+        requestId,
+      }),
+    ).toBeUndefined();
+    expect(
+      parseProfileSnapshotBrokerRequest({
+        operation: 'createPreMigrationProfileSnapshot',
+        operationId,
+        protocolVersion: profileSnapshotBrokerProtocolVersion - 1,
+        requestId,
+      }),
+    ).toBeUndefined();
+    expect(
+      parseProfileSnapshotBrokerRequest({
+        migrationPolicy: 'compatibleHistoricalPrefix',
+        operation: 'createPreMigrationProfileSnapshot',
+        operationId,
         protocolVersion: profileSnapshotBrokerProtocolVersion,
         requestId,
       }),

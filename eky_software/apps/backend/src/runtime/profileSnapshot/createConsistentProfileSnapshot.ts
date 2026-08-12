@@ -13,6 +13,7 @@ import {
 import type {
   CreateProfileSnapshotInput,
   ProfileSnapshotMetadata,
+  ProfileSnapshotMigrationPolicy,
   ProfileSnapshotService,
   SqliteProfileSnapshotService,
 } from './profileSnapshotTypes.js';
@@ -40,9 +41,22 @@ export class ConsistentProfileSnapshotService
   async createProfileSnapshot(
     input: CreateProfileSnapshotInput,
   ): Promise<ProfileSnapshotMetadata> {
+    return this.createSnapshot(input, 'exactCurrentManifest');
+  }
+
+  async createPreMigrationProfileSnapshot(
+    input: CreateProfileSnapshotInput,
+  ): Promise<ProfileSnapshotMetadata> {
+    return this.createSnapshot(input, 'compatibleHistoricalPrefix');
+  }
+
+  private async createSnapshot(
+    input: CreateProfileSnapshotInput,
+    migrationPolicy: ProfileSnapshotMigrationPolicy,
+  ): Promise<ProfileSnapshotMetadata> {
     const database =
       await this.dependencies.sqliteSnapshotService.createSqliteSnapshot(
-        input,
+        { ...input, migrationPolicy },
       );
 
     try {

@@ -13,6 +13,10 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { ConsistentProfileSnapshotService } from './createConsistentProfileSnapshot.js';
+import type {
+  CreateSqliteProfileSnapshotInput,
+  ProfileSnapshotMigrationPolicy,
+} from './profileSnapshotTypes.js';
 
 const temporaryRoots: string[] = [];
 
@@ -60,6 +64,35 @@ describe('consistent profile snapshot', () => {
         logicalPath: 'profile.sqlite',
       }),
     });
+    expect(fixture.migrationPolicies).toEqual(['exactCurrentManifest']);
+  });
+
+  it('uses historical-prefix compatibility only for a pre-migration snapshot', async () => {
+    const fixture = await createFixture();
+    const service = new ConsistentProfileSnapshotService({
+      artifactStager: {
+        async stageArtifacts() {
+          return {
+            artifactCount: 0,
+            artifactTotalByteSize: 0,
+            catalogByteSize: 2,
+            logicalPath: 'snapshot-catalog-v1.json',
+            sha256: 'b'.repeat(64),
+          };
+        },
+      },
+      sqliteSnapshotService: fixture.sqliteSnapshotService,
+      stagingRoot: fixture.stagingRoot,
+    });
+
+    await service.createPreMigrationProfileSnapshot({
+      operationId: fixture.operationId,
+      signal: new AbortController().signal,
+    });
+
+    expect(fixture.migrationPolicies).toEqual([
+      'compatibleHistoricalPrefix',
+    ]);
   });
 
   it('discards the complete operation staging when artifact staging fails', async () => {
@@ -120,9 +153,10 @@ describe('consistent profile snapshot', () => {
 });
 
 async function createFixture(): Promise<{
+  migrationPolicies: ProfileSnapshotMigrationPolicy[];
   operationId: string;
   sqliteSnapshotService: {
-    createSqliteSnapshot(): Promise<{
+    createSqliteSnapshot(input: CreateSqliteProfileSnapshotInput): Promise<{
       databaseByteSize: number;
       logicalPath: 'profile.sqlite';
       sha256: string;
@@ -137,11 +171,14 @@ async function createFixture(): Promise<{
   temporaryRoots.push(stagingRoot);
   await chmod(stagingRoot, 0o700);
   const operationId = randomUUID();
+  const migrationPolicies: ProfileSnapshotMigrationPolicy[] = [];
 
   return {
+    migrationPolicies,
     operationId,
     sqliteSnapshotService: {
-      async createSqliteSnapshot() {
+      async createSqliteSnapshot(input) {
+        migrationPolicies.push(input.migrationPolicy);
         const operationRoot = join(stagingRoot, operationId);
         await mkdir(operationRoot, { mode: 0o700 });
         await writeFile(join(operationRoot, 'profile.sqlite'), 'sqlite');

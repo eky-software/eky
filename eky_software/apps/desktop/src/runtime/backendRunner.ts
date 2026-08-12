@@ -52,6 +52,10 @@ interface BackendProfileSnapshotService {
     operationId: string;
     signal: AbortSignal;
   }): Promise<BackendProfileSnapshotMetadata>;
+  createPreMigrationProfileSnapshot(input: {
+    operationId: string;
+    signal: AbortSignal;
+  }): Promise<BackendProfileSnapshotMetadata>;
   prepareProfileRestoreActivation(operationId: string): Promise<{
     artifactCount: number;
     artifactTotalByteSize: number;
@@ -328,6 +332,14 @@ utilityParentPort.on('message', (event) => {
       profileSnapshotBrokerHandle = startProfileSnapshotBrokerBackend({
         maintenance: profileMaintenanceState,
         snapshot: {
+          createPreMigrationProfileSnapshot: (input) => {
+            if (profileSnapshotService === undefined) {
+              throw new Error('PROFILE_SNAPSHOT_DATABASE_FAILED');
+            }
+            return profileSnapshotService.createPreMigrationProfileSnapshot(
+              input,
+            );
+          },
           createProfileSnapshot: (input) => {
             if (profileSnapshotService === undefined) {
               throw new Error('PROFILE_SNAPSHOT_DATABASE_FAILED');

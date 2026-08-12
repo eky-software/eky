@@ -1,4 +1,4 @@
-export const profileSnapshotBrokerProtocolVersion = 6;
+export const profileSnapshotBrokerProtocolVersion = 7;
 
 const requestIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -8,6 +8,7 @@ const maximumMessageBytes = 1_024;
 
 export type ProfileMaintenanceBrokerOperation =
   | 'beginProfileMaintenance'
+  | 'createPreMigrationProfileSnapshot'
   | 'createProfileSnapshot'
   | 'endProfileMaintenance'
   | 'getProfileMaintenanceStatus'
@@ -19,6 +20,7 @@ export type ProfileSnapshotBrokerRequest =
   | {
       operation:
         | 'beginProfileMaintenance'
+        | 'createPreMigrationProfileSnapshot'
         | 'createProfileSnapshot'
         | 'endProfileMaintenance'
         | 'prepareProfileRestoreActivation'
@@ -190,6 +192,7 @@ export function parseProfileSnapshotBrokerRequest(
 
   if (
     (value.operation !== 'beginProfileMaintenance' &&
+      value.operation !== 'createPreMigrationProfileSnapshot' &&
       value.operation !== 'createProfileSnapshot' &&
       value.operation !== 'endProfileMaintenance' &&
       value.operation !== 'prepareProfileRestoreActivation' &&

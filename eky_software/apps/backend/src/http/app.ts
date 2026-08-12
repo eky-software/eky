@@ -486,6 +486,8 @@ function registerProfileSnapshotServices(input: {
   input.registration.register({
     createProfileSnapshot: (request) =>
       snapshotService.createProfileSnapshot(request),
+    createPreMigrationProfileSnapshot: (request) =>
+      snapshotService.createPreMigrationProfileSnapshot(request),
     prepareProfileRestoreActivation: (operationId) =>
       validationService.prepareProfileRestoreActivation(operationId),
     validateActiveProfile: () =>

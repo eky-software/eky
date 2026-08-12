@@ -23,8 +23,20 @@ export interface CreateProfileSnapshotInput {
   signal: AbortSignal;
 }
 
+export type ProfileSnapshotMigrationPolicy =
+  | 'exactCurrentManifest'
+  | 'compatibleHistoricalPrefix';
+
+export interface CreateSqliteProfileSnapshotInput
+  extends CreateProfileSnapshotInput {
+  migrationPolicy: ProfileSnapshotMigrationPolicy;
+}
+
 export interface ProfileSnapshotService {
   createProfileSnapshot(
+    input: CreateProfileSnapshotInput,
+  ): Promise<ProfileSnapshotMetadata>;
+  createPreMigrationProfileSnapshot(
     input: CreateProfileSnapshotInput,
   ): Promise<ProfileSnapshotMetadata>;
 }
@@ -75,7 +87,7 @@ export interface ProfileSnapshotRuntimeService
 
 export interface SqliteProfileSnapshotService {
   createSqliteSnapshot(
-    input: CreateProfileSnapshotInput,
+    input: CreateSqliteProfileSnapshotInput,
   ): Promise<SqliteProfileSnapshotMetadata>;
 }
 

@@ -408,6 +408,23 @@ SQLite-snapshot-malliksi. Jos myöhempi ajuri- tai Electron-päivitys rikkoo
 todennetun yhteensopivuuden, release estetään ja fallbackina arvioidaan
 backendin ja SQLite-yhteyden hallittua sulkemista snapshotin ajaksi.
 
+Snapshotin migraatiopolitiikka valitaan tarkoituksen perusteella yksityisessä
+backend-/desktop-sopimuksessa. Tavallinen `createProfileSnapshot` vaatii
+`exactCurrentManifest`-politiikan. Sitä käyttävät portable backupin luonti,
+portable backupin self-inspectionin luontivaihe, manual-, daily-, weekly-,
+monthly-, `preUpdate`- ja `preRestore`-palautuspisteet sekä packaged backup
+capture. Nämä polut eivät hyväksy nykyistä manifestia lyhyempää tietokantaa.
+
+Vain suoran Setup-päivityksen nimetty `createPreMigrationProfileSnapshot`
+käyttää `compatibleHistoricalPrefix`-politiikkaa. Se hyväksyy tietokannan
+ainoastaan, kun applied-migraatiot muodostavat packaged manifestin alusta
+alkavan täsmällisen prefiksin ja nimet, järjestys, source SHA-256:t sekä chain
+SHA-256:t täsmäävät. Muuttunut historia, puuttuva keskimmäinen migraatio,
+uudelleen järjestetty historia ja tulevan version tietokanta torjutaan.
+Profile snapshot -brokerin protokollaversio 7 sisältää tämän erillisen
+operaation exact key set -pyyntönä. Politiikkaa ei välitetä pyynnön kenttänä,
+eikä operaatiota avata rendererille tai julkiselle HTTP-rajalle.
+
 ## Maintenance-tila
 
 Backup, restore, migration ja update käyttävät yhtä nimettyä maintenance-

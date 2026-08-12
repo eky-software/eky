@@ -42,7 +42,25 @@ export function startProfileSnapshotBrokerBackend(input: {
         databaseByteSize: number;
         logicalPath: 'profile.sqlite';
         sha256: string;
-      totalPages: number;
+        totalPages: number;
+      };
+    }>;
+    createPreMigrationProfileSnapshot(input: {
+      operationId: string;
+      signal: AbortSignal;
+    }): Promise<{
+      artifactCatalog: {
+        artifactCount: number;
+        artifactTotalByteSize: number;
+        catalogByteSize: number;
+        logicalPath: 'snapshot-catalog-v1.json';
+        sha256: string;
+      };
+      database: {
+        databaseByteSize: number;
+        logicalPath: 'profile.sqlite';
+        sha256: string;
+        totalPages: number;
       };
     }>;
     prepareProfileRestoreActivation(operationId: string): Promise<{
@@ -109,9 +127,14 @@ export function startProfileSnapshotBrokerBackend(input: {
                 clearActiveOperation();
               }
             }, maximumMaintenanceDurationMilliseconds);
-          } else if (request.operation === 'createProfileSnapshot') {
+          } else if (
+            request.operation === 'createProfileSnapshot' ||
+            request.operation === 'createPreMigrationProfileSnapshot'
+          ) {
             activeSnapshotAbortController = new AbortController();
-            const snapshot = await input.snapshot.createProfileSnapshot({
+            const snapshot = await input.snapshot[
+              request.operation
+            ]({
               operationId: request.operationId,
               signal: activeSnapshotAbortController.signal,
             });

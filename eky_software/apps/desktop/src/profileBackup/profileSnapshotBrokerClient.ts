@@ -94,6 +94,22 @@ export class ProfileSnapshotBrokerClient {
     );
   }
 
+  createPreMigrationProfileSnapshot(operationId: string): Promise<
+    Extract<ProfileSnapshotBrokerSuccessResult, { type: 'profileSnapshot' }>
+  > {
+    return this.request(
+      'createPreMigrationProfileSnapshot',
+      operationId,
+    ).then((result) => {
+      if (result.type !== 'profileSnapshot') {
+        throw new ProfileSnapshotBrokerError(
+          'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
+        );
+      }
+      return result;
+    });
+  }
+
   close(): void {
     if (this.closed) {
       return;

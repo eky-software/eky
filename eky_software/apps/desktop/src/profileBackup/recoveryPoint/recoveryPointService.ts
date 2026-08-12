@@ -43,6 +43,7 @@ interface RecoveryPointServiceDependencies {
   profileSnapshotClient: Pick<
     ProfileSnapshotBrokerClient,
     | 'beginMaintenance'
+    | 'createPreMigrationProfileSnapshot'
     | 'createProfileSnapshot'
     | 'endMaintenance'
     | 'validateProfileSnapshot'
@@ -111,7 +112,7 @@ export class RecoveryPointService {
   }
 
   createPreMigration(): Promise<RecoveryPointIndexEntry> {
-    return this.createNamedPoint('preUpdate');
+    return this.createNamedPoint('preUpdate', 'preMigration');
   }
 
   createPreRestore(): Promise<RecoveryPointIndexEntry> {
@@ -142,6 +143,7 @@ export class RecoveryPointService {
 
   private createNamedPoint(
     kind: 'manual' | 'preRestore' | 'preUpdate',
+    snapshotPurpose: 'exact' | 'preMigration' = 'exact',
   ): Promise<RecoveryPointIndexEntry> {
     const correlationId = this.createOperationId();
     const startedAt = Date.now();
@@ -152,8 +154,10 @@ export class RecoveryPointService {
       stage: 'creation',
     });
     return this.runExclusive('creating', () =>
-      this.withHealthySnapshot(correlationId, (snapshot) =>
-        this.persistSnapshot(snapshot, kind),
+      this.withHealthySnapshot(
+        correlationId,
+        (snapshot) => this.persistSnapshot(snapshot, kind),
+        snapshotPurpose,
       ),
     ).then(
       (point) => {
@@ -221,6 +225,7 @@ export class RecoveryPointService {
   private async withHealthySnapshot<T>(
     operationId: string,
     useSnapshot: (snapshot: HealthySnapshot) => Promise<T>,
+    snapshotPurpose: 'exact' | 'preMigration' = 'exact',
   ): Promise<T> {
     if (!operationIdPattern.test(operationId)) {
       throw new Error('RECOVERY_POINT_OPERATION_INVALID');
@@ -236,9 +241,14 @@ export class RecoveryPointService {
         operationId,
       );
       maintenanceStarted = true;
-      await this.dependencies.profileSnapshotClient.createProfileSnapshot(
-        operationId,
-      );
+      if (snapshotPurpose === 'preMigration') {
+        await this.dependencies.profileSnapshotClient
+          .createPreMigrationProfileSnapshot(operationId);
+      } else {
+        await this.dependencies.profileSnapshotClient.createProfileSnapshot(
+          operationId,
+        );
+      }
       const validation =
         await this.dependencies.profileSnapshotClient.validateProfileSnapshot(
           operationId,
