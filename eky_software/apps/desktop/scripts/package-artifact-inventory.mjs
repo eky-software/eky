@@ -9,6 +9,8 @@ const smokeAllowlist = new Set([
   'dist/main/packagedSupportBundleSmoke.js',
   'dist/pdf/invoicePdfPreviewSmoke.js',
   'dist/profileBackup/packagedProfileBackupSmoke.js',
+  'dist/update/packagedUpdateSmoke.js',
+  'dist/update/packagedUpdateSmokeConfiguration.js',
 ]);
 const updateRuntimeAllowlist = new Set([
   'inspectWindowsInstallerIdentity.ps1',

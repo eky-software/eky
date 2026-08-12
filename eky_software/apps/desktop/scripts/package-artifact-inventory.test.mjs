@@ -124,6 +124,16 @@ test('allows only the exact named packaged smoke helpers', async () => {
     'dist/main/packagedSmoke.js',
     'export {};',
   );
+  await writeFixture(
+    root,
+    'dist/update/packagedUpdateSmoke.js',
+    'export {};',
+  );
+  await writeFixture(
+    root,
+    'dist/update/packagedUpdateSmokeConfiguration.js',
+    'export {};',
+  );
   await writeFixture(root, 'dist/main/unplannedSmoke.js', 'export {};');
 
   await assert.rejects(
@@ -133,6 +143,16 @@ test('allows only the exact named packaged smoke helpers', async () => {
   await rm(join(root, 'dist/main/unplannedSmoke.js'));
   await assert.doesNotReject(
     inspectPackageArtifactInventory({ root, stage: 'applicationStage' }),
+  );
+
+  await writeFixture(
+    root,
+    'dist/update/packagedUpdateSmokeRunner.js',
+    'export {};',
+  );
+  await assert.rejects(
+    inspectPackageArtifactInventory({ root, stage: 'applicationStage' }),
+    /UNAPPROVED_SMOKE_HELPER/,
   );
 });
 
