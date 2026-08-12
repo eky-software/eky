@@ -246,6 +246,7 @@ describe('first-start update coordinator', () => {
         releaseChannel: 'pilot',
       },
       journal: createJournal('awaitingFirstStart'),
+      rejectConcurrentRevalidations: true,
     });
 
     await fixture.coordinator.beforeMigrations(
@@ -566,6 +567,7 @@ function createFixture(options: {
   cacheAlreadyRotated?: boolean;
   directSetupRecovery?: Readonly<DirectSetupMigrationRecovery>;
   journal?: Readonly<UpdateJournal>;
+  rejectConcurrentRevalidations?: boolean;
   releaseFails?: boolean;
   runningReleaseInfo?: typeof releaseInfo;
   secretChanges?: boolean;
@@ -573,6 +575,7 @@ function createFixture(options: {
   let journal = options.journal;
   let cacheRotated = options.cacheAlreadyRotated ?? false;
   let secretReadCount = 0;
+  let revalidationActive = false;
   const acceptedWrites: unknown[] = [];
   let directSetupRecovery = options.directSetupRecovery;
   const directRecoveryStates: string[] = [];
@@ -625,25 +628,34 @@ function createFixture(options: {
       normalizeRolledBackPackages,
       promoteAcceptedCandidate,
       async revalidateJournalPackage(input) {
-        const expectsCandidate =
-          input.expectedIdentity.appVersion === '0.2.0';
-        const valid = cacheRotated
-          ? (input.role === 'current' && expectsCandidate) ||
-            (input.role === 'previous' && !expectsCandidate)
-          : (input.role === 'current' && !expectsCandidate) ||
-            (input.role === 'candidate' && expectsCandidate);
-        if (!valid) {
-          throw new Error('slot mismatch');
+        if (options.rejectConcurrentRevalidations && revalidationActive) {
+          throw new Error('concurrent cache operation');
         }
-        return {
-          appVersion: input.expectedIdentity.appVersion,
-          buildRevision: input.expectedIdentity.buildRevision,
-          msiProductVersion: input.expectedIdentity.msiProductVersion,
-          packagePath: 'C:\\private\\Eky.msi',
-          productCode: expectsCandidate
-            ? '{22222222-2222-4222-8222-222222222222}'
-            : '{11111111-1111-4111-8111-111111111111}',
-        };
+        revalidationActive = true;
+        try {
+          await Promise.resolve();
+          const expectsCandidate =
+            input.expectedIdentity.appVersion === '0.2.0';
+          const valid = cacheRotated
+            ? (input.role === 'current' && expectsCandidate) ||
+              (input.role === 'previous' && !expectsCandidate)
+            : (input.role === 'current' && !expectsCandidate) ||
+              (input.role === 'candidate' && expectsCandidate);
+          if (!valid) {
+            throw new Error('slot mismatch');
+          }
+          return {
+            appVersion: input.expectedIdentity.appVersion,
+            buildRevision: input.expectedIdentity.buildRevision,
+            msiProductVersion: input.expectedIdentity.msiProductVersion,
+            packagePath: 'C:\\private\\Eky.msi',
+            productCode: expectsCandidate
+              ? '{22222222-2222-4222-8222-222222222222}'
+              : '{11111111-1111-4111-8111-111111111111}',
+          };
+        } finally {
+          revalidationActive = false;
+        }
       },
     },
     directSetupRecoveryStore: {
