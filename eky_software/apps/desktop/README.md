@@ -85,8 +85,8 @@ final hash and manifest, and all lifecycle tests must then use those exact
 signed bytes.
 
 The current application version remains the prerelease SemVer
-`0.1.0-alpha.1`. Windows Installer separately compares the numeric MSI
-ProductVersion `0.1.1`. Removing `alpha` is a future explicit stable-release
+`0.1.0-alpha.2`. Windows Installer separately compares the numeric MSI
+ProductVersion `0.1.2`. Removing `alpha` is a future explicit stable-release
 decision, not an installer formatting change.
 
 `profile:audit` is a Windows-only, copy-only local profile audit. Close Eky

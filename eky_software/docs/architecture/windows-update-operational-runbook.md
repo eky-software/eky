@@ -2,11 +2,12 @@
 
 ## Tila
 
-Tämä on C2:ssa toteutettavan Update Coordinatorin runbook. R0:n ensimmäinen
+Tämä on C3:ssa toteutetun Update Coordinatorin runbook. R0:n ensimmäinen
 luottamusmalli on ADR-0010:n yhden hallitun laitteen `localUnsignedPilot`.
-Ensimmäiset `update.*`-eventit lisätään vain C2:n nimeämille valmistelu-,
-shutdown-, handoff- ja first-start-vaiheille. Tapahtumat eivät sisällä polkuja,
-paketin tiivisteitä, profiilitunnisteita, sessionia tai installer-outputia.
+C3C:n `update.*`-eventit kattavat valmistelu-, shutdown-, handoff-, first-start-
+ja rollback-vaiheet suljetulla eventtikatalogilla. Tapahtumat eivät sisällä
+polkuja, paketin tiivisteitä, profiilitunnisteita, sessionia tai installer-
+outputia.
 
 Pilotissa paketti tulee vain paikallisesta release-arkistosta tai erikseen
 hash-tarkistetulta USB-medialta. Käyttäjä vahvistaa päivityksen. Verkko-,
@@ -244,3 +245,64 @@ Tukipakettiin voidaan ottaa vain turvallinen nykytilan yhteenveto ja yllä
 määritellyt sanitoidut tapahtumat. Päivityspakettia, manifestia,
 päivitysjournalia, installer-logia, yritysprofiilia tai palautuspistettä ei
 sisällytetä sellaisenaan.
+
+## C3C:n automatisoitu packaged-todiste
+
+Windows MSI release gate rakentaa release-MSI:n kerran ja käyttää samoja
+SHA-256-sidecarilla sidottuja tavuja inspect-, install-, repair-, uninstall-,
+upgrade-, downgrade-esto- ja rollback-tarkistuksissa. Samassa puhtaassa
+Windows-ajossa erilliset synteettiset versiofixturet todistavat:
+
+- koordinoidun N -> N+1 -päivityksen ja first-start-hyväksynnän
+- perutun tai soveltamatta jääneen MSI:n turvallisen paluun N-versioon
+- business-profiilin ja binaarien palautuksen first-start-virheen jälkeen
+- suoran Setupin onnistumisen ja keskeytyneen migraation palautumisen
+- N-version backupin palautuksen ja forward-migraation N+1-versiossa
+- SQLite-, PDF-, runtime-session- ja konekohtaisen SMTP-salaisuuden rajat.
+
+Testit käyttävät vain synteettistä dataa, eivät ulkoista verkkoa, oikeaa
+salaisuutta tai käyttäjän normaalia Eky-asennusta. Release gate muodostaa
+lopuksi paikallisen pilot-bundlen samoista varmennetuista release-tavuista.
+Paikallisesti myöhemmin uudelleen rakennettua MSI:tä ei saa kutsua CI:n
+testaamaksi tavujonoksi.
+
+## Fyysisen median pilot-portti (tekemättä)
+
+Tätä porttia ei suoriteta automaattisesti eikä sen valmistumista saa päätellä
+CI:n vihreästä tuloksesta. Käytä vain synteettistä profiilia ja erillistä
+Windows-testikäyttäjää. Tee jokaiselle käytettävälle NTFS- ja exFAT-medialle
+sekä FAT32-medialle, jos MSI:n koko sen sallii, seuraava tarkistus:
+
+1. Varmista lähdearkistossa MSI, sidecar-manifesti ja SHA-256-tiedosto.
+2. Laske MSI:n SHA-256 esimerkiksi PowerShellin
+   `Get-FileHash -Algorithm SHA256` -komennolla ja vertaa sidecariin.
+3. Kopioi koko bundle medialle. Älä käynnistä MSI:tä suoraan medialta.
+4. Laske medialla olevan MSI:n SHA-256 ja varmista sama tavujono.
+5. Poista media Windowsin turvallisella poistolla, irrota ja kytke uudelleen.
+6. Laske SHA-256 uudelleen ja varmista MSI sekä sidecar-tiedostot.
+7. Kopioi bundle testikoneen paikalliseen hallittuun kansioon ja varmista
+   SHA-256 vielä kerran.
+8. Asenna N-versio synteettiselle Windows-testikäyttäjälle ja varmista
+   käynnistys, backend health, SQLite, PDF ja runtime-session.
+9. Luo salattu `.ekybackup`, tarkasta se virallisella inspect-polulla ja
+   tallenna synteettisen tietokannan sekä PDF:ien vertailutiivisteet.
+10. Päivitä N+1-versioon sovelluksen paikallisella päivityspolulla, käynnistä
+    uudelleen ja varmista accepted-tila, tietokanta, PDF:t ja tiivisteet.
+11. Palauta backup N+1-versiossa, käynnistä uudelleen ja varmista forward-
+    migraatio sekä tietokannan ja PDF:ien odotettu sisältö.
+12. Säilytä current- ja previous-bundlet erillään, hash-varmennettuina,
+    dokumentoitua rollbackia varten.
+
+Jos edellistä täsmällistä N-bundlea, hashia tai vertailutietoa ei ole, portti
+on kesken. Virhettä ei ohiteta uudelleen kopioimalla tai poistamalla Windowsin
+suojausta. Ekyä ei oteta oikealla datalla pilot-käyttöön ennen tämän
+manuaaliportin omistajan vahvistusta.
+
+## Edelleen avoimet julkaisuportit
+
+- fyysisen median yllä kuvattu manuaalinen tarkistus
+- code signing, publisher-identiteetti ja allekirjoitetun artifactin gate
+- Eky-ohjelmiston omistajuus- ja lisenssipäätökset.
+
+Nykyinen `0.1.0-alpha.2` / MSI `0.1.2` on vain yhden hallitun laitteen
+`localUnsignedPilot`. Se ei ole `stable`-julkaisu.

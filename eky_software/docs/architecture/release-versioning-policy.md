@@ -7,8 +7,8 @@ ja tukipaketissa. Se ei ole autentikointi-, valtuutus- tai eheystodiste.
 ## Version omistajuus
 
 Desktop-jakelun SemVer-version auktoritatiivinen lähde on
-`apps/desktop/package.json`. Nykyinen R0-versio on ennakkoversio, esimerkiksi
-`0.1.0-alpha.1`.
+`apps/desktop/package.json`. Nykyinen R0-pilotin ennakkoversio on
+`0.1.0-alpha.2`.
 
 Versio päivitetään tarkoituksella ennen jaeltavan artifactin muodostamista:
 
@@ -101,8 +101,8 @@ jaeltua MSI-versiota varten aikaisempaa suurempi. Toteutuksen validaattori
 rajaa kaikki kolme osaa valitun Windows Installer -työkaluketjun hyväksymiin
 numeerisiin rajoihin.
 
-Nykyisen installer-prototyypin sovellusversio on `0.1.0-alpha.1` ja MSI:n
-Windows-vertailuversio `0.1.1`. `alpha` kuuluu tarkoituksella käyttäjälle ja
+Nykyisen installer-prototyypin sovellusversio on `0.1.0-alpha.2` ja MSI:n
+Windows-vertailuversio `0.1.2`. `alpha` kuuluu tarkoituksella käyttäjälle ja
 runtimelle näkyvään ennakkoversioon, mutta sitä ei voi eikä pidä sisällyttää
 MSI:n numeeriseen `ProductVersion`-kenttään. Ennakkoversiotunniste poistetaan
 vasta erillisellä stable-release-päätöksellä, ei installerin teknisenä

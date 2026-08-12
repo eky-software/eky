@@ -17,8 +17,9 @@ toteutettu. C3C:n rajattu paikallisen päivityksen UI ja nimetyt renderer-
 capabilityt ovat toteutettu. C3B:n koordinoitu kahden MSI-version binary-
 rollback on todennettu Windows Installerilla: epäonnistunut N-palautus korjaa
 N+1:n takaisin eikä jätä mixed-version-asennusjuurta. C3C:n koko business-
-profiilin, PDF-artifactien ja runtime-sessionin final packaged -matriisi,
-fyysisen median manuaalinen tarkistus ja code signing ovat edelleen auki.
+profiilin, PDF-artifactien, runtime-sessionin, suoran Setupin ja vanhan backupin
+final packaged -matriisi on toteutettu Windows MSI release gateen. Fyysisen
+median manuaalinen tarkistus ja code signing ovat edelleen auki.
 
 ### Local Update Program -checkpointit
 
@@ -27,7 +28,12 @@ fyysisen median manuaalinen tarkistus ja code signing ovat edelleen auki.
 | C0 Electron cold-start baseline | valmis 11.8.2026 | `DESK-PDF-001` ajettiin 10 kertaa retries=0 ja Electron critical kahdesti puhtaasti; aiemman flaken juurisyytä ei väitetä korjatuksi |
 | C1 Local Update Foundation | valmis 11.8.2026 | Manifestin runtime-codec, vaihdettava trust-policy, native selection, private staging/cache ja nykyisen rollback-paketin rekisteröinti; ei MSI:n käynnistystä eikä business-dataa |
 | C2 Update Orchestration and First Start | valmis 11.8.2026 | Yksityinen migration gate, pre-update/pre-migration recovery, crash-safe journal, graceful-only handoff, accepted-build-metadata ja UI:ta edeltävä first-start-hyväksyntä; ei käyttäjälle avattua päivitys-UI:ta tai rollbackia |
-| C3 Recovery, Compatibility and Pilot Release | käynnissä | C3B:n business/binary-rollback, täsmällisen rollback-paketin valinta, recovery-only-tila ja koordinoitu MSI-palautus sekä C3C:n rajattu paikallinen update-UI ovat toteutettu; koko final packaged -matriisi, fyysinen media ja code signing ovat kesken |
+| C3 Recovery, Compatibility and Pilot Release | automatisoitu matriisi valmis, manuaaliportit auki | C3B:n business/binary-rollback, täsmällisen rollback-paketin valinta, recovery-only-tila, koordinoitu MSI-palautus, C3C:n paikallinen update-UI ja final packaged -matriisi ovat toteutettu; fyysinen media ja code signing ovat kesken |
+
+Ensimmäisen kokonaisen C3C-pilotin release-identiteetti on
+`appVersion 0.1.0-alpha.2` ja `msiProductVersion 0.1.2`. Se on edelleen
+`pilot`-kanavan `unsigned-prototype`, ei stable-julkaisu tai publisher trust
+-todiste.
 
 Migration runnerin SHA-256-checksum-, chain identity- ja release/build-
 metadata on toteutettu 10.8.2026. Historiallinen mismatch torjutaan ennen
