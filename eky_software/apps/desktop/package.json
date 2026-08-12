@@ -25,7 +25,7 @@
     "package:windows:pilot": "node scripts/package-windows.mjs --pilot",
     "profile:audit": "node scripts/audit-production-profile.mjs",
     "smoke:windows": "node scripts/run-packaged-smoke.mjs",
-    "test": "vitest run src && node --test scripts/electron-development-runtime.test.mjs scripts/inspect-support-bundle.test.mjs scripts/package-artifact-inventory.test.mjs scripts/pilot-build-gate.test.mjs scripts/production-profile-audit.test.mjs scripts/read-desktop-electron-version.test.mjs scripts/staged-better-sqlite-runtime.test.mjs",
+    "test": "vitest run src && node --test scripts/electron-development-runtime.test.mjs scripts/inspect-support-bundle.test.mjs scripts/package-artifact-inventory.test.mjs scripts/pilot-build-gate.test.mjs scripts/production-profile-audit.test.mjs scripts/read-desktop-electron-version.test.mjs scripts/staged-better-sqlite-runtime.test.mjs scripts/windows-update-package-fixture.test.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {

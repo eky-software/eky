@@ -34,20 +34,28 @@ import {
   inspectStagedBetterSqliteRuntime,
   verifyStagedBetterSqliteDatabase,
 } from './staged-better-sqlite-runtime.mjs';
+import {
+  createWindowsPackageReleaseIdentity,
+  getUpdateFixtureMigrationMode,
+  getWindowsPackageDirectoryNames,
+  readWindowsPackageBuildMode,
+} from './windows-update-package-fixture.mjs';
 
 const electronVersion = await readDesktopElectronVersion();
 const execFileAsync = promisify(execFile);
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const desktopDirectory = resolve(scriptDirectory, '..');
 const repositoryRoot = resolve(desktopDirectory, '../..');
-const stagingRoot = resolve(desktopDirectory, '.stage');
+const buildMode = readWindowsPackageBuildMode(process.argv.slice(2));
+const directoryNames = getWindowsPackageDirectoryNames(buildMode);
+const stagingRoot = resolve(desktopDirectory, directoryNames.staging);
 const applicationStage = resolve(stagingRoot, 'application');
 const backendStage = resolve(stagingRoot, 'backend');
 const desktopRuntimeStage = resolve(stagingRoot, 'desktop-runtime');
 const updateRuntimeStage = resolve(stagingRoot, 'update-runtime');
-const outputDirectory = resolve(desktopDirectory, 'out');
+const outputDirectory = resolve(desktopDirectory, directoryNames.output);
 const pnpmCliPath = process.env.npm_execpath;
-const pilotBuild = process.argv.slice(2).includes('--pilot');
+const pilotBuild = buildMode.pilot;
 const profileSnapshotRuntimeFiles = [
   'electronProfileSnapshotBrokerTransport.js',
   'profileSnapshotBrokerBackend.js',
@@ -136,6 +144,30 @@ async function buildWorkspaceArtifacts() {
     '--prod',
     backendStage,
   ]);
+}
+
+async function applyUpdateFixtureMigrationShape() {
+  const mode = getUpdateFixtureMigrationMode(buildMode);
+  const migrationsRoot = join(
+    backendStage,
+    'dist',
+    'database',
+    'migrations',
+  );
+  if (mode === 'omit-latest-two') {
+    await rm(join(migrationsRoot, '037_add_invoice_payment_tracking.sql'));
+    await rm(
+      join(migrationsRoot, '038_create_invoice_numbering_series_transitions.sql'),
+    );
+    return;
+  }
+  if (mode === 'fail-latest') {
+    await writeFile(
+      join(migrationsRoot, '038_create_invoice_numbering_series_transitions.sql'),
+      'THIS IS AN INTENTIONAL PACKAGED UPDATE E2E MIGRATION FAILURE;\n',
+      'utf8',
+    );
+  }
 }
 
 async function prepareApplicationStage(buildInfo, releaseInfo) {
@@ -306,13 +338,11 @@ async function assertPackagedElectronVersion(packagedPath) {
 }
 
 async function packageWindowsSpike() {
-  if (process.argv.slice(2).some((argument) => argument !== '--pilot')) {
-    throw new Error('Unsupported Windows package argument.');
-  }
   await rm(stagingRoot, { force: true, recursive: true });
   await rm(outputDirectory, { force: true, recursive: true });
   await mkdir(stagingRoot, { recursive: true });
   await buildWorkspaceArtifacts();
+  await applyUpdateFixtureMigrationShape();
   const packageBuildInfoModule = await import(
     pathToFileURL(
       resolve(desktopDirectory, 'dist/release/packageBuildInfo.js'),
@@ -321,12 +351,17 @@ async function packageWindowsSpike() {
   const desktopPackageMetadata = JSON.parse(
     await readFile(resolve(desktopDirectory, 'package.json'), 'utf8'),
   );
-  const appVersion =
+  const packageAppVersion =
     packageBuildInfoModule.readDesktopPackageVersion(desktopPackageMetadata);
   const installerRelease = await readInstallerReleaseConfig(
     resolve(desktopDirectory, 'installer/installer-release.json'),
     resolve(desktopDirectory, 'package.json'),
   );
+  const releaseIdentity = createWindowsPackageReleaseIdentity(
+    buildMode,
+    installerRelease,
+  );
+  const appVersion = releaseIdentity.appVersion;
   const buildInfo = await packageBuildInfoModule.createPackageBuildInfo({
     appVersion,
     repositoryRoot,
@@ -336,7 +371,7 @@ async function packageWindowsSpike() {
     appVersion: installerRelease.appVersion,
     architecture: installerRelease.architecture,
     buildRevision: buildInfo.buildRevision,
-    msiProductVersion: installerRelease.msiProductVersion,
+    msiProductVersion: releaseIdentity.msiProductVersion,
     platform: installerRelease.platform,
     releaseChannel: installerRelease.releaseChannel,
     schemaVersion: 1,
@@ -352,6 +387,9 @@ async function packageWindowsSpike() {
       })
     ).stdout.trim();
     assertPilotBuildPreconditions({ buildInfo, currentHead });
+  }
+  if (buildMode.kind === 'standard' && appVersion !== packageAppVersion) {
+    throw new Error('WINDOWS_PACKAGE_RELEASE_IDENTITY_MISMATCH');
   }
   await assertSafeBackendStage();
   await inspectPackageArtifactInventory({
