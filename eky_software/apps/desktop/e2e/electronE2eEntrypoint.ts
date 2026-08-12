@@ -111,6 +111,12 @@ if (hasSingleInstanceLock) {
           root: undefined,
           userDataPath: undefined,
         },
+        updateSmokeConfiguration: {
+          enabled: false,
+          phase: undefined,
+          root: undefined,
+          userDataPath: undefined,
+        },
         userDataPath: config.paths.userDataPath,
       });
     },
