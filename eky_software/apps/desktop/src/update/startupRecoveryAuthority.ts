@@ -1,8 +1,10 @@
 import type { ProfileRestoreActivationJournal } from '../profileBackup/restore/profileRestoreActivationJournal.js';
+import type { DirectSetupMigrationRecovery } from './directSetupMigrationRecovery.js';
 import type { UpdateJournal } from './updateJournal.js';
 
 export type StartupRecoveryAuthority =
   | 'none'
+  | 'directSetupBusinessRollback'
   | 'profileRestore'
   | 'updateBusinessRollback';
 
@@ -18,8 +20,14 @@ const terminalUpdateStates = new Set<UpdateJournal['state']>([
   'installerNotApplied',
   'rolledBack',
 ]);
+const terminalDirectSetupStates = new Set<DirectSetupMigrationRecovery['state']>([
+  'accepted',
+]);
 
 export function resolveStartupRecoveryAuthority(input: {
+  directSetupRecovery:
+    | Readonly<DirectSetupMigrationRecovery>
+    | undefined;
   profileRestoreJournal:
     | Readonly<ProfileRestoreActivationJournal>
     | undefined;
@@ -38,8 +46,23 @@ export function resolveStartupRecoveryAuthority(input: {
   }
 
   if (
+    input.directSetupRecovery?.state === 'businessRollbackStarting' &&
+    input.profileRestoreJournal.operationId ===
+      input.directSetupRecovery.correlationId
+  ) {
+    return 'directSetupBusinessRollback';
+  }
+
+  if (
     input.updateJournal !== undefined &&
     !terminalUpdateStates.has(input.updateJournal.state)
+  ) {
+    throw new StartupRecoveryAuthorityConflictError();
+  }
+
+  if (
+    input.directSetupRecovery !== undefined &&
+    !terminalDirectSetupStates.has(input.directSetupRecovery.state)
   ) {
     throw new StartupRecoveryAuthorityConflictError();
   }

@@ -166,6 +166,46 @@ describe('first-start update coordinator', () => {
     );
   });
 
+  it('accepts only the previous build after a direct Setup business rollback', async () => {
+    const fixture = createFixture({
+      acceptedBuild: acceptedCurrentBuild(),
+      directSetupRecovery: createDirectSetupAwaitingPreviousBuild(),
+      runningReleaseInfo: currentReleaseInfo,
+    });
+
+    await fixture.coordinator.beforeMigrations(
+      createInspection('existing', 0),
+    );
+    await fixture.coordinator.acceptAfterBackendReady();
+
+    expect(fixture.acceptedWrites).toEqual([
+      expect.objectContaining({
+        appVersion: currentReleaseInfo.appVersion,
+        buildRevision: currentReleaseInfo.buildRevision,
+      }),
+    ]);
+    expect(fixture.directRecoveryStates).toEqual(['accepted', 'cleared']);
+    expect(fixture.releaseProtectedPoint).toHaveBeenCalledWith(
+      preMigrationPointReference,
+    );
+  });
+
+  it('rejects the target build while direct Setup recovery awaits the previous build', async () => {
+    const fixture = createFixture({
+      acceptedBuild: acceptedCurrentBuild(),
+      directSetupRecovery: createDirectSetupAwaitingPreviousBuild(),
+    });
+
+    await expect(
+      fixture.coordinator.beforeMigrations(
+        createInspection('existing', 1),
+      ),
+    ).rejects.toThrow(FirstStartUpdateError);
+
+    expect(fixture.acceptedWrites).toHaveLength(0);
+    expect(fixture.directRecoveryStates).toEqual(['failedSafe']);
+  });
+
   it('keeps an already accepted build read-only at the migration gate', async () => {
     const fixture = createFixture({
       acceptedBuild: acceptedCandidateBuild(),
@@ -742,6 +782,22 @@ function createDirectSetupRunningRecovery() {
       state: 'migrationRunning',
     },
   );
+}
+
+function createDirectSetupAwaitingPreviousBuild() {
+  const running = createDirectSetupRunningRecovery();
+  const required = transitionDirectSetupMigrationRecovery(running, {
+    at: '2026-08-11T18:02:00.000Z',
+    state: 'recoveryRequired',
+  });
+  const rollback = transitionDirectSetupMigrationRecovery(required, {
+    at: '2026-08-11T18:03:00.000Z',
+    state: 'businessRollbackStarting',
+  });
+  return transitionDirectSetupMigrationRecovery(rollback, {
+    at: '2026-08-11T18:04:00.000Z',
+    state: 'awaitingPreviousBuild',
+  });
 }
 
 function createClock(): () => Date {

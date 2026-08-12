@@ -26,6 +26,8 @@ export const directSetupMigrationRecoveryStates = [
   'prepared',
   'migrationRunning',
   'recoveryRequired',
+  'businessRollbackStarting',
+  'awaitingPreviousBuild',
   'accepted',
   'failedSafe',
 ] as const;
@@ -146,6 +148,17 @@ const transitions: Readonly<
   >
 > = {
   accepted: new Set(['accepted']),
+  awaitingPreviousBuild: new Set([
+    'accepted',
+    'awaitingPreviousBuild',
+    'failedSafe',
+  ]),
+  businessRollbackStarting: new Set([
+    'awaitingPreviousBuild',
+    'businessRollbackStarting',
+    'failedSafe',
+    'recoveryRequired',
+  ]),
   failedSafe: new Set(['failedSafe']),
   migrationRunning: new Set([
     'accepted',
@@ -159,7 +172,11 @@ const transitions: Readonly<
     'prepared',
     'recoveryRequired',
   ]),
-  recoveryRequired: new Set(['failedSafe', 'recoveryRequired']),
+  recoveryRequired: new Set([
+    'businessRollbackStarting',
+    'failedSafe',
+    'recoveryRequired',
+  ]),
 };
 
 export function transitionDirectSetupMigrationRecovery(

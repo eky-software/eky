@@ -119,6 +119,7 @@ import {
 import type { LocalUpdateSelectionCapability } from '../update/localUpdateSelectionCapability.js';
 import { createLocalUpdateRuntimePaths } from '../update/localUpdateRuntimePaths.js';
 import { DirectSetupMigrationRecoveryStore } from '../update/directSetupMigrationRecoveryStore.js';
+import { DirectSetupBusinessRollbackCoordinator } from '../update/directSetupBusinessRollbackCoordinator.js';
 import { migrateLegacyLocalUpdateState } from '../update/migrateLegacyLocalUpdateState.js';
 import { AcceptedBuildMetadataStore } from '../update/acceptedBuildMetadataStore.js';
 import { readEncryptedSecretStorageIdentity } from '../update/encryptedSecretStorageIdentity.js';
@@ -506,6 +507,15 @@ async function startDesktopCompositionRuntime({
           profileProtection: updateProfileProtection,
           releaseInfo: options.releaseInfo,
         });
+  const directSetupBusinessRollbackCoordinator =
+    options.releaseInfo === undefined
+      ? undefined
+      : new DirectSetupBusinessRollbackCoordinator({
+          observer: updateObserver,
+          profileProtection: updateProfileProtection,
+          recoveryStore: directSetupMigrationRecoveryStore,
+          releaseInfo: options.releaseInfo,
+        });
   const updateBinaryRollbackCoordinator =
     options.releaseInfo === undefined || localUpdatePackageCache === undefined
       ? undefined
@@ -556,14 +566,20 @@ async function startDesktopCompositionRuntime({
       }),
     ),
   );
-  const [pendingProfileRestoreJournal, pendingUpdateJournal] =
+  const [
+    pendingProfileRestoreJournal,
+    pendingUpdateJournal,
+    pendingDirectSetupRecovery,
+  ] =
     await Promise.all([
       profileRestoreActivationJournalStore.read(),
       updateJournalStore.read(),
+      directSetupMigrationRecoveryStore.read(),
     ]);
   let startupRecoveryAuthority;
   try {
     startupRecoveryAuthority = resolveStartupRecoveryAuthority({
+      directSetupRecovery: pendingDirectSetupRecovery,
       profileRestoreJournal: pendingProfileRestoreJournal,
       updateJournal: pendingUpdateJournal,
     });
@@ -580,6 +596,37 @@ async function startDesktopCompositionRuntime({
         appVersion: desktopAppVersion,
         buildRevision: options.buildInfo.buildRevision,
         errorCode: 'UPDATE_RECOVERY_AUTHORITY_CONFLICT',
+        rollbackPackageSelectionAllowed: false,
+      },
+      ipcMain,
+      logsRoot: operationalLogsRoot,
+      openPath: dependencies.openPath,
+      quitApplication: options.quitApplication,
+      showOpenDialog: dependencies.showOpenDialog,
+      showSaveDialog: dependencies.showSaveDialog,
+    });
+  }
+  if (
+    pendingDirectSetupRecovery?.state === 'failedSafe' ||
+    (pendingDirectSetupRecovery?.state === 'awaitingPreviousBuild' &&
+      options.releaseInfo !== undefined &&
+      buildIdentityMatches(
+        pendingDirectSetupRecovery.runningTargetBuildIdentity,
+        options.releaseInfo,
+      ))
+  ) {
+    return createUpdateRecoveryComposition({
+      applicationPath: options.applicationPath,
+      architecture: process.arch,
+      createWindow: (windowOptions) => new BrowserWindow(windowOptions),
+      electronVersion: process.versions.electron,
+      input: {
+        appVersion: desktopAppVersion,
+        buildRevision: options.buildInfo.buildRevision,
+        errorCode:
+          pendingDirectSetupRecovery.state === 'awaitingPreviousBuild'
+            ? 'UPDATE_DIRECT_SETUP_PREVIOUS_SETUP_REQUIRED'
+            : 'UPDATE_DIRECT_SETUP_RECOVERY_REQUIRED',
         rollbackPackageSelectionAllowed: false,
       },
       ipcMain,
@@ -774,6 +821,37 @@ async function startDesktopCompositionRuntime({
             throw new Error('UPDATE_BUSINESS_ROLLBACK_RECOVERY_REQUIRED');
           }
         }
+        if (startupRecoveryAuthority === 'directSetupBusinessRollback') {
+          if (directSetupBusinessRollbackCoordinator === undefined) {
+            throw new Error('UPDATE_DIRECT_SETUP_RECOVERY_REQUIRED');
+          }
+          const restoreResult =
+            await profileRestoreStartupRecovery.validateAfterBackend({
+              mode: profileRestoreStartupMode,
+              stopBackend: control.stopStartupRuntime,
+              async validateActiveProfile() {
+                await updateProfileProtection.validateActiveProfile();
+              },
+            });
+          if (restoreResult === 'relaunchRequired') {
+            updateRecoveryRelaunchRequested = true;
+            options.relaunchApplication();
+            return;
+          }
+          if (profileRestoreStartupMode === 'validateRolledBackProfile') {
+            await directSetupBusinessRollbackCoordinator
+              .requireRecoveryAfterRestoreRollback();
+          }
+          if (profileRestoreStartupMode !== 'validateRestoredProfile') {
+            throw new Error('UPDATE_DIRECT_SETUP_RECOVERY_REQUIRED');
+          }
+          await directSetupBusinessRollbackCoordinator
+            .completeAfterProfileValidation({ inspection });
+          await control.stopStartupRuntime();
+          updateRecoveryRelaunchRequested = true;
+          options.relaunchApplication();
+          return;
+        }
         if (
           startupRecoveryAuthority !== 'updateBusinessRollback' &&
           updateBusinessRollbackCoordinator !== undefined
@@ -783,6 +861,23 @@ async function startDesktopCompositionRuntime({
               inspection,
             );
           if (rollback === 'relaunching') {
+            return;
+          }
+        }
+        if (directSetupBusinessRollbackCoordinator !== undefined) {
+          const rollback =
+            await directSetupBusinessRollbackCoordinator.startIfRequired(
+              inspection,
+            );
+          if (rollback === 'relaunching') {
+            return;
+          }
+          if (rollback === 'validationRequired') {
+            await directSetupBusinessRollbackCoordinator
+              .completeAfterProfileValidation({ inspection });
+            await control.stopStartupRuntime();
+            updateRecoveryRelaunchRequested = true;
+            options.relaunchApplication();
             return;
           }
         }
@@ -1619,6 +1714,16 @@ function requireSmokeRoot(root: string | undefined): string {
   }
 
   return root;
+}
+
+function buildIdentityMatches(
+  identity: Readonly<{ appVersion: string; buildRevision: string }>,
+  releaseInfo: Readonly<DesktopReleaseInfo>,
+): boolean {
+  return (
+    identity.appVersion === releaseInfo.appVersion &&
+    identity.buildRevision === releaseInfo.buildRevision
+  );
 }
 
 function createInvoicePdfPreviewController(

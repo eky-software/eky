@@ -71,6 +71,33 @@ describe('direct Setup migration recovery record', () => {
       }),
     ).toThrow(DirectSetupMigrationRecoveryValidationError);
   });
+
+  it('requires profile rollback before the previous build can accept recovery', () => {
+    const running = transitionDirectSetupMigrationRecovery(createRecord(), {
+      at: '2026-08-12T18:01:00.000Z',
+      state: 'migrationRunning',
+    });
+    const required = transitionDirectSetupMigrationRecovery(running, {
+      at: '2026-08-12T18:02:00.000Z',
+      state: 'recoveryRequired',
+    });
+    const rollback = transitionDirectSetupMigrationRecovery(required, {
+      at: '2026-08-12T18:03:00.000Z',
+      state: 'businessRollbackStarting',
+    });
+    const previousBuild = transitionDirectSetupMigrationRecovery(rollback, {
+      at: '2026-08-12T18:04:00.000Z',
+      state: 'awaitingPreviousBuild',
+    });
+
+    expect(previousBuild.state).toBe('awaitingPreviousBuild');
+    expect(
+      transitionDirectSetupMigrationRecovery(previousBuild, {
+        at: '2026-08-12T18:05:00.000Z',
+        state: 'accepted',
+      }).state,
+    ).toBe('accepted');
+  });
 });
 
 function createRecord() {

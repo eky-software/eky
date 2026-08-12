@@ -333,12 +333,20 @@ export class FirstStartUpdateCoordinator {
       await this.markDirectSetupRecoveryRequired(mode.recovery);
     }
 
-    const journal = await this.dependencies.journalStore.read();
+    const [journal, directSetupRecovery] = await Promise.all([
+      this.dependencies.journalStore.read(),
+      this.dependencies.directSetupRecoveryStore.read(),
+    ]);
     return (
-      journal?.state === 'rollbackRequired' &&
-      journal.targetVersion === this.dependencies.releaseInfo.appVersion &&
-      journal.candidatePackageIdentity.buildRevision ===
-        this.dependencies.releaseInfo.buildRevision
+      (journal?.state === 'rollbackRequired' &&
+        journal.targetVersion === this.dependencies.releaseInfo.appVersion &&
+        journal.candidatePackageIdentity.buildRevision ===
+          this.dependencies.releaseInfo.buildRevision) ||
+      (directSetupRecovery?.state === 'recoveryRequired' &&
+        directSetupRecovery.runningTargetBuildIdentity.appVersion ===
+          this.dependencies.releaseInfo.appVersion &&
+        directSetupRecovery.runningTargetBuildIdentity.buildRevision ===
+          this.dependencies.releaseInfo.buildRevision)
     );
   }
 
@@ -530,6 +538,13 @@ export class FirstStartUpdateCoordinator {
       | undefined;
     inspection: Readonly<MigrationStartupInspection>;
   }): Promise<FirstStartMode> {
+    if (input.directSetupRecovery?.state === 'awaitingPreviousBuild') {
+      return this.preparePreviousBuildAfterDirectSetupRollback(
+        input.directSetupRecovery,
+        input.acceptedBuild,
+        input.inspection,
+      );
+    }
     if (input.directSetupRecovery?.state === 'accepted') {
       this.assertDirectSetupRecoveryIdentity(
         input.directSetupRecovery,
@@ -596,6 +611,31 @@ export class FirstStartUpdateCoordinator {
     await this.dependencies.directSetupRecoveryStore.write(running);
     this.preMigrationPointReference = recoveryPointReference;
     return { kind: 'directSetup', recovery: running };
+  }
+
+  private preparePreviousBuildAfterDirectSetupRollback(
+    recovery: Readonly<DirectSetupMigrationRecovery>,
+    acceptedBuild: { appVersion: string; buildRevision: string } | undefined,
+    inspection: Readonly<MigrationStartupInspection>,
+  ): FirstStartMode {
+    if (
+      acceptedBuild?.appVersion !==
+        recovery.previousAcceptedBuildIdentity.appVersion ||
+      acceptedBuild.buildRevision !==
+        recovery.previousAcceptedBuildIdentity.buildRevision ||
+      this.dependencies.releaseInfo.appVersion !==
+        recovery.previousAcceptedBuildIdentity.appVersion ||
+      this.dependencies.releaseInfo.buildRevision !==
+        recovery.previousAcceptedBuildIdentity.buildRevision ||
+      inspection.profileState !== 'existing' ||
+      inspection.appliedMigrationCount !== recovery.appliedMigrationCount ||
+      inspection.migrationChainIdentity !== recovery.migrationPrefixIdentity ||
+      inspection.pendingMigrationCount !== 0
+    ) {
+      throw new FirstStartUpdateError();
+    }
+    this.preMigrationPointReference = recovery.recoveryPointReference;
+    return { kind: 'directSetup', recovery };
   }
 
   private async resumeDirectSetupRecovery(
@@ -718,7 +758,10 @@ export class FirstStartUpdateCoordinator {
       .write(
         transitionDirectSetupMigrationRecovery(recovery, {
           at: this.now(),
-          state: 'recoveryRequired',
+          state:
+            recovery.state === 'awaitingPreviousBuild'
+              ? 'failedSafe'
+              : 'recoveryRequired',
         }),
       )
       .catch(() => undefined);
