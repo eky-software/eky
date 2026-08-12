@@ -58,6 +58,7 @@ export function readSafeStartupFailureCode(error: unknown): string {
 function isSafeStartupFailureCode(value: string): boolean {
   return (
     allowedStartupFailureCodes.has(value) ||
-    /^DESKTOP_SMOKE_[A-Z0-9_]{1,80}$/.test(value)
+    /^DESKTOP_SMOKE_[A-Z0-9_]{1,80}$/.test(value) ||
+    /^DESKTOP_UPDATE_SMOKE_[A-Z0-9_]{1,79}$/.test(value)
   );
 }

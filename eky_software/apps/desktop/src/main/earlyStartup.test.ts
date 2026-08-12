@@ -100,7 +100,19 @@ describe('safe desktop early startup', () => {
     ).toBe('DESKTOP_SMOKE_RESTORE_COMPARISON_FAILED');
     expect(
       readSafeStartupFailureCode(
+        new Error('DESKTOP_UPDATE_SMOKE_PROFILE_VALIDATION_FAILED'),
+      ),
+    ).toBe('DESKTOP_UPDATE_SMOKE_PROFILE_VALIDATION_FAILED');
+    expect(
+      readSafeStartupFailureCode(
         new Error('DESKTOP_SMOKE_FAILED\nC:\\Users\\Example\\secret.txt'),
+      ),
+    ).toBe('DESKTOP_START_FAILED');
+    expect(
+      readSafeStartupFailureCode(
+        new Error(
+          'DESKTOP_UPDATE_SMOKE_FAILED\nC:\\Users\\Example\\secret.txt',
+        ),
       ),
     ).toBe('DESKTOP_START_FAILED');
   });
