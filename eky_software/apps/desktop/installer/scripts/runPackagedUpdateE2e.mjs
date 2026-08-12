@@ -234,22 +234,21 @@ async function runCoordinatedRollback(scenario) {
   await installFixturePackage(scenario, 'failure', 'coordinated-failure');
   await assertInstalledPackage(scenario, 'failure');
 
-  let rollbackLaunched = false;
-  for (let attempt = 1; attempt <= 6 && !rollbackLaunched; attempt += 1) {
-    const result = await runApplicationPhase(
-      scenario,
-      'verifyRollback',
-      true,
-    );
-    if (result?.status === 'rollbackInstallerLaunched') {
-      rollbackLaunched = true;
-    } else if (result !== undefined && result.status !== 'failed') {
-      throw new Error('PACKAGED_UPDATE_E2E_ROLLBACK_SEQUENCE_INVALID');
-    }
-  }
-  if (!rollbackLaunched) {
-    throw new Error('PACKAGED_UPDATE_E2E_ROLLBACK_HANDOFF_MISSING');
-  }
+  await runExpectedApplicationPhaseState(
+    scenario,
+    'verifyRollback',
+    'failed',
+  );
+  await runExpectedApplicationPhaseState(
+    scenario,
+    'verifyRollback',
+    'noResult',
+  );
+  await runExpectedApplicationPhaseState(
+    scenario,
+    'verifyRollback',
+    'rollbackInstallerLaunched',
+  );
   await waitForStableInstalledPackage(scenario, 'current');
   const finalResult = await runApplicationPhase(scenario, 'verifyRollback');
   assertOkResult(finalResult, {
@@ -286,22 +285,26 @@ async function runDirectSetupFailure(scenario) {
   await installFixturePackage(scenario, 'failure', 'direct-failure-target');
   await assertInstalledPackage(scenario, 'failure');
 
-  let previousSetupReady = false;
-  for (let attempt = 1; attempt <= 6 && !previousSetupReady; attempt += 1) {
-    const result = await runApplicationPhase(
-      scenario,
-      'verifyDirectFailure',
-      true,
-    );
-    if (result?.status === 'previousSetupReady') {
-      previousSetupReady = true;
-    } else if (result !== undefined && result.status !== 'failed') {
-      throw new Error('PACKAGED_UPDATE_E2E_DIRECT_FAILURE_SEQUENCE_INVALID');
-    }
-  }
-  if (!previousSetupReady) {
-    throw new Error('PACKAGED_UPDATE_E2E_PREVIOUS_SETUP_NOT_REQUESTED');
-  }
+  await runExpectedApplicationPhaseState(
+    scenario,
+    'verifyDirectFailure',
+    'failed',
+  );
+  await runExpectedApplicationPhaseState(
+    scenario,
+    'verifyDirectFailure',
+    'noResult',
+  );
+  await runExpectedApplicationPhaseState(
+    scenario,
+    'verifyDirectFailure',
+    'noResult',
+  );
+  await runExpectedApplicationPhaseState(
+    scenario,
+    'verifyDirectFailure',
+    'previousSetupReady',
+  );
   await installFixturePackage(scenario, 'current', 'direct-failure-rollback');
   await assertInstalledPackage(scenario, 'current');
   const finalResult = await runApplicationPhase(
@@ -345,18 +348,11 @@ async function runBackupForwardRestore(scenario) {
   const restore = await runApplicationPhase(scenario, 'restoreBackup');
   assertPackagedUpdateSmokeResultStatus(restore, 'restoreReady');
 
-  let finalResult;
-  for (let attempt = 1; attempt <= 4 && finalResult === undefined; attempt += 1) {
-    const result = await runApplicationPhase(scenario, 'verifyBackup', true);
-    if (result?.status === 'ok') {
-      finalResult = result;
-    } else if (result !== undefined && result.status !== 'failed') {
-      throw new Error('PACKAGED_UPDATE_E2E_BACKUP_SEQUENCE_INVALID');
-    }
-  }
-  if (finalResult === undefined) {
-    throw new Error('PACKAGED_UPDATE_E2E_BACKUP_FORWARD_MISSING');
-  }
+  const finalResult = await runExpectedApplicationPhaseState(
+    scenario,
+    'verifyBackup',
+    'ok',
+  );
   assertOkResult(finalResult, {
     appVersion: scenario.packages.next.appVersion,
     journalState: null,
@@ -513,18 +509,44 @@ async function runApplicationPhase(scenario, phase, allowNoResult = false) {
   );
   result ??= await tryReadSmokeResult(resultPath, phase);
   await waitForNoEkyProcess();
-  if (result === undefined) {
-    if (allowNoResult && exit.signal === null) {
-      return undefined;
-    }
-    throw new Error('PACKAGED_UPDATE_E2E_APPLICATION_RESULT_MISSING');
-  }
-  if (
-    result.status !== 'failed' &&
-    (exit.code !== 0 || exit.signal !== null)
-  ) {
+  return validateApplicationPhaseOutcome({
+    allowNoResult,
+    exit,
+    result,
+  });
+}
+
+export function validateApplicationPhaseOutcome({
+  allowNoResult = false,
+  exit,
+  result,
+}) {
+  if (exit?.code !== 0 || exit.signal !== null) {
     throw new Error('PACKAGED_UPDATE_E2E_APPLICATION_EXIT_INVALID');
   }
+  if (result === undefined && !allowNoResult) {
+    throw new Error('PACKAGED_UPDATE_E2E_APPLICATION_RESULT_MISSING');
+  }
+  return result;
+}
+
+async function runExpectedApplicationPhaseState(
+  scenario,
+  phase,
+  expectedStatus,
+) {
+  const result = await runApplicationPhase(
+    scenario,
+    phase,
+    expectedStatus === 'noResult',
+  );
+  if (expectedStatus === 'noResult') {
+    if (result !== undefined) {
+      throw new Error('PACKAGED_UPDATE_E2E_APPLICATION_SEQUENCE_INVALID');
+    }
+    return undefined;
+  }
+  assertPackagedUpdateSmokeResultStatus(result, expectedStatus);
   return result;
 }
 

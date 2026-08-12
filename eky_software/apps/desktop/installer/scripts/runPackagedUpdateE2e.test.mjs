@@ -7,6 +7,7 @@ import {
   createWindowsInstallerArguments,
   directoryInventoriesEqual,
   formatWindowsInstallerProductCode,
+  validateApplicationPhaseOutcome,
 } from './runPackagedUpdateE2e.mjs';
 
 describe('packaged update E2E runner boundaries', () => {
@@ -130,6 +131,50 @@ describe('packaged update E2E runner boundaries', () => {
           'ok',
         ),
       /PACKAGED_UPDATE_E2E_APPLICATION_DESKTOP_UPDATE_SMOKE_UNEXPECTED_RECOVERY_REQUIRED_AT_preMigrationCoordinatedPackageValidation/,
+    );
+  });
+
+  it('accepts a missing transitional result only after a clean application exit', () => {
+    assert.equal(
+      validateApplicationPhaseOutcome({
+        allowNoResult: true,
+        exit: { code: 0, signal: null },
+        result: undefined,
+      }),
+      undefined,
+    );
+    assert.throws(
+      () =>
+        validateApplicationPhaseOutcome({
+          allowNoResult: true,
+          exit: { code: 1, signal: null },
+          result: undefined,
+        }),
+      /PACKAGED_UPDATE_E2E_APPLICATION_EXIT_INVALID/,
+    );
+    assert.throws(
+      () =>
+        validateApplicationPhaseOutcome({
+          allowNoResult: true,
+          exit: { code: 0, signal: 'SIGTERM' },
+          result: undefined,
+        }),
+      /PACKAGED_UPDATE_E2E_APPLICATION_EXIT_INVALID/,
+    );
+  });
+
+  it('requires a clean exit even when the application wrote a failed result', () => {
+    assert.throws(
+      () =>
+        validateApplicationPhaseOutcome({
+          exit: { code: 1, signal: null },
+          result: {
+            code: 'DESKTOP_UPDATE_SMOKE_SYNTHETIC_FAILURE',
+            phase: 'verifyRollback',
+            status: 'failed',
+          },
+        }),
+      /PACKAGED_UPDATE_E2E_APPLICATION_EXIT_INVALID/,
     );
   });
 });
