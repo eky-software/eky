@@ -60,6 +60,27 @@ export function createWindowsPackageReleaseIdentity(mode, release) {
   });
 }
 
+export function createWindowsPackageReleaseInfo({
+  buildRevision,
+  mode,
+  release,
+  upgradeCode,
+}) {
+  const identity = createWindowsPackageReleaseIdentity(mode, release);
+
+  return Object.freeze({
+    appIdentity: release.appIdentity,
+    appVersion: identity.appVersion,
+    architecture: release.architecture,
+    buildRevision,
+    msiProductVersion: identity.msiProductVersion,
+    platform: release.platform,
+    releaseChannel: release.releaseChannel,
+    schemaVersion: 1,
+    upgradeCode,
+  });
+}
+
 export function getUpdateFixtureMigrationMode(mode) {
   return mode.kind === 'update-e2e-fixture'
     ? mode.definition.migrationMode

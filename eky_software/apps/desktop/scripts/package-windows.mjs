@@ -36,6 +36,7 @@ import {
 } from './staged-better-sqlite-runtime.mjs';
 import {
   createWindowsPackageReleaseIdentity,
+  createWindowsPackageReleaseInfo,
   getUpdateFixtureMigrationMode,
   getWindowsPackageDirectoryNames,
   readWindowsPackageBuildMode,
@@ -366,15 +367,10 @@ async function packageWindowsSpike() {
     appVersion,
     repositoryRoot,
   });
-  const releaseInfo = Object.freeze({
-    appIdentity: installerRelease.appIdentity,
-    appVersion: installerRelease.appVersion,
-    architecture: installerRelease.architecture,
+  const releaseInfo = createWindowsPackageReleaseInfo({
     buildRevision: buildInfo.buildRevision,
-    msiProductVersion: releaseIdentity.msiProductVersion,
-    platform: installerRelease.platform,
-    releaseChannel: installerRelease.releaseChannel,
-    schemaVersion: 1,
+    mode: buildMode,
+    release: installerRelease,
     upgradeCode: INSTALLER_UPGRADE_CODE,
   });
   let currentHead;

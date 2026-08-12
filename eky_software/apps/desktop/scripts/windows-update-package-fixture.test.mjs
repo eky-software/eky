@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import {
   createWindowsPackageReleaseIdentity,
+  createWindowsPackageReleaseInfo,
   getUpdateFixtureMigrationMode,
   getWindowsPackageDirectoryNames,
   readWindowsPackageBuildMode,
@@ -45,6 +46,38 @@ describe('Windows update package fixtures', () => {
     assert.equal(getUpdateFixtureMigrationMode(current), 'omit-latest-two');
     assert.equal(getUpdateFixtureMigrationMode(next), 'complete');
     assert.equal(getUpdateFixtureMigrationMode(failure), 'fail-latest');
+  });
+
+  it('keeps packaged runtime and MSI release metadata on the same identity', () => {
+    const mode = readWindowsPackageBuildMode(['--update-e2e-next']);
+    const release = {
+      appIdentity: 'Eky',
+      appVersion: '9.9.9',
+      architecture: 'x64',
+      msiProductVersion: '9.9.9',
+      platform: 'win32',
+      releaseChannel: 'stable',
+    };
+
+    assert.deepEqual(
+      createWindowsPackageReleaseInfo({
+        buildRevision: 'abc123',
+        mode,
+        release,
+        upgradeCode: 'upgrade-code',
+      }),
+      {
+        appIdentity: 'Eky',
+        appVersion: '0.0.0-update-fixture.2',
+        architecture: 'x64',
+        buildRevision: 'abc123',
+        msiProductVersion: '0.0.2',
+        platform: 'win32',
+        releaseChannel: 'stable',
+        schemaVersion: 1,
+        upgradeCode: 'upgrade-code',
+      },
+    );
   });
 
   it('rejects arbitrary package modes and arguments', () => {
