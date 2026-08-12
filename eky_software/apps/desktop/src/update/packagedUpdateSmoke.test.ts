@@ -93,12 +93,12 @@ describe('packaged update smoke result boundary', () => {
     await writePackagedUpdateSmokeFailure(
       configuration,
       'UPDATE_RECOVERY_REQUIRED',
-      'packageCacheRotation',
+      'preMigrationCoordinatedPackageValidation',
     );
 
     expect(await readResult(configuration)).toEqual({
       code: 'UPDATE_RECOVERY_REQUIRED',
-      failureStage: 'packageCacheRotation',
+      failureStage: 'preMigrationCoordinatedPackageValidation',
       phase: 'verifySuccess',
       status: 'failed',
     });

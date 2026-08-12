@@ -123,13 +123,13 @@ describe('packaged update E2E runner boundaries', () => {
         assertPackagedUpdateSmokeResultStatus(
           {
             code: 'DESKTOP_UPDATE_SMOKE_UNEXPECTED_RECOVERY_REQUIRED',
-            failureStage: 'packageCacheRotation',
+            failureStage: 'preMigrationCoordinatedPackageValidation',
             phase: 'verifySuccess',
             status: 'failed',
           },
           'ok',
         ),
-      /PACKAGED_UPDATE_E2E_APPLICATION_DESKTOP_UPDATE_SMOKE_UNEXPECTED_RECOVERY_REQUIRED_AT_packageCacheRotation/,
+      /PACKAGED_UPDATE_E2E_APPLICATION_DESKTOP_UPDATE_SMOKE_UNEXPECTED_RECOVERY_REQUIRED_AT_preMigrationCoordinatedPackageValidation/,
     );
   });
 });

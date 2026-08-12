@@ -324,6 +324,26 @@ describe('first-start update coordinator', () => {
     ]);
   });
 
+  it('reports only a bounded stage when coordinated package validation fails', async () => {
+    const fixture = createFixture({
+      acceptedBuild: acceptedCurrentBuild(),
+      journal: createJournal('awaitingFirstStart'),
+      revalidationFails: true,
+    });
+
+    const error = await fixture.coordinator
+      .beforeMigrations(createInspection('existing', 0))
+      .catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({
+      failureStage: 'preMigrationCoordinatedPackageValidation',
+      message: 'The installed Eky build could not be accepted safely.',
+      name: 'FirstStartUpdateError',
+    });
+    expect(String(error)).not.toContain('C:\\private');
+    expect(fixture.journalStates).toEqual(['rollbackRequired']);
+  });
+
   it('keeps a committed acceptance when retention cleanup must be retried later', async () => {
     const fixture = createFixture({
       acceptedBuild: {
@@ -610,6 +630,7 @@ function createFixture(options: {
   directSetupRecovery?: Readonly<DirectSetupMigrationRecovery>;
   journal?: Readonly<UpdateJournal>;
   promoteFails?: boolean;
+  revalidationFails?: boolean;
   rejectConcurrentRevalidations?: boolean;
   releaseFails?: boolean;
   runningReleaseInfo?: typeof releaseInfo;
@@ -674,6 +695,9 @@ function createFixture(options: {
       normalizeRolledBackPackages,
       promoteAcceptedCandidate,
       async revalidateJournalPackage(input) {
+        if (options.revalidationFails) {
+          throw new Error('synthetic C:\\private\\update-cache failure');
+        }
         if (options.rejectConcurrentRevalidations && revalidationActive) {
           throw new Error('concurrent cache operation');
         }

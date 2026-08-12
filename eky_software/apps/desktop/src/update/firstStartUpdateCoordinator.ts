@@ -76,10 +76,25 @@ type FirstStartMode =
     }
   | { kind: 'initialInstall' | 'normal' };
 
+export type FirstStartUpdateFailureStage =
+  | 'acceptance'
+  | 'packageCacheRotation'
+  | 'preMigrationBuildIdentity'
+  | 'preMigrationCoordinatedJournalTransition'
+  | 'preMigrationCoordinatedPackageValidation'
+  | 'preMigrationDirectSetup'
+  | 'preMigrationInstallerNotApplied'
+  | 'preMigrationJournalConsistency'
+  | 'preMigrationPendingMigrations'
+  | 'preMigrationRecoveryPoint'
+  | 'preMigrationRollback'
+  | 'preMigrationRunningBuildIdentity'
+  | 'preMigrationSecretIdentity'
+  | 'preMigrationStateRead';
+
 export class FirstStartUpdateError extends Error {
   constructor(
-    readonly failureStage: 'acceptance' | 'packageCacheRotation' =
-      'acceptance',
+    readonly failureStage: FirstStartUpdateFailureStage = 'acceptance',
   ) {
     super('The installed Eky build could not be accepted safely.');
     this.name = 'FirstStartUpdateError';
@@ -103,13 +118,15 @@ export class FirstStartUpdateCoordinator {
     inspection: Readonly<MigrationStartupInspection>,
   ): Promise<void> {
     if (this.migrationGateCompleted) {
-      throw new FirstStartUpdateError();
+      throw new FirstStartUpdateError('preMigrationJournalConsistency');
     }
 
     let coordinatedJournal: Readonly<UpdateJournal> | undefined;
     let installerNotAppliedJournal: Readonly<UpdateJournal> | undefined;
     let rollbackJournal: Readonly<UpdateJournal> | undefined;
     let directSetupRecovery: Readonly<DirectSetupMigrationRecovery> | undefined;
+    let failureStage: FirstStartUpdateFailureStage =
+      'preMigrationStateRead';
     try {
       const [journal, acceptedBuild, storedDirectSetupRecovery] = await Promise.all([
         this.dependencies.journalStore.read(),
@@ -125,20 +142,24 @@ export class FirstStartUpdateCoordinator {
           : (this.dependencies.operationIdFactory ?? randomUUID)();
       this.operationStartedAt = Date.now();
       this.notifyOperationStarted();
+      failureStage = 'preMigrationBuildIdentity';
       this.assertPackagedBuildIdentity();
+      failureStage = 'preMigrationSecretIdentity';
       this.secretStorageIdentity =
         await this.dependencies.readSecretStorageIdentity();
 
+      failureStage = 'preMigrationJournalConsistency';
       if (
         directSetupRecovery !== undefined &&
         journal !== undefined &&
         journal.state !== 'accepted'
       ) {
-        throw new FirstStartUpdateError();
+        throw new FirstStartUpdateError('preMigrationJournalConsistency');
       }
 
       if (journal !== undefined && journal.state !== 'accepted') {
         installerNotAppliedJournal = journal;
+        failureStage = 'preMigrationRunningBuildIdentity';
         const runningJournalBuild = this.classifyRunningJournalBuild(journal);
         if (runningJournalBuild === 'target') {
           installerNotAppliedJournal = undefined;
@@ -170,8 +191,9 @@ export class FirstStartUpdateCoordinator {
             acceptedBuild.buildRevision !==
               journal.candidatePackageIdentity.buildRevision)
         ) {
-          throw new FirstStartUpdateError();
+          throw new FirstStartUpdateError('preMigrationJournalConsistency');
         }
+        failureStage = 'preMigrationDirectSetup';
         this.mode = await this.prepareUncoordinatedFirstStart({
           acceptedBuild,
           directSetupRecovery,
@@ -179,24 +201,26 @@ export class FirstStartUpdateCoordinator {
         });
       }
 
+      failureStage = 'preMigrationPendingMigrations';
       if (
         this.mode.kind === 'normal' &&
         inspection.pendingMigrationCount > 0
       ) {
-        throw new FirstStartUpdateError();
+        throw new FirstStartUpdateError('preMigrationPendingMigrations');
       }
       if (
         inspection.profileState === 'existing' &&
         inspection.pendingMigrationCount > 0 &&
         this.mode.kind === 'coordinated'
       ) {
+        failureStage = 'preMigrationRecoveryPoint';
         this.preMigrationPointReference =
           await this.dependencies.profileProtection
             .createValidatedPreMigrationPoint();
       }
 
       this.migrationGateCompleted = true;
-    } catch {
+    } catch (error) {
       await this.markRollbackRequired(coordinatedJournal);
       await this.markInstallerNotAppliedFailedSafe(
         installerNotAppliedJournal,
@@ -204,7 +228,10 @@ export class FirstStartUpdateCoordinator {
       await this.markRollbackRecoveryRequired(rollbackJournal);
       await this.markDirectSetupRecoveryRequired(directSetupRecovery);
       this.notifyOperationFailed();
-      throw new FirstStartUpdateError();
+      throw error instanceof FirstStartUpdateError &&
+        error.failureStage !== 'acceptance'
+        ? error
+        : new FirstStartUpdateError(failureStage);
     }
   }
 
@@ -221,7 +248,7 @@ export class FirstStartUpdateCoordinator {
 
     const coordinatedJournal =
       mode.kind === 'coordinated' ? mode.journal : undefined;
-    let failureStage: FirstStartUpdateError['failureStage'] = 'acceptance';
+    let failureStage: FirstStartUpdateFailureStage = 'acceptance';
     try {
       const activeProfile =
         await this.dependencies.profileProtection.validateActiveProfile();
@@ -379,7 +406,7 @@ export class FirstStartUpdateCoordinator {
     ) {
       return 'current';
     }
-    throw new FirstStartUpdateError();
+    throw new FirstStartUpdateError('preMigrationRunningBuildIdentity');
   }
 
   private async prepareInstallerNotApplied(input: {
@@ -403,7 +430,7 @@ export class FirstStartUpdateCoordinator {
       inspection.migrationChainIdentity !==
         journal.preUpdateMigrationChainIdentity
     ) {
-      throw new FirstStartUpdateError();
+      throw new FirstStartUpdateError('preMigrationInstallerNotApplied');
     }
     await this.dependencies.cache.revalidateJournalPackage({
       expectedIdentity: toExpectedIdentity(
@@ -443,7 +470,7 @@ export class FirstStartUpdateCoordinator {
       inspection.migrationChainIdentity !==
         journal.preUpdateMigrationChainIdentity
     ) {
-      throw new FirstStartUpdateError();
+      throw new FirstStartUpdateError('preMigrationRollback');
     }
     await this.dependencies.cache.normalizeRolledBackPackages({
       candidateIdentity: toExpectedIdentity(
@@ -470,7 +497,7 @@ export class FirstStartUpdateCoordinator {
       journal.releaseChannel !== this.dependencies.releaseInfo.releaseChannel ||
       journal.recoveryPointReference === undefined
     ) {
-      throw new FirstStartUpdateError();
+      throw new FirstStartUpdateError('preMigrationJournalConsistency');
     }
 
     let rotated = false;
@@ -490,8 +517,14 @@ export class FirstStartUpdateCoordinator {
         role: 'candidate',
       });
     } catch {
-      await this.assertAcceptedRotation(journal);
-      rotated = true;
+      try {
+        await this.assertAcceptedRotation(journal);
+        rotated = true;
+      } catch {
+        throw new FirstStartUpdateError(
+          'preMigrationCoordinatedPackageValidation',
+        );
+      }
     }
 
     const validatingJournal =
@@ -502,7 +535,13 @@ export class FirstStartUpdateCoordinator {
             state: 'firstStartValidating',
           });
     if (validatingJournal !== journal) {
-      await this.dependencies.journalStore.write(validatingJournal);
+      try {
+        await this.dependencies.journalStore.write(validatingJournal);
+      } catch {
+        throw new FirstStartUpdateError(
+          'preMigrationCoordinatedJournalTransition',
+        );
+      }
     }
     return { journal: validatingJournal, kind: 'coordinated', rotated };
   }
@@ -531,7 +570,7 @@ export class FirstStartUpdateCoordinator {
         acceptedBuild.appVersion,
       ) <= 0
     ) {
-      throw new FirstStartUpdateError();
+      throw new FirstStartUpdateError('preMigrationDirectSetup');
     }
     return { kind: 'directSetup' };
   }
@@ -562,7 +601,7 @@ export class FirstStartUpdateCoordinator {
         true,
       );
       if (input.inspection.pendingMigrationCount !== 0) {
-        throw new FirstStartUpdateError();
+        throw new FirstStartUpdateError('preMigrationDirectSetup');
       }
       this.preMigrationPointReference =
         input.directSetupRecovery.recoveryPointReference;
@@ -572,7 +611,7 @@ export class FirstStartUpdateCoordinator {
     const mode = this.resolveDirectSetupMode(input.acceptedBuild);
     if (input.directSetupRecovery !== undefined) {
       if (mode.kind !== 'directSetup') {
-        throw new FirstStartUpdateError();
+        throw new FirstStartUpdateError('preMigrationDirectSetup');
       }
       return {
         kind: 'directSetup',
@@ -591,7 +630,7 @@ export class FirstStartUpdateCoordinator {
       return mode;
     }
     if (input.acceptedBuild === undefined) {
-      throw new FirstStartUpdateError();
+      throw new FirstStartUpdateError('preMigrationDirectSetup');
     }
 
     const recoveryPointReference =
@@ -642,7 +681,7 @@ export class FirstStartUpdateCoordinator {
       inspection.migrationChainIdentity !== recovery.migrationPrefixIdentity ||
       inspection.pendingMigrationCount !== 0
     ) {
-      throw new FirstStartUpdateError();
+      throw new FirstStartUpdateError('preMigrationDirectSetup');
     }
     this.preMigrationPointReference = recovery.recoveryPointReference;
     return { kind: 'directSetup', recovery };
@@ -662,7 +701,7 @@ export class FirstStartUpdateCoordinator {
       inspection.migrationChainIdentity !== recovery.migrationPrefixIdentity ||
       inspection.pendingMigrationCount === 0
     ) {
-      throw new FirstStartUpdateError();
+      throw new FirstStartUpdateError('preMigrationDirectSetup');
     }
     const running = transitionDirectSetupMigrationRecovery(recovery, {
       at: this.now(),
@@ -698,7 +737,7 @@ export class FirstStartUpdateCoordinator {
       recovery.runningTargetBuildIdentity.buildRevision !==
         this.dependencies.releaseInfo.buildRevision
     ) {
-      throw new FirstStartUpdateError();
+      throw new FirstStartUpdateError('preMigrationBuildIdentity');
     }
   }
 
@@ -708,7 +747,7 @@ export class FirstStartUpdateCoordinator {
       this.dependencies.buildInfo.buildRevision !==
         this.dependencies.releaseInfo.buildRevision
     ) {
-      throw new FirstStartUpdateError();
+      throw new FirstStartUpdateError('preMigrationBuildIdentity');
     }
   }
 

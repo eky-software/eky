@@ -18,9 +18,9 @@ describe('packaged update smoke failure diagnostics', () => {
     assert.equal(
       formatPackagedUpdateSmokeFailureDiagnostic({
         code: 'DESKTOP_UPDATE_SMOKE_UNEXPECTED_RECOVERY_REQUIRED',
-        failureStage: 'firstStartAcceptance',
+        failureStage: 'preMigrationCoordinatedPackageValidation',
       }),
-      'PACKAGED_UPDATE_E2E_APPLICATION_DESKTOP_UPDATE_SMOKE_UNEXPECTED_RECOVERY_REQUIRED_AT_firstStartAcceptance',
+      'PACKAGED_UPDATE_E2E_APPLICATION_DESKTOP_UPDATE_SMOKE_UNEXPECTED_RECOVERY_REQUIRED_AT_preMigrationCoordinatedPackageValidation',
     );
     assert.equal(
       formatPackagedUpdateSmokeFailureDiagnostic({

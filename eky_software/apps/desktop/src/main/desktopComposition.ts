@@ -1067,8 +1067,8 @@ async function startDesktopCompositionRuntime({
           options.updateSmokeConfiguration,
           'DESKTOP_UPDATE_SMOKE_UNEXPECTED_RECOVERY_REQUIRED',
           error instanceof FirstStartUpdateError &&
-            error.failureStage === 'packageCacheRotation'
-            ? 'packageCacheRotation'
+            error.failureStage !== 'acceptance'
+            ? error.failureStage
             : packagedUpdateFailureStage,
         );
         options.quitApplication();
