@@ -347,15 +347,17 @@ try {
     -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
   Assert-BusinessDataUnchanged
 
-  $invalidRollbackMsiPath = Join-Path $logRoot 'invalid-rollback.msi'
-  Set-Content -LiteralPath $invalidRollbackMsiPath `
-    -Value 'synthetic invalid rollback package' -Encoding ASCII -NoNewline
+  $failedRollbackBlocker = Join-Path $installRoot `
+    'resources\desktop-runtime\installer-rollback-probe'
+  Set-Content -LiteralPath $failedRollbackBlocker `
+    -Value 'synthetic rollback blocker' -Encoding ASCII -NoNewline
   $failedRollbackExitCode = Invoke-EkyCoordinatedRollback `
     -FailedProductCode $nextProductCode -FailedPackagePath $nextMsiPath `
-    -RollbackPackagePath $invalidRollbackMsiPath
+    -RollbackPackagePath $rollbackMsiPath
   if ($failedRollbackExitCode -ne 21) {
     throw "INSTALLER_UPGRADE_ROLLBACK_REPAIR_RESULT_INVALID:$failedRollbackExitCode"
   }
+  Remove-Item -LiteralPath $failedRollbackBlocker -Force
   Assert-ProductAbsent -ProductCode $currentProductCode
   Assert-ProductInstalled -ProductCode $nextProductCode
   Assert-EkyInstalledPayload -InstallRoot $installRoot `

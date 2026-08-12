@@ -44,18 +44,24 @@ function Invoke-MsiExec {
   param([Parameter(Mandatory = $true)][string[]]$Arguments)
 
   $previousErrorActionPreference = $ErrorActionPreference
+  $exitCode = 1603
   try {
     # A rejected MSI is an expected rollback branch, not a PowerShell failure.
     $ErrorActionPreference = 'Continue'
-    & $MsiExecPath @Arguments 2>$null
-    $exitCode = $LASTEXITCODE
+    try {
+      & $MsiExecPath @Arguments 2>$null
+      if ($null -ne $LASTEXITCODE) {
+        $exitCode = [int]$LASTEXITCODE
+      }
+    } catch {
+      if ($null -ne $LASTEXITCODE) {
+        $exitCode = [int]$LASTEXITCODE
+      }
+    }
   } finally {
     $ErrorActionPreference = $previousErrorActionPreference
   }
-  if ($null -eq $exitCode) {
-    return 1603
-  }
-  return [int]$exitCode
+  return $exitCode
 }
 
 try {
