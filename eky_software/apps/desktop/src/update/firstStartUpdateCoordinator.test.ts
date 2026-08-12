@@ -301,6 +301,29 @@ describe('first-start update coordinator', () => {
     expect(fixture.journalStates).toEqual(['accepted']);
   });
 
+  it('reports a bounded cache-rotation stage when acceptance rotation fails', async () => {
+    const fixture = createFixture({
+      acceptedBuild: acceptedCurrentBuild(),
+      journal: createJournal('awaitingFirstStart'),
+      promoteFails: true,
+    });
+    await fixture.coordinator.beforeMigrations(
+      createInspection('existing', 0),
+    );
+
+    await expect(
+      fixture.coordinator.acceptAfterBackendReady(),
+    ).rejects.toMatchObject({
+      failureStage: 'packageCacheRotation',
+      name: 'FirstStartUpdateError',
+    });
+
+    expect(fixture.journalStates).toEqual([
+      'firstStartValidating',
+      'rollbackRequired',
+    ]);
+  });
+
   it('keeps a committed acceptance when retention cleanup must be retried later', async () => {
     const fixture = createFixture({
       acceptedBuild: {
@@ -586,6 +609,7 @@ function createFixture(options: {
   cacheAlreadyRotated?: boolean;
   directSetupRecovery?: Readonly<DirectSetupMigrationRecovery>;
   journal?: Readonly<UpdateJournal>;
+  promoteFails?: boolean;
   rejectConcurrentRevalidations?: boolean;
   releaseFails?: boolean;
   runningReleaseInfo?: typeof releaseInfo;
@@ -616,6 +640,9 @@ function createFixture(options: {
       options.activeMigrationChainIdentity ?? 'a'.repeat(64),
   }));
   const promoteAcceptedCandidate = vi.fn(async () => {
+    if (options.promoteFails) {
+      throw new Error('synthetic cache rotation failure');
+    }
     cacheRotated = true;
   });
   const normalizeRolledBackPackages = vi.fn(async () => {

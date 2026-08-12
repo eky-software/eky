@@ -26,6 +26,19 @@ const identifierPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const sha256Pattern = /^[0-9a-f]{64}$/;
 
+export const packagedUpdateSmokeFailureStages = Object.freeze([
+  'backendStartup',
+  'profileRestoreValidation',
+  'backendHealthValidation',
+  'oldRuntimeSessionRejection',
+  'firstStartAcceptance',
+  'packageCacheRotation',
+  'recoveryPointSchedulerStart',
+] as const);
+
+export type PackagedUpdateSmokeFailureStage =
+  (typeof packagedUpdateSmokeFailureStages)[number];
+
 export type PackagedUpdateSmokeResult =
   | {
       appVersion: string;
@@ -49,6 +62,7 @@ export type PackagedUpdateSmokeResult =
     }
   | {
       code: string;
+      failureStage?: PackagedUpdateSmokeFailureStage;
       phase: PackagedUpdateSmokePhase;
       status: 'failed';
     };
@@ -234,6 +248,7 @@ export async function writePackagedUpdateSmokeRollbackHandoffResult(
 export async function writePackagedUpdateSmokeFailure(
   configuration: PackagedUpdateSmokeConfiguration,
   errorCode: string,
+  failureStage?: PackagedUpdateSmokeFailureStage,
 ): Promise<void> {
   if (
     !configuration.enabled ||
@@ -244,6 +259,7 @@ export async function writePackagedUpdateSmokeFailure(
   }
   await writePackagedUpdateSmokeResult(configuration, {
     code: errorCode,
+    ...(failureStage === undefined ? {} : { failureStage }),
     phase: configuration.phase,
     status: 'failed',
   });
@@ -297,10 +313,19 @@ export function readPackagedUpdateSmokeResult(
   if (
     value.status === 'failed' &&
     typeof value.code === 'string' &&
-    Object.keys(value).length === 3 &&
+    (Object.keys(value).length === 3 || Object.keys(value).length === 4) &&
+    (value.failureStage === undefined ||
+      isPackagedUpdateSmokeFailureStage(value.failureStage)) &&
     /^[A-Z][A-Z0-9_]{0,99}$/.test(value.code)
   ) {
-    return { code: value.code, phase: value.phase, status: 'failed' };
+    return {
+      code: value.code,
+      ...(value.failureStage === undefined
+        ? {}
+        : { failureStage: value.failureStage }),
+      phase: value.phase,
+      status: 'failed',
+    };
   }
   if (
     value.status === 'ok' &&
@@ -329,6 +354,12 @@ export function readPackagedUpdateSmokeResult(
     };
   }
   return undefined;
+}
+
+function isPackagedUpdateSmokeFailureStage(
+  value: unknown,
+): value is PackagedUpdateSmokeFailureStage {
+  return packagedUpdateSmokeFailureStages.some((stage) => stage === value);
 }
 
 function isPackagedUpdateSmokePhase(

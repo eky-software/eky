@@ -67,6 +67,19 @@ describe('packaged update E2E support', () => {
       () =>
         parsePackagedUpdateSmokeResult(
           {
+            code: 'UPDATE_RECOVERY_REQUIRED',
+            failureStage: 'C:\\private\\profile',
+            phase: 'verifySuccess',
+            status: 'failed',
+          },
+          'verifySuccess',
+        ),
+      /PACKAGED_UPDATE_E2E_RESULT_INVALID/,
+    );
+    assert.throws(
+      () =>
+        parsePackagedUpdateSmokeResult(
+          {
             code: 'safe-but-wrong-case',
             phase: 'verifyRollback',
             status: 'failed',
@@ -131,6 +144,23 @@ describe('packaged update E2E support', () => {
         'verifyRollback',
       ).status,
       'rollbackInstallerLaunched',
+    );
+    assert.deepEqual(
+      parsePackagedUpdateSmokeResult(
+        {
+          code: 'UPDATE_RECOVERY_REQUIRED',
+          failureStage: 'packageCacheRotation',
+          phase: 'verifySuccess',
+          status: 'failed',
+        },
+        'verifySuccess',
+      ),
+      {
+        code: 'UPDATE_RECOVERY_REQUIRED',
+        failureStage: 'packageCacheRotation',
+        phase: 'verifySuccess',
+        status: 'failed',
+      },
     );
   });
 });

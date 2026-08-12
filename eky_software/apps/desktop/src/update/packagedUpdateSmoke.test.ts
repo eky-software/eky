@@ -87,6 +87,31 @@ describe('packaged update smoke result boundary', () => {
     });
   });
 
+  it('writes only an allowlisted packaged startup failure stage', async () => {
+    const configuration = await createConfiguration('verifySuccess');
+
+    await writePackagedUpdateSmokeFailure(
+      configuration,
+      'UPDATE_RECOVERY_REQUIRED',
+      'packageCacheRotation',
+    );
+
+    expect(await readResult(configuration)).toEqual({
+      code: 'UPDATE_RECOVERY_REQUIRED',
+      failureStage: 'packageCacheRotation',
+      phase: 'verifySuccess',
+      status: 'failed',
+    });
+    expect(
+      readPackagedUpdateSmokeResult({
+        code: 'UPDATE_RECOVERY_REQUIRED',
+        failureStage: 'C:\\private\\profile',
+        phase: 'verifySuccess',
+        status: 'failed',
+      }),
+    ).toBeUndefined();
+  });
+
   it.each([
     {
       expectedCode: 'DESKTOP_UPDATE_SMOKE_SECRET_FAILED',

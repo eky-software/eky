@@ -123,7 +123,10 @@ import { DirectSetupBusinessRollbackCoordinator } from '../update/directSetupBus
 import { migrateLegacyLocalUpdateState } from '../update/migrateLegacyLocalUpdateState.js';
 import { AcceptedBuildMetadataStore } from '../update/acceptedBuildMetadataStore.js';
 import { readEncryptedSecretStorageIdentity } from '../update/encryptedSecretStorageIdentity.js';
-import { FirstStartUpdateCoordinator } from '../update/firstStartUpdateCoordinator.js';
+import {
+  FirstStartUpdateCoordinator,
+  FirstStartUpdateError,
+} from '../update/firstStartUpdateCoordinator.js';
 import { createProfileProtectionComposition } from '../update/profileProtectionComposition.js';
 import { UpdateJournalStore } from '../update/updateJournalStore.js';
 import { readUpdateProtectedRecoveryPointReferences } from '../update/updateRecoveryPointProtection.js';
@@ -145,6 +148,7 @@ import {
 } from '../update/packagedUpdateSmokeConfiguration.js';
 import {
   runPackagedUpdateSmoke,
+  type PackagedUpdateSmokeFailureStage,
   writePackagedUpdateSmokeFailure,
   writePackagedUpdateSmokeHandoffResult,
   writePackagedUpdateSmokePreviousSetupResult,
@@ -817,6 +821,8 @@ async function startDesktopCompositionRuntime({
       ),
     });
 
+  let packagedUpdateFailureStage: PackagedUpdateSmokeFailureStage =
+    'backendStartup';
   try {
     await options.reportSmokeStage(
       options.smokeConfiguration.phase === 'restoredProfile'
@@ -990,6 +996,7 @@ async function startDesktopCompositionRuntime({
     });
     await profileSnapshotBrokerClient.waitUntilReady();
     await profileSnapshotBrokerClient.getStatus();
+    packagedUpdateFailureStage = 'profileRestoreValidation';
     const restoreStartupResult =
       await profileRestoreStartupRecovery.validateAfterBackend({
         mode: profileRestoreStartupMode,
@@ -1009,19 +1016,23 @@ async function startDesktopCompositionRuntime({
       options.relaunchApplication();
       return undefined;
     }
+    packagedUpdateFailureStage = 'backendHealthValidation';
     await assertBackendHealth(
       `http://127.0.0.1:${backendHandle.port}`,
       runtimeSessionSecret,
     );
     if (firstStartUpdateCoordinator !== undefined) {
+      packagedUpdateFailureStage = 'oldRuntimeSessionRejection';
       await assertDifferentRuntimeSessionRejected({
         backendOrigin: `http://127.0.0.1:${backendHandle.port}`,
         createRuntimeSession: dependencies.createRuntimeSession,
         fetchImplementation: (url, init) => net.fetch(url, init),
         runtimeSessionSecret,
       });
+      packagedUpdateFailureStage = 'firstStartAcceptance';
       await firstStartUpdateCoordinator.acceptAfterBackendReady();
     }
+    packagedUpdateFailureStage = 'recoveryPointSchedulerStart';
     await recoveryPointScheduler.start();
   } catch (error) {
     await recoveryPointScheduler.stopChecks().catch(() => undefined);
@@ -1050,6 +1061,10 @@ async function startDesktopCompositionRuntime({
         await writePackagedUpdateSmokeFailure(
           options.updateSmokeConfiguration,
           'DESKTOP_UPDATE_SMOKE_UNEXPECTED_RECOVERY_REQUIRED',
+          error instanceof FirstStartUpdateError &&
+            error.failureStage === 'packageCacheRotation'
+            ? 'packageCacheRotation'
+            : packagedUpdateFailureStage,
         );
         options.quitApplication();
         return undefined;

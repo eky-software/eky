@@ -25,6 +25,15 @@ const packageFields = new Set([
   'productCode',
 ]);
 const packageRoles = Object.freeze(['current', 'next', 'failure']);
+const packagedUpdateFailureStages = new Set([
+  'backendStartup',
+  'profileRestoreValidation',
+  'backendHealthValidation',
+  'oldRuntimeSessionRejection',
+  'firstStartAcceptance',
+  'packageCacheRotation',
+  'recoveryPointSchedulerStart',
+]);
 
 export async function readPackagedUpdateE2eFixture(fixturePath) {
   const fixture = await readBoundedJson(fixturePath, maximumFixtureBytes);
@@ -86,9 +95,15 @@ export function parsePackagedUpdateSmokeResult(value, expectedPhase) {
   }
   if (
     value.status === 'failed' &&
-    hasExactFields(value, new Set(['code', 'phase', 'status'])) &&
+    (hasExactFields(value, new Set(['code', 'phase', 'status'])) ||
+      hasExactFields(
+        value,
+        new Set(['code', 'failureStage', 'phase', 'status']),
+      )) &&
     typeof value.code === 'string' &&
-    /^[A-Z][A-Z0-9_]{0,99}$/.test(value.code)
+    /^[A-Z][A-Z0-9_]{0,99}$/.test(value.code) &&
+    (value.failureStage === undefined ||
+      packagedUpdateFailureStages.has(value.failureStage))
   ) {
     return Object.freeze({ ...value });
   }

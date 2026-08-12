@@ -77,7 +77,10 @@ type FirstStartMode =
   | { kind: 'initialInstall' | 'normal' };
 
 export class FirstStartUpdateError extends Error {
-  constructor() {
+  constructor(
+    readonly failureStage: 'acceptance' | 'packageCacheRotation' =
+      'acceptance',
+  ) {
     super('The installed Eky build could not be accepted safely.');
     this.name = 'FirstStartUpdateError';
   }
@@ -218,6 +221,7 @@ export class FirstStartUpdateCoordinator {
 
     const coordinatedJournal =
       mode.kind === 'coordinated' ? mode.journal : undefined;
+    let failureStage: FirstStartUpdateError['failureStage'] = 'acceptance';
     try {
       const activeProfile =
         await this.dependencies.profileProtection.validateActiveProfile();
@@ -236,6 +240,7 @@ export class FirstStartUpdateCoordinator {
       }
 
       if (mode.kind === 'coordinated') {
+        failureStage = 'packageCacheRotation';
         if (!mode.rotated) {
           await this.dependencies.cache.promoteAcceptedCandidate({
             candidateIdentity: toExpectedIdentity(
@@ -249,6 +254,7 @@ export class FirstStartUpdateCoordinator {
           });
         }
         await this.assertAcceptedRotation(mode.journal);
+        failureStage = 'acceptance';
       }
 
       const acceptedDirectSetupRecovery =
@@ -319,7 +325,7 @@ export class FirstStartUpdateCoordinator {
         mode.kind === 'directSetup' ? mode.recovery : undefined,
       );
       this.notifyOperationFailed();
-      throw new FirstStartUpdateError();
+      throw new FirstStartUpdateError(failureStage);
     }
 
     await this.releaseRecoveryPointProtectionAfterAcceptance(mode);
