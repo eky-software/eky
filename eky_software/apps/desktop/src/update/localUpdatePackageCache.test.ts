@@ -23,6 +23,7 @@ import {
   LocalUpdatePackageCacheError,
 } from './localUpdatePackageCache.js';
 import type { WindowsInstallerIdentity } from './windowsInstallerIdentity.js';
+import { createExpectedWindowsInstallerProductCode } from './windowsInstallerProductCode.js';
 
 const roots: string[] = [];
 const releaseInfo: DesktopReleaseInfo = {
@@ -316,6 +317,158 @@ describe('local update package cache', () => {
       ).resolves.toBeDefined();
     }
   });
+
+  it('discards a corrupted candidate without changing current or previous', async () => {
+    const pair = await createCurrentAndCandidatePair();
+    await pair.cache.promoteAcceptedCandidate({
+      candidateIdentity: expectedIdentityOf(pair.candidate.manifest),
+      currentIdentity: expectedIdentityOf(pair.current.manifest),
+    });
+    const nextCandidate = await createFixture(
+      {
+        appVersion: '0.1.0-alpha.3',
+        buildRevision: 'fedcba987654',
+        msiProductVersion: '0.1.3',
+      },
+      pair.current,
+    );
+    await pair.cache.stageSelectedPackage({
+      manifestPath: nextCandidate.manifestPath,
+      role: 'candidate',
+    });
+    await writeFile(
+      join(pair.current.cacheRoot, 'candidate', 'slot-metadata.json'),
+      '{',
+    );
+
+    await pair.cache.discardCandidate();
+
+    expect((await readdir(pair.current.cacheRoot)).sort()).toEqual([
+      'current',
+      'previous',
+    ]);
+    await expect(
+      pair.cache.revalidateJournalPackage({
+        expectedIdentity: expectedIdentityOf(pair.candidate.manifest),
+        role: 'current',
+      }),
+    ).resolves.toBeDefined();
+    await expect(
+      pair.cache.revalidateJournalPackage({
+        expectedIdentity: expectedIdentityOf(pair.current.manifest),
+        role: 'previous',
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it('repairs corrupted current registration without changing candidate or previous', async () => {
+    const pair = await createCurrentAndCandidatePair();
+    await pair.cache.promoteAcceptedCandidate({
+      candidateIdentity: expectedIdentityOf(pair.candidate.manifest),
+      currentIdentity: expectedIdentityOf(pair.current.manifest),
+    });
+    const nextCandidate = await createFixture(
+      {
+        appVersion: '0.1.0-alpha.3',
+        buildRevision: 'fedcba987654',
+        msiProductVersion: '0.1.3',
+      },
+      pair.current,
+    );
+    await pair.cache.stageSelectedPackage({
+      manifestPath: nextCandidate.manifestPath,
+      role: 'candidate',
+    });
+    await writeFile(
+      join(pair.current.cacheRoot, 'current', 'slot-metadata.json'),
+      '{',
+    );
+
+    await expect(
+      pair.cache.repairCurrentRegistration({
+        manifestPath: pair.current.manifestPath,
+      }),
+    ).resolves.toMatchObject({ role: 'current' });
+
+    expect((await readdir(pair.current.cacheRoot)).sort()).toEqual([
+      'candidate',
+      'current',
+      'previous',
+    ]);
+    await expect(
+      pair.cache.revalidateJournalPackage({
+        expectedIdentity: expectedIdentityOf(pair.current.manifest),
+        role: 'current',
+      }),
+    ).resolves.toBeDefined();
+    await expect(
+      pair.cache.revalidateJournalPackage({
+        expectedIdentity: expectedIdentityOf(nextCandidate.manifest),
+        role: 'candidate',
+      }),
+    ).resolves.toBeDefined();
+    await expect(
+      pair.cache.revalidateJournalPackage({
+        expectedIdentity: expectedIdentityOf(pair.current.manifest),
+        role: 'previous',
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it('rejects a wrong current repair package before touching corrupted current', async () => {
+    const pair = await createCurrentAndCandidatePair();
+    const currentMetadataPath = join(
+      pair.current.cacheRoot,
+      'current',
+      'slot-metadata.json',
+    );
+    await writeFile(currentMetadataPath, '{');
+
+    await expect(
+      pair.cache.repairCurrentRegistration({
+        manifestPath: pair.candidate.manifestPath,
+      }),
+    ).rejects.toThrow(LocalUpdatePackageCacheError);
+
+    expect(await readFile(currentMetadataPath, 'utf8')).toBe('{');
+    await expect(
+      pair.cache.revalidateJournalPackage({
+        expectedIdentity: expectedIdentityOf(pair.candidate.manifest),
+        role: 'candidate',
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it('recovers both interrupted current repair rename states', async () => {
+    for (const interruption of ['backupOnly', 'nextOnly'] as const) {
+      const fixture = await createFixture();
+      const cache = createCache(fixture.cacheRoot);
+      await cache.stageSelectedPackage({
+        manifestPath: fixture.manifestPath,
+        role: 'current',
+      });
+      await rename(
+        join(fixture.cacheRoot, 'current'),
+        join(
+          fixture.cacheRoot,
+          interruption === 'backupOnly'
+            ? '.current-repair-backup'
+            : '.current-repair-next',
+        ),
+      );
+
+      await expect(
+        cache.repairCurrentRegistration({
+          manifestPath: fixture.manifestPath,
+        }),
+      ).resolves.toMatchObject({ role: 'current' });
+
+      expect(await readdir(fixture.cacheRoot)).toEqual(['current']);
+      await expect(cache.getCurrentRegistrationState()).resolves.toBe(
+        'ready',
+      );
+    }
+  });
 });
 
 interface FixtureOptions {
@@ -423,7 +576,9 @@ function createCache(
       return {
         architecture: 'x64',
         packageScope: 'perUser',
-        productCode: '{02F99C94-ECBD-48A4-8117-1DE7F55C1E09}',
+        productCode: `{${createExpectedWindowsInstallerProductCode(
+          value.msiProductVersion,
+        )}}`,
         productVersion: value.msiProductVersion,
         upgradeCode: '{302530B2-D950-41F5-8397-264B485FEE9A}',
       };

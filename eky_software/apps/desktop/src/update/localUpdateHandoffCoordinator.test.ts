@@ -29,6 +29,7 @@ describe('local update handoff coordinator', () => {
 
     expect(journal).toMatchObject({
       handoffAttemptCount: 0,
+      preUpdateMigrationChainIdentity: 'c'.repeat(64),
       recoveryPointReference,
       state: 'recoveryPointValidated',
     });
@@ -115,6 +116,21 @@ describe('local update handoff coordinator', () => {
 
     expect(fixture.shutdownRuntime).not.toHaveBeenCalled();
     expect(fixture.launchInstaller).not.toHaveBeenCalled();
+    expect(fixture.currentJournal).toBeUndefined();
+    expect(fixture.states).toEqual([]);
+  });
+
+  it('rejects handoff when the migration chain changes after recovery preparation', async () => {
+    const fixture = createFixture({ profileMigrationChanges: true });
+    await fixture.coordinator.prepareConfirmedUpdate();
+
+    await expect(
+      fixture.coordinator.handoffPreparedUpdate(),
+    ).rejects.toThrow(LocalUpdateHandoffError);
+
+    expect(fixture.shutdownRuntime).not.toHaveBeenCalled();
+    expect(fixture.launchInstaller).not.toHaveBeenCalled();
+    expect(fixture.leaveMaintenance).toHaveBeenCalledOnce();
     expect(fixture.currentJournal?.state).toBe('failed');
   });
 });
@@ -123,13 +139,16 @@ function createFixture(options: {
   onLaunch?(): void;
   onShutdown?(): void;
   onWrite?(state: string): void;
+  profileMigrationChanges?: boolean;
   profileValidationFails?: boolean;
   revalidationFails?: boolean;
   shutdownFails?: boolean;
 } = {}) {
   let currentJournal: Readonly<UpdateJournal> | undefined;
+  let profileValidationCount = 0;
   const states: string[] = [];
   const validateActiveProfile = vi.fn(async () => {
+    profileValidationCount += 1;
     if (options.profileValidationFails) {
       throw new Error('unhealthy');
     }
@@ -137,6 +156,10 @@ function createFixture(options: {
       artifactCount: 0,
       artifactTotalByteSize: 0,
       databaseHealth: 'healthy' as const,
+      migrationChainIdentity:
+        options.profileMigrationChanges && profileValidationCount > 1
+          ? 'd'.repeat(64)
+          : 'c'.repeat(64),
     };
   });
   const createValidatedPreUpdatePoint = vi.fn(

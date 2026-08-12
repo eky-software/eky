@@ -25,6 +25,7 @@ export function startProfileSnapshotBrokerBackend(input: {
       artifactCount: number;
       artifactTotalByteSize: number;
       databaseHealth: 'healthy';
+      migrationChainIdentity: string;
     }>;
     createProfileSnapshot(input: {
       operationId: string;

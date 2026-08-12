@@ -44,6 +44,9 @@ describe('Windows installer update handoff', () => {
     expect(() => resolveWindowsInstallerExecutable(undefined)).toThrow(
       WindowsInstallerHandoffError,
     );
+    expect(() =>
+      resolveWindowsInstallerExecutable('C:\\Windows\\..\\Windows'),
+    ).toThrow(WindowsInstallerHandoffError);
     await expect(
       launchWindowsInstallerForUpdate(
         {

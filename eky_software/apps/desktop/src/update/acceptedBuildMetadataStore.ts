@@ -70,6 +70,18 @@ export class AcceptedBuildMetadataStore {
     finally { await rm(this.nextPath, { force: true }).catch(() => undefined); }
   }
 
+  async clear(): Promise<void> {
+    const results = await Promise.allSettled([
+      rm(this.filePath, { force: true }),
+      rm(this.nextPath, { force: true }),
+      rm(this.backupPath, { force: true }),
+    ]);
+    if (results.some((result) => result.status === 'rejected')) {
+      throw new Error('ACCEPTED_BUILD_METADATA_UNAVAILABLE');
+    }
+    await syncDirectory(dirname(this.filePath));
+  }
+
   private async removeRecoverySlots(): Promise<void> {
     const results = await Promise.allSettled([
       rm(this.nextPath, { force: true }), rm(this.backupPath, { force: true }),

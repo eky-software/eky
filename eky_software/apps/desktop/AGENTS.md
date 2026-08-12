@@ -75,6 +75,18 @@ Mandatory boundaries:
 - commit accepted-build and accepted-journal state before best-effort recovery
   protection cleanup; cleanup failure may leave an extra protected point but
   must not turn a committed acceptance into rollback-required state
+- keep update journals and accepted-build metadata installation-scoped under
+  Electron `userData`; profile-local legacy state may only be migrated through
+  the strict, idempotent C3A migration and never through generic file copying
+- persist direct-Setup migration recovery before the first pending migration
+  write; a restart must restore the originally bound pre-migration point or
+  stop failed-safe, never create a new point from partially migrated data
+- distinguish an installer that was not applied from a candidate first start
+  only with accepted-build, running-build, cache and migration-prefix proof;
+  mixed or unknown state must remain failed-safe
+- do not add generic update-cache clear or repair capabilities; candidate
+  discard and current repair must be named, journal-aware, contained and
+  identity-validated operations owned by Electron main
 - never present an unsigned sidecar or SHA-256 hash as publisher trust, and do
   not weaken SmartScreen, Defender or other operating-system protections
 - preserve the two-process hardened Windows backup/restore smoke when changing

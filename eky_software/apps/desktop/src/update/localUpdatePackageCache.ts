@@ -44,6 +44,8 @@ const metadataCacheFilename = 'slot-metadata.json';
 const metadataNextFilename = 'slot-metadata.next';
 const metadataBackupFilename = 'slot-metadata.backup';
 const metadataMaxBytes = 16 * 1024;
+const currentRepairNextDirectory = '.current-repair-next';
+const currentRepairBackupDirectory = '.current-repair-backup';
 const freeSpaceReserveBytes = 8 * 1024 * 1024;
 export const LOCAL_UPDATE_CACHE_TOTAL_MAX_BYTES =
   3 * UPDATE_PACKAGE_MAX_BYTES + 4 * UPDATE_PACKAGE_MANIFEST_MAX_BYTES;
@@ -131,6 +133,82 @@ export class LocalUpdatePackageCache {
     });
   }
 
+  async discardCandidate(): Promise<void> {
+    return this.runExclusive(async () => {
+      await this.ensureCacheRoot();
+      const candidatePath = this.slotPath('candidate');
+      if (!(await pathExists(candidatePath))) {
+        return;
+      }
+      await removeOwnedDirectory(candidatePath);
+      await syncDirectory(this.options.cacheRoot);
+    });
+  }
+
+  async repairCurrentRegistration(input: {
+    manifestPath: string;
+  }): Promise<Readonly<LocalUpdatePackageSummary>> {
+    return this.runExclusive(async () => {
+      const source = await this.readAndVerifySource({
+        manifestPath: input.manifestPath,
+        role: 'current',
+      });
+      await this.ensureCacheRoot();
+      await this.recoverInterruptedCurrentRepair();
+      await this.assertRepairCapacity(source.manifest.packageSize);
+
+      const stagingPath = await mkdtemp(
+        join(this.options.cacheRoot, '.current-repair-staging-'),
+      );
+      const nextPath = join(
+        this.options.cacheRoot,
+        currentRepairNextDirectory,
+      );
+      const backupPath = join(
+        this.options.cacheRoot,
+        currentRepairBackupDirectory,
+      );
+      const currentPath = this.slotPath('current');
+      let previousMoved = false;
+      let nextInstalled = false;
+      try {
+        await this.writeVerifiedSourceToStaging(
+          source,
+          'current',
+          stagingPath,
+        );
+        await rename(stagingPath, nextPath);
+        await syncDirectory(this.options.cacheRoot);
+        if (await pathExists(currentPath)) {
+          await assertSlotDirectory(currentPath);
+          await rename(currentPath, backupPath);
+          previousMoved = true;
+          await syncDirectory(this.options.cacheRoot);
+        }
+        await rename(nextPath, currentPath);
+        nextInstalled = true;
+        await syncDirectory(this.options.cacheRoot);
+        await this.validateSlot('current', currentPath);
+        if (previousMoved) {
+          await removeOwnedDirectory(backupPath);
+          await syncDirectory(this.options.cacheRoot);
+        }
+        return createSafeSummary(source.manifest, 'current');
+      } catch {
+        await removeOwnedDirectoryIfPresent(stagingPath);
+        await removeOwnedDirectoryIfPresent(nextPath);
+        if (nextInstalled) {
+          await removeOwnedDirectoryIfPresent(currentPath);
+        }
+        if (previousMoved && (await pathExists(backupPath))) {
+          await rename(backupPath, currentPath).catch(() => undefined);
+          await syncDirectory(this.options.cacheRoot).catch(() => undefined);
+        }
+        throw new LocalUpdatePackageCacheError();
+      }
+    });
+  }
+
   async stageSelectedPackage(input: {
     manifestPath: string;
     role: LocalUpdatePackageRole;
@@ -150,27 +228,11 @@ export class LocalUpdatePackageCache {
       await this.assertCapacity(source.manifest.packageSize);
       const stagingPath = await mkdtemp(join(this.options.cacheRoot, '.staging-'));
       try {
-        const stagedManifestPath = join(stagingPath, manifestCacheFilename);
-        const stagedPackagePath = join(
-          stagingPath,
-          source.manifest.packageFilename,
-        );
-        await writeExclusiveSyncedFile(stagedManifestPath, source.manifestBytes);
-        const copied = await (this.options.copyPackage ??
-          copyLocalUpdatePackageWithHash)(source.packagePath, stagedPackagePath);
-        const packageAfter = await readLocalUpdateSourceSnapshot(
-          source.packagePath,
-          this.options.inspectRegularFile,
-        );
-        assertLocalUpdateSourceUnchanged(source.packageBefore, packageAfter);
-        assertPackageIdentity(source.manifest, copied);
-
-        await this.validateStagedFiles(
+        await this.writeVerifiedSourceToStaging(
+          source,
           input.role,
-          stagedManifestPath,
-          stagedPackagePath,
+          stagingPath,
         );
-        await this.writeMetadata(stagingPath, source.manifest, input.role);
         await rename(stagingPath, slotPath);
         await this.validateSlot(input.role, slotPath);
         return createSafeSummary(source.manifest, input.role);
@@ -340,6 +402,76 @@ export class LocalUpdatePackageCache {
       return { manifest, manifestBytes, packageBefore, packagePath };
     } catch {
       throw new LocalUpdatePackageCacheError();
+    }
+  }
+
+  private async writeVerifiedSourceToStaging(
+    source: Awaited<ReturnType<LocalUpdatePackageCache['readAndVerifySource']>>,
+    role: LocalUpdatePackageRole,
+    stagingPath: string,
+  ): Promise<void> {
+    const stagedManifestPath = join(stagingPath, manifestCacheFilename);
+    const stagedPackagePath = join(
+      stagingPath,
+      source.manifest.packageFilename,
+    );
+    await writeExclusiveSyncedFile(stagedManifestPath, source.manifestBytes);
+    const copied = await (this.options.copyPackage ??
+      copyLocalUpdatePackageWithHash)(source.packagePath, stagedPackagePath);
+    const packageAfter = await readLocalUpdateSourceSnapshot(
+      source.packagePath,
+      this.options.inspectRegularFile,
+    );
+    assertLocalUpdateSourceUnchanged(source.packageBefore, packageAfter);
+    assertPackageIdentity(source.manifest, copied);
+    await this.validateStagedFiles(
+      role,
+      stagedManifestPath,
+      stagedPackagePath,
+    );
+    await this.writeMetadata(stagingPath, source.manifest, role);
+  }
+
+  private async recoverInterruptedCurrentRepair(): Promise<void> {
+    const currentPath = this.slotPath('current');
+    const nextPath = join(
+      this.options.cacheRoot,
+      currentRepairNextDirectory,
+    );
+    const backupPath = join(
+      this.options.cacheRoot,
+      currentRepairBackupDirectory,
+    );
+    const currentExists = await pathExists(currentPath);
+    const nextExists = await pathExists(nextPath);
+    const backupExists = await pathExists(backupPath);
+
+    if (nextExists) {
+      await this.validateSlot('current', nextPath);
+      if (currentExists && !backupExists) {
+        await assertSlotDirectory(currentPath);
+        await rename(currentPath, backupPath);
+      } else if (currentExists) {
+        throw new LocalUpdatePackageCacheError();
+      }
+      await rename(nextPath, currentPath);
+      await this.validateSlot('current', currentPath);
+      await removeOwnedDirectoryIfPresent(backupPath);
+      await syncDirectory(this.options.cacheRoot);
+      return;
+    }
+
+    if (!currentExists && backupExists) {
+      await assertSlotDirectory(backupPath);
+      await rename(backupPath, currentPath);
+      await syncDirectory(this.options.cacheRoot);
+      return;
+    }
+
+    if (currentExists && backupExists) {
+      await this.validateSlot('current', currentPath);
+      await removeOwnedDirectory(backupPath);
+      await syncDirectory(this.options.cacheRoot);
     }
   }
 
@@ -532,6 +664,26 @@ export class LocalUpdatePackageCache {
     }
   }
 
+  private async assertRepairCapacity(packageSize: number): Promise<void> {
+    const usedBytes = await readCacheSize(this.options.cacheRoot);
+    const requiredBytes =
+      packageSize + UPDATE_PACKAGE_MANIFEST_MAX_BYTES + metadataMaxBytes;
+    const repairMaximumBytes =
+      LOCAL_UPDATE_CACHE_TOTAL_MAX_BYTES +
+      UPDATE_PACKAGE_MAX_BYTES +
+      UPDATE_PACKAGE_MANIFEST_MAX_BYTES +
+      metadataMaxBytes;
+    if (usedBytes + requiredBytes > repairMaximumBytes) {
+      throw new LocalUpdatePackageCacheError();
+    }
+    const availableBytes = await (
+      this.options.getAvailableBytes ?? getAvailableFileSystemBytes
+    )(this.options.cacheRoot);
+    if (availableBytes < BigInt(requiredBytes + freeSpaceReserveBytes)) {
+      throw new LocalUpdatePackageCacheError();
+    }
+  }
+
   private async ensureCacheRoot(): Promise<void> {
     await mkdir(this.options.cacheRoot, { mode: 0o700, recursive: true });
     const metadata = await lstat(this.options.cacheRoot);
@@ -619,6 +771,17 @@ async function assertSlotDirectory(path: string): Promise<void> {
   const metadata = await lstat(path);
   if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
     throw new LocalUpdatePackageCacheError();
+  }
+}
+
+async function removeOwnedDirectory(path: string): Promise<void> {
+  await assertSlotDirectory(path);
+  await rm(path, { recursive: true });
+}
+
+async function removeOwnedDirectoryIfPresent(path: string): Promise<void> {
+  if (await pathExists(path)) {
+    await removeOwnedDirectory(path);
   }
 }
 

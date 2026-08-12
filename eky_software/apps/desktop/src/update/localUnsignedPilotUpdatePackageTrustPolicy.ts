@@ -4,6 +4,7 @@ import {
   type UpdatePackageTrustPolicy,
   UpdatePackageTrustError,
 } from './updatePackageTrustPolicy.js';
+import { createExpectedWindowsInstallerProductCode } from './windowsInstallerProductCode.js';
 
 export class LocalUnsignedPilotUpdatePackageTrustPolicy
   implements UpdatePackageTrustPolicy
@@ -45,6 +46,9 @@ function assertSharedIdentity(
   input: Parameters<UpdatePackageTrustPolicy['verifyPackage']>[0],
 ): void {
   const expectedUpgradeCode = `{${input.releaseInfo.upgradeCode}}`;
+  const expectedProductCode = `{${createExpectedWindowsInstallerProductCode(
+    input.manifest.msiProductVersion,
+  )}}`;
   if (
     input.manifest.appIdentity !== input.releaseInfo.appIdentity ||
     input.manifest.architecture !== input.releaseInfo.architecture ||
@@ -52,6 +56,7 @@ function assertSharedIdentity(
     input.manifest.releaseChannel !== input.releaseInfo.releaseChannel ||
     input.installerIdentity.architecture !== input.releaseInfo.architecture ||
     input.installerIdentity.packageScope !== 'perUser' ||
+    input.installerIdentity.productCode !== expectedProductCode ||
     input.installerIdentity.productVersion !== input.manifest.msiProductVersion ||
     input.installerIdentity.upgradeCode !== expectedUpgradeCode
   ) {

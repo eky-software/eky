@@ -4,15 +4,36 @@ import { join } from 'node:path';
 import { createLocalUpdateRuntimePaths } from './localUpdateRuntimePaths.js';
 
 describe('local update runtime paths', () => {
-  it('keeps private update state under the desktop runtime root', () => {
-    expect(createLocalUpdateRuntimePaths('/private/runtime')).toEqual({
+  it('keeps authoritative state installation-scoped and identifies legacy state', () => {
+    expect(createLocalUpdateRuntimePaths({
+      legacyRuntimeRoot: '/private/runtime',
+      userDataPath: '/private/user-data',
+    })).toEqual({
       acceptedBuildMetadataPath:
+        join(
+          '/private/user-data',
+          'update-state',
+          'accepted-build-v1.json',
+        ),
+      directSetupMigrationRecoveryPath:
+        join(
+          '/private/user-data',
+          'update-state',
+          'direct-setup-migration-recovery-v1.json',
+        ),
+      journalPath:
+        join(
+          '/private/user-data',
+          'update-state',
+          'local-update-journal-v1.json',
+        ),
+      legacyAcceptedBuildMetadataPath:
         join(
           '/private/runtime',
           'update-state',
           'accepted-build-v1.json',
         ),
-      journalPath:
+      legacyJournalPath:
         join(
           '/private/runtime',
           'update-state',

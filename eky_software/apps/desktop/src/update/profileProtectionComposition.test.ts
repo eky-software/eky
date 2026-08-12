@@ -43,6 +43,7 @@ describe('update profile protection composition', () => {
       artifactCount: 3,
       artifactTotalByteSize: 4_096,
       databaseHealth: 'healthy',
+      migrationChainIdentity: 'c'.repeat(64),
     });
     expect(fixture.beginMaintenance).toHaveBeenCalledWith(operationId);
     expect(fixture.endMaintenance).toHaveBeenCalledWith(operationId);
@@ -88,6 +89,9 @@ function createFixture(
   const endMaintenance = vi.fn(async () => 'normal' as const);
   const restoreRecoveryPoint = vi.fn(async () => undefined);
   const protection = createProfileProtectionComposition({
+    directSetupRecoveryStore: {
+      read: vi.fn(async () => undefined),
+    },
     profileSnapshotClient: {
       beginMaintenance,
       endMaintenance,
@@ -95,6 +99,7 @@ function createFixture(
         artifactCount: 3,
         artifactTotalByteSize: 4_096,
         databaseHealth: 'healthy' as const,
+        migrationChainIdentity: 'c'.repeat(64),
         type: 'activeProfileValidation' as const,
       })),
     },

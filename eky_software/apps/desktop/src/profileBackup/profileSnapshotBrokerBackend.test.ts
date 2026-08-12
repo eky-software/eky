@@ -110,6 +110,7 @@ describe('profile snapshot broker boundary', () => {
         artifactCount: 0,
         artifactTotalByteSize: 0,
         databaseHealth: 'healthy',
+        migrationChainIdentity: 'c'.repeat(64),
         type: 'activeProfileValidation',
       },
     }));
@@ -535,6 +536,7 @@ function createFakeSnapshotService(): {
     artifactCount: number;
     artifactTotalByteSize: number;
     databaseHealth: 'healthy';
+    migrationChainIdentity: string;
   }>;
   validateProfileSnapshot(operationId: string): Promise<{
     activeProfileIsEmpty: boolean;
@@ -592,6 +594,7 @@ function createFakeActiveValidation() {
     artifactCount: 1,
     artifactTotalByteSize: 2_048,
     databaseHealth: 'healthy' as const,
+    migrationChainIdentity: 'c'.repeat(64),
   };
 }
 

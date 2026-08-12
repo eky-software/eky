@@ -6,6 +6,7 @@ const journalFields = new Set([
   'currentVersion',
   'formatVersion',
   'handoffAttemptCount',
+  'preUpdateMigrationChainIdentity',
   'recoveryPointReference',
   'releaseChannel',
   'revision',
@@ -35,10 +36,12 @@ export const updateJournalStates = [
   'runtimeStopping',
   'awaitingFirstStart',
   'firstStartValidating',
+  'installerNotApplied',
   'accepted',
   'rollbackRequired',
   'rolledBack',
   'failed',
+  'failedSafe',
 ] as const;
 
 export type UpdateJournalState = (typeof updateJournalStates)[number];
@@ -58,6 +61,7 @@ export interface UpdateJournal {
   currentVersion: string;
   formatVersion: 1;
   handoffAttemptCount: 0 | 1;
+  preUpdateMigrationChainIdentity?: string;
   recoveryPointReference?: string;
   releaseChannel: 'pilot';
   revision: number;
@@ -103,6 +107,11 @@ export function parseUpdateJournal(value: unknown): Readonly<UpdateJournal> {
 
   const recoveryPointRequired = recoveryPointRequiredStates.has(value.state);
   if (
+    (value.preUpdateMigrationChainIdentity !== undefined &&
+      (typeof value.preUpdateMigrationChainIdentity !== 'string' ||
+        !sha256Pattern.test(value.preUpdateMigrationChainIdentity))) ||
+    (value.state === 'installerNotApplied' &&
+      value.preUpdateMigrationChainIdentity === undefined) ||
     (value.recoveryPointReference !== undefined &&
       (typeof value.recoveryPointReference !== 'string' ||
         !recoveryPointReferencePattern.test(value.recoveryPointReference))) ||
@@ -114,6 +123,7 @@ export function parseUpdateJournal(value: unknown): Readonly<UpdateJournal> {
     ((value.state === 'awaitingFirstStart' ||
       value.state === 'firstStartValidating' ||
       value.state === 'accepted' ||
+      value.state === 'installerNotApplied' ||
       value.state === 'rollbackRequired' ||
       value.state === 'rolledBack') &&
       value.handoffAttemptCount !== 1)
@@ -129,6 +139,12 @@ export function parseUpdateJournal(value: unknown): Readonly<UpdateJournal> {
     currentVersion: value.currentVersion,
     formatVersion: 1,
     handoffAttemptCount: value.handoffAttemptCount,
+    ...(value.preUpdateMigrationChainIdentity === undefined
+      ? {}
+      : {
+          preUpdateMigrationChainIdentity:
+            value.preUpdateMigrationChainIdentity,
+        }),
     ...(value.recoveryPointReference === undefined
       ? {}
       : { recoveryPointReference: value.recoveryPointReference }),
@@ -148,9 +164,12 @@ const allowedTransitions: Readonly<
     'awaitingFirstStart',
     'failed',
     'firstStartValidating',
+    'installerNotApplied',
+    'failedSafe',
     'rollbackRequired',
   ]),
-  failed: new Set(['failed']),
+  failed: new Set(['failed', 'failedSafe', 'installerNotApplied']),
+  failedSafe: new Set(['failedSafe']),
   firstStartValidating: new Set([
     'accepted',
     'failed',
@@ -164,10 +183,13 @@ const allowedTransitions: Readonly<
     'runtimeStopping',
   ]),
   rolledBack: new Set(['rolledBack']),
+  installerNotApplied: new Set(['installerNotApplied']),
   rollbackRequired: new Set(['failed', 'rolledBack', 'rollbackRequired']),
   runtimeStopping: new Set([
     'awaitingFirstStart',
     'failed',
+    'failedSafe',
+    'installerNotApplied',
     'rollbackRequired',
     'runtimeStopping',
   ]),
@@ -179,6 +201,7 @@ const recoveryPointRequiredStates: ReadonlySet<UpdateJournalState> = new Set([
   'awaitingFirstStart',
   'firstStartValidating',
   'accepted',
+  'installerNotApplied',
   'rollbackRequired',
   'rolledBack',
 ]);
