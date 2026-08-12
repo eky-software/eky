@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { PackagedUpdateSmokeConfiguration } from './packagedUpdateSmokeConfiguration.js';
 import {
   readPackagedUpdateSmokeResult,
+  runPackagedUpdateSmoke,
   writePackagedUpdateSmokeFailure,
   writePackagedUpdateSmokeHandoffResult,
   writePackagedUpdateSmokePreviousSetupResult,
@@ -86,6 +87,34 @@ describe('packaged update smoke result boundary', () => {
     });
   });
 
+  it.each([
+    {
+      expectedCode: 'DESKTOP_UPDATE_SMOKE_SECRET_FAILED',
+      thrownError: new Error('DESKTOP_UPDATE_SMOKE_SECRET_FAILED'),
+    },
+    {
+      expectedCode: 'DESKTOP_UPDATE_SMOKE_FAILED',
+      thrownError: new Error('raw failure with C:\\private\\profile path'),
+    },
+  ])(
+    'preserves only the safe failure code at the outer startup boundary: $expectedCode',
+    async ({ expectedCode, thrownError }) => {
+      const configuration = await createConfiguration('seed');
+
+      await expect(
+        runPackagedUpdateSmoke(
+          createFailingSmokeDependencies(configuration, thrownError),
+        ),
+      ).rejects.toThrow(expectedCode);
+
+      expect(await readResult(configuration)).toEqual({
+        code: expectedCode,
+        phase: 'seed',
+        status: 'failed',
+      });
+    },
+  );
+
   it('rejects extra result fields and malformed fingerprints', () => {
     expect(
       readPackagedUpdateSmokeResult({
@@ -137,4 +166,72 @@ async function readResult(
       'utf8',
     ),
   );
+}
+
+function createFailingSmokeDependencies(
+  configuration: PackagedUpdateSmokeConfiguration,
+  thrownError: Error,
+): Parameters<typeof runPackagedUpdateSmoke>[0] {
+  return {
+    acceptedBuildStore: { read: async () => undefined },
+    appVersion: '0.1.0-alpha.1',
+    backend: { port: 1 },
+    buildRevision: 'a'.repeat(40),
+    cache: {
+      getPackageStatus: async () => {
+        throw new Error('unused');
+      },
+      repairCurrentRegistration: async () => {
+        throw thrownError;
+      },
+      stageSelectedPackage: async () => {
+        throw new Error('unused');
+      },
+    },
+    configuration,
+    directSetupRecoveryStore: { read: async () => undefined },
+    handoffCoordinator: {
+      handoffPreparedUpdate: async () => undefined,
+      prepareConfirmedUpdate: async () => {
+        throw new Error('unused');
+      },
+    },
+    journalStore: { read: async () => undefined },
+    portableProfileBackupService: {
+      create: async () => {
+        throw new Error('unused');
+      },
+    },
+    profileRestoreActivationService: {
+      activate: async () => {
+        throw new Error('unused');
+      },
+    },
+    profileRestoreStagingService: {
+      inspect: async () => {
+        throw new Error('unused');
+      },
+      stage: async () => {
+        throw new Error('unused');
+      },
+    },
+    profileSnapshotClient: {
+      validateActiveProfile: async () => {
+        throw new Error('unused');
+      },
+    },
+    releaseInfo: {
+      appIdentity: 'Eky',
+      appVersion: '0.1.0-alpha.1',
+      architecture: 'x64',
+      buildRevision: 'a'.repeat(40),
+      msiProductVersion: '0.1.1',
+      platform: 'win32',
+      releaseChannel: 'pilot',
+      schemaVersion: 1,
+      upgradeCode: 'B1F359BB-A75C-44AB-B995-2D43D202177C',
+    },
+    runtimeSessionSecret: 'synthetic-session-secret',
+    shutdownAndQuit: async () => undefined,
+  } as Parameters<typeof runPackagedUpdateSmoke>[0];
 }

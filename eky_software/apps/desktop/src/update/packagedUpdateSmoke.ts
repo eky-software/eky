@@ -155,12 +155,13 @@ export async function runPackagedUpdateSmoke(
     }
     await dependencies.shutdownAndQuit();
   } catch (error) {
+    const errorCode = readSafeSmokeErrorCode(error);
     await writePackagedUpdateSmokeResult(configuration, {
-      code: readSafeSmokeErrorCode(error),
+      code: errorCode,
       phase: configuration.phase,
       status: 'failed',
     }).catch(() => undefined);
-    throw error;
+    throw new Error(errorCode);
   }
 }
 
