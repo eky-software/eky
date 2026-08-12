@@ -30,7 +30,11 @@ export type PackagedUpdateSmokeResult =
   | {
       appVersion: string;
       phase: PackagedUpdateSmokePhase;
-      status: 'handoffReady' | 'previousSetupReady' | 'restoreReady';
+      status:
+        | 'handoffReady'
+        | 'previousSetupReady'
+        | 'restoreReady'
+        | 'rollbackInstallerLaunched';
     }
   | {
       acceptedVersion: string;
@@ -212,6 +216,20 @@ export async function writePackagedUpdateSmokePreviousSetupResult(
   });
 }
 
+export async function writePackagedUpdateSmokeRollbackHandoffResult(
+  configuration: PackagedUpdateSmokeConfiguration,
+  appVersion: string,
+): Promise<void> {
+  if (!configuration.enabled || configuration.phase !== 'verifyRollback') {
+    throw new Error('DESKTOP_UPDATE_SMOKE_ROLLBACK_HANDOFF_INVALID');
+  }
+  await writePackagedUpdateSmokeResult(configuration, {
+    appVersion,
+    phase: configuration.phase,
+    status: 'rollbackInstallerLaunched',
+  });
+}
+
 export async function writePackagedUpdateSmokeFailure(
   configuration: PackagedUpdateSmokeConfiguration,
   errorCode: string,
@@ -264,7 +282,8 @@ export function readPackagedUpdateSmokeResult(
   if (
     (value.status === 'handoffReady' ||
       value.status === 'previousSetupReady' ||
-      value.status === 'restoreReady') &&
+      value.status === 'restoreReady' ||
+      value.status === 'rollbackInstallerLaunched') &&
     typeof value.appVersion === 'string' &&
     Object.keys(value).length === 3
   ) {

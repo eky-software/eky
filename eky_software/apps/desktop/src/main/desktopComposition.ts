@@ -144,6 +144,7 @@ import {
   runPackagedUpdateSmoke,
   writePackagedUpdateSmokeHandoffResult,
   writePackagedUpdateSmokePreviousSetupResult,
+  writePackagedUpdateSmokeRollbackHandoffResult,
 } from '../update/packagedUpdateSmoke.js';
 
 export interface DesktopLifecycleHandle {
@@ -925,6 +926,12 @@ async function startDesktopCompositionRuntime({
             await updateBinaryRollbackCoordinator.startIfRequired();
           if (binaryRollback !== 'launched') {
             throw new Error('UPDATE_BINARY_ROLLBACK_RECOVERY_REQUIRED');
+          }
+          if (options.updateSmokeConfiguration.enabled) {
+            await writePackagedUpdateSmokeRollbackHandoffResult(
+              options.updateSmokeConfiguration,
+              desktopAppVersion,
+            );
           }
           updateBinaryRollbackHandoffRequested = true;
           options.quitApplication();

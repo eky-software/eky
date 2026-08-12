@@ -10,6 +10,7 @@ import {
   writePackagedUpdateSmokeFailure,
   writePackagedUpdateSmokeHandoffResult,
   writePackagedUpdateSmokePreviousSetupResult,
+  writePackagedUpdateSmokeRollbackHandoffResult,
 } from './packagedUpdateSmoke.js';
 
 const roots: string[] = [];
@@ -52,6 +53,21 @@ describe('packaged update smoke result boundary', () => {
       appVersion: '1.2.3',
       phase: 'verifyDirectFailure',
       status: 'previousSetupReady',
+    });
+  });
+
+  it('writes only a bounded rollback installer handoff status', async () => {
+    const configuration = await createConfiguration('verifyRollback');
+
+    await writePackagedUpdateSmokeRollbackHandoffResult(
+      configuration,
+      '1.2.3',
+    );
+
+    expect(await readResult(configuration)).toEqual({
+      appVersion: '1.2.3',
+      phase: 'verifyRollback',
+      status: 'rollbackInstallerLaunched',
     });
   });
 

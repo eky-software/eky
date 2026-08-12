@@ -76,7 +76,8 @@ export function parsePackagedUpdateSmokeResult(value, expectedPhase) {
   if (
     (value.status === 'handoffReady' ||
       value.status === 'previousSetupReady' ||
-      value.status === 'restoreReady') &&
+      value.status === 'restoreReady' ||
+      value.status === 'rollbackInstallerLaunched') &&
     hasExactFields(value, new Set(['appVersion', 'phase', 'status'])) &&
     typeof value.appVersion === 'string' &&
     appVersionPattern.test(value.appVersion)

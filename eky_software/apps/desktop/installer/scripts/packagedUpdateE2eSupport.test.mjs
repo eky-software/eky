@@ -121,6 +121,17 @@ describe('packaged update E2E support', () => {
       ).status,
       'previousSetupReady',
     );
+    assert.equal(
+      parsePackagedUpdateSmokeResult(
+        {
+          appVersion: '0.0.0-update-fixture.3',
+          phase: 'verifyRollback',
+          status: 'rollbackInstallerLaunched',
+        },
+        'verifyRollback',
+      ).status,
+      'rollbackInstallerLaunched',
+    );
   });
 });
 
