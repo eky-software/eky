@@ -1,67 +1,183 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import type { DesktopReleaseInfo } from '../release/desktopReleaseInfo.js';
 import { createLocalUpdateSelectionCapability } from './localUpdateSelectionCapability.js';
-import { selectLocalUpdateIpcChannel } from './localUpdateSelectionTypes.js';
-import type { LocalUpdatePackageSummary } from './localUpdatePackageCache.js';
+import {
+  cancelLocalUpdateIpcChannel,
+  confirmLocalUpdateIpcChannel,
+  discardSelectedLocalUpdateIpcChannel,
+  getLocalUpdateStatusIpcChannel,
+  selectLocalUpdateIpcChannel,
+} from './localUpdateSelectionTypes.js';
+import type {
+  LocalUpdatePackageStatusSummary,
+  LocalUpdatePackageSummary,
+} from './localUpdatePackageCache.js';
 
-const currentSummary: Readonly<LocalUpdatePackageSummary> = Object.freeze({
+const releaseInfo: DesktopReleaseInfo = {
+  appIdentity: 'Eky',
   appVersion: '0.1.0-alpha.1',
+  architecture: 'x64',
   buildRevision: '123456789abc',
   msiProductVersion: '0.1.1',
-  releaseChannel: 'pilot' as const,
-  role: 'current' as const,
-  signingStatus: 'unsigned-prototype' as const,
-});
+  platform: 'win32',
+  releaseChannel: 'pilot',
+  schemaVersion: 1,
+  upgradeCode: '302530B2-D950-41F5-8397-264B485FEE9A',
+};
+
+const currentSummary: Readonly<LocalUpdatePackageStatusSummary> =
+  Object.freeze({
+    appVersion: releaseInfo.appVersion,
+    buildRevision: releaseInfo.buildRevision,
+    msiProductVersion: releaseInfo.msiProductVersion,
+    packageFingerprint: 'a'.repeat(12),
+    releaseChannel: 'pilot' as const,
+    role: 'current' as const,
+    signingStatus: 'unsigned-prototype' as const,
+  });
+
+const candidateSummary: Readonly<LocalUpdatePackageStatusSummary> =
+  Object.freeze({
+    appVersion: '0.1.0-alpha.2',
+    buildRevision: 'abcdef012345',
+    msiProductVersion: '0.1.2',
+    packageFingerprint: 'b'.repeat(12),
+    releaseChannel: 'pilot' as const,
+    role: 'candidate' as const,
+    signingStatus: 'unsigned-prototype' as const,
+  });
 
 describe('local update selection capability', () => {
-  it('registers the exact current package first and returns only a safe summary', async () => {
+  it('returns a bounded status without paths, full hashes or session data', async () => {
+    const fixture = createFixture({
+      candidate: candidateSummary,
+      current: currentSummary,
+    });
+
+    const status = await fixture.invoke(
+      getLocalUpdateStatusIpcChannel,
+      fixture.trustedEvent,
+    );
+
+    expect(status).toEqual({
+      architecture: 'x64',
+      candidate: candidateSummary,
+      current: {
+        appVersion: '0.1.0-alpha.1',
+        buildRevision: '123456789abc',
+        msiProductVersion: '0.1.1',
+        releaseChannel: 'pilot',
+      },
+      currentRollbackPackage: 'ready',
+      phase: 'idle',
+      recoveryPointState: 'notStarted',
+      signingStatus: 'unsigned-prototype',
+    });
+    expect(JSON.stringify(status)).not.toMatch(
+      /C:\\|packageSha256|packagePath|runtimeSession/i,
+    );
+  });
+
+  it('registers the exact current package first and stages only later candidates', async () => {
     const fixture = createFixture();
 
-    await expect(fixture.invoke(fixture.trustedEvent)).resolves.toEqual({
-      package: currentSummary,
-      status: 'currentRegistered',
-    });
-    expect(fixture.selectManifestPath).toHaveBeenCalledWith();
-    expect(fixture.stageSelectedPackage).toHaveBeenCalledWith({
+    await expect(
+      fixture.invoke(selectLocalUpdateIpcChannel, fixture.trustedEvent),
+    ).resolves.toMatchObject({ status: 'currentRegistered' });
+    expect(fixture.stageSelectedPackage).toHaveBeenLastCalledWith({
       manifestPath: 'C:\\Release\\Eky.manifest.json',
       role: 'current',
     });
-    const serialized = JSON.stringify(await fixture.invoke(fixture.trustedEvent));
-    expect(serialized).not.toContain('C:\\Release');
-    expect(serialized).not.toContain('packageSha256');
-    expect(serialized).not.toContain('packageFilename');
-  });
 
-  it('stages a candidate after current has been registered', async () => {
-    const fixture = createFixture({ currentState: 'ready' });
-    fixture.stageSelectedPackage.mockResolvedValueOnce({
-      ...currentSummary,
-      appVersion: '0.1.0-alpha.2',
-      msiProductVersion: '0.1.2',
-      role: 'candidate',
-    });
-
-    await expect(fixture.invoke(fixture.trustedEvent)).resolves.toMatchObject({
-      package: { role: 'candidate' },
-      status: 'candidateReady',
-    });
-    expect(fixture.stageSelectedPackage).toHaveBeenCalledWith({
+    fixture.getPackageStatus.mockImplementation(async (role) =>
+      role === 'current' ? currentSummary : undefined,
+    );
+    fixture.stageSelectedPackage.mockResolvedValueOnce(candidateSummary);
+    await expect(
+      fixture.invoke(selectLocalUpdateIpcChannel, fixture.trustedEvent),
+    ).resolves.toMatchObject({ status: 'candidateReady' });
+    expect(fixture.stageSelectedPackage).toHaveBeenLastCalledWith({
       manifestPath: 'C:\\Release\\Eky.manifest.json',
       role: 'candidate',
     });
   });
 
-  it('returns cancellation without touching the private cache', async () => {
+  it('returns file-picker cancellation without touching the private cache', async () => {
     const fixture = createFixture({ manifestPath: null });
 
-    await expect(fixture.invoke(fixture.trustedEvent)).resolves.toEqual({
-      status: 'cancelled',
-    });
+    await expect(
+      fixture.invoke(selectLocalUpdateIpcChannel, fixture.trustedEvent),
+    ).resolves.toEqual({ status: 'cancelled' });
     expect(fixture.stageSelectedPackage).not.toHaveBeenCalled();
     expect(fixture.showSafeError).not.toHaveBeenCalled();
   });
 
-  it('rejects renderer input, untrusted frames and overlapping selections', async () => {
+  it('discards only the main-owned candidate and returns the refreshed status', async () => {
+    const fixture = createFixture({
+      candidate: candidateSummary,
+      current: currentSummary,
+    });
+    fixture.discardCandidate.mockImplementationOnce(async () => {
+      fixture.getPackageStatus.mockImplementation(async (role) =>
+        role === 'current' ? currentSummary : undefined,
+      );
+    });
+
+    await expect(
+      fixture.invoke(discardSelectedLocalUpdateIpcChannel, fixture.trustedEvent),
+    ).resolves.toMatchObject({ status: { candidate: null } });
+    expect(fixture.discardCandidate).toHaveBeenCalledOnce();
+  });
+
+  it('does not create a recovery point or hand off when native confirmation is cancelled', async () => {
+    const fixture = createFixture({
+      candidate: candidateSummary,
+      confirmResult: false,
+      current: currentSummary,
+    });
+
+    await expect(
+      fixture.invoke(confirmLocalUpdateIpcChannel, fixture.trustedEvent),
+    ).resolves.toEqual({ status: 'cancelled' });
+    expect(fixture.confirmUpdate).toHaveBeenCalledOnce();
+    expect(fixture.prepareConfirmedUpdate).not.toHaveBeenCalled();
+    expect(fixture.handoffPreparedUpdate).not.toHaveBeenCalled();
+  });
+
+  it('prepares and hands off only the revalidated main-owned candidate after confirmation', async () => {
+    const fixture = createFixture({
+      candidate: candidateSummary,
+      confirmResult: true,
+      current: currentSummary,
+    });
+
+    await expect(
+      fixture.invoke(confirmLocalUpdateIpcChannel, fixture.trustedEvent),
+    ).resolves.toEqual({ status: 'handoffStarted' });
+    expect(fixture.confirmUpdate).toHaveBeenCalledOnce();
+    expect(fixture.prepareConfirmedUpdate).toHaveBeenCalledOnce();
+    expect(fixture.handoffPreparedUpdate).toHaveBeenCalledOnce();
+    expect(fixture.prepareConfirmedUpdate.mock.invocationCallOrder[0]).toBeLessThan(
+      fixture.handoffPreparedUpdate.mock.invocationCallOrder[0] ?? 0,
+    );
+  });
+
+  it('keeps cancel as a no-op command', async () => {
+    const fixture = createFixture({
+      candidate: candidateSummary,
+      current: currentSummary,
+    });
+
+    await expect(
+      fixture.invoke(cancelLocalUpdateIpcChannel, fixture.trustedEvent),
+    ).resolves.toEqual({ status: 'cancelled' });
+    expect(fixture.confirmUpdate).not.toHaveBeenCalled();
+    expect(fixture.discardCandidate).not.toHaveBeenCalled();
+    expect(fixture.prepareConfirmedUpdate).not.toHaveBeenCalled();
+  });
+
+  it('rejects renderer input, untrusted frames and overlapping commands', async () => {
     let resolveSelection: ((value: string | null) => void) | undefined;
     const fixture = createFixture({
       selectManifestPath: () =>
@@ -71,69 +187,87 @@ describe('local update selection capability', () => {
     });
 
     await expect(
-      fixture.invoke(fixture.trustedEvent, 'C:\\Renderer\\package.json'),
-    ).rejects.toThrow('LOCAL_UPDATE_SELECTION_FORBIDDEN');
+      fixture.invoke(
+        selectLocalUpdateIpcChannel,
+        fixture.trustedEvent,
+        'C:\\Renderer\\package.json',
+      ),
+    ).rejects.toThrow('LOCAL_UPDATE_OPERATION_FORBIDDEN');
     await expect(
-      fixture.invoke({ sender: {}, senderFrame: fixture.mainFrame }),
-    ).rejects.toThrow('LOCAL_UPDATE_SELECTION_FORBIDDEN');
-    const firstSelection = fixture.invoke(fixture.trustedEvent);
-    await expect(fixture.invoke(fixture.trustedEvent)).rejects.toThrow(
-      'LOCAL_UPDATE_SELECTION_FORBIDDEN',
+      fixture.invoke(getLocalUpdateStatusIpcChannel, {
+        sender: {},
+        senderFrame: fixture.mainFrame,
+      }),
+    ).rejects.toThrow('LOCAL_UPDATE_OPERATION_FORBIDDEN');
+    const firstSelection = fixture.invoke(
+      selectLocalUpdateIpcChannel,
+      fixture.trustedEvent,
     );
+    await expect(
+      fixture.invoke(getLocalUpdateStatusIpcChannel, fixture.trustedEvent),
+    ).rejects.toThrow('LOCAL_UPDATE_OPERATION_FORBIDDEN');
     resolveSelection?.(null);
     await expect(firstSelection).resolves.toEqual({ status: 'cancelled' });
-    expect(fixture.showSafeError).not.toHaveBeenCalled();
   });
 
-  it('fails closed with a safe error and removes the handler on dispose', async () => {
+  it('fails closed, reports a safe error and removes every handler on dispose', async () => {
     const fixture = createFixture();
     fixture.stageSelectedPackage.mockRejectedValueOnce(
       new Error('C:\\Users\\Example\\secret source path'),
     );
 
-    await expect(fixture.invoke(fixture.trustedEvent)).rejects.toThrow(
-      'LOCAL_UPDATE_SELECTION_FAILED',
-    );
+    await expect(
+      fixture.invoke(selectLocalUpdateIpcChannel, fixture.trustedEvent),
+    ).rejects.toThrow('LOCAL_UPDATE_OPERATION_FAILED');
     expect(fixture.showSafeError).toHaveBeenCalledOnce();
 
     fixture.capability.dispose();
-    expect(fixture.removeHandler).toHaveBeenLastCalledWith(
-      selectLocalUpdateIpcChannel,
+    expect(fixture.removeHandler.mock.calls.map(([channel]) => channel)).toEqual(
+      expect.arrayContaining(allChannels),
     );
   });
 
-  it('does not expose future cache fields and keeps the fixed error if the dialog fails', async () => {
-    const fixture = createFixture();
-    fixture.stageSelectedPackage.mockResolvedValueOnce({
-      ...currentSummary,
-      internalPath: 'C:\\Private\\update-cache',
-      packageSha256: 'a'.repeat(64),
-    } as never);
+  it('reports only closed update stages without forwarding package details', async () => {
+    const fixture = createFixture({ current: currentSummary });
 
-    const result = await fixture.invoke(fixture.trustedEvent);
-    expect(JSON.stringify(result)).not.toContain('internalPath');
-    expect(JSON.stringify(result)).not.toContain('packageSha256');
+    await expect(
+      fixture.invoke(selectLocalUpdateIpcChannel, fixture.trustedEvent),
+    ).resolves.toMatchObject({ status: 'candidateReady' });
 
-    fixture.stageSelectedPackage.mockRejectedValueOnce(new Error('raw'));
-    fixture.showSafeError.mockImplementationOnce(() => {
-      throw new Error('dialog raw error');
-    });
-    await expect(fixture.invoke(fixture.trustedEvent)).rejects.toThrow(
-      'LOCAL_UPDATE_SELECTION_FAILED',
-    );
+    expect(fixture.operationStarted.mock.calls.map(([event]) => event)).toEqual([
+      { correlationId: 'update-operation-id', stage: 'packageInspection' },
+      { correlationId: 'update-operation-id', stage: 'packageStaging' },
+    ]);
+    expect(
+      JSON.stringify([
+        fixture.operationStarted.mock.calls,
+        fixture.operationCompleted.mock.calls,
+      ]),
+    ).not.toMatch(/C:\\|manifest|packageSha256|runtimeSession/i);
   });
 });
 
+const allChannels = [
+  getLocalUpdateStatusIpcChannel,
+  selectLocalUpdateIpcChannel,
+  discardSelectedLocalUpdateIpcChannel,
+  confirmLocalUpdateIpcChannel,
+  cancelLocalUpdateIpcChannel,
+];
+
 function createFixture(
   options: {
-    currentState?: 'missing' | 'ready';
+    candidate?: Readonly<LocalUpdatePackageStatusSummary>;
+    confirmResult?: boolean;
+    current?: Readonly<LocalUpdatePackageStatusSummary>;
     manifestPath?: string | null;
     selectManifestPath?: () => Promise<string | null>;
   } = {},
 ) {
-  let handler:
-    | ((event: unknown, ...args: unknown[]) => Promise<unknown>)
-    | undefined;
+  const handlers = new Map<
+    string,
+    (event: unknown, ...args: unknown[]) => Promise<unknown>
+  >();
   const handle = vi.fn(
     (
       channel: string,
@@ -142,17 +276,19 @@ function createFixture(
         ...args: unknown[]
       ) => Promise<unknown>,
     ) => {
-      expect(channel).toBe(selectLocalUpdateIpcChannel);
-      handler = registeredHandler;
+      handlers.set(channel, registeredHandler);
     },
   );
   const removeHandler = vi.fn();
   const mainFrame = {};
   const webContents = { mainFrame };
-  const getCurrentRegistrationState = vi.fn(
-    async () => options.currentState ?? 'missing',
+  const getPackageStatus = vi.fn(async (role: 'candidate' | 'current') =>
+    role === 'current' ? options.current : options.candidate,
   );
-  const stageSelectedPackage = vi.fn(async () => currentSummary);
+  const discardCandidate = vi.fn(async () => undefined);
+  const stageSelectedPackage = vi.fn(
+    async (): Promise<Readonly<LocalUpdatePackageSummary>> => currentSummary,
+  );
   const selectManifestPath = vi.fn(
     options.selectManifestPath ??
       (async () =>
@@ -161,28 +297,59 @@ function createFixture(
           : options.manifestPath),
   );
   const showSafeError = vi.fn();
+  const confirmUpdate = vi.fn(async () => options.confirmResult ?? false);
+  const prepareConfirmedUpdate = vi.fn(async () => undefined);
+  const handoffPreparedUpdate = vi.fn(async () => undefined);
+  const operationStarted = vi.fn();
+  const operationCompleted = vi.fn();
+  const operationFailed = vi.fn();
   const capability = createLocalUpdateSelectionCapability({
-    cache: { getCurrentRegistrationState, stageSelectedPackage } as never,
+    cache: {
+      discardCandidate,
+      getPackageStatus,
+      stageSelectedPackage,
+    } as never,
+    confirmUpdate,
+    handoffCoordinator: {
+      handoffPreparedUpdate,
+      prepareConfirmedUpdate,
+    } as never,
     ipcMain: { handle, removeHandler } as never,
+    journalStore: { read: vi.fn(async () => undefined) },
     mainWindow: {
       isDestroyed: () => false,
       webContents,
     } as never,
+    observer: {
+      operationCompleted,
+      operationFailed,
+      operationStarted,
+    },
+    operationIdFactory: () => 'update-operation-id',
+    releaseInfo,
     selectManifestPath,
     showSafeError,
   });
 
   return {
     capability,
-    invoke(event: unknown, ...args: unknown[]) {
+    confirmUpdate,
+    discardCandidate,
+    getPackageStatus,
+    handoffPreparedUpdate,
+    invoke(channel: string, event: unknown, ...args: unknown[]) {
+      const handler = handlers.get(channel);
       if (handler === undefined) {
-        throw new Error('Test handler was not registered.');
+        throw new Error(`Test handler was not registered: ${channel}`);
       }
       return handler(event, ...args);
     },
     mainFrame,
+    operationCompleted,
+    operationFailed,
+    operationStarted,
+    prepareConfirmedUpdate,
     removeHandler,
-    selectManifestPath,
     showSafeError,
     stageSelectedPackage,
     trustedEvent: { sender: webContents, senderFrame: mainFrame },

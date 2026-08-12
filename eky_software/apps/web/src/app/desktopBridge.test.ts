@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   getDesktopInvoicePdfArchive,
   getDesktopInvoicePdfPreview,
+  getDesktopLocalUpdate,
   getDesktopOperationalLogFolder,
   getDesktopProfileProtection,
   getDesktopSupportBundleCreator,
@@ -33,6 +34,64 @@ describe('desktop bridge', () => {
         ekyDesktop: {} as EkyDesktopApi,
       } as Pick<Window, 'ekyDesktop'>),
     ).toBeUndefined();
+  });
+
+  it('exposes only the named local update commands and safe status', async () => {
+    const getLocalUpdateStatus = vi.fn(async () => localUpdateStatus);
+    const selectLocalUpdate = vi.fn(async () => ({
+      package: {
+        appVersion: '0.1.0-alpha.1',
+        buildRevision: '123456789abc',
+        msiProductVersion: '0.1.1',
+        releaseChannel: 'pilot',
+        role: 'current',
+        signingStatus: 'unsigned-prototype',
+      },
+      status: 'currentRegistered',
+    }));
+    const capability = getDesktopLocalUpdate({
+      ekyDesktop: createDesktopApi({
+        getLocalUpdateStatus,
+        selectLocalUpdate,
+      }),
+    });
+
+    await expect(capability?.getStatus()).resolves.toEqual(localUpdateStatus);
+    await expect(capability?.select()).resolves.toBe('currentRegistered');
+    await expect(capability?.cancel()).resolves.toBe('cancelled');
+    expect(getLocalUpdateStatus).toHaveBeenCalledWith();
+    expect(selectLocalUpdate).toHaveBeenCalledWith();
+  });
+
+  it('does not expose local updates in browser or through an incomplete bridge', () => {
+    expect(
+      getDesktopLocalUpdate({} as Pick<Window, 'ekyDesktop'>),
+    ).toBeUndefined();
+    const desktop = createDesktopApi();
+    desktop.confirmLocalUpdate = undefined as never;
+    expect(getDesktopLocalUpdate({ ekyDesktop: desktop })).toBeUndefined();
+  });
+
+  it.each([
+    { ...localUpdateStatus, rawPath: 'C:\\Private\\update' },
+    {
+      ...localUpdateStatus,
+      candidate: {
+        ...localUpdateStatus.candidate,
+        packageFingerprint: 'b'.repeat(64),
+      },
+    },
+    { ...localUpdateStatus, phase: 'unknown' },
+  ])('rejects unsafe local update status data', async (unsafeStatus) => {
+    const capability = getDesktopLocalUpdate({
+      ekyDesktop: createDesktopApi({
+        getLocalUpdateStatus: vi.fn(async () => unsafeStatus),
+      }),
+    });
+
+    await expect(capability?.getStatus()).rejects.toThrow(
+      'Invalid local update status.',
+    );
   });
 
   it('exposes the fixed desktop log folder capability when available', async () => {
@@ -217,6 +276,29 @@ const disabledStatus = {
   pendingCount: 0,
 };
 
+const localUpdateStatus = {
+  architecture: 'x64' as const,
+  candidate: {
+    appVersion: '0.1.0-alpha.2',
+    buildRevision: 'abcdef012345',
+    msiProductVersion: '0.1.2',
+    packageFingerprint: 'abcdef012345',
+    releaseChannel: 'pilot' as const,
+    role: 'candidate' as const,
+    signingStatus: 'unsigned-prototype' as const,
+  },
+  current: {
+    appVersion: '0.1.0-alpha.1',
+    buildRevision: '123456789abc',
+    msiProductVersion: '0.1.1',
+    releaseChannel: 'pilot' as const,
+  },
+  currentRollbackPackage: 'ready' as const,
+  phase: 'idle' as const,
+  recoveryPointState: 'notStarted' as const,
+  signingStatus: 'unsigned-prototype' as const,
+};
+
 const protectionStatus = {
   portableBackup: {
     latestSuccessfulPortableBackupAt: '2026-08-04T18:00:00.000Z',
@@ -256,7 +338,13 @@ function createDesktopApi(
     createEncryptedProfileBackup: vi.fn(async () => 'cancelled'),
     createManualRecoveryPoint: vi.fn(async () => protectionStatus),
     createSupportBundle: vi.fn(async () => 'cancelled' as const),
+    cancelLocalUpdate: vi.fn(async () => ({ status: 'cancelled' })),
+    confirmLocalUpdate: vi.fn(async () => ({ status: 'cancelled' })),
     disableInvoicePdfArchive: vi.fn(async () => disabledStatus),
+    discardSelectedLocalUpdate: vi.fn(async () => ({
+      status: localUpdateStatus,
+    })),
+    getLocalUpdateStatus: vi.fn(async () => localUpdateStatus),
     getInvoicePdfArchiveStatus: vi.fn(async () => disabledStatus),
     getProfileBackupStatus: vi.fn(async () => ({
       operationState: 'idle',

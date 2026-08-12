@@ -220,6 +220,13 @@ async function prepareApplicationStage(buildInfo, releaseInfo) {
     ),
     join(updateRuntimeStage, 'inspectWindowsRegularFile.ps1'),
   );
+  await cp(
+    resolve(
+      desktopDirectory,
+      'resources/update/rollbackWindowsInstaller.ps1',
+    ),
+    join(updateRuntimeStage, 'rollbackWindowsInstaller.ps1'),
+  );
 }
 
 async function assertPackagedDiagnosticsArtifacts() {
@@ -251,6 +258,7 @@ async function assertPackagedDiagnosticsArtifacts() {
     resolve(updateRuntimeStage, 'inspectWindowsInstallerIdentity.ps1'),
   );
   await access(resolve(updateRuntimeStage, 'inspectWindowsRegularFile.ps1'));
+  await access(resolve(updateRuntimeStage, 'rollbackWindowsInstaller.ps1'));
 }
 
 async function applyAndVerifyFuses(executablePath) {

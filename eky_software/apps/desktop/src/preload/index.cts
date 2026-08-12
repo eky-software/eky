@@ -28,6 +28,11 @@ const activatePreparedProfileRestoreIpcChannel =
 const createManualRecoveryPointIpcChannel =
   'eky:profile-backup:create-recovery-point';
 const selectLocalUpdateIpcChannel = 'eky:update:select-local';
+const getLocalUpdateStatusIpcChannel = 'eky:update:get-status';
+const discardSelectedLocalUpdateIpcChannel =
+  'eky:update:discard-selected';
+const confirmLocalUpdateIpcChannel = 'eky:update:confirm-local';
+const cancelLocalUpdateIpcChannel = 'eky:update:cancel-local';
 
 interface EkyDesktopApi {
   activatePreparedProfileRestore(): Promise<unknown>;
@@ -38,12 +43,16 @@ interface EkyDesktopApi {
   disableInvoicePdfArchive(): Promise<unknown>;
   getInvoicePdfArchiveStatus(): Promise<unknown>;
   getProfileBackupStatus(): Promise<unknown>;
+  getLocalUpdateStatus(): Promise<unknown>;
   inspectEncryptedProfileBackup(): Promise<unknown>;
   openInvoicePdf(invoiceId: string): Promise<void>;
   openInvoicePdfArchiveDirectory(): Promise<void>;
   openOperationalLogFolder(): Promise<void>;
   prepareEncryptedProfileRestore(): Promise<unknown>;
   retryPendingInvoicePdfArchiveTasks(): Promise<unknown>;
+  discardSelectedLocalUpdate(): Promise<unknown>;
+  confirmLocalUpdate(): Promise<unknown>;
+  cancelLocalUpdate(): Promise<unknown>;
   selectLocalUpdate(): Promise<unknown>;
 }
 
@@ -72,6 +81,9 @@ const ekyDesktopApi: EkyDesktopApi = Object.freeze({
   getProfileBackupStatus() {
     return ipcRenderer.invoke(getProfileBackupStatusIpcChannel);
   },
+  getLocalUpdateStatus() {
+    return ipcRenderer.invoke(getLocalUpdateStatusIpcChannel);
+  },
   inspectEncryptedProfileBackup() {
     return ipcRenderer.invoke(inspectProfileBackupIpcChannel);
   },
@@ -89,6 +101,15 @@ const ekyDesktopApi: EkyDesktopApi = Object.freeze({
   },
   retryPendingInvoicePdfArchiveTasks() {
     return ipcRenderer.invoke(retryPendingInvoicePdfArchiveTasksIpcChannel);
+  },
+  discardSelectedLocalUpdate() {
+    return ipcRenderer.invoke(discardSelectedLocalUpdateIpcChannel);
+  },
+  confirmLocalUpdate() {
+    return ipcRenderer.invoke(confirmLocalUpdateIpcChannel);
+  },
+  cancelLocalUpdate() {
+    return ipcRenderer.invoke(cancelLocalUpdateIpcChannel);
   },
   selectLocalUpdate() {
     return ipcRenderer.invoke(selectLocalUpdateIpcChannel);

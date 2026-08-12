@@ -11,9 +11,14 @@ Local Update Foundation tarkistaa paikallisen manifestin ja MSI-identiteetin,
 soveltaa vaihdettavaa trust-policya ja rekisteröi hyväksytyn paketin Electron
 mainin yksityiseen tekniseen cacheen. Yksityinen C2-orkestrointi,
 pre-update/pre-migration-suoja, crash-safe journal, guarded installer handoff
-sekä UI:ta edeltävä first-start-hyväksyntä on toteutettu. Code signingia,
-käyttäjälle avattua update-UI:ta tai varsinaista business/binary-rollbackia ei
-ole vielä toteutettu.
+sekä UI:ta edeltävä first-start-hyväksyntä on toteutettu. C3B:n business- ja
+binary-rollback sekä business-UI:sta eristetty recovery-only-ikkuna ovat
+toteutettu. C3C:n rajattu paikallisen päivityksen UI ja nimetyt renderer-
+capabilityt ovat toteutettu. C3B:n koordinoitu kahden MSI-version binary-
+rollback on todennettu Windows Installerilla: epäonnistunut N-palautus korjaa
+N+1:n takaisin eikä jätä mixed-version-asennusjuurta. C3C:n koko business-
+profiilin, PDF-artifactien ja runtime-sessionin final packaged -matriisi,
+fyysisen median manuaalinen tarkistus ja code signing ovat edelleen auki.
 
 ### Local Update Program -checkpointit
 
@@ -22,7 +27,7 @@ ole vielä toteutettu.
 | C0 Electron cold-start baseline | valmis 11.8.2026 | `DESK-PDF-001` ajettiin 10 kertaa retries=0 ja Electron critical kahdesti puhtaasti; aiemman flaken juurisyytä ei väitetä korjatuksi |
 | C1 Local Update Foundation | valmis 11.8.2026 | Manifestin runtime-codec, vaihdettava trust-policy, native selection, private staging/cache ja nykyisen rollback-paketin rekisteröinti; ei MSI:n käynnistystä eikä business-dataa |
 | C2 Update Orchestration and First Start | valmis 11.8.2026 | Yksityinen migration gate, pre-update/pre-migration recovery, crash-safe journal, graceful-only handoff, accepted-build-metadata ja UI:ta edeltävä first-start-hyväksyntä; ei käyttäjälle avattua päivitys-UI:ta tai rollbackia |
-| C3 Recovery, Compatibility and Pilot Release | odottaa | Aloitetaan vasta C2:n vihreän mergen ja haarojen synkronoinnin jälkeen |
+| C3 Recovery, Compatibility and Pilot Release | käynnissä | C3B:n business/binary-rollback, täsmällisen rollback-paketin valinta, recovery-only-tila ja koordinoitu MSI-palautus sekä C3C:n rajattu paikallinen update-UI ovat toteutettu; koko final packaged -matriisi, fyysinen media ja code signing ovat kesken |
 
 Migration runnerin SHA-256-checksum-, chain identity- ja release/build-
 metadata on toteutettu 10.8.2026. Historiallinen mismatch torjutaan ennen
@@ -333,13 +338,40 @@ Käyttäjäpolku:
 
 R0:ssa päivitystä ei käynnistetä automaattisesti ilman käyttäjän vahvistusta.
 
-Renderer pyytää vain nimetyn nollaparametrisen `selectLocalUpdate()`-
-capabilityn. Electron main avaa native-dialogin manifestille, lukee suljetun
-manifestin ja johtaa sen samassa hakemistossa olevan paketin nimen vain
-validoidusta `packageFilename`-kentästä. Renderer ei saa manifestin tai
-paketin raakaa polkua, executablea, URL:ia, komentoriviä tai
-prosessioikeutta. R0:ssa ei valita executablea suoraan eikä käytetä yleistä
-`openFile`-capabilityä.
+Renderer käyttää vain nimettyjä nollaparametrisia capabilityja
+`getLocalUpdateStatus()`, `selectLocalUpdate()`,
+`discardSelectedLocalUpdate()`, `confirmLocalUpdate()` ja
+`cancelLocalUpdate()`. Electron main avaa native-dialogin manifestille, lukee
+suljetun manifestin ja johtaa sen samassa hakemistossa olevan paketin nimen
+vain validoidusta `packageFilename`-kentästä. Renderer ei saa manifestin tai
+paketin raakaa polkua, täydellistä tiivistettä, executablea, URL:ia,
+komentoriviä, sessionia tai prosessioikeutta. R0:ssa ei valita executablea
+suoraan eikä käytetä yleistä `openFile`-capabilityä.
+
+`confirmLocalUpdate()` ei hyväksy rendereriltä candidate-tunnistetta tai
+muuta päivitysdataa. Electron main lukee ja validoi nykyisen candidate-slotin
+uudelleen, näyttää native-vahvistuksen ja käynnistää vain siihen sidotun
+palautuspiste-, shutdown- ja installer-handoff-polun. Vahvistuksen peruuttaminen
+ennen handoffia ei luo palautuspistettä tai journalia, sulje runtimea eikä
+kosketa business-dataan.
+
+UI sijaitsee polussa `Oma yritys` -> `Tuki ja historia` ->
+`Sovellus ja päivitykset`. Se näyttää rajatun nykyversion, buildin, kanavan,
+rollback-paketin tilan, candidate-version, recovery point -tilan ja
+päivitysvaiheen. Selainkehityksessä capability on tarkoituksella pois
+käytöstä; webiin ei lisätä fake-filesystem-adapteria.
+
+Allekirjoittamattoman pilotin native-vahvistus näyttää nykyisen ja kohde-
+app-version, nykyisen ja kohde-MSI-version, kanavan, arkkitehtuurin, lyhyen
+SHA-256-sormenjäljen, rollback-paketin ja pre-update-pisteen tilan sekä
+seuraavan varoituksen:
+
+> Tämän pilot-päivityksen julkaisijaa ei ole varmennettu Windowsin
+> digitaalisella allekirjoituksella. Jatka vain, jos päivityspaketti on saatu
+> suoraan Eky-kehittäjältä hallitulla medialla.
+
+Jatkotoiminto on eksplisiittinen `Jatka päivitykseen`, ja turvallinen
+oletusvalinta on `Peruuta`.
 
 ### Package trust ja yksityinen staging
 
@@ -774,10 +806,43 @@ Jos first-start epäonnistuu schema- tai datavaiheessa:
 Epäonnistuneen profiilin säilytys, koko ja retention päätetään
 toteutusvaiheessa. Se ei kuulu tukipakettiin kokonaisena.
 
+C3B:n journalijärjestys on `businessRollbackStarting` ->
+`businessRollbackCompleted` -> `binaryRollbackPrepared` ->
+`awaitingRollbackFirstStart` -> `rolledBack`. Järjestystä ei saa ohittaa, ja
+binary rollbackin yrityslaskuri tallennetaan ennen MSI:n käynnistämistä.
+Keskeytys jatkuu vain nykyisestä turvallisesti vahvistetusta vaiheesta;
+epäselvä business-profiili estää binaaripalautuksen kokonaan.
+
+Binaaripalautus käyttää vain journalin `currentVersion`-, build-, MSI-, SHA-256-
+ja kokotietoihin täsmälleen sidottua pakettia. Jos täsmällinen paketti ei ole
+yksityisen cachen `current`- tai `previous`-slotissa, journal siirtyy
+`rollbackPackageRequired`-tilaan ennen MSI-yrityksen kuluttamista. Käyttäjä voi
+valita paketin vain Electron mainin omistamalla native-dialogilla. Valittu
+manifesti ja MSI tarkistetaan samoihin journalin identiteetteihin; eri versio,
+build, MSI-identiteetti, hash tai koko torjutaan eikä rollback-yrityslaskuri
+muutu.
+
 ## 18. Binary rollback
 
-Binary rollback on asenninmoottorin vastuu. Teknologiavalinnassa pitää
-todistaa:
+MSI:n normaali downgrade pysyy estettynä. Eky ei lisää WiX-authorointiin
+yleistä downgrade-poikkeusta eikä suppressaa ICE61-varoitusta. C3:n
+binaaripalautus on Electron main -prosessin koordinoima, tarkasti rajattu
+kaksivaiheinen installer-handoff:
+
+1. epäonnistunut N+1 poistetaan sen journalista ja tarkistetusta MSI:stä
+   johdetulla ProductCodella
+2. täsmälleen journalin N-identiteettiin, SHA-256:een, kokoon ja MSI-
+   identiteettiin sidottu rollback-paketti asennetaan
+3. jos N:n asennus epäonnistuu poistamisen jälkeen, sama tarkistettu N+1-
+   paketti yritetään asentaa takaisin, jotta recovery-only-käyttöliittymä
+   säilyy käytettävissä
+
+Renderer ei anna komentoja, polkuja tai ProductCodea. Main muodostaa kiinteän
+PowerShell- ja `msiexec`-kutsun validoiduista yksityisen cachen handleista sekä
+paketoidusta projektin omasta rollback-skriptistä. Skripti ei ole yleinen
+shell-rajapinta eikä se salli ylimääräisiä argumentteja tai verkkolähteitä.
+
+Teknologiavalinnassa pitää todistaa:
 
 - pystyykö moottori säilyttämään tai palauttamaan edellisen version
 - miten rollback käynnistyy, jos uusi Eky ei avaudu
@@ -786,8 +851,17 @@ todistaa:
 - miten osittainen asennus siivotaan
 
 Binary rollback ei avaa vanhaa ohjelmaversiota uudemmalla, migroidulla
-profiililla. Business-datan palautus ja binaaripalautus koordinoidaan
-journalin avulla.
+profiililla. Business-datan palautus valmistuu ennen binaaripalautusta, ja
+vaiheet koordinoidaan crash-safe journalin avulla. Suora N+1 -> N MSI-
+päälleasennus pysyy torjuttuna myös palautuspolun valmistuttua.
+
+`failedSafe`-, `recoveryRequired`-, `rollbackPackageRequired`- ja ristiriitaisen
+startup recovery authorityn tilanteissa tavallista backendia tai business-
+käyttöliittymää ei käynnistetä. Electron avaa erillisen sandboxatun recovery-
+ikkunan, joka ei saa runtime-sessionia, yritysdataa, profiilipolkuja tai raw
+journalia. Ikkuna tarjoaa vain turvallisen virhekoodin ja build-identiteetin,
+teknisen minimoidun recovery-tukipaketin, lokikansion avaamisen sekä
+`rollbackPackageRequired`-tilassa täsmällisen rollback-paketin native-valinnan.
 
 ## 19. Code signing
 

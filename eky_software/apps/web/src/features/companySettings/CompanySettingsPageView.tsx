@@ -11,6 +11,7 @@ import { InvoicePdfArchivePanel } from './InvoicePdfArchivePanel.js';
 import { ProfileBackupPanel } from './ProfileBackupPanel.js';
 import type {
   InvoicePdfArchiveCapability,
+  LocalUpdateCapability,
   ProfileProtectionCapability,
 } from '../../app/desktopBridge.js';
 import {
@@ -45,6 +46,7 @@ interface CompanySettingsPageProps {
   apiClient: CompanySettingsPageClient;
   invoicePdfArchiveCapability?: InvoicePdfArchiveCapability;
   isEmailSecretManagementAvailable: boolean;
+  localUpdateCapability?: LocalUpdateCapability;
   onOpenActivity(): void;
   onOpenDiagnostics(): void;
   profileProtectionCapability?: ProfileProtectionCapability;
@@ -54,6 +56,7 @@ export function CompanySettingsPage({
   apiClient,
   invoicePdfArchiveCapability,
   isEmailSecretManagementAvailable,
+  localUpdateCapability,
   onOpenActivity,
   onOpenDiagnostics,
   profileProtectionCapability,
@@ -183,6 +186,9 @@ export function CompanySettingsPage({
               : { capability: profileProtectionCapability })}
           />
           <CompanyOperationsPanel
+            {...(localUpdateCapability === undefined
+              ? {}
+              : { localUpdateCapability })}
             onOpenActivity={onOpenActivity}
             onOpenDiagnostics={onOpenDiagnostics}
           />

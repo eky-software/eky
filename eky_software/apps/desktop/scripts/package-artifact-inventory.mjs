@@ -10,6 +10,11 @@ const smokeAllowlist = new Set([
   'dist/pdf/invoicePdfPreviewSmoke.js',
   'dist/profileBackup/packagedProfileBackupSmoke.js',
 ]);
+const updateRuntimeAllowlist = new Set([
+  'inspectWindowsInstallerIdentity.ps1',
+  'inspectWindowsRegularFile.ps1',
+  'rollbackWindowsInstaller.ps1',
+]);
 const validStages = new Set([
   'applicationStage',
   'backendStage',
@@ -22,7 +27,7 @@ const maximumCredentialJsonInspectionBytes = 1_048_576;
 const stageLimits = Object.freeze({
   applicationStage: Object.freeze({
     maximumDirectoryDepth: 5,
-    maximumFileCount: 192,
+    maximumFileCount: 193,
     maximumLogicalPathBytes: 96,
     maximumProjectOwnedFileBytes: 1_048_576,
     maximumTotalBytes: 2_097_152,
@@ -43,7 +48,7 @@ const stageLimits = Object.freeze({
   }),
   updateRuntimeStage: Object.freeze({
     maximumDirectoryDepth: 1,
-    maximumFileCount: 2,
+    maximumFileCount: 3,
     maximumLogicalPathBytes: 64,
     maximumProjectOwnedFileBytes: 32_768,
     maximumTotalBytes: 64_000,
@@ -133,6 +138,10 @@ export function classifyForbiddenArtifact(logicalPath, stage) {
   const segments = lowerPath.split('/');
   const fileName = segments.at(-1) ?? '';
   const isProjectOwned = isProjectOwnedArtifact(normalized, stage);
+
+  if (stage === 'updateRuntimeStage' && !updateRuntimeAllowlist.has(normalized)) {
+    return 'UNAPPROVED_UPDATE_RUNTIME_ARTIFACT';
+  }
 
   if (/\.(?:key|p12|pfx)$/.test(fileName)) {
     return 'PRIVATE_KEY_ARTIFACT';

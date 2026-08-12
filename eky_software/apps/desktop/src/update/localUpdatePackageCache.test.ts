@@ -256,6 +256,33 @@ describe('local update package cache', () => {
     expect(Object.isFrozen(identity)).toBe(true);
   });
 
+  it('returns only a short safe fingerprint in package status', async () => {
+    const fixture = await createFixture();
+    const cache = createCache(fixture.cacheRoot);
+    await cache.stageSelectedPackage({
+      manifestPath: fixture.manifestPath,
+      role: 'current',
+    });
+
+    const status = await cache.getPackageStatus('current');
+
+    expect(status).toEqual({
+      appVersion: releaseInfo.appVersion,
+      buildRevision: releaseInfo.buildRevision,
+      msiProductVersion: releaseInfo.msiProductVersion,
+      packageFingerprint: expectedIdentityOf(fixture.manifest)
+        .packageSha256.slice(0, 12),
+      releaseChannel: 'pilot',
+      role: 'current',
+      signingStatus: 'unsigned-prototype',
+    });
+    expect(JSON.stringify(status)).not.toContain(fixture.root);
+    expect(JSON.stringify(status)).not.toContain(
+      expectedIdentityOf(fixture.manifest).packageSha256,
+    );
+    expect(Object.isFrozen(status)).toBe(true);
+  });
+
   it('promotes candidate to current and keeps the prior current as previous', async () => {
     const pair = await createCurrentAndCandidatePair();
     await pair.cache.promoteAcceptedCandidate({
@@ -316,6 +343,113 @@ describe('local update package cache', () => {
         }),
       ).resolves.toBeDefined();
     }
+  });
+
+  it('normalizes unrotated rollback packages idempotently', async () => {
+    const pair = await createCurrentAndCandidatePair();
+
+    await expect(
+      pair.cache.normalizeRolledBackPackages({
+        candidateIdentity: expectedIdentityOf(pair.candidate.manifest),
+        currentIdentity: expectedIdentityOf(pair.current.manifest),
+      }),
+    ).resolves.toMatchObject({
+      appVersion: releaseInfo.appVersion,
+    });
+    await expect(
+      pair.cache.normalizeRolledBackPackages({
+        candidateIdentity: expectedIdentityOf(pair.candidate.manifest),
+        currentIdentity: expectedIdentityOf(pair.current.manifest),
+      }),
+    ).resolves.toMatchObject({ appVersion: releaseInfo.appVersion });
+
+    expect((await readdir(pair.current.cacheRoot)).sort()).toEqual([
+      'candidate',
+      'current',
+    ]);
+  });
+
+  it('restores the exact previous package after accepted candidate rotation', async () => {
+    const pair = await createCurrentAndCandidatePair();
+    await pair.cache.promoteAcceptedCandidate({
+      candidateIdentity: expectedIdentityOf(pair.candidate.manifest),
+      currentIdentity: expectedIdentityOf(pair.current.manifest),
+    });
+
+    await pair.cache.normalizeRolledBackPackages({
+      candidateIdentity: expectedIdentityOf(pair.candidate.manifest),
+      currentIdentity: expectedIdentityOf(pair.current.manifest),
+    });
+
+    expect((await readdir(pair.current.cacheRoot)).sort()).toEqual([
+      'candidate',
+      'current',
+    ]);
+    await expect(
+      pair.cache.revalidateJournalPackage({
+        expectedIdentity: expectedIdentityOf(pair.current.manifest),
+        role: 'current',
+      }),
+    ).resolves.toBeDefined();
+    await expect(
+      pair.cache.revalidateJournalPackage({
+        expectedIdentity: expectedIdentityOf(pair.candidate.manifest),
+        role: 'candidate',
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it('resumes rollback normalization after either durable directory rename', async () => {
+    for (const interruption of ['afterCurrentRename', 'afterPreviousRename']) {
+      const pair = await createCurrentAndCandidatePair();
+      await pair.cache.promoteAcceptedCandidate({
+        candidateIdentity: expectedIdentityOf(pair.candidate.manifest),
+        currentIdentity: expectedIdentityOf(pair.current.manifest),
+      });
+      await rename(
+        join(pair.current.cacheRoot, 'current'),
+        join(pair.current.cacheRoot, '.rollback-candidate-next'),
+      );
+      if (interruption === 'afterPreviousRename') {
+        await rename(
+          join(pair.current.cacheRoot, 'previous'),
+          join(pair.current.cacheRoot, 'current'),
+        );
+      }
+
+      await pair.cache.normalizeRolledBackPackages({
+        candidateIdentity: expectedIdentityOf(pair.candidate.manifest),
+        currentIdentity: expectedIdentityOf(pair.current.manifest),
+      });
+
+      expect((await readdir(pair.current.cacheRoot)).sort()).toEqual([
+        'candidate',
+        'current',
+      ]);
+    }
+  });
+
+  it('rejects a mismatched rollback identity without rotating package slots', async () => {
+    const pair = await createCurrentAndCandidatePair();
+    await pair.cache.promoteAcceptedCandidate({
+      candidateIdentity: expectedIdentityOf(pair.candidate.manifest),
+      currentIdentity: expectedIdentityOf(pair.current.manifest),
+    });
+
+    await expect(
+      pair.cache.normalizeRolledBackPackages({
+        candidateIdentity: expectedIdentityOf(pair.candidate.manifest),
+        currentIdentity: {
+          ...expectedIdentityOf(pair.current.manifest),
+          packageSha256: 'f'.repeat(64),
+        },
+      }),
+    ).rejects.toThrow(LocalUpdatePackageCacheError);
+
+    expect((await readdir(pair.current.cacheRoot)).sort()).toEqual([
+      'current',
+      'previous',
+    ]);
   });
 
   it('discards a corrupted candidate without changing current or previous', async () => {
@@ -437,6 +571,59 @@ describe('local update package cache', () => {
         role: 'candidate',
       }),
     ).resolves.toBeDefined();
+  });
+
+  it('registers an exact journal-bound rollback package under the failed target build', async () => {
+    const fixture = await createFixture();
+    const failedTargetRelease = {
+      ...releaseInfo,
+      appVersion: '0.1.0-alpha.2',
+      buildRevision: 'abcdef012345',
+      msiProductVersion: '0.1.2',
+    };
+    const cache = createCache(fixture.cacheRoot, {
+      releaseInfo: failedTargetRelease,
+    });
+    const expectedIdentity = expectedIdentityOf(fixture.manifest);
+
+    await expect(
+      cache.registerExactRollbackPackage({
+        expectedIdentity,
+        manifestPath: fixture.manifestPath,
+      }),
+    ).resolves.toMatchObject({
+      appVersion: releaseInfo.appVersion,
+      role: 'current',
+    });
+    await expect(
+      cache.hasExpectedJournalPackage({
+        expectedIdentity,
+        roles: ['current', 'previous'],
+      }),
+    ).resolves.toBe(true);
+  });
+
+  it('rejects a manually selected rollback package that differs from the journal identity', async () => {
+    const fixture = await createFixture();
+    const cache = createCache(fixture.cacheRoot, {
+      releaseInfo: {
+        ...releaseInfo,
+        appVersion: '0.1.0-alpha.2',
+        buildRevision: 'abcdef012345',
+        msiProductVersion: '0.1.2',
+      },
+    });
+
+    await expect(
+      cache.registerExactRollbackPackage({
+        expectedIdentity: {
+          ...expectedIdentityOf(fixture.manifest),
+          packageSha256: 'f'.repeat(64),
+        },
+        manifestPath: fixture.manifestPath,
+      }),
+    ).rejects.toThrow(LocalUpdatePackageCacheError);
+    expect(await safeReadDirectory(fixture.cacheRoot)).toEqual([]);
   });
 
   it('recovers both interrupted current repair rename states', async () => {

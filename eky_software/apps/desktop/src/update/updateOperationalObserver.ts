@@ -1,5 +1,6 @@
 import { createDesktopOperationalEvent } from '../observability/createDesktopOperationalEvent.js';
 import type {
+  DesktopOperationalEventInput,
   DesktopOperationalIdentity,
   UpdateOperationalStage,
 } from '../observability/desktopOperationalEvent.js';
@@ -23,12 +24,18 @@ export interface UpdateOperationalObserver {
     correlationId: string;
     stage: UpdateOperationalStage;
   }): void;
+  operationStateChanged?(input: {
+    correlationId: string;
+    state: 'accepted' | 'installerNotApplied' | 'recoveryRequired';
+    stage: UpdateOperationalStage;
+  }): void;
 }
 
 export const noOpUpdateOperationalObserver: UpdateOperationalObserver = {
   operationCompleted() {},
   operationFailed() {},
   operationStarted() {},
+  operationStateChanged() {},
 };
 
 export function createUpdateOperationalObserver(options: {
@@ -37,28 +44,85 @@ export function createUpdateOperationalObserver(options: {
 }): UpdateOperationalObserver {
   return {
     operationCompleted(input) {
-      options.logger.write(
-        createDesktopOperationalEvent(
-          { eventName: 'update.operationCompleted', ...input },
-          options.identity,
-        ),
-      );
+      writeUpdateEvent(options, {
+        eventName: updateEventNames[input.stage].succeeded,
+        ...input,
+      });
     },
     operationFailed(input) {
-      options.logger.write(
-        createDesktopOperationalEvent(
-          { eventName: 'update.operationFailed', ...input },
-          options.identity,
-        ),
-      );
+      writeUpdateEvent(options, {
+        eventName: updateEventNames[input.stage].failed,
+        ...input,
+      });
     },
     operationStarted(input) {
-      options.logger.write(
-        createDesktopOperationalEvent(
-          { eventName: 'update.operationStarted', ...input },
-          options.identity,
-        ),
-      );
+      writeUpdateEvent(options, {
+        eventName: updateEventNames[input.stage].started,
+        ...input,
+      });
+    },
+    operationStateChanged(input) {
+      writeUpdateEvent(options, {
+        correlationId: input.correlationId,
+        eventName: `update.${input.state}`,
+        stage: input.stage,
+        ...(input.state === 'recoveryRequired'
+          ? {
+              durationMs: 0,
+              errorCode: 'UPDATE_RECOVERY_REQUIRED',
+              retryable: false,
+              sideEffectState: 'unknown' as const,
+            }
+          : {}),
+      });
     },
   };
+}
+
+const updateEventNames = Object.freeze({
+  binaryRollback: eventFamily('binaryRollback'),
+  businessRollback: eventFamily('businessRollback'),
+  candidateDiscard: eventFamily('candidateDiscard'),
+  confirmation: eventFamily('confirmation'),
+  currentPackageRegistration: eventFamily('currentPackageRegistration'),
+  firstStartValidation: eventFamily('firstStartValidation'),
+  installerHandoff: eventFamily('installerHandoff'),
+  packageInspection: eventFamily('packageInspection'),
+  packageStaging: eventFamily('packageStaging'),
+  recoveryPoint: eventFamily('recoveryPoint'),
+  restoreCompatibility: eventFamily('restoreCompatibility'),
+  runtimeShutdown: eventFamily('runtimeShutdown'),
+} satisfies Record<UpdateOperationalStage, UpdateEventFamily>);
+
+interface UpdateEventFamily {
+  failed: `update.${string}Failed`;
+  started: `update.${string}Started`;
+  succeeded: `update.${string}Succeeded`;
+}
+
+function eventFamily(name: string): UpdateEventFamily {
+  return Object.freeze({
+    failed: `update.${name}Failed`,
+    started: `update.${name}Started`,
+    succeeded: `update.${name}Succeeded`,
+  });
+}
+
+function writeUpdateEvent(
+  options: {
+    identity: Readonly<DesktopOperationalIdentity>;
+    logger: DesktopOperationalLogger;
+  },
+  event: Readonly<Record<string, unknown>>,
+): void {
+  try {
+    options.logger.write(
+      createDesktopOperationalEvent<DesktopOperationalEventInput>(
+        event as DesktopOperationalEventInput,
+        options.identity,
+      ),
+    );
+  } catch {
+    // Operational logging must never control update or rollback state.
+  }
 }

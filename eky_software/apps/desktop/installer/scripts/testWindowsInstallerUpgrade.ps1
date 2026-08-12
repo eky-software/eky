@@ -65,6 +65,41 @@ function Invoke-EkyUpgradeAttempt {
   return $process.ExitCode
 }
 
+function Invoke-EkyCoordinatedRollback {
+  param(
+    [Parameter(Mandatory = $true)][string]$FailedProductCode,
+    [Parameter(Mandatory = $true)][string]$FailedPackagePath,
+    [Parameter(Mandatory = $true)][string]$RollbackPackagePath
+  )
+
+  $rollbackScriptPath = Join-Path $installRoot `
+    'resources\update-runtime\rollbackWindowsInstaller.ps1'
+  if (!(Test-Path -LiteralPath $rollbackScriptPath -PathType Leaf)) {
+    throw 'INSTALLER_UPGRADE_ROLLBACK_SCRIPT_MISSING'
+  }
+  $msiExecPath = Join-Path $env:SystemRoot 'System32\msiexec.exe'
+  $process = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
+    '-NoLogo',
+    '-NoProfile',
+    '-NonInteractive',
+    '-ExecutionPolicy',
+    'Bypass',
+    '-WindowStyle',
+    'Hidden',
+    '-File',
+    "`"$rollbackScriptPath`"",
+    '-MsiExecPath',
+    "`"$msiExecPath`"",
+    '-FailedProductCode',
+    $FailedProductCode,
+    '-FailedPackagePath',
+    "`"$FailedPackagePath`"",
+    '-RollbackPackagePath',
+    "`"$RollbackPackagePath`""
+  ) -NoNewWindow -Wait -PassThru
+  return $process.ExitCode
+}
+
 function Start-EkyForUpgrade {
   $executablePath = Join-Path $installRoot 'Eky.exe'
   $testUserDataRoot = Join-Path $logRoot 'running-upgrade-user-data'
@@ -312,8 +347,40 @@ try {
     -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
   Assert-BusinessDataUnchanged
 
-  Uninstall-EkyProduct -ProductCode $nextProductCode -LogName 'uninstall-next.log'
+  $failedRollbackBlocker = Join-Path $installRoot `
+    'resources\desktop-runtime\installer-rollback-probe'
+  Set-Content -LiteralPath $failedRollbackBlocker `
+    -Value 'synthetic rollback blocker' -Encoding ASCII -NoNewline
+  $failedRollbackExitCode = Invoke-EkyCoordinatedRollback `
+    -FailedProductCode $nextProductCode -FailedPackagePath $nextMsiPath `
+    -RollbackPackagePath $rollbackMsiPath
+  if ($failedRollbackExitCode -ne 21) {
+    throw "INSTALLER_UPGRADE_ROLLBACK_REPAIR_RESULT_INVALID:$failedRollbackExitCode"
+  }
+  Remove-Item -LiteralPath $failedRollbackBlocker -Force
+  Assert-ProductAbsent -ProductCode $currentProductCode
+  Assert-ProductInstalled -ProductCode $nextProductCode
+  Assert-EkyInstalledPayload -InstallRoot $installRoot `
+    -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
+  Assert-EkyInstallerRegistrationPresent -ProductCode $nextProductCode
+  Assert-BusinessDataUnchanged
+
+  $rollbackExitCode = Invoke-EkyCoordinatedRollback `
+    -FailedProductCode $nextProductCode -FailedPackagePath $nextMsiPath `
+    -RollbackPackagePath $currentMsiPath
+  if ($rollbackExitCode -ne 0) {
+    throw 'INSTALLER_UPGRADE_COORDINATED_ROLLBACK_FAILED'
+  }
+  Assert-ProductInstalled -ProductCode $currentProductCode
   Assert-ProductAbsent -ProductCode $nextProductCode
+  Assert-EkyInstalledPayload -InstallRoot $installRoot `
+    -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
+  Assert-EkyInstallerRegistrationPresent -ProductCode $currentProductCode
+  Assert-BusinessDataUnchanged
+
+  Uninstall-EkyProduct -ProductCode $currentProductCode `
+    -LogName 'uninstall-after-coordinated-rollback.log'
+  Assert-ProductAbsent -ProductCode $currentProductCode
   Assert-EkyPathEventuallyAbsent -Path $installRoot `
     -Code 'INSTALLER_UPGRADE_UNINSTALL_ROOT_REMAINS'
   Assert-EkyInstallerRegistrationAbsent -ProductCodes @(
@@ -371,6 +438,8 @@ try {
   $completed = $true
   [ordered]@{
     businessDataPreserved = $true
+    coordinatedRollback = $true
+    coordinatedRollbackRepairFallback = $true
     downgradeBlocked = $true
     majorUpgrade = $true
     payloadFileCount = $payloadInventory.Count

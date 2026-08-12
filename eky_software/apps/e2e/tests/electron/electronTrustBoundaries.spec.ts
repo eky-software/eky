@@ -30,12 +30,16 @@ test('DESK-BRIDGE-001 @critical @security isolates the renderer bridge', async (
   expect(boundary).toEqual({
     desktopKeys: [
       'activatePreparedProfileRestore',
+      'cancelLocalUpdate',
       'chooseInvoicePdfArchiveDirectory',
+      'confirmLocalUpdate',
       'createEncryptedProfileBackup',
       'createManualRecoveryPoint',
       'createSupportBundle',
       'disableInvoicePdfArchive',
+      'discardSelectedLocalUpdate',
       'getInvoicePdfArchiveStatus',
+      'getLocalUpdateStatus',
       'getProfileBackupStatus',
       'inspectEncryptedProfileBackup',
       'openInvoicePdf',

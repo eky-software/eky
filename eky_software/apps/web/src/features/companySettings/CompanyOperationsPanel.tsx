@@ -1,12 +1,16 @@
 import { uiText } from '../../i18n/fi.js';
 import styles from './CompanyOperationsPanel.module.css';
+import type { LocalUpdateCapability } from '../../app/desktopBridge.js';
+import { LocalUpdatePanel } from './LocalUpdatePanel.js';
 
 interface CompanyOperationsPanelProps {
+  localUpdateCapability?: LocalUpdateCapability;
   onOpenActivity(): void;
   onOpenDiagnostics(): void;
 }
 
 export function CompanyOperationsPanel({
+  localUpdateCapability,
   onOpenActivity,
   onOpenDiagnostics,
 }: CompanyOperationsPanelProps): React.JSX.Element {
@@ -33,6 +37,11 @@ export function CompanyOperationsPanel({
           {uiText.modules.diagnostics}
         </button>
       </div>
+      <LocalUpdatePanel
+        {...(localUpdateCapability === undefined
+          ? {}
+          : { capability: localUpdateCapability })}
+      />
     </section>
   );
 }

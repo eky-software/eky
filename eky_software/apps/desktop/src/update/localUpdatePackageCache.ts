@@ -46,6 +46,7 @@ const metadataBackupFilename = 'slot-metadata.backup';
 const metadataMaxBytes = 16 * 1024;
 const currentRepairNextDirectory = '.current-repair-next';
 const currentRepairBackupDirectory = '.current-repair-backup';
+const rollbackCandidateNextDirectory = '.rollback-candidate-next';
 const freeSpaceReserveBytes = 8 * 1024 * 1024;
 export const LOCAL_UPDATE_CACHE_TOTAL_MAX_BYTES =
   3 * UPDATE_PACKAGE_MAX_BYTES + 4 * UPDATE_PACKAGE_MANIFEST_MAX_BYTES;
@@ -57,6 +58,11 @@ export interface LocalUpdatePackageSummary {
   releaseChannel: 'pilot';
   role: LocalUpdatePackageRole;
   signingStatus: 'unsigned-prototype';
+}
+
+export interface LocalUpdatePackageStatusSummary
+  extends LocalUpdatePackageSummary {
+  packageFingerprint: string;
 }
 
 export interface LocalUpdateExpectedPackageIdentity {
@@ -72,6 +78,7 @@ export interface RevalidatedLocalUpdatePackageHandle {
   buildRevision: string;
   msiProductVersion: string;
   packagePath: string;
+  productCode: string;
 }
 
 interface LocalUpdatePackageCacheOptions {
@@ -117,6 +124,20 @@ export class LocalUpdatePackageCache {
     });
   }
 
+  async getPackageStatus(
+    role: LocalUpdatePackageRole,
+  ): Promise<Readonly<LocalUpdatePackageStatusSummary> | undefined> {
+    return this.runExclusive(async () => {
+      await this.ensureCacheRoot();
+      const slotPath = this.slotPath(role);
+      if (!(await pathExists(slotPath))) {
+        return undefined;
+      }
+      const metadata = await this.validateSlot(role, slotPath);
+      return createSafeStatusSummary(metadata, role);
+    });
+  }
+
   async readExpectedPackageIdentity(
     role: LocalUpdatePackageRole,
   ): Promise<Readonly<LocalUpdateExpectedPackageIdentity>> {
@@ -149,64 +170,115 @@ export class LocalUpdatePackageCache {
     manifestPath: string;
   }): Promise<Readonly<LocalUpdatePackageSummary>> {
     return this.runExclusive(async () => {
-      const source = await this.readAndVerifySource({
-        manifestPath: input.manifestPath,
-        role: 'current',
-      });
-      await this.ensureCacheRoot();
-      await this.recoverInterruptedCurrentRepair();
-      await this.assertRepairCapacity(source.manifest.packageSize);
-
-      const stagingPath = await mkdtemp(
-        join(this.options.cacheRoot, '.current-repair-staging-'),
-      );
-      const nextPath = join(
-        this.options.cacheRoot,
-        currentRepairNextDirectory,
-      );
-      const backupPath = join(
-        this.options.cacheRoot,
-        currentRepairBackupDirectory,
-      );
-      const currentPath = this.slotPath('current');
-      let previousMoved = false;
-      let nextInstalled = false;
-      try {
-        await this.writeVerifiedSourceToStaging(
-          source,
-          'current',
-          stagingPath,
-        );
-        await rename(stagingPath, nextPath);
-        await syncDirectory(this.options.cacheRoot);
-        if (await pathExists(currentPath)) {
-          await assertSlotDirectory(currentPath);
-          await rename(currentPath, backupPath);
-          previousMoved = true;
-          await syncDirectory(this.options.cacheRoot);
-        }
-        await rename(nextPath, currentPath);
-        nextInstalled = true;
-        await syncDirectory(this.options.cacheRoot);
-        await this.validateSlot('current', currentPath);
-        if (previousMoved) {
-          await removeOwnedDirectory(backupPath);
-          await syncDirectory(this.options.cacheRoot);
-        }
-        return createSafeSummary(source.manifest, 'current');
-      } catch {
-        await removeOwnedDirectoryIfPresent(stagingPath);
-        await removeOwnedDirectoryIfPresent(nextPath);
-        if (nextInstalled) {
-          await removeOwnedDirectoryIfPresent(currentPath);
-        }
-        if (previousMoved && (await pathExists(backupPath))) {
-          await rename(backupPath, currentPath).catch(() => undefined);
-          await syncDirectory(this.options.cacheRoot).catch(() => undefined);
-        }
-        throw new LocalUpdatePackageCacheError();
-      }
+      return this.replaceCurrentRegistration(input);
     });
+  }
+
+  async registerExactRollbackPackage(input: {
+    expectedIdentity: Readonly<LocalUpdateExpectedPackageIdentity>;
+    manifestPath: string;
+  }): Promise<Readonly<LocalUpdatePackageSummary>> {
+    return this.runExclusive(async () => {
+      return this.replaceCurrentRegistration(input);
+    });
+  }
+
+  async hasExpectedJournalPackage(input: {
+    expectedIdentity: Readonly<LocalUpdateExpectedPackageIdentity>;
+    roles: readonly LocalUpdateCacheSlotRole[];
+  }): Promise<boolean> {
+    return this.runExclusive(async () => {
+      await this.ensureCacheRoot();
+      for (const role of input.roles) {
+        if (
+          await this.slotMatchesIdentity({
+            acceptedMetadataRoles: new Set(['current', 'previous']),
+            expectedIdentity: input.expectedIdentity,
+            path: this.slotPath(role),
+            role,
+          })
+        ) {
+          return true;
+        }
+      }
+      return false;
+    });
+  }
+
+  private async replaceCurrentRegistration(input: {
+    expectedIdentity?: Readonly<LocalUpdateExpectedPackageIdentity>;
+    manifestPath: string;
+  }): Promise<Readonly<LocalUpdatePackageSummary>> {
+    const source = await this.readAndVerifySource({
+      ...(input.expectedIdentity === undefined
+        ? {}
+        : { expectedIdentity: input.expectedIdentity }),
+      manifestPath: input.manifestPath,
+      role: 'current',
+    });
+    await this.ensureCacheRoot();
+    await this.recoverInterruptedCurrentRepair();
+    await this.assertRepairCapacity(source.manifest.packageSize);
+
+    const stagingPath = await mkdtemp(
+      join(this.options.cacheRoot, '.current-repair-staging-'),
+    );
+    const nextPath = join(
+      this.options.cacheRoot,
+      currentRepairNextDirectory,
+    );
+    const backupPath = join(
+      this.options.cacheRoot,
+      currentRepairBackupDirectory,
+    );
+    const currentPath = this.slotPath('current');
+    let previousMoved = false;
+    let nextInstalled = false;
+    try {
+      await this.writeVerifiedSourceToStaging(
+        source,
+        'current',
+        stagingPath,
+        input.expectedIdentity,
+      );
+      await rename(stagingPath, nextPath);
+      await syncDirectory(this.options.cacheRoot);
+      if (await pathExists(currentPath)) {
+        await assertSlotDirectory(currentPath);
+        await rename(currentPath, backupPath);
+        previousMoved = true;
+        await syncDirectory(this.options.cacheRoot);
+      }
+      await rename(nextPath, currentPath);
+      nextInstalled = true;
+      await syncDirectory(this.options.cacheRoot);
+      if (input.expectedIdentity === undefined) {
+        await this.validateSlot('current', currentPath);
+      } else {
+        await this.validateJournalSlot(
+          'current',
+          currentPath,
+          input.expectedIdentity,
+          new Set(['current']),
+        );
+      }
+      if (previousMoved) {
+        await removeOwnedDirectory(backupPath);
+        await syncDirectory(this.options.cacheRoot);
+      }
+      return createSafeSummary(source.manifest, 'current');
+    } catch {
+      await removeOwnedDirectoryIfPresent(stagingPath);
+      await removeOwnedDirectoryIfPresent(nextPath);
+      if (nextInstalled) {
+        await removeOwnedDirectoryIfPresent(currentPath);
+      }
+      if (previousMoved && (await pathExists(backupPath))) {
+        await rename(backupPath, currentPath).catch(() => undefined);
+        await syncDirectory(this.options.cacheRoot).catch(() => undefined);
+      }
+      throw new LocalUpdatePackageCacheError();
+    }
   }
 
   async stageSelectedPackage(input: {
@@ -350,7 +422,105 @@ export class LocalUpdatePackageCache {
     });
   }
 
+  async normalizeRolledBackPackages(input: {
+    candidateIdentity: Readonly<LocalUpdateExpectedPackageIdentity>;
+    currentIdentity: Readonly<LocalUpdateExpectedPackageIdentity>;
+  }): Promise<Readonly<RevalidatedLocalUpdatePackageHandle>> {
+    return this.runExclusive(async () => {
+      await this.ensureCacheRoot();
+      const currentPath = this.slotPath('current');
+      const candidatePath = this.slotPath('candidate');
+      const previousPath = this.slotPath('previous');
+      const candidateNextPath = join(
+        this.options.cacheRoot,
+        rollbackCandidateNextDirectory,
+      );
+
+      await this.resumeInterruptedRollbackNormalization({
+        candidateNextPath,
+        candidatePath,
+        currentPath,
+        previousPath,
+      });
+
+      const currentIsRollbackTarget = await this.slotMatchesIdentity({
+        acceptedMetadataRoles: new Set(['current', 'previous']),
+        expectedIdentity: input.currentIdentity,
+        path: currentPath,
+        role: 'current',
+      });
+      const currentIsFailedCandidate = await this.slotMatchesIdentity({
+        acceptedMetadataRoles: new Set(['candidate', 'current']),
+        expectedIdentity: input.candidateIdentity,
+        path: currentPath,
+        role: 'current',
+      });
+      const candidateIsFailedCandidate = await this.slotMatchesIdentity({
+        acceptedMetadataRoles: new Set(['candidate', 'current']),
+        expectedIdentity: input.candidateIdentity,
+        path: candidatePath,
+        role: 'candidate',
+      });
+      const previousIsRollbackTarget = await this.slotMatchesIdentity({
+        acceptedMetadataRoles: new Set(['current', 'previous']),
+        expectedIdentity: input.currentIdentity,
+        path: previousPath,
+        role: 'previous',
+      });
+
+      if (currentIsRollbackTarget && candidateIsFailedCandidate) {
+        if (await pathExists(previousPath)) {
+          if (!previousIsRollbackTarget) {
+            throw new LocalUpdatePackageCacheError();
+          }
+          await removeOwnedDirectory(previousPath);
+          await syncDirectory(this.options.cacheRoot);
+        }
+      } else if (
+        currentIsFailedCandidate &&
+        previousIsRollbackTarget &&
+        !(await pathExists(candidatePath))
+      ) {
+        await rename(currentPath, candidateNextPath);
+        await syncDirectory(this.options.cacheRoot);
+        await rename(previousPath, currentPath);
+        await syncDirectory(this.options.cacheRoot);
+        await rename(candidateNextPath, candidatePath);
+        await syncDirectory(this.options.cacheRoot);
+      } else {
+        throw new LocalUpdatePackageCacheError();
+      }
+
+      const current = await this.validateJournalSlot(
+        'current',
+        currentPath,
+        input.currentIdentity,
+        new Set(['current', 'previous']),
+      );
+      const candidate = await this.validateJournalSlot(
+        'candidate',
+        candidatePath,
+        input.candidateIdentity,
+        new Set(['candidate', 'current']),
+      );
+      await this.writeMetadata(currentPath, current.manifest, 'current');
+      await this.writeMetadata(candidatePath, candidate.manifest, 'candidate');
+      await syncDirectory(this.options.cacheRoot);
+      await removeOwnedDirectoryIfPresent(previousPath);
+      await removeOwnedDirectoryIfPresent(candidateNextPath);
+      await syncDirectory(this.options.cacheRoot);
+
+      return this.validateJournalSlot(
+        'current',
+        currentPath,
+        input.currentIdentity,
+        new Set(['current']),
+      );
+    });
+  }
+
   private async readAndVerifySource(input: {
+    expectedIdentity?: Readonly<LocalUpdateExpectedPackageIdentity>;
     manifestPath: string;
     role: LocalUpdatePackageRole;
   }): Promise<{
@@ -386,12 +556,21 @@ export class LocalUpdatePackageCache {
         throw new LocalUpdatePackageCacheError();
       }
       const installerIdentity = await this.options.inspectInstaller(packagePath);
-      this.options.trustPolicy.verifyPackage({
-        installerIdentity,
-        manifest,
-        releaseInfo: this.options.releaseInfo,
-        role: input.role,
-      });
+      if (input.expectedIdentity === undefined) {
+        this.options.trustPolicy.verifyPackage({
+          installerIdentity,
+          manifest,
+          releaseInfo: this.options.releaseInfo,
+          role: input.role,
+        });
+      } else {
+        verifyLocalUnsignedPilotSharedIdentity({
+          installerIdentity,
+          manifest,
+          releaseInfo: this.options.releaseInfo,
+        });
+        assertExpectedPackageIdentity(input.expectedIdentity, manifest);
+      }
       const sourceIdentity = await hashLocalUpdateFile(packagePath);
       assertPackageIdentity(manifest, sourceIdentity);
       const packageAfterVerification = await readLocalUpdateSourceSnapshot(
@@ -409,6 +588,7 @@ export class LocalUpdatePackageCache {
     source: Awaited<ReturnType<LocalUpdatePackageCache['readAndVerifySource']>>,
     role: LocalUpdatePackageRole,
     stagingPath: string,
+    expectedIdentity?: Readonly<LocalUpdateExpectedPackageIdentity>,
   ): Promise<void> {
     const stagedManifestPath = join(stagingPath, manifestCacheFilename);
     const stagedPackagePath = join(
@@ -424,12 +604,21 @@ export class LocalUpdatePackageCache {
     );
     assertLocalUpdateSourceUnchanged(source.packageBefore, packageAfter);
     assertPackageIdentity(source.manifest, copied);
-    await this.validateStagedFiles(
-      role,
-      stagedManifestPath,
-      stagedPackagePath,
-    );
     await this.writeMetadata(stagingPath, source.manifest, role);
+    if (expectedIdentity === undefined) {
+      await this.validateStagedFiles(
+        role,
+        stagedManifestPath,
+        stagedPackagePath,
+      );
+    } else {
+      await this.validateJournalSlot(
+        role,
+        stagingPath,
+        expectedIdentity,
+        new Set([role]),
+      );
+    }
   }
 
   private async recoverInterruptedCurrentRepair(): Promise<void> {
@@ -472,6 +661,53 @@ export class LocalUpdatePackageCache {
       await this.validateSlot('current', currentPath);
       await removeOwnedDirectory(backupPath);
       await syncDirectory(this.options.cacheRoot);
+    }
+  }
+
+  private async resumeInterruptedRollbackNormalization(input: {
+    candidateNextPath: string;
+    candidatePath: string;
+    currentPath: string;
+    previousPath: string;
+  }): Promise<void> {
+    const candidateNextExists = await pathExists(input.candidateNextPath);
+    if (!candidateNextExists) {
+      return;
+    }
+    await assertSlotDirectory(input.candidateNextPath);
+    if (!(await pathExists(input.currentPath))) {
+      if (!(await pathExists(input.previousPath))) {
+        throw new LocalUpdatePackageCacheError();
+      }
+      await rename(input.previousPath, input.currentPath);
+      await syncDirectory(this.options.cacheRoot);
+    }
+    if (await pathExists(input.candidatePath)) {
+      throw new LocalUpdatePackageCacheError();
+    }
+    await rename(input.candidateNextPath, input.candidatePath);
+    await syncDirectory(this.options.cacheRoot);
+  }
+
+  private async slotMatchesIdentity(input: {
+    acceptedMetadataRoles: ReadonlySet<LocalUpdateCacheSlotRole>;
+    expectedIdentity: Readonly<LocalUpdateExpectedPackageIdentity>;
+    path: string;
+    role: LocalUpdateCacheSlotRole;
+  }): Promise<boolean> {
+    if (!(await pathExists(input.path))) {
+      return false;
+    }
+    try {
+      await this.validateJournalSlot(
+        input.role,
+        input.path,
+        input.expectedIdentity,
+        input.acceptedMetadataRoles,
+      );
+      return true;
+    } catch {
+      return false;
     }
   }
 
@@ -545,6 +781,7 @@ export class LocalUpdatePackageCache {
       manifest,
       msiProductVersion: manifest.msiProductVersion,
       packagePath,
+      productCode: installerIdentity.productCode,
     });
   }
 
@@ -894,6 +1131,21 @@ function createSafeSummary(
     appVersion: manifest.appVersion,
     buildRevision: manifest.buildRevision,
     msiProductVersion: manifest.msiProductVersion,
+    releaseChannel: 'pilot',
+    role,
+    signingStatus: 'unsigned-prototype',
+  });
+}
+
+function createSafeStatusSummary(
+  metadata: Readonly<LocalUpdateCacheMetadata>,
+  role: LocalUpdatePackageRole,
+): Readonly<LocalUpdatePackageStatusSummary> {
+  return Object.freeze({
+    appVersion: metadata.appVersion,
+    buildRevision: metadata.buildRevision,
+    msiProductVersion: metadata.msiProductVersion,
+    packageFingerprint: metadata.packageSha256.slice(0, 12),
     releaseChannel: 'pilot',
     role,
     signingStatus: 'unsigned-prototype',

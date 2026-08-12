@@ -13,7 +13,7 @@
     <MajorUpgrade
       AllowDowngrades="no"
       AllowSameVersionUpgrades="no"
-      DowngradeErrorMessage="Uudempi Eky-versio on jo asennettu. Vanhempaa versiota ei voi asentaa sen päälle."
+      DowngradeErrorMessage="Uudempi Eky-versio on jo asennettu. Vanhempaa versiota ei voi asentaa sen päälle suoraan."
       IgnoreRemoveFailure="no"
       Schedule="afterInstallExecute" />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />

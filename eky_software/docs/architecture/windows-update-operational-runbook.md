@@ -111,6 +111,55 @@ johdetaan buildissä deterministisesti nimialueesta `product/<msiProductVersion>
 Runtime tarkistaa saman identiteetin omalla pienellä helperillä; build-scriptiä
 ei importata runtimeen.
 
+## C3B rollback-tilakone
+
+First-start-virheen jälkeinen palautus etenee aina kahdessa järjestetyssä
+osassa. `businessRollbackStarting` ja `businessRollbackCompleted` palauttavat
+ensin journalissa sidotun pre-update-yritysprofiilin nykyisellä ADR-0009:n
+restore activation -moottorilla. Vasta tämän jälkeen
+`binaryRollbackPrepared` saa kuluttaa päivitysyrityksen ainoan binary rollback
+-yrityksen ja `awaitingRollbackFirstStart` odottaa vanhan buildin omaa
+first-start-validointia. Terve vanha build päättää ketjun `rolledBack`-tilaan.
+
+Tilat ovat yksisuuntaisia ja saman tilan uudelleenkirjoitus on idempotentti.
+`binaryRollbackAttemptCount` voi muuttua nollasta yhteen vain business
+rollbackin valmistuttua. Arvo yksi ei saa palata nollaksi eikä sama operaatio
+saa käynnistää toista MSI-palautusta. Business- tai binary-palautuksen
+epäselvä lopputulos päättyy terminaaliseen `failedSafe`- tai
+`recoveryRequired`-tilaan, jossa business-käyttöliittymää ei avata.
+
+Jos journalin täsmälleen sitomaa vanhaa pakettia ei löydy yksityisen cachen
+`current`- tai `previous`-slotista, tila on `rollbackPackageRequired`.
+Binaaripalautuksen yrityslaskuri pysyy tällöin nollassa. Käyttäjä valitsee
+vanhan manifestin vain recovery-ikkunan main-prosessin native-dialogilla.
+Paketin version, buildin, MSI-identiteetin, SHA-256-tiivisteen ja koon pitää
+vastata journalia ennen kuin normaali yhden yrityksen rollback-polku jatkuu.
+Väärä tai muuttunut paketti ei muuta journalin liiketoimintatilaa eikä käynnistä
+MSI:tä.
+
+Vanha C2:n `rollbackRequired` on vain turvallinen siirtymätila. Se voi jatkua
+ainoastaan `businessRollbackStarting`-tilaan tai pysähtyä recovery-tilaan;
+se ei saa ohittaa business-profiilin palautusta tai merkitä operaatiota suoraan
+palautetuksi. `installerNotApplied` säilyy erillisenä turvallisena päätöstilana
+tapaukselle, jossa uusi MSI ei koskaan vaihtanut hyväksyttyä buildia eikä
+business-profiili muuttunut.
+
+## C3B recovery-only-käyttö
+
+`failedSafe`-, `recoveryRequired`- ja `rollbackPackageRequired`-tilassa tai
+ristiriitaisen restore/update recovery authorityn tapauksessa Eky ei käynnistä
+backendia eikä avaa yritystyötilaa. Näkyviin tulee vain Electron mainin
+omistama sandboxattu palautusikkuna. Se näyttää turvallisen virhekoodin,
+sovellusversion ja build revisionin sekä sallii lokikansion avaamisen ja
+minimoidun teknisen recovery-tukipaketin luonnin. Tukipaketti ei sisällä
+yritysdataa, profiilia, journalia, manifestia tai tiedostopolkuja.
+
+Täsmällisen rollback-paketin valinta näkyy vain
+`rollbackPackageRequired`-tilassa. Renderer ei anna main-prosessille URL:ia,
+polkua tai manifestia, vaan pyytää nollan argumentin nimettyä toimintoa.
+Electron main omistaa valintaikkunan, tarkistuksen, cachen ja MSI-handoffin.
+Palautusikkunassa ei ole yleistä tiedosto-, URL-, shell- tai raw IPC -rajapintaa.
+
 ## Omistajuus
 
 Update Coordinator omistaa yhden päivitysyrityksen teknisen lifecycle-
@@ -136,26 +185,40 @@ Kiellettyjä ovat raaka polku, komentorivi, executable, URL queryineen,
 installer stdout/stderr, business data, `companyId`, backup- tai recovery-
 payload, salaisuus, runtime-session, stack ja vapaa metadata.
 
-## C2 operational-eventit ja stage-allowlist
+## C3C operational-eventit
 
-C2 kirjoittaa vain seuraavia nimettyjä teknisiä tapahtumia:
+Päivityksen tekninen elinkaari käyttää nimettyjä tapahtumaperheitä:
 
-- `update.operationStarted`
-- `update.operationCompleted`
-- `update.operationFailed`
+- `update.packageInspection*`
+- `update.packageStaging*`
+- `update.currentPackageRegistration*`
+- `update.candidateDiscard*`
+- `update.confirmation*`
+- `update.recoveryPoint*`
+- `update.runtimeShutdown*`
+- `update.installerHandoff*`
+- `update.firstStartValidation*`
+- `update.businessRollback*`
+- `update.binaryRollback*`
+- `update.restoreCompatibility*`
+- terminaalit `update.installerNotApplied`, `update.accepted` ja
+  `update.recoveryRequired`.
 
-C2:n suljettu stage-allowlist on:
+Tähtiperhe sisältää vain katalogoidut `Started`, `Succeeded` ja `Failed`-
+tapahtumat. Suljettu stage-allowlist on `packageInspection`, `packageStaging`,
+`currentPackageRegistration`, `candidateDiscard`, `confirmation`,
+`recoveryPoint`, `runtimeShutdown`, `installerHandoff`,
+`firstStartValidation`, `businessRollback`, `binaryRollback` ja
+`restoreCompatibility`.
 
-- `preUpdateRecovery`
-- `runtimeShutdown`
-- `installerHandoff`
-- `firstStartValidation`
-
-Failure-eventissä sallitaan vain allowlistattu turvallinen `errorCode`,
-`retryable` ja `sideEffectState`. Polkua, paketin tiivistettä, journalia,
-recovery-viitettä, sessionia, installer-outputia tai vapaata metadataa ei
-kirjoiteta. C3 lukitsee rollback-vaiheiden eventit erikseen ennen niiden
-toteutusta.
+Eventissä sallitaan vain korrelaatiotunniste, allowlistattu vaihe, kesto,
+turvallinen virhekoodi, retryable- ja side-effect-tila sekä yhteinen
+validoitu app/build/runtime-identiteetti. Raaka polku, komentorivi, installer
+stdout/stderr, manifesti, täysi pakettitiiviste, yritys- tai profiilitunniste,
+asiakas- tai laskudata, salaisuus, runtime-session, recovery-payload, raw
+Error ja stack ovat kiellettyjä. Päivityseventit kuuluvat Diagnosticsiin,
+eivät Activityyn tai business-auditiin. Loggerin virhe ei muuta päivityksen,
+hyväksynnän tai rollbackin lopputulosta.
 
 ## Error code -runbook
 

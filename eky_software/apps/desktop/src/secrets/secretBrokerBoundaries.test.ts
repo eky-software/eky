@@ -17,7 +17,7 @@ describe('desktop secret broker boundaries', () => {
 
     expect(preloadSource).not.toMatch(/safeStorage|secretBroker|MessagePort/i);
     expect(preloadSource).not.toMatch(/node:fs|shell|process\.|openUrl|openFile|rawIpc/i);
-    expect(preloadSource.match(/ipcRenderer\.invoke/g)).toHaveLength(15);
+    expect(preloadSource.match(/ipcRenderer\.invoke/g)).toHaveLength(19);
     expect(preloadSource).toContain('invoicePdfPreviewIpcChannel');
     expect(preloadSource).toContain(
       `invoicePdfPreviewIpcChannel = '${invoicePdfPreviewIpcChannel}'`,
@@ -32,6 +32,10 @@ describe('desktop secret broker boundaries', () => {
     expect(preloadSource).toContain('retryPendingInvoicePdfArchiveTasks');
     expect(preloadSource).toContain('createEncryptedProfileBackup');
     expect(preloadSource).toContain('selectLocalUpdate');
+    expect(preloadSource).toContain('getLocalUpdateStatus');
+    expect(preloadSource).toContain('discardSelectedLocalUpdate');
+    expect(preloadSource).toContain('confirmLocalUpdate');
+    expect(preloadSource).toContain('cancelLocalUpdate');
     expect(preloadSource).toContain('getProfileBackupStatus');
     expect(preloadSource).toContain('inspectEncryptedProfileBackup');
     expect(preloadSource).toContain('prepareEncryptedProfileRestore');

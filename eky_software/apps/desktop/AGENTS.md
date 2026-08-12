@@ -55,10 +55,16 @@ Mandatory boundaries:
   it accepts only the pilot channel, local media and explicit confirmation,
   and must never be generalized into stable, network, background or silent
   updates
-- the C1 local update foundation may expose only the zero-argument
-  `selectLocalUpdate()` capability; Electron main owns the native manifest
-  dialog and renderer receives only a safe summary without paths, manifest
-  payload, MSI bytes, executable or arguments
+- the local update UI may expose only the named zero-argument capabilities
+  `getLocalUpdateStatus()`, `selectLocalUpdate()`,
+  `discardSelectedLocalUpdate()`, `confirmLocalUpdate()` and
+  `cancelLocalUpdate()`; Electron main owns native dialogs, package cache,
+  manifests, MSI bytes, journal and installer handoff, and the renderer
+  receives only a bounded status without paths, full hashes, session data,
+  executable or arguments
+- `confirmLocalUpdate()` must use only Electron main's current revalidated
+  candidate slot; it must not accept a candidate identity or other update
+  input from the renderer
 - C1 may inspect and private-stage a candidate and register a matching current
   rollback package, but it must not launch MSI, stop the runtime, create a
   pre-update point, write the orchestration journal or mutate business data

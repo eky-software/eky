@@ -6,6 +6,7 @@ const journalFields = new Set([
   'currentVersion',
   'formatVersion',
   'handoffAttemptCount',
+  'binaryRollbackAttemptCount',
   'preUpdateMigrationChainIdentity',
   'recoveryPointReference',
   'releaseChannel',
@@ -39,9 +40,15 @@ export const updateJournalStates = [
   'installerNotApplied',
   'accepted',
   'rollbackRequired',
+  'businessRollbackStarting',
+  'businessRollbackCompleted',
+  'rollbackPackageRequired',
+  'binaryRollbackPrepared',
+  'awaitingRollbackFirstStart',
   'rolledBack',
   'failed',
   'failedSafe',
+  'recoveryRequired',
 ] as const;
 
 export type UpdateJournalState = (typeof updateJournalStates)[number];
@@ -54,6 +61,7 @@ export interface UpdateJournalPackageIdentity {
 }
 
 export interface UpdateJournal {
+  binaryRollbackAttemptCount: 0 | 1;
   candidatePackageIdentity: UpdateJournalPackageIdentity;
   correlationId: string;
   createdAt: string;
@@ -94,6 +102,9 @@ export function parseUpdateJournal(value: unknown): Readonly<UpdateJournal> {
     !Number.isSafeInteger(value.revision) ||
     (value.revision as number) < 1 ||
     (value.handoffAttemptCount !== 0 && value.handoffAttemptCount !== 1) ||
+    (value.binaryRollbackAttemptCount !== undefined &&
+      value.binaryRollbackAttemptCount !== 0 &&
+      value.binaryRollbackAttemptCount !== 1) ||
     typeof value.createdAt !== 'string' ||
     !isUtcTimestamp(value.createdAt) ||
     typeof value.updatedAt !== 'string' ||
@@ -125,13 +136,35 @@ export function parseUpdateJournal(value: unknown): Readonly<UpdateJournal> {
       value.state === 'accepted' ||
       value.state === 'installerNotApplied' ||
       value.state === 'rollbackRequired' ||
+      value.state === 'businessRollbackStarting' ||
+      value.state === 'businessRollbackCompleted' ||
+      value.state === 'rollbackPackageRequired' ||
+      value.state === 'binaryRollbackPrepared' ||
+      value.state === 'awaitingRollbackFirstStart' ||
       value.state === 'rolledBack') &&
-      value.handoffAttemptCount !== 1)
+      value.handoffAttemptCount !== 1) ||
+    ((value.state === 'binaryRollbackPrepared' ||
+      value.state === 'awaitingRollbackFirstStart' ||
+      value.state === 'rolledBack') &&
+      value.binaryRollbackAttemptCount !== 1) ||
+    ((value.state === 'prepared' ||
+      value.state === 'recoveryPointValidated' ||
+      value.state === 'runtimeStopping' ||
+      value.state === 'awaitingFirstStart' ||
+      value.state === 'firstStartValidating' ||
+      value.state === 'installerNotApplied' ||
+      value.state === 'accepted' ||
+      value.state === 'rollbackRequired' ||
+      value.state === 'businessRollbackStarting' ||
+      value.state === 'businessRollbackCompleted' ||
+      value.state === 'rollbackPackageRequired') &&
+      (value.binaryRollbackAttemptCount ?? 0) !== 0)
   ) {
     throw new UpdateJournalValidationError();
   }
 
   return Object.freeze({
+    binaryRollbackAttemptCount: value.binaryRollbackAttemptCount ?? 0,
     candidatePackageIdentity: freezeIdentity(value.candidatePackageIdentity),
     correlationId: value.correlationId,
     createdAt: value.createdAt,
@@ -167,6 +200,32 @@ const allowedTransitions: Readonly<
     'installerNotApplied',
     'failedSafe',
     'rollbackRequired',
+    'businessRollbackStarting',
+  ]),
+  awaitingRollbackFirstStart: new Set([
+    'awaitingRollbackFirstStart',
+    'failedSafe',
+    'recoveryRequired',
+    'rolledBack',
+  ]),
+  binaryRollbackPrepared: new Set([
+    'awaitingRollbackFirstStart',
+    'binaryRollbackPrepared',
+    'failedSafe',
+    'recoveryRequired',
+  ]),
+  businessRollbackCompleted: new Set([
+    'binaryRollbackPrepared',
+    'businessRollbackCompleted',
+    'failedSafe',
+    'recoveryRequired',
+    'rollbackPackageRequired',
+  ]),
+  businessRollbackStarting: new Set([
+    'businessRollbackCompleted',
+    'businessRollbackStarting',
+    'failedSafe',
+    'recoveryRequired',
   ]),
   failed: new Set(['failed', 'failedSafe', 'installerNotApplied']),
   failedSafe: new Set(['failedSafe']),
@@ -175,8 +234,16 @@ const allowedTransitions: Readonly<
     'failed',
     'firstStartValidating',
     'rollbackRequired',
+    'businessRollbackStarting',
   ]),
   prepared: new Set(['failed', 'prepared', 'recoveryPointValidated']),
+  recoveryRequired: new Set(['recoveryRequired']),
+  rollbackPackageRequired: new Set([
+    'businessRollbackCompleted',
+    'failedSafe',
+    'recoveryRequired',
+    'rollbackPackageRequired',
+  ]),
   recoveryPointValidated: new Set([
     'failed',
     'recoveryPointValidated',
@@ -184,7 +251,12 @@ const allowedTransitions: Readonly<
   ]),
   rolledBack: new Set(['rolledBack']),
   installerNotApplied: new Set(['installerNotApplied']),
-  rollbackRequired: new Set(['failed', 'rolledBack', 'rollbackRequired']),
+  rollbackRequired: new Set([
+    'businessRollbackStarting',
+    'failedSafe',
+    'recoveryRequired',
+    'rollbackRequired',
+  ]),
   runtimeStopping: new Set([
     'awaitingFirstStart',
     'failed',
@@ -203,13 +275,20 @@ const recoveryPointRequiredStates: ReadonlySet<UpdateJournalState> = new Set([
   'accepted',
   'installerNotApplied',
   'rollbackRequired',
+  'businessRollbackStarting',
+  'businessRollbackCompleted',
+  'rollbackPackageRequired',
+  'binaryRollbackPrepared',
+  'awaitingRollbackFirstStart',
   'rolledBack',
+  'recoveryRequired',
 ]);
 
 export function transitionUpdateJournal(
   current: Readonly<UpdateJournal>,
   input: {
     at: string;
+    binaryRollbackAttemptCount?: 0 | 1;
     handoffAttemptCount?: 0 | 1;
     recoveryPointReference?: string;
     state: UpdateJournalState;
@@ -223,6 +302,12 @@ export function transitionUpdateJournal(
     ...(input.handoffAttemptCount === undefined
       ? {}
       : { handoffAttemptCount: input.handoffAttemptCount }),
+    ...(input.binaryRollbackAttemptCount === undefined
+      ? {}
+      : {
+          binaryRollbackAttemptCount:
+            input.binaryRollbackAttemptCount,
+        }),
     ...(input.recoveryPointReference === undefined
       ? {}
       : { recoveryPointReference: input.recoveryPointReference }),

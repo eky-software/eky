@@ -203,8 +203,12 @@ export function createInvoicePdfPreviewWindowController(
           typeof window.ekyDesktop.createEncryptedProfileBackup === 'function' &&
           typeof window.ekyDesktop.createManualRecoveryPoint === 'function' &&
           typeof window.ekyDesktop.createSupportBundle === 'function' &&
+          typeof window.ekyDesktop.cancelLocalUpdate === 'function' &&
+          typeof window.ekyDesktop.confirmLocalUpdate === 'function' &&
           typeof window.ekyDesktop.disableInvoicePdfArchive === 'function' &&
+          typeof window.ekyDesktop.discardSelectedLocalUpdate === 'function' &&
           typeof window.ekyDesktop.getInvoicePdfArchiveStatus === 'function' &&
+          typeof window.ekyDesktop.getLocalUpdateStatus === 'function' &&
           typeof window.ekyDesktop.getProfileBackupStatus === 'function' &&
           typeof window.ekyDesktop.inspectEncryptedProfileBackup === 'function' &&
           typeof window.ekyDesktop.openInvoicePdf === 'function' &&
@@ -213,7 +217,7 @@ export function createInvoicePdfPreviewWindowController(
           typeof window.ekyDesktop.prepareEncryptedProfileRestore === 'function' &&
           typeof window.ekyDesktop.retryPendingInvoicePdfArchiveTasks === 'function' &&
           typeof window.ekyDesktop.selectLocalUpdate === 'function' &&
-          Object.keys(window.ekyDesktop).length === 15`,
+          Object.keys(window.ekyDesktop).length === 19`,
         true,
       );
     },

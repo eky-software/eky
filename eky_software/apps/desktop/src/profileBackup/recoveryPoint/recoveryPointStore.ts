@@ -4,6 +4,7 @@ import {
   lstat,
   link,
   mkdir,
+  readdir,
   realpath,
   rm,
   stat,
@@ -18,6 +19,7 @@ import {
 import type { ProfileSnapshotBrokerClient } from '../profileSnapshotBrokerClient.js';
 import { encryptRecoveryPointPayload } from './encryptRecoveryPointPayload.js';
 import { inspectRecoveryPoint } from './inspectRecoveryPoint.js';
+import { materializeRecoveryPoint } from './materializeRecoveryPoint.js';
 import {
   recoveryPointIndexFileName,
   RecoveryPointIndexStore,
@@ -44,6 +46,16 @@ interface RecoveryPointStoreDependencies {
     ProfileSnapshotBrokerClient,
     'validateProfileSnapshot'
   >;
+}
+
+export interface StagedRecoveryPointRestore {
+  appVersion: string;
+  artifactTotalByteSize: number;
+  createdAt: string;
+  documentCount: number;
+  migrationChainIdentity: string;
+  operationRoot: string;
+  profileId: string;
 }
 
 export class RecoveryPointStore {
@@ -222,6 +234,49 @@ export class RecoveryPointStore {
     ).points;
   }
 
+  async stageForRestore(input: {
+    artifactId: string;
+    expectedMigrationChainIdentity: string;
+    operationId: string;
+  }): Promise<StagedRecoveryPointRestore> {
+    if (
+      !artifactIdPattern.test(input.artifactId) ||
+      !artifactIdPattern.test(input.operationId) ||
+      !profileIdPattern.test(input.expectedMigrationChainIdentity)
+    ) {
+      throw new Error('RECOVERY_POINT_RESTORE_INPUT_INVALID');
+    }
+
+    const source = await this.findValidatedPreUpdatePoint(
+      input.artifactId,
+    );
+    const materialized = await materializeRecoveryPoint({
+      artifactId: input.artifactId,
+      containerPath: source.containerPath,
+      expectedProfileId: source.profileId,
+      keyEnvelopePath: source.keyEnvelopePath,
+      keyProtector: this.dependencies.keyProtector,
+      operationId: input.operationId,
+      quarantineRoot: this.dependencies.quarantineRoot,
+      stagingRoot: this.dependencies.stagingRoot,
+      validator: this.dependencies.validator,
+    });
+
+    if (
+      materialized.migrationChainIdentity !==
+        input.expectedMigrationChainIdentity ||
+      !materialized.profileMatchesActive
+    ) {
+      await rm(materialized.operationRoot, {
+        force: true,
+        recursive: true,
+      }).catch(() => undefined);
+      throw new Error('RECOVERY_POINT_RESTORE_CONTENT_INVALID');
+    }
+
+    return materialized;
+  }
+
   async remove(
     profileId: string,
     artifactId: string,
@@ -268,6 +323,76 @@ export class RecoveryPointStore {
       revision: currentIndex.revision + 1,
     });
   }
+
+  private async findValidatedPreUpdatePoint(
+    artifactId: string,
+  ): Promise<{
+    containerPath: string;
+    keyEnvelopePath: string;
+    profileId: string;
+  }> {
+    await ensurePrivateDirectory(this.dependencies.recoveryRoot);
+    const entries = await readdir(this.dependencies.recoveryRoot, {
+      withFileTypes: true,
+    });
+    if (entries.length > 1_000) {
+      throw new Error('RECOVERY_POINT_RESTORE_SOURCE_INVALID');
+    }
+
+    const matches: Array<{
+      containerPath: string;
+      keyEnvelopePath: string;
+      profileId: string;
+    }> = [];
+    for (const entry of entries) {
+      if (!profileIdPattern.test(entry.name)) {
+        continue;
+      }
+      if (!entry.isDirectory() || entry.isSymbolicLink()) {
+        throw new Error('RECOVERY_POINT_RESTORE_SOURCE_INVALID');
+      }
+      const profileRoot = join(
+        this.dependencies.recoveryRoot,
+        entry.name,
+      );
+      await assertExistingPrivateDirectory(profileRoot);
+      const index = await new RecoveryPointIndexStore(
+        join(profileRoot, recoveryPointIndexFileName),
+      ).read();
+      const point = index.points.find(
+        (candidate) => candidate.artifactId === artifactId,
+      );
+      if (point === undefined) {
+        continue;
+      }
+      if (point.kind !== 'preUpdate' || point.state !== 'validatedGood') {
+        throw new Error('RECOVERY_POINT_RESTORE_SOURCE_INVALID');
+      }
+      const containerPath = join(
+        profileRoot,
+        `${artifactId}${recoveryPointExtension}`,
+      );
+      const containerMetadata = await stat(containerPath);
+      if (
+        !containerMetadata.isFile() ||
+        containerMetadata.isSymbolicLink() ||
+        containerMetadata.nlink !== 1 ||
+        containerMetadata.size !== point.byteSize
+      ) {
+        throw new Error('RECOVERY_POINT_RESTORE_SOURCE_INVALID');
+      }
+      matches.push({
+        containerPath,
+        keyEnvelopePath: join(profileRoot, `${artifactId}.key.json`),
+        profileId: entry.name,
+      });
+    }
+
+    if (matches.length !== 1) {
+      throw new Error('RECOVERY_POINT_RESTORE_SOURCE_INVALID');
+    }
+    return matches[0]!;
+  }
 }
 
 async function ensurePrivateDirectory(path: string): Promise<void> {
@@ -285,6 +410,18 @@ async function ensurePrivateDirectory(path: string): Promise<void> {
     throw new Error('RECOVERY_POINT_STORE_UNAVAILABLE');
   }
   await chmod(path, 0o700);
+}
+
+async function assertExistingPrivateDirectory(path: string): Promise<void> {
+  const metadata = await lstat(path);
+  if (
+    !metadata.isDirectory() ||
+    metadata.isSymbolicLink() ||
+    (process.platform !== 'win32' && (metadata.mode & 0o077) !== 0) ||
+    !pathsAreEqual(await realpath(path), path)
+  ) {
+    throw new Error('RECOVERY_POINT_RESTORE_SOURCE_INVALID');
+  }
 }
 
 function pathsAreEqual(first: string, second: string): boolean {

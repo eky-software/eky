@@ -137,8 +137,13 @@ Päivityspolku käyttää SemVer-vertailua:
   hyväksytystä repair-polusta
 - downgrade estetään oletuksena
 - downgrade ei koskaan aja reverse SQL -migraatiota
-- mahdollinen binary rollback käyttää edellisen version binaareja vain
-  yhdessä yhteensopivaksi palautetun pre-update-yritysprofiilin kanssa
+- binary rollback käyttää edellisen version binaareja vain yhdessä
+  yhteensopivaksi palautetun pre-update-yritysprofiilin kanssa; se poistaa
+  epäonnistuneen target-version ennen täsmällisen rollback-paketin asennusta
+  eikä avaa yleistä MSI-downgradea
+- jos rollback-paketin asennus epäonnistuu target-version poistamisen jälkeen,
+  koordinoitu polku yrittää palauttaa täsmälleen saman target-paketin recovery-
+  käyttöliittymän säilyttämiseksi
 
 ## Jaettavan artifactin portti
 

@@ -59,7 +59,7 @@ export class LocalUpdateHandoffCoordinator {
       let journal: Readonly<UpdateJournal> | undefined;
       const correlationId = this.createOperationId();
       const startedAt = Date.now();
-      this.notifyStarted(correlationId, 'preUpdateRecovery');
+      this.notifyStarted(correlationId, 'recoveryPoint');
       try {
         await this.assertJournalCanBeReplaced();
         const [currentIdentity, candidateIdentity] = await Promise.all([
@@ -89,7 +89,7 @@ export class LocalUpdateHandoffCoordinator {
         this.notifyCompleted(
           correlationId,
           startedAt,
-          'preUpdateRecovery',
+          'recoveryPoint',
         );
         return journal;
       } catch {
@@ -98,7 +98,7 @@ export class LocalUpdateHandoffCoordinator {
           correlationId,
           errorCode: 'UPDATE_RECOVERY_POINT_FAILED',
           sideEffectState: 'none',
-          stage: 'preUpdateRecovery',
+          stage: 'recoveryPoint',
           startedAt,
         });
         throw new LocalUpdateHandoffError();
@@ -256,7 +256,7 @@ export class LocalUpdateHandoffCoordinator {
 
   private notifyStarted(
     correlationId: string,
-    stage: 'installerHandoff' | 'preUpdateRecovery' | 'runtimeShutdown',
+    stage: 'installerHandoff' | 'recoveryPoint' | 'runtimeShutdown',
   ): void {
     try {
       (this.dependencies.observer ?? noOpUpdateOperationalObserver)
@@ -269,7 +269,7 @@ export class LocalUpdateHandoffCoordinator {
   private notifyCompleted(
     correlationId: string,
     startedAt: number,
-    stage: 'installerHandoff' | 'preUpdateRecovery' | 'runtimeShutdown',
+    stage: 'installerHandoff' | 'recoveryPoint' | 'runtimeShutdown',
   ): void {
     try {
       (this.dependencies.observer ?? noOpUpdateOperationalObserver)
@@ -287,7 +287,7 @@ export class LocalUpdateHandoffCoordinator {
     correlationId: string;
     errorCode: string;
     sideEffectState: 'none' | 'unknown';
-    stage: 'installerHandoff' | 'preUpdateRecovery' | 'runtimeShutdown';
+    stage: 'installerHandoff' | 'recoveryPoint' | 'runtimeShutdown';
     startedAt: number;
   }): void {
     try {
