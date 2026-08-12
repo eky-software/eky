@@ -26,6 +26,22 @@ export interface PackagedUpdateSmokeConfiguration {
   userDataPath: string | undefined;
 }
 
+const expectedRecoveryRelaunchPhases = new Set<PackagedUpdateSmokePhase>([
+  'verifyBackup',
+  'verifyDirectFailure',
+  'verifyRollback',
+]);
+
+export function shouldReportUnexpectedPackagedUpdateRecovery(
+  configuration: Readonly<PackagedUpdateSmokeConfiguration>,
+): boolean {
+  return (
+    configuration.enabled &&
+    configuration.phase !== undefined &&
+    !expectedRecoveryRelaunchPhases.has(configuration.phase)
+  );
+}
+
 const smokeTokenPattern = /^[0-9a-f]{32}$/;
 
 export function createPackagedUpdateSmokeConfiguration(input: {

@@ -4,7 +4,11 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { createPackagedUpdateSmokeConfiguration } from './packagedUpdateSmokeConfiguration.js';
+import {
+  createPackagedUpdateSmokeConfiguration,
+  shouldReportUnexpectedPackagedUpdateRecovery,
+  type PackagedUpdateSmokePhase,
+} from './packagedUpdateSmokeConfiguration.js';
 
 const temporaryRoots: string[] = [];
 
@@ -68,7 +72,45 @@ describe('packaged update smoke configuration', () => {
       }),
     ).toThrow();
   });
+
+  it('reports recovery during a success-path verification', () => {
+    expect(
+      shouldReportUnexpectedPackagedUpdateRecovery(
+        createConfiguration('verifySuccess'),
+      ),
+    ).toBe(true);
+  });
+
+  it.each(['verifyBackup', 'verifyDirectFailure', 'verifyRollback'] as const)(
+    'allows the bounded recovery sequence for %s',
+    (phase) => {
+      expect(
+        shouldReportUnexpectedPackagedUpdateRecovery(
+          createConfiguration(phase),
+        ),
+      ).toBe(false);
+    },
+  );
+
+  it('does not classify disabled automation as a smoke failure', () => {
+    expect(
+      shouldReportUnexpectedPackagedUpdateRecovery({
+        enabled: false,
+        phase: undefined,
+        root: undefined,
+        userDataPath: undefined,
+      }),
+    ).toBe(false);
+  });
 });
+
+function createConfiguration(phase: PackagedUpdateSmokePhase) {
+  return createPackagedUpdateSmokeConfiguration({
+    phaseValue: phase,
+    tempPath: createTemporaryDirectory(),
+    tokenValue: 'a'.repeat(32),
+  });
+}
 
 function createTemporaryDirectory(): string {
   const root = mkdtempSync(join(tmpdir(), 'eky-update-smoke-config-'));

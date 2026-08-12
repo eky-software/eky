@@ -63,7 +63,14 @@ if (automationUserDataPath !== undefined) {
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!hasSingleInstanceLock) {
-  app.quit();
+  if (updateSmokeConfiguration.enabled) {
+    void writePackagedUpdateSmokeFailure(
+      updateSmokeConfiguration,
+      'DESKTOP_UPDATE_SMOKE_SINGLE_INSTANCE_LOCK_UNAVAILABLE',
+    ).finally(() => app.exit(1));
+  } else {
+    app.quit();
+  }
 }
 
 let desktopLifecycle: DesktopLifecycleHandle | undefined;
