@@ -12,7 +12,7 @@ describe('packaged update E2E fixture', () => {
     assert.deepEqual(windowsUpdateFixtureNames, ['current', 'next', 'failure']);
     assert.deepEqual(getWindowsUpdateFixtureDefinition('next'), {
       appVersion: '0.0.0-update-fixture.2',
-      migrationMode: 'complete',
+      migrationMode: 'forward',
       msiProductVersion: '0.0.2',
     });
     assert.throws(

@@ -629,15 +629,23 @@ async function assertDirectRecoveryCleared(root) {
 }
 
 function assertOkResult(result, expected) {
+  if (result?.status !== 'ok') {
+    throw new Error('PACKAGED_UPDATE_E2E_RESULT_STATUS_INVALID');
+  }
+  if (result.appVersion !== expected.appVersion) {
+    throw new Error('PACKAGED_UPDATE_E2E_RESULT_APP_VERSION_INVALID');
+  }
+  if (result.acceptedVersion !== expected.appVersion) {
+    throw new Error('PACKAGED_UPDATE_E2E_RESULT_ACCEPTED_VERSION_INVALID');
+  }
+  if (result.journalState !== expected.journalState) {
+    throw new Error('PACKAGED_UPDATE_E2E_RESULT_JOURNAL_INVALID');
+  }
   if (
-    result?.status !== 'ok' ||
-    result.appVersion !== expected.appVersion ||
-    result.acceptedVersion !== expected.appVersion ||
-    result.journalState !== expected.journalState ||
-    (expected.pdfSha256 !== undefined &&
-      result.pdfSha256 !== expected.pdfSha256)
+    expected.pdfSha256 !== undefined &&
+    result.pdfSha256 !== expected.pdfSha256
   ) {
-    throw new Error('PACKAGED_UPDATE_E2E_RESULT_EXPECTATION_FAILED');
+    throw new Error('PACKAGED_UPDATE_E2E_RESULT_PDF_INVALID');
   }
 }
 

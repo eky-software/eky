@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   createWindowsPackageReleaseIdentity,
   createWindowsPackageReleaseInfo,
+  getUpdateFixtureAdditionalMigrations,
   getUpdateFixtureMigrationMode,
   getWindowsPackageDirectoryNames,
   readWindowsPackageBuildMode,
@@ -43,9 +44,34 @@ describe('Windows update package fixtures', () => {
       appVersion: '0.0.0-update-fixture.3',
       msiProductVersion: '0.0.3',
     });
-    assert.equal(getUpdateFixtureMigrationMode(current), 'omit-latest-two');
-    assert.equal(getUpdateFixtureMigrationMode(next), 'complete');
-    assert.equal(getUpdateFixtureMigrationMode(failure), 'fail-latest');
+    assert.equal(getUpdateFixtureMigrationMode(current), 'baseline');
+    assert.equal(getUpdateFixtureMigrationMode(next), 'forward');
+    assert.equal(getUpdateFixtureMigrationMode(failure), 'fail-forward');
+  });
+
+  it('extends the complete production migration prefix only inside fixtures', () => {
+    const standard = readWindowsPackageBuildMode([]);
+    const current = readWindowsPackageBuildMode(['--update-e2e-current']);
+    const next = readWindowsPackageBuildMode(['--update-e2e-next']);
+    const failure = readWindowsPackageBuildMode(['--update-e2e-failure']);
+
+    assert.deepEqual(getUpdateFixtureAdditionalMigrations(standard), []);
+    assert.deepEqual(getUpdateFixtureAdditionalMigrations(current), []);
+    const nextMigrations = getUpdateFixtureAdditionalMigrations(next);
+    const failureMigrations = getUpdateFixtureAdditionalMigrations(failure);
+    assert.deepEqual(
+      nextMigrations.map(({ fileName }) => fileName),
+      [
+        '039_update_e2e_add_forward_marker.sql',
+        '040_update_e2e_add_forward_detail.sql',
+      ],
+    );
+    assert.equal(nextMigrations[0].content, failureMigrations[0].content);
+    assert.equal(nextMigrations[0].fileName, failureMigrations[0].fileName);
+    assert.equal(nextMigrations[1].fileName, failureMigrations[1].fileName);
+    assert.notEqual(nextMigrations[1].content, failureMigrations[1].content);
+    assert.match(nextMigrations[0].content, /CREATE TABLE/);
+    assert.match(nextMigrations[1].content, /ADD COLUMN/);
   });
 
   it('keeps packaged runtime and MSI release metadata on the same identity', () => {

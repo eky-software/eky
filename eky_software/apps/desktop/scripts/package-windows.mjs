@@ -37,7 +37,7 @@ import {
 import {
   createWindowsPackageReleaseIdentity,
   createWindowsPackageReleaseInfo,
-  getUpdateFixtureMigrationMode,
+  getUpdateFixtureAdditionalMigrations,
   getWindowsPackageDirectoryNames,
   readWindowsPackageBuildMode,
 } from './windows-update-package-fixture.mjs';
@@ -148,24 +148,16 @@ async function buildWorkspaceArtifacts() {
 }
 
 async function applyUpdateFixtureMigrationShape() {
-  const mode = getUpdateFixtureMigrationMode(buildMode);
   const migrationsRoot = join(
     backendStage,
     'dist',
     'database',
     'migrations',
   );
-  if (mode === 'omit-latest-two') {
-    await rm(join(migrationsRoot, '037_add_invoice_payment_tracking.sql'));
-    await rm(
-      join(migrationsRoot, '038_create_invoice_numbering_series_transitions.sql'),
-    );
-    return;
-  }
-  if (mode === 'fail-latest') {
+  for (const migration of getUpdateFixtureAdditionalMigrations(buildMode)) {
     await writeFile(
-      join(migrationsRoot, '038_create_invoice_numbering_series_transitions.sql'),
-      'THIS IS AN INTENTIONAL PACKAGED UPDATE E2E MIGRATION FAILURE;\n',
+      join(migrationsRoot, migration.fileName),
+      migration.content,
       'utf8',
     );
   }
