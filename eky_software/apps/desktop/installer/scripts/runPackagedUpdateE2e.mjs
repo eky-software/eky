@@ -30,7 +30,6 @@ const installerDirectory = resolve(scriptDirectory, '..');
 const processTimeoutMs = 120_000;
 const applicationExitTimeoutMs = 30_000;
 const installerStabilityTimeoutMs = 120_000;
-const maximumReleaseInfoBytes = 64 * 1024;
 
 export function createWindowsInstallerArguments({
   logPath,
@@ -100,20 +99,23 @@ export async function runPackagedUpdateE2e() {
   );
   const evidence = [];
 
-  await cleanupKnownFixtureInstallations(fixture);
+  const fixtureContext = Object.freeze({
+    fixture,
+    packages: verifiedPackages,
+    sourceInventories,
+  });
+  await cleanupKnownFixtureInstallations(fixtureContext);
   try {
     for (const scenario of createPackagedUpdateScenarioPlan()) {
       evidence.push(
         await runScenario({
-          fixture,
+          ...fixtureContext,
           name: scenario.name,
-          packages: verifiedPackages,
-          sourceInventories,
         }),
       );
     }
   } finally {
-    await cleanupKnownFixtureInstallations(fixture);
+    await cleanupKnownFixtureInstallations(fixtureContext);
   }
 
   const evidencePath = join(dirname(prepared.fixturePath), 'evidence.json');
@@ -154,7 +156,7 @@ async function runScenario(context) {
   const token = randomBytes(16).toString('hex');
   const root = join(tmpdir(), 'eky-desktop-update-smoke', token);
   const scenario = Object.freeze({ ...context, root, token });
-  await cleanupKnownFixtureInstallations(context.fixture);
+  await cleanupKnownFixtureInstallations(context);
   await stageScenarioPackages(scenario);
   try {
     switch (context.name) {
@@ -174,7 +176,7 @@ async function runScenario(context) {
         throw new Error('PACKAGED_UPDATE_E2E_SCENARIO_INVALID');
     }
   } finally {
-    await cleanupKnownFixtureInstallations(context.fixture);
+    await cleanupKnownFixtureInstallations(context);
     await rm(root, { force: true, recursive: true });
   }
 }
@@ -436,22 +438,22 @@ async function installFixturePackage(scenario, role, logName) {
   }
 }
 
-async function cleanupKnownFixtureInstallations(fixture) {
+async function cleanupKnownFixtureInstallations(context) {
   const { installRoot, msiexecPath } = getWindowsRuntimePaths();
   await assertNoEkyProcess();
   if (await pathExists(installRoot)) {
-    const release = await readInstalledRelease().catch(() => undefined);
-    const knownVersions = new Set(
-      Object.values(fixture.packages).map((packageInfo) => packageInfo.appVersion),
+    const installedInventory = await createDirectoryInventory(installRoot);
+    const isKnownFixture = Object.values(context.sourceInventories).some(
+      (inventory) => directoryInventoriesEqual(inventory, installedInventory),
     );
-    if (release === undefined || !knownVersions.has(release.appVersion)) {
+    if (!isKnownFixture) {
       throw new Error('PACKAGED_UPDATE_E2E_UNKNOWN_INSTALL_PRESENT');
     }
   }
   const cleanupRoot = join(tmpdir(), 'eky-desktop-update-smoke-cleanup');
   await mkdir(cleanupRoot, { recursive: true });
   for (const role of ['failure', 'next', 'current']) {
-    const packageInfo = fixture.packages[role];
+    const packageInfo = context.fixture.packages[role];
     const exit = await runProcess(
       msiexecPath,
       createWindowsInstallerArguments({
@@ -564,15 +566,6 @@ async function tryReadSmokeResult(resultPath, phase) {
 
 async function assertInstalledPackage(scenario, role) {
   const { installRoot } = getWindowsRuntimePaths();
-  const release = await readInstalledRelease();
-  const expected = scenario.packages[role];
-  if (
-    release.appVersion !== expected.appVersion ||
-    release.buildRevision !== scenario.fixture.buildRevision ||
-    release.msiProductVersion !== expected.msiProductVersion
-  ) {
-    throw new Error('PACKAGED_UPDATE_E2E_INSTALLED_RELEASE_INVALID');
-  }
   await assertInventoriesEqual(
     scenario.sourceInventories[role],
     await createDirectoryInventory(installRoot),
@@ -596,29 +589,6 @@ async function waitForStableInstalledPackage(scenario, role) {
     await delay(500);
   }
   throw new Error('PACKAGED_UPDATE_E2E_INSTALLER_STABILITY_TIMEOUT');
-}
-
-async function readInstalledRelease() {
-  const { releaseInfoPath } = getWindowsRuntimePaths();
-  const metadata = await lstat(releaseInfoPath);
-  if (
-    !metadata.isFile() ||
-    metadata.isSymbolicLink() ||
-    metadata.size < 1 ||
-    metadata.size > maximumReleaseInfoBytes
-  ) {
-    throw new Error('PACKAGED_UPDATE_E2E_RELEASE_INFO_INVALID');
-  }
-  const value = JSON.parse(await readFile(releaseInfoPath, 'utf8'));
-  if (
-    !isRecord(value) ||
-    typeof value.appVersion !== 'string' ||
-    typeof value.buildRevision !== 'string' ||
-    typeof value.msiProductVersion !== 'string'
-  ) {
-    throw new Error('PACKAGED_UPDATE_E2E_RELEASE_INFO_INVALID');
-  }
-  return value;
 }
 
 async function assertUpdateCacheRotation(scenario) {
@@ -733,14 +703,24 @@ async function addDirectoryInventory(root, directory, inventory) {
 }
 
 async function assertInventoriesEqual(expected, actual, errorCode) {
-  if (expected.size !== actual.size) {
+  if (!directoryInventoriesEqual(expected, actual)) {
     throw new Error(errorCode);
+  }
+}
+
+export function directoryInventoriesEqual(expected, actual) {
+  if (!(expected instanceof Map) || !(actual instanceof Map)) {
+    return false;
+  }
+  if (expected.size !== actual.size) {
+    return false;
   }
   for (const [path, hash] of expected) {
     if (actual.get(path) !== hash) {
-      throw new Error(errorCode);
+      return false;
     }
   }
+  return true;
 }
 
 async function hashFile(path) {
@@ -889,13 +869,6 @@ function getWindowsRuntimePaths() {
     executablePath: join(installRoot, 'Eky.exe'),
     installRoot,
     msiexecPath: join(systemRoot, 'System32', 'msiexec.exe'),
-    releaseInfoPath: join(
-      installRoot,
-      'resources',
-      'app',
-      'dist',
-      'release-info.json',
-    ),
     taskkillPath: join(systemRoot, 'System32', 'taskkill.exe'),
     tasklistPath: join(systemRoot, 'System32', 'tasklist.exe'),
   });

@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   createPackagedUpdateSmokeInvocation,
   createWindowsInstallerArguments,
+  directoryInventoriesEqual,
   formatWindowsInstallerProductCode,
 } from './runPackagedUpdateE2e.mjs';
 
@@ -68,6 +69,32 @@ describe('packaged update E2E runner boundaries', () => {
     assert.throws(
       () => createPackagedUpdateSmokeInvocation('seed', 'not-a-token'),
       /PACKAGED_UPDATE_E2E_INVOCATION_INVALID/,
+    );
+  });
+
+  it('recognizes only an exact installed fixture inventory', () => {
+    const expected = new Map([
+      ['Eky.exe', 'a'.repeat(64)],
+      ['resources/app.asar', 'b'.repeat(64)],
+    ]);
+
+    assert.equal(directoryInventoriesEqual(expected, new Map(expected)), true);
+    assert.equal(
+      directoryInventoriesEqual(
+        expected,
+        new Map([
+          ['Eky.exe', 'a'.repeat(64)],
+          ['resources/app.asar', 'c'.repeat(64)],
+        ]),
+      ),
+      false,
+    );
+    assert.equal(
+      directoryInventoriesEqual(
+        expected,
+        new Map([...expected, ['unknown.dll', 'd'.repeat(64)]]),
+      ),
+      false,
     );
   });
 });
