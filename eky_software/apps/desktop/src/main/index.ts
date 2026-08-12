@@ -17,6 +17,8 @@ import {
   createPackagedSmokeProgressReporter,
   writePackagedSmokeResult,
 } from './packagedSmoke.js';
+import { createPackagedUpdateSmokeConfiguration } from '../update/packagedUpdateSmokeConfiguration.js';
+import { writePackagedUpdateSmokeFailure } from '../update/packagedUpdateSmoke.js';
 
 type StartDesktopComposition =
   typeof import('./desktopComposition.js').startDesktopComposition;
@@ -45,9 +47,17 @@ const smokeConfiguration = createPackagedSmokeConfiguration({
 });
 const smokeProgress =
   createPackagedSmokeProgressReporter(smokeConfiguration);
+const updateSmokeConfiguration = createPackagedUpdateSmokeConfiguration({
+  phaseValue: app.commandLine.getSwitchValue('desktop-update-smoke'),
+  tempPath: app.getPath('temp'),
+  tokenValue: process.env.EKY_DESKTOP_UPDATE_SMOKE_TOKEN,
+});
 
-if (smokeConfiguration.userDataPath !== undefined) {
-  app.setPath('userData', smokeConfiguration.userDataPath);
+const automationUserDataPath =
+  smokeConfiguration.userDataPath ??
+  updateSmokeConfiguration.userDataPath;
+if (automationUserDataPath !== undefined) {
+  app.setPath('userData', automationUserDataPath);
 }
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
@@ -85,7 +95,10 @@ async function startDesktopRuntime(
     releaseInfo,
     quitApplication: () => app.quit(),
     relaunchApplication() {
-      if (smokeConfiguration.enabled) {
+      if (
+        smokeConfiguration.enabled ||
+        updateSmokeConfiguration.enabled
+      ) {
         app.quit();
         return;
       }
@@ -96,6 +109,7 @@ async function startDesktopRuntime(
     runtimeInstanceId,
     reportSmokeStage: (stage) => smokeProgress.reportStage(stage),
     smokeConfiguration,
+    updateSmokeConfiguration,
     userDataPath: app.getPath('userData'),
   });
 }
@@ -121,7 +135,10 @@ app.on('before-quit', (event) => {
 });
 
 app.on('window-all-closed', () => {
-  if (!smokeConfiguration.enabled) {
+  if (
+    !smokeConfiguration.enabled &&
+    !updateSmokeConfiguration.enabled
+  ) {
     app.quit();
   }
 });
@@ -137,6 +154,13 @@ if (hasSingleInstanceLock) {
           stage: smokeProgress.currentStage(),
           status: 'failed',
         });
+        return;
+      }
+      if (updateSmokeConfiguration.enabled) {
+        await writePackagedUpdateSmokeFailure(
+          updateSmokeConfiguration,
+          errorCode,
+        );
         return;
       }
 

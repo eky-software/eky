@@ -139,6 +139,11 @@ import {
 import { launchWindowsInstallerForUpdate } from '../update/windowsInstallerHandoff.js';
 import { launchWindowsInstallerRollback } from '../update/windowsInstallerRollbackHandoff.js';
 import { createUpdateRecoveryComposition } from '../update/recoveryWindow/updateRecoveryComposition.js';
+import type { PackagedUpdateSmokeConfiguration } from '../update/packagedUpdateSmokeConfiguration.js';
+import {
+  runPackagedUpdateSmoke,
+  writePackagedUpdateSmokeHandoffResult,
+} from '../update/packagedUpdateSmoke.js';
 
 export interface DesktopLifecycleHandle {
   applicationWindow: BrowserWindow;
@@ -179,6 +184,7 @@ export interface StartDesktopCompositionOptions {
   runtimeInstanceId: string;
   reportSmokeStage(stage: PackagedSmokeStage): Promise<void>;
   smokeConfiguration: PackagedSmokeConfiguration;
+  updateSmokeConfiguration: PackagedUpdateSmokeConfiguration;
   userDataPath: string;
 }
 
@@ -206,6 +212,8 @@ export async function startDesktopComposition(
     ...options.dependencies,
   };
   const smokeMode = options.smokeConfiguration.enabled;
+  const automationMode =
+    smokeMode || options.updateSmokeConfiguration.enabled;
   const runtimeSessionSecret = dependencies.createRuntimeSession();
   const backendRoot = join(options.resourcesPath, 'backend');
   const profilePaths = createDesktopProfilePaths(options.userDataPath);
@@ -261,6 +269,7 @@ export async function startDesktopComposition(
       options,
       dependencies,
       runtimeSessionSecret,
+      automationMode,
       smokeMode,
     });
   } catch (error) {
@@ -286,6 +295,7 @@ export async function startDesktopComposition(
 }
 
 interface DesktopCompositionRuntimeOptions {
+  automationMode: boolean;
   backendRoot: string;
   dataRoot: string;
   desktopAppVersion: string;
@@ -300,6 +310,7 @@ interface DesktopCompositionRuntimeOptions {
 }
 
 async function startDesktopCompositionRuntime({
+  automationMode,
   backendRoot,
   dataRoot,
   desktopAppVersion,
@@ -548,6 +559,9 @@ async function startDesktopCompositionRuntime({
   let supportBundleCapability: SupportBundleCapability | undefined;
   let localUpdateSelectionCapability:
     | LocalUpdateSelectionCapability
+    | undefined;
+  let localUpdateHandoffCoordinator:
+    | LocalUpdateHandoffCoordinator
     | undefined;
   let backupPasswordWindowController:
     | BackupPasswordWindowController
@@ -1016,7 +1030,7 @@ async function startDesktopCompositionRuntime({
     if (shutdownStarted) {
       return;
     }
-    if (!smokeMode) {
+    if (!automationMode) {
       dependencies.showErrorBox(
         'Eky suljettiin',
         'Paikallinen palvelu pysähtyi odottamatta. Sovellus suljetaan turvallisesti.',
@@ -1044,7 +1058,7 @@ async function startDesktopCompositionRuntime({
 
   applicationWindow = createApplicationWindow(
     options.applicationPath,
-    !smokeMode,
+    !automationMode,
     {
       loadFailed() {
         desktopOperationalLogger.write(
@@ -1102,7 +1116,7 @@ async function startDesktopCompositionRuntime({
   operationalLogFolderCapability = createOperationalLogFolderCapability({
     ipcMain,
     mainWindow,
-    openPath: smokeMode
+    openPath: automationMode
       ? async (path) =>
           path === operationalLogsRoot
             ? ''
@@ -1120,7 +1134,7 @@ async function startDesktopCompositionRuntime({
   });
   invoicePdfArchiveCapability = createInvoicePdfArchiveCapability({
     async confirmChange() {
-      if (smokeMode) {
+      if (automationMode) {
         return true;
       }
       const result = await dependencies.showMessageBox(mainWindow, {
@@ -1137,7 +1151,7 @@ async function startDesktopCompositionRuntime({
       return result.response === 1;
     },
     async confirmDisable() {
-      if (smokeMode) {
+      if (automationMode) {
         return true;
       }
       const result = await dependencies.showMessageBox(mainWindow, {
@@ -1189,7 +1203,7 @@ async function startDesktopCompositionRuntime({
     appVersion: desktopAppVersion,
     architecture: process.arch,
     async confirmCreation() {
-      if (smokeMode) {
+      if (automationMode) {
         return true;
       }
       const result = await dependencies.showMessageBox(mainWindow, {
@@ -1265,7 +1279,9 @@ async function startDesktopCompositionRuntime({
       profileRecoveryOperationalObserver,
       profileSnapshotClient: profileSnapshotBrokerClient,
       recoveryPointService,
-      relaunchApplication: options.relaunchApplication,
+      relaunchApplication: options.updateSmokeConfiguration.enabled
+        ? () => undefined
+        : options.relaunchApplication,
       restoreActivationTransaction: profileRestoreActivationTransaction,
       showMessageBox: dependencies.showMessageBox,
       showOpenDialog: dependencies.showOpenDialog,
@@ -1329,7 +1345,7 @@ async function startDesktopCompositionRuntime({
     desktopOperationalIdentity,
     desktopOperationalLogger,
     mainWindow,
-    smokeMode,
+    automationMode,
     deliveryConfirmation.showApplicationError,
   );
 
@@ -1409,10 +1425,18 @@ async function startDesktopCompositionRuntime({
     options.releaseInfo !== undefined &&
     localUpdatePackageCache !== undefined
   ) {
-    const handoffCoordinator = new LocalUpdateHandoffCoordinator({
+    localUpdateHandoffCoordinator = new LocalUpdateHandoffCoordinator({
       cache: localUpdatePackageCache,
       journalStore: updateJournalStore,
       async launchInstaller(candidate) {
+        if (options.updateSmokeConfiguration.enabled) {
+          await writePackagedUpdateSmokeHandoffResult(
+            options.updateSmokeConfiguration,
+            desktopAppVersion,
+          );
+          options.quitApplication();
+          return;
+        }
         await launchWindowsInstallerForUpdate({
           packagePath: candidate.packagePath,
           systemRoot: process.env.SystemRoot,
@@ -1433,7 +1457,7 @@ async function startDesktopCompositionRuntime({
               dependencies.showMessageBox(owner, dialogOptions),
             status,
           }),
-        handoffCoordinator,
+        handoffCoordinator: localUpdateHandoffCoordinator,
         ipcMain,
         journalStore: updateJournalStore,
         mainWindow,
@@ -1464,6 +1488,39 @@ async function startDesktopCompositionRuntime({
         systemRoot: process.env.SystemRoot,
         userDataPath: options.userDataPath,
       });
+  }
+
+  if (options.updateSmokeConfiguration.enabled) {
+    if (
+      options.releaseInfo === undefined ||
+      localUpdatePackageCache === undefined ||
+      localUpdateHandoffCoordinator === undefined
+    ) {
+      throw new Error('DESKTOP_UPDATE_SMOKE_RELEASE_INFO_MISSING');
+    }
+    await runPackagedUpdateSmoke({
+      acceptedBuildStore: acceptedBuildMetadataStore,
+      appVersion: desktopAppVersion,
+      backend: backendHandle,
+      buildRevision: options.buildInfo.buildRevision,
+      cache: localUpdatePackageCache,
+      configuration: options.updateSmokeConfiguration,
+      directSetupRecoveryStore: directSetupMigrationRecoveryStore,
+      handoffCoordinator: localUpdateHandoffCoordinator,
+      journalStore: updateJournalStore,
+      portableProfileBackupService,
+      profileRestoreActivationService,
+      profileRestoreStagingService,
+      profileSnapshotClient: profileSnapshotBrokerClient,
+      releaseInfo: options.releaseInfo,
+      runtimeSessionSecret,
+      async shutdownAndQuit() {
+        await lifecycleHandle.shutdown();
+        mainWindow.destroy();
+        options.quitApplication();
+      },
+    });
+    return undefined;
   }
 
   if (smokeMode) {
@@ -1730,7 +1787,7 @@ function createInvoicePdfPreviewController(
   operationalIdentity: DesktopOperationalIdentity,
   operationalLogger: DesktopOperationalLogger,
   mainWindow: BrowserWindow,
-  smokeMode: boolean,
+  automationMode: boolean,
   showApplicationError: (title: string, message: string) => void,
 ): InvoicePdfPreviewWindowController {
   return createInvoicePdfPreviewWindowController({
@@ -1738,7 +1795,7 @@ function createInvoicePdfPreviewController(
     ipcMain,
     mainWindow,
     restoreMainWindowFocus() {
-      if (!smokeMode) {
+      if (!automationMode) {
         restoreWindowInputFocus(mainWindow);
       }
     },
