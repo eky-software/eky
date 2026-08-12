@@ -93,7 +93,7 @@ describe('packaged update smoke result boundary', () => {
       thrownError: new Error('DESKTOP_UPDATE_SMOKE_SECRET_FAILED'),
     },
     {
-      expectedCode: 'DESKTOP_UPDATE_SMOKE_FAILED',
+      expectedCode: 'DESKTOP_UPDATE_SMOKE_REGISTRATION_FAILED',
       thrownError: new Error('raw failure with C:\\private\\profile path'),
     },
   ])(

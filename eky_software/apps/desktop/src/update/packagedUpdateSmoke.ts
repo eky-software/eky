@@ -356,19 +356,31 @@ function isPackagedUpdateSmokePhase(
 async function seedSyntheticProfile(
   dependencies: PackagedUpdateSmokeDependencies,
 ): Promise<void> {
-  await dependencies.cache.repairCurrentRegistration({
-    manifestPath: packageManifestPath(dependencies, 'current'),
-  });
-  const invoiceId = await createInvoicePdfPreviewSmokeFixture({
-    backendPort: dependencies.backend.port,
-    runtimeSessionSecret: dependencies.runtimeSessionSecret,
-  });
-  await setSyntheticSecret(
-    dependencies.backend.port,
-    dependencies.runtimeSessionSecret,
+  await runSmokeStep('DESKTOP_UPDATE_SMOKE_REGISTRATION_FAILED', () =>
+    dependencies.cache.repairCurrentRegistration({
+      manifestPath: packageManifestPath(dependencies, 'current'),
+    }),
   );
-  await writeSyntheticProfileState(dependencies, { invoiceId });
-  await verifySyntheticProfile(dependencies, { expectedJournalState: null });
+  const invoiceId = await runSmokeStep(
+    'DESKTOP_UPDATE_SMOKE_INVOICE_FIXTURE_FAILED',
+    () =>
+      createInvoicePdfPreviewSmokeFixture({
+        backendPort: dependencies.backend.port,
+        runtimeSessionSecret: dependencies.runtimeSessionSecret,
+      }),
+  );
+  await runSmokeStep('DESKTOP_UPDATE_SMOKE_SECRET_FAILED', () =>
+    setSyntheticSecret(
+      dependencies.backend.port,
+      dependencies.runtimeSessionSecret,
+    ),
+  );
+  await runSmokeStep('DESKTOP_UPDATE_SMOKE_STATE_FAILED', () =>
+    writeSyntheticProfileState(dependencies, { invoiceId }),
+  );
+  await runSmokeStep('DESKTOP_UPDATE_SMOKE_PROFILE_VALIDATION_FAILED', () =>
+    verifySyntheticProfile(dependencies, { expectedJournalState: null }),
+  );
 }
 
 async function prepareUpdate(
@@ -669,6 +681,20 @@ function readSafeSmokeErrorCode(error: unknown): string {
   return error instanceof Error && /^[A-Z][A-Z0-9_]{0,99}$/.test(error.message)
     ? error.message
     : 'DESKTOP_UPDATE_SMOKE_FAILED';
+}
+
+async function runSmokeStep<T>(
+  fallbackCode: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    const safeCode = readSafeSmokeErrorCode(error);
+    throw new Error(
+      safeCode === 'DESKTOP_UPDATE_SMOKE_FAILED' ? fallbackCode : safeCode,
+    );
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
