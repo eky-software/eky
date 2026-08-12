@@ -546,6 +546,59 @@ describe('local update package cache', () => {
     ).resolves.toBeDefined();
   });
 
+  it('registers an exact journal-bound rollback package under the failed target build', async () => {
+    const fixture = await createFixture();
+    const failedTargetRelease = {
+      ...releaseInfo,
+      appVersion: '0.1.0-alpha.2',
+      buildRevision: 'abcdef012345',
+      msiProductVersion: '0.1.2',
+    };
+    const cache = createCache(fixture.cacheRoot, {
+      releaseInfo: failedTargetRelease,
+    });
+    const expectedIdentity = expectedIdentityOf(fixture.manifest);
+
+    await expect(
+      cache.registerExactRollbackPackage({
+        expectedIdentity,
+        manifestPath: fixture.manifestPath,
+      }),
+    ).resolves.toMatchObject({
+      appVersion: releaseInfo.appVersion,
+      role: 'current',
+    });
+    await expect(
+      cache.hasExpectedJournalPackage({
+        expectedIdentity,
+        roles: ['current', 'previous'],
+      }),
+    ).resolves.toBe(true);
+  });
+
+  it('rejects a manually selected rollback package that differs from the journal identity', async () => {
+    const fixture = await createFixture();
+    const cache = createCache(fixture.cacheRoot, {
+      releaseInfo: {
+        ...releaseInfo,
+        appVersion: '0.1.0-alpha.2',
+        buildRevision: 'abcdef012345',
+        msiProductVersion: '0.1.2',
+      },
+    });
+
+    await expect(
+      cache.registerExactRollbackPackage({
+        expectedIdentity: {
+          ...expectedIdentityOf(fixture.manifest),
+          packageSha256: 'f'.repeat(64),
+        },
+        manifestPath: fixture.manifestPath,
+      }),
+    ).rejects.toThrow(LocalUpdatePackageCacheError);
+    expect(await safeReadDirectory(fixture.cacheRoot)).toEqual([]);
+  });
+
   it('recovers both interrupted current repair rename states', async () => {
     for (const interruption of ['backupOnly', 'nextOnly'] as const) {
       const fixture = await createFixture();

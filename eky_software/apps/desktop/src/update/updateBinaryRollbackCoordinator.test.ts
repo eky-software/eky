@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { RevalidatedLocalUpdatePackageHandle } from './localUpdatePackageCache.js';
-import { UpdateBinaryRollbackCoordinator } from './updateBinaryRollbackCoordinator.js';
+import {
+  UpdateBinaryRollbackCoordinator,
+  UpdateRollbackPackageRequiredError,
+} from './updateBinaryRollbackCoordinator.js';
 import type { UpdateJournal } from './updateJournal.js';
 
 describe('UpdateBinaryRollbackCoordinator', () => {
@@ -17,7 +20,7 @@ describe('UpdateBinaryRollbackCoordinator', () => {
       return rollbackPackage;
     });
     const coordinator = new UpdateBinaryRollbackCoordinator({
-      cache: { normalizeRolledBackPackages },
+      cache: createCache({ normalizeRolledBackPackages }),
       journalStore: {
         read: async () => stored,
         write: async (next) => {
@@ -58,7 +61,7 @@ describe('UpdateBinaryRollbackCoordinator', () => {
       let stored = createJournal(state);
       const launchInstaller = vi.fn();
       const coordinator = new UpdateBinaryRollbackCoordinator({
-        cache: { normalizeRolledBackPackages: vi.fn() },
+        cache: createCache({ normalizeRolledBackPackages: vi.fn() }),
         journalStore: {
           read: async () => stored,
           write: async (next) => {
@@ -84,7 +87,7 @@ describe('UpdateBinaryRollbackCoordinator', () => {
     const launchInstaller = vi.fn();
     const normalizeRolledBackPackages = vi.fn();
     const coordinator = new UpdateBinaryRollbackCoordinator({
-      cache: { normalizeRolledBackPackages },
+      cache: createCache({ normalizeRolledBackPackages }),
       journalStore: { read: async () => journal, write },
       launchInstaller,
       releaseInfo: createCurrentReleaseInfo(),
@@ -99,9 +102,9 @@ describe('UpdateBinaryRollbackCoordinator', () => {
   it('fails safe without another attempt when installer launch fails', async () => {
     let stored = createJournal('businessRollbackCompleted');
     const coordinator = new UpdateBinaryRollbackCoordinator({
-      cache: {
+      cache: createCache({
         normalizeRolledBackPackages: async () => createRollbackPackage(),
-      },
+      }),
       journalStore: {
         read: async () => stored,
         write: async (next) => {
@@ -121,17 +124,111 @@ describe('UpdateBinaryRollbackCoordinator', () => {
     expect(stored.state).toBe('failedSafe');
     expect(stored.binaryRollbackAttemptCount).toBe(1);
   });
+
+  it('requires the exact old package without launching when cache recovery cannot find it', async () => {
+    let stored = createJournal('businessRollbackCompleted');
+    const launchInstaller = vi.fn();
+    const normalizeRolledBackPackages = vi.fn();
+    const coordinator = new UpdateBinaryRollbackCoordinator({
+      cache: createCache({
+        hasExpectedJournalPackage: async () => false,
+        normalizeRolledBackPackages,
+      }),
+      journalStore: {
+        read: async () => stored,
+        write: async (next) => {
+          stored = next;
+        },
+      },
+      launchInstaller,
+      now: () => new Date('2026-08-12T12:00:00.000Z'),
+      releaseInfo: createReleaseInfo(),
+    });
+
+    await expect(coordinator.startIfRequired()).rejects.toBeInstanceOf(
+      UpdateRollbackPackageRequiredError,
+    );
+    expect(stored.state).toBe('rollbackPackageRequired');
+    expect(stored.binaryRollbackAttemptCount).toBe(0);
+    expect(normalizeRolledBackPackages).not.toHaveBeenCalled();
+    expect(launchInstaller).not.toHaveBeenCalled();
+  });
+
+  it('registers only the journal-bound package before the single rollback launch', async () => {
+    let stored = createJournal('rollbackPackageRequired');
+    const order: string[] = [];
+    const registerExactRollbackPackage = vi.fn(async () => {
+      order.push('register');
+      return {
+        appVersion: '0.1.0',
+        buildRevision: 'a'.repeat(40),
+        msiProductVersion: '0.1.0',
+        releaseChannel: 'pilot' as const,
+        role: 'current' as const,
+        signingStatus: 'unsigned-prototype' as const,
+      };
+    });
+    const coordinator = new UpdateBinaryRollbackCoordinator({
+      cache: createCache({
+        hasExpectedJournalPackage: async () => true,
+        normalizeRolledBackPackages: async () => {
+          order.push('normalize');
+          return createRollbackPackage();
+        },
+        registerExactRollbackPackage,
+      }),
+      journalStore: {
+        read: async () => stored,
+        write: async (next) => {
+          stored = next;
+          order.push(next.state);
+        },
+      },
+      launchInstaller: async () => {
+        order.push('launch');
+      },
+      now: createClock(),
+      releaseInfo: createReleaseInfo(),
+    });
+
+    await expect(
+      coordinator.registerAndStartManualRollback(
+        'C:\\selected\\old-package.manifest.json',
+      ),
+    ).resolves.toBe('launched');
+
+    expect(registerExactRollbackPackage).toHaveBeenCalledWith({
+      expectedIdentity: expect.objectContaining({
+        appVersion: '0.1.0',
+        buildRevision: 'a'.repeat(40),
+        packageSha256: 'a'.repeat(64),
+      }),
+      manifestPath: 'C:\\selected\\old-package.manifest.json',
+    });
+    expect(order).toEqual([
+      'register',
+      'businessRollbackCompleted',
+      'normalize',
+      'binaryRollbackPrepared',
+      'awaitingRollbackFirstStart',
+      'launch',
+    ]);
+  });
 });
 
 function createJournal(
   state:
     | 'awaitingRollbackFirstStart'
     | 'binaryRollbackPrepared'
-    | 'businessRollbackCompleted',
+    | 'businessRollbackCompleted'
+    | 'rollbackPackageRequired',
 ): Readonly<UpdateJournal> {
   return {
     binaryRollbackAttemptCount:
-      state === 'businessRollbackCompleted' ? 0 : 1,
+      state === 'businessRollbackCompleted' ||
+      state === 'rollbackPackageRequired'
+        ? 0
+        : 1,
     candidatePackageIdentity: {
       buildRevision: 'b'.repeat(40),
       msiProductVersion: '0.2.0',
@@ -156,6 +253,37 @@ function createJournal(
     state,
     targetVersion: '0.2.0',
     updatedAt: '2026-08-12T11:00:00.000Z',
+  };
+}
+
+function createCache(
+  overrides: Partial<{
+    hasExpectedJournalPackage: () => Promise<boolean>;
+    normalizeRolledBackPackages: () => Promise<
+      Readonly<RevalidatedLocalUpdatePackageHandle>
+    >;
+    registerExactRollbackPackage: () => Promise<{
+      appVersion: string;
+      buildRevision: string;
+      msiProductVersion: string;
+      releaseChannel: 'pilot';
+      role: 'current';
+      signingStatus: 'unsigned-prototype';
+    }>;
+  }> = {},
+) {
+  return {
+    hasExpectedJournalPackage: async () => true,
+    normalizeRolledBackPackages: async () => createRollbackPackage(),
+    registerExactRollbackPackage: async () => ({
+      appVersion: '0.1.0',
+      buildRevision: 'a'.repeat(40),
+      msiProductVersion: '0.1.0',
+      releaseChannel: 'pilot' as const,
+      role: 'current' as const,
+      signingStatus: 'unsigned-prototype' as const,
+    }),
+    ...overrides,
   };
 }
 

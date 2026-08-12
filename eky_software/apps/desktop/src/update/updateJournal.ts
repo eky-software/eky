@@ -42,6 +42,7 @@ export const updateJournalStates = [
   'rollbackRequired',
   'businessRollbackStarting',
   'businessRollbackCompleted',
+  'rollbackPackageRequired',
   'binaryRollbackPrepared',
   'awaitingRollbackFirstStart',
   'rolledBack',
@@ -137,6 +138,7 @@ export function parseUpdateJournal(value: unknown): Readonly<UpdateJournal> {
       value.state === 'rollbackRequired' ||
       value.state === 'businessRollbackStarting' ||
       value.state === 'businessRollbackCompleted' ||
+      value.state === 'rollbackPackageRequired' ||
       value.state === 'binaryRollbackPrepared' ||
       value.state === 'awaitingRollbackFirstStart' ||
       value.state === 'rolledBack') &&
@@ -154,7 +156,8 @@ export function parseUpdateJournal(value: unknown): Readonly<UpdateJournal> {
       value.state === 'accepted' ||
       value.state === 'rollbackRequired' ||
       value.state === 'businessRollbackStarting' ||
-      value.state === 'businessRollbackCompleted') &&
+      value.state === 'businessRollbackCompleted' ||
+      value.state === 'rollbackPackageRequired') &&
       (value.binaryRollbackAttemptCount ?? 0) !== 0)
   ) {
     throw new UpdateJournalValidationError();
@@ -216,6 +219,7 @@ const allowedTransitions: Readonly<
     'businessRollbackCompleted',
     'failedSafe',
     'recoveryRequired',
+    'rollbackPackageRequired',
   ]),
   businessRollbackStarting: new Set([
     'businessRollbackCompleted',
@@ -234,6 +238,12 @@ const allowedTransitions: Readonly<
   ]),
   prepared: new Set(['failed', 'prepared', 'recoveryPointValidated']),
   recoveryRequired: new Set(['recoveryRequired']),
+  rollbackPackageRequired: new Set([
+    'businessRollbackCompleted',
+    'failedSafe',
+    'recoveryRequired',
+    'rollbackPackageRequired',
+  ]),
   recoveryPointValidated: new Set([
     'failed',
     'recoveryPointValidated',
@@ -267,6 +277,7 @@ const recoveryPointRequiredStates: ReadonlySet<UpdateJournalState> = new Set([
   'rollbackRequired',
   'businessRollbackStarting',
   'businessRollbackCompleted',
+  'rollbackPackageRequired',
   'binaryRollbackPrepared',
   'awaitingRollbackFirstStart',
   'rolledBack',

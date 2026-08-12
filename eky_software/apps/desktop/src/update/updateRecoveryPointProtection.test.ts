@@ -16,6 +16,7 @@ describe('update recovery point protection', () => {
     'rollbackRequired',
     'businessRollbackStarting',
     'businessRollbackCompleted',
+    'rollbackPackageRequired',
     'binaryRollbackPrepared',
     'awaitingRollbackFirstStart',
     'failedSafe',

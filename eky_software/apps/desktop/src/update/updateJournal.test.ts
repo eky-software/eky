@@ -129,6 +129,19 @@ describe('update journal', () => {
       at: '2026-08-11T18:05:00.000Z',
       state: 'businessRollbackCompleted',
     });
+    const packageRequired = transitionUpdateJournal(businessCompleted, {
+      at: '2026-08-11T18:05:30.000Z',
+      state: 'rollbackPackageRequired',
+    });
+    expect(
+      transitionUpdateJournal(packageRequired, {
+        at: '2026-08-11T18:05:45.000Z',
+        state: 'businessRollbackCompleted',
+      }),
+    ).toMatchObject({
+      binaryRollbackAttemptCount: 0,
+      state: 'businessRollbackCompleted',
+    });
 
     expect(() =>
       transitionUpdateJournal(businessStarting, {

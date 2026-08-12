@@ -10,7 +10,12 @@ import {
 import type { UpdateJournalStore } from './updateJournalStore.js';
 
 interface UpdateBinaryRollbackCoordinatorDependencies {
-  cache: Pick<LocalUpdatePackageCache, 'normalizeRolledBackPackages'>;
+  cache: Pick<
+    LocalUpdatePackageCache,
+    | 'hasExpectedJournalPackage'
+    | 'normalizeRolledBackPackages'
+    | 'registerExactRollbackPackage'
+  >;
   journalStore: Pick<UpdateJournalStore, 'read' | 'write'>;
   launchInstaller(
     rollbackPackage: Readonly<RevalidatedLocalUpdatePackageHandle>,
@@ -23,6 +28,13 @@ export class UpdateBinaryRollbackError extends Error {
   constructor() {
     super('The update binary rollback requires recovery.');
     this.name = 'UpdateBinaryRollbackError';
+  }
+}
+
+export class UpdateRollbackPackageRequiredError extends Error {
+  constructor() {
+    super('The exact rollback package must be selected manually.');
+    this.name = 'UpdateRollbackPackageRequiredError';
   }
 }
 
@@ -51,6 +63,24 @@ export class UpdateBinaryRollbackCoordinator {
     }
 
     this.assertRunningFailedTarget(journal);
+    const currentIdentity = {
+      appVersion: journal.currentVersion,
+      ...journal.currentPackageIdentity,
+    };
+    if (
+      !(await this.dependencies.cache.hasExpectedJournalPackage({
+        expectedIdentity: currentIdentity,
+        roles: ['current', 'previous'],
+      }))
+    ) {
+      await this.dependencies.journalStore.write(
+        transitionUpdateJournal(journal, {
+          at: this.now(),
+          state: 'rollbackPackageRequired',
+        }),
+      );
+      throw new UpdateRollbackPackageRequiredError();
+    }
     try {
       const rollbackPackage =
         await this.dependencies.cache.normalizeRolledBackPackages({
@@ -58,10 +88,7 @@ export class UpdateBinaryRollbackCoordinator {
             appVersion: journal.targetVersion,
             ...journal.candidatePackageIdentity,
           },
-          currentIdentity: {
-            appVersion: journal.currentVersion,
-            ...journal.currentPackageIdentity,
-          },
+          currentIdentity,
         });
       journal = transitionUpdateJournal(journal, {
         at: this.now(),
@@ -80,6 +107,34 @@ export class UpdateBinaryRollbackCoordinator {
       await this.failSafe(journal);
       throw new UpdateBinaryRollbackError();
     }
+  }
+
+  async registerAndStartManualRollback(
+    manifestPath: string,
+  ): Promise<'launched'> {
+    const journal = await this.dependencies.journalStore.read();
+    if (journal?.state !== 'rollbackPackageRequired') {
+      throw new UpdateBinaryRollbackError();
+    }
+    this.assertRunningFailedTarget(journal);
+    await this.dependencies.cache.registerExactRollbackPackage({
+      expectedIdentity: {
+        appVersion: journal.currentVersion,
+        ...journal.currentPackageIdentity,
+      },
+      manifestPath,
+    });
+    await this.dependencies.journalStore.write(
+      transitionUpdateJournal(journal, {
+        at: this.now(),
+        state: 'businessRollbackCompleted',
+      }),
+    );
+    const result = await this.startIfRequired();
+    if (result !== 'launched') {
+      throw new UpdateBinaryRollbackError();
+    }
+    return result;
   }
 
   private assertRunningFailedTarget(journal: Readonly<UpdateJournal>): void {

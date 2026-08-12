@@ -10,6 +10,7 @@ const protectedStates: ReadonlySet<UpdateJournalState> = new Set([
   'rollbackRequired',
   'businessRollbackStarting',
   'businessRollbackCompleted',
+  'rollbackPackageRequired',
   'binaryRollbackPrepared',
   'awaitingRollbackFirstStart',
   'failedSafe',

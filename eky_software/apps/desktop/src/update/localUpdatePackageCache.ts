@@ -150,64 +150,115 @@ export class LocalUpdatePackageCache {
     manifestPath: string;
   }): Promise<Readonly<LocalUpdatePackageSummary>> {
     return this.runExclusive(async () => {
-      const source = await this.readAndVerifySource({
-        manifestPath: input.manifestPath,
-        role: 'current',
-      });
-      await this.ensureCacheRoot();
-      await this.recoverInterruptedCurrentRepair();
-      await this.assertRepairCapacity(source.manifest.packageSize);
-
-      const stagingPath = await mkdtemp(
-        join(this.options.cacheRoot, '.current-repair-staging-'),
-      );
-      const nextPath = join(
-        this.options.cacheRoot,
-        currentRepairNextDirectory,
-      );
-      const backupPath = join(
-        this.options.cacheRoot,
-        currentRepairBackupDirectory,
-      );
-      const currentPath = this.slotPath('current');
-      let previousMoved = false;
-      let nextInstalled = false;
-      try {
-        await this.writeVerifiedSourceToStaging(
-          source,
-          'current',
-          stagingPath,
-        );
-        await rename(stagingPath, nextPath);
-        await syncDirectory(this.options.cacheRoot);
-        if (await pathExists(currentPath)) {
-          await assertSlotDirectory(currentPath);
-          await rename(currentPath, backupPath);
-          previousMoved = true;
-          await syncDirectory(this.options.cacheRoot);
-        }
-        await rename(nextPath, currentPath);
-        nextInstalled = true;
-        await syncDirectory(this.options.cacheRoot);
-        await this.validateSlot('current', currentPath);
-        if (previousMoved) {
-          await removeOwnedDirectory(backupPath);
-          await syncDirectory(this.options.cacheRoot);
-        }
-        return createSafeSummary(source.manifest, 'current');
-      } catch {
-        await removeOwnedDirectoryIfPresent(stagingPath);
-        await removeOwnedDirectoryIfPresent(nextPath);
-        if (nextInstalled) {
-          await removeOwnedDirectoryIfPresent(currentPath);
-        }
-        if (previousMoved && (await pathExists(backupPath))) {
-          await rename(backupPath, currentPath).catch(() => undefined);
-          await syncDirectory(this.options.cacheRoot).catch(() => undefined);
-        }
-        throw new LocalUpdatePackageCacheError();
-      }
+      return this.replaceCurrentRegistration(input);
     });
+  }
+
+  async registerExactRollbackPackage(input: {
+    expectedIdentity: Readonly<LocalUpdateExpectedPackageIdentity>;
+    manifestPath: string;
+  }): Promise<Readonly<LocalUpdatePackageSummary>> {
+    return this.runExclusive(async () => {
+      return this.replaceCurrentRegistration(input);
+    });
+  }
+
+  async hasExpectedJournalPackage(input: {
+    expectedIdentity: Readonly<LocalUpdateExpectedPackageIdentity>;
+    roles: readonly LocalUpdateCacheSlotRole[];
+  }): Promise<boolean> {
+    return this.runExclusive(async () => {
+      await this.ensureCacheRoot();
+      for (const role of input.roles) {
+        if (
+          await this.slotMatchesIdentity({
+            acceptedMetadataRoles: new Set(['current', 'previous']),
+            expectedIdentity: input.expectedIdentity,
+            path: this.slotPath(role),
+            role,
+          })
+        ) {
+          return true;
+        }
+      }
+      return false;
+    });
+  }
+
+  private async replaceCurrentRegistration(input: {
+    expectedIdentity?: Readonly<LocalUpdateExpectedPackageIdentity>;
+    manifestPath: string;
+  }): Promise<Readonly<LocalUpdatePackageSummary>> {
+    const source = await this.readAndVerifySource({
+      ...(input.expectedIdentity === undefined
+        ? {}
+        : { expectedIdentity: input.expectedIdentity }),
+      manifestPath: input.manifestPath,
+      role: 'current',
+    });
+    await this.ensureCacheRoot();
+    await this.recoverInterruptedCurrentRepair();
+    await this.assertRepairCapacity(source.manifest.packageSize);
+
+    const stagingPath = await mkdtemp(
+      join(this.options.cacheRoot, '.current-repair-staging-'),
+    );
+    const nextPath = join(
+      this.options.cacheRoot,
+      currentRepairNextDirectory,
+    );
+    const backupPath = join(
+      this.options.cacheRoot,
+      currentRepairBackupDirectory,
+    );
+    const currentPath = this.slotPath('current');
+    let previousMoved = false;
+    let nextInstalled = false;
+    try {
+      await this.writeVerifiedSourceToStaging(
+        source,
+        'current',
+        stagingPath,
+        input.expectedIdentity,
+      );
+      await rename(stagingPath, nextPath);
+      await syncDirectory(this.options.cacheRoot);
+      if (await pathExists(currentPath)) {
+        await assertSlotDirectory(currentPath);
+        await rename(currentPath, backupPath);
+        previousMoved = true;
+        await syncDirectory(this.options.cacheRoot);
+      }
+      await rename(nextPath, currentPath);
+      nextInstalled = true;
+      await syncDirectory(this.options.cacheRoot);
+      if (input.expectedIdentity === undefined) {
+        await this.validateSlot('current', currentPath);
+      } else {
+        await this.validateJournalSlot(
+          'current',
+          currentPath,
+          input.expectedIdentity,
+          new Set(['current']),
+        );
+      }
+      if (previousMoved) {
+        await removeOwnedDirectory(backupPath);
+        await syncDirectory(this.options.cacheRoot);
+      }
+      return createSafeSummary(source.manifest, 'current');
+    } catch {
+      await removeOwnedDirectoryIfPresent(stagingPath);
+      await removeOwnedDirectoryIfPresent(nextPath);
+      if (nextInstalled) {
+        await removeOwnedDirectoryIfPresent(currentPath);
+      }
+      if (previousMoved && (await pathExists(backupPath))) {
+        await rename(backupPath, currentPath).catch(() => undefined);
+        await syncDirectory(this.options.cacheRoot).catch(() => undefined);
+      }
+      throw new LocalUpdatePackageCacheError();
+    }
   }
 
   async stageSelectedPackage(input: {
@@ -449,6 +500,7 @@ export class LocalUpdatePackageCache {
   }
 
   private async readAndVerifySource(input: {
+    expectedIdentity?: Readonly<LocalUpdateExpectedPackageIdentity>;
     manifestPath: string;
     role: LocalUpdatePackageRole;
   }): Promise<{
@@ -484,12 +536,21 @@ export class LocalUpdatePackageCache {
         throw new LocalUpdatePackageCacheError();
       }
       const installerIdentity = await this.options.inspectInstaller(packagePath);
-      this.options.trustPolicy.verifyPackage({
-        installerIdentity,
-        manifest,
-        releaseInfo: this.options.releaseInfo,
-        role: input.role,
-      });
+      if (input.expectedIdentity === undefined) {
+        this.options.trustPolicy.verifyPackage({
+          installerIdentity,
+          manifest,
+          releaseInfo: this.options.releaseInfo,
+          role: input.role,
+        });
+      } else {
+        verifyLocalUnsignedPilotSharedIdentity({
+          installerIdentity,
+          manifest,
+          releaseInfo: this.options.releaseInfo,
+        });
+        assertExpectedPackageIdentity(input.expectedIdentity, manifest);
+      }
       const sourceIdentity = await hashLocalUpdateFile(packagePath);
       assertPackageIdentity(manifest, sourceIdentity);
       const packageAfterVerification = await readLocalUpdateSourceSnapshot(
@@ -507,6 +568,7 @@ export class LocalUpdatePackageCache {
     source: Awaited<ReturnType<LocalUpdatePackageCache['readAndVerifySource']>>,
     role: LocalUpdatePackageRole,
     stagingPath: string,
+    expectedIdentity?: Readonly<LocalUpdateExpectedPackageIdentity>,
   ): Promise<void> {
     const stagedManifestPath = join(stagingPath, manifestCacheFilename);
     const stagedPackagePath = join(
@@ -522,12 +584,21 @@ export class LocalUpdatePackageCache {
     );
     assertLocalUpdateSourceUnchanged(source.packageBefore, packageAfter);
     assertPackageIdentity(source.manifest, copied);
-    await this.validateStagedFiles(
-      role,
-      stagedManifestPath,
-      stagedPackagePath,
-    );
     await this.writeMetadata(stagingPath, source.manifest, role);
+    if (expectedIdentity === undefined) {
+      await this.validateStagedFiles(
+        role,
+        stagedManifestPath,
+        stagedPackagePath,
+      );
+    } else {
+      await this.validateJournalSlot(
+        role,
+        stagingPath,
+        expectedIdentity,
+        new Set([role]),
+      );
+    }
   }
 
   private async recoverInterruptedCurrentRepair(): Promise<void> {

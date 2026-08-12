@@ -129,8 +129,12 @@ import { readUpdateProtectedRecoveryPointReferences } from '../update/updateReco
 import { createUpdateOperationalObserver } from '../update/updateOperationalObserver.js';
 import { UpdateBusinessRollbackCoordinator } from '../update/updateBusinessRollbackCoordinator.js';
 import { UpdateBinaryRollbackCoordinator } from '../update/updateBinaryRollbackCoordinator.js';
-import { resolveStartupRecoveryAuthority } from '../update/startupRecoveryAuthority.js';
+import {
+  resolveStartupRecoveryAuthority,
+  StartupRecoveryAuthorityConflictError,
+} from '../update/startupRecoveryAuthority.js';
 import { launchWindowsInstallerForUpdate } from '../update/windowsInstallerHandoff.js';
+import { createUpdateRecoveryComposition } from '../update/recoveryWindow/updateRecoveryComposition.js';
 
 export interface DesktopLifecycleHandle {
   applicationWindow: BrowserWindow;
@@ -544,10 +548,67 @@ async function startDesktopCompositionRuntime({
       profileRestoreActivationJournalStore.read(),
       updateJournalStore.read(),
     ]);
-  const startupRecoveryAuthority = resolveStartupRecoveryAuthority({
-    profileRestoreJournal: pendingProfileRestoreJournal,
-    updateJournal: pendingUpdateJournal,
-  });
+  let startupRecoveryAuthority;
+  try {
+    startupRecoveryAuthority = resolveStartupRecoveryAuthority({
+      profileRestoreJournal: pendingProfileRestoreJournal,
+      updateJournal: pendingUpdateJournal,
+    });
+  } catch (error) {
+    if (!(error instanceof StartupRecoveryAuthorityConflictError)) {
+      throw error;
+    }
+    return createUpdateRecoveryComposition({
+      applicationPath: options.applicationPath,
+      architecture: process.arch,
+      createWindow: (windowOptions) => new BrowserWindow(windowOptions),
+      electronVersion: process.versions.electron,
+      input: {
+        appVersion: desktopAppVersion,
+        buildRevision: options.buildInfo.buildRevision,
+        errorCode: 'UPDATE_RECOVERY_AUTHORITY_CONFLICT',
+        rollbackPackageSelectionAllowed: false,
+      },
+      ipcMain,
+      logsRoot: operationalLogsRoot,
+      openPath: dependencies.openPath,
+      quitApplication: options.quitApplication,
+      showOpenDialog: dependencies.showOpenDialog,
+      showSaveDialog: dependencies.showSaveDialog,
+    });
+  }
+  if (
+    pendingUpdateJournal?.state === 'failedSafe' ||
+    pendingUpdateJournal?.state === 'recoveryRequired' ||
+    pendingUpdateJournal?.state === 'rollbackPackageRequired'
+  ) {
+    return createUpdateRecoveryComposition({
+      applicationPath: options.applicationPath,
+      architecture: process.arch,
+      createWindow: (windowOptions) => new BrowserWindow(windowOptions),
+      electronVersion: process.versions.electron,
+      input: {
+        appVersion: desktopAppVersion,
+        buildRevision: options.buildInfo.buildRevision,
+        errorCode:
+          pendingUpdateJournal.state === 'rollbackPackageRequired'
+            ? 'UPDATE_ROLLBACK_PACKAGE_REQUIRED'
+            : 'UPDATE_RECOVERY_REQUIRED',
+        rollbackPackageSelectionAllowed:
+          pendingUpdateJournal.state === 'rollbackPackageRequired',
+      },
+      ipcMain,
+      logsRoot: operationalLogsRoot,
+      openPath: dependencies.openPath,
+      quitApplication: options.quitApplication,
+      ...(pendingUpdateJournal.state === 'rollbackPackageRequired' &&
+      updateBinaryRollbackCoordinator !== undefined
+        ? { rollbackCoordinator: updateBinaryRollbackCoordinator }
+        : {}),
+      showOpenDialog: dependencies.showOpenDialog,
+      showSaveDialog: dependencies.showSaveDialog,
+    });
+  }
   const profileRestoreStartupMode =
     await profileRestoreStartupRecovery.prepareBeforeBackend();
   if (

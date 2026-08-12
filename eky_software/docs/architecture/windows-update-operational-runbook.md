@@ -128,12 +128,37 @@ saa käynnistää toista MSI-palautusta. Business- tai binary-palautuksen
 epäselvä lopputulos päättyy terminaaliseen `failedSafe`- tai
 `recoveryRequired`-tilaan, jossa business-käyttöliittymää ei avata.
 
+Jos journalin täsmälleen sitomaa vanhaa pakettia ei löydy yksityisen cachen
+`current`- tai `previous`-slotista, tila on `rollbackPackageRequired`.
+Binaaripalautuksen yrityslaskuri pysyy tällöin nollassa. Käyttäjä valitsee
+vanhan manifestin vain recovery-ikkunan main-prosessin native-dialogilla.
+Paketin version, buildin, MSI-identiteetin, SHA-256-tiivisteen ja koon pitää
+vastata journalia ennen kuin normaali yhden yrityksen rollback-polku jatkuu.
+Väärä tai muuttunut paketti ei muuta journalin liiketoimintatilaa eikä käynnistä
+MSI:tä.
+
 Vanha C2:n `rollbackRequired` on vain turvallinen siirtymätila. Se voi jatkua
 ainoastaan `businessRollbackStarting`-tilaan tai pysähtyä recovery-tilaan;
 se ei saa ohittaa business-profiilin palautusta tai merkitä operaatiota suoraan
 palautetuksi. `installerNotApplied` säilyy erillisenä turvallisena päätöstilana
 tapaukselle, jossa uusi MSI ei koskaan vaihtanut hyväksyttyä buildia eikä
 business-profiili muuttunut.
+
+## C3B recovery-only-käyttö
+
+`failedSafe`-, `recoveryRequired`- ja `rollbackPackageRequired`-tilassa tai
+ristiriitaisen restore/update recovery authorityn tapauksessa Eky ei käynnistä
+backendia eikä avaa yritystyötilaa. Näkyviin tulee vain Electron mainin
+omistama sandboxattu palautusikkuna. Se näyttää turvallisen virhekoodin,
+sovellusversion ja build revisionin sekä sallii lokikansion avaamisen ja
+minimoidun teknisen recovery-tukipaketin luonnin. Tukipaketti ei sisällä
+yritysdataa, profiilia, journalia, manifestia tai tiedostopolkuja.
+
+Täsmällisen rollback-paketin valinta näkyy vain
+`rollbackPackageRequired`-tilassa. Renderer ei anna main-prosessille URL:ia,
+polkua tai manifestia, vaan pyytää nollan argumentin nimettyä toimintoa.
+Electron main omistaa valintaikkunan, tarkistuksen, cachen ja MSI-handoffin.
+Palautusikkunassa ei ole yleistä tiedosto-, URL-, shell- tai raw IPC -rajapintaa.
 
 ## Omistajuus
 

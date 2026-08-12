@@ -12,8 +12,10 @@ soveltaa vaihdettavaa trust-policya ja rekisteröi hyväksytyn paketin Electron
 mainin yksityiseen tekniseen cacheen. Yksityinen C2-orkestrointi,
 pre-update/pre-migration-suoja, crash-safe journal, guarded installer handoff
 sekä UI:ta edeltävä first-start-hyväksyntä on toteutettu. Code signingia,
-käyttäjälle avattua update-UI:ta tai varsinaista business/binary-rollbackia ei
-ole vielä toteutettu.
+käyttäjälle avattua tavallista update-UI:ta ei ole vielä toteutettu. C3B:n
+business- ja binary-rollback sekä business-UI:sta eristetty recovery-only-
+ikkuna on toteutettu; pilot release- ja code signing -portit ovat edelleen
+auki.
 
 ### Local Update Program -checkpointit
 
@@ -22,7 +24,7 @@ ole vielä toteutettu.
 | C0 Electron cold-start baseline | valmis 11.8.2026 | `DESK-PDF-001` ajettiin 10 kertaa retries=0 ja Electron critical kahdesti puhtaasti; aiemman flaken juurisyytä ei väitetä korjatuksi |
 | C1 Local Update Foundation | valmis 11.8.2026 | Manifestin runtime-codec, vaihdettava trust-policy, native selection, private staging/cache ja nykyisen rollback-paketin rekisteröinti; ei MSI:n käynnistystä eikä business-dataa |
 | C2 Update Orchestration and First Start | valmis 11.8.2026 | Yksityinen migration gate, pre-update/pre-migration recovery, crash-safe journal, graceful-only handoff, accepted-build-metadata ja UI:ta edeltävä first-start-hyväksyntä; ei käyttäjälle avattua päivitys-UI:ta tai rollbackia |
-| C3 Recovery, Compatibility and Pilot Release | odottaa | Aloitetaan vasta C2:n vihreän mergen ja haarojen synkronoinnin jälkeen |
+| C3 Recovery, Compatibility and Pilot Release | käynnissä | C3B:n business/binary-rollback, täsmällisen rollback-paketin valinta ja recovery-only-tila ovat toteutettu; tavallinen update-UI, yhteensopivuusmatriisi ja pilot release -portit ovat kesken |
 
 Migration runnerin SHA-256-checksum-, chain identity- ja release/build-
 metadata on toteutettu 10.8.2026. Historiallinen mismatch torjutaan ennen
@@ -781,6 +783,15 @@ binary rollbackin yrityslaskuri tallennetaan ennen MSI:n käynnistämistä.
 Keskeytys jatkuu vain nykyisestä turvallisesti vahvistetusta vaiheesta;
 epäselvä business-profiili estää binaaripalautuksen kokonaan.
 
+Binaaripalautus käyttää vain journalin `currentVersion`-, build-, MSI-, SHA-256-
+ja kokotietoihin täsmälleen sidottua pakettia. Jos täsmällinen paketti ei ole
+yksityisen cachen `current`- tai `previous`-slotissa, journal siirtyy
+`rollbackPackageRequired`-tilaan ennen MSI-yrityksen kuluttamista. Käyttäjä voi
+valita paketin vain Electron mainin omistamalla native-dialogilla. Valittu
+manifesti ja MSI tarkistetaan samoihin journalin identiteetteihin; eri versio,
+build, MSI-identiteetti, hash tai koko torjutaan eikä rollback-yrityslaskuri
+muutu.
+
 ## 18. Binary rollback
 
 Binary rollback on asenninmoottorin vastuu. Teknologiavalinnassa pitää
@@ -795,6 +806,14 @@ todistaa:
 Binary rollback ei avaa vanhaa ohjelmaversiota uudemmalla, migroidulla
 profiililla. Business-datan palautus ja binaaripalautus koordinoidaan
 journalin avulla.
+
+`failedSafe`-, `recoveryRequired`-, `rollbackPackageRequired`- ja ristiriitaisen
+startup recovery authorityn tilanteissa tavallista backendia tai business-
+käyttöliittymää ei käynnistetä. Electron avaa erillisen sandboxatun recovery-
+ikkunan, joka ei saa runtime-sessionia, yritysdataa, profiilipolkuja tai raw
+journalia. Ikkuna tarjoaa vain turvallisen virhekoodin ja build-identiteetin,
+teknisen minimoidun recovery-tukipaketin, lokikansion avaamisen sekä
+`rollbackPackageRequired`-tilassa täsmällisen rollback-paketin native-valinnan.
 
 ## 19. Code signing
 
