@@ -241,7 +241,7 @@ test('rejects Eky-owned source maps but includes vendor maps in the inventory', 
 test('enforces the application-stage file count boundary', async () => {
   const root = await createStageFixture('dist/file-000.js', 'safe');
   await Promise.all(
-    Array.from({ length: 192 }, (_, index) =>
+    Array.from({ length: 193 }, (_, index) =>
       writeFixture(
         root,
         `dist/file-${String(index + 1).padStart(3, '0')}.js`,
@@ -253,6 +253,25 @@ test('enforces the application-stage file count boundary', async () => {
   await assert.rejects(
     inspectPackageArtifactInventory({ root, stage: 'applicationStage' }),
     /FILE_COUNT/,
+  );
+});
+
+test('allows exactly the three reviewed update runtime scripts', async () => {
+  const root = await createStageFixture(
+    'inspectWindowsInstallerIdentity.ps1',
+    'safe',
+  );
+  await writeFixture(root, 'inspectWindowsRegularFile.ps1', 'safe');
+  await writeFixture(root, 'rollbackWindowsInstaller.ps1', 'safe');
+
+  await assert.doesNotReject(
+    inspectPackageArtifactInventory({ root, stage: 'updateRuntimeStage' }),
+  );
+  await rm(join(root, 'inspectWindowsRegularFile.ps1'));
+  await writeFixture(root, 'unreviewedUpdateScript.ps1', 'safe');
+  await assert.rejects(
+    inspectPackageArtifactInventory({ root, stage: 'updateRuntimeStage' }),
+    /UNAPPROVED_UPDATE_RUNTIME_ARTIFACT/,
   );
 });
 
