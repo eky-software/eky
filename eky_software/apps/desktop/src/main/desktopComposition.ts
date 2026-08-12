@@ -138,7 +138,9 @@ import { UpdateBinaryRollbackCoordinator } from '../update/updateBinaryRollbackC
 import {
   resolveStartupRecoveryAuthority,
   StartupRecoveryAuthorityConflictError,
+  type StartupRecoveryAuthority,
 } from '../update/startupRecoveryAuthority.js';
+import { authorizeRestoreFirstStartForwardMigrations } from '../update/restoreFirstStartMigrationAuthority.js';
 import { launchWindowsInstallerForUpdate } from '../update/windowsInstallerHandoff.js';
 import { launchWindowsInstallerRollback } from '../update/windowsInstallerRollbackHandoff.js';
 import { createUpdateRecoveryComposition } from '../update/recoveryWindow/updateRecoveryComposition.js';
@@ -600,7 +602,7 @@ async function startDesktopCompositionRuntime({
       updateJournalStore.read(),
       directSetupMigrationRecoveryStore.read(),
     ]);
-  let startupRecoveryAuthority;
+  let startupRecoveryAuthority: StartupRecoveryAuthority;
   try {
     startupRecoveryAuthority = resolveStartupRecoveryAuthority({
       directSetupRecovery: pendingDirectSetupRecovery,
@@ -706,6 +708,8 @@ async function startDesktopCompositionRuntime({
   }
   const profileRestoreStartupMode =
     await profileRestoreStartupRecovery.prepareBeforeBackend();
+  let firstStartMigrationGateUsed = false;
+  let restoreForwardMigrationsAuthorized = false;
   if (
     smokeMode &&
     options.smokeConfiguration.phase === 'restoredProfile'
@@ -952,11 +956,37 @@ async function startDesktopCompositionRuntime({
         if (updateBinaryRollbackCoordinator !== undefined) {
           await updateBinaryRollbackCoordinator.startIfRequired();
         }
+        if (startupRecoveryAuthority === 'profileRestore') {
+          const [
+            currentProfileRestoreJournal,
+            currentUpdateJournal,
+            currentDirectSetupRecovery,
+          ] = await Promise.all([
+            profileRestoreActivationJournalStore.read(),
+            updateJournalStore.read(),
+            directSetupMigrationRecoveryStore.read(),
+          ]);
+          const restoreMigrationDecision =
+            authorizeRestoreFirstStartForwardMigrations({
+              directSetupRecovery: currentDirectSetupRecovery,
+              inspection,
+              profileRestoreJournal: currentProfileRestoreJournal,
+              profileRestoreStartupMode,
+              startupRecoveryAuthority,
+              updateJournal: currentUpdateJournal,
+            });
+          if (restoreMigrationDecision === 'authorized') {
+            restoreForwardMigrationsAuthorized = true;
+            packagedUpdateFailureStage = 'backendRuntimeReadiness';
+            return;
+          }
+        }
         if (firstStartUpdateCoordinator === undefined) {
           packagedUpdateFailureStage = 'backendRuntimeReadiness';
           return;
         }
         packagedUpdateFailureStage = 'firstStartPreMigration';
+        firstStartMigrationGateUsed = true;
         try {
           await firstStartUpdateCoordinator.beforeMigrations(inspection);
         } catch (error) {
@@ -1009,6 +1039,8 @@ async function startDesktopCompositionRuntime({
     await profileSnapshotBrokerClient.waitUntilReady();
     await profileSnapshotBrokerClient.getStatus();
     packagedUpdateFailureStage = 'profileRestoreValidation';
+    let backendHealthValidatedDuringRestore = false;
+    let runtimeSessionValidatedDuringRestore = false;
     const restoreStartupResult =
       await profileRestoreStartupRecovery.validateAfterBackend({
         mode: profileRestoreStartupMode,
@@ -1019,6 +1051,16 @@ async function startDesktopCompositionRuntime({
             `http://127.0.0.1:${backendHandle!.port}`,
             runtimeSessionSecret,
           );
+          backendHealthValidatedDuringRestore = true;
+          if (firstStartUpdateCoordinator !== undefined) {
+            await assertDifferentRuntimeSessionRejected({
+              backendOrigin: `http://127.0.0.1:${backendHandle!.port}`,
+              createRuntimeSession: dependencies.createRuntimeSession,
+              fetchImplementation: (url, init) => net.fetch(url, init),
+              runtimeSessionSecret,
+            });
+            runtimeSessionValidatedDuringRestore = true;
+          }
         },
       });
     if (restoreStartupResult === 'relaunchRequired') {
@@ -1028,21 +1070,27 @@ async function startDesktopCompositionRuntime({
       options.relaunchApplication();
       return undefined;
     }
-    packagedUpdateFailureStage = 'backendHealthValidation';
-    await assertBackendHealth(
-      `http://127.0.0.1:${backendHandle.port}`,
-      runtimeSessionSecret,
-    );
-    if (firstStartUpdateCoordinator !== undefined) {
-      packagedUpdateFailureStage = 'oldRuntimeSessionRejection';
-      await assertDifferentRuntimeSessionRejected({
-        backendOrigin: `http://127.0.0.1:${backendHandle.port}`,
-        createRuntimeSession: dependencies.createRuntimeSession,
-        fetchImplementation: (url, init) => net.fetch(url, init),
+    if (!backendHealthValidatedDuringRestore) {
+      packagedUpdateFailureStage = 'backendHealthValidation';
+      await assertBackendHealth(
+        `http://127.0.0.1:${backendHandle.port}`,
         runtimeSessionSecret,
-      });
-      packagedUpdateFailureStage = 'firstStartAcceptance';
-      await firstStartUpdateCoordinator.acceptAfterBackendReady();
+      );
+    }
+    if (firstStartUpdateCoordinator !== undefined) {
+      if (!runtimeSessionValidatedDuringRestore) {
+        packagedUpdateFailureStage = 'oldRuntimeSessionRejection';
+        await assertDifferentRuntimeSessionRejected({
+          backendOrigin: `http://127.0.0.1:${backendHandle.port}`,
+          createRuntimeSession: dependencies.createRuntimeSession,
+          fetchImplementation: (url, init) => net.fetch(url, init),
+          runtimeSessionSecret,
+        });
+      }
+      if (firstStartMigrationGateUsed) {
+        packagedUpdateFailureStage = 'firstStartAcceptance';
+        await firstStartUpdateCoordinator.acceptAfterBackendReady();
+      }
     }
     packagedUpdateFailureStage = 'recoveryPointSchedulerStart';
     await recoveryPointScheduler.start();
@@ -1060,6 +1108,18 @@ async function startDesktopCompositionRuntime({
       return undefined;
     }
     if (
+      restoreForwardMigrationsAuthorized &&
+      startupRecoveryAuthority === 'profileRestore' &&
+      (await profileRestoreStartupRecovery
+        .recoverFromBackendStartupFailure({
+          mode: profileRestoreStartupMode,
+        })) === 'relaunchRequired'
+    ) {
+      options.relaunchApplication();
+      return undefined;
+    }
+    if (
+      firstStartMigrationGateUsed &&
       firstStartUpdateCoordinator !== undefined &&
       (await firstStartUpdateCoordinator
         .recoverFromStartupFailure()

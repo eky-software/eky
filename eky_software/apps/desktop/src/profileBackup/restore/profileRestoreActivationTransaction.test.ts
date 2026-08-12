@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   mkdir,
   mkdtemp,
@@ -123,7 +124,41 @@ describe('profile restore activation transaction', () => {
       code: 'ENOENT',
     });
   });
+
+  it('RESTORE-ROLLBACK-002 @critical restores the previous profile byte-for-byte after a partial forward migration', async () => {
+    const fixture = await createFixture();
+    const previousDatabase = await readFile(fixture.activeDatabasePath);
+    const previousPdf = await readFile(fixture.activePdfPath);
+    const previousDatabaseSha256 = sha256(previousDatabase);
+    const previousPdfSha256 = sha256(previousPdf);
+
+    await fixture.transaction.prepare(operationId);
+    await fixture.transaction.advanceToValidation();
+    await writeFile(
+      fixture.activeDatabasePath,
+      Buffer.from('partially migrated restored database'),
+    );
+    await writeFile(
+      fixture.activePdfPath,
+      Buffer.from('partially changed restored pdf'),
+    );
+
+    await expect(fixture.transaction.rollback()).resolves.toMatchObject({
+      phase: 'rolledBack',
+    });
+
+    const rolledBackDatabase = await readFile(fixture.activeDatabasePath);
+    const rolledBackPdf = await readFile(fixture.activePdfPath);
+    expect(rolledBackDatabase).toEqual(previousDatabase);
+    expect(rolledBackPdf).toEqual(previousPdf);
+    expect(sha256(rolledBackDatabase)).toBe(previousDatabaseSha256);
+    expect(sha256(rolledBackPdf)).toBe(previousPdfSha256);
+  });
 });
+
+function sha256(content: Buffer): string {
+  return createHash('sha256').update(content).digest('hex');
+}
 
 async function createFixture(
   options: {

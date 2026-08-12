@@ -112,6 +112,35 @@ export class ProfileRestoreStartupRecovery {
     }
   }
 
+  async recoverFromBackendStartupFailure(input: {
+    mode: ProfileRestoreStartupMode;
+  }): Promise<'notRequired' | 'relaunchRequired'> {
+    if (input.mode !== 'validateRestoredProfile') {
+      return 'notRequired';
+    }
+
+    const journal = await this.dependencies.journalStore.read();
+    if (journal === undefined || journal.phase === 'accepted') {
+      this.activeCorrelationId = undefined;
+      return 'notRequired';
+    }
+    if (
+      this.activeCorrelationId === undefined ||
+      journal.operationId !== this.activeCorrelationId ||
+      ![
+        'rollbackStarting',
+        'rolledBack',
+        'validationStarting',
+      ].includes(journal.phase)
+    ) {
+      this.observeRecoveryRequired('startupRollback');
+      throw new Error('PROFILE_RESTORE_RECOVERY_REQUIRED');
+    }
+
+    await this.rollbackOrFail('startupRollback');
+    return 'relaunchRequired';
+  }
+
   private async rollbackOrFail(
     stage: 'startupRollback',
   ): Promise<void> {

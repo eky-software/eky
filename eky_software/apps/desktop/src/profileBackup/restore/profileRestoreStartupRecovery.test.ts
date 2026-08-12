@@ -206,6 +206,62 @@ describe('profile restore startup recovery', () => {
       }),
     );
   });
+
+  it('rolls an activated profile back when backend startup fails before readiness', async () => {
+    const operationId = randomUUID();
+    const transaction = createTransaction(operationId);
+    const recovery = new ProfileRestoreStartupRecovery({
+      journalStore: {
+        read: vi.fn(async () =>
+          createJournal(operationId, 'validationStarting'),
+        ),
+      },
+      transaction,
+    });
+
+    await expect(recovery.prepareBeforeBackend()).resolves.toBe(
+      'validateRestoredProfile',
+    );
+    await expect(
+      recovery.recoverFromBackendStartupFailure({
+        mode: 'validateRestoredProfile',
+      }),
+    ).resolves.toBe('relaunchRequired');
+    expect(transaction.rollback).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reopen an activation that was already accepted', async () => {
+    const operationId = randomUUID();
+    let journalAvailable = true;
+    const transaction = createTransaction(operationId);
+    transaction.accept.mockImplementationOnce(() => {
+      journalAvailable = false;
+    });
+    const recovery = new ProfileRestoreStartupRecovery({
+      journalStore: {
+        read: vi.fn(async () =>
+          journalAvailable
+            ? createJournal(operationId, 'validationStarting')
+            : undefined,
+        ),
+      },
+      transaction,
+    });
+
+    await recovery.prepareBeforeBackend();
+    await recovery.validateAfterBackend({
+      mode: 'validateRestoredProfile',
+      stopBackend: vi.fn(),
+      validateActiveProfile: vi.fn(),
+    });
+
+    await expect(
+      recovery.recoverFromBackendStartupFailure({
+        mode: 'validateRestoredProfile',
+      }),
+    ).resolves.toBe('notRequired');
+    expect(transaction.rollback).not.toHaveBeenCalled();
+  });
 });
 
 function createTransaction(operationId: string) {
