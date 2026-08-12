@@ -832,7 +832,9 @@ async function startDesktopCompositionRuntime({
     backendHandle = await dependencies.startBackend({
       async beforeMigrations(inspection, control) {
         backendStartupControl = control;
+        packagedUpdateFailureStage = 'backendPreMigrationBrokerReadiness';
         await profileSnapshotBrokerClient.waitUntilReady();
+        packagedUpdateFailureStage = 'backendPreMigrationRecovery';
         if (startupRecoveryAuthority === 'updateBusinessRollback') {
           if (updateBusinessRollbackCoordinator === undefined) {
             throw new Error('UPDATE_BUSINESS_ROLLBACK_RECOVERY_REQUIRED');
@@ -951,9 +953,12 @@ async function startDesktopCompositionRuntime({
           await updateBinaryRollbackCoordinator.startIfRequired();
         }
         if (firstStartUpdateCoordinator === undefined) {
+          packagedUpdateFailureStage = 'backendRuntimeReadiness';
           return;
         }
+        packagedUpdateFailureStage = 'firstStartPreMigration';
         await firstStartUpdateCoordinator.beforeMigrations(inspection);
+        packagedUpdateFailureStage = 'backendRuntimeReadiness';
       },
       config: {
         appVersion: desktopAppVersion,

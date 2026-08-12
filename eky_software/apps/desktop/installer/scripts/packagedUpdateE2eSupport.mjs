@@ -27,6 +27,10 @@ const packageFields = new Set([
 const packageRoles = Object.freeze(['current', 'next', 'failure']);
 const packagedUpdateFailureStages = new Set([
   'backendStartup',
+  'backendPreMigrationBrokerReadiness',
+  'backendPreMigrationRecovery',
+  'firstStartPreMigration',
+  'backendRuntimeReadiness',
   'profileRestoreValidation',
   'backendHealthValidation',
   'oldRuntimeSessionRejection',

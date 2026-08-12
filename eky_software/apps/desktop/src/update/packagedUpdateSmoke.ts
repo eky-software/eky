@@ -28,6 +28,10 @@ const sha256Pattern = /^[0-9a-f]{64}$/;
 
 export const packagedUpdateSmokeFailureStages = Object.freeze([
   'backendStartup',
+  'backendPreMigrationBrokerReadiness',
+  'backendPreMigrationRecovery',
+  'firstStartPreMigration',
+  'backendRuntimeReadiness',
   'profileRestoreValidation',
   'backendHealthValidation',
   'oldRuntimeSessionRejection',
