@@ -111,6 +111,30 @@ johdetaan buildissä deterministisesti nimialueesta `product/<msiProductVersion>
 Runtime tarkistaa saman identiteetin omalla pienellä helperillä; build-scriptiä
 ei importata runtimeen.
 
+## C3B rollback-tilakone
+
+First-start-virheen jälkeinen palautus etenee aina kahdessa järjestetyssä
+osassa. `businessRollbackStarting` ja `businessRollbackCompleted` palauttavat
+ensin journalissa sidotun pre-update-yritysprofiilin nykyisellä ADR-0009:n
+restore activation -moottorilla. Vasta tämän jälkeen
+`binaryRollbackPrepared` saa kuluttaa päivitysyrityksen ainoan binary rollback
+-yrityksen ja `awaitingRollbackFirstStart` odottaa vanhan buildin omaa
+first-start-validointia. Terve vanha build päättää ketjun `rolledBack`-tilaan.
+
+Tilat ovat yksisuuntaisia ja saman tilan uudelleenkirjoitus on idempotentti.
+`binaryRollbackAttemptCount` voi muuttua nollasta yhteen vain business
+rollbackin valmistuttua. Arvo yksi ei saa palata nollaksi eikä sama operaatio
+saa käynnistää toista MSI-palautusta. Business- tai binary-palautuksen
+epäselvä lopputulos päättyy terminaaliseen `failedSafe`- tai
+`recoveryRequired`-tilaan, jossa business-käyttöliittymää ei avata.
+
+Vanha C2:n `rollbackRequired` on vain turvallinen siirtymätila. Se voi jatkua
+ainoastaan `businessRollbackStarting`-tilaan tai pysähtyä recovery-tilaan;
+se ei saa ohittaa business-profiilin palautusta tai merkitä operaatiota suoraan
+palautetuksi. `installerNotApplied` säilyy erillisenä turvallisena päätöstilana
+tapaukselle, jossa uusi MSI ei koskaan vaihtanut hyväksyttyä buildia eikä
+business-profiili muuttunut.
+
 ## Omistajuus
 
 Update Coordinator omistaa yhden päivitysyrityksen teknisen lifecycle-

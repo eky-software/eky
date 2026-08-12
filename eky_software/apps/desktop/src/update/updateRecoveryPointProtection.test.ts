@@ -71,6 +71,12 @@ describe('update recovery point protection', () => {
 
 function createJournal(state: UpdateJournal['state']): UpdateJournal {
   return {
+    binaryRollbackAttemptCount:
+      state === 'binaryRollbackPrepared' ||
+      state === 'awaitingRollbackFirstStart' ||
+      state === 'rolledBack'
+        ? 1
+        : 0,
     candidatePackageIdentity: {
       buildRevision: 'bbbbbbbbbbbb',
       msiProductVersion: '0.2.0',

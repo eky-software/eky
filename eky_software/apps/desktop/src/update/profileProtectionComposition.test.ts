@@ -110,6 +110,7 @@ function createFixture(
     restoreRecoveryPoint,
     updateJournalStore: {
       read: vi.fn(async () => ({
+        binaryRollbackAttemptCount: 0 as const,
         candidatePackageIdentity: {
           buildRevision: 'bbbbbbbbbbbb',
           msiProductVersion: '0.2.0',

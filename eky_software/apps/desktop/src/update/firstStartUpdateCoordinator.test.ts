@@ -559,6 +559,12 @@ function createInspection(
 
 function createJournal(state: UpdateJournal['state']): UpdateJournal {
   return {
+    binaryRollbackAttemptCount:
+      state === 'binaryRollbackPrepared' ||
+      state === 'awaitingRollbackFirstStart' ||
+      state === 'rolledBack'
+        ? 1
+        : 0,
     candidatePackageIdentity: candidateIdentity,
     correlationId: '22222222-2222-4222-8222-222222222222',
     createdAt: '2026-08-11T18:00:00.000Z',

@@ -774,6 +774,13 @@ Jos first-start epäonnistuu schema- tai datavaiheessa:
 Epäonnistuneen profiilin säilytys, koko ja retention päätetään
 toteutusvaiheessa. Se ei kuulu tukipakettiin kokonaisena.
 
+C3B:n journalijärjestys on `businessRollbackStarting` ->
+`businessRollbackCompleted` -> `binaryRollbackPrepared` ->
+`awaitingRollbackFirstStart` -> `rolledBack`. Järjestystä ei saa ohittaa, ja
+binary rollbackin yrityslaskuri tallennetaan ennen MSI:n käynnistämistä.
+Keskeytys jatkuu vain nykyisestä turvallisesti vahvistetusta vaiheesta;
+epäselvä business-profiili estää binaaripalautuksen kokonaan.
+
 ## 18. Binary rollback
 
 Binary rollback on asenninmoottorin vastuu. Teknologiavalinnassa pitää

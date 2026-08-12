@@ -121,6 +121,7 @@ function createJournal(
   overrides: Partial<UpdateJournal> = {},
 ): UpdateJournal {
   return {
+    binaryRollbackAttemptCount: 0,
     candidatePackageIdentity: {
       buildRevision: 'bbbbbbbbbbbb',
       msiProductVersion: '0.2.0',
