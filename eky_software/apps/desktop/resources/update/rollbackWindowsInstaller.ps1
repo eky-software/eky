@@ -43,22 +43,29 @@ function Assert-RegularFile {
 function Invoke-MsiExec {
   param([Parameter(Mandatory = $true)][string[]]$Arguments)
 
-  $previousErrorActionPreference = $ErrorActionPreference
-  $exitCode = 1603
-  $global:LASTEXITCODE = $exitCode
-  try {
-    # A rejected MSI is an expected rollback branch, not a PowerShell failure.
-    $ErrorActionPreference = 'Continue'
-    try {
-      & $MsiExecPath @Arguments 2>$null
-      $exitCode = [int]$global:LASTEXITCODE
-    } catch {
-      $exitCode = [int]$global:LASTEXITCODE
+  $nativeArguments = @()
+  foreach ($argument in $Arguments) {
+    if ($null -eq $argument -or $argument.IndexOf([char]0) -ge 0 -or $argument.Contains('"')) {
+      throw 'ROLLBACK_ARGUMENT_INVALID'
     }
-  } finally {
-    $ErrorActionPreference = $previousErrorActionPreference
+    $nativeArguments += if ($argument -match '\s') { '"' + $argument + '"' } else { $argument }
   }
-  return $exitCode
+  $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+  $startInfo.FileName = $MsiExecPath
+  $startInfo.Arguments = $nativeArguments -join ' '
+  $startInfo.UseShellExecute = $false
+  $startInfo.CreateNoWindow = $true
+  $process = New-Object System.Diagnostics.Process
+  $process.StartInfo = $startInfo
+  try {
+    if (!$process.Start()) {
+      return 1603
+    }
+    $process.WaitForExit()
+    return [int]$process.ExitCode
+  } finally {
+    $process.Dispose()
+  }
 }
 
 try {

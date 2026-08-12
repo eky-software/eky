@@ -114,11 +114,11 @@ test('keeps direct downgrade blocked and rollback outside MSI authoring', async 
   assert.ok(uninstallIndex >= 0);
   assert.ok(rollbackInstallIndex > uninstallIndex);
   assert.ok(failedRepairIndex > rollbackInstallIndex);
-  assert.match(rollbackScript, /\$ErrorActionPreference = 'Continue'/);
-  assert.match(rollbackScript, /2>\$null/);
-  assert.match(rollbackScript, /\$exitCode = 1603/);
-  assert.match(rollbackScript, /\$global:LASTEXITCODE = \$exitCode/);
-  assert.match(rollbackScript, /catch \{/);
+  assert.match(rollbackScript, /System\.Diagnostics\.ProcessStartInfo/);
+  assert.match(rollbackScript, /UseShellExecute = \$false/);
+  assert.match(rollbackScript, /CreateNoWindow = \$true/);
+  assert.match(rollbackScript, /WaitForExit\(\)/);
+  assert.match(rollbackScript, /ROLLBACK_ARGUMENT_INVALID/);
   assert.match(rollbackScript, /exit 24/);
   assert.match(rollbackScript, /exit 25/);
   assert.match(rollbackScript, /exit 26/);
