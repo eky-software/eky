@@ -18,6 +18,20 @@ const fixtureDefinitions = Object.freeze({
 
 const fixtureArgumentPrefix = '--update-e2e-';
 
+export const windowsUpdateFixtureNames = Object.freeze([
+  'current',
+  'next',
+  'failure',
+]);
+
+export function getWindowsUpdateFixtureDefinition(fixtureName) {
+  const definition = fixtureDefinitions[fixtureName];
+  if (definition === undefined) {
+    throw new Error('WINDOWS_UPDATE_FIXTURE_NAME_INVALID');
+  }
+  return definition;
+}
+
 export function readWindowsPackageBuildMode(argumentsList) {
   if (!Array.isArray(argumentsList)) {
     throw new Error('WINDOWS_PACKAGE_ARGUMENTS_INVALID');
@@ -34,8 +48,8 @@ export function readWindowsPackageBuildMode(argumentsList) {
     argumentsList[0].startsWith(fixtureArgumentPrefix)
   ) {
     const fixtureName = argumentsList[0].slice(fixtureArgumentPrefix.length);
-    const definition = fixtureDefinitions[fixtureName];
-    if (definition !== undefined) {
+    if (Object.hasOwn(fixtureDefinitions, fixtureName)) {
+      const definition = getWindowsUpdateFixtureDefinition(fixtureName);
       return Object.freeze({
         definition,
         fixtureName,
