@@ -117,7 +117,11 @@ test('keeps direct downgrade blocked and rollback outside MSI authoring', async 
   assert.match(rollbackScript, /\$ErrorActionPreference = 'Continue'/);
   assert.match(rollbackScript, /2>\$null/);
   assert.match(rollbackScript, /\$exitCode = 1603/);
+  assert.match(rollbackScript, /\$global:LASTEXITCODE = \$exitCode/);
   assert.match(rollbackScript, /catch \{/);
+  assert.match(rollbackScript, /exit 24/);
+  assert.match(rollbackScript, /exit 25/);
+  assert.match(rollbackScript, /exit 26/);
   assert.doesNotMatch(
     rollbackScript,
     /Invoke-Expression|Start-Process|cmd\.exe|\.bat\b|\.cmd\b/iu,

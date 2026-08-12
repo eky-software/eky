@@ -45,18 +45,15 @@ function Invoke-MsiExec {
 
   $previousErrorActionPreference = $ErrorActionPreference
   $exitCode = 1603
+  $global:LASTEXITCODE = $exitCode
   try {
     # A rejected MSI is an expected rollback branch, not a PowerShell failure.
     $ErrorActionPreference = 'Continue'
     try {
       & $MsiExecPath @Arguments 2>$null
-      if ($null -ne $LASTEXITCODE) {
-        $exitCode = [int]$LASTEXITCODE
-      }
+      $exitCode = [int]$global:LASTEXITCODE
     } catch {
-      if ($null -ne $LASTEXITCODE) {
-        $exitCode = [int]$LASTEXITCODE
-      }
+      $exitCode = [int]$global:LASTEXITCODE
     }
   } finally {
     $ErrorActionPreference = $previousErrorActionPreference
@@ -65,9 +62,21 @@ function Invoke-MsiExec {
 }
 
 try {
-  Assert-RegularFile -Path $MsiExecPath -Extension '.exe'
-  Assert-RegularFile -Path $FailedPackagePath -Extension '.msi'
-  Assert-RegularFile -Path $RollbackPackagePath -Extension '.msi'
+  try {
+    Assert-RegularFile -Path $MsiExecPath -Extension '.exe'
+  } catch {
+    exit 24
+  }
+  try {
+    Assert-RegularFile -Path $FailedPackagePath -Extension '.msi'
+  } catch {
+    exit 25
+  }
+  try {
+    Assert-RegularFile -Path $RollbackPackagePath -Extension '.msi'
+  } catch {
+    exit 26
+  }
 
   $uninstallExitCode = Invoke-MsiExec -Arguments @(
     '/x', $FailedProductCode, '/qn', '/norestart'
