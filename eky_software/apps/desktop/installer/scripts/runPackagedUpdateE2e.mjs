@@ -630,6 +630,9 @@ async function assertDirectRecoveryCleared(root) {
 
 function assertOkResult(result, expected) {
   if (result?.status !== 'ok') {
+    if (result?.status === 'failed') {
+      throw new Error(`PACKAGED_UPDATE_E2E_APPLICATION_${result.code}`);
+    }
     throw new Error('PACKAGED_UPDATE_E2E_RESULT_STATUS_INVALID');
   }
   if (result.appVersion !== expected.appVersion) {
