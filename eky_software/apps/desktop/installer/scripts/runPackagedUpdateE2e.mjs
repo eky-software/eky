@@ -21,6 +21,7 @@ import {
 import { preparePackagedUpdateE2eFixture } from './preparePackagedUpdateE2eFixture.mjs';
 import {
   createPackagedUpdateScenarioPlan,
+  formatPackagedUpdateSmokeFailureDiagnostic,
   readPackagedUpdateE2eFixture,
   readPackagedUpdateSmokeResult,
 } from './packagedUpdateE2eSupport.mjs';
@@ -631,7 +632,7 @@ async function assertDirectRecoveryCleared(root) {
 function assertOkResult(result, expected) {
   if (result?.status !== 'ok') {
     if (result?.status === 'failed') {
-      throw new Error(`PACKAGED_UPDATE_E2E_APPLICATION_${result.code}`);
+      throw new Error(formatPackagedUpdateSmokeFailureDiagnostic(result));
     }
     throw new Error('PACKAGED_UPDATE_E2E_RESULT_STATUS_INVALID');
   }
@@ -655,7 +656,7 @@ function assertOkResult(result, expected) {
 export function assertPackagedUpdateSmokeResultStatus(result, status) {
   if (result?.status !== status) {
     if (result?.status === 'failed') {
-      throw new Error(`PACKAGED_UPDATE_E2E_APPLICATION_${result.code}`);
+      throw new Error(formatPackagedUpdateSmokeFailureDiagnostic(result));
     }
     throw new Error('PACKAGED_UPDATE_E2E_STATUS_EXPECTATION_FAILED');
   }

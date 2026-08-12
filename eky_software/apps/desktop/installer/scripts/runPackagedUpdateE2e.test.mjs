@@ -118,5 +118,18 @@ describe('packaged update E2E runner boundaries', () => {
         ),
       /PACKAGED_UPDATE_E2E_APPLICATION_DESKTOP_UPDATE_SMOKE_PREPARE_FAILED/,
     );
+    assert.throws(
+      () =>
+        assertPackagedUpdateSmokeResultStatus(
+          {
+            code: 'DESKTOP_UPDATE_SMOKE_UNEXPECTED_RECOVERY_REQUIRED',
+            failureStage: 'packageCacheRotation',
+            phase: 'verifySuccess',
+            status: 'failed',
+          },
+          'ok',
+        ),
+      /PACKAGED_UPDATE_E2E_APPLICATION_DESKTOP_UPDATE_SMOKE_UNEXPECTED_RECOVERY_REQUIRED_AT_packageCacheRotation/,
+    );
   });
 });

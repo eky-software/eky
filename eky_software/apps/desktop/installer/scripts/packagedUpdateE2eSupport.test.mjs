@@ -6,11 +6,31 @@ import { afterEach, describe, it } from 'node:test';
 
 import {
   createPackagedUpdateScenarioPlan,
+  formatPackagedUpdateSmokeFailureDiagnostic,
   parsePackagedUpdateSmokeResult,
   readPackagedUpdateE2eFixture,
 } from './packagedUpdateE2eSupport.mjs';
 
 const roots = [];
+
+describe('packaged update smoke failure diagnostics', () => {
+  it('reports only an allowlisted startup stage', () => {
+    assert.equal(
+      formatPackagedUpdateSmokeFailureDiagnostic({
+        code: 'DESKTOP_UPDATE_SMOKE_UNEXPECTED_RECOVERY_REQUIRED',
+        failureStage: 'firstStartAcceptance',
+      }),
+      'PACKAGED_UPDATE_E2E_APPLICATION_DESKTOP_UPDATE_SMOKE_UNEXPECTED_RECOVERY_REQUIRED_AT_firstStartAcceptance',
+    );
+    assert.equal(
+      formatPackagedUpdateSmokeFailureDiagnostic({
+        code: 'DESKTOP_UPDATE_SMOKE_UNEXPECTED_RECOVERY_REQUIRED',
+        failureStage: 'C:\\private\\profile',
+      }),
+      'PACKAGED_UPDATE_E2E_APPLICATION_DESKTOP_UPDATE_SMOKE_UNEXPECTED_RECOVERY_REQUIRED',
+    );
+  });
+});
 
 afterEach(async () => {
   await Promise.all(

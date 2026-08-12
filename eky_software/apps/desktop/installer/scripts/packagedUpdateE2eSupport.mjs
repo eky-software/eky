@@ -35,6 +35,20 @@ const packagedUpdateFailureStages = new Set([
   'recoveryPointSchedulerStart',
 ]);
 
+export function formatPackagedUpdateSmokeFailureDiagnostic(result) {
+  const code =
+    isRecord(result) &&
+    typeof result.code === 'string' &&
+    /^[A-Z][A-Z0-9_]{0,99}$/.test(result.code)
+      ? result.code
+      : 'RESULT_INVALID';
+  const failureStage =
+    isRecord(result) && packagedUpdateFailureStages.has(result.failureStage)
+      ? `_AT_${result.failureStage}`
+      : '';
+  return `PACKAGED_UPDATE_E2E_APPLICATION_${code}${failureStage}`;
+}
+
 export async function readPackagedUpdateE2eFixture(fixturePath) {
   const fixture = await readBoundedJson(fixturePath, maximumFixtureBytes);
   const fixtureRoot = dirname(resolve(fixturePath));
