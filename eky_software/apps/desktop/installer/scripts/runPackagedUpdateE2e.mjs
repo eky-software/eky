@@ -56,6 +56,16 @@ export function createWindowsInstallerArguments({
   ]);
 }
 
+export function formatWindowsInstallerProductCode(productCode) {
+  if (
+    typeof productCode !== 'string' ||
+    !/^[0-9A-F]{8}(?:-[0-9A-F]{4}){3}-[0-9A-F]{12}$/i.test(productCode)
+  ) {
+    throw new Error('PACKAGED_UPDATE_E2E_PRODUCT_CODE_INVALID');
+  }
+  return `{${productCode.toUpperCase()}}`;
+}
+
 export function createPackagedUpdateSmokeInvocation(phase, token) {
   if (
     typeof phase !== 'string' ||
@@ -447,7 +457,9 @@ async function cleanupKnownFixtureInstallations(fixture) {
       createWindowsInstallerArguments({
         logPath: join(cleanupRoot, `uninstall-${role}.log`),
         operation: 'uninstall',
-        packageOrProductCode: packageInfo.productCode,
+        packageOrProductCode: formatWindowsInstallerProductCode(
+          packageInfo.productCode,
+        ),
       }),
       { timeoutMs: processTimeoutMs },
     );

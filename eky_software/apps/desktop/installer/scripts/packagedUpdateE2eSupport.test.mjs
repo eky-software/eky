@@ -150,7 +150,7 @@ async function createFixture() {
       msiProductVersion: `0.0.${index + 1}`,
       packageSha256: String(index + 1).repeat(64),
       packageSize: 123,
-      productCode: `{0000000${index + 1}-0000-4000-8000-00000000000${index + 1}}`,
+      productCode: `0000000${index + 1}-0000-4000-8000-00000000000${index + 1}`,
     };
   }
   const fixture = {

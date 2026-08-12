@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   createPackagedUpdateSmokeInvocation,
   createWindowsInstallerArguments,
+  formatWindowsInstallerProductCode,
 } from './runPackagedUpdateE2e.mjs';
 
 describe('packaged update E2E runner boundaries', () => {
@@ -30,6 +31,22 @@ describe('packaged update E2E runner boundaries', () => {
         packageOrProductCode: '{00000000-0000-4000-8000-000000000001}',
       })[0],
       '/x',
+    );
+  });
+
+  it('formats only the repository product-code identity for msiexec', () => {
+    assert.equal(
+      formatWindowsInstallerProductCode(
+        'd927d245-1b81-574c-9e2d-d89a4c140bde',
+      ),
+      '{D927D245-1B81-574C-9E2D-D89A4C140BDE}',
+    );
+    assert.throws(
+      () =>
+        formatWindowsInstallerProductCode(
+          '{D927D245-1B81-574C-9E2D-D89A4C140BDE}',
+        ),
+      /PACKAGED_UPDATE_E2E_PRODUCT_CODE_INVALID/,
     );
   });
 

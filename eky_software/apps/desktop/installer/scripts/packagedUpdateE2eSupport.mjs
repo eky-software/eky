@@ -3,7 +3,7 @@ import { dirname, isAbsolute, relative, resolve } from 'node:path';
 
 const appVersionPattern = /^0\.0\.0-update-fixture\.[123]$/;
 const msiVersionPattern = /^0\.0\.[123]$/;
-const productCodePattern = /^\{[0-9A-F]{8}(?:-[0-9A-F]{4}){3}-[0-9A-F]{12}\}$/i;
+const productCodePattern = /^[0-9A-F]{8}(?:-[0-9A-F]{4}){3}-[0-9A-F]{12}$/i;
 const revisionPattern = /^[0-9a-f]{7,40}$/;
 const sha256Pattern = /^[0-9a-f]{64}$/;
 const maximumFixtureBytes = 128 * 1024;
