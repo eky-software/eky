@@ -41,8 +41,9 @@ describe('package build identity', () => {
   });
 
   it('uses the git revision fallback and reports a clean tree', async () => {
+    const fullRevision = '123456789abcdef0123456789abcdef012345678';
     const readGitOutput = vi.fn(async (args: readonly string[]) =>
-      args[0] === 'rev-parse' ? '123456789abc\n' : '',
+      args[0] === 'rev-parse' ? `${fullRevision}\n` : '',
     );
 
     await expect(
@@ -55,8 +56,9 @@ describe('package build identity', () => {
       }),
     ).resolves.toMatchObject({
       buildDirty: false,
-      buildRevision: '123456789abc',
+      buildRevision: fullRevision,
     });
+    expect(readGitOutput).toHaveBeenNthCalledWith(1, ['rev-parse', 'HEAD']);
   });
 
   it('fails closed when no valid revision can be formed', async () => {

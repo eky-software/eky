@@ -27,7 +27,8 @@ samasta versiosta tehdyt kehitysbuildit erotetaan toisistaan.
 Windows-paketointi muodostaa build-infon vasta buildin alussa:
 
 - `appVersion`: desktop-paketin SemVer-versio
-- `buildRevision`: Git HEAD:n 7-40 merkin heksadesimaalinen revision tunniste
+- `buildRevision`: uuden paketoidun buildin Git HEAD kokonaisena 40 merkin
+  heksadesimaalisena revision tunnisteena
 - `buildCreatedAt`: UTC-aikaleima
 - `buildDirty`: oliko työpuussa paketoitaessa muutoksia
 - `schemaVersion`: build-info-sopimuksen versio
@@ -40,6 +41,13 @@ sen tila näytetään diagnostiikassa.
 Development-ajossa revision on `development` ja build merkitään dirtyksi.
 `EKY_BUILD_REVISION` on vain hallitun build-ympäristön revision syöte; sitä ei
 lueta rendereriltä eikä käyttäjäpyynnöstä.
+
+Runtime-parserit hyväksyvät hallitusti myös vanhan 7-40 merkin revision
+legacy-artifactien lukemista varten. Uuden Windows-paketin sisäinen
+`release-info.json`, MSI-manifesti ja päivitysjournalin alkuperäinen
+paketti-identiteetti muodostetaan kuitenkin samasta täydestä Git SHA:sta.
+Saman revision lyhyttä ja pitkää esitystä ei verrata keskenään uuden
+paketin luottamuspäätöksessä.
 
 ## Runtime-identiteetti
 
