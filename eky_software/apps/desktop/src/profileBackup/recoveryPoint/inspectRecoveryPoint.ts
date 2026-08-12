@@ -15,6 +15,7 @@ export interface RecoveryPointInspection {
   documentCount: number;
   migrationChainIdentity: string;
   profileId: string;
+  profileMatchesActive: boolean;
 }
 
 export async function inspectRecoveryPoint(input: {
@@ -36,6 +37,7 @@ export async function inspectRecoveryPoint(input: {
       documentCount: materialized.documentCount,
       migrationChainIdentity: materialized.migrationChainIdentity,
       profileId: materialized.profileId,
+      profileMatchesActive: materialized.profileMatchesActive,
     };
   } finally {
     await fileSystem.rm(materialized.operationRoot, {

@@ -425,6 +425,16 @@ Profile snapshot -brokerin protokollaversio 7 sisältää tämän erillisen
 operaation exact key set -pyyntönä. Politiikkaa ei välitetä pyynnön kenttänä,
 eikä operaatiota avata rendererille tai julkiselle HTTP-rajalle.
 
+Update journalin tai Direct Setup -recovery-tietueen suojaama
+palautuspiste todistetaan uudelleen välittömästi ennen ensimmäistä pending
+SQL-migraatiota. Tarkistus hyväksyy vain täsmälleen yhden indeksoidun,
+`validatedGood`-tilaisen `preUpdate`-pisteen, todentaa containerin tavalliseksi
+ja muuttumattoman kokoiseksi tiedostoksi, avaa key envelopen, autentikoi
+salatun sisällön ja varmistaa aktiivisen profiilin sekä recovery-tietueeseen
+sidotun migraatioketjun. Se ei aktivoi snapshotia, muuta business-dataa tai
+luo uutta palautuspistettä. Tarkistuksen yksityinen staging poistetaan myös
+epäonnistumisessa, ja mikä tahansa epäselvyys pysäyttää migraation suljetusti.
+
 ## Maintenance-tila
 
 Backup, restore, migration ja update käyttävät yhtä nimettyä maintenance-

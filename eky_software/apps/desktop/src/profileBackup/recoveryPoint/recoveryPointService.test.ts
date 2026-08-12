@@ -179,6 +179,22 @@ describe('recovery point service', () => {
       expect(fixture.calls).not.toContain('preMigrationSnapshot');
     }
   });
+
+  it('delegates protected-point revalidation through the exclusive read-only boundary', async () => {
+    const fixture = await createFixture();
+    const input = {
+      expectedMigrationChainIdentity: migrationChainIdentity,
+      recoveryPointReference: artifactId,
+    };
+
+    await expect(
+      fixture.service.validateProtectedRecoveryPoint(input),
+    ).resolves.toBeUndefined();
+    expect(fixture.validateProtectedRecoveryPoint).toHaveBeenCalledWith(
+      input,
+    );
+    expect(fixture.service.getStatus().operationState).toBe('idle');
+  });
 });
 
 describe('automatic recovery point classification', () => {
@@ -240,6 +256,7 @@ async function createFixture(options: {
     persisted = true;
     return createdPoint;
   });
+  const validateProtectedRecoveryPoint = vi.fn(async () => undefined);
   const createSnapshotMetadata = async () => {
     await mkdir(operationRoot, { mode: 0o700, recursive: true });
     await Promise.all([
@@ -332,6 +349,7 @@ async function createFixture(options: {
           ? [...existingPoints, createdPoint]
           : existingPoints;
       },
+      validateProtectedRecoveryPoint,
     },
   });
 
@@ -341,6 +359,7 @@ async function createFixture(options: {
     createdPoint,
     events,
     service,
+    validateProtectedRecoveryPoint,
   };
 }
 

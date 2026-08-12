@@ -18,6 +18,10 @@ export interface UpdateProfileProtection {
     operationId: string;
     recoveryPointReference: string;
   }): Promise<'relaunching'>;
+  validateProtectedRecoveryPoint(input: {
+    expectedMigrationChainIdentity: string;
+    recoveryPointReference: string;
+  }): Promise<void>;
   validateActiveProfile(): Promise<{
     artifactCount: number;
     artifactTotalByteSize: number;
@@ -33,7 +37,9 @@ interface ProfileProtectionCompositionDependencies {
   >;
   recoveryPointService: Pick<
     RecoveryPointService,
-    'createPreMigration' | 'createPreUpdate'
+    | 'createPreMigration'
+    | 'createPreUpdate'
+    | 'validateProtectedRecoveryPoint'
   >;
   restoreRecoveryPoint?(input: {
     expectedMigrationChainIdentity: string;
@@ -85,6 +91,18 @@ export function createProfileProtectionComposition(
       }
       return dependencies.restoreRecoveryPoint(input);
     },
+    async validateProtectedRecoveryPoint(input: {
+      expectedMigrationChainIdentity: string;
+      recoveryPointReference: string;
+    }) {
+      assertRecoveryPointReference(input.recoveryPointReference);
+      assertMigrationChainIdentity(
+        input.expectedMigrationChainIdentity,
+      );
+      await dependencies.recoveryPointService.validateProtectedRecoveryPoint(
+        input,
+      );
+    },
     async validateActiveProfile() {
       const validation =
         await dependencies.profileSnapshotClient.validateActiveProfile();
@@ -114,6 +132,12 @@ function assertRestoreIdentity(input: {
 
 function assertRecoveryPointReference(reference: string): void {
   if (!recoveryPointReferencePattern.test(reference)) {
+    throw new Error('UPDATE_RECOVERY_POINT_INVALID');
+  }
+}
+
+function assertMigrationChainIdentity(identity: string): void {
+  if (!/^[a-f0-9]{64}$/.test(identity)) {
     throw new Error('UPDATE_RECOVERY_POINT_INVALID');
   }
 }

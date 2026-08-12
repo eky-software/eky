@@ -234,6 +234,51 @@ export class RecoveryPointStore {
     ).points;
   }
 
+  async validateProtectedRecoveryPoint(input: {
+    expectedMigrationChainIdentity: string;
+    recoveryPointReference: string;
+  }): Promise<void> {
+    if (
+      !artifactIdPattern.test(input.recoveryPointReference) ||
+      !profileIdPattern.test(input.expectedMigrationChainIdentity)
+    ) {
+      throw new Error('RECOVERY_POINT_PROTECTED_VALIDATION_FAILED');
+    }
+
+    const operationId =
+      this.dependencies.inspectionOperationIdFactory?.() ??
+      randomUUID();
+    if (!artifactIdPattern.test(operationId)) {
+      throw new Error('RECOVERY_POINT_PROTECTED_VALIDATION_FAILED');
+    }
+
+    try {
+      const source = await this.findValidatedPreUpdatePoint(
+        input.recoveryPointReference,
+      );
+      const inspection = await inspectRecoveryPoint({
+        artifactId: input.recoveryPointReference,
+        containerPath: source.containerPath,
+        expectedProfileId: source.profileId,
+        keyEnvelopePath: source.keyEnvelopePath,
+        keyProtector: this.dependencies.keyProtector,
+        operationId,
+        quarantineRoot: this.dependencies.quarantineRoot,
+        stagingRoot: this.dependencies.stagingRoot,
+        validator: this.dependencies.validator,
+      });
+      if (
+        !inspection.profileMatchesActive ||
+        inspection.migrationChainIdentity !==
+          input.expectedMigrationChainIdentity
+      ) {
+        throw new Error('RECOVERY_POINT_PROTECTED_VALIDATION_FAILED');
+      }
+    } catch {
+      throw new Error('RECOVERY_POINT_PROTECTED_VALIDATION_FAILED');
+    }
+  }
+
   async stageForRestore(input: {
     artifactId: string;
     expectedMigrationChainIdentity: string;
@@ -331,7 +376,13 @@ export class RecoveryPointStore {
     keyEnvelopePath: string;
     profileId: string;
   }> {
-    await ensurePrivateDirectory(this.dependencies.recoveryRoot);
+    try {
+      await assertExistingPrivateDirectory(
+        this.dependencies.recoveryRoot,
+      );
+    } catch {
+      throw new Error('RECOVERY_POINT_RESTORE_SOURCE_INVALID');
+    }
     const entries = await readdir(this.dependencies.recoveryRoot, {
       withFileTypes: true,
     });
@@ -359,33 +410,41 @@ export class RecoveryPointStore {
       const index = await new RecoveryPointIndexStore(
         join(profileRoot, recoveryPointIndexFileName),
       ).read();
-      const point = index.points.find(
+      const points = index.points.filter(
         (candidate) => candidate.artifactId === artifactId,
       );
-      if (point === undefined) {
+      if (points.length === 0) {
         continue;
       }
-      if (point.kind !== 'preUpdate' || point.state !== 'validatedGood') {
-        throw new Error('RECOVERY_POINT_RESTORE_SOURCE_INVALID');
+      for (const point of points) {
+        if (
+          point.kind !== 'preUpdate' ||
+          point.state !== 'validatedGood'
+        ) {
+          throw new Error('RECOVERY_POINT_RESTORE_SOURCE_INVALID');
+        }
+        const containerPath = join(
+          profileRoot,
+          `${artifactId}${recoveryPointExtension}`,
+        );
+        const containerMetadata = await lstat(containerPath);
+        if (
+          !containerMetadata.isFile() ||
+          containerMetadata.isSymbolicLink() ||
+          containerMetadata.nlink !== 1 ||
+          containerMetadata.size !== point.byteSize
+        ) {
+          throw new Error('RECOVERY_POINT_RESTORE_SOURCE_INVALID');
+        }
+        matches.push({
+          containerPath,
+          keyEnvelopePath: join(
+            profileRoot,
+            `${artifactId}.key.json`,
+          ),
+          profileId: entry.name,
+        });
       }
-      const containerPath = join(
-        profileRoot,
-        `${artifactId}${recoveryPointExtension}`,
-      );
-      const containerMetadata = await stat(containerPath);
-      if (
-        !containerMetadata.isFile() ||
-        containerMetadata.isSymbolicLink() ||
-        containerMetadata.nlink !== 1 ||
-        containerMetadata.size !== point.byteSize
-      ) {
-        throw new Error('RECOVERY_POINT_RESTORE_SOURCE_INVALID');
-      }
-      matches.push({
-        containerPath,
-        keyEnvelopePath: join(profileRoot, `${artifactId}.key.json`),
-        profileId: entry.name,
-      });
     }
 
     if (matches.length !== 1) {

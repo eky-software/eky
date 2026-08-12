@@ -78,6 +78,10 @@ describe('first-start update coordinator', () => {
       createInspection('existing', 1),
     );
     expect(fixture.createValidatedPreMigrationPoint).toHaveBeenCalledOnce();
+    expect(fixture.validateProtectedRecoveryPoint).toHaveBeenCalledWith({
+      expectedMigrationChainIdentity: 'a'.repeat(64),
+      recoveryPointReference: preMigrationPointReference,
+    });
     expect(fixture.directRecoveryStates).toEqual([
       'prepared',
       'migrationRunning',
@@ -106,6 +110,10 @@ describe('first-start update coordinator', () => {
     );
 
     expect(fixture.createValidatedPreMigrationPoint).not.toHaveBeenCalled();
+    expect(fixture.validateProtectedRecoveryPoint).toHaveBeenCalledWith({
+      expectedMigrationChainIdentity: 'a'.repeat(64),
+      recoveryPointReference: preMigrationPointReference,
+    });
     expect(fixture.directRecoveryWrites.at(-1)).toEqual(
       expect.objectContaining({
         attemptCount: 2,
@@ -254,6 +262,10 @@ describe('first-start update coordinator', () => {
     );
     expect(fixture.journalStates).toEqual(['firstStartValidating']);
     expect(fixture.createValidatedPreMigrationPoint).not.toHaveBeenCalled();
+    expect(fixture.validateProtectedRecoveryPoint).toHaveBeenCalledWith({
+      expectedMigrationChainIdentity: 'a'.repeat(64),
+      recoveryPointReference,
+    });
 
     await fixture.coordinator.acceptAfterBackendReady();
 
@@ -339,6 +351,24 @@ describe('first-start update coordinator', () => {
       name: 'FirstStartUpdateError',
     });
     expect(String(error)).not.toContain('C:\\private');
+    expect(fixture.journalStates).toEqual(['rollbackRequired']);
+  });
+
+  it('fails closed before coordinated migrations when the protected point cannot be revalidated', async () => {
+    const fixture = createFixture({
+      acceptedBuild: acceptedCurrentBuild(),
+      journal: createJournal('awaitingFirstStart'),
+      protectedRecoveryPointFails: true,
+    });
+
+    await expect(
+      fixture.coordinator.beforeMigrations(
+        createInspection('existing', 1),
+      ),
+    ).rejects.toMatchObject({
+      failureStage: 'preMigrationRecoveryPoint',
+      name: 'FirstStartUpdateError',
+    });
     expect(fixture.journalStates).toEqual(['rollbackRequired']);
   });
 
@@ -628,6 +658,7 @@ function createFixture(options: {
   directSetupRecovery?: Readonly<DirectSetupMigrationRecovery>;
   journal?: Readonly<UpdateJournal>;
   promoteFails?: boolean;
+  protectedRecoveryPointFails?: boolean;
   revalidationFails?: boolean;
   rejectConcurrentRevalidations?: boolean;
   releaseFails?: boolean;
@@ -649,6 +680,11 @@ function createFixture(options: {
   const releaseProtectedPoint = vi.fn(async () => {
     if (options.releaseFails) {
       throw new Error('retention cleanup deferred');
+    }
+  });
+  const validateProtectedRecoveryPoint = vi.fn(async () => {
+    if (options.protectedRecoveryPointFails) {
+      throw new Error('synthetic protected recovery point failure');
     }
   });
   const validateActiveProfile = vi.fn(async () => ({
@@ -757,6 +793,7 @@ function createFixture(options: {
       createValidatedPreMigrationPoint,
       releaseProtectedPoint,
       validateActiveProfile,
+      validateProtectedRecoveryPoint,
     },
     async readSecretStorageIdentity() {
       secretReadCount += 1;
@@ -780,6 +817,7 @@ function createFixture(options: {
     promoteAcceptedCandidate,
     releaseProtectedPoint,
     validateActiveProfile,
+    validateProtectedRecoveryPoint,
   };
 }
 

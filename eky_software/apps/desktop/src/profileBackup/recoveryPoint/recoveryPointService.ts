@@ -53,7 +53,10 @@ interface RecoveryPointServiceDependencies {
     'maintain' | 'resumePending'
   >;
   stagingRoot: string;
-  store: Pick<RecoveryPointStore, 'create' | 'list'>;
+  store: Pick<
+    RecoveryPointStore,
+    'create' | 'list' | 'validateProtectedRecoveryPoint'
+  >;
 }
 
 export class RecoveryPointService {
@@ -139,6 +142,15 @@ export class RecoveryPointService {
       operationState: this.operationState,
       pointCount: this.pointCount,
     };
+  }
+
+  validateProtectedRecoveryPoint(input: {
+    expectedMigrationChainIdentity: string;
+    recoveryPointReference: string;
+  }): Promise<void> {
+    return this.runExclusive('checking', () =>
+      this.dependencies.store.validateProtectedRecoveryPoint(input),
+    );
   }
 
   private createNamedPoint(

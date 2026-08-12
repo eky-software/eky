@@ -1,4 +1,5 @@
 import {
+  access,
   mkdir,
   mkdtemp,
   readFile,
@@ -12,6 +13,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createProfileBackupSourceEntries } from '../createProfileBackupSourceEntries.js';
 import { RecoveryPointKeyProtector } from './recoveryPointKeyProtector.js';
+import { recoveryPointIndexFileName } from './recoveryPointIndexStore.js';
 import {
   recoveryPointFileExtension,
   RecoveryPointStore,
@@ -139,7 +141,126 @@ describe('recovery point store', () => {
     ).resolves.toBe('synthetic-sqlite-profile');
   });
 
-  it('rejects a non-pre-update point as an update rollback source', async () => {
+  it('revalidates the exact protected point without activating it and cleans staging', async () => {
+    const fixture = await createFixture();
+    await fixture.store.create({
+      entries: fixture.entries,
+      kind: 'preUpdate',
+      manifest: {
+        appVersion: '0.1.0-alpha.1',
+        createdAtEpochMilliseconds: BigInt(
+          Date.parse(snapshotCreatedAt),
+        ),
+        migrationChainIdentity,
+        profileId,
+      },
+      validatedAt: '2026-08-04T12:01:00.000Z',
+    });
+
+    await expect(
+      fixture.store.validateProtectedRecoveryPoint({
+        expectedMigrationChainIdentity: migrationChainIdentity,
+        recoveryPointReference: artifactId,
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      access(join(fixture.stagingRoot, inspectionOperationId)),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(fixture.validateProfileSnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects a changed chain, foreign active profile and changed container before use', async () => {
+    const fixture = await createFixture();
+    await fixture.store.create({
+      entries: fixture.entries,
+      kind: 'preUpdate',
+      manifest: {
+        appVersion: '0.1.0-alpha.1',
+        createdAtEpochMilliseconds: BigInt(
+          Date.parse(snapshotCreatedAt),
+        ),
+        migrationChainIdentity,
+        profileId,
+      },
+      validatedAt: '2026-08-04T12:01:00.000Z',
+    });
+
+    await expect(
+      fixture.store.validateProtectedRecoveryPoint({
+        expectedMigrationChainIdentity: 'c'.repeat(64),
+        recoveryPointReference: artifactId,
+      }),
+    ).rejects.toThrow('RECOVERY_POINT_PROTECTED_VALIDATION_FAILED');
+
+    const foreignFixture = await createFixture({
+      profileMatchesActive: false,
+    });
+    await foreignFixture.store.create({
+      entries: foreignFixture.entries,
+      kind: 'preUpdate',
+      manifest: {
+        appVersion: '0.1.0-alpha.1',
+        createdAtEpochMilliseconds: BigInt(
+          Date.parse(snapshotCreatedAt),
+        ),
+        migrationChainIdentity,
+        profileId,
+      },
+      validatedAt: '2026-08-04T12:01:00.000Z',
+    });
+    await expect(
+      foreignFixture.store.validateProtectedRecoveryPoint({
+        expectedMigrationChainIdentity: migrationChainIdentity,
+        recoveryPointReference: artifactId,
+      }),
+    ).rejects.toThrow('RECOVERY_POINT_PROTECTED_VALIDATION_FAILED');
+
+    const changedIndex = JSON.parse(
+      await readFile(fixture.indexPath, 'utf8'),
+    ) as { points: Array<{ byteSize: number }> };
+    changedIndex.points[0]!.byteSize += 1;
+    await writeFile(
+      fixture.indexPath,
+      `${JSON.stringify(changedIndex)}\n`,
+      'utf8',
+    );
+    await expect(
+      fixture.store.validateProtectedRecoveryPoint({
+        expectedMigrationChainIdentity: migrationChainIdentity,
+        recoveryPointReference: artifactId,
+      }),
+    ).rejects.toThrow('RECOVERY_POINT_PROTECTED_VALIDATION_FAILED');
+  });
+
+  it('rejects a missing key envelope and cleans validation staging', async () => {
+    const fixture = await createFixture();
+    await fixture.store.create({
+      entries: fixture.entries,
+      kind: 'preUpdate',
+      manifest: {
+        appVersion: '0.1.0-alpha.1',
+        createdAtEpochMilliseconds: BigInt(
+          Date.parse(snapshotCreatedAt),
+        ),
+        migrationChainIdentity,
+        profileId,
+      },
+      validatedAt: '2026-08-04T12:01:00.000Z',
+    });
+    await rm(fixture.keyEnvelopePath);
+
+    await expect(
+      fixture.store.validateProtectedRecoveryPoint({
+        expectedMigrationChainIdentity: migrationChainIdentity,
+        recoveryPointReference: artifactId,
+      }),
+    ).rejects.toThrow('RECOVERY_POINT_PROTECTED_VALIDATION_FAILED');
+    await expect(
+      access(join(fixture.stagingRoot, inspectionOperationId)),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('rejects a non-pre-update point from protected validation and restore', async () => {
     const fixture = await createFixture();
     await fixture.store.create({
       entries: fixture.entries,
@@ -156,6 +277,12 @@ describe('recovery point store', () => {
     });
 
     await expect(
+      fixture.store.validateProtectedRecoveryPoint({
+        expectedMigrationChainIdentity: migrationChainIdentity,
+        recoveryPointReference: artifactId,
+      }),
+    ).rejects.toThrow('RECOVERY_POINT_PROTECTED_VALIDATION_FAILED');
+    await expect(
       fixture.store.stageForRestore({
         artifactId,
         expectedMigrationChainIdentity: migrationChainIdentity,
@@ -167,6 +294,7 @@ describe('recovery point store', () => {
 
 async function createFixture(options: {
   failKeyProtection?: boolean;
+  profileMatchesActive?: boolean;
 } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'eky-recovery-store-'));
   roots.push(root);
@@ -204,6 +332,16 @@ async function createFixture(options: {
     decrypt,
     encrypt,
   });
+  const validateProfileSnapshot = vi.fn(async () => ({
+    activeProfileIsEmpty: false,
+    artifactCount: 0,
+    artifactTotalByteSize: 0,
+    databaseHealth: 'healthy' as const,
+    migrationChainIdentity,
+    profileId,
+    profileMatchesActive: options.profileMatchesActive ?? true,
+    type: 'profileSnapshotValidation' as const,
+  }));
   const store = new RecoveryPointStore({
     artifactIdFactory: () => artifactId,
     inspectionOperationIdFactory: () => inspectionOperationId,
@@ -212,24 +350,32 @@ async function createFixture(options: {
     recoveryRoot,
     stagingRoot,
     validator: {
-      validateProfileSnapshot: vi.fn(async () => ({
-        activeProfileIsEmpty: false,
-        artifactCount: 0,
-        artifactTotalByteSize: 0,
-        databaseHealth: 'healthy' as const,
-        migrationChainIdentity,
-        profileId,
-        profileMatchesActive: true,
-        type: 'profileSnapshotValidation' as const,
-      })),
+      validateProfileSnapshot,
     },
   });
 
   return {
+    containerPath: join(
+      recoveryRoot,
+      profileId,
+      `${artifactId}${recoveryPointFileExtension}`,
+    ),
     decrypt,
     encrypt,
     entries,
+    indexPath: join(
+      recoveryRoot,
+      profileId,
+      recoveryPointIndexFileName,
+    ),
+    keyEnvelopePath: join(
+      recoveryRoot,
+      profileId,
+      `${artifactId}.key.json`,
+    ),
     recoveryRoot,
+    stagingRoot,
     store,
+    validateProfileSnapshot,
   };
 }

@@ -592,6 +592,16 @@ palautusauktoriteetti, ja se on todistettava uudelleen ennen ensimmäistä
 SQL-kirjoitusta. Direct Setupin ja portable restoren omat auktoriteetit eivät
 saa olla samanaikaisesti ratkaisemattomia update journalin kanssa.
 
+Uudelleentodistus on read-only-operaatio. Sen pitää löytää täsmälleen yksi
+indeksoitu `validatedGood`-tilainen `preUpdate`-piste, todistaa container
+tavalliseksi muuttumattoman kokoiseksi tiedostoksi, avata machine-local
+key envelope käyttöjärjestelmän suojauksella ja todentaa containerin
+autentikointi. Puretun snapshotin pitää kuulua aktiiviseen profiiliin ja sen
+migraatioketjun pitää vastata journalissa sidottua ketjua. Tarkistus ei luo
+uutta palautuspistettä eikä aktivoi snapshotia, ja sen yksityinen staging
+siivotaan sekä onnistumisessa että virheessä. Epäselvä, puuttuva tai muuttunut
+artifact pysäyttää first-startin ennen ensimmäistä pending-SQL-kirjoitusta.
+
 Koordinoidun päivityksen journalissa sidottu `preUpdate`-piste muodostetaan
 tavallisella exact-current-manifest-snapshotilla. Suoran Setupin
 `preMigration`-piste käyttää sen sijaan yksityisen broker-protokollan nimettyä

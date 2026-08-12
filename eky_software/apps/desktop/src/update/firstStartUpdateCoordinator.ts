@@ -33,6 +33,10 @@ export interface MigrationStartupInspection {
 interface FirstStartProfileProtection {
   createValidatedPreMigrationPoint(): Promise<string>;
   releaseProtectedPoint(recoveryPointReference: string): Promise<void>;
+  validateProtectedRecoveryPoint(input: {
+    expectedMigrationChainIdentity: string;
+    recoveryPointReference: string;
+  }): Promise<void>;
   validateActiveProfile(): Promise<{
     artifactCount: number;
     artifactTotalByteSize: number;
@@ -484,7 +488,8 @@ export class FirstStartUpdateCoordinator {
       journal.candidatePackageIdentity.buildRevision !==
         this.dependencies.releaseInfo.buildRevision ||
       journal.releaseChannel !== this.dependencies.releaseInfo.releaseChannel ||
-      journal.recoveryPointReference === undefined
+      journal.recoveryPointReference === undefined ||
+      journal.preUpdateMigrationChainIdentity === undefined
     ) {
       throw new FirstStartUpdateError('preMigrationJournalConsistency');
     }
@@ -515,6 +520,11 @@ export class FirstStartUpdateCoordinator {
         );
       }
     }
+
+    await this.validateProtectedRecoveryPoint(
+      journal.recoveryPointReference,
+      journal.preUpdateMigrationChainIdentity,
+    );
 
     const validatingJournal =
       journal.state === 'firstStartValidating'
@@ -624,6 +634,10 @@ export class FirstStartUpdateCoordinator {
 
     const recoveryPointReference =
       await this.dependencies.profileProtection.createValidatedPreMigrationPoint();
+    await this.validateProtectedRecoveryPoint(
+      recoveryPointReference,
+      input.inspection.migrationChainIdentity,
+    );
     const prepared = createDirectSetupMigrationRecovery({
       appliedMigrationCount: input.inspection.appliedMigrationCount,
       at: this.now(),
@@ -692,6 +706,10 @@ export class FirstStartUpdateCoordinator {
     ) {
       throw new FirstStartUpdateError('preMigrationDirectSetup');
     }
+    await this.validateProtectedRecoveryPoint(
+      recovery.recoveryPointReference,
+      recovery.migrationPrefixIdentity,
+    );
     const running = transitionDirectSetupMigrationRecovery(recovery, {
       at: this.now(),
       attemptCount: recovery.attemptCount + 1,
@@ -700,6 +718,22 @@ export class FirstStartUpdateCoordinator {
     await this.dependencies.directSetupRecoveryStore.write(running);
     this.preMigrationPointReference = recovery.recoveryPointReference;
     return running;
+  }
+
+  private async validateProtectedRecoveryPoint(
+    recoveryPointReference: string,
+    expectedMigrationChainIdentity: string,
+  ): Promise<void> {
+    try {
+      await this.dependencies.profileProtection.validateProtectedRecoveryPoint(
+        {
+          expectedMigrationChainIdentity,
+          recoveryPointReference,
+        },
+      );
+    } catch {
+      throw new FirstStartUpdateError('preMigrationRecoveryPoint');
+    }
   }
 
   private assertDirectSetupRecoveryIdentity(

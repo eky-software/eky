@@ -7,7 +7,7 @@ const recoveryPointReference =
   '22222222-2222-4222-8222-222222222222';
 
 describe('update profile protection composition', () => {
-  it('exposes only the seven narrow update protection operations', () => {
+  it('exposes only the eight narrow update protection operations', () => {
     const fixture = createFixture();
 
     expect(Object.keys(fixture.protection).sort()).toEqual([
@@ -18,6 +18,7 @@ describe('update profile protection composition', () => {
       'releaseProtectedPoint',
       'restoreRecoveryPoint',
       'validateActiveProfile',
+      'validateProtectedRecoveryPoint',
     ]);
   });
 
@@ -85,6 +86,26 @@ describe('update profile protection composition', () => {
     await fixture.protection.restoreRecoveryPoint(input);
     expect(fixture.restoreRecoveryPoint).toHaveBeenCalledWith(input);
   });
+
+  it('validates a protected point through the narrow recovery service port', async () => {
+    const fixture = createFixture();
+    const input = {
+      expectedMigrationChainIdentity: 'a'.repeat(64),
+      recoveryPointReference,
+    };
+
+    await fixture.protection.validateProtectedRecoveryPoint(input);
+    expect(fixture.validateProtectedRecoveryPoint).toHaveBeenCalledWith(
+      input,
+    );
+
+    await expect(
+      fixture.protection.validateProtectedRecoveryPoint({
+        ...input,
+        expectedMigrationChainIdentity: 'invalid',
+      }),
+    ).rejects.toThrow('UPDATE_RECOVERY_POINT_INVALID');
+  });
 });
 
 function createFixture(
@@ -95,6 +116,7 @@ function createFixture(
   const beginMaintenance = vi.fn(async () => 'busy' as const);
   const endMaintenance = vi.fn(async () => 'normal' as const);
   const restoreRecoveryPoint = vi.fn(async () => 'relaunching' as const);
+  const validateProtectedRecoveryPoint = vi.fn(async () => undefined);
   const protection = createProfileProtectionComposition({
     directSetupRecoveryStore: {
       read: vi.fn(async () => undefined),
@@ -113,6 +135,7 @@ function createFixture(
     recoveryPointService: {
       createPreMigration: vi.fn(async () => createPoint()),
       createPreUpdate: vi.fn(async () => createPoint()),
+      validateProtectedRecoveryPoint,
     },
     restoreRecoveryPoint,
     updateJournalStore: {
@@ -149,6 +172,7 @@ function createFixture(
     endMaintenance,
     protection,
     restoreRecoveryPoint,
+    validateProtectedRecoveryPoint,
   };
 }
 
