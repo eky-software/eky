@@ -57,10 +57,18 @@ export class UpdateJournalStore {
     return this.runExclusive(async () => {
       const validated = parseUpdateJournal(journal);
       const current = await readJournal(this.filePath);
-      if (current !== undefined &&
-        (current.correlationId !== validated.correlationId ||
-          validated.revision < current.revision)) {
-        throw new Error('UPDATE_JOURNAL_CONFLICT');
+      if (current !== undefined) {
+        if (
+          current.correlationId !== validated.correlationId ||
+          validated.revision < current.revision ||
+          (validated.revision === current.revision &&
+            !journalsAreEqual(current, validated))
+        ) {
+          throw new Error('UPDATE_JOURNAL_CONFLICT');
+        }
+        if (validated.revision === current.revision) {
+          return;
+        }
       }
       await writeCrashSafe(this.filePath, this.nextPath, this.backupPath,
         `${JSON.stringify(validated)}\n`);
@@ -186,6 +194,13 @@ function pathsAreEqual(first: string, second: string): boolean {
   const a = resolve(first);
   const b = resolve(second);
   return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+
+function journalsAreEqual(
+  first: Readonly<UpdateJournal>,
+  second: Readonly<UpdateJournal>,
+): boolean {
+  return JSON.stringify(first) === JSON.stringify(second);
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {

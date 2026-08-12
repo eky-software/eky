@@ -381,6 +381,25 @@ describe('first-start update coordinator', () => {
     ]);
   });
 
+  it('does not revert a committed acceptance after a later startup failure', async () => {
+    const fixture = createFixture({
+      acceptedBuild: acceptedCurrentBuild(),
+      journal: createJournal('awaitingFirstStart'),
+    });
+    await fixture.coordinator.beforeMigrations(
+      createInspection('existing', 1),
+    );
+    await fixture.coordinator.acceptAfterBackendReady();
+
+    await expect(
+      fixture.coordinator.recoverFromStartupFailure(),
+    ).resolves.toBe(false);
+    expect(fixture.journalStates).toEqual([
+      'firstStartValidating',
+      'accepted',
+    ]);
+  });
+
   it('does not turn an ordinary startup failure into update rollback', async () => {
     const fixture = createFixture({
       acceptedBuild: acceptedCandidateBuild(),

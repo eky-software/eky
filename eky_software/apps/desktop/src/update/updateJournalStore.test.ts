@@ -94,6 +94,23 @@ describe('update journal store', () => {
     )).toBe(true);
   });
 
+  it('allows only an identical idempotent write at the current revision', async () => {
+    const fixture = await createFixture();
+    const store = new UpdateJournalStore(fixture.filePath);
+    const journal = createJournal({ revision: 2 });
+    await store.write(journal);
+
+    await expect(store.write(journal)).resolves.toBeUndefined();
+    await expect(
+      store.write({
+        ...journal,
+        state: 'failed',
+        updatedAt: '2026-08-11T18:01:00.000Z',
+      }),
+    ).rejects.toThrow('UPDATE_JOURNAL_CONFLICT');
+    await expect(store.read()).resolves.toEqual(journal);
+  });
+
   it('clears current and interrupted recovery slots', async () => {
     const fixture = await createFixture();
     const journal = createJournal();

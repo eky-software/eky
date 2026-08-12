@@ -84,6 +84,7 @@ export class FirstStartUpdateError extends Error {
 }
 
 export class FirstStartUpdateCoordinator {
+  private acceptanceCommitted = false;
   private migrationGateCompleted = false;
   private mode: FirstStartMode | undefined;
   private operationCorrelationId: string | undefined;
@@ -210,6 +211,7 @@ export class FirstStartUpdateCoordinator {
       throw new FirstStartUpdateError();
     }
     if (mode.kind === 'normal') {
+      this.acceptanceCommitted = true;
       this.notifyOperationCompleted();
       return;
     }
@@ -304,6 +306,7 @@ export class FirstStartUpdateCoordinator {
       if (acceptedDirectSetupRecovery !== undefined) {
         await this.dependencies.directSetupRecoveryStore.clear();
       }
+      this.acceptanceCommitted = true;
     } catch {
       await this.markRollbackRequired(coordinatedJournal);
       await this.markInstallerNotAppliedFailedSafe(
@@ -324,6 +327,9 @@ export class FirstStartUpdateCoordinator {
   }
 
   async recoverFromStartupFailure(): Promise<boolean> {
+    if (this.acceptanceCommitted) {
+      return false;
+    }
     const mode = this.mode;
     if (mode?.kind === 'coordinated') {
       await this.markRollbackRequired(mode.journal);
