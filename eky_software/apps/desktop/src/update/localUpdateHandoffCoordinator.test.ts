@@ -112,12 +112,46 @@ describe('local update handoff coordinator', () => {
 
     await expect(
       fixture.coordinator.prepareConfirmedUpdate(),
-    ).rejects.toThrow(LocalUpdateHandoffError);
+    ).rejects.toMatchObject({
+      code: 'UPDATE_PREPARATION_PROFILE_VALIDATION_FAILED',
+      message: 'The local update could not be handed off safely.',
+    });
 
     expect(fixture.shutdownRuntime).not.toHaveBeenCalled();
     expect(fixture.launchInstaller).not.toHaveBeenCalled();
     expect(fixture.currentJournal).toBeUndefined();
     expect(fixture.states).toEqual([]);
+  });
+
+  it('preserves only an uppercase safe preparation code', async () => {
+    const fixture = createFixture({
+      recoveryPointError: Object.assign(
+        new Error('C:\\private\\profile\\recovery failed'),
+        { code: 'RECOVERY_POINT_BUSY' },
+      ),
+    });
+
+    await expect(
+      fixture.coordinator.prepareConfirmedUpdate(),
+    ).rejects.toMatchObject({
+      code: 'RECOVERY_POINT_BUSY',
+      message: 'The local update could not be handed off safely.',
+    });
+  });
+
+  it('does not expose a raw recovery point failure', async () => {
+    const fixture = createFixture({
+      recoveryPointError: new Error(
+        'C:\\private\\profile\\recovery failed',
+      ),
+    });
+
+    await expect(
+      fixture.coordinator.prepareConfirmedUpdate(),
+    ).rejects.toMatchObject({
+      code: 'UPDATE_PREPARATION_RECOVERY_POINT_FAILED',
+      message: 'The local update could not be handed off safely.',
+    });
   });
 
   it('rejects handoff when the migration chain changes after recovery preparation', async () => {
@@ -141,6 +175,7 @@ function createFixture(options: {
   onWrite?(state: string): void;
   profileMigrationChanges?: boolean;
   profileValidationFails?: boolean;
+  recoveryPointError?: Error;
   revalidationFails?: boolean;
   shutdownFails?: boolean;
 } = {}) {
@@ -163,7 +198,12 @@ function createFixture(options: {
     };
   });
   const createValidatedPreUpdatePoint = vi.fn(
-    async () => recoveryPointReference,
+    async () => {
+      if (options.recoveryPointError !== undefined) {
+        throw options.recoveryPointError;
+      }
+      return recoveryPointReference;
+    },
   );
   const enterMaintenance = vi.fn(async () => undefined);
   const leaveMaintenance = vi.fn(async () => undefined);

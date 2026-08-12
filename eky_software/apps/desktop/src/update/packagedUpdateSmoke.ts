@@ -684,8 +684,15 @@ function isPreparePhase(phase: PackagedUpdateSmokePhase): boolean {
 }
 
 function readSafeSmokeErrorCode(error: unknown): string {
-  return error instanceof Error && /^[A-Z][A-Z0-9_]{0,99}$/.test(error.message)
-    ? error.message
+  if (!(error instanceof Error)) {
+    return 'DESKTOP_UPDATE_SMOKE_FAILED';
+  }
+  const value =
+    'code' in error && typeof error.code === 'string'
+      ? error.code
+      : error.message;
+  return /^[A-Z][A-Z0-9_]{0,99}$/.test(value)
+    ? value
     : 'DESKTOP_UPDATE_SMOKE_FAILED';
 }
 

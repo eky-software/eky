@@ -115,6 +115,28 @@ describe('packaged update smoke result boundary', () => {
     },
   );
 
+  it('preserves a safe error code property without exposing its raw message', async () => {
+    const configuration = await createConfiguration('prepareSuccess');
+    const dependencies = createPrepareSmokeDependencies(
+      configuration,
+      'prepare',
+    );
+    dependencies.handoffCoordinator.prepareConfirmedUpdate = async () => {
+      throw Object.assign(new Error('C:\\private\\profile failed'), {
+        code: 'RECOVERY_POINT_BUSY',
+      });
+    };
+
+    await expect(runPackagedUpdateSmoke(dependencies)).rejects.toThrow(
+      'RECOVERY_POINT_BUSY',
+    );
+    expect(await readResult(configuration)).toEqual({
+      code: 'RECOVERY_POINT_BUSY',
+      phase: 'prepareSuccess',
+      status: 'failed',
+    });
+  });
+
   it.each([
     {
       expectedCode: 'DESKTOP_UPDATE_SMOKE_PACKAGE_STAGE_FAILED',

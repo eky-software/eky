@@ -41,7 +41,9 @@ interface LocalUpdateHandoffCoordinatorDependencies {
 }
 
 export class LocalUpdateHandoffError extends Error {
-  constructor() {
+  constructor(
+    readonly code = 'LOCAL_UPDATE_HANDOFF_FAILED',
+  ) {
     super('The local update could not be handed off safely.');
     this.name = 'LocalUpdateHandoffError';
   }
@@ -57,15 +59,18 @@ export class LocalUpdateHandoffCoordinator {
   prepareConfirmedUpdate(): Promise<Readonly<UpdateJournal>> {
     return this.runExclusive(async () => {
       let journal: Readonly<UpdateJournal> | undefined;
+      let failureCode = 'UPDATE_PREPARATION_JOURNAL_STATE_FAILED';
       const correlationId = this.createOperationId();
       const startedAt = Date.now();
       this.notifyStarted(correlationId, 'recoveryPoint');
       try {
         await this.assertJournalCanBeReplaced();
+        failureCode = 'UPDATE_PREPARATION_PACKAGE_IDENTITY_FAILED';
         const [currentIdentity, candidateIdentity] = await Promise.all([
           this.dependencies.cache.readExpectedPackageIdentity('current'),
           this.dependencies.cache.readExpectedPackageIdentity('candidate'),
         ]);
+        failureCode = 'UPDATE_PREPARATION_PROFILE_VALIDATION_FAILED';
         const profileValidation =
           await this.dependencies.profileProtection.validateActiveProfile();
         journal = createPreparedJournal({
@@ -76,7 +81,9 @@ export class LocalUpdateHandoffCoordinator {
           preUpdateMigrationChainIdentity:
             profileValidation.migrationChainIdentity,
         });
+        failureCode = 'UPDATE_PREPARATION_JOURNAL_WRITE_FAILED';
         await this.dependencies.journalStore.write(journal);
+        failureCode = 'UPDATE_PREPARATION_RECOVERY_POINT_FAILED';
         const recoveryPointReference =
           await this.dependencies.profileProtection
             .createValidatedPreUpdatePoint();
@@ -85,6 +92,7 @@ export class LocalUpdateHandoffCoordinator {
           recoveryPointReference,
           state: 'recoveryPointValidated',
         });
+        failureCode = 'UPDATE_PREPARATION_FINALIZE_FAILED';
         await this.dependencies.journalStore.write(journal);
         this.notifyCompleted(
           correlationId,
@@ -92,7 +100,7 @@ export class LocalUpdateHandoffCoordinator {
           'recoveryPoint',
         );
         return journal;
-      } catch {
+      } catch (error) {
         await this.writeFailedJournal(journal);
         this.notifyFailed({
           correlationId,
@@ -101,7 +109,9 @@ export class LocalUpdateHandoffCoordinator {
           stage: 'recoveryPoint',
           startedAt,
         });
-        throw new LocalUpdateHandoffError();
+        throw new LocalUpdateHandoffError(
+          readSafePreparationFailureCode(error) ?? failureCode,
+        );
       }
     });
   }
@@ -304,6 +314,17 @@ export class LocalUpdateHandoffCoordinator {
       // Operational logging does not control the update transaction.
     }
   }
+}
+
+function readSafePreparationFailureCode(error: unknown): string | undefined {
+  if (!(error instanceof Error)) {
+    return undefined;
+  }
+  const value =
+    'code' in error && typeof error.code === 'string'
+      ? error.code
+      : error.message;
+  return /^[A-Z][A-Z0-9_]{2,99}$/.test(value) ? value : undefined;
 }
 
 function createPreparedJournal(input: {
