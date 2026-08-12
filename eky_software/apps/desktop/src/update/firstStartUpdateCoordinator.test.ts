@@ -563,6 +563,7 @@ function createFixture(options: {
       buildRevision: currentReleaseInfo.buildRevision,
       msiProductVersion: currentReleaseInfo.msiProductVersion,
       packagePath: 'C:\\private\\Eky-current.msi',
+      productCode: '{11111111-1111-4111-8111-111111111111}',
     };
   });
   const operationCompleted = vi.fn();
@@ -599,6 +600,9 @@ function createFixture(options: {
           buildRevision: input.expectedIdentity.buildRevision,
           msiProductVersion: input.expectedIdentity.msiProductVersion,
           packagePath: 'C:\\private\\Eky.msi',
+          productCode: expectsCandidate
+            ? '{22222222-2222-4222-8222-222222222222}'
+            : '{11111111-1111-4111-8111-111111111111}',
         };
       },
     },

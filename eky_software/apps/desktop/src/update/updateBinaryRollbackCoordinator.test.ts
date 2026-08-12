@@ -19,8 +19,16 @@ describe('UpdateBinaryRollbackCoordinator', () => {
       order.push('normalize');
       return rollbackPackage;
     });
+    const failedPackage = createFailedPackage();
+    const revalidateJournalPackage = vi.fn(async () => {
+      order.push('revalidateFailed');
+      return failedPackage;
+    });
     const coordinator = new UpdateBinaryRollbackCoordinator({
-      cache: createCache({ normalizeRolledBackPackages }),
+      cache: createCache({
+        normalizeRolledBackPackages,
+        revalidateJournalPackage,
+      }),
       journalStore: {
         read: async () => stored,
         write: async (next) => {
@@ -37,12 +45,23 @@ describe('UpdateBinaryRollbackCoordinator', () => {
 
     expect(order).toEqual([
       'normalize',
+      'revalidateFailed',
       'binaryRollbackPrepared',
       'awaitingRollbackFirstStart',
       'launch',
     ]);
     expect(stored.binaryRollbackAttemptCount).toBe(1);
-    expect(launchInstaller).toHaveBeenCalledWith(rollbackPackage);
+    expect(launchInstaller).toHaveBeenCalledWith({
+      failedPackage,
+      rollbackPackage,
+    });
+    expect(revalidateJournalPackage).toHaveBeenCalledWith({
+      expectedIdentity: expect.objectContaining({
+        appVersion: '0.2.0',
+        packageSha256: 'b'.repeat(64),
+      }),
+      role: 'candidate',
+    });
     expect(normalizeRolledBackPackages).toHaveBeenCalledWith({
       candidateIdentity: expect.objectContaining({
         appVersion: '0.2.0',
@@ -262,6 +281,9 @@ function createCache(
     normalizeRolledBackPackages: () => Promise<
       Readonly<RevalidatedLocalUpdatePackageHandle>
     >;
+    revalidateJournalPackage: () => Promise<
+      Readonly<RevalidatedLocalUpdatePackageHandle>
+    >;
     registerExactRollbackPackage: () => Promise<{
       appVersion: string;
       buildRevision: string;
@@ -275,6 +297,7 @@ function createCache(
   return {
     hasExpectedJournalPackage: async () => true,
     normalizeRolledBackPackages: async () => createRollbackPackage(),
+    revalidateJournalPackage: async () => createFailedPackage(),
     registerExactRollbackPackage: async () => ({
       appVersion: '0.1.0',
       buildRevision: 'a'.repeat(40),
@@ -316,6 +339,17 @@ function createRollbackPackage(): Readonly<RevalidatedLocalUpdatePackageHandle> 
     buildRevision: 'a'.repeat(40),
     msiProductVersion: '0.1.0',
     packagePath: 'C:\\private\\Eky-0.1.0-x64.msi',
+    productCode: '{11111111-1111-4111-8111-111111111111}',
+  });
+}
+
+function createFailedPackage(): Readonly<RevalidatedLocalUpdatePackageHandle> {
+  return Object.freeze({
+    appVersion: '0.2.0',
+    buildRevision: 'b'.repeat(40),
+    msiProductVersion: '0.2.0',
+    packagePath: 'C:\\private\\Eky-0.2.0-x64.msi',
+    productCode: '{22222222-2222-4222-8222-222222222222}',
   });
 }
 

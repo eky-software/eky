@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
 const installerDirectory = dirname(fileURLToPath(import.meta.url));
+const desktopDirectory = resolve(installerDirectory, '..');
 const repositoryRoot = resolve(installerDirectory, '..', '..', '..');
 const workspaceRoot = resolve(repositoryRoot, '..');
 
@@ -82,4 +83,39 @@ test('keeps empty installer directory inventories as comparable arrays', async (
   assert.match(support, /return ,@\(\)/);
   assert.match(support, /return ,\$inventory/);
   assert.equal((support.match(/AllowEmptyCollection/g) ?? []).length, 2);
+});
+
+test('keeps direct downgrade blocked and rollback outside MSI authoring', async () => {
+  const packageSource = await readFile(
+    join(installerDirectory, 'wix', 'Package.wxs'),
+    'utf8',
+  );
+  const rollbackScript = await readFile(
+    join(
+      desktopDirectory,
+      'resources',
+      'update',
+      'rollbackWindowsInstaller.ps1',
+    ),
+    'utf8',
+  );
+
+  assert.match(packageSource, /<MajorUpgrade/);
+  assert.match(packageSource, /AllowDowngrades="no"/);
+  assert.match(packageSource, /AllowSameVersionUpgrades="no"/);
+  assert.doesNotMatch(packageSource, /EKY_COORDINATED_ROLLBACK/);
+  assert.doesNotMatch(packageSource, /<UpgradeVersion/);
+
+  const uninstallIndex = rollbackScript.indexOf("'/x', $FailedProductCode");
+  const rollbackInstallIndex = rollbackScript.indexOf(
+    "'/i', $RollbackPackagePath",
+  );
+  const failedRepairIndex = rollbackScript.indexOf("'/i', $FailedPackagePath");
+  assert.ok(uninstallIndex >= 0);
+  assert.ok(rollbackInstallIndex > uninstallIndex);
+  assert.ok(failedRepairIndex > rollbackInstallIndex);
+  assert.doesNotMatch(
+    rollbackScript,
+    /Invoke-Expression|Start-Process|cmd\.exe|\.bat\b|\.cmd\b/iu,
+  );
 });

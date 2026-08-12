@@ -18,11 +18,15 @@ interface UpdateBinaryRollbackCoordinatorDependencies {
     LocalUpdatePackageCache,
     | 'hasExpectedJournalPackage'
     | 'normalizeRolledBackPackages'
+    | 'revalidateJournalPackage'
     | 'registerExactRollbackPackage'
   >;
   journalStore: Pick<UpdateJournalStore, 'read' | 'write'>;
   launchInstaller(
-    rollbackPackage: Readonly<RevalidatedLocalUpdatePackageHandle>,
+    packages: Readonly<{
+      failedPackage: Readonly<RevalidatedLocalUpdatePackageHandle>;
+      rollbackPackage: Readonly<RevalidatedLocalUpdatePackageHandle>;
+    }>,
   ): Promise<void>;
   now?(): Date;
   observer?: UpdateOperationalObserver;
@@ -97,6 +101,14 @@ export class UpdateBinaryRollbackCoordinator {
           },
           currentIdentity,
         });
+      const failedPackage =
+        await this.dependencies.cache.revalidateJournalPackage({
+          expectedIdentity: {
+            appVersion: journal.targetVersion,
+            ...journal.candidatePackageIdentity,
+          },
+          role: 'candidate',
+        });
       journal = transitionUpdateJournal(journal, {
         at: this.now(),
         binaryRollbackAttemptCount: 1,
@@ -108,7 +120,10 @@ export class UpdateBinaryRollbackCoordinator {
         state: 'awaitingRollbackFirstStart',
       });
       await this.dependencies.journalStore.write(journal);
-      await this.dependencies.launchInstaller(rollbackPackage);
+      await this.dependencies.launchInstaller({
+        failedPackage,
+        rollbackPackage,
+      });
       this.notifyCompleted(journal.correlationId);
       return 'launched';
     } catch {

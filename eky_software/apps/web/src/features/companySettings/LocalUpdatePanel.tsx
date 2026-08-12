@@ -61,7 +61,10 @@ export function LocalUpdatePanel({
       } else if (kind === 'discard') {
         await capability.discardSelected();
       } else {
-        await capability.confirm();
+        const result = await capability.confirm();
+        if (result === 'handoffStarted') {
+          return;
+        }
       }
       setStatus(await capability.getStatus());
     } catch {

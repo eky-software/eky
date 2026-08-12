@@ -78,6 +78,7 @@ export interface RevalidatedLocalUpdatePackageHandle {
   buildRevision: string;
   msiProductVersion: string;
   packagePath: string;
+  productCode: string;
 }
 
 interface LocalUpdatePackageCacheOptions {
@@ -780,6 +781,7 @@ export class LocalUpdatePackageCache {
       manifest,
       msiProductVersion: manifest.msiProductVersion,
       packagePath,
+      productCode: installerIdentity.productCode,
     });
   }
 

@@ -136,6 +136,7 @@ import {
   StartupRecoveryAuthorityConflictError,
 } from '../update/startupRecoveryAuthority.js';
 import { launchWindowsInstallerForUpdate } from '../update/windowsInstallerHandoff.js';
+import { launchWindowsInstallerRollback } from '../update/windowsInstallerRollbackHandoff.js';
 import { createUpdateRecoveryComposition } from '../update/recoveryWindow/updateRecoveryComposition.js';
 
 export interface DesktopLifecycleHandle {
@@ -511,9 +512,16 @@ async function startDesktopCompositionRuntime({
       : new UpdateBinaryRollbackCoordinator({
           cache: localUpdatePackageCache,
           journalStore: updateJournalStore,
-          launchInstaller: (rollbackPackage) =>
-            launchWindowsInstallerForUpdate({
-              packagePath: rollbackPackage.packagePath,
+          launchInstaller: ({ failedPackage, rollbackPackage }) =>
+            launchWindowsInstallerRollback({
+              failedPackagePath: failedPackage.packagePath,
+              failedProductCode: failedPackage.productCode,
+              rollbackPackagePath: rollbackPackage.packagePath,
+              rollbackScriptPath: join(
+                options.resourcesPath,
+                'update-runtime',
+                'rollbackWindowsInstaller.ps1',
+              ),
               systemRoot: process.env.SystemRoot,
             }),
           observer: updateObserver,

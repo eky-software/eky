@@ -821,8 +821,25 @@ muutu.
 
 ## 18. Binary rollback
 
-Binary rollback on asenninmoottorin vastuu. Teknologiavalinnassa pitää
-todistaa:
+MSI:n normaali downgrade pysyy estettynä. Eky ei lisää WiX-authorointiin
+yleistä downgrade-poikkeusta eikä suppressaa ICE61-varoitusta. C3:n
+binaaripalautus on Electron main -prosessin koordinoima, tarkasti rajattu
+kaksivaiheinen installer-handoff:
+
+1. epäonnistunut N+1 poistetaan sen journalista ja tarkistetusta MSI:stä
+   johdetulla ProductCodella
+2. täsmälleen journalin N-identiteettiin, SHA-256:een, kokoon ja MSI-
+   identiteettiin sidottu rollback-paketti asennetaan
+3. jos N:n asennus epäonnistuu poistamisen jälkeen, sama tarkistettu N+1-
+   paketti yritetään asentaa takaisin, jotta recovery-only-käyttöliittymä
+   säilyy käytettävissä
+
+Renderer ei anna komentoja, polkuja tai ProductCodea. Main muodostaa kiinteän
+PowerShell- ja `msiexec`-kutsun validoiduista yksityisen cachen handleista sekä
+paketoidusta projektin omasta rollback-skriptistä. Skripti ei ole yleinen
+shell-rajapinta eikä se salli ylimääräisiä argumentteja tai verkkolähteitä.
+
+Teknologiavalinnassa pitää todistaa:
 
 - pystyykö moottori säilyttämään tai palauttamaan edellisen version
 - miten rollback käynnistyy, jos uusi Eky ei avaudu
@@ -831,8 +848,9 @@ todistaa:
 - miten osittainen asennus siivotaan
 
 Binary rollback ei avaa vanhaa ohjelmaversiota uudemmalla, migroidulla
-profiililla. Business-datan palautus ja binaaripalautus koordinoidaan
-journalin avulla.
+profiililla. Business-datan palautus valmistuu ennen binaaripalautusta, ja
+vaiheet koordinoidaan crash-safe journalin avulla. Suora N+1 -> N MSI-
+päälleasennus pysyy torjuttuna myös palautuspolun valmistuttua.
 
 `failedSafe`-, `recoveryRequired`-, `rollbackPackageRequired`- ja ristiriitaisen
 startup recovery authorityn tilanteissa tavallista backendia tai business-
