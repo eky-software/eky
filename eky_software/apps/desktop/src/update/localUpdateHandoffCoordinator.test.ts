@@ -38,6 +38,17 @@ describe('local update handoff coordinator', () => {
     expect(fixture.createValidatedPreUpdatePoint).toHaveBeenCalledOnce();
   });
 
+  it('reads package identities sequentially through the exclusive cache port', async () => {
+    const fixture = createFixture({ rejectConcurrentIdentityReads: true });
+
+    await expect(
+      fixture.coordinator.prepareConfirmedUpdate(),
+    ).resolves.toMatchObject({ state: 'recoveryPointValidated' });
+
+    expect(fixture.identityReadRoles).toEqual(['current', 'candidate']);
+    expect(fixture.createValidatedPreUpdatePoint).toHaveBeenCalledOnce();
+  });
+
   it('writes awaitingFirstStart before one exact installer launch', async () => {
     const order: string[] = [];
     const fixture = createFixture({
@@ -176,10 +187,13 @@ function createFixture(options: {
   profileMigrationChanges?: boolean;
   profileValidationFails?: boolean;
   recoveryPointError?: Error;
+  rejectConcurrentIdentityReads?: boolean;
   revalidationFails?: boolean;
   shutdownFails?: boolean;
 } = {}) {
   let currentJournal: Readonly<UpdateJournal> | undefined;
+  let identityReadActive = false;
+  const identityReadRoles: Array<'candidate' | 'current'> = [];
   let profileValidationCount = 0;
   const states: string[] = [];
   const validateActiveProfile = vi.fn(async () => {
@@ -222,7 +236,17 @@ function createFixture(options: {
   const coordinator = new LocalUpdateHandoffCoordinator({
     cache: {
       async readExpectedPackageIdentity(role) {
-        return role === 'current' ? currentIdentity : candidateIdentity;
+        if (options.rejectConcurrentIdentityReads && identityReadActive) {
+          throw new Error('LOCAL_UPDATE_CACHE_BUSY');
+        }
+        identityReadActive = true;
+        identityReadRoles.push(role);
+        try {
+          await Promise.resolve();
+          return role === 'current' ? currentIdentity : candidateIdentity;
+        } finally {
+          identityReadActive = false;
+        }
       },
       async revalidateJournalPackage() {
         if (options.revalidationFails) {
@@ -274,6 +298,7 @@ function createFixture(options: {
     get currentJournal() {
       return currentJournal;
     },
+    identityReadRoles,
     launchInstaller,
     leaveMaintenance,
     operationCompleted,

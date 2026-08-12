@@ -66,10 +66,14 @@ export class LocalUpdateHandoffCoordinator {
       try {
         await this.assertJournalCanBeReplaced();
         failureCode = 'UPDATE_PREPARATION_PACKAGE_IDENTITY_FAILED';
-        const [currentIdentity, candidateIdentity] = await Promise.all([
-          this.dependencies.cache.readExpectedPackageIdentity('current'),
-          this.dependencies.cache.readExpectedPackageIdentity('candidate'),
-        ]);
+        const currentIdentity =
+          await this.dependencies.cache.readExpectedPackageIdentity(
+            'current',
+          );
+        const candidateIdentity =
+          await this.dependencies.cache.readExpectedPackageIdentity(
+            'candidate',
+          );
         failureCode = 'UPDATE_PREPARATION_PROFILE_VALIDATION_FAILED';
         const profileValidation =
           await this.dependencies.profileProtection.validateActiveProfile();
