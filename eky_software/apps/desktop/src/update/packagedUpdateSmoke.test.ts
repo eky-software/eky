@@ -138,6 +138,28 @@ describe('packaged update smoke result boundary', () => {
       }),
     ).toBeUndefined();
   });
+
+  it('accepts the exact successful packaged update smoke result contract', () => {
+    const result = {
+      acceptedVersion: '1.2.3',
+      appVersion: '1.2.3',
+      artifactCount: 1,
+      journalState: 'accepted',
+      migrationChainIdentity: 'b'.repeat(64),
+      pdfSha256: 'a'.repeat(64),
+      phase: 'verifySuccess' as const,
+      secretConfigured: true as const,
+      status: 'ok' as const,
+    };
+
+    expect(readPackagedUpdateSmokeResult(result)).toEqual(result);
+    expect(
+      readPackagedUpdateSmokeResult({
+        ...result,
+        rawPath: 'C:\\private\\profile',
+      }),
+    ).toBeUndefined();
+  });
 });
 
 async function createConfiguration(

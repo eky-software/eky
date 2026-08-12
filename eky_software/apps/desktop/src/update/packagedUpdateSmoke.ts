@@ -314,7 +314,7 @@ export function readPackagedUpdateSmokeResult(
     typeof value.pdfSha256 === 'string' &&
     sha256Pattern.test(value.pdfSha256) &&
     value.secretConfigured === true &&
-    Object.keys(value).length === 10
+    Object.keys(value).length === 9
   ) {
     return {
       acceptedVersion: value.acceptedVersion,
