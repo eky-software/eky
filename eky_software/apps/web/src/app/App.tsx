@@ -15,6 +15,7 @@ import {
 import {
   getDesktopInvoicePdfPreview,
   getDesktopInvoicePdfArchive,
+  getDesktopLocalUpdate,
   getDesktopOperationalLogFolder,
   getDesktopProfileProtection,
   getDesktopSupportBundleCreator,
@@ -34,6 +35,7 @@ export function App({ apiClient }: AppProps): React.JSX.Element {
   const openInvoicePdfPreview = getDesktopInvoicePdfPreview();
   const invoicePdfArchiveCapability = getDesktopInvoicePdfArchive();
   const profileProtectionCapability = getDesktopProfileProtection();
+  const localUpdateCapability = getDesktopLocalUpdate();
   const openOperationalLogFolder = getDesktopOperationalLogFolder();
   const createSupportBundle = getDesktopSupportBundleCreator();
 
@@ -86,6 +88,9 @@ export function App({ apiClient }: AppProps): React.JSX.Element {
           {...(profileProtectionCapability === undefined
             ? {}
             : { profileProtectionCapability })}
+          {...(localUpdateCapability === undefined
+            ? {}
+            : { localUpdateCapability })}
           onOpenActivity={() => activateView('activity')}
           onOpenDiagnostics={() => activateView('diagnostics')}
         />

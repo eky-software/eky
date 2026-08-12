@@ -221,6 +221,36 @@ ei muodosteta Activity-tapahtumaa eikä palautettavaan SQLite-kantaan
 kirjoiteta business auditia. Operational-writerin virhe ei saa muuttaa
 backupin, restoren, validoinnin tai rollbackin lopputulosta.
 
+### Local update
+
+Paikallisen päivityksen tekniset tapahtumaperheet ovat:
+
+- `update.packageInspectionStarted|Succeeded|Failed`
+- `update.packageStagingStarted|Succeeded|Failed`
+- `update.currentPackageRegistrationStarted|Succeeded|Failed`
+- `update.candidateDiscardStarted|Succeeded|Failed`
+- `update.confirmationStarted|Succeeded|Failed`
+- `update.recoveryPointStarted|Succeeded|Failed`
+- `update.runtimeShutdownStarted|Succeeded|Failed`
+- `update.installerHandoffStarted|Succeeded|Failed`
+- `update.firstStartValidationStarted|Succeeded|Failed`
+- `update.businessRollbackStarted|Succeeded|Failed`
+- `update.binaryRollbackStarted|Succeeded|Failed`
+- `update.restoreCompatibilityStarted|Succeeded|Failed`
+- `update.installerNotApplied`
+- `update.accepted`
+- `update.recoveryRequired`.
+
+Sallittu payload on rajattu `correlationId`-, allowlistattuun `stage`-,
+`durationMs`-, turvalliseen `errorCode`-, `retryable`- ja
+`sideEffectState`-kenttään sekä yhteiseen app/build/runtime-identiteettiin.
+Raaka tiedostopolku, komentorivi, installer-output, manifesti, täysi hash,
+`companyId`, `profileId`, asiakas- tai laskudata, salaisuus, runtime-session,
+recovery-payload, raw Error ja stack ovat kiellettyjä. Update on teknistä
+Diagnostics-dataa eikä Activity- tai business audit -dataa. Operational-
+writerin virhe ei saa muuttaa päivityksen, hyväksynnän tai rollbackin
+lopputulosta.
+
 `desktop.bootstrapFailed` sisältää vain allowlistatun virhekoodin. Raw
 virheviestiä, stack tracea, asar- tai käyttäjäpolkua ei kirjoiteta eventtiin
 eikä näytetä käyttäjälle.

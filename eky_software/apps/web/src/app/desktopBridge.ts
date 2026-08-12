@@ -5,6 +5,10 @@ export interface EkyDesktopApi {
   createManualRecoveryPoint(): Promise<unknown>;
   createSupportBundle(): Promise<'cancelled' | 'created'>;
   disableInvoicePdfArchive(): Promise<unknown>;
+  discardSelectedLocalUpdate(): Promise<unknown>;
+  confirmLocalUpdate(): Promise<unknown>;
+  cancelLocalUpdate(): Promise<unknown>;
+  getLocalUpdateStatus(): Promise<unknown>;
   getInvoicePdfArchiveStatus(): Promise<unknown>;
   getProfileBackupStatus(): Promise<unknown>;
   inspectEncryptedProfileBackup(): Promise<unknown>;
@@ -62,6 +66,66 @@ export interface InvoicePdfArchiveCapability {
   retryPending(): Promise<InvoicePdfArchiveStatus>;
 }
 
+const localUpdatePhases = Object.freeze([
+  'idle',
+  'prepared',
+  'recoveryPointValidated',
+  'runtimeStopping',
+  'awaitingFirstStart',
+  'firstStartValidating',
+  'installerNotApplied',
+  'accepted',
+  'rollbackRequired',
+  'businessRollbackStarting',
+  'businessRollbackCompleted',
+  'rollbackPackageRequired',
+  'binaryRollbackPrepared',
+  'awaitingRollbackFirstStart',
+  'rolledBack',
+  'failed',
+  'failedSafe',
+  'recoveryRequired',
+] as const);
+
+export type LocalUpdatePhase = (typeof localUpdatePhases)[number];
+
+export interface LocalUpdatePackageStatus {
+  appVersion: string;
+  buildRevision: string;
+  msiProductVersion: string;
+  packageFingerprint: string;
+  releaseChannel: 'pilot';
+  role: 'candidate';
+  signingStatus: 'unsigned-prototype';
+}
+
+export interface LocalUpdateStatus {
+  architecture: 'x64';
+  candidate: LocalUpdatePackageStatus | null;
+  current: {
+    appVersion: string;
+    buildRevision: string;
+    msiProductVersion: string;
+    releaseChannel: 'pilot';
+  };
+  currentRollbackPackage: 'missing' | 'ready';
+  phase: LocalUpdatePhase;
+  recoveryPointState:
+    | 'notStarted'
+    | 'pending'
+    | 'ready'
+    | 'recoveryRequired';
+  signingStatus: 'unsigned-prototype';
+}
+
+export interface LocalUpdateCapability {
+  cancel(): Promise<'cancelled'>;
+  confirm(): Promise<'cancelled' | 'handoffStarted'>;
+  discardSelected(): Promise<LocalUpdateStatus>;
+  getStatus(): Promise<LocalUpdateStatus>;
+  select(): Promise<'cancelled' | 'candidateReady' | 'currentRegistered'>;
+}
+
 export function getDesktopInvoicePdfPreview(
   target: Pick<Window, 'ekyDesktop'> = window,
 ): OpenInvoicePdfPreview | undefined {
@@ -72,6 +136,160 @@ export function getDesktopInvoicePdfPreview(
   }
 
   return (invoiceId) => openInvoicePdf(invoiceId);
+}
+
+export function getDesktopLocalUpdate(
+  target: Pick<Window, 'ekyDesktop'> = window,
+): LocalUpdateCapability | undefined {
+  const desktop = target.ekyDesktop;
+  if (
+    typeof desktop?.getLocalUpdateStatus !== 'function' ||
+    typeof desktop.selectLocalUpdate !== 'function' ||
+    typeof desktop.discardSelectedLocalUpdate !== 'function' ||
+    typeof desktop.confirmLocalUpdate !== 'function' ||
+    typeof desktop.cancelLocalUpdate !== 'function'
+  ) {
+    return undefined;
+  }
+
+  return {
+    async cancel() {
+      const result = await desktop.cancelLocalUpdate();
+      if (!isRecord(result) || !hasExactKeys(result, ['status']) ||
+        result.status !== 'cancelled') {
+        throw new Error('Invalid local update cancellation result.');
+      }
+      return 'cancelled';
+    },
+    async confirm() {
+      const result = await desktop.confirmLocalUpdate();
+      if (!isRecord(result) || !hasExactKeys(result, ['status']) ||
+        (result.status !== 'cancelled' && result.status !== 'handoffStarted')) {
+        throw new Error('Invalid local update confirmation result.');
+      }
+      return result.status;
+    },
+    async discardSelected() {
+      const result = await desktop.discardSelectedLocalUpdate();
+      if (!isRecord(result) || !hasExactKeys(result, ['status'])) {
+        throw new Error('Invalid local update discard result.');
+      }
+      return readLocalUpdateStatus(result.status);
+    },
+    async getStatus() {
+      return readLocalUpdateStatus(await desktop.getLocalUpdateStatus());
+    },
+    async select() {
+      const result = await desktop.selectLocalUpdate();
+      if (!isRecord(result) ||
+        (result.status !== 'cancelled' &&
+          result.status !== 'candidateReady' &&
+          result.status !== 'currentRegistered')) {
+        throw new Error('Invalid local update selection result.');
+      }
+      if (result.status === 'cancelled') {
+        if (!hasExactKeys(result, ['status'])) {
+          throw new Error('Invalid local update selection result.');
+        }
+        return result.status;
+      }
+      if (!hasExactKeys(result, ['package', 'status']) ||
+        !isSafeSelectedPackage(result.package)) {
+        throw new Error('Invalid local update selection result.');
+      }
+      return result.status;
+    },
+  };
+}
+
+function readLocalUpdateStatus(value: unknown): LocalUpdateStatus {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      'architecture',
+      'candidate',
+      'current',
+      'currentRollbackPackage',
+      'phase',
+      'recoveryPointState',
+      'signingStatus',
+    ]) ||
+    value.architecture !== 'x64' ||
+    !isCurrentUpdateIdentity(value.current) ||
+    (value.candidate !== null && !isCandidateUpdateIdentity(value.candidate)) ||
+    (value.currentRollbackPackage !== 'missing' &&
+      value.currentRollbackPackage !== 'ready') ||
+    !localUpdatePhases.includes(value.phase as LocalUpdatePhase) ||
+    !['notStarted', 'pending', 'ready', 'recoveryRequired'].includes(
+      value.recoveryPointState as string,
+    ) ||
+    value.signingStatus !== 'unsigned-prototype'
+  ) {
+    throw new Error('Invalid local update status.');
+  }
+  return value as unknown as LocalUpdateStatus;
+}
+
+function isCurrentUpdateIdentity(value: unknown): boolean {
+  return isRecord(value) &&
+    hasExactKeys(value, [
+      'appVersion',
+      'buildRevision',
+      'msiProductVersion',
+      'releaseChannel',
+    ]) &&
+    isSafeVersionText(value.appVersion) &&
+    isSafeBuildRevision(value.buildRevision) &&
+    isSafeVersionText(value.msiProductVersion) &&
+    value.releaseChannel === 'pilot';
+}
+
+function isCandidateUpdateIdentity(value: unknown): boolean {
+  return isRecord(value) &&
+    hasExactKeys(value, [
+      'appVersion',
+      'buildRevision',
+      'msiProductVersion',
+      'packageFingerprint',
+      'releaseChannel',
+      'role',
+      'signingStatus',
+    ]) &&
+    isSafeVersionText(value.appVersion) &&
+    isSafeBuildRevision(value.buildRevision) &&
+    isSafeVersionText(value.msiProductVersion) &&
+    typeof value.packageFingerprint === 'string' &&
+    /^[0-9a-f]{12}$/.test(value.packageFingerprint) &&
+    value.releaseChannel === 'pilot' &&
+    value.role === 'candidate' &&
+    value.signingStatus === 'unsigned-prototype';
+}
+
+function isSafeSelectedPackage(value: unknown): boolean {
+  return isRecord(value) &&
+    hasExactKeys(value, [
+      'appVersion',
+      'buildRevision',
+      'msiProductVersion',
+      'releaseChannel',
+      'role',
+      'signingStatus',
+    ]) &&
+    isSafeVersionText(value.appVersion) &&
+    isSafeBuildRevision(value.buildRevision) &&
+    isSafeVersionText(value.msiProductVersion) &&
+    value.releaseChannel === 'pilot' &&
+    (value.role === 'candidate' || value.role === 'current') &&
+    value.signingStatus === 'unsigned-prototype';
+}
+
+function isSafeVersionText(value: unknown): boolean {
+  return typeof value === 'string' && value.length > 0 && value.length <= 100 &&
+    /^[0-9A-Za-z.+-]+$/.test(value);
+}
+
+function isSafeBuildRevision(value: unknown): boolean {
+  return typeof value === 'string' && /^[0-9a-f]{7,40}$/.test(value);
 }
 
 export type OpenOperationalLogFolder = () => Promise<void>;

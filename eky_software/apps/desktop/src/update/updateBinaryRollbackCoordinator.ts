@@ -8,6 +8,10 @@ import {
   type UpdateJournal,
 } from './updateJournal.js';
 import type { UpdateJournalStore } from './updateJournalStore.js';
+import {
+  noOpUpdateOperationalObserver,
+  type UpdateOperationalObserver,
+} from './updateOperationalObserver.js';
 
 interface UpdateBinaryRollbackCoordinatorDependencies {
   cache: Pick<
@@ -21,6 +25,7 @@ interface UpdateBinaryRollbackCoordinatorDependencies {
     rollbackPackage: Readonly<RevalidatedLocalUpdatePackageHandle>,
   ): Promise<void>;
   now?(): Date;
+  observer?: UpdateOperationalObserver;
   releaseInfo: Readonly<DesktopReleaseInfo>;
 }
 
@@ -62,6 +67,7 @@ export class UpdateBinaryRollbackCoordinator {
       return 'notRequired';
     }
 
+    this.notifyStarted(journal.correlationId);
     this.assertRunningFailedTarget(journal);
     const currentIdentity = {
       appVersion: journal.currentVersion,
@@ -79,6 +85,7 @@ export class UpdateBinaryRollbackCoordinator {
           state: 'rollbackPackageRequired',
         }),
       );
+      this.notifyFailed(journal.correlationId, 'UPDATE_ROLLBACK_PACKAGE_REQUIRED');
       throw new UpdateRollbackPackageRequiredError();
     }
     try {
@@ -102,9 +109,11 @@ export class UpdateBinaryRollbackCoordinator {
       });
       await this.dependencies.journalStore.write(journal);
       await this.dependencies.launchInstaller(rollbackPackage);
+      this.notifyCompleted(journal.correlationId);
       return 'launched';
     } catch {
       await this.failSafe(journal);
+      this.notifyFailed(journal.correlationId);
       throw new UpdateBinaryRollbackError();
     }
   }
@@ -199,5 +208,46 @@ export class UpdateBinaryRollbackCoordinator {
 
   private now(): string {
     return (this.dependencies.now?.() ?? new Date()).toISOString();
+  }
+
+  private notifyStarted(correlationId: string): void {
+    this.notify((observer) => observer.operationStarted({
+      correlationId,
+      stage: 'binaryRollback',
+    }));
+  }
+
+  private notifyCompleted(correlationId: string): void {
+    this.notify((observer) => observer.operationCompleted({
+      correlationId,
+      durationMs: 0,
+      stage: 'binaryRollback',
+    }));
+  }
+
+  private notifyFailed(
+    correlationId: string,
+    errorCode = 'UPDATE_BINARY_ROLLBACK_FAILED',
+  ): void {
+    this.notify((observer) => observer.operationFailed({
+      correlationId,
+      durationMs: 0,
+      errorCode,
+      retryable: false,
+      sideEffectState: 'unknown',
+      stage: 'binaryRollback',
+    }));
+  }
+
+  private notify(
+    notification: (observer: UpdateOperationalObserver) => void,
+  ): void {
+    try {
+      notification(
+        this.dependencies.observer ?? noOpUpdateOperationalObserver,
+      );
+    } catch {
+      // Diagnostics never controls rollback.
+    }
   }
 }

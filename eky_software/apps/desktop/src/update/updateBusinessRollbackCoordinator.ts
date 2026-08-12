@@ -6,10 +6,15 @@ import {
   type UpdateJournal,
 } from './updateJournal.js';
 import type { UpdateJournalStore } from './updateJournalStore.js';
+import {
+  noOpUpdateOperationalObserver,
+  type UpdateOperationalObserver,
+} from './updateOperationalObserver.js';
 
 interface UpdateBusinessRollbackCoordinatorDependencies {
   journalStore: Pick<UpdateJournalStore, 'read' | 'write'>;
   now?(): Date;
+  observer?: UpdateOperationalObserver;
   profileProtection: Pick<
     UpdateProfileProtection,
     'restoreRecoveryPoint' | 'validateActiveProfile'
@@ -40,6 +45,8 @@ export class UpdateBusinessRollbackCoordinator {
     ) {
       return 'notRequired';
     }
+
+    this.notifyStarted(journal.correlationId);
 
     this.assertRunningTarget(journal);
     if (
@@ -79,6 +86,7 @@ export class UpdateBusinessRollbackCoordinator {
       });
     } catch {
       await this.failSafe(starting);
+      this.notifyFailed(starting.correlationId);
       throw new UpdateBusinessRollbackError();
     }
   }
@@ -122,8 +130,11 @@ export class UpdateBusinessRollbackCoordinator {
           }),
         );
       }
+      this.notifyCompleted(journal.correlationId);
     } catch {
       await this.requireRecovery(journal);
+      this.notifyFailed(journal.correlationId);
+      this.notifyRecoveryRequired(journal.correlationId);
       throw new UpdateBusinessRollbackError();
     }
   }
@@ -135,6 +146,8 @@ export class UpdateBusinessRollbackCoordinator {
     }
     this.assertRunningTarget(journal);
     await this.requireRecovery(journal);
+    this.notifyFailed(journal.correlationId);
+    this.notifyRecoveryRequired(journal.correlationId);
     throw new UpdateBusinessRollbackError();
   }
 
@@ -183,5 +196,51 @@ export class UpdateBusinessRollbackCoordinator {
 
   private now(): string {
     return (this.dependencies.now?.() ?? new Date()).toISOString();
+  }
+
+  private notifyStarted(correlationId: string): void {
+    this.notify((observer) => observer.operationStarted({
+      correlationId,
+      stage: 'businessRollback',
+    }));
+  }
+
+  private notifyCompleted(correlationId: string): void {
+    this.notify((observer) => observer.operationCompleted({
+      correlationId,
+      durationMs: 0,
+      stage: 'businessRollback',
+    }));
+  }
+
+  private notifyFailed(correlationId: string): void {
+    this.notify((observer) => observer.operationFailed({
+      correlationId,
+      durationMs: 0,
+      errorCode: 'UPDATE_BUSINESS_ROLLBACK_FAILED',
+      retryable: false,
+      sideEffectState: 'unknown',
+      stage: 'businessRollback',
+    }));
+  }
+
+  private notifyRecoveryRequired(correlationId: string): void {
+    this.notify((observer) => observer.operationStateChanged?.({
+      correlationId,
+      stage: 'businessRollback',
+      state: 'recoveryRequired',
+    }));
+  }
+
+  private notify(
+    notification: (observer: UpdateOperationalObserver) => void,
+  ): void {
+    try {
+      notification(
+        this.dependencies.observer ?? noOpUpdateOperationalObserver,
+      );
+    } catch {
+      // Diagnostics never controls rollback.
+    }
   }
 }

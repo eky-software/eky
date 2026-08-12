@@ -3,12 +3,16 @@ import { join, resolve } from 'node:path';
 import type { BrowserWindow, IpcMain } from 'electron';
 
 import type { DesktopReleaseInfo } from '../release/desktopReleaseInfo.js';
+import type { LocalUpdateHandoffCoordinator } from './localUpdateHandoffCoordinator.js';
 import { LocalUnsignedPilotUpdatePackageTrustPolicy } from './localUnsignedPilotUpdatePackageTrustPolicy.js';
 import { LocalUpdatePackageCache } from './localUpdatePackageCache.js';
 import {
   createLocalUpdateSelectionCapability,
   type LocalUpdateSelectionCapability,
 } from './localUpdateSelectionCapability.js';
+import type { LocalUpdateStatus } from './localUpdateSelectionTypes.js';
+import type { UpdateJournalStore } from './updateJournalStore.js';
+import type { UpdateOperationalObserver } from './updateOperationalObserver.js';
 import {
   readWindowsInstallerIdentity,
   resolveWindowsPowerShellPath,
@@ -17,8 +21,15 @@ import { readWindowsRegularFileMetadata } from './windowsRegularFileMetadata.js'
 
 interface LocalUpdateFoundationCompositionOptions {
   cache?: LocalUpdatePackageCache;
+  confirmUpdate(status: Readonly<LocalUpdateStatus>): Promise<boolean>;
+  handoffCoordinator: Pick<
+    LocalUpdateHandoffCoordinator,
+    'handoffPreparedUpdate' | 'prepareConfirmedUpdate'
+  >;
   ipcMain: Pick<IpcMain, 'handle' | 'removeHandler'>;
+  journalStore: Pick<UpdateJournalStore, 'read'>;
   mainWindow: BrowserWindow;
+  observer?: UpdateOperationalObserver;
   releaseInfo: Readonly<DesktopReleaseInfo>;
   resourcesPath: string;
   selectManifestPath(): Promise<string | null>;
@@ -73,8 +84,13 @@ export function createLocalUpdateFoundationComposition(
 
   return createLocalUpdateSelectionCapability({
     cache,
+    confirmUpdate: options.confirmUpdate,
+    handoffCoordinator: options.handoffCoordinator,
     ipcMain: options.ipcMain,
+    journalStore: options.journalStore,
     mainWindow: options.mainWindow,
+    ...(options.observer === undefined ? {} : { observer: options.observer }),
+    releaseInfo: options.releaseInfo,
     selectManifestPath: options.selectManifestPath,
     showSafeError: options.showSafeError,
   });

@@ -60,6 +60,11 @@ export interface LocalUpdatePackageSummary {
   signingStatus: 'unsigned-prototype';
 }
 
+export interface LocalUpdatePackageStatusSummary
+  extends LocalUpdatePackageSummary {
+  packageFingerprint: string;
+}
+
 export interface LocalUpdateExpectedPackageIdentity {
   appVersion: string;
   buildRevision: string;
@@ -115,6 +120,20 @@ export class LocalUpdatePackageCache {
       }
       await this.validateSlot('current', currentPath);
       return 'ready';
+    });
+  }
+
+  async getPackageStatus(
+    role: LocalUpdatePackageRole,
+  ): Promise<Readonly<LocalUpdatePackageStatusSummary> | undefined> {
+    return this.runExclusive(async () => {
+      await this.ensureCacheRoot();
+      const slotPath = this.slotPath(role);
+      if (!(await pathExists(slotPath))) {
+        return undefined;
+      }
+      const metadata = await this.validateSlot(role, slotPath);
+      return createSafeStatusSummary(metadata, role);
     });
   }
 
@@ -1110,6 +1129,21 @@ function createSafeSummary(
     appVersion: manifest.appVersion,
     buildRevision: manifest.buildRevision,
     msiProductVersion: manifest.msiProductVersion,
+    releaseChannel: 'pilot',
+    role,
+    signingStatus: 'unsigned-prototype',
+  });
+}
+
+function createSafeStatusSummary(
+  metadata: Readonly<LocalUpdateCacheMetadata>,
+  role: LocalUpdatePackageRole,
+): Readonly<LocalUpdatePackageStatusSummary> {
+  return Object.freeze({
+    appVersion: metadata.appVersion,
+    buildRevision: metadata.buildRevision,
+    msiProductVersion: metadata.msiProductVersion,
+    packageFingerprint: metadata.packageSha256.slice(0, 12),
     releaseChannel: 'pilot',
     role,
     signingStatus: 'unsigned-prototype',

@@ -48,9 +48,17 @@ export type RecoveryPointOperationalKind =
   (typeof recoveryPointKinds)[number];
 
 export const updateOperationalStages = Object.freeze([
+  'binaryRollback',
+  'businessRollback',
+  'candidateDiscard',
+  'confirmation',
+  'currentPackageRegistration',
   'firstStartValidation',
   'installerHandoff',
-  'preUpdateRecovery',
+  'packageInspection',
+  'packageStaging',
+  'recoveryPoint',
+  'restoreCompatibility',
   'runtimeShutdown',
 ] as const);
 export type UpdateOperationalStage =
@@ -228,6 +236,174 @@ export interface DesktopOperationalEventPayloadMap {
     correlationId: string;
     stage: UpdateOperationalStage;
   };
+  'update.packageInspectionStarted': {
+    correlationId: string;
+    stage: 'packageInspection';
+  };
+  'update.packageInspectionSucceeded': {
+    correlationId: string;
+    durationMs: number;
+    stage: 'packageInspection';
+  };
+  'update.packageInspectionFailed': FailureFields & {
+    correlationId: string;
+    stage: 'packageInspection';
+  };
+  'update.packageStagingStarted': {
+    correlationId: string;
+    stage: 'packageStaging';
+  };
+  'update.packageStagingSucceeded': {
+    correlationId: string;
+    durationMs: number;
+    stage: 'packageStaging';
+  };
+  'update.packageStagingFailed': FailureFields & {
+    correlationId: string;
+    stage: 'packageStaging';
+  };
+  'update.currentPackageRegistrationStarted': {
+    correlationId: string;
+    stage: 'currentPackageRegistration';
+  };
+  'update.currentPackageRegistrationSucceeded': {
+    correlationId: string;
+    durationMs: number;
+    stage: 'currentPackageRegistration';
+  };
+  'update.currentPackageRegistrationFailed': FailureFields & {
+    correlationId: string;
+    stage: 'currentPackageRegistration';
+  };
+  'update.candidateDiscardStarted': {
+    correlationId: string;
+    stage: 'candidateDiscard';
+  };
+  'update.candidateDiscardSucceeded': {
+    correlationId: string;
+    durationMs: number;
+    stage: 'candidateDiscard';
+  };
+  'update.candidateDiscardFailed': FailureFields & {
+    correlationId: string;
+    stage: 'candidateDiscard';
+  };
+  'update.confirmationStarted': {
+    correlationId: string;
+    stage: 'confirmation';
+  };
+  'update.confirmationSucceeded': {
+    correlationId: string;
+    durationMs: number;
+    stage: 'confirmation';
+  };
+  'update.confirmationFailed': FailureFields & {
+    correlationId: string;
+    stage: 'confirmation';
+  };
+  'update.recoveryPointStarted': {
+    correlationId: string;
+    stage: 'recoveryPoint';
+  };
+  'update.recoveryPointSucceeded': {
+    correlationId: string;
+    durationMs: number;
+    stage: 'recoveryPoint';
+  };
+  'update.recoveryPointFailed': FailureFields & {
+    correlationId: string;
+    stage: 'recoveryPoint';
+  };
+  'update.runtimeShutdownStarted': {
+    correlationId: string;
+    stage: 'runtimeShutdown';
+  };
+  'update.runtimeShutdownSucceeded': {
+    correlationId: string;
+    durationMs: number;
+    stage: 'runtimeShutdown';
+  };
+  'update.runtimeShutdownFailed': FailureFields & {
+    correlationId: string;
+    stage: 'runtimeShutdown';
+  };
+  'update.installerHandoffStarted': {
+    correlationId: string;
+    stage: 'installerHandoff';
+  };
+  'update.installerHandoffSucceeded': {
+    correlationId: string;
+    durationMs: number;
+    stage: 'installerHandoff';
+  };
+  'update.installerHandoffFailed': FailureFields & {
+    correlationId: string;
+    stage: 'installerHandoff';
+  };
+  'update.firstStartValidationStarted': {
+    correlationId: string;
+    stage: 'firstStartValidation';
+  };
+  'update.firstStartValidationSucceeded': {
+    correlationId: string;
+    durationMs: number;
+    stage: 'firstStartValidation';
+  };
+  'update.firstStartValidationFailed': FailureFields & {
+    correlationId: string;
+    stage: 'firstStartValidation';
+  };
+  'update.businessRollbackStarted': {
+    correlationId: string;
+    stage: 'businessRollback';
+  };
+  'update.businessRollbackSucceeded': {
+    correlationId: string;
+    durationMs: number;
+    stage: 'businessRollback';
+  };
+  'update.businessRollbackFailed': FailureFields & {
+    correlationId: string;
+    stage: 'businessRollback';
+  };
+  'update.binaryRollbackStarted': {
+    correlationId: string;
+    stage: 'binaryRollback';
+  };
+  'update.binaryRollbackSucceeded': {
+    correlationId: string;
+    durationMs: number;
+    stage: 'binaryRollback';
+  };
+  'update.binaryRollbackFailed': FailureFields & {
+    correlationId: string;
+    stage: 'binaryRollback';
+  };
+  'update.restoreCompatibilityStarted': {
+    correlationId: string;
+    stage: 'restoreCompatibility';
+  };
+  'update.restoreCompatibilitySucceeded': {
+    correlationId: string;
+    durationMs: number;
+    stage: 'restoreCompatibility';
+  };
+  'update.restoreCompatibilityFailed': FailureFields & {
+    correlationId: string;
+    stage: 'restoreCompatibility';
+  };
+  'update.installerNotApplied': {
+    correlationId: string;
+    stage: 'firstStartValidation';
+  };
+  'update.accepted': {
+    correlationId: string;
+    stage: 'firstStartValidation';
+  };
+  'update.recoveryRequired': FailureFields & {
+    correlationId: string;
+    stage: UpdateOperationalStage;
+  };
 }
 
 interface FailureFields {
@@ -286,6 +462,21 @@ const failureFields = [
   'sideEffectState',
   'stage',
 ] as const;
+
+const updateStartedFields = Object.freeze(['correlationId', 'stage']);
+const updateSucceededFields = Object.freeze([
+  'correlationId',
+  'durationMs',
+  'stage',
+]);
+const updateFailedFields = Object.freeze([
+  'correlationId',
+  'durationMs',
+  'errorCode',
+  'retryable',
+  'sideEffectState',
+  'stage',
+]);
 
 export const desktopOperationalEventSpecs = Object.freeze({
   'desktop.starting': spec('runtime', 'info', 'success'),
@@ -559,6 +750,48 @@ export const desktopOperationalEventSpecs = Object.freeze({
     'correlationId',
     ...failureFields,
   ]),
+  'update.packageInspectionStarted': updateStartedSpec(),
+  'update.packageInspectionSucceeded': updateSucceededSpec(),
+  'update.packageInspectionFailed': updateFailedSpec(),
+  'update.packageStagingStarted': updateStartedSpec(),
+  'update.packageStagingSucceeded': updateSucceededSpec(),
+  'update.packageStagingFailed': updateFailedSpec(),
+  'update.currentPackageRegistrationStarted': updateStartedSpec(),
+  'update.currentPackageRegistrationSucceeded': updateSucceededSpec(),
+  'update.currentPackageRegistrationFailed': updateFailedSpec(),
+  'update.candidateDiscardStarted': updateStartedSpec(),
+  'update.candidateDiscardSucceeded': updateSucceededSpec(),
+  'update.candidateDiscardFailed': updateFailedSpec(),
+  'update.confirmationStarted': updateStartedSpec(),
+  'update.confirmationSucceeded': updateSucceededSpec(),
+  'update.confirmationFailed': updateFailedSpec(),
+  'update.recoveryPointStarted': updateStartedSpec(),
+  'update.recoveryPointSucceeded': updateSucceededSpec(),
+  'update.recoveryPointFailed': updateFailedSpec(),
+  'update.runtimeShutdownStarted': updateStartedSpec(),
+  'update.runtimeShutdownSucceeded': updateSucceededSpec(),
+  'update.runtimeShutdownFailed': updateFailedSpec(),
+  'update.installerHandoffStarted': updateStartedSpec(),
+  'update.installerHandoffSucceeded': updateSucceededSpec(),
+  'update.installerHandoffFailed': updateFailedSpec(),
+  'update.firstStartValidationStarted': updateStartedSpec(),
+  'update.firstStartValidationSucceeded': updateSucceededSpec(),
+  'update.firstStartValidationFailed': updateFailedSpec(),
+  'update.businessRollbackStarted': updateStartedSpec('warn'),
+  'update.businessRollbackSucceeded': updateSucceededSpec('warn'),
+  'update.businessRollbackFailed': updateFailedSpec(),
+  'update.binaryRollbackStarted': updateStartedSpec('warn'),
+  'update.binaryRollbackSucceeded': updateSucceededSpec('warn'),
+  'update.binaryRollbackFailed': updateFailedSpec(),
+  'update.restoreCompatibilityStarted': updateStartedSpec(),
+  'update.restoreCompatibilitySucceeded': updateSucceededSpec(),
+  'update.restoreCompatibilityFailed': updateFailedSpec(),
+  'update.installerNotApplied': updateTerminalSpec('warn', 'blocked'),
+  'update.accepted': updateTerminalSpec('info', 'success'),
+  'update.recoveryRequired': spec('update', 'error', 'failure', [
+    'correlationId',
+    ...failureFields,
+  ]),
 } satisfies Record<DesktopOperationalEventName, DesktopOperationalEventSpec>);
 
 export const desktopRequiredPayloadFields = Object.freeze({
@@ -661,7 +894,69 @@ export const desktopRequiredPayloadFields = Object.freeze({
     'sideEffectState',
     'stage',
   ],
+  'update.packageInspectionStarted': updateStartedFields,
+  'update.packageInspectionSucceeded': updateSucceededFields,
+  'update.packageInspectionFailed': updateFailedFields,
+  'update.packageStagingStarted': updateStartedFields,
+  'update.packageStagingSucceeded': updateSucceededFields,
+  'update.packageStagingFailed': updateFailedFields,
+  'update.currentPackageRegistrationStarted': updateStartedFields,
+  'update.currentPackageRegistrationSucceeded': updateSucceededFields,
+  'update.currentPackageRegistrationFailed': updateFailedFields,
+  'update.candidateDiscardStarted': updateStartedFields,
+  'update.candidateDiscardSucceeded': updateSucceededFields,
+  'update.candidateDiscardFailed': updateFailedFields,
+  'update.confirmationStarted': updateStartedFields,
+  'update.confirmationSucceeded': updateSucceededFields,
+  'update.confirmationFailed': updateFailedFields,
+  'update.recoveryPointStarted': updateStartedFields,
+  'update.recoveryPointSucceeded': updateSucceededFields,
+  'update.recoveryPointFailed': updateFailedFields,
+  'update.runtimeShutdownStarted': updateStartedFields,
+  'update.runtimeShutdownSucceeded': updateSucceededFields,
+  'update.runtimeShutdownFailed': updateFailedFields,
+  'update.installerHandoffStarted': updateStartedFields,
+  'update.installerHandoffSucceeded': updateSucceededFields,
+  'update.installerHandoffFailed': updateFailedFields,
+  'update.firstStartValidationStarted': updateStartedFields,
+  'update.firstStartValidationSucceeded': updateSucceededFields,
+  'update.firstStartValidationFailed': updateFailedFields,
+  'update.businessRollbackStarted': updateStartedFields,
+  'update.businessRollbackSucceeded': updateSucceededFields,
+  'update.businessRollbackFailed': updateFailedFields,
+  'update.binaryRollbackStarted': updateStartedFields,
+  'update.binaryRollbackSucceeded': updateSucceededFields,
+  'update.binaryRollbackFailed': updateFailedFields,
+  'update.restoreCompatibilityStarted': updateStartedFields,
+  'update.restoreCompatibilitySucceeded': updateSucceededFields,
+  'update.restoreCompatibilityFailed': updateFailedFields,
+  'update.installerNotApplied': updateStartedFields,
+  'update.accepted': updateStartedFields,
+  'update.recoveryRequired': updateFailedFields,
 } satisfies Record<DesktopOperationalEventName, readonly string[]>);
+
+function updateStartedSpec(
+  level: DesktopEventLevel = 'info',
+): DesktopOperationalEventSpec {
+  return spec('update', level, 'success', updateStartedFields);
+}
+
+function updateSucceededSpec(
+  level: DesktopEventLevel = 'info',
+): DesktopOperationalEventSpec {
+  return spec('update', level, 'success', updateSucceededFields);
+}
+
+function updateFailedSpec(): DesktopOperationalEventSpec {
+  return spec('update', 'error', 'failure', updateFailedFields);
+}
+
+function updateTerminalSpec(
+  level: DesktopEventLevel,
+  outcome: DesktopEventOutcome,
+): DesktopOperationalEventSpec {
+  return spec('update', level, outcome, updateStartedFields);
+}
 
 function spec(
   category: string,

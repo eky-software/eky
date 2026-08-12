@@ -256,6 +256,33 @@ describe('local update package cache', () => {
     expect(Object.isFrozen(identity)).toBe(true);
   });
 
+  it('returns only a short safe fingerprint in package status', async () => {
+    const fixture = await createFixture();
+    const cache = createCache(fixture.cacheRoot);
+    await cache.stageSelectedPackage({
+      manifestPath: fixture.manifestPath,
+      role: 'current',
+    });
+
+    const status = await cache.getPackageStatus('current');
+
+    expect(status).toEqual({
+      appVersion: releaseInfo.appVersion,
+      buildRevision: releaseInfo.buildRevision,
+      msiProductVersion: releaseInfo.msiProductVersion,
+      packageFingerprint: expectedIdentityOf(fixture.manifest)
+        .packageSha256.slice(0, 12),
+      releaseChannel: 'pilot',
+      role: 'current',
+      signingStatus: 'unsigned-prototype',
+    });
+    expect(JSON.stringify(status)).not.toContain(fixture.root);
+    expect(JSON.stringify(status)).not.toContain(
+      expectedIdentityOf(fixture.manifest).packageSha256,
+    );
+    expect(Object.isFrozen(status)).toBe(true);
+  });
+
   it('promotes candidate to current and keeps the prior current as previous', async () => {
     const pair = await createCurrentAndCandidatePair();
     await pair.cache.promoteAcceptedCandidate({

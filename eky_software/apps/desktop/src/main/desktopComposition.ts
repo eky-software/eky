@@ -127,6 +127,8 @@ import { createProfileProtectionComposition } from '../update/profileProtectionC
 import { UpdateJournalStore } from '../update/updateJournalStore.js';
 import { readUpdateProtectedRecoveryPointReferences } from '../update/updateRecoveryPointProtection.js';
 import { createUpdateOperationalObserver } from '../update/updateOperationalObserver.js';
+import { LocalUpdateHandoffCoordinator } from '../update/localUpdateHandoffCoordinator.js';
+import { confirmLocalUpdateWithNativeDialog } from '../update/localUpdateConfirmation.js';
 import { UpdateBusinessRollbackCoordinator } from '../update/updateBusinessRollbackCoordinator.js';
 import { UpdateBinaryRollbackCoordinator } from '../update/updateBinaryRollbackCoordinator.js';
 import {
@@ -475,6 +477,10 @@ async function startDesktopCompositionRuntime({
           systemRoot: process.env.SystemRoot,
           userDataPath: options.userDataPath,
         });
+  const updateObserver = createUpdateOperationalObserver({
+    identity: desktopOperationalIdentity,
+    logger: desktopOperationalLogger,
+  });
   const firstStartUpdateCoordinator =
     options.releaseInfo === undefined || localUpdatePackageCache === undefined
       ? undefined
@@ -484,10 +490,7 @@ async function startDesktopCompositionRuntime({
           cache: localUpdatePackageCache,
           directSetupRecoveryStore: directSetupMigrationRecoveryStore,
           journalStore: updateJournalStore,
-          observer: createUpdateOperationalObserver({
-            identity: desktopOperationalIdentity,
-            logger: desktopOperationalLogger,
-          }),
+          observer: updateObserver,
           profileProtection: updateProfileProtection,
           readSecretStorageIdentity: () =>
             readEncryptedSecretStorageIdentity(encryptedSecretFile),
@@ -498,6 +501,7 @@ async function startDesktopCompositionRuntime({
       ? undefined
       : new UpdateBusinessRollbackCoordinator({
           journalStore: updateJournalStore,
+          observer: updateObserver,
           profileProtection: updateProfileProtection,
           releaseInfo: options.releaseInfo,
         });
@@ -512,6 +516,7 @@ async function startDesktopCompositionRuntime({
               packagePath: rollbackPackage.packagePath,
               systemRoot: process.env.SystemRoot,
             }),
+          observer: updateObserver,
           releaseInfo: options.releaseInfo,
         });
   let applicationWindow: BrowserWindow | undefined;
@@ -991,41 +996,6 @@ async function startDesktopCompositionRuntime({
     },
   );
   const mainWindow = applicationWindow;
-  if (options.releaseInfo !== undefined) {
-    localUpdateSelectionCapability =
-      createLocalUpdateFoundationComposition({
-        ...(localUpdatePackageCache === undefined
-          ? {}
-          : { cache: localUpdatePackageCache }),
-        ipcMain,
-        mainWindow,
-        releaseInfo: options.releaseInfo,
-        resourcesPath: options.resourcesPath,
-        async selectManifestPath() {
-          const result = await dependencies.showOpenDialog(mainWindow, {
-            filters: [
-              {
-                extensions: ['json'],
-                name: 'Eky-päivityksen manifesti',
-              },
-            ],
-            properties: ['openFile'],
-            title: 'Valitse paikallinen Eky-päivitys',
-          });
-          return result.canceled || result.filePaths.length !== 1
-            ? null
-            : result.filePaths[0] ?? null;
-        },
-        showSafeError() {
-          deliveryConfirmation.showApplicationError(
-            'Päivityspakettia ei voitu tarkistaa',
-            'Paikallista Eky-päivityspakettia ei voitu tarkistaa tai tallentaa turvallisesti.',
-          );
-        },
-        systemRoot: process.env.SystemRoot,
-        userDataPath: options.userDataPath,
-      });
-  }
   operationalLogFolderCapability = createOperationalLogFolderCapability({
     ipcMain,
     mainWindow,
@@ -1331,6 +1301,67 @@ async function startDesktopCompositionRuntime({
       }
     },
   };
+
+  if (
+    options.releaseInfo !== undefined &&
+    localUpdatePackageCache !== undefined
+  ) {
+    const handoffCoordinator = new LocalUpdateHandoffCoordinator({
+      cache: localUpdatePackageCache,
+      journalStore: updateJournalStore,
+      async launchInstaller(candidate) {
+        await launchWindowsInstallerForUpdate({
+          packagePath: candidate.packagePath,
+          systemRoot: process.env.SystemRoot,
+        });
+        options.quitApplication();
+      },
+      observer: updateObserver,
+      profileProtection: updateProfileProtection,
+      shutdownRuntime: () => lifecycleHandle.shutdown(),
+    });
+    localUpdateSelectionCapability =
+      createLocalUpdateFoundationComposition({
+        cache: localUpdatePackageCache,
+        confirmUpdate: (status) =>
+          confirmLocalUpdateWithNativeDialog({
+            mainWindow,
+            showMessageBox: (owner, dialogOptions) =>
+              dependencies.showMessageBox(owner, dialogOptions),
+            status,
+          }),
+        handoffCoordinator,
+        ipcMain,
+        journalStore: updateJournalStore,
+        mainWindow,
+        observer: updateObserver,
+        releaseInfo: options.releaseInfo,
+        resourcesPath: options.resourcesPath,
+        async selectManifestPath() {
+          const result = await dependencies.showOpenDialog(mainWindow, {
+            filters: [
+              {
+                extensions: ['json'],
+                name: 'Eky-päivityksen manifesti',
+              },
+            ],
+            properties: ['openFile'],
+            title: 'Valitse paikallinen Eky-päivitys',
+          });
+          return result.canceled || result.filePaths.length !== 1
+            ? null
+            : result.filePaths[0] ?? null;
+        },
+        showSafeError() {
+          deliveryConfirmation.showApplicationError(
+            'Päivitystä ei voitu käsitellä',
+            'Paikallista Eky-päivitystä ei voitu käsitellä turvallisesti.',
+          );
+        },
+        systemRoot: process.env.SystemRoot,
+        userDataPath: options.userDataPath,
+      });
+  }
 
   if (smokeMode) {
     const smokeStartedAt = Date.now();

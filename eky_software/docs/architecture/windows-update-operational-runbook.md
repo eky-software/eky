@@ -185,26 +185,40 @@ Kiellettyjä ovat raaka polku, komentorivi, executable, URL queryineen,
 installer stdout/stderr, business data, `companyId`, backup- tai recovery-
 payload, salaisuus, runtime-session, stack ja vapaa metadata.
 
-## C2 operational-eventit ja stage-allowlist
+## C3C operational-eventit
 
-C2 kirjoittaa vain seuraavia nimettyjä teknisiä tapahtumia:
+Päivityksen tekninen elinkaari käyttää nimettyjä tapahtumaperheitä:
 
-- `update.operationStarted`
-- `update.operationCompleted`
-- `update.operationFailed`
+- `update.packageInspection*`
+- `update.packageStaging*`
+- `update.currentPackageRegistration*`
+- `update.candidateDiscard*`
+- `update.confirmation*`
+- `update.recoveryPoint*`
+- `update.runtimeShutdown*`
+- `update.installerHandoff*`
+- `update.firstStartValidation*`
+- `update.businessRollback*`
+- `update.binaryRollback*`
+- `update.restoreCompatibility*`
+- terminaalit `update.installerNotApplied`, `update.accepted` ja
+  `update.recoveryRequired`.
 
-C2:n suljettu stage-allowlist on:
+Tähtiperhe sisältää vain katalogoidut `Started`, `Succeeded` ja `Failed`-
+tapahtumat. Suljettu stage-allowlist on `packageInspection`, `packageStaging`,
+`currentPackageRegistration`, `candidateDiscard`, `confirmation`,
+`recoveryPoint`, `runtimeShutdown`, `installerHandoff`,
+`firstStartValidation`, `businessRollback`, `binaryRollback` ja
+`restoreCompatibility`.
 
-- `preUpdateRecovery`
-- `runtimeShutdown`
-- `installerHandoff`
-- `firstStartValidation`
-
-Failure-eventissä sallitaan vain allowlistattu turvallinen `errorCode`,
-`retryable` ja `sideEffectState`. Polkua, paketin tiivistettä, journalia,
-recovery-viitettä, sessionia, installer-outputia tai vapaata metadataa ei
-kirjoiteta. C3 lukitsee rollback-vaiheiden eventit erikseen ennen niiden
-toteutusta.
+Eventissä sallitaan vain korrelaatiotunniste, allowlistattu vaihe, kesto,
+turvallinen virhekoodi, retryable- ja side-effect-tila sekä yhteinen
+validoitu app/build/runtime-identiteetti. Raaka polku, komentorivi, installer
+stdout/stderr, manifesti, täysi pakettitiiviste, yritys- tai profiilitunniste,
+asiakas- tai laskudata, salaisuus, runtime-session, recovery-payload, raw
+Error ja stack ovat kiellettyjä. Päivityseventit kuuluvat Diagnosticsiin,
+eivät Activityyn tai business-auditiin. Loggerin virhe ei muuta päivityksen,
+hyväksynnän tai rollbackin lopputulosta.
 
 ## Error code -runbook
 

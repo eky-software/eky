@@ -284,6 +284,7 @@ export class FirstStartUpdateCoordinator {
           state: 'accepted',
         });
         await this.dependencies.journalStore.write(acceptedJournal);
+        this.notifyOperationStateChanged('accepted');
       } else if (mode.kind === 'installerNotApplied') {
         await this.dependencies.journalStore.write(
           transitionUpdateJournal(mode.journal, {
@@ -291,6 +292,7 @@ export class FirstStartUpdateCoordinator {
             state: 'installerNotApplied',
           }),
         );
+        this.notifyOperationStateChanged('installerNotApplied');
       } else if (mode.kind === 'rollback') {
         await this.dependencies.journalStore.write(
           transitionUpdateJournal(mode.journal, {
@@ -830,6 +832,25 @@ export class FirstStartUpdateCoordinator {
           errorCode: 'UPDATE_FIRST_START_FAILED',
           retryable: false,
           sideEffectState: 'unknown',
+        });
+    } catch {
+      // Operational logging never becomes the acceptance authority.
+    }
+  }
+
+  private notifyOperationStateChanged(
+    state: 'accepted' | 'installerNotApplied',
+  ): void {
+    const correlationId = this.operationCorrelationId;
+    if (correlationId === undefined) {
+      return;
+    }
+    try {
+      (this.dependencies.observer ?? noOpUpdateOperationalObserver)
+        .operationStateChanged?.({
+          correlationId,
+          stage: 'firstStartValidation',
+          state,
         });
     } catch {
       // Operational logging never becomes the acceptance authority.

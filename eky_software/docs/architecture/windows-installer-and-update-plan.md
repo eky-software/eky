@@ -11,11 +11,11 @@ Local Update Foundation tarkistaa paikallisen manifestin ja MSI-identiteetin,
 soveltaa vaihdettavaa trust-policya ja rekisteröi hyväksytyn paketin Electron
 mainin yksityiseen tekniseen cacheen. Yksityinen C2-orkestrointi,
 pre-update/pre-migration-suoja, crash-safe journal, guarded installer handoff
-sekä UI:ta edeltävä first-start-hyväksyntä on toteutettu. Code signingia,
-käyttäjälle avattua tavallista update-UI:ta ei ole vielä toteutettu. C3B:n
-business- ja binary-rollback sekä business-UI:sta eristetty recovery-only-
-ikkuna on toteutettu; pilot release- ja code signing -portit ovat edelleen
-auki.
+sekä UI:ta edeltävä first-start-hyväksyntä on toteutettu. C3B:n business- ja
+binary-rollback sekä business-UI:sta eristetty recovery-only-ikkuna ovat
+toteutettu. C3C:n rajattu paikallisen päivityksen UI ja nimetyt renderer-
+capabilityt ovat toteutettu. Kahden oikean MSI-version final packaged -portti,
+fyysisen median manuaalinen tarkistus ja code signing ovat edelleen auki.
 
 ### Local Update Program -checkpointit
 
@@ -24,7 +24,7 @@ auki.
 | C0 Electron cold-start baseline | valmis 11.8.2026 | `DESK-PDF-001` ajettiin 10 kertaa retries=0 ja Electron critical kahdesti puhtaasti; aiemman flaken juurisyytä ei väitetä korjatuksi |
 | C1 Local Update Foundation | valmis 11.8.2026 | Manifestin runtime-codec, vaihdettava trust-policy, native selection, private staging/cache ja nykyisen rollback-paketin rekisteröinti; ei MSI:n käynnistystä eikä business-dataa |
 | C2 Update Orchestration and First Start | valmis 11.8.2026 | Yksityinen migration gate, pre-update/pre-migration recovery, crash-safe journal, graceful-only handoff, accepted-build-metadata ja UI:ta edeltävä first-start-hyväksyntä; ei käyttäjälle avattua päivitys-UI:ta tai rollbackia |
-| C3 Recovery, Compatibility and Pilot Release | käynnissä | C3B:n business/binary-rollback, täsmällisen rollback-paketin valinta ja recovery-only-tila ovat toteutettu; tavallinen update-UI, yhteensopivuusmatriisi ja pilot release -portit ovat kesken |
+| C3 Recovery, Compatibility and Pilot Release | käynnissä | C3B:n business/binary-rollback, täsmällisen rollback-paketin valinta ja recovery-only-tila sekä C3C:n rajattu paikallinen update-UI ovat toteutettu; final packaged -matriisi, fyysinen media ja code signing ovat kesken |
 
 Migration runnerin SHA-256-checksum-, chain identity- ja release/build-
 metadata on toteutettu 10.8.2026. Historiallinen mismatch torjutaan ennen
@@ -335,13 +335,40 @@ Käyttäjäpolku:
 
 R0:ssa päivitystä ei käynnistetä automaattisesti ilman käyttäjän vahvistusta.
 
-Renderer pyytää vain nimetyn nollaparametrisen `selectLocalUpdate()`-
-capabilityn. Electron main avaa native-dialogin manifestille, lukee suljetun
-manifestin ja johtaa sen samassa hakemistossa olevan paketin nimen vain
-validoidusta `packageFilename`-kentästä. Renderer ei saa manifestin tai
-paketin raakaa polkua, executablea, URL:ia, komentoriviä tai
-prosessioikeutta. R0:ssa ei valita executablea suoraan eikä käytetä yleistä
-`openFile`-capabilityä.
+Renderer käyttää vain nimettyjä nollaparametrisia capabilityja
+`getLocalUpdateStatus()`, `selectLocalUpdate()`,
+`discardSelectedLocalUpdate()`, `confirmLocalUpdate()` ja
+`cancelLocalUpdate()`. Electron main avaa native-dialogin manifestille, lukee
+suljetun manifestin ja johtaa sen samassa hakemistossa olevan paketin nimen
+vain validoidusta `packageFilename`-kentästä. Renderer ei saa manifestin tai
+paketin raakaa polkua, täydellistä tiivistettä, executablea, URL:ia,
+komentoriviä, sessionia tai prosessioikeutta. R0:ssa ei valita executablea
+suoraan eikä käytetä yleistä `openFile`-capabilityä.
+
+`confirmLocalUpdate()` ei hyväksy rendereriltä candidate-tunnistetta tai
+muuta päivitysdataa. Electron main lukee ja validoi nykyisen candidate-slotin
+uudelleen, näyttää native-vahvistuksen ja käynnistää vain siihen sidotun
+palautuspiste-, shutdown- ja installer-handoff-polun. Vahvistuksen peruuttaminen
+ennen handoffia ei luo palautuspistettä tai journalia, sulje runtimea eikä
+kosketa business-dataan.
+
+UI sijaitsee polussa `Oma yritys` -> `Tuki ja historia` ->
+`Sovellus ja päivitykset`. Se näyttää rajatun nykyversion, buildin, kanavan,
+rollback-paketin tilan, candidate-version, recovery point -tilan ja
+päivitysvaiheen. Selainkehityksessä capability on tarkoituksella pois
+käytöstä; webiin ei lisätä fake-filesystem-adapteria.
+
+Allekirjoittamattoman pilotin native-vahvistus näyttää nykyisen ja kohde-
+app-version, nykyisen ja kohde-MSI-version, kanavan, arkkitehtuurin, lyhyen
+SHA-256-sormenjäljen, rollback-paketin ja pre-update-pisteen tilan sekä
+seuraavan varoituksen:
+
+> Tämän pilot-päivityksen julkaisijaa ei ole varmennettu Windowsin
+> digitaalisella allekirjoituksella. Jatka vain, jos päivityspaketti on saatu
+> suoraan Eky-kehittäjältä hallitulla medialla.
+
+Jatkotoiminto on eksplisiittinen `Jatka päivitykseen`, ja turvallinen
+oletusvalinta on `Peruuta`.
 
 ### Package trust ja yksityinen staging
 
