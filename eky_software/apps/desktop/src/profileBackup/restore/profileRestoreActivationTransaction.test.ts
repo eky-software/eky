@@ -125,7 +125,7 @@ describe('profile restore activation transaction', () => {
     });
   });
 
-  it('RESTORE-ROLLBACK-002 @critical restores the previous profile byte-for-byte after a partial forward migration', async () => {
+  it('RESTORE-ROLLBACK-002 @critical restores the previous profile byte-for-byte after a staged profile mutation', async () => {
     const fixture = await createFixture();
     const previousDatabase = await readFile(fixture.activeDatabasePath);
     const previousPdf = await readFile(fixture.activePdfPath);
