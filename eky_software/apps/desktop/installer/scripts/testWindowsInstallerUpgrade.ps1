@@ -354,7 +354,7 @@ try {
     -FailedProductCode $nextProductCode -FailedPackagePath $nextMsiPath `
     -RollbackPackagePath $invalidRollbackMsiPath
   if ($failedRollbackExitCode -ne 21) {
-    throw 'INSTALLER_UPGRADE_ROLLBACK_REPAIR_RESULT_INVALID'
+    throw "INSTALLER_UPGRADE_ROLLBACK_REPAIR_RESULT_INVALID:$failedRollbackExitCode"
   }
   Assert-ProductAbsent -ProductCode $currentProductCode
   Assert-ProductInstalled -ProductCode $nextProductCode

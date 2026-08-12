@@ -114,6 +114,9 @@ test('keeps direct downgrade blocked and rollback outside MSI authoring', async 
   assert.ok(uninstallIndex >= 0);
   assert.ok(rollbackInstallIndex > uninstallIndex);
   assert.ok(failedRepairIndex > rollbackInstallIndex);
+  assert.match(rollbackScript, /\$ErrorActionPreference = 'Continue'/);
+  assert.match(rollbackScript, /2>\$null/);
+  assert.match(rollbackScript, /return 1603/);
   assert.doesNotMatch(
     rollbackScript,
     /Invoke-Expression|Start-Process|cmd\.exe|\.bat\b|\.cmd\b/iu,
