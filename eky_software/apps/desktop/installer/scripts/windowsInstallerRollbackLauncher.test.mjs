@@ -73,43 +73,61 @@ test(
         windowsHide: true,
       },
     );
-    const exitPromise = waitUntilExited(processHandle);
+    const exitPromise = observeProcessExit(processHandle);
     await waitUntilSpawned(processHandle);
-
-    const rows = await waitForValidationFailure(progressPath);
-    const exit = await exitPromise;
-    assert.deepEqual(
-      rows.map(({ event, phase }) => ({ event, phase })),
-      [
-        { event: 'started', phase: 'inputValidation' },
-        { event: 'failed', phase: 'inputValidation' },
-      ],
-    );
-    assert.deepEqual(exit, { code: 25, signal: null });
+    try {
+      const rows = await waitForValidationFailure(progressPath);
+      const exit = await waitUntilExited(exitPromise, processHandle);
+      assert.deepEqual(
+        rows.map(({ event, phase }) => ({ event, phase })),
+        [
+          { event: 'started', phase: 'inputValidation' },
+          { event: 'failed', phase: 'inputValidation' },
+        ],
+      );
+      assert.deepEqual(exit, { code: 25, signal: null });
+    } finally {
+      if (processHandle.exitCode === null && !processHandle.killed) {
+        processHandle.kill();
+      }
+    }
   },
 );
 
 function waitUntilSpawned(processHandle) {
   return new Promise((resolve, reject) => {
-    processHandle.once('error', reject);
+    processHandle.once('error', () => {
+      reject(new Error('ROLLBACK_LAUNCHER_START_FAILED'));
+    });
     processHandle.once('spawn', resolve);
   });
 }
 
-function waitUntilExited(processHandle) {
+function observeProcessExit(processHandle) {
+  return new Promise((resolve) => {
+    processHandle.once('error', () => {
+      resolve({ type: 'error' });
+    });
+    processHandle.once('exit', (code, signal) => {
+      resolve({ code, signal, type: 'exit' });
+    });
+  });
+}
+
+function waitUntilExited(exitPromise, processHandle) {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       processHandle.kill();
       reject(new Error('ROLLBACK_LAUNCHER_EXIT_TIMEOUT'));
-    }, 10_000);
+    }, 5_000);
     timeout.unref();
-    processHandle.once('error', (error) => {
+    exitPromise.then((outcome) => {
       clearTimeout(timeout);
-      reject(error);
-    });
-    processHandle.once('exit', (code, signal) => {
-      clearTimeout(timeout);
-      resolve({ code, signal });
+      if (outcome.type === 'error') {
+        reject(new Error('ROLLBACK_LAUNCHER_START_FAILED'));
+        return;
+      }
+      resolve({ code: outcome.code, signal: outcome.signal });
     });
   });
 }
