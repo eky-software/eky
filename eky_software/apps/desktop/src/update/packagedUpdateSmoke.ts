@@ -5,12 +5,13 @@ import { join } from 'node:path';
 import type { DesktopReleaseInfo } from '../release/desktopReleaseInfo.js';
 import type { DesktopBackendHandle } from '../runtime/backendProcess.js';
 import { localRuntimeSessionHeaderName } from '../main/protocolPolicy.js';
-import { createInvoicePdfPreviewSmokeFixture } from '../pdf/invoicePdfPreviewSmoke.js';
+import { createInvoicePdfPreviewSmokeFixtureData } from '../pdf/invoicePdfPreviewSmoke.js';
 import type { PortableProfileBackupService } from '../profileBackup/portableProfileBackup.js';
 import type { ProfileSnapshotBrokerClient } from '../profileBackup/profileSnapshotBrokerClient.js';
 import type { ProfileRestoreActivationService } from '../profileBackup/restore/profileRestoreActivationService.js';
 import type { ProfileRestoreStagingService } from '../profileBackup/restore/profileRestoreStagingService.js';
 import type { AcceptedBuildMetadataStore } from './acceptedBuildMetadataStore.js';
+import { createPackagedUpdateBusinessDataSha256 } from './packagedUpdateBusinessFingerprint.js';
 import type { DirectSetupMigrationRecoveryStore } from './directSetupMigrationRecoveryStore.js';
 import type { LocalUpdateHandoffCoordinator } from './localUpdateHandoffCoordinator.js';
 import type { LocalUpdatePackageCache } from './localUpdatePackageCache.js';
@@ -69,6 +70,7 @@ export type PackagedUpdateSmokeResult =
       acceptedVersion: string;
       appVersion: string;
       artifactCount: number;
+      businessDataSha256: string;
       journalState: string | null;
       migrationChainIdentity: string;
       pdfSha256: string;
@@ -349,18 +351,21 @@ export function readPackagedUpdateSmokeResult(
     typeof value.appVersion === 'string' &&
     Number.isSafeInteger(value.artifactCount) &&
     (value.artifactCount as number) >= 1 &&
+    typeof value.businessDataSha256 === 'string' &&
+    sha256Pattern.test(value.businessDataSha256) &&
     (value.journalState === null || typeof value.journalState === 'string') &&
     typeof value.migrationChainIdentity === 'string' &&
     sha256Pattern.test(value.migrationChainIdentity) &&
     typeof value.pdfSha256 === 'string' &&
     sha256Pattern.test(value.pdfSha256) &&
     value.secretConfigured === true &&
-    Object.keys(value).length === 9
+    Object.keys(value).length === 10
   ) {
     return {
       acceptedVersion: value.acceptedVersion,
       appVersion: value.appVersion,
       artifactCount: value.artifactCount as number,
+      businessDataSha256: value.businessDataSha256,
       journalState: value.journalState,
       migrationChainIdentity: value.migrationChainIdentity,
       pdfSha256: value.pdfSha256,
@@ -408,10 +413,10 @@ async function seedSyntheticProfile(
       manifestPath: packageManifestPath(dependencies, 'current'),
     }),
   );
-  const invoiceId = await runSmokeStep(
+  const fixture = await runSmokeStep(
     'DESKTOP_UPDATE_SMOKE_INVOICE_FIXTURE_FAILED',
     () =>
-      createInvoicePdfPreviewSmokeFixture({
+      createInvoicePdfPreviewSmokeFixtureData({
         backendPort: dependencies.backend.port,
         runtimeSessionSecret: dependencies.runtimeSessionSecret,
       }),
@@ -423,7 +428,7 @@ async function seedSyntheticProfile(
     ),
   );
   await runSmokeStep('DESKTOP_UPDATE_SMOKE_STATE_FAILED', () =>
-    writeSyntheticProfileState(dependencies, { invoiceId }),
+    writeSyntheticProfileState(dependencies, fixture),
   );
   await runSmokeStep('DESKTOP_UPDATE_SMOKE_PROFILE_VALIDATION_FAILED', () =>
     verifySyntheticProfile(dependencies, { expectedJournalState: null }),
@@ -471,9 +476,21 @@ async function verifySyntheticProfile(
   input: { expectedJournalState: string | null },
 ): Promise<void> {
   const state = await readSyntheticProfileState(dependencies);
-  const [acceptedBuild, journal, profile, pdfSha256, secretConfigured] =
+  const [
+    acceptedBuild,
+    businessDataSha256,
+    journal,
+    profile,
+    pdfSha256,
+    secretConfigured,
+  ] =
     await Promise.all([
       dependencies.acceptedBuildStore.read(),
+      readBusinessDataSha256(
+        dependencies.backend.port,
+        dependencies.runtimeSessionSecret,
+        state,
+      ),
       dependencies.journalStore.read(),
       dependencies.profileSnapshotClient.validateActiveProfile(),
       readInvoicePdfSha256(
@@ -503,6 +520,7 @@ async function verifySyntheticProfile(
     acceptedVersion: acceptedBuild.appVersion,
     appVersion: dependencies.appVersion,
     artifactCount: profile.artifactCount,
+    businessDataSha256,
     journalState: journal?.state ?? null,
     migrationChainIdentity: profile.migrationChainIdentity,
     pdfSha256,
@@ -574,23 +592,26 @@ function backupPath(
 
 async function writeSyntheticProfileState(
   dependencies: PackagedUpdateSmokeDependencies,
-  state: { invoiceId: string },
+  state: { customerId: string; invoiceId: string },
 ): Promise<void> {
-  if (!identifierPattern.test(state.invoiceId)) {
+  if (
+    !identifierPattern.test(state.customerId) ||
+    !identifierPattern.test(state.invoiceId)
+  ) {
     throw new Error('DESKTOP_UPDATE_SMOKE_STATE_INVALID');
   }
   const stateRoot = join(requireSmokeRoot(dependencies), 'state');
   await mkdir(stateRoot, { recursive: true });
   await writeFile(
     join(stateRoot, syntheticProfileStateFileName),
-    `${JSON.stringify({ formatVersion: 1, invoiceId: state.invoiceId })}\n`,
+    `${JSON.stringify({ formatVersion: 2, ...state })}\n`,
     { encoding: 'utf8', flag: 'wx', mode: 0o600 },
   );
 }
 
 async function readSyntheticProfileState(
   dependencies: PackagedUpdateSmokeDependencies,
-): Promise<{ invoiceId: string }> {
+): Promise<{ customerId: string; invoiceId: string }> {
   const bytes = await readFile(
     join(
       requireSmokeRoot(dependencies),
@@ -607,14 +628,16 @@ async function readSyntheticProfileState(
     );
     if (
       !isRecord(value) ||
-      Object.keys(value).length !== 2 ||
-      value.formatVersion !== 1 ||
+      Object.keys(value).length !== 3 ||
+      value.formatVersion !== 2 ||
+      typeof value.customerId !== 'string' ||
+      !identifierPattern.test(value.customerId) ||
       typeof value.invoiceId !== 'string' ||
       !identifierPattern.test(value.invoiceId)
     ) {
       throw new Error('DESKTOP_UPDATE_SMOKE_STATE_INVALID');
     }
-    return { invoiceId: value.invoiceId };
+    return { customerId: value.customerId, invoiceId: value.invoiceId };
   } catch {
     throw new Error('DESKTOP_UPDATE_SMOKE_STATE_INVALID');
   }
@@ -697,6 +720,58 @@ async function readInvoicePdfSha256(
     throw new Error('DESKTOP_UPDATE_SMOKE_PDF_FAILED');
   }
   return createHash('sha256').update(bytes).digest('hex');
+}
+
+async function readBusinessDataSha256(
+  port: number,
+  runtimeSessionSecret: string,
+  state: { customerId: string; invoiceId: string },
+): Promise<string> {
+  const [companySettings, customer, invoice] = await Promise.all([
+    readJsonResource(port, runtimeSessionSecret, '/company-settings'),
+    readJsonResource(
+      port,
+      runtimeSessionSecret,
+      `/customers/${state.customerId}`,
+    ),
+    readJsonResource(
+      port,
+      runtimeSessionSecret,
+      `/invoices/${state.invoiceId}`,
+    ),
+  ]);
+
+  return createPackagedUpdateBusinessDataSha256({
+    companySettings,
+    customer,
+    invoice,
+  });
+}
+
+async function readJsonResource(
+  port: number,
+  runtimeSessionSecret: string,
+  pathname: string,
+): Promise<unknown> {
+  const response = await fetch(`http://127.0.0.1:${port}${pathname}`, {
+    headers: createHeaders(runtimeSessionSecret),
+    method: 'GET',
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (
+    !response.ok ||
+    !(response.headers.get('content-type') ?? '')
+      .toLowerCase()
+      .startsWith('application/json')
+  ) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new Error('DESKTOP_UPDATE_SMOKE_BUSINESS_DATA_FAILED');
+  }
+  try {
+    return await response.json();
+  } catch {
+    throw new Error('DESKTOP_UPDATE_SMOKE_BUSINESS_DATA_FAILED');
+  }
 }
 
 function createHeaders(runtimeSessionSecret: string): Headers {

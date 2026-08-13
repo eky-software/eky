@@ -308,8 +308,9 @@ describe('local update package cache', () => {
     ).resolves.toMatchObject({ appVersion: releaseInfo.appVersion });
   });
 
-  it('resumes promotion after either durable directory rename', async () => {
-    for (const interruption of ['afterCurrentRename', 'afterCandidateRename']) {
+  it.each(['afterCurrentRename', 'afterCandidateRename'] as const)(
+    'resumes promotion after %s',
+    async (interruption) => {
       const pair = await createCurrentAndCandidatePair();
       await rename(
         join(pair.current.cacheRoot, 'current'),
@@ -342,8 +343,8 @@ describe('local update package cache', () => {
           role: 'previous',
         }),
       ).resolves.toBeDefined();
-    }
-  });
+    },
+  );
 
   it('normalizes unrotated rollback packages idempotently', async () => {
     const pair = await createCurrentAndCandidatePair();

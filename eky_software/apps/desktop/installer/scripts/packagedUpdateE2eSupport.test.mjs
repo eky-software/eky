@@ -145,6 +145,7 @@ describe('packaged update E2E support', () => {
           acceptedVersion: '0.0.0-update-fixture.2',
           appVersion: '0.0.0-update-fixture.2',
           artifactCount: 1,
+          businessDataSha256: 'c'.repeat(64),
           journalState: 'accepted',
           migrationChainIdentity: 'a'.repeat(64),
           pdfSha256: 'b'.repeat(64),

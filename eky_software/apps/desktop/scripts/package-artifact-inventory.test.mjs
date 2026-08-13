@@ -270,6 +270,11 @@ test('enforces the application-stage file count boundary', async () => {
     ),
   );
 
+  await assert.doesNotReject(
+    inspectPackageArtifactInventory({ root, stage: 'applicationStage' }),
+  );
+  await writeFixture(root, 'dist/file-194.js', 'safe');
+
   await assert.rejects(
     inspectPackageArtifactInventory({ root, stage: 'applicationStage' }),
     /FILE_COUNT/,

@@ -197,10 +197,10 @@ describe('packaged update E2E progress observer', () => {
         { phase: 'applicationExitWait', scenario: 'directSetupFailure' },
         async () => {
           heartbeat();
-          throw new Error('PACKAGED_UPDATE_E2E_APPLICATION_EXIT_INVALID');
+          throw new Error('PACKAGED_UPDATE_E2E_APPLICATION_EXIT_NONZERO');
         },
       ),
-      /PACKAGED_UPDATE_E2E_APPLICATION_EXIT_INVALID/,
+      /PACKAGED_UPDATE_E2E_APPLICATION_EXIT_NONZERO/,
     );
 
     assert.equal(timer.unrefCalled, true);
@@ -312,7 +312,7 @@ describe('packaged update E2E progress observer', () => {
   it('keeps a nonzero process outcome as an error with observability enabled', async () => {
     const events = [];
     const progress = createTestObserver(events);
-    const failure = new Error('PACKAGED_UPDATE_E2E_APPLICATION_EXIT_INVALID');
+    const failure = new Error('PACKAGED_UPDATE_E2E_APPLICATION_EXIT_NONZERO');
 
     await assert.rejects(
       progress.runPhase(
@@ -329,7 +329,7 @@ describe('packaged update E2E progress observer', () => {
     assert.equal(events.at(-1).event, 'phaseFailed');
     assert.equal(
       events.at(-1).errorCode,
-      'PACKAGED_UPDATE_E2E_APPLICATION_EXIT_INVALID',
+      'PACKAGED_UPDATE_E2E_APPLICATION_EXIT_NONZERO',
     );
   });
 

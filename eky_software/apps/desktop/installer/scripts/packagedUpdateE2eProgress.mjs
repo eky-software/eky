@@ -52,6 +52,9 @@ export const packagedUpdateE2ePhases = Object.freeze([
   'directSetupSecondStartValidation',
   'directSetupThirdStartValidation',
   'directSetupRecoveryReadyValidation',
+  'directSetupRecoveryProcessPreflight',
+  'directSetupFailedPackageUninstall',
+  'directSetupFailedPackageRemovalVerification',
   'currentRollbackPackageInstall',
   'currentRollbackPackageVerification',
   'directSetupRecoveryFinalValidation',
@@ -82,7 +85,8 @@ const phaseSet = new Set(packagedUpdateE2ePhases);
 const rollbackEventSet = new Set(packagedUpdateRollbackEvents);
 const rollbackPhaseSet = new Set(packagedUpdateRollbackPhases);
 const safeErrorCodes = new Set([
-  'PACKAGED_UPDATE_E2E_APPLICATION_EXIT_INVALID',
+  'PACKAGED_UPDATE_E2E_APPLICATION_EXIT_NONZERO',
+  'PACKAGED_UPDATE_E2E_APPLICATION_EXIT_SIGNALLED',
   'PACKAGED_UPDATE_E2E_APPLICATION_EXIT_TIMEOUT',
   'PACKAGED_UPDATE_E2E_APPLICATION_RESULT_MISSING',
   'PACKAGED_UPDATE_E2E_APPLICATION_REPORTED_FAILURE',
@@ -119,6 +123,7 @@ const safeErrorCodes = new Set([
   'PACKAGED_UPDATE_E2E_RESULT_JOURNAL_INVALID',
   'PACKAGED_UPDATE_E2E_RESULT_PDF_INVALID',
   'PACKAGED_UPDATE_E2E_RESULT_STATUS_INVALID',
+  'PACKAGED_UPDATE_E2E_UNINSTALL_FAILED',
   'PACKAGED_UPDATE_E2E_ROLLBACK_PROFILE_CHANGED',
   'PACKAGED_UPDATE_E2E_STATUS_EXPECTATION_FAILED',
   'PACKAGED_UPDATE_E2E_SYMLINK_REJECTED',

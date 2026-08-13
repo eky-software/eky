@@ -913,9 +913,14 @@ kaksivaiheinen installer-handoff:
    paketti yritetään asentaa takaisin, jotta recovery-only-käyttöliittymä
    säilyy käytettävissä
 
-Renderer ei anna komentoja, polkuja tai ProductCodea. Main käynnistää
-kanonisen `cmd.exe`:n kautta vain paketoidun, kiinteän CMD- ja PowerShell-
-launcher-parin. Windowsissa suoraan irrotetun PowerShell-prosessin todettiin
+Renderer ei anna komentoja, polkuja tai ProductCodea. Paketoitu, kiinteä CMD-
+ja PowerShell-launcher-pari on rollback-runtimen ainoa lähde. Ennen handoffia
+Electron main kopioi täsmälleen nämä nimetyt helper-tiedostot yksityiseen
+`userData/update-runtime/rollback`-alueeseen asennusjuuren ulkopuolelle,
+torjuu linkit ja tuntemattoman staging-sisällön sekä todentaa kopiot
+tavutasolla. Main käynnistää kanonisen `cmd.exe`:n kautta vain tämän
+todennetun yksityisen runtime-kopion. Windowsissa suoraan irrotetun
+PowerShell-prosessin todettiin
 voivan päättyä onnistumiskoodilla käynnistämättä rollback-skriptiä, joten
 kiinteä CMD-launcher toimii vain prosessin elinkaaren irrotusrajana. Se ei ole
 yleinen shell-rajapinta: komentorivi ei sisällä MSI-polkuja, ProductCodea,
@@ -933,13 +938,13 @@ prosessien tappamista eikä jatka käynnissä olevan Eky-prosessin yli.
 Eteenpäin vievä installer-handoff ja rollbackin pitkäikäinen PowerShell-
 apuprosessi käyttävät kanonista `%SystemRoot%`-hakemistoa
 työskentelyhakemistona. Lyhytikäinen irrotettu `cmd.exe` käynnistyy validoidusta
-paketin `update-runtime`-hakemistosta vain löytääkseen kiinteän CMD-launcherin;
-se käynnistää PowerShellin `%SystemRoot%`-hakemistoon ja poistuu ennen
+yksityisestä runtime-kopiosta vain löytääkseen kiinteän CMD-launcherin; se
+käynnistää PowerShellin `%SystemRoot%`-hakemistoon ja poistuu ennen
 ensimmäistä `msiexec`-komentoa. Pitkäikäinen apuprosessi ei näin peri muuttuvaa
-Eky-asennusjuurta työskentelyhakemistoksi eikä pidä juuri poistettavaa tai
-korvattavaa hakemistoa lukittuna. `SystemRoot` validoidaan samalla suljetulla
-Windows-rajan säännöllä kuin `msiexec`- ja PowerShell-polut; renderer ei voi
-antaa työskentelyhakemistoa.
+Eky-asennusjuurta työskentelyhakemistoksi eikä suorita skriptiä juuri
+poistettavasta tai korvattavasta MSI-komponentista. `SystemRoot` validoidaan
+samalla suljetulla Windows-rajan säännöllä kuin `msiexec`- ja PowerShell-polut;
+renderer ei voi antaa työskentelyhakemistoa tai staging-polkua.
 
 Teknologiavalinnassa pitää todistaa:
 
@@ -1166,8 +1171,27 @@ ja failure behavior -päätöstä.
 - hardened fuses, ASAR integrity, native addon ja PDF toimivat
 - packaged smoke ja kriittinen Electron-E2E päivityksen jälkeen
 - palautuspiste -> päivitys -> migraatio -> restart -> business-datan vertailu
-- synteettisen SQLite-kannan ja kaikkien auktoritatiivisten PDF:ien hashit
-  täsmäävät ennen ja jälkeen onnistuneen päivityksen
+- synteettisen SQLite-kannan eheys, migration chain ja kanonisoidusta
+  read model -datasta laskettu business-hash täsmäävät skenaarion odotukseen
+- auktoritatiivisten PDF- ja secret/storage-artifactien tavuntarkat SHA-256-
+  arvot täsmäävät ennen ja jälkeen päivityksen tai rollbackin
+
+SQLite-online-backupin palauttamaa tietokantatiedostoa ei verrata lähteeseen
+raakana tiedostohashina. Loogisesti sama SQLite-kanta voi olla sivu- ja
+header-tasolla eri tavujärjestyksessä. Packaged-harness todistaa siksi
+tietokannan integrity-, foreign key- ja migration chain -rajat sekä laskee
+synteettisen Company Settings-, Customer- ja Approved Invoice -read modelin
+kanonisoidusta JSON-rakenteesta SHA-256-tiivisteen. Tämä tiiviste ei sisällä
+business-dataa raportissa. PDF:t ja safeStorage-secretin salattu artifacti
+todistetaan edelleen tavuntarkasti.
+
+Suoran Setup-asennuksen failure-todiste ei yritä asentaa edellistä MSI:tä
+uudemman paketin päälle. Kun business-profiili on palautettu ja runtime on
+tilassa `previousSetupReady`, harness todistaa ensin Eky-prosessipuun
+sulkeutuneeksi, poistaa täsmälleen tunnetun epäonnistuneen fixture-paketin sen
+ProductCodella, todistaa asennusjuuren poistuneeksi ja asentaa vasta sitten
+täsmällisen edellisen fixture-paketin. Tämä mallintaa hallittua
+palautusjärjestystä; MSI:n yleinen direct-downgrade pysyy estettynä.
 
 Packaged update -harness raportoi GitHub-lokiin vain suljetut skenaario- ja
 vaiherajat, keston sekä turvallisen virhekoodin. Koordinoidun rollbackin

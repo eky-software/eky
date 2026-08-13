@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  assertOkResult,
   assertPackagedUpdateSmokeResultStatus,
   createPackagedUpdateSmokeInvocation,
   createWindowsInstallerArguments,
@@ -13,7 +14,7 @@ import {
 } from './runPackagedUpdateE2e.mjs';
 
 describe('packaged update E2E runner boundaries', () => {
-  it('accepts only the closed local rollback scenario argument', () => {
+  it('accepts only closed local diagnostic scenario arguments', () => {
     assert.deepEqual(readPackagedUpdateE2eArguments([]), {
       reusePreparedFixture: false,
       scenario: undefined,
@@ -25,8 +26,16 @@ describe('packaged update E2E runner boundaries', () => {
       ]),
       { reusePreparedFixture: true, scenario: 'coordinatedRollback' },
     );
+    assert.deepEqual(
+      readPackagedUpdateE2eArguments([
+        '--scenario=backupForwardRestore',
+        '--reuse-prepared-fixture',
+      ]),
+      { reusePreparedFixture: true, scenario: 'backupForwardRestore' },
+    );
     for (const argumentsValue of [
       ['--scenario=coordinatedRollback'],
+      ['--scenario=backupForwardRestore'],
       ['--scenario=coordinatedSuccess'],
       ['--scenario=unknown'],
       ['--scenario=coordinatedRollback', '--verbose'],
@@ -163,6 +172,38 @@ describe('packaged update E2E runner boundaries', () => {
     );
   });
 
+  it('requires the expected canonical business-data fingerprint', () => {
+    const result = {
+      acceptedVersion: '1.2.3',
+      appVersion: '1.2.3',
+      artifactCount: 1,
+      businessDataSha256: 'a'.repeat(64),
+      journalState: null,
+      migrationChainIdentity: 'b'.repeat(64),
+      pdfSha256: 'c'.repeat(64),
+      phase: 'verifyRollback',
+      secretConfigured: true,
+      status: 'ok',
+    };
+
+    assert.doesNotThrow(() =>
+      assertOkResult(result, {
+        appVersion: '1.2.3',
+        businessDataSha256: 'a'.repeat(64),
+        journalState: null,
+      }),
+    );
+    assert.throws(
+      () =>
+        assertOkResult(result, {
+          appVersion: '1.2.3',
+          businessDataSha256: 'd'.repeat(64),
+          journalState: null,
+        }),
+      /PACKAGED_UPDATE_E2E_RESULT_BUSINESS_DATA_INVALID/,
+    );
+  });
+
   it('accepts a missing transitional result only after a clean application exit', () => {
     assert.equal(
       validateApplicationPhaseOutcome({
@@ -179,7 +220,7 @@ describe('packaged update E2E runner boundaries', () => {
           exit: { code: 1, signal: null },
           result: undefined,
         }),
-      /PACKAGED_UPDATE_E2E_APPLICATION_EXIT_INVALID/,
+      /PACKAGED_UPDATE_E2E_APPLICATION_EXIT_NONZERO/,
     );
     assert.throws(
       () =>
@@ -188,7 +229,7 @@ describe('packaged update E2E runner boundaries', () => {
           exit: { code: 0, signal: 'SIGTERM' },
           result: undefined,
         }),
-      /PACKAGED_UPDATE_E2E_APPLICATION_EXIT_INVALID/,
+      /PACKAGED_UPDATE_E2E_APPLICATION_EXIT_SIGNALLED/,
     );
   });
 
@@ -313,7 +354,7 @@ describe('packaged update E2E runner boundaries', () => {
           expectReportedFailure: true,
           result,
         }),
-      /PACKAGED_UPDATE_E2E_APPLICATION_EXIT_INVALID/,
+      /PACKAGED_UPDATE_E2E_APPLICATION_EXIT_NONZERO/,
     );
   });
 });

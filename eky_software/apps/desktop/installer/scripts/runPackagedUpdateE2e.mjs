@@ -100,16 +100,20 @@ export function readPackagedUpdateE2eArguments(argv) {
   if (argv.length === 0) {
     return Object.freeze({ reusePreparedFixture: false, scenario: undefined });
   }
+  const selectedScenario = argv[0]?.replace('--scenario=', '');
   if (
     argv.length !== 2 ||
-    argv[0] !== '--scenario=coordinatedRollback' ||
+    !['backupForwardRestore', 'coordinatedRollback'].includes(
+      selectedScenario,
+    ) ||
+    argv[0] !== `--scenario=${selectedScenario}` ||
     argv[1] !== '--reuse-prepared-fixture'
   ) {
     throw new Error('PACKAGED_UPDATE_E2E_ARGUMENTS_INVALID');
   }
   return Object.freeze({
     reusePreparedFixture: true,
-    scenario: 'coordinatedRollback',
+    scenario: selectedScenario,
   });
 }
 
@@ -281,6 +285,7 @@ async function runCoordinatedSuccess(scenario) {
       const value = await runApplicationPhase(scenario, 'verifySuccess');
       assertOkResult(value, {
         appVersion: scenario.packages.next.appVersion,
+        businessDataSha256: seed.businessDataSha256,
         journalState: 'accepted',
         pdfSha256: seed.pdfSha256,
       });
@@ -322,6 +327,7 @@ async function runCoordinatedCancel(scenario) {
       const value = await runApplicationPhase(scenario, 'verifyCancel');
       assertOkResult(value, {
         appVersion: scenario.packages.current.appVersion,
+        businessDataSha256: seed.businessDataSha256,
         journalState: 'installerNotApplied',
         pdfSha256: seed.pdfSha256,
       });
@@ -335,6 +341,7 @@ async function runCoordinatedCancel(scenario) {
       const value = await runApplicationPhase(scenario, 'verifyCancel');
       assertOkResult(value, {
         appVersion: scenario.packages.current.appVersion,
+        businessDataSha256: seed.businessDataSha256,
         journalState: 'installerNotApplied',
         pdfSha256: seed.pdfSha256,
       });
@@ -423,6 +430,7 @@ async function runCoordinatedRollback(scenario) {
       const value = await runApplicationPhase(scenario, 'verifyRollback');
       assertOkResult(value, {
         appVersion: scenario.packages.current.appVersion,
+        businessDataSha256: seed.businessDataSha256,
         journalState: 'rolledBack',
         pdfSha256: seed.pdfSha256,
       });
@@ -462,6 +470,7 @@ async function runDirectSetupSuccess(scenario) {
       const value = await runApplicationPhase(scenario, 'verifyDirectSuccess');
       assertOkResult(value, {
         appVersion: scenario.packages.next.appVersion,
+        businessDataSha256: seed.businessDataSha256,
         journalState: null,
         pdfSha256: seed.pdfSha256,
       });
@@ -530,6 +539,26 @@ async function runDirectSetupFailure(scenario) {
         'previousSetupReady',
       ),
   );
+  await observeScenarioPhase(
+    scenario,
+    'directSetupRecoveryProcessPreflight',
+    () => assertNoEkyProcess(),
+  );
+  await observeScenarioPhase(
+    scenario,
+    'directSetupFailedPackageUninstall',
+    () =>
+      uninstallFixturePackage(
+        scenario,
+        'failure',
+        'direct-failure-uninstall',
+      ),
+  );
+  await observeScenarioPhase(
+    scenario,
+    'directSetupFailedPackageRemovalVerification',
+    () => assertInstallRootRemoved(),
+  );
   await observeScenarioPhase(scenario, 'currentRollbackPackageInstall', () =>
     installFixturePackage(scenario, 'current', 'direct-failure-rollback'),
   );
@@ -548,6 +577,7 @@ async function runDirectSetupFailure(scenario) {
       );
       assertOkResult(value, {
         appVersion: scenario.packages.current.appVersion,
+        businessDataSha256: seed.businessDataSha256,
         journalState: null,
         pdfSha256: seed.pdfSha256,
       });
@@ -578,6 +608,7 @@ async function runBackupForwardRestore(scenario) {
     const backupResult = await runApplicationPhase(scenario, 'createBackup');
     assertOkResult(backupResult, {
       appVersion: scenario.packages.current.appVersion,
+      businessDataSha256: seed.businessDataSha256,
       journalState: null,
       pdfSha256: seed.pdfSha256,
     });
@@ -596,6 +627,7 @@ async function runBackupForwardRestore(scenario) {
       const value = await runApplicationPhase(scenario, 'verifyDirectSuccess');
       assertOkResult(value, {
         appVersion: scenario.packages.next.appVersion,
+        businessDataSha256: seed.businessDataSha256,
         journalState: null,
         pdfSha256: seed.pdfSha256,
       });
@@ -622,6 +654,7 @@ async function runBackupForwardRestore(scenario) {
       );
       assertOkResult(value, {
         appVersion: scenario.packages.next.appVersion,
+        businessDataSha256: seed.businessDataSha256,
         journalState: null,
         pdfSha256: seed.pdfSha256,
       });
@@ -724,6 +757,25 @@ async function installFixturePackage(scenario, role, logName) {
   );
   if (exit.code !== 0 || exit.signal !== null) {
     throw new Error('PACKAGED_UPDATE_E2E_INSTALL_FAILED');
+  }
+}
+
+async function uninstallFixturePackage(scenario, role, logName) {
+  const { msiexecPath } = getWindowsRuntimePaths();
+  const packageInfo = scenario.packages[role];
+  const exit = await runProcess(
+    msiexecPath,
+    createWindowsInstallerArguments({
+      logPath: join(scenario.root, 'logs', `${logName}.log`),
+      operation: 'uninstall',
+      packageOrProductCode: formatWindowsInstallerProductCode(
+        packageInfo.productCode,
+      ),
+    }),
+    { timeoutMs: processTimeoutMs },
+  );
+  if (exit.code !== 0 || exit.signal !== null) {
+    throw new Error('PACKAGED_UPDATE_E2E_UNINSTALL_FAILED');
   }
 }
 
@@ -915,8 +967,11 @@ export function validateApplicationPhaseOutcome({
     }
     throw failure;
   }
-  if (exit?.code !== 0 || exit.signal !== null) {
-    throw new Error('PACKAGED_UPDATE_E2E_APPLICATION_EXIT_INVALID');
+  if (exit.signal !== null) {
+    throw new Error('PACKAGED_UPDATE_E2E_APPLICATION_EXIT_SIGNALLED');
+  }
+  if (exit.code !== 0) {
+    throw new Error('PACKAGED_UPDATE_E2E_APPLICATION_EXIT_NONZERO');
   }
   if (result === undefined && !allowNoResult) {
     throw new Error('PACKAGED_UPDATE_E2E_APPLICATION_RESULT_MISSING');
@@ -993,6 +1048,13 @@ async function assertInstalledPackage(scenario, role) {
   );
 }
 
+async function assertInstallRootRemoved() {
+  const { installRoot } = getWindowsRuntimePaths();
+  if (await pathExists(installRoot)) {
+    throw new Error('PACKAGED_UPDATE_E2E_INSTALL_ROOT_REMAINS');
+  }
+}
+
 async function waitForStableRollbackPackage(scenario, role) {
   const progressTail = createPackagedUpdateRollbackProgressTail({
     readProgress: () => readFile(resolveRollbackProgressPath(scenario)),
@@ -1065,7 +1127,7 @@ async function assertDirectRecoveryCleared(root) {
   }
 }
 
-function assertOkResult(result, expected) {
+export function assertOkResult(result, expected) {
   if (result?.status !== 'ok') {
     if (result?.status === 'failed') {
       throw new Error(formatPackagedUpdateSmokeFailureDiagnostic(result));
@@ -1080,6 +1142,12 @@ function assertOkResult(result, expected) {
   }
   if (result.journalState !== expected.journalState) {
     throw new Error('PACKAGED_UPDATE_E2E_RESULT_JOURNAL_INVALID');
+  }
+  if (
+    expected.businessDataSha256 !== undefined &&
+    result.businessDataSha256 !== expected.businessDataSha256
+  ) {
+    throw new Error('PACKAGED_UPDATE_E2E_RESULT_BUSINESS_DATA_INVALID');
   }
   if (
     expected.pdfSha256 !== undefined &&
@@ -1114,7 +1182,6 @@ async function createBusinessInventory(root) {
   const userData = join(root, 'user-data');
   const inventory = new Map();
   for (const relativeRoot of [
-    join('runtime', 'data'),
     join('runtime', 'storage'),
     join('runtime', 'secrets'),
   ]) {
@@ -1313,6 +1380,7 @@ function createScenarioEvidence(name, result, outcome) {
   return Object.freeze({
     acceptedVersion: result.acceptedVersion,
     artifactCount: result.artifactCount,
+    businessDataSha256: result.businessDataSha256,
     migrationChainIdentity: result.migrationChainIdentity,
     name,
     outcome,

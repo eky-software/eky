@@ -31,7 +31,8 @@ describe('Windows installer rollback handoff', () => {
         'rollbackWindowsInstallerLauncher.cmd',
       ],
       {
-        cwd: 'C:\\Program Files\\Eky\\resources\\update-runtime',
+        cwd:
+          'C:\\Users\\Example\\AppData\\Roaming\\Eky\\update-runtime\\rollback\\operation-ABC123',
         detached: true,
         env: expect.objectContaining({
           EKY_ROLLBACK_FAILED_PACKAGE_PATH:
@@ -149,7 +150,7 @@ function createInput() {
     rollbackPackagePath:
       'C:\\Users\\Example\\AppData\\Roaming\\Eky\\update-cache\\current\\Eky-0.1.0-x64.msi',
     rollbackScriptPath:
-      'C:\\Program Files\\Eky\\resources\\update-runtime\\rollbackWindowsInstaller.ps1',
+      'C:\\Users\\Example\\AppData\\Roaming\\Eky\\update-runtime\\rollback\\operation-ABC123\\rollbackWindowsInstaller.ps1',
     systemRoot: 'C:\\Windows',
   };
 }

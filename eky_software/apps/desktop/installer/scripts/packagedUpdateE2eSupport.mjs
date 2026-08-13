@@ -149,6 +149,7 @@ export function parsePackagedUpdateSmokeResult(value, expectedPhase) {
         'acceptedVersion',
         'appVersion',
         'artifactCount',
+        'businessDataSha256',
         'journalState',
         'migrationChainIdentity',
         'pdfSha256',
@@ -163,6 +164,8 @@ export function parsePackagedUpdateSmokeResult(value, expectedPhase) {
     appVersionPattern.test(value.appVersion) &&
     Number.isSafeInteger(value.artifactCount) &&
     value.artifactCount >= 1 &&
+    typeof value.businessDataSha256 === 'string' &&
+    sha256Pattern.test(value.businessDataSha256) &&
     (value.journalState === null || typeof value.journalState === 'string') &&
     typeof value.migrationChainIdentity === 'string' &&
     sha256Pattern.test(value.migrationChainIdentity) &&

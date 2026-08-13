@@ -39,6 +39,12 @@ describe('local update runtime paths', () => {
           'update-state',
           'local-update-journal-v1.json',
         ),
+      rollbackRuntimeRoot:
+        join(
+          '/private/user-data',
+          'update-runtime',
+          'rollback',
+        ),
     });
   });
 });

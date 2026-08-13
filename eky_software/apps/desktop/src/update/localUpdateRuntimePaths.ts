@@ -10,6 +10,7 @@ export interface LocalUpdateRuntimePaths {
   journalPath: string;
   legacyAcceptedBuildMetadataPath: string;
   legacyJournalPath: string;
+  rollbackRuntimeRoot: string;
 }
 
 export function createLocalUpdateRuntimePaths(
@@ -35,5 +36,6 @@ export function createLocalUpdateRuntimePaths(
       acceptedBuildMetadataFileName,
     ),
     legacyJournalPath: join(legacyStateRoot, updateJournalFileName),
+    rollbackRuntimeRoot: join(input.userDataPath, 'update-runtime', 'rollback'),
   };
 }

@@ -182,6 +182,48 @@ test('keeps direct downgrade blocked and rollback outside MSI authoring', async 
   );
 });
 
+test('models direct Setup recovery as uninstall before previous package install', async () => {
+  const runner = await readFile(
+    join(
+      desktopDirectory,
+      'installer',
+      'scripts',
+      'runPackagedUpdateE2e.mjs',
+    ),
+    'utf8',
+  );
+  const scenarioStart = runner.indexOf(
+    'async function runDirectSetupFailure(scenario)',
+  );
+  const scenarioEnd = runner.indexOf(
+    'async function runBackupForwardRestore(scenario)',
+  );
+  assert.ok(scenarioStart >= 0);
+  assert.ok(scenarioEnd > scenarioStart);
+
+  const scenario = runner.slice(scenarioStart, scenarioEnd);
+  const recoveryReadyIndex = scenario.indexOf(
+    "'directSetupRecoveryReadyValidation'",
+  );
+  const processPreflightIndex = scenario.indexOf(
+    "'directSetupRecoveryProcessPreflight'",
+  );
+  const failedUninstallIndex = scenario.indexOf(
+    "uninstallFixturePackage(\n        scenario,\n        'failure'",
+  );
+  const removalVerificationIndex = scenario.indexOf(
+    "'directSetupFailedPackageRemovalVerification'",
+  );
+  const previousInstallIndex = scenario.indexOf(
+    "installFixturePackage(scenario, 'current'",
+  );
+
+  assert.ok(processPreflightIndex > recoveryReadyIndex);
+  assert.ok(failedUninstallIndex > processPreflightIndex);
+  assert.ok(removalVerificationIndex > failedUninstallIndex);
+  assert.ok(previousInstallIndex > removalVerificationIndex);
+});
+
 test('uses a fixed detached rollback launcher without shell-interpolated data', async () => {
   const [commandLauncher, powershellLauncher] = await Promise.all([
     readFile(

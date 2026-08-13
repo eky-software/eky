@@ -5,9 +5,20 @@ interface CreateInvoicePdfPreviewSmokeFixtureInput {
   runtimeSessionSecret: string;
 }
 
+export interface InvoicePdfPreviewSmokeFixtureData {
+  customerId: string;
+  invoiceId: string;
+}
+
 export async function createInvoicePdfPreviewSmokeFixture(
   input: CreateInvoicePdfPreviewSmokeFixtureInput,
 ): Promise<string> {
+  return (await createInvoicePdfPreviewSmokeFixtureData(input)).invoiceId;
+}
+
+export async function createInvoicePdfPreviewSmokeFixtureData(
+  input: CreateInvoicePdfPreviewSmokeFixtureInput,
+): Promise<InvoicePdfPreviewSmokeFixtureData> {
   const request = createSmokeRequest(
     input.backendPort,
     input.runtimeSessionSecret,
@@ -92,7 +103,7 @@ export async function createInvoicePdfPreviewSmokeFixture(
 
   await request(`/invoices/${invoiceId}/pdf`, 'POST');
 
-  return invoiceId;
+  return { customerId, invoiceId };
 }
 
 function createSmokeRequest(

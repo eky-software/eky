@@ -41,6 +41,7 @@ import {
 } from '../runtime/backendProcess.js';
 import { createDesktopRuntimeSession } from '../runtime/runtimeSession.js';
 import { createDesktopProfilePaths } from '../runtime/desktopProfilePaths.js';
+import { createBusinessRuntimeShutdown } from '../runtime/businessRuntimeShutdown.js';
 import { createDesktopOperationalEvent } from '../observability/createDesktopOperationalEvent.js';
 import type { DesktopOperationalIdentity } from '../observability/desktopOperationalEvent.js';
 import type { DesktopOperationalLogger } from '../observability/desktopOperationalLogger.js';
@@ -143,6 +144,7 @@ import {
 import { authorizeRestoreFirstStartForwardMigrations } from '../update/restoreFirstStartMigrationAuthority.js';
 import { launchWindowsInstallerForUpdate } from '../update/windowsInstallerHandoff.js';
 import { launchWindowsInstallerRollback } from '../update/windowsInstallerRollbackHandoff.js';
+import { prepareWindowsInstallerRollbackRuntime } from '../update/windowsInstallerRollbackRuntime.js';
 import { createUpdateRecoveryComposition } from '../update/recoveryWindow/updateRecoveryComposition.js';
 import {
   resolvePackagedUpdateSmokeRecoveryReport,
@@ -546,22 +548,27 @@ async function startDesktopCompositionRuntime({
       : new UpdateBinaryRollbackCoordinator({
           cache: localUpdatePackageCache,
           journalStore: updateJournalStore,
-          launchInstaller: ({ failedPackage, rollbackPackage }) => {
+          launchInstaller: async ({ failedPackage, rollbackPackage }) => {
             const progressPath =
               resolvePackagedUpdateSmokeRollbackProgressPath(
                 options.updateSmokeConfiguration,
               );
+            const rollbackRuntime =
+              await prepareWindowsInstallerRollbackRuntime({
+                packagedRuntimeRoot: join(
+                  options.resourcesPath,
+                  'update-runtime',
+                ),
+                privateRuntimeRoot:
+                  localUpdateRuntimePaths.rollbackRuntimeRoot,
+              });
             return launchWindowsInstallerRollback({
               failedPackagePath: failedPackage.packagePath,
               failedProductCode: failedPackage.productCode,
               launcherProcessId: process.pid,
               ...(progressPath === undefined ? {} : { progressPath }),
               rollbackPackagePath: rollbackPackage.packagePath,
-              rollbackScriptPath: join(
-                options.resourcesPath,
-                'update-runtime',
-                'rollbackWindowsInstaller.ps1',
-              ),
+              rollbackScriptPath: rollbackRuntime.rollbackScriptPath,
               systemRoot: process.env.SystemRoot,
             });
           },
@@ -1385,6 +1392,10 @@ async function startDesktopCompositionRuntime({
       );
     },
   });
+  const businessRuntimeShutdown = createBusinessRuntimeShutdown({
+    stopBackend: () => backendHandle!.stop(),
+    stopRecoveryChecks: () => recoveryPointScheduler.stopChecks(),
+  });
   const profileBackupComposition =
     await createProfileBackupComposition({
       appVersion: desktopAppVersion,
@@ -1441,8 +1452,7 @@ async function startDesktopCompositionRuntime({
       );
       },
       async stopBusinessRuntime() {
-        await recoveryPointScheduler.stopChecks();
-        await backendHandle!.stop();
+        await businessRuntimeShutdown.stop();
       },
     });
   backupPasswordWindowController =
@@ -1513,8 +1523,7 @@ async function startDesktopCompositionRuntime({
       backupPasswordWindowController = undefined;
 
       try {
-        await recoveryPointScheduler.stopChecks();
-        await backendHandle.stop();
+        await businessRuntimeShutdown.stop();
         await recoveryPointScheduler.markCleanShutdown();
         profileSnapshotBrokerClient.close();
         invoicePdfArchiveBrokerHandle.close();

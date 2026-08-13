@@ -51,10 +51,11 @@ Mandatory boundaries:
   pre-update recovery point exists
 - launch an external installer/updater with a fixed executable and separate
   validated arguments; never construct a shell command string
-- the detached rollback handoff may use only the packaged fixed CMD and
-  PowerShell launcher pair; dynamic MSI paths, ProductCode, process identity
-  and smoke progress path stay outside the shell command and are revalidated
-  by the fixed rollback script
+- the detached rollback handoff may use only a byte-verified private staging
+  copy of the packaged fixed CMD and PowerShell launcher pair; the copy must
+  live outside the MSI-owned install root, while dynamic MSI paths,
+  ProductCode, process identity and smoke progress path stay outside the shell
+  command and are revalidated by the fixed rollback script
 - keep the R0 `localUnsignedPilot` trust policy behind a named desktop port;
   it accepts only the pilot channel, local media and explicit confirmation,
   and must never be generalized into stable, network, background or silent
