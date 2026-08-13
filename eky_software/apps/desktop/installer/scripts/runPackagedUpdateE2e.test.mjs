@@ -7,6 +7,7 @@ import {
   createWindowsInstallerArguments,
   directoryInventoriesEqual,
   formatWindowsInstallerProductCode,
+  readApplicationResultAfterProcessCleanup,
   validateApplicationPhaseOutcome,
 } from './runPackagedUpdateE2e.mjs';
 
@@ -163,6 +164,55 @@ describe('packaged update E2E runner boundaries', () => {
     );
   });
 
+  it('reads a late application result only after the full process tree has exited', async () => {
+    const events = [];
+    const expectedResult = {
+      code: 'DESKTOP_UPDATE_SMOKE_SYNTHETIC_FAILURE',
+      phase: 'verifyRollback',
+      status: 'failed',
+    };
+
+    const result = await readApplicationResultAfterProcessCleanup({
+      initialResult: undefined,
+      async readResult() {
+        events.push('read');
+        assert.deepEqual(events, ['cleanup', 'read']);
+        return expectedResult;
+      },
+      async waitForProcessCleanup() {
+        events.push('cleanup');
+      },
+    });
+
+    assert.equal(result, expectedResult);
+    assert.deepEqual(events, ['cleanup', 'read']);
+  });
+
+  it('does not reread an application result that was already observed', async () => {
+    const expectedResult = {
+      appVersion: '1.2.3',
+      phase: 'verifySuccess',
+      status: 'ok',
+    };
+    let readCount = 0;
+    let cleanupCount = 0;
+
+    const result = await readApplicationResultAfterProcessCleanup({
+      initialResult: expectedResult,
+      async readResult() {
+        readCount += 1;
+        return undefined;
+      },
+      async waitForProcessCleanup() {
+        cleanupCount += 1;
+      },
+    });
+
+    assert.equal(result, expectedResult);
+    assert.equal(cleanupCount, 1);
+    assert.equal(readCount, 0);
+  });
+
   it('preserves a reviewed failure stage when the application reports a safe failure', () => {
     assert.throws(
       () =>
@@ -209,6 +259,33 @@ describe('packaged update E2E runner boundaries', () => {
         assert.equal(error.failureStage, undefined);
         return true;
       },
+    );
+  });
+
+  it('accepts an expected reported failure only after a clean application exit', () => {
+    const result = {
+      code: 'DESKTOP_UPDATE_SMOKE_SYNTHETIC_FAILURE',
+      failureStage: 'preMigrationInstallerNotApplied',
+      phase: 'verifyRollback',
+      status: 'failed',
+    };
+
+    assert.equal(
+      validateApplicationPhaseOutcome({
+        exit: { code: 0, signal: null },
+        expectReportedFailure: true,
+        result,
+      }),
+      result,
+    );
+    assert.throws(
+      () =>
+        validateApplicationPhaseOutcome({
+          exit: { code: 1, signal: null },
+          expectReportedFailure: true,
+          result,
+        }),
+      /PACKAGED_UPDATE_E2E_APPLICATION_EXIT_INVALID/,
     );
   });
 });

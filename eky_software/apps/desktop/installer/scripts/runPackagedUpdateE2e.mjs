@@ -754,7 +754,11 @@ async function cleanupKnownFixtureInstallations(
   });
 }
 
-async function runApplicationPhase(scenario, phase, allowNoResult = false) {
+async function runApplicationPhase(
+  scenario,
+  phase,
+  { allowNoResult = false, expectReportedFailure = false } = {},
+) {
   const application = await observeScenarioPhase(
     scenario,
     'applicationPreflight',
@@ -826,14 +830,24 @@ async function runApplicationPhase(scenario, phase, allowNoResult = false) {
     scenario,
     'applicationOutcomeValidation',
     async () => {
-      result ??= await tryReadSmokeResult(application.resultPath, phase);
-      await observeScenarioPhase(
-        scenario,
-        'applicationProcessCleanupWait',
-        () => waitForNoEkyProcess(),
-      );
+      result = await readApplicationResultAfterProcessCleanup({
+        initialResult: result,
+        readResult: () =>
+          observeScenarioPhase(
+            scenario,
+            'applicationFinalResultRead',
+            () => tryReadSmokeResult(application.resultPath, phase),
+          ),
+        waitForProcessCleanup: () =>
+          observeScenarioPhase(
+            scenario,
+            'applicationProcessCleanupWait',
+            () => waitForNoEkyProcess(),
+          ),
+      });
       return validateApplicationPhaseOutcome({
         allowNoResult,
+        expectReportedFailure,
         exit,
         result,
       });
@@ -841,12 +855,22 @@ async function runApplicationPhase(scenario, phase, allowNoResult = false) {
   );
 }
 
+export async function readApplicationResultAfterProcessCleanup({
+  initialResult,
+  readResult,
+  waitForProcessCleanup,
+}) {
+  await waitForProcessCleanup();
+  return initialResult ?? (await readResult());
+}
+
 export function validateApplicationPhaseOutcome({
   allowNoResult = false,
+  expectReportedFailure = false,
   exit,
   result,
 }) {
-  if (result?.status === 'failed') {
+  if (result?.status === 'failed' && !expectReportedFailure) {
     const failure = new Error(
       'PACKAGED_UPDATE_E2E_APPLICATION_REPORTED_FAILURE',
     );
@@ -872,7 +896,10 @@ async function runExpectedApplicationPhaseState(
   const result = await runApplicationPhase(
     scenario,
     phase,
-    expectedStatus === 'noResult',
+    {
+      allowNoResult: expectedStatus === 'noResult',
+      expectReportedFailure: expectedStatus === 'failed',
+    },
   );
   if (expectedStatus === 'noResult') {
     if (result !== undefined) {

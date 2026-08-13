@@ -42,6 +42,7 @@ export const packagedUpdateE2ePhases = Object.freeze([
   'applicationResultOrExitWait',
   'applicationExitWait',
   'applicationProcessCleanupWait',
+  'applicationFinalResultRead',
   'applicationOutcomeValidation',
   'directSetupFirstStartValidation',
   'directSetupSecondStartValidation',
