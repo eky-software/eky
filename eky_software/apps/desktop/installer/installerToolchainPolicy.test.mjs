@@ -181,3 +181,62 @@ test('keeps direct downgrade blocked and rollback outside MSI authoring', async 
     /Invoke-Expression|Start-Process|cmd\.exe|\.bat\b|\.cmd\b/iu,
   );
 });
+
+test('uses a fixed detached rollback launcher without shell-interpolated data', async () => {
+  const [commandLauncher, powershellLauncher] = await Promise.all([
+    readFile(
+      join(
+        desktopDirectory,
+        'resources',
+        'update',
+        'rollbackWindowsInstallerLauncher.cmd',
+      ),
+      'utf8',
+    ),
+    readFile(
+      join(
+        desktopDirectory,
+        'resources',
+        'update',
+        'rollbackWindowsInstallerLauncher.ps1',
+      ),
+      'utf8',
+    ),
+  ]);
+
+  assert.match(commandLauncher, /setlocal DisableDelayedExpansion/);
+  assert.match(commandLauncher, /start "" \/b \/d "%SystemRoot%"/);
+  assert.match(
+    commandLauncher,
+    /%SystemRoot%\\System32\\WindowsPowerShell\\v1\.0\\powershell\.exe/,
+  );
+  assert.match(
+    commandLauncher,
+    /-File "%~dp0rollbackWindowsInstallerLauncher\.ps1"/,
+  );
+  assert.doesNotMatch(commandLauncher, /%\*|Invoke-Expression/);
+
+  for (const name of [
+    'EKY_ROLLBACK_FAILED_PACKAGE_PATH',
+    'EKY_ROLLBACK_FAILED_PRODUCT_CODE',
+    'EKY_ROLLBACK_LAUNCHER_PROCESS_ID',
+    'EKY_ROLLBACK_MSIEXEC_PATH',
+    'EKY_ROLLBACK_PROGRESS_PATH',
+    'EKY_ROLLBACK_PACKAGE_PATH',
+  ]) {
+    assert.match(powershellLauncher, new RegExp(`'${name}'`));
+  }
+  assert.match(
+    powershellLauncher,
+    /Join-Path \$PSScriptRoot 'rollbackWindowsInstaller\.ps1'/,
+  );
+  assert.match(powershellLauncher, /& \$rollbackScriptPath @rollbackParameters/);
+  assert.doesNotMatch(
+    powershellLauncher,
+    /Invoke-Expression|Start-Process|cmd\.exe|\.bat\b|\.cmd\b/iu,
+  );
+  assert.doesNotMatch(
+    powershellLauncher,
+    /Write-(?:Host|Output|Error|Warning|Verbose|Debug)/,
+  );
+});

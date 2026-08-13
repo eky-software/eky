@@ -913,22 +913,33 @@ kaksivaiheinen installer-handoff:
    paketti yritetään asentaa takaisin, jotta recovery-only-käyttöliittymä
    säilyy käytettävissä
 
-Renderer ei anna komentoja, polkuja tai ProductCodea. Main muodostaa kiinteän
-PowerShell- ja `msiexec`-kutsun validoiduista yksityisen cachen handleista sekä
-paketoidusta projektin omasta rollback-skriptistä. Skripti ei ole yleinen
-shell-rajapinta eikä se salli ylimääräisiä argumentteja tai verkkolähteitä.
+Renderer ei anna komentoja, polkuja tai ProductCodea. Main käynnistää
+kanonisen `cmd.exe`:n kautta vain paketoidun, kiinteän CMD- ja PowerShell-
+launcher-parin. Windowsissa suoraan irrotetun PowerShell-prosessin todettiin
+voivan päättyä onnistumiskoodilla käynnistämättä rollback-skriptiä, joten
+kiinteä CMD-launcher toimii vain prosessin elinkaaren irrotusrajana. Se ei ole
+yleinen shell-rajapinta: komentorivi ei sisällä MSI-polkuja, ProductCodea,
+prosessitunnistetta tai progress-polkua. Main välittää nämä suljetuissa
+prosessikohtaisissa ympäristöarvoissa kiinteälle PowerShell-launcherille, joka
+kutsuu vain samasta pakettihakemistosta löytyvää rollback-skriptiä. Varsinainen
+rollback-skripti validoi arvot ennen kiinteää `msiexec`-kutsua eikä salli
+ylimääräisiä argumentteja tai verkkolähteitä.
 Rollback-skripti sitoutuu lisäksi vain sen käynnistäneen Electronin
 main-prosessin validoituun prosessi-identiteettiin ja odottaa rajatusti tämän
 prosessin poistumista ennen ensimmäistä `msiexec`-komentoa. Odotuksen
 epäonnistuminen keskeyttää rollbackin suljetusti; skripti ei yritä yleistä
 prosessien tappamista eikä jatka käynnissä olevan Eky-prosessin yli.
 
-Sekä eteenpäin vievä installer-handoff että rollback-handoff käynnistetään
-kanonisen `%SystemRoot%`-hakemiston työskentelyhakemistolla. Irrotettu
-apuprosessi ei saa periä muuttuvaa Eky-asennusjuurta työskentelyhakemistoksi,
-koska se voisi pitää juuri poistettavaa tai korvattavaa hakemistoa lukittuna.
-`SystemRoot` validoidaan samalla suljetulla Windows-rajan säännöllä kuin
-`msiexec`- ja PowerShell-polut; renderer ei voi antaa työskentelyhakemistoa.
+Eteenpäin vievä installer-handoff ja rollbackin pitkäikäinen PowerShell-
+apuprosessi käyttävät kanonista `%SystemRoot%`-hakemistoa
+työskentelyhakemistona. Lyhytikäinen irrotettu `cmd.exe` käynnistyy validoidusta
+paketin `update-runtime`-hakemistosta vain löytääkseen kiinteän CMD-launcherin;
+se käynnistää PowerShellin `%SystemRoot%`-hakemistoon ja poistuu ennen
+ensimmäistä `msiexec`-komentoa. Pitkäikäinen apuprosessi ei näin peri muuttuvaa
+Eky-asennusjuurta työskentelyhakemistoksi eikä pidä juuri poistettavaa tai
+korvattavaa hakemistoa lukittuna. `SystemRoot` validoidaan samalla suljetulla
+Windows-rajan säännöllä kuin `msiexec`- ja PowerShell-polut; renderer ei voi
+antaa työskentelyhakemistoa.
 
 Teknologiavalinnassa pitää todistaa:
 

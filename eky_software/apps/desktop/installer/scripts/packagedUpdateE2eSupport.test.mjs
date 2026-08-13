@@ -53,6 +53,19 @@ describe('packaged update E2E support', () => {
     );
   });
 
+  it('selects only the reviewed local rollback scenario', () => {
+    assert.deepEqual(
+      createPackagedUpdateScenarioPlan('coordinatedRollback').map(
+        (scenario) => scenario.name,
+      ),
+      ['coordinatedRollback'],
+    );
+    assert.throws(
+      () => createPackagedUpdateScenarioPlan('unknown'),
+      /PACKAGED_UPDATE_E2E_SCENARIO_INVALID/,
+    );
+  });
+
   it('parses only the exact three fixture identities under the fixture root', async () => {
     const { fixturePath, fixture } = await createFixture();
 

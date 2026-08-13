@@ -1,3 +1,4 @@
+import type { SpawnOptions } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { win32 } from 'node:path';
 
@@ -9,9 +10,9 @@ import {
 } from './windowsInstallerRollbackHandoff.js';
 
 describe('Windows installer rollback handoff', () => {
-  it('starts only the packaged fixed rollback script with validated arguments', async () => {
+  it('starts only the packaged fixed launcher with rollback data outside the command line', async () => {
     const processHandle = createProcessHandle();
-    const spawnProcess = vi.fn(() => processHandle);
+    const spawnProcess = createSpawnProcessMock(processHandle);
     const result = launchWindowsInstallerRollback(
       createInput(),
       spawnProcess as never,
@@ -20,41 +21,59 @@ describe('Windows installer rollback handoff', () => {
     await result;
 
     expect(spawnProcess).toHaveBeenCalledWith(
-      win32.join(
-        'C:\\Windows',
-        'System32',
-        'WindowsPowerShell',
-        'v1.0',
-        'powershell.exe',
-      ),
+      win32.join('C:\\Windows', 'System32', 'cmd.exe'),
       [
-        '-NoLogo',
-        '-NoProfile',
-        '-NonInteractive',
-        '-ExecutionPolicy',
-        'Bypass',
-        '-WindowStyle',
-        'Hidden',
-        '-File',
-        'C:\\Program Files\\Eky\\resources\\update-runtime\\rollbackWindowsInstaller.ps1',
-        '-MsiExecPath',
-        'C:\\Windows\\System32\\msiexec.exe',
-        '-FailedProductCode',
-        '{22222222-2222-4222-8222-222222222222}',
-        '-LauncherProcessId',
-        '4321',
-        '-FailedPackagePath',
-        'C:\\Users\\Example\\AppData\\Roaming\\Eky\\update-cache\\candidate\\Eky-0.2.0-x64.msi',
-        '-RollbackPackagePath',
-        'C:\\Users\\Example\\AppData\\Roaming\\Eky\\update-cache\\current\\Eky-0.1.0-x64.msi',
+        '/d',
+        '/q',
+        '/v:off',
+        '/s',
+        '/c',
+        'rollbackWindowsInstallerLauncher.cmd',
       ],
       {
-        cwd: 'C:\\Windows',
+        cwd: 'C:\\Program Files\\Eky\\resources\\update-runtime',
         detached: true,
+        env: expect.objectContaining({
+          EKY_ROLLBACK_FAILED_PACKAGE_PATH:
+            'C:\\Users\\Example\\AppData\\Roaming\\Eky\\update-cache\\candidate\\Eky-0.2.0-x64.msi',
+          EKY_ROLLBACK_FAILED_PRODUCT_CODE:
+            '{22222222-2222-4222-8222-222222222222}',
+          EKY_ROLLBACK_LAUNCHER_PROCESS_ID: '4321',
+          EKY_ROLLBACK_MSIEXEC_PATH:
+            'C:\\Windows\\System32\\msiexec.exe',
+          EKY_ROLLBACK_PROGRESS_PATH: '',
+          EKY_ROLLBACK_PACKAGE_PATH:
+            'C:\\Users\\Example\\AppData\\Roaming\\Eky\\update-cache\\current\\Eky-0.1.0-x64.msi',
+          SystemRoot: 'C:\\Windows',
+          windir: 'C:\\Windows',
+        }),
         shell: false,
         stdio: 'ignore',
         windowsHide: true,
       },
+    );
+    const commandArguments = spawnProcess.mock.calls[0]?.[1] ?? [];
+    const spawnOptions = spawnProcess.mock.calls[0]?.[2];
+    expect(commandArguments).not.toContain(
+      '{22222222-2222-4222-8222-222222222222}',
+    );
+    expect(commandArguments).not.toContain(
+      'C:\\Users\\Example\\AppData\\Roaming\\Eky\\update-cache\\candidate\\Eky-0.2.0-x64.msi',
+    );
+    expect(commandArguments).not.toContain(
+      'C:\\Users\\Example\\AppData\\Roaming\\Eky\\update-cache\\current\\Eky-0.1.0-x64.msi',
+    );
+    expect(Object.keys(spawnOptions?.env ?? {}).sort()).toEqual(
+      [
+        'EKY_ROLLBACK_FAILED_PACKAGE_PATH',
+        'EKY_ROLLBACK_FAILED_PRODUCT_CODE',
+        'EKY_ROLLBACK_LAUNCHER_PROCESS_ID',
+        'EKY_ROLLBACK_MSIEXEC_PATH',
+        'EKY_ROLLBACK_PROGRESS_PATH',
+        'EKY_ROLLBACK_PACKAGE_PATH',
+        'SystemRoot',
+        'windir',
+      ].sort(),
     );
     expect(processHandle.unref).toHaveBeenCalledOnce();
   });
@@ -65,6 +84,10 @@ describe('Windows installer rollback handoff', () => {
     { launcherProcessId: 2_147_483_648 },
     { rollbackPackagePath: 'relative\\rollback.msi' },
     { rollbackScriptPath: 'C:\\Program Files\\Eky\\rollback.cmd' },
+    {
+      rollbackScriptPath:
+        'C:\\Program Files\\Eky\\resources\\update-runtime\\anotherRollback.ps1',
+    },
     { progressPath: 'relative\\rollback-progress.jsonl' },
     { systemRoot: 'C:\\Windows\\..\\Windows' },
   ])('rejects untrusted rollback input %#', async (override) => {
@@ -76,9 +99,9 @@ describe('Windows installer rollback handoff', () => {
     ).rejects.toBeInstanceOf(WindowsInstallerRollbackHandoffError);
   });
 
-  it('passes only a canonical optional smoke progress file', async () => {
+  it('passes only a canonical optional smoke progress file through the closed environment', async () => {
     const processHandle = createProcessHandle();
-    const spawnProcess = vi.fn(() => processHandle);
+    const spawnProcess = createSpawnProcessMock(processHandle);
     const result = launchWindowsInstallerRollback(
       {
         ...createInput(),
@@ -90,13 +113,16 @@ describe('Windows installer rollback handoff', () => {
     processHandle.emit('spawn');
     await result;
 
-    expect(spawnProcess).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.arrayContaining([
-        '-ProgressPath',
-        'C:\\Users\\Example\\AppData\\Local\\Temp\\rollback-progress.jsonl',
-      ]),
-      expect.any(Object),
+    const commandArguments = spawnProcess.mock.calls[0]?.[1] ?? [];
+    const options = spawnProcess.mock.calls[0]?.[2];
+    expect(commandArguments).not.toContain(
+      'C:\\Users\\Example\\AppData\\Local\\Temp\\rollback-progress.jsonl',
+    );
+    expect(options?.env).toEqual(
+      expect.objectContaining({
+        EKY_ROLLBACK_PROGRESS_PATH:
+          'C:\\Users\\Example\\AppData\\Local\\Temp\\rollback-progress.jsonl',
+      }),
     );
   });
 
@@ -134,4 +160,13 @@ function createProcessHandle() {
   };
   processHandle.unref = vi.fn();
   return processHandle;
+}
+
+function createSpawnProcessMock(
+  processHandle: ReturnType<typeof createProcessHandle>,
+) {
+  return vi.fn(
+    (_command: string, _args: readonly string[], _options: SpawnOptions) =>
+      processHandle,
+  );
 }

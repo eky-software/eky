@@ -7,11 +7,39 @@ import {
   createWindowsInstallerArguments,
   directoryInventoriesEqual,
   formatWindowsInstallerProductCode,
+  readPackagedUpdateE2eArguments,
   readApplicationResultAfterProcessCleanup,
   validateApplicationPhaseOutcome,
 } from './runPackagedUpdateE2e.mjs';
 
 describe('packaged update E2E runner boundaries', () => {
+  it('accepts only the closed local rollback scenario argument', () => {
+    assert.deepEqual(readPackagedUpdateE2eArguments([]), {
+      reusePreparedFixture: false,
+      scenario: undefined,
+    });
+    assert.deepEqual(
+      readPackagedUpdateE2eArguments([
+        '--scenario=coordinatedRollback',
+        '--reuse-prepared-fixture',
+      ]),
+      { reusePreparedFixture: true, scenario: 'coordinatedRollback' },
+    );
+    for (const argumentsValue of [
+      ['--scenario=coordinatedRollback'],
+      ['--scenario=coordinatedSuccess'],
+      ['--scenario=unknown'],
+      ['--scenario=coordinatedRollback', '--verbose'],
+      ['--reuse-prepared-fixture', '--scenario=coordinatedRollback'],
+      ['C:\\private\\fixture.json'],
+    ]) {
+      assert.throws(
+        () => readPackagedUpdateE2eArguments(argumentsValue),
+        /PACKAGED_UPDATE_E2E_ARGUMENTS_INVALID/,
+      );
+    }
+  });
+
   it('uses argument arrays for quiet non-restarting MSI operations', () => {
     assert.deepEqual(
       createWindowsInstallerArguments({

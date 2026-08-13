@@ -185,8 +185,8 @@ export async function readPackagedUpdateSmokeResult(
   );
 }
 
-export function createPackagedUpdateScenarioPlan() {
-  return Object.freeze([
+export function createPackagedUpdateScenarioPlan(selectedScenario) {
+  const scenarios = Object.freeze([
     Object.freeze({
       name: 'coordinatedSuccess',
       phases: Object.freeze(['seed', 'prepareSuccess', 'verifySuccess']),
@@ -218,6 +218,16 @@ export function createPackagedUpdateScenarioPlan() {
       ]),
     }),
   ]);
+  if (selectedScenario === undefined) {
+    return scenarios;
+  }
+  const selected = scenarios.find(
+    (scenario) => scenario.name === selectedScenario,
+  );
+  if (selected === undefined) {
+    throw new Error('PACKAGED_UPDATE_E2E_SCENARIO_INVALID');
+  }
+  return Object.freeze([selected]);
 }
 
 function parseFixturePackage(value, fixtureRoot, index) {

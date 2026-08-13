@@ -32,6 +32,12 @@ import { createPackagedUpdateRollbackProgressTail } from './packagedUpdateRollba
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const installerDirectory = resolve(scriptDirectory, '..');
+const preparedFixturePath = join(
+  installerDirectory,
+  'artifacts',
+  'update-e2e',
+  'fixture.json',
+);
 const processTimeoutMs = 120_000;
 const applicationExitTimeoutMs = 30_000;
 const installerStabilityTimeoutMs = 120_000;
@@ -87,7 +93,30 @@ export function createPackagedUpdateSmokeInvocation(phase, token) {
   });
 }
 
-export async function runPackagedUpdateE2e() {
+export function readPackagedUpdateE2eArguments(argv) {
+  if (!Array.isArray(argv)) {
+    throw new Error('PACKAGED_UPDATE_E2E_ARGUMENTS_INVALID');
+  }
+  if (argv.length === 0) {
+    return Object.freeze({ reusePreparedFixture: false, scenario: undefined });
+  }
+  if (
+    argv.length !== 2 ||
+    argv[0] !== '--scenario=coordinatedRollback' ||
+    argv[1] !== '--reuse-prepared-fixture'
+  ) {
+    throw new Error('PACKAGED_UPDATE_E2E_ARGUMENTS_INVALID');
+  }
+  return Object.freeze({
+    reusePreparedFixture: true,
+    scenario: 'coordinatedRollback',
+  });
+}
+
+export async function runPackagedUpdateE2e({
+  reusePreparedFixture = false,
+  scenario,
+} = {}) {
   const progress = createPackagedUpdateE2eProgressObserver();
   await progress.runPhase({ phase: 'runtimePreflight' }, async () => {
     assertWindowsRuntime();
@@ -96,7 +125,10 @@ export async function runPackagedUpdateE2e() {
 
   const prepared = await progress.runPhase(
     { phase: 'fixturePreparation' },
-    () => preparePackagedUpdateE2eFixture(),
+    () =>
+      reusePreparedFixture
+        ? Object.freeze({ fixturePath: preparedFixturePath })
+        : preparePackagedUpdateE2eFixture(),
   );
   const fixture = await progress.runPhase({ phase: 'fixtureRead' }, () =>
     readPackagedUpdateE2eFixture(prepared.fixturePath),
@@ -131,12 +163,12 @@ export async function runPackagedUpdateE2e() {
     phase: 'initialCleanup',
   });
   try {
-    for (const scenario of createPackagedUpdateScenarioPlan()) {
+    for (const scenarioPlan of createPackagedUpdateScenarioPlan(scenario)) {
       evidence.push(
-        await progress.runScenario(scenario.name, () =>
+        await progress.runScenario(scenarioPlan.name, () =>
           runScenario({
             ...fixtureContext,
-            name: scenario.name,
+            name: scenarioPlan.name,
           }),
         ),
       );
@@ -1347,8 +1379,7 @@ if (
   process.argv[1] !== undefined &&
   pathToFileURL(resolve(process.argv[1])).href === import.meta.url
 ) {
-  if (process.argv.length !== 2) {
-    throw new Error('PACKAGED_UPDATE_E2E_ARGUMENTS_INVALID');
-  }
-  await runPackagedUpdateE2e();
+  await runPackagedUpdateE2e(
+    readPackagedUpdateE2eArguments(process.argv.slice(2)),
+  );
 }
