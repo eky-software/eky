@@ -923,6 +923,13 @@ prosessin poistumista ennen ensimmäistä `msiexec`-komentoa. Odotuksen
 epäonnistuminen keskeyttää rollbackin suljetusti; skripti ei yritä yleistä
 prosessien tappamista eikä jatka käynnissä olevan Eky-prosessin yli.
 
+Sekä eteenpäin vievä installer-handoff että rollback-handoff käynnistetään
+kanonisen `%SystemRoot%`-hakemiston työskentelyhakemistolla. Irrotettu
+apuprosessi ei saa periä muuttuvaa Eky-asennusjuurta työskentelyhakemistoksi,
+koska se voisi pitää juuri poistettavaa tai korvattavaa hakemistoa lukittuna.
+`SystemRoot` validoidaan samalla suljetulla Windows-rajan säännöllä kuin
+`msiexec`- ja PowerShell-polut; renderer ei voi antaa työskentelyhakemistoa.
+
 Teknologiavalinnassa pitää todistaa:
 
 - pystyykö moottori säilyttämään tai palauttamaan edellisen version
@@ -1150,6 +1157,25 @@ ja failure behavior -päätöstä.
 - palautuspiste -> päivitys -> migraatio -> restart -> business-datan vertailu
 - synteettisen SQLite-kannan ja kaikkien auktoritatiivisten PDF:ien hashit
   täsmäävät ennen ja jälkeen onnistuneen päivityksen
+
+Packaged update -harness raportoi GitHub-lokiin vain suljetut skenaario- ja
+vaiherajat, keston sekä turvallisen virhekoodin. Koordinoidun rollbackin
+testitilassa paketoitu rollback-skripti kirjoittaa lisäksi yksityiseen smoke-
+juureen rajatun JSONL-edistymistiedoston. Sallitut sisäiset vaiheet ovat vain
+syötteiden tarkistus, launcher-prosessin poistumisen odotus, epäonnistuneen
+paketin poisto, rollback-paketin asennus ja epäonnistuneen paketin korjaus.
+Harness validoi suljetun formaatin ja välittää lokiin vain vaiheen,
+tapahtumatyypin ja millisekuntikestot. Polkuja, PID-arvoja, MSI-nimiä,
+komentorivejä, prosessitulosteita, raw erroreita, stackeja tai business-dataa
+ei kirjoiteta. Puuttuva tai vioittunut edistymistieto ei saa muuttaa
+skenaarion tulosta tai fail-closed-käyttäytymistä.
+
+Paikalliset kohdetestit käyttävät samoja handoff-, rollback-skripti- ja
+harness-sopimuksia kuin GitHubin Windows-portti. Oikean MSI:n koko install ->
+update -> rollback -elinkaari ajetaan kuitenkin vain puhtaalla eristetyllä
+Windows-runnerilla, jotta tavallisen kehityskoneen asennusta ja dataa ei
+muuteta. GitHubin lopullinen portti käyttää samoja kerran rakennettuja ja
+sidecarilla sidottuja MSI-tavuja kaikissa skenaarioissa.
 
 Testit käyttävät vain synteettistä dataa eivätkä ulkoista verkkoa ennen
 etäpäivitysvaiheen erillistä hyväksyntää.

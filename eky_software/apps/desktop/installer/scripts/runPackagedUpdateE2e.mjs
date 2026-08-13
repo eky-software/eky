@@ -28,12 +28,14 @@ import {
 } from './packagedUpdateE2eSupport.mjs';
 import { createPackagedUpdateE2eProgressObserver } from './packagedUpdateE2eProgress.mjs';
 import { createPackagedUpdateProcessRunner } from './packagedUpdateProcessRunner.mjs';
+import { createPackagedUpdateRollbackProgressTail } from './packagedUpdateRollbackProgress.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const installerDirectory = resolve(scriptDirectory, '..');
 const processTimeoutMs = 120_000;
 const applicationExitTimeoutMs = 30_000;
 const installerStabilityTimeoutMs = 120_000;
+const rollbackProgressFileName = 'rollback-installer-progress.jsonl';
 const processRunner = createPackagedUpdateProcessRunner();
 
 export function createWindowsInstallerArguments({
@@ -368,17 +370,19 @@ async function runCoordinatedRollback(scenario) {
   await observeScenarioPhase(
     scenario,
     'coordinatedRollbackLaunchValidation',
-    () =>
-      runExpectedApplicationPhaseState(
+    async () => {
+      await rm(resolveRollbackProgressPath(scenario), { force: true });
+      return runExpectedApplicationPhaseState(
         scenario,
         'verifyRollback',
         'rollbackInstallerLaunched',
-      ),
+      );
+    },
   );
   await observeScenarioPhase(
     scenario,
     'coordinatedRollbackInstallerWait',
-    () => waitForStableInstalledPackage(scenario, 'current'),
+    () => waitForStableRollbackPackage(scenario, 'current'),
   );
   const finalResult = await observeScenarioPhase(
     scenario,
@@ -957,22 +961,39 @@ async function assertInstalledPackage(scenario, role) {
   );
 }
 
-async function waitForStableInstalledPackage(scenario, role) {
+async function waitForStableRollbackPackage(scenario, role) {
+  const progressTail = createPackagedUpdateRollbackProgressTail({
+    readProgress: () => readFile(resolveRollbackProgressPath(scenario)),
+    reportProgress: (record) =>
+      scenario.progress.reportRollbackPhase({
+        ...record,
+        scenario: scenario.name,
+      }),
+  });
   const deadline = Date.now() + installerStabilityTimeoutMs;
   let stableCount = 0;
-  while (Date.now() < deadline) {
-    try {
-      await assertInstalledPackage(scenario, role);
-      stableCount += 1;
-      if (stableCount === 2) {
-        return;
+  try {
+    while (Date.now() < deadline) {
+      await progressTail.poll();
+      try {
+        await assertInstalledPackage(scenario, role);
+        stableCount += 1;
+        if (stableCount === 2) {
+          return;
+        }
+      } catch {
+        stableCount = 0;
       }
-    } catch {
-      stableCount = 0;
+      await delay(500);
     }
-    await delay(500);
+    throw new Error('PACKAGED_UPDATE_E2E_INSTALLER_STABILITY_TIMEOUT');
+  } finally {
+    await progressTail.poll();
   }
-  throw new Error('PACKAGED_UPDATE_E2E_INSTALLER_STABILITY_TIMEOUT');
+}
+
+function resolveRollbackProgressPath(scenario) {
+  return join(scenario.root, 'result', rollbackProgressFileName);
 }
 
 async function assertUpdateCacheRotation(scenario) {

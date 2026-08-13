@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   createPackagedUpdateSmokeConfiguration,
   resolvePackagedUpdateSmokeRecoveryReport,
+  resolvePackagedUpdateSmokeRollbackProgressPath,
   type PackagedUpdateSmokePhase,
 } from './packagedUpdateSmokeConfiguration.js';
 
@@ -54,6 +55,9 @@ describe('packaged update smoke configuration', () => {
       root: expectedRoot,
       userDataPath: join(expectedRoot, 'user-data'),
     });
+    expect(resolvePackagedUpdateSmokeRollbackProgressPath(configuration)).toBe(
+      join(expectedRoot, 'result', 'rollback-installer-progress.jsonl'),
+    );
   });
 
   it.each([
@@ -101,6 +105,14 @@ describe('packaged update smoke configuration', () => {
   it('does not classify disabled automation as a smoke failure', () => {
     expect(
       resolvePackagedUpdateSmokeRecoveryReport({
+        enabled: false,
+        phase: undefined,
+        root: undefined,
+        userDataPath: undefined,
+      }),
+    ).toBeUndefined();
+    expect(
+      resolvePackagedUpdateSmokeRollbackProgressPath({
         enabled: false,
         phase: undefined,
         root: undefined,

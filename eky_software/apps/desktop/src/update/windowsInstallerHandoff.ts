@@ -22,6 +22,9 @@ export function launchWindowsInstallerForUpdate(
   spawnProcess: SpawnProcess = spawn,
 ): Promise<void> {
   try {
+    const workingDirectory = requireCanonicalWindowsSystemRoot(
+      input.systemRoot,
+    );
     const executablePath = resolveWindowsInstallerExecutable(
       input.systemRoot,
     );
@@ -30,6 +33,7 @@ export function launchWindowsInstallerForUpdate(
       executablePath,
       ['/i', input.packagePath, '/norestart'],
       {
+        cwd: workingDirectory,
         detached: true,
         shell: false,
         stdio: 'ignore',

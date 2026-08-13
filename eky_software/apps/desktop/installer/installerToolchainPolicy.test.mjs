@@ -153,6 +153,25 @@ test('keeps direct downgrade blocked and rollback outside MSI authoring', async 
   assert.match(rollbackScript, /CreateNoWindow = \$true/);
   assert.match(rollbackScript, /WaitForExit\(\)/);
   assert.match(rollbackScript, /ROLLBACK_ARGUMENT_INVALID/);
+  assert.match(rollbackScript, /\[string\]\$ProgressPath/);
+  assert.match(rollbackScript, /Write-RollbackProgress/);
+  for (const phase of [
+    'inputValidation',
+    'launcherExitWait',
+    'failedPackageUninstall',
+    'rollbackPackageInstall',
+    'failedPackageRepair',
+  ]) {
+    assert.match(rollbackScript, new RegExp(`'${phase}'`));
+  }
+  assert.match(
+    rollbackScript,
+    /\[ValidateSet\('started', 'completed', 'failed'\)\]/,
+  );
+  assert.doesNotMatch(
+    rollbackScript,
+    /Write-RollbackProgress[^\n]*(?:Path|ProductCode|Arguments|Error|Stack)/,
+  );
   assert.match(rollbackScript, /exit 24/);
   assert.match(rollbackScript, /exit 25/);
   assert.match(rollbackScript, /exit 26/);

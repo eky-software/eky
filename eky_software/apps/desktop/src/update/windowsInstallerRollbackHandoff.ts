@@ -3,6 +3,7 @@ import { win32 } from 'node:path';
 
 import { resolveWindowsPowerShellPath } from './windowsInstallerIdentity.js';
 import { resolveWindowsInstallerExecutable } from './windowsInstallerHandoff.js';
+import { requireCanonicalWindowsSystemRoot } from './windowsSystemRoot.js';
 
 type SpawnProcess = typeof spawn;
 
@@ -13,6 +14,7 @@ export interface WindowsInstallerRollbackHandoffInput {
   failedPackagePath: string;
   failedProductCode: string;
   launcherProcessId: number;
+  progressPath?: string;
   rollbackPackagePath: string;
   rollbackScriptPath: string;
   systemRoot: string | undefined;
@@ -30,9 +32,15 @@ export function launchWindowsInstallerRollback(
   spawnProcess: SpawnProcess = spawn,
 ): Promise<void> {
   try {
+    const workingDirectory = requireCanonicalWindowsSystemRoot(
+      input.systemRoot,
+    );
     assertCanonicalFilePath(input.failedPackagePath, '.msi');
     assertCanonicalFilePath(input.rollbackPackagePath, '.msi');
     assertCanonicalFilePath(input.rollbackScriptPath, '.ps1');
+    if (input.progressPath !== undefined) {
+      assertCanonicalFilePath(input.progressPath, '.jsonl');
+    }
     assertProcessId(input.launcherProcessId);
     if (!productCodePattern.test(input.failedProductCode)) {
       throw new WindowsInstallerRollbackHandoffError();
@@ -61,8 +69,12 @@ export function launchWindowsInstallerRollback(
         input.failedPackagePath,
         '-RollbackPackagePath',
         input.rollbackPackagePath,
+        ...(input.progressPath === undefined
+          ? []
+          : ['-ProgressPath', input.progressPath]),
       ],
       {
+        cwd: workingDirectory,
         detached: true,
         shell: false,
         stdio: 'ignore',

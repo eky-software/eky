@@ -26,6 +26,16 @@ export interface PackagedUpdateSmokeConfiguration {
   userDataPath: string | undefined;
 }
 
+const rollbackProgressFileName = 'rollback-installer-progress.jsonl';
+
+export function resolvePackagedUpdateSmokeRollbackProgressPath(
+  configuration: Readonly<PackagedUpdateSmokeConfiguration>,
+): string | undefined {
+  return configuration.enabled && configuration.root !== undefined
+    ? join(configuration.root, 'result', rollbackProgressFileName)
+    : undefined;
+}
+
 const expectedRecoveryRelaunchPhases = new Set<PackagedUpdateSmokePhase>([
   'verifyBackup',
   'verifyDirectFailure',

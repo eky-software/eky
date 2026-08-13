@@ -146,6 +146,7 @@ import { launchWindowsInstallerRollback } from '../update/windowsInstallerRollba
 import { createUpdateRecoveryComposition } from '../update/recoveryWindow/updateRecoveryComposition.js';
 import {
   resolvePackagedUpdateSmokeRecoveryReport,
+  resolvePackagedUpdateSmokeRollbackProgressPath,
   type PackagedUpdateSmokeConfiguration,
 } from '../update/packagedUpdateSmokeConfiguration.js';
 import {
@@ -545,11 +546,16 @@ async function startDesktopCompositionRuntime({
       : new UpdateBinaryRollbackCoordinator({
           cache: localUpdatePackageCache,
           journalStore: updateJournalStore,
-          launchInstaller: ({ failedPackage, rollbackPackage }) =>
-            launchWindowsInstallerRollback({
+          launchInstaller: ({ failedPackage, rollbackPackage }) => {
+            const progressPath =
+              resolvePackagedUpdateSmokeRollbackProgressPath(
+                options.updateSmokeConfiguration,
+              );
+            return launchWindowsInstallerRollback({
               failedPackagePath: failedPackage.packagePath,
               failedProductCode: failedPackage.productCode,
               launcherProcessId: process.pid,
+              ...(progressPath === undefined ? {} : { progressPath }),
               rollbackPackagePath: rollbackPackage.packagePath,
               rollbackScriptPath: join(
                 options.resourcesPath,
@@ -557,7 +563,8 @@ async function startDesktopCompositionRuntime({
                 'rollbackWindowsInstaller.ps1',
               ),
               systemRoot: process.env.SystemRoot,
-            }),
+            });
+          },
           observer: updateObserver,
           releaseInfo: options.releaseInfo,
         });

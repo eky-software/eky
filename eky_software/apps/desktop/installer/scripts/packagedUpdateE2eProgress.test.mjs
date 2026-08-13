@@ -6,6 +6,10 @@ import {
   packagedUpdateE2ePhases,
   packagedUpdateE2eScenarios,
 } from './packagedUpdateE2eProgress.mjs';
+import {
+  packagedUpdateRollbackEvents,
+  packagedUpdateRollbackPhases,
+} from './packagedUpdateRollbackProgress.mjs';
 
 describe('packaged update E2E progress observer', () => {
   it('emits a start and terminal event for every reviewed scenario', async () => {
@@ -223,6 +227,68 @@ describe('packaged update E2E progress observer', () => {
       events.map((event) => event.event),
       ['cleanupStarted', 'cleanupCompleted'],
     );
+  });
+
+  it('reports every reviewed rollback helper boundary with safe fields', () => {
+    const events = [];
+    const progress = createTestObserver(events);
+
+    for (const phase of packagedUpdateRollbackPhases) {
+      for (const event of packagedUpdateRollbackEvents) {
+        progress.reportRollbackPhase({
+          durationMs: 25,
+          elapsedMs: 50,
+          event,
+          phase,
+          scenario: 'coordinatedRollback',
+        });
+      }
+    }
+
+    assert.equal(
+      events.length,
+      packagedUpdateRollbackPhases.length * packagedUpdateRollbackEvents.length,
+    );
+    assert.deepEqual(
+      new Set(events.map((event) => event.event)),
+      new Set([
+        'rollbackPhaseStarted',
+        'rollbackPhaseCompleted',
+        'rollbackPhaseFailed',
+      ]),
+    );
+    assert.equal(events.every((event) => event.durationMs === 25), true);
+    assert.equal(events.every((event) => event.rollbackElapsedMs === 50), true);
+  });
+
+  it('rejects unknown rollback scenario, phase and event before output', () => {
+    const events = [];
+    const progress = createTestObserver(events);
+    const base = {
+      durationMs: 0,
+      elapsedMs: 0,
+      event: 'started',
+      phase: 'inputValidation',
+      scenario: 'coordinatedRollback',
+    };
+
+    assert.throws(
+      () =>
+        progress.reportRollbackPhase({
+          ...base,
+          scenario: 'coordinatedSuccess',
+        }),
+      /PACKAGED_UPDATE_E2E_PROGRESS_ROLLBACK_SCENARIO_INVALID/,
+    );
+    assert.throws(
+      () => progress.reportRollbackPhase({ ...base, phase: 'rawPath' }),
+      /PACKAGED_UPDATE_E2E_PROGRESS_ROLLBACK_PHASE_INVALID/,
+    );
+    assert.throws(
+      () => progress.reportRollbackPhase({ ...base, event: 'rawError' }),
+      /PACKAGED_UPDATE_E2E_PROGRESS_ROLLBACK_EVENT_INVALID/,
+    );
+    assert.deepEqual(events, []);
   });
 
   it('does not let a broken output writer change an operation result', async () => {

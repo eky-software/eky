@@ -49,6 +49,7 @@ describe('Windows installer rollback handoff', () => {
         'C:\\Users\\Example\\AppData\\Roaming\\Eky\\update-cache\\current\\Eky-0.1.0-x64.msi',
       ],
       {
+        cwd: 'C:\\Windows',
         detached: true,
         shell: false,
         stdio: 'ignore',
@@ -64,6 +65,7 @@ describe('Windows installer rollback handoff', () => {
     { launcherProcessId: 2_147_483_648 },
     { rollbackPackagePath: 'relative\\rollback.msi' },
     { rollbackScriptPath: 'C:\\Program Files\\Eky\\rollback.cmd' },
+    { progressPath: 'relative\\rollback-progress.jsonl' },
     { systemRoot: 'C:\\Windows\\..\\Windows' },
   ])('rejects untrusted rollback input %#', async (override) => {
     await expect(
@@ -72,6 +74,30 @@ describe('Windows installer rollback handoff', () => {
         vi.fn() as never,
       ),
     ).rejects.toBeInstanceOf(WindowsInstallerRollbackHandoffError);
+  });
+
+  it('passes only a canonical optional smoke progress file', async () => {
+    const processHandle = createProcessHandle();
+    const spawnProcess = vi.fn(() => processHandle);
+    const result = launchWindowsInstallerRollback(
+      {
+        ...createInput(),
+        progressPath:
+          'C:\\Users\\Example\\AppData\\Local\\Temp\\rollback-progress.jsonl',
+      },
+      spawnProcess as never,
+    );
+    processHandle.emit('spawn');
+    await result;
+
+    expect(spawnProcess).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.arrayContaining([
+        '-ProgressPath',
+        'C:\\Users\\Example\\AppData\\Local\\Temp\\rollback-progress.jsonl',
+      ]),
+      expect.any(Object),
+    );
   });
 
   it('fails safely when the detached process cannot start', async () => {

@@ -1,6 +1,10 @@
 import { performance } from 'node:perf_hooks';
 
 import { isPackagedUpdateFailureStage } from './packagedUpdateE2eSupport.mjs';
+import {
+  packagedUpdateRollbackEvents,
+  packagedUpdateRollbackPhases,
+} from './packagedUpdateRollbackProgress.mjs';
 
 export const packagedUpdateE2eScenarios = Object.freeze([
   'coordinatedSuccess',
@@ -75,6 +79,8 @@ export const packagedUpdateE2ePhases = Object.freeze([
 
 const scenarioSet = new Set(packagedUpdateE2eScenarios);
 const phaseSet = new Set(packagedUpdateE2ePhases);
+const rollbackEventSet = new Set(packagedUpdateRollbackEvents);
+const rollbackPhaseSet = new Set(packagedUpdateRollbackPhases);
 const safeErrorCodes = new Set([
   'PACKAGED_UPDATE_E2E_APPLICATION_EXIT_INVALID',
   'PACKAGED_UPDATE_E2E_APPLICATION_EXIT_TIMEOUT',
@@ -138,10 +144,48 @@ export function createPackagedUpdateE2eProgressObserver({
   const harnessStartedAt = now();
 
   return Object.freeze({
+    reportRollbackPhase,
     runCleanup,
     runPhase,
     runScenario,
   });
+
+  function reportRollbackPhase({
+    durationMs,
+    elapsedMs: rollbackElapsedMs,
+    event,
+    phase,
+    scenario,
+  }) {
+    requireScenario(scenario);
+    if (scenario !== 'coordinatedRollback') {
+      throw new Error('PACKAGED_UPDATE_E2E_PROGRESS_ROLLBACK_SCENARIO_INVALID');
+    }
+    if (!rollbackEventSet.has(event)) {
+      throw new Error('PACKAGED_UPDATE_E2E_PROGRESS_ROLLBACK_EVENT_INVALID');
+    }
+    if (!rollbackPhaseSet.has(phase)) {
+      throw new Error('PACKAGED_UPDATE_E2E_PROGRESS_ROLLBACK_PHASE_INVALID');
+    }
+    requireReportedDuration(durationMs);
+    requireReportedDuration(rollbackElapsedMs);
+    const completedAt = now();
+    try {
+      writeLine(
+        JSON.stringify({
+          event: `rollbackPhase${capitalize(event)}`,
+          scenario,
+          rollbackPhase: phase,
+          durationMs,
+          elapsedMs: toDuration(completedAt - harnessStartedAt),
+          rollbackElapsedMs,
+          source: 'packagedUpdateE2e',
+        }),
+      );
+    } catch {
+      // Progress reporting must never change the harness result.
+    }
+  }
 
   async function runScenario(scenario, operation) {
     requireScenario(scenario);
@@ -277,6 +321,16 @@ function requireOperation(operation) {
   if (typeof operation !== 'function') {
     throw new Error('PACKAGED_UPDATE_E2E_PROGRESS_OPERATION_INVALID');
   }
+}
+
+function requireReportedDuration(value) {
+  if (!Number.isSafeInteger(value) || value < 0 || value > 60 * 60 * 1000) {
+    throw new Error('PACKAGED_UPDATE_E2E_PROGRESS_DURATION_INVALID');
+  }
+}
+
+function capitalize(value) {
+  return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
 }
 
 function toSafeErrorCode(error) {

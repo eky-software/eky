@@ -31,6 +31,7 @@ describe('Windows installer update handoff', () => {
         '/norestart',
       ],
       {
+        cwd: 'C:\\Windows',
         detached: true,
         shell: false,
         stdio: 'ignore',
