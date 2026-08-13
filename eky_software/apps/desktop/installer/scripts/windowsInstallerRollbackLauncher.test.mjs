@@ -19,7 +19,7 @@ afterEach(async () => {
 });
 
 test(
-  'the detached fixed launcher reaches rollback validation without MSI work',
+  'the fixed launcher reaches rollback validation and propagates its exit code',
   { skip: process.platform !== 'win32' },
   async () => {
     const systemRoot = process.env.SystemRoot;
@@ -48,7 +48,9 @@ test(
       ],
       {
         cwd: updateRuntimeDirectory,
-        detached: true,
+        // Production detachment is covered by windowsInstallerRollbackHandoff.test.ts.
+        // Keep this process-level test attached so CI can observe its exact exit.
+        detached: false,
         env: {
           EKY_ROLLBACK_FAILED_PACKAGE_PATH: join(
             proofRoot,
