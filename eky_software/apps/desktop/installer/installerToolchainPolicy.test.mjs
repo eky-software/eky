@@ -85,6 +85,31 @@ test('keeps empty installer directory inventories as comparable arrays', async (
   assert.equal((support.match(/AllowEmptyCollection/g) ?? []).length, 2);
 });
 
+test('captures exact exit codes for every polled installer process', async () => {
+  const support = await readFile(
+    join(installerDirectory, 'scripts/windowsInstallerTestSupport.ps1'),
+    'utf8',
+  );
+  const upgrade = await readFile(
+    join(installerDirectory, 'scripts/testWindowsInstallerUpgrade.ps1'),
+    'utf8',
+  );
+
+  assert.match(support, /function Wait-EkyInstallerProcessExitCode/);
+  assert.match(
+    support,
+    /Initialize-EkyInstallerProcessTracking -Process \$Process/,
+  );
+  assert.match(support, /INSTALLER_PROCESS_EXIT_CODE_MISSING/);
+  assert.match(support, /return \[int\]\$exitCode/);
+  assert.equal(
+    (upgrade.match(/Wait-EkyInstallerProcessExitCode -Process \$process/g) ?? [])
+      .length,
+    2,
+  );
+  assert.doesNotMatch(upgrade, /return \$process\.ExitCode/);
+});
+
 test('keeps direct downgrade blocked and rollback outside MSI authoring', async () => {
   const packageSource = await readFile(
     join(installerDirectory, 'wix', 'Package.wxs'),

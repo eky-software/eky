@@ -80,10 +80,9 @@ function Invoke-EkyUpgradeAttempt {
     '/l*v',
     "`"$(Join-Path $logRoot $LogName)`""
   ) -NoNewWindow -PassThru
-  Wait-EkyInstallerProcess -Process $process -OnWait {
-    Write-EkyUpgradeHeartbeat
-  }
-  return $process.ExitCode
+  return Wait-EkyInstallerProcessExitCode -Process $process -OnWait {
+      Write-EkyUpgradeHeartbeat
+    }
 }
 
 function Invoke-EkyCoordinatedRollback {
@@ -118,10 +117,9 @@ function Invoke-EkyCoordinatedRollback {
     '-RollbackPackagePath',
     "`"$RollbackPackagePath`""
   ) -NoNewWindow -PassThru
-  Wait-EkyInstallerProcess -Process $process -OnWait {
-    Write-EkyUpgradeHeartbeat
-  }
-  return $process.ExitCode
+  return Wait-EkyInstallerProcessExitCode -Process $process -OnWait {
+      Write-EkyUpgradeHeartbeat
+    }
 }
 
 function Start-EkyForUpgrade {
@@ -441,26 +439,35 @@ try {
       Assert-BusinessDataUnchanged
     } | Out-Null
 
-  Invoke-EkyObservedUpgradePhase -Phase 'coordinatedRollbackStarted' `
+  $failedRollbackBlocker = Join-Path $installRoot `
+    'resources\desktop-runtime\installer-rollback-probe'
+  Invoke-EkyObservedUpgradePhase -Phase 'rollbackFailureProbePrepared' `
     -Operation {
-      $failedRollbackBlocker = Join-Path $installRoot `
-        'resources\desktop-runtime\installer-rollback-probe'
       Set-Content -LiteralPath $failedRollbackBlocker `
         -Value 'synthetic rollback blocker' -Encoding ASCII -NoNewline
-      try {
-        $failedRollbackExitCode = Invoke-EkyCoordinatedRollback `
+    } | Out-Null
+  try {
+    $failedRollbackExitCode = Invoke-EkyObservedUpgradePhase `
+      -Phase 'rollbackFailureAttempted' -Operation {
+        Invoke-EkyCoordinatedRollback `
           -FailedProductCode $nextProductCode `
           -FailedPackagePath $nextMsiPath `
           -RollbackPackagePath $rollbackMsiPath
+      }
+    Invoke-EkyObservedUpgradePhase -Phase 'rollbackFailureResultVerified' `
+      -Operation {
         if ($failedRollbackExitCode -ne 21) {
-          throw "INSTALLER_UPGRADE_ROLLBACK_REPAIR_RESULT_INVALID:$failedRollbackExitCode"
+          throw 'INSTALLER_UPGRADE_ROLLBACK_REPAIR_RESULT_INVALID'
         }
-      }
-      finally {
-        if (Test-Path -LiteralPath $failedRollbackBlocker) {
-          Remove-Item -LiteralPath $failedRollbackBlocker -Force
-        }
-      }
+      } | Out-Null
+  }
+  finally {
+    if (Test-Path -LiteralPath $failedRollbackBlocker) {
+      Remove-Item -LiteralPath $failedRollbackBlocker -Force
+    }
+  }
+  Invoke-EkyObservedUpgradePhase -Phase 'rollbackFailureStateVerified' `
+    -Operation {
       Assert-ProductAbsent -ProductCode $currentProductCode
       Assert-ProductInstalled -ProductCode $nextProductCode
       Assert-EkyInstalledPayload -InstallRoot $installRoot `
@@ -469,22 +476,30 @@ try {
       Assert-BusinessDataUnchanged
     } | Out-Null
 
-  Invoke-EkyObservedUpgradePhase -Phase 'coordinatedRollbackCompleted' `
-    -Operation {
-      $rollbackExitCode = Invoke-EkyCoordinatedRollback `
+  $rollbackExitCode = Invoke-EkyObservedUpgradePhase `
+    -Phase 'coordinatedRollbackAttempted' -Operation {
+      Invoke-EkyCoordinatedRollback `
         -FailedProductCode $nextProductCode `
         -FailedPackagePath $nextMsiPath `
         -RollbackPackagePath $currentMsiPath
+    }
+  Invoke-EkyObservedUpgradePhase -Phase 'coordinatedRollbackResultVerified' `
+    -Operation {
       if ($rollbackExitCode -ne 0) {
         throw 'INSTALLER_UPGRADE_COORDINATED_ROLLBACK_FAILED'
       }
+    } | Out-Null
+  Invoke-EkyObservedUpgradePhase -Phase 'coordinatedRollbackStateVerified' `
+    -Operation {
       Assert-ProductInstalled -ProductCode $currentProductCode
       Assert-ProductAbsent -ProductCode $nextProductCode
       Assert-EkyInstalledPayload -InstallRoot $installRoot `
         -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
       Assert-EkyInstallerRegistrationPresent -ProductCode $currentProductCode
       Assert-BusinessDataUnchanged
-
+    } | Out-Null
+  Invoke-EkyObservedUpgradePhase -Phase 'postRollbackUninstallCompleted' `
+    -Operation {
       Uninstall-EkyProduct -ProductCode $currentProductCode `
         -LogName 'uninstall-after-coordinated-rollback.log'
       Assert-ProductAbsent -ProductCode $currentProductCode

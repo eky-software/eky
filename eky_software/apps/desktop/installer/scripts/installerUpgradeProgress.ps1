@@ -13,8 +13,14 @@ $script:EkyInstallerUpgradeProgressPhases = @(
   'nextVersionVerified',
   'downgradeVerificationStarted',
   'downgradeVerificationCompleted',
-  'coordinatedRollbackStarted',
-  'coordinatedRollbackCompleted',
+  'rollbackFailureProbePrepared',
+  'rollbackFailureAttempted',
+  'rollbackFailureResultVerified',
+  'rollbackFailureStateVerified',
+  'coordinatedRollbackAttempted',
+  'coordinatedRollbackResultVerified',
+  'coordinatedRollbackStateVerified',
+  'postRollbackUninstallCompleted',
   'unicodePathVerificationCompleted',
   'transactionRollbackStarted',
   'transactionRollbackCompleted',
@@ -56,7 +62,9 @@ $script:EkyInstallerUpgradeSafeErrorCodes = @(
   'INSTALLER_UPGRADE_UNEXPECTED_PRODUCT_PRESENT',
   'INSTALLER_UPGRADE_UNICODE_INSTALL_ROOT_REMAINS',
   'INSTALLER_UPGRADE_UNINSTALL_ROOT_REMAINS',
-  'INSTALLER_UPGRADE_BACKEND_UTILITY_PROCESS_MISSING'
+  'INSTALLER_UPGRADE_BACKEND_UTILITY_PROCESS_MISSING',
+  'INSTALLER_PROCESS_EXIT_CODE_MISSING',
+  'INSTALLER_PROCESS_TRACKING_FAILED'
 )
 
 function New-EkyInstallerUpgradeProgressObserver {

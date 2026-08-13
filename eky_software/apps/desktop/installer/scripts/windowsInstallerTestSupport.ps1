@@ -39,18 +39,12 @@ function Invoke-EkyMsiExec {
 
   $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $Arguments `
     -NoNewWindow -PassThru
-  try {
-    Initialize-EkyInstallerProcessTracking -Process $process
-    Wait-EkyInstallerProcess -Process $process -OnWait $OnWait
-    $exitCode = $process.ExitCode
-    if ($exitCode -notin $AllowedExitCodes) {
-      throw "INSTALLER_$($Operation.ToUpperInvariant())_FAILED:$exitCode"
-    }
-    return $exitCode
+  $exitCode = Wait-EkyInstallerProcessExitCode -Process $process `
+    -OnWait $OnWait
+  if ($exitCode -notin $AllowedExitCodes) {
+    throw "INSTALLER_$($Operation.ToUpperInvariant())_FAILED:$exitCode"
   }
-  finally {
-    $process.Dispose()
-  }
+  return $exitCode
 }
 
 function Invoke-EkyMsiExecExpectedFailure {
@@ -62,18 +56,12 @@ function Invoke-EkyMsiExecExpectedFailure {
 
   $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $Arguments `
     -NoNewWindow -PassThru
-  try {
-    Initialize-EkyInstallerProcessTracking -Process $process
-    Wait-EkyInstallerProcess -Process $process -OnWait $OnWait
-    $exitCode = $process.ExitCode
-    if ($exitCode -in @(0, 1641, 3010)) {
-      throw "INSTALLER_$($Operation.ToUpperInvariant())_EXPECTED_FAILURE_MISSING"
-    }
-    return $exitCode
+  $exitCode = Wait-EkyInstallerProcessExitCode -Process $process `
+    -OnWait $OnWait
+  if ($exitCode -in @(0, 1641, 3010)) {
+    throw "INSTALLER_$($Operation.ToUpperInvariant())_EXPECTED_FAILURE_MISSING"
   }
-  finally {
-    $process.Dispose()
-  }
+  return $exitCode
 }
 
 function Initialize-EkyInstallerProcessTracking {
@@ -106,6 +94,26 @@ function Wait-EkyInstallerProcess {
     }
   }
   $Process.WaitForExit()
+}
+
+function Wait-EkyInstallerProcessExitCode {
+  param(
+    [Parameter(Mandatory = $true)]$Process,
+    [scriptblock]$OnWait
+  )
+
+  try {
+    Initialize-EkyInstallerProcessTracking -Process $Process
+    Wait-EkyInstallerProcess -Process $Process -OnWait $OnWait
+    $exitCode = $Process.ExitCode
+    if ($null -eq $exitCode) {
+      throw 'INSTALLER_PROCESS_EXIT_CODE_MISSING'
+    }
+    return [int]$exitCode
+  }
+  finally {
+    $Process.Dispose()
+  }
 }
 
 function Get-EkyDirectoryInventory {
