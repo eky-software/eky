@@ -37,8 +37,8 @@ function Invoke-EkyMsiExec {
     [scriptblock]$OnWait
   )
 
-  $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $Arguments `
-    -NoNewWindow -PassThru
+  $process = Start-EkyTrackedInstallerProcess -FilePath 'msiexec.exe' `
+    -ArgumentList $Arguments
   $exitCode = Wait-EkyInstallerProcessExitCode -Process $process `
     -OnWait $OnWait
   if ($exitCode -notin $AllowedExitCodes) {
@@ -54,8 +54,8 @@ function Invoke-EkyMsiExecExpectedFailure {
     [scriptblock]$OnWait
   )
 
-  $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $Arguments `
-    -NoNewWindow -PassThru
+  $process = Start-EkyTrackedInstallerProcess -FilePath 'msiexec.exe' `
+    -ArgumentList $Arguments
   $exitCode = Wait-EkyInstallerProcessExitCode -Process $process `
     -OnWait $OnWait
   if ($exitCode -in @(0, 1641, 3010)) {
@@ -75,6 +75,20 @@ function Initialize-EkyInstallerProcessTracking {
   catch {
     throw 'INSTALLER_PROCESS_TRACKING_FAILED'
   }
+}
+
+function Start-EkyTrackedInstallerProcess {
+  param(
+    [Parameter(Mandatory = $true)][string]$FilePath,
+    [Parameter(Mandatory = $true)][string[]]$ArgumentList
+  )
+
+  # Windows PowerShell can lose ExitCode when -NoNewWindow is combined with
+  # -PassThru. Keep the harness hidden without using that process-start path.
+  $process = Start-Process -FilePath $FilePath -ArgumentList $ArgumentList `
+    -WindowStyle Hidden -PassThru
+  Initialize-EkyInstallerProcessTracking -Process $process
+  return $process
 }
 
 function Wait-EkyInstallerProcess {

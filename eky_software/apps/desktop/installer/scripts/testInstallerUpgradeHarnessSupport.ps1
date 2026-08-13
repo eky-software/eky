@@ -302,10 +302,10 @@ Assert-Equal $cleanupEvents[0].event 'processCleanupOutcome' `
 Assert-Equal $cleanupEvents[0].taskkillOutcomeClass 'nonzero' `
   'INSTALLER_TEST_CLEANUP_SUMMARY_OUTCOME_INVALID'
 
-foreach ($expectedExitCode in @(0, 7)) {
-  $process = Start-Process -FilePath 'cmd.exe' `
-    -ArgumentList @('/d', '/c', "exit $expectedExitCode") `
-    -NoNewWindow -PassThru
+foreach ($iteration in 0..31) {
+  $expectedExitCode = if ($iteration % 2 -eq 0) { 0 } else { 7 }
+  $process = Start-EkyTrackedInstallerProcess -FilePath 'cmd.exe' `
+    -ArgumentList @('/d', '/c', "exit $expectedExitCode")
   $waitOutput = @(
     Wait-EkyInstallerProcessExitCode -Process $process
   )
@@ -320,9 +320,8 @@ $waitCommand = 'Start-Sleep -Milliseconds 1200; exit 21'
 $encodedWaitCommand = [Convert]::ToBase64String(
   [Text.Encoding]::Unicode.GetBytes($waitCommand)
 )
-$waitProcess = Start-Process -FilePath 'powershell.exe' `
-  -ArgumentList @('-NoProfile', '-EncodedCommand', $encodedWaitCommand) `
-  -NoNewWindow -PassThru
+$waitProcess = Start-EkyTrackedInstallerProcess -FilePath 'powershell.exe' `
+  -ArgumentList @('-NoProfile', '-EncodedCommand', $encodedWaitCommand)
 $waitOutput = @(
   Wait-EkyInstallerProcessExitCode -Process $waitProcess -OnWait {
     $script:installerWaitCallbackCount += 1

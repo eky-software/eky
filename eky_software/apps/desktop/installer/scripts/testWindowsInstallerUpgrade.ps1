@@ -72,14 +72,15 @@ function Invoke-EkyUpgradeAttempt {
     [Parameter(Mandatory = $true)][string]$LogName
   )
 
-  $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList @(
+  $process = Start-EkyTrackedInstallerProcess -FilePath 'msiexec.exe' `
+    -ArgumentList @(
     '/i',
     "`"$MsiPath`"",
     '/qn',
     '/norestart',
     '/l*v',
     "`"$(Join-Path $logRoot $LogName)`""
-  ) -NoNewWindow -PassThru
+  )
   return Wait-EkyInstallerProcessExitCode -Process $process -OnWait {
       Write-EkyUpgradeHeartbeat
     }
@@ -98,7 +99,8 @@ function Invoke-EkyCoordinatedRollback {
     throw 'INSTALLER_UPGRADE_ROLLBACK_SCRIPT_MISSING'
   }
   $msiExecPath = Join-Path $env:SystemRoot 'System32\msiexec.exe'
-  $process = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
+  $process = Start-EkyTrackedInstallerProcess -FilePath 'powershell.exe' `
+    -ArgumentList @(
     '-NoLogo',
     '-NoProfile',
     '-NonInteractive',
@@ -116,7 +118,7 @@ function Invoke-EkyCoordinatedRollback {
     "`"$FailedPackagePath`"",
     '-RollbackPackagePath',
     "`"$RollbackPackagePath`""
-  ) -NoNewWindow -PassThru
+  )
   return Wait-EkyInstallerProcessExitCode -Process $process -OnWait {
       Write-EkyUpgradeHeartbeat
     }
