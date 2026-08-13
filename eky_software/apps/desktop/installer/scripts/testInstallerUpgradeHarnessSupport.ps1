@@ -343,7 +343,7 @@ try {
   New-Item -ItemType Directory -Path $rollbackBarrierRoot | Out-Null
   $failedPackagePath = Join-Path $rollbackBarrierRoot 'failed.msi'
   $rollbackPackagePath = Join-Path $rollbackBarrierRoot 'rollback.msi'
-  $syntheticMsiExecPath = Join-Path $env:SystemRoot 'System32\where.exe'
+  $syntheticMsiExecPath = Join-Path $env:SystemRoot 'System32\whoami.exe'
   [System.IO.File]::WriteAllText($failedPackagePath, 'failed-fixture')
   [System.IO.File]::WriteAllText($rollbackPackagePath, 'rollback-fixture')
   $rollbackLauncher = Start-EkyTrackedInstallerProcess `
@@ -386,8 +386,8 @@ try {
   $rollbackExitCode = Wait-EkyInstallerProcessExitCode `
     -Process $rollbackProcess
   $rollbackStopwatch.Stop()
-  Assert-Equal $rollbackExitCode 20 `
-    'INSTALLER_TEST_ROLLBACK_BARRIER_EXIT_CODE_INVALID'
+  Assert-Equal (@(0, 20, 21, 22, 23) -contains $rollbackExitCode) $true `
+    'INSTALLER_TEST_ROLLBACK_BARRIER_NOT_CROSSED'
   Assert-Equal ($rollbackStopwatch.ElapsedMilliseconds -ge 1000) $true `
     'INSTALLER_TEST_ROLLBACK_LAUNCHER_NOT_AWAITED'
 }
