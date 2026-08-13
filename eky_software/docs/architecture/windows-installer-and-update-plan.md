@@ -937,14 +937,17 @@ prosessien tappamista eikä jatka käynnissä olevan Eky-prosessin yli.
 
 Eteenpäin vievä installer-handoff ja rollbackin pitkäikäinen PowerShell-
 apuprosessi käyttävät kanonista `%SystemRoot%`-hakemistoa
-työskentelyhakemistona. Lyhytikäinen irrotettu `cmd.exe` käynnistyy validoidusta
-yksityisestä runtime-kopiosta vain löytääkseen kiinteän CMD-launcherin; se
-käynnistää PowerShellin `%SystemRoot%`-hakemistoon ja poistuu ennen
-ensimmäistä `msiexec`-komentoa. Pitkäikäinen apuprosessi ei näin peri muuttuvaa
-Eky-asennusjuurta työskentelyhakemistoksi eikä suorita skriptiä juuri
-poistettavasta tai korvattavasta MSI-komponentista. `SystemRoot` validoidaan
-samalla suljetulla Windows-rajan säännöllä kuin `msiexec`- ja PowerShell-polut;
-renderer ei voi antaa työskentelyhakemistoa tai staging-polkua.
+työskentelyhakemistona. Irrotettu `cmd.exe` käynnistyy validoidusta yksityisestä
+runtime-kopiosta vain löytääkseen kiinteän CMD-launcherin. CMD-launcher vaihtaa
+työskentelyhakemistoksi `%SystemRoot%`:n, kutsuu kiinteää PowerShell-launcheria
+synkronisesti ja välittää sen exit-koodin. Tämä poistaa toisen irrotetun
+`start`-kutsun kilpailurajan: Electron mainin käynnistämä CMD-prosessipuu pysyy
+elossa siihen asti, että rollback-helper päättyy, mutta yksikään pitkäikäinen
+prosessi ei peri muuttuvaa Eky-asennusjuurta työskentelyhakemistoksi eikä
+suorita skriptiä juuri poistettavasta tai korvattavasta MSI-komponentista.
+`SystemRoot` validoidaan samalla suljetulla Windows-rajan säännöllä kuin
+`msiexec`- ja PowerShell-polut; renderer ei voi antaa työskentelyhakemistoa tai
+staging-polkua.
 
 Teknologiavalinnassa pitää todistaa:
 

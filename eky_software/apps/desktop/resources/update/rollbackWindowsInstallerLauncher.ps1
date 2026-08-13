@@ -58,7 +58,11 @@ try {
   }
 
   & $rollbackScriptPath @rollbackParameters
-  exit 23
+  $rollbackExitCode = $LASTEXITCODE
+  if ($rollbackExitCode -notin @(0, 20, 21, 22, 23, 24, 25, 26, 27)) {
+    exit 30
+  }
+  exit $rollbackExitCode
 } catch {
   exit 30
 }

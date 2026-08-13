@@ -71,9 +71,11 @@ test(
         windowsHide: true,
       },
     );
+    const exitPromise = waitUntilExited(processHandle);
     await waitUntilSpawned(processHandle);
 
     const rows = await waitForValidationFailure(progressPath);
+    const exit = await exitPromise;
     assert.deepEqual(
       rows.map(({ event, phase }) => ({ event, phase })),
       [
@@ -81,15 +83,31 @@ test(
         { event: 'failed', phase: 'inputValidation' },
       ],
     );
+    assert.deepEqual(exit, { code: 25, signal: null });
   },
 );
 
 function waitUntilSpawned(processHandle) {
   return new Promise((resolve, reject) => {
     processHandle.once('error', reject);
-    processHandle.once('spawn', () => {
-      processHandle.unref();
-      resolve();
+    processHandle.once('spawn', resolve);
+  });
+}
+
+function waitUntilExited(processHandle) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      processHandle.kill();
+      reject(new Error('ROLLBACK_LAUNCHER_EXIT_TIMEOUT'));
+    }, 10_000);
+    timeout.unref();
+    processHandle.once('error', (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    processHandle.once('exit', (code, signal) => {
+      clearTimeout(timeout);
+      resolve({ code, signal });
     });
   });
 }

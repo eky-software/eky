@@ -247,7 +247,7 @@ test('uses a fixed detached rollback launcher without shell-interpolated data', 
   ]);
 
   assert.match(commandLauncher, /setlocal DisableDelayedExpansion/);
-  assert.match(commandLauncher, /start "" \/b \/d "%SystemRoot%"/);
+  assert.match(commandLauncher, /cd \/d "%SystemRoot%" \|\| exit \/b 31/);
   assert.match(
     commandLauncher,
     /%SystemRoot%\\System32\\WindowsPowerShell\\v1\.0\\powershell\.exe/,
@@ -256,7 +256,8 @@ test('uses a fixed detached rollback launcher without shell-interpolated data', 
     commandLauncher,
     /-File "%~dp0rollbackWindowsInstallerLauncher\.ps1"/,
   );
-  assert.doesNotMatch(commandLauncher, /%\*|Invoke-Expression/);
+  assert.match(commandLauncher, /exit \/b %errorlevel%/);
+  assert.doesNotMatch(commandLauncher, /start\b|%\*|Invoke-Expression/iu);
 
   for (const name of [
     'EKY_ROLLBACK_FAILED_PACKAGE_PATH',
@@ -273,6 +274,12 @@ test('uses a fixed detached rollback launcher without shell-interpolated data', 
     /Join-Path \$PSScriptRoot 'rollbackWindowsInstaller\.ps1'/,
   );
   assert.match(powershellLauncher, /& \$rollbackScriptPath @rollbackParameters/);
+  assert.match(powershellLauncher, /\$rollbackExitCode = \$LASTEXITCODE/);
+  assert.match(
+    powershellLauncher,
+    /\$rollbackExitCode -notin @\(0, 20, 21, 22, 23, 24, 25, 26, 27\)/,
+  );
+  assert.match(powershellLauncher, /exit \$rollbackExitCode/);
   assert.doesNotMatch(
     powershellLauncher,
     /Invoke-Expression|Start-Process|cmd\.exe|\.bat\b|\.cmd\b/iu,
