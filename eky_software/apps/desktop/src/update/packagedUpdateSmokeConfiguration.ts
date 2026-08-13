@@ -32,14 +32,28 @@ const expectedRecoveryRelaunchPhases = new Set<PackagedUpdateSmokePhase>([
   'verifyRollback',
 ]);
 
-export function shouldReportUnexpectedPackagedUpdateRecovery(
+export interface PackagedUpdateSmokeRecoveryReport {
+  action: 'quit' | 'relaunch';
+  errorCode:
+    | 'DESKTOP_UPDATE_SMOKE_EXPECTED_RECOVERY_REQUIRED'
+    | 'DESKTOP_UPDATE_SMOKE_UNEXPECTED_RECOVERY_REQUIRED';
+}
+
+export function resolvePackagedUpdateSmokeRecoveryReport(
   configuration: Readonly<PackagedUpdateSmokeConfiguration>,
-): boolean {
-  return (
-    configuration.enabled &&
-    configuration.phase !== undefined &&
-    !expectedRecoveryRelaunchPhases.has(configuration.phase)
-  );
+): PackagedUpdateSmokeRecoveryReport | undefined {
+  if (!configuration.enabled || configuration.phase === undefined) {
+    return undefined;
+  }
+  return expectedRecoveryRelaunchPhases.has(configuration.phase)
+    ? Object.freeze({
+        action: 'relaunch',
+        errorCode: 'DESKTOP_UPDATE_SMOKE_EXPECTED_RECOVERY_REQUIRED',
+      })
+    : Object.freeze({
+        action: 'quit',
+        errorCode: 'DESKTOP_UPDATE_SMOKE_UNEXPECTED_RECOVERY_REQUIRED',
+      });
 }
 
 const smokeTokenPattern = /^[0-9a-f]{32}$/;

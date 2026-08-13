@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   createPackagedUpdateSmokeConfiguration,
-  shouldReportUnexpectedPackagedUpdateRecovery,
+  resolvePackagedUpdateSmokeRecoveryReport,
   type PackagedUpdateSmokePhase,
 } from './packagedUpdateSmokeConfiguration.js';
 
@@ -75,32 +75,38 @@ describe('packaged update smoke configuration', () => {
 
   it('reports recovery during a success-path verification', () => {
     expect(
-      shouldReportUnexpectedPackagedUpdateRecovery(
+      resolvePackagedUpdateSmokeRecoveryReport(
         createConfiguration('verifySuccess'),
       ),
-    ).toBe(true);
+    ).toEqual({
+      action: 'quit',
+      errorCode: 'DESKTOP_UPDATE_SMOKE_UNEXPECTED_RECOVERY_REQUIRED',
+    });
   });
 
   it.each(['verifyBackup', 'verifyDirectFailure', 'verifyRollback'] as const)(
     'allows the bounded recovery sequence for %s',
     (phase) => {
       expect(
-        shouldReportUnexpectedPackagedUpdateRecovery(
+        resolvePackagedUpdateSmokeRecoveryReport(
           createConfiguration(phase),
         ),
-      ).toBe(false);
+      ).toEqual({
+        action: 'relaunch',
+        errorCode: 'DESKTOP_UPDATE_SMOKE_EXPECTED_RECOVERY_REQUIRED',
+      });
     },
   );
 
   it('does not classify disabled automation as a smoke failure', () => {
     expect(
-      shouldReportUnexpectedPackagedUpdateRecovery({
+      resolvePackagedUpdateSmokeRecoveryReport({
         enabled: false,
         phase: undefined,
         root: undefined,
         userDataPath: undefined,
       }),
-    ).toBe(false);
+    ).toBeUndefined();
   });
 });
 

@@ -145,7 +145,7 @@ import { launchWindowsInstallerForUpdate } from '../update/windowsInstallerHando
 import { launchWindowsInstallerRollback } from '../update/windowsInstallerRollbackHandoff.js';
 import { createUpdateRecoveryComposition } from '../update/recoveryWindow/updateRecoveryComposition.js';
 import {
-  shouldReportUnexpectedPackagedUpdateRecovery,
+  resolvePackagedUpdateSmokeRecoveryReport,
   type PackagedUpdateSmokeConfiguration,
 } from '../update/packagedUpdateSmokeConfiguration.js';
 import {
@@ -1125,17 +1125,19 @@ async function startDesktopCompositionRuntime({
         .recoverFromStartupFailure()
         .catch(() => false))
     ) {
-      if (
-        shouldReportUnexpectedPackagedUpdateRecovery(
+      const smokeRecoveryReport =
+        resolvePackagedUpdateSmokeRecoveryReport(
           options.updateSmokeConfiguration,
-        )
-      ) {
+        );
+      if (smokeRecoveryReport !== undefined) {
         await writePackagedUpdateSmokeFailure(
           options.updateSmokeConfiguration,
-          'DESKTOP_UPDATE_SMOKE_UNEXPECTED_RECOVERY_REQUIRED',
+          smokeRecoveryReport.errorCode,
           readFirstStartPreMigrationFailureStage(error) ??
             packagedUpdateFailureStage,
         );
+      }
+      if (smokeRecoveryReport?.action === 'quit') {
         options.quitApplication();
         return undefined;
       }
