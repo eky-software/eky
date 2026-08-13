@@ -344,16 +344,17 @@ try {
   New-Item -ItemType Directory -Path $rollbackBarrierRoot | Out-Null
   $failedPackagePath = Join-Path $rollbackBarrierRoot 'failed.msi'
   $rollbackPackagePath = Join-Path $rollbackBarrierRoot 'rollback.msi'
+  $launcherProbePath = Join-Path $env:SystemRoot 'System32\ping.exe'
   $syntheticMsiExecPath = Join-Path $env:SystemRoot 'System32\whoami.exe'
   [System.IO.File]::WriteAllText($failedPackagePath, 'failed-fixture')
   [System.IO.File]::WriteAllText($rollbackPackagePath, 'rollback-fixture')
   $rollbackLauncher = Start-EkyTrackedInstallerProcess `
-    -FilePath 'powershell.exe' -ArgumentList @(
-      '-NoLogo',
-      '-NoProfile',
-      '-NonInteractive',
-      '-Command',
-      'Start-Sleep -Seconds 60'
+    -FilePath $launcherProbePath -ArgumentList @(
+      '127.0.0.1',
+      '-n',
+      '60',
+      '-w',
+      '1000'
     )
   if ($rollbackLauncher.HasExited) {
     throw 'INSTALLER_TEST_ROLLBACK_LAUNCHER_EXITED_EARLY'
