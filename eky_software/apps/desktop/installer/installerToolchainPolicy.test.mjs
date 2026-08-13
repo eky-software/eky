@@ -143,6 +143,11 @@ test('keeps direct downgrade blocked and rollback outside MSI authoring', async 
   assert.ok(uninstallIndex > launcherWaitIndex);
   assert.ok(rollbackInstallIndex > uninstallIndex);
   assert.ok(failedRepairIndex > rollbackInstallIndex);
+  assert.match(
+    rollbackScript,
+    /System\.Diagnostics\.Process\]::GetProcessById\(\$ProcessId\)/,
+  );
+  assert.match(rollbackScript, /\$launcher\.WaitForExit\(30000\)/);
   assert.match(rollbackScript, /System\.Diagnostics\.ProcessStartInfo/);
   assert.match(rollbackScript, /UseShellExecute = \$false/);
   assert.match(rollbackScript, /CreateNoWindow = \$true/);

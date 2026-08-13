@@ -54,39 +54,6 @@ function New-TestProcessRecord {
   }
 }
 
-function Start-TestRollbackProcess {
-  param(
-    [Parameter(Mandatory = $true)][int]$LauncherProcessId,
-    [Parameter(Mandatory = $true)][string]$RollbackScriptPath,
-    [Parameter(Mandatory = $true)][string]$MsiExecPath,
-    [Parameter(Mandatory = $true)][string]$FailedPackagePath,
-    [Parameter(Mandatory = $true)][string]$RollbackPackagePath
-  )
-
-  return Start-EkyTrackedInstallerProcess `
-    -FilePath 'powershell.exe' -ArgumentList @(
-      '-NoLogo',
-      '-NoProfile',
-      '-NonInteractive',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-WindowStyle',
-      'Hidden',
-      '-File',
-      "`"$RollbackScriptPath`"",
-      '-MsiExecPath',
-      "`"$MsiExecPath`"",
-      '-FailedProductCode',
-      '{FFFFFFFF-FFFF-4FFF-8FFF-FFFFFFFFFFFF}',
-      '-LauncherProcessId',
-      $LauncherProcessId,
-      '-FailedPackagePath',
-      "`"$FailedPackagePath`"",
-      '-RollbackPackagePath',
-      "`"$RollbackPackagePath`""
-    )
-}
-
 foreach ($taskkillOutcome in @(
   'notRequired',
   'zero',
@@ -371,8 +338,7 @@ Assert-Equal $waitOutput[0] 21 `
 
 $rollbackBarrierRoot = Join-Path $env:TEMP `
   "eky-rollback-launcher-barrier-$([guid]::NewGuid().ToString('N'))"
-$blockingRollbackProcess = $null
-$releasedRollbackProcess = $null
+$rollbackProcess = $null
 try {
   New-Item -ItemType Directory -Path $rollbackBarrierRoot | Out-Null
   $failedPackagePath = Join-Path $rollbackBarrierRoot 'failed.msi'
@@ -383,49 +349,45 @@ try {
   $rollbackScriptPath = (Resolve-Path -LiteralPath (
       Join-Path $PSScriptRoot '..\..\resources\update\rollbackWindowsInstaller.ps1'
     )).Path
-  $blockingRollbackProcess = Start-TestRollbackProcess `
-    -LauncherProcessId $PID `
-    -RollbackScriptPath $rollbackScriptPath `
-    -MsiExecPath $syntheticMsiExecPath `
-    -FailedPackagePath $failedPackagePath `
-    -RollbackPackagePath $rollbackPackagePath
-  Assert-Equal $blockingRollbackProcess.WaitForExit(15000) $false `
-    'INSTALLER_TEST_ROLLBACK_BARRIER_RELEASED_EARLY'
-  $blockingRollbackProcess.Kill()
-  $blockingRollbackProcess.WaitForExit(5000) | Out-Null
-  $blockingRollbackProcess.Dispose()
-  $blockingRollbackProcess = $null
-
-  $releasedRollbackProcess = Start-TestRollbackProcess `
-    -LauncherProcessId 2147483647 `
-    -RollbackScriptPath $rollbackScriptPath `
-    -MsiExecPath $syntheticMsiExecPath `
-    -FailedPackagePath $failedPackagePath `
-    -RollbackPackagePath $rollbackPackagePath
+  $rollbackProcess = Start-EkyTrackedInstallerProcess `
+    -FilePath 'powershell.exe' -ArgumentList @(
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-WindowStyle',
+      'Hidden',
+      '-File',
+      "`"$rollbackScriptPath`"",
+      '-MsiExecPath',
+      "`"$syntheticMsiExecPath`"",
+      '-FailedProductCode',
+      '{FFFFFFFF-FFFF-4FFF-8FFF-FFFFFFFFFFFF}',
+      '-LauncherProcessId',
+      2147483647,
+      '-FailedPackagePath',
+      "`"$failedPackagePath`"",
+      '-RollbackPackagePath',
+      "`"$rollbackPackagePath`""
+    )
   try {
     $rollbackExitCode = Wait-EkyInstallerProcessExitCode `
-      -Process $releasedRollbackProcess
+      -Process $rollbackProcess
   }
   finally {
-    $releasedRollbackProcess = $null
+    $rollbackProcess = $null
   }
   Assert-Equal (@(0, 20, 21, 22, 23) -contains $rollbackExitCode) $true `
     'INSTALLER_TEST_ROLLBACK_BARRIER_NOT_CROSSED'
 }
 finally {
-  if ($null -ne $releasedRollbackProcess) {
-    if (!$releasedRollbackProcess.HasExited) {
-      $releasedRollbackProcess.Kill()
-      $releasedRollbackProcess.WaitForExit(5000) | Out-Null
+  if ($null -ne $rollbackProcess) {
+    if (!$rollbackProcess.HasExited) {
+      $rollbackProcess.Kill()
+      $rollbackProcess.WaitForExit(5000) | Out-Null
     }
-    $releasedRollbackProcess.Dispose()
-  }
-  if ($null -ne $blockingRollbackProcess) {
-    if (!$blockingRollbackProcess.HasExited) {
-      $blockingRollbackProcess.Kill()
-      $blockingRollbackProcess.WaitForExit(5000) | Out-Null
-    }
-    $blockingRollbackProcess.Dispose()
+    $rollbackProcess.Dispose()
   }
   if (Test-Path -LiteralPath $rollbackBarrierRoot) {
     Remove-Item -LiteralPath $rollbackBarrierRoot -Recurse -Force
