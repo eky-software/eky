@@ -339,6 +339,7 @@ Assert-Equal $waitOutput[0] 21 `
 $rollbackBarrierRoot = Join-Path $env:TEMP `
   "eky-rollback-launcher-barrier-$([guid]::NewGuid().ToString('N'))"
 $rollbackLauncher = $null
+$rollbackProcess = $null
 try {
   New-Item -ItemType Directory -Path $rollbackBarrierRoot | Out-Null
   $failedPackagePath = Join-Path $rollbackBarrierRoot 'failed.msi'
@@ -352,7 +353,7 @@ try {
       '-NoProfile',
       '-NonInteractive',
       '-Command',
-      'Start-Sleep -Milliseconds 1500'
+      'Start-Sleep -Seconds 60'
     )
   if ($rollbackLauncher.HasExited) {
     throw 'INSTALLER_TEST_ROLLBACK_LAUNCHER_EXITED_EARLY'
@@ -360,7 +361,6 @@ try {
   $rollbackScriptPath = (Resolve-Path -LiteralPath (
       Join-Path $PSScriptRoot '..\..\resources\update\rollbackWindowsInstaller.ps1'
     )).Path
-  $rollbackStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
   $rollbackProcess = Start-EkyTrackedInstallerProcess `
     -FilePath 'powershell.exe' -ArgumentList @(
       '-NoLogo',
@@ -383,17 +383,31 @@ try {
       '-RollbackPackagePath',
       "`"$rollbackPackagePath`""
     )
-  $rollbackExitCode = Wait-EkyInstallerProcessExitCode `
-    -Process $rollbackProcess
-  $rollbackStopwatch.Stop()
+  Assert-Equal $rollbackProcess.WaitForExit(15000) $false `
+    'INSTALLER_TEST_ROLLBACK_BARRIER_RELEASED_EARLY'
+  $rollbackLauncher.Kill()
+  $rollbackLauncher.WaitForExit(5000) | Out-Null
+  try {
+    $rollbackExitCode = Wait-EkyInstallerProcessExitCode `
+      -Process $rollbackProcess
+  }
+  finally {
+    $rollbackProcess = $null
+  }
   Assert-Equal (@(0, 20, 21, 22, 23) -contains $rollbackExitCode) $true `
     'INSTALLER_TEST_ROLLBACK_BARRIER_NOT_CROSSED'
-  Assert-Equal ($rollbackStopwatch.ElapsedMilliseconds -ge 1000) $true `
-    'INSTALLER_TEST_ROLLBACK_LAUNCHER_NOT_AWAITED'
 }
 finally {
+  if ($null -ne $rollbackProcess) {
+    if (!$rollbackProcess.HasExited) {
+      $rollbackProcess.Kill()
+      $rollbackProcess.WaitForExit(5000) | Out-Null
+    }
+    $rollbackProcess.Dispose()
+  }
   if ($null -ne $rollbackLauncher) {
     if (!$rollbackLauncher.HasExited) {
+      $rollbackLauncher.Kill()
       $rollbackLauncher.WaitForExit(5000) | Out-Null
     }
     $rollbackLauncher.Dispose()
