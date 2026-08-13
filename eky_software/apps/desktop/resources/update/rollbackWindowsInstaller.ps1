@@ -5,6 +5,10 @@ param(
   [string]$FailedProductCode,
 
   [Parameter(Mandatory = $true)]
+  [ValidateRange(1, 2147483647)]
+  [int]$LauncherProcessId,
+
+  [Parameter(Mandatory = $true)]
   [string]$FailedPackagePath,
 
   [Parameter(Mandatory = $true)]
@@ -68,6 +72,26 @@ function Invoke-MsiExec {
   }
 }
 
+function Wait-LauncherProcessExit {
+  param([Parameter(Mandatory = $true)][int]$ProcessId)
+
+  $launcher = $null
+  try {
+    try {
+      $launcher = [System.Diagnostics.Process]::GetProcessById($ProcessId)
+    } catch [System.ArgumentException] {
+      return $true
+    }
+    return $launcher.WaitForExit(30000)
+  } catch {
+    return $false
+  } finally {
+    if ($null -ne $launcher) {
+      $launcher.Dispose()
+    }
+  }
+}
+
 try {
   try {
     Assert-RegularFile -Path $MsiExecPath -Extension '.exe'
@@ -83,6 +107,9 @@ try {
     Assert-RegularFile -Path $RollbackPackagePath -Extension '.msi'
   } catch {
     exit 26
+  }
+  if (!(Wait-LauncherProcessExit -ProcessId $LauncherProcessId)) {
+    exit 27
   }
 
   $uninstallExitCode = Invoke-MsiExec -Arguments @(

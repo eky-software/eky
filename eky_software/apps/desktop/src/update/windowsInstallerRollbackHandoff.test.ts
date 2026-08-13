@@ -41,6 +41,8 @@ describe('Windows installer rollback handoff', () => {
         'C:\\Windows\\System32\\msiexec.exe',
         '-FailedProductCode',
         '{22222222-2222-4222-8222-222222222222}',
+        '-LauncherProcessId',
+        '4321',
         '-FailedPackagePath',
         'C:\\Users\\Example\\AppData\\Roaming\\Eky\\update-cache\\candidate\\Eky-0.2.0-x64.msi',
         '-RollbackPackagePath',
@@ -58,6 +60,8 @@ describe('Windows installer rollback handoff', () => {
 
   it.each([
     { failedProductCode: '22222222-2222-4222-8222-222222222222' },
+    { launcherProcessId: 0 },
+    { launcherProcessId: 2_147_483_648 },
     { rollbackPackagePath: 'relative\\rollback.msi' },
     { rollbackScriptPath: 'C:\\Program Files\\Eky\\rollback.cmd' },
     { systemRoot: 'C:\\Windows\\..\\Windows' },
@@ -89,6 +93,7 @@ function createInput() {
     failedPackagePath:
       'C:\\Users\\Example\\AppData\\Roaming\\Eky\\update-cache\\candidate\\Eky-0.2.0-x64.msi',
     failedProductCode: '{22222222-2222-4222-8222-222222222222}',
+    launcherProcessId: 4321,
     rollbackPackagePath:
       'C:\\Users\\Example\\AppData\\Roaming\\Eky\\update-cache\\current\\Eky-0.1.0-x64.msi',
     rollbackScriptPath:

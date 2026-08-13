@@ -12,6 +12,7 @@ const productCodePattern =
 export interface WindowsInstallerRollbackHandoffInput {
   failedPackagePath: string;
   failedProductCode: string;
+  launcherProcessId: number;
   rollbackPackagePath: string;
   rollbackScriptPath: string;
   systemRoot: string | undefined;
@@ -32,6 +33,7 @@ export function launchWindowsInstallerRollback(
     assertCanonicalFilePath(input.failedPackagePath, '.msi');
     assertCanonicalFilePath(input.rollbackPackagePath, '.msi');
     assertCanonicalFilePath(input.rollbackScriptPath, '.ps1');
+    assertProcessId(input.launcherProcessId);
     if (!productCodePattern.test(input.failedProductCode)) {
       throw new WindowsInstallerRollbackHandoffError();
     }
@@ -53,6 +55,8 @@ export function launchWindowsInstallerRollback(
         msiExecPath,
         '-FailedProductCode',
         input.failedProductCode,
+        '-LauncherProcessId',
+        String(input.launcherProcessId),
         '-FailedPackagePath',
         input.failedPackagePath,
         '-RollbackPackagePath',
@@ -68,6 +72,16 @@ export function launchWindowsInstallerRollback(
     return waitUntilSpawned(processHandle);
   } catch {
     return Promise.reject(new WindowsInstallerRollbackHandoffError());
+  }
+}
+
+function assertProcessId(processId: number): void {
+  if (
+    !Number.isSafeInteger(processId) ||
+    processId < 1 ||
+    processId > 2_147_483_647
+  ) {
+    throw new WindowsInstallerRollbackHandoffError();
   }
 }
 

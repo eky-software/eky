@@ -336,6 +336,74 @@ Assert-Equal ($script:installerWaitCallbackCount -gt 0) $true `
 Assert-Equal $waitOutput[0] 21 `
   'INSTALLER_TEST_WAIT_CALLBACK_CHANGED_EXIT_CODE'
 
+$rollbackBarrierRoot = Join-Path $env:TEMP `
+  "eky-rollback-launcher-barrier-$([guid]::NewGuid().ToString('N'))"
+$rollbackLauncher = $null
+try {
+  New-Item -ItemType Directory -Path $rollbackBarrierRoot | Out-Null
+  $failedPackagePath = Join-Path $rollbackBarrierRoot 'failed.msi'
+  $rollbackPackagePath = Join-Path $rollbackBarrierRoot 'rollback.msi'
+  $invalidMsiExecPath = Join-Path $rollbackBarrierRoot 'invalid-msiexec.exe'
+  [System.IO.File]::WriteAllText($failedPackagePath, 'failed-fixture')
+  [System.IO.File]::WriteAllText($rollbackPackagePath, 'rollback-fixture')
+  [System.IO.File]::WriteAllText($invalidMsiExecPath, 'not-an-executable')
+  $rollbackLauncher = Start-EkyTrackedInstallerProcess `
+    -FilePath 'powershell.exe' -ArgumentList @(
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      'Start-Sleep -Milliseconds 1500'
+    )
+  if ($rollbackLauncher.HasExited) {
+    throw 'INSTALLER_TEST_ROLLBACK_LAUNCHER_EXITED_EARLY'
+  }
+  $rollbackScriptPath = (Resolve-Path -LiteralPath (
+      Join-Path $PSScriptRoot '..\..\resources\update\rollbackWindowsInstaller.ps1'
+    )).Path
+  $rollbackStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+  $rollbackProcess = Start-EkyTrackedInstallerProcess `
+    -FilePath 'powershell.exe' -ArgumentList @(
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-WindowStyle',
+      'Hidden',
+      '-File',
+      "`"$rollbackScriptPath`"",
+      '-MsiExecPath',
+      "`"$invalidMsiExecPath`"",
+      '-FailedProductCode',
+      '{FFFFFFFF-FFFF-4FFF-8FFF-FFFFFFFFFFFF}',
+      '-LauncherProcessId',
+      $rollbackLauncher.Id,
+      '-FailedPackagePath',
+      "`"$failedPackagePath`"",
+      '-RollbackPackagePath',
+      "`"$rollbackPackagePath`""
+    )
+  $rollbackExitCode = Wait-EkyInstallerProcessExitCode `
+    -Process $rollbackProcess
+  $rollbackStopwatch.Stop()
+  Assert-Equal $rollbackExitCode 23 `
+    'INSTALLER_TEST_ROLLBACK_BARRIER_EXIT_CODE_INVALID'
+  Assert-Equal ($rollbackStopwatch.ElapsedMilliseconds -ge 1000) $true `
+    'INSTALLER_TEST_ROLLBACK_LAUNCHER_NOT_AWAITED'
+}
+finally {
+  if ($null -ne $rollbackLauncher) {
+    if (!$rollbackLauncher.HasExited) {
+      $rollbackLauncher.WaitForExit(5000) | Out-Null
+    }
+    $rollbackLauncher.Dispose()
+  }
+  if (Test-Path -LiteralPath $rollbackBarrierRoot) {
+    Remove-Item -LiteralPath $rollbackBarrierRoot -Recurse -Force
+  }
+}
+
 [ordered]@{
   assertionCount = $assertionCount
   status = 'ok'

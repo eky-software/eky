@@ -99,29 +99,46 @@ function Invoke-EkyCoordinatedRollback {
     throw 'INSTALLER_UPGRADE_ROLLBACK_SCRIPT_MISSING'
   }
   $msiExecPath = Join-Path $env:SystemRoot 'System32\msiexec.exe'
-  $process = Start-EkyTrackedInstallerProcess -FilePath 'powershell.exe' `
+  $launcherProbe = Start-EkyTrackedInstallerProcess -FilePath 'powershell.exe' `
     -ArgumentList @(
-    '-NoLogo',
-    '-NoProfile',
-    '-NonInteractive',
-    '-ExecutionPolicy',
-    'Bypass',
-    '-WindowStyle',
-    'Hidden',
-    '-File',
-    "`"$rollbackScriptPath`"",
-    '-MsiExecPath',
-    "`"$msiExecPath`"",
-    '-FailedProductCode',
-    $FailedProductCode,
-    '-FailedPackagePath',
-    "`"$FailedPackagePath`"",
-    '-RollbackPackagePath',
-    "`"$RollbackPackagePath`""
-  )
-  return Wait-EkyInstallerProcessExitCode -Process $process -OnWait {
-      Write-EkyUpgradeHeartbeat
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      'Start-Sleep -Milliseconds 250'
+    )
+  try {
+    $process = Start-EkyTrackedInstallerProcess -FilePath 'powershell.exe' `
+      -ArgumentList @(
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-WindowStyle',
+      'Hidden',
+      '-File',
+      "`"$rollbackScriptPath`"",
+      '-MsiExecPath',
+      "`"$msiExecPath`"",
+      '-FailedProductCode',
+      $FailedProductCode,
+      '-LauncherProcessId',
+      $launcherProbe.Id,
+      '-FailedPackagePath',
+      "`"$FailedPackagePath`"",
+      '-RollbackPackagePath',
+      "`"$RollbackPackagePath`""
+    )
+    return Wait-EkyInstallerProcessExitCode -Process $process -OnWait {
+        Write-EkyUpgradeHeartbeat
+      }
+  } finally {
+    if (!$launcherProbe.HasExited) {
+      $launcherProbe.WaitForExit(5000) | Out-Null
     }
+    $launcherProbe.Dispose()
+  }
 }
 
 function Start-EkyForUpgrade {
