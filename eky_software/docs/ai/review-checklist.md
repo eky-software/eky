@@ -192,6 +192,15 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
   yhdestä koneesta johdettua haurasta absoluuttista muistirajaa?
 - Päättyvätkö kaikki testiharnessin käynnistämät prosessit ja vapautuvatko
   loopback-portit myös failure- ja restart-polussa?
+- Onko testiharnessin prosessiomistus sidottu vakaaseen identiteettiin eikä
+  pelkkään nimeen tai mahdollisesti uudelleenkäytettyyn PID:iin?
+- Ratkaistaanko cleanup todellisesta rajatun prosessipuun poissaolo-
+  postconditionista eikä `taskkill`- tai muun apukomennon exit-koodista?
+- Sisältääkö pitkäkestoisen Windows-portin progress vain suljetut scenario-,
+  phase-, outcome- ja errorCode-arvot ilman PIDiä, polkua, komentoriviä,
+  raakaa prosessitulostetta, stackia tai business-dataa?
+- Edelsivätkö pitkän Windows-portin rerunia pienin reproduktio ja regressiotesti,
+  ja perustuuko mahdollinen timeoutin muutos mitattuihin terveisiin kestoihin?
 - Todistetaanko backupin palautettavuus hardened Windows -artifactilla eikä
   vain backup-tiedoston syntyminen?
 - Kattavatko restore-testit stagingin, aktivoinnin, restartin jokaisessa

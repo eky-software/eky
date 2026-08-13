@@ -100,6 +100,7 @@ const safeErrorCodes = new Set([
   'PACKAGED_UPDATE_E2E_MIXED_INSTALL_ROOT',
   'PACKAGED_UPDATE_E2E_PACKAGE_IDENTITY_INVALID',
   'PACKAGED_UPDATE_E2E_PROCESS_FAILED',
+  'PACKAGED_UPDATE_E2E_PROCESS_OUTPUT_LIMIT',
   'PACKAGED_UPDATE_E2E_PROCESS_START_FAILED',
   'PACKAGED_UPDATE_E2E_PROCESS_TIMEOUT',
   'PACKAGED_UPDATE_E2E_RESULT_ACCEPTED_VERSION_INVALID',
@@ -116,6 +117,13 @@ const safeErrorCodes = new Set([
 
 const fallbackErrorCode = 'PACKAGED_UPDATE_E2E_PROGRESS_FAILURE';
 const heartbeatIntervalMs = 60_000;
+const safeTerminationOutcomes = new Set([
+  'notRequired',
+  'alreadyExited',
+  'terminated',
+  'remains',
+  'failed',
+]);
 
 export function createPackagedUpdateE2eProgressObserver({
   clearIntervalFn = clearInterval,
@@ -143,7 +151,7 @@ export function createPackagedUpdateE2eProgressObserver({
     } catch (error) {
       emit(
         'scenarioFailed',
-        { errorCode: toSafeErrorCode(error), scenario },
+        { ...toSafeFailure(error), scenario },
         startedAt,
         now(),
       );
@@ -166,7 +174,7 @@ export function createPackagedUpdateE2eProgressObserver({
     } catch (error) {
       emit(
         'phaseFailed',
-        { ...identity, errorCode: toSafeErrorCode(error) },
+        { ...identity, ...toSafeFailure(error) },
         startedAt,
         now(),
       );
@@ -191,7 +199,7 @@ export function createPackagedUpdateE2eProgressObserver({
     } catch (error) {
       emit(
         'cleanupFailed',
-        { ...identity, errorCode: toSafeErrorCode(error) },
+        { ...identity, ...toSafeFailure(error) },
         startedAt,
         now(),
       );
@@ -271,6 +279,17 @@ function toSafeErrorCode(error) {
   return error instanceof Error && safeErrorCodes.has(error.message)
     ? error.message
     : fallbackErrorCode;
+}
+
+function toSafeFailure(error) {
+  const fields = { errorCode: toSafeErrorCode(error) };
+  if (
+    error instanceof Error &&
+    safeTerminationOutcomes.has(error.terminationOutcome)
+  ) {
+    fields.terminationOutcome = error.terminationOutcome;
+  }
+  return fields;
 }
 
 function toDuration(value) {

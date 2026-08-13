@@ -135,6 +135,40 @@ describe('packaged update E2E progress observer', () => {
     assert.match(output, /PACKAGED_UPDATE_E2E_PROGRESS_FAILURE/);
   });
 
+  it('reports only a reviewed process-tree termination outcome', async () => {
+    const events = [];
+    const progress = createTestObserver(events);
+    const failure = new Error('PACKAGED_UPDATE_E2E_PROCESS_TIMEOUT');
+    failure.terminationOutcome = 'remains';
+
+    await assert.rejects(
+      progress.runPhase(
+        { phase: 'applicationExitWait', scenario: 'coordinatedSuccess' },
+        async () => {
+          throw failure;
+        },
+      ),
+      (error) => error === failure,
+    );
+    assert.equal(events.at(-1).terminationOutcome, 'remains');
+
+    const unknownEvents = [];
+    const unknownProgress = createTestObserver(unknownEvents);
+    const unknown = new Error('PACKAGED_UPDATE_E2E_PROCESS_TIMEOUT');
+    unknown.terminationOutcome = 'C:\\private\\process';
+    await assert.rejects(
+      unknownProgress.runPhase(
+        { phase: 'applicationExitWait', scenario: 'coordinatedSuccess' },
+        async () => {
+          throw unknown;
+        },
+      ),
+      (error) => error === unknown,
+    );
+    assert.equal(unknownEvents.at(-1).terminationOutcome, undefined);
+    assert.doesNotMatch(JSON.stringify(unknownEvents), /private/);
+  });
+
   it('stops the heartbeat in finally after a failed operation', async () => {
     const events = [];
     const clearedTimers = [];

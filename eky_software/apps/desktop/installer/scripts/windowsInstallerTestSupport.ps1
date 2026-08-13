@@ -33,11 +33,13 @@ function Invoke-EkyMsiExec {
   param(
     [Parameter(Mandatory = $true)][string[]]$Arguments,
     [Parameter(Mandatory = $true)][string]$Operation,
-    [int[]]$AllowedExitCodes = @(0)
+    [int[]]$AllowedExitCodes = @(0),
+    [scriptblock]$OnWait
   )
 
   $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $Arguments `
-    -NoNewWindow -Wait -PassThru
+    -NoNewWindow -PassThru
+  Wait-EkyInstallerProcess -Process $process -OnWait $OnWait
   if ($process.ExitCode -notin $AllowedExitCodes) {
     throw "INSTALLER_$($Operation.ToUpperInvariant())_FAILED:$($process.ExitCode)"
   }
@@ -47,15 +49,35 @@ function Invoke-EkyMsiExec {
 function Invoke-EkyMsiExecExpectedFailure {
   param(
     [Parameter(Mandatory = $true)][string[]]$Arguments,
-    [Parameter(Mandatory = $true)][string]$Operation
+    [Parameter(Mandatory = $true)][string]$Operation,
+    [scriptblock]$OnWait
   )
 
   $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $Arguments `
-    -NoNewWindow -Wait -PassThru
+    -NoNewWindow -PassThru
+  Wait-EkyInstallerProcess -Process $process -OnWait $OnWait
   if ($process.ExitCode -in @(0, 1641, 3010)) {
     throw "INSTALLER_$($Operation.ToUpperInvariant())_EXPECTED_FAILURE_MISSING"
   }
   return $process.ExitCode
+}
+
+function Wait-EkyInstallerProcess {
+  param(
+    [Parameter(Mandatory = $true)]$Process,
+    [scriptblock]$OnWait
+  )
+
+  while (!$Process.WaitForExit(1000)) {
+    if ($null -ne $OnWait) {
+      try {
+        & $OnWait
+      }
+      catch {
+        # Observability must never change installer behavior.
+      }
+    }
+  }
 }
 
 function Get-EkyDirectoryInventory {

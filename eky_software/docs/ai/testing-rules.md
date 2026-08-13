@@ -332,6 +332,35 @@ sidecar-manifestilla. Lifecycle-testit käyttävät tätä varmennettua MSI:tä.
 Synteettiset upgrade- ja rollback-fixturet rakennetaan erikseen, minkä jälkeen
 alkuperäisen release-MSI:n tavut varmennetaan uudelleen ilman rebuildiä.
 
+Pitkäkestoisen Windows release gaten harness raportoi suljetuilla scenario- ja
+phase-arvoilla start-, terminal- ja tarvittaessa heartbeat-tapahtumat. Julkinen
+CI-progress saa sisältää vain turvallisen virhekoodin, vaiheen, lopputulosluokan
+ja keston; ei prosessitunnisteita, polkuja, komentorivejä, raakaa prosessitulostetta,
+stackia, manifestia, tiivistettä, sessionia tai business-dataa. Progress-writerin
+virhe ei muuta testin tulosta, ja heartbeat suljetaan aina `finally`-rajassa.
+
+Testiharness omistaa ja siivoaa vain itse käynnistämänsä prosessipuun. Omistus
+sidotaan vähintään PID:n ja syntymäajan kaltaiseen vakaaseen identiteettiin,
+jotta PID:n uudelleenkäyttö ei kohdistu vieraaseen prosessiin. Apukomennon,
+kuten `taskkill`, exit-koodi ei yksin todista onnistumista tai epäonnistumista:
+auktoriteetti on rajattuun deadlineen todistettu testin rootin ja seurattujen
+jälkeläisten poissaolo. Forced kill kuuluu vain testin cleanupiin, ei tuotannon
+onnistuneen update-shutdownin todisteeksi.
+
+Pitkän Windows-portin epäonnistumisesta kirjataan ennen uutta ajoa head SHA,
+run- ja job-tunniste, step, turvallinen virhekoodi sekä juurisyy-luokka
+`production`, `testHarness`, `runnerEnvironment` tai `externalTransient`.
+Ensin tehdään pienin reproduktio ja regressiotesti. Job-timeoutia muutetaan vain
+mitattujen terveiden scenario- ja phase-kestojen perusteella; timeoutia ei
+kasvateta peittämään yksittäisen vaiheen jumia. Koko MSI-skenaarioketjun
+auktoriteetti on puhdas Windows-runner, eikä sitä ajeta käyttäjän normaalin
+Eky-asennuksen yli.
+
+Pienin reproduktio sekä installer- ja PowerShell-kohdetestit ajetaan ensin
+paikallisesti. Feature-haara pushataan vasta, kun sama korjaus on näissä
+paikallisissa porteissa vihreä; GitHubin puhdas Windows-runner tekee tämän
+jälkeen lopullisen koko release gaten todistuksen.
+
 Backup-, restore-, installer- tai update-polun onnistumista ei todisteta vain
 mockilla tai selain-E2E:llä. Windowsin tiedosto-, prosessi-, `safeStorage`- ja
 paketointirajat vaativat packaged-testin.

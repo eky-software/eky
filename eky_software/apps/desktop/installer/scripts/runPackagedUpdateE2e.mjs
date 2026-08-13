@@ -26,12 +26,14 @@ import {
   readPackagedUpdateSmokeResult,
 } from './packagedUpdateE2eSupport.mjs';
 import { createPackagedUpdateE2eProgressObserver } from './packagedUpdateE2eProgress.mjs';
+import { createPackagedUpdateProcessRunner } from './packagedUpdateProcessRunner.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const installerDirectory = resolve(scriptDirectory, '..');
 const processTimeoutMs = 120_000;
 const applicationExitTimeoutMs = 30_000;
 const installerStabilityTimeoutMs = 120_000;
+const processRunner = createPackagedUpdateProcessRunner();
 
 export function createWindowsInstallerArguments({
   logPath,
@@ -1125,70 +1127,96 @@ async function waitForNoEkyProcess() {
 }
 
 function runProcess(command, args, options) {
-  return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn(command, args, {
-      cwd: installerDirectory,
-      env: { ...process.env },
-      shell: false,
-      stdio: 'ignore',
-      windowsHide: true,
-    });
-    let settled = false;
-    const timeout = setTimeout(() => {
-      if (!settled) {
-        void terminateProcessTree(child.pid).finally(() => {
-          rejectPromise(new Error('PACKAGED_UPDATE_E2E_PROCESS_TIMEOUT'));
-        });
-      }
-    }, options.timeoutMs);
-    child.once('error', () => {
-      settled = true;
-      clearTimeout(timeout);
-      rejectPromise(new Error('PACKAGED_UPDATE_E2E_PROCESS_START_FAILED'));
-    });
-    child.once('exit', (code, signal) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timeout);
-      resolvePromise({ code: code ?? -1, signal });
-    });
+  return processRunner.run(command, args, {
+    ...options,
+    cwd: installerDirectory,
+    env: { ...process.env },
+    terminateProcess: (child) => terminateProcessTree(child.pid),
   });
 }
 
-function runProcessCapture(command, args) {
-  return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn(command, args, {
-      shell: false,
-      windowsHide: true,
-    });
-    let stdout = '';
-    child.stdout.setEncoding('utf8');
-    child.stdout.on('data', (chunk) => {
-      stdout += chunk;
-    });
-    child.once('error', () => {
-      rejectPromise(new Error('PACKAGED_UPDATE_E2E_PROCESS_START_FAILED'));
-    });
-    child.once('exit', (code, signal) => {
-      if (code === 0 && signal === null) {
-        resolvePromise(stdout);
-      } else {
-        rejectPromise(new Error('PACKAGED_UPDATE_E2E_PROCESS_FAILED'));
-      }
-    });
+function runProcessCapture(
+  command,
+  args,
+  { maxOutputBytes = 64 * 1024, timeoutMs = 15_000 } = {},
+) {
+  return processRunner.capture(command, args, {
+    cwd: installerDirectory,
+    env: { ...process.env },
+    maxOutputBytes,
+    terminateProcess: terminateSingleProcess,
+    timeoutMs,
   });
 }
 
 async function terminateProcessTree(pid) {
   if (!Number.isSafeInteger(pid) || pid < 1) {
-    return;
+    return 'notRequired';
+  }
+  let running;
+  try {
+    running = await isProcessIdRunning(pid);
+  } catch {
+    return 'failed';
+  }
+  if (!running) {
+    return 'alreadyExited';
   }
   const { taskkillPath } = getWindowsRuntimePaths();
-  await runProcess(taskkillPath, ['/PID', String(pid), '/T', '/F'], {
-    timeoutMs: 15_000,
-  }).catch(() => undefined);
+  await processRunner
+    .run(taskkillPath, ['/PID', String(pid), '/T', '/F'], {
+      cwd: installerDirectory,
+      env: { ...process.env },
+      terminateProcess: terminateSingleProcess,
+      timeoutMs: 15_000,
+    })
+    .catch(() => undefined);
+
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    try {
+      if (!(await isProcessIdRunning(pid))) {
+        return 'terminated';
+      }
+    } catch {
+      return 'failed';
+    }
+    await delay(100);
+  }
+  return 'remains';
+}
+
+async function isProcessIdRunning(pid) {
+  const { tasklistPath } = getWindowsRuntimePaths();
+  const output = await runProcessCapture(tasklistPath, [
+    '/FI',
+    `PID eq ${pid}`,
+    '/FO',
+    'CSV',
+    '/NH',
+  ]);
+  return new RegExp(`^"[^"]+","${pid}"(?:,|$)`, 'im').test(output);
+}
+
+async function terminateSingleProcess(child) {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return 'alreadyExited';
+  }
+  try {
+    if (!child.kill()) {
+      return 'failed';
+    }
+  } catch {
+    return 'failed';
+  }
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      return 'terminated';
+    }
+    await delay(50);
+  }
+  return 'remains';
 }
 
 function createScenarioEvidence(name, result, outcome) {

@@ -112,6 +112,23 @@ Mandatory boundaries:
 - smoke coordination state may contain only synthetic hashes and identifiers;
   never store a backup password, runtime session, raw path or business data in
   it
+- Windows installer and packaged update test harnesses may terminate only the
+  exact process tree they started; bind ownership to a stable process identity
+  such as PID plus creation time, and never use a global Eky process-name kill
+  as cleanup authority
+- treat the bounded postcondition that the tracked root and descendants are
+  absent as cleanup authority; `taskkill` or another helper's exit code alone
+  is neither success nor failure, and forced termination is test cleanup only
+- long-running Windows gates must emit only closed, safe scenario/phase/outcome
+  progress with durations and allowlisted error codes; never emit a PID, path,
+  command line, raw process output, stack, manifest, full hash, session or
+  business data
+- before rerunning a failed long Windows gate, record its head/run/job/step and
+  root-cause class, reproduce the smallest boundary and add a regression test;
+  increase a job timeout only after healthy measured phase durations prove the
+  total gate needs it
+- run the complete installer/update lifecycle only on a clean Windows runner,
+  never over a user's normal Eky installation
 
 Oikeaa SMTP-tunnusta saa käyttää vain erikseen hyväksytyssä, salatussa ja
 käyttäjän vahvistamassa Electron-polussa. Testilähetys pakotetaan määritettyyn

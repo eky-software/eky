@@ -23,135 +23,232 @@ const conflictingProbeId = 'existing-restored-data';
 test(
   'RESTORE-MIGRATION-ROLLBACK-001 @critical @fault @recovery restores the pre-restore N+1 profile after a real forward migration fails',
   async ({ e2eBackend }) => {
-    const fixture = await createFixture(e2eBackend.paths.tempRoot);
-    const previousDatabase = await readFile(fixture.activeDatabasePath);
-    const previousPdf = await readFile(fixture.activePdfPath);
-    const previousDatabaseSha256 = sha256(previousDatabase);
-    const previousPdfSha256 = sha256(previousPdf);
+    const progress = createRestoreMigrationRollbackProgress();
 
-    await fixture.transaction.prepare(operationId);
-    const startupMode = await fixture.startupRecovery.prepareBeforeBackend();
-
-    expect(startupMode).toBe('validateRestoredProfile');
-    await expect(readFile(fixture.activePdfPath)).resolves.toEqual(
-      fixture.restoredPdf,
-    );
-
-    const operationalEvents: BackendOperationalEvent[] = [];
-    const operationalLogger: OperationalLogger = {
-      write(event) {
-        operationalEvents.push(event);
-      },
-    };
-    let migrationDecision: string | undefined;
-
-    const startupFailure = await createApp({
-      appVersion: '0.1.0-alpha.2',
-      databaseFilePath: fixture.activeDatabasePath,
-      migrationsDirectory: fixture.nextMigrationsDirectory,
-      operationalLogger,
-      beforeMigrations: async (inspection) => {
-        migrationDecision = authorizeRestoreFirstStartForwardMigrations({
-          directSetupRecovery: undefined,
-          inspection,
-          profileRestoreJournal: await fixture.journalStore.read(),
-          profileRestoreStartupMode: startupMode,
-          startupRecoveryAuthority: 'profileRestore',
-          updateJournal: undefined,
-        });
-      },
-    }).then(
-      () => undefined,
-      (error: unknown) => error,
-    );
-
-    expect(migrationDecision).toBe('authorized');
-    expect(startupFailure).toBeInstanceOf(Error);
-    expect((startupFailure as Error).message).toBe(
-      'Database migrations could not be completed.',
-    );
-    expect(operationalEvents).toContainEqual(
-      expect.objectContaining({
-        completedMigrationCount: 1,
-        errorCode: 'MIGRATION_EXECUTION_FAILED',
-        eventName: 'migration.failed',
-        failureStage: 'migrationExecution',
-        sideEffectState: 'unknown',
-      }),
-    );
-    expect(JSON.stringify(operationalEvents)).not.toContain(fixture.root);
-
-    const partiallyMigratedDatabase = createDatabaseConnection({
-      databaseFilePath: fixture.activeDatabasePath,
-    });
     try {
-      expect(tableExists(partiallyMigratedDatabase, 'successful_forward_step'))
-        .toBe(true);
-      expect(readAppliedMigrationNames(partiallyMigratedDatabase)).toEqual([
-        '001_create_migration_probe.sql',
-        '002_create_successful_forward_step.sql',
-      ]);
-    } finally {
-      partiallyMigratedDatabase.close();
-    }
+      progress.start('fixtureCreation');
+      const fixture = await createFixture(e2eBackend.paths.tempRoot);
+      progress.complete('fixtureCreation');
 
-    await expect(
-      fixture.startupRecovery.recoverFromBackendStartupFailure({
-        mode: startupMode,
-      }),
-    ).resolves.toBe('relaunchRequired');
+      progress.start('baselineCapture');
+      const previousDatabase = await readFile(fixture.activeDatabasePath);
+      const previousPdf = await readFile(fixture.activePdfPath);
+      const previousDatabaseSha256 = sha256(previousDatabase);
+      const previousPdfSha256 = sha256(previousPdf);
+      progress.complete('baselineCapture');
 
-    const rolledBackDatabase = await readFile(fixture.activeDatabasePath);
-    const rolledBackPdf = await readFile(fixture.activePdfPath);
-    expect(rolledBackDatabase).toEqual(previousDatabase);
-    expect(rolledBackPdf).toEqual(previousPdf);
-    expect(sha256(rolledBackDatabase)).toBe(previousDatabaseSha256);
-    expect(sha256(rolledBackPdf)).toBe(previousPdfSha256);
-    await expect(fixture.journalStore.read()).resolves.toMatchObject({
-      operationId,
-      phase: 'rolledBack',
-    });
+      progress.start('restoreActivation');
+      await fixture.transaction.prepare(operationId);
+      const startupMode =
+        await fixture.startupRecovery.prepareBeforeBackend();
 
-    const relaunchedRecovery = fixture.createStartupRecovery();
-    const relaunchedMode = await relaunchedRecovery.prepareBeforeBackend();
-    expect(relaunchedMode).toBe('validateRolledBackProfile');
-    let stopBackendCalled = false;
+      expect(startupMode).toBe('validateRestoredProfile');
+      await expect(readFile(fixture.activePdfPath)).resolves.toEqual(
+        fixture.restoredPdf,
+      );
+      progress.complete('restoreActivation');
 
-    await expect(
-      relaunchedRecovery.validateAfterBackend({
-        mode: relaunchedMode,
-        stopBackend: async () => {
-          stopBackendCalled = true;
+      progress.start('forwardMigrationFailure');
+      const operationalEvents: BackendOperationalEvent[] = [];
+      const operationalLogger: OperationalLogger = {
+        write(event) {
+          operationalEvents.push(event);
         },
-        validateActiveProfile: async () => {
-          const database = createDatabaseConnection({
-            databaseFilePath: fixture.activeDatabasePath,
+      };
+      let migrationDecision: string | undefined;
+
+      const startupFailure = await createApp({
+        appVersion: '0.1.0-alpha.2',
+        databaseFilePath: fixture.activeDatabasePath,
+        migrationsDirectory: fixture.nextMigrationsDirectory,
+        operationalLogger,
+        beforeMigrations: async (inspection) => {
+          migrationDecision = authorizeRestoreFirstStartForwardMigrations({
+            directSetupRecovery: undefined,
+            inspection,
+            profileRestoreJournal: await fixture.journalStore.read(),
+            profileRestoreStartupMode: startupMode,
+            startupRecoveryAuthority: 'profileRestore',
+            updateJournal: undefined,
           });
-          try {
-            expect(
-              inspectMigrationStartupState(
-                database,
-                fixture.nextMigrationsDirectory,
-              ),
-            ).toMatchObject({
-              appliedMigrationCount: 3,
-              pendingMigrationCount: 0,
-              profileState: 'existing',
-            });
-            expect(database.pragma('quick_check', { simple: true })).toBe(
-              'ok',
-            );
-          } finally {
-            database.close();
-          }
         },
-      }),
-    ).resolves.toBe('ready');
+      }).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
 
-    expect(stopBackendCalled).toBe(false);
-    await expect(fixture.journalStore.read()).resolves.toBeUndefined();
+      expect(migrationDecision).toBe('authorized');
+      expect(startupFailure).toBeInstanceOf(Error);
+      expect((startupFailure as Error).message).toBe(
+        'Database migrations could not be completed.',
+      );
+      expect(operationalEvents).toContainEqual(
+        expect.objectContaining({
+          completedMigrationCount: 1,
+          errorCode: 'MIGRATION_EXECUTION_FAILED',
+          eventName: 'migration.failed',
+          failureStage: 'migrationExecution',
+          sideEffectState: 'unknown',
+        }),
+      );
+      expect(JSON.stringify(operationalEvents)).not.toContain(fixture.root);
+      progress.complete('forwardMigrationFailure');
+
+      progress.start('partialMigrationVerification');
+      const partiallyMigratedDatabase = createDatabaseConnection({
+        databaseFilePath: fixture.activeDatabasePath,
+      });
+      try {
+        expect(
+          tableExists(partiallyMigratedDatabase, 'successful_forward_step'),
+        ).toBe(true);
+        expect(readAppliedMigrationNames(partiallyMigratedDatabase)).toEqual([
+          '001_create_migration_probe.sql',
+          '002_create_successful_forward_step.sql',
+        ]);
+      } finally {
+        partiallyMigratedDatabase.close();
+      }
+      progress.complete('partialMigrationVerification');
+
+      progress.start('rollbackRecovery');
+      await expect(
+        fixture.startupRecovery.recoverFromBackendStartupFailure({
+          mode: startupMode,
+        }),
+      ).resolves.toBe('relaunchRequired');
+
+      const rolledBackDatabase = await readFile(fixture.activeDatabasePath);
+      const rolledBackPdf = await readFile(fixture.activePdfPath);
+      expect(rolledBackDatabase).toEqual(previousDatabase);
+      expect(rolledBackPdf).toEqual(previousPdf);
+      expect(sha256(rolledBackDatabase)).toBe(previousDatabaseSha256);
+      expect(sha256(rolledBackPdf)).toBe(previousPdfSha256);
+      await expect(fixture.journalStore.read()).resolves.toMatchObject({
+        operationId,
+        phase: 'rolledBack',
+      });
+      progress.complete('rollbackRecovery');
+
+      progress.start('relaunchValidation');
+      const relaunchedRecovery = fixture.createStartupRecovery();
+      const relaunchedMode = await relaunchedRecovery.prepareBeforeBackend();
+      expect(relaunchedMode).toBe('validateRolledBackProfile');
+      let stopBackendCalled = false;
+
+      await expect(
+        relaunchedRecovery.validateAfterBackend({
+          mode: relaunchedMode,
+          stopBackend: async () => {
+            stopBackendCalled = true;
+          },
+          validateActiveProfile: async () => {
+            const database = createDatabaseConnection({
+              databaseFilePath: fixture.activeDatabasePath,
+            });
+            try {
+              expect(
+                inspectMigrationStartupState(
+                  database,
+                  fixture.nextMigrationsDirectory,
+                ),
+              ).toMatchObject({
+                appliedMigrationCount: 3,
+                pendingMigrationCount: 0,
+                profileState: 'existing',
+              });
+              expect(database.pragma('quick_check', { simple: true })).toBe(
+                'ok',
+              );
+            } finally {
+              database.close();
+            }
+          },
+        }),
+      ).resolves.toBe('ready');
+
+      expect(stopBackendCalled).toBe(false);
+      await expect(fixture.journalStore.read()).resolves.toBeUndefined();
+      progress.complete('relaunchValidation');
+    } catch (error: unknown) {
+      progress.failActive();
+      throw error;
+    }
   },
 );
+
+const restoreMigrationRollbackPhases = [
+  'fixtureCreation',
+  'baselineCapture',
+  'restoreActivation',
+  'forwardMigrationFailure',
+  'partialMigrationVerification',
+  'rollbackRecovery',
+  'relaunchValidation',
+] as const;
+
+type RestoreMigrationRollbackPhase =
+  (typeof restoreMigrationRollbackPhases)[number];
+
+function createRestoreMigrationRollbackProgress(): {
+  complete(phase: RestoreMigrationRollbackPhase): void;
+  failActive(): void;
+  start(phase: RestoreMigrationRollbackPhase): void;
+} {
+  const harnessStartedAt = Date.now();
+  let activePhase:
+    | { phase: RestoreMigrationRollbackPhase; startedAt: number }
+    | undefined;
+
+  const write = (event: Record<string, number | string>) => {
+    try {
+      process.stdout.write(`${JSON.stringify(event)}\n`);
+    } catch {
+      // Test progress must never change the recovery scenario result.
+    }
+  };
+
+  return {
+    start(phase) {
+      const startedAt = Date.now();
+      activePhase = { phase, startedAt };
+      write({
+        elapsedMs: startedAt - harnessStartedAt,
+        event: 'started',
+        phase,
+        scenario: 'restoreMigrationRollbackLocalProof',
+      });
+    },
+    complete(phase) {
+      const completedAt = Date.now();
+      const phaseStartedAt =
+        activePhase?.phase === phase ? activePhase.startedAt : completedAt;
+      write({
+        durationMs: completedAt - phaseStartedAt,
+        elapsedMs: completedAt - harnessStartedAt,
+        event: 'completed',
+        phase,
+        scenario: 'restoreMigrationRollbackLocalProof',
+      });
+      activePhase = undefined;
+    },
+    failActive() {
+      if (activePhase === undefined) {
+        return;
+      }
+      const failedAt = Date.now();
+      write({
+        durationMs: failedAt - activePhase.startedAt,
+        elapsedMs: failedAt - harnessStartedAt,
+        errorCode: 'RESTORE_MIGRATION_ROLLBACK_PHASE_FAILED',
+        event: 'failed',
+        phase: activePhase.phase,
+        scenario: 'restoreMigrationRollbackLocalProof',
+      });
+      activePhase = undefined;
+    },
+  };
+}
 
 async function createFixture(root: string): Promise<{
   activeDatabasePath: string;

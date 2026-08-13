@@ -1,6 +1,9 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'windowsInstallerTestSupport.ps1')
+. (Join-Path $PSScriptRoot 'installerUpgradeProcessTreeTestSupport.ps1')
+. (Join-Path $PSScriptRoot 'installerUpgradeOutcomeTestSupport.ps1')
+. (Join-Path $PSScriptRoot 'installerUpgradeProgress.ps1')
 
 $installerDirectory = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $fixtureRoot = Join-Path $installerDirectory 'artifacts\upgrade-fixture'
@@ -18,7 +21,22 @@ $installer = New-Object -ComObject WindowsInstaller.Installer
 $completed = $false
 $currentProductCode = $null
 $nextProductCode = $null
-$runningEkyProcess = $null
+$runningEkyProcessTree = $null
+$progress = New-EkyInstallerUpgradeProgressObserver
+
+function Invoke-EkyObservedUpgradePhase {
+  param(
+    [Parameter(Mandatory = $true)][string]$Phase,
+    [Parameter(Mandatory = $true)][scriptblock]$Operation
+  )
+
+  return Invoke-EkyInstallerUpgradeProgressPhase -Observer $progress `
+    -Phase $Phase -Operation $Operation
+}
+
+function Write-EkyUpgradeHeartbeat {
+  Write-EkyInstallerUpgradeHeartbeat -Observer $progress
+}
 
 function Normalize-ProductCode {
   param([Parameter(Mandatory = $true)][string]$Code)
@@ -61,7 +79,10 @@ function Invoke-EkyUpgradeAttempt {
     '/norestart',
     '/l*v',
     "`"$(Join-Path $logRoot $LogName)`""
-  ) -NoNewWindow -Wait -PassThru
+  ) -NoNewWindow -PassThru
+  Wait-EkyInstallerProcess -Process $process -OnWait {
+    Write-EkyUpgradeHeartbeat
+  }
   return $process.ExitCode
 }
 
@@ -96,7 +117,10 @@ function Invoke-EkyCoordinatedRollback {
     "`"$FailedPackagePath`"",
     '-RollbackPackagePath',
     "`"$RollbackPackagePath`""
-  ) -NoNewWindow -Wait -PassThru
+  ) -NoNewWindow -PassThru
+  Wait-EkyInstallerProcess -Process $process -OnWait {
+    Write-EkyUpgradeHeartbeat
+  }
   return $process.ExitCode
 }
 
@@ -107,60 +131,61 @@ function Start-EkyForUpgrade {
   $process = Start-Process -FilePath $executablePath -ArgumentList @(
     "--user-data-dir=`"$testUserDataRoot`""
   ) -PassThru
+  $rootIdentity = $null
+  $identityDeadline = [DateTime]::UtcNow.AddSeconds(10)
+  do {
+    if ($process.HasExited) {
+      throw 'INSTALLER_UPGRADE_EKY_PROCESS_EXITED_EARLY'
+    }
+    $rootIdentity = Get-EkyInstallerProcessIdentityById `
+      -ProcessId $process.Id
+    if ($null -ne $rootIdentity) {
+      break
+    }
+    Start-Sleep -Milliseconds 50
+  } while ([DateTime]::UtcNow -lt $identityDeadline)
+  if ($null -eq $rootIdentity) {
+    throw 'INSTALLER_UPGRADE_PROCESS_IDENTITY_INVALID'
+  }
+
+  $trackedIdentities = @($rootIdentity)
   $deadline = [DateTime]::UtcNow.AddSeconds(30)
   do {
     Start-Sleep -Milliseconds 250
-    $rootProcess = Get-Process -Id $process.Id -ErrorAction SilentlyContinue
-    if ($null -eq $rootProcess) {
+    $processes = @(Get-CimInstance Win32_Process -ErrorAction Stop)
+    $rootRecord = @(
+      $processes | Where-Object { [int]$_.ProcessId -eq $process.Id }
+    ) | Select-Object -First 1
+    if ($null -eq $rootRecord) {
       throw 'INSTALLER_UPGRADE_EKY_PROCESS_EXITED_EARLY'
     }
-    $processes = @(Get-CimInstance Win32_Process -ErrorAction Stop)
-    $descendantIds = @($process.Id)
-    $foundUtilityProcess = $false
-    do {
-      $previousCount = $descendantIds.Count
-      foreach ($candidate in $processes) {
-        if (
-          $descendantIds -contains [int]$candidate.ParentProcessId -and
-          $descendantIds -notcontains [int]$candidate.ProcessId
-        ) {
-          $descendantIds += [int]$candidate.ProcessId
-          if (
-            $candidate.Name -eq 'Eky.exe' -and
-            $candidate.CommandLine -match '--type=utility'
-          ) {
-            $foundUtilityProcess = $true
-          }
-        }
-      }
-    } while ($descendantIds.Count -ne $previousCount)
-    if ($foundUtilityProcess) {
-      return $process
+    $currentRootIdentity = ConvertTo-EkyInstallerProcessIdentity `
+      -ProcessRecord $rootRecord
+    if (!(Test-EkyInstallerProcessIdentityEqual `
+      -Left $rootIdentity -Right $currentRootIdentity)) {
+      throw 'INSTALLER_UPGRADE_EKY_PROCESS_EXITED_EARLY'
     }
+    $ownedIdentities = @(Select-EkyInstallerOwnedProcessTree `
+      -RootIdentity $rootIdentity -SeedIdentities $trackedIdentities `
+      -ProcessRecords $processes)
+    $trackedIdentities = $ownedIdentities
+    $ownedIds = @($ownedIdentities | ForEach-Object { $_.ProcessId })
+    $foundUtilityProcess = @(
+      $processes | Where-Object {
+        $ownedIds -contains [int]$_.ProcessId -and
+        $_.Name -eq 'Eky.exe' -and
+        $_.CommandLine -match '--type=utility'
+      }
+    ).Count -gt 0
+    if ($foundUtilityProcess) {
+      return [pscustomobject]@{
+        RootIdentity = $rootIdentity
+        TrackedIdentities = $ownedIdentities
+      }
+    }
+    Write-EkyUpgradeHeartbeat
   } while ([DateTime]::UtcNow -lt $deadline)
   throw 'INSTALLER_UPGRADE_BACKEND_UTILITY_PROCESS_MISSING'
-}
-
-function Stop-EkyProcessTree {
-  param($Process)
-
-  if ($null -eq $Process) {
-    return
-  }
-  $rootProcess = Get-Process -Id $Process.Id -ErrorAction SilentlyContinue
-  if ($null -ne $rootProcess) {
-    & taskkill.exe /PID $Process.Id /T /F | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-      throw 'INSTALLER_UPGRADE_PROCESS_TREE_STOP_FAILED'
-    }
-  }
-  $deadline = [DateTime]::UtcNow.AddSeconds(10)
-  while (@(Get-Process -Name 'Eky' -ErrorAction SilentlyContinue).Count -ne 0) {
-    if ([DateTime]::UtcNow -ge $deadline) {
-      throw 'INSTALLER_UPGRADE_PROCESS_TREE_REMAINS'
-    }
-    Start-Sleep -Milliseconds 100
-  }
 }
 
 function Assert-ProductInstalled {
@@ -193,7 +218,8 @@ function Install-EkyMsi {
     '/l*v',
     "`"$(Join-Path $logRoot $LogName)`""
   )
-  Invoke-EkyMsiExec -Operation 'upgrade_install' -Arguments $arguments | Out-Null
+  Invoke-EkyMsiExec -Operation 'upgrade_install' -Arguments $arguments `
+    -OnWait { Write-EkyUpgradeHeartbeat } | Out-Null
 }
 
 function Uninstall-EkyProduct {
@@ -209,12 +235,59 @@ function Uninstall-EkyProduct {
     '/norestart',
     '/l*v',
     "`"$(Join-Path $logRoot $LogName)`""
-  ) | Out-Null
+  ) -OnWait { Write-EkyUpgradeHeartbeat } | Out-Null
 }
 
 function Assert-BusinessDataUnchanged {
   Assert-EkyInventoryEqual (Get-EkyDirectoryInventory -Root $businessDataRoot) `
     $businessDataInventoryBefore 'INSTALLER_UPGRADE_BUSINESS_DATA_CHANGED'
+}
+
+function Test-EkyUpgradeAssertion {
+  param([Parameter(Mandatory = $true)][scriptblock]$Operation)
+
+  try {
+    & $Operation
+    return $true
+  }
+  catch {
+    return $false
+  }
+}
+
+function Get-EkyRunningUpgradeState {
+  $currentInstalled = (
+    (Get-EkyProductState -Installer $installer -Code $currentProductCode) -ge 1
+  )
+  $candidateInstalled = (
+    (Get-EkyProductState -Installer $installer -Code $nextProductCode) -ge 1
+  )
+  $payloadMatches = Test-EkyUpgradeAssertion {
+    Assert-EkyInventoryEqual (
+      Get-EkyDirectoryInventory -Root $installRoot
+    ) $payloadInventory 'INSTALLER_UPGRADE_PAYLOAD_STATE_INVALID'
+  }
+  $currentRegistrationMatches = Test-EkyUpgradeAssertion {
+    Assert-EkyInstallerRegistrationPresent -ProductCode $currentProductCode
+  }
+  $candidateRegistrationMatches = Test-EkyUpgradeAssertion {
+    Assert-EkyInstallerRegistrationPresent -ProductCode $nextProductCode
+  }
+  $businessDataUnchanged = Test-EkyUpgradeAssertion {
+    Assert-BusinessDataUnchanged
+  }
+  return [pscustomobject]@{
+    BusinessDataUnchanged = $businessDataUnchanged
+    CandidatePayloadMatches = $candidateInstalled -and $payloadMatches
+    CandidateProductInstalled = $candidateInstalled
+    CandidateRegistrationMatches = $candidateRegistrationMatches
+    CandidateRegistrationPresent = $candidateRegistrationMatches
+    CurrentPayloadMatches = $currentInstalled -and $payloadMatches
+    CurrentProductInstalled = $currentInstalled
+    CurrentRegistrationMatches = $currentRegistrationMatches
+    CurrentRegistrationPresent = $currentRegistrationMatches
+    ShortcutPresent = Test-Path -LiteralPath $shortcutPath -PathType Leaf
+  }
 }
 
 try {
@@ -293,147 +366,209 @@ try {
   }
   $businessDataInventoryBefore = Get-EkyDirectoryInventory -Root $businessDataRoot
 
-  Install-EkyMsi -MsiPath $currentMsiPath -LogName 'install-current.log'
-  Assert-ProductInstalled -ProductCode $currentProductCode
-  Assert-EkyInstalledPayload -InstallRoot $installRoot `
-    -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
-  Assert-EkyInstallerRegistrationPresent -ProductCode $currentProductCode
+  Invoke-EkyObservedUpgradePhase -Phase 'fixtureValidated' `
+    -Operation { $true } | Out-Null
+  Invoke-EkyObservedUpgradePhase -Phase 'currentInstallStarted' -Operation {
+    Install-EkyMsi -MsiPath $currentMsiPath -LogName 'install-current.log'
+  } | Out-Null
+  Invoke-EkyObservedUpgradePhase -Phase 'currentInstallCompleted' -Operation {
+    Assert-ProductInstalled -ProductCode $currentProductCode
+    Assert-EkyInstalledPayload -InstallRoot $installRoot `
+      -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
+    Assert-EkyInstallerRegistrationPresent -ProductCode $currentProductCode
+  } | Out-Null
 
-  $runningEkyProcess = Start-EkyForUpgrade
-  $runningUpgradeExitCode = Invoke-EkyUpgradeAttempt -MsiPath $nextMsiPath `
-    -LogName 'upgrade-next-running.log'
-  if ($runningUpgradeExitCode -eq 0) {
-    $runningUpgradeResult = 'succeeded'
+  $runningEkyProcessTree = Invoke-EkyObservedUpgradePhase `
+    -Phase 'runningApplicationStarted' -Operation { Start-EkyForUpgrade }
+  Invoke-EkyObservedUpgradePhase -Phase 'utilityProcessObserved' -Operation {
+    if (@($runningEkyProcessTree.TrackedIdentities).Count -lt 2) {
+      throw 'INSTALLER_UPGRADE_BACKEND_UTILITY_PROCESS_MISSING'
+    }
+  } | Out-Null
+  $runningUpgradeExitCode = Invoke-EkyObservedUpgradePhase `
+    -Phase 'runningUpgradeStarted' -Operation {
+      Invoke-EkyUpgradeAttempt -MsiPath $nextMsiPath `
+        -LogName 'upgrade-next-running.log'
+    }
+  $runningUpgradeResult = Invoke-EkyObservedUpgradePhase `
+    -Phase 'runningUpgradeCompleted' -Operation {
+      Resolve-EkyRunningUpgradeOutcome -ExitCode $runningUpgradeExitCode `
+        -State (Get-EkyRunningUpgradeState)
+    }
+  Invoke-EkyObservedUpgradePhase -Phase 'processTreeCleanupStarted' `
+    -Operation { $true } | Out-Null
+  Invoke-EkyObservedUpgradePhase -Phase 'processTreeCleanupCompleted' `
+    -Operation {
+      Stop-EkyInstallerOwnedProcessTree -ProcessTree $runningEkyProcessTree `
+        -WriteSummary {
+          param($Summary)
+          Write-EkyInstallerUpgradeProcessCleanupSummary `
+            -Observer $progress -Summary $Summary
+        }
+    } | Out-Null
+  $runningEkyProcessTree = $null
+
+  Invoke-EkyObservedUpgradePhase -Phase 'nextVersionVerified' -Operation {
+    if ($runningUpgradeResult -eq 'blocked-cleanly') {
+      Install-EkyMsi -MsiPath $nextMsiPath `
+        -LogName 'upgrade-next-after-stop.log'
+    }
     Assert-ProductAbsent -ProductCode $currentProductCode
     Assert-ProductInstalled -ProductCode $nextProductCode
     Assert-EkyInstalledPayload -InstallRoot $installRoot `
       -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
     Assert-EkyInstallerRegistrationPresent -ProductCode $nextProductCode
-  }
-  elseif ($runningUpgradeExitCode -in @(1641, 3010)) {
-    throw 'INSTALLER_UPGRADE_RESTART_REQUIRED_FORBIDDEN'
-  }
-  else {
-    $runningUpgradeResult = 'blocked-cleanly'
-    Assert-ProductInstalled -ProductCode $currentProductCode
-    Assert-ProductAbsent -ProductCode $nextProductCode
-    Assert-EkyInstalledPayload -InstallRoot $installRoot `
-      -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
-    Assert-EkyInstallerRegistrationPresent -ProductCode $currentProductCode
-  }
-  Stop-EkyProcessTree -Process $runningEkyProcess
-  $runningEkyProcess = $null
-  if ($runningUpgradeResult -eq 'blocked-cleanly') {
-    Install-EkyMsi -MsiPath $nextMsiPath -LogName 'upgrade-next-after-stop.log'
-  }
-  Assert-ProductAbsent -ProductCode $currentProductCode
-  Assert-ProductInstalled -ProductCode $nextProductCode
-  Assert-EkyInstalledPayload -InstallRoot $installRoot `
-    -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
-  Assert-EkyInstallerRegistrationPresent -ProductCode $nextProductCode
-  Assert-BusinessDataUnchanged
+    Assert-BusinessDataUnchanged
+  } | Out-Null
 
-  Invoke-EkyMsiExecExpectedFailure -Operation 'downgrade' -Arguments @(
-    '/i',
-    "`"$currentMsiPath`"",
-    '/qn',
-    '/norestart',
-    '/l*v',
-    "`"$(Join-Path $logRoot 'downgrade.log')`""
-  ) | Out-Null
-  Assert-ProductAbsent -ProductCode $currentProductCode
-  Assert-ProductInstalled -ProductCode $nextProductCode
-  Assert-EkyInstalledPayload -InstallRoot $installRoot `
-    -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
-  Assert-BusinessDataUnchanged
+  Invoke-EkyObservedUpgradePhase -Phase 'downgradeVerificationStarted' `
+    -Operation {
+      Invoke-EkyMsiExecExpectedFailure -Operation 'downgrade' -Arguments @(
+        '/i',
+        "`"$currentMsiPath`"",
+        '/qn',
+        '/norestart',
+        '/l*v',
+        "`"$(Join-Path $logRoot 'downgrade.log')`""
+      ) -OnWait { Write-EkyUpgradeHeartbeat } | Out-Null
+    } | Out-Null
+  Invoke-EkyObservedUpgradePhase -Phase 'downgradeVerificationCompleted' `
+    -Operation {
+      Assert-ProductAbsent -ProductCode $currentProductCode
+      Assert-ProductInstalled -ProductCode $nextProductCode
+      Assert-EkyInstalledPayload -InstallRoot $installRoot `
+        -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
+      Assert-BusinessDataUnchanged
+    } | Out-Null
 
-  $failedRollbackBlocker = Join-Path $installRoot `
-    'resources\desktop-runtime\installer-rollback-probe'
-  Set-Content -LiteralPath $failedRollbackBlocker `
-    -Value 'synthetic rollback blocker' -Encoding ASCII -NoNewline
-  $failedRollbackExitCode = Invoke-EkyCoordinatedRollback `
-    -FailedProductCode $nextProductCode -FailedPackagePath $nextMsiPath `
-    -RollbackPackagePath $rollbackMsiPath
-  if ($failedRollbackExitCode -ne 21) {
-    throw "INSTALLER_UPGRADE_ROLLBACK_REPAIR_RESULT_INVALID:$failedRollbackExitCode"
-  }
-  Remove-Item -LiteralPath $failedRollbackBlocker -Force
-  Assert-ProductAbsent -ProductCode $currentProductCode
-  Assert-ProductInstalled -ProductCode $nextProductCode
-  Assert-EkyInstalledPayload -InstallRoot $installRoot `
-    -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
-  Assert-EkyInstallerRegistrationPresent -ProductCode $nextProductCode
-  Assert-BusinessDataUnchanged
+  Invoke-EkyObservedUpgradePhase -Phase 'coordinatedRollbackStarted' `
+    -Operation {
+      $failedRollbackBlocker = Join-Path $installRoot `
+        'resources\desktop-runtime\installer-rollback-probe'
+      Set-Content -LiteralPath $failedRollbackBlocker `
+        -Value 'synthetic rollback blocker' -Encoding ASCII -NoNewline
+      try {
+        $failedRollbackExitCode = Invoke-EkyCoordinatedRollback `
+          -FailedProductCode $nextProductCode `
+          -FailedPackagePath $nextMsiPath `
+          -RollbackPackagePath $rollbackMsiPath
+        if ($failedRollbackExitCode -ne 21) {
+          throw "INSTALLER_UPGRADE_ROLLBACK_REPAIR_RESULT_INVALID:$failedRollbackExitCode"
+        }
+      }
+      finally {
+        if (Test-Path -LiteralPath $failedRollbackBlocker) {
+          Remove-Item -LiteralPath $failedRollbackBlocker -Force
+        }
+      }
+      Assert-ProductAbsent -ProductCode $currentProductCode
+      Assert-ProductInstalled -ProductCode $nextProductCode
+      Assert-EkyInstalledPayload -InstallRoot $installRoot `
+        -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
+      Assert-EkyInstallerRegistrationPresent -ProductCode $nextProductCode
+      Assert-BusinessDataUnchanged
+    } | Out-Null
 
-  $rollbackExitCode = Invoke-EkyCoordinatedRollback `
-    -FailedProductCode $nextProductCode -FailedPackagePath $nextMsiPath `
-    -RollbackPackagePath $currentMsiPath
-  if ($rollbackExitCode -ne 0) {
-    throw 'INSTALLER_UPGRADE_COORDINATED_ROLLBACK_FAILED'
-  }
-  Assert-ProductInstalled -ProductCode $currentProductCode
-  Assert-ProductAbsent -ProductCode $nextProductCode
-  Assert-EkyInstalledPayload -InstallRoot $installRoot `
-    -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
-  Assert-EkyInstallerRegistrationPresent -ProductCode $currentProductCode
-  Assert-BusinessDataUnchanged
+  Invoke-EkyObservedUpgradePhase -Phase 'coordinatedRollbackCompleted' `
+    -Operation {
+      $rollbackExitCode = Invoke-EkyCoordinatedRollback `
+        -FailedProductCode $nextProductCode `
+        -FailedPackagePath $nextMsiPath `
+        -RollbackPackagePath $currentMsiPath
+      if ($rollbackExitCode -ne 0) {
+        throw 'INSTALLER_UPGRADE_COORDINATED_ROLLBACK_FAILED'
+      }
+      Assert-ProductInstalled -ProductCode $currentProductCode
+      Assert-ProductAbsent -ProductCode $nextProductCode
+      Assert-EkyInstalledPayload -InstallRoot $installRoot `
+        -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
+      Assert-EkyInstallerRegistrationPresent -ProductCode $currentProductCode
+      Assert-BusinessDataUnchanged
 
-  Uninstall-EkyProduct -ProductCode $currentProductCode `
-    -LogName 'uninstall-after-coordinated-rollback.log'
-  Assert-ProductAbsent -ProductCode $currentProductCode
-  Assert-EkyPathEventuallyAbsent -Path $installRoot `
-    -Code 'INSTALLER_UPGRADE_UNINSTALL_ROOT_REMAINS'
-  Assert-EkyInstallerRegistrationAbsent -ProductCodes @(
-    $currentProductCode,
-    $nextProductCode
-  )
+      Uninstall-EkyProduct -ProductCode $currentProductCode `
+        -LogName 'uninstall-after-coordinated-rollback.log'
+      Assert-ProductAbsent -ProductCode $currentProductCode
+      Assert-EkyPathEventuallyAbsent -Path $installRoot `
+        -Code 'INSTALLER_UPGRADE_UNINSTALL_ROOT_REMAINS'
+      Assert-EkyInstallerRegistrationAbsent -ProductCodes @(
+        $currentProductCode,
+        $nextProductCode
+      )
+    } | Out-Null
 
-  New-Item -ItemType Directory -Path $unicodeSourceRoot | Out-Null
-  Copy-Item -LiteralPath $currentMsiPath -Destination $unicodeMsiPath
-  Install-EkyMsi -MsiPath $unicodeMsiPath -LogName 'install-unicode.log'
-  Assert-ProductInstalled -ProductCode $currentProductCode
-  Assert-EkyInstalledPayload -InstallRoot $installRoot `
-    -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
-  Assert-EkyInstallerRegistrationPresent -ProductCode $currentProductCode
-  Uninstall-EkyProduct -ProductCode $currentProductCode -LogName 'uninstall-unicode.log'
-  Assert-ProductAbsent -ProductCode $currentProductCode
-  Assert-EkyPathEventuallyAbsent -Path $installRoot `
-    -Code 'INSTALLER_UPGRADE_UNICODE_INSTALL_ROOT_REMAINS'
-  Remove-Item -LiteralPath $unicodeSourceRoot -Force -Recurse
-  Assert-BusinessDataUnchanged
+  Invoke-EkyObservedUpgradePhase -Phase 'unicodePathVerificationCompleted' `
+    -Operation {
+      New-Item -ItemType Directory -Path $unicodeSourceRoot | Out-Null
+      Copy-Item -LiteralPath $currentMsiPath -Destination $unicodeMsiPath
+      try {
+        Install-EkyMsi -MsiPath $unicodeMsiPath -LogName 'install-unicode.log'
+        Assert-ProductInstalled -ProductCode $currentProductCode
+        Assert-EkyInstalledPayload -InstallRoot $installRoot `
+          -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
+        Assert-EkyInstallerRegistrationPresent `
+          -ProductCode $currentProductCode
+        Uninstall-EkyProduct -ProductCode $currentProductCode `
+          -LogName 'uninstall-unicode.log'
+        Assert-ProductAbsent -ProductCode $currentProductCode
+        Assert-EkyPathEventuallyAbsent -Path $installRoot `
+          -Code 'INSTALLER_UPGRADE_UNICODE_INSTALL_ROOT_REMAINS'
+      }
+      finally {
+        if (Test-Path -LiteralPath $unicodeSourceRoot) {
+          Remove-Item -LiteralPath $unicodeSourceRoot -Force -Recurse
+        }
+      }
+      Assert-BusinessDataUnchanged
+    } | Out-Null
 
-  Install-EkyMsi -MsiPath $currentMsiPath -LogName 'install-before-rollback.log'
-  $rollbackBlocker = Join-Path $installRoot `
-    'resources\desktop-runtime\installer-rollback-probe'
-  Set-Content -LiteralPath $rollbackBlocker -Value 'synthetic filesystem blocker' `
-    -Encoding ASCII -NoNewline
-  Invoke-EkyMsiExecExpectedFailure -Operation 'rollback_probe' -Arguments @(
-    '/i',
-    "`"$rollbackMsiPath`"",
-    '/qn',
-    '/norestart',
-    '/l*v',
-    "`"$(Join-Path $logRoot 'rollback-probe.log')`""
-  ) | Out-Null
-  Assert-ProductInstalled -ProductCode $currentProductCode
-  Assert-ProductAbsent -ProductCode $nextProductCode
-  Remove-Item -LiteralPath $rollbackBlocker -Force
-  Assert-EkyInstalledPayload -InstallRoot $installRoot `
-    -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
-  Assert-EkyInstallerRegistrationPresent -ProductCode $currentProductCode
-  Assert-BusinessDataUnchanged
+  Invoke-EkyObservedUpgradePhase -Phase 'transactionRollbackStarted' `
+    -Operation {
+      Install-EkyMsi -MsiPath $currentMsiPath `
+        -LogName 'install-before-rollback.log'
+      $rollbackBlocker = Join-Path $installRoot `
+        'resources\desktop-runtime\installer-rollback-probe'
+      Set-Content -LiteralPath $rollbackBlocker `
+        -Value 'synthetic filesystem blocker' -Encoding ASCII -NoNewline
+      try {
+        Invoke-EkyMsiExecExpectedFailure -Operation 'rollback_probe' `
+          -Arguments @(
+            '/i',
+            "`"$rollbackMsiPath`"",
+            '/qn',
+            '/norestart',
+            '/l*v',
+            "`"$(Join-Path $logRoot 'rollback-probe.log')`""
+          ) -OnWait { Write-EkyUpgradeHeartbeat } | Out-Null
+      }
+      finally {
+        if (Test-Path -LiteralPath $rollbackBlocker) {
+          Remove-Item -LiteralPath $rollbackBlocker -Force
+        }
+      }
+    } | Out-Null
 
-  Uninstall-EkyProduct -ProductCode $currentProductCode -LogName 'uninstall-current.log'
-  Assert-ProductAbsent -ProductCode $currentProductCode
-  Assert-EkyPathEventuallyAbsent -Path $installRoot `
-    -Code 'INSTALLER_UPGRADE_FINAL_ROOT_REMAINS'
-  Assert-EkyPathEventuallyAbsent -Path $shortcutPath `
-    -Code 'INSTALLER_UPGRADE_FINAL_SHORTCUT_REMAINS'
-  Assert-EkyInstallerRegistrationAbsent -ProductCodes @(
-    $currentProductCode,
-    $nextProductCode
-  )
-  Assert-BusinessDataUnchanged
+  Invoke-EkyObservedUpgradePhase -Phase 'transactionRollbackCompleted' `
+    -Operation {
+      Assert-ProductInstalled -ProductCode $currentProductCode
+      Assert-ProductAbsent -ProductCode $nextProductCode
+      Assert-EkyInstalledPayload -InstallRoot $installRoot `
+        -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
+      Assert-EkyInstallerRegistrationPresent -ProductCode $currentProductCode
+      Assert-BusinessDataUnchanged
+
+      Uninstall-EkyProduct -ProductCode $currentProductCode `
+        -LogName 'uninstall-current.log'
+      Assert-ProductAbsent -ProductCode $currentProductCode
+      Assert-EkyPathEventuallyAbsent -Path $installRoot `
+        -Code 'INSTALLER_UPGRADE_FINAL_ROOT_REMAINS'
+      Assert-EkyPathEventuallyAbsent -Path $shortcutPath `
+        -Code 'INSTALLER_UPGRADE_FINAL_SHORTCUT_REMAINS'
+      Assert-EkyInstallerRegistrationAbsent -ProductCodes @(
+        $currentProductCode,
+        $nextProductCode
+      )
+      Assert-BusinessDataUnchanged
+    } | Out-Null
 
   $completed = $true
   [ordered]@{
@@ -449,33 +584,53 @@ try {
   } | ConvertTo-Json -Compress
 }
 finally {
-  if ($null -ne $runningEkyProcess) {
-    try {
-      Stop-EkyProcessTree -Process $runningEkyProcess
-    }
-    catch {
-      Write-Warning 'Installer upgrade process-tree cleanup failed.'
-    }
+  try {
+    Invoke-EkyObservedUpgradePhase -Phase 'finalCleanupStarted' `
+      -Operation { $true } | Out-Null
   }
-  foreach ($productCode in @($nextProductCode, $currentProductCode)) {
-    if (
-      $null -ne $productCode -and
-      (Get-EkyProductState -Installer $installer -Code $productCode) -ge 1
-    ) {
-      try {
-        Invoke-EkyMsiExec -Operation 'upgrade_cleanup' -Arguments @(
-          '/x',
-          $productCode,
-          '/qn',
-          '/norestart',
-          '/l*v',
-          "`"$(Join-Path $logRoot "cleanup-$($productCode.Trim('{}')).log")`""
-        )
+  catch {
+    Write-Warning 'Installer upgrade final cleanup progress failed.'
+  }
+  try {
+    Invoke-EkyObservedUpgradePhase -Phase 'finalCleanupCompleted' -Operation {
+      if ($null -ne $runningEkyProcessTree) {
+        try {
+          Stop-EkyInstallerOwnedProcessTree `
+            -ProcessTree $runningEkyProcessTree -WriteSummary {
+              param($Summary)
+              Write-EkyInstallerUpgradeProcessCleanupSummary `
+                -Observer $progress -Summary $Summary
+            } | Out-Null
+        }
+        catch {
+          Write-Warning 'Installer upgrade process-tree cleanup failed.'
+        }
       }
-      catch {
-        Write-Warning 'Installer upgrade cleanup failed; inspect the private test log directory.'
+      foreach ($productCode in @($nextProductCode, $currentProductCode)) {
+        if (
+          $null -eq $productCode -or
+          (Get-EkyProductState -Installer $installer -Code $productCode) -lt 1
+        ) {
+          continue
+        }
+        try {
+          Invoke-EkyMsiExec -Operation 'upgrade_cleanup' -Arguments @(
+            '/x',
+            $productCode,
+            '/qn',
+            '/norestart',
+            '/l*v',
+            "`"$(Join-Path $logRoot "cleanup-$($productCode.Trim('{}')).log")`""
+          ) -OnWait { Write-EkyUpgradeHeartbeat } | Out-Null
+        }
+        catch {
+          Write-Warning 'Installer upgrade cleanup failed; inspect the private test log directory.'
+        }
       }
-    }
+    } | Out-Null
+  }
+  catch {
+    Write-Warning 'Installer upgrade final cleanup failed.'
   }
   if ($null -ne $installer) {
     [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($installer)
@@ -483,7 +638,12 @@ finally {
   if ($completed) {
     foreach ($path in @($logRoot)) {
       if (Test-Path -LiteralPath $path) {
-        Remove-Item -LiteralPath $path -Force -Recurse
+        try {
+          Remove-Item -LiteralPath $path -Force -Recurse
+        }
+        catch {
+          Write-Warning 'Installer upgrade private log cleanup failed.'
+        }
       }
     }
   }
