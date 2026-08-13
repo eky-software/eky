@@ -9,6 +9,25 @@ import { afterEach, test } from 'node:test';
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const desktopDirectory = join(scriptDirectory, '..', '..');
 const temporaryDirectories = [];
+const launcherDeadlineMs = 10_000;
+const progressPollIntervalMs = 50;
+const expectedValidationProgress = [
+  { event: 'started', phase: 'inputValidation' },
+  { event: 'failed', phase: 'inputValidation' },
+];
+const launcherExitClasses = new Map([
+  [0, 'SUCCESS'],
+  [20, 'FAILED_PACKAGE_UNINSTALL_FAILED'],
+  [21, 'FAILED_PACKAGE_REPAIR_SUCCEEDED'],
+  [22, 'FAILED_PACKAGE_REPAIR_FAILED'],
+  [23, 'ROLLBACK_HELPER_FAILED'],
+  [24, 'MSIEXEC_INVALID'],
+  [25, 'FAILED_PACKAGE_INVALID'],
+  [26, 'ROLLBACK_PACKAGE_INVALID'],
+  [27, 'LAUNCHER_EXIT_WAIT_FAILED'],
+  [30, 'LAUNCHER_FAILED'],
+  [31, 'SYSTEM_ROOT_INVALID'],
+]);
 
 afterEach(async () => {
   await Promise.all(
@@ -75,18 +94,30 @@ test(
     );
     const exitPromise = observeProcessExit(processHandle);
     await waitUntilSpawned(processHandle);
+    const deadlineAt = Date.now() + launcherDeadlineMs;
+    const progressObserver = observeValidationFailure(
+      progressPath,
+      deadlineAt,
+    );
     try {
-      const rows = await waitForValidationFailure(progressPath);
-      const exit = await waitUntilExited(exitPromise, processHandle);
+      const firstTerminal = await Promise.race([
+        exitPromise.then((exit) => ({ exit, type: 'exit' })),
+        progressObserver.promise,
+      ]);
+      const { exit, rows } = await resolveLauncherTerminalState({
+        deadlineAt,
+        exitPromise,
+        firstTerminal,
+        processHandle,
+        progressPath,
+      });
       assert.deepEqual(
         rows.map(({ event, phase }) => ({ event, phase })),
-        [
-          { event: 'started', phase: 'inputValidation' },
-          { event: 'failed', phase: 'inputValidation' },
-        ],
+        expectedValidationProgress,
       );
       assert.deepEqual(exit, { code: 25, signal: null });
     } finally {
+      progressObserver.stop();
       if (processHandle.exitCode === null && !processHandle.killed) {
         processHandle.kill();
       }
@@ -114,45 +145,136 @@ function observeProcessExit(processHandle) {
   });
 }
 
-function waitUntilExited(exitPromise, processHandle) {
+async function resolveLauncherTerminalState({
+  deadlineAt,
+  exitPromise,
+  firstTerminal,
+  processHandle,
+  progressPath,
+}) {
+  if (firstTerminal.type === 'exit') {
+    return resolveExitedLauncher(firstTerminal.exit, progressPath);
+  }
+  if (firstTerminal.type === 'progress') {
+    return {
+      exit: await waitForExitUntilDeadline(
+        exitPromise,
+        processHandle,
+        deadlineAt,
+      ),
+      rows: firstTerminal.rows,
+    };
+  }
+  if (processHandle.exitCode === null && processHandle.signalCode === null) {
+    throw new Error('ROLLBACK_LAUNCHER_EXIT_TIMEOUT');
+  }
+  return resolveExitedLauncher(await exitPromise, progressPath);
+}
+
+async function resolveExitedLauncher(exit, progressPath) {
+  if (exit.type === 'error') {
+    throw new Error('ROLLBACK_LAUNCHER_START_FAILED');
+  }
+  const rows = await readProgressRows(progressPath);
+  if (hasValidationFailure(rows)) {
+    return {
+      exit: { code: exit.code, signal: exit.signal },
+      rows,
+    };
+  }
+  throw new Error(classifyExitBeforeProgress(exit));
+}
+
+function waitForExitUntilDeadline(exitPromise, processHandle, deadlineAt) {
+  const remainingMs = Math.max(0, deadlineAt - Date.now());
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
-      processHandle.kill();
-      reject(new Error('ROLLBACK_LAUNCHER_EXIT_TIMEOUT'));
-    }, 5_000);
-    timeout.unref();
-    exitPromise.then((outcome) => {
-      clearTimeout(timeout);
-      if (outcome.type === 'error') {
-        reject(new Error('ROLLBACK_LAUNCHER_START_FAILED'));
+      if (processHandle.exitCode === null && processHandle.signalCode === null) {
+        reject(new Error('ROLLBACK_LAUNCHER_EXIT_TIMEOUT'));
         return;
       }
-      resolve({ code: outcome.code, signal: outcome.signal });
+      exitPromise.then((outcome) => settleExitOutcome(outcome, resolve, reject));
+    }, remainingMs);
+    exitPromise.then((outcome) => {
+      clearTimeout(timeout);
+      settleExitOutcome(outcome, resolve, reject);
     });
   });
 }
 
-async function waitForValidationFailure(progressPath) {
-  const deadline = Date.now() + 10_000;
-  while (Date.now() < deadline) {
-    try {
-      const rows = (await readFile(progressPath, 'utf8'))
-        .trim()
-        .split(/\r?\n/u)
-        .filter(Boolean)
-        .map((line) => JSON.parse(line));
-      if (
-        rows.some(
-          (row) =>
-            row.phase === 'inputValidation' && row.event === 'failed',
-        )
-      ) {
-        return rows;
-      }
-    } catch {
-      // The detached launcher creates the bounded progress file asynchronously.
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
+function settleExitOutcome(outcome, resolve, reject) {
+  if (outcome.type === 'error') {
+    reject(new Error('ROLLBACK_LAUNCHER_START_FAILED'));
+    return;
   }
-  assert.fail('ROLLBACK_LAUNCHER_PROGRESS_MISSING');
+  resolve({ code: outcome.code, signal: outcome.signal });
+}
+
+function observeValidationFailure(progressPath, deadlineAt) {
+  let finished = false;
+  let pollTimer;
+  let resolveObserver;
+  const promise = new Promise((resolve) => {
+    resolveObserver = resolve;
+  });
+  const finish = (outcome) => {
+    if (finished) {
+      return;
+    }
+    finished = true;
+    clearTimeout(pollTimer);
+    resolveObserver(outcome);
+  };
+  const poll = async () => {
+    const rows = await readProgressRows(progressPath);
+    if (hasValidationFailure(rows)) {
+      finish({ rows, type: 'progress' });
+      return;
+    }
+    const remainingMs = deadlineAt - Date.now();
+    if (remainingMs <= 0) {
+      finish({ type: 'deadline' });
+      return;
+    }
+    pollTimer = setTimeout(
+      poll,
+      Math.min(progressPollIntervalMs, remainingMs),
+    );
+  };
+  void poll();
+  return {
+    promise,
+    stop() {
+      finish({ type: 'stopped' });
+    },
+  };
+}
+
+async function readProgressRows(progressPath) {
+  try {
+    return (await readFile(progressPath, 'utf8'))
+      .trim()
+      .split(/\r?\n/u)
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+  } catch {
+    return [];
+  }
+}
+
+function hasValidationFailure(rows) {
+  return rows.some(
+    (row) => row.phase === 'inputValidation' && row.event === 'failed',
+  );
+}
+
+function classifyExitBeforeProgress(exit) {
+  if (exit.signal !== null) {
+    return 'ROLLBACK_LAUNCHER_EXITED_BEFORE_PROGRESS_SIGNALLED';
+  }
+  const exitClass = launcherExitClasses.get(exit.code);
+  if (exitClass === undefined) {
+    return 'ROLLBACK_LAUNCHER_EXITED_BEFORE_PROGRESS_UNKNOWN';
+  }
+  return `ROLLBACK_LAUNCHER_EXITED_BEFORE_PROGRESS_${exitClass}`;
 }
