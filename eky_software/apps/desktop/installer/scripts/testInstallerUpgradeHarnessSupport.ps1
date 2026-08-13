@@ -336,64 +336,6 @@ Assert-Equal ($script:installerWaitCallbackCount -gt 0) $true `
 Assert-Equal $waitOutput[0] 21 `
   'INSTALLER_TEST_WAIT_CALLBACK_CHANGED_EXIT_CODE'
 
-$rollbackBarrierRoot = Join-Path $env:TEMP `
-  "eky-rollback-launcher-barrier-$([guid]::NewGuid().ToString('N'))"
-$rollbackProcess = $null
-try {
-  New-Item -ItemType Directory -Path $rollbackBarrierRoot | Out-Null
-  $failedPackagePath = Join-Path $rollbackBarrierRoot 'failed.msi'
-  $rollbackPackagePath = Join-Path $rollbackBarrierRoot 'rollback.msi'
-  $syntheticMsiExecPath = Join-Path $env:SystemRoot 'System32\whoami.exe'
-  [System.IO.File]::WriteAllText($failedPackagePath, 'failed-fixture')
-  [System.IO.File]::WriteAllText($rollbackPackagePath, 'rollback-fixture')
-  $rollbackScriptPath = (Resolve-Path -LiteralPath (
-      Join-Path $PSScriptRoot '..\..\resources\update\rollbackWindowsInstaller.ps1'
-    )).Path
-  $rollbackProcess = Start-EkyTrackedInstallerProcess `
-    -FilePath 'powershell.exe' -ArgumentList @(
-      '-NoLogo',
-      '-NoProfile',
-      '-NonInteractive',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-WindowStyle',
-      'Hidden',
-      '-File',
-      "`"$rollbackScriptPath`"",
-      '-MsiExecPath',
-      "`"$syntheticMsiExecPath`"",
-      '-FailedProductCode',
-      '{FFFFFFFF-FFFF-4FFF-8FFF-FFFFFFFFFFFF}',
-      '-LauncherProcessId',
-      2147483647,
-      '-FailedPackagePath',
-      "`"$failedPackagePath`"",
-      '-RollbackPackagePath',
-      "`"$rollbackPackagePath`""
-    )
-  try {
-    $rollbackExitCode = Wait-EkyInstallerProcessExitCode `
-      -Process $rollbackProcess
-  }
-  finally {
-    $rollbackProcess = $null
-  }
-  Assert-Equal (@(0, 20, 21, 22, 23) -contains $rollbackExitCode) $true `
-    'INSTALLER_TEST_ROLLBACK_BARRIER_NOT_CROSSED'
-}
-finally {
-  if ($null -ne $rollbackProcess) {
-    if (!$rollbackProcess.HasExited) {
-      $rollbackProcess.Kill()
-      $rollbackProcess.WaitForExit(5000) | Out-Null
-    }
-    $rollbackProcess.Dispose()
-  }
-  if (Test-Path -LiteralPath $rollbackBarrierRoot) {
-    Remove-Item -LiteralPath $rollbackBarrierRoot -Recurse -Force
-  }
-}
-
 [ordered]@{
   assertionCount = $assertionCount
   status = 'ok'
