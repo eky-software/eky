@@ -1,5 +1,7 @@
 import { performance } from 'node:perf_hooks';
 
+import { isPackagedUpdateFailureStage } from './packagedUpdateE2eSupport.mjs';
+
 export const packagedUpdateE2eScenarios = Object.freeze([
   'coordinatedSuccess',
   'coordinatedCancel',
@@ -76,6 +78,7 @@ const safeErrorCodes = new Set([
   'PACKAGED_UPDATE_E2E_APPLICATION_EXIT_INVALID',
   'PACKAGED_UPDATE_E2E_APPLICATION_EXIT_TIMEOUT',
   'PACKAGED_UPDATE_E2E_APPLICATION_RESULT_MISSING',
+  'PACKAGED_UPDATE_E2E_APPLICATION_REPORTED_FAILURE',
   'PACKAGED_UPDATE_E2E_APPLICATION_SEQUENCE_INVALID',
   'PACKAGED_UPDATE_E2E_APPLICATION_START_FAILED',
   'PACKAGED_UPDATE_E2E_APPLICATION_TIMEOUT',
@@ -283,6 +286,12 @@ function toSafeErrorCode(error) {
 
 function toSafeFailure(error) {
   const fields = { errorCode: toSafeErrorCode(error) };
+  if (
+    error instanceof Error &&
+    isPackagedUpdateFailureStage(error.failureStage)
+  ) {
+    fields.failureStage = error.failureStage;
+  }
   if (
     error instanceof Error &&
     safeTerminationOutcomes.has(error.terminationOutcome)

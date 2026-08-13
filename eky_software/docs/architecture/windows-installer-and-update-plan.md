@@ -801,6 +801,10 @@ journal suljetaan turvalliseen `installerNotApplied`-tilaan. Pre-update-suoja
 vapautetaan vasta tämän päätöksen jälkeen ja candidate säilytetään uutta
 käyttäjän käynnistämää yritystä varten. Eriävä, mixed tai muuten epäselvä tila
 siirtyy `failedSafe`-tilaan; automaattista installer-uusintaa ei tehdä.
+Myöhemmillä käynnistyksillä terminaalinen `installerNotApplied` validoidaan
+idempotentisti hyväksyttyä current-buildia, current-cachea ja muuttumatonta
+migraatioketjua vasten. Jo suljettua handoff-yritystä ei avata uudelleen eikä
+jo vapautettua pre-update-suojaa yritetä vapauttaa toistamiseen.
 
 ### Rajatut cache-operaatiot
 

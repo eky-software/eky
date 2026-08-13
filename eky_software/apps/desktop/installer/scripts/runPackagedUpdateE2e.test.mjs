@@ -163,18 +163,52 @@ describe('packaged update E2E runner boundaries', () => {
     );
   });
 
-  it('requires a clean exit even when the application wrote a failed result', () => {
+  it('preserves a reviewed failure stage when the application reports a safe failure', () => {
     assert.throws(
       () =>
         validateApplicationPhaseOutcome({
           exit: { code: 1, signal: null },
           result: {
             code: 'DESKTOP_UPDATE_SMOKE_SYNTHETIC_FAILURE',
+            failureStage: 'preMigrationInstallerNotApplied',
             phase: 'verifyRollback',
             status: 'failed',
           },
         }),
-      /PACKAGED_UPDATE_E2E_APPLICATION_EXIT_INVALID/,
+      (error) => {
+        assert.equal(
+          error.message,
+          'PACKAGED_UPDATE_E2E_APPLICATION_REPORTED_FAILURE',
+        );
+        assert.equal(
+          error.failureStage,
+          'preMigrationInstallerNotApplied',
+        );
+        return true;
+      },
+    );
+  });
+
+  it('does not preserve an unreviewed application failure stage', () => {
+    assert.throws(
+      () =>
+        validateApplicationPhaseOutcome({
+          exit: { code: 1, signal: null },
+          result: {
+            code: 'DESKTOP_UPDATE_SMOKE_SYNTHETIC_FAILURE',
+            failureStage: 'C:\\private\\profile',
+            phase: 'verifyRollback',
+            status: 'failed',
+          },
+        }),
+      (error) => {
+        assert.equal(
+          error.message,
+          'PACKAGED_UPDATE_E2E_APPLICATION_REPORTED_FAILURE',
+        );
+        assert.equal(error.failureStage, undefined);
+        return true;
+      },
     );
   });
 });

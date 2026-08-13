@@ -51,6 +51,10 @@ const packagedUpdateFailureStages = new Set([
   'recoveryPointSchedulerStart',
 ]);
 
+export function isPackagedUpdateFailureStage(value) {
+  return packagedUpdateFailureStages.has(value);
+}
+
 export function formatPackagedUpdateSmokeFailureDiagnostic(result) {
   const code =
     isRecord(result) &&
@@ -59,7 +63,7 @@ export function formatPackagedUpdateSmokeFailureDiagnostic(result) {
       ? result.code
       : 'RESULT_INVALID';
   const failureStage =
-    isRecord(result) && packagedUpdateFailureStages.has(result.failureStage)
+    isRecord(result) && isPackagedUpdateFailureStage(result.failureStage)
       ? `_AT_${result.failureStage}`
       : '';
   return `PACKAGED_UPDATE_E2E_APPLICATION_${code}${failureStage}`;

@@ -266,6 +266,58 @@ describe('packaged update E2E progress observer', () => {
       'PACKAGED_UPDATE_E2E_APPLICATION_EXIT_INVALID',
     );
   });
+
+  it('reports only a reviewed packaged application failure stage', async () => {
+    const events = [];
+    const progress = createTestObserver(events);
+    const failure = new Error(
+      'PACKAGED_UPDATE_E2E_APPLICATION_REPORTED_FAILURE',
+    );
+    failure.failureStage = 'preMigrationInstallerNotApplied';
+
+    await assert.rejects(
+      progress.runPhase(
+        {
+          phase: 'applicationOutcomeValidation',
+          scenario: 'coordinatedCancel',
+        },
+        async () => {
+          throw failure;
+        },
+      ),
+      (error) => error === failure,
+    );
+
+    assert.equal(
+      events.at(-1).errorCode,
+      'PACKAGED_UPDATE_E2E_APPLICATION_REPORTED_FAILURE',
+    );
+    assert.equal(
+      events.at(-1).failureStage,
+      'preMigrationInstallerNotApplied',
+    );
+
+    const forgedEvents = [];
+    const forgedProgress = createTestObserver(forgedEvents);
+    const forged = new Error(
+      'PACKAGED_UPDATE_E2E_APPLICATION_REPORTED_FAILURE',
+    );
+    forged.failureStage = 'C:\\private\\profile';
+    await assert.rejects(
+      forgedProgress.runPhase(
+        {
+          phase: 'applicationOutcomeValidation',
+          scenario: 'coordinatedCancel',
+        },
+        async () => {
+          throw forged;
+        },
+      ),
+      (error) => error === forged,
+    );
+    assert.equal(forgedEvents.at(-1).failureStage, undefined);
+    assert.doesNotMatch(JSON.stringify(forgedEvents), /private|profile/);
+  });
 });
 
 function createTestObserver(events) {

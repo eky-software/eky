@@ -22,6 +22,7 @@ import { preparePackagedUpdateE2eFixture } from './preparePackagedUpdateE2eFixtu
 import {
   createPackagedUpdateScenarioPlan,
   formatPackagedUpdateSmokeFailureDiagnostic,
+  isPackagedUpdateFailureStage,
   readPackagedUpdateE2eFixture,
   readPackagedUpdateSmokeResult,
 } from './packagedUpdateE2eSupport.mjs';
@@ -845,6 +846,15 @@ export function validateApplicationPhaseOutcome({
   exit,
   result,
 }) {
+  if (result?.status === 'failed') {
+    const failure = new Error(
+      'PACKAGED_UPDATE_E2E_APPLICATION_REPORTED_FAILURE',
+    );
+    if (isPackagedUpdateFailureStage(result.failureStage)) {
+      failure.failureStage = result.failureStage;
+    }
+    throw failure;
+  }
   if (exit?.code !== 0 || exit.signal !== null) {
     throw new Error('PACKAGED_UPDATE_E2E_APPLICATION_EXIT_INVALID');
   }

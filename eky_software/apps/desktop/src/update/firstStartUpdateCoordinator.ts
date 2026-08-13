@@ -170,7 +170,14 @@ export class FirstStartUpdateCoordinator {
           coordinatedJournal = journal;
           this.mode = await this.prepareCoordinatedFirstStart(journal);
         } else {
-          if (journal.state === 'awaitingRollbackFirstStart') {
+          if (journal.state === 'installerNotApplied') {
+            installerNotAppliedJournal = undefined;
+            this.mode = await this.prepareResolvedInstallerNotApplied({
+              acceptedBuild,
+              inspection,
+              journal,
+            });
+          } else if (journal.state === 'awaitingRollbackFirstStart') {
             installerNotAppliedJournal = undefined;
             rollbackJournal = journal;
             this.mode = await this.prepareRollbackFirstStart({
@@ -433,6 +440,39 @@ export class FirstStartUpdateCoordinator {
       role: 'current',
     });
     return { journal, kind: 'installerNotApplied' };
+  }
+
+  private async prepareResolvedInstallerNotApplied(input: {
+    acceptedBuild:
+      | { appVersion: string; buildRevision: string }
+      | undefined;
+    inspection: Readonly<MigrationStartupInspection>;
+    journal: Readonly<UpdateJournal>;
+  }): Promise<FirstStartMode> {
+    const { acceptedBuild, inspection, journal } = input;
+    if (
+      journal.state !== 'installerNotApplied' ||
+      journal.handoffAttemptCount !== 1 ||
+      journal.recoveryPointReference === undefined ||
+      journal.preUpdateMigrationChainIdentity === undefined ||
+      acceptedBuild?.appVersion !== journal.currentVersion ||
+      acceptedBuild.buildRevision !==
+        journal.currentPackageIdentity.buildRevision ||
+      inspection.profileState !== 'existing' ||
+      inspection.pendingMigrationCount !== 0 ||
+      inspection.migrationChainIdentity !==
+        journal.preUpdateMigrationChainIdentity
+    ) {
+      throw new FirstStartUpdateError('preMigrationInstallerNotApplied');
+    }
+    await this.dependencies.cache.revalidateJournalPackage({
+      expectedIdentity: toExpectedIdentity(
+        journal.currentVersion,
+        journal.currentPackageIdentity,
+      ),
+      role: 'current',
+    });
+    return { kind: 'normal' };
   }
 
   private async prepareRollbackFirstStart(input: {

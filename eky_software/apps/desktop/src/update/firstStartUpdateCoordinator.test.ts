@@ -539,6 +539,44 @@ describe('first-start update coordinator', () => {
     expect(fixture.promoteAcceptedCandidate).not.toHaveBeenCalled();
   });
 
+  it('treats a resolved installer-not-applied journal as an idempotent normal startup', async () => {
+    const fixture = createFixture({
+      acceptedBuild: acceptedCurrentBuild(),
+      journal: createJournal('installerNotApplied'),
+      runningReleaseInfo: currentReleaseInfo,
+    });
+
+    await fixture.coordinator.beforeMigrations(
+      createInspection('existing', 0),
+    );
+    await fixture.coordinator.acceptAfterBackendReady();
+
+    expect(fixture.journalStates).toEqual([]);
+    expect(fixture.acceptedWrites).toHaveLength(0);
+    expect(fixture.promoteAcceptedCandidate).not.toHaveBeenCalled();
+    expect(fixture.releaseProtectedPoint).not.toHaveBeenCalled();
+    expect(fixture.operationCompleted).toHaveBeenCalledOnce();
+  });
+
+  it('fails closed when a resolved installer-not-applied startup no longer matches the migration chain', async () => {
+    const fixture = createFixture({
+      acceptedBuild: acceptedCurrentBuild(),
+      journal: createJournal('installerNotApplied'),
+      runningReleaseInfo: currentReleaseInfo,
+    });
+
+    await expect(
+      fixture.coordinator.beforeMigrations({
+        ...createInspection('existing', 0),
+        migrationChainIdentity: 'c'.repeat(64),
+      }),
+    ).rejects.toThrow(FirstStartUpdateError);
+
+    expect(fixture.journalStates).toEqual([]);
+    expect(fixture.acceptedWrites).toHaveLength(0);
+    expect(fixture.releaseProtectedPoint).not.toHaveBeenCalled();
+  });
+
   it('fails safe when the current build returns with a changed migration chain', async () => {
     const fixture = createFixture({
       acceptedBuild: acceptedCurrentBuild(),
