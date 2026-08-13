@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'installerUpgradeProcessTreeTestSupport.ps1')
 . (Join-Path $PSScriptRoot 'installerUpgradeOutcomeTestSupport.ps1')
 . (Join-Path $PSScriptRoot 'installerUpgradeProgress.ps1')
+. (Join-Path $PSScriptRoot 'windowsInstallerTestSupport.ps1')
 
 $assertionCount = 0
 
@@ -300,6 +301,51 @@ Assert-Equal $cleanupEvents[0].event 'processCleanupOutcome' `
   'INSTALLER_TEST_CLEANUP_SUMMARY_EVENT_INVALID'
 Assert-Equal $cleanupEvents[0].taskkillOutcomeClass 'nonzero' `
   'INSTALLER_TEST_CLEANUP_SUMMARY_OUTCOME_INVALID'
+
+foreach ($expectedExitCode in @(0, 7)) {
+  $process = Start-Process -FilePath 'cmd.exe' `
+    -ArgumentList @('/d', '/c', "exit $expectedExitCode") `
+    -NoNewWindow -PassThru
+  try {
+    Initialize-EkyInstallerProcessTracking -Process $process
+    $waitOutput = @(Wait-EkyInstallerProcess -Process $process)
+    Assert-Equal $waitOutput.Count 0 `
+      'INSTALLER_TEST_WAIT_EMITTED_OUTPUT'
+    Assert-Equal $process.ExitCode $expectedExitCode `
+      'INSTALLER_TEST_WAIT_EXIT_CODE_MISSING'
+  }
+  finally {
+    $process.Dispose()
+  }
+}
+
+$script:installerWaitCallbackCount = 0
+$waitCommand = 'Start-Sleep -Milliseconds 1200; exit 9'
+$encodedWaitCommand = [Convert]::ToBase64String(
+  [Text.Encoding]::Unicode.GetBytes($waitCommand)
+)
+$waitProcess = Start-Process -FilePath 'powershell.exe' `
+  -ArgumentList @('-NoProfile', '-EncodedCommand', $encodedWaitCommand) `
+  -NoNewWindow -PassThru
+try {
+  Initialize-EkyInstallerProcessTracking -Process $waitProcess
+  $waitOutput = @(
+    Wait-EkyInstallerProcess -Process $waitProcess -OnWait {
+      $script:installerWaitCallbackCount += 1
+      'OBSERVABILITY_OUTPUT_MUST_NOT_ESCAPE'
+      throw 'OBSERVABILITY_FAILURE_MUST_NOT_ESCAPE'
+    }
+  )
+  Assert-Equal $waitOutput.Count 0 `
+    'INSTALLER_TEST_WAIT_CALLBACK_OUTPUT_ESCAPED'
+  Assert-Equal ($script:installerWaitCallbackCount -gt 0) $true `
+    'INSTALLER_TEST_WAIT_CALLBACK_MISSING'
+  Assert-Equal $waitProcess.ExitCode 9 `
+    'INSTALLER_TEST_WAIT_CALLBACK_CHANGED_EXIT_CODE'
+}
+finally {
+  $waitProcess.Dispose()
+}
 
 [ordered]@{
   assertionCount = $assertionCount

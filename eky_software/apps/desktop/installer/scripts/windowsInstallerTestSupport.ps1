@@ -39,11 +39,18 @@ function Invoke-EkyMsiExec {
 
   $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $Arguments `
     -NoNewWindow -PassThru
-  Wait-EkyInstallerProcess -Process $process -OnWait $OnWait
-  if ($process.ExitCode -notin $AllowedExitCodes) {
-    throw "INSTALLER_$($Operation.ToUpperInvariant())_FAILED:$($process.ExitCode)"
+  try {
+    Initialize-EkyInstallerProcessTracking -Process $process
+    Wait-EkyInstallerProcess -Process $process -OnWait $OnWait
+    $exitCode = $process.ExitCode
+    if ($exitCode -notin $AllowedExitCodes) {
+      throw "INSTALLER_$($Operation.ToUpperInvariant())_FAILED:$exitCode"
+    }
+    return $exitCode
   }
-  return $process.ExitCode
+  finally {
+    $process.Dispose()
+  }
 }
 
 function Invoke-EkyMsiExecExpectedFailure {
@@ -55,11 +62,31 @@ function Invoke-EkyMsiExecExpectedFailure {
 
   $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $Arguments `
     -NoNewWindow -PassThru
-  Wait-EkyInstallerProcess -Process $process -OnWait $OnWait
-  if ($process.ExitCode -in @(0, 1641, 3010)) {
-    throw "INSTALLER_$($Operation.ToUpperInvariant())_EXPECTED_FAILURE_MISSING"
+  try {
+    Initialize-EkyInstallerProcessTracking -Process $process
+    Wait-EkyInstallerProcess -Process $process -OnWait $OnWait
+    $exitCode = $process.ExitCode
+    if ($exitCode -in @(0, 1641, 3010)) {
+      throw "INSTALLER_$($Operation.ToUpperInvariant())_EXPECTED_FAILURE_MISSING"
+    }
+    return $exitCode
   }
-  return $process.ExitCode
+  finally {
+    $process.Dispose()
+  }
+}
+
+function Initialize-EkyInstallerProcessTracking {
+  param([Parameter(Mandatory = $true)]$Process)
+
+  try {
+    # Start-Process does not retain a usable exit-code handle unless the
+    # handle is materialized while the process identity is still available.
+    [void]$Process.Handle
+  }
+  catch {
+    throw 'INSTALLER_PROCESS_TRACKING_FAILED'
+  }
 }
 
 function Wait-EkyInstallerProcess {
@@ -71,13 +98,14 @@ function Wait-EkyInstallerProcess {
   while (!$Process.WaitForExit(1000)) {
     if ($null -ne $OnWait) {
       try {
-        & $OnWait
+        $null = & $OnWait
       }
       catch {
         # Observability must never change installer behavior.
       }
     }
   }
+  $Process.WaitForExit()
 }
 
 function Get-EkyDirectoryInventory {
