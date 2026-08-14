@@ -53,6 +53,44 @@ export function createPriorAcceptedBuildMetadata(identity, acceptedAt) {
   });
 }
 
+export async function readFirstParentReleaseHistory(
+  packagePath,
+  currentVersion,
+  readGitOutput,
+) {
+  const parsedCurrent = parseNumericVersion(currentVersion);
+  const revisions = (await readGitOutput([
+    'log',
+    '--first-parent',
+    '--format=%H',
+  ]))
+    .trim()
+    .split(/\r?\n/u)
+    .filter((revision) => revision !== '');
+  const history = [];
+
+  for (const revision of revisions) {
+    const historicalPackage = JSON.parse(
+      await readGitOutput(['show', `${revision}:${packagePath}`]),
+    );
+    const appVersion = readPackageVersion(historicalPackage);
+    history.push({
+      appVersion,
+      buildRevision: revision.slice(0, 12),
+    });
+    if (
+      compareNumericVersions(
+        parseNumericVersion(appVersion),
+        parsedCurrent,
+      ) !== 0
+    ) {
+      break;
+    }
+  }
+
+  return history;
+}
+
 export async function preparePackagedReleaseCandidateSmoke(input) {
   const desktopDirectory = resolve(input.desktopDirectory);
   const repositoryRoot = resolve(input.repositoryRoot);
@@ -92,29 +130,11 @@ export async function preparePackagedReleaseCandidateSmoke(input) {
     await readGit(repositoryRoot, ['rev-parse', '--show-prefix'])
   ).trim();
   const packagePath = `${packagePathPrefix}apps/desktop/package.json`;
-  const revisions = (
-    await readGit(repositoryRoot, [
-      'log',
-      '--first-parent',
-      '--format=%H',
-      '--',
-      `:(top)${packagePath}`,
-    ])
-  )
-    .trim()
-    .split(/\r?\n/u)
-    .filter((revision) => revision !== '');
-  const history = [];
-
-  for (const revision of revisions) {
-    const historicalPackage = JSON.parse(
-      await readGit(repositoryRoot, ['show', `${revision}:${packagePath}`]),
-    );
-    history.push({
-      appVersion: readPackageVersion(historicalPackage),
-      buildRevision: revision.slice(0, 12),
-    });
-  }
+  const history = await readFirstParentReleaseHistory(
+    packagePath,
+    currentVersion,
+    (args) => readGit(repositoryRoot, args),
+  );
 
   const previousRelease = selectPreviousReleaseIdentity(
     currentVersion,
