@@ -2,6 +2,12 @@ import type { DatabaseConnection } from '../connection/createDatabaseConnection.
 import type { MigrationManifestEntry } from './migrationManifest.js';
 
 const migrationMetadataVersion = 1;
+const approvedLegacyMigrationAnchor = {
+  migrationChainIdentity:
+    '5e841ae5c530da82d7dee0c8e2ed8480b23aca944a0faa64a8fcd0b9011b6503',
+  migrationCount: 38,
+  migrationName: '038_create_invoice_numbering_series_transitions.sql',
+} as const;
 const safeAppVersionPattern = /^[A-Za-z0-9.+_-]{1,80}$/;
 const safeBuildRevisionPattern = /^(?:[0-9a-f]{7,40}|development)$/;
 const sha256Pattern = /^[0-9a-f]{64}$/;
@@ -134,6 +140,37 @@ export function inspectMigrationHistory(
   return {
     appliedMigrationNames,
     migrationChainIdentity: finalEntry?.chainSha256 ?? '',
+  };
+}
+
+export function inspectApprovedLegacyMigrationHistory(
+  database: DatabaseConnection,
+  manifest: readonly MigrationManifestEntry[],
+): MigrationHistoryInspection {
+  if (
+    !tableExists(database, 'schema_migrations') ||
+    tableExists(database, 'schema_migration_metadata')
+  ) {
+    throw new Error('MIGRATION_HISTORY_INVALID');
+  }
+
+  const appliedMigrationNames = readAppliedMigrationNames(database);
+  assertAppliedMigrationsAreManifestPrefix(appliedMigrationNames, manifest);
+  const finalEntry = manifest[appliedMigrationNames.length - 1];
+
+  if (
+    appliedMigrationNames.length !==
+      approvedLegacyMigrationAnchor.migrationCount ||
+    finalEntry?.fileName !== approvedLegacyMigrationAnchor.migrationName ||
+    finalEntry.chainSha256 !==
+      approvedLegacyMigrationAnchor.migrationChainIdentity
+  ) {
+    throw new Error('MIGRATION_HISTORY_INVALID');
+  }
+
+  return {
+    appliedMigrationNames,
+    migrationChainIdentity: finalEntry.chainSha256,
   };
 }
 

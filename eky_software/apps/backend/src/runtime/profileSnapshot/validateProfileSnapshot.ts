@@ -166,7 +166,7 @@ export class StagedProfileSnapshotValidationService
       const databaseInspection = inspectSqliteProfileDatabase(
         databasePath,
         this.dependencies.migrationsDirectory,
-        { allowHistoricalMigrationPrefix: true },
+        'restoreCompatible',
       );
       const stagedDatabase = new Database(databasePath, {
         fileMustExist: true,

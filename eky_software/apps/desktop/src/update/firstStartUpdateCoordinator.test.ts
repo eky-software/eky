@@ -196,6 +196,39 @@ describe('first-start update coordinator', () => {
     expect(fixture.createValidatedPreMigrationPoint).not.toHaveBeenCalled();
   });
 
+  it('allows pending migrations only for an explicitly authorized profile restore', async () => {
+    const fixture = createFixture({
+      acceptedBuild: acceptedCandidateBuild(),
+      journal: createJournal('accepted'),
+    });
+
+    await fixture.coordinator.beforeMigrations(
+      createInspection('existing', 1),
+      { migrationAuthority: 'profileRestore' },
+    );
+    await fixture.coordinator.acceptAfterBackendReady();
+
+    expect(fixture.createValidatedPreMigrationPoint).not.toHaveBeenCalled();
+    expect(fixture.directRecoveryWrites).toHaveLength(0);
+    expect(fixture.acceptedWrites).toHaveLength(0);
+  });
+
+  it('rejects profile restore migration authority outside a normal accepted build before recovery writes', async () => {
+    const fixture = createFixture({
+      acceptedBuild: acceptedCurrentBuild(),
+    });
+
+    await expect(
+      fixture.coordinator.beforeMigrations(
+        createInspection('existing', 1),
+        { migrationAuthority: 'profileRestore' },
+      ),
+    ).rejects.toThrow(FirstStartUpdateError);
+
+    expect(fixture.createValidatedPreMigrationPoint).not.toHaveBeenCalled();
+    expect(fixture.directRecoveryWrites).toHaveLength(0);
+  });
+
   it('validates, migrates and atomically accepts a coordinated update', async () => {
     const fixture = createFixture({
       acceptedBuild: {

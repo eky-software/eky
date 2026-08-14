@@ -510,8 +510,27 @@ Inspector ei luota tiedostopäätteeseen. Se:
 - vertaa backup-, app- ja migration-yhteensopivuudet erillisinä päätöksinä
 - vaatii SQLiteen tallennetun migration metadatan vastaamaan packaged
   SQL-manifestia; pelkkä backup-manifestin chain-arvo ei riitä
+- hyväksyy restore-stagingissa yhden erikseen nimetyn, ennen migration-
+  metadataa julkaistun legacy-ankkurin vain, kun `schema_migrations` on
+  packaged SQL-manifestin täsmällinen 38 migraation prefix, viimeinen nimi ja
+  laskettu chain identity vastaavat hyväksyttyä ankkuria,
+  `schema_migration_metadata` puuttuu kokonaan ja autentikoidun backup-
+  manifestin chain identity vastaa tietokannasta laskettua arvoa
 - ei pura business-sisältöä aktiiviseen profiiliin
 - palauttaa käyttäjälle turvallisen yhteenvetotilan ilman yritysdataa
+
+Legacy-poikkeus ei koske normaalia snapshotia, recovery pointia tai tavallista
+startup-tarkistusta. Restore-aktivointijournalin `validateRestoredProfile`-tila
+valtuuttaa täsmälleen kyseisen käynnistyksen käyttämään restore-yhteensopivaa
+migration-tarkistusta ja profile restore -migraatiovaltuutta. Valtuus ei tule
+rendereriltä eikä sitä käytetä rollback-profiilin, normaalin käynnistyksen tai
+update-polun yhteydessä. Muu metadataa vailla oleva, lyhyempi, future-, missing-
+middle- tai muuttuneeseen historialliseen SQL:ään perustuva kanta torjutaan.
+Hyväksytyn legacy-backupin aktivoinnin jälkeen migration runner luo metadata-
+taulun ja ankkuroi kaikki 38 riviä `legacy_baseline`-alkuperällä ennen
+business-runtimen avaamista. Käynnistyksen jälkeinen profiilivalidointi vaatii
+jälleen täsmällisen nykyisen migration-metadatan. Jo olemassa oleva mutta
+puutteellinen tai virheellinen metadata ei koskaan muutu legacy-poikkeukseksi.
 
 Väärä salasana ja muutettu artifacti palauttavat saman turvallisen
 autentikointivirheen. Virhe ei kerro, mikä salauksen osa epäonnistui.
@@ -673,6 +692,9 @@ ei saa muuttaa varsinaisen operaation tulosta.
 - hallitun close-fallbackin restart
 - SQLite integrity ja foreign keys
 - migration chainin upgrade ja downgrade-esto
+- hyväksytyn 38 migraation metadataa vailla olevan legacy-backupin staging,
+  aktivointi ja metadata-ankkurointi sekä muiden metadataa vailla olevien
+  historioiden fail-closed-torjunta
 - puuttuva, ylimääräinen tai muutettu migration metadata sekä historiallinen
   SQL-mismatch
 - puuttuva, ylimääräinen ja väärän checksum-arvon artifacti

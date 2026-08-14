@@ -155,6 +155,41 @@ describe('desktop backend process messages', () => {
     expect(runtimeInstanceId).not.toBe(runtimeSessionSecret);
   });
 
+  it('accepts only the closed migration startup policy values', () => {
+    const runtimeRoot = resolve('desktop-test-runtime');
+    const createCommand = (migrationStartupPolicy: unknown) => ({
+      config: createValidConfig({
+        backendRoot: resolve(runtimeRoot, 'backend'),
+        databaseFilePath: resolve(runtimeRoot, 'data', 'eky.sqlite'),
+        invoiceDocumentStorageRoot: resolve(runtimeRoot, 'storage'),
+        migrationsDirectory: resolve(runtimeRoot, 'migrations'),
+        migrationStartupPolicy,
+        operationalLogsRoot: resolve(runtimeRoot, 'logs'),
+        profileSnapshotStagingRoot: resolve(
+          runtimeRoot,
+          'private-backup-staging',
+        ),
+        smokePdfPath: resolve(runtimeRoot, 'smoke', 'invoice.pdf'),
+      }),
+      type: 'start',
+    });
+
+    expect(
+      parseDesktopBackendCommand(createCommand('exactCurrentManifest')),
+    ).toMatchObject({
+      config: { migrationStartupPolicy: 'exactCurrentManifest' },
+    });
+    expect(
+      parseDesktopBackendCommand(createCommand('restoreCompatible')),
+    ).toMatchObject({
+      config: { migrationStartupPolicy: 'restoreCompatible' },
+    });
+    expect(
+      parseDesktopBackendCommand(createCommand('allowAnyLegacyDatabase')),
+    ).toBeUndefined();
+    expect(parseDesktopBackendCommand(createCommand(undefined))).toBeUndefined();
+  });
+
   it('rejects invalid or non-canonical build timestamps without throwing', () => {
     const runtimeRoot = resolve('desktop-test-runtime');
     const createCommand = (buildCreatedAt: unknown) => ({
@@ -239,6 +274,7 @@ function createValidConfig(
     buildRevision: '123456789abc',
     createSmokePdf: false,
     electronVersion: '42.6.1',
+    migrationStartupPolicy: 'exactCurrentManifest',
     platform: 'win32',
     runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
     runtimeSessionSecret: 'a'.repeat(43),

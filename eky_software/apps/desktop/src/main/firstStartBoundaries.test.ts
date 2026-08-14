@@ -37,6 +37,24 @@ describe('desktop first-start boundaries', () => {
       /firstStart|beforeMigrations|continueStartup|abortStartup|migrationGate/i,
     );
   });
+
+  it('limits restore-compatible migrations to the restore journal validation startup', async () => {
+    const source = await readFile(
+      join(sourceRoot, 'main', 'desktopComposition.ts'),
+      'utf8',
+    );
+
+    expect(source).toContain(
+      "startupRecoveryAuthority === 'profileRestore' &&",
+    );
+    expect(source).toContain(
+      "profileRestoreStartupMode === 'validateRestoredProfile'",
+    );
+    expect(source).toContain("? 'restoreCompatible'");
+    expect(source).toContain(
+      'migrationAuthority: restoredProfileMigrationAuthorized',
+    );
+  });
 });
 
 function resolveSourceRoot(): string {

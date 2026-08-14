@@ -15,6 +15,9 @@ export interface DesktopBackendStartMessage {
     electronVersion: string;
     invoiceDocumentStorageRoot: string;
     migrationsDirectory: string;
+    migrationStartupPolicy:
+      | 'exactCurrentManifest'
+      | 'restoreCompatible';
     operationalLogsRoot: string;
     platform: string;
     profileSnapshotStagingRoot: string;
@@ -160,6 +163,8 @@ export function parseDesktopBackendCommand(
     typeof config.createSmokePdf !== 'boolean' ||
     typeof config.electronVersion !== 'string' ||
     !/^[A-Za-z0-9.+_-]{1,80}$/.test(config.electronVersion) ||
+    (config.migrationStartupPolicy !== 'exactCurrentManifest' &&
+      config.migrationStartupPolicy !== 'restoreCompatible') ||
     typeof config.platform !== 'string' ||
     !/^[A-Za-z0-9._-]{1,40}$/.test(config.platform) ||
     typeof config.runtimeInstanceId !== 'string' ||
@@ -184,6 +189,7 @@ export function parseDesktopBackendCommand(
       electronVersion: config.electronVersion,
       invoiceDocumentStorageRoot: config.invoiceDocumentStorageRoot as string,
       migrationsDirectory: config.migrationsDirectory as string,
+      migrationStartupPolicy: config.migrationStartupPolicy,
       operationalLogsRoot: config.operationalLogsRoot as string,
       platform: config.platform,
       profileSnapshotStagingRoot:

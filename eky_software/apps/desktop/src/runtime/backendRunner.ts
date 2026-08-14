@@ -104,6 +104,9 @@ type StartServer = (options: {
     electronVersion: string;
     invoiceDocumentStorageRoot: string;
     migrationsDirectory: string;
+    migrationStartupPolicy:
+      | 'exactCurrentManifest'
+      | 'restoreCompatible';
     operationalLogsRoot: string;
     platform: string;
     operationalIdentity: {
@@ -408,6 +411,7 @@ utilityParentPort.on('message', (event) => {
           electronVersion: command.config.electronVersion,
           invoiceDocumentStorageRoot: command.config.invoiceDocumentStorageRoot,
           migrationsDirectory: command.config.migrationsDirectory,
+          migrationStartupPolicy: command.config.migrationStartupPolicy,
           operationalLogsRoot: command.config.operationalLogsRoot,
           platform: command.config.platform,
           operationalIdentity: {

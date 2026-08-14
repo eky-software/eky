@@ -11,6 +11,7 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -20,6 +21,11 @@ import { createProfileBackupIdentity } from './inspectSqliteProfileDatabase.js';
 import { StagedProfileSnapshotValidationService } from './validateProfileSnapshot.js';
 
 const migrationName = '001_create_profile_fixture.sql';
+const approvedLegacyMigrationChainIdentity =
+  '5e841ae5c530da82d7dee0c8e2ed8480b23aca944a0faa64a8fcd0b9011b6503';
+const publishedMigrationsDirectory = fileURLToPath(
+  new URL('../../database/migrations/', import.meta.url),
+);
 const migrationSql = `
   CREATE TABLE local_runtime_identity (
     singleton_key TEXT PRIMARY KEY,
@@ -225,6 +231,80 @@ describe('staged profile snapshot validation', () => {
         migrationChainIdentity: expect.stringMatching(/^[a-f0-9]{64}$/),
       }),
     );
+  });
+
+  it('validates and prepares the approved metadata-less legacy backup database', async () => {
+    const root = await mkdtemp(
+      join(tmpdir(), 'eky-profile-validation-legacy-'),
+    );
+    temporaryRoots.push(root);
+    const stagingRoot = join(root, 'staging');
+    const operationId = randomUUID();
+    const operationRoot = join(stagingRoot, operationId);
+    const databasePath = join(operationRoot, 'profile.sqlite');
+    await mkdir(operationRoot, { mode: 0o700, recursive: true });
+    await chmod(stagingRoot, 0o700);
+    await chmod(operationRoot, 0o700);
+
+    const activeDatabase = new Database(':memory:');
+    await runMigrations(activeDatabase, {
+      migrationsDirectory: publishedMigrationsDirectory,
+    });
+    activeDatabase
+      .prepare(
+        `
+          UPDATE local_runtime_identity
+          SET company_id = 'company-1'
+          WHERE singleton_key = 'local-runtime'
+        `,
+      )
+      .run();
+    openDatabases.push(activeDatabase);
+
+    const stagedDatabase = new Database(databasePath);
+    await runMigrations(stagedDatabase, {
+      migrationsDirectory: publishedMigrationsDirectory,
+    });
+    stagedDatabase
+      .prepare(
+        `
+          UPDATE local_runtime_identity
+          SET company_id = 'company-1'
+          WHERE singleton_key = 'local-runtime'
+        `,
+      )
+      .run();
+    stagedDatabase.exec('DROP TABLE schema_migration_metadata;');
+    stagedDatabase.close();
+    await writeFile(
+      join(operationRoot, 'snapshot-catalog-v1.json'),
+      '{"artifacts":[],"formatVersion":1}\n',
+      'utf8',
+    );
+
+    const service = new StagedProfileSnapshotValidationService({
+      activeDatabase,
+      migrationsDirectory: publishedMigrationsDirectory,
+      stagingRoot,
+    });
+
+    await expect(
+      service.validateProfileSnapshot(operationId),
+    ).resolves.toEqual({
+      activeProfileIsEmpty: true,
+      artifactCount: 0,
+      artifactTotalByteSize: 0,
+      databaseHealth: 'healthy',
+      migrationChainIdentity: approvedLegacyMigrationChainIdentity,
+      profileId: createProfileBackupIdentity('company-1'),
+      profileMatchesActive: true,
+    });
+    await expect(
+      service.prepareProfileRestoreActivation(operationId),
+    ).resolves.toEqual({
+      artifactCount: 0,
+      artifactTotalByteSize: 0,
+    });
   });
 
   it('rejects a staged database with a migration outside the packaged manifest', async () => {
