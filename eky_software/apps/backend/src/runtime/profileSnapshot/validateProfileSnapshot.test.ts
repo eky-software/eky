@@ -17,7 +17,9 @@ import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { runMigrations } from '../../database/migration/runMigrations.js';
+import { ProfileMaintenanceState } from '../profileMaintenance/profileMaintenanceState.js';
 import { createProfileBackupIdentity } from './inspectSqliteProfileDatabase.js';
+import { ProfileBusinessArtifactStager } from './stageProfileBusinessArtifacts.js';
 import { StagedProfileSnapshotValidationService } from './validateProfileSnapshot.js';
 
 const migrationName = '001_create_profile_fixture.sql';
@@ -100,6 +102,25 @@ describe('staged profile snapshot validation', () => {
       profileId: createProfileBackupIdentity('company-1'),
       profileMatchesActive: true,
     });
+  });
+
+  it('validates the actual empty business artifact staging shape', async () => {
+    const fixture = await createFixture({ stagedHasArtifact: false });
+
+    await expect(
+      fixture.service.validateProfileSnapshot(fixture.operationId),
+    ).resolves.toEqual({
+      activeProfileIsEmpty: true,
+      artifactCount: 0,
+      artifactTotalByteSize: 0,
+      databaseHealth: 'healthy',
+      migrationChainIdentity: expect.stringMatching(/^[a-f0-9]{64}$/),
+      profileId: createProfileBackupIdentity('company-1'),
+      profileMatchesActive: true,
+    });
+    await expect(
+      lstat(join(fixture.operationRoot, 'artifacts')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('materializes a writable activation database and validated document tree', async () => {
@@ -393,6 +414,7 @@ interface Fixture {
 async function createFixture(
   options: {
     activeHasInvoice?: boolean;
+    stagedHasArtifact?: boolean;
     stagedCompanyId?: string;
   } = {},
 ): Promise<Fixture> {
@@ -410,6 +432,7 @@ async function createFixture(
     `artifacts/invoicing/invoice-documents/` +
     `${sha256(Buffer.from(documentId, 'utf8'))}.pdf`;
   const pdfPath = join(operationRoot, ...logicalPath.split('/'));
+  const stagedHasArtifact = options.stagedHasArtifact ?? true;
 
   await mkdir(operationRoot, { mode: 0o700, recursive: true });
   await chmod(stagingRoot, 0o700);
@@ -428,42 +451,65 @@ async function createFixture(
   const stagedDatabase = await createProfileDatabase(
     databasePath,
     options.stagedCompanyId ?? 'company-1',
-    true,
+    stagedHasArtifact,
     pdfBytes,
     migrationsDirectory,
   );
   stagedDatabase.close();
 
-  await mkdir(dirname(pdfPath), { mode: 0o700, recursive: true });
-  await writeFile(pdfPath, pdfBytes);
-  const catalogEntry = {
-    byteSize: pdfBytes.byteLength,
-    fileName: 'invoice.pdf',
-    logicalPath,
-    mediaType: 'application/pdf',
-    owner: 'invoicing',
-    restoreValidationIdentity: {
-      companyId: options.stagedCompanyId ?? 'company-1',
-      documentId,
-      documentType: 'approved_invoice_pdf',
-      invoiceId: 'invoice-1',
-      storagePath: 'company-1/invoice-1/approved-invoice.pdf',
-    },
-    sha256: sha256(pdfBytes),
-    sourceIdentity: {
-      companyId: options.stagedCompanyId ?? 'company-1',
-      documentId,
-      invoiceId: 'invoice-1',
-      storagePath: 'company-1/invoice-1/approved-invoice.pdf',
-    },
-  };
-  await writeFile(
-    catalogPath,
-    `${JSON.stringify({
-      artifacts: [catalogEntry],
-      formatVersion: 1,
-    })}\n`,
-  );
+  if (stagedHasArtifact) {
+    await mkdir(dirname(pdfPath), { mode: 0o700, recursive: true });
+    await writeFile(pdfPath, pdfBytes);
+    const catalogEntry = {
+      byteSize: pdfBytes.byteLength,
+      fileName: 'invoice.pdf',
+      logicalPath,
+      mediaType: 'application/pdf',
+      owner: 'invoicing',
+      restoreValidationIdentity: {
+        companyId: options.stagedCompanyId ?? 'company-1',
+        documentId,
+        documentType: 'approved_invoice_pdf',
+        invoiceId: 'invoice-1',
+        storagePath: 'company-1/invoice-1/approved-invoice.pdf',
+      },
+      sha256: sha256(pdfBytes),
+      sourceIdentity: {
+        companyId: options.stagedCompanyId ?? 'company-1',
+        documentId,
+        invoiceId: 'invoice-1',
+        storagePath: 'company-1/invoice-1/approved-invoice.pdf',
+      },
+    };
+    await writeFile(
+      catalogPath,
+      `${JSON.stringify({
+        artifacts: [catalogEntry],
+        formatVersion: 1,
+      })}\n`,
+    );
+  } else {
+    const maintenanceState = new ProfileMaintenanceState();
+    await maintenanceState.begin(operationId, 1_000);
+    const stager = new ProfileBusinessArtifactStager({
+      catalog: {
+        async listAuthoritativeArtifacts() {
+          return [];
+        },
+      },
+      invoiceDocumentStorageRoot: join(root, 'storage'),
+      maintenanceState,
+      stagingRoot,
+    });
+    try {
+      await stager.stageArtifacts({
+        operationId,
+        signal: new AbortController().signal,
+      });
+    } finally {
+      maintenanceState.end(operationId);
+    }
+  }
 
   return {
     catalogPath,

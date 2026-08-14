@@ -108,6 +108,7 @@ import { RecoveryPointRestoreStagingService } from '../profileBackup/restore/rec
 import { ProfileRestoreStartupRecovery } from '../profileBackup/restore/profileRestoreStartupRecovery.js';
 import { createProfileRecoveryOperationalObserver } from '../profileBackup/profileRecoveryOperationalObserver.js';
 import {
+  runPackagedEmptyArtifactSnapshotSmoke,
   runPackagedProfileBackupAfterRestore,
   runPackagedProfileBackupBeforeRestore,
   verifyPackagedRestoredDatabaseBeforeBackend,
@@ -1396,6 +1397,11 @@ async function startDesktopCompositionRuntime({
 
       if (options.smokeConfiguration.phase === 'initial') {
         await loadApplicationWindow(mainWindow);
+        await runPackagedEmptyArtifactSnapshotSmoke({
+          profileSnapshotClient: profileSnapshotBrokerClient,
+          reportStage: options.reportSmokeStage,
+          stagingRoot: profileSnapshotPaths.stagingRoot,
+        });
         await runPackagedSmokeCheck({
           acceptedBuildMetadataPath:
             localUpdateRuntimePaths.acceptedBuildMetadataPath,

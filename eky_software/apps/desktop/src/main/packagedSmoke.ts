@@ -31,6 +31,7 @@ export interface PackagedSmokeConfiguration {
 export const packagedSmokeStages = Object.freeze([
   'startup',
   'backend',
+  'emptyArtifactSnapshot',
   'diagnostics',
   'logFolder',
   'supportBundle',
