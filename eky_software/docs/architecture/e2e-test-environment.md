@@ -66,6 +66,13 @@ Testiruntime käynnistää backendin ja webin hallittuina lapsiprosesseina. Se:
 - poistaa onnistuneen testin väliaikaiset tiedot
 - säilyttää epäonnistuneen testin synteettiset artefaktit raportissa
 
+Windowsissa temp-root poistetaan vasta Electronin, backendin ja muun
+testiharnessin omistaman prosessipuun pysäytyksen sekä loopback-portin
+vapautumisen jälkeen. Poisto hyväksyy vain realpath-tarkistetun suoran
+`eky-e2e/run-*`-hakemiston. Rajattu tiedostojärjestelmä-retry saa käsitellä
+vain Windowsin hetkellistä kahvan vapautumista; pysyvä `EPERM` tai muu
+cleanup-virhe epäonnistaa testin eikä sitä nielaista.
+
 Satunnaisia odotuksia tai `waitForTimeout`-kutsuja ei käytetä valmiuden
 todistamiseen.
 

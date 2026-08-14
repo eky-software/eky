@@ -19,6 +19,10 @@ import { collectFailureArtifacts } from '../../src/environment/collectFailureArt
 import { createE2eRunRoot } from '../../src/environment/createE2eRunRoot.js';
 import { createE2eWorkerPaths } from '../../src/environment/createE2eWorkerPaths.js';
 import { reserveLoopbackPort } from '../../src/environment/reserveLoopbackPort.js';
+import {
+  e2eRunRootRemovalOptions,
+  removeE2eRunRoot,
+} from '../../src/environment/removeE2eRunRoot.js';
 import { startManagedProcess } from '../../src/environment/startManagedProcess.js';
 import { stopManagedProcessTree } from '../../src/environment/stopManagedProcessTree.js';
 import { waitForHttpHealth } from '../../src/environment/waitForHttpHealth.js';
@@ -137,6 +141,51 @@ test.describe('SYS-ISOLATION-001 @critical @security', () => {
 });
 
 test.describe('managed E2E runtime primitives', () => {
+  test('uses bounded Windows-safe retries when removing an isolated run root', async () => {
+    const runRoot = createE2eRunRoot();
+    let observedOptions: typeof e2eRunRootRemovalOptions | undefined;
+
+    await removeE2eRunRoot(runRoot, async (path, options) => {
+      observedOptions = options;
+      rmSync(path, options);
+    });
+
+    expect(observedOptions).toEqual({
+      force: true,
+      maxRetries: 20,
+      recursive: true,
+      retryDelay: 100,
+    });
+    expect(existsSync(runRoot)).toBe(false);
+  });
+
+  test('keeps a persistent run-root cleanup failure visible', async () => {
+    const runRoot = createE2eRunRoot();
+    try {
+      await expect(
+        removeE2eRunRoot(runRoot, async () => {
+          throw Object.assign(new Error('synthetic cleanup failure'), {
+            code: 'EPERM',
+          });
+        }),
+      ).rejects.toThrow('synthetic cleanup failure');
+    } finally {
+      rmSync(runRoot, { force: true, recursive: true });
+    }
+  });
+
+  test('refuses to remove a directory outside the E2E run-root contract', async () => {
+    const runRoot = createE2eRunRoot();
+    try {
+      const outsideRoot = resolve(runRoot, '..');
+      await expect(removeE2eRunRoot(outsideRoot)).rejects.toThrow(
+        'E2E_RUN_ROOT_REMOVAL_REFUSED',
+      );
+    } finally {
+      rmSync(runRoot, { force: true, recursive: true });
+    }
+  });
+
   test('reserves a loopback port and waits for explicit HTTP health', async () => {
     const port = await reserveLoopbackPort();
     const server = createServer((request, response) => {
