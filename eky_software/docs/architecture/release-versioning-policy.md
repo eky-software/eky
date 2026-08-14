@@ -100,8 +100,8 @@ jaeltua MSI-versiota varten aikaisempaa suurempi. Toteutuksen validaattori
 rajaa kaikki kolme osaa valitun Windows Installer -työkaluketjun hyväksymiin
 numeerisiin rajoihin.
 
-Nykyisen installer-prototyypin sovellusversio on `0.1.0` ja MSI:n Windows-
-vertailuversio `0.1.2`. Aikaisemmat paikalliset pilotit käyttivät
+Nykyisen installer-prototyypin sovellus- ja MSI:n Windows-vertailuversio on
+`0.2.1`. Aikaisemmat paikalliset pilotit käyttivät
 `0.1.0-alpha.x`-versioita. Numeerinen `0.1.0` on SemVer-järjestyksessä niitä
 uudempi, joten siirtymä ei avaa downgradea. Vanhoja prerelease-arvoja saa vain
 lukea olemassa olevasta hyväksyntä-, manifesti- tai rollback-metadatasta; niitä
@@ -189,6 +189,19 @@ installeria käytettävän unpacked pilot -artifactin ja torjuu:
 Manifesti ja inventaario todistavat suljetun sisällön sekä jäljitettävyyden,
 eivät vielä publisheria tai digitaalista alkuperää. Varsinainen installer-
 manifesti, code signing ja `stable`-kanava kuuluvat myöhempään release gateen.
+
+Puhtaan pilot-buildin jälkeen `smoke:windows:release-candidate` todistaa juuri
+saman `out/Eky-win32-x64`-artifactin kahdella käynnistyksellä eristetyssä
+synteettisessä profiilissa. Profiili sisältää ennen ensimmäistä käynnistystä
+vain suljetun, repositoryn first-parent-versiohistoriasta johdetun edellisen
+hyväksytyn pienemmän numeerisen version build-identiteetin. Näin portti
+havaitsee puhtaan profiilin smoken ohi jäävän tilanteen, jossa eri payload on
+rakennettu uudelleen samalla jo hyväksytyllä versiolla. Testi ei lue tai
+muuta käyttäjän normaalia `%APPDATA%\Eky`-profiilia.
+
+Release-candidate-smoken jälkeen artifactia ei rakenneta uudelleen käyttäjän
+manuaalista testiä varten. Rebuild muodostaa uuden ehdokkaan, jolle sama portti
+on ajettava uudelleen.
 
 ### Pilot-artifactin alkuperä
 

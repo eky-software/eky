@@ -106,6 +106,20 @@ Mandatory boundaries:
 - smoke coordination state may contain only synthetic hashes and identifiers;
   never store a backup password, runtime session, raw path or business data in
   it
+- build a distributable desktop or installer candidate only from a clean
+  commit, run the documented release-candidate smoke against the exact output
+  bytes, and never replace those bytes with an untested rebuild
+- a final candidate must prove first start, graceful shutdown, second start
+  with the same synthetic profile, and no orphan Electron/backend processes;
+  update-boundary changes must also start over a synthetic prior accepted
+  lower release identity
+- do not describe desktop work as release-ready while a required local,
+  pull-request, or exact post-merge `main` check is pending, cancelled, flaky,
+  or failing
+- Windows E2E cleanup must stop the complete managed process tree and release
+  loopback ports before deleting its validated `run-*` temp root; bounded
+  filesystem retries may absorb transient handle release only, and persistent
+  cleanup failure remains a test failure
 
 Oikeaa SMTP-tunnusta saa käyttää vain erikseen hyväksytyssä, salatussa ja
 käyttäjän vahvistamassa Electron-polussa. Testilähetys pakotetaan määritettyyn

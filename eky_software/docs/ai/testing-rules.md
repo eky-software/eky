@@ -51,6 +51,13 @@ Checkpoint-kadenssi ei vähennä GitHubin required check -portteja. CI ajaa
 edelleen sille dokumentoidut merge-portit riippumatta paikallisen työn
 checkpoint-jaosta.
 
+Seuraava checkpoint aloitetaan vain tunnetulta vihreältä baselinelta. Jos
+edellisen checkpointin paikallinen pakollinen testi tai sen täsmällisen
+commitin vaadittu GitHub-tarkistus on punainen, peruttu, flaky tai vielä
+kesken, virhe rajataan ja baseline palautetaan vihreäksi ennen uuden
+toiminnallisuuden aloittamista. Testin ohittaminen, pidempi timeout tai uusi
+rebuild ei ole todiste ilman dokumentoitua juurisyytä.
+
 ## Testien Sijainti
 
 Yksikkö- ja komponenttitestit pidetään lähtökohtaisesti testattavan tiedoston
@@ -176,6 +183,13 @@ web-käyttäjäpolut. Näitä raskaita E2E-jobeja ei ajeta erikseen jokaisessa
 
 CI täydentää paikallista testausta, mutta ei korvaa sitä. Muutos testataan
 paikallisesti ennen commitia silloin, kun paikallinen ympäristö sen sallii.
+
+AI ei raportoi PR:ää, mergeä tai julkaisuehdokasta valmiiksi pelkän
+käynnistyneen workflow-ajon perusteella. Jos AI on pushannut tai mergeyttänyt
+muutoksen, sen pitää tarkistaa juuri pushatun PR-commitin vaaditut ajot ja
+mergeämisen jälkeen juuri syntyneen `main`-commitin vaaditut push-ajot loppuun
+asti. Punainen, peruttu, flaky tai kesken oleva ajo pitää raportoida
+avoimeksi eikä sen päälle aloiteta seuraavaa vaihetta.
 
 CI:
 
@@ -331,6 +345,24 @@ identiteettiin, tiedostonimeen, kokoon ja SHA-256-tiivisteeseen suljetulla
 sidecar-manifestilla. Lifecycle-testit käyttävät tätä varmennettua MSI:tä.
 Synteettiset upgrade- ja rollback-fixturet rakennetaan erikseen, minkä jälkeen
 alkuperäisen release-MSI:n tavut varmennetaan uudelleen ilman rebuildiä.
+
+Jaeltavan unpacked desktopin tai installer-payloadin paikallinen
+release-candidate-portti käyttää samaa build-once-periaatetta. Puhtaasta
+commitista rakennettu täsmällinen output:
+
+- validoidaan manifestia, build-identiteettiä ja inventaariota vasten
+- käynnistetään, suljetaan hallitusti ja käynnistetään uudelleen samalla
+  synteettisellä profiililla
+- tarkistetaan prosessi- ja loopback-orpojen varalta
+- todistetaan update- tai first-start-rajaa muuttavassa työssä myös edellisen
+  hyväksytyn pienemmän version identiteetin päälle
+- säilytetään samoina tavuina manuaalista kokeilua ja seuraavaa artifact-
+  porttia varten; portin jälkeen tehty rebuild on uusi todistamaton ehdokas.
+
+Tavallinen puhtaan profiilin smoke ei yksin todista päivityskelpoisuutta. Sen
+rinnalla tarvitaan edellisen hyväksytyn version tilasta käynnistyvä
+release-candidate-smoke, jotta sama versio eri tavuilla, downgrade ja
+first-start-identiteetin ristiriidat havaitaan ennen käyttäjän profiilia.
 
 Backup-, restore-, installer- tai update-polun onnistumista ei todisteta vain
 mockilla tai selain-E2E:llä. Windowsin tiedosto-, prosessi-, `safeStorage`- ja

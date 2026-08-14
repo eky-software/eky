@@ -2,7 +2,6 @@ import {
   existsSync,
   readFileSync,
   readdirSync,
-  rmSync,
 } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
@@ -28,7 +27,9 @@ import { createE2eRunRoot } from '../environment/createE2eRunRoot.js';
 import { createE2eWorkerPaths } from '../environment/createE2eWorkerPaths.js';
 import type { E2eWorkerPaths } from '../environment/e2eEnvironmentTypes.js';
 import { reserveLoopbackPort } from '../environment/reserveLoopbackPort.js';
+import { removeE2eRunRoot } from '../environment/removeE2eRunRoot.js';
 import { resolveElectronE2eExecutable } from '../environment/resolveElectronE2eExecutable.js';
+import { stopManagedProcessTree } from '../environment/stopManagedProcessTree.js';
 import { waitForLoopbackPortRelease } from '../environment/waitForLoopbackPortRelease.js';
 import { readE2eScenarioId } from './readE2eScenarioId.js';
 
@@ -146,11 +147,15 @@ export const test = base.extend<
       await use(harness);
     } finally {
       await api?.dispose();
+      const electronProcess = electronApp?.process();
       await electronApp?.close().catch(() => undefined);
+      if (electronProcess !== undefined) {
+        await stopManagedProcessTree(electronProcess);
+      }
       try {
         await waitForLoopbackPortRelease(backendPort);
       } finally {
-        rmSync(runRoot, { force: true, recursive: true });
+        await removeE2eRunRoot(runRoot);
       }
     }
   },

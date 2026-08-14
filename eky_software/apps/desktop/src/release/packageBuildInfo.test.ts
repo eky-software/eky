@@ -14,7 +14,7 @@ describe('package build identity', () => {
       await readFile(resolve(process.cwd(), 'package.json'), 'utf8'),
     ) as unknown;
 
-    expect(readDesktopPackageVersion(packageMetadata)).toBe('0.1.0');
+    expect(readDesktopPackageVersion(packageMetadata)).toBe('0.2.1');
   });
 
   it('uses an allowlisted environment revision and reports a dirty tree', async () => {
