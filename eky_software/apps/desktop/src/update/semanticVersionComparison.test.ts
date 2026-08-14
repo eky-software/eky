@@ -34,4 +34,8 @@ describe('semantic version comparison', () => {
       'SEMANTIC_VERSION_INVALID',
     );
   });
+
+  it('orders the first numeric release after the historical alpha release', () => {
+    expect(compareSemanticVersions('0.1.0', '0.1.0-alpha.2')).toBe(1);
+  });
 });

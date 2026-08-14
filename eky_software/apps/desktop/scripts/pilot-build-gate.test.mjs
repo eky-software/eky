@@ -12,7 +12,7 @@ import {
 
 const temporaryDirectories = [];
 const buildInfo = Object.freeze({
-  appVersion: '0.1.0-alpha.1',
+  appVersion: '0.1.0',
   buildDirty: false,
   buildRevision: '123456789abc',
 });
@@ -36,6 +36,10 @@ test('rejects dirty, mismatched and invalid pilot build identities', () => {
     { buildInfo: { ...buildInfo, buildDirty: true }, currentHead: '123456789abc' },
     { buildInfo, currentHead: 'abcdef123456' },
     { buildInfo: { ...buildInfo, appVersion: 'pilot' }, currentHead: '123456789abc' },
+    {
+      buildInfo: { ...buildInfo, appVersion: '0.1.0-alpha.2' },
+      currentHead: '123456789abc',
+    },
   ]) {
     assert.throws(() => assertPilotBuildPreconditions(input), /PILOT_BUILD/);
   }

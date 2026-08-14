@@ -5,7 +5,11 @@ import Database from 'better-sqlite3';
 
 import { readLocalRuntimeIdentity } from '../../database/localRuntimeIdentityReader.js';
 import { readMigrationManifest } from '../../database/migration/migrationManifest.js';
-import { inspectMigrationHistory } from '../../database/migration/migrationMetadata.js';
+import {
+  inspectApprovedLegacyMigrationHistory,
+  inspectMigrationHistory,
+  type MigrationHistoryInspection,
+} from '../../database/migration/migrationMetadata.js';
 
 const profileIdentityDomain = 'Eky profile identity v1\0';
 
@@ -14,10 +18,16 @@ export interface SqliteProfileDatabaseInspection {
   profileId: string;
 }
 
+export type ProfileMigrationInspectionPolicy =
+  | 'exactCurrentManifest'
+  | 'compatibleHistoricalPrefix'
+  | 'restoreCompatible';
+
 export function inspectSqliteProfileDatabase(
   databaseFilePath: string,
   migrationsDirectory: string,
-  options: { allowHistoricalMigrationPrefix?: boolean } = {},
+  migrationPolicy: ProfileMigrationInspectionPolicy =
+    'exactCurrentManifest',
 ): SqliteProfileDatabaseInspection {
   if (!isAbsolute(databaseFilePath) || !isAbsolute(migrationsDirectory)) {
     throw new Error('PROFILE_SNAPSHOT_DATABASE_INVALID');
@@ -39,13 +49,14 @@ export function inspectSqliteProfileDatabase(
     }
 
     const expectedMigrations = readMigrationManifest(migrationsDirectory);
-    const migrationHistory = inspectMigrationHistory(
+    const migrationHistory = inspectMigrationHistoryForPolicy(
       database,
       expectedMigrations,
+      migrationPolicy,
     );
 
     if (
-      !options.allowHistoricalMigrationPrefix &&
+      migrationPolicy === 'exactCurrentManifest' &&
       migrationHistory.appliedMigrationNames.length !==
         expectedMigrations.length
     ) {
@@ -60,6 +71,25 @@ export function inspectSqliteProfileDatabase(
     };
   } finally {
     database.close();
+  }
+}
+
+function inspectMigrationHistoryForPolicy(
+  database: Database.Database,
+  expectedMigrations: ReturnType<typeof readMigrationManifest>,
+  migrationPolicy: ProfileMigrationInspectionPolicy,
+): MigrationHistoryInspection {
+  try {
+    return inspectMigrationHistory(database, expectedMigrations);
+  } catch {
+    if (migrationPolicy !== 'restoreCompatible') {
+      throw new Error('MIGRATION_HISTORY_INVALID');
+    }
+
+    return inspectApprovedLegacyMigrationHistory(
+      database,
+      expectedMigrations,
+    );
   }
 }
 

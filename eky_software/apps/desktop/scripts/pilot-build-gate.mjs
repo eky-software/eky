@@ -2,8 +2,8 @@ import { readFile } from 'node:fs/promises';
 
 const revisionPattern = /^[0-9a-f]{7,40}$/;
 const sha256Pattern = /^[0-9a-f]{64}$/;
-const semVerPattern =
-  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|[a-zA-Z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[a-zA-Z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+const numericReleaseVersionPattern =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const manifestFields = new Set([
   'appIdentity',
   'appVersion',
@@ -21,7 +21,7 @@ const manifestFields = new Set([
 export function assertPilotBuildPreconditions({ buildInfo, currentHead }) {
   if (
     buildInfo.buildDirty !== false ||
-    !isSemVer(buildInfo.appVersion) ||
+    !isNumericReleaseVersion(buildInfo.appVersion) ||
     !revisionPattern.test(buildInfo.buildRevision) ||
     !revisionPattern.test(currentHead) ||
     !currentHead.startsWith(buildInfo.buildRevision)
@@ -88,8 +88,8 @@ export async function readPilotArtifactManifest(path, expected) {
   return Object.freeze({ ...value });
 }
 
-function isSemVer(value) {
-  return typeof value === 'string' && semVerPattern.test(value);
+function isNumericReleaseVersion(value) {
+  return typeof value === 'string' && numericReleaseVersionPattern.test(value);
 }
 
 function isRecord(value) {

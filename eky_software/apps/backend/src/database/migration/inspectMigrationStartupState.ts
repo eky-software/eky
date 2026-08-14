@@ -1,6 +1,13 @@
 import type { DatabaseConnection } from '../connection/createDatabaseConnection.js';
 import { readMigrationManifest } from './migrationManifest.js';
-import { inspectMigrationHistory } from './migrationMetadata.js';
+import {
+  inspectApprovedLegacyMigrationHistory,
+  inspectMigrationHistory,
+} from './migrationMetadata.js';
+
+export type MigrationStartupPolicy =
+  | 'exactCurrentManifest'
+  | 'restoreCompatible';
 
 export interface MigrationStartupInspection {
   appliedMigrationCount: number;
@@ -12,6 +19,7 @@ export interface MigrationStartupInspection {
 export function inspectMigrationStartupState(
   database: DatabaseConnection,
   migrationsDirectory: string,
+  migrationPolicy: MigrationStartupPolicy = 'exactCurrentManifest',
 ): Readonly<MigrationStartupInspection> {
   const manifest = readMigrationManifest(migrationsDirectory);
   const hasMigrationHistory = tableExists(database, 'schema_migrations');
@@ -34,12 +42,16 @@ export function inspectMigrationStartupState(
     });
   }
 
-  if (!hasMigrationMetadata) {
-    throw new Error('MIGRATION_STARTUP_INSPECTION_FAILED');
-  }
-
   try {
-    const history = inspectMigrationHistory(database, manifest);
+    const history = hasMigrationMetadata
+      ? inspectMigrationHistory(database, manifest)
+      : migrationPolicy === 'restoreCompatible'
+        ? inspectApprovedLegacyMigrationHistory(database, manifest)
+        : undefined;
+
+    if (history === undefined) {
+      throw new Error('MIGRATION_STARTUP_INSPECTION_FAILED');
+    }
 
     return Object.freeze({
       appliedMigrationCount: history.appliedMigrationNames.length,

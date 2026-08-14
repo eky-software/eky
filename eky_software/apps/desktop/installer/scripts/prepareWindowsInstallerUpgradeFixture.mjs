@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createInstallerProductCode } from '../installerIdentity.mjs';
 import { readInstallerReleaseGitState } from '../installerReleaseContext.mjs';
 import {
+  parseNumericAppVersion,
   parseMsiProductVersion,
   readInstallerReleaseConfig,
 } from '../installerVersion.mjs';
@@ -25,12 +26,14 @@ const fixtureRoot = join(installerDirectory, 'artifacts', 'upgrade-fixture');
 const releaseArtifactsRoot = join(installerDirectory, 'artifacts');
 
 export function createUpgradeFixtureAppVersion(currentVersion) {
-  if (typeof currentVersion !== 'string' || currentVersion.includes('+')) {
+  try {
+    parseNumericAppVersion(currentVersion);
+  } catch {
     throw new Error('INSTALLER_UPGRADE_FIXTURE_APP_VERSION_INVALID');
   }
-  return currentVersion.includes('-')
-    ? `${currentVersion}.installer-upgrade.1`
-    : `${currentVersion}-installer-upgrade.1`;
+  const parts = currentVersion.split('.');
+  parts[2] = (BigInt(parts[2]) + 1n).toString();
+  return parts.join('.');
 }
 
 export function createUpgradeFixtureMsiVersion(currentVersion) {

@@ -2,6 +2,8 @@ import { readFile } from 'node:fs/promises';
 
 const semVerPattern =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|[a-zA-Z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[a-zA-Z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+const numericAppVersionPattern =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const msiVersionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const releaseConfigFields = new Set([
   'appIdentity',
@@ -34,6 +36,13 @@ export function parseAppVersion(value) {
   return value;
 }
 
+export function parseNumericAppVersion(value) {
+  if (typeof value !== 'string' || !numericAppVersionPattern.test(value)) {
+    throw new Error('APP_VERSION_INVALID');
+  }
+  return value;
+}
+
 export function compareMsiProductVersions(left, right) {
   const leftParts = parseMsiProductVersion(left);
   const rightParts = parseMsiProductVersion(right);
@@ -52,7 +61,7 @@ export function validateInstallerReleaseConfig(value, desktopAppVersion) {
     Object.keys(value).some((key) => !releaseConfigFields.has(key)) ||
     value.appIdentity !== 'Eky' ||
     typeof value.appVersion !== 'string' ||
-    !semVerPattern.test(value.appVersion) ||
+    !numericAppVersionPattern.test(value.appVersion) ||
     value.appVersion !== desktopAppVersion ||
     value.architecture !== 'x64' ||
     value.platform !== 'win32' ||

@@ -624,6 +624,9 @@ async function startDesktopCompositionRuntime({
   }
   const profileRestoreStartupMode =
     await profileRestoreStartupRecovery.prepareBeforeBackend();
+  const restoredProfileMigrationAuthorized =
+    startupRecoveryAuthority === 'profileRestore' &&
+    profileRestoreStartupMode === 'validateRestoredProfile';
   if (
     smokeMode &&
     options.smokeConfiguration.phase === 'restoredProfile'
@@ -815,7 +818,11 @@ async function startDesktopCompositionRuntime({
         if (firstStartUpdateCoordinator === undefined) {
           return;
         }
-        await firstStartUpdateCoordinator.beforeMigrations(inspection);
+        await firstStartUpdateCoordinator.beforeMigrations(inspection, {
+          migrationAuthority: restoredProfileMigrationAuthorized
+            ? 'profileRestore'
+            : 'update',
+        });
       },
       config: {
         appVersion: desktopAppVersion,
@@ -834,6 +841,9 @@ async function startDesktopCompositionRuntime({
           'database',
           'migrations',
         ),
+        migrationStartupPolicy: restoredProfileMigrationAuthorized
+          ? 'restoreCompatible'
+          : 'exactCurrentManifest',
         operationalLogsRoot,
         platform: process.platform,
         profileSnapshotStagingRoot: profileSnapshotPaths.stagingRoot,

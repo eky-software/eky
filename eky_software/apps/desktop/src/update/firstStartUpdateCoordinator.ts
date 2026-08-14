@@ -97,6 +97,9 @@ export class FirstStartUpdateCoordinator {
 
   async beforeMigrations(
     inspection: Readonly<MigrationStartupInspection>,
+    context: Readonly<{
+      migrationAuthority: 'profileRestore' | 'update';
+    }> = { migrationAuthority: 'update' },
   ): Promise<void> {
     if (this.migrationGateCompleted) {
       throw new FirstStartUpdateError();
@@ -124,6 +127,18 @@ export class FirstStartUpdateCoordinator {
       this.assertPackagedBuildIdentity();
       this.secretStorageIdentity =
         await this.dependencies.readSecretStorageIdentity();
+
+      if (
+        context.migrationAuthority === 'profileRestore' &&
+        (directSetupRecovery !== undefined ||
+          (journal !== undefined && journal.state !== 'accepted') ||
+          acceptedBuild?.appVersion !==
+            this.dependencies.releaseInfo.appVersion ||
+          acceptedBuild.buildRevision !==
+            this.dependencies.releaseInfo.buildRevision)
+      ) {
+        throw new FirstStartUpdateError();
+      }
 
       if (
         directSetupRecovery !== undefined &&
@@ -177,7 +192,14 @@ export class FirstStartUpdateCoordinator {
 
       if (
         this.mode.kind === 'normal' &&
-        inspection.pendingMigrationCount > 0
+        inspection.pendingMigrationCount > 0 &&
+        context.migrationAuthority !== 'profileRestore'
+      ) {
+        throw new FirstStartUpdateError();
+      }
+      if (
+        context.migrationAuthority === 'profileRestore' &&
+        this.mode.kind !== 'normal'
       ) {
         throw new FirstStartUpdateError();
       }

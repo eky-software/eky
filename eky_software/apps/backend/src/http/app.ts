@@ -17,6 +17,7 @@ import { MigrationRunError } from '../database/migration/migrationRunError.js';
 import {
   inspectMigrationStartupState,
   type MigrationStartupInspection,
+  type MigrationStartupPolicy,
 } from '../database/migration/inspectMigrationStartupState.js';
 import { createCompanySettingsComposition } from '../composition/companySettingsComposition.js';
 import { createCustomersComposition } from '../composition/customersComposition.js';
@@ -72,6 +73,7 @@ export interface CreateAppOptions {
   invoiceDocumentStorageRoot?: string;
   invoicingInfrastructureAdapters?: InvoicingInfrastructureAdapters;
   migrationsDirectory?: string;
+  migrationStartupPolicy?: MigrationStartupPolicy;
   operationalLogger?: OperationalLogger;
   operationalIdentity?: Readonly<OperationalRuntimeIdentity>;
   operationalLogsRoot?: string;
@@ -199,6 +201,7 @@ export async function createApp(
       const inspection = inspectMigrationStartupState(
         database,
         options.migrationsDirectory,
+        options.migrationStartupPolicy,
       );
       await options.beforeMigrations(inspection);
     } catch {

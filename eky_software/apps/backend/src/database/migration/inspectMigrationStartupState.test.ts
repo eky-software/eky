@@ -1,13 +1,20 @@
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createDatabaseConnection } from '../connection/createDatabaseConnection.js';
 import { inspectMigrationStartupState } from './inspectMigrationStartupState.js';
+import { readMigrationManifest } from './migrationManifest.js';
 import { runMigrations } from './runMigrations.js';
 
+const approvedLegacyMigrationChainIdentity =
+  '5e841ae5c530da82d7dee0c8e2ed8480b23aca944a0faa64a8fcd0b9011b6503';
+const publishedMigrationsDirectory = fileURLToPath(
+  new URL('../migrations/', import.meta.url),
+);
 const temporaryRoots: string[] = [];
 
 describe('inspectMigrationStartupState', () => {
@@ -99,7 +106,117 @@ describe('inspectMigrationStartupState', () => {
     ).toThrow('MIGRATION_STARTUP_INSPECTION_FAILED');
     database.close();
   });
+
+  it('allows the approved metadata-less legacy anchor only for restore startup and anchors it before normal startup', async () => {
+    const databaseFilePath = await createApprovedLegacyDatabase();
+    const database = createDatabaseConnection({ databaseFilePath });
+    const manifest = readMigrationManifest(publishedMigrationsDirectory);
+
+    expect(() =>
+      inspectMigrationStartupState(
+        database,
+        publishedMigrationsDirectory,
+      ),
+    ).toThrow('MIGRATION_STARTUP_INSPECTION_FAILED');
+
+    expect(
+      inspectMigrationStartupState(
+        database,
+        publishedMigrationsDirectory,
+        'restoreCompatible',
+      ),
+    ).toEqual({
+      appliedMigrationCount: 38,
+      migrationChainIdentity: approvedLegacyMigrationChainIdentity,
+      pendingMigrationCount: manifest.length - 38,
+      profileState: 'existing',
+    });
+
+    await runMigrations(database, {
+      migrationsDirectory: publishedMigrationsDirectory,
+      now: () => new Date('2026-08-14T12:00:00.000Z'),
+      releaseIdentity: {
+        appVersion: '0.1.0-alpha.1',
+        buildRevision: '3256bc3fa6cba3d719cdf0e877bd1862daf5dc45',
+      },
+    });
+
+    expect(
+      inspectMigrationStartupState(
+        database,
+        publishedMigrationsDirectory,
+      ),
+    ).toEqual({
+      appliedMigrationCount: manifest.length,
+      migrationChainIdentity: manifest.at(-1)?.chainSha256 ?? '',
+      pendingMigrationCount: 0,
+      profileState: 'existing',
+    });
+    expect(
+      database
+        .prepare<[], { metadata_origin: string }>(
+          'SELECT metadata_origin FROM schema_migration_metadata ORDER BY migration_name',
+        )
+        .all()
+        .slice(0, 38)
+        .every(({ metadata_origin }) => metadata_origin === 'legacy_baseline'),
+    ).toBe(true);
+    database.close();
+  });
+
+  it('rejects an incomplete metadata-less legacy history during restore startup', async () => {
+    const databaseFilePath = await createApprovedLegacyDatabase();
+    const database = createDatabaseConnection({ databaseFilePath });
+    database
+      .prepare('DELETE FROM schema_migrations WHERE name = ?')
+      .run('020_relax_invoice_line_unit_checks.sql');
+
+    expect(() =>
+      inspectMigrationStartupState(
+        database,
+        publishedMigrationsDirectory,
+        'restoreCompatible',
+      ),
+    ).toThrow('MIGRATION_STARTUP_INSPECTION_FAILED');
+    database.close();
+  });
 });
+
+async function createApprovedLegacyDatabase(): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), 'eky-migration-legacy-startup-'));
+  temporaryRoots.push(root);
+  const databaseFilePath = join(root, 'profile.sqlite');
+  const database = createDatabaseConnection({ databaseFilePath });
+  const manifest = readMigrationManifest(publishedMigrationsDirectory);
+  const legacyEntries = manifest.slice(0, 38);
+
+  expect(legacyEntries.at(-1)?.fileName).toBe(
+    '038_create_invoice_numbering_series_transitions.sql',
+  );
+  expect(legacyEntries.at(-1)?.chainSha256).toBe(
+    approvedLegacyMigrationChainIdentity,
+  );
+
+  database.exec(`
+    CREATE TABLE schema_migrations (
+      name TEXT PRIMARY KEY,
+      run_at TEXT NOT NULL
+    );
+  `);
+  for (const entry of legacyEntries) {
+    const applyMigration = database.transaction(() => {
+      database.exec(entry.content.toString('utf8'));
+      database
+        .prepare<[string, string]>(
+          'INSERT INTO schema_migrations (name, run_at) VALUES (?, ?)',
+        )
+        .run(entry.fileName, '2026-08-04T12:00:00.000Z');
+    });
+    applyMigration();
+  }
+  database.close();
+  return databaseFilePath;
+}
 
 async function createFixture(migrationCount: number): Promise<{
   databaseFilePath: string;
