@@ -101,6 +101,15 @@ describe('profile business artifact staging', () => {
       artifactCount: 0,
       artifactTotalByteSize: 0,
     });
+    await expect(
+      readFile(
+        join(fixture.operationRoot, 'snapshot-catalog-v1.json'),
+        'utf8',
+      ),
+    ).resolves.toBe('{"artifacts":[],"formatVersion":1}\n');
+    await expect(
+      lstat(join(fixture.operationRoot, 'artifacts')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
 
     fixture.maintenanceState.end(fixture.operationId);
   });

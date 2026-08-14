@@ -69,6 +69,18 @@ interface PackagedProfileRestoreVerificationOptions {
   stagingRoot: string;
 }
 
+interface PackagedEmptyArtifactSnapshotSmokeOptions {
+  profileSnapshotClient: Pick<
+    ProfileSnapshotBrokerClient,
+    | 'beginMaintenance'
+    | 'createProfileSnapshot'
+    | 'endMaintenance'
+    | 'validateProfileSnapshot'
+  >;
+  reportStage(stage: PackagedSmokeStage): Promise<void>;
+  stagingRoot: string;
+}
+
 interface SmokeEntry {
   contentLength: string;
   logicalPath: string;
@@ -81,6 +93,25 @@ interface PackagedProfileBackupSmokeState {
   formatVersion: 1;
   originalRuntimeInstanceId: string;
   originalRuntimeSessionSha256: string;
+}
+
+export async function runPackagedEmptyArtifactSnapshotSmoke(
+  options: PackagedEmptyArtifactSnapshotSmokeOptions,
+): Promise<void> {
+  await options.reportStage('emptyArtifactSnapshot');
+  const entries = await captureActiveProfileEntries({
+    profileSnapshotClient: options.profileSnapshotClient,
+    stagingRoot: options.stagingRoot,
+  });
+
+  if (
+    entries.length !== 2 ||
+    entries.filter(({ type }) => type === 'database').length !== 1 ||
+    entries.filter(({ type }) => type === 'artifactCatalog').length !== 1 ||
+    entries.some(({ type }) => type === 'businessArtifact')
+  ) {
+    throw new Error('DESKTOP_SMOKE_EMPTY_ARTIFACT_SNAPSHOT_FAILED');
+  }
 }
 
 export async function runPackagedProfileBackupBeforeRestore(

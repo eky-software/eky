@@ -125,11 +125,13 @@ export class ProfileBusinessArtifactStager {
       await assertKnownStorageRoot(this.invoiceDocumentStorageRoot);
     }
 
-    await fileSystem.mkdir(artifactDirectory, {
-      mode: 0o700,
-      recursive: true,
-    });
-    await assertPrivateDirectory(artifactDirectory);
+    if (catalog.length > 0) {
+      await fileSystem.mkdir(artifactDirectory, {
+        mode: 0o700,
+        recursive: true,
+      });
+      await assertPrivateDirectory(artifactDirectory);
+    }
 
     const logicalPaths = new Set<string>();
     const stagedArtifacts: StagedArtifactCatalogEntry[] = [];
