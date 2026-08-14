@@ -85,8 +85,8 @@ not publisher trust. A future signed release must sign before creating the
 final hash and manifest, and all lifecycle tests must then use those exact
 signed bytes.
 
-The current application version is the numeric SemVer `0.1.1`. Windows
-Installer separately compares the numeric MSI ProductVersion `0.1.3`.
+The current application and Windows Installer version is the numeric SemVer
+`0.2.1`.
 Release maturity is expressed by the `pilot` channel and release gates, not by
 an `alpha` suffix.
 

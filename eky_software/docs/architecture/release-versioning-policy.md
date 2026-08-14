@@ -100,8 +100,8 @@ jaeltua MSI-versiota varten aikaisempaa suurempi. Toteutuksen validaattori
 rajaa kaikki kolme osaa valitun Windows Installer -työkaluketjun hyväksymiin
 numeerisiin rajoihin.
 
-Nykyisen installer-prototyypin sovellusversio on `0.1.1` ja MSI:n Windows-
-vertailuversio `0.1.3`. Aikaisemmat paikalliset pilotit käyttivät
+Nykyisen installer-prototyypin sovellus- ja MSI:n Windows-vertailuversio on
+`0.2.1`. Aikaisemmat paikalliset pilotit käyttivät
 `0.1.0-alpha.x`-versioita. Numeerinen `0.1.0` on SemVer-järjestyksessä niitä
 uudempi, joten siirtymä ei avaa downgradea. Vanhoja prerelease-arvoja saa vain
 lukea olemassa olevasta hyväksyntä-, manifesti- tai rollback-metadatasta; niitä

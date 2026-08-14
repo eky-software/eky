@@ -16,9 +16,9 @@ import {
 const temporaryDirectories = [];
 const validConfig = Object.freeze({
   appIdentity: 'Eky',
-  appVersion: '0.1.1',
+  appVersion: '0.2.1',
   architecture: 'x64',
-  msiProductVersion: '0.1.3',
+  msiProductVersion: '0.2.1',
   platform: 'win32',
   releaseChannel: 'pilot',
 });
@@ -66,7 +66,7 @@ test('keeps legacy SemVer readable but requires numeric authored releases', () =
 
 test('requires an exact release config and desktop SemVer match', () => {
   assert.deepEqual(
-    validateInstallerReleaseConfig(validConfig, '0.1.1'),
+    validateInstallerReleaseConfig(validConfig, '0.2.1'),
     validConfig,
   );
   for (const value of [
@@ -76,7 +76,7 @@ test('requires an exact release config and desktop SemVer match', () => {
     { ...validConfig, extra: true },
   ]) {
     assert.throws(
-      () => validateInstallerReleaseConfig(value, '0.1.1'),
+      () => validateInstallerReleaseConfig(value, '0.2.1'),
       /INSTALLER_RELEASE_CONFIG_INVALID/,
     );
   }
