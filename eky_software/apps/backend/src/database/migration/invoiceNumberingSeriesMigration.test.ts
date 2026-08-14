@@ -16,6 +16,8 @@ const migrationNames = readdirSync(migrationsDirectory)
   .sort();
 const seriesMigrationName =
   '038_create_invoice_numbering_series_transitions.sql';
+// This proof runs the full historical chain against two disk-backed SQLite files.
+const REAL_DATABASE_COPY_TIMEOUT_MS = 15_000;
 const temporaryDirectories: string[] = [];
 
 afterEach(() => {
@@ -25,15 +27,17 @@ afterEach(() => {
 });
 
 describe('invoice numbering series migration', () => {
-  it('backfills active pointers on a real database copy without changing settings or sequences', () => {
-    const directory = mkdtempSync(join(tmpdir(), 'eky-numbering-series-'));
-    temporaryDirectories.push(directory);
-    const sourcePath = join(directory, 'source.sqlite');
-    const migratedPath = join(directory, 'migrated.sqlite');
-    const source = new Database(sourcePath);
-    source.pragma('foreign_keys = ON');
-    runMigrationsBeforeSeries(source);
-    source.exec(`
+  it(
+    'backfills active pointers on a real database copy without changing settings or sequences',
+    () => {
+      const directory = mkdtempSync(join(tmpdir(), 'eky-numbering-series-'));
+      temporaryDirectories.push(directory);
+      const sourcePath = join(directory, 'source.sqlite');
+      const migratedPath = join(directory, 'migrated.sqlite');
+      const source = new Database(sourcePath);
+      source.pragma('foreign_keys = ON');
+      runMigrationsBeforeSeries(source);
+      source.exec(`
       INSERT INTO invoice_numbering_settings (
         company_id,
         series_key,
@@ -71,60 +75,62 @@ describe('invoice numbering series migration', () => {
         '2026-06-25T10:00:00.000Z',
         '2026-06-25T10:00:00.000Z'
       );
-    `);
-    const settingsBefore = readRows(
-      source,
-      'SELECT * FROM invoice_numbering_settings ORDER BY company_id, series_key',
-    );
-    const sequencesBefore = readRows(
-      source,
-      'SELECT * FROM invoice_number_sequences ORDER BY company_id, series_key, sequence_scope',
-    );
-    source.close();
-
-    copyFileSync(sourcePath, migratedPath);
-    const migrated = new Database(migratedPath);
-    migrated.pragma('foreign_keys = ON');
-    migrated.exec(readMigration(seriesMigrationName));
-
-    expect(
-      readRows(
-        migrated,
+      `);
+      const settingsBefore = readRows(
+        source,
         'SELECT * FROM invoice_numbering_settings ORDER BY company_id, series_key',
-      ),
-    ).toEqual(settingsBefore);
-    expect(
-      readRows(
-        migrated,
+      );
+      const sequencesBefore = readRows(
+        source,
         'SELECT * FROM invoice_number_sequences ORDER BY company_id, series_key, sequence_scope',
-      ),
-    ).toEqual(sequencesBefore);
-    expect(
-      migrated
-        .prepare<
-          [],
-          {
-            active_series_key: string;
-            company_id: string;
-            revision: number;
-          }
-        >(
-          `
+      );
+      source.close();
+
+      copyFileSync(sourcePath, migratedPath);
+      const migrated = new Database(migratedPath);
+      migrated.pragma('foreign_keys = ON');
+      migrated.exec(readMigration(seriesMigrationName));
+
+      expect(
+        readRows(
+          migrated,
+          'SELECT * FROM invoice_numbering_settings ORDER BY company_id, series_key',
+        ),
+      ).toEqual(settingsBefore);
+      expect(
+        readRows(
+          migrated,
+          'SELECT * FROM invoice_number_sequences ORDER BY company_id, series_key, sequence_scope',
+        ),
+      ).toEqual(sequencesBefore);
+      expect(
+        migrated
+          .prepare<
+            [],
+            {
+              active_series_key: string;
+              company_id: string;
+              revision: number;
+            }
+          >(
+            `
             SELECT company_id, active_series_key, revision
             FROM invoice_numbering_active_series
           `,
-        )
-        .all(),
-    ).toEqual([
-      {
-        active_series_key: 'default',
-        company_id: 'migration-company',
-        revision: 1,
-      },
-    ]);
-    expect(migrated.pragma('foreign_key_check')).toEqual([]);
-    migrated.close();
-  });
+          )
+          .all(),
+      ).toEqual([
+        {
+          active_series_key: 'default',
+          company_id: 'migration-company',
+          revision: 1,
+        },
+      ]);
+      expect(migrated.pragma('foreign_key_check')).toEqual([]);
+      migrated.close();
+    },
+    REAL_DATABASE_COPY_TIMEOUT_MS,
+  );
 
   it('supports an empty database and does not invent a settings row', () => {
     const database = new Database(':memory:');
