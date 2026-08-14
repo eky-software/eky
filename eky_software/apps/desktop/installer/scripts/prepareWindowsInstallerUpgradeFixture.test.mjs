@@ -6,17 +6,17 @@ import {
   createUpgradeFixtureMsiVersion,
 } from './prepareWindowsInstallerUpgradeFixture.mjs';
 
-test('creates a distinct synthetic app version without changing the release line', () => {
+test('creates the next numeric patch version for the synthetic upgrade', () => {
   assert.equal(
-    createUpgradeFixtureAppVersion('0.1.0-alpha.1'),
-    '0.1.0-alpha.1.installer-upgrade.1',
+    createUpgradeFixtureAppVersion('0.1.0'),
+    '0.1.1',
   );
   assert.equal(
     createUpgradeFixtureAppVersion('1.2.3'),
-    '1.2.3-installer-upgrade.1',
+    '1.2.4',
   );
   assert.throws(
-    () => createUpgradeFixtureAppVersion('1.2.3+build'),
+    () => createUpgradeFixtureAppVersion('1.2.3-alpha.1'),
     /INSTALLER_UPGRADE_FIXTURE_APP_VERSION_INVALID/,
   );
 });

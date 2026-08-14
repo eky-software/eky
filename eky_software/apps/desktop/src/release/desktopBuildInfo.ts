@@ -15,6 +15,8 @@ const buildInfoFields = new Set([
 ]);
 const semVerPattern =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|[a-zA-Z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[a-zA-Z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+const numericReleaseVersionPattern =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const buildRevisionPattern = /^[0-9a-f]{7,40}$/;
 
 export class DesktopBuildInfoValidationError extends Error {
@@ -65,6 +67,10 @@ export function parseDesktopBuildInfo(
 
 export function isSemVer(value: string): boolean {
   return semVerPattern.test(value);
+}
+
+export function isNumericReleaseVersion(value: string): boolean {
+  return numericReleaseVersionPattern.test(value);
 }
 
 export function isPackagedBuildRevision(value: string): boolean {

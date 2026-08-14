@@ -7,8 +7,9 @@ ja tukipaketissa. Se ei ole autentikointi-, valtuutus- tai eheystodiste.
 ## Version omistajuus
 
 Desktop-jakelun SemVer-version auktoritatiivinen lähde on
-`apps/desktop/package.json`. Nykyinen R0-versio on ennakkoversio, esimerkiksi
-`0.1.0-alpha.1`.
+`apps/desktop/package.json`. Uudet Eky-julkaisut käyttävät kaikissa
+jakelumuodoissa vain kolmiosaista numeerista SemVer-ydintä, esimerkiksi
+`0.1.0`.
 
 Versio päivitetään tarkoituksella ennen jaeltavan artifactin muodostamista:
 
@@ -16,8 +17,14 @@ Versio päivitetään tarkoituksella ennen jaeltavan artifactin muodostamista:
 - minor kuvaa yhteensopivaa uutta käyttäjäominaisuutta
 - major varataan yhteensopimattomalle julkiselle sopimus- tai
   käyttöönottomuutokselle
-- `0.x`-vaiheessa ennakkoversion tunniste kertoo, ettei kyse ole valmiista
-  tuotantojulkaisusta
+- `0.x` kertoo, että julkinen sopimus voi vielä kehittyä ennen versiota `1.0.0`
+
+Julkaisun kypsyys ja jakeluoikeus ilmaistaan `releaseChannel`-arvolla sekä
+release gateilla, ei version tekstissä olevalla prerelease-tunnisteella.
+Uuden artifactin `appVersion` ei sisällä `alpha`-, `beta`-, `rc`- tai build-
+metadataosaa. Runtime säilyttää vanhojen prerelease-versioiden rajatun
+lukuyhteensopivuuden, jotta hyväksyntä-, päivitys- ja rollback-historia voidaan
+validoida turvallisesti siirtymäkauden yli.
 
 Pelkkä paikallinen kehitysbuild ei edellytä version nostoa. Git-revision avulla
 samasta versiosta tehdyt kehitysbuildit erotetaan toisistaan.
@@ -81,8 +88,8 @@ päivitysmanifesti ovat erillisiä laajemman jakelun turvallisuustodisteita.
 
 Windows-jakelulla on kaksi eri versiota, joiden vastuita ei yhdistetä:
 
-- `appVersion` on käyttäjälle ja runtimelle näkyvä täysi SemVer, esimerkiksi
-  `0.1.0-alpha.1`
+- `appVersion` on käyttäjälle ja runtimelle näkyvä kolmiosainen numeerinen
+  SemVer-versio, esimerkiksi `0.1.0`
 - `msiProductVersion` on Windows Installerin käyttämä kolmiosainen numeerinen
   `major.minor.build`-arvo.
 
@@ -93,12 +100,12 @@ jaeltua MSI-versiota varten aikaisempaa suurempi. Toteutuksen validaattori
 rajaa kaikki kolme osaa valitun Windows Installer -työkaluketjun hyväksymiin
 numeerisiin rajoihin.
 
-Nykyisen installer-prototyypin sovellusversio on `0.1.0-alpha.1` ja MSI:n
-Windows-vertailuversio `0.1.1`. `alpha` kuuluu tarkoituksella käyttäjälle ja
-runtimelle näkyvään ennakkoversioon, mutta sitä ei voi eikä pidä sisällyttää
-MSI:n numeeriseen `ProductVersion`-kenttään. Ennakkoversiotunniste poistetaan
-vasta erillisellä stable-release-päätöksellä, ei installerin teknisenä
-sivuvaikutuksena.
+Nykyisen installer-prototyypin sovellusversio on `0.1.0` ja MSI:n Windows-
+vertailuversio `0.1.2`. Aikaisemmat paikalliset pilotit käyttivät
+`0.1.0-alpha.x`-versioita. Numeerinen `0.1.0` on SemVer-järjestyksessä niitä
+uudempi, joten siirtymä ei avaa downgradea. Vanhoja prerelease-arvoja saa vain
+lukea olemassa olevasta hyväksyntä-, manifesti- tai rollback-metadatasta; niitä
+ei enää kirjoiteta uusiin release-konfiguraatioihin.
 
 Yksi jaeltu `appVersion` ja `msiProductVersion`-pari vastaa yhtä täsmällistä
 MSI-artifactia. Samaa `appVersion`-arvoa ei käytetä eri payloadille:
@@ -172,7 +179,7 @@ installeria käytettävän unpacked pilot -artifactin ja torjuu:
 
 - dirty worktreen
 - build revisionin ja Git HEAD:n ristiriidan
-- epäkelvon SemVer-version
+- muun kuin kolmiosaisen numeerisen SemVer-version
 - muun release-kanavan kuin `pilot`
 - version ja build-infon ristiriidan
 - puuttuvan tai muuttuneen pilot-manifestin

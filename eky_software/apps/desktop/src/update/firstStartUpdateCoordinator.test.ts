@@ -95,6 +95,38 @@ describe('first-start update coordinator', () => {
     );
   });
 
+  it('accepts the numeric release after the historical alpha build without profile migration', async () => {
+    const numericReleaseInfo = {
+      ...releaseInfo,
+      appVersion: '0.1.0',
+      msiProductVersion: '0.1.2',
+    };
+    const fixture = createFixture({
+      acceptedBuild: {
+        acceptedAt: '2026-08-10T18:00:00.000Z',
+        appVersion: '0.1.0-alpha.2',
+        buildRevision: currentIdentity.buildRevision,
+        formatVersion: 1,
+        releaseChannel: 'pilot',
+      },
+      runningReleaseInfo: numericReleaseInfo,
+    });
+
+    await fixture.coordinator.beforeMigrations(
+      createInspection('existing', 0),
+    );
+    await fixture.coordinator.acceptAfterBackendReady();
+
+    expect(fixture.createValidatedPreMigrationPoint).not.toHaveBeenCalled();
+    expect(fixture.validateActiveProfile).toHaveBeenCalledOnce();
+    expect(fixture.acceptedWrites).toEqual([
+      expect.objectContaining({
+        appVersion: '0.1.0',
+        buildRevision: numericReleaseInfo.buildRevision,
+      }),
+    ]);
+  });
+
   it('reuses the original recovery point after a crash before migration side effects', async () => {
     const fixture = createFixture({
       acceptedBuild: acceptedCurrentBuild(),

@@ -6,6 +6,8 @@ import { afterEach, test } from 'node:test';
 
 import {
   compareMsiProductVersions,
+  parseAppVersion,
+  parseNumericAppVersion,
   parseMsiProductVersion,
   readInstallerReleaseConfig,
   validateInstallerReleaseConfig,
@@ -14,9 +16,9 @@ import {
 const temporaryDirectories = [];
 const validConfig = Object.freeze({
   appIdentity: 'Eky',
-  appVersion: '0.1.0-alpha.1',
+  appVersion: '0.1.0',
   architecture: 'x64',
-  msiProductVersion: '0.1.1',
+  msiProductVersion: '0.1.2',
   platform: 'win32',
   releaseChannel: 'pilot',
 });
@@ -53,18 +55,28 @@ test('compares MSI versions numerically', () => {
   assert.equal(compareMsiProductVersions('0.1.1', '0.2.0'), -1);
 });
 
+test('keeps legacy SemVer readable but requires numeric authored releases', () => {
+  assert.equal(parseAppVersion('0.1.0-alpha.2'), '0.1.0-alpha.2');
+  assert.equal(parseNumericAppVersion('0.1.0'), '0.1.0');
+  assert.throws(
+    () => parseNumericAppVersion('0.1.0-alpha.2'),
+    /APP_VERSION_INVALID/,
+  );
+});
+
 test('requires an exact release config and desktop SemVer match', () => {
   assert.deepEqual(
-    validateInstallerReleaseConfig(validConfig, '0.1.0-alpha.1'),
+    validateInstallerReleaseConfig(validConfig, '0.1.0'),
     validConfig,
   );
   for (const value of [
     { ...validConfig, appVersion: '0.1.1' },
+    { ...validConfig, appVersion: '0.1.0-alpha.2' },
     { ...validConfig, releaseChannel: 'development' },
     { ...validConfig, extra: true },
   ]) {
     assert.throws(
-      () => validateInstallerReleaseConfig(value, '0.1.0-alpha.1'),
+      () => validateInstallerReleaseConfig(value, '0.1.0'),
       /INSTALLER_RELEASE_CONFIG_INVALID/,
     );
   }

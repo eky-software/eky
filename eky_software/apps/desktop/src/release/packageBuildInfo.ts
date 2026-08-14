@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import {
-  isSemVer,
+  isNumericReleaseVersion,
   parseDesktopBuildInfo,
   type DesktopBuildInfo,
 } from './desktopBuildInfo.js';
@@ -20,7 +20,7 @@ interface CreatePackageBuildInfoOptions {
 export async function createPackageBuildInfo(
   options: CreatePackageBuildInfoOptions,
 ): Promise<Readonly<DesktopBuildInfo>> {
-  if (!isSemVer(options.appVersion)) {
+  if (!isNumericReleaseVersion(options.appVersion)) {
     throw new Error('DESKTOP_PACKAGE_VERSION_INVALID');
   }
 
@@ -77,7 +77,7 @@ export function readDesktopPackageVersion(value: unknown): string {
     Array.isArray(value) ||
     !('version' in value) ||
     typeof value.version !== 'string' ||
-    !isSemVer(value.version)
+    !isNumericReleaseVersion(value.version)
   ) {
     throw new Error('DESKTOP_PACKAGE_VERSION_INVALID');
   }
