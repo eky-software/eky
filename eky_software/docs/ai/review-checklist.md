@@ -192,6 +192,9 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
   yhdestä koneesta johdettua haurasta absoluuttista muistirajaa?
 - Päättyvätkö kaikki testiharnessin käynnistämät prosessit ja vapautuvatko
   loopback-portit myös failure- ja restart-polussa?
+- Pysäytetäänkö Windows-testien koko prosessipuu ennen temp-rootin poistoa,
+  käytetäänkö poistossa vain rajattua retrytä ja jääkö pysyvä cleanup-virhe
+  näkyväksi testivirheeksi?
 - Todistetaanko backupin palautettavuus hardened Windows -artifactilla eikä
   vain backup-tiedoston syntyminen?
 - Kattavatko restore-testit stagingin, aktivoinnin, restartin jokaisessa
@@ -204,6 +207,14 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
   ja tunnisteita ilman salasanaa, sessionia, polkua tai business dataa?
 - Kattavatko update-testit suoran Setup-polun, sovelluksesta käynnistetyn
   päivityksen, migration-failuren, health-failuren ja binary rollbackin?
+- Rakennettiinko lopullinen desktop-/installer-ehdokas puhtaasta commitista ja
+  testattiinko juuri samat tavut ilman testin jälkeistä rebuildiä?
+- Käynnistyikö lopullinen ehdokas kahdesti samalla synteettisellä profiililla,
+  sulkeutuiko se hallitusti ja jäikö prosessipuu tyhjäksi?
+- Todistettiinko update- tai first-start-muutos myös edellisen hyväksytyn
+  pienemmän version identiteettiä vasten eikä vain puhtaalla profiililla?
+- Ovatko juuri raportoidun PR-commitin ja mahdollisen merge-commitin vaaditut
+  GitHub-ajot päättyneet vihreinä ilman pending-, cancelled- tai flaky-tilaa?
 
 ## Dokumentaatio
 
@@ -221,6 +232,7 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
 - Annettiinko toteutussuunnitelma ennen laajaa muutosta?
 - Luettiinko oikeat dokumentit?
 - Onko Git-tila hallinnassa?
+- Onko lähtöbaseline todistetusti vihreä ennen seuraavan vaiheen aloittamista?
 - Onko muutos helppo perua tarvittaessa?
 
 ## Valmiin työn minimitaso

@@ -155,6 +155,35 @@ Tarkista ennen laajaa AI-muutosta:
 
 `git status`
 
+## Puhdas baseline ja julkaistavan artifactin portti
+
+Uutta toiminnallista vaihetta ei aloiteta tietoisesti punaisen tai
+keskeneräisen baselinen päälle. Ennen seuraavaa vaihetta pitää olla selvää,
+mikä commit on kanoninen lähde ja mitkä sen vastuuseen kuuluvat paikalliset
+sekä GitHub-tarkistukset ovat päättyneet vihreinä. Odottavaa, peruttua,
+flakyksi merkittyä tai epäonnistunutta tarkistusta ei tulkita onnistuneeksi.
+
+Kun työ tuottaa käyttäjälle annettavan desktop-, installer- tai update-
+artifactin:
+
+- lopullinen ehdokas rakennetaan puhtaasta commitista
+- juuri samoille tavuille ajetaan dokumentoidut paikalliset packaged- ja
+  lifecycle-portit; testin jälkeen ei rakenneta käyttäjälle uutta kopiota
+- ehdokas käynnistetään ensimmäisen kerran, suljetaan hallitusti,
+  käynnistetään uudelleen samalla synteettisellä profiililla ja tarkistetaan,
+  ettei prosesseja jää eloon
+- päivitysrajaa muuttava ehdokas todistetaan myös edellisen hyväksytyn,
+  pienemmän version identiteettiä ja yhteensopivaa synteettistä profiilia
+  vasten
+- paikallinen kanoninen output korvataan ehdokkaalla vasta, kun ehdokas on
+  läpäissyt portin
+- pushin tai mergen jälkeen odotetaan kyseisen täsmällisen commitin omat
+  vaaditut GitHub-ajot loppuun ennen kuin työ ilmoitetaan valmiiksi
+
+Jos merge-commitin `main`-ajo epäonnistuu, uusi työ pysäytetään ja baseline
+korjataan ensin. PR:n aiempi vihreä ajo ei korvaa merge-commitin omaa
+todistetta silloin, kun repository ajaa tarkistukset myös `main`-pushille.
+
 ## Ihmisen tarkistus
 
 AI:n tuottamaa koodia ei pidetä automaattisesti oikeana.
@@ -188,6 +217,9 @@ AI:n tekemä työ voidaan katsoa valmiiksi vasta, kun:
 - koodi on luettavaa
 - tiedostoilla on selkeä vastuu
 - TypeScript-tyyliä noudatetaan
+- tehtävän edellyttämät paikalliset tarkistukset ovat päättyneet vihreinä
+- mahdolliset vaaditut GitHub-ajot ovat päättyneet vihreinä juuri raportoidulle
+  commitille; keskeneräistä tai punaista ajoa ei kutsuta valmiiksi
 
 ## Turvallisuusvaikutuksen Raportointi
 
