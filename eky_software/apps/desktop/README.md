@@ -34,6 +34,7 @@ From the repository root on Windows:
 pnpm --filter @eky/desktop package:windows
 pnpm --filter @eky/desktop package:windows:pilot
 pnpm --filter @eky/desktop smoke:windows
+pnpm --filter @eky/desktop smoke:windows:release-candidate
 pnpm --filter @eky/desktop profile:audit
 pnpm --filter @eky/desktop installer:test
 pnpm --filter @eky/desktop installer:build
@@ -84,10 +85,10 @@ not publisher trust. A future signed release must sign before creating the
 final hash and manifest, and all lifecycle tests must then use those exact
 signed bytes.
 
-The current application version remains the prerelease SemVer
-`0.1.0-alpha.1`. Windows Installer separately compares the numeric MSI
-ProductVersion `0.1.1`. Removing `alpha` is a future explicit stable-release
-decision, not an installer formatting change.
+The current application version is the numeric SemVer `0.1.1`. Windows
+Installer separately compares the numeric MSI ProductVersion `0.1.3`.
+Release maturity is expressed by the `pilot` channel and release gates, not by
+an `alpha` suffix.
 
 `profile:audit` is a Windows-only, copy-only local profile audit. Close Eky
 before running it. The command never opens the active SQLite database for
@@ -145,6 +146,14 @@ packaged Diagnostics view, and exercises the operational log folder capability
 with a main-process stub so no Explorer window is opened. Smoke data is written
 under a random operating-system temporary directory and removed after the
 check.
+
+`smoke:windows:release-candidate` first verifies the clean HEAD, the exact
+pilot manifest, and the current unpacked package inventory. It then seeds only
+the isolated smoke profile with the previous lower numeric release identity
+from first-parent Git history and runs the same two-start packaged smoke. This
+catches a changed payload rebuilt under an already accepted application
+version without reading or changing the normal `%APPDATA%\Eky` profile. The
+tested package must not be rebuilt before manual pilot use.
 
 The packaged smoke uses two Electron processes for restore acceptance. The
 first process creates and inspects an encrypted synthetic profile backup,

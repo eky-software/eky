@@ -13,6 +13,7 @@ import {
   writePackagedSmokeResult,
 } from '../dist/main/packagedSmoke.js';
 import { readDesktopElectronVersion } from './read-desktop-electron-version.mjs';
+import { preparePackagedReleaseCandidateSmoke } from './packaged-release-candidate.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const executablePath = resolve(
@@ -32,6 +33,16 @@ const smokeResultPath = resolve(
   'result/desktop-smoke-result.json',
 );
 const expectedElectronVersion = await readDesktopElectronVersion();
+const scriptArguments = process.argv.slice(2);
+const releaseCandidateSmoke = scriptArguments.includes('--release-candidate');
+
+if (
+  scriptArguments.some((argument) => argument !== '--release-candidate') ||
+  scriptArguments.filter((argument) => argument === '--release-candidate')
+    .length > 1
+) {
+  throw new Error('Unsupported packaged smoke argument.');
+}
 
 delete childEnvironment.ELECTRON_RUN_AS_NODE;
 childEnvironment.ELECTRON_ENABLE_SECURITY_WARNINGS = 'true';
@@ -48,6 +59,13 @@ async function readSmokeResult() {
 }
 
 try {
+  if (releaseCandidateSmoke) {
+    await preparePackagedReleaseCandidateSmoke({
+      desktopDirectory: resolve(scriptDirectory, '..'),
+      repositoryRoot: resolve(scriptDirectory, '../../..'),
+      smokeUserDataPath: resolve(smokeRootDirectory, 'user-data'),
+    });
+  }
   await writePackagedSmokeResult(
     {
       enabled: true,

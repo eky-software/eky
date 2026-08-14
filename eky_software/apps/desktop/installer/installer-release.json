@@ -1,8 +1,8 @@
 {
   "appIdentity": "Eky",
-  "appVersion": "0.1.0",
+  "appVersion": "0.1.1",
   "architecture": "x64",
-  "msiProductVersion": "0.1.2",
+  "msiProductVersion": "0.1.3",
   "platform": "win32",
   "releaseChannel": "pilot"
 }

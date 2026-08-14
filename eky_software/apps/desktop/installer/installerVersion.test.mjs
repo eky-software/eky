@@ -16,9 +16,9 @@ import {
 const temporaryDirectories = [];
 const validConfig = Object.freeze({
   appIdentity: 'Eky',
-  appVersion: '0.1.0',
+  appVersion: '0.1.1',
   architecture: 'x64',
-  msiProductVersion: '0.1.2',
+  msiProductVersion: '0.1.3',
   platform: 'win32',
   releaseChannel: 'pilot',
 });
@@ -66,17 +66,17 @@ test('keeps legacy SemVer readable but requires numeric authored releases', () =
 
 test('requires an exact release config and desktop SemVer match', () => {
   assert.deepEqual(
-    validateInstallerReleaseConfig(validConfig, '0.1.0'),
+    validateInstallerReleaseConfig(validConfig, '0.1.1'),
     validConfig,
   );
   for (const value of [
-    { ...validConfig, appVersion: '0.1.1' },
+    { ...validConfig, appVersion: '0.1.2' },
     { ...validConfig, appVersion: '0.1.0-alpha.2' },
     { ...validConfig, releaseChannel: 'development' },
     { ...validConfig, extra: true },
   ]) {
     assert.throws(
-      () => validateInstallerReleaseConfig(value, '0.1.0'),
+      () => validateInstallerReleaseConfig(value, '0.1.1'),
       /INSTALLER_RELEASE_CONFIG_INVALID/,
     );
   }
@@ -97,7 +97,7 @@ test('reads release identity from closed JSON files', async () => {
   await assert.doesNotReject(
     readInstallerReleaseConfig(configPath, packagePath),
   );
-  await writeFile(packagePath, JSON.stringify({ version: '0.1.1' }), 'utf8');
+  await writeFile(packagePath, JSON.stringify({ version: '0.1.2' }), 'utf8');
   await assert.rejects(
     readInstallerReleaseConfig(configPath, packagePath),
     /INSTALLER_RELEASE_CONFIG_INVALID/,
