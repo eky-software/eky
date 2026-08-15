@@ -64,6 +64,7 @@ test('uses runtime-independent SHA-256 APIs in Windows installer gates', async (
     [
       'scripts/verifyLockedInstallerRestore.ps1',
       'scripts/windowsInstallerTestSupport.ps1',
+      'scripts/windowsInstallerUpgradeAttempt.ps1',
       'scripts/testWindowsInstallerUpgrade.ps1',
     ].map((path) => readFile(join(installerDirectory, path), 'utf8')),
   );
