@@ -85,7 +85,10 @@ describe('invoice drafts api client', () => {
     const client = createTestClient(requests, {
       invoiceIssuanceReadiness: {
         isReady: false,
-        issues: ['companyIbanMissing'],
+        issues: [
+          'invoiceNumberingSettingsMissing',
+          'companyIbanMissing',
+        ],
       },
     });
 
@@ -93,7 +96,10 @@ describe('invoice drafts api client', () => {
       client.getInvoiceIssuanceReadiness('draft/1'),
     ).resolves.toEqual({
       isReady: false,
-      issues: ['companyIbanMissing'],
+      issues: [
+        'invoiceNumberingSettingsMissing',
+        'companyIbanMissing',
+      ],
     });
     expect(requests[0]?.input).toBe(
       '/invoice-drafts/draft%2F1/issuance-readiness',

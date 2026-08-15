@@ -36,6 +36,14 @@
   margin: 10px 18px 0;
 }
 
+.settingsNotice {
+  margin: 14px 18px 0;
+  border-left: 4px solid var(--color-primary);
+  padding: 10px 12px;
+  color: var(--color-primary-dark);
+  background: var(--color-surface-strong);
+}
+
 .actions {
   display: flex;
   justify-content: flex-end;

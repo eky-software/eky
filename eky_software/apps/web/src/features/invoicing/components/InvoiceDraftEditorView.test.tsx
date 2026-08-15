@@ -104,6 +104,16 @@ describe('InvoiceDraftEditorView', () => {
     expect(html).toContain(uiText.invoicing.save);
     expect(html).not.toContain(uiText.invoicing.saveDraftChanges);
   });
+
+  it('explains that default VAT rates are in use without blocking the form', () => {
+    const html = renderEditor({
+      editorMode: 'create',
+      invoiceVatRatesState: createInvoiceVatRatesState(false),
+    });
+
+    expect(html).toContain(uiText.invoicing.invoiceVatRatesDefaultNotice);
+    expect(html).toContain(uiText.invoicing.save);
+  });
 });
 
 type InvoiceDraftEditorViewProps = React.ComponentProps<
@@ -194,12 +204,14 @@ function createInvoicePaymentDefaultsState(): InvoiceDraftEditorViewProps['invoi
   };
 }
 
-function createInvoiceVatRatesState(): InvoiceDraftEditorViewProps['invoiceVatRatesState'] {
+function createInvoiceVatRatesState(
+  isPersisted = true,
+): InvoiceDraftEditorViewProps['invoiceVatRatesState'] {
   return {
     errorMessage: null,
     isLoading: false,
     settings: {
-      isPersisted: true,
+      isPersisted,
       vatRates: [
         {
           isActive: true,

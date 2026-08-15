@@ -18,6 +18,7 @@ interface InvoiceIssuanceReadinessRow {
   customer_name: string | null;
   customer_postal_code: string | null;
   customer_street_address: string | null;
+  has_active_invoice_numbering_settings: number;
 }
 
 export class SqliteInvoiceIssuanceReadinessReader
@@ -47,7 +48,15 @@ export class SqliteInvoiceIssuanceReadinessReader
             customer.city AS customer_city,
             customer.name AS customer_name,
             customer.postal_code AS customer_postal_code,
-            customer.street_address AS customer_street_address
+            customer.street_address AS customer_street_address,
+            EXISTS (
+              SELECT 1
+              FROM invoice_numbering_active_series AS active_series
+              INNER JOIN invoice_numbering_settings AS numbering_settings
+                ON numbering_settings.company_id = active_series.company_id
+                AND numbering_settings.series_key = active_series.active_series_key
+              WHERE active_series.company_id = draft.company_id
+            ) AS has_active_invoice_numbering_settings
           FROM invoice_drafts AS draft
           LEFT JOIN company_settings AS settings
             ON settings.company_id = draft.company_id
@@ -91,6 +100,8 @@ export class SqliteInvoiceIssuanceReadinessReader
       customerName: row.customer_name ?? '',
       customerPostalCode: row.customer_postal_code ?? '',
       customerStreetAddress: row.customer_street_address ?? '',
+      hasActiveInvoiceNumberingSettings:
+        row.has_active_invoice_numbering_settings === 1,
     };
   }
 }

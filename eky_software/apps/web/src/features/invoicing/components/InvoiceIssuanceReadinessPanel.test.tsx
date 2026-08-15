@@ -8,7 +8,11 @@ describe('InvoiceIssuanceReadinessPanel', () => {
   it('shows safe Finnish instructions without master data values', () => {
     const html = renderToStaticMarkup(
       <InvoiceIssuanceReadinessPanel
-        issues={['companyIbanMissing', 'customerAddressMissing']}
+        issues={[
+          'invoiceNumberingSettingsMissing',
+          'companyIbanMissing',
+          'customerAddressMissing',
+        ]}
       />,
     );
 
@@ -18,6 +22,10 @@ describe('InvoiceIssuanceReadinessPanel', () => {
     );
     expect(html).toContain(
       uiText.invoicing.invoiceIssuanceReadinessIssue.customerAddressMissing,
+    );
+    expect(html).toContain(
+      uiText.invoicing.invoiceIssuanceReadinessIssue
+        .invoiceNumberingSettingsMissing,
     );
     expect(html).not.toContain('FI2112345600000785');
   });

@@ -28,6 +28,7 @@ const invoiceIssuanceReadinessIssues = new Set<InvoiceIssuanceReadinessIssue>([
   'companyVatNumberMissing',
   'customerAddressMissing',
   'customerNameMissing',
+  'invoiceNumberingSettingsMissing',
 ]);
 
 export function readApproveInvoiceDraftResponse(

@@ -46,11 +46,13 @@ Company Settings- tai Customer-master-datan keskeneräistä tallentamista; se
 estää vain virallisen laskun muodostamisen keskeneräisistä tiedoista.
 
 Käyttöliittymän ennakkotarkistus käyttää yritysrajattua read-only-read modelia,
-joka palauttaa vain valmiustilan ja nimetyt puutekoodit. Ennakkotarkistus ei
-varaa numeroa, kirjoita auditia tai palauta snapshot- tai master-dataa. Sen
-tulos ei kelpaa hyväksyntävaltuutukseksi: hyväksyntä ja uudelleenhyväksyntä
-tarkistavat saman Invoicing-domain-säännön aina uudelleen transaktion sisällä
-ennen ensimmäistä kirjoitusta.
+joka palauttaa vain valmiustilan ja nimetyt puutekoodit. Tarkistus varmistaa
+myös, että yrityksellä on aktiiviset laskunumerointiasetukset. UI ohjaa
+puuttuvan asetuksen Oma yritys -näkymään ennen hyväksyntävahvistusta.
+Ennakkotarkistus ei varaa numeroa, kirjoita auditia tai palauta snapshot- tai
+master-dataa. Sen tulos ei kelpaa hyväksyntävaltuutukseksi: hyväksyntä ja
+uudelleenhyväksyntä tarkistavat numeroinnin ja saman Invoicing-domain-säännön
+aina uudelleen transaktion sisällä ennen ensimmäistä kirjoitusta.
 
 Ensimmäinen toteutus voi sisältää yksittäisen luonnoksen hyväksyntätoiminnon:
 

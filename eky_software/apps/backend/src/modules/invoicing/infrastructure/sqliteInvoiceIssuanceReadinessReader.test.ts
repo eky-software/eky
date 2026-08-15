@@ -13,6 +13,7 @@ describe('SqliteInvoiceIssuanceReadinessReader', () => {
     reader = new SqliteInvoiceIssuanceReadinessReader(database);
     insertCustomer(database);
     insertCompanySettings(database);
+    insertInvoiceNumberingSettings(database);
   });
 
   afterEach(() => database.close());
@@ -36,6 +37,7 @@ describe('SqliteInvoiceIssuanceReadinessReader', () => {
       customerName: 'Test Customer Oy',
       customerPostalCode: '00100',
       customerStreetAddress: 'Customer Street 1',
+      hasActiveInvoiceNumberingSettings: true,
     });
   });
 
@@ -55,6 +57,21 @@ describe('SqliteInvoiceIssuanceReadinessReader', () => {
       billingRecipientName: '',
       companyName: '',
       customerName: '',
+      hasActiveInvoiceNumberingSettings: true,
+    });
+  });
+
+  it('reports that active invoice numbering settings are missing', async () => {
+    database.close();
+    database = await createInvoiceReadModelTestDatabase();
+    reader = new SqliteInvoiceIssuanceReadinessReader(database);
+    insertCustomer(database);
+    insertCompanySettings(database);
+
+    await expect(
+      reader.getReadinessData('dev-company', 'draft-1'),
+    ).resolves.toMatchObject({
+      hasActiveInvoiceNumberingSettings: false,
     });
   });
 });
@@ -85,6 +102,25 @@ function insertCompanySettings(database: DatabaseConnection): void {
       'FI76543210', 'Builder Street 2', '33100', 'Tampere',
       'billing@example.fi', '03 123 4567', 'FI2112345600000785', 'NDEAFIHH',
       'Example Bank', 6500, 'created', 'updated', 'työ'
+    )
+  `).run();
+}
+
+function insertInvoiceNumberingSettings(database: DatabaseConnection): void {
+  database.prepare(`
+    INSERT INTO invoice_numbering_settings (
+      company_id, series_key, mode, fiscal_year_start_month,
+      sequence_padding, first_sequence_number, created_at, updated_at
+    ) VALUES (
+      'dev-company', 'default', 'calendarYearSequence', 1,
+      4, 1, 'created', 'updated'
+    )
+  `).run();
+  database.prepare(`
+    INSERT INTO invoice_numbering_active_series (
+      company_id, active_series_key, revision, updated_at, updated_by
+    ) VALUES (
+      'dev-company', 'default', 1, 'updated', 'test-actor'
     )
   `).run();
 }

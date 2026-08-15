@@ -169,6 +169,10 @@ ensimmäiseen katselunäkymään, joka hakee `ApprovedInvoiceView`-snapshotin
 
 - näytä hyväksyntätoiminto vain tallennetulle ja avatulle laskuluonnokselle
 - edellytä, että muutokset on tallennettu ennen hyväksyntää
+- tarkista ennen vahvistusta julkaisukelpoisuus ja aktiiviset
+  laskunumerointiasetukset read-only-valmiusreitiltä
+- ohjaa puuttuvat pakolliset yritys- ja numerointitiedot korjattaviksi Oma
+  yritys -näkymään; älä kierrä backendin hyväksyntäporttia
 - varmista hyväksyntä erillisellä vahvistusalueella
 - kutsu hyväksyntää vain API-clientin kautta
 - näytä laskunumero ja viitenumero backendin palauttamasta tuloksesta
@@ -178,6 +182,12 @@ ensimmäiseen katselunäkymään, joka hakee `ApprovedInvoiceView`-snapshotin
 
 UI ei muodosta laskunumeroa, viitenumeroa, snapshotteja eikä
 hyväksyntäpäivää. Ne ovat backendin vastuulla.
+
+Jos yrityskohtaista ALV-kantalistaa ei ole vielä tallennettu, Invoicingin
+nykyiset sallitut oletuskannat pysyvät käytettävissä. UI näyttää tästä
+rauhallisen, ei-estävän ohjeen Oma yritys -näkymään. Tämä ei poista hyväksytyn
+laskun myyjän ALV-tunnuksen pakollisuutta eikä muuta backendin ALV- tai
+hyväksyntäsääntöjä.
 
 ## Vaihe 8: hyväksytyn laskun print-layout myöhemmin
 
