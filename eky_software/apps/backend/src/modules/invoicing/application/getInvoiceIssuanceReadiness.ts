@@ -1,6 +1,7 @@
 import {
   findInvoiceIssuanceReadinessIssues,
   type InvoiceIssuanceReadiness,
+  type InvoiceIssuanceReadinessIssue,
 } from '../domain/invoiceIssuanceReadiness.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
 import { requireIdentifier } from '../domain/invoiceDraftRules.js';
@@ -34,7 +35,11 @@ export async function getInvoiceIssuanceReadiness(
     throw new InvoiceDraftNotFoundError();
   }
 
-  const issues = findInvoiceIssuanceReadinessIssues(data);
+  const issues: InvoiceIssuanceReadinessIssue[] =
+    data.hasActiveInvoiceNumberingSettings
+      ? []
+      : ['invoiceNumberingSettingsMissing'];
+  issues.push(...findInvoiceIssuanceReadinessIssues(data));
 
   return {
     isReady: issues.length === 0,

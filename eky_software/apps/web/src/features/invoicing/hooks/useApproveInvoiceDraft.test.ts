@@ -87,6 +87,17 @@ describe('getApproveInvoiceDraftErrorMessage', () => {
     expect(message).not.toContain('stack');
   });
 
+  it('guides the user to save invoice numbering settings', () => {
+    const message = getApproveInvoiceDraftErrorMessage(
+      new EkyApiError('Active invoice numbering settings were not found.', {
+        status: 400,
+      }),
+    );
+
+    expect(message).toContain('Oma yritys');
+    expect(message).not.toContain('Active invoice');
+  });
+
   it('returns a generic safe message for non-API errors', () => {
     expect(
       getApproveInvoiceDraftErrorMessage(new Error('stack trace')),

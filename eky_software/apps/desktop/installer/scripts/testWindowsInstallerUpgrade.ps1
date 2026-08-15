@@ -2,6 +2,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'windowsInstallerTestSupport.ps1')
 . (Join-Path $PSScriptRoot 'windowsInstallerUpgradeAttempt.ps1')
+. (Join-Path $PSScriptRoot 'windowsInstallerProcessTree.ps1')
 
 $installerDirectory = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $fixtureRoot = Join-Path $installerDirectory 'artifacts\upgrade-fixture'
@@ -126,48 +127,6 @@ function Start-EkyForUpgrade {
     }
   } while ([DateTime]::UtcNow -lt $deadline)
   throw 'INSTALLER_UPGRADE_BACKEND_UTILITY_PROCESS_MISSING'
-}
-
-function Stop-EkyProcessTree {
-  param($Process)
-
-  if ($null -eq $Process) {
-    return
-  }
-  $rootProcess = Get-Process -Id $Process.Id -ErrorAction SilentlyContinue
-  if ($null -eq $rootProcess) {
-    return
-  }
-  $processes = @(Get-CimInstance Win32_Process -ErrorAction Stop)
-  $ownedProcessIds = @([int]$Process.Id)
-  do {
-    $previousCount = $ownedProcessIds.Count
-    foreach ($candidate in $processes) {
-      if (
-        $ownedProcessIds -contains [int]$candidate.ParentProcessId -and
-        $ownedProcessIds -notcontains [int]$candidate.ProcessId
-      ) {
-        $ownedProcessIds += [int]$candidate.ProcessId
-      }
-    }
-  } while ($ownedProcessIds.Count -ne $previousCount)
-  & taskkill.exe /PID $Process.Id /T /F | Out-Null
-  if ($LASTEXITCODE -ne 0) {
-    throw 'INSTALLER_UPGRADE_PROCESS_TREE_STOP_FAILED'
-  }
-  $deadline = [DateTime]::UtcNow.AddSeconds(10)
-  while (
-    @(
-      $ownedProcessIds | Where-Object {
-        $null -ne (Get-Process -Id $_ -ErrorAction SilentlyContinue)
-      }
-    ).Count -ne 0
-  ) {
-    if ([DateTime]::UtcNow -ge $deadline) {
-      throw 'INSTALLER_UPGRADE_PROCESS_TREE_REMAINS'
-    }
-    Start-Sleep -Milliseconds 100
-  }
 }
 
 function Assert-ProductInstalled {

@@ -18,6 +18,7 @@ const completeData = {
   customerName: 'Test Customer Oy',
   customerPostalCode: '00100',
   customerStreetAddress: 'Customer Street 1',
+  hasActiveInvoiceNumberingSettings: true,
 } as const;
 
 describe('invoice issuance readiness', () => {

@@ -529,6 +529,13 @@ export function NewInvoiceForm({
         </p>
       ) : null}
 
+      {invoiceVatRatesState.settings !== null &&
+      !invoiceVatRatesState.settings.isPersisted ? (
+        <p className={styles.settingsNotice} role="status">
+          {uiText.invoicing.invoiceVatRatesDefaultNotice}
+        </p>
+      ) : null}
+
       {shouldShowAutosaveMessage ? (
         <p
           className={`message ${

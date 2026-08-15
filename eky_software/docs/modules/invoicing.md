@@ -151,10 +151,12 @@ vaikka master-data myöhemmin täydentyy tai muuttuu.
 Web voi ennen käyttäjän hyväksyntävahvistusta pyytää standardiluonnoksen
 julkaisukelpoisuuden read-only-projektion reitiltä
 `GET /invoice-drafts/:id/issuance-readiness`. Reitti on yritysrajattu ja
-palauttaa vain `isReady`-arvon sekä Invoicingin tuntemat puutekoodit. Se ei
-palauta Company Settings- tai Customer-master-dataa, varaa laskunumeroa,
-muuta luonnosta tai kirjoita audit-tapahtumaa. UI muuntaa puutekoodit
-turvallisiksi suomenkielisiksi korjausohjeiksi.
+palauttaa vain `isReady`-arvon sekä Invoicingin tuntemat puutekoodit. Tarkistus
+kattaa julkaisukelpoisen snapshot-datan lisäksi aktiivisten
+laskunumerointiasetusten olemassaolon. Se ei palauta Company Settings- tai
+Customer-master-dataa, varaa laskunumeroa, muuta luonnosta tai kirjoita
+audit-tapahtumaa. UI muuntaa puutekoodit turvallisiksi suomenkielisiksi
+korjausohjeiksi ja ohjaa puuttuvan numeroinnin Oma yritys -näkymään.
 
 Read-only-tarkistus on vain käyttäjän ennakko-ohjaus. Se ei ole
 hyväksyntävaltuutus eikä korvaa hyväksyntä- tai uudelleenhyväksyntätransaktion

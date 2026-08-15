@@ -14,6 +14,7 @@ export interface InvoiceIssuanceReadinessData {
   customerName: string;
   customerPostalCode: string;
   customerStreetAddress: string;
+  hasActiveInvoiceNumberingSettings: boolean;
 }
 
 export type InvoiceIssuanceReadinessIssue =
@@ -25,7 +26,8 @@ export type InvoiceIssuanceReadinessIssue =
   | 'companyNameMissing'
   | 'companyVatNumberMissing'
   | 'customerAddressMissing'
-  | 'customerNameMissing';
+  | 'customerNameMissing'
+  | 'invoiceNumberingSettingsMissing';
 
 export interface InvoiceIssuanceReadiness {
   isReady: boolean;
@@ -33,7 +35,10 @@ export interface InvoiceIssuanceReadiness {
 }
 
 export function findInvoiceIssuanceReadinessIssues(
-  data: InvoiceIssuanceReadinessData,
+  data: Omit<
+    InvoiceIssuanceReadinessData,
+    'hasActiveInvoiceNumberingSettings'
+  >,
 ): InvoiceIssuanceReadinessIssue[] {
   const issues: InvoiceIssuanceReadinessIssue[] = [];
 

@@ -34,6 +34,7 @@ const completeData: InvoiceIssuanceReadinessData = {
   customerName: 'Customer Oy',
   customerPostalCode: '20100',
   customerStreetAddress: 'Customer street 1',
+  hasActiveInvoiceNumberingSettings: true,
 };
 
 describe('getInvoiceIssuanceReadiness', () => {
@@ -66,6 +67,23 @@ describe('getInvoiceIssuanceReadiness', () => {
     ).resolves.toEqual({
       isReady: false,
       issues: ['companyIbanMissing', 'customerAddressMissing'],
+    });
+  });
+
+  it('reports missing active invoice numbering settings before approval', async () => {
+    const reader = new FakeInvoiceIssuanceReadinessReader({
+      ...completeData,
+      hasActiveInvoiceNumberingSettings: false,
+    });
+
+    await expect(
+      getInvoiceIssuanceReadiness(
+        { companyId: 'dev-company', invoiceDraftId: 'draft-1' },
+        reader,
+      ),
+    ).resolves.toEqual({
+      isReady: false,
+      issues: ['invoiceNumberingSettingsMissing'],
     });
   });
 

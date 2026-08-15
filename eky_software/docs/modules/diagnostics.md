@@ -34,6 +34,10 @@ Paikallinen, permission-suojattu tapahtumanäkymä saa näyttää vain erikseen
 mallinnetut tekniset `correlationId`-, `operationId`- ja
 `runtimeInstanceId`-tunnisteet. Ne eivät ole käyttäjä-, yritys- tai
 autentikointitietoja eikä niitä viedä pitkäaikaiseen incident-indeksiin.
+HTTP-tapahtuman `operationId` voi olla vakaa looginen käyttötapaus ja `stage`
+sen allowlistattu käsittelyvaihe. Näkymä ei näytä sisäistä kutsupinoa,
+funktion argumentteja, request bodya, reitti- tai resurssitunnisteita eikä
+poikkeuksen raakaa viestiä.
 
 SMTP-transportin Diagnostics-projektio näyttää failure- ja success-
 tapahtumista vain allowlistatut SMTP-profiili-, TLS-versio-, cipher-,

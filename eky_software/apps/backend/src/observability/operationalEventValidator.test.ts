@@ -104,6 +104,37 @@ describe('backend operational event contracts', () => {
     });
   });
 
+  it('accepts a bounded HTTP operation and rejects sensitive operation values', () => {
+    expect(
+      createBackendOperationalEvent(
+        {
+          correlationId,
+          errorCode: 'INVOICE_DRAFT_REQUEST_INVALID',
+          eventName: 'http.invalidBody',
+          operationId: 'invoiceDraft.create',
+          stage: 'requestValidation',
+        },
+        options,
+      ),
+    ).toMatchObject({
+      operationId: 'invoiceDraft.create',
+      stage: 'requestValidation',
+    });
+
+    expect(() =>
+      createBackendOperationalEvent(
+        {
+          correlationId,
+          errorCode: 'INVOICE_DRAFT_REQUEST_INVALID',
+          eventName: 'http.invalidBody',
+          operationId: 'person@example.test',
+          stage: 'requestValidation',
+        },
+        options,
+      ),
+    ).toThrow(OperationalEventValidationError);
+  });
+
   it('validates technical identifiers without mistaking UUIDs for IBAN values', () => {
     expect(
       createBackendOperationalEvent(

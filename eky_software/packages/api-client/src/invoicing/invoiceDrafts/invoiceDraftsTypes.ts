@@ -153,7 +153,8 @@ export type InvoiceIssuanceReadinessIssue =
   | 'companyNameMissing'
   | 'companyVatNumberMissing'
   | 'customerAddressMissing'
-  | 'customerNameMissing';
+  | 'customerNameMissing'
+  | 'invoiceNumberingSettingsMissing';
 
 export interface InvoiceIssuanceReadiness {
   isReady: boolean;

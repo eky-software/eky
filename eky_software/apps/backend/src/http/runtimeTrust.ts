@@ -8,6 +8,7 @@ import {
   createLocalActorContext,
   type LocalRuntimeIdentity,
 } from '../infrastructure/identity/localRuntimeIdentity.js';
+import type { HttpRequestOperationalContext } from './httpRequestOperationalContext.js';
 
 export const localRuntimeSessionHeaderName = 'x-eky-local-session';
 
@@ -31,6 +32,7 @@ export interface BackendEnvironment {
   Variables: {
     actorContext: ActorContext;
     correlationId: string;
+    httpRequestOperationalContext?: HttpRequestOperationalContext;
   };
 }
 

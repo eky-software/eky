@@ -1065,6 +1065,8 @@ export const uiText = {
       companyVatNumberMissing: 'Täydennä oman yrityksen ALV-tunnus.',
       customerAddressMissing: 'Täydennä asiakkaan osoite asiakaskortille.',
       customerNameMissing: 'Täydennä asiakkaan nimi asiakaskortille.',
+      invoiceNumberingSettingsMissing:
+        'Tallenna laskunumeroinnin asetukset Oma yritys -näkymässä.',
     },
     invoiceIssuanceReadinessTitle: 'Laskun tiedot ovat puutteelliset',
     invoiceEmailPrepare: 'Valmistele sähköposti',
@@ -1202,6 +1204,8 @@ export const uiText = {
       'Laskutuksen oletusarvoja ei voitu ladata. Voit syöttää arvot käsin.',
     invoiceVatRatesLoadError:
       'ALV-kantoja ei voitu ladata. Nykyiset oletuskannat ovat käytettävissä.',
+    invoiceVatRatesDefaultNotice:
+      'Käytössä ovat oletusarvoiset ALV-kannat. Voit tallentaa oman ALV-kantalistan Oma yritys -näkymässä.',
     hourlyRateShortcutHelpPrefix: 'Pikavalinta',
     hourlyRateShortcutHelpSuffix:
       'täyttää valitun asiakkaan tuntihinnan kerran automaattisesti.',
@@ -1524,7 +1528,9 @@ export const uiText = {
     'Invoice payment settings body is too large.':
       'Maksuehtoasetusten pyyntö on liian suuri.',
     'Invoice numbering settings were not found.':
-      'Laskunumeroinnin asetuksia ei löytynyt.',
+      'Laskunumerointi puuttuu. Tallenna laskunumeroinnin asetukset Oma yritys -näkymässä ennen laskun hyväksymistä.',
+    'Active invoice numbering settings were not found.':
+      'Laskunumerointi puuttuu. Tallenna laskunumeroinnin asetukset Oma yritys -näkymässä ennen laskun hyväksymistä.',
     'Default late payment interest must be between 0 and 100000.':
       'Viivästyskoron pitää olla välillä 0-1000 %.',
     'Default late payment interest must be a safe integer.':

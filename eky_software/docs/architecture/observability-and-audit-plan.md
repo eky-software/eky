@@ -62,6 +62,10 @@ integraatioiden turvallisista onnistumis-, esto- ja virhetiloista.
 - Lokitus ei korvaa business auditia.
 - Kaikkia onnistuneita GET-pyyntöjä ei lokiteta.
 - Eventit ovat tyypitettyjä, rajattuja ja redaktoituja.
+- HTTP-virheen yhteydessä loki saa kertoa vakaan, allowlistatun loogisen
+  toiminnon, sen viimeisen turvallisesti tunnistetun vaiheen ja rajatun
+  virheluokan. Looginen toiminto kuvaa käyttötapausta, esimerkiksi
+  `invoiceDraft.create`; se ei ole vapaa funktionimi, reitti tai kutsupino.
 
 ### Security log
 
@@ -117,6 +121,12 @@ Operational- ja security-lokeissa kielletään:
 - IBAN, henkilötunnus ja tietokantayhteysmerkkijono
 - asiakkaan nimi, osoite, puhelin ja sähköposti
 - paikalliset käyttäjäpolut, ympäristömuuttujat ja raw stack
+
+HTTP:n `operationId`, `stage` ja `errorCode` valitaan suljetuista
+moduulikohtaisista sopimuksista. Niihin ei liitetä resurssi-ID:tä,
+funktion argumentteja, URL:ia, query-parametreja, request bodya tai
+poikkeuksen viestiä. Refaktoroinnissa muuttuva sisäinen funktionimi ei ole
+operational-sopimus; lokiin kirjataan vakaa käyttötapaus ja vaihe.
 
 Sallitut merkkijonot sanitoidaan kontrollimerkeistä. Koko, pituus, taulukon
 alkiomäärä ja sisäkkäisyys rajataan. Tuntematon kenttä tai eventName hylätään.

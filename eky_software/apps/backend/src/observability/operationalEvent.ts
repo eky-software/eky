@@ -28,9 +28,14 @@ export interface BackendOperationalEventPayloadMap {
   'migration.started': { stage?: string };
   'migration.completed': { durationMs?: number; stage?: string };
   'migration.failed': MigrationFailureFields;
-  'http.requestFailed': FailureFields;
+  'http.requestFailed': HttpFailureFields;
   'http.unknownRoute': { correlationId: string; stage?: string };
-  'http.invalidBody': { correlationId: string; stage?: string };
+  'http.invalidBody': {
+    correlationId: string;
+    errorCode: string;
+    operationId?: string;
+    stage: string;
+  };
   'permission.denied': {
     actorUserId?: string;
     companyId?: string;
@@ -90,6 +95,10 @@ interface FailureFields {
   retryable?: boolean;
   sideEffectState?: OperationalSideEffectState;
   stage?: string;
+}
+
+interface HttpFailureFields extends FailureFields {
+  operationId?: string;
 }
 
 interface MigrationFailureFields {
@@ -189,6 +198,7 @@ const failureFields = [
   'sideEffectState',
   'stage',
 ] as const;
+const httpFailureFields = [...failureFields, 'operationId'] as const;
 const migrationFailureFields = [
   'completedMigrationCount',
   'durationMs',
@@ -265,13 +275,15 @@ export const backendOperationalEventSpecs = Object.freeze({
     'failure',
     migrationFailureFields,
   ),
-  'http.requestFailed': spec('http', 'error', 'failure', failureFields),
+  'http.requestFailed': spec('http', 'error', 'failure', httpFailureFields),
   'http.unknownRoute': spec('http', 'warn', 'blocked', [
     'correlationId',
     'stage',
   ]),
   'http.invalidBody': spec('http', 'warn', 'blocked', [
     'correlationId',
+    'errorCode',
+    'operationId',
     'stage',
   ]),
   'permission.denied': spec('authorization', 'warn', 'blocked', [
@@ -453,7 +465,7 @@ export const backendRequiredPayloadFields = Object.freeze({
   ],
   'http.requestFailed': ['errorCode'],
   'http.unknownRoute': ['correlationId'],
-  'http.invalidBody': ['correlationId'],
+  'http.invalidBody': ['correlationId', 'errorCode', 'stage'],
   'permission.denied': ['correlationId'],
   'tenant.boundaryBlocked': ['correlationId'],
   'runtimeSession.missing': ['correlationId'],
