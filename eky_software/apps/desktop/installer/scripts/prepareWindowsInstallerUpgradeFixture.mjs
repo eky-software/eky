@@ -1,8 +1,11 @@
+import { execFile } from 'node:child_process';
 import { link, lstat, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { promisify } from 'node:util';
 
 import { createInstallerProductCode } from '../installerIdentity.mjs';
+import { readInstallerManifest } from '../installerManifest.mjs';
 import { readInstallerReleaseGitState } from '../installerReleaseContext.mjs';
 import {
   parseNumericAppVersion,
@@ -24,6 +27,8 @@ const currentDesktopPackagePath = join(desktopDirectory, 'package.json');
 const payloadRoot = join(desktopDirectory, 'out', 'Eky-win32-x64');
 const fixtureRoot = join(installerDirectory, 'artifacts', 'upgrade-fixture');
 const releaseArtifactsRoot = join(installerDirectory, 'artifacts');
+const execFileAsync = promisify(execFile);
+const fullRevisionPattern = /^[0-9a-f]{40}$/;
 
 export function createUpgradeFixtureAppVersion(currentVersion) {
   try {
@@ -43,6 +48,50 @@ export function createUpgradeFixtureMsiVersion(currentVersion) {
   }
   parts[2] += 1;
   return parts.join('.');
+}
+
+export function validateUpgradeFixtureReleaseRevision({
+  artifactRevision,
+  currentRevision,
+  isAncestor,
+}) {
+  if (
+    !fullRevisionPattern.test(artifactRevision) ||
+    !fullRevisionPattern.test(currentRevision) ||
+    isAncestor !== true
+  ) {
+    throw new Error('INSTALLER_UPGRADE_FIXTURE_RELEASE_REVISION_INVALID');
+  }
+  return artifactRevision;
+}
+
+async function readUpgradeFixtureReleaseRevision({
+  currentRevision,
+  manifestPath,
+}) {
+  const manifest = await readInstallerManifest(manifestPath);
+  let isAncestor = false;
+  try {
+    await execFileAsync(
+      'git',
+      ['merge-base', '--is-ancestor', manifest.buildRevision, currentRevision],
+      {
+        cwd: repositoryRoot,
+        encoding: 'utf8',
+        windowsHide: true,
+      },
+    );
+    isAncestor = true;
+  } catch (error) {
+    if (error?.code !== 1) {
+      throw new Error('INSTALLER_UPGRADE_FIXTURE_RELEASE_REVISION_CHECK_FAILED');
+    }
+  }
+  return validateUpgradeFixtureReleaseRevision({
+    artifactRevision: manifest.buildRevision,
+    currentRevision,
+    isAncestor,
+  });
 }
 
 export async function prepareWindowsInstallerUpgradeFixture() {
@@ -81,9 +130,13 @@ export async function prepareWindowsInstallerUpgradeFixture() {
     `Eky-${currentRelease.appVersion}-x64.msi`,
   );
   const currentManifestPath = createInstallerSidecarPath(currentMsiPath);
-  const buildRevision = await readInstallerReleaseGitState({ repositoryRoot });
+  const currentRevision = await readInstallerReleaseGitState({ repositoryRoot });
+  const releaseBuildRevision = await readUpgradeFixtureReleaseRevision({
+    currentRevision,
+    manifestPath: currentManifestPath,
+  });
   const currentReleaseArtifact = await verifyWindowsInstallerRelease({
-    buildRevision,
+    buildRevision: releaseBuildRevision,
     installerPath: currentMsiPath,
     manifestPath: currentManifestPath,
     release: currentRelease,

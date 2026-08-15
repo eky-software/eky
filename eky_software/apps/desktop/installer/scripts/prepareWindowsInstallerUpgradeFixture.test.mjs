@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   createUpgradeFixtureAppVersion,
   createUpgradeFixtureMsiVersion,
+  validateUpgradeFixtureReleaseRevision,
 } from './prepareWindowsInstallerUpgradeFixture.mjs';
 
 test('creates the next numeric patch version for the synthetic upgrade', () => {
@@ -27,5 +28,35 @@ test('increments only the MSI build version for the synthetic upgrade', () => {
   assert.throws(
     () => createUpgradeFixtureMsiVersion('255.255.65535'),
     /INSTALLER_UPGRADE_FIXTURE_MSI_VERSION_EXHAUSTED/,
+  );
+});
+
+test('accepts only a frozen release revision in the clean harness ancestry', () => {
+  const releaseRevision = 'a'.repeat(40);
+  const harnessRevision = 'b'.repeat(40);
+
+  assert.equal(
+    validateUpgradeFixtureReleaseRevision({
+      artifactRevision: releaseRevision,
+      currentRevision: harnessRevision,
+      isAncestor: true,
+    }),
+    releaseRevision,
+  );
+  assert.throws(
+    () => validateUpgradeFixtureReleaseRevision({
+      artifactRevision: releaseRevision,
+      currentRevision: harnessRevision,
+      isAncestor: false,
+    }),
+    /INSTALLER_UPGRADE_FIXTURE_RELEASE_REVISION_INVALID/,
+  );
+  assert.throws(
+    () => validateUpgradeFixtureReleaseRevision({
+      artifactRevision: 'not-a-revision',
+      currentRevision: harnessRevision,
+      isAncestor: true,
+    }),
+    /INSTALLER_UPGRADE_FIXTURE_RELEASE_REVISION_INVALID/,
   );
 });
