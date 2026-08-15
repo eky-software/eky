@@ -96,13 +96,16 @@ describe('operational HTTP logging', () => {
       throw error;
     });
 
-    const response = await app
-      .request('/throws?customer=private-customer', {
+    let response: Response;
+    try {
+      response = await app.request('/throws?customer=private-customer', {
         body: JSON.stringify({ subject: 'private invoice subject' }),
         headers: { 'Content-Type': 'application/json' },
         method: 'POST',
-      })
-      .finally(() => consoleError.mockRestore());
+      });
+    } finally {
+      consoleError.mockRestore();
+    }
 
     expect(response.status).toBe(500);
     expect(write).toHaveBeenCalledWith(
