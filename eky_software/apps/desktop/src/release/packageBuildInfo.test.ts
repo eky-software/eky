@@ -9,12 +9,18 @@ import {
 } from './packageBuildInfo.js';
 
 describe('package build identity', () => {
-  it('reads the only product version from the desktop package metadata', async () => {
-    const packageMetadata = JSON.parse(
-      await readFile(resolve(process.cwd(), 'package.json'), 'utf8'),
-    ) as unknown;
+  it('reads a numeric product version from static package metadata', () => {
+    expect(readDesktopPackageVersion({ version: '9.8.7' })).toBe('9.8.7');
 
-    expect(readDesktopPackageVersion(packageMetadata)).toBe('0.2.1');
+    for (const packageMetadata of [
+      {},
+      { version: 987 },
+      { version: '9.8.7-alpha.1' },
+    ]) {
+      expect(() => readDesktopPackageVersion(packageMetadata)).toThrow(
+        'DESKTOP_PACKAGE_VERSION_INVALID',
+      );
+    }
   });
 
   it('uses an allowlisted environment revision and reports a dirty tree', async () => {

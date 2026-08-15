@@ -1,6 +1,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'windowsInstallerTestSupport.ps1')
+. (Join-Path $PSScriptRoot 'windowsInstallerUpgradeAttempt.ps1')
 
 $installerDirectory = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $fixtureRoot = Join-Path $installerDirectory 'artifacts\upgrade-fixture'
@@ -19,6 +20,9 @@ $completed = $false
 $currentProductCode = $null
 $nextProductCode = $null
 $runningEkyProcess = $null
+$runningUpgradeProcess = $null
+$runningUpgradeObservationMilliseconds = 5000
+$runningUpgradeExitTimeoutMilliseconds = 120000
 
 function Normalize-ProductCode {
   param([Parameter(Mandatory = $true)][string]$Code)
@@ -46,23 +50,6 @@ function Resolve-FixtureMsi {
     throw 'INSTALLER_UPGRADE_FIXTURE_MSI_PATH_INVALID'
   }
   return $resolvedPath
-}
-
-function Invoke-EkyUpgradeAttempt {
-  param(
-    [Parameter(Mandatory = $true)][string]$MsiPath,
-    [Parameter(Mandatory = $true)][string]$LogName
-  )
-
-  $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList @(
-    '/i',
-    "`"$MsiPath`"",
-    '/qn',
-    '/norestart',
-    '/l*v',
-    "`"$(Join-Path $logRoot $LogName)`""
-  ) -NoNewWindow -Wait -PassThru
-  return $process.ExitCode
 }
 
 function Invoke-EkyCoordinatedRollback {
@@ -148,14 +135,34 @@ function Stop-EkyProcessTree {
     return
   }
   $rootProcess = Get-Process -Id $Process.Id -ErrorAction SilentlyContinue
-  if ($null -ne $rootProcess) {
-    & taskkill.exe /PID $Process.Id /T /F | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-      throw 'INSTALLER_UPGRADE_PROCESS_TREE_STOP_FAILED'
+  if ($null -eq $rootProcess) {
+    return
+  }
+  $processes = @(Get-CimInstance Win32_Process -ErrorAction Stop)
+  $ownedProcessIds = @([int]$Process.Id)
+  do {
+    $previousCount = $ownedProcessIds.Count
+    foreach ($candidate in $processes) {
+      if (
+        $ownedProcessIds -contains [int]$candidate.ParentProcessId -and
+        $ownedProcessIds -notcontains [int]$candidate.ProcessId
+      ) {
+        $ownedProcessIds += [int]$candidate.ProcessId
+      }
     }
+  } while ($ownedProcessIds.Count -ne $previousCount)
+  & taskkill.exe /PID $Process.Id /T /F | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    throw 'INSTALLER_UPGRADE_PROCESS_TREE_STOP_FAILED'
   }
   $deadline = [DateTime]::UtcNow.AddSeconds(10)
-  while (@(Get-Process -Name 'Eky' -ErrorAction SilentlyContinue).Count -ne 0) {
+  while (
+    @(
+      $ownedProcessIds | Where-Object {
+        $null -ne (Get-Process -Id $_ -ErrorAction SilentlyContinue)
+      }
+    ).Count -ne 0
+  ) {
     if ([DateTime]::UtcNow -ge $deadline) {
       throw 'INSTALLER_UPGRADE_PROCESS_TREE_REMAINS'
     }
@@ -215,6 +222,22 @@ function Uninstall-EkyProduct {
 function Assert-BusinessDataUnchanged {
   Assert-EkyInventoryEqual (Get-EkyDirectoryInventory -Root $businessDataRoot) `
     $businessDataInventoryBefore 'INSTALLER_UPGRADE_BUSINESS_DATA_CHANGED'
+}
+
+function Assert-EkyCurrentInstallationExact {
+  Assert-ProductInstalled -ProductCode $currentProductCode
+  Assert-ProductAbsent -ProductCode $nextProductCode
+  Assert-EkyInstalledPayload -InstallRoot $installRoot `
+    -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
+  Assert-EkyInstallerRegistrationPresent -ProductCode $currentProductCode
+}
+
+function Assert-EkyCandidateInstallationExact {
+  Assert-ProductAbsent -ProductCode $currentProductCode
+  Assert-ProductInstalled -ProductCode $nextProductCode
+  Assert-EkyInstalledPayload -InstallRoot $installRoot `
+    -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
+  Assert-EkyInstallerRegistrationPresent -ProductCode $nextProductCode
 }
 
 try {
@@ -299,39 +322,127 @@ try {
     -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
   Assert-EkyInstallerRegistrationPresent -ProductCode $currentProductCode
 
-  $runningEkyProcess = Start-EkyForUpgrade
-  $runningUpgradeExitCode = Invoke-EkyUpgradeAttempt -MsiPath $nextMsiPath `
-    -LogName 'upgrade-next-running.log'
-  if ($runningUpgradeExitCode -eq 0) {
-    $runningUpgradeResult = 'succeeded'
-    Assert-ProductAbsent -ProductCode $currentProductCode
-    Assert-ProductInstalled -ProductCode $nextProductCode
-    Assert-EkyInstalledPayload -InstallRoot $installRoot `
-      -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
-    Assert-EkyInstallerRegistrationPresent -ProductCode $nextProductCode
+  $stageTimer = [System.Diagnostics.Stopwatch]::StartNew()
+  Write-EkyUpgradeProgress -Stage runningApplicationStarted -Status started `
+    -DurationMs 0 -ResultCode started
+  try {
+    $runningEkyProcess = Start-EkyForUpgrade
+    Write-EkyUpgradeProgress -Stage runningApplicationStarted -Status completed `
+      -DurationMs $stageTimer.ElapsedMilliseconds -ResultCode completed
   }
-  elseif ($runningUpgradeExitCode -in @(1641, 3010)) {
-    throw 'INSTALLER_UPGRADE_RESTART_REQUIRED_FORBIDDEN'
+  catch {
+    Write-EkyUpgradeProgress -Stage runningApplicationStarted -Status failed `
+      -DurationMs $stageTimer.ElapsedMilliseconds -ResultCode failedSafe
+    throw
+  }
+  finally {
+    $stageTimer.Stop()
+  }
+
+  $stageTimer = [System.Diagnostics.Stopwatch]::StartNew()
+  Write-EkyUpgradeProgress -Stage runningUpgradeStarted -Status started `
+    -DurationMs 0 -ResultCode started
+  try {
+    $runningUpgradeProcess = Start-EkyUpgradeAttempt -MsiPath $nextMsiPath `
+      -LogPath (Join-Path $logRoot 'upgrade-next-running.log')
+    Write-EkyUpgradeProgress -Stage runningUpgradeStarted -Status completed `
+      -DurationMs $stageTimer.ElapsedMilliseconds -ResultCode completed
+  }
+  catch {
+    Write-EkyUpgradeProgress -Stage runningUpgradeStarted -Status failed `
+      -DurationMs $stageTimer.ElapsedMilliseconds -ResultCode failedSafe
+    throw
+  }
+  finally {
+    $stageTimer.Stop()
+  }
+
+  $runningUpgradeObservation = Wait-EkyUpgradeAttempt `
+    -Process $runningUpgradeProcess `
+    -TimeoutMilliseconds $runningUpgradeObservationMilliseconds
+  $runningUpgradeOutcome = Get-EkyUpgradeAttemptOutcome `
+    -State $runningUpgradeObservation.state `
+    -ExitCode $runningUpgradeObservation.exitCode
+
+  if ($runningUpgradeOutcome -eq 'waitingForApplicationExit') {
+    Write-EkyUpgradeProgress `
+      -Stage runningUpgradeWaitingForApplicationExit -Status completed `
+      -DurationMs $runningUpgradeObservation.durationMs `
+      -ResultCode waitingForApplicationExit
+    Assert-EkyCurrentInstallationExact
+    Assert-BusinessDataUnchanged
+    $runningUpgradeResult = 'waitingForApplicationExit'
   }
   else {
-    $runningUpgradeResult = 'blocked-cleanly'
-    Assert-ProductInstalled -ProductCode $currentProductCode
-    Assert-ProductAbsent -ProductCode $nextProductCode
-    Assert-EkyInstalledPayload -InstallRoot $installRoot `
-      -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
-    Assert-EkyInstallerRegistrationPresent -ProductCode $currentProductCode
+    Write-EkyUpgradeProgress -Stage runningUpgradeCompletedWhileRunning `
+      -Status completed -DurationMs $runningUpgradeObservation.durationMs `
+      -ResultCode $runningUpgradeOutcome
+    if ($runningUpgradeOutcome -eq 'succeeded') {
+      $runningUpgradeResult = 'succeeded'
+      Assert-EkyCandidateInstallationExact
+    }
+    elseif ($runningUpgradeOutcome -eq 'blockedCandidate') {
+      Assert-EkyCurrentInstallationExact
+      Assert-BusinessDataUnchanged
+      $runningUpgradeResult = 'blockedCleanly'
+    }
+    else {
+      throw 'INSTALLER_UPGRADE_OUTCOME_INVALID'
+    }
   }
-  Stop-EkyProcessTree -Process $runningEkyProcess
-  $runningEkyProcess = $null
-  if ($runningUpgradeResult -eq 'blocked-cleanly') {
+
+  $stageTimer = [System.Diagnostics.Stopwatch]::StartNew()
+  Write-EkyUpgradeProgress -Stage testApplicationShutdownStarted `
+    -Status started -DurationMs 0 -ResultCode started
+  try {
+    Stop-EkyProcessTree -Process $runningEkyProcess
+    $runningEkyProcess = $null
+    Write-EkyUpgradeProgress -Stage testApplicationShutdownCompleted `
+      -Status completed -DurationMs $stageTimer.ElapsedMilliseconds `
+      -ResultCode completed
+  }
+  catch {
+    Write-EkyUpgradeProgress -Stage testApplicationShutdownCompleted `
+      -Status failed -DurationMs $stageTimer.ElapsedMilliseconds `
+      -ResultCode failedSafe
+    throw
+  }
+  finally {
+    $stageTimer.Stop()
+  }
+
+  if ($runningUpgradeResult -eq 'waitingForApplicationExit') {
+    Write-EkyUpgradeProgress -Stage runningUpgradeExitWaitStarted `
+      -Status started -DurationMs 0 -ResultCode started
+    $runningUpgradeExit = Wait-EkyUpgradeAttempt -Process $runningUpgradeProcess `
+      -TimeoutMilliseconds $runningUpgradeExitTimeoutMilliseconds
+    if ($runningUpgradeExit.state -ne 'exited') {
+      Write-EkyUpgradeProgress -Stage runningUpgradeExitWaitCompleted `
+        -Status failed -DurationMs $runningUpgradeExit.durationMs `
+        -ResultCode failedSafe
+      throw 'INSTALLER_UPGRADE_MSI_EXIT_TIMEOUT'
+    }
+    $runningUpgradeOutcome = Get-EkyUpgradeAttemptOutcome `
+      -State $runningUpgradeExit.state -ExitCode $runningUpgradeExit.exitCode
+    if ($runningUpgradeOutcome -ne 'succeeded') {
+      Write-EkyUpgradeProgress -Stage runningUpgradeExitWaitCompleted `
+        -Status failed -DurationMs $runningUpgradeExit.durationMs `
+        -ResultCode failedSafe
+      throw 'INSTALLER_UPGRADE_AFTER_APPLICATION_EXIT_FAILED'
+    }
+    Write-EkyUpgradeProgress -Stage runningUpgradeExitWaitCompleted `
+      -Status completed -DurationMs $runningUpgradeExit.durationMs `
+      -ResultCode succeeded
+  }
+  elseif ($runningUpgradeResult -eq 'blockedCleanly') {
     Install-EkyMsi -MsiPath $nextMsiPath -LogName 'upgrade-next-after-stop.log'
   }
-  Assert-ProductAbsent -ProductCode $currentProductCode
-  Assert-ProductInstalled -ProductCode $nextProductCode
-  Assert-EkyInstalledPayload -InstallRoot $installRoot `
-    -PayloadInventory $payloadInventory -ShortcutPath $shortcutPath
-  Assert-EkyInstallerRegistrationPresent -ProductCode $nextProductCode
+  $runningUpgradeProcess = $null
+
+  Assert-EkyCandidateInstallationExact
   Assert-BusinessDataUnchanged
+  Write-EkyUpgradeProgress -Stage runningUpgradeOutcomeVerified `
+    -Status completed -DurationMs 0 -ResultCode succeeded
 
   Invoke-EkyMsiExecExpectedFailure -Operation 'downgrade' -Arguments @(
     '/i',
@@ -449,6 +560,14 @@ try {
   } | ConvertTo-Json -Compress
 }
 finally {
+  if ($null -ne $runningUpgradeProcess) {
+    try {
+      Stop-EkyUpgradeAttempt -Process $runningUpgradeProcess
+    }
+    catch {
+      Write-Warning 'Installer upgrade MSI cleanup failed.'
+    }
+  }
   if ($null -ne $runningEkyProcess) {
     try {
       Stop-EkyProcessTree -Process $runningEkyProcess

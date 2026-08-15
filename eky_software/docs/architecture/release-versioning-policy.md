@@ -117,6 +117,13 @@ MSI-artifactia. Samaa `appVersion`-arvoa ei käytetä eri payloadille:
   MSI-tuoteversion
 - downgrade estetään oletuksena molempien versiosopimusten tasolla.
 
+Release candidate -portti todistaa Gitin first-parent-historiasta, että
+nykyinen numeerinen `appVersion` on otettu käyttöön vasta tarkistettavassa
+HEAD-commitissa. Jos sama versio löytyy myös HEADin vanhemmasta
+first-parent-commitista, artifactin rakentaminen pysähtyy. Näin versionoston
+jälkeen tehty payloadia tai build-revisiota muuttava commit vaatii uuden
+versionoston ennen uuden jaeltavan desktop- tai MSI-artifactin rakentamista.
+
 Release-manifesti sisältää molemmat arvot. Desktopin build-info ja käyttäjälle
 näkyvä versio käyttävät `appVersion`-arvoa; MSI:n `ProductVersion` käyttää vain
 `msiProductVersion`-arvoa. Kumpikaan ei yksin todista paketin alkuperää tai

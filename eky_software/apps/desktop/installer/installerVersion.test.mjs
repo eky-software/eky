@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, test } from 'node:test';
 
 import {
@@ -14,6 +15,7 @@ import {
 } from './installerVersion.mjs';
 
 const temporaryDirectories = [];
+const installerDirectory = dirname(fileURLToPath(import.meta.url));
 const validConfig = Object.freeze({
   appIdentity: 'Eky',
   appVersion: '0.2.1',
@@ -101,5 +103,14 @@ test('reads release identity from closed JSON files', async () => {
   await assert.rejects(
     readInstallerReleaseConfig(configPath, packagePath),
     /INSTALLER_RELEASE_CONFIG_INVALID/,
+  );
+});
+
+test('keeps repository desktop and installer release versions aligned', async () => {
+  await assert.doesNotReject(
+    readInstallerReleaseConfig(
+      join(installerDirectory, 'installer-release.json'),
+      join(installerDirectory, '..', 'package.json'),
+    ),
   );
 });

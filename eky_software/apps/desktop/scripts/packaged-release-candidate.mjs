@@ -10,6 +10,35 @@ const execFileAsync = promisify(execFile);
 const numericVersionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const revisionPattern = /^[0-9a-f]{7,40}$/;
 
+export function assertReleaseVersionIntroducedAtCurrentHead(
+  currentVersion,
+  currentBuildRevision,
+  history,
+) {
+  parseNumericVersion(currentVersion);
+  if (
+    typeof currentBuildRevision !== 'string' ||
+    !revisionPattern.test(currentBuildRevision) ||
+    !Array.isArray(history) ||
+    history.length === 0 ||
+    history.some((entry) => !isReleaseHistoryEntry(entry))
+  ) {
+    throw new Error('RELEASE_CANDIDATE_HISTORY_INVALID');
+  }
+
+  const [currentEntry, ...parentEntries] = history;
+  if (
+    currentEntry.appVersion !== currentVersion ||
+    currentEntry.buildRevision !== currentBuildRevision
+  ) {
+    throw new Error('RELEASE_CANDIDATE_HISTORY_INVALID');
+  }
+
+  if (parentEntries.some((entry) => entry.appVersion === currentVersion)) {
+    throw new Error('RELEASE_CANDIDATE_VERSION_REUSED');
+  }
+}
+
 export function selectPreviousReleaseIdentity(currentVersion, history) {
   const parsedCurrent = parseNumericVersion(currentVersion);
 
@@ -134,6 +163,11 @@ export async function preparePackagedReleaseCandidateSmoke(input) {
     packagePath,
     currentVersion,
     (args) => readGit(repositoryRoot, args),
+  );
+  assertReleaseVersionIntroducedAtCurrentHead(
+    currentVersion,
+    buildRevision,
+    history,
   );
 
   const previousRelease = selectPreviousReleaseIdentity(
