@@ -2,10 +2,118 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  assertReleaseVersionIntroducedAtCurrentHead,
   createPriorAcceptedBuildMetadata,
   readFirstParentReleaseHistory,
   selectPreviousReleaseIdentity,
 } from './packaged-release-candidate.mjs';
+
+test('requires the candidate version to be introduced at current HEAD', () => {
+  assert.doesNotThrow(() =>
+    assertReleaseVersionIntroducedAtCurrentHead(
+      '0.2.3',
+      'aaaaaaaaaaaa',
+      [
+        { appVersion: '0.2.3', buildRevision: 'aaaaaaaaaaaa' },
+        { appVersion: '0.2.2', buildRevision: 'bbbbbbbbbbbb' },
+      ],
+    ),
+  );
+});
+
+test('rejects every earlier use of the candidate version', () => {
+  for (const history of [
+    [
+      { appVersion: '0.2.3', buildRevision: 'aaaaaaaaaaaa' },
+      { appVersion: '0.2.3', buildRevision: 'bbbbbbbbbbbb' },
+      { appVersion: '0.2.2', buildRevision: 'cccccccccccc' },
+    ],
+    [
+      { appVersion: '0.2.3', buildRevision: 'aaaaaaaaaaaa' },
+      { appVersion: '0.2.3', buildRevision: 'bbbbbbbbbbbb' },
+      { appVersion: '0.2.3', buildRevision: 'cccccccccccc' },
+      { appVersion: '0.2.2', buildRevision: 'dddddddddddd' },
+    ],
+  ]) {
+    assert.throws(
+      () =>
+        assertReleaseVersionIntroducedAtCurrentHead(
+          '0.2.3',
+          'aaaaaaaaaaaa',
+          history,
+        ),
+      /VERSION_REUSED/u,
+    );
+  }
+});
+
+test('rejects a history that does not start from the current build', () => {
+  for (const history of [
+    [],
+    [{ appVersion: '0.2.2', buildRevision: 'aaaaaaaaaaaa' }],
+    [{ appVersion: '0.2.3', buildRevision: 'bbbbbbbbbbbb' }],
+  ]) {
+    assert.throws(
+      () =>
+        assertReleaseVersionIntroducedAtCurrentHead(
+          '0.2.3',
+          'aaaaaaaaaaaa',
+          history,
+        ),
+      /HISTORY_INVALID/u,
+    );
+  }
+});
+
+test('rejects malformed candidate and history identities', () => {
+  const validHistory = [
+    { appVersion: '0.2.3', buildRevision: 'aaaaaaaaaaaa' },
+    { appVersion: '0.2.2', buildRevision: 'bbbbbbbbbbbb' },
+  ];
+
+  assert.throws(
+    () =>
+      assertReleaseVersionIntroducedAtCurrentHead(
+        '0.2.3-alpha.1',
+        'aaaaaaaaaaaa',
+        validHistory,
+      ),
+    /VERSION_INVALID/u,
+  );
+  assert.throws(
+    () =>
+      assertReleaseVersionIntroducedAtCurrentHead(
+        '0.2.3',
+        'not-a-revision',
+        validHistory,
+      ),
+    /HISTORY_INVALID/u,
+  );
+  assert.throws(
+    () =>
+      assertReleaseVersionIntroducedAtCurrentHead(
+        '0.2.3',
+        'aaaaaaaaaaaa',
+        [
+          { appVersion: '0.2.3', buildRevision: 'aaaaaaaaaaaa' },
+          { appVersion: '0.2.2-alpha.1', buildRevision: 'bbbbbbbbbbbb' },
+        ],
+      ),
+    /HISTORY_INVALID/u,
+  );
+  assert.throws(
+    () =>
+      assertReleaseVersionIntroducedAtCurrentHead(
+        '0.2.3',
+        'aaaaaaaaaaaa',
+        [
+          { appVersion: '0.2.3', buildRevision: 'aaaaaaaaaaaa' },
+          { appVersion: '0.2.2', buildRevision: 'not-a-revision' },
+        ],
+      ),
+    /HISTORY_INVALID/u,
+  );
+});
 
 test('selects the first lower numeric release behind the candidate', () => {
   assert.deepEqual(
@@ -16,6 +124,25 @@ test('selects the first lower numeric release behind the candidate', () => {
     ]),
     { appVersion: '0.1.0', buildRevision: 'cccccccccccc' },
   );
+});
+
+test('keeps the numeric 0.2.1 to 0.1.0 release transition valid', () => {
+  const history = [
+    { appVersion: '0.2.1', buildRevision: 'aaaaaaaaaaaa' },
+    { appVersion: '0.1.0', buildRevision: 'bbbbbbbbbbbb' },
+  ];
+
+  assert.doesNotThrow(() =>
+    assertReleaseVersionIntroducedAtCurrentHead(
+      '0.2.1',
+      'aaaaaaaaaaaa',
+      history,
+    ),
+  );
+  assert.deepEqual(selectPreviousReleaseIdentity('0.2.1', history), {
+    appVersion: '0.1.0',
+    buildRevision: 'bbbbbbbbbbbb',
+  });
 });
 
 test('rejects same-version, prerelease and newer release histories', () => {
