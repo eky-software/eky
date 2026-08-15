@@ -25,6 +25,14 @@ export function createOperationalLoggingMiddleware(options: {
     try {
       await next();
     } catch {
+      const requestContext = context.get('httpRequestOperationalContext');
+      const operationFields =
+        requestContext === undefined
+          ? { stage: 'handler' }
+          : {
+              operationId: requestContext.operationId,
+              stage: requestContext.stage,
+            };
       context.header(correlationIdHeaderName, correlationId);
       options.operationalLogger.write(
         createBackendOperationalEvent(
@@ -32,8 +40,8 @@ export function createOperationalLoggingMiddleware(options: {
             correlationId,
             errorCode: 'HTTP_HANDLER_FAILED',
             eventName: 'http.requestFailed',
+            ...operationFields,
             sideEffectState: 'unknown',
-            stage: 'handler',
           },
           options.operationalIdentity,
         ),
@@ -46,14 +54,22 @@ export function createOperationalLoggingMiddleware(options: {
     }
 
     if (context.res.status >= 500) {
+      const requestContext = context.get('httpRequestOperationalContext');
+      const operationFields =
+        requestContext === undefined
+          ? { stage: 'response' }
+          : {
+              operationId: requestContext.operationId,
+              stage: requestContext.stage,
+            };
       options.operationalLogger.write(
         createBackendOperationalEvent(
           {
             correlationId,
             errorCode: 'HTTP_REQUEST_FAILED',
             eventName: 'http.requestFailed',
+            ...operationFields,
             sideEffectState: 'unknown',
-            stage: 'response',
           },
           options.operationalIdentity,
         ),
@@ -75,13 +91,25 @@ export function createOperationalLoggingMiddleware(options: {
       return;
     }
 
-    if (context.res.status === 400) {
+    if (
+      context.res.status === 400 ||
+      context.res.status === 413 ||
+      context.res.status === 415
+    ) {
+      const requestContext = context.get('httpRequestOperationalContext');
       options.operationalLogger.write(
         createBackendOperationalEvent(
           {
             correlationId,
+            errorCode:
+              requestContext?.errorCode ?? 'HTTP_REQUEST_INVALID',
             eventName: 'http.invalidBody',
-            stage: 'response',
+            ...(requestContext === undefined
+              ? { stage: 'response' }
+              : {
+                  operationId: requestContext.operationId,
+                  stage: requestContext.stage,
+                }),
           },
           options.operationalIdentity,
         ),

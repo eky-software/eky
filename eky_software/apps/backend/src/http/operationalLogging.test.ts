@@ -3,6 +3,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { BackendOperationalEvent } from '../observability/operationalEvent.js';
 import {
+  setHttpRequestFailure,
+  setHttpRequestOperation,
+  setJsonRequestBodyFailure,
+} from './httpRequestOperationalContext.js';
+import {
   correlationIdHeaderName,
   createOperationalLoggingMiddleware,
   resolveCorrelationId,
@@ -63,8 +68,11 @@ describe('operational HTTP logging', () => {
     expect(JSON.stringify(events)).not.toContain('private');
   });
 
-  it('does not expose a thrown error to the operational event', async () => {
+  it('does not expose a thrown error, path, stack or request data to the operational event', async () => {
     const write = vi.fn();
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
     const app = new Hono<BackendEnvironment>();
     app.use(
       '*',
@@ -73,21 +81,153 @@ describe('operational HTTP logging', () => {
         operationalLogger: { write },
       }),
     );
-    app.get('/throws', () => {
-      throw new Error('synthetic private failure');
+    app.post('/throws', async (context) => {
+      setHttpRequestOperation(
+        context,
+        'invoiceDraft.create',
+        'requestValidation',
+      );
+      await context.req.text();
+      const error = new Error(
+        'person@example.test C:\\Users\\Private\\invoice.json',
+      );
+      error.stack =
+        'PRIVATE_STACK at C:\\Users\\Private\\invoice.json:1:1';
+      throw error;
     });
 
-    const response = await app.request('/throws');
+    const response = await app
+      .request('/throws?customer=private-customer', {
+        body: JSON.stringify({ subject: 'private invoice subject' }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      })
+      .finally(() => consoleError.mockRestore());
 
     expect(response.status).toBe(500);
     expect(write).toHaveBeenCalledWith(
       expect.objectContaining({
         errorCode: 'HTTP_REQUEST_FAILED',
         eventName: 'http.requestFailed',
+        operationId: 'invoiceDraft.create',
+        stage: 'requestValidation',
       }),
     );
-    expect(JSON.stringify(write.mock.calls)).not.toContain(
-      'synthetic private failure',
+    const serializedEvents = JSON.stringify(write.mock.calls);
+    expect(serializedEvents).not.toContain('person@example.test');
+    expect(serializedEvents).not.toContain('C:\\\\Users');
+    expect(serializedEvents).not.toContain('PRIVATE_STACK');
+    expect(serializedEvents).not.toContain('private-customer');
+    expect(serializedEvents).not.toContain('private invoice subject');
+  });
+
+  it('records a safe logical operation, stage and error class for a rejected request', async () => {
+    const events: BackendOperationalEvent[] = [];
+    const app = createTestApp(events);
+    app.post('/invoice-drafts', (context) => {
+      setHttpRequestOperation(
+        context,
+        'invoiceDraft.create',
+        'bodyParsing',
+      );
+      setHttpRequestFailure(
+        context,
+        'INVOICE_DRAFT_REQUEST_INVALID',
+        'requestValidation',
+      );
+      return context.json({ error: 'Safe error.' }, 400);
+    });
+
+    const response = await app.request(
+      '/invoice-drafts?customer=private-customer',
+      {
+        body: JSON.stringify({ subject: 'private invoice subject' }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(events).toEqual([
+      expect.objectContaining({
+        errorCode: 'INVOICE_DRAFT_REQUEST_INVALID',
+        eventName: 'http.invalidBody',
+        operationId: 'invoiceDraft.create',
+        stage: 'requestValidation',
+      }),
+    ]);
+    expect(JSON.stringify(events)).not.toContain('private-customer');
+    expect(JSON.stringify(events)).not.toContain('private invoice subject');
+  });
+
+  it('classifies unsupported JSON media types without logging the media type', async () => {
+    const events: BackendOperationalEvent[] = [];
+    const app = createTestApp(events);
+    app.post('/invoice-drafts', (context) => {
+      setHttpRequestOperation(
+        context,
+        'invoiceDraft.create',
+        'bodyParsing',
+      );
+      setJsonRequestBodyFailure(context, 'unsupportedMediaType');
+      return context.json({ error: 'Safe error.' }, 415);
+    });
+
+    const response = await app.request('/invoice-drafts', {
+      body: '{}',
+      headers: { 'Content-Type': 'text/private-customer-data' },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(415);
+    expect(events).toEqual([
+      expect.objectContaining({
+        errorCode: 'HTTP_MEDIA_TYPE_UNSUPPORTED',
+        eventName: 'http.invalidBody',
+        operationId: 'invoiceDraft.create',
+        stage: 'bodyParsing',
+      }),
+    ]);
+    expect(JSON.stringify(events)).not.toContain(
+      'text/private-customer-data',
     );
   });
+
+  it('keeps a generic safe fallback for routes without an operation context', async () => {
+    const events: BackendOperationalEvent[] = [];
+    const app = createTestApp(events);
+    app.post('/legacy', (context) =>
+      context.json({ error: 'Safe error.' }, 400),
+    );
+
+    const response = await app.request('/legacy', { method: 'POST' });
+
+    expect(response.status).toBe(400);
+    expect(events).toEqual([
+      expect.objectContaining({
+        errorCode: 'HTTP_REQUEST_INVALID',
+        eventName: 'http.invalidBody',
+        stage: 'response',
+      }),
+    ]);
+    expect(events[0]).not.toHaveProperty('operationId');
+  });
 });
+
+function createTestApp(
+  events: BackendOperationalEvent[],
+): Hono<BackendEnvironment> {
+  const app = new Hono<BackendEnvironment>();
+  app.use(
+    '*',
+    createOperationalLoggingMiddleware({
+      operationalIdentity,
+      operationalLogger: {
+        write(event) {
+          events.push(event);
+        },
+      },
+    }),
+  );
+  return app;
+}

@@ -44,6 +44,16 @@ tiedostopolkua, tietokantavirhettä tai stackia ei kirjata.
 - `runtimeSession.missing`
 - `runtimeSession.invalid`
 
+`http.invalidBody` sisältää correlation ID:n lisäksi turvallisen
+virheluokan ja vaiheen. Kun reitti on ottanut käyttöön tyypitetyn
+HTTP-operationaalisen kontekstin, eventti saa sisältää myös vakaan loogisen
+toiminnon, kuten `invoiceDraft.create`. `http.requestFailed` saa käyttää samaa
+toiminto- ja vaihekontekstia odottamattoman virheen rajaamiseen. Kentät ovat
+allowlistattuja eivätkä saa sisältää raakaa reittiä, resurssi-ID:tä,
+query-parametreja, Content-Type-arvoa, request bodya, funktion argumentteja,
+poikkeuksen viestiä tai stackia. Reitti ilman tyypitettyä kontekstia käyttää
+edelleen geneeristä turvallista fallback-luokitusta.
+
 ### Laskudokumentit ja toimitus
 
 - `invoicePdf.generationFailed`

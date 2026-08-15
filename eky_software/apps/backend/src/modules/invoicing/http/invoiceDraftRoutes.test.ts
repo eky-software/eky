@@ -2,7 +2,9 @@ import { createActorContext } from '@eky/auth';
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 
+import { createOperationalLoggingMiddleware } from '../../../http/operationalLogging.js';
 import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
+import type { BackendOperationalEvent } from '../../../observability/operationalEvent.js';
 
 import type { ApproveInvoiceDraftInput } from '../application/approveInvoiceDraft.js';
 import { ApproveInvoiceDraftError } from '../application/approveInvoiceDraftError.js';
@@ -40,8 +42,26 @@ import { createInvoiceDraftRoutes as createInvoiceDraftRouteHandlers } from './i
 
 function createInvoiceDraftRoutes(
   dependencies: Parameters<typeof createInvoiceDraftRouteHandlers>[0],
+  operationalEvents?: BackendOperationalEvent[],
 ): Hono<BackendEnvironment> {
   const app = new Hono<BackendEnvironment>();
+  if (operationalEvents !== undefined) {
+    app.use(
+      '*',
+      createOperationalLoggingMiddleware({
+        operationalIdentity: {
+          appVersion: '0.0.0',
+          buildRevision: '123456789abc',
+          runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
+        },
+        operationalLogger: {
+          write(event) {
+            operationalEvents.push(event);
+          },
+        },
+      }),
+    );
+  }
   app.use('*', async (context, next) => {
     context.set(
       'actorContext',
@@ -182,6 +202,7 @@ function createTestApp(
   options: {
     approveError?: Error;
     approveResult?: ApprovedInvoiceResult;
+    operationalEvents?: BackendOperationalEvent[];
   } = {},
 ) {
   const invoiceDraftRepository = new FakeInvoiceDraftRepository();
@@ -257,7 +278,7 @@ function createTestApp(
         invoicePaymentSettingsRepository,
       });
     },
-  });
+  }, options.operationalEvents);
 
   return {
     app,
@@ -408,6 +429,28 @@ describe('invoiceDraftRoutes', () => {
     });
     expect(testContext.getSaveInput()).toBeUndefined();
     expect(testContext.invoiceDraftRepository.savedDraft).toBeUndefined();
+  });
+
+  it('logs only the safe operation, stage and error class for an invalid create body', async () => {
+    const operationalEvents: BackendOperationalEvent[] = [];
+    const testContext = createTestApp(true, { operationalEvents });
+
+    const response = await postJson(testContext.app, {
+      ...createValidRequestBody(),
+      grossTotalCents: 1,
+    });
+
+    expect(response.status).toBe(400);
+    expect(operationalEvents).toEqual([
+      expect.objectContaining({
+        errorCode: 'INVOICE_DRAFT_REQUEST_INVALID',
+        eventName: 'http.invalidBody',
+        operationId: 'invoiceDraft.create',
+        stage: 'requestValidation',
+      }),
+    ]);
+    expect(JSON.stringify(operationalEvents)).not.toContain('Test invoice');
+    expect(JSON.stringify(operationalEvents)).not.toContain('customer-1');
   });
 
   it('rejects request companyId instead of trusting or overriding it', async () => {

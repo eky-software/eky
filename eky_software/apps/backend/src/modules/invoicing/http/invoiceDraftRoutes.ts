@@ -2,6 +2,12 @@ import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 
 import { readJsonRequestBody } from '../../../http/readJsonRequestBody.js';
+import {
+  setHttpRequestFailure,
+  setHttpRequestOperation,
+  setJsonRequestBodyFailure,
+  setJsonRequestBodyTooLargeFailure,
+} from '../../../http/httpRequestOperationalContext.js';
 import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 
 import type { ApproveInvoiceDraftInput } from '../application/approveInvoiceDraft.js';
@@ -58,14 +64,21 @@ export function createInvoiceDraftRoutes(
     bodyLimit({
       maxSize: maximumInvoiceDraftBodySizeBytes,
       onError: (context) => {
+        setJsonRequestBodyTooLargeFailure(context, 'invoiceDraft.create');
         return context.json({ error: 'Invoice draft body is too large.' }, 413);
       },
     }),
     async (context) => {
+      setHttpRequestOperation(
+        context,
+        'invoiceDraft.create',
+        'bodyParsing',
+      );
       const actorContext = context.get('actorContext');
       const bodyResult = await readJsonRequestBody(context.req, 'required');
 
       if (!bodyResult.ok) {
+        setJsonRequestBodyFailure(context, bodyResult.code);
         return context.json(
           { error: bodyResult.message },
           bodyResult.status,
@@ -74,19 +87,48 @@ export function createInvoiceDraftRoutes(
       const body = bodyResult.body;
 
       try {
+        setHttpRequestOperation(
+          context,
+          'invoiceDraft.create',
+          'requestValidation',
+        );
         const input = parseSaveInvoiceDraftRequest(
           body,
           actorContext.companyId,
+        );
+        setHttpRequestOperation(
+          context,
+          'invoiceDraft.create',
+          'domainValidation',
         );
         const invoiceDraft = await dependencies.saveInvoiceDraft(input);
 
         return context.json({ invoiceDraft }, 201);
       } catch (error) {
-        if (
-          error instanceof InvoiceDraftRequestValidationError ||
-          error instanceof InvoiceDraftValidationError ||
-          error instanceof InvoiceCalculationError
-        ) {
+        if (error instanceof InvoiceDraftRequestValidationError) {
+          setHttpRequestFailure(
+            context,
+            'INVOICE_DRAFT_REQUEST_INVALID',
+            'requestValidation',
+          );
+          return context.json({ error: error.message }, 400);
+        }
+
+        if (error instanceof InvoiceDraftValidationError) {
+          setHttpRequestFailure(
+            context,
+            'INVOICE_DRAFT_DOMAIN_INVALID',
+            'domainValidation',
+          );
+          return context.json({ error: error.message }, 400);
+        }
+
+        if (error instanceof InvoiceCalculationError) {
+          setHttpRequestFailure(
+            context,
+            'INVOICE_DRAFT_CALCULATION_INVALID',
+            'calculation',
+          );
           return context.json({ error: error.message }, 400);
         }
 
@@ -96,6 +138,11 @@ export function createInvoiceDraftRoutes(
   );
 
   routes.get('/invoice-drafts/:id/issuance-readiness', async (context) => {
+    setHttpRequestOperation(
+      context,
+      'invoiceDraft.readiness',
+      'resourceValidation',
+    );
     try {
       const actorContext = context.get('actorContext');
       const invoiceIssuanceReadiness =
@@ -111,6 +158,11 @@ export function createInvoiceDraftRoutes(
       }
 
       if (error instanceof InvoiceDraftValidationError) {
+        setHttpRequestFailure(
+          context,
+          'INVOICE_DRAFT_RESOURCE_INVALID',
+          'resourceValidation',
+        );
         return context.json({ error: error.message }, 400);
       }
 
@@ -119,6 +171,11 @@ export function createInvoiceDraftRoutes(
   });
 
   routes.get('/invoice-drafts', async (context) => {
+    setHttpRequestOperation(
+      context,
+      'invoiceDraft.list',
+      'queryValidation',
+    );
     try {
       const actorContext = context.get('actorContext');
       const customerId = context.req.query('customerId');
@@ -135,6 +192,11 @@ export function createInvoiceDraftRoutes(
       return context.json({ invoiceDrafts });
     } catch (error) {
       if (error instanceof InvoiceDraftValidationError) {
+        setHttpRequestFailure(
+          context,
+          'INVOICE_DRAFT_QUERY_INVALID',
+          'queryValidation',
+        );
         return context.json({ error: error.message }, 400);
       }
 
@@ -146,15 +208,26 @@ export function createInvoiceDraftRoutes(
     '/invoice-drafts/:id/approve',
     bodyLimit({
       maxSize: maximumInvoiceApprovalBodySizeBytes,
-      onError: (context) =>
-        context.json({ error: 'Invoice approval body is too large.' }, 413),
+      onError: (context) => {
+        setJsonRequestBodyTooLargeFailure(context, 'invoiceDraft.approve');
+        return context.json(
+          { error: 'Invoice approval body is too large.' },
+          413,
+        );
+      },
     }),
     async (context) => {
+      setHttpRequestOperation(
+        context,
+        'invoiceDraft.approve',
+        'bodyParsing',
+      );
       try {
         const actorContext = context.get('actorContext');
         const bodyResult = await readJsonRequestBody(context.req, 'optional');
 
         if (!bodyResult.ok) {
+          setJsonRequestBodyFailure(context, bodyResult.code);
           return context.json(
             { error: bodyResult.message },
             bodyResult.status,
@@ -175,6 +248,11 @@ export function createInvoiceDraftRoutes(
               typeof requestBody.reverseChargeEligibilityConfirmed !==
                 'boolean')
           ) {
+            setHttpRequestFailure(
+              context,
+              'INVOICE_DRAFT_REQUEST_INVALID',
+              'requestValidation',
+            );
             return context.json({ error: 'Invalid approval body.' }, 400);
           }
 
@@ -182,6 +260,11 @@ export function createInvoiceDraftRoutes(
             'reverseChargeEligibilityConfirmed' in requestBody &&
             requestBody.reverseChargeEligibilityConfirmed === true;
         }
+        setHttpRequestOperation(
+          context,
+          'invoiceDraft.approve',
+          'approval',
+        );
         const approvedInvoice = await dependencies.approveInvoiceDraft({
           actorUserId: actorContext.actorId,
           approvedAt: new Date().toISOString(),
@@ -197,10 +280,31 @@ export function createInvoiceDraftRoutes(
         }
 
         if (
-          error instanceof ApproveInvoiceDraftError ||
-          error instanceof InvoiceDraftValidationError ||
-          error instanceof InvoiceNumberingError
+          error instanceof ApproveInvoiceDraftError
         ) {
+          setHttpRequestFailure(
+            context,
+            'INVOICE_DRAFT_APPROVAL_INVALID',
+            'approval',
+          );
+          return context.json({ error: error.message }, 400);
+        }
+
+        if (error instanceof InvoiceDraftValidationError) {
+          setHttpRequestFailure(
+            context,
+            'INVOICE_DRAFT_DOMAIN_INVALID',
+            'domainValidation',
+          );
+          return context.json({ error: error.message }, 400);
+        }
+
+        if (error instanceof InvoiceNumberingError) {
+          setHttpRequestFailure(
+            context,
+            'INVOICE_DRAFT_NUMBERING_INVALID',
+            'numbering',
+          );
           return context.json({ error: error.message }, 400);
         }
 
@@ -210,6 +314,11 @@ export function createInvoiceDraftRoutes(
   );
 
   routes.get('/invoice-drafts/:id', async (context) => {
+    setHttpRequestOperation(
+      context,
+      'invoiceDraft.get',
+      'resourceValidation',
+    );
     try {
       const actorContext = context.get('actorContext');
       const invoiceDraft = await dependencies.getInvoiceDraft({
@@ -224,6 +333,11 @@ export function createInvoiceDraftRoutes(
       }
 
       if (error instanceof InvoiceDraftValidationError) {
+        setHttpRequestFailure(
+          context,
+          'INVOICE_DRAFT_RESOURCE_INVALID',
+          'resourceValidation',
+        );
         return context.json({ error: error.message }, 400);
       }
 
@@ -235,13 +349,21 @@ export function createInvoiceDraftRoutes(
     '/invoice-drafts/:id',
     bodyLimit({
       maxSize: maximumForbiddenBodySizeBytes,
-      onError: (context) =>
-        context.json({ error: 'Request body is too large.' }, 413),
+      onError: (context) => {
+        setJsonRequestBodyTooLargeFailure(context, 'invoiceDraft.delete');
+        return context.json({ error: 'Request body is too large.' }, 413);
+      },
     }),
     async (context) => {
+      setHttpRequestOperation(
+        context,
+        'invoiceDraft.delete',
+        'bodyParsing',
+      );
       const bodyResult = await readJsonRequestBody(context.req, 'forbidden');
 
       if (!bodyResult.ok) {
+        setJsonRequestBodyFailure(context, bodyResult.code);
         return context.json(
           { error: bodyResult.message },
           bodyResult.status,
@@ -262,6 +384,11 @@ export function createInvoiceDraftRoutes(
         }
 
         if (error instanceof InvoiceDraftValidationError) {
+          setHttpRequestFailure(
+            context,
+            'INVOICE_DRAFT_DOMAIN_INVALID',
+            'domainValidation',
+          );
           return context.json({ error: error.message }, 400);
         }
 
@@ -275,14 +402,21 @@ export function createInvoiceDraftRoutes(
     bodyLimit({
       maxSize: maximumInvoiceDraftBodySizeBytes,
       onError: (context) => {
+        setJsonRequestBodyTooLargeFailure(context, 'invoiceDraft.update');
         return context.json({ error: 'Invoice draft body is too large.' }, 413);
       },
     }),
     async (context) => {
+      setHttpRequestOperation(
+        context,
+        'invoiceDraft.update',
+        'bodyParsing',
+      );
       const actorContext = context.get('actorContext');
       const bodyResult = await readJsonRequestBody(context.req, 'required');
 
       if (!bodyResult.ok) {
+        setJsonRequestBodyFailure(context, bodyResult.code);
         return context.json(
           { error: bodyResult.message },
           bodyResult.status,
@@ -291,10 +425,20 @@ export function createInvoiceDraftRoutes(
       const body = bodyResult.body;
 
       try {
+        setHttpRequestOperation(
+          context,
+          'invoiceDraft.update',
+          'requestValidation',
+        );
         const input = parseUpdateInvoiceDraftRequest(
           body,
           actorContext.companyId,
           context.req.param('id'),
+        );
+        setHttpRequestOperation(
+          context,
+          'invoiceDraft.update',
+          'domainValidation',
         );
         const invoiceDraft = await dependencies.updateInvoiceDraft(input);
 
@@ -304,11 +448,30 @@ export function createInvoiceDraftRoutes(
           return context.json({ error: error.message }, 404);
         }
 
-        if (
-          error instanceof InvoiceDraftRequestValidationError ||
-          error instanceof InvoiceDraftValidationError ||
-          error instanceof InvoiceCalculationError
-        ) {
+        if (error instanceof InvoiceDraftRequestValidationError) {
+          setHttpRequestFailure(
+            context,
+            'INVOICE_DRAFT_REQUEST_INVALID',
+            'requestValidation',
+          );
+          return context.json({ error: error.message }, 400);
+        }
+
+        if (error instanceof InvoiceDraftValidationError) {
+          setHttpRequestFailure(
+            context,
+            'INVOICE_DRAFT_DOMAIN_INVALID',
+            'domainValidation',
+          );
+          return context.json({ error: error.message }, 400);
+        }
+
+        if (error instanceof InvoiceCalculationError) {
+          setHttpRequestFailure(
+            context,
+            'INVOICE_DRAFT_CALCULATION_INVALID',
+            'calculation',
+          );
           return context.json({ error: error.message }, 400);
         }
 
