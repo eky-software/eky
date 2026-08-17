@@ -1,5 +1,12 @@
 import Database from 'better-sqlite3';
-import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import {
+  copyFile,
+  cp,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -56,18 +63,20 @@ describe('SQLite profile database migration compatibility', () => {
   });
 
   it('rejects incomplete, future and changed metadata-less histories', async () => {
-    const missingMiddlePath = await createPublishedDatabase({
+    const baselinePath = await createPublishedDatabase({
       removeMigrationMetadata: true,
     });
+    const missingMiddlePath = await copyDatabaseFixture(
+      baselinePath,
+      'missing-middle',
+    );
     mutateDatabase(missingMiddlePath, (database) => {
       database
         .prepare('DELETE FROM schema_migrations WHERE name = ?')
         .run('020_relax_invoice_line_unit_checks.sql');
     });
 
-    const futurePath = await createPublishedDatabase({
-      removeMigrationMetadata: true,
-    });
+    const futurePath = await copyDatabaseFixture(baselinePath, 'future');
     mutateDatabase(futurePath, (database) => {
       database
         .prepare(
@@ -76,9 +85,10 @@ describe('SQLite profile database migration compatibility', () => {
         .run('999_future.sql', '2026-08-14T00:00:00.000Z');
     });
 
-    const changedHistoryPath = await createPublishedDatabase({
-      removeMigrationMetadata: true,
-    });
+    const changedHistoryPath = await copyDatabaseFixture(
+      baselinePath,
+      'changed-history',
+    );
     const changedMigrationsRoot = await mkdtemp(
       join(tmpdir(), 'eky-changed-legacy-migrations-'),
     );
@@ -187,6 +197,17 @@ async function createPublishedDatabase(
     database.exec('DROP TABLE schema_migration_metadata;');
   }
   database.close();
+  return databasePath;
+}
+
+async function copyDatabaseFixture(
+  sourceDatabasePath: string,
+  scenario: 'missing-middle' | 'future' | 'changed-history',
+): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), `eky-${scenario}-profile-`));
+  temporaryRoots.push(root);
+  const databasePath = join(root, 'profile.sqlite');
+  await copyFile(sourceDatabasePath, databasePath);
   return databasePath;
 }
 
