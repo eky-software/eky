@@ -10,6 +10,9 @@ apps/desktop/installer/obj/
 apps/desktop/installer/wix/GeneratedPayload.wxs
 apps/desktop/installer/artifacts/
 
+# Machine-local verified toolchain inventory
+.eky-local/
+
 # Local Eky runtime and diagnostic artifacts
 **/runtime/logs/
 **/runtime/support-bundles/
