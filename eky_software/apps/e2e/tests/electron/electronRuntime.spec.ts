@@ -97,11 +97,11 @@ test('DESK-RUNTIME-002 @critical identifies the approved Electron 43 runtime', a
   }));
 
   expect(runtimeVersions).toEqual({
-    chrome: '150.0.7871.129',
-    electron: '43.2.0',
+    chrome: '150.0.7871.212',
+    electron: '43.3.0',
     napi: '10',
-    node: '24.18.0',
-    v8: '15.0.1240245-electron.0',
+    node: '24.18.1',
+    v8: '15.0.245.23-electron.0',
   });
 
   const diagnosticsResponse = await e2eElectron.api.get(
@@ -113,7 +113,7 @@ test('DESK-RUNTIME-002 @critical identifies the approved Electron 43 runtime', a
       appliedMigrationCount: 38,
       databaseHealth: 'ok',
       electronVersion: null,
-      nodeVersion: 'v24.18.0',
+      nodeVersion: 'v24.18.1',
     }),
   );
 });

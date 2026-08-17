@@ -1,8 +1,9 @@
 # Local Desktop Dependency Review
 
 Tämä dokumentti kirjaa `apps/desktop`-paketointispiken ensimmäisen rajatun
-riippuvuuspäätöksen 14.7.2026 sekä Electron 43 / better-sqlite3 13
--yhteensopivuuden varmennuksen 3.8.2026. Versiot tarkistetaan uudelleen ennen
+riippuvuuspäätöksen 14.7.2026, Electron 43 / better-sqlite3 13
+-yhteensopivuuden varmennuksen 3.8.2026 sekä Electron 43.3.0 -patch-päivityksen
+17.8.2026. Versiot tarkistetaan uudelleen ennen
 tuotantojulkaisua, allekirjoitusta tai automaattipäivityksen toteutusta.
 
 ## Rajaus
@@ -32,7 +33,7 @@ Spikessä käytetään tarkasti lukittuja development-riippuvuuksia vain
 
 | Paketti | Versio | Vastuu |
 | --- | --- | --- |
-| `electron` | `43.2.0` | desktop-runtime ja Windows-binääri |
+| `electron` | `43.3.0` | desktop-runtime ja Windows-binääri |
 | `@electron/packager` | `20.0.4` | rajattu paketoitu sovellushakemisto |
 | `@electron/fuses` | `2.1.3` | production-fusejen lukitseminen |
 
@@ -66,7 +67,7 @@ Ensimmäinen spike käytti Electron `42.6.1`- ja `better-sqlite3 12.11.1`
 -versioita. Tämä historiallinen yhdistelmä tarvitsi Electronin ABI:lle
 rakennetun staged-binäärin.
 
-Nykyinen varmennettu yhdistelmä on Electron `43.2.0` ja `better-sqlite3
+Nykyinen varmennettu yhdistelmä on Electron `43.3.0` ja `better-sqlite3
 13.0.2`. better-sqlite3 13 käyttää paketin mukana toimitettua N-API-binääriä,
 joten paketointi ei enää:
 
