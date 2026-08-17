@@ -52,6 +52,11 @@ Sama pysäytyssääntö koskee tilannetta, jossa liiketoimintasääntö, moduuli
 
 Lue aina ensin tämä tiedosto.
 
+Windows/WSL/Git/Node/pnpm/.NET/WiX- tai paikallista release-työtä varten lue
+Gitistä ohitettu `.eky-local/local-toolchain-runbook.md` ja käytä
+`.eky-local/toolchain.local.json`-inventaarioa, jos nämä paikalliset tiedostot
+ovat olemassa. Niihin ei saa tallentaa salaisuuksia.
+
 Lue lisäksi tehtävän mukaan seuraavat dokumentit:
 
 - AI-työtapa: `docs/ai/workflow.md`
