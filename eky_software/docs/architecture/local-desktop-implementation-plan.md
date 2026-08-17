@@ -22,8 +22,8 @@ palautuspisteen luonti, health-tarkistus, ajastus ja rotaatio on toteutettu
 4.8.2026. Restore-aktivointia, installeria, update coordinatoria tai code
 signingia ei ole vielä toteutettu eikä installeriteknologiaa ole valittu.
 
-Electron `43.2.0`- ja better-sqlite3 `13.0.2` -yhdistelmä on varmennettu
-3.8.2026. Paketointi käyttää better-sqlite3:n mukana toimitettua Windows x64
+Electron `43.3.0`- ja better-sqlite3 `13.0.2` -yhdistelmä on varmennettu
+17.8.2026. Paketointi käyttää better-sqlite3:n mukana toimitettua Windows x64
 N-API-binääriä eikä enää rakenna staged-kopiota Electron ABI:lle.
 
 Salatun secret-tiedoston kirjoitus ja palautuminen on kovennettu 15.7.2026
@@ -60,7 +60,7 @@ backend-reitit ja HTTP-metodit. Preload ei tässä vaiheessa paljasta rendereril
 yhtään Node-, tiedosto-, prosessi- tai yleistä IPC-API:a.
 
 Package-spike ei ole loppukäyttäjän release. Nykyinen varmennettu runtime
-käyttää virallisesta npm-rekisteristä saatavia Electron `43.2.0`- ja
+käyttää virallisesta npm-rekisteristä saatavia Electron `43.3.0`- ja
 `better-sqlite3 13.0.2` -versioita. Windows package-, smoke-, Electron-E2E-,
 stressi- ja soak-testit läpäisevät yhdistelmän. Installer, code signing,
 tavallisen Windows-käyttäjän manuaalinen hyväksymistesti ja päivityskanava
