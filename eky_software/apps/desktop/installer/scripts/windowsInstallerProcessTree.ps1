@@ -125,8 +125,16 @@ function Stop-EkyProcessTree {
   param(
     [AllowNull()]$Process,
     [int]$TimeoutMilliseconds = 10000,
-    [int]$PollMilliseconds = 100
+    [int]$PollMilliseconds = 100,
+    [AllowNull()][hashtable]$Observation = $null
   )
+
+  if ($null -ne $Observation) {
+    $Observation.trackedCount = 0
+    $Observation.remainingCount = 0
+    $Observation.deadlineReached = $false
+    $Observation.taskkillExitClass = 'notStarted'
+  }
 
   if ($null -eq $Process) {
     return
@@ -148,6 +156,9 @@ function Stop-EkyProcessTree {
     Get-EkyOwnedProcessIdentitiesFromSnapshot `
       -RootIdentity $rootIdentity -ProcessSnapshot (Get-EkyProcessSnapshot)
   )
+  if ($null -ne $Observation) {
+    $Observation.trackedCount = $ownedIdentities.Count
+  }
   if ($ownedIdentities.Count -eq 0) {
     return
   }
@@ -161,8 +172,33 @@ function Stop-EkyProcessTree {
     return
   }
 
-  & taskkill.exe /PID $rootIdentity.processId /T /F 2>&1 | Out-Null
-  $taskkillExitCode = $LASTEXITCODE
+  $taskkillProcess = Start-Process `
+    -FilePath (Join-Path $env:SystemRoot 'System32\taskkill.exe') `
+    -ArgumentList @(
+      '/PID',
+      $rootIdentity.processId.ToString(
+        [System.Globalization.CultureInfo]::InvariantCulture
+      ),
+      '/T',
+      '/F'
+    ) `
+    -WindowStyle Hidden `
+    -Wait `
+    -PassThru
+  try {
+    $taskkillExitCode = [int]$taskkillProcess.ExitCode
+    if ($null -ne $Observation) {
+      $Observation.taskkillExitClass = if ($taskkillExitCode -eq 0) {
+        'zero'
+      }
+      else {
+        'nonzero'
+      }
+    }
+  }
+  finally {
+    $taskkillProcess.Dispose()
+  }
   $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
   try {
     do {
@@ -171,10 +207,18 @@ function Stop-EkyProcessTree {
           -OwnedProcessIdentities $ownedIdentities `
           -ProcessSnapshot (Get-EkyProcessSnapshot)
       )
+      $deadlineReached = (
+        $remaining.Count -ne 0 -and
+        $stopwatch.ElapsedMilliseconds -ge $TimeoutMilliseconds
+      )
+      if ($null -ne $Observation) {
+        $Observation.remainingCount = $remaining.Count
+        $Observation.deadlineReached = $deadlineReached
+      }
       $outcome = Get-EkyProcessTreeStopOutcome `
         -TaskkillExitCode $taskkillExitCode `
         -RemainingOwnedProcessIdentities $remaining `
-        -DeadlineReached ($stopwatch.ElapsedMilliseconds -ge $TimeoutMilliseconds)
+        -DeadlineReached $deadlineReached
       if ($outcome -eq 'stopped') {
         return
       }
