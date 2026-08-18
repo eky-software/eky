@@ -2,8 +2,10 @@
 
 ## Tila
 
-Hyväksytty arkkitehtuurisopimus. Tuotantototeutus on suunniteltu, mutta sitä
-ei ole aloitettu tässä päätöksessä.
+Hyväksytty arkkitehtuurisopimus. W1:n registry ja W2:n empty-creation-
+foundation on toteutettu inerttinä, production-buildistä ja package-
+payloadista suljettuna lähdekoodina. Tuotantocompositionia, startup-kytkentää,
+IPC:tä tai käyttäjälle näkyvää toimintoa ei ole vielä toteutettu.
 
 Tämä päätös jatkaa ADR-0008:n yhden aktiivisen yritystyötilan mallia. Se ei
 kumoa ADR-0008:n R0-rajoja, vaan määrittää hallitun kasvupolun useaan erilliseen
@@ -290,6 +292,35 @@ Maintenance-operaatio:
 Lease ei ole yleinen lukko rendererille eikä business-moduuleille. Se on
 main-prosessin kapea process-lifecycle-sopimus, eikä epäonnistumisessa sallita
 rinnakkaista vanhan ja uuden työtilan SQLite-omistajuutta.
+
+## Tyhjän työtilan julkaiseminen
+
+W2 toteuttaa tyhjän työtilan luomisen inerttinä platform-kyvykkyytenä. Se ei
+vielä kytkeydy production-startupiin, preloadiin, IPC:hen tai UI:hin.
+
+Electron main johtaa uuden opaque `workspaceId`:n, operation-scoped candidate-
+juuren ja lopullisen `<userData>/workspaces/<workspaceId>/`-juuren. Backend
+omistaa tyhjän SQLite-profiilin bootstrapin, migraatiot ja trusted-
+tarkastuksen kapean `EmptyWorkspaceBootstrapPort`-sopimuksen takana. Electron
+main ei avaa SQLitea eikä saa tietokantakahvaa.
+
+Julkaisu tehdään kahdessa atomisessa rajassa:
+
+1. validoitu same-volume candidate-root nimetään lopulliseksi työtilajuureksi
+2. vasta tämän jälkeen W1-rekisteriin julkaistaan validoitu `ready`-entry.
+
+Erillinen exact-key `WorkspaceCreationJournalV1` todistaa monotonisesti tilat
+`prepared`, `candidateRootCreated`, `bootstrapCompleted`,
+`candidateValidated`, `rootPublished` ja `registryPublished`. Journalissa ei
+ole tiedostopolkuja, companyId:tä, actorId:tä, sessionia, salaisuuksia,
+business-dataa tai raakaa virhettä. Crash recovery sovittaa journalin,
+filesystemin ja rekisterin; ristiriitaa ei ratkaista arvaamalla eikä osittain
+julkaistua työtilaa avata.
+
+Jos valmis aktiivinen työtila on jo olemassa, uusi työtila julkaistaan
+passiiviseksi. Ensimmäinen valmis työtila saa rekisterin active pointerin,
+mutta inertti W2 ei vielä käynnistä sitä. Production-composition ja hallittu
+aktivointi kuuluvat W4:ään.
 
 ## Hallittu workspace switch
 
