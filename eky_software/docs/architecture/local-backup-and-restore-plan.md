@@ -637,6 +637,35 @@ candidate-stagingin ja nykyiset formaatti-, migraatio-, identity-, SQLite- ja
 artifact-validoinnit. Tämä ei kuulu nykyisen yhden työtilan restore-polkuun,
 vaan ADR-0011:n W3/W3b-checkpointteihin.
 
+### W3:n backup-import uutena työtilana
+
+W3 ei käytä aktiivisen profiilin restore-controlleria, preRestore-pistettä,
+activation journalia tai korvaavaa aktivointia. Backup inspector säilyttää
+`.ekybackup`-formaatin omistajuuden, mutta workspace import coordinator käyttää
+sitä kahdessa rajatussa vaiheessa:
+
+1. ennen maintenance-leasen jälkeistä shutdownia container autentikoidaan ja
+   suljettu manifesti tarkastetaan avaamatta SQLitea
+2. shutdownin ja runtime-absence-todisteen jälkeen container autentikoidaan
+   uudelleen, puretaan private candidateen ja sen SHA-256, `profileId` sekä
+   migration chain -identiteetti verrataan ensimmäiseen tarkastukseen.
+
+Täysi SQLite-, migration-, identity- ja artifact-validointi tapahtuu vain
+backendin yksityisen import-portin kautta. Main ei saa SQLite-kahvaa.
+Historiallinen ehjä prefix hyväksytään, mutta vain puuttuvat nykyisen
+packaged manifestin forward-migraatiot ajetaan. Future-, changed-, reordered-
+ja missing-middle-historia torjutaan.
+
+Backupista ei tuoda SMTP-salaisuutta, safeStorage-blobia, PDF-arkiston
+asetusta tai retry-journalia, accepted-build/update-statea, installer-statea,
+lokeja, diagnostiikkaa, tukipakettia tai ulkoisia PDF-kopioita. Candidateen
+saavat päätyä vain autentikoitu SQLite, snapshot-katalogi ja katalogin
+todistamat auktoritatiiviset business-artifactit.
+
+Ennen lopullista julkaisua registry tarkastetaan toisen kerran duplicate-
+lineagen varalta. Onnistunut W3-import julkaisee uuden `ready`-työtilan,
+mutta ei käynnistä sitä eikä korvaa aktiivista työtilaa.
+
 ## Käyttöliittymä
 
 Oma yritys -näkymässä voi olla erillinen

@@ -365,17 +365,68 @@ kaksi eri käyttötapausta.
 Tämä toiminto sallitaan vain, kun backupin validoitua lineagea ei ole
 rekisterissä.
 
-1. main autentikoi ja tarkastaa backupin nykyisellä inspectorilla
-2. se luo uuden satunnaisen `workspaceId`:n ja yksityisen candidate-rootin
-3. backup puretaan vain candidate-rootiin
-4. historiallinen migration-prefix todistetaan ja forward-migraatiot ajetaan
-   vain stagingissa
-5. SQLite, metadata, identity, artifact-katalogi ja runtime readiness
-   validoidaan
-6. vasta tämän jälkeen työtila julkaistaan rekisteriin atomisesti.
+Tuonti käyttää nykyistä backup inspectoria formaatin, autentikoinnin,
+kryptografian ja suljetun payloadin omistajana. Workspace import coordinator
+omistaa järjestyksen, registry vain rekisterin ja backendin yksityinen
+bootstrap-/inspection-portti SQLite-kahvan, migraatiot ja business-artifactien
+validoinnin. Electron main ei avaa SQLitea.
+
+Suljettu järjestys on:
+
+1. validoi käyttäjän antama workspace-label
+2. tarkasta backup vain mainin omistaman yksityisen portin kautta
+3. autentikoi container ja johda backupin lineage
+4. lue registry ja torju jo rekisteröity lineage
+5. varaa installation-scoped maintenance lease tarkoituksella `import`
+6. estä aktiivisen työtilan uudet kirjoitukset
+7. sulje backend ja todista kaikkien aktiivisten SQLite-kahvojen sulkeutuminen
+8. todista aktiivisen workspace-runtimen poissaolo
+9. luo satunnaiset operation- ja workspace-tunnisteet
+10. julkaise durable import-journal ennen candidate-juuren luontia
+11. johda yksityinen, operation-scoped candidate-root vain mainin omista
+    tunnisteista
+12. autentikoi ja pura backup candidateen uudelleen
+13. todista containerin SHA-256 sekä manifestin profile- ja migration-
+    identiteetti samoiksi kuin ensimmäisessä tarkastuksessa
+14. todista historiallinen migration-prefix
+15. aja vain puuttuvat forward-migraatiot candidate-SQLitessa
+16. aja SQLite integrity- ja foreign-key-tarkistukset
+17. validoi company-, actor-, profile- ja lineage-identiteettien sopimus
+18. validoi auktoritatiivisen PDF-/artifact-katalogin täydellinen sulkeuma
+19. todista, ettei backupista tuoda salaisuuksia tai installation-statea
+20. lue registry uudelleen ja torju kilpaileva lineage-julkaisu
+21. nimeä validoitu candidate atomisesti lopulliseksi workspace-rootiksi
+22. julkaise vasta tämän jälkeen `ready`-entry registryyn
+23. säilytä aiempi aktiivinen osoitin, jos registryssä oli valmis työtila
+24. jos valmista työtilaa ei ollut, osoita uusi entry aktiiviseksi käynnistämättä
+    vielä runtimea
+25. varmista aiempi runtime idempotentisti terveeksi, jos sellainen oli
+26. poista import-journal vasta terminal-tilassa
+27. vapauta maintenance lease.
 
 Tuonti ei muuta aktiivista työtilaa ennen erillistä switchiä tai käyttäjän
 vahvistamaa atomista aktivointia.
+
+Ensimmäinen backup-tarkastus saa autentikoida containerin ja lukea suljetun
+manifestin, mutta se ei saa avata SQLitea aktiivisen runtimen rinnalla.
+Täysi SQLite- ja artifact-validointi tehdään vasta maintenance-leasen,
+shutdownin ja runtime-absence-todisteen jälkeen. Samanaikaisia business-
+SQLite-omistajia on aina enintään yksi.
+
+W3 käyttää omaa exact-key `WorkspaceBackupImportJournalV1`-journalia, jonka
+monotoniset tilat ovat `prepared`, `candidateRootCreated`, `backupStaged`,
+`candidateMigrated`, `candidateValidated`, `rootPublished` ja
+`registryPublished`. Journalissa ei ole lähdepolkua, salasanaa, avainta,
+`companyId`:tä, SQL:ää, business-dataa, PDF-nimiä, sessionia eikä raakaa
+virhettä. Lineage voidaan lisätä journaliin vasta täyden validoinnin jälkeen.
+
+Restart-recovery ei tarvitse alkuperäistä backupia tai salasanaa. Ennen
+`rootPublished`-tilaa keskeytynyt tuonti sulkee candidate-kahvat ja poistaa tai
+karanteenoi candidate-juuren, eikä jatka tuontia. `rootPublished`-tilassa
+lopullinen root validoidaan uudelleen runtimen poissa ollessa ennen registry-
+julkaisua. `registryPublished`-tilassa entryn, rootin ja lineagen vastaavuus
+todistetaan ja journal poistetaan. Ristiriita johtaa `recoveryRequired`-
+tilaan; tilaa ei päätellä tai korjata arvaamalla.
 
 ### B. Korvaa olemassa oleva työtila
 

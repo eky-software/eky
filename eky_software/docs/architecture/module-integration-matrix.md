@@ -72,6 +72,24 @@ registry-, creation- ja import-semanttiikkaa geneeriseksi persistence-
 kehykseksi. Mahdollinen kapea atomic-slot-primitive arvioidaan erikseen vasta
 W3:n todellisen tarpeen perusteella.
 
+### Local Workspace W3 -sopimus
+
+W3 tuo autentikoidun, rekisteröimättömän lineagen uutena passiivisena
+työtilana. Backup inspector omistaa containerin, workspace coordinator
+järjestyksen, registry julkaisun ja backendin yksityinen import-portti
+SQLite-/migration-/artifact-validoinnin. Electron main ei avaa SQLitea.
+
+Ensimmäinen container-tarkastus ei avaa kantaa. Toinen tarkastus tehdään
+maintenance-leasen ja aktiivisen runtimen todistetun sulkemisen jälkeen;
+containerin sekä manifestin identiteetti ei saa muuttua tarkistusten välissä.
+Candidate-root julkaistaan ennen registry-entryä. Uusi entry ei syrjäytä
+olemassa olevaa aktiivista työtilaa eikä W3 käynnistä uutta runtimea.
+
+W3 käyttää import-kohtaista journalia ja vain kapeaa yhteistä raakatavujen
+atomic-slot-primitiiiviä. Registry-, creation- ja import-skeemoja,
+tilakoneita, serializer-logiikkaa tai virheitä ei yhdistetä. W3b-korvaus,
+W4-switch, legacy-adoptio ja käyttäjärajapinta eivät kuulu W3:een.
+
 ## Tarkistuslähteet
 
 Implemented-rivit tarkistetaan ensisijaisesti seuraavista lähteistä:

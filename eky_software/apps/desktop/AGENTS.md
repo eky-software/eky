@@ -37,6 +37,14 @@ Mandatory boundaries:
 - keep backup, restore, recovery-point and update orchestration in Electron
   main infrastructure; business modules expose only narrowly named snapshot or
   validation ports
+- when changing local workspace registry, creation, import, replacement,
+  switching or adoption, read ADR-0011 and the local company workspace plan;
+  Electron main may coordinate lifecycle and filesystem roots but must not
+  open workspace SQLite or import a database driver
+- workspace backup import must authenticate the container through the backup
+  owner's private port, stop the active runtime before full SQLite validation,
+  publish the root before the registry entry, and restore the previous runtime
+  on every terminal success or failure path
 - never expose a backup password, derived key, recovery-point key, raw
   manifest or local backup/update path to the renderer
 - never accept encryption parameters, an executable, process arguments, a

@@ -60,3 +60,24 @@ kirjata incident-yhteenvetoon.
 Tämän runbookin manuaalinen harjoitus synteettisellä profiililla kuuluu R0:n
 release security review -porttiin. Installer ja automaattipäivitys käyttävät
 samaa recovery-required-pysäytyssääntöä.
+
+## Keskeytynyt workspace-import
+
+ADR-0011:n W3-import ei käytä aktiivisen profiilin restore-journalia. Sen
+oma `WorkspaceBackupImportJournalV1` ratkaistaan startupissa ennen uuden
+workspace-rootin tai registry-entryn käyttämistä.
+
+- Ennen `rootPublished`-tilaa operaatio perutaan: candidate-kahvat suljetaan,
+  candidate poistetaan tai jätetään turvallisesti karanteeniin ja registry
+  säilyy muuttumattomana. Tuontia ei jatketa ilman backupin ja salasanan uutta
+  valintaa.
+- `rootPublished`-tilassa tukipolku todistaa runtime-absence-rajan ja validoi
+  lopullisen rootin migration-, identity-, SQLite- ja artifact-sopimuksen
+  ennen registry-julkaisua.
+- `registryPublished`-tilassa registry-entryn, johdetun rootin ja lineagen
+  täsmällinen vastaavuus todistetaan ennen journalin poistoa.
+
+Ristiriita jää `recoveryRequired`-tilaan. Tukihenkilö ei nimeä rootteja,
+muokkaa registryä, yhdistä SQLite-rivejä eikä korvaa työtilaa käsin. W3-
+recovery ei tarvitse eikä saa säilyttää backupin lähdepolkua, salasanaa tai
+avainta.

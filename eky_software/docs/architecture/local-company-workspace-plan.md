@@ -391,12 +391,88 @@ HTTP/API ja nykyinen same-lineage restore.
 
 **Sopimus:** autentikoitu backup, jonka lineagea ei ole rekisterissä, tuodaan
 uutena työtilana private staging -> forward migration -> full validation ->
-atomic registry publish -ketjulla.
+atomic root publish -> atomic registry publish -ketjulla. W3 on inertti
+foundation: sitä ei kytketä production-compositioniin, preloadiin, IPC:hen,
+rendereriin, webiin tai julkiseen backend-HTTP:hen.
 
 Candidate avataan vain installation-scoped `WorkspaceMaintenanceLease`-
 leasen aikana ja aktiivisen business-SQLite-omistajan sulkeutumisen jälkeen.
 Failure sulkee candidate-kahvat ennen aiemman aktiivisen runtimen
 uudelleenkäynnistystä.
+
+### W3:n omistajuus ja elinkaari
+
+- Backup inspector omistaa `.ekybackup` v1 -containerin autentikoinnin,
+  kryptografian, suljetun manifestin ja payload-rajojen tarkastuksen.
+- Workspace import coordinator omistaa operaation järjestyksen ja vain sen.
+- Registry omistaa rekisterin validoinnin ja atomisen julkaisun.
+- Workspace runtime/lifecycle omistaa aktiivisen backendin ja SQLite-
+  kahvojen sulkemisen sekä aiemman runtimen palauttamisen.
+- Backendin yksityinen import-bootstrap-/inspection-portti omistaa SQLite-
+  migraatiot, integrityn, foreign keyt, identiteetin ja business-artifactien
+  tarkastuksen. Electron main ei importoi SQLite-ajuria eikä avaa kantaa.
+
+Koordinaattori etenee ADR-0011:n suljetussa 27-vaiheisessa järjestyksessä.
+Ensimmäinen tarkastus autentikoi containerin ja lukee manifestin ilman
+SQLitea. Leasen ja aktiivisen runtimen sulkemisen jälkeen tehtävä toinen
+tarkastus purkaa candidateen ja todistaa container-SHA:n, `profileId`:n sekä
+migration chain -identiteetin samoiksi. Vasta sitten backend saa avata
+candidate-SQLiten ja ajaa puuttuvat forward-migraatiot.
+
+Tuonnissa ei käytetä nykyisen aktiivisen profiilin preRestore-pistettä,
+restore activation journalia tai active-profile replace -palvelua. W3 ei
+yhdistä rivejä, korvaa olemassa olevaa työtilaa eikä käynnistä uutta
+workspace-runtimea.
+
+### WorkspaceBackupImportJournalV1
+
+Import-journalin täsmällinen v1-muoto sisältää vain:
+
+- `formatVersion: 1`
+- `operationId`
+- `workspaceId`
+- validoidun `workspaceLabel`-arvon
+- `previousActiveWorkspaceId: string | null`
+- monotonisen `state`-arvon
+- canonical UTC `createdAt`-arvon
+- `lineageIdentity`, joka on `null` ennen täyttä validointia.
+
+Sallitut tilat järjestyksessä ovat:
+
+1. `prepared`
+2. `candidateRootCreated`
+3. `backupStaged`
+4. `candidateMigrated`
+5. `candidateValidated`
+6. `rootPublished`
+7. `registryPublished`.
+
+Codec torjuu unknown- ja duplicate-keyt, prototype-avaimet, väärän version,
+ylikokoisen tai invalidin UTF-8:n ja ei-kanonisen rakenteen. Store käyttää
+crash-safe current/next/backup-slotteja ja yhtä kirjoittajaa. Journalin
+schema, serializer, tilasiirtymät, kokoraja ja virheet kuuluvat importille,
+vaikka raakatavujen atominen slot-kirjoitus jaetaan W1/W2/W3:n kesken.
+
+Journalissa ei ole backup-polkua, salasanaa, avainta, `companyId`:tä,
+`actorId`:tä, SQL:ää, business-dataa, PDF-nimiä, runtime-sessionia,
+salaisuutta tai raakaa `Error`-arvoa.
+
+### W3 restart-recovery
+
+- Ennen `rootPublished`-tilaa keskeytynyt import sulkee mahdolliset private-
+  kahvat, poistaa tai fail-closed-karanteenoi candidaten ja poistaa journalin.
+  Operaatiota ei jatketa ilman käyttäjän uudelleen valitsemaa backupia ja
+  salasanaa.
+- `rootPublished` ennen `registryPublished`-tilaa vaatii runtimen poissaolon,
+  lopullisen rootin täyden identity-, migration-, SQLite- ja artifact-
+  validoinnin sekä uuden duplicate-lineage-tarkastuksen ennen registry-
+  julkaisua.
+- `registryPublished`-tila vaatii entryn, rootin ja lineagen täsmällisen
+  vastaavuuden. Aktiivinen osoitin säilytetään tai asetetaan ensimmäiseen
+  ready-entryyn sovitun säännön mukaan, minkä jälkeen journal voidaan poistaa.
+- Puuttuva tai ristiriitainen journal, root, registry-entry tai lineage jää
+  `recoveryRequired`-tilaan. Recovery ei arvaa eikä tarvitse lähdebackupia tai
+  salasanaa.
 
 **Luottamusraja:** backup ja salasana ovat ulkoisia syötteitä. Main omistaa
 Open-dialogin; renderer ei saa tiedostopolkua tai salasanaa.
@@ -405,9 +481,13 @@ Open-dialogin; renderer ei saa tiedostopolkua tai salasanaa.
 middle migration, duplicate lineage, invalid SQLite/artifact/identity,
 levytila tai publish failure.
 
-**Testit:** nykyinen backup-korpus, 0.2.6 historical prefix, PDF:t, tyhjä
-artifact-katalogi, duplicate lineage, restart, cleanup, salaisuuksien
-poissulku ja cross-workspace isolation.
+**Testit:** nykyinen synteettinen backup-korpus, historical prefix, PDF:t,
+tyhjä artifact-katalogi, duplicate lineage molemmissa tarkistuspisteissä,
+jokaisen journal-vaiheen restart, cleanup, salaisuuksien poissulku,
+cross-workspace isolation, lähdecontainerin muuttuminen tarkastusten välissä,
+future/changed/reordered/missing-middle-historia, filesystem-boundaryt sekä
+enintään yksi backend/SQLite-owner ja nolla orphan-prosessia. Oikeaa backupia,
+salasanaa, AppData-profiilia tai business-dataa ei käytetä.
 
 **Dokumentit:** backup-planin multi-workspace-osuus ja restore-runbook.
 
