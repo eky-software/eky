@@ -3,7 +3,10 @@
 ## Tila
 
 Suunniteltu. W0:n arkkitehtuuri- ja hyväksymissopimus sekä W0.1:n lifecycle-
-tarkennukset on dokumentoitu. W1-tuotantokoodia ei ole aloitettu.
+tarkennukset on dokumentoitu. W1:n inertti foundation-toteutus on työn alla:
+sen lähdekoodi kuuluu desktopin normaaliin typecheckiin ja kohdetesteihin,
+mutta sitä ei ole aktivoitu tuotantoruntimeen tai käyttäjälle näkyväksi
+ominaisuudeksi.
 
 Tämä suunnitelma toteuttaa
 `docs/decisions/ADR-0011-local-multi-workspace-company-model.md`-päätöksen
@@ -127,6 +130,18 @@ yksityisiä temp-juuria. W1:tä ei kytketä tavalliseen production-startupiin,
 nykyiseen 0.2.6-profiiliin tai käyttäjän `userData`-juureen. Se ei luo
 rekisteriä, siirrä profiilia, vaihda runtime-juurta, muuta backup-/secret-
 polkuja eikä adoptoi legacy-profiilia. Tuotantokytkentä alkaa vasta W4:ssä.
+
+W1-W3:n inertti workspace-lähdekoodi kuuluu tavalliseen sourceen,
+typecheckiin ja testeihin, mutta se suljetaan väliaikaisesti desktopin
+production-buildistä ja package-payloadista. TypeScript-buildin exclusion ei
+yksin ole turvallisuusraja: application-stage artifact inventory torjuu
+fail-closed-tilassa kaiken `dist/workspaces/**`-sisällön myös silloin, jos
+vahingossa lisätty importti saisi TypeScriptin kääntämään exclusionin takana
+olevan tiedoston. Staattinen import-raja todistaa lisäksi, ettei registryä ole
+kytketty desktopin production-entrypointteihin, preloadiin, Electron E2E:n
+entryyn, webiin tai backendiin. Build exclusion ja inventory-raja poistetaan
+tai korvataan vasta W4:n erikseen hyväksytyssä production-compositionissa.
+W1-W3 eivät muuta käyttäjän AppDataa tai normaalia startupia.
 
 **Dokumentit:** ADR-0011:n toteutustila ja integraatiomatriisi.
 

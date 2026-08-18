@@ -139,6 +139,13 @@ export function classifyForbiddenArtifact(logicalPath, stage) {
   const fileName = segments.at(-1) ?? '';
   const isProjectOwned = isProjectOwnedArtifact(normalized, stage);
 
+  if (
+    stage === 'applicationStage' &&
+    lowerPath.startsWith('dist/workspaces/')
+  ) {
+    return 'INERT_WORKSPACE_CODE_IN_PAYLOAD';
+  }
+
   if (stage === 'updateRuntimeStage' && !updateRuntimeAllowlist.has(normalized)) {
     return 'UNAPPROVED_UPDATE_RUNTIME_ARTIFACT';
   }
