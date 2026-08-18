@@ -115,14 +115,24 @@ export class WorkspaceCreationJournalStore
       ) {
         throw new WorkspaceCreationJournalValidationError();
       }
-      try {
-        await this.fileSystem.removeSlot('next');
-        await this.fileSystem.removeSlot('backup');
-        await this.fileSystem.removeSlot('current');
-        await this.fileSystem.syncDirectory();
-      } catch (error) {
-        throw this.mapStoreError(error);
+      await this.removeAllSlots();
+    });
+  }
+
+  discardBeforePublication(
+    operationId: WorkspaceCreationOperationId,
+  ): Promise<void> {
+    return this.runExclusive(async () => {
+      const current = await this.recoverAndRead();
+      if (
+        current === undefined ||
+        current.operationId !== operationId ||
+        current.state === 'rootPublished' ||
+        current.state === 'registryPublished'
+      ) {
+        throw new WorkspaceCreationJournalValidationError();
       }
+      await this.removeAllSlots();
     });
   }
 
@@ -167,6 +177,17 @@ export class WorkspaceCreationJournalStore
       await this.fileSystem.syncDirectory();
     } catch {
       // The next read deterministically recovers from the backup slot.
+    }
+  }
+
+  private async removeAllSlots(): Promise<void> {
+    try {
+      await this.fileSystem.removeSlot('next');
+      await this.fileSystem.removeSlot('backup');
+      await this.fileSystem.removeSlot('current');
+      await this.fileSystem.syncDirectory();
+    } catch (error) {
+      throw this.mapStoreError(error);
     }
   }
 

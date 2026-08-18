@@ -137,6 +137,46 @@ describe('workspace creation journal store', () => {
       'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' as WorkspaceCreationJournalV1['operationId'],
     )).rejects.toThrow(WORKSPACE_CREATION_JOURNAL_INVALID);
   });
+
+  it.each([
+    'prepared',
+    'candidateRootCreated',
+    'bootstrapCompleted',
+    'candidateValidated',
+  ] as const)('discards a matching %s journal before publication', async (state) => {
+    const fixture = await createFixture();
+    await writeThroughState(fixture.store, state);
+
+    await expect(fixture.store.discardBeforePublication(
+      operationId as WorkspaceCreationJournalV1['operationId'],
+    )).resolves.toBeUndefined();
+    await expect(fixture.store.read()).resolves.toBeUndefined();
+  });
+
+  it.each(['rootPublished', 'registryPublished'] as const)(
+    'retains and rejects discarding a %s journal',
+    async (state) => {
+      const fixture = await createFixture();
+      await writeThroughState(fixture.store, state);
+
+      await expect(fixture.store.discardBeforePublication(
+        operationId as WorkspaceCreationJournalV1['operationId'],
+      )).rejects.toThrow(WORKSPACE_CREATION_JOURNAL_INVALID);
+      await expect(fixture.store.read()).resolves.toEqual(createJournal(state));
+    },
+  );
+
+  it('rejects discarding another operation journal', async () => {
+    const fixture = await createFixture();
+    await fixture.store.write(createJournal('prepared'));
+
+    await expect(fixture.store.discardBeforePublication(
+      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' as WorkspaceCreationJournalV1['operationId'],
+    )).rejects.toThrow(WORKSPACE_CREATION_JOURNAL_INVALID);
+    await expect(fixture.store.read()).resolves.toEqual(
+      createJournal('prepared'),
+    );
+  });
 });
 
 async function createFixture() {
@@ -175,6 +215,23 @@ async function writeAllStates(store: WorkspaceCreationJournalStore): Promise<voi
     'registryPublished',
   ] as const) {
     await store.write(createJournal(state));
+  }
+}
+
+async function writeThroughState(
+  store: WorkspaceCreationJournalStore,
+  terminalState: WorkspaceCreationJournalState,
+): Promise<void> {
+  for (const state of [
+    'prepared',
+    'candidateRootCreated',
+    'bootstrapCompleted',
+    'candidateValidated',
+    'rootPublished',
+    'registryPublished',
+  ] as const) {
+    await store.write(createJournal(state));
+    if (state === terminalState) return;
   }
 }
 

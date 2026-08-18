@@ -31,5 +31,8 @@ export interface WorkspaceCreationJournalV1 {
 export interface WorkspaceCreationJournalStore {
   read(): Promise<Readonly<WorkspaceCreationJournalV1> | undefined>;
   write(value: unknown): Promise<void>;
+  discardBeforePublication(
+    operationId: WorkspaceCreationOperationId,
+  ): Promise<void>;
   remove(operationId: WorkspaceCreationOperationId): Promise<void>;
 }
