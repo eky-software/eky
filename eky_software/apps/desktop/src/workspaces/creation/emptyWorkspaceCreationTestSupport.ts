@@ -1,18 +1,23 @@
 import { resolve } from 'node:path';
 
 import type {
+  WorkspaceMaintenanceLease,
+  WorkspaceMaintenanceLeaseHandle,
+  WorkspaceMaintenancePurpose,
+} from '../maintenance/workspaceMaintenanceLease.js';
+import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
+import type {
   LocalWorkspaceRegistryV1,
   WorkspaceId,
 } from '../registry/workspaceRegistryTypes.js';
 import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
+import type { ActiveWorkspaceLifecyclePort } from '../runtime/activeWorkspaceLifecyclePort.js';
 import type {
-  ActiveWorkspaceLifecyclePort,
   EmptyWorkspaceBootstrapInput,
   EmptyWorkspaceBootstrapPort,
   EmptyWorkspaceBootstrapResult,
   PublishedWorkspaceValidationInput,
   PublishedWorkspaceValidationPort,
-  WorkspaceRegistryPort,
 } from './emptyWorkspaceCreationPorts.js';
 import { validateWorkspaceCreationOperationId } from './workspaceCreationOperationId.js';
 import type { WorkspaceCreationPaths } from './workspaceCreationPaths.js';
@@ -29,11 +34,6 @@ import {
   assertWorkspaceCreationJournalTransition,
   validateWorkspaceCreationJournal,
 } from './workspaceCreationJournalValidation.js';
-import type {
-  WorkspaceMaintenanceLease,
-  WorkspaceMaintenanceLeaseHandle,
-  WorkspaceMaintenancePurpose,
-} from './workspaceMaintenanceLease.js';
 
 export const TEST_OPERATION_ID = validateWorkspaceCreationOperationId(
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',

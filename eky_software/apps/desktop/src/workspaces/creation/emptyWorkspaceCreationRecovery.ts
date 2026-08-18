@@ -2,14 +2,15 @@ import type {
   LocalWorkspaceRegistryEntryV1,
   WorkspaceId,
 } from '../registry/workspaceRegistryTypes.js';
+import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
+import type { ActiveWorkspaceLifecyclePort } from '../runtime/activeWorkspaceLifecyclePort.js';
+import type { WorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
 import {
   EmptyWorkspaceCreationError,
   mapEmptyWorkspaceCreationError,
 } from './emptyWorkspaceCreationError.js';
 import type {
-  ActiveWorkspaceLifecyclePort,
   PublishedWorkspaceValidationPort,
-  WorkspaceRegistryPort,
 } from './emptyWorkspaceCreationPorts.js';
 import { validateEmptyWorkspaceBootstrapResult } from './emptyWorkspaceBootstrapResult.js';
 import { getWorkspaceCreationStateIndex } from './workspaceCreationJournalValidation.js';
@@ -27,7 +28,6 @@ import type {
   WorkspaceCreationJournalStore,
   WorkspaceCreationJournalV1,
 } from './workspaceCreationTypes.js';
-import type { WorkspaceMaintenanceLease } from './workspaceMaintenanceLease.js';
 
 export interface EmptyWorkspaceCreationRecoveryOptions {
   readonly activeWorkspaceLifecycle: ActiveWorkspaceLifecyclePort;
