@@ -4,6 +4,7 @@ import type {
 } from '../registry/workspaceRegistryTypes.js';
 import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
 import type { ActiveWorkspaceLifecyclePort } from '../runtime/activeWorkspaceLifecyclePort.js';
+import type { WorkspaceRuntimeAbsencePort } from '../runtime/workspaceRuntimeAbsencePort.js';
 import type { WorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
 import {
   EmptyWorkspaceCreationError,
@@ -37,6 +38,7 @@ export interface EmptyWorkspaceCreationRecoveryOptions {
   readonly registry: WorkspaceRegistryPort;
   readonly rootStore: WorkspaceCreationRootStore;
   readonly userDataRoot: string;
+  readonly workspaceRuntimeAbsence: WorkspaceRuntimeAbsencePort;
 }
 
 export type EmptyWorkspaceCreationRecoveryResult =
@@ -204,6 +206,12 @@ export class EmptyWorkspaceCreationRecovery {
     paths: ReturnType<typeof deriveWorkspaceCreationPaths>,
   ): Promise<void> {
     if (journal.lineageIdentity === null) return recoveryRequired();
+    try {
+      await this.options.workspaceRuntimeAbsence
+        .assertNoActiveWorkspaceRuntime();
+    } catch {
+      return recoveryRequired();
+    }
     let validation;
     try {
       validation = await this.options.publishedWorkspaceValidation

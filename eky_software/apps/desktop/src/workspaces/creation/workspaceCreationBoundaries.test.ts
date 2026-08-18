@@ -15,6 +15,7 @@ const neutralWorkspaceContractFiles = [
   join(desktopSourceRoot, 'workspaces', 'maintenance', 'workspaceMaintenanceLease.ts'),
   join(desktopSourceRoot, 'workspaces', 'registry', 'workspaceRegistryPort.ts'),
   join(desktopSourceRoot, 'workspaces', 'runtime', 'activeWorkspaceLifecyclePort.ts'),
+  join(desktopSourceRoot, 'workspaces', 'runtime', 'workspaceRuntimeAbsencePort.ts'),
 ];
 
 describe('empty workspace creation boundaries', () => {

@@ -12,6 +12,7 @@ import type {
 } from '../registry/workspaceRegistryTypes.js';
 import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
 import type { ActiveWorkspaceLifecyclePort } from '../runtime/activeWorkspaceLifecyclePort.js';
+import type { WorkspaceRuntimeAbsencePort } from '../runtime/workspaceRuntimeAbsencePort.js';
 import type {
   EmptyWorkspaceBootstrapInput,
   EmptyWorkspaceBootstrapPort,
@@ -338,6 +339,22 @@ export class RecordingActiveWorkspaceLifecycle
       this.maxOpenDatabaseHandleOwners,
       this.openDatabaseHandleOwners,
     );
+  }
+}
+
+export type WorkspaceRuntimeAbsenceState = 'absent' | 'active' | 'unknown';
+
+export class RecordingWorkspaceRuntimeAbsence
+  implements WorkspaceRuntimeAbsencePort {
+  assertionCalls = 0;
+  state: WorkspaceRuntimeAbsenceState = 'absent';
+
+  constructor(private readonly events: string[]) {}
+
+  async assertNoActiveWorkspaceRuntime(): Promise<void> {
+    this.events.push('runtimeAbsence.assert');
+    this.assertionCalls += 1;
+    if (this.state !== 'absent') throw new Error('runtime-absence-unproven');
   }
 }
 
