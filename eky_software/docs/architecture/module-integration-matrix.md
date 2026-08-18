@@ -55,6 +55,23 @@ TypeScript-rajapintaa, permission-nimeä, tietokantataulua tai adapteria.
 | Mobile Sync | planned | open | Ei saa ohittaa module application-, permission- tai tenant-rajoja | open | open | open | open | open | open | open | open | open | open | open | open | open | open | open | mobile planned | open |
 | AI Agent Coordination | planned | Agenttien rajattu toimijuus ja jäljitettävä orchestration päätetään myöhemmin | Ei saa ohittaa domain-, permission-, tenant-, audit- tai API-rajoja | open | open | open | open | Vain omistavan moduulin application-sopimusten kautta | open | open | open | open | open | open | open | open | open | open | backend/cloud planned | open |
 
+### Local Workspace W2.1 -checkpoint
+
+W2.1 pitää workspace foundationin edelleen inerttinä ja production-buildistä
+sekä package-payloadista suljettuna. Creation käyttää neutraaleja
+`WorkspaceMaintenanceLease`-, `ActiveWorkspaceLifecyclePort`-,
+`WorkspaceRuntimeAbsencePort`- ja `WorkspaceRegistryPort`-sopimuksia.
+Quiescen jälkeen jokainen failure-polku varmistaa idempotentisti täsmälleen
+yhden terveen aiemman runtimen, ja startup-recovery validoi julkaistua
+työtilaa vasta runtimen todistetun poissaolon jälkeen.
+
+W1-rekisteri ja W2-creation-journal säilyvät erillisinä persistence-vastuina.
+W3 saa käyttää yhteisiä neutraaleja workspace-portteja, mutta se ei saa
+kopioida niiden atomic-slot-toteutusta kolmatta kertaa eikä yhdistää
+registry-, creation- ja import-semanttiikkaa geneeriseksi persistence-
+kehykseksi. Mahdollinen kapea atomic-slot-primitive arvioidaan erikseen vasta
+W3:n todellisen tarpeen perusteella.
+
 ## Tarkistuslähteet
 
 Implemented-rivit tarkistetaan ensisijaisesti seuraavista lähteistä:
