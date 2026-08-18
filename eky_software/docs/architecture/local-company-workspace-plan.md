@@ -3,11 +3,12 @@
 ## Tila
 
 Suunniteltu kokonaisuus. W0:n arkkitehtuuri- ja hyväksymissopimus sekä W0.1:n
-lifecycle-tarkennukset on dokumentoitu. W1:n inertti foundation on toteutettu
-paikallisella feature-haaralla: sen lähdekoodi kuuluu desktopin normaaliin
-typecheckiin ja kohdetesteihin, mutta se on suljettu production-buildistä ja
-package-payloadista. W1:tä ei ole aktivoitu tuotantoruntimeen tai käyttäjälle
-näkyväksi ominaisuudeksi.
+lifecycle-tarkennukset on dokumentoitu. W1:n inertti foundation on yhdistetty
+vihreänä `main`-haaraan commitissa `687a424`: sen lähdekoodi kuuluu desktopin
+normaaliin typecheckiin ja kohdetesteihin, mutta se on suljettu production-
+buildistä ja package-payloadista. W1:tä ei ole aktivoitu tuotantoruntimeen tai
+käyttäjälle näkyväksi ominaisuudeksi. W2 toteuttaa samalla inertillä rajalla
+tyhjän työtilan luonnin journalin, portit ja koordinaattorin.
 
 Tämä suunnitelma toteuttaa
 `docs/decisions/ADR-0011-local-multi-workspace-company-model.md`-päätöksen
@@ -66,8 +67,9 @@ kanssa sekä omistajan katselmus.
 
 ## W1: Installation-owned workspace registry
 
-**Tila:** inertti foundation toteutettu paikallisella feature-haaralla;
-production-aktivointi ja käyttäjälle näkyvä toiminto eivät kuulu W1:een.
+**Tila:** inertti foundation yhdistetty vihreänä `main`-haaraan commitissa
+`687a424`; production-aktivointi ja käyttäjälle näkyvä toiminto eivät kuulu
+W1:een.
 
 **Omistaja:** Electron mainin rajattu workspace registry -adapteri ja
 composition. Ei backend- tai business-moduuli.
@@ -156,11 +158,15 @@ W1-W3 eivät muuta käyttäjän AppDataa tai normaalia startupia.
 
 ## W2: Empty workspace creation
 
+**Tila:** hyväksytty inertiksi toteutuscheckpointiksi. W2 ei ole production-
+compositionissa eikä käyttäjälle näkyvä ominaisuus.
+
 **Omistaja:** Electron mainin workspace coordinator; backendin nykyinen
 fresh-profile bootstrap rajatun portin takana.
 
-**Muutettavat kerrokset:** desktop composition, private workspace root,
-backend lifecycle -adapteri ja testit. Mahdollinen UI tulee vasta W5:ssä.
+**Muutettavat kerrokset:** `apps/desktop/src/workspaces/`-alueen yksityinen
+workspace root, luontijournal, lifecycle-portit, koordinaattori ja testit.
+Mahdollinen production-composition tulee vasta W4:ssä ja UI vasta W5:ssä.
 
 **Muuttumattomat kerrokset:** business-domain, API-sopimukset,
 backup-formaatti ja installer/update.
@@ -169,23 +175,133 @@ backup-formaatti ja installer/update.
 ja uuden SQLite `companyId`:n, migroituu nykyiseen manifestiin ja julkaistaan
 rekisteriin vasta readiness-portin jälkeen.
 
+Tyhjän työtilan luonti etenee aina seuraavassa järjestyksessä:
+
+1. validoi käyttäjälle näkyvä label W1:n suljetulla säännöllä
+2. varaa installation-scoped `WorkspaceMaintenanceLease`
+3. estää uudet aktiivisen työtilan kirjoitukset
+4. sulkee aktiivisen backendin ja todistaa sen tiedostokahvat suljetuiksi
+5. luo uuden `operationId`:n ja `workspaceId`:n
+6. johtaa samalla levyllä olevan yksityisen candidate-rootin vain näistä
+   tunnisteista
+7. julkaisee `prepared`-journalin ennen candidateen kirjoittamista
+8. bootstraptaa tyhjän SQLite-profiilin backendin yksityisen portin kautta
+9. ajaa kaikki nykyisen manifestin migraatiot
+10. todistaa täsmällisen migration chainin, integrityn ja foreign keyt
+11. todistaa tuoreen `companyId`:n, `local-owner`-actorin ja profile-lineagen
+12. luo työtilan auktoritatiivisen business-artifact-juuren
+13. nimeää candidate-rootin atomisesti lopulliseksi työtilajuureksi
+14. julkaisee uuden `ready`-entryn atomisesti W1-rekisteriin
+15. käynnistää aiemman aktiivisen runtimen uudelleen
+16. poistaa luontijournalin vasta terminal-tilassa ja vapauttaa leasen.
+
+Jos rekisterissä on jo aktiivinen `ready`-työtila, osoitin ei muutu. Jos
+rekisterissä ei ole yhtään `ready`-työtilaa, ensimmäinen uusi työtila saa
+aktiivisen osoittimen, mutta W2 ei vielä käynnistä sitä. Samat labelit ovat
+sallittuja; workspace-, company- ja lineage-identiteetit ovat aina erilliset.
+
 Workspace coordinator varaa installation-scoped `WorkspaceMaintenanceLease`-
 leasen ennen candidate-SQLiten avaamista. Aktiivinen backend ja kaikki sen
 SQLite-kahvat suljetaan ensin, joten asennuksessa on myös maintenance-vaiheen
 aikana enintään yksi business-SQLite-omistaja.
 
+W2:n nimetyt ja kapeat portit ovat:
+
+- `WorkspaceMaintenanceLease`
+- `ActiveWorkspaceLifecyclePort`
+- `EmptyWorkspaceBootstrapPort`
+- `WorkspaceCreationJournalStore`
+- `EmptyWorkspaceCreationCoordinator`.
+
+Electron main ei avaa SQLitea eikä tuo `better-sqlite3`:a. Bootstrap-portti
+saa mainin johtaman candidate-profiilijuuren ja rajatun teknisen kontekstin.
+Se palauttaa vain suljetun readiness-tuloksen: nykyinen migration chain,
+integrity/FK-status, bootstrap-actor, tuore company-identiteetti, profile-
+lineage ja todistus suljetuista kahvoista. SQLite-kahvaa, runtime-sessionia,
+raakaa virhettä tai business-dataa ei palauteta.
+
+### W2:n storage layout
+
+Lopullinen juuri on aina:
+
+`<userData>/workspaces/<workspaceId>/`
+
+Candidate on samalla volumeella installation-owned operaatiojuuressa:
+
+`<userData>/workspace-operations/<operationId>/<workspaceId>/`
+
+Candidate säilyttää nykyisen profiilin sisäisen rakenteen:
+
+- `runtime/data/eky.sqlite`
+- `runtime/storage/invoices/`
+- vain erikseen hyväksytyt workspace recovery/restore -juuret.
+
+Candidate ei sisällä update-journalia, package cachea, accepted-build-
+metadataa, diagnostiikkaa, operational-lokeja, support bundlea tai release-
+artifacteja. Main johtaa kaikki polut. Canonical containment, private root,
+symlink/reparse- ja hardlink-raja, olematon final-root sekä same-volume atomic
+rename todistetaan ennen julkaisua.
+
+### WorkspaceCreationJournalV1
+
+W2 käyttää omaa tarkasti nimettyä luontijournalia, ei geneeristä operation-
+frameworkia. Journalissa ovat täsmälleen:
+
+- `formatVersion`
+- `operationId`
+- `workspaceId`
+- validoitu `workspaceLabel`
+- `previousActiveWorkspaceId`
+- monotoninen `state`
+- `createdAt`
+- bootstrapin jälkeen validoitu `lineageIdentity`.
+
+Tilat etenevät vain järjestyksessä `prepared`, `candidateRootCreated`,
+`bootstrapCompleted`, `candidateValidated`, `rootPublished` ja
+`registryPublished`. Journalissa ei ole polkuja, companyId:tä, actorId:tä,
+SQL:ää, sessionia, salaisuuksia, raakaa virhettä, stackia tai business-dataa.
+Codec on exact-key, kokorajoitettu ja torjuu duplicate/prototype/unknown-
+avaimet. Store käyttää W1:n tavoin current/next/backup-slotteja, yksityisiä
+oikeuksia ja atomista vaihtoa.
+
+Restart-recovery sovittaa journalin, filesystemin ja rekisterin toisiinsa:
+
+- ennen rootin julkaisua keskeneräinen candidate poistetaan turvallisesti
+- jos final-root on julkaistu mutta journal ei edennyt, root validoidaan ja
+  registry-publish jatketaan idempotentisti
+- jos registry-entry on julkaistu mutta journal ei edennyt, entry, root ja
+  lineage validoidaan ennen terminal-tilaa
+- ristiriitainen final-root, entry, lineage tai journal johtaa
+  `recoveryRequired`-/fail-closed-tilaan eikä arvaavaan cleanupiin
+- aiempi aktiivinen runtime käynnistetään uudelleen vasta candidate-kahvojen
+  sulkeutumisen jälkeen.
+
 **Luottamusraja:** label on käyttäjän syöte; polku ja identiteetit ovat mainin
 luomia. Renderer ei saa päättää initial companyId:tä.
 
-**Fail-closed-tilat:** rootin luonti, migration, integrity/FK, identity,
-health tai registry publish epäonnistuu. Candidate poistetaan tai
-karanteenoidaan; aktiivinen työtila ei muutu.
+**Fail-closed-tilat:** lease, rootin luonti, bootstrap, migration,
+integrity/FK, identity, lineage, shutdown, restart, atomic rename, journal,
+registry publish, disk/short-write tai turvallinen cleanup epäonnistuu.
+Candidate poistetaan vain, kun omistajuus ja tila voidaan todistaa; muuten se
+karanteenoidaan tai operaatio jää `recoveryRequired`-tilaan. Aiempi registry,
+aktiivinen työtila ja sen profiilitavut eivät muutu failure-polussa.
 
-**Testit:** kaksi tyhjää työtilaa, samat labelit, eri workspace/company/lineage-
-identiteetit, keskeytys jokaisessa vaiheessa, restart-idempotenssi ja ei
-orpoja prosesseja.
+**Testit:** ensimmäinen ja toinen tyhjä työtila, samat labelit, eri workspace/
+company/lineage-identiteetit, aktiivisen osoittimen säännöt, kaikki nimetyt
+failure- ja crash-pisteet, ID-törmäykset, symlink/reparse/containment,
+byte-identtinen aiempi registry/profiili failure-polussa, restart-
+idempotenssi, suljetut kahvat ja nolla orpoa backend-prosessia. Backend-
+integraatiotesti bootstraptaa aidosti tuoreen yksityisen profiilin, ajaa
+migraatiot ja tarkastaa sen backendin nykyisellä trusted inspectorilla ilman
+testi-HTTP-reittiä tai Electron mainin SQLite-avausta.
 
-**Dokumentit:** workspace storage layout ja bootstrap-runbook.
+**Aktivointiraja:** W2-lähdekoodi pysyy W1:n production-build exclusionin,
+package inventory -kiellon ja staattisen import-rajan takana. Se ei muuta
+startupia, mainia, preloadia, IPC:tä, rendereriä, UI:ta, AppDataa, normaalia
+profiilia tai release-käyttäytymistä.
+
+**Dokumentit:** workspace storage layout, journal/recovery ja bootstrap-
+lifecycle tässä suunnitelmassa sekä ADR-0011:n maintenance-raja.
 
 **Commit/PR/release:** yksi W2-PR; ei vielä käyttäjälle näkyvää releasea.
 
