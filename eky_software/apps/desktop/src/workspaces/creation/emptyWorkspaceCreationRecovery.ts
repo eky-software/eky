@@ -86,7 +86,9 @@ export class EmptyWorkspaceCreationRecovery {
       }
 
       await this.options.rootStore.discardCandidate(paths);
-      await this.restartPrevious(journal.previousActiveWorkspaceId);
+      await this.ensurePreviousWorkspaceRunning(
+        journal.previousActiveWorkspaceId,
+      );
       await this.options.creationJournal.discardBeforePublication(
         journal.operationId,
       );
@@ -145,7 +147,9 @@ export class EmptyWorkspaceCreationRecovery {
       ),
     );
     current = await this.advance(current, 'registryPublished');
-    await this.restartPrevious(current.previousActiveWorkspaceId);
+    await this.ensurePreviousWorkspaceRunning(
+      current.previousActiveWorkspaceId,
+    );
     await this.options.creationJournal.remove(current.operationId);
   }
 
@@ -179,7 +183,9 @@ export class EmptyWorkspaceCreationRecovery {
     if (current.state === 'rootPublished') {
       current = await this.advance(current, 'registryPublished');
     }
-    await this.restartPrevious(current.previousActiveWorkspaceId);
+    await this.ensurePreviousWorkspaceRunning(
+      current.previousActiveWorkspaceId,
+    );
     await this.options.creationJournal.remove(current.operationId);
   }
 
@@ -265,13 +271,14 @@ export class EmptyWorkspaceCreationRecovery {
     }
   }
 
-  private restartPrevious(previousActiveWorkspaceId: WorkspaceId | null) {
+  private ensurePreviousWorkspaceRunning(
+    previousActiveWorkspaceId: WorkspaceId | null,
+  ) {
     return this.options.activeWorkspaceLifecycle
-      .restartPreviousWorkspace(previousActiveWorkspaceId)
-      .catch((error) => {
-        throw mapEmptyWorkspaceCreationError(
-          error,
-          'WORKSPACE_CREATION_LIFECYCLE_FAILED',
+      .ensurePreviousWorkspaceRunning(previousActiveWorkspaceId)
+      .catch(() => {
+        throw new EmptyWorkspaceCreationError(
+          'WORKSPACE_CREATION_RECOVERY_REQUIRED',
           'activeRuntimeRestart',
         );
       });

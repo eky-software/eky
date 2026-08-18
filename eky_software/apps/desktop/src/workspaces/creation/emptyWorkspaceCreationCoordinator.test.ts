@@ -34,6 +34,7 @@ interface CoordinatorFixture {
 }
 
 function createFixture(input: {
+  readonly generateWorkspaceId?: () => WorkspaceId;
   readonly registry?: Readonly<LocalWorkspaceRegistryV1>;
   readonly workspaceId?: WorkspaceId;
 } = {}): CoordinatorFixture {
@@ -60,7 +61,9 @@ function createFixture(input: {
       bootstrap,
       creationJournal: journal,
       generateOperationId: () => TEST_OPERATION_ID,
-      generateWorkspaceId: () => input.workspaceId ?? TEST_WORKSPACE_ID,
+      generateWorkspaceId:
+        input.generateWorkspaceId ??
+        (() => input.workspaceId ?? TEST_WORKSPACE_ID),
       maintenanceLease: lease,
       now: () => new Date(TEST_CREATED_AT),
       registry,
@@ -97,7 +100,7 @@ describe('empty workspace creation coordinator', () => {
       'root.cleanupPublishedOperation',
       'registry.write',
       'journal.write.registryPublished',
-      'lifecycle.restart',
+      'lifecycle.ensure',
       'journal.remove',
       'lease.release',
     ]);
@@ -113,6 +116,12 @@ describe('empty workspace creation coordinator', () => {
     });
     expect(fixture.journal.current).toBeUndefined();
     expect(fixture.lease.held).toBe(false);
+    expect(fixture.lifecycle.ensureCalls).toBe(1);
+    expect(fixture.lifecycle.runtimeStarts).toBe(1);
+    expect(fixture.lifecycle.runningRuntimeOwners).toBe(1);
+    expect(fixture.lifecycle.openDatabaseHandleOwners).toBe(1);
+    expect(fixture.lifecycle.maxRunningRuntimeOwners).toBe(1);
+    expect(fixture.lifecycle.maxOpenDatabaseHandleOwners).toBe(1);
   });
 
   it('keeps the previous active workspace when a second workspace is published', async () => {
@@ -211,7 +220,7 @@ describe('empty workspace creation coordinator', () => {
     });
     expect(fixture.events).not.toContain('journal.write.prepared');
     expect(fixture.events).not.toContain('root.createCandidate');
-    expect(fixture.events).toContain('lifecycle.restart');
+    expect(fixture.events).toContain('lifecycle.ensure');
     expect(fixture.lease.held).toBe(false);
   });
 
@@ -231,7 +240,11 @@ describe('empty workspace creation coordinator', () => {
     expect(fixture.journal.current).toBeUndefined();
     expect(fixture.registry.writes).toHaveLength(0);
     expect(fixture.events).toContain('root.discardCandidate');
-    expect(fixture.events).toContain('lifecycle.restart');
+    expect(fixture.events).toContain('lifecycle.ensure');
+    expect(fixture.lifecycle.ensureCalls).toBe(1);
+    expect(fixture.lifecycle.runtimeStarts).toBe(1);
+    expect(fixture.lifecycle.runningRuntimeOwners).toBe(1);
+    expect(fixture.lifecycle.openDatabaseHandleOwners).toBe(1);
   });
 
   it.each([
@@ -287,13 +300,34 @@ describe('empty workspace creation coordinator', () => {
       expect(fixture.registry.writes).toHaveLength(0);
       expect(fixture.rootStore.finalExists).toBe(false);
       expect(fixture.journal.current).toBeUndefined();
-      expect(fixture.events).toContain('lifecycle.restart');
+      expect(fixture.events).toContain('lifecycle.ensure');
     },
   );
 
-  it.each(['quiesce', 'stop'] as const)(
-    'does not create durable state when active runtime %s fails',
-    async (failure) => {
+  it('does not restart or create durable state when quiescing fails', async () => {
+    const fixture = createFixture();
+    fixture.lifecycle.failure = 'quiesce';
+
+    await expect(
+      fixture.coordinator.create('Uusi yritys'),
+    ).rejects.toMatchObject({
+      code: 'WORKSPACE_CREATION_LIFECYCLE_FAILED',
+      stage: 'activeRuntimeQuiesce',
+    });
+    expect(fixture.lifecycle.ensureCalls).toBe(0);
+    expect(fixture.lifecycle.runtimeStarts).toBe(0);
+    expect(fixture.lifecycle.runningRuntimeOwners).toBe(1);
+    expect(fixture.journal.current).toBeUndefined();
+    expect(fixture.rootStore.candidateExists).toBe(false);
+    expect(fixture.registry.writes).toHaveLength(0);
+  });
+
+  it.each([
+    ['before side effects', 'stopBeforeSideEffect', 0],
+    ['after a partial shutdown', 'stopAfterSideEffect', 1],
+  ] as const)(
+    'ensures one healthy previous runtime when stopping fails %s',
+    async (_description, failure, expectedStarts) => {
       const fixture = createFixture();
       fixture.lifecycle.failure = failure;
 
@@ -301,12 +335,42 @@ describe('empty workspace creation coordinator', () => {
         fixture.coordinator.create('Uusi yritys'),
       ).rejects.toMatchObject({
         code: 'WORKSPACE_CREATION_LIFECYCLE_FAILED',
+        stage: 'activeRuntimeStop',
       });
+      expect(fixture.lifecycle.ensureCalls).toBe(1);
+      expect(fixture.lifecycle.runtimeStarts).toBe(expectedStarts);
+      expect(fixture.lifecycle.runningRuntimeOwners).toBe(1);
+      expect(fixture.lifecycle.openDatabaseHandleOwners).toBe(1);
+      expect(fixture.lifecycle.maxRunningRuntimeOwners).toBe(1);
+      expect(fixture.lifecycle.maxOpenDatabaseHandleOwners).toBe(1);
       expect(fixture.journal.current).toBeUndefined();
       expect(fixture.rootStore.candidateExists).toBe(false);
       expect(fixture.registry.writes).toHaveLength(0);
+      expect(fixture.events).not.toContain('journal.write.prepared');
+      expect(fixture.events).not.toContain('root.createCandidate');
     },
   );
+
+  it('restores one runtime after identity generation fails', async () => {
+    const fixture = createFixture({
+      generateWorkspaceId: () => {
+        throw new Error('identity');
+      },
+    });
+
+    await expect(
+      fixture.coordinator.create('Uusi yritys'),
+    ).rejects.toMatchObject({
+      code: 'WORKSPACE_CREATION_INVALID',
+      stage: 'identityGeneration',
+    });
+    expect(fixture.lifecycle.ensureCalls).toBe(1);
+    expect(fixture.lifecycle.runtimeStarts).toBe(1);
+    expect(fixture.lifecycle.runningRuntimeOwners).toBe(1);
+    expect(fixture.lifecycle.openDatabaseHandleOwners).toBe(1);
+    expect(fixture.events).not.toContain('journal.write.prepared');
+    expect(fixture.events).not.toContain('root.createCandidate');
+  });
 
   it.each(['prepared', 'candidateRootCreated'] as const)(
     'recovers safely when journal persistence fails before %s publication',
@@ -324,7 +388,11 @@ describe('empty workspace creation coordinator', () => {
       expect(fixture.rootStore.finalExists).toBe(false);
       expect(fixture.registry.writes).toHaveLength(0);
       expect(fixture.journal.current).toBeUndefined();
-      expect(fixture.events).toContain('lifecycle.restart');
+      expect(fixture.events).toContain('lifecycle.ensure');
+      expect(fixture.lifecycle.ensureCalls).toBe(1);
+      expect(fixture.lifecycle.runtimeStarts).toBe(1);
+      expect(fixture.lifecycle.runningRuntimeOwners).toBe(1);
+      expect(fixture.lifecycle.openDatabaseHandleOwners).toBe(1);
     },
   );
 
@@ -344,6 +412,10 @@ describe('empty workspace creation coordinator', () => {
       expect(fixture.rootStore.finalExists).toBe(false);
       expect(fixture.registry.writes).toHaveLength(0);
       expect(fixture.journal.current).toBeUndefined();
+      expect(fixture.lifecycle.ensureCalls).toBe(1);
+      expect(fixture.lifecycle.runtimeStarts).toBe(1);
+      expect(fixture.lifecycle.runningRuntimeOwners).toBe(1);
+      expect(fixture.lifecycle.openDatabaseHandleOwners).toBe(1);
     },
   );
 
@@ -370,6 +442,24 @@ describe('empty workspace creation coordinator', () => {
     expect(fixture.journal.current).toBeUndefined();
   });
 
+  it('ensures the previous runtime even when private candidate cleanup fails', async () => {
+    const fixture = createFixture();
+    fixture.bootstrap.fail = true;
+    fixture.rootStore.failure = 'discard';
+
+    await expect(
+      fixture.coordinator.create('Uusi yritys'),
+    ).rejects.toMatchObject({
+      code: 'WORKSPACE_CREATION_RECOVERY_REQUIRED',
+      stage: 'cleanup',
+    });
+    expect(fixture.lifecycle.ensureCalls).toBe(1);
+    expect(fixture.lifecycle.runtimeStarts).toBe(1);
+    expect(fixture.lifecycle.runningRuntimeOwners).toBe(1);
+    expect(fixture.lifecycle.openDatabaseHandleOwners).toBe(1);
+    expect(fixture.registry.writes).toHaveLength(0);
+  });
+
   it('retains the recovery journal when publication may have completed', async () => {
     const fixture = createFixture();
     fixture.rootStore.failure = 'publishAfter';
@@ -381,7 +471,7 @@ describe('empty workspace creation coordinator', () => {
     expect(fixture.rootStore.finalExists).toBe(true);
     expect(fixture.journal.current?.state).toBe('candidateValidated');
     expect(fixture.events).not.toContain('journal.discard');
-    expect(fixture.events).toContain('lifecycle.restart');
+    expect(fixture.events).toContain('lifecycle.ensure');
     expect(fixture.lease.held).toBe(false);
   });
 
@@ -403,7 +493,7 @@ describe('empty workspace creation coordinator', () => {
       expect(fixture.rootStore.finalExists).toBe(true);
       expect(fixture.journal.current?.state).toBe('rootPublished');
       expect(fixture.events).not.toContain('journal.discard');
-      expect(fixture.events).toContain('lifecycle.restart');
+      expect(fixture.events).toContain('lifecycle.ensure');
     },
   );
 
@@ -422,9 +512,9 @@ describe('empty workspace creation coordinator', () => {
     },
   );
 
-  it('retains registry publication evidence when restarting the previous runtime fails', async () => {
+  it('retains registry publication evidence when ensuring the previous runtime fails', async () => {
     const fixture = createFixture();
-    fixture.lifecycle.failure = 'restart';
+    fixture.lifecycle.failure = 'ensure';
 
     await expect(
       fixture.coordinator.create('Uusi yritys'),
@@ -435,6 +525,7 @@ describe('empty workspace creation coordinator', () => {
     expect(fixture.registry.value?.workspaces).toHaveLength(1);
     expect(fixture.journal.current?.state).toBe('registryPublished');
     expect(fixture.rootStore.finalExists).toBe(true);
+    expect(fixture.lifecycle.ensureCalls).toBe(1);
   });
 });
 

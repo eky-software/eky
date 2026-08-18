@@ -5,7 +5,12 @@ export interface ActiveWorkspaceLifecyclePort {
   stopAndProveHandlesClosed(
     previousActiveWorkspaceId: WorkspaceId | null,
   ): Promise<{ readonly handlesClosed: true }>;
-  restartPreviousWorkspace(
+  /**
+   * Leaves exactly one healthy owner for the previous workspace runtime.
+   * Implementations must accept an already healthy runtime without starting
+   * another owner.
+   */
+  ensurePreviousWorkspaceRunning(
     previousActiveWorkspaceId: WorkspaceId | null,
   ): Promise<void>;
 }

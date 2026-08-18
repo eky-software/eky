@@ -267,11 +267,21 @@ export class MemoryWorkspaceCreationRootStore
   }
 }
 
-export type LifecycleFailure = 'quiesce' | 'stop' | 'restart';
+export type LifecycleFailure =
+  | 'quiesce'
+  | 'stopBeforeSideEffect'
+  | 'stopAfterSideEffect'
+  | 'ensure';
 
 export class RecordingActiveWorkspaceLifecycle
   implements ActiveWorkspaceLifecyclePort {
   failure: LifecycleFailure | undefined;
+  ensureCalls = 0;
+  runtimeStarts = 0;
+  runningRuntimeOwners = 1;
+  openDatabaseHandleOwners = 1;
+  maxRunningRuntimeOwners = 1;
+  maxOpenDatabaseHandleOwners = 1;
 
   constructor(private readonly events: string[]) {}
 
@@ -286,15 +296,48 @@ export class RecordingActiveWorkspaceLifecycle
     _previousActiveWorkspaceId: WorkspaceId | null,
   ): Promise<{ readonly handlesClosed: true }> {
     this.events.push('lifecycle.stop');
-    if (this.failure === 'stop') throw new Error('stop');
+    if (this.failure === 'stopBeforeSideEffect') {
+      throw new Error('stop-before-side-effect');
+    }
+    this.runningRuntimeOwners = 0;
+    this.openDatabaseHandleOwners = 0;
+    if (this.failure === 'stopAfterSideEffect') {
+      throw new Error('stop-after-side-effect');
+    }
     return { handlesClosed: true };
   }
 
-  async restartPreviousWorkspace(
+  async ensurePreviousWorkspaceRunning(
     _previousActiveWorkspaceId: WorkspaceId | null,
   ): Promise<void> {
-    this.events.push('lifecycle.restart');
-    if (this.failure === 'restart') throw new Error('restart');
+    this.events.push('lifecycle.ensure');
+    this.ensureCalls += 1;
+    if (this.failure === 'ensure') throw new Error('ensure');
+    if (
+      this.runningRuntimeOwners > 1 ||
+      this.openDatabaseHandleOwners > 1
+    ) {
+      throw new Error('multiple-runtime-owners');
+    }
+    if (this.runningRuntimeOwners === 0) {
+      this.runningRuntimeOwners = 1;
+      this.openDatabaseHandleOwners = 1;
+      this.runtimeStarts += 1;
+    }
+    if (
+      this.runningRuntimeOwners !== 1 ||
+      this.openDatabaseHandleOwners !== 1
+    ) {
+      throw new Error('runtime-not-healthy');
+    }
+    this.maxRunningRuntimeOwners = Math.max(
+      this.maxRunningRuntimeOwners,
+      this.runningRuntimeOwners,
+    );
+    this.maxOpenDatabaseHandleOwners = Math.max(
+      this.maxOpenDatabaseHandleOwners,
+      this.openDatabaseHandleOwners,
+    );
   }
 }
 

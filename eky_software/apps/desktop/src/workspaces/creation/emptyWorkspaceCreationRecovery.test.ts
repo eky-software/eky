@@ -102,7 +102,7 @@ describe('empty workspace creation recovery', () => {
     expect(fixture.rootStore.candidateExists).toBe(false);
     expect(fixture.registry.writes).toHaveLength(0);
     expect(fixture.journal.current).toBeUndefined();
-    expect(fixture.events).toContain('lifecycle.restart');
+    expect(fixture.events).toContain('lifecycle.ensure');
     expect(fixture.lease.held).toBe(false);
   });
 
@@ -120,7 +120,7 @@ describe('empty workspace creation recovery', () => {
         workspaces: [{ workspaceId: TEST_WORKSPACE_ID }],
       });
       expect(fixture.journal.current).toBeUndefined();
-      expect(fixture.events).toContain('lifecycle.restart');
+      expect(fixture.events).toContain('lifecycle.ensure');
     },
   );
 
@@ -197,15 +197,15 @@ describe('empty workspace creation recovery', () => {
     expect(fixture.journal.current?.state).toBe('candidateValidated');
   });
 
-  it('retains a registryPublished journal when restarting the previous runtime fails', async () => {
+  it('retains a registryPublished journal when ensuring the previous runtime fails', async () => {
     const fixture = createFixture({
       state: 'rootPublished',
       finalExists: true,
     });
-    fixture.lifecycle.failure = 'restart';
+    fixture.lifecycle.failure = 'ensure';
 
     await expect(fixture.recovery.recover()).rejects.toMatchObject({
-      code: 'WORKSPACE_CREATION_LIFECYCLE_FAILED',
+      code: 'WORKSPACE_CREATION_RECOVERY_REQUIRED',
       stage: 'activeRuntimeRestart',
     });
     expect(fixture.registry.value?.workspaces).toHaveLength(1);

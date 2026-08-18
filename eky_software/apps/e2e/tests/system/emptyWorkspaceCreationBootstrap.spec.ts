@@ -169,7 +169,7 @@ test('WORKSPACE-CREATE-001 @critical @security creates an isolated ready workspa
       'bootstrap.start',
       'bootstrap.stop',
       'bootstrap.inspect',
-      'active.restart.empty',
+      'active.ensure.empty',
     ]);
     expect(
       startedBackends.every(
@@ -199,8 +199,8 @@ function createRecordingLifecycle(
       events.push(`active.stop.${describe(previousActiveWorkspaceId)}`);
       return { handlesClosed: true };
     },
-    restartPreviousWorkspace: async (previousActiveWorkspaceId) => {
-      events.push(`active.restart.${describe(previousActiveWorkspaceId)}`);
+    ensurePreviousWorkspaceRunning: async (previousActiveWorkspaceId) => {
+      events.push(`active.ensure.${describe(previousActiveWorkspaceId)}`);
     },
   };
 }
