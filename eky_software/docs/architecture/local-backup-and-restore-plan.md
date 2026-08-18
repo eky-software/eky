@@ -154,6 +154,24 @@ Pull requestin kaikkien GitHub-checkien pitää vielä olla vihreitä ja projekt
 omistajan pitää hyväksyä merge. Windows installer, code signing ja
 automaattipäivitys säilyvät ADR-0010:n erillisen distribution-portin takana.
 
+## Manuaalinen pilot evidence 18.8.2026
+
+Tämä on projektin omistajan raportoima manuaalinen pilot evidence, ei
+automatisoitu testi, tuotantosertifiointi tai yleinen yhteensopivuusväite.
+
+Hallitulla paikallisella testikoneella todennettiin:
+
+- Eky 0.2.6:n puhdas asennus ja ensimmäinen käynnistys
+- Eky 0.2.5:llä luodun salatun `.ekybackup`-varmuuskopion valinta UI:ssa
+- palautuksen valmistelu ja aktivointi Eky 0.2.6:ssa
+- tietokannan hallittu forward-migraatio
+- yritystietojen ja varmuuskopioon kuuluneiden lasku-PDF:ien saatavuus
+- sovelluksen uudelleenkäynnistys palautuksen jälkeen.
+
+Tähän evidenssiin ei kirjata yritys-, henkilö-, lasku-, salasana-, polku- tai
+muuta tunnistavaa tietoa. Se ei korvaa W0:n jälkeen suunniteltua
+multi-workspace-, migration-, backup/restore- tai packaged release -matriisia.
+
 ## Tavoite ja rajaus
 
 Ensimmäinen backup/restore koskee yhtä ADR-0008:n mukaista suljettua
@@ -822,6 +840,7 @@ eivät Backup/Restore-polkuun.
 - `docs/architecture/local-backup-artifact-inventory.md`
 - `docs/architecture/local-desktop-implementation-plan.md`
 - `docs/architecture/local-invoice-pdf-archive-plan.md`
+- `docs/architecture/local-company-workspace-plan.md`
 - `docs/architecture/local-restore-recovery-runbook.md`
 - `docs/architecture/r0-e2e-test-matrix.md`
 - `docs/architecture/security-principles.md`
@@ -831,3 +850,4 @@ eivät Backup/Restore-polkuun.
 - `docs/decisions/ADR-0008-local-desktop-company-workspaces.md`
 - `docs/decisions/ADR-0009-local-backup-encryption-and-recovery-points.md`
 - `docs/decisions/ADR-0010-windows-installer-and-update-orchestration.md`
+- `docs/decisions/ADR-0011-local-multi-workspace-company-model.md`

@@ -4,6 +4,12 @@
 
 Hyväksytty.
 
+ADR-0008 säilyy yhden työtilan R0-baselinen päätöksenä. Usean rekisteröidyn
+paikallisen yritystyötilan hyväksytty jatkomalli on dokumentoitu
+`docs/decisions/ADR-0011-local-multi-workspace-company-model.md`-päätöksessä.
+Tämän dokumentin tulevaa profiilimallia koskevat kohdat ovat historiallinen
+lähtökohta; ristiriitatilanteessa ADR-0011 täsmentää niitä.
+
 ## Päätös
 
 Eky Local R0 käyttää yhtä paikallista yritystyötilaa:
@@ -106,8 +112,10 @@ Rajoitteet:
 
 - `AGENTS.md`
 - `docs/architecture/local-backup-and-restore-plan.md`
+- `docs/architecture/local-company-workspace-plan.md`
 - `docs/architecture/local-desktop-implementation-plan.md`
 - `docs/architecture/local-runtime-trust-and-authorization-plan.md`
 - `docs/architecture/security-principles.md`
 - `docs/decisions/ADR-0006-local-database-and-query-layer.md`
 - `docs/decisions/ADR-0007-local-desktop-shell-and-session-bootstrap.md`
+- `docs/decisions/ADR-0011-local-multi-workspace-company-model.md`
