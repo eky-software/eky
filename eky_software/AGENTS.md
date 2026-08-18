@@ -142,7 +142,9 @@ lue myös `docs/decisions/ADR-0007-local-desktop-shell-and-session-bootstrap.md`
 Jos työ koskee paikallisia yritystyötiloja, useita paikallisia profiileja,
 profiilin vaihtoa, profiilikohtaisia tietokantoja tai local desktopin
 multi-company-mallia, lue myös
-`docs/decisions/ADR-0008-local-desktop-company-workspaces.md`.
+`docs/decisions/ADR-0008-local-desktop-company-workspaces.md`,
+`docs/decisions/ADR-0011-local-multi-workspace-company-model.md` ja
+`docs/architecture/local-company-workspace-plan.md`.
 
 Jos työ koskee toista ihmiskäyttäjää, käyttäjähallintaa, kirjautumista,
 User- tai Employee/Worker-identiteettiä, yritysjäsenyyttä, rooleja,

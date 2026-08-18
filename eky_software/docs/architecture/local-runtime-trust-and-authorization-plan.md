@@ -128,22 +128,30 @@ Toteutetut ensimmäisen local-session-vaiheen säännöt:
   default
 - CSRF- ja cross-origin-riskit käsitellään myös loopback-käytössä
 - backend muodostaa `ActorContext`-olion session perusteella
-- SQLite-tietokannan singleton `local_runtime_identity` säilyttää asennuksen
-  sisäisen `installationId`-, `companyId`- ja `actorId`-identiteetin
+- nykyisen yhden työtilan 0.2.6-runtimen SQLite-singleton
+  `local_runtime_identity` säilyttää legacy `installationId`-arvon sekä
+  työtilan `companyId`- ja bootstrap-`actorId`-arvot
 - `companyId` ei tule request bodysta tai querysta
 - käyttöoikeudet tarkistetaan deny-by-default-periaatteella
 
-Uudessa asennuksessa `installationId` ja sisäinen `companyId` luodaan kerran
-migraatiossa. Uudelleenkäynnistys, Electronin päivitys tai sovelluksen uusi
-build ei vaihda niitä. Vanhassa yhden yrityksen local-kannassa migraatio
-säilyttää olemassa olevan yritysrajan. Jos vanhasta local-kannasta löytyy
-useita eri yritysrajoja, migraatio epäonnistuu turvallisesti eikä valitse yhtä
-yritystä hiljaa.
+Nykyisessä yhden työtilan bootstrapissa `installationId` ja sisäinen
+`companyId` luodaan kerran migraatiossa. Uudelleenkäynnistys, Electronin
+päivitys tai sovelluksen uusi build ei vaihda niitä. Vanhassa yhden yrityksen
+local-kannassa migraatio säilyttää olemassa olevan yritysrajan. Jos vanhasta
+local-kannasta löytyy useita eri yritysrajoja, migraatio epäonnistuu
+turvallisesti eikä valitse yhtä yritystä hiljaa.
 
-`installationId` on tekninen paikallisen asennuksen tunniste. Sitä voidaan
-myöhemmin käyttää yhdessä `companyId`-arvon kanssa käyttöjärjestelmän secret
-store -avaimen nimiavaruudessa. Avainta ei johdeta sähköpostiosoitteesta,
-Y-tunnuksesta tai muusta muuttuvasta liiketoimintadatasta.
+ADR-0011:n multi-workspace-mallissa SQLiteen tallennettu `installationId` on
+legacy workspace-bootstrap -metadataa. Se ei ole asennustasoisen rekisterin
+auktoriteetti, `workspaceId` eikä backup-lineage. Installation-scopen omistaa
+Electron mainin versionoitu rekisteri; työtilan `companyId` säilyy
+muuttumattomana työtilan koko elinkaaren ajan ja import säilyttää sen.
+
+`actorId = local-owner` on paikallisen yhden käyttäjän bootstrap-actor. Se ei
+ole käyttäjä-, työtila-, asennus- tai lineage-identiteetti. Workspace-
+namespacen tuleva secret store -avain johdetaan vain hyväksytystä
+main-prosessin työtilakontekstista, ei sähköpostiosoitteesta, Y-tunnuksesta,
+yrityksen nimestä tai SQLiteen jääneestä legacy `installationId`:stä.
 
 Electron main process muodostaa runtime-sessionin ja välittää sen backendille
 yksityisen prosessikanavan kautta. Renderer ei saa raakaa session-salaisuutta,

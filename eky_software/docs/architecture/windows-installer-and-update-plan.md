@@ -745,6 +745,30 @@ Asennuskohtainen hyväksytyn buildin metadata sisältää vain turvallisen build
 identiteetin ja hyväksyntäajan. Se ei ole business-dataa eikä kuulu portable
 backupiin.
 
+### Tuleva multi-workspace first start
+
+ADR-0011:n multi-workspace-aktivoinnin jälkeen first start noudattaa lisäksi
+seuraavia rajoja:
+
+1. installation-scoped workspace registry, sen yksikäsitteisyys ja aktiivinen
+   osoitin validoidaan ennen workspace-datan avaamista
+2. jokaisen työtilan migration history tarkastetaan yksi kerrallaan read-only-
+   tilassa
+3. vain aktiivinen työtila saa first-startissa preMigration-pisteen,
+   forward-migraation ja backend-readinessin
+4. passiiviseen työtilaan ei kirjoiteta eikä sitä migroida first-startissa
+5. passiivisen työtilan ensimmäinen aktivointi tekee migraation vasta
+   workspace-scoped preMigration-pisteen ja installation-scoped
+   `WorkspaceMaintenanceLease`-leasen takana
+6. invalidi future-, changed- tai missing-middle-historia estää vain kyseisen
+   passiivisen työtilan avaamisen ja merkitsee sen turvallisesti
+   `recoveryRequired`-tilaan; muita työtiloja ei migroida tai muuteta
+7. koko tarkastusketjussa saa olla enintään yksi business-SQLite-owner.
+
+Tämä osuus ei muuta nykyisen yhden työtilan 0.2.6-runtimen first-startia.
+Registryä tai passiivisten työtilojen käsittelyä ei kytketä production-
+startuppiin W1:ssä, vaan vasta ADR-0011:n W4-aktivointicheckpointissa.
+
 ## 15. Migraatiot
 
 Migraatiot ovat immutable ja vain eteenpäin ajettavia:
