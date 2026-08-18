@@ -7,10 +7,11 @@ lifecycle-tarkennukset on dokumentoitu. W1:n inertti foundation on yhdistetty
 vihreänä `main`-haaraan commitissa `687a424`. W2:n tyhjän työtilan luonnin
 inertti foundation on yhdistetty vihreänä `main`-haaraan commitissa
 `3529840`. W2.1 koventaa yhteiset workspace-sopimukset, runtimen palautuksen
-ja startup-recoveryn runtime-poissaolorajan ennen W3:a. W1-W2.1:n lähdekoodi
-kuuluu desktopin normaaliin
+ja startup-recoveryn runtime-poissaolorajan ennen W3:a. W3:n uuden lineagen
+backup-import on toteutettu inerttinä foundationina omalla feature-haarallaan.
+W1-W3:n lähdekoodi kuuluu desktopin normaaliin
 typecheckiin ja kohdetesteihin, mutta se on suljettu production-buildistä ja
-package-payloadista. Kumpaakaan checkpointia ei ole aktivoitu
+package-payloadista. Mitään näistä checkpointeista ei ole aktivoitu
 tuotantoruntimeen tai käyttäjälle näkyväksi ominaisuudeksi.
 
 Tämä suunnitelma toteuttaa
@@ -374,6 +375,13 @@ Nykyistä W1/W2 persistenceä ei refaktoroida ennen W3:a ilman suoraa
 turvallisuusvikaa ja erillistä rajattua päätöstä.
 
 ## W3: Import backup as new workspace
+
+**Tila:** toteutettu inerttinä foundationina. Koordinaattori, kahden vaiheen
+backup-tarkastus, private candidate, forward-migraatio, täysi validointi,
+atominen root- ja registry-julkaisu sekä restart-recovery on toteutettu ja
+todistettu unit-, fault-, recovery-, security- ja system-E2E-testeillä.
+Production-compositionia, preloadia, IPC:tä, UI:ta tai julkista HTTP-reittiä
+ei ole lisätty. W3b ja W4 ovat edelleen toteuttamatta.
 
 **Omistaja:** Profile Protection / Backup / Restore yhdessä workspace
 coordinatorin kanssa. Backup inspector säilyy backup-formaatin omistajana.

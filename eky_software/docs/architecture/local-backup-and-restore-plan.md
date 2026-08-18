@@ -639,6 +639,11 @@ vaan ADR-0011:n W3/W3b-checkpointteihin.
 
 ### W3:n backup-import uutena työtilana
 
+**Tila:** toteutettu inerttinä foundationina ja todistettu synteettisellä
+nykyversion backupilla, PDF-artifactilla sekä yhteensopivan historiallisen
+migraatioprefixin forward-migraatiolla. Polkua ei ole vielä kytketty
+production-compositioniin tai käyttöliittymään.
+
 W3 ei käytä aktiivisen profiilin restore-controlleria, preRestore-pistettä,
 activation journalia tai korvaavaa aktivointia. Backup inspector säilyttää
 `.ekybackup`-formaatin omistajuuden, mutta workspace import coordinator käyttää

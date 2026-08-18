@@ -2,10 +2,13 @@
 
 ## Tila
 
-Hyväksytty arkkitehtuurisopimus. W1:n registry ja W2:n empty-creation-
-foundation on toteutettu inerttinä, production-buildistä ja package-
-payloadista suljettuna lähdekoodina. Tuotantocompositionia, startup-kytkentää,
-IPC:tä tai käyttäjälle näkyvää toimintoa ei ole vielä toteutettu.
+Hyväksytty arkkitehtuurisopimus. W1:n registry, W2:n empty-creation ja W3:n
+uuden lineagen backup-import on toteutettu inerttinä, production-buildistä ja
+package-payloadista suljettuna lähdekoodina. W3:n private candidate-,
+forward-migration-, validointi-, julkaisu- ja restart-recovery-polut on
+todistettu rajatuilla testeillä ja system-E2E:llä. Tuotantocompositionia,
+startup-kytkentää, IPC:tä tai käyttäjälle näkyvää toimintoa ei ole vielä
+toteutettu.
 
 Tämä päätös jatkaa ADR-0008:n yhden aktiivisen yritystyötilan mallia. Se ei
 kumoa ADR-0008:n R0-rajoja, vaan määrittää hallitun kasvupolun useaan erilliseen
