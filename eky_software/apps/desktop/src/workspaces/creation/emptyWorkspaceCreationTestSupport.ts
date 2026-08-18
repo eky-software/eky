@@ -1,3 +1,5 @@
+import { resolve } from 'node:path';
+
 import type {
   LocalWorkspaceRegistryV1,
   WorkspaceId,
@@ -43,6 +45,7 @@ export const TEST_SECOND_WORKSPACE_ID = validateWorkspaceId(
   '22222222-2222-4222-8222-222222222222',
 );
 export const TEST_CREATED_AT = '2026-08-18T10:00:00.000Z';
+export const TEST_USER_DATA_ROOT = resolve('Eky-test-profile');
 
 export function createTestBootstrapResult(
   profileCharacter = 'a',

@@ -18,10 +18,9 @@ import {
   TEST_CREATED_AT,
   TEST_OPERATION_ID,
   TEST_SECOND_WORKSPACE_ID,
+  TEST_USER_DATA_ROOT,
   TEST_WORKSPACE_ID,
 } from './emptyWorkspaceCreationTestSupport.js';
-
-const userDataRoot = 'C:\\Eky-test-profile';
 
 interface CoordinatorFixture {
   readonly bootstrap: RecordingEmptyWorkspaceBootstrap;
@@ -66,7 +65,7 @@ function createFixture(input: {
       now: () => new Date(TEST_CREATED_AT),
       registry,
       rootStore,
-      userDataRoot,
+      userDataRoot: TEST_USER_DATA_ROOT,
     }),
   };
 }

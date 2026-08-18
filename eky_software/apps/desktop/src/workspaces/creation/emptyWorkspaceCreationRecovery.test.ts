@@ -11,11 +11,10 @@ import {
   RecordingActiveWorkspaceLifecycle,
   RecordingPublishedWorkspaceValidation,
   RecordingWorkspaceMaintenanceLease,
+  TEST_USER_DATA_ROOT,
   TEST_WORKSPACE_ID,
 } from './emptyWorkspaceCreationTestSupport.js';
 import { createReadyWorkspaceEntry } from './workspaceCreationRegistry.js';
-
-const userDataRoot = 'C:\\Eky-test-profile';
 
 function createFixture(input: {
   readonly state?: Parameters<typeof createTestJournal>[0]['state'];
@@ -72,7 +71,7 @@ function createFixture(input: {
       publishedWorkspaceValidation: validation,
       registry,
       rootStore,
-      userDataRoot,
+      userDataRoot: TEST_USER_DATA_ROOT,
     }),
   };
 }
