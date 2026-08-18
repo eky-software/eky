@@ -4,11 +4,12 @@
 
 Suunniteltu kokonaisuus. W0:n arkkitehtuuri- ja hyväksymissopimus sekä W0.1:n
 lifecycle-tarkennukset on dokumentoitu. W1:n inertti foundation on yhdistetty
-vihreänä `main`-haaraan commitissa `687a424`: sen lähdekoodi kuuluu desktopin
-normaaliin typecheckiin ja kohdetesteihin, mutta se on suljettu production-
-buildistä ja package-payloadista. W1:tä ei ole aktivoitu tuotantoruntimeen tai
-käyttäjälle näkyväksi ominaisuudeksi. W2 toteuttaa samalla inertillä rajalla
-tyhjän työtilan luonnin journalin, portit ja koordinaattorin.
+vihreänä `main`-haaraan commitissa `687a424`. W2:n tyhjän työtilan luonnin
+inertti foundation on toteutettu ja paikallisesti todennettu omalla
+checkpoint-haarallaan. W1-W2:n lähdekoodi kuuluu desktopin normaaliin
+typecheckiin ja kohdetesteihin, mutta se on suljettu production-buildistä ja
+package-payloadista. Kumpaakaan checkpointia ei ole aktivoitu
+tuotantoruntimeen tai käyttäjälle näkyväksi ominaisuudeksi.
 
 Tämä suunnitelma toteuttaa
 `docs/decisions/ADR-0011-local-multi-workspace-company-model.md`-päätöksen
@@ -158,8 +159,9 @@ W1-W3 eivät muuta käyttäjän AppDataa tai normaalia startupia.
 
 ## W2: Empty workspace creation
 
-**Tila:** hyväksytty inertiksi toteutuscheckpointiksi. W2 ei ole production-
-compositionissa eikä käyttäjälle näkyvä ominaisuus.
+**Tila:** inertti foundation toteutettu ja paikallisesti todennettu. W2 ei ole
+production-compositionissa eikä käyttäjälle näkyvä ominaisuus. Aktivointi
+odottaa W4:n erillistä hyväksyntää ja checkpointia.
 
 **Omistaja:** Electron mainin workspace coordinator; backendin nykyinen
 fresh-profile bootstrap rajatun portin takana.
@@ -286,14 +288,17 @@ Candidate poistetaan vain, kun omistajuus ja tila voidaan todistaa; muuten se
 karanteenoidaan tai operaatio jää `recoveryRequired`-tilaan. Aiempi registry,
 aktiivinen työtila ja sen profiilitavut eivät muutu failure-polussa.
 
-**Testit:** ensimmäinen ja toinen tyhjä työtila, samat labelit, eri workspace/
-company/lineage-identiteetit, aktiivisen osoittimen säännöt, kaikki nimetyt
-failure- ja crash-pisteet, ID-törmäykset, symlink/reparse/containment,
-byte-identtinen aiempi registry/profiili failure-polussa, restart-
-idempotenssi, suljetut kahvat ja nolla orpoa backend-prosessia. Backend-
-integraatiotesti bootstraptaa aidosti tuoreen yksityisen profiilin, ajaa
-migraatiot ja tarkastaa sen backendin nykyisellä trusted inspectorilla ilman
-testi-HTTP-reittiä tai Electron mainin SQLite-avausta.
+**Testit:** toteutetut kohdetestit kattavat ensimmäisen ja toisen tyhjän
+työtilan, samat labelit, eri workspace/company/lineage-identiteetit,
+aktiivisen osoittimen säännöt, nimetyt failure- ja crash-pisteet,
+ID-törmäykset, symlink/reparse/containment-rajat, byte-identtisen aiemman
+registryn ja profiilin failure-polussa sekä restart-recoveryn. Staattiset
+rajatestit todistavat, ettei W2 vuoda production-entrypointteihin tai tuo
+SQLite-ajuria Electron mainiin. System-E2E bootstraptaa aidosti tuoreen
+yksityisen profiilin oikealla backend-prosessilla, ajaa nykyiset migraatiot,
+todistaa kahvojen ja loopback-portin sulkeutumisen ja tarkastaa julkaistun
+profiilin backendin nykyisellä trusted inspectorilla ilman testi-HTTP-reittiä
+tai Electron mainin SQLite-avausta.
 
 **Aktivointiraja:** W2-lähdekoodi pysyy W1:n production-build exclusionin,
 package inventory -kiellon ja staattisen import-rajan takana. Se ei muuta
