@@ -4,30 +4,40 @@ import type {
   WorkspaceId,
   WorkspaceLineageIdentityV1,
 } from '../registry/workspaceRegistryTypes.js';
-import { WORKSPACE_REGISTRY_MAX_ENTRIES } from '../registry/workspaceRegistryValidation.js';
+import {
+  appendReadyWorkspaceEntry,
+  assertActiveWorkspaceUnchanged,
+  assertWorkspaceIdAvailable as assertRegistryWorkspaceIdAvailable,
+  assertWorkspaceLineageAvailable,
+  createReadyWorkspaceEntry as createRegistryReadyWorkspaceEntry,
+  findWorkspaceEntry as findRegistryWorkspaceEntry,
+  readWorkspaceRegistry,
+  WorkspaceRegistryMutationError,
+} from '../registry/workspaceRegistryMutations.js';
 import { EmptyWorkspaceCreationError } from './emptyWorkspaceCreationError.js';
 
 export function readCreationRegistry(
   value: Readonly<LocalWorkspaceRegistryV1> | undefined,
 ): Readonly<LocalWorkspaceRegistryV1> {
-  return value ?? Object.freeze({
-    formatVersion: 1 as const,
-    activeWorkspaceId: null,
-    workspaces: Object.freeze([]),
-  });
+  return readWorkspaceRegistry(value);
 }
 
 export function assertWorkspaceIdAvailable(
   registry: Readonly<LocalWorkspaceRegistryV1>,
   workspaceId: WorkspaceId,
 ): void {
-  if (registry.workspaces.length >= WORKSPACE_REGISTRY_MAX_ENTRIES) {
-    throw new EmptyWorkspaceCreationError(
-      'WORKSPACE_CREATION_CAPACITY_EXCEEDED',
-      'identityGeneration',
-    );
-  }
-  if (registry.workspaces.some((entry) => entry.workspaceId === workspaceId)) {
+  try {
+    assertRegistryWorkspaceIdAvailable(registry, workspaceId);
+  } catch (error) {
+    if (
+      error instanceof WorkspaceRegistryMutationError &&
+      error.failure === 'capacityExceeded'
+    ) {
+      throw new EmptyWorkspaceCreationError(
+        'WORKSPACE_CREATION_CAPACITY_EXCEEDED',
+        'identityGeneration',
+      );
+    }
     throw new EmptyWorkspaceCreationError(
       'WORKSPACE_CREATION_CONFLICT',
       'identityGeneration',
@@ -39,12 +49,9 @@ export function assertLineageAvailable(
   registry: Readonly<LocalWorkspaceRegistryV1>,
   lineageIdentity: Readonly<WorkspaceLineageIdentityV1>,
 ): void {
-  if (
-    registry.workspaces.some(
-      (entry) =>
-        entry.lineageIdentity.profileId === lineageIdentity.profileId,
-    )
-  ) {
+  try {
+    assertWorkspaceLineageAvailable(registry, lineageIdentity);
+  } catch {
     throw new EmptyWorkspaceCreationError(
       'WORKSPACE_CREATION_CONFLICT',
       'bootstrap',
@@ -56,13 +63,23 @@ export function publishWorkspaceEntry(
   registry: Readonly<LocalWorkspaceRegistryV1>,
   entry: Readonly<LocalWorkspaceRegistryEntryV1>,
 ): Readonly<LocalWorkspaceRegistryV1> {
-  assertWorkspaceIdAvailable(registry, entry.workspaceId);
-  assertLineageAvailable(registry, entry.lineageIdentity);
-  return Object.freeze({
-    formatVersion: 1,
-    activeWorkspaceId: registry.activeWorkspaceId ?? entry.workspaceId,
-    workspaces: Object.freeze([...registry.workspaces, entry]),
-  });
+  try {
+    return appendReadyWorkspaceEntry(registry, entry);
+  } catch (error) {
+    if (
+      error instanceof WorkspaceRegistryMutationError &&
+      error.failure === 'capacityExceeded'
+    ) {
+      throw new EmptyWorkspaceCreationError(
+        'WORKSPACE_CREATION_CAPACITY_EXCEEDED',
+        'identityGeneration',
+      );
+    }
+    throw new EmptyWorkspaceCreationError(
+      'WORKSPACE_CREATION_CONFLICT',
+      'bootstrap',
+    );
+  }
 }
 
 export function createReadyWorkspaceEntry(input: {
@@ -71,28 +88,23 @@ export function createReadyWorkspaceEntry(input: {
   readonly lineageIdentity: Readonly<WorkspaceLineageIdentityV1>;
   readonly createdAt: string;
 }): Readonly<LocalWorkspaceRegistryEntryV1> {
-  return Object.freeze({
-    workspaceId: input.workspaceId,
-    workspaceLabel: input.workspaceLabel,
-    lineageIdentity: input.lineageIdentity,
-    layoutVersion: 1,
-    lifecycleState: 'ready',
-    createdAt: input.createdAt,
-  });
+  return createRegistryReadyWorkspaceEntry(input);
 }
 
 export function findWorkspaceEntry(
   registry: Readonly<LocalWorkspaceRegistryV1>,
   workspaceId: WorkspaceId,
 ): Readonly<LocalWorkspaceRegistryEntryV1> | undefined {
-  return registry.workspaces.find((entry) => entry.workspaceId === workspaceId);
+  return findRegistryWorkspaceEntry(registry, workspaceId);
 }
 
 export function assertRegistryStillAtPreviousActive(
   registry: Readonly<LocalWorkspaceRegistryV1>,
   previousActiveWorkspaceId: WorkspaceId | null,
 ): void {
-  if (registry.activeWorkspaceId !== previousActiveWorkspaceId) {
+  try {
+    assertActiveWorkspaceUnchanged(registry, previousActiveWorkspaceId);
+  } catch {
     throw new EmptyWorkspaceCreationError(
       'WORKSPACE_CREATION_RECOVERY_REQUIRED',
       'recovery',
