@@ -625,8 +625,17 @@ runtime-infrastruktuuritaulut voivat olla olemassa, mutta yhdessäkään muussa
 taulussa ei ole rivejä. Renderer ei päätä tyhjyyttä eikä saa taulu- tai
 yritystietoja tämän tarkistuksen tuloksena.
 
-Myöhempi multi-profile-malli voi tukea palautusta uutena yritysprofiilina.
-Se ei kuulu tähän toteutusvaiheeseen.
+ADR-0011:n myöhempi multi-workspace-malli erottaa kaksi toimintoa:
+
+- rekisteröimättömän lineagen backup voidaan tuoda uutena työtilana
+- olemassa oleva exact-lineage-työtila voidaan korvata vain, kun se on ensin
+  vaihdettu aktiiviseksi.
+
+Passiivista työtilaa ei korvata toisen työtilan runtimen ollessa aktiivinen.
+Molemmat operaatiot vaativat installation-scoped maintenance-leasen,
+candidate-stagingin ja nykyiset formaatti-, migraatio-, identity-, SQLite- ja
+artifact-validoinnit. Tämä ei kuulu nykyisen yhden työtilan restore-polkuun,
+vaan ADR-0011:n W3/W3b-checkpointteihin.
 
 ## Käyttöliittymä
 

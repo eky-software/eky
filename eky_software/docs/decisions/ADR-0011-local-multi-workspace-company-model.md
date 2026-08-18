@@ -78,6 +78,15 @@ sallittuja.
 sen aktiivisen työtilan validoidusta SQLite-identiteetistä ja muodostaa sen
 vahvistettuun runtime-sessioniin sidottuun `ActorContext`-kontekstiin.
 
+`companyId` luodaan tyhjälle työtilalle täsmälleen kerran ja säilyy
+muuttumattomana työtilan koko elinkaaren ajan. Backupin tuonti säilyttää
+backupin alkuperäisen `companyId`:n; import, restore, labelin vaihto tai
+workspace switch eivät saa luoda sille uutta arvoa.
+
+Nykyinen `actorId = local-owner` on yhden käyttäjän paikallisen runtimen
+bootstrap-actor. Se ei ole `workspaceId`, käyttäjäidentiteetti, yrityksen
+lineage tai asennuksen tunniste eikä sitä saa käyttää näiden johtamiseen.
+
 Työtilan vaihtaminen ei koskaan tarkoita pelkän `companyId`-arvon vaihtamista
 käynnissä olevassa prosessissa.
 
@@ -164,13 +173,48 @@ tuonti toiselle koneelle ei tuo SMTP-salasanaa mukanaan.
 
 ## Työtilarekisterin turvallisuusraja
 
-Rekisteri saa sisältää vain turvallisen minimimetadatan:
+Rekisterin ensimmäinen hyväksytty sopimus on täsmälleen:
 
-- `workspaceId`
-- `workspaceLabel`
-- versionoitu lineage identity
-- mainin muodostama sisäinen storage locator
-- rekisterimerkinnän tila ja turvallinen lifecycle-metadata.
+```ts
+interface LocalWorkspaceRegistryV1 {
+  formatVersion: 1;
+  activeWorkspaceId: string | null;
+  workspaces: LocalWorkspaceRegistryEntryV1[];
+}
+
+interface LocalWorkspaceRegistryEntryV1 {
+  workspaceId: string;
+  workspaceLabel: string;
+  lineageIdentity: {
+    formatVersion: 1;
+    profileId: string;
+  };
+  layoutVersion: 1;
+  lifecycleState: 'ready' | 'recoveryRequired';
+  createdAt: string;
+}
+```
+
+Parseri on suljettu: tuntemattomat kentät ja arvot torjutaan. `createdAt` on
+strict-parserin hyväksymä UTC-aikaleima eikä käyttöjärjestyksen tai
+identiteetin lähde.
+
+`activeWorkspaceId` saa olla `null` vain ennen ensimmäisen työtilan
+julkaisua tai legacy-profiilin adoption valmistumista. Kun rekisterissä on
+`ready`-työtila, normaalissa käyttötilassa aktiivisen osoittimen pitää viitata
+täsmälleen yhteen rekisterimerkintään.
+
+Rekisteriin ei tallenneta storage locatoria. Electron main johtaa työtilan
+juuren aina suljetulla säännöllä
+`<userData>/workspaces/<workspaceId>/` käyttäen vain validoitua
+`workspaceId`:tä ja tunnettua `layoutVersion`-arvoa. Rekisteristä, rendereriltä
+tai backupista ei hyväksytä absoluuttista tai suhteellista työtilapolkua.
+
+`creating`, `candidate`, `importing`, `switching` ja `restoring` eivät ole
+rekisterimerkinnän lifecycle-tiloja. Keskeneräinen operaatio kuuluu omaan
+crash-safe, operaatiokohtaiseen journaliinsa. Rekisteriin julkaistaan vain
+valmis `ready`-työtila tai jo julkaistun työtilan turvallisen avaamisen estävä
+`recoveryRequired`-tila.
 
 Rekisteri ei sisällä:
 
@@ -181,16 +225,38 @@ Rekisteri ei sisällä:
 - backup-manifestin raakasisältöä.
 
 Rekisterin kirjoitus on crash-safe ja versionoitu. Tuntematon versio,
-duplikaatti `workspaceId`, duplikaatti lineage, puuttuva storage root,
-virheellinen tila tai checksum/formaattivirhe estää työtilan avaamisen.
+duplikaatti `workspaceId`, duplikaatti lineage, puuttuva johdettu storage root,
+virheellinen tila tai rakenne-/formaattivirhe estää työtilan avaamisen.
+
+## Asennustasoinen maintenance-raja
+
+Electron main omistaa tulevan `WorkspaceMaintenanceLease`-sopimuksen. Yhdessä
+asennuksessa saa olla enintään yksi business-SQLite-omistaja myös create-,
+import-, replace-, adopt-, switch-, update-, migration-, backup- ja restore-
+operaatioiden aikana.
+
+Maintenance-operaatio:
+
+1. varaa installation-scoped leasen ennen candidate-profiilin avaamista
+2. estää uudet business-kirjoitukset ja odottaa rajatusti keskeneräiset työt
+3. sulkee aktiivisen backendin, SQLite-yhteydet ja workspace-kahvat
+4. avaa candidate-SQLiten vasta sulkeutumisen todistamisen jälkeen
+5. sulkee failure-polussa candidate-kahvat ennen aiemman työtilan
+   uudelleenkäynnistystä
+6. vapauttaa leasen vasta terminal-tilassa.
+
+Lease ei ole yleinen lukko rendererille eikä business-moduuleille. Se on
+main-prosessin kapea process-lifecycle-sopimus, eikä epäonnistumisessa sallita
+rinnakkaista vanhan ja uuden työtilan SQLite-omistajuutta.
 
 ## Hallittu workspace switch
 
 Työtilan vaihto on maintenance-operaatio. Se etenee seuraavassa suljetussa
 järjestyksessä:
 
-1. main validoi lähde- ja kohde-`workspaceId`:t sekä estää rinnakkaisen
-   backup-, restore-, update-, migration- ja switch-operaation
+1. main validoi lähde- ja kohde-`workspaceId`:t, varaa
+   `WorkspaceMaintenanceLease`-leasen sekä estää rinnakkaisen backup-,
+   restore-, update-, migration- ja switch-operaation
 2. uudet business-kirjoitukset ja taustatehtävät estetään; keskeneräiset
    operaatiot viimeistellään tai vaihto torjutaan
 3. PDF-esikatselut ja muut aktiiviseen työtilaan sidotut desktop-capabilityt
@@ -203,7 +269,8 @@ järjestyksessä:
    vapautetaan
 8. main kirjoittaa switch-journalin ja uuden aktiivisen osoittimen
    crash-safe candidate-vaiheeseen
-9. kohteen adapterit ja backend koostetaan vain rekisterin storage locatorista
+9. kohteen adapterit ja backend koostetaan vain mainin validoidusta
+   `workspaceId`:stä ja `layoutVersion`:stä johtamasta työtilajuuresta
 10. kohteelle luodaan uusi runtime-session ja uusi ActorContext-bootstrap
 11. health, SQLite integrity, foreign keys, migration chain, workspace/company
     identity ja auktoritatiivinen artifact-katalogi validoidaan
@@ -239,9 +306,14 @@ vahvistamaa atomista aktivointia.
 
 ### B. Korvaa olemassa oleva työtila
 
-Korvaus sallitaan vain täsmälleen samalle lineage identitylle.
+Ensimmäisessä multi-workspace-versiossa korvaus sallitaan vain aktiiviselle
+työtilalle ja täsmälleen samalle lineage identitylle. Jos käyttäjä haluaa
+korvata passiivisen työtilan, hänen pitää ensin vaihtaa siihen hallitulla
+workspace switchillä. Passiivista työtilaa ei avata kirjoitettavaksi samalla,
+kun toinen työtila on aktiivinen.
 
-1. main paikantaa lineagea vastaavan ainoan rekisteröidyn työtilan
+1. main todistaa aktiivisen `workspaceId`:n ja paikantaa lineagea vastaavan
+   ainoan rekisteröidyn työtilan
 2. työtilasta tehdään validoitu pre-restore-palautuspiste
 3. backup valmistellaan yksityiseen stagingiin ja migroidaan eteenpäin
 4. kaikki samat identity-, SQLite-, migration- ja artifact-portit ajetaan
@@ -298,9 +370,41 @@ accepted build, MSI-paketit ja package cache eivät siirry workspace switchissä
 Työtilan vaihto, tuonti, korvaus ja adoptio estetään, jos update-, preUpdate-,
 MSI-handoff-, first-start- tai binary rollback -tila on ratkaisematta.
 
-Version N+1 first start validoi rekisterin sekä jokaisen työtilan
-yhteensopivuuden erikseen ennen release-hyväksyntää. Yhden työtilan failure ei
-saa johtaa muiden hiljaiseen migraatioon tai väärän työtilan avaamiseen.
+Version N+1 first start toimii seuraavasti:
+
+1. rekisterin rakenne, yksikäsitteisyys ja aktiivinen osoitin validoidaan
+2. työtilojen migraatiohistoriat tarkastetaan yksi kerrallaan read-only-tilassa
+3. vain aktiivinen työtila saa preMigration-palautuspisteen, migraation ja
+   normaalin backend-readinessin first-startissa
+4. passiiviseen työtilaan ei kirjoiteta eikä sitä migroida hiljaisesti
+5. passiivinen työtila migroidaan vasta ensimmäisellä aktivointiyrityksellä
+   installation-scoped maintenance-leasen ja workspace-scoped
+   preMigration-palautuspisteen takana
+6. tuntematon, future-, changed- tai missing-middle-historia estää kyseisen
+   passiivisen työtilan avaamisen ja asettaa sen `recoveryRequired`-tilaan;
+   muita työtiloja ei muuteta eikä virheellistä historiaa arvata
+7. release hyväksytään aktiiviselle runtimelle vasta sen nykyisten
+   first-start-porttien jälkeen; passiivisen `recoveryRequired`-työtilan tila
+   näytetään turvallisesti ennen switchiä.
+
+Kaikki tarkastukset ja migraatiot noudattavat yhden business-SQLite-omistajan
+rajaa. Yhden työtilan failure ei saa johtaa muiden hiljaiseen migraatioon,
+väärän työtilan avaamiseen tai installation-päivitystilan siirtymiseen
+workspace-backupiin.
+
+## PDF-arkiston workspace-eristys
+
+Käyttäjä valitsee PDF-arkistoinnille ulkoisen arkistojuuren. Electron main
+muodostaa varsinaisen työtilakohtaisen kohteen aina muodossa
+`<archiveRoot>/<workspaceId>/`. Renderer ei saa muodostaa alikansiota eikä
+antaa arkistointitehtävälle polkua.
+
+Arkistojuuren asetus ja retry-journal ovat workspace-kohtaista device-local-
+tilaa. Työtilan vaihto vaihtaa käytettävän asetuksen ja journalin. Sama
+laskutiedoston nimi ei saa törmätä toisen työtilan kopioon, eikä workspace A:n
+kopio saa näkyä workspace B:n arkiston namespacessa. Ulkoinen arkistokopio on
+edelleen ei-auktoritatiivinen eikä arkistojuurta, asetusta tai journalia
+siirretä portable backupissa.
 
 ## Käyttäjät ja käyttöoikeudet
 
@@ -362,6 +466,7 @@ Kustannukset:
 - `apps/desktop/AGENTS.md`
 - `docs/architecture/local-company-workspace-plan.md`
 - `docs/architecture/local-backup-and-restore-plan.md`
+- `docs/architecture/local-invoice-pdf-archive-plan.md`
 - `docs/architecture/local-runtime-trust-and-authorization-plan.md`
 - `docs/architecture/module-integration-matrix.md`
 - `docs/architecture/r0-e2e-test-matrix.md`

@@ -2,8 +2,8 @@
 
 ## Tila
 
-Suunniteltu. W0:n arkkitehtuuri- ja hyväksymissopimus on dokumentoitu.
-W1-tuotantokoodia ei ole aloitettu.
+Suunniteltu. W0:n arkkitehtuuri- ja hyväksymissopimus sekä W0.1:n lifecycle-
+tarkennukset on dokumentoitu. W1-tuotantokoodia ei ole aloitettu.
 
 Tämä suunnitelma toteuttaa
 `docs/decisions/ADR-0011-local-multi-workspace-company-model.md`-päätöksen
@@ -33,8 +33,13 @@ yritystyötiloja siten, että:
 - Portable backup ei ole merge- eikä sync-formaatti.
 - Uusi dependency, schema tai backup-formaatti vaatii erillisen omistajan
   päätöksen ennen toteutusta.
-- Jokainen checkpoint valmistuu omana PR:nään. Seuraavaa checkpointia ei
-  aloiteta ennen vihreää edellistä checkpointia ja dokumentoitua hyväksyntää.
+- Checkpointin sisällä saa tehdä pieniä paikallisia committeja ja ajaa
+  kohdetestejä, mutta GitHubiin pushataan vain yksi koherentti, paikallisesti
+  vihreä checkpoint. Lähtökohtaisesti checkpointilla on enintään yksi PR- ja
+  CI-kierros kerrallaan; GitHubia ei käytetä ensisijaisena debuggerina.
+- Seuraavaa checkpointia ei aloiteta ennen vihreää edellistä checkpointia ja
+  dokumentoitua hyväksyntää. W1:n serializer-, store-, containment- ja
+  recovery-osat kuuluvat samaan W1-PR:ään, eivät erillisiin kokeilu-PR:iin.
 
 ## W0: Architecture and acceptance contract
 
@@ -68,24 +73,39 @@ schema, backup container, installer payload ja web-komponentit.
 
 **Sopimus:**
 
-- versionoitu asennuskohtainen rekisteri
+- ADR-0011:n täsmällinen `LocalWorkspaceRegistryV1`, jossa ovat vain
+  `formatVersion`, `activeWorkspaceId` ja `workspaces`
+- entry sisältää vain `workspaceId`, `workspaceLabel`, versionoidun
+  `lineageIdentity`-arvon, `layoutVersion = 1`, tilan `ready` tai
+  `recoveryRequired` sekä strict UTC `createdAt`-arvon
 - satunnainen opaque `workspaceId`
 - muokattava `workspaceLabel`
 - versionoitu lineage identity
-- mainin omistama storage locator
+- mainin suljetulla säännöllä johtama
+  `<userData>/workspaces/<workspaceId>/`-juuri; locatoria ei tallenneta
 - crash-safe current/next/backup-slotit ja recovery
+- keskeneräiset create/import/switch/restore-tilat vain erillisissä
+  operation journaleissa
 - enintään yksi active pointer ja yksi workspace per lineage.
 
 **Luottamusraja:** renderer ei lue tai kirjoita rekisteritiedostoa eikä saa
-storage locatoria. Kaikki input validoidaan suljetulla schema- ja
-pituusrajalla.
+storage locatoria. Rekisteri, renderer tai backup eivät saa antaa työtilan
+absoluuttista tai suhteellista polkua. Kaikki input validoidaan suljetulla
+schema- ja pituusrajalla.
 
-**Fail-closed-tilat:** unknown version, duplicate ID/lineage, invalid locator,
-missing root, corrupt current ja ristiriitaiset recovery-slotit.
+**Fail-closed-tilat:** unknown version/field/state, duplicate ID/lineage,
+invalid ID tai timestamp, missing derived root, corrupt current ja
+ristiriitaiset recovery-slotit.
 
 **Testit:** serializer/parser, atomic replacement jokaisen vikapisteen jälkeen,
 unknown-field/null/prototype/path-korpus, duplicate identity ja käyttöoikeus-
 sekä symlink/reparse-rajat.
+
+**W1:n aktivointiraja:** registry codec, store ja testit käyttävät vain testin
+yksityisiä temp-juuria. W1:tä ei kytketä tavalliseen production-startupiin,
+nykyiseen 0.2.6-profiiliin tai käyttäjän `userData`-juureen. Se ei luo
+rekisteriä, siirrä profiilia, vaihda runtime-juurta, muuta backup-/secret-
+polkuja eikä adoptoi legacy-profiilia. Tuotantokytkentä alkaa vasta W4:ssä.
 
 **Dokumentit:** ADR-0011:n toteutustila ja integraatiomatriisi.
 
@@ -105,6 +125,11 @@ backup-formaatti ja installer/update.
 **Sopimus:** uusi työtila syntyy candidate-rootiin, saa uuden `workspaceId`:n
 ja uuden SQLite `companyId`:n, migroituu nykyiseen manifestiin ja julkaistaan
 rekisteriin vasta readiness-portin jälkeen.
+
+Workspace coordinator varaa installation-scoped `WorkspaceMaintenanceLease`-
+leasen ennen candidate-SQLiten avaamista. Aktiivinen backend ja kaikki sen
+SQLite-kahvat suljetaan ensin, joten asennuksessa on myös maintenance-vaiheen
+aikana enintään yksi business-SQLite-omistaja.
 
 **Luottamusraja:** label on käyttäjän syöte; polku ja identiteetit ovat mainin
 luomia. Renderer ei saa päättää initial companyId:tä.
@@ -136,6 +161,11 @@ HTTP/API ja nykyinen same-lineage restore.
 uutena työtilana private staging -> forward migration -> full validation ->
 atomic registry publish -ketjulla.
 
+Candidate avataan vain installation-scoped `WorkspaceMaintenanceLease`-
+leasen aikana ja aktiivisen business-SQLite-omistajan sulkeutumisen jälkeen.
+Failure sulkee candidate-kahvat ennen aiemman aktiivisen runtimen
+uudelleenkäynnistystä.
+
 **Luottamusraja:** backup ja salasana ovat ulkoisia syötteitä. Main omistaa
 Open-dialogin; renderer ei saa tiedostopolkua tai salasanaa.
 
@@ -162,9 +192,11 @@ recovery point, activation journal ja testit.
 **Muuttumattomat kerrokset:** backup container, business-domain ja muiden
 työtilojen data.
 
-**Sopimus:** vain exact lineage saa korvata olemassa olevan työtilan. Korvaus
-on snapshot + staging + forward migration + validation + atomic replace, ei
-taulu- tai tietuemerge.
+**Sopimus:** ensimmäisessä versiossa vain aktiivinen työtila ja exact lineage
+saavat osallistua korvaukseen. Passiiviseen kohdetyötilaan vaihdetaan ensin
+hallitulla switchillä. Korvaus on installation-scoped maintenance-leasen
+takana tehtävä snapshot + staging + forward migration + validation + atomic
+replace, ei taulu- tai tietuemerge.
 
 **Luottamusraja:** käyttäjä valitsee rekisteristä workspaceId:n; main todistaa
 lineagen. Label, nimi tai Y-tunnus eivät oikeuta korvausta.
@@ -207,7 +239,12 @@ failure, rollback failure ja `recoveryRequired`.
 **Testit:** A -> B -> A, vanha session deny, concurrent switch deny,
 write-in-flight, PDF window, secret namespace, archive config/journal,
 backup/recovery scope, restart jokaisessa journal-vaiheessa, 0.2.6 adoption
-kahdesti ja 0 orphan-processia.
+kahdesti, enintään yksi business-SQLite-owner ja 0 orphan-processia.
+
+W4 kytkee myös workspace-kohtaisen PDF-arkiston: käyttäjän valitsema juuri
+säilyy device-local-asetuksena ja main kirjoittaa vain johdettuun
+`<archiveRoot>/<workspaceId>/`-alikansioon. Samannimiset laskut eivät törmää
+työtilojen välillä eikä asetusta tai ulkoisia kopioita siirretä backupissa.
 
 **Dokumentit:** desktop implementation plan, update-planin per-workspace first
 start ja operational runbook.
@@ -269,6 +306,13 @@ erillinen lopullinen versionostocommit.
 - failure/restart jokaisessa registry-, adoption-, switch- ja restore-
   journalin vaiheessa
 - rollback palauttaa version ja kaikkien työtilojen täsmällisen tilan.
+- N+1 first start tarkastaa kaikki migration historyt read-only, migroi vain
+  aktiivisen työtilan ja jättää passiivisen migraation ensimmäiseen
+  aktivointiin workspace-scoped preMigration-pisteen taakse
+- virheellinen passiivinen historia siirtyy turvallisesti
+  `recoveryRequired`-tilaan ilman muiden työtilojen kirjoituksia
+- PDF-arkisto käyttää workspace-kohtaista alikansiota, samat tiedostonimet
+  eivät törmää eikä archive-root siirry backupissa.
 
 In-app update testataan erikseen vain, jos `localUnsignedPilot`-polku on
 kyseisessä checkpointissa hyväksytty. MSI-gate ei piilota in-app update -puutetta.
@@ -307,7 +351,9 @@ Jokaisessa vaiheessa:
 7. unit/integration/E2E/packaged-testit skaalautuvat riskin mukaan
 8. dokumentaatio ja integraatiomatriisi on päivitetty
 9. versionostoa ei tehdä ennen W6:n release-porttia
-10. työpuu ja artifact-identiteetti ovat puhtaat ennen seuraavaa vaihetta.
+10. asennuksessa on myös maintenance-operaatiossa enintään yksi business-
+    SQLite-owner
+11. työpuu ja artifact-identiteetti ovat puhtaat ennen seuraavaa vaihetta.
 
 ## Liittyvät dokumentit
 
@@ -317,6 +363,7 @@ Jokaisessa vaiheessa:
 - `docs/architecture/e2e-test-environment.md`
 - `docs/architecture/e2e-testing-strategy.md`
 - `docs/architecture/local-backup-and-restore-plan.md`
+- `docs/architecture/local-invoice-pdf-archive-plan.md`
 - `docs/architecture/local-runtime-trust-and-authorization-plan.md`
 - `docs/architecture/module-integration-matrix.md`
 - `docs/architecture/r0-e2e-test-matrix.md`

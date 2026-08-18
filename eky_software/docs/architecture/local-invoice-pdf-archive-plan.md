@@ -193,6 +193,26 @@ Config kirjoitetaan oman config-store-sopimuksensa mukaisesti
 väliaikaistiedoston ja atomisen rename-operaation kautta. Rikkoutunut config
 ei käynnistä arkistointia.
 
+### Tuleva multi-workspace-eristys
+
+Nykyinen yhden työtilan config-muoto säilyy ennallaan, kunnes ADR-0011:n W4
+aktivoi multi-workspace-compositionin. Sen jälkeen käyttäjän valitsema
+`directoryPath` tulkitaan arkistojuureksi, ja Electron main muodostaa
+varsinaisen kirjoituskohteen aina muodossa
+`<archiveRoot>/<workspaceId>/`.
+
+- renderer tai backend eivät saa muodostaa workspace-alikansiota
+- `workspaceId` tulee vain mainin aktiivisesta, validoidusta rekisteristä
+- config ja retry-journal ovat workspace-kohtaista device-local-tilaa
+- workspace switch vaihtaa käytettävän configin ja journalin
+- sama tiedostonimi eri työtiloissa ei törmää
+- ulkoinen arkistojuuri, config, journal ja kopiot eivät kuulu portable
+  backupiin eivätkä ole auktoritatiivisia laskuartifacteja.
+
+Eristys todistetaan `WORKSPACE-ARCHIVE-001`-skenaariolla ennen
+multi-workspace-releasea. W1:n inertti registry-toteutus ei muuta nykyistä
+archive-configia tai käyttäjän valitsemaa hakemistoa.
+
 Tavalliset käyttäjän valitsemat paikalliset kansiot, OneDrive-kansiot,
 removable drive -kohteet sekä Windowsin junction/reparse-kohteet sallitaan
 ensimmäisessä versiossa. Kohde revalidoidaan ennen jokaista kirjoitusta.
