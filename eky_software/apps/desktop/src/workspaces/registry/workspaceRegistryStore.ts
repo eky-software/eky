@@ -49,7 +49,11 @@ export class WorkspaceRegistryStore {
     return this.runExclusive(async () => {
       const bytes = serializeWorkspaceRegistry(value);
       const current = await this.recoverAndRead();
-      await this.fileSystem.prepareDirectory();
+      try {
+        await this.fileSystem.prepareDirectory();
+      } catch (error) {
+        throw this.mapStoreError(error);
+      }
 
       let writer: WorkspaceRegistryNextWriter | undefined;
       let currentMovedToBackup = false;

@@ -2,11 +2,12 @@
 
 ## Tila
 
-Suunniteltu. W0:n arkkitehtuuri- ja hyväksymissopimus sekä W0.1:n lifecycle-
-tarkennukset on dokumentoitu. W1:n inertti foundation-toteutus on työn alla:
-sen lähdekoodi kuuluu desktopin normaaliin typecheckiin ja kohdetesteihin,
-mutta sitä ei ole aktivoitu tuotantoruntimeen tai käyttäjälle näkyväksi
-ominaisuudeksi.
+Suunniteltu kokonaisuus. W0:n arkkitehtuuri- ja hyväksymissopimus sekä W0.1:n
+lifecycle-tarkennukset on dokumentoitu. W1:n inertti foundation on toteutettu
+paikallisella feature-haaralla: sen lähdekoodi kuuluu desktopin normaaliin
+typecheckiin ja kohdetesteihin, mutta se on suljettu production-buildistä ja
+package-payloadista. W1:tä ei ole aktivoitu tuotantoruntimeen tai käyttäjälle
+näkyväksi ominaisuudeksi.
 
 Tämä suunnitelma toteuttaa
 `docs/decisions/ADR-0011-local-multi-workspace-company-model.md`-päätöksen
@@ -65,6 +66,9 @@ kanssa sekä omistajan katselmus.
 
 ## W1: Installation-owned workspace registry
 
+**Tila:** inertti foundation toteutettu paikallisella feature-haaralla;
+production-aktivointi ja käyttäjälle näkyvä toiminto eivät kuulu W1:een.
+
 **Omistaja:** Electron mainin rajattu workspace registry -adapteri ja
 composition. Ei backend- tai business-moduuli.
 
@@ -121,9 +125,12 @@ portable backup käyttää nykyistä aktiivista SQLite-owneria eikä avaa candid
 kantaa. Aktiivinen backend suljetaan todistetusti ennen candidate-SQLiten
 avaamista create/import/replace/adopt/switch/migration-polussa.
 
-**Testit:** serializer/parser, atomic replacement jokaisen vikapisteen jälkeen,
-unknown-field/null/prototype/path-korpus, duplicate identity ja käyttöoikeus-
-sekä symlink/reparse-rajat.
+**Testit:** serializer/parser, atomic replacement ja restart-recovery
+kirjoituksen vikapisteissä, disk-full- ja short-write-tilat, rinnakkaisten
+operaatioiden fail-closed-raja, unknown-field/null/prototype/path-korpus,
+duplicate identity sekä tiedostokoon, käyttöoikeuksien, symlinkin, hardlinkin
+ja containmentin rajat. POSIX-oikeusraja ajetaan POSIX-ympäristössä ja
+Windowsin tiedostorajaukset Windowsissa.
 
 **W1:n aktivointiraja:** registry codec, store ja testit käyttävät vain testin
 yksityisiä temp-juuria. W1:tä ei kytketä tavalliseen production-startupiin,
