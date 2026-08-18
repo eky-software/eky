@@ -1,19 +1,8 @@
 import type {
-  LocalWorkspaceRegistryV1,
   WorkspaceId,
   WorkspaceLineageIdentityV1,
 } from '../registry/workspaceRegistryTypes.js';
 import type { WorkspaceCreationOperationId } from './workspaceCreationTypes.js';
-
-export interface ActiveWorkspaceLifecyclePort {
-  quiesceWrites(previousActiveWorkspaceId: WorkspaceId | null): Promise<void>;
-  stopAndProveHandlesClosed(
-    previousActiveWorkspaceId: WorkspaceId | null,
-  ): Promise<{ readonly handlesClosed: true }>;
-  restartPreviousWorkspace(
-    previousActiveWorkspaceId: WorkspaceId | null,
-  ): Promise<void>;
-}
 
 export interface EmptyWorkspaceBootstrapInput {
   readonly operationId: WorkspaceCreationOperationId;
@@ -53,9 +42,4 @@ export interface PublishedWorkspaceValidationPort {
   validatePublished(
     input: Readonly<PublishedWorkspaceValidationInput>,
   ): Promise<Readonly<EmptyWorkspaceBootstrapResult>>;
-}
-
-export interface WorkspaceRegistryPort {
-  read(): Promise<Readonly<LocalWorkspaceRegistryV1> | undefined>;
-  write(value: unknown): Promise<void>;
 }

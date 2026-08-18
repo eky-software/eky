@@ -5,8 +5,10 @@
 Suunniteltu kokonaisuus. W0:n arkkitehtuuri- ja hyväksymissopimus sekä W0.1:n
 lifecycle-tarkennukset on dokumentoitu. W1:n inertti foundation on yhdistetty
 vihreänä `main`-haaraan commitissa `687a424`. W2:n tyhjän työtilan luonnin
-inertti foundation on toteutettu ja paikallisesti todennettu omalla
-checkpoint-haarallaan. W1-W2:n lähdekoodi kuuluu desktopin normaaliin
+inertti foundation on yhdistetty vihreänä `main`-haaraan commitissa
+`3529840`. W2.1 koventaa yhteiset workspace-sopimukset, runtimen palautuksen
+ja startup-recoveryn runtime-poissaolorajan ennen W3:a. W1-W2.1:n lähdekoodi
+kuuluu desktopin normaaliin
 typecheckiin ja kohdetesteihin, mutta se on suljettu production-buildistä ja
 package-payloadista. Kumpaakaan checkpointia ei ole aktivoitu
 tuotantoruntimeen tai käyttäjälle näkyväksi ominaisuudeksi.
@@ -194,7 +196,8 @@ Tyhjän työtilan luonti etenee aina seuraavassa järjestyksessä:
 12. luo työtilan auktoritatiivisen business-artifact-juuren
 13. nimeää candidate-rootin atomisesti lopulliseksi työtilajuureksi
 14. julkaisee uuden `ready`-entryn atomisesti W1-rekisteriin
-15. käynnistää aiemman aktiivisen runtimen uudelleen
+15. varmistaa idempotentisti, että aiemmalla aktiivisella työtilalla on
+    täsmälleen yksi terve runtime
 16. poistaa luontijournalin vasta terminal-tilassa ja vapauttaa leasen.
 
 Jos rekisterissä on jo aktiivinen `ready`-työtila, osoitin ei muutu. Jos
@@ -211,9 +214,20 @@ W2:n nimetyt ja kapeat portit ovat:
 
 - `WorkspaceMaintenanceLease`
 - `ActiveWorkspaceLifecyclePort`
+- `WorkspaceRuntimeAbsencePort`
+- `WorkspaceRegistryPort`
 - `EmptyWorkspaceBootstrapPort`
 - `WorkspaceCreationJournalStore`
 - `EmptyWorkspaceCreationCoordinator`.
+
+Lease-, runtime-lifecycle- ja registry-portit ovat neutraaleja workspace-
+sopimuksia eivätkä creation-moduulin omistamia. Creation mapittaa niiden
+virheet omiin suljettuihin virhekoodeihinsa. Jos quiesce epäonnistuu ennen
+kirjoitusten pysäyttämistä, runtimea ei käynnistetä uudelleen. Kun quiesce on
+onnistunut, jokainen myöhempi failure-polku käyttää idempotenttia
+`ensurePreviousWorkspaceRunning`-operaatiota. Se hyväksyy jo terveen runtimen
+mutta ei saa käynnistää rinnakkaista backendia; epäonnistuminen johtaa
+`WORKSPACE_CREATION_RECOVERY_REQUIRED`-tilaan.
 
 Electron main ei avaa SQLitea eikä tuo `better-sqlite3`:a. Bootstrap-portti
 saa mainin johtaman candidate-profiilijuuren ja rajatun teknisen kontekstin.
@@ -275,8 +289,12 @@ Restart-recovery sovittaa journalin, filesystemin ja rekisterin toisiinsa:
   lineage validoidaan ennen terminal-tilaa
 - ristiriitainen final-root, entry, lineage tai journal johtaa
   `recoveryRequired`-/fail-closed-tilaan eikä arvaavaan cleanupiin
-- aiempi aktiivinen runtime käynnistetään uudelleen vasta candidate-kahvojen
-  sulkeutumisen jälkeen.
+- julkaistu työtilajuuri validoidaan vain, kun
+  `WorkspaceRuntimeAbsencePort` todistaa, ettei aktiivista workspace-runtimea
+  ole käynnissä; aktiivinen tai tuntematon tila pysäyttää recoveryn ennen
+  backendin tai SQLite-kahvan avaamista
+- aiemmalle aktiiviselle työtilalle varmistetaan täsmälleen yksi terve runtime
+  vasta candidate-kahvojen sulkeutumisen jälkeen.
 
 **Luottamusraja:** label on käyttäjän syöte; polku ja identiteetit ovat mainin
 luomia. Renderer ei saa päättää initial companyId:tä.
@@ -310,6 +328,51 @@ lifecycle tässä suunnitelmassa sekä ADR-0011:n maintenance-raja.
 
 **Commit/PR/release:** yksi W2-PR; ei vielä käyttäjälle näkyvää releasea.
 
+### W2.1: Shared contracts and lifecycle hardening
+
+**Tila:** toteutettu inerttinä kovennuksena ennen W3:a; production-
+aktivointia, preloadia, IPC:tä, UI:ta tai HTTP-sopimusta ei lisätty.
+
+W2.1 siirtää maintenance lease-, active runtime lifecycle- ja registry-portit
+niiden neutraaleihin workspace-omistajiin. Creation saa käyttää portteja,
+mutta neutraalit sopimukset eivät saa importata creation-moduulia.
+
+Partial-stop-sopimus erottaa quiesceä edeltävän failure-polun kaikista
+quiescen jälkeisistä poluista. Quiescen jälkeen aiemman runtimen terveys
+varmistetaan myös osittaisen stopin, identiteetin luonnin, journalin,
+bootstrapin ja cleanupin virheissä. Testeissä backend- ja SQLite-ownerien
+enimmäismäärä pysyy yhdessä.
+
+Startup-recovery käyttää erillistä `WorkspaceRuntimeAbsencePort`-sopimusta
+ennen julkaistun työtilan yksityistä validointia. Sopimus ei ole yleinen
+prosessilistauscapability eikä palauta PID:iä, komentoriviä tai prosessitietoa
+rendererille.
+
+### W1/W2 persistence reuse -audit
+
+W1-rekisterin ja W2-luontijournalin toteutuksissa on tarkoituksellista,
+täsmällistä toistoa seuraavissa turvallisuusmekanismeissa:
+
+- private directory- ja regular-file-tarkistukset, symlink/reparse- ja
+  hardlink-rajat sekä avatun tiedoston identiteetin uudelleentarkistus
+- `current`, `next` ja `backup` -slotit, exclusive next-writer, fsync,
+  atomiset rename-vaiheet ja deterministinen restart-recovery
+- bounded UTF-8 JSON -luku, duplicate-key-torjunta ja canonical round-trip.
+
+Semantiikaltaan eri vastuuta ovat tiedostonimet ja polkujen containment,
+64 KiB registry- ja 16 KiB journalirajat, skeemat, canonical serializerit,
+registry-validointi, journalin monotoninen state machine, operation-kohtaiset
+remove/discard-ehdot sekä moduulikohtaiset virheet. Näitä ei yhdistetä.
+
+W3 ei kopioi koko current/next/backup- ja filesystem-toteutusta kolmatta
+kertaa. Jos W3:n toteutuksessa osoitetaan todellinen tarve, yhteiseksi voidaan
+erottaa vain kapea, turvallinen atomic-slot-primitive omalla hyväksytyllä
+vastuullaan. Import-journalin schema, state machine, serializer, validointi,
+resurssirajat ja virheet pysyvät W3:n omistuksessa. Geneeristä JSON manageria,
+operation frameworkia, base storea tai persistence manageria ei luoda.
+Nykyistä W1/W2 persistenceä ei refaktoroida ennen W3:a ilman suoraa
+turvallisuusvikaa ja erillistä rajattua päätöstä.
+
 ## W3: Import backup as new workspace
 
 **Omistaja:** Profile Protection / Backup / Restore yhdessä workspace
@@ -317,6 +380,11 @@ coordinatorin kanssa. Backup inspector säilyy backup-formaatin omistajana.
 
 **Muutettavat kerrokset:** desktop backup/import-application service,
 workspace candidate composition ja testit.
+
+W3 saa käyttää neutraaleja `WorkspaceMaintenanceLease`-,
+`ActiveWorkspaceLifecyclePort`-, `WorkspaceRuntimeAbsencePort`- ja
+`WorkspaceRegistryPort`-sopimuksia. Se ei saa käyttää creation-journalin
+schemaa, state machinea tai virheitä import-operaation mallina.
 
 **Muuttumattomat kerrokset:** `.ekybackup` v1, kryptografia, business-schema,
 HTTP/API ja nykyinen same-lineage restore.

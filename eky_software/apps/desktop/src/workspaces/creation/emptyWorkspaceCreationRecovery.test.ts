@@ -11,6 +11,7 @@ import {
   RecordingActiveWorkspaceLifecycle,
   RecordingPublishedWorkspaceValidation,
   RecordingWorkspaceMaintenanceLease,
+  RecordingWorkspaceRuntimeAbsence,
   TEST_USER_DATA_ROOT,
   TEST_WORKSPACE_ID,
 } from './emptyWorkspaceCreationTestSupport.js';
@@ -54,7 +55,12 @@ function createFixture(input: {
   rootStore.candidateExists = input.candidateExists ?? false;
   rootStore.finalExists = input.finalExists ?? false;
   const lifecycle = new RecordingActiveWorkspaceLifecycle(events);
+  if (input.finalExists || input.registryPublished) {
+    lifecycle.runningRuntimeOwners = 0;
+    lifecycle.openDatabaseHandleOwners = 0;
+  }
   const validation = new RecordingPublishedWorkspaceValidation(events);
+  const runtimeAbsence = new RecordingWorkspaceRuntimeAbsence(events);
   const lease = new RecordingWorkspaceMaintenanceLease(events);
   return {
     events,
@@ -62,6 +68,7 @@ function createFixture(input: {
     registry,
     rootStore,
     lifecycle,
+    runtimeAbsence,
     validation,
     lease,
     recovery: new EmptyWorkspaceCreationRecovery({
@@ -72,6 +79,7 @@ function createFixture(input: {
       registry,
       rootStore,
       userDataRoot: TEST_USER_DATA_ROOT,
+      workspaceRuntimeAbsence: runtimeAbsence,
     }),
   };
 }
@@ -102,7 +110,7 @@ describe('empty workspace creation recovery', () => {
     expect(fixture.rootStore.candidateExists).toBe(false);
     expect(fixture.registry.writes).toHaveLength(0);
     expect(fixture.journal.current).toBeUndefined();
-    expect(fixture.events).toContain('lifecycle.restart');
+    expect(fixture.events).toContain('lifecycle.ensure');
     expect(fixture.lease.held).toBe(false);
   });
 
@@ -115,12 +123,20 @@ describe('empty workspace creation recovery', () => {
         'completedPublication',
       );
       expect(fixture.validation.inputs).toHaveLength(1);
+      expect(fixture.runtimeAbsence.assertionCalls).toBe(1);
+      expect(fixture.events.indexOf('runtimeAbsence.assert')).toBeLessThan(
+        fixture.events.indexOf('publishedValidation.run'),
+      );
       expect(fixture.registry.value).toMatchObject({
         activeWorkspaceId: TEST_WORKSPACE_ID,
         workspaces: [{ workspaceId: TEST_WORKSPACE_ID }],
       });
       expect(fixture.journal.current).toBeUndefined();
-      expect(fixture.events).toContain('lifecycle.restart');
+      expect(fixture.events).toContain('lifecycle.ensure');
+      expect(fixture.lifecycle.runningRuntimeOwners).toBe(1);
+      expect(fixture.lifecycle.openDatabaseHandleOwners).toBe(1);
+      expect(fixture.lifecycle.maxRunningRuntimeOwners).toBe(1);
+      expect(fixture.lifecycle.maxOpenDatabaseHandleOwners).toBe(1);
     },
   );
 
@@ -182,6 +198,27 @@ describe('empty workspace creation recovery', () => {
     expect(fixture.journal.current?.state).toBe('candidateValidated');
   });
 
+  it.each(['active', 'unknown'] as const)(
+    'fails closed before published validation when runtime state is %s',
+    async (state) => {
+      const fixture = createFixture({
+        state: 'candidateValidated',
+        finalExists: true,
+      });
+      fixture.runtimeAbsence.state = state;
+
+      await expect(fixture.recovery.recover()).rejects.toMatchObject({
+        code: 'WORKSPACE_CREATION_RECOVERY_REQUIRED',
+        stage: 'recovery',
+      });
+      expect(fixture.runtimeAbsence.assertionCalls).toBe(1);
+      expect(fixture.validation.inputs).toHaveLength(0);
+      expect(fixture.registry.writes).toHaveLength(0);
+      expect(fixture.journal.current?.state).toBe('candidateValidated');
+      expect(fixture.lifecycle.ensureCalls).toBe(0);
+    },
+  );
+
   it('rejects a published root whose lineage differs from the journal', async () => {
     const fixture = createFixture({
       state: 'candidateValidated',
@@ -197,15 +234,15 @@ describe('empty workspace creation recovery', () => {
     expect(fixture.journal.current?.state).toBe('candidateValidated');
   });
 
-  it('retains a registryPublished journal when restarting the previous runtime fails', async () => {
+  it('retains a registryPublished journal when ensuring the previous runtime fails', async () => {
     const fixture = createFixture({
       state: 'rootPublished',
       finalExists: true,
     });
-    fixture.lifecycle.failure = 'restart';
+    fixture.lifecycle.failure = 'ensure';
 
     await expect(fixture.recovery.recover()).rejects.toMatchObject({
-      code: 'WORKSPACE_CREATION_LIFECYCLE_FAILED',
+      code: 'WORKSPACE_CREATION_RECOVERY_REQUIRED',
       stage: 'activeRuntimeRestart',
     });
     expect(fixture.registry.value?.workspaces).toHaveLength(1);

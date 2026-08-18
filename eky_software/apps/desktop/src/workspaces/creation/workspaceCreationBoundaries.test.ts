@@ -11,6 +11,12 @@ const currentDirectory = dirname(fileURLToPath(import.meta.url));
 const desktopSourceRoot = join(currentDirectory, '..', '..');
 const desktopPackageRoot = join(desktopSourceRoot, '..');
 const repositoryRoot = join(desktopPackageRoot, '..', '..');
+const neutralWorkspaceContractFiles = [
+  join(desktopSourceRoot, 'workspaces', 'maintenance', 'workspaceMaintenanceLease.ts'),
+  join(desktopSourceRoot, 'workspaces', 'registry', 'workspaceRegistryPort.ts'),
+  join(desktopSourceRoot, 'workspaces', 'runtime', 'activeWorkspaceLifecyclePort.ts'),
+  join(desktopSourceRoot, 'workspaces', 'runtime', 'workspaceRuntimeAbsencePort.ts'),
+];
 
 describe('empty workspace creation boundaries', () => {
   it('keeps W2 out of the production TypeScript build', async () => {
@@ -56,6 +62,10 @@ describe('empty workspace creation boundaries', () => {
         sourceFile,
       ).toEqual([]);
     }
+  });
+
+  it('keeps neutral workspace contracts independent from creation', async () => {
+    await expectNoCreationImports(neutralWorkspaceContractFiles);
   });
 });
 

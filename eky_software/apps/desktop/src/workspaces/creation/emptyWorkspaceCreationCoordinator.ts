@@ -1,16 +1,17 @@
 import { generateWorkspaceId } from '../registry/workspaceIdGeneration.js';
+import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
 import type { WorkspaceId, WorkspaceLineageIdentityV1 } from '../registry/workspaceRegistryTypes.js';
 import { validateWorkspaceLabel } from '../registry/workspaceLabelValidation.js';
 import { validateWorkspaceTimestamp } from '../registry/workspaceTimestampValidation.js';
+import type { ActiveWorkspaceLifecyclePort } from '../runtime/activeWorkspaceLifecyclePort.js';
+import type { WorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
 import {
   EmptyWorkspaceCreationError,
   mapEmptyWorkspaceCreationError,
 } from './emptyWorkspaceCreationError.js';
 import type {
-  ActiveWorkspaceLifecyclePort,
   EmptyWorkspaceBootstrapResult,
   EmptyWorkspaceBootstrapPort,
-  WorkspaceRegistryPort,
 } from './emptyWorkspaceCreationPorts.js';
 import { validateEmptyWorkspaceBootstrapResult } from './emptyWorkspaceBootstrapResult.js';
 import { generateWorkspaceCreationOperationId } from './workspaceCreationOperationId.js';
@@ -29,7 +30,6 @@ import type {
   WorkspaceCreationJournalV1,
   WorkspaceCreationOperationId,
 } from './workspaceCreationTypes.js';
-import type { WorkspaceMaintenanceLease } from './workspaceMaintenanceLease.js';
 
 export interface EmptyWorkspaceCreationCoordinatorOptions {
   readonly activeWorkspaceLifecycle: ActiveWorkspaceLifecyclePort;
@@ -79,7 +79,8 @@ export class EmptyWorkspaceCreationCoordinator {
     const lease = await this.acquireLease();
     let journal: Readonly<WorkspaceCreationJournalV1> | undefined;
     let previousActiveWorkspaceId: WorkspaceId | null = null;
-    let previousRuntimeStopped = false;
+    let writesQuiesced = false;
+    let previousRuntimeEnsureAttempted = false;
     try {
       if ((await this.readJournal()) !== undefined) {
         throw new EmptyWorkspaceCreationError(
@@ -97,6 +98,7 @@ export class EmptyWorkspaceCreationCoordinator {
             previousActiveWorkspaceId,
           ),
       );
+      writesQuiesced = true;
       const stopped = await this.runLifecycle(
         'activeRuntimeStop',
         () =>
@@ -110,7 +112,6 @@ export class EmptyWorkspaceCreationCoordinator {
           'activeRuntimeStop',
         );
       }
-      previousRuntimeStopped = true;
 
       let operationId: WorkspaceCreationOperationId;
       let workspaceId: WorkspaceId;
@@ -204,16 +205,30 @@ export class EmptyWorkspaceCreationCoordinator {
         bootstrap.lineageIdentity,
       );
 
-      await this.restartPrevious(previousActiveWorkspaceId);
-      previousRuntimeStopped = false;
+      previousRuntimeEnsureAttempted = true;
+      await this.ensurePreviousWorkspaceRunning(previousActiveWorkspaceId);
       await this.options.creationJournal.remove(operationId);
       return Object.freeze({ workspaceId, workspaceLabel });
     } catch (error) {
-      await this.handleFailure(
-        journal,
-        previousActiveWorkspaceId,
-        previousRuntimeStopped,
-      );
+      let recoveryFailure: unknown;
+      let recoveryFailed = false;
+      try {
+        await this.handleFailure(journal);
+      } catch (caught) {
+        recoveryFailed = true;
+        recoveryFailure = caught;
+      }
+      if (writesQuiesced && !previousRuntimeEnsureAttempted) {
+        previousRuntimeEnsureAttempted = true;
+        await this.ensurePreviousWorkspaceRunning(previousActiveWorkspaceId);
+      }
+      if (recoveryFailed) {
+        throw mapEmptyWorkspaceCreationError(
+          recoveryFailure,
+          'WORKSPACE_CREATION_RECOVERY_REQUIRED',
+          'recovery',
+        );
+      }
       throw mapEmptyWorkspaceCreationError(
         error,
         'WORKSPACE_CREATION_RECOVERY_REQUIRED',
@@ -232,20 +247,8 @@ export class EmptyWorkspaceCreationCoordinator {
 
   private async handleFailure(
     journal: Readonly<WorkspaceCreationJournalV1> | undefined,
-    previousActiveWorkspaceId: WorkspaceId | null,
-    previousRuntimeStopped: boolean,
   ): Promise<void> {
-    if (journal === undefined) {
-      if (previousRuntimeStopped) {
-        await this.restartPrevious(previousActiveWorkspaceId).catch(() => {
-          throw new EmptyWorkspaceCreationError(
-            'WORKSPACE_CREATION_RECOVERY_REQUIRED',
-            'activeRuntimeRestart',
-          );
-        });
-      }
-      return;
-    }
+    if (journal === undefined) return;
 
     let persistedJournal: Readonly<WorkspaceCreationJournalV1> | undefined;
     try {
@@ -281,9 +284,6 @@ export class EmptyWorkspaceCreationCoordinator {
       }
       try {
         await this.options.rootStore.discardCandidate(paths);
-        if (previousRuntimeStopped) {
-          await this.restartPrevious(previousActiveWorkspaceId);
-        }
         return;
       } catch {
         throw new EmptyWorkspaceCreationError(
@@ -298,23 +298,10 @@ export class EmptyWorkspaceCreationCoordinator {
       journal.state === 'rootPublished' ||
       journal.state === 'registryPublished';
     if (publicationMayHaveStarted) {
-      if (previousRuntimeStopped) {
-        await this.restartPrevious(journal.previousActiveWorkspaceId).catch(
-          () => {
-            throw new EmptyWorkspaceCreationError(
-              'WORKSPACE_CREATION_RECOVERY_REQUIRED',
-              'activeRuntimeRestart',
-            );
-          },
-        );
-      }
       return;
     }
     try {
       await this.options.rootStore.discardCandidate(paths);
-      if (previousRuntimeStopped) {
-        await this.restartPrevious(journal.previousActiveWorkspaceId);
-      }
       await this.options.creationJournal.discardBeforePublication(
         journal.operationId,
       );
@@ -406,13 +393,14 @@ export class EmptyWorkspaceCreationCoordinator {
     });
   }
 
-  private restartPrevious(previousActiveWorkspaceId: WorkspaceId | null) {
+  private ensurePreviousWorkspaceRunning(
+    previousActiveWorkspaceId: WorkspaceId | null,
+  ) {
     return this.options.activeWorkspaceLifecycle
-      .restartPreviousWorkspace(previousActiveWorkspaceId)
-      .catch((error) => {
-        throw mapEmptyWorkspaceCreationError(
-          error,
-          'WORKSPACE_CREATION_LIFECYCLE_FAILED',
+      .ensurePreviousWorkspaceRunning(previousActiveWorkspaceId)
+      .catch(() => {
+        throw new EmptyWorkspaceCreationError(
+          'WORKSPACE_CREATION_RECOVERY_REQUIRED',
           'activeRuntimeRestart',
         );
       });

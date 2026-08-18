@@ -1,5 +1,3 @@
-import { EmptyWorkspaceCreationError } from './emptyWorkspaceCreationError.js';
-
 export type WorkspaceMaintenancePurpose =
   | 'create'
   | 'import'
@@ -19,6 +17,13 @@ export interface WorkspaceMaintenanceLease {
   ): Promise<WorkspaceMaintenanceLeaseHandle>;
 }
 
+export class WorkspaceMaintenanceLeaseBusyError extends Error {
+  constructor() {
+    super('WORKSPACE_MAINTENANCE_BUSY');
+    this.name = 'WorkspaceMaintenanceLeaseBusyError';
+  }
+}
+
 export class InMemoryWorkspaceMaintenanceLease
   implements WorkspaceMaintenanceLease {
   private held = false;
@@ -27,10 +32,7 @@ export class InMemoryWorkspaceMaintenanceLease
     _purpose: WorkspaceMaintenancePurpose,
   ): Promise<WorkspaceMaintenanceLeaseHandle> {
     if (this.held) {
-      throw new EmptyWorkspaceCreationError(
-        'WORKSPACE_CREATION_BUSY',
-        'lease',
-      );
+      throw new WorkspaceMaintenanceLeaseBusyError();
     }
     this.held = true;
     let released = false;

@@ -2,14 +2,16 @@ import type {
   LocalWorkspaceRegistryEntryV1,
   WorkspaceId,
 } from '../registry/workspaceRegistryTypes.js';
+import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
+import type { ActiveWorkspaceLifecyclePort } from '../runtime/activeWorkspaceLifecyclePort.js';
+import type { WorkspaceRuntimeAbsencePort } from '../runtime/workspaceRuntimeAbsencePort.js';
+import type { WorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
 import {
   EmptyWorkspaceCreationError,
   mapEmptyWorkspaceCreationError,
 } from './emptyWorkspaceCreationError.js';
 import type {
-  ActiveWorkspaceLifecyclePort,
   PublishedWorkspaceValidationPort,
-  WorkspaceRegistryPort,
 } from './emptyWorkspaceCreationPorts.js';
 import { validateEmptyWorkspaceBootstrapResult } from './emptyWorkspaceBootstrapResult.js';
 import { getWorkspaceCreationStateIndex } from './workspaceCreationJournalValidation.js';
@@ -27,7 +29,6 @@ import type {
   WorkspaceCreationJournalStore,
   WorkspaceCreationJournalV1,
 } from './workspaceCreationTypes.js';
-import type { WorkspaceMaintenanceLease } from './workspaceMaintenanceLease.js';
 
 export interface EmptyWorkspaceCreationRecoveryOptions {
   readonly activeWorkspaceLifecycle: ActiveWorkspaceLifecyclePort;
@@ -37,6 +38,7 @@ export interface EmptyWorkspaceCreationRecoveryOptions {
   readonly registry: WorkspaceRegistryPort;
   readonly rootStore: WorkspaceCreationRootStore;
   readonly userDataRoot: string;
+  readonly workspaceRuntimeAbsence: WorkspaceRuntimeAbsencePort;
 }
 
 export type EmptyWorkspaceCreationRecoveryResult =
@@ -86,7 +88,9 @@ export class EmptyWorkspaceCreationRecovery {
       }
 
       await this.options.rootStore.discardCandidate(paths);
-      await this.restartPrevious(journal.previousActiveWorkspaceId);
+      await this.ensurePreviousWorkspaceRunning(
+        journal.previousActiveWorkspaceId,
+      );
       await this.options.creationJournal.discardBeforePublication(
         journal.operationId,
       );
@@ -145,7 +149,9 @@ export class EmptyWorkspaceCreationRecovery {
       ),
     );
     current = await this.advance(current, 'registryPublished');
-    await this.restartPrevious(current.previousActiveWorkspaceId);
+    await this.ensurePreviousWorkspaceRunning(
+      current.previousActiveWorkspaceId,
+    );
     await this.options.creationJournal.remove(current.operationId);
   }
 
@@ -179,7 +185,9 @@ export class EmptyWorkspaceCreationRecovery {
     if (current.state === 'rootPublished') {
       current = await this.advance(current, 'registryPublished');
     }
-    await this.restartPrevious(current.previousActiveWorkspaceId);
+    await this.ensurePreviousWorkspaceRunning(
+      current.previousActiveWorkspaceId,
+    );
     await this.options.creationJournal.remove(current.operationId);
   }
 
@@ -198,6 +206,12 @@ export class EmptyWorkspaceCreationRecovery {
     paths: ReturnType<typeof deriveWorkspaceCreationPaths>,
   ): Promise<void> {
     if (journal.lineageIdentity === null) return recoveryRequired();
+    try {
+      await this.options.workspaceRuntimeAbsence
+        .assertNoActiveWorkspaceRuntime();
+    } catch {
+      return recoveryRequired();
+    }
     let validation;
     try {
       validation = await this.options.publishedWorkspaceValidation
@@ -265,13 +279,14 @@ export class EmptyWorkspaceCreationRecovery {
     }
   }
 
-  private restartPrevious(previousActiveWorkspaceId: WorkspaceId | null) {
+  private ensurePreviousWorkspaceRunning(
+    previousActiveWorkspaceId: WorkspaceId | null,
+  ) {
     return this.options.activeWorkspaceLifecycle
-      .restartPreviousWorkspace(previousActiveWorkspaceId)
-      .catch((error) => {
-        throw mapEmptyWorkspaceCreationError(
-          error,
-          'WORKSPACE_CREATION_LIFECYCLE_FAILED',
+      .ensurePreviousWorkspaceRunning(previousActiveWorkspaceId)
+      .catch(() => {
+        throw new EmptyWorkspaceCreationError(
+          'WORKSPACE_CREATION_RECOVERY_REQUIRED',
           'activeRuntimeRestart',
         );
       });

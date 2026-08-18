@@ -1,18 +1,24 @@
 import { resolve } from 'node:path';
 
 import type {
+  WorkspaceMaintenanceLease,
+  WorkspaceMaintenanceLeaseHandle,
+  WorkspaceMaintenancePurpose,
+} from '../maintenance/workspaceMaintenanceLease.js';
+import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
+import type {
   LocalWorkspaceRegistryV1,
   WorkspaceId,
 } from '../registry/workspaceRegistryTypes.js';
 import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
+import type { ActiveWorkspaceLifecyclePort } from '../runtime/activeWorkspaceLifecyclePort.js';
+import type { WorkspaceRuntimeAbsencePort } from '../runtime/workspaceRuntimeAbsencePort.js';
 import type {
-  ActiveWorkspaceLifecyclePort,
   EmptyWorkspaceBootstrapInput,
   EmptyWorkspaceBootstrapPort,
   EmptyWorkspaceBootstrapResult,
   PublishedWorkspaceValidationInput,
   PublishedWorkspaceValidationPort,
-  WorkspaceRegistryPort,
 } from './emptyWorkspaceCreationPorts.js';
 import { validateWorkspaceCreationOperationId } from './workspaceCreationOperationId.js';
 import type { WorkspaceCreationPaths } from './workspaceCreationPaths.js';
@@ -29,11 +35,6 @@ import {
   assertWorkspaceCreationJournalTransition,
   validateWorkspaceCreationJournal,
 } from './workspaceCreationJournalValidation.js';
-import type {
-  WorkspaceMaintenanceLease,
-  WorkspaceMaintenanceLeaseHandle,
-  WorkspaceMaintenancePurpose,
-} from './workspaceMaintenanceLease.js';
 
 export const TEST_OPERATION_ID = validateWorkspaceCreationOperationId(
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
@@ -267,11 +268,21 @@ export class MemoryWorkspaceCreationRootStore
   }
 }
 
-export type LifecycleFailure = 'quiesce' | 'stop' | 'restart';
+export type LifecycleFailure =
+  | 'quiesce'
+  | 'stopBeforeSideEffect'
+  | 'stopAfterSideEffect'
+  | 'ensure';
 
 export class RecordingActiveWorkspaceLifecycle
   implements ActiveWorkspaceLifecyclePort {
   failure: LifecycleFailure | undefined;
+  ensureCalls = 0;
+  runtimeStarts = 0;
+  runningRuntimeOwners = 1;
+  openDatabaseHandleOwners = 1;
+  maxRunningRuntimeOwners = 1;
+  maxOpenDatabaseHandleOwners = 1;
 
   constructor(private readonly events: string[]) {}
 
@@ -286,15 +297,64 @@ export class RecordingActiveWorkspaceLifecycle
     _previousActiveWorkspaceId: WorkspaceId | null,
   ): Promise<{ readonly handlesClosed: true }> {
     this.events.push('lifecycle.stop');
-    if (this.failure === 'stop') throw new Error('stop');
+    if (this.failure === 'stopBeforeSideEffect') {
+      throw new Error('stop-before-side-effect');
+    }
+    this.runningRuntimeOwners = 0;
+    this.openDatabaseHandleOwners = 0;
+    if (this.failure === 'stopAfterSideEffect') {
+      throw new Error('stop-after-side-effect');
+    }
     return { handlesClosed: true };
   }
 
-  async restartPreviousWorkspace(
+  async ensurePreviousWorkspaceRunning(
     _previousActiveWorkspaceId: WorkspaceId | null,
   ): Promise<void> {
-    this.events.push('lifecycle.restart');
-    if (this.failure === 'restart') throw new Error('restart');
+    this.events.push('lifecycle.ensure');
+    this.ensureCalls += 1;
+    if (this.failure === 'ensure') throw new Error('ensure');
+    if (
+      this.runningRuntimeOwners > 1 ||
+      this.openDatabaseHandleOwners > 1
+    ) {
+      throw new Error('multiple-runtime-owners');
+    }
+    if (this.runningRuntimeOwners === 0) {
+      this.runningRuntimeOwners = 1;
+      this.openDatabaseHandleOwners = 1;
+      this.runtimeStarts += 1;
+    }
+    if (
+      this.runningRuntimeOwners !== 1 ||
+      this.openDatabaseHandleOwners !== 1
+    ) {
+      throw new Error('runtime-not-healthy');
+    }
+    this.maxRunningRuntimeOwners = Math.max(
+      this.maxRunningRuntimeOwners,
+      this.runningRuntimeOwners,
+    );
+    this.maxOpenDatabaseHandleOwners = Math.max(
+      this.maxOpenDatabaseHandleOwners,
+      this.openDatabaseHandleOwners,
+    );
+  }
+}
+
+export type WorkspaceRuntimeAbsenceState = 'absent' | 'active' | 'unknown';
+
+export class RecordingWorkspaceRuntimeAbsence
+  implements WorkspaceRuntimeAbsencePort {
+  assertionCalls = 0;
+  state: WorkspaceRuntimeAbsenceState = 'absent';
+
+  constructor(private readonly events: string[]) {}
+
+  async assertNoActiveWorkspaceRuntime(): Promise<void> {
+    this.events.push('runtimeAbsence.assert');
+    this.assertionCalls += 1;
+    if (this.state !== 'absent') throw new Error('runtime-absence-unproven');
   }
 }
 

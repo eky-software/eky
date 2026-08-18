@@ -6,7 +6,6 @@ import { expect, test } from '@playwright/test';
 import { inspectSqliteProfileDatabase } from '../../../backend/src/runtime/profileSnapshot/inspectSqliteProfileDatabase.js';
 import { EmptyWorkspaceCreationCoordinator } from '../../../desktop/src/workspaces/creation/emptyWorkspaceCreationCoordinator.js';
 import type {
-  ActiveWorkspaceLifecyclePort,
   EmptyWorkspaceBootstrapResult,
 } from '../../../desktop/src/workspaces/creation/emptyWorkspaceCreationPorts.js';
 import { validateWorkspaceCreationOperationId } from '../../../desktop/src/workspaces/creation/workspaceCreationOperationId.js';
@@ -18,9 +17,10 @@ import {
   type PrivateEmptyWorkspaceBootstrapRuntime,
 } from '../../../desktop/src/workspaces/creation/privateEmptyWorkspaceBootstrapAdapter.js';
 import { NodeWorkspaceCreationRootStore } from '../../../desktop/src/workspaces/creation/workspaceCreationRootStore.js';
-import { InMemoryWorkspaceMaintenanceLease } from '../../../desktop/src/workspaces/creation/workspaceMaintenanceLease.js';
+import { InMemoryWorkspaceMaintenanceLease } from '../../../desktop/src/workspaces/maintenance/workspaceMaintenanceLease.js';
 import { validateWorkspaceId } from '../../../desktop/src/workspaces/registry/workspaceIdValidation.js';
 import type { WorkspaceId } from '../../../desktop/src/workspaces/registry/workspaceRegistryTypes.js';
+import type { ActiveWorkspaceLifecyclePort } from '../../../desktop/src/workspaces/runtime/activeWorkspaceLifecyclePort.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../../../desktop/src/workspaces/registry/workspaceRegistryPaths.js';
 import { WorkspaceRegistryStore } from '../../../desktop/src/workspaces/registry/workspaceRegistryStore.js';
 import { readE2eSqliteRows } from '../../src/assertions/readE2eSqliteRows.js';
@@ -169,7 +169,7 @@ test('WORKSPACE-CREATE-001 @critical @security creates an isolated ready workspa
       'bootstrap.start',
       'bootstrap.stop',
       'bootstrap.inspect',
-      'active.restart.empty',
+      'active.ensure.empty',
     ]);
     expect(
       startedBackends.every(
@@ -199,8 +199,8 @@ function createRecordingLifecycle(
       events.push(`active.stop.${describe(previousActiveWorkspaceId)}`);
       return { handlesClosed: true };
     },
-    restartPreviousWorkspace: async (previousActiveWorkspaceId) => {
-      events.push(`active.restart.${describe(previousActiveWorkspaceId)}`);
+    ensurePreviousWorkspaceRunning: async (previousActiveWorkspaceId) => {
+      events.push(`active.ensure.${describe(previousActiveWorkspaceId)}`);
     },
   };
 }
