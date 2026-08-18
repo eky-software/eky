@@ -78,15 +78,30 @@ schema, backup container, installer payload ja web-komponentit.
 - entry sisältää vain `workspaceId`, `workspaceLabel`, versionoidun
   `lineageIdentity`-arvon, `layoutVersion = 1`, tilan `ready` tai
   `recoveryRequired` sekä strict UTC `createdAt`-arvon
-- satunnainen opaque `workspaceId`
-- muokattava `workspaceLabel`
-- versionoitu lineage identity
+- Electron mainin `crypto.randomUUID()`-funktiolla luoma canonical lowercase
+  UUID v4 `workspaceId`; väärä case, versio, variantti tai muoto torjutaan
+- trimmattu yhden rivin `workspaceLabel`, 1-80 Unicode-koodipistettä;
+  C0/C1-control-, line separator- ja bidi override/isolate -merkit torjutaan,
+  mutta samat labelit sallitaan
+- `lineageIdentity.formatVersion = 1` ja täsmälleen 64 lowercase SHA-256-hex-
+  merkkiä sisältävä `profileId`
+- canonical UTC `createdAt` muodossa `YYYY-MM-DDTHH:mm:ss.sssZ`, jonka parseri
+  todistaa parse- ja round-trip-tarkistuksella
+- enintään 64 KiB UTF-8-tavuja ja 64 entryä; duplicate key, invalid UTF-8,
+  unknown/prototype key, `null` ja type confusion torjutaan
+- `activeWorkspaceId = null` vain ilman `ready`-entryä; muulloin osoitin viittaa
+  täsmälleen yhteen `ready`-entryyn eikä koskaan `recoveryRequired`-entryyn
 - mainin suljetulla säännöllä johtama
   `<userData>/workspaces/<workspaceId>/`-juuri; locatoria ei tallenneta
-- crash-safe current/next/backup-slotit ja recovery
+- crash-safe `workspace-registry-v1.json`, `.next` ja `.backup` -slotit sekä
+  deterministinen recovery
 - keskeneräiset create/import/switch/restore-tilat vain erillisissä
   operation journaleissa
 - enintään yksi active pointer ja yksi workspace per lineage.
+
+Registry v1 ei sisällä `revision`-, `locator`-, `companyId`-, `actorId`-,
+`installationId`-, `secret`-, `journal`- tai business-kenttiä. Uusi kenttä tai
+suurempi resurssiraja vaatii versionoidun päätöksen.
 
 **Luottamusraja:** renderer ei lue tai kirjoita rekisteritiedostoa eikä saa
 storage locatoria. Rekisteri, renderer tai backup eivät saa antaa työtilan
@@ -96,6 +111,12 @@ schema- ja pituusrajalla.
 **Fail-closed-tilat:** unknown version/field/state, duplicate ID/lineage,
 invalid ID tai timestamp, missing derived root, corrupt current ja
 ristiriitaiset recovery-slotit.
+
+**Maintenance lease:** sama installation-scoped lease serialisoi backup-,
+restore-, update- ja workspace-maintenance-operaatiot. Tavallinen snapshot tai
+portable backup käyttää nykyistä aktiivista SQLite-owneria eikä avaa candidate-
+kantaa. Aktiivinen backend suljetaan todistetusti ennen candidate-SQLiten
+avaamista create/import/replace/adopt/switch/migration-polussa.
 
 **Testit:** serializer/parser, atomic replacement jokaisen vikapisteen jälkeen,
 unknown-field/null/prototype/path-korpus, duplicate identity ja käyttöoikeus-

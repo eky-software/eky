@@ -60,9 +60,15 @@ Työtila ei ole käyttäjä, pilvitenant, yritysjäsenyys tai Windows-hakemisto.
 `workspaceId` on Electron mainin luoma satunnainen ja läpinäkymätön
 asennuskohtainen tunniste.
 
+- Electron main luo arvon Node-standardikirjaston `crypto.randomUUID()`-
+  funktiolla
+- v1 hyväksyy vain canonical lowercase UUID v4 -muodon
+  `xxxxxxxx-xxxx-4xxx-[89ab]xxx-xxxxxxxxxxxx`
 - sitä ei johdeta `companyId`:stä, Y-tunnuksesta, yrityksen nimestä,
   hakemistopolusta tai backupin nimestä
-- renderer ei saa muodostaa tai arvata sitä
+- renderer, backup tai rekisteriin annettu ulkoinen syöte ei saa muodostaa,
+  arvata tai normalisoida sitä
+- väärä kirjainkoko, UUID-versio, variantti tai muoto torjutaan
 - sitä käytetään vain rekisterissä ja main-prosessin rajatuissa capabilityissä
 - se ei korvaa backendin vahvistettua `companyId`:tä.
 
@@ -71,6 +77,12 @@ asennuskohtainen tunniste.
 `workspaceLabel` on käyttäjälle näkyvä, muokattava paikallinen nimi. Se ei ole
 auktoritatiivinen yritysnimi eikä identiteettiraja. Samannimiset työtilat ovat
 sallittuja.
+
+V1 tallentaa vain valmiiksi trimmatun, yhden rivin arvon, jonka pituus on
+1-80 Unicode-koodipistettä. C0- ja C1-control-merkit, rivinvaihdot,
+Unicode-rivierottimet sekä bidi override/isolate -ohjausmerkit torjutaan.
+Labelia ei käytetä identiteetin, lineagen, storage-polun tai konfliktin
+ratkaisemiseen.
 
 ### companyId ja ActorContext
 
@@ -98,6 +110,9 @@ domain-erotellulla SHA-256-tiivisteellä SQLiteen tallennetusta `companyId`:stä
 
 Tästä seuraa:
 
+- rekisterin `lineageIdentity.formatVersion` on täsmälleen `1`
+- rekisterin `lineageIdentity.profileId` on täsmälleen 64 merkin lowercase
+  SHA-256-hex-arvo
 - tunniste säilyy backupin mukana ja on vertailukelpoinen toisella koneella
 - se on eri esitysmuoto kuin `companyId`, mutta ei siitä riippumaton identiteetti
 - sitä ei käytetä `workspaceId`:nä
@@ -196,13 +211,26 @@ interface LocalWorkspaceRegistryEntryV1 {
 ```
 
 Parseri on suljettu: tuntemattomat kentät ja arvot torjutaan. `createdAt` on
-strict-parserin hyväksymä UTC-aikaleima eikä käyttöjärjestyksen tai
-identiteetin lähde.
+täsmälleen canonical UTC -muodossa `YYYY-MM-DDTHH:mm:ss.sssZ`. Parseri tekee
+parse- ja round-trip-tarkistuksen. Aikaleima ei ole käyttöjärjestyksen,
+identiteetin tai konfliktin lähde.
 
-`activeWorkspaceId` saa olla `null` vain ennen ensimmäisen työtilan
-julkaisua tai legacy-profiilin adoption valmistumista. Kun rekisterissä on
-`ready`-työtila, normaalissa käyttötilassa aktiivisen osoittimen pitää viitata
-täsmälleen yhteen rekisterimerkintään.
+Registry v1:n resurssi- ja rakennerajat ovat:
+
+- enintään 64 KiB UTF-8-tavuina ennen dekoodausta
+- enintään 64 workspace-entryä
+- invalid UTF-8, duplicate JSON object key, `null`, väärässä kohdassa oleva
+  array/object, tuntematon kenttä ja prototype-key torjutaan
+- suurempi byte- tai entry-raja vaatii uuden format- tai layout-version
+  yhteensopivuuspäätöksen.
+
+`activeWorkspaceId` saa olla `null` vain, kun rekisterissä ei ole yhtään
+`ready`-työtilaa. Muulloin sen pitää viitata täsmälleen yhteen `ready`-entryyn.
+`recoveryRequired`-entry ei saa olla aktiivinen business-runtime. Jos viimeinen
+`ready`-entry siirtyy `recoveryRequired`-tilaan, osoitin vaihdetaan samassa
+atomisessa registry-publishissa joko aiempaan todistettuun `ready`-työtilaan
+tai `null`-arvoon. Puuttuvaan tai väärässä tilassa olevaan entryyn viittaava
+osoitin torjutaan.
 
 Rekisteriin ei tallenneta storage locatoria. Electron main johtaa työtilan
 juuren aina suljetulla säännöllä
@@ -222,7 +250,15 @@ Rekisteri ei sisällä:
 - asiakas- tai laskutietoa
 - salasanaa, tokenia tai runtime-sessionia
 - rendereriltä saatua tiedostopolkua
-- backup-manifestin raakasisältöä.
+- backup-manifestin raakasisältöä
+- `revision`-, `locator`-, `companyId`-, `actorId`-, `installationId`-,
+  `secret`- tai `journal`-kenttää ilman uutta versionoitua päätöstä.
+
+Installation-owned v1 -rekisterin kanoniset slotit ovat täsmälleen:
+
+- `workspace-registry-v1.json`
+- `workspace-registry-v1.json.next`
+- `workspace-registry-v1.json.backup`.
 
 Rekisterin kirjoitus on crash-safe ja versionoitu. Tuntematon versio,
 duplikaatti `workspaceId`, duplikaatti lineage, puuttuva johdettu storage root,
@@ -234,6 +270,12 @@ Electron main omistaa tulevan `WorkspaceMaintenanceLease`-sopimuksen. Yhdessä
 asennuksessa saa olla enintään yksi business-SQLite-omistaja myös create-,
 import-, replace-, adopt-, switch-, update-, migration-, backup- ja restore-
 operaatioiden aikana.
+
+Lease serialisoi backup-, restore-, update- ja workspace-maintenance-
+operaatiot. Tavallinen snapshot tai portable backup käyttää nykyistä yhtä
+aktiivista SQLite-owneria eikä avaa candidate-tietokantaa. Create-, import-,
+replace-, adopt-, switch- ja migration-polussa aktiivinen backend ja sen
+SQLite-kahvat suljetaan ennen candidate-SQLiten avaamista.
 
 Maintenance-operaatio:
 
