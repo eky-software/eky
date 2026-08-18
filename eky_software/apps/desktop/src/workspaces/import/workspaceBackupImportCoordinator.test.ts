@@ -29,10 +29,10 @@ describe('WorkspaceBackupImportCoordinator', () => {
     });
 
     expect(fixture.events).toEqual([
-      'backup.inspect',
-      'registry.read',
       'lease.acquire.import',
       'journal.read',
+      'quarantine.recoverStalePayloads',
+      'backup.inspect',
       'registry.read',
       'lifecycle.quiesce',
       'lifecycle.stop',
@@ -104,7 +104,7 @@ describe('WorkspaceBackupImportCoordinator', () => {
     expect(serialized).not.toContain('actorId');
   });
 
-  it('rejects a duplicate lineage before acquiring the maintenance lease', async () => {
+  it('rejects a duplicate lineage under the maintenance lease before runtime mutation', async () => {
     const fixture = createFixture({ duplicateLineage: true });
 
     await expectImportError(
@@ -113,36 +113,66 @@ describe('WorkspaceBackupImportCoordinator', () => {
       'lineageCheck',
     );
 
-    expect(fixture.events).toEqual(['backup.inspect', 'registry.read']);
+    expect(fixture.events).toEqual([
+      'lease.acquire.import',
+      'journal.read',
+      'quarantine.recoverStalePayloads',
+      'backup.inspect',
+      'registry.read',
+      'lease.release',
+    ]);
     expect(fixture.lifecycle.ensureCalls).toBe(0);
     expect(fixture.journal.current).toBeUndefined();
   });
 
-  it('rechecks duplicate lineage under the lease before quiescing writes', async () => {
+  it('does not clean plaintext or read a backup while an unresolved journal exists', async () => {
     const fixture = createFixture();
-    const initial = fixture.registry.value!;
-    let reads = 0;
-    fixture.registry.read = async () => {
-      fixture.events.push('registry.read');
-      reads += 1;
-      if (reads === 1) return initial;
-      return createRegistryWithDuplicateLineage();
-    };
+    fixture.journal.current = createTestImportJournal({ state: 'prepared' });
 
     await expectImportError(
       fixture.coordinator.import(importInput),
-      'WORKSPACE_IMPORT_LINEAGE_EXISTS',
-      'lineageCheck',
+      'WORKSPACE_IMPORT_RECOVERY_REQUIRED',
+      'journal',
     );
 
     expect(fixture.events).toEqual([
-      'backup.inspect',
-      'registry.read',
       'lease.acquire.import',
       'journal.read',
-      'registry.read',
       'lease.release',
     ]);
+  });
+
+  it('cleans stale plaintext before reading a new backup', async () => {
+    const fixture = createFixture();
+    fixture.plaintextQuarantine.stalePayloadCount = 2;
+
+    await expect(fixture.coordinator.import(importInput)).resolves.toMatchObject({
+      workspaceId: TEST_IMPORT_WORKSPACE_ID,
+    });
+
+    expect(fixture.plaintextQuarantine.stalePayloadCount).toBe(0);
+    expect(fixture.events.indexOf('quarantine.recoverStalePayloads')).toBeLessThan(
+      fixture.events.indexOf('backup.inspect'),
+    );
+  });
+
+  it('fails closed before backup or runtime access when plaintext recovery fails', async () => {
+    const fixture = createFixture();
+    fixture.plaintextQuarantine.failRecovery = true;
+
+    await expectImportError(
+      fixture.coordinator.import(importInput),
+      'WORKSPACE_IMPORT_RECOVERY_REQUIRED',
+      'plaintextQuarantine',
+    );
+
+    expect(fixture.events).toEqual([
+      'lease.acquire.import',
+      'journal.read',
+      'quarantine.recoverStalePayloads',
+      'lease.release',
+    ]);
+    expect(fixture.lifecycle.ensureCalls).toBe(0);
   });
 
   it('rejects a source container changed between inspection and staging', async () => {
@@ -213,7 +243,7 @@ describe('WorkspaceBackupImportCoordinator', () => {
     fixture.registry.read = async () => {
       fixture.events.push('registry.read');
       reads += 1;
-      return reads < 3 ? initial : createRegistryWithDuplicateLineage();
+      return reads < 2 ? initial : createRegistryWithDuplicateLineage();
     };
 
     await expectImportError(

@@ -13,6 +13,7 @@ import {
   RecordingImportMaintenanceLease,
   RecordingImportRuntimeAbsence,
   RecordingWorkspaceBackupCandidate,
+  RecordingWorkspaceBackupPlaintextQuarantine,
   TEST_IMPORT_CREATED_AT,
   TEST_IMPORT_PREVIOUS_WORKSPACE_ID,
   TEST_IMPORT_PROFILE_ID,
@@ -30,9 +31,44 @@ describe('WorkspaceBackupImportRecovery', () => {
     );
     expect(fixture.events).toEqual([
       'lease.acquire.import',
+      'quarantine.recoverStalePayloads',
       'journal.read',
       'lease.release',
     ]);
+  });
+
+  it('cleans stale plaintext before returning nothing to recover', async () => {
+    const fixture = createRecoveryFixture();
+    fixture.plaintextQuarantine.stalePayloadCount = 2;
+
+    await expect(fixture.recovery.recover()).resolves.toBe('nothingToRecover');
+
+    expect(fixture.plaintextQuarantine.stalePayloadCount).toBe(0);
+    expect(fixture.events).toEqual([
+      'lease.acquire.import',
+      'quarantine.recoverStalePayloads',
+      'journal.read',
+      'lease.release',
+    ]);
+    expect(fixture.candidate.migrationInputs).toHaveLength(0);
+    expect(fixture.candidate.validationInputs).toHaveLength(0);
+  });
+
+  it('fails closed before journal or root access when plaintext recovery fails', async () => {
+    const fixture = createRecoveryFixture();
+    fixture.plaintextQuarantine.failRecovery = true;
+
+    await expect(fixture.recovery.recover()).rejects.toMatchObject({
+      code: 'WORKSPACE_IMPORT_RECOVERY_REQUIRED',
+      stage: 'plaintextQuarantine',
+    });
+
+    expect(fixture.events).toEqual([
+      'lease.acquire.import',
+      'quarantine.recoverStalePayloads',
+      'lease.release',
+    ]);
+    expect(fixture.events).not.toContain('root.readPresence');
   });
 
   it.each<WorkspaceBackupImportJournalV1['state']>([
@@ -43,6 +79,7 @@ describe('WorkspaceBackupImportRecovery', () => {
     'candidateValidated',
   ])('discards a %s import before root publication', async (state) => {
     const fixture = createRecoveryFixture(createTestImportJournal({ state }));
+    fixture.plaintextQuarantine.stalePayloadCount = 1;
     fixture.rootStore.candidateExists = state !== 'prepared';
     fixture.rootStore.stagingExists = [
       'candidateRootCreated',
@@ -58,12 +95,14 @@ describe('WorkspaceBackupImportRecovery', () => {
     expect(fixture.journal.current).toBeUndefined();
     expect(fixture.lifecycle.ensureCalls).toBe(1);
     expect(fixture.runtimeAbsence.assertionCalls).toBe(1);
+    expect(fixture.plaintextQuarantine.stalePayloadCount).toBe(0);
   });
 
   it('completes publication when atomic rename succeeded before the journal advanced', async () => {
     const fixture = createRecoveryFixture(
       createTestImportJournal({ state: 'candidateValidated' }),
     );
+    fixture.plaintextQuarantine.stalePayloadCount = 1;
     fixture.rootStore.finalExists = true;
 
     await expect(fixture.recovery.recover()).resolves.toBe(
@@ -85,6 +124,7 @@ describe('WorkspaceBackupImportRecovery', () => {
     ]);
     expect(fixture.candidate.publishedInputs).toHaveLength(1);
     expect(fixture.journal.current).toBeUndefined();
+    expect(fixture.plaintextQuarantine.stalePayloadCount).toBe(0);
   });
 
   it('publishes a validated final root that has no registry entry yet', async () => {
@@ -247,11 +287,15 @@ function createRecoveryFixture(
   const candidate = new RecordingWorkspaceBackupCandidate(events);
   const lifecycle = new RecordingImportActiveWorkspaceLifecycle(events);
   const runtimeAbsence = new RecordingImportRuntimeAbsence(events);
+  const plaintextQuarantine = new RecordingWorkspaceBackupPlaintextQuarantine(
+    events,
+  );
   const recovery = new WorkspaceBackupImportRecovery({
     activeWorkspaceLifecycle: lifecycle,
     backupCandidate: candidate,
     importJournal: journal,
     maintenanceLease: new RecordingImportMaintenanceLease(events),
+    plaintextQuarantine,
     registry,
     rootStore,
     userDataRoot: TEST_IMPORT_USER_DATA_ROOT,
@@ -262,6 +306,7 @@ function createRecoveryFixture(
     events,
     journal,
     lifecycle,
+    plaintextQuarantine,
     recovery,
     registry,
     rootStore,

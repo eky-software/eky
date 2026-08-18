@@ -32,6 +32,7 @@ import type {
   WorkspaceBackupSourceInput,
   WorkspaceBackupStageInput,
 } from './workspaceBackupImportPorts.js';
+import type { WorkspaceBackupPlaintextQuarantineRecoveryPort } from './workspaceBackupPlaintextQuarantine.js';
 import type {
   WorkspaceBackupImportRootPresence,
   WorkspaceBackupImportRootStore,
@@ -94,6 +95,9 @@ export function createWorkspaceBackupImportCoordinatorFixture(
   const container = new RecordingWorkspaceBackupContainer(events);
   const candidate = new RecordingWorkspaceBackupCandidate(events);
   const root = new MemoryWorkspaceBackupImportRootStore(events);
+  const plaintextQuarantine = new RecordingWorkspaceBackupPlaintextQuarantine(
+    events,
+  );
   const lifecycle = new RecordingImportActiveWorkspaceLifecycle(events);
   const runtimeAbsence = new RecordingImportRuntimeAbsence(events);
   const coordinator = new WorkspaceBackupImportCoordinator({
@@ -105,6 +109,7 @@ export function createWorkspaceBackupImportCoordinatorFixture(
     importJournal: journal,
     maintenanceLease: lease,
     now: () => new Date(TEST_IMPORT_CREATED_AT),
+    plaintextQuarantine,
     registry,
     rootStore: root,
     userDataRoot: TEST_IMPORT_USER_DATA_ROOT,
@@ -119,10 +124,26 @@ export function createWorkspaceBackupImportCoordinatorFixture(
     journal,
     lease,
     lifecycle,
+    plaintextQuarantine,
     registry,
     root,
     runtimeAbsence,
   };
+}
+
+export class RecordingWorkspaceBackupPlaintextQuarantine
+  implements WorkspaceBackupPlaintextQuarantineRecoveryPort
+{
+  failRecovery = false;
+  stalePayloadCount = 0;
+
+  constructor(private readonly events: string[]) {}
+
+  async recoverStalePayloads(): Promise<void> {
+    this.events.push('quarantine.recoverStalePayloads');
+    if (this.failRecovery) throw new Error('quarantine');
+    this.stalePayloadCount = 0;
+  }
 }
 
 export function createTestImportPreflight(

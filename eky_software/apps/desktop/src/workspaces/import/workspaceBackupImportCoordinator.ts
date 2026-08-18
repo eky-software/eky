@@ -21,6 +21,7 @@ import type {
   WorkspaceBackupContainerPort,
   WorkspaceBackupSourceInput,
 } from './workspaceBackupImportPorts.js';
+import type { WorkspaceBackupPlaintextQuarantineRecoveryPort } from './workspaceBackupPlaintextQuarantine.js';
 import {
   validateWorkspaceBackupCandidateReadiness,
   validateWorkspaceBackupMigrationResult,
@@ -49,6 +50,7 @@ export interface WorkspaceBackupImportCoordinatorOptions {
   readonly importJournal: WorkspaceBackupImportJournalStore;
   readonly maintenanceLease: WorkspaceMaintenanceLease;
   readonly now?: () => Date;
+  readonly plaintextQuarantine: WorkspaceBackupPlaintextQuarantineRecoveryPort;
   readonly registry: WorkspaceRegistryPort;
   readonly rootStore: WorkspaceBackupImportRootStore;
   readonly userDataRoot: string;
@@ -83,13 +85,6 @@ export class WorkspaceBackupImportCoordinator {
     input: Readonly<WorkspaceBackupImportInput>,
   ): Promise<Readonly<WorkspaceBackupImportResult>> {
     const workspaceLabel = validateImportLabel(input.workspaceLabel);
-    const preflight = await this.inspectBackup(input);
-    const sourceLineage = createLineage(preflight.profileId);
-    const initialRegistry = readWorkspaceBackupImportRegistry(
-      await this.readRegistry('registryRead'),
-    );
-    assertImportLineageAvailable(initialRegistry, sourceLineage);
-
     const lease = await this.acquireLease();
     let journal: Readonly<WorkspaceBackupImportJournalV1> | undefined;
     let previousActiveWorkspaceId: WorkspaceId | null = null;
@@ -102,6 +97,10 @@ export class WorkspaceBackupImportCoordinator {
           'journal',
         );
       }
+      await this.recoverPlaintextQuarantine();
+
+      const preflight = await this.inspectBackup(input);
+      const sourceLineage = createLineage(preflight.profileId);
 
       const registry = readWorkspaceBackupImportRegistry(
         await this.readRegistry('registryRead'),
@@ -371,6 +370,18 @@ export class WorkspaceBackupImportCoordinator {
         'backupPreflight',
       );
     });
+  }
+
+  private recoverPlaintextQuarantine(): Promise<void> {
+    return this.options.plaintextQuarantine
+      .recoverStalePayloads()
+      .catch((error) => {
+        throw mapWorkspaceBackupImportError(
+          error,
+          'WORKSPACE_IMPORT_RECOVERY_REQUIRED',
+          'plaintextQuarantine',
+        );
+      });
   }
 
   private stageBackup(

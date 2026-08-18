@@ -1,6 +1,5 @@
-import { randomUUID } from 'node:crypto';
 import { promises as fileSystem } from 'node:fs';
-import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import { dirname, isAbsolute, resolve } from 'node:path';
 
 import { readDecryptedBackupPayload } from '../../profileBackup/container/backupContainerReader.js';
 import { decryptBackupPayload } from '../../profileBackup/container/decryptBackupPayload.js';
@@ -12,26 +11,21 @@ import type {
   WorkspaceBackupSourceInput,
   WorkspaceBackupStageInput,
 } from './workspaceBackupImportPorts.js';
+import type { WorkspaceBackupPlaintextQuarantinePort } from './workspaceBackupPlaintextQuarantine.js';
 
 const sha256Pattern = /^[0-9a-f]{64}$/;
 const appVersionPattern = /^[A-Za-z0-9.+_-]{1,80}$/;
 
 export interface WorkspaceBackupContainerAdapterOptions {
-  readonly quarantineRoot: string;
+  readonly plaintextQuarantine: WorkspaceBackupPlaintextQuarantinePort;
 }
 
 export class WorkspaceBackupContainerAdapter
   implements WorkspaceBackupContainerPort {
-  private readonly quarantineRoot: string;
+  private readonly plaintextQuarantine: WorkspaceBackupPlaintextQuarantinePort;
 
   constructor(options: Readonly<WorkspaceBackupContainerAdapterOptions>) {
-    if (!isAbsolute(options.quarantineRoot)) {
-      throw new WorkspaceBackupImportError(
-        'WORKSPACE_IMPORT_INVALID',
-        'inputValidation',
-      );
-    }
-    this.quarantineRoot = resolve(options.quarantineRoot);
+    this.plaintextQuarantine = options.plaintextQuarantine;
   }
 
   inspect(
@@ -44,7 +38,7 @@ export class WorkspaceBackupContainerAdapter
     input: Readonly<WorkspaceBackupStageInput>,
   ): Promise<Readonly<WorkspaceBackupPreflightResult>> {
     validateStageInput(input);
-    const quarantinePath = await this.createQuarantinePath('backupStage');
+    const quarantinePath = await this.createQuarantinePath();
     try {
       const decrypted = await decryptBackupPayload({
         containerPath: input.containerPath,
@@ -73,7 +67,7 @@ export class WorkspaceBackupContainerAdapter
         ? error
         : backupFailure('backupStage');
     } finally {
-      await fileSystem.rm(quarantinePath, { force: true }).catch(() => undefined);
+      await this.plaintextQuarantine.removePayload(quarantinePath);
     }
   }
 
@@ -81,7 +75,7 @@ export class WorkspaceBackupContainerAdapter
     input: Readonly<WorkspaceBackupSourceInput>,
   ): Promise<Readonly<WorkspaceBackupPreflightResult>> {
     validateSourceInput(input);
-    const quarantinePath = await this.createQuarantinePath('backupPreflight');
+    const quarantinePath = await this.createQuarantinePath();
     try {
       const decrypted = await decryptBackupPayload({
         containerPath: input.containerPath,
@@ -95,31 +89,12 @@ export class WorkspaceBackupContainerAdapter
         ? error
         : backupFailure('backupPreflight');
     } finally {
-      await fileSystem.rm(quarantinePath, { force: true }).catch(() => undefined);
+      await this.plaintextQuarantine.removePayload(quarantinePath);
     }
   }
 
-  private async createQuarantinePath(
-    stage: 'backupPreflight' | 'backupStage',
-  ): Promise<string> {
-    try {
-      await ensurePrivateDirectory(this.quarantineRoot);
-      const quarantinePath = join(
-        this.quarantineRoot,
-        `workspace-import-${randomUUID()}.payload`,
-      );
-      if (
-        dirname(quarantinePath) !== this.quarantineRoot ||
-        basename(quarantinePath).includes('/') ||
-        basename(quarantinePath).includes('\\')
-      ) {
-        throw new Error('invalid');
-      }
-      await assertPathMissing(quarantinePath);
-      return quarantinePath;
-    } catch {
-      throw backupFailure(stage);
-    }
+  private createQuarantinePath(): Promise<string> {
+    return this.plaintextQuarantine.createPayloadPath();
   }
 }
 
@@ -181,21 +156,6 @@ function toInspectionResult(
 function validateSha256(value: string): void {
   if (!sha256Pattern.test(value)) {
     throw new Error('BACKUP_MANIFEST_INVALID');
-  }
-}
-
-async function ensurePrivateDirectory(path: string): Promise<void> {
-  await fileSystem.mkdir(path, { mode: 0o700, recursive: true });
-  if (process.platform !== 'win32') await fileSystem.chmod(path, 0o700);
-  const metadata = await fileSystem.lstat(path);
-  const realPath = await fileSystem.realpath(path);
-  if (
-    !metadata.isDirectory() ||
-    metadata.isSymbolicLink() ||
-    (process.platform !== 'win32' && (metadata.mode & 0o077) !== 0) ||
-    !pathsEqual(realPath, path)
-  ) {
-    throw new Error('invalid');
   }
 }
 

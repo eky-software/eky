@@ -14,6 +14,7 @@ import {
 import { getWorkspaceBackupImportStateIndex } from './workspaceBackupImportJournalValidation.js';
 import { deriveWorkspaceBackupImportPaths } from './workspaceBackupImportPaths.js';
 import type { WorkspaceBackupCandidatePort } from './workspaceBackupImportPorts.js';
+import type { WorkspaceBackupPlaintextQuarantineRecoveryPort } from './workspaceBackupPlaintextQuarantine.js';
 import { validateWorkspaceBackupCandidateReadiness } from './workspaceBackupImportReadiness.js';
 import {
   assertImportLineageAvailable,
@@ -37,6 +38,7 @@ export interface WorkspaceBackupImportRecoveryOptions {
   readonly backupCandidate: WorkspaceBackupCandidatePort;
   readonly importJournal: WorkspaceBackupImportJournalStore;
   readonly maintenanceLease: WorkspaceMaintenanceLease;
+  readonly plaintextQuarantine: WorkspaceBackupPlaintextQuarantineRecoveryPort;
   readonly registry: WorkspaceRegistryPort;
   readonly rootStore: WorkspaceBackupImportRootStore;
   readonly userDataRoot: string;
@@ -56,6 +58,7 @@ export class WorkspaceBackupImportRecovery {
   async recover(): Promise<WorkspaceBackupImportRecoveryResult> {
     const lease = await this.acquireLease();
     try {
+      await this.recoverPlaintextQuarantine();
       const journal = await this.readJournal();
       if (journal === undefined) return 'nothingToRecover';
       await this.assertRuntimeAbsent();
@@ -244,6 +247,18 @@ export class WorkspaceBackupImportRecovery {
     } catch {
       return recoveryRequired();
     }
+  }
+
+  private recoverPlaintextQuarantine(): Promise<void> {
+    return this.options.plaintextQuarantine
+      .recoverStalePayloads()
+      .catch((error) => {
+        throw mapWorkspaceBackupImportError(
+          error,
+          'WORKSPACE_IMPORT_RECOVERY_REQUIRED',
+          'plaintextQuarantine',
+        );
+      });
   }
 
   private readJournal() {

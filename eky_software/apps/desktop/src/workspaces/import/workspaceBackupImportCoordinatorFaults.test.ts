@@ -36,11 +36,7 @@ describe('WorkspaceBackupImportCoordinator fault boundaries', () => {
       'lease',
     );
 
-    expect(fixture.events).toEqual([
-      'backup.inspect',
-      'registry.read',
-      'lease.acquire.import',
-    ]);
+    expect(fixture.events).toEqual(['lease.acquire.import']);
     expect(fixture.journal.current).toBeUndefined();
     expect(fixture.registry.writes).toHaveLength(0);
     expect(fixture.lifecycle.ensureCalls).toBe(0);

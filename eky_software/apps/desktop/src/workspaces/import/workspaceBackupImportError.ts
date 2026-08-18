@@ -9,6 +9,7 @@ export type WorkspaceBackupImportStage =
   | 'runtimeAbsence'
   | 'identityGeneration'
   | 'journal'
+  | 'plaintextQuarantine'
   | 'candidateRoot'
   | 'backupStage'
   | 'candidateMigration'

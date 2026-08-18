@@ -403,7 +403,11 @@ atomic root publish -> atomic registry publish -ketjulla. W3 on inertti
 foundation: sitä ei kytketä production-compositioniin, preloadiin, IPC:hen,
 rendereriin, webiin tai julkiseen backend-HTTP:hen.
 
-Candidate avataan vain installation-scoped `WorkspaceMaintenanceLease`-
+Import hankkii installation-scoped `WorkspaceMaintenanceLease('import')`-
+leasen ennen backupin autentikointia. Se torjuu ratkaisemattoman import-
+journalin ja siivoaa W3:n tunnetut stale plaintext-payloadit ennen uuden
+backupin lukemista. Candidate avataan vain saman
+`WorkspaceMaintenanceLease`-
 leasen aikana ja aktiivisen business-SQLite-omistajan sulkeutumisen jälkeen.
 Failure sulkee candidate-kahvat ennen aiemman aktiivisen runtimen
 uudelleenkäynnistystä.
@@ -420,7 +424,7 @@ uudelleenkäynnistystä.
   migraatiot, integrityn, foreign keyt, identiteetin ja business-artifactien
   tarkastuksen. Electron main ei importoi SQLite-ajuria eikä avaa kantaa.
 
-Koordinaattori etenee ADR-0011:n suljetussa 27-vaiheisessa järjestyksessä.
+Koordinaattori etenee ADR-0011:n suljetussa järjestyksessä.
 Ensimmäinen tarkastus autentikoi containerin ja lukee manifestin ilman
 SQLitea. Leasen ja aktiivisen runtimen sulkemisen jälkeen tehtävä toinen
 tarkastus purkaa candidateen ja todistaa container-SHA:n, `profileId`:n sekä
@@ -431,6 +435,27 @@ Tuonnissa ei käytetä nykyisen aktiivisen profiilin preRestore-pistettä,
 restore activation journalia tai active-profile replace -palvelua. W3 ei
 yhdistä rivejä, korvaa olemassa olevaa työtilaa eikä käynnistä uutta
 workspace-runtimea.
+
+### W3 plaintext quarantine
+
+W3 omistaa yhden kapean installation-scoped plaintext-karanteenin polulla
+`<userData>/workspace-operations/workspace-import-plaintext-quarantine/`.
+Renderer, backup, registry, workspace-label tai business-identiteetti eivät
+anna sen polkua tai tiedostonimeä. Karanteeni hyväksyy vain canonical lowercase
+UUID v4 -nimet muodossa `workspace-import-<uuid>.payload`, tavallisen rajatun
+yhden linkin tiedoston, yksityiset oikeudet ja täsmällisen canonical
+containmentin.
+
+Normaali decrypt-polku luo payloadin exclusive-create-säännöllä ja poistaa sen
+odotetussa `finally`-polussa. W3-recovery validoi ja poistaa tunnetut stale-
+payloadit heti maintenance-leasen jälkeen myös ilman import-journalia. Se ei
+avaa SQLitea tätä varten. Tuntematon entry, hakemistoksi naamioitu payload,
+symlink, reparse point, hardlink, ylikokoinen tiedosto tai epäselvä juuri
+johtaa `recoveryRequired`-tilaan eikä arvaavaan poistoon. Karanteeni ei kuulu
+registryyn, portable backupiin, candidateen tai lopulliseen workspace-rootiin.
+
+Tämä recovery-polku on W3:n inerttiä lähdekoodia. Sitä ei ole vielä kytketty
+production-startupiin, packageen, preloadiin, IPC:hen tai UI:hin.
 
 ### WorkspaceBackupImportJournalV1
 
@@ -467,6 +492,8 @@ salaisuutta tai raakaa `Error`-arvoa.
 
 ### W3 restart-recovery
 
+- Recovery hankkii `import`-leasen ja ratkaisee plaintext-karanteenin ennen
+  import-journalin lukemista sekä ennen `nothingToRecover`-tulosta.
 - Ennen `rootPublished`-tilaa keskeytynyt import sulkee mahdolliset private-
   kahvat, poistaa tai fail-closed-karanteenoi candidaten ja poistaa journalin.
   Operaatiota ei jatketa ilman käyttäjän uudelleen valitsemaa backupia ja
@@ -491,7 +518,8 @@ levytila tai publish failure.
 
 **Testit:** nykyinen synteettinen backup-korpus, historical prefix, PDF:t,
 tyhjä artifact-katalogi, duplicate lineage molemmissa tarkistuspisteissä,
-jokaisen journal-vaiheen restart, cleanup, salaisuuksien poissulku,
+jokaisen journal-vaiheen restart, normaalin ja kaatumisesta jääneen plaintext-
+payloadin cleanup, unknown-entryn fail-closed-torjunta, salaisuuksien poissulku,
 cross-workspace isolation, lähdecontainerin muuttuminen tarkastusten välissä,
 future/changed/reordered/missing-middle-historia, filesystem-boundaryt sekä
 enintään yksi backend/SQLite-owner ja nolla orphan-prosessia. Oikeaa backupia,

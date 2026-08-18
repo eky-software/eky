@@ -9,7 +9,9 @@ import {
   writeBackupContainer,
   type BackupContainerSourceEntry,
 } from '../../profileBackup/container/backupContainerWriter.js';
+import { decryptBackupPayload } from '../../profileBackup/container/decryptBackupPayload.js';
 import { WorkspaceBackupContainerAdapter } from './workspaceBackupContainerAdapter.js';
+import { WorkspaceBackupPlaintextQuarantine } from './workspaceBackupPlaintextQuarantine.js';
 
 const password = 'synthetic W3 backup password';
 const migrationChainIdentity = 'b'.repeat(64);
@@ -80,6 +82,29 @@ describe('WorkspaceBackupContainerAdapter', () => {
     );
     await expect(fileSystem.lstat(fixture.importStagingRoot)).rejects.toMatchObject(
       { code: 'ENOENT' },
+    );
+  });
+
+  it('recovers a complete plaintext payload left on disk by abrupt termination', async () => {
+    const fixture = await createFixture();
+    const sourceBytes = await fileSystem.readFile(fixture.containerPath);
+    const quarantinePath = await fixture.plaintextQuarantine.createPayloadPath();
+
+    await decryptBackupPayload({
+      containerPath: fixture.containerPath,
+      password,
+      quarantinePath,
+    });
+    await expect(fileSystem.readFile(quarantinePath)).resolves.not.toHaveLength(0);
+
+    await expect(
+      fixture.plaintextQuarantine.recoverStalePayloads(),
+    ).resolves.toBeUndefined();
+    await expect(fileSystem.readdir(fixture.quarantineRoot)).resolves.toEqual(
+      [],
+    );
+    await expect(fileSystem.readFile(fixture.containerPath)).resolves.toEqual(
+      sourceBytes,
     );
   });
 
@@ -176,22 +201,31 @@ async function createFixture() {
   const root = await fileSystem.mkdtemp(join(tmpdir(), 'eky-w3-container-'));
   cleanupRoots.push(root);
   const sourceRoot = join(root, 'source');
-  const quarantineRoot = join(root, 'quarantine');
+  const quarantineRoot = join(
+    root,
+    'workspace-operations',
+    'workspace-import-plaintext-quarantine',
+  );
   const importParent = join(root, 'candidate');
   const importStagingRoot = join(importParent, 'import-staging');
   await Promise.all([
     fileSystem.mkdir(sourceRoot, { mode: 0o700 }),
-    fileSystem.mkdir(quarantineRoot, { mode: 0o700 }),
     fileSystem.mkdir(importParent, { mode: 0o700 }),
   ]);
   const containerPath = join(root, 'backup.ekybackup');
   const databaseBytes = Buffer.from('synthetic sqlite');
   await writeFixture(containerPath, sourceRoot, databaseBytes);
+  const plaintextQuarantine = new WorkspaceBackupPlaintextQuarantine({
+    userDataRoot: root,
+  });
   return {
-    adapter: new WorkspaceBackupContainerAdapter({ quarantineRoot }),
+    adapter: new WorkspaceBackupContainerAdapter({
+      plaintextQuarantine,
+    }),
     containerPath,
     databaseBytes,
     importStagingRoot,
+    plaintextQuarantine,
     quarantineRoot,
     sourceRoot,
   };

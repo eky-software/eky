@@ -37,6 +37,7 @@ import { WorkspaceBackupImportCoordinator } from '../../../desktop/src/workspace
 import { WorkspaceBackupImportError } from '../../../desktop/src/workspaces/import/workspaceBackupImportError.js';
 import { WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME } from '../../../desktop/src/workspaces/import/workspaceBackupImportJournalPaths.js';
 import { WorkspaceBackupImportJournalStore } from '../../../desktop/src/workspaces/import/workspaceBackupImportJournalStore.js';
+import { WorkspaceBackupPlaintextQuarantine } from '../../../desktop/src/workspaces/import/workspaceBackupPlaintextQuarantine.js';
 import { validateWorkspaceBackupImportOperationId } from '../../../desktop/src/workspaces/import/workspaceBackupImportOperationId.js';
 import { deriveWorkspaceBackupImportPaths } from '../../../desktop/src/workspaces/import/workspaceBackupImportPaths.js';
 import type {
@@ -102,9 +103,10 @@ test('WORKSPACE-IMPORT-001 @critical @security imports a real encrypted backup w
   );
   const sourceBackupHashBeforeImport = await sha256File(backupPath);
   const userDataRoot = join(e2eBackend.runRoot, 'workspace-user-data');
-  const quarantineRoot = join(e2eBackend.runRoot, 'workspace-quarantine');
   await mkdir(userDataRoot, { mode: 0o700 });
-  await mkdir(quarantineRoot, { mode: 0o700 });
+  const plaintextQuarantine = new WorkspaceBackupPlaintextQuarantine({
+    userDataRoot,
+  });
 
   const lifecycleEvents: string[] = [];
   const registry = new WorkspaceRegistryStore({
@@ -123,12 +125,15 @@ test('WORKSPACE-IMPORT-001 @critical @security imports a real encrypted backup w
     backupCandidate: new PrivateWorkspaceBackupCandidateAdapter(
       createCandidateRuntimeFactory(),
     ),
-    backupContainer: new WorkspaceBackupContainerAdapter({ quarantineRoot }),
+    backupContainer: new WorkspaceBackupContainerAdapter({
+      plaintextQuarantine,
+    }),
     generateOperationId: () => operationId,
     generateWorkspaceId: () => workspaceId,
     importJournal,
     maintenanceLease: new InMemoryWorkspaceMaintenanceLease(),
     now: () => new Date('2026-08-19T12:00:00.000Z'),
+    plaintextQuarantine,
     registry,
     rootStore: new NodeWorkspaceBackupImportRootStore(),
     userDataRoot,
@@ -229,9 +234,10 @@ test('WORKSPACE-IMPORT-002 @critical @recovery migrates an authenticated histori
   );
   const sourceBackupHashBeforeImport = await sha256File(historical.backupPath);
   const userDataRoot = join(e2eBackend.runRoot, 'historical-user-data');
-  const quarantineRoot = join(e2eBackend.runRoot, 'historical-quarantine');
   await mkdir(userDataRoot, { mode: 0o700 });
-  await mkdir(quarantineRoot, { mode: 0o700 });
+  const plaintextQuarantine = new WorkspaceBackupPlaintextQuarantine({
+    userDataRoot,
+  });
 
   const lifecycleEvents: string[] = [];
   const registry = new WorkspaceRegistryStore({
@@ -247,12 +253,15 @@ test('WORKSPACE-IMPORT-002 @critical @recovery migrates an authenticated histori
     backupCandidate: new PrivateWorkspaceBackupCandidateAdapter(
       createCandidateRuntimeFactory(),
     ),
-    backupContainer: new WorkspaceBackupContainerAdapter({ quarantineRoot }),
+    backupContainer: new WorkspaceBackupContainerAdapter({
+      plaintextQuarantine,
+    }),
     generateOperationId: () => operationId,
     generateWorkspaceId: () => workspaceId,
     importJournal,
     maintenanceLease: new InMemoryWorkspaceMaintenanceLease(),
     now: () => new Date('2026-08-19T12:00:00.000Z'),
+    plaintextQuarantine,
     registry,
     rootStore: new NodeWorkspaceBackupImportRootStore(),
     userDataRoot,
