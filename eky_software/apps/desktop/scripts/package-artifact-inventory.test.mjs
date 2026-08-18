@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { afterEach, test } from 'node:test';
 
 import {
+  classifyForbiddenArtifact,
   inspectPackageArtifactInventory,
   PackageArtifactInventoryError,
 } from './package-artifact-inventory.mjs';
@@ -133,6 +134,49 @@ test('allows only the exact named packaged smoke helpers', async () => {
   await rm(join(root, 'dist/main/unplannedSmoke.js'));
   await assert.doesNotReject(
     inspectPackageArtifactInventory({ root, stage: 'applicationStage' }),
+  );
+});
+
+test('rejects inert workspace code from the application stage', async () => {
+  const root = await createStageFixture(
+    'dist/workspaces/registry/file.js',
+    'export {};',
+  );
+
+  await assert.rejects(
+    inspectPackageArtifactInventory({ root, stage: 'applicationStage' }),
+    /INERT_WORKSPACE_CODE_IN_PAYLOAD/,
+  );
+});
+
+test('normalizes Windows separators before enforcing the inert workspace boundary', () => {
+  assert.equal(
+    classifyForbiddenArtifact(
+      'dist\\workspaces\\registry\\file.js',
+      'applicationStage',
+    ),
+    'INERT_WORKSPACE_CODE_IN_PAYLOAD',
+  );
+});
+
+test('does not treat unrelated workspace names as inert workspace code', () => {
+  assert.equal(
+    classifyForbiddenArtifact(
+      'dist/main/workspaces.js',
+      'applicationStage',
+    ),
+    undefined,
+  );
+  assert.equal(
+    classifyForbiddenArtifact(
+      'node_modules/external-package/dist/workspaces/registry/file.js',
+      'backendStage',
+    ),
+    undefined,
+  );
+  assert.equal(
+    classifyForbiddenArtifact('dist/main/index.js', 'applicationStage'),
+    undefined,
   );
 });
 

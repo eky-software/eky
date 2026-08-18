@@ -2,8 +2,12 @@
 
 ## Tila
 
-Suunniteltu. W0:n arkkitehtuuri- ja hyväksymissopimus sekä W0.1:n lifecycle-
-tarkennukset on dokumentoitu. W1-tuotantokoodia ei ole aloitettu.
+Suunniteltu kokonaisuus. W0:n arkkitehtuuri- ja hyväksymissopimus sekä W0.1:n
+lifecycle-tarkennukset on dokumentoitu. W1:n inertti foundation on toteutettu
+paikallisella feature-haaralla: sen lähdekoodi kuuluu desktopin normaaliin
+typecheckiin ja kohdetesteihin, mutta se on suljettu production-buildistä ja
+package-payloadista. W1:tä ei ole aktivoitu tuotantoruntimeen tai käyttäjälle
+näkyväksi ominaisuudeksi.
 
 Tämä suunnitelma toteuttaa
 `docs/decisions/ADR-0011-local-multi-workspace-company-model.md`-päätöksen
@@ -62,6 +66,9 @@ kanssa sekä omistajan katselmus.
 
 ## W1: Installation-owned workspace registry
 
+**Tila:** inertti foundation toteutettu paikallisella feature-haaralla;
+production-aktivointi ja käyttäjälle näkyvä toiminto eivät kuulu W1:een.
+
 **Omistaja:** Electron mainin rajattu workspace registry -adapteri ja
 composition. Ei backend- tai business-moduuli.
 
@@ -78,15 +85,30 @@ schema, backup container, installer payload ja web-komponentit.
 - entry sisältää vain `workspaceId`, `workspaceLabel`, versionoidun
   `lineageIdentity`-arvon, `layoutVersion = 1`, tilan `ready` tai
   `recoveryRequired` sekä strict UTC `createdAt`-arvon
-- satunnainen opaque `workspaceId`
-- muokattava `workspaceLabel`
-- versionoitu lineage identity
+- Electron mainin `crypto.randomUUID()`-funktiolla luoma canonical lowercase
+  UUID v4 `workspaceId`; väärä case, versio, variantti tai muoto torjutaan
+- trimmattu yhden rivin `workspaceLabel`, 1-80 Unicode-koodipistettä;
+  C0/C1-control-, line separator- ja bidi override/isolate -merkit torjutaan,
+  mutta samat labelit sallitaan
+- `lineageIdentity.formatVersion = 1` ja täsmälleen 64 lowercase SHA-256-hex-
+  merkkiä sisältävä `profileId`
+- canonical UTC `createdAt` muodossa `YYYY-MM-DDTHH:mm:ss.sssZ`, jonka parseri
+  todistaa parse- ja round-trip-tarkistuksella
+- enintään 64 KiB UTF-8-tavuja ja 64 entryä; duplicate key, invalid UTF-8,
+  unknown/prototype key, `null` ja type confusion torjutaan
+- `activeWorkspaceId = null` vain ilman `ready`-entryä; muulloin osoitin viittaa
+  täsmälleen yhteen `ready`-entryyn eikä koskaan `recoveryRequired`-entryyn
 - mainin suljetulla säännöllä johtama
   `<userData>/workspaces/<workspaceId>/`-juuri; locatoria ei tallenneta
-- crash-safe current/next/backup-slotit ja recovery
+- crash-safe `workspace-registry-v1.json`, `.next` ja `.backup` -slotit sekä
+  deterministinen recovery
 - keskeneräiset create/import/switch/restore-tilat vain erillisissä
   operation journaleissa
 - enintään yksi active pointer ja yksi workspace per lineage.
+
+Registry v1 ei sisällä `revision`-, `locator`-, `companyId`-, `actorId`-,
+`installationId`-, `secret`-, `journal`- tai business-kenttiä. Uusi kenttä tai
+suurempi resurssiraja vaatii versionoidun päätöksen.
 
 **Luottamusraja:** renderer ei lue tai kirjoita rekisteritiedostoa eikä saa
 storage locatoria. Rekisteri, renderer tai backup eivät saa antaa työtilan
@@ -97,15 +119,36 @@ schema- ja pituusrajalla.
 invalid ID tai timestamp, missing derived root, corrupt current ja
 ristiriitaiset recovery-slotit.
 
-**Testit:** serializer/parser, atomic replacement jokaisen vikapisteen jälkeen,
-unknown-field/null/prototype/path-korpus, duplicate identity ja käyttöoikeus-
-sekä symlink/reparse-rajat.
+**Maintenance lease:** sama installation-scoped lease serialisoi backup-,
+restore-, update- ja workspace-maintenance-operaatiot. Tavallinen snapshot tai
+portable backup käyttää nykyistä aktiivista SQLite-owneria eikä avaa candidate-
+kantaa. Aktiivinen backend suljetaan todistetusti ennen candidate-SQLiten
+avaamista create/import/replace/adopt/switch/migration-polussa.
+
+**Testit:** serializer/parser, atomic replacement ja restart-recovery
+kirjoituksen vikapisteissä, disk-full- ja short-write-tilat, rinnakkaisten
+operaatioiden fail-closed-raja, unknown-field/null/prototype/path-korpus,
+duplicate identity sekä tiedostokoon, käyttöoikeuksien, symlinkin, hardlinkin
+ja containmentin rajat. POSIX-oikeusraja ajetaan POSIX-ympäristössä ja
+Windowsin tiedostorajaukset Windowsissa.
 
 **W1:n aktivointiraja:** registry codec, store ja testit käyttävät vain testin
 yksityisiä temp-juuria. W1:tä ei kytketä tavalliseen production-startupiin,
 nykyiseen 0.2.6-profiiliin tai käyttäjän `userData`-juureen. Se ei luo
 rekisteriä, siirrä profiilia, vaihda runtime-juurta, muuta backup-/secret-
 polkuja eikä adoptoi legacy-profiilia. Tuotantokytkentä alkaa vasta W4:ssä.
+
+W1-W3:n inertti workspace-lähdekoodi kuuluu tavalliseen sourceen,
+typecheckiin ja testeihin, mutta se suljetaan väliaikaisesti desktopin
+production-buildistä ja package-payloadista. TypeScript-buildin exclusion ei
+yksin ole turvallisuusraja: application-stage artifact inventory torjuu
+fail-closed-tilassa kaiken `dist/workspaces/**`-sisällön myös silloin, jos
+vahingossa lisätty importti saisi TypeScriptin kääntämään exclusionin takana
+olevan tiedoston. Staattinen import-raja todistaa lisäksi, ettei registryä ole
+kytketty desktopin production-entrypointteihin, preloadiin, Electron E2E:n
+entryyn, webiin tai backendiin. Build exclusion ja inventory-raja poistetaan
+tai korvataan vasta W4:n erikseen hyväksytyssä production-compositionissa.
+W1-W3 eivät muuta käyttäjän AppDataa tai normaalia startupia.
 
 **Dokumentit:** ADR-0011:n toteutustila ja integraatiomatriisi.
 
