@@ -7,13 +7,16 @@ import {
   type DesktopLifecycleHandle,
 } from '../src/main/desktopComposition.js';
 import {
-  readSafeStartupFailureCode,
   runSafeDesktopStartup,
 } from '../src/main/earlyStartup.js';
-import { resolveActiveWorkspaceStartup } from '../src/workspaces/runtime/resolveActiveWorkspaceStartup.js';
+import {
+  resolveActiveWorkspaceStartup,
+  type ActiveWorkspaceStartupPhase,
+} from '../src/workspaces/runtime/resolveActiveWorkspaceStartup.js';
 import { createElectronE2eBackendController } from './electronE2eBackendProcess.js';
 import { readElectronE2eConfig } from './electronE2eConfig.js';
 import { createElectronE2eNativeAdapters } from './electronE2eNativeAdapters.js';
+import { readSafeElectronE2eWorkspaceStartupFailureCode } from './electronE2eWorkspaceStartupFailure.js';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -95,14 +98,20 @@ if (hasSingleInstanceLock) {
           showOpenDialog: nativeAdapters.showOpenDialog,
           showSaveDialog: nativeAdapters.showSaveDialog,
           resolveActiveWorkspace: async (userDataRoot) => {
+            let activePhase: ActiveWorkspaceStartupPhase | undefined;
             try {
-              return await resolveActiveWorkspaceStartup(userDataRoot);
+              return await resolveActiveWorkspaceStartup(userDataRoot, {
+                reportProgress(progress) {
+                  activePhase =
+                    progress.state === 'started' ? progress.phase : undefined;
+                },
+              });
             } catch (error) {
-              const safeErrorCode = readSafeStartupFailureCode(error);
               throw new Error(
-                safeErrorCode === 'DESKTOP_START_FAILED'
-                  ? 'DESKTOP_SMOKE_E2E_WORKSPACE_RESOLUTION_FAILED'
-                  : safeErrorCode,
+                readSafeElectronE2eWorkspaceStartupFailureCode(
+                  error,
+                  activePhase,
+                ),
               );
             }
           },

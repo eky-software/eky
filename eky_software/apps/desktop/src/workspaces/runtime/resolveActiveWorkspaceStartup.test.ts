@@ -27,6 +27,26 @@ afterEach(async () => {
 });
 
 describe('active workspace startup resolution', () => {
+  it('reports closed progress without allowing the observer to change behavior', async () => {
+    const userDataRoot = await createPrivateTemporaryRoot();
+    const progress: string[] = [];
+
+    const selection = await resolveActiveWorkspaceStartup(userDataRoot, {
+      reportProgress(event) {
+        progress.push(`${event.phase}:${event.state}`);
+        if (event.state === 'completed') throw new Error('observer failure');
+      },
+    });
+
+    expect(selection.mode).toBe('adoption');
+    expect(progress).toEqual([
+      'registryStateRead:started',
+      'registryStateRead:completed',
+      'legacyAdoption:started',
+      'legacyAdoption:completed',
+    ]);
+  });
+
   it('adopts a fresh installation once and reopens the same workspace normally', async () => {
     const userDataRoot = await createPrivateTemporaryRoot();
 
