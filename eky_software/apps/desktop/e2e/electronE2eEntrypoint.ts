@@ -6,7 +6,11 @@ import {
   startDesktopComposition,
   type DesktopLifecycleHandle,
 } from '../src/main/desktopComposition.js';
-import { runSafeDesktopStartup } from '../src/main/earlyStartup.js';
+import {
+  readSafeStartupFailureCode,
+  runSafeDesktopStartup,
+} from '../src/main/earlyStartup.js';
+import { resolveActiveWorkspaceStartup } from '../src/workspaces/runtime/resolveActiveWorkspaceStartup.js';
 import { createElectronE2eBackendController } from './electronE2eBackendProcess.js';
 import { readElectronE2eConfig } from './electronE2eConfig.js';
 import { createElectronE2eNativeAdapters } from './electronE2eNativeAdapters.js';
@@ -90,6 +94,18 @@ if (hasSingleInstanceLock) {
           showMessageBox: nativeAdapters.showMessageBox,
           showOpenDialog: nativeAdapters.showOpenDialog,
           showSaveDialog: nativeAdapters.showSaveDialog,
+          resolveActiveWorkspace: async (userDataRoot) => {
+            try {
+              return await resolveActiveWorkspaceStartup(userDataRoot);
+            } catch (error) {
+              const safeErrorCode = readSafeStartupFailureCode(error);
+              throw new Error(
+                safeErrorCode === 'DESKTOP_START_FAILED'
+                  ? 'DESKTOP_SMOKE_E2E_WORKSPACE_RESOLUTION_FAILED'
+                  : safeErrorCode,
+              );
+            }
+          },
           startBackend:
             config.startupMode === 'backendStartFailure'
               ? async () => {

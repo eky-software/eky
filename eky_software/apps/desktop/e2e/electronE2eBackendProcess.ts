@@ -42,7 +42,9 @@ export function createElectronE2eBackendController(
         processHandle !== undefined ||
         options.config.runtimeSessionSecret !== config.backend.sessionSecret
       ) {
-        throw new Error('ELECTRON_E2E_BACKEND_BOUNDARY_INVALID');
+        throw new Error(
+          'DESKTOP_SMOKE_E2E_BACKEND_CONTROLLER_BOUNDARY_FAILED',
+        );
       }
 
       return new Promise((resolveStart, rejectStart) => {
@@ -64,7 +66,9 @@ export function createElectronE2eBackendController(
         let unexpectedExitCallback: (() => void) | undefined;
         const timer = setTimeout(() => {
           child.kill();
-          rejectStart(new Error('ELECTRON_E2E_BACKEND_TIMEOUT'));
+          rejectStart(
+            new Error('DESKTOP_SMOKE_E2E_BACKEND_READY_TIMEOUT_FAILED'),
+          );
         }, readinessTimeoutMilliseconds);
 
         child.once('spawn', () => {
@@ -97,7 +101,9 @@ export function createElectronE2eBackendController(
           if (status.port !== config.backend.port) {
             clearTimeout(timer);
             child.kill();
-            rejectStart(new Error('ELECTRON_E2E_BACKEND_PORT_MISMATCH'));
+            rejectStart(
+              new Error('DESKTOP_SMOKE_E2E_BACKEND_PORT_MISMATCH_FAILED'),
+            );
             return;
           }
 
@@ -142,7 +148,11 @@ export function createElectronE2eBackendController(
           clearTimeout(timer);
           processHandle = undefined;
           if (!ready) {
-            rejectStart(new Error('ELECTRON_E2E_BACKEND_EXITED'));
+            rejectStart(
+              new Error(
+                'DESKTOP_SMOKE_E2E_BACKEND_EXITED_BEFORE_READY_FAILED',
+              ),
+            );
             return;
           }
           if (!stopping) {

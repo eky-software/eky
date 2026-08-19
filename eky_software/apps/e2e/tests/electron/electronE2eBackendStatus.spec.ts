@@ -5,6 +5,7 @@ import {
   parseElectronE2eBackendStatus,
   readElectronE2eBackendFailureCode,
 } from '../../../desktop/e2e/electronE2eBackendStatus.js';
+import { readSafeStartupFailureCode } from '../../../desktop/src/main/earlyStartup.js';
 
 test('DESK-BACKEND-STATUS-001 @critical exposes only closed safe startup stages', () => {
   for (const stage of electronE2eBackendStartupStages) {
@@ -44,4 +45,19 @@ test('DESK-BACKEND-STATUS-002 @critical rejects unknown and extended status payl
   expect(
     parseElectronE2eBackendStatus({ port: 3000, type: 'ready' }),
   ).toEqual({ port: 3000, type: 'ready' });
+});
+
+test('DESK-BACKEND-STATUS-003 @critical keeps controller failures allowlisted', () => {
+  for (const errorCode of [
+    'DESKTOP_SMOKE_E2E_BACKEND_CONTROLLER_BOUNDARY_FAILED',
+    'DESKTOP_SMOKE_E2E_BACKEND_READY_TIMEOUT_FAILED',
+    'DESKTOP_SMOKE_E2E_BACKEND_PORT_MISMATCH_FAILED',
+    'DESKTOP_SMOKE_E2E_BACKEND_EXITED_BEFORE_READY_FAILED',
+    'DESKTOP_SMOKE_E2E_WORKSPACE_RESOLUTION_FAILED',
+  ]) {
+    expect(errorCode).toMatch(/^DESKTOP_SMOKE_[A-Z0-9_]{1,80}$/);
+    expect(readSafeStartupFailureCode(new Error(errorCode))).toBe(errorCode);
+    expect(errorCode).not.toContain('\\');
+    expect(errorCode).not.toContain('/');
+  }
 });
