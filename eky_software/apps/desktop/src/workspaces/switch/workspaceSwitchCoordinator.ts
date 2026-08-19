@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
 
-import type { WorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
+import {
+  type WorkspaceMaintenanceLease,
+  WorkspaceMaintenanceLeaseBusyError,
+} from '../maintenance/workspaceMaintenanceLease.js';
 import { selectActiveWorkspace } from '../registry/workspaceRegistryMutations.js';
 import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
 import type { WorkspaceId } from '../registry/workspaceRegistryTypes.js';
@@ -36,11 +39,15 @@ export class WorkspaceSwitchCoordinator {
   }
 
   async switchTo(targetWorkspaceId: WorkspaceId): Promise<void> {
-    const lease = await this.options.maintenanceLease.acquire('switch').catch(
-      () => {
-        throw new WorkspaceSwitchError('WORKSPACE_SWITCH_STORAGE_FAILED');
-      },
-    );
+    const lease = await this.options.maintenanceLease
+      .acquire('switch')
+      .catch((error) => {
+        throw new WorkspaceSwitchError(
+          error instanceof WorkspaceMaintenanceLeaseBusyError
+            ? 'WORKSPACE_SWITCH_BUSY'
+            : 'WORKSPACE_SWITCH_STORAGE_FAILED',
+        );
+      });
     let journal: Readonly<WorkspaceSwitchJournalV1> | undefined;
     let sourceWorkspaceId: WorkspaceId | undefined;
     let lifecycleTransitionStarted = false;
