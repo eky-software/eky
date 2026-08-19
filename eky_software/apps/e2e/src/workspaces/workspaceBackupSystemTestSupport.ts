@@ -22,18 +22,47 @@ import { inspectSqliteProfileDatabase } from '../../../backend/src/runtime/profi
 import { validateProfileArtifactCatalog } from '../../../backend/src/runtime/profileSnapshot/validateProfileArtifactCatalog.js';
 import { writeBackupContainer } from '../../../desktop/src/profileBackup/container/backupContainerWriter.js';
 import { createProfileBackupSourceEntries } from '../../../desktop/src/profileBackup/createProfileBackupSourceEntries.js';
-import type { PrivateWorkspaceBackupCandidateRuntimeFactory } from '../../../desktop/src/workspaces/import/privateWorkspaceBackupCandidateAdapter.js';
-import type {
-  PublishedWorkspaceBackupValidationInput,
-  WorkspaceBackupCandidateMigrationInput,
-  WorkspaceBackupCandidateReadiness,
-  WorkspaceBackupCandidateValidationInput,
-} from '../../../desktop/src/workspaces/import/workspaceBackupImportPorts.js';
 import {
   createSyntheticCompanySettingsInput,
   createSyntheticCustomerInput,
   createSyntheticInvoiceDraftInput,
 } from '../data/syntheticBusinessInputs.js';
+
+interface WorkspaceBackupCandidateMigrationInput {
+  readonly artifactRoot: string;
+  readonly databaseFilePath: string;
+  readonly expectedProfileId: string;
+  readonly expectedSourceMigrationChainIdentity: string;
+  readonly importStagingRoot: string;
+}
+
+interface WorkspaceBackupCandidateValidationInput {
+  readonly artifactRoot: string;
+  readonly databaseFilePath: string;
+  readonly expectedProfileId: string;
+  readonly importStagingRoot: string;
+}
+
+interface PublishedWorkspaceBackupValidationInput {
+  readonly artifactRoot: string;
+  readonly databaseFilePath: string;
+  readonly expectedProfileId: string;
+}
+
+interface WorkspaceBackupCandidateReadiness {
+  readonly actorId: 'local-owner';
+  readonly artifactRootHealth: 'ready';
+  readonly companyId: string;
+  readonly databaseHealth: 'healthy';
+  readonly foreignKeyHealth: 'healthy';
+  readonly handlesClosed: true;
+  readonly lineageIdentity: Readonly<{
+    readonly formatVersion: 1;
+    readonly profileId: string;
+  }>;
+  readonly migrationChainIdentity: string;
+  readonly migrationState: 'current';
+}
 
 export const workspaceBackupTestAppVersion = '0.2.6';
 export const workspaceBackupMigrationsDirectory = resolve(
@@ -139,7 +168,7 @@ export function readWorkspaceBackupInvoiceDocument(
   }
 }
 
-export function createWorkspaceBackupCandidateRuntimeFactory(): PrivateWorkspaceBackupCandidateRuntimeFactory {
+export function createWorkspaceBackupCandidateRuntimeFactory() {
   return {
     startMigration: async (
       input: Readonly<WorkspaceBackupCandidateMigrationInput>,
@@ -178,12 +207,12 @@ export function createWorkspaceBackupCandidateRuntimeFactory(): PrivateWorkspace
       return {
         stopAndProveHandlesClosed: async () => true,
         inspectStoppedMigrationResult: async () => ({
-          handlesClosed: true,
           ...inspectSqliteProfileDatabase(
             input.databaseFilePath,
             workspaceBackupMigrationsDirectory,
             'exactCurrentManifest',
           ),
+          handlesClosed: true as const,
         }),
       };
     },
