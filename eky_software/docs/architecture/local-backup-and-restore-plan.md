@@ -695,9 +695,10 @@ point, hardlink, ylikokoinen payload tai containment-ristiriita johtaa
 
 ### W3b:n same-lineage-korvaus
 
-**Tila:** määritelty inertiksi foundationiksi. Polku ei kuulu production-
-compositioniin, preloadiin, IPC:hen, UI:hin tai AppData-profiiliin ennen W4:n
-erillistä päätöstä.
+**Tila:** toteutettu ja testattu inerttinä foundationina. Polku ei kuulu
+production-compositioniin, preloadiin, IPC:hen, UI:hin, paketoituun
+sovellukseen tai AppData-profiiliin ennen W4:n erillistä päätöstä ja
+prosessilifecycle-todistetta.
 
 W3b ei rakenna toista restore-moottoria. Se muodostaa nykyisen
 `ProfileRestoreActivationTransaction`-transactionin aktiivisen workspacen
@@ -728,6 +729,14 @@ runtime-sessionin health-, identity-, migration- ja artifact-todisteen.
 Validation failure palauttaa vanhan tietokannan ja PDF-rootin byte-
 identtisesti nykyisen activation transactionin kautta ennen runtimen
 uudelleenkäynnistystä.
+
+Unit-, fault- ja recovery-testit katkaisevat aktivoinnin jokaisen durable-
+vaiheen. System-E2E autentikoi todellisen salatun backupin, korvaa saman
+lineagen aktiivisen synteettisen workspacen, todistaa ettei uudempaa dataa
+mergetä, tarkistaa PDF-hashin ja device-local-rajojen muuttumattomuuden sekä
+ajaa yhteensopivan historiallisen migraatioprefixin eteenpäin. Väärä salasana
+ja muutettu container torjutaan ennen quiescea ja kirjoituksia. Production-
+runtimea, oikeaa AppData-profiilia tai käyttäjän business-dataa ei käytetä.
 
 ## Käyttöliittymä
 

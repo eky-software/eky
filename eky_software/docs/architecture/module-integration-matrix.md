@@ -90,6 +90,26 @@ atomic-slot-primitiiiviä. Registry-, creation- ja import-skeemoja,
 tilakoneita, serializer-logiikkaa tai virheitä ei yhdistetä. W3b-korvaus,
 W4-switch, legacy-adoptio ja käyttäjärajapinta eivät kuulu W3:een.
 
+### Local Workspace W3b -sopimus
+
+W3b korvaa vain aktiivisen `ready`-workspacen autentikoidusta exact-lineage-
+backupista. Workspace replacement coordinator omistaa järjestyksen ja käyttää
+W3:n backup-container- sekä private candidate -portteja, registryltä luettua
+lineage-auktoriteettia, workspace-kohtaista preRestore-porttia ja nykyistä
+restore activation transactionia. Electron main ei avaa SQLitea eikä backupin
+business-arvoja käytetä oikeutuksena.
+
+Korvaus vaihtaa koko portable business snapshotin atomisesti; se ei mergeä
+tauluja, rivejä tai tiedostoja. Registry-entry ja active pointer säilyvät
+muuttumattomina. Device-local SMTP/safeStorage-, PDF-arkisto-, update-,
+diagnostiikka- ja lokitiedot sekä muiden workspacejen rootit ja palautuspisteet
+eivät kuulu transactioniin. Failure palauttaa kohteen tietokannan ja
+auktoritatiiviset artifactit byte-identtisesti ennen vanhan runtimen
+terveystodistetta.
+
+W3b on inertti foundation. Production-composition, todellinen Electron-
+prosessilifecycle, preload/IPC/UI sekä legacy-adoptio kuuluvat W4:ään.
+
 ## Tarkistuslähteet
 
 Implemented-rivit tarkistetaan ensisijaisesti seuraavista lähteistä:

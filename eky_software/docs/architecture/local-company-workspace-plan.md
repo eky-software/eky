@@ -381,7 +381,8 @@ backup-tarkastus, private candidate, forward-migraatio, täysi validointi,
 atominen root- ja registry-julkaisu sekä restart-recovery on toteutettu ja
 todistettu unit-, fault-, recovery-, security- ja system-E2E-testeillä.
 Production-compositionia, preloadia, IPC:tä, UI:ta tai julkista HTTP-reittiä
-ei ole lisätty. W3b ja W4 ovat edelleen toteuttamatta.
+ei ole lisätty. W3b on toteutettu erillisenä inerttinä foundationina; W4:n
+production-kytkentä on edelleen toteuttamatta.
 
 **Omistaja:** Profile Protection / Backup / Restore yhdessä workspace
 coordinatorin kanssa. Backup inspector säilyy backup-formaatin omistajana.
@@ -531,6 +532,13 @@ salasanaa, AppData-profiilia tai business-dataa ei käytetä.
 
 ## W3b: Replace existing workspace from same-lineage backup
 
+**Tila:** toteutettu inerttinä foundationina. Koordinaattori, exact-lineage-
+raja, workspace-kohtaiset polut, nykyisen restore activation transactionin
+käyttö, byte-identtinen rollback ja todelliseen salattuun backupiin perustuva
+system-E2E-todiste ovat valmiit. Polkua ei ole kytketty production-
+compositioniin, preloadiin, IPC:hen, UI:hin, paketoituun sovellukseen tai
+käyttäjän AppData-profiiliin. Tämä kytkentä kuuluu W4:n erilliseen vaiheeseen.
+
 **Omistaja:** Profile Protection / Backup / Restore; coordinator lukitsee
 kohdetyötilan ja aktivoinnin.
 
@@ -597,10 +605,16 @@ safeStorage/DPAPI-envelope, ulkoisen PDF-arkiston root ja retry-journal,
 update/cache-tila, operational-lokit, diagnostiikka sekä muiden workspacejen
 palautuspisteet eivät kuulu stagingiin, aktivointiin tai rollbackiin.
 
-**Testit:** same-lineage success, wrong-lineage deny ilman writeä, vanhan datan
-poistuminen, uudemman datan palautuminen, PDF-hashit, salaisuuden jatkuvuus,
-keskeytys jokaisessa journal-vaiheessa ja muiden työtilojen hashien
-muuttumattomuus.
+**Testit:** same-lineage success, historical-prefixin forward-migraatio,
+wrong-lineage deny ilman writeä, nimen tai Y-tunnuksen kelpaamattomuus
+oikeutukseksi, inactive/recovery/duplicate-lineage-torjunnat, väärä salasana,
+muuttunut container, vanhan datan poistuminen ilman mergeä, backupin datan ja
+PDF:n palautuminen, device-local-tiedostojen jatkuvuus, keskeytys jokaisessa
+activation journal -vaiheessa, byte-identtinen rollback sekä muiden
+työtilojen ja lähdebackupin hashien muuttumattomuus. System-E2E käyttää oikeaa
+salattua backup-containeria, SQLitea, migraatioita ja PDF-artifactia, mutta
+inertin foundationin runtime-lifecycle-portti on synteettinen; oikea Electron-
+prosessikytkentä todistetaan vasta W4:ssä.
 
 **Dokumentit:** backup- ja recovery-runbook.
 
