@@ -15,7 +15,7 @@ import { WorkspaceSwitchError } from './workspaceSwitchError.js';
 import { assertNoDuplicateWorkspaceSwitchJournalKeys } from './workspaceSwitchJournalDuplicateKeys.js';
 
 const maximumJournalBytes = 4_096;
-const journalFileName = 'workspace-switch-v1.json';
+export const workspaceSwitchJournalFileName = 'workspace-switch-v1.json';
 const operationIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -40,21 +40,36 @@ export interface WorkspaceSwitchJournalPort {
   clear(operationId: string): Promise<void>;
 }
 
+export interface WorkspaceSwitchJournalPaths {
+  readonly backupPath: string;
+  readonly currentPath: string;
+  readonly directoryPath: string;
+  readonly nextPath: string;
+}
+
+export function createWorkspaceSwitchJournalPaths(
+  userDataRoot: string,
+): Readonly<WorkspaceSwitchJournalPaths> {
+  const root = requireAbsoluteRoot(userDataRoot);
+  const directoryPath = join(root, 'workspace-state');
+  const currentPath = join(directoryPath, workspaceSwitchJournalFileName);
+  return Object.freeze({
+    backupPath: `${currentPath}.backup`,
+    currentPath,
+    directoryPath,
+    nextPath: `${currentPath}.next`,
+  });
+}
+
 export class WorkspaceSwitchJournalStore implements WorkspaceSwitchJournalPort {
   private readonly byteStore: CrashSafeByteSlotStore;
   private activeOperation = false;
 
   constructor(userDataRoot: string) {
-    const root = requireAbsoluteRoot(userDataRoot);
-    const directoryPath = join(root, 'workspace-state');
+    const paths = createWorkspaceSwitchJournalPaths(userDataRoot);
     this.byteStore = new CrashSafeByteSlotStore(
       createNodeCrashSafeFileSlotFileSystem(
-        {
-          directoryPath,
-          currentPath: join(directoryPath, journalFileName),
-          nextPath: join(directoryPath, `${journalFileName}.next`),
-          backupPath: join(directoryPath, `${journalFileName}.backup`),
-        },
+        paths,
         maximumJournalBytes,
       ),
     );

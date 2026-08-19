@@ -20,6 +20,12 @@ const terminalUpdateStates = new Set<UpdateJournal['state']>([
   'rolledBack',
 ]);
 
+export function isTerminalUpdateJournalState(
+  state: UpdateJournal['state'],
+): boolean {
+  return terminalUpdateStates.has(state);
+}
+
 export function resolveStartupRecoveryAuthority(input: {
   profileRestoreJournal:
     | Readonly<ProfileRestoreActivationJournal>
@@ -29,7 +35,7 @@ export function resolveStartupRecoveryAuthority(input: {
 }): StartupRecoveryAuthority {
   const hasNonterminalUpdate =
     input.updateJournal !== undefined &&
-    !terminalUpdateStates.has(input.updateJournal.state);
+    !isTerminalUpdateJournalState(input.updateJournal.state);
 
   if (input.workspaceReplacementRecoveryPending) {
     if (

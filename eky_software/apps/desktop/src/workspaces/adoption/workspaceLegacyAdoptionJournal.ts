@@ -15,7 +15,8 @@ import { WorkspaceLegacyAdoptionError } from './workspaceLegacyAdoptionError.js'
 import { assertNoDuplicateWorkspaceLegacyAdoptionJournalKeys } from './workspaceLegacyAdoptionJournalDuplicateKeys.js';
 
 const maximumJournalBytes = 4_096;
-const journalFileName = 'workspace-adoption-v1.json';
+export const workspaceLegacyAdoptionJournalFileName =
+  'workspace-adoption-v1.json';
 const operationIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -42,6 +43,30 @@ export interface WorkspaceLegacyAdoptionJournalPort {
   clear(operationId: string): Promise<void>;
 }
 
+export interface WorkspaceLegacyAdoptionJournalPaths {
+  readonly backupPath: string;
+  readonly currentPath: string;
+  readonly directoryPath: string;
+  readonly nextPath: string;
+}
+
+export function createWorkspaceLegacyAdoptionJournalPaths(
+  userDataRoot: string,
+): Readonly<WorkspaceLegacyAdoptionJournalPaths> {
+  const root = requireAbsoluteRoot(userDataRoot);
+  const directoryPath = join(root, 'workspace-state');
+  const currentPath = join(
+    directoryPath,
+    workspaceLegacyAdoptionJournalFileName,
+  );
+  return Object.freeze({
+    backupPath: `${currentPath}.backup`,
+    currentPath,
+    directoryPath,
+    nextPath: `${currentPath}.next`,
+  });
+}
+
 export class WorkspaceLegacyAdoptionJournalStore
   implements WorkspaceLegacyAdoptionJournalPort
 {
@@ -49,16 +74,10 @@ export class WorkspaceLegacyAdoptionJournalStore
   private activeOperation = false;
 
   constructor(userDataRoot: string) {
-    const root = requireAbsoluteRoot(userDataRoot);
-    const directoryPath = join(root, 'workspace-state');
+    const paths = createWorkspaceLegacyAdoptionJournalPaths(userDataRoot);
     this.byteStore = new CrashSafeByteSlotStore(
       createNodeCrashSafeFileSlotFileSystem(
-        {
-          directoryPath,
-          currentPath: join(directoryPath, journalFileName),
-          nextPath: join(directoryPath, `${journalFileName}.next`),
-          backupPath: join(directoryPath, `${journalFileName}.backup`),
-        },
+        paths,
         maximumJournalBytes,
       ),
     );

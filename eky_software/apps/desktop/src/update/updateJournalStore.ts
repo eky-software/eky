@@ -13,7 +13,7 @@ import { basename, dirname, isAbsolute, resolve } from 'node:path';
 import { parseUpdateJournal, type UpdateJournal } from './updateJournal.js';
 
 export const updateJournalFileName = 'local-update-journal-v1.json';
-const maximumJournalBytes = 32 * 1024;
+export const maximumUpdateJournalBytes = 32 * 1024;
 
 export class UpdateJournalStore {
   private readonly backupPath: string;
@@ -157,7 +157,7 @@ async function readJournal(path: string): Promise<Readonly<UpdateJournal> | unde
   try {
     const metadata = await lstat(path);
     if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.nlink !== 1 ||
-      metadata.size < 1 || metadata.size > maximumJournalBytes) {
+      metadata.size < 1 || metadata.size > maximumUpdateJournalBytes) {
       throw new Error('UPDATE_JOURNAL_INVALID');
     }
     return parseUpdateJournal(JSON.parse(await readFile(path, 'utf8')));

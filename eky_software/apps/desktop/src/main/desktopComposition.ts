@@ -150,6 +150,7 @@ import { WorkspaceSwitchError } from '../workspaces/switch/workspaceSwitchError.
 import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
 import { deriveWorkspaceBackupReplacementRuntimePaths } from '../workspaces/replacement/workspaceBackupReplacementPaths.js';
 import { createWorkspaceBackupReplacementStartupRecovery } from '../workspaces/replacement/workspaceBackupReplacementStartupRecovery.js';
+import { createWorkspaceManagementComposition } from '../workspaces/management/workspaceManagementComposition.js';
 import { DeferredWorkspaceRuntimeRelaunch } from '../workspaces/runtime/deferredWorkspaceRuntimeRelaunch.js';
 import { MainOwnedActiveWorkspaceLifecycle } from '../workspaces/runtime/mainOwnedActiveWorkspaceLifecycle.js';
 
@@ -1380,6 +1381,21 @@ async function startDesktopCompositionRuntime({
     },
     workspaceRuntimeRelaunch,
   );
+  const workspaceManagementComposition =
+    await createWorkspaceManagementComposition({
+      activeWorkspaceId: activeWorkspace.workspaceId,
+      activeWorkspaceLifecycle,
+      appVersion: desktopAppVersion,
+      buildRevision: options.buildInfo.buildRevision,
+      localUpdateRuntimePaths,
+      maintenanceLease: workspaceMaintenanceLease,
+      profileRestoreActivationJournalPath:
+        profileSnapshotPaths.restoreActivationJournalPath,
+      recoveryPointService,
+      resourcesPath: options.resourcesPath,
+      runtimeRelaunch: workspaceRuntimeRelaunch,
+      userDataRoot: options.userDataPath,
+    });
 
   const lifecycleHandle: DesktopLifecycleHandle = {
     applicationWindow: mainWindow,
@@ -1441,6 +1457,8 @@ async function startDesktopCompositionRuntime({
           ),
         );
         throw new Error('DESKTOP_SHUTDOWN_FAILED');
+      } finally {
+        workspaceManagementComposition.dispose();
       }
     },
   };
