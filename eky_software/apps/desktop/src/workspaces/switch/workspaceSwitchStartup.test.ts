@@ -117,10 +117,108 @@ describe('workspace switch startup recovery', () => {
     );
     const selection = await resolveWorkspaceSwitchStartup(registry, journal);
 
-    await expect(selection.recoverFromFailure()).resolves.toBe('notRecovered');
+    await expect(selection.recoverFromFailure())
+      .resolves.toBe('recoveryRequired');
     expect(journal.current?.state).toBe('recoveryRequired');
     await expect(resolveWorkspaceSwitchStartup(registry, journal))
       .rejects.toMatchObject({ code: 'WORKSPACE_SWITCH_RECOVERY_REQUIRED' });
+  });
+
+  it('marks recovery required when target rollback cannot change the active pointer', async () => {
+    const events: string[] = [];
+    const registry = new MemorySwitchRegistry(
+      events,
+      createSwitchRegistry(TEST_TARGET_WORKSPACE_ID),
+    );
+    registry.failWriteBefore = true;
+    const journal = new MemorySwitchJournal(
+      events,
+      createSwitchJournal('targetSelected'),
+    );
+    const selection = await resolveWorkspaceSwitchStartup(registry, journal);
+
+    await expect(selection.recoverFromFailure())
+      .resolves.toBe('recoveryRequired');
+    expect(registry.value?.activeWorkspaceId).toBe(TEST_TARGET_WORKSPACE_ID);
+    expect(journal.current?.state).toBe('recoveryRequired');
+  });
+
+  it('continues rollback when a registry write failed after selecting the source', async () => {
+    const events: string[] = [];
+    const registry = new MemorySwitchRegistry(
+      events,
+      createSwitchRegistry(TEST_TARGET_WORKSPACE_ID),
+    );
+    registry.failWriteAfter = true;
+    const journal = new MemorySwitchJournal(
+      events,
+      createSwitchJournal('targetSelected'),
+    );
+    const selection = await resolveWorkspaceSwitchStartup(registry, journal);
+
+    await expect(selection.recoverFromFailure())
+      .resolves.toBe('relaunchRequired');
+    expect(registry.value?.activeWorkspaceId).toBe(TEST_SOURCE_WORKSPACE_ID);
+    expect(journal.current?.state).toBe('rollbackSelected');
+  });
+
+  it('marks recovery required when rollback journal persistence fails', async () => {
+    const events: string[] = [];
+    const registry = new MemorySwitchRegistry(
+      events,
+      createSwitchRegistry(TEST_TARGET_WORKSPACE_ID),
+    );
+    const journal = new MemorySwitchJournal(
+      events,
+      createSwitchJournal('targetSelected'),
+    );
+    journal.failBeforeState = 'rollbackSelected';
+    const selection = await resolveWorkspaceSwitchStartup(registry, journal);
+
+    await expect(selection.recoverFromFailure())
+      .resolves.toBe('recoveryRequired');
+    expect(registry.value?.activeWorkspaceId).toBe(TEST_SOURCE_WORKSPACE_ID);
+    expect(journal.current?.state).toBe('recoveryRequired');
+  });
+
+  it('reconciles a rollback journal write that failed after its side effect', async () => {
+    const events: string[] = [];
+    const registry = new MemorySwitchRegistry(
+      events,
+      createSwitchRegistry(TEST_TARGET_WORKSPACE_ID),
+    );
+    const journal = new MemorySwitchJournal(
+      events,
+      createSwitchJournal('targetSelected'),
+    );
+    journal.failAfterState = 'rollbackSelected';
+    const selection = await resolveWorkspaceSwitchStartup(registry, journal);
+
+    await expect(selection.recoverFromFailure())
+      .resolves.toBe('recoveryRequired');
+    expect(registry.value?.activeWorkspaceId).toBe(TEST_SOURCE_WORKSPACE_ID);
+    expect(journal.current?.state).toBe('recoveryRequired');
+  });
+
+  it('fails closed with an allowlisted code when recoveryRequired cannot be persisted', async () => {
+    const events: string[] = [];
+    const registry = new MemorySwitchRegistry(
+      events,
+      createSwitchRegistry(TEST_TARGET_WORKSPACE_ID),
+    );
+    registry.failWriteBefore = true;
+    const journal = new MemorySwitchJournal(
+      events,
+      createSwitchJournal('targetSelected'),
+    );
+    journal.failBeforeState = 'recoveryRequired';
+    const selection = await resolveWorkspaceSwitchStartup(registry, journal);
+
+    await expect(selection.recoverFromFailure()).rejects.toMatchObject({
+      code: 'WORKSPACE_SWITCH_RECOVERY_REQUIRED',
+      message: 'WORKSPACE_SWITCH_RECOVERY_REQUIRED',
+    });
+    expect(JSON.stringify(events)).not.toContain('Error');
   });
 
   it('fails closed for a journal and active pointer mismatch', async () => {

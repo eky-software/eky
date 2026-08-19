@@ -13,6 +13,16 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { deriveWorkspaceRoot } from '../registry/deriveWorkspaceRoot.js';
+import { WORKSPACE_REGISTRY_FILE_NAME } from '../registry/workspaceRegistryPaths.js';
+import { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
+import { WorkspaceSwitchJournalStore } from '../switch/workspaceSwitchJournal.js';
+import {
+  createSwitchJournal,
+  createSwitchRegistry,
+  TEST_SOURCE_WORKSPACE_ID,
+  TEST_TARGET_WORKSPACE_ID,
+} from '../switch/workspaceSwitchTestSupport.js';
 import { resolveActiveWorkspaceStartup } from './resolveActiveWorkspaceStartup.js';
 
 const temporaryRoots: string[] = [];
@@ -117,7 +127,162 @@ describe('active workspace startup resolution', () => {
     await second.accept(profileId);
     expect(await hashFiles([sourceDatabase, sourcePdf])).toBe(sourceIdentity);
   });
+
+  it('rolls a missing selected target back before any workspace runtime starts', async () => {
+    const fixture = await createSwitchStartupFixture('targetSelected');
+    await rm(fixture.targetPaths.workspaceRoot, { recursive: true });
+    const progress: string[] = [];
+
+    await expect(
+      resolveActiveWorkspaceStartup(fixture.userDataRoot, {
+        reportProgress(event) {
+          progress.push(`${event.phase}:${event.state}`);
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: 'ACTIVE_WORKSPACE_STARTUP_RELAUNCH_REQUIRED',
+      message: 'ACTIVE_WORKSPACE_STARTUP_RELAUNCH_REQUIRED',
+    });
+
+    expect((await fixture.registry.read())?.activeWorkspaceId)
+      .toBe(TEST_SOURCE_WORKSPACE_ID);
+    expect((await fixture.journal.read())?.state).toBe('rollbackSelected');
+    expect(progress).toEqual([
+      'registryStateRead:started',
+      'registryStateRead:completed',
+      'switchRecovery:started',
+      'switchRecovery:completed',
+      'workspaceRootInspection:started',
+    ]);
+
+    const sourceStartup = await resolveActiveWorkspaceStartup(
+      fixture.userDataRoot,
+    );
+    expect(sourceStartup).toMatchObject({
+      mode: 'rollbackValidation',
+      workspaceId: TEST_SOURCE_WORKSPACE_ID,
+      workspaceRoot: fixture.sourcePaths.workspaceRoot,
+    });
+    await sourceStartup.accept(profileId);
+    expect(await fixture.journal.read()).toBeUndefined();
+  });
+
+  it('rolls a structurally invalid selected target back to the source', async () => {
+    const fixture = await createSwitchStartupFixture('targetSelected');
+    await rm(fixture.targetPaths.workspaceRoot, { recursive: true });
+    await writePrivateFile(
+      fixture.targetPaths.workspaceRoot,
+      'synthetic-invalid-workspace-root',
+    );
+
+    await expect(
+      resolveActiveWorkspaceStartup(fixture.userDataRoot),
+    ).rejects.toMatchObject({
+      code: 'ACTIVE_WORKSPACE_STARTUP_RELAUNCH_REQUIRED',
+    });
+
+    expect((await fixture.registry.read())?.activeWorkspaceId)
+      .toBe(TEST_SOURCE_WORKSPACE_ID);
+    expect((await fixture.journal.read())?.state).toBe('rollbackSelected');
+  });
+
+  it('exposes only a closed relaunch code and closed progress after target inspection fails', async () => {
+    const fixture = await createSwitchStartupFixture('targetSelected');
+    await rm(fixture.targetPaths.workspaceRoot, { recursive: true });
+    const progress: string[] = [];
+    let caught: unknown;
+
+    try {
+      await resolveActiveWorkspaceStartup(fixture.userDataRoot, {
+        reportProgress(event) {
+          progress.push(`${event.phase}:${event.state}`);
+        },
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toMatchObject({
+      code: 'ACTIVE_WORKSPACE_STARTUP_RELAUNCH_REQUIRED',
+      message: 'ACTIVE_WORKSPACE_STARTUP_RELAUNCH_REQUIRED',
+    });
+    const safeEvidence = JSON.stringify({
+      code: (caught as { code?: unknown }).code,
+      message: caught instanceof Error ? caught.message : undefined,
+      progress,
+    });
+    expect(safeEvidence).not.toContain(fixture.userDataRoot);
+    expect(safeEvidence).not.toContain('WORKSPACE_ROOT_INVALID');
+    expect(safeEvidence).not.toContain('stack');
+  });
+
+  it('fails closed without changing registry or journal in normal mode', async () => {
+    const fixture = await createSwitchStartupFixture('normal');
+    await rm(fixture.sourcePaths.workspaceRoot, { recursive: true });
+    const registryPath = join(
+      fixture.userDataRoot,
+      WORKSPACE_REGISTRY_FILE_NAME,
+    );
+    const registryBefore = await readFile(registryPath);
+
+    await expect(
+      resolveActiveWorkspaceStartup(fixture.userDataRoot),
+    ).rejects.toMatchObject({ code: 'WORKSPACE_ROOT_INVALID' });
+
+    expect(await readFile(registryPath)).toEqual(registryBefore);
+    expect(await fixture.journal.read()).toBeUndefined();
+  });
+
+  it('marks recovery required when the rollback source root is unavailable', async () => {
+    const fixture = await createSwitchStartupFixture('rollbackSelected');
+    await rm(fixture.sourcePaths.workspaceRoot, { recursive: true });
+
+    await expect(
+      resolveActiveWorkspaceStartup(fixture.userDataRoot),
+    ).rejects.toMatchObject({ code: 'WORKSPACE_SWITCH_RECOVERY_REQUIRED' });
+
+    expect((await fixture.registry.read())?.activeWorkspaceId)
+      .toBe(TEST_SOURCE_WORKSPACE_ID);
+    expect((await fixture.journal.read())?.state).toBe('recoveryRequired');
+  });
 });
+
+async function createSwitchStartupFixture(
+  state: 'normal' | 'targetSelected' | 'rollbackSelected',
+) {
+  const userDataRoot = await createPrivateTemporaryRoot();
+  const registry = new WorkspaceRegistryStore({
+    installationRoot: userDataRoot,
+    filePath: join(userDataRoot, WORKSPACE_REGISTRY_FILE_NAME),
+  });
+  const activeWorkspaceId =
+    state === 'targetSelected'
+      ? TEST_TARGET_WORKSPACE_ID
+      : TEST_SOURCE_WORKSPACE_ID;
+  await registry.write(createSwitchRegistry(activeWorkspaceId));
+  const sourcePaths = deriveWorkspaceRoot(
+    userDataRoot,
+    TEST_SOURCE_WORKSPACE_ID,
+    1,
+  );
+  const targetPaths = deriveWorkspaceRoot(
+    userDataRoot,
+    TEST_TARGET_WORKSPACE_ID,
+    1,
+  );
+  await createPrivateDirectory(sourcePaths.workspaceRoot);
+  await createPrivateDirectory(targetPaths.workspaceRoot);
+  const journal = new WorkspaceSwitchJournalStore(userDataRoot);
+  if (state !== 'normal') {
+    const prepared = createSwitchJournal('prepared');
+    await journal.write(prepared);
+    await journal.write({ ...prepared, state: 'targetSelected' });
+    if (state === 'rollbackSelected') {
+      await journal.write({ ...prepared, state: 'rollbackSelected' });
+    }
+  }
+  return { journal, registry, sourcePaths, targetPaths, userDataRoot };
+}
 
 async function createPrivateTemporaryRoot(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'eky-active-workspace-'));

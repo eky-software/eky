@@ -16,11 +16,16 @@ export type WorkspaceSwitchStartupMode =
   | 'targetValidation'
   | 'rollbackValidation';
 
+export type WorkspaceSwitchFailureRecoveryOutcome =
+  | 'relaunchRequired'
+  | 'recoveryRequired'
+  | 'notRecovered';
+
 export interface WorkspaceSwitchStartupSelection {
   readonly mode: WorkspaceSwitchStartupMode;
   readonly workspace: Readonly<LocalWorkspaceRegistryEntryV1>;
   accept(profileId: string): Promise<void>;
-  recoverFromFailure(): Promise<'relaunchRequired' | 'notRecovered'>;
+  recoverFromFailure(): Promise<WorkspaceSwitchFailureRecoveryOutcome>;
 }
 
 export async function resolveWorkspaceSwitchStartup(
@@ -64,28 +69,88 @@ export async function resolveWorkspaceSwitchStartup(
     async recoverFromFailure() {
       if (journal === undefined || mode === 'normal') return 'notRecovered';
       if (mode === 'rollbackValidation') {
-        await journalStore.write({ ...journal, state: 'recoveryRequired' });
-        return 'notRecovered';
+        await persistRecoveryRequired(journalStore, journal);
+        return 'recoveryRequired';
       }
-      const currentRegistry = await registryPort.read();
-      if (
-        currentRegistry === undefined ||
-        currentRegistry.activeWorkspaceId !== journal.targetWorkspaceId
-      ) {
-        await journalStore.write({ ...journal, state: 'recoveryRequired' });
-        return 'notRecovered';
-      }
-      await registryPort.write(
-        selectActiveWorkspace(
-          currentRegistry,
-          journal.targetWorkspaceId,
-          journal.sourceWorkspaceId,
-        ),
+      return recoverTargetValidationFailure(
+        registryPort,
+        journalStore,
+        journal,
       );
-      await journalStore.write({ ...journal, state: 'rollbackSelected' });
-      return 'relaunchRequired';
     },
   });
+}
+
+async function recoverTargetValidationFailure(
+  registryPort: WorkspaceRegistryPort,
+  journalStore: WorkspaceSwitchJournalPort,
+  journal: Readonly<WorkspaceSwitchJournalV1>,
+): Promise<WorkspaceSwitchFailureRecoveryOutcome> {
+  let currentRegistry: Readonly<LocalWorkspaceRegistryV1> | undefined;
+  try {
+    currentRegistry = await registryPort.read();
+  } catch {
+    await persistRecoveryRequired(journalStore, journal);
+    return 'recoveryRequired';
+  }
+  if (
+    currentRegistry === undefined ||
+    currentRegistry.activeWorkspaceId !== journal.targetWorkspaceId
+  ) {
+    await persistRecoveryRequired(journalStore, journal);
+    return 'recoveryRequired';
+  }
+
+  let sourceRegistry: Readonly<LocalWorkspaceRegistryV1>;
+  try {
+    sourceRegistry = selectActiveWorkspace(
+      currentRegistry,
+      journal.targetWorkspaceId,
+      journal.sourceWorkspaceId,
+    );
+  } catch {
+    await persistRecoveryRequired(journalStore, journal);
+    return 'recoveryRequired';
+  }
+
+  try {
+    await registryPort.write(sourceRegistry);
+  } catch {
+    let observedRegistry: Readonly<LocalWorkspaceRegistryV1> | undefined;
+    try {
+      observedRegistry = await registryPort.read();
+    } catch {
+      await persistRecoveryRequired(journalStore, journal);
+      return 'recoveryRequired';
+    }
+    if (observedRegistry?.activeWorkspaceId !== journal.sourceWorkspaceId) {
+      await persistRecoveryRequired(journalStore, journal);
+      return 'recoveryRequired';
+    }
+  }
+
+  try {
+    await journalStore.write({ ...journal, state: 'rollbackSelected' });
+  } catch {
+    await persistRecoveryRequired(journalStore, journal);
+    return 'recoveryRequired';
+  }
+  return 'relaunchRequired';
+}
+
+async function persistRecoveryRequired(
+  journalStore: WorkspaceSwitchJournalPort,
+  journal: Readonly<WorkspaceSwitchJournalV1>,
+): Promise<void> {
+  try {
+    const current = await journalStore.read();
+    if (current === undefined || current.operationId !== journal.operationId) {
+      throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
+    }
+    await journalStore.write({ ...current, state: 'recoveryRequired' });
+  } catch {
+    throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
+  }
 }
 
 function resolveMode(

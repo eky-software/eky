@@ -85,6 +85,7 @@ import {
   type PackagedSmokeStage,
 } from './packagedSmoke.js';
 import { restoreWindowInputFocus } from './windowInputFocus.js';
+import { resolveDesktopWorkspaceStartup } from './resolveDesktopWorkspaceStartup.js';
 import type { DesktopBuildInfo } from '../release/desktopBuildInfo.js';
 import type { DesktopReleaseInfo } from '../release/desktopReleaseInfo.js';
 import { createProfileSnapshotBrokerTransport } from '../profileBackup/electronProfileSnapshotBrokerTransport.js';
@@ -144,6 +145,7 @@ import {
   resolveActiveWorkspaceStartup,
   type ActiveWorkspaceStartupSelection,
 } from '../workspaces/runtime/resolveActiveWorkspaceStartup.js';
+import { WorkspaceSwitchError } from '../workspaces/switch/workspaceSwitchError.js';
 
 export interface DesktopLifecycleHandle {
   applicationWindow: BrowserWindow;
@@ -259,10 +261,14 @@ export async function startDesktopComposition(
         desktopOperationalIdentity,
       ),
     );
-    const activeWorkspace = await dependencies.resolveActiveWorkspace(
-      options.userDataPath,
-    );
-    const runtimeSessionSecret = dependencies.createRuntimeSession();
+    const workspaceStartup = await resolveDesktopWorkspaceStartup({
+      createRuntimeSession: dependencies.createRuntimeSession,
+      relaunchApplication: options.relaunchApplication,
+      resolveActiveWorkspace: dependencies.resolveActiveWorkspace,
+      userDataRoot: options.userDataPath,
+    });
+    if (workspaceStartup.status === 'relaunching') return undefined;
+    const { activeWorkspace, runtimeSessionSecret } = workspaceStartup;
     return await startDesktopCompositionRuntime({
       activeWorkspace,
       backendRoot,
@@ -965,6 +971,9 @@ async function startDesktopCompositionRuntime({
       if (workspaceRecovery === 'relaunchRequired') {
         options.relaunchApplication();
         return undefined;
+      }
+      if (workspaceRecovery === 'recoveryRequired') {
+        throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
       }
     }
     if (

@@ -9,7 +9,21 @@ import { WORKSPACE_REGISTRY_FILE_NAME } from '../registry/workspaceRegistryPaths
 import { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
 import type { WorkspaceId } from '../registry/workspaceRegistryTypes.js';
 import { WorkspaceSwitchJournalStore } from '../switch/workspaceSwitchJournal.js';
+import { WorkspaceSwitchError } from '../switch/workspaceSwitchError.js';
 import { resolveWorkspaceSwitchStartup } from '../switch/workspaceSwitchStartup.js';
+import type { WorkspaceSwitchFailureRecoveryOutcome } from '../switch/workspaceSwitchStartup.js';
+
+export const ACTIVE_WORKSPACE_STARTUP_RELAUNCH_REQUIRED =
+  'ACTIVE_WORKSPACE_STARTUP_RELAUNCH_REQUIRED';
+
+export class ActiveWorkspaceStartupRelaunchRequiredError extends Error {
+  readonly code = ACTIVE_WORKSPACE_STARTUP_RELAUNCH_REQUIRED;
+
+  constructor() {
+    super(ACTIVE_WORKSPACE_STARTUP_RELAUNCH_REQUIRED);
+    this.name = 'ActiveWorkspaceStartupRelaunchRequiredError';
+  }
+}
 
 export type ActiveWorkspaceStartupMode =
   | 'normal'
@@ -39,7 +53,7 @@ export interface ActiveWorkspaceStartupSelection {
   readonly workspaceId: WorkspaceId;
   readonly workspaceRoot: string;
   accept(profileId: string): Promise<void>;
-  recoverFromFailure(): Promise<'relaunchRequired' | 'notRecovered'>;
+  recoverFromFailure(): Promise<WorkspaceSwitchFailureRecoveryOutcome>;
 }
 
 export async function resolveActiveWorkspaceStartup(
@@ -82,7 +96,16 @@ export async function resolveActiveWorkspaceStartup(
     switchSelection.workspace.layoutVersion,
   );
   reportProgress(options, 'workspaceRootInspection', 'started');
-  await inspectWorkspaceRoot(paths);
+  try {
+    await inspectWorkspaceRoot(paths);
+  } catch (error) {
+    if (switchSelection.mode === 'normal') throw error;
+    const recovery = await switchSelection.recoverFromFailure();
+    if (recovery === 'relaunchRequired') {
+      throw new ActiveWorkspaceStartupRelaunchRequiredError();
+    }
+    throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
+  }
   reportProgress(options, 'workspaceRootInspection', 'completed');
   return Object.freeze({
     mode: switchSelection.mode,
