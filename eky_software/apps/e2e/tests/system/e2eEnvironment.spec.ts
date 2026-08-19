@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -50,11 +51,13 @@ test.describe('SYS-ISOLATION-001 @critical @security', () => {
       });
 
       for (const path of [
+        runRoot,
         paths.workerRoot,
         paths.documentsRoot,
         paths.logsRoot,
         paths.supportBundlesRoot,
       ]) {
+        expect(path).toBe(realpathSync.native(path));
         expect(path.startsWith(runRoot)).toBe(true);
         expect(existsSync(path)).toBe(true);
       }

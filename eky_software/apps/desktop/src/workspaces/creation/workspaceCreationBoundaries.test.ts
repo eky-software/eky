@@ -19,14 +19,13 @@ const neutralWorkspaceContractFiles = [
 ];
 
 describe('empty workspace creation boundaries', () => {
-  it('keeps W2 out of the production TypeScript build', async () => {
+  it('includes W2 production code while excluding colocated tests', async () => {
     const buildConfiguration = JSON.parse(
       await readFile(join(desktopPackageRoot, 'tsconfig.build.json'), 'utf8'),
     ) as { exclude?: unknown };
 
-    expect(buildConfiguration.exclude).toEqual(
-      expect.arrayContaining(['src/**/*.test.ts', 'src/workspaces/**/*']),
-    );
+    expect(buildConfiguration.exclude).toContain('src/**/*.test.ts');
+    expect(buildConfiguration.exclude).not.toContain('src/workspaces/**/*');
   });
 
   it('is not imported by desktop production entrypoints', async () => {

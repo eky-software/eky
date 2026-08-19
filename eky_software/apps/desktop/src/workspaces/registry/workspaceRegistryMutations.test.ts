@@ -12,6 +12,7 @@ import {
   createReadyWorkspaceEntry,
   findWorkspaceEntry,
   readWorkspaceRegistry,
+  selectActiveWorkspace,
   WorkspaceRegistryMutationError,
 } from './workspaceRegistryMutations.js';
 import { WORKSPACE_REGISTRY_MAX_ENTRIES } from './workspaceRegistryValidation.js';
@@ -98,6 +99,56 @@ describe('workspace registry mutations', () => {
     expectMutationFailure(
       () => assertActiveWorkspaceUnchanged(registry, secondWorkspaceId),
       'activeWorkspaceChanged',
+    );
+  });
+
+  it('selects only an existing ready workspace from the expected active workspace', () => {
+    const first = createEntry(firstWorkspaceId, 'a'.repeat(64));
+    const second = createEntry(secondWorkspaceId, 'b'.repeat(64));
+    const registry = createRegistry(firstWorkspaceId, [first, second]);
+
+    expect(
+      selectActiveWorkspace(registry, firstWorkspaceId, secondWorkspaceId),
+    ).toEqual({
+      ...registry,
+      activeWorkspaceId: secondWorkspaceId,
+    });
+  });
+
+  it('rejects stale, missing and recovery-required active workspace changes', () => {
+    const first = createEntry(firstWorkspaceId, 'a'.repeat(64));
+    const second = createEntry(secondWorkspaceId, 'b'.repeat(64));
+    const recoveryRequired = Object.freeze({
+      ...second,
+      lifecycleState: 'recoveryRequired' as const,
+    });
+
+    expectMutationFailure(
+      () =>
+        selectActiveWorkspace(
+          createRegistry(firstWorkspaceId, [first, second]),
+          secondWorkspaceId,
+          firstWorkspaceId,
+        ),
+      'activeWorkspaceChanged',
+    );
+    expectMutationFailure(
+      () =>
+        selectActiveWorkspace(
+          createRegistry(firstWorkspaceId, [first]),
+          firstWorkspaceId,
+          secondWorkspaceId,
+        ),
+      'workspaceNotFound',
+    );
+    expectMutationFailure(
+      () =>
+        selectActiveWorkspace(
+          createRegistry(firstWorkspaceId, [first, recoveryRequired]),
+          firstWorkspaceId,
+          secondWorkspaceId,
+        ),
+      'workspaceNotReady',
     );
   });
 });

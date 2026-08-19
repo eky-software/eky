@@ -12,19 +12,25 @@ const desktopPackageRoot = join(desktopSourceRoot, '..');
 const repositoryRoot = join(desktopPackageRoot, '..', '..');
 
 describe('workspace registry activation boundaries', () => {
-  it('keeps the inert foundation out of the production TypeScript build', async () => {
+  it('includes workspace production code while excluding colocated tests', async () => {
     const buildConfiguration = JSON.parse(
       await readFile(join(desktopPackageRoot, 'tsconfig.build.json'), 'utf8'),
     ) as { exclude?: unknown };
 
-    expect(buildConfiguration.exclude).toEqual(
-      expect.arrayContaining(['src/**/*.test.ts', 'src/workspaces/**/*']),
-    );
+    expect(buildConfiguration.exclude).toContain('src/**/*.test.ts');
+    expect(buildConfiguration.exclude).not.toContain('src/workspaces/**/*');
   });
 
-  it('is not imported by desktop production entrypoints', async () => {
-    await expectNoRegistryImports([
+  it('is activated through desktop composition but not preload or the thin entrypoint', async () => {
+    const composition = await readFile(
       join(desktopSourceRoot, 'main', 'desktopComposition.ts'),
+      'utf8',
+    );
+    expect(composition).toContain(
+      "../workspaces/runtime/resolveActiveWorkspaceStartup.js",
+    );
+
+    await expectNoRegistryImports([
       join(desktopSourceRoot, 'main', 'index.ts'),
       join(desktopSourceRoot, 'preload', 'index.cts'),
     ]);

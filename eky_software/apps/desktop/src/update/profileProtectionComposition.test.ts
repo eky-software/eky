@@ -107,6 +107,7 @@ function createFixture(
         artifactTotalByteSize: 4_096,
         databaseHealth: 'healthy' as const,
         migrationChainIdentity: 'c'.repeat(64),
+        profileId: '44444444-4444-4444-8444-444444444444',
         type: 'activeProfileValidation' as const,
       })),
     },

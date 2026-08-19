@@ -3,12 +3,14 @@ import { createReadStream, promises as fileSystem } from 'node:fs';
 import { isAbsolute, posix, resolve } from 'node:path';
 
 import type { DatabaseConnection } from '../../database/connection/createDatabaseConnection.js';
+import { readLocalRuntimeIdentity } from '../../database/localRuntimeIdentityReader.js';
 import { SqliteInvoiceBackupArtifactCatalog } from '../../modules/invoicing/infrastructure/sqliteInvoiceBackupArtifactCatalog.js';
 import type { InvoiceBackupArtifactCatalogItem } from '../../modules/invoicing/ports/invoiceBackupArtifactCatalog.js';
 import type {
   ActiveProfileValidationMetadata,
   ActiveProfileValidationService,
 } from './profileSnapshotTypes.js';
+import { createProfileBackupIdentity } from './inspectSqliteProfileDatabase.js';
 
 const maximumArtifactCount = 100_000;
 const maximumInvoicePdfBytes = 10 * 1024 * 1024;
@@ -73,6 +75,9 @@ export class CurrentActiveProfileValidationService
         artifactTotalByteSize,
         databaseHealth: 'healthy',
         migrationChainIdentity: this.readMigrationChainIdentity(),
+        profileId: createProfileBackupIdentity(
+          readLocalRuntimeIdentity(this.database).companyId,
+        ),
       };
     } catch {
       throw new Error('ACTIVE_PROFILE_VALIDATION_FAILED');

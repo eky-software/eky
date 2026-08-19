@@ -174,6 +174,20 @@ Vastuut:
 - backendin moduulit pysyvät `apps/backend`-sovelluksessa
 - API-clientin julkinen sopimus säilyy Electronista riippumattomana
 
+W4:n multi-workspace-runtime jakaa pysyvän desktop-tilan kahteen omistukseen:
+
+- Electron-installationin yhteinen tekninen tila säilyy
+  `<userData>/runtime/`-juuressa; siihen kuuluvat operational-lokit,
+  tukipakettien lähteet, update state ja packaged-smoke
+- aktiivisen yritystyötilan business- ja device-local-tila sijaitsee mainin
+  johtamassa `<userData>/workspaces/<opaque-workspace-id>/runtime/`-juuressa;
+  siihen kuuluvat SQLite, lasku-PDF:t, snapshotit, salaisuusblob,
+  PDF-arkiston config/journal sekä backup/recovery-tila.
+
+Renderer, web-featuret ja backendin business-API eivät muodosta näitä polkuja.
+Electron main ratkaisee tai adoptoi aktiivisen workspacen ennen sessionia ja
+backendia. Vain yksi workspace saa omistaa business-SQLite-kahvan kerrallaan.
+
 Tarkka kansiorakenne hyväksytään spiken yhteydessä sen perusteella, mitkä
 vastuut todella tarvitaan. Yleisiä `utils`-, `helpers`- tai `common`-tiedostoja
 ei luoda.
@@ -452,10 +466,13 @@ ei saa odottaa jälkikäteen tehtävää backup- tai recovery-korjausta.
     Electron-E2E todistaa erikseen deliveryä muuttamattoman failure-polun,
     restart-recoveryn ja no-overwrite-conflictin.
 
-R0 käyttää ADR-0008:n mukaista yhtä paikallista profiilia, yhtä SQLite-kantaa
-ja yhtä yritystä. Useat paikalliset yritysprofiilit ovat post-pilot-
-ominaisuus, jossa vain yksi profiili saa olla auki kerrallaan ja edellisen
-backend, SQLite-yhteys sekä runtime-session suljetaan ennen seuraavan avaamista.
+R0:n alkuperäinen yhden profiilin data adoptoidaan W4:ssä ADR-0011:n mukaiseen
+workspace-rakenteeseen copy -> validate -> atomic publish -ketjulla.
+Production-startup käyttää tämän jälkeen registryyn sidottua aktiivista
+workspacea, mutta käyttäjälle näkyvä usean workspacen hallinta julkaistaan
+vasta W5-W6-porttien jälkeen. Vain yksi profiili saa olla auki kerrallaan ja
+edellisen backend, SQLite-yhteys sekä runtime-session suljetaan ennen
+seuraavan avaamista.
 Backup/Restore-tuotantokoodi toteutetaan erikseen
 `local-backup-and-restore-plan.md`-suunnitelman mukaan ennen oikean datan
 R0-käyttöönottoa.

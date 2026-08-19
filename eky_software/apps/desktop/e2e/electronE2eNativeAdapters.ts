@@ -12,6 +12,7 @@ import type {
 } from 'electron';
 
 import type { DesktopCompositionDependencies } from '../src/main/desktopComposition.js';
+import { readSafeStartupFailureCode } from '../src/main/earlyStartup.js';
 import type { ElectronE2eConfig } from './electronE2eConfig.js';
 
 type NativeAdapterDependencies = Pick<
@@ -34,6 +35,7 @@ export interface ElectronE2eNativeAdapterSnapshot {
 export function createElectronE2eNativeAdapters(
   config: ElectronE2eConfig,
 ): NativeAdapterDependencies & {
+  recordStartupFailure(errorCode: string): void;
   snapshot(): ElectronE2eNativeAdapterSnapshot;
 } {
   const openedPaths: string[] = [];
@@ -64,9 +66,18 @@ export function createElectronE2eNativeAdapters(
       record({ operation: 'openPath' });
       return '';
     },
-    showErrorBox() {
+    recordStartupFailure(errorCode) {
+      record({
+        errorCode: readSafeStartupFailureCode(new Error(errorCode)),
+        operation: 'startupFailure',
+      });
+    },
+    showErrorBox(title, message) {
       errorBoxCount += 1;
-      record({ operation: 'showErrorBox' });
+      record({
+        operation: 'showErrorBox',
+        reason: classifyErrorBox(title, message),
+      });
     },
     async showMessageBox(
       _owner: BrowserWindow | undefined,
@@ -117,4 +128,31 @@ export function createElectronE2eNativeAdapters(
       };
     },
   };
+}
+
+function classifyErrorBox(
+  title: string,
+  message: string,
+): 'backendUnexpectedExit' | 'other' | 'startupFailed' | 'uiLoadFailed' {
+  if (
+    title === 'Eky ei käynnistynyt' &&
+    message ===
+      'Paikallista testisovellusta ei voitu käynnistää turvallisesti.'
+  ) {
+    return 'startupFailed';
+  }
+  if (
+    title === 'Eky ei käynnistynyt' &&
+    message === 'Käyttöliittymää ei voitu ladata turvallisesti.'
+  ) {
+    return 'uiLoadFailed';
+  }
+  if (
+    title === 'Eky suljettiin' &&
+    message ===
+      'Paikallinen palvelu pysähtyi odottamatta. Sovellus suljetaan turvallisesti.'
+  ) {
+    return 'backendUnexpectedExit';
+  }
+  return 'other';
 }

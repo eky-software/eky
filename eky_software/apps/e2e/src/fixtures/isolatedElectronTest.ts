@@ -168,17 +168,25 @@ async function launchElectronRuntime(input: {
   runtime: ElectronE2eRuntime;
 }): Promise<{ electronApp: ElectronApplication; page: Page }> {
   assertElectronRuntimeLaunchPrerequisites(input.runtime, input.runRoot);
-  const electronApp = await electron.launch({
-    args: [resolveElectronE2eApplicationPath()],
-    cwd: input.runRoot,
-    env: createElectronEnvironment({
-      configPath: input.runtime.configPath,
-      profile: input.runtime.profile,
-      runRoot: input.runtime.runtimeRoot,
-    }),
-    executablePath: resolveElectronE2eExecutable(),
-    timeout: 45_000,
-  });
+  let electronApp: ElectronApplication;
+  try {
+    electronApp = await electron.launch({
+      args: [resolveElectronE2eApplicationPath()],
+      cwd: input.runRoot,
+      env: createElectronEnvironment({
+        configPath: input.runtime.configPath,
+        profile: input.runtime.profile,
+        runRoot: input.runtime.runtimeRoot,
+      }),
+      executablePath: resolveElectronE2eExecutable(),
+      timeout: 45_000,
+    });
+  } catch {
+    throw createSafeElectronLaunchError(
+      input.runtime.userDataPath,
+      input.runtime.observationsPath,
+    );
+  }
   const electronProcess = electronApp.process();
   electronProcess.stderr?.on('data', input.appendStderr);
   electronProcess.stdout?.on('data', input.appendStdout);
@@ -199,6 +207,21 @@ async function launchElectronRuntime(input: {
         : `Electron E2E window was not created.\n${safeDiagnostics}`,
     );
   }
+}
+
+function createSafeElectronLaunchError(
+  userDataPath: string,
+  observationsPath: string,
+): Error {
+  const safeDiagnostics = readSafeElectronDiagnostics(
+    userDataPath,
+    observationsPath,
+  );
+  return new Error(
+    safeDiagnostics === ''
+      ? 'Electron E2E process exited before connecting.'
+      : `Electron E2E process exited before connecting.\n${safeDiagnostics}`,
+  );
 }
 
 function createElectronApi(
@@ -305,7 +328,7 @@ function readSafeElectronDiagnostics(
     appendSafeJsonLineSummaries(
       summaries,
       readFileSync(observationsPath, 'utf8'),
-      ['operation'],
+      ['operation', 'reason', 'errorCode'],
     );
   }
 

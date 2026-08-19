@@ -61,6 +61,7 @@ export interface ActiveProfileValidationMetadata {
   artifactTotalByteSize: number;
   databaseHealth: 'healthy';
   migrationChainIdentity: string;
+  profileId: string;
 }
 
 export interface ActiveProfileValidationService {

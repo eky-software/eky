@@ -33,5 +33,5 @@ export function createE2eWorkerPaths(
 
 function createPrivateDirectory(path: string): string {
   mkdirSync(path, { mode: 0o700, recursive: true });
-  return realpathSync(path);
+  return realpathSync.native(path);
 }

@@ -48,5 +48,5 @@ export function listElectronE2eProfileDirectories(
 
 function createPrivateDirectory(path: string): string {
   mkdirSync(path, { mode: 0o700, recursive: true });
-  return realpathSync(path);
+  return realpathSync.native(path);
 }

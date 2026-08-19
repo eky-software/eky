@@ -7,12 +7,10 @@ import type {
 import { waitForBackendShutdown } from '../src/runtime/backendShutdown.js';
 import { createDesktopOperationalEvent } from '../src/observability/createDesktopOperationalEvent.js';
 import type { ElectronE2eConfig } from './electronE2eConfig.js';
-
-interface E2eBackendStatus {
-  code?: string;
-  port?: number;
-  type: 'failed' | 'ready';
-}
+import {
+  parseElectronE2eBackendStatus,
+  readElectronE2eBackendFailureCode,
+} from './electronE2eBackendStatus.js';
 
 export interface ElectronE2eBackendController {
   getStartCount(): number;
@@ -44,7 +42,9 @@ export function createElectronE2eBackendController(
         processHandle !== undefined ||
         options.config.runtimeSessionSecret !== config.backend.sessionSecret
       ) {
-        throw new Error('ELECTRON_E2E_BACKEND_BOUNDARY_INVALID');
+        throw new Error(
+          'DESKTOP_SMOKE_E2E_BACKEND_CONTROLLER_BOUNDARY_FAILED',
+        );
       }
 
       return new Promise((resolveStart, rejectStart) => {
@@ -66,14 +66,16 @@ export function createElectronE2eBackendController(
         let unexpectedExitCallback: (() => void) | undefined;
         const timer = setTimeout(() => {
           child.kill();
-          rejectStart(new Error('ELECTRON_E2E_BACKEND_TIMEOUT'));
+          rejectStart(
+            new Error('DESKTOP_SMOKE_E2E_BACKEND_READY_TIMEOUT_FAILED'),
+          );
         }, readinessTimeoutMilliseconds);
 
         child.once('spawn', () => {
           child.postMessage(
             {
+              config: options.config,
               configPath: config.backend.configPath,
-              runtimeInstanceId: config.runtimeInstanceId,
               type: 'start',
             },
             [
@@ -84,7 +86,7 @@ export function createElectronE2eBackendController(
           );
         });
         child.on('message', (value) => {
-          const status = parseE2eBackendStatus(value);
+          const status = parseElectronE2eBackendStatus(value);
           if (status === undefined || ready) {
             return;
           }
@@ -92,14 +94,16 @@ export function createElectronE2eBackendController(
             clearTimeout(timer);
             child.kill();
             rejectStart(
-              new Error(status.code ?? 'ELECTRON_E2E_BACKEND_FAILED'),
+              new Error(readElectronE2eBackendFailureCode(status.stage)),
             );
             return;
           }
           if (status.port !== config.backend.port) {
             clearTimeout(timer);
             child.kill();
-            rejectStart(new Error('ELECTRON_E2E_BACKEND_PORT_MISMATCH'));
+            rejectStart(
+              new Error('DESKTOP_SMOKE_E2E_BACKEND_PORT_MISMATCH_FAILED'),
+            );
             return;
           }
 
@@ -144,7 +148,11 @@ export function createElectronE2eBackendController(
           clearTimeout(timer);
           processHandle = undefined;
           if (!ready) {
-            rejectStart(new Error('ELECTRON_E2E_BACKEND_EXITED'));
+            rejectStart(
+              new Error(
+                'DESKTOP_SMOKE_E2E_BACKEND_EXITED_BEFORE_READY_FAILED',
+              ),
+            );
             return;
           }
           if (!stopping) {
@@ -190,22 +198,4 @@ function createE2eUtilityEnvironment(): Record<string, string> {
     }
   }
   return environment;
-}
-
-function parseE2eBackendStatus(value: unknown): E2eBackendStatus | undefined {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return undefined;
-  }
-  const record = value as Record<string, unknown>;
-  if (
-    record.type === 'ready' &&
-    typeof record.port === 'number' &&
-    Number.isSafeInteger(record.port)
-  ) {
-    return { port: record.port, type: 'ready' };
-  }
-  if (record.type === 'failed' && typeof record.code === 'string') {
-    return { code: record.code, type: 'failed' };
-  }
-  return undefined;
 }

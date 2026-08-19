@@ -54,6 +54,12 @@ export interface E2eBackendConfig {
   smtpAdapter: 'fake';
 }
 
+export interface E2eBackendRuntimePathOverrides {
+  databaseFilePath: string;
+  documentsRoot: string;
+  logsRoot: string;
+}
+
 const configSizeLimitBytes = 32 * 1024;
 const scenarioIdPattern = /^[A-Z][A-Z0-9-]{2,63}$/;
 const sessionSecretPattern = /^[A-Za-z0-9_-]{43}$/;
@@ -86,6 +92,25 @@ export function readE2eBackendConfig(
   assertRuntimePaths(config, configPath, environment);
 
   return config;
+}
+
+export function applyE2eBackendRuntimePathOverrides(
+  config: E2eBackendConfig,
+  configPath: string,
+  overrides: E2eBackendRuntimePathOverrides,
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): E2eBackendConfig {
+  const overriddenConfig: E2eBackendConfig = {
+    ...config,
+    paths: {
+      ...config.paths,
+      databaseFilePath: overrides.databaseFilePath,
+      documentsRoot: overrides.documentsRoot,
+      logsRoot: overrides.logsRoot,
+    },
+  };
+  assertRuntimePaths(overriddenConfig, configPath, environment);
+  return overriddenConfig;
 }
 
 function parseE2eBackendConfig(value: unknown): E2eBackendConfig {

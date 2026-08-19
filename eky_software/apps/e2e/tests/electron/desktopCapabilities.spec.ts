@@ -29,6 +29,7 @@ import { listElectronE2eProfileDirectories } from '../../src/environment/createE
 import { createE2eRunRoot } from '../../src/environment/createE2eRunRoot.js';
 import { createE2eWorkerPaths } from '../../src/environment/createE2eWorkerPaths.js';
 import { reserveLoopbackPort } from '../../src/environment/reserveLoopbackPort.js';
+import { readElectronE2eActiveWorkspace } from '../../src/environment/readElectronE2eActiveWorkspace.js';
 import { resolveElectronE2eExecutable } from '../../src/environment/resolveElectronE2eExecutable.js';
 import { waitForLoopbackPortRelease } from '../../src/environment/waitForLoopbackPortRelease.js';
 import { test, expect } from '../../src/fixtures/isolatedElectronTest.js';
@@ -77,12 +78,9 @@ test('DESK-SECRET-001 @critical @security persists only encrypted SMTP secret st
   e2eElectron,
 }) => {
   const secret = `synthetic-safe-storage-${Date.now()}-Aa1!`;
-  const secretPath = join(
+  const secretPath = readElectronE2eActiveWorkspace(
     e2eElectron.runtime.userDataPath,
-    'runtime',
-    'secrets',
-    'company-email-smtp-v1.dat',
-  );
+  ).emailSecretFilePath;
   const customerResponse = await e2eElectron.api.post('/customers', {
     data: {
       businessId: '1234567-8',

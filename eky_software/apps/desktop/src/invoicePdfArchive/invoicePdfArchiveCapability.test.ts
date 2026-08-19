@@ -52,7 +52,7 @@ describe('invoice PDF archive capability', () => {
       ),
     ).resolves.toBeUndefined();
 
-    expect(fixture.getDirectoryPath).toHaveBeenCalledWith();
+    expect(fixture.getOpenDirectoryPath).toHaveBeenCalledWith();
     expect(fixture.openPath).toHaveBeenCalledWith('C:\\Invoices\\Archive');
   });
 
@@ -195,7 +195,7 @@ function createFixture(
   const status = options.status ?? disabledStatus;
   const chooseDirectory = vi.fn(async () => enabledStatus);
   const disable = vi.fn(async () => disabledStatus);
-  const getDirectoryPath = vi.fn(async () => 'C:\\Invoices\\Archive');
+  const getOpenDirectoryPath = vi.fn(async () => 'C:\\Invoices\\Archive');
   const getStatus = vi.fn(async () => status);
   const retryPending = vi.fn(async () => enabledStatus);
   const openPath = vi.fn(async () => '');
@@ -215,7 +215,7 @@ function createFixture(
     service: {
       chooseDirectory,
       disable,
-      getDirectoryPath,
+      getOpenDirectoryPath,
       getStatus,
       retryPending,
     } as never,
@@ -226,7 +226,7 @@ function createFixture(
     capability,
     chooseDirectory,
     disable,
-    getDirectoryPath,
+    getOpenDirectoryPath,
     invoke(channel: string, event: unknown, ...args: unknown[]) {
       const handler = handlers.get(channel);
       if (handler === undefined) {

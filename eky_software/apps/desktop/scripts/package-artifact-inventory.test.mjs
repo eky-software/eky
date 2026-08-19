@@ -137,29 +137,40 @@ test('allows only the exact named packaged smoke helpers', async () => {
   );
 });
 
-test('rejects inert workspace code from the application stage', async () => {
+test('allows compiled workspace runtime code in the application stage', async () => {
   const root = await createStageFixture(
     'dist/workspaces/registry/file.js',
     'export {};',
   );
 
-  await assert.rejects(
+  await assert.doesNotReject(
     inspectPackageArtifactInventory({ root, stage: 'applicationStage' }),
-    /INERT_WORKSPACE_CODE_IN_PAYLOAD/,
   );
 });
 
-test('normalizes Windows separators before enforcing the inert workspace boundary', () => {
+test('rejects compiled workspace test support from the application stage', async () => {
+  const root = await createStageFixture(
+    'dist/workspaces/switch/workspaceSwitchTestSupport.js',
+    'export {};',
+  );
+
+  await assert.rejects(
+    inspectPackageArtifactInventory({ root, stage: 'applicationStage' }),
+    /SOURCE_OR_TEST_ARTIFACT/,
+  );
+});
+
+test('allows compiled workspace runtime paths with Windows separators', () => {
   assert.equal(
     classifyForbiddenArtifact(
       'dist\\workspaces\\registry\\file.js',
       'applicationStage',
     ),
-    'INERT_WORKSPACE_CODE_IN_PAYLOAD',
+    undefined,
   );
 });
 
-test('does not treat unrelated workspace names as inert workspace code', () => {
+test('does not treat unrelated workspace names as restricted workspace code', () => {
   assert.equal(
     classifyForbiddenArtifact(
       'dist/main/workspaces.js',
@@ -285,7 +296,7 @@ test('rejects Eky-owned source maps but includes vendor maps in the inventory', 
 test('enforces the application-stage file count boundary', async () => {
   const root = await createStageFixture('dist/file-000.js', 'safe');
   await Promise.all(
-    Array.from({ length: 193 }, (_, index) =>
+    Array.from({ length: 300 }, (_, index) =>
       writeFixture(
         root,
         `dist/file-${String(index + 1).padStart(3, '0')}.js`,

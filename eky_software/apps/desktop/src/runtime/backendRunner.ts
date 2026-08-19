@@ -47,6 +47,7 @@ interface BackendProfileSnapshotService {
     artifactTotalByteSize: number;
     databaseHealth: 'healthy';
     migrationChainIdentity: string;
+    profileId: string;
   }>;
   createProfileSnapshot(input: {
     operationId: string;

@@ -7,6 +7,11 @@ import { InvoicePdfArchiveBrokerClient } from '../src/invoicePdfArchive/invoiceP
 import { createInvoicePdfArchiveBrokerTransport } from '../src/invoicePdfArchive/electronInvoicePdfArchiveBrokerTransport.js';
 import { startProfileSnapshotBrokerBackend } from '../src/profileBackup/profileSnapshotBrokerBackend.js';
 import { createProfileSnapshotBrokerTransport } from '../src/profileBackup/electronProfileSnapshotBrokerTransport.js';
+import {
+  parseDesktopBackendCommand,
+  type DesktopBackendStartMessage,
+} from '../src/runtime/backendMessages.js';
+import type { ElectronE2eBackendStartupStage } from './electronE2eBackendStatus.js';
 
 interface E2eBackendServer {
   close(): Promise<void>;
@@ -21,6 +26,12 @@ interface StartE2eBackend {
       companyEmailSecretStore: CompanyEmailSecretBrokerClient;
       deliveredInvoiceArchiveTaskSink: InvoicePdfArchiveBrokerClient;
       profileSnapshotStagingRoot: string;
+      runtimePaths: {
+        databaseFilePath: string;
+        documentsRoot: string;
+        logsRoot: string;
+      };
+      runtimeSessionSecret: string;
       runtimeInstanceId: string;
     },
   ): Promise<{
@@ -55,6 +66,7 @@ parentPort.on('message', (event) => {
   startAttempted = true;
 
   void (async () => {
+    let startupStage: ElectronE2eBackendStartupStage = 'boundaryValidation';
     try {
       if (process.env.EKY_E2E !== '1' || event.ports.length !== 3) {
         throw new Error('ELECTRON_E2E_BACKEND_BOUNDARY_INVALID');
@@ -69,6 +81,7 @@ parentPort.on('message', (event) => {
       ) {
         throw new Error('ELECTRON_E2E_SECRET_BROKER_MISSING');
       }
+      startupStage = 'brokerClientCreation';
       secretBrokerClient = new CompanyEmailSecretBrokerClient(
         createUtilitySecretBrokerTransport(brokerPort),
       );
@@ -80,6 +93,7 @@ parentPort.on('message', (event) => {
         repositoryRoot,
         'apps/desktop/e2e-backend-stage/e2e-dist/e2e/startE2eBackend.js',
       );
+      startupStage = 'moduleImport';
       const module = (await import(pathToFileURL(modulePath).href)) as {
         startE2eBackend?: StartE2eBackend;
       };
@@ -87,21 +101,25 @@ parentPort.on('message', (event) => {
         throw new Error('ELECTRON_E2E_BACKEND_MODULE_INVALID');
       }
 
+      startupStage = 'backendStart';
       const started = await module.startE2eBackend(command.configPath, {
         companyEmailSecretReader: secretBrokerClient,
         companyEmailSecretStore: secretBrokerClient,
         deliveredInvoiceArchiveTaskSink: invoicePdfArchiveBrokerClient,
-        profileSnapshotStagingRoot: resolve(
-          process.env.EKY_ELECTRON_E2E_RUN_ROOT!,
-          'desktop-user-data',
-          'runtime',
-          'private-backup-staging',
-        ),
-        runtimeInstanceId: command.runtimeInstanceId,
+        profileSnapshotStagingRoot:
+          command.config.profileSnapshotStagingRoot,
+        runtimeInstanceId: command.config.runtimeInstanceId,
+        runtimePaths: {
+          databaseFilePath: command.config.databaseFilePath,
+          documentsRoot: command.config.invoiceDocumentStorageRoot,
+          logsRoot: command.config.operationalLogsRoot,
+        },
+        runtimeSessionSecret: command.config.runtimeSessionSecret,
       });
       if (started.profileSnapshotRuntime === undefined) {
         throw new Error('ELECTRON_E2E_PROFILE_SNAPSHOT_RUNTIME_MISSING');
       }
+      startupStage = 'profileSnapshotBrokerStart';
       profileSnapshotBrokerHandle = startProfileSnapshotBrokerBackend({
         maintenance: started.profileSnapshotRuntime.maintenance,
         snapshot: started.profileSnapshotRuntime.service,
@@ -110,13 +128,14 @@ parentPort.on('message', (event) => {
         ),
       });
       server = started.server;
+      startupStage = 'readyNotification';
       parentPort.postMessage({ port: server.port, type: 'ready' });
     } catch {
       secretBrokerClient?.close();
       invoicePdfArchiveBrokerClient?.close();
       profileSnapshotBrokerHandle?.close();
       parentPort.postMessage({
-        code: 'ELECTRON_E2E_BACKEND_START_FAILED',
+        stage: startupStage,
         type: 'failed',
       });
     }
@@ -133,7 +152,11 @@ async function shutdown(): Promise<void> {
 
 type RunnerCommand =
   | { type: 'shutdown' }
-  | { configPath: string; runtimeInstanceId: string; type: 'start' };
+  | {
+      config: DesktopBackendStartMessage['config'];
+      configPath: string;
+      type: 'start';
+    };
 
 function parseCommand(value: unknown): RunnerCommand | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -145,12 +168,19 @@ function parseCommand(value: unknown): RunnerCommand | undefined {
   }
   if (
     command.type === 'start' &&
-    typeof command.configPath === 'string' &&
-    typeof command.runtimeInstanceId === 'string'
+    Object.keys(command).length === 3 &&
+    typeof command.configPath === 'string'
   ) {
+    const parsed = parseDesktopBackendCommand({
+      config: command.config,
+      type: 'start',
+    });
+    if (parsed?.type !== 'start') {
+      return undefined;
+    }
     return {
+      config: parsed.config,
       configPath: command.configPath,
-      runtimeInstanceId: command.runtimeInstanceId,
       type: 'start',
     };
   }

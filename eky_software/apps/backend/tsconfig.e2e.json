@@ -5,5 +5,5 @@
     "outDir": "e2e-dist"
   },
   "include": ["e2e", "src"],
-  "exclude": ["src/**/*.test.ts", "src/testFixtures/**"]
+  "exclude": ["e2e/**/*.test.ts", "src/**/*.test.ts", "src/testFixtures/**"]
 }

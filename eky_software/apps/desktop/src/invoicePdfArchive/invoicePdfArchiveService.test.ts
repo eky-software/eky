@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -12,6 +12,8 @@ import { createInvoicePdfArchiveRuntimePaths } from './invoicePdfArchivePaths.js
 import { InvoicePdfArchiveService } from './invoicePdfArchiveService.js';
 import type { InvoicePdfArchiveTask } from './invoicePdfArchiveTypes.js';
 import { InvoicePdfArchiveError } from './invoicePdfArchiveTypes.js';
+import { createWorkspaceInvoicePdfArchiveDirectoryResolver } from './workspaceInvoicePdfArchiveDirectory.js';
+import { validateWorkspaceId } from '../workspaces/registry/workspaceIdValidation.js';
 
 const temporaryRoots: string[] = [];
 
@@ -134,10 +136,40 @@ describe('InvoicePdfArchiveService', () => {
     });
     expect(loadDocument).toHaveBeenCalledTimes(2);
   });
+
+  it('stores a configured root but writes and opens only the workspace child', async () => {
+    const workspaceId = validateWorkspaceId(
+      '33333333-3333-4333-8333-333333333333',
+    );
+    const { archiveRoot, service } = await createService({
+      resolveArchiveDirectory:
+        createWorkspaceInvoicePdfArchiveDirectoryResolver(workspaceId),
+    });
+    const task = createTask(createPdf());
+
+    await service.chooseDirectory(archiveRoot);
+    await expect(service.getDirectoryPath()).resolves.toBe(archiveRoot);
+    await expect(service.getOpenDirectoryPath()).resolves.toBe(
+      join(archiveRoot, workspaceId),
+    );
+    await expect(service.queueTask(task)).resolves.toEqual({
+      archived: true,
+      queued: true,
+    });
+    await expect(
+      access(join(archiveRoot, 'Lasku-2026001.pdf')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(
+      access(join(archiveRoot, workspaceId, 'Lasku-2026001.pdf')),
+    ).resolves.toBeUndefined();
+  });
 });
 
 async function createService(input: {
   loadDocument?: LoadInvoicePdfArchiveDocument;
+  resolveArchiveDirectory?: (
+    configuredArchiveRoot: string,
+  ) => Promise<string>;
 } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'eky-archive-service-'));
   temporaryRoots.push(root);
@@ -164,6 +196,9 @@ async function createService(input: {
       journalStore: new InvoicePdfArchiveJournalStore(paths.journalFilePath),
       loadDocument,
       now: () => new Date('2026-08-03T20:00:00.000Z'),
+      ...(input.resolveArchiveDirectory === undefined
+        ? {}
+        : { resolveArchiveDirectory: input.resolveArchiveDirectory }),
     }),
   };
 }

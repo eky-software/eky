@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import {
   cpSync,
   mkdirSync,
+  realpathSync,
   writeFileSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -45,16 +46,6 @@ export function createElectronE2eRuntime(input: {
   const userDataPath = createPrivateDirectory(
     join(input.paths.workerRoot, 'desktop-user-data'),
   );
-  const desktopRuntimeRoot = createPrivateDirectory(
-    join(userDataPath, 'runtime'),
-  );
-  const databaseRoot = createPrivateDirectory(
-    join(desktopRuntimeRoot, 'data'),
-  );
-  const documentsRoot = createPrivateDirectory(
-    join(desktopRuntimeRoot, 'storage', 'invoices'),
-  );
-  const logsRoot = createPrivateDirectory(join(desktopRuntimeRoot, 'logs'));
   const applicationDistPath = createPrivateDirectory(
     join(applicationPath, 'dist'),
   );
@@ -68,15 +59,9 @@ export function createElectronE2eRuntime(input: {
     recursive: true,
   });
 
-  const backendPaths: E2eWorkerPaths = {
-    ...input.paths,
-    databaseFilePath: join(databaseRoot, 'eky.sqlite'),
-    documentsRoot,
-    logsRoot,
-  };
   const backendConfig = writeE2eBackendConfig({
     backendPort: input.backendPort,
-    paths: backendPaths,
+    paths: input.paths,
     scenarioId: input.scenarioId,
   });
   const runtimeInstanceId = randomUUID();
@@ -139,5 +124,5 @@ export function resolveElectronE2eApplicationPath(): string {
 
 function createPrivateDirectory(path: string): string {
   mkdirSync(path, { mode: 0o700, recursive: true });
-  return path;
+  return realpathSync.native(path);
 }

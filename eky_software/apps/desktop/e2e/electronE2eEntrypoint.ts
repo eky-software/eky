@@ -6,10 +6,17 @@ import {
   startDesktopComposition,
   type DesktopLifecycleHandle,
 } from '../src/main/desktopComposition.js';
-import { runSafeDesktopStartup } from '../src/main/earlyStartup.js';
+import {
+  runSafeDesktopStartup,
+} from '../src/main/earlyStartup.js';
+import {
+  resolveActiveWorkspaceStartup,
+  type ActiveWorkspaceStartupPhase,
+} from '../src/workspaces/runtime/resolveActiveWorkspaceStartup.js';
 import { createElectronE2eBackendController } from './electronE2eBackendProcess.js';
 import { readElectronE2eConfig } from './electronE2eConfig.js';
 import { createElectronE2eNativeAdapters } from './electronE2eNativeAdapters.js';
+import { readSafeElectronE2eWorkspaceStartupFailureCode } from './electronE2eWorkspaceStartupFailure.js';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -65,7 +72,8 @@ if (hasSingleInstanceLock) {
   void runSafeDesktopStartup({
     exitApplication: (code) => app.exit(code),
     loadRuntime: async () => ({ startDesktopComposition }),
-    async onFailure() {
+    async onFailure(errorCode) {
+      nativeAdapters.recordStartupFailure(errorCode);
       nativeAdapters.showErrorBox(
         'Eky ei käynnistynyt',
         'Paikallista testisovellusta ei voitu käynnistää turvallisesti.',
@@ -89,6 +97,24 @@ if (hasSingleInstanceLock) {
           showMessageBox: nativeAdapters.showMessageBox,
           showOpenDialog: nativeAdapters.showOpenDialog,
           showSaveDialog: nativeAdapters.showSaveDialog,
+          resolveActiveWorkspace: async (userDataRoot) => {
+            let activePhase: ActiveWorkspaceStartupPhase | undefined;
+            try {
+              return await resolveActiveWorkspaceStartup(userDataRoot, {
+                reportProgress(progress) {
+                  activePhase =
+                    progress.state === 'started' ? progress.phase : undefined;
+                },
+              });
+            } catch (error) {
+              throw new Error(
+                readSafeElectronE2eWorkspaceStartupFailureCode(
+                  error,
+                  activePhase,
+                ),
+              );
+            }
+          },
           startBackend:
             config.startupMode === 'backendStartFailure'
               ? async () => {
