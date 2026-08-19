@@ -765,9 +765,11 @@ seuraavia rajoja:
    `recoveryRequired`-tilaan; muita työtiloja ei migroida tai muuteta
 7. koko tarkastusketjussa saa olla enintään yksi business-SQLite-owner.
 
-Tämä osuus ei muuta nykyisen yhden työtilan 0.2.6-runtimen first-startia.
-Registryä tai passiivisten työtilojen käsittelyä ei kytketä production-
-startuppiin W1:ssä, vaan vasta ADR-0011:n W4-aktivointicheckpointissa.
+W4 aktivoi registryyn sidotun startupin ja vanhan yhden profiilin adoption
+production-compositionissa. Se ei vielä toteuta tämän luvun koko N -> N+1
+multi-workspace first start -ketjua. Aktiivisen ja passiivisen workspacen
+migraatio-, isolation- ja rollback-todisteet kuuluvat W6:n paketoituun
+release-porttiin, eikä multi-workspace-user-releasea tehdä ennen sitä.
 
 ## 15. Migraatiot
 

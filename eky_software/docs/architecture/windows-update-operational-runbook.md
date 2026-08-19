@@ -20,6 +20,22 @@ käyttäjän USB-polusta rollbackin hetkellä, vaan jokaisen slotin manifesti ja
 MSI-tavut varmennetaan uudelleen ennen käyttöä. Välimuisti ei kuulu
 Diagnosticsin tukipakettiin tai Activityyn.
 
+## W4 workspace-runtime -raja
+
+W4:n production-startup validoi installation-scoped workspace registryn ja
+ratkaisee tai adoptoi aktiivisen workspacen ennen runtime-sessionia,
+backendia ja business-SQLitea. Update cache, update journal, operational-lokit
+ja tukipaketit säilyvät installation-scoped-tilana; business-SQLite,
+lasku-PDF:t, snapshotit, salaisuudet sekä backup/recovery-tila ovat aktiivisen
+workspacen alla.
+
+Workspace-startupin failure käsitellään fail closed ennen update-buildin
+hyväksyntää. Mahdollinen keskeneräinen workspace-journal palautetaan tai
+merkitään `recoveryRequired`-tilaan ennen normaalin runtimen avaamista.
+Renderer ei saa registryä, workspace-polkua tai update/workspace-journalia.
+W4 ei vielä todista aktiivisen ja passiivisen workspacen N -> N+1 -ketjua;
+full packaged multi-workspace update/recovery -portti kuuluu W6:een.
+
 ## C0 baseline 11.8.2026
 
 Ennen Local Update Foundation -tuotantokoodia `DESK-PDF-001` ajettiin

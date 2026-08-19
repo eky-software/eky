@@ -9,10 +9,12 @@ inertti foundation on yhdistetty vihreänä `main`-haaraan commitissa
 `3529840`. W2.1 koventaa yhteiset workspace-sopimukset, runtimen palautuksen
 ja startup-recoveryn runtime-poissaolorajan ennen W3:a. W3:n uuden lineagen
 backup-import on toteutettu inerttinä foundationina omalla feature-haarallaan.
-W1-W3:n lähdekoodi kuuluu desktopin normaaliin
-typecheckiin ja kohdetesteihin, mutta se on suljettu production-buildistä ja
-package-payloadista. Mitään näistä checkpointeista ei ole aktivoitu
-tuotantoruntimeen tai käyttäjälle näkyväksi ominaisuudeksi.
+W1-W3:n foundation on toteutettu ja W4 on aktivoinut registryyn sidotun
+startupin, legacy-profiilin kertaluonteisen adoption sekä workspace-kohtaiset
+runtime-resurssit production-compositionissa. W5:n renderer-capability ja
+käyttäjälle näkyvä työtilahallinta sekä W6:n täysi paketoitu usean työtilan
+release-matriisi ovat edelleen toteuttamatta. Käyttäjälle ei julkaista tätä
+kokonaisuutta ennen W5-W6-porttien valmistumista.
 
 Tämä suunnitelma toteuttaa
 `docs/decisions/ADR-0011-local-multi-workspace-company-model.md`-päätöksen
@@ -658,6 +660,22 @@ start ja operational runbook.
 **Commit/PR/release:** W4 voidaan jakaa registry switch- ja legacy adoption
 -PR:iin, jos kumpikin pysyy itsenäisesti suljettuna. Ei user releasea ennen
 W5-W6:ta.
+
+**Toteutustila:** W4:n production-runtime on toteutettu. Electron main
+ratkaisee aktiivisen workspacen ennen runtime-sessionia ja backendia, adoptoi
+vanhan yhden profiilin datan copy -> validate -> atomic publish -ketjulla
+enintään kerran ja sitoo business-SQLiten, lasku-PDF:t, snapshotit,
+salaisuudet, PDF-arkiston asetuksen ja journalin sekä backup/recovery-tilan
+aktiiviseen workspace-rootiin. Operational-lokit, tukipaketit, update state ja
+packaged smoke säilyvät installation-scoped-tilana. PDF-arkistokopio johdetaan
+aina `<archiveRoot>/<workspaceId>/`-alikansioon.
+
+W4:n switch-koordinaattori ja recovery-sopimukset on todennettu
+kohdetesteillä, mukaan lukien A -> B -> A, vanhojen runtime-omistajien
+sulkeminen ja adoption idempotenssi. Rendererille ei ole lisätty workspace-
+capabilitya eikä UI:ta; ne kuuluvat W5:een. Aktiivisen ja passiivisen
+workspacen N -> N+1 -migraatio sekä koko packaged multi-workspace -matriisi
+kuuluvat edelleen W6:een.
 
 ## W5: Workspace management UI
 
