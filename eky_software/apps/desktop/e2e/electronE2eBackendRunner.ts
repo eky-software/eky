@@ -11,6 +11,7 @@ import {
   parseDesktopBackendCommand,
   type DesktopBackendStartMessage,
 } from '../src/runtime/backendMessages.js';
+import type { ElectronE2eBackendStartupStage } from './electronE2eBackendStatus.js';
 
 interface E2eBackendServer {
   close(): Promise<void>;
@@ -65,6 +66,7 @@ parentPort.on('message', (event) => {
   startAttempted = true;
 
   void (async () => {
+    let startupStage: ElectronE2eBackendStartupStage = 'boundaryValidation';
     try {
       if (process.env.EKY_E2E !== '1' || event.ports.length !== 3) {
         throw new Error('ELECTRON_E2E_BACKEND_BOUNDARY_INVALID');
@@ -79,6 +81,7 @@ parentPort.on('message', (event) => {
       ) {
         throw new Error('ELECTRON_E2E_SECRET_BROKER_MISSING');
       }
+      startupStage = 'brokerClientCreation';
       secretBrokerClient = new CompanyEmailSecretBrokerClient(
         createUtilitySecretBrokerTransport(brokerPort),
       );
@@ -90,6 +93,7 @@ parentPort.on('message', (event) => {
         repositoryRoot,
         'apps/desktop/e2e-backend-stage/e2e-dist/e2e/startE2eBackend.js',
       );
+      startupStage = 'moduleImport';
       const module = (await import(pathToFileURL(modulePath).href)) as {
         startE2eBackend?: StartE2eBackend;
       };
@@ -97,6 +101,7 @@ parentPort.on('message', (event) => {
         throw new Error('ELECTRON_E2E_BACKEND_MODULE_INVALID');
       }
 
+      startupStage = 'backendStart';
       const started = await module.startE2eBackend(command.configPath, {
         companyEmailSecretReader: secretBrokerClient,
         companyEmailSecretStore: secretBrokerClient,
@@ -114,6 +119,7 @@ parentPort.on('message', (event) => {
       if (started.profileSnapshotRuntime === undefined) {
         throw new Error('ELECTRON_E2E_PROFILE_SNAPSHOT_RUNTIME_MISSING');
       }
+      startupStage = 'profileSnapshotBrokerStart';
       profileSnapshotBrokerHandle = startProfileSnapshotBrokerBackend({
         maintenance: started.profileSnapshotRuntime.maintenance,
         snapshot: started.profileSnapshotRuntime.service,
@@ -122,13 +128,14 @@ parentPort.on('message', (event) => {
         ),
       });
       server = started.server;
+      startupStage = 'readyNotification';
       parentPort.postMessage({ port: server.port, type: 'ready' });
     } catch {
       secretBrokerClient?.close();
       invoicePdfArchiveBrokerClient?.close();
       profileSnapshotBrokerHandle?.close();
       parentPort.postMessage({
-        code: 'ELECTRON_E2E_BACKEND_START_FAILED',
+        stage: startupStage,
         type: 'failed',
       });
     }
