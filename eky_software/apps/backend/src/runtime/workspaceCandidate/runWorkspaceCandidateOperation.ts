@@ -2,14 +2,7 @@ import {
   constants as fileSystemConstants,
   promises as fileSystem,
 } from 'node:fs';
-import {
-  dirname,
-  isAbsolute,
-  join,
-  relative,
-  resolve,
-  sep,
-} from 'node:path';
+import { dirname, join } from 'node:path';
 
 import { createDatabaseConnection } from '../../database/connection/createDatabaseConnection.js';
 import type { DatabaseConnection } from '../../database/connection/createDatabaseConnection.js';
@@ -20,6 +13,13 @@ import { materializeValidatedProfileArtifacts } from '../profileSnapshot/materia
 import { createProfileBackupIdentity } from '../profileSnapshot/inspectSqliteProfileDatabase.js';
 import { CurrentActiveProfileValidationService } from '../profileSnapshot/validateActiveProfile.js';
 import { validateProfileArtifactCatalog } from '../profileSnapshot/validateProfileArtifactCatalog.js';
+import {
+  assertWorkspaceCandidateContainedPath,
+  resolveAbsoluteWorkspaceCandidatePath,
+  validatePrivateWorkspaceDirectory,
+  validateTrustedReadOnlyCodeDirectory,
+  workspaceCandidatePathsAreEqual,
+} from './workspaceCandidatePathPolicy.js';
 
 const profileDatabaseFileName = 'profile.sqlite';
 const sha256Pattern = /^[0-9a-f]{64}$/;
@@ -118,7 +118,7 @@ export async function runWorkspaceCandidateOperation(
     if (operation.operation === 'migrateBackup') {
       validateSha256(operation.expectedProfileId);
       validateSha256(operation.expectedSourceMigrationChainIdentity);
-      const importStagingRoot = await validatePrivateDirectory(
+      const importStagingRoot = await validatePrivateWorkspaceDirectory(
         operation.importStagingRoot,
       );
       throwIfCancelled(control.signal);
@@ -193,7 +193,7 @@ export async function runWorkspaceCandidateOperation(
       throwIfCancelled(control.signal);
 
       if (operation.operation === 'validateAndMaterialize') {
-        const importStagingRoot = await validatePrivateDirectory(
+        const importStagingRoot = await validatePrivateWorkspaceDirectory(
           operation.importStagingRoot,
         );
         await assertEmptyPrivateDirectory(paths.artifactRoot);
@@ -329,14 +329,20 @@ async function validateCommonInput(
   ) {
     throw new Error('WORKSPACE_CANDIDATE_RELEASE_INVALID');
   }
-  const candidateRoot = await validatePrivateDirectory(input.candidateRoot);
-  const migrationsDirectory = await validatePrivateDirectory(
+  const candidateRoot = await validatePrivateWorkspaceDirectory(
+    input.candidateRoot,
+  );
+  const migrationsDirectory = await validateTrustedReadOnlyCodeDirectory(
     input.migrationsDirectory,
   );
-  const databaseFilePath = resolveAbsolutePath(input.databaseFilePath);
-  const artifactRoot = await validatePrivateDirectory(input.artifactRoot);
-  assertContainedPath(candidateRoot, databaseFilePath);
-  assertContainedPath(candidateRoot, artifactRoot);
+  const databaseFilePath = resolveAbsoluteWorkspaceCandidatePath(
+    input.databaseFilePath,
+  );
+  const artifactRoot = await validatePrivateWorkspaceDirectory(
+    input.artifactRoot,
+  );
+  assertWorkspaceCandidateContainedPath(candidateRoot, databaseFilePath);
+  assertWorkspaceCandidateContainedPath(candidateRoot, artifactRoot);
   return Object.freeze({
     artifactRoot,
     candidateRoot,
@@ -352,22 +358,8 @@ function readReleaseIdentity(input: Readonly<WorkspaceCandidateCommonInput>) {
   });
 }
 
-async function validatePrivateDirectory(path: string): Promise<string> {
-  const resolved = resolveAbsolutePath(path);
-  const metadata = await fileSystem.lstat(resolved);
-  if (
-    !metadata.isDirectory() ||
-    metadata.isSymbolicLink() ||
-    (process.platform !== 'win32' && (metadata.mode & 0o077) !== 0) ||
-    !pathsAreEqual(await fileSystem.realpath(resolved), resolved)
-  ) {
-    throw new Error('WORKSPACE_CANDIDATE_PATH_INVALID');
-  }
-  return resolved;
-}
-
 async function assertEmptyPrivateDirectory(path: string): Promise<void> {
-  const directory = await validatePrivateDirectory(path);
+  const directory = await validatePrivateWorkspaceDirectory(path);
   if ((await fileSystem.readdir(directory)).length !== 0) {
     throw new Error('WORKSPACE_CANDIDATE_ARTIFACT_ROOT_NOT_EMPTY');
   }
@@ -377,14 +369,17 @@ async function copyPrivateDatabase(input: {
   readonly destinationPath: string;
   readonly sourcePath: string;
 }): Promise<void> {
-  const sourcePath = resolveAbsolutePath(input.sourcePath);
+  const sourcePath = resolveAbsoluteWorkspaceCandidatePath(input.sourcePath);
   const sourceMetadata = await fileSystem.lstat(sourcePath);
   if (
     !sourceMetadata.isFile() ||
     sourceMetadata.isSymbolicLink() ||
     sourceMetadata.nlink !== 1 ||
     sourceMetadata.size < 1 ||
-    !pathsAreEqual(await fileSystem.realpath(sourcePath), sourcePath)
+    !workspaceCandidatePathsAreEqual(
+      await fileSystem.realpath(sourcePath),
+      sourcePath,
+    )
   ) {
     throw new Error('WORKSPACE_CANDIDATE_DATABASE_INVALID');
   }
@@ -460,7 +455,7 @@ async function writeCompleteBuffer(
 async function createPrivateDirectoryTree(path: string): Promise<void> {
   await fileSystem.mkdir(path, { mode: 0o700, recursive: true });
   if (process.platform !== 'win32') await fileSystem.chmod(path, 0o700);
-  await validatePrivateDirectory(path);
+  await validatePrivateWorkspaceDirectory(path);
 }
 
 async function assertPathMissing(path: string): Promise<void> {
@@ -471,33 +466,6 @@ async function assertPathMissing(path: string): Promise<void> {
     throw error;
   }
   throw new Error('WORKSPACE_CANDIDATE_PATH_EXISTS');
-}
-
-function resolveAbsolutePath(path: string): string {
-  if (typeof path !== 'string' || path.includes('\0') || !isAbsolute(path)) {
-    throw new Error('WORKSPACE_CANDIDATE_PATH_INVALID');
-  }
-  return resolve(path);
-}
-
-function assertContainedPath(root: string, candidate: string): void {
-  const relativePath = relative(root, candidate);
-  if (
-    relativePath === '' ||
-    relativePath === '..' ||
-    relativePath.startsWith(`..${sep}`) ||
-    isAbsolute(relativePath)
-  ) {
-    throw new Error('WORKSPACE_CANDIDATE_PATH_INVALID');
-  }
-}
-
-function pathsAreEqual(first: string, second: string): boolean {
-  const firstResolved = resolve(first);
-  const secondResolved = resolve(second);
-  return process.platform === 'win32'
-    ? firstResolved.toLowerCase() === secondResolved.toLowerCase()
-    : firstResolved === secondResolved;
 }
 
 function validateSha256(value: string): void {

@@ -1,10 +1,13 @@
 import {
+  chmod,
   copyFile,
+  cp,
   lstat,
   mkdir,
   mkdtemp,
   open,
   rm,
+  symlink,
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -124,6 +127,67 @@ describe('runWorkspaceCandidateOperation', () => {
       }),
     ).rejects.toThrow('WORKSPACE_CANDIDATE_OPERATION_FAILED');
   });
+
+  it('accepts a canonical read-only migration code directory with standard POSIX permissions', async () => {
+    const root = await createPrivateTempRoot();
+    const publishedMigrations = join(root, 'published-migrations');
+    await cp(migrationsDirectory, publishedMigrations, { recursive: true });
+    if (process.platform !== 'win32') await chmod(publishedMigrations, 0o755);
+    const candidate = await createCandidateLayout(join(root, 'candidate'));
+
+    await expect(
+      runWorkspaceCandidateOperation({
+        ...releaseIdentity,
+        ...candidate,
+        migrationsDirectory: publishedMigrations,
+        operation: 'bootstrapEmpty',
+      }),
+    ).resolves.toMatchObject({ kind: 'readiness' });
+  });
+
+  it.skipIf(process.platform === 'win32')(
+    'rejects writable or linked migration code roots without weakening private candidate roots',
+    async () => {
+      const root = await createPrivateTempRoot();
+      const candidate = await createCandidateLayout(join(root, 'candidate'));
+      const writableMigrations = join(root, 'writable-migrations');
+      await mkdir(writableMigrations, { mode: 0o777 });
+      await chmod(writableMigrations, 0o777);
+
+      await expect(
+        runWorkspaceCandidateOperation({
+          ...releaseIdentity,
+          ...candidate,
+          migrationsDirectory: writableMigrations,
+          operation: 'bootstrapEmpty',
+        }),
+      ).rejects.toThrow('WORKSPACE_CANDIDATE_OPERATION_FAILED');
+
+      const linkedMigrations = join(root, 'linked-migrations');
+      await symlink(migrationsDirectory, linkedMigrations, 'dir');
+      await expect(
+        runWorkspaceCandidateOperation({
+          ...releaseIdentity,
+          ...candidate,
+          migrationsDirectory: linkedMigrations,
+          operation: 'bootstrapEmpty',
+        }),
+      ).rejects.toThrow('WORKSPACE_CANDIDATE_OPERATION_FAILED');
+
+      await chmod(candidate.candidateRoot, 0o755);
+      await expect(
+        runWorkspaceCandidateOperation({
+          ...releaseIdentity,
+          ...candidate,
+          migrationsDirectory,
+          operation: 'bootstrapEmpty',
+        }),
+      ).rejects.toThrow('WORKSPACE_CANDIDATE_OPERATION_FAILED');
+      await expect(lstat(candidate.databaseFilePath)).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+    },
+  );
 
   it('rejects unknown operations, extra fields and malformed inputs without writes', async () => {
     const root = await createPrivateTempRoot();
