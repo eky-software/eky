@@ -54,37 +54,37 @@ export class WorkspaceSwitchCoordinator {
         throw new WorkspaceSwitchError('WORKSPACE_SWITCH_INVALID');
       }
       sourceWorkspaceId = registry.activeWorkspaceId;
-      const selected = selectActiveWorkspace(
-        registry,
-        sourceWorkspaceId,
-        targetWorkspaceId,
-      );
+      if (sourceWorkspaceId !== targetWorkspaceId) {
+        const selected = selectActiveWorkspace(
+          registry,
+          sourceWorkspaceId,
+          targetWorkspaceId,
+        );
 
-      lifecycleTransitionStarted = true;
-      await this.options.activeWorkspaceLifecycle.quiesceWrites(
-        sourceWorkspaceId,
-      );
-      const stopped =
-        await this.options.activeWorkspaceLifecycle.stopAndProveHandlesClosed(
+        lifecycleTransitionStarted = true;
+        await this.options.activeWorkspaceLifecycle.quiesceWrites(
           sourceWorkspaceId,
         );
-      if (stopped.handlesClosed !== true) {
-        throw new WorkspaceSwitchError('WORKSPACE_SWITCH_STORAGE_FAILED');
-      }
+        const stopped = await this.options.activeWorkspaceLifecycle
+          .stopAndProveHandlesClosed(sourceWorkspaceId);
+        if (stopped.handlesClosed !== true) {
+          throw new WorkspaceSwitchError('WORKSPACE_SWITCH_STORAGE_FAILED');
+        }
 
-      journal = Object.freeze({
-        formatVersion: 1,
-        operationId: this.generateOperationId(),
-        sourceWorkspaceId,
-        targetWorkspaceId,
-        state: 'prepared',
-        createdAt: this.now().toISOString(),
-      });
-      await this.options.journal.write(journal);
-      await this.options.registry.write(selected);
-      journal = Object.freeze({ ...journal, state: 'targetSelected' });
-      await this.options.journal.write(journal);
-      this.options.relaunchApplication();
+        journal = Object.freeze({
+          formatVersion: 1,
+          operationId: this.generateOperationId(),
+          sourceWorkspaceId,
+          targetWorkspaceId,
+          state: 'prepared',
+          createdAt: this.now().toISOString(),
+        });
+        await this.options.journal.write(journal);
+        await this.options.registry.write(selected);
+        journal = Object.freeze({ ...journal, state: 'targetSelected' });
+        await this.options.journal.write(journal);
+        this.options.relaunchApplication();
+      }
     } catch (error) {
       operationError = await this.recoverBeforeReturning(
         mapWorkspaceSwitchError(error),

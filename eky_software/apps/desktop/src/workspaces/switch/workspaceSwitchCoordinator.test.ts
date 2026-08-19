@@ -49,6 +49,46 @@ function createFixture(): SwitchFixture {
 }
 
 describe('workspace switch coordinator', () => {
+  it('treats the already active workspace as an idempotent no-op', async () => {
+    const fixture = createFixture();
+    const originalRegistry = fixture.registry.value;
+
+    await expect(
+      fixture.coordinator.switchTo(TEST_SOURCE_WORKSPACE_ID),
+    ).resolves.toBeUndefined();
+
+    expect(fixture.events).toEqual([
+      'lease.acquire.switch',
+      'journal.read',
+      'registry.read',
+      'lease.release',
+    ]);
+    expect(fixture.registry.value).toBe(originalRegistry);
+    expect(fixture.journal.current).toBeUndefined();
+    expect(fixture.lifecycle.runningRuntimeOwners).toBe(1);
+    expect(fixture.lifecycle.openDatabaseHandleOwners).toBe(1);
+    expect(fixture.lease.held).toBe(false);
+  });
+
+  it('rejects an unresolved switch before an active-workspace no-op', async () => {
+    const fixture = createFixture();
+    fixture.journal.current = createSwitchJournal('targetSelected');
+
+    await expect(
+      fixture.coordinator.switchTo(TEST_SOURCE_WORKSPACE_ID),
+    ).rejects.toMatchObject({ code: 'WORKSPACE_SWITCH_RECOVERY_REQUIRED' });
+
+    expect(fixture.events).toEqual([
+      'lease.acquire.switch',
+      'journal.read',
+      'lease.release',
+    ]);
+    expect(fixture.journal.current?.state).toBe('targetSelected');
+    expect(fixture.lifecycle.runningRuntimeOwners).toBe(1);
+    expect(fixture.lifecycle.openDatabaseHandleOwners).toBe(1);
+    expect(fixture.lease.held).toBe(false);
+  });
+
   it('stops the source before selecting the target and schedules one relaunch', async () => {
     const fixture = createFixture();
 

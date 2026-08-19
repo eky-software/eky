@@ -677,6 +677,9 @@ capabilitya eikä UI:ta; ne kuuluvat W5:een. Aktiivisen ja passiivisen
 workspacen N -> N+1 -migraatio sekä koko packaged multi-workspace -matriisi
 kuuluvat edelleen W6:een.
 
+Jo aktiivisen työtilan valinta on idempotentti no-op, joka ei sulje runtimea
+eikä käynnistä sovellusta uudelleen.
+
 ## W5: Workspace management UI
 
 **Omistaja:** web feature paikallisen desktop-capabilityn päällä. Electron main
