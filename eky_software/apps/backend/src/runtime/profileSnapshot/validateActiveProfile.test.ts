@@ -7,6 +7,7 @@ import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { runMigrations } from '../../database/migration/runMigrations.js';
+import { createProfileBackupIdentity } from './inspectSqliteProfileDatabase.js';
 import { CurrentActiveProfileValidationService } from './validateActiveProfile.js';
 
 const roots: string[] = [];
@@ -43,6 +44,7 @@ describe('active profile validation', () => {
       artifactTotalByteSize: 0,
       databaseHealth: 'healthy',
       migrationChainIdentity: 'c'.repeat(64),
+      profileId: createProfileBackupIdentity('dev-company'),
     });
   });
 
@@ -54,6 +56,7 @@ describe('active profile validation', () => {
       artifactTotalByteSize: fixture.pdf.byteLength,
       databaseHealth: 'healthy',
       migrationChainIdentity: 'c'.repeat(64),
+      profileId: createProfileBackupIdentity('company-1'),
     });
   });
 
@@ -131,6 +134,23 @@ async function createFixture(): Promise<Fixture> {
       size_bytes INTEGER NOT NULL,
       created_at TEXT NOT NULL,
       FOREIGN KEY (invoice_id) REFERENCES invoices (id)
+    );
+    CREATE TABLE local_runtime_identity (
+      singleton_key TEXT NOT NULL PRIMARY KEY,
+      actor_id TEXT NOT NULL,
+      company_id TEXT NOT NULL,
+      installation_id TEXT NOT NULL
+    );
+    INSERT INTO local_runtime_identity (
+      singleton_key,
+      actor_id,
+      company_id,
+      installation_id
+    ) VALUES (
+      'local-runtime',
+      'local-owner',
+      'company-1',
+      'installation-1'
     );
   `);
   database

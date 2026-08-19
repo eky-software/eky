@@ -201,6 +201,7 @@ describe('profile snapshot broker protocol', () => {
           artifactTotalByteSize: 4_096,
           databaseHealth: 'healthy',
           migrationChainIdentity: 'c'.repeat(64),
+          profileId: 'd'.repeat(64),
           type: 'activeProfileValidation',
         },
       }),
@@ -213,6 +214,7 @@ describe('profile snapshot broker protocol', () => {
         artifactTotalByteSize: 4_096,
         databaseHealth: 'healthy',
         migrationChainIdentity: 'c'.repeat(64),
+        profileId: 'd'.repeat(64),
         type: 'activeProfileValidation',
       },
     });

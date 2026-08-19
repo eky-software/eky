@@ -10,6 +10,8 @@ export type WorkspaceRegistryMutationFailure =
   | 'activeWorkspaceChanged'
   | 'capacityExceeded'
   | 'lineageExists'
+  | 'workspaceNotFound'
+  | 'workspaceNotReady'
   | 'workspaceIdExists';
 
 export class WorkspaceRegistryMutationError extends Error {
@@ -98,4 +100,24 @@ export function assertActiveWorkspaceUnchanged(
   if (registry.activeWorkspaceId !== expectedActiveWorkspaceId) {
     throw new WorkspaceRegistryMutationError('activeWorkspaceChanged');
   }
+}
+
+export function selectActiveWorkspace(
+  registry: Readonly<LocalWorkspaceRegistryV1>,
+  expectedActiveWorkspaceId: WorkspaceId,
+  targetWorkspaceId: WorkspaceId,
+): Readonly<LocalWorkspaceRegistryV1> {
+  assertActiveWorkspaceUnchanged(registry, expectedActiveWorkspaceId);
+  const target = findWorkspaceEntry(registry, targetWorkspaceId);
+  if (target === undefined) {
+    throw new WorkspaceRegistryMutationError('workspaceNotFound');
+  }
+  if (target.lifecycleState !== 'ready') {
+    throw new WorkspaceRegistryMutationError('workspaceNotReady');
+  }
+  return Object.freeze({
+    formatVersion: 1,
+    activeWorkspaceId: target.workspaceId,
+    workspaces: registry.workspaces,
+  });
 }
