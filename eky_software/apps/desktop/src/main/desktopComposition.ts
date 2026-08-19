@@ -56,6 +56,7 @@ import { InvoicePdfArchiveConfigStore } from '../invoicePdfArchive/invoicePdfArc
 import { InvoicePdfArchiveJournalStore } from '../invoicePdfArchive/invoicePdfArchiveJournal.js';
 import { InvoicePdfArchiveService } from '../invoicePdfArchive/invoicePdfArchiveService.js';
 import { InvoicePdfArchiveError } from '../invoicePdfArchive/invoicePdfArchiveTypes.js';
+import { createWorkspaceInvoicePdfArchiveDirectoryResolver } from '../invoicePdfArchive/workspaceInvoicePdfArchiveDirectory.js';
 import { createInvoicePdfArchiveBackendLoader } from '../invoicePdfArchive/invoicePdfArchiveBackendLoader.js';
 import { createInvoicePdfArchiveBrokerTransport } from '../invoicePdfArchive/electronInvoicePdfArchiveBrokerTransport.js';
 import { startInvoicePdfArchiveBrokerMain } from '../invoicePdfArchive/invoicePdfArchiveBrokerMain.js';
@@ -139,6 +140,10 @@ import {
 import { launchWindowsInstallerForUpdate } from '../update/windowsInstallerHandoff.js';
 import { launchWindowsInstallerRollback } from '../update/windowsInstallerRollbackHandoff.js';
 import { createUpdateRecoveryComposition } from '../update/recoveryWindow/updateRecoveryComposition.js';
+import {
+  resolveActiveWorkspaceStartup,
+  type ActiveWorkspaceStartupSelection,
+} from '../workspaces/runtime/resolveActiveWorkspaceStartup.js';
 
 export interface DesktopLifecycleHandle {
   applicationWindow: BrowserWindow;
@@ -165,6 +170,9 @@ export interface DesktopCompositionDependencies {
   startBackend(
     options: StartDesktopBackendOptions,
   ): Promise<DesktopBackendHandle>;
+  resolveActiveWorkspace(
+    userDataRoot: string,
+  ): Promise<Readonly<ActiveWorkspaceStartupSelection>>;
 }
 
 export interface StartDesktopCompositionOptions {
@@ -196,6 +204,7 @@ const defaultDesktopCompositionDependencies: DesktopCompositionDependencies = {
   showOpenDialog: (owner, options) => dialog.showOpenDialog(owner, options),
   showSaveDialog: (owner, options) => dialog.showSaveDialog(owner, options),
   startBackend: startDesktopBackend,
+  resolveActiveWorkspace: resolveActiveWorkspaceStartup,
 };
 
 export async function startDesktopComposition(
@@ -206,11 +215,11 @@ export async function startDesktopComposition(
     ...options.dependencies,
   };
   const smokeMode = options.smokeConfiguration.enabled;
-  const runtimeSessionSecret = dependencies.createRuntimeSession();
   const backendRoot = join(options.resourcesPath, 'backend');
-  const profilePaths = createDesktopProfilePaths(options.userDataPath);
-  const dataRoot = profilePaths.runtimeRoot;
-  const operationalLogsRoot = join(dataRoot, 'logs');
+  const installationRuntimeRoot = createDesktopProfilePaths(
+    options.userDataPath,
+  ).runtimeRoot;
+  const operationalLogsRoot = join(installationRuntimeRoot, 'logs');
   const retention = maintainDesktopOperationalLogs({
     logsRoot: operationalLogsRoot,
   });
@@ -250,13 +259,18 @@ export async function startDesktopComposition(
         desktopOperationalIdentity,
       ),
     );
+    const activeWorkspace = await dependencies.resolveActiveWorkspace(
+      options.userDataPath,
+    );
+    const runtimeSessionSecret = dependencies.createRuntimeSession();
     return await startDesktopCompositionRuntime({
+      activeWorkspace,
       backendRoot,
-      dataRoot,
       desktopAppVersion,
       desktopOperationalIdentity,
       desktopOperationalLogger,
       desktopStartedAt,
+      installationRuntimeRoot,
       operationalLogsRoot,
       options,
       dependencies,
@@ -286,13 +300,14 @@ export async function startDesktopComposition(
 }
 
 interface DesktopCompositionRuntimeOptions {
+  activeWorkspace: Readonly<ActiveWorkspaceStartupSelection>;
   backendRoot: string;
-  dataRoot: string;
   desktopAppVersion: string;
   desktopOperationalIdentity: DesktopOperationalIdentity;
   desktopOperationalLogger: DesktopOperationalLogger;
   desktopStartedAt: number;
   dependencies: DesktopCompositionDependencies;
+  installationRuntimeRoot: string;
   operationalLogsRoot: string;
   options: StartDesktopCompositionOptions;
   runtimeSessionSecret: string;
@@ -300,13 +315,14 @@ interface DesktopCompositionRuntimeOptions {
 }
 
 async function startDesktopCompositionRuntime({
+  activeWorkspace,
   backendRoot,
-  dataRoot,
   desktopAppVersion,
   desktopOperationalIdentity,
   desktopOperationalLogger,
   desktopStartedAt,
   dependencies,
+  installationRuntimeRoot,
   operationalLogsRoot,
   options,
   runtimeSessionSecret,
@@ -314,11 +330,19 @@ async function startDesktopCompositionRuntime({
 }: DesktopCompositionRuntimeOptions): Promise<
   DesktopLifecycleHandle | undefined
 > {
-  const { databaseFilePath, invoiceDocumentStorageRoot } =
-    createDesktopProfilePaths(options.userDataPath);
-  const profileSnapshotPaths = createProfileSnapshotRuntimePaths(dataRoot);
+  const workspaceProfilePaths = createDesktopProfilePaths(
+    activeWorkspace.workspaceRoot,
+  );
+  const {
+    databaseFilePath,
+    invoiceDocumentStorageRoot,
+    runtimeRoot: workspaceRuntimeRoot,
+  } = workspaceProfilePaths;
+  const profileSnapshotPaths = createProfileSnapshotRuntimePaths(
+    workspaceRuntimeRoot,
+  );
   const localUpdateRuntimePaths = createLocalUpdateRuntimePaths({
-    legacyRuntimeRoot: dataRoot,
+    legacyRuntimeRoot: installationRuntimeRoot,
     userDataPath: options.userDataPath,
   });
   const updateJournalStore = new UpdateJournalStore(
@@ -372,7 +396,7 @@ async function startDesktopCompositionRuntime({
       transaction: profileRestoreActivationTransaction,
     });
   const secretFilePath = join(
-    dataRoot,
+    workspaceRuntimeRoot,
     'secrets',
     'company-email-smtp-v1.dat',
   );
@@ -380,7 +404,11 @@ async function startDesktopCompositionRuntime({
     secretFilePath,
     smokeMode,
   );
-  const smokePdfPath = join(dataRoot, 'smoke', 'approved-invoice-smoke.pdf');
+  const smokePdfPath = join(
+    installationRuntimeRoot,
+    'smoke',
+    'approved-invoice-smoke.pdf',
+  );
   const smokeSupportBundlePath =
     smokeMode && options.smokeConfiguration.root !== undefined
       ? join(
@@ -545,6 +573,7 @@ async function startDesktopCompositionRuntime({
     | undefined;
   let profileBackupCapability: ProfileBackupCapability | undefined;
   let shutdownStarted = false;
+  let workspaceStartupAccepted = false;
 
   await Promise.all(
     [
@@ -678,8 +707,13 @@ async function startDesktopCompositionRuntime({
     transport: createMainSecretBrokerTransport(secretBrokerChannel.port1),
   });
   const invoicePdfArchivePaths =
-    createInvoicePdfArchiveRuntimePaths(dataRoot);
+    createInvoicePdfArchiveRuntimePaths(workspaceRuntimeRoot);
   let backendHandle: DesktopBackendHandle | undefined;
+  let activeProfileValidation:
+    | Awaited<
+        ReturnType<ProfileSnapshotBrokerClient['validateActiveProfile']>
+      >
+    | undefined;
   const invoicePdfArchiveService = new InvoicePdfArchiveService({
     configStore: new InvoicePdfArchiveConfigStore(
       invoicePdfArchivePaths.configFilePath,
@@ -687,6 +721,10 @@ async function startDesktopCompositionRuntime({
     journalStore: new InvoicePdfArchiveJournalStore(
       invoicePdfArchivePaths.journalFilePath,
     ),
+    resolveArchiveDirectory:
+      createWorkspaceInvoicePdfArchiveDirectoryResolver(
+        activeWorkspace.workspaceId,
+      ),
     observer: {
       copyFailed({ attemptCount, durationMs, errorCode }) {
         desktopOperationalLogger.write(
@@ -874,7 +912,8 @@ async function startDesktopCompositionRuntime({
         mode: profileRestoreStartupMode,
         stopBackend: () => backendHandle!.stop(),
         async validateActiveProfile() {
-          await profileSnapshotBrokerClient.validateActiveProfile();
+          activeProfileValidation =
+            await profileSnapshotBrokerClient.validateActiveProfile();
           await assertBackendHealth(
             `http://127.0.0.1:${backendHandle!.port}`,
             runtimeSessionSecret,
@@ -892,6 +931,8 @@ async function startDesktopCompositionRuntime({
       `http://127.0.0.1:${backendHandle.port}`,
       runtimeSessionSecret,
     );
+    activeProfileValidation ??=
+      await profileSnapshotBrokerClient.validateActiveProfile();
     if (firstStartUpdateCoordinator !== undefined) {
       await assertDifferentRuntimeSessionRejected({
         backendOrigin: `http://127.0.0.1:${backendHandle.port}`,
@@ -899,6 +940,10 @@ async function startDesktopCompositionRuntime({
         fetchImplementation: (url, init) => net.fetch(url, init),
         runtimeSessionSecret,
       });
+    }
+    await activeWorkspace.accept(activeProfileValidation.profileId);
+    workspaceStartupAccepted = true;
+    if (firstStartUpdateCoordinator !== undefined) {
       await firstStartUpdateCoordinator.acceptAfterBackendReady();
     }
     await recoveryPointScheduler.start();
@@ -914,6 +959,13 @@ async function startDesktopCompositionRuntime({
         updateBinaryRollbackHandoffRequested)
     ) {
       return undefined;
+    }
+    if (!workspaceStartupAccepted) {
+      const workspaceRecovery = await activeWorkspace.recoverFromFailure();
+      if (workspaceRecovery === 'relaunchRequired') {
+        options.relaunchApplication();
+        return undefined;
+      }
     }
     if (
       firstStartUpdateCoordinator !== undefined &&
@@ -1026,7 +1078,7 @@ async function startDesktopCompositionRuntime({
       : dependencies.openPath,
     operationalLogger: desktopOperationalLogger,
     operationalIdentity: desktopOperationalIdentity,
-    runtimeRoot: dataRoot,
+    runtimeRoot: installationRuntimeRoot,
     showSafeError() {
       deliveryConfirmation.showApplicationError(
         'Lokikansiota ei voitu avata',
@@ -1131,7 +1183,7 @@ async function startDesktopCompositionRuntime({
     operationalIdentity: desktopOperationalIdentity,
     operationalLogger: desktopOperationalLogger,
     platform: process.platform,
-    runtimeRoot: dataRoot,
+    runtimeRoot: installationRuntimeRoot,
     async selectTargetPath(defaultFileName) {
       if (smokeSupportBundlePath !== undefined) {
         return smokeSupportBundlePath;
@@ -1162,7 +1214,8 @@ async function startDesktopCompositionRuntime({
       appVersion: desktopAppVersion,
       createWindow: (windowOptions) => new BrowserWindow(windowOptions),
       forbiddenRoots: [
-        dataRoot,
+        installationRuntimeRoot,
+        workspaceRuntimeRoot,
         options.applicationPath,
         options.resourcesPath,
       ],
@@ -1225,7 +1278,7 @@ async function startDesktopCompositionRuntime({
     profileRestoreStagingService,
   } = profileBackupComposition;
   try {
-    removeExpiredSupportBundleTemporaryFiles(dataRoot);
+    removeExpiredSupportBundleTemporaryFiles(installationRuntimeRoot);
   } catch {
     desktopOperationalLogger.write(
       createDesktopOperationalEvent(

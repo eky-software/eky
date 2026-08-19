@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { WorkspaceSwitchCoordinator } from './workspaceSwitchCoordinator.js';
+import { resolveWorkspaceSwitchStartup } from './workspaceSwitchStartup.js';
 import {
   createSwitchJournal,
   createSwitchRegistry,
@@ -61,10 +62,8 @@ describe('workspace switch coordinator', () => {
       'registry.read',
       `lifecycle.quiesce.${TEST_SOURCE_WORKSPACE_ID}`,
       `lifecycle.stop.${TEST_SOURCE_WORKSPACE_ID}`,
-      'journal.read',
       'journal.write.prepared',
       'registry.write',
-      'journal.read',
       'journal.write.targetSelected',
       'application.relaunch',
       'lease.release',
@@ -156,5 +155,48 @@ describe('workspace switch coordinator', () => {
     ).rejects.toMatchObject({ code: 'WORKSPACE_SWITCH_STORAGE_FAILED' });
 
     expect(fixture.events).toEqual(['lease.acquire.switch']);
+  });
+
+  it('completes A to B to A with one runtime and database owner at each boundary', async () => {
+    const first = createFixture();
+
+    await first.coordinator.switchTo(TEST_TARGET_WORKSPACE_ID);
+    const targetStartup = await resolveWorkspaceSwitchStartup(
+      first.registry,
+      first.journal,
+    );
+    expect(targetStartup.mode).toBe('targetValidation');
+    await targetStartup.accept('b'.repeat(64));
+
+    const secondEvents: string[] = [];
+    const secondLifecycle = new RecordingSwitchLifecycle(secondEvents);
+    const secondLease = new RecordingSwitchLease(secondEvents);
+    const secondCoordinator = new WorkspaceSwitchCoordinator({
+      activeWorkspaceLifecycle: secondLifecycle,
+      generateOperationId: () => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      journal: first.journal,
+      maintenanceLease: secondLease,
+      now: () => new Date(TEST_SWITCH_CREATED_AT),
+      registry: first.registry,
+      relaunchApplication: () => secondEvents.push('application.relaunch'),
+    });
+
+    await secondCoordinator.switchTo(TEST_SOURCE_WORKSPACE_ID);
+    const sourceStartup = await resolveWorkspaceSwitchStartup(
+      first.registry,
+      first.journal,
+    );
+    expect(sourceStartup.mode).toBe('targetValidation');
+    await sourceStartup.accept('a'.repeat(64));
+
+    expect(first.registry.value?.activeWorkspaceId)
+      .toBe(TEST_SOURCE_WORKSPACE_ID);
+    expect(first.journal.current).toBeUndefined();
+    expect(first.lifecycle.runningRuntimeOwners).toBe(0);
+    expect(first.lifecycle.openDatabaseHandleOwners).toBe(0);
+    expect(secondLifecycle.runningRuntimeOwners).toBe(0);
+    expect(secondLifecycle.openDatabaseHandleOwners).toBe(0);
+    expect(first.lease.held).toBe(false);
+    expect(secondLease.held).toBe(false);
   });
 });

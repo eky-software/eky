@@ -13,6 +13,7 @@ import {
   type InvoicePdfArchiveStatus,
   type InvoicePdfArchiveTask,
 } from './invoicePdfArchiveTypes.js';
+import type { ResolveInvoicePdfArchiveDirectory } from './workspaceInvoicePdfArchiveDirectory.js';
 
 const maximumAutomaticRetryTasks = 10;
 const retryDelaysMilliseconds = [
@@ -46,14 +47,16 @@ export class InvoicePdfArchiveService {
       now?: () => Date;
       observer?: InvoicePdfArchiveObserver;
       probeDirectory?: (directoryPath: string) => Promise<void>;
+      resolveArchiveDirectory?: ResolveInvoicePdfArchiveDirectory;
     },
   ) {}
 
   async chooseDirectory(directoryPath: string): Promise<InvoicePdfArchiveStatus> {
     return this.runExclusive(async () => {
+      const archiveDirectory = await this.resolveArchiveDirectory(directoryPath);
       await (
         this.dependencies.probeDirectory ?? probeInvoicePdfArchiveDirectory
-      )(directoryPath);
+      )(archiveDirectory);
       await this.dependencies.configStore.enable(directoryPath);
       await this.retryPendingInternal(false);
       return this.getStatusInternal();
@@ -71,6 +74,20 @@ export class InvoicePdfArchiveService {
     return this.runExclusive(async () => {
       try {
         return (await this.dependencies.configStore.read())?.directoryPath ?? null;
+      } catch {
+        return null;
+      }
+    });
+  }
+
+  async getOpenDirectoryPath(): Promise<string | null> {
+    return this.runExclusive(async () => {
+      try {
+        const configuredRoot =
+          (await this.dependencies.configStore.read())?.directoryPath ?? null;
+        return configuredRoot === null
+          ? null
+          : await this.resolveArchiveDirectory(configuredRoot);
       } catch {
         return null;
       }
@@ -138,8 +155,11 @@ export class InvoicePdfArchiveService {
     const startedAt = Date.now();
 
     try {
+      const archiveDirectory = await this.resolveArchiveDirectory(
+        config.directoryPath,
+      );
       await copyInvoicePdfToArchive({
-        directoryPath: config.directoryPath,
+        directoryPath: archiveDirectory,
         loadDocument: this.dependencies.loadDocument,
         task,
       });
@@ -191,6 +211,11 @@ export class InvoicePdfArchiveService {
 
   private now(): Date {
     return this.dependencies.now?.() ?? new Date();
+  }
+
+  private resolveArchiveDirectory(directoryPath: string): Promise<string> {
+    return this.dependencies.resolveArchiveDirectory?.(directoryPath) ??
+      Promise.resolve(directoryPath);
   }
 
   private async recordFailure(

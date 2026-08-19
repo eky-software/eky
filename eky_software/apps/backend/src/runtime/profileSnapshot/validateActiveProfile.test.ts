@@ -7,6 +7,7 @@ import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { runMigrations } from '../../database/migration/runMigrations.js';
+import { readLocalRuntimeIdentity } from '../../database/localRuntimeIdentityReader.js';
 import { createProfileBackupIdentity } from './inspectSqliteProfileDatabase.js';
 import { CurrentActiveProfileValidationService } from './validateActiveProfile.js';
 
@@ -32,6 +33,7 @@ describe('active profile validation', () => {
     databases.push(database);
     database.pragma('foreign_keys = ON');
     await runMigrations(database);
+    const runtimeIdentity = readLocalRuntimeIdentity(database);
 
     const service = new CurrentActiveProfileValidationService(
       database,
@@ -44,7 +46,7 @@ describe('active profile validation', () => {
       artifactTotalByteSize: 0,
       databaseHealth: 'healthy',
       migrationChainIdentity: 'c'.repeat(64),
-      profileId: createProfileBackupIdentity('dev-company'),
+      profileId: createProfileBackupIdentity(runtimeIdentity.companyId),
     });
   });
 
@@ -150,7 +152,7 @@ async function createFixture(): Promise<Fixture> {
       'local-runtime',
       'local-owner',
       'company-1',
-      'installation-1'
+      '11111111111111111111111111111111'
     );
   `);
   database

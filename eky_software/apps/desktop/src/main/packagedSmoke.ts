@@ -97,7 +97,7 @@ interface RunPackagedSmokeCheckOptions {
   invoicePdfArchiveDirectoryPath: string;
   invoicePdfArchiveService: Pick<
     InvoicePdfArchiveService,
-    'chooseDirectory' | 'getStatus'
+    'chooseDirectory' | 'getOpenDirectoryPath' | 'getStatus'
   >;
   pdfPreviewController: InvoicePdfPreviewWindowController;
   runtimeSessionSecret: string;
@@ -406,7 +406,10 @@ export async function runPackagedSmokeCheck(
 async function assertPackagedInvoicePdfArchive(input: {
   directoryPath: string;
   mainWindow: BrowserWindow;
-  service: Pick<InvoicePdfArchiveService, 'getStatus'>;
+  service: Pick<
+    InvoicePdfArchiveService,
+    'getOpenDirectoryPath' | 'getStatus'
+  >;
 }): Promise<void> {
   const status = await input.service.getStatus();
 
@@ -419,7 +422,22 @@ async function assertPackagedInvoicePdfArchive(input: {
     throw new Error('DESKTOP_SMOKE_INVOICE_ARCHIVE_STATUS_FAILED');
   }
 
-  const fileNames = await readdir(input.directoryPath);
+  const workspaceDirectoryPath = await input.service.getOpenDirectoryPath();
+
+  if (workspaceDirectoryPath === null) {
+    throw new Error('DESKTOP_SMOKE_INVOICE_ARCHIVE_DIRECTORY_FAILED');
+  }
+
+  const configuredRootEntries = await readdir(input.directoryPath);
+  if (
+    configuredRootEntries.some((fileName) =>
+      /^Lasku-\d{1,50}\.pdf$/.test(fileName),
+    )
+  ) {
+    throw new Error('DESKTOP_SMOKE_INVOICE_ARCHIVE_SCOPE_FAILED');
+  }
+
+  const fileNames = await readdir(workspaceDirectoryPath);
   const invoicePdfFiles = fileNames.filter((fileName) =>
     /^Lasku-\d{1,50}\.pdf$/.test(fileName),
   );
@@ -432,7 +450,7 @@ async function assertPackagedInvoicePdfArchive(input: {
   if (fileName === undefined) {
     throw new Error('DESKTOP_SMOKE_INVOICE_ARCHIVE_FILE_FAILED');
   }
-  const content = await readFile(join(input.directoryPath, fileName));
+  const content = await readFile(join(workspaceDirectoryPath, fileName));
 
   if (content.subarray(0, 5).toString('ascii') !== '%PDF-') {
     throw new Error('DESKTOP_SMOKE_INVOICE_ARCHIVE_FILE_FAILED');

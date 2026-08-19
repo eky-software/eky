@@ -27,7 +27,7 @@ const maximumCredentialJsonInspectionBytes = 1_048_576;
 const stageLimits = Object.freeze({
   applicationStage: Object.freeze({
     maximumDirectoryDepth: 5,
-    maximumFileCount: 193,
+    maximumFileCount: 300,
     maximumLogicalPathBytes: 96,
     maximumProjectOwnedFileBytes: 1_048_576,
     maximumTotalBytes: 2_097_152,
@@ -139,13 +139,6 @@ export function classifyForbiddenArtifact(logicalPath, stage) {
   const fileName = segments.at(-1) ?? '';
   const isProjectOwned = isProjectOwnedArtifact(normalized, stage);
 
-  if (
-    stage === 'applicationStage' &&
-    lowerPath.startsWith('dist/workspaces/')
-  ) {
-    return 'INERT_WORKSPACE_CODE_IN_PAYLOAD';
-  }
-
   if (stage === 'updateRuntimeStage' && !updateRuntimeAllowlist.has(normalized)) {
     return 'UNAPPROVED_UPDATE_RUNTIME_ARTIFACT';
   }
@@ -184,6 +177,7 @@ export function classifyForbiddenArtifact(logicalPath, stage) {
     isProjectOwned &&
     (segments.includes('fixtures') ||
       segments.includes('testfixtures') ||
+      fileName.endsWith('testsupport.js') ||
       segments.includes('src') ||
       segments.includes('tests') ||
       /\.(?:test|spec)\.[^.]+$/.test(fileName))

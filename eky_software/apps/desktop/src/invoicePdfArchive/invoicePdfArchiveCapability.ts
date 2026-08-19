@@ -25,7 +25,7 @@ interface InvoicePdfArchiveCapabilityOptions {
     InvoicePdfArchiveService,
     | 'chooseDirectory'
     | 'disable'
-    | 'getDirectoryPath'
+    | 'getOpenDirectoryPath'
     | 'getStatus'
     | 'retryPending'
   >;
@@ -83,7 +83,7 @@ export function createInvoicePdfArchiveCapability(
     openInvoicePdfArchiveDirectoryIpcChannel,
     async (event, ...args: unknown[]) =>
       runExclusiveOperation(options, event, args, async () => {
-        const directoryPath = await options.service.getDirectoryPath();
+        const directoryPath = await options.service.getOpenDirectoryPath();
 
         if (directoryPath === null) {
           throw new Error('INVOICE_PDF_ARCHIVE_NOT_CONFIGURED');
