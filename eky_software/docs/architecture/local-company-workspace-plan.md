@@ -546,12 +546,56 @@ hallitulla switchillä. Korvaus on installation-scoped maintenance-leasen
 takana tehtävä snapshot + staging + forward migration + validation + atomic
 replace, ei taulu- tai tietuemerge.
 
+Nykyisen restore-moottorin auditin perusteella
+`ProfileRestoreActivationTransaction` on jo sidottavissa constructorissa
+annettuihin aktiivisen tietokannan, artifact-juuren, stagingin, rollbackin,
+failed-rootin ja activation journalin polkuihin. W3b käyttää tätä samaa
+transactionia ja `ProfileRestoreStartupRecovery`-recoveryn tilakonetta
+workspace-kohtaisilla poluilla. W3b ei luo rinnakkaista rollback-journalia,
+activation transactionia tai tiedostonsiirtomoottoria.
+
+Legacy-`ProfileRestoreStagingService` ja `ProfileRestoreActivationService`
+säilyvät yhden aktiivisen legacy-profiilin composition-palveluina. Niiden
+active-profile-, relaunch- tai tyhjän profiilin oletuksia ei kopioida W3b-
+koordinaattoriin. Backup-containerin autentikointi sekä candidate-SQLiten
+migraatio-, identity-, integrity-, foreign key- ja artifact-validointi
+käyttävät W3:n nykyisiä kapeita portteja.
+
 **Luottamusraja:** käyttäjä valitsee rekisteristä workspaceId:n; main todistaa
 lineagen. Label, nimi tai Y-tunnus eivät oikeuta korvausta.
+
+Ensimmäisen version exact-lineage-raja vaatii samanaikaisesti:
+
+- registry on täysin validoitu ja kohdetyötila on `ready`
+- `targetWorkspaceId === activeWorkspaceId`
+- autentikoidun backupin `profileId` täsmää target-entryn lineage-
+  `profileId`:hen
+- registryssä on täsmälleen yksi entry kyseiselle lineagelle
+- yksikään update-, import-, create-, switch-, restore- tai muu workspace-
+  maintenance-operaatio ei ole ratkaisematta.
+
+Nämä ehdot todistetaan ennen kirjoituksia ja uudelleen maintenance-leasen
+saamisen jälkeen ennen runtimen pysäyttämistä. Registry-entry, workspaceId,
+label, `createdAt`, lineage ja active pointer säilyvät byte-identtisinä.
 
 **Fail-closed-tilat:** wrong lineage, duplicate lineage registryssä,
 pre-restore failure, invalid staging, activation/rollback failure ja
 `recoveryRequired`.
+
+Suljettu suoritusjärjestys on: targetin ja operation-tilan validointi,
+backupin autentikointi, exact-lineage-todistus, `replace`-lease, registry-
+revalidointi, kirjoitusten quiesce, runtimen ja SQLite-kahvojen sulkeminen,
+runtime-absence, workspace-scoped preRestore-piste, yksityinen staging,
+forward-migraatiot, täydellinen validointi, nykyisen activation journalin
+kirjoitus, atominen aktivointi, saman workspacen uusi runtime-session,
+health/identity/artifact-validointi, transactionin hyväksyntä ja cleanup.
+Virheessä sama activation transaction palauttaa vanhan tietokannan ja PDF-
+artifact-juuren ennen vanhan runtimen terveeksi todistamista.
+
+Korvaus käsittelee vain portable business snapshotia. SMTP-salaisuus,
+safeStorage/DPAPI-envelope, ulkoisen PDF-arkiston root ja retry-journal,
+update/cache-tila, operational-lokit, diagnostiikka sekä muiden workspacejen
+palautuspisteet eivät kuulu stagingiin, aktivointiin tai rollbackiin.
 
 **Testit:** same-lineage success, wrong-lineage deny ilman writeä, vanhan datan
 poistuminen, uudemman datan palautuminen, PDF-hashit, salaisuuden jatkuvuus,

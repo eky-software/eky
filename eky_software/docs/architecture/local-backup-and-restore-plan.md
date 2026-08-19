@@ -693,6 +693,42 @@ payloadit heti leasen jälkeen. Tuntematon nimi tai tyyppi, symlink/reparse
 point, hardlink, ylikokoinen payload tai containment-ristiriita johtaa
 `recoveryRequired`-tilaan ja säilyttää epäselvän sisällön tutkimista varten.
 
+### W3b:n same-lineage-korvaus
+
+**Tila:** määritelty inertiksi foundationiksi. Polku ei kuulu production-
+compositioniin, preloadiin, IPC:hen, UI:hin tai AppData-profiiliin ennen W4:n
+erillistä päätöstä.
+
+W3b ei rakenna toista restore-moottoria. Se muodostaa nykyisen
+`ProfileRestoreActivationTransaction`-transactionin aktiivisen workspacen
+johdetuilla tietokanta- ja artifact-poluilla sekä yksityisillä operation-
+scoped staging-, rollback- ja failed-rooteilla. Nykyinen activation journal
+on aktivoinnin ja rollbackin ainoa durable auktoriteetti, ja
+`ProfileRestoreStartupRecovery` ratkaisee keskeytyneet journal-vaiheet saman
+workspace-kohtaisen transactionin kautta.
+
+Legacy-restore-palvelun active-profile- ja empty-profile-päätöksiä ei käytetä
+korvauksen oikeutuksena. W3b todistaa registryltä, että kohde on aktiivinen
+`ready`-workspace, backupin autentikoitu `profileId` täsmää täsmälleen sen
+lineageen ja sama lineage esiintyy registryssä vain kerran. Yrityksen nimi,
+Y-tunnus, label tai muu business-arvo eivät oikeuta korvausta. Ehto
+tarkistetaan ennen kirjoituksia ja uudelleen `replace`-leasen sisällä.
+
+PreRestore-piste on workspace-scoped. Staging ja forward-migraatiot käyttävät
+W3:n nykyistä backup-container- ja private candidate -rajaa. Aktivointi
+korvaa tietokannan ja auktoritatiivisen invoice-artifact-juuren kokonaan; se
+ei yhdistä tauluja, rivejä tai tiedostoja. Registry ja muiden workspacejen
+rootit eivät kuulu activation transactioniin.
+
+Device-local SMTP-secret, safeStorage-envelope, ulkoinen PDF-arkisto ja sen
+retry-journal, installation update/cache -tila, operational-lokit,
+diagnostiikka sekä muiden workspacejen recovery pointit säilyvät eikä niitä
+lueta backupista. Korvauksen hyväksyntä vaatii saman workspacen uuden
+runtime-sessionin health-, identity-, migration- ja artifact-todisteen.
+Validation failure palauttaa vanhan tietokannan ja PDF-rootin byte-
+identtisesti nykyisen activation transactionin kautta ennen runtimen
+uudelleenkäynnistystä.
+
 ## Käyttöliittymä
 
 Oma yritys -näkymässä voi olla erillinen
