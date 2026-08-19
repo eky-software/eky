@@ -95,3 +95,28 @@ avainta.
 
 W3 ja tämä quarantine-recovery ovat vielä inertti foundation. Ne eivät ole
 production-startupissa, package-payloadissa, preloadissa, IPC:ssä tai UI:ssa.
+
+## Keskeytynyt same-lineage workspace -korvaus
+
+W3b-korvaus käyttää nykyistä profile restore activation journalia ja
+`ProfileRestoreStartupRecovery`-tilakonetta workspace-kohtaisilla poluilla.
+Sille ei ole erillistä rollback-journalia. Recovery muodostaa transactionin
+vain registryn aktiiviselle `ready`-entrylle ja todistaa ennen jatkamista,
+että registryssä on täsmälleen yksi samaa lineagea käyttävä entry.
+
+Activation journalin vaihe ratkaistaan nykyisen restore-runbookin mukaisesti:
+
+- ennen `validationStarting`-vaihetta transaction jatkaa idempotentisti
+  atomisen siirron loppuun tai aloittaa rollbackin
+- `validationStarting` vaatii saman workspacen uuden runtimen health-,
+  identity-, migration- ja artifact-validoinnin
+- `rollbackStarting` ja `rolledBack` palauttavat sekä todistavat vanhan
+  workspace-datan ennen journalin poistoa
+- `failedSafe` tai epäselvä registry/lineage jättää workspacen
+  `recoveryRequired`-tilaan.
+
+Tukihenkilö ei muokkaa registryä, vaihda active pointeria, kopioi backupin
+rivejä aktiiviseen SQLiteen eikä poista rollback-rootia käsin. Registry,
+muiden workspacejen rootit, salaisuudet, PDF-arkisto, update/cache ja lokit
+ovat korvauksen ulkopuolella. Inertti W3b-foundation ei vielä kuulu
+production-startupiin, package-payloadiin, preloadiin, IPC:hen tai UI:hin.

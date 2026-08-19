@@ -381,7 +381,8 @@ backup-tarkastus, private candidate, forward-migraatio, täysi validointi,
 atominen root- ja registry-julkaisu sekä restart-recovery on toteutettu ja
 todistettu unit-, fault-, recovery-, security- ja system-E2E-testeillä.
 Production-compositionia, preloadia, IPC:tä, UI:ta tai julkista HTTP-reittiä
-ei ole lisätty. W3b ja W4 ovat edelleen toteuttamatta.
+ei ole lisätty. W3b on toteutettu erillisenä inerttinä foundationina; W4:n
+production-kytkentä on edelleen toteuttamatta.
 
 **Omistaja:** Profile Protection / Backup / Restore yhdessä workspace
 coordinatorin kanssa. Backup inspector säilyy backup-formaatin omistajana.
@@ -531,6 +532,13 @@ salasanaa, AppData-profiilia tai business-dataa ei käytetä.
 
 ## W3b: Replace existing workspace from same-lineage backup
 
+**Tila:** toteutettu inerttinä foundationina. Koordinaattori, exact-lineage-
+raja, workspace-kohtaiset polut, nykyisen restore activation transactionin
+käyttö, byte-identtinen rollback ja todelliseen salattuun backupiin perustuva
+system-E2E-todiste ovat valmiit. Polkua ei ole kytketty production-
+compositioniin, preloadiin, IPC:hen, UI:hin, paketoituun sovellukseen tai
+käyttäjän AppData-profiiliin. Tämä kytkentä kuuluu W4:n erilliseen vaiheeseen.
+
 **Omistaja:** Profile Protection / Backup / Restore; coordinator lukitsee
 kohdetyötilan ja aktivoinnin.
 
@@ -546,17 +554,67 @@ hallitulla switchillä. Korvaus on installation-scoped maintenance-leasen
 takana tehtävä snapshot + staging + forward migration + validation + atomic
 replace, ei taulu- tai tietuemerge.
 
+Nykyisen restore-moottorin auditin perusteella
+`ProfileRestoreActivationTransaction` on jo sidottavissa constructorissa
+annettuihin aktiivisen tietokannan, artifact-juuren, stagingin, rollbackin,
+failed-rootin ja activation journalin polkuihin. W3b käyttää tätä samaa
+transactionia ja `ProfileRestoreStartupRecovery`-recoveryn tilakonetta
+workspace-kohtaisilla poluilla. W3b ei luo rinnakkaista rollback-journalia,
+activation transactionia tai tiedostonsiirtomoottoria.
+
+Legacy-`ProfileRestoreStagingService` ja `ProfileRestoreActivationService`
+säilyvät yhden aktiivisen legacy-profiilin composition-palveluina. Niiden
+active-profile-, relaunch- tai tyhjän profiilin oletuksia ei kopioida W3b-
+koordinaattoriin. Backup-containerin autentikointi sekä candidate-SQLiten
+migraatio-, identity-, integrity-, foreign key- ja artifact-validointi
+käyttävät W3:n nykyisiä kapeita portteja.
+
 **Luottamusraja:** käyttäjä valitsee rekisteristä workspaceId:n; main todistaa
 lineagen. Label, nimi tai Y-tunnus eivät oikeuta korvausta.
+
+Ensimmäisen version exact-lineage-raja vaatii samanaikaisesti:
+
+- registry on täysin validoitu ja kohdetyötila on `ready`
+- `targetWorkspaceId === activeWorkspaceId`
+- autentikoidun backupin `profileId` täsmää target-entryn lineage-
+  `profileId`:hen
+- registryssä on täsmälleen yksi entry kyseiselle lineagelle
+- yksikään update-, import-, create-, switch-, restore- tai muu workspace-
+  maintenance-operaatio ei ole ratkaisematta.
+
+Nämä ehdot todistetaan ennen kirjoituksia ja uudelleen maintenance-leasen
+saamisen jälkeen ennen runtimen pysäyttämistä. Registry-entry, workspaceId,
+label, `createdAt`, lineage ja active pointer säilyvät byte-identtisinä.
 
 **Fail-closed-tilat:** wrong lineage, duplicate lineage registryssä,
 pre-restore failure, invalid staging, activation/rollback failure ja
 `recoveryRequired`.
 
-**Testit:** same-lineage success, wrong-lineage deny ilman writeä, vanhan datan
-poistuminen, uudemman datan palautuminen, PDF-hashit, salaisuuden jatkuvuus,
-keskeytys jokaisessa journal-vaiheessa ja muiden työtilojen hashien
-muuttumattomuus.
+Suljettu suoritusjärjestys on: targetin ja operation-tilan validointi,
+backupin autentikointi, exact-lineage-todistus, `replace`-lease, registry-
+revalidointi, kirjoitusten quiesce, runtimen ja SQLite-kahvojen sulkeminen,
+runtime-absence, workspace-scoped preRestore-piste, yksityinen staging,
+forward-migraatiot, täydellinen validointi, nykyisen activation journalin
+kirjoitus, atominen aktivointi, saman workspacen uusi runtime-session,
+health/identity/artifact-validointi, transactionin hyväksyntä ja cleanup.
+Virheessä sama activation transaction palauttaa vanhan tietokannan ja PDF-
+artifact-juuren ennen vanhan runtimen terveeksi todistamista.
+
+Korvaus käsittelee vain portable business snapshotia. SMTP-salaisuus,
+safeStorage/DPAPI-envelope, ulkoisen PDF-arkiston root ja retry-journal,
+update/cache-tila, operational-lokit, diagnostiikka sekä muiden workspacejen
+palautuspisteet eivät kuulu stagingiin, aktivointiin tai rollbackiin.
+
+**Testit:** same-lineage success, historical-prefixin forward-migraatio,
+wrong-lineage deny ilman writeä, nimen tai Y-tunnuksen kelpaamattomuus
+oikeutukseksi, inactive/recovery/duplicate-lineage-torjunnat, väärä salasana,
+muuttunut container, vanhan datan poistuminen ilman mergeä, backupin datan ja
+PDF:n palautuminen, device-local-tiedostojen jatkuvuus, keskeytys jokaisessa
+activation journal -vaiheessa, byte-identtinen rollback sekä muiden
+työtilojen ja lähdebackupin hashien muuttumattomuus. System-E2E käyttää oikeaa
+salattua backup-containeria, SQLitea, migraatioita ja PDF-artifactia, mutta
+inertin foundationin runtime-lifecycle-portti on synteettinen; oikea Electron-
+prosessikytkentä todistetaan vasta W4:ssä.
 
 **Dokumentit:** backup- ja recovery-runbook.
 

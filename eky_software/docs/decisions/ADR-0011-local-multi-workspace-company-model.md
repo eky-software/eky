@@ -456,16 +456,29 @@ kun toinen työtila on aktiivinen.
 
 1. main todistaa aktiivisen `workspaceId`:n ja paikantaa lineagea vastaavan
    ainoan rekisteröidyn työtilan
-2. työtilasta tehdään validoitu pre-restore-palautuspiste
-3. backup valmistellaan yksityiseen stagingiin ja migroidaan eteenpäin
-4. kaikki samat identity-, SQLite-, migration- ja artifact-portit ajetaan
-5. aktiivinen sisältö korvataan atomisesti; tietueita ei yhdistetä
-6. failure palauttaa aiemman työtilan tai sulkee käytön `recoveryRequired`-
+2. backup autentikoidaan ja exact lineage todistetaan ennen kirjoituksia
+3. `replace`-maintenance-lease hankitaan ja registry sekä ratkaisemattomat
+   update/import/create/switch/restore-operaatiot tarkistetaan uudelleen
+4. aktiivinen runtime ja kaikki sen SQLite-kahvat suljetaan
+5. työtilasta tehdään validoitu workspace-scoped pre-restore-palautuspiste
+6. backup valmistellaan yksityiseen stagingiin ja migroidaan eteenpäin
+7. kaikki samat identity-, SQLite-, migration- ja artifact-portit ajetaan
+8. nykyinen restore activation journal julkaistaan ja aktiivinen sisältö
+   korvataan atomisesti; tietueita ei yhdistetä
+9. sama workspace käynnistetään uudella sessionilla ja validoidaan
+10. failure palauttaa aiemman työtilan nykyisen activation transactionin
+   rollback-rootista tai sulkee käytön `recoveryRequired`-
    tilaan.
 
 Eri lineagea ei saa korvata olemassa olevan työtilan päälle. Jos sama lineage
 löytyy rekisteristä useammin kuin kerran, operaatio pysähtyy rekisterin
 eheysvirheeseen.
+
+Korvaus käyttää samaa `ProfileRestoreActivationTransaction`- ja
+`ProfileRestoreStartupRecovery`-auktoriteettia kuin nykyinen restore-polku,
+mutta workspace-kohtaisilla poluilla. Erillistä W3b rollback-journalia tai
+tiedostonsiirtomoottoria ei luoda. Registry-entryä, workspaceId:tä, labelia,
+`createdAt`-arvoa, lineagea tai active pointeria ei muuteta.
 
 ## Migraatio- ja formaattiyhteensopivuus
 
