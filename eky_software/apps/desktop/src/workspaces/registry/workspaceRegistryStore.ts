@@ -6,12 +6,15 @@ import {
   createNodeWorkspaceRegistryFileSystem,
   WorkspaceRegistryFileSystemError,
   type WorkspaceRegistryFileSystem,
-  type WorkspaceRegistryNextWriter,
 } from './workspaceRegistryFileSystem.js';
 import {
   createWorkspaceRegistryPaths,
-  type WorkspaceRegistryPaths,
 } from './workspaceRegistryPaths.js';
+import {
+  CrashSafeByteSlotStore,
+  CrashSafeByteSlotStoreError,
+} from '../persistence/crashSafeByteSlotStore.js';
+import { CrashSafeFileSlotError } from '../persistence/crashSafeFileSlot.js';
 import { parseWorkspaceRegistryBytes } from './workspaceRegistryBytes.js';
 import { serializeWorkspaceRegistry } from './workspaceRegistrySerializer.js';
 import {
@@ -28,17 +31,17 @@ export interface WorkspaceRegistryStoreOptions {
 }
 
 export class WorkspaceRegistryStore {
-  private readonly paths: Readonly<WorkspaceRegistryPaths>;
-  private readonly fileSystem: WorkspaceRegistryFileSystem;
+  private readonly byteStore: CrashSafeByteSlotStore;
   private activeOperation = false;
 
   constructor(options: Readonly<WorkspaceRegistryStoreOptions>) {
-    this.paths = createWorkspaceRegistryPaths(
+    const paths = createWorkspaceRegistryPaths(
       options.installationRoot,
       options.filePath,
     );
-    this.fileSystem = options.fileSystem ??
-      createNodeWorkspaceRegistryFileSystem(this.paths);
+    const fileSystem = options.fileSystem ??
+      createNodeWorkspaceRegistryFileSystem(paths);
+    this.byteStore = new CrashSafeByteSlotStore(fileSystem);
   }
 
   read(): Promise<Readonly<LocalWorkspaceRegistryV1> | undefined> {
@@ -50,51 +53,9 @@ export class WorkspaceRegistryStore {
       const bytes = serializeWorkspaceRegistry(value);
       const current = await this.recoverAndRead();
       try {
-        await this.fileSystem.prepareDirectory();
+        await this.byteStore.replace(bytes, current !== undefined);
       } catch (error) {
         throw this.mapStoreError(error);
-      }
-
-      let writer: WorkspaceRegistryNextWriter | undefined;
-      let currentMovedToBackup = false;
-      let nextPublished = false;
-      try {
-        writer = await this.fileSystem.createNextWriter();
-        const bytesWritten = await writer.write(bytes);
-        if (bytesWritten !== bytes.byteLength) {
-          throw new WorkspaceRegistryStoreError(
-            WORKSPACE_REGISTRY_UNAVAILABLE,
-          );
-        }
-        await writer.sync();
-        await writer.close();
-        writer = undefined;
-
-        if (current !== undefined) {
-          await this.fileSystem.moveSlot('current', 'backup');
-          currentMovedToBackup = true;
-        }
-        try {
-          await this.fileSystem.moveSlot('next', 'current');
-          nextPublished = true;
-        } catch (error) {
-          if (currentMovedToBackup) {
-            await this.restoreBackupBestEffort();
-          }
-          throw error;
-        }
-        await this.fileSystem.syncDirectory();
-        if (currentMovedToBackup) {
-          await this.fileSystem.removeSlot('backup');
-          await this.fileSystem.syncDirectory();
-        }
-      } catch (error) {
-        throw this.mapStoreError(error);
-      } finally {
-        await writer?.close().catch(() => undefined);
-        if (!nextPublished) {
-          await this.fileSystem.removeSlot('next').catch(() => undefined);
-        }
       }
     });
   }
@@ -103,45 +64,9 @@ export class WorkspaceRegistryStore {
     Readonly<LocalWorkspaceRegistryV1> | undefined
   > {
     try {
-      const currentBytes = await this.fileSystem.readSlot('current');
-      if (currentBytes !== undefined) {
-        const current = parseWorkspaceRegistryBytes(currentBytes);
-        const removedNext = await this.fileSystem.removeSlot('next');
-        const removedBackup = await this.fileSystem.removeSlot('backup');
-        if (removedNext || removedBackup) {
-          await this.fileSystem.syncDirectory();
-        }
-        return current;
-      }
-
-      const backupBytes = await this.fileSystem.readSlot('backup');
-      if (backupBytes !== undefined) {
-        const backup = parseWorkspaceRegistryBytes(backupBytes);
-        await this.fileSystem.removeSlot('next');
-        await this.fileSystem.moveSlot('backup', 'current');
-        await this.fileSystem.syncDirectory();
-        return backup;
-      }
-
-      const nextBytes = await this.fileSystem.readSlot('next');
-      if (nextBytes !== undefined) {
-        const next = parseWorkspaceRegistryBytes(nextBytes);
-        await this.fileSystem.moveSlot('next', 'current');
-        await this.fileSystem.syncDirectory();
-        return next;
-      }
-      return undefined;
+      return await this.byteStore.recoverAndRead(parseWorkspaceRegistryBytes);
     } catch (error) {
       throw this.mapStoreError(error);
-    }
-  }
-
-  private async restoreBackupBestEffort(): Promise<void> {
-    try {
-      await this.fileSystem.moveSlot('backup', 'current');
-      await this.fileSystem.syncDirectory();
-    } catch {
-      // Recovery remains deterministic on the next read from the backup slot.
     }
   }
 
@@ -168,6 +93,14 @@ export class WorkspaceRegistryStore {
       return error.failure === 'invalid'
         ? new WorkspaceRegistryValidationError()
         : new WorkspaceRegistryStoreError(WORKSPACE_REGISTRY_UNAVAILABLE);
+    }
+    if (error instanceof CrashSafeFileSlotError) {
+      return error.failure === 'invalid'
+        ? new WorkspaceRegistryValidationError()
+        : new WorkspaceRegistryStoreError(WORKSPACE_REGISTRY_UNAVAILABLE);
+    }
+    if (error instanceof CrashSafeByteSlotStoreError) {
+      return new WorkspaceRegistryStoreError(WORKSPACE_REGISTRY_UNAVAILABLE);
     }
     if (error instanceof Error && error.message === WORKSPACE_REGISTRY_INVALID) {
       return new WorkspaceRegistryValidationError();

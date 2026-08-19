@@ -60,3 +60,38 @@ kirjata incident-yhteenvetoon.
 Tämän runbookin manuaalinen harjoitus synteettisellä profiililla kuuluu R0:n
 release security review -porttiin. Installer ja automaattipäivitys käyttävät
 samaa recovery-required-pysäytyssääntöä.
+
+## Keskeytynyt workspace-import
+
+ADR-0011:n W3-import ei käytä aktiivisen profiilin restore-journalia. Sen
+oma `WorkspaceBackupImportJournalV1` ratkaistaan startupissa ennen uuden
+workspace-rootin tai registry-entryn käyttämistä.
+
+Recovery hankkii ensin installation-scoped `import`-maintenance-leasen. Sen
+jälkeen se validoi W3:n yksityisen plaintext-karanteenin ja poistaa vain
+canonical UUID v4 -nimiset, rajatut tavalliset stale-payloadit. Tämä tehdään
+ennen import-journalin lukemista ja myös silloin, kun journalia ei ole. Cleanup
+ei avaa SQLitea eikä tarvitse alkuperäistä backupia tai salasanaa.
+
+Jos karanteenissa on tuntematon nimi tai tyyppi, linkki, ylikokoinen payload,
+epäselvä containment tai muu kuin W3:n allowlistattu entry, recovery pysähtyy
+`recoveryRequired`-tilaan. Tukihenkilö ei poista tai nimeä sisältöä käsin,
+eikä karanteenia käsitellä registry-, backup- tai workspace-rootina.
+
+- Ennen `rootPublished`-tilaa operaatio perutaan: candidate-kahvat suljetaan,
+  candidate poistetaan tai jätetään turvallisesti karanteeniin ja registry
+  säilyy muuttumattomana. Tuontia ei jatketa ilman backupin ja salasanan uutta
+  valintaa.
+- `rootPublished`-tilassa tukipolku todistaa runtime-absence-rajan ja validoi
+  lopullisen rootin migration-, identity-, SQLite- ja artifact-sopimuksen
+  ennen registry-julkaisua.
+- `registryPublished`-tilassa registry-entryn, johdetun rootin ja lineagen
+  täsmällinen vastaavuus todistetaan ennen journalin poistoa.
+
+Ristiriita jää `recoveryRequired`-tilaan. Tukihenkilö ei nimeä rootteja,
+muokkaa registryä, yhdistä SQLite-rivejä eikä korvaa työtilaa käsin. W3-
+recovery ei tarvitse eikä saa säilyttää backupin lähdepolkua, salasanaa tai
+avainta.
+
+W3 ja tämä quarantine-recovery ovat vielä inertti foundation. Ne eivät ole
+production-startupissa, package-payloadissa, preloadissa, IPC:ssä tai UI:ssa.

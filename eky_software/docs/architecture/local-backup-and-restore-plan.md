@@ -379,17 +379,32 @@ päätetään toteutusvaiheen turvallisuus- ja käytettävyystestissä.
 
 ## Private plaintext staging
 
-Private plaintext staging sallitaan vain snapshot-, inspect- tai restore-
-operaation ajaksi Electron mainin omistamassa `userData`-alueen yksityisessä
-runtime-juuressa. Se ei ole käyttäjän varmuuskopiotiedosto, eikä levylle jätetä
-monoliittista selväkielistä backup-payloadia.
+Private plaintext staging sallitaan vain snapshot-, inspect-, restore- tai
+workspace-import-operaation ajaksi Electron mainin omistamassa `userData`-
+alueen yksityisessä runtime-juuressa. Se ei ole käyttäjän
+varmuuskopiotiedosto.
+
+W3-importin decrypt-vaihe käyttää kapeaa installation-scoped juurta
+`<userData>/workspace-operations/workspace-import-plaintext-quarantine/`.
+Sinne saa syntyä vain yksi tai useampi W3:n canonical UUID v4 -niminen,
+kokorajattu plaintext-payload. Juuri ei kuulu registryyn, portable backupiin,
+candidateen tai workspace-rootiin. Polkua ei johdeta workspace-labelista,
+company/profile/lineage-identiteetistä tai backupin nimestä eikä palauteta
+rendererille.
 
 Restore-staging sisältää business-profiilidataa, joten siihen sovelletaan samoja
 polku-, käyttöoikeus-, symlink-, reparse point- ja lokitussääntöjä kuin
 aktiiviseen profiiliin. Operaation onnistuminen ja epäonnistuminen siivoavat
-stagingin best effort -mallilla. Desktopin käynnistys tunnistaa ja siivoaa
-keskeytyksestä jääneet tunnetut temp- ja staging-slotit ennen normaalin
-business-runtimen avaamista.
+stagingin. W3:n tavallinen `finally` poistaa oman plaintext-payloadin, ja W3-
+recovery hankkii maintenance-leasen sekä validoi ja poistaa kaikki tunnetut
+stale-payloadit ennen journalin ratkaisua tai uuden backupin käsittelyä. Sama
+cleanup tehdään, vaikka import-journalia ei ole. Tuntematon entry tai epäselvä
+filesystem-raja pysäyttää recoveryn; sisältöä ei poisteta arvaamalla.
+
+Desktopin production-käynnistys tunnistaa ja siivoaa keskeytyksestä jääneet
+nykyisen yhden työtilan tunnetut temp- ja staging-slotit ennen normaalin
+business-runtimen avaamista. W3:n quarantine-recovery pysyy inerttinä eikä ole
+vielä production-startupissa tai package-payloadissa.
 
 ## Null-sääntö
 
@@ -637,6 +652,47 @@ candidate-stagingin ja nykyiset formaatti-, migraatio-, identity-, SQLite- ja
 artifact-validoinnit. Tämä ei kuulu nykyisen yhden työtilan restore-polkuun,
 vaan ADR-0011:n W3/W3b-checkpointteihin.
 
+### W3:n backup-import uutena työtilana
+
+**Tila:** toteutettu inerttinä foundationina ja todistettu synteettisellä
+nykyversion backupilla, PDF-artifactilla sekä yhteensopivan historiallisen
+migraatioprefixin forward-migraatiolla. Polkua ei ole vielä kytketty
+production-compositioniin tai käyttöliittymään.
+
+W3 ei käytä aktiivisen profiilin restore-controlleria, preRestore-pistettä,
+activation journalia tai korvaavaa aktivointia. Backup inspector säilyttää
+`.ekybackup`-formaatin omistajuuden, mutta workspace import coordinator käyttää
+sitä kahdessa rajatussa vaiheessa:
+
+1. import-lease, ratkaisematon journal ja stale plaintext-karanteeni
+   ratkaistaan; tämän jälkeen ennen shutdownia container autentikoidaan ja
+   suljettu manifesti tarkastetaan avaamatta SQLitea
+2. shutdownin ja runtime-absence-todisteen jälkeen container autentikoidaan
+   uudelleen, puretaan private candidateen ja sen SHA-256, `profileId` sekä
+   migration chain -identiteetti verrataan ensimmäiseen tarkastukseen.
+
+Täysi SQLite-, migration-, identity- ja artifact-validointi tapahtuu vain
+backendin yksityisen import-portin kautta. Main ei saa SQLite-kahvaa.
+Historiallinen ehjä prefix hyväksytään, mutta vain puuttuvat nykyisen
+packaged manifestin forward-migraatiot ajetaan. Future-, changed-, reordered-
+ja missing-middle-historia torjutaan.
+
+Backupista ei tuoda SMTP-salaisuutta, safeStorage-blobia, PDF-arkiston
+asetusta tai retry-journalia, accepted-build/update-statea, installer-statea,
+lokeja, diagnostiikkaa, tukipakettia tai ulkoisia PDF-kopioita. Candidateen
+saavat päätyä vain autentikoitu SQLite, snapshot-katalogi ja katalogin
+todistamat auktoritatiiviset business-artifactit.
+
+Ennen lopullista julkaisua registry tarkastetaan toisen kerran duplicate-
+lineagen varalta. Onnistunut W3-import julkaisee uuden `ready`-työtilan,
+mutta ei käynnistä sitä eikä korvaa aktiivista työtilaa.
+
+Abrupt termination voi jättää plaintext-payloadin ilman import-journalia.
+W3-recovery löytää ja poistaa vain allowlistatut partial- ja complete-
+payloadit heti leasen jälkeen. Tuntematon nimi tai tyyppi, symlink/reparse
+point, hardlink, ylikokoinen payload tai containment-ristiriita johtaa
+`recoveryRequired`-tilaan ja säilyttää epäselvän sisällön tutkimista varten.
+
 ## Käyttöliittymä
 
 Oma yritys -näkymässä voi olla erillinen
@@ -738,6 +794,12 @@ ei saa muuttaa varsinaisen operaation tulosta.
 - täysi levy, read-only-kohde ja oikeuksien muuttuminen kesken operaation
 - no-overwrite ja olemassa olevan eri backupin säilyminen
 - temp-finalisoinnin keskeytys jokaisessa vaiheessa
+- W3 plaintext-karanteenin partial/complete crash-jäämä ilman journalia,
+  useat sallitut jäämät, idempotentti cleanup ja tyhjyys ennen recovery-
+  tulosta
+- W3-karanteenin unknown entry, directory masquerade, symlink/reparse point,
+  hardlink, ylikokoinen payload ja root-containment-ristiriita fail closed
+  ilman ulkopuolisen tiedoston tai lähdebackupin muuttamista
 - NTFS:n hard link -julkaisu sekä exFAT-/FAT32-yhteensopiva tavallinen
   tiedostokopio ja kilpailevan kohdetiedoston no-overwrite-suoja
 - vähintään yksi manuaalinen Windows-hyväksyntä oikealle FAT32- tai

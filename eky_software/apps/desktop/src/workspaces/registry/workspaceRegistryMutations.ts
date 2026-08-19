@@ -1,0 +1,101 @@
+import type {
+  LocalWorkspaceRegistryEntryV1,
+  LocalWorkspaceRegistryV1,
+  WorkspaceId,
+  WorkspaceLineageIdentityV1,
+} from './workspaceRegistryTypes.js';
+import { WORKSPACE_REGISTRY_MAX_ENTRIES } from './workspaceRegistryValidation.js';
+
+export type WorkspaceRegistryMutationFailure =
+  | 'activeWorkspaceChanged'
+  | 'capacityExceeded'
+  | 'lineageExists'
+  | 'workspaceIdExists';
+
+export class WorkspaceRegistryMutationError extends Error {
+  constructor(readonly failure: WorkspaceRegistryMutationFailure) {
+    super('WORKSPACE_REGISTRY_MUTATION_REJECTED');
+    this.name = 'WorkspaceRegistryMutationError';
+  }
+}
+
+export function readWorkspaceRegistry(
+  value: Readonly<LocalWorkspaceRegistryV1> | undefined,
+): Readonly<LocalWorkspaceRegistryV1> {
+  return value ?? Object.freeze({
+    formatVersion: 1 as const,
+    activeWorkspaceId: null,
+    workspaces: Object.freeze([]),
+  });
+}
+
+export function assertWorkspaceIdAvailable(
+  registry: Readonly<LocalWorkspaceRegistryV1>,
+  workspaceId: WorkspaceId,
+): void {
+  if (registry.workspaces.length >= WORKSPACE_REGISTRY_MAX_ENTRIES) {
+    throw new WorkspaceRegistryMutationError('capacityExceeded');
+  }
+  if (registry.workspaces.some((entry) => entry.workspaceId === workspaceId)) {
+    throw new WorkspaceRegistryMutationError('workspaceIdExists');
+  }
+}
+
+export function assertWorkspaceLineageAvailable(
+  registry: Readonly<LocalWorkspaceRegistryV1>,
+  lineageIdentity: Readonly<WorkspaceLineageIdentityV1>,
+): void {
+  if (
+    registry.workspaces.some(
+      (entry) =>
+        entry.lineageIdentity.profileId === lineageIdentity.profileId,
+    )
+  ) {
+    throw new WorkspaceRegistryMutationError('lineageExists');
+  }
+}
+
+export function appendReadyWorkspaceEntry(
+  registry: Readonly<LocalWorkspaceRegistryV1>,
+  entry: Readonly<LocalWorkspaceRegistryEntryV1>,
+): Readonly<LocalWorkspaceRegistryV1> {
+  assertWorkspaceIdAvailable(registry, entry.workspaceId);
+  assertWorkspaceLineageAvailable(registry, entry.lineageIdentity);
+  return Object.freeze({
+    formatVersion: 1,
+    activeWorkspaceId: registry.activeWorkspaceId ?? entry.workspaceId,
+    workspaces: Object.freeze([...registry.workspaces, entry]),
+  });
+}
+
+export function createReadyWorkspaceEntry(input: {
+  readonly workspaceId: WorkspaceId;
+  readonly workspaceLabel: string;
+  readonly lineageIdentity: Readonly<WorkspaceLineageIdentityV1>;
+  readonly createdAt: string;
+}): Readonly<LocalWorkspaceRegistryEntryV1> {
+  return Object.freeze({
+    workspaceId: input.workspaceId,
+    workspaceLabel: input.workspaceLabel,
+    lineageIdentity: input.lineageIdentity,
+    layoutVersion: 1,
+    lifecycleState: 'ready',
+    createdAt: input.createdAt,
+  });
+}
+
+export function findWorkspaceEntry(
+  registry: Readonly<LocalWorkspaceRegistryV1>,
+  workspaceId: WorkspaceId,
+): Readonly<LocalWorkspaceRegistryEntryV1> | undefined {
+  return registry.workspaces.find((entry) => entry.workspaceId === workspaceId);
+}
+
+export function assertActiveWorkspaceUnchanged(
+  registry: Readonly<LocalWorkspaceRegistryV1>,
+  expectedActiveWorkspaceId: WorkspaceId | null,
+): void {
+  if (registry.activeWorkspaceId !== expectedActiveWorkspaceId) {
+    throw new WorkspaceRegistryMutationError('activeWorkspaceChanged');
+  }
+}

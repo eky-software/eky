@@ -8,12 +8,15 @@ import {
   createNodeWorkspaceCreationJournalFileSystem,
   WorkspaceCreationJournalFileSystemError,
   type WorkspaceCreationJournalFileSystem,
-  type WorkspaceCreationJournalNextWriter,
 } from './workspaceCreationJournalFileSystem.js';
 import {
   createWorkspaceCreationJournalPaths,
-  type WorkspaceCreationJournalPaths,
 } from './workspaceCreationJournalPaths.js';
+import {
+  CrashSafeByteSlotStore,
+  CrashSafeByteSlotStoreError,
+} from '../persistence/crashSafeByteSlotStore.js';
+import { CrashSafeFileSlotError } from '../persistence/crashSafeFileSlot.js';
 import { parseWorkspaceCreationJournalBytes } from './workspaceCreationJournalBytes.js';
 import { serializeWorkspaceCreationJournal } from './workspaceCreationJournalSerializer.js';
 import type {
@@ -34,17 +37,17 @@ export interface WorkspaceCreationJournalStoreOptions {
 
 export class WorkspaceCreationJournalStore
   implements WorkspaceCreationJournalStorePort {
-  private readonly paths: Readonly<WorkspaceCreationJournalPaths>;
-  private readonly fileSystem: WorkspaceCreationJournalFileSystem;
+  private readonly byteStore: CrashSafeByteSlotStore;
   private activeOperation = false;
 
   constructor(options: Readonly<WorkspaceCreationJournalStoreOptions>) {
-    this.paths = createWorkspaceCreationJournalPaths(
+    const paths = createWorkspaceCreationJournalPaths(
       options.installationRoot,
       options.filePath,
     );
-    this.fileSystem = options.fileSystem ??
-      createNodeWorkspaceCreationJournalFileSystem(this.paths);
+    const fileSystem = options.fileSystem ??
+      createNodeWorkspaceCreationJournalFileSystem(paths);
+    this.byteStore = new CrashSafeByteSlotStore(fileSystem);
   }
 
   read(): Promise<Readonly<WorkspaceCreationJournalV1> | undefined> {
@@ -58,49 +61,9 @@ export class WorkspaceCreationJournalStore
       assertWorkspaceCreationJournalTransition(current, next);
       const bytes = serializeWorkspaceCreationJournal(next);
       try {
-        await this.fileSystem.prepareDirectory();
+        await this.byteStore.replace(bytes, current !== undefined);
       } catch (error) {
         throw this.mapStoreError(error);
-      }
-
-      let writer: WorkspaceCreationJournalNextWriter | undefined;
-      let currentMovedToBackup = false;
-      let nextPublished = false;
-      try {
-        writer = await this.fileSystem.createNextWriter();
-        const bytesWritten = await writer.write(bytes);
-        if (bytesWritten !== bytes.byteLength) {
-          throw new WorkspaceCreationJournalStoreError(
-            WORKSPACE_CREATION_JOURNAL_UNAVAILABLE,
-          );
-        }
-        await writer.sync();
-        await writer.close();
-        writer = undefined;
-
-        if (current !== undefined) {
-          await this.fileSystem.moveSlot('current', 'backup');
-          currentMovedToBackup = true;
-        }
-        try {
-          await this.fileSystem.moveSlot('next', 'current');
-          nextPublished = true;
-        } catch (error) {
-          if (currentMovedToBackup) await this.restoreBackupBestEffort();
-          throw error;
-        }
-        await this.fileSystem.syncDirectory();
-        if (currentMovedToBackup) {
-          await this.fileSystem.removeSlot('backup');
-          await this.fileSystem.syncDirectory();
-        }
-      } catch (error) {
-        throw this.mapStoreError(error);
-      } finally {
-        await writer?.close().catch(() => undefined);
-        if (!nextPublished) {
-          await this.fileSystem.removeSlot('next').catch(() => undefined);
-        }
       }
     });
   }
@@ -140,52 +103,17 @@ export class WorkspaceCreationJournalStore
     Readonly<WorkspaceCreationJournalV1> | undefined
   > {
     try {
-      const currentBytes = await this.fileSystem.readSlot('current');
-      if (currentBytes !== undefined) {
-        const current = parseWorkspaceCreationJournalBytes(currentBytes);
-        const removedNext = await this.fileSystem.removeSlot('next');
-        const removedBackup = await this.fileSystem.removeSlot('backup');
-        if (removedNext || removedBackup) await this.fileSystem.syncDirectory();
-        return current;
-      }
-
-      const backupBytes = await this.fileSystem.readSlot('backup');
-      if (backupBytes !== undefined) {
-        const backup = parseWorkspaceCreationJournalBytes(backupBytes);
-        await this.fileSystem.removeSlot('next');
-        await this.fileSystem.moveSlot('backup', 'current');
-        await this.fileSystem.syncDirectory();
-        return backup;
-      }
-
-      const nextBytes = await this.fileSystem.readSlot('next');
-      if (nextBytes !== undefined) {
-        const next = parseWorkspaceCreationJournalBytes(nextBytes);
-        await this.fileSystem.moveSlot('next', 'current');
-        await this.fileSystem.syncDirectory();
-        return next;
-      }
-      return undefined;
+      return await this.byteStore.recoverAndRead(
+        parseWorkspaceCreationJournalBytes,
+      );
     } catch (error) {
       throw this.mapStoreError(error);
     }
   }
 
-  private async restoreBackupBestEffort(): Promise<void> {
-    try {
-      await this.fileSystem.moveSlot('backup', 'current');
-      await this.fileSystem.syncDirectory();
-    } catch {
-      // The next read deterministically recovers from the backup slot.
-    }
-  }
-
   private async removeAllSlots(): Promise<void> {
     try {
-      await this.fileSystem.removeSlot('next');
-      await this.fileSystem.removeSlot('backup');
-      await this.fileSystem.removeSlot('current');
-      await this.fileSystem.syncDirectory();
+      await this.byteStore.clear();
     } catch (error) {
       throw this.mapStoreError(error);
     }
@@ -218,6 +146,18 @@ export class WorkspaceCreationJournalStore
         : new WorkspaceCreationJournalStoreError(
             WORKSPACE_CREATION_JOURNAL_UNAVAILABLE,
           );
+    }
+    if (error instanceof CrashSafeFileSlotError) {
+      return error.failure === 'invalid'
+        ? new WorkspaceCreationJournalValidationError()
+        : new WorkspaceCreationJournalStoreError(
+            WORKSPACE_CREATION_JOURNAL_UNAVAILABLE,
+          );
+    }
+    if (error instanceof CrashSafeByteSlotStoreError) {
+      return new WorkspaceCreationJournalStoreError(
+        WORKSPACE_CREATION_JOURNAL_UNAVAILABLE,
+      );
     }
     return new WorkspaceCreationJournalStoreError(
       WORKSPACE_CREATION_JOURNAL_UNAVAILABLE,
