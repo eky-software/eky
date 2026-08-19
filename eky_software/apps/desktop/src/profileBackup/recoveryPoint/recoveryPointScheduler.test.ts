@@ -9,6 +9,7 @@ import {
 
 import { RecoveryPointScheduler } from './recoveryPointScheduler.js';
 import type { ProfileRecoveryOperationalEvent } from '../profileRecoveryOperationalObserver.js';
+import { InMemoryWorkspaceMaintenanceLease } from '../../workspaces/maintenance/workspaceMaintenanceLease.js';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -27,6 +28,7 @@ describe('recovery point scheduler', () => {
         consume: vi.fn(async () => 'unclean' as const),
         markClean: vi.fn(async () => undefined),
       },
+      maintenanceLease: new InMemoryWorkspaceMaintenanceLease(),
       recoveryPointService: { checkAutomatic },
     });
 
@@ -54,6 +56,7 @@ describe('recovery point scheduler', () => {
         consume: vi.fn(async () => 'clean' as const),
         markClean: vi.fn(async () => undefined),
       },
+      maintenanceLease: new InMemoryWorkspaceMaintenanceLease(),
       recoveryPointService: { checkAutomatic },
     });
     const starting = scheduler.start();
@@ -81,6 +84,7 @@ describe('recovery point scheduler', () => {
         consume: vi.fn(async () => 'clean' as const),
         markClean,
       },
+      maintenanceLease: new InMemoryWorkspaceMaintenanceLease(),
       now: () => new Date('2026-08-04T12:00:00.000Z'),
       recoveryPointService: {
         checkAutomatic: vi.fn(async () => undefined),
@@ -106,6 +110,7 @@ describe('recovery point scheduler', () => {
       correlationIdFactory: () =>
         '22222222-2222-4222-8222-222222222222',
       observer: { observe: (event) => events.push(event) },
+      maintenanceLease: new InMemoryWorkspaceMaintenanceLease(),
       recoveryPointService: {
         checkAutomatic: vi.fn(async () => {
           throw Object.assign(new Error('safe'), {
@@ -138,6 +143,7 @@ describe('recovery point scheduler', () => {
           throw new Error('SYNTHETIC_OBSERVER_FAILURE');
         },
       },
+      maintenanceLease: new InMemoryWorkspaceMaintenanceLease(),
       recoveryPointService: {
         checkAutomatic: vi.fn(async () => {
           throw new Error('RECOVERY_POINT_AUTOMATIC_CHECK_FAILED');
@@ -146,5 +152,38 @@ describe('recovery point scheduler', () => {
     });
 
     await expect(scheduler.start()).resolves.toBe('clean');
+  });
+
+  it('defers an automatic check while another workspace maintenance operation owns the lease', async () => {
+    const events: ProfileRecoveryOperationalEvent[] = [];
+    const maintenanceLease = new InMemoryWorkspaceMaintenanceLease();
+    const owner = await maintenanceLease.acquire('switch');
+    const checkAutomatic = vi.fn(async () => undefined);
+    const scheduler = new RecoveryPointScheduler({
+      checkIntervalMilliseconds: 1_000,
+      cleanShutdownMarker: {
+        consume: vi.fn(async () => 'clean' as const),
+        markClean: vi.fn(async () => undefined),
+      },
+      correlationIdFactory: () =>
+        '22222222-2222-4222-8222-222222222222',
+      maintenanceLease,
+      observer: { observe: (event) => events.push(event) },
+      recoveryPointService: { checkAutomatic },
+    });
+
+    await expect(scheduler.start()).resolves.toBe('clean');
+    expect(checkAutomatic).not.toHaveBeenCalled();
+    expect(events).toEqual([
+      expect.objectContaining({
+        errorCode: 'WORKSPACE_MAINTENANCE_BUSY',
+        stage: 'automaticCheck',
+      }),
+    ]);
+
+    await owner.release();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(checkAutomatic).toHaveBeenCalledOnce();
+    await scheduler.stopChecks();
   });
 });

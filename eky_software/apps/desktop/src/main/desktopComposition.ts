@@ -146,6 +146,7 @@ import {
   type ActiveWorkspaceStartupSelection,
 } from '../workspaces/runtime/resolveActiveWorkspaceStartup.js';
 import { WorkspaceSwitchError } from '../workspaces/switch/workspaceSwitchError.js';
+import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
 
 export interface DesktopLifecycleHandle {
   applicationWindow: BrowserWindow;
@@ -347,6 +348,8 @@ async function startDesktopCompositionRuntime({
   const profileSnapshotPaths = createProfileSnapshotRuntimePaths(
     workspaceRuntimeRoot,
   );
+  const workspaceMaintenanceLease =
+    new InMemoryWorkspaceMaintenanceLease();
   const localUpdateRuntimePaths = createLocalUpdateRuntimePaths({
     legacyRuntimeRoot: installationRuntimeRoot,
     userDataPath: options.userDataPath,
@@ -464,6 +467,7 @@ async function startDesktopCompositionRuntime({
     ),
     observer: profileRecoveryOperationalObserver,
     recoveryPointService,
+    maintenanceLease: workspaceMaintenanceLease,
   });
   let backendStartupControl: DesktopBackendStartupControl | undefined;
   let updateRecoveryRelaunchRequested = false;
@@ -1230,6 +1234,7 @@ async function startDesktopCompositionRuntime({
       ],
       ipcMain,
       mainWindow,
+      maintenanceLease: workspaceMaintenanceLease,
       operationalIdentity: desktopOperationalIdentity,
       operationalLogger: desktopOperationalLogger,
       passwordPreloadPath: join(
@@ -1390,6 +1395,7 @@ async function startDesktopCompositionRuntime({
     const handoffCoordinator = new LocalUpdateHandoffCoordinator({
       cache: localUpdatePackageCache,
       journalStore: updateJournalStore,
+      maintenanceLease: workspaceMaintenanceLease,
       async launchInstaller(candidate) {
         await launchWindowsInstallerForUpdate({
           packagePath: candidate.packagePath,

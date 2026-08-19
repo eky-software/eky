@@ -11,6 +11,7 @@ import type {
 
 import type { DesktopOperationalIdentity } from '../observability/desktopOperationalEvent.js';
 import type { DesktopOperationalLogger } from '../observability/desktopOperationalLogger.js';
+import type { WorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
 import type { BackupPasswordWindowController } from './passwordWindow/backupPasswordWindow.js';
 import { createBackupPasswordWindowController } from './passwordWindow/backupPasswordWindow.js';
 import { PortableProfileBackupService } from './portableProfileBackup.js';
@@ -34,6 +35,7 @@ interface ProfileBackupCompositionOptions {
   forbiddenRoots: readonly string[];
   ipcMain: Pick<IpcMain, 'handle' | 'removeHandler'>;
   mainWindow: BrowserWindow;
+  maintenanceLease: WorkspaceMaintenanceLease;
   operationalIdentity: DesktopOperationalIdentity;
   operationalLogger: DesktopOperationalLogger;
   passwordPreloadPath: string;
@@ -119,6 +121,7 @@ export async function createProfileBackupComposition(
       confirmRestoreReplacement(options, summary),
     ipcMain: options.ipcMain,
     mainWindow: options.mainWindow,
+    maintenanceLease: options.maintenanceLease,
     operationalIdentity: options.operationalIdentity,
     operationalLogger: options.operationalLogger,
     passwordWindow,

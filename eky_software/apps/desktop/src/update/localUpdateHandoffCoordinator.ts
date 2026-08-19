@@ -13,6 +13,7 @@ import {
   type UpdateJournalPackageIdentity,
 } from './updateJournal.js';
 import type { UpdateJournalStore } from './updateJournalStore.js';
+import type { WorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
 import {
   noOpUpdateOperationalObserver,
   type UpdateOperationalObserver,
@@ -27,6 +28,7 @@ interface LocalUpdateHandoffCoordinatorDependencies {
   launchInstaller(
     candidate: Readonly<RevalidatedLocalUpdatePackageHandle>,
   ): Promise<void>;
+  maintenanceLease: WorkspaceMaintenanceLease;
   now?(): Date;
   operationIdFactory?(): string;
   observer?: UpdateOperationalObserver;
@@ -226,10 +228,22 @@ export class LocalUpdateHandoffCoordinator {
       throw new LocalUpdateHandoffError();
     }
     this.activeOperation = true;
+    let maintenanceLease:
+      | Awaited<ReturnType<WorkspaceMaintenanceLease['acquire']>>
+      | undefined;
     try {
+      maintenanceLease = await this.dependencies.maintenanceLease
+        .acquire('update')
+        .catch(() => {
+          throw new LocalUpdateHandoffError();
+      });
       return await operation();
     } finally {
-      this.activeOperation = false;
+      try {
+        await maintenanceLease?.release();
+      } finally {
+        this.activeOperation = false;
+      }
     }
   }
 

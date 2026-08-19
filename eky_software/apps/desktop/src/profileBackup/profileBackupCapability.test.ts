@@ -244,6 +244,53 @@ describe('profile backup capability', () => {
     expect(fixture.createManualRecoveryPoint).toHaveBeenCalledWith();
   });
 
+  it('uses the shared maintenance authority only for mutating backup and restore operations', async () => {
+    const fixture = createFixture();
+
+    await fixture.invoke(
+      inspectProfileBackupIpcChannel,
+      fixture.trustedEvent,
+    );
+    await fixture.invoke(
+      createProfileBackupIpcChannel,
+      fixture.trustedEvent,
+    );
+    await fixture.invoke(
+      prepareProfileRestoreIpcChannel,
+      fixture.trustedEvent,
+    );
+    await fixture.invoke(
+      activatePreparedProfileRestoreIpcChannel,
+      fixture.trustedEvent,
+    );
+    await fixture.invoke(
+      createManualRecoveryPointIpcChannel,
+      fixture.trustedEvent,
+    );
+
+    expect(fixture.maintenancePurposes).toEqual([
+      'backup',
+      'restore',
+      'restore',
+      'backup',
+    ]);
+    expect(fixture.maintenanceReleaseCount).toBe(4);
+  });
+
+  it('fails closed before opening a dialog when shared maintenance is busy', async () => {
+    const fixture = createFixture({ maintenanceBusy: true });
+
+    await expect(
+      fixture.invoke(
+        createProfileBackupIpcChannel,
+        fixture.trustedEvent,
+      ),
+    ).rejects.toThrow('PROFILE_PROTECTION_OPERATION_BUSY');
+
+    expect(fixture.selectBackupTarget).not.toHaveBeenCalled();
+    expect(fixture.create).not.toHaveBeenCalled();
+  });
+
   it('rejects another renderer and removes every handler on dispose', async () => {
     const fixture = createFixture();
 
@@ -295,6 +342,7 @@ function createFixture(options: {
   confirmRestoreReplacement?: boolean;
   createFails?: boolean;
   inspectFails?: boolean;
+  maintenanceBusy?: boolean;
   operationalLoggerThrows?: boolean;
   restoreSourcePath?: string | null;
   sourcePath?: string | null;
@@ -367,6 +415,8 @@ function createFixture(options: {
       throw new Error('SYNTHETIC_LOG_WRITE_FAILURE');
     }
   });
+  const maintenancePurposes: string[] = [];
+  let maintenanceReleaseCount = 0;
   const showSafeError = vi.fn();
   const capability = createProfileBackupCapability({
     backupService: {
@@ -386,6 +436,23 @@ function createFixture(options: {
       isDestroyed: () => false,
       webContents,
     } as never,
+    maintenanceLease:
+      options.maintenanceBusy === true
+        ? {
+            async acquire() {
+              throw new Error('WORKSPACE_MAINTENANCE_BUSY');
+            },
+          }
+        : {
+            async acquire(purpose) {
+              maintenancePurposes.push(purpose);
+              return {
+                async release() {
+                  maintenanceReleaseCount += 1;
+                },
+              };
+            },
+          },
     now: () => new Date('2026-08-04T12:00:00.000Z'),
     operationalIdentity: {
       appVersion: '0.1.0-alpha.1',
@@ -437,6 +504,10 @@ function createFixture(options: {
       return handler(event, ...args);
     },
     mainFrame,
+    maintenancePurposes,
+    get maintenanceReleaseCount() {
+      return maintenanceReleaseCount;
+    },
     removeHandler,
     requestPassword,
     restoreInspect,

@@ -8,6 +8,7 @@ import type {
 
 import type { DesktopOperationalIdentity } from '../observability/desktopOperationalEvent.js';
 import type { DesktopOperationalLogger } from '../observability/desktopOperationalLogger.js';
+import type { WorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
 import type { BackupPasswordWindowController } from './passwordWindow/backupPasswordWindow.js';
 import type { RecoveryPointService } from './recoveryPoint/recoveryPointService.js';
 import {
@@ -41,6 +42,7 @@ interface ProfileBackupCapabilityOptions {
   >;
   ipcMain: Pick<IpcMain, 'handle' | 'removeHandler'>;
   mainWindow: BrowserWindow;
+  maintenanceLease: WorkspaceMaintenanceLease;
   now?(): Date;
   operationalIdentity: DesktopOperationalIdentity;
   operationalLogger: DesktopOperationalLogger;
@@ -110,7 +112,7 @@ export function createProfileBackupCapability(
     options,
     createProfileBackupIpcChannel,
     () =>
-      runExclusive(async (): Promise<CreateProfileBackupResult> => {
+      runExclusive('backup', async (): Promise<CreateProfileBackupResult> => {
         const targetPath = await options.selectBackupTarget(
           createPortableProfileBackupFileName(
             options.now?.() ?? new Date(),
@@ -164,7 +166,7 @@ export function createProfileBackupCapability(
     options,
     inspectProfileBackupIpcChannel,
     () =>
-      runExclusive(async (): Promise<InspectProfileBackupResult> => {
+      runExclusive(undefined, async (): Promise<InspectProfileBackupResult> => {
         const sourcePath = await options.selectBackupSource();
         if (sourcePath === null) {
           return { status: 'cancelled' };
@@ -208,18 +210,18 @@ export function createProfileBackupCapability(
   registerNoArgumentHandler(
     options,
     prepareProfileRestoreIpcChannel,
-    () => runExclusive(() => restoreController.prepare()),
+    () => runExclusive('restore', () => restoreController.prepare()),
   );
   registerNoArgumentHandler(
     options,
     activatePreparedProfileRestoreIpcChannel,
-    () => runExclusive(() => restoreController.activate()),
+    () => runExclusive('restore', () => restoreController.activate()),
   );
   registerNoArgumentHandler(
     options,
     createManualRecoveryPointIpcChannel,
     () =>
-      runExclusive(async (): Promise<ProfileProtectionStatus> => {
+      runExclusive('backup', async (): Promise<ProfileProtectionStatus> => {
         try {
           await options.recoveryPointService.createManual();
           return createProfileProtectionStatus(
@@ -250,16 +252,31 @@ export function createProfileBackupCapability(
   };
 
   async function runExclusive<T>(
+    purpose: 'backup' | 'restore' | undefined,
     operation: () => Promise<T>,
   ): Promise<T> {
     if (activeOperation) {
       throw new Error('PROFILE_PROTECTION_OPERATION_BUSY');
     }
     activeOperation = true;
+    let maintenanceLease:
+      | Awaited<ReturnType<WorkspaceMaintenanceLease['acquire']>>
+      | undefined;
     try {
+      if (purpose !== undefined) {
+        maintenanceLease = await options.maintenanceLease
+          .acquire(purpose)
+          .catch(() => {
+            throw new Error('PROFILE_PROTECTION_OPERATION_BUSY');
+          });
+      }
       return await operation();
     } finally {
-      activeOperation = false;
+      try {
+        await maintenanceLease?.release();
+      } finally {
+        activeOperation = false;
+      }
     }
   }
 }

@@ -1,8 +1,10 @@
 export type WorkspaceMaintenancePurpose =
+  | 'backup'
   | 'create'
   | 'import'
   | 'replace'
   | 'adopt'
+  | 'rename'
   | 'switch'
   | 'update'
   | 'restore';
