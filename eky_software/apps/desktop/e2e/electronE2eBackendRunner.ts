@@ -7,6 +7,10 @@ import { InvoicePdfArchiveBrokerClient } from '../src/invoicePdfArchive/invoiceP
 import { createInvoicePdfArchiveBrokerTransport } from '../src/invoicePdfArchive/electronInvoicePdfArchiveBrokerTransport.js';
 import { startProfileSnapshotBrokerBackend } from '../src/profileBackup/profileSnapshotBrokerBackend.js';
 import { createProfileSnapshotBrokerTransport } from '../src/profileBackup/electronProfileSnapshotBrokerTransport.js';
+import {
+  parseDesktopBackendCommand,
+  type DesktopBackendStartMessage,
+} from '../src/runtime/backendMessages.js';
 
 interface E2eBackendServer {
   close(): Promise<void>;
@@ -21,6 +25,12 @@ interface StartE2eBackend {
       companyEmailSecretStore: CompanyEmailSecretBrokerClient;
       deliveredInvoiceArchiveTaskSink: InvoicePdfArchiveBrokerClient;
       profileSnapshotStagingRoot: string;
+      runtimePaths: {
+        databaseFilePath: string;
+        documentsRoot: string;
+        logsRoot: string;
+      };
+      runtimeSessionSecret: string;
       runtimeInstanceId: string;
     },
   ): Promise<{
@@ -91,13 +101,15 @@ parentPort.on('message', (event) => {
         companyEmailSecretReader: secretBrokerClient,
         companyEmailSecretStore: secretBrokerClient,
         deliveredInvoiceArchiveTaskSink: invoicePdfArchiveBrokerClient,
-        profileSnapshotStagingRoot: resolve(
-          process.env.EKY_ELECTRON_E2E_RUN_ROOT!,
-          'desktop-user-data',
-          'runtime',
-          'private-backup-staging',
-        ),
-        runtimeInstanceId: command.runtimeInstanceId,
+        profileSnapshotStagingRoot:
+          command.config.profileSnapshotStagingRoot,
+        runtimeInstanceId: command.config.runtimeInstanceId,
+        runtimePaths: {
+          databaseFilePath: command.config.databaseFilePath,
+          documentsRoot: command.config.invoiceDocumentStorageRoot,
+          logsRoot: command.config.operationalLogsRoot,
+        },
+        runtimeSessionSecret: command.config.runtimeSessionSecret,
       });
       if (started.profileSnapshotRuntime === undefined) {
         throw new Error('ELECTRON_E2E_PROFILE_SNAPSHOT_RUNTIME_MISSING');
@@ -133,7 +145,11 @@ async function shutdown(): Promise<void> {
 
 type RunnerCommand =
   | { type: 'shutdown' }
-  | { configPath: string; runtimeInstanceId: string; type: 'start' };
+  | {
+      config: DesktopBackendStartMessage['config'];
+      configPath: string;
+      type: 'start';
+    };
 
 function parseCommand(value: unknown): RunnerCommand | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -145,12 +161,19 @@ function parseCommand(value: unknown): RunnerCommand | undefined {
   }
   if (
     command.type === 'start' &&
-    typeof command.configPath === 'string' &&
-    typeof command.runtimeInstanceId === 'string'
+    Object.keys(command).length === 3 &&
+    typeof command.configPath === 'string'
   ) {
+    const parsed = parseDesktopBackendCommand({
+      config: command.config,
+      type: 'start',
+    });
+    if (parsed?.type !== 'start') {
+      return undefined;
+    }
     return {
+      config: parsed.config,
       configPath: command.configPath,
-      runtimeInstanceId: command.runtimeInstanceId,
       type: 'start',
     };
   }

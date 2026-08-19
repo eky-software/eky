@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 
 import { readElectronMainState } from '../../src/electron/readElectronMainState.js';
+import { readElectronE2eActiveWorkspace } from '../../src/environment/readElectronE2eActiveWorkspace.js';
 import { test, expect } from '../../src/fixtures/isolatedElectronTest.js';
 
 test('DESK-RUNTIME-001 starts an isolated Electron runtime', async ({
@@ -39,13 +40,17 @@ test('DESK-RUNTIME-001 starts an isolated Electron runtime', async ({
   ]) {
     expect(isDescendant(path, e2eElectron.runRoot)).toBe(true);
   }
+  const activeWorkspace = readElectronE2eActiveWorkspace(state.userDataPath);
   for (const path of [
-    join(state.userDataPath, 'runtime', 'data', 'eky.sqlite'),
+    activeWorkspace.databaseFilePath,
     join(state.userDataPath, 'runtime', 'logs'),
-    join(state.userDataPath, 'runtime', 'storage', 'invoices'),
+    activeWorkspace.documentsRoot,
   ]) {
     expect(existsSync(path)).toBe(true);
   }
+  expect(
+    existsSync(join(state.userDataPath, 'runtime', 'data', 'eky.sqlite')),
+  ).toBe(false);
 
   const rendererBoundary = await e2eElectron.page.evaluate(() => ({
     e2eConfigVisible:

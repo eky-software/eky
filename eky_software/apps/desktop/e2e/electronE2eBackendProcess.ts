@@ -72,8 +72,8 @@ export function createElectronE2eBackendController(
         child.once('spawn', () => {
           child.postMessage(
             {
+              config: options.config,
               configPath: config.backend.configPath,
-              runtimeInstanceId: config.runtimeInstanceId,
               type: 'start',
             },
             [

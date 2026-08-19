@@ -65,7 +65,8 @@ if (hasSingleInstanceLock) {
   void runSafeDesktopStartup({
     exitApplication: (code) => app.exit(code),
     loadRuntime: async () => ({ startDesktopComposition }),
-    async onFailure() {
+    async onFailure(errorCode) {
+      nativeAdapters.recordStartupFailure(errorCode);
       nativeAdapters.showErrorBox(
         'Eky ei käynnistynyt',
         'Paikallista testisovellusta ei voitu käynnistää turvallisesti.',

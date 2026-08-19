@@ -8,6 +8,7 @@ import { join } from 'node:path';
 
 import type { Page } from '@playwright/test';
 
+import { readElectronE2eActiveWorkspace } from '../../src/environment/readElectronE2eActiveWorkspace.js';
 import { test, expect } from '../../src/fixtures/isolatedElectronTest.js';
 import { createApprovedInvoiceWithPdf } from '../../src/journeys/invoicingApiJourney.js';
 
@@ -28,6 +29,9 @@ interface InvoicePdfArchiveJournal {
 test('ARCHIVE-PDF-FAILURE-001 @critical @fault preserves delivery and queues a safe retry when the target disappears', async ({
   e2eElectron,
 }) => {
+  const activeWorkspace = readElectronE2eActiveWorkspace(
+    e2eElectron.runtime.userDataPath,
+  );
   const invoice = await createApprovedInvoiceWithPdf(e2eElectron.api);
   await enableInvoicePdfArchive(e2eElectron.page);
   rmSync(e2eElectron.runtime.invoicePdfArchiveDirectoryPath, {
@@ -49,7 +53,7 @@ test('ARCHIVE-PDF-FAILURE-001 @critical @fault preserves delivery and queues a s
       lastSafeErrorCode: 'ARCHIVE_DIRECTORY_UNAVAILABLE',
       pendingCount: 1,
     });
-  expect(readArchiveJournal(e2eElectron.runtime.userDataPath).tasks).toEqual([
+  expect(readArchiveJournal(activeWorkspace.archiveJournalPath).tasks).toEqual([
     expect.objectContaining({
       attemptCount: 1,
       invoiceNumber: invoice.invoiceNumber,
@@ -60,6 +64,7 @@ test('ARCHIVE-PDF-FAILURE-001 @critical @fault preserves delivery and queues a s
     existsSync(
       expectedArchivePath(
         e2eElectron.runtime.invoicePdfArchiveDirectoryPath,
+        activeWorkspace.workspaceId,
         invoice.invoiceNumber,
       ),
     ),
@@ -69,6 +74,9 @@ test('ARCHIVE-PDF-FAILURE-001 @critical @fault preserves delivery and queues a s
 test('ARCHIVE-PDF-RECOVERY-001 @critical @recovery archives a pending PDF after restart and manual retry', async ({
   e2eElectron,
 }) => {
+  const activeWorkspace = readElectronE2eActiveWorkspace(
+    e2eElectron.runtime.userDataPath,
+  );
   const invoice = await createApprovedInvoiceWithPdf(e2eElectron.api);
   await enableInvoicePdfArchive(e2eElectron.page);
   rmSync(e2eElectron.runtime.invoicePdfArchiveDirectoryPath, {
@@ -83,14 +91,15 @@ test('ARCHIVE-PDF-RECOVERY-001 @critical @recovery archives a pending PDF after 
       )
     ).status(),
   ).toBe(200);
-  expect(readArchiveJournal(e2eElectron.runtime.userDataPath).tasks).toHaveLength(
-    1,
-  );
+  expect(
+    readArchiveJournal(activeWorkspace.archiveJournalPath).tasks,
+  ).toHaveLength(1);
 
   await e2eElectron.restart();
   const status = await retryInvoicePdfArchive(e2eElectron.page);
   const archivePath = expectedArchivePath(
     e2eElectron.runtime.invoicePdfArchiveDirectoryPath,
+    activeWorkspace.workspaceId,
     invoice.invoiceNumber,
   );
 
@@ -102,7 +111,7 @@ test('ARCHIVE-PDF-RECOVERY-001 @critical @recovery archives a pending PDF after 
   expect(readFileSync(archivePath).subarray(0, 5).toString('ascii')).toBe(
     '%PDF-',
   );
-  expect(readArchiveJournal(e2eElectron.runtime.userDataPath).tasks).toEqual(
+  expect(readArchiveJournal(activeWorkspace.archiveJournalPath).tasks).toEqual(
     [],
   );
 });
@@ -110,10 +119,14 @@ test('ARCHIVE-PDF-RECOVERY-001 @critical @recovery archives a pending PDF after 
 test('ARCHIVE-PDF-CONFLICT-001 @critical @recovery preserves an existing conflicting PDF without automatic retry churn', async ({
   e2eElectron,
 }) => {
+  const activeWorkspace = readElectronE2eActiveWorkspace(
+    e2eElectron.runtime.userDataPath,
+  );
   const invoice = await createApprovedInvoiceWithPdf(e2eElectron.api);
   await enableInvoicePdfArchive(e2eElectron.page);
   const archivePath = expectedArchivePath(
     e2eElectron.runtime.invoicePdfArchiveDirectoryPath,
+    activeWorkspace.workspaceId,
     invoice.invoiceNumber,
   );
   const conflictingContent = Buffer.from('%PDF-conflicting-e2e-document');
@@ -134,9 +147,7 @@ test('ARCHIVE-PDF-CONFLICT-001 @critical @recovery preserves an existing conflic
       lastSafeErrorCode: 'ARCHIVE_FILE_CONFLICT',
       pendingCount: 1,
     });
-  const beforeRestart = readArchiveJournal(
-    e2eElectron.runtime.userDataPath,
-  );
+  const beforeRestart = readArchiveJournal(activeWorkspace.archiveJournalPath);
   expect(beforeRestart.tasks).toEqual([
     expect.objectContaining({
       attemptCount: 1,
@@ -146,7 +157,7 @@ test('ARCHIVE-PDF-CONFLICT-001 @critical @recovery preserves an existing conflic
   ]);
 
   await e2eElectron.restart();
-  const afterRestart = readArchiveJournal(e2eElectron.runtime.userDataPath);
+  const afterRestart = readArchiveJournal(activeWorkspace.archiveJournalPath);
 
   expect(afterRestart.tasks).toEqual(beforeRestart.tasks);
   expect(readFileSync(archivePath)).toEqual(conflictingContent);
@@ -234,23 +245,16 @@ async function retryInvoicePdfArchive(
   });
 }
 
-function readArchiveJournal(userDataPath: string): InvoicePdfArchiveJournal {
+function readArchiveJournal(journalPath: string): InvoicePdfArchiveJournal {
   return JSON.parse(
-    readFileSync(
-      join(
-        userDataPath,
-        'runtime',
-        'archive',
-        'invoice-pdf-archive-journal-v1.json',
-      ),
-      'utf8',
-    ),
+    readFileSync(journalPath, 'utf8'),
   ) as InvoicePdfArchiveJournal;
 }
 
 function expectedArchivePath(
   directoryPath: string,
+  workspaceId: string,
   invoiceNumber: string,
 ): string {
-  return join(directoryPath, `Lasku-${invoiceNumber}.pdf`);
+  return join(directoryPath, workspaceId, `Lasku-${invoiceNumber}.pdf`);
 }

@@ -4,8 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { startServer, type StartedServer } from '../src/http/server.js';
 import { resolveOperationalRuntimeIdentity } from '../src/observability/operationalRuntimeIdentity.js';
 import {
+  applyE2eBackendRuntimePathOverrides,
   readE2eBackendConfig,
   type E2eBackendConfig,
+  type E2eBackendRuntimePathOverrides,
 } from './e2eBackendConfig.js';
 import { E2eCompanyEmailSecretStore } from './e2eCompanyEmailSecretStore.js';
 import { E2eFakeSmtpProvider } from './e2eFakeSmtpProvider.js';
@@ -43,6 +45,8 @@ export interface StartE2eBackendOptions {
   companyEmailSecretStore?: E2eBackendSecretStore;
   deliveredInvoiceArchiveTaskSink?: E2eDeliveredInvoiceArchiveTaskSink;
   profileSnapshotStagingRoot?: string;
+  runtimePaths?: E2eBackendRuntimePathOverrides;
+  runtimeSessionSecret?: string;
   runtimeInstanceId?: string;
 }
 
@@ -59,7 +63,21 @@ export async function startE2eBackend(
   profileSnapshotRuntime?: E2eProfileSnapshotRuntime;
   server: StartedServer;
 }> {
-  const config = readE2eBackendConfig(configPath);
+  const sourceConfig = readE2eBackendConfig(configPath);
+  if (
+    options.runtimeSessionSecret !== undefined &&
+    options.runtimeSessionSecret !== sourceConfig.backend.sessionSecret
+  ) {
+    throw new Error('E2E backend runtime session does not match.');
+  }
+  const config =
+    options.runtimePaths === undefined
+      ? sourceConfig
+      : applyE2eBackendRuntimePathOverrides(
+          sourceConfig,
+          configPath,
+          options.runtimePaths,
+        );
   await installE2eDatabaseFault({
     databaseFilePath: config.paths.databaseFilePath,
     faultPlan: config.faultPlan,

@@ -100,6 +100,19 @@ describe('safe desktop early startup', () => {
     ).toBe('DESKTOP_SMOKE_RESTORE_COMPARISON_FAILED');
     expect(
       readSafeStartupFailureCode(
+        new Error('WORKSPACE_ADOPTION_RECOVERY_REQUIRED'),
+      ),
+    ).toBe('WORKSPACE_ADOPTION_RECOVERY_REQUIRED');
+    expect(
+      readSafeStartupFailureCode(
+        new Error('WORKSPACE_SWITCH_STORAGE_FAILED'),
+      ),
+    ).toBe('WORKSPACE_SWITCH_STORAGE_FAILED');
+    expect(
+      readSafeStartupFailureCode(new Error('WORKSPACE_ROOT_INVALID')),
+    ).toBe('WORKSPACE_ROOT_INVALID');
+    expect(
+      readSafeStartupFailureCode(
         new Error('DESKTOP_SMOKE_FAILED\nC:\\Users\\Example\\secret.txt'),
       ),
     ).toBe('DESKTOP_START_FAILED');
