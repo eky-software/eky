@@ -1,3 +1,5 @@
+import { resolve } from 'node:path';
+
 import type { ProfileRestoreActivationJournal } from '../../profileBackup/restore/profileRestoreActivationJournal.js';
 import type { LocalWorkspaceRegistryV1, WorkspaceId } from '../registry/workspaceRegistryTypes.js';
 import { createReadyWorkspaceEntry } from '../registry/workspaceRegistryMutations.js';
@@ -16,6 +18,9 @@ export const TEST_REPLACEMENT_MIGRATION_ID = 'b'.repeat(64);
 export const TEST_REPLACEMENT_CONTAINER_HASH = 'c'.repeat(64);
 export const TEST_REPLACEMENT_PASSWORD = 'synthetic-test-password';
 export const TEST_REPLACEMENT_CONTAINER_PATH = 'D:\\private\\synthetic.ekybackup';
+const TEST_REPLACEMENT_USER_DATA_ROOT = resolve(
+  'synthetic-workspace-replacement-user-data',
+);
 
 export function createWorkspaceBackupReplacementFixture(options?: {
   readonly activeWorkspaceId?: WorkspaceId | null;
@@ -297,7 +302,7 @@ export function createWorkspaceBackupReplacementFixture(options?: {
     registry,
     rootStore,
     runtimeReadiness,
-    userDataRoot: 'D:\\private\\eky-test',
+    userDataRoot: TEST_REPLACEMENT_USER_DATA_ROOT,
     workspaceRuntimeAbsence: runtimeAbsence,
   });
 
