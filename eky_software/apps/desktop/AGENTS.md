@@ -41,6 +41,12 @@ Mandatory boundaries:
   switching or adoption, read ADR-0011 and the local company workspace plan;
   Electron main may coordinate lifecycle and filesystem roots but must not
   open workspace SQLite or import a database driver
+- W5A workspace management remains internal to Electron main: do not add a
+  preload method, IPC channel, renderer bridge, web UI or public backend route;
+  W5B owns that separately approved capability boundary
+- use one main-owned installation-scoped `WorkspaceMaintenanceLease` for
+  backup, restore, update and workspace ownership changes; keep each module's
+  narrower local guard and preserve the documented lock order
 - workspace backup import must authenticate the container through the backup
   owner's private port, stop the active runtime before full SQLite validation,
   publish the root before the registry entry, and restore the previous runtime

@@ -2,13 +2,11 @@
 
 ## Tila
 
-Hyväksytty arkkitehtuurisopimus. W1:n registry, W2:n empty-creation ja W3:n
-uuden lineagen backup-import on toteutettu inerttinä, production-buildistä ja
-package-payloadista suljettuna lähdekoodina. W3:n private candidate-,
-forward-migration-, validointi-, julkaisu- ja restart-recovery-polut on
-todistettu rajatuilla testeillä ja system-E2E:llä. Tuotantocompositionia,
-startup-kytkentää, IPC:tä tai käyttäjälle näkyvää toimintoa ei ole vielä
-toteutettu.
+Hyväksytty arkkitehtuurisopimus. W1-W3:n registry-, creation-, import- ja
+replacement-foundation on toteutettu. W4 on kytkenyt registryyn sidotun
+startupin, legacy-profiilin adoption, workspace-kohtaiset runtime-resurssit
+sekä hallitun switch-polun production-compositioniin. Renderer-capabilitya tai
+käyttäjälle näkyvää usean workspacen hallintaa ei ole vielä toteutettu.
 
 Tämä päätös jatkaa ADR-0008:n yhden aktiivisen yritystyötilan mallia. Se ei
 kumoa ADR-0008:n R0-rajoja, vaan määrittää hallitun kasvupolun useaan erilliseen
@@ -31,6 +29,22 @@ Electron main omistaa:
 Renderer ei saa tietokanta-, artifact-, backup-, salaisuus- tai
 työtilahakemistojen polkuja. Renderer saa vain rajatun, validoidun ja
 Electron mainin tuntemaan `workspaceId`-arvoon perustuvan capabilityn.
+
+## W5:n toimitusraja
+
+W5 toimitetaan kahtena erillisenä porttina:
+
+- W5A toteuttaa vain Electron mainin sisäisen workspace management
+  -kyvykkyyden, production-lifecycle- ja candidate-adapterit sekä yhden
+  installation-scoped maintenance-auktoriteetin. W5A ei lisää preloadia,
+  IPC:tä, renderer-capabilitya, web-UI:ta tai backendin julkista reittiä.
+- W5B lisää myöhemmin trusted main frame -rajatun IPC/preload-sopimuksen ja
+  käyttäjälle näkyvän workspace-hallinnan erillisellä hyväksymisportilla.
+
+Mainin sisäinen hallintapalvelu saa palauttaa vain rajatun status- ja
+workspace-projektion. Polut, `companyId`, lineage, runtime-session,
+salaisuusviitteet, journalit, operation-tunnisteet ja raakavirheet eivät kuulu
+sopimukseen. W5A ei tee sisäisestä kyvykkyydestä rendererille käytettävää.
 
 ## Käsitteet ja identiteetit
 

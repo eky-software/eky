@@ -187,6 +187,10 @@ W4:n multi-workspace-runtime jakaa pysyvän desktop-tilan kahteen omistukseen:
 Renderer, web-featuret ja backendin business-API eivät muodosta näitä polkuja.
 Electron main ratkaisee tai adoptoi aktiivisen workspacen ennen sessionia ja
 backendia. Vain yksi workspace saa omistaa business-SQLite-kahvan kerrallaan.
+W5A lisää tämän päälle vain main-prosessin sisäisen management-palvelun,
+production-lifecycle- ja private candidate -adapterit sekä yhden yhteisen
+installation-scoped maintenance-auktoriteetin. Preload, IPC, renderer ja web-
+hallinta kuuluvat erilliseen W5B-vaiheeseen.
 
 Tarkka kansiorakenne hyväksytään spiken yhteydessä sen perusteella, mitkä
 vastuut todella tarvitaan. Yleisiä `utils`-, `helpers`- tai `common`-tiedostoja
@@ -469,8 +473,9 @@ ei saa odottaa jälkikäteen tehtävää backup- tai recovery-korjausta.
 R0:n alkuperäinen yhden profiilin data adoptoidaan W4:ssä ADR-0011:n mukaiseen
 workspace-rakenteeseen copy -> validate -> atomic publish -ketjulla.
 Production-startup käyttää tämän jälkeen registryyn sidottua aktiivista
-workspacea, mutta käyttäjälle näkyvä usean workspacen hallinta julkaistaan
-vasta W5-W6-porttien jälkeen. Vain yksi profiili saa olla auki kerrallaan ja
+workspacea. Main-prosessin sisäinen hallintafoundation kuuluu W5A:han, mutta
+käyttäjälle näkyvä usean workspacen hallinta julkaistaan vasta W5B-W6-
+porttien jälkeen. Vain yksi profiili saa olla auki kerrallaan ja
 edellisen backend, SQLite-yhteys sekä runtime-session suljetaan ennen
 seuraavan avaamista.
 Backup/Restore-tuotantokoodi toteutetaan erikseen
