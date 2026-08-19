@@ -1,5 +1,5 @@
 import { promises as fileSystem } from 'node:fs';
-import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { isAbsolute, normalize, parse, relative, resolve, sep } from 'node:path';
 
 const privateDirectoryPermissionMask = 0o077;
 const untrustedWritePermissionMask = 0o022;
@@ -48,7 +48,14 @@ export function resolveAbsoluteWorkspaceCandidatePath(path: unknown): string {
   if (typeof path !== 'string' || path.includes('\0') || !isAbsolute(path)) {
     throw new Error('WORKSPACE_CANDIDATE_PATH_INVALID');
   }
-  return resolve(path);
+  const pathWithoutOptionalDirectorySeparator = stripDirectorySeparator(path);
+  if (
+    stripDirectorySeparator(normalize(path)) !==
+    pathWithoutOptionalDirectorySeparator
+  ) {
+    throw new Error('WORKSPACE_CANDIDATE_PATH_INVALID');
+  }
+  return resolve(pathWithoutOptionalDirectorySeparator);
 }
 
 export function assertWorkspaceCandidateContainedPath(
@@ -75,4 +82,10 @@ export function workspaceCandidatePathsAreEqual(
   return process.platform === 'win32'
     ? firstResolved.toLowerCase() === secondResolved.toLowerCase()
     : firstResolved === secondResolved;
+}
+
+function stripDirectorySeparator(path: string): string {
+  const root = parse(path).root;
+  if (path.length <= root.length || !path.endsWith(sep)) return path;
+  return path.slice(0, -1);
 }

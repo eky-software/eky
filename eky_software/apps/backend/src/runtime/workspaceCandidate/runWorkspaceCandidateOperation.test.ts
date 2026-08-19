@@ -151,7 +151,7 @@ describe('runWorkspaceCandidateOperation', () => {
       const root = await createPrivateTempRoot();
       const candidate = await createCandidateLayout(join(root, 'candidate'));
       const writableMigrations = join(root, 'writable-migrations');
-      await mkdir(writableMigrations, { mode: 0o777 });
+      await cp(migrationsDirectory, writableMigrations, { recursive: true });
       await chmod(writableMigrations, 0o777);
 
       await expect(
