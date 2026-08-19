@@ -8,6 +8,6 @@ export function createE2eRunRoot(): string {
   const baseRoot = resolve(tmpdir(), e2eRootDirectoryName);
   mkdirSync(baseRoot, { mode: 0o700, recursive: true });
 
-  const runRoot = mkdtempSync(join(realpathSync(baseRoot), 'run-'));
-  return realpathSync(runRoot);
+  const runRoot = mkdtempSync(join(realpathSync.native(baseRoot), 'run-'));
+  return realpathSync.native(runRoot);
 }

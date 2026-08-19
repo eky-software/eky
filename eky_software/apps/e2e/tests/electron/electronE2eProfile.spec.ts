@@ -1,4 +1,4 @@
-import { lstatSync, rmSync, statSync } from 'node:fs';
+import { lstatSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { isAbsolute, relative, sep } from 'node:path';
 
 import { test, expect } from '@playwright/test';
@@ -16,6 +16,7 @@ test('DESK-PROFILE-001 @critical creates an isolated profile without symbolic li
 
     for (const path of Object.values(profile)) {
       expect(isAbsolute(path)).toBe(true);
+      expect(path).toBe(realpathSync.native(path));
       expect(statSync(path).isDirectory()).toBe(true);
       expect(lstatSync(path).isSymbolicLink()).toBe(false);
       const relativePath = relative(runRoot, path);

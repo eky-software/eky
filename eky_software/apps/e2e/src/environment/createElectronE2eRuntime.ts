@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import {
   cpSync,
   mkdirSync,
+  realpathSync,
   writeFileSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -123,5 +124,5 @@ export function resolveElectronE2eApplicationPath(): string {
 
 function createPrivateDirectory(path: string): string {
   mkdirSync(path, { mode: 0o700, recursive: true });
-  return path;
+  return realpathSync.native(path);
 }
