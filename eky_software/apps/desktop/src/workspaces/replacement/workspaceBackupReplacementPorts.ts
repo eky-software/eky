@@ -35,6 +35,10 @@ export interface WorkspaceReplacementRuntimeReadinessPort {
   }): Promise<Readonly<WorkspaceReplacementRuntimeReadiness>>;
 }
 
+export interface WorkspaceReplacementRuntimeHandoffPort {
+  requestRelaunch(): void;
+}
+
 export interface WorkspaceReplacementActivationAuthority {
   readonly journalStore: Pick<
     ProfileRestoreActivationJournalStore,

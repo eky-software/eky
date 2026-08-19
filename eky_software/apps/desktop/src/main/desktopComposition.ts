@@ -70,6 +70,7 @@ import {
   loadApplicationWindow,
 } from './applicationWindow.js';
 import { registerApplicationProtocol } from './applicationProtocol.js';
+import { BackendRequestQuiescence } from './backendRequestQuiescence.js';
 import { readSafeStartupFailureCode } from './earlyStartup.js';
 import { createBackendRequestHeaders } from './protocolPolicy.js';
 import { assertDifferentRuntimeSessionRejected } from './runtimeSessionAcceptanceValidation.js';
@@ -147,6 +148,10 @@ import {
 } from '../workspaces/runtime/resolveActiveWorkspaceStartup.js';
 import { WorkspaceSwitchError } from '../workspaces/switch/workspaceSwitchError.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
+import { deriveWorkspaceBackupReplacementRuntimePaths } from '../workspaces/replacement/workspaceBackupReplacementPaths.js';
+import { createWorkspaceBackupReplacementStartupRecovery } from '../workspaces/replacement/workspaceBackupReplacementStartupRecovery.js';
+import { DeferredWorkspaceRuntimeRelaunch } from '../workspaces/runtime/deferredWorkspaceRuntimeRelaunch.js';
+import { MainOwnedActiveWorkspaceLifecycle } from '../workspaces/runtime/mainOwnedActiveWorkspaceLifecycle.js';
 
 export interface DesktopLifecycleHandle {
   applicationWindow: BrowserWindow;
@@ -350,6 +355,10 @@ async function startDesktopCompositionRuntime({
   );
   const workspaceMaintenanceLease =
     new InMemoryWorkspaceMaintenanceLease();
+  const backendRequestQuiescence = new BackendRequestQuiescence();
+  const workspaceRuntimeRelaunch = new DeferredWorkspaceRuntimeRelaunch(
+    options.relaunchApplication,
+  );
   const localUpdateRuntimePaths = createLocalUpdateRuntimePaths({
     legacyRuntimeRoot: installationRuntimeRoot,
     userDataPath: options.userDataPath,
@@ -403,6 +412,14 @@ async function startDesktopCompositionRuntime({
       journalStore: profileRestoreActivationJournalStore,
       observer: profileRecoveryOperationalObserver,
       transaction: profileRestoreActivationTransaction,
+    });
+  const workspaceReplacementStartupRecovery =
+    createWorkspaceBackupReplacementStartupRecovery({
+      observer: profileRecoveryOperationalObserver,
+      paths: deriveWorkspaceBackupReplacementRuntimePaths(
+        options.userDataPath,
+        activeWorkspace.workspaceId,
+      ),
     });
   const secretFilePath = join(
     workspaceRuntimeRoot,
@@ -596,16 +613,23 @@ async function startDesktopCompositionRuntime({
       }),
     ),
   );
-  const [pendingProfileRestoreJournal, pendingUpdateJournal] =
+  const [
+    pendingProfileRestoreJournal,
+    pendingUpdateJournal,
+    pendingWorkspaceReplacementJournal,
+  ] =
     await Promise.all([
       profileRestoreActivationJournalStore.read(),
       updateJournalStore.read(),
+      workspaceReplacementStartupRecovery.journalStore.read(),
     ]);
   let startupRecoveryAuthority;
   try {
     startupRecoveryAuthority = resolveStartupRecoveryAuthority({
       profileRestoreJournal: pendingProfileRestoreJournal,
       updateJournal: pendingUpdateJournal,
+      workspaceReplacementRecoveryPending:
+        pendingWorkspaceReplacementJournal !== undefined,
     });
   } catch (error) {
     if (!(error instanceof StartupRecoveryAuthorityConflictError)) {
@@ -662,8 +686,12 @@ async function startDesktopCompositionRuntime({
       showSaveDialog: dependencies.showSaveDialog,
     });
   }
+  const activeProfileRestoreStartupRecovery =
+    startupRecoveryAuthority === 'workspaceReplacement'
+      ? workspaceReplacementStartupRecovery.recovery
+      : profileRestoreStartupRecovery;
   const profileRestoreStartupMode =
-    await profileRestoreStartupRecovery.prepareBeforeBackend();
+    await activeProfileRestoreStartupRecovery.prepareBeforeBackend();
   const restoredProfileMigrationAuthorized =
     startupRecoveryAuthority === 'profileRestore' &&
     profileRestoreStartupMode === 'validateRestoredProfile';
@@ -806,7 +834,7 @@ async function startDesktopCompositionRuntime({
             throw new Error('UPDATE_BUSINESS_ROLLBACK_RECOVERY_REQUIRED');
           }
           const restoreResult =
-            await profileRestoreStartupRecovery.validateAfterBackend({
+            await activeProfileRestoreStartupRecovery.validateAfterBackend({
               mode: profileRestoreStartupMode,
               stopBackend: control.stopStartupRuntime,
               async validateActiveProfile() {
@@ -918,7 +946,7 @@ async function startDesktopCompositionRuntime({
     await profileSnapshotBrokerClient.waitUntilReady();
     await profileSnapshotBrokerClient.getStatus();
     const restoreStartupResult =
-      await profileRestoreStartupRecovery.validateAfterBackend({
+      await activeProfileRestoreStartupRecovery.validateAfterBackend({
         mode: profileRestoreStartupMode,
         stopBackend: () => backendHandle!.stop(),
         async validateActiveProfile() {
@@ -1009,6 +1037,7 @@ async function startDesktopCompositionRuntime({
 
   registerApplicationProtocol({
     backendOrigin: `http://127.0.0.1:${backendHandle.port}`,
+    backendRequestAdmission: backendRequestQuiescence,
     confirmInvoiceEmailPreparation:
       deliveryConfirmation.confirmInvoiceEmailPreparation,
     confirmSmtpTestPreparation:
@@ -1316,6 +1345,42 @@ async function startDesktopCompositionRuntime({
     deliveryConfirmation.showApplicationError,
   );
 
+  const disposeWorkspaceRuntimeCapabilities = async (): Promise<void> => {
+    pdfPreviewController?.dispose();
+    pdfPreviewController = undefined;
+    operationalLogFolderCapability?.dispose();
+    operationalLogFolderCapability = undefined;
+    invoicePdfArchiveCapability?.dispose();
+    invoicePdfArchiveCapability = undefined;
+    supportBundleCapability?.dispose();
+    supportBundleCapability = undefined;
+    localUpdateSelectionCapability?.dispose();
+    localUpdateSelectionCapability = undefined;
+    profileBackupCapability?.dispose();
+    profileBackupCapability = undefined;
+    backupPasswordWindowController?.dispose();
+    backupPasswordWindowController = undefined;
+  };
+  const closeWorkspaceRuntimeBrokers = async (): Promise<void> => {
+    profileSnapshotBrokerClient.close();
+    invoicePdfArchiveBrokerHandle.close();
+    secretBrokerHandle.close();
+  };
+  const activeWorkspaceLifecycle = new MainOwnedActiveWorkspaceLifecycle(
+    activeWorkspace.workspaceId,
+    backendRequestQuiescence,
+    {
+      closeBrokers: closeWorkspaceRuntimeBrokers,
+      disposeCapabilities: disposeWorkspaceRuntimeCapabilities,
+      async stopBackend() {
+        await backendHandle.stop();
+        await recoveryPointScheduler.markCleanShutdown();
+      },
+      stopRecoveryPointScheduler: () => recoveryPointScheduler.stopChecks(),
+    },
+    workspaceRuntimeRelaunch,
+  );
+
   const lifecycleHandle: DesktopLifecycleHandle = {
     applicationWindow: mainWindow,
     focusApplicationWindow() {
@@ -1334,28 +1399,20 @@ async function startDesktopCompositionRuntime({
           desktopOperationalIdentity,
         ),
       );
-      pdfPreviewController?.dispose();
-      pdfPreviewController = undefined;
-      operationalLogFolderCapability?.dispose();
-      operationalLogFolderCapability = undefined;
-      invoicePdfArchiveCapability?.dispose();
-      invoicePdfArchiveCapability = undefined;
-      supportBundleCapability?.dispose();
-      supportBundleCapability = undefined;
-      localUpdateSelectionCapability?.dispose();
-      localUpdateSelectionCapability = undefined;
-      profileBackupCapability?.dispose();
-      profileBackupCapability = undefined;
-      backupPasswordWindowController?.dispose();
-      backupPasswordWindowController = undefined;
-
       try {
-        await recoveryPointScheduler.stopChecks();
-        await backendHandle.stop();
-        await recoveryPointScheduler.markCleanShutdown();
-        profileSnapshotBrokerClient.close();
-        invoicePdfArchiveBrokerHandle.close();
-        secretBrokerHandle.close();
+        const runtimeState = activeWorkspaceLifecycle.readState();
+        if (runtimeState === 'active') {
+          await activeWorkspaceLifecycle.quiesceWrites(
+            activeWorkspace.workspaceId,
+          );
+        }
+        if (activeWorkspaceLifecycle.readState() === 'quiesced') {
+          await activeWorkspaceLifecycle.stopAndProveHandlesClosed(
+            activeWorkspace.workspaceId,
+          );
+        } else if (activeWorkspaceLifecycle.readState() !== 'stopped') {
+          throw new Error('WORKSPACE_RUNTIME_RECOVERY_REQUIRED');
+        }
         desktopOperationalLogger.write(
           createDesktopOperationalEvent(
             {
@@ -1367,9 +1424,9 @@ async function startDesktopCompositionRuntime({
         );
       } catch {
         await recoveryPointScheduler.stopChecks().catch(() => undefined);
-        profileSnapshotBrokerClient.close();
-        invoicePdfArchiveBrokerHandle.close();
-        secretBrokerHandle.close();
+        await disposeWorkspaceRuntimeCapabilities().catch(() => undefined);
+        await backendHandle.stop().catch(() => undefined);
+        await closeWorkspaceRuntimeBrokers().catch(() => undefined);
         desktopOperationalLogger.write(
           createDesktopOperationalEvent(
             {

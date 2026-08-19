@@ -4,7 +4,8 @@ import type { UpdateJournal } from './updateJournal.js';
 export type StartupRecoveryAuthority =
   | 'none'
   | 'profileRestore'
-  | 'updateBusinessRollback';
+  | 'updateBusinessRollback'
+  | 'workspaceReplacement';
 
 export class StartupRecoveryAuthorityConflictError extends Error {
   constructor() {
@@ -24,7 +25,22 @@ export function resolveStartupRecoveryAuthority(input: {
     | Readonly<ProfileRestoreActivationJournal>
     | undefined;
   updateJournal: Readonly<UpdateJournal> | undefined;
+  workspaceReplacementRecoveryPending: boolean;
 }): StartupRecoveryAuthority {
+  const hasNonterminalUpdate =
+    input.updateJournal !== undefined &&
+    !terminalUpdateStates.has(input.updateJournal.state);
+
+  if (input.workspaceReplacementRecoveryPending) {
+    if (
+      input.profileRestoreJournal !== undefined ||
+      hasNonterminalUpdate
+    ) {
+      throw new StartupRecoveryAuthorityConflictError();
+    }
+    return 'workspaceReplacement';
+  }
+
   if (input.profileRestoreJournal === undefined) {
     return 'none';
   }
@@ -37,10 +53,7 @@ export function resolveStartupRecoveryAuthority(input: {
     return 'updateBusinessRollback';
   }
 
-  if (
-    input.updateJournal !== undefined &&
-    !terminalUpdateStates.has(input.updateJournal.state)
-  ) {
+  if (hasNonterminalUpdate) {
     throw new StartupRecoveryAuthorityConflictError();
   }
 

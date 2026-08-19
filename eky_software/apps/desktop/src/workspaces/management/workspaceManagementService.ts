@@ -25,6 +25,7 @@ import type {
   WorkspaceManagementStatusV1,
 } from './workspaceManagementTypes.js';
 import type { WorkspaceLabelRenameResult } from './workspaceLabelRename.js';
+import type { WorkspaceRuntimeRelaunchCompletion } from '../runtime/deferredWorkspaceRuntimeRelaunch.js';
 
 export interface EmptyWorkspaceCreationCommand {
   create(
@@ -65,6 +66,7 @@ export interface WorkspaceManagementServiceOptions {
   readonly registry: Pick<WorkspaceRegistryPort, 'read'>;
   readonly renameWorkspace: WorkspaceLabelRenameCommand;
   readonly replaceActive: WorkspaceBackupReplacementCommand;
+  readonly runtimeRelaunchCompletion?: WorkspaceRuntimeRelaunchCompletion;
   readonly switchWorkspace: WorkspaceSwitchCommand;
 }
 
@@ -163,6 +165,7 @@ export class WorkspaceManagementService {
     }
     this.activeOperation = true;
     try {
+      await this.options.operationGuard.assertNoUnresolvedOperations();
       const result = await operation();
       this.record({
         correlationId,
@@ -192,6 +195,7 @@ export class WorkspaceManagementService {
       throw mapped;
     } finally {
       this.activeOperation = false;
+      this.options.runtimeRelaunchCompletion?.complete();
     }
   }
 

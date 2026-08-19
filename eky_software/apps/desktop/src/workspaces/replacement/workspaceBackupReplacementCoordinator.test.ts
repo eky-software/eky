@@ -64,6 +64,67 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
     expect(fixture.lease.held).toBe(false);
   });
 
+  it('hands the activated candidate to startup recovery before accepting it', async () => {
+    const fixture = createWorkspaceBackupReplacementFixture({
+      useRuntimeHandoff: true,
+    });
+
+    await expect(fixture.coordinator.replace(replacementInput)).resolves.toEqual({
+      migrationChainIdentity: TEST_REPLACEMENT_MIGRATION_ID,
+      profileId: TEST_REPLACEMENT_PROFILE_ID,
+      workspaceId: TEST_REPLACEMENT_WORKSPACE_ID,
+    });
+
+    expect(fixture.events.slice(-3)).toEqual([
+      'activation.replace',
+      'runtimeHandoff.request',
+      'lease.release',
+    ]);
+    expect(fixture.events).not.toContain('lifecycle.ensure');
+    expect(fixture.events).not.toContain('runtime.validate');
+    expect(fixture.events).not.toContain('activation.accept');
+    expect(fixture.activation.journal?.phase).toBe('validationStarting');
+    expect(fixture.runtimeHandoff.requests).toBe(1);
+    expect(fixture.lease.held).toBe(false);
+  });
+
+  it('leaves a rolled-back journal for startup recovery after an activated handoff failure', async () => {
+    const fixture = createWorkspaceBackupReplacementFixture({
+      useRuntimeHandoff: true,
+    });
+    fixture.activation.fail = 'replace';
+
+    await expect(
+      fixture.coordinator.replace(replacementInput),
+    ).rejects.toBeInstanceOf(WorkspaceBackupReplacementError);
+
+    expect(fixture.events).toContain('activation.rollback');
+    expect(fixture.events).toContain('runtimeHandoff.request');
+    expect(fixture.events).not.toContain('activation.clearRolledBack');
+    expect(fixture.events.at(-1)).toBe('lease.release');
+    expect(fixture.activation.journal?.phase).toBe('rolledBack');
+  });
+
+  it('relaunches the unchanged workspace only after pre-activation cleanup', async () => {
+    const fixture = createWorkspaceBackupReplacementFixture({
+      useRuntimeHandoff: true,
+    });
+    fixture.candidate.failure = 'migration';
+
+    await expectReplacementError(
+      fixture.coordinator.replace(replacementInput),
+      'WORKSPACE_REPLACEMENT_MIGRATION_FAILED',
+      'candidateMigration',
+    );
+
+    expect(fixture.events.slice(-3)).toEqual([
+      'root.discard',
+      'runtimeHandoff.request',
+      'lease.release',
+    ]);
+    expect(fixture.activation.journal).toBeUndefined();
+  });
+
   it('rejects a wrong lineage before the lease, quiesce or workspace writes', async () => {
     const fixture = createWorkspaceBackupReplacementFixture({
       profileId: 'f'.repeat(64),

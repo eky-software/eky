@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { InMemoryWorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
 import type { WorkspaceId } from '../registry/workspaceRegistryTypes.js';
 import { WorkspaceManagementError } from './workspaceManagementError.js';
+import { WorkspaceManagementRecoveryRequiredError } from './workspaceManagementOperationGuard.js';
 import { WorkspaceManagementService } from './workspaceManagementService.js';
 
 const activeId = '00000000-0000-4000-8000-000000000001' as WorkspaceId;
@@ -123,9 +124,62 @@ describe('workspace management service', () => {
       operationState: 'recoveryRequired',
     });
   });
+
+  it('blocks every mutation before its command when recovery is unresolved', async () => {
+    const create = vi.fn(async () => ({
+      workspaceId: activeId,
+      workspaceLabel: 'Luotu',
+    }));
+    const service = createService({
+      assertNoUnresolvedOperations: async () => {
+        throw new WorkspaceManagementRecoveryRequiredError();
+      },
+      create,
+    });
+
+    await expect(service.createEmpty('Luotu')).rejects.toMatchObject({
+      code: 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED',
+    });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('completes a deferred runtime relaunch after the command settles', async () => {
+    const order: string[] = [];
+    const service = createService({
+      create: async () => {
+        order.push('operation');
+        return { workspaceId: activeId, workspaceLabel: 'Luotu' };
+      },
+      runtimeRelaunchCompletion: {
+        complete() {
+          order.push('relaunch.complete');
+        },
+      },
+    });
+
+    await service.createEmpty('Luotu');
+
+    expect(order).toEqual(['operation', 'relaunch.complete']);
+  });
+
+  it('completes a deferred recovery relaunch after a failed command', async () => {
+    const complete = vi.fn();
+    const service = createService({
+      create: async () => {
+        throw new Error('private failure');
+      },
+      runtimeRelaunchCompletion: { complete },
+    });
+
+    await expect(service.createEmpty('Luotu')).rejects.toMatchObject({
+      code: 'WORKSPACE_MANAGEMENT_CREATE_FAILED',
+    });
+    expect(complete).toHaveBeenCalledTimes(1);
+  });
 });
 
 function createService(overrides: {
+  assertNoUnresolvedOperations?: () => Promise<void>;
   create?: (label: unknown) => Promise<{
     workspaceId: WorkspaceId;
     workspaceLabel: string;
@@ -148,6 +202,7 @@ function createService(overrides: {
     workspaceId: WorkspaceId;
   }>;
   switchTo?: (workspaceId: WorkspaceId) => Promise<void>;
+  runtimeRelaunchCompletion?: { complete(): void };
 } = {}): WorkspaceManagementService {
   const maintenance = new InMemoryWorkspaceMaintenanceLease();
   const observer =
@@ -169,7 +224,9 @@ function createService(overrides: {
     maintenanceState: maintenance,
     ...(observer === undefined ? {} : { observer }),
     operationGuard: {
-      assertNoUnresolvedOperations: async () => undefined,
+      assertNoUnresolvedOperations:
+        overrides.assertNoUnresolvedOperations ??
+        (async () => undefined),
       readRecoveryState: async () => overrides.recoveryState ?? 'clear',
     },
     registry: {
@@ -206,6 +263,12 @@ function createService(overrides: {
           workspaceId: activeId,
         })),
     },
+    ...(overrides.runtimeRelaunchCompletion === undefined
+      ? {}
+      : {
+          runtimeRelaunchCompletion:
+            overrides.runtimeRelaunchCompletion,
+        }),
     switchWorkspace: {
       switchTo: overrides.switchTo ?? (async () => undefined),
     },
