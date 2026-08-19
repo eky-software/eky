@@ -38,10 +38,10 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
       'guard.assert',
       'activationJournal.read',
       'registry.read',
+      'recoveryPoint.preRestore',
       'lifecycle.quiesce',
       'lifecycle.stop',
       'runtime.absent',
-      'recoveryPoint.preRestore',
       'root.prepare',
       'backup.stage',
       'candidate.migrate',
@@ -222,7 +222,9 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
     );
     expect(fixture.rootStore.prepared).toBe(false);
     expect(fixture.lifecycle.runningOwners).toBe(1);
-    expect(fixture.runtimeReadiness.calls).toBe(1);
+    expect(fixture.runtimeReadiness.calls).toBe(0);
+    expect(fixture.events).not.toContain('lifecycle.quiesce');
+    expect(fixture.events).not.toContain('lifecycle.stop');
   });
 
   it('rejects a source changed between preflight and stage and restarts the old runtime', async () => {
