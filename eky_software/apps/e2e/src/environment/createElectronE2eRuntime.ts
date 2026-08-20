@@ -32,9 +32,14 @@ const repositoryRoot = resolve(import.meta.dirname, '../../../..');
 export function createElectronE2eRuntime(input: {
   backendPort: number;
   dialogMode?: 'accept' | 'cancel';
+  nativeOpenDialogMode?: 'accept' | 'cancel';
+  nativeOpenDialogPurpose?:
+    | 'invoicePdfArchive'
+    | 'workspaceBackupImport';
   paths: E2eWorkerPaths;
   scenarioId: string;
   startupMode?: 'backendStartFailure' | 'normal';
+  workspaceBackupPath?: string;
 }): ElectronE2eRuntime {
   const applicationPath = createPrivateDirectory(
     join(input.paths.workerRoot, 'desktop-application'),
@@ -49,11 +54,21 @@ export function createElectronE2eRuntime(input: {
   const applicationDistPath = createPrivateDirectory(
     join(applicationPath, 'dist'),
   );
+  const backupPasswordPreloadDirectoryPath = createPrivateDirectory(
+    join(applicationDistPath, 'profileBackup', 'passwordWindow'),
+  );
   const applicationWebPath = join(applicationPath, 'web');
   cpSync(
     resolve(repositoryRoot, 'apps/desktop/dist/preload'),
     join(applicationDistPath, 'preload'),
     { recursive: true },
+  );
+  cpSync(
+    resolve(
+      repositoryRoot,
+      'apps/desktop/dist/profileBackup/passwordWindow/backupPasswordPreload.cjs',
+    ),
+    join(backupPasswordPreloadDirectoryPath, 'backupPasswordPreload.cjs'),
   );
   cpSync(resolve(repositoryRoot, 'apps/web/dist'), applicationWebPath, {
     recursive: true,
@@ -94,8 +109,12 @@ export function createElectronE2eRuntime(input: {
       sessionSecret: backendConfig.backend.sessionSecret,
     },
     dialogMode: input.dialogMode ?? 'accept',
-    formatVersion: 1,
+    formatVersion: 2,
     marker: 'EKY_E2E',
+    nativeOpenDialog: {
+      mode: input.nativeOpenDialogMode ?? 'accept',
+      purpose: input.nativeOpenDialogPurpose ?? 'invoicePdfArchive',
+    },
     paths: {
       applicationPath,
       invoicePdfArchiveDirectoryPath,
@@ -103,7 +122,9 @@ export function createElectronE2eRuntime(input: {
       resourcesPath,
       supportBundlePath,
       userDataPath,
+      workspaceBackupPath: input.workspaceBackupPath ?? null,
     },
+    relaunchMode: 'playwrightManaged',
     runtimeInstanceId,
     runtimeRoot: input.paths.workerRoot,
     scenarioId: input.scenarioId,

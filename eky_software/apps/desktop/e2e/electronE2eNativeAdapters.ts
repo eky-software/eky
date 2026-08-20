@@ -36,6 +36,7 @@ export function createElectronE2eNativeAdapters(
   config: ElectronE2eConfig,
 ): NativeAdapterDependencies & {
   recordStartupFailure(errorCode: string): void;
+  recordWorkspaceRelaunchRequested(): void;
   snapshot(): ElectronE2eNativeAdapterSnapshot;
 } {
   const openedPaths: string[] = [];
@@ -72,6 +73,9 @@ export function createElectronE2eNativeAdapters(
         operation: 'startupFailure',
       });
     },
+    recordWorkspaceRelaunchRequested() {
+      record({ operation: 'workspaceRelaunchRequested' });
+    },
     showErrorBox(title, message) {
       errorBoxCount += 1;
       record({
@@ -98,13 +102,19 @@ export function createElectronE2eNativeAdapters(
     },
     async showOpenDialog(
       _owner: BrowserWindow,
-      _options: OpenDialogOptions,
+      options: OpenDialogOptions,
     ): Promise<OpenDialogReturnValue> {
       openDialogCount += 1;
-      record({ operation: 'showOpenDialog' });
+      assertExpectedOpenDialog(config, options);
+      const canceled = config.nativeOpenDialog.mode === 'cancel';
+      record({
+        canceled,
+        operation: 'showOpenDialog',
+        purpose: config.nativeOpenDialog.purpose,
+      });
       return {
-        canceled: false,
-        filePaths: [config.paths.invoicePdfArchiveDirectoryPath],
+        canceled,
+        filePaths: canceled ? [] : [resolveOpenDialogPath(config)],
       };
     },
     async showSaveDialog(
@@ -128,6 +138,58 @@ export function createElectronE2eNativeAdapters(
       };
     },
   };
+}
+
+function assertExpectedOpenDialog(
+  config: ElectronE2eConfig,
+  options: OpenDialogOptions,
+): void {
+  if (config.nativeOpenDialog.purpose === 'invoicePdfArchive') {
+    if (
+      options.title !== 'Valitse PDF-kopiokansio' ||
+      options.message !==
+        'Valitse kansio toimitettujen laskujen PDF-kopioille' ||
+      !stringArraysEqual(options.properties, [
+        'openDirectory',
+        'createDirectory',
+      ]) ||
+      options.filters !== undefined
+    ) {
+      throw new Error('ELECTRON_E2E_OPEN_DIALOG_CONTRACT_REJECTED');
+    }
+    return;
+  }
+
+  if (
+    options.title !== 'Tuo yritys Eky-varmuuskopiosta' ||
+    !stringArraysEqual(options.properties, ['openFile']) ||
+    options.filters?.length !== 1 ||
+    options.filters[0]?.name !== 'Eky-varmuuskopio' ||
+    !stringArraysEqual(options.filters[0]?.extensions, ['ekybackup'])
+  ) {
+    throw new Error('ELECTRON_E2E_OPEN_DIALOG_CONTRACT_REJECTED');
+  }
+}
+
+function resolveOpenDialogPath(config: ElectronE2eConfig): string {
+  if (config.nativeOpenDialog.purpose === 'invoicePdfArchive') {
+    return config.paths.invoicePdfArchiveDirectoryPath;
+  }
+  if (config.paths.workspaceBackupPath === null) {
+    throw new Error('ELECTRON_E2E_WORKSPACE_BACKUP_PATH_MISSING');
+  }
+  return config.paths.workspaceBackupPath;
+}
+
+function stringArraysEqual(
+  actual: readonly string[] | undefined,
+  expected: readonly string[],
+): boolean {
+  return (
+    actual !== undefined &&
+    actual.length === expected.length &&
+    actual.every((value, index) => value === expected[index])
+  );
 }
 
 function classifyErrorBox(
