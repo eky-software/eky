@@ -131,9 +131,9 @@ export class WorkspaceBackupReplacementCoordinator {
       );
       assertWorkspaceReplacementLineage(target.entry, preflight.profileId);
 
-      await this.createPreRestore(operationId, targetWorkspaceId);
       await this.quiesceRuntime(targetWorkspaceId);
       writesQuiesced = true;
+      await this.createPreRestore(operationId, targetWorkspaceId);
       await this.stopRuntime(targetWorkspaceId);
       await this.assertRuntimeAbsent();
       await this.prepareCandidate(paths);

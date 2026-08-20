@@ -38,8 +38,8 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
       'guard.assert',
       'activationJournal.read',
       'registry.read',
-      'recoveryPoint.preRestore',
       'lifecycle.quiesce',
+      'recoveryPoint.preRestore',
       'lifecycle.stop',
       'runtime.absent',
       'root.prepare',
@@ -211,8 +211,10 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
     expect(fixture.events).not.toContain('lifecycle.quiesce');
   });
 
-  it('creates the preRestore point before writing private staging', async () => {
-    const fixture = createWorkspaceBackupReplacementFixture();
+  it('quiesces accepted writes before creating preRestore and stops only after it succeeds', async () => {
+    const fixture = createWorkspaceBackupReplacementFixture({
+      useRuntimeHandoff: true,
+    });
     fixture.preRestore.fail = true;
 
     await expectReplacementError(
@@ -223,8 +225,15 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
     expect(fixture.rootStore.prepared).toBe(false);
     expect(fixture.lifecycle.runningOwners).toBe(1);
     expect(fixture.runtimeReadiness.calls).toBe(0);
-    expect(fixture.events).not.toContain('lifecycle.quiesce');
+    expect(fixture.events).toContain('lifecycle.quiesce');
+    expect(fixture.events.indexOf('lifecycle.quiesce')).toBeLessThan(
+      fixture.events.indexOf('recoveryPoint.preRestore'),
+    );
     expect(fixture.events).not.toContain('lifecycle.stop');
+    expect(fixture.events).not.toContain('root.prepare');
+    expect(fixture.events).not.toContain('activation.prepare');
+    expect(fixture.events).toContain('runtimeHandoff.request');
+    expect(fixture.runtimeHandoff.requests).toBe(1);
   });
 
   it('rejects a source changed between preflight and stage and restarts the old runtime', async () => {
