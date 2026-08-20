@@ -44,6 +44,7 @@ describe('workspace selector state', () => {
       errorMessage: null,
       isDialogOpen: true,
       isSubmitting: false,
+      isRelaunching: false,
       labelInput: '',
       mode: 'list',
       selectedWorkspaceId: null,
@@ -65,6 +66,7 @@ describe('workspace selector state', () => {
     });
 
     expect(isWorkspaceSelectorBusy(relaunching)).toBe(true);
+    expect(relaunching.isRelaunching).toBe(true);
     expect(
       reduceWorkspaceSelectorState(relaunching, { type: 'closeDialog' }),
     ).toBe(relaunching);
@@ -124,6 +126,7 @@ describe('workspace selector state', () => {
     expect(refreshed).toMatchObject({
       errorMessage: null,
       isSubmitting: false,
+      isRelaunching: false,
       labelInput: '',
       mode: 'list',
       selectedWorkspaceId: null,

@@ -39,6 +39,8 @@ const createEmptyWorkspaceIpcChannel =
   'eky:workspace-management:v1:create-empty';
 const importWorkspaceBackupAsNewIpcChannel =
   'eky:workspace-management:v1:import-backup-as-new';
+const replaceActiveWorkspaceFromBackupIpcChannel =
+  'eky:workspace-management:v1:replace-active-from-backup';
 const switchWorkspaceIpcChannel = 'eky:workspace-management:v1:switch';
 const renameWorkspaceIpcChannel = 'eky:workspace-management:v1:rename';
 
@@ -58,6 +60,7 @@ interface EkyDesktopApi {
   importWorkspaceBackupAsNew(input: {
     workspaceLabel: string;
   }): Promise<unknown>;
+  replaceActiveWorkspaceFromBackup(): Promise<unknown>;
   openInvoicePdf(invoiceId: string): Promise<void>;
   openInvoicePdfArchiveDirectory(): Promise<void>;
   openOperationalLogFolder(): Promise<void>;
@@ -113,6 +116,9 @@ const ekyDesktopApi: EkyDesktopApi = Object.freeze({
   },
   importWorkspaceBackupAsNew(input: { workspaceLabel: string }) {
     return ipcRenderer.invoke(importWorkspaceBackupAsNewIpcChannel, input);
+  },
+  replaceActiveWorkspaceFromBackup() {
+    return ipcRenderer.invoke(replaceActiveWorkspaceFromBackupIpcChannel);
   },
   openInvoicePdf(invoiceId: string) {
     return ipcRenderer.invoke(invoicePdfPreviewIpcChannel, invoiceId);

@@ -4,6 +4,7 @@ import type { WorkspaceSelectorMode } from './workspaceSelectorState.js';
 import styles from './WorkspaceSelector.module.css';
 
 interface WorkspaceListProps {
+  readonly canReplaceActiveWorkspace: boolean;
   readonly isBusy: boolean;
   readonly isRecoveryRequired: boolean;
   readonly workspaces: readonly WorkspaceManagementEntry[];
@@ -14,11 +15,21 @@ interface WorkspaceListProps {
 }
 
 export function WorkspaceList({
+  canReplaceActiveWorkspace,
   isBusy,
   isRecoveryRequired,
   onModeChange,
   workspaces,
 }: WorkspaceListProps): React.JSX.Element {
+  const activeWorkspace = workspaces.find(
+    (workspace) => workspace.isActive && workspace.availability === 'ready',
+  );
+  const showReplacement =
+    canReplaceActiveWorkspace &&
+    !isBusy &&
+    !isRecoveryRequired &&
+    activeWorkspace !== undefined;
+
   return (
     <>
       {isBusy ? (
@@ -93,6 +104,19 @@ export function WorkspaceList({
           {uiText.workspaces.importBackup}
         </button>
       </div>
+      {showReplacement ? (
+        <section className={styles.maintenanceSection}>
+          <h3>{uiText.workspaces.replaceActiveHeading}</h3>
+          <p>{uiText.workspaces.replaceActiveDescription}</p>
+          <button
+            className="ghost-button"
+            onClick={() => onModeChange('confirmReplace', activeWorkspace)}
+            type="button"
+          >
+            {uiText.workspaces.replaceActiveButton}
+          </button>
+        </section>
+      ) : null}
     </>
   );
 }

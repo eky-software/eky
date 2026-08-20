@@ -219,10 +219,11 @@ export function createInvoicePdfPreviewWindowController(
           typeof window.ekyDesktop.openOperationalLogFolder === 'function' &&
           typeof window.ekyDesktop.prepareEncryptedProfileRestore === 'function' &&
           typeof window.ekyDesktop.renameWorkspace === 'function' &&
+          typeof window.ekyDesktop.replaceActiveWorkspaceFromBackup === 'function' &&
           typeof window.ekyDesktop.retryPendingInvoicePdfArchiveTasks === 'function' &&
           typeof window.ekyDesktop.selectLocalUpdate === 'function' &&
           typeof window.ekyDesktop.switchWorkspace === 'function' &&
-          Object.keys(window.ekyDesktop).length === 24`,
+          Object.keys(window.ekyDesktop).length === 25`,
         true,
       );
     },

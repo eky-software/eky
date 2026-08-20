@@ -34,6 +34,7 @@ export interface WorkspaceManagementCapability {
   importBackupAsNew(
     workspaceLabel: string,
   ): Promise<'cancelled' | 'completed' | 'relaunching'>;
+  replaceActiveFromBackup?(): Promise<'cancelled' | 'relaunching'>;
   rename(workspaceId: string, workspaceLabel: string): Promise<'completed'>;
   switchTo(workspaceId: string): Promise<'completed' | 'relaunching'>;
 }
@@ -51,6 +52,18 @@ export function getDesktopWorkspaceManagement(
   ) {
     return undefined;
   }
+
+  const replaceActiveWorkspaceFromBackup =
+    desktop.replaceActiveWorkspaceFromBackup;
+  const replaceActiveFromBackup =
+    typeof replaceActiveWorkspaceFromBackup === 'function'
+      ? async (): Promise<'cancelled' | 'relaunching'> =>
+          readOperationResult(
+            await replaceActiveWorkspaceFromBackup(),
+            ['cancelled', 'relaunching'],
+            'replace',
+          )
+      : undefined;
 
   return Object.freeze({
     async createEmpty(workspaceLabel: string) {
@@ -85,6 +98,9 @@ export function getDesktopWorkspaceManagement(
       });
       return readOperationResult(result, ['completed'], 'rename');
     },
+    ...(replaceActiveFromBackup === undefined
+      ? {}
+      : { replaceActiveFromBackup }),
     async switchTo(workspaceId: string) {
       const result = await desktop.switchWorkspace({
         workspaceId: readWorkspaceId(workspaceId),

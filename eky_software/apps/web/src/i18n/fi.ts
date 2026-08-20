@@ -38,6 +38,7 @@ export const uiText = {
     chooseBackup: 'Valitse varmuuskopio',
     close: 'Sulje yritysvalikko',
     confirmSwitch: 'Vaihda yritys',
+    continueToBackup: 'Jatka tiedoston valintaan',
     create: 'Luo yritys',
     fallbackName: 'Eky',
     heading: 'Yritykset',
@@ -57,6 +58,17 @@ export const uiText = {
     recoverySubtitle: 'Työtila vaatii huoltoa',
     relaunching: 'Eky vaihtaa yrityksen ja käynnistyy uudelleen.',
     rename: 'Nimeä uudelleen',
+    replaceActiveButton: 'Korvaa tiedot varmuuskopiosta',
+    replaceActiveDescription:
+      'Korvaa aktiivisen yrityksen nykyiset tiedot saman yrityksen aiemmasta Eky-varmuuskopiosta.',
+    replaceActiveHeading: 'Aktiivisen yrityksen palautus',
+    replaceConfirmation: (workspaceLabel: string) =>
+      `Olet korvaamassa aktiivisen yrityksen ${workspaceLabel} nykyiset tiedot.`,
+    replaceRecoveryPoint:
+      'Nykyisistä tiedoista luodaan ensin palautuspiste.',
+    replaceRestart: 'Eky käynnistyy uudelleen, jos korvaus onnistuu.',
+    replaceSameCompany:
+      'Varmuuskopion pitää kuulua täsmälleen samalle yritykselle.',
     requiresRecovery: 'Vaatii palautuksen',
     retry: 'Yritä uudelleen',
     safeError: 'Yritysten tietoja ei voitu käsitellä turvallisesti.',

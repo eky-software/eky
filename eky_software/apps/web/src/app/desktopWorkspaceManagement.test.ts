@@ -38,6 +38,15 @@ describe('desktop workspace management bridge', () => {
     ).toBeUndefined();
   });
 
+  it('keeps the base capability available when replacement is not exposed', () => {
+    const capability = getDesktopWorkspaceManagement({
+      ekyDesktop: createDesktopApi(),
+    });
+
+    expect(capability).toBeDefined();
+    expect(capability?.replaceActiveFromBackup).toBeUndefined();
+  });
+
   it('returns only the strict safe workspace status', async () => {
     const getWorkspaceManagementStatus = vi.fn(async () => status);
     const capability = getDesktopWorkspaceManagement({
@@ -67,11 +76,16 @@ describe('desktop workspace management bridge', () => {
       formatVersion: 1,
       status: 'completed',
     }));
+    const replaceActiveWorkspaceFromBackup = vi.fn(async () => ({
+      formatVersion: 1,
+      status: 'relaunching',
+    }));
     const capability = getDesktopWorkspaceManagement({
       ekyDesktop: createDesktopApi({
         createEmptyWorkspace,
         importWorkspaceBackupAsNew,
         renameWorkspace,
+        replaceActiveWorkspaceFromBackup,
         switchWorkspace,
       }),
     });
@@ -88,6 +102,9 @@ describe('desktop workspace management bridge', () => {
     await expect(capability?.switchTo(otherWorkspaceId)).resolves.toBe(
       'completed',
     );
+    await expect(capability?.replaceActiveFromBackup?.()).resolves.toBe(
+      'relaunching',
+    );
     expect(createEmptyWorkspace).toHaveBeenCalledWith({
       workspaceLabel: 'Uusi yritys',
     });
@@ -101,6 +118,7 @@ describe('desktop workspace management bridge', () => {
     expect(switchWorkspace).toHaveBeenCalledWith({
       workspaceId: otherWorkspaceId,
     });
+    expect(replaceActiveWorkspaceFromBackup).toHaveBeenCalledWith();
   });
 
   it('accepts every allowlisted completed or relaunching operation result', async () => {
@@ -187,6 +205,22 @@ describe('desktop workspace management bridge', () => {
     );
     await expect(capability?.createEmpty('Uusi yritys')).rejects.toThrow(
       'Invalid workspace create result.',
+    );
+  });
+
+  it.each([
+    { formatVersion: 1, path: 'C:\\private', status: 'relaunching' },
+    { formatVersion: 1, status: 'completed' },
+    { formatVersion: 2, status: 'cancelled' },
+  ])('rejects unsafe active replacement result %#', async (result) => {
+    const capability = getDesktopWorkspaceManagement({
+      ekyDesktop: createDesktopApi({
+        replaceActiveWorkspaceFromBackup: vi.fn(async () => result),
+      }),
+    });
+
+    await expect(capability?.replaceActiveFromBackup?.()).rejects.toThrow(
+      'Invalid workspace replace result.',
     );
   });
 

@@ -2,6 +2,7 @@ import type { WorkspaceManagementStatus } from '../../app/desktopWorkspaceManage
 
 export type WorkspaceSelectorMode =
   | 'confirmSwitch'
+  | 'confirmReplace'
   | 'create'
   | 'import'
   | 'list'
@@ -11,6 +12,7 @@ export interface WorkspaceSelectorState {
   readonly errorMessage: string | null;
   readonly isDialogOpen: boolean;
   readonly isSubmitting: boolean;
+  readonly isRelaunching: boolean;
   readonly labelInput: string;
   readonly loadState: 'error' | 'loading' | 'ready';
   readonly mode: WorkspaceSelectorMode;
@@ -47,6 +49,7 @@ export const initialWorkspaceSelectorState: WorkspaceSelectorState = {
   errorMessage: null,
   isDialogOpen: false,
   isSubmitting: false,
+  isRelaunching: false,
   labelInput: '',
   loadState: 'loading',
   mode: 'list',
@@ -84,6 +87,7 @@ export function reduceWorkspaceSelectorState(
         ...state,
         errorMessage: null,
         isDialogOpen: true,
+        isRelaunching: false,
         labelInput: '',
         mode: 'list',
         selectedWorkspaceId: null,
@@ -94,6 +98,7 @@ export function reduceWorkspaceSelectorState(
         ...state,
         errorMessage: null,
         isDialogOpen: false,
+        isRelaunching: false,
         labelInput: '',
         mode: 'list',
         selectedWorkspaceId: null,
@@ -133,6 +138,7 @@ export function reduceWorkspaceSelectorState(
         ...state,
         errorMessage: null,
         isSubmitting: false,
+        isRelaunching: false,
         labelInput: '',
         mode: 'list',
         selectedWorkspaceId: null,
@@ -142,12 +148,14 @@ export function reduceWorkspaceSelectorState(
         ...state,
         errorMessage: action.errorMessage,
         isSubmitting: false,
+        isRelaunching: false,
       };
     case 'statusRefreshed':
       return {
         ...state,
         errorMessage: null,
         isSubmitting: false,
+        isRelaunching: false,
         labelInput: '',
         loadState: 'ready',
         mode: 'list',
@@ -155,7 +163,12 @@ export function reduceWorkspaceSelectorState(
         status: action.status,
       };
     case 'relaunching':
-      return { ...state, errorMessage: null, isSubmitting: true };
+      return {
+        ...state,
+        errorMessage: null,
+        isRelaunching: true,
+        isSubmitting: true,
+      };
   }
 }
 
