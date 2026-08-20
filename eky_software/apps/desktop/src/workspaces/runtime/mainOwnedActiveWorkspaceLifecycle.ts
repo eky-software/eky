@@ -40,12 +40,17 @@ export class MainOwnedActiveWorkspaceLifecycle
       throw new Error('WORKSPACE_RUNTIME_LIFECYCLE_INVALID');
     }
 
-    await this.requestQuiescence.quiesceAndWait();
+    try {
+      await this.requestQuiescence.quiesceAndWait();
+    } catch {
+      this.resumeWritesAfterQuiescenceFailure();
+      throw new Error('WORKSPACE_RUNTIME_QUIESCE_FAILED');
+    }
     try {
       await this.resources.stopRecoveryPointScheduler();
       this.state = 'quiesced';
     } catch {
-      this.requestQuiescence.resume();
+      this.resumeWritesAfterQuiescenceFailure();
       throw new Error('WORKSPACE_RUNTIME_QUIESCE_FAILED');
     }
   }
@@ -104,6 +109,14 @@ export class MainOwnedActiveWorkspaceLifecycle
 
   readState(): WorkspaceRuntimeState {
     return this.state;
+  }
+
+  private resumeWritesAfterQuiescenceFailure(): void {
+    try {
+      this.requestQuiescence.resume();
+    } catch {
+      throw new Error('WORKSPACE_RUNTIME_RECOVERY_REQUIRED');
+    }
   }
 
   private assertActiveWorkspace(

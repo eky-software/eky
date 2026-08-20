@@ -74,6 +74,82 @@ describe('MainOwnedActiveWorkspaceLifecycle', () => {
     expect(events).toEqual(['scheduler']);
   });
 
+  it('resumes write admission after a bounded quiescence failure', async () => {
+    const events: string[] = [];
+    const requestQuiescence = new BackendRequestQuiescence({
+      timeoutMilliseconds: 5,
+    });
+    const activeMutation = requestQuiescence.begin('POST');
+    const lifecycle = new MainOwnedActiveWorkspaceLifecycle(
+      workspaceId,
+      requestQuiescence,
+      createResources(events),
+      new DeferredWorkspaceRuntimeRelaunch(() => events.push('relaunch')),
+    );
+
+    await expect(lifecycle.quiesceWrites(workspaceId)).rejects.toThrow(
+      'WORKSPACE_RUNTIME_QUIESCE_FAILED',
+    );
+
+    expect(lifecycle.readState()).toBe('active');
+    expect(requestQuiescence.readState()).toBe('active');
+    expect(events).toEqual([]);
+    const admittedAfterFailure = requestQuiescence.begin('PATCH');
+    expect(admittedAfterFailure).toBeDefined();
+
+    activeMutation?.release();
+    admittedAfterFailure?.release();
+    await expect(lifecycle.quiesceWrites(workspaceId)).resolves.toBeUndefined();
+    expect(events).toEqual(['scheduler']);
+  });
+
+  it('resumes write admission when stopping the recovery scheduler fails', async () => {
+    const requestQuiescence = new BackendRequestQuiescence();
+    const lifecycle = new MainOwnedActiveWorkspaceLifecycle(
+      workspaceId,
+      requestQuiescence,
+      {
+        ...createResources([]),
+        async stopRecoveryPointScheduler() {
+          throw new Error('private scheduler failure');
+        },
+      },
+      new DeferredWorkspaceRuntimeRelaunch(() => undefined),
+    );
+
+    await expect(lifecycle.quiesceWrites(workspaceId)).rejects.toThrow(
+      'WORKSPACE_RUNTIME_QUIESCE_FAILED',
+    );
+
+    expect(lifecycle.readState()).toBe('active');
+    expect(requestQuiescence.readState()).toBe('active');
+    expect(requestQuiescence.begin('POST')).toBeDefined();
+  });
+
+  it('requires recovery when write admission cannot be resumed', async () => {
+    class ResumeFailingRequestQuiescence extends BackendRequestQuiescence {
+      override resume(): void {
+        throw new Error('private resume failure');
+      }
+    }
+
+    const requestQuiescence = new ResumeFailingRequestQuiescence({
+      timeoutMilliseconds: 5,
+    });
+    const activeMutation = requestQuiescence.begin('POST');
+    const lifecycle = new MainOwnedActiveWorkspaceLifecycle(
+      workspaceId,
+      requestQuiescence,
+      createResources([]),
+      new DeferredWorkspaceRuntimeRelaunch(() => undefined),
+    );
+
+    await expect(lifecycle.quiesceWrites(workspaceId)).rejects.toThrow(
+      'WORKSPACE_RUNTIME_RECOVERY_REQUIRED',
+    );
+    activeMutation?.release();
+  });
+
   it('is idempotent after resources have been proved closed', async () => {
     const resources = {
       closeBrokers: vi.fn(async () => undefined),
