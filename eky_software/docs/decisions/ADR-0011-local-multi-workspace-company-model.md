@@ -8,8 +8,11 @@ startupin, legacy-profiilin adoption, workspace-kohtaiset runtime-resurssit
 sekä hallitun switch-polun production-compositioniin. W5A:n Electron mainin
 sisäinen management-palvelu, yhteinen maintenance-auktoriteetti,
 production-lifecycle-adapteri ja private candidate -adapterit on toteutettu ja
-hyväksytty paikallisella W5A-testimatriisilla. Renderer-capabilitya tai
-käyttäjälle näkyvää usean workspacen hallintaa ei ole vielä toteutettu.
+hyväksytty paikallisella W5A-testimatriisilla. W5B.1:n trusted main frame
+-rajattu IPC/preload-capability ja käyttäjälle näkyvä workspace-valitsin on
+toteutettu status-, create-, import-as-new-, switch- ja rename-toiminnoille.
+Aktiivisen workspacen exact-lineage-korvaus jää W5B.2:een ja täysi paketoitu
+multi-workspace-releaseportti W6:een.
 
 Tämä päätös jatkaa ADR-0008:n yhden aktiivisen yritystyötilan mallia. Se ei
 kumoa ADR-0008:n R0-rajoja, vaan määrittää hallitun kasvupolun useaan erilliseen
@@ -41,13 +44,20 @@ W5 toimitetaan kahtena erillisenä porttina:
   -kyvykkyyden, production-lifecycle- ja candidate-adapterit sekä yhden
   installation-scoped maintenance-auktoriteetin. W5A ei lisää preloadia,
   IPC:tä, renderer-capabilitya, web-UI:ta tai backendin julkista reittiä.
-- W5B lisää myöhemmin trusted main frame -rajatun IPC/preload-sopimuksen ja
-  käyttäjälle näkyvän workspace-hallinnan erillisellä hyväksymisportilla.
+- W5B.1 lisää trusted main frame -rajatun IPC/preload-sopimuksen ja
+  käyttäjälle näkyvän status-, create-, import-as-new-, switch- ja
+  rename-hallinnan. Backup-tiedoston valinta ja salasana pysyvät Electron
+  mainin omistamissa native-ikkunoissa.
+- W5B.2 lisää myöhemmin aktiivisen exact-lineage-workspacen korvaamisen omalla
+  hyväksymisportillaan. Workspace-poisto kuuluu vasta W7:ään.
 
 Mainin sisäinen hallintapalvelu saa palauttaa vain rajatun status- ja
 workspace-projektion. Polut, `companyId`, lineage, runtime-session,
 salaisuusviitteet, journalit, operation-tunnisteet ja raakavirheet eivät kuulu
-sopimukseen. W5A ei tee sisäisestä kyvykkyydestä rendererille käytettävää.
+sopimukseen. W5B.1:n renderer-projektio sisältää vain `workspaceId`-, label-,
+aktiivisuus-, availability- ja operation state -tiedot sekä suljetun
+completed/cancelled/relaunching-tuloksen. Workspace-vaihto invalidioi vanhan
+renderer/backend-sessionin hallitulla relaunchilla.
 
 ## Käsitteet ja identiteetit
 

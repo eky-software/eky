@@ -14,9 +14,12 @@ startupin, legacy-profiilin kertaluonteisen adoption sekä workspace-kohtaiset
 runtime-resurssit production-compositionissa. W5 on jaettu Electron mainin
 sisäiseen W5A management-foundationiin ja erikseen hyväksyttävään W5B
 renderer/UI-toimitukseen. W5A on toteutettu ja hyväksytty paikallisella
-testimatriisilla; W5B sekä W6:n täysi paketoitu usean työtilan release-matriisi
-ovat edelleen toteuttamatta. Käyttäjälle ei julkaista tätä kokonaisuutta ennen
-W5B-W6-porttien valmistumista.
+testimatriisilla. W5B.1:n turvallinen workspace-valitsin sekä status-, create-,
+import-as-new-, switch- ja rename-capabilityt on toteutettu ja hyväksytty
+paikallisesti. Aktiivisen exact-lineage-workspacen replace-UI kuuluu W5B.2:een
+ja W6:n täysi paketoitu usean työtilan release-matriisi on edelleen
+toteuttamatta. Käyttäjälle ei julkaista tätä kokonaisuutta ennen W5B-W6-
+porttien valmistumista.
 
 Tämä suunnitelma toteuttaa
 `docs/decisions/ADR-0011-local-multi-workspace-company-model.md`-päätöksen
@@ -754,22 +757,45 @@ omistaa kaikki privileged toiminnot.
 rajattu trusted main frame -IPC. Backend business API ei saa
 workspace-hallintareittejä.
 
-**Käyttäjäpolut:** listaa turvalliset labelit, luo tyhjä, tuo backupista,
-korvaa exact-lineage-workspace, vaihda työtila ja nimeä label uudelleen.
-Poista-toimintoa ei näytetä.
+### W5B.1: Selector, create, import, switch and rename
 
-**Luottamusraja:** UI saa workspaceId:n vain capability-vastauksesta. Se ei
+**Tila:** toteutettu ja paikallisesti hyväksytty 20.8.2026.
+
+**Käyttäjäpolut:** listaa turvalliset labelit, luo tyhjä workspace, tuo
+salattu backup uutena workspacena, vaihda työtila ja nimeä label uudelleen.
+Valitsin sijaitsee sivupalkin vasemmassa yläkulmassa ja toimii myös sivupalkin
+ollessa supistettu. Poisto- tai replace-toimintoa ei näytetä.
+
+**Luottamusraja:** UI saa workspaceId:n vain capability-vastauksesta. Viisi
+versionoitua capability-kutsua hyväksytään vain tunnetun pääikkunan main
+framesta täsmällisellä argumentti- ja avainsopimuksella. UI ei
 saa polkua, companyId:tä, lineagea, secret refiä tai journalia. Backupin
-valinta, salasana ja exact-lineage-vahvistus pysyvät Electron mainin
-omistamissa native-ikkunoissa.
+valinta ja salasana pysyvät Electron mainin omistamissa native-ikkunoissa.
+Selainkehitys säilyttää turvallisen yhden workspacen fallbackin ilman
+desktop-capabilitya.
 
 **Fail-closed-tilat:** capability puuttuu webissä, invalid selection,
 operation conflict, native confirmation cancel, switch/import failure ja
 recoveryRequired. Viestit ovat turvallisia suomenkielisiä i18n-tekstejä.
 
-**Testit:** preload/IPC-allowlist, trusted frame, web ilman capabilitya,
+**Testit:** preload/IPC-allowlist, trusted main frame, subframe/foreign frame
+-torjunta, exact argumentit ja input-avaimet, web ilman capabilitya,
 keyboard/focus, loading/error, double click, cancellation, duplicate label,
 failed switch, UI reload ja vanhan workspace-datan katoaminen näkymästä.
+Electron-E2E todistaa A -> B -> A -eristyksen asiakkailla, laskuilla ja
+PDF-hasheilla sekä oikean salatun backupin tuonnin ja file/password-cancel-
+polut ilman polun, salasanan, companyId:n, lineagen, sessionin tai journalin
+vuotoa.
+
+**Lifecycle:** switch ja onnistunut import johtavat main-owned relaunchiin.
+Vanha renderer, runtime-session, backend ja SQLite-owner eivät jatka uuden
+aktiivisen workspacen kanssa.
+
+### W5B.2: Replace active workspace
+
+**Tila:** aloittamatta. W5A:n sisäinen exact-lineage replace-palvelu ei ole
+rendererille näkyvä. Native confirmation, käyttäjäpolku ja Electron-E2E
+toteutetaan erillisen omistajapäätöksen jälkeen.
 
 **Commit/PR/release:** W5B on erillinen UI/capability-checkpoint. Ensimmäinen
 release candidate voidaan nimetä vasta W6:n hyväksymisportin jälkeen.
