@@ -1,99 +1,53 @@
-import { createHash, randomUUID } from 'node:crypto';
-import {
-  copyFile,
-  mkdir,
-  readFile,
-  readdir,
-  rm,
-  writeFile,
-} from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
-import { app } from 'electron';
-
-import { writeBackupContainer } from '../src/profileBackup/container/backupContainerWriter.js';
-import { createProfileBackupSourceEntries } from '../src/profileBackup/createProfileBackupSourceEntries.js';
-import type { ProfileRestoreActivationPhase } from '../src/profileBackup/restore/profileRestoreActivationJournal.js';
-import { ProfileRestoreActivationJournalStore } from '../src/profileBackup/restore/profileRestoreActivationJournalStore.js';
-import { ProfileRestoreActivationTransaction } from '../src/profileBackup/restore/profileRestoreActivationTransaction.js';
-import { createWorkspaceBackupReplacementStartupRecovery } from '../src/workspaces/replacement/workspaceBackupReplacementStartupRecovery.js';
-import {
-  deriveWorkspaceBackupReplacementPaths,
-  deriveWorkspaceBackupReplacementRuntimePaths,
-} from '../src/workspaces/replacement/workspaceBackupReplacementPaths.js';
-import { generateWorkspaceBackupReplacementOperationId } from '../src/workspaces/replacement/workspaceBackupReplacementOperationId.js';
-import type { ActiveWorkspaceLifecyclePort } from '../src/workspaces/runtime/activeWorkspaceLifecyclePort.js';
-import type { WorkspaceRuntimeAbsencePort } from '../src/workspaces/runtime/workspaceRuntimeAbsencePort.js';
-import { ElectronWorkspaceCandidateRuntimeFactory } from '../src/workspaces/runtime/electronWorkspaceCandidateRuntimeFactory.js';
-import { resolveWorkspaceCandidateRuntimePaths } from '../src/workspaces/runtime/workspaceCandidateRuntimePaths.js';
-import { validateWorkspaceBackupImportOperationId } from '../src/workspaces/import/workspaceBackupImportOperationId.js';
-import { PrivateWorkspaceBackupCandidateAdapter } from '../src/workspaces/import/privateWorkspaceBackupCandidateAdapter.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../src/workspaces/maintenance/workspaceMaintenanceLease.js';
-import { deriveWorkspaceRoot } from '../src/workspaces/registry/deriveWorkspaceRoot.js';
-import { WORKSPACE_REGISTRY_FILE_NAME } from '../src/workspaces/registry/workspaceRegistryPaths.js';
-import { WorkspaceRegistryStore } from '../src/workspaces/registry/workspaceRegistryStore.js';
 import type { WorkspaceId } from '../src/workspaces/registry/workspaceRegistryTypes.js';
-import { validateWorkspaceId } from '../src/workspaces/registry/workspaceIdValidation.js';
+import { deriveWorkspaceBackupReplacementRuntimePaths } from '../src/workspaces/replacement/workspaceBackupReplacementPaths.js';
 import { WorkspaceSwitchJournalStore } from '../src/workspaces/switch/workspaceSwitchJournal.js';
 import {
   createWorkspaceManagementComposition,
   type WorkspaceManagementComposition,
 } from '../src/workspaces/management/workspaceManagementComposition.js';
+import {
+  createProofWorkspaceBackup,
+  readProofWorkspaceRegistry,
+  validateProofPublishedWorkspace,
+  WORKSPACE_MANAGEMENT_PROOF_PASSWORD,
+} from './workspaceManagementCompositionProofBackup.js';
+import {
+  sha256File,
+  snapshotActiveWorkspace,
+  snapshotsEqual,
+} from './workspaceManagementCompositionProofHash.js';
+import {
+  completeReplacementStartupRecovery,
+  proveReplacementActivationRollback,
+  snapshotReplacementIsolation,
+} from './workspaceManagementCompositionProofReplacement.js';
+import {
+  arraysEqual,
+  captureUtilityProcessBaseline,
+  createWorkspaceId,
+  ProofActiveWorkspaceLifecycle,
+  ProofRuntimeRelaunch,
+  readSafeErrorCode,
+  waitForProofUtilityProcessesReleased,
+} from './workspaceManagementCompositionProofRuntime.js';
+import type {
+  WorkspaceManagementCompositionProofInput,
+  WorkspaceManagementCompositionProofResult,
+  WorkspaceManagementCompositionProofStage,
+} from './workspaceManagementCompositionProofTypes.js';
 
-const proofPassword = 'synthetic-composition-proof-password-Aa1!';
-
-type WorkspaceManagementCompositionProofStage =
-  | 'sourceComposition'
-  | 'sourceCreate'
-  | 'sourceBackup'
-  | 'primaryComposition'
-  | 'primaryCreate'
-  | 'secondaryCreate'
-  | 'import'
-  | 'rename'
-  | 'noOpSwitch'
-  | 'maintenanceLease'
-  | 'operationGuard'
-  | 'replacementBackup'
-  | 'replacementFaults'
-  | 'replacement'
-  | 'replacementRecovery'
-  | 'switch'
-  | 'result';
-
-export interface WorkspaceManagementCompositionProofResult {
-  readonly activeWorkspacePreservedDuringCreate: boolean;
-  readonly activeWorkspacePreservedDuringImport: boolean;
-  readonly candidateProcessesReleased: boolean;
-  readonly createdWorkspaceCount: number;
-  readonly importedWorkspaceValidated: boolean;
-  readonly importedWorkspaceCount: number;
-  readonly maximumBackendOwners: number;
-  readonly maximumSqliteOwners: number;
-  readonly noOpSwitchPreservedRuntime: boolean;
-  readonly renamePersisted: boolean;
-  readonly renamePreservedRuntime: boolean;
-  readonly replacementAcceptedAfterRestart: boolean;
-  readonly replacementFaultsRolledBack: boolean;
-  readonly replacementLifecycleOrdered: boolean;
-  readonly replacementPreservedUnrelatedWorkspaces: boolean;
-  readonly sharedLeaseBlockedConcurrentOperation: boolean;
-  readonly sourceBackupPreserved: boolean;
-  readonly switchJournalPersisted: boolean;
-  readonly switchRequestedRelaunch: boolean;
-  readonly unresolvedOperationBlockedMutation: boolean;
-}
-
-export async function runWorkspaceManagementCompositionProof(input: {
-  readonly appVersion: string;
-  readonly buildRevision: string;
-  readonly resourcesPath: string;
-  readonly userDataRoot: string;
-}): Promise<Readonly<WorkspaceManagementCompositionProofResult>> {
+export async function runWorkspaceManagementCompositionProof(
+  input: WorkspaceManagementCompositionProofInput,
+): Promise<Readonly<WorkspaceManagementCompositionProofResult>> {
   const proofRoot = join(input.userDataRoot, 'w');
   const primaryRoot = join(proofRoot, 'p');
   const sourceRoot = join(proofRoot, 's');
-  const processCountBefore = countUtilityProcesses();
+  const utilityProcessBaseline = captureUtilityProcessBaseline();
   let stage: WorkspaceManagementCompositionProofStage = 'sourceComposition';
   let primaryComposition: WorkspaceManagementComposition | undefined;
   let sourceComposition: WorkspaceManagementComposition | undefined;
@@ -124,7 +78,7 @@ export async function runWorkspaceManagementCompositionProof(input: {
     sourceLifecycle.setRunningWorkspace(sourceWorkspace.workspaceId);
     const sourceBackupPath = join(proofRoot, 'source.ekybackup');
     stage = 'sourceBackup';
-    const sourceReadiness = await createWorkspaceBackup({
+    const sourceReadiness = await createProofWorkspaceBackup({
       ...input,
       backupPath: sourceBackupPath,
       userDataRoot: sourceRoot,
@@ -188,7 +142,7 @@ export async function runWorkspaceManagementCompositionProof(input: {
       'Synthetic secondary',
     );
     const activeWorkspacePreservedDuringCreate =
-      (await readRegistry(primaryRoot)).activeWorkspaceId ===
+      (await readProofWorkspaceRegistry(primaryRoot)).activeWorkspaceId ===
         firstWorkspace.workspaceId &&
       snapshotsEqual(
         activeSnapshotBeforeExpansion,
@@ -201,17 +155,17 @@ export async function runWorkspaceManagementCompositionProof(input: {
     const importedWorkspace =
       await primaryComposition.service.importBackupAsNew({
         containerPath: sourceBackupPath,
-        password: proofPassword,
+        password: WORKSPACE_MANAGEMENT_PROOF_PASSWORD,
         workspaceLabel: 'Synthetic imported',
       });
-    const registryAfterImport = await readRegistry(primaryRoot);
+    const registryAfterImport = await readProofWorkspaceRegistry(primaryRoot);
     const importedEntry = registryAfterImport.workspaces.find(
       (workspace) => workspace.workspaceId === importedWorkspace.workspaceId,
     );
     if (importedEntry === undefined) {
       throw new Error('WORKSPACE_COMPOSITION_PROOF_FAILED');
     }
-    const importedReadiness = await validatePublishedWorkspace({
+    const importedReadiness = await validateProofPublishedWorkspace({
       ...input,
       expectedProfileId: importedEntry.lineageIdentity.profileId,
       userDataRoot: primaryRoot,
@@ -326,7 +280,7 @@ export async function runWorkspaceManagementCompositionProof(input: {
 
     stage = 'replacementBackup';
     const replacementBackupPath = join(proofRoot, 'replacement.ekybackup');
-    await createWorkspaceBackup({
+    await createProofWorkspaceBackup({
       ...input,
       backupPath: replacementBackupPath,
       userDataRoot: primaryRoot,
@@ -349,7 +303,7 @@ export async function runWorkspaceManagementCompositionProof(input: {
     const replacementLifecycleStart = primaryLifecycle.events.length;
     await primaryComposition.service.replaceActiveFromBackup({
       containerPath: replacementBackupPath,
-      password: proofPassword,
+      password: WORKSPACE_MANAGEMENT_PROOF_PASSWORD,
       targetWorkspaceId: firstWorkspace.workspaceId,
     });
     const replacementLifecycleOrdered = arraysEqual(
@@ -357,44 +311,21 @@ export async function runWorkspaceManagementCompositionProof(input: {
       ['quiesced', 'preRestore', 'stopped', 'absent'],
     );
     stage = 'replacementRecovery';
-    const replacementPaths = deriveWorkspaceBackupReplacementRuntimePaths(
-      primaryRoot,
-      firstWorkspace.workspaceId,
-    );
-    const replacementRecovery =
-      createWorkspaceBackupReplacementStartupRecovery({
-        paths: replacementPaths,
-      }).recovery;
-    const recoveryMode = await replacementRecovery.prepareBeforeBackend();
-    const replacementRegistry = await readRegistry(primaryRoot);
+    const replacementRegistry = await readProofWorkspaceRegistry(primaryRoot);
     const replacementEntry = replacementRegistry.workspaces.find(
       (workspace) => workspace.workspaceId === firstWorkspace.workspaceId,
     );
     if (replacementEntry === undefined) {
       throw new Error('WORKSPACE_COMPOSITION_PROOF_FAILED');
     }
-    const replacementReadiness = await validatePublishedWorkspace({
-      ...input,
-      expectedProfileId: replacementEntry.lineageIdentity.profileId,
-      userDataRoot: primaryRoot,
-      workspaceId: firstWorkspace.workspaceId,
-    });
-    const recoveryOutcome = await replacementRecovery.validateAfterBackend({
-      mode: recoveryMode,
-      async stopBackend() {},
-      async validateActiveProfile() {
-        if (
-          replacementReadiness.lineageIdentity.profileId !==
-          replacementEntry.lineageIdentity.profileId
-        ) {
-          throw new Error('WORKSPACE_COMPOSITION_PROOF_FAILED');
-        }
-      },
-    });
-    primaryLifecycle.setRunningWorkspace(firstWorkspace.workspaceId);
     const replacementAcceptedAfterRestart =
-      recoveryMode === 'validateRestoredProfile' &&
-      recoveryOutcome === 'ready';
+      await completeReplacementStartupRecovery({
+        ...input,
+        expectedProfileId: replacementEntry.lineageIdentity.profileId,
+        userDataRoot: primaryRoot,
+        workspaceId: firstWorkspace.workspaceId,
+      });
+    primaryLifecycle.setRunningWorkspace(firstWorkspace.workspaceId);
     const replacementPreservedUnrelatedWorkspaces = snapshotsEqual(
       replacementIsolationBefore,
       await snapshotReplacementIsolation({
@@ -405,8 +336,9 @@ export async function runWorkspaceManagementCompositionProof(input: {
     );
 
     stage = 'switch';
+    const relaunchRequestsBeforeSwitch = primaryRelaunch.requestCount;
     await primaryComposition.service.switchTo(secondWorkspace.workspaceId);
-    const switchedRegistry = await readRegistry(primaryRoot);
+    const switchedRegistry = await readProofWorkspaceRegistry(primaryRoot);
     const switchJournal = await new WorkspaceSwitchJournalStore(
       primaryRoot,
     ).read();
@@ -416,25 +348,32 @@ export async function runWorkspaceManagementCompositionProof(input: {
       switchJournal.state === 'targetSelected';
     const switchRequestedRelaunch =
       switchedRegistry.activeWorkspaceId === secondWorkspace.workspaceId &&
-      primaryRelaunch.requestCount >= 2;
+      primaryRelaunch.requestCount === relaunchRequestsBeforeSwitch + 1;
 
     stage = 'result';
-    const finalStatusWorkspaceCount = switchedRegistry.workspaces.length;
-    const candidateProcessesReleased = await waitForUtilityProcessCount(
-      processCountBefore,
-    );
+    const finalWorkspaceCounts = deriveFinalWorkspaceCounts({
+      createdWorkspaceIds: [
+        firstWorkspace.workspaceId,
+        secondWorkspace.workspaceId,
+      ],
+      importedWorkspaceId: importedWorkspace.workspaceId,
+      registryWorkspaceIds: switchedRegistry.workspaces.map(
+        (workspace) => workspace.workspaceId,
+      ),
+    });
+    const candidateProcessesReleased =
+      await waitForProofUtilityProcessesReleased(utilityProcessBaseline);
     const result = {
       activeWorkspacePreservedDuringCreate,
       activeWorkspacePreservedDuringImport,
+      candidateAppVersion: input.appVersion,
       candidateProcessesReleased,
-      createdWorkspaceCount: 2,
+      createdWorkspaceCount: finalWorkspaceCounts.createdWorkspaceCount,
       importedWorkspaceValidated,
-      importedWorkspaceCount:
-        finalStatusWorkspaceCount === 3 && importedWorkspace !== undefined
-          ? 1
-          : 0,
-      maximumBackendOwners: primaryLifecycle.maximumBackendOwners,
-      maximumSqliteOwners: primaryLifecycle.maximumSqliteOwners,
+      importedWorkspaceCount: finalWorkspaceCounts.importedWorkspaceCount,
+      modeledMaximumBackendOwners:
+        primaryLifecycle.modeledMaximumBackendOwners,
+      modeledMaximumSqliteOwners: primaryLifecycle.modeledMaximumSqliteOwners,
       noOpSwitchPreservedRuntime,
       renamePersisted,
       renamePreservedRuntime,
@@ -448,7 +387,7 @@ export async function runWorkspaceManagementCompositionProof(input: {
       switchRequestedRelaunch,
       unresolvedOperationBlockedMutation,
     } as const;
-    assertProofResult(result);
+    assertProofResult(result, input.appVersion);
     return Object.freeze(result);
   } catch (error) {
     const errorCode = readSafeErrorCode(error);
@@ -518,405 +457,20 @@ async function createProofComposition(input: {
   });
 }
 
-async function createWorkspaceBackup(input: {
-  readonly appVersion: string;
-  readonly backupPath: string;
-  readonly buildRevision: string;
-  readonly resourcesPath: string;
-  readonly userDataRoot: string;
-  readonly workspaceId: WorkspaceId;
-}) {
-  const readiness = await validatePublishedWorkspace(input);
-  const workspaceRoot = deriveWorkspaceRoot(
-    input.userDataRoot,
-    input.workspaceId,
-    1,
-  ).workspaceRoot;
-  const sourceRoot = join(
-    input.userDataRoot,
-    'workspace-composition-proof-backup-source',
-    randomUUID(),
-  );
-  await mkdir(sourceRoot, { mode: 0o700, recursive: true });
-  try {
-    await copyFile(
-      join(workspaceRoot, 'runtime', 'data', 'eky.sqlite'),
-      join(sourceRoot, 'profile.sqlite'),
-    );
-    await writeFile(
-      join(sourceRoot, 'snapshot-catalog-v1.json'),
-      `${JSON.stringify({ artifacts: [], formatVersion: 1 })}\n`,
-      { encoding: 'utf8', mode: 0o600 },
-    );
-    await writeBackupContainer({
-      destinationPath: input.backupPath,
-      entries: await createProfileBackupSourceEntries(sourceRoot),
-      manifest: {
-        appVersion: input.appVersion,
-        createdAtEpochMilliseconds: BigInt(
-          new Date('2026-08-20T00:00:00.000Z').getTime(),
-        ),
-        migrationChainIdentity: readiness.migrationChainIdentity,
-        profileId: readiness.lineageIdentity.profileId,
-      },
-      password: proofPassword,
-    });
-  } finally {
-    await rm(sourceRoot, { force: true, recursive: true });
-  }
-  return readiness;
-}
-
-async function proveReplacementActivationRollback(input: {
-  readonly activeDatabasePath: string;
-  readonly activePdfPath: string;
-  readonly primaryRoot: string;
-  readonly workspaceId: WorkspaceId;
-}): Promise<boolean> {
-  const activeSnapshot = await snapshotActiveWorkspace({
-    databasePath: input.activeDatabasePath,
-    pdfPath: input.activePdfPath,
-  });
-  for (const faultPhase of [
-    'prepared',
-    'stagedDocumentsActivated',
-  ] as const satisfies readonly ProfileRestoreActivationPhase[]) {
-    const operationId = generateWorkspaceBackupReplacementOperationId();
-    const paths = deriveWorkspaceBackupReplacementPaths(
-      input.primaryRoot,
-      operationId,
-      input.workspaceId,
-    );
-    await mkdir(dirname(paths.candidateDatabasePath), {
-      mode: 0o700,
-      recursive: true,
-    });
-    await copyFile(input.activeDatabasePath, paths.candidateDatabasePath);
-    const candidatePdfPath = join(
-      paths.candidateArtifactRoot,
-      'proof',
-      'approved-invoice.pdf',
-    );
-    await mkdir(dirname(candidatePdfPath), {
-      mode: 0o700,
-      recursive: true,
-    });
-    await writeFile(
-      candidatePdfPath,
-      `%PDF-1.7\n% Interrupted at ${faultPhase}\n`,
-      { encoding: 'utf8', mode: 0o600 },
-    );
-
-    const journalStore = new ProfileRestoreActivationJournalStore(
-      paths.activationJournalPath,
-    );
-    let faultReached = false;
-    const transaction = createActivationTransaction({
-      afterPhasePersisted(phase) {
-        if (phase === faultPhase) {
-          faultReached = true;
-          throw new Error('WORKSPACE_COMPOSITION_SYNTHETIC_INTERRUPTION');
-        }
-      },
-      journalStore,
-      paths,
-    });
-    try {
-      await transaction.prepare(operationId);
-      await transaction.advanceToValidation();
-    } catch {
-      // Recovery below must restore the original bytes at both fault points.
-    }
-
-    const recoveryTransaction = createActivationTransaction({
-      journalStore,
-      paths,
-    });
-    const journal = await journalStore.read();
-    if (journal !== undefined) {
-      await recoveryTransaction.rollback();
-      await recoveryTransaction.clearRolledBack();
-    }
-    if (
-      !faultReached ||
-      !snapshotsEqual(
-        activeSnapshot,
-        await snapshotActiveWorkspace({
-          databasePath: input.activeDatabasePath,
-          pdfPath: input.activePdfPath,
-        }),
-      )
-    ) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function createActivationTransaction(input: {
-  readonly afterPhasePersisted?: (
-    phase: ProfileRestoreActivationPhase,
-  ) => void;
-  readonly journalStore: ProfileRestoreActivationJournalStore;
-  readonly paths: ReturnType<typeof deriveWorkspaceBackupReplacementPaths>;
-}): ProfileRestoreActivationTransaction {
-  return new ProfileRestoreActivationTransaction({
-    ...(input.afterPhasePersisted === undefined
-      ? {}
-      : { afterPhasePersisted: input.afterPhasePersisted }),
-    journalStore: input.journalStore,
-    paths: {
-      activeDatabasePath: input.paths.activeDatabasePath,
-      activeDocumentsRoot: input.paths.activeArtifactRoot,
-      failedRoot: input.paths.activationFailedRoot,
-      rollbackRoot: input.paths.activationRollbackRoot,
-      stagingRoot: input.paths.activationStagingRoot,
-    },
-  });
-}
-
-async function snapshotActiveWorkspace(input: {
-  readonly databasePath: string;
-  readonly pdfPath: string;
-}) {
-  return Object.freeze({
-    databaseHash: await sha256File(input.databasePath),
-    pdfHash: await sha256File(input.pdfPath),
-  });
-}
-
-async function snapshotReplacementIsolation(input: {
-  readonly importedWorkspaceId: WorkspaceId;
-  readonly primaryRoot: string;
-  readonly secondWorkspaceId: WorkspaceId;
-}) {
-  return Object.freeze({
-    importedWorkspaceHash: await sha256Tree(
-      deriveWorkspaceRoot(input.primaryRoot, input.importedWorkspaceId, 1)
-        .workspaceRoot,
-    ),
-    registryHash: await sha256File(
-      join(input.primaryRoot, WORKSPACE_REGISTRY_FILE_NAME),
-    ),
-    secondWorkspaceHash: await sha256Tree(
-      deriveWorkspaceRoot(input.primaryRoot, input.secondWorkspaceId, 1)
-        .workspaceRoot,
-    ),
-  });
-}
-
-async function sha256File(path: string): Promise<string> {
-  return createHash('sha256').update(await readFile(path)).digest('hex');
-}
-
-async function sha256Tree(root: string): Promise<string> {
-  const hash = createHash('sha256');
-  await appendDirectoryHash(hash, root, '');
-  return hash.digest('hex');
-}
-
-async function appendDirectoryHash(
-  hash: ReturnType<typeof createHash>,
-  root: string,
-  relativeRoot: string,
-): Promise<void> {
-  const entries = await readdir(join(root, relativeRoot), {
-    withFileTypes: true,
-  });
-  entries.sort((left, right) => left.name.localeCompare(right.name));
-  for (const entry of entries) {
-    const relativePath = join(relativeRoot, entry.name);
-    if (entry.isDirectory()) {
-      hash.update(`directory:${relativePath}\n`);
-      await appendDirectoryHash(hash, root, relativePath);
-      continue;
-    }
-    if (!entry.isFile() || entry.isSymbolicLink()) {
-      throw new Error('WORKSPACE_COMPOSITION_PROOF_FAILED');
-    }
-    hash.update(`file:${relativePath}\n`);
-    hash.update(await readFile(join(root, relativePath)));
-  }
-}
-
-async function validatePublishedWorkspace(input: {
-  readonly appVersion: string;
-  readonly buildRevision: string;
-  readonly expectedProfileId?: string;
-  readonly resourcesPath: string;
-  readonly userDataRoot: string;
-  readonly workspaceId: WorkspaceId;
-}) {
-  const runtimePaths = await resolveWorkspaceCandidateRuntimePaths(
-    input.resourcesPath,
-  );
-  const candidate = new PrivateWorkspaceBackupCandidateAdapter(
-    new ElectronWorkspaceCandidateRuntimeFactory({
-      appVersion: input.appVersion,
-      backendRoot: runtimePaths.backendRoot,
-      buildRevision: input.buildRevision,
-      migrationsDirectory: runtimePaths.migrationsDirectory,
-      runnerPath: runtimePaths.runnerPath,
-    }),
-  );
-  const workspaceRoot = deriveWorkspaceRoot(
-    input.userDataRoot,
-    input.workspaceId,
-    1,
-  ).workspaceRoot;
-  const registry = await readRegistry(input.userDataRoot);
-  const entry = registry.workspaces.find(
-    (workspace) => workspace.workspaceId === input.workspaceId,
-  );
-  const expectedProfileId =
-    input.expectedProfileId ?? entry?.lineageIdentity.profileId;
-  if (expectedProfileId === undefined) {
-    throw new Error('WORKSPACE_COMPOSITION_PROOF_FAILED');
-  }
-  return candidate.validatePublished({
-    artifactRoot: join(workspaceRoot, 'runtime', 'storage', 'invoices'),
-    databaseFilePath: join(workspaceRoot, 'runtime', 'data', 'eky.sqlite'),
-    expectedProfileId,
-    operationId: validateWorkspaceBackupImportOperationId(randomUUID()),
-    publishedRoot: workspaceRoot,
-    workspaceId: input.workspaceId,
-  });
-}
-
-function readRegistry(userDataRoot: string) {
-  return new WorkspaceRegistryStore({
-    filePath: join(userDataRoot, WORKSPACE_REGISTRY_FILE_NAME),
-    installationRoot: userDataRoot,
-  }).read().then((registry) => {
-    if (registry === undefined) {
-      throw new Error('WORKSPACE_COMPOSITION_PROOF_FAILED');
-    }
-    return registry;
-  });
-}
-
-class ProofActiveWorkspaceLifecycle
-  implements ActiveWorkspaceLifecyclePort, WorkspaceRuntimeAbsencePort
-{
-  backendOwners = 0;
-  readonly events: string[] = [];
-  maximumBackendOwners = 0;
-  maximumSqliteOwners = 0;
-  private activeWorkspaceId: WorkspaceId | null;
-  private sqliteOwners = 0;
-
-  constructor(activeWorkspaceId: WorkspaceId | null) {
-    this.activeWorkspaceId = activeWorkspaceId;
-    if (activeWorkspaceId !== null) this.setOwners(1);
-  }
-
-  async quiesceWrites(
-    previousActiveWorkspaceId: WorkspaceId | null,
-  ): Promise<void> {
-    this.assertExpected(previousActiveWorkspaceId);
-    this.events.push('quiesced');
-  }
-
-  recordPreRestore(): void {
-    this.events.push('preRestore');
-  }
-
-  async stopAndProveHandlesClosed(
-    previousActiveWorkspaceId: WorkspaceId | null,
-  ): Promise<{ readonly handlesClosed: true }> {
-    this.assertExpected(previousActiveWorkspaceId);
-    this.setOwners(0);
-    this.events.push('stopped');
-    return { handlesClosed: true };
-  }
-
-  async ensurePreviousWorkspaceRunning(
-    previousActiveWorkspaceId: WorkspaceId | null,
-  ): Promise<void> {
-    this.activeWorkspaceId = previousActiveWorkspaceId;
-    this.setOwners(previousActiveWorkspaceId === null ? 0 : 1);
-    this.events.push('running');
-  }
-
-  async assertNoActiveWorkspaceRuntime(): Promise<void> {
-    if (this.backendOwners !== 0 || this.sqliteOwners !== 0) {
-      throw new Error('WORKSPACE_RUNTIME_ABSENCE_FAILED');
-    }
-    this.events.push('absent');
-  }
-
-  setRunningWorkspace(workspaceId: WorkspaceId): void {
-    this.activeWorkspaceId = workspaceId;
-    this.setOwners(1);
-  }
-
-  private assertExpected(workspaceId: WorkspaceId | null): void {
-    if (workspaceId !== this.activeWorkspaceId) {
-      throw new Error('WORKSPACE_RUNTIME_OWNERSHIP_FAILED');
-    }
-  }
-
-  private setOwners(count: 0 | 1): void {
-    this.backendOwners = count;
-    this.sqliteOwners = count;
-    this.maximumBackendOwners = Math.max(this.maximumBackendOwners, count);
-    this.maximumSqliteOwners = Math.max(this.maximumSqliteOwners, count);
-  }
-}
-
-class ProofRuntimeRelaunch {
-  requestCount = 0;
-
-  request(): void {
-    this.requestCount += 1;
-  }
-
-  complete(): void {}
-}
-
-function countUtilityProcesses(): number {
-  return app.getAppMetrics().filter((metric) => metric.type === 'Utility').length;
-}
-
-async function waitForUtilityProcessCount(
-  expectedCount: number,
-): Promise<boolean> {
-  const deadline = Date.now() + 5_000;
-  while (countUtilityProcesses() !== expectedCount) {
-    if (Date.now() >= deadline) return false;
-    await new Promise<void>((resolve) => setTimeout(resolve, 25));
-  }
-  return true;
-}
-
-function createWorkspaceId(): WorkspaceId {
-  return validateWorkspaceId(randomUUID());
-}
-
-function readSafeErrorCode(error: unknown): string | undefined {
-  if (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    typeof error.code === 'string'
-  ) {
-    return error.code;
-  }
-  return error instanceof Error ? error.message : undefined;
-}
-
 function assertProofResult(
   result: Readonly<WorkspaceManagementCompositionProofResult>,
+  expectedAppVersion: string,
 ): void {
   if (
     !result.activeWorkspacePreservedDuringCreate ||
     !result.activeWorkspacePreservedDuringImport ||
+    result.candidateAppVersion !== expectedAppVersion ||
     !result.candidateProcessesReleased ||
     result.createdWorkspaceCount !== 2 ||
     !result.importedWorkspaceValidated ||
     result.importedWorkspaceCount !== 1 ||
-    result.maximumBackendOwners !== 1 ||
-    result.maximumSqliteOwners !== 1 ||
+    result.modeledMaximumBackendOwners !== 1 ||
+    result.modeledMaximumSqliteOwners !== 1 ||
     !result.noOpSwitchPreservedRuntime ||
     !result.renamePersisted ||
     !result.renamePreservedRuntime ||
@@ -934,16 +488,34 @@ function assertProofResult(
   }
 }
 
-function snapshotsEqual(first: unknown, second: unknown): boolean {
-  return JSON.stringify(first) === JSON.stringify(second);
-}
-
-function arraysEqual(
-  first: readonly string[],
-  second: readonly string[],
-): boolean {
-  return (
-    first.length === second.length &&
-    first.every((value, index) => value === second[index])
-  );
+function deriveFinalWorkspaceCounts(input: {
+  readonly createdWorkspaceIds: readonly WorkspaceId[];
+  readonly importedWorkspaceId: WorkspaceId;
+  readonly registryWorkspaceIds: readonly WorkspaceId[];
+}): {
+  readonly createdWorkspaceCount: number;
+  readonly importedWorkspaceCount: number;
+} {
+  const expectedWorkspaceIds = [
+    ...input.createdWorkspaceIds,
+    input.importedWorkspaceId,
+  ];
+  const containsOnlyExpectedWorkspaceIds =
+    input.registryWorkspaceIds.length === expectedWorkspaceIds.length &&
+    input.registryWorkspaceIds.every((workspaceId) =>
+      expectedWorkspaceIds.includes(workspaceId),
+    );
+  if (!containsOnlyExpectedWorkspaceIds) {
+    return { createdWorkspaceCount: 0, importedWorkspaceCount: 0 };
+  }
+  const countOccurrences = (workspaceId: WorkspaceId) =>
+    input.registryWorkspaceIds.filter((candidate) => candidate === workspaceId)
+      .length;
+  return {
+    createdWorkspaceCount: input.createdWorkspaceIds.filter(
+      (workspaceId) => countOccurrences(workspaceId) === 1,
+    ).length,
+    importedWorkspaceCount:
+      countOccurrences(input.importedWorkspaceId) === 1 ? 1 : 0,
+  };
 }

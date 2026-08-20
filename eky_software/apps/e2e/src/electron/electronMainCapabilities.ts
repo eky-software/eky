@@ -19,12 +19,13 @@ export interface ElectronProcessMetricsSnapshot {
 export interface WorkspaceManagementCompositionProofSnapshot {
   activeWorkspacePreservedDuringCreate: boolean;
   activeWorkspacePreservedDuringImport: boolean;
+  candidateAppVersion: string;
   candidateProcessesReleased: boolean;
   createdWorkspaceCount: number;
   importedWorkspaceValidated: boolean;
   importedWorkspaceCount: number;
-  maximumBackendOwners: number;
-  maximumSqliteOwners: number;
+  modeledMaximumBackendOwners: number;
+  modeledMaximumSqliteOwners: number;
   noOpSwitchPreservedRuntime: boolean;
   renamePersisted: boolean;
   renamePreservedRuntime: boolean;

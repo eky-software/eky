@@ -37,23 +37,35 @@ import { test, expect } from '../../src/fixtures/isolatedElectronTest.js';
 import { createApprovedInvoiceWithPdf } from '../../src/journeys/invoicingApiJourney.js';
 
 const repositoryRoot = resolve(import.meta.dirname, '../../../..');
+const desktopPackageVersion = readDesktopPackageVersion();
+
+function readDesktopPackageVersion(): string {
+  const packageMetadata = JSON.parse(
+    readFileSync(join(repositoryRoot, 'apps/desktop/package.json'), 'utf8'),
+  ) as { readonly version?: unknown };
+  if (typeof packageMetadata.version !== 'string') {
+    throw new Error('Desktop package version is unavailable.');
+  }
+  return packageMetadata.version;
+}
 
 test('DESK-WORKSPACE-MANAGEMENT-001 @critical @recovery proves the production composition with isolated utility candidates', async ({
   e2eElectron,
 }) => {
-  await expect(
-    runElectronWorkspaceManagementCompositionProof(
-      e2eElectron.electronApp,
-    ),
-  ).resolves.toEqual({
+  const proof = await runElectronWorkspaceManagementCompositionProof(
+    e2eElectron.electronApp,
+  );
+
+  expect(proof).toEqual({
     activeWorkspacePreservedDuringCreate: true,
     activeWorkspacePreservedDuringImport: true,
+    candidateAppVersion: desktopPackageVersion,
     candidateProcessesReleased: true,
     createdWorkspaceCount: 2,
     importedWorkspaceValidated: true,
     importedWorkspaceCount: 1,
-    maximumBackendOwners: 1,
-    maximumSqliteOwners: 1,
+    modeledMaximumBackendOwners: 1,
+    modeledMaximumSqliteOwners: 1,
     noOpSwitchPreservedRuntime: true,
     renamePersisted: true,
     renamePreservedRuntime: true,
@@ -67,6 +79,8 @@ test('DESK-WORKSPACE-MANAGEMENT-001 @critical @recovery proves the production co
     switchRequestedRelaunch: true,
     unresolvedOperationBlockedMutation: true,
   });
+  expect(proof.candidateAppVersion).toMatch(/^\d+\.\d+\.\d+$/u);
+  expect(proof.candidateAppVersion).not.toBe('0.1.0-alpha.1');
 });
 
 test('DESK-PDF-001 @critical opens one isolated invoice PDF preview', async ({
