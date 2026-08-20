@@ -695,10 +695,10 @@ point, hardlink, ylikokoinen payload tai containment-ristiriita johtaa
 
 ### W3b:n same-lineage-korvaus
 
-**Tila:** toteutettu ja testattu inerttinä foundationina. Polku ei kuulu
-production-compositioniin, preloadiin, IPC:hen, UI:hin, paketoituun
-sovellukseen tai AppData-profiiliin ennen W4:n erillistä päätöstä ja
-prosessilifecycle-todistetta.
+**Tila:** toteutettu ja testattu workspace management -foundationina sekä
+kytketty W5A:ssa Electron mainin sisäiseen production-compositioniin. Renderer-
+capability, käyttäjäpolku ja Electron-E2E kuuluvat erilliseen W5B.2-porttiin;
+niitä ei pidetä valmiina ennen kyseisen portin hyväksymistä.
 
 W3b ei rakenna toista restore-moottoria. Se muodostaa nykyisen
 `ProfileRestoreActivationTransaction`-transactionin aktiivisen workspacen
@@ -737,6 +737,20 @@ mergetä, tarkistaa PDF-hashin ja device-local-rajojen muuttumattomuuden sekä
 ajaa yhteensopivan historiallisen migraatioprefixin eteenpäin. Väärä salasana
 ja muutettu container torjutaan ennen quiescea ja kirjoituksia. Production-
 runtimea, oikeaa AppData-profiilia tai käyttäjän business-dataa ei käytetä.
+
+W5B.2 ei muuta W3b:n restore-moottoria tai identiteettisääntöä. Renderer
+käynnistää vain nimetyn nolla-argumenttisen toiminnon. Electron main johtaa
+kohteen omasta aktiivisesta `ready`-workspacestaan, omistaa backupin native-
+tiedostovalinnan ja salasanan sekä näyttää viimeisen native-vahvistuksen.
+Kohteen label, yrityksen nimi ja Y-tunnus ovat vain käyttäjälle näkyvää
+kontekstia; exact lineage todistetaan nykyisessä yksityisessä backend-/backup-
+rajassa ennen kirjoituksia.
+
+PreRestore-palautuspiste luodaan ennen aktiivisen snapshot-brokerin ja runtimen
+sulkemista. Tiedoston valinnan, salasanan tai vahvistuksen peruminen ei saa
+varata korvausoperaatiota tai muuttaa registryä, journalia, aktiivista
+osoitinta tai runtimea. Onnistunut korvaus ja onnistunut rollback johtavat
+main-owned hallittuun uudelleenkäynnistykseen.
 
 ## Käyttöliittymä
 
