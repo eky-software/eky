@@ -6,6 +6,7 @@ import {
   createEmptyWorkspaceIpcChannel,
   getWorkspaceManagementStatusIpcChannel,
   importWorkspaceBackupAsNewIpcChannel,
+  replaceActiveWorkspaceFromBackupIpcChannel,
   renameWorkspaceIpcChannel,
   switchWorkspaceIpcChannel,
   workspaceManagementIpcChannels,
@@ -158,6 +159,111 @@ describe('workspace management capability', () => {
         },
       ),
     ).resolves.toEqual({ formatVersion: 1, status: 'completed' });
+  });
+
+  it('replaces only the main-derived active ready workspace after every native gate', async () => {
+    const fixture = createFixture();
+
+    const result = await fixture.invoke(
+      replaceActiveWorkspaceFromBackupIpcChannel,
+      fixture.trustedEvent,
+    );
+
+    expect(result).toEqual({ formatVersion: 1, status: 'relaunching' });
+    expect(fixture.selectReplacementBackupSource).toHaveBeenCalledWith();
+    expect(fixture.requestPassword).toHaveBeenCalledWith('enter');
+    expect(fixture.confirmActiveWorkspaceReplacement).toHaveBeenCalledWith(
+      'Oma yritys Oy',
+    );
+    expect(fixture.replaceActiveFromBackup).toHaveBeenCalledWith({
+      containerPath: 'C:\\Backups\\replacement.ekybackup',
+      password: 'private-password',
+      targetWorkspaceId: activeWorkspaceId,
+    });
+    expect(JSON.stringify(result)).not.toMatch(
+      /path|password|companyId|profileId|lineage|session|journal|operationId/i,
+    );
+
+    await expect(
+      fixture.invoke(
+        replaceActiveWorkspaceFromBackupIpcChannel,
+        fixture.trustedEvent,
+        { workspaceId: activeWorkspaceId },
+      ),
+    ).rejects.toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN');
+    await expect(
+      fixture.invoke(replaceActiveWorkspaceFromBackupIpcChannel, {
+        sender: {},
+        senderFrame: fixture.mainFrame,
+      }),
+    ).rejects.toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN');
+    await expect(
+      fixture.invoke(replaceActiveWorkspaceFromBackupIpcChannel, {
+        sender: fixture.webContents,
+        senderFrame: {},
+      }),
+    ).rejects.toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN');
+  });
+
+  it.each([
+    ['file picker', { replacementBackupPath: null }],
+    ['password window', { password: null }],
+    ['native confirmation', { replacementConfirmed: false }],
+  ] as const)(
+    'cancels replacement at the %s without calling the service',
+    async (_stage, options) => {
+      const fixture = createFixture(options);
+
+      await expect(
+        fixture.invoke(
+          replaceActiveWorkspaceFromBackupIpcChannel,
+          fixture.trustedEvent,
+        ),
+      ).resolves.toEqual({ formatVersion: 1, status: 'cancelled' });
+      expect(fixture.replaceActiveFromBackup).not.toHaveBeenCalled();
+      await expect(
+        fixture.invoke(createEmptyWorkspaceIpcChannel, fixture.trustedEvent, {
+          workspaceLabel: 'Peruutuksen jälkeen',
+        }),
+      ).resolves.toEqual({ formatVersion: 1, status: 'relaunching' });
+    },
+  );
+
+  it('blocks replacement before file selection when status is busy or unresolved', async () => {
+    for (const [operationState, expectedCode] of [
+      ['busy', 'WORKSPACE_MANAGEMENT_BUSY'],
+      ['recoveryRequired', 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED'],
+    ] as const) {
+      const fixture = createFixture({
+        getStatus: async () => ({ ...status, operationState }),
+      });
+      await expect(
+        fixture.invoke(
+          replaceActiveWorkspaceFromBackupIpcChannel,
+          fixture.trustedEvent,
+        ),
+      ).rejects.toThrow(expectedCode);
+      expect(fixture.selectReplacementBackupSource).not.toHaveBeenCalled();
+      expect(fixture.replaceActiveFromBackup).not.toHaveBeenCalled();
+    }
+
+    const withoutActiveWorkspace = createFixture({
+      getStatus: async () => ({
+        activeWorkspaceId: null,
+        formatVersion: 1,
+        operationState: 'idle',
+        workspaces: [],
+      }),
+    });
+    await expect(
+      withoutActiveWorkspace.invoke(
+        replaceActiveWorkspaceFromBackupIpcChannel,
+        withoutActiveWorkspace.trustedEvent,
+      ),
+    ).rejects.toThrow('WORKSPACE_MANAGEMENT_INVALID');
+    expect(
+      withoutActiveWorkspace.selectReplacementBackupSource,
+    ).not.toHaveBeenCalled();
   });
 
   it('rejects a parallel mutation before opening another native dialog', async () => {
@@ -342,6 +448,8 @@ describe('workspace management capability', () => {
 function createFixture(
   options: {
     backupPath?: string | null;
+    replacementBackupPath?: string | null;
+    replacementConfirmed?: boolean;
     createEmpty?: (label: unknown) => Promise<unknown>;
     getStatus?: () => Promise<unknown>;
     password?: string | null;
@@ -376,6 +484,7 @@ function createFixture(
     workspaceLabel,
   }));
   const switchTo = vi.fn(async () => undefined);
+  const replaceActiveFromBackup = vi.fn(async () => undefined);
   const requestPassword = vi.fn(async () =>
     options.password === undefined ? 'private-password' : options.password,
   );
@@ -386,17 +495,30 @@ function createFixture(
           ? 'C:\\Backups\\company.ekybackup'
           : options.backupPath),
   );
+  const selectReplacementBackupSource = vi.fn(async () =>
+    options.replacementBackupPath === undefined
+      ? 'C:\\Backups\\replacement.ekybackup'
+      : options.replacementBackupPath,
+  );
+  const confirmActiveWorkspaceReplacement = vi.fn(async () =>
+    options.replacementConfirmed === undefined
+      ? true
+      : options.replacementConfirmed,
+  );
   const showSafeError = vi.fn();
   const capability = createWorkspaceManagementCapability({
     ipcMain: { handle, removeHandler } as never,
     mainWindow: { isDestroyed: () => false, webContents } as never,
     passwordWindow: { requestPassword },
+    confirmActiveWorkspaceReplacement,
     selectBackupSource,
+    selectReplacementBackupSource,
     service: {
       createEmpty,
       getStatus,
       importBackupAsNew,
       rename,
+      replaceActiveFromBackup,
       switchTo,
     } as never,
     showSafeError,
@@ -404,6 +526,7 @@ function createFixture(
 
   return {
     capability,
+    confirmActiveWorkspaceReplacement,
     createEmpty,
     getStatus,
     getHandler(channel: string) {
@@ -420,8 +543,10 @@ function createFixture(
     mainFrame,
     removeHandler,
     rename,
+    replaceActiveFromBackup,
     requestPassword,
     selectBackupSource,
+    selectReplacementBackupSource,
     showSafeError,
     switchTo,
     trustedEvent: { sender: webContents, senderFrame: mainFrame },

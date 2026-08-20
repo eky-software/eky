@@ -14,8 +14,8 @@ const workspaceId = '11111111-1111-4111-8111-111111111111';
 describe('workspace management capability protocol', () => {
   it('uses one explicit protocol version and unique versioned channels', () => {
     expect(workspaceManagementCapabilityProtocolVersion).toBe(1);
-    expect(new Set(workspaceManagementIpcChannels).size).toBe(5);
-    expect(workspaceManagementIpcChannels).toHaveLength(5);
+    expect(new Set(workspaceManagementIpcChannels).size).toBe(6);
+    expect(workspaceManagementIpcChannels).toHaveLength(6);
     for (const channel of workspaceManagementIpcChannels) {
       expect(channel).toContain(':v1:');
     }

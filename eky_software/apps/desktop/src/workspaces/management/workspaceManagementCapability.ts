@@ -17,6 +17,7 @@ import {
   parseWorkspaceLabelRequest,
   parseWorkspaceRenameRequest,
   parseWorkspaceStatusResult,
+  replaceActiveWorkspaceFromBackupIpcChannel,
   renameWorkspaceIpcChannel,
   switchWorkspaceIpcChannel,
   workspaceManagementIpcChannels,
@@ -28,9 +29,16 @@ interface WorkspaceManagementCapabilityOptions {
   readonly passwordWindow: Pick<BackupPasswordWindowController, 'requestPassword'>;
   readonly service: Pick<
     WorkspaceManagementService,
-    'createEmpty' | 'getStatus' | 'importBackupAsNew' | 'rename' | 'switchTo'
+    | 'createEmpty'
+    | 'getStatus'
+    | 'importBackupAsNew'
+    | 'rename'
+    | 'replaceActiveFromBackup'
+    | 'switchTo'
   >;
+  confirmActiveWorkspaceReplacement(workspaceLabel: string): Promise<boolean>;
   selectBackupSource(): Promise<string | null>;
+  selectReplacementBackupSource(): Promise<string | null>;
   showSafeError(): void;
 }
 
@@ -86,6 +94,65 @@ export function createWorkspaceManagementCapability(
             containerPath,
             password,
             workspaceLabel: request.workspaceLabel,
+          });
+          return createWorkspaceOperationResult('relaunching');
+        }),
+      ),
+  );
+  options.ipcMain.handle(
+    replaceActiveWorkspaceFromBackupIpcChannel,
+    (event, ...args: unknown[]) =>
+      runCapability(options, state, event, args, 0, () =>
+        runMutation(state, 'replace', async () => {
+          const status = parseWorkspaceStatusResult(
+            await options.service.getStatus(),
+          );
+          if (status.operationState === 'busy') {
+            throw new WorkspaceManagementError(
+              'WORKSPACE_MANAGEMENT_BUSY',
+              'replace',
+            );
+          }
+          if (status.operationState === 'recoveryRequired') {
+            throw new WorkspaceManagementError(
+              'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED',
+              'replace',
+            );
+          }
+          const activeWorkspace = status.workspaces.find(
+            (workspace) =>
+              workspace.isActive &&
+              workspace.workspaceId === status.activeWorkspaceId,
+          );
+          if (
+            activeWorkspace === undefined ||
+            activeWorkspace.availability !== 'ready'
+          ) {
+            throw new WorkspaceManagementError(
+              'WORKSPACE_MANAGEMENT_INVALID',
+              'replace',
+            );
+          }
+          const containerPath =
+            await options.selectReplacementBackupSource();
+          if (containerPath === null) {
+            return createWorkspaceOperationResult('cancelled');
+          }
+          const password =
+            await options.passwordWindow.requestPassword('enter');
+          if (password === null) {
+            return createWorkspaceOperationResult('cancelled');
+          }
+          const confirmed = await options.confirmActiveWorkspaceReplacement(
+            activeWorkspace.workspaceLabel,
+          );
+          if (!confirmed) {
+            return createWorkspaceOperationResult('cancelled');
+          }
+          await options.service.replaceActiveFromBackup({
+            containerPath,
+            password,
+            targetWorkspaceId: activeWorkspace.workspaceId,
           });
           return createWorkspaceOperationResult('relaunching');
         }),
@@ -174,7 +241,7 @@ async function runCapability<Result>(
 
 async function runMutation<Result>(
   state: { mutationInFlight: boolean },
-  operationKind: Exclude<WorkspaceManagementOperationKind, 'replace' | 'status'>,
+  operationKind: Exclude<WorkspaceManagementOperationKind, 'status'>,
   operation: () => Promise<Result>,
 ): Promise<Result> {
   if (state.mutationInFlight) {
