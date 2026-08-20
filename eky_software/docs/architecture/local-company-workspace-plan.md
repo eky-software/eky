@@ -11,10 +11,12 @@ ja startup-recoveryn runtime-poissaolorajan ennen W3:a. W3:n uuden lineagen
 backup-import on toteutettu inerttinä foundationina omalla feature-haarallaan.
 W1-W3:n foundation on toteutettu ja W4 on aktivoinut registryyn sidotun
 startupin, legacy-profiilin kertaluonteisen adoption sekä workspace-kohtaiset
-runtime-resurssit production-compositionissa. W5:n renderer-capability ja
-käyttäjälle näkyvä työtilahallinta sekä W6:n täysi paketoitu usean työtilan
-release-matriisi ovat edelleen toteuttamatta. Käyttäjälle ei julkaista tätä
-kokonaisuutta ennen W5-W6-porttien valmistumista.
+runtime-resurssit production-compositionissa. W5 on jaettu Electron mainin
+sisäiseen W5A management-foundationiin ja erikseen hyväksyttävään W5B
+renderer/UI-toimitukseen. W5A on toteutettu ja hyväksytty paikallisella
+testimatriisilla; W5B sekä W6:n täysi paketoitu usean työtilan release-matriisi
+ovat edelleen toteuttamatta. Käyttäjälle ei julkaista tätä kokonaisuutta ennen
+W5B-W6-porttien valmistumista.
 
 Tämä suunnitelma toteuttaa
 `docs/decisions/ADR-0011-local-multi-workspace-company-model.md`-päätöksen
@@ -173,7 +175,7 @@ fresh-profile bootstrap rajatun portin takana.
 
 **Muutettavat kerrokset:** `apps/desktop/src/workspaces/`-alueen yksityinen
 workspace root, luontijournal, lifecycle-portit, koordinaattori ja testit.
-Mahdollinen production-composition tulee vasta W4:ssä ja UI vasta W5:ssä.
+Mahdollinen production-composition tulee vasta W4:ssä ja UI vasta W5B:ssä.
 
 **Muuttumattomat kerrokset:** business-domain, API-sopimukset,
 backup-formaatti ja installer/update.
@@ -594,8 +596,9 @@ pre-restore failure, invalid staging, activation/rollback failure ja
 
 Suljettu suoritusjärjestys on: targetin ja operation-tilan validointi,
 backupin autentikointi, exact-lineage-todistus, `replace`-lease, registry-
-revalidointi, kirjoitusten quiesce, runtimen ja SQLite-kahvojen sulkeminen,
-runtime-absence, workspace-scoped preRestore-piste, yksityinen staging,
+revalidointi, kirjoitusten quiesce, workspace-scoped preRestore-piste nykyisen
+snapshot-brokerin ja SQLite-ownerin ollessa vielä hallitusti käytössä,
+runtimen ja SQLite-kahvojen sulkeminen, runtime-absence, yksityinen staging,
 forward-migraatiot, täydellinen validointi, nykyisen activation journalin
 kirjoitus, atominen aktivointi, saman workspacen uusi runtime-session,
 health/identity/artifact-validointi, transactionin hyväksyntä ja cleanup.
@@ -659,7 +662,7 @@ start ja operational runbook.
 
 **Commit/PR/release:** W4 voidaan jakaa registry switch- ja legacy adoption
 -PR:iin, jos kumpikin pysyy itsenäisesti suljettuna. Ei user releasea ennen
-W5-W6:ta.
+W5B-W6:ta.
 
 **Toteutustila:** W4:n production-runtime on toteutettu. Electron main
 ratkaisee aktiivisen workspacen ennen runtime-sessionia ja backendia, adoptoi
@@ -673,43 +676,89 @@ aina `<archiveRoot>/<workspaceId>/`-alikansioon.
 W4:n switch-koordinaattori ja recovery-sopimukset on todennettu
 kohdetesteillä, mukaan lukien A -> B -> A, vanhojen runtime-omistajien
 sulkeminen ja adoption idempotenssi. Rendererille ei ole lisätty workspace-
-capabilitya eikä UI:ta; ne kuuluvat W5:een. Aktiivisen ja passiivisen
-workspacen N -> N+1 -migraatio sekä koko packaged multi-workspace -matriisi
-kuuluvat edelleen W6:een.
+capabilitya eikä UI:ta; ne kuuluvat W5B:hen. W5A rakentaa niitä ennen vain
+main-prosessin sisäisen hallinta- ja lifecycle-foundationin. Aktiivisen ja
+passiivisen workspacen N -> N+1 -migraatio sekä koko packaged multi-workspace
+-matriisi kuuluvat edelleen W6:een.
 
 Jo aktiivisen työtilan valinta on idempotentti no-op, joka ei sulje runtimea
 eikä käynnistä sovellusta uudelleen.
 
-## W5: Workspace management UI
+## W5A: Main-owned workspace management foundation
+
+**Omistaja:** Electron main. Tämä vaihe ei avaa capabilitya rendererille.
+
+**Muutettavat kerrokset:** mainin sisäinen management service, production-
+lifecycle-adapteri, private candidate backend -adapterit, registry-labelin
+rename sekä yhteinen installation-scoped maintenance lease.
+
+**Muuttumattomat kerrokset:** preload, IPC, renderer, web, backendin julkinen
+HTTP-API, schema, migraatiot, backup-formaatti, domain ja permission-malli.
+
+**Sisäiset käyttötapaukset:** rajattu status, tyhjän workspacen luonti,
+backup-import uutena, aktiivisen exact-lineage-workspacen korvaus, switch ja
+labelin rename. Poisto ei kuulu W5A:han.
+
+**Luottamusraja:** hallintapalvelu saa palauttaa vain validoidun status-
+projektion sekä workspacen opaque tunnisteen, labelin, aktiivisuuden ja
+saatavuuden. Polut, `companyId`, lineage, runtime-session, secret ref,
+journalit, operationId, backup-sisältö ja raakavirheet eivät kuulu sopimukseen.
+
+**Lifecycle:** create/import/replace/switch-koordinaattorit varaavat yhteisen
+maintenance leasen itse. Backup, restore ja update käyttävät samaa main-owned
+auktoriteettia omien moduulikohtaisten vartijoidensa lisäksi. Main ei avaa
+SQLitea; private utility backend omistaa bootstrapin, migraatiot ja
+validoinnin. Runtimeen sidotut resurssit suljetaan ja niiden poissaolo
+todistetaan ennen omistajuuden vaihtoa.
+
+**Testit:** status-parseri ja vuotokielto, create/import/replace/switch/rename,
+ristiriidat kaikkien maintenance-tarkoitusten kanssa, exact-lineage,
+registry/pointer-byte-identtisyys, runtime-sessionin kierto, yksi backend ja
+SQLite-owner sekä nolla orphan-prosessia. Production-adapterien integraatio
+käyttää vain synteettistä private userData -juurta.
+
+**Commit/PR/release:** W5A on oma sisäinen feature-checkpoint. Sitä ei kuvata
+käyttäjälle valmiina multi-workspace-toimintona eikä siitä nosteta versiota.
+
+**Toteutustila:** valmis ja paikallisesti hyväksytty. Production-composition
+käyttää yhtä main-owned maintenance lease- ja active workspace lifecycle
+-instanssia. Status/create/import/replace/switch/rename on todennettu
+kohdetesteillä sekä Electron composition proofilla, joka käyttää vain
+synteettistä private userData -juurta ja private utility -candidateja. Proof
+todentaa nykyisen desktop-version, lopullisen registry-tilan, täsmällisen yhden
+relaunchin switchissä, enintään yhden mallinnetun backend- ja SQLite-ownerin
+sekä sen, ettei proofin käynnistämiä utility-prosesseja jää eloon. Preloadia,
+IPC:tä, renderer-capabilitya, web-UI:ta tai julkista backend-reittiä ei lisätty.
+Täysi usean workspacen packaged isolation/update/recovery -todistus jää W6:een.
+
+## W5B: Trusted workspace capability and UI
 
 **Omistaja:** web feature paikallisen desktop-capabilityn päällä. Electron main
 omistaa kaikki privileged toiminnot.
 
 **Muutettavat kerrokset:** webin workspace-näkymä, i18n, preload-allowlist ja
-rajattu main IPC. Backend business API ei saa workspace-hallintareittejä.
-
-**Muuttumattomat kerrokset:** storage-päätökset, backup-formaatti, domain ja
-permission-malli.
+rajattu trusted main frame -IPC. Backend business API ei saa
+workspace-hallintareittejä.
 
 **Käyttäjäpolut:** listaa turvalliset labelit, luo tyhjä, tuo backupista,
 korvaa exact-lineage-workspace, vaihda työtila ja nimeä label uudelleen.
 Poista-toimintoa ei näytetä.
 
 **Luottamusraja:** UI saa workspaceId:n vain capability-vastauksesta. Se ei
-saa polkua, companyId:tä, lineagea, secret refiä tai journalia.
+saa polkua, companyId:tä, lineagea, secret refiä tai journalia. Backupin
+valinta, salasana ja exact-lineage-vahvistus pysyvät Electron mainin
+omistamissa native-ikkunoissa.
 
 **Fail-closed-tilat:** capability puuttuu webissä, invalid selection,
 operation conflict, native confirmation cancel, switch/import failure ja
 recoveryRequired. Viestit ovat turvallisia suomenkielisiä i18n-tekstejä.
 
-**Testit:** web ilman desktop-capabilitya, keyboard/focus, loading/error,
-double click, cancellation, duplicate label, failed switch, UI reload ja
-vanhan workspace-datan katoaminen näkymästä vaihdossa.
+**Testit:** preload/IPC-allowlist, trusted frame, web ilman capabilitya,
+keyboard/focus, loading/error, double click, cancellation, duplicate label,
+failed switch, UI reload ja vanhan workspace-datan katoaminen näkymästä.
 
-**Dokumentit:** UI-periaatteet ja desktop capability -sopimus.
-
-**Commit/PR/release:** yksi W5-PR. Ensimmäinen release candidate voidaan
-nimetä vasta W6:n hyväksymisportin jälkeen.
+**Commit/PR/release:** W5B on erillinen UI/capability-checkpoint. Ensimmäinen
+release candidate voidaan nimetä vasta W6:n hyväksymisportin jälkeen.
 
 ## W6: E2E, packaged pilot and 0.2.6 -> 0.2.7 gate
 
@@ -745,7 +794,7 @@ In-app update testataan erikseen vain, jos `localUnsignedPilot`-polku on
 kyseisessä checkpointissa hyväksytty. MSI-gate ei piilota in-app update -puutetta.
 
 **Release-raja:** ensimmäinen käyttäjälle näkyvä versio on `0.2.7` vain, jos
-W1-W5 muodostavat koherentin käytettävän kokonaisuuden ja koko W6-portti on
+W1-W5B muodostavat koherentin käytettävän kokonaisuuden ja koko W6-portti on
 vihreä. Pelkästä registry- tai sisäisestä checkpointista ei nosteta versiota.
 
 **Commit/PR/release:** testihardening omana PR:nään; versionosto viimeisenä

@@ -152,9 +152,9 @@ test('WORKSPACE-REPLACE-001 @critical @recovery replaces the active exact-lineag
   expect(fixture.lifecycle.sessionRotations).toBe(1);
   expect(fixture.lifecycle.events).toEqual([
     'runtime.quiesced',
+    'preRestore.created',
     'runtime.stopped',
     'runtime.absent',
-    'preRestore.created',
     'runtime.started',
     'runtime.validated',
   ]);

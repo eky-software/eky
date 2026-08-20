@@ -16,6 +16,30 @@ export interface ElectronProcessMetricsSnapshot {
   windowCount: number;
 }
 
+export interface WorkspaceManagementCompositionProofSnapshot {
+  activeWorkspacePreservedDuringCreate: boolean;
+  activeWorkspacePreservedDuringImport: boolean;
+  candidateAppVersion: string;
+  candidateProcessesReleased: boolean;
+  createdWorkspaceCount: number;
+  importedWorkspaceValidated: boolean;
+  importedWorkspaceCount: number;
+  modeledMaximumBackendOwners: number;
+  modeledMaximumSqliteOwners: number;
+  noOpSwitchPreservedRuntime: boolean;
+  renamePersisted: boolean;
+  renamePreservedRuntime: boolean;
+  replacementAcceptedAfterRestart: boolean;
+  replacementFaultsRolledBack: boolean;
+  replacementLifecycleOrdered: boolean;
+  replacementPreservedUnrelatedWorkspaces: boolean;
+  sharedLeaseBlockedConcurrentOperation: boolean;
+  sourceBackupPreserved: boolean;
+  switchJournalPersisted: boolean;
+  switchRequestedRelaunch: boolean;
+  unresolvedOperationBlockedMutation: boolean;
+}
+
 export function closeElectronPdfPreviews(
   electronApp: ElectronApplication,
 ): Promise<void> {
@@ -96,10 +120,27 @@ export function readElectronProcessMetrics(
   });
 }
 
+export function runElectronWorkspaceManagementCompositionProof(
+  electronApp: ElectronApplication,
+): Promise<WorkspaceManagementCompositionProofSnapshot> {
+  return electronApp.evaluate(async () => {
+    const controller = (
+      globalThis as typeof globalThis & {
+        __EKY_ELECTRON_E2E__?: ElectronE2eController;
+      }
+    ).__EKY_ELECTRON_E2E__;
+    if (controller === undefined) {
+      throw new Error('Electron E2E controller is unavailable.');
+    }
+    return controller.runWorkspaceManagementCompositionProof();
+  });
+}
+
 interface ElectronE2eController {
   closePdfPreviewWindows(): void;
   killBackendUnexpectedly(): void;
   nativeAdapterSnapshot(): ElectronNativeAdapterSnapshot;
   pdfPreviewUrls(): readonly string[];
   processMetrics(): ElectronProcessMetricsSnapshot;
+  runWorkspaceManagementCompositionProof(): Promise<WorkspaceManagementCompositionProofSnapshot>;
 }

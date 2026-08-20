@@ -31,6 +31,7 @@ import type {
   WorkspaceReplacementActivationAuthority,
   WorkspaceReplacementActivationAuthorityFactory,
   WorkspaceReplacementOperationGuardPort,
+  WorkspaceReplacementRuntimeHandoffPort,
   WorkspaceReplacementRuntimeReadiness,
   WorkspaceReplacementRuntimeReadinessPort,
 } from './workspaceBackupReplacementPorts.js';
@@ -55,6 +56,7 @@ export interface WorkspaceBackupReplacementCoordinatorOptions {
   readonly preRestoreRecoveryPoint: WorkspacePreRestoreRecoveryPointPort;
   readonly registry: Pick<WorkspaceRegistryPort, 'read'>;
   readonly rootStore: WorkspaceBackupReplacementRootStore;
+  readonly runtimeHandoff?: WorkspaceReplacementRuntimeHandoffPort;
   readonly runtimeReadiness: WorkspaceReplacementRuntimeReadinessPort;
   readonly userDataRoot: string;
   readonly workspaceRuntimeAbsence: WorkspaceRuntimeAbsencePort;
@@ -131,9 +133,9 @@ export class WorkspaceBackupReplacementCoordinator {
 
       await this.quiesceRuntime(targetWorkspaceId);
       writesQuiesced = true;
+      await this.createPreRestore(operationId, targetWorkspaceId);
       await this.stopRuntime(targetWorkspaceId);
       await this.assertRuntimeAbsent();
-      await this.createPreRestore(operationId, targetWorkspaceId);
       await this.prepareCandidate(paths);
 
       const staged = await this.stageBackup({
@@ -202,6 +204,14 @@ export class WorkspaceBackupReplacementCoordinator {
 
       await this.prepareActivation(authority, operationId);
       await this.replaceActiveRoot(authority);
+      if (this.options.runtimeHandoff !== undefined) {
+        this.options.runtimeHandoff.requestRelaunch();
+        return Object.freeze({
+          migrationChainIdentity: migration.migrationChainIdentity,
+          profileId: preflight.profileId,
+          workspaceId: targetWorkspaceId,
+        });
+      }
       await this.ensureRuntimeRunning(targetWorkspaceId);
       await this.validateRunningRuntime({
         workspaceId: targetWorkspaceId,
@@ -276,6 +286,10 @@ export class WorkspaceBackupReplacementCoordinator {
       await this.stopRuntime(context.target.entry.workspaceId);
       await this.assertRuntimeAbsent();
       await context.authority.transaction.rollback();
+      if (this.options.runtimeHandoff !== undefined) {
+        this.options.runtimeHandoff.requestRelaunch();
+        return;
+      }
       await this.ensureRuntimeRunning(context.target.entry.workspaceId);
       await this.validateRunningRuntime({
         workspaceId: context.target.entry.workspaceId,
@@ -288,6 +302,10 @@ export class WorkspaceBackupReplacementCoordinator {
 
     await this.options.rootStore.discardBeforeActivation(context.paths);
     if (context.writesQuiesced) {
+      if (this.options.runtimeHandoff !== undefined) {
+        this.options.runtimeHandoff.requestRelaunch();
+        return;
+      }
       await this.ensureRuntimeRunning(context.target.entry.workspaceId);
       await this.validateRunningRuntime({
         workspaceId: context.target.entry.workspaceId,

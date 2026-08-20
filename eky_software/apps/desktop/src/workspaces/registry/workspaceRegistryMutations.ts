@@ -121,3 +121,27 @@ export function selectActiveWorkspace(
     workspaces: registry.workspaces,
   });
 }
+
+export function renameWorkspaceLabel(
+  registry: Readonly<LocalWorkspaceRegistryV1>,
+  workspaceId: WorkspaceId,
+  workspaceLabel: string,
+): Readonly<LocalWorkspaceRegistryV1> {
+  const targetIndex = registry.workspaces.findIndex(
+    (entry) => entry.workspaceId === workspaceId,
+  );
+  if (targetIndex === -1) {
+    throw new WorkspaceRegistryMutationError('workspaceNotFound');
+  }
+  const current = registry.workspaces[targetIndex]!;
+  if (current.workspaceLabel === workspaceLabel) {
+    return registry;
+  }
+  const workspaces = [...registry.workspaces];
+  workspaces[targetIndex] = Object.freeze({ ...current, workspaceLabel });
+  return Object.freeze({
+    formatVersion: 1,
+    activeWorkspaceId: registry.activeWorkspaceId,
+    workspaces: Object.freeze(workspaces),
+  });
+}

@@ -1,8 +1,10 @@
 export type WorkspaceMaintenancePurpose =
+  | 'backup'
   | 'create'
   | 'import'
   | 'replace'
   | 'adopt'
+  | 'rename'
   | 'switch'
   | 'update'
   | 'restore';
@@ -17,6 +19,12 @@ export interface WorkspaceMaintenanceLease {
   ): Promise<WorkspaceMaintenanceLeaseHandle>;
 }
 
+export type WorkspaceMaintenanceState = 'idle' | 'busy';
+
+export interface WorkspaceMaintenanceStateReader {
+  readState(): WorkspaceMaintenanceState;
+}
+
 export class WorkspaceMaintenanceLeaseBusyError extends Error {
   constructor() {
     super('WORKSPACE_MAINTENANCE_BUSY');
@@ -25,8 +33,12 @@ export class WorkspaceMaintenanceLeaseBusyError extends Error {
 }
 
 export class InMemoryWorkspaceMaintenanceLease
-  implements WorkspaceMaintenanceLease {
+  implements WorkspaceMaintenanceLease, WorkspaceMaintenanceStateReader {
   private held = false;
+
+  readState(): WorkspaceMaintenanceState {
+    return this.held ? 'busy' : 'idle';
+  }
 
   async acquire(
     _purpose: WorkspaceMaintenancePurpose,

@@ -7,6 +7,7 @@ import {
 } from '../profileRecoveryOperationalObserver.js';
 import type { RecoveryPointCleanShutdownMarker } from './recoveryPointCleanShutdownMarker.js';
 import type { RecoveryPointService } from './recoveryPointService.js';
+import type { WorkspaceMaintenanceLease } from '../../workspaces/maintenance/workspaceMaintenanceLease.js';
 
 const defaultCheckIntervalMilliseconds = 60 * 60 * 1_000;
 
@@ -22,6 +23,7 @@ export class RecoveryPointScheduler {
         RecoveryPointCleanShutdownMarker,
         'consume' | 'markClean'
       >;
+      maintenanceLease: WorkspaceMaintenanceLease;
       correlationIdFactory?(): string;
       now?(): Date;
       observer?: ProfileRecoveryOperationalObserver;
@@ -69,8 +71,17 @@ export class RecoveryPointScheduler {
     const correlationId =
       this.dependencies.correlationIdFactory?.() ?? randomUUID();
     const startedAt = Date.now();
-    const check = this.dependencies.recoveryPointService
-      .checkAutomatic(correlationId)
+    const check = this.dependencies.maintenanceLease
+      .acquire('backup')
+      .then(async (lease) => {
+        try {
+          return await this.dependencies.recoveryPointService.checkAutomatic(
+            correlationId,
+          );
+        } finally {
+          await lease.release();
+        }
+      })
       .then(() => undefined)
       .catch((error: unknown) => {
         observeProfileRecoverySafely(

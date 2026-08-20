@@ -5,6 +5,10 @@ import {
   LocalUpdateHandoffError,
 } from './localUpdateHandoffCoordinator.js';
 import type { UpdateJournal } from './updateJournal.js';
+import {
+  InMemoryWorkspaceMaintenanceLease,
+  type WorkspaceMaintenanceLease,
+} from '../workspaces/maintenance/workspaceMaintenanceLease.js';
 
 const currentIdentity = {
   appVersion: '0.1.0',
@@ -133,12 +137,30 @@ describe('local update handoff coordinator', () => {
     expect(fixture.leaveMaintenance).toHaveBeenCalledOnce();
     expect(fixture.currentJournal?.state).toBe('failed');
   });
+
+  it('does not prepare an update while another workspace maintenance operation is active', async () => {
+    const maintenanceLease = new InMemoryWorkspaceMaintenanceLease();
+    const owner = await maintenanceLease.acquire('backup');
+    const fixture = createFixture({ maintenanceLease });
+
+    await expect(
+      fixture.coordinator.prepareConfirmedUpdate(),
+    ).rejects.toThrow(LocalUpdateHandoffError);
+    expect(fixture.validateActiveProfile).not.toHaveBeenCalled();
+    expect(fixture.states).toEqual([]);
+
+    await owner.release();
+    await expect(
+      fixture.coordinator.prepareConfirmedUpdate(),
+    ).resolves.toMatchObject({ state: 'recoveryPointValidated' });
+  });
 });
 
 function createFixture(options: {
   onLaunch?(): void;
   onShutdown?(): void;
   onWrite?(state: string): void;
+  maintenanceLease?: WorkspaceMaintenanceLease;
   profileMigrationChanges?: boolean;
   profileValidationFails?: boolean;
   revalidationFails?: boolean;
@@ -211,6 +233,8 @@ function createFixture(options: {
       },
     },
     launchInstaller,
+    maintenanceLease:
+      options.maintenanceLease ?? new InMemoryWorkspaceMaintenanceLease(),
     now: createClock(),
     observer: {
       operationCompleted,

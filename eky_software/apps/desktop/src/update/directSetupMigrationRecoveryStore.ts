@@ -17,7 +17,7 @@ import {
 
 export const directSetupMigrationRecoveryFileName =
   'direct-setup-migration-recovery-v1.json';
-const maximumBytes = 16 * 1024;
+export const maximumDirectSetupMigrationRecoveryBytes = 16 * 1024;
 
 export class DirectSetupMigrationRecoveryStore {
   private readonly backupPath: string;
@@ -175,7 +175,7 @@ async function readRecord(
       metadata.isSymbolicLink() ||
       metadata.nlink !== 1 ||
       metadata.size < 1 ||
-      metadata.size > maximumBytes
+      metadata.size > maximumDirectSetupMigrationRecoveryBytes
     ) {
       throw new Error('DIRECT_SETUP_RECOVERY_INVALID');
     }

@@ -18,6 +18,7 @@ import {
   readInvoiceEmailPreparationConfirmation,
   type InvoiceEmailPreparationConfirmation,
 } from './invoiceEmailConfirmation.js';
+import type { BackendRequestAdmission } from './backendRequestQuiescence.js';
 
 const contentSecurityPolicy = [
   "default-src 'self'",
@@ -34,6 +35,7 @@ const contentSecurityPolicy = [
 
 export interface RegisterApplicationProtocolOptions {
   backendOrigin: string;
+  backendRequestAdmission?: BackendRequestAdmission;
   confirmSmtpTestPreparation?(
     preparation: SmtpTestPreparationConfirmation,
   ): Promise<boolean>;
@@ -191,18 +193,31 @@ export function registerApplicationProtocol(
     }
 
     if (isAllowedBackendRequest(request.method, requestUrl.pathname)) {
+      const requestLease = options.backendRequestAdmission?.begin(
+        request.method,
+      );
+      if (
+        options.backendRequestAdmission !== undefined &&
+        requestLease === undefined
+      ) {
+        return jsonError(503, 'Paikallinen palvelu valmistautuu vaihtoon.');
+      }
       const targetUrl = new URL(
         `${requestUrl.pathname}${requestUrl.search}`,
         options.backendOrigin,
       );
 
-      return proxyBackendRequest(
-        request,
-        options.runtimeSessionSecret,
-        targetUrl,
-        options.confirmSmtpTestPreparation,
-        options.confirmInvoiceEmailPreparation,
-      );
+      try {
+        return await proxyBackendRequest(
+          request,
+          options.runtimeSessionSecret,
+          targetUrl,
+          options.confirmSmtpTestPreparation,
+          options.confirmInvoiceEmailPreparation,
+        );
+      } finally {
+        requestLease?.release();
+      }
     }
 
     if (request.method !== 'GET') {

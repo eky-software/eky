@@ -10,6 +10,7 @@ describe('startup recovery authority', () => {
       resolveStartupRecoveryAuthority({
         profileRestoreJournal: createRestoreJournal(operationId),
         updateJournal: createUpdateJournal('businessRollbackStarting'),
+        workspaceReplacementRecoveryPending: false,
       }),
     ).toBe('updateBusinessRollback');
   });
@@ -21,12 +22,14 @@ describe('startup recovery authority', () => {
           '99999999-9999-4999-8999-999999999999',
         ),
         updateJournal: createUpdateJournal('businessRollbackStarting'),
+        workspaceReplacementRecoveryPending: false,
       }),
     ).toThrow('ambiguous');
     expect(() =>
       resolveStartupRecoveryAuthority({
         profileRestoreJournal: createRestoreJournal(operationId),
         updateJournal: createUpdateJournal('awaitingFirstStart'),
+        workspaceReplacementRecoveryPending: false,
       }),
     ).toThrow('ambiguous');
   });
@@ -36,14 +39,40 @@ describe('startup recovery authority', () => {
       resolveStartupRecoveryAuthority({
         profileRestoreJournal: createRestoreJournal(operationId),
         updateJournal: undefined,
+        workspaceReplacementRecoveryPending: false,
       }),
     ).toBe('profileRestore');
     expect(
       resolveStartupRecoveryAuthority({
         profileRestoreJournal: undefined,
         updateJournal: createUpdateJournal('rollbackRequired'),
+        workspaceReplacementRecoveryPending: false,
       }),
     ).toBe('none');
+  });
+
+  it('selects workspace replacement only when no other recovery owns startup', () => {
+    expect(
+      resolveStartupRecoveryAuthority({
+        profileRestoreJournal: undefined,
+        updateJournal: undefined,
+        workspaceReplacementRecoveryPending: true,
+      }),
+    ).toBe('workspaceReplacement');
+    expect(() =>
+      resolveStartupRecoveryAuthority({
+        profileRestoreJournal: createRestoreJournal(operationId),
+        updateJournal: undefined,
+        workspaceReplacementRecoveryPending: true,
+      }),
+    ).toThrow('ambiguous');
+    expect(() =>
+      resolveStartupRecoveryAuthority({
+        profileRestoreJournal: undefined,
+        updateJournal: createUpdateJournal('awaitingFirstStart'),
+        workspaceReplacementRecoveryPending: true,
+      }),
+    ).toThrow('ambiguous');
   });
 });
 

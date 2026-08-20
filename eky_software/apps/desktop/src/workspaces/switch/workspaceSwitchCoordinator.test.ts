@@ -192,7 +192,7 @@ describe('workspace switch coordinator', () => {
 
     await expect(
       fixture.coordinator.switchTo(TEST_TARGET_WORKSPACE_ID),
-    ).rejects.toMatchObject({ code: 'WORKSPACE_SWITCH_STORAGE_FAILED' });
+    ).rejects.toMatchObject({ code: 'WORKSPACE_SWITCH_BUSY' });
 
     expect(fixture.events).toEqual(['lease.acquire.switch']);
   });

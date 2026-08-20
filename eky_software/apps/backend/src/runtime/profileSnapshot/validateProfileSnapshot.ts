@@ -1,10 +1,7 @@
-import { randomUUID } from 'node:crypto';
 import {
-  constants as fileSystemConstants,
   promises as fileSystem,
 } from 'node:fs';
 import {
-  dirname,
   isAbsolute,
   join,
   relative,
@@ -27,6 +24,7 @@ import type {
 } from './profileSnapshotTypes.js';
 import { isActiveProfileRestoreTargetEmpty } from './inspectActiveProfileRestoreTarget.js';
 import { validateProfileArtifactCatalog } from './validateProfileArtifactCatalog.js';
+import { materializeValidatedProfileArtifacts } from './materializeValidatedProfileArtifacts.js';
 
 const operationIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -87,25 +85,11 @@ export class StagedProfileSnapshotValidationService
       });
       await assertPrivateOperationRoot(activationDocumentsRoot);
 
-      for (const artifact of inspection.artifacts) {
-        const sourcePath = resolve(
-          inspection.operationRoot,
-          ...artifact.logicalPath.split('/'),
-        );
-        const destinationPath = resolve(
-          activationDocumentsRoot,
-          ...artifact.storagePath.split('/'),
-        );
-        assertContainedPath(inspection.operationRoot, sourcePath);
-        assertContainedPath(
-          activationDocumentsRoot,
-          destinationPath,
-        );
-        await materializeArtifact({
-          destinationPath,
-          sourcePath,
-        });
-      }
+      await materializeValidatedProfileArtifacts({
+        artifacts: inspection.artifacts,
+        destinationRoot: activationDocumentsRoot,
+        sourceRoot: inspection.operationRoot,
+      });
 
       await fileSystem.chmod(inspection.databasePath, 0o600);
       return {
@@ -203,86 +187,6 @@ export class StagedProfileSnapshotValidationService
     } catch {
       throw new Error('PROFILE_SNAPSHOT_VALIDATION_FAILED');
     }
-  }
-}
-
-async function materializeArtifact(input: {
-  destinationPath: string;
-  sourcePath: string;
-}): Promise<void> {
-  await createPrivateDirectoryTree(dirname(input.destinationPath));
-  const temporaryPath = `${input.destinationPath}.next-${randomUUID()}`;
-  let temporaryCreated = false;
-
-  try {
-    const source = await fileSystem.open(
-      input.sourcePath,
-      fileSystemConstants.O_RDONLY |
-        fileSystemConstants.O_NOFOLLOW,
-    );
-    const destination = await fileSystem.open(
-      temporaryPath,
-      fileSystemConstants.O_CREAT |
-        fileSystemConstants.O_EXCL |
-        fileSystemConstants.O_WRONLY,
-      0o600,
-    );
-    temporaryCreated = true;
-    try {
-      for await (const chunk of source.createReadStream({
-        autoClose: false,
-      })) {
-        await destination.write(chunk as Buffer);
-      }
-      await destination.sync();
-    } finally {
-      await Promise.allSettled([source.close(), destination.close()]);
-    }
-
-    await fileSystem.link(temporaryPath, input.destinationPath);
-    await fileSystem.unlink(temporaryPath);
-    temporaryCreated = false;
-    await fileSystem.chmod(input.destinationPath, 0o600);
-    const metadata = await fileSystem.lstat(input.destinationPath);
-    if (
-      !metadata.isFile() ||
-      metadata.isSymbolicLink() ||
-      metadata.nlink !== 1
-    ) {
-      throw new Error('PROFILE_RESTORE_ACTIVATION_PREPARATION_FAILED');
-    }
-    await syncDirectory(dirname(input.destinationPath));
-  } finally {
-    if (temporaryCreated) {
-      await fileSystem
-        .rm(temporaryPath, { force: true })
-        .catch(() => undefined);
-    }
-  }
-}
-
-async function createPrivateDirectoryTree(path: string): Promise<void> {
-  await fileSystem.mkdir(path, { mode: 0o700, recursive: true });
-  await fileSystem.chmod(path, 0o700);
-  const metadata = await fileSystem.lstat(path);
-  if (
-    !metadata.isDirectory() ||
-    metadata.isSymbolicLink() ||
-    (process.platform !== 'win32' && (metadata.mode & 0o077) !== 0)
-  ) {
-    throw new Error('PROFILE_RESTORE_ACTIVATION_PREPARATION_FAILED');
-  }
-}
-
-async function syncDirectory(path: string): Promise<void> {
-  if (process.platform === 'win32') {
-    return;
-  }
-  const directory = await fileSystem.open(path, 'r');
-  try {
-    await directory.sync();
-  } finally {
-    await directory.close();
   }
 }
 

@@ -39,9 +39,9 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
       'activationJournal.read',
       'registry.read',
       'lifecycle.quiesce',
+      'recoveryPoint.preRestore',
       'lifecycle.stop',
       'runtime.absent',
-      'recoveryPoint.preRestore',
       'root.prepare',
       'backup.stage',
       'candidate.migrate',
@@ -62,6 +62,67 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
     expect(fixture.lifecycle.maxRunningOwners).toBe(1);
     expect(fixture.lifecycle.maxSqliteOwners).toBe(1);
     expect(fixture.lease.held).toBe(false);
+  });
+
+  it('hands the activated candidate to startup recovery before accepting it', async () => {
+    const fixture = createWorkspaceBackupReplacementFixture({
+      useRuntimeHandoff: true,
+    });
+
+    await expect(fixture.coordinator.replace(replacementInput)).resolves.toEqual({
+      migrationChainIdentity: TEST_REPLACEMENT_MIGRATION_ID,
+      profileId: TEST_REPLACEMENT_PROFILE_ID,
+      workspaceId: TEST_REPLACEMENT_WORKSPACE_ID,
+    });
+
+    expect(fixture.events.slice(-3)).toEqual([
+      'activation.replace',
+      'runtimeHandoff.request',
+      'lease.release',
+    ]);
+    expect(fixture.events).not.toContain('lifecycle.ensure');
+    expect(fixture.events).not.toContain('runtime.validate');
+    expect(fixture.events).not.toContain('activation.accept');
+    expect(fixture.activation.journal?.phase).toBe('validationStarting');
+    expect(fixture.runtimeHandoff.requests).toBe(1);
+    expect(fixture.lease.held).toBe(false);
+  });
+
+  it('leaves a rolled-back journal for startup recovery after an activated handoff failure', async () => {
+    const fixture = createWorkspaceBackupReplacementFixture({
+      useRuntimeHandoff: true,
+    });
+    fixture.activation.fail = 'replace';
+
+    await expect(
+      fixture.coordinator.replace(replacementInput),
+    ).rejects.toBeInstanceOf(WorkspaceBackupReplacementError);
+
+    expect(fixture.events).toContain('activation.rollback');
+    expect(fixture.events).toContain('runtimeHandoff.request');
+    expect(fixture.events).not.toContain('activation.clearRolledBack');
+    expect(fixture.events.at(-1)).toBe('lease.release');
+    expect(fixture.activation.journal?.phase).toBe('rolledBack');
+  });
+
+  it('relaunches the unchanged workspace only after pre-activation cleanup', async () => {
+    const fixture = createWorkspaceBackupReplacementFixture({
+      useRuntimeHandoff: true,
+    });
+    fixture.candidate.failure = 'migration';
+
+    await expectReplacementError(
+      fixture.coordinator.replace(replacementInput),
+      'WORKSPACE_REPLACEMENT_MIGRATION_FAILED',
+      'candidateMigration',
+    );
+
+    expect(fixture.events.slice(-3)).toEqual([
+      'root.discard',
+      'runtimeHandoff.request',
+      'lease.release',
+    ]);
+    expect(fixture.activation.journal).toBeUndefined();
   });
 
   it('rejects a wrong lineage before the lease, quiesce or workspace writes', async () => {
@@ -150,8 +211,10 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
     expect(fixture.events).not.toContain('lifecycle.quiesce');
   });
 
-  it('creates the preRestore point before writing private staging', async () => {
-    const fixture = createWorkspaceBackupReplacementFixture();
+  it('quiesces accepted writes before creating preRestore and stops only after it succeeds', async () => {
+    const fixture = createWorkspaceBackupReplacementFixture({
+      useRuntimeHandoff: true,
+    });
     fixture.preRestore.fail = true;
 
     await expectReplacementError(
@@ -161,7 +224,16 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
     );
     expect(fixture.rootStore.prepared).toBe(false);
     expect(fixture.lifecycle.runningOwners).toBe(1);
-    expect(fixture.runtimeReadiness.calls).toBe(1);
+    expect(fixture.runtimeReadiness.calls).toBe(0);
+    expect(fixture.events).toContain('lifecycle.quiesce');
+    expect(fixture.events.indexOf('lifecycle.quiesce')).toBeLessThan(
+      fixture.events.indexOf('recoveryPoint.preRestore'),
+    );
+    expect(fixture.events).not.toContain('lifecycle.stop');
+    expect(fixture.events).not.toContain('root.prepare');
+    expect(fixture.events).not.toContain('activation.prepare');
+    expect(fixture.events).toContain('runtimeHandoff.request');
+    expect(fixture.runtimeHandoff.requests).toBe(1);
   });
 
   it('rejects a source changed between preflight and stage and restarts the old runtime', async () => {

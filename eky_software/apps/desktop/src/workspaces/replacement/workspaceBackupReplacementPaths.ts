@@ -9,29 +9,32 @@ import {
   type WorkspaceBackupReplacementOperationId,
 } from './workspaceBackupReplacementOperationId.js';
 
-export interface WorkspaceBackupReplacementPaths {
+export interface WorkspaceBackupReplacementRuntimePaths {
   readonly userDataRoot: string;
   readonly targetWorkspaceRoot: string;
   readonly activeDatabasePath: string;
   readonly activeArtifactRoot: string;
   readonly operationsRoot: string;
   readonly importRoot: string;
-  readonly importStagingRoot: string;
   readonly activationRoot: string;
   readonly activationJournalPath: string;
   readonly activationStagingRoot: string;
-  readonly activationStagingOperationRoot: string;
-  readonly candidateDatabasePath: string;
-  readonly candidateArtifactRoot: string;
   readonly activationRollbackRoot: string;
   readonly activationFailedRoot: string;
 }
 
-export function deriveWorkspaceBackupReplacementPaths(
+export interface WorkspaceBackupReplacementPaths
+  extends WorkspaceBackupReplacementRuntimePaths {
+  readonly importStagingRoot: string;
+  readonly activationStagingOperationRoot: string;
+  readonly candidateDatabasePath: string;
+  readonly candidateArtifactRoot: string;
+}
+
+export function deriveWorkspaceBackupReplacementRuntimePaths(
   userDataRoot: string,
-  operationId: WorkspaceBackupReplacementOperationId,
   workspaceId: WorkspaceId,
-): Readonly<WorkspaceBackupReplacementPaths> {
+): Readonly<WorkspaceBackupReplacementRuntimePaths> {
   try {
     if (
       typeof userDataRoot !== 'string' ||
@@ -41,18 +44,11 @@ export function deriveWorkspaceBackupReplacementPaths(
       throw new Error('invalid');
     }
     const root = resolve(userDataRoot);
-    const validatedOperationId =
-      validateWorkspaceBackupReplacementOperationId(operationId);
     const workspace = deriveWorkspaceRoot(root, workspaceId, 1);
     const operationsRoot = join(root, 'workspace-replacement-operations');
     const importRoot = join(operationsRoot, 'import');
-    const importStagingRoot = join(importRoot, validatedOperationId);
     const activationRoot = join(operationsRoot, 'activation');
     const activationStagingRoot = join(activationRoot, 'staging');
-    const activationStagingOperationRoot = join(
-      activationStagingRoot,
-      validatedOperationId,
-    );
     const activationRollbackRoot = join(activationRoot, 'rollback');
     const activationFailedRoot = join(activationRoot, 'failed');
     const paths = {
@@ -72,13 +68,65 @@ export function deriveWorkspaceBackupReplacementPaths(
       ),
       operationsRoot,
       importRoot,
-      importStagingRoot,
       activationRoot,
       activationJournalPath: join(
         activationRoot,
         profileRestoreActivationJournalFileName,
       ),
       activationStagingRoot,
+      activationRollbackRoot,
+      activationFailedRoot,
+    } as const;
+
+    const operationPaths = [
+      importRoot,
+      activationRoot,
+      activationStagingRoot,
+      activationRollbackRoot,
+      activationFailedRoot,
+    ];
+    if (
+      !isContained(root, workspace.workspaceRoot) ||
+      !isContained(root, operationsRoot) ||
+      operationPaths.some((path) => !isContained(operationsRoot, path)) ||
+      !isContained(workspace.workspaceRoot, paths.activeDatabasePath) ||
+      !isContained(workspace.workspaceRoot, paths.activeArtifactRoot)
+    ) {
+      throw new Error('invalid');
+    }
+    return Object.freeze(paths);
+  } catch (error) {
+    if (error instanceof WorkspaceBackupReplacementError) throw error;
+    throw new WorkspaceBackupReplacementError(
+      'WORKSPACE_REPLACEMENT_INVALID',
+      'inputValidation',
+    );
+  }
+}
+
+export function deriveWorkspaceBackupReplacementPaths(
+  userDataRoot: string,
+  operationId: WorkspaceBackupReplacementOperationId,
+  workspaceId: WorkspaceId,
+): Readonly<WorkspaceBackupReplacementPaths> {
+  try {
+    const runtimePaths = deriveWorkspaceBackupReplacementRuntimePaths(
+      userDataRoot,
+      workspaceId,
+    );
+    const validatedOperationId =
+      validateWorkspaceBackupReplacementOperationId(operationId);
+    const importStagingRoot = join(
+      runtimePaths.importRoot,
+      validatedOperationId,
+    );
+    const activationStagingOperationRoot = join(
+      runtimePaths.activationStagingRoot,
+      validatedOperationId,
+    );
+    const paths = {
+      ...runtimePaths,
+      importStagingRoot,
       activationStagingOperationRoot,
       candidateDatabasePath: join(
         activationStagingOperationRoot,
@@ -90,23 +138,14 @@ export function deriveWorkspaceBackupReplacementPaths(
         'storage',
         'invoices',
       ),
-      activationRollbackRoot,
-      activationFailedRoot,
     } as const;
 
-    const operationPaths = [
-      importRoot,
-      importStagingRoot,
-      activationRoot,
-      activationStagingRoot,
-      activationStagingOperationRoot,
-      activationRollbackRoot,
-      activationFailedRoot,
-    ];
     if (
-      !isContained(root, workspace.workspaceRoot) ||
-      !isContained(root, operationsRoot) ||
-      operationPaths.some((path) => !isContained(operationsRoot, path)) ||
+      !isContained(runtimePaths.importRoot, importStagingRoot) ||
+      !isContained(
+        runtimePaths.activationStagingRoot,
+        activationStagingOperationRoot,
+      ) ||
       !isContained(
         activationStagingOperationRoot,
         paths.candidateArtifactRoot,
@@ -114,9 +153,7 @@ export function deriveWorkspaceBackupReplacementPaths(
       !isContained(
         activationStagingOperationRoot,
         paths.candidateDatabasePath,
-      ) ||
-      !isContained(workspace.workspaceRoot, paths.activeDatabasePath) ||
-      !isContained(workspace.workspaceRoot, paths.activeArtifactRoot)
+      )
     ) {
       throw new Error('invalid');
     }

@@ -1,7 +1,8 @@
-import type {
-  WorkspaceMaintenanceLease,
-  WorkspaceMaintenanceLeaseHandle,
-  WorkspaceMaintenancePurpose,
+import {
+  WorkspaceMaintenanceLeaseBusyError,
+  type WorkspaceMaintenanceLease,
+  type WorkspaceMaintenanceLeaseHandle,
+  type WorkspaceMaintenancePurpose,
 } from '../maintenance/workspaceMaintenanceLease.js';
 import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
 import type {
@@ -200,7 +201,8 @@ export class RecordingSwitchLease implements WorkspaceMaintenanceLease {
     purpose: WorkspaceMaintenancePurpose,
   ): Promise<WorkspaceMaintenanceLeaseHandle> {
     this.events.push(`lease.acquire.${purpose}`);
-    if (this.failAcquire || this.held) throw new Error('lease');
+    if (this.failAcquire) throw new Error('lease');
+    if (this.held) throw new WorkspaceMaintenanceLeaseBusyError();
     this.held = true;
     return {
       release: async () => {

@@ -27,6 +27,7 @@ export function createWorkspaceBackupReplacementFixture(options?: {
   readonly duplicateLineage?: boolean;
   readonly lifecycleState?: 'ready' | 'recoveryRequired';
   readonly profileId?: string;
+  readonly useRuntimeHandoff?: boolean;
 }) {
   const events: string[] = [];
   const targetProfileId = options?.profileId ?? TEST_REPLACEMENT_PROFILE_ID;
@@ -281,6 +282,13 @@ export function createWorkspaceBackupReplacementFixture(options?: {
       };
     },
   };
+  const runtimeHandoff = {
+    requests: 0,
+    requestRelaunch() {
+      events.push('runtimeHandoff.request');
+      this.requests += 1;
+    },
+  };
 
   const coordinator = new WorkspaceBackupReplacementCoordinator({
     activationAuthorityFactory: {
@@ -301,6 +309,7 @@ export function createWorkspaceBackupReplacementFixture(options?: {
     preRestoreRecoveryPoint: preRestore,
     registry,
     rootStore,
+    ...(options?.useRuntimeHandoff === true ? { runtimeHandoff } : {}),
     runtimeReadiness,
     userDataRoot: TEST_REPLACEMENT_USER_DATA_ROOT,
     workspaceRuntimeAbsence: runtimeAbsence,
@@ -318,6 +327,7 @@ export function createWorkspaceBackupReplacementFixture(options?: {
     preRestore,
     registry,
     rootStore,
+    runtimeHandoff,
     runtimeReadiness,
   };
 }

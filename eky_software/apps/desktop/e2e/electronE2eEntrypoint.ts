@@ -38,6 +38,7 @@ if (configPath === undefined) {
 }
 const config = readElectronE2eConfig(configPath);
 app.setPath('userData', config.paths.userDataPath);
+const e2eAppVersion = app.getVersion();
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
@@ -81,10 +82,10 @@ if (hasSingleInstanceLock) {
     },
     async startRuntime() {
       lifecycle = await startDesktopComposition({
-        appVersion: '0.1.0-alpha.1',
+        appVersion: e2eAppVersion,
         applicationPath: config.paths.applicationPath,
         buildInfo: {
-          appVersion: '0.1.0-alpha.1',
+          appVersion: e2eAppVersion,
           buildCreatedAt: '2026-01-01T00:00:00.000Z',
           buildDirty: false,
           buildRevision: 'development',
@@ -186,6 +187,17 @@ Object.assign(globalThis, {
       };
     },
     runtimeInstanceId: config.runtimeInstanceId,
+    async runWorkspaceManagementCompositionProof() {
+      const { runWorkspaceManagementCompositionProof } = await import(
+        './workspaceManagementCompositionProof.js'
+      );
+      return runWorkspaceManagementCompositionProof({
+        appVersion: e2eAppVersion,
+        buildRevision: 'development',
+        resourcesPath: config.paths.resourcesPath,
+        userDataRoot: config.paths.userDataPath,
+      });
+    },
     scenarioId: config.scenarioId,
     secondInstanceCount: () => secondInstanceCount,
     userDataPath: config.paths.userDataPath,

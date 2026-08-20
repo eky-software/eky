@@ -4,7 +4,29 @@ import type {
   WorkspaceReplacementActivationAuthority,
   WorkspaceReplacementActivationAuthorityFactory,
 } from './workspaceBackupReplacementPorts.js';
-import type { WorkspaceBackupReplacementPaths } from './workspaceBackupReplacementPaths.js';
+import type {
+  WorkspaceBackupReplacementPaths,
+  WorkspaceBackupReplacementRuntimePaths,
+} from './workspaceBackupReplacementPaths.js';
+
+export function createProfileRestoreWorkspaceReplacementActivationAuthority(
+  paths: Readonly<WorkspaceBackupReplacementRuntimePaths>,
+): Readonly<WorkspaceReplacementActivationAuthority> {
+  const journalStore = new ProfileRestoreActivationJournalStore(
+    paths.activationJournalPath,
+  );
+  const transaction = new ProfileRestoreActivationTransaction({
+    journalStore,
+    paths: {
+      activeDatabasePath: paths.activeDatabasePath,
+      activeDocumentsRoot: paths.activeArtifactRoot,
+      failedRoot: paths.activationFailedRoot,
+      rollbackRoot: paths.activationRollbackRoot,
+      stagingRoot: paths.activationStagingRoot,
+    },
+  });
+  return Object.freeze({ journalStore, transaction });
+}
 
 export class ProfileRestoreWorkspaceReplacementActivationFactory
   implements WorkspaceReplacementActivationAuthorityFactory
@@ -12,19 +34,8 @@ export class ProfileRestoreWorkspaceReplacementActivationFactory
   create(
     paths: Readonly<WorkspaceBackupReplacementPaths>,
   ): Readonly<WorkspaceReplacementActivationAuthority> {
-    const journalStore = new ProfileRestoreActivationJournalStore(
-      paths.activationJournalPath,
+    return createProfileRestoreWorkspaceReplacementActivationAuthority(
+      paths,
     );
-    const transaction = new ProfileRestoreActivationTransaction({
-      journalStore,
-      paths: {
-        activeDatabasePath: paths.activeDatabasePath,
-        activeDocumentsRoot: paths.activeArtifactRoot,
-        failedRoot: paths.activationFailedRoot,
-        rollbackRoot: paths.activationRollbackRoot,
-        stagingRoot: paths.activationStagingRoot,
-      },
-    });
-    return Object.freeze({ journalStore, transaction });
   }
 }
