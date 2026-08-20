@@ -105,7 +105,9 @@ export async function activateInvoiceNumberingSeriesThroughUi(
   );
   const sequencesBefore = readSequences(harness.databaseFilePath);
 
-  await harness.page.getByRole('button', { name: 'Oma yritys' }).click();
+  await harness.page
+    .getByRole('button', { name: 'Oma yritys', exact: true })
+    .click();
   await expect(
     harness.page.getByRole('heading', {
       level: 2,

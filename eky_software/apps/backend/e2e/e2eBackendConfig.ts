@@ -274,7 +274,9 @@ function assertRuntimePaths(
   const runtimeRoot = requireRealDirectory(config.runtimeRoot);
   const electronRuntimeRoot = environment.EKY_ELECTRON_E2E_RUN_ROOT;
   if (electronRuntimeRoot === undefined) {
-    const allowedTempRoot = realpathSync(resolve(tmpdir(), 'eky-e2e'));
+    const allowedTempRoot = realpathSync.native(
+      resolve(tmpdir(), 'eky-e2e'),
+    );
     assertDescendant(runtimeRoot, allowedTempRoot, false);
   } else if (
     !isAbsolute(electronRuntimeRoot) ||
@@ -282,7 +284,7 @@ function assertRuntimePaths(
   ) {
     throw new Error('E2E backend runtime root is invalid.');
   }
-  assertDescendant(realpathSync(configPath), runtimeRoot, true);
+  assertDescendant(realpathSync.native(configPath), runtimeRoot, true);
 
   for (const path of [
     config.paths.artifactsRoot,
@@ -304,7 +306,7 @@ function requireRealDirectory(path: string): string {
   if (!stats.isDirectory() || stats.isSymbolicLink()) {
     throw new Error('E2E runtime path must be a regular directory.');
   }
-  return realpathSync(path);
+  return realpathSync.native(path);
 }
 
 function assertDescendant(

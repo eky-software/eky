@@ -126,7 +126,10 @@ if (hasSingleInstanceLock) {
         quitApplication: () => app.quit(),
         releaseInfo: undefined,
         relaunchApplication() {
-          app.relaunch();
+          if (config.relaunchMode !== 'playwrightManaged') {
+            throw new Error('ELECTRON_E2E_RELAUNCH_MODE_INVALID');
+          }
+          nativeAdapters.recordWorkspaceRelaunchRequested();
           app.quit();
         },
         resourcesPath: config.paths.resourcesPath,

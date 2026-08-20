@@ -1,0 +1,266 @@
+.brand,
+.brandButton {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 24px;
+  padding: 4px 0;
+  overflow: hidden;
+  color: #ffffff;
+  background: transparent;
+  text-align: left;
+}
+
+.brandButton {
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.brandButton:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.brandButton:focus-visible {
+  border-color: #ffffff;
+  outline: 3px solid rgba(207, 224, 255, 0.68);
+}
+
+.brandCollapsed {
+  gap: 0;
+  justify-content: center;
+}
+
+.brandMark {
+  flex: 0 0 40px;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  font-weight: 900;
+}
+
+.brandCopy {
+  min-width: 0;
+  opacity: 1;
+  transition: opacity 120ms ease;
+}
+
+.brandCollapsed .brandCopy {
+  width: 0;
+  min-width: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.brandCopy strong,
+.brandCopy > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brandCopy strong {
+  max-width: 166px;
+}
+
+.brandCopy > span {
+  margin-top: 2px;
+  color: #b9c8da;
+  font-size: 0.82rem;
+  font-weight: 400;
+}
+
+.chevron {
+  display: inline;
+  margin-left: 6px;
+  color: #b9c8da;
+  font-size: 0.82rem;
+}
+
+.backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(5, 14, 26, 0.58);
+}
+
+.dialog {
+  width: min(680px, 100%);
+  max-height: min(760px, calc(100vh - 48px));
+  overflow-y: auto;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  box-shadow: 0 24px 64px rgba(5, 14, 26, 0.3);
+}
+
+.dialog:focus {
+  outline: none;
+}
+
+.dialogHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.kicker {
+  margin: 0 0 4px;
+  color: var(--color-primary);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.closeButton {
+  display: grid;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-primary-dark);
+  background: var(--color-surface);
+  font-size: 1.4rem;
+}
+
+.workspaceList {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workspaceRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  min-height: 68px;
+  border-top: 1px solid var(--color-border);
+  padding: 10px 0;
+}
+
+.workspaceRow:last-child {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.workspaceIdentity {
+  min-width: 0;
+}
+
+.workspaceIdentity strong,
+.workspaceIdentity span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.workspaceIdentity span {
+  margin-top: 3px;
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+}
+
+.rowActions,
+.addActions,
+.formActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.addActions {
+  margin-top: 18px;
+}
+
+.warning,
+.operationError {
+  border-left: 4px solid #b66a00;
+  padding: 10px 12px;
+  color: #714300;
+  background: #fff6e5;
+}
+
+.loadError {
+  border-left: 4px solid var(--color-danger);
+  padding: 10px 12px;
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+}
+
+.loadError p {
+  margin-bottom: 10px;
+}
+
+.statusMessage,
+.helpText {
+  color: var(--color-text-muted);
+  line-height: 1.45;
+}
+
+.operationForm {
+  display: grid;
+  gap: 16px;
+}
+
+.label {
+  display: grid;
+  gap: 7px;
+  font-weight: 700;
+}
+
+.targetWorkspace {
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 620px) {
+  .backdrop {
+    padding: 12px;
+  }
+
+  .dialog {
+    max-height: calc(100vh - 24px);
+    padding: 16px;
+  }
+
+  .workspaceRow {
+    grid-template-columns: 1fr;
+  }
+
+  .rowActions,
+  .addActions,
+  .formActions {
+    justify-content: stretch;
+  }
+
+  .rowActions button,
+  .addActions button,
+  .formActions button {
+    flex: 1 1 180px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brandCopy {
+    transition: none;
+  }
+}

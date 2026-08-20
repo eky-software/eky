@@ -338,6 +338,10 @@ function createDesktopApi(
     createEncryptedProfileBackup: vi.fn(async () => 'cancelled'),
     createManualRecoveryPoint: vi.fn(async () => protectionStatus),
     createSupportBundle: vi.fn(async () => 'cancelled' as const),
+    createEmptyWorkspace: vi.fn(async () => ({
+      formatVersion: 1,
+      status: 'relaunching',
+    })),
     cancelLocalUpdate: vi.fn(async () => ({ status: 'cancelled' })),
     confirmLocalUpdate: vi.fn(async () => ({ status: 'cancelled' })),
     disableInvoicePdfArchive: vi.fn(async () => disabledStatus),
@@ -349,6 +353,16 @@ function createDesktopApi(
     getProfileBackupStatus: vi.fn(async () => ({
       operationState: 'idle',
     })),
+    getWorkspaceManagementStatus: vi.fn(async () => ({
+      activeWorkspaceId: null,
+      formatVersion: 1,
+      operationState: 'idle',
+      workspaces: [],
+    })),
+    importWorkspaceBackupAsNew: vi.fn(async () => ({
+      formatVersion: 1,
+      status: 'cancelled',
+    })),
     inspectEncryptedProfileBackup: vi.fn(async () => ({
       status: 'cancelled',
     })),
@@ -358,8 +372,16 @@ function createDesktopApi(
     prepareEncryptedProfileRestore: vi.fn(async () => ({
       status: 'cancelled',
     })),
+    renameWorkspace: vi.fn(async () => ({
+      formatVersion: 1,
+      status: 'completed',
+    })),
     retryPendingInvoicePdfArchiveTasks: vi.fn(async () => disabledStatus),
     selectLocalUpdate: vi.fn(async () => ({ status: 'cancelled' })),
+    switchWorkspace: vi.fn(async () => ({
+      formatVersion: 1,
+      status: 'completed',
+    })),
     ...overrides,
   };
 }

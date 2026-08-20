@@ -86,7 +86,7 @@ final hash and manifest, and all lifecycle tests must then use those exact
 signed bytes.
 
 The current application and Windows Installer version is the numeric SemVer
-`0.2.1`.
+`0.2.6`.
 Release maturity is expressed by the `pilot` channel and release gates, not by
 an `alpha` suffix.
 

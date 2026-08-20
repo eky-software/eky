@@ -31,6 +31,10 @@ import { removeE2eRunRoot } from '../environment/removeE2eRunRoot.js';
 import { resolveElectronE2eExecutable } from '../environment/resolveElectronE2eExecutable.js';
 import { stopManagedProcessTree } from '../environment/stopManagedProcessTree.js';
 import { waitForLoopbackPortRelease } from '../environment/waitForLoopbackPortRelease.js';
+import {
+  createElectronWorkspaceBackupFixture,
+  type ElectronWorkspaceBackupFixture,
+} from '../workspaces/createElectronWorkspaceBackupFixture.js';
 import { readE2eScenarioId } from './readE2eScenarioId.js';
 
 export interface IsolatedElectronHarness {
@@ -39,12 +43,19 @@ export interface IsolatedElectronHarness {
   launchSecondInstance(): Promise<void>;
   page: Page;
   paths: E2eWorkerPaths;
+  performRelaunchingOperation(
+    operation: () => Promise<void>,
+  ): Promise<{
+    previousRuntimeInstanceId: string;
+    previousSessionSecret: string;
+  }>;
   restart(): Promise<{
     previousRuntimeInstanceId: string;
     previousSessionSecret: string;
   }>;
   runRoot: string;
   runtime: ElectronE2eRuntime;
+  workspaceBackupFixture?: Readonly<ElectronWorkspaceBackupFixture>;
 }
 
 interface IsolatedElectronFixtures {
@@ -53,6 +64,11 @@ interface IsolatedElectronFixtures {
 
 interface IsolatedElectronOptions {
   e2eDialogMode: 'accept' | 'cancel';
+  e2eNativeOpenDialogMode: 'accept' | 'cancel';
+  e2eNativeOpenDialogPurpose:
+    | 'invoicePdfArchive'
+    | 'workspaceBackupImport';
+  e2eWorkspaceBackupFixture: 'none' | 'synthetic';
 }
 
 type ElectronChildProcess = ReturnType<typeof spawn> & {
@@ -67,16 +83,51 @@ export const test = base.extend<
   IsolatedElectronFixtures & IsolatedElectronOptions
 >({
   e2eDialogMode: ['accept', { option: true }],
-  e2eElectron: async ({ e2eDialogMode }, use, testInfo) => {
+  e2eNativeOpenDialogMode: ['accept', { option: true }],
+  e2eNativeOpenDialogPurpose: ['invoicePdfArchive', { option: true }],
+  e2eWorkspaceBackupFixture: ['none', { option: true }],
+  e2eElectron: async (
+    {
+      e2eDialogMode,
+      e2eNativeOpenDialogMode,
+      e2eNativeOpenDialogPurpose,
+      e2eWorkspaceBackupFixture,
+    },
+    use,
+    testInfo,
+  ) => {
     const scenarioId = readE2eScenarioId(testInfo.title);
     const runRoot = createE2eRunRoot();
     const paths = createE2eWorkerPaths(runRoot, scenarioId);
+    if (
+      e2eWorkspaceBackupFixture === 'synthetic' &&
+      e2eNativeOpenDialogPurpose !== 'workspaceBackupImport'
+    ) {
+      throw new Error(
+        'Synthetic workspace backup requires the import dialog purpose.',
+      );
+    }
+    const workspaceBackupFixture =
+      e2eWorkspaceBackupFixture === 'synthetic'
+        ? await createElectronWorkspaceBackupFixture({
+            backupPath: join(
+              paths.artifactsRoot,
+              'workspace-import-source.ekybackup',
+            ),
+            runRoot,
+          })
+        : undefined;
     let backendPort = await reserveLoopbackPort();
     let runtime = createElectronE2eRuntime({
       backendPort,
       dialogMode: e2eDialogMode,
+      nativeOpenDialogMode: e2eNativeOpenDialogMode,
+      nativeOpenDialogPurpose: e2eNativeOpenDialogPurpose,
       paths,
       scenarioId,
+      ...(workspaceBackupFixture === undefined
+        ? {}
+        : { workspaceBackupPath: workspaceBackupFixture.backupPath }),
     });
     let api: APIRequestContext | undefined;
     let electronApp: ElectronApplication | undefined;
@@ -97,6 +148,39 @@ export const test = base.extend<
       electronApp = launched.electronApp;
       api = await createElectronApi(backendPort, runtime.sessionSecret);
 
+      async function launchNextRuntime(): Promise<void> {
+        backendPort = await reserveLoopbackPort();
+        runtime = createElectronE2eRuntime({
+          backendPort,
+          dialogMode: e2eDialogMode,
+          nativeOpenDialogMode: e2eNativeOpenDialogMode,
+          nativeOpenDialogPurpose: e2eNativeOpenDialogPurpose,
+          paths,
+          scenarioId,
+          ...(workspaceBackupFixture === undefined
+            ? {}
+            : { workspaceBackupPath: workspaceBackupFixture.backupPath }),
+        });
+        electronStderr = '';
+        electronStdout = '';
+        const restarted = await launchElectronRuntime({
+          appendStderr(chunk) {
+            electronStderr = appendBoundedOutput(electronStderr, chunk);
+          },
+          appendStdout(chunk) {
+            electronStdout = appendBoundedOutput(electronStdout, chunk);
+          },
+          runRoot,
+          runtime,
+        });
+        electronApp = restarted.electronApp;
+        api = await createElectronApi(backendPort, runtime.sessionSecret);
+        harness.api = api;
+        harness.electronApp = restarted.electronApp;
+        harness.page = restarted.page;
+        harness.runtime = runtime;
+      }
+
       const harness: IsolatedElectronHarness = {
         api,
         electronApp,
@@ -104,6 +188,44 @@ export const test = base.extend<
           launchSecondElectronInstance(runtime, runRoot),
         page: launched.page,
         paths,
+        async performRelaunchingOperation(operation) {
+          const previousRuntimeInstanceId = runtime.runtimeInstanceId;
+          const previousSessionSecret = runtime.sessionSecret;
+          const previousRelaunchCount = countWorkspaceRelaunchRequests(
+            runtime.observationsPath,
+          );
+          const previousApplication = harness.electronApp;
+          const previousPage = harness.page;
+          const closeWaiter = createElectronApplicationCloseWaiter(
+            previousApplication,
+          );
+
+          try {
+            await operation();
+          } catch (error) {
+            if (!previousPage.isClosed()) {
+              closeWaiter.cancel();
+              throw error;
+            }
+          }
+          const closeResult = await closeWaiter.promise;
+          if (closeResult === 'timedOut') {
+            throw new Error('Electron workspace relaunch did not close.');
+          }
+          await harness.api.dispose();
+          await waitForLoopbackPortRelease(backendPort);
+          if (
+            countWorkspaceRelaunchRequests(runtime.observationsPath) !==
+            previousRelaunchCount + 1
+          ) {
+            throw new Error(
+              'Workspace operation did not request exactly one relaunch.',
+            );
+          }
+
+          await launchNextRuntime();
+          return { previousRuntimeInstanceId, previousSessionSecret };
+        },
         async restart() {
           const previousRuntimeInstanceId = runtime.runtimeInstanceId;
           const previousSessionSecret = runtime.sessionSecret;
@@ -111,37 +233,15 @@ export const test = base.extend<
           await harness.api.dispose();
           await harness.electronApp.close().catch(() => undefined);
           await waitForLoopbackPortRelease(backendPort);
-
-          backendPort = await reserveLoopbackPort();
-          runtime = createElectronE2eRuntime({
-            backendPort,
-            dialogMode: e2eDialogMode,
-            paths,
-            scenarioId,
-          });
-          electronStderr = '';
-          electronStdout = '';
-          const restarted = await launchElectronRuntime({
-            appendStderr(chunk) {
-              electronStderr = appendBoundedOutput(electronStderr, chunk);
-            },
-            appendStdout(chunk) {
-              electronStdout = appendBoundedOutput(electronStdout, chunk);
-            },
-            runRoot,
-            runtime,
-          });
-          electronApp = restarted.electronApp;
-          api = await createElectronApi(backendPort, runtime.sessionSecret);
-          harness.api = api;
-          harness.electronApp = restarted.electronApp;
-          harness.page = restarted.page;
-          harness.runtime = runtime;
+          await launchNextRuntime();
 
           return { previousRuntimeInstanceId, previousSessionSecret };
         },
         runRoot,
         runtime,
+        ...(workspaceBackupFixture === undefined
+          ? {}
+          : { workspaceBackupFixture }),
       };
 
       await use(harness);
@@ -235,6 +335,68 @@ function createElectronApi(
       'x-eky-local-session': sessionSecret,
     },
   });
+}
+
+function createElectronApplicationCloseWaiter(
+  electronApp: ElectronApplication,
+): {
+  cancel(): void;
+  promise: Promise<'cancelled' | 'closed' | 'timedOut'>;
+} {
+  let settled = false;
+  let closeListener: (() => void) | undefined;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  let resolveWaiter:
+    | ((result: 'cancelled' | 'closed' | 'timedOut') => void)
+    | undefined;
+  const promise = new Promise<'cancelled' | 'closed' | 'timedOut'>((resolve) => {
+    resolveWaiter = resolve;
+    timeout = setTimeout(() => {
+      settled = true;
+      resolve('timedOut');
+    }, 30_000);
+    closeListener = () => {
+      settled = true;
+      clearTimeout(timeout);
+      resolve('closed');
+    };
+    electronApp.once('close', closeListener);
+  });
+  return {
+    cancel() {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (closeListener !== undefined) {
+        electronApp.off('close', closeListener);
+      }
+      resolveWaiter?.('cancelled');
+    },
+    promise,
+  };
+}
+
+function countWorkspaceRelaunchRequests(observationsPath: string): number {
+  if (!existsSync(observationsPath)) return 0;
+  let count = 0;
+  for (const line of readFileSync(observationsPath, 'utf8').split(/\r?\n/u)) {
+    if (line === '') continue;
+    try {
+      const parsed = JSON.parse(line) as unknown;
+      if (
+        typeof parsed === 'object' &&
+        parsed !== null &&
+        !Array.isArray(parsed) &&
+        (parsed as Record<string, unknown>).operation ===
+          'workspaceRelaunchRequested'
+      ) {
+        count += 1;
+      }
+    } catch {
+      throw new Error('Electron E2E observations are invalid.');
+    }
+  }
+  return count;
 }
 
 function launchSecondElectronInstance(

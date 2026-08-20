@@ -34,4 +34,39 @@ describe('Sidebar', () => {
     expect(html).toContain('aria-current="page"');
     expect(html).toContain('Oma yritys');
   });
+
+  it('renders the desktop active company as the sidebar brand selector', () => {
+    const html = renderToStaticMarkup(
+      <Sidebar
+        activeView="customers"
+        activeWorkspaceLabel="Oma yritys Oy"
+        brandState="idle"
+        isCollapsed={false}
+        onOpenWorkspaceManagement={() => undefined}
+        onViewChange={() => undefined}
+        workspaceManagementAvailable
+      />,
+    );
+
+    expect(html).toContain('Oma yritys Oy');
+    expect(html).toContain('Eky · Paikallinen');
+    expect(html).toContain('aria-haspopup="dialog"');
+    expect(html).toContain(
+      'aria-label="Vaihda yritystä. Aktiivinen yritys: Oma yritys Oy"',
+    );
+  });
+
+  it('keeps browser-only branding static', () => {
+    const html = renderToStaticMarkup(
+      <Sidebar
+        activeView="customers"
+        isCollapsed={false}
+        onViewChange={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('Eky');
+    expect(html).toContain('Paikallinen');
+    expect(html).not.toContain('aria-haspopup="dialog"');
+  });
 });

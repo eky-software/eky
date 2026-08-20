@@ -1,5 +1,5 @@
 import type { EkyApiClient } from '@eky/api-client';
-import { useReducer } from 'react';
+import { useReducer, useState } from 'react';
 
 import { CompanySettingsPage } from '../features/companySettings/CompanySettingsPage.js';
 import { CustomerPage } from '../features/customers/CustomerPage.js';
@@ -19,6 +19,7 @@ import {
   getDesktopOperationalLogFolder,
   getDesktopProfileProtection,
   getDesktopSupportBundleCreator,
+  getDesktopWorkspaceManagement,
 } from './desktopBridge.js';
 
 interface AppProps {
@@ -38,9 +39,19 @@ export function App({ apiClient }: AppProps): React.JSX.Element {
   const localUpdateCapability = getDesktopLocalUpdate();
   const openOperationalLogFolder = getDesktopOperationalLogFolder();
   const createSupportBundle = getDesktopSupportBundleCreator();
+  const [workspaceManagementCapability] = useState(() =>
+    getDesktopWorkspaceManagement(),
+  );
 
   return (
-    <AppLayout activeView={activeView} onViewChange={activateView} title={activeTitle}>
+    <AppLayout
+      activeView={activeView}
+      onViewChange={activateView}
+      title={activeTitle}
+      {...(workspaceManagementCapability === undefined
+        ? {}
+        : { workspaceManagementCapability })}
+    >
       {activeView === 'customers' ? (
         <CustomerPage
           apiClient={apiClient}

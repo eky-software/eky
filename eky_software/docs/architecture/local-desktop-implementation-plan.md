@@ -26,6 +26,12 @@ Electron `43.3.0`- ja better-sqlite3 `13.0.2` -yhdistelmä on varmennettu
 17.8.2026. Paketointi käyttää better-sqlite3:n mukana toimitettua Windows x64
 N-API-binääriä eikä enää rakenna staged-kopiota Electron ABI:lle.
 
+Paikallisten yritystyötilojen W5B.1-valitsin on toteutettu 20.8.2026. Renderer
+saa vain versionoidut status-, create-, import-as-new-, switch- ja rename-
+capabilityt. Electron main omistaa backup-tiedoston valinnan, salasanaikkunan,
+workspace-lifecyclen ja relaunchin. Active replace jää W5B.2:een, workspace-
+poisto W7:ään ja täysi paketoitu multi-workspace-releaseportti W6:een.
+
 Salatun secret-tiedoston kirjoitus ja palautuminen on kovennettu 15.7.2026
 deterministisillä next- ja backup-sloteilla. Paketoitu Windows-smoke varmistaa
 synteettisen salaisuuden broker- ja HTTP set/status/remove-elinkaaren, ettei
@@ -194,12 +200,14 @@ julkaisemattomalle, täsmällisesti johdetulle ja muuttumattoman legacy-lähteen
 kanssa byte-identtiselle kopiolle; onnistunut cleanup johtaa relaunchiin ennen
 uutta adoptiota. Vain yksi workspace saa omistaa business-SQLite-kahvan
 kerrallaan.
-W5A on lisännyt tämän päälle vain main-prosessin sisäisen management-palvelun,
+W5A on lisännyt tämän päälle main-prosessin sisäisen management-palvelun,
 production-lifecycle- ja private candidate -adapterit sekä yhden yhteisen
-installation-scoped maintenance-auktoriteetin. Preload, IPC, renderer ja web-
-hallinta kuuluvat erilliseen W5B-vaiheeseen. Production-compositionin rajat on
-todennettu Electron-E2E:ssä synteettisellä private userData -juurella ilman
-rendererille avattua workspace-capabilitya.
+installation-scoped maintenance-auktoriteetin. W5B.1 avaa tästä vain viisi
+strictiä trusted-main-frame capabilitya preloadin kautta ja käyttää webissä
+sivupalkin workspace-valitsinta. Production-composition ja käyttäjäpolut on
+todennettu Electron-E2E:ssä synteettisellä private userData -juurella sekä
+oikealla synteettisellä salatulla backup-containerilla. Active replace ei ole
+vielä rendererille avoin.
 
 Tarkka kansiorakenne hyväksytään spiken yhteydessä sen perusteella, mitkä
 vastuut todella tarvitaan. Yleisiä `utils`-, `helpers`- tai `common`-tiedostoja

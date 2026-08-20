@@ -49,9 +49,15 @@ Mandatory boundaries:
   intact legacy source and exact derived unpublished candidate/final roots
   prove one documented recovery case; a published registry entry, active
   pointer, unsafe link, changed source or unknown trace must fail closed
-- W5A workspace management remains internal to Electron main: do not add a
-  preload method, IPC channel, renderer bridge, web UI or public backend route;
-  W5B owns that separately approved capability boundary
+- W5B.1 exposes only the versioned status, create-empty, import-as-new,
+  switch and rename workspace capabilities to the trusted main frame; do not
+  add raw IPC, paths, `companyId`, lineage, session, journal or secret values
+  to the renderer contract
+- workspace backup import keeps the native file chooser and the existing
+  password window owned by Electron main; the renderer may provide only the
+  validated workspace label
+- active exact-lineage replacement remains outside the renderer contract
+  until W5B.2, and workspace deletion remains deferred to W7
 - use one main-owned installation-scoped `WorkspaceMaintenanceLease` for
   backup, restore, update and workspace ownership changes; keep each module's
   narrower local guard and preserve the documented lock order

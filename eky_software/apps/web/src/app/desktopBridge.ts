@@ -4,6 +4,7 @@ export interface EkyDesktopApi {
   createEncryptedProfileBackup(): Promise<unknown>;
   createManualRecoveryPoint(): Promise<unknown>;
   createSupportBundle(): Promise<'cancelled' | 'created'>;
+  createEmptyWorkspace(input: { workspaceLabel: string }): Promise<unknown>;
   disableInvoicePdfArchive(): Promise<unknown>;
   discardSelectedLocalUpdate(): Promise<unknown>;
   confirmLocalUpdate(): Promise<unknown>;
@@ -11,13 +12,22 @@ export interface EkyDesktopApi {
   getLocalUpdateStatus(): Promise<unknown>;
   getInvoicePdfArchiveStatus(): Promise<unknown>;
   getProfileBackupStatus(): Promise<unknown>;
+  getWorkspaceManagementStatus(): Promise<unknown>;
   inspectEncryptedProfileBackup(): Promise<unknown>;
+  importWorkspaceBackupAsNew(input: {
+    workspaceLabel: string;
+  }): Promise<unknown>;
   openInvoicePdf(invoiceId: string): Promise<void>;
   openInvoicePdfArchiveDirectory(): Promise<void>;
   openOperationalLogFolder(): Promise<void>;
   prepareEncryptedProfileRestore(): Promise<unknown>;
   retryPendingInvoicePdfArchiveTasks(): Promise<unknown>;
+  renameWorkspace(input: {
+    workspaceId: string;
+    workspaceLabel: string;
+  }): Promise<unknown>;
   selectLocalUpdate(): Promise<unknown>;
+  switchWorkspace(input: { workspaceId: string }): Promise<unknown>;
 }
 
 declare global {
@@ -33,6 +43,14 @@ export type {
   ProfileProtectionCapability,
   ProfileProtectionStatus,
 } from './desktopProfileProtection.js';
+export { getDesktopWorkspaceManagement } from './desktopWorkspaceManagement.js';
+export type {
+  WorkspaceManagementAvailability,
+  WorkspaceManagementCapability,
+  WorkspaceManagementEntry,
+  WorkspaceManagementOperationState,
+  WorkspaceManagementStatus,
+} from './desktopWorkspaceManagement.js';
 
 export type OpenInvoicePdfPreview = (invoiceId: string) => Promise<void>;
 

@@ -33,6 +33,14 @@ const discardSelectedLocalUpdateIpcChannel =
   'eky:update:discard-selected';
 const confirmLocalUpdateIpcChannel = 'eky:update:confirm-local';
 const cancelLocalUpdateIpcChannel = 'eky:update:cancel-local';
+const getWorkspaceManagementStatusIpcChannel =
+  'eky:workspace-management:v1:get-status';
+const createEmptyWorkspaceIpcChannel =
+  'eky:workspace-management:v1:create-empty';
+const importWorkspaceBackupAsNewIpcChannel =
+  'eky:workspace-management:v1:import-backup-as-new';
+const switchWorkspaceIpcChannel = 'eky:workspace-management:v1:switch';
+const renameWorkspaceIpcChannel = 'eky:workspace-management:v1:rename';
 
 interface EkyDesktopApi {
   activatePreparedProfileRestore(): Promise<unknown>;
@@ -40,20 +48,30 @@ interface EkyDesktopApi {
   createEncryptedProfileBackup(): Promise<unknown>;
   createManualRecoveryPoint(): Promise<unknown>;
   createSupportBundle(): Promise<'cancelled' | 'created'>;
+  createEmptyWorkspace(input: { workspaceLabel: string }): Promise<unknown>;
   disableInvoicePdfArchive(): Promise<unknown>;
   getInvoicePdfArchiveStatus(): Promise<unknown>;
   getProfileBackupStatus(): Promise<unknown>;
+  getWorkspaceManagementStatus(): Promise<unknown>;
   getLocalUpdateStatus(): Promise<unknown>;
   inspectEncryptedProfileBackup(): Promise<unknown>;
+  importWorkspaceBackupAsNew(input: {
+    workspaceLabel: string;
+  }): Promise<unknown>;
   openInvoicePdf(invoiceId: string): Promise<void>;
   openInvoicePdfArchiveDirectory(): Promise<void>;
   openOperationalLogFolder(): Promise<void>;
   prepareEncryptedProfileRestore(): Promise<unknown>;
   retryPendingInvoicePdfArchiveTasks(): Promise<unknown>;
+  renameWorkspace(input: {
+    workspaceId: string;
+    workspaceLabel: string;
+  }): Promise<unknown>;
   discardSelectedLocalUpdate(): Promise<unknown>;
   confirmLocalUpdate(): Promise<unknown>;
   cancelLocalUpdate(): Promise<unknown>;
   selectLocalUpdate(): Promise<unknown>;
+  switchWorkspace(input: { workspaceId: string }): Promise<unknown>;
 }
 
 const ekyDesktopApi: EkyDesktopApi = Object.freeze({
@@ -72,6 +90,9 @@ const ekyDesktopApi: EkyDesktopApi = Object.freeze({
   createSupportBundle() {
     return ipcRenderer.invoke(createSupportBundleIpcChannel);
   },
+  createEmptyWorkspace(input: { workspaceLabel: string }) {
+    return ipcRenderer.invoke(createEmptyWorkspaceIpcChannel, input);
+  },
   disableInvoicePdfArchive() {
     return ipcRenderer.invoke(disableInvoicePdfArchiveIpcChannel);
   },
@@ -81,11 +102,17 @@ const ekyDesktopApi: EkyDesktopApi = Object.freeze({
   getProfileBackupStatus() {
     return ipcRenderer.invoke(getProfileBackupStatusIpcChannel);
   },
+  getWorkspaceManagementStatus() {
+    return ipcRenderer.invoke(getWorkspaceManagementStatusIpcChannel);
+  },
   getLocalUpdateStatus() {
     return ipcRenderer.invoke(getLocalUpdateStatusIpcChannel);
   },
   inspectEncryptedProfileBackup() {
     return ipcRenderer.invoke(inspectProfileBackupIpcChannel);
+  },
+  importWorkspaceBackupAsNew(input: { workspaceLabel: string }) {
+    return ipcRenderer.invoke(importWorkspaceBackupAsNewIpcChannel, input);
   },
   openInvoicePdf(invoiceId: string) {
     return ipcRenderer.invoke(invoicePdfPreviewIpcChannel, invoiceId);
@@ -102,6 +129,12 @@ const ekyDesktopApi: EkyDesktopApi = Object.freeze({
   retryPendingInvoicePdfArchiveTasks() {
     return ipcRenderer.invoke(retryPendingInvoicePdfArchiveTasksIpcChannel);
   },
+  renameWorkspace(input: {
+    workspaceId: string;
+    workspaceLabel: string;
+  }) {
+    return ipcRenderer.invoke(renameWorkspaceIpcChannel, input);
+  },
   discardSelectedLocalUpdate() {
     return ipcRenderer.invoke(discardSelectedLocalUpdateIpcChannel);
   },
@@ -113,6 +146,9 @@ const ekyDesktopApi: EkyDesktopApi = Object.freeze({
   },
   selectLocalUpdate() {
     return ipcRenderer.invoke(selectLocalUpdateIpcChannel);
+  },
+  switchWorkspace(input: { workspaceId: string }) {
+    return ipcRenderer.invoke(switchWorkspaceIpcChannel, input);
   },
 });
 

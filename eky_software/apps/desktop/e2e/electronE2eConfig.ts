@@ -12,8 +12,12 @@ export interface ElectronE2eConfig {
     sessionSecret: string;
   };
   dialogMode: 'accept' | 'cancel';
-  formatVersion: 1;
+  formatVersion: 2;
   marker: 'EKY_E2E';
+  nativeOpenDialog: {
+    mode: 'accept' | 'cancel';
+    purpose: 'invoicePdfArchive' | 'workspaceBackupImport';
+  };
   paths: {
     applicationPath: string;
     invoicePdfArchiveDirectoryPath: string;
@@ -21,7 +25,9 @@ export interface ElectronE2eConfig {
     resourcesPath: string;
     supportBundlePath: string;
     userDataPath: string;
+    workspaceBackupPath: string | null;
   };
+  relaunchMode: 'playwrightManaged';
   runtimeInstanceId: string;
   runtimeRoot: string;
   scenarioId: string;
@@ -72,7 +78,9 @@ function parseElectronE2eConfig(value: unknown): ElectronE2eConfig {
     'dialogMode',
     'formatVersion',
     'marker',
+    'nativeOpenDialog',
     'paths',
+    'relaunchMode',
     'runtimeInstanceId',
     'runtimeRoot',
     'scenarioId',
@@ -80,7 +88,7 @@ function parseElectronE2eConfig(value: unknown): ElectronE2eConfig {
   ]);
 
   if (
-    root.formatVersion !== 1 ||
+    root.formatVersion !== 2 ||
     root.marker !== 'EKY_E2E' ||
     (root.dialogMode !== 'accept' && root.dialogMode !== 'cancel') ||
     typeof root.scenarioId !== 'string' ||
@@ -91,6 +99,18 @@ function parseElectronE2eConfig(value: unknown): ElectronE2eConfig {
       root.startupMode !== 'normal')
   ) {
     throw new Error('Electron E2E config identity is invalid.');
+  }
+
+  const nativeOpenDialog = requireRecord(root.nativeOpenDialog);
+  requireExactKeys(nativeOpenDialog, ['mode', 'purpose']);
+  if (
+    (nativeOpenDialog.mode !== 'accept' &&
+      nativeOpenDialog.mode !== 'cancel') ||
+    (nativeOpenDialog.purpose !== 'invoicePdfArchive' &&
+      nativeOpenDialog.purpose !== 'workspaceBackupImport') ||
+    root.relaunchMode !== 'playwrightManaged'
+  ) {
+    throw new Error('Electron E2E native operation config is invalid.');
   }
 
   const backend = requireRecord(root.backend);
@@ -115,6 +135,7 @@ function parseElectronE2eConfig(value: unknown): ElectronE2eConfig {
     'resourcesPath',
     'supportBundlePath',
     'userDataPath',
+    'workspaceBackupPath',
   ]);
   if (
     !isSafeAbsolutePath(paths.applicationPath) ||
@@ -123,9 +144,20 @@ function parseElectronE2eConfig(value: unknown): ElectronE2eConfig {
     !isSafeAbsolutePath(paths.resourcesPath) ||
     !isSafeAbsolutePath(paths.supportBundlePath) ||
     !isSafeAbsolutePath(paths.userDataPath) ||
+    (paths.workspaceBackupPath !== null &&
+      !isSafeAbsolutePath(paths.workspaceBackupPath)) ||
     !isSafeAbsolutePath(root.runtimeRoot)
   ) {
     throw new Error('Electron E2E runtime path is invalid.');
+  }
+  if (
+    (nativeOpenDialog.purpose === 'invoicePdfArchive' &&
+      paths.workspaceBackupPath !== null) ||
+    (nativeOpenDialog.purpose === 'workspaceBackupImport' &&
+      nativeOpenDialog.mode === 'accept' &&
+      paths.workspaceBackupPath === null)
+  ) {
+    throw new Error('Electron E2E native dialog path is invalid.');
   }
 
   return {
@@ -135,8 +167,12 @@ function parseElectronE2eConfig(value: unknown): ElectronE2eConfig {
       sessionSecret: backend.sessionSecret,
     },
     dialogMode: root.dialogMode,
-    formatVersion: 1,
+    formatVersion: 2,
     marker: 'EKY_E2E',
+    nativeOpenDialog: {
+      mode: nativeOpenDialog.mode,
+      purpose: nativeOpenDialog.purpose,
+    },
     paths: {
       applicationPath: paths.applicationPath,
       invoicePdfArchiveDirectoryPath:
@@ -145,7 +181,9 @@ function parseElectronE2eConfig(value: unknown): ElectronE2eConfig {
       resourcesPath: paths.resourcesPath,
       supportBundlePath: paths.supportBundlePath,
       userDataPath: paths.userDataPath,
+      workspaceBackupPath: paths.workspaceBackupPath,
     },
+    relaunchMode: 'playwrightManaged',
     runtimeInstanceId: root.runtimeInstanceId,
     runtimeRoot: root.runtimeRoot,
     scenarioId: root.scenarioId,
@@ -188,6 +226,21 @@ function assertElectronE2ePaths(
     }
     const realPath = realpathSync(filePath);
     assertDescendant(realPath, runtimeRoot, true);
+    assertNoSymbolicLinkSegments(runtimeRoot, dirname(realPath));
+  }
+
+  if (config.paths.workspaceBackupPath !== null) {
+    const backupPath = config.paths.workspaceBackupPath;
+    const stats = lstatSync(backupPath);
+    if (
+      !stats.isFile() ||
+      stats.isSymbolicLink() ||
+      !backupPath.toLowerCase().endsWith('.ekybackup')
+    ) {
+      throw new Error('Electron E2E workspace backup must be a regular file.');
+    }
+    const realPath = realpathSync(backupPath);
+    assertDescendant(realPath, runtimeRoot, false);
     assertNoSymbolicLinkSegments(runtimeRoot, dirname(realPath));
   }
 }
