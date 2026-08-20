@@ -68,6 +68,14 @@ describe('workspace management composition boundaries', () => {
     expect(workspaceComposition).toContain(
       'runtimeRelaunchCompletion: options.runtimeRelaunch,',
     );
+    expect(desktopComposition).toContain(
+      'const disposeWorkspaceRuntimeCapabilities = async (): Promise<void> => {\n    workspaceManagementCapability?.dispose();',
+    );
+    expect(
+      desktopComposition.indexOf('workspaceManagementCapability?.dispose();'),
+    ).toBeLessThan(
+      desktopComposition.indexOf('await backendHandle.stop();'),
+    );
   });
 });
 

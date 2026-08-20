@@ -131,6 +131,13 @@ describe('workspace management capability', () => {
     ).resolves.toEqual({ formatVersion: 1, status: 'cancelled' });
     expect(pickerCancelled.requestPassword).not.toHaveBeenCalled();
     expect(pickerCancelled.importBackupAsNew).not.toHaveBeenCalled();
+    await expect(
+      pickerCancelled.invoke(
+        createEmptyWorkspaceIpcChannel,
+        pickerCancelled.trustedEvent,
+        { workspaceLabel: 'Peruutuksen jälkeen' },
+      ),
+    ).resolves.toEqual({ formatVersion: 1, status: 'relaunching' });
 
     const passwordCancelled = createFixture({ password: null });
     await expect(
@@ -141,6 +148,78 @@ describe('workspace management capability', () => {
       ),
     ).resolves.toEqual({ formatVersion: 1, status: 'cancelled' });
     expect(passwordCancelled.importBackupAsNew).not.toHaveBeenCalled();
+    await expect(
+      passwordCancelled.invoke(
+        renameWorkspaceIpcChannel,
+        passwordCancelled.trustedEvent,
+        {
+          workspaceId: otherWorkspaceId,
+          workspaceLabel: 'Peruutuksen jälkeen',
+        },
+      ),
+    ).resolves.toEqual({ formatVersion: 1, status: 'completed' });
+  });
+
+  it('rejects a parallel mutation before opening another native dialog', async () => {
+    const backupSelection = createDeferred<string | null>();
+    const fixture = createFixture({
+      selectBackupSource: () => backupSelection.promise,
+    });
+
+    const firstImport = fixture.invoke(
+      importWorkspaceBackupAsNewIpcChannel,
+      fixture.trustedEvent,
+      { workspaceLabel: 'Ensimmäinen tuonti' },
+    );
+    await Promise.resolve();
+
+    await expect(
+      fixture.invoke(
+        importWorkspaceBackupAsNewIpcChannel,
+        fixture.trustedEvent,
+        { workspaceLabel: 'Toinen tuonti' },
+      ),
+    ).rejects.toThrow('WORKSPACE_MANAGEMENT_BUSY');
+    expect(fixture.selectBackupSource).toHaveBeenCalledTimes(1);
+    expect(fixture.requestPassword).not.toHaveBeenCalled();
+    await expect(
+      fixture.invoke(
+        getWorkspaceManagementStatusIpcChannel,
+        fixture.trustedEvent,
+      ),
+    ).resolves.toEqual(status);
+
+    backupSelection.resolve('C:\\Backups\\company.ekybackup');
+    await expect(firstImport).resolves.toEqual({
+      formatVersion: 1,
+      status: 'relaunching',
+    });
+  });
+
+  it('releases the mutation guard after a service failure', async () => {
+    let callCount = 0;
+    const fixture = createFixture({
+      async createEmpty() {
+        callCount += 1;
+        if (callCount === 1) throw new Error('private failure');
+        return undefined;
+      },
+    });
+
+    await expect(
+      fixture.invoke(
+        createEmptyWorkspaceIpcChannel,
+        fixture.trustedEvent,
+        { workspaceLabel: 'Epäonnistuva yritys' },
+      ),
+    ).rejects.toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_FAILED');
+    await expect(
+      fixture.invoke(
+        createEmptyWorkspaceIpcChannel,
+        fixture.trustedEvent,
+        { workspaceLabel: 'Seuraava yritys' },
+      ),
+    ).resolves.toEqual({ formatVersion: 1, status: 'relaunching' });
   });
 
   it('switches only by validated workspace id and treats active as a no-op', async () => {
@@ -227,6 +306,37 @@ describe('workspace management capability', () => {
       expect(rawFailure.removeHandler).toHaveBeenCalledWith(channel);
     }
   });
+
+  it('disposes terminally while allowing the current mutation to settle', async () => {
+    const creation = createDeferred<unknown>();
+    const fixture = createFixture({
+      createEmpty: async () => creation.promise,
+    });
+    const cachedStatusHandler = fixture.getHandler(
+      getWorkspaceManagementStatusIpcChannel,
+    );
+    const currentMutation = fixture.invoke(
+      createEmptyWorkspaceIpcChannel,
+      fixture.trustedEvent,
+      { workspaceLabel: 'Käynnissä oleva yritys' },
+    );
+    await Promise.resolve();
+
+    fixture.capability.dispose();
+    fixture.capability.dispose();
+    creation.resolve(undefined);
+
+    await expect(currentMutation).resolves.toEqual({
+      formatVersion: 1,
+      status: 'relaunching',
+    });
+    await expect(cachedStatusHandler(fixture.trustedEvent)).rejects.toThrow(
+      'WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN',
+    );
+    for (const channel of workspaceManagementIpcChannels) {
+      expect(fixture.removeHandler).toHaveBeenCalledWith(channel);
+    }
+  });
 });
 
 function createFixture(
@@ -235,6 +345,7 @@ function createFixture(
     createEmpty?: (label: unknown) => Promise<unknown>;
     getStatus?: () => Promise<unknown>;
     password?: string | null;
+    selectBackupSource?: () => Promise<string | null>;
   } = {},
 ) {
   const handlers = new Map<
@@ -269,9 +380,11 @@ function createFixture(
     options.password === undefined ? 'private-password' : options.password,
   );
   const selectBackupSource = vi.fn(
-    async () => options.backupPath === undefined
-      ? 'C:\\Backups\\company.ekybackup'
-      : options.backupPath,
+    options.selectBackupSource ??
+      (async () =>
+        options.backupPath === undefined
+          ? 'C:\\Backups\\company.ekybackup'
+          : options.backupPath),
   );
   const showSafeError = vi.fn();
   const capability = createWorkspaceManagementCapability({
@@ -293,6 +406,11 @@ function createFixture(
     capability,
     createEmpty,
     getStatus,
+    getHandler(channel: string) {
+      const handler = handlers.get(channel);
+      if (handler === undefined) throw new Error('Handler missing.');
+      return handler;
+    },
     importBackupAsNew,
     invoke(channel: string, event: unknown, ...args: unknown[]) {
       const handler = handlers.get(channel);
@@ -309,4 +427,14 @@ function createFixture(
     trustedEvent: { sender: webContents, senderFrame: mainFrame },
     webContents,
   };
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
 }

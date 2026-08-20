@@ -80,7 +80,11 @@ export function WorkspaceOperationForm({
         >
           {uiText.workspaces.back}
         </button>
-        <button disabled={isBusy} type="submit">
+        <button
+          {...(mode === 'confirmSwitch' ? { 'data-autofocus': 'true' } : {})}
+          disabled={isBusy}
+          type="submit"
+        >
           {operationButtonLabel(mode)}
         </button>
       </div>

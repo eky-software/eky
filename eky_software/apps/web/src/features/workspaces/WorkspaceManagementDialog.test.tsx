@@ -77,6 +77,9 @@ describe('WorkspaceManagementDialog', () => {
     }
     if (mode === 'confirmSwitch') {
       expect(html).toContain('Eky vaihtaa yrityksen ja käynnistyy uudelleen.');
+      expect(html).toContain('data-autofocus="true"');
+    } else {
+      expect(html).toContain('data-autofocus="true"');
     }
   });
 

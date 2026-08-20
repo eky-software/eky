@@ -7,6 +7,7 @@ import type {
 import { uiText } from '../../i18n/fi.js';
 import { runWorkspaceManagementOperation } from './workspaceManagementOperation.js';
 import { tryAcquireWorkspaceOperation } from './workspaceOperationGate.js';
+import { WorkspaceStatusLoadController } from './workspaceStatusLoadController.js';
 import {
   initialWorkspaceSelectorState,
   isWorkspaceSelectorBusy,
@@ -48,45 +49,48 @@ export function useWorkspaceManagement(
     initialWorkspaceSelectorState,
   );
   const operationInFlight = useRef(false);
+  const statusLoader = useRef(new WorkspaceStatusLoadController());
+
+  const loadStatus = useCallback(() => {
+    if (capability === undefined || operationInFlight.current) {
+      return Promise.resolve();
+    }
+    return statusLoader.current.load(capability, {
+      failed() {
+        dispatch({ errorMessage: genericWorkspaceError, type: 'loadFailed' });
+      },
+      started() {
+        dispatch({ type: 'loadStarted' });
+      },
+      succeeded(status) {
+        dispatch({ status, type: 'loadSucceeded' });
+      },
+    });
+  }, [capability]);
 
   useEffect(() => {
     operationInFlight.current = false;
+    statusLoader.current.invalidate();
     if (capability === undefined) return;
-    let isCurrent = true;
-    dispatch({ type: 'loadStarted' });
-    void capability
-      .getStatus()
-      .then((status) => {
-        if (isCurrent) dispatch({ status, type: 'loadSucceeded' });
-      })
-      .catch(() => {
-        if (isCurrent) {
-          dispatch({ errorMessage: genericWorkspaceError, type: 'loadFailed' });
-        }
-      });
+    void loadStatus();
     return () => {
-      isCurrent = false;
+      statusLoader.current.invalidate();
     };
-  }, [capability]);
+  }, [capability, loadStatus]);
 
   const retryStatus = useCallback(() => {
-    if (capability === undefined || operationInFlight.current) return;
-    dispatch({ type: 'loadStarted' });
-    void capability
-      .getStatus()
-      .then((status) => dispatch({ status, type: 'loadSucceeded' }))
-      .catch(() =>
-        dispatch({ errorMessage: genericWorkspaceError, type: 'loadFailed' }),
-      );
-  }, [capability]);
+    void loadStatus();
+  }, [loadStatus]);
 
   const closeDialog = useCallback(() => {
     dispatch({ type: 'closeDialog' });
   }, []);
 
   const openDialog = useCallback(() => {
+    if (operationInFlight.current) return;
     dispatch({ type: 'openDialog' });
-  }, []);
+    void loadStatus();
+  }, [loadStatus]);
 
   const selectMode = useCallback(
     (mode: WorkspaceSelectorMode, workspace?: WorkspaceManagementEntry) => {

@@ -1406,6 +1406,7 @@ async function startDesktopCompositionRuntime({
   );
 
   const disposeWorkspaceRuntimeCapabilities = async (): Promise<void> => {
+    workspaceManagementCapability?.dispose();
     pdfPreviewController?.dispose();
     pdfPreviewController = undefined;
     operationalLogFolderCapability?.dispose();

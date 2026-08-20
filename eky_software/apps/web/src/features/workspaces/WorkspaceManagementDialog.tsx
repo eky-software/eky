@@ -103,6 +103,16 @@ export function WorkspaceManagementDialog({
     };
   }, [onClose]);
 
+  useEffect(() => {
+    if (state.mode === 'list') return;
+    const animationFrame = window.requestAnimationFrame(() => {
+      dialogRef.current
+        ?.querySelector<HTMLElement>('[data-autofocus]')
+        ?.focus();
+    });
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [state.mode]);
+
   return (
     <div
       className={styles.backdrop}
