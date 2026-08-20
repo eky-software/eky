@@ -5,7 +5,10 @@
 Hyväksytty arkkitehtuurisopimus. W1-W3:n registry-, creation-, import- ja
 replacement-foundation on toteutettu. W4 on kytkenyt registryyn sidotun
 startupin, legacy-profiilin adoption, workspace-kohtaiset runtime-resurssit
-sekä hallitun switch-polun production-compositioniin. Renderer-capabilitya tai
+sekä hallitun switch-polun production-compositioniin. W5A:n Electron mainin
+sisäinen management-palvelu, yhteinen maintenance-auktoriteetti,
+production-lifecycle-adapteri ja private candidate -adapterit on toteutettu ja
+hyväksytty paikallisella W5A-testimatriisilla. Renderer-capabilitya tai
 käyttäjälle näkyvää usean workspacen hallintaa ei ole vielä toteutettu.
 
 Tämä päätös jatkaa ADR-0008:n yhden aktiivisen yritystyötilan mallia. Se ei
@@ -473,14 +476,17 @@ kun toinen työtila on aktiivinen.
 2. backup autentikoidaan ja exact lineage todistetaan ennen kirjoituksia
 3. `replace`-maintenance-lease hankitaan ja registry sekä ratkaisemattomat
    update/import/create/switch/restore-operaatiot tarkistetaan uudelleen
-4. aktiivinen runtime ja kaikki sen SQLite-kahvat suljetaan
-5. työtilasta tehdään validoitu workspace-scoped pre-restore-palautuspiste
-6. backup valmistellaan yksityiseen stagingiin ja migroidaan eteenpäin
-7. kaikki samat identity-, SQLite-, migration- ja artifact-portit ajetaan
-8. nykyinen restore activation journal julkaistaan ja aktiivinen sisältö
+4. aktiivisen runtimen hyväksytyt kirjoitukset quiesce-rajataan
+5. työtilasta tehdään validoitu workspace-scoped pre-restore-palautuspiste,
+   kun snapshot-broker ja nykyinen SQLite-owner ovat vielä hallitusti käytössä
+6. aktiivinen runtime ja kaikki sen SQLite-kahvat suljetaan ja niiden poissaolo
+   todistetaan
+7. backup valmistellaan yksityiseen stagingiin ja migroidaan eteenpäin
+8. kaikki samat identity-, SQLite-, migration- ja artifact-portit ajetaan
+9. nykyinen restore activation journal julkaistaan ja aktiivinen sisältö
    korvataan atomisesti; tietueita ei yhdistetä
-9. sama workspace käynnistetään uudella sessionilla ja validoidaan
-10. failure palauttaa aiemman työtilan nykyisen activation transactionin
+10. sama workspace käynnistetään uudella sessionilla ja validoidaan
+11. failure palauttaa aiemman työtilan nykyisen activation transactionin
    rollback-rootista tai sulkee käytön `recoveryRequired`-
    tilaan.
 
@@ -618,9 +624,8 @@ Kustannukset:
 - release gate tarvitsee kahden työtilan ja vanhan 0.2.6-profiilin packaged
   todistukset.
 
-## Ei toteuteta tässä päätöksessä
+## Rajauksen ulkopuolelle jää edelleen
 
-- työtilarekisterin tuotantokoodia
 - työtilan valinta- tai hallinta-UI:ta
 - tietokanta- tai backup-formaattimuutosta
 - samanaikaista usean työtilan runtimea

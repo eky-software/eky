@@ -13,9 +13,10 @@ W1-W3:n foundation on toteutettu ja W4 on aktivoinut registryyn sidotun
 startupin, legacy-profiilin kertaluonteisen adoption sekä workspace-kohtaiset
 runtime-resurssit production-compositionissa. W5 on jaettu Electron mainin
 sisäiseen W5A management-foundationiin ja erikseen hyväksyttävään W5B
-renderer/UI-toimitukseen. Molemmat sekä W6:n täysi paketoitu usean työtilan
-release-matriisi ovat edelleen toteuttamatta. Käyttäjälle ei julkaista tätä
-kokonaisuutta ennen W5B-W6-porttien valmistumista.
+renderer/UI-toimitukseen. W5A on toteutettu ja hyväksytty paikallisella
+testimatriisilla; W5B sekä W6:n täysi paketoitu usean työtilan release-matriisi
+ovat edelleen toteuttamatta. Käyttäjälle ei julkaista tätä kokonaisuutta ennen
+W5B-W6-porttien valmistumista.
 
 Tämä suunnitelma toteuttaa
 `docs/decisions/ADR-0011-local-multi-workspace-company-model.md`-päätöksen
@@ -595,8 +596,9 @@ pre-restore failure, invalid staging, activation/rollback failure ja
 
 Suljettu suoritusjärjestys on: targetin ja operation-tilan validointi,
 backupin autentikointi, exact-lineage-todistus, `replace`-lease, registry-
-revalidointi, kirjoitusten quiesce, runtimen ja SQLite-kahvojen sulkeminen,
-runtime-absence, workspace-scoped preRestore-piste, yksityinen staging,
+revalidointi, kirjoitusten quiesce, workspace-scoped preRestore-piste nykyisen
+snapshot-brokerin ja SQLite-ownerin ollessa vielä hallitusti käytössä,
+runtimen ja SQLite-kahvojen sulkeminen, runtime-absence, yksityinen staging,
 forward-migraatiot, täydellinen validointi, nykyisen activation journalin
 kirjoitus, atominen aktivointi, saman workspacen uusi runtime-session,
 health/identity/artifact-validointi, transactionin hyväksyntä ja cleanup.
@@ -717,6 +719,17 @@ käyttää vain synteettistä private userData -juurta.
 
 **Commit/PR/release:** W5A on oma sisäinen feature-checkpoint. Sitä ei kuvata
 käyttäjälle valmiina multi-workspace-toimintona eikä siitä nosteta versiota.
+
+**Toteutustila:** valmis ja paikallisesti hyväksytty. Production-composition
+käyttää yhtä main-owned maintenance lease- ja active workspace lifecycle
+-instanssia. Status/create/import/replace/switch/rename on todennettu
+kohdetesteillä sekä Electron composition proofilla, joka käyttää vain
+synteettistä private userData -juurta ja private utility -candidateja. Proof
+todentaa nykyisen desktop-version, lopullisen registry-tilan, täsmällisen yhden
+relaunchin switchissä, enintään yhden mallinnetun backend- ja SQLite-ownerin
+sekä sen, ettei proofin käynnistämiä utility-prosesseja jää eloon. Preloadia,
+IPC:tä, renderer-capabilitya, web-UI:ta tai julkista backend-reittiä ei lisätty.
+Täysi usean workspacen packaged isolation/update/recovery -todistus jää W6:een.
 
 ## W5B: Trusted workspace capability and UI
 
