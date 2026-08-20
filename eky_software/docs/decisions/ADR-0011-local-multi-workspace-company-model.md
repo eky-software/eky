@@ -537,6 +537,31 @@ adoption idempotenttina, estää scopejen sekoittumisen ja mahdollistaa
 fail-closed-palautumisen. Adoption journal tunnistaa turvallisesti jo
 valmistuneen, keskeytyneen ja rollbackia vaativan adoption.
 
+Workspace-ratkaisua tai adoption filesystem-kirjoituksia ennen Electron main
+suorittaa installation-scoped build admission -tarkistuksen. Ensiasennus,
+täsmälleen hyväksytty build, nimenomaisesti valtuutettu uudempi build ja
+ratkaisemattoman update-journalin täsmällinen kohde voidaan hyväksyä. Sama
+sovellusversio eri build-revisiolla, downgrade sekä sekoittunut tai tuntematon
+update-identiteetti torjutaan ennen workspace-sivuvaikutuksia. Tarkistus ei
+avaa SQLitea eikä tee business-validointia.
+
+`recoveryRequired`-tilaan keskeytynyt legacy-adoptio voidaan siivota
+automaattisesti vain, kun registryssä tai active pointerissa ei ole kohdetta,
+legacy-lähde on edelleen muuttumaton ja candidate- sekä final-juuret ovat
+täsmälleen journalista johdettuja turvallisia juuria. Sallitut tilanteet ovat:
+
+1. julkaisematon candidate vastaa lähdettä ja final puuttuu: candidate
+   poistetaan
+2. julkaisematon final vastaa lähdettä ja candidate puuttuu: final poistetaan
+3. candidate ja final puuttuvat eikä tuntemattomia jälkiä ole: journal
+   voidaan poistaa.
+
+Jokainen onnistunut siivous johtaa hallittuun relaunchiin ennen uutta
+adoptiota. Legacy-lähdettä ei muuteta tai poisteta. Molemmat juuret yhtä aikaa,
+registry- tai active-julkaisu, muuttunut tai puuttuva lähde, hard link,
+symbolinen linkki, tuntematon sisältö tai muu epäselvä tila estää automaattisen
+palautuksen.
+
 ## Update- ja installer-raja
 
 Päivitys koskee yhtä asennusta ja kaikkia sen työtiloja. Update journal,

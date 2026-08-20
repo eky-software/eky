@@ -185,8 +185,15 @@ W4:n multi-workspace-runtime jakaa pysyvän desktop-tilan kahteen omistukseen:
   PDF-arkiston config/journal sekä backup/recovery-tila.
 
 Renderer, web-featuret ja backendin business-API eivät muodosta näitä polkuja.
-Electron main ratkaisee tai adoptoi aktiivisen workspacen ennen sessionia ja
-backendia. Vain yksi workspace saa omistaa business-SQLite-kahvan kerrallaan.
+Electron main todistaa ensin build-identiteetin installation-scoped strict
+storeista. Vasta hyväksytyn build admissionin jälkeen se ratkaisee tai adoptoi
+aktiivisen workspacen ennen sessionia ja backendia. Torjuttu build ei saa luoda
+adoption journalia, candidatea, final-rootia tai registry-muutosta.
+Keskeytyneen legacy-adoption automaattinen cleanup sallitaan vain
+julkaisemattomalle, täsmällisesti johdetulle ja muuttumattoman legacy-lähteen
+kanssa byte-identtiselle kopiolle; onnistunut cleanup johtaa relaunchiin ennen
+uutta adoptiota. Vain yksi workspace saa omistaa business-SQLite-kahvan
+kerrallaan.
 W5A on lisännyt tämän päälle vain main-prosessin sisäisen management-palvelun,
 production-lifecycle- ja private candidate -adapterit sekä yhden yhteisen
 installation-scoped maintenance-auktoriteetin. Preload, IPC, renderer ja web-
