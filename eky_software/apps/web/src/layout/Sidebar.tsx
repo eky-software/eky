@@ -1,5 +1,7 @@
 import { uiText } from '../i18n/fi.js';
 import type { AppView } from '../app/appNavigation.js';
+import { WorkspaceBrandButton } from '../features/workspaces/WorkspaceBrandButton.js';
+import type { WorkspaceBrandState } from '../features/workspaces/useWorkspaceManagement.js';
 import styles from './Sidebar.module.css';
 
 type SidebarNavItem =
@@ -43,27 +45,38 @@ const navSections: SidebarNavSection[] = [
 
 interface SidebarProps {
   activeView: AppView;
+  activeWorkspaceLabel?: string;
+  brandState?: WorkspaceBrandState;
   isCollapsed: boolean;
+  isWorkspaceManagementOpen?: boolean;
   onViewChange(view: AppView): void;
+  onOpenWorkspaceManagement?: () => void;
+  workspaceManagementAvailable?: boolean;
 }
 
 export function Sidebar({
   activeView,
+  activeWorkspaceLabel = uiText.workspaces.fallbackName,
+  brandState = 'browserFallback',
   isCollapsed,
+  isWorkspaceManagementOpen = false,
   onViewChange,
+  onOpenWorkspaceManagement = () => undefined,
+  workspaceManagementAvailable = false,
 }: SidebarProps): React.JSX.Element {
   return (
     <aside
       className={`${styles.sidebar}${isCollapsed ? ` ${styles.collapsed}` : ''}`}
       aria-label={uiText.layout.modules}
     >
-      <div className={styles.brand}>
-        <span className={styles.brandMark}>E</span>
-        <div className={styles.brandCopy}>
-          <strong>Eky</strong>
-          <span>Paikallinen</span>
-        </div>
-      </div>
+      <WorkspaceBrandButton
+        activeWorkspaceLabel={activeWorkspaceLabel}
+        brandState={brandState}
+        isCollapsed={isCollapsed}
+        isDialogOpen={isWorkspaceManagementOpen}
+        onOpenWorkspaceManagement={onOpenWorkspaceManagement}
+        workspaceManagementAvailable={workspaceManagementAvailable}
+      />
 
       <nav className={styles.navigation} aria-hidden={isCollapsed}>
         {navSections.map((section) => (
