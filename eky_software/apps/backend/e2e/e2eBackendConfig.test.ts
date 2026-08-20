@@ -1,6 +1,7 @@
 import {
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -11,6 +12,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   applyE2eBackendRuntimePathOverrides,
+  readE2eBackendConfig,
   type E2eBackendConfig,
 } from './e2eBackendConfig.js';
 
@@ -23,6 +25,24 @@ afterEach(() => {
 });
 
 describe('E2E backend runtime path overrides', () => {
+  it('accepts native-canonical standalone paths under the isolated temp root', () => {
+    const fixture = createFixture();
+    writeFileSync(
+      fixture.configPath,
+      `${JSON.stringify(fixture.config)}\n`,
+      { encoding: 'utf8', mode: 0o600 },
+    );
+
+    const parsed = readE2eBackendConfig(fixture.configPath, {
+      EKY_E2E: '1',
+    });
+
+    expect(parsed.runtimeRoot).toBe(fixture.runtimeRoot);
+    expect(parsed.paths.databaseFilePath).toBe(
+      fixture.originalDatabaseFilePath,
+    );
+  });
+
   it('accepts active workspace paths inside the isolated runtime root', () => {
     const fixture = createFixture();
     const workspaceRoot = createDirectory(
@@ -157,7 +177,7 @@ function createFixture(): {
 function createSiblingTestRoot(prefix: string): string {
   const parent = join(tmpdir(), 'eky-e2e');
   mkdirSync(parent, { recursive: true });
-  const root = mkdtempSync(join(parent, prefix));
+  const root = realpathSync.native(mkdtempSync(join(parent, prefix)));
   testRoots.push(root);
   return root;
 }
