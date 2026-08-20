@@ -17,6 +17,7 @@ import {
   killElectronBackendUnexpectedly,
   readElectronNativeAdapterSnapshot,
   readElectronPdfPreviewUrls,
+  runElectronWorkspaceManagementCompositionProof,
 } from '../../src/electron/electronMainCapabilities.js';
 import {
   createElectronE2eRuntime,
@@ -36,6 +37,37 @@ import { test, expect } from '../../src/fixtures/isolatedElectronTest.js';
 import { createApprovedInvoiceWithPdf } from '../../src/journeys/invoicingApiJourney.js';
 
 const repositoryRoot = resolve(import.meta.dirname, '../../../..');
+
+test('DESK-WORKSPACE-MANAGEMENT-001 @critical @recovery proves the production composition with isolated utility candidates', async ({
+  e2eElectron,
+}) => {
+  await expect(
+    runElectronWorkspaceManagementCompositionProof(
+      e2eElectron.electronApp,
+    ),
+  ).resolves.toEqual({
+    activeWorkspacePreservedDuringCreate: true,
+    activeWorkspacePreservedDuringImport: true,
+    candidateProcessesReleased: true,
+    createdWorkspaceCount: 2,
+    importedWorkspaceValidated: true,
+    importedWorkspaceCount: 1,
+    maximumBackendOwners: 1,
+    maximumSqliteOwners: 1,
+    noOpSwitchPreservedRuntime: true,
+    renamePersisted: true,
+    renamePreservedRuntime: true,
+    replacementAcceptedAfterRestart: true,
+    replacementFaultsRolledBack: true,
+    replacementLifecycleOrdered: true,
+    replacementPreservedUnrelatedWorkspaces: true,
+    sharedLeaseBlockedConcurrentOperation: true,
+    sourceBackupPreserved: true,
+    switchJournalPersisted: true,
+    switchRequestedRelaunch: true,
+    unresolvedOperationBlockedMutation: true,
+  });
+});
 
 test('DESK-PDF-001 @critical opens one isolated invoice PDF preview', async ({
   e2eElectron,

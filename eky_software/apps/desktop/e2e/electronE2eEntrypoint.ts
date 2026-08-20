@@ -186,6 +186,17 @@ Object.assign(globalThis, {
       };
     },
     runtimeInstanceId: config.runtimeInstanceId,
+    async runWorkspaceManagementCompositionProof() {
+      const { runWorkspaceManagementCompositionProof } = await import(
+        './workspaceManagementCompositionProof.js'
+      );
+      return runWorkspaceManagementCompositionProof({
+        appVersion: '0.1.0-alpha.1',
+        buildRevision: 'development',
+        resourcesPath: config.paths.resourcesPath,
+        userDataRoot: config.paths.userDataPath,
+      });
+    },
     scenarioId: config.scenarioId,
     secondInstanceCount: () => secondInstanceCount,
     userDataPath: config.paths.userDataPath,

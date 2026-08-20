@@ -58,6 +58,16 @@ export function createElectronE2eRuntime(input: {
   cpSync(resolve(repositoryRoot, 'apps/web/dist'), applicationWebPath, {
     recursive: true,
   });
+  cpSync(
+    resolve(repositoryRoot, 'apps/desktop/e2e-backend-stage'),
+    join(resourcesPath, 'backend'),
+    { recursive: true },
+  );
+  cpSync(
+    resolve(repositoryRoot, 'apps/desktop/dist/runtime'),
+    join(resourcesPath, 'desktop-runtime', 'runtime'),
+    { recursive: true },
+  );
 
   const backendConfig = writeE2eBackendConfig({
     backendPort: input.backendPort,
