@@ -1,6 +1,7 @@
 import {
   access,
   chmod,
+  link,
   mkdir,
   mkdtemp,
   readFile,
@@ -95,6 +96,102 @@ describe('workspace legacy adoption root store', () => {
     await expect(fixture.store.detectSourceKind(fixture.paths)).rejects
       .toMatchObject({ code: 'WORKSPACE_ADOPTION_RECOVERY_REQUIRED' });
   });
+
+  it('discards a recovery candidate only after exact legacy comparison', async () => {
+    const fixture = await createFixture();
+    await createLegacyRuntime(fixture.paths.legacyRuntimeRoot);
+    await fixture.store.prepareCandidate(fixture.paths, 'legacy');
+
+    await fixture.store.assertRecoveryLayout(fixture.paths, []);
+    await fixture.store.discardRecoveryCandidateMatchingLegacy(fixture.paths);
+
+    await expect(pathExists(fixture.paths.operationRoot)).resolves.toBe(false);
+    await expect(
+      pathExists(join(fixture.paths.legacyRuntimeRoot, 'data', 'eky.sqlite')),
+    ).resolves.toBe(true);
+  });
+
+  it('discards an unregistered published root only after exact legacy comparison', async () => {
+    const fixture = await createFixture();
+    await createLegacyRuntime(fixture.paths.legacyRuntimeRoot);
+    await fixture.store.prepareCandidate(fixture.paths, 'legacy');
+    await fixture.store.publishCandidate(fixture.paths);
+
+    await fixture.store.assertRecoveryLayout(fixture.paths, []);
+    await fixture.store
+      .discardUnregisteredPublishedRootMatchingLegacy(fixture.paths);
+    await fixture.store.discardEmptyRecoveryOperation(fixture.paths);
+
+    await expect(pathExists(fixture.paths.finalRoot)).resolves.toBe(false);
+    await expect(pathExists(fixture.paths.operationRoot)).resolves.toBe(false);
+    await expect(
+      pathExists(join(fixture.paths.legacyRuntimeRoot, 'data', 'eky.sqlite')),
+    ).resolves.toBe(true);
+  });
+
+  it('keeps changed published data and the legacy source when hashes differ', async () => {
+    const fixture = await createFixture();
+    await createLegacyRuntime(fixture.paths.legacyRuntimeRoot);
+    await fixture.store.prepareCandidate(fixture.paths, 'legacy');
+    await fixture.store.publishCandidate(fixture.paths);
+    await writePrivateFile(
+      join(fixture.paths.finalRoot, 'runtime', 'data', 'eky.sqlite'),
+      'changed-database',
+    );
+
+    await expect(
+      fixture.store.discardUnregisteredPublishedRootMatchingLegacy(
+        fixture.paths,
+      ),
+    ).rejects.toMatchObject({
+      code: 'WORKSPACE_ADOPTION_RECOVERY_REQUIRED',
+    });
+
+    await expect(pathExists(fixture.paths.finalRoot)).resolves.toBe(true);
+    await expect(
+      readFile(join(fixture.paths.legacyRuntimeRoot, 'data', 'eky.sqlite')),
+    ).resolves.toEqual(Buffer.from('synthetic-database'));
+  });
+
+  it('rejects hardlinked candidate content without deleting either copy', async () => {
+    const fixture = await createFixture();
+    await createLegacyRuntime(fixture.paths.legacyRuntimeRoot);
+    await fixture.store.prepareCandidate(fixture.paths, 'legacy');
+    const candidateDatabase = join(
+      fixture.paths.candidateRuntimeRoot,
+      'data',
+      'eky.sqlite',
+    );
+    await link(candidateDatabase, `${candidateDatabase}.alias`);
+
+    await expect(
+      fixture.store.discardRecoveryCandidateMatchingLegacy(fixture.paths),
+    ).rejects.toMatchObject({
+      code: 'WORKSPACE_ADOPTION_RECOVERY_REQUIRED',
+    });
+
+    await expect(pathExists(fixture.paths.candidateRoot)).resolves.toBe(true);
+    await expect(
+      pathExists(join(fixture.paths.legacyRuntimeRoot, 'data', 'eky.sqlite')),
+    ).resolves.toBe(true);
+  });
+
+  it('rejects unknown recovery operation roots before cleanup', async () => {
+    const fixture = await createFixture();
+    await createLegacyRuntime(fixture.paths.legacyRuntimeRoot);
+    await createPrivateDirectory(fixture.paths.operationsRoot);
+    await createPrivateDirectory(join(fixture.paths.operationsRoot, 'unknown'));
+
+    await expect(
+      fixture.store.assertRecoveryLayout(fixture.paths, []),
+    ).rejects.toMatchObject({
+      code: 'WORKSPACE_ADOPTION_RECOVERY_REQUIRED',
+    });
+
+    await expect(
+      pathExists(join(fixture.paths.operationsRoot, 'unknown')),
+    ).resolves.toBe(true);
+  });
 });
 
 async function createFixture() {
@@ -127,6 +224,11 @@ async function createLegacyRuntime(runtimeRoot: string): Promise<void> {
   await writeFile(join(runtimeRoot, 'logs', 'operational.jsonl'), 'log');
   await createPrivateDirectory(join(runtimeRoot, 'update-state'));
   await writeFile(join(runtimeRoot, 'update-state', 'journal.json'), 'state');
+}
+
+async function writePrivateFile(path: string, content: string): Promise<void> {
+  await writeFile(path, content, { mode: 0o600 });
+  if (process.platform !== 'win32') await chmod(path, 0o600);
 }
 
 async function createPrivateDirectory(path: string): Promise<void> {

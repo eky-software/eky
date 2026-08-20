@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import {
+  access,
   chmod,
   mkdir,
   mkdtemp,
@@ -13,6 +14,7 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { WorkspaceLegacyAdoptionJournalStore } from '../adoption/workspaceLegacyAdoptionJournal.js';
 import { deriveWorkspaceRoot } from '../registry/deriveWorkspaceRoot.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../registry/workspaceRegistryPaths.js';
 import { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
@@ -125,6 +127,55 @@ describe('active workspace startup resolution', () => {
       workspaceRoot: first.workspaceRoot,
     });
     await second.accept(profileId);
+    expect(await hashFiles([sourceDatabase, sourcePdf])).toBe(sourceIdentity);
+  });
+
+  it('discards a matching unpublished adoption root and relaunches before retrying adoption', async () => {
+    const userDataRoot = await createPrivateTemporaryRoot();
+    const legacyRuntimeRoot = join(userDataRoot, 'runtime');
+    const sourceDatabase = join(legacyRuntimeRoot, 'data', 'eky.sqlite');
+    const sourcePdf = join(
+      legacyRuntimeRoot,
+      'storage',
+      'invoices',
+      'approved-invoice.pdf',
+    );
+    await createPrivateDirectory(join(legacyRuntimeRoot, 'data'));
+    await createPrivateDirectory(join(legacyRuntimeRoot, 'storage'));
+    await createPrivateDirectory(
+      join(legacyRuntimeRoot, 'storage', 'invoices'),
+    );
+    await writePrivateFile(sourceDatabase, 'synthetic-sqlite-profile');
+    await writePrivateFile(sourcePdf, '%PDF-1.7\nsynthetic');
+    const sourceIdentity = await hashFiles([sourceDatabase, sourcePdf]);
+    const first = await resolveActiveWorkspaceStartup(userDataRoot);
+    await first.recoverFromFailure();
+    const journal = new WorkspaceLegacyAdoptionJournalStore(userDataRoot);
+    const progress: string[] = [];
+
+    await expect(
+      resolveActiveWorkspaceStartup(userDataRoot, {
+        reportProgress(event) {
+          progress.push(`${event.phase}:${event.state}`);
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: 'ACTIVE_WORKSPACE_STARTUP_RELAUNCH_REQUIRED',
+    });
+
+    expect(await journal.read()).toBeUndefined();
+    await expect(pathExists(first.workspaceRoot)).resolves.toBe(false);
+    expect(await hashFiles([sourceDatabase, sourcePdf])).toBe(sourceIdentity);
+    expect(progress).toEqual([
+      'registryStateRead:started',
+      'registryStateRead:completed',
+      'legacyAdoptionRecovery:started',
+      'legacyAdoptionRecovery:completed',
+    ]);
+
+    const retry = await resolveActiveWorkspaceStartup(userDataRoot);
+    expect(retry.mode).toBe('adoption');
+    await retry.accept(profileId);
     expect(await hashFiles([sourceDatabase, sourcePdf])).toBe(sourceIdentity);
   });
 
@@ -305,4 +356,13 @@ async function hashFiles(paths: readonly string[]): Promise<string> {
   const hash = createHash('sha256');
   for (const path of paths) hash.update(await readFile(path));
   return hash.digest('hex');
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
 }

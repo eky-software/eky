@@ -40,6 +40,7 @@ export function createAdoptionJournal(
 
 export class MemoryAdoptionJournal implements WorkspaceLegacyAdoptionJournalPort {
   current: Readonly<WorkspaceLegacyAdoptionJournalV1> | undefined;
+  failNextClear = false;
 
   constructor(
     private readonly events: string[],
@@ -63,6 +64,10 @@ export class MemoryAdoptionJournal implements WorkspaceLegacyAdoptionJournalPort
   async clear(operationId: string): Promise<void> {
     this.events.push('journal.clear');
     if (this.current?.operationId !== operationId) throw new Error('journal');
+    if (this.failNextClear) {
+      this.failNextClear = false;
+      throw new Error('journal');
+    }
     this.current = undefined;
   }
 }
@@ -87,6 +92,9 @@ export class MemoryAdoptionRegistry implements WorkspaceRegistryPort {
 export class MemoryAdoptionRootStore implements WorkspaceLegacyAdoptionRootPort {
   candidateExists = false;
   finalExists = false;
+  legacyMatchesCandidate = true;
+  legacyMatchesFinal = true;
+  recoveryLayoutValid = true;
   sourceKind: WorkspaceLegacyAdoptionSourceKind = 'legacy';
   untrackedRoots = false;
 
@@ -138,6 +146,40 @@ export class MemoryAdoptionRootStore implements WorkspaceLegacyAdoptionRootPort 
   ): Promise<void> {
     this.events.push('root.discardCandidate');
     this.candidateExists = false;
+  }
+
+  async assertRecoveryLayout(): Promise<void> {
+    this.events.push('root.assertRecoveryLayout');
+    if (!this.recoveryLayoutValid) throw new Error('layout');
+  }
+
+  async discardRecoveryCandidateMatchingLegacy(): Promise<void> {
+    this.events.push('root.discardRecoveryCandidate');
+    if (
+      !this.candidateExists ||
+      this.finalExists ||
+      !this.legacyMatchesCandidate
+    ) {
+      throw new Error('candidate');
+    }
+    this.candidateExists = false;
+  }
+
+  async discardUnregisteredPublishedRootMatchingLegacy(): Promise<void> {
+    this.events.push('root.discardUnregisteredPublishedRoot');
+    if (
+      this.candidateExists ||
+      !this.finalExists ||
+      !this.legacyMatchesFinal
+    ) {
+      throw new Error('published');
+    }
+    this.finalExists = false;
+  }
+
+  async discardEmptyRecoveryOperation(): Promise<void> {
+    this.events.push('root.discardEmptyRecoveryOperation');
+    if (this.candidateExists) throw new Error('operation');
   }
 }
 

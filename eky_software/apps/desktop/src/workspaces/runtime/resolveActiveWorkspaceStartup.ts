@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 
 import { WorkspaceLegacyAdoptionJournalStore } from '../adoption/workspaceLegacyAdoptionJournal.js';
+import { recoverWorkspaceLegacyAdoption } from '../adoption/workspaceLegacyAdoptionRecovery.js';
 import { NodeWorkspaceLegacyAdoptionRootStore } from '../adoption/workspaceLegacyAdoptionRootStore.js';
 import { resolveWorkspaceLegacyAdoptionStartup } from '../adoption/workspaceLegacyAdoptionStartup.js';
 import { deriveWorkspaceRoot } from '../registry/deriveWorkspaceRoot.js';
@@ -33,6 +34,7 @@ export type ActiveWorkspaceStartupMode =
 
 export type ActiveWorkspaceStartupPhase =
   | 'registryStateRead'
+  | 'legacyAdoptionRecovery'
   | 'legacyAdoption'
   | 'switchRecovery'
   | 'workspaceRootInspection';
@@ -72,12 +74,27 @@ export async function resolveActiveWorkspaceStartup(
   ]);
   reportProgress(options, 'registryStateRead', 'completed');
 
+  const adoptionRootStore = new NodeWorkspaceLegacyAdoptionRootStore();
+  if (adoptionJournalValue?.state === 'recoveryRequired') {
+    reportProgress(options, 'legacyAdoptionRecovery', 'started');
+    const recovery = await recoverWorkspaceLegacyAdoption({
+      journal: adoptionJournal,
+      registry,
+      rootStore: adoptionRootStore,
+      userDataRoot,
+    });
+    reportProgress(options, 'legacyAdoptionRecovery', 'completed');
+    if (recovery === 'relaunchRequired') {
+      throw new ActiveWorkspaceStartupRelaunchRequiredError();
+    }
+  }
+
   if (registryValue === undefined || adoptionJournalValue !== undefined) {
     reportProgress(options, 'legacyAdoption', 'started');
     const selection = await resolveWorkspaceLegacyAdoptionStartup({
       journal: adoptionJournal,
       registry,
-      rootStore: new NodeWorkspaceLegacyAdoptionRootStore(),
+      rootStore: adoptionRootStore,
       userDataRoot,
     });
     reportProgress(options, 'legacyAdoption', 'completed');
