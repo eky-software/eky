@@ -7,6 +7,22 @@ import { describe, expect, it } from 'vitest';
 const sourceRoot = resolveSourceRoot();
 
 describe('desktop first-start boundaries', () => {
+  it('admits the packaged build before resolving or adopting a workspace', async () => {
+    const source = await readFile(
+      join(sourceRoot, 'main', 'desktopComposition.ts'),
+      'utf8',
+    );
+    const admission = source.indexOf(
+      'await requirePreWorkspaceBuildAdmission',
+    );
+    const workspaceStartup = source.indexOf(
+      'await resolveDesktopWorkspaceStartup',
+    );
+
+    expect(admission).toBeGreaterThan(-1);
+    expect(workspaceStartup).toBeGreaterThan(admission);
+  });
+
   it('opens the business window only after backend and first-start acceptance', async () => {
     const source = await readFile(
       join(sourceRoot, 'main', 'desktopComposition.ts'),
