@@ -6,6 +6,10 @@ describe('Electron E2E workspace startup failure reporting', () => {
   it.each([
     ['registryStateRead', 'DESKTOP_SMOKE_E2E_WORKSPACE_REGISTRY_READ_FAILED'],
     ['legacyAdoption', 'DESKTOP_SMOKE_E2E_WORKSPACE_ADOPTION_FAILED'],
+    [
+      'legacyAdoptionRecovery',
+      'DESKTOP_SMOKE_E2E_WORKSPACE_ADOPTION_RECOVERY_FAILED',
+    ],
     ['switchRecovery', 'DESKTOP_SMOKE_E2E_WORKSPACE_SWITCH_RECOVERY_FAILED'],
     [
       'workspaceRootInspection',

@@ -125,6 +125,10 @@ import { createLocalUpdateRuntimePaths } from '../update/localUpdateRuntimePaths
 import { DirectSetupMigrationRecoveryStore } from '../update/directSetupMigrationRecoveryStore.js';
 import { migrateLegacyLocalUpdateState } from '../update/migrateLegacyLocalUpdateState.js';
 import { AcceptedBuildMetadataStore } from '../update/acceptedBuildMetadataStore.js';
+import {
+  PreWorkspaceBuildAdmissionError,
+  requirePreWorkspaceBuildAdmission,
+} from '../update/preWorkspaceBuildAdmission.js';
 import { readEncryptedSecretStorageIdentity } from '../update/encryptedSecretStorageIdentity.js';
 import { FirstStartUpdateCoordinator } from '../update/firstStartUpdateCoordinator.js';
 import { createProfileProtectionComposition } from '../update/profileProtectionComposition.js';
@@ -268,6 +272,20 @@ export async function startDesktopComposition(
         desktopOperationalIdentity,
       ),
     );
+    const installationUpdateState = await createInstallationUpdateState({
+      installationRuntimeRoot,
+      userDataPath: options.userDataPath,
+    });
+    await requirePreWorkspaceBuildAdmission({
+      buildInfo: options.buildInfo,
+      releaseInfo: options.releaseInfo,
+      stores: {
+        acceptedBuild: installationUpdateState.acceptedBuildMetadataStore,
+        directSetupRecovery:
+          installationUpdateState.directSetupMigrationRecoveryStore,
+        journal: installationUpdateState.updateJournalStore,
+      },
+    });
     const workspaceStartup = await resolveDesktopWorkspaceStartup({
       createRuntimeSession: dependencies.createRuntimeSession,
       relaunchApplication: options.relaunchApplication,
@@ -284,6 +302,7 @@ export async function startDesktopComposition(
       desktopOperationalLogger,
       desktopStartedAt,
       installationRuntimeRoot,
+      installationUpdateState,
       operationalLogsRoot,
       options,
       dependencies,
@@ -299,8 +318,14 @@ export async function startDesktopComposition(
             errorCode,
             eventName: 'desktop.bootstrapFailed',
             retryable: false,
-            sideEffectState: 'unknown',
-            stage: 'startup',
+            sideEffectState:
+              error instanceof PreWorkspaceBuildAdmissionError
+                ? 'none'
+                : 'unknown',
+            stage:
+              error instanceof PreWorkspaceBuildAdmissionError
+                ? 'preWorkspaceBuildAdmission'
+                : 'startup',
           },
           desktopOperationalIdentity,
         ),
@@ -321,48 +346,27 @@ interface DesktopCompositionRuntimeOptions {
   desktopStartedAt: number;
   dependencies: DesktopCompositionDependencies;
   installationRuntimeRoot: string;
+  installationUpdateState: InstallationUpdateState;
   operationalLogsRoot: string;
   options: StartDesktopCompositionOptions;
   runtimeSessionSecret: string;
   smokeMode: boolean;
 }
 
-async function startDesktopCompositionRuntime({
-  activeWorkspace,
-  backendRoot,
-  desktopAppVersion,
-  desktopOperationalIdentity,
-  desktopOperationalLogger,
-  desktopStartedAt,
-  dependencies,
-  installationRuntimeRoot,
-  operationalLogsRoot,
-  options,
-  runtimeSessionSecret,
-  smokeMode,
-}: DesktopCompositionRuntimeOptions): Promise<
-  DesktopLifecycleHandle | undefined
-> {
-  const workspaceProfilePaths = createDesktopProfilePaths(
-    activeWorkspace.workspaceRoot,
-  );
-  const {
-    databaseFilePath,
-    invoiceDocumentStorageRoot,
-    runtimeRoot: workspaceRuntimeRoot,
-  } = workspaceProfilePaths;
-  const profileSnapshotPaths = createProfileSnapshotRuntimePaths(
-    workspaceRuntimeRoot,
-  );
-  const workspaceMaintenanceLease =
-    new InMemoryWorkspaceMaintenanceLease();
-  const backendRequestQuiescence = new BackendRequestQuiescence();
-  const workspaceRuntimeRelaunch = new DeferredWorkspaceRuntimeRelaunch(
-    options.relaunchApplication,
-  );
+interface InstallationUpdateState {
+  acceptedBuildMetadataStore: AcceptedBuildMetadataStore;
+  directSetupMigrationRecoveryStore: DirectSetupMigrationRecoveryStore;
+  localUpdateRuntimePaths: ReturnType<typeof createLocalUpdateRuntimePaths>;
+  updateJournalStore: UpdateJournalStore;
+}
+
+async function createInstallationUpdateState(input: {
+  installationRuntimeRoot: string;
+  userDataPath: string;
+}): Promise<InstallationUpdateState> {
   const localUpdateRuntimePaths = createLocalUpdateRuntimePaths({
-    legacyRuntimeRoot: installationRuntimeRoot,
-    userDataPath: options.userDataPath,
+    legacyRuntimeRoot: input.installationRuntimeRoot,
+    userDataPath: input.userDataPath,
   });
   const updateJournalStore = new UpdateJournalStore(
     localUpdateRuntimePaths.journalPath,
@@ -388,6 +392,54 @@ async function startDesktopCompositionRuntime({
       ),
     },
   });
+  return {
+    acceptedBuildMetadataStore,
+    directSetupMigrationRecoveryStore,
+    localUpdateRuntimePaths,
+    updateJournalStore,
+  };
+}
+
+async function startDesktopCompositionRuntime({
+  activeWorkspace,
+  backendRoot,
+  desktopAppVersion,
+  desktopOperationalIdentity,
+  desktopOperationalLogger,
+  desktopStartedAt,
+  dependencies,
+  installationRuntimeRoot,
+  installationUpdateState,
+  operationalLogsRoot,
+  options,
+  runtimeSessionSecret,
+  smokeMode,
+}: DesktopCompositionRuntimeOptions): Promise<
+  DesktopLifecycleHandle | undefined
+> {
+  const workspaceProfilePaths = createDesktopProfilePaths(
+    activeWorkspace.workspaceRoot,
+  );
+  const {
+    databaseFilePath,
+    invoiceDocumentStorageRoot,
+    runtimeRoot: workspaceRuntimeRoot,
+  } = workspaceProfilePaths;
+  const profileSnapshotPaths = createProfileSnapshotRuntimePaths(
+    workspaceRuntimeRoot,
+  );
+  const workspaceMaintenanceLease =
+    new InMemoryWorkspaceMaintenanceLease();
+  const backendRequestQuiescence = new BackendRequestQuiescence();
+  const workspaceRuntimeRelaunch = new DeferredWorkspaceRuntimeRelaunch(
+    options.relaunchApplication,
+  );
+  const {
+    acceptedBuildMetadataStore,
+    directSetupMigrationRecoveryStore,
+    localUpdateRuntimePaths,
+    updateJournalStore,
+  } = installationUpdateState;
   const profileRecoveryOperationalObserver =
     createProfileRecoveryOperationalObserver({
       operationalIdentity: desktopOperationalIdentity,

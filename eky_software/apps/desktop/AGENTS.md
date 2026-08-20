@@ -41,6 +41,14 @@ Mandatory boundaries:
   switching or adoption, read ADR-0011 and the local company workspace plan;
   Electron main may coordinate lifecycle and filesystem roots but must not
   open workspace SQLite or import a database driver
+- run the main-owned build admission before workspace resolution or adoption
+  can mutate filesystem state; a same-version/different-revision build,
+  downgrade or unknown update identity must fail closed with zero workspace
+  side effects
+- recover interrupted legacy adoption automatically only when the journal,
+  intact legacy source and exact derived unpublished candidate/final roots
+  prove one documented recovery case; a published registry entry, active
+  pointer, unsafe link, changed source or unknown trace must fail closed
 - W5A workspace management remains internal to Electron main: do not add a
   preload method, IPC channel, renderer bridge, web UI or public backend route;
   W5B owns that separately approved capability boundary

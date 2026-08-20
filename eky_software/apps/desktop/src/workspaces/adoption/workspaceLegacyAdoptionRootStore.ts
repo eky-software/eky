@@ -17,6 +17,7 @@ import { basename, dirname, join, relative, resolve } from 'node:path';
 import type { WorkspaceLegacyAdoptionSourceKind } from './workspaceLegacyAdoptionJournal.js';
 import { WorkspaceLegacyAdoptionError } from './workspaceLegacyAdoptionError.js';
 import type { WorkspaceLegacyAdoptionPaths } from './workspaceLegacyAdoptionPaths.js';
+import type { WorkspaceId } from '../registry/workspaceRegistryTypes.js';
 
 const maximumAdoptionFiles = 100_010;
 const maximumAdoptionBytes = 32n * 1024n * 1024n * 1024n;
@@ -72,6 +73,19 @@ export interface WorkspaceLegacyAdoptionRootPort {
     paths: Readonly<WorkspaceLegacyAdoptionPaths>,
   ): Promise<Readonly<WorkspaceLegacyAdoptionRootPresence>>;
   discardCandidate(paths: Readonly<WorkspaceLegacyAdoptionPaths>): Promise<void>;
+  assertRecoveryLayout(
+    paths: Readonly<WorkspaceLegacyAdoptionPaths>,
+    registeredWorkspaceIds: readonly WorkspaceId[],
+  ): Promise<void>;
+  discardRecoveryCandidateMatchingLegacy(
+    paths: Readonly<WorkspaceLegacyAdoptionPaths>,
+  ): Promise<void>;
+  discardUnregisteredPublishedRootMatchingLegacy(
+    paths: Readonly<WorkspaceLegacyAdoptionPaths>,
+  ): Promise<void>;
+  discardEmptyRecoveryOperation(
+    paths: Readonly<WorkspaceLegacyAdoptionPaths>,
+  ): Promise<void>;
 }
 
 export class NodeWorkspaceLegacyAdoptionRootStore
@@ -232,6 +246,82 @@ export class NodeWorkspaceLegacyAdoptionRootStore
       throw mapRootError(error);
     }
   }
+
+  async assertRecoveryLayout(
+    paths: Readonly<WorkspaceLegacyAdoptionPaths>,
+    registeredWorkspaceIds: readonly WorkspaceId[],
+  ): Promise<void> {
+    try {
+      await assertRealDirectory(paths.userDataRoot, false);
+      await assertKnownDirectoryEntries(paths.operationsRoot, [
+        basename(paths.operationRoot),
+      ]);
+      await assertKnownDirectoryEntries(paths.operationRoot, [
+        basename(paths.candidateRoot),
+      ]);
+      await assertKnownDirectoryEntries(paths.workspacesRoot, [
+        ...registeredWorkspaceIds,
+        basename(paths.finalRoot),
+      ]);
+    } catch (error) {
+      throw mapRootError(error, 'WORKSPACE_ADOPTION_RECOVERY_REQUIRED');
+    }
+  }
+
+  async discardRecoveryCandidateMatchingLegacy(
+    paths: Readonly<WorkspaceLegacyAdoptionPaths>,
+  ): Promise<void> {
+    try {
+      await assertRealDirectory(paths.operationRoot, true);
+      await assertExactEntries(paths.operationRoot, [
+        basename(paths.candidateRoot),
+      ]);
+      await assertRealDirectory(paths.candidateRoot, true);
+      await assertExactEntries(paths.candidateRoot, ['runtime']);
+      await assertStableMatchingRuntimeInventories(
+        paths.legacyRuntimeRoot,
+        paths.candidateRuntimeRoot,
+      );
+      await assertSafeTree(paths.candidateRoot);
+      await rm(paths.operationRoot, { recursive: true });
+      await assertPathMissing(paths.operationRoot);
+    } catch (error) {
+      throw mapRootError(error, 'WORKSPACE_ADOPTION_RECOVERY_REQUIRED');
+    }
+  }
+
+  async discardUnregisteredPublishedRootMatchingLegacy(
+    paths: Readonly<WorkspaceLegacyAdoptionPaths>,
+  ): Promise<void> {
+    try {
+      await assertRealDirectory(paths.workspacesRoot, true);
+      await assertRealDirectory(paths.finalRoot, true);
+      await assertExactEntries(paths.finalRoot, ['runtime']);
+      await assertStableMatchingRuntimeInventories(
+        paths.legacyRuntimeRoot,
+        join(paths.finalRoot, 'runtime'),
+      );
+      await assertSafeTree(paths.finalRoot);
+      await rm(paths.finalRoot, { recursive: true });
+      await assertPathMissing(paths.finalRoot);
+    } catch (error) {
+      throw mapRootError(error, 'WORKSPACE_ADOPTION_RECOVERY_REQUIRED');
+    }
+  }
+
+  async discardEmptyRecoveryOperation(
+    paths: Readonly<WorkspaceLegacyAdoptionPaths>,
+  ): Promise<void> {
+    try {
+      if (!(await pathExists(paths.operationRoot))) return;
+      await assertRealDirectory(paths.operationRoot, true);
+      await assertExactEntries(paths.operationRoot, []);
+      await rm(paths.operationRoot, { recursive: true });
+      await assertPathMissing(paths.operationRoot);
+    } catch (error) {
+      throw mapRootError(error, 'WORKSPACE_ADOPTION_RECOVERY_REQUIRED');
+    }
+  }
 }
 
 async function inspectWorkspaceRoot(
@@ -285,6 +375,24 @@ async function inventoryTree(
   }
   requireInventoryBounds(inventory);
   return Object.freeze(inventory);
+}
+
+async function assertStableMatchingRuntimeInventories(
+  legacyRuntimeRoot: string,
+  recoveredRuntimeRoot: string,
+): Promise<void> {
+  const [legacyBefore, recoveredBefore] = await Promise.all([
+    inventoryLegacyWorkspaceEntries(legacyRuntimeRoot),
+    inventoryTree(recoveredRuntimeRoot),
+  ]);
+  assertInventoriesEqual(legacyBefore, recoveredBefore);
+  const [legacyAfter, recoveredAfter] = await Promise.all([
+    inventoryLegacyWorkspaceEntries(legacyRuntimeRoot),
+    inventoryTree(recoveredRuntimeRoot),
+  ]);
+  assertInventoriesEqual(legacyBefore, legacyAfter);
+  assertInventoriesEqual(recoveredBefore, recoveredAfter);
+  assertInventoriesEqual(legacyAfter, recoveredAfter);
 }
 
 async function appendInventory(
@@ -489,6 +597,20 @@ async function assertExactEntries(
     actual.some((entry, index) => entry !== expected[index])
   ) {
     throw new Error('invalid');
+  }
+}
+
+async function assertKnownDirectoryEntries(
+  path: string,
+  allowedEntries: readonly string[],
+): Promise<void> {
+  if (!(await pathExists(path))) return;
+  await assertRealDirectory(path, true);
+  const allowed = new Set(allowedEntries);
+  const entries = await readdir(path);
+  if (entries.some((entry) => !allowed.has(entry))) throw new Error('invalid');
+  for (const entry of entries) {
+    await assertRealDirectory(join(path, entry), true);
   }
 }
 

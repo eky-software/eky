@@ -17,7 +17,9 @@ import {
   killElectronBackendUnexpectedly,
   readElectronNativeAdapterSnapshot,
   readElectronPdfPreviewUrls,
+  readElectronProcessMetrics,
   runElectronWorkspaceManagementCompositionProof,
+  runElectronWorkspaceStartupRecoveryProof,
 } from '../../src/electron/electronMainCapabilities.js';
 import {
   createElectronE2eRuntime,
@@ -81,6 +83,39 @@ test('DESK-WORKSPACE-MANAGEMENT-001 @critical @recovery proves the production co
   });
   expect(proof.candidateAppVersion).toMatch(/^\d+\.\d+\.\d+$/u);
   expect(proof.candidateAppVersion).not.toBe('0.1.0-alpha.1');
+});
+
+test('DESK-WORKSPACE-STARTUP-001 @critical @recovery rejects an unaccepted build and recovers an unpublished adoption', async ({
+  e2eElectron,
+}) => {
+  const processMetricsBefore = await readElectronProcessMetrics(
+    e2eElectron.electronApp,
+  );
+  const proof = await runElectronWorkspaceStartupRecoveryProof(
+    e2eElectron.electronApp,
+  );
+  const processMetricsAfter = await readElectronProcessMetrics(
+    e2eElectron.electronApp,
+  );
+
+  expect(proof).toEqual({
+    admissionRejectedBeforeWorkspaceResolution: true,
+    admissionSideEffectsAbsent: true,
+    historicalCopyDiscarded: true,
+    historicalJournalCleared: true,
+    legacyArtifactsPreserved: true,
+    readoptionArtifactsMatch: true,
+    registryPublishedOnlyAfterAcceptance: true,
+    relaunchCount: 1,
+  });
+  expect(processMetricsAfter).toMatchObject({
+    backendIsRunning: processMetricsBefore.backendIsRunning,
+    backendStartCount: processMetricsBefore.backendStartCount,
+    processCount: processMetricsBefore.processCount,
+    windowCount: processMetricsBefore.windowCount,
+  });
+  expect(processMetricsAfter.totalWorkingSetSizeKilobytes).toBeGreaterThan(0);
+  expect(processMetricsAfter.backendIsRunning).toBe(true);
 });
 
 test('DESK-PDF-001 @critical opens one isolated invoice PDF preview', async ({

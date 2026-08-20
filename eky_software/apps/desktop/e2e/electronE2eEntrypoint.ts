@@ -198,6 +198,16 @@ Object.assign(globalThis, {
         userDataRoot: config.paths.userDataPath,
       });
     },
+    async runWorkspaceStartupRecoveryProof() {
+      const { runWorkspaceStartupRecoveryProof } = await import(
+        './workspaceStartupRecoveryProof.js'
+      );
+      return runWorkspaceStartupRecoveryProof({
+        appVersion: e2eAppVersion,
+        resourcesPath: config.paths.resourcesPath,
+        userDataRoot: config.paths.userDataPath,
+      });
+    },
     scenarioId: config.scenarioId,
     secondInstanceCount: () => secondInstanceCount,
     userDataPath: config.paths.userDataPath,

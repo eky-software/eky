@@ -3,6 +3,8 @@ import type { ActiveWorkspaceStartupPhase } from '../src/workspaces/runtime/reso
 
 const phaseFailureCodes = Object.freeze({
   legacyAdoption: 'DESKTOP_SMOKE_E2E_WORKSPACE_ADOPTION_FAILED',
+  legacyAdoptionRecovery:
+    'DESKTOP_SMOKE_E2E_WORKSPACE_ADOPTION_RECOVERY_FAILED',
   registryStateRead: 'DESKTOP_SMOKE_E2E_WORKSPACE_REGISTRY_READ_FAILED',
   switchRecovery: 'DESKTOP_SMOKE_E2E_WORKSPACE_SWITCH_RECOVERY_FAILED',
   workspaceRootInspection:

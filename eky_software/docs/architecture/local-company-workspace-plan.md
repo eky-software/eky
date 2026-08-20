@@ -639,6 +639,13 @@ installer/update state ja cloud/mobile.
 **Sopimus:** ADR-0011:n 12-vaiheinen switch sekä copy -> validate -> atomic
 switch -adoptio nykyiselle 0.2.6-profiilille.
 
+Main-owned build admission suoritetaan ennen workspace-ratkaisua ja ennen
+adoption ensimmäistä filesystem-sivuvaikutusta. Initial install, exact
+accepted build, valtuutettu newer build ja update-journalin täsmällinen target
+ovat suljettuja hyväksymisluokkia. Same-version/different-revision, downgrade
+ja mixed/unknown update identity pysähtyvät ennen adoption journalia,
+candidatea, final-rootia tai registryä.
+
 **Luottamusraja:** vain trusted main frame voi pyytää switchiä. Main hyväksyy
 vain registryssä olevan workspaceId:n. Vanha session, backend, DB-kahvat ja
 adapterit eivät saa selvitä vaihdosta.
@@ -650,7 +657,9 @@ failure, rollback failure ja `recoveryRequired`.
 **Testit:** A -> B -> A, vanha session deny, concurrent switch deny,
 write-in-flight, PDF window, secret namespace, archive config/journal,
 backup/recovery scope, restart jokaisessa journal-vaiheessa, 0.2.6 adoption
-kahdesti, enintään yksi business-SQLite-owner ja 0 orphan-processia.
+kahdesti, same-version/different-revision ilman adoption sivuvaikutuksia,
+julkaisemattoman keskeytyneen candidate/final-adoption täsmällinen cleanup ja
+relaunch, enintään yksi business-SQLite-owner ja 0 orphan-processia.
 
 W4 kytkee myös workspace-kohtaisen PDF-arkiston: käyttäjän valitsema juuri
 säilyy device-local-asetuksena ja main kirjoittaa vain johdettuun
@@ -675,7 +684,12 @@ aina `<archiveRoot>/<workspaceId>/`-alikansioon.
 
 W4:n switch-koordinaattori ja recovery-sopimukset on todennettu
 kohdetesteillä, mukaan lukien A -> B -> A, vanhojen runtime-omistajien
-sulkeminen ja adoption idempotenssi. Rendererille ei ole lisätty workspace-
+sulkeminen ja adoption idempotenssi. Käynnistys hyväksyy build-identiteetin
+ennen workspace-sivuvaikutuksia. Keskeytyneen legacy-adoption recovery poistaa
+vain journalista täsmällisesti johdetun, julkaisemattoman ja legacy-lähteen
+kanssa byte-identtiseksi kahdesti todistetun candidate- tai final-kopion.
+Turvaton, julkaistu, muuttunut tai tuntematon tila jää fail-closed-tilaan.
+Rendererille ei ole lisätty workspace-
 capabilitya eikä UI:ta; ne kuuluvat W5B:hen. W5A rakentaa niitä ennen vain
 main-prosessin sisäisen hallinta- ja lifecycle-foundationin. Aktiivisen ja
 passiivisen workspacen N -> N+1 -migraatio sekä koko packaged multi-workspace
