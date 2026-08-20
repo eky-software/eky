@@ -155,6 +155,10 @@ import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/wor
 import { deriveWorkspaceBackupReplacementRuntimePaths } from '../workspaces/replacement/workspaceBackupReplacementPaths.js';
 import { createWorkspaceBackupReplacementStartupRecovery } from '../workspaces/replacement/workspaceBackupReplacementStartupRecovery.js';
 import { createWorkspaceManagementComposition } from '../workspaces/management/workspaceManagementComposition.js';
+import {
+  createWorkspaceManagementCapability,
+  type WorkspaceManagementCapability,
+} from '../workspaces/management/workspaceManagementCapability.js';
 import { DeferredWorkspaceRuntimeRelaunch } from '../workspaces/runtime/deferredWorkspaceRuntimeRelaunch.js';
 import { MainOwnedActiveWorkspaceLifecycle } from '../workspaces/runtime/mainOwnedActiveWorkspaceLifecycle.js';
 
@@ -652,6 +656,9 @@ async function startDesktopCompositionRuntime({
     | BackupPasswordWindowController
     | undefined;
   let profileBackupCapability: ProfileBackupCapability | undefined;
+  let workspaceManagementCapability:
+    | WorkspaceManagementCapability
+    | undefined;
   let shutdownStarted = false;
   let workspaceStartupAccepted = false;
 
@@ -1448,6 +1455,36 @@ async function startDesktopCompositionRuntime({
       runtimeRelaunch: workspaceRuntimeRelaunch,
       userDataRoot: options.userDataPath,
     });
+  if (backupPasswordWindowController === undefined) {
+    throw new Error('WORKSPACE_MANAGEMENT_CAPABILITY_UNAVAILABLE');
+  }
+  workspaceManagementCapability = createWorkspaceManagementCapability({
+    ipcMain,
+    mainWindow,
+    passwordWindow: backupPasswordWindowController,
+    service: workspaceManagementComposition.service,
+    async selectBackupSource() {
+      const result = await dependencies.showOpenDialog(mainWindow, {
+        filters: [
+          {
+            extensions: ['ekybackup'],
+            name: 'Eky-varmuuskopio',
+          },
+        ],
+        properties: ['openFile'],
+        title: 'Tuo yritys Eky-varmuuskopiosta',
+      });
+      return result.canceled || result.filePaths.length !== 1
+        ? null
+        : result.filePaths[0] ?? null;
+    },
+    showSafeError() {
+      deliveryConfirmation.showApplicationError(
+        'Yritystä ei voitu käsitellä',
+        'Yrityksen tietoja ei voitu käsitellä turvallisesti.',
+      );
+    },
+  });
 
   const lifecycleHandle: DesktopLifecycleHandle = {
     applicationWindow: mainWindow,
@@ -1510,6 +1547,8 @@ async function startDesktopCompositionRuntime({
         );
         throw new Error('DESKTOP_SHUTDOWN_FAILED');
       } finally {
+        workspaceManagementCapability?.dispose();
+        workspaceManagementCapability = undefined;
         workspaceManagementComposition.dispose();
       }
     },
