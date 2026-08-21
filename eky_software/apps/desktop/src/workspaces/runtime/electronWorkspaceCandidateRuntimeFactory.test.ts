@@ -101,6 +101,84 @@ describe('ElectronWorkspaceCandidateRuntimeFactory', () => {
     });
   });
 
+  it('keeps read-only migration inspection private and returns only safe counts', async () => {
+    const process = new FakeCandidateProcess();
+    const factory = createFactory(new RecordingCandidateSpawner(process));
+    const paths = candidatePaths();
+    const runtimePromise = factory.startMigrationInspection({
+      databaseFilePath: paths.databaseFilePath,
+      expectedProfileId: profileId,
+      operationId: TEST_OPERATION_ID,
+      publishedRoot: paths.candidateRoot,
+    });
+
+    process.message(createWorkspaceCandidateReadyStatus());
+    const start = process.lastCommand('start');
+    expect(start.operation).toEqual({
+      appVersion: '0.2.6',
+      backendRoot: resolve('backend'),
+      buildRevision: 'development',
+      databaseFilePath: paths.databaseFilePath,
+      expectedProfileId: profileId,
+      migrationsDirectory: resolve(
+        'backend',
+        'dist',
+        'database',
+        'migrations',
+      ),
+      operation: 'inspectPublishedMigration',
+      publishedRoot: paths.candidateRoot,
+    });
+    process.message(
+      createWorkspaceCandidateCompletedStatus({
+        operationId: start.operationId,
+        requestId: start.requestId,
+        result: {
+          appliedMigrationCount: 38,
+          kind: 'migrationInspection',
+          pendingMigrationCount: 2,
+          status: 'compatiblePending',
+        },
+        runtimeSession: start.runtimeSession,
+      }),
+    );
+    const runtime = await runtimePromise;
+    const stopped = runtime.stopAndProveHandlesClosed();
+    process.exit(0);
+
+    await expect(stopped).resolves.toBe(true);
+    await expect(runtime.inspectStoppedMigrationInspection()).resolves.toEqual(
+      {
+        appliedMigrationCount: 38,
+        pendingMigrationCount: 2,
+        status: 'compatiblePending',
+      },
+    );
+  });
+
+  it('cancels an in-flight migration inspection and closes its owned process', async () => {
+    const process = new FakeCandidateProcess(true);
+    const controller = new AbortController();
+    const factory = createFactory(new RecordingCandidateSpawner(process));
+    const paths = candidatePaths();
+    const runtimePromise = factory.startMigrationInspection({
+      databaseFilePath: paths.databaseFilePath,
+      expectedProfileId: profileId,
+      operationId: TEST_OPERATION_ID,
+      publishedRoot: paths.candidateRoot,
+      signal: controller.signal,
+    });
+
+    process.message(createWorkspaceCandidateReadyStatus());
+    controller.abort();
+
+    await expect(runtimePromise).rejects.toThrow(
+      'WORKSPACE_CANDIDATE_OPERATION_FAILED',
+    );
+    expect(process.commands.filter(isShutdownCommand)).toHaveLength(1);
+    expect(process.active).toBe(false);
+  });
+
   it('rejects a differently scoped terminal result without leaving an orphan', async () => {
     const process = new FakeCandidateProcess();
     const factory = createFactory(new RecordingCandidateSpawner(process));

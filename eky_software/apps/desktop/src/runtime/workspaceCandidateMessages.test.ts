@@ -38,6 +38,31 @@ function commonOperation() {
   };
 }
 
+function migrationInspectionOperation() {
+  const backendRoot = resolve('backend');
+  const publishedRoot = resolve('published-workspace');
+  return {
+    appVersion: '0.2.6',
+    backendRoot,
+    buildRevision: 'development',
+    databaseFilePath: resolve(
+      publishedRoot,
+      'runtime',
+      'data',
+      'eky.sqlite',
+    ),
+    expectedProfileId: profileId,
+    migrationsDirectory: resolve(
+      backendRoot,
+      'dist',
+      'database',
+      'migrations',
+    ),
+    operation: 'inspectPublishedMigration' as const,
+    publishedRoot,
+  };
+}
+
 function startCommand() {
   return createWorkspaceCandidateStartCommand({
     operation: {
@@ -98,6 +123,59 @@ describe('workspace candidate process messages', () => {
         ...start,
         operation: {
           ...start.operation,
+          migrationsDirectory: resolve('outside', 'migrations'),
+        },
+      }),
+    ).toBeUndefined();
+  });
+
+  it('accepts only the exact read-only migration inspection command', () => {
+    const operation = migrationInspectionOperation();
+    const start = createWorkspaceCandidateStartCommand({
+      operation,
+      operationId,
+      requestId,
+      runtimeSession,
+    });
+
+    expect(parseWorkspaceCandidateProcessCommand(start)).toEqual(start);
+    expect(Object.keys(start.operation).sort()).toEqual([
+      'appVersion',
+      'backendRoot',
+      'buildRevision',
+      'databaseFilePath',
+      'expectedProfileId',
+      'migrationsDirectory',
+      'operation',
+      'publishedRoot',
+    ]);
+    expect(
+      parseWorkspaceCandidateProcessCommand({
+        ...start,
+        operation: { ...operation, companyId: 'local-company' },
+      }),
+    ).toBeUndefined();
+    const { expectedProfileId: _missing, ...missingProfileId } = operation;
+    expect(
+      parseWorkspaceCandidateProcessCommand({
+        ...start,
+        operation: missingProfileId,
+      }),
+    ).toBeUndefined();
+    expect(
+      parseWorkspaceCandidateProcessCommand({
+        ...start,
+        operation: {
+          ...operation,
+          databaseFilePath: resolve('outside', 'eky.sqlite'),
+        },
+      }),
+    ).toBeUndefined();
+    expect(
+      parseWorkspaceCandidateProcessCommand({
+        ...start,
+        operation: {
+          ...operation,
           migrationsDirectory: resolve('outside', 'migrations'),
         },
       }),
@@ -226,5 +304,45 @@ describe('workspace candidate process messages', () => {
     };
 
     expect(parseWorkspaceCandidateProcessStatus(completed)).toBeUndefined();
+  });
+
+  it('accepts only the safe migration inspection result shape', () => {
+    const completed = createWorkspaceCandidateCompletedStatus({
+      operationId,
+      requestId,
+      result: {
+        appliedMigrationCount: 38,
+        kind: 'migrationInspection',
+        pendingMigrationCount: 2,
+        status: 'compatiblePending',
+      },
+      runtimeSession,
+    });
+
+    expect(parseWorkspaceCandidateProcessStatus(completed)).toEqual(completed);
+    for (const unsafeResult of [
+      { ...completed.result, databaseFilePath: resolve('private', 'eky.sqlite') },
+      { ...completed.result, profileId },
+      { ...completed.result, companyId: 'local-company' },
+      { ...completed.result, runtimeSession },
+      { ...completed.result, status: 'future' },
+      { ...completed.result, appliedMigrationCount: -1 },
+      { ...completed.result, pendingMigrationCount: 1.5 },
+      { ...completed.result, pendingMigrationCount: 0 },
+      { ...completed.result, status: 'current', pendingMigrationCount: 1 },
+      {
+        ...completed.result,
+        status: 'invalidHistory',
+        appliedMigrationCount: 38,
+        pendingMigrationCount: 0,
+      },
+    ]) {
+      expect(
+        parseWorkspaceCandidateProcessStatus({
+          ...completed,
+          result: unsafeResult,
+        }),
+      ).toBeUndefined();
+    }
   });
 });
