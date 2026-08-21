@@ -162,6 +162,9 @@ import {
 import { confirmActiveWorkspaceReplacement } from '../workspaces/management/workspaceReplacementConfirmation.js';
 import { DeferredWorkspaceRuntimeRelaunch } from '../workspaces/runtime/deferredWorkspaceRuntimeRelaunch.js';
 import { MainOwnedActiveWorkspaceLifecycle } from '../workspaces/runtime/mainOwnedActiveWorkspaceLifecycle.js';
+import { createWorkspaceFirstStartMigrationComposition } from '../workspaces/update/workspaceFirstStartMigrationComposition.js';
+import { WorkspaceFirstStartMigrationOrchestratorError } from '../workspaces/update/workspaceFirstStartMigrationOrchestratorError.js';
+import type { WorkspaceFirstStartMigrationOrchestration } from '../workspaces/update/workspaceFirstStartMigrationOrchestratorTypes.js';
 
 export interface DesktopLifecycleHandle {
   applicationWindow: BrowserWindow;
@@ -281,7 +284,7 @@ export async function startDesktopComposition(
       installationRuntimeRoot,
       userDataPath: options.userDataPath,
     });
-    await requirePreWorkspaceBuildAdmission({
+    const preWorkspaceBuildAdmission = await requirePreWorkspaceBuildAdmission({
       buildInfo: options.buildInfo,
       releaseInfo: options.releaseInfo,
       stores: {
@@ -291,6 +294,20 @@ export async function startDesktopComposition(
         journal: installationUpdateState.updateJournalStore,
       },
     });
+    const workspaceFirstStartMigration =
+      createWorkspaceFirstStartMigrationComposition({
+        acceptedBuildStore:
+          installationUpdateState.acceptedBuildMetadataStore,
+        admission: preWorkspaceBuildAdmission,
+        buildInfo: options.buildInfo,
+        directSetupRecoveryStore:
+          installationUpdateState.directSetupMigrationRecoveryStore,
+        releaseInfo: options.releaseInfo,
+        resourcesPath: options.resourcesPath,
+        updateJournalStore: installationUpdateState.updateJournalStore,
+        userDataRoot: options.userDataPath,
+      });
+    await workspaceFirstStartMigration.recoverBeforeWorkspaceResolution();
     const workspaceStartup = await resolveDesktopWorkspaceStartup({
       createRuntimeSession: dependencies.createRuntimeSession,
       relaunchApplication: options.relaunchApplication,
@@ -299,6 +316,7 @@ export async function startDesktopComposition(
     });
     if (workspaceStartup.status === 'relaunching') return undefined;
     const { activeWorkspace, runtimeSessionSecret } = workspaceStartup;
+    await workspaceFirstStartMigration.prepareBeforeBackend();
     return await startDesktopCompositionRuntime({
       activeWorkspace,
       backendRoot,
@@ -313,6 +331,7 @@ export async function startDesktopComposition(
       dependencies,
       runtimeSessionSecret,
       smokeMode,
+      workspaceFirstStartMigration,
     });
   } catch (error) {
     const errorCode = readSafeStartupFailureCode(error);
@@ -330,6 +349,8 @@ export async function startDesktopComposition(
             stage:
               error instanceof PreWorkspaceBuildAdmissionError
                 ? 'preWorkspaceBuildAdmission'
+                : error instanceof WorkspaceFirstStartMigrationOrchestratorError
+                  ? 'workspaceFirstStartMigration'
                 : 'startup',
           },
           desktopOperationalIdentity,
@@ -337,6 +358,13 @@ export async function startDesktopComposition(
       );
     } catch {
       // The safe outer bootstrap boundary remains authoritative.
+    }
+    if (
+      error instanceof WorkspaceFirstStartMigrationOrchestratorError &&
+      error.relaunchRequired
+    ) {
+      options.relaunchApplication();
+      return undefined;
     }
     throw new Error(errorCode);
   }
@@ -356,6 +384,7 @@ interface DesktopCompositionRuntimeOptions {
   options: StartDesktopCompositionOptions;
   runtimeSessionSecret: string;
   smokeMode: boolean;
+  workspaceFirstStartMigration: WorkspaceFirstStartMigrationOrchestration;
 }
 
 interface InstallationUpdateState {
@@ -419,6 +448,7 @@ async function startDesktopCompositionRuntime({
   options,
   runtimeSessionSecret,
   smokeMode,
+  workspaceFirstStartMigration,
 }: DesktopCompositionRuntimeOptions): Promise<
   DesktopLifecycleHandle | undefined
 > {
@@ -662,6 +692,7 @@ async function startDesktopCompositionRuntime({
     | undefined;
   let shutdownStarted = false;
   let workspaceStartupAccepted = false;
+  let targetBuildAccepted = false;
 
   await Promise.all(
     [
@@ -1042,9 +1073,12 @@ async function startDesktopCompositionRuntime({
     }
     await activeWorkspace.accept(activeProfileValidation.profileId);
     workspaceStartupAccepted = true;
+    await workspaceFirstStartMigration.transitionRegistryAfterActiveWorkspaceAcceptance();
     if (firstStartUpdateCoordinator !== undefined) {
       await firstStartUpdateCoordinator.acceptAfterBackendReady();
     }
+    targetBuildAccepted = true;
+    await workspaceFirstStartMigration.completeAfterTargetAcceptance();
     await recoveryPointScheduler.start();
   } catch (error) {
     await recoveryPointScheduler.stopChecks().catch(() => undefined);
@@ -1071,6 +1105,7 @@ async function startDesktopCompositionRuntime({
     }
     if (
       firstStartUpdateCoordinator !== undefined &&
+      !targetBuildAccepted &&
       (await firstStartUpdateCoordinator
         .recoverFromStartupFailure()
         .catch(() => false))

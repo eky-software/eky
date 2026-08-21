@@ -170,6 +170,23 @@ describe('WorkspaceFirstStartMigrationTransitionCoordinator', () => {
     expect(ports.journal.value).toBeUndefined();
   });
 
+  it('does not accept a target build journal while the source build is running', async () => {
+    const foundation = createFoundation({ state: 'registryTransitioned' });
+    const ports = createPorts({
+      acceptedBuild: accepted(targetBuild),
+      journal: foundation.journal,
+      registry: foundation.transitioned,
+    });
+
+    await expect(coordinator(ports).recover(sourceBuild)).resolves.toEqual({
+      kind: 'recoveryRequired',
+      operationId,
+    });
+
+    expect(ports.journal.value).toEqual(foundation.journal);
+    expect(ports.events).toEqual([]);
+  });
+
   it.each([
     {
       name: 'source accepted after journal transition',
@@ -264,6 +281,68 @@ describe('WorkspaceFirstStartMigrationTransitionCoordinator', () => {
     expect(ports.journal.value).toBeUndefined();
     expect(ports.registry.writes).toHaveLength(0);
     expect(ports.events).toEqual(['journal.discardPrepared']);
+  });
+
+  it('completes only a transitioned operation whose target build is accepted', async () => {
+    const foundation = createFoundation({ state: 'registryTransitioned' });
+    const ports = createPorts({
+      acceptedBuild: accepted(targetBuild),
+      journal: foundation.journal,
+      registry: foundation.transitioned,
+    });
+
+    await coordinator(ports).completeAcceptedTarget({
+      operationId,
+      sourceBuild,
+      targetBuild,
+    });
+
+    expect(ports.journal.value).toBeUndefined();
+    expect(ports.registry.writes).toHaveLength(0);
+    expect(ports.events).toEqual(['journal.removeTransitioned']);
+  });
+
+  it.each([
+    {
+      name: 'the source build remains accepted',
+      acceptedBuild: accepted(sourceBuild),
+      registry: createFoundation({ state: 'registryTransitioned' })
+        .transitioned,
+    },
+    {
+      name: 'the transitioned registry has changed',
+      acceptedBuild: accepted(targetBuild),
+      registry: {
+        ...createFoundation({ state: 'registryTransitioned' }).transitioned,
+        workspaces: createFoundation({ state: 'registryTransitioned' })
+          .transitioned.workspaces.map((workspace) =>
+            workspace.workspaceId === passiveWorkspaceId
+              ? { ...workspace, workspaceLabel: 'Changed workspace' }
+              : workspace,
+          ),
+      },
+    },
+  ])('keeps recovery evidence when $name', async ({
+    acceptedBuild,
+    registry,
+  }) => {
+    const foundation = createFoundation({ state: 'registryTransitioned' });
+    const ports = createPorts({
+      acceptedBuild,
+      journal: foundation.journal,
+      registry,
+    });
+
+    await expect(
+      coordinator(ports).completeAcceptedTarget({
+        operationId,
+        sourceBuild,
+        targetBuild,
+      }),
+    ).rejects.toMatchObject({ failure: 'recoveryRequired' });
+
+    expect(ports.journal.value).toEqual(foundation.journal);
+    expect(ports.events).toEqual([]);
   });
 
   it('rejects a not-required plan and mismatched transition builds', async () => {
