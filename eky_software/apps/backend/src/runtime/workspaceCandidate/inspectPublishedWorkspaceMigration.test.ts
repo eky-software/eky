@@ -149,15 +149,50 @@ describe('inspectPublishedWorkspaceMigration', () => {
       'profile.sqlite',
     ]);
 
-    await expect(
-      inspectPublishedWorkspaceMigration({
-        ...releaseIdentity,
-        databaseFilePath: fixture.databaseFilePath,
-        expectedProfileId: 'f'.repeat(64),
-        migrationsDirectory,
-        publishedRoot: fixture.publishedRoot,
-      }),
-    ).rejects.toThrow('WORKSPACE_MIGRATION_PROFILE_MISMATCH');
+    await expectUnchangedRejection(
+      fixture,
+      'f'.repeat(64),
+      'WORKSPACE_MIGRATION_PROFILE_MISMATCH',
+    );
+  });
+
+  it('fails closed for a wrong identity before classifying invalid migration history', async () => {
+    const fixture = await createWorkspaceFixture();
+    mutateDatabase(fixture.databaseFilePath, (database) => {
+      database
+        .prepare(
+          'UPDATE schema_migration_metadata SET source_sha256 = ? WHERE migration_name = (SELECT min(name) FROM schema_migrations)',
+        )
+        .run('b'.repeat(64));
+    });
+
+    await expectUnchangedRejection(
+      fixture,
+      'f'.repeat(64),
+      'WORKSPACE_MIGRATION_PROFILE_MISMATCH',
+    );
+  });
+
+  it('fails closed for missing identity before classifying invalid migration history', async () => {
+    const fixture = await createWorkspaceFixture();
+    mutateDatabase(fixture.databaseFilePath, (database) => {
+      database
+        .prepare(
+          'UPDATE schema_migration_metadata SET source_sha256 = ? WHERE migration_name = (SELECT min(name) FROM schema_migrations)',
+        )
+        .run('b'.repeat(64));
+      database
+        .prepare(
+          "DELETE FROM local_runtime_identity WHERE singleton_key = 'local-runtime'",
+        )
+        .run();
+    });
+
+    await expectUnchangedRejection(
+      fixture,
+      fixture.expectedProfileId,
+      'WORKSPACE_MIGRATION_PROFILE_IDENTITY_INVALID',
+    );
   });
 
   it('cancels before opening the database and leaves it unchanged', async () => {
@@ -253,6 +288,24 @@ async function expectUnchangedInspection(
       publishedRoot: fixture.publishedRoot,
     }),
   ).resolves.toEqual(expected);
+  expect(await snapshotDatabase(fixture)).toEqual(before);
+}
+
+async function expectUnchangedRejection(
+  fixture: WorkspaceFixture,
+  expectedProfileId: string,
+  expectedError: string,
+): Promise<void> {
+  const before = await snapshotDatabase(fixture);
+  await expect(
+    inspectPublishedWorkspaceMigration({
+      ...releaseIdentity,
+      databaseFilePath: fixture.databaseFilePath,
+      expectedProfileId,
+      migrationsDirectory,
+      publishedRoot: fixture.publishedRoot,
+    }),
+  ).rejects.toThrow(expectedError);
   expect(await snapshotDatabase(fixture)).toEqual(before);
 }
 

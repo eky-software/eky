@@ -57,29 +57,42 @@ export async function inspectPublishedWorkspaceMigration(
 
   return withReadOnlyDatabaseConnection(databaseFilePath, (database) => {
     throwIfCancelled(signal);
-    let migration: ReturnType<typeof inspectMigrationStartupState>;
+    let integrityResult: unknown;
     try {
-      const integrityResult: unknown = database.pragma('integrity_check', {
+      integrityResult = database.pragma('integrity_check', {
         simple: true,
       });
+    } catch {
+      return invalidHistory();
+    }
+
+    throwIfCancelled(signal);
+    let profileId: string;
+    try {
+      profileId = createProfileBackupIdentity(
+        readLocalRuntimeIdentity(database).companyId,
+      );
+    } catch {
+      if (integrityResult !== 'ok') return invalidHistory();
+      throw new Error('WORKSPACE_MIGRATION_PROFILE_IDENTITY_INVALID');
+    }
+    if (profileId !== input.expectedProfileId) {
+      throw new Error('WORKSPACE_MIGRATION_PROFILE_MISMATCH');
+    }
+    throwIfCancelled(signal);
+
+    if (integrityResult !== 'ok') return invalidHistory();
+
+    let migration: ReturnType<typeof inspectMigrationStartupState>;
+    try {
       const foreignKeyRows = database.pragma('foreign_key_check') as unknown[];
-      if (integrityResult !== 'ok' || foreignKeyRows.length !== 0) {
-        return invalidHistory();
-      }
+      if (foreignKeyRows.length !== 0) return invalidHistory();
       migration = inspectMigrationStartupState(
         database,
         migrationsDirectory,
       );
     } catch {
       return invalidHistory();
-    }
-
-    throwIfCancelled(signal);
-    const profileId = createProfileBackupIdentity(
-      readLocalRuntimeIdentity(database).companyId,
-    );
-    if (profileId !== input.expectedProfileId) {
-      throw new Error('WORKSPACE_MIGRATION_PROFILE_MISMATCH');
     }
     throwIfCancelled(signal);
 
