@@ -15,6 +15,8 @@ export const createEmptyWorkspaceIpcChannel =
   'eky:workspace-management:v1:create-empty';
 export const importWorkspaceBackupAsNewIpcChannel =
   'eky:workspace-management:v1:import-backup-as-new';
+export const replaceActiveWorkspaceFromBackupIpcChannel =
+  'eky:workspace-management:v1:replace-active-from-backup';
 export const switchWorkspaceIpcChannel =
   'eky:workspace-management:v1:switch';
 export const renameWorkspaceIpcChannel =
@@ -24,6 +26,7 @@ export const workspaceManagementIpcChannels = Object.freeze([
   getWorkspaceManagementStatusIpcChannel,
   createEmptyWorkspaceIpcChannel,
   importWorkspaceBackupAsNewIpcChannel,
+  replaceActiveWorkspaceFromBackupIpcChannel,
   switchWorkspaceIpcChannel,
   renameWorkspaceIpcChannel,
 ] as const);

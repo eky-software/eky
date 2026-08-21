@@ -793,9 +793,50 @@ aktiivisen workspacen kanssa.
 
 ### W5B.2: Replace active workspace
 
-**Tila:** aloittamatta. W5A:n sisäinen exact-lineage replace-palvelu ei ole
-rendererille näkyvä. Native confirmation, käyttäjäpolku ja Electron-E2E
-toteutetaan erillisen omistajapäätöksen jälkeen.
+**Tila:** toteutettu ja hyväksytty erillisenä W5B.2 UI/capability/Electron-E2E-
+checkpointina. W5A:n sisäinen exact-lineage replace-palvelu, Electron mainin
+capability-raja ja webin varoituspolku muodostavat yhden käyttötapauksen. W6:n
+packaged pilot- ja release-portti on edelleen avoin.
+
+W5B.2 sallii vain aktiivisen `ready`-työtilan korvaamisen saman lineagen
+aiemmasta Eky-varmuuskopiosta. Yrityksen nimi, Y-tunnus, workspace-label tai
+muu business-arvo eivät ole identiteettitodisteita. Renderer ei valitse
+kohdetyötilaa eikä saa backup-polkuja, salasanaa, `companyId`:tä, lineagea,
+runtime-sessionia, journalia tai raakavirhettä.
+
+Käyttäjäpolku on kaksivaiheinen:
+
+1. web-näkymä kertoo aktiivisen workspacen labelin, exact-lineage-vaatimuksen,
+   preRestore-palautuspisteen ja hallitun uudelleenkäynnistyksen sekä pyytää
+   käyttäjää jatkamaan tiedoston valintaan
+2. Electron main valitsee `.ekybackup`-tiedoston, käyttää nykyistä
+   salasanakontrolleria ja näyttää viimeisen native-varoituksen, jossa
+   turvallinen oletus on aina peruuttaminen.
+
+IPC-sopimus on versionoitu, nolla-argumenttinen ja hyväksytään vain tunnetun
+pääikkunan main framesta. Electron main johtaa aktiivisen `workspaceId`:n
+omasta turvallisesta statuksestaan ja kutsuu nykyistä
+`replaceActiveFromBackup`-käyttötapausta. Tiedoston valinnan, salasanan tai
+native-vahvistuksen peruminen ei saa muuttaa registryä, journalia tai runtimea.
+Onnistunut korvaus ja onnistunut rollback päättyvät main-owned hallittuun
+uudelleenkäynnistykseen; renderer ei yritä päivittää vanhaa runtimea.
+
+UI näyttää toiminnon erillisenä ylläpito- ja varoitusalueena vain, kun desktop-
+capability on käytettävissä, privileged-operaatio ei ole käynnissä ja
+aktiivinen workspace on `ready`. Toiminto ei ole workspace-rivin action eikä
+avaa passiivisen workspacen korvausta. Workspace-poisto ei kuulu W5B.2:een.
+
+Testit kattavat trusted-main-frame-rajan, exact argumentit, suljetut DTO:t,
+file/password/native-confirm-cancelit, väärän lineagen, activation- ja
+rollback-faultit, hallitun relaunchin sekä polun, salasanan, lineagen,
+companyId:n, sessionin ja journalin vuotamattomuuden.
+
+W5B.2:n Electron-E2E-todiste käyttää yhtä auktoritatiivista synteettistä
+lineagea legacy-adoptionissa, aktiivisessa registry-entryssä ja salatussa
+backupissa. Se kattaa exact-lineage-korvauksen, väärän lineagen torjunnan sekä
+native file-, password- ja final confirmation -peruutukset. Väärän lineagen
+torjunta todistaa lisäksi, että korvausyrityksen jälkeen luotu aktiivisen
+workspacen marker-data säilyy muuttumattomana.
 
 **Commit/PR/release:** W5B on erillinen UI/capability-checkpoint. Ensimmäinen
 release candidate voidaan nimetä vasta W6:n hyväksymisportin jälkeen.

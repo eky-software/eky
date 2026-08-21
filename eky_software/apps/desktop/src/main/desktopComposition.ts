@@ -159,6 +159,7 @@ import {
   createWorkspaceManagementCapability,
   type WorkspaceManagementCapability,
 } from '../workspaces/management/workspaceManagementCapability.js';
+import { confirmActiveWorkspaceReplacement } from '../workspaces/management/workspaceReplacementConfirmation.js';
 import { DeferredWorkspaceRuntimeRelaunch } from '../workspaces/runtime/deferredWorkspaceRuntimeRelaunch.js';
 import { MainOwnedActiveWorkspaceLifecycle } from '../workspaces/runtime/mainOwnedActiveWorkspaceLifecycle.js';
 
@@ -1464,6 +1465,13 @@ async function startDesktopCompositionRuntime({
     mainWindow,
     passwordWindow: backupPasswordWindowController,
     service: workspaceManagementComposition.service,
+    confirmActiveWorkspaceReplacement(workspaceLabel) {
+      return confirmActiveWorkspaceReplacement({
+        mainWindow,
+        showMessageBox: dependencies.showMessageBox,
+        workspaceLabel,
+      });
+    },
     async selectBackupSource() {
       const result = await dependencies.showOpenDialog(mainWindow, {
         filters: [
@@ -1474,6 +1482,21 @@ async function startDesktopCompositionRuntime({
         ],
         properties: ['openFile'],
         title: 'Tuo yritys Eky-varmuuskopiosta',
+      });
+      return result.canceled || result.filePaths.length !== 1
+        ? null
+        : result.filePaths[0] ?? null;
+    },
+    async selectReplacementBackupSource() {
+      const result = await dependencies.showOpenDialog(mainWindow, {
+        filters: [
+          {
+            extensions: ['ekybackup'],
+            name: 'Eky-varmuuskopio',
+          },
+        ],
+        properties: ['openFile'],
+        title: 'Valitse saman yrityksen Eky-varmuuskopio',
       });
       return result.canceled || result.filePaths.length !== 1
         ? null

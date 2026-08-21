@@ -118,5 +118,19 @@ Activation journalin vaihe ratkaistaan nykyisen restore-runbookin mukaisesti:
 Tukihenkilö ei muokkaa registryä, vaihda active pointeria, kopioi backupin
 rivejä aktiiviseen SQLiteen eikä poista rollback-rootia käsin. Registry,
 muiden workspacejen rootit, salaisuudet, PDF-arkisto, update/cache ja lokit
-ovat korvauksen ulkopuolella. Inertti W3b-foundation ei vielä kuulu
-production-startupiin, package-payloadiin, preloadiin, IPC:hen tai UI:hin.
+ovat korvauksen ulkopuolella. W5A:n sisäinen production-lifecycle ratkaisee
+keskeytyneen korvauksen ennen business-runtimen avaamista.
+
+W5B.2:n käyttäjäpolku ei tarjoa recovery-journalin korjausta tai manuaalista
+rollbackia. Toiminto näytetään vain aktiiviselle `ready`-workspacelle
+normaalissa `idle`-tilassa. Electron main omistaa backupin valinnan, salasanan,
+lopullisen native-varoituksen ja aktiivisen kohteen johtamisen. Peruutus ennen
+service-kutsua ei muuta registryä, journalia tai runtimea. Kun replace-
+transaction on käynnistynyt, onnistunut aktivointi tai todistettu rollback
+päättyy hallittuun uudelleenkäynnistykseen; epäselvä tila pysyy
+`recoveryRequired`-tilassa eikä UI saa ohittaa sitä.
+
+W5B.2:n hyväksytty Electron-E2E-polku todistaa exact-lineage-korvauksen,
+väärän lineagen fail-closed-torjunnan sekä tiedoston valinnan, salasanan ja
+viimeisen native-vahvistuksen peruutukset. Testi ei käytä oikeaa profiilia,
+yritysdataa tai salaisuutta eikä avaa UI:lle recovery-journalin hallintaa.

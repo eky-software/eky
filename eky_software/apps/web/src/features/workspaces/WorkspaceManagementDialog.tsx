@@ -16,6 +16,7 @@ import {
 import styles from './WorkspaceSelector.module.css';
 
 interface WorkspaceManagementDialogProps {
+  readonly canReplaceActiveWorkspace: boolean;
   readonly state: WorkspaceSelectorState;
   readonly onClose: () => void;
   readonly onLabelChange: (value: string) => void;
@@ -31,6 +32,7 @@ const focusableSelector =
   'button:not(:disabled), input:not(:disabled), [tabindex]:not([tabindex="-1"])';
 
 export function WorkspaceManagementDialog({
+  canReplaceActiveWorkspace,
   onClose,
   onLabelChange,
   onModeChange,
@@ -161,6 +163,7 @@ export function WorkspaceManagementDialog({
         ) : null}
         {state.loadState === 'ready' && state.mode === 'list' ? (
           <WorkspaceList
+            canReplaceActiveWorkspace={canReplaceActiveWorkspace}
             isBusy={isBusy}
             isRecoveryRequired={isRecoveryRequired}
             onModeChange={onModeChange}

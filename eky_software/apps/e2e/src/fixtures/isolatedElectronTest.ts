@@ -1,5 +1,8 @@
 import {
+  cpSync,
+  copyFileSync,
   existsSync,
+  mkdirSync,
   readFileSync,
   readdirSync,
 } from 'node:fs';
@@ -32,6 +35,7 @@ import { resolveElectronE2eExecutable } from '../environment/resolveElectronE2eE
 import { stopManagedProcessTree } from '../environment/stopManagedProcessTree.js';
 import { waitForLoopbackPortRelease } from '../environment/waitForLoopbackPortRelease.js';
 import {
+  createElectronActiveWorkspaceReplacementFixture,
   createElectronWorkspaceBackupFixture,
   type ElectronWorkspaceBackupFixture,
 } from '../workspaces/createElectronWorkspaceBackupFixture.js';
@@ -67,8 +71,9 @@ interface IsolatedElectronOptions {
   e2eNativeOpenDialogMode: 'accept' | 'cancel';
   e2eNativeOpenDialogPurpose:
     | 'invoicePdfArchive'
-    | 'workspaceBackupImport';
-  e2eWorkspaceBackupFixture: 'none' | 'synthetic';
+    | 'workspaceBackupImport'
+    | 'workspaceBackupReplacement';
+  e2eWorkspaceBackupFixture: 'activeReplacement' | 'none' | 'synthetic';
 }
 
 type ElectronChildProcess = ReturnType<typeof spawn> & {
@@ -101,10 +106,19 @@ export const test = base.extend<
     const paths = createE2eWorkerPaths(runRoot, scenarioId);
     if (
       e2eWorkspaceBackupFixture === 'synthetic' &&
-      e2eNativeOpenDialogPurpose !== 'workspaceBackupImport'
+      e2eNativeOpenDialogPurpose !== 'workspaceBackupImport' &&
+      e2eNativeOpenDialogPurpose !== 'workspaceBackupReplacement'
     ) {
       throw new Error(
-        'Synthetic workspace backup requires the import dialog purpose.',
+        'Synthetic workspace backup requires a workspace backup dialog purpose.',
+      );
+    }
+    if (
+      e2eWorkspaceBackupFixture === 'activeReplacement' &&
+      e2eNativeOpenDialogPurpose !== 'workspaceBackupReplacement'
+    ) {
+      throw new Error(
+        'Active workspace backup requires the replacement dialog purpose.',
       );
     }
     const workspaceBackupFixture =
@@ -116,7 +130,17 @@ export const test = base.extend<
             ),
             runRoot,
           })
-        : undefined;
+        : e2eWorkspaceBackupFixture === 'activeReplacement'
+          ? await createElectronActiveWorkspaceReplacementFixture({
+              backupPath: join(
+                paths.artifactsRoot,
+                'active-workspace-replacement.ekybackup',
+              ),
+              paths,
+              runRoot,
+              scenarioId,
+            })
+          : undefined;
     let backendPort = await reserveLoopbackPort();
     let runtime = createElectronE2eRuntime({
       backendPort,
@@ -129,6 +153,16 @@ export const test = base.extend<
         ? {}
         : { workspaceBackupPath: workspaceBackupFixture.backupPath }),
     });
+    if (
+      e2eWorkspaceBackupFixture === 'activeReplacement' &&
+      workspaceBackupFixture !== undefined
+    ) {
+      seedLegacyWorkspaceForActiveReplacement({
+        fixture: workspaceBackupFixture,
+        sourceDocumentsRoot: paths.documentsRoot,
+        userDataPath: runtime.userDataPath,
+      });
+    }
     let api: APIRequestContext | undefined;
     let electronApp: ElectronApplication | undefined;
     let electronStderr = '';
@@ -260,6 +294,27 @@ export const test = base.extend<
     }
   },
 });
+
+function seedLegacyWorkspaceForActiveReplacement(input: {
+  readonly fixture: Readonly<ElectronWorkspaceBackupFixture>;
+  readonly sourceDocumentsRoot: string;
+  readonly userDataPath: string;
+}): void {
+  const legacyRuntimeRoot = join(input.userDataPath, 'runtime');
+  if (existsSync(legacyRuntimeRoot)) {
+    throw new Error('Electron E2E legacy workspace source already exists.');
+  }
+  const dataRoot = join(legacyRuntimeRoot, 'data');
+  const storageRoot = join(legacyRuntimeRoot, 'storage');
+  const documentsRoot = join(storageRoot, 'invoices');
+  mkdirSync(dataRoot, { mode: 0o700, recursive: true });
+  mkdirSync(storageRoot, { mode: 0o700, recursive: true });
+  copyFileSync(
+    input.fixture.sourceDatabaseFilePath,
+    join(dataRoot, 'eky.sqlite'),
+  );
+  cpSync(input.sourceDocumentsRoot, documentsRoot, { recursive: true });
+}
 
 async function launchElectronRuntime(input: {
   appendStderr(chunk: Buffer): void;

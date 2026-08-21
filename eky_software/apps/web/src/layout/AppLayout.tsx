@@ -65,6 +65,9 @@ export function AppLayout({
       {workspaceManagementCapability !== undefined &&
       workspaceManagement.state.isDialogOpen ? (
         <WorkspaceManagementDialog
+          canReplaceActiveWorkspace={
+            workspaceManagement.canReplaceActiveWorkspace
+          }
           onClose={workspaceManagement.closeDialog}
           onLabelChange={workspaceManagement.setLabelInput}
           onModeChange={workspaceManagement.selectMode}

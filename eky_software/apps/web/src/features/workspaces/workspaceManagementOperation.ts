@@ -59,6 +59,25 @@ export async function runWorkspaceManagementOperation(input: {
       );
       return refreshOrRelaunch(input.capability, result);
     }
+    case 'confirmReplace': {
+      const selectedWorkspace = requireSelectedWorkspace(
+        input.selectedWorkspace,
+      );
+      const replaceActiveFromBackup =
+        input.capability.replaceActiveFromBackup;
+      if (
+        replaceActiveFromBackup === undefined ||
+        input.status.operationState !== 'idle' ||
+        !selectedWorkspace.isActive ||
+        selectedWorkspace.availability !== 'ready'
+      ) {
+        throw new Error('WORKSPACE_REPLACEMENT_UI_UNAVAILABLE');
+      }
+      const result = await replaceActiveFromBackup();
+      return result === 'cancelled'
+        ? Object.freeze({ type: 'cancelled' })
+        : Object.freeze({ type: 'relaunching' });
+    }
   }
 }
 

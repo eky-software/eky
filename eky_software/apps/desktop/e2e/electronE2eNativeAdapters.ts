@@ -160,8 +160,12 @@ function assertExpectedOpenDialog(
     return;
   }
 
+  const expectedTitle =
+    config.nativeOpenDialog.purpose === 'workspaceBackupReplacement'
+      ? 'Valitse saman yrityksen Eky-varmuuskopio'
+      : 'Tuo yritys Eky-varmuuskopiosta';
   if (
-    options.title !== 'Tuo yritys Eky-varmuuskopiosta' ||
+    options.title !== expectedTitle ||
     !stringArraysEqual(options.properties, ['openFile']) ||
     options.filters?.length !== 1 ||
     options.filters[0]?.name !== 'Eky-varmuuskopio' ||

@@ -147,6 +147,57 @@ describe('runWorkspaceManagementOperation', () => {
     expect(getStatus).toHaveBeenCalledOnce();
   });
 
+  it.each([
+    ['cancelled', { type: 'cancelled' }],
+    ['relaunching', { type: 'relaunching' }],
+  ] as const)(
+    'handles active replacement %s without refreshing renderer state',
+    async (result, expected) => {
+      const getStatus = vi.fn(async () => status);
+      const replaceActiveFromBackup = vi.fn(async () => result);
+      const capability = createCapability({
+        getStatus,
+        replaceActiveFromBackup,
+      });
+
+      await expect(
+        runWorkspaceManagementOperation({
+          capability,
+          mode: 'confirmReplace',
+          selectedWorkspace: activeWorkspace,
+          status,
+          workspaceLabel: '',
+        }),
+      ).resolves.toEqual(expected);
+      expect(replaceActiveFromBackup).toHaveBeenCalledWith();
+      expect(getStatus).not.toHaveBeenCalled();
+    },
+  );
+
+  it('fails closed when active replacement is unavailable or targets a non-active workspace', async () => {
+    await expect(
+      runWorkspaceManagementOperation({
+        capability: createCapability(),
+        mode: 'confirmReplace',
+        selectedWorkspace: activeWorkspace,
+        status,
+        workspaceLabel: '',
+      }),
+    ).rejects.toThrow('WORKSPACE_REPLACEMENT_UI_UNAVAILABLE');
+
+    await expect(
+      runWorkspaceManagementOperation({
+        capability: createCapability({
+          replaceActiveFromBackup: async () => 'relaunching',
+        }),
+        mode: 'confirmReplace',
+        selectedWorkspace: otherWorkspace,
+        status,
+        workspaceLabel: '',
+      }),
+    ).rejects.toThrow('WORKSPACE_REPLACEMENT_UI_UNAVAILABLE');
+  });
+
   it('fails closed when a selection-required operation has no selection', async () => {
     await expect(
       runWorkspaceManagementOperation({

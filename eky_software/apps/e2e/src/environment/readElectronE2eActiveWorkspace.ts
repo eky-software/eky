@@ -3,6 +3,7 @@ import { join, relative, resolve } from 'node:path';
 
 const workspaceIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const profileIdPattern = /^[0-9a-f]{64}$/;
 const maximumRegistryBytes = 64 * 1_024;
 
 export interface ElectronE2eActiveWorkspacePaths {
@@ -10,6 +11,7 @@ export interface ElectronE2eActiveWorkspacePaths {
   readonly databaseFilePath: string;
   readonly documentsRoot: string;
   readonly emailSecretFilePath: string;
+  readonly profileId: string;
   readonly runtimeRoot: string;
   readonly workspaceId: string;
   readonly workspaceRoot: string;
@@ -34,15 +36,23 @@ export function readElectronE2eActiveWorkspace(
 
   const registry = parseRegistry(readFileSync(registryPath, 'utf8'));
   const activeWorkspaceId = registry.activeWorkspaceId;
+  const activeWorkspaceEntry = registry.workspaces.find(
+    (entry) =>
+      isRecord(entry) &&
+      entry.workspaceId === activeWorkspaceId &&
+      entry.layoutVersion === 1,
+  );
+  const lineageIdentity = isRecord(activeWorkspaceEntry)
+    ? activeWorkspaceEntry.lineageIdentity
+    : undefined;
   if (
     typeof activeWorkspaceId !== 'string' ||
     !workspaceIdPattern.test(activeWorkspaceId) ||
-    !registry.workspaces.some(
-      (entry) =>
-        isRecord(entry) &&
-        entry.workspaceId === activeWorkspaceId &&
-        entry.layoutVersion === 1,
-    )
+    !isRecord(activeWorkspaceEntry) ||
+    !isRecord(lineageIdentity) ||
+    lineageIdentity.formatVersion !== 1 ||
+    typeof lineageIdentity.profileId !== 'string' ||
+    !profileIdPattern.test(lineageIdentity.profileId)
   ) {
     throw new Error('Electron E2E active workspace is invalid.');
   }
@@ -78,6 +88,7 @@ export function readElectronE2eActiveWorkspace(
       'secrets',
       'company-email-smtp-v1.dat',
     ),
+    profileId: lineageIdentity.profileId,
     runtimeRoot,
     workspaceId: activeWorkspaceId,
     workspaceRoot,

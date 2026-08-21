@@ -50,6 +50,7 @@ test('DESK-BRIDGE-001 @critical @security isolates the renderer bridge', async (
       'openOperationalLogFolder',
       'prepareEncryptedProfileRestore',
       'renameWorkspace',
+      'replaceActiveWorkspaceFromBackup',
       'retryPendingInvoicePdfArchiveTasks',
       'selectLocalUpdate',
       'switchWorkspace',

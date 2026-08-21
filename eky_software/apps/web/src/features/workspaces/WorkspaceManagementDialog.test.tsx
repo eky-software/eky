@@ -57,9 +57,18 @@ describe('WorkspaceManagementDialog', () => {
     ['import', 'Tuo yritys varmuuskopiosta', 'Valitse varmuuskopio'],
     ['rename', 'Nimeä uudelleen', 'Tallenna nimi'],
     ['confirmSwitch', 'Avaa yritys', 'Vaihda yritys'],
+    [
+      'confirmReplace',
+      'Aktiivisen yrityksen palautus',
+      'Jatka tiedoston valintaan',
+    ],
   ] as const)('renders the %s operation as a labelled form', (mode, heading, action) => {
     const selectedWorkspaceId =
-      mode === 'rename' || mode === 'confirmSwitch' ? readyWorkspaceId : null;
+      mode === 'rename' || mode === 'confirmSwitch'
+        ? readyWorkspaceId
+        : mode === 'confirmReplace'
+          ? activeWorkspaceId
+          : null;
     const html = renderDialog(
       createState({
         labelInput: mode === 'rename' ? 'Sama nimi' : '',
@@ -78,9 +87,47 @@ describe('WorkspaceManagementDialog', () => {
     if (mode === 'confirmSwitch') {
       expect(html).toContain('Eky vaihtaa yrityksen ja käynnistyy uudelleen.');
       expect(html).toContain('data-autofocus="true"');
+    } else if (mode === 'confirmReplace') {
+      expect(html).toContain('Sama nimi');
+      expect(html).toContain('täsmälleen samalle yritykselle');
+      expect(html).toContain('luodaan ensin palautuspiste');
+      expect(html).toContain('käynnistyy uudelleen');
+      expect(html).not.toMatch(/tiedostopolku|salasana|lineage|journal/i);
+      expect(html.indexOf('data-autofocus="true"')).toBeLessThan(
+        html.indexOf('Jatka tiedoston valintaan'),
+      );
     } else {
       expect(html).toContain('data-autofocus="true"');
     }
+  });
+
+  it('shows replacement only for an idle ready active workspace with desktop support', () => {
+    const availableHtml = renderDialog(createState(), true);
+    const unavailableHtml = renderDialog(createState(), false);
+    const busyHtml = renderDialog(
+      createState({ status: { ...status, operationState: 'busy' } }),
+      true,
+    );
+    const activeRecoveryHtml = renderDialog(
+      createState({
+        status: {
+          ...status,
+          activeWorkspaceId: null,
+          workspaces: status.workspaces.map((workspace) => ({
+            ...workspace,
+            isActive: false,
+          })),
+        },
+      }),
+      true,
+    );
+
+    expect(availableHtml).toContain('Korvaa tiedot varmuuskopiosta');
+    expect(unavailableHtml).not.toContain('Korvaa tiedot varmuuskopiosta');
+    expect(busyHtml).not.toContain('Korvaa tiedot varmuuskopiosta');
+    expect(activeRecoveryHtml).not.toContain(
+      'Korvaa tiedot varmuuskopiosta',
+    );
   });
 
   it('disables mutation controls while global recovery is required', () => {
@@ -98,6 +145,7 @@ describe('WorkspaceManagementDialog', () => {
     const html = renderDialog(
       createState({
         isSubmitting: true,
+        isRelaunching: true,
         mode: 'confirmSwitch',
         selectedWorkspaceId: readyWorkspaceId,
       }),
@@ -115,6 +163,7 @@ function createState(
     errorMessage: null,
     isDialogOpen: true,
     isSubmitting: false,
+    isRelaunching: false,
     labelInput: '',
     loadState: 'ready',
     mode: 'list',
@@ -124,9 +173,13 @@ function createState(
   };
 }
 
-function renderDialog(state: WorkspaceSelectorState): string {
+function renderDialog(
+  state: WorkspaceSelectorState,
+  canReplaceActiveWorkspace = false,
+): string {
   return renderToStaticMarkup(
     <WorkspaceManagementDialog
+      canReplaceActiveWorkspace={canReplaceActiveWorkspace}
       onClose={() => undefined}
       onLabelChange={() => undefined}
       onModeChange={() => undefined}

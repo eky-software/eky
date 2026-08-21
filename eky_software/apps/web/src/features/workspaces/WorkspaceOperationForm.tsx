@@ -43,6 +43,20 @@ export function WorkspaceOperationForm({
           </p>
         </>
       ) : null}
+      {mode === 'confirmReplace' ? (
+        <div className={styles.replacementWarning}>
+          <p>
+            {uiText.workspaces.replaceConfirmation(
+              selectedWorkspace?.workspaceLabel ?? '',
+            )}
+          </p>
+          <ul>
+            <li>{uiText.workspaces.replaceSameCompany}</li>
+            <li>{uiText.workspaces.replaceRecoveryPoint}</li>
+            <li>{uiText.workspaces.replaceRestart}</li>
+          </ul>
+        </div>
+      ) : null}
       {needsLabel ? (
         <label className={styles.label}>
           <span>{uiText.workspaces.workspaceName}</span>
@@ -66,13 +80,14 @@ export function WorkspaceOperationForm({
       ) : null}
       {isBusy ? (
         <p aria-live="polite" className={styles.statusMessage}>
-          {state.isSubmitting && mode === 'confirmSwitch'
+          {state.isRelaunching
             ? uiText.workspaces.relaunching
             : uiText.workspaces.processing}
         </p>
       ) : null}
       <div className={styles.formActions}>
         <button
+          {...(mode === 'confirmReplace' ? { 'data-autofocus': 'true' } : {})}
           className="ghost-button"
           disabled={isBusy}
           onClick={onBack}
@@ -102,6 +117,8 @@ function operationTitle(mode: Exclude<WorkspaceSelectorMode, 'list'>): string {
       return uiText.workspaces.rename;
     case 'confirmSwitch':
       return uiText.workspaces.openWorkspace;
+    case 'confirmReplace':
+      return uiText.workspaces.replaceActiveHeading;
   }
 }
 
@@ -117,5 +134,7 @@ function operationButtonLabel(
       return uiText.workspaces.saveName;
     case 'confirmSwitch':
       return uiText.workspaces.confirmSwitch;
+    case 'confirmReplace':
+      return uiText.workspaces.continueToBackup;
   }
 }

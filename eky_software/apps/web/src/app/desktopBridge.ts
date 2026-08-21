@@ -17,6 +17,7 @@ export interface EkyDesktopApi {
   importWorkspaceBackupAsNew(input: {
     workspaceLabel: string;
   }): Promise<unknown>;
+  replaceActiveWorkspaceFromBackup?(): Promise<unknown>;
   openInvoicePdf(invoiceId: string): Promise<void>;
   openInvoicePdfArchiveDirectory(): Promise<void>;
   openOperationalLogFolder(): Promise<void>;

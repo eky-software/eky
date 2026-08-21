@@ -27,6 +27,7 @@ export type WorkspaceBrandState =
 export interface WorkspaceManagementController {
   readonly activeWorkspaceLabel: string;
   readonly brandState: WorkspaceBrandState;
+  readonly canReplaceActiveWorkspace: boolean;
   readonly state: WorkspaceSelectorState;
   closeDialog(): void;
   openDialog(): void;
@@ -175,6 +176,8 @@ export function useWorkspaceManagement(
   return Object.freeze({
     activeWorkspaceLabel,
     brandState: deriveWorkspaceBrandState(capability, state),
+    canReplaceActiveWorkspace:
+      capability?.replaceActiveFromBackup !== undefined,
     closeDialog,
     openDialog,
     retryStatus,
