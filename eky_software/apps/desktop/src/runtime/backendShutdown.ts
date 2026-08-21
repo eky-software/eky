@@ -10,6 +10,13 @@ export class BackendGracefulShutdownTimeoutError extends Error {
   }
 }
 
+export class BackendForcedShutdownTimeoutError extends Error {
+  constructor() {
+    super('The backend did not exit after forced termination.');
+    this.name = 'BackendForcedShutdownTimeoutError';
+  }
+}
+
 export function waitForBackendShutdown(
   processHandle: BackendShutdownProcess,
   options: {
@@ -18,27 +25,55 @@ export function waitForBackendShutdown(
   },
 ): Promise<'exited' | 'forced'> {
   return new Promise((resolve, reject) => {
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (settled) {
+    let phase: 'graceful' | 'forced' | 'settled' = 'graceful';
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const rejectForcedShutdown = (): void => {
+      if (phase !== 'forced') {
         return;
       }
-      settled = true;
+      phase = 'settled';
+      reject(new BackendForcedShutdownTimeoutError());
+    };
+
+    const handleGracefulTimeout = (): void => {
+      if (phase !== 'graceful') {
+        return;
+      }
       if (!options.forceAfterTimeout) {
+        phase = 'settled';
         reject(new BackendGracefulShutdownTimeoutError());
         return;
       }
-      processHandle.kill();
-      resolve('forced');
-    }, options.timeoutMilliseconds);
 
-    processHandle.once('exit', () => {
-      if (settled) {
+      phase = 'forced';
+      try {
+        processHandle.kill();
+      } catch {
+        phase = 'settled';
+        reject(new BackendForcedShutdownTimeoutError());
         return;
       }
-      settled = true;
-      clearTimeout(timer);
-      resolve('exited');
+      if (phase === 'forced') {
+        timer = setTimeout(
+          rejectForcedShutdown,
+          options.timeoutMilliseconds,
+        );
+      }
+    };
+
+    processHandle.once('exit', () => {
+      if (phase === 'settled') {
+        return;
+      }
+      const outcome = phase === 'forced' ? 'forced' : 'exited';
+      phase = 'settled';
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
+      resolve(outcome);
     });
+
+    timer = setTimeout(handleGracefulTimeout, options.timeoutMilliseconds);
   });
 }
