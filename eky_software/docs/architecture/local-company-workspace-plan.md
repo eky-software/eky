@@ -793,10 +793,10 @@ aktiivisen workspacen kanssa.
 
 ### W5B.2: Replace active workspace
 
-**Tila:** toteutuksessa erillisenä UI/capability-checkpointina. W5A:n sisäinen
-exact-lineage replace-palvelu on hyväksytty toteutuspohja, mutta toimintoa ei
-pidetä käyttäjälle valmiina ennen tämän checkpointin capability-, UI- ja
-Electron-E2E-portteja.
+**Tila:** toteutettu ja hyväksytty erillisenä W5B.2 UI/capability/Electron-E2E-
+checkpointina. W5A:n sisäinen exact-lineage replace-palvelu, Electron mainin
+capability-raja ja webin varoituspolku muodostavat yhden käyttötapauksen. W6:n
+packaged pilot- ja release-portti on edelleen avoin.
 
 W5B.2 sallii vain aktiivisen `ready`-työtilan korvaamisen saman lineagen
 aiemmasta Eky-varmuuskopiosta. Yrityksen nimi, Y-tunnus, workspace-label tai
@@ -830,6 +830,13 @@ Testit kattavat trusted-main-frame-rajan, exact argumentit, suljetut DTO:t,
 file/password/native-confirm-cancelit, väärän lineagen, activation- ja
 rollback-faultit, hallitun relaunchin sekä polun, salasanan, lineagen,
 companyId:n, sessionin ja journalin vuotamattomuuden.
+
+W5B.2:n Electron-E2E-todiste käyttää yhtä auktoritatiivista synteettistä
+lineagea legacy-adoptionissa, aktiivisessa registry-entryssä ja salatussa
+backupissa. Se kattaa exact-lineage-korvauksen, väärän lineagen torjunnan sekä
+native file-, password- ja final confirmation -peruutukset. Väärän lineagen
+torjunta todistaa lisäksi, että korvausyrityksen jälkeen luotu aktiivisen
+workspacen marker-data säilyy muuttumattomana.
 
 **Commit/PR/release:** W5B on erillinen UI/capability-checkpoint. Ensimmäinen
 release candidate voidaan nimetä vasta W6:n hyväksymisportin jälkeen.

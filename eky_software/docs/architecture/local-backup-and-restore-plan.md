@@ -697,8 +697,9 @@ point, hardlink, ylikokoinen payload tai containment-ristiriita johtaa
 
 **Tila:** toteutettu ja testattu workspace management -foundationina sekä
 kytketty W5A:ssa Electron mainin sisäiseen production-compositioniin. Renderer-
-capability, käyttäjäpolku ja Electron-E2E kuuluvat erilliseen W5B.2-porttiin;
-niitä ei pidetä valmiina ennen kyseisen portin hyväksymistä.
+capability, käyttäjäpolku ja exact-lineage Electron-E2E on hyväksytty W5B.2-
+checkpointissa. W6:n packaged backup -> inspect -> restore -> restart ->
+compare -portti ja release-hyväksyntä ovat edelleen avoimia.
 
 W3b ei rakenna toista restore-moottoria. Se muodostaa nykyisen
 `ProfileRestoreActivationTransaction`-transactionin aktiivisen workspacen

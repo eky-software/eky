@@ -129,3 +129,8 @@ service-kutsua ei muuta registryä, journalia tai runtimea. Kun replace-
 transaction on käynnistynyt, onnistunut aktivointi tai todistettu rollback
 päättyy hallittuun uudelleenkäynnistykseen; epäselvä tila pysyy
 `recoveryRequired`-tilassa eikä UI saa ohittaa sitä.
+
+W5B.2:n hyväksytty Electron-E2E-polku todistaa exact-lineage-korvauksen,
+väärän lineagen fail-closed-torjunnan sekä tiedoston valinnan, salasanan ja
+viimeisen native-vahvistuksen peruutukset. Testi ei käytä oikeaa profiilia,
+yritysdataa tai salaisuutta eikä avaa UI:lle recovery-journalin hallintaa.
