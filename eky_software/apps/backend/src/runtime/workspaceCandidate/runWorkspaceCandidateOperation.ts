@@ -14,6 +14,10 @@ import { createProfileBackupIdentity } from '../profileSnapshot/inspectSqlitePro
 import { CurrentActiveProfileValidationService } from '../profileSnapshot/validateActiveProfile.js';
 import { validateProfileArtifactCatalog } from '../profileSnapshot/validateProfileArtifactCatalog.js';
 import {
+  inspectPublishedWorkspaceMigration,
+  type PublishedWorkspaceMigrationInspection,
+} from './inspectPublishedWorkspaceMigration.js';
+import {
   assertWorkspaceCandidateContainedPath,
   resolveAbsoluteWorkspaceCandidatePath,
   validatePrivateWorkspaceDirectory,
@@ -34,7 +38,18 @@ interface WorkspaceCandidateCommonInput {
   readonly migrationsDirectory: string;
 }
 
+interface WorkspaceMigrationInspectionInput {
+  readonly appVersion: string;
+  readonly buildRevision: string;
+  readonly databaseFilePath: string;
+  readonly expectedProfileId: string;
+  readonly migrationsDirectory: string;
+  readonly operation: 'inspectPublishedMigration';
+  readonly publishedRoot: string;
+}
+
 export type WorkspaceCandidateOperation =
+  | WorkspaceMigrationInspectionInput
   | (WorkspaceCandidateCommonInput & {
       readonly operation: 'bootstrapEmpty';
     })
@@ -72,6 +87,7 @@ export interface WorkspaceCandidateReadinessResult {
 }
 
 export type WorkspaceCandidateOperationResult =
+  | PublishedWorkspaceMigrationInspection
   | WorkspaceCandidateMigrationResult
   | WorkspaceCandidateReadinessResult;
 
@@ -95,6 +111,12 @@ export async function runWorkspaceCandidateOperation(
   try {
     const operation = validateOperationInput(input);
     throwIfCancelled(control.signal);
+    if (operation.operation === 'inspectPublishedMigration') {
+      return await inspectPublishedWorkspaceMigration(
+        operation,
+        control.signal,
+      );
+    }
     const paths = await validateCommonInput(operation);
     throwIfCancelled(control.signal);
     if (operation.operation === 'bootstrapEmpty') {
@@ -261,6 +283,16 @@ function validateOperationInput(
         return 'expectedProfileId' in input
           ? [...commonOperationKeys, 'expectedProfileId', 'operation']
           : [...commonOperationKeys, 'operation'];
+      case 'inspectPublishedMigration':
+        return [
+          'appVersion',
+          'buildRevision',
+          'databaseFilePath',
+          'expectedProfileId',
+          'migrationsDirectory',
+          'operation',
+          'publishedRoot',
+        ];
       default:
         throw new Error('WORKSPACE_CANDIDATE_OPERATION_INVALID');
     }
