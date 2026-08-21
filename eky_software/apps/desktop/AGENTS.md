@@ -61,6 +61,13 @@ Mandatory boundaries:
   validated workspace label
 - active exact-lineage replacement remains outside the renderer contract
   until W5B.2, and workspace deletion remains deferred to W7
+- W6A.1 may inventory only strict-registry `ready` workspaces, serially and
+  read-only through a private backend utility; Electron main must not open
+  SQLite, and preload, renderer, web and public HTTP must not receive the
+  inventory capability or private paths
+- W6A.1 must not write the registry, migrate a workspace, create a recovery
+  point, start a business runtime or change accepted-build state; startup
+  orchestration and `recoveryRequired` transitions belong to W6A.2
 - use one main-owned installation-scoped `WorkspaceMaintenanceLease` for
   backup, restore, update and workspace ownership changes; keep each module's
   narrower local guard and preserve the documented lock order

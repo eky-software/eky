@@ -157,6 +157,21 @@ runtime-omistajuuden vaihtoa, ja seuraava prosessi saa uuden capabilityn sekä
 sessionin. Active exact-lineage replace kuuluu W5B.2:een, workspace deletion
 W7:ään ja koko paketoitu multi-workspace-releaseportti W6:een.
 
+### Local Workspace W6A.1 -checkpoint
+
+W6A.1 lisää vain sisäisen read-only migration inventoryn. Electron main
+validoi strictin registry v1:n, johtaa `ready`-työtilojen yksityiset juuret ja
+käynnistää backend utilityt sarjallisesti. Backend omistaa SQLite-yhteyden,
+migration manifestin ja identiteetin tarkastuksen. Main, preload, renderer ja
+web eivät saa SQLite-kahvaa, polkua, migration chainia, `companyId`:tä,
+`profileId`:tä tai runtime-sessionia.
+
+Palautuva sisäinen projektio sisältää vain workspace-tunnisteen,
+aktiivisuustiedon, `current` / `compatiblePending` / `invalidHistory`-tilan ja
+applied/pending-lukumäärät. Checkpoint ei muuta registryä, työtilaa, aktiivista
+osoitinta, accepted build -metadataa tai runtimea eikä aja migraatioita.
+Production-first-start-kytkentä ja tilasiirtymät kuuluvat W6A.2:een.
+
 ## Tarkistuslähteet
 
 Implemented-rivit tarkistetaan ensisijaisesti seuraavista lähteistä:

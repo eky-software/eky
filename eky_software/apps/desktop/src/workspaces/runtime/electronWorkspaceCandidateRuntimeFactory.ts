@@ -33,6 +33,12 @@ import type {
   PrivateWorkspaceBackupCandidateRuntime,
   PrivateWorkspaceBackupCandidateRuntimeFactory,
 } from '../import/privateWorkspaceBackupCandidateAdapter.js';
+import type {
+  PrivateWorkspaceMigrationInspectionRuntime,
+  PrivateWorkspaceMigrationInspectionRuntimeFactory,
+  WorkspaceMigrationInspectionInput,
+  WorkspaceMigrationInspectionResult,
+} from '../update/workspaceMigrationInventoryTypes.js';
 
 const startupTimeoutMilliseconds = 10_000;
 const operationTimeoutMilliseconds = 5 * 60_000;
@@ -70,7 +76,8 @@ export class ElectronWorkspaceCandidateRuntimeFactory
   implements
     PrivateEmptyWorkspaceBootstrapRuntimeFactory,
     PrivatePublishedWorkspaceValidationRuntimeFactory,
-    PrivateWorkspaceBackupCandidateRuntimeFactory
+    PrivateWorkspaceBackupCandidateRuntimeFactory,
+    PrivateWorkspaceMigrationInspectionRuntimeFactory
 {
   private readonly processSpawner: WorkspaceCandidateProcessSpawner;
 
@@ -140,6 +147,25 @@ export class ElectronWorkspaceCandidateRuntimeFactory
     });
   }
 
+  startMigrationInspection(
+    input: Readonly<WorkspaceMigrationInspectionInput>,
+  ): Promise<PrivateWorkspaceMigrationInspectionRuntime> {
+    return this.startMigrationInspectionRuntime(
+      input.operationId,
+      {
+        appVersion: this.options.appVersion,
+        backendRoot: this.options.backendRoot,
+        buildRevision: this.options.buildRevision,
+        databaseFilePath: input.databaseFilePath,
+        expectedProfileId: input.expectedProfileId,
+        migrationsDirectory: this.options.migrationsDirectory,
+        operation: 'inspectPublishedMigration',
+        publishedRoot: input.publishedRoot,
+      },
+      input.signal,
+    );
+  }
+
   private common(input: {
     readonly artifactRoot: string;
     readonly candidateRoot: string;
@@ -183,10 +209,27 @@ export class ElectronWorkspaceCandidateRuntimeFactory
     };
   }
 
+  private async startMigrationInspectionRuntime(
+    operationId: string,
+    operation: WorkspaceCandidateProcessOperation,
+    signal?: AbortSignal,
+  ): Promise<PrivateWorkspaceMigrationInspectionRuntime> {
+    const runtime = await this.startOperation(operationId, operation, signal);
+    return {
+      inspectStoppedMigrationInspection: async () =>
+        mapMigrationInspectionResult(runtime.inspectStoppedResult()),
+      stopAndProveHandlesClosed: () => runtime.stopAndProveHandlesClosed(),
+    };
+  }
+
   private async startOperation(
     operationId: string,
     operation: WorkspaceCandidateProcessOperation,
+    signal?: AbortSignal,
   ): Promise<ManagedWorkspaceCandidateRuntime> {
+    if (isAbortRequested(signal)) {
+      throw new Error(operationFailedCode);
+    }
     const runtimeSession = createDesktopRuntimeSession();
     const requestId = randomUUID();
     const startCommand = createWorkspaceCandidateStartCommand({
@@ -222,14 +265,27 @@ export class ElectronWorkspaceCandidateRuntimeFactory
       startupTimeoutMilliseconds:
         this.options.startupTimeoutMilliseconds ?? startupTimeoutMilliseconds,
     });
+    const abortRuntime = (): void => {
+      void runtime.stopAfterStartFailure();
+    };
+    signal?.addEventListener('abort', abortRuntime, { once: true });
     try {
       await runtime.start();
+      if (isAbortRequested(signal)) {
+        throw new Error(operationFailedCode);
+      }
       return runtime;
     } catch {
       await runtime.stopAfterStartFailure();
       throw new Error(operationFailedCode);
+    } finally {
+      signal?.removeEventListener('abort', abortRuntime);
     }
   }
+}
+
+function isAbortRequested(signal: AbortSignal | undefined): boolean {
+  return signal?.aborted === true;
 }
 
 type RuntimePhase =
@@ -486,6 +542,19 @@ function mapMigrationResult(
     handlesClosed: true,
     migrationChainIdentity: value.migrationChainIdentity,
     profileId: value.profileId,
+  });
+}
+
+function mapMigrationInspectionResult(
+  value: WorkspaceCandidateProcessResult,
+): Readonly<WorkspaceMigrationInspectionResult> {
+  if (value.kind !== 'migrationInspection') {
+    throw new Error('WORKSPACE_CANDIDATE_RESULT_INVALID');
+  }
+  return Object.freeze({
+    appliedMigrationCount: value.appliedMigrationCount,
+    pendingMigrationCount: value.pendingMigrationCount,
+    status: value.status,
   });
 }
 

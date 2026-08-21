@@ -296,7 +296,7 @@ test('rejects Eky-owned source maps but includes vendor maps in the inventory', 
 test('enforces the application-stage file count boundary', async () => {
   const root = await createStageFixture('dist/file-000.js', 'safe');
   await Promise.all(
-    Array.from({ length: 300 }, (_, index) =>
+    Array.from({ length: 320 }, (_, index) =>
       writeFixture(
         root,
         `dist/file-${String(index + 1).padStart(3, '0')}.js`,

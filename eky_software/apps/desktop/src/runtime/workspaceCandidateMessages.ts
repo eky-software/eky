@@ -20,7 +20,19 @@ interface WorkspaceCandidateCommonConfig {
   readonly migrationsDirectory: string;
 }
 
+interface WorkspaceMigrationInspectionConfig {
+  readonly appVersion: string;
+  readonly backendRoot: string;
+  readonly buildRevision: string;
+  readonly databaseFilePath: string;
+  readonly expectedProfileId: string;
+  readonly migrationsDirectory: string;
+  readonly operation: 'inspectPublishedMigration';
+  readonly publishedRoot: string;
+}
+
 export type WorkspaceCandidateProcessOperation =
+  | WorkspaceMigrationInspectionConfig
   | (WorkspaceCandidateCommonConfig & {
       readonly operation: 'bootstrapEmpty';
     })
@@ -57,6 +69,15 @@ export type WorkspaceCandidateProcessCommand =
     });
 
 export type WorkspaceCandidateProcessResult =
+  | {
+      readonly appliedMigrationCount: number;
+      readonly kind: 'migrationInspection';
+      readonly pendingMigrationCount: number;
+      readonly status:
+        | 'compatiblePending'
+        | 'current'
+        | 'invalidHistory';
+    }
   | {
       readonly kind: 'migration';
       readonly migrationChainIdentity: string;
@@ -271,7 +292,33 @@ export function parseWorkspaceCandidateProcessStatus(
 function parseOperation(
   value: unknown,
 ): WorkspaceCandidateProcessOperation | undefined {
-  if (!isPlainRecord(value) || !isCommonConfig(value)) return undefined;
+  if (!isPlainRecord(value)) return undefined;
+  if (
+    value.operation === 'inspectPublishedMigration' &&
+    isWorkspaceMigrationInspectionConfig(value) &&
+    hasExactKeys(value, [
+      'appVersion',
+      'backendRoot',
+      'buildRevision',
+      'databaseFilePath',
+      'expectedProfileId',
+      'migrationsDirectory',
+      'operation',
+      'publishedRoot',
+    ])
+  ) {
+    return {
+      appVersion: value.appVersion,
+      backendRoot: value.backendRoot,
+      buildRevision: value.buildRevision,
+      databaseFilePath: value.databaseFilePath,
+      expectedProfileId: value.expectedProfileId,
+      migrationsDirectory: value.migrationsDirectory,
+      operation: 'inspectPublishedMigration',
+      publishedRoot: value.publishedRoot,
+    };
+  }
+  if (!isCommonConfig(value)) return undefined;
   if (
     value.operation === 'bootstrapEmpty' &&
     hasExactKeys(value, commonKeys(['operation']))
@@ -344,6 +391,30 @@ function parseResult(
 ): WorkspaceCandidateProcessResult | undefined {
   if (!isPlainRecord(value)) return undefined;
   if (
+    value.kind === 'migrationInspection' &&
+    isMigrationInspectionStatus(value.status) &&
+    isNonNegativeSafeInteger(value.appliedMigrationCount) &&
+    isNonNegativeSafeInteger(value.pendingMigrationCount) &&
+    isConsistentMigrationInspection(
+      value.status,
+      value.appliedMigrationCount,
+      value.pendingMigrationCount,
+    ) &&
+    hasExactKeys(value, [
+      'appliedMigrationCount',
+      'kind',
+      'pendingMigrationCount',
+      'status',
+    ])
+  ) {
+    return {
+      appliedMigrationCount: value.appliedMigrationCount,
+      kind: 'migrationInspection',
+      pendingMigrationCount: value.pendingMigrationCount,
+      status: value.status,
+    };
+  }
+  if (
     value.kind === 'migration' &&
     isSha256(value.migrationChainIdentity) &&
     isSha256(value.profileId) &&
@@ -404,6 +475,34 @@ function isCommonConfig(value: Record<string, unknown>): boolean {
     isStrictlyContainedPath(value.candidateRoot, value.databaseFilePath) &&
     isStrictlyContainedPath(value.backendRoot, value.migrationsDirectory)
   );
+}
+
+function isWorkspaceMigrationInspectionConfig(
+  value: Record<string, unknown>,
+): value is Record<string, unknown> & WorkspaceMigrationInspectionConfig {
+  return (
+    typeof value.appVersion === 'string' &&
+    boundedReleaseValuePattern.test(value.appVersion) &&
+    typeof value.buildRevision === 'string' &&
+    boundedReleaseValuePattern.test(value.buildRevision) &&
+    isSafeAbsolutePath(value.backendRoot) &&
+    isSafeAbsolutePath(value.publishedRoot) &&
+    isSafeAbsolutePath(value.databaseFilePath) &&
+    isSafeAbsolutePath(value.migrationsDirectory) &&
+    isSha256(value.expectedProfileId) &&
+    isStrictlyContainedPath(value.publishedRoot, value.databaseFilePath) &&
+    isStrictlyContainedPath(value.backendRoot, value.migrationsDirectory)
+  );
+}
+
+function isConsistentMigrationInspection(
+  status: 'compatiblePending' | 'current' | 'invalidHistory',
+  appliedMigrationCount: number,
+  pendingMigrationCount: number,
+): boolean {
+  if (status === 'current') return pendingMigrationCount === 0;
+  if (status === 'compatiblePending') return pendingMigrationCount > 0;
+  return appliedMigrationCount === 0 && pendingMigrationCount === 0;
 }
 
 function readCommonOperation<
@@ -507,6 +606,23 @@ function isBoundedIdentity(value: unknown): value is string {
     value === value.trim() &&
     !/[\u0000-\u001f\u007f]/u.test(value)
   );
+}
+
+function isMigrationInspectionStatus(
+  value: unknown,
+): value is
+  | 'compatiblePending'
+  | 'current'
+  | 'invalidHistory' {
+  return (
+    value === 'compatiblePending' ||
+    value === 'current' ||
+    value === 'invalidHistory'
+  );
+}
+
+function isNonNegativeSafeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0;
 }
 
 function serializedByteLength(value: unknown): number {

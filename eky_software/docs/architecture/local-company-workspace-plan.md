@@ -849,7 +849,45 @@ korjata suoraan release-portin sisällä ilman paluuta omistavaan checkpointiin.
 **Muuttuvat kerrokset:** testit, fixturet, CI-portit, release-dokumentaatio ja
 erillinen lopullinen versionostocommit.
 
+### W6A.1: Read-only migration inventory
+
+W6A.1 on first-start-orchestraatiota edeltävä sivuvaikutukseton checkpoint.
+Electron main lukee strictin registry v1:n, valitsee vain `ready`-entryt ja
+johtaa niiden workspace-polut nykyisen main-owned path policyn kautta.
+Yksityinen backend utility tarkastaa työtilat yksi kerrallaan aidosti read-only-
+yhteydellä. Main ei avaa SQLitea, eikä samanaikaisia utility- tai SQLite-
+ownereita sallita.
+
+Jokainen tarkastettu työtila luokitellaan vain tilaan `current`,
+`compatiblePending` tai `invalidHistory` ADR-0011:n määritelmien mukaan.
+Sisäinen inventaario saa sisältää vain `workspaceId`:n, aktiivisuustiedon,
+luokituksen sekä applied/pending-lukumäärät. Polkuja, migration-nimiä tai
+-tiivisteitä, `companyId`:tä, `profileId`:tä, lineagea, sessionia tai raakaa
+SQLite-virhettä ei palauteta eikä lokiteta.
+
+`invalidHistory` on tietosisällön luokitus: kanoninen, tavallinen ja yhden
+linkin tietokantatiedosto on voitu avata read-only-tilassa, mutta integrity-,
+foreign key- tai migration history -tarkastus osoittaa sisällön vioittuneeksi
+tai ristiriitaiseksi. Puuttuva tai turvaton workspace-juuri, puuttuva tai
+ei-kanoninen tietokanta, avaamaton storage, väärä `profileId` taikka utility-,
+protokolla- tai shutdown-virhe ei tuota entryä, vaan keskeyttää koko
+inventaarion fail-closed.
+
+Checkpoint ei kirjoita registryä tai tietokantaa, käynnistä workspace-
+runtimea, aja migraatioita, luo recovery pointia, muuta aktiivista osoitinta
+tai accepted build -metadataa eikä vielä kytkeydy production-startupiin.
+`invalidHistory`-entryn mahdollinen `recoveryRequired`-siirtymä ja aktiivisen
+`compatiblePending`-työtilan migraatio kuuluvat W6A.2:een.
+
 **Pakollinen näyttö:**
+
+- `DESK-WORKSPACE-MIGRATION-INVENTORY-001` käyttää oikeaa paketoitua backend-
+  runneria ja kolmea synteettistä työtilaa tiloissa `current`,
+  `compatiblePending` ja `invalidHistory`
+- registry, aktiivinen osoitin, tietokannan SHA-256/koko/mtime ja PDF-
+  artifact-juuret säilyvät muuttumattomina eikä SQLite-sidecareja synny
+- utility-tarkastukset ovat sarjallisia, normaali backend on suljettu ennen
+  inventaariota ja testin jälkeen uusia utility-prosesseja on nolla
 
 - puhdas 0.2.6-asennus ja first/second startup
 - synteettinen 0.2.6-profiili sekä erikseen turvallisesti johdettu paikallinen

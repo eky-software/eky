@@ -597,6 +597,34 @@ Version N+1 first start toimii seuraavasti:
    first-start-porttien jälkeen; passiivisen `recoveryRequired`-työtilan tila
    näytetään turvallisesti ennen switchiä.
 
+W6A.1 toteuttaa tästä ketjusta vain read-only migration inventoryn. Se
+validoi strictin registry v1:n ja tarkastaa kaikki `ready`-työtilat
+sarjallisesti yksityisellä backend utility -prosessilla. Tarkastuksen suljetut
+tilat ovat:
+
+- `current`: migration history vastaa täsmälleen nykyistä immutable-manifestia
+  eikä puuttuvia migraatioita ole
+- `compatiblePending`: historia on katkeamaton immutable historiallinen
+  prefix ja vähintään yksi nykyisen manifestin migraatio puuttuu
+- `invalidHistory`: historia on tuleva, muuttunut, aukollinen, duplikaatti,
+  tuntematon tai ristiriitainen taikka turvallisesti avatun SQLite-tiedoston
+  sisältö osoittautuu integrity- tai foreign key -tarkastuksessa
+  vioittuneeksi.
+
+Puuttuva tai turvaton workspace-juuri, puuttuva tai ei-kanoninen tietokanta,
+avaamaton storage, väärä `profileId` sekä utility-, protokolla- tai shutdown-
+virhe keskeyttävät koko inventaarion fail-closed. Näitä ei tulkita yhden
+työtilan `invalidHistory`-tilaksi, koska turvallista työtilaidentiteettiä tai
+read-only-tarkastusta ei ole silloin todistettu.
+
+W6A.1 ei kirjoita registryyn, avaa normaalia workspace-runtimea, aja
+migraatioita, luo palautuspistettä tai hyväksy buildia. Se ei myöskään vielä
+muuta passiivista `invalidHistory`-työtilaa `recoveryRequired`-tilaan; tämä
+tilasiirtymä kuuluu W6A.2:n first-start-orchestraatioon. Myöhemmässä W6-
+ketjussa vain aktiivinen `compatiblePending` saa migraatio-oikeuden.
+Passiivinen `compatiblePending` säilyy `ready`-tilassa ja muuttumattomana
+ensimmäiseen hallittuun aktivointiinsa asti. `current` säilyy muuttumattomana.
+
 Kaikki tarkastukset ja migraatiot noudattavat yhden business-SQLite-omistajan
 rajaa. Yhden työtilan failure ei saa johtaa muiden hiljaiseen migraatioon,
 väärän työtilan avaamiseen tai installation-päivitystilan siirtymiseen

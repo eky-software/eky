@@ -51,6 +51,21 @@ export interface WorkspaceStartupRecoveryProofSnapshot {
   relaunchCount: number;
 }
 
+export interface WorkspaceMigrationInventoryProofSnapshot {
+  activeRuntimeCount: number;
+  activeWorkspacePreserved: boolean;
+  artifactRootsPreserved: boolean;
+  backendStoppedBeforeInventory: boolean;
+  candidateProcessesReleased: boolean;
+  databaseSnapshotsPreserved: boolean;
+  inspectedWorkspaceCount: number;
+  inventoryStatuses: readonly string[];
+  maximumActiveRuntimeCount: number;
+  migrationSidecarsAbsent: boolean;
+  observerSucceeded: boolean;
+  registryPreserved: boolean;
+}
+
 export function closeElectronPdfPreviews(
   electronApp: ElectronApplication,
 ): Promise<void> {
@@ -147,6 +162,22 @@ export function runElectronWorkspaceManagementCompositionProof(
   });
 }
 
+export function runElectronWorkspaceMigrationInventoryProof(
+  electronApp: ElectronApplication,
+): Promise<WorkspaceMigrationInventoryProofSnapshot> {
+  return electronApp.evaluate(async () => {
+    const controller = (
+      globalThis as typeof globalThis & {
+        __EKY_ELECTRON_E2E__?: ElectronE2eController;
+      }
+    ).__EKY_ELECTRON_E2E__;
+    if (controller === undefined) {
+      throw new Error('Electron E2E controller is unavailable.');
+    }
+    return controller.runWorkspaceMigrationInventoryProof();
+  });
+}
+
 export function runElectronWorkspaceStartupRecoveryProof(
   electronApp: ElectronApplication,
 ): Promise<WorkspaceStartupRecoveryProofSnapshot> {
@@ -170,5 +201,6 @@ interface ElectronE2eController {
   pdfPreviewUrls(): readonly string[];
   processMetrics(): ElectronProcessMetricsSnapshot;
   runWorkspaceManagementCompositionProof(): Promise<WorkspaceManagementCompositionProofSnapshot>;
+  runWorkspaceMigrationInventoryProof(): Promise<WorkspaceMigrationInventoryProofSnapshot>;
   runWorkspaceStartupRecoveryProof(): Promise<WorkspaceStartupRecoveryProofSnapshot>;
 }

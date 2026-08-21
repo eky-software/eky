@@ -765,6 +765,28 @@ seuraavia rajoja:
    `recoveryRequired`-tilaan; muita työtiloja ei migroida tai muuteta
 7. koko tarkastusketjussa saa olla enintään yksi business-SQLite-owner.
 
+W6A.1:n read-only inventory toteuttaa ennen tätä ketjua vain kaikkien
+`ready`-työtilojen sarjallisen luokittelun. `current` tarkoittaa täsmälleen
+nykyistä migration manifestia ilman pending-migraatioita,
+`compatiblePending` katkeamatonta immutable historiallista prefixiä, jolla on
+pending-migraatioita, ja `invalidHistory` tulevaa, muuttunutta, aukollista,
+duplikaattia, tuntematonta, ristiriitaista tai vioittunutta historiaa.
+
+`invalidHistory` kuvaa turvallisesti johdetun ja read-only-tilassa avatun
+tietokannan sisältöä. Integrity-, foreign key- tai migration history -virhe,
+mukaan lukien avauksen jälkeen havaittu SQLite-sisällön vioittuminen, voidaan
+luokitella siihen. Puuttuva tai turvaton juuri, puuttuva tai ei-kanoninen
+tietokantatiedosto, avaamaton storage, `profileId`-ristiriita sekä utility-,
+protokolla- tai shutdown-virhe keskeyttävät koko inventaarion fail-closed;
+niitä ei alenneta yhden työtilan `invalidHistory`-entryksi.
+
+Inventory ei kirjoita registryä tai workspace-dataa, aja migraatiota, luo
+palautuspistettä, käynnistä backend-runtimea tai muuta accepted build -tilaa.
+Vain myöhempi W6A.2 saa antaa aktiiviselle `compatiblePending`-työtilalle
+migraatio-oikeuden ja merkitä passiivisen virheellisen historian
+`recoveryRequired`-tilaan. Passiivinen validi prefix säilyy first-startissa
+`ready`-tilassa ja byte-identtisenä.
+
 W4 aktivoi registryyn sidotun startupin ja vanhan yhden profiilin adoption
 production-compositionissa. Se ei vielä toteuta tämän luvun koko N -> N+1
 multi-workspace first start -ketjua. Aktiivisen ja passiivisen workspacen
