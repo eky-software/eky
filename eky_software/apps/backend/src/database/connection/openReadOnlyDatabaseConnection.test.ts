@@ -1,5 +1,13 @@
+import { createHash } from 'node:crypto';
 import Database from 'better-sqlite3';
-import { mkdir, mkdtemp, readdir, rm } from 'node:fs/promises';
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  stat,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -21,23 +29,40 @@ afterEach(async () => {
 describe('withReadOnlyDatabaseConnection', () => {
   it('opens an existing database read-only without sidecar files', async () => {
     const { databaseFilePath, root } = await createDatabase();
+    const before = await snapshotDatabase(databaseFilePath, root);
 
     expect(
       withReadOnlyDatabaseConnection(databaseFilePath, (database) =>
         database.prepare('SELECT value FROM example').pluck().get(),
       ),
     ).toBe('stored');
-    expect(await readdir(root)).toEqual(['profile.sqlite']);
+    expect(await snapshotDatabase(databaseFilePath, root)).toEqual(before);
   });
 
-  it('rejects writes through the read-only connection', async () => {
-    const { databaseFilePath } = await createDatabase();
+  it('rejects SQL and pragma writes without changing the database', async () => {
+    const { databaseFilePath, root } = await createDatabase();
+    const before = await snapshotDatabase(databaseFilePath, root);
+    const writeStatements = [
+      "INSERT INTO example (value) VALUES ('x')",
+      "UPDATE example SET value = 'changed'",
+      'CREATE TABLE forbidden (value TEXT)',
+      'PRAGMA user_version = 1',
+    ];
 
-    expect(() =>
+    for (const statement of writeStatements) {
+      expect(() =>
+        withReadOnlyDatabaseConnection(databaseFilePath, (database) =>
+          database.exec(statement),
+        ),
+      ).toThrow();
+    }
+
+    expect(
       withReadOnlyDatabaseConnection(databaseFilePath, (database) =>
-        database.prepare('INSERT INTO example (value) VALUES (?)').run('x'),
+        database.prepare('SELECT value FROM example').pluck().get(),
       ),
-    ).toThrow();
+    ).toBe('stored');
+    expect(await snapshotDatabase(databaseFilePath, root)).toEqual(before);
   });
 
   it('does not create a missing database or its parent directory', async () => {
@@ -94,4 +119,16 @@ async function createTemporaryRoot(): Promise<string> {
   temporaryRoots.push(root);
   await mkdir(root, { recursive: true });
   return root;
+}
+
+async function snapshotDatabase(databaseFilePath: string, root: string) {
+  const metadata = await stat(databaseFilePath);
+  return {
+    fileNames: (await readdir(root)).sort(),
+    mtimeMs: metadata.mtimeMs,
+    sha256: createHash('sha256')
+      .update(await readFile(databaseFilePath))
+      .digest('hex'),
+    size: metadata.size,
+  };
 }

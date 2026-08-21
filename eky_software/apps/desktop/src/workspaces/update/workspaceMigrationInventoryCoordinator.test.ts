@@ -1,9 +1,12 @@
+import { createHash } from 'node:crypto';
 import { promises as fileSystem } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { createDesktopProfilePaths } from '../../runtime/desktopProfilePaths.js';
+import { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
 import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
 import type {
   LocalWorkspaceRegistryEntryV1,
@@ -150,6 +153,89 @@ describe('WorkspaceMigrationInventoryCoordinator', () => {
         },
       ],
     });
+  });
+
+  it('fails the whole inventory on profile mismatch without opening later workspaces or changing persisted bytes', async () => {
+    const registry = createRegistry({ thirdReady: true });
+    const userDataRoot = await createWorkspaceRoots(registry);
+    await createSyntheticDatabaseFiles(userDataRoot, registry);
+    const registryFilePath = join(
+      userDataRoot,
+      'workspace-registry-v1.json',
+    );
+    const registryStore = new WorkspaceRegistryStore({
+      filePath: registryFilePath,
+      installationRoot: userDataRoot,
+    });
+    await registryStore.write(registry);
+    const registryBefore = await snapshotFile(registryFilePath);
+    const databaseSnapshotsBefore = await snapshotWorkspaceDatabases(
+      userDataRoot,
+      registry,
+    );
+    const startedWorkspaces: string[] = [];
+    const observedEvents: unknown[] = [];
+    const runtimeFactory: PrivateWorkspaceMigrationInspectionRuntimeFactory = {
+      async startMigrationInspection(input) {
+        const workspaceId = workspaceIdFromPublishedRoot(input.publishedRoot);
+        startedWorkspaces.push(workspaceId);
+        if (workspaceId === secondWorkspaceId) {
+          throw new Error('WORKSPACE_MIGRATION_PROFILE_MISMATCH');
+        }
+        if (workspaceId !== firstWorkspaceId) {
+          throw new Error('UNEXPECTED_WORKSPACE_INSPECTION');
+        }
+        let stopped = false;
+        return {
+          inspectStoppedMigrationInspection: async () => {
+            if (!stopped) throw new Error('runtime still active');
+            return result('current', 40, 0);
+          },
+          stopAndProveHandlesClosed: async () => {
+            stopped = true;
+            return true;
+          },
+        };
+      },
+    };
+    const coordinator = new WorkspaceMigrationInventoryCoordinator({
+      createOperationId: () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      now: createClock(100, 112),
+      observer: {
+        record(event) {
+          observedEvents.push(event);
+          throw new Error('observer unavailable');
+        },
+      },
+      registry: registryStore,
+      runtimeFactory,
+      userDataRoot,
+    });
+
+    await expect(coordinator.inspect()).rejects.toEqual(
+      new WorkspaceMigrationInventoryError(
+        workspaceMigrationInventoryFailedCode,
+      ),
+    );
+
+    expect(startedWorkspaces).toEqual([
+      firstWorkspaceId,
+      secondWorkspaceId,
+    ]);
+    expect(observedEvents).toEqual([
+      {
+        compatiblePendingCount: 0,
+        currentCount: 1,
+        durationMs: 12,
+        inspectedWorkspaceCount: 1,
+        invalidHistoryCount: 0,
+        outcome: 'failed',
+      },
+    ]);
+    expect(await snapshotFile(registryFilePath)).toEqual(registryBefore);
+    expect(
+      await snapshotWorkspaceDatabases(userDataRoot, registry),
+    ).toEqual(databaseSnapshotsBefore);
   });
 
   it('fails closed on a malformed or missing registry before starting a utility', async () => {
@@ -300,7 +386,10 @@ function result(
 }
 
 function createRegistry(
-  options: { readonly includeSecond?: boolean } = {},
+  options: {
+    readonly includeSecond?: boolean;
+    readonly thirdReady?: boolean;
+  } = {},
 ): Readonly<LocalWorkspaceRegistryV1> {
   const workspaces: LocalWorkspaceRegistryEntryV1[] = [
     createEntry(firstWorkspaceId, 'a'.repeat(64), 'ready'),
@@ -309,7 +398,11 @@ function createRegistry(
     workspaces.push(createEntry(secondWorkspaceId, 'b'.repeat(64), 'ready'));
   }
   workspaces.push(
-    createEntry(recoveryWorkspaceId, 'c'.repeat(64), 'recoveryRequired'),
+    createEntry(
+      recoveryWorkspaceId,
+      'c'.repeat(64),
+      options.thirdReady === true ? 'ready' : 'recoveryRequired',
+    ),
   );
   return Object.freeze({
     activeWorkspaceId: firstWorkspaceId,
@@ -348,6 +441,55 @@ async function createWorkspaceRoots(
     });
   }
   return userDataRoot;
+}
+
+async function createSyntheticDatabaseFiles(
+  userDataRoot: string,
+  registry: Readonly<LocalWorkspaceRegistryV1>,
+): Promise<void> {
+  for (const workspace of registry.workspaces) {
+    const profile = createDesktopProfilePaths(
+      join(userDataRoot, 'workspaces', workspace.workspaceId),
+    );
+    await fileSystem.mkdir(join(profile.runtimeRoot, 'data'), {
+      mode: 0o700,
+      recursive: true,
+    });
+    await fileSystem.writeFile(
+      profile.databaseFilePath,
+      `synthetic-${workspace.workspaceId}`,
+      { encoding: 'utf8', mode: 0o600 },
+    );
+  }
+}
+
+async function snapshotWorkspaceDatabases(
+  userDataRoot: string,
+  registry: Readonly<LocalWorkspaceRegistryV1>,
+) {
+  return Promise.all(
+    registry.workspaces.map(async (workspace) => {
+      const databaseFilePath = createDesktopProfilePaths(
+        join(userDataRoot, 'workspaces', workspace.workspaceId),
+      ).databaseFilePath;
+      return {
+        snapshot: await snapshotFile(databaseFilePath),
+        workspaceId: workspace.workspaceId,
+      };
+    }),
+  );
+}
+
+async function snapshotFile(path: string) {
+  const [bytes, metadata] = await Promise.all([
+    fileSystem.readFile(path),
+    fileSystem.stat(path),
+  ]);
+  return {
+    mtimeMs: metadata.mtimeMs,
+    sha256: createHash('sha256').update(bytes).digest('hex'),
+    size: metadata.size,
+  };
 }
 
 function workspaceIdFromPublishedRoot(path: string): string {

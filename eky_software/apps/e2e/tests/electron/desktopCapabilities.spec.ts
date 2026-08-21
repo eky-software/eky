@@ -19,6 +19,7 @@ import {
   readElectronPdfPreviewUrls,
   readElectronProcessMetrics,
   runElectronWorkspaceManagementCompositionProof,
+  runElectronWorkspaceMigrationInventoryProof,
   runElectronWorkspaceStartupRecoveryProof,
 } from '../../src/electron/electronMainCapabilities.js';
 import {
@@ -83,6 +84,43 @@ test('DESK-WORKSPACE-MANAGEMENT-001 @critical @recovery proves the production co
   });
   expect(proof.candidateAppVersion).toMatch(/^\d+\.\d+\.\d+$/u);
   expect(proof.candidateAppVersion).not.toBe('0.1.0-alpha.1');
+});
+
+test('DESK-WORKSPACE-MIGRATION-INVENTORY-001 @critical @recovery @security inventories packaged workspaces read only', async ({
+  e2eElectron,
+}) => {
+  const exposedBridgeKeys = await e2eElectron.page.evaluate(() =>
+    Object.keys(
+      (window as typeof window & { ekyDesktop?: Record<string, unknown> })
+        .ekyDesktop ?? {},
+    ),
+  );
+  expect(
+    exposedBridgeKeys.filter((key) => /migration|inventory/iu.test(key)),
+  ).toEqual([]);
+
+  const proof = await runElectronWorkspaceMigrationInventoryProof(
+    e2eElectron.electronApp,
+  );
+
+  expect(proof).toEqual({
+    activeRuntimeCount: 0,
+    activeWorkspacePreserved: true,
+    artifactRootsPreserved: true,
+    backendStoppedBeforeInventory: true,
+    candidateProcessesReleased: true,
+    databaseSnapshotsPreserved: true,
+    inspectedWorkspaceCount: 3,
+    inventoryStatuses: [
+      'current',
+      'compatiblePending',
+      'invalidHistory',
+    ],
+    maximumActiveRuntimeCount: 1,
+    migrationSidecarsAbsent: true,
+    observerSucceeded: true,
+    registryPreserved: true,
+  });
 });
 
 test('DESK-WORKSPACE-STARTUP-001 @critical @recovery rejects an unaccepted build and recovers an unpublished adoption', async ({

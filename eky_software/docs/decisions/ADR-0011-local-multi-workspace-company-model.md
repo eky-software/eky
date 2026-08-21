@@ -607,7 +607,15 @@ tilat ovat:
 - `compatiblePending`: historia on katkeamaton immutable historiallinen
   prefix ja vähintään yksi nykyisen manifestin migraatio puuttuu
 - `invalidHistory`: historia on tuleva, muuttunut, aukollinen, duplikaatti,
-  tuntematon tai ristiriitainen taikka SQLite on vioittunut tai lukukelvoton.
+  tuntematon tai ristiriitainen taikka turvallisesti avatun SQLite-tiedoston
+  sisältö osoittautuu integrity- tai foreign key -tarkastuksessa
+  vioittuneeksi.
+
+Puuttuva tai turvaton workspace-juuri, puuttuva tai ei-kanoninen tietokanta,
+avaamaton storage, väärä `profileId` sekä utility-, protokolla- tai shutdown-
+virhe keskeyttävät koko inventaarion fail-closed. Näitä ei tulkita yhden
+työtilan `invalidHistory`-tilaksi, koska turvallista työtilaidentiteettiä tai
+read-only-tarkastusta ei ole silloin todistettu.
 
 W6A.1 ei kirjoita registryyn, avaa normaalia workspace-runtimea, aja
 migraatioita, luo palautuspistettä tai hyväksy buildia. Se ei myöskään vielä

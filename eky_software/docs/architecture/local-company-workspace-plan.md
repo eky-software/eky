@@ -865,6 +865,14 @@ luokituksen sekä applied/pending-lukumäärät. Polkuja, migration-nimiä tai
 -tiivisteitä, `companyId`:tä, `profileId`:tä, lineagea, sessionia tai raakaa
 SQLite-virhettä ei palauteta eikä lokiteta.
 
+`invalidHistory` on tietosisällön luokitus: kanoninen, tavallinen ja yhden
+linkin tietokantatiedosto on voitu avata read-only-tilassa, mutta integrity-,
+foreign key- tai migration history -tarkastus osoittaa sisällön vioittuneeksi
+tai ristiriitaiseksi. Puuttuva tai turvaton workspace-juuri, puuttuva tai
+ei-kanoninen tietokanta, avaamaton storage, väärä `profileId` taikka utility-,
+protokolla- tai shutdown-virhe ei tuota entryä, vaan keskeyttää koko
+inventaarion fail-closed.
+
 Checkpoint ei kirjoita registryä tai tietokantaa, käynnistä workspace-
 runtimea, aja migraatioita, luo recovery pointia, muuta aktiivista osoitinta
 tai accepted build -metadataa eikä vielä kytkeydy production-startupiin.
@@ -872,6 +880,14 @@ tai accepted build -metadataa eikä vielä kytkeydy production-startupiin.
 `compatiblePending`-työtilan migraatio kuuluvat W6A.2:een.
 
 **Pakollinen näyttö:**
+
+- `DESK-WORKSPACE-MIGRATION-INVENTORY-001` käyttää oikeaa paketoitua backend-
+  runneria ja kolmea synteettistä työtilaa tiloissa `current`,
+  `compatiblePending` ja `invalidHistory`
+- registry, aktiivinen osoitin, tietokannan SHA-256/koko/mtime ja PDF-
+  artifact-juuret säilyvät muuttumattomina eikä SQLite-sidecareja synny
+- utility-tarkastukset ovat sarjallisia, normaali backend on suljettu ennen
+  inventaariota ja testin jälkeen uusia utility-prosesseja on nolla
 
 - puhdas 0.2.6-asennus ja first/second startup
 - synteettinen 0.2.6-profiili sekä erikseen turvallisesti johdettu paikallinen

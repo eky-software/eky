@@ -201,6 +201,24 @@ Object.assign(globalThis, {
         userDataRoot: config.paths.userDataPath,
       });
     },
+    async runWorkspaceMigrationInventoryProof() {
+      if (lifecycle === undefined) {
+        throw new Error('WORKSPACE_MIGRATION_INVENTORY_LIFECYCLE_MISSING');
+      }
+      await lifecycle.shutdown();
+      if (backendController.isRunning()) {
+        throw new Error('WORKSPACE_MIGRATION_INVENTORY_BACKEND_RUNNING');
+      }
+      const { runWorkspaceMigrationInventoryProof } = await import(
+        './workspaceMigrationInventoryProof.js'
+      );
+      return runWorkspaceMigrationInventoryProof({
+        appVersion: e2eAppVersion,
+        buildRevision: 'development',
+        resourcesPath: config.paths.resourcesPath,
+        userDataRoot: config.paths.userDataPath,
+      });
+    },
     async runWorkspaceStartupRecoveryProof() {
       const { runWorkspaceStartupRecoveryProof } = await import(
         './workspaceStartupRecoveryProof.js'

@@ -8,6 +8,7 @@ import {
   readFile,
   readdir,
   rm,
+  stat,
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -242,7 +243,7 @@ async function expectUnchangedInspection(
   expected: object,
   expectedMigrationsDirectory = migrationsDirectory,
 ): Promise<void> {
-  const before = await sha256(fixture.databaseFilePath);
+  const before = await snapshotDatabase(fixture);
   await expect(
     inspectPublishedWorkspaceMigration({
       ...releaseIdentity,
@@ -252,8 +253,7 @@ async function expectUnchangedInspection(
       publishedRoot: fixture.publishedRoot,
     }),
   ).resolves.toEqual(expected);
-  expect(await sha256(fixture.databaseFilePath)).toBe(before);
-  expect(await readdir(fixture.publishedRoot)).toEqual(['profile.sqlite']);
+  expect(await snapshotDatabase(fixture)).toEqual(before);
 }
 
 function mutateDatabase(
@@ -270,4 +270,14 @@ function mutateDatabase(
 
 async function sha256(path: string): Promise<string> {
   return createHash('sha256').update(await readFile(path)).digest('hex');
+}
+
+async function snapshotDatabase(fixture: WorkspaceFixture) {
+  const metadata = await stat(fixture.databaseFilePath);
+  return {
+    fileNames: (await readdir(fixture.publishedRoot)).sort(),
+    mtimeMs: metadata.mtimeMs,
+    sha256: await sha256(fixture.databaseFilePath),
+    size: metadata.size,
+  };
 }

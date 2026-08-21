@@ -772,6 +772,14 @@ nykyistä migration manifestia ilman pending-migraatioita,
 pending-migraatioita, ja `invalidHistory` tulevaa, muuttunutta, aukollista,
 duplikaattia, tuntematonta, ristiriitaista tai vioittunutta historiaa.
 
+`invalidHistory` kuvaa turvallisesti johdetun ja read-only-tilassa avatun
+tietokannan sisältöä. Integrity-, foreign key- tai migration history -virhe,
+mukaan lukien avauksen jälkeen havaittu SQLite-sisällön vioittuminen, voidaan
+luokitella siihen. Puuttuva tai turvaton juuri, puuttuva tai ei-kanoninen
+tietokantatiedosto, avaamaton storage, `profileId`-ristiriita sekä utility-,
+protokolla- tai shutdown-virhe keskeyttävät koko inventaarion fail-closed;
+niitä ei alenneta yhden työtilan `invalidHistory`-entryksi.
+
 Inventory ei kirjoita registryä tai workspace-dataa, aja migraatiota, luo
 palautuspistettä, käynnistä backend-runtimea tai muuta accepted build -tilaa.
 Vain myöhempi W6A.2 saa antaa aktiiviselle `compatiblePending`-työtilalle
