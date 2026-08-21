@@ -189,6 +189,26 @@ käynnistä migraatiota, palautuspistettä, backendia, accepted build -kirjoitus
 tai renderer-capabilitya. Production first-start -kytkentä ja aktiivisen
 workspacen migration/readiness kuuluvat W6A.2B:hen.
 
+### Local Workspace W6A.2B -checkpoint
+
+W6A.2B kytkee W6A.2A:n suunnitelman ja journalin Electron mainin production
+first-startiin. Workspace-orchestraattori omistaa read-only-inventaarion,
+deterministisen suunnitelman ja passiivisten invalidien registry-siirtymän.
+Nykyinen `FirstStartUpdateCoordinator` säilyy aktiivisen workspacen
+preMigration-, migration-, readiness- ja accepted build -auktoriteettina.
+Workspace-moduuli ei kirjoita update-journalia, direct Setup recoverya tai
+accepted build -metadataa eikä aja SQL-migraatioita.
+
+`DESK-WORKSPACE-FIRST-START-001` todistaa 22.8.2026 mixed- ja all-current-
+skenaariot production-compositionilla. Vain aktiivinen yhteensopiva
+historiallinen prefix migroidaan. Passiivinen yhteensopiva prefix ja sen
+artifactit säilyvät muuttumattomina, passiivinen invalidi historia muuttaa
+vain registry-lifecyclea ja target hyväksytään vasta readiness- sekä registry-
+todisteiden jälkeen. PreMigration-snapshot saa käyttää tarkoituskohtaista
+historical-prefix-politiikkaa; muut snapshotit ja portable backup vaativat
+täsmälleen nykyisen manifestin. Passiivisen pending-workspacen
+aktivointimigraatio ja paketoitu W6-releaseportti ovat avoimia.
+
 ## Tarkistuslähteet
 
 Implemented-rivit tarkistetaan ensisijaisesti seuraavista lähteistä:

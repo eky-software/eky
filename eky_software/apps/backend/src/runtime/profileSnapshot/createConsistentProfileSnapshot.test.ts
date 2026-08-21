@@ -45,6 +45,7 @@ describe('consistent profile snapshot', () => {
 
     await expect(
       service.createProfileSnapshot({
+        migrationPolicy: 'exactCurrentManifest',
         operationId: fixture.operationId,
         signal: new AbortController().signal,
       }),
@@ -76,6 +77,7 @@ describe('consistent profile snapshot', () => {
 
     await expect(
       service.createProfileSnapshot({
+        migrationPolicy: 'exactCurrentManifest',
         operationId: fixture.operationId,
         signal: new AbortController().signal,
       }),
@@ -109,6 +111,7 @@ describe('consistent profile snapshot', () => {
 
     await expect(
       service.createProfileSnapshot({
+        migrationPolicy: 'exactCurrentManifest',
         operationId: fixture.operationId,
         signal: new AbortController().signal,
       }),

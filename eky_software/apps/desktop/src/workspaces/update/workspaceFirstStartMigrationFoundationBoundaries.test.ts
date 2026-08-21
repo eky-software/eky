@@ -24,9 +24,16 @@ const foundationProductionFiles = [
 ].map((fileName) => join(currentDirectory, fileName));
 
 describe('workspace first-start migration foundation boundaries', () => {
-  it('is not wired into desktop startup or preload in this checkpoint', async () => {
-    await expectNoFoundationImports([
+  it('is wired only through desktop main and remains absent from preload', async () => {
+    const compositionSource = await readFile(
       join(desktopSourceRoot, 'main', 'desktopComposition.ts'),
+      'utf8',
+    );
+
+    expect(compositionSource).toContain(
+      'createWorkspaceFirstStartMigrationComposition',
+    );
+    await expectNoFoundationImports([
       join(desktopSourceRoot, 'main', 'index.ts'),
       join(desktopSourceRoot, 'preload', 'index.cts'),
     ]);

@@ -80,9 +80,11 @@ Mandatory boundaries:
   accepted source/target build identity and canonical registry hashes prove
   the exact state; unknown or conflicting state remains recovery-required
   without guessed repair or journal cleanup
-- W6A.2B alone may later connect the plan to production first start, create the
-  active workspace preMigration point, authorize its pending migrations,
-  prove backend readiness and accept the target build
+- W6A.2B connects the plan to production first start: the main-owned workspace
+  orchestrator coordinates inventory, plan and passive registry transitions,
+  while the existing `FirstStartUpdateCoordinator` alone authorizes the active
+  workspace preMigration point, pending migrations, backend readiness and
+  target-build acceptance
 - use one main-owned installation-scoped `WorkspaceMaintenanceLease` for
   backup, restore, update and workspace ownership changes; keep each module's
   narrower local guard and preserve the documented lock order

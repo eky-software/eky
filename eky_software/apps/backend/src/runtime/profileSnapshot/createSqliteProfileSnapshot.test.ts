@@ -2,15 +2,18 @@ import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import {
   chmod,
+  cp,
   lstat,
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   rm,
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -46,6 +49,7 @@ describe('SQLite profile snapshot', () => {
     ).not.toThrow();
     await fixture.maintenanceState.begin(operationId, 1_000);
     const metadata = await fixture.service.createSqliteSnapshot({
+      migrationPolicy: 'exactCurrentManifest',
       operationId,
       signal: new AbortController().signal,
     });
@@ -96,6 +100,7 @@ describe('SQLite profile snapshot', () => {
 
     await expect(
       fixture.service.createSqliteSnapshot({
+        migrationPolicy: 'exactCurrentManifest',
         operationId,
         signal: new AbortController().signal,
       }),
@@ -116,6 +121,7 @@ describe('SQLite profile snapshot', () => {
 
     await expect(
       fixture.service.createSqliteSnapshot({
+        migrationPolicy: 'exactCurrentManifest',
         operationId,
         signal: controller.signal,
       }),
@@ -140,6 +146,7 @@ describe('SQLite profile snapshot', () => {
 
     await expect(
       fixture.service.createSqliteSnapshot({
+        migrationPolicy: 'exactCurrentManifest',
         operationId,
         signal: new AbortController().signal,
       }),
@@ -150,6 +157,106 @@ describe('SQLite profile snapshot', () => {
 
     fixture.maintenanceState.end(operationId);
     fixture.database.close();
+  });
+
+  it('accepts an immutable historical migration prefix only when explicitly requested', async () => {
+    const fixture = await createFixture();
+    const operationId = randomUUID();
+    await writeFile(
+      join(fixture.migrationsDirectory, '002_future_schema.sql'),
+      'CREATE TABLE future_schema (id TEXT PRIMARY KEY);',
+      'utf8',
+    );
+    await fixture.maintenanceState.begin(operationId, 1_000);
+
+    await expect(
+      fixture.service.createSqliteSnapshot({
+        migrationPolicy: 'compatibleHistoricalPrefix',
+        operationId,
+        signal: new AbortController().signal,
+      }),
+    ).resolves.toMatchObject({
+      logicalPath: 'profile.sqlite',
+      sha256: expect.any(String),
+    });
+
+    fixture.maintenanceState.end(operationId);
+    fixture.database.close();
+  });
+
+  it('backs up a complete immutable historical migration prefix before first-start migrations', async () => {
+    const root = await createTemporaryRoot(
+      'eky-sqlite-historical-snapshot-',
+    );
+    const databasePath = join(root, 'source.sqlite');
+    const historicalMigrationsDirectory = join(
+      root,
+      'historical-migrations',
+    );
+    const currentMigrationsDirectory = fileURLToPath(
+      new URL('../../database/migrations/', import.meta.url),
+    );
+    const stagingRoot = join(root, 'staging');
+    await cp(currentMigrationsDirectory, historicalMigrationsDirectory, {
+      recursive: true,
+    });
+    const migrationNames = (
+      await readdir(historicalMigrationsDirectory, {
+        withFileTypes: true,
+      })
+    )
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.sql'))
+      .map((entry) => entry.name)
+      .sort();
+    const latestMigration = migrationNames.at(-1);
+    expect(latestMigration).toBeDefined();
+    if (latestMigration === undefined) {
+      throw new Error('TEST_HISTORICAL_MIGRATION_MISSING');
+    }
+    await rm(join(historicalMigrationsDirectory, latestMigration));
+    await mkdir(stagingRoot, { mode: 0o700 });
+    await chmod(stagingRoot, 0o700);
+
+    const database = new Database(databasePath);
+    database.pragma('foreign_keys = ON');
+    database.pragma('journal_mode = WAL');
+    await runMigrations(database, {
+      migrationsDirectory: historicalMigrationsDirectory,
+      releaseIdentity: {
+        appVersion: '0.2.6',
+        buildRevision: 'a'.repeat(40),
+      },
+    });
+    const maintenanceState = new ProfileMaintenanceState();
+    const service = createSqliteProfileSnapshotService({
+      database,
+      maintenanceState,
+      migrationsDirectory: currentMigrationsDirectory,
+      stagingRoot,
+    });
+    const operationId = randomUUID();
+    await maintenanceState.begin(operationId, 1_000);
+
+    await expect(
+      service.createSqliteSnapshot({
+        migrationPolicy: 'compatibleHistoricalPrefix',
+        operationId,
+        signal: new AbortController().signal,
+      }),
+    ).resolves.toMatchObject({
+      logicalPath: 'profile.sqlite',
+      sha256: expect.any(String),
+    });
+    expect(() =>
+      inspectSqliteProfileDatabase(
+        join(stagingRoot, operationId, 'profile.sqlite'),
+        currentMigrationsDirectory,
+        'compatibleHistoricalPrefix',
+      ),
+    ).not.toThrow();
+
+    maintenanceState.end(operationId);
+    database.close();
   });
 
   it('does not overwrite or remove a pre-existing operation directory', async () => {
@@ -163,6 +270,7 @@ describe('SQLite profile snapshot', () => {
 
     await expect(
       fixture.service.createSqliteSnapshot({
+        migrationPolicy: 'exactCurrentManifest',
         operationId,
         signal: new AbortController().signal,
       }),
@@ -192,6 +300,7 @@ describe('SQLite profile snapshot', () => {
 
     await expect(
       service.createSqliteSnapshot({
+        migrationPolicy: 'exactCurrentManifest',
         operationId,
         signal: new AbortController().signal,
       }),

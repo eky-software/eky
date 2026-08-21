@@ -106,6 +106,7 @@ export class SqliteProfileSnapshotService
       inspectSqliteProfileDatabase(
         destinationFilePath,
         this.dependencies.migrationsDirectory,
+        input.migrationPolicy,
       );
       await syncFile(destinationFilePath);
       const sha256 = await calculateSha256(destinationFilePath);

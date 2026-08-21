@@ -23,6 +23,33 @@ describe('desktop first-start boundaries', () => {
     expect(workspaceStartup).toBeGreaterThan(admission);
   });
 
+  it('recovers workspace first-start state before workspace recovery and plans before backend startup', async () => {
+    const source = await readFile(
+      join(sourceRoot, 'main', 'desktopComposition.ts'),
+      'utf8',
+    );
+    const admission = source.indexOf(
+      'await requirePreWorkspaceBuildAdmission',
+    );
+    const firstStartRecovery = source.indexOf(
+      'await workspaceFirstStartMigration.recoverBeforeWorkspaceResolution()',
+    );
+    const workspaceStartup = source.indexOf(
+      'await resolveDesktopWorkspaceStartup',
+    );
+    const firstStartPreparation = source.indexOf(
+      'await workspaceFirstStartMigration.prepareBeforeBackend()',
+    );
+    const backendStart = source.indexOf(
+      'backendHandle = await dependencies.startBackend',
+    );
+
+    expect(firstStartRecovery).toBeGreaterThan(admission);
+    expect(workspaceStartup).toBeGreaterThan(firstStartRecovery);
+    expect(firstStartPreparation).toBeGreaterThan(workspaceStartup);
+    expect(backendStart).toBeGreaterThan(firstStartPreparation);
+  });
+
   it('resolves adoption recovery before any backend runtime can own SQLite', async () => {
     const compositionSource = await readFile(
       join(sourceRoot, 'main', 'desktopComposition.ts'),
@@ -67,13 +94,21 @@ describe('desktop first-start boundaries', () => {
     const firstStartAcceptance = source.indexOf(
       'await firstStartUpdateCoordinator.acceptAfterBackendReady()',
     );
+    const registryTransition = source.indexOf(
+      'await workspaceFirstStartMigration.transitionRegistryAfterActiveWorkspaceAcceptance()',
+    );
+    const workspaceCompletion = source.indexOf(
+      'await workspaceFirstStartMigration.completeAfterTargetAcceptance()',
+    );
     const applicationWindow = source.indexOf(
       'applicationWindow = createApplicationWindow',
     );
 
     expect(backendStart).toBeGreaterThan(-1);
-    expect(firstStartAcceptance).toBeGreaterThan(backendStart);
-    expect(applicationWindow).toBeGreaterThan(firstStartAcceptance);
+    expect(registryTransition).toBeGreaterThan(backendStart);
+    expect(firstStartAcceptance).toBeGreaterThan(registryTransition);
+    expect(workspaceCompletion).toBeGreaterThan(firstStartAcceptance);
+    expect(applicationWindow).toBeGreaterThan(workspaceCompletion);
   });
 
   it('does not expose first-start or migration controls through preload', async () => {

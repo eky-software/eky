@@ -29,6 +29,9 @@ export function startProfileSnapshotBrokerBackend(input: {
       profileId: string;
     }>;
     createProfileSnapshot(input: {
+      migrationPolicy:
+        | 'exactCurrentManifest'
+        | 'compatibleHistoricalPrefix';
       operationId: string;
       signal: AbortSignal;
     }): Promise<{
@@ -113,6 +116,7 @@ export function startProfileSnapshotBrokerBackend(input: {
           } else if (request.operation === 'createProfileSnapshot') {
             activeSnapshotAbortController = new AbortController();
             const snapshot = await input.snapshot.createProfileSnapshot({
+              migrationPolicy: request.migrationPolicy,
               operationId: request.operationId,
               signal: activeSnapshotAbortController.signal,
             });

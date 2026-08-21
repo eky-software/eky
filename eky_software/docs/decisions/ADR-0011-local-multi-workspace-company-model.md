@@ -632,11 +632,18 @@ W6A.2 jaetaan kahteen erilliseen hyväksyntärajaan:
   vain inventaarion todistamat passiiviset `invalidHistory`-työtilat
   `recoveryRequired`-tilaan. Se ei kytkeydy production-startupiin, aja
   migraatiota, luo palautuspistettä, käynnistä backendia tai hyväksy buildia.
-- W6A.2B kytkee myöhemmin suunnitelman first-startiin vasta build admissionin
+- W6A.2B kytkee suunnitelman first-startiin vasta build admissionin
   ja W6A.1-inventaarion jälkeen. Se omistaa aktiivisen
   `compatiblePending`-työtilan preMigration- ja migration-auktoriteetin,
   aktiivisen backend-readinessin, accepted build -kirjoituksen sekä journalin
   terminaalisen hyväksynnän tai palautuksen.
+
+W6A.2B:n production-kytkentä on toteutettu 22.8.2026 siten, että workspace-
+orchestraattori koordinoi inventaarion, suunnitelman ja registry-journalin,
+mutta nykyinen `FirstStartUpdateCoordinator` säilyy aktiivisen työtilan
+preMigration-, migration-, readiness- ja accepted build -auktoriteettina.
+Passiivisen `compatiblePending`-työtilan aktivointimigraatio ja täysi
+paketoitu W6-releaseportti ovat edelleen erillisiä myöhempiä rajoja.
 
 W6A.2A:n suunnitelma vaaditaan vain `authorizedNewerBuild`- ja
 `coordinatedUpdateTarget`-admissioneissa. Development-, initial install-,

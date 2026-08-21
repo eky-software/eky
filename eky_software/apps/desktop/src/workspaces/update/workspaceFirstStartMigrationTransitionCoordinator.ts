@@ -136,6 +136,33 @@ export class WorkspaceFirstStartMigrationTransitionCoordinator {
     await this.options.journal.discardPrepared(operationId);
   }
 
+  async completeAcceptedTarget(input: {
+    readonly operationId: string;
+    readonly sourceBuild: Readonly<WorkspaceFirstStartBuildIdentity>;
+    readonly targetBuild: Readonly<WorkspaceFirstStartBuildIdentity>;
+  }): Promise<void> {
+    const journal = await this.readRequiredJournal(input.operationId);
+    if (journal.state !== 'registryTransitioned') return invalidTransition();
+    assertBuildsMatch(journal.sourceBuild, input.sourceBuild);
+    assertBuildsMatch(journal.targetBuild, input.targetBuild);
+
+    const registry = await this.readRequiredRegistry();
+    if (
+      calculateWorkspaceRegistrySha256(registry) !==
+      journal.transitionedRegistrySha256
+    ) {
+      return recoveryRequired();
+    }
+    const acceptedBuild = await this.options.acceptedBuild.read();
+    if (
+      acceptedBuild === undefined ||
+      !buildsAreEqual(acceptedBuild, journal.targetBuild)
+    ) {
+      return recoveryRequired();
+    }
+    await this.options.journal.removeTransitioned(journal.operationId);
+  }
+
   async recover(
     runningBuildInput: Readonly<WorkspaceFirstStartBuildIdentity>,
   ): Promise<Readonly<WorkspaceFirstStartMigrationRecoveryResult>> {
@@ -183,6 +210,7 @@ export class WorkspaceFirstStartMigrationTransitionCoordinator {
       }
       if (
         accepted === 'target' &&
+        buildsAreEqual(runningBuild, journal.targetBuild) &&
         registrySha256 === journal.transitionedRegistrySha256
       ) {
         await this.options.journal.discardPrepared(journal.operationId);
@@ -208,6 +236,7 @@ export class WorkspaceFirstStartMigrationTransitionCoordinator {
     }
     if (
       accepted === 'target' &&
+      buildsAreEqual(runningBuild, journal.targetBuild) &&
       registrySha256 === journal.transitionedRegistrySha256
     ) {
       await this.options.journal.removeTransitioned(journal.operationId);

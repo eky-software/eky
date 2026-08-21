@@ -96,7 +96,7 @@ export class ProfileBusinessArtifactStager {
   }
 
   async stageArtifacts(
-    input: CreateProfileSnapshotInput,
+    input: Pick<CreateProfileSnapshotInput, 'operationId' | 'signal'>,
   ): Promise<ProfileSnapshotArtifactCatalogMetadata> {
     if (
       !this.dependencies.maintenanceState.isActiveOperation(

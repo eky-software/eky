@@ -931,13 +931,76 @@ W6A.2B-checkpointiin.
 
 ### W6A.2B: Production first-start -kytkentä
 
-W6A.2B saa myöhemmin ajaa W6A.2A:n suunnitelman vasta pre-workspace build
-admissionin ja onnistuneen W6A.1-inventaarion jälkeen mutta ennen business-
-backendin avaamista. Se antaa migration-oikeuden vain aktiiviselle
-`compatiblePending`-työtilalle, muodostaa sen workspace-scoped
-preMigration-pisteen, todistaa backend-readinessin ja hyväksyy buildin vasta
-nykyisten first-start-porttien jälkeen. Passiivisen validin prefixin
-migraatio jää edelleen ensimmäiseen hallittuun aktivointiin.
+W6A.2B kytkee W6A.2A:n suunnitelman production first-startiin. Electron mainin
+omistama orchestraattori koordinoi vain workspace-inventaarion, suunnitelman ja
+registry-journalin. Nykyinen `FirstStartUpdateCoordinator` säilyy aktiivisen
+työtilan migraation, update/direct Setup -tilan ja accepted build -metadatan
+ainoana auktoriteettina. Workspace-moduuli ei kirjoita update-journalia,
+direct Setup recoverya tai accepted build -metadataa eikä aja SQL-migraatioita.
+
+**Toteutustila 22.8.2026:** production first-start -kytkentä on toteutettu
+unit-, integration- ja Electron-E2E-tasolla. `DESK-WORKSPACE-FIRST-START-001`
+todistaa sekä mixed-skenaarion että all-current-skenaarion synteettisillä
+yksityisillä testiprofiileilla. Mixed-skenaariossa aktiivinen
+`compatiblePending` migroidaan ja hyväksytään, passiivinen
+`compatiblePending` säilyy byte-identtisenä `ready`-tilassa ja passiivinen
+`invalidHistory` siirtyy vain registryssä `recoveryRequired`-tilaan.
+All-current-skenaario ei luo W6-journalia, ja täsmälleen hyväksytyn buildin
+toinen käynnistys ohittaa inventaarion.
+
+PreMigration-palautuspiste saa validoida katkeamattoman ja muuttumattoman
+historiallisen migration-prefixin tarkoituskohtaisella
+`compatibleHistoricalPrefix`-politiikalla. Kaikki normaalit, manuaaliset,
+preUpdate-, preRestore-, automatic- ja portable backup -snapshotit vaativat
+edelleen täsmälleen nykyisen migration manifestin. Tämä poikkeus ei löysennä
+future-, missing-middle- tai changed-history-torjuntaa.
+
+Production-järjestys on:
+
+1. pre-workspace build admission
+2. keskeneräisen W6 first-start -journalin recovery
+3. adoption- ja switch-recovery sekä aktiivisen työtilan ratkaisu
+4. vain update-admissionissa kaikkien `ready`-työtilojen sarjallinen read-only-
+   inventaario
+5. deterministinen migration plan
+6. tarvittaessa `prepared` W6 -journal ennen business-backendia
+7. aktiivisen business-backendin käynnistys
+8. nykyisen `FirstStartUpdateCoordinator`-migration-auktoriteetin tarkistus
+9. vain aktiivisen `compatiblePending`-työtilan migraatio
+10. aktiivisen backendin health-, identity- ja artifact-validointi
+11. aktiivisen workspace-startupin hyväksyntä
+12. suunniteltujen passiivisten `invalidHistory`-entryjen registry-siirtymä
+13. transitioned registry -hashin todistus
+14. target buildin hyväksyntä update-auktoriteetilla
+15. accepted build -metadatan target-todistus ja W6-journalin täsmällinen
+    target-hyväksyntä sekä poisto
+16. vasta tämän jälkeen UI-ikkunan avaaminen.
+
+`development`, `initialInstall` ja `exactAcceptedBuild` eivät aja W6-
+inventaarioa. `authorizedNewerBuild` ja `coordinatedUpdateTarget` ajavat sen
+aina. All-current-update ei luo W6-journalia. Aktiivinen
+`compatiblePending` vaatii journalin myös silloin, kun passiivisia
+`invalidHistory`-entryjä ei ole ja source- sekä transitioned-registry-hash ovat
+samat. Passiivinen `compatiblePending` pysyy `ready`-tilassa ja byte-
+identtisenä; sen migraatio kuuluu ensimmäiseen myöhempään hallittuun
+aktivointiin. Aktiivinen `invalidHistory` sekä structural-, identity-,
+utility- tai protocol-virhe pysäyttävät first-startin ennen backendia.
+
+Recovery ajetaan ennen uutta inventaariota. `noJournal` jatkaa normaalisti ja
+`recoveredSource` jatkaa todistetulla source-registryllä. `acceptedTarget`
+hyväksytään vain target-buildissa. `resumable` sallitaan vain target-buildin,
+accepted source buildin, update-admissionin ja source-registry-hashin täsmätessä.
+Exact accepted source build saa perua `prepared`-journalin vain täsmällisen
+source-registry-todisteen jälkeen. Muut yhdistelmät ovat
+`recoveryRequired`, jolloin inventaarioa, backendia tai registry-kirjoitusta
+ei tehdä.
+
+Jos inventaario tai suunnitelma epäonnistuu ennen
+`FirstStartUpdateCoordinator.beforeMigrations()`-kutsua, vain update-moduulin
+kapea pre-backend failure -raja saa siirtää koordinoidun update-journalin
+`rollbackRequired`-tilaan. Direct Setupissa accepted source säilyy, targetia
+ei hyväksytä eikä olemassa olevaa recovery-tilaa saa heikentää. Epäselvä
+durable tila pysäyttää käynnistyksen fail closed.
 
 **Pakollinen näyttö:**
 
@@ -948,6 +1011,15 @@ migraatio jää edelleen ensimmäiseen hallittuun aktivointiin.
   artifact-juuret säilyvät muuttumattomina eikä SQLite-sidecareja synny
 - utility-tarkastukset ovat sarjallisia, normaali backend on suljettu ennen
   inventaariota ja testin jälkeen uusia utility-prosesseja on nolla
+- `DESK-WORKSPACE-FIRST-START-001` käyttää oikeaa Electron main -compositionia,
+  W6A.2A-journalia, `FirstStartUpdateCoordinator`-auktoriteettia ja oikeaa
+  backend migration runneria
+- todistuksessa aktiivinen historiallinen prefix migroidaan, passiivinen
+  yhteensopiva prefix ja sen artifact-juuri säilyvät muuttumattomina,
+  passiivinen invalidi historia rajataan registry-muutokseen ja target-build
+  hyväksytään vasta koko ketjun jälkeen
+- todistus sulkee backendin ja Electronin hallitusti, poistaa yksityisen
+  testirootin ja jättää uusia backend- tai utility-prosesseja nolla
 
 - puhdas 0.2.6-asennus ja first/second startup
 - synteettinen 0.2.6-profiili sekä erikseen turvallisesti johdettu paikallinen
@@ -968,6 +1040,10 @@ migraatio jää edelleen ensimmäiseen hallittuun aktivointiin.
   `recoveryRequired`-tilaan ilman muiden työtilojen kirjoituksia
 - PDF-arkisto käyttää workspace-kohtaista alikansiota, samat tiedostonimet
   eivät törmää eikä archive-root siirry backupissa.
+
+Ensimmäisen passiivisen `compatiblePending`-työtilan aktivointimigraatio sekä
+koko paketoitu multi-workspace W6 -releaseportti ovat edelleen avoimia. Edellä
+kirjattu Electron-todiste ei yksin täytä niitä.
 
 In-app update testataan erikseen vain, jos `localUnsignedPilot`-polku on
 kyseisessä checkpointissa hyväksytty. MSI-gate ei piilota in-app update -puutetta.
