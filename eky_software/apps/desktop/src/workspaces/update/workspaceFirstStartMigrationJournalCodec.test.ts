@@ -44,6 +44,24 @@ describe('workspace first-start migration journal codec', () => {
     );
   });
 
+  it('does not serialize workspace paths, lineage, sessions or business data', () => {
+    const serializedJournal = new TextDecoder().decode(
+      serializeWorkspaceFirstStartMigrationJournal(journal()),
+    );
+
+    for (const prohibitedTerm of [
+      'companyId',
+      'databaseFilePath',
+      'documentsRoot',
+      'lineageIdentity',
+      'profileId',
+      'runtimeSession',
+      'workspaceLabel',
+    ]) {
+      expect(serializedJournal).not.toContain(prohibitedTerm);
+    }
+  });
+
   it.each([
     ['unknown key', { ...journal(), unexpected: true }],
     ['wrong version', { ...journal(), formatVersion: 2 }],

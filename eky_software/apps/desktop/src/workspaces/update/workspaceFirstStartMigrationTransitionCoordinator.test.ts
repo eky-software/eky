@@ -36,6 +36,19 @@ const createdAt = '2026-08-21T00:00:00.000Z';
 const operationId = '00000000-0000-4000-8000-000000000001';
 
 describe('WorkspaceFirstStartMigrationTransitionCoordinator', () => {
+  it('has no recovery side effects before the journal is durably written', async () => {
+    const ports = createPorts({
+      acceptedBuild: accepted(sourceBuild),
+      registry: sourceRegistry(),
+    });
+
+    await expect(coordinator(ports).recover(sourceBuild)).resolves.toEqual({
+      kind: 'noJournal',
+    });
+    expect(ports.events).toEqual([]);
+    expect(ports.registry.writes).toHaveLength(0);
+  });
+
   it('prepares the journal before any registry transition', async () => {
     const ports = createPorts({ registry: sourceRegistry() });
     const subject = coordinator(ports);
@@ -93,6 +106,32 @@ describe('WorkspaceFirstStartMigrationTransitionCoordinator', () => {
     expect(ports.registry.writes).toHaveLength(0);
     expect(ports.events).toEqual(['journal.write']);
     expect(ports.journal.value?.state).toBe('registryTransitioned');
+  });
+
+  it('advances only the journal when there are no passive workspaces', async () => {
+    const registry = activeOnlyRegistry();
+    const ports = createPorts({ registry });
+    const subject = coordinator(ports);
+    await subject.prepare({
+      operationId,
+      plan: requiredActiveOnlyPlan(),
+      sourceBuild,
+      targetBuild,
+      createdAt,
+    });
+
+    const result = await subject.transitionRegistry({
+      operationId,
+      sourceBuild,
+      targetBuild,
+      updatedAt: '2026-08-21T00:00:01.000Z',
+    });
+
+    expect(result.sourceRegistrySha256).toBe(
+      result.transitionedRegistrySha256,
+    );
+    expect(ports.registry.writes).toHaveLength(0);
+    expect(ports.events).toEqual(['journal.write', 'journal.write']);
   });
 
   it('restores the source registry after a crash between registry and journal writes', async () => {
@@ -395,6 +434,27 @@ function requiredPlan(): Readonly<WorkspaceFirstStartMigrationPlan> {
       workspaceId: activeWorkspaceId,
     }),
     passiveRecoveryWorkspaceIds: Object.freeze([passiveWorkspaceId]),
+  });
+}
+
+function requiredActiveOnlyPlan(): Readonly<WorkspaceFirstStartMigrationPlan> {
+  return Object.freeze({
+    kind: 'required',
+    activeWorkspace: Object.freeze({
+      appliedMigrationCount: 38,
+      pendingMigrationCount: 2,
+      status: 'compatiblePending',
+      workspaceId: activeWorkspaceId,
+    }),
+    passiveRecoveryWorkspaceIds: Object.freeze([]),
+  });
+}
+
+function activeOnlyRegistry(): Readonly<LocalWorkspaceRegistryV1> {
+  return Object.freeze({
+    formatVersion: 1,
+    activeWorkspaceId,
+    workspaces: Object.freeze([entry(activeWorkspaceId)]),
   });
 }
 
