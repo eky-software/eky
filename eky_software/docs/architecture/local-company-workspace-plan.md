@@ -879,6 +879,66 @@ tai accepted build -metadataa eikä vielä kytkeydy production-startupiin.
 `invalidHistory`-entryn mahdollinen `recoveryRequired`-siirtymä ja aktiivisen
 `compatiblePending`-työtilan migraatio kuuluvat W6A.2:een.
 
+### W6A.2A: First-start migration plan ja registry-siirtymäperusta
+
+W6A.2A pysyy production-startupista irrallisena checkpointina. Se ottaa vain
+strictisti validoidun registry v1:n, W6A.1:n valmiin migration inventoryn,
+pre-workspace build admissionin sekä source- ja target-build-identiteetit.
+Tuloksena on jäädytetty sisäinen suunnitelma, joka sisältää vain:
+
+- `notRequired`- tai `required`-luokituksen
+- aktiivisen `workspaceId`:n, migration-statuksen ja applied/pending-määrät
+- kanonisesti järjestetyt passiivisten `invalidHistory`-työtilojen ID:t.
+
+Suunnitelma ei sisällä polkua, labelia, lineagea, `profileId`:tä,
+`companyId`:tä, migration-nimiä tai -tiivisteitä. Registryssä olevan jokaisen
+`ready`-työtilan pitää esiintyä inventaariossa täsmälleen kerran eikä muita
+entryjä sallita. Aktiivisen osoittimen pitää viitata `ready`-entryyn ja samaan
+inventaarioentryyn. `recoveryRequired`-entryjä ei inventoida eikä suunnitella
+uudelleen.
+
+Suunnitelmaa tarvitaan vain `authorizedNewerBuild`- ja
+`coordinatedUpdateTarget`-admissioneissa. Aktiivinen `current` on sallittu
+ilman migration-oikeutta. Aktiivinen `compatiblePending` on sallittu vain
+näissä update-admissioneissa, mutta W6A.2A ei vielä aja migraatiota.
+Aktiivinen `invalidHistory` estää koko suunnitelman. Passiivinen
+`compatiblePending` säilyy `ready`-tilassa ja byte-identtisenä; vain
+passiivinen `invalidHistory` suunnitellaan `recoveryRequired`-tilaan.
+
+Registry-siirtymä käyttää installation-scoped journalia tiloissa `prepared`
+ja `registryTransitioned`. Journal kirjoitetaan crash-safe byte-slot -rajalla
+ennen registryä. Registry-mutaatio saa muuttaa vain täsmälleen suunniteltujen
+passiivisten entryjen `lifecycleState`-kentän. Aktiivinen osoitin, ID:t,
+labelit, lineaget, layoutit ja `createdAt` säilyvät. Lähde- ja
+kohderekisterit sidotaan canonical-serialisoinnin SHA-256-tiivisteisiin.
+
+Recovery toimii vain todistetuissa tilanteissa:
+
+1. `prepared` + lähderekisteri voidaan jättää jatkettavaksi tai perua
+   nimetyllä toiminnolla ilman registry-kirjoitusta
+2. `registryTransitioned` + hyväksytty source build palauttaa täsmällisen
+   lähderekisterin ja poistaa journalin
+3. `registryTransitioned` + hyväksytty target build hyväksyy vain täsmällisen
+   transitioned-rekisterin ja poistaa journalin
+4. muu hash-, build-, entry- tai lifecycle-ristiriita päättyy
+   `recoveryRequired`-tulokseen ilman arvausta tai journalin poistoa.
+
+W6A.2A ei kutsu migration runneria, recovery pointia, backend-starttia,
+accepted build -kirjoitusta, update-journalia, renderer-capabilitya tai
+relaunchia. Production first-start -kytkentä, aktiivisen workspacen
+preMigration/migration/readiness sekä buildin hyväksyntä kuuluvat erilliseen
+W6A.2B-checkpointiin.
+
+### W6A.2B: Production first-start -kytkentä
+
+W6A.2B saa myöhemmin ajaa W6A.2A:n suunnitelman vasta pre-workspace build
+admissionin ja onnistuneen W6A.1-inventaarion jälkeen mutta ennen business-
+backendin avaamista. Se antaa migration-oikeuden vain aktiiviselle
+`compatiblePending`-työtilalle, muodostaa sen workspace-scoped
+preMigration-pisteen, todistaa backend-readinessin ja hyväksyy buildin vasta
+nykyisten first-start-porttien jälkeen. Passiivisen validin prefixin
+migraatio jää edelleen ensimmäiseen hallittuun aktivointiin.
+
 **Pakollinen näyttö:**
 
 - `DESK-WORKSPACE-MIGRATION-INVENTORY-001` käyttää oikeaa paketoitua backend-

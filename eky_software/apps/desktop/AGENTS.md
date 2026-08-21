@@ -68,6 +68,21 @@ Mandatory boundaries:
 - W6A.1 must not write the registry, migrate a workspace, create a recovery
   point, start a business runtime or change accepted-build state; startup
   orchestration and `recoveryRequired` transitions belong to W6A.2
+- W6A.2A may only resolve a deterministic internal first-start migration plan
+  and journal a crash-safe passive-workspace registry transition; it must stay
+  disconnected from production startup, migration execution, recovery-point
+  creation, backend startup, accepted-build writes and renderer capabilities
+- the W6A.2A plan must exactly match strict-registry `ready` entries to the
+  W6A.1 inventory; only passive `invalidHistory` entries may transition to
+  `recoveryRequired`, while active invalid history fails the whole plan and a
+  passive compatible prefix remains byte-identical
+- W6A.2A recovery may restore or accept registry bytes only when the journal,
+  accepted source/target build identity and canonical registry hashes prove
+  the exact state; unknown or conflicting state remains recovery-required
+  without guessed repair or journal cleanup
+- W6A.2B alone may later connect the plan to production first start, create the
+  active workspace preMigration point, authorize its pending migrations,
+  prove backend readiness and accept the target build
 - use one main-owned installation-scoped `WorkspaceMaintenanceLease` for
   backup, restore, update and workspace ownership changes; keep each module's
   narrower local guard and preserve the documented lock order

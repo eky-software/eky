@@ -787,6 +787,29 @@ migraatio-oikeuden ja merkitä passiivisen virheellisen historian
 `recoveryRequired`-tilaan. Passiivinen validi prefix säilyy first-startissa
 `ready`-tilassa ja byte-identtisenä.
 
+W6A.2 toteutetaan kahdessa portissa. W6A.2A on production-startupista
+irrallinen perusta: se validoi admissionin, registryn ja inventaarion
+täsmällisen vastaavuuden, muodostaa deterministisen suunnitelman ja toteuttaa
+installation-scoped `prepared` / `registryTransitioned` -journalin sekä vain
+passiivisiin `invalidHistory`-entryihin kohdistuvan lifecycle-mutaation.
+Journal sitoo source/target buildit ja canonical registry -tavut
+SHA-256-tiivisteillä. Se ei käynnistä backendia, migraatiota, palautuspistettä,
+accepted build -kirjoitusta, update journal -siirtymää tai relaunchia.
+
+W6A.2B kytkee tämän myöhemmin first-startiin. Kytkentä tapahtuu build
+admissionin ja read-only-inventaarion jälkeen mutta ennen business-backendia.
+Vain W6A.2B saa muodostaa aktiivisen työtilan preMigration-pisteen, antaa
+aktiiviselle `compatiblePending`-entrylle migration-oikeuden, tarkistaa
+readinessin ja hyväksyä target buildin. Development-, initial install-, exact
+accepted build- ja hyväksyttyyn nykybuildiin palautunut first start eivät
+tarvitse W6A.2A:n registry-siirtymää.
+
+W6A.2A-recovery palauttaa lähderekisterin vain, kun journal,
+`registryTransitioned`-tila, accepted source build ja molemmat registry-hashit
+todistavat täsmällisen palautuksen. Hyväksytty target build saa vain vahvistaa
+täsmällisen transitioned-rekisterin. Muu tila on `recoveryRequired`, eikä
+journalia poisteta tai registryä korjata arvaamalla.
+
 W4 aktivoi registryyn sidotun startupin ja vanhan yhden profiilin adoption
 production-compositionissa. Se ei vielä toteuta tämän luvun koko N -> N+1
 multi-workspace first start -ketjua. Aktiivisen ja passiivisen workspacen

@@ -625,6 +625,37 @@ ketjussa vain aktiivinen `compatiblePending` saa migraatio-oikeuden.
 Passiivinen `compatiblePending` säilyy `ready`-tilassa ja muuttumattomana
 ensimmäiseen hallittuun aktivointiinsa asti. `current` säilyy muuttumattomana.
 
+W6A.2 jaetaan kahteen erilliseen hyväksyntärajaan:
+
+- W6A.2A muodostaa puhtaan first-start-migraatiosuunnitelman ja toteuttaa
+  installation-scoped, crash-safe registry-siirtymäjournalin. Se saa merkitä
+  vain inventaarion todistamat passiiviset `invalidHistory`-työtilat
+  `recoveryRequired`-tilaan. Se ei kytkeydy production-startupiin, aja
+  migraatiota, luo palautuspistettä, käynnistä backendia tai hyväksy buildia.
+- W6A.2B kytkee myöhemmin suunnitelman first-startiin vasta build admissionin
+  ja W6A.1-inventaarion jälkeen. Se omistaa aktiivisen
+  `compatiblePending`-työtilan preMigration- ja migration-auktoriteetin,
+  aktiivisen backend-readinessin, accepted build -kirjoituksen sekä journalin
+  terminaalisen hyväksynnän tai palautuksen.
+
+W6A.2A:n suunnitelma vaaditaan vain `authorizedNewerBuild`- ja
+`coordinatedUpdateTarget`-admissioneissa. Development-, initial install-,
+exact accepted build- ja hyväksyttyyn nykybuildiin palautunut first start
+eivät muodosta registry-siirtymää. Inventaarion pitää vastata täsmälleen
+strictin registry v1:n kaikkia ja vain `ready`-entryjä. Puuttuva, ylimääräinen,
+duplikaatti tai väärään active pointeriin sidottu entry estää koko
+suunnitelman.
+
+W6A.2A:n journalissa on vain operation-, source/target build-, active
+workspace-, passiivisten recovery-kohteiden, registry-tiivisteiden ja
+aikaleimojen tekninen tila. Siinä ei ole labelia, polkua, lineagea,
+`profileId`:tä, `companyId`:tä, migration-nimeä tai business-dataa. Journalin
+`prepared`-tila edeltää registry-kirjoitusta ja `registryTransitioned` seuraa
+vain varmennettua crash-safe kirjoitusta. Recovery palauttaa lähderekisterin
+vain täsmällisestä journalin todistamasta transitioned-tilasta ja hyväksyy
+kohderekisterin vain, kun target build on jo hyväksytty; ristiriita päättyy
+`recoveryRequired`-tulokseen ilman arvausta tai journalin poistoa.
+
 Kaikki tarkastukset ja migraatiot noudattavat yhden business-SQLite-omistajan
 rajaa. Yhden työtilan failure ei saa johtaa muiden hiljaiseen migraatioon,
 väärän työtilan avaamiseen tai installation-päivitystilan siirtymiseen
