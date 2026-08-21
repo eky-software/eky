@@ -938,6 +938,23 @@ työtilan migraation, update/direct Setup -tilan ja accepted build -metadatan
 ainoana auktoriteettina. Workspace-moduuli ei kirjoita update-journalia,
 direct Setup recoverya tai accepted build -metadataa eikä aja SQL-migraatioita.
 
+**Toteutustila 22.8.2026:** production first-start -kytkentä on toteutettu
+unit-, integration- ja Electron-E2E-tasolla. `DESK-WORKSPACE-FIRST-START-001`
+todistaa sekä mixed-skenaarion että all-current-skenaarion synteettisillä
+yksityisillä testiprofiileilla. Mixed-skenaariossa aktiivinen
+`compatiblePending` migroidaan ja hyväksytään, passiivinen
+`compatiblePending` säilyy byte-identtisenä `ready`-tilassa ja passiivinen
+`invalidHistory` siirtyy vain registryssä `recoveryRequired`-tilaan.
+All-current-skenaario ei luo W6-journalia, ja täsmälleen hyväksytyn buildin
+toinen käynnistys ohittaa inventaarion.
+
+PreMigration-palautuspiste saa validoida katkeamattoman ja muuttumattoman
+historiallisen migration-prefixin tarkoituskohtaisella
+`compatibleHistoricalPrefix`-politiikalla. Kaikki normaalit, manuaaliset,
+preUpdate-, preRestore-, automatic- ja portable backup -snapshotit vaativat
+edelleen täsmälleen nykyisen migration manifestin. Tämä poikkeus ei löysennä
+future-, missing-middle- tai changed-history-torjuntaa.
+
 Production-järjestys on:
 
 1. pre-workspace build admission
@@ -994,6 +1011,15 @@ durable tila pysäyttää käynnistyksen fail closed.
   artifact-juuret säilyvät muuttumattomina eikä SQLite-sidecareja synny
 - utility-tarkastukset ovat sarjallisia, normaali backend on suljettu ennen
   inventaariota ja testin jälkeen uusia utility-prosesseja on nolla
+- `DESK-WORKSPACE-FIRST-START-001` käyttää oikeaa Electron main -compositionia,
+  W6A.2A-journalia, `FirstStartUpdateCoordinator`-auktoriteettia ja oikeaa
+  backend migration runneria
+- todistuksessa aktiivinen historiallinen prefix migroidaan, passiivinen
+  yhteensopiva prefix ja sen artifact-juuri säilyvät muuttumattomina,
+  passiivinen invalidi historia rajataan registry-muutokseen ja target-build
+  hyväksytään vasta koko ketjun jälkeen
+- todistus sulkee backendin ja Electronin hallitusti, poistaa yksityisen
+  testirootin ja jättää uusia backend- tai utility-prosesseja nolla
 
 - puhdas 0.2.6-asennus ja first/second startup
 - synteettinen 0.2.6-profiili sekä erikseen turvallisesti johdettu paikallinen
@@ -1014,6 +1040,10 @@ durable tila pysäyttää käynnistyksen fail closed.
   `recoveryRequired`-tilaan ilman muiden työtilojen kirjoituksia
 - PDF-arkisto käyttää workspace-kohtaista alikansiota, samat tiedostonimet
   eivät törmää eikä archive-root siirry backupissa.
+
+Ensimmäisen passiivisen `compatiblePending`-työtilan aktivointimigraatio sekä
+koko paketoitu multi-workspace W6 -releaseportti ovat edelleen avoimia. Edellä
+kirjattu Electron-todiste ei yksin täytä niitä.
 
 In-app update testataan erikseen vain, jos `localUnsignedPilot`-polku on
 kyseisessä checkpointissa hyväksytty. MSI-gate ei piilota in-app update -puutetta.

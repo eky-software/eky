@@ -745,7 +745,7 @@ Asennuskohtainen hyväksytyn buildin metadata sisältää vain turvallisen build
 identiteetin ja hyväksyntäajan. Se ei ole business-dataa eikä kuulu portable
 backupiin.
 
-### Tuleva multi-workspace first start
+### Multi-workspace first start
 
 ADR-0011:n multi-workspace-aktivoinnin jälkeen first start noudattaa lisäksi
 seuraavia rajoja:
@@ -832,6 +832,22 @@ virhe ennen backendia siirtää koordinoidun päivityksen rollbackiin vain
 update state machinen kapean auktoriteetin kautta; workspace-moduuli ei kirjoita
 update-journalia. Direct Setupissa accepted source säilyy ja epäselvä
 durable tila pysäyttää käynnistyksen.
+
+W6A.2B:n production-kytkentä on toteutettu 22.8.2026 unit-, integration- ja
+Electron-E2E-tasolla. `DESK-WORKSPACE-FIRST-START-001` todistaa oikean
+Electron main -compositionin kautta mixed- ja all-current-skenaariot:
+aktiivinen yhteensopiva historiallinen prefix migroidaan, passiivinen
+yhteensopiva prefix säilyy byte-identtisenä, passiivinen invalidi historia
+rajataan registry-siirtymään ja target-build hyväksytään vasta aktiivisen
+readinessin sekä transitioned registry -todisteen jälkeen. Täsmälleen
+hyväksytyn buildin uudelleenkäynnistys ei inventoi työtiloja uudelleen.
+
+PreMigration-snapshot käyttää ainoana snapshot-tarkoituksena
+`compatibleHistoricalPrefix`-politiikkaa, jotta N-profiilin katkeamaton
+immutable migration-prefix voidaan suojata ennen N+1-migraatiota. Muut
+snapshotit ja portable backup vaativat täsmälleen nykyisen manifestin.
+Passiivisen yhteensopivan työtilan myöhempi aktivointimigraatio ja koko
+paketoitu multi-workspace W6 -releaseportti ovat vielä avoimia.
 
 W4 aktivoi registryyn sidotun startupin ja vanhan yhden profiilin adoption
 production-compositionissa. Se ei vielä toteuta tämän luvun koko N -> N+1
