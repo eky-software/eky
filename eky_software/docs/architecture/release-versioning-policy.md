@@ -179,7 +179,11 @@ alkuperää. Windows-asennus- ja päivitysrajat on määritelty ADR-0010:ssä ja
 ### Nykyinen pilot-paketoinnin portti
 
 `pnpm --filter @eky/desktop package:windows` säilyy paikallisen
-kehityspaketin komentona. Se ei ole jakelukelpoinen release-todiste.
+kehityspaketin komentona. Se käyttää Electron mainin omistamaa kiinteää
+`%APPDATA%\\Eky Test`-profiilia eikä normaalia `%APPDATA%\\Eky`-profiilia.
+Paikallisen kehityspaketin uudelleenrakennus ei näin törmää normaalin profiilin
+hyväksyttyyn build-identiteettiin eikä pääse käsittelemään sen business-dataa.
+Se ei ole jakelukelpoinen release-todiste.
 
 `pnpm --filter @eky/desktop package:windows:pilot` muodostaa ennen varsinaista
 installeria käytettävän unpacked pilot -artifactin ja torjuu:

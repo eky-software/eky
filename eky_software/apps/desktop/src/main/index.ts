@@ -8,8 +8,13 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 
 import type { DesktopLifecycleHandle } from './desktopComposition.js';
+import { resolveDesktopPackageUserDataOverride } from './desktopPackageProfile.js';
 import { runSafeDesktopStartup } from './earlyStartup.js';
 import { readDesktopBuildInfo } from '../release/desktopBuildInfoReader.js';
+import {
+  readDesktopPackageMode,
+  type DesktopRuntimePackageMode,
+} from '../release/desktopPackageModeReader.js';
 import { readDesktopReleaseInfo } from '../release/desktopReleaseInfoReader.js';
 import { showProfileRestoreRecoveryDialog } from './profileRestoreRecoveryDialog.js';
 import {
@@ -35,6 +40,32 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
+function readInitialPackageMode():
+  | { mode: DesktopRuntimePackageMode }
+  | { errorCode: 'PACKAGED_PACKAGE_MODE_INVALID' } {
+  try {
+    return {
+      mode: readDesktopPackageMode({
+        applicationPath: app.getAppPath(),
+        isPackaged: app.isPackaged,
+      }),
+    };
+  } catch {
+    return { errorCode: 'PACKAGED_PACKAGE_MODE_INVALID' };
+  }
+}
+
+const packageModeResult = readInitialPackageMode();
+if ('mode' in packageModeResult) {
+  const userDataOverride = resolveDesktopPackageUserDataOverride({
+    appDataPath: app.getPath('appData'),
+    packageMode: packageModeResult.mode,
+  });
+  if (userDataOverride !== undefined) {
+    app.setPath('userData', userDataOverride);
+  }
+}
+
 const smokeConfiguration = createPackagedSmokeConfiguration({
   hasRestoredProfileSwitch: app.commandLine.hasSwitch(
     'desktop-smoke-restored',
@@ -50,9 +81,10 @@ if (smokeConfiguration.userDataPath !== undefined) {
   app.setPath('userData', smokeConfiguration.userDataPath);
 }
 
-const hasSingleInstanceLock = app.requestSingleInstanceLock();
+const hasSingleInstanceLock =
+  'errorCode' in packageModeResult || app.requestSingleInstanceLock();
 
-if (!hasSingleInstanceLock) {
+if (!hasSingleInstanceLock && 'mode' in packageModeResult) {
   app.quit();
 }
 
@@ -63,6 +95,9 @@ const runtimeInstanceId = randomUUID();
 async function startDesktopRuntime(
   startDesktopComposition: StartDesktopComposition,
 ): Promise<void> {
+  if ('errorCode' in packageModeResult) {
+    throw new Error(packageModeResult.errorCode);
+  }
   await smokeProgress.reportStage(
     smokeConfiguration.phase === 'restoredProfile'
       ? 'restoredStartup'
@@ -73,11 +108,14 @@ async function startDesktopRuntime(
     appVersion: app.getVersion(),
     isPackaged: app.isPackaged,
   });
-  const releaseInfo = await readDesktopReleaseInfo({
-    applicationPath: app.getAppPath(),
-    appVersion: app.getVersion(),
-    isPackaged: app.isPackaged,
-  });
+  const releaseInfo =
+    packageModeResult.mode === 'pilot'
+      ? await readDesktopReleaseInfo({
+          applicationPath: app.getAppPath(),
+          appVersion: app.getVersion(),
+          isPackaged: app.isPackaged,
+        })
+      : undefined;
   desktopLifecycle = await startDesktopComposition({
     appVersion: app.getVersion(),
     applicationPath: app.getAppPath(),

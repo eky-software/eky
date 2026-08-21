@@ -45,6 +45,9 @@ Mandatory boundaries:
   can mutate filesystem state; a same-version/different-revision build,
   downgrade or unknown update identity must fail closed with zero workspace
   side effects
+- keep the unpacked `package:windows` development artifact on its fixed,
+  main-owned `Eky Test` userData root; only `package:windows:pilot` and the
+  installer may use the normal `Eky` profile and pilot build admission
 - recover interrupted legacy adoption automatically only when the journal,
   intact legacy source and exact derived unpublished candidate/final roots
   prove one documented recovery case; a published registry entry, active

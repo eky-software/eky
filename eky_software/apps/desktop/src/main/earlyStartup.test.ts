@@ -79,6 +79,9 @@ describe('safe desktop early startup', () => {
       readSafeStartupFailureCode(new Error('PACKAGED_BUILD_INFO_INVALID')),
     ).toBe('PACKAGED_BUILD_INFO_INVALID');
     expect(
+      readSafeStartupFailureCode(new Error('PACKAGED_PACKAGE_MODE_INVALID')),
+    ).toBe('PACKAGED_PACKAGE_MODE_INVALID');
+    expect(
       readSafeStartupFailureCode(
         new Error('PROFILE_SNAPSHOT_ARTIFACTS_FAILED'),
       ),

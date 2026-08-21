@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
+  assertPackagedSmokeBuildAcceptance,
   createPackagedSmokeConfiguration,
   createPackagedSmokeFailureMessage,
   createPackagedSmokeProgressReporter,
@@ -13,6 +14,14 @@ import {
   readPackagedSmokeResult,
   resolvePackagedSmokeTempPath,
 } from './packagedSmoke.js';
+
+const acceptedBuild = {
+  acceptedAt: '2026-08-21T10:00:00.000Z',
+  appVersion: '0.2.6',
+  buildRevision: '123456789abc',
+  formatVersion: 1 as const,
+  releaseChannel: 'pilot' as const,
+};
 
 describe('packaged smoke progress', () => {
   const temporaryDirectories: string[] = [];
@@ -25,6 +34,44 @@ describe('packaged smoke progress', () => {
           rm(directory, { force: true, recursive: true }),
         ),
     );
+  });
+
+  it('requires pilot acceptance only from pilot packages', () => {
+    expect(() =>
+      assertPackagedSmokeBuildAcceptance({
+        acceptedBuild,
+        appVersion: acceptedBuild.appVersion,
+        buildRevision: acceptedBuild.buildRevision,
+        requiresPilotAcceptance: true,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertPackagedSmokeBuildAcceptance({
+        acceptedBuild: undefined,
+        appVersion: acceptedBuild.appVersion,
+        buildRevision: acceptedBuild.buildRevision,
+        requiresPilotAcceptance: false,
+      }),
+    ).not.toThrow();
+  });
+
+  it('rejects missing pilot acceptance and development acceptance state', () => {
+    expect(() =>
+      assertPackagedSmokeBuildAcceptance({
+        acceptedBuild: undefined,
+        appVersion: acceptedBuild.appVersion,
+        buildRevision: acceptedBuild.buildRevision,
+        requiresPilotAcceptance: true,
+      }),
+    ).toThrow('DESKTOP_SMOKE_FIRST_START_ACCEPTANCE_FAILED');
+    expect(() =>
+      assertPackagedSmokeBuildAcceptance({
+        acceptedBuild,
+        appVersion: acceptedBuild.appVersion,
+        buildRevision: acceptedBuild.buildRevision,
+        requiresPilotAcceptance: false,
+      }),
+    ).toThrow('DESKTOP_SMOKE_FIRST_START_ACCEPTANCE_FAILED');
   });
 
   it('writes every allowlisted stage in the required order', async () => {

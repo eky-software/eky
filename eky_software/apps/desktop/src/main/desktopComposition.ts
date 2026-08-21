@@ -1674,6 +1674,7 @@ async function startDesktopCompositionRuntime({
           invoicePdfArchiveService,
           mainWindow,
           pdfPreviewController,
+          requiresPilotAcceptance: options.releaseInfo !== undefined,
           runtimeSessionSecret,
           runtimeInstanceId: options.runtimeInstanceId,
           secretFilePath,
