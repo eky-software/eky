@@ -51,7 +51,10 @@ pnpm --filter @eky/desktop installer:upgrade -- -FixturePath <path-to-fixture.js
 The unpacked spike is created under `apps/desktop/out/Eky-win32-x64`.
 
 `package:windows` remains the development packaging command and may produce a
-dirty, explicitly non-distributable build. `package:windows:pilot` is the
+dirty, explicitly non-distributable build. It uses the fixed, main-process
+owned `%APPDATA%\\Eky Test` profile so repeated local rebuilds cannot collide
+with the accepted build identity or business data under `%APPDATA%\\Eky`.
+`package:windows:pilot` is the
 stricter pre-installer gate: it requires a clean worktree, matching Git HEAD,
 valid SemVer/build identity, the `pilot` channel, a closed artifact inventory
 and a validated sidecar manifest. This still produces an unpacked pilot

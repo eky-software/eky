@@ -138,7 +138,7 @@ async function buildWorkspaceArtifacts() {
   ]);
 }
 
-async function prepareApplicationStage(buildInfo, releaseInfo) {
+async function prepareApplicationStage(buildInfo, packageMode, releaseInfo) {
   await cp(resolve(desktopDirectory, 'dist'), join(applicationStage, 'dist'), {
     recursive: true,
   });
@@ -201,10 +201,17 @@ async function prepareApplicationStage(buildInfo, releaseInfo) {
     'utf8',
   );
   await writeFile(
-    join(applicationStage, 'dist', 'release-info.json'),
-    `${JSON.stringify(releaseInfo, null, 2)}\n`,
+    join(applicationStage, 'dist', 'package-mode.json'),
+    `${JSON.stringify(packageMode, null, 2)}\n`,
     'utf8',
   );
+  if (releaseInfo !== undefined) {
+    await writeFile(
+      join(applicationStage, 'dist', 'release-info.json'),
+      `${JSON.stringify(releaseInfo, null, 2)}\n`,
+      'utf8',
+    );
+  }
   await mkdir(updateRuntimeStage, { recursive: true });
   await cp(
     resolve(
@@ -229,18 +236,22 @@ async function prepareApplicationStage(buildInfo, releaseInfo) {
   );
 }
 
-async function assertPackagedDiagnosticsArtifacts() {
-  for (const relativePath of [
+async function assertPackagedDiagnosticsArtifacts({ hasReleaseInfo }) {
+  const requiredArtifacts = [
     'dist/diagnostics/desktopDiagnosticsTypes.js',
     'dist/diagnostics/operationalLogFolderCapability.js',
     'dist/build-info.json',
-    'dist/release-info.json',
+    'dist/package-mode.json',
     'dist/main/desktopComposition.js',
     'dist/preload/index.cjs',
     'dist/profileBackup/passwordWindow/backupPasswordPreload.cjs',
     'dist/supportBundle/supportBundleCapability.js',
     'web/index.html',
-  ]) {
+  ];
+  if (hasReleaseInfo) {
+    requiredArtifacts.push('dist/release-info.json');
+  }
+  for (const relativePath of requiredArtifacts) {
     await access(resolve(applicationStage, relativePath));
   }
 
@@ -331,17 +342,27 @@ async function packageWindowsSpike() {
     appVersion,
     repositoryRoot,
   });
-  const releaseInfo = Object.freeze({
-    appIdentity: installerRelease.appIdentity,
-    appVersion: installerRelease.appVersion,
-    architecture: installerRelease.architecture,
-    buildRevision: buildInfo.buildRevision,
-    msiProductVersion: installerRelease.msiProductVersion,
-    platform: installerRelease.platform,
-    releaseChannel: installerRelease.releaseChannel,
-    schemaVersion: 1,
-    upgradeCode: INSTALLER_UPGRADE_CODE,
-  });
+  const packageModeModule = await import(
+    pathToFileURL(
+      resolve(desktopDirectory, 'dist/release/desktopPackageMode.js'),
+    ).href
+  );
+  const packageMode = packageModeModule.createDesktopPackageModeInfo(
+    pilotBuild ? 'pilot' : 'localDevelopment',
+  );
+  const releaseInfo = pilotBuild
+    ? Object.freeze({
+        appIdentity: installerRelease.appIdentity,
+        appVersion: installerRelease.appVersion,
+        architecture: installerRelease.architecture,
+        buildRevision: buildInfo.buildRevision,
+        msiProductVersion: installerRelease.msiProductVersion,
+        platform: installerRelease.platform,
+        releaseChannel: installerRelease.releaseChannel,
+        schemaVersion: 1,
+        upgradeCode: INSTALLER_UPGRADE_CODE,
+      })
+    : undefined;
   let currentHead;
   if (pilotBuild) {
     currentHead = (
@@ -364,8 +385,8 @@ async function packageWindowsSpike() {
     `Validated staged better-sqlite3 ${runtime.version} (SQLite ${sqliteVersion}).`,
   );
 
-  await prepareApplicationStage(buildInfo, releaseInfo);
-  await assertPackagedDiagnosticsArtifacts();
+  await prepareApplicationStage(buildInfo, packageMode, releaseInfo);
+  await assertPackagedDiagnosticsArtifacts({ hasReleaseInfo: pilotBuild });
   await inspectPackageArtifactInventory({
     root: applicationStage,
     stage: 'applicationStage',

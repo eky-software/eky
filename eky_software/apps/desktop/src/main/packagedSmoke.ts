@@ -9,6 +9,7 @@ import { createInvoicePdfPreviewSmokeFixture } from '../pdf/invoicePdfPreviewSmo
 import type { InvoicePdfPreviewWindowController } from '../pdf/invoicePdfPreviewWindow.js';
 import type { InvoicePdfArchiveService } from '../invoicePdfArchive/invoicePdfArchiveService.js';
 import type { DesktopBackendHandle } from '../runtime/backendProcess.js';
+import type { AcceptedBuildMetadata } from '../update/acceptedBuildMetadata.js';
 import {
   EncryptedSecretFile,
   type EncryptedSecretFileStore,
@@ -100,6 +101,7 @@ interface RunPackagedSmokeCheckOptions {
     'chooseDirectory' | 'getOpenDirectoryPath' | 'getStatus'
   >;
   pdfPreviewController: InvoicePdfPreviewWindowController;
+  requiresPilotAcceptance: boolean;
   runtimeSessionSecret: string;
   runtimeInstanceId: string;
   secretFilePath: string;
@@ -292,14 +294,12 @@ export async function runPackagedSmokeCheck(
   const acceptedBuild = await new AcceptedBuildMetadataStore(
     options.acceptedBuildMetadataPath,
   ).read();
-  if (
-    acceptedBuild === undefined ||
-    acceptedBuild.appVersion !== options.appVersion ||
-    acceptedBuild.buildRevision !== options.buildRevision ||
-    acceptedBuild.releaseChannel !== 'pilot'
-  ) {
-    throw new Error('DESKTOP_SMOKE_FIRST_START_ACCEPTANCE_FAILED');
-  }
+  assertPackagedSmokeBuildAcceptance({
+    acceptedBuild,
+    appVersion: options.appVersion,
+    buildRevision: options.buildRevision,
+    requiresPilotAcceptance: options.requiresPilotAcceptance,
+  });
 
   const healthResponse = await fetch(
     `http://127.0.0.1:${options.backend.port}/health`,
@@ -400,6 +400,25 @@ export async function runPackagedSmokeCheck(
 
       throw error;
     }
+  }
+}
+
+export function assertPackagedSmokeBuildAcceptance(input: {
+  acceptedBuild: Readonly<AcceptedBuildMetadata> | undefined;
+  appVersion: string;
+  buildRevision: string;
+  requiresPilotAcceptance: boolean;
+}): void {
+  const acceptedBuildMatches =
+    input.acceptedBuild !== undefined &&
+    input.acceptedBuild.appVersion === input.appVersion &&
+    input.acceptedBuild.buildRevision === input.buildRevision &&
+    input.acceptedBuild.releaseChannel === 'pilot';
+  if (
+    (input.requiresPilotAcceptance && !acceptedBuildMatches) ||
+    (!input.requiresPilotAcceptance && input.acceptedBuild !== undefined)
+  ) {
+    throw new Error('DESKTOP_SMOKE_FIRST_START_ACCEPTANCE_FAILED');
   }
 }
 
