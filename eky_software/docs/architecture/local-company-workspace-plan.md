@@ -931,13 +931,59 @@ W6A.2B-checkpointiin.
 
 ### W6A.2B: Production first-start -kytkentä
 
-W6A.2B saa myöhemmin ajaa W6A.2A:n suunnitelman vasta pre-workspace build
-admissionin ja onnistuneen W6A.1-inventaarion jälkeen mutta ennen business-
-backendin avaamista. Se antaa migration-oikeuden vain aktiiviselle
-`compatiblePending`-työtilalle, muodostaa sen workspace-scoped
-preMigration-pisteen, todistaa backend-readinessin ja hyväksyy buildin vasta
-nykyisten first-start-porttien jälkeen. Passiivisen validin prefixin
-migraatio jää edelleen ensimmäiseen hallittuun aktivointiin.
+W6A.2B kytkee W6A.2A:n suunnitelman production first-startiin. Electron mainin
+omistama orchestraattori koordinoi vain workspace-inventaarion, suunnitelman ja
+registry-journalin. Nykyinen `FirstStartUpdateCoordinator` säilyy aktiivisen
+työtilan migraation, update/direct Setup -tilan ja accepted build -metadatan
+ainoana auktoriteettina. Workspace-moduuli ei kirjoita update-journalia,
+direct Setup recoverya tai accepted build -metadataa eikä aja SQL-migraatioita.
+
+Production-järjestys on:
+
+1. pre-workspace build admission
+2. keskeneräisen W6 first-start -journalin recovery
+3. adoption- ja switch-recovery sekä aktiivisen työtilan ratkaisu
+4. vain update-admissionissa kaikkien `ready`-työtilojen sarjallinen read-only-
+   inventaario
+5. deterministinen migration plan
+6. tarvittaessa `prepared` W6 -journal ennen business-backendia
+7. aktiivisen business-backendin käynnistys
+8. nykyisen `FirstStartUpdateCoordinator`-migration-auktoriteetin tarkistus
+9. vain aktiivisen `compatiblePending`-työtilan migraatio
+10. aktiivisen backendin health-, identity- ja artifact-validointi
+11. aktiivisen workspace-startupin hyväksyntä
+12. suunniteltujen passiivisten `invalidHistory`-entryjen registry-siirtymä
+13. transitioned registry -hashin todistus
+14. target buildin hyväksyntä update-auktoriteetilla
+15. accepted build -metadatan target-todistus ja W6-journalin täsmällinen
+    target-hyväksyntä sekä poisto
+16. vasta tämän jälkeen UI-ikkunan avaaminen.
+
+`development`, `initialInstall` ja `exactAcceptedBuild` eivät aja W6-
+inventaarioa. `authorizedNewerBuild` ja `coordinatedUpdateTarget` ajavat sen
+aina. All-current-update ei luo W6-journalia. Aktiivinen
+`compatiblePending` vaatii journalin myös silloin, kun passiivisia
+`invalidHistory`-entryjä ei ole ja source- sekä transitioned-registry-hash ovat
+samat. Passiivinen `compatiblePending` pysyy `ready`-tilassa ja byte-
+identtisenä; sen migraatio kuuluu ensimmäiseen myöhempään hallittuun
+aktivointiin. Aktiivinen `invalidHistory` sekä structural-, identity-,
+utility- tai protocol-virhe pysäyttävät first-startin ennen backendia.
+
+Recovery ajetaan ennen uutta inventaariota. `noJournal` jatkaa normaalisti ja
+`recoveredSource` jatkaa todistetulla source-registryllä. `acceptedTarget`
+hyväksytään vain target-buildissa. `resumable` sallitaan vain target-buildin,
+accepted source buildin, update-admissionin ja source-registry-hashin täsmätessä.
+Exact accepted source build saa perua `prepared`-journalin vain täsmällisen
+source-registry-todisteen jälkeen. Muut yhdistelmät ovat
+`recoveryRequired`, jolloin inventaarioa, backendia tai registry-kirjoitusta
+ei tehdä.
+
+Jos inventaario tai suunnitelma epäonnistuu ennen
+`FirstStartUpdateCoordinator.beforeMigrations()`-kutsua, vain update-moduulin
+kapea pre-backend failure -raja saa siirtää koordinoidun update-journalin
+`rollbackRequired`-tilaan. Direct Setupissa accepted source säilyy, targetia
+ei hyväksytä eikä olemassa olevaa recovery-tilaa saa heikentää. Epäselvä
+durable tila pysäyttää käynnistyksen fail closed.
 
 **Pakollinen näyttö:**
 

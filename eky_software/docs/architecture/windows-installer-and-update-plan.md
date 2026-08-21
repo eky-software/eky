@@ -796,19 +796,42 @@ Journal sitoo source/target buildit ja canonical registry -tavut
 SHA-256-tiivisteillä. Se ei käynnistä backendia, migraatiota, palautuspistettä,
 accepted build -kirjoitusta, update journal -siirtymää tai relaunchia.
 
-W6A.2B kytkee tämän myöhemmin first-startiin. Kytkentä tapahtuu build
-admissionin ja read-only-inventaarion jälkeen mutta ennen business-backendia.
-Vain W6A.2B saa muodostaa aktiivisen työtilan preMigration-pisteen, antaa
-aktiiviselle `compatiblePending`-entrylle migration-oikeuden, tarkistaa
-readinessin ja hyväksyä target buildin. Development-, initial install-, exact
-accepted build- ja hyväksyttyyn nykybuildiin palautunut first start eivät
-tarvitse W6A.2A:n registry-siirtymää.
+W6A.2B kytkee tämän first-startiin build admissionin jälkeen mutta ennen
+business-backendia. Keskeneräinen W6-journal palautetaan tai todetaan
+jatkettavaksi ennen adoption/switch-recoverya ja uutta inventaarioa. Vasta
+vakaa aktiivinen registry inventoidaan. `authorizedNewerBuild` ja
+`coordinatedUpdateTarget` inventoivat kaikki `ready`-työtilat sarjallisesti;
+development-, initial install- ja exact accepted build -polut eivät inventoi.
+
+Main-owned W6-orchestraattori saa muodostaa deterministisen suunnitelman ja
+kirjoittaa tarvittaessa `prepared` W6-journalin. Se ei aja migraatioita eikä
+kirjoita update/direct Setup -tilaa tai accepted build -metadataa. Aktiivisen
+työtilan preMigration-piste, migration authority, readiness ja target buildin
+hyväksyntä pysyvät nykyisellä `FirstStartUpdateCoordinator`-auktoriteetilla.
+
+Target hyväksytään vain järjestyksessä: aktiivinen backend on terve,
+identity ja artifactit ovat valideja, workspace-startup on hyväksytty,
+passiivisten invalidien registry-siirtymä ja sen hash on todistettu,
+`FirstStartUpdateCoordinator` hyväksyy targetin, accepted build vastaa
+targetia ja vasta lopuksi W6-journal hyväksytään sekä poistetaan. UI ei avaudu
+ennen ketjun valmistumista. All-current-update inventoidaan ilman W6-journalia;
+aktiivisen pending-migraation journalia ei optimoida pois tyhjän passiivisen
+muutosjoukon vuoksi.
 
 W6A.2A-recovery palauttaa lähderekisterin vain, kun journal,
 `registryTransitioned`-tila, accepted source build ja molemmat registry-hashit
 todistavat täsmällisen palautuksen. Hyväksytty target build saa vain vahvistaa
 täsmällisen transitioned-rekisterin. Muu tila on `recoveryRequired`, eikä
 journalia poisteta tai registryä korjata arvaamalla.
+
+Source-build ei saa jatkaa targetin `prepared`-operaatiota. Target-build saa
+jatkaa sitä vain accepted source buildin, update-admissionin ja täsmällisen
+source-registry-hashin kanssa. Sourceen palannut exact accepted build voi
+perua valmistelun vain todistetusta source-registrystä. Inventory- tai plan-
+virhe ennen backendia siirtää koordinoidun päivityksen rollbackiin vain
+update state machinen kapean auktoriteetin kautta; workspace-moduuli ei kirjoita
+update-journalia. Direct Setupissa accepted source säilyy ja epäselvä
+durable tila pysäyttää käynnistyksen.
 
 W4 aktivoi registryyn sidotun startupin ja vanhan yhden profiilin adoption
 production-compositionissa. Se ei vielä toteuta tämän luvun koko N -> N+1

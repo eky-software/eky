@@ -36,6 +36,20 @@ Renderer ei saa registryä, workspace-polkua tai update/workspace-journalia.
 W4 ei vielä todista aktiivisen ja passiivisen workspacen N -> N+1 -ketjua;
 full packaged multi-workspace update/recovery -portti kuuluu W6:een.
 
+W6A.2B:ssä mahdollinen workspace first-start -journal ratkaistaan ennen
+uutta inventaarioa. `recoveryRequired` estää inventaarion, backendin ja
+registry-kirjoitukset. Vain target-build saa jatkaa targetin `prepared`-
+operaatiota accepted source buildin ja täsmällisen source-registry-hashin
+kanssa. Source-build saa perua valmistelun vain todistetusta source-
+registrystä. Passiivinen validi migration-prefix jää byte-identtiseksi.
+
+Pre-backend inventory- tai plan-failure ei saa muodostaa käynnistyssilmukkaa.
+Koordinoidussa päivityksessä vain update-auktoriteetti siirtää nykyisen
+update-journalin `rollbackRequired`-tilaan. Direct Setup ei hyväksy targetia,
+ja accepted source sekä olemassa oleva recovery-tila säilyvät. Workspace-
+orchestraattori ei kirjoita update-journalia, direct Setup recoverya tai
+accepted build -metadataa.
+
 ## C0 baseline 11.8.2026
 
 Ennen Local Update Foundation -tuotantokoodia `DESK-PDF-001` ajettiin
