@@ -6,6 +6,7 @@ import {
   startDesktopComposition,
   type DesktopLifecycleHandle,
 } from '../src/main/desktopComposition.js';
+import { startDesktopBackend } from '../src/runtime/backendProcess.js';
 import {
   runSafeDesktopStartup,
 } from '../src/main/earlyStartup.js';
@@ -216,6 +217,26 @@ Object.assign(globalThis, {
         appVersion: e2eAppVersion,
         buildRevision: 'development',
         resourcesPath: config.paths.resourcesPath,
+        userDataRoot: config.paths.userDataPath,
+      });
+    },
+    async runWorkspaceFirstStartMigrationProof() {
+      if (lifecycle === undefined) {
+        throw new Error('WORKSPACE_FIRST_START_MIGRATION_LIFECYCLE_MISSING');
+      }
+      await lifecycle.shutdown();
+      if (backendController.isRunning()) {
+        throw new Error('WORKSPACE_FIRST_START_MIGRATION_BACKEND_RUNNING');
+      }
+      const { runWorkspaceFirstStartMigrationProof } = await import(
+        './workspaceFirstStartMigrationProof.js'
+      );
+      return runWorkspaceFirstStartMigrationProof({
+        applicationPath: config.paths.applicationPath,
+        appVersion: e2eAppVersion,
+        resourcesPath: config.paths.resourcesPath,
+        runtimeSessionSecret: config.backend.sessionSecret,
+        startBackend: startDesktopBackend,
         userDataRoot: config.paths.userDataPath,
       });
     },

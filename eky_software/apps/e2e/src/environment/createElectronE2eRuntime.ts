@@ -28,6 +28,12 @@ export interface ElectronE2eRuntime {
 }
 
 const repositoryRoot = resolve(import.meta.dirname, '../../../..');
+const profileSnapshotRuntimeFiles = [
+  'electronProfileSnapshotBrokerTransport.js',
+  'profileSnapshotBrokerBackend.js',
+  'profileSnapshotBrokerProtocol.js',
+  'profileSnapshotBrokerTransport.js',
+] as const;
 
 export function createElectronE2eRuntime(input: {
   backendPort: number;
@@ -79,10 +85,29 @@ export function createElectronE2eRuntime(input: {
     join(resourcesPath, 'backend'),
     { recursive: true },
   );
-  cpSync(
-    resolve(repositoryRoot, 'apps/desktop/dist/runtime'),
-    join(resourcesPath, 'desktop-runtime', 'runtime'),
-    { recursive: true },
+  const desktopRuntimePath = createPrivateDirectory(
+    join(resourcesPath, 'desktop-runtime'),
+  );
+  for (const directoryName of ['runtime', 'secrets', 'invoicePdfArchive']) {
+    cpSync(
+      resolve(repositoryRoot, 'apps/desktop/dist', directoryName),
+      join(desktopRuntimePath, directoryName),
+      { recursive: true },
+    );
+  }
+  const profileSnapshotRuntimePath = createPrivateDirectory(
+    join(desktopRuntimePath, 'profileBackup'),
+  );
+  for (const fileName of profileSnapshotRuntimeFiles) {
+    cpSync(
+      resolve(repositoryRoot, 'apps/desktop/dist/profileBackup', fileName),
+      join(profileSnapshotRuntimePath, fileName),
+    );
+  }
+  writeFileSync(
+    join(desktopRuntimePath, 'package.json'),
+    `${JSON.stringify({ private: true, type: 'module' }, null, 2)}\n`,
+    { encoding: 'utf8', mode: 0o600 },
   );
 
   const backendConfig = writeE2eBackendConfig({

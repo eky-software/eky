@@ -66,6 +66,25 @@ export interface WorkspaceMigrationInventoryProofSnapshot {
   registryPreserved: boolean;
 }
 
+export interface WorkspaceFirstStartMigrationProofSnapshot {
+  activePointerPreserved: boolean;
+  allCurrentCompletedWithoutJournal: boolean;
+  allCurrentRegistryPreserved: boolean;
+  artifactRootsPreserved: boolean;
+  backendStartCount: number;
+  backendStoppedAfterProof: boolean;
+  candidateProcessesReleased: boolean;
+  directSetupRecoveryCleared: boolean;
+  exactAcceptedRestartSkippedInventory: boolean;
+  invalidPassiveWorkspaceQuarantined: boolean;
+  migrationJournalCleared: boolean;
+  mixedActiveWorkspaceMigrated: boolean;
+  passiveCompatibleWorkspacePreserved: boolean;
+  preparedBeforeBackend: boolean;
+  relaunchCount: number;
+  targetAcceptedAfterRegistryTransition: boolean;
+}
+
 export function closeElectronPdfPreviews(
   electronApp: ElectronApplication,
 ): Promise<void> {
@@ -178,6 +197,22 @@ export function runElectronWorkspaceMigrationInventoryProof(
   });
 }
 
+export function runElectronWorkspaceFirstStartMigrationProof(
+  electronApp: ElectronApplication,
+): Promise<WorkspaceFirstStartMigrationProofSnapshot> {
+  return electronApp.evaluate(async () => {
+    const controller = (
+      globalThis as typeof globalThis & {
+        __EKY_ELECTRON_E2E__?: ElectronE2eController;
+      }
+    ).__EKY_ELECTRON_E2E__;
+    if (controller === undefined) {
+      throw new Error('Electron E2E controller is unavailable.');
+    }
+    return controller.runWorkspaceFirstStartMigrationProof();
+  });
+}
+
 export function runElectronWorkspaceStartupRecoveryProof(
   electronApp: ElectronApplication,
 ): Promise<WorkspaceStartupRecoveryProofSnapshot> {
@@ -201,6 +236,7 @@ interface ElectronE2eController {
   pdfPreviewUrls(): readonly string[];
   processMetrics(): ElectronProcessMetricsSnapshot;
   runWorkspaceManagementCompositionProof(): Promise<WorkspaceManagementCompositionProofSnapshot>;
+  runWorkspaceFirstStartMigrationProof(): Promise<WorkspaceFirstStartMigrationProofSnapshot>;
   runWorkspaceMigrationInventoryProof(): Promise<WorkspaceMigrationInventoryProofSnapshot>;
   runWorkspaceStartupRecoveryProof(): Promise<WorkspaceStartupRecoveryProofSnapshot>;
 }
