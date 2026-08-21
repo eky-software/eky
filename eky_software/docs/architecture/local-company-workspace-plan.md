@@ -849,6 +849,28 @@ korjata suoraan release-portin sisällä ilman paluuta omistavaan checkpointiin.
 **Muuttuvat kerrokset:** testit, fixturet, CI-portit, release-dokumentaatio ja
 erillinen lopullinen versionostocommit.
 
+### W6A.1: Read-only migration inventory
+
+W6A.1 on first-start-orchestraatiota edeltävä sivuvaikutukseton checkpoint.
+Electron main lukee strictin registry v1:n, valitsee vain `ready`-entryt ja
+johtaa niiden workspace-polut nykyisen main-owned path policyn kautta.
+Yksityinen backend utility tarkastaa työtilat yksi kerrallaan aidosti read-only-
+yhteydellä. Main ei avaa SQLitea, eikä samanaikaisia utility- tai SQLite-
+ownereita sallita.
+
+Jokainen tarkastettu työtila luokitellaan vain tilaan `current`,
+`compatiblePending` tai `invalidHistory` ADR-0011:n määritelmien mukaan.
+Sisäinen inventaario saa sisältää vain `workspaceId`:n, aktiivisuustiedon,
+luokituksen sekä applied/pending-lukumäärät. Polkuja, migration-nimiä tai
+-tiivisteitä, `companyId`:tä, `profileId`:tä, lineagea, sessionia tai raakaa
+SQLite-virhettä ei palauteta eikä lokiteta.
+
+Checkpoint ei kirjoita registryä tai tietokantaa, käynnistä workspace-
+runtimea, aja migraatioita, luo recovery pointia, muuta aktiivista osoitinta
+tai accepted build -metadataa eikä vielä kytkeydy production-startupiin.
+`invalidHistory`-entryn mahdollinen `recoveryRequired`-siirtymä ja aktiivisen
+`compatiblePending`-työtilan migraatio kuuluvat W6A.2:een.
+
 **Pakollinen näyttö:**
 
 - puhdas 0.2.6-asennus ja first/second startup
