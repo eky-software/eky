@@ -172,6 +172,23 @@ applied/pending-lukumäärät. Checkpoint ei muuta registryä, työtilaa, aktiiv
 osoitinta, accepted build -metadataa tai runtimea eikä aja migraatioita.
 Production-first-start-kytkentä ja tilasiirtymät kuuluvat W6A.2:een.
 
+### Local Workspace W6A.2A -checkpoint
+
+W6A.2A lisää vain Electron mainin sisäisen, production-startupista irrallisen
+first-start migration plan- ja registry transition -perustan. Puhdas
+suunnitelma vaatii strictin registry v1:n ja W6A.1-inventaarion täsmällisen
+vastaavuuden. Se palauttaa vain active entryn turvallisen migration-
+luokituksen ja kanonisesti järjestetyt passiivisten `invalidHistory`-entryjen
+ID:t.
+
+Installation-scoped journal sitoo source/target build -identiteetit sekä
+canonical source/transitioned registry -tavut. Registry-adapteri saa muuttaa
+vain suunniteltujen passiivisten entryjen lifecycle-tilan
+`recoveryRequired`-arvoon. Electron main ei avaa SQLitea, eikä checkpoint
+käynnistä migraatiota, palautuspistettä, backendia, accepted build -kirjoitusta
+tai renderer-capabilitya. Production first-start -kytkentä ja aktiivisen
+workspacen migration/readiness kuuluvat W6A.2B:hen.
+
 ## Tarkistuslähteet
 
 Implemented-rivit tarkistetaan ensisijaisesti seuraavista lähteistä:
