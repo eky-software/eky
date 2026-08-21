@@ -8,6 +8,7 @@ import {
   readProfileSnapshotBrokerRequestId,
   type ProfileMaintenanceBrokerOperation,
   type ProfileSnapshotBrokerErrorCode,
+  type ProfileSnapshotMigrationPolicy,
   type ProfileSnapshotBrokerResponse,
 } from './profileSnapshotBrokerProtocol.js';
 import type { ProfileSnapshotBrokerTransport } from './profileSnapshotBrokerTransport.js';
@@ -79,10 +80,17 @@ export class ProfileSnapshotBrokerClient {
     );
   }
 
-  createProfileSnapshot(operationId: string): Promise<
+  createProfileSnapshot(
+    operationId: string,
+    migrationPolicy: ProfileSnapshotMigrationPolicy,
+  ): Promise<
     Extract<ProfileSnapshotBrokerSuccessResult, { type: 'profileSnapshot' }>
   > {
-    return this.request('createProfileSnapshot', operationId).then(
+    return this.request(
+      'createProfileSnapshot',
+      operationId,
+      migrationPolicy,
+    ).then(
       (result) => {
         if (result.type !== 'profileSnapshot') {
           throw new ProfileSnapshotBrokerError(
@@ -193,6 +201,7 @@ export class ProfileSnapshotBrokerClient {
   private async request(
     operation: ProfileMaintenanceBrokerOperation,
     operationId?: string,
+    migrationPolicy?: ProfileSnapshotMigrationPolicy,
   ): Promise<ProfileSnapshotBrokerSuccessResult> {
     await this.waitUntilReady();
 
@@ -207,6 +216,7 @@ export class ProfileSnapshotBrokerClient {
     const requestId = randomUUID();
     const request = createProfileSnapshotBrokerRequest({
       operation,
+      ...(migrationPolicy === undefined ? {} : { migrationPolicy }),
       ...(operationId === undefined ? {} : { operationId }),
       requestId,
     });

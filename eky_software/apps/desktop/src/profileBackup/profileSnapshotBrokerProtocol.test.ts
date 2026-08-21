@@ -54,11 +54,13 @@ describe('profile snapshot broker protocol', () => {
     });
     expect(
       createProfileSnapshotBrokerRequest({
+        migrationPolicy: 'exactCurrentManifest',
         operation: 'createProfileSnapshot',
         operationId,
         requestId,
       }),
     ).toMatchObject({
+      migrationPolicy: 'exactCurrentManifest',
       operation: 'createProfileSnapshot',
       operationId,
     });
@@ -105,6 +107,23 @@ describe('profile snapshot broker protocol', () => {
   it('rejects nulls, unknown fields and malformed identifiers', () => {
     const requestId = randomUUID();
 
+    expect(
+      parseProfileSnapshotBrokerRequest({
+        migrationPolicy: 'unknown',
+        operation: 'createProfileSnapshot',
+        operationId: randomUUID(),
+        protocolVersion: profileSnapshotBrokerProtocolVersion,
+        requestId,
+      }),
+    ).toBeUndefined();
+    expect(
+      parseProfileSnapshotBrokerRequest({
+        operation: 'createProfileSnapshot',
+        operationId: randomUUID(),
+        protocolVersion: profileSnapshotBrokerProtocolVersion,
+        requestId,
+      }),
+    ).toBeUndefined();
     expect(
       parseProfileSnapshotBrokerRequest({
         operation: 'getProfileMaintenanceStatus',

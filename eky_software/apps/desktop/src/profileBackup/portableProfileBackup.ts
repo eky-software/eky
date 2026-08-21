@@ -100,6 +100,7 @@ export class PortableProfileBackupService {
         maintenanceStarted = true;
         await this.dependencies.profileSnapshotClient.createProfileSnapshot(
           operationId,
+          'exactCurrentManifest',
         );
         const validation =
           await this.dependencies.profileSnapshotClient.validateProfileSnapshot(

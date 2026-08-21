@@ -1,4 +1,4 @@
-export const profileSnapshotBrokerProtocolVersion = 6;
+export const profileSnapshotBrokerProtocolVersion = 7;
 
 const requestIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -15,11 +15,21 @@ export type ProfileMaintenanceBrokerOperation =
   | 'validateActiveProfile'
   | 'validateProfileSnapshot';
 
+export type ProfileSnapshotMigrationPolicy =
+  | 'exactCurrentManifest'
+  | 'compatibleHistoricalPrefix';
+
 export type ProfileSnapshotBrokerRequest =
+  | {
+      migrationPolicy: ProfileSnapshotMigrationPolicy;
+      operation: 'createProfileSnapshot';
+      operationId: string;
+      protocolVersion: typeof profileSnapshotBrokerProtocolVersion;
+      requestId: string;
+    }
   | {
       operation:
         | 'beginProfileMaintenance'
-        | 'createProfileSnapshot'
         | 'endProfileMaintenance'
         | 'prepareProfileRestoreActivation'
         | 'validateProfileSnapshot';
@@ -104,6 +114,7 @@ export type ProfileSnapshotBrokerResponse =
     };
 
 export function createProfileSnapshotBrokerRequest(input: {
+  migrationPolicy?: ProfileSnapshotMigrationPolicy;
   operation: ProfileMaintenanceBrokerOperation;
   operationId?: string;
   requestId: string;
@@ -116,12 +127,20 @@ export function createProfileSnapshotBrokerRequest(input: {
           protocolVersion: profileSnapshotBrokerProtocolVersion,
           requestId: input.requestId,
         }
-      : {
-          operation: input.operation,
-          operationId: input.operationId,
-          protocolVersion: profileSnapshotBrokerProtocolVersion,
-          requestId: input.requestId,
-        };
+      : input.operation === 'createProfileSnapshot'
+        ? {
+            migrationPolicy: input.migrationPolicy,
+            operation: input.operation,
+            operationId: input.operationId,
+            protocolVersion: profileSnapshotBrokerProtocolVersion,
+            requestId: input.requestId,
+          }
+        : {
+            operation: input.operation,
+            operationId: input.operationId,
+            protocolVersion: profileSnapshotBrokerProtocolVersion,
+            requestId: input.requestId,
+          };
   const request = parseProfileSnapshotBrokerRequest(value);
 
   if (request === undefined) {
@@ -189,9 +208,28 @@ export function parseProfileSnapshotBrokerRequest(
       : undefined;
   }
 
+  if (value.operation === 'createProfileSnapshot') {
+    return hasExactKeys(value, [
+      'migrationPolicy',
+      'operation',
+      'operationId',
+      'protocolVersion',
+      'requestId',
+    ]) &&
+      isOperationId(value.operationId) &&
+      isMigrationPolicy(value.migrationPolicy)
+      ? {
+          migrationPolicy: value.migrationPolicy,
+          operation: value.operation,
+          operationId: value.operationId,
+          protocolVersion: profileSnapshotBrokerProtocolVersion,
+          requestId: value.requestId,
+        }
+      : undefined;
+  }
+
   if (
     (value.operation !== 'beginProfileMaintenance' &&
-      value.operation !== 'createProfileSnapshot' &&
       value.operation !== 'endProfileMaintenance' &&
       value.operation !== 'prepareProfileRestoreActivation' &&
       value.operation !== 'validateProfileSnapshot') ||
@@ -212,6 +250,15 @@ export function parseProfileSnapshotBrokerRequest(
     protocolVersion: profileSnapshotBrokerProtocolVersion,
     requestId: value.requestId,
   };
+}
+
+function isMigrationPolicy(
+  value: unknown,
+): value is ProfileSnapshotMigrationPolicy {
+  return (
+    value === 'exactCurrentManifest' ||
+    value === 'compatibleHistoricalPrefix'
+  );
 }
 
 export function parseProfileSnapshotBrokerResponse(

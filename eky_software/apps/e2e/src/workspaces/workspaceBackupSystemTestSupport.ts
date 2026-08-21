@@ -309,6 +309,7 @@ export async function createRealPortableWorkspaceBackup(input: {
       stagingRoot: input.stagingRoot,
     });
     await snapshotService.createProfileSnapshot({
+      migrationPolicy: 'exactCurrentManifest',
       operationId: snapshotOperationId,
       signal: new AbortController().signal,
     });

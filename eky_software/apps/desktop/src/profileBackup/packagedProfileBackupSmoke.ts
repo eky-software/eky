@@ -349,7 +349,10 @@ async function captureActiveProfileEntries(options: {
     await options.profileSnapshotClient.beginMaintenance(operationId);
     maintenanceStarted = true;
     await options.reportSnapshotStage?.('profileSnapshotMaintenance');
-    await options.profileSnapshotClient.createProfileSnapshot(operationId);
+    await options.profileSnapshotClient.createProfileSnapshot(
+      operationId,
+      'exactCurrentManifest',
+    );
     await options.reportSnapshotStage?.('profileSnapshotCreated');
     const validation =
       await options.profileSnapshotClient.validateProfileSnapshot(

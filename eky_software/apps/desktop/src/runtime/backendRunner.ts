@@ -50,6 +50,9 @@ interface BackendProfileSnapshotService {
     profileId: string;
   }>;
   createProfileSnapshot(input: {
+    migrationPolicy:
+      | 'exactCurrentManifest'
+      | 'compatibleHistoricalPrefix';
     operationId: string;
     signal: AbortSignal;
   }): Promise<BackendProfileSnapshotMetadata>;

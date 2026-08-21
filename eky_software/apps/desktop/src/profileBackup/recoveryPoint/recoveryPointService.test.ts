@@ -146,6 +146,26 @@ describe('recovery point service', () => {
     );
     expect(fixture.create).toHaveBeenCalledTimes(1);
   });
+
+  it('allows a historical migration prefix only for a pre-migration point', async () => {
+    const preMigration = await createFixture();
+    await preMigration.service.createPreMigration();
+    expect(preMigration.snapshotPolicies).toEqual([
+      'compatibleHistoricalPrefix',
+    ]);
+
+    const manual = await createFixture();
+    await manual.service.createManual();
+    expect(manual.snapshotPolicies).toEqual(['exactCurrentManifest']);
+
+    const preRestore = await createFixture();
+    await preRestore.service.createPreRestore();
+    expect(preRestore.snapshotPolicies).toEqual(['exactCurrentManifest']);
+
+    const preUpdate = await createFixture();
+    await preUpdate.service.createPreUpdate();
+    expect(preUpdate.snapshotPolicies).toEqual(['exactCurrentManifest']);
+  });
 });
 
 describe('automatic recovery point classification', () => {
@@ -195,6 +215,7 @@ async function createFixture(options: {
   roots.push(stagingRoot);
   const operationRoot = join(stagingRoot, operationId);
   const calls: string[] = [];
+  const snapshotPolicies: string[] = [];
   const existingPoints = options.existingPoints ?? [];
   const createdPoint = createPoint('monthly', now.toISOString());
   const events: ProfileRecoveryOperationalEvent[] = [];
@@ -224,8 +245,9 @@ async function createFixture(options: {
         calls.push('begin');
         return 'busy';
       },
-      async createProfileSnapshot() {
+      async createProfileSnapshot(_operationId, migrationPolicy) {
         calls.push('snapshot');
+        snapshotPolicies.push(migrationPolicy);
         await mkdir(operationRoot, { mode: 0o700, recursive: true });
         await Promise.all([
           writeFile(join(operationRoot, 'profile.sqlite'), 'database'),
@@ -301,6 +323,7 @@ async function createFixture(options: {
     createdPoint,
     events,
     service,
+    snapshotPolicies,
   };
 }
 

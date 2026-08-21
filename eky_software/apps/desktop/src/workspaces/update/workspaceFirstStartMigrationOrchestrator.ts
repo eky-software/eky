@@ -150,12 +150,15 @@ export class WorkspaceFirstStartMigrationOrchestrator
       return invalidOrchestration();
     }
 
+    if (!updateAdmissions.has(this.options.admission)) {
+      this.preparation = Object.freeze({ kind: 'notRequired' });
+      return 'notRequired';
+    }
+
     try {
       const registry = await this.readRequiredRegistry();
       const sourceBuild = await this.resolveSourceBuild();
-      const inventory = updateAdmissions.has(this.options.admission)
-        ? await this.options.inventory.inspect()
-        : undefined;
+      const inventory = await this.options.inventory.inspect();
       const plan = resolveWorkspaceFirstStartMigrationPlan({
         admission: this.options.admission,
         ...(inventory === undefined ? {} : { inventory }),

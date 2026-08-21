@@ -18,7 +18,12 @@ export interface ProfileSnapshotMetadata {
   database: SqliteProfileSnapshotMetadata;
 }
 
+export type ProfileSnapshotMigrationPolicy =
+  | 'exactCurrentManifest'
+  | 'compatibleHistoricalPrefix';
+
 export interface CreateProfileSnapshotInput {
+  migrationPolicy: ProfileSnapshotMigrationPolicy;
   operationId: string;
   signal: AbortSignal;
 }

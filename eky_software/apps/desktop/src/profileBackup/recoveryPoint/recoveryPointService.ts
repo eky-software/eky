@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import { createProfileBackupSourceEntries } from '../createProfileBackupSourceEntries.js';
 import type { ProfileSnapshotBrokerClient } from '../profileSnapshotBrokerClient.js';
+import type { ProfileSnapshotMigrationPolicy } from '../profileSnapshotBrokerProtocol.js';
 import type {
   RecoveryPointIndexEntry,
   RecoveryPointKind,
@@ -74,52 +75,56 @@ export class RecoveryPointService {
     correlationId = this.createOperationId(),
   ): Promise<RecoveryPointIndexEntry | undefined> {
     return this.runExclusive('checking', async () =>
-      this.withHealthySnapshot(correlationId, async (snapshot) => {
-        await this.dependencies.rotation.resumePending(
-          snapshot.validation.profileId,
-        );
-        const points = await this.dependencies.store.list(
-          snapshot.validation.profileId,
-        );
-        this.updatePointStatus(points);
-        if (!isAutomaticPointDue(points, this.now())) {
-          return undefined;
-        }
-        const kind = chooseAutomaticPointKind(points, this.now());
-        const startedAt = Date.now();
-        this.observe({
-          correlationId,
-          eventName: 'recoveryPoint.started',
-          recoveryPointKind: kind,
-          stage: 'creation',
-        });
-        const point = await this.persistSnapshot(snapshot, kind);
-        this.observe({
-          correlationId,
-          durationMs: Date.now() - startedAt,
-          eventName: 'recoveryPoint.completed',
-          recoveryPointKind: kind,
-          stage: 'creation',
-        });
-        return point;
-      }),
+      this.withHealthySnapshot(
+        correlationId,
+        'exactCurrentManifest',
+        async (snapshot) => {
+          await this.dependencies.rotation.resumePending(
+            snapshot.validation.profileId,
+          );
+          const points = await this.dependencies.store.list(
+            snapshot.validation.profileId,
+          );
+          this.updatePointStatus(points);
+          if (!isAutomaticPointDue(points, this.now())) {
+            return undefined;
+          }
+          const kind = chooseAutomaticPointKind(points, this.now());
+          const startedAt = Date.now();
+          this.observe({
+            correlationId,
+            eventName: 'recoveryPoint.started',
+            recoveryPointKind: kind,
+            stage: 'creation',
+          });
+          const point = await this.persistSnapshot(snapshot, kind);
+          this.observe({
+            correlationId,
+            durationMs: Date.now() - startedAt,
+            eventName: 'recoveryPoint.completed',
+            recoveryPointKind: kind,
+            stage: 'creation',
+          });
+          return point;
+        },
+      ),
     );
   }
 
   createManual(): Promise<RecoveryPointIndexEntry> {
-    return this.createNamedPoint('manual');
+    return this.createNamedPoint('manual', 'exactCurrentManifest');
   }
 
   createPreMigration(): Promise<RecoveryPointIndexEntry> {
-    return this.createNamedPoint('preUpdate');
+    return this.createNamedPoint('preUpdate', 'compatibleHistoricalPrefix');
   }
 
   createPreRestore(): Promise<RecoveryPointIndexEntry> {
-    return this.createNamedPoint('preRestore');
+    return this.createNamedPoint('preRestore', 'exactCurrentManifest');
   }
 
   createPreUpdate(): Promise<RecoveryPointIndexEntry> {
-    return this.createNamedPoint('preUpdate');
+    return this.createNamedPoint('preUpdate', 'exactCurrentManifest');
   }
 
   getStatus(): RecoveryPointStatus {
@@ -142,6 +147,7 @@ export class RecoveryPointService {
 
   private createNamedPoint(
     kind: 'manual' | 'preRestore' | 'preUpdate',
+    migrationPolicy: ProfileSnapshotMigrationPolicy,
   ): Promise<RecoveryPointIndexEntry> {
     const correlationId = this.createOperationId();
     const startedAt = Date.now();
@@ -152,8 +158,10 @@ export class RecoveryPointService {
       stage: 'creation',
     });
     return this.runExclusive('creating', () =>
-      this.withHealthySnapshot(correlationId, (snapshot) =>
-        this.persistSnapshot(snapshot, kind),
+      this.withHealthySnapshot(
+        correlationId,
+        migrationPolicy,
+        (snapshot) => this.persistSnapshot(snapshot, kind),
       ),
     ).then(
       (point) => {
@@ -220,6 +228,7 @@ export class RecoveryPointService {
 
   private async withHealthySnapshot<T>(
     operationId: string,
+    migrationPolicy: ProfileSnapshotMigrationPolicy,
     useSnapshot: (snapshot: HealthySnapshot) => Promise<T>,
   ): Promise<T> {
     if (!operationIdPattern.test(operationId)) {
@@ -238,6 +247,7 @@ export class RecoveryPointService {
       maintenanceStarted = true;
       await this.dependencies.profileSnapshotClient.createProfileSnapshot(
         operationId,
+        migrationPolicy,
       );
       const validation =
         await this.dependencies.profileSnapshotClient.validateProfileSnapshot(

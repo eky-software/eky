@@ -58,6 +58,7 @@ describe('WorkspaceFirstStartMigrationOrchestrator', () => {
       const fixture = createFixture({
         ...(acceptedBuild === undefined ? {} : { acceptedBuild }),
         admission,
+        registryMissing: true,
         runningBuild,
       });
 
@@ -69,6 +70,7 @@ describe('WorkspaceFirstStartMigrationOrchestrator', () => {
       );
 
       expect(fixture.inspect).not.toHaveBeenCalled();
+      expect(fixture.readRegistry).not.toHaveBeenCalled();
       expect(fixture.journal.value).toBeUndefined();
     },
   );
@@ -262,19 +264,24 @@ function createFixture(
     readonly admission?: PreWorkspaceBuildAdmission;
     readonly failureResult?: PreBackendFirstStartFailureResult;
     readonly inventory?: Readonly<WorkspaceMigrationInventory>;
+    readonly registryMissing?: boolean;
     readonly runningBuild?: Readonly<WorkspaceFirstStartBuildIdentity>;
   } = {},
 ) {
   const events: string[] = [];
+  let registryValue = workspaceRegistry();
+  const readRegistry = vi.fn(async () =>
+    options.registryMissing === true ? undefined : registryValue,
+  );
   const registry = {
-    value: workspaceRegistry(),
-    writes: [] as Readonly<LocalWorkspaceRegistryV1>[],
-    async read() {
-      return this.value;
+    get value() {
+      return registryValue;
     },
+    writes: [] as Readonly<LocalWorkspaceRegistryV1>[],
+    read: readRegistry,
     async write(value: unknown) {
-      this.value = validateWorkspaceRegistry(value);
-      this.writes.push(this.value);
+      registryValue = validateWorkspaceRegistry(value);
+      this.writes.push(registryValue);
       events.push('registry.write');
     },
   };
@@ -341,6 +348,7 @@ function createFixture(
     events,
     inspect,
     journal,
+    readRegistry,
     recordFailure,
     registry,
     subject,

@@ -220,7 +220,9 @@ describe('profile snapshot broker boundary', () => {
     const operationId = randomUUID();
 
     await client.beginMaintenance(operationId);
-    await expect(client.createProfileSnapshot(operationId)).resolves.toEqual({
+    await expect(
+      client.createProfileSnapshot(operationId, 'exactCurrentManifest'),
+    ).resolves.toEqual({
       artifactCatalog: {
         artifactCount: 1,
         artifactTotalByteSize: 2_048,
@@ -272,7 +274,7 @@ describe('profile snapshot broker boundary', () => {
 
     await client.beginMaintenance(operationId);
     await expect(
-      client.createProfileSnapshot(operationId),
+      client.createProfileSnapshot(operationId, 'exactCurrentManifest'),
     ).rejects.toMatchObject({
       code: 'PROFILE_SNAPSHOT_DATABASE_FAILED',
     });
@@ -314,7 +316,7 @@ describe('profile snapshot broker boundary', () => {
 
     await client.beginMaintenance(operationId);
     await expect(
-      client.createProfileSnapshot(operationId),
+      client.createProfileSnapshot(operationId, 'exactCurrentManifest'),
     ).rejects.toMatchObject({
       code: 'PROFILE_SNAPSHOT_DATABASE_FAILED',
     });
@@ -353,7 +355,7 @@ describe('profile snapshot broker boundary', () => {
 
     await client.beginMaintenance(operationId);
     await expect(
-      client.createProfileSnapshot(operationId),
+      client.createProfileSnapshot(operationId, 'exactCurrentManifest'),
     ).rejects.toMatchObject({
       code: 'PROFILE_SNAPSHOT_BROKER_OPERATION_FAILED',
       message: 'PROFILE_SNAPSHOT_BROKER_OPERATION_FAILED',
@@ -393,7 +395,7 @@ describe('profile snapshot broker boundary', () => {
 
     await client.beginMaintenance(operationId);
     await expect(
-      client.createProfileSnapshot(operationId),
+      client.createProfileSnapshot(operationId, 'exactCurrentManifest'),
     ).rejects.toMatchObject({
       code: 'PROFILE_SNAPSHOT_STAGING_FAILED',
       message: 'PROFILE_SNAPSHOT_STAGING_FAILED',
@@ -433,7 +435,7 @@ describe('profile snapshot broker boundary', () => {
 
     await client.beginMaintenance(operationId);
     await expect(
-      client.createProfileSnapshot(operationId),
+      client.createProfileSnapshot(operationId, 'exactCurrentManifest'),
     ).rejects.toMatchObject({
       code: 'PROFILE_SNAPSHOT_ARTIFACTS_FAILED',
     });
