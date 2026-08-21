@@ -10,6 +10,7 @@ import type {
 
 import { readElectronProcessMetrics } from '../../src/electron/electronMainCapabilities.js';
 import { readElectronE2eActiveWorkspace } from '../../src/environment/readElectronE2eActiveWorkspace.js';
+import { createSyntheticCustomerInput } from '../../src/data/syntheticBusinessInputs.js';
 import {
   expect,
   test,
@@ -27,6 +28,7 @@ const createdWorkspaceLabel = 'E2E Yritys B';
 const renamedWorkspaceLabel = 'E2E Yritys B Nimetty';
 const importedWorkspaceLabel = 'E2E Yritys C';
 const originalCustomerName = 'Desktop Synthetic Customer Oy';
+const postBackupCustomerName = 'Synthetic Post Backup Marker Oy';
 
 test('DESK-WORKSPACE-UI-001 @critical @recovery keeps workspace data isolated through create, switch and rename', async ({
   e2eElectron,
@@ -192,7 +194,7 @@ test.describe('workspace backup import', () => {
     await openWorkspaceDialog(e2eElectron.page);
     await expect(workspaceRow(e2eElectron.page, importedWorkspaceLabel)).toBeVisible();
     await closeWorkspaceDialog(e2eElectron.page);
-    await assertNoWorkspaceImportSecretExposure(e2eElectron, fixture);
+    await assertNoWorkspaceBackupSecretExposure(e2eElectron, fixture);
 
     const pageBeforeSwitchToImported = e2eElectron.page;
     await chooseWorkspaceForSwitch(
@@ -238,7 +240,7 @@ test.describe('workspace backup import', () => {
         .click();
     });
     await expectCustomerVisibility(e2eElectron.api, originalCustomerName, true);
-    await assertNoWorkspaceImportSecretExposure(e2eElectron, fixture);
+    await assertNoWorkspaceBackupSecretExposure(e2eElectron, fixture);
   });
 
   test('DESK-WORKSPACE-PASSWORD-001 @critical @recovery cancels the password prompt without workspace mutation', async ({
@@ -271,7 +273,7 @@ test.describe('workspace backup import', () => {
     ).toBeVisible();
     expect(e2eElectron.runtime.runtimeInstanceId).toBe(runtimeIdBefore);
     expect(readWorkspaceRegistry(e2eElectron)).toBe(registryBefore);
-    await assertNoWorkspaceImportSecretExposure(e2eElectron, fixture);
+    await assertNoWorkspaceBackupSecretExposure(e2eElectron, fixture);
     await assertSingleHealthyDesktopRuntime(e2eElectron);
   });
 });
@@ -310,6 +312,235 @@ test.describe('workspace backup file selection cancellation', () => {
   });
 });
 
+test.describe('active workspace backup replacement', () => {
+  test.use({
+    e2eNativeOpenDialogPurpose: 'workspaceBackupReplacement',
+    e2eWorkspaceBackupFixture: 'activeReplacement',
+  });
+
+  test('DESK-WORKSPACE-REPLACE-001 @critical @recovery @security replaces only the active exact-lineage workspace and relaunches once', async ({
+    e2eElectron,
+  }) => {
+    const fixture = requireWorkspaceBackupFixture(e2eElectron);
+    const registryBefore = readWorkspaceRegistry(e2eElectron);
+    const activeWorkspaceIdBefore = readElectronE2eActiveWorkspace(
+      e2eElectron.runtime.userDataPath,
+    ).workspaceId;
+    expect(
+      readElectronE2eActiveWorkspace(e2eElectron.runtime.userDataPath)
+        .profileId === fixture.profileId,
+    ).toBe(true);
+    const backupSha256Before = await sha256File(fixture.backupPath);
+    await createPostBackupCustomer(e2eElectron.api);
+    await expectCustomerVisibility(
+      e2eElectron.api,
+      postBackupCustomerName,
+      true,
+    );
+
+    const pageBeforeReplacement = e2eElectron.page;
+    await openWorkspaceReplacement(pageBeforeReplacement);
+    await e2eElectron.performRelaunchingOperation(async () => {
+      const passwordWindowPromise = waitForAdditionalWindow(
+        e2eElectron.electronApp,
+      );
+      await pageBeforeReplacement
+        .getByRole('button', { name: 'Jatka tiedoston valintaan' })
+        .click();
+      const passwordWindow = await passwordWindowPromise;
+      await passwordWindow.locator('#password').fill(fixture.password);
+      await clickPasswordWindowButtonAndWaitForClose(
+        passwordWindow,
+        '#submit',
+      );
+    });
+
+    expect(pageBeforeReplacement.isClosed()).toBe(true);
+    expect(
+      readElectronE2eActiveWorkspace(e2eElectron.runtime.userDataPath)
+        .workspaceId,
+    ).toBe(activeWorkspaceIdBefore);
+    expect(readWorkspaceRegistry(e2eElectron)).toBe(registryBefore);
+    expect(await sha256File(fixture.backupPath)).toBe(backupSha256Before);
+    await expectWorkspaceBrand(e2eElectron.page, originalWorkspaceLabel);
+    await expectCustomerVisibility(
+      e2eElectron.api,
+      fixture.customerName,
+      true,
+    );
+    await expectCustomerVisibility(
+      e2eElectron.api,
+      postBackupCustomerName,
+      false,
+    );
+    expect(
+      (await e2eElectron.api.get(`/invoices/${fixture.invoiceId}`)).status(),
+    ).toBe(200);
+    expect(
+      await readActiveInvoicePdfSha256(e2eElectron, fixture.invoiceId),
+    ).toBe(fixture.pdfSha256);
+    await assertNoWorkspaceBackupSecretExposure(e2eElectron, fixture);
+    await assertSingleHealthyDesktopRuntime(e2eElectron);
+  });
+});
+
+test.describe('active workspace replacement lineage rejection', () => {
+  test.use({
+    e2eNativeOpenDialogPurpose: 'workspaceBackupReplacement',
+    e2eWorkspaceBackupFixture: 'synthetic',
+  });
+
+  test('DESK-WORKSPACE-REPLACE-WRONG-LINEAGE-001 @critical @recovery @security rejects a foreign workspace backup without mutation', async ({
+    e2eElectron,
+  }) => {
+    const fixture = requireWorkspaceBackupFixture(e2eElectron);
+    const registryBefore = readWorkspaceRegistry(e2eElectron);
+    const runtimeIdBefore = e2eElectron.runtime.runtimeInstanceId;
+    const backupSha256Before = await sha256File(fixture.backupPath);
+    await createPostBackupCustomer(e2eElectron.api);
+
+    await openWorkspaceReplacement(e2eElectron.page);
+    const passwordWindowPromise = waitForAdditionalWindow(
+      e2eElectron.electronApp,
+    );
+    await e2eElectron.page
+      .getByRole('button', { name: 'Jatka tiedoston valintaan' })
+      .click();
+    const passwordWindow = await passwordWindowPromise;
+    await passwordWindow.locator('#password').fill(fixture.password);
+    await clickPasswordWindowButtonAndWaitForClose(passwordWindow, '#submit');
+
+    await expect(e2eElectron.page.getByRole('alert')).toHaveText(
+      'Yritysten tietoja ei voitu käsitellä turvallisesti.',
+    );
+    expect(e2eElectron.runtime.runtimeInstanceId).toBe(runtimeIdBefore);
+    expect(readWorkspaceRegistry(e2eElectron)).toBe(registryBefore);
+    expect(await sha256File(fixture.backupPath)).toBe(backupSha256Before);
+    await expectCustomerVisibility(
+      e2eElectron.api,
+      postBackupCustomerName,
+      true,
+    );
+    await expectCustomerVisibility(
+      e2eElectron.api,
+      fixture.customerName,
+      false,
+    );
+    await assertNoWorkspaceBackupSecretExposure(e2eElectron, fixture);
+    await assertSingleHealthyDesktopRuntime(e2eElectron);
+  });
+});
+
+test.describe('active workspace replacement file selection cancellation', () => {
+  test.use({
+    e2eNativeOpenDialogMode: 'cancel',
+    e2eNativeOpenDialogPurpose: 'workspaceBackupReplacement',
+  });
+
+  test('DESK-WORKSPACE-REPLACE-CANCEL-001 @critical @recovery cancels native file selection without mutation', async ({
+    e2eElectron,
+  }) => {
+    const registryBefore = readWorkspaceRegistry(e2eElectron);
+    const runtimeIdBefore = e2eElectron.runtime.runtimeInstanceId;
+
+    await openWorkspaceReplacement(e2eElectron.page);
+    await e2eElectron.page
+      .getByRole('button', { name: 'Jatka tiedoston valintaan' })
+      .click();
+
+    await expect(
+      e2eElectron.page.getByRole('button', {
+        name: 'Korvaa tiedot varmuuskopiosta',
+      }),
+    ).toBeVisible();
+    expect(e2eElectron.runtime.runtimeInstanceId).toBe(runtimeIdBefore);
+    expect(readWorkspaceRegistry(e2eElectron)).toBe(registryBefore);
+    await assertSingleHealthyDesktopRuntime(e2eElectron);
+  });
+});
+
+test.describe('active workspace replacement password cancellation', () => {
+  test.use({
+    e2eNativeOpenDialogPurpose: 'workspaceBackupReplacement',
+    e2eWorkspaceBackupFixture: 'activeReplacement',
+  });
+
+  test('DESK-WORKSPACE-REPLACE-CANCEL-002 @critical @recovery cancels password entry without mutation', async ({
+    e2eElectron,
+  }) => {
+    const fixture = requireWorkspaceBackupFixture(e2eElectron);
+    const registryBefore = readWorkspaceRegistry(e2eElectron);
+    const runtimeIdBefore = e2eElectron.runtime.runtimeInstanceId;
+    const backupSha256Before = await sha256File(fixture.backupPath);
+
+    await openWorkspaceReplacement(e2eElectron.page);
+    const passwordWindowPromise = waitForAdditionalWindow(
+      e2eElectron.electronApp,
+    );
+    await e2eElectron.page
+      .getByRole('button', { name: 'Jatka tiedoston valintaan' })
+      .click();
+    const passwordWindow = await passwordWindowPromise;
+    await clickPasswordWindowButtonAndWaitForClose(passwordWindow, '#cancel');
+
+    await expect(
+      e2eElectron.page.getByRole('button', {
+        name: 'Korvaa tiedot varmuuskopiosta',
+      }),
+    ).toBeVisible();
+    expect(e2eElectron.runtime.runtimeInstanceId).toBe(runtimeIdBefore);
+    expect(readWorkspaceRegistry(e2eElectron)).toBe(registryBefore);
+    expect(await sha256File(fixture.backupPath)).toBe(backupSha256Before);
+    await assertNoWorkspaceBackupSecretExposure(e2eElectron, fixture);
+    await assertSingleHealthyDesktopRuntime(e2eElectron);
+  });
+});
+
+test.describe('active workspace replacement confirmation cancellation', () => {
+  test.use({
+    e2eDialogMode: 'cancel',
+    e2eNativeOpenDialogPurpose: 'workspaceBackupReplacement',
+    e2eWorkspaceBackupFixture: 'activeReplacement',
+  });
+
+  test('DESK-WORKSPACE-REPLACE-CANCEL-003 @critical @recovery cancels the final native warning without mutation', async ({
+    e2eElectron,
+  }) => {
+    const fixture = requireWorkspaceBackupFixture(e2eElectron);
+    const registryBefore = readWorkspaceRegistry(e2eElectron);
+    const runtimeIdBefore = e2eElectron.runtime.runtimeInstanceId;
+    const backupSha256Before = await sha256File(fixture.backupPath);
+    await createPostBackupCustomer(e2eElectron.api);
+
+    await openWorkspaceReplacement(e2eElectron.page);
+    const passwordWindowPromise = waitForAdditionalWindow(
+      e2eElectron.electronApp,
+    );
+    await e2eElectron.page
+      .getByRole('button', { name: 'Jatka tiedoston valintaan' })
+      .click();
+    const passwordWindow = await passwordWindowPromise;
+    await passwordWindow.locator('#password').fill(fixture.password);
+    await clickPasswordWindowButtonAndWaitForClose(passwordWindow, '#submit');
+
+    await expect(
+      e2eElectron.page.getByRole('button', {
+        name: 'Korvaa tiedot varmuuskopiosta',
+      }),
+    ).toBeVisible();
+    expect(e2eElectron.runtime.runtimeInstanceId).toBe(runtimeIdBefore);
+    expect(readWorkspaceRegistry(e2eElectron)).toBe(registryBefore);
+    expect(await sha256File(fixture.backupPath)).toBe(backupSha256Before);
+    await expectCustomerVisibility(
+      e2eElectron.api,
+      postBackupCustomerName,
+      true,
+    );
+    await assertNoWorkspaceBackupSecretExposure(e2eElectron, fixture);
+    await assertSingleHealthyDesktopRuntime(e2eElectron);
+  });
+});
+
 async function openWorkspaceDialog(page: Page): Promise<void> {
   await page
     .getByRole('button', { name: /^Vaihda yritystä\. Aktiivinen yritys:/u })
@@ -320,6 +551,38 @@ async function openWorkspaceDialog(page: Page): Promise<void> {
 async function closeWorkspaceDialog(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Sulje yritysvalikko' }).click();
   await expect(page.getByRole('dialog', { name: 'Yritykset' })).toHaveCount(0);
+}
+
+async function openWorkspaceReplacement(page: Page): Promise<void> {
+  await openWorkspaceDialog(page);
+  await page
+    .getByRole('button', { name: 'Korvaa tiedot varmuuskopiosta' })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: 'Aktiivisen yrityksen palautus' }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      `Olet korvaamassa aktiivisen yrityksen ${originalWorkspaceLabel} nykyiset tiedot.`,
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      'Varmuuskopion pitää kuulua täsmälleen samalle yritykselle.',
+    ),
+  ).toBeVisible();
+}
+
+async function createPostBackupCustomer(
+  api: APIRequestContext,
+): Promise<void> {
+  const response = await api.post('/customers', {
+    data: createSyntheticCustomerInput({
+      customerNumber: 'E2E-REPLACE-AFTER',
+      name: postBackupCustomerName,
+    }),
+  });
+  expect(response.status()).toBe(201);
 }
 
 function workspaceRow(page: Page, workspaceLabel: string): Locator {
@@ -421,7 +684,7 @@ function readWorkspaceRegistry(harness: IsolatedElectronHarness): string {
   );
 }
 
-async function assertNoWorkspaceImportSecretExposure(
+async function assertNoWorkspaceBackupSecretExposure(
   harness: IsolatedElectronHarness,
   fixture: NonNullable<IsolatedElectronHarness['workspaceBackupFixture']>,
 ): Promise<void> {
@@ -434,12 +697,16 @@ async function assertNoWorkspaceImportSecretExposure(
   const serializedRendererContent = JSON.stringify(rendererContent);
   expect(serializedRendererContent).not.toContain(fixture.backupPath);
   expect(serializedRendererContent).not.toContain(fixture.password);
+  expect(serializedRendererContent).not.toContain(fixture.profileId);
+  expect(serializedRendererContent).not.toContain(harness.runtime.sessionSecret);
 
   const observations = existsSync(harness.runtime.observationsPath)
     ? readFileSync(harness.runtime.observationsPath, 'utf8')
     : '';
   expect(observations).not.toContain(fixture.backupPath);
   expect(observations).not.toContain(fixture.password);
+  expect(observations).not.toContain(fixture.profileId);
+  expect(observations).not.toContain(harness.runtime.sessionSecret);
   expect(observations).not.toContain(fixture.sourceDatabaseFilePath);
 }
 

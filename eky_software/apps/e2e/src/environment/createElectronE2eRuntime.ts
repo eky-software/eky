@@ -35,7 +35,8 @@ export function createElectronE2eRuntime(input: {
   nativeOpenDialogMode?: 'accept' | 'cancel';
   nativeOpenDialogPurpose?:
     | 'invoicePdfArchive'
-    | 'workspaceBackupImport';
+    | 'workspaceBackupImport'
+    | 'workspaceBackupReplacement';
   paths: E2eWorkerPaths;
   scenarioId: string;
   startupMode?: 'backendStartFailure' | 'normal';

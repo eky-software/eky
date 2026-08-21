@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { request as requestFactory } from '@playwright/test';
 
 import { createE2eWorkerPaths } from '../environment/createE2eWorkerPaths.js';
+import type { E2eWorkerPaths } from '../environment/e2eEnvironmentTypes.js';
 import { reserveLoopbackPort } from '../environment/reserveLoopbackPort.js';
 import { startE2eBackendProcess } from '../environment/startE2eBackendProcess.js';
 import { waitForLoopbackPortRelease } from '../environment/waitForLoopbackPortRelease.js';
@@ -21,6 +22,7 @@ export interface ElectronWorkspaceBackupFixture {
   readonly invoiceId: string;
   readonly password: string;
   readonly pdfSha256: string;
+  readonly profileId: string;
   readonly sourceDatabaseFilePath: string;
   readonly sourceDatabaseSha256: string;
 }
@@ -28,18 +30,65 @@ export interface ElectronWorkspaceBackupFixture {
 const sourceScenarioId = 'WORKSPACE-BACKUP-SOURCE';
 const syntheticPassword = 'synthetic-electron-workspace-import-password';
 const syntheticCustomerName = 'Synthetic Imported Workspace Customer Oy';
+const activeReplacementPassword =
+  'synthetic-electron-workspace-replacement-password';
+const activeReplacementCustomerName =
+  'Synthetic Active Workspace Backup Customer Oy';
 
 export async function createElectronWorkspaceBackupFixture(input: {
   readonly backupPath: string;
   readonly runRoot: string;
 }): Promise<Readonly<ElectronWorkspaceBackupFixture>> {
   const sourcePaths = createE2eWorkerPaths(input.runRoot, sourceScenarioId);
-  const backendPort = await reserveLoopbackPort();
-  const backend = await startE2eBackendProcess({
-    backendPort,
+  return createWorkspaceBackupFixture({
+    backupPath: input.backupPath,
+    customerName: syntheticCustomerName,
+    customerNumber: 'E2E-IMPORTED-1',
+    password: syntheticPassword,
     paths: sourcePaths,
     runRoot: input.runRoot,
     scenarioId: sourceScenarioId,
+    stagingDirectoryName: 'backup-staging',
+    subject: 'Synthetic imported workspace invoice',
+  });
+}
+
+export async function createElectronActiveWorkspaceReplacementFixture(input: {
+  readonly backupPath: string;
+  readonly paths: E2eWorkerPaths;
+  readonly runRoot: string;
+  readonly scenarioId: string;
+}): Promise<Readonly<ElectronWorkspaceBackupFixture>> {
+  return createWorkspaceBackupFixture({
+    backupPath: input.backupPath,
+    customerName: activeReplacementCustomerName,
+    customerNumber: 'E2E-REPLACE-SOURCE',
+    password: activeReplacementPassword,
+    paths: input.paths,
+    runRoot: input.runRoot,
+    scenarioId: input.scenarioId,
+    stagingDirectoryName: 'replacement-backup-staging',
+    subject: 'Synthetic active workspace replacement invoice',
+  });
+}
+
+async function createWorkspaceBackupFixture(input: {
+  readonly backupPath: string;
+  readonly customerName: string;
+  readonly customerNumber: string;
+  readonly password: string;
+  readonly paths: E2eWorkerPaths;
+  readonly runRoot: string;
+  readonly scenarioId: string;
+  readonly stagingDirectoryName: string;
+  readonly subject: string;
+}): Promise<Readonly<ElectronWorkspaceBackupFixture>> {
+  const backendPort = await reserveLoopbackPort();
+  const backend = await startE2eBackendProcess({
+    backendPort,
+    paths: input.paths,
+    runRoot: input.runRoot,
+    scenarioId: input.scenarioId,
   });
   const api = await requestFactory.newContext({
     baseURL: backend.backendOrigin,
@@ -52,9 +101,9 @@ export async function createElectronWorkspaceBackupFixture(input: {
   let invoiceId: string;
   try {
     const invoice = await createApprovedInvoiceWithPdfForWorkspaceBackup(api, {
-      customerName: syntheticCustomerName,
-      customerNumber: 'E2E-IMPORTED-1',
-      subject: 'Synthetic imported workspace invoice',
+      customerName: input.customerName,
+      customerNumber: input.customerNumber,
+      subject: input.subject,
     });
     invoiceId = invoice.invoiceId;
   } finally {
@@ -64,31 +113,32 @@ export async function createElectronWorkspaceBackupFixture(input: {
   }
 
   const document = readWorkspaceBackupInvoiceDocument(
-    sourcePaths.databaseFilePath,
+    input.paths.databaseFilePath,
     invoiceId,
   );
   const pdfSha256 = await sha256File(
     resolveWorkspaceBackupStoragePath(
-      sourcePaths.documentsRoot,
+      input.paths.documentsRoot,
       document.storagePath,
     ),
   );
-  await createRealPortableWorkspaceBackup({
+  const backupIdentity = await createRealPortableWorkspaceBackup({
     backupPath: input.backupPath,
-    databaseFilePath: sourcePaths.databaseFilePath,
-    invoiceDocumentStorageRoot: sourcePaths.documentsRoot,
-    password: syntheticPassword,
-    stagingRoot: join(sourcePaths.tempRoot, 'backup-staging'),
+    databaseFilePath: input.paths.databaseFilePath,
+    invoiceDocumentStorageRoot: input.paths.documentsRoot,
+    password: input.password,
+    stagingRoot: join(input.paths.tempRoot, input.stagingDirectoryName),
   });
 
   return Object.freeze({
     backupPath: input.backupPath,
     backupSha256: await sha256File(input.backupPath),
-    customerName: syntheticCustomerName,
+    customerName: input.customerName,
     invoiceId,
-    password: syntheticPassword,
+    password: input.password,
     pdfSha256,
-    sourceDatabaseFilePath: sourcePaths.databaseFilePath,
-    sourceDatabaseSha256: await sha256File(sourcePaths.databaseFilePath),
+    profileId: backupIdentity.profileId,
+    sourceDatabaseFilePath: input.paths.databaseFilePath,
+    sourceDatabaseSha256: await sha256File(input.paths.databaseFilePath),
   });
 }

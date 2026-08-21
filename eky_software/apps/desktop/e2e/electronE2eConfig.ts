@@ -16,7 +16,10 @@ export interface ElectronE2eConfig {
   marker: 'EKY_E2E';
   nativeOpenDialog: {
     mode: 'accept' | 'cancel';
-    purpose: 'invoicePdfArchive' | 'workspaceBackupImport';
+    purpose:
+      | 'invoicePdfArchive'
+      | 'workspaceBackupImport'
+      | 'workspaceBackupReplacement';
   };
   paths: {
     applicationPath: string;
@@ -107,7 +110,8 @@ function parseElectronE2eConfig(value: unknown): ElectronE2eConfig {
     (nativeOpenDialog.mode !== 'accept' &&
       nativeOpenDialog.mode !== 'cancel') ||
     (nativeOpenDialog.purpose !== 'invoicePdfArchive' &&
-      nativeOpenDialog.purpose !== 'workspaceBackupImport') ||
+      nativeOpenDialog.purpose !== 'workspaceBackupImport' &&
+      nativeOpenDialog.purpose !== 'workspaceBackupReplacement') ||
     root.relaunchMode !== 'playwrightManaged'
   ) {
     throw new Error('Electron E2E native operation config is invalid.');
@@ -153,7 +157,8 @@ function parseElectronE2eConfig(value: unknown): ElectronE2eConfig {
   if (
     (nativeOpenDialog.purpose === 'invoicePdfArchive' &&
       paths.workspaceBackupPath !== null) ||
-    (nativeOpenDialog.purpose === 'workspaceBackupImport' &&
+    ((nativeOpenDialog.purpose === 'workspaceBackupImport' ||
+      nativeOpenDialog.purpose === 'workspaceBackupReplacement') &&
       nativeOpenDialog.mode === 'accept' &&
       paths.workspaceBackupPath === null)
   ) {
