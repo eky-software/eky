@@ -2,7 +2,8 @@ param([string]$HistoricalExecutablePath = '')
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-. (Join-Path $PSScriptRoot 'windowsInstallerProcessTree.ps1')
+. (Join-Path (Split-Path -Parent $PSScriptRoot) `
+  'windowsInstallerProcessTree.ps1')
 . (Join-Path $PSScriptRoot 'historicalPackagedSmokeProcessChain.ps1')
 
 function ConvertTo-EkyHistoricalEncodedCommand {

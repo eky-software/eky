@@ -5,7 +5,6 @@ function Get-EkyHistoricalProcessIdentityKey {
 
   return "$($Identity.processId):$($Identity.creationToken)"
 }
-
 function Resolve-EkyHistoricalExecutablePath {
   param(
     [Parameter(Mandatory = $true)][string]$Path,

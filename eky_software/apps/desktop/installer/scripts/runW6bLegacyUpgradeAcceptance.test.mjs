@@ -173,10 +173,22 @@ test('accepts only a lowercase 64-hex lineage profile id', () => {
 });
 
 test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () => {
-  const sourceText = readFileSync(
-    new URL('./testW6bLegacyUpgradeAcceptance.ps1', import.meta.url),
+  const sourceSmokeText = readFileSync(
+    new URL('./w6bLegacy/sourceSmoke.ps1', import.meta.url),
     'utf8',
   );
+  const sourceText = [
+    './testW6bLegacyUpgradeAcceptance.ps1',
+    './w6bLegacy/evidence.ps1',
+    './w6bLegacy/historicalPackagedSmokeProcessChain.ps1',
+    './w6bLegacy/installerLifecycle.ps1',
+    './w6bLegacy/pathSafety.ps1',
+    './w6bLegacy/progress.ps1',
+    './w6bLegacy/sourceSmoke.ps1',
+    './w6bLegacy/sourceUserData.ps1',
+  ]
+    .map((path) => readFileSync(new URL(path, import.meta.url), 'utf8'))
+    .join('\n');
 
   assert.match(sourceText, /--user-data-dir/iu);
   assert.match(sourceText, /function Start-W6bIsolatedEkyProcess/iu);
@@ -211,7 +223,7 @@ test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () 
   assert.match(sourceText, /Invoke-W6bSourcePackagedSmoke/u);
   assert.match(
     sourceText,
-    /historicalPackagedSmokeProcessChain\.ps1/u,
+    /w6bLegacy\\historicalPackagedSmokeProcessChain\.ps1/u,
   );
   assert.match(
     sourceText,
@@ -226,9 +238,8 @@ test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () 
   );
   assert.match(sourceText, /Find-W6bAuthoritativeInvoicePdf/u);
   assert.match(sourceText, /--desktop-smoke-restored/u);
-  const sourcePackagedSmoke = sourceText.slice(
-    sourceText.indexOf('function Invoke-W6bSourcePackagedSmoke'),
-    sourceText.indexOf('function Wait-W6bEkyAccepted'),
+  const sourcePackagedSmoke = sourceSmokeText.slice(
+    sourceSmokeText.indexOf('function Invoke-W6bSourcePackagedSmoke'),
   );
   assert.doesNotMatch(sourcePackagedSmoke, /Assert-W6bNoEkyProcesses/u);
   assert.ok(
@@ -269,6 +280,7 @@ test('historical smoke process chain is exact and foreign-process safe', {
       '-File',
       resolve(
         scriptDirectory,
+        'w6bLegacy',
         'historicalPackagedSmokeProcessChain.test.ps1',
       ),
     ],
