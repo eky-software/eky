@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   createW6bLegacyUpgradeAcceptanceArguments,
@@ -27,6 +29,7 @@ const target = Object.freeze({
   packagedApplicationPath: resolve('synthetic-target-payload'),
   productCode: 'F7DB5A4D-B704-59D8-A463-3D56CD04DA8F',
 });
+const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 
 test('uses the verified exact local release without rebuilding it', async () => {
   const calls = [];
@@ -206,22 +209,28 @@ test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () 
   assert.match(sourceText, /'runtimeSessionValidated'/u);
   assert.match(sourceText, /-cnotmatch \$LineageProfileIdPattern/u);
   assert.match(sourceText, /Invoke-W6bSourcePackagedSmoke/u);
-  assert.match(sourceText, /Find-W6bSourceUserDataRoot/u);
+  assert.match(
+    sourceText,
+    /historicalPackagedSmokeProcessChain\.ps1/u,
+  );
+  assert.match(
+    sourceText,
+    /Invoke-HistoricalPackagedSmokeProcessChain/u,
+  );
+  assert.match(sourceText, /w6bLegacy\\sourceUserData\.ps1/u);
+  assert.match(sourceText, /Resolve-W6bLegacySourceUserData/u);
+  assert.doesNotMatch(sourceText, /Find-W6bSourceUserDataRoot/u);
+  assert.doesNotMatch(
+    sourceText,
+    /Get-W6bSafeFilesUnderRoot\s+-Root \$testRoot[\s\S]{0,200}?-FileName 'accepted-build-v1\.json'/u,
+  );
   assert.match(sourceText, /Find-W6bAuthoritativeInvoicePdf/u);
   assert.match(sourceText, /--desktop-smoke-restored/u);
-  const sourceSmokePhase = sourceText.slice(
-    sourceText.indexOf('function Invoke-W6bSourceSmokePhase'),
-    sourceText.indexOf('function Invoke-W6bSourcePackagedSmoke'),
-  );
   const sourcePackagedSmoke = sourceText.slice(
     sourceText.indexOf('function Invoke-W6bSourcePackagedSmoke'),
     sourceText.indexOf('function Wait-W6bEkyAccepted'),
   );
-  assert.doesNotMatch(sourceSmokePhase, /Assert-W6bNoEkyProcesses/u);
-  assert.ok(
-    sourcePackagedSmoke.indexOf('--desktop-smoke-restored') <
-      sourcePackagedSmoke.indexOf('Assert-W6bNoEkyProcesses'),
-  );
+  assert.doesNotMatch(sourcePackagedSmoke, /Assert-W6bNoEkyProcesses/u);
   assert.ok(
     sourceText.indexOf('$legacyPdfHash = Get-EkyFileSha256') <
       sourceText.indexOf(
@@ -245,4 +254,71 @@ test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () 
   assert.doesNotMatch(sourceText, /Stop-Process\s+-Name/iu);
   assert.doesNotMatch(sourceText, /Write-(?:Host|Output).*Exception\.Message/iu);
   assert.doesNotMatch(sourceText, /Write-(?:Host|Output).*StackTrace/iu);
+});
+
+test('historical smoke process chain is exact and foreign-process safe', {
+  skip: process.platform !== 'win32',
+}, () => {
+  const result = spawnSync(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      resolve(
+        scriptDirectory,
+        'historicalPackagedSmokeProcessChain.test.ps1',
+      ),
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  );
+
+  assert.equal(result.status, 0, 'W6B_LEGACY_PROCESS_CHAIN_TEST_FAILED');
+  const lines = result.stdout
+    .split(/\r?\n/u)
+    .filter((line) => line.trim() !== '');
+  assert.equal(lines.length, 1);
+  const outcome = JSON.parse(lines[0]);
+  assert.deepEqual(outcome, {
+    contract: 'explicitTwoPhase',
+    fixture: 'synthetic',
+    foreignProcessUntouched: true,
+    initialGenerationCount: 1,
+    invalidProcessStartsRejected: true,
+    remainingOwnedProcessCount: 0,
+    restoredGenerationCount: 1,
+    status: 'succeeded',
+  });
+});
+
+test('legacy source user data is deterministic and path safe', {
+  skip: process.platform !== 'win32',
+}, () => {
+  const result = spawnSync(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      resolve(scriptDirectory, 'w6bLegacy', 'sourceUserData.test.ps1'),
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  );
+
+  assert.equal(result.status, 0, 'W6B_SOURCE_USER_DATA_TEST_FAILED');
+  const lines = result.stdout
+    .split(/\r?\n/u)
+    .filter((line) => line.trim() !== '');
+  assert.equal(lines.length, 1);
+  assert.deepEqual(JSON.parse(lines[0]), {
+    acceptedBuildLocations: 'currentAndLegacy',
+    deterministicUserDataRoot: true,
+    pathAliasesCanonicalized: true,
+    reparsePointRejected: true,
+    status: 'succeeded',
+  });
 });

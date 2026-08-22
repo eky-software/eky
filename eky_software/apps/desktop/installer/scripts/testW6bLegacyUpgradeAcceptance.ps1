@@ -20,6 +20,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'windowsInstallerTestSupport.ps1')
 . (Join-Path $PSScriptRoot 'windowsInstallerProcessTree.ps1')
+. (Join-Path $PSScriptRoot 'historicalPackagedSmokeProcessChain.ps1')
+. (Join-Path $PSScriptRoot 'w6bLegacy\sourceUserData.ps1')
 
 $script:AllowedStages = @(
   'preflight',
@@ -86,7 +88,6 @@ $sourceSmokeRoot = Join-Path `
 $sourceSmokeResultPath = Join-Path $sourceSmokeRoot `
   'result\desktop-smoke-result.json'
 $userDataRoot = $null
-$sourceUserDataClass = $null
 $logRoot = Join-Path $testRoot 'private-logs'
 $installRoot = Join-Path $env:LOCALAPPDATA 'Programs\Eky'
 $shortcutPath = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Eky\Eky.lnk'
@@ -419,51 +420,6 @@ function Read-W6bAcceptedBuild {
   return $null
 }
 
-function Find-W6bSourceUserDataRoot {
-  param(
-    [Parameter(Mandatory = $true)][string]$ExpectedVersion,
-    [Parameter(Mandatory = $true)][string]$ExpectedRevision
-  )
-
-  $acceptedFiles = @(
-    Get-W6bSafeFilesUnderRoot -Root $testRoot `
-      -FileName 'accepted-build-v1.json'
-  )
-  if ($acceptedFiles.Count -ne 1) {
-    throw 'W6B_LEGACY_ACCEPTED_BUILD_COUNT_INVALID'
-  }
-  $acceptedPath = (Resolve-Path -LiteralPath $acceptedFiles[0].FullName).Path
-  $accepted = Read-W6bAcceptedBuildFile -Path $acceptedPath
-  if (
-    $accepted.appVersion -cne $ExpectedVersion -or
-    $accepted.buildRevision -cne $ExpectedRevision
-  ) {
-    throw 'W6B_LEGACY_ACCEPTED_BUILD_IDENTITY_MISMATCH'
-  }
-  $stateRoot = Split-Path -Parent $acceptedPath
-  if ([System.IO.Path]::GetFileName($stateRoot) -cne 'update-state') {
-    throw 'W6B_LEGACY_SOURCE_USER_DATA_INVALID'
-  }
-  $candidateRoot = Split-Path -Parent $stateRoot
-  if ([System.IO.Path]::GetFileName($candidateRoot) -ceq 'runtime') {
-    $candidateRoot = Split-Path -Parent $candidateRoot
-  }
-  $candidateRoot = (Resolve-Path -LiteralPath $candidateRoot).Path
-  $relativeRoot = Get-W6bRelativeContainedPath -Path $candidateRoot `
-    -Root $testRoot -Code 'W6B_LEGACY_SOURCE_USER_DATA_INVALID'
-  if (
-    $relativeRoot -cnotmatch `
-      '^source-smoke-temp\\eky-desktop-smoke\\[0-9a-f]{32}\\user-data$'
-  ) {
-    throw 'W6B_LEGACY_SOURCE_USER_DATA_INVALID'
-  }
-  return [pscustomobject]@{
-    AcceptedBuild = $accepted
-    Classification = 'packagedSmokeUserData'
-    Root = $candidateRoot
-  }
-}
-
 function Find-W6bAuthoritativeInvoicePdf {
   param([Parameter(Mandatory = $true)][string]$StorageRoot)
 
@@ -645,79 +601,71 @@ function Update-W6bSourceSmokeObservations {
   }
 }
 
-function Invoke-W6bSourceSmokePhase {
-  param(
-    [Parameter(Mandatory = $true)][string[]]$Arguments,
-    [Parameter(Mandatory = $true)][string]$ExpectedStage,
-    [Parameter(Mandatory = $true)][string]$ExpectedStatus
-  )
-
-  $process = Start-W6bEkyProcess -Arguments $Arguments `
-    -EnvironmentOverrides @{
-      APPDATA = $isolatedAppDataRoot
-      ELECTRON_ENABLE_SECURITY_WARNINGS = 'true'
-      ELECTRON_RUN_AS_NODE = $null
-      EKY_DESKTOP_SMOKE_TOKEN = $sourceSmokeToken
-      TEMP = $sourceSmokeTempRoot
-      TMP = $sourceSmokeTempRoot
-    }
-  try {
-    $deadline = [DateTime]::UtcNow.AddSeconds(60)
-    do {
-      Start-Sleep -Milliseconds 250
-      $process.Refresh()
+function Invoke-W6bSourcePackagedSmoke {
+  New-Item -ItemType Directory -Path $sourceSmokeTempRoot -Force | Out-Null
+  Initialize-W6bSourceSmokeResult
+  $chain = Invoke-HistoricalPackagedSmokeProcessChain `
+    -ExpectedExecutablePath (Join-Path $installRoot 'Eky.exe') `
+    -StartPhase {
+      param([string]$Phase)
+      $arguments = if ($Phase -ceq 'initial') {
+        @('--desktop-smoke')
+      }
+      elseif ($Phase -ceq 'restored') {
+        @('--desktop-smoke', '--desktop-smoke-restored')
+      }
+      else {
+        throw 'W6B_LEGACY_SOURCE_PROCESS_PHASE_INVALID'
+      }
+      Start-W6bEkyProcess -Arguments $arguments `
+        -EnvironmentOverrides @{
+          APPDATA = $isolatedAppDataRoot
+          ELECTRON_ENABLE_SECURITY_WARNINGS = 'true'
+          ELECTRON_RUN_AS_NODE = $null
+          EKY_DESKTOP_SMOKE_TOKEN = $sourceSmokeToken
+          TEMP = $sourceSmokeTempRoot
+          TMP = $sourceSmokeTempRoot
+        }
+    } `
+    -ReadResult { Read-W6bSourceSmokeResult -AllowMissing } `
+    -ObserveResult {
+      param($Result)
+      Update-W6bSourceSmokeObservations -Result $Result
+    } `
+    -ObserveProcess {
+      param($Process)
       if (!$script:SourceUtilityObserved) {
         $script:SourceUtilityObserved = Test-W6bUtilityDescendant `
-          -RootProcessId $process.Id
+          -RootProcessId $Process.Id
         if ($script:SourceUtilityObserved) {
           Write-W6bLegacyReadinessObservation -Signal backendUtilityReady
         }
       }
-      $observation = Read-W6bSourceSmokeResult -AllowMissing
-      if ($null -ne $observation) {
-        Update-W6bSourceSmokeObservations -Result $observation
+    } `
+    -ValidateResult {
+      param($Process, $Result, [string]$ExpectedStage, [string]$ExpectedStatus)
+      if (
+        $Process.ExitCode -ne 0 -or
+        $Result.stage -cne $ExpectedStage -or
+        $Result.status -cne $ExpectedStatus
+      ) {
+        throw 'W6B_LEGACY_SOURCE_SMOKE_FAILED'
       }
-      if ($process.HasExited) {
-        break
+      if (
+        $ExpectedStatus -ceq 'ok' -and
+        [string]$Result.electronVersion -notmatch '^\d+\.\d+\.\d+$'
+      ) {
+        throw 'W6B_LEGACY_SOURCE_SMOKE_RESULT_INVALID'
       }
-    } while ([DateTime]::UtcNow -lt $deadline)
-    if (!$process.HasExited) {
-      throw 'W6B_LEGACY_SOURCE_SMOKE_TIMEOUT'
     }
-    $result = Read-W6bSourceSmokeResult
-    Update-W6bSourceSmokeObservations -Result $result
-    if (
-      $process.ExitCode -ne 0 -or
-      $result.stage -cne $ExpectedStage -or
-      $result.status -cne $ExpectedStatus
-    ) {
-      throw 'W6B_LEGACY_SOURCE_SMOKE_FAILED'
-    }
-    if (
-      $ExpectedStatus -ceq 'ok' -and
-      [string]$result.electronVersion -notmatch '^\d+\.\d+\.\d+$'
-    ) {
-      throw 'W6B_LEGACY_SOURCE_SMOKE_RESULT_INVALID'
-    }
+  if (
+    $chain.contract -cne 'explicitTwoPhase' -or
+    $chain.initialGenerationCount -ne 1 -or
+    $chain.restoredGenerationCount -ne 1 -or
+    $chain.remainingOwnedProcessCount -ne 0
+  ) {
+    throw 'W6B_LEGACY_SOURCE_PROCESS_CHAIN_INVALID'
   }
-  finally {
-    $process.Refresh()
-    if (!$process.HasExited) {
-      Stop-EkyProcessTree -Process $process
-    }
-  }
-}
-
-function Invoke-W6bSourcePackagedSmoke {
-  New-Item -ItemType Directory -Path $sourceSmokeTempRoot -Force | Out-Null
-  Initialize-W6bSourceSmokeResult
-  Invoke-W6bSourceSmokePhase -Arguments @('--desktop-smoke') `
-    -ExpectedStage 'restoreRestart' -ExpectedStatus 'started'
-  Invoke-W6bSourceSmokePhase -Arguments @(
-    '--desktop-smoke',
-    '--desktop-smoke-restored'
-  ) -ExpectedStage 'shutdown' -ExpectedStatus 'ok'
-  Assert-W6bNoEkyProcesses
   if (
     !$script:SourceUtilityObserved -or
     !$script:SourceBackendHealthObserved -or
@@ -948,11 +896,16 @@ try {
 
   Start-W6bLegacyStage -Stage sourceStartup
   Invoke-W6bSourcePackagedSmoke
-  $sourceUserData = Find-W6bSourceUserDataRoot `
+  $sourceUserData = Resolve-W6bLegacySourceUserData `
+    -SourceSmokeTempRoot $sourceSmokeTempRoot `
+    -SourceSmokeToken $sourceSmokeToken `
     -ExpectedVersion $SourceAppVersion `
-    -ExpectedRevision $SourceBuildRevision
+    -ExpectedRevision $SourceBuildRevision `
+    -ReadAcceptedBuild {
+      param([string]$Path)
+      Read-W6bAcceptedBuildFile -Path $Path
+    }
   $userDataRoot = $sourceUserData.Root
-  $sourceUserDataClass = $sourceUserData.Classification
   Write-W6bLegacyReadinessObservation -Signal sourceUserDataReady
   $runningProcess = Start-W6bIsolatedEkyProcess
   Wait-W6bEkyAccepted -Process $runningProcess `
@@ -1168,7 +1121,6 @@ if ($null -ne $script:FailureCode) {
   sourceClassification = $SourceClassification
   sourceVersion = $SourceAppVersion
   targetVersion = $TargetAppVersion
-  sourceUserDataClass = $sourceUserDataClass
   legacyBusinessFixtureValidated = $true
   runtimeSessionValidated = $true
   adoptedWorkspaceCount = 1
