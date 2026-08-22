@@ -4,11 +4,11 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { packageW6bSyntheticNextPatchApplication } from '../../scripts/package-windows.mjs';
 import { buildWindowsInstaller } from './buildWindowsInstaller.mjs';
 import {
   W6B_SYNTHETIC_WINDOWS_PACKAGE_PATHS,
   createW6bSyntheticNextPatchRelease,
+  packageW6bSyntheticNextPatchApplication,
 } from './w6bSyntheticWindowsPackageFixture.mjs';
 
 const desktopDirectory = resolve(
@@ -46,7 +46,9 @@ export async function buildW6bSyntheticNextPatchInstaller() {
     force: true,
     recursive: true,
   });
-  const packaged = await packageW6bSyntheticNextPatchApplication();
+  const packaged = await packageW6bSyntheticNextPatchApplication(
+    currentRelease,
+  );
   assertW6bSyntheticPackagedIdentity({ packaged, targetRelease });
 
   await mkdir(W6B_SYNTHETIC_WINDOWS_PACKAGE_PATHS.inputRoot, {

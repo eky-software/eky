@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import {
   W6B_SYNTHETIC_WINDOWS_PACKAGE_PATHS,
   createW6bSyntheticNextPatchRelease,
 } from './w6bSyntheticWindowsPackageFixture.mjs';
+
+const scriptDirectory = dirname(fileURLToPath(import.meta.url));
+const desktopDirectory = resolve(scriptDirectory, '../..');
 
 const currentRelease = Object.freeze({
   appIdentity: 'Eky',
@@ -50,4 +56,24 @@ test('keeps every W6B package artifact under the ignored desktop stage', () => {
       true,
     );
   }
+});
+
+test('isolates the W6B wrapper from the ordinary Windows package CLI', async () => {
+  const [cliSource, coreSource, fixtureSource] = await Promise.all([
+    readFile(resolve(desktopDirectory, 'scripts/package-windows.mjs'), 'utf8'),
+    readFile(
+      resolve(desktopDirectory, 'scripts/packageWindowsApplication.mjs'),
+      'utf8',
+    ),
+    readFile(
+      resolve(scriptDirectory, 'w6bSyntheticWindowsPackageFixture.mjs'),
+      'utf8',
+    ),
+  ]);
+
+  assert.doesNotMatch(cliSource, /W6B|w6b/u);
+  assert.doesNotMatch(coreSource, /W6B|w6b/u);
+  assert.match(cliSource, /Unsupported Windows package argument/u);
+  assert.match(fixtureSource, /packageWindowsApplication/u);
+  assert.match(fixtureSource, /W6B_SYNTHETIC_WINDOWS_PACKAGE_PATHS/u);
 });

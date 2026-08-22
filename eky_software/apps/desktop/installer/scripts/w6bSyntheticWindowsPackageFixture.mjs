@@ -2,6 +2,10 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  createPackageLayout,
+  packageWindowsApplication,
+} from '../../scripts/packageWindowsApplication.mjs';
+import {
   createUpgradeFixtureAppVersion,
   createUpgradeFixtureMsiVersion,
 } from './prepareWindowsInstallerUpgradeFixture.mjs';
@@ -53,5 +57,21 @@ export function createW6bSyntheticNextPatchRelease(currentRelease) {
     ...currentRelease,
     appVersion,
     msiProductVersion,
+  });
+}
+
+export async function packageW6bSyntheticNextPatchApplication(
+  currentRelease,
+) {
+  const release = createW6bSyntheticNextPatchRelease(currentRelease);
+  const packaged = await packageWindowsApplication({
+    layout: createPackageLayout(W6B_SYNTHETIC_WINDOWS_PACKAGE_PATHS),
+    pilotBuild: true,
+    reportPackagedPath: false,
+    releaseOverride: release,
+  });
+  return Object.freeze({
+    ...packaged,
+    paths: W6B_SYNTHETIC_WINDOWS_PACKAGE_PATHS,
   });
 }
