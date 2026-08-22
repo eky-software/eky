@@ -22,7 +22,8 @@ const acceptanceScriptPath = join(
   scriptDirectory,
   'testW6bLegacyUpgradeAcceptance.ps1',
 );
-const fullRevisionPattern = /^[0-9a-f]{40}$/u;
+const fullHistoricalRevisionPattern = /^[0-9a-f]{40}$/u;
+const packagedRevisionPattern = /^[0-9a-f]{7,40}$/u;
 const productCodePattern =
   /^\{?[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}?$/u;
 const sha256Pattern = /^[0-9a-f]{64}$/u;
@@ -115,7 +116,7 @@ function validateSourceFixture(source) {
       source.artifactClass,
     ) ||
     source.appVersion !== '0.2.6' ||
-    !fullRevisionPattern.test(source.buildRevision) ||
+    !fullHistoricalRevisionPattern.test(source.buildRevision) ||
     !isMsiPath(source.installerPath) ||
     !sha256Pattern.test(source.packageSha256) ||
     !productCodePattern.test(source.productCode)
@@ -129,7 +130,7 @@ function validateTargetFixture(source, target) {
     !isRecord(target) ||
     target.appVersion !== nextPatch(source.appVersion) ||
     target.msiProductVersion !== target.appVersion ||
-    !fullRevisionPattern.test(target.buildRevision) ||
+    !packagedRevisionPattern.test(target.buildRevision) ||
     !isMsiPath(target.installerPath) ||
     !isAbsolute(target.packagedApplicationPath) ||
     !sha256Pattern.test(target.packageSha256) ||

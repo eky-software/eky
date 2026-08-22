@@ -18,7 +18,7 @@ const source = Object.freeze({
 });
 const target = Object.freeze({
   appVersion: '0.2.7',
-  buildRevision: '2349f4673ff5d9625aeed1a084d2146c07e9d18a',
+  buildRevision: '2349f4673ff5',
   installerPath: resolve('synthetic-target.msi'),
   msiProductVersion: '0.2.7',
   packageSha256: 'b'.repeat(64),
@@ -117,6 +117,14 @@ test('rejects same-version, non-adjacent and same-product target fixtures', () =
       createW6bLegacyUpgradeAcceptanceArguments({
         source,
         target: { ...target, productCode: source.productCode },
+      }),
+    /W6B_LEGACY_TARGET_IDENTITY_INVALID/,
+  );
+  assert.throws(
+    () =>
+      createW6bLegacyUpgradeAcceptanceArguments({
+        source,
+        target: { ...target, buildRevision: '123456' },
       }),
     /W6B_LEGACY_TARGET_IDENTITY_INVALID/,
   );

@@ -364,7 +364,7 @@ try {
     $SourceAppVersion -ne '0.2.6' -or
     $TargetAppVersion -ne '0.2.7' -or
     $SourceBuildRevision -notmatch '^[0-9a-f]{40}$' -or
-    $TargetBuildRevision -notmatch '^[0-9a-f]{40}$'
+    $TargetBuildRevision -notmatch '^[0-9a-f]{7,40}$'
   ) {
     throw 'W6B_LEGACY_RELEASE_IDENTITY_INVALID'
   }
