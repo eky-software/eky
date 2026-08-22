@@ -61,6 +61,7 @@ export interface ActiveWorkspaceStartupSelection {
   readonly switchContext?: Readonly<ActiveWorkspaceSwitchContext>;
   readonly workspaceId: WorkspaceId;
   readonly workspaceRoot: string;
+  assertCanAccept(profileId: string): void;
   accept(profileId: string): Promise<void>;
   rejectInvalidTarget?(): Promise<WorkspaceSwitchFailureRecoveryOutcome>;
   requireRecovery?(): Promise<WorkspaceSwitchFailureRecoveryOutcome>;
@@ -149,6 +150,8 @@ export async function resolveActiveWorkspaceStartup(
         }),
     workspaceId: switchSelection.workspace.workspaceId,
     workspaceRoot: paths.workspaceRoot,
+    assertCanAccept: (profileId: string) =>
+      switchSelection.assertCanAccept(profileId),
     accept: (profileId: string) => switchSelection.accept(profileId),
     recoverFromFailure: () => switchSelection.recoverFromFailure(),
   });

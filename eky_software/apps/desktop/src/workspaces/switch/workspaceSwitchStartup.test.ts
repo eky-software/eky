@@ -62,6 +62,11 @@ describe('workspace switch startup recovery', () => {
       targetWorkspaceId: TEST_TARGET_WORKSPACE_ID,
     });
     expect(selection.workspace.workspaceId).toBe(TEST_TARGET_WORKSPACE_ID);
+    expect(() => selection.assertCanAccept('a'.repeat(64))).toThrowError(
+      'WORKSPACE_SWITCH_INVALID',
+    );
+    expect(() => selection.assertCanAccept('b'.repeat(64))).not.toThrow();
+    expect(journal.current?.state).toBe('targetSelected');
     await expect(selection.accept('a'.repeat(64))).rejects.toMatchObject({
       code: 'WORKSPACE_SWITCH_INVALID',
     });

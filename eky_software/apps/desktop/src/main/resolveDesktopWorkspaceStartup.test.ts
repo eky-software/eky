@@ -68,6 +68,7 @@ function createSelection(): Readonly<ActiveWorkspaceStartupSelection> {
     workspaceId:
       '11111111-1111-4111-8111-111111111111' as ActiveWorkspaceStartupSelection['workspaceId'],
     workspaceRoot: 'synthetic-workspace-root',
+    assertCanAccept: () => undefined,
     accept: async () => undefined,
     recoverFromFailure: async () => 'notRecovered' as const,
   });

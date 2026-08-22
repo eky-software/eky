@@ -35,6 +35,7 @@ export interface WorkspaceSwitchStartupSelection {
   readonly context: Readonly<WorkspaceSwitchStartupContext> | undefined;
   readonly mode: WorkspaceSwitchStartupMode;
   readonly workspace: Readonly<LocalWorkspaceRegistryEntryV1>;
+  assertCanAccept(profileId: string): void;
   accept(profileId: string): Promise<void>;
   rejectInvalidTarget(): Promise<WorkspaceSwitchFailureRecoveryOutcome>;
   requireRecovery(): Promise<WorkspaceSwitchFailureRecoveryOutcome>;
@@ -68,6 +69,11 @@ export async function resolveWorkspaceSwitchStartup(
 
   const mode = resolveMode(registry, journal);
   const workspace = requireActiveReadyWorkspace(registry);
+  const assertCanAccept = (profileId: string): void => {
+    if (profileId !== workspace.lineageIdentity.profileId) {
+      throw new WorkspaceSwitchError('WORKSPACE_SWITCH_INVALID');
+    }
+  };
   return Object.freeze({
     context:
       journal === undefined
@@ -79,10 +85,9 @@ export async function resolveWorkspaceSwitchStartup(
           }),
     mode,
     workspace,
+    assertCanAccept,
     async accept(profileId: string) {
-      if (profileId !== workspace.lineageIdentity.profileId) {
-        throw new WorkspaceSwitchError('WORKSPACE_SWITCH_INVALID');
-      }
+      assertCanAccept(profileId);
       if (journal !== undefined) {
         await journalStore.clear(journal.operationId);
       }
