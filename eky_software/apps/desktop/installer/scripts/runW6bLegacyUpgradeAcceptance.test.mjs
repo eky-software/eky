@@ -209,6 +209,19 @@ test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () 
   assert.match(sourceText, /Find-W6bSourceUserDataRoot/u);
   assert.match(sourceText, /Find-W6bAuthoritativeInvoicePdf/u);
   assert.match(sourceText, /--desktop-smoke-restored/u);
+  const sourceSmokePhase = sourceText.slice(
+    sourceText.indexOf('function Invoke-W6bSourceSmokePhase'),
+    sourceText.indexOf('function Invoke-W6bSourcePackagedSmoke'),
+  );
+  const sourcePackagedSmoke = sourceText.slice(
+    sourceText.indexOf('function Invoke-W6bSourcePackagedSmoke'),
+    sourceText.indexOf('function Wait-W6bEkyAccepted'),
+  );
+  assert.doesNotMatch(sourceSmokePhase, /Assert-W6bNoEkyProcesses/u);
+  assert.ok(
+    sourcePackagedSmoke.indexOf('--desktop-smoke-restored') <
+      sourcePackagedSmoke.indexOf('Assert-W6bNoEkyProcesses'),
+  );
   assert.ok(
     sourceText.indexOf('$legacyPdfHash = Get-EkyFileSha256') <
       sourceText.indexOf(

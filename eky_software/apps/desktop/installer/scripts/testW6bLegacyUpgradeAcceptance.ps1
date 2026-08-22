@@ -706,7 +706,6 @@ function Invoke-W6bSourceSmokePhase {
       Stop-EkyProcessTree -Process $process
     }
   }
-  Assert-W6bNoEkyProcesses
 }
 
 function Invoke-W6bSourcePackagedSmoke {
@@ -718,6 +717,7 @@ function Invoke-W6bSourcePackagedSmoke {
     '--desktop-smoke',
     '--desktop-smoke-restored'
   ) -ExpectedStage 'shutdown' -ExpectedStatus 'ok'
+  Assert-W6bNoEkyProcesses
   if (
     !$script:SourceUtilityObserved -or
     !$script:SourceBackendHealthObserved -or
