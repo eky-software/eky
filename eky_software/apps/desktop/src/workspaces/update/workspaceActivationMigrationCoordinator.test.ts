@@ -1,3 +1,5 @@
+import { join, resolve } from 'node:path';
+
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ProfileRestoreActivationJournal } from '../../profileBackup/restore/profileRestoreActivationJournal.js';
@@ -18,6 +20,10 @@ const targetWorkspaceId = validateWorkspaceId(
 const profileId = 'a'.repeat(64);
 const sourceMigrationChainIdentity = 'b'.repeat(64);
 const targetMigrationChainIdentity = 'c'.repeat(64);
+const testUserDataRoot = resolve(
+  'test-data',
+  'workspace-activation-migration',
+);
 
 describe('WorkspaceActivationMigrationCoordinator', () => {
   it('migrates only the private candidate before the activation swap', async () => {
@@ -282,7 +288,7 @@ function createFixture(options: FixtureOptions = {}) {
           createdAt: '2026-08-22T00:00:00.000Z',
           documentCount: 1,
           migrationChainIdentity: sourceMigrationChainIdentity,
-          operationRoot: 'C:\\safe\\staged',
+          operationRoot: join(testUserDataRoot, 'recovery', 'staged'),
           profileId,
         };
       }),
@@ -293,7 +299,7 @@ function createFixture(options: FixtureOptions = {}) {
     requestRelaunch,
     rootStore,
     sourceRecovery,
-    userDataRoot: 'C:\\safe\\user-data',
+    userDataRoot: testUserDataRoot,
     workspaceRuntimeAbsence: {
       assertNoActiveWorkspaceRuntime: vi.fn(async () => {
         events.push('runtime.absent');
