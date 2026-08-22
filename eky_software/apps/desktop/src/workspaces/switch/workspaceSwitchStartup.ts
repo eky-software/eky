@@ -67,6 +67,17 @@ export async function resolveWorkspaceSwitchStartup(
     }
   }
 
+  if (
+    journal?.state === 'targetSelected' &&
+    registry.activeWorkspaceId === journal.sourceWorkspaceId
+  ) {
+    journal = await reconcileInterruptedRollbackSelection(
+      registry,
+      journalStore,
+      journal,
+    );
+  }
+
   const mode = resolveMode(registry, journal);
   const workspace = requireActiveReadyWorkspace(registry);
   const assertCanAccept = (profileId: string): void => {
@@ -122,6 +133,53 @@ export async function resolveWorkspaceSwitchStartup(
       );
     },
   });
+}
+
+async function reconcileInterruptedRollbackSelection(
+  registry: Readonly<LocalWorkspaceRegistryV1>,
+  journalStore: WorkspaceSwitchJournalPort,
+  journal: Readonly<WorkspaceSwitchJournalV1>,
+): Promise<Readonly<WorkspaceSwitchJournalV1>> {
+  if (!registryMatchesInterruptedRollbackSelection(registry, journal)) {
+    throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
+  }
+
+  const reconciled = Object.freeze({
+    ...journal,
+    state: 'rollbackSelected' as const,
+  });
+  try {
+    await journalStore.write(reconciled);
+  } catch {
+    await persistRecoveryRequired(journalStore, journal);
+    throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
+  }
+  return reconciled;
+}
+
+function registryMatchesInterruptedRollbackSelection(
+  registry: Readonly<LocalWorkspaceRegistryV1>,
+  journal: Readonly<WorkspaceSwitchJournalV1>,
+): boolean {
+  if (
+    journal.sourceWorkspaceId === journal.targetWorkspaceId ||
+    registry.activeWorkspaceId !== journal.sourceWorkspaceId
+  ) {
+    return false;
+  }
+  const sourceEntries = registry.workspaces.filter(
+    (entry) => entry.workspaceId === journal.sourceWorkspaceId,
+  );
+  const targetEntries = registry.workspaces.filter(
+    (entry) => entry.workspaceId === journal.targetWorkspaceId,
+  );
+  return (
+    sourceEntries.length === 1 &&
+    targetEntries.length === 1 &&
+    sourceEntries[0]!.lifecycleState === 'ready' &&
+    (targetEntries[0]!.lifecycleState === 'ready' ||
+      targetEntries[0]!.lifecycleState === 'recoveryRequired')
+  );
 }
 
 async function recoverInvalidTarget(

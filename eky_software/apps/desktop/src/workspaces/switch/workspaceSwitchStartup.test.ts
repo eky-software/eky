@@ -4,6 +4,7 @@ import { resolveWorkspaceSwitchStartup } from './workspaceSwitchStartup.js';
 import {
   createSwitchJournal,
   createSwitchRegistry,
+  createSwitchWorkspace,
   MemorySwitchJournal,
   MemorySwitchRegistry,
   TEST_SOURCE_WORKSPACE_ID,
@@ -119,6 +120,199 @@ describe('workspace switch startup recovery', () => {
     expect(sourceSelection.mode).toBe('rollbackValidation');
     await expect(sourceSelection.accept('a'.repeat(64))).resolves.toBeUndefined();
     expect(journal.current).toBeUndefined();
+  });
+
+  it('reconciles an interrupted rollback after the active pointer already returned to the source', async () => {
+    const events: string[] = [];
+    const registry = new MemorySwitchRegistry(events, createSwitchRegistry());
+    const journal = new MemorySwitchJournal(
+      events,
+      createSwitchJournal('targetSelected'),
+    );
+
+    const selection = await resolveWorkspaceSwitchStartup(registry, journal);
+
+    expect(selection.mode).toBe('rollbackValidation');
+    expect(selection.workspace.workspaceId).toBe(TEST_SOURCE_WORKSPACE_ID);
+    expect(journal.current?.state).toBe('rollbackSelected');
+    expect(events).not.toContain('registry.write');
+    await expect(selection.accept('a'.repeat(64))).resolves.toBeUndefined();
+    expect(journal.current).toBeUndefined();
+  });
+
+  it('reconciles an interrupted invalid-target rollback without rewriting the registry', async () => {
+    const events: string[] = [];
+    const current = createSwitchRegistry();
+    const registry = new MemorySwitchRegistry(events, {
+      ...current,
+      workspaces: Object.freeze([
+        current.workspaces[0]!,
+        Object.freeze({
+          ...current.workspaces[1]!,
+          lifecycleState: 'recoveryRequired' as const,
+        }),
+      ]),
+    });
+    const journal = new MemorySwitchJournal(
+      events,
+      createSwitchJournal('targetSelected'),
+    );
+
+    const selection = await resolveWorkspaceSwitchStartup(registry, journal);
+
+    expect(selection.mode).toBe('rollbackValidation');
+    expect(journal.current?.state).toBe('rollbackSelected');
+    expect(events).not.toContain('registry.write');
+  });
+
+  it('keeps an already reconciled rollback idempotent across another startup', async () => {
+    const events: string[] = [];
+    const registry = new MemorySwitchRegistry(events, createSwitchRegistry());
+    const journal = new MemorySwitchJournal(
+      events,
+      createSwitchJournal('targetSelected'),
+    );
+
+    const first = await resolveWorkspaceSwitchStartup(registry, journal);
+    const second = await resolveWorkspaceSwitchStartup(registry, journal);
+
+    expect(first.mode).toBe('rollbackValidation');
+    expect(second.mode).toBe('rollbackValidation');
+    expect(
+      events.filter((event) => event === 'journal.write.rollbackSelected'),
+    ).toHaveLength(1);
+    expect(events).not.toContain('registry.write');
+  });
+
+  it.each([
+    {
+      name: 'source is missing',
+      createRegistry: () => {
+        const current = createSwitchRegistry();
+        return {
+          ...current,
+          workspaces: Object.freeze([current.workspaces[1]!]),
+        };
+      },
+    },
+    {
+      name: 'target is missing',
+      createRegistry: () => {
+        const current = createSwitchRegistry();
+        return {
+          ...current,
+          workspaces: Object.freeze([current.workspaces[0]!]),
+        };
+      },
+    },
+    {
+      name: 'source id is duplicated',
+      createRegistry: () => {
+        const current = createSwitchRegistry();
+        return {
+          ...current,
+          workspaces: Object.freeze([
+            ...current.workspaces,
+            createSwitchWorkspace(
+              TEST_SOURCE_WORKSPACE_ID,
+              'Duplikaatti',
+              'c',
+            ),
+          ]),
+        };
+      },
+    },
+    {
+      name: 'target id is duplicated',
+      createRegistry: () => {
+        const current = createSwitchRegistry();
+        return {
+          ...current,
+          workspaces: Object.freeze([
+            ...current.workspaces,
+            createSwitchWorkspace(
+              TEST_TARGET_WORKSPACE_ID,
+              'Duplikaatti',
+              'c',
+            ),
+          ]),
+        };
+      },
+    },
+    {
+      name: 'source requires recovery',
+      createRegistry: () => {
+        const current = createSwitchRegistry();
+        return {
+          ...current,
+          workspaces: Object.freeze([
+            Object.freeze({
+              ...current.workspaces[0]!,
+              lifecycleState: 'recoveryRequired' as const,
+            }),
+            current.workspaces[1]!,
+          ]),
+        };
+      },
+    },
+  ])('fails closed when interrupted rollback evidence is ambiguous: $name', async ({
+    createRegistry,
+  }) => {
+    const events: string[] = [];
+    const registry = new MemorySwitchRegistry(events, createRegistry());
+    const journal = new MemorySwitchJournal(
+      events,
+      createSwitchJournal('targetSelected'),
+    );
+
+    await expect(resolveWorkspaceSwitchStartup(registry, journal))
+      .rejects.toMatchObject({ code: 'WORKSPACE_SWITCH_RECOVERY_REQUIRED' });
+    expect(journal.current?.state).toBe('targetSelected');
+    expect(events).not.toContain('registry.write');
+  });
+
+  it('fails closed when an interrupted rollback journal repeats one workspace id', async () => {
+    const events: string[] = [];
+    const registry = new MemorySwitchRegistry(events, createSwitchRegistry());
+    const journal = new MemorySwitchJournal(events, {
+      ...createSwitchJournal('targetSelected'),
+      targetWorkspaceId: TEST_SOURCE_WORKSPACE_ID,
+    });
+
+    await expect(resolveWorkspaceSwitchStartup(registry, journal))
+      .rejects.toMatchObject({ code: 'WORKSPACE_SWITCH_RECOVERY_REQUIRED' });
+    expect(journal.current?.state).toBe('targetSelected');
+    expect(events).not.toContain('registry.write');
+  });
+
+  it('fails closed and marks recovery required when interrupted rollback journal persistence fails', async () => {
+    const events: string[] = [];
+    const registry = new MemorySwitchRegistry(events, createSwitchRegistry());
+    const journal = new MemorySwitchJournal(
+      events,
+      createSwitchJournal('targetSelected'),
+    );
+    journal.failBeforeState = 'rollbackSelected';
+
+    await expect(resolveWorkspaceSwitchStartup(registry, journal))
+      .rejects.toMatchObject({ code: 'WORKSPACE_SWITCH_RECOVERY_REQUIRED' });
+    expect(journal.current?.state).toBe('recoveryRequired');
+    expect(events).not.toContain('registry.write');
+  });
+
+  it('does not claim success when an interrupted rollback journal write fails after its side effect', async () => {
+    const events: string[] = [];
+    const registry = new MemorySwitchRegistry(events, createSwitchRegistry());
+    const journal = new MemorySwitchJournal(
+      events,
+      createSwitchJournal('targetSelected'),
+    );
+    journal.failAfterState = 'rollbackSelected';
+
+    await expect(resolveWorkspaceSwitchStartup(registry, journal))
+      .rejects.toMatchObject({ code: 'WORKSPACE_SWITCH_RECOVERY_REQUIRED' });
+    expect(journal.current?.state).toBe('recoveryRequired');
+    expect(events).not.toContain('registry.write');
   });
 
   it('isolates an invalid target before returning to source validation', async () => {
