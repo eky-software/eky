@@ -41,6 +41,8 @@ describe('PrivateWorkspaceBackupCandidateAdapter', () => {
       startMigration: async () => migrationRuntime(events),
       startValidation: async () => readinessRuntime(events),
       startPublishedValidation: async () => readinessRuntime(events),
+      startHistoricalPublishedValidation: async () =>
+        historicalReadinessRuntime(events),
     });
 
     await expect(adapter.migrate(migrationInput)).resolves.toEqual({
@@ -64,6 +66,10 @@ describe('PrivateWorkspaceBackupCandidateAdapter', () => {
         events.push('published.start');
         return readinessRuntime(events, readiness);
       },
+      startHistoricalPublishedValidation: async () => {
+        events.push('historical.start');
+        return historicalReadinessRuntime(events);
+      },
     });
 
     await expect(
@@ -75,6 +81,12 @@ describe('PrivateWorkspaceBackupCandidateAdapter', () => {
         publishedRoot: validationInput.candidateRoot,
       }),
     ).resolves.toEqual(readiness);
+    await expect(
+      adapter.validateHistoricalPublished({
+        ...validationInput,
+        publishedRoot: validationInput.candidateRoot,
+      }),
+    ).resolves.toMatchObject({ migrationState: 'compatiblePending' });
     expect(events).toEqual([
       'candidate.start',
       'runtime.stop',
@@ -82,6 +94,9 @@ describe('PrivateWorkspaceBackupCandidateAdapter', () => {
       'published.start',
       'runtime.stop',
       'readiness.inspect',
+      'historical.start',
+      'runtime.stop',
+      'historical.inspect',
     ]);
   });
 
@@ -97,6 +112,8 @@ describe('PrivateWorkspaceBackupCandidateAdapter', () => {
       }),
       startValidation: async () => readinessRuntime([]),
       startPublishedValidation: async () => readinessRuntime([]),
+      startHistoricalPublishedValidation: async () =>
+        historicalReadinessRuntime([]),
     });
 
     await expect(adapter.migrate(migrationInput)).rejects.toMatchObject({
@@ -117,6 +134,8 @@ describe('PrivateWorkspaceBackupCandidateAdapter', () => {
         },
       }),
       startPublishedValidation: async () => readinessRuntime([]),
+      startHistoricalPublishedValidation: async () =>
+        historicalReadinessRuntime([]),
     });
 
     await expect(
@@ -166,6 +185,28 @@ function readinessRuntime(
       if (!stopped) throw new Error('runtime-active');
       events.push('readiness.inspect');
       return readiness;
+    },
+  };
+}
+
+function historicalReadinessRuntime(
+  events: string[],
+): PrivateWorkspaceBackupCandidateRuntime {
+  let stopped = false;
+  const current = createTestImportReadiness();
+  return {
+    stopAndProveHandlesClosed: async () => {
+      events.push('runtime.stop');
+      stopped = true;
+      return true;
+    },
+    inspectStoppedHistoricalReadiness: async () => {
+      if (!stopped) throw new Error('runtime-active');
+      events.push('historical.inspect');
+      return Object.freeze({
+        ...current,
+        migrationState: 'compatiblePending' as const,
+      });
     },
   };
 }

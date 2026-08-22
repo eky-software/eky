@@ -156,6 +156,57 @@ describe('ElectronWorkspaceCandidateRuntimeFactory', () => {
     );
   });
 
+  it('validates historical published readiness through a separate private operation', async () => {
+    const process = new FakeCandidateProcess();
+    const factory = createFactory(new RecordingCandidateSpawner(process));
+    const paths = candidatePaths();
+    const runtimePromise = factory.startHistoricalPublishedValidation({
+      artifactRoot: paths.artifactRoot,
+      databaseFilePath: paths.databaseFilePath,
+      expectedProfileId: profileId,
+      operationId: TEST_IMPORT_OPERATION_ID,
+      publishedRoot: paths.candidateRoot,
+      workspaceId: TEST_WORKSPACE_ID,
+    });
+
+    process.message(createWorkspaceCandidateReadyStatus());
+    const start = process.lastCommand('start');
+    expect(start.operation).toMatchObject({
+      expectedProfileId: profileId,
+      operation: 'validateHistoricalPublished',
+    });
+    process.message(
+      createWorkspaceCandidateCompletedStatus({
+        operationId: start.operationId,
+        requestId: start.requestId,
+        result: {
+          actorId: 'local-owner',
+          artifactRootHealth: 'ready',
+          companyId: 'local-company-1234567890abcdef1234567890abcdef',
+          databaseHealth: 'healthy',
+          foreignKeyHealth: 'healthy',
+          kind: 'historicalReadiness',
+          migrationChainIdentity,
+          profileId,
+        },
+        runtimeSession: start.runtimeSession,
+      }),
+    );
+    const runtime = await runtimePromise;
+    const stopped = runtime.stopAndProveHandlesClosed();
+    process.exit(0);
+
+    await expect(stopped).resolves.toBe(true);
+    await expect(
+      runtime.inspectStoppedHistoricalReadiness?.(),
+    ).resolves.toMatchObject({
+      handlesClosed: true,
+      lineageIdentity: { formatVersion: 1, profileId },
+      migrationChainIdentity,
+      migrationState: 'compatiblePending',
+    });
+  });
+
   it('cancels an in-flight migration inspection and closes its owned process', async () => {
     const process = new FakeCandidateProcess(true);
     const controller = new AbortController();

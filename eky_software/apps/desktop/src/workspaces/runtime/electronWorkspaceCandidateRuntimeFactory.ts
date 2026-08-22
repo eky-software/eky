@@ -23,6 +23,7 @@ import type {
   PrivatePublishedWorkspaceValidationRuntimeFactory,
 } from '../creation/privateEmptyWorkspaceBootstrapAdapter.js';
 import type {
+  PublishedHistoricalWorkspaceReadiness,
   PublishedWorkspaceBackupValidationInput,
   WorkspaceBackupCandidateMigrationInput,
   WorkspaceBackupCandidateMigrationResult,
@@ -147,6 +148,20 @@ export class ElectronWorkspaceCandidateRuntimeFactory
     });
   }
 
+  startHistoricalPublishedValidation(
+    input: Readonly<PublishedWorkspaceBackupValidationInput>,
+  ): Promise<PrivateWorkspaceBackupCandidateRuntime> {
+    return this.startHistoricalReadinessRuntime(input.operationId, {
+      ...this.common({
+        artifactRoot: input.artifactRoot,
+        candidateRoot: input.publishedRoot,
+        databaseFilePath: input.databaseFilePath,
+      }),
+      expectedProfileId: input.expectedProfileId,
+      operation: 'validateHistoricalPublished',
+    });
+  }
+
   startMigrationInspection(
     input: Readonly<WorkspaceMigrationInspectionInput>,
   ): Promise<PrivateWorkspaceMigrationInspectionRuntime> {
@@ -205,6 +220,18 @@ export class ElectronWorkspaceCandidateRuntimeFactory
     return {
       inspectStoppedReadiness: async () =>
         mapReadinessResult(runtime.inspectStoppedResult()),
+      stopAndProveHandlesClosed: () => runtime.stopAndProveHandlesClosed(),
+    };
+  }
+
+  private async startHistoricalReadinessRuntime(
+    operationId: string,
+    operation: WorkspaceCandidateProcessOperation,
+  ): Promise<PrivateWorkspaceBackupCandidateRuntime> {
+    const runtime = await this.startOperation(operationId, operation);
+    return {
+      inspectStoppedHistoricalReadiness: async () =>
+        mapHistoricalReadinessResult(runtime.inspectStoppedResult()),
       stopAndProveHandlesClosed: () => runtime.stopAndProveHandlesClosed(),
     };
   }
@@ -579,6 +606,28 @@ function mapReadinessResult(
     }),
     migrationChainIdentity: value.migrationChainIdentity,
     migrationState: 'current',
+  });
+}
+
+function mapHistoricalReadinessResult(
+  value: WorkspaceCandidateProcessResult,
+): Readonly<PublishedHistoricalWorkspaceReadiness> {
+  if (value.kind !== 'historicalReadiness') {
+    throw new Error('WORKSPACE_CANDIDATE_RESULT_INVALID');
+  }
+  return Object.freeze({
+    actorId: value.actorId,
+    artifactRootHealth: value.artifactRootHealth,
+    companyId: value.companyId,
+    databaseHealth: value.databaseHealth,
+    foreignKeyHealth: value.foreignKeyHealth,
+    handlesClosed: true,
+    lineageIdentity: Object.freeze({
+      formatVersion: 1,
+      profileId: value.profileId,
+    }),
+    migrationChainIdentity: value.migrationChainIdentity,
+    migrationState: 'compatiblePending',
   });
 }
 

@@ -11,6 +11,11 @@ export type ProfileRestoreStartupMode =
   | 'validateRestoredProfile'
   | 'validateRolledBackProfile';
 
+export type ProfileRestoreStartupValidationResult =
+  | 'ready'
+  | 'restoredProfileReady'
+  | 'relaunchRequired';
+
 interface ProfileRestoreStartupRecoveryDependencies {
   journalStore: Pick<ProfileRestoreActivationJournalStore, 'read'>;
   observer?: ProfileRecoveryOperationalObserver;
@@ -25,12 +30,14 @@ interface ProfileRestoreStartupRecoveryDependencies {
 
 export class ProfileRestoreStartupRecovery {
   private activeCorrelationId: string | undefined;
+  private restoredProfileAwaitingDecision = false;
 
   constructor(
     private readonly dependencies: ProfileRestoreStartupRecoveryDependencies,
   ) {}
 
   async prepareBeforeBackend(): Promise<ProfileRestoreStartupMode> {
+    this.restoredProfileAwaitingDecision = false;
     const journal = await this.dependencies.journalStore.read();
     if (journal === undefined) {
       this.activeCorrelationId = undefined;
@@ -63,10 +70,11 @@ export class ProfileRestoreStartupRecovery {
   }
 
   async validateAfterBackend(input: {
+    deferRestoredProfileAcceptance?: boolean;
     mode: ProfileRestoreStartupMode;
     stopBackend(): Promise<void>;
     validateActiveProfile(): Promise<void>;
-  }): Promise<'ready' | 'relaunchRequired'> {
+  }): Promise<ProfileRestoreStartupValidationResult> {
     if (input.mode === 'normal') {
       this.activeCorrelationId = undefined;
       return 'ready';
@@ -76,7 +84,11 @@ export class ProfileRestoreStartupRecovery {
     try {
       await input.validateActiveProfile();
       if (input.mode === 'validateRestoredProfile') {
-        await this.dependencies.transaction.accept();
+        if (input.deferRestoredProfileAcceptance === true) {
+          this.restoredProfileAwaitingDecision = true;
+        } else {
+          await this.dependencies.transaction.accept();
+        }
       } else {
         await this.dependencies.transaction.clearRolledBack();
       }
@@ -87,6 +99,9 @@ export class ProfileRestoreStartupRecovery {
           ? 'restoredProfile'
           : 'rolledBackProfile',
       });
+      if (this.restoredProfileAwaitingDecision) {
+        return 'restoredProfileReady';
+      }
       this.activeCorrelationId = undefined;
       return 'ready';
     } catch (error) {
@@ -109,6 +124,25 @@ export class ProfileRestoreStartupRecovery {
       }
       await this.rollbackOrFail('startupRollback');
       return 'relaunchRequired';
+    }
+  }
+
+  async acceptValidatedRestoredProfile(): Promise<void> {
+    this.assertRestoredProfileAwaitingDecision();
+    await this.dependencies.transaction.accept();
+    this.restoredProfileAwaitingDecision = false;
+    this.activeCorrelationId = undefined;
+  }
+
+  async rollbackValidatedRestoredProfile(): Promise<void> {
+    this.assertRestoredProfileAwaitingDecision();
+    await this.rollbackOrFail('startupRollback');
+    this.restoredProfileAwaitingDecision = false;
+  }
+
+  private assertRestoredProfileAwaitingDecision(): void {
+    if (!this.restoredProfileAwaitingDecision) {
+      throw new Error('PROFILE_RESTORE_DECISION_INVALID');
     }
   }
 

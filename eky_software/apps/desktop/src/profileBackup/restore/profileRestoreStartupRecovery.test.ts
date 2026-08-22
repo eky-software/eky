@@ -58,6 +58,67 @@ describe('profile restore startup recovery', () => {
     ]);
   });
 
+  it('defers restored profile acceptance until the caller accepts the validated target', async () => {
+    const operationId = randomUUID();
+    const transaction = createTransaction(operationId);
+    const recovery = new ProfileRestoreStartupRecovery({
+      journalStore: {
+        read: vi.fn(async () =>
+          createJournal(operationId, 'validationStarting'),
+        ),
+      },
+      transaction,
+    });
+
+    await expect(recovery.prepareBeforeBackend()).resolves.toBe(
+      'validateRestoredProfile',
+    );
+    await expect(
+      recovery.validateAfterBackend({
+        deferRestoredProfileAcceptance: true,
+        mode: 'validateRestoredProfile',
+        stopBackend: vi.fn(),
+        validateActiveProfile: vi.fn(),
+      }),
+    ).resolves.toBe('restoredProfileReady');
+    expect(transaction.accept).not.toHaveBeenCalled();
+
+    await expect(
+      recovery.acceptValidatedRestoredProfile(),
+    ).resolves.toBeUndefined();
+    expect(transaction.accept).toHaveBeenCalledTimes(1);
+    await expect(
+      recovery.acceptValidatedRestoredProfile(),
+    ).rejects.toThrow('PROFILE_RESTORE_DECISION_INVALID');
+  });
+
+  it('can roll back a healthy restored profile while acceptance is deferred', async () => {
+    const operationId = randomUUID();
+    const transaction = createTransaction(operationId);
+    const recovery = new ProfileRestoreStartupRecovery({
+      journalStore: {
+        read: vi.fn(async () =>
+          createJournal(operationId, 'validationStarting'),
+        ),
+      },
+      transaction,
+    });
+
+    await recovery.prepareBeforeBackend();
+    await recovery.validateAfterBackend({
+      deferRestoredProfileAcceptance: true,
+      mode: 'validateRestoredProfile',
+      stopBackend: vi.fn(),
+      validateActiveProfile: vi.fn(),
+    });
+
+    await expect(
+      recovery.rollbackValidatedRestoredProfile(),
+    ).resolves.toBeUndefined();
+    expect(transaction.rollback).toHaveBeenCalledTimes(1);
+    expect(transaction.accept).not.toHaveBeenCalled();
+  });
+
   it('rolls back an unhealthy restored profile and requests a fresh process', async () => {
     const operationId = randomUUID();
     const events: ProfileRecoveryOperationalEvent[] = [];

@@ -13,6 +13,7 @@ import { WorkspaceSwitchJournalStore } from '../switch/workspaceSwitchJournal.js
 import { WorkspaceSwitchError } from '../switch/workspaceSwitchError.js';
 import { resolveWorkspaceSwitchStartup } from '../switch/workspaceSwitchStartup.js';
 import type { WorkspaceSwitchFailureRecoveryOutcome } from '../switch/workspaceSwitchStartup.js';
+import type { WorkspaceSwitchStartupContext } from '../switch/workspaceSwitchStartup.js';
 
 export const ACTIVE_WORKSPACE_STARTUP_RELAUNCH_REQUIRED =
   'ACTIVE_WORKSPACE_STARTUP_RELAUNCH_REQUIRED';
@@ -44,6 +45,11 @@ export interface ActiveWorkspaceStartupProgress {
   readonly state: 'started' | 'completed';
 }
 
+export interface ActiveWorkspaceSwitchContext
+  extends WorkspaceSwitchStartupContext {
+  readonly targetProfileId: string;
+}
+
 export interface ActiveWorkspaceStartupOptions {
   readonly reportProgress?: (
     progress: Readonly<ActiveWorkspaceStartupProgress>,
@@ -52,9 +58,12 @@ export interface ActiveWorkspaceStartupOptions {
 
 export interface ActiveWorkspaceStartupSelection {
   readonly mode: ActiveWorkspaceStartupMode;
+  readonly switchContext?: Readonly<ActiveWorkspaceSwitchContext>;
   readonly workspaceId: WorkspaceId;
   readonly workspaceRoot: string;
   accept(profileId: string): Promise<void>;
+  rejectInvalidTarget?(): Promise<WorkspaceSwitchFailureRecoveryOutcome>;
+  requireRecovery?(): Promise<WorkspaceSwitchFailureRecoveryOutcome>;
   recoverFromFailure(): Promise<WorkspaceSwitchFailureRecoveryOutcome>;
 }
 
@@ -126,6 +135,18 @@ export async function resolveActiveWorkspaceStartup(
   reportProgress(options, 'workspaceRootInspection', 'completed');
   return Object.freeze({
     mode: switchSelection.mode,
+    ...(switchSelection.context === undefined
+      ? {}
+      : {
+          switchContext: Object.freeze({
+            ...switchSelection.context,
+            targetProfileId:
+              switchSelection.workspace.lineageIdentity.profileId,
+          }),
+          rejectInvalidTarget: () =>
+            switchSelection.rejectInvalidTarget(),
+          requireRecovery: () => switchSelection.requireRecovery(),
+        }),
     workspaceId: switchSelection.workspace.workspaceId,
     workspaceRoot: paths.workspaceRoot,
     accept: (profileId: string) => switchSelection.accept(profileId),

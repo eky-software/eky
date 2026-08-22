@@ -8,6 +8,7 @@ import { createDatabaseConnection } from '../../database/connection/createDataba
 import type { DatabaseConnection } from '../../database/connection/createDatabaseConnection.js';
 import { readLocalRuntimeIdentity } from '../../database/localRuntimeIdentityReader.js';
 import { inspectMigrationStartupState } from '../../database/migration/inspectMigrationStartupState.js';
+import type { MigrationStartupPolicy } from '../../database/migration/inspectMigrationStartupState.js';
 import { runMigrations } from '../../database/migration/runMigrations.js';
 import { materializeValidatedProfileArtifacts } from '../profileSnapshot/materializeValidatedProfileArtifacts.js';
 import { createProfileBackupIdentity } from '../profileSnapshot/inspectSqliteProfileDatabase.js';
@@ -67,6 +68,10 @@ export type WorkspaceCandidateOperation =
   | (WorkspaceCandidateCommonInput & {
       readonly expectedProfileId?: string;
       readonly operation: 'validatePublished';
+    })
+  | (WorkspaceCandidateCommonInput & {
+      readonly expectedProfileId: string;
+      readonly operation: 'validateHistoricalPublished';
     });
 
 export interface WorkspaceCandidateMigrationResult {
@@ -86,9 +91,21 @@ export interface WorkspaceCandidateReadinessResult {
   readonly profileId: string;
 }
 
+export interface WorkspaceCandidateHistoricalReadinessResult {
+  readonly actorId: 'local-owner';
+  readonly artifactRootHealth: 'ready';
+  readonly companyId: string;
+  readonly databaseHealth: 'healthy';
+  readonly foreignKeyHealth: 'healthy';
+  readonly kind: 'historicalReadiness';
+  readonly migrationChainIdentity: string;
+  readonly profileId: string;
+}
+
 export type WorkspaceCandidateOperationResult =
   | PublishedWorkspaceMigrationInspection
   | WorkspaceCandidateMigrationResult
+  | WorkspaceCandidateHistoricalReadinessResult
   | WorkspaceCandidateReadinessResult;
 
 export interface WorkspaceCandidateOperationControl {
@@ -131,7 +148,12 @@ export async function runWorkspaceCandidateOperation(
           releaseIdentity: readReleaseIdentity(operation),
         });
         throwIfCancelled(control.signal);
-        return await readReadiness(database, paths, control.signal);
+        return await readReadiness(database, paths, {
+          kind: 'readiness',
+          migrationPolicy: 'exactCurrentManifest',
+          requirePendingMigrations: false,
+          ...(control.signal === undefined ? {} : { signal: control.signal }),
+        });
       } finally {
         database.close();
       }
@@ -205,6 +227,21 @@ export async function runWorkspaceCandidateOperation(
       databaseFilePath: paths.databaseFilePath,
     });
     try {
+      if (operation.operation === 'validateHistoricalPublished') {
+        const readiness = await readReadiness(database, paths, {
+          kind: 'historicalReadiness',
+          migrationPolicy: 'restoreCompatible',
+          requirePendingMigrations: true,
+          ...(control.signal === undefined
+            ? {}
+            : { signal: control.signal }),
+        });
+        if (readiness.profileId !== expectedProfileId) {
+          throw new Error('WORKSPACE_CANDIDATE_PROFILE_MISMATCH');
+        }
+        return readiness;
+      }
+
       const current = inspectMigrationStartupState(
         database,
         paths.migrationsDirectory,
@@ -233,11 +270,12 @@ export async function runWorkspaceCandidateOperation(
         throwIfCancelled(control.signal);
       }
 
-      const readiness = await readReadiness(
-        database,
-        paths,
-        control.signal,
-      );
+      const readiness = await readReadiness(database, paths, {
+        kind: 'readiness',
+        migrationPolicy: 'exactCurrentManifest',
+        requirePendingMigrations: false,
+        ...(control.signal === undefined ? {} : { signal: control.signal }),
+      });
       if (
         expectedProfileId !== undefined &&
         readiness.profileId !== expectedProfileId
@@ -283,6 +321,8 @@ function validateOperationInput(
         return 'expectedProfileId' in input
           ? [...commonOperationKeys, 'expectedProfileId', 'operation']
           : [...commonOperationKeys, 'operation'];
+      case 'validateHistoricalPublished':
+        return [...commonOperationKeys, 'expectedProfileId', 'operation'];
       case 'inspectPublishedMigration':
         return [
           'appVersion',
@@ -307,14 +347,34 @@ function validateOperationInput(
 async function readReadiness(
   database: DatabaseConnection,
   paths: Readonly<ValidatedCandidatePaths>,
-  signal?: AbortSignal,
-): Promise<Readonly<WorkspaceCandidateReadinessResult>> {
-  throwIfCancelled(signal);
+  options: Readonly<{
+    kind: 'historicalReadiness' | 'readiness';
+    migrationPolicy: MigrationStartupPolicy;
+    requirePendingMigrations: boolean;
+    signal?: AbortSignal;
+  }> = {
+    kind: 'readiness',
+    migrationPolicy: 'exactCurrentManifest',
+    requirePendingMigrations: false,
+  },
+): Promise<
+  Readonly<
+    | WorkspaceCandidateHistoricalReadinessResult
+    | WorkspaceCandidateReadinessResult
+  >
+> {
+  throwIfCancelled(options.signal);
   const migration = inspectMigrationStartupState(
     database,
     paths.migrationsDirectory,
+    options.migrationPolicy,
   );
-  if (migration.pendingMigrationCount !== 0) {
+  if (
+    (options.requirePendingMigrations &&
+      (migration.profileState !== 'existing' ||
+        migration.pendingMigrationCount === 0)) ||
+    (!options.requirePendingMigrations && migration.pendingMigrationCount !== 0)
+  ) {
     throw new Error('WORKSPACE_CANDIDATE_MIGRATIONS_PENDING');
   }
   const identity = readLocalRuntimeIdentity(database);
@@ -326,7 +386,7 @@ async function readReadiness(
     paths.artifactRoot,
     () => migration.migrationChainIdentity,
   ).validateActiveProfile();
-  throwIfCancelled(signal);
+  throwIfCancelled(options.signal);
   const profileId = createProfileBackupIdentity(identity.companyId);
   if (active.profileId !== profileId) {
     throw new Error('WORKSPACE_CANDIDATE_PROFILE_INVALID');
@@ -337,7 +397,7 @@ async function readReadiness(
     companyId: identity.companyId,
     databaseHealth: 'healthy',
     foreignKeyHealth: 'healthy',
-    kind: 'readiness',
+    kind: options.kind,
     migrationChainIdentity: migration.migrationChainIdentity,
     profileId,
   });

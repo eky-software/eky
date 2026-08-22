@@ -19,8 +19,11 @@ describe('workspace switch startup recovery', () => {
     const selection = await resolveWorkspaceSwitchStartup(registry, journal);
 
     expect(selection.mode).toBe('normal');
+    expect(selection.context).toBeUndefined();
     expect(selection.workspace.workspaceId).toBe(TEST_SOURCE_WORKSPACE_ID);
     await expect(selection.accept('a'.repeat(64))).resolves.toBeUndefined();
+    await expect(selection.rejectInvalidTarget()).resolves.toBe('notRecovered');
+    await expect(selection.requireRecovery()).resolves.toBe('notRecovered');
     await expect(selection.recoverFromFailure()).resolves.toBe('notRecovered');
   });
 
@@ -53,6 +56,11 @@ describe('workspace switch startup recovery', () => {
     const selection = await resolveWorkspaceSwitchStartup(registry, journal);
 
     expect(selection.mode).toBe('targetValidation');
+    expect(selection.context).toEqual({
+      operationId: createSwitchJournal('targetSelected').operationId,
+      sourceWorkspaceId: TEST_SOURCE_WORKSPACE_ID,
+      targetWorkspaceId: TEST_TARGET_WORKSPACE_ID,
+    });
     expect(selection.workspace.workspaceId).toBe(TEST_TARGET_WORKSPACE_ID);
     await expect(selection.accept('a'.repeat(64))).rejects.toMatchObject({
       code: 'WORKSPACE_SWITCH_INVALID',
@@ -108,6 +116,52 @@ describe('workspace switch startup recovery', () => {
     expect(journal.current).toBeUndefined();
   });
 
+  it('isolates an invalid target before returning to source validation', async () => {
+    const events: string[] = [];
+    const registry = new MemorySwitchRegistry(
+      events,
+      createSwitchRegistry(TEST_TARGET_WORKSPACE_ID),
+    );
+    const journal = new MemorySwitchJournal(
+      events,
+      createSwitchJournal('targetSelected'),
+    );
+    const selection = await resolveWorkspaceSwitchStartup(registry, journal);
+
+    await expect(selection.rejectInvalidTarget())
+      .resolves.toBe('relaunchRequired');
+    expect(registry.value?.activeWorkspaceId).toBe(TEST_SOURCE_WORKSPACE_ID);
+    expect(
+      registry.value?.workspaces.find(
+        (entry) => entry.workspaceId === TEST_TARGET_WORKSPACE_ID,
+      )?.lifecycleState,
+    ).toBe('recoveryRequired');
+    expect(journal.current?.state).toBe('rollbackSelected');
+  });
+
+  it('reconciles an invalid-target registry write that completed before failing', async () => {
+    const events: string[] = [];
+    const registry = new MemorySwitchRegistry(
+      events,
+      createSwitchRegistry(TEST_TARGET_WORKSPACE_ID),
+    );
+    registry.failWriteAfter = true;
+    const journal = new MemorySwitchJournal(
+      events,
+      createSwitchJournal('targetSelected'),
+    );
+    const selection = await resolveWorkspaceSwitchStartup(registry, journal);
+
+    await expect(selection.rejectInvalidTarget())
+      .resolves.toBe('relaunchRequired');
+    expect(registry.value?.activeWorkspaceId).toBe(TEST_SOURCE_WORKSPACE_ID);
+    expect(
+      registry.value?.workspaces.find(
+        (entry) => entry.workspaceId === TEST_TARGET_WORKSPACE_ID,
+      )?.lifecycleState,
+    ).toBe('recoveryRequired');
+  });
+
   it('persists recoveryRequired if rollback validation also fails', async () => {
     const events: string[] = [];
     const registry = new MemorySwitchRegistry(events, createSwitchRegistry());
@@ -122,6 +176,25 @@ describe('workspace switch startup recovery', () => {
     expect(journal.current?.state).toBe('recoveryRequired');
     await expect(resolveWorkspaceSwitchStartup(registry, journal))
       .rejects.toMatchObject({ code: 'WORKSPACE_SWITCH_RECOVERY_REQUIRED' });
+  });
+
+  it('marks a pending target validation recovery required without moving the active pointer', async () => {
+    const events: string[] = [];
+    const registry = new MemorySwitchRegistry(
+      events,
+      createSwitchRegistry(TEST_TARGET_WORKSPACE_ID),
+    );
+    const journal = new MemorySwitchJournal(
+      events,
+      createSwitchJournal('targetSelected'),
+    );
+    const selection = await resolveWorkspaceSwitchStartup(registry, journal);
+
+    await expect(selection.requireRecovery()).resolves.toBe(
+      'recoveryRequired',
+    );
+    expect(registry.value?.activeWorkspaceId).toBe(TEST_TARGET_WORKSPACE_ID);
+    expect(journal.current?.state).toBe('recoveryRequired');
   });
 
   it('marks recovery required when target rollback cannot change the active pointer', async () => {

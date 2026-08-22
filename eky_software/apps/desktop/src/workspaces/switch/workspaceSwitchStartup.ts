@@ -1,4 +1,8 @@
-import { findWorkspaceEntry, selectActiveWorkspace } from '../registry/workspaceRegistryMutations.js';
+import {
+  findWorkspaceEntry,
+  selectActiveWorkspace,
+  selectSourceAndRequireTargetRecovery,
+} from '../registry/workspaceRegistryMutations.js';
 import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
 import type {
   LocalWorkspaceRegistryEntryV1,
@@ -21,10 +25,19 @@ export type WorkspaceSwitchFailureRecoveryOutcome =
   | 'recoveryRequired'
   | 'notRecovered';
 
+export interface WorkspaceSwitchStartupContext {
+  readonly operationId: string;
+  readonly sourceWorkspaceId: WorkspaceId;
+  readonly targetWorkspaceId: WorkspaceId;
+}
+
 export interface WorkspaceSwitchStartupSelection {
+  readonly context: Readonly<WorkspaceSwitchStartupContext> | undefined;
   readonly mode: WorkspaceSwitchStartupMode;
   readonly workspace: Readonly<LocalWorkspaceRegistryEntryV1>;
   accept(profileId: string): Promise<void>;
+  rejectInvalidTarget(): Promise<WorkspaceSwitchFailureRecoveryOutcome>;
+  requireRecovery(): Promise<WorkspaceSwitchFailureRecoveryOutcome>;
   recoverFromFailure(): Promise<WorkspaceSwitchFailureRecoveryOutcome>;
 }
 
@@ -56,6 +69,14 @@ export async function resolveWorkspaceSwitchStartup(
   const mode = resolveMode(registry, journal);
   const workspace = requireActiveReadyWorkspace(registry);
   return Object.freeze({
+    context:
+      journal === undefined
+        ? undefined
+        : Object.freeze({
+            operationId: journal.operationId,
+            sourceWorkspaceId: journal.sourceWorkspaceId,
+            targetWorkspaceId: journal.targetWorkspaceId,
+          }),
     mode,
     workspace,
     async accept(profileId: string) {
@@ -65,6 +86,23 @@ export async function resolveWorkspaceSwitchStartup(
       if (journal !== undefined) {
         await journalStore.clear(journal.operationId);
       }
+    },
+    async rejectInvalidTarget() {
+      if (journal === undefined || mode !== 'targetValidation') {
+        return 'notRecovered';
+      }
+      return recoverInvalidTarget(
+        registryPort,
+        journalStore,
+        journal,
+      );
+    },
+    async requireRecovery() {
+      if (journal === undefined || mode === 'normal') {
+        return 'notRecovered';
+      }
+      await persistRecoveryRequired(journalStore, journal);
+      return 'recoveryRequired';
     },
     async recoverFromFailure() {
       if (journal === undefined || mode === 'normal') return 'notRecovered';
@@ -79,6 +117,70 @@ export async function resolveWorkspaceSwitchStartup(
       );
     },
   });
+}
+
+async function recoverInvalidTarget(
+  registryPort: WorkspaceRegistryPort,
+  journalStore: WorkspaceSwitchJournalPort,
+  journal: Readonly<WorkspaceSwitchJournalV1>,
+): Promise<WorkspaceSwitchFailureRecoveryOutcome> {
+  let currentRegistry: Readonly<LocalWorkspaceRegistryV1> | undefined;
+  try {
+    currentRegistry = await registryPort.read();
+    if (currentRegistry === undefined) throw new Error('invalid');
+  } catch {
+    await persistRecoveryRequired(journalStore, journal);
+    return 'recoveryRequired';
+  }
+
+  let recoveredRegistry: Readonly<LocalWorkspaceRegistryV1>;
+  try {
+    recoveredRegistry = selectSourceAndRequireTargetRecovery({
+      registry: currentRegistry,
+      sourceWorkspaceId: journal.sourceWorkspaceId,
+      targetWorkspaceId: journal.targetWorkspaceId,
+    });
+  } catch {
+    await persistRecoveryRequired(journalStore, journal);
+    return 'recoveryRequired';
+  }
+
+  try {
+    await registryPort.write(recoveredRegistry);
+  } catch {
+    let observed: Readonly<LocalWorkspaceRegistryV1> | undefined;
+    try {
+      observed = await registryPort.read();
+    } catch {
+      await persistRecoveryRequired(journalStore, journal);
+      return 'recoveryRequired';
+    }
+    if (!registryMatchesInvalidTargetRecovery(observed, journal)) {
+      await persistRecoveryRequired(journalStore, journal);
+      return 'recoveryRequired';
+    }
+  }
+
+  try {
+    await journalStore.write({ ...journal, state: 'rollbackSelected' });
+  } catch {
+    await persistRecoveryRequired(journalStore, journal);
+    return 'recoveryRequired';
+  }
+  return 'relaunchRequired';
+}
+
+function registryMatchesInvalidTargetRecovery(
+  registry: Readonly<LocalWorkspaceRegistryV1> | undefined,
+  journal: Readonly<WorkspaceSwitchJournalV1>,
+): boolean {
+  return (
+    registry?.activeWorkspaceId === journal.sourceWorkspaceId &&
+    findWorkspaceEntry(registry, journal.sourceWorkspaceId)
+      ?.lifecycleState === 'ready' &&
+    findWorkspaceEntry(registry, journal.targetWorkspaceId)
+      ?.lifecycleState === 'recoveryRequired'
+  );
 }
 
 async function recoverTargetValidationFailure(

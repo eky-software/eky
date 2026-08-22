@@ -13,6 +13,7 @@ import {
   findWorkspaceEntry,
   readWorkspaceRegistry,
   selectActiveWorkspace,
+  selectSourceAndRequireTargetRecovery,
   WorkspaceRegistryMutationError,
 } from './workspaceRegistryMutations.js';
 import { WORKSPACE_REGISTRY_MAX_ENTRIES } from './workspaceRegistryValidation.js';
@@ -148,6 +149,49 @@ describe('workspace registry mutations', () => {
           firstWorkspaceId,
           secondWorkspaceId,
         ),
+      'workspaceNotReady',
+    );
+  });
+
+  it('restores the source pointer while isolating an invalid target', () => {
+    const source = createEntry(firstWorkspaceId, 'a'.repeat(64));
+    const target = createEntry(secondWorkspaceId, 'b'.repeat(64));
+
+    const recovered = selectSourceAndRequireTargetRecovery({
+      registry: createRegistry(secondWorkspaceId, [source, target]),
+      sourceWorkspaceId: firstWorkspaceId,
+      targetWorkspaceId: secondWorkspaceId,
+    });
+
+    expect(recovered.activeWorkspaceId).toBe(firstWorkspaceId);
+    expect(recovered.workspaces).toEqual([
+      source,
+      { ...target, lifecycleState: 'recoveryRequired' },
+    ]);
+    expect(Object.isFrozen(recovered.workspaces)).toBe(true);
+  });
+
+  it('rejects stale and non-ready invalid-target recovery inputs', () => {
+    const source = createEntry(firstWorkspaceId, 'a'.repeat(64));
+    const target = createEntry(secondWorkspaceId, 'b'.repeat(64));
+
+    expectMutationFailure(
+      () => selectSourceAndRequireTargetRecovery({
+        registry: createRegistry(firstWorkspaceId, [source, target]),
+        sourceWorkspaceId: firstWorkspaceId,
+        targetWorkspaceId: secondWorkspaceId,
+      }),
+      'activeWorkspaceChanged',
+    );
+    expectMutationFailure(
+      () => selectSourceAndRequireTargetRecovery({
+        registry: createRegistry(secondWorkspaceId, [
+          source,
+          { ...target, lifecycleState: 'recoveryRequired' },
+        ]),
+        sourceWorkspaceId: firstWorkspaceId,
+        targetWorkspaceId: secondWorkspaceId,
+      }),
       'workspaceNotReady',
     );
   });

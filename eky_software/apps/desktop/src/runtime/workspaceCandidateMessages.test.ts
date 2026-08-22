@@ -182,6 +182,46 @@ describe('workspace candidate process messages', () => {
     ).toBeUndefined();
   });
 
+  it('accepts only the exact historical published validation contract', () => {
+    const operation = {
+      ...commonOperation(),
+      expectedProfileId: profileId,
+      operation: 'validateHistoricalPublished' as const,
+    };
+    const start = createWorkspaceCandidateStartCommand({
+      operation,
+      operationId,
+      requestId,
+      runtimeSession,
+    });
+
+    expect(parseWorkspaceCandidateProcessCommand(start)).toEqual(start);
+    expect(Object.keys(start.operation).sort()).toEqual([
+      'appVersion',
+      'artifactRoot',
+      'backendRoot',
+      'buildRevision',
+      'candidateRoot',
+      'databaseFilePath',
+      'expectedProfileId',
+      'migrationsDirectory',
+      'operation',
+    ]);
+    expect(
+      parseWorkspaceCandidateProcessCommand({
+        ...start,
+        operation: { ...operation, companyId: 'local-company' },
+      }),
+    ).toBeUndefined();
+    const { expectedProfileId: _missing, ...missingProfileId } = operation;
+    expect(
+      parseWorkspaceCandidateProcessCommand({
+        ...start,
+        operation: missingProfileId,
+      }),
+    ).toBeUndefined();
+  });
+
   it('requires canonical request and operation identifiers', () => {
     const start = startCommand();
 
@@ -304,6 +344,38 @@ describe('workspace candidate process messages', () => {
     };
 
     expect(parseWorkspaceCandidateProcessStatus(completed)).toBeUndefined();
+  });
+
+  it('accepts only the safe historical readiness result shape', () => {
+    const completed = createWorkspaceCandidateCompletedStatus({
+      operationId,
+      requestId,
+      result: {
+        actorId: 'local-owner',
+        artifactRootHealth: 'ready',
+        companyId: 'local-company-1234567890abcdef1234567890abcdef',
+        databaseHealth: 'healthy',
+        foreignKeyHealth: 'healthy',
+        kind: 'historicalReadiness',
+        migrationChainIdentity,
+        profileId,
+      },
+      runtimeSession,
+    });
+
+    expect(parseWorkspaceCandidateProcessStatus(completed)).toEqual(completed);
+    expect(
+      parseWorkspaceCandidateProcessStatus({
+        ...completed,
+        result: { ...completed.result, databaseFilePath: resolve('private') },
+      }),
+    ).toBeUndefined();
+    expect(
+      parseWorkspaceCandidateProcessStatus({
+        ...completed,
+        result: { ...completed.result, artifactRootHealth: 'unknown' },
+      }),
+    ).toBeUndefined();
   });
 
   it('accepts only the safe migration inspection result shape', () => {

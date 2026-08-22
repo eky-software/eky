@@ -50,6 +50,10 @@ export type WorkspaceCandidateProcessOperation =
   | (WorkspaceCandidateCommonConfig & {
       readonly expectedProfileId?: string;
       readonly operation: 'validatePublished';
+    })
+  | (WorkspaceCandidateCommonConfig & {
+      readonly expectedProfileId: string;
+      readonly operation: 'validateHistoricalPublished';
     });
 
 interface WorkspaceCandidateProcessRequestIdentity {
@@ -90,6 +94,16 @@ export type WorkspaceCandidateProcessResult =
       readonly databaseHealth: 'healthy';
       readonly foreignKeyHealth: 'healthy';
       readonly kind: 'readiness';
+      readonly migrationChainIdentity: string;
+      readonly profileId: string;
+    }
+  | {
+      readonly actorId: 'local-owner';
+      readonly artifactRootHealth: 'ready';
+      readonly companyId: string;
+      readonly databaseHealth: 'healthy';
+      readonly foreignKeyHealth: 'healthy';
+      readonly kind: 'historicalReadiness';
       readonly migrationChainIdentity: string;
       readonly profileId: string;
     };
@@ -383,6 +397,21 @@ function parseOperation(
         : { expectedProfileId: value.expectedProfileId }),
     };
   }
+  if (
+    value.operation === 'validateHistoricalPublished' &&
+    isSha256(value.expectedProfileId) &&
+    hasExactKeys(
+      value,
+      commonKeys(['expectedProfileId', 'operation']),
+    )
+  ) {
+    return {
+      ...readCommonOperation(value, {
+        operation: 'validateHistoricalPublished',
+      }),
+      expectedProfileId: value.expectedProfileId,
+    };
+  }
   return undefined;
 }
 
@@ -453,6 +482,37 @@ function parseResult(
       databaseHealth: 'healthy',
       foreignKeyHealth: 'healthy',
       kind: 'readiness',
+      migrationChainIdentity: value.migrationChainIdentity,
+      profileId: value.profileId,
+    };
+  }
+  if (
+    value.kind === 'historicalReadiness' &&
+    value.actorId === 'local-owner' &&
+    value.artifactRootHealth === 'ready' &&
+    isBoundedIdentity(value.companyId) &&
+    value.databaseHealth === 'healthy' &&
+    value.foreignKeyHealth === 'healthy' &&
+    isSha256(value.migrationChainIdentity) &&
+    isSha256(value.profileId) &&
+    hasExactKeys(value, [
+      'actorId',
+      'artifactRootHealth',
+      'companyId',
+      'databaseHealth',
+      'foreignKeyHealth',
+      'kind',
+      'migrationChainIdentity',
+      'profileId',
+    ])
+  ) {
+    return {
+      actorId: 'local-owner',
+      artifactRootHealth: 'ready',
+      companyId: value.companyId,
+      databaseHealth: 'healthy',
+      foreignKeyHealth: 'healthy',
+      kind: 'historicalReadiness',
       migrationChainIdentity: value.migrationChainIdentity,
       profileId: value.profileId,
     };
