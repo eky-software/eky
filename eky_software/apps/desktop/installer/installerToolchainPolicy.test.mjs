@@ -59,6 +59,23 @@ test('allows only the approved signed NuGet source and exact setup-dotnet SHA', 
   assert.doesNotMatch(ci, /actions\/setup-dotnet@v\d/);
 });
 
+test('runs W6B legacy acceptance before creating the current local pilot bundle', async () => {
+  const ci = await readFile(
+    join(workspaceRoot, '.github', 'workflows', 'ci.yml'),
+    'utf8',
+  );
+  const legacyAcceptance =
+    'run: pnpm --filter @eky/desktop installer:w6b-legacy';
+  const localPilotBundle =
+    'run: pnpm --filter @eky/desktop installer:local-pilot-bundle';
+  const legacyAcceptanceIndex = ci.indexOf(legacyAcceptance);
+  const localPilotBundleIndex = ci.indexOf(localPilotBundle);
+
+  assert.ok(legacyAcceptanceIndex >= 0);
+  assert.ok(localPilotBundleIndex > legacyAcceptanceIndex);
+  assert.equal(ci.split(legacyAcceptance).length - 1, 1);
+});
+
 test('uses runtime-independent SHA-256 APIs in Windows installer gates', async () => {
   const scripts = await Promise.all(
     [
