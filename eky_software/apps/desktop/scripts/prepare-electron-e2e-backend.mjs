@@ -49,6 +49,9 @@ function runPnpm(args) {
 async function prepareElectronE2eBackend() {
   await rm(backendStage, { force: true, recursive: true });
   await mkdir(backendStage, { recursive: true });
+  // The desktop candidate runner imports the packaged backend runtime from
+  // backend/dist, so the stage must never reuse an earlier local build.
+  await runPnpm(['--filter', '@eky/backend', 'build']);
   await runPnpm([
     '--filter',
     '@eky/backend',

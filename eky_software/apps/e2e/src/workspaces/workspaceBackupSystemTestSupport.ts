@@ -64,6 +64,11 @@ interface WorkspaceBackupCandidateReadiness {
   readonly migrationState: 'current';
 }
 
+interface PublishedHistoricalWorkspaceReadiness
+  extends Omit<WorkspaceBackupCandidateReadiness, 'migrationState'> {
+  readonly migrationState: 'compatiblePending';
+}
+
 export const workspaceBackupTestAppVersion = '0.2.6';
 export const workspaceBackupMigrationsDirectory = resolve(
   import.meta.dirname,
@@ -225,6 +230,9 @@ export function createWorkspaceBackupCandidateRuntimeFactory() {
     startPublishedValidation: async (
       input: Readonly<PublishedWorkspaceBackupValidationInput>,
     ) => createStoppedReadinessRuntime(input),
+    startHistoricalPublishedValidation: async (
+      input: Readonly<PublishedWorkspaceBackupValidationInput>,
+    ) => createStoppedHistoricalReadinessRuntime(input),
   };
 }
 
@@ -495,6 +503,71 @@ function createStoppedReadinessRuntime(
         expectedProfileId: input.expectedProfileId,
       }),
   };
+}
+
+function createStoppedHistoricalReadinessRuntime(
+  input: Readonly<PublishedWorkspaceBackupValidationInput>,
+) {
+  return {
+    stopAndProveHandlesClosed: async () => true,
+    inspectStoppedHistoricalReadiness: async () =>
+      inspectHistoricalWorkspaceCandidateReadiness(input),
+  };
+}
+
+async function inspectHistoricalWorkspaceCandidateReadiness(
+  input: Readonly<PublishedWorkspaceBackupValidationInput>,
+): Promise<Readonly<PublishedHistoricalWorkspaceReadiness>> {
+  const inspection = inspectSqliteProfileDatabase(
+    input.databaseFilePath,
+    workspaceBackupMigrationsDirectory,
+    'compatibleHistoricalPrefix',
+  );
+  if (inspection.profileId !== input.expectedProfileId) {
+    throw new Error('PUBLISHED_PROFILE_MISMATCH');
+  }
+  const database = createDatabaseConnection({
+    databaseFilePath: input.databaseFilePath,
+  });
+  try {
+    const identity = readLocalRuntimeIdentity(database);
+    const artifacts =
+      await new SqliteInvoiceBackupArtifactCatalog(
+        database,
+      ).listAuthoritativeArtifacts();
+    const actualStoragePaths = await readRelativeFilePaths(input.artifactRoot);
+    const expectedStoragePaths = artifacts
+      .map((artifact) => artifact.storagePath)
+      .sort();
+    if (!stringArraysEqual(actualStoragePaths, expectedStoragePaths)) {
+      throw new Error('PUBLISHED_ARTIFACT_CATALOG_MISMATCH');
+    }
+    for (const artifact of artifacts) {
+      const path = resolveWorkspaceBackupStoragePath(
+        input.artifactRoot,
+        artifact.storagePath,
+      );
+      if ((await sha256File(path)) !== artifact.sha256) {
+        throw new Error('PUBLISHED_ARTIFACT_HASH_MISMATCH');
+      }
+    }
+    return Object.freeze({
+      actorId: 'local-owner',
+      artifactRootHealth: 'ready',
+      companyId: identity.companyId,
+      databaseHealth: 'healthy',
+      foreignKeyHealth: 'healthy',
+      handlesClosed: true,
+      lineageIdentity: Object.freeze({
+        formatVersion: 1,
+        profileId: inspection.profileId,
+      }),
+      migrationChainIdentity: inspection.migrationChainIdentity,
+      migrationState: 'compatiblePending',
+    });
+  } finally {
+    database.close();
+  }
 }
 
 async function readRelativeFilePaths(root: string): Promise<string[]> {
