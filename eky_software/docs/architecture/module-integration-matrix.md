@@ -209,6 +209,30 @@ historical-prefix-politiikkaa; muut snapshotit ja portable backup vaativat
 täsmälleen nykyisen manifestin. Passiivisen pending-workspacen
 aktivointimigraatio ja paketoitu W6-releaseportti ovat avoimia.
 
+### Local Workspace W6A.3 -sopimus
+
+W6A.3 antaa vain passiiviselle `compatiblePending`-työtilalle oikeuden
+migroitua ensimmäisessä hallitussa aktivoinnissa. Electron main omistaa
+workspace-valinnan, lifecycle-koordinaation ja rajattujen utility-prosessien
+käynnistyksen, mutta ei avaa SQLitea. Backendin workspace-migration-adapteri
+omistaa read-only-inventaarion, yksityisen candidate-profiilin SQL-migraation
+sekä workspace identity- ja artifact/PDF-validoinnin.
+
+Yhteinen Recovery/Backup-infrastruktuuri antaa workspace-scoped
+preMigration-palautuspisteen. Profile restore activation -infrastruktuuri
+omistaa candidate-swapin ja byte-identtisen target-rollbackin. Workspace
+switch -infrastruktuuri omistaa source/target-osoittimen ja lähteeseen
+palautumisen. Nämä portit annetaan compositionissa erillisinä; mitään niistä
+ei yhdistetä yleiseksi workspace repositoryksi tai journal manageriksi.
+
+`current` ei käynnistä migraatiota, `invalidHistory` ei käynnistä target-
+backendia ja infrastructure/protocol/path-failure pysähtyy fail closed ilman
+virheellistä migration history -luokitusta. Aktivointipolku ei kirjoita
+update-journalia, Direct Setup recoverya, W6 first-start -journalia tai
+accepted build -metadataa. Renderer saa vain turvallisen workspace-
+operaatiotuloksen eikä polkuja, migration historya, journalia, companyId:tä,
+sessionia tai rollback-slotin tietoja.
+
 ## Tarkistuslähteet
 
 Implemented-rivit tarkistetaan ensisijaisesti seuraavista lähteistä:

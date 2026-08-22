@@ -645,6 +645,21 @@ preMigration-, migration-, readiness- ja accepted build -auktoriteettina.
 Passiivisen `compatiblePending`-työtilan aktivointimigraatio ja täysi
 paketoitu W6-releaseportti ovat edelleen erillisiä myöhempiä rajoja.
 
+W6A.3:n aktivointimigraatio käyttää copy-on-write-candidatea. Passiivisen
+työtilan julkaistua SQLitea ei migroida paikallaan, eikä kohteen business-
+backendia tai UI:ta avata ennen terminal readiness -todistetta. Electron main
+johtaa vain validoidut polut ja käynnistää rajatun backend-utilityn;
+SQLite-omistajuus säilyy backendissä.
+
+Erillistä activation-migration-journalia ei lisätä. Workspace switch -journal
+omistaa source/target-valinnan, workspace-scoped preMigration-palautuspiste
+suojaa kohteen business-sisällön ja nykyinen profile restore activation
+-journal omistaa candidate-swapin sekä vanhan kohteen byte-identtisen
+rollbackin. `current` jatkaa normaalisti, `compatiblePending` saa yksin
+migraatio-oikeuden ja `invalidHistory` estää kohteen backendin sekä siirtää
+kohteen täsmälliseen `recoveryRequired`-tilaan lähteen switch recoveryn
+jälkeen. Epäselvä palautustulos pysäyttää käynnistyksen fail closed.
+
 W6A.2A:n suunnitelma vaaditaan vain `authorizedNewerBuild`- ja
 `coordinatedUpdateTarget`-admissioneissa. Development-, initial install-,
 exact accepted build- ja hyväksyttyyn nykybuildiin palautunut first start

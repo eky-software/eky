@@ -1002,6 +1002,67 @@ kapea pre-backend failure -raja saa siirtää koordinoidun update-journalin
 ei hyväksytä eikä olemassa olevaa recovery-tilaa saa heikentää. Epäselvä
 durable tila pysäyttää käynnistyksen fail closed.
 
+### W6A.3: Passiivisen työtilan migraatio aktivoinnissa
+
+Passiivinen `compatiblePending`-työtila migroidaan vasta käyttäjän hallitusti
+käynnistämässä aktivoinnissa. Kohteen business-backendia tai käyttöliittymää
+ei avata ennen kuin migraatio ja readiness-todisteet on hyväksytty. Lähteenä
+oleva aktiivinen työtila pysyy koko operaation ajan muuttumattomana.
+
+Migraatio on copy-on-write-operaatio. Electron main johtaa vain validoidut
+workspace-polut eikä avaa SQLitea. Mainin käynnistämä rajattu backend-utility
+tarkastaa kohteen migration historyn read-only, minkä jälkeen nykyinen
+workspace-scoped preMigration-palautuspiste suojaa kohteen julkaistun
+business-sisällön. Migraatiot ajetaan palautuspisteestä muodostettuun
+yksityiseen candidate-juureen. Candidate todistetaan migration chainin,
+workspace-identiteetin ja authoritative artifact/PDF -sulkeuman osalta ennen
+atomista aktivointia. Julkaistua kohdetietokantaa ei migroida paikallaan.
+
+W6A.3 ei lisää erillistä activation-migration-journalia. Jo hyväksytyt,
+toisiaan täydentävät durable vastuut ovat:
+
+- workspace switch -journal todistaa source/target-valinnan ja palauttaa
+  aktiivisen osoittimen lähteeseen ennen hyväksyntää tapahtuvassa virheessä
+- workspace-scoped preMigration-palautuspiste suojaa kohteen business-datan
+- profile restore activation -journal omistaa candidate-swapin sekä vanhan
+  kohteen byte-identtisen rollback-slotin
+- update-journal, Direct Setup recovery, W6 first-start -journal ja accepted
+  build -metadata eivät kuulu aktivointimigraation kirjoitusvastuuseen.
+
+Target validation -esitarkastus ratkaisee polun ennen target-backendia:
+
+- `current` jatkaa normaaliin startupiin ilman snapshotia, candidatea tai
+  activation-journalia
+- `compatiblePending` käynnistää tässä kuvattavan aktivointimigraation
+- `invalidHistory` ei käynnistä target-backendia eikä tee targetiin business-
+  kirjoituksia; switch recovery palauttaa lähteen aktiiviseksi ja registryn
+  target-entry siirtyy täsmälliseen `recoveryRequired`-tilaan
+- storage-, identity-, path-, protocol- tai utility-virhe pysäyttää operaation
+  fail closed eikä sitä saa luokitella migration history -virheeksi.
+
+Onnistuvan `compatiblePending`-polun järjestys on:
+
+1. kohteen read-only migration inventory
+2. switch-journalin ja maintenance leasen uudelleentodistus
+3. kohteen workspace-scoped preMigration-palautuspiste
+4. yksityisen candidate-profiilin muodostus palautuspisteestä
+5. SQL-migraatiot vain candidateen
+6. candidate-identiteetin ja artifact/PDF-sulkeuman validointi
+7. candidate-profiilin atominen aktivointi rollback-slotin taakse
+8. targetin normaali backend-start, health-, identity- ja artifact-readiness
+9. switch-operaation hyväksyntä ja aktiivisen osoittimen terminal-todistus
+10. activation-transactionin hyväksyntä ja journalien hallittu siivous
+11. targetin business-UI:n avaaminen.
+
+Virhe ennen candidate-swapia jättää kohteen julkaistut tavut ennalleen ja
+palauttaa lähteen aktiiviseksi. Virhe swapin jälkeen palauttaa ensin kohteen
+profile restore activation -transactionilla byte-identtisesti ja vasta sen
+jälkeen lähteen switch recoverylla. Jos jommankumman palautuksen terminal-tila
+ei ole yksiselitteisesti todistettavissa, käynnistys päättyy
+`recoveryRequired`-tilaan ilman automaattista arvausta. Onnistuneen
+aktivoinnin jälkeen kohteen seuraava startup on täsmällinen `current`-polku
+ilman uutta migraatiota, snapshotia, candidatea tai journalia.
+
 **Pakollinen näyttö:**
 
 - `DESK-WORKSPACE-MIGRATION-INVENTORY-001` käyttää oikeaa paketoitua backend-
@@ -1041,9 +1102,9 @@ durable tila pysäyttää käynnistyksen fail closed.
 - PDF-arkisto käyttää workspace-kohtaista alikansiota, samat tiedostonimet
   eivät törmää eikä archive-root siirry backupissa.
 
-Ensimmäisen passiivisen `compatiblePending`-työtilan aktivointimigraatio sekä
-koko paketoitu multi-workspace W6 -releaseportti ovat edelleen avoimia. Edellä
-kirjattu Electron-todiste ei yksin täytä niitä.
+W6A.3:n aktivointimigraation toteutus- ja fault-todiste sekä koko paketoitu
+multi-workspace W6 -releaseportti ovat edelleen avoimia. Edellä kirjattu
+W6A.2B:n Electron-todiste ei yksin täytä niitä.
 
 In-app update testataan erikseen vain, jos `localUnsignedPilot`-polku on
 kyseisessä checkpointissa hyväksytty. MSI-gate ei piilota in-app update -puutetta.
