@@ -642,8 +642,9 @@ W6A.2B:n production-kytkentä on toteutettu 22.8.2026 siten, että workspace-
 orchestraattori koordinoi inventaarion, suunnitelman ja registry-journalin,
 mutta nykyinen `FirstStartUpdateCoordinator` säilyy aktiivisen työtilan
 preMigration-, migration-, readiness- ja accepted build -auktoriteettina.
-Passiivisen `compatiblePending`-työtilan aktivointimigraatio ja täysi
-paketoitu W6-releaseportti ovat edelleen erillisiä myöhempiä rajoja.
+Passiivisen `compatiblePending`-työtilan aktivointimigraatio toteutetaan
+erillisessä W6A.3-rajassa. Täysi paketoitu W6-releaseportti säilyy sen jälkeen
+erillisenä hyväksyntärajana.
 
 W6A.3:n aktivointimigraatio käyttää copy-on-write-candidatea. Passiivisen
 työtilan julkaistua SQLitea ei migroida paikallaan, eikä kohteen business-
@@ -659,6 +660,13 @@ rollbackin. `current` jatkaa normaalisti, `compatiblePending` saa yksin
 migraatio-oikeuden ja `invalidHistory` estää kohteen backendin sekä siirtää
 kohteen täsmälliseen `recoveryRequired`-tilaan lähteen switch recoveryn
 jälkeen. Epäselvä palautustulos pysäyttää käynnistyksen fail closed.
+
+W6A.3:n päätös on toteutettu ja todennettu 22.8.2026 testillä
+`DESK-WORKSPACE-ACTIVATION-001`. Todiste kattaa yhteensopivan passiivisen
+targetin hallitun copy-on-write-migraation, idempotentin seuraavan käynnistyksen,
+invalid-history-eston sekä candidate-virheen byte-identtisen rollbackin ilman
+source-workspacen tai authoritative PDF:n muutosta. Koko paketoitu W6-
+releaseportti on edelleen avoin.
 
 W6A.2A:n suunnitelma vaaditaan vain `authorizedNewerBuild`- ja
 `coordinatedUpdateTarget`-admissioneissa. Development-, initial install-,

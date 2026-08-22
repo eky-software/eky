@@ -207,7 +207,8 @@ vain registry-lifecyclea ja target hyväksytään vasta readiness- sekä registr
 todisteiden jälkeen. PreMigration-snapshot saa käyttää tarkoituskohtaista
 historical-prefix-politiikkaa; muut snapshotit ja portable backup vaativat
 täsmälleen nykyisen manifestin. Passiivisen pending-workspacen
-aktivointimigraatio ja paketoitu W6-releaseportti ovat avoimia.
+aktivointimigraatio on toteutettu W6A.3:ssa; paketoitu W6-releaseportti on
+edelleen avoin.
 
 ### Local Workspace W6A.3 -sopimus
 
@@ -232,6 +233,12 @@ update-journalia, Direct Setup recoverya, W6 first-start -journalia tai
 accepted build -metadataa. Renderer saa vain turvallisen workspace-
 operaatiotuloksen eikä polkuja, migration historya, journalia, companyId:tä,
 sessionia tai rollback-slotin tietoja.
+
+`DESK-WORKSPACE-ACTIVATION-001` todistaa 22.8.2026 tämän vastuurajan oikean
+Electron main -compositionin kautta. Todiste säilyttää source-, target-
+business- ja PDF-tavut, rajaa migraation ensimmäiseen aktivointiin, torjuu
+invalidin targetin ennen backendia ja palauttaa pakotetun candidate-virheen
+byte-identtisesti ilman avoimia journal-, backend- tai utility-vastuita.
 
 ## Tarkistuslähteet
 

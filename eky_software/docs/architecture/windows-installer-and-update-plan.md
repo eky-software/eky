@@ -846,8 +846,8 @@ PreMigration-snapshot käyttää ainoana snapshot-tarkoituksena
 `compatibleHistoricalPrefix`-politiikkaa, jotta N-profiilin katkeamaton
 immutable migration-prefix voidaan suojata ennen N+1-migraatiota. Muut
 snapshotit ja portable backup vaativat täsmälleen nykyisen manifestin.
-Passiivisen yhteensopivan työtilan myöhempi aktivointimigraatio ja koko
-paketoitu multi-workspace W6 -releaseportti ovat vielä avoimia.
+Passiivisen yhteensopivan työtilan aktivointimigraatio on toteutettu W6A.3:ssa.
+Koko paketoitu multi-workspace W6 -releaseportti on vielä avoin.
 
 W6A.3 rajaa passiivisen `compatiblePending`-työtilan migraation ensimmäiseen
 hallittuun aktivointiin. Migraatio tehdään workspace-scoped preMigration-
@@ -873,6 +873,14 @@ käynnistyksen, vaihtaa takaisin sourceen ja torjuu invalidin targetin. Fault-
 todiste pakottaa candidate-migraation epäonnistumaan ja todistaa targetin
 byte-identtisen palautuksen, source-tavujen muuttumattomuuden sekä nolla
 orpoa Electron-, backend- ja utility-prosessia.
+
+**Toteutustila 22.8.2026:** `DESK-WORKSPACE-ACTIVATION-001` toteuttaa tämän
+W6A.3-todisteen oikean Electron main -compositionin kautta neljällä
+synteettisellä työtilalla. Se todistaa aktivointiin rajatun migraation,
+toisen käynnistyksen idempotenssin, source- ja fault-tavujen sekä business-
+ja PDF-sisällön säilymisen, invalidin targetin backend-eston ja
+recovery-siirtymän, journalien siivouksen sekä backend- ja utility-prosessien
+vapautuksen. Tämä ei vielä sulje koko paketoitua W6-releaseporttia.
 
 W4 aktivoi registryyn sidotun startupin ja vanhan yhden profiilin adoption
 production-compositionissa. Se ei vielä toteuta tämän luvun koko N -> N+1

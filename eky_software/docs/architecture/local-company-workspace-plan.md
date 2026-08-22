@@ -1081,6 +1081,15 @@ ilman uutta migraatiota, snapshotia, candidatea tai journalia.
   hyväksytään vasta koko ketjun jälkeen
 - todistus sulkee backendin ja Electronin hallitusti, poistaa yksityisen
   testirootin ja jättää uusia backend- tai utility-prosesseja nolla
+- `DESK-WORKSPACE-ACTIVATION-001` käyttää oikeaa Electron main -compositionia
+  ja neljää synteettistä työtilaa: nykyistä sourcea, historiallista targetia,
+  invalidia targetia ja fault-targetia
+- aktivointitodiste migroi yhteensopivan targetin vasta ensimmäisessä
+  hallitussa aktivoinnissa, todistaa seuraavan käynnistyksen idempotentiksi ja
+  säilyttää business-rivit sekä authoritative PDF:n hashin
+- invalidi target torjutaan ennen backendia ja siirtyy recovery-tilaan;
+  pakotettu candidate-virhe palauttaa registryn ja kohteen byte-identtisesti,
+  minkä jälkeen journalit, backend-kahvat ja utility-prosessit on vapautettu
 
 - puhdas 0.2.6-asennus ja first/second startup
 - synteettinen 0.2.6-profiili sekä erikseen turvallisesti johdettu paikallinen
@@ -1102,9 +1111,12 @@ ilman uutta migraatiota, snapshotia, candidatea tai journalia.
 - PDF-arkisto käyttää workspace-kohtaista alikansiota, samat tiedostonimet
   eivät törmää eikä archive-root siirry backupissa.
 
-W6A.3:n aktivointimigraation toteutus- ja fault-todiste sekä koko paketoitu
-multi-workspace W6 -releaseportti ovat edelleen avoimia. Edellä kirjattu
-W6A.2B:n Electron-todiste ei yksin täytä niitä.
+**Toteutustila 22.8.2026:** W6A.3:n aktivointimigraatio sekä sen success-,
+invalid-history-, restart- ja fault-palautumistodiste on toteutettu unit-,
+integration- ja Electron-E2E-tasolla testillä
+`DESK-WORKSPACE-ACTIVATION-001`. Koko paketoitu multi-workspace W6
+-releaseportti on edelleen avoin; yksittäinen W6A.3-todiste ei yksin täytä
+sen MSI-, backup/restore-, isolation- ja kokonaisrollback-vaatimuksia.
 
 In-app update testataan erikseen vain, jos `localUnsignedPilot`-polku on
 kyseisessä checkpointissa hyväksytty. MSI-gate ei piilota in-app update -puutetta.
