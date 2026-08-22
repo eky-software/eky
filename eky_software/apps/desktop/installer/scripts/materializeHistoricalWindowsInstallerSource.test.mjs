@@ -8,7 +8,7 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { afterEach, test } from 'node:test';
 
 import {
@@ -190,6 +190,8 @@ test('materializes the approved source and removes staging after success', async
   const result = await withMaterializedHistoricalWindowsInstallerSource(
     async (materialized) => {
       operationRoot = materialized.operationRoot;
+      assert.match(basename(operationRoot), /^[0-9a-f]{16}$/u);
+      assert.equal(basename(materialized.sourceRoot), 's');
       assert.equal(
         JSON.parse(
           await readFile(

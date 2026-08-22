@@ -31,7 +31,7 @@ const stageRoot = join(
 );
 const allowedGitModes = new Set(['100644', '100755']);
 const fullRevisionPattern = /^[0-9a-f]{40}$/;
-const operationIdPattern = /^[0-9a-f]{32}$/;
+const operationIdPattern = /^[0-9a-f]{16}$/;
 const maximumManifestBytes = 64 * 1024 * 1024;
 const maximumSourceFileBytes = 64 * 1024 * 1024;
 const maximumSourceBytes = 512 * 1024 * 1024;
@@ -52,13 +52,13 @@ export async function withMaterializedHistoricalWindowsInstallerSource(
 }
 
 export async function materializeHistoricalWindowsInstallerSource() {
-  const operationId = randomBytes(16).toString('hex');
+  const operationId = randomBytes(8).toString('hex');
   if (!operationIdPattern.test(operationId)) {
     throw new Error('HISTORICAL_SOURCE_OPERATION_ID_INVALID');
   }
   const operationRoot = join(stageRoot, operationId);
   const archivePath = join(operationRoot, 'source.tar');
-  const sourceRoot = join(operationRoot, 'source');
+  const sourceRoot = join(operationRoot, 's');
 
   try {
     await assertOperationRootIsNew(operationRoot);

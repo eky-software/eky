@@ -4,6 +4,7 @@ import { createReadStream } from 'node:fs';
 import {
   lstat,
   readFile,
+  readdir,
   realpath,
   writeFile,
 } from 'node:fs/promises';
@@ -53,6 +54,7 @@ const exactLocalInstallerFilename = 'Eky-0.2.6-x64.msi';
 const exactLocalManifestFilename = 'Eky-0.2.6-x64.manifest.json';
 const exactLocalChecksumFilename = 'Eky-0.2.6-x64.sha256.txt';
 const maximumJsonBytes = 64 * 1024;
+const maximumLegacyWindowsPathLength = 259;
 const expectedNodeMajor = 24;
 const expectedPnpmVersion = '11.1.3';
 const expectedDotnetVersion = '10.0.302';
@@ -153,6 +155,15 @@ export async function withHistoricalSourceWindowsInstallerFixture(
       await (dependencies.packageApplication ?? packageHistoricalApplication)({
         workspaceRoot: materialized.workspaceRoot,
       });
+      await assertHistoricalPackagedApplicationPathBudget(
+        join(
+          materialized.workspaceRoot,
+          'apps',
+          'desktop',
+          'out',
+          'Eky-win32-x64',
+        ),
+      );
       await validateHistoricalPackagedApplication(materialized.workspaceRoot);
       await assertHistoricalLockedInputsUnchanged({
         expected: lockedInputs,
@@ -702,12 +713,43 @@ async function assertContainedHistoricalWorkspaceRoot(workspaceRoot) {
   const segments = relativeRoot.split(sep);
   if (
     segments.length !== 3 ||
-    !/^[0-9a-f]{32}$/u.test(segments[0] ?? '') ||
-    segments[1] !== 'source' ||
+    !/^[0-9a-f]{16}$/u.test(segments[0] ?? '') ||
+    segments[1] !== 's' ||
     segments[2] !== 'eky_software' ||
     join(historicalStageRoot, ...segments) !== resolvedRoot
   ) {
     throw new Error('HISTORICAL_FIXTURE_WORKSPACE_ROOT_INVALID');
+  }
+}
+
+async function assertHistoricalPackagedApplicationPathBudget(root) {
+  const canonicalRoot = await realpath(root).catch(() => null);
+  if (canonicalRoot === null) {
+    throw new Error('HISTORICAL_FIXTURE_PACKAGE_OUTPUT_INVALID');
+  }
+  const pending = [canonicalRoot];
+  while (pending.length > 0) {
+    const directory = pending.pop();
+    if (directory === undefined) {
+      throw new Error('HISTORICAL_FIXTURE_PACKAGE_OUTPUT_INVALID');
+    }
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const entryPath = join(directory, entry.name);
+      const metadata = await lstat(entryPath);
+      if (metadata.isSymbolicLink()) {
+        throw new Error('HISTORICAL_FIXTURE_PACKAGE_OUTPUT_INVALID');
+      }
+      const canonicalPath = await realpath(entryPath);
+      assertContainedPath(canonicalRoot, canonicalPath);
+      if (canonicalPath.length > maximumLegacyWindowsPathLength) {
+        throw new Error('HISTORICAL_FIXTURE_WINDOWS_PATH_BUDGET_EXCEEDED');
+      }
+      if (metadata.isDirectory()) {
+        pending.push(canonicalPath);
+      } else if (!metadata.isFile()) {
+        throw new Error('HISTORICAL_FIXTURE_PACKAGE_OUTPUT_INVALID');
+      }
+    }
   }
 }
 
