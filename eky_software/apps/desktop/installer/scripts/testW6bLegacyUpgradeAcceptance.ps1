@@ -44,7 +44,8 @@ $targetCode = $null
 $runningProcess = $null
 $businessInventoryBefore = $null
 $testRoot = Join-Path $env:TEMP "eky-w6b-legacy-$([guid]::NewGuid().ToString('N'))"
-$userDataRoot = Join-Path $testRoot 'user-data'
+$isolatedAppDataRoot = Join-Path $testRoot 'app-data-roaming'
+$userDataRoot = Join-Path $isolatedAppDataRoot 'Eky'
 $logRoot = Join-Path $testRoot 'private-logs'
 $installRoot = Join-Path $env:LOCALAPPDATA 'Programs\Eky'
 $shortcutPath = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Eky\Eky.lnk'
@@ -241,37 +242,69 @@ function Read-W6bAcceptedBuild {
   return $null
 }
 
-function Start-W6bEkyAndWaitAccepted {
-  param(
-    [Parameter(Mandatory = $true)][string]$ExpectedVersion,
-    [Parameter(Mandatory = $true)][string]$ExpectedRevision
-  )
-
+function Start-W6bIsolatedEkyProcess {
   $executablePath = Join-Path $installRoot 'Eky.exe'
   if (!(Test-Path -LiteralPath $executablePath -PathType Leaf)) {
     throw 'W6B_LEGACY_EXECUTABLE_MISSING'
   }
-  $process = Start-Process -FilePath $executablePath -ArgumentList @(
-    "--user-data-dir=`"$userDataRoot`""
-  ) -PassThru
+
+  $previousAppData = [Environment]::GetEnvironmentVariable(
+    'APPDATA',
+    [EnvironmentVariableTarget]::Process
+  )
+  try {
+    [Environment]::SetEnvironmentVariable(
+      'APPDATA',
+      $isolatedAppDataRoot,
+      [EnvironmentVariableTarget]::Process
+    )
+    return Start-Process -FilePath $executablePath -ArgumentList @(
+      "--user-data-dir=`"$userDataRoot`""
+    ) -PassThru
+  }
+  finally {
+    [Environment]::SetEnvironmentVariable(
+      'APPDATA',
+      $previousAppData,
+      [EnvironmentVariableTarget]::Process
+    )
+  }
+}
+
+function Wait-W6bEkyAccepted {
+  param(
+    [Parameter(Mandatory = $true)]$Process,
+    [Parameter(Mandatory = $true)][string]$ExpectedVersion,
+    [Parameter(Mandatory = $true)][string]$ExpectedRevision
+  )
+
+  $readinessFailureCode = 'W6B_LEGACY_ACCEPTED_BUILD_MISSING'
   $deadline = [DateTime]::UtcNow.AddSeconds(60)
   do {
     Start-Sleep -Milliseconds 250
-    $process.Refresh()
-    if ($process.HasExited) {
+    $Process.Refresh()
+    if ($Process.HasExited) {
       throw 'W6B_LEGACY_APPLICATION_EXITED_EARLY'
     }
     $accepted = Read-W6bAcceptedBuild -UserDataPath $userDataRoot
-    if (
-      $null -ne $accepted -and
-      $accepted.appVersion -eq $ExpectedVersion -and
-      $accepted.buildRevision -eq $ExpectedRevision -and
-      (Test-W6bUtilityDescendant -RootProcessId $process.Id)
-    ) {
-      return $process
+    if ($null -eq $accepted) {
+      $readinessFailureCode = 'W6B_LEGACY_ACCEPTED_BUILD_MISSING'
+      continue
     }
+    if (
+      $accepted.appVersion -ne $ExpectedVersion -or
+      $accepted.buildRevision -ne $ExpectedRevision
+    ) {
+      $readinessFailureCode = 'W6B_LEGACY_ACCEPTED_BUILD_IDENTITY_MISMATCH'
+      continue
+    }
+    if (!(Test-W6bUtilityDescendant -RootProcessId $Process.Id)) {
+      $readinessFailureCode = 'W6B_LEGACY_BACKEND_UTILITY_MISSING'
+      continue
+    }
+    return
   } while ([DateTime]::UtcNow -lt $deadline)
-  throw 'W6B_LEGACY_APPLICATION_READY_TIMEOUT'
+  throw $readinessFailureCode
 }
 
 function Stop-W6bEkyGracefully {
@@ -396,6 +429,7 @@ try {
     $targetCode
   )
   New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
+  New-Item -ItemType Directory -Path $isolatedAppDataRoot -Force | Out-Null
   New-Item -ItemType Directory -Path $userDataRoot -Force | Out-Null
   $businessInventoryBefore = Get-EkyDirectoryInventory -Root $businessDataRoot
   $targetPayloadInventory = Get-EkyDirectoryInventory -Root $targetPayload
@@ -412,7 +446,8 @@ try {
   Complete-W6bLegacyStage
 
   Start-W6bLegacyStage -Stage sourceStartup
-  $runningProcess = Start-W6bEkyAndWaitAccepted `
+  $runningProcess = Start-W6bIsolatedEkyProcess
+  Wait-W6bEkyAccepted -Process $runningProcess `
     -ExpectedVersion $SourceAppVersion `
     -ExpectedRevision $SourceBuildRevision
   Stop-W6bEkyGracefully -Process $runningProcess
@@ -452,7 +487,8 @@ try {
   Complete-W6bLegacyStage
 
   Start-W6bLegacyStage -Stage targetFirstStartup
-  $runningProcess = Start-W6bEkyAndWaitAccepted `
+  $runningProcess = Start-W6bIsolatedEkyProcess
+  Wait-W6bEkyAccepted -Process $runningProcess `
     -ExpectedVersion $TargetAppVersion `
     -ExpectedRevision $TargetBuildRevision
   $registry = Read-W6bWorkspaceRegistry
@@ -492,7 +528,8 @@ try {
   Complete-W6bLegacyStage
 
   Start-W6bLegacyStage -Stage targetSecondStartup
-  $runningProcess = Start-W6bEkyAndWaitAccepted `
+  $runningProcess = Start-W6bIsolatedEkyProcess
+  Wait-W6bEkyAccepted -Process $runningProcess `
     -ExpectedVersion $TargetAppVersion `
     -ExpectedRevision $TargetBuildRevision
   $registryAfterSecondStart = Read-W6bWorkspaceRegistry

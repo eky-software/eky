@@ -154,6 +154,27 @@ test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () 
   );
 
   assert.match(sourceText, /--user-data-dir/iu);
+  assert.match(sourceText, /function Start-W6bIsolatedEkyProcess/iu);
+  assert.match(sourceText, /function Wait-W6bEkyAccepted/iu);
+  assert.match(
+    sourceText,
+    /\$isolatedAppDataRoot\s*=\s*Join-Path \$testRoot 'app-data-roaming'/iu,
+  );
+  assert.match(
+    sourceText,
+    /SetEnvironmentVariable\([\s\S]*?'APPDATA'[\s\S]*?\$isolatedAppDataRoot[\s\S]*?\[EnvironmentVariableTarget\]::Process/iu,
+  );
+  assert.match(
+    sourceText,
+    /finally\s*\{[\s\S]*?SetEnvironmentVariable\([\s\S]*?'APPDATA'[\s\S]*?\$previousAppData/iu,
+  );
+  assert.match(
+    sourceText,
+    /\$runningProcess\s*=\s*Start-W6bIsolatedEkyProcess\s+Wait-W6bEkyAccepted -Process \$runningProcess/iu,
+  );
+  assert.match(sourceText, /W6B_LEGACY_ACCEPTED_BUILD_MISSING/iu);
+  assert.match(sourceText, /W6B_LEGACY_ACCEPTED_BUILD_IDENTITY_MISMATCH/iu);
+  assert.match(sourceText, /W6B_LEGACY_BACKEND_UTILITY_MISSING/iu);
   assert.match(sourceText, /New-EkyProcessIdentity/iu);
   assert.match(sourceText, /Get-EkyOwnedProcessIdentitiesFromSnapshot/iu);
   assert.match(sourceText, /Assert-W6bPackageHash/iu);
