@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   chmod,
   copyFile,
@@ -6,6 +7,8 @@ import {
   mkdir,
   mkdtemp,
   open,
+  readFile,
+  readdir,
   rm,
   symlink,
   writeFile,
@@ -111,6 +114,75 @@ describe('runWorkspaceCandidateOperation', () => {
 
     await expect(rm(root, { recursive: true })).resolves.toBeUndefined();
     roots.pop();
+  });
+
+  it('validates a compatible historical published workspace without migrating or writing it', async () => {
+    const root = await createPrivateTempRoot();
+    const historicalMigrations = await createHistoricalPrefixMigrations(root);
+    const candidate = await createCandidateLayout(join(root, 'historical'));
+    const bootstrapped = await runWorkspaceCandidateOperation({
+      ...releaseIdentity,
+      ...candidate,
+      migrationsDirectory: historicalMigrations,
+      operation: 'bootstrapEmpty',
+    });
+    if (bootstrapped.kind !== 'readiness') throw new Error('invalid fixture');
+    const before = await sha256(candidate.databaseFilePath);
+
+    await expect(
+      runWorkspaceCandidateOperation({
+        ...releaseIdentity,
+        ...candidate,
+        expectedProfileId: bootstrapped.profileId,
+        migrationsDirectory,
+        operation: 'validateHistoricalPublished',
+      }),
+    ).resolves.toEqual({
+      actorId: 'local-owner',
+      artifactRootHealth: 'ready',
+      companyId: bootstrapped.companyId,
+      databaseHealth: 'healthy',
+      foreignKeyHealth: 'healthy',
+      kind: 'historicalReadiness',
+      migrationChainIdentity: bootstrapped.migrationChainIdentity,
+      profileId: bootstrapped.profileId,
+    });
+    expect(await sha256(candidate.databaseFilePath)).toBe(before);
+
+    await expect(
+      runWorkspaceCandidateOperation({
+        ...releaseIdentity,
+        ...candidate,
+        expectedProfileId: 'f'.repeat(64),
+        migrationsDirectory,
+        operation: 'validateHistoricalPublished',
+      }),
+    ).rejects.toThrow('WORKSPACE_CANDIDATE_OPERATION_FAILED');
+    expect(await sha256(candidate.databaseFilePath)).toBe(before);
+  });
+
+  it('rejects current workspaces from the historical-only validation operation', async () => {
+    const root = await createPrivateTempRoot();
+    const candidate = await createCandidateLayout(join(root, 'current'));
+    const bootstrapped = await runWorkspaceCandidateOperation({
+      ...releaseIdentity,
+      ...candidate,
+      migrationsDirectory,
+      operation: 'bootstrapEmpty',
+    });
+    if (bootstrapped.kind !== 'readiness') throw new Error('invalid fixture');
+    const before = await sha256(candidate.databaseFilePath);
+
+    await expect(
+      runWorkspaceCandidateOperation({
+        ...releaseIdentity,
+        ...candidate,
+        expectedProfileId: bootstrapped.profileId,
+        migrationsDirectory,
+        operation: 'validateHistoricalPublished',
+      }),
+    ).rejects.toThrow('WORKSPACE_CANDIDATE_OPERATION_FAILED');
+    expect(await sha256(candidate.databaseFilePath)).toBe(before);
   });
 
   it('rejects database and artifact paths outside the candidate root', async () => {
@@ -469,6 +541,23 @@ async function createPrivateTempRoot(): Promise<string> {
   );
   roots.push(root);
   return root;
+}
+
+async function createHistoricalPrefixMigrations(root: string): Promise<string> {
+  const historicalMigrations = join(root, 'historical-migrations');
+  await cp(migrationsDirectory, historicalMigrations, { recursive: true });
+  const migrationNames = (await readdir(historicalMigrations))
+    .filter((name) => name.endsWith('.sql'))
+    .sort();
+  const lastMigrationName = migrationNames.at(-1);
+  if (lastMigrationName === undefined) throw new Error('invalid fixture');
+  await rm(join(historicalMigrations, lastMigrationName));
+  if (process.platform !== 'win32') await chmod(historicalMigrations, 0o755);
+  return historicalMigrations;
+}
+
+async function sha256(path: string): Promise<string> {
+  return createHash('sha256').update(await readFile(path)).digest('hex');
 }
 
 async function createCandidateLayout(candidateRoot: string) {

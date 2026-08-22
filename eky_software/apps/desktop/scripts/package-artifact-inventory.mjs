@@ -27,7 +27,7 @@ const maximumCredentialJsonInspectionBytes = 1_048_576;
 const stageLimits = Object.freeze({
   applicationStage: Object.freeze({
     maximumDirectoryDepth: 5,
-    maximumFileCount: 320,
+    maximumFileCount: 336,
     maximumLogicalPathBytes: 96,
     maximumProjectOwnedFileBytes: 1_048_576,
     maximumTotalBytes: 2_097_152,
@@ -57,7 +57,7 @@ const stageLimits = Object.freeze({
     maximumDirectoryDepth: 11,
     maximumFileCount: 2_800,
     maximumLogicalPathBytes: 160,
-    maximumProjectOwnedFileBytes: 2_097_152,
+    maximumProjectOwnedFileBytes: 2_359_296,
     maximumTotalBytes: 536_870_912,
   }),
 });

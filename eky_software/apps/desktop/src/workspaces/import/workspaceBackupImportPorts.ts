@@ -80,6 +80,11 @@ export interface WorkspaceBackupCandidateReadiness {
   readonly migrationState: 'current';
 }
 
+export interface PublishedHistoricalWorkspaceReadiness
+  extends Omit<WorkspaceBackupCandidateReadiness, 'migrationState'> {
+  readonly migrationState: 'compatiblePending';
+}
+
 export interface WorkspaceBackupCandidatePort {
   migrate(
     input: Readonly<WorkspaceBackupCandidateMigrationInput>,
@@ -90,4 +95,10 @@ export interface WorkspaceBackupCandidatePort {
   validatePublished(
     input: Readonly<PublishedWorkspaceBackupValidationInput>,
   ): Promise<Readonly<WorkspaceBackupCandidateReadiness>>;
+}
+
+export interface HistoricalPublishedWorkspaceValidationPort {
+  validateHistoricalPublished(
+    input: Readonly<PublishedWorkspaceBackupValidationInput>,
+  ): Promise<Readonly<PublishedHistoricalWorkspaceReadiness>>;
 }

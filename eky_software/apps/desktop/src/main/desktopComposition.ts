@@ -165,6 +165,7 @@ import { MainOwnedActiveWorkspaceLifecycle } from '../workspaces/runtime/mainOwn
 import { createWorkspaceFirstStartMigrationComposition } from '../workspaces/update/workspaceFirstStartMigrationComposition.js';
 import { WorkspaceFirstStartMigrationOrchestratorError } from '../workspaces/update/workspaceFirstStartMigrationOrchestratorError.js';
 import type { WorkspaceFirstStartMigrationOrchestration } from '../workspaces/update/workspaceFirstStartMigrationOrchestratorTypes.js';
+import { createWorkspaceActivationMigrationComposition } from '../workspaces/update/workspaceActivationMigrationComposition.js';
 
 export interface DesktopLifecycleHandle {
   applicationWindow: BrowserWindow;
@@ -577,6 +578,7 @@ async function startDesktopCompositionRuntime({
   let backendStartupControl: DesktopBackendStartupControl | undefined;
   let updateRecoveryRelaunchRequested = false;
   let updateBinaryRollbackHandoffRequested = false;
+  let workspaceActivationMigrationRelaunchRequested = false;
   const recoveryPointRestoreStagingService =
     new RecoveryPointRestoreStagingService({
       store: recoveryPointStore,
@@ -693,6 +695,9 @@ async function startDesktopCompositionRuntime({
   let shutdownStarted = false;
   let workspaceStartupAccepted = false;
   let targetBuildAccepted = false;
+  let workspaceActivationRestoredProfileAwaitingDecision = false;
+  let workspaceActivationTargetCommitted = false;
+  let workspaceActivationRecoveryAmbiguous = false;
 
   await Promise.all(
     [
@@ -787,6 +792,50 @@ async function startDesktopCompositionRuntime({
   const restoredProfileMigrationAuthorized =
     startupRecoveryAuthority === 'profileRestore' &&
     profileRestoreStartupMode === 'validateRestoredProfile';
+  const isWorkspaceActivationReplacementRecovery =
+    startupRecoveryAuthority === 'workspaceReplacement' &&
+    activeWorkspace.mode === 'targetValidation';
+  if (
+    activeWorkspace.mode === 'targetValidation' &&
+    startupRecoveryAuthority !== 'none' &&
+    startupRecoveryAuthority !== 'workspaceReplacement'
+  ) {
+    throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
+  }
+  const workspaceActivationMigration =
+    activeWorkspace.mode === 'targetValidation' &&
+    startupRecoveryAuthority === 'none'
+      ? await createWorkspaceActivationMigrationComposition({
+          activeWorkspace,
+          appVersion: desktopAppVersion,
+          buildRevision: options.buildInfo.buildRevision,
+          maintenanceLease: workspaceMaintenanceLease,
+          recoveryPointService,
+          recoveryPointStagingRoot: profileSnapshotPaths.stagingRoot,
+          recoveryPointStore,
+          requestRelaunch() {
+            workspaceActivationMigrationRelaunchRequested = true;
+            options.relaunchApplication();
+          },
+          resourcesPath: options.resourcesPath,
+          userDataRoot: options.userDataPath,
+        })
+      : undefined;
+  const workspaceActivationMigrationPreparation =
+    workspaceActivationMigration === undefined
+      ? undefined
+      : await workspaceActivationMigration.prepareBeforeBackend();
+  if (workspaceActivationMigrationPreparation?.status === 'relaunchRequired') {
+    profileSnapshotBrokerClient.close();
+    profileSnapshotBrokerChannel.port2.close();
+    secretBrokerChannel.port1.close();
+    secretBrokerChannel.port2.close();
+    invoicePdfArchiveBrokerChannel.port1.close();
+    invoicePdfArchiveBrokerChannel.port2.close();
+    return undefined;
+  }
+  const workspaceActivationMigrationAuthorized =
+    workspaceActivationMigrationPreparation?.status === 'migrationRequired';
   if (
     smokeMode &&
     options.smokeConfiguration.phase === 'restoredProfile'
@@ -921,6 +970,13 @@ async function startDesktopCompositionRuntime({
       async beforeMigrations(inspection, control) {
         backendStartupControl = control;
         await profileSnapshotBrokerClient.waitUntilReady();
+        if (workspaceActivationMigrationAuthorized) {
+          await workspaceActivationMigration!.beforeMigrations(
+            inspection,
+            control,
+          );
+          return;
+        }
         if (startupRecoveryAuthority === 'updateBusinessRollback') {
           if (updateBusinessRollbackCoordinator === undefined) {
             throw new Error('UPDATE_BUSINESS_ROLLBACK_RECOVERY_REQUIRED');
@@ -1010,7 +1066,9 @@ async function startDesktopCompositionRuntime({
           'database',
           'migrations',
         ),
-        migrationStartupPolicy: restoredProfileMigrationAuthorized
+        migrationStartupPolicy:
+          restoredProfileMigrationAuthorized ||
+          workspaceActivationMigrationAuthorized
           ? 'restoreCompatible'
           : 'exactCurrentManifest',
         operationalLogsRoot,
@@ -1039,6 +1097,10 @@ async function startDesktopCompositionRuntime({
     await profileSnapshotBrokerClient.getStatus();
     const restoreStartupResult =
       await activeProfileRestoreStartupRecovery.validateAfterBackend({
+        ...(isWorkspaceActivationReplacementRecovery &&
+        profileRestoreStartupMode === 'validateRestoredProfile'
+          ? { deferRestoredProfileAcceptance: true }
+          : {}),
         mode: profileRestoreStartupMode,
         stopBackend: () => backendHandle!.stop(),
         async validateActiveProfile() {
@@ -1051,6 +1113,14 @@ async function startDesktopCompositionRuntime({
         },
       });
     if (restoreStartupResult === 'relaunchRequired') {
+      if (isWorkspaceActivationReplacementRecovery) {
+        const workspaceRecovery = await activeWorkspace.recoverFromFailure();
+        if (workspaceRecovery !== 'relaunchRequired') {
+          throw new WorkspaceSwitchError(
+            'WORKSPACE_SWITCH_RECOVERY_REQUIRED',
+          );
+        }
+      }
       profileSnapshotBrokerClient.close();
       invoicePdfArchiveBrokerHandle.close();
       secretBrokerHandle.close();
@@ -1071,6 +1141,35 @@ async function startDesktopCompositionRuntime({
         runtimeSessionSecret,
       });
     }
+    if (
+      isWorkspaceActivationReplacementRecovery &&
+      restoreStartupResult === 'restoredProfileReady'
+    ) {
+      workspaceActivationRestoredProfileAwaitingDecision = true;
+      activeWorkspace.assertCanAccept(activeProfileValidation.profileId);
+      try {
+        await activeProfileRestoreStartupRecovery
+          .acceptValidatedRestoredProfile();
+        workspaceActivationRestoredProfileAwaitingDecision = false;
+        workspaceActivationTargetCommitted = true;
+      } catch (error) {
+        const activationJournal = await workspaceReplacementStartupRecovery
+          .journalStore.read()
+          .catch(() => {
+            workspaceActivationRecoveryAmbiguous = true;
+            workspaceActivationRestoredProfileAwaitingDecision = false;
+            return undefined;
+          });
+        if (activationJournal?.phase === 'accepted') {
+          workspaceActivationRestoredProfileAwaitingDecision = false;
+          workspaceActivationTargetCommitted = true;
+        } else if (activationJournal === undefined) {
+          workspaceActivationRecoveryAmbiguous = true;
+          workspaceActivationRestoredProfileAwaitingDecision = false;
+        }
+        throw error;
+      }
+    }
     await activeWorkspace.accept(activeProfileValidation.profileId);
     workspaceStartupAccepted = true;
     await workspaceFirstStartMigration.transitionRegistryAfterActiveWorkspaceAcceptance();
@@ -1089,11 +1188,34 @@ async function startDesktopCompositionRuntime({
     if (
       error instanceof DesktopBackendStartupStoppedError &&
       (updateRecoveryRelaunchRequested ||
-        updateBinaryRollbackHandoffRequested)
+        updateBinaryRollbackHandoffRequested ||
+        workspaceActivationMigrationRelaunchRequested)
     ) {
       return undefined;
     }
-    if (!workspaceStartupAccepted) {
+    if (workspaceActivationRecoveryAmbiguous) {
+      await activeWorkspace.requireRecovery?.().catch(() => undefined);
+      throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
+    }
+    if (workspaceActivationRestoredProfileAwaitingDecision) {
+      try {
+        await activeProfileRestoreStartupRecovery
+          .rollbackValidatedRestoredProfile();
+      } catch {
+        await activeWorkspace.requireRecovery?.().catch(() => undefined);
+        throw new WorkspaceSwitchError(
+          'WORKSPACE_SWITCH_RECOVERY_REQUIRED',
+        );
+      }
+      workspaceActivationRestoredProfileAwaitingDecision = false;
+      const workspaceRecovery = await activeWorkspace.recoverFromFailure();
+      if (workspaceRecovery === 'relaunchRequired') {
+        options.relaunchApplication();
+        return undefined;
+      }
+      throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
+    }
+    if (!workspaceStartupAccepted && !workspaceActivationTargetCommitted) {
       const workspaceRecovery = await activeWorkspace.recoverFromFailure();
       if (workspaceRecovery === 'relaunchRequired') {
         options.relaunchApplication();

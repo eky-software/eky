@@ -28,6 +28,7 @@ export interface WorkspaceLegacyAdoptionStartupSelection {
   readonly mode: 'adoption';
   readonly workspaceId: WorkspaceId;
   readonly workspaceRoot: string;
+  assertCanAccept(profileId: string): void;
   accept(profileId: string): Promise<void>;
   recoverFromFailure(): Promise<'notRecovered'>;
 }
@@ -107,6 +108,9 @@ export async function resolveWorkspaceLegacyAdoptionStartup(
     mode: 'adoption' as const,
     workspaceId: activeJournal.workspaceId,
     workspaceRoot: paths.finalRoot,
+    assertCanAccept(profileId: string) {
+      validateWorkspaceLineage({ formatVersion: 1, profileId });
+    },
     async accept(profileId: string) {
       const lineageIdentity = validateWorkspaceLineage({
         formatVersion: 1,

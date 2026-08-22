@@ -58,6 +58,29 @@ ja accepted source sekä olemassa oleva recovery-tila säilyvät. Workspace-
 orchestraattori ei kirjoita update-journalia, direct Setup recoverya tai
 accepted build -metadataa.
 
+W6A.3:ssa passiivisen `compatiblePending`-työtilan valinta ei avaa targetin
+business-backendia suoraan. Target tarkastetaan read-only, suojataan
+workspace-scoped preMigration-palautuspisteellä ja migroidaan yksityisessä
+candidate-profiilissa. Candidate aktivoidaan profile restore activation
+-transactionilla, ja vasta tämän jälkeen targetin normaali backend todistaa
+health-, workspace identity- ja artifact/PDF-readinessin.
+
+Aktivointimigraation failure käsitellään tässä järjestyksessä:
+
+1. jos candidatea ei ole vielä aktivoitu, julkaistuun targetiin ei tehdä
+   kirjoituksia ja switch recovery palauttaa sourcen
+2. jos candidate on aktivoitu, profile restore activation -transaction
+   palauttaa ensin targetin vanhat tavut
+3. vasta target-rollbackin jälkeen switch recovery palauttaa sourcen
+4. `invalidHistory` merkitsee vain target-entryn `recoveryRequired`-tilaan
+5. jos target- tai source-palautuksen terminal-tilaa ei voida todistaa,
+   startup pysähtyy `recoveryRequired`-tilaan ilman automaattista retryä.
+
+`current`-target ei muodosta palautuspistettä, candidatea tai uutta journalia.
+Onnistuneen pending-migraation jälkeisen toisen käynnistyksen pitää olla sama
+exact-current-polku. Workspace-aktivointi ei muuta accepted build -metadataa,
+update-journalia eikä W6 first-start -journalia.
+
 ## C0 baseline 11.8.2026
 
 Ennen Local Update Foundation -tuotantokoodia `DESK-PDF-001` ajettiin

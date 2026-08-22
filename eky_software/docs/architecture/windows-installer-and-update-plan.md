@@ -846,8 +846,41 @@ PreMigration-snapshot käyttää ainoana snapshot-tarkoituksena
 `compatibleHistoricalPrefix`-politiikkaa, jotta N-profiilin katkeamaton
 immutable migration-prefix voidaan suojata ennen N+1-migraatiota. Muut
 snapshotit ja portable backup vaativat täsmälleen nykyisen manifestin.
-Passiivisen yhteensopivan työtilan myöhempi aktivointimigraatio ja koko
-paketoitu multi-workspace W6 -releaseportti ovat vielä avoimia.
+Passiivisen yhteensopivan työtilan aktivointimigraatio on toteutettu W6A.3:ssa.
+Koko paketoitu multi-workspace W6 -releaseportti on vielä avoin.
+
+W6A.3 rajaa passiivisen `compatiblePending`-työtilan migraation ensimmäiseen
+hallittuun aktivointiin. Migraatio tehdään workspace-scoped preMigration-
+palautuspisteestä yksityiseen candidate-profiiliin. Candidate validoidaan ja
+aktivoidaan nykyisellä profile restore activation -transactionilla ennen
+targetin normaalia backend-starttia. Julkaistua target-SQLitea ei migroida
+paikallaan, source-workspaceen ei kirjoiteta eikä Electron main avaa SQLitea.
+
+Durable omistajuudet pidetään erillään: switch-journal todistaa aktiivisen
+source/target-valinnan, preMigration-palautuspiste suojaa targetin business-
+datan ja profile restore activation -journal omistaa atomisen swapin sekä
+byte-identtisen target-rollbackin. Aktivointipolku ei kirjoita update-
+journalia, Direct Setup recoverya, W6 first-start -journalia tai accepted
+build -metadataa. `current` ei muodosta snapshotia tai candidatea;
+`invalidHistory` ei käynnistä target-backendia ja päättyy targetin
+`recoveryRequired`-tilaan lähteen hallitun palautuksen jälkeen.
+
+Paketoidun W6A.3-todisteen pitää käyttää vähintään kolmea työtilaa: aktiivinen
+exact-current source, passiivinen `compatiblePending` target ja passiivinen
+invalid/recovery-required target. Todiste aktivoi pending-targetin, osoittaa
+source-tavujen muuttumattomuuden, todistaa targetin seuraavan exact-current-
+käynnistyksen, vaihtaa takaisin sourceen ja torjuu invalidin targetin. Fault-
+todiste pakottaa candidate-migraation epäonnistumaan ja todistaa targetin
+byte-identtisen palautuksen, source-tavujen muuttumattomuuden sekä nolla
+orpoa Electron-, backend- ja utility-prosessia.
+
+**Toteutustila 22.8.2026:** `DESK-WORKSPACE-ACTIVATION-001` toteuttaa tämän
+W6A.3-todisteen oikean Electron main -compositionin kautta neljällä
+synteettisellä työtilalla. Se todistaa aktivointiin rajatun migraation,
+toisen käynnistyksen idempotenssin, source- ja fault-tavujen sekä business-
+ja PDF-sisällön säilymisen, invalidin targetin backend-eston ja
+recovery-siirtymän, journalien siivouksen sekä backend- ja utility-prosessien
+vapautuksen. Tämä ei vielä sulje koko paketoitua W6-releaseporttia.
 
 W4 aktivoi registryyn sidotun startupin ja vanhan yhden profiilin adoption
 production-compositionissa. Se ei vielä toteuta tämän luvun koko N -> N+1

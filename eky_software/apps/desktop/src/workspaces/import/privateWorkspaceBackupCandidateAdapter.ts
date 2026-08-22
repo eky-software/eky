@@ -3,6 +3,8 @@ import {
   mapWorkspaceBackupImportError,
 } from './workspaceBackupImportError.js';
 import type {
+  HistoricalPublishedWorkspaceValidationPort,
+  PublishedHistoricalWorkspaceReadiness,
   PublishedWorkspaceBackupValidationInput,
   WorkspaceBackupCandidateMigrationInput,
   WorkspaceBackupCandidateMigrationResult,
@@ -19,6 +21,9 @@ export interface PrivateWorkspaceBackupCandidateRuntime {
   inspectStoppedReadiness?(): Promise<
     Readonly<WorkspaceBackupCandidateReadiness>
   >;
+  inspectStoppedHistoricalReadiness?(): Promise<
+    Readonly<PublishedHistoricalWorkspaceReadiness>
+  >;
 }
 
 export interface PrivateWorkspaceBackupCandidateRuntimeFactory {
@@ -31,10 +36,15 @@ export interface PrivateWorkspaceBackupCandidateRuntimeFactory {
   startPublishedValidation(
     input: Readonly<PublishedWorkspaceBackupValidationInput>,
   ): Promise<PrivateWorkspaceBackupCandidateRuntime>;
+  startHistoricalPublishedValidation(
+    input: Readonly<PublishedWorkspaceBackupValidationInput>,
+  ): Promise<PrivateWorkspaceBackupCandidateRuntime>;
 }
 
 export class PrivateWorkspaceBackupCandidateAdapter
-  implements WorkspaceBackupCandidatePort
+  implements
+    HistoricalPublishedWorkspaceValidationPort,
+    WorkspaceBackupCandidatePort
 {
   constructor(
     private readonly runtimeFactory: PrivateWorkspaceBackupCandidateRuntimeFactory,
@@ -56,6 +66,45 @@ export class PrivateWorkspaceBackupCandidateAdapter
     input: Readonly<PublishedWorkspaceBackupValidationInput>,
   ): Promise<Readonly<WorkspaceBackupCandidateReadiness>> {
     return this.runValidation(input, true);
+  }
+
+  validateHistoricalPublished(
+    input: Readonly<PublishedWorkspaceBackupValidationInput>,
+  ): Promise<Readonly<PublishedHistoricalWorkspaceReadiness>> {
+    return this.runHistoricalPublishedValidation(input);
+  }
+
+  private async runHistoricalPublishedValidation(
+    input: Readonly<PublishedWorkspaceBackupValidationInput>,
+  ): Promise<Readonly<PublishedHistoricalWorkspaceReadiness>> {
+    const runtime = await this.startRuntime(
+      () => this.runtimeFactory.startHistoricalPublishedValidation(input),
+      'recovery',
+      'WORKSPACE_IMPORT_RECOVERY_REQUIRED',
+    );
+    const handlesClosed = await this.stopRuntime(
+      runtime,
+      'recovery',
+      'WORKSPACE_IMPORT_RECOVERY_REQUIRED',
+    );
+    if (runtime.inspectStoppedHistoricalReadiness === undefined) {
+      throw new WorkspaceBackupImportError(
+        'WORKSPACE_IMPORT_RECOVERY_REQUIRED',
+        'recovery',
+      );
+    }
+    try {
+      return Object.freeze({
+        ...(await runtime.inspectStoppedHistoricalReadiness()),
+        handlesClosed,
+      });
+    } catch (error) {
+      throw mapWorkspaceBackupImportError(
+        error,
+        'WORKSPACE_IMPORT_RECOVERY_REQUIRED',
+        'recovery',
+      );
+    }
   }
 
   private async runMigration(

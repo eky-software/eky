@@ -18,6 +18,7 @@ import {
   readElectronNativeAdapterSnapshot,
   readElectronPdfPreviewUrls,
   readElectronProcessMetrics,
+  runElectronWorkspaceActivationMigrationProof,
   runElectronWorkspaceFirstStartMigrationProof,
   runElectronWorkspaceManagementCompositionProof,
   runElectronWorkspaceMigrationInventoryProof,
@@ -160,6 +161,45 @@ test('DESK-WORKSPACE-FIRST-START-001 @critical @recovery @security migrates only
     preparedBeforeBackend: true,
     relaunchCount: 0,
     targetAcceptedAfterRegistryTransition: true,
+  });
+});
+
+test('DESK-WORKSPACE-ACTIVATION-001 @critical @recovery @security migrates a passive compatible workspace only during controlled activation', async ({
+  e2eElectron,
+}) => {
+  const exposedBridgeKeys = await e2eElectron.page.evaluate(() =>
+    Object.keys(
+      (window as typeof window & { ekyDesktop?: Record<string, unknown> })
+        .ekyDesktop ?? {},
+    ),
+  );
+  expect(
+    exposedBridgeKeys.filter((key) => /activation|migration|inventory/iu.test(key)),
+  ).toEqual([]);
+
+  const proof = await runElectronWorkspaceActivationMigrationProof(
+    e2eElectron.electronApp,
+  );
+
+  expect(proof).toEqual({
+    activationJournalsCleared: true,
+    artifactRootsPreserved: true,
+    backendStartCount: 7,
+    backendStoppedAfterProof: true,
+    businessDataPreserved: true,
+    candidateProcessesReleased: true,
+    compatibleTargetMigratedOnlyOnActivation: true,
+    currentTargetPreserved: true,
+    faultTargetPreserved: true,
+    invalidTargetQuarantined: true,
+    invalidTargetRejectedBeforeBackend: true,
+    migrationRecoveryPointCreated: true,
+    registryRecoveredAfterFault: true,
+    relaunchCount: 3,
+    secondTargetStartupIdempotent: true,
+    switchJournalsCleared: true,
+    targetAcceptedAfterValidation: true,
+    targetLifecycleWithheldUntilReady: true,
   });
 });
 

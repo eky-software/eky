@@ -121,6 +121,16 @@ describe('safe desktop early startup', () => {
     ).toBe('WORKSPACE_FIRST_START_MIGRATION_RECOVERY_REQUIRED');
     expect(
       readSafeStartupFailureCode(
+        new Error('WORKSPACE_ACTIVATION_MIGRATION_FAILED'),
+      ),
+    ).toBe('WORKSPACE_ACTIVATION_MIGRATION_FAILED');
+    expect(
+      readSafeStartupFailureCode(
+        new Error('WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED'),
+      ),
+    ).toBe('WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED');
+    expect(
+      readSafeStartupFailureCode(
         new Error('DESKTOP_SMOKE_FAILED\nC:\\Users\\Example\\secret.txt'),
       ),
     ).toBe('DESKTOP_START_FAILED');

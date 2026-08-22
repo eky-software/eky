@@ -240,6 +240,26 @@ Object.assign(globalThis, {
         userDataRoot: config.paths.userDataPath,
       });
     },
+    async runWorkspaceActivationMigrationProof() {
+      if (lifecycle === undefined) {
+        throw new Error('WORKSPACE_ACTIVATION_MIGRATION_LIFECYCLE_MISSING');
+      }
+      await lifecycle.shutdown();
+      if (backendController.isRunning()) {
+        throw new Error('WORKSPACE_ACTIVATION_MIGRATION_BACKEND_RUNNING');
+      }
+      const { runWorkspaceActivationMigrationProof } = await import(
+        './workspaceActivationMigrationProof.js'
+      );
+      return runWorkspaceActivationMigrationProof({
+        applicationPath: config.paths.applicationPath,
+        appVersion: e2eAppVersion,
+        resourcesPath: config.paths.resourcesPath,
+        runtimeSessionSecret: config.backend.sessionSecret,
+        startBackend: startDesktopBackend,
+        userDataRoot: config.paths.userDataPath,
+      });
+    },
     async runWorkspaceStartupRecoveryProof() {
       const { runWorkspaceStartupRecoveryProof } = await import(
         './workspaceStartupRecoveryProof.js'

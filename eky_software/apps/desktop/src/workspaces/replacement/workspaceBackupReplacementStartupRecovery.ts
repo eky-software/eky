@@ -10,6 +10,7 @@ export function createWorkspaceBackupReplacementStartupRecovery(input: {
   const activation =
     createProfileRestoreWorkspaceReplacementActivationAuthority(input.paths);
   return Object.freeze({
+    activation,
     journalStore: activation.journalStore,
     recovery: new ProfileRestoreStartupRecovery({
       journalStore: activation.journalStore,

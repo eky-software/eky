@@ -122,6 +122,43 @@ export function selectActiveWorkspace(
   });
 }
 
+export function selectSourceAndRequireTargetRecovery(input: {
+  readonly registry: Readonly<LocalWorkspaceRegistryV1>;
+  readonly sourceWorkspaceId: WorkspaceId;
+  readonly targetWorkspaceId: WorkspaceId;
+}): Readonly<LocalWorkspaceRegistryV1> {
+  assertActiveWorkspaceUnchanged(
+    input.registry,
+    input.targetWorkspaceId,
+  );
+  const source = findWorkspaceEntry(
+    input.registry,
+    input.sourceWorkspaceId,
+  );
+  const targetIndex = input.registry.workspaces.findIndex(
+    (entry) => entry.workspaceId === input.targetWorkspaceId,
+  );
+  if (source === undefined || targetIndex === -1) {
+    throw new WorkspaceRegistryMutationError('workspaceNotFound');
+  }
+  if (
+    source.lifecycleState !== 'ready' ||
+    input.registry.workspaces[targetIndex]!.lifecycleState !== 'ready'
+  ) {
+    throw new WorkspaceRegistryMutationError('workspaceNotReady');
+  }
+  const workspaces = [...input.registry.workspaces];
+  workspaces[targetIndex] = Object.freeze({
+    ...workspaces[targetIndex]!,
+    lifecycleState: 'recoveryRequired',
+  });
+  return Object.freeze({
+    formatVersion: 1,
+    activeWorkspaceId: input.sourceWorkspaceId,
+    workspaces: Object.freeze(workspaces),
+  });
+}
+
 export function renameWorkspaceLabel(
   registry: Readonly<LocalWorkspaceRegistryV1>,
   workspaceId: WorkspaceId,
