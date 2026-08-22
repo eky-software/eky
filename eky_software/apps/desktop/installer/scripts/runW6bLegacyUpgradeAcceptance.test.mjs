@@ -175,6 +175,12 @@ test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () 
   assert.match(sourceText, /W6B_LEGACY_ACCEPTED_BUILD_MISSING/iu);
   assert.match(sourceText, /W6B_LEGACY_ACCEPTED_BUILD_IDENTITY_MISMATCH/iu);
   assert.match(sourceText, /W6B_LEGACY_BACKEND_UTILITY_MISSING/iu);
+  assert.match(sourceText, /W6B_LEGACY_DATABASE_MISSING_AT_STARTUP/iu);
+  assert.match(
+    sourceText,
+    /ValidateSet\('databaseReady', 'backendUtilityReady', 'acceptedBuildReady'\)/iu,
+  );
+  assert.match(sourceText, /status = 'observed'/iu);
   assert.match(sourceText, /New-EkyProcessIdentity/iu);
   assert.match(sourceText, /Get-EkyOwnedProcessIdentitiesFromSnapshot/iu);
   assert.match(sourceText, /Assert-W6bPackageHash/iu);

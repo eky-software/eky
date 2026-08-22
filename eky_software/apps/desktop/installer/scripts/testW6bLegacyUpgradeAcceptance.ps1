@@ -86,6 +86,32 @@ function Complete-W6bLegacyStage {
   Write-W6bLegacyProgress -Status completed -ResultCode completed
 }
 
+function Write-W6bLegacyReadinessObservation {
+  param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet('databaseReady', 'backendUtilityReady', 'acceptedBuildReady')]
+    [string]$Signal
+  )
+
+  if (
+    $script:CurrentStage -notin @(
+      'sourceStartup',
+      'targetFirstStartup',
+      'targetSecondStartup'
+    )
+  ) {
+    throw 'W6B_LEGACY_PROGRESS_STAGE_INVALID'
+  }
+  [ordered]@{
+    scenario = 'legacyUpgrade'
+    stage = $script:CurrentStage
+    status = 'observed'
+    resultCode = $Signal
+    durationMs = [long]([DateTime]::UtcNow - $script:StageStartedAt).TotalMilliseconds
+    elapsedMs = [long]([DateTime]::UtcNow - $script:ScenarioStartedAt).TotalMilliseconds
+  } | ConvertTo-Json -Compress
+}
+
 function Normalize-W6bProductCode {
   param([Parameter(Mandatory = $true)][string]$Code)
 
@@ -278,6 +304,11 @@ function Wait-W6bEkyAccepted {
     [Parameter(Mandatory = $true)][string]$ExpectedRevision
   )
 
+  $databasePath = Join-Path $userDataRoot 'runtime\data\eky.sqlite'
+  $accepted = $null
+  $acceptedBuildObserved = $false
+  $backendUtilityObserved = $false
+  $databaseObserved = $false
   $readinessFailureCode = 'W6B_LEGACY_ACCEPTED_BUILD_MISSING'
   $deadline = [DateTime]::UtcNow.AddSeconds(60)
   do {
@@ -286,10 +317,18 @@ function Wait-W6bEkyAccepted {
     if ($Process.HasExited) {
       throw 'W6B_LEGACY_APPLICATION_EXITED_EARLY'
     }
+    if (!$databaseObserved -and (Test-Path -LiteralPath $databasePath -PathType Leaf)) {
+      $databaseObserved = $true
+      Write-W6bLegacyReadinessObservation -Signal databaseReady
+    }
     $accepted = Read-W6bAcceptedBuild -UserDataPath $userDataRoot
     if ($null -eq $accepted) {
       $readinessFailureCode = 'W6B_LEGACY_ACCEPTED_BUILD_MISSING'
       continue
+    }
+    if (!$acceptedBuildObserved) {
+      $acceptedBuildObserved = $true
+      Write-W6bLegacyReadinessObservation -Signal acceptedBuildReady
     }
     if (
       $accepted.appVersion -ne $ExpectedVersion -or
@@ -298,12 +337,31 @@ function Wait-W6bEkyAccepted {
       $readinessFailureCode = 'W6B_LEGACY_ACCEPTED_BUILD_IDENTITY_MISMATCH'
       continue
     }
-    if (!(Test-W6bUtilityDescendant -RootProcessId $Process.Id)) {
+    if (!$backendUtilityObserved) {
+      $backendUtilityObserved = Test-W6bUtilityDescendant `
+        -RootProcessId $Process.Id
+      if ($backendUtilityObserved) {
+        Write-W6bLegacyReadinessObservation -Signal backendUtilityReady
+      }
+    }
+    if (!$backendUtilityObserved) {
       $readinessFailureCode = 'W6B_LEGACY_BACKEND_UTILITY_MISSING'
       continue
     }
     return
   } while ([DateTime]::UtcNow -lt $deadline)
+  if (!$databaseObserved) {
+    throw 'W6B_LEGACY_DATABASE_MISSING_AT_STARTUP'
+  }
+  if (
+    $null -ne $accepted -and
+    $readinessFailureCode -eq 'W6B_LEGACY_ACCEPTED_BUILD_IDENTITY_MISMATCH'
+  ) {
+    throw $readinessFailureCode
+  }
+  if (!$backendUtilityObserved) {
+    throw 'W6B_LEGACY_BACKEND_UTILITY_MISSING'
+  }
   throw $readinessFailureCode
 }
 
