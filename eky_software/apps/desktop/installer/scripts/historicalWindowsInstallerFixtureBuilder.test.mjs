@@ -120,9 +120,14 @@ test('rejects historical package build identity drift and production output', ()
       buildRevision: approvedCommit,
       schemaVersion: 1,
     },
-    packageMode: { mode: 'localDevelopment', schemaVersion: 1 },
+    packageModePresent: false,
     pilotManifestPresent: false,
-    releaseInfoPresent: false,
+    releaseInfo: {
+      ...HISTORICAL_WINDOWS_INSTALLER_EXPECTED_RELEASE,
+      buildRevision: approvedCommit,
+      schemaVersion: 1,
+      upgradeCode: INSTALLER_UPGRADE_CODE,
+    },
   };
   assert.doesNotThrow(() =>
     validateHistoricalPackagedApplicationIdentity(valid),
@@ -141,9 +146,12 @@ test('rejects historical package build identity drift and production output', ()
       ...valid,
       buildInfo: { ...valid.buildInfo, unknown: true },
     },
-    { ...valid, packageMode: { mode: 'pilot', schemaVersion: 1 } },
+    { ...valid, packageModePresent: true },
     { ...valid, pilotManifestPresent: true },
-    { ...valid, releaseInfoPresent: true },
+    {
+      ...valid,
+      releaseInfo: { ...valid.releaseInfo, releaseChannel: 'stable' },
+    },
   ]) {
     assert.throws(
       () => validateHistoricalPackagedApplicationIdentity(candidate),

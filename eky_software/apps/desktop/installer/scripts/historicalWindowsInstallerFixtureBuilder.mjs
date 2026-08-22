@@ -371,10 +371,16 @@ export function validateHistoricalWindowsInstallerIdentity(value) {
 
 export function validateHistoricalPackagedApplicationIdentity({
   buildInfo,
-  packageMode,
+  packageModePresent,
   pilotManifestPresent,
-  releaseInfoPresent,
+  releaseInfo,
 }) {
+  const expectedReleaseInfo = {
+    ...HISTORICAL_WINDOWS_INSTALLER_EXPECTED_RELEASE,
+    buildRevision: HISTORICAL_WINDOWS_INSTALLER_FIXTURE.expectedCommit,
+    schemaVersion: 1,
+    upgradeCode: INSTALLER_UPGRADE_CODE,
+  };
   if (
     !isRecord(buildInfo) ||
     !hasExactKeys(buildInfo, [
@@ -391,14 +397,15 @@ export function validateHistoricalPackagedApplicationIdentity({
       HISTORICAL_WINDOWS_INSTALLER_FIXTURE.expectedCommit ||
     buildInfo.buildDirty !== false ||
     buildInfo.schemaVersion !== 1 ||
-    !isRecord(packageMode) ||
-    !sameJson(packageMode, { mode: 'localDevelopment', schemaVersion: 1 }) ||
+    !isRecord(releaseInfo) ||
+    !sameJson(releaseInfo, expectedReleaseInfo) ||
+    packageModePresent !== false ||
     pilotManifestPresent !== false ||
-    releaseInfoPresent !== false
+    !hasExactKeys(releaseInfo, Object.keys(expectedReleaseInfo))
   ) {
     throw new Error('HISTORICAL_FIXTURE_PACKAGE_IDENTITY_MISMATCH');
   }
-  return Object.freeze({ buildInfo, packageMode });
+  return Object.freeze({ buildInfo, releaseInfo });
 }
 
 export async function captureHistoricalLockedInputHashes(workspaceRoot) {
@@ -538,14 +545,14 @@ async function validateHistoricalInstallerRelease(built) {
 async function validateHistoricalPackagedApplication(workspaceRoot) {
   const stageRoot = join(workspaceRoot, 'apps/desktop/.stage/application/dist');
   const buildInfo = await readBoundedJson(join(stageRoot, 'build-info.json'));
-  const packageMode = await readBoundedJson(join(stageRoot, 'package-mode.json'));
+  const releaseInfo = await readBoundedJson(join(stageRoot, 'release-info.json'));
   const outputRoot = join(workspaceRoot, 'apps/desktop/out');
   await assertRegularFile(
     join(outputRoot, 'Eky-win32-x64/Eky.exe'),
     'HISTORICAL_FIXTURE_PACKAGE_OUTPUT_INVALID',
   );
-  const releaseInfoPresent =
-    (await lstat(join(stageRoot, 'release-info.json')).catch(() => null)) !==
+  const packageModePresent =
+    (await lstat(join(stageRoot, 'package-mode.json')).catch(() => null)) !==
     null;
   const pilotManifestPresent =
     (await lstat(
@@ -553,9 +560,9 @@ async function validateHistoricalPackagedApplication(workspaceRoot) {
     ).catch(() => null)) !== null;
   validateHistoricalPackagedApplicationIdentity({
     buildInfo,
-    packageMode,
+    packageModePresent,
     pilotManifestPresent,
-    releaseInfoPresent,
+    releaseInfo,
   });
 }
 
