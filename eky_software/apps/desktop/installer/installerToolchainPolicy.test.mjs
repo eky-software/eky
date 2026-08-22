@@ -64,6 +64,8 @@ test('runs W6B legacy acceptance before creating the current local pilot bundle'
     join(workspaceRoot, '.github', 'workflows', 'ci.yml'),
     'utf8',
   );
+  const installerJobIndex = ci.indexOf('  installer-windows:');
+  const installerJob = ci.slice(installerJobIndex);
   const legacyAcceptance =
     'run: pnpm --filter @eky/desktop installer:w6b-legacy';
   const localPilotBundle =
@@ -71,6 +73,12 @@ test('runs W6B legacy acceptance before creating the current local pilot bundle'
   const legacyAcceptanceIndex = ci.indexOf(legacyAcceptance);
   const localPilotBundleIndex = ci.indexOf(localPilotBundle);
 
+  assert.ok(installerJobIndex >= 0);
+  assert.match(
+    installerJob,
+    /- name: Check out repository[\s\S]*?persist-credentials: false\s+fetch-depth: 0/u,
+  );
+  assert.equal(ci.split('fetch-depth: 0').length - 1, 1);
   assert.ok(legacyAcceptanceIndex >= 0);
   assert.ok(localPilotBundleIndex > legacyAcceptanceIndex);
   assert.equal(ci.split(legacyAcceptance).length - 1, 1);
