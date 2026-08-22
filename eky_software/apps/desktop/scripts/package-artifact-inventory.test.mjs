@@ -296,7 +296,7 @@ test('rejects Eky-owned source maps but includes vendor maps in the inventory', 
 test('enforces the application-stage file count boundary', async () => {
   const root = await createStageFixture('dist/file-000.js', 'safe');
   await Promise.all(
-    Array.from({ length: 320 }, (_, index) =>
+    Array.from({ length: 336 }, (_, index) =>
       writeFixture(
         root,
         `dist/file-${String(index + 1).padStart(3, '0')}.js`,
@@ -382,6 +382,29 @@ test('enforces stage-specific path, depth, file and total byte boundaries', asyn
       stage: 'applicationStage',
     }),
     /SIZE/,
+  );
+
+  const packagedAppRoot = await createStageFixture(
+    'resources/app.asar',
+    Buffer.alloc(2_359_296),
+  );
+  await assert.doesNotReject(
+    inspectPackageArtifactInventory({
+      root: packagedAppRoot,
+      stage: 'packagedApp',
+    }),
+  );
+  await writeFixture(
+    packagedAppRoot,
+    'resources/app.asar',
+    Buffer.alloc(2_359_297),
+  );
+  await assert.rejects(
+    inspectPackageArtifactInventory({
+      root: packagedAppRoot,
+      stage: 'packagedApp',
+    }),
+    /PROJECT_FILE_SIZE/,
   );
 });
 
