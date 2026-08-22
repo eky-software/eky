@@ -27,6 +27,14 @@ const packagedRevisionPattern = /^[0-9a-f]{7,40}$/u;
 const productCodePattern =
   /^\{?[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}?$/u;
 const sha256Pattern = /^[0-9a-f]{64}$/u;
+export const w6bLineageProfileIdPattern = '^[0-9a-f]{64}$';
+
+export function isW6bLineageProfileId(value) {
+  return (
+    typeof value === 'string' &&
+    new RegExp(w6bLineageProfileIdPattern, 'u').test(value)
+  );
+}
 
 export async function runW6bLegacyUpgradeAcceptance(dependencies = {}) {
   const target = await (
@@ -89,6 +97,8 @@ export function createW6bLegacyUpgradeAcceptanceArguments({ source, target }) {
     target.packageSha256,
     '-SourceClassification',
     source.artifactClass,
+    '-LineageProfileIdPattern',
+    w6bLineageProfileIdPattern,
   ]);
 }
 

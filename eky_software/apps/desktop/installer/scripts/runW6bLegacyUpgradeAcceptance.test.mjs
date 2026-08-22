@@ -5,7 +5,9 @@ import { resolve } from 'node:path';
 
 import {
   createW6bLegacyUpgradeAcceptanceArguments,
+  isW6bLineageProfileId,
   runW6bLegacyUpgradeAcceptance,
+  w6bLineageProfileIdPattern,
 } from './runW6bLegacyUpgradeAcceptance.mjs';
 
 const source = Object.freeze({
@@ -143,8 +145,28 @@ test('passes only the closed identity and filesystem arguments to PowerShell', (
   assert.equal(arguments_.includes(source.packageSha256), true);
   assert.equal(arguments_.includes('-TargetPackageSha256'), true);
   assert.equal(arguments_.includes(target.packageSha256), true);
+  assert.equal(arguments_.includes('-LineageProfileIdPattern'), true);
+  assert.equal(arguments_.includes(w6bLineageProfileIdPattern), true);
   assert.equal(arguments_.includes('--user-data-dir'), false);
-  assert.equal(arguments_.some((value) => /password|companyId|session/iu.test(value)), false);
+  assert.equal(
+    arguments_.some((value) => /password|companyId|session/iu.test(value)),
+    false,
+  );
+});
+
+test('accepts only a lowercase 64-hex lineage profile id', () => {
+  assert.equal(isW6bLineageProfileId('a'.repeat(64)), true);
+  assert.equal(
+    isW6bLineageProfileId('11111111-1111-4111-8111-111111111111'),
+    false,
+  );
+  assert.equal(
+    isW6bLineageProfileId('a'.repeat(32) + '-' + 'b'.repeat(31)),
+    false,
+  );
+  assert.equal(isW6bLineageProfileId('A'.repeat(64)), false);
+  assert.equal(isW6bLineageProfileId('a'.repeat(63)), false);
+  assert.equal(isW6bLineageProfileId('a'.repeat(65)), false);
 });
 
 test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () => {
@@ -162,12 +184,15 @@ test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () 
   );
   assert.match(
     sourceText,
-    /SetEnvironmentVariable\([\s\S]*?'APPDATA'[\s\S]*?\$isolatedAppDataRoot[\s\S]*?\[EnvironmentVariableTarget\]::Process/iu,
+    /function Start-W6bEkyProcess[\s\S]*?EnvironmentOverrides/iu,
   );
   assert.match(
     sourceText,
-    /finally\s*\{[\s\S]*?SetEnvironmentVariable\([\s\S]*?'APPDATA'[\s\S]*?\$previousAppData/iu,
+    /finally\s*\{[\s\S]*?SetEnvironmentVariable\([\s\S]*?\$previousValues/iu,
   );
+  assert.match(sourceText, /APPDATA = \$isolatedAppDataRoot/iu);
+  assert.match(sourceText, /TEMP = \$sourceSmokeTempRoot/iu);
+  assert.match(sourceText, /EKY_DESKTOP_SMOKE_TOKEN = \$sourceSmokeToken/iu);
   assert.match(
     sourceText,
     /\$runningProcess\s*=\s*Start-W6bIsolatedEkyProcess\s+Wait-W6bEkyAccepted -Process \$runningProcess/iu,
@@ -176,9 +201,28 @@ test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () 
   assert.match(sourceText, /W6B_LEGACY_ACCEPTED_BUILD_IDENTITY_MISMATCH/iu);
   assert.match(sourceText, /W6B_LEGACY_BACKEND_UTILITY_MISSING/iu);
   assert.match(sourceText, /W6B_LEGACY_DATABASE_MISSING_AT_STARTUP/iu);
-  assert.match(
+  assert.match(sourceText, /'backendHealthReady'/u);
+  assert.match(sourceText, /'legacyBusinessFixtureReady'/u);
+  assert.match(sourceText, /'runtimeSessionValidated'/u);
+  assert.match(sourceText, /-cnotmatch \$LineageProfileIdPattern/u);
+  assert.match(sourceText, /Invoke-W6bSourcePackagedSmoke/u);
+  assert.match(sourceText, /Find-W6bSourceUserDataRoot/u);
+  assert.match(sourceText, /Find-W6bAuthoritativeInvoicePdf/u);
+  assert.match(sourceText, /--desktop-smoke-restored/u);
+  assert.ok(
+    sourceText.indexOf('$legacyPdfHash = Get-EkyFileSha256') <
+      sourceText.indexOf(
+        'Write-W6bLegacyReadinessObservation -Signal legacyBusinessFixtureReady',
+      ),
+  );
+  assert.doesNotMatch(sourceText, /Eky W6B synthetic legacy invoice/iu);
+  assert.doesNotMatch(
     sourceText,
-    /ValidateSet\('databaseReady', 'backendUtilityReady', 'acceptedBuildReady'\)/iu,
+    /WriteAllText\([\s\S]*?approved-invoice\.pdf/iu,
+  );
+  assert.doesNotMatch(
+    sourceText,
+    /\b(?:INSERT|UPDATE|DELETE)\s+(?:INTO|FROM)?\s*invoice/iu,
   );
   assert.match(sourceText, /status = 'observed'/iu);
   assert.match(sourceText, /New-EkyProcessIdentity/iu);

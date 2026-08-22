@@ -12,7 +12,8 @@ param(
   [Parameter(Mandatory = $true)][string]$TargetPackageSha256,
   [Parameter(Mandatory = $true)]
   [ValidateSet('exact-local-release', 'historical-source-rebuild')]
-  [string]$SourceClassification
+  [string]$SourceClassification,
+  [Parameter(Mandatory = $true)][string]$LineageProfileIdPattern
 )
 
 Set-StrictMode -Version Latest
@@ -24,19 +25,52 @@ $script:AllowedStages = @(
   'preflight',
   'sourceInstall',
   'sourceStartup',
-  'legacyProfileSeed',
+  'legacyFixtureVerification',
   'targetInstall',
   'targetFirstStartup',
   'adoptionVerification',
   'targetSecondStartup',
   'cleanup'
 )
+$script:AllowedSourceSmokeStages = @(
+  'startup',
+  'backend',
+  'emptyArtifactSnapshot',
+  'diagnostics',
+  'logFolder',
+  'supportBundle',
+  'secretStorage',
+  'invoicePdfArchive',
+  'pdfPreview',
+  'profileBackup',
+  'profileSnapshotMaintenance',
+  'profileSnapshotCreated',
+  'profileSnapshotCaptured',
+  'profileBackupVerified',
+  'profileMutationCreated',
+  'profileRestore',
+  'profileRestoreStaged',
+  'restoreRestart',
+  'restoredStartup',
+  'restoreActivationJournalLoaded',
+  'restoredBackend',
+  'restoredSessionValidated',
+  'profileComparison',
+  'secondBackup',
+  'shutdown'
+)
 $script:CurrentStage = 'preflight'
 $script:ScenarioStartedAt = [DateTime]::UtcNow
 $script:StageStartedAt = [DateTime]::UtcNow
 $script:FailureCode = $null
+$script:FailureStage = $null
+$script:SourceFailurePhase = $null
 $script:CleanupFailure = $false
 $script:Completed = $false
+$script:SourceBackendHealthObserved = $false
+$script:SourceBusinessFixtureObserved = $false
+$script:SourceRuntimeSessionObserved = $false
+$script:SourceUtilityObserved = $false
 
 $installer = $null
 $sourceCode = $null
@@ -45,7 +79,14 @@ $runningProcess = $null
 $businessInventoryBefore = $null
 $testRoot = Join-Path $env:TEMP "eky-w6b-legacy-$([guid]::NewGuid().ToString('N'))"
 $isolatedAppDataRoot = Join-Path $testRoot 'app-data-roaming'
-$userDataRoot = Join-Path $isolatedAppDataRoot 'Eky'
+$sourceSmokeTempRoot = Join-Path $testRoot 'source-smoke-temp'
+$sourceSmokeToken = [guid]::NewGuid().ToString('N')
+$sourceSmokeRoot = Join-Path `
+  (Join-Path $sourceSmokeTempRoot 'eky-desktop-smoke') $sourceSmokeToken
+$sourceSmokeResultPath = Join-Path $sourceSmokeRoot `
+  'result\desktop-smoke-result.json'
+$userDataRoot = $null
+$sourceUserDataClass = $null
 $logRoot = Join-Path $testRoot 'private-logs'
 $installRoot = Join-Path $env:LOCALAPPDATA 'Programs\Eky'
 $shortcutPath = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Eky\Eky.lnk'
@@ -89,13 +130,22 @@ function Complete-W6bLegacyStage {
 function Write-W6bLegacyReadinessObservation {
   param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('databaseReady', 'backendUtilityReady', 'acceptedBuildReady')]
+    [ValidateSet(
+      'databaseReady',
+      'backendUtilityReady',
+      'acceptedBuildReady',
+      'backendHealthReady',
+      'sourceUserDataReady',
+      'legacyBusinessFixtureReady',
+      'runtimeSessionValidated'
+    )]
     [string]$Signal
   )
 
   if (
     $script:CurrentStage -notin @(
       'sourceStartup',
+      'legacyFixtureVerification',
       'targetFirstStartup',
       'targetSecondStartup'
     )
@@ -224,6 +274,136 @@ function Test-W6bUtilityDescendant {
   ).Count -gt 0
 }
 
+function Test-W6bPathContained {
+  param(
+    [Parameter(Mandatory = $true)][string]$Candidate,
+    [Parameter(Mandatory = $true)][string]$Root
+  )
+
+  $normalizedRoot = $Root.TrimEnd('\')
+  return (
+    $Candidate.Equals(
+      $normalizedRoot,
+      [System.StringComparison]::OrdinalIgnoreCase
+    ) -or
+    $Candidate.StartsWith(
+      "$normalizedRoot\",
+      [System.StringComparison]::OrdinalIgnoreCase
+    )
+  )
+}
+
+function Get-W6bSafeFilesUnderRoot {
+  param(
+    [Parameter(Mandatory = $true)][string]$Root,
+    [string]$FileName
+  )
+
+  $resolvedRoot = (Resolve-Path -LiteralPath $Root).Path
+  $rootItem = Get-Item -LiteralPath $resolvedRoot -Force
+  if (
+    !$rootItem.PSIsContainer -or
+    ($rootItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint)
+  ) {
+    throw 'W6B_LEGACY_TEST_ROOT_INVALID'
+  }
+  $directories = [System.Collections.Generic.Queue[object]]::new()
+  $directories.Enqueue($rootItem)
+  $files = @()
+  while ($directories.Count -gt 0) {
+    $directory = $directories.Dequeue()
+    foreach ($item in @(Get-ChildItem -LiteralPath $directory.FullName -Force)) {
+      if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+        throw 'W6B_LEGACY_TEST_ROOT_INVALID'
+      }
+      $resolvedItem = (Resolve-Path -LiteralPath $item.FullName).Path
+      if (!(Test-W6bPathContained -Candidate $resolvedItem -Root $resolvedRoot)) {
+        throw 'W6B_LEGACY_TEST_ROOT_INVALID'
+      }
+      if ($item.PSIsContainer) {
+        $directories.Enqueue($item)
+        continue
+      }
+      if (
+        [string]::IsNullOrEmpty($FileName) -or
+        $item.Name -ceq $FileName
+      ) {
+        $files += $item
+      }
+    }
+  }
+  return ,@($files)
+}
+
+function Get-W6bRelativeContainedPath {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [Parameter(Mandatory = $true)][string]$Root,
+    [Parameter(Mandatory = $true)][string]$Code
+  )
+
+  $resolvedRoot = (Resolve-Path -LiteralPath $Root).Path.TrimEnd('\')
+  $resolvedPath = (Resolve-Path -LiteralPath $Path).Path
+  if (!(Test-W6bPathContained -Candidate $resolvedPath -Root $resolvedRoot)) {
+    throw $Code
+  }
+  return $resolvedPath.Substring($resolvedRoot.Length).TrimStart('\')
+}
+
+function Read-W6bAcceptedBuildFile {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  $metadata = Get-Item -LiteralPath $Path -Force
+  if (
+    $metadata.PSIsContainer -or
+    ($metadata.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -or
+    $metadata.Length -lt 1 -or
+    $metadata.Length -gt 4096
+  ) {
+    throw 'W6B_LEGACY_ACCEPTED_BUILD_INVALID'
+  }
+  try {
+    $value = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 |
+      ConvertFrom-Json
+  }
+  catch {
+    throw 'W6B_LEGACY_ACCEPTED_BUILD_INVALID'
+  }
+  $keys = @($value.PSObject.Properties.Name | Sort-Object)
+  $expectedKeys = @(
+    'acceptedAt',
+    'appVersion',
+    'buildRevision',
+    'formatVersion',
+    'releaseChannel'
+  )
+  $acceptedAt = [DateTimeOffset]::MinValue
+  $acceptedAtValid = [DateTimeOffset]::TryParseExact(
+    [string]$value.acceptedAt,
+    "yyyy-MM-dd'T'HH:mm:ss.fff'Z'",
+    [System.Globalization.CultureInfo]::InvariantCulture,
+    [System.Globalization.DateTimeStyles]::AssumeUniversal -bor
+      [System.Globalization.DateTimeStyles]::AdjustToUniversal,
+    [ref]$acceptedAt
+  )
+  $canonicalAcceptedAt = $acceptedAt.ToUniversalTime().ToString(
+    "yyyy-MM-dd'T'HH:mm:ss.fff'Z'",
+    [System.Globalization.CultureInfo]::InvariantCulture
+  )
+  if (
+    @(Compare-Object $keys $expectedKeys).Count -ne 0 -or
+    $value.formatVersion -ne 1 -or
+    $value.releaseChannel -cne 'pilot' -or
+    [string]$value.appVersion -notmatch '^\d+\.\d+\.\d+$' -or
+    [string]$value.buildRevision -cnotmatch '^[0-9a-f]{7,40}$' -or
+    !$acceptedAtValid -or
+    $canonicalAcceptedAt -cne [string]$value.acceptedAt
+  ) {
+    throw 'W6B_LEGACY_ACCEPTED_BUILD_INVALID'
+  }
+  return $value
+}
+
 function Read-W6bAcceptedBuild {
   param([Parameter(Mandatory = $true)][string]$UserDataPath)
 
@@ -232,68 +412,318 @@ function Read-W6bAcceptedBuild {
     (Join-Path $UserDataPath 'runtime\update-state\accepted-build-v1.json')
   )
   foreach ($path in $paths) {
-    if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
-      continue
+    if (Test-Path -LiteralPath $path -PathType Leaf) {
+      return Read-W6bAcceptedBuildFile -Path $path
     }
-    $metadata = Get-Item -LiteralPath $path -Force
-    if ($metadata.Length -lt 1 -or $metadata.Length -gt 4096) {
-      throw 'W6B_LEGACY_ACCEPTED_BUILD_INVALID'
-    }
-    try {
-      $value = Get-Content -LiteralPath $path -Raw -Encoding UTF8 |
-        ConvertFrom-Json
-    }
-    catch {
-      throw 'W6B_LEGACY_ACCEPTED_BUILD_INVALID'
-    }
-    $keys = @($value.PSObject.Properties.Name | Sort-Object)
-    $expectedKeys = @(
-      'acceptedAt',
-      'appVersion',
-      'buildRevision',
-      'formatVersion',
-      'releaseChannel'
-    )
-    if (
-      (Compare-Object $keys $expectedKeys).Count -ne 0 -or
-      $value.formatVersion -ne 1 -or
-      $value.releaseChannel -ne 'pilot' -or
-      $value.appVersion -notmatch '^\d+\.\d+\.\d+$' -or
-      $value.buildRevision -notmatch '^[0-9a-f]{7,40}$'
-    ) {
-      throw 'W6B_LEGACY_ACCEPTED_BUILD_INVALID'
-    }
-    return $value
   }
   return $null
 }
 
-function Start-W6bIsolatedEkyProcess {
+function Find-W6bSourceUserDataRoot {
+  param(
+    [Parameter(Mandatory = $true)][string]$ExpectedVersion,
+    [Parameter(Mandatory = $true)][string]$ExpectedRevision
+  )
+
+  $acceptedFiles = @(
+    Get-W6bSafeFilesUnderRoot -Root $testRoot `
+      -FileName 'accepted-build-v1.json'
+  )
+  if ($acceptedFiles.Count -ne 1) {
+    throw 'W6B_LEGACY_ACCEPTED_BUILD_COUNT_INVALID'
+  }
+  $acceptedPath = (Resolve-Path -LiteralPath $acceptedFiles[0].FullName).Path
+  $accepted = Read-W6bAcceptedBuildFile -Path $acceptedPath
+  if (
+    $accepted.appVersion -cne $ExpectedVersion -or
+    $accepted.buildRevision -cne $ExpectedRevision
+  ) {
+    throw 'W6B_LEGACY_ACCEPTED_BUILD_IDENTITY_MISMATCH'
+  }
+  $stateRoot = Split-Path -Parent $acceptedPath
+  if ([System.IO.Path]::GetFileName($stateRoot) -cne 'update-state') {
+    throw 'W6B_LEGACY_SOURCE_USER_DATA_INVALID'
+  }
+  $candidateRoot = Split-Path -Parent $stateRoot
+  if ([System.IO.Path]::GetFileName($candidateRoot) -ceq 'runtime') {
+    $candidateRoot = Split-Path -Parent $candidateRoot
+  }
+  $candidateRoot = (Resolve-Path -LiteralPath $candidateRoot).Path
+  $relativeRoot = Get-W6bRelativeContainedPath -Path $candidateRoot `
+    -Root $testRoot -Code 'W6B_LEGACY_SOURCE_USER_DATA_INVALID'
+  if (
+    $relativeRoot -cnotmatch `
+      '^source-smoke-temp\\eky-desktop-smoke\\[0-9a-f]{32}\\user-data$'
+  ) {
+    throw 'W6B_LEGACY_SOURCE_USER_DATA_INVALID'
+  }
+  return [pscustomobject]@{
+    AcceptedBuild = $accepted
+    Classification = 'packagedSmokeUserData'
+    Root = $candidateRoot
+  }
+}
+
+function Find-W6bAuthoritativeInvoicePdf {
+  param([Parameter(Mandatory = $true)][string]$StorageRoot)
+
+  $files = @(
+    Get-W6bSafeFilesUnderRoot -Root $StorageRoot `
+      -FileName 'approved-invoice.pdf'
+  )
+  if ($files.Count -ne 1) {
+    throw 'W6B_LEGACY_AUTHORITATIVE_PDF_COUNT_INVALID'
+  }
+  $file = $files[0]
+  if ($file.Length -lt 5 -or $file.Length -gt 26214400) {
+    throw 'W6B_LEGACY_AUTHORITATIVE_PDF_INVALID'
+  }
+  $stream = [System.IO.File]::OpenRead($file.FullName)
+  try {
+    $header = New-Object byte[] 5
+    if ($stream.Read($header, 0, 5) -ne 5) {
+      throw 'W6B_LEGACY_AUTHORITATIVE_PDF_INVALID'
+    }
+  }
+  finally {
+    $stream.Dispose()
+  }
+  if ([System.Text.Encoding]::ASCII.GetString($header) -cne '%PDF-') {
+    throw 'W6B_LEGACY_AUTHORITATIVE_PDF_INVALID'
+  }
+  return [pscustomobject]@{
+    FullName = (Resolve-Path -LiteralPath $file.FullName).Path
+    RelativePath = Get-W6bRelativeContainedPath -Path $file.FullName `
+      -Root $StorageRoot -Code 'W6B_LEGACY_AUTHORITATIVE_PDF_INVALID'
+  }
+}
+
+function Start-W6bEkyProcess {
+  param(
+    [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$Arguments,
+    [Parameter(Mandatory = $true)][hashtable]$EnvironmentOverrides
+  )
+
   $executablePath = Join-Path $installRoot 'Eky.exe'
   if (!(Test-Path -LiteralPath $executablePath -PathType Leaf)) {
     throw 'W6B_LEGACY_EXECUTABLE_MISSING'
   }
-
-  $previousAppData = [Environment]::GetEnvironmentVariable(
-    'APPDATA',
-    [EnvironmentVariableTarget]::Process
-  )
+  $previousValues = @{}
   try {
-    [Environment]::SetEnvironmentVariable(
-      'APPDATA',
-      $isolatedAppDataRoot,
-      [EnvironmentVariableTarget]::Process
-    )
-    return Start-Process -FilePath $executablePath -ArgumentList @(
-      "--user-data-dir=`"$userDataRoot`""
-    ) -PassThru
+    foreach ($name in $EnvironmentOverrides.Keys) {
+      $previousValues[$name] = [Environment]::GetEnvironmentVariable(
+        $name,
+        [EnvironmentVariableTarget]::Process
+      )
+      [Environment]::SetEnvironmentVariable(
+        $name,
+        $EnvironmentOverrides[$name],
+        [EnvironmentVariableTarget]::Process
+      )
+    }
+    return Start-Process -FilePath $executablePath `
+      -ArgumentList $Arguments -PassThru
   }
   finally {
-    [Environment]::SetEnvironmentVariable(
-      'APPDATA',
-      $previousAppData,
-      [EnvironmentVariableTarget]::Process
-    )
+    foreach ($name in $EnvironmentOverrides.Keys) {
+      [Environment]::SetEnvironmentVariable(
+        $name,
+        $previousValues[$name],
+        [EnvironmentVariableTarget]::Process
+      )
+    }
+  }
+}
+
+function Start-W6bIsolatedEkyProcess {
+  if ($null -eq $userDataRoot) {
+    throw 'W6B_LEGACY_SOURCE_USER_DATA_INVALID'
+  }
+  return Start-W6bEkyProcess -Arguments @(
+    "--user-data-dir=`"$userDataRoot`""
+  ) -EnvironmentOverrides @{
+    APPDATA = $isolatedAppDataRoot
+    ELECTRON_RUN_AS_NODE = $null
+  }
+}
+
+function Read-W6bSourceSmokeResult {
+  param([switch]$AllowMissing)
+
+  if (!(Test-Path -LiteralPath $sourceSmokeResultPath -PathType Leaf)) {
+    if ($AllowMissing) {
+      return $null
+    }
+    throw 'W6B_LEGACY_SOURCE_SMOKE_RESULT_MISSING'
+  }
+  $metadata = Get-Item -LiteralPath $sourceSmokeResultPath -Force
+  if (
+    $metadata.PSIsContainer -or
+    ($metadata.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -or
+    $metadata.Length -lt 1 -or
+    $metadata.Length -gt 4096
+  ) {
+    throw 'W6B_LEGACY_SOURCE_SMOKE_RESULT_INVALID'
+  }
+  try {
+    $value = Get-Content -LiteralPath $sourceSmokeResultPath -Raw `
+      -Encoding UTF8 | ConvertFrom-Json
+  }
+  catch {
+    if ($AllowMissing) {
+      return $null
+    }
+    throw 'W6B_LEGACY_SOURCE_SMOKE_RESULT_INVALID'
+  }
+  if (
+    [string]$value.stage -cnotin $script:AllowedSourceSmokeStages -or
+    [string]$value.status -cnotin @('started', 'failed', 'ok')
+  ) {
+    throw 'W6B_LEGACY_SOURCE_SMOKE_RESULT_INVALID'
+  }
+  $keys = @($value.PSObject.Properties.Name | Sort-Object)
+  if (
+    $value.status -ceq 'started' -and
+    @(Compare-Object $keys @('stage', 'status')).Count -eq 0
+  ) {
+    return $value
+  }
+  if (
+    $value.status -ceq 'failed' -and
+    @(Compare-Object $keys @('code', 'stage', 'status')).Count -eq 0 -and
+    [string]$value.code -cmatch '^[A-Z][A-Z0-9_]{0,99}$'
+  ) {
+    return $value
+  }
+  if (
+    $value.status -ceq 'ok' -and
+    $value.stage -ceq 'shutdown' -and
+    @(Compare-Object $keys @('electronVersion', 'stage', 'status')).Count `
+      -eq 0 -and
+    [string]$value.electronVersion -match '^\d+\.\d+\.\d+$'
+  ) {
+    return $value
+  }
+  throw 'W6B_LEGACY_SOURCE_SMOKE_RESULT_INVALID'
+}
+
+function Initialize-W6bSourceSmokeResult {
+  $resultDirectory = Split-Path -Parent $sourceSmokeResultPath
+  New-Item -ItemType Directory -Path $resultDirectory -Force | Out-Null
+  $json = [ordered]@{
+    stage = 'startup'
+    status = 'started'
+  } | ConvertTo-Json -Compress
+  [System.IO.File]::WriteAllText(
+    $sourceSmokeResultPath,
+    "$json`n",
+    [System.Text.UTF8Encoding]::new($false)
+  )
+}
+
+function Update-W6bSourceSmokeObservations {
+  param([Parameter(Mandatory = $true)]$Result)
+
+  $script:SourceFailurePhase = [string]$Result.stage
+  $stageIndex = $script:AllowedSourceSmokeStages.IndexOf(
+    [string]$Result.stage
+  )
+  if (
+    !$script:SourceBackendHealthObserved -and
+    $stageIndex -ge $script:AllowedSourceSmokeStages.IndexOf('diagnostics')
+  ) {
+    $script:SourceBackendHealthObserved = $true
+    Write-W6bLegacyReadinessObservation -Signal backendHealthReady
+  }
+  if (
+    !$script:SourceRuntimeSessionObserved -and
+    $stageIndex -ge
+      $script:AllowedSourceSmokeStages.IndexOf('restoredSessionValidated')
+  ) {
+    $script:SourceRuntimeSessionObserved = $true
+    Write-W6bLegacyReadinessObservation -Signal runtimeSessionValidated
+  }
+}
+
+function Invoke-W6bSourceSmokePhase {
+  param(
+    [Parameter(Mandatory = $true)][string[]]$Arguments,
+    [Parameter(Mandatory = $true)][string]$ExpectedStage,
+    [Parameter(Mandatory = $true)][string]$ExpectedStatus
+  )
+
+  $process = Start-W6bEkyProcess -Arguments $Arguments `
+    -EnvironmentOverrides @{
+      APPDATA = $isolatedAppDataRoot
+      ELECTRON_ENABLE_SECURITY_WARNINGS = 'true'
+      ELECTRON_RUN_AS_NODE = $null
+      EKY_DESKTOP_SMOKE_TOKEN = $sourceSmokeToken
+      TEMP = $sourceSmokeTempRoot
+      TMP = $sourceSmokeTempRoot
+    }
+  try {
+    $deadline = [DateTime]::UtcNow.AddSeconds(60)
+    do {
+      Start-Sleep -Milliseconds 250
+      $process.Refresh()
+      if (!$script:SourceUtilityObserved) {
+        $script:SourceUtilityObserved = Test-W6bUtilityDescendant `
+          -RootProcessId $process.Id
+        if ($script:SourceUtilityObserved) {
+          Write-W6bLegacyReadinessObservation -Signal backendUtilityReady
+        }
+      }
+      $observation = Read-W6bSourceSmokeResult -AllowMissing
+      if ($null -ne $observation) {
+        Update-W6bSourceSmokeObservations -Result $observation
+      }
+      if ($process.HasExited) {
+        break
+      }
+    } while ([DateTime]::UtcNow -lt $deadline)
+    if (!$process.HasExited) {
+      throw 'W6B_LEGACY_SOURCE_SMOKE_TIMEOUT'
+    }
+    $result = Read-W6bSourceSmokeResult
+    Update-W6bSourceSmokeObservations -Result $result
+    if (
+      $process.ExitCode -ne 0 -or
+      $result.stage -cne $ExpectedStage -or
+      $result.status -cne $ExpectedStatus
+    ) {
+      throw 'W6B_LEGACY_SOURCE_SMOKE_FAILED'
+    }
+    if (
+      $ExpectedStatus -ceq 'ok' -and
+      [string]$result.electronVersion -notmatch '^\d+\.\d+\.\d+$'
+    ) {
+      throw 'W6B_LEGACY_SOURCE_SMOKE_RESULT_INVALID'
+    }
+  }
+  finally {
+    $process.Refresh()
+    if (!$process.HasExited) {
+      Stop-EkyProcessTree -Process $process
+    }
+  }
+  Assert-W6bNoEkyProcesses
+}
+
+function Invoke-W6bSourcePackagedSmoke {
+  New-Item -ItemType Directory -Path $sourceSmokeTempRoot -Force | Out-Null
+  Initialize-W6bSourceSmokeResult
+  Invoke-W6bSourceSmokePhase -Arguments @('--desktop-smoke') `
+    -ExpectedStage 'restoreRestart' -ExpectedStatus 'started'
+  Invoke-W6bSourceSmokePhase -Arguments @(
+    '--desktop-smoke',
+    '--desktop-smoke-restored'
+  ) -ExpectedStage 'shutdown' -ExpectedStatus 'ok'
+  if (
+    !$script:SourceUtilityObserved -or
+    !$script:SourceBackendHealthObserved -or
+    !$script:SourceRuntimeSessionObserved
+  ) {
+    throw 'W6B_LEGACY_SOURCE_SMOKE_READINESS_MISSING'
   }
 }
 
@@ -304,6 +734,9 @@ function Wait-W6bEkyAccepted {
     [Parameter(Mandatory = $true)][string]$ExpectedRevision
   )
 
+  if ($null -eq $userDataRoot) {
+    throw 'W6B_LEGACY_SOURCE_USER_DATA_INVALID'
+  }
   $databasePath = Join-Path $userDataRoot 'runtime\data\eky.sqlite'
   $accepted = $null
   $acceptedBuildObserved = $false
@@ -320,6 +753,13 @@ function Wait-W6bEkyAccepted {
     if (!$databaseObserved -and (Test-Path -LiteralPath $databasePath -PathType Leaf)) {
       $databaseObserved = $true
       Write-W6bLegacyReadinessObservation -Signal databaseReady
+    }
+    if (!$backendUtilityObserved) {
+      $backendUtilityObserved = Test-W6bUtilityDescendant `
+        -RootProcessId $Process.Id
+      if ($backendUtilityObserved) {
+        Write-W6bLegacyReadinessObservation -Signal backendUtilityReady
+      }
     }
     $accepted = Read-W6bAcceptedBuild -UserDataPath $userDataRoot
     if ($null -eq $accepted) {
@@ -338,15 +778,17 @@ function Wait-W6bEkyAccepted {
       continue
     }
     if (!$backendUtilityObserved) {
-      $backendUtilityObserved = Test-W6bUtilityDescendant `
-        -RootProcessId $Process.Id
-      if ($backendUtilityObserved) {
-        Write-W6bLegacyReadinessObservation -Signal backendUtilityReady
-      }
-    }
-    if (!$backendUtilityObserved) {
       $readinessFailureCode = 'W6B_LEGACY_BACKEND_UTILITY_MISSING'
       continue
+    }
+    if (
+      $script:CurrentStage -in @(
+        'targetFirstStartup',
+        'targetSecondStartup'
+      )
+    ) {
+      Write-W6bLegacyReadinessObservation -Signal backendHealthReady
+      Write-W6bLegacyReadinessObservation -Signal runtimeSessionValidated
     }
     return
   } while ([DateTime]::UtcNow -lt $deadline)
@@ -426,7 +868,8 @@ function Read-W6bWorkspaceRegistry {
     $workspace.layoutVersion -ne 1 -or
     $workspace.lifecycleState -ne 'ready' -or
     $workspace.lineageIdentity.formatVersion -ne 1 -or
-    $workspace.lineageIdentity.profileId -notmatch '^[0-9a-f-]{36}$'
+    [string]$workspace.lineageIdentity.profileId `
+      -cnotmatch $LineageProfileIdPattern
   ) {
     throw 'W6B_LEGACY_WORKSPACE_REGISTRY_INVALID'
   }
@@ -454,8 +897,9 @@ try {
   if (
     $SourceAppVersion -ne '0.2.6' -or
     $TargetAppVersion -ne '0.2.7' -or
-    $SourceBuildRevision -notmatch '^[0-9a-f]{40}$' -or
-    $TargetBuildRevision -notmatch '^[0-9a-f]{7,40}$'
+    $SourceBuildRevision -cnotmatch '^[0-9a-f]{40}$' -or
+    $TargetBuildRevision -cnotmatch '^[0-9a-f]{7,40}$' -or
+    $LineageProfileIdPattern -cne '^[0-9a-f]{64}$'
   ) {
     throw 'W6B_LEGACY_RELEASE_IDENTITY_INVALID'
   }
@@ -488,7 +932,6 @@ try {
   )
   New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
   New-Item -ItemType Directory -Path $isolatedAppDataRoot -Force | Out-Null
-  New-Item -ItemType Directory -Path $userDataRoot -Force | Out-Null
   $businessInventoryBefore = Get-EkyDirectoryInventory -Root $businessDataRoot
   $targetPayloadInventory = Get-EkyDirectoryInventory -Root $targetPayload
   if ($targetPayloadInventory.Count -lt 1) {
@@ -504,6 +947,13 @@ try {
   Complete-W6bLegacyStage
 
   Start-W6bLegacyStage -Stage sourceStartup
+  Invoke-W6bSourcePackagedSmoke
+  $sourceUserData = Find-W6bSourceUserDataRoot `
+    -ExpectedVersion $SourceAppVersion `
+    -ExpectedRevision $SourceBuildRevision
+  $userDataRoot = $sourceUserData.Root
+  $sourceUserDataClass = $sourceUserData.Classification
+  Write-W6bLegacyReadinessObservation -Signal sourceUserDataReady
   $runningProcess = Start-W6bIsolatedEkyProcess
   Wait-W6bEkyAccepted -Process $runningProcess `
     -ExpectedVersion $SourceAppVersion `
@@ -513,26 +963,29 @@ try {
   Assert-W6bNoEkyProcesses
   Complete-W6bLegacyStage
 
-  Start-W6bLegacyStage -Stage legacyProfileSeed
+  Start-W6bLegacyStage -Stage legacyFixtureVerification
   $legacyDataRoot = Join-Path $userDataRoot 'runtime\data'
   $legacyStorageRoot = Join-Path $userDataRoot 'runtime\storage'
   $legacyDatabasePath = Join-Path $legacyDataRoot 'eky.sqlite'
   if (!(Test-Path -LiteralPath $legacyDatabasePath -PathType Leaf)) {
     throw 'W6B_LEGACY_DATABASE_MISSING'
   }
-  $legacyPdfPath = Join-Path $legacyStorageRoot `
-    'invoices\11111111-1111-4111-8111-111111111111\22222222-2222-4222-8222-222222222222\approved-invoice.pdf'
-  New-Item -ItemType Directory -Path (Split-Path -Parent $legacyPdfPath) `
-    -Force | Out-Null
-  [System.IO.File]::WriteAllText(
-    $legacyPdfPath,
-    "%PDF-1.7`n% Eky W6B synthetic legacy invoice`n%%EOF`n",
-    [System.Text.UTF8Encoding]::new($false)
-  )
+  $legacyPdf = Find-W6bAuthoritativeInvoicePdf `
+    -StorageRoot $legacyStorageRoot
+  $legacyPdfPath = $legacyPdf.FullName
+  $legacyPdfRelativePath = $legacyPdf.RelativePath
   $legacyDataInventory = Get-EkyDirectoryInventory -Root $legacyDataRoot
   $legacyStorageInventory = Get-EkyDirectoryInventory -Root $legacyStorageRoot
+  if (
+    $legacyDataInventory.Count -lt 1 -or
+    $legacyStorageInventory.Count -lt 1
+  ) {
+    throw 'W6B_LEGACY_BUSINESS_FIXTURE_INVALID'
+  }
   $legacyDatabaseHash = Get-EkyFileSha256 -Path $legacyDatabasePath
   $legacyPdfHash = Get-EkyFileSha256 -Path $legacyPdfPath
+  $script:SourceBusinessFixtureObserved = $true
+  Write-W6bLegacyReadinessObservation -Signal legacyBusinessFixtureReady
   Complete-W6bLegacyStage
 
   Start-W6bLegacyStage -Stage targetInstall
@@ -568,7 +1021,7 @@ try {
   $workspaceStorageRoot = Join-Path $workspaceRuntimeRoot 'storage'
   $workspaceDatabasePath = Join-Path $workspaceDataRoot 'eky.sqlite'
   $workspacePdfPath = Join-Path $workspaceStorageRoot `
-    'invoices\11111111-1111-4111-8111-111111111111\22222222-2222-4222-8222-222222222222\approved-invoice.pdf'
+    $legacyPdfRelativePath
   if (
     (Get-EkyFileSha256 -Path $workspaceDatabasePath) -ne $legacyDatabaseHash -or
     (Get-EkyFileSha256 -Path $workspacePdfPath) -ne $legacyPdfHash
@@ -625,6 +1078,7 @@ try {
 }
 catch {
   $script:FailureCode = Get-W6bSafeErrorCode -ErrorRecord $_
+  $script:FailureStage = $script:CurrentStage
   try {
     Write-W6bLegacyProgress -Status failed -ResultCode failedSafe
   }
@@ -695,12 +1149,16 @@ finally {
 }
 
 if ($null -ne $script:FailureCode) {
-  [ordered]@{
+  $failure = [ordered]@{
     scenario = 'legacyUpgrade'
     status = 'failed'
-    stage = $script:CurrentStage
+    stage = $script:FailureStage
     errorCode = $script:FailureCode
-  } | ConvertTo-Json -Compress
+  }
+  if ($null -ne $script:SourceFailurePhase) {
+    $failure.sourceFailurePhase = $script:SourceFailurePhase
+  }
+  $failure | ConvertTo-Json -Compress
   exit 1
 }
 
@@ -710,6 +1168,9 @@ if ($null -ne $script:FailureCode) {
   sourceClassification = $SourceClassification
   sourceVersion = $SourceAppVersion
   targetVersion = $TargetAppVersion
+  sourceUserDataClass = $sourceUserDataClass
+  legacyBusinessFixtureValidated = $true
+  runtimeSessionValidated = $true
   adoptedWorkspaceCount = 1
   businessDataPreserved = $true
   idempotentSecondStartup = $true
