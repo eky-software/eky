@@ -34,20 +34,19 @@ import {
   inspectStagedBetterSqliteRuntime,
   verifyStagedBetterSqliteDatabase,
 } from './staged-better-sqlite-runtime.mjs';
+import {
+  W6B_SYNTHETIC_WINDOWS_PACKAGE_PATHS,
+  createW6bSyntheticNextPatchRelease,
+} from '../installer/scripts/w6bSyntheticWindowsPackageFixture.mjs';
 
 const electronVersion = await readDesktopElectronVersion();
 const execFileAsync = promisify(execFile);
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const desktopDirectory = resolve(scriptDirectory, '..');
 const repositoryRoot = resolve(desktopDirectory, '../..');
-const stagingRoot = resolve(desktopDirectory, '.stage');
-const applicationStage = resolve(stagingRoot, 'application');
-const backendStage = resolve(stagingRoot, 'backend');
-const desktopRuntimeStage = resolve(stagingRoot, 'desktop-runtime');
-const updateRuntimeStage = resolve(stagingRoot, 'update-runtime');
-const outputDirectory = resolve(desktopDirectory, 'out');
+const defaultStagingRoot = resolve(desktopDirectory, '.stage');
+const defaultOutputDirectory = resolve(desktopDirectory, 'out');
 const pnpmCliPath = process.env.npm_execpath;
-const pilotBuild = process.argv.slice(2).includes('--pilot');
 const profileSnapshotRuntimeFiles = [
   'electronProfileSnapshotBrokerTransport.js',
   'profileSnapshotBrokerBackend.js',
@@ -102,7 +101,18 @@ async function listFiles(directory) {
   return files;
 }
 
-async function assertSafeBackendStage() {
+function createPackageLayout({ outputDirectory, stagingRoot }) {
+  return Object.freeze({
+    applicationStage: resolve(stagingRoot, 'application'),
+    backendStage: resolve(stagingRoot, 'backend'),
+    desktopRuntimeStage: resolve(stagingRoot, 'desktop-runtime'),
+    outputDirectory: resolve(outputDirectory),
+    stagingRoot: resolve(stagingRoot),
+    updateRuntimeStage: resolve(stagingRoot, 'update-runtime'),
+  });
+}
+
+async function assertSafeBackendStage(backendStage) {
   const files = await listFiles(backendStage);
   const unapprovedKeyringPackagePath = ['@napi-rs', 'keyring'].join('/');
   const forbiddenDependencyFile = files.find((filePath) =>
@@ -122,7 +132,7 @@ async function assertSafeBackendStage() {
   }
 }
 
-async function buildWorkspaceArtifacts() {
+async function buildWorkspaceArtifacts(backendStage) {
   await runPnpm(['--filter', '@eky/permissions', 'build']);
   await runPnpm(['--filter', '@eky/auth', 'build']);
   await runPnpm(['--filter', '@eky/backend', 'build']);
@@ -138,7 +148,17 @@ async function buildWorkspaceArtifacts() {
   ]);
 }
 
-async function prepareApplicationStage(buildInfo, packageMode, releaseInfo) {
+async function prepareApplicationStage(
+  layout,
+  buildInfo,
+  packageMode,
+  releaseInfo,
+) {
+  const {
+    applicationStage,
+    desktopRuntimeStage,
+    updateRuntimeStage,
+  } = layout;
   await cp(resolve(desktopDirectory, 'dist'), join(applicationStage, 'dist'), {
     recursive: true,
   });
@@ -236,7 +256,12 @@ async function prepareApplicationStage(buildInfo, packageMode, releaseInfo) {
   );
 }
 
-async function assertPackagedDiagnosticsArtifacts({ hasReleaseInfo }) {
+async function assertPackagedDiagnosticsArtifacts(layout, { hasReleaseInfo }) {
+  const {
+    applicationStage,
+    desktopRuntimeStage,
+    updateRuntimeStage,
+  } = layout;
   const requiredArtifacts = [
     'dist/diagnostics/desktopDiagnosticsTypes.js',
     'dist/diagnostics/operationalLogFolderCapability.js',
@@ -316,14 +341,24 @@ async function assertPackagedElectronVersion(packagedPath) {
   }
 }
 
-async function packageWindowsSpike() {
-  if (process.argv.slice(2).some((argument) => argument !== '--pilot')) {
-    throw new Error('Unsupported Windows package argument.');
-  }
+async function packageWindowsApplication({
+  layout,
+  pilotBuild,
+  reportPackagedPath,
+  releaseOverride,
+}) {
+  const {
+    applicationStage,
+    backendStage,
+    desktopRuntimeStage,
+    outputDirectory,
+    stagingRoot,
+    updateRuntimeStage,
+  } = layout;
   await rm(stagingRoot, { force: true, recursive: true });
   await rm(outputDirectory, { force: true, recursive: true });
   await mkdir(stagingRoot, { recursive: true });
-  await buildWorkspaceArtifacts();
+  await buildWorkspaceArtifacts(backendStage);
   const packageBuildInfoModule = await import(
     pathToFileURL(
       resolve(desktopDirectory, 'dist/release/packageBuildInfo.js'),
@@ -332,12 +367,14 @@ async function packageWindowsSpike() {
   const desktopPackageMetadata = JSON.parse(
     await readFile(resolve(desktopDirectory, 'package.json'), 'utf8'),
   );
-  const appVersion =
+  const canonicalAppVersion =
     packageBuildInfoModule.readDesktopPackageVersion(desktopPackageMetadata);
-  const installerRelease = await readInstallerReleaseConfig(
+  const canonicalInstallerRelease = await readInstallerReleaseConfig(
     resolve(desktopDirectory, 'installer/installer-release.json'),
     resolve(desktopDirectory, 'package.json'),
   );
+  const installerRelease = releaseOverride ?? canonicalInstallerRelease;
+  const appVersion = releaseOverride?.appVersion ?? canonicalAppVersion;
   const buildInfo = await packageBuildInfoModule.createPackageBuildInfo({
     appVersion,
     repositoryRoot,
@@ -374,7 +411,7 @@ async function packageWindowsSpike() {
     ).stdout.trim();
     assertPilotBuildPreconditions({ buildInfo, currentHead });
   }
-  await assertSafeBackendStage();
+  await assertSafeBackendStage(backendStage);
   await inspectPackageArtifactInventory({
     root: backendStage,
     stage: 'backendStage',
@@ -385,8 +422,10 @@ async function packageWindowsSpike() {
     `Validated staged better-sqlite3 ${runtime.version} (SQLite ${sqliteVersion}).`,
   );
 
-  await prepareApplicationStage(buildInfo, packageMode, releaseInfo);
-  await assertPackagedDiagnosticsArtifacts({ hasReleaseInfo: pilotBuild });
+  await prepareApplicationStage(layout, buildInfo, packageMode, releaseInfo);
+  await assertPackagedDiagnosticsArtifacts(layout, {
+    hasReleaseInfo: pilotBuild,
+  });
   await inspectPackageArtifactInventory({
     root: applicationStage,
     stage: 'applicationStage',
@@ -433,13 +472,14 @@ async function packageWindowsSpike() {
     root: packagedPath,
     stage: 'packagedApp',
   });
+  let manifestPath;
   if (pilotBuild) {
     assertPilotBuildPreconditions({ buildInfo, currentHead });
     const manifest = createPilotArtifactManifest({
       buildInfo,
       inventory: packagedInventory,
     });
-    const manifestPath = join(
+    manifestPath = join(
       outputDirectory,
       'Eky-win32-x64.pilot-manifest.json',
     );
@@ -449,7 +489,55 @@ async function packageWindowsSpike() {
       inventory: packagedInventory,
     });
   }
-  console.log(`Packaged Windows spike: ${packagedPath}`);
+  if (reportPackagedPath) {
+    console.log(`Packaged Windows spike: ${packagedPath}`);
+  }
+  return Object.freeze({
+    appVersion,
+    buildInfo,
+    installerRelease,
+    manifestPath,
+    packagedInventory,
+    packagedPath,
+  });
 }
 
-await packageWindowsSpike();
+export async function packageW6bSyntheticNextPatchApplication() {
+  const desktopPackagePath = resolve(desktopDirectory, 'package.json');
+  const currentRelease = await readInstallerReleaseConfig(
+    resolve(desktopDirectory, 'installer/installer-release.json'),
+    desktopPackagePath,
+  );
+  const release = createW6bSyntheticNextPatchRelease(currentRelease);
+  const packaged = await packageWindowsApplication({
+    layout: createPackageLayout(W6B_SYNTHETIC_WINDOWS_PACKAGE_PATHS),
+    pilotBuild: true,
+    reportPackagedPath: false,
+    releaseOverride: release,
+  });
+  return Object.freeze({
+    ...packaged,
+    paths: W6B_SYNTHETIC_WINDOWS_PACKAGE_PATHS,
+  });
+}
+
+async function packageWindowsSpike() {
+  if (process.argv.slice(2).some((argument) => argument !== '--pilot')) {
+    throw new Error('Unsupported Windows package argument.');
+  }
+  return packageWindowsApplication({
+    layout: createPackageLayout({
+      outputDirectory: defaultOutputDirectory,
+      stagingRoot: defaultStagingRoot,
+    }),
+    pilotBuild: process.argv.slice(2).includes('--pilot'),
+    reportPackagedPath: true,
+  });
+}
+
+if (
+  process.argv[1] !== undefined &&
+  pathToFileURL(resolve(process.argv[1])).href === import.meta.url
+) {
+  await packageWindowsSpike();
+}
