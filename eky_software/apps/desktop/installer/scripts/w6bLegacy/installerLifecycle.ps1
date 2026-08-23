@@ -200,37 +200,6 @@ function Wait-W6bEkyAccepted {
   throw $readinessFailureCode
 }
 
-function Stop-W6bEkyGracefully {
-  param([Parameter(Mandatory = $true)]$Process)
-
-  $rootIdentity = New-EkyProcessIdentity -ProcessId ([int]$Process.Id) `
-    -CreationToken (ConvertTo-EkyProcessCreationToken `
-      -CreationTime ([DateTime]$Process.StartTime))
-  $owned = @(
-    Get-EkyOwnedProcessIdentitiesFromSnapshot -RootIdentity $rootIdentity `
-      -ProcessSnapshot (Get-EkyProcessSnapshot)
-  )
-  if ($owned.Count -eq 0) {
-    throw 'W6B_LEGACY_APPLICATION_PROCESS_MISSING'
-  }
-  if (!$Process.CloseMainWindow()) {
-    throw 'W6B_LEGACY_GRACEFUL_SHUTDOWN_UNAVAILABLE'
-  }
-  $deadline = [DateTime]::UtcNow.AddSeconds(30)
-  do {
-    $remaining = @(
-      Get-EkyRemainingOwnedProcessIdentitiesFromSnapshot `
-        -OwnedProcessIdentities $owned `
-        -ProcessSnapshot (Get-EkyProcessSnapshot)
-    )
-    if ($remaining.Count -eq 0) {
-      return
-    }
-    Start-Sleep -Milliseconds 100
-  } while ([DateTime]::UtcNow -lt $deadline)
-  throw 'W6B_LEGACY_GRACEFUL_SHUTDOWN_TIMEOUT'
-}
-
 function Assert-W6bNoEkyProcesses {
   if (@(Get-Process -Name 'Eky' -ErrorAction SilentlyContinue).Count -ne 0) {
     throw 'W6B_LEGACY_ORPHAN_PROCESS_REMAINS'

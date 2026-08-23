@@ -47,6 +47,14 @@ const processChainTestCases = Object.freeze([
   Object.freeze({ name: 'ownedDescendantChain', progressCount: 0 }),
   Object.freeze({ name: 'invalidStarts', progressCount: 0 }),
 ]);
+const gracefulShutdownTestCases = Object.freeze([
+  'windowDelayed',
+  'windowTimeout',
+  'duplicateWindowOwners',
+  'foreignWindowIgnored',
+  'processIdentityMismatch',
+  'rootExitsBeforeWindow',
+]);
 
 function parseProcessChainOutput(output) {
   return output.split(/\r?\n/u).filter((line) => line.trim() !== '');
@@ -248,6 +256,7 @@ test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () 
   const sourceText = [
     './testW6bLegacyUpgradeAcceptance.ps1',
     './w6bLegacy/evidence.ps1',
+    './w6bLegacy/gracefulApplicationShutdown.ps1',
     './w6bLegacy/historicalPackagedSmokeProcessChain.ps1',
     './w6bLegacy/installerLifecycle.ps1',
     './w6bLegacy/pathSafety.ps1',
@@ -261,6 +270,7 @@ test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () 
   assert.match(sourceText, /--user-data-dir/iu);
   assert.match(sourceText, /function Start-W6bIsolatedEkyProcess/iu);
   assert.match(sourceText, /function Wait-W6bEkyAccepted/iu);
+  assert.match(sourceText, /function Wait-W6bOwnedApplicationWindow/iu);
   assert.match(
     sourceText,
     /\$isolatedAppDataRoot\s*=\s*Join-Path \$testRoot 'app-data-roaming'/iu,
@@ -328,12 +338,55 @@ test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () 
   assert.match(sourceText, /status = 'observed'/iu);
   assert.match(sourceText, /New-EkyProcessIdentity/iu);
   assert.match(sourceText, /Get-EkyOwnedProcessIdentitiesFromSnapshot/iu);
+  assert.match(
+    sourceText,
+    /Wait-W6bOwnedApplicationWindow[\s\S]*?CloseMainWindow\(\)/iu,
+  );
   assert.match(sourceText, /Assert-W6bPackageHash/iu);
   assert.match(sourceText, /W6B_LEGACY_NORMAL_PROFILE_CHANGED/iu);
   assert.doesNotMatch(sourceText, /Stop-Process\s+-Name/iu);
   assert.doesNotMatch(sourceText, /Write-(?:Host|Output).*Exception\.Message/iu);
   assert.doesNotMatch(sourceText, /Write-(?:Host|Output).*StackTrace/iu);
 });
+
+for (const gracefulShutdownTestCase of gracefulShutdownTestCases) {
+  test(`graceful application shutdown case ${gracefulShutdownTestCase}`, {
+    skip: process.platform !== 'win32',
+  }, () => {
+    const result = spawnSync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        resolve(
+          scriptDirectory,
+          'w6bLegacy',
+          'gracefulApplicationShutdown.test.ps1',
+        ),
+        '-TestCase',
+        gracefulShutdownTestCase,
+      ],
+      { encoding: 'utf8', windowsHide: true },
+    );
+    const lines = parseProcessChainOutput(result.stdout);
+    assert.equal(
+      result.status,
+      0,
+      createSafeProcessChainFailureMessage(
+        gracefulShutdownTestCase,
+        result.stdout,
+      ),
+    );
+    assert.equal(lines.length, 1);
+    assert.deepEqual(JSON.parse(lines[0]), {
+      status: 'passed',
+      testCase: gracefulShutdownTestCase,
+    });
+  });
+}
 
 for (const processChainTestCase of processChainTestCases) {
   test(`historical smoke process chain case ${processChainTestCase.name}`, {

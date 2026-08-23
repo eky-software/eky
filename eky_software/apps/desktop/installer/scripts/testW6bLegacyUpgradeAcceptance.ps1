@@ -97,6 +97,7 @@ $businessDataRoot = Join-Path $env:APPDATA 'Eky'
 . (Join-Path $PSScriptRoot 'w6bLegacy\progress.ps1')
 . (Join-Path $PSScriptRoot 'w6bLegacy\pathSafety.ps1')
 . (Join-Path $PSScriptRoot 'w6bLegacy\evidence.ps1')
+. (Join-Path $PSScriptRoot 'w6bLegacy\gracefulApplicationShutdown.ps1')
 . (Join-Path $PSScriptRoot 'w6bLegacy\installerLifecycle.ps1')
 . (Join-Path $PSScriptRoot 'w6bLegacy\sourceSmoke.ps1')
 Start-W6bLegacyStage -Stage preflight
