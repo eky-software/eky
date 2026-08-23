@@ -213,16 +213,18 @@ try {
     -StorageRoot $legacyStorageRoot
   $legacyPdfPath = $legacyPdf.FullName
   $legacyPdfRelativePath = $legacyPdf.RelativePath
-  $legacyDataInventory = Get-EkyDirectoryInventory -Root $legacyDataRoot
-  $legacyStorageInventory = Get-EkyDirectoryInventory -Root $legacyStorageRoot
+  $legacyDataInventory = Get-W6bEvidenceDirectoryInventory `
+    -Root $legacyDataRoot
+  $legacyStorageInventory = Get-W6bEvidenceDirectoryInventory `
+    -Root $legacyStorageRoot
   if (
     $legacyDataInventory.Count -lt 1 -or
     $legacyStorageInventory.Count -lt 1
   ) {
     throw 'W6B_LEGACY_BUSINESS_FIXTURE_INVALID'
   }
-  $legacyDatabaseHash = Get-EkyFileSha256 -Path $legacyDatabasePath
-  $legacyPdfHash = Get-EkyFileSha256 -Path $legacyPdfPath
+  $legacyDatabaseHash = Get-W6bEvidenceFileSha256 -Path $legacyDatabasePath
+  $legacyPdfHash = Get-W6bEvidenceFileSha256 -Path $legacyPdfPath
   $script:SourceBusinessFixtureObserved = $true
   Write-W6bLegacyReadinessObservation -Signal legacyBusinessFixtureReady
   Complete-W6bLegacyStage
@@ -253,10 +255,10 @@ try {
 
   Start-W6bLegacyStage -Stage adoptionVerification
   Assert-EkyInventoryEqual `
-    (Get-EkyDirectoryInventory -Root $legacyDataRoot) `
+    (Get-W6bEvidenceDirectoryInventory -Root $legacyDataRoot) `
     $legacyDataInventory 'W6B_LEGACY_SOURCE_DATA_CHANGED'
   Assert-EkyInventoryEqual `
-    (Get-EkyDirectoryInventory -Root $legacyStorageRoot) `
+    (Get-W6bEvidenceDirectoryInventory -Root $legacyStorageRoot) `
     $legacyStorageInventory 'W6B_LEGACY_SOURCE_STORAGE_CHANGED'
   $workspaceRuntimeRoot = Join-Path $userDataRoot `
     "workspaces\$($registry.activeWorkspaceId)\runtime"
@@ -266,8 +268,9 @@ try {
   $workspacePdfPath = Join-Path $workspaceStorageRoot `
     $legacyPdfRelativePath
   if (
-    (Get-EkyFileSha256 -Path $workspaceDatabasePath) -ne $legacyDatabaseHash -or
-    (Get-EkyFileSha256 -Path $workspacePdfPath) -ne $legacyPdfHash
+    (Get-W6bEvidenceFileSha256 -Path $workspaceDatabasePath) -ne `
+      $legacyDatabaseHash -or
+    (Get-W6bEvidenceFileSha256 -Path $workspacePdfPath) -ne $legacyPdfHash
   ) {
     throw 'W6B_LEGACY_ADOPTED_CONTENT_MISMATCH'
   }
@@ -275,9 +278,9 @@ try {
     -Root $userDataRoot | Where-Object {
       $_ -match '^workspace-registry-v1\.json\|'
     }
-  $workspaceDataAfterFirstStart = Get-EkyDirectoryInventory `
+  $workspaceDataAfterFirstStart = Get-W6bEvidenceDirectoryInventory `
     -Root $workspaceDataRoot
-  $workspaceStorageAfterFirstStart = Get-EkyDirectoryInventory `
+  $workspaceStorageAfterFirstStart = Get-W6bEvidenceDirectoryInventory `
     -Root $workspaceStorageRoot
   Complete-W6bLegacyStage
 
@@ -307,11 +310,11 @@ try {
     @($registryInventoryAfterFirstStart) `
     'W6B_LEGACY_REGISTRY_CHANGED_ON_SECOND_START'
   Assert-EkyInventoryEqual `
-    (Get-EkyDirectoryInventory -Root $workspaceDataRoot) `
+    (Get-W6bEvidenceDirectoryInventory -Root $workspaceDataRoot) `
     $workspaceDataAfterFirstStart `
     'W6B_LEGACY_WORKSPACE_DATA_CHANGED_ON_SECOND_START'
   Assert-EkyInventoryEqual `
-    (Get-EkyDirectoryInventory -Root $workspaceStorageRoot) `
+    (Get-W6bEvidenceDirectoryInventory -Root $workspaceStorageRoot) `
     $workspaceStorageAfterFirstStart `
     'W6B_LEGACY_WORKSPACE_STORAGE_CHANGED_ON_SECOND_START'
   Assert-EkyInventoryEqual `

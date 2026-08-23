@@ -293,6 +293,34 @@ test('classifies current and legacy accepted-build slots independently', {
   });
 });
 
+test('reads deep adopted workspace evidence with Windows long-path semantics', {
+  skip: process.platform !== 'win32',
+}, () => {
+  const result = spawnSync(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      resolve(scriptDirectory, 'w6bLegacy', 'longPathEvidence.test.ps1'),
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  );
+
+  assert.equal(result.status, 0, 'W6B_LONG_PATH_EVIDENCE_TEST_FAILED');
+  const lines = result.stdout
+    .split(/\r?\n/u)
+    .filter((line) => line.trim() !== '');
+  assert.equal(lines.length, 1);
+  assert.deepEqual(JSON.parse(lines[0]), {
+    longPathHashValidated: true,
+    longPathInventoryValidated: true,
+    status: 'succeeded',
+  });
+});
+
 test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () => {
   const sourceSmokeText = readFileSync(
     new URL('./w6bLegacy/sourceSmoke.ps1', import.meta.url),

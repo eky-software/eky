@@ -52,6 +52,77 @@ function Read-W6bAcceptedBuildFile {
   return $value
 }
 
+function ConvertTo-W6bExtendedLengthPath {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  $fullPath = [System.IO.Path]::GetFullPath($Path)
+  if (
+    $fullPath -cnotmatch '^[A-Za-z]:\\' -or
+    !$fullPath.Equals($Path, [System.StringComparison]::OrdinalIgnoreCase)
+  ) {
+    throw 'W6B_LEGACY_EVIDENCE_PATH_INVALID'
+  }
+  return "\\?\$fullPath"
+}
+
+function Get-W6bEvidenceDirectoryInventory {
+  param([Parameter(Mandatory = $true)][string]$Root)
+
+  $canonicalRoot = [System.IO.Path]::GetFullPath($Root).TrimEnd('\')
+  $extendedRoot = ConvertTo-W6bExtendedLengthPath -Path $canonicalRoot
+  if (!(Test-Path -LiteralPath $extendedRoot -PathType Container)) {
+    return ,@()
+  }
+  $rootItem = Get-Item -LiteralPath $extendedRoot -Force
+  if ($rootItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+    throw 'W6B_LEGACY_EVIDENCE_PATH_INVALID'
+  }
+
+  $directories = [System.Collections.Generic.Queue[object]]::new()
+  $directories.Enqueue($rootItem)
+  $inventory = @()
+  while ($directories.Count -gt 0) {
+    $directory = $directories.Dequeue()
+    foreach ($item in @(Get-ChildItem -LiteralPath $directory.FullName -Force)) {
+      if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+        throw 'W6B_LEGACY_EVIDENCE_PATH_INVALID'
+      }
+      if ($item.PSIsContainer) {
+        $directories.Enqueue($item)
+        continue
+      }
+      $canonicalFilePath = if ($item.FullName.StartsWith('\\?\')) {
+        $item.FullName.Substring(4)
+      }
+      else {
+        $item.FullName
+      }
+      if (
+        !$canonicalFilePath.StartsWith(
+          "$canonicalRoot\",
+          [System.StringComparison]::OrdinalIgnoreCase
+        )
+      ) {
+        throw 'W6B_LEGACY_EVIDENCE_PATH_INVALID'
+      }
+      $relativePath = $canonicalFilePath.Substring(
+        $canonicalRoot.Length
+      ).TrimStart('\')
+      $hash = Get-W6bEvidenceFileSha256 -Path $canonicalFilePath
+      $inventory += "$relativePath|$($item.Length)|$hash"
+    }
+  }
+  return ,@($inventory | Sort-Object)
+}
+
+function Get-W6bEvidenceFileSha256 {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  return Get-EkyFileSha256 -Path (
+    ConvertTo-W6bExtendedLengthPath -Path $Path
+  )
+}
+
 function Read-W6bAcceptedBuildSlot {
   param([Parameter(Mandatory = $true)][string]$Path)
 
