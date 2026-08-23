@@ -56,6 +56,26 @@ function Test-W6bPathContained {
   )
 }
 
+function Assert-W6bLegacyArtifactPathBudget {
+  param([Parameter(Mandatory = $true)][string]$SourceSmokeRoot)
+
+  $representativeCompanyDirectory =
+    "local-company-$('0' * 32)"
+  $representativeInvoiceDirectory =
+    '00000000-0000-4000-8000-000000000000'
+  $deepestExpectedPath = [System.IO.Path]::GetFullPath((Join-Path `
+    $SourceSmokeRoot (Join-Path `
+      'user-data\runtime\storage\invoices' (Join-Path `
+        $representativeCompanyDirectory (Join-Path `
+          $representativeInvoiceDirectory 'approved-invoice.pdf')))))
+
+  # Windows PowerShell 5.1 still uses legacy path handling in cmdlets used by
+  # this harness. Keep enough headroom for its directory enumeration.
+  if ($deepestExpectedPath.Length -gt 248) {
+    throw 'W6B_LEGACY_TEST_PATH_BUDGET_EXCEEDED'
+  }
+}
+
 function Get-W6bSafeFilesUnderRoot {
   param(
     [Parameter(Mandatory = $true)][string]$Root,

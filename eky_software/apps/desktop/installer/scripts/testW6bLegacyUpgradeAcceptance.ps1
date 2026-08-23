@@ -84,9 +84,10 @@ $sourceCode = $null
 $targetCode = $null
 $runningProcess = $null
 $businessInventoryBefore = $null
-$testRoot = Join-Path $env:TEMP "eky-w6b-legacy-$([guid]::NewGuid().ToString('N'))"
+$testRootToken = [guid]::NewGuid().ToString('N').Substring(0, 12)
+$testRoot = Join-Path $env:TEMP "w6-$testRootToken"
 $isolatedAppDataRoot = Join-Path $testRoot 'app-data-roaming'
-$sourceSmokeTempRoot = Join-Path $testRoot 'source-smoke-temp'
+$sourceSmokeTempRoot = Join-Path $testRoot 's'
 $sourceSmokeToken = [guid]::NewGuid().ToString('N')
 $sourceSmokeRoot = Join-Path `
   (Join-Path $sourceSmokeTempRoot 'eky-desktop-smoke') $sourceSmokeToken
@@ -104,6 +105,7 @@ $businessDataRoot = Join-Path $env:APPDATA 'Eky'
 . (Join-Path $PSScriptRoot 'w6bLegacy\gracefulApplicationShutdown.ps1')
 . (Join-Path $PSScriptRoot 'w6bLegacy\installerLifecycle.ps1')
 . (Join-Path $PSScriptRoot 'w6bLegacy\sourceSmoke.ps1')
+Assert-W6bLegacyArtifactPathBudget -SourceSmokeRoot $sourceSmokeRoot
 Start-W6bLegacyStage -Stage preflight
 try {
   if (
@@ -129,6 +131,9 @@ try {
   $targetCode = Normalize-W6bProductCode -Code $TargetProductCode
   if ($sourceCode -eq $targetCode) {
     throw 'W6B_LEGACY_PRODUCT_CODES_NOT_DISTINCT'
+  }
+  if (Test-Path -LiteralPath $testRoot) {
+    throw 'W6B_LEGACY_TEST_ROOT_COLLISION'
   }
   $installer = New-Object -ComObject WindowsInstaller.Installer
   Assert-W6bProductAbsent -ProductCode $sourceCode

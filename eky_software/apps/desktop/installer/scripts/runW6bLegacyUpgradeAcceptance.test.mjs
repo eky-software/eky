@@ -299,6 +299,16 @@ test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () 
   );
   assert.match(
     sourceText,
+    /\$testRootToken\s*=\s*\[guid\]::NewGuid\(\)\.ToString\('N'\)\.Substring\(0, 12\)/u,
+  );
+  assert.match(
+    sourceText,
+    /\$sourceSmokeTempRoot\s*=\s*Join-Path \$testRoot 's'/u,
+  );
+  assert.match(sourceText, /Assert-W6bLegacyArtifactPathBudget/u);
+  assert.match(sourceText, /W6B_LEGACY_TEST_PATH_BUDGET_EXCEEDED/u);
+  assert.match(
+    sourceText,
     /function Start-W6bEkyProcess[\s\S]*?EnvironmentOverrides/iu,
   );
   assert.match(
@@ -539,6 +549,7 @@ test('legacy source user data is deterministic and path safe', {
   assert.deepEqual(JSON.parse(lines[0]), {
     acceptedBuildLocations: 'currentAndLegacy',
     deterministicUserDataRoot: true,
+    legacyArtifactPathBudget: 'bounded',
     pathAliasesCanonicalized: true,
     reparsePointRejected: true,
     status: 'succeeded',

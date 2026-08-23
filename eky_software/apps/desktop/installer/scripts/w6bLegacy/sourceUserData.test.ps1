@@ -1,6 +1,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'sourceUserData.ps1')
+. (Join-Path $PSScriptRoot 'pathSafety.ps1')
 
 function Assert-EkyW6bEqual {
   param(
@@ -78,6 +79,16 @@ $userDataRoot = Join-Path `
 $outsideRoot = Join-Path $testRoot 'outside'
 
 try {
+  $boundedSmokeRoot = Join-Path `
+    (Join-Path ([IO.Path]::GetTempPath()) ('w6-' + ('a' * 12))) `
+    (Join-Path 's' (Join-Path 'eky-desktop-smoke' ('b' * 32)))
+  Assert-W6bLegacyArtifactPathBudget -SourceSmokeRoot $boundedSmokeRoot
+  Assert-EkyW6bThrows -ExpectedCode `
+    'W6B_LEGACY_TEST_PATH_BUDGET_EXCEEDED' -Action {
+      Assert-W6bLegacyArtifactPathBudget -SourceSmokeRoot `
+        (Join-Path ([IO.Path]::GetTempPath()) ('w6-' + ('c' * 180)))
+    }
+
   [IO.Directory]::CreateDirectory($userDataRoot) | Out-Null
   [IO.Directory]::CreateDirectory($outsideRoot) | Out-Null
   New-EkyW6bAcceptedBuild -UserDataRoot $userDataRoot -Location current |
@@ -232,6 +243,7 @@ try {
   [ordered]@{
     acceptedBuildLocations = 'currentAndLegacy'
     deterministicUserDataRoot = $true
+    legacyArtifactPathBudget = 'bounded'
     pathAliasesCanonicalized = $true
     reparsePointRejected = $true
     status = 'succeeded'
