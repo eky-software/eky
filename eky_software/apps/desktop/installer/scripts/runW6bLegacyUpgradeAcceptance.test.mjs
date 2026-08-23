@@ -315,6 +315,8 @@ test('reads deep adopted workspace evidence with Windows long-path semantics', {
     .filter((line) => line.trim() !== '');
   assert.equal(lines.length, 1);
   assert.deepEqual(JSON.parse(lines[0]), {
+    invalidCleanupRootRejected: true,
+    longPathCleanupValidated: true,
     longPathHashValidated: true,
     longPathInventoryValidated: true,
     registryEvidenceValidated: true,

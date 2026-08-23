@@ -4,7 +4,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'evidence.ps1')
 
 $root = Join-Path $env:TEMP (
-  'eky-w6b-long-path-' + [guid]::NewGuid().ToString('N').Substring(0, 12)
+  'w6-' + [guid]::NewGuid().ToString('N').Substring(0, 12)
 )
 $workspaceId = '00000000-0000-4000-8000-000000000000'
 $companyId = 'local-company-' + ('0' * 32)
@@ -23,6 +23,7 @@ $registryPath = Join-Path $userDataRoot 'workspace-registry-v1.json'
 $extendedFilePath = ConvertTo-W6bExtendedLengthPath -Path $filePath
 $extendedRegistryPath = ConvertTo-W6bExtendedLengthPath -Path $registryPath
 $extendedRoot = ConvertTo-W6bExtendedLengthPath -Path $root
+$result = $null
 
 try {
   if ($filePath.Length -le 260) {
@@ -71,15 +72,38 @@ try {
     throw 'W6B_LONG_PATH_REGISTRY_EVIDENCE_FAILED'
   }
 
-  [ordered]@{
+  $invalidCleanupRootRejected = $false
+  try {
+    Remove-W6bLegacyAcceptanceTestRoot -Root (
+      Join-Path $env:TEMP 'eky-w6b-invalid-cleanup-root'
+    )
+  }
+  catch {
+    if ($_.Exception.Message -cne 'W6B_LEGACY_TEST_ROOT_INVALID') {
+      throw
+    }
+    $invalidCleanupRootRejected = $true
+  }
+  if (!$invalidCleanupRootRejected) {
+    throw 'W6B_LONG_PATH_INVALID_CLEANUP_ROOT_NOT_REJECTED'
+  }
+
+  $result = [ordered]@{
     status = 'succeeded'
     longPathInventoryValidated = $true
     longPathHashValidated = $true
     registryEvidenceValidated = $true
-  } | ConvertTo-Json -Compress
+    invalidCleanupRootRejected = $true
+  }
 }
 finally {
   if ([System.IO.Directory]::Exists($extendedRoot)) {
-    [System.IO.Directory]::Delete($extendedRoot, $true)
+    Remove-W6bLegacyAcceptanceTestRoot -Root $root
   }
 }
+
+if ([System.IO.Directory]::Exists($extendedRoot)) {
+  throw 'W6B_LONG_PATH_CLEANUP_FAILED'
+}
+$result.longPathCleanupValidated = $true
+$result | ConvertTo-Json -Compress

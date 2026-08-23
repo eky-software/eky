@@ -393,7 +393,7 @@ finally {
     [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($installer)
   }
   if ($script:Completed -and !$script:CleanupFailure) {
-    Remove-Item -LiteralPath $testRoot -Force -Recurse
+    Remove-W6bLegacyAcceptanceTestRoot -Root $testRoot
   }
   if ($script:CleanupFailure) {
     $script:FailureCode = 'W6B_LEGACY_CLEANUP_FAILED'

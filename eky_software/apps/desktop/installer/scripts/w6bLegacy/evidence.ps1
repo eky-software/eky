@@ -65,6 +65,45 @@ function ConvertTo-W6bExtendedLengthPath {
   return "\\?\$fullPath"
 }
 
+function Remove-W6bLegacyAcceptanceTestRoot {
+  param([Parameter(Mandatory = $true)][string]$Root)
+
+  $canonicalTempRoot = [System.IO.Path]::GetFullPath(
+    [System.IO.Path]::GetTempPath()
+  ).TrimEnd('\')
+  $canonicalRoot = [System.IO.Path]::GetFullPath($Root).TrimEnd('\')
+  if (
+    ![System.IO.Path]::GetDirectoryName($canonicalRoot).Equals(
+      $canonicalTempRoot,
+      [System.StringComparison]::OrdinalIgnoreCase
+    ) -or
+    [System.IO.Path]::GetFileName($canonicalRoot) -cnotmatch `
+      '^w6-[0-9a-f]{12}$'
+  ) {
+    throw 'W6B_LEGACY_TEST_ROOT_INVALID'
+  }
+
+  $extendedRoot = ConvertTo-W6bExtendedLengthPath -Path $canonicalRoot
+  if (![System.IO.Directory]::Exists($extendedRoot)) {
+    return
+  }
+  $rootItem = Get-Item -LiteralPath $extendedRoot -Force
+  if (
+    !$rootItem.PSIsContainer -or
+    ($rootItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint)
+  ) {
+    throw 'W6B_LEGACY_TEST_ROOT_INVALID'
+  }
+
+  # Enumerating first keeps the recursive deletion fail closed on reparse
+  # points while retaining Windows extended-length path handling.
+  [void](Get-W6bEvidenceDirectoryInventory -Root $canonicalRoot)
+  [System.IO.Directory]::Delete($extendedRoot, $true)
+  if ([System.IO.Directory]::Exists($extendedRoot)) {
+    throw 'W6B_LEGACY_TEST_ROOT_CLEANUP_FAILED'
+  }
+}
+
 function Get-W6bEvidenceDirectoryInventory {
   param([Parameter(Mandatory = $true)][string]$Root)
 
