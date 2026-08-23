@@ -9,6 +9,10 @@ param(
   [Parameter(Mandatory = $true)][string]$SourceBuildRevision,
   [Parameter(Mandatory = $true)][string]$SourceRuntimeBuildRevision,
   [Parameter(Mandatory = $true)][string]$TargetBuildRevision,
+  [Parameter(Mandatory = $true)][string]$TargetMsiProductVersion,
+  [Parameter(Mandatory = $true)][string]$TargetPackageVersion,
+  [Parameter(Mandatory = $true)][string]$TargetReleaseChannel,
+  [Parameter(Mandatory = $true)][string]$TargetUpgradeCode,
   [Parameter(Mandatory = $true)][string]$SourcePackageSha256,
   [Parameter(Mandatory = $true)][string]$TargetPackageSha256,
   [Parameter(Mandatory = $true)]
@@ -78,6 +82,8 @@ $script:SourceUtilityObserved = $false
 $script:PreflightIsolationEstablished = $false
 $script:SourceCleanupAuthorized = $false
 $script:TargetCleanupAuthorized = $false
+$script:TargetCurrentAcceptedBuildClass = $null
+$script:TargetLegacyAcceptedBuildClass = $null
 
 $installer = $null
 $sourceCode = $null
@@ -115,6 +121,10 @@ try {
     $SourceRuntimeBuildRevision -cnotmatch '^[0-9a-f]{12}$' -or
     $SourceBuildRevision.Substring(0, 12) -cne $SourceRuntimeBuildRevision -or
     $TargetBuildRevision -cnotmatch '^[0-9a-f]{7,40}$' -or
+    $TargetMsiProductVersion -cne $TargetAppVersion -or
+    $TargetPackageVersion -cne $TargetAppVersion -or
+    $TargetReleaseChannel -cne 'pilot' -or
+    $TargetUpgradeCode -cne '302530B2-D950-41F5-8397-264B485FEE9A' -or
     $LineageProfileIdPattern -cne '^[0-9a-f]{64}$'
   ) {
     throw 'W6B_LEGACY_RELEASE_IDENTITY_INVALID'
@@ -182,8 +192,11 @@ try {
   Write-W6bLegacyReadinessObservation -Signal sourceUserDataReady
   $runningProcess = Start-W6bIsolatedEkyProcess
   Wait-W6bEkyAccepted -Process $runningProcess `
-    -ExpectedVersion $SourceAppVersion `
-    -ExpectedRevision $SourceRuntimeBuildRevision
+    -ExpectedIdentity source `
+    -SourceVersion $SourceAppVersion `
+    -SourceRevision $SourceRuntimeBuildRevision `
+    -TargetVersion $TargetAppVersion `
+    -TargetRevision $TargetBuildRevision
   Stop-W6bEkyGracefully -Process $runningProcess
   $runningProcess = $null
   Assert-W6bNoEkyProcesses
@@ -227,8 +240,11 @@ try {
   Start-W6bLegacyStage -Stage targetFirstStartup
   $runningProcess = Start-W6bIsolatedEkyProcess
   Wait-W6bEkyAccepted -Process $runningProcess `
-    -ExpectedVersion $TargetAppVersion `
-    -ExpectedRevision $TargetBuildRevision
+    -ExpectedIdentity target `
+    -SourceVersion $SourceAppVersion `
+    -SourceRevision $SourceRuntimeBuildRevision `
+    -TargetVersion $TargetAppVersion `
+    -TargetRevision $TargetBuildRevision
   $registry = Read-W6bWorkspaceRegistry
   Stop-W6bEkyGracefully -Process $runningProcess
   $runningProcess = $null
@@ -268,8 +284,11 @@ try {
   Start-W6bLegacyStage -Stage targetSecondStartup
   $runningProcess = Start-W6bIsolatedEkyProcess
   Wait-W6bEkyAccepted -Process $runningProcess `
-    -ExpectedVersion $TargetAppVersion `
-    -ExpectedRevision $TargetBuildRevision
+    -ExpectedIdentity target `
+    -SourceVersion $SourceAppVersion `
+    -SourceRevision $SourceRuntimeBuildRevision `
+    -TargetVersion $TargetAppVersion `
+    -TargetRevision $TargetBuildRevision
   $registryAfterSecondStart = Read-W6bWorkspaceRegistry
   Stop-W6bEkyGracefully -Process $runningProcess
   $runningProcess = $null
@@ -411,5 +430,8 @@ if ($null -ne $script:FailureCode) {
   adoptedWorkspaceCount = 1
   businessDataPreserved = $true
   idempotentSecondStartup = $true
+  targetCurrentAcceptedBuildClass = $script:TargetCurrentAcceptedBuildClass
+  targetLegacyAcceptedBuildClass = $script:TargetLegacyAcceptedBuildClass
+  targetPayloadBytesValidated = $true
   orphanProcessCount = 0
 } | ConvertTo-Json -Compress

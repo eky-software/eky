@@ -1,9 +1,12 @@
-import { createHash } from 'node:crypto';
-import { createReadStream } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { INSTALLER_UPGRADE_CODE } from '../installerIdentity.mjs';
+import {
+  createInstallerManifest,
+  verifyInstallerManifestPackage,
+} from '../installerManifest.mjs';
 import { buildWindowsInstaller } from './buildWindowsInstaller.mjs';
 import {
   W6B_SYNTHETIC_WINDOWS_PACKAGE_PATHS,
@@ -78,15 +81,30 @@ export async function buildW6bSyntheticNextPatchInstaller() {
   ) {
     throw new Error('W6B_SYNTHETIC_INSTALLER_IDENTITY_MISMATCH');
   }
+  const installerManifest = await createInstallerManifest({
+    buildRevision: packaged.buildInfo.buildRevision,
+    installerPath: installer.artifact,
+    release: installer.release,
+  });
+  await verifyInstallerManifestPackage({
+    expectedBuildRevision: packaged.buildInfo.buildRevision,
+    expectedRelease: installer.release,
+    installerPath: installer.artifact,
+    manifest: installerManifest,
+  });
 
   return Object.freeze({
     appVersion: targetRelease.appVersion,
     buildRevision: packaged.buildInfo.buildRevision,
+    installerManifest,
     installerPath: installer.artifact,
     msiProductVersion: targetRelease.msiProductVersion,
-    packageSha256: await hashFile(installer.artifact),
+    packageVersion: targetRelease.appVersion,
+    packageSha256: installerManifest.packageSha256,
     packagedApplicationPath: packaged.packagedPath,
     productCode: installer.productCode,
+    releaseChannel: targetRelease.releaseChannel,
+    upgradeCode: INSTALLER_UPGRADE_CODE,
   });
 }
 
@@ -101,22 +119,19 @@ export function assertW6bSyntheticPackagedIdentity({
     packaged.installerRelease?.appVersion !== targetRelease.appVersion ||
     packaged.installerRelease?.msiProductVersion !==
       targetRelease.msiProductVersion ||
+    packaged.installerRelease?.appIdentity !== targetRelease.appIdentity ||
+    packaged.installerRelease?.architecture !== targetRelease.architecture ||
+    packaged.installerRelease?.platform !== targetRelease.platform ||
+    packaged.installerRelease?.releaseChannel !== targetRelease.releaseChannel ||
     packaged.buildInfo?.appVersion !== targetRelease.appVersion ||
     packaged.buildInfo?.buildDirty !== false ||
     typeof packaged.buildInfo?.buildRevision !== 'string' ||
-    !/^[0-9a-f]{7,40}$/u.test(packaged.buildInfo.buildRevision)
+    !/^[0-9a-f]{7,40}$/u.test(packaged.buildInfo.buildRevision) ||
+    typeof packaged.manifestPath !== 'string' ||
+    packaged.manifestPath === ''
   ) {
     throw new Error('W6B_SYNTHETIC_PACKAGED_IDENTITY_INVALID');
   }
-}
-
-async function hashFile(path) {
-  const hash = createHash('sha256');
-  const stream = createReadStream(path);
-  for await (const chunk of stream) {
-    hash.update(chunk);
-  }
-  return hash.digest('hex');
 }
 
 if (

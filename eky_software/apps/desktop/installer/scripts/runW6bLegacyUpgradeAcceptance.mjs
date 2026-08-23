@@ -3,6 +3,7 @@ import { access } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { INSTALLER_UPGRADE_CODE } from '../installerIdentity.mjs';
 import { buildW6bSyntheticNextPatchInstaller } from './buildW6bSyntheticNextPatchInstaller.mjs';
 import {
   verifyExactLocalHistoricalWindowsInstallerFixture,
@@ -98,6 +99,14 @@ export function createW6bLegacyUpgradeAcceptanceArguments({ source, target }) {
     sourceRuntimeBuildRevision,
     '-TargetBuildRevision',
     target.buildRevision,
+    '-TargetMsiProductVersion',
+    target.msiProductVersion,
+    '-TargetPackageVersion',
+    target.packageVersion,
+    '-TargetReleaseChannel',
+    target.releaseChannel,
+    '-TargetUpgradeCode',
+    target.upgradeCode,
     '-SourcePackageSha256',
     source.packageSha256,
     '-TargetPackageSha256',
@@ -147,10 +156,19 @@ function validateTargetFixture(source, target) {
     !isRecord(target) ||
     target.appVersion !== nextPatch(source.appVersion) ||
     target.msiProductVersion !== target.appVersion ||
+    target.packageVersion !== target.appVersion ||
+    target.releaseChannel !== 'pilot' ||
+    target.upgradeCode !== INSTALLER_UPGRADE_CODE ||
     !packagedRevisionPattern.test(target.buildRevision) ||
     !isMsiPath(target.installerPath) ||
     !isAbsolute(target.packagedApplicationPath) ||
     !sha256Pattern.test(target.packageSha256) ||
+    !isRecord(target.installerManifest) ||
+    target.installerManifest.appVersion !== target.appVersion ||
+    target.installerManifest.buildRevision !== target.buildRevision ||
+    target.installerManifest.msiProductVersion !== target.msiProductVersion ||
+    target.installerManifest.packageSha256 !== target.packageSha256 ||
+    target.installerManifest.releaseChannel !== target.releaseChannel ||
     !productCodePattern.test(target.productCode) ||
     normalizeProductCode(target.productCode) ===
       normalizeProductCode(source.productCode)

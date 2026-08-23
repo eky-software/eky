@@ -52,19 +52,76 @@ function Read-W6bAcceptedBuildFile {
   return $value
 }
 
-function Read-W6bAcceptedBuild {
-  param([Parameter(Mandatory = $true)][string]$UserDataPath)
+function Read-W6bAcceptedBuildSlot {
+  param([Parameter(Mandatory = $true)][string]$Path)
 
-  $paths = @(
-    (Join-Path $UserDataPath 'update-state\accepted-build-v1.json'),
-    (Join-Path $UserDataPath 'runtime\update-state\accepted-build-v1.json')
-  )
-  foreach ($path in $paths) {
-    if (Test-Path -LiteralPath $path -PathType Leaf) {
-      return Read-W6bAcceptedBuildFile -Path $path
-    }
+  if (!(Test-Path -LiteralPath $Path -PathType Leaf)) {
+    return [pscustomobject]@{ State = 'missing'; Value = $null }
   }
-  return $null
+  try {
+    $value = Read-W6bAcceptedBuildFile -Path $Path
+  }
+  catch {
+    return [pscustomobject]@{ State = 'invalid'; Value = $null }
+  }
+  return [pscustomobject]@{ State = 'present'; Value = $value }
+}
+
+function Get-W6bAcceptedBuildIdentityClass {
+  param(
+    [Parameter(Mandatory = $true)]$Slot,
+    [Parameter(Mandatory = $true)][string]$SourceVersion,
+    [Parameter(Mandatory = $true)][string]$SourceRevision,
+    [Parameter(Mandatory = $true)][string]$TargetVersion,
+    [Parameter(Mandatory = $true)][string]$TargetRevision
+  )
+
+  if ($Slot.State -eq 'missing') { return 'missing' }
+  if ($Slot.State -eq 'invalid') { return 'invalid' }
+  if ($Slot.State -ne 'present' -or $null -eq $Slot.Value) {
+    return 'invalid'
+  }
+  if (
+    $Slot.Value.appVersion -ceq $SourceVersion -and
+    $Slot.Value.buildRevision -ceq $SourceRevision
+  ) {
+    return 'sourceIdentity'
+  }
+  if (
+    $Slot.Value.appVersion -ceq $TargetVersion -and
+    $Slot.Value.buildRevision -ceq $TargetRevision
+  ) {
+    return 'targetIdentity'
+  }
+  if ($Slot.Value.appVersion -ceq $TargetVersion) {
+    return 'targetVersionDifferentRevision'
+  }
+  return 'otherIdentity'
+}
+
+function Read-W6bAcceptedBuildIdentitySlots {
+  param(
+    [Parameter(Mandatory = $true)][string]$UserDataPath,
+    [Parameter(Mandatory = $true)][string]$SourceVersion,
+    [Parameter(Mandatory = $true)][string]$SourceRevision,
+    [Parameter(Mandatory = $true)][string]$TargetVersion,
+    [Parameter(Mandatory = $true)][string]$TargetRevision
+  )
+
+  $currentSlot = Read-W6bAcceptedBuildSlot -Path (
+    Join-Path $UserDataPath 'update-state\accepted-build-v1.json'
+  )
+  $legacySlot = Read-W6bAcceptedBuildSlot -Path (
+    Join-Path $UserDataPath 'runtime\update-state\accepted-build-v1.json'
+  )
+  return [pscustomobject]@{
+    Current = Get-W6bAcceptedBuildIdentityClass -Slot $currentSlot `
+      -SourceVersion $SourceVersion -SourceRevision $SourceRevision `
+      -TargetVersion $TargetVersion -TargetRevision $TargetRevision
+    Legacy = Get-W6bAcceptedBuildIdentityClass -Slot $legacySlot `
+      -SourceVersion $SourceVersion -SourceRevision $SourceRevision `
+      -TargetVersion $TargetVersion -TargetRevision $TargetRevision
+  }
 }
 
 function Find-W6bAuthoritativeInvoicePdf {

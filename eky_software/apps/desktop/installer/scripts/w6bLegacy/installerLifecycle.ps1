@@ -123,15 +123,19 @@ function Start-W6bIsolatedEkyProcess {
 function Wait-W6bEkyAccepted {
   param(
     [Parameter(Mandatory = $true)]$Process,
-    [Parameter(Mandatory = $true)][string]$ExpectedVersion,
-    [Parameter(Mandatory = $true)][string]$ExpectedRevision
+    [Parameter(Mandatory = $true)][ValidateSet('source', 'target')]
+    [string]$ExpectedIdentity,
+    [Parameter(Mandatory = $true)][string]$SourceVersion,
+    [Parameter(Mandatory = $true)][string]$SourceRevision,
+    [Parameter(Mandatory = $true)][string]$TargetVersion,
+    [Parameter(Mandatory = $true)][string]$TargetRevision
   )
 
   if ($null -eq $userDataRoot) {
     throw 'W6B_LEGACY_SOURCE_USER_DATA_INVALID'
   }
   $databasePath = Join-Path $userDataRoot 'runtime\data\eky.sqlite'
-  $accepted = $null
+  $acceptedSlots = $null
   $acceptedBuildObserved = $false
   $backendUtilityObserved = $false
   $databaseObserved = $false
@@ -154,8 +158,20 @@ function Wait-W6bEkyAccepted {
         Write-W6bLegacyReadinessObservation -Signal backendUtilityReady
       }
     }
-    $accepted = Read-W6bAcceptedBuild -UserDataPath $userDataRoot
-    if ($null -eq $accepted) {
+    $acceptedSlots = Read-W6bAcceptedBuildIdentitySlots `
+      -UserDataPath $userDataRoot `
+      -SourceVersion $SourceVersion -SourceRevision $SourceRevision `
+      -TargetVersion $TargetVersion -TargetRevision $TargetRevision
+    if (
+      $acceptedSlots.Current -eq 'invalid' -or
+      $acceptedSlots.Legacy -eq 'invalid'
+    ) {
+      throw 'W6B_LEGACY_ACCEPTED_BUILD_INVALID'
+    }
+    if (
+      $acceptedSlots.Current -eq 'missing' -and
+      $acceptedSlots.Legacy -eq 'missing'
+    ) {
       $readinessFailureCode = 'W6B_LEGACY_ACCEPTED_BUILD_MISSING'
       continue
     }
@@ -163,12 +179,41 @@ function Wait-W6bEkyAccepted {
       $acceptedBuildObserved = $true
       Write-W6bLegacyReadinessObservation -Signal acceptedBuildReady
     }
-    if (
-      $accepted.appVersion -ne $ExpectedVersion -or
-      $accepted.buildRevision -ne $ExpectedRevision
-    ) {
-      $readinessFailureCode = 'W6B_LEGACY_ACCEPTED_BUILD_IDENTITY_MISMATCH'
+    if ($ExpectedIdentity -eq 'source') {
+      $sourceClass = if ($acceptedSlots.Current -ne 'missing') {
+        $acceptedSlots.Current
+      }
+      else {
+        $acceptedSlots.Legacy
+      }
+      if ($sourceClass -ne 'sourceIdentity') {
+        $readinessFailureCode = 'W6B_LEGACY_ACCEPTED_BUILD_IDENTITY_MISMATCH'
+        continue
+      }
+    }
+    elseif ($acceptedSlots.Current -ne 'targetIdentity') {
+      $readinessFailureCode = if (
+        $acceptedSlots.Current -eq 'targetVersionDifferentRevision'
+      ) {
+        'W6B_LEGACY_TARGET_ACCEPTED_BUILD_REVISION_MISMATCH'
+      }
+      else {
+        'W6B_LEGACY_ACCEPTED_BUILD_IDENTITY_MISMATCH'
+      }
       continue
+    }
+    elseif (
+      $acceptedSlots.Legacy -notin @('missing', 'sourceIdentity')
+    ) {
+      $readinessFailureCode = 'W6B_LEGACY_ACCEPTED_BUILD_DUPLICATE_INVALID'
+      continue
+    }
+    if (
+      $ExpectedIdentity -eq 'target' -and
+      $acceptedSlots.Current -eq 'targetIdentity'
+    ) {
+      $script:TargetCurrentAcceptedBuildClass = $acceptedSlots.Current
+      $script:TargetLegacyAcceptedBuildClass = $acceptedSlots.Legacy
     }
     if (!$backendUtilityObserved) {
       $readinessFailureCode = 'W6B_LEGACY_BACKEND_UTILITY_MISSING'
@@ -189,7 +234,7 @@ function Wait-W6bEkyAccepted {
     throw 'W6B_LEGACY_DATABASE_MISSING_AT_STARTUP'
   }
   if (
-    $null -ne $accepted -and
+    $null -ne $acceptedSlots -and
     $readinessFailureCode -eq 'W6B_LEGACY_ACCEPTED_BUILD_IDENTITY_MISMATCH'
   ) {
     throw $readinessFailureCode

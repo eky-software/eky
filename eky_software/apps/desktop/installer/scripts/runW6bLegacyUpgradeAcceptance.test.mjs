@@ -23,11 +23,21 @@ const source = Object.freeze({
 const target = Object.freeze({
   appVersion: '0.2.7',
   buildRevision: '2349f4673ff5',
+  installerManifest: Object.freeze({
+    appVersion: '0.2.7',
+    buildRevision: '2349f4673ff5',
+    msiProductVersion: '0.2.7',
+    packageSha256: 'b'.repeat(64),
+    releaseChannel: 'pilot',
+  }),
   installerPath: resolve('synthetic-target.msi'),
   msiProductVersion: '0.2.7',
+  packageVersion: '0.2.7',
   packageSha256: 'b'.repeat(64),
   packagedApplicationPath: resolve('synthetic-target-payload'),
   productCode: 'F7DB5A4D-B704-59D8-A463-3D56CD04DA8F',
+  releaseChannel: 'pilot',
+  upgradeCode: '302530B2-D950-41F5-8397-264B485FEE9A',
 });
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const processChainTestCases = Object.freeze([
@@ -226,6 +236,10 @@ test('passes only the closed identity and filesystem arguments to PowerShell', (
   assert.equal(arguments_.includes(source.buildRevision.slice(0, 12)), true);
   assert.equal(arguments_.includes('-TargetPackageSha256'), true);
   assert.equal(arguments_.includes(target.packageSha256), true);
+  assert.equal(arguments_.includes('-TargetMsiProductVersion'), true);
+  assert.equal(arguments_.includes('-TargetPackageVersion'), true);
+  assert.equal(arguments_.includes('-TargetReleaseChannel'), true);
+  assert.equal(arguments_.includes('-TargetUpgradeCode'), true);
   assert.equal(arguments_.includes('-LineageProfileIdPattern'), true);
   assert.equal(arguments_.includes(w6bLineageProfileIdPattern), true);
   assert.equal(arguments_.includes('--user-data-dir'), false);
@@ -250,6 +264,35 @@ test('accepts only a lowercase 64-hex lineage profile id', () => {
   assert.equal(isW6bLineageProfileId('a'.repeat(65)), false);
 });
 
+test('classifies current and legacy accepted-build slots independently', {
+  skip: process.platform !== 'win32',
+}, () => {
+  const result = spawnSync(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      resolve(scriptDirectory, 'w6bLegacy', 'acceptedBuildEvidence.test.ps1'),
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  );
+
+  assert.equal(result.status, 0, 'W6B_ACCEPTED_BUILD_EVIDENCE_TEST_FAILED');
+  const lines = result.stdout
+    .split(/\r?\n/u)
+    .filter((line) => line.trim() !== '');
+  assert.equal(lines.length, 1);
+  assert.deepEqual(JSON.parse(lines[0]), {
+    currentAndLegacyClassifiedSeparately: true,
+    invalidMetadataRejected: true,
+    status: 'succeeded',
+    targetRevisionMismatchDistinguished: true,
+  });
+});
+
 test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () => {
   const sourceSmokeText = readFileSync(
     new URL('./w6bLegacy/sourceSmoke.ps1', import.meta.url),
@@ -272,6 +315,8 @@ test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () 
   assert.match(sourceText, /--user-data-dir/iu);
   assert.match(sourceText, /function Start-W6bIsolatedEkyProcess/iu);
   assert.match(sourceText, /function Wait-W6bEkyAccepted/iu);
+  assert.match(sourceText, /Read-W6bAcceptedBuildIdentitySlots/iu);
+  assert.doesNotMatch(sourceText, /function Read-W6bAcceptedBuild\s*\{/iu);
   assert.match(sourceText, /function Wait-W6bOwnedApplicationWindow/iu);
   assert.match(
     sourceText,
@@ -324,6 +369,10 @@ test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () 
   );
   assert.match(sourceText, /W6B_LEGACY_ACCEPTED_BUILD_MISSING/iu);
   assert.match(sourceText, /W6B_LEGACY_ACCEPTED_BUILD_IDENTITY_MISMATCH/iu);
+  assert.match(
+    sourceText,
+    /W6B_LEGACY_TARGET_ACCEPTED_BUILD_REVISION_MISMATCH/iu,
+  );
   assert.match(
     sourceText,
     /\$SourceBuildRevision\.Substring\(0, 12\) -cne \$SourceRuntimeBuildRevision/iu,
