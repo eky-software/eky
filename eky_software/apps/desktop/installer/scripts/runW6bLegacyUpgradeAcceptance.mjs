@@ -27,6 +27,7 @@ const packagedRevisionPattern = /^[0-9a-f]{7,40}$/u;
 const productCodePattern =
   /^\{?[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}?$/u;
 const sha256Pattern = /^[0-9a-f]{64}$/u;
+const historicalRuntimeRevisionLength = 12;
 export const w6bLineageProfileIdPattern = '^[0-9a-f]{64}$';
 
 export function isW6bLineageProfileId(value) {
@@ -65,6 +66,10 @@ export async function runW6bLegacyUpgradeAcceptance(dependencies = {}) {
 export function createW6bLegacyUpgradeAcceptanceArguments({ source, target }) {
   validateSourceFixture(source);
   validateTargetFixture(source, target);
+  const sourceRuntimeBuildRevision = source.buildRevision.slice(
+    0,
+    historicalRuntimeRevisionLength,
+  );
   return Object.freeze([
     '-NoLogo',
     '-NoProfile',
@@ -89,6 +94,8 @@ export function createW6bLegacyUpgradeAcceptanceArguments({ source, target }) {
     target.appVersion,
     '-SourceBuildRevision',
     source.buildRevision,
+    '-SourceRuntimeBuildRevision',
+    sourceRuntimeBuildRevision,
     '-TargetBuildRevision',
     target.buildRevision,
     '-SourcePackageSha256',

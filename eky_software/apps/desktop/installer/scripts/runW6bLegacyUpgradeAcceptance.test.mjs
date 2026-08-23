@@ -222,6 +222,8 @@ test('passes only the closed identity and filesystem arguments to PowerShell', (
   assert.equal(arguments_.includes('-TargetPayloadRoot'), true);
   assert.equal(arguments_.includes('-SourcePackageSha256'), true);
   assert.equal(arguments_.includes(source.packageSha256), true);
+  assert.equal(arguments_.includes('-SourceRuntimeBuildRevision'), true);
+  assert.equal(arguments_.includes(source.buildRevision.slice(0, 12)), true);
   assert.equal(arguments_.includes('-TargetPackageSha256'), true);
   assert.equal(arguments_.includes(target.packageSha256), true);
   assert.equal(arguments_.includes('-LineageProfileIdPattern'), true);
@@ -312,6 +314,14 @@ test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () 
   );
   assert.match(sourceText, /W6B_LEGACY_ACCEPTED_BUILD_MISSING/iu);
   assert.match(sourceText, /W6B_LEGACY_ACCEPTED_BUILD_IDENTITY_MISMATCH/iu);
+  assert.match(
+    sourceText,
+    /\$SourceBuildRevision\.Substring\(0, 12\) -cne \$SourceRuntimeBuildRevision/iu,
+  );
+  assert.match(
+    sourceText,
+    /-ExpectedRevision \$SourceRuntimeBuildRevision/iu,
+  );
   assert.match(sourceText, /W6B_LEGACY_BACKEND_UTILITY_MISSING/iu);
   assert.match(sourceText, /W6B_LEGACY_DATABASE_MISSING_AT_STARTUP/iu);
   assert.match(sourceText, /'backendHealthReady'/u);

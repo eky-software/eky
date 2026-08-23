@@ -7,6 +7,7 @@ param(
   [Parameter(Mandatory = $true)][string]$SourceAppVersion,
   [Parameter(Mandatory = $true)][string]$TargetAppVersion,
   [Parameter(Mandatory = $true)][string]$SourceBuildRevision,
+  [Parameter(Mandatory = $true)][string]$SourceRuntimeBuildRevision,
   [Parameter(Mandatory = $true)][string]$TargetBuildRevision,
   [Parameter(Mandatory = $true)][string]$SourcePackageSha256,
   [Parameter(Mandatory = $true)][string]$TargetPackageSha256,
@@ -109,6 +110,8 @@ try {
     $SourceAppVersion -ne '0.2.6' -or
     $TargetAppVersion -ne '0.2.7' -or
     $SourceBuildRevision -cnotmatch '^[0-9a-f]{40}$' -or
+    $SourceRuntimeBuildRevision -cnotmatch '^[0-9a-f]{12}$' -or
+    $SourceBuildRevision.Substring(0, 12) -cne $SourceRuntimeBuildRevision -or
     $TargetBuildRevision -cnotmatch '^[0-9a-f]{7,40}$' -or
     $LineageProfileIdPattern -cne '^[0-9a-f]{64}$'
   ) {
@@ -165,7 +168,7 @@ try {
     -SourceSmokeTempRoot $sourceSmokeTempRoot `
     -SourceSmokeToken $sourceSmokeToken `
     -ExpectedVersion $SourceAppVersion `
-    -ExpectedRevision $SourceBuildRevision `
+    -ExpectedRevision $SourceRuntimeBuildRevision `
     -ReadAcceptedBuild {
       param([string]$Path)
       Read-W6bAcceptedBuildFile -Path $Path
@@ -175,7 +178,7 @@ try {
   $runningProcess = Start-W6bIsolatedEkyProcess
   Wait-W6bEkyAccepted -Process $runningProcess `
     -ExpectedVersion $SourceAppVersion `
-    -ExpectedRevision $SourceBuildRevision
+    -ExpectedRevision $SourceRuntimeBuildRevision
   Stop-W6bEkyGracefully -Process $runningProcess
   $runningProcess = $null
   Assert-W6bNoEkyProcesses
