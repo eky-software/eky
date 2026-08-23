@@ -273,6 +273,26 @@ test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () 
   assert.match(sourceText, /function Wait-W6bOwnedApplicationWindow/iu);
   assert.match(
     sourceText,
+    /\$script:PreflightIsolationEstablished\s*=\s*\$false/iu,
+  );
+  assert.match(
+    sourceText,
+    /Assert-EkyInstallerRegistrationAbsent[\s\S]*?\$script:PreflightIsolationEstablished\s*=\s*\$true/iu,
+  );
+  assert.match(
+    sourceText,
+    /Start-W6bLegacyStage -Stage sourceInstall\s+\$script:SourceCleanupAuthorized\s*=\s*\$true\s+Install-W6bPackage/iu,
+  );
+  assert.match(
+    sourceText,
+    /Start-W6bLegacyStage -Stage targetInstall\s+\$script:TargetCleanupAuthorized\s*=\s*\$true\s+Install-W6bPackage/iu,
+  );
+  assert.match(
+    sourceText,
+    /\$cleanupProducts = if \(\$script:PreflightIsolationEstablished\)[\s\S]*?if \(\$script:TargetCleanupAuthorized\)[\s\S]*?if \(\$script:SourceCleanupAuthorized\)/iu,
+  );
+  assert.match(
+    sourceText,
     /\$isolatedAppDataRoot\s*=\s*Join-Path \$testRoot 'app-data-roaming'/iu,
   );
   assert.match(

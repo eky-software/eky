@@ -74,6 +74,9 @@ $script:SourceBackendHealthObserved = $false
 $script:SourceBusinessFixtureObserved = $false
 $script:SourceRuntimeSessionObserved = $false
 $script:SourceUtilityObserved = $false
+$script:PreflightIsolationEstablished = $false
+$script:SourceCleanupAuthorized = $false
+$script:TargetCleanupAuthorized = $false
 
 $installer = $null
 $sourceCode = $null
@@ -138,6 +141,7 @@ try {
     $sourceCode,
     $targetCode
   )
+  $script:PreflightIsolationEstablished = $true
   New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
   New-Item -ItemType Directory -Path $isolatedAppDataRoot -Force | Out-Null
   $businessInventoryBefore = Get-EkyDirectoryInventory -Root $businessDataRoot
@@ -148,6 +152,7 @@ try {
   Complete-W6bLegacyStage
 
   Start-W6bLegacyStage -Stage sourceInstall
+  $script:SourceCleanupAuthorized = $true
   Install-W6bPackage -MsiPath $sourceMsi -LogName 'source-install.log'
   Assert-W6bProductInstalled -ProductCode $sourceCode
   Assert-W6bProductAbsent -ProductCode $targetCode
@@ -202,6 +207,7 @@ try {
   Complete-W6bLegacyStage
 
   Start-W6bLegacyStage -Stage targetInstall
+  $script:TargetCleanupAuthorized = $true
   Install-W6bPackage -MsiPath $targetMsi -LogName 'target-upgrade.log'
   Assert-W6bProductAbsent -ProductCode $sourceCode
   Assert-W6bProductInstalled -ProductCode $targetCode
@@ -311,7 +317,16 @@ finally {
       $script:CleanupFailure = $true
     }
   }
-  foreach ($productCode in @($targetCode, $sourceCode)) {
+  $cleanupProducts = if ($script:PreflightIsolationEstablished) {
+    @(
+      if ($script:TargetCleanupAuthorized) { $targetCode }
+      if ($script:SourceCleanupAuthorized) { $sourceCode }
+    )
+  }
+  else {
+    @()
+  }
+  foreach ($productCode in $cleanupProducts) {
     if (
       $null -ne $installer -and
       $null -ne $productCode -and
@@ -327,15 +342,17 @@ finally {
     }
   }
   try {
-    Assert-EkyPathEventuallyAbsent -Path $installRoot `
-      -Code 'W6B_LEGACY_INSTALL_ROOT_REMAINS'
-    Assert-EkyPathEventuallyAbsent -Path $shortcutPath `
-      -Code 'W6B_LEGACY_SHORTCUT_REMAINS'
-    Assert-W6bNoEkyProcesses
-    if ($null -ne $installer) {
-      Assert-EkyInstallerRegistrationAbsent -ProductCodes @(
-        @($sourceCode, $targetCode) | Where-Object { $null -ne $_ }
-      )
+    if ($script:PreflightIsolationEstablished) {
+      Assert-EkyPathEventuallyAbsent -Path $installRoot `
+        -Code 'W6B_LEGACY_INSTALL_ROOT_REMAINS'
+      Assert-EkyPathEventuallyAbsent -Path $shortcutPath `
+        -Code 'W6B_LEGACY_SHORTCUT_REMAINS'
+      Assert-W6bNoEkyProcesses
+      if ($null -ne $installer) {
+        Assert-EkyInstallerRegistrationAbsent -ProductCodes @(
+          @($sourceCode, $targetCode) | Where-Object { $null -ne $_ }
+        )
+      }
     }
     if ($null -ne $businessInventoryBefore) {
       Assert-EkyInventoryEqual `
