@@ -274,10 +274,8 @@ try {
   ) {
     throw 'W6B_LEGACY_ADOPTED_CONTENT_MISMATCH'
   }
-  $registryInventoryAfterFirstStart = Get-EkyDirectoryInventory `
-    -Root $userDataRoot | Where-Object {
-      $_ -match '^workspace-registry-v1\.json\|'
-    }
+  $registryInventoryAfterFirstStart = Get-W6bWorkspaceRegistryInventory `
+    -UserDataRoot $userDataRoot
   $workspaceDataAfterFirstStart = Get-W6bEvidenceDirectoryInventory `
     -Root $workspaceDataRoot
   $workspaceStorageAfterFirstStart = Get-W6bEvidenceDirectoryInventory `
@@ -304,9 +302,7 @@ try {
     throw 'W6B_LEGACY_ADOPTION_NOT_IDEMPOTENT'
   }
   Assert-EkyInventoryEqual `
-    @(Get-EkyDirectoryInventory -Root $userDataRoot | Where-Object {
-      $_ -match '^workspace-registry-v1\.json\|'
-    }) `
+    (Get-W6bWorkspaceRegistryInventory -UserDataRoot $userDataRoot) `
     @($registryInventoryAfterFirstStart) `
     'W6B_LEGACY_REGISTRY_CHANGED_ON_SECOND_START'
   Assert-EkyInventoryEqual `

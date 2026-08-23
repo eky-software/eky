@@ -19,7 +19,9 @@ $relativePath = Join-Path 'invoices' (
   Join-Path $companyId (Join-Path $invoiceId 'approved-invoice.pdf')
 )
 $filePath = Join-Path $storageRoot $relativePath
+$registryPath = Join-Path $userDataRoot 'workspace-registry-v1.json'
 $extendedFilePath = ConvertTo-W6bExtendedLengthPath -Path $filePath
+$extendedRegistryPath = ConvertTo-W6bExtendedLengthPath -Path $registryPath
 $extendedRoot = ConvertTo-W6bExtendedLengthPath -Path $root
 
 try {
@@ -32,6 +34,11 @@ try {
   [System.IO.File]::WriteAllText(
     $extendedFilePath,
     '%PDF-synthetic-long-path',
+    (New-Object System.Text.UTF8Encoding($false))
+  )
+  [System.IO.File]::WriteAllText(
+    $extendedRegistryPath,
+    '{"formatVersion":1}',
     (New-Object System.Text.UTF8Encoding($false))
   )
 
@@ -51,11 +58,24 @@ try {
   if ($hash -cnotmatch '^[0-9A-F]{64}$') {
     throw 'W6B_LONG_PATH_HASH_FAILED'
   }
+  $registryInventory = @(
+    Get-W6bWorkspaceRegistryInventory -UserDataRoot $userDataRoot
+  )
+  if (
+    $registryInventory.Count -ne 1 -or
+    !$registryInventory[0].StartsWith(
+      'workspace-registry-v1.json|',
+      [System.StringComparison]::Ordinal
+    )
+  ) {
+    throw 'W6B_LONG_PATH_REGISTRY_EVIDENCE_FAILED'
+  }
 
   [ordered]@{
     status = 'succeeded'
     longPathInventoryValidated = $true
     longPathHashValidated = $true
+    registryEvidenceValidated = $true
   } | ConvertTo-Json -Compress
 }
 finally {

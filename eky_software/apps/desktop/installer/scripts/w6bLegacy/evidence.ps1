@@ -123,6 +123,28 @@ function Get-W6bEvidenceFileSha256 {
   )
 }
 
+function Get-W6bWorkspaceRegistryInventory {
+  param([Parameter(Mandatory = $true)][string]$UserDataRoot)
+
+  $canonicalRoot = [System.IO.Path]::GetFullPath($UserDataRoot).TrimEnd('\')
+  $registryPath = Join-Path $canonicalRoot 'workspace-registry-v1.json'
+  $extendedRegistryPath = ConvertTo-W6bExtendedLengthPath -Path $registryPath
+  if (!(Test-Path -LiteralPath $extendedRegistryPath -PathType Leaf)) {
+    throw 'W6B_LEGACY_WORKSPACE_REGISTRY_MISSING'
+  }
+  $metadata = Get-Item -LiteralPath $extendedRegistryPath -Force
+  if (
+    $metadata.PSIsContainer -or
+    ($metadata.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -or
+    $metadata.Length -lt 1 -or
+    $metadata.Length -gt 1048576
+  ) {
+    throw 'W6B_LEGACY_WORKSPACE_REGISTRY_INVALID'
+  }
+  $hash = Get-W6bEvidenceFileSha256 -Path $registryPath
+  return ,@("workspace-registry-v1.json|$($metadata.Length)|$hash")
+}
+
 function Read-W6bAcceptedBuildSlot {
   param([Parameter(Mandatory = $true)][string]$Path)
 

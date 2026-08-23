@@ -317,6 +317,7 @@ test('reads deep adopted workspace evidence with Windows long-path semantics', {
   assert.deepEqual(JSON.parse(lines[0]), {
     longPathHashValidated: true,
     longPathInventoryValidated: true,
+    registryEvidenceValidated: true,
     status: 'succeeded',
   });
 });
