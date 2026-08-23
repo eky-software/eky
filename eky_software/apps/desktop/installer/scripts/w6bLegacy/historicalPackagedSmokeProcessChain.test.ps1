@@ -163,75 +163,112 @@ function Invoke-EkyHistoricalObserverOutputContract {
   $script:ObserverResultOutputCount = $ResultOutputCount
   $script:ObserverProcessOutputWritten = $false
   $script:ObserverResultOutputWritten = $false
+  $script:ObserverContractReleaseEvent = $null
   $script:AllowedStages = @('sourceStartup')
   $script:CurrentStage = 'sourceStartup'
   $script:ScenarioStartedAt = [DateTime]::UtcNow
   $script:StageStartedAt = $script:ScenarioStartedAt
-  $output = @(
-    Invoke-HistoricalPackagedSmokeProcessChain `
-      -ExpectedExecutablePath (Join-Path $PSHOME 'powershell.exe') `
-      -StartPhase {
-        param([string]$Phase)
-        $script:ObserverContractPhase = $Phase
-        Start-Process powershell.exe -ArgumentList @(
-          '-NoProfile',
-          '-NonInteractive',
-          '-Command',
-          'Start-Sleep -Milliseconds 400'
-        ) -WindowStyle Hidden -PassThru
-      } `
-      -ReadResult {
-        if ($script:ObserverContractPhase -ceq 'initial') {
+  $output = $null
+  try {
+    $output = @(
+      Invoke-HistoricalPackagedSmokeProcessChain `
+        -ExpectedExecutablePath (Join-Path $PSHOME 'powershell.exe') `
+        -StartPhase {
+          param([string]$Phase)
+          if ($null -ne $script:ObserverContractReleaseEvent) {
+            $script:ObserverContractReleaseEvent.Dispose()
+          }
+          $script:ObserverContractPhase = $Phase
+          $eventName = 'Local\EkyW6bObserver-' + `
+            [Guid]::NewGuid().ToString('N')
+          $script:ObserverContractReleaseEvent = `
+            [Threading.EventWaitHandle]::new(
+              $false,
+              [Threading.EventResetMode]::ManualReset,
+              $eventName
+            )
+          $waitCommand = ConvertTo-EkyHistoricalEncodedCommand -Command @"
+`$releaseEvent = [Threading.EventWaitHandle]::OpenExisting('$eventName')
+try {
+  `$releaseEvent.WaitOne() | Out-Null
+}
+finally {
+  `$releaseEvent.Dispose()
+}
+"@
+          Start-Process powershell.exe -ArgumentList @(
+            '-NoProfile',
+            '-NonInteractive',
+            '-EncodedCommand',
+            $waitCommand
+          ) -WindowStyle Hidden -PassThru
+        } `
+        -ReadResult {
+          $script:ObserverContractReleaseEvent.Set() | Out-Null
+          if ($script:ObserverContractPhase -ceq 'initial') {
+            return [pscustomobject]@{
+              stage = 'restoreRestart'
+              status = 'started'
+            }
+          }
           return [pscustomobject]@{
-            stage = 'restoreRestart'
-            status = 'started'
+            electronVersion = '43.2.0'
+            stage = 'shutdown'
+            status = 'ok'
           }
-        }
-        return [pscustomobject]@{
-          electronVersion = '43.2.0'
-          stage = 'shutdown'
-          status = 'ok'
-        }
-      } `
-      -ObserveResult {
-        param($Result)
-        if (!$script:ObserverResultOutputWritten) {
-          $script:ObserverResultOutputWritten = $true
-          for (
-            $index = 0
-            $index -lt $script:ObserverResultOutputCount
-            $index += 1
+        } `
+        -ObserveResult {
+          param($Result)
+          if (!$script:ObserverResultOutputWritten) {
+            $script:ObserverResultOutputWritten = $true
+            for (
+              $index = 0
+              $index -lt $script:ObserverResultOutputCount
+              $index += 1
+            ) {
+              Write-W6bLegacyReadinessObservation -Signal backendHealthReady
+            }
+          }
+        } `
+        -ObserveProcess {
+          param($Process)
+          if (!$script:ObserverProcessOutputWritten) {
+            $script:ObserverProcessOutputWritten = $true
+            for (
+              $index = 0
+              $index -lt $script:ObserverProcessOutputCount
+              $index += 1
+            ) {
+              Write-W6bLegacyReadinessObservation -Signal backendUtilityReady
+            }
+          }
+        } `
+        -ValidateResult {
+          param(
+            $Process,
+            $Result,
+            [string]$ExpectedStage,
+            [string]$ExpectedStatus
+          )
+          if (
+            $Process.ExitCode -ne 0 -or
+            $Result.stage -cne $ExpectedStage -or
+            $Result.status -cne $ExpectedStatus
           ) {
-            Write-W6bLegacyReadinessObservation -Signal backendHealthReady
+            throw 'W6B_LEGACY_SOURCE_SMOKE_FAILED'
           }
-        }
-      } `
-      -ObserveProcess {
-        param($Process)
-        if (!$script:ObserverProcessOutputWritten) {
-          $script:ObserverProcessOutputWritten = $true
-          for (
-            $index = 0
-            $index -lt $script:ObserverProcessOutputCount
-            $index += 1
-          ) {
-            Write-W6bLegacyReadinessObservation -Signal backendUtilityReady
-          }
-        }
-      } `
-      -ValidateResult {
-        param($Process, $Result, [string]$ExpectedStage, [string]$ExpectedStatus)
-        if (
-          $Process.ExitCode -ne 0 -or
-          $Result.stage -cne $ExpectedStage -or
-          $Result.status -cne $ExpectedStatus
-        ) {
-          throw 'W6B_LEGACY_SOURCE_SMOKE_FAILED'
-        }
-      } `
-      -TimeoutMilliseconds 3000 `
-      -PollMilliseconds 25
-  )
+        } `
+        -TimeoutMilliseconds 3000 `
+        -PollMilliseconds 25
+    )
+  }
+  finally {
+    if ($null -ne $script:ObserverContractReleaseEvent) {
+      $script:ObserverContractReleaseEvent.Set() | Out-Null
+      $script:ObserverContractReleaseEvent.Dispose()
+      $script:ObserverContractReleaseEvent = $null
+    }
+  }
   if (
     $output.Count -ne 1 -or
     $output[0] -isnot [pscustomobject] -or
@@ -255,7 +292,7 @@ function Assert-EkyHistoricalObserverFailurePreserved {
           '-NoProfile',
           '-NonInteractive',
           '-Command',
-          'Start-Sleep -Milliseconds 400'
+          '[Threading.Thread]::Sleep([Threading.Timeout]::Infinite)'
         ) -WindowStyle Hidden -PassThru
       } `
       -ReadResult {
