@@ -115,7 +115,7 @@ function Get-W6bSafeFilesUnderRoot {
       }
     }
   }
-  return ,@($files)
+  return @($files)
 }
 
 function Get-W6bRelativeContainedPath {

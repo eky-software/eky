@@ -552,6 +552,7 @@ test('legacy source user data is deterministic and path safe', {
     legacyArtifactPathBudget: 'bounded',
     pathAliasesCanonicalized: true,
     reparsePointRejected: true,
+    safeFileEnumeration: 'flat',
     status: 'succeeded',
   });
 });

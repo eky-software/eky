@@ -79,6 +79,49 @@ $userDataRoot = Join-Path `
 $outsideRoot = Join-Path $testRoot 'outside'
 
 try {
+  $enumerationRoot = Join-Path $testRoot 'safe-file-enumeration'
+  $firstEnumerationDirectory = Join-Path $enumerationRoot 'first'
+  $secondEnumerationDirectory = Join-Path $enumerationRoot 'second'
+  [IO.Directory]::CreateDirectory($firstEnumerationDirectory) | Out-Null
+  [IO.Directory]::CreateDirectory($secondEnumerationDirectory) | Out-Null
+  [IO.File]::WriteAllText(
+    (Join-Path $firstEnumerationDirectory 'approved-invoice.pdf'),
+    '%PDF-first'
+  )
+  $singleEnumeratedFile = @(
+    Get-W6bSafeFilesUnderRoot -Root $enumerationRoot `
+      -FileName 'approved-invoice.pdf'
+  )
+  Assert-EkyW6bEqual -Actual $singleEnumeratedFile.Count -Expected 1 `
+    -Code 'W6B_SAFE_FILE_SINGLE_COUNT_INVALID'
+  Assert-EkyW6bEqual `
+    -Actual $singleEnumeratedFile[0].GetType().FullName `
+    -Expected 'System.IO.FileInfo' `
+    -Code 'W6B_SAFE_FILE_SINGLE_TYPE_INVALID'
+
+  $missingEnumeratedFile = @(
+    Get-W6bSafeFilesUnderRoot -Root $enumerationRoot `
+      -FileName 'missing.pdf'
+  )
+  Assert-EkyW6bEqual -Actual $missingEnumeratedFile.Count -Expected 0 `
+    -Code 'W6B_SAFE_FILE_EMPTY_COUNT_INVALID'
+
+  [IO.File]::WriteAllText(
+    (Join-Path $secondEnumerationDirectory 'approved-invoice.pdf'),
+    '%PDF-second'
+  )
+  $multipleEnumeratedFiles = @(
+    Get-W6bSafeFilesUnderRoot -Root $enumerationRoot `
+      -FileName 'approved-invoice.pdf'
+  )
+  Assert-EkyW6bEqual -Actual $multipleEnumeratedFiles.Count -Expected 2 `
+    -Code 'W6B_SAFE_FILE_MULTIPLE_COUNT_INVALID'
+  foreach ($enumeratedFile in $multipleEnumeratedFiles) {
+    Assert-EkyW6bEqual -Actual $enumeratedFile.GetType().FullName `
+      -Expected 'System.IO.FileInfo' `
+      -Code 'W6B_SAFE_FILE_MULTIPLE_TYPE_INVALID'
+  }
+
   $boundedSmokeRoot = Join-Path `
     (Join-Path ([IO.Path]::GetTempPath()) ('w6-' + ('a' * 12))) `
     (Join-Path 's' (Join-Path 'eky-desktop-smoke' ('b' * 32)))
@@ -246,6 +289,7 @@ try {
     legacyArtifactPathBudget = 'bounded'
     pathAliasesCanonicalized = $true
     reparsePointRejected = $true
+    safeFileEnumeration = 'flat'
     status = 'succeeded'
   } | ConvertTo-Json -Compress
 }
