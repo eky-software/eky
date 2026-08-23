@@ -1,3 +1,5 @@
+import type { WorkspaceId } from '../registry/workspaceRegistryTypes.js';
+
 export type WorkspaceFirstStartRecoveryOutcome =
   | 'acceptedTarget'
   | 'noJournal'
@@ -10,9 +12,16 @@ export type WorkspaceFirstStartPreparationOutcome =
   | 'prepared'
   | 'resumed';
 
+export type WorkspaceFirstStartPreparationContext = Readonly<{
+  activeWorkspaceId: WorkspaceId;
+  workspaceState: 'legacyAdoptionPendingAcceptance' | 'publishedRegistry';
+}>;
+
 export interface WorkspaceFirstStartMigrationOrchestration {
   recoverBeforeWorkspaceResolution(): Promise<WorkspaceFirstStartRecoveryOutcome>;
-  prepareBeforeBackend(): Promise<WorkspaceFirstStartPreparationOutcome>;
+  prepareBeforeBackend(
+    context: Readonly<WorkspaceFirstStartPreparationContext>,
+  ): Promise<WorkspaceFirstStartPreparationOutcome>;
   transitionRegistryAfterActiveWorkspaceAcceptance(): Promise<void>;
   completeAfterTargetAcceptance(): Promise<void>;
 }

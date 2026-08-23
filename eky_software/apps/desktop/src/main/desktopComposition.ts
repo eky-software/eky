@@ -317,7 +317,13 @@ export async function startDesktopComposition(
     });
     if (workspaceStartup.status === 'relaunching') return undefined;
     const { activeWorkspace, runtimeSessionSecret } = workspaceStartup;
-    await workspaceFirstStartMigration.prepareBeforeBackend();
+    await workspaceFirstStartMigration.prepareBeforeBackend({
+      activeWorkspaceId: activeWorkspace.workspaceId,
+      workspaceState:
+        activeWorkspace.mode === 'adoption'
+          ? 'legacyAdoptionPendingAcceptance'
+          : 'publishedRegistry',
+    });
     return await startDesktopCompositionRuntime({
       activeWorkspace,
       backendRoot,

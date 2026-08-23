@@ -34,6 +34,14 @@ const operationId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const sourceBuild = build('0.2.6', 'a'.repeat(40));
 const targetBuild = build('0.2.7', 'b'.repeat(40));
 const developmentBuild = build('0.2.6', 'development');
+const publishedRegistryContext = Object.freeze({
+  activeWorkspaceId,
+  workspaceState: 'publishedRegistry' as const,
+});
+const legacyAdoptionContext = Object.freeze({
+  activeWorkspaceId,
+  workspaceState: 'legacyAdoptionPendingAcceptance' as const,
+});
 
 describe('WorkspaceFirstStartMigrationOrchestrator', () => {
   it.each([
@@ -65,9 +73,9 @@ describe('WorkspaceFirstStartMigrationOrchestrator', () => {
       await expect(
         fixture.subject.recoverBeforeWorkspaceResolution(),
       ).resolves.toBe('noJournal');
-      await expect(fixture.subject.prepareBeforeBackend()).resolves.toBe(
-        'notRequired',
-      );
+      await expect(
+        fixture.subject.prepareBeforeBackend(publishedRegistryContext),
+      ).resolves.toBe('notRequired');
 
       expect(fixture.inspect).not.toHaveBeenCalled();
       expect(fixture.readRegistry).not.toHaveBeenCalled();
@@ -75,13 +83,94 @@ describe('WorkspaceFirstStartMigrationOrchestrator', () => {
     },
   );
 
+  it('defers the first legacy adoption registry to active workspace acceptance', async () => {
+    const fixture = createFixture({ registryMissing: true });
+
+    await fixture.subject.recoverBeforeWorkspaceResolution();
+    await expect(
+      fixture.subject.prepareBeforeBackend(legacyAdoptionContext),
+    ).resolves.toBe('notRequired');
+    await fixture.subject.transitionRegistryAfterActiveWorkspaceAcceptance();
+    await fixture.subject.completeAfterTargetAcceptance();
+
+    expect(fixture.readRegistry).toHaveBeenCalledOnce();
+    expect(fixture.inspect).not.toHaveBeenCalled();
+    expect(fixture.recordFailure).not.toHaveBeenCalled();
+    expect(fixture.journal.value).toBeUndefined();
+  });
+
+  it('accepts an idempotently published single-workspace legacy adoption registry', async () => {
+    const fixture = createFixture({
+      initialRegistry: singleWorkspaceRegistry(),
+    });
+
+    await fixture.subject.recoverBeforeWorkspaceResolution();
+    await expect(
+      fixture.subject.prepareBeforeBackend(legacyAdoptionContext),
+    ).resolves.toBe('notRequired');
+
+    expect(fixture.inspect).not.toHaveBeenCalled();
+    expect(fixture.recordFailure).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when legacy adoption sees passive registry state', async () => {
+    const fixture = createFixture();
+
+    await fixture.subject.recoverBeforeWorkspaceResolution();
+    await expect(
+      fixture.subject.prepareBeforeBackend(legacyAdoptionContext),
+    ).rejects.toEqual(
+      new WorkspaceFirstStartMigrationOrchestratorError('failed'),
+    );
+
+    expect(fixture.inspect).not.toHaveBeenCalled();
+    expect(fixture.recordFailure).toHaveBeenCalledWith(
+      'authorizedNewerBuild',
+    );
+  });
+
+  it('does not weaken the missing-registry failure for normal update startup', async () => {
+    const fixture = createFixture({ registryMissing: true });
+
+    await fixture.subject.recoverBeforeWorkspaceResolution();
+    await expect(
+      fixture.subject.prepareBeforeBackend(publishedRegistryContext),
+    ).rejects.toEqual(
+      new WorkspaceFirstStartMigrationOrchestratorError('failed'),
+    );
+
+    expect(fixture.inspect).not.toHaveBeenCalled();
+    expect(fixture.recordFailure).toHaveBeenCalledWith(
+      'authorizedNewerBuild',
+    );
+  });
+
+  it('does not abandon a resumable W6 operation during legacy adoption', async () => {
+    const fixture = createFixture({
+      inventory: inventory('compatiblePending', 'current'),
+    });
+    await fixture.seedPrepared(inventory('compatiblePending', 'current'));
+
+    await expect(
+      fixture.subject.recoverBeforeWorkspaceResolution(),
+    ).resolves.toBe('resumable');
+    await expect(
+      fixture.subject.prepareBeforeBackend(legacyAdoptionContext),
+    ).rejects.toEqual(
+      new WorkspaceFirstStartMigrationOrchestratorError('failed'),
+    );
+
+    expect(fixture.inspect).not.toHaveBeenCalled();
+    expect(fixture.journal.value).toMatchObject({ state: 'prepared' });
+  });
+
   it('inspects an all-current update without creating a W6 journal', async () => {
     const fixture = createFixture({ inventory: inventory() });
 
     await fixture.subject.recoverBeforeWorkspaceResolution();
-    await expect(fixture.subject.prepareBeforeBackend()).resolves.toBe(
-      'notRequired',
-    );
+    await expect(
+      fixture.subject.prepareBeforeBackend(publishedRegistryContext),
+    ).resolves.toBe('notRequired');
 
     expect(fixture.inspect).toHaveBeenCalledOnce();
     expect(fixture.journal.value).toBeUndefined();
@@ -94,7 +183,7 @@ describe('WorkspaceFirstStartMigrationOrchestrator', () => {
     });
 
     await fixture.subject.recoverBeforeWorkspaceResolution();
-    await fixture.subject.prepareBeforeBackend();
+    await fixture.subject.prepareBeforeBackend(publishedRegistryContext);
 
     expect(fixture.journal.value).toBeUndefined();
     expect(fixture.registry.writes).toHaveLength(0);
@@ -106,9 +195,9 @@ describe('WorkspaceFirstStartMigrationOrchestrator', () => {
     });
 
     await fixture.subject.recoverBeforeWorkspaceResolution();
-    await expect(fixture.subject.prepareBeforeBackend()).resolves.toBe(
-      'prepared',
-    );
+    await expect(
+      fixture.subject.prepareBeforeBackend(publishedRegistryContext),
+    ).resolves.toBe('prepared');
 
     expect(fixture.journal.value).toMatchObject({
       activeWorkspaceId,
@@ -124,7 +213,7 @@ describe('WorkspaceFirstStartMigrationOrchestrator', () => {
     });
 
     await fixture.subject.recoverBeforeWorkspaceResolution();
-    await fixture.subject.prepareBeforeBackend();
+    await fixture.subject.prepareBeforeBackend(publishedRegistryContext);
     await fixture.subject.transitionRegistryAfterActiveWorkspaceAcceptance();
     fixture.events.push('accepted.target');
     fixture.acceptedBuild.value = accepted(targetBuild);
@@ -158,9 +247,9 @@ describe('WorkspaceFirstStartMigrationOrchestrator', () => {
     await expect(
       fixture.subject.recoverBeforeWorkspaceResolution(),
     ).resolves.toBe('resumable');
-    await expect(fixture.subject.prepareBeforeBackend()).resolves.toBe(
-      'resumed',
-    );
+    await expect(
+      fixture.subject.prepareBeforeBackend(publishedRegistryContext),
+    ).resolves.toBe('resumed');
 
     expect(fixture.journal.value?.operationId).toBe(operationId);
     expect(fixture.events).toEqual([]);
@@ -178,9 +267,9 @@ describe('WorkspaceFirstStartMigrationOrchestrator', () => {
     await expect(
       fixture.subject.recoverBeforeWorkspaceResolution(),
     ).resolves.toBe('preparedCancelled');
-    await expect(fixture.subject.prepareBeforeBackend()).resolves.toBe(
-      'notRequired',
-    );
+    await expect(
+      fixture.subject.prepareBeforeBackend(publishedRegistryContext),
+    ).resolves.toBe('notRequired');
 
     expect(fixture.journal.value).toBeUndefined();
     expect(fixture.inspect).not.toHaveBeenCalled();
@@ -206,7 +295,9 @@ describe('WorkspaceFirstStartMigrationOrchestrator', () => {
     });
 
     await fixture.subject.recoverBeforeWorkspaceResolution();
-    await expect(fixture.subject.prepareBeforeBackend()).rejects.toEqual(
+    await expect(
+      fixture.subject.prepareBeforeBackend(publishedRegistryContext),
+    ).rejects.toEqual(
       new WorkspaceFirstStartMigrationOrchestratorError('failed'),
     );
 
@@ -224,9 +315,9 @@ describe('WorkspaceFirstStartMigrationOrchestrator', () => {
     });
 
     await fixture.subject.recoverBeforeWorkspaceResolution();
-    const error = await fixture.subject.prepareBeforeBackend().catch(
-      (failure: unknown) => failure,
-    );
+    const error = await fixture.subject
+      .prepareBeforeBackend(publishedRegistryContext)
+      .catch((failure: unknown) => failure);
 
     expect(error).toMatchObject({
       failure: 'rollbackRequired',
@@ -263,13 +354,14 @@ function createFixture(
     readonly acceptedBuild?: Readonly<AcceptedBuildMetadata>;
     readonly admission?: PreWorkspaceBuildAdmission;
     readonly failureResult?: PreBackendFirstStartFailureResult;
+    readonly initialRegistry?: Readonly<LocalWorkspaceRegistryV1>;
     readonly inventory?: Readonly<WorkspaceMigrationInventory>;
     readonly registryMissing?: boolean;
     readonly runningBuild?: Readonly<WorkspaceFirstStartBuildIdentity>;
   } = {},
 ) {
   const events: string[] = [];
-  let registryValue = workspaceRegistry();
+  let registryValue = options.initialRegistry ?? workspaceRegistry();
   const readRegistry = vi.fn(async () =>
     options.registryMissing === true ? undefined : registryValue,
   );
@@ -408,6 +500,14 @@ function workspaceRegistry(): Readonly<LocalWorkspaceRegistryV1> {
       registryEntry(activeWorkspaceId, 'a'),
       registryEntry(passiveWorkspaceId, 'b'),
     ],
+  };
+}
+
+function singleWorkspaceRegistry(): Readonly<LocalWorkspaceRegistryV1> {
+  return {
+    activeWorkspaceId,
+    formatVersion: 1,
+    workspaces: [registryEntry(activeWorkspaceId, 'a')],
   };
 }
 
