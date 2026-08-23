@@ -1,4 +1,17 @@
-param([string]$HistoricalExecutablePath = '')
+param(
+  [string]$HistoricalExecutablePath = '',
+  [ValidateSet(
+    'all',
+    'observerNoOutput',
+    'observerSingleOutput',
+    'observerMultipleOutput',
+    'observerFailure',
+    'observerInvalidOutput',
+    'ownedDescendantChain',
+    'invalidStarts'
+  )]
+  [string]$TestCase = 'all'
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -7,12 +20,243 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'historicalPackagedSmokeProcessChain.ps1')
 . (Join-Path $PSScriptRoot 'progress.ps1')
 
+$script:AllowedHistoricalProcessChainTestCases = @(
+  'observerNoOutput',
+  'observerSingleOutput',
+  'observerMultipleOutput',
+  'observerFailure',
+  'observerInvalidOutput',
+  'ownedDescendantChain',
+  'invalidStarts'
+)
+$script:CurrentHistoricalProcessChainTestCase = if ($TestCase -ceq 'all') {
+  'observerNoOutput'
+}
+else {
+  $TestCase
+}
+
+function Test-EkyHistoricalProcessChainTestCaseSelected {
+  param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet(
+      'observerNoOutput',
+      'observerSingleOutput',
+      'observerMultipleOutput',
+      'observerFailure',
+      'observerInvalidOutput',
+      'ownedDescendantChain',
+      'invalidStarts'
+    )]
+    [string]$Name
+  )
+
+  return $TestCase -ceq 'all' -or $TestCase -ceq $Name
+}
+
+function Set-EkyHistoricalProcessChainTestCase {
+  param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet(
+      'observerNoOutput',
+      'observerSingleOutput',
+      'observerMultipleOutput',
+      'observerFailure',
+      'observerInvalidOutput',
+      'ownedDescendantChain',
+      'invalidStarts'
+    )]
+    [string]$Name
+  )
+
+  $script:CurrentHistoricalProcessChainTestCase = $Name
+}
+
+function Get-EkyHistoricalProcessChainSafeErrorCode {
+  param([Parameter(Mandatory = $true)]$ErrorRecord)
+
+  $candidate = ([string]$ErrorRecord.Exception.Message -split ':')[0]
+  if ($candidate -cmatch '^(W6B_[A-Z0-9_]+|INSTALLER_[A-Z0-9_]+)$') {
+    return $candidate
+  }
+  return 'W6B_LEGACY_PROCESS_CHAIN_TEST_FAILED'
+}
+
+function ConvertTo-EkyHistoricalProcessChainFailureJson {
+  param([Parameter(Mandatory = $true)]$ErrorRecord)
+
+  if (
+    $script:CurrentHistoricalProcessChainTestCase -notin
+      $script:AllowedHistoricalProcessChainTestCases
+  ) {
+    throw 'W6B_LEGACY_PROCESS_CHAIN_TEST_CASE_INVALID'
+  }
+  return [ordered]@{
+    status = 'failed'
+    testCase = $script:CurrentHistoricalProcessChainTestCase
+    errorCode = Get-EkyHistoricalProcessChainSafeErrorCode `
+      -ErrorRecord $ErrorRecord
+  } | ConvertTo-Json -Compress
+}
+
 function ConvertTo-EkyHistoricalEncodedCommand {
   param([Parameter(Mandatory = $true)][string]$Command)
 
   return [Convert]::ToBase64String(
     [Text.Encoding]::Unicode.GetBytes($Command)
   )
+}
+
+$script:SyntheticProcessGenerationEvents = @{}
+
+function Close-EkyHistoricalSyntheticProcessGenerationEvents {
+  param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet('initial', 'restored')]
+    [string]$Phase
+  )
+
+  $state = $script:SyntheticProcessGenerationEvents[$Phase]
+  if ($null -eq $state) {
+    return
+  }
+  try {
+    $state.release.Set() | Out-Null
+  }
+  finally {
+    $state.childReady.Dispose()
+    $state.rootReady.Dispose()
+    $state.release.Dispose()
+    $script:SyntheticProcessGenerationEvents.Remove($Phase)
+  }
+}
+
+function Close-EkyHistoricalSyntheticProcessEvents {
+  foreach ($phase in @('initial', 'restored')) {
+    Close-EkyHistoricalSyntheticProcessGenerationEvents -Phase $phase
+  }
+}
+
+function Set-EkyHistoricalSyntheticProcessRelease {
+  param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet('initial', 'restored')]
+    [string]$Phase
+  )
+
+  $state = $script:SyntheticProcessGenerationEvents[$Phase]
+  if ($null -eq $state) {
+    throw 'W6B_LEGACY_SYNTHETIC_PROCESS_EVENTS_MISSING'
+  }
+  $state.release.Set() | Out-Null
+}
+
+function Start-EkyHistoricalSyntheticProcessGeneration {
+  param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet('initial', 'restored')]
+    [string]$Phase
+  )
+
+  Close-EkyHistoricalSyntheticProcessGenerationEvents -Phase $Phase
+  $eventPrefix = 'Local\EkyW6bChain-' + [Guid]::NewGuid().ToString('N') +
+    "-$Phase"
+  $childReadyName = "$eventPrefix-childReady"
+  $rootReadyName = "$eventPrefix-rootReady"
+  $releaseName = "$eventPrefix-release"
+  $state = [pscustomobject]@{
+    childReady = [Threading.EventWaitHandle]::new(
+      $false,
+      [Threading.EventResetMode]::ManualReset,
+      $childReadyName
+    )
+    rootReady = [Threading.EventWaitHandle]::new(
+      $false,
+      [Threading.EventResetMode]::ManualReset,
+      $rootReadyName
+    )
+    release = [Threading.EventWaitHandle]::new(
+      $false,
+      [Threading.EventResetMode]::ManualReset,
+      $releaseName
+    )
+  }
+  $script:SyntheticProcessGenerationEvents[$Phase] = $state
+  $rootProcess = $null
+  try {
+    $childCommand = ConvertTo-EkyHistoricalEncodedCommand -Command @"
+`$childReady = [Threading.EventWaitHandle]::OpenExisting('$childReadyName')
+`$release = [Threading.EventWaitHandle]::OpenExisting('$releaseName')
+try {
+  `$childReady.Set() | Out-Null
+  if (!`$release.WaitOne(5000)) {
+    exit 41
+  }
+  exit 0
+}
+finally {
+  `$childReady.Dispose()
+  `$release.Dispose()
+}
+"@
+    $rootCommand = ConvertTo-EkyHistoricalEncodedCommand -Command @"
+`$childReady = [Threading.EventWaitHandle]::OpenExisting('$childReadyName')
+`$rootReady = [Threading.EventWaitHandle]::OpenExisting('$rootReadyName')
+`$release = [Threading.EventWaitHandle]::OpenExisting('$releaseName')
+`$child = `$null
+try {
+  `$child = Start-Process powershell.exe -ArgumentList @(
+    '-NoProfile', '-NonInteractive', '-EncodedCommand', '$childCommand'
+  ) -WindowStyle Hidden -PassThru
+  if (!`$childReady.WaitOne(5000)) {
+    exit 42
+  }
+  `$rootReady.Set() | Out-Null
+  if (!`$release.WaitOne(5000)) {
+    exit 43
+  }
+  exit 0
+}
+finally {
+  if (`$null -ne `$child) {
+    `$child.Dispose()
+  }
+  `$childReady.Dispose()
+  `$rootReady.Dispose()
+  `$release.Dispose()
+}
+"@
+    $rootProcess = Start-Process powershell.exe -ArgumentList @(
+      '-NoProfile',
+      '-NonInteractive',
+      '-EncodedCommand',
+      $rootCommand
+    ) -WindowStyle Hidden -PassThru
+    if (!$state.rootReady.WaitOne(5000)) {
+      throw 'W6B_LEGACY_SYNTHETIC_ROOT_READY_TIMEOUT'
+    }
+    $rootProcess.Refresh()
+    if ($rootProcess.HasExited) {
+      throw 'W6B_LEGACY_SYNTHETIC_ROOT_EXITED_BEFORE_READY'
+    }
+    return $rootProcess
+  }
+  catch {
+    $state.release.Set() | Out-Null
+    if ($null -ne $rootProcess) {
+      try {
+        $rootProcess.Refresh()
+        if (!$rootProcess.HasExited) {
+          Stop-EkyProcessTree -Process $rootProcess
+        }
+      }
+      finally {
+        $rootProcess.Dispose()
+      }
+    }
+    Close-EkyHistoricalSyntheticProcessGenerationEvents -Phase $Phase
+    throw
+  }
 }
 
 function Start-EkyHistoricalExecutable {
@@ -282,29 +526,33 @@ finally {
   return $output[0]
 }
 
+function Invoke-EkyHistoricalObserverFailure {
+  Invoke-HistoricalPackagedSmokeProcessChain `
+    -ExpectedExecutablePath (Join-Path $PSHOME 'powershell.exe') `
+    -StartPhase {
+      param([string]$Phase)
+      Start-Process powershell.exe -ArgumentList @(
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        '[Threading.Thread]::Sleep([Threading.Timeout]::Infinite)'
+      ) -WindowStyle Hidden -PassThru
+    } `
+    -ReadResult {
+      [pscustomobject]@{ stage = 'restoreRestart'; status = 'started' }
+    } `
+    -ObserveResult { throw 'W6B_LEGACY_OBSERVER_FAILED' } `
+    -ObserveProcess { param($Process) } `
+    -ValidateResult {
+      param($Process, $Result, [string]$ExpectedStage, [string]$ExpectedStatus)
+    } `
+    -TimeoutMilliseconds 3000 `
+    -PollMilliseconds 25 | Out-Null
+}
+
 function Assert-EkyHistoricalObserverFailurePreserved {
   try {
-    Invoke-HistoricalPackagedSmokeProcessChain `
-      -ExpectedExecutablePath (Join-Path $PSHOME 'powershell.exe') `
-      -StartPhase {
-        param([string]$Phase)
-        Start-Process powershell.exe -ArgumentList @(
-          '-NoProfile',
-          '-NonInteractive',
-          '-Command',
-          '[Threading.Thread]::Sleep([Threading.Timeout]::Infinite)'
-        ) -WindowStyle Hidden -PassThru
-      } `
-      -ReadResult {
-        [pscustomobject]@{ stage = 'restoreRestart'; status = 'started' }
-      } `
-      -ObserveResult { throw 'W6B_LEGACY_OBSERVER_FAILED' } `
-      -ObserveProcess { param($Process) } `
-      -ValidateResult {
-        param($Process, $Result, [string]$ExpectedStage, [string]$ExpectedStatus)
-      } `
-      -TimeoutMilliseconds 3000 `
-      -PollMilliseconds 25 | Out-Null
+    Invoke-EkyHistoricalObserverFailure
     throw 'W6B_LEGACY_EXPECTED_FAILURE_MISSING'
   }
   catch {
@@ -314,11 +562,15 @@ function Assert-EkyHistoricalObserverFailurePreserved {
   }
 }
 
+function Invoke-EkyHistoricalInvalidObserverOutput {
+  Invoke-EkyHistoricalObserver `
+    -Observer { [pscustomobject]@{ unsafe = 'value' } } `
+    -Argument ([pscustomobject]@{})
+}
+
 function Assert-EkyHistoricalObserverOutputRejected {
   try {
-    Invoke-EkyHistoricalObserver `
-      -Observer { [pscustomobject]@{ unsafe = 'value' } } `
-      -Argument ([pscustomobject]@{})
+    Invoke-EkyHistoricalInvalidObserverOutput
     throw 'W6B_LEGACY_EXPECTED_FAILURE_MISSING'
   }
   catch {
@@ -336,6 +588,8 @@ $status = 'failed'
 $foreignProcessUntouched = $false
 $chain = $null
 $privateTestRoot = $null
+$terminalError = $null
+$terminalOutcome = $null
 $fixture = if ($HistoricalExecutablePath -eq '') {
   'synthetic'
 }
@@ -391,23 +645,67 @@ try {
     )
   }
 
-  Invoke-EkyHistoricalObserverOutputContract `
-    -ProcessOutputCount 0 -ResultOutputCount 0 | Out-Null
-  Invoke-EkyHistoricalObserverOutputContract `
-    -ProcessOutputCount 1 -ResultOutputCount 0 | Out-Null
-  Invoke-EkyHistoricalObserverOutputContract `
-    -ProcessOutputCount 2 -ResultOutputCount 2 | Out-Null
-  Assert-EkyHistoricalObserverFailurePreserved
-  Assert-EkyHistoricalObserverOutputRejected
+  if (
+    Test-EkyHistoricalProcessChainTestCaseSelected `
+      -Name observerNoOutput
+  ) {
+    Set-EkyHistoricalProcessChainTestCase -Name observerNoOutput
+    Invoke-EkyHistoricalObserverOutputContract `
+      -ProcessOutputCount 0 -ResultOutputCount 0 | Out-Null
+  }
+  if (
+    Test-EkyHistoricalProcessChainTestCaseSelected `
+      -Name observerSingleOutput
+  ) {
+    Set-EkyHistoricalProcessChainTestCase -Name observerSingleOutput
+    Invoke-EkyHistoricalObserverOutputContract `
+      -ProcessOutputCount 1 -ResultOutputCount 0 | Out-Null
+  }
+  if (
+    Test-EkyHistoricalProcessChainTestCaseSelected `
+      -Name observerMultipleOutput
+  ) {
+    Set-EkyHistoricalProcessChainTestCase -Name observerMultipleOutput
+    Invoke-EkyHistoricalObserverOutputContract `
+      -ProcessOutputCount 2 -ResultOutputCount 2 | Out-Null
+  }
+  if (
+    Test-EkyHistoricalProcessChainTestCaseSelected -Name observerFailure
+  ) {
+    Set-EkyHistoricalProcessChainTestCase -Name observerFailure
+    if ($TestCase -ceq 'all') {
+      Assert-EkyHistoricalObserverFailurePreserved
+    }
+    else {
+      Invoke-EkyHistoricalObserverFailure
+    }
+  }
+  if (
+    Test-EkyHistoricalProcessChainTestCaseSelected `
+      -Name observerInvalidOutput
+  ) {
+    Set-EkyHistoricalProcessChainTestCase -Name observerInvalidOutput
+    if ($TestCase -ceq 'all') {
+      Assert-EkyHistoricalObserverOutputRejected
+    }
+    else {
+      Invoke-EkyHistoricalInvalidObserverOutput
+    }
+  }
 
-  $foreignProcess = Start-Process powershell.exe -ArgumentList @(
-    '-NoProfile',
-    '-NonInteractive',
-    '-Command',
-    '[Threading.Thread]::Sleep([Threading.Timeout]::Infinite)'
-  ) -WindowStyle Hidden -PassThru
+  if (
+    Test-EkyHistoricalProcessChainTestCaseSelected `
+      -Name ownedDescendantChain
+  ) {
+    Set-EkyHistoricalProcessChainTestCase -Name ownedDescendantChain
+    $foreignProcess = Start-Process powershell.exe -ArgumentList @(
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      '[Threading.Thread]::Sleep([Threading.Timeout]::Infinite)'
+    ) -WindowStyle Hidden -PassThru
 
-  $chain = Invoke-HistoricalPackagedSmokeProcessChain `
+    $chain = Invoke-HistoricalPackagedSmokeProcessChain `
     -ExpectedExecutablePath $(if ($fixture -ceq 'historicalPackage') {
       $historicalExecutable
     }
@@ -445,26 +743,13 @@ try {
             TMP = $smokeTempRoot
           }
       }
-      $childCommand = ConvertTo-EkyHistoricalEncodedCommand `
-        -Command 'Start-Sleep -Milliseconds 800'
-      $rootCommand = ConvertTo-EkyHistoricalEncodedCommand -Command @"
-`$child = Start-Process powershell.exe -ArgumentList @(
-  '-NoProfile', '-NonInteractive', '-EncodedCommand', '$childCommand'
-) -WindowStyle Hidden -PassThru
-Start-Sleep -Milliseconds 300
-exit 0
-"@
-      Start-Process powershell.exe -ArgumentList @(
-        '-NoProfile',
-        '-NonInteractive',
-        '-EncodedCommand',
-        $rootCommand
-      ) -WindowStyle Hidden -PassThru
+      return Start-EkyHistoricalSyntheticProcessGeneration -Phase $Phase
     } `
     -ReadResult {
       if ($fixture -ceq 'historicalPackage') {
         return Read-EkyHistoricalSmokeResult -ResultPath $smokeResultPath
       }
+      Set-EkyHistoricalSyntheticProcessRelease -Phase $script:phase
       if ($script:phase -ceq 'initial') {
         return [pscustomobject]@{
           stage = 'restoreRestart'
@@ -498,21 +783,33 @@ exit 0
     -TimeoutMilliseconds $processChainTimeoutMilliseconds `
     -PollMilliseconds $processChainPollMilliseconds
 
-  $foreignProcess.Refresh()
-  $foreignProcessUntouched = !$foreignProcess.HasExited
-  if (
-    $script:initialStarts -ne 1 -or
-    $script:restoredStarts -ne 1 -or
-    $chain.initialGenerationCount -ne 1 -or
-    $chain.restoredGenerationCount -ne 1 -or
-    $chain.initialOwnedProcessCount -lt 2 -or
-    $chain.restoredOwnedProcessCount -lt 2 -or
-    $chain.remainingOwnedProcessCount -ne 0 -or
-    !$foreignProcessUntouched
-  ) {
-    throw 'W6B_LEGACY_SOURCE_PROCESS_CHAIN_INVALID'
+    $foreignProcess.Refresh()
+    $foreignProcessUntouched = !$foreignProcess.HasExited
+    if (
+      $script:initialStarts -ne 1 -or
+      $script:restoredStarts -ne 1 -or
+      $chain.initialGenerationCount -ne 1 -or
+      $chain.restoredGenerationCount -ne 1 -or
+      $chain.initialOwnedProcessCount -lt 2 -or
+      $chain.restoredOwnedProcessCount -lt 2 -or
+      $chain.remainingOwnedProcessCount -ne 0 -or
+      !$foreignProcessUntouched
+    ) {
+      throw 'W6B_LEGACY_SOURCE_PROCESS_CHAIN_INVALID'
+    }
+    Close-EkyHistoricalSyntheticProcessEvents
+    if (!$foreignProcess.HasExited) {
+      Stop-EkyProcessTree -Process $foreignProcess
+    }
+    $foreignProcess.Dispose()
+    $foreignProcess = $null
   }
-  if ($fixture -ceq 'synthetic') {
+
+  if (
+    $fixture -ceq 'synthetic' -and
+    (Test-EkyHistoricalProcessChainTestCaseSelected -Name invalidStarts)
+  ) {
+    Set-EkyHistoricalProcessChainTestCase -Name invalidStarts
     $powerShellExecutable = Join-Path $PSHOME 'powershell.exe'
     Assert-EkyHistoricalProcessChainFailure `
       -ExpectedExecutablePath $powerShellExecutable `
@@ -547,27 +844,75 @@ exit 0
       }
   }
   $status = 'succeeded'
+  if ($TestCase -ceq 'all') {
+    $terminalOutcome = [ordered]@{
+      status = $status
+      fixture = $fixture
+      contract = $chain.contract
+      initialGenerationCount = $chain.initialGenerationCount
+      restoredGenerationCount = $chain.restoredGenerationCount
+      initialOwnedProcessCount = $chain.initialOwnedProcessCount
+      restoredOwnedProcessCount = $chain.restoredOwnedProcessCount
+      remainingOwnedProcessCount = $chain.remainingOwnedProcessCount
+      foreignProcessUntouched = $foreignProcessUntouched
+      invalidProcessStartsRejected = ($fixture -ceq 'synthetic')
+    }
+  }
+  elseif ($TestCase -ceq 'ownedDescendantChain') {
+    $terminalOutcome = [ordered]@{
+      status = $status
+      testCase = $TestCase
+      fixture = $fixture
+      contract = $chain.contract
+      initialGenerationCount = $chain.initialGenerationCount
+      restoredGenerationCount = $chain.restoredGenerationCount
+      initialOwnedProcessCount = $chain.initialOwnedProcessCount
+      restoredOwnedProcessCount = $chain.restoredOwnedProcessCount
+      remainingOwnedProcessCount = $chain.remainingOwnedProcessCount
+      foreignProcessUntouched = $foreignProcessUntouched
+    }
+  }
+  elseif ($TestCase -ceq 'invalidStarts') {
+    $terminalOutcome = [ordered]@{
+      status = $status
+      testCase = $TestCase
+      invalidProcessStartsRejected = $true
+    }
+  }
+  else {
+    $terminalOutcome = [ordered]@{
+      status = $status
+      testCase = $TestCase
+    }
+  }
+}
+catch {
+  $terminalError = $_
 }
 finally {
-  if ($null -ne $foreignProcess) {
-    $foreignProcess.Refresh()
-    if (!$foreignProcess.HasExited) {
-      Stop-EkyProcessTree -Process $foreignProcess
+  try {
+    Close-EkyHistoricalSyntheticProcessEvents
+    if ($null -ne $foreignProcess) {
+      $foreignProcess.Refresh()
+      if (!$foreignProcess.HasExited) {
+        Stop-EkyProcessTree -Process $foreignProcess
+      }
+      $foreignProcess.Dispose()
     }
-    $foreignProcess.Dispose()
+    if ($null -ne $privateTestRoot) {
+      Remove-EkyHistoricalPrivateTestRoot -Root $privateTestRoot
+    }
   }
-  if ($null -ne $privateTestRoot) {
-    Remove-EkyHistoricalPrivateTestRoot -Root $privateTestRoot
+  catch {
+    if ($null -eq $terminalError) {
+      $terminalError = $_
+    }
   }
 }
 
-[ordered]@{
-  status = $status
-  fixture = $fixture
-  contract = $chain.contract
-  initialGenerationCount = $chain.initialGenerationCount
-  restoredGenerationCount = $chain.restoredGenerationCount
-  remainingOwnedProcessCount = $chain.remainingOwnedProcessCount
-  foreignProcessUntouched = $foreignProcessUntouched
-  invalidProcessStartsRejected = ($fixture -ceq 'synthetic')
-} | ConvertTo-Json -Compress
+if ($null -ne $terminalError) {
+  ConvertTo-EkyHistoricalProcessChainFailureJson -ErrorRecord $terminalError
+  exit 1
+}
+
+$terminalOutcome | ConvertTo-Json -Compress

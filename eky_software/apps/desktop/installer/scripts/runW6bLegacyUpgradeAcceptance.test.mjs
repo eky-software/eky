@@ -30,6 +30,74 @@ const target = Object.freeze({
   productCode: 'F7DB5A4D-B704-59D8-A463-3D56CD04DA8F',
 });
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
+const processChainTestCases = Object.freeze([
+  Object.freeze({ name: 'observerNoOutput', progressCount: 0 }),
+  Object.freeze({ name: 'observerSingleOutput', progressCount: 1 }),
+  Object.freeze({ name: 'observerMultipleOutput', progressCount: 4 }),
+  Object.freeze({
+    errorCode: 'W6B_LEGACY_OBSERVER_FAILED',
+    name: 'observerFailure',
+    progressCount: 0,
+  }),
+  Object.freeze({
+    errorCode: 'W6B_LEGACY_OBSERVER_OUTPUT_INVALID',
+    name: 'observerInvalidOutput',
+    progressCount: 0,
+  }),
+  Object.freeze({ name: 'ownedDescendantChain', progressCount: 0 }),
+  Object.freeze({ name: 'invalidStarts', progressCount: 0 }),
+]);
+
+function parseProcessChainOutput(output) {
+  return output.split(/\r?\n/u).filter((line) => line.trim() !== '');
+}
+
+function createSafeProcessChainFailureMessage(testCase, output) {
+  const fallback = `${testCase}:W6B_LEGACY_PROCESS_CHAIN_TEST_FAILED`;
+  const lines = parseProcessChainOutput(output);
+  if (lines.length === 0) {
+    return fallback;
+  }
+  try {
+    const terminal = JSON.parse(lines.at(-1));
+    if (
+      terminal.status !== 'failed' ||
+      terminal.testCase !== testCase ||
+      !/^(?:W6B|INSTALLER)_[A-Z0-9_]+$/u.test(terminal.errorCode) ||
+      Object.keys(terminal).sort().join(',') !==
+        'errorCode,status,testCase'
+    ) {
+      return fallback;
+    }
+    return `${terminal.testCase}:${terminal.errorCode}`;
+  } catch {
+    return fallback;
+  }
+}
+
+function assertSafeProcessChainProgress(progress) {
+  assert.deepEqual(Object.keys(progress).sort(), [
+    'durationMs',
+    'elapsedMs',
+    'resultCode',
+    'scenario',
+    'stage',
+    'status',
+  ]);
+  assert.equal(progress.scenario, 'legacyUpgrade');
+  assert.equal(progress.stage, 'sourceStartup');
+  assert.equal(progress.status, 'observed');
+  assert.equal(
+    ['backendHealthReady', 'backendUtilityReady'].includes(
+      progress.resultCode,
+    ),
+    true,
+  );
+  assert.equal(Number.isSafeInteger(progress.durationMs), true);
+  assert.equal(progress.durationMs >= 0, true);
+  assert.equal(Number.isSafeInteger(progress.elapsedMs), true);
+  assert.equal(progress.elapsedMs >= 0, true);
+}
 
 test('uses the verified exact local release without rebuilding it', async () => {
   const calls = [];
@@ -267,67 +335,102 @@ test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () 
   assert.doesNotMatch(sourceText, /Write-(?:Host|Output).*StackTrace/iu);
 });
 
-test('historical smoke process chain is exact and foreign-process safe', {
-  skip: process.platform !== 'win32',
-}, () => {
-  const result = spawnSync(
-    'powershell.exe',
-    [
-      '-NoProfile',
-      '-NonInteractive',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-File',
-      resolve(
-        scriptDirectory,
-        'w6bLegacy',
-        'historicalPackagedSmokeProcessChain.test.ps1',
-      ),
-    ],
-    { encoding: 'utf8', windowsHide: true },
-  );
-
-  assert.equal(result.status, 0, 'W6B_LEGACY_PROCESS_CHAIN_TEST_FAILED');
-  const lines = result.stdout
-    .split(/\r?\n/u)
-    .filter((line) => line.trim() !== '');
-  assert.equal(lines.length, 6);
-  const progressLines = lines.slice(0, -1).map((line) => JSON.parse(line));
-  for (const progress of progressLines) {
-    assert.deepEqual(Object.keys(progress).sort(), [
-      'durationMs',
-      'elapsedMs',
-      'resultCode',
-      'scenario',
-      'stage',
-      'status',
-    ]);
-    assert.equal(progress.scenario, 'legacyUpgrade');
-    assert.equal(progress.stage, 'sourceStartup');
-    assert.equal(progress.status, 'observed');
-    assert.equal(
-      ['backendHealthReady', 'backendUtilityReady'].includes(
-        progress.resultCode,
-      ),
-      true,
+for (const processChainTestCase of processChainTestCases) {
+  test(`historical smoke process chain case ${processChainTestCase.name}`, {
+    skip: process.platform !== 'win32',
+  }, () => {
+    const result = spawnSync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        resolve(
+          scriptDirectory,
+          'w6bLegacy',
+          'historicalPackagedSmokeProcessChain.test.ps1',
+        ),
+        '-TestCase',
+        processChainTestCase.name,
+      ],
+      { encoding: 'utf8', windowsHide: true },
     );
-    assert.equal(Number.isSafeInteger(progress.durationMs), true);
-    assert.equal(progress.durationMs >= 0, true);
-    assert.equal(Number.isSafeInteger(progress.elapsedMs), true);
-    assert.equal(progress.elapsedMs >= 0, true);
-  }
-  const outcome = JSON.parse(lines.at(-1));
-  assert.deepEqual(outcome, {
-    contract: 'explicitTwoPhase',
-    fixture: 'synthetic',
-    foreignProcessUntouched: true,
-    initialGenerationCount: 1,
-    invalidProcessStartsRejected: true,
-    remainingOwnedProcessCount: 0,
-    restoredGenerationCount: 1,
-    status: 'succeeded',
+
+    const lines = parseProcessChainOutput(result.stdout);
+    if (processChainTestCase.errorCode !== undefined) {
+      assert.equal(
+        result.status,
+        1,
+        createSafeProcessChainFailureMessage(
+          processChainTestCase.name,
+          result.stdout,
+        ),
+      );
+      assert.equal(lines.length, 1);
+      assert.deepEqual(JSON.parse(lines[0]), {
+        errorCode: processChainTestCase.errorCode,
+        status: 'failed',
+        testCase: processChainTestCase.name,
+      });
+      return;
+    }
+
+    assert.equal(
+      result.status,
+      0,
+      createSafeProcessChainFailureMessage(
+        processChainTestCase.name,
+        result.stdout,
+      ),
+    );
+    assert.equal(lines.length, processChainTestCase.progressCount + 1);
+    const progressLines = lines
+      .slice(0, -1)
+      .map((line) => JSON.parse(line));
+    for (const progress of progressLines) {
+      assertSafeProcessChainProgress(progress);
+    }
+    const outcome = JSON.parse(lines.at(-1));
+    assert.equal(outcome.status, 'succeeded');
+    assert.equal(outcome.testCase, processChainTestCase.name);
+
+    if (processChainTestCase.name === 'ownedDescendantChain') {
+      assert.deepEqual(Object.keys(outcome).sort(), [
+        'contract',
+        'fixture',
+        'foreignProcessUntouched',
+        'initialGenerationCount',
+        'initialOwnedProcessCount',
+        'remainingOwnedProcessCount',
+        'restoredGenerationCount',
+        'restoredOwnedProcessCount',
+        'status',
+        'testCase',
+      ]);
+      assert.equal(outcome.contract, 'explicitTwoPhase');
+      assert.equal(outcome.fixture, 'synthetic');
+      assert.equal(outcome.foreignProcessUntouched, true);
+      assert.equal(outcome.initialGenerationCount, 1);
+      assert.equal(outcome.initialOwnedProcessCount >= 2, true);
+      assert.equal(outcome.remainingOwnedProcessCount, 0);
+      assert.equal(outcome.restoredGenerationCount, 1);
+      assert.equal(outcome.restoredOwnedProcessCount >= 2, true);
+    } else if (processChainTestCase.name === 'invalidStarts') {
+      assert.deepEqual(outcome, {
+        invalidProcessStartsRejected: true,
+        status: 'succeeded',
+        testCase: 'invalidStarts',
+      });
+    } else {
+      assert.deepEqual(outcome, {
+        status: 'succeeded',
+        testCase: processChainTestCase.name,
+      });
+    }
   });
-});
+}
 
 test('legacy source user data is deterministic and path safe', {
   skip: process.platform !== 'win32',
