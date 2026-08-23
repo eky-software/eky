@@ -88,6 +88,12 @@ try {
     throw 'W6B_LONG_PATH_INVALID_CLEANUP_ROOT_NOT_REJECTED'
   }
 
+  [System.IO.File]::SetAttributes(
+    $extendedFilePath,
+    [System.IO.File]::GetAttributes($extendedFilePath) -bor
+      [System.IO.FileAttributes]::ReadOnly
+  )
+
   $result = [ordered]@{
     status = 'succeeded'
     longPathInventoryValidated = $true
@@ -106,4 +112,5 @@ if ([System.IO.Directory]::Exists($extendedRoot)) {
   throw 'W6B_LONG_PATH_CLEANUP_FAILED'
 }
 $result.longPathCleanupValidated = $true
+$result.readOnlyCleanupValidated = $true
 $result | ConvertTo-Json -Compress

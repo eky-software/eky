@@ -95,10 +95,60 @@ function Remove-W6bLegacyAcceptanceTestRoot {
     throw 'W6B_LEGACY_TEST_ROOT_INVALID'
   }
 
-  # Enumerating first keeps the recursive deletion fail closed on reparse
-  # points while retaining Windows extended-length path handling.
+  # Validate the complete tree before mutating the harness-owned root.
   [void](Get-W6bEvidenceDirectoryInventory -Root $canonicalRoot)
-  [System.IO.Directory]::Delete($extendedRoot, $true)
+
+  $directories = [System.Collections.Generic.List[object]]::new()
+  $pendingDirectories = [System.Collections.Generic.Queue[object]]::new()
+  $directories.Add($rootItem)
+  $pendingDirectories.Enqueue($rootItem)
+  while ($pendingDirectories.Count -gt 0) {
+    $directory = $pendingDirectories.Dequeue()
+    foreach ($item in @(Get-ChildItem -LiteralPath $directory.FullName -Force)) {
+      if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+        throw 'W6B_LEGACY_TEST_ROOT_INVALID'
+      }
+      $canonicalItemPath = if ($item.FullName.StartsWith('\\?\')) {
+        $item.FullName.Substring(4)
+      }
+      else {
+        $item.FullName
+      }
+      if (
+        !$canonicalItemPath.StartsWith(
+          "$canonicalRoot\",
+          [System.StringComparison]::OrdinalIgnoreCase
+        )
+      ) {
+        throw 'W6B_LEGACY_TEST_ROOT_INVALID'
+      }
+      if ($item.PSIsContainer) {
+        $directories.Add($item)
+        $pendingDirectories.Enqueue($item)
+        continue
+      }
+      $attributes = [System.IO.File]::GetAttributes($item.FullName)
+      if ($attributes -band [System.IO.FileAttributes]::ReadOnly) {
+        [System.IO.File]::SetAttributes(
+          $item.FullName,
+          $attributes -bxor [System.IO.FileAttributes]::ReadOnly
+        )
+      }
+      [System.IO.File]::Delete($item.FullName)
+    }
+  }
+
+  for ($index = $directories.Count - 1; $index -ge 0; $index -= 1) {
+    $directory = $directories[$index]
+    $attributes = [System.IO.File]::GetAttributes($directory.FullName)
+    if ($attributes -band [System.IO.FileAttributes]::ReadOnly) {
+      [System.IO.File]::SetAttributes(
+        $directory.FullName,
+        $attributes -bxor [System.IO.FileAttributes]::ReadOnly
+      )
+    }
+    [System.IO.Directory]::Delete($directory.FullName, $false)
+  }
   if ([System.IO.Directory]::Exists($extendedRoot)) {
     throw 'W6B_LEGACY_TEST_ROOT_CLEANUP_FAILED'
   }

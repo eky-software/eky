@@ -319,6 +319,7 @@ test('reads deep adopted workspace evidence with Windows long-path semantics', {
     longPathCleanupValidated: true,
     longPathHashValidated: true,
     longPathInventoryValidated: true,
+    readOnlyCleanupValidated: true,
     registryEvidenceValidated: true,
     status: 'succeeded',
   });
