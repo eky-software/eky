@@ -313,6 +313,82 @@ function Start-EkyHistoricalPackagedSmokePhase {
   return $started[0]
 }
 
+function Write-EkyHistoricalObserverProgress {
+  param([Parameter(Mandatory = $true)]$OutputItem)
+
+  if ($OutputItem -isnot [string]) {
+    throw 'W6B_LEGACY_OBSERVER_OUTPUT_INVALID'
+  }
+  try {
+    $progress = $OutputItem | ConvertFrom-Json -ErrorAction Stop
+  }
+  catch {
+    throw 'W6B_LEGACY_OBSERVER_OUTPUT_INVALID'
+  }
+  $expectedProperties = @(
+    'scenario',
+    'stage',
+    'status',
+    'resultCode',
+    'durationMs',
+    'elapsedMs'
+  )
+  $actualProperties = @($progress.PSObject.Properties.Name)
+  $allowedStages = @(
+    'sourceStartup',
+    'legacyFixtureVerification',
+    'targetFirstStartup',
+    'targetSecondStartup'
+  )
+  $allowedResultCodes = @(
+    'databaseReady',
+    'backendUtilityReady',
+    'acceptedBuildReady',
+    'backendHealthReady',
+    'sourceUserDataReady',
+    'legacyBusinessFixtureReady',
+    'runtimeSessionValidated'
+  )
+  if (
+    $actualProperties.Count -ne $expectedProperties.Count -or
+    @($actualProperties | Where-Object {
+      $_ -notin $expectedProperties
+    }).Count -ne 0 -or
+    @($expectedProperties | Where-Object {
+      $_ -notin $actualProperties
+    }).Count -ne 0 -or
+    $progress.scenario -cne 'legacyUpgrade' -or
+    $progress.stage -notin $allowedStages -or
+    $progress.status -cne 'observed' -or
+    $progress.resultCode -notin $allowedResultCodes -or
+    (
+      $progress.durationMs -isnot [int] -and
+      $progress.durationMs -isnot [long]
+    ) -or
+    $progress.durationMs -lt 0 -or
+    (
+      $progress.elapsedMs -isnot [int] -and
+      $progress.elapsedMs -isnot [long]
+    ) -or
+    $progress.elapsedMs -lt 0
+  ) {
+    throw 'W6B_LEGACY_OBSERVER_OUTPUT_INVALID'
+  }
+  Write-Information -MessageData $OutputItem -InformationAction Continue
+}
+
+function Invoke-EkyHistoricalObserver {
+  param(
+    [Parameter(Mandatory = $true)][scriptblock]$Observer,
+    [Parameter(Mandatory = $true)]$Argument
+  )
+
+  $observerOutput = @(& $Observer $Argument)
+  foreach ($outputItem in $observerOutput) {
+    Write-EkyHistoricalObserverProgress -OutputItem $outputItem
+  }
+}
+
 function Wait-EkyHistoricalPackagedSmokeGeneration {
   param(
     [Parameter(Mandatory = $true)]$Process,
@@ -342,10 +418,12 @@ function Wait-EkyHistoricalPackagedSmokeGeneration {
       Add-EkyHistoricalOwnedProcessIdentities `
         -OwnedIdentities $generation.ownedIdentities `
         -ProcessSnapshot $snapshot
-      & $ObserveProcess $Process
+      Invoke-EkyHistoricalObserver -Observer $ObserveProcess `
+        -Argument $Process
       $observation = & $ReadResult
       if ($null -ne $observation) {
-        & $ObserveResult $observation
+        Invoke-EkyHistoricalObserver -Observer $ObserveResult `
+          -Argument $observation
       }
       $remaining = @(
         Get-EkyHistoricalRemainingOwnedProcesses `
@@ -368,7 +446,7 @@ function Wait-EkyHistoricalPackagedSmokeGeneration {
     if ($null -eq $result) {
       throw 'W6B_LEGACY_SOURCE_SMOKE_RESULT_MISSING'
     }
-    & $ObserveResult $result
+    Invoke-EkyHistoricalObserver -Observer $ObserveResult -Argument $result
     & $ValidateResult $Process $result $ExpectedStage $ExpectedStatus
     return [pscustomobject]@{
       ownedProcessCount = $generation.ownedIdentities.Count

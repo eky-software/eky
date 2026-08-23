@@ -5,6 +5,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path (Split-Path -Parent $PSScriptRoot) `
   'windowsInstallerProcessTree.ps1')
 . (Join-Path $PSScriptRoot 'historicalPackagedSmokeProcessChain.ps1')
+. (Join-Path $PSScriptRoot 'progress.ps1')
 
 function ConvertTo-EkyHistoricalEncodedCommand {
   param([Parameter(Mandatory = $true)][string]$Command)
@@ -149,6 +150,147 @@ function Assert-EkyHistoricalProcessChainFailure {
   }
 }
 
+function Invoke-EkyHistoricalObserverOutputContract {
+  param(
+    [Parameter(Mandatory = $true)][ValidateRange(0, 3)]
+    [int]$ProcessOutputCount,
+    [Parameter(Mandatory = $true)][ValidateRange(0, 3)]
+    [int]$ResultOutputCount
+  )
+
+  $script:ObserverContractPhase = $null
+  $script:ObserverProcessOutputCount = $ProcessOutputCount
+  $script:ObserverResultOutputCount = $ResultOutputCount
+  $script:ObserverProcessOutputWritten = $false
+  $script:ObserverResultOutputWritten = $false
+  $script:AllowedStages = @('sourceStartup')
+  $script:CurrentStage = 'sourceStartup'
+  $script:ScenarioStartedAt = [DateTime]::UtcNow
+  $script:StageStartedAt = $script:ScenarioStartedAt
+  $output = @(
+    Invoke-HistoricalPackagedSmokeProcessChain `
+      -ExpectedExecutablePath (Join-Path $PSHOME 'powershell.exe') `
+      -StartPhase {
+        param([string]$Phase)
+        $script:ObserverContractPhase = $Phase
+        Start-Process powershell.exe -ArgumentList @(
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          'Start-Sleep -Milliseconds 400'
+        ) -WindowStyle Hidden -PassThru
+      } `
+      -ReadResult {
+        if ($script:ObserverContractPhase -ceq 'initial') {
+          return [pscustomobject]@{
+            stage = 'restoreRestart'
+            status = 'started'
+          }
+        }
+        return [pscustomobject]@{
+          electronVersion = '43.2.0'
+          stage = 'shutdown'
+          status = 'ok'
+        }
+      } `
+      -ObserveResult {
+        param($Result)
+        if (!$script:ObserverResultOutputWritten) {
+          $script:ObserverResultOutputWritten = $true
+          for (
+            $index = 0
+            $index -lt $script:ObserverResultOutputCount
+            $index += 1
+          ) {
+            Write-W6bLegacyReadinessObservation -Signal backendHealthReady
+          }
+        }
+      } `
+      -ObserveProcess {
+        param($Process)
+        if (!$script:ObserverProcessOutputWritten) {
+          $script:ObserverProcessOutputWritten = $true
+          for (
+            $index = 0
+            $index -lt $script:ObserverProcessOutputCount
+            $index += 1
+          ) {
+            Write-W6bLegacyReadinessObservation -Signal backendUtilityReady
+          }
+        }
+      } `
+      -ValidateResult {
+        param($Process, $Result, [string]$ExpectedStage, [string]$ExpectedStatus)
+        if (
+          $Process.ExitCode -ne 0 -or
+          $Result.stage -cne $ExpectedStage -or
+          $Result.status -cne $ExpectedStatus
+        ) {
+          throw 'W6B_LEGACY_SOURCE_SMOKE_FAILED'
+        }
+      } `
+      -TimeoutMilliseconds 3000 `
+      -PollMilliseconds 25
+  )
+  if (
+    $output.Count -ne 1 -or
+    $output[0] -isnot [pscustomobject] -or
+    $output[0].contract -cne 'explicitTwoPhase' -or
+    $output[0].initialGenerationCount -ne 1 -or
+    $output[0].restoredGenerationCount -ne 1 -or
+    $output[0].remainingOwnedProcessCount -ne 0
+  ) {
+    throw 'W6B_LEGACY_OBSERVER_OUTPUT_CONTAMINATED'
+  }
+  return $output[0]
+}
+
+function Assert-EkyHistoricalObserverFailurePreserved {
+  try {
+    Invoke-HistoricalPackagedSmokeProcessChain `
+      -ExpectedExecutablePath (Join-Path $PSHOME 'powershell.exe') `
+      -StartPhase {
+        param([string]$Phase)
+        Start-Process powershell.exe -ArgumentList @(
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          'Start-Sleep -Milliseconds 400'
+        ) -WindowStyle Hidden -PassThru
+      } `
+      -ReadResult {
+        [pscustomobject]@{ stage = 'restoreRestart'; status = 'started' }
+      } `
+      -ObserveResult { throw 'W6B_LEGACY_OBSERVER_FAILED' } `
+      -ObserveProcess { param($Process) } `
+      -ValidateResult {
+        param($Process, $Result, [string]$ExpectedStage, [string]$ExpectedStatus)
+      } `
+      -TimeoutMilliseconds 3000 `
+      -PollMilliseconds 25 | Out-Null
+    throw 'W6B_LEGACY_EXPECTED_FAILURE_MISSING'
+  }
+  catch {
+    if ($_.Exception.Message -cne 'W6B_LEGACY_OBSERVER_FAILED') {
+      throw
+    }
+  }
+}
+
+function Assert-EkyHistoricalObserverOutputRejected {
+  try {
+    Invoke-EkyHistoricalObserver `
+      -Observer { [pscustomobject]@{ unsafe = 'value' } } `
+      -Argument ([pscustomobject]@{})
+    throw 'W6B_LEGACY_EXPECTED_FAILURE_MISSING'
+  }
+  catch {
+    if ($_.Exception.Message -cne 'W6B_LEGACY_OBSERVER_OUTPUT_INVALID') {
+      throw
+    }
+  }
+}
+
 $script:phase = $null
 $script:initialStarts = 0
 $script:restoredStarts = 0
@@ -162,6 +304,18 @@ $fixture = if ($HistoricalExecutablePath -eq '') {
 }
 else {
   'historicalPackage'
+}
+$processChainTimeoutMilliseconds = if ($fixture -ceq 'historicalPackage') {
+  60000
+}
+else {
+  5000
+}
+$processChainPollMilliseconds = if ($fixture -ceq 'historicalPackage') {
+  250
+}
+else {
+  25
 }
 
 try {
@@ -200,11 +354,20 @@ try {
     )
   }
 
+  Invoke-EkyHistoricalObserverOutputContract `
+    -ProcessOutputCount 0 -ResultOutputCount 0 | Out-Null
+  Invoke-EkyHistoricalObserverOutputContract `
+    -ProcessOutputCount 1 -ResultOutputCount 0 | Out-Null
+  Invoke-EkyHistoricalObserverOutputContract `
+    -ProcessOutputCount 2 -ResultOutputCount 2 | Out-Null
+  Assert-EkyHistoricalObserverFailurePreserved
+  Assert-EkyHistoricalObserverOutputRejected
+
   $foreignProcess = Start-Process powershell.exe -ArgumentList @(
     '-NoProfile',
     '-NonInteractive',
     '-Command',
-    'Start-Sleep -Seconds 15'
+    '[Threading.Thread]::Sleep([Threading.Timeout]::Infinite)'
   ) -WindowStyle Hidden -PassThru
 
   $chain = Invoke-HistoricalPackagedSmokeProcessChain `
@@ -295,8 +458,8 @@ exit 0
         throw 'W6B_LEGACY_SOURCE_SMOKE_RESULT_INVALID'
       }
     } `
-    -TimeoutMilliseconds 5000 `
-    -PollMilliseconds 25
+    -TimeoutMilliseconds $processChainTimeoutMilliseconds `
+    -PollMilliseconds $processChainPollMilliseconds
 
   $foreignProcess.Refresh()
   $foreignProcessUntouched = !$foreignProcess.HasExited

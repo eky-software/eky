@@ -291,8 +291,32 @@ test('historical smoke process chain is exact and foreign-process safe', {
   const lines = result.stdout
     .split(/\r?\n/u)
     .filter((line) => line.trim() !== '');
-  assert.equal(lines.length, 1);
-  const outcome = JSON.parse(lines[0]);
+  assert.equal(lines.length, 6);
+  const progressLines = lines.slice(0, -1).map((line) => JSON.parse(line));
+  for (const progress of progressLines) {
+    assert.deepEqual(Object.keys(progress).sort(), [
+      'durationMs',
+      'elapsedMs',
+      'resultCode',
+      'scenario',
+      'stage',
+      'status',
+    ]);
+    assert.equal(progress.scenario, 'legacyUpgrade');
+    assert.equal(progress.stage, 'sourceStartup');
+    assert.equal(progress.status, 'observed');
+    assert.equal(
+      ['backendHealthReady', 'backendUtilityReady'].includes(
+        progress.resultCode,
+      ),
+      true,
+    );
+    assert.equal(Number.isSafeInteger(progress.durationMs), true);
+    assert.equal(progress.durationMs >= 0, true);
+    assert.equal(Number.isSafeInteger(progress.elapsedMs), true);
+    assert.equal(progress.elapsedMs >= 0, true);
+  }
+  const outcome = JSON.parse(lines.at(-1));
   assert.deepEqual(outcome, {
     contract: 'explicitTwoPhase',
     fixture: 'synthetic',
