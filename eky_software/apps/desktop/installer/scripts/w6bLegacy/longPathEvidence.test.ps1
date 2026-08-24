@@ -7,6 +7,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '..\windowsInstallerTestSupport.ps1')
 . (Join-Path $PSScriptRoot 'evidence.ps1')
+. (Join-Path $PSScriptRoot 'nativeWindowsPath.ps1')
 
 function Get-W6bLongPathSafeErrorCode {
   param([Parameter(Mandatory = $true)]$ErrorRecord)
@@ -26,46 +27,55 @@ function Get-W6bLongPathSafeErrorCode {
   return 'W6B_LONG_PATH_TEST_FAILED'
 }
 
-$root = Join-Path $env:TEMP (
-  'w6-' + [guid]::NewGuid().ToString('N').Substring(0, 12)
-)
-$workspaceId = '00000000-0000-4000-8000-000000000000'
-$companyId = 'local-company-' + ('0' * 32)
-$invoiceId = '11111111-1111-4111-8111-111111111111'
-$relativePath = Join-Path 'invoices' (
-  Join-Path $companyId (Join-Path $invoiceId 'approved-invoice.pdf')
-)
-$paddingRoot = $root
-do {
-  $userDataRoot = Join-Path $paddingRoot (
-    "s\eky-desktop-smoke\$('2' * 32)\user-data"
-  )
-  $storageRoot = Join-Path $userDataRoot (
-    "workspaces\$workspaceId\runtime\storage"
-  )
-  $filePath = Join-Path $storageRoot $relativePath
-  if ($filePath.Length -ge 320) {
-    break
-  }
-  $requiredSegmentLength = 320 - $filePath.Length - 1
-  $paddingSegmentLength = [Math]::Max(
-    8,
-    [Math]::Min(48, $requiredSegmentLength)
-  )
-  $paddingRoot = Join-Path $paddingRoot ('p' * $paddingSegmentLength)
-} while ($true)
-$registryPath = Join-Path $userDataRoot 'workspace-registry-v1.json'
-$extendedFilePath = ConvertTo-W6bExtendedLengthPath -Path $filePath
-$extendedRegistryPath = ConvertTo-W6bExtendedLengthPath -Path $registryPath
-$extendedRoot = ConvertTo-W6bExtendedLengthPath -Path $root
+$root = $null
+$extendedRoot = $null
 $result = $null
 $terminalError = $null
 $reparseProbe = $null
 
 try {
+  $candidateRoot = Join-Path $env:TEMP (
+    'w6-' + [guid]::NewGuid().ToString('N').Substring(0, 12)
+  )
+  [System.IO.Directory]::CreateDirectory($candidateRoot) | Out-Null
+  $root = Resolve-W6bCanonicalExistingPath `
+    -Path $candidateRoot `
+    -Code 'W6B_LONG_PATH_TEST_FIXTURE_ROOT_INVALID'
+  $extendedRoot = ConvertTo-W6bExtendedLengthPath -Path $root
+
   if ($TestCase -ceq 'safeFailure') {
     throw 'W6B_LONG_PATH_SAFE_FAILURE_FIXTURE'
   }
+
+  $workspaceId = '00000000-0000-4000-8000-000000000000'
+  $companyId = 'local-company-' + ('0' * 32)
+  $invoiceId = '11111111-1111-4111-8111-111111111111'
+  $relativePath = Join-Path 'invoices' (
+    Join-Path $companyId (Join-Path $invoiceId 'approved-invoice.pdf')
+  )
+  $paddingRoot = $root
+  do {
+    $userDataRoot = Join-Path $paddingRoot (
+      "s\eky-desktop-smoke\$('2' * 32)\user-data"
+    )
+    $storageRoot = Join-Path $userDataRoot (
+      "workspaces\$workspaceId\runtime\storage"
+    )
+    $filePath = Join-Path $storageRoot $relativePath
+    if ($filePath.Length -ge 320) {
+      break
+    }
+    $requiredSegmentLength = 320 - $filePath.Length - 1
+    $paddingSegmentLength = [Math]::Max(
+      8,
+      [Math]::Min(48, $requiredSegmentLength)
+    )
+    $paddingRoot = Join-Path $paddingRoot ('p' * $paddingSegmentLength)
+  } while ($true)
+  $registryPath = Join-Path $userDataRoot 'workspace-registry-v1.json'
+  $extendedFilePath = ConvertTo-W6bExtendedLengthPath -Path $filePath
+  $extendedRegistryPath = ConvertTo-W6bExtendedLengthPath -Path $registryPath
+
   if ($filePath.Length -lt 300 -or $filePath.Length -gt 340) {
     throw 'W6B_LONG_PATH_TEST_FIXTURE_LENGTH_INVALID'
   }
@@ -118,7 +128,8 @@ try {
   $invalidCleanupRootRejected = $false
   try {
     Remove-W6bLegacyAcceptanceTestRoot -Root (
-      Join-Path $env:TEMP 'eky-w6b-invalid-cleanup-root'
+      Join-Path ([System.IO.Path]::GetDirectoryName($root)) `
+        'eky-w6b-invalid-cleanup-root'
     )
   }
   catch {
@@ -184,7 +195,11 @@ finally {
         [System.IO.Directory]::Delete($extendedReparseProbe, $false)
       }
     }
-    if ([System.IO.Directory]::Exists($extendedRoot)) {
+    if (
+      $null -ne $root -and
+      $null -ne $extendedRoot -and
+      [System.IO.Directory]::Exists($extendedRoot)
+    ) {
       Remove-W6bLegacyAcceptanceTestRoot -Root $root
     }
   }
@@ -195,7 +210,10 @@ finally {
   }
 }
 
-if ([System.IO.Directory]::Exists($extendedRoot)) {
+if (
+  $null -ne $extendedRoot -and
+  [System.IO.Directory]::Exists($extendedRoot)
+) {
   if ($null -eq $terminalError) {
     try {
       throw 'W6B_LONG_PATH_CLEANUP_FAILED'

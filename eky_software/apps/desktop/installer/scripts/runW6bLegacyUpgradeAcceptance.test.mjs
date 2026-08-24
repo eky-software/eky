@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -65,6 +66,7 @@ const gracefulShutdownTestCases = Object.freeze([
   'processIdentityMismatch',
   'rootExitsBeforeWindow',
 ]);
+const longPathTempForms = Object.freeze(['canonical', 'lexical']);
 
 function parseProcessChainOutput(output) {
   return output.split(/\r?\n/u).filter((line) => line.trim() !== '');
@@ -115,6 +117,34 @@ function assertSafeProcessChainProgress(progress) {
   assert.equal(progress.durationMs >= 0, true);
   assert.equal(Number.isSafeInteger(progress.elapsedMs), true);
   assert.equal(progress.elapsedMs >= 0, true);
+}
+
+function runLongPathEvidenceTest({ tempForm, testCase = 'success' }) {
+  const tempRoot = mkdtempSync(resolve(tmpdir(), 'eky-w6b-long-path-'));
+  const aliasSegment = resolve(tempRoot, 'alias-segment');
+  mkdirSync(aliasSegment);
+  const fixtureTemp =
+    tempForm === 'lexical' ? `${aliasSegment}\\..` : tempRoot;
+  try {
+    const arguments_ = [
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      resolve(scriptDirectory, 'w6bLegacy', 'longPathEvidence.test.ps1'),
+    ];
+    if (testCase !== 'success') {
+      arguments_.push('-TestCase', testCase);
+    }
+    return spawnSync('powershell.exe', arguments_, {
+      encoding: 'utf8',
+      env: { ...process.env, TEMP: fixtureTemp, TMP: fixtureTemp },
+      windowsHide: true,
+    });
+  } finally {
+    rmSync(tempRoot, { force: true, recursive: true });
+  }
 }
 
 test('uses the verified exact local release without rebuilding it', async () => {
@@ -293,69 +323,51 @@ test('classifies current and legacy accepted-build slots independently', {
   });
 });
 
-test('reads deep adopted workspace evidence with Windows long-path semantics', {
-  skip: process.platform !== 'win32',
-}, () => {
-  const result = spawnSync(
-    'powershell.exe',
-    [
-      '-NoProfile',
-      '-NonInteractive',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-File',
-      resolve(scriptDirectory, 'w6bLegacy', 'longPathEvidence.test.ps1'),
-    ],
-    { encoding: 'utf8', windowsHide: true },
-  );
+for (const tempForm of longPathTempForms) {
+  test(`reads deep adopted workspace evidence with ${tempForm} Windows temp`, {
+    skip: process.platform !== 'win32',
+  }, () => {
+    const result = runLongPathEvidenceTest({ tempForm });
 
-  assert.equal(result.status, 0, 'W6B_LONG_PATH_EVIDENCE_TEST_FAILED');
-  const lines = result.stdout
-    .split(/\r?\n/u)
-    .filter((line) => line.trim() !== '');
-  assert.equal(lines.length, 1);
-  assert.deepEqual(JSON.parse(lines[0]), {
-    invalidCleanupRootRejected: true,
-    longPathCleanupValidated: true,
-    longPathHashValidated: true,
-    longPathInventoryValidated: true,
-    readOnlyCleanupValidated: true,
-    reparsePointRejected: true,
-    registryEvidenceValidated: true,
-    status: 'succeeded',
+    assert.equal(result.status, 0, 'W6B_LONG_PATH_EVIDENCE_TEST_FAILED');
+    assert.equal(result.stderr, '');
+    const lines = result.stdout
+      .split(/\r?\n/u)
+      .filter((line) => line.trim() !== '');
+    assert.equal(lines.length, 1);
+    assert.deepEqual(JSON.parse(lines[0]), {
+      invalidCleanupRootRejected: true,
+      longPathCleanupValidated: true,
+      longPathHashValidated: true,
+      longPathInventoryValidated: true,
+      readOnlyCleanupValidated: true,
+      reparsePointRejected: true,
+      registryEvidenceValidated: true,
+      status: 'succeeded',
+    });
   });
-});
 
-test('reports long-path evidence failure with one safe terminal record', {
-  skip: process.platform !== 'win32',
-}, () => {
-  const result = spawnSync(
-    'powershell.exe',
-    [
-      '-NoProfile',
-      '-NonInteractive',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-File',
-      resolve(scriptDirectory, 'w6bLegacy', 'longPathEvidence.test.ps1'),
-      '-TestCase',
-      'safeFailure',
-    ],
-    { encoding: 'utf8', windowsHide: true },
-  );
+  test(`reports one safe long-path failure with ${tempForm} Windows temp`, {
+    skip: process.platform !== 'win32',
+  }, () => {
+    const result = runLongPathEvidenceTest({
+      tempForm,
+      testCase: 'safeFailure',
+    });
 
-  assert.equal(result.status, 1, 'W6B_LONG_PATH_SAFE_FAILURE_TEST_FAILED');
-  assert.equal(result.stderr, '');
-  const lines = result.stdout
-    .split(/\r?\n/u)
-    .filter((line) => line.trim() !== '');
-  assert.equal(lines.length, 1);
-  assert.deepEqual(JSON.parse(lines[0]), {
-    errorCode: 'W6B_LONG_PATH_SAFE_FAILURE_FIXTURE',
-    status: 'failed',
-    testCase: 'longPathEvidence',
+    assert.equal(result.status, 1, 'W6B_LONG_PATH_SAFE_FAILURE_TEST_FAILED');
+    assert.equal(result.stderr, '');
+    const lines = result.stdout
+      .split(/\r?\n/u)
+      .filter((line) => line.trim() !== '');
+    assert.equal(lines.length, 1);
+    assert.deepEqual(JSON.parse(lines[0]), {
+      errorCode: 'W6B_LONG_PATH_SAFE_FAILURE_FIXTURE',
+      status: 'failed',
+      testCase: 'longPathEvidence',
+    });
   });
-});
+}
 
 test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () => {
   const sourceSmokeText = readFileSync(
@@ -368,6 +380,7 @@ test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () 
     './w6bLegacy/gracefulApplicationShutdown.ps1',
     './w6bLegacy/historicalPackagedSmokeProcessChain.ps1',
     './w6bLegacy/installerLifecycle.ps1',
+    './w6bLegacy/nativeWindowsPath.ps1',
     './w6bLegacy/pathSafety.ps1',
     './w6bLegacy/progress.ps1',
     './w6bLegacy/sourceSmoke.ps1',
