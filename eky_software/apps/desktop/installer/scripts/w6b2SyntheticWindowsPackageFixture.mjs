@@ -7,6 +7,7 @@ import {
 } from '../../scripts/packageWindowsApplication.mjs';
 import { createW6bSyntheticNextPatchRelease } from './w6bSyntheticWindowsPackageFixture.mjs';
 import { prepareW6b2HistoricalBackendStage } from './w6b2HistoricalBackendStage.mjs';
+import { writeW6b2PrivateProofPackageMarker } from './w6b2PrivateProofPackageMarker.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const desktopDirectory = resolve(scriptDirectory, '../..');
@@ -52,13 +53,26 @@ export function createW6b2PackageRequest(input) {
     reportPackagedPath: false,
     releaseOverride: input.release,
   };
-  if (input.kind === 'source') {
-    return Object.freeze({
-      ...request,
-      prepareBackendStage: prepareW6b2HistoricalBackendStage,
-    });
-  }
-  return Object.freeze(request);
+  return Object.freeze({
+    ...request,
+    prepareBackendStage:
+      input.kind === 'source'
+        ? async (backendStage) => {
+            await prepareW6b2HistoricalBackendStage(backendStage);
+            await writeW6b2PrivateProofPackageMarker({
+              appVersion: input.release.appVersion,
+              backendStage,
+              role: 'source',
+            });
+          }
+        : async (backendStage) => {
+            await writeW6b2PrivateProofPackageMarker({
+              appVersion: input.release.appVersion,
+              backendStage,
+              role: 'target',
+            });
+          },
+  });
 }
 
 export async function packageW6b2SyntheticApplications(canonicalRelease) {

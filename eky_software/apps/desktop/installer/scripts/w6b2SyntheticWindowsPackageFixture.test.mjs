@@ -5,7 +5,18 @@ import {
   createW6b2PackageRequest,
   createW6b2SyntheticReleasePair,
 } from './w6b2SyntheticWindowsPackageFixture.mjs';
-import { prepareW6b2HistoricalBackendStage } from './w6b2HistoricalBackendStage.mjs';
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { W6B2_PRIVATE_PROOF_PACKAGE_MARKER_FILE } from './w6b2PrivateProofPackageMarker.mjs';
 
 const canonicalRelease = Object.freeze({
   appIdentity: 'Eky',
@@ -26,7 +37,7 @@ test('creates private numeric 0.2.7 to 0.2.8 fixture releases without changing t
   assert.equal(canonicalRelease.appVersion, '0.2.6');
 });
 
-test('limits the historical backend preparation to the private W6B.2 source fixture', () => {
+test('limits historical preparation and package markers to private W6B.2 fixtures', async (context) => {
   const pair = createW6b2SyntheticReleasePair(canonicalRelease);
   const source = createW6b2PackageRequest({
     kind: 'source',
@@ -37,11 +48,33 @@ test('limits the historical backend preparation to the private W6B.2 source fixt
     release: pair.target,
   });
 
+  const sourceStage = await mkdtemp(join(tmpdir(), 'eky-w6b2-source-'));
+  const targetStage = await mkdtemp(join(tmpdir(), 'eky-w6b2-target-'));
+  context.after(() => rm(sourceStage, { force: true, recursive: true }));
+  context.after(() => rm(targetStage, { force: true, recursive: true }));
+  const sourceMigrations = join(sourceStage, 'dist', 'database', 'migrations');
+  await mkdir(sourceMigrations, { recursive: true });
+  await writeFile(join(sourceMigrations, '001_first.sql'), 'SELECT 1;\n');
+  await writeFile(join(sourceMigrations, '002_second.sql'), 'SELECT 2;\n');
+
+  await source.prepareBackendStage(sourceStage);
+  await target.prepareBackendStage(targetStage);
+
+  assert.deepEqual(await readdir(sourceMigrations), ['001_first.sql']);
   assert.equal(
-    source.prepareBackendStage,
-    prepareW6b2HistoricalBackendStage,
+    await readFile(
+      join(sourceStage, W6B2_PRIVATE_PROOF_PACKAGE_MARKER_FILE),
+      'utf8',
+    ),
+    '{"appVersion":"0.2.7","formatVersion":1,"role":"source"}\n',
   );
-  assert.equal('prepareBackendStage' in target, false);
+  assert.equal(
+    await readFile(
+      join(targetStage, W6B2_PRIVATE_PROOF_PACKAGE_MARKER_FILE),
+      'utf8',
+    ),
+    '{"appVersion":"0.2.8","formatVersion":1,"role":"target"}\n',
+  );
 });
 
 test('rejects unsupported fixture release baselines and package kinds', () => {

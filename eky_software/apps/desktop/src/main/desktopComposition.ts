@@ -85,6 +85,11 @@ import {
   type PackagedSmokeConfiguration,
   type PackagedSmokeStage,
 } from './packagedSmoke.js';
+import type {
+  W6b2PackagedProofConfiguration,
+  W6b2PackagedProofResult,
+} from './w6b2PackagedProof.js';
+import { runW6b2PackagedProofController } from './w6b2PackagedProofController.js';
 import { restoreWindowInputFocus } from './windowInputFocus.js';
 import { resolveDesktopWorkspaceStartup } from './resolveDesktopWorkspaceStartup.js';
 import type { DesktopBuildInfo } from '../release/desktopBuildInfo.js';
@@ -210,6 +215,12 @@ export interface StartDesktopCompositionOptions {
   reportSmokeStage(stage: PackagedSmokeStage): Promise<void>;
   smokeConfiguration: PackagedSmokeConfiguration;
   userDataPath: string;
+  w6b2PackagedProof?: Readonly<{
+    configuration: Readonly<W6b2PackagedProofConfiguration>;
+    isQuitRequested(): boolean;
+    isRelaunchRequested(): boolean;
+    reportResult(result: W6b2PackagedProofResult): Promise<void>;
+  }>;
 }
 
 const defaultDesktopCompositionDependencies: DesktopCompositionDependencies = {
@@ -1741,11 +1752,12 @@ async function startDesktopCompositionRuntime({
     },
   };
 
+  let handoffCoordinator: LocalUpdateHandoffCoordinator | undefined;
   if (
     options.releaseInfo !== undefined &&
     localUpdatePackageCache !== undefined
   ) {
-    const handoffCoordinator = new LocalUpdateHandoffCoordinator({
+    handoffCoordinator = new LocalUpdateHandoffCoordinator({
       cache: localUpdatePackageCache,
       journalStore: updateJournalStore,
       maintenanceLease: workspaceMaintenanceLease,
@@ -1760,47 +1772,72 @@ async function startDesktopCompositionRuntime({
       profileProtection: updateProfileProtection,
       shutdownRuntime: () => lifecycleHandle.shutdown(),
     });
-    localUpdateSelectionCapability =
-      createLocalUpdateFoundationComposition({
-        cache: localUpdatePackageCache,
-        confirmUpdate: (status) =>
-          confirmLocalUpdateWithNativeDialog({
-            mainWindow,
-            showMessageBox: (owner, dialogOptions) =>
-              dependencies.showMessageBox(owner, dialogOptions),
-            status,
-          }),
-        handoffCoordinator,
-        ipcMain,
-        journalStore: updateJournalStore,
-        mainWindow,
-        observer: updateObserver,
-        releaseInfo: options.releaseInfo,
-        resourcesPath: options.resourcesPath,
-        async selectManifestPath() {
-          const result = await dependencies.showOpenDialog(mainWindow, {
-            filters: [
-              {
-                extensions: ['json'],
-                name: 'Eky-päivityksen manifesti',
-              },
-            ],
-            properties: ['openFile'],
-            title: 'Valitse paikallinen Eky-päivitys',
+    if (options.w6b2PackagedProof === undefined) {
+      localUpdateSelectionCapability =
+        createLocalUpdateFoundationComposition({
+          cache: localUpdatePackageCache,
+          confirmUpdate: (status) =>
+            confirmLocalUpdateWithNativeDialog({
+              mainWindow,
+              showMessageBox: (owner, dialogOptions) =>
+                dependencies.showMessageBox(owner, dialogOptions),
+              status,
+            }),
+          handoffCoordinator,
+          ipcMain,
+          journalStore: updateJournalStore,
+          mainWindow,
+          observer: updateObserver,
+          releaseInfo: options.releaseInfo,
+          resourcesPath: options.resourcesPath,
+          async selectManifestPath() {
+            const result = await dependencies.showOpenDialog(mainWindow, {
+              filters: [
+                {
+                  extensions: ['json'],
+                  name: 'Eky-päivityksen manifesti',
+                },
+              ],
+              properties: ['openFile'],
+              title: 'Valitse paikallinen Eky-päivitys',
+            });
+            return result.canceled || result.filePaths.length !== 1
+              ? null
+              : result.filePaths[0] ?? null;
+          },
+          showSafeError() {
+            deliveryConfirmation.showApplicationError(
+              'Päivitystä ei voitu käsitellä',
+              'Paikallista Eky-päivitystä ei voitu käsitellä turvallisesti.',
+            );
+          },
+          systemRoot: process.env.SystemRoot,
+          userDataPath: options.userDataPath,
+        });
+    }
+  }
+
+  if (options.w6b2PackagedProof !== undefined) {
+    const proof = options.w6b2PackagedProof;
+    const result =
+      localUpdatePackageCache === undefined || handoffCoordinator === undefined
+        ? {
+            errorCode: 'W6B2_PROOF_CONFIGURATION_INVALID' as const,
+            formatVersion: 1 as const,
+            phase: proof.configuration.phase,
+            status: 'failed' as const,
+          }
+        : await runW6b2PackagedProofController({
+            cache: localUpdatePackageCache,
+            configuration: proof.configuration,
+            handoff: handoffCoordinator,
+            isQuitRequested: proof.isQuitRequested,
+            isRelaunchRequested: proof.isRelaunchRequested,
+            lifecycle: lifecycleHandle,
+            workspaceManagement: workspaceManagementComposition.service,
           });
-          return result.canceled || result.filePaths.length !== 1
-            ? null
-            : result.filePaths[0] ?? null;
-        },
-        showSafeError() {
-          deliveryConfirmation.showApplicationError(
-            'Päivitystä ei voitu käsitellä',
-            'Paikallista Eky-päivitystä ei voitu käsitellä turvallisesti.',
-          );
-        },
-        systemRoot: process.env.SystemRoot,
-        userDataPath: options.userDataPath,
-      });
+    await proof.reportResult(result);
+    return lifecycleHandle;
   }
 
   if (smokeMode) {
