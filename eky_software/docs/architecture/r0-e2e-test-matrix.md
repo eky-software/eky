@@ -238,6 +238,13 @@ tietokannan, auditin, operational/security-eventin ja tukipaketin päätöksen.
 | UPDATE-WORKSPACES-001 | P0; Windows packaged-smoke, update, recovery | Aktiivinen pending A, passiivinen pending B ja invalidi C; aja N -> N+1 ja aktivoi B | A migroidaan first startissa, B vasta aktivoinnissa ja C eristetään; toinen startup on idempotentti | DB/PDF/registry/secret/archive/recovery-scopet eivät risteä; accepted build vasta readinessin jälkeen | Workspace-polut, secretit, business-data tai raw journal | planned-w6b |
 | UPDATE-WORKSPACES-ROLLBACK-001 | P0; Windows packaged-smoke, fault, recovery | Injektoi preUpdate-, aktiivisen migration/health-, registry-transition-, passiivisen activation- ja binary rollback -virheet | Source säilyy tai palautuu täsmällisesti; passiiviset juuret säilyvät; epäselvä binary-tila päättyy recoveryRequirediin | Business- ja binary-rollbackin omistajuudet erillään; ei mixed build/registry -hyväksyntää tai retry-loopia | MSI output, polut, journal, secretit tai business-data | planned-w6b |
 
+Windows Installer -portin deterministiset testit ajetaan komennolla
+`pnpm --filter @eky/desktop installer:test:unit`. Käyttöjärjestelmän oikeita
+prosesseja käynnistävät sopimustestit ajetaan erillään ja sarjassa komennolla
+`pnpm --filter @eky/desktop installer:test:windows-process`. Täysi
+`installer:test` ajaa nämä ryhmät kerran tässä järjestyksessä ennen pitkää
+paketoitua hyväksyntämatriisia.
+
 ## Definition of Done
 
 Kun uusi moduuli tai merkittävä ominaisuus lisätään:

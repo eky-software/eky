@@ -61,7 +61,9 @@ const processChainTestCases = Object.freeze([
     progressCount: 0,
   }),
   Object.freeze({ name: 'ownedDescendantChain', progressCount: 0 }),
-  Object.freeze({ name: 'invalidStarts', progressCount: 0 }),
+  Object.freeze({ name: 'invalidStartNoProcess', progressCount: 0 }),
+  Object.freeze({ name: 'invalidStartMultipleProcesses', progressCount: 0 }),
+  Object.freeze({ name: 'invalidStartWrongExecutable', progressCount: 0 }),
 ]);
 const gracefulShutdownTestCases = Object.freeze([
   'windowDelayed',
@@ -407,6 +409,7 @@ test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () 
     './w6bLegacy/evidence.ps1',
     './w6bLegacy/gracefulApplicationShutdown.ps1',
     './w6bLegacy/historicalPackagedSmokeProcessChain.ps1',
+    './w6bLegacy/invalidProcessStartFixture.ps1',
     './w6bLegacy/installerLifecycle.ps1',
     './w6bLegacy/nativeWindowsPath.ps1',
     './w6bLegacy/pathSafety.ps1',
@@ -423,6 +426,21 @@ test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () 
   assert.match(sourceText, /Read-W6bAcceptedBuildIdentitySlots/iu);
   assert.doesNotMatch(sourceText, /function Read-W6bAcceptedBuild\s*\{/iu);
   assert.match(sourceText, /function Wait-W6bOwnedApplicationWindow/iu);
+  assert.match(
+    sourceText,
+    /function New-EkyHistoricalInvalidProcessStartFixture/iu,
+  );
+  assert.match(sourceText, /EventWaitHandle/iu);
+  const invalidStartFixtureSource = readFileSync(
+    new URL(
+      './w6bLegacy/invalidProcessStartFixture.ps1',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+  assert.doesNotMatch(invalidStartFixtureSource, /Start-Sleep/iu);
+  assert.doesNotMatch(invalidStartFixtureSource, /\bping(?:\.exe)?\b/iu);
+  assert.doesNotMatch(invalidStartFixtureSource, /\btimeout(?:\.exe)?\b/iu);
   assert.match(
     sourceText,
     /\$script:PreflightIsolationEstablished\s*=\s*\$false/iu,
@@ -664,11 +682,13 @@ for (const processChainTestCase of processChainTestCases) {
       assert.equal(outcome.remainingOwnedProcessCount, 0);
       assert.equal(outcome.restoredGenerationCount, 1);
       assert.equal(outcome.restoredOwnedProcessCount >= 2, true);
-    } else if (processChainTestCase.name === 'invalidStarts') {
+    } else if (processChainTestCase.name.startsWith('invalidStart')) {
       assert.deepEqual(outcome, {
-        invalidProcessStartsRejected: true,
+        foreignProcessUntouched: true,
+        invalidProcessStartRejected: true,
+        remainingOwnedProcessCount: 0,
         status: 'succeeded',
-        testCase: 'invalidStarts',
+        testCase: processChainTestCase.name,
       });
     } else {
       assert.deepEqual(outcome, {

@@ -211,8 +211,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run installer unit tests
-        run: pnpm --filter @eky/desktop installer:test
+      - name: Run deterministic installer tests
+        run: pnpm --filter @eky/desktop installer:test:unit
+
+      - name: Run Windows process-contract tests serially
+        run: pnpm --filter @eky/desktop installer:test:windows-process
 
       - name: Package clean Windows pilot payload
         run: pnpm --filter @eky/desktop package:windows:pilot

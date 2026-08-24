@@ -136,6 +136,13 @@ synteettisen N -> N+1-, downgrade- ja rollback-todistuksen. CI ei tässä
 checkpointissa lataa artifactia julkaisuun, allekirjoita sitä tai tee siitä
 oikealle käyttäjälle jaettavaa releasea.
 
+Installerin deterministiset sopimustestit ajetaan komennolla
+`pnpm --filter @eky/desktop installer:test:unit`. Oikeita Windows-prosesseja
+käynnistävät prosessisopimustestit ajetaan erikseen ja sarjassa komennolla
+`pnpm --filter @eky/desktop installer:test:windows-process`. Yhdistelmäkomento
+`pnpm --filter @eky/desktop installer:test` ajaa molemmat ryhmät tässä
+järjestyksessä, eikä samaa testiä saa sisällyttää kumpaankin ryhmään.
+
 CI käyttää .NET SDK:ta `global.json`-sopimuksella `10.0.302`,
 `rollForward: disable` ja `allowPrerelease: false`. Virallinen
 `actions/setup-dotnet` on täsmällisesti releaseen `v5.4.0` kuuluvaan

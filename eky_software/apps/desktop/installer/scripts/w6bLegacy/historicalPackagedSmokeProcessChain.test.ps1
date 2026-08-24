@@ -8,7 +8,9 @@ param(
     'observerFailure',
     'observerInvalidOutput',
     'ownedDescendantChain',
-    'invalidStarts'
+    'invalidStartNoProcess',
+    'invalidStartMultipleProcesses',
+    'invalidStartWrongExecutable'
   )]
   [string]$TestCase = 'all'
 )
@@ -18,6 +20,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path (Split-Path -Parent $PSScriptRoot) `
   'windowsInstallerProcessTree.ps1')
 . (Join-Path $PSScriptRoot 'historicalPackagedSmokeProcessChain.ps1')
+. (Join-Path $PSScriptRoot 'invalidProcessStartFixture.ps1')
 . (Join-Path $PSScriptRoot 'progress.ps1')
 
 $script:AllowedHistoricalProcessChainTestCases = @(
@@ -27,7 +30,9 @@ $script:AllowedHistoricalProcessChainTestCases = @(
   'observerFailure',
   'observerInvalidOutput',
   'ownedDescendantChain',
-  'invalidStarts'
+  'invalidStartNoProcess',
+  'invalidStartMultipleProcesses',
+  'invalidStartWrongExecutable'
 )
 $script:CurrentHistoricalProcessChainTestCase = if ($TestCase -ceq 'all') {
   'observerNoOutput'
@@ -46,7 +51,9 @@ function Test-EkyHistoricalProcessChainTestCaseSelected {
       'observerFailure',
       'observerInvalidOutput',
       'ownedDescendantChain',
-      'invalidStarts'
+      'invalidStartNoProcess',
+      'invalidStartMultipleProcesses',
+      'invalidStartWrongExecutable'
     )]
     [string]$Name
   )
@@ -64,7 +71,9 @@ function Set-EkyHistoricalProcessChainTestCase {
       'observerFailure',
       'observerInvalidOutput',
       'ownedDescendantChain',
-      'invalidStarts'
+      'invalidStartNoProcess',
+      'invalidStartMultipleProcesses',
+      'invalidStartWrongExecutable'
     )]
     [string]$Name
   )
@@ -399,6 +408,79 @@ function Assert-EkyHistoricalProcessChainFailure {
     if ($_.Exception.Message -cne $ExpectedCode) {
       throw
     }
+  }
+}
+
+function Invoke-EkyHistoricalInvalidProcessStartContract {
+  param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet(
+      'invalidStartNoProcess',
+      'invalidStartMultipleProcesses',
+      'invalidStartWrongExecutable'
+    )]
+    [string]$Case
+  )
+
+  $fixtures = [Collections.Generic.List[object]]::new()
+  $foreignFixture = $null
+  $foreignProcessUntouched = $false
+  try {
+    $foreignFixture = New-EkyHistoricalInvalidProcessStartFixture `
+      -Role foreign
+    $fixtures.Add($foreignFixture) | Out-Null
+    $powerShellExecutable = Join-Path $PSHOME 'powershell.exe'
+
+    if ($Case -ceq 'invalidStartNoProcess') {
+      Assert-EkyHistoricalProcessChainFailure `
+        -ExpectedExecutablePath $powerShellExecutable `
+        -ExpectedCode 'W6B_LEGACY_SOURCE_PROCESS_START_FAILED' `
+        -StartPhase { param([string]$Phase) return $null }
+    }
+    elseif ($Case -ceq 'invalidStartMultipleProcesses') {
+      $firstFixture = New-EkyHistoricalInvalidProcessStartFixture `
+        -Role multipleA
+      $secondFixture = New-EkyHistoricalInvalidProcessStartFixture `
+        -Role multipleB
+      $fixtures.Add($firstFixture) | Out-Null
+      $fixtures.Add($secondFixture) | Out-Null
+      Assert-EkyHistoricalProcessChainFailure `
+        -ExpectedExecutablePath $powerShellExecutable `
+        -ExpectedCode 'W6B_LEGACY_SOURCE_PROCESS_START_FAILED' `
+        -StartPhase {
+          param([string]$Phase)
+          return @($firstFixture.process, $secondFixture.process)
+        }
+    }
+    else {
+      $wrongExecutableFixture = `
+        New-EkyHistoricalInvalidProcessStartFixture -Role wrongExecutable
+      $fixtures.Add($wrongExecutableFixture) | Out-Null
+      Assert-EkyHistoricalProcessChainFailure `
+        -ExpectedExecutablePath (Join-Path `
+          $env:SystemRoot 'System32\cmd.exe') `
+        -ExpectedCode 'W6B_LEGACY_SOURCE_PROCESS_EXECUTABLE_INVALID' `
+        -StartPhase {
+          param([string]$Phase)
+          return $wrongExecutableFixture.process
+        }
+    }
+
+    $foreignProcessUntouched = `
+      Test-EkyHistoricalInvalidProcessStartFixtureActive `
+        -Fixture $foreignFixture
+    if (!$foreignProcessUntouched) {
+      throw 'W6B_LEGACY_FOREIGN_PROCESS_NOT_PRESERVED'
+    }
+  }
+  finally {
+    Close-EkyHistoricalInvalidProcessStartFixtures -Fixtures @($fixtures)
+  }
+
+  return [pscustomobject]@{
+    foreignProcessUntouched = $foreignProcessUntouched
+    invalidProcessStartRejected = $true
+    remainingOwnedProcessCount = 0
   }
 }
 
@@ -950,43 +1032,23 @@ finally {
     $foreignReleaseEvent = $null
   }
 
-  if (
-    $fixture -ceq 'synthetic' -and
-    (Test-EkyHistoricalProcessChainTestCaseSelected -Name invalidStarts)
-  ) {
-    Set-EkyHistoricalProcessChainTestCase -Name invalidStarts
-    $powerShellExecutable = Join-Path $PSHOME 'powershell.exe'
-    Assert-EkyHistoricalProcessChainFailure `
-      -ExpectedExecutablePath $powerShellExecutable `
-      -ExpectedCode 'W6B_LEGACY_SOURCE_PROCESS_START_FAILED' `
-      -StartPhase { param([string]$Phase) return $null }
-    Assert-EkyHistoricalProcessChainFailure `
-      -ExpectedExecutablePath $powerShellExecutable `
-      -ExpectedCode 'W6B_LEGACY_SOURCE_PROCESS_START_FAILED' `
-      -StartPhase {
-        param([string]$Phase)
-        @(
-          Start-Process powershell.exe -ArgumentList @(
-            '-NoProfile', '-NonInteractive', '-Command',
-            'Start-Sleep -Seconds 5'
-          ) -WindowStyle Hidden -PassThru
-          Start-Process powershell.exe -ArgumentList @(
-            '-NoProfile', '-NonInteractive', '-Command',
-            'Start-Sleep -Seconds 5'
-          ) -WindowStyle Hidden -PassThru
-        )
-      }
-    Assert-EkyHistoricalProcessChainFailure `
-      -ExpectedExecutablePath $powerShellExecutable `
-      -ExpectedCode 'W6B_LEGACY_SOURCE_PROCESS_EXECUTABLE_INVALID' `
-      -StartPhase {
-        param([string]$Phase)
-        Start-Process (Join-Path $env:SystemRoot 'System32\cmd.exe') `
-          -ArgumentList @(
-            '/d', '/c', 'ping.exe', '-w', '1000', '-n', '10', '127.0.0.1'
-          ) `
-          -WindowStyle Hidden -PassThru
-      }
+  $invalidStartCases = @(
+    'invalidStartNoProcess',
+    'invalidStartMultipleProcesses',
+    'invalidStartWrongExecutable'
+  )
+  $invalidStartOutcome = $null
+  foreach ($invalidStartCase in $invalidStartCases) {
+    if (
+      $fixture -ceq 'synthetic' -and
+      (Test-EkyHistoricalProcessChainTestCaseSelected `
+        -Name $invalidStartCase)
+    ) {
+      Set-EkyHistoricalProcessChainTestCase -Name $invalidStartCase
+      $invalidStartOutcome = `
+        Invoke-EkyHistoricalInvalidProcessStartContract `
+          -Case $invalidStartCase
+    }
   }
   $status = 'succeeded'
   if ($TestCase -ceq 'all') {
@@ -1017,11 +1079,16 @@ finally {
       foreignProcessUntouched = $foreignProcessUntouched
     }
   }
-  elseif ($TestCase -ceq 'invalidStarts') {
+  elseif ($TestCase -cin $invalidStartCases) {
     $terminalOutcome = [ordered]@{
       status = $status
       testCase = $TestCase
-      invalidProcessStartsRejected = $true
+      foreignProcessUntouched = `
+        [bool]$invalidStartOutcome.foreignProcessUntouched
+      invalidProcessStartRejected = `
+        [bool]$invalidStartOutcome.invalidProcessStartRejected
+      remainingOwnedProcessCount = `
+        [int]$invalidStartOutcome.remainingOwnedProcessCount
     }
   }
   else {
