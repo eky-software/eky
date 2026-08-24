@@ -144,7 +144,7 @@ käyttäytyminen on osa installeriteknologian myöhempää hyväksyntäporttia.
 
 ## Release-kanavat
 
-Ensimmäinen isän hallitulla koneella tehtävä R0-pilotti käyttää `pilot`-
+Projektin omistajan hallitsemilla koneilla tehtävä R0-pilotti käyttää `pilot`-
 kanavaa, paikallista mediaa ja käyttäjän vahvistamaa Setup-ajamista. Sitä ei
 merkitä `stable`-julkaisuksi.
 
@@ -162,10 +162,9 @@ Automaattista hiljaista päivitystä ei oteta käyttöön R0:ssa.
 
 ## R0:n paikallinen allekirjoittamaton pilotti
 
-Projektin omistaja on hyväksynyt ensimmäisen yhden käyttäjän ja yhden
-hallinnoidun laitteen R0-pilotin rajatuksi `localUnsignedPilot`-
-luottamusmalliksi. Malli koskee vain `pilot`-kanavaa ja paikallisesti
-toimitettua MSI-pakettia:
+Projektin omistaja on hyväksynyt yhden käyttäjän hallitun R0-pilotin rajatuksi
+`localUnsignedPilot`-luottamusmalliksi. Malli koskee vain `pilot`-kanavaa ja
+paikallisesti toimitettua MSI-pakettia:
 
 - paketti siirretään hallitulla paikallisella tiedostolla tai erikseen
   tarkistetulla USB-medialla
@@ -179,11 +178,19 @@ toimitettua MSI-pakettia:
 - `unsigned-prototype` kertoo allekirjoituksen puuttumisesta eikä väitä
   publisher-luottamusta, Authenticodea tai Windowsin varoitusten ohittamista.
 
-Mallia ei saa käyttää `stable`-kanavalla, laajemmassa jakelussa tai toisella
-laitteella ilman uutta omistajapäätöstä. SmartScreeniä, Defenderiä tai muuta
-käyttöjärjestelmän suojausta ei poisteta tai heikennetä. Code signing,
-publisher-identiteetti ja ohjelmiston oikeudellinen omistajuus ovat tästä
-pilotista erillisiä päätöksiä.
+Projektin omistaja täsmensi 24.8.2026, että `localUnsignedPilot` on jakelu- ja
+luottamuspolitiikka, ei runtime- tai laiteaktivointiraja. Sama hyväksytty bundle
+voidaan asentaa projektin omistajan hallitsemille pilottilaitteille. Eky ei
+lisää tätä varten device ID -sidontaa, laitekohtaista aktivointia tai
+pilottilaitteiden lukumäärän tarkistusta.
+
+Mallia ei saa käyttää `stable`-kanavalla eikä pakettia julkaista avoimena
+latauksena. Projektin omistajan hallitseman pilotin ulkopuolinen tai
+kaupallinen jakelu vaatii erikseen hyväksytyn allekirjoitetun release-mallin,
+publisher-identiteetin ja `stable`-release-portin. SmartScreeniä, Defenderiä
+tai muuta käyttöjärjestelmän suojausta ei poisteta tai heikennetä. Code
+signing, publisher-identiteetti ja ohjelmiston oikeudellinen omistajuus ovat
+tästä pilotista erillisiä päätöksiä.
 
 Luottamusmalli toteutetaan vaihdettavan `UpdatePackageTrustPolicy`-portin
 takana. R0 käyttää vain

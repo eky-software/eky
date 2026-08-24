@@ -365,7 +365,7 @@ Tämä arvio ei muuta `package.json`- tai lockfile-tiedostoja.
   SHA-lukittu virallinen `actions/setup-dotnet` yhtenä build tool -porttina
 - hyväksytäänkö WiX 7.0.0:n MS-RL- ja OSMF EULA -ehdot ja miten
   mahdollisen ylläpitomaksun soveltuminen vahvistetaan
-- vaaditaanko code signing jo yhden koneen R0-pilotissa
+- vaaditaanko code signing jo projektin omistajan hallitsemassa R0-pilotissa
 - säilytetäänkö edellinen MSI automaattisesti vai pyydetäänkö käyttäjää
   säilyttämään se suljetussa release-kansiossa
 - hyväksytäänkö vain x64-paketti R0:ssa

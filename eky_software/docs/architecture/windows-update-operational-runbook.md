@@ -3,7 +3,8 @@
 ## Tila
 
 Tämä on C2:ssa toteutettavan Update Coordinatorin runbook. R0:n ensimmäinen
-luottamusmalli on ADR-0010:n yhden hallitun laitteen `localUnsignedPilot`.
+luottamusmalli on ADR-0010:n projektin omistajan hallitsemille
+pilottilaitteille rajattu `localUnsignedPilot`.
 Ensimmäiset `update.*`-eventit lisätään vain C2:n nimeämille valmistelu-,
 shutdown-, handoff- ja first-start-vaiheille. Tapahtumat eivät sisällä polkuja,
 paketin tiivisteitä, profiilitunnisteita, sessionia tai installer-outputia.
@@ -13,6 +14,11 @@ hash-tarkistetulta USB-medialta. Käyttäjä vahvistaa päivityksen. Verkko-,
 tausta- ja hiljainen päivitys ovat kiellettyjä. `unsigned-prototype` ei ole
 publisher trust, joten `stable`-kanavaa tai laajempaa jakelua ei avata tällä
 runbookilla.
+
+Runbook ei rajoita hallittujen pilottilaitteiden lukumäärää eikä toteuta
+device ID -sidontaa tai laitekohtaista aktivointia. Sama hyväksytty bundle saa
+kulkea projektin omistajan hallitsemille pilottilaitteille, mutta sitä ei
+julkaista avoimena latauksena.
 
 Electron main säilyttää C1:stä alkaen rajatun `current/candidate/previous`-
 pakettivälimuistin. Sitä ei lueta Windows Installerin cachesta, backupista tai

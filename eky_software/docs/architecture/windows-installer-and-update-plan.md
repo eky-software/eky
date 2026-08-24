@@ -1046,12 +1046,15 @@ teknisen minimoidun recovery-tukipaketin, lokikansion avaamisen sekä
 
 ## 19. Code signing
 
-Isän yhdellä hallitulla pilottilaitteella allekirjoittamaton paikallinen
-artifacti hyväksytään vain ADR-0010:n `localUnsignedPilot`-mallissa. Se käyttää
-`pilot`-kanavaa, suljettua manifestia, tarkistettua SHA-256:ta, yksityistä
-stagingia ja käyttäjän vahvistusta. `unsigned-prototype` ei todista
-julkaisijaa. `stable`-kanava ja laajempi jakelu eivät hyväksy tätä mallia.
-Laajempi jakelu vaatii:
+Projektin omistajan hallitsemilla pilottilaitteilla allekirjoittamaton
+paikallinen artifacti hyväksytään vain ADR-0010:n `localUnsignedPilot`-
+mallissa. Sama hyväksytty bundle voidaan asentaa näille laitteille ilman
+device ID -sidontaa, laitekohtaista aktivointia tai laitemäärän tarkistusta.
+Malli käyttää `pilot`-kanavaa, suljettua manifestia, tarkistettua SHA-256:ta,
+yksityistä stagingia ja käyttäjän vahvistusta. `unsigned-prototype` ei todista
+julkaisijaa. Pakettia ei julkaista avoimena latauksena. `stable`-kanava sekä
+projektin omistajan hallitseman pilotin ulkopuolinen tai kaupallinen jakelu
+eivät hyväksy tätä mallia. Tällainen jakelu vaatii:
 
 - Windows code signing -sertifikaatin
 - suojatun avaimen lifecycle- ja käyttöoikeusmallin
@@ -1296,7 +1299,7 @@ omistajan erillistä hyväksyntää.
 
 ## Release gate -luokitus
 
-### R0-pilottilaitteen suojaus
+### R0-pilottilaitteiden suojaus
 
 Oikeaa asiakas- tai laskutusdataa käyttävä paikallinen pilottilaite vaatii
 ennen käyttöönottoa vähintään:
@@ -1322,7 +1325,7 @@ Jos laite ei teknisesti tue levyjen salausta, oikean datan käyttöönotto
 pysäytetään erilliseen omistajan dokumentoituun riski- ja laitepäätökseen.
 Poikkeusta ei tulkita automaattiseksi hyväksynnäksi.
 
-Yhden hallitun oikeaa dataa käyttävän koneen R0-portteja ovat:
+Jokaisen hallitun oikeaa dataa käyttävän pilottilaitteen R0-portteja ovat:
 
 - toimiva backup/restore ja palautuksen automaattinen todentaminen
 - migraatioiden muuttumattomuus ja jatkuva migration chain
@@ -1343,8 +1346,7 @@ Laajemman jakelun R1-portteja ovat viimeistään:
 
 Peruste on ensisijaisesti distribution- ja supply chain -turvallisuus.
 Code signing voidaan nostaa R0-portiksi, jos projektin omistaja päättää, ettei
-allekirjoittamatonta artifactia käytetä edes yhdellä hallitulla
-pilottilaitteella.
+allekirjoittamatonta artifactia käytetä hallituillakaan pilottilaitteilla.
 
 Tietosuoja-, kirjanpito- ja muu legal-vaatimus arvioidaan erikseen ennen
 oikean datan käyttöönottoa. Tekninen backup tai allekirjoitus ei yksin todista
