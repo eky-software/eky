@@ -25,11 +25,15 @@ export async function packageHistoricalApplication({ workspaceRoot }) {
     {
       code: 'HISTORICAL_FIXTURE_PACKAGE_FAILED',
       cwd: workspaceRoot,
-      environment: {
-        ...process.env,
-        EKY_BUILD_REVISION:
-          HISTORICAL_WINDOWS_INSTALLER_FIXTURE.expectedCommit,
-      },
+      environment: createHistoricalApplicationBuildEnvironment(process.env),
     },
   );
+}
+
+export function createHistoricalApplicationBuildEnvironment(baseEnvironment) {
+  return {
+    ...baseEnvironment,
+    EKY_BUILD_REVISION:
+      HISTORICAL_WINDOWS_INSTALLER_FIXTURE.expectedRuntimeBuildRevision,
+  };
 }

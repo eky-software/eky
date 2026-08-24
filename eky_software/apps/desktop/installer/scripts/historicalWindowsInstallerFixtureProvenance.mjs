@@ -1,12 +1,15 @@
 const fullRevisionPattern = /^[0-9a-f]{40}$/;
 const sha256Pattern = /^[0-9a-f]{64}$/;
 const numericVersionPattern = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
+const historicalExpectedCommit =
+  '6ed99f5319c328f4d3cfbc03b912f21dbc4d1032';
 
 export const HISTORICAL_WINDOWS_INSTALLER_FIXTURE = Object.freeze({
   appVersion: '0.2.6',
-  expectedCommit: '6ed99f5319c328f4d3cfbc03b912f21dbc4d1032',
+  expectedCommit: historicalExpectedCommit,
   expectedLocalMsiSha256:
     '9d2b3db46a9c981e7e251715c8805fe6ff12dc57700c4bc023289ac4dfe54c23',
+  expectedRuntimeBuildRevision: historicalExpectedCommit.slice(0, 12),
   expectedTree: '324953c8d36a824e6ff4e414afe73f84e7d0d7d7',
   fixtureFormatVersion: 1,
   msiProductVersion: '0.2.6',

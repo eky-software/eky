@@ -11,6 +11,14 @@ import {
 
 const sourceArchiveManifestSha256 = 'a'.repeat(64);
 
+test('defines the approved runtime revision separately from full MSI provenance', () => {
+  assert.equal(HISTORICAL_WINDOWS_INSTALLER_FIXTURE.expectedCommit.length, 40);
+  assert.equal(
+    HISTORICAL_WINDOWS_INSTALLER_FIXTURE.expectedRuntimeBuildRevision,
+    HISTORICAL_WINDOWS_INSTALLER_FIXTURE.expectedCommit.slice(0, 12),
+  );
+});
+
 test('creates a closed provenance contract for the approved historical source', () => {
   const provenance = createHistoricalWindowsInstallerFixtureProvenance({
     createdAt: '2026-08-22T12:00:00.000Z',

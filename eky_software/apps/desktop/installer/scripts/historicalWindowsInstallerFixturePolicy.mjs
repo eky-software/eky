@@ -156,7 +156,8 @@ export function validateHistoricalPackagedApplicationIdentity({
 }) {
   const expectedReleaseInfo = {
     ...HISTORICAL_WINDOWS_INSTALLER_EXPECTED_RELEASE,
-    buildRevision: HISTORICAL_WINDOWS_INSTALLER_FIXTURE.expectedCommit,
+    buildRevision:
+      HISTORICAL_WINDOWS_INSTALLER_FIXTURE.expectedRuntimeBuildRevision,
     schemaVersion: 1,
     upgradeCode: INSTALLER_UPGRADE_CODE,
   };
@@ -173,7 +174,7 @@ export function validateHistoricalPackagedApplicationIdentity({
     typeof buildInfo.buildCreatedAt !== 'string' ||
     !isCanonicalIsoTimestamp(buildInfo.buildCreatedAt) ||
     buildInfo.buildRevision !==
-      HISTORICAL_WINDOWS_INSTALLER_FIXTURE.expectedCommit ||
+      HISTORICAL_WINDOWS_INSTALLER_FIXTURE.expectedRuntimeBuildRevision ||
     buildInfo.buildDirty !== false ||
     buildInfo.schemaVersion !== 1 ||
     !isRecord(releaseInfo) ||

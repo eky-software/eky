@@ -12,6 +12,9 @@ import {
   runW6bLegacyUpgradeAcceptance,
   w6bLineageProfileIdPattern,
 } from './runW6bLegacyUpgradeAcceptance.mjs';
+import {
+  HISTORICAL_WINDOWS_INSTALLER_FIXTURE,
+} from './historicalWindowsInstallerFixtureProvenance.mjs';
 
 const source = Object.freeze({
   appVersion: '0.2.6',
@@ -20,6 +23,8 @@ const source = Object.freeze({
   installerPath: resolve('synthetic-source.msi'),
   packageSha256: 'a'.repeat(64),
   productCode: 'C30C9E67-3E4F-5B04-A1ED-7A096A446FA7',
+  runtimeBuildRevision:
+    HISTORICAL_WINDOWS_INSTALLER_FIXTURE.expectedRuntimeBuildRevision,
 });
 const target = Object.freeze({
   appVersion: '0.2.7',
@@ -263,7 +268,7 @@ test('passes only the closed identity and filesystem arguments to PowerShell', (
   assert.equal(arguments_.includes('-SourcePackageSha256'), true);
   assert.equal(arguments_.includes(source.packageSha256), true);
   assert.equal(arguments_.includes('-SourceRuntimeBuildRevision'), true);
-  assert.equal(arguments_.includes(source.buildRevision.slice(0, 12)), true);
+  assert.equal(arguments_.includes(source.runtimeBuildRevision), true);
   assert.equal(arguments_.includes('-TargetPackageSha256'), true);
   assert.equal(arguments_.includes(target.packageSha256), true);
   assert.equal(arguments_.includes('-TargetMsiProductVersion'), true);
@@ -277,6 +282,29 @@ test('passes only the closed identity and filesystem arguments to PowerShell', (
     arguments_.some((value) => /password|companyId|session/iu.test(value)),
     false,
   );
+});
+
+test('rejects a missing or drifting historical runtime identity', () => {
+  const { runtimeBuildRevision: _runtimeBuildRevision, ...withoutRuntime } =
+    source;
+  for (const invalidSource of [
+    withoutRuntime,
+    { ...source, runtimeBuildRevision: source.buildRevision },
+    { ...source, runtimeBuildRevision: 'a'.repeat(12) },
+    {
+      ...source,
+      runtimeBuildRevision: source.runtimeBuildRevision.toUpperCase(),
+    },
+  ]) {
+    assert.throws(
+      () =>
+        createW6bLegacyUpgradeAcceptanceArguments({
+          source: invalidSource,
+          target,
+        }),
+      /W6B_LEGACY_SOURCE_IDENTITY_INVALID/,
+    );
+  }
 });
 
 test('accepts only a lowercase 64-hex lineage profile id', () => {

@@ -76,6 +76,8 @@ export async function verifyExactLocalHistoricalWindowsInstallerFixture({
     packageSha256: verified.manifest.packageSha256,
     packageSize: verified.manifest.packageSize,
     productCode: identity.productCode,
+    runtimeBuildRevision:
+      HISTORICAL_WINDOWS_INSTALLER_FIXTURE.expectedRuntimeBuildRevision,
     upgradeCode: identity.upgradeCode,
   });
 }
@@ -144,8 +146,17 @@ export async function createVerifiedHistoricalSourceFixture({
   built,
   identity,
   materialized,
+  packagedApplicationIdentity,
   sourceMetadata,
 }) {
+  const runtimeBuildRevision =
+    packagedApplicationIdentity?.buildInfo?.buildRevision;
+  if (
+    runtimeBuildRevision !==
+    HISTORICAL_WINDOWS_INSTALLER_FIXTURE.expectedRuntimeBuildRevision
+  ) {
+    throw new Error('HISTORICAL_FIXTURE_PACKAGE_IDENTITY_MISMATCH');
+  }
   const provenancePath = join(
     materialized.operationRoot,
     'historical-fixture-provenance.json',
@@ -177,6 +188,7 @@ export async function createVerifiedHistoricalSourceFixture({
     productCode: identity.productCode,
     provenance: persistedProvenance,
     provenancePath,
+    runtimeBuildRevision,
     sourceMetadata,
     upgradeCode: identity.upgradeCode,
   });

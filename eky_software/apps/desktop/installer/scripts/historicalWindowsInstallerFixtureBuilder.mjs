@@ -52,7 +52,8 @@ export async function withHistoricalSourceWindowsInstallerFixture(
       await (dependencies.packageApplication ?? packageHistoricalApplication)({
         workspaceRoot: materialized.workspaceRoot,
       });
-      await verifyHistoricalPackagedApplication(materialized.workspaceRoot);
+      const packagedApplicationIdentity =
+        await verifyHistoricalPackagedApplication(materialized.workspaceRoot);
       await verifyLockedInputs(materialized.workspaceRoot, lockedInputs);
 
       await (dependencies.restoreInstaller ?? restoreHistoricalInstaller)({
@@ -74,6 +75,7 @@ export async function withHistoricalSourceWindowsInstallerFixture(
         built,
         identity,
         materialized,
+        packagedApplicationIdentity,
         sourceMetadata,
       });
       return task(fixture);

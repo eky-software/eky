@@ -24,11 +24,11 @@ const acceptanceScriptPath = join(
   'testW6bLegacyUpgradeAcceptance.ps1',
 );
 const fullHistoricalRevisionPattern = /^[0-9a-f]{40}$/u;
+const historicalRuntimeRevisionPattern = /^[0-9a-f]{12}$/u;
 const packagedRevisionPattern = /^[0-9a-f]{7,40}$/u;
 const productCodePattern =
   /^\{?[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}?$/u;
 const sha256Pattern = /^[0-9a-f]{64}$/u;
-const historicalRuntimeRevisionLength = 12;
 export const w6bLineageProfileIdPattern = '^[0-9a-f]{64}$';
 
 export function isW6bLineageProfileId(value) {
@@ -67,10 +67,6 @@ export async function runW6bLegacyUpgradeAcceptance(dependencies = {}) {
 export function createW6bLegacyUpgradeAcceptanceArguments({ source, target }) {
   validateSourceFixture(source);
   validateTargetFixture(source, target);
-  const sourceRuntimeBuildRevision = source.buildRevision.slice(
-    0,
-    historicalRuntimeRevisionLength,
-  );
   return Object.freeze([
     '-NoLogo',
     '-NoProfile',
@@ -96,7 +92,7 @@ export function createW6bLegacyUpgradeAcceptanceArguments({ source, target }) {
     '-SourceBuildRevision',
     source.buildRevision,
     '-SourceRuntimeBuildRevision',
-    sourceRuntimeBuildRevision,
+    source.runtimeBuildRevision,
     '-TargetBuildRevision',
     target.buildRevision,
     '-TargetMsiProductVersion',
@@ -143,6 +139,8 @@ function validateSourceFixture(source) {
     ) ||
     source.appVersion !== '0.2.6' ||
     !fullHistoricalRevisionPattern.test(source.buildRevision) ||
+    !historicalRuntimeRevisionPattern.test(source.runtimeBuildRevision) ||
+    source.runtimeBuildRevision !== source.buildRevision.slice(0, 12) ||
     !isMsiPath(source.installerPath) ||
     !sha256Pattern.test(source.packageSha256) ||
     !productCodePattern.test(source.productCode)

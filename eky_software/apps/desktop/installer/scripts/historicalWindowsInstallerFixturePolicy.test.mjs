@@ -11,8 +11,12 @@ import {
   validateHistoricalSourceMetadata,
   validateHistoricalWindowsInstallerIdentity,
 } from './historicalWindowsInstallerFixturePolicy.mjs';
+import {
+  HISTORICAL_WINDOWS_INSTALLER_FIXTURE,
+} from './historicalWindowsInstallerFixtureProvenance.mjs';
 
 const approvedCommit = '6ed99f5319c328f4d3cfbc03b912f21dbc4d1032';
+const approvedRuntimeRevision = approvedCommit.slice(0, 12);
 
 test('accepts only the exact historical source and toolchain metadata', () => {
   const metadata = createValidSourceMetadata();
@@ -45,14 +49,14 @@ test('rejects historical package build identity drift and production output', ()
       appVersion: '0.2.6',
       buildCreatedAt: '2026-08-22T00:00:00.000Z',
       buildDirty: false,
-      buildRevision: approvedCommit,
+      buildRevision: approvedRuntimeRevision,
       schemaVersion: 1,
     },
     packageModePresent: false,
     pilotManifestPresent: false,
     releaseInfo: {
       ...HISTORICAL_WINDOWS_INSTALLER_EXPECTED_RELEASE,
-      buildRevision: approvedCommit,
+      buildRevision: approvedRuntimeRevision,
       schemaVersion: 1,
       upgradeCode: INSTALLER_UPGRADE_CODE,
     },
@@ -68,7 +72,7 @@ test('rejects historical package build identity drift and production output', ()
     },
     {
       ...valid,
-      buildInfo: { ...valid.buildInfo, buildRevision: 'a'.repeat(40) },
+      buildInfo: { ...valid.buildInfo, buildRevision: approvedCommit },
     },
     {
       ...valid,
@@ -80,12 +84,24 @@ test('rejects historical package build identity drift and production output', ()
       ...valid,
       releaseInfo: { ...valid.releaseInfo, releaseChannel: 'stable' },
     },
+    {
+      ...valid,
+      releaseInfo: { ...valid.releaseInfo, buildRevision: approvedCommit },
+    },
   ]) {
     assert.throws(
       () => validateHistoricalPackagedApplicationIdentity(candidate),
       /HISTORICAL_FIXTURE_PACKAGE_IDENTITY_MISMATCH/,
     );
   }
+});
+
+test('keeps historical MSI provenance full while runtime identity matches the approved package', () => {
+  assert.equal(HISTORICAL_WINDOWS_INSTALLER_FIXTURE.expectedCommit.length, 40);
+  assert.equal(
+    HISTORICAL_WINDOWS_INSTALLER_FIXTURE.expectedRuntimeBuildRevision,
+    HISTORICAL_WINDOWS_INSTALLER_FIXTURE.expectedCommit.slice(0, 12),
+  );
 });
 
 test('validates the closed MSI ProductCode and UpgradeCode', () => {
