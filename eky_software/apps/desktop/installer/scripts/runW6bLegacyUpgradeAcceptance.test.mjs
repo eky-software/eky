@@ -455,8 +455,20 @@ test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () 
   );
   assert.match(
     sourceText,
-    /Start-W6bLegacyStage -Stage targetInstall\s+\$script:TargetCleanupAuthorized\s*=\s*\$true\s+Install-W6bPackage/iu,
+    /Start-W6bLegacyStage -Stage targetInstall\s+\$script:TargetCleanupAuthorized\s*=\s*\$true\s+Write-W6bLegacyInstallerObservation -Signal msiStarted\s+Install-W6bPackage[\s\S]*?-Operation w6b_target_install\s+Write-W6bLegacyInstallerObservation -Signal msiExited/iu,
   );
+  assert.match(
+    sourceText,
+    /Assert-W6bProductInstalled -ProductCode \$targetCode\s+Write-W6bLegacyInstallerObservation -Signal productStateValidated/iu,
+  );
+  assert.match(
+    sourceText,
+    /Assert-EkyInstallerRegistrationPresent -ProductCode \$targetCode\s+Write-W6bLegacyInstallerObservation -Signal payloadValidated/iu,
+  );
+  assert.match(sourceText, /'msiStarted'/u);
+  assert.match(sourceText, /'msiExited'/u);
+  assert.match(sourceText, /'productStateValidated'/u);
+  assert.match(sourceText, /'payloadValidated'/u);
   assert.match(
     sourceText,
     /\$cleanupProducts = if \(\$script:PreflightIsolationEstablished\)[\s\S]*?if \(\$script:TargetCleanupAuthorized\)[\s\S]*?if \(\$script:SourceCleanupAuthorized\)/iu,

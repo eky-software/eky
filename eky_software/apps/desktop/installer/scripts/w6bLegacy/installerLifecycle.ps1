@@ -17,10 +17,13 @@ function Assert-W6bProductAbsent {
 function Install-W6bPackage {
   param(
     [Parameter(Mandatory = $true)][string]$MsiPath,
-    [Parameter(Mandatory = $true)][string]$LogName
+    [Parameter(Mandatory = $true)][string]$LogName,
+    [Parameter(Mandatory = $true)]
+    [ValidateSet('w6b_source_install', 'w6b_target_install')]
+    [string]$Operation
   )
 
-  Invoke-EkyMsiExec -Operation 'w6b_install' -Arguments @(
+  Invoke-EkyMsiExec -Operation $Operation -Arguments @(
     '/i',
     "`"$MsiPath`"",
     '/qn',

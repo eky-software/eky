@@ -68,6 +68,31 @@ function Write-W6bLegacyReadinessObservation {
   } | ConvertTo-Json -Compress
 }
 
+function Write-W6bLegacyInstallerObservation {
+  param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet(
+      'msiStarted',
+      'msiExited',
+      'productStateValidated',
+      'payloadValidated'
+    )]
+    [string]$Signal
+  )
+
+  if ($script:CurrentStage -ne 'targetInstall') {
+    throw 'W6B_LEGACY_PROGRESS_STAGE_INVALID'
+  }
+  [ordered]@{
+    scenario = 'legacyUpgrade'
+    stage = $script:CurrentStage
+    status = 'observed'
+    resultCode = $Signal
+    durationMs = [long]([DateTime]::UtcNow - $script:StageStartedAt).TotalMilliseconds
+    elapsedMs = [long]([DateTime]::UtcNow - $script:ScenarioStartedAt).TotalMilliseconds
+  } | ConvertTo-Json -Compress
+}
+
 function Get-W6bSafeErrorCode {
   param([Parameter(Mandatory = $true)]$ErrorRecord)
 

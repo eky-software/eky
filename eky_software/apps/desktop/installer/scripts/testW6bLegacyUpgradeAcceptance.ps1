@@ -171,7 +171,8 @@ try {
 
   Start-W6bLegacyStage -Stage sourceInstall
   $script:SourceCleanupAuthorized = $true
-  Install-W6bPackage -MsiPath $sourceMsi -LogName 'source-install.log'
+  Install-W6bPackage -MsiPath $sourceMsi -LogName 'source-install.log' `
+    -Operation w6b_source_install
   Assert-W6bProductInstalled -ProductCode $sourceCode
   Assert-W6bProductAbsent -ProductCode $targetCode
   Assert-EkyInstallerRegistrationPresent -ProductCode $sourceCode
@@ -231,12 +232,17 @@ try {
 
   Start-W6bLegacyStage -Stage targetInstall
   $script:TargetCleanupAuthorized = $true
-  Install-W6bPackage -MsiPath $targetMsi -LogName 'target-upgrade.log'
+  Write-W6bLegacyInstallerObservation -Signal msiStarted
+  Install-W6bPackage -MsiPath $targetMsi -LogName 'target-upgrade.log' `
+    -Operation w6b_target_install
+  Write-W6bLegacyInstallerObservation -Signal msiExited
   Assert-W6bProductAbsent -ProductCode $sourceCode
   Assert-W6bProductInstalled -ProductCode $targetCode
+  Write-W6bLegacyInstallerObservation -Signal productStateValidated
   Assert-EkyInstalledPayload -InstallRoot $installRoot `
     -PayloadInventory $targetPayloadInventory -ShortcutPath $shortcutPath
   Assert-EkyInstallerRegistrationPresent -ProductCode $targetCode
+  Write-W6bLegacyInstallerObservation -Signal payloadValidated
   Complete-W6bLegacyStage
 
   Start-W6bLegacyStage -Stage targetFirstStartup

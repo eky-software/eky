@@ -29,6 +29,185 @@ function Get-EkyProductState {
   }
 }
 
+function Get-EkyMsiExecPolicy {
+  param([Parameter(Mandatory = $true)][string]$Operation)
+
+  $policy = switch -CaseSensitive ($Operation) {
+    'lifecycle_install' { @('INSTALLER_LIFECYCLE_INSTALL', 300000) }
+    'lifecycle_uninstall' { @('INSTALLER_LIFECYCLE_UNINSTALL', 180000) }
+    'lifecycle_repair' { @('INSTALLER_LIFECYCLE_REPAIR', 300000) }
+    'lifecycle_cleanup' { @('INSTALLER_LIFECYCLE_CLEANUP', 180000) }
+    'upgrade_install' { @('INSTALLER_UPGRADE_INSTALL', 300000) }
+    'upgrade_uninstall' { @('INSTALLER_UPGRADE_UNINSTALL', 180000) }
+    'downgrade' { @('INSTALLER_DOWNGRADE', 300000) }
+    'rollback_probe' { @('INSTALLER_ROLLBACK_PROBE', 300000) }
+    'upgrade_cleanup' { @('INSTALLER_UPGRADE_CLEANUP', 180000) }
+    'w6b_source_install' { @('W6B_LEGACY_SOURCE_INSTALL', 300000) }
+    'w6b_target_install' { @('W6B_LEGACY_TARGET_INSTALL', 300000) }
+    'w6b_uninstall' { @('W6B_LEGACY_UNINSTALL', 180000) }
+    default { throw 'INSTALLER_MSI_OPERATION_INVALID' }
+  }
+  return [pscustomobject]@{
+    errorPrefix = [string]$policy[0]
+    timeoutMilliseconds = [int]$policy[1]
+  }
+}
+
+function New-EkyOwnedMsiProcessIdentity {
+  param([Parameter(Mandatory = $true)]$Process)
+
+  try {
+    return [pscustomobject]@{
+      processId = [int]$Process.Id
+      startTimeTicks = [long]$Process.StartTime.ToUniversalTime().Ticks
+    }
+  }
+  catch {
+    throw 'INSTALLER_MSI_PROCESS_IDENTITY_INVALID'
+  }
+}
+
+function Assert-EkyOwnedMsiProcessIdentity {
+  param(
+    [Parameter(Mandatory = $true)]$Process,
+    [Parameter(Mandatory = $true)]$Identity
+  )
+
+  try {
+    if (
+      [int]$Process.Id -ne [int]$Identity.processId -or
+      [long]$Process.StartTime.ToUniversalTime().Ticks -ne
+        [long]$Identity.startTimeTicks
+    ) {
+      throw 'INSTALLER_MSI_PROCESS_IDENTITY_INVALID'
+    }
+  }
+  catch {
+    throw 'INSTALLER_MSI_PROCESS_IDENTITY_INVALID'
+  }
+}
+
+function Wait-EkyOwnedMsiProcess {
+  param(
+    [Parameter(Mandatory = $true)]$Process,
+    [Parameter(Mandatory = $true)][int]$TimeoutMilliseconds
+  )
+
+  if ($TimeoutMilliseconds -lt 1) {
+    throw 'INSTALLER_MSI_PROCESS_WAIT_INVALID'
+  }
+  $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+  try {
+    $exited = $Process.WaitForExit($TimeoutMilliseconds)
+    if (!$exited) {
+      return [pscustomobject]@{
+        state = 'timedOut'
+        exitCode = $null
+        durationMs = [long]$stopwatch.ElapsedMilliseconds
+      }
+    }
+    return [pscustomobject]@{
+      state = 'exited'
+      exitCode = [int]$Process.ExitCode
+      durationMs = [long]$stopwatch.ElapsedMilliseconds
+    }
+  }
+  catch {
+    throw 'INSTALLER_MSI_PROCESS_WAIT_FAILED'
+  }
+  finally {
+    $stopwatch.Stop()
+  }
+}
+
+function Stop-EkyOwnedMsiProcess {
+  param(
+    [Parameter(Mandatory = $true)]$Process,
+    [Parameter(Mandatory = $true)]$Identity,
+    [int]$TimeoutMilliseconds = 10000
+  )
+
+  if ($TimeoutMilliseconds -lt 1) {
+    throw 'INSTALLER_MSI_PROCESS_CLEANUP_WAIT_INVALID'
+  }
+  Assert-EkyOwnedMsiProcessIdentity -Process $Process -Identity $Identity
+  try {
+    $Process.Refresh()
+    if ($Process.HasExited) {
+      return
+    }
+    $Process.Kill()
+    if (!$Process.WaitForExit($TimeoutMilliseconds)) {
+      throw 'INSTALLER_MSI_PROCESS_CLEANUP_TIMEOUT'
+    }
+  }
+  catch {
+    if ($_.Exception.Message -eq 'INSTALLER_MSI_PROCESS_CLEANUP_TIMEOUT') {
+      throw
+    }
+    throw 'INSTALLER_MSI_PROCESS_CLEANUP_FAILED'
+  }
+}
+
+function Invoke-EkyMsiExecProcess {
+  param(
+    [Parameter(Mandatory = $true)][string[]]$Arguments,
+    [Parameter(Mandatory = $true)][string]$Operation
+  )
+
+  $policy = Get-EkyMsiExecPolicy -Operation $Operation
+  try {
+    $process = Start-Process -FilePath 'msiexec.exe' `
+      -ArgumentList $Arguments -NoNewWindow -PassThru
+  }
+  catch {
+    throw "$($policy.errorPrefix)_START_FAILED"
+  }
+  try {
+    $identity = New-EkyOwnedMsiProcessIdentity -Process $process
+    $result = Wait-EkyOwnedMsiProcess -Process $process `
+      -TimeoutMilliseconds $policy.timeoutMilliseconds
+    if ($result.state -eq 'timedOut') {
+      try {
+        Stop-EkyOwnedMsiProcess -Process $process -Identity $identity
+      }
+      catch {
+        throw "$($policy.errorPrefix)_CLEANUP_FAILED"
+      }
+      throw "$($policy.errorPrefix)_TIMEOUT"
+    }
+    return [int]$result.exitCode
+  }
+  finally {
+    $process.Dispose()
+  }
+}
+
+function Assert-EkyMsiExecExitCode {
+  param(
+    [Parameter(Mandatory = $true)][int]$ExitCode,
+    [Parameter(Mandatory = $true)][string]$Operation,
+    [int[]]$AllowedExitCodes = @(0)
+  )
+
+  $policy = Get-EkyMsiExecPolicy -Operation $Operation
+  if ($ExitCode -notin $AllowedExitCodes) {
+    throw "$($policy.errorPrefix)_FAILED:$ExitCode"
+  }
+}
+
+function Assert-EkyMsiExecExpectedFailureExitCode {
+  param(
+    [Parameter(Mandatory = $true)][int]$ExitCode,
+    [Parameter(Mandatory = $true)][string]$Operation
+  )
+
+  $policy = Get-EkyMsiExecPolicy -Operation $Operation
+  if ($ExitCode -in @(0, 1641, 3010)) {
+    throw "$($policy.errorPrefix)_EXPECTED_FAILURE_MISSING"
+  }
+}
+
 function Invoke-EkyMsiExec {
   param(
     [Parameter(Mandatory = $true)][string[]]$Arguments,
@@ -36,12 +215,11 @@ function Invoke-EkyMsiExec {
     [int[]]$AllowedExitCodes = @(0)
   )
 
-  $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $Arguments `
-    -NoNewWindow -Wait -PassThru
-  if ($process.ExitCode -notin $AllowedExitCodes) {
-    throw "INSTALLER_$($Operation.ToUpperInvariant())_FAILED:$($process.ExitCode)"
-  }
-  return $process.ExitCode
+  $exitCode = Invoke-EkyMsiExecProcess -Arguments $Arguments `
+    -Operation $Operation
+  Assert-EkyMsiExecExitCode -ExitCode $exitCode -Operation $Operation `
+    -AllowedExitCodes $AllowedExitCodes
+  return $exitCode
 }
 
 function Invoke-EkyMsiExecExpectedFailure {
@@ -50,12 +228,11 @@ function Invoke-EkyMsiExecExpectedFailure {
     [Parameter(Mandatory = $true)][string]$Operation
   )
 
-  $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $Arguments `
-    -NoNewWindow -Wait -PassThru
-  if ($process.ExitCode -in @(0, 1641, 3010)) {
-    throw "INSTALLER_$($Operation.ToUpperInvariant())_EXPECTED_FAILURE_MISSING"
-  }
-  return $process.ExitCode
+  $exitCode = Invoke-EkyMsiExecProcess -Arguments $Arguments `
+    -Operation $Operation
+  Assert-EkyMsiExecExpectedFailureExitCode -ExitCode $exitCode `
+    -Operation $Operation
+  return $exitCode
 }
 
 function Get-EkyDirectoryInventory {
