@@ -59,28 +59,37 @@ test('allows only the approved signed NuGet source and exact setup-dotnet SHA', 
   assert.doesNotMatch(ci, /actions\/setup-dotnet@v\d/);
 });
 
-test('runs W6B legacy acceptance before creating the current local pilot bundle', async () => {
+test('isolates W6B legacy acceptance from the regular MSI release gate', async () => {
   const ci = await readFile(
     join(workspaceRoot, '.github', 'workflows', 'ci.yml'),
     'utf8',
   );
   const installerJobIndex = ci.indexOf('  installer-windows:');
-  const installerJob = ci.slice(installerJobIndex);
+  const legacyJobIndex = ci.indexOf('  installer-w6b-legacy-windows:');
+  const installerJob = ci.slice(installerJobIndex, legacyJobIndex);
+  const legacyJob = ci.slice(legacyJobIndex);
   const legacyAcceptance =
     'run: pnpm --filter @eky/desktop installer:w6b-legacy';
   const localPilotBundle =
     'run: pnpm --filter @eky/desktop installer:local-pilot-bundle';
-  const legacyAcceptanceIndex = ci.indexOf(legacyAcceptance);
-  const localPilotBundleIndex = ci.indexOf(localPilotBundle);
 
   assert.ok(installerJobIndex >= 0);
+  assert.ok(legacyJobIndex > installerJobIndex);
   assert.match(
     installerJob,
     /- name: Check out repository[\s\S]*?persist-credentials: false\s+fetch-depth: 0/u,
   );
-  assert.equal(ci.split('fetch-depth: 0').length - 1, 1);
-  assert.ok(legacyAcceptanceIndex >= 0);
-  assert.ok(localPilotBundleIndex > legacyAcceptanceIndex);
+  assert.match(installerJob, /timeout-minutes: 45/u);
+  assert.match(installerJob, new RegExp(localPilotBundle, 'u'));
+  assert.doesNotMatch(installerJob, new RegExp(legacyAcceptance, 'u'));
+  assert.match(
+    legacyJob,
+    /- name: Check out repository[\s\S]*?persist-credentials: false\s+fetch-depth: 0/u,
+  );
+  assert.match(legacyJob, /timeout-minutes: 30/u);
+  assert.match(legacyJob, new RegExp(legacyAcceptance, 'u'));
+  assert.doesNotMatch(legacyJob, new RegExp(localPilotBundle, 'u'));
+  assert.equal(ci.split('fetch-depth: 0').length - 1, 2);
   assert.equal(ci.split(legacyAcceptance).length - 1, 1);
 });
 
