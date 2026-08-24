@@ -75,9 +75,17 @@ function Set-EkyHistoricalProcessChainTestCase {
 function Get-EkyHistoricalProcessChainSafeErrorCode {
   param([Parameter(Mandatory = $true)]$ErrorRecord)
 
-  $candidate = ([string]$ErrorRecord.Exception.Message -split ':')[0]
-  if ($candidate -cmatch '^(W6B_[A-Z0-9_]+|INSTALLER_[A-Z0-9_]+)$') {
-    return $candidate
+  $allowedCodes = @()
+  $exception = $ErrorRecord.Exception
+  while ($null -ne $exception) {
+    $message = [string]$exception.Message
+    if ($message -cmatch '^(W6B_[A-Z0-9_]+|INSTALLER_[A-Z0-9_]+)$') {
+      $allowedCodes += $message
+    }
+    $exception = $exception.InnerException
+  }
+  if ($allowedCodes.Count -eq 1) {
+    return $allowedCodes[0]
   }
   return 'W6B_LEGACY_PROCESS_CHAIN_TEST_FAILED'
 }
@@ -527,27 +535,117 @@ finally {
 }
 
 function Invoke-EkyHistoricalObserverFailure {
-  Invoke-HistoricalPackagedSmokeProcessChain `
-    -ExpectedExecutablePath (Join-Path $PSHOME 'powershell.exe') `
-    -StartPhase {
-      param([string]$Phase)
-      Start-Process powershell.exe -ArgumentList @(
-        '-NoProfile',
-        '-NonInteractive',
-        '-Command',
-        '[Threading.Thread]::Sleep([Threading.Timeout]::Infinite)'
-      ) -WindowStyle Hidden -PassThru
-    } `
-    -ReadResult {
-      [pscustomobject]@{ stage = 'restoreRestart'; status = 'started' }
-    } `
-    -ObserveResult { throw 'W6B_LEGACY_OBSERVER_FAILED' } `
-    -ObserveProcess { param($Process) } `
-    -ValidateResult {
-      param($Process, $Result, [string]$ExpectedStage, [string]$ExpectedStatus)
-    } `
-    -TimeoutMilliseconds 3000 `
-    -PollMilliseconds 25 | Out-Null
+  $script:ObserverFailureState = $null
+  try {
+    Invoke-HistoricalPackagedSmokeProcessChain `
+      -ExpectedExecutablePath (Join-Path $PSHOME 'powershell.exe') `
+      -StartPhase {
+        param([string]$Phase)
+        $eventPrefix = 'Local\EkyW6bObserverFailure-' + `
+          [Guid]::NewGuid().ToString('N')
+        $readyName = "$eventPrefix-ready"
+        $releaseName = "$eventPrefix-release"
+        $state = [pscustomobject]@{
+          process = $null
+          ready = [Threading.EventWaitHandle]::new(
+            $false,
+            [Threading.EventResetMode]::ManualReset,
+            $readyName
+          )
+          release = [Threading.EventWaitHandle]::new(
+            $false,
+            [Threading.EventResetMode]::ManualReset,
+            $releaseName
+          )
+        }
+        $script:ObserverFailureState = $state
+        try {
+          $waitCommand = ConvertTo-EkyHistoricalEncodedCommand -Command @"
+`$ready = [Threading.EventWaitHandle]::OpenExisting('$readyName')
+`$release = [Threading.EventWaitHandle]::OpenExisting('$releaseName')
+try {
+  `$ready.Set() | Out-Null
+  if (!`$release.WaitOne(5000)) {
+    exit 51
+  }
+  exit 0
+}
+finally {
+  `$ready.Dispose()
+  `$release.Dispose()
+}
+"@
+          $state.process = Start-Process powershell.exe -ArgumentList @(
+            '-NoProfile',
+            '-NonInteractive',
+            '-EncodedCommand',
+            $waitCommand
+          ) -WindowStyle Hidden -PassThru
+          if (!$state.ready.WaitOne(5000)) {
+            throw 'W6B_LEGACY_OBSERVER_READY_TIMEOUT'
+          }
+          $state.process.Refresh()
+          if ($state.process.HasExited) {
+            throw 'W6B_LEGACY_OBSERVER_EXITED_BEFORE_READY'
+          }
+          return $state.process
+        }
+        catch {
+          $state.release.Set() | Out-Null
+          if ($null -ne $state.process) {
+            try {
+              $state.process.Refresh()
+              if (!$state.process.HasExited) {
+                Stop-EkyProcessTree -Process $state.process
+              }
+            }
+            finally {
+              $state.process.Dispose()
+            }
+          }
+          throw
+        }
+      } `
+      -ReadResult {
+        $state = $script:ObserverFailureState
+        if ($null -eq $state -or $null -eq $state.process) {
+          throw 'W6B_LEGACY_OBSERVER_STATE_MISSING'
+        }
+        $state.release.Set() | Out-Null
+        if (!$state.process.WaitForExit(5000)) {
+          throw 'W6B_LEGACY_OBSERVER_EXIT_TIMEOUT'
+        }
+        $state.process.Refresh()
+        if ($state.process.ExitCode -ne 0) {
+          throw 'W6B_LEGACY_OBSERVER_PROCESS_FAILED'
+        }
+        return [pscustomobject]@{
+          stage = 'restoreRestart'
+          status = 'started'
+        }
+      } `
+      -ObserveResult { throw 'W6B_LEGACY_OBSERVER_FAILED' } `
+      -ObserveProcess { param($Process) } `
+      -ValidateResult {
+        param(
+          $Process,
+          $Result,
+          [string]$ExpectedStage,
+          [string]$ExpectedStatus
+        )
+      } `
+      -TimeoutMilliseconds 3000 `
+      -PollMilliseconds 25 | Out-Null
+  }
+  finally {
+    $state = $script:ObserverFailureState
+    if ($null -ne $state) {
+      $state.release.Set() | Out-Null
+      $state.ready.Dispose()
+      $state.release.Dispose()
+      $script:ObserverFailureState = $null
+    }
+  }
 }
 
 function Assert-EkyHistoricalObserverFailurePreserved {
@@ -584,6 +682,8 @@ $script:phase = $null
 $script:initialStarts = 0
 $script:restoredStarts = 0
 $foreignProcess = $null
+$foreignReadyEvent = $null
+$foreignReleaseEvent = $null
 $status = 'failed'
 $foreignProcessUntouched = $false
 $chain = $null
@@ -698,12 +798,48 @@ try {
       -Name ownedDescendantChain
   ) {
     Set-EkyHistoricalProcessChainTestCase -Name ownedDescendantChain
+    $foreignEventPrefix = 'Local\EkyW6bForeign-' + `
+      [Guid]::NewGuid().ToString('N')
+    $foreignReadyName = "$foreignEventPrefix-ready"
+    $foreignReleaseName = "$foreignEventPrefix-release"
+    $foreignReadyEvent = [Threading.EventWaitHandle]::new(
+      $false,
+      [Threading.EventResetMode]::ManualReset,
+      $foreignReadyName
+    )
+    $foreignReleaseEvent = [Threading.EventWaitHandle]::new(
+      $false,
+      [Threading.EventResetMode]::ManualReset,
+      $foreignReleaseName
+    )
+    $foreignCommand = ConvertTo-EkyHistoricalEncodedCommand -Command @"
+`$ready = [Threading.EventWaitHandle]::OpenExisting('$foreignReadyName')
+`$release = [Threading.EventWaitHandle]::OpenExisting('$foreignReleaseName')
+try {
+  `$ready.Set() | Out-Null
+  if (!`$release.WaitOne(30000)) {
+    exit 61
+  }
+  exit 0
+}
+finally {
+  `$ready.Dispose()
+  `$release.Dispose()
+}
+"@
     $foreignProcess = Start-Process powershell.exe -ArgumentList @(
       '-NoProfile',
       '-NonInteractive',
-      '-Command',
-      '[Threading.Thread]::Sleep([Threading.Timeout]::Infinite)'
+      '-EncodedCommand',
+      $foreignCommand
     ) -WindowStyle Hidden -PassThru
+    if (!$foreignReadyEvent.WaitOne(5000)) {
+      throw 'W6B_LEGACY_FOREIGN_PROCESS_READY_TIMEOUT'
+    }
+    $foreignProcess.Refresh()
+    if ($foreignProcess.HasExited) {
+      throw 'W6B_LEGACY_FOREIGN_PROCESS_EXITED_BEFORE_READY'
+    }
 
     $chain = Invoke-HistoricalPackagedSmokeProcessChain `
     -ExpectedExecutablePath $(if ($fixture -ceq 'historicalPackage') {
@@ -798,11 +934,20 @@ try {
       throw 'W6B_LEGACY_SOURCE_PROCESS_CHAIN_INVALID'
     }
     Close-EkyHistoricalSyntheticProcessEvents
-    if (!$foreignProcess.HasExited) {
-      Stop-EkyProcessTree -Process $foreignProcess
+    $foreignReleaseEvent.Set() | Out-Null
+    if (!$foreignProcess.WaitForExit(5000)) {
+      throw 'W6B_LEGACY_FOREIGN_PROCESS_EXIT_TIMEOUT'
+    }
+    $foreignProcess.Refresh()
+    if ($foreignProcess.ExitCode -ne 0) {
+      throw 'W6B_LEGACY_FOREIGN_PROCESS_FAILED'
     }
     $foreignProcess.Dispose()
     $foreignProcess = $null
+    $foreignReadyEvent.Dispose()
+    $foreignReadyEvent = $null
+    $foreignReleaseEvent.Dispose()
+    $foreignReleaseEvent = $null
   }
 
   if (
@@ -892,12 +1037,21 @@ catch {
 finally {
   try {
     Close-EkyHistoricalSyntheticProcessEvents
+    if ($null -ne $foreignReleaseEvent) {
+      $foreignReleaseEvent.Set() | Out-Null
+    }
     if ($null -ne $foreignProcess) {
       $foreignProcess.Refresh()
       if (!$foreignProcess.HasExited) {
         Stop-EkyProcessTree -Process $foreignProcess
       }
       $foreignProcess.Dispose()
+    }
+    if ($null -ne $foreignReadyEvent) {
+      $foreignReadyEvent.Dispose()
+    }
+    if ($null -ne $foreignReleaseEvent) {
+      $foreignReleaseEvent.Dispose()
     }
     if ($null -ne $privateTestRoot) {
       Remove-EkyHistoricalPrivateTestRoot -Root $privateTestRoot

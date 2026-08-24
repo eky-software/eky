@@ -320,8 +320,40 @@ test('reads deep adopted workspace evidence with Windows long-path semantics', {
     longPathHashValidated: true,
     longPathInventoryValidated: true,
     readOnlyCleanupValidated: true,
+    reparsePointRejected: true,
     registryEvidenceValidated: true,
     status: 'succeeded',
+  });
+});
+
+test('reports long-path evidence failure with one safe terminal record', {
+  skip: process.platform !== 'win32',
+}, () => {
+  const result = spawnSync(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      resolve(scriptDirectory, 'w6bLegacy', 'longPathEvidence.test.ps1'),
+      '-TestCase',
+      'safeFailure',
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  );
+
+  assert.equal(result.status, 1, 'W6B_LONG_PATH_SAFE_FAILURE_TEST_FAILED');
+  assert.equal(result.stderr, '');
+  const lines = result.stdout
+    .split(/\r?\n/u)
+    .filter((line) => line.trim() !== '');
+  assert.equal(lines.length, 1);
+  assert.deepEqual(JSON.parse(lines[0]), {
+    errorCode: 'W6B_LONG_PATH_SAFE_FAILURE_FIXTURE',
+    status: 'failed',
+    testCase: 'longPathEvidence',
   });
 });
 
