@@ -283,12 +283,12 @@ try {
         }
     }
     'foreignWindowIgnored' {
-      $owned = Start-W6bGracefulNoWindowFixture
       $foreign = Start-W6bGracefulWindowFixture
       $foreign.open.Set() | Out-Null
       if (!$foreign.ready.WaitOne(5000)) {
         throw 'W6B_LEGACY_GRACEFUL_TEST_FOREIGN_NOT_READY'
       }
+      $owned = Start-W6bGracefulNoWindowFixture
       $identity = New-W6bGracefulRootIdentity -Process $owned.process
       Assert-W6bGracefulThrows -ExpectedCode `
         'W6B_LEGACY_APPLICATION_WINDOW_TIMEOUT' -Action {
