@@ -108,7 +108,14 @@ test('keeps empty installer directory inventories as comparable arrays', async (
 
   assert.match(support, /return ,@\(\)/);
   assert.match(support, /return ,\$inventory/);
-  assert.equal((support.match(/AllowEmptyCollection/g) ?? []).length, 2);
+  const inventoryComparisonSource = support.slice(
+    support.indexOf('function Assert-EkyInventoryEqual'),
+    support.indexOf('function Assert-EkyInstalledPayload'),
+  );
+  assert.equal(
+    (inventoryComparisonSource.match(/AllowEmptyCollection/g) ?? []).length,
+    2,
+  );
 });
 
 test('keeps direct downgrade blocked and rollback outside MSI authoring', async () => {

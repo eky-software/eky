@@ -1,5 +1,10 @@
 Set-StrictMode -Version Latest
 
+. (Join-Path $PSScriptRoot 'windowsInstallerProcessTree.ps1')
+
+$script:EkyMsiExecHostPath = Join-Path $PSScriptRoot `
+  'windowsInstallerMsiExecHost.ps1'
+
 function Get-EkyFileSha256 {
   param([Parameter(Mandatory = $true)][string]$Path)
 
@@ -65,6 +70,43 @@ function New-EkyOwnedMsiProcessIdentity {
   catch {
     throw 'INSTALLER_MSI_PROCESS_IDENTITY_INVALID'
   }
+}
+
+function ConvertTo-EkyMsiExecArgumentsToken {
+  param(
+    [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]
+    $Arguments
+  )
+
+  if (
+    $Arguments.Count -lt 1 -or
+    @($Arguments | Where-Object {
+      $_.Length -lt 1 -or $_.Length -gt 32767
+    }).Count -ne 0
+  ) {
+    throw 'INSTALLER_MSI_ARGUMENTS_INVALID'
+  }
+
+  $json = ConvertTo-Json -InputObject @($Arguments) -Compress
+  return [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json))
+}
+
+function Start-EkyOwnedMsiExecHost {
+  param([Parameter(Mandatory = $true)][string[]]$Arguments)
+
+  if (!(Test-Path -LiteralPath $script:EkyMsiExecHostPath -PathType Leaf)) {
+    throw 'INSTALLER_MSI_HOST_MISSING'
+  }
+  $encodedArguments = ConvertTo-EkyMsiExecArgumentsToken `
+    -Arguments $Arguments
+  return Start-Process -FilePath 'powershell.exe' -ArgumentList @(
+    '-NoProfile',
+    '-NonInteractive',
+    '-File',
+    "`"$script:EkyMsiExecHostPath`"",
+    '-EncodedArguments',
+    $encodedArguments
+  ) -WindowStyle Hidden -PassThru
 }
 
 function Assert-EkyOwnedMsiProcessIdentity {
@@ -136,10 +178,8 @@ function Stop-EkyOwnedMsiProcess {
     if ($Process.HasExited) {
       return
     }
-    $Process.Kill()
-    if (!$Process.WaitForExit($TimeoutMilliseconds)) {
-      throw 'INSTALLER_MSI_PROCESS_CLEANUP_TIMEOUT'
-    }
+    Stop-EkyProcessTree -Process $Process `
+      -TimeoutMilliseconds $TimeoutMilliseconds
   }
   catch {
     if ($_.Exception.Message -eq 'INSTALLER_MSI_PROCESS_CLEANUP_TIMEOUT') {
@@ -157,8 +197,7 @@ function Invoke-EkyMsiExecProcess {
 
   $policy = Get-EkyMsiExecPolicy -Operation $Operation
   try {
-    $process = Start-Process -FilePath 'msiexec.exe' `
-      -ArgumentList $Arguments -NoNewWindow -PassThru
+    $process = Start-EkyOwnedMsiExecHost -Arguments $Arguments
   }
   catch {
     throw "$($policy.errorPrefix)_START_FAILED"
@@ -233,6 +272,106 @@ function Invoke-EkyMsiExecExpectedFailure {
   Assert-EkyMsiExecExpectedFailureExitCode -ExitCode $exitCode `
     -Operation $Operation
   return $exitCode
+}
+
+function Remove-EkyInstallerTestDirectory {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  try {
+    $normalizedPath = [IO.Path]::GetFullPath($Path).TrimEnd('\')
+    $normalizedTempRoot = [IO.Path]::GetFullPath(
+      [IO.Path]::GetTempPath()
+    ).TrimEnd('\')
+    $parent = [IO.Directory]::GetParent($normalizedPath)
+    $leaf = [IO.Path]::GetFileName($normalizedPath)
+  }
+  catch {
+    throw 'INSTALLER_TEST_DIRECTORY_PATH_INVALID'
+  }
+  if (
+    $null -eq $parent -or
+    !$parent.FullName.Equals(
+      $normalizedTempRoot,
+      [StringComparison]::OrdinalIgnoreCase
+    ) -or
+    $leaf -notmatch '^eky-installer-(?:lifecycle|upgrade)-[0-9a-f]{32}$'
+  ) {
+    throw 'INSTALLER_TEST_DIRECTORY_PATH_INVALID'
+  }
+  if (!(Test-Path -LiteralPath $normalizedPath)) {
+    return
+  }
+
+  $cleanupProcess = $null
+  try {
+    $rootItem = Get-Item -LiteralPath $normalizedPath -Force
+    if (
+      !$rootItem.PSIsContainer -or
+      ($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0
+    ) {
+      throw 'INSTALLER_TEST_DIRECTORY_PATH_INVALID'
+    }
+    $extendedPath = if ($normalizedPath.StartsWith('\\')) {
+      '\\?\UNC\' + $normalizedPath.Substring(2)
+    }
+    elseif ($normalizedPath -match '^[A-Za-z]:\\') {
+      '\\?\' + $normalizedPath
+    }
+    else {
+      throw 'INSTALLER_TEST_DIRECTORY_PATH_INVALID'
+    }
+
+    $startInfo = [Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = Join-Path $env:SystemRoot 'System32\cmd.exe'
+    $startInfo.Arguments = '/d /v:off /s /c "rd /s /q ' +
+      '""%EKY_INSTALLER_TEST_DELETE_ROOT%"""'
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.EnvironmentVariables['EKY_INSTALLER_TEST_DELETE_ROOT'] = `
+      $extendedPath
+    $cleanupProcess = [Diagnostics.Process]::Start($startInfo)
+    if ($null -eq $cleanupProcess) {
+      throw 'INSTALLER_TEST_DIRECTORY_CLEANUP_START_FAILED'
+    }
+    $cleanupIdentity = New-EkyOwnedMsiProcessIdentity `
+      -Process $cleanupProcess
+    $cleanupResult = Wait-EkyOwnedMsiProcess -Process $cleanupProcess `
+      -TimeoutMilliseconds 30000
+    if ($cleanupResult.state -eq 'timedOut') {
+      try {
+        Stop-EkyOwnedMsiProcess -Process $cleanupProcess `
+          -Identity $cleanupIdentity -TimeoutMilliseconds 5000
+      }
+      catch {
+        throw 'INSTALLER_TEST_DIRECTORY_CLEANUP_STOP_FAILED'
+      }
+      throw 'INSTALLER_TEST_DIRECTORY_CLEANUP_TIMEOUT'
+    }
+    if ([int]$cleanupResult.exitCode -ne 0) {
+      throw 'INSTALLER_TEST_DIRECTORY_CLEANUP_FAILED'
+    }
+  }
+  catch {
+    $safeCleanupCodes = @(
+      'INSTALLER_TEST_DIRECTORY_PATH_INVALID',
+      'INSTALLER_TEST_DIRECTORY_CLEANUP_START_FAILED',
+      'INSTALLER_TEST_DIRECTORY_CLEANUP_STOP_FAILED',
+      'INSTALLER_TEST_DIRECTORY_CLEANUP_TIMEOUT',
+      'INSTALLER_TEST_DIRECTORY_CLEANUP_FAILED'
+    )
+    if ($safeCleanupCodes -contains $_.Exception.Message) {
+      throw
+    }
+    throw 'INSTALLER_TEST_DIRECTORY_CLEANUP_FAILED'
+  }
+  finally {
+    if ($null -ne $cleanupProcess) {
+      $cleanupProcess.Dispose()
+    }
+  }
+  if (Test-Path -LiteralPath $normalizedPath) {
+    throw 'INSTALLER_TEST_DIRECTORY_CLEANUP_REMAINS'
+  }
 }
 
 function Get-EkyDirectoryInventory {

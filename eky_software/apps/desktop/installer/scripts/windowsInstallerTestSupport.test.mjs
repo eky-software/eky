@@ -7,21 +7,33 @@ import test from 'node:test';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const helperPath = join(scriptDirectory, 'windowsInstallerTestSupport.ps1');
+const hostPath = join(scriptDirectory, 'windowsInstallerMsiExecHost.ps1');
 const testPath = join(scriptDirectory, 'windowsInstallerTestSupport.test.ps1');
 
 test('MSI test runner has bounded waits and exact-process cleanup', () => {
   const source = readFileSync(helperPath, 'utf8');
+  const hostSource = readFileSync(hostPath, 'utf8');
 
   assert.match(source, /function Get-EkyMsiExecPolicy/u);
+  assert.match(source, /function Start-EkyOwnedMsiExecHost/u);
   assert.match(source, /function Wait-EkyOwnedMsiProcess/u);
   assert.match(source, /function Stop-EkyOwnedMsiProcess/u);
+  assert.match(source, /function Remove-EkyInstallerTestDirectory/u);
+  assert.match(source, /EKY_INSTALLER_TEST_DELETE_ROOT/u);
+  assert.match(
+    source,
+    /Wait-EkyOwnedMsiProcess -Process \$cleanupProcess/u,
+  );
   assert.match(source, /WaitForExit\(\$TimeoutMilliseconds\)/u);
-  assert.match(source, /\$Process\.Kill\(\)/u);
+  assert.match(source, /Stop-EkyProcessTree -Process \$Process/u);
   assert.doesNotMatch(
     source,
     /Start-Process\s+-FilePath 'msiexec\.exe'[\s\S]{0,180}-Wait/iu,
   );
   assert.doesNotMatch(source, /(?:taskkill|Stop-Process)\s+-Name\s+msiexec/iu);
+  assert.match(hostSource, /System32\\msiexec\.exe/u);
+  assert.match(hostSource, /-Wait\s+`\s+-PassThru/u);
+  assert.doesNotMatch(hostSource, /(?:taskkill|Stop-Process)/iu);
 });
 
 test('bounded MSI runner exits safely and leaves a foreign sentinel running', {
@@ -51,7 +63,10 @@ test('bounded MSI runner exits safely and leaves a foreign sentinel running', {
     boundedInstallPolicy: true,
     boundedUninstallPolicy: true,
     fastExitValidated: true,
+    hostArgumentRoundTripValidated: true,
+    longPathCleanupValidated: true,
     timeoutValidated: true,
+    ownedTreeWaitValidated: true,
     exactOwnedCleanup: true,
     foreignSentinelUntouched: true,
     orphanProcessCount: 0,

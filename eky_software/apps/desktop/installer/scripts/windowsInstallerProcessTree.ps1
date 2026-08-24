@@ -183,9 +183,26 @@ function Stop-EkyProcessTree {
       '/F'
     ) `
     -WindowStyle Hidden `
-    -Wait `
     -PassThru
   try {
+    if (!$taskkillProcess.WaitForExit($TimeoutMilliseconds)) {
+      try {
+        $taskkillProcess.Kill()
+        if (!$taskkillProcess.WaitForExit(5000)) {
+          throw 'INSTALLER_UPGRADE_PROCESS_TREE_STOP_FAILED'
+        }
+      }
+      catch {
+        if (
+          $_.Exception.Message -eq
+            'INSTALLER_UPGRADE_PROCESS_TREE_STOP_FAILED'
+        ) {
+          throw
+        }
+        throw 'INSTALLER_UPGRADE_PROCESS_TREE_STOP_FAILED'
+      }
+      throw 'INSTALLER_UPGRADE_PROCESS_TREE_STOP_TIMEOUT'
+    }
     $taskkillExitCode = [int]$taskkillProcess.ExitCode
     if ($null -ne $Observation) {
       $Observation.taskkillExitClass = if ($taskkillExitCode -eq 0) {

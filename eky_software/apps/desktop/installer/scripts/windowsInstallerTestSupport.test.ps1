@@ -45,6 +45,10 @@ function Start-MsiRunnerFixtureProcess {
 $ownedProcess = $null
 $sentinelProcess = $null
 $fastProcess = $null
+$treeProcess = $null
+$treeIdentities = @()
+$hostArgumentRoundTripExitCode = $null
+$longPathCleanupRoot = $null
 $failureCode = $null
 $successResult = $null
 try {
@@ -59,6 +63,43 @@ try {
   Assert-ThrowsCode {
     Get-EkyMsiExecPolicy -Operation unknown_operation
   } 'INSTALLER_MSI_OPERATION_INVALID'
+  Assert-ThrowsCode {
+    ConvertTo-EkyMsiExecArgumentsToken -Arguments @()
+  } 'INSTALLER_MSI_ARGUMENTS_INVALID'
+
+  $hostArgumentRoundTripExitCode = Invoke-EkyMsiExecProcess -Arguments @(
+    '/x',
+    '{00000000-0000-0000-0000-000000000000}',
+    '/qn',
+    '/norestart'
+  ) -Operation downgrade
+  Assert-Equal $hostArgumentRoundTripExitCode 1605 `
+    'INSTALLER_MSI_RUNNER_HOST_ARGUMENT_ROUND_TRIP_INVALID'
+
+  Assert-ThrowsCode {
+    Remove-EkyInstallerTestDirectory -Path (Join-Path `
+      ([IO.Path]::GetTempPath()) `
+      ('invalid-installer-test-' + [Guid]::NewGuid().ToString('N')))
+  } 'INSTALLER_TEST_DIRECTORY_PATH_INVALID'
+  $longPathCleanupRoot = Join-Path ([IO.Path]::GetTempPath()) `
+    ('eky-installer-upgrade-' + [Guid]::NewGuid().ToString('N'))
+  $longPathCleanupLeaf = $longPathCleanupRoot
+  for ($index = 0; $index -lt 12; $index += 1) {
+    $longPathCleanupLeaf += '\segment' + $index.ToString('00') + ('x' * 20)
+  }
+  $extendedLongPathCleanupLeaf = '\\?\' + $longPathCleanupLeaf
+  [IO.Directory]::CreateDirectory($extendedLongPathCleanupLeaf) | Out-Null
+  [IO.File]::WriteAllText(
+    ($extendedLongPathCleanupLeaf + '\proof.txt'),
+    'proof'
+  )
+  if (($longPathCleanupLeaf + '\proof.txt').Length -le 260) {
+    throw 'INSTALLER_TEST_DIRECTORY_LONG_PATH_FIXTURE_INVALID'
+  }
+  Remove-EkyInstallerTestDirectory -Path $longPathCleanupRoot
+  Assert-Equal (Test-Path -LiteralPath $longPathCleanupRoot) $false `
+    'INSTALLER_TEST_DIRECTORY_CLEANUP_REMAINS'
+  $longPathCleanupRoot = $null
 
   Assert-EkyMsiExecExitCode -ExitCode 0 -Operation lifecycle_install
   Assert-EkyMsiExecExitCode -ExitCode 3010 -Operation lifecycle_install `
@@ -83,11 +124,62 @@ try {
   Assert-Equal $fastResult.exitCode 0 `
     'INSTALLER_MSI_RUNNER_FAST_PROCESS_EXIT_INVALID'
 
+  $treeProcess = Start-MsiRunnerFixtureProcess -Command @'
+$child = Start-Process powershell.exe -ArgumentList @(
+  '-NoProfile', '-NonInteractive', '-Command',
+  'Start-Sleep -Milliseconds 350; exit 0'
+) -WindowStyle Hidden -PassThru
+try {
+  [void]$child.WaitForExit()
+  exit 7
+}
+finally {
+  $child.Dispose()
+}
+'@
+  $treeStopwatch = [Diagnostics.Stopwatch]::StartNew()
+  try {
+    $treeResult = Wait-EkyOwnedMsiProcess -Process $treeProcess `
+      -TimeoutMilliseconds 5000
+  }
+  finally {
+    $treeStopwatch.Stop()
+  }
+  Assert-Equal $treeResult.state exited `
+    'INSTALLER_MSI_RUNNER_TREE_STATE_INVALID'
+  Assert-Equal $treeResult.exitCode 7 `
+    'INSTALLER_MSI_RUNNER_TREE_EXIT_INVALID'
+  Assert-Equal ($treeStopwatch.ElapsedMilliseconds -ge 250) $true `
+    'INSTALLER_MSI_RUNNER_TREE_WAIT_INVALID'
+
   $sentinelProcess = Start-MsiRunnerFixtureProcess `
     -Command 'Start-Sleep -Seconds 30; exit 0'
-  $ownedProcess = Start-MsiRunnerFixtureProcess `
-    -Command 'Start-Sleep -Seconds 30; exit 0'
+  $ownedProcess = Start-MsiRunnerFixtureProcess -Command @'
+$child = Start-Process powershell.exe -ArgumentList @(
+  '-NoProfile', '-NonInteractive', '-Command', 'Start-Sleep -Seconds 30'
+) -WindowStyle Hidden -PassThru
+[void]$child.WaitForExit()
+'@
   $ownedIdentity = New-EkyOwnedMsiProcessIdentity -Process $ownedProcess
+  $ownedTreeIdentity = New-EkyProcessIdentity `
+    -ProcessId ([int]$ownedProcess.Id) `
+    -CreationToken (ConvertTo-EkyProcessCreationToken `
+      -CreationTime ([DateTime]$ownedProcess.StartTime))
+  $treeReadyDeadline = [DateTime]::UtcNow.AddSeconds(5)
+  do {
+    $treeIdentities = @(
+      Get-EkyOwnedProcessIdentitiesFromSnapshot `
+        -RootIdentity $ownedTreeIdentity `
+        -ProcessSnapshot (Get-EkyProcessSnapshot)
+    )
+    if ($treeIdentities.Count -ge 2) {
+      break
+    }
+    if ([DateTime]::UtcNow -ge $treeReadyDeadline) {
+      throw 'INSTALLER_MSI_RUNNER_OWNED_CHILD_MISSING'
+    }
+    [void]$ownedProcess.WaitForExit(25)
+  } while ($true)
   $timedResult = Wait-EkyOwnedMsiProcess -Process $ownedProcess `
     -TimeoutMilliseconds 50
   Assert-Equal $timedResult.state timedOut `
@@ -97,6 +189,13 @@ try {
   $ownedProcess.Refresh()
   Assert-Equal $ownedProcess.HasExited $true `
     'INSTALLER_MSI_RUNNER_OWNED_PROCESS_REMAINS'
+  $remainingTree = @(
+    Get-EkyRemainingOwnedProcessIdentitiesFromSnapshot `
+      -OwnedProcessIdentities $treeIdentities `
+      -ProcessSnapshot (Get-EkyProcessSnapshot)
+  )
+  Assert-Equal $remainingTree.Count 0 `
+    'INSTALLER_MSI_RUNNER_OWNED_CHILD_REMAINS'
   $sentinelProcess.Refresh()
   Assert-Equal $sentinelProcess.HasExited $false `
     'INSTALLER_MSI_RUNNER_FOREIGN_SENTINEL_STOPPED'
@@ -111,7 +210,10 @@ try {
     boundedInstallPolicy = $true
     boundedUninstallPolicy = $true
     fastExitValidated = $true
+    hostArgumentRoundTripValidated = $true
+    longPathCleanupValidated = $true
     timeoutValidated = $true
+    ownedTreeWaitValidated = $true
     exactOwnedCleanup = $true
     foreignSentinelUntouched = $true
     orphanProcessCount = 0
@@ -127,15 +229,19 @@ catch {
   }
 }
 finally {
-  foreach ($process in @($ownedProcess, $sentinelProcess, $fastProcess)) {
+  foreach ($process in @(
+    $ownedProcess,
+    $sentinelProcess,
+    $fastProcess,
+    $treeProcess
+  )) {
     if ($null -eq $process) {
       continue
     }
     try {
       $process.Refresh()
       if (!$process.HasExited) {
-        $process.Kill()
-        [void]$process.WaitForExit(5000)
+        Stop-EkyProcessTree -Process $process -TimeoutMilliseconds 5000
       }
     }
     catch {
@@ -143,6 +249,14 @@ finally {
     }
     finally {
       $process.Dispose()
+    }
+  }
+  if ($null -ne $longPathCleanupRoot) {
+    try {
+      Remove-EkyInstallerTestDirectory -Path $longPathCleanupRoot
+    }
+    catch {
+      $failureCode = 'INSTALLER_MSI_RUNNER_CLEANUP_FAILED'
     }
   }
 }
