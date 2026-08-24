@@ -38,7 +38,7 @@ describe('desktop first-start boundaries', () => {
       'await resolveDesktopWorkspaceStartup',
     );
     const firstStartPreparation = source.indexOf(
-      'await workspaceFirstStartMigration.prepareBeforeBackend()',
+      'await workspaceFirstStartMigration.prepareBeforeBackend({',
     );
     const backendStart = source.indexOf(
       'backendHandle = await dependencies.startBackend',

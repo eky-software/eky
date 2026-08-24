@@ -1118,6 +1118,83 @@ integration- ja Electron-E2E-tasolla testillä
 -releaseportti on edelleen avoin; yksittäinen W6A.3-todiste ei yksin täytä
 sen MSI-, backup/restore-, isolation- ja kokonaisrollback-vaatimuksia.
 
+### W6B: Full packaged multi-workspace acceptance
+
+W6B sulkee W6:n paketoidun release-portin kahdella toisistaan erotetulla
+lähtömallilla. W6B ei nosta sovellusversiota eikä tuota käyttäjälle jaettavaa
+MSI:tä. Kaikki profiilit, salaisuudet, PDF:t, asennukset ja faultit ovat
+ajokohtaisia synteettisiä fixtureitä.
+
+Ensimmäinen lähtömalli todistaa käyttäjän todellisen siirtymän hyväksytystä
+legacy-versiosta multi-workspace-versioon:
+
+1. lähteenä käytetään täsmällistä hyväksyttyä 0.2.6 MSI-artifactia tai CI:ssä
+   samasta hyväksytystä source-commitista deterministisesti rakennettua
+   source-fixtureä
+2. source-identiteetistä todistetaan app-versio, build-revisio, clean build,
+   ProductCode, UpgradeCode ja SHA-256
+3. tavallinen Windows Installer major upgrade asentaa numeerisesti eri
+   synteettisen N+1-targetin
+4. first start adoptoi yhden legacy-profiilin täsmälleen yhdeksi `ready`-
+   työtilaksi ja asettaa aktiivisen osoittimen siihen
+5. toinen startup todistaa hyväksytyn target-buildin ja adoption
+   idempotenssin.
+
+Satunnaista nykyisestä HEADista 0.2.6-versionumerolla rakennettua pakettia ei
+hyväksytä legacy-lähteeksi. Jos hyväksyttyä artifactia tai sen tarkkaa
+source-commitia ei voida todistaa, W6B pysähtyy ennen MSI-ajoa.
+
+Toinen lähtömalli todistaa tulevan multi-workspace-version sisäisen
+päivityksen. Synteettinen N ja N+1 käyttävät eri numeerisia fixture-versioita
+sekä yksityiseen, Gitistä ohitettuun stagingiin kirjoitettuja manifesteja.
+Canonical `package.json`- ja `installer-release.json`-tiedostoja ei muuteta.
+Nykyinen update-, handoff-, first-start-, migration-, recovery- ja rollback-
+polku säilyy testin production-polkuina; rinnakkaista testimoottoria ei luoda.
+
+Onnistumismatriisi sisältää kolme työtilaa:
+
+| Työtila | Lähtötila N+1:een nähden | Paketoidun todistuksen odotus |
+| --- | --- | --- |
+| A | aktiivinen `compatiblePending` | Migroidaan first startissa ennen target-buildin hyväksyntää |
+| B | passiivinen `compatiblePending` | Säilyy first startissa byte-identtisenä ja migroidaan vasta ensimmäisessä aktivoinnissa |
+| C | passiivinen `invalidHistory` | DB- ja PDF-juuret eivät muutu; registry-entry siirtyy `recoveryRequired`-tilaan |
+
+Todistus vaihtaa B:hen, käynnistää B:n uudelleen idempotenssin osoittamiseksi,
+vaihtaa takaisin A:han ja torjuu C:n aktivoinnin. Jokaisella työtilalla on
+erilliset business-rivit, authoritative PDF, secret-namespace, archive-
+konfiguraatio ja -journal sekä recovery point -juuri. Installation-scoped
+update-tila säilyy yhtenä eikä saa sekoittua workspace-scoped-tilaan.
+
+Paketoitu fault-matriisi on rajattu viiteen korkean riskin tapaukseen:
+
+1. preUpdate-palautuspisteen virhe pysäyttää ennen runtime-sulkua ja handoffia
+2. aktiivisen A:n migration- tai health-virhe palauttaa A:n business-datan,
+   registryn, aktiivisen osoittimen ja source-binaariversion; B ja C säilyvät
+   byte-identtisinä
+3. kaatuminen registry-siirtymän ja target-buildin hyväksynnän välissä
+   ratkaistaan W6 first-start -journalista ilman mixed registry/build -tilaa
+4. B:n aktivointimigraation virhe palauttaa B:n byte-identtisesti sekä A:n
+   aktiiviseksi ilman binary rollbackia
+5. binary rollbackin virhe päättyy `recoveryRequired`-tilaan ilman
+   automaattista retry-loopia tai väärän version käynnistystä.
+
+Lisäksi install, reinstall/repair, uninstall ja reinstall todistetaan samalla
+synteettisellä multi-workspace-profiililla. Uninstall saa poistaa vain
+installation-owned binaarit, shortcutit, install-rootin ja Windows Installer
+-rekisteröinnit. Workspace-registry, tietokannat, PDF:t, backupit, recovery
+pointit ja secret-namespace säilyvät.
+
+Kaikissa skenaarioissa inventoidaan ennen ja jälkeen SQLite, authoritative
+PDF:t, workspace-registry ja sallitut workspace-scoped-juuret. Vanhat runtime-
+sessionit torjutaan, uusia Electron-, backend-, utility- tai installer-
+orpoprosesseja jää nolla eikä polkuja, salaisuuksia, raakaa MSI-tulostetta tai
+business-dataa julkaista testiraporttiin.
+
+W6B pysähtyy, jos fixture vaatisi tracked version -tiedostojen väliaikaista
+muokkaamista, saman version käyttöä eri revisioille, uutta rinnakkaista
+installer/update-moottoria, inventory-rajan nostoa, oikeaa käyttäjädataa tai
+dependency-, schema-, migration SQL- tai backup-formaattimuutosta.
+
 In-app update testataan erikseen vain, jos `localUnsignedPilot`-polku on
 kyseisessä checkpointissa hyväksytty. MSI-gate ei piilota in-app update -puutetta.
 

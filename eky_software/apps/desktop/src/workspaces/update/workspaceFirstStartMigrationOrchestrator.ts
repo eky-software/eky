@@ -7,7 +7,10 @@ import type {
 } from '../../update/preBackendFirstStartFailureAuthority.js';
 import type { PreWorkspaceBuildAdmission } from '../../update/preWorkspaceBuildAdmission.js';
 import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
-import type { LocalWorkspaceRegistryV1 } from '../registry/workspaceRegistryTypes.js';
+import type {
+  LocalWorkspaceRegistryV1,
+  WorkspaceId,
+} from '../registry/workspaceRegistryTypes.js';
 import { validateWorkspaceRegistry } from '../registry/workspaceRegistryValidation.js';
 import { resolveWorkspaceFirstStartMigrationPlan } from './resolveWorkspaceFirstStartMigrationPlan.js';
 import type {
@@ -27,6 +30,7 @@ import {
 import type { WorkspaceFirstStartMigrationTransitionCoordinator } from './workspaceFirstStartMigrationTransitionCoordinator.js';
 import type {
   WorkspaceFirstStartMigrationOrchestration,
+  WorkspaceFirstStartPreparationContext,
   WorkspaceFirstStartPreparationOutcome,
   WorkspaceFirstStartRecoveryOutcome,
 } from './workspaceFirstStartMigrationOrchestratorTypes.js';
@@ -145,7 +149,9 @@ export class WorkspaceFirstStartMigrationOrchestrator
     return recoveryRequired();
   }
 
-  async prepareBeforeBackend(): Promise<WorkspaceFirstStartPreparationOutcome> {
+  async prepareBeforeBackend(
+    context: Readonly<WorkspaceFirstStartPreparationContext>,
+  ): Promise<WorkspaceFirstStartPreparationOutcome> {
     if (!this.recoveryCompleted || this.preparation !== undefined) {
       return invalidOrchestration();
     }
@@ -156,6 +162,13 @@ export class WorkspaceFirstStartMigrationOrchestrator
     }
 
     try {
+      if (context.workspaceState === 'legacyAdoptionPendingAcceptance') {
+        await this.assertLegacyAdoptionHasNoPassiveRegistryState(
+          context.activeWorkspaceId,
+        );
+        this.preparation = Object.freeze({ kind: 'notRequired' });
+        return 'notRequired';
+      }
       const registry = await this.readRequiredRegistry();
       const sourceBuild = await this.resolveSourceBuild();
       const inventory = await this.options.inventory.inspect();
@@ -270,6 +283,23 @@ export class WorkspaceFirstStartMigrationOrchestrator
     const registry = await this.options.registry.read();
     if (registry === undefined) return invalidOrchestration();
     return validateWorkspaceRegistry(registry);
+  }
+
+  private async assertLegacyAdoptionHasNoPassiveRegistryState(
+    activeWorkspaceId: WorkspaceId,
+  ): Promise<void> {
+    if (this.resumedJournal !== undefined) return invalidOrchestration();
+    const registryValue = await this.options.registry.read();
+    if (registryValue === undefined) return;
+    const registry = validateWorkspaceRegistry(registryValue);
+    if (
+      registry.activeWorkspaceId !== activeWorkspaceId ||
+      registry.workspaces.length !== 1 ||
+      registry.workspaces[0]?.workspaceId !== activeWorkspaceId ||
+      registry.workspaces[0].lifecycleState !== 'ready'
+    ) {
+      return invalidOrchestration();
+    }
   }
 
   private assertResumedPlan(

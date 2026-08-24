@@ -143,6 +143,6 @@ finally {
     [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($installer)
   }
   if ($completed -and (Test-Path -LiteralPath $logRoot)) {
-    Remove-Item -LiteralPath $logRoot -Force -Recurse
+    Remove-EkyInstallerTestDirectory -Path $logRoot
   }
 }

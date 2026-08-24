@@ -561,7 +561,7 @@ finally {
   if ($completed) {
     foreach ($path in @($logRoot)) {
       if (Test-Path -LiteralPath $path) {
-        Remove-Item -LiteralPath $path -Force -Recurse
+        Remove-EkyInstallerTestDirectory -Path $path
       }
     }
   }

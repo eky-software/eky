@@ -136,6 +136,13 @@ synteettisen N -> N+1-, downgrade- ja rollback-todistuksen. CI ei tässä
 checkpointissa lataa artifactia julkaisuun, allekirjoita sitä tai tee siitä
 oikealle käyttäjälle jaettavaa releasea.
 
+Installerin deterministiset sopimustestit ajetaan komennolla
+`pnpm --filter @eky/desktop installer:test:unit`. Oikeita Windows-prosesseja
+käynnistävät prosessisopimustestit ajetaan erikseen ja sarjassa komennolla
+`pnpm --filter @eky/desktop installer:test:windows-process`. Yhdistelmäkomento
+`pnpm --filter @eky/desktop installer:test` ajaa molemmat ryhmät tässä
+järjestyksessä, eikä samaa testiä saa sisällyttää kumpaankin ryhmään.
+
 CI käyttää .NET SDK:ta `global.json`-sopimuksella `10.0.302`,
 `rollForward: disable` ja `allowPrerelease: false`. Virallinen
 `actions/setup-dotnet` on täsmällisesti releaseen `v5.4.0` kuuluvaan
@@ -881,6 +888,37 @@ toisen käynnistyksen idempotenssin, source- ja fault-tavujen sekä business-
 ja PDF-sisällön säilymisen, invalidin targetin backend-eston ja
 recovery-siirtymän, journalien siivouksen sekä backend- ja utility-prosessien
 vapautuksen. Tämä ei vielä sulje koko paketoitua W6-releaseporttia.
+
+W6B:n täysi paketoitu hyväksyntä käyttää kahta eri todistetta. Legacy-todiste
+alkaa hyväksytystä 0.2.6 MSI:stä tai täsmälleen sen hyväksytystä source-
+commitista deterministisesti rakennetusta fixturestä ja jatkuu tavallisella
+major upgradella synteettiseen N+1-versioon. Multi-workspace-todiste alkaa
+eri numeerista fixture-versiota käyttävästä multi-workspace-capable N-
+paketista ja kulkee nykyisen sisäisen update/handoff-polun kautta N+1:een.
+Canonical release-identiteettiä ei muuteta eikä samaa versionumeroa käytetä
+eri build-revisioille.
+
+W6B:n success-todisteessa aktiivinen `compatiblePending`-työtila migroidaan
+first startissa, passiivinen `compatiblePending` säilyy siihen asti byte-
+identtisenä ja migroidaan vasta aktivoinnissa sekä passiivinen
+`invalidHistory` eristetään `recoveryRequired`-tilaan ilman business- tai PDF-
+kirjoituksia. Legacy-adoption, SQLite- ja PDF-jatkuvuuden, secret- ja archive-
+scopen, runtime-sessionin vaihdon sekä install-rootin päivittymisen pitää
+täsmätä ennen target-buildin hyväksyntää.
+
+Paketoidun fault-portin auktoritatiiviset tapaukset ovat preUpdate recovery
+point -virhe, aktiivisen työtilan migration/health-virhe kokonaisrollbackilla,
+kaatuminen registry-siirtymän ja build-hyväksynnän välissä, passiivisen
+työtilan aktivointimigraation virhe ilman binary rollbackia sekä binary
+rollbackin virhe `recoveryRequired`-lopputuloksella. Install, repair,
+uninstall ja reinstall todistavat lisäksi, ettei installation-owned elinkaari
+muuta workspace-registryä tai workspace-scoped business- ja recovery-dataa.
+
+Tämä matriisi laajentaa nykyistä installer- ja packaged-smoke-harnessia. Se ei
+oikeuta rinnakkaista testimoottoria, tracked version -tiedostojen väliaikaista
+muokkaamista, inventory-rajojen nostamista tai oikean käyttäjäprofiilin
+käyttämistä. Täsmällinen skenaariomatriisi ja pysäytysrajat omistaa
+`local-company-workspace-plan.md`-dokumentin W6B-osuus.
 
 W4 aktivoi registryyn sidotun startupin ja vanhan yhden profiilin adoption
 production-compositionissa. Se ei vielä toteuta tämän luvun koko N -> N+1

@@ -59,6 +59,40 @@ test('allows only the approved signed NuGet source and exact setup-dotnet SHA', 
   assert.doesNotMatch(ci, /actions\/setup-dotnet@v\d/);
 });
 
+test('isolates W6B legacy acceptance from the regular MSI release gate', async () => {
+  const ci = await readFile(
+    join(workspaceRoot, '.github', 'workflows', 'ci.yml'),
+    'utf8',
+  );
+  const installerJobIndex = ci.indexOf('  installer-windows:');
+  const legacyJobIndex = ci.indexOf('  installer-w6b-legacy-windows:');
+  const installerJob = ci.slice(installerJobIndex, legacyJobIndex);
+  const legacyJob = ci.slice(legacyJobIndex);
+  const legacyAcceptance =
+    'run: pnpm --filter @eky/desktop installer:w6b-legacy';
+  const localPilotBundle =
+    'run: pnpm --filter @eky/desktop installer:local-pilot-bundle';
+
+  assert.ok(installerJobIndex >= 0);
+  assert.ok(legacyJobIndex > installerJobIndex);
+  assert.match(
+    installerJob,
+    /- name: Check out repository[\s\S]*?persist-credentials: false\s+fetch-depth: 0/u,
+  );
+  assert.match(installerJob, /timeout-minutes: 45/u);
+  assert.match(installerJob, new RegExp(localPilotBundle, 'u'));
+  assert.doesNotMatch(installerJob, new RegExp(legacyAcceptance, 'u'));
+  assert.match(
+    legacyJob,
+    /- name: Check out repository[\s\S]*?persist-credentials: false\s+fetch-depth: 0/u,
+  );
+  assert.match(legacyJob, /timeout-minutes: 30/u);
+  assert.match(legacyJob, new RegExp(legacyAcceptance, 'u'));
+  assert.doesNotMatch(legacyJob, new RegExp(localPilotBundle, 'u'));
+  assert.equal(ci.split('fetch-depth: 0').length - 1, 2);
+  assert.equal(ci.split(legacyAcceptance).length - 1, 1);
+});
+
 test('uses runtime-independent SHA-256 APIs in Windows installer gates', async () => {
   const scripts = await Promise.all(
     [
@@ -83,7 +117,14 @@ test('keeps empty installer directory inventories as comparable arrays', async (
 
   assert.match(support, /return ,@\(\)/);
   assert.match(support, /return ,\$inventory/);
-  assert.equal((support.match(/AllowEmptyCollection/g) ?? []).length, 2);
+  const inventoryComparisonSource = support.slice(
+    support.indexOf('function Assert-EkyInventoryEqual'),
+    support.indexOf('function Assert-EkyInstalledPayload'),
+  );
+  assert.equal(
+    (inventoryComparisonSource.match(/AllowEmptyCollection/g) ?? []).length,
+    2,
+  );
 });
 
 test('keeps direct downgrade blocked and rollback outside MSI authoring', async () => {
