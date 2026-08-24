@@ -165,12 +165,15 @@ Dirty-buildia ei jaeta. Release-artifacti muodostetaan puhtaasta,
 jäljitettävästä commitista, ja paketin build-infon, manifestin sekä desktop-
 paketin version pitää täsmätä.
 
-Projektin omistaja on hyväksynyt yhden hallitun pilottilaitteen
-allekirjoittamattoman artifactin vain ADR-0010:n `localUnsignedPilot`-mallissa.
+Projektin omistaja on hyväksynyt allekirjoittamattoman artifactin vain
+ADR-0010:n `localUnsignedPilot`-mallissa hallitsemilleen pilottilaitteille.
+Sama hyväksytty bundle voidaan asentaa usealle tällaiselle laitteelle ilman
+device ID -sidontaa, laitekohtaista aktivointia tai laitemäärän tarkistusta.
 Tällaisen manifestin `releaseChannel` on aina `pilot` ja allekirjoitustila aina
-`unsigned-prototype`. `stable` ei hyväksy allekirjoittamatonta artifactia.
-Laajempi jakelu vaatii code signing-, publisher-, installer-, rollback- ja
-päivitysketjun erillisen hyväksynnän.
+`unsigned-prototype`. Pakettia ei julkaista avoimena latauksena eikä `stable`
+hyväksy allekirjoittamatonta artifactia. Projektin omistajan hallitseman
+pilotin ulkopuolinen tai kaupallinen jakelu vaatii code signing-, publisher-,
+installer-, rollback- ja päivitysketjun erillisen hyväksynnän.
 
 Build-revision, versionumero ja runtime-tunniste eivät yksin todista artifactin
 alkuperää. Windows-asennus- ja päivitysrajat on määritelty ADR-0010:ssä ja

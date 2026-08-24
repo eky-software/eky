@@ -77,8 +77,12 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
 - Estyykö allekirjoittamaton normaali in-app update ilman erikseen hyväksyttyä
   trust anchor -mallia?
 - Jos käytössä on R0:n `localUnsignedPilot`, onko se rajattu `pilot`-kanavaan,
-  yhteen hallittuun laitteeseen, paikalliseen mediaan ja käyttäjän
-  vahvistukseen ilman verkko-, tausta-, hiljaista tai `stable`-polkua?
+  projektin omistajan hallitsemiin pilottilaitteisiin, paikalliseen mediaan ja
+  käyttäjän vahvistukseen ilman avointa latausta tai verkko-, tausta-,
+  hiljaista tai `stable`-polkua?
+- Onko varmistettu, ettei `localUnsignedPilot`-malliin lisätty device ID
+  -sidontaa, laitekohtaista aktivointia tai pilottilaitteiden lukumäärän
+  tarkistusta?
 - Väittääkö dokumentaatio tai UI virheellisesti SHA-256:ta, sidecaria tai
   `unsigned-prototype`-tilaa publisher-luottamukseksi?
 - Erotetaanko asennuksen onnistuminen uuden version first-start-
