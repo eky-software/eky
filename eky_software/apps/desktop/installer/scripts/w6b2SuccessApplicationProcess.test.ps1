@@ -1,6 +1,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'windowsInstallerProcessTree.ps1')
+. (Join-Path $PSScriptRoot 'w6b2Success\evidence.ps1')
 
 function Write-W6b2SuccessHeartbeat {}
 
@@ -144,12 +145,46 @@ exit 7
   Assert-W6b2ProcessEqual $activation.validationObservation `
     $activationPhaseCalls[1] 'W6B2_PROCESS_TEST_ACTIVATION_OBSERVATION_INVALID'
 
+  $proofResultRoot = Join-Path $testRoot 'proof-result'
+  [void](New-Item -ItemType Directory `
+    -Path (Join-Path $proofResultRoot 'result'))
+  $proofResultPath = Join-Path $proofResultRoot `
+    'result\w6b2-proof-result.json'
+  [IO.File]::WriteAllText(
+    $proofResultPath,
+    '{"formatVersion":1,"phase":"sourceHandoff","status":"completed"}',
+    [Text.UTF8Encoding]::new($false)
+  )
+  $proofResult = Read-W6b2SuccessProofResult -ProofRoot $proofResultRoot `
+    -ExpectedPhase sourceHandoff -ExpectedStatus completed
+  Assert-W6b2ProcessEqual $proofResult.status 'completed' `
+    'W6B2_PROCESS_TEST_PROOF_SUCCESS_INVALID'
+  [IO.File]::WriteAllText(
+    $proofResultPath,
+    '{"errorCode":"W6B2_PROOF_HANDOFF_FAILED","formatVersion":1,"phase":"sourceHandoff","status":"failed"}',
+    [Text.UTF8Encoding]::new($false)
+  )
+  Assert-W6b2ProcessThrows {
+    Read-W6b2SuccessProofResult -ProofRoot $proofResultRoot `
+      -ExpectedPhase sourceHandoff -ExpectedStatus completed
+  } 'W6B2_SUCCESS_PROOF_HANDOFF_FAILED'
+  [IO.File]::WriteAllText(
+    $proofResultPath,
+    '{"errorCode":"RAW_ERROR","formatVersion":1,"phase":"sourceHandoff","status":"failed"}',
+    [Text.UTF8Encoding]::new($false)
+  )
+  Assert-W6b2ProcessThrows {
+    Read-W6b2SuccessProofResult -ProofRoot $proofResultRoot `
+      -ExpectedPhase sourceHandoff -ExpectedStatus completed
+  } 'W6B2_SUCCESS_PROOF_RESULT_INVALID'
+
   $successResult = [ordered]@{
     status = 'succeeded'
     handoffReturnsOnProof = $true
     strictPhaseRequiresZeroExit = $true
     earlyExitRejected = $true
     activationMigrationUsesExactRelaunch = $true
+    proofFailureIsSafelyClassified = $true
     exactOwnedCleanup = $true
     orphanProcessCount = 0
   }

@@ -224,14 +224,40 @@ function Read-W6b2SuccessProofResult {
   $keys = @($value.PSObject.Properties.Name | Sort-Object)
   $expectedKeys = @('formatVersion', 'phase', 'status')
   if (
-    @(Compare-Object $keys $expectedKeys).Count -ne 0 -or
+    @(Compare-Object $keys $expectedKeys).Count -eq 0 -and
+    $value.formatVersion -eq 1 -and
+    [string]$value.phase -ceq $ExpectedPhase -and
+    [string]$value.status -ceq $ExpectedStatus
+  ) {
+    return $value
+  }
+  $failedKeys = @('errorCode', 'formatVersion', 'phase', 'status')
+  $failureCodes = @{
+    W6B2_PROOF_CONFIGURATION_INVALID = `
+      'W6B2_SUCCESS_PROOF_CONFIGURATION_INVALID'
+    W6B2_PROOF_HANDOFF_FAILED = 'W6B2_SUCCESS_PROOF_HANDOFF_FAILED'
+    W6B2_PROOF_PACKAGE_MARKER_INVALID = `
+      'W6B2_SUCCESS_PROOF_PACKAGE_MARKER_INVALID'
+    W6B2_PROOF_REJECTION_FAILED = 'W6B2_SUCCESS_PROOF_REJECTION_FAILED'
+    W6B2_PROOF_SHUTDOWN_FAILED = 'W6B2_SUCCESS_PROOF_SHUTDOWN_FAILED'
+    W6B2_PROOF_SWITCH_FAILED = 'W6B2_SUCCESS_PROOF_SWITCH_FAILED'
+    W6B2_PROOF_UNEXPECTED = 'W6B2_SUCCESS_PROOF_UNEXPECTED'
+    W6B2_PROOF_WORKSPACE_STATE_INVALID = `
+      'W6B2_SUCCESS_PROOF_WORKSPACE_STATE_INVALID'
+  }
+  if (@(Compare-Object $keys $failedKeys).Count -ne 0) {
+    throw 'W6B2_SUCCESS_PROOF_RESULT_INVALID'
+  }
+  $safeFailure = $failureCodes[[string]$value.errorCode]
+  if (
     $value.formatVersion -ne 1 -or
     [string]$value.phase -cne $ExpectedPhase -or
-    [string]$value.status -cne $ExpectedStatus
+    [string]$value.status -cne 'failed' -or
+    [string]::IsNullOrEmpty([string]$safeFailure)
   ) {
     throw 'W6B2_SUCCESS_PROOF_RESULT_INVALID'
   }
-  return $value
+  throw [string]$safeFailure
 }
 
 function Read-W6b2SuccessProfileResult {
