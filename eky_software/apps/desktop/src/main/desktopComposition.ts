@@ -1834,6 +1834,8 @@ async function startDesktopCompositionRuntime({
             isQuitRequested: proof.isQuitRequested,
             isRelaunchRequested: proof.isRelaunchRequested,
             lifecycle: lifecycleHandle,
+            readRecoveryPointFailureCode: () =>
+              recoveryPointService.getStatus().lastSafeErrorCode,
             workspaceManagement: workspaceManagementComposition.service,
           });
     await proof.reportResult(result);

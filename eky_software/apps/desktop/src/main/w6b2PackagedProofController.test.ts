@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { WorkspaceManagementError } from '../workspaces/management/workspaceManagementError.js';
 import type { WorkspaceManagementStatusV1 } from '../workspaces/management/workspaceManagementTypes.js';
 import { validateWorkspaceId } from '../workspaces/registry/workspaceIdValidation.js';
+import { LocalUpdateHandoffError } from '../update/localUpdateHandoffCoordinator.js';
 import { runW6b2PackagedProofController } from './w6b2PackagedProofController.js';
 import type { W6b2PackagedProofConfiguration } from './w6b2PackagedProof.js';
 
@@ -78,6 +79,76 @@ describe('W6B.2 packaged proof controller', () => {
     });
     expect(JSON.stringify(result)).not.toContain('private');
   });
+
+  it.each([
+    [
+      'UPDATE_PREPARATION_MAINTENANCE_FAILED',
+      undefined,
+      'W6B2_PROOF_PREPARATION_CONCURRENCY_FAILED',
+    ],
+    [
+      'UPDATE_PREPARATION_JOURNAL_FAILED',
+      undefined,
+      'W6B2_PROOF_PREPARATION_JOURNAL_FAILED',
+    ],
+    [
+      'UPDATE_PREPARATION_PACKAGE_FAILED',
+      undefined,
+      'W6B2_PROOF_PREPARATION_PACKAGE_FAILED',
+    ],
+    [
+      'UPDATE_PREPARATION_PROFILE_FAILED',
+      undefined,
+      'W6B2_PROOF_PREPARATION_PROFILE_FAILED',
+    ],
+    [
+      'UPDATE_PREPARATION_RECOVERY_POINT_FAILED',
+      'PROFILE_SNAPSHOT_DATABASE_FAILED',
+      'W6B2_PROOF_PREPARATION_RECOVERY_POINT_SNAPSHOT_FAILED',
+    ],
+    [
+      'UPDATE_PREPARATION_RECOVERY_POINT_FAILED',
+      'SECRET_STORAGE_UNAVAILABLE',
+      'W6B2_PROOF_PREPARATION_RECOVERY_POINT_PROTECTION_FAILED',
+    ],
+    [
+      'UPDATE_PREPARATION_RECOVERY_POINT_FAILED',
+      'RECOVERY_POINT_STORE_UNAVAILABLE',
+      'W6B2_PROOF_PREPARATION_RECOVERY_POINT_STORAGE_FAILED',
+    ],
+    [
+      'UPDATE_PREPARATION_RECOVERY_POINT_FAILED',
+      'RECOVERY_POINT_SOURCE_UNHEALTHY',
+      'W6B2_PROOF_PREPARATION_RECOVERY_POINT_SOURCE_FAILED',
+    ],
+    [
+      'UPDATE_PREPARATION_RECOVERY_POINT_FAILED',
+      'PRIVATE_PATH_C_DATA',
+      'W6B2_PROOF_PREPARATION_RECOVERY_POINT_FAILED',
+    ],
+  ] as const)(
+    'maps preparation %s and %s to the closed proof code %s',
+    async (handoffCode, recoveryPointCode, expectedCode) => {
+      const fixture = createControllerFixture('sourceHandoff', 'source');
+      fixture.handoff.prepareConfirmedUpdate.mockRejectedValueOnce(
+        new LocalUpdateHandoffError(handoffCode),
+      );
+      fixture.readRecoveryPointFailureCode.mockReturnValueOnce(
+        recoveryPointCode,
+      );
+
+      const result = await runW6b2PackagedProofController(fixture.options);
+
+      expect(result).toEqual({
+        errorCode: expectedCode,
+        formatVersion: 1,
+        phase: 'sourceHandoff',
+        status: 'failed',
+      });
+      expect(JSON.stringify(result)).not.toContain('PRIVATE');
+      expect(JSON.stringify(result)).not.toContain('PATH');
+    },
+  );
 
   it('distinguishes a missing quit request from a completed handoff', async () => {
     const fixture = createControllerFixture('sourceHandoff', 'source');
@@ -182,6 +253,9 @@ function createControllerFixture(
     prepareConfirmedUpdate: vi.fn().mockResolvedValue({}),
   };
   const lifecycle = { shutdown: vi.fn().mockResolvedValue(undefined) };
+  const readRecoveryPointFailureCode = vi.fn<() => string | undefined>(
+    () => undefined,
+  );
   const workspaceManagement = {
     getStatus: vi.fn(),
     switchTo: vi.fn().mockResolvedValue(undefined),
@@ -206,8 +280,10 @@ function createControllerFixture(
       isQuitRequested: () => state.quitRequested,
       isRelaunchRequested: () => state.relaunchRequested,
       lifecycle,
+      readRecoveryPointFailureCode,
       workspaceManagement,
     },
+    readRecoveryPointFailureCode,
     state,
     workspaceManagement,
   };

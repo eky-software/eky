@@ -43,11 +43,21 @@ interface LocalUpdateHandoffCoordinatorDependencies {
 }
 
 export class LocalUpdateHandoffError extends Error {
-  constructor() {
+  constructor(
+    readonly code: LocalUpdateHandoffErrorCode = 'UPDATE_HANDOFF_FAILED',
+  ) {
     super('The local update could not be handed off safely.');
     this.name = 'LocalUpdateHandoffError';
   }
 }
+
+export type LocalUpdateHandoffErrorCode =
+  | 'UPDATE_HANDOFF_FAILED'
+  | 'UPDATE_PREPARATION_JOURNAL_FAILED'
+  | 'UPDATE_PREPARATION_MAINTENANCE_FAILED'
+  | 'UPDATE_PREPARATION_PACKAGE_FAILED'
+  | 'UPDATE_PREPARATION_PROFILE_FAILED'
+  | 'UPDATE_PREPARATION_RECOVERY_POINT_FAILED';
 
 export class LocalUpdateHandoffCoordinator {
   private activeOperation = false;
@@ -57,61 +67,69 @@ export class LocalUpdateHandoffCoordinator {
   ) {}
 
   prepareConfirmedUpdate(): Promise<Readonly<UpdateJournal>> {
-    return this.runExclusive(async () => {
-      let journal: Readonly<UpdateJournal> | undefined;
-      const correlationId = this.createOperationId();
-      const startedAt = Date.now();
-      this.notifyStarted(correlationId, 'recoveryPoint');
-      try {
-        await this.assertJournalCanBeReplaced();
-        const currentIdentity =
-          await this.dependencies.cache.readExpectedPackageIdentity('current');
-        const candidateIdentity =
-          await this.dependencies.cache.readExpectedPackageIdentity(
-            'candidate',
-          );
-        const profileValidation =
-          await this.dependencies.profileProtection.validateActiveProfile();
-        journal = createPreparedJournal({
-          candidateIdentity,
-          correlationId,
-          currentIdentity,
-          now: this.now(),
-          preUpdateMigrationChainIdentity:
-            profileValidation.migrationChainIdentity,
-        });
-        await this.dependencies.journalStore.write(journal);
-        const recoveryPointReference =
-          await this.dependencies.profileProtection
-            .createValidatedPreUpdatePoint();
-        journal = transitionUpdateJournal(journal, {
-          at: this.now(),
-          recoveryPointReference,
-          state: 'recoveryPointValidated',
-        });
-        await this.dependencies.journalStore.write(journal);
-        this.notifyCompleted(
-          correlationId,
-          startedAt,
-          'recoveryPoint',
-        );
-        return journal;
-      } catch {
-        await this.writeFailedJournal(journal);
-        this.notifyFailed({
-          correlationId,
-          errorCode: 'UPDATE_RECOVERY_POINT_FAILED',
-          sideEffectState: 'none',
-          stage: 'recoveryPoint',
-          startedAt,
-        });
-        throw new LocalUpdateHandoffError();
-      }
-    });
+    return this.runExclusive(
+      'UPDATE_PREPARATION_MAINTENANCE_FAILED',
+      async () => {
+        let journal: Readonly<UpdateJournal> | undefined;
+        let failureCode: LocalUpdateHandoffErrorCode =
+          'UPDATE_PREPARATION_JOURNAL_FAILED';
+        const correlationId = this.createOperationId();
+        const startedAt = Date.now();
+        this.notifyStarted(correlationId, 'recoveryPoint');
+        try {
+          await this.assertJournalCanBeReplaced();
+          failureCode = 'UPDATE_PREPARATION_PACKAGE_FAILED';
+          const currentIdentity =
+            await this.dependencies.cache.readExpectedPackageIdentity(
+              'current',
+            );
+          const candidateIdentity =
+            await this.dependencies.cache.readExpectedPackageIdentity(
+              'candidate',
+            );
+          failureCode = 'UPDATE_PREPARATION_PROFILE_FAILED';
+          const profileValidation =
+            await this.dependencies.profileProtection.validateActiveProfile();
+          journal = createPreparedJournal({
+            candidateIdentity,
+            correlationId,
+            currentIdentity,
+            now: this.now(),
+            preUpdateMigrationChainIdentity:
+              profileValidation.migrationChainIdentity,
+          });
+          failureCode = 'UPDATE_PREPARATION_JOURNAL_FAILED';
+          await this.dependencies.journalStore.write(journal);
+          failureCode = 'UPDATE_PREPARATION_RECOVERY_POINT_FAILED';
+          const recoveryPointReference =
+            await this.dependencies.profileProtection
+              .createValidatedPreUpdatePoint();
+          journal = transitionUpdateJournal(journal, {
+            at: this.now(),
+            recoveryPointReference,
+            state: 'recoveryPointValidated',
+          });
+          failureCode = 'UPDATE_PREPARATION_JOURNAL_FAILED';
+          await this.dependencies.journalStore.write(journal);
+          this.notifyCompleted(correlationId, startedAt, 'recoveryPoint');
+          return journal;
+        } catch {
+          await this.writeFailedJournal(journal);
+          this.notifyFailed({
+            correlationId,
+            errorCode: 'UPDATE_RECOVERY_POINT_FAILED',
+            sideEffectState: 'none',
+            stage: 'recoveryPoint',
+            startedAt,
+          });
+          throw new LocalUpdateHandoffError(failureCode);
+        }
+      },
+    );
   }
 
   handoffPreparedUpdate(): Promise<void> {
-    return this.runExclusive(async () => {
+    return this.runExclusive('UPDATE_HANDOFF_FAILED', async () => {
       let journal: Readonly<UpdateJournal> | undefined;
       let maintenanceStarted = false;
       let runtimeStopped = false;
@@ -225,9 +243,12 @@ export class LocalUpdateHandoffCoordinator {
     return (this.dependencies.now ?? (() => new Date()))().toISOString();
   }
 
-  private async runExclusive<T>(operation: () => Promise<T>): Promise<T> {
+  private async runExclusive<T>(
+    unavailableCode: LocalUpdateHandoffErrorCode,
+    operation: () => Promise<T>,
+  ): Promise<T> {
     if (this.activeOperation) {
-      throw new LocalUpdateHandoffError();
+      throw new LocalUpdateHandoffError(unavailableCode);
     }
     this.activeOperation = true;
     let maintenanceLease:
@@ -237,7 +258,7 @@ export class LocalUpdateHandoffCoordinator {
       maintenanceLease = await this.dependencies.maintenanceLease
         .acquire('update')
         .catch(() => {
-          throw new LocalUpdateHandoffError();
+          throw new LocalUpdateHandoffError(unavailableCode);
       });
       return await operation();
     } finally {

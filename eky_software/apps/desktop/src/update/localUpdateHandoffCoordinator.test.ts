@@ -125,14 +125,26 @@ describe('local update handoff coordinator', () => {
   it('fails preparation without shutdown when profile validation fails', async () => {
     const fixture = createFixture({ profileValidationFails: true });
 
-    await expect(
-      fixture.coordinator.prepareConfirmedUpdate(),
-    ).rejects.toThrow(LocalUpdateHandoffError);
+    await expect(fixture.coordinator.prepareConfirmedUpdate()).rejects.toMatchObject({
+      code: 'UPDATE_PREPARATION_PROFILE_FAILED',
+    });
 
     expect(fixture.shutdownRuntime).not.toHaveBeenCalled();
     expect(fixture.launchInstaller).not.toHaveBeenCalled();
     expect(fixture.currentJournal).toBeUndefined();
     expect(fixture.states).toEqual([]);
+  });
+
+  it('classifies recovery point preparation without exposing the raw failure', async () => {
+    const fixture = createFixture({ recoveryPointFails: true });
+
+    const result = fixture.coordinator.prepareConfirmedUpdate();
+
+    await expect(result).rejects.toMatchObject({
+      code: 'UPDATE_PREPARATION_RECOVERY_POINT_FAILED',
+      message: 'The local update could not be handed off safely.',
+    });
+    expect(fixture.currentJournal?.state).toBe('failed');
   });
 
   it('rejects handoff when the migration chain changes after recovery preparation', async () => {
@@ -154,9 +166,9 @@ describe('local update handoff coordinator', () => {
     const owner = await maintenanceLease.acquire('backup');
     const fixture = createFixture({ maintenanceLease });
 
-    await expect(
-      fixture.coordinator.prepareConfirmedUpdate(),
-    ).rejects.toThrow(LocalUpdateHandoffError);
+    await expect(fixture.coordinator.prepareConfirmedUpdate()).rejects.toMatchObject({
+      code: 'UPDATE_PREPARATION_MAINTENANCE_FAILED',
+    });
     expect(fixture.validateActiveProfile).not.toHaveBeenCalled();
     expect(fixture.states).toEqual([]);
 
@@ -175,6 +187,7 @@ function createFixture(options: {
   maintenanceLease?: WorkspaceMaintenanceLease;
   profileMigrationChanges?: boolean;
   profileValidationFails?: boolean;
+  recoveryPointFails?: boolean;
   revalidationFails?: boolean;
   shutdownFails?: boolean;
 } = {}) {
@@ -200,7 +213,12 @@ function createFixture(options: {
     };
   });
   const createValidatedPreUpdatePoint = vi.fn(
-    async () => recoveryPointReference,
+    async () => {
+      if (options.recoveryPointFails) {
+        throw new Error('private recovery point path');
+      }
+      return recoveryPointReference;
+    },
   );
   const enterMaintenance = vi.fn(async () => undefined);
   const leaveMaintenance = vi.fn(async () => undefined);

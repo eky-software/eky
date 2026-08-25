@@ -163,6 +163,20 @@ test('invalid evidence fails immediately instead of becoming a timeout', () => {
   assert.match(evidence, /W6B2_SUCCESS_PROOF_SOURCE_STAGE_FAILED/u);
   assert.match(evidence, /W6B2_SUCCESS_PROOF_CANDIDATE_STAGE_FAILED/u);
   assert.match(evidence, /W6B2_SUCCESS_PROOF_PREPARATION_FAILED/u);
+  for (const preparationFailure of [
+    'W6B2_SUCCESS_PROOF_PREPARATION_CONCURRENCY_FAILED',
+    'W6B2_SUCCESS_PROOF_PREPARATION_JOURNAL_FAILED',
+    'W6B2_SUCCESS_PROOF_PREPARATION_PACKAGE_FAILED',
+    'W6B2_SUCCESS_PROOF_PREPARATION_PROFILE_FAILED',
+    'W6B2_SUCCESS_PROOF_PREPARATION_RECOVERY_POINT_FAILED',
+    'W6B2_SUCCESS_PROOF_PREPARATION_RECOVERY_POINT_PROTECTION_FAILED',
+    'W6B2_SUCCESS_PROOF_PREPARATION_RECOVERY_POINT_SNAPSHOT_FAILED',
+    'W6B2_SUCCESS_PROOF_PREPARATION_RECOVERY_POINT_SOURCE_FAILED',
+    'W6B2_SUCCESS_PROOF_PREPARATION_RECOVERY_POINT_STORAGE_FAILED',
+  ]) {
+    assert.match(progress, new RegExp(preparationFailure, 'u'));
+    assert.match(evidence, new RegExp(preparationFailure, 'u'));
+  }
   assert.match(evidence, /W6B2_SUCCESS_PROOF_INSTALLER_HANDOFF_FAILED/u);
   assert.match(evidence, /W6B2_SUCCESS_PROOF_QUIT_REQUEST_MISSING/u);
   assert.match(evidence, /\$failedKeys/u);

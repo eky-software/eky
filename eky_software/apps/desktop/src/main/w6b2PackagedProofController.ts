@@ -1,4 +1,7 @@
-import type { LocalUpdateHandoffCoordinator } from '../update/localUpdateHandoffCoordinator.js';
+import {
+  LocalUpdateHandoffError,
+  type LocalUpdateHandoffCoordinator,
+} from '../update/localUpdateHandoffCoordinator.js';
 import type { LocalUpdatePackageCache } from '../update/localUpdatePackageCache.js';
 import {
   WorkspaceManagementError,
@@ -22,6 +25,39 @@ const workspaceLabels = Object.freeze({
   C: 'First-start workspace 3',
 });
 
+const recoveryPointProtectionFailureCodes = new Set([
+  'RECOVERY_POINT_KEY_INVALID',
+  'RECOVERY_POINT_KEY_PROTECTION_UNAVAILABLE',
+  'SECRET_STORAGE_UNAVAILABLE',
+]);
+const recoveryPointSnapshotFailureCodes = new Set([
+  'PROFILE_SNAPSHOT_ARTIFACTS_FAILED',
+  'PROFILE_SNAPSHOT_BROKER_OPERATION_FAILED',
+  'PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID',
+  'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
+  'PROFILE_SNAPSHOT_DATABASE_FAILED',
+  'PROFILE_SNAPSHOT_STAGING_FAILED',
+  'PROFILE_SNAPSHOT_VALIDATION_FAILED',
+]);
+const recoveryPointStorageFailureCodes = new Set([
+  'RECOVERY_POINT_ALREADY_EXISTS',
+  'RECOVERY_POINT_ENCRYPTION_FAILED',
+  'RECOVERY_POINT_ENCRYPTION_INVALID',
+  'RECOVERY_POINT_FILE_INVALID',
+  'RECOVERY_POINT_INDEX_INVALID',
+  'RECOVERY_POINT_INDEX_UNAVAILABLE',
+  'RECOVERY_POINT_INPUT_INVALID',
+  'RECOVERY_POINT_KEY_ENVELOPE_INVALID',
+  'RECOVERY_POINT_KEY_ENVELOPE_UNAVAILABLE',
+  'RECOVERY_POINT_PAYLOAD_INVALID',
+  'RECOVERY_POINT_ROTATION_INVALID',
+  'RECOVERY_POINT_ROTATION_JOURNAL_INVALID',
+  'RECOVERY_POINT_ROTATION_JOURNAL_UNAVAILABLE',
+  'RECOVERY_POINT_SELF_INSPECTION_FAILED',
+  'RECOVERY_POINT_STORE_UNAVAILABLE',
+  'RECOVERY_POINT_WRITE_FAILED',
+]);
+
 interface W6b2PackagedProofControllerOptions {
   readonly cache: Pick<LocalUpdatePackageCache, 'stageSelectedPackage'>;
   readonly configuration: Readonly<W6b2PackagedProofConfiguration>;
@@ -31,6 +67,7 @@ interface W6b2PackagedProofControllerOptions {
   >;
   isQuitRequested(): boolean;
   isRelaunchRequested(): boolean;
+  readRecoveryPointFailureCode(): string | undefined;
   readonly lifecycle: Pick<DesktopLifecycleHandle, 'shutdown'>;
   readonly workspaceManagement: Pick<
     WorkspaceManagementService,
@@ -103,9 +140,9 @@ async function runSourceHandoff(
   }
   try {
     await options.handoff.prepareConfirmedUpdate();
-  } catch {
+  } catch (error) {
     throw new W6b2PackagedProofControllerError(
-      'W6B2_PROOF_PREPARATION_FAILED',
+      classifyPreparationFailure(error, options.readRecoveryPointFailureCode),
     );
   }
   try {
@@ -121,6 +158,56 @@ async function runSourceHandoff(
     );
   }
   return success(options.configuration.phase, 'completed');
+}
+
+function classifyPreparationFailure(
+  error: unknown,
+  readRecoveryPointFailureCode: () => string | undefined,
+): W6b2PackagedProofErrorCode {
+  if (!(error instanceof LocalUpdateHandoffError)) {
+    return 'W6B2_PROOF_PREPARATION_FAILED';
+  }
+  switch (error.code) {
+    case 'UPDATE_PREPARATION_MAINTENANCE_FAILED':
+      return 'W6B2_PROOF_PREPARATION_CONCURRENCY_FAILED';
+    case 'UPDATE_PREPARATION_JOURNAL_FAILED':
+      return 'W6B2_PROOF_PREPARATION_JOURNAL_FAILED';
+    case 'UPDATE_PREPARATION_PACKAGE_FAILED':
+      return 'W6B2_PROOF_PREPARATION_PACKAGE_FAILED';
+    case 'UPDATE_PREPARATION_PROFILE_FAILED':
+      return 'W6B2_PROOF_PREPARATION_PROFILE_FAILED';
+    case 'UPDATE_PREPARATION_RECOVERY_POINT_FAILED':
+      return classifyRecoveryPointFailure(readRecoveryPointFailureCode);
+    case 'UPDATE_HANDOFF_FAILED':
+      return 'W6B2_PROOF_PREPARATION_FAILED';
+  }
+}
+
+function classifyRecoveryPointFailure(
+  readRecoveryPointFailureCode: () => string | undefined,
+): W6b2PackagedProofErrorCode {
+  let code: string | undefined;
+  try {
+    code = readRecoveryPointFailureCode();
+  } catch {
+    return 'W6B2_PROOF_PREPARATION_RECOVERY_POINT_FAILED';
+  }
+  if (code === 'RECOVERY_POINT_BUSY') {
+    return 'W6B2_PROOF_PREPARATION_CONCURRENCY_FAILED';
+  }
+  if (code === 'RECOVERY_POINT_SOURCE_UNHEALTHY') {
+    return 'W6B2_PROOF_PREPARATION_RECOVERY_POINT_SOURCE_FAILED';
+  }
+  if (code !== undefined && recoveryPointProtectionFailureCodes.has(code)) {
+    return 'W6B2_PROOF_PREPARATION_RECOVERY_POINT_PROTECTION_FAILED';
+  }
+  if (code !== undefined && recoveryPointSnapshotFailureCodes.has(code)) {
+    return 'W6B2_PROOF_PREPARATION_RECOVERY_POINT_SNAPSHOT_FAILED';
+  }
+  if (code !== undefined && recoveryPointStorageFailureCodes.has(code)) {
+    return 'W6B2_PROOF_PREPARATION_RECOVERY_POINT_STORAGE_FAILED';
+  }
+  return 'W6B2_PROOF_PREPARATION_RECOVERY_POINT_FAILED';
 }
 
 async function verifyTargetFirstStart(

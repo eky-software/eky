@@ -136,6 +136,21 @@ describe('W6B.2 packaged proof configuration', () => {
         status: 'completed',
       }),
     ).toThrow('W6B2_PROOF_RESULT_INVALID');
+    expect(
+      parseW6b2PackagedProofResult({
+        errorCode:
+          'W6B2_PROOF_PREPARATION_RECOVERY_POINT_STORAGE_FAILED',
+        formatVersion: 1,
+        phase: 'sourceHandoff',
+        status: 'failed',
+      }),
+    ).toEqual({
+      errorCode:
+        'W6B2_PROOF_PREPARATION_RECOVERY_POINT_STORAGE_FAILED',
+      formatVersion: 1,
+      phase: 'sourceHandoff',
+      status: 'failed',
+    });
   });
 });
 
