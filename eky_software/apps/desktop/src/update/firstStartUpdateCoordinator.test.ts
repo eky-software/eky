@@ -303,6 +303,26 @@ describe('first-start update coordinator', () => {
     );
   });
 
+  it('revalidates exclusive package cache slots sequentially', async () => {
+    const fixture = createFixture({
+      acceptedBuild: acceptedCurrentBuild(),
+      enforceSerialPackageValidation: true,
+      journal: createJournal('awaitingFirstStart'),
+    });
+
+    await expect(
+      fixture.coordinator.beforeMigrations(
+        createInspection('existing', 1),
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(fixture.packageValidationRoles).toEqual([
+      'current',
+      'candidate',
+    ]);
+    expect(fixture.maxConcurrentPackageValidations).toBe(1);
+  });
+
   it('resumes after an interrupted accepted cache rotation without rotating twice', async () => {
     const fixture = createFixture({
       acceptedBuild: {
@@ -313,6 +333,7 @@ describe('first-start update coordinator', () => {
         releaseChannel: 'pilot',
       },
       cacheAlreadyRotated: true,
+      enforceSerialPackageValidation: true,
       journal: createJournal('firstStartValidating'),
     });
 
@@ -323,6 +344,7 @@ describe('first-start update coordinator', () => {
 
     expect(fixture.promoteAcceptedCandidate).not.toHaveBeenCalled();
     expect(fixture.journalStates).toEqual(['accepted']);
+    expect(fixture.maxConcurrentPackageValidations).toBe(1);
   });
 
   it('keeps a committed acceptance when retention cleanup must be retried later', async () => {
@@ -590,6 +612,7 @@ function createFixture(options: {
   activeMigrationChainIdentity?: string;
   cacheAlreadyRotated?: boolean;
   directSetupRecovery?: Readonly<DirectSetupMigrationRecovery>;
+  enforceSerialPackageValidation?: boolean;
   journal?: Readonly<UpdateJournal>;
   releaseFails?: boolean;
   runningReleaseInfo?: typeof releaseInfo;
@@ -598,6 +621,11 @@ function createFixture(options: {
   let journal = options.journal;
   let cacheRotated = options.cacheAlreadyRotated ?? false;
   let secretReadCount = 0;
+  let activePackageValidations = 0;
+  let maxConcurrentPackageValidations = 0;
+  const packageValidationRoles: Array<
+    'candidate' | 'current' | 'previous'
+  > = [];
   const acceptedWrites: unknown[] = [];
   let directSetupRecovery = options.directSetupRecovery;
   const directRecoveryStates: string[] = [];
@@ -650,25 +678,42 @@ function createFixture(options: {
       normalizeRolledBackPackages,
       promoteAcceptedCandidate,
       async revalidateJournalPackage(input) {
-        const expectsCandidate =
-          input.expectedIdentity.appVersion === '0.2.0';
-        const valid = cacheRotated
-          ? (input.role === 'current' && expectsCandidate) ||
-            (input.role === 'previous' && !expectsCandidate)
-          : (input.role === 'current' && !expectsCandidate) ||
-            (input.role === 'candidate' && expectsCandidate);
-        if (!valid) {
-          throw new Error('slot mismatch');
+        packageValidationRoles.push(input.role);
+        activePackageValidations += 1;
+        maxConcurrentPackageValidations = Math.max(
+          maxConcurrentPackageValidations,
+          activePackageValidations,
+        );
+        try {
+          if (
+            options.enforceSerialPackageValidation &&
+            activePackageValidations > 1
+          ) {
+            throw new Error('concurrent package cache validation');
+          }
+          await Promise.resolve();
+          const expectsCandidate =
+            input.expectedIdentity.appVersion === '0.2.0';
+          const valid = cacheRotated
+            ? (input.role === 'current' && expectsCandidate) ||
+              (input.role === 'previous' && !expectsCandidate)
+            : (input.role === 'current' && !expectsCandidate) ||
+              (input.role === 'candidate' && expectsCandidate);
+          if (!valid) {
+            throw new Error('slot mismatch');
+          }
+          return {
+            appVersion: input.expectedIdentity.appVersion,
+            buildRevision: input.expectedIdentity.buildRevision,
+            msiProductVersion: input.expectedIdentity.msiProductVersion,
+            packagePath: 'C:\\private\\Eky.msi',
+            productCode: expectsCandidate
+              ? '{22222222-2222-4222-8222-222222222222}'
+              : '{11111111-1111-4111-8111-111111111111}',
+          };
+        } finally {
+          activePackageValidations -= 1;
         }
-        return {
-          appVersion: input.expectedIdentity.appVersion,
-          buildRevision: input.expectedIdentity.buildRevision,
-          msiProductVersion: input.expectedIdentity.msiProductVersion,
-          packagePath: 'C:\\private\\Eky.msi',
-          productCode: expectsCandidate
-            ? '{22222222-2222-4222-8222-222222222222}'
-            : '{11111111-1111-4111-8111-111111111111}',
-        };
       },
     },
     directSetupRecoveryStore: {
@@ -718,10 +763,14 @@ function createFixture(options: {
     directRecoveryStates,
     directRecoveryWrites,
     journalStates,
+    get maxConcurrentPackageValidations() {
+      return maxConcurrentPackageValidations;
+    },
     normalizeRolledBackPackages,
     operationCompleted,
     operationFailed,
     operationStarted,
+    packageValidationRoles,
     promoteAcceptedCandidate,
     releaseProtectedPoint,
     validateActiveProfile,
