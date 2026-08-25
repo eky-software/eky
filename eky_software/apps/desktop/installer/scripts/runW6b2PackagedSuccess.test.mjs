@@ -188,7 +188,7 @@ function packageIdentity(appVersion, role) {
 
 function runFixture(token) {
   return Object.freeze({
-    proofRoot: `C:\\fixture-temp\\eky-w6b2\\${token}`,
+    proofRoot: `C:\\fixture-temp\\eky-w6b2\\${token.slice(0, 32)}`,
     source: pair.source,
     target: pair.target,
     token,

@@ -30,8 +30,9 @@ function Resolve-W6b2SuccessProofRoot {
   if (!$canonicalTemp.Equals($systemTemp, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'W6B2_SUCCESS_TEMP_ROOT_INVALID'
   }
+  $proofPathToken = $ProofToken.Substring(0, 32)
   $root = Join-Path $canonicalTemp `
-    (Join-Path 'eky-w6b2' $ProofToken)
+    (Join-Path 'eky-w6b2' $proofPathToken)
   [void](Assert-W6b2SuccessCanonicalDirectory -Path $root)
   return $root
 }

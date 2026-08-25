@@ -268,6 +268,15 @@ test('all packaged proof boundaries use the compact path-budgeted root', () => {
     assert.match(source, /eky-w6b2/u);
     assert.doesNotMatch(source, /eky-w6b2-packaged-proof/u);
   }
+  assert.match(evidence, /\$ProofToken\.Substring\(0, 32\)/u);
+  assert.match(
+    runFixture,
+    /token\.slice\(0, w6b2PackagedProofPathTokenLength\)/u,
+  );
+  assert.match(
+    mainProof,
+    /tokenValue\.slice\(0, W6B2_PACKAGED_PROOF_PATH_TOKEN_LENGTH\)/u,
+  );
 });
 
 test('phase replacement uses a named private backup slot', () => {

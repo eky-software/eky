@@ -9,6 +9,7 @@ import {
   parseW6b2PackagedProofResult,
   readW6b2PackagedProofConfiguration,
   W6B2_PACKAGED_PROOF_DIRECTORY_NAME,
+  W6B2_PACKAGED_PROOF_PATH_TOKEN_LENGTH,
   writeW6b2PackagedProofResult,
 } from './w6b2PackagedProof.js';
 
@@ -190,7 +191,11 @@ async function createProofFiles(input: {
 }) {
   const tempPath = await mkdtemp(join(tmpdir(), 'eky-w6b2-config-'));
   temporaryRoots.push(tempPath);
-  const root = join(tempPath, W6B2_PACKAGED_PROOF_DIRECTORY_NAME, token);
+  const root = join(
+    tempPath,
+    W6B2_PACKAGED_PROOF_DIRECTORY_NAME,
+    token.slice(0, W6B2_PACKAGED_PROOF_PATH_TOKEN_LENGTH),
+  );
   const resourcesPath = join(tempPath, 'resources');
   await mkdir(join(root, 'control'), { recursive: true });
   await mkdir(join(resourcesPath, 'backend'), { recursive: true });

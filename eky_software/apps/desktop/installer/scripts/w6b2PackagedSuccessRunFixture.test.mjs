@@ -21,16 +21,17 @@ import {
   removeW6b2PackagedSuccessRunFixture,
   verifyW6b2PackagedSuccessRunFixture,
   w6b2PackagedProofDirectoryName,
+  w6b2PackagedProofPathTokenLength,
   writeW6b2PackagedSuccessPhase,
 } from './w6b2PackagedSuccessRunFixture.mjs';
 
 const buildRevision = '123456789abc';
 
-test('keeps the representative Windows snapshot path below the legacy path limit', () => {
+test('leaves Windows path margin for SQLite snapshot sidecar files', () => {
   const representativeSnapshotPath = win32.join(
     'C:\\Users\\runneradmin\\AppData\\Local\\Temp',
     w6b2PackagedProofDirectoryName,
-    'a'.repeat(64),
+    'a'.repeat(w6b2PackagedProofPathTokenLength),
     'user-data',
     'workspaces',
     '11111111-1111-4111-8111-111111111111',
@@ -41,7 +42,8 @@ test('keeps the representative Windows snapshot path below the legacy path limit
   );
 
   assert.equal(w6b2PackagedProofDirectoryName, 'eky-w6b2');
-  assert.ok(representativeSnapshotPath.length < 260);
+  assert.equal(w6b2PackagedProofPathTokenLength, 32);
+  assert.ok(`${representativeSnapshotPath}-journal`.length < 240);
 });
 
 test('stages exact package bytes and private control data', async (context) => {
@@ -53,6 +55,16 @@ test('stages exact package bytes and private control data', async (context) => {
     temporaryRoot: root,
     token,
   });
+
+  assert.equal(
+    run.proofRoot,
+    join(
+      root,
+      w6b2PackagedProofDirectoryName,
+      token.slice(0, w6b2PackagedProofPathTokenLength),
+    ),
+  );
+  assert.equal(run.proofRoot.includes(token), false);
 
   await verifyW6b2PackagedSuccessRunFixture({
     ...run,

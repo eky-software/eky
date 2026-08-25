@@ -18,6 +18,7 @@ import {
 } from '../installerManifest.mjs';
 
 const proofTokenPattern = /^[0-9a-f]{64}$/u;
+export const w6b2PackagedProofPathTokenLength = 32;
 const buildRevisionPattern = /^[0-9a-f]{7,40}$/u;
 const sha256Pattern = /^[0-9a-f]{64}$/u;
 const productCodePattern =
@@ -47,7 +48,7 @@ export async function createW6b2PackagedSuccessRunFixture(input) {
   const proofParent = join(temporaryRoot, w6b2PackagedProofDirectoryName);
   await mkdir(proofParent, { mode: 0o700, recursive: true });
   await requireCanonicalDirectory(temporaryRoot, proofParent);
-  const proofRoot = join(proofParent, token);
+  const proofRoot = join(proofParent, deriveProofPathToken(token));
   await mkdir(proofRoot, { mode: 0o700, recursive: false });
   await requireCanonicalDirectory(proofParent, proofRoot);
 
@@ -116,7 +117,7 @@ export async function verifyW6b2PackagedSuccessRunFixture(input) {
   const expectedRoot = join(
     resolve(input.temporaryRoot),
     w6b2PackagedProofDirectoryName,
-    input.token,
+    deriveProofPathToken(input.token),
   );
   if (!samePath(expectedRoot, input.proofRoot)) {
     throw new Error('W6B2_SUCCESS_PROOF_ROOT_INVALID');
@@ -135,7 +136,7 @@ export async function removeW6b2PackagedSuccessRunFixture(input) {
   const expectedRoot = join(
     temporaryRoot,
     w6b2PackagedProofDirectoryName,
-    input.token,
+    deriveProofPathToken(input.token),
   );
   if (!samePath(expectedRoot, input.proofRoot)) {
     throw new Error('W6B2_SUCCESS_PROOF_ROOT_INVALID');
@@ -276,4 +277,11 @@ function samePath(left, right) {
   return process.platform === 'win32'
     ? resolve(left).toLowerCase() === resolve(right).toLowerCase()
     : resolve(left) === resolve(right);
+}
+
+function deriveProofPathToken(token) {
+  if (!proofTokenPattern.test(token)) {
+    throw new Error('W6B2_SUCCESS_PROOF_TOKEN_INVALID');
+  }
+  return token.slice(0, w6b2PackagedProofPathTokenLength);
 }
