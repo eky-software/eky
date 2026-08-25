@@ -145,6 +145,37 @@ exit 7
   Assert-W6b2ProcessEqual $activation.validationObservation `
     $activationPhaseCalls[1] 'W6B2_PROCESS_TEST_ACTIVATION_OBSERVATION_INVALID'
 
+  $roleFixtures = @(
+    @('--type=crashpad-handler', 'crashpad'),
+    @('--type=gpu-process', 'gpu'),
+    @('--type=renderer', 'renderer'),
+    @('--type=utility --utility-sub-type=node.mojom.NodeService', `
+      'backendUtility'),
+    @('--type=utility --utility-sub-type=audio.mojom.AudioService', 'utility'),
+    @('--fixture-argument', 'unclassified')
+  )
+  foreach ($roleFixture in $roleFixtures) {
+    Assert-W6b2ProcessEqual `
+      (Get-W6b2SuccessOwnedProcessRole -Process ([pscustomobject]@{
+        CommandLine = [string]$roleFixture[0]
+      })) ([string]$roleFixture[1]) 'W6B2_PROCESS_TEST_ROLE_INVALID'
+  }
+
+  $roleObservation = [pscustomobject]@{
+    root = New-EkyProcessIdentity -ProcessId 100 -CreationToken '1000'
+  }
+  $roleRemaining = @(
+    New-EkyProcessIdentity -ProcessId 101 -CreationToken '1001'
+  )
+  Assert-W6b2ProcessEqual `
+    (Get-W6b2SuccessOwnedProcessFailureCode `
+      -Observation $roleObservation -Remaining $roleRemaining -ReadProcess {
+        return [pscustomobject]@{
+          CommandLine = '--type=utility --utility-sub-type=node.mojom.NodeService'
+        }
+      }) 'W6B2_SUCCESS_OWNED_BACKEND_UTILITY_REMAINS' `
+    'W6B2_PROCESS_TEST_FAILURE_ROLE_INVALID'
+
   $proofResultRoot = Join-Path $testRoot 'proof-result'
   [void](New-Item -ItemType Directory `
     -Path (Join-Path $proofResultRoot 'result'))

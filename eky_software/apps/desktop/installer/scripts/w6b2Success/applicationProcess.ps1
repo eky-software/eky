@@ -244,12 +244,81 @@ function Wait-W6b2SuccessOwnedProcessesAbsent {
       return
     }
     if ([DateTime]::UtcNow -ge $deadline) {
+      $failureCode = Get-W6b2SuccessOwnedProcessFailureCode `
+        -Observation $Observation -Remaining $remaining
       Stop-W6b2SuccessOwnedProcesses -Observation $Observation
-      throw 'W6B2_SUCCESS_OWNED_PROCESS_REMAINS'
+      throw $failureCode
     }
     Write-W6b2SuccessHeartbeat
     Start-Sleep -Milliseconds 100
   } while ($true)
+}
+
+function Get-W6b2SuccessOwnedProcessFailureCode {
+  param(
+    [Parameter(Mandatory = $true)]$Observation,
+    [Parameter(Mandatory = $true)][AllowEmptyCollection()][array]$Remaining,
+    [scriptblock]$ReadProcess = {
+      param([int]$ProcessId)
+      return Get-CimInstance Win32_Process `
+        -Filter "ProcessId = $ProcessId" -ErrorAction Stop
+    }
+  )
+
+  $roles = @(
+    foreach ($identity in $Remaining) {
+      if (
+        $identity.processId -eq $Observation.root.processId -and
+        $identity.creationToken -eq $Observation.root.creationToken
+      ) {
+        'applicationMain'
+        continue
+      }
+      try {
+        $record = & $ReadProcess ([int]$identity.processId)
+        Get-W6b2SuccessOwnedProcessRole -Process $record
+      }
+      catch {
+        'unclassified'
+      }
+    }
+  )
+  $distinctRoles = @($roles | Sort-Object -Unique)
+  if ($distinctRoles.Count -ne 1) {
+    return 'W6B2_SUCCESS_OWNED_PROCESS_MIXED_REMAINS'
+  }
+  $failureCode = switch ($distinctRoles[0]) {
+    'applicationMain' { 'W6B2_SUCCESS_OWNED_APPLICATION_MAIN_REMAINS' }
+    'backendUtility' { 'W6B2_SUCCESS_OWNED_BACKEND_UTILITY_REMAINS' }
+    'crashpad' { 'W6B2_SUCCESS_OWNED_CRASHPAD_REMAINS' }
+    'gpu' { 'W6B2_SUCCESS_OWNED_GPU_REMAINS' }
+    'renderer' { 'W6B2_SUCCESS_OWNED_RENDERER_REMAINS' }
+    'utility' { 'W6B2_SUCCESS_OWNED_UTILITY_REMAINS' }
+    default { 'W6B2_SUCCESS_OWNED_PROCESS_UNCLASSIFIED_REMAINS' }
+  }
+  return $failureCode
+}
+
+function Get-W6b2SuccessOwnedProcessRole {
+  param([Parameter(Mandatory = $true)]$Process)
+
+  $commandLine = [string]$Process.CommandLine
+  if ($commandLine -match '--type=crashpad-handler(?:\s|$)') {
+    return 'crashpad'
+  }
+  if ($commandLine -match '--type=gpu-process(?:\s|$)') {
+    return 'gpu'
+  }
+  if ($commandLine -match '--type=renderer(?:\s|$)') {
+    return 'renderer'
+  }
+  if ($commandLine -match '--type=utility(?:\s|$)') {
+    if ($commandLine -match 'node\.mojom\.NodeService') {
+      return 'backendUtility'
+    }
+    return 'utility'
+  }
+  return 'unclassified'
 }
 
 function Stop-W6b2SuccessOwnedProcesses {
