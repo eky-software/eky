@@ -1,4 +1,4 @@
-import { chmod, mkdir } from 'node:fs/promises';
+import { chmod, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { InvoicePdfArchiveConfigStore } from '../src/invoicePdfArchive/invoicePdfArchiveConfig.js';
@@ -15,9 +15,12 @@ import type { WorkspaceFirstStartProofFixture } from './workspaceFirstStartMigra
 export interface W6b2PackagedWorkspaceRuntimeNamespaces {
   readonly archiveConfigFilePath: string;
   readonly archiveDirectoryPath: string;
+  readonly archiveSentinelFilePath: string;
   readonly archiveJournalFilePath: string;
   readonly recoveryPointsRoot: string;
+  readonly recoverySentinelFilePath: string;
   readonly secretNamespaceRoot: string;
+  readonly secretSentinelFilePath: string;
 }
 
 export async function createW6b2PackagedWorkspaceRuntimeNamespaces(input: {
@@ -42,6 +45,23 @@ export async function createW6b2PackagedWorkspaceRuntimeNamespaces(input: {
     createPrivateDirectory(recoveryPointsRoot),
     createPrivateDirectory(secretNamespaceRoot),
   ]);
+  const archiveSentinelFilePath = join(
+    archiveDirectoryPath,
+    'w6b2-archive-sentinel.txt',
+  );
+  const recoverySentinelFilePath = join(
+    recoveryPointsRoot,
+    'w6b2-recovery-sentinel.txt',
+  );
+  const secretSentinelFilePath = join(
+    secretNamespaceRoot,
+    'w6b2-secret-sentinel.txt',
+  );
+  await Promise.all([
+    writeSentinel(archiveSentinelFilePath, 'archive', input.fixtureKey),
+    writeSentinel(recoverySentinelFilePath, 'recovery', input.fixtureKey),
+    writeSentinel(secretSentinelFilePath, 'secret', input.fixtureKey),
+  ]);
   await new InvoicePdfArchiveConfigStore(
     archivePaths.configFilePath,
   ).enable(archiveDirectoryPath);
@@ -64,13 +84,28 @@ export async function createW6b2PackagedWorkspaceRuntimeNamespaces(input: {
   return Object.freeze({
     archiveConfigFilePath: archivePaths.configFilePath,
     archiveDirectoryPath,
+    archiveSentinelFilePath,
     archiveJournalFilePath: archivePaths.journalFilePath,
     recoveryPointsRoot,
+    recoverySentinelFilePath,
     secretNamespaceRoot,
+    secretSentinelFilePath,
   });
 }
 
 async function createPrivateDirectory(path: string): Promise<void> {
   await mkdir(path, { mode: 0o700, recursive: true });
   if (process.platform !== 'win32') await chmod(path, 0o700);
+}
+
+async function writeSentinel(
+  path: string,
+  namespace: 'archive' | 'recovery' | 'secret',
+  fixtureKey: W6b2PackagedWorkspaceFixtureKey,
+): Promise<void> {
+  await writeFile(path, `w6b2-${namespace}-${fixtureKey}\n`, {
+    encoding: 'utf8',
+    flag: 'wx',
+    mode: 0o600,
+  });
 }

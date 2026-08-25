@@ -1,6 +1,7 @@
 import type { ElectronWorkspaceCandidateRuntimeFactory } from '../src/workspaces/runtime/electronWorkspaceCandidateRuntimeFactory.js';
 import {
   customizeW6b2PackagedWorkspaceBusinessFixture,
+  type W6b2PackagedWorkspaceBusinessFixture,
   type W6b2PackagedWorkspaceFixtureKey,
 } from './w6b2PackagedWorkspaceBusinessFixture.js';
 import {
@@ -15,6 +16,7 @@ import {
 export interface W6b2PackagedWorkspaceFixture
   extends WorkspaceFirstStartProofFixture,
     W6b2PackagedWorkspaceRuntimeNamespaces {
+  readonly business: Readonly<W6b2PackagedWorkspaceBusinessFixture>;
   readonly fixtureKey: W6b2PackagedWorkspaceFixtureKey;
 }
 
@@ -40,6 +42,7 @@ export async function createW6b2PackagedWorkspaceFixture(input: {
   return Object.freeze({
     ...fixture,
     ...namespaces,
+    business,
     fixtureKey: input.fixtureKey,
   });
 }

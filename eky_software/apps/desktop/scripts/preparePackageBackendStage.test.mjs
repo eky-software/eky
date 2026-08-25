@@ -5,7 +5,22 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 
+import { createDefaultPackageRequest } from './packageWindowsApplication.mjs';
 import { preparePackageBackendStage } from './preparePackageBackendStage.mjs';
+
+test('keeps backend preparation out of ordinary package commands', () => {
+  const request = createDefaultPackageRequest({
+    pilotBuild: false,
+    reportPackagedPath: true,
+  });
+
+  assert.deepEqual(Object.keys(request).sort(), [
+    'layout',
+    'pilotBuild',
+    'reportPackagedPath',
+  ]);
+  assert.equal('prepareBackendStage' in request, false);
+});
 
 test('keeps the ordinary backend stage bytes unchanged when no preparation is requested', async (context) => {
   const root = await mkdtemp(join(tmpdir(), 'eky-package-stage-'));

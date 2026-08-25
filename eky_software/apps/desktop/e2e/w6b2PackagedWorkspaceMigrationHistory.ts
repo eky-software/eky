@@ -4,20 +4,24 @@ import type { ElectronWorkspaceCandidateRuntimeFactory } from '../src/workspaces
 import type { W6b2PackagedWorkspaceFixture } from './w6b2PackagedWorkspaceFixtures.js';
 import {
   inspectWorkspaceFirstStartProofFixture,
-  snapshotWorkspaceFirstStartProofBusinessData,
-  type WorkspaceFirstStartProofBusinessSnapshot,
 } from './workspaceFirstStartMigrationProofFixtures.js';
+import {
+  snapshotW6b2PackagedWorkspaceEvidence,
+  w6b2PackagedWorkspaceContentPreserved,
+} from './w6b2PackagedWorkspaceEvidence.js';
 
 export async function invalidateW6b2PackagedWorkspaceMigrationHistory(input: {
   readonly fixture: Readonly<W6b2PackagedWorkspaceFixture>;
   readonly targetFactory: ElectronWorkspaceCandidateRuntimeFactory;
 }): Promise<void> {
-  const businessBefore =
-    await snapshotWorkspaceFirstStartProofBusinessData(input.fixture);
+  const businessBefore = await snapshotW6b2PackagedWorkspaceEvidence(
+    input.fixture,
+  );
   invalidateW6b2MigrationHistoryDatabase(input.fixture.databaseFilePath);
-  const businessAfter =
-    await snapshotWorkspaceFirstStartProofBusinessData(input.fixture);
-  if (!businessSnapshotsEqual(businessBefore, businessAfter)) {
+  const businessAfter = await snapshotW6b2PackagedWorkspaceEvidence(
+    input.fixture,
+  );
+  if (!w6b2PackagedWorkspaceContentPreserved(businessBefore, businessAfter)) {
     throw new Error('W6B2_INVALID_HISTORY_CHANGED_BUSINESS_DATA');
   }
   const inspection = await inspectWorkspaceFirstStartProofFixture(
@@ -79,11 +83,4 @@ function requireHealthySqliteDatabase(database: DatabaseSync): void {
   ) {
     throw new Error('W6B2_SQLITE_PROFILE_INVALID');
   }
-}
-
-function businessSnapshotsEqual(
-  first: Readonly<WorkspaceFirstStartProofBusinessSnapshot>,
-  second: Readonly<WorkspaceFirstStartProofBusinessSnapshot>,
-): boolean {
-  return JSON.stringify(first) === JSON.stringify(second);
 }

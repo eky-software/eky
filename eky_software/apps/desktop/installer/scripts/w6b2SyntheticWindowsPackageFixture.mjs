@@ -88,7 +88,10 @@ export async function packageW6b2SyntheticApplications(canonicalRelease) {
 
 function createFixturePackagePaths(root) {
   return Object.freeze({
+    artifactsRoot: join(root, 'installer-artifacts'),
+    inputRoot: join(root, 'installer-input'),
     outputDirectory: join(root, 'out'),
+    root,
     stagingRoot: join(root, 'package-stage'),
   });
 }

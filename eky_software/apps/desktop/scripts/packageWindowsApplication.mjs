@@ -507,7 +507,16 @@ export async function packageDefaultWindowsApplication({
   pilotBuild,
   reportPackagedPath,
 }) {
-  return packageWindowsApplication({
+  return packageWindowsApplication(
+    createDefaultPackageRequest({ pilotBuild, reportPackagedPath }),
+  );
+}
+
+export function createDefaultPackageRequest({
+  pilotBuild,
+  reportPackagedPath,
+}) {
+  return Object.freeze({
     layout: createPackageLayout({
       outputDirectory: defaultOutputDirectory,
       stagingRoot: defaultStagingRoot,

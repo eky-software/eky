@@ -7,11 +7,20 @@ import type { WorkspaceFirstStartProofFixture } from './workspaceFirstStartMigra
 export type W6b2PackagedWorkspaceFixtureKey = 'A' | 'B' | 'C';
 
 export interface W6b2PackagedWorkspaceBusinessFixture {
+  readonly companySettingsId: string;
+  readonly customerId: string;
+  readonly customerNumber: string;
   readonly documentId: string;
+  readonly draftId: string;
+  readonly draftLineId: string;
+  readonly grossCents: number;
   readonly invoiceId: string;
+  readonly invoiceLineId: string;
   readonly invoiceNumber: string;
+  readonly netCents: number;
   readonly pdfSha256: string;
   readonly pdfSize: number;
+  readonly vatCents: number;
 }
 
 interface W6b2BusinessAmounts {
@@ -217,11 +226,20 @@ export async function customizeW6b2PackagedWorkspaceBusinessFixture(
   }
 
   return Object.freeze({
+    companySettingsId: identity.companySettingsId,
+    customerId: businessIds.customerId,
+    customerNumber: identity.customerNumber,
     documentId: businessIds.documentId,
+    draftId: businessIds.draftId,
+    draftLineId: businessIds.draftLineId,
+    grossCents: amounts.grossCents,
     invoiceId: businessIds.invoiceId,
+    invoiceLineId: businessIds.invoiceLineId,
     invoiceNumber: identity.invoiceNumber,
+    netCents: amounts.netCents,
     pdfSha256,
     pdfSize: pdfBytes.byteLength,
+    vatCents: amounts.vatCents,
   });
 }
 
