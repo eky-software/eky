@@ -31,6 +31,7 @@ const phases = Object.freeze([
   'switchToA',
   'rejectC',
 ]);
+export const w6b2PackagedProofDirectoryName = 'eky-w6b2';
 
 export async function createW6b2PackagedSuccessRunFixture(input) {
   requireInstallerPair(input.installerPair);
@@ -43,7 +44,7 @@ export async function createW6b2PackagedSuccessRunFixture(input) {
   if (!samePath(temporaryRoot, canonicalTemporaryRoot)) {
     throw new Error('W6B2_SUCCESS_PROOF_ROOT_INVALID');
   }
-  const proofParent = join(temporaryRoot, 'eky-w6b2-packaged-proof');
+  const proofParent = join(temporaryRoot, w6b2PackagedProofDirectoryName);
   await mkdir(proofParent, { mode: 0o700, recursive: true });
   await requireCanonicalDirectory(temporaryRoot, proofParent);
   const proofRoot = join(proofParent, token);
@@ -67,6 +68,9 @@ export async function createW6b2PackagedSuccessRunFixture(input) {
     });
     const controlRoot = join(proofRoot, 'control');
     await mkdir(controlRoot, { mode: 0o700 });
+    const userDataRoot = join(proofRoot, 'user-data');
+    await mkdir(userDataRoot, { mode: 0o700 });
+    await requireCanonicalDirectory(proofRoot, userDataRoot);
     await writePrivateJson(join(controlRoot, 'w6b2-profile-input-v1.json'), {
       formatVersion: 1,
       sourceBuildRevision: input.installerPair.buildRevision,
@@ -111,13 +115,14 @@ export async function verifyW6b2PackagedSuccessRunFixture(input) {
   }
   const expectedRoot = join(
     resolve(input.temporaryRoot),
-    'eky-w6b2-packaged-proof',
+    w6b2PackagedProofDirectoryName,
     input.token,
   );
   if (!samePath(expectedRoot, input.proofRoot)) {
     throw new Error('W6B2_SUCCESS_PROOF_ROOT_INVALID');
   }
   await requireCanonicalDirectory(dirname(expectedRoot), expectedRoot);
+  await requireCanonicalDirectory(expectedRoot, join(expectedRoot, 'user-data'));
   await verifyStagedPackage(input.source, 'source', '0.2.7');
   await verifyStagedPackage(input.target, 'target', '0.2.8');
 }
@@ -129,7 +134,7 @@ export async function removeW6b2PackagedSuccessRunFixture(input) {
   const temporaryRoot = resolve(input.temporaryRoot);
   const expectedRoot = join(
     temporaryRoot,
-    'eky-w6b2-packaged-proof',
+    w6b2PackagedProofDirectoryName,
     input.token,
   );
   if (!samePath(expectedRoot, input.proofRoot)) {

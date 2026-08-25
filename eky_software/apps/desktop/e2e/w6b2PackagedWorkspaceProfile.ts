@@ -34,14 +34,44 @@ export type W6b2PackagedWorkspaceVerificationPhase =
   | 'verifyBRestart'
   | 'rejectC';
 
+export const w6b2PackagedWorkspacePreparationStages = Object.freeze([
+  'profileInput',
+  'runtimePaths',
+  'fixtureA',
+  'fixtureB',
+  'fixtureC',
+  'migrationHistory',
+  'registry',
+  'acceptedBuild',
+  'evidence',
+  'profileState',
+] as const);
+
+export type W6b2PackagedWorkspacePreparationStage =
+  (typeof w6b2PackagedWorkspacePreparationStages)[number];
+
+const fixturePreparationStages = Object.freeze({
+  A: 'fixtureA',
+  B: 'fixtureB',
+  C: 'fixtureC',
+} as const satisfies Readonly<
+  Record<
+    W6b2PackagedWorkspaceFixtureKey,
+    W6b2PackagedWorkspacePreparationStage
+  >
+>);
+
 export async function prepareW6b2PackagedWorkspaceProfile(input: {
+  readonly onStage?: (stage: W6b2PackagedWorkspacePreparationStage) => void;
   readonly proofRoot: string;
   readonly resourcesPath: string;
   readonly userDataRoot: string;
 }): Promise<void> {
+  input.onStage?.('profileInput');
   const profileInput = await readW6b2PackagedWorkspaceProfileInput(
     input.proofRoot,
   );
+  input.onStage?.('runtimePaths');
   const runtimePaths = await resolveWorkspaceCandidateRuntimePaths(
     input.resourcesPath,
   );
@@ -54,6 +84,7 @@ export async function prepareW6b2PackagedWorkspaceProfile(input: {
   });
   const fixtures: Readonly<W6b2PackagedWorkspaceFixture>[] = [];
   for (const fixtureKey of w6b2PackagedWorkspaceFixtureKeys) {
+    input.onStage?.(fixturePreparationStages[fixtureKey]);
     fixtures.push(
       await createW6b2PackagedWorkspaceFixture({
         factory,
@@ -62,16 +93,20 @@ export async function prepareW6b2PackagedWorkspaceProfile(input: {
       }),
     );
   }
+  input.onStage?.('migrationHistory');
   await invalidateW6b2PackagedWorkspaceMigrationHistory({
     fixture: requireFixture(fixtures, 'C'),
     targetFactory: factory,
   });
+  input.onStage?.('registry');
   await writeInitialRegistry(input.userDataRoot, fixtures);
+  input.onStage?.('acceptedBuild');
   await writeAcceptedSourceBuild(
     input.userDataRoot,
     profileInput.sourceBuildRevision,
   );
 
+  input.onStage?.('evidence');
   const persistedFixtures: W6b2PersistedWorkspaceFixture[] = [];
   for (const fixture of fixtures) {
     persistedFixtures.push(
@@ -84,6 +119,7 @@ export async function prepareW6b2PackagedWorkspaceProfile(input: {
       }),
     );
   }
+  input.onStage?.('profileState');
   await writeW6b2PackagedWorkspaceProfileState(input.proofRoot, {
     buildRevision: profileInput.sourceBuildRevision,
     fixtures: Object.freeze(persistedFixtures),

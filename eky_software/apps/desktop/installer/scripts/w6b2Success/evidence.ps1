@@ -31,7 +31,7 @@ function Resolve-W6b2SuccessProofRoot {
     throw 'W6B2_SUCCESS_TEMP_ROOT_INVALID'
   }
   $root = Join-Path $canonicalTemp `
-    (Join-Path 'eky-w6b2-packaged-proof' $ProofToken)
+    (Join-Path 'eky-w6b2' $ProofToken)
   [void](Assert-W6b2SuccessCanonicalDirectory -Path $root)
   return $root
 }
@@ -90,7 +90,7 @@ function Get-W6b2SuccessDirectoryInventory {
   [void](Assert-W6b2SuccessCanonicalDirectory -Path $fullRoot)
   $queue = [Collections.Generic.Queue[object]]::new()
   $queue.Enqueue((Get-Item -LiteralPath $fullRoot -Force))
-  $inventory = @()
+  $files = @()
   while ($queue.Count -gt 0) {
     $directory = $queue.Dequeue()
     foreach ($item in @(Get-ChildItem -LiteralPath $directory.FullName -Force)) {
@@ -107,11 +107,18 @@ function Get-W6b2SuccessDirectoryInventory {
         $queue.Enqueue($item)
         continue
       }
-      $relativePath = $item.FullName.Substring($fullRoot.Length).TrimStart('\')
-      $inventory += "$relativePath|$($item.Length)|$(Get-EkyFileSha256 -Path $item.FullName)"
+      $files += $item
     }
   }
-  return ,@($inventory | Sort-Object)
+  $inventory = @(
+    $files |
+      Sort-Object FullName |
+      ForEach-Object {
+        $relativePath = $_.FullName.Substring($fullRoot.Length).TrimStart('\')
+        "$relativePath|$($_.Length)|$(Get-EkyFileSha256 -Path $_.FullName)"
+      }
+  )
+  return ,$inventory
 }
 
 function Assert-W6b2SuccessInventoryEqual {
@@ -157,7 +164,9 @@ function Set-W6b2SuccessPhase {
     -Path (Join-Path $ProofRoot 'control')
   $phasePath = Join-Path $controlRoot 'phase.json'
   $nextPath = Join-Path $controlRoot 'phase.next.json'
-  Remove-Item -LiteralPath $nextPath -Force -ErrorAction SilentlyContinue
+  $previousPath = Join-Path $controlRoot 'phase.previous.json'
+  Remove-Item -LiteralPath $nextPath,$previousPath `
+    -Force -ErrorAction SilentlyContinue
   try {
     [IO.File]::WriteAllText(
       $nextPath,
@@ -168,14 +177,15 @@ function Set-W6b2SuccessPhase {
       [Text.UTF8Encoding]::new($false)
     )
     if (Test-Path -LiteralPath $phasePath -PathType Leaf) {
-      [IO.File]::Replace($nextPath, $phasePath, $null)
+      [IO.File]::Replace($nextPath, $phasePath, $previousPath)
     }
     else {
       [IO.File]::Move($nextPath, $phasePath)
     }
   }
   finally {
-    Remove-Item -LiteralPath $nextPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $nextPath,$previousPath `
+      -Force -ErrorAction SilentlyContinue
   }
 }
 
@@ -236,16 +246,59 @@ function Read-W6b2SuccessProfileResult {
   $value = Read-W6b2SuccessBoundedJson `
     -Path (Join-Path $ProofRoot 'result\w6b2-profile-result.json')
   $keys = @($value.PSObject.Properties.Name | Sort-Object)
-  $expectedKeys = @('formatVersion', 'operation', 'status')
+  $completedKeys = @('formatVersion', 'operation', 'status')
   if (
-    @(Compare-Object $keys $expectedKeys).Count -ne 0 -or
-    $value.formatVersion -ne 1 -or
-    [string]$value.operation -cne $ExpectedOperation -or
-    [string]$value.status -cne 'completed'
+    @(Compare-Object $keys $completedKeys).Count -eq 0 -and
+    $value.formatVersion -eq 1 -and
+    [string]$value.operation -ceq $ExpectedOperation -and
+    [string]$value.status -ceq 'completed'
   ) {
+    return $value
+  }
+  $failedKeys = @(
+    'errorCode',
+    'failureStage',
+    'formatVersion',
+    'operation',
+    'status'
+  )
+  $failureCodes = @{
+    electronReady = 'W6B2_SUCCESS_PROFILE_ELECTRON_READY_FAILED'
+    installedApplication = 'W6B2_SUCCESS_PROFILE_INSTALLATION_INVALID'
+    proofConfiguration = 'W6B2_SUCCESS_PROFILE_CONFIGURATION_INVALID'
+    buildIdentity = 'W6B2_SUCCESS_PROFILE_BUILD_IDENTITY_INVALID'
+    profileInput = 'W6B2_SUCCESS_PROFILE_INPUT_INVALID'
+    runtimePaths = 'W6B2_SUCCESS_PROFILE_RUNTIME_PATHS_INVALID'
+    fixtureA = 'W6B2_SUCCESS_PROFILE_FIXTURE_A_FAILED'
+    fixtureB = 'W6B2_SUCCESS_PROFILE_FIXTURE_B_FAILED'
+    fixtureC = 'W6B2_SUCCESS_PROFILE_FIXTURE_C_FAILED'
+    migrationHistory = 'W6B2_SUCCESS_PROFILE_MIGRATION_HISTORY_FAILED'
+    registry = 'W6B2_SUCCESS_PROFILE_REGISTRY_WRITE_FAILED'
+    acceptedBuild = 'W6B2_SUCCESS_PROFILE_ACCEPTED_BUILD_WRITE_FAILED'
+    evidence = 'W6B2_SUCCESS_PROFILE_EVIDENCE_SNAPSHOT_FAILED'
+    profileState = 'W6B2_SUCCESS_PROFILE_STATE_WRITE_FAILED'
+    profileOperation = 'W6B2_SUCCESS_PROFILE_OPERATION_FAILED'
+  }
+  $expectedErrorCode = if ($ExpectedOperation -ceq 'prepare') {
+    'W6B2_PROFILE_PREPARATION_FAILED'
+  }
+  else {
+    'W6B2_PROFILE_VERIFICATION_FAILED'
+  }
+  if (@(Compare-Object $keys $failedKeys).Count -ne 0) {
     throw 'W6B2_SUCCESS_PROFILE_RESULT_INVALID'
   }
-  return $value
+  $safeFailure = $failureCodes[[string]$value.failureStage]
+  if (
+    $value.formatVersion -eq 1 -and
+    [string]$value.operation -ceq $ExpectedOperation -and
+    [string]$value.status -ceq 'failed' -and
+    [string]$value.errorCode -ceq $expectedErrorCode -and
+    ![string]::IsNullOrEmpty([string]$safeFailure)
+  ) {
+    throw [string]$safeFailure
+  }
+  throw 'W6B2_SUCCESS_PROFILE_RESULT_INVALID'
 }
 
 function Read-W6b2SuccessBoundedJson {

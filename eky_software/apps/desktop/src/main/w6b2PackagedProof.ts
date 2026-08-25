@@ -14,6 +14,7 @@ export const W6B2_PACKAGED_PROOF_SWITCH = 'w6b2-packaged-proof';
 export const W6B2_PACKAGED_PROOF_TOKEN_ENV = 'EKY_W6B2_PROOF_TOKEN';
 export const W6B2_PACKAGED_PROOF_MARKER_FILE =
   'w6b2-private-proof-v1.json';
+export const W6B2_PACKAGED_PROOF_DIRECTORY_NAME = 'eky-w6b2';
 
 export const w6b2PackagedProofPhases = Object.freeze([
   'sourceHandoff',
@@ -119,7 +120,7 @@ export function createW6b2PackagedProofBootstrapConfiguration(input: {
   const canonicalTempPath = realpathSync.native(resolve(input.tempPath));
   const expectedRoot = join(
     canonicalTempPath,
-    'eky-w6b2-packaged-proof',
+    W6B2_PACKAGED_PROOF_DIRECTORY_NAME,
     input.tokenValue,
   );
   const canonicalRoot = realpathSync.native(expectedRoot);
@@ -285,7 +286,7 @@ function assertExactDerivedRoot(
   canonicalRoot: string,
   token: string,
 ): void {
-  const expectedRelative = join('eky-w6b2-packaged-proof', token);
+  const expectedRelative = join(W6B2_PACKAGED_PROOF_DIRECTORY_NAME, token);
   const actualRelative = relative(canonicalTempPath, canonicalRoot);
   if (
     actualRelative.startsWith('..') ||

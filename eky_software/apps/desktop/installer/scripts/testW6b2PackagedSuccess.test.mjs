@@ -14,6 +14,10 @@ const applicationProcess = read(
 const installerLifecycle = read(
   join('w6b2Success', 'installerLifecycle.ps1'),
 );
+const runFixture = read('w6b2PackagedSuccessRunFixture.mjs');
+const mainProof = read(
+  join('..', '..', 'src', 'main', 'w6b2PackagedProof.ts'),
+);
 
 test('packaged success harness keeps orchestration in named responsibilities', () => {
   for (const responsibility of [
@@ -85,6 +89,25 @@ test('progress output is closed JSONL without raw diagnostic fields', () => {
   ]) {
     assert.match(progress, new RegExp(`'${sourceValidationFailure}'`, 'u'));
   }
+  for (const profileFailure of [
+    'W6B2_SUCCESS_PROFILE_BUILD_IDENTITY_INVALID',
+    'W6B2_SUCCESS_PROFILE_CONFIGURATION_INVALID',
+    'W6B2_SUCCESS_PROFILE_ELECTRON_READY_FAILED',
+    'W6B2_SUCCESS_PROFILE_INPUT_INVALID',
+    'W6B2_SUCCESS_PROFILE_INSTALLATION_INVALID',
+    'W6B2_SUCCESS_PROFILE_RUNTIME_PATHS_INVALID',
+    'W6B2_SUCCESS_PROFILE_FIXTURE_A_FAILED',
+    'W6B2_SUCCESS_PROFILE_FIXTURE_B_FAILED',
+    'W6B2_SUCCESS_PROFILE_FIXTURE_C_FAILED',
+    'W6B2_SUCCESS_PROFILE_MIGRATION_HISTORY_FAILED',
+    'W6B2_SUCCESS_PROFILE_REGISTRY_WRITE_FAILED',
+    'W6B2_SUCCESS_PROFILE_ACCEPTED_BUILD_WRITE_FAILED',
+    'W6B2_SUCCESS_PROFILE_EVIDENCE_SNAPSHOT_FAILED',
+    'W6B2_SUCCESS_PROFILE_STATE_WRITE_FAILED',
+    'W6B2_SUCCESS_PROFILE_OPERATION_FAILED',
+  ]) {
+    assert.match(progress, new RegExp(`'${profileFailure}'`, 'u'));
+  }
   for (const resultCode of [
     'buildRevisionValidated',
     'proofRootResolved',
@@ -135,6 +158,22 @@ test('invalid evidence fails immediately instead of becoming a timeout', () => {
     /W6B2_SUCCESS_PROCESS_EXITED_BEFORE_RESULT/u,
   );
   assert.match(evidence, /W6B2_SUCCESS_RESULT_INVALID/u);
+  assert.match(evidence, /electronReady/u);
+  assert.match(evidence, /installedApplication/u);
+  assert.match(evidence, /proofConfiguration/u);
+  assert.match(evidence, /buildIdentity/u);
+  assert.match(evidence, /profileInput/u);
+  assert.match(evidence, /runtimePaths/u);
+  assert.match(evidence, /fixtureA/u);
+  assert.match(evidence, /fixtureB/u);
+  assert.match(evidence, /fixtureC/u);
+  assert.match(evidence, /migrationHistory/u);
+  assert.match(evidence, /registry/u);
+  assert.match(evidence, /acceptedBuild/u);
+  assert.match(evidence, /evidence/u);
+  assert.match(evidence, /profileState/u);
+  assert.match(evidence, /profileOperation/u);
+  assert.doesNotMatch(evidence, /Error\.message|stack|commandLine|processId/u);
 });
 
 test('proof root resolution emits exactly one canonical path value', () => {
@@ -146,6 +185,39 @@ test('proof root resolution emits exactly one canonical path value', () => {
     evidence,
     /(?<!\[void\]\()Assert-W6b2SuccessCanonicalDirectory -Path \$root/u,
   );
+});
+
+test('all packaged proof boundaries use the compact path-budgeted root', () => {
+  for (const source of [evidence, runFixture, mainProof]) {
+    assert.match(source, /eky-w6b2/u);
+    assert.doesNotMatch(source, /eky-w6b2-packaged-proof/u);
+  }
+});
+
+test('phase replacement uses a named private backup slot', () => {
+  assert.match(evidence, /phase\.previous\.json/u);
+  assert.match(
+    evidence,
+    /\[IO\.File\]::Replace\(\$nextPath, \$phasePath, \$previousPath\)/u,
+  );
+  assert.doesNotMatch(
+    evidence,
+    /\[IO\.File\]::Replace\(\$nextPath, \$phasePath, \$null\)/u,
+  );
+  assert.equal(
+    (evidence.match(/Remove-Item -LiteralPath \$nextPath,\$previousPath/gmu) ?? [])
+      .length,
+    2,
+  );
+});
+
+test('hardened inventory preserves the shared installer ordering contract', () => {
+  assert.match(evidence, /\$files \+= \$item/u);
+  assert.match(
+    evidence,
+    /\$files \|\s+Sort-Object FullName \|\s+ForEach-Object/um,
+  );
+  assert.doesNotMatch(evidence, /\$inventory \| Sort-Object/u);
 });
 
 test('cleanup uses exact owned identities and never broad process termination', () => {

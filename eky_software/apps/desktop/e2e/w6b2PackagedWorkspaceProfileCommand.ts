@@ -24,6 +24,27 @@ export const w6b2PackagedProfileOperations = Object.freeze([
 export type W6b2PackagedProfileOperation =
   (typeof w6b2PackagedProfileOperations)[number];
 
+export const w6b2PackagedProfileFailureStages = Object.freeze([
+  'electronReady',
+  'installedApplication',
+  'proofConfiguration',
+  'buildIdentity',
+  'profileInput',
+  'runtimePaths',
+  'fixtureA',
+  'fixtureB',
+  'fixtureC',
+  'migrationHistory',
+  'registry',
+  'acceptedBuild',
+  'evidence',
+  'profileState',
+  'profileOperation',
+] as const);
+
+export type W6b2PackagedProfileFailureStage =
+  (typeof w6b2PackagedProfileFailureStages)[number];
+
 export type W6b2PackagedProfileCommandResult = Readonly<
   | {
       readonly formatVersion: 1;
@@ -34,6 +55,7 @@ export type W6b2PackagedProfileCommandResult = Readonly<
       readonly errorCode:
         | 'W6B2_PROFILE_PREPARATION_FAILED'
         | 'W6B2_PROFILE_VERIFICATION_FAILED';
+      readonly failureStage: W6b2PackagedProfileFailureStage;
       readonly formatVersion: 1;
       readonly operation: W6b2PackagedProfileOperation;
       readonly status: 'failed';
@@ -45,10 +67,16 @@ export interface W6b2InstalledApplicationPaths {
   readonly resourcesPath: string;
 }
 
+export interface W6b2RawFileSystem {
+  readonly lstat: typeof lstat;
+  readonly realpath: typeof realpath;
+}
+
 const maximumResultBytes = 4 * 1024;
 const completedResultKeys = ['formatVersion', 'operation', 'status'] as const;
 const failedResultKeys = [
   'errorCode',
+  'failureStage',
   'formatVersion',
   'operation',
   'status',
@@ -93,6 +121,7 @@ export function expectedW6b2PackagedProfilePackage(
 
 export async function resolveW6b2InstalledApplicationPaths(
   localAppData: unknown,
+  fileSystem: W6b2RawFileSystem = { lstat, realpath },
 ): Promise<Readonly<W6b2InstalledApplicationPaths>> {
   try {
     if (
@@ -102,26 +131,59 @@ export async function resolveW6b2InstalledApplicationPaths(
     ) {
       throw new Error('invalid');
     }
-    const canonicalLocalAppData = await realpath(localAppData);
+    const canonicalLocalAppData = await fileSystem.realpath(localAppData);
     if (!samePath(canonicalLocalAppData, localAppData)) {
       throw new Error('invalid');
     }
     const installRoot = join(canonicalLocalAppData, 'Programs', 'Eky');
     const resourcesPath = join(installRoot, 'resources');
-    const applicationPath = join(resourcesPath, 'app');
-    await assertCanonicalDirectory(canonicalLocalAppData, installRoot);
-    await assertCanonicalDirectory(installRoot, resourcesPath);
-    await assertCanonicalDirectory(resourcesPath, applicationPath);
+    const applicationPath = join(resourcesPath, 'app.asar');
+    await assertCanonicalDirectory(
+      canonicalLocalAppData,
+      installRoot,
+      fileSystem,
+    );
+    await assertCanonicalDirectory(installRoot, resourcesPath, fileSystem);
+    await assertCanonicalFile(resourcesPath, applicationPath, fileSystem);
     return Object.freeze({ applicationPath, resourcesPath });
   } catch {
     throw new Error('W6B2_PROFILE_COMMAND_INVALID');
   }
 }
 
-export function createW6b2PackagedProfileCommandResult(input: {
-  readonly operation: W6b2PackagedProfileOperation;
-  readonly succeeded: boolean;
-}): W6b2PackagedProfileCommandResult {
+async function assertCanonicalFile(
+  parent: string,
+  file: string,
+  fileSystem: W6b2RawFileSystem,
+): Promise<void> {
+  const metadata = await fileSystem.lstat(file);
+  if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.size < 1) {
+    throw new Error('invalid');
+  }
+  const canonicalFile = await fileSystem.realpath(file);
+  const child = relative(parent, canonicalFile);
+  if (
+    child.length === 0 ||
+    child.startsWith('..') ||
+    isAbsolute(child) ||
+    !samePath(canonicalFile, file)
+  ) {
+    throw new Error('invalid');
+  }
+}
+
+export function createW6b2PackagedProfileCommandResult(
+  input:
+    | {
+        readonly operation: W6b2PackagedProfileOperation;
+        readonly succeeded: true;
+      }
+    | {
+        readonly failureStage: W6b2PackagedProfileFailureStage;
+        readonly operation: W6b2PackagedProfileOperation;
+        readonly succeeded: false;
+      },
+): W6b2PackagedProfileCommandResult {
   if (input.succeeded) {
     return Object.freeze({
       formatVersion: 1,
@@ -134,6 +196,7 @@ export function createW6b2PackagedProfileCommandResult(input: {
       input.operation === 'prepare'
         ? 'W6B2_PROFILE_PREPARATION_FAILED'
         : 'W6B2_PROFILE_VERIFICATION_FAILED',
+    failureStage: input.failureStage,
     formatVersion: 1,
     operation: input.operation,
     status: 'failed',
@@ -160,6 +223,9 @@ export function parseW6b2PackagedProfileCommandResult(
     operation === 'prepare'
       ? 'W6B2_PROFILE_PREPARATION_FAILED'
       : 'W6B2_PROFILE_VERIFICATION_FAILED';
+  const failureStage = parseW6b2PackagedProfileFailureStage(
+    value.failureStage,
+  );
   if (
     value.status !== 'failed' ||
     !hasExactKeys(value, failedResultKeys) ||
@@ -169,10 +235,23 @@ export function parseW6b2PackagedProfileCommandResult(
   }
   return Object.freeze({
     errorCode: expectedErrorCode,
+    failureStage,
     formatVersion: 1,
     operation,
     status: 'failed',
   });
+}
+
+function parseW6b2PackagedProfileFailureStage(
+  value: unknown,
+): W6b2PackagedProfileFailureStage {
+  if (
+    typeof value !== 'string' ||
+    !(w6b2PackagedProfileFailureStages as readonly string[]).includes(value)
+  ) {
+    throw new Error('W6B2_PROFILE_RESULT_INVALID');
+  }
+  return value as W6b2PackagedProfileFailureStage;
 }
 
 export async function writeW6b2PackagedProfileCommandResult(
@@ -225,12 +304,13 @@ export async function readW6b2PackagedProfileCommandResult(
 async function assertCanonicalDirectory(
   parent: string,
   directory: string,
+  fileSystem: W6b2RawFileSystem = { lstat, realpath },
 ): Promise<void> {
-  const metadata = await lstat(directory);
+  const metadata = await fileSystem.lstat(directory);
   if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
     throw new Error('invalid');
   }
-  const canonicalDirectory = await realpath(directory);
+  const canonicalDirectory = await fileSystem.realpath(directory);
   const child = relative(parent, canonicalDirectory);
   if (
     child.length === 0 ||

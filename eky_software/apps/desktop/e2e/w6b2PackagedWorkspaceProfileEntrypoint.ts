@@ -1,4 +1,5 @@
 import { app } from 'electron';
+import * as originalFs from 'original-fs';
 
 import {
   createW6b2PackagedProofBootstrapConfiguration,
@@ -9,6 +10,7 @@ import { readDesktopBuildInfo } from '../src/release/desktopBuildInfoReader.js';
 import {
   prepareW6b2PackagedWorkspaceProfile,
   verifyW6b2PackagedWorkspaceProfile,
+  type W6b2PackagedWorkspacePreparationStage,
 } from './w6b2PackagedWorkspaceProfile.js';
 import {
   createW6b2PackagedProfileCommandResult,
@@ -17,6 +19,7 @@ import {
   resolveW6b2InstalledApplicationPaths,
   W6B2_PACKAGED_PROFILE_OPERATION_ENV,
   writeW6b2PackagedProfileCommandResult,
+  type W6b2PackagedProfileFailureStage,
   type W6b2PackagedProfileOperation,
 } from './w6b2PackagedWorkspaceProfileCommand.js';
 import {
@@ -26,6 +29,7 @@ import {
 
 let operation: W6b2PackagedProfileOperation | undefined;
 let proofRoot: string | undefined;
+let failureStage: W6b2PackagedProfileFailureStage = 'electronReady';
 
 void run().then(
   () => app.exit(0),
@@ -34,6 +38,7 @@ void run().then(
       await writeW6b2PackagedProfileCommandResult(
         proofRoot,
         createW6b2PackagedProfileCommandResult({
+          failureStage,
           operation,
           succeeded: false,
         }),
@@ -59,13 +64,20 @@ async function run(): Promise<void> {
     throw new Error('W6B2_PROFILE_COMMAND_INVALID');
   }
   proofRoot = bootstrap.root;
+  failureStage = 'electronReady';
   app.setPath('userData', bootstrap.userDataPath);
   await app.whenReady();
 
   const expected = expectedW6b2PackagedProfilePackage(operation);
+  failureStage = 'installedApplication';
   const installed = await resolveW6b2InstalledApplicationPaths(
     process.env.LOCALAPPDATA,
+    {
+      lstat: originalFs.promises.lstat,
+      realpath: originalFs.promises.realpath,
+    },
   );
+  failureStage = 'proofConfiguration';
   const proof = await readW6b2PackagedProofConfiguration({
     appVersion: expected.appVersion,
     bootstrap,
@@ -78,6 +90,7 @@ async function run(): Promise<void> {
   ) {
     throw new Error('W6B2_PROFILE_COMMAND_INVALID');
   }
+  failureStage = 'buildIdentity';
   const buildInfo = await readDesktopBuildInfo({
     applicationPath: installed.applicationPath,
     appVersion: expected.appVersion,
@@ -96,8 +109,10 @@ async function run(): Promise<void> {
     throw new Error('W6B2_PROFILE_COMMAND_INVALID');
   }
 
+  failureStage = 'profileOperation';
   if (operation === 'prepare') {
     await prepareW6b2PackagedWorkspaceProfile({
+      onStage: reportPreparationStage,
       proofRoot: proof.root,
       resourcesPath: installed.resourcesPath,
       userDataRoot: proof.userDataPath,
@@ -119,4 +134,10 @@ async function run(): Promise<void> {
   process.stdout.write(
     `${JSON.stringify({ status: 'completed', type: 'w6b2ProfileCommand' })}\n`,
   );
+}
+
+function reportPreparationStage(
+  stage: W6b2PackagedWorkspacePreparationStage,
+): void {
+  failureStage = stage;
 }

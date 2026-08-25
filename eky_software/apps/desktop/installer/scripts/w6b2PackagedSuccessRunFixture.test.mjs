@@ -8,7 +8,7 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, win32 } from 'node:path';
 import test from 'node:test';
 
 import {
@@ -19,10 +19,29 @@ import {
   createW6b2PackagedSuccessRunFixture,
   removeW6b2PackagedSuccessRunFixture,
   verifyW6b2PackagedSuccessRunFixture,
+  w6b2PackagedProofDirectoryName,
   writeW6b2PackagedSuccessPhase,
 } from './w6b2PackagedSuccessRunFixture.mjs';
 
 const buildRevision = '123456789abc';
+
+test('keeps the representative Windows snapshot path below the legacy path limit', () => {
+  const representativeSnapshotPath = win32.join(
+    'C:\\Users\\runneradmin\\AppData\\Local\\Temp',
+    w6b2PackagedProofDirectoryName,
+    'a'.repeat(64),
+    'user-data',
+    'workspaces',
+    '11111111-1111-4111-8111-111111111111',
+    'runtime',
+    'private-backup-staging',
+    '22222222-2222-4222-8222-222222222222',
+    'profile.sqlite',
+  );
+
+  assert.equal(w6b2PackagedProofDirectoryName, 'eky-w6b2');
+  assert.ok(representativeSnapshotPath.length < 260);
+});
 
 test('stages exact package bytes and private control data', async (context) => {
   const root = await createRoot(context);
@@ -61,6 +80,9 @@ test('stages exact package bytes and private control data', async (context) => {
     ),
     { formatVersion: 1, phase: 'sourceHandoff' },
   );
+  const userData = await lstat(join(run.proofRoot, 'user-data'));
+  assert.equal(userData.isDirectory(), true);
+  assert.equal(userData.isSymbolicLink(), false);
 });
 
 test('updates only the closed phase control and rejects aliases', async (context) => {
