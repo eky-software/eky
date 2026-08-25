@@ -1165,6 +1165,23 @@ erilliset business-rivit, authoritative PDF, secret-namespace, archive-
 konfiguraatio ja -journal sekä recovery point -juuri. Installation-scoped
 update-tila säilyy yhtenä eikä saa sekoittua workspace-scoped-tilaan.
 
+**W6B.2A success-checkpoint 25.8.2026:** paketoitu N -> N+1-
+onnistumismatriisi on toteutettu pysyvällä
+`pnpm --filter @eky/desktop installer:w6b2-success` -komennolla. Komento
+rakentaa yhden yksityisen 0.2.7 -> 0.2.8 -fixtureparin ja ajaa saman parin
+kahdesti. Todistus kattaa aktiivisen A:n first-start-migraation, passiivisen
+B:n muuttumattomuuden ennen ensimmäistä aktivointia, B:n hallitun
+aktivointimigraation ja idempotentin uudelleenkäynnistyksen, paluun A:han sekä
+C:n `invalidHistory`-torjunnan `recoveryRequired`-tilaan. Jokainen ajo käyttää
+ajokohtaista synteettistä profiilia, rajattuja vaihekohtaisia timeoutteja,
+turvallista JSONL-observabilitya, omistettujen prosessien cleanupia ja nollan
+orpoprosessin loppuehtoa. Canonical-versiot ja release-kanava eivät muutu.
+
+Tämä checkpoint ei sulje koko W6-porttia. W6B.2B:n fault- ja rollback-
+matriisi, installer repair/uninstall -jatkuvuus sekä lopullinen release-portti
+ovat edelleen avoimia. W6B.2A ajetaan CI:ssä omana rajattuna Windows-jobina,
+ei tavallisen MSI-release-gaten tai installer-unit-testien sisällä.
+
 Paketoitu fault-matriisi on rajattu viiteen korkean riskin tapaukseen:
 
 1. preUpdate-palautuspisteen virhe pysäyttää ennen runtime-sulkua ja handoffia
