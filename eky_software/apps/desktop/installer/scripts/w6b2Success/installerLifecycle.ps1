@@ -126,7 +126,7 @@ function Wait-W6b2SuccessTargetInstallation {
       -Code $SourceProductCode
     $targetState = Get-EkyProductState -Installer $Installer `
       -Code $TargetProductCode
-    $msiProcesses = @(Get-Process -Name msiexec -ErrorAction SilentlyContinue)
+    $msiProcesses = @(Get-W6b2SuccessCurrentSessionMsiProcesses)
     if ($sourceState -lt 1 -and $targetState -ge 1 -and $msiProcesses.Count -eq 0) {
       return
     }
@@ -138,10 +138,18 @@ function Wait-W6b2SuccessTargetInstallation {
   } while ($true)
 }
 
+function Get-W6b2SuccessCurrentSessionMsiProcesses {
+  $currentSessionId = (Get-Process -Id $PID -ErrorAction Stop).SessionId
+  return @(
+    Get-Process -Name msiexec -ErrorAction SilentlyContinue |
+      Where-Object { $_.SessionId -eq $currentSessionId }
+  )
+}
+
 function Assert-W6b2SuccessNoApplicationOrMsiProcesses {
   if (
     @(Get-Process -Name Eky -ErrorAction SilentlyContinue).Count -ne 0 -or
-    @(Get-Process -Name msiexec -ErrorAction SilentlyContinue).Count -ne 0
+    @(Get-W6b2SuccessCurrentSessionMsiProcesses).Count -ne 0
   ) {
     throw 'W6B2_SUCCESS_FOREIGN_PROCESS_PRESENT'
   }

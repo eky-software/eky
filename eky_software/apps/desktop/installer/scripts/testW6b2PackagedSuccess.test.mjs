@@ -80,6 +80,29 @@ test('cleanup uses exact owned identities and never broad process termination', 
   );
 });
 
+test('Windows Installer service processes do not block the current test session', () => {
+  assert.match(
+    installerLifecycle,
+    /function Get-W6b2SuccessCurrentSessionMsiProcesses/u,
+  );
+  assert.match(
+    installerLifecycle,
+    /Get-Process -Id \$PID -ErrorAction Stop\)\.SessionId/u,
+  );
+  assert.match(
+    installerLifecycle,
+    /Where-Object \{ \$_\.SessionId -eq \$currentSessionId \}/u,
+  );
+  assert.equal(
+    (
+      installerLifecycle.match(
+        /Get-W6b2SuccessCurrentSessionMsiProcesses/gmu,
+      ) ?? []
+    ).length,
+    3,
+  );
+});
+
 test('child processes inherit no ambient Eky or Node execution controls', () => {
   assert.match(applicationProcess, /\^EKY_/u);
   for (const name of ['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS', 'NODE_PATH']) {
