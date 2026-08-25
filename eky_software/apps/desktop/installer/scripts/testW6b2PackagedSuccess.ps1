@@ -208,7 +208,7 @@ try {
   $scenarioSucceeded = $true
 }
 catch {
-  Fail-W6b2SuccessStage
+  Fail-W6b2SuccessStage -ErrorRecord $_
 }
 finally {
   try {
@@ -283,7 +283,7 @@ finally {
   }
   catch {
     $cleanupFailed = $true
-    Fail-W6b2SuccessStage
+    Fail-W6b2SuccessStage -ErrorRecord $_
   }
   if ($null -ne $installer) {
     [void][Runtime.InteropServices.Marshal]::ReleaseComObject($installer)

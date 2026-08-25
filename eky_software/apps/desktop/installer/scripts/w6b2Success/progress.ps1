@@ -63,6 +63,42 @@ $script:W6b2SuccessFailureCodes = @{
   rejectC = 'rejectCFailed'
   cleanup = 'cleanupFailed'
 }
+$script:W6b2SuccessSafeErrorCodes = @(
+  'W6B2_SUCCESS_BUILD_REVISION_INVALID',
+  'W6B2_SUCCESS_DIRECTORY_INVALID',
+  'W6B2_SUCCESS_EXISTING_INSTALLATION_FORBIDDEN',
+  'W6B2_SUCCESS_FILE_INVALID',
+  'W6B2_SUCCESS_FOREIGN_PROCESS_PRESENT',
+  'W6B2_SUCCESS_INSTALL_ROOT_REMAINS',
+  'W6B2_SUCCESS_INVENTORY_CHANGED',
+  'W6B2_SUCCESS_INVENTORY_INVALID',
+  'W6B2_SUCCESS_NORMAL_PROFILE_INVALID',
+  'W6B2_SUCCESS_OWNED_PROCESS_REMAINS',
+  'W6B2_SUCCESS_PACKAGE_HASH_MISMATCH',
+  'W6B2_SUCCESS_PAYLOAD_INVALID',
+  'W6B2_SUCCESS_PHASE_INVALID',
+  'W6B2_SUCCESS_PROCESS_ARGUMENT_INVALID',
+  'W6B2_SUCCESS_PROCESS_EXITED_BEFORE_RESULT',
+  'W6B2_SUCCESS_PROCESS_EXIT_FAILED',
+  'W6B2_SUCCESS_PROCESS_IDENTITY_CHANGED',
+  'W6B2_SUCCESS_PROCESS_START_FAILED',
+  'W6B2_SUCCESS_PROCESS_TIMEOUT',
+  'W6B2_SUCCESS_PROCESS_WAIT_INVALID',
+  'W6B2_SUCCESS_PRODUCT_CODES_NOT_DISTINCT',
+  'W6B2_SUCCESS_PRODUCT_CODE_INVALID',
+  'W6B2_SUCCESS_PRODUCT_MISSING',
+  'W6B2_SUCCESS_PRODUCT_UNEXPECTED',
+  'W6B2_SUCCESS_PROFILE_RESULT_INVALID',
+  'W6B2_SUCCESS_PROGRESS_INVALID',
+  'W6B2_SUCCESS_PROOF_RESULT_INVALID',
+  'W6B2_SUCCESS_PROOF_TOKEN_INVALID',
+  'W6B2_SUCCESS_RESULT_INVALID',
+  'W6B2_SUCCESS_RESULT_PENDING',
+  'W6B2_SUCCESS_SHORTCUT_REMAINS',
+  'W6B2_SUCCESS_TARGET_INSTALL_TIMEOUT',
+  'W6B2_SUCCESS_TEMP_ROOT_INVALID',
+  'W6B2_SUCCESS_UNCLASSIFIED_FAILURE'
+)
 $script:W6b2SuccessStartedAt = [DateTime]::UtcNow
 $script:W6b2SuccessStageStartedAt = $script:W6b2SuccessStartedAt
 $script:W6b2SuccessCurrentStage = $null
@@ -75,13 +111,22 @@ function Write-W6b2SuccessProgress {
   param(
     [Parameter(Mandatory = $true)][string]$Stage,
     [Parameter(Mandatory = $true)][string]$Status,
-    [Parameter(Mandatory = $true)][string]$ResultCode
+    [Parameter(Mandatory = $true)][string]$ResultCode,
+    [string]$ErrorCode = ''
   )
 
   if (
     $script:W6b2SuccessProgressStages -cnotcontains $Stage -or
     $script:W6b2SuccessStatuses -cnotcontains $Status -or
     $script:W6b2SuccessResultCodes -cnotcontains $ResultCode
+  ) {
+    throw 'W6B2_SUCCESS_PROGRESS_INVALID'
+  }
+  if (
+    ![string]::IsNullOrEmpty($ErrorCode) -and (
+      $Status -cne 'failed' -or
+      $script:W6b2SuccessSafeErrorCodes -cnotcontains $ErrorCode
+    )
   ) {
     throw 'W6B2_SUCCESS_PROGRESS_INVALID'
   }
@@ -93,6 +138,9 @@ function Write-W6b2SuccessProgress {
     resultCode = $ResultCode
     durationMs = [long]($now - $script:W6b2SuccessStageStartedAt).TotalMilliseconds
     elapsedMs = [long]($now - $script:W6b2SuccessStartedAt).TotalMilliseconds
+  }
+  if (![string]::IsNullOrEmpty($ErrorCode)) {
+    $line['errorCode'] = $ErrorCode
   }
   Write-Output (ConvertTo-Json -InputObject $line -Compress)
 }
@@ -161,6 +209,8 @@ function Complete-W6b2SuccessStage {
 }
 
 function Fail-W6b2SuccessStage {
+  param($ErrorRecord = $null)
+
   if ($script:W6b2SuccessCurrentStageTerminal) {
     return
   }
@@ -171,8 +221,21 @@ function Fail-W6b2SuccessStage {
     throw 'W6B2_SUCCESS_PROGRESS_INVALID'
   }
   Write-W6b2SuccessProgress -Stage $script:W6b2SuccessCurrentStage `
-    -Status failed -ResultCode $resultCode
+    -Status failed -ResultCode $resultCode `
+    -ErrorCode (Resolve-W6b2SuccessSafeErrorCode -ErrorRecord $ErrorRecord)
   $script:W6b2SuccessCurrentStageTerminal = $true
+}
+
+function Resolve-W6b2SuccessSafeErrorCode {
+  param($ErrorRecord)
+
+  if ($null -ne $ErrorRecord) {
+    $candidate = [string]$ErrorRecord.Exception.Message
+    if ($script:W6b2SuccessSafeErrorCodes -ccontains $candidate) {
+      return $candidate
+    }
+  }
+  return 'W6B2_SUCCESS_UNCLASSIFIED_FAILURE'
 }
 
 function Write-W6b2SuccessObservation {

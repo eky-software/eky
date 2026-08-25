@@ -56,6 +56,15 @@ test('progress output is closed JSONL without raw diagnostic fields', () => {
   assert.match(progress, /ConvertTo-Json -InputObject \$line -Compress/u);
   assert.doesNotMatch(progress, /errorMessage|stack|path|commandLine|processId/u);
   assert.doesNotMatch(progress, /Write-Host|Write-Error|Write-Warning/u);
+  assert.match(progress, /Resolve-W6b2SuccessSafeErrorCode/u);
+  assert.match(progress, /W6B2_SUCCESS_UNCLASSIFIED_FAILURE/u);
+  assert.match(progress, /\$line\['errorCode'\] = \$ErrorCode/u);
+  assert.doesNotMatch(progress, /ErrorRecord\.ToString|ScriptStackTrace/u);
+  assert.equal(
+    (harness.match(/Fail-W6b2SuccessStage -ErrorRecord \$_/gmu) ?? [])
+      .length,
+    2,
+  );
 });
 
 test('invalid evidence fails immediately instead of becoming a timeout', () => {
