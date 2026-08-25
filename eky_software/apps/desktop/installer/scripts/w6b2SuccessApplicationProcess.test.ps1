@@ -50,6 +50,7 @@ $handoffProcess = $null
 $strictProcess = $null
 $earlyExitProcess = $null
 $observations = [Collections.Generic.List[object]]::new()
+$activationPhaseCalls = [Collections.Generic.List[object]]::new()
 $failureCode = $null
 $successResult = $null
 try {
@@ -110,11 +111,45 @@ exit 7
       -ReadResult { throw 'W6B2_SUCCESS_RESULT_PENDING' }
   } 'W6B2_SUCCESS_PROCESS_EXITED_BEFORE_RESULT'
 
+  function Invoke-W6b2SuccessApplicationPhase {
+    param(
+      [string]$ExecutablePath,
+      [string]$ProofToken,
+      [string]$ProofRoot,
+      [string]$Phase,
+      [string]$ExpectedStatus
+    )
+    $call = [pscustomobject]@{
+      executablePath = $ExecutablePath
+      proofToken = $ProofToken
+      proofRoot = $ProofRoot
+      phase = $Phase
+      expectedStatus = $ExpectedStatus
+    }
+    $script:activationPhaseCalls.Add($call)
+    return [pscustomobject]@{ observation = $call }
+  }
+
+  $activation = Invoke-W6b2SuccessWorkspaceActivationMigrationPhase `
+    -ExecutablePath 'fixture.exe' -ProofToken 'a' -ProofRoot 'fixture-root' `
+    -Phase verifyBRestart
+  Assert-W6b2ProcessEqual $activationPhaseCalls.Count 2 `
+    'W6B2_PROCESS_TEST_ACTIVATION_CALL_COUNT_INVALID'
+  Assert-W6b2ProcessEqual $activationPhaseCalls[0].expectedStatus `
+    'relaunching' 'W6B2_PROCESS_TEST_ACTIVATION_MIGRATION_INVALID'
+  Assert-W6b2ProcessEqual $activationPhaseCalls[1].expectedStatus `
+    'completed' 'W6B2_PROCESS_TEST_ACTIVATION_VALIDATION_INVALID'
+  Assert-W6b2ProcessEqual $activation.migrationObservation `
+    $activationPhaseCalls[0] 'W6B2_PROCESS_TEST_ACTIVATION_OBSERVATION_INVALID'
+  Assert-W6b2ProcessEqual $activation.validationObservation `
+    $activationPhaseCalls[1] 'W6B2_PROCESS_TEST_ACTIVATION_OBSERVATION_INVALID'
+
   $successResult = [ordered]@{
     status = 'succeeded'
     handoffReturnsOnProof = $true
     strictPhaseRequiresZeroExit = $true
     earlyExitRejected = $true
+    activationMigrationUsesExactRelaunch = $true
     exactOwnedCleanup = $true
     orphanProcessCount = 0
   }

@@ -328,6 +328,27 @@ function Invoke-W6b2SuccessApplicationPhase {
   }
 }
 
+function Invoke-W6b2SuccessWorkspaceActivationMigrationPhase {
+  param(
+    [Parameter(Mandatory = $true)][string]$ExecutablePath,
+    [Parameter(Mandatory = $true)][string]$ProofToken,
+    [Parameter(Mandatory = $true)][string]$ProofRoot,
+    [Parameter(Mandatory = $true)][string]$Phase
+  )
+
+  $migrationRun = Invoke-W6b2SuccessApplicationPhase `
+    -ExecutablePath $ExecutablePath -ProofToken $ProofToken `
+    -ProofRoot $ProofRoot -Phase $Phase -ExpectedStatus relaunching
+  $validationRun = Invoke-W6b2SuccessApplicationPhase `
+    -ExecutablePath $ExecutablePath -ProofToken $ProofToken `
+    -ProofRoot $ProofRoot -Phase $Phase -ExpectedStatus completed
+
+  return [pscustomobject]@{
+    migrationObservation = $migrationRun.observation
+    validationObservation = $validationRun.observation
+  }
+}
+
 function Invoke-W6b2SuccessApplicationHandoffPhase {
   param(
     [Parameter(Mandatory = $true)][string]$ExecutablePath,

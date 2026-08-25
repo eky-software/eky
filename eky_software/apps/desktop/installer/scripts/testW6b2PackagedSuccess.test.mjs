@@ -200,6 +200,29 @@ test('source handoff transfers proof before target installation owns process com
   );
 });
 
+test('passive compatible workspace activation proves one migration relaunch before validation', () => {
+  assert.match(
+    applicationProcess,
+    /function Invoke-W6b2SuccessWorkspaceActivationMigrationPhase/u,
+  );
+  assert.match(
+    applicationProcess,
+    /-Phase \$Phase -ExpectedStatus relaunching[\s\S]*-Phase \$Phase -ExpectedStatus completed/u,
+  );
+  assert.match(
+    harness,
+    /Invoke-W6b2SuccessWorkspaceActivationMigrationPhase[\s\S]*\$ownedObservations\.Add\(\$verifyB\.migrationObservation\)[\s\S]*\$ownedObservations\.Add\(\$verifyB\.validationObservation\)/u,
+  );
+  assert.equal(
+    (
+      applicationProcess.match(
+        /function Invoke-W6b2SuccessWorkspaceActivationMigrationPhase/gmu,
+      ) ?? []
+    ).length,
+    1,
+  );
+});
+
 test('proof root resolution emits exactly one canonical path value', () => {
   assert.match(
     evidence,
