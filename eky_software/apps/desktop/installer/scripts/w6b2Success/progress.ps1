@@ -27,7 +27,28 @@ $script:W6b2SuccessResultCodes = @(
   'scenarioCompleted',
   'scenarioFailed',
   'started',
+  'buildRevisionValidated',
+  'proofRootResolved',
+  'sourcePackageFileResolved',
+  'targetPackageFileResolved',
+  'payloadRootsResolved',
+  'runtimePathsResolved',
+  'packageHashesVerified',
+  'productCodesValidated',
+  'processBoundaryVerified',
+  'installationPathsVerified',
+  'installerServiceAvailable',
+  'productStateVerified',
+  'registrationStateVerified',
+  'payloadInventoriesVerified',
+  'normalProfileInventoried',
+  'privateLogsPrepared',
   'preflightCompleted',
+  'sourceMsiCompleted',
+  'sourceProductStateValidated',
+  'targetProductStateValidated',
+  'sourcePayloadValidated',
+  'sourceRegistrationValidated',
   'sourceInstalled',
   'profilePrepared',
   'handoffCompleted',
@@ -95,6 +116,15 @@ $script:W6b2SuccessSafeErrorCodes = @(
   'W6B2_SUCCESS_RESULT_INVALID',
   'W6B2_SUCCESS_RESULT_PENDING',
   'W6B2_SUCCESS_SHORTCUT_REMAINS',
+  'W6B2_SUCCESS_SOURCE_INSTALL_CANCELLED',
+  'W6B2_SUCCESS_SOURCE_INSTALL_FAILED',
+  'W6B2_SUCCESS_SOURCE_INSTALL_INSTALLER_BUSY',
+  'W6B2_SUCCESS_SOURCE_INSTALL_INSTALLER_SERVICE_UNAVAILABLE',
+  'W6B2_SUCCESS_SOURCE_INSTALL_REBOOT_REQUIRED',
+  'W6B2_SUCCESS_SOURCE_INSTALL_RELATED_PRODUCT_PRESENT',
+  'W6B2_SUCCESS_SOURCE_PAYLOAD_MISMATCH',
+  'W6B2_SUCCESS_SOURCE_REGISTRATION_MISSING',
+  'W6B2_SUCCESS_SOURCE_SHORTCUT_MISSING',
   'W6B2_SUCCESS_TARGET_INSTALL_TIMEOUT',
   'W6B2_SUCCESS_TEMP_ROOT_INVALID',
   'W6B2_SUCCESS_UNCLASSIFIED_FAILURE'
@@ -233,6 +263,40 @@ function Resolve-W6b2SuccessSafeErrorCode {
     $candidate = [string]$ErrorRecord.Exception.Message
     if ($script:W6b2SuccessSafeErrorCodes -ccontains $candidate) {
       return $candidate
+    }
+    if (
+      $candidate -cmatch '^W6B2_SUCCESS_SOURCE_INSTALL_FAILED:(?<exitCode>[0-9]+)$'
+    ) {
+      $safeErrorCode = switch -CaseSensitive ($Matches.exitCode) {
+        '1601' {
+          'W6B2_SUCCESS_SOURCE_INSTALL_INSTALLER_SERVICE_UNAVAILABLE'
+        }
+        '1602' { 'W6B2_SUCCESS_SOURCE_INSTALL_CANCELLED' }
+        '1618' { 'W6B2_SUCCESS_SOURCE_INSTALL_INSTALLER_BUSY' }
+        '1638' { 'W6B2_SUCCESS_SOURCE_INSTALL_RELATED_PRODUCT_PRESENT' }
+        { $_ -in @('1641', '3010') } {
+          'W6B2_SUCCESS_SOURCE_INSTALL_REBOOT_REQUIRED'
+        }
+        default { 'W6B2_SUCCESS_SOURCE_INSTALL_FAILED' }
+      }
+      return [string]$safeErrorCode
+    }
+    if ($script:W6b2SuccessCurrentStage -ceq 'sourceInstall') {
+      if ($candidate -cmatch '^INSTALLER_PAYLOAD_MISMATCH:') {
+        return 'W6B2_SUCCESS_SOURCE_PAYLOAD_MISMATCH'
+      }
+      if ($candidate -ceq 'INSTALLER_SHORTCUT_MISSING') {
+        return 'W6B2_SUCCESS_SOURCE_SHORTCUT_MISSING'
+      }
+      if (
+        $candidate -in @(
+          'INSTALLER_OWNED_REGISTRY_MISSING',
+          'INSTALLER_ARP_REGISTRATION_MISSING_OR_AMBIGUOUS',
+          'INSTALLER_PRODUCT_REGISTRATION_UNREADABLE'
+        )
+      ) {
+        return 'W6B2_SUCCESS_SOURCE_REGISTRATION_MISSING'
+      }
     }
   }
   return 'W6B2_SUCCESS_UNCLASSIFIED_FAILURE'

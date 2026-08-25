@@ -32,7 +32,7 @@ function Resolve-W6b2SuccessProofRoot {
   }
   $root = Join-Path $canonicalTemp `
     (Join-Path 'eky-w6b2-packaged-proof' $ProofToken)
-  Assert-W6b2SuccessCanonicalDirectory -Path $root
+  [void](Assert-W6b2SuccessCanonicalDirectory -Path $root)
   return $root
 }
 

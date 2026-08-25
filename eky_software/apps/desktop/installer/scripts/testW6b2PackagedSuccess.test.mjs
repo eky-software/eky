@@ -60,6 +60,63 @@ test('progress output is closed JSONL without raw diagnostic fields', () => {
   assert.match(progress, /W6B2_SUCCESS_UNCLASSIFIED_FAILURE/u);
   assert.match(progress, /\$line\['errorCode'\] = \$ErrorCode/u);
   assert.doesNotMatch(progress, /ErrorRecord\.ToString|ScriptStackTrace/u);
+  assert.match(
+    progress,
+    /W6B2_SUCCESS_SOURCE_INSTALL_FAILED:\(\?<exitCode>\[0-9\]\+\)/u,
+  );
+  for (const safeInstallerFailure of [
+    'W6B2_SUCCESS_SOURCE_INSTALL_CANCELLED',
+    'W6B2_SUCCESS_SOURCE_INSTALL_FAILED',
+    'W6B2_SUCCESS_SOURCE_INSTALL_INSTALLER_BUSY',
+    'W6B2_SUCCESS_SOURCE_INSTALL_INSTALLER_SERVICE_UNAVAILABLE',
+    'W6B2_SUCCESS_SOURCE_INSTALL_REBOOT_REQUIRED',
+    'W6B2_SUCCESS_SOURCE_INSTALL_RELATED_PRODUCT_PRESENT',
+  ]) {
+    assert.match(progress, new RegExp(`'${safeInstallerFailure}'`, 'u'));
+  }
+  assert.doesNotMatch(
+    progress,
+    /\$line\['errorCode'\]\s*=\s*\$Matches\.exitCode/iu,
+  );
+  for (const sourceValidationFailure of [
+    'W6B2_SUCCESS_SOURCE_PAYLOAD_MISMATCH',
+    'W6B2_SUCCESS_SOURCE_REGISTRATION_MISSING',
+    'W6B2_SUCCESS_SOURCE_SHORTCUT_MISSING',
+  ]) {
+    assert.match(progress, new RegExp(`'${sourceValidationFailure}'`, 'u'));
+  }
+  for (const resultCode of [
+    'buildRevisionValidated',
+    'proofRootResolved',
+    'sourcePackageFileResolved',
+    'targetPackageFileResolved',
+    'payloadRootsResolved',
+    'runtimePathsResolved',
+    'packageHashesVerified',
+    'productCodesValidated',
+    'processBoundaryVerified',
+    'installationPathsVerified',
+    'installerServiceAvailable',
+    'productStateVerified',
+    'registrationStateVerified',
+    'payloadInventoriesVerified',
+    'normalProfileInventoried',
+    'privateLogsPrepared',
+    'sourceMsiCompleted',
+    'sourceProductStateValidated',
+    'targetProductStateValidated',
+    'sourcePayloadValidated',
+    'sourceRegistrationValidated',
+  ]) {
+    assert.match(progress, new RegExp(`'${resultCode}'`, 'u'));
+    assert.match(
+      harness,
+      new RegExp(
+        `Write-W6b2SuccessObservation -ResultCode ${resultCode}`,
+        'u',
+      ),
+    );
+  }
   assert.equal(
     (harness.match(/Fail-W6b2SuccessStage -ErrorRecord \$_/gmu) ?? [])
       .length,
@@ -78,6 +135,17 @@ test('invalid evidence fails immediately instead of becoming a timeout', () => {
     /W6B2_SUCCESS_PROCESS_EXITED_BEFORE_RESULT/u,
   );
   assert.match(evidence, /W6B2_SUCCESS_RESULT_INVALID/u);
+});
+
+test('proof root resolution emits exactly one canonical path value', () => {
+  assert.match(
+    evidence,
+    /\[void\]\(Assert-W6b2SuccessCanonicalDirectory -Path \$root\)\s+return \$root/u,
+  );
+  assert.doesNotMatch(
+    evidence,
+    /(?<!\[void\]\()Assert-W6b2SuccessCanonicalDirectory -Path \$root/u,
+  );
 });
 
 test('cleanup uses exact owned identities and never broad process termination', () => {

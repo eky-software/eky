@@ -53,45 +53,58 @@ try {
   if ($BuildRevision -cnotmatch '^[0-9a-f]{7,40}$') {
     throw 'W6B2_SUCCESS_BUILD_REVISION_INVALID'
   }
+  Write-W6b2SuccessObservation -ResultCode buildRevisionValidated
   $proofRoot = Resolve-W6b2SuccessProofRoot `
     -TemporaryRoot $TemporaryRoot -ProofToken $ProofToken
+  Write-W6b2SuccessObservation -ResultCode proofRootResolved
   $sourceMsi = Resolve-W6b2SuccessRegularFile -Path $SourceMsiPath `
     -Extension '.msi' -ContainedBy (Join-Path $proofRoot 'packages\source')
+  Write-W6b2SuccessObservation -ResultCode sourcePackageFileResolved
   $targetMsi = Resolve-W6b2SuccessRegularFile -Path $TargetMsiPath `
     -Extension '.msi' -ContainedBy (Join-Path $proofRoot 'packages\target')
+  Write-W6b2SuccessObservation -ResultCode targetPackageFileResolved
   $sourcePayload = Assert-W6b2SuccessCanonicalDirectory `
     -Path $SourcePayloadRoot
   $targetPayload = Assert-W6b2SuccessCanonicalDirectory `
     -Path $TargetPayloadRoot
+  Write-W6b2SuccessObservation -ResultCode payloadRootsResolved
   $resolvedElectron = Resolve-W6b2SuccessRegularFile `
     -Path $ElectronPath -Extension '.exe'
   $resolvedProfileApplication = Assert-W6b2SuccessCanonicalDirectory `
     -Path $ProfileApplicationPath
+  Write-W6b2SuccessObservation -ResultCode runtimePathsResolved
   Assert-W6b2SuccessPackageHash -Path $sourceMsi `
     -ExpectedSha256 $SourcePackageSha256
   Assert-W6b2SuccessPackageHash -Path $targetMsi `
     -ExpectedSha256 $TargetPackageSha256
+  Write-W6b2SuccessObservation -ResultCode packageHashesVerified
   $sourceCode = Normalize-W6b2SuccessProductCode -Code $SourceProductCode
   $targetCode = Normalize-W6b2SuccessProductCode -Code $TargetProductCode
   if ($sourceCode -ceq $targetCode) {
     throw 'W6B2_SUCCESS_PRODUCT_CODES_NOT_DISTINCT'
   }
+  Write-W6b2SuccessObservation -ResultCode productCodesValidated
   Assert-W6b2SuccessNoApplicationOrMsiProcesses
+  Write-W6b2SuccessObservation -ResultCode processBoundaryVerified
   if (
     (Test-Path -LiteralPath $installRoot) -or
     (Test-Path -LiteralPath $shortcutPath)
   ) {
     throw 'W6B2_SUCCESS_EXISTING_INSTALLATION_FORBIDDEN'
   }
+  Write-W6b2SuccessObservation -ResultCode installationPathsVerified
   $installer = New-Object -ComObject WindowsInstaller.Installer
+  Write-W6b2SuccessObservation -ResultCode installerServiceAvailable
   Assert-W6b2SuccessProductAbsent -Installer $installer `
     -ProductCode $sourceCode
   Assert-W6b2SuccessProductAbsent -Installer $installer `
     -ProductCode $targetCode
+  Write-W6b2SuccessObservation -ResultCode productStateVerified
   Assert-EkyInstallerRegistrationAbsent -ProductCodes @(
     $sourceCode,
     $targetCode
   )
+  Write-W6b2SuccessObservation -ResultCode registrationStateVerified
   $sourcePayloadInventory = Get-W6b2SuccessDirectoryInventory `
     -Root $sourcePayload
   $targetPayloadInventory = Get-W6b2SuccessDirectoryInventory `
@@ -99,6 +112,7 @@ try {
   if ($sourcePayloadInventory.Count -lt 1 -or $targetPayloadInventory.Count -lt 1) {
     throw 'W6B2_SUCCESS_PAYLOAD_INVALID'
   }
+  Write-W6b2SuccessObservation -ResultCode payloadInventoriesVerified
   if (
     (Test-Path -LiteralPath $normalProfileRoot) -and
     !(Test-Path -LiteralPath $normalProfileRoot -PathType Container)
@@ -109,21 +123,28 @@ try {
     -PathType Container
   $normalProfileInventory = Get-W6b2SuccessDirectoryInventory `
     -Root $normalProfileRoot
+  Write-W6b2SuccessObservation -ResultCode normalProfileInventoried
   [void](New-Item -ItemType Directory -Path (Join-Path $proofRoot 'private-logs') `
     -Force)
+  Write-W6b2SuccessObservation -ResultCode privateLogsPrepared
   Complete-W6b2SuccessStage -ResultCode preflightCompleted
 
   Start-W6b2SuccessStage -Stage sourceInstall
   $sourceCleanupAuthorized = $true
   Install-W6b2SuccessSourcePackage -MsiPath $sourceMsi `
     -LogPath (Join-Path $proofRoot 'private-logs\source-install.log')
+  Write-W6b2SuccessObservation -ResultCode sourceMsiCompleted
   Assert-W6b2SuccessProductInstalled -Installer $installer `
     -ProductCode $sourceCode
+  Write-W6b2SuccessObservation -ResultCode sourceProductStateValidated
   Assert-W6b2SuccessProductAbsent -Installer $installer `
     -ProductCode $targetCode
+  Write-W6b2SuccessObservation -ResultCode targetProductStateValidated
   Assert-EkyInstalledPayload -InstallRoot $installRoot `
     -PayloadInventory $sourcePayloadInventory -ShortcutPath $shortcutPath
+  Write-W6b2SuccessObservation -ResultCode sourcePayloadValidated
   Assert-EkyInstallerRegistrationPresent -ProductCode $sourceCode
+  Write-W6b2SuccessObservation -ResultCode sourceRegistrationValidated
   Complete-W6b2SuccessStage -ResultCode sourceInstalled
 
   Start-W6b2SuccessStage -Stage profilePreparation
