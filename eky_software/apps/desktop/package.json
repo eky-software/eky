@@ -32,7 +32,7 @@
     "profile:audit": "node scripts/audit-production-profile.mjs",
     "smoke:windows": "node scripts/run-packaged-smoke.mjs",
     "smoke:windows:release-candidate": "node scripts/run-packaged-smoke.mjs --release-candidate",
-    "test": "vitest run src e2e/w6b2PackagedWorkspaceFixtures.test.ts e2e/w6b2PackagedWorkspaceMigrationHistory.test.ts && node --test scripts/electron-development-runtime.test.mjs scripts/inspect-support-bundle.test.mjs scripts/package-artifact-inventory.test.mjs scripts/packaged-release-candidate.test.mjs scripts/pilot-build-gate.test.mjs scripts/preparePackageBackendStage.test.mjs scripts/production-profile-audit.test.mjs scripts/read-desktop-electron-version.test.mjs scripts/staged-better-sqlite-runtime.test.mjs",
+    "test": "vitest run src e2e/w6b2PackagedWorkspaceFixtures.test.ts e2e/w6b2PackagedWorkspaceMigrationHistory.test.ts e2e/w6b2PackagedWorkspaceProfileState.test.ts && node --test scripts/electron-development-runtime.test.mjs scripts/inspect-support-bundle.test.mjs scripts/package-artifact-inventory.test.mjs scripts/packaged-release-candidate.test.mjs scripts/pilot-build-gate.test.mjs scripts/preparePackageBackendStage.test.mjs scripts/production-profile-audit.test.mjs scripts/read-desktop-electron-version.test.mjs scripts/staged-better-sqlite-runtime.test.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {

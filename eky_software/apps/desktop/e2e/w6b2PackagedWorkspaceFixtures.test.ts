@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { InvoicePdfArchiveConfigStore } from '../src/invoicePdfArchive/invoicePdfArchiveConfig.js';
 import { InvoicePdfArchiveJournalStore } from '../src/invoicePdfArchive/invoicePdfArchiveJournal.js';
+import { validateWorkspaceId } from '../src/workspaces/registry/workspaceIdValidation.js';
 import { readW6b2BusinessAmounts } from './w6b2PackagedWorkspaceBusinessFixture.js';
 import { createW6b2PackagedWorkspaceRuntimeNamespaces } from './w6b2PackagedWorkspaceRuntimeNamespaces.js';
 
@@ -63,7 +64,9 @@ describe('W6B.2 packaged workspace fixture amounts', () => {
         businessArtifactPath: join(workspaceRoot, 'invoice.pdf'),
         databaseFilePath: join(workspaceRoot, 'runtime', 'data', 'eky.sqlite'),
         profileId: 'a'.repeat(64),
-        workspaceId: '11111111-1111-4111-8111-111111111111',
+        workspaceId: validateWorkspaceId(
+          '11111111-1111-4111-8111-111111111111',
+        ),
         workspaceRoot,
       },
       fixtureKey: 'A',
