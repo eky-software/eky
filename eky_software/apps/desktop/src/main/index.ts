@@ -30,6 +30,7 @@ import {
   writeW6b2PackagedProofResult,
   type W6b2PackagedProofConfiguration,
 } from './w6b2PackagedProof.js';
+import { terminateW6b2PackagedProofRuntime } from './w6b2PackagedProofTermination.js';
 
 type StartDesktopComposition =
   typeof import('./desktopComposition.js').startDesktopComposition;
@@ -234,7 +235,16 @@ async function startDesktopRuntime(
       });
       w6b2ProofResultWritten = true;
     }
-    app.exit(0);
+    if (desktopLifecycle === undefined) {
+      throw new Error('W6B2_PROOF_TERMINATION_INVALID');
+    }
+    await terminateW6b2PackagedProofRuntime({
+      lifecycle: desktopLifecycle,
+      quitApplication() {
+        shutdownStarted = true;
+        app.quit();
+      },
+    });
   }
 }
 
