@@ -35,6 +35,7 @@ $targetPayloadInventory = $null
 $normalProfileInventory = $null
 $normalProfileExisted = $null
 $sourceObservation = $null
+$sourceProcess = $null
 $ownedObservations = [Collections.Generic.List[object]]::new()
 $sourceCleanupAuthorized = $false
 $targetCleanupAuthorized = $false
@@ -155,11 +156,11 @@ try {
 
   Start-W6b2SuccessStage -Stage sourceHandoff
   Set-W6b2SuccessPhase -ProofRoot $proofRoot -Phase sourceHandoff
-  $sourceRun = Invoke-W6b2SuccessApplicationPhase `
+  $sourceRun = Invoke-W6b2SuccessApplicationHandoffPhase `
     -ExecutablePath $applicationPath -ProofToken $ProofToken `
-    -ProofRoot $proofRoot -Phase sourceHandoff -ExpectedStatus completed `
-    -AllowOwnedDescendantsAfterExit
+    -ProofRoot $proofRoot
   $sourceObservation = $sourceRun.observation
+  $sourceProcess = $sourceRun.process
   $ownedObservations.Add($sourceObservation)
   Complete-W6b2SuccessStage -ResultCode handoffCompleted
 
@@ -169,6 +170,8 @@ try {
     -SourceProductCode $sourceCode -TargetProductCode $targetCode
   Wait-W6b2SuccessOwnedProcessesAbsent -Observation $sourceObservation `
     -TimeoutMilliseconds 30000
+  Close-W6b2SuccessProcess -Process $sourceProcess
+  $sourceProcess = $null
   Assert-EkyInstalledPayload -InstallRoot $installRoot `
     -PayloadInventory $targetPayloadInventory -ShortcutPath $shortcutPath
   Assert-EkyInstallerRegistrationPresent -ProductCode $targetCode
@@ -239,6 +242,12 @@ finally {
     Start-W6b2SuccessStage -Stage cleanup
     foreach ($observation in $ownedObservations) {
       Stop-W6b2SuccessOwnedProcesses -Observation $observation
+    }
+    if ($null -ne $sourceProcess) {
+      Wait-W6b2SuccessOwnedProcessesAbsent -Observation $sourceObservation `
+        -TimeoutMilliseconds 30000
+      Close-W6b2SuccessProcess -Process $sourceProcess
+      $sourceProcess = $null
     }
     if ($null -ne $installer) {
       foreach ($entry in @(

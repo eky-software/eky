@@ -176,6 +176,30 @@ test('invalid evidence fails immediately instead of becoming a timeout', () => {
   assert.doesNotMatch(evidence, /Error\.message|stack|commandLine|processId/u);
 });
 
+test('source handoff transfers proof before target installation owns process completion', () => {
+  assert.match(
+    applicationProcess,
+    /function Wait-W6b2SuccessHandoffResult/u,
+  );
+  assert.match(
+    applicationProcess,
+    /function Invoke-W6b2SuccessApplicationHandoffPhase/u,
+  );
+  assert.match(
+    harness,
+    /Invoke-W6b2SuccessApplicationHandoffPhase[\s\S]*\$sourceProcess = \$sourceRun\.process[\s\S]*Complete-W6b2SuccessStage -ResultCode handoffCompleted[\s\S]*Wait-W6b2SuccessTargetInstallation[\s\S]*Wait-W6b2SuccessOwnedProcessesAbsent[\s\S]*Close-W6b2SuccessProcess -Process \$sourceProcess/u,
+  );
+  assert.match(applicationProcess, /ReadToEndAsync/u);
+  assert.doesNotMatch(
+    applicationProcess,
+    /BeginOutputReadLine|BeginErrorReadLine|CancelOutputRead|CancelErrorRead/u,
+  );
+  assert.doesNotMatch(
+    `${applicationProcess}\n${harness}`,
+    /AllowOwnedDescendantsAfterExit/u,
+  );
+});
+
 test('proof root resolution emits exactly one canonical path value', () => {
   assert.match(
     evidence,

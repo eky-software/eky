@@ -34,19 +34,60 @@ function Start-W6b2SuccessProcess {
   }
   $process = [Diagnostics.Process]::new()
   $process.StartInfo = $startInfo
-  $process.add_OutputDataReceived({ param($sender, $eventArgs) })
-  $process.add_ErrorDataReceived({ param($sender, $eventArgs) })
   try {
     if (!$process.Start()) {
       throw 'W6B2_SUCCESS_PROCESS_START_FAILED'
     }
-    $process.BeginOutputReadLine()
-    $process.BeginErrorReadLine()
+    $standardOutputTask = $process.StandardOutput.ReadToEndAsync()
+    $standardErrorTask = $process.StandardError.ReadToEndAsync()
+    $process | Add-Member -MemberType NoteProperty `
+      -Name W6b2StandardOutputTask -Value $standardOutputTask
+    $process | Add-Member -MemberType NoteProperty `
+      -Name W6b2StandardErrorTask -Value $standardErrorTask
     return $process
   }
   catch {
+    try {
+      $process.Refresh()
+      if (!$process.HasExited) {
+        $process.Kill()
+        [void]$process.WaitForExit(10000)
+      }
+    }
+    catch {}
     $process.Dispose()
     throw 'W6B2_SUCCESS_PROCESS_START_FAILED'
+  }
+}
+
+function Close-W6b2SuccessProcess {
+  param([Parameter(Mandatory = $true)]$Process)
+
+  $Process.Refresh()
+  if (!$Process.HasExited) {
+    throw 'W6B2_SUCCESS_PROCESS_REMAINS'
+  }
+  try {
+    $Process.WaitForExit()
+    foreach ($taskName in @(
+      'W6b2StandardOutputTask',
+      'W6b2StandardErrorTask'
+    )) {
+      $property = $Process.PSObject.Properties[$taskName]
+      if ($null -eq $property -or $null -eq $property.Value) {
+        throw 'W6B2_SUCCESS_PROCESS_OUTPUT_FAILED'
+      }
+      [void]$property.Value.GetAwaiter().GetResult()
+    }
+  }
+  catch {
+    if ($_.Exception.Message -eq 'W6B2_SUCCESS_PROCESS_OUTPUT_FAILED') {
+      throw
+    }
+    throw 'W6B2_SUCCESS_PROCESS_OUTPUT_FAILED'
+  }
+  finally {
+    $Process.Dispose()
   }
 }
 
@@ -81,8 +122,7 @@ function Wait-W6b2SuccessResultProcess {
     [Parameter(Mandatory = $true)]$Process,
     [Parameter(Mandatory = $true)]$Observation,
     [Parameter(Mandatory = $true)][scriptblock]$ReadResult,
-    [int]$TimeoutMilliseconds = 180000,
-    [switch]$AllowOwnedDescendantsAfterExit
+    [int]$TimeoutMilliseconds = 180000
   )
 
   if ($TimeoutMilliseconds -lt 1) {
@@ -104,6 +144,7 @@ function Wait-W6b2SuccessResultProcess {
     }
     $Process.Refresh()
     if ($Process.HasExited) {
+      $Process.WaitForExit()
       [void](Update-W6b2SuccessProcessObservation -Observation $Observation)
       if ($null -eq $result) {
         try {
@@ -119,9 +160,64 @@ function Wait-W6b2SuccessResultProcess {
       if ([int]$Process.ExitCode -ne 0) {
         throw 'W6B2_SUCCESS_PROCESS_EXIT_FAILED'
       }
-      if (!$AllowOwnedDescendantsAfterExit) {
-        Wait-W6b2SuccessOwnedProcessesAbsent -Observation $Observation `
-          -TimeoutMilliseconds 30000
+      Wait-W6b2SuccessOwnedProcessesAbsent -Observation $Observation `
+        -TimeoutMilliseconds 30000
+      return $result
+    }
+    Write-W6b2SuccessHeartbeat
+    Start-Sleep -Milliseconds 100
+  }
+  Stop-W6b2SuccessOwnedProcesses -Observation $Observation
+  throw 'W6B2_SUCCESS_PROCESS_TIMEOUT'
+}
+
+function Wait-W6b2SuccessHandoffResult {
+  param(
+    [Parameter(Mandatory = $true)]$Process,
+    [Parameter(Mandatory = $true)]$Observation,
+    [Parameter(Mandatory = $true)][scriptblock]$ReadResult,
+    [int]$TimeoutMilliseconds = 180000
+  )
+
+  if ($TimeoutMilliseconds -lt 1) {
+    throw 'W6B2_SUCCESS_PROCESS_WAIT_INVALID'
+  }
+  $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
+  while ([DateTime]::UtcNow -lt $deadline) {
+    [void](Update-W6b2SuccessProcessObservation -Observation $Observation)
+    try {
+      $result = & $ReadResult
+      [void](Update-W6b2SuccessProcessObservation -Observation $Observation)
+      $Process.Refresh()
+      if ($Process.HasExited -and [int]$Process.ExitCode -ne 0) {
+        $Process.WaitForExit()
+        throw 'W6B2_SUCCESS_PROCESS_EXIT_FAILED'
+      }
+      if ($Process.HasExited) {
+        $Process.WaitForExit()
+      }
+      return $result
+    }
+    catch {
+      if ($_.Exception.Message -ne 'W6B2_SUCCESS_RESULT_PENDING') {
+        throw
+      }
+    }
+    $Process.Refresh()
+    if ($Process.HasExited) {
+      $Process.WaitForExit()
+      [void](Update-W6b2SuccessProcessObservation -Observation $Observation)
+      try {
+        $result = & $ReadResult
+      }
+      catch {
+        if ($_.Exception.Message -eq 'W6B2_SUCCESS_RESULT_PENDING') {
+          throw 'W6B2_SUCCESS_PROCESS_EXITED_BEFORE_RESULT'
+        }
+        throw
+      }
+      if ([int]$Process.ExitCode -ne 0) {
+        throw 'W6B2_SUCCESS_PROCESS_EXIT_FAILED'
       }
       return $result
     }
@@ -173,7 +269,10 @@ function Stop-W6b2SuccessOwnedProcesses {
           throw 'W6B2_SUCCESS_PROCESS_IDENTITY_CHANGED'
         }
         $process.Kill()
-        [void]$process.WaitForExit(10000)
+        if (!$process.WaitForExit(10000)) {
+          throw 'W6B2_SUCCESS_PROCESS_REMAINS'
+        }
+        $process.WaitForExit()
       }
       finally {
         $process.Dispose()
@@ -193,8 +292,47 @@ function Invoke-W6b2SuccessApplicationPhase {
     [Parameter(Mandatory = $true)][string]$ProofToken,
     [Parameter(Mandatory = $true)][string]$ProofRoot,
     [Parameter(Mandatory = $true)][string]$Phase,
-    [Parameter(Mandatory = $true)][string]$ExpectedStatus,
-    [switch]$AllowOwnedDescendantsAfterExit
+    [Parameter(Mandatory = $true)][string]$ExpectedStatus
+  )
+
+  Clear-W6b2SuccessResultFiles -ProofRoot $ProofRoot
+  $process = Start-W6b2SuccessProcess -ExecutablePath $ExecutablePath `
+    -Arguments @('--w6b2-packaged-proof') -EnvironmentOverrides @{
+      EKY_W6B2_PROOF_TOKEN = $ProofToken
+    }
+  $observation = New-W6b2SuccessProcessObservation -Process $process
+  $phaseCompleted = $false
+  try {
+    $resultPath = Join-Path $ProofRoot 'result\w6b2-proof-result.json'
+    $result = Wait-W6b2SuccessResultProcess -Process $process `
+      -Observation $observation -ReadResult {
+        if (!(Test-Path -LiteralPath $resultPath -PathType Leaf)) {
+          throw 'W6B2_SUCCESS_RESULT_PENDING'
+        }
+        Read-W6b2SuccessProofResult -ProofRoot $ProofRoot `
+          -ExpectedPhase $Phase -ExpectedStatus $ExpectedStatus
+      }
+    $phaseCompleted = $true
+    return [pscustomobject]@{
+      result = $result
+      observation = $observation
+    }
+  }
+  finally {
+    if (!$phaseCompleted) {
+      Stop-W6b2SuccessOwnedProcesses -Observation $observation
+      Wait-W6b2SuccessOwnedProcessesAbsent -Observation $observation `
+        -TimeoutMilliseconds 30000
+    }
+    Close-W6b2SuccessProcess -Process $process
+  }
+}
+
+function Invoke-W6b2SuccessApplicationHandoffPhase {
+  param(
+    [Parameter(Mandatory = $true)][string]$ExecutablePath,
+    [Parameter(Mandatory = $true)][string]$ProofToken,
+    [Parameter(Mandatory = $true)][string]$ProofRoot
   )
 
   Clear-W6b2SuccessResultFiles -ProofRoot $ProofRoot
@@ -205,21 +343,27 @@ function Invoke-W6b2SuccessApplicationPhase {
   $observation = New-W6b2SuccessProcessObservation -Process $process
   try {
     $resultPath = Join-Path $ProofRoot 'result\w6b2-proof-result.json'
-    $result = Wait-W6b2SuccessResultProcess -Process $process `
+    $result = Wait-W6b2SuccessHandoffResult -Process $process `
       -Observation $observation -ReadResult {
         if (!(Test-Path -LiteralPath $resultPath -PathType Leaf)) {
           throw 'W6B2_SUCCESS_RESULT_PENDING'
         }
         Read-W6b2SuccessProofResult -ProofRoot $ProofRoot `
-          -ExpectedPhase $Phase -ExpectedStatus $ExpectedStatus
-      } -AllowOwnedDescendantsAfterExit:$AllowOwnedDescendantsAfterExit
+          -ExpectedPhase sourceHandoff -ExpectedStatus completed
+      }
     return [pscustomobject]@{
       result = $result
       observation = $observation
+      process = $process
     }
   }
-  finally {
-    $process.Dispose()
+  catch {
+    $failure = $_
+    Stop-W6b2SuccessOwnedProcesses -Observation $observation
+    Wait-W6b2SuccessOwnedProcessesAbsent -Observation $observation `
+      -TimeoutMilliseconds 30000
+    Close-W6b2SuccessProcess -Process $process
+    throw $failure
   }
 }
 
@@ -239,6 +383,7 @@ function Invoke-W6b2SuccessProfileOperation {
       EKY_W6B2_PROOF_TOKEN = $ProofToken
     }
   $observation = New-W6b2SuccessProcessObservation -Process $process
+  $operationCompleted = $false
   try {
     $resultPath = Join-Path $ProofRoot 'result\w6b2-profile-result.json'
     [void](Wait-W6b2SuccessResultProcess -Process $process `
@@ -249,8 +394,14 @@ function Invoke-W6b2SuccessProfileOperation {
         Read-W6b2SuccessProfileResult -ProofRoot $ProofRoot `
           -ExpectedOperation $Operation
       })
+    $operationCompleted = $true
   }
   finally {
-    $process.Dispose()
+    if (!$operationCompleted) {
+      Stop-W6b2SuccessOwnedProcesses -Observation $observation
+      Wait-W6b2SuccessOwnedProcessesAbsent -Observation $observation `
+        -TimeoutMilliseconds 30000
+    }
+    Close-W6b2SuccessProcess -Process $process
   }
 }
