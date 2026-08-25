@@ -497,6 +497,7 @@ function Invoke-EkyHistoricalObserverOutputContract {
   $script:ObserverResultOutputCount = $ResultOutputCount
   $script:ObserverProcessOutputWritten = $false
   $script:ObserverResultOutputWritten = $false
+  $script:ObserverContractReadyEvent = $null
   $script:ObserverContractReleaseEvent = $null
   $script:AllowedStages = @('sourceStartup')
   $script:CurrentStage = 'sourceStartup'
@@ -512,9 +513,19 @@ function Invoke-EkyHistoricalObserverOutputContract {
           if ($null -ne $script:ObserverContractReleaseEvent) {
             $script:ObserverContractReleaseEvent.Dispose()
           }
+          if ($null -ne $script:ObserverContractReadyEvent) {
+            $script:ObserverContractReadyEvent.Dispose()
+          }
           $script:ObserverContractPhase = $Phase
           $eventName = 'Local\EkyW6bObserver-' + `
             [Guid]::NewGuid().ToString('N')
+          $readyName = "$eventName-ready"
+          $script:ObserverContractReadyEvent = `
+            [Threading.EventWaitHandle]::new(
+              $false,
+              [Threading.EventResetMode]::ManualReset,
+              $readyName
+            )
           $script:ObserverContractReleaseEvent = `
             [Threading.EventWaitHandle]::new(
               $false,
@@ -522,20 +533,39 @@ function Invoke-EkyHistoricalObserverOutputContract {
               $eventName
             )
           $waitCommand = ConvertTo-EkyHistoricalEncodedCommand -Command @"
+`$readyEvent = [Threading.EventWaitHandle]::OpenExisting('$readyName')
 `$releaseEvent = [Threading.EventWaitHandle]::OpenExisting('$eventName')
 try {
+  `$readyEvent.Set() | Out-Null
   `$releaseEvent.WaitOne() | Out-Null
 }
 finally {
+  `$readyEvent.Dispose()
   `$releaseEvent.Dispose()
 }
 "@
-          Start-Process powershell.exe -ArgumentList @(
+          $process = Start-Process powershell.exe -ArgumentList @(
             '-NoProfile',
             '-NonInteractive',
             '-EncodedCommand',
             $waitCommand
           ) -WindowStyle Hidden -PassThru
+          if (!$script:ObserverContractReadyEvent.WaitOne(5000)) {
+            $script:ObserverContractReleaseEvent.Set() | Out-Null
+            try {
+              Stop-EkyProcessTree -Process $process
+            }
+            finally {
+              $process.Dispose()
+            }
+            throw 'W6B_LEGACY_OBSERVER_PROCESS_READY_TIMEOUT'
+          }
+          $process.Refresh()
+          if ($process.HasExited) {
+            $process.Dispose()
+            throw 'W6B_LEGACY_OBSERVER_PROCESS_EXITED_BEFORE_READY'
+          }
+          return $process
         } `
         -ReadResult {
           $script:ObserverContractReleaseEvent.Set() | Out-Null
@@ -601,6 +631,10 @@ finally {
       $script:ObserverContractReleaseEvent.Set() | Out-Null
       $script:ObserverContractReleaseEvent.Dispose()
       $script:ObserverContractReleaseEvent = $null
+    }
+    if ($null -ne $script:ObserverContractReadyEvent) {
+      $script:ObserverContractReadyEvent.Dispose()
+      $script:ObserverContractReadyEvent = $null
     }
   }
   if (
