@@ -36,6 +36,30 @@ describe('W6B.2 packaged proof termination', () => {
     expect(fixture.quitApplication).toHaveBeenCalledOnce();
   });
 
+  it('quits a pre-runtime activation relaunch without requiring a lifecycle', async () => {
+    const fixture = createFixture({
+      lifecycleAvailable: false,
+      relaunchRequested: true,
+    });
+
+    await terminateW6b2PackagedProofRuntime(fixture.options);
+
+    expect(fixture.shutdown).not.toHaveBeenCalled();
+    expect(fixture.destroy).not.toHaveBeenCalled();
+    expect(fixture.quitApplication).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a missing lifecycle when no relaunch was requested', async () => {
+    const fixture = createFixture({ lifecycleAvailable: false });
+
+    await expect(
+      terminateW6b2PackagedProofRuntime(fixture.options),
+    ).rejects.toThrow('W6B2_PROOF_TERMINATION_INVALID');
+    expect(fixture.shutdown).not.toHaveBeenCalled();
+    expect(fixture.destroy).not.toHaveBeenCalled();
+    expect(fixture.quitApplication).not.toHaveBeenCalled();
+  });
+
   it('does not quit before runtime shutdown succeeds', async () => {
     const fixture = createFixture({
       async shutdown() {
@@ -54,7 +78,9 @@ describe('W6B.2 packaged proof termination', () => {
 function createFixture(overrides?: Readonly<{
   destroy?: () => void;
   isDestroyed?: boolean;
+  lifecycleAvailable?: boolean;
   quitApplication?: () => void;
+  relaunchRequested?: boolean;
   shutdown?: () => Promise<void>;
 }>) {
   const destroy = vi.fn(overrides?.destroy ?? (() => undefined));
@@ -67,14 +93,18 @@ function createFixture(overrides?: Readonly<{
   return {
     destroy,
     options: {
-      lifecycle: {
-        applicationWindow: {
-          destroy,
-          isDestroyed: () => overrides?.isDestroyed ?? false,
-        },
-        shutdown,
-      },
+      lifecycle:
+        overrides?.lifecycleAvailable === false
+          ? undefined
+          : {
+              applicationWindow: {
+                destroy,
+                isDestroyed: () => overrides?.isDestroyed ?? false,
+              },
+              shutdown,
+            },
       quitApplication,
+      relaunchRequested: overrides?.relaunchRequested ?? false,
     },
     quitApplication,
     shutdown,

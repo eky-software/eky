@@ -235,15 +235,13 @@ async function startDesktopRuntime(
       });
       w6b2ProofResultWritten = true;
     }
-    if (desktopLifecycle === undefined) {
-      throw new Error('W6B2_PROOF_TERMINATION_INVALID');
-    }
     await terminateW6b2PackagedProofRuntime({
       lifecycle: desktopLifecycle,
       quitApplication() {
         shutdownStarted = true;
         app.quit();
       },
+      relaunchRequested: w6b2ProofRelaunchRequested,
     });
   }
 }
