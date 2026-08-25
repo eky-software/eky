@@ -19,7 +19,7 @@ import type { W6b2PackagedWorkspaceEvidence } from './w6b2PackagedWorkspaceEvide
 const profileStateFileName = 'w6b2-profile-state-v1.json';
 const profileInputFileName = 'w6b2-profile-input-v1.json';
 const maximumControlBytes = 128 * 1024;
-const buildRevisionPattern = /^[0-9a-f]{40}$/u;
+const buildRevisionPattern = /^[0-9a-f]{7,40}$/u;
 const profileIdPattern = /^[0-9a-f]{64}$/u;
 const sha256Pattern = /^[0-9a-f]{64}$/u;
 

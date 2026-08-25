@@ -6,7 +6,7 @@ import {
   runW6b2PackagedSuccess,
 } from './runW6b2PackagedSuccess.mjs';
 
-const buildRevision = '1'.repeat(40);
+const buildRevision = '123456789abc';
 const pair = Object.freeze({
   buildRevision,
   source: packageIdentity('0.2.7', 'source'),
@@ -130,6 +130,39 @@ test('rejects malformed proof tokens before creating process arguments', () => {
       }),
     /W6B2_SUCCESS_ARGUMENTS_INVALID/u,
   );
+});
+
+test('accepts bounded release revisions and rejects invalid revision shapes', () => {
+  assert.doesNotThrow(() =>
+    createW6b2PackagedSuccessArguments({
+      buildRevision,
+      electronPath: 'C:\\fixture\\electron.exe',
+      profileApplicationPath: 'C:\\fixture\\profile',
+      run: runFixture('a'.repeat(64)),
+      sourcePayloadRoot: pair.source.packagedApplicationPath,
+      targetPayloadRoot: pair.target.packagedApplicationPath,
+      temporaryRoot: 'C:\\fixture-temp',
+    }),
+  );
+  for (const invalidBuildRevision of [
+    '1'.repeat(6),
+    '1'.repeat(41),
+    'ABCDEF123456',
+  ]) {
+    assert.throws(
+      () =>
+        createW6b2PackagedSuccessArguments({
+          buildRevision: invalidBuildRevision,
+          electronPath: 'C:\\fixture\\electron.exe',
+          profileApplicationPath: 'C:\\fixture\\profile',
+          run: runFixture('a'.repeat(64)),
+          sourcePayloadRoot: pair.source.packagedApplicationPath,
+          targetPayloadRoot: pair.target.packagedApplicationPath,
+          temporaryRoot: 'C:\\fixture-temp',
+        }),
+      /W6B2_SUCCESS_ARGUMENTS_INVALID/u,
+    );
+  }
 });
 
 function packageIdentity(appVersion, role) {

@@ -50,7 +50,7 @@ Start-W6b2SuccessScenario
 
 try {
   Start-W6b2SuccessStage -Stage preflight
-  if ($BuildRevision -cnotmatch '^[0-9a-f]{40}$') {
+  if ($BuildRevision -cnotmatch '^[0-9a-f]{7,40}$') {
     throw 'W6B2_SUCCESS_BUILD_REVISION_INVALID'
   }
   $proofRoot = Resolve-W6b2SuccessProofRoot `

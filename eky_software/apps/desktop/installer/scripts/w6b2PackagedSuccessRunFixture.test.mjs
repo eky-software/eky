@@ -22,7 +22,7 @@ import {
   writeW6b2PackagedSuccessPhase,
 } from './w6b2PackagedSuccessRunFixture.mjs';
 
-const buildRevision = '1'.repeat(40);
+const buildRevision = '123456789abc';
 
 test('stages exact package bytes and private control data', async (context) => {
   const root = await createRoot(context);
@@ -129,6 +129,26 @@ test('rejects an imprecise installer ProductCode identity', async (context) => {
     }),
     /W6B2_SUCCESS_PACKAGE_IDENTITY_INVALID/u,
   );
+});
+
+test('accepts release revisions and rejects revisions outside the shared bounds', async (context) => {
+  const root = await createRoot(context);
+  const pair = await createPair(root);
+
+  for (const invalidBuildRevision of [
+    '1'.repeat(6),
+    '1'.repeat(41),
+    'ABCDEF123456',
+  ]) {
+    await assert.rejects(
+      createW6b2PackagedSuccessRunFixture({
+        installerPair: { ...pair, buildRevision: invalidBuildRevision },
+        temporaryRoot: root,
+        token: 'e'.repeat(64),
+      }),
+      /W6B2_SUCCESS_PACKAGE_IDENTITY_INVALID/u,
+    );
+  }
 });
 
 async function createRoot(context) {

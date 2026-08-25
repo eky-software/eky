@@ -18,7 +18,7 @@ import {
 } from '../installerManifest.mjs';
 
 const proofTokenPattern = /^[0-9a-f]{64}$/u;
-const buildRevisionPattern = /^[0-9a-f]{40}$/u;
+const buildRevisionPattern = /^[0-9a-f]{7,40}$/u;
 const sha256Pattern = /^[0-9a-f]{64}$/u;
 const productCodePattern =
   /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/u;

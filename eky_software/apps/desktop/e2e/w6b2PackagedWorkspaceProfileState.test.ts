@@ -16,7 +16,7 @@ import {
 } from './w6b2PackagedWorkspaceProfileState.js';
 
 const temporaryRoots: string[] = [];
-const buildRevision = 'a'.repeat(40);
+const buildRevision = 'abcdef123456';
 
 afterEach(async () => {
   await Promise.all(
@@ -38,7 +38,9 @@ describe('W6B.2 packaged workspace profile control contract', () => {
       sourceBuildRevision: buildRevision,
     });
     for (const invalid of [
-      { formatVersion: 1, sourceBuildRevision: 'a'.repeat(39) },
+      { formatVersion: 1, sourceBuildRevision: 'a'.repeat(6) },
+      { formatVersion: 1, sourceBuildRevision: 'a'.repeat(41) },
+      { formatVersion: 1, sourceBuildRevision: 'ABCDEF123456' },
       {
         extra: true,
         formatVersion: 1,

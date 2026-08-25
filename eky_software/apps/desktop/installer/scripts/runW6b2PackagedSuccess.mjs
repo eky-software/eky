@@ -177,7 +177,7 @@ function samePath(left, right) {
 function requireRunInput(input) {
   if (
     typeof input.buildRevision !== 'string' ||
-    !/^[0-9a-f]{40}$/u.test(input.buildRevision) ||
+    !/^[0-9a-f]{7,40}$/u.test(input.buildRevision) ||
     typeof input.electronPath !== 'string' ||
     typeof input.profileApplicationPath !== 'string' ||
     typeof input.sourcePayloadRoot !== 'string' ||
