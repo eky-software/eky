@@ -152,6 +152,30 @@ describe('W6B.2 packaged proof configuration', () => {
       status: 'failed',
     });
   });
+
+  it.each([
+    'W6B2_PROOF_PREPARATION_RECOVERY_POINT_SNAPSHOT_ARTIFACTS_FAILED',
+    'W6B2_PROOF_PREPARATION_RECOVERY_POINT_SNAPSHOT_BROKER_OPERATION_FAILED',
+    'W6B2_PROOF_PREPARATION_RECOVERY_POINT_SNAPSHOT_BROKER_REQUEST_INVALID',
+    'W6B2_PROOF_PREPARATION_RECOVERY_POINT_SNAPSHOT_BROKER_UNAVAILABLE',
+    'W6B2_PROOF_PREPARATION_RECOVERY_POINT_SNAPSHOT_DATABASE_FAILED',
+    'W6B2_PROOF_PREPARATION_RECOVERY_POINT_SNAPSHOT_STAGING_FAILED',
+    'W6B2_PROOF_PREPARATION_RECOVERY_POINT_SNAPSHOT_VALIDATION_FAILED',
+  ] as const)('accepts the closed snapshot failure code %s', (errorCode) => {
+    expect(
+      parseW6b2PackagedProofResult({
+        errorCode,
+        formatVersion: 1,
+        phase: 'sourceHandoff',
+        status: 'failed',
+      }),
+    ).toEqual({
+      errorCode,
+      formatVersion: 1,
+      phase: 'sourceHandoff',
+      status: 'failed',
+    });
+  });
 });
 
 async function createProofFiles(input: {

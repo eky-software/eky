@@ -30,14 +30,38 @@ const recoveryPointProtectionFailureCodes = new Set([
   'RECOVERY_POINT_KEY_PROTECTION_UNAVAILABLE',
   'SECRET_STORAGE_UNAVAILABLE',
 ]);
-const recoveryPointSnapshotFailureCodes = new Set([
-  'PROFILE_SNAPSHOT_ARTIFACTS_FAILED',
-  'PROFILE_SNAPSHOT_BROKER_OPERATION_FAILED',
-  'PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID',
-  'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
-  'PROFILE_SNAPSHOT_DATABASE_FAILED',
-  'PROFILE_SNAPSHOT_STAGING_FAILED',
-  'PROFILE_SNAPSHOT_VALIDATION_FAILED',
+const recoveryPointSnapshotFailureCodes = new Map<
+  string,
+  W6b2PackagedProofErrorCode
+>([
+  [
+    'PROFILE_SNAPSHOT_ARTIFACTS_FAILED',
+    'W6B2_PROOF_PREPARATION_RECOVERY_POINT_SNAPSHOT_ARTIFACTS_FAILED',
+  ],
+  [
+    'PROFILE_SNAPSHOT_BROKER_OPERATION_FAILED',
+    'W6B2_PROOF_PREPARATION_RECOVERY_POINT_SNAPSHOT_BROKER_OPERATION_FAILED',
+  ],
+  [
+    'PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID',
+    'W6B2_PROOF_PREPARATION_RECOVERY_POINT_SNAPSHOT_BROKER_REQUEST_INVALID',
+  ],
+  [
+    'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
+    'W6B2_PROOF_PREPARATION_RECOVERY_POINT_SNAPSHOT_BROKER_UNAVAILABLE',
+  ],
+  [
+    'PROFILE_SNAPSHOT_DATABASE_FAILED',
+    'W6B2_PROOF_PREPARATION_RECOVERY_POINT_SNAPSHOT_DATABASE_FAILED',
+  ],
+  [
+    'PROFILE_SNAPSHOT_STAGING_FAILED',
+    'W6B2_PROOF_PREPARATION_RECOVERY_POINT_SNAPSHOT_STAGING_FAILED',
+  ],
+  [
+    'PROFILE_SNAPSHOT_VALIDATION_FAILED',
+    'W6B2_PROOF_PREPARATION_RECOVERY_POINT_SNAPSHOT_VALIDATION_FAILED',
+  ],
 ]);
 const recoveryPointStorageFailureCodes = new Set([
   'RECOVERY_POINT_ALREADY_EXISTS',
@@ -201,8 +225,12 @@ function classifyRecoveryPointFailure(
   if (code !== undefined && recoveryPointProtectionFailureCodes.has(code)) {
     return 'W6B2_PROOF_PREPARATION_RECOVERY_POINT_PROTECTION_FAILED';
   }
-  if (code !== undefined && recoveryPointSnapshotFailureCodes.has(code)) {
-    return 'W6B2_PROOF_PREPARATION_RECOVERY_POINT_SNAPSHOT_FAILED';
+  const snapshotFailureCode =
+    code === undefined
+      ? undefined
+      : recoveryPointSnapshotFailureCodes.get(code);
+  if (snapshotFailureCode !== undefined) {
+    return snapshotFailureCode;
   }
   if (code !== undefined && recoveryPointStorageFailureCodes.has(code)) {
     return 'W6B2_PROOF_PREPARATION_RECOVERY_POINT_STORAGE_FAILED';
