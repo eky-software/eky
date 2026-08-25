@@ -234,7 +234,7 @@ async function startDesktopRuntime(
       });
       w6b2ProofResultWritten = true;
     }
-    app.quit();
+    app.exit(0);
   }
 }
 
