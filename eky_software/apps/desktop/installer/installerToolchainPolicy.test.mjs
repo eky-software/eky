@@ -76,6 +76,8 @@ test('isolates W6B acceptance jobs from the regular MSI release gate', async () 
     'run: pnpm --filter @eky/desktop installer:w6b-legacy';
   const packagedSuccessAcceptance =
     'run: pnpm --filter @eky/desktop installer:w6b2-success';
+  const prepareElectronRuntime =
+    'run: pnpm --filter @eky/desktop e2e:prepare-electron-runtime';
   const localPilotBundle =
     'run: pnpm --filter @eky/desktop installer:local-pilot-bundle';
 
@@ -102,6 +104,10 @@ test('isolates W6B acceptance jobs from the regular MSI release gate', async () 
     /- name: Check out repository[\s\S]*?persist-credentials: false\s+fetch-depth: 0/u,
   );
   assert.match(packagedSuccessJob, /timeout-minutes: 30/u);
+  assert.match(
+    packagedSuccessJob,
+    new RegExp(prepareElectronRuntime, 'u'),
+  );
   assert.match(
     packagedSuccessJob,
     new RegExp(packagedSuccessAcceptance, 'u'),

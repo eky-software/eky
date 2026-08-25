@@ -324,6 +324,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Prepare Electron development runtime
+        run: pnpm --filter @eky/desktop e2e:prepare-electron-runtime
+
       - name: Restore locked WiX toolchain twice without lock drift
         run: pnpm --filter @eky/desktop installer:verify-restore-lock
 
