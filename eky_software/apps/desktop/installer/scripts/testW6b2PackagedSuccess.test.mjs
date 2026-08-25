@@ -160,6 +160,11 @@ test('invalid evidence fails immediately instead of becoming a timeout', () => {
   assert.match(evidence, /W6B2_SUCCESS_RESULT_INVALID/u);
   assert.match(evidence, /W6B2_SUCCESS_PROOF_HANDOFF_FAILED/u);
   assert.match(evidence, /W6B2_PROOF_HANDOFF_FAILED/u);
+  assert.match(evidence, /W6B2_SUCCESS_PROOF_SOURCE_STAGE_FAILED/u);
+  assert.match(evidence, /W6B2_SUCCESS_PROOF_CANDIDATE_STAGE_FAILED/u);
+  assert.match(evidence, /W6B2_SUCCESS_PROOF_PREPARATION_FAILED/u);
+  assert.match(evidence, /W6B2_SUCCESS_PROOF_INSTALLER_HANDOFF_FAILED/u);
+  assert.match(evidence, /W6B2_SUCCESS_PROOF_QUIT_REQUEST_MISSING/u);
   assert.match(evidence, /\$failedKeys/u);
   assert.match(evidence, /electronReady/u);
   assert.match(evidence, /installedApplication/u);

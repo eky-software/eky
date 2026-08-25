@@ -30,6 +30,66 @@ describe('W6B.2 packaged proof controller', () => {
     expect(fixture.handoff.handoffPreparedUpdate).toHaveBeenCalledOnce();
   });
 
+  it.each([
+    {
+      errorCode: 'W6B2_PROOF_SOURCE_STAGE_FAILED',
+      fail(fixture: ReturnType<typeof createControllerFixture>) {
+        fixture.cache.stageSelectedPackage.mockRejectedValueOnce(
+          new Error('C:/private/source.msi'),
+        );
+      },
+    },
+    {
+      errorCode: 'W6B2_PROOF_CANDIDATE_STAGE_FAILED',
+      fail(fixture: ReturnType<typeof createControllerFixture>) {
+        fixture.cache.stageSelectedPackage
+          .mockResolvedValueOnce({})
+          .mockRejectedValueOnce(new Error('C:/private/candidate.msi'));
+      },
+    },
+    {
+      errorCode: 'W6B2_PROOF_PREPARATION_FAILED',
+      fail(fixture: ReturnType<typeof createControllerFixture>) {
+        fixture.handoff.prepareConfirmedUpdate.mockRejectedValueOnce(
+          new Error('private recovery point'),
+        );
+      },
+    },
+    {
+      errorCode: 'W6B2_PROOF_INSTALLER_HANDOFF_FAILED',
+      fail(fixture: ReturnType<typeof createControllerFixture>) {
+        fixture.handoff.handoffPreparedUpdate.mockRejectedValueOnce(
+          new Error('private installer path'),
+        );
+      },
+    },
+  ])('reports $errorCode without raw failure data', async ({ errorCode, fail }) => {
+    const fixture = createControllerFixture('sourceHandoff', 'source');
+    fixture.state.quitRequested = true;
+    fail(fixture);
+
+    const result = await runW6b2PackagedProofController(fixture.options);
+
+    expect(result).toEqual({
+      errorCode,
+      formatVersion: 1,
+      phase: 'sourceHandoff',
+      status: 'failed',
+    });
+    expect(JSON.stringify(result)).not.toContain('private');
+  });
+
+  it('distinguishes a missing quit request from a completed handoff', async () => {
+    const fixture = createControllerFixture('sourceHandoff', 'source');
+
+    await expect(runW6b2PackagedProofController(fixture.options)).resolves.toEqual({
+      errorCode: 'W6B2_PROOF_QUIT_REQUEST_MISSING',
+      formatVersion: 1,
+      phase: 'sourceHandoff',
+      status: 'failed',
+    });
+  });
+
   it('verifies target migration classification before stopping first start', async () => {
     const fixture = createControllerFixture('targetFirstStart', 'target');
     fixture.workspaceManagement.getStatus.mockResolvedValue(status('A'));

@@ -159,15 +159,36 @@ exit 7
     -ExpectedPhase sourceHandoff -ExpectedStatus completed
   Assert-W6b2ProcessEqual $proofResult.status 'completed' `
     'W6B2_PROCESS_TEST_PROOF_SUCCESS_INVALID'
-  [IO.File]::WriteAllText(
-    $proofResultPath,
-    '{"errorCode":"W6B2_PROOF_HANDOFF_FAILED","formatVersion":1,"phase":"sourceHandoff","status":"failed"}',
-    [Text.UTF8Encoding]::new($false)
-  )
-  Assert-W6b2ProcessThrows {
-    Read-W6b2SuccessProofResult -ProofRoot $proofResultRoot `
-      -ExpectedPhase sourceHandoff -ExpectedStatus completed
-  } 'W6B2_SUCCESS_PROOF_HANDOFF_FAILED'
+  $proofFailures = [ordered]@{
+    W6B2_PROOF_SOURCE_STAGE_FAILED = `
+      'W6B2_SUCCESS_PROOF_SOURCE_STAGE_FAILED'
+    W6B2_PROOF_CANDIDATE_STAGE_FAILED = `
+      'W6B2_SUCCESS_PROOF_CANDIDATE_STAGE_FAILED'
+    W6B2_PROOF_PREPARATION_FAILED = `
+      'W6B2_SUCCESS_PROOF_PREPARATION_FAILED'
+    W6B2_PROOF_INSTALLER_HANDOFF_FAILED = `
+      'W6B2_SUCCESS_PROOF_INSTALLER_HANDOFF_FAILED'
+    W6B2_PROOF_QUIT_REQUEST_MISSING = `
+      'W6B2_SUCCESS_PROOF_QUIT_REQUEST_MISSING'
+    W6B2_PROOF_HANDOFF_FAILED = 'W6B2_SUCCESS_PROOF_HANDOFF_FAILED'
+  }
+  foreach ($proofFailure in $proofFailures.GetEnumerator()) {
+    $proofFailurePayload = [ordered]@{
+      errorCode = $proofFailure.Key
+      formatVersion = 1
+      phase = 'sourceHandoff'
+      status = 'failed'
+    } | ConvertTo-Json -Compress
+    [IO.File]::WriteAllText(
+      $proofResultPath,
+      $proofFailurePayload,
+      [Text.UTF8Encoding]::new($false)
+    )
+    Assert-W6b2ProcessThrows {
+      Read-W6b2SuccessProofResult -ProofRoot $proofResultRoot `
+        -ExpectedPhase sourceHandoff -ExpectedStatus completed
+    } $proofFailure.Value
+  }
   [IO.File]::WriteAllText(
     $proofResultPath,
     '{"errorCode":"RAW_ERROR","formatVersion":1,"phase":"sourceHandoff","status":"failed"}',

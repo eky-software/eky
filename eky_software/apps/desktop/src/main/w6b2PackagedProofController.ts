@@ -86,17 +86,39 @@ async function runSourceHandoff(
       manifestPath: options.configuration.sourceManifestPath,
       role: 'current',
     });
+  } catch {
+    throw new W6b2PackagedProofControllerError(
+      'W6B2_PROOF_SOURCE_STAGE_FAILED',
+    );
+  }
+  try {
     await options.cache.stageSelectedPackage({
       manifestPath: options.configuration.targetManifestPath,
       role: 'candidate',
     });
+  } catch {
+    throw new W6b2PackagedProofControllerError(
+      'W6B2_PROOF_CANDIDATE_STAGE_FAILED',
+    );
+  }
+  try {
     await options.handoff.prepareConfirmedUpdate();
+  } catch {
+    throw new W6b2PackagedProofControllerError(
+      'W6B2_PROOF_PREPARATION_FAILED',
+    );
+  }
+  try {
     await options.handoff.handoffPreparedUpdate();
   } catch {
-    throw new W6b2PackagedProofControllerError('W6B2_PROOF_HANDOFF_FAILED');
+    throw new W6b2PackagedProofControllerError(
+      'W6B2_PROOF_INSTALLER_HANDOFF_FAILED',
+    );
   }
   if (!options.isQuitRequested()) {
-    throw new W6b2PackagedProofControllerError('W6B2_PROOF_HANDOFF_FAILED');
+    throw new W6b2PackagedProofControllerError(
+      'W6B2_PROOF_QUIT_REQUEST_MISSING',
+    );
   }
   return success(options.configuration.phase, 'completed');
 }
