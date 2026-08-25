@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { realpath } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 
 import {
@@ -14,6 +16,7 @@ const pair = Object.freeze({
 });
 
 test('builds once and runs the same installer pair twice in isolated fixtures', async () => {
+  const expectedTemporaryRoot = await realpath(tmpdir());
   let buildCount = 0;
   let createdCount = 0;
   let pairVerificationCount = 0;
@@ -42,7 +45,7 @@ test('builds once and runs the same installer pair twice in isolated fixtures', 
         processArguments.push(arguments_);
       },
       temporaryRoot() {
-        return 'C:\\fixture-temp';
+        return tmpdir();
       },
       async verifyInstallerPair(value) {
         assert.equal(value, pair);
@@ -75,6 +78,8 @@ test('builds once and runs the same installer pair twice in isolated fixtures', 
     assert.ok(arguments_.includes(pair.source.installerPath));
     assert.ok(arguments_.includes(pair.target.installerPath));
     assert.equal(arguments_.includes('-ProofRoot'), false);
+    const temporaryRootIndex = arguments_.indexOf('-TemporaryRoot');
+    assert.equal(arguments_[temporaryRootIndex + 1], expectedTemporaryRoot);
   }
 });
 
@@ -102,7 +107,7 @@ test('cleans the current fixture and stops after a failed run', async () => {
           throw new Error('private process failure');
         },
         temporaryRoot() {
-          return 'C:\\fixture-temp';
+          return tmpdir();
         },
         async verifyInstallerPair() {},
         async verifyProfileApplication() {},

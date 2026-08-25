@@ -4,6 +4,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   rm,
   writeFile,
 } from 'node:fs/promises';
@@ -176,7 +177,7 @@ test('accepts release revisions and rejects revisions outside the shared bounds'
 async function createRoot(context) {
   const root = await mkdtemp(join(tmpdir(), 'eky-w6b2-run-fixture-'));
   context.after(() => rm(root, { force: true, recursive: true }));
-  return root;
+  return realpath(root);
 }
 
 async function createPair(root) {

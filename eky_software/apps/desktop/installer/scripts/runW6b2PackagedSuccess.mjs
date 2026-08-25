@@ -48,7 +48,7 @@ export async function runW6b2PackagedSuccess(options = {}) {
   const electronRuntime = dependencies.resolveElectronRuntime();
   const profilePath = options.profileApplicationPath ?? profileApplicationPath;
   await dependencies.verifyProfileApplication(profilePath);
-  const temporaryRoot = resolve(dependencies.temporaryRoot());
+  const temporaryRoot = await realpath(resolve(dependencies.temporaryRoot()));
 
   for (let runNumber = 1; runNumber <= 2; runNumber += 1) {
     const run = await dependencies.createRunFixture({
