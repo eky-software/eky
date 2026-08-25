@@ -15,6 +15,14 @@ test('MSI test runner has bounded waits and exact-process cleanup', () => {
   const hostSource = readFileSync(hostPath, 'utf8');
 
   assert.match(source, /function Get-EkyMsiExecPolicy/u);
+  assert.match(
+    source,
+    /'w6b2_source_install'\s*\{\s*@\('W6B2_SUCCESS_SOURCE_INSTALL', 300000\)\s*\}/u,
+  );
+  assert.match(
+    source,
+    /'w6b2_uninstall'\s*\{\s*@\('W6B2_SUCCESS_UNINSTALL', 180000\)\s*\}/u,
+  );
   assert.match(source, /function Start-EkyOwnedMsiExecHost/u);
   assert.match(source, /function Wait-EkyOwnedMsiProcess/u);
   assert.match(source, /function Stop-EkyOwnedMsiProcess/u);

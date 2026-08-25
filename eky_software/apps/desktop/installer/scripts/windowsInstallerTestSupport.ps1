@@ -50,6 +50,8 @@ function Get-EkyMsiExecPolicy {
     'w6b_source_install' { @('W6B_LEGACY_SOURCE_INSTALL', 300000) }
     'w6b_target_install' { @('W6B_LEGACY_TARGET_INSTALL', 300000) }
     'w6b_uninstall' { @('W6B_LEGACY_UNINSTALL', 180000) }
+    'w6b2_source_install' { @('W6B2_SUCCESS_SOURCE_INSTALL', 300000) }
+    'w6b2_uninstall' { @('W6B2_SUCCESS_UNINSTALL', 180000) }
     default { throw 'INSTALLER_MSI_OPERATION_INVALID' }
   }
   return [pscustomobject]@{
