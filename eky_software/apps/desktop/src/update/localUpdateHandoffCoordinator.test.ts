@@ -42,6 +42,17 @@ describe('local update handoff coordinator', () => {
     expect(fixture.createValidatedPreUpdatePoint).toHaveBeenCalledOnce();
   });
 
+  it('reads exclusive package cache slots sequentially', async () => {
+    const fixture = createFixture({ enforceSerialIdentityReads: true });
+
+    await expect(
+      fixture.coordinator.prepareConfirmedUpdate(),
+    ).resolves.toMatchObject({ state: 'recoveryPointValidated' });
+
+    expect(fixture.identityReadRoles).toEqual(['current', 'candidate']);
+    expect(fixture.maxConcurrentIdentityReads).toBe(1);
+  });
+
   it('writes awaitingFirstStart before one exact installer launch', async () => {
     const order: string[] = [];
     const fixture = createFixture({
@@ -157,6 +168,7 @@ describe('local update handoff coordinator', () => {
 });
 
 function createFixture(options: {
+  enforceSerialIdentityReads?: boolean;
   onLaunch?(): void;
   onShutdown?(): void;
   onWrite?(state: string): void;
@@ -167,7 +179,10 @@ function createFixture(options: {
   shutdownFails?: boolean;
 } = {}) {
   let currentJournal: Readonly<UpdateJournal> | undefined;
+  let activeIdentityReads = 0;
+  let maxConcurrentIdentityReads = 0;
   let profileValidationCount = 0;
+  const identityReadRoles: Array<'candidate' | 'current'> = [];
   const states: string[] = [];
   const validateActiveProfile = vi.fn(async () => {
     profileValidationCount += 1;
@@ -204,7 +219,24 @@ function createFixture(options: {
   const coordinator = new LocalUpdateHandoffCoordinator({
     cache: {
       async readExpectedPackageIdentity(role) {
-        return role === 'current' ? currentIdentity : candidateIdentity;
+        identityReadRoles.push(role);
+        activeIdentityReads += 1;
+        maxConcurrentIdentityReads = Math.max(
+          maxConcurrentIdentityReads,
+          activeIdentityReads,
+        );
+        try {
+          if (
+            options.enforceSerialIdentityReads &&
+            activeIdentityReads > 1
+          ) {
+            throw new Error('concurrent package cache read');
+          }
+          await Promise.resolve();
+          return role === 'current' ? currentIdentity : candidateIdentity;
+        } finally {
+          activeIdentityReads -= 1;
+        }
       },
       async revalidateJournalPackage() {
         if (options.revalidationFails) {
@@ -260,6 +292,10 @@ function createFixture(options: {
     },
     launchInstaller,
     leaveMaintenance,
+    identityReadRoles,
+    get maxConcurrentIdentityReads() {
+      return maxConcurrentIdentityReads;
+    },
     operationCompleted,
     operationFailed,
     operationStarted,

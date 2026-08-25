@@ -64,10 +64,12 @@ export class LocalUpdateHandoffCoordinator {
       this.notifyStarted(correlationId, 'recoveryPoint');
       try {
         await this.assertJournalCanBeReplaced();
-        const [currentIdentity, candidateIdentity] = await Promise.all([
-          this.dependencies.cache.readExpectedPackageIdentity('current'),
-          this.dependencies.cache.readExpectedPackageIdentity('candidate'),
-        ]);
+        const currentIdentity =
+          await this.dependencies.cache.readExpectedPackageIdentity('current');
+        const candidateIdentity =
+          await this.dependencies.cache.readExpectedPackageIdentity(
+            'candidate',
+          );
         const profileValidation =
           await this.dependencies.profileProtection.validateActiveProfile();
         journal = createPreparedJournal({
