@@ -1028,6 +1028,20 @@ prosessin poistumista ennen ensimmäistä `msiexec`-komentoa. Odotuksen
 epäonnistuminen keskeyttää rollbackin suljetusti; skripti ei yritä yleistä
 prosessien tappamista eikä jatka käynnissä olevan Eky-prosessin yli.
 
+Windowsin binaaripalautuksen prosessiomistus käyttää kahta kiinteästi
+paketoitua skriptiä. Electron main käynnistää ensin vain
+`launchRollbackWindowsInstaller.ps1`-bootstrapin ilman shelliä tai detached-
+lippua ja odottaa siltä rajatusti täsmällisen turvallisen kuittauksen.
+Bootstrap validoi kiinteät tiedosto- ja argumenttirajat, käynnistää varsinaisen
+`rollbackWindowsInstaller.ps1`-helperin Windowsin `Start-Process`-rajalla ja
+poistuu vasta onnistuneen prosessiluonnin jälkeen. Main hyväksyy handoffin vain,
+jos bootstrap päättyy exit-koodiin nolla ja sen enintään 64 tavun stdout on
+täsmälleen sovittu kuittaus; timeout, ylimääräinen tuloste, signaali tai muu
+exit-koodi torjutaan suljetusti. Varsinainen helper jää bootstrapista
+riippumattomaksi, odottaa edelleen juuri Electron mainin validoitua PID:tä ja
+omistaa kaikki MSI-vaiheet. Renderer ei anna skriptiä, komentoa, polkua,
+ProductCodea tai kuittausta eikä bootstrap avaa yleistä prosessirajapintaa.
+
 W6B.2B:n paketoitu fault-harness voi antaa rollback-helperille vain
 tokenista johdetun yksityisen proof-juuren alla olevan, kiinteästi nimetyn
 JSONL-progresspolun. Helper kirjoittaa siihen ainoastaan suljetun vaiheen

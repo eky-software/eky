@@ -170,6 +170,15 @@ test('keeps direct downgrade blocked and rollback outside MSI authoring', async 
     ),
     'utf8',
   );
+  const rollbackLaunchScript = await readFile(
+    join(
+      desktopDirectory,
+      'resources',
+      'update',
+      'launchRollbackWindowsInstaller.ps1',
+    ),
+    'utf8',
+  );
 
   assert.match(packageSource, /<MajorUpgrade/);
   assert.match(packageSource, /AllowDowngrades="no"/);
@@ -221,4 +230,8 @@ test('keeps direct downgrade blocked and rollback outside MSI authoring', async 
     rollbackScript,
     /Invoke-Expression|Start-Process|cmd\.exe|\.bat\b|\.cmd\b/iu,
   );
+  assert.match(rollbackLaunchScript, /Start-Process/);
+  assert.match(rollbackLaunchScript, /EKY_ROLLBACK_HELPER_STARTED/);
+  assert.doesNotMatch(rollbackLaunchScript, /Invoke-Expression/);
+  assert.doesNotMatch(rollbackLaunchScript, /Start-Job/);
 });

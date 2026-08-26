@@ -311,12 +311,13 @@ test('enforces the application-stage file count boundary', async () => {
   );
 });
 
-test('allows exactly the three reviewed update runtime scripts', async () => {
+test('allows exactly the four reviewed update runtime scripts', async () => {
   const root = await createStageFixture(
     'inspectWindowsInstallerIdentity.ps1',
     'safe',
   );
   await writeFixture(root, 'inspectWindowsRegularFile.ps1', 'safe');
+  await writeFixture(root, 'launchRollbackWindowsInstaller.ps1', 'safe');
   await writeFixture(root, 'rollbackWindowsInstaller.ps1', 'safe');
 
   await assert.doesNotReject(
