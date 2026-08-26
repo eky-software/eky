@@ -41,9 +41,6 @@ function Invoke-W6b2FaultActiveWorkspaceFirstStartFailure {
   Invoke-W6b2FaultApplicationStep -Context $Context `
     -Stage targetFirstStartFailure -Phase targetFirstStartFailure `
     -ExpectedStatus relaunching -ResultCode expectedFaultObserved
-  Invoke-W6b2FaultApplicationStep -Context $Context `
-    -Stage businessRollbackPreparation -Phase businessRollback `
-    -ExpectedStatus relaunching -ResultCode rollbackPrepared
 
   Start-W6b2FaultStage -Stage businessRollbackCompletion
   Set-W6b2FaultPhase -ProofRoot $Context.ProofRoot `
@@ -115,9 +112,6 @@ function Invoke-W6b2FaultBinaryRollbackFailure {
   Invoke-W6b2FaultApplicationStep -Context $Context `
     -Stage targetFirstStartFailure -Phase targetFirstStartFailure `
     -ExpectedStatus relaunching -ResultCode expectedFaultObserved
-  Invoke-W6b2FaultApplicationStep -Context $Context `
-    -Stage businessRollbackPreparation -Phase businessRollback `
-    -ExpectedStatus relaunching -ResultCode rollbackPrepared
   Invoke-W6b2FaultApplicationStep -Context $Context `
     -Stage binaryRollbackFailure -Phase binaryRollbackFailure `
     -ExpectedStatus completed -ResultCode failedSafeObserved

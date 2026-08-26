@@ -259,6 +259,7 @@ async function startDesktopRuntime(
         shutdownStarted = true;
         app.quit();
       },
+      quitRequested: w6b2ProofQuitRequested,
       relaunchRequested: w6b2ProofRelaunchRequested,
     });
   }

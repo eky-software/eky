@@ -127,6 +127,30 @@ test('application phases own and close only their exact process trees', () => {
   );
 });
 
+test('active rollback uses one state-driven business rollback launch', () => {
+  const activeRollback = readFunction(
+    scenarioOperations,
+    'Invoke-W6b2FaultActiveWorkspaceFirstStartFailure',
+    'Invoke-W6b2FaultAcceptanceInterruption',
+  );
+  assert.equal(
+    activeRollback.match(
+      /Invoke-W6b2FaultApplicationHandoffPhase[\s\S]{0,400}-Phase businessRollback\b/gu,
+    )?.length,
+    1,
+  );
+  assert.doesNotMatch(activeRollback, /businessRollbackPreparation/u);
+  assert.match(activeRollback, /Wait-W6b2FaultSourceInstallation/u);
+
+  const binaryRollback = readFunction(
+    scenarioOperations,
+    'Invoke-W6b2FaultBinaryRollbackFailure',
+    'Invoke-W6b2FaultTargetUpdate',
+  );
+  assert.doesNotMatch(binaryRollback, /-Phase businessRollback\b/u);
+  assert.match(binaryRollback, /-Phase binaryRollbackFailure\b/u);
+});
+
 test('every successful flow ends in package and profile terminal verification', () => {
   assert.match(
     scenarioOperations,
@@ -179,4 +203,12 @@ test('cleanup preserves the normal profile and proves all owned state absent', (
 
 function read(relativePath) {
   return readFileSync(join(scriptDirectory, relativePath), 'utf8');
+}
+
+function readFunction(source, functionName, nextFunctionName) {
+  const start = source.indexOf(`function ${functionName}`);
+  const end = source.indexOf(`function ${nextFunctionName}`, start + 1);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  return source.slice(start, end);
 }
