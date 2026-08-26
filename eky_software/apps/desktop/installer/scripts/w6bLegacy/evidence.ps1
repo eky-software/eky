@@ -237,6 +237,49 @@ function Get-W6bWorkspaceRegistryInventory {
 function Read-W6bAcceptedBuildSlot {
   param([Parameter(Mandatory = $true)][string]$Path)
 
+  $current = Read-W6bAcceptedBuildSlotCandidate -Path $Path
+  if ($current.State -ne 'missing') {
+    return $current
+  }
+
+  $backup = Read-W6bAcceptedBuildSlotCandidate -Path "$Path.backup"
+  $next = Read-W6bAcceptedBuildSlotCandidate -Path "$Path.next"
+  if ($backup.State -eq 'invalid' -or $next.State -eq 'invalid') {
+    return [pscustomobject]@{ State = 'invalid'; Value = $null }
+  }
+  if ($backup.State -eq 'present' -and $next.State -eq 'present') {
+    if (!(Test-W6bAcceptedBuildValuesEqual -Left $backup.Value -Right $next.Value)) {
+      return [pscustomobject]@{ State = 'invalid'; Value = $null }
+    }
+    return $backup
+  }
+  if ($backup.State -eq 'present') {
+    return $backup
+  }
+  if ($next.State -eq 'present') {
+    return $next
+  }
+  return [pscustomobject]@{ State = 'missing'; Value = $null }
+}
+
+function Test-W6bAcceptedBuildValuesEqual {
+  param(
+    [Parameter(Mandatory = $true)]$Left,
+    [Parameter(Mandatory = $true)]$Right
+  )
+
+  return (
+    $Left.acceptedAt -ceq $Right.acceptedAt -and
+    $Left.appVersion -ceq $Right.appVersion -and
+    $Left.buildRevision -ceq $Right.buildRevision -and
+    $Left.formatVersion -eq $Right.formatVersion -and
+    $Left.releaseChannel -ceq $Right.releaseChannel
+  )
+}
+
+function Read-W6bAcceptedBuildSlotCandidate {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
   if (!(Test-Path -LiteralPath $Path -PathType Leaf)) {
     return [pscustomobject]@{ State = 'missing'; Value = $null }
   }
@@ -244,7 +287,18 @@ function Read-W6bAcceptedBuildSlot {
     $value = Read-W6bAcceptedBuildFile -Path $Path
   }
   catch {
-    return [pscustomobject]@{ State = 'invalid'; Value = $null }
+    # The production store atomically rotates current -> backup and next ->
+    # current. Re-evaluate one changed slot without treating that expected
+    # rename boundary as corrupt metadata.
+    if (!(Test-Path -LiteralPath $Path -PathType Leaf)) {
+      return [pscustomobject]@{ State = 'missing'; Value = $null }
+    }
+    try {
+      $value = Read-W6bAcceptedBuildFile -Path $Path
+    }
+    catch {
+      return [pscustomobject]@{ State = 'invalid'; Value = $null }
+    }
   }
   return [pscustomobject]@{ State = 'present'; Value = $value }
 }

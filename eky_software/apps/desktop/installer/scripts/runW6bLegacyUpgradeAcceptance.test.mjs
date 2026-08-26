@@ -346,7 +346,11 @@ test('classifies current and legacy accepted-build slots independently', {
     .filter((line) => line.trim() !== '');
   assert.equal(lines.length, 1);
   assert.deepEqual(JSON.parse(lines[0]), {
+    atomicRecoverySlotsRecognized: true,
+    conflictingRecoverySlotsRejected: true,
     currentAndLegacyClassifiedSeparately: true,
+    identicalRecoverySlotsAccepted: true,
+    invalidCurrentRejectedBeforeRecoverySlots: true,
     invalidMetadataRejected: true,
     status: 'succeeded',
     targetRevisionMismatchDistinguished: true,
@@ -402,6 +406,10 @@ for (const tempForm of longPathTempForms) {
 test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () => {
   const sourceSmokeText = readFileSync(
     new URL('./w6bLegacy/sourceSmoke.ps1', import.meta.url),
+    'utf8',
+  );
+  const progressSourceText = readFileSync(
+    new URL('./w6bLegacy/progress.ps1', import.meta.url),
     'utf8',
   );
   const sourceText = [
@@ -469,6 +477,44 @@ test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () 
   assert.match(sourceText, /'msiExited'/u);
   assert.match(sourceText, /'productStateValidated'/u);
   assert.match(sourceText, /'payloadValidated'/u);
+  for (const cleanupSignal of [
+    'processStopStarted',
+    'processStopCompleted',
+    'processStopFailed',
+    'targetUninstallStarted',
+    'targetUninstallCompleted',
+    'targetUninstallFailed',
+    'sourceUninstallStarted',
+    'sourceUninstallCompleted',
+    'sourceUninstallFailed',
+    'postconditionsStarted',
+    'postconditionsCompleted',
+    'postconditionsFailed',
+    'installerReleaseStarted',
+    'installerReleaseCompleted',
+    'installerReleaseFailed',
+    'testRootRemovalStarted',
+    'testRootRemovalCompleted',
+    'testRootRemovalFailed',
+  ]) {
+    assert.match(sourceText, new RegExp(`'${cleanupSignal}'`, 'u'));
+  }
+  assert.match(
+    progressSourceText,
+    /function Write-W6bLegacyCleanupObservation/iu,
+  );
+  assert.match(
+    progressSourceText,
+    /if \(\$script:CurrentStage -ne 'cleanup'\)[\s\S]*?W6B_LEGACY_PROGRESS_STAGE_INVALID/iu,
+  );
+  const cleanupObservationSource = progressSourceText.match(
+    /function Write-W6bLegacyCleanupObservation[\s\S]*?(?=\nfunction Get-W6bSafeErrorCode)/iu,
+  )?.[0];
+  assert.ok(cleanupObservationSource);
+  assert.doesNotMatch(
+    cleanupObservationSource,
+    /\b(?:productCode|LogName|Path|ErrorRecord|processId)\b/u,
+  );
   assert.match(
     sourceText,
     /\$cleanupProducts = if \(\$script:PreflightIsolationEstablished\)[\s\S]*?if \(\$script:TargetCleanupAuthorized\)[\s\S]*?if \(\$script:SourceCleanupAuthorized\)/iu,
@@ -571,6 +617,42 @@ test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () 
   assert.doesNotMatch(sourceText, /Stop-Process\s+-Name/iu);
   assert.doesNotMatch(sourceText, /Write-(?:Host|Output).*Exception\.Message/iu);
   assert.doesNotMatch(sourceText, /Write-(?:Host|Output).*StackTrace/iu);
+});
+
+test('source smoke polling tolerates only a transient incomplete write', {
+  skip: process.platform !== 'win32',
+}, () => {
+  const result = spawnSync(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      resolve(
+        scriptDirectory,
+        'w6bLegacy',
+        'sourceSmokeResult.test.ps1',
+      ),
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  const lines = parseProcessChainOutput(result.stdout);
+
+  assert.equal(result.stderr, '');
+  assert.equal(
+    result.status,
+    0,
+    createSafeProcessChainFailureMessage('sourceSmokeResult', result.stdout),
+  );
+  assert.equal(lines.length, 1);
+  assert.deepEqual(JSON.parse(lines[0]), {
+    status: 'succeeded',
+    transientWriteIgnoredDuringPolling: true,
+    terminalReadRemainsStrict: true,
+    structuralInvalidityRejected: true,
+  });
 });
 
 for (const gracefulShutdownTestCase of gracefulShutdownTestCases) {

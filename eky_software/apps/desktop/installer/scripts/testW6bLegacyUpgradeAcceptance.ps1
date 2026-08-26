@@ -341,38 +341,63 @@ finally {
   $script:CurrentStage = 'cleanup'
   $script:StageStartedAt = [DateTime]::UtcNow
   Write-W6bLegacyProgress -Status started -ResultCode started
-  if ($null -ne $runningProcess) {
-    try {
+  Write-W6bLegacyCleanupObservation -Signal processStopStarted
+  try {
+    if ($null -ne $runningProcess) {
       Stop-EkyProcessTree -Process $runningProcess
     }
-    catch {
-      $script:CleanupFailure = $true
-    }
+    Write-W6bLegacyCleanupObservation -Signal processStopCompleted
+  }
+  catch {
+    $script:CleanupFailure = $true
+    Write-W6bLegacyCleanupObservation -Signal processStopFailed
   }
   $cleanupProducts = if ($script:PreflightIsolationEstablished) {
     @(
-      if ($script:TargetCleanupAuthorized) { $targetCode }
-      if ($script:SourceCleanupAuthorized) { $sourceCode }
+      if ($script:TargetCleanupAuthorized) {
+        [pscustomobject]@{
+          productCode = $targetCode
+          startedSignal = 'targetUninstallStarted'
+          completedSignal = 'targetUninstallCompleted'
+          failedSignal = 'targetUninstallFailed'
+        }
+      }
+      if ($script:SourceCleanupAuthorized) {
+        [pscustomobject]@{
+          productCode = $sourceCode
+          startedSignal = 'sourceUninstallStarted'
+          completedSignal = 'sourceUninstallCompleted'
+          failedSignal = 'sourceUninstallFailed'
+        }
+      }
     )
   }
   else {
     @()
   }
-  foreach ($productCode in $cleanupProducts) {
-    if (
-      $null -ne $installer -and
-      $null -ne $productCode -and
-      (Get-EkyProductState -Installer $installer -Code $productCode) -ge 1
-    ) {
-      try {
+  foreach ($cleanupProduct in $cleanupProducts) {
+    Write-W6bLegacyCleanupObservation `
+      -Signal $cleanupProduct.startedSignal
+    try {
+      $productCode = $cleanupProduct.productCode
+      if (
+        $null -ne $installer -and
+        $null -ne $productCode -and
+        (Get-EkyProductState -Installer $installer -Code $productCode) -ge 1
+      ) {
         Uninstall-W6bProduct -ProductCode $productCode `
           -LogName "cleanup-$($productCode.Trim('{}')).log"
       }
-      catch {
-        $script:CleanupFailure = $true
-      }
+      Write-W6bLegacyCleanupObservation `
+        -Signal $cleanupProduct.completedSignal
+    }
+    catch {
+      $script:CleanupFailure = $true
+      Write-W6bLegacyCleanupObservation `
+        -Signal $cleanupProduct.failedSignal
     }
   }
+  Write-W6bLegacyCleanupObservation -Signal postconditionsStarted
   try {
     if ($script:PreflightIsolationEstablished) {
       Assert-EkyPathEventuallyAbsent -Path $installRoot `
@@ -391,15 +416,33 @@ finally {
         (Get-EkyDirectoryInventory -Root $businessDataRoot) `
         $businessInventoryBefore 'W6B_LEGACY_NORMAL_PROFILE_CHANGED'
     }
+    Write-W6bLegacyCleanupObservation -Signal postconditionsCompleted
   }
   catch {
     $script:CleanupFailure = $true
+    Write-W6bLegacyCleanupObservation -Signal postconditionsFailed
   }
-  if ($null -ne $installer) {
-    [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($installer)
+  Write-W6bLegacyCleanupObservation -Signal installerReleaseStarted
+  try {
+    if ($null -ne $installer) {
+      [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($installer)
+    }
+    Write-W6bLegacyCleanupObservation -Signal installerReleaseCompleted
+  }
+  catch {
+    $script:CleanupFailure = $true
+    Write-W6bLegacyCleanupObservation -Signal installerReleaseFailed
   }
   if ($script:Completed -and !$script:CleanupFailure) {
-    Remove-W6bLegacyAcceptanceTestRoot -Root $testRoot
+    Write-W6bLegacyCleanupObservation -Signal testRootRemovalStarted
+    try {
+      Remove-W6bLegacyAcceptanceTestRoot -Root $testRoot
+      Write-W6bLegacyCleanupObservation -Signal testRootRemovalCompleted
+    }
+    catch {
+      $script:CleanupFailure = $true
+      Write-W6bLegacyCleanupObservation -Signal testRootRemovalFailed
+    }
   }
   if ($script:CleanupFailure) {
     $script:FailureCode = 'W6B_LEGACY_CLEANUP_FAILED'

@@ -24,8 +24,15 @@ import {
   e2eRunRootRemovalOptions,
   removeE2eRunRoot,
 } from '../../src/environment/removeE2eRunRoot.js';
-import { startManagedProcess } from '../../src/environment/startManagedProcess.js';
+import {
+  startManagedProcess,
+  type ManagedChildProcess,
+} from '../../src/environment/startManagedProcess.js';
 import { stopManagedProcessTree } from '../../src/environment/stopManagedProcessTree.js';
+import {
+  closeOwnedElectronRuntime,
+  stopOwnedElectronRuntime,
+} from '../../src/fixtures/stopOwnedElectronRuntime.js';
 import { waitForHttpHealth } from '../../src/environment/waitForHttpHealth.js';
 import { isAllowedE2eBrowserUrl } from '../../src/environment/e2eBrowserNetworkBoundary.js';
 import {
@@ -175,6 +182,111 @@ test.describe('managed E2E runtime primitives', () => {
     } finally {
       rmSync(runRoot, { force: true, recursive: true });
     }
+  });
+
+  test('stops an owned Electron process tree before closing its Playwright handle', async () => {
+    const calls: string[] = [];
+    const processToken = {} as ManagedChildProcess;
+
+    await stopOwnedElectronRuntime(
+      {
+        async close() {
+          calls.push('close');
+        },
+      },
+      processToken,
+      async (process) => {
+        expect(process).toBe(processToken);
+        calls.push('stop');
+      },
+    );
+
+    expect(calls).toEqual(['stop', 'close']);
+  });
+
+  test('closes a healthy Electron runtime before applying process-tree cleanup', async () => {
+    const calls: string[] = [];
+    const processToken = {} as ManagedChildProcess;
+
+    await closeOwnedElectronRuntime(
+      {
+        async close() {
+          calls.push('close');
+        },
+      },
+      processToken,
+      async (process) => {
+        expect(process).toBe(processToken);
+        calls.push('stop');
+      },
+    );
+
+    expect(calls).toEqual(['close', 'stop']);
+  });
+
+  test('still applies process-tree cleanup when graceful Electron close fails', async () => {
+    let stopped = false;
+
+    const action = closeOwnedElectronRuntime(
+      {
+        async close() {
+          throw new Error('raw synthetic close failure');
+        },
+      },
+      {} as ManagedChildProcess,
+      async () => {
+        stopped = true;
+      },
+    );
+
+    await expect(action).rejects.toThrow(
+      'Electron E2E runtime handle cleanup failed.',
+    );
+    expect(stopped).toBe(true);
+  });
+
+  test('still closes the Electron handle when owned process cleanup fails', async () => {
+    let closed = false;
+    const action = stopOwnedElectronRuntime(
+      {
+        async close() {
+          closed = true;
+        },
+      },
+      {} as ManagedChildProcess,
+      async () => {
+        throw new Error('raw synthetic process failure');
+      },
+    );
+
+    const error = await action.catch((candidate: unknown) => candidate);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe(
+      'Electron E2E runtime process cleanup failed.',
+    );
+    expect((error as Error).message).not.toContain(
+      'raw synthetic process failure',
+    );
+    expect(closed).toBe(true);
+  });
+
+  test('does not skip process cleanup when the Electron handle is already closed', async () => {
+    let stopped = false;
+
+    await expect(
+      stopOwnedElectronRuntime(
+        {
+          async close() {
+            throw new Error('synthetic closed handle');
+          },
+        },
+        {} as ManagedChildProcess,
+        async () => {
+          stopped = true;
+        },
+      ),
+    ).resolves.toBeUndefined();
+    expect(stopped).toBe(true);
   });
 
   test('refuses to remove a directory outside the E2E run-root contract', async () => {

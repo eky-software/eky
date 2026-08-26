@@ -1,6 +1,7 @@
 Set-StrictMode -Version Latest
 
 . (Join-Path $PSScriptRoot 'windowsInstallerProcessTree.ps1')
+. (Join-Path $PSScriptRoot 'windowsInstallerMsiProcessObservation.ps1')
 
 $script:EkyMsiExecHostPath = Join-Path $PSScriptRoot `
   'windowsInstallerMsiExecHost.ps1'
@@ -50,6 +51,8 @@ function Get-EkyMsiExecPolicy {
     'w6b_source_install' { @('W6B_LEGACY_SOURCE_INSTALL', 300000) }
     'w6b_target_install' { @('W6B_LEGACY_TARGET_INSTALL', 300000) }
     'w6b_uninstall' { @('W6B_LEGACY_UNINSTALL', 180000) }
+    'w6b2_source_install' { @('W6B2_SUCCESS_SOURCE_INSTALL', 300000) }
+    'w6b2_uninstall' { @('W6B2_SUCCESS_UNINSTALL', 180000) }
     default { throw 'INSTALLER_MSI_OPERATION_INVALID' }
   }
   return [pscustomobject]@{
@@ -162,6 +165,167 @@ function Wait-EkyOwnedMsiProcess {
   }
 }
 
+function Wait-EkyObservedOwnedMsiProcess {
+  param(
+    [Parameter(Mandatory = $true)]$Process,
+    [Parameter(Mandatory = $true)][int]$TimeoutMilliseconds,
+    [Parameter(Mandatory = $true)][hashtable]$ObservationContext,
+    [int]$HeartbeatMilliseconds = 60000,
+    [int]$PollMilliseconds = 1000
+  )
+
+  if (
+    $TimeoutMilliseconds -lt 1 -or
+    $HeartbeatMilliseconds -lt 1 -or
+    $PollMilliseconds -lt 1
+  ) {
+    throw 'INSTALLER_MSI_PROCESS_WAIT_INVALID'
+  }
+  $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+  $nextHeartbeatMs = [long]$HeartbeatMilliseconds
+  try {
+    do {
+      $remainingMs = [long]$TimeoutMilliseconds -
+        [long]$stopwatch.ElapsedMilliseconds
+      if ($remainingMs -le 0) {
+        return [pscustomobject]@{
+          state = 'timedOut'
+          exitCode = $null
+          durationMs = [long]$stopwatch.ElapsedMilliseconds
+        }
+      }
+      $untilHeartbeatMs = $nextHeartbeatMs -
+        [long]$stopwatch.ElapsedMilliseconds
+      $waitMilliseconds = [int][Math]::Min(
+        [long]$PollMilliseconds,
+        $remainingMs
+      )
+      if ($untilHeartbeatMs -gt 0) {
+        $waitMilliseconds = [int][Math]::Min(
+          [long]$waitMilliseconds,
+          $untilHeartbeatMs
+        )
+      }
+      if ($Process.WaitForExit([Math]::Max(1, $waitMilliseconds))) {
+        return [pscustomobject]@{
+          state = 'exited'
+          exitCode = [int]$Process.ExitCode
+          durationMs = [long]$stopwatch.ElapsedMilliseconds
+        }
+      }
+      if ($stopwatch.ElapsedMilliseconds -ge $nextHeartbeatMs) {
+        Write-EkyMsiProcessObservation -Context $ObservationContext `
+          -Phase waitHeartbeat -Status observed
+        do {
+          $nextHeartbeatMs += [long]$HeartbeatMilliseconds
+        } while ($nextHeartbeatMs -le $stopwatch.ElapsedMilliseconds)
+      }
+    } while ($true)
+  }
+  catch {
+    throw 'INSTALLER_MSI_PROCESS_WAIT_FAILED'
+  }
+  finally {
+    $stopwatch.Stop()
+  }
+}
+
+function Invoke-EkyOwnedMsiProcessCleanup {
+  param(
+    [Parameter(Mandatory = $true)]$Process,
+    [Parameter(Mandatory = $true)]$Identity,
+    [Parameter(Mandatory = $true)][string]$ErrorPrefix,
+    [AllowNull()][hashtable]$ObservationContext = $null,
+    [AllowNull()][scriptblock]$CleanupAction = $null
+  )
+
+  if ($null -ne $ObservationContext) {
+    Write-EkyMsiProcessObservation -Context $ObservationContext `
+      -Phase cleanupStarted -Status started
+  }
+  try {
+    if ($null -ne $CleanupAction) {
+      [void](& $CleanupAction $Process $Identity)
+    }
+    else {
+      Stop-EkyOwnedMsiProcess -Process $Process -Identity $Identity
+    }
+  }
+  catch {
+    if ($null -ne $ObservationContext) {
+      Write-EkyMsiProcessObservation -Context $ObservationContext `
+        -Phase cleanupCompleted -Status failed
+    }
+    throw "${ErrorPrefix}_CLEANUP_FAILED"
+  }
+  if ($null -ne $ObservationContext) {
+    Write-EkyMsiProcessObservation -Context $ObservationContext `
+      -Phase cleanupCompleted -Status completed
+    Write-EkyMsiProcessObservation -Context $ObservationContext `
+      -Phase processTreeAbsent -Status completed
+  }
+}
+
+function Invoke-EkyOwnedMsiProcessLifecycle {
+  param(
+    [Parameter(Mandatory = $true)]$Process,
+    [Parameter(Mandatory = $true)][string]$ErrorPrefix,
+    [Parameter(Mandatory = $true)][int]$TimeoutMilliseconds,
+    [AllowNull()][hashtable]$ObservationContext = $null,
+    [int]$HeartbeatMilliseconds = 60000,
+    [int]$PollMilliseconds = 1000,
+    [AllowNull()][scriptblock]$CleanupAction = $null
+  )
+
+  if ($null -ne $ObservationContext) {
+    Write-EkyMsiProcessObservation -Context $ObservationContext `
+      -Phase hostIdentityCaptured -Status started
+  }
+  $identity = New-EkyOwnedMsiProcessIdentity -Process $Process
+  if ($null -ne $ObservationContext) {
+    Write-EkyMsiProcessObservation -Context $ObservationContext `
+      -Phase hostIdentityCaptured -Status completed
+    Write-EkyMsiProcessObservation -Context $ObservationContext `
+      -Phase waitStarted -Status started
+  }
+  try {
+    $result = Wait-EkyObservedOwnedMsiProcess -Process $Process `
+      -TimeoutMilliseconds $TimeoutMilliseconds `
+      -ObservationContext $ObservationContext `
+      -HeartbeatMilliseconds $HeartbeatMilliseconds `
+      -PollMilliseconds $PollMilliseconds
+  }
+  catch {
+    if ($null -ne $ObservationContext) {
+      Write-EkyMsiProcessObservation -Context $ObservationContext `
+        -Phase waitStarted -Status failed
+    }
+    Invoke-EkyOwnedMsiProcessCleanup -Process $Process -Identity $identity `
+      -ErrorPrefix $ErrorPrefix -ObservationContext $ObservationContext `
+      -CleanupAction $CleanupAction
+    throw "${ErrorPrefix}_WAIT_FAILED"
+  }
+  if ($result.state -eq 'timedOut') {
+    if ($null -ne $ObservationContext) {
+      Write-EkyMsiProcessObservation -Context $ObservationContext `
+        -Phase waitTimedOut -Status failed
+    }
+    Invoke-EkyOwnedMsiProcessCleanup -Process $Process -Identity $identity `
+      -ErrorPrefix $ErrorPrefix -ObservationContext $ObservationContext `
+      -CleanupAction $CleanupAction
+    throw "${ErrorPrefix}_TIMEOUT"
+  }
+  if ($null -ne $ObservationContext) {
+    Write-EkyMsiProcessObservation -Context $ObservationContext `
+      -Phase waitStarted -Status completed
+    Write-EkyMsiProcessObservation -Context $ObservationContext `
+      -Phase hostExited -Status completed
+    Write-EkyMsiProcessObservation -Context $ObservationContext `
+      -Phase processTreeAbsent -Status completed
+  }
+  return [int]$result.exitCode
+}
+
 function Stop-EkyOwnedMsiProcess {
   param(
     [Parameter(Mandatory = $true)]$Process,
@@ -192,17 +356,41 @@ function Stop-EkyOwnedMsiProcess {
 function Invoke-EkyMsiExecProcess {
   param(
     [Parameter(Mandatory = $true)][string[]]$Arguments,
-    [Parameter(Mandatory = $true)][string]$Operation
+    [Parameter(Mandatory = $true)][string]$Operation,
+    [bool]$EmitSafeProgress = $false,
+    [AllowNull()][scriptblock]$ProgressWriter = $null
   )
 
   $policy = Get-EkyMsiExecPolicy -Operation $Operation
+  $observationContext = $null
+  if ($EmitSafeProgress) {
+    $observationContext = New-EkyMsiProcessObservationContext `
+      -Operation $Operation -Enabled $true -Writer $ProgressWriter
+    Write-EkyMsiProcessObservation -Context $observationContext `
+      -Phase hostStarted -Status started
+  }
   try {
     $process = Start-EkyOwnedMsiExecHost -Arguments $Arguments
   }
   catch {
+    if ($EmitSafeProgress) {
+      Write-EkyMsiProcessObservation -Context $observationContext `
+        -Phase hostStarted -Status failed
+    }
     throw "$($policy.errorPrefix)_START_FAILED"
   }
+  if ($EmitSafeProgress) {
+    Write-EkyMsiProcessObservation -Context $observationContext `
+      -Phase hostStarted -Status completed
+  }
   try {
+    if ($EmitSafeProgress) {
+      return Invoke-EkyOwnedMsiProcessLifecycle -Process $process `
+        -ErrorPrefix $policy.errorPrefix `
+        -TimeoutMilliseconds $policy.timeoutMilliseconds `
+        -ObservationContext $observationContext
+    }
+
     $identity = New-EkyOwnedMsiProcessIdentity -Process $process
     $result = Wait-EkyOwnedMsiProcess -Process $process `
       -TimeoutMilliseconds $policy.timeoutMilliseconds
@@ -251,11 +439,12 @@ function Invoke-EkyMsiExec {
   param(
     [Parameter(Mandatory = $true)][string[]]$Arguments,
     [Parameter(Mandatory = $true)][string]$Operation,
-    [int[]]$AllowedExitCodes = @(0)
+    [int[]]$AllowedExitCodes = @(0),
+    [bool]$EmitSafeProgress = $false
   )
 
   $exitCode = Invoke-EkyMsiExecProcess -Arguments $Arguments `
-    -Operation $Operation
+    -Operation $Operation -EmitSafeProgress $EmitSafeProgress
   Assert-EkyMsiExecExitCode -ExitCode $exitCode -Operation $Operation `
     -AllowedExitCodes $AllowedExitCodes
   return $exitCode

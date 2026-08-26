@@ -34,6 +34,7 @@ import {
   inspectStagedBetterSqliteRuntime,
   verifyStagedBetterSqliteDatabase,
 } from './staged-better-sqlite-runtime.mjs';
+import { preparePackageBackendStage } from './preparePackageBackendStage.mjs';
 const electronVersion = await readDesktopElectronVersion();
 const execFileAsync = promisify(execFile);
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -339,6 +340,7 @@ async function assertPackagedElectronVersion(packagedPath) {
 export async function packageWindowsApplication({
   layout,
   pilotBuild,
+  prepareBackendStage,
   reportPackagedPath,
   releaseOverride,
 }) {
@@ -354,6 +356,10 @@ export async function packageWindowsApplication({
   await rm(outputDirectory, { force: true, recursive: true });
   await mkdir(stagingRoot, { recursive: true });
   await buildWorkspaceArtifacts(backendStage);
+  await preparePackageBackendStage({
+    backendStage,
+    prepareBackendStage,
+  });
   const packageBuildInfoModule = await import(
     pathToFileURL(
       resolve(desktopDirectory, 'dist/release/packageBuildInfo.js'),
@@ -501,7 +507,16 @@ export async function packageDefaultWindowsApplication({
   pilotBuild,
   reportPackagedPath,
 }) {
-  return packageWindowsApplication({
+  return packageWindowsApplication(
+    createDefaultPackageRequest({ pilotBuild, reportPackagedPath }),
+  );
+}
+
+export function createDefaultPackageRequest({
+  pilotBuild,
+  reportPackagedPath,
+}) {
+  return Object.freeze({
     layout: createPackageLayout({
       outputDirectory: defaultOutputDirectory,
       stagingRoot: defaultStagingRoot,

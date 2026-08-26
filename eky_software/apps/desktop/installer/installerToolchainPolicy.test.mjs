@@ -59,22 +59,31 @@ test('allows only the approved signed NuGet source and exact setup-dotnet SHA', 
   assert.doesNotMatch(ci, /actions\/setup-dotnet@v\d/);
 });
 
-test('isolates W6B legacy acceptance from the regular MSI release gate', async () => {
+test('isolates W6B acceptance jobs from the regular MSI release gate', async () => {
   const ci = await readFile(
     join(workspaceRoot, '.github', 'workflows', 'ci.yml'),
     'utf8',
   );
   const installerJobIndex = ci.indexOf('  installer-windows:');
   const legacyJobIndex = ci.indexOf('  installer-w6b-legacy-windows:');
+  const packagedSuccessJobIndex = ci.indexOf(
+    '  installer-w6b2-success-windows:',
+  );
   const installerJob = ci.slice(installerJobIndex, legacyJobIndex);
-  const legacyJob = ci.slice(legacyJobIndex);
+  const legacyJob = ci.slice(legacyJobIndex, packagedSuccessJobIndex);
+  const packagedSuccessJob = ci.slice(packagedSuccessJobIndex);
   const legacyAcceptance =
     'run: pnpm --filter @eky/desktop installer:w6b-legacy';
+  const packagedSuccessAcceptance =
+    'run: pnpm --filter @eky/desktop installer:w6b2-success';
+  const prepareElectronRuntime =
+    'run: pnpm --filter @eky/desktop e2e:prepare-electron-runtime';
   const localPilotBundle =
     'run: pnpm --filter @eky/desktop installer:local-pilot-bundle';
 
   assert.ok(installerJobIndex >= 0);
   assert.ok(legacyJobIndex > installerJobIndex);
+  assert.ok(packagedSuccessJobIndex > legacyJobIndex);
   assert.match(
     installerJob,
     /- name: Check out repository[\s\S]*?persist-credentials: false\s+fetch-depth: 0/u,
@@ -88,9 +97,29 @@ test('isolates W6B legacy acceptance from the regular MSI release gate', async (
   );
   assert.match(legacyJob, /timeout-minutes: 30/u);
   assert.match(legacyJob, new RegExp(legacyAcceptance, 'u'));
+  assert.doesNotMatch(legacyJob, new RegExp(packagedSuccessAcceptance, 'u'));
   assert.doesNotMatch(legacyJob, new RegExp(localPilotBundle, 'u'));
-  assert.equal(ci.split('fetch-depth: 0').length - 1, 2);
+  assert.match(
+    packagedSuccessJob,
+    /- name: Check out repository[\s\S]*?persist-credentials: false\s+fetch-depth: 0/u,
+  );
+  assert.match(packagedSuccessJob, /timeout-minutes: 30/u);
+  assert.match(
+    packagedSuccessJob,
+    new RegExp(prepareElectronRuntime, 'u'),
+  );
+  assert.match(
+    packagedSuccessJob,
+    new RegExp(packagedSuccessAcceptance, 'u'),
+  );
+  assert.doesNotMatch(
+    packagedSuccessJob,
+    new RegExp(legacyAcceptance, 'u'),
+  );
+  assert.doesNotMatch(packagedSuccessJob, new RegExp(localPilotBundle, 'u'));
+  assert.equal(ci.split('fetch-depth: 0').length - 1, 3);
   assert.equal(ci.split(legacyAcceptance).length - 1, 1);
+  assert.equal(ci.split(packagedSuccessAcceptance).length - 1, 1);
 });
 
 test('uses runtime-independent SHA-256 APIs in Windows installer gates', async () => {

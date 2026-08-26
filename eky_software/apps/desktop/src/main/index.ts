@@ -22,6 +22,15 @@ import {
   createPackagedSmokeProgressReporter,
   writePackagedSmokeResult,
 } from './packagedSmoke.js';
+import {
+  createW6b2PackagedProofBootstrapConfiguration,
+  readW6b2PackagedProofConfiguration,
+  W6B2_PACKAGED_PROOF_SWITCH,
+  W6B2_PACKAGED_PROOF_TOKEN_ENV,
+  writeW6b2PackagedProofResult,
+  type W6b2PackagedProofConfiguration,
+} from './w6b2PackagedProof.js';
+import { terminateW6b2PackagedProofRuntime } from './w6b2PackagedProofTermination.js';
 
 type StartDesktopComposition =
   typeof import('./desktopComposition.js').startDesktopComposition;
@@ -77,7 +86,40 @@ const smokeConfiguration = createPackagedSmokeConfiguration({
 const smokeProgress =
   createPackagedSmokeProgressReporter(smokeConfiguration);
 
-if (smokeConfiguration.userDataPath !== undefined) {
+function readInitialW6b2PackagedProofBootstrap():
+  | {
+      configuration: ReturnType<
+        typeof createW6b2PackagedProofBootstrapConfiguration
+      >;
+    }
+  | { errorCode: 'W6B2_PROOF_CONFIGURATION_INVALID' } {
+  try {
+    return {
+      configuration: createW6b2PackagedProofBootstrapConfiguration({
+        hasProofSwitch: app.commandLine.hasSwitch(
+          W6B2_PACKAGED_PROOF_SWITCH,
+        ),
+        tempPath: app.getPath('temp'),
+        tokenValue: process.env[W6B2_PACKAGED_PROOF_TOKEN_ENV],
+      }),
+    };
+  } catch {
+    return { errorCode: 'W6B2_PROOF_CONFIGURATION_INVALID' };
+  }
+}
+
+const w6b2ProofBootstrapResult =
+  readInitialW6b2PackagedProofBootstrap();
+
+if (
+  'configuration' in w6b2ProofBootstrapResult &&
+  w6b2ProofBootstrapResult.configuration.userDataPath !== undefined
+) {
+  app.setPath(
+    'userData',
+    w6b2ProofBootstrapResult.configuration.userDataPath,
+  );
+} else if (smokeConfiguration.userDataPath !== undefined) {
   app.setPath('userData', smokeConfiguration.userDataPath);
 }
 
@@ -91,12 +133,27 @@ if (!hasSingleInstanceLock && 'mode' in packageModeResult) {
 let desktopLifecycle: DesktopLifecycleHandle | undefined;
 let shutdownStarted = false;
 const runtimeInstanceId = randomUUID();
+let w6b2ProofConfiguration:
+  | Readonly<W6b2PackagedProofConfiguration>
+  | undefined;
+let w6b2ProofQuitRequested = false;
+let w6b2ProofRelaunchRequested = false;
+let w6b2ProofResultWritten = false;
 
 async function startDesktopRuntime(
   startDesktopComposition: StartDesktopComposition,
 ): Promise<void> {
   if ('errorCode' in packageModeResult) {
     throw new Error(packageModeResult.errorCode);
+  }
+  if ('errorCode' in w6b2ProofBootstrapResult) {
+    throw new Error(w6b2ProofBootstrapResult.errorCode);
+  }
+  if (
+    w6b2ProofBootstrapResult.configuration.enabled &&
+    smokeConfiguration.enabled
+  ) {
+    throw new Error('W6B2_PROOF_CONFIGURATION_INVALID');
   }
   await smokeProgress.reportStage(
     smokeConfiguration.phase === 'restoredProfile'
@@ -116,13 +173,30 @@ async function startDesktopRuntime(
           isPackaged: app.isPackaged,
         })
       : undefined;
+  w6b2ProofConfiguration =
+    await readW6b2PackagedProofConfiguration({
+      appVersion: app.getVersion(),
+      bootstrap: w6b2ProofBootstrapResult.configuration,
+      resourcesPath: process.resourcesPath,
+    });
+  const currentProofConfiguration = w6b2ProofConfiguration;
   desktopLifecycle = await startDesktopComposition({
     appVersion: app.getVersion(),
     applicationPath: app.getAppPath(),
     buildInfo,
     releaseInfo,
-    quitApplication: () => app.quit(),
+    quitApplication() {
+      if (w6b2ProofConfiguration !== undefined) {
+        w6b2ProofQuitRequested = true;
+        return;
+      }
+      app.quit();
+    },
     relaunchApplication() {
+      if (w6b2ProofConfiguration !== undefined) {
+        w6b2ProofRelaunchRequested = true;
+        return;
+      }
       if (smokeConfiguration.enabled) {
         app.quit();
         return;
@@ -135,7 +209,41 @@ async function startDesktopRuntime(
     reportSmokeStage: (stage) => smokeProgress.reportStage(stage),
     smokeConfiguration,
     userDataPath: app.getPath('userData'),
+    ...(currentProofConfiguration === undefined
+      ? {}
+      : {
+          w6b2PackagedProof: {
+            configuration: currentProofConfiguration,
+            isQuitRequested: () => w6b2ProofQuitRequested,
+            isRelaunchRequested: () => w6b2ProofRelaunchRequested,
+            async reportResult(result) {
+              await writeW6b2PackagedProofResult(
+                currentProofConfiguration,
+                result,
+              );
+              w6b2ProofResultWritten = true;
+            },
+          },
+        }),
   });
+  if (currentProofConfiguration !== undefined) {
+    if (!w6b2ProofResultWritten) {
+      await writeW6b2PackagedProofResult(currentProofConfiguration, {
+        formatVersion: 1,
+        phase: currentProofConfiguration.phase,
+        status: 'relaunching',
+      });
+      w6b2ProofResultWritten = true;
+    }
+    await terminateW6b2PackagedProofRuntime({
+      lifecycle: desktopLifecycle,
+      quitApplication() {
+        shutdownStarted = true;
+        app.quit();
+      },
+      relaunchRequested: w6b2ProofRelaunchRequested,
+    });
+  }
 }
 
 app.on('activate', () => {
@@ -159,7 +267,10 @@ app.on('before-quit', (event) => {
 });
 
 app.on('window-all-closed', () => {
-  if (!smokeConfiguration.enabled) {
+  if (
+    !smokeConfiguration.enabled &&
+    w6b2ProofConfiguration === undefined
+  ) {
     app.quit();
   }
 });
@@ -173,6 +284,16 @@ if (hasSingleInstanceLock) {
         await writePackagedSmokeResult(smokeConfiguration, {
           code: errorCode,
           stage: smokeProgress.currentStage(),
+          status: 'failed',
+        });
+        return;
+      }
+
+      if (w6b2ProofConfiguration !== undefined) {
+        await writeW6b2PackagedProofResult(w6b2ProofConfiguration, {
+          errorCode: 'W6B2_PROOF_UNEXPECTED',
+          formatVersion: 1,
+          phase: w6b2ProofConfiguration.phase,
           status: 'failed',
         });
         return;

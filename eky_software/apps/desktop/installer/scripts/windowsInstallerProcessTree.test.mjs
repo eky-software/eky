@@ -52,6 +52,7 @@ const allowedResultErrorCodes = new Set([
   'INSTALLER_PROCESS_TREE_CLEANUP_FAILED',
   'INSTALLER_PROCESS_TREE_UNEXPECTED_ERROR',
   'INSTALLER_UPGRADE_PROCESS_IDENTITY_INVALID',
+  'INSTALLER_UPGRADE_PROCESS_IDENTITY_CHECK_FAILED',
   'INSTALLER_UPGRADE_PROCESS_TREE_WAIT_INVALID',
   'INSTALLER_UPGRADE_PROCESS_TREE_REMAINS',
   'INSTALLER_UPGRADE_PROCESS_TREE_STOP_TIMEOUT',
@@ -138,6 +139,9 @@ test('installer cleanup remains scoped to an exact process identity', () => {
     /System32\\taskkill\.exe[\s\S]{0,260}-Wait/,
   );
   assert.match(helperSource, /Observation/);
+  assert.match(helperSource, /GetProcessById/);
+  assert.match(helperSource, /Get-EkyRemainingExactProcessIdentities/);
+  assert.match(helperSource, /Stop-EkyExactProcessIdentity/);
   assert.doesNotMatch(helperSource, /&\s+taskkill\.exe/);
   assert.doesNotMatch(helperSource, /Get-Process\s+-Name/);
   assert.doesNotMatch(helperSource, /Stop-Process\s+-Name/);

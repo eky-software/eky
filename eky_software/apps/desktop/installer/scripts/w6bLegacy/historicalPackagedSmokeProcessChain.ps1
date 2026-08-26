@@ -396,6 +396,7 @@ function Wait-EkyHistoricalPackagedSmokeGeneration {
     [Parameter(Mandatory = $true)][string]$ExpectedStage,
     [Parameter(Mandatory = $true)][string]$ExpectedStatus,
     [Parameter(Mandatory = $true)][scriptblock]$ReadResult,
+    [scriptblock]$ReadFinalResult = $null,
     [Parameter(Mandatory = $true)][scriptblock]$ObserveResult,
     [Parameter(Mandatory = $true)][scriptblock]$ObserveProcess,
     [Parameter(Mandatory = $true)][scriptblock]$ValidateResult,
@@ -442,7 +443,13 @@ function Wait-EkyHistoricalPackagedSmokeGeneration {
       Start-Sleep -Milliseconds $PollMilliseconds
     } while ($true)
 
-    $result = & $ReadResult
+    $finalReader = if ($null -eq $ReadFinalResult) {
+      $ReadResult
+    }
+    else {
+      $ReadFinalResult
+    }
+    $result = & $finalReader
     if ($null -eq $result) {
       throw 'W6B_LEGACY_SOURCE_SMOKE_RESULT_MISSING'
     }
@@ -473,6 +480,7 @@ function Invoke-HistoricalPackagedSmokeProcessChain {
     [Parameter(Mandatory = $true)][scriptblock]$StartPhase,
     [Parameter(Mandatory = $true)][string]$ExpectedExecutablePath,
     [Parameter(Mandatory = $true)][scriptblock]$ReadResult,
+    [scriptblock]$ReadFinalResult = $null,
     [Parameter(Mandatory = $true)][scriptblock]$ObserveResult,
     [Parameter(Mandatory = $true)][scriptblock]$ObserveProcess,
     [Parameter(Mandatory = $true)][scriptblock]$ValidateResult,
@@ -490,6 +498,7 @@ function Invoke-HistoricalPackagedSmokeProcessChain {
     -ExpectedStage 'restoreRestart' `
     -ExpectedStatus 'started' `
     -ReadResult $ReadResult `
+    -ReadFinalResult $ReadFinalResult `
     -ObserveResult $ObserveResult `
     -ObserveProcess $ObserveProcess `
     -ValidateResult $ValidateResult `
@@ -506,6 +515,7 @@ function Invoke-HistoricalPackagedSmokeProcessChain {
     -ExpectedStage 'shutdown' `
     -ExpectedStatus 'ok' `
     -ReadResult $ReadResult `
+    -ReadFinalResult $ReadFinalResult `
     -ObserveResult $ObserveResult `
     -ObserveProcess $ObserveProcess `
     -ValidateResult $ValidateResult `

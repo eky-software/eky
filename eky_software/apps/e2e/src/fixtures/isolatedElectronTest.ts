@@ -32,7 +32,6 @@ import type { E2eWorkerPaths } from '../environment/e2eEnvironmentTypes.js';
 import { reserveLoopbackPort } from '../environment/reserveLoopbackPort.js';
 import { removeE2eRunRoot } from '../environment/removeE2eRunRoot.js';
 import { resolveElectronE2eExecutable } from '../environment/resolveElectronE2eExecutable.js';
-import { stopManagedProcessTree } from '../environment/stopManagedProcessTree.js';
 import { waitForLoopbackPortRelease } from '../environment/waitForLoopbackPortRelease.js';
 import {
   createElectronActiveWorkspaceReplacementFixture,
@@ -40,6 +39,10 @@ import {
   type ElectronWorkspaceBackupFixture,
 } from '../workspaces/createElectronWorkspaceBackupFixture.js';
 import { readE2eScenarioId } from './readE2eScenarioId.js';
+import {
+  closeOwnedElectronRuntime,
+  stopOwnedElectronRuntime,
+} from './stopOwnedElectronRuntime.js';
 
 export interface IsolatedElectronHarness {
   api: APIRequestContext;
@@ -282,14 +285,23 @@ export const test = base.extend<
     } finally {
       await api?.dispose();
       const electronProcess = electronApp?.process();
-      await electronApp?.close().catch(() => undefined);
-      if (electronProcess !== undefined) {
-        await stopManagedProcessTree(electronProcess);
+      let runtimeCleanupFailed = false;
+      try {
+        if (electronApp !== undefined && electronProcess !== undefined) {
+          await closeOwnedElectronRuntime(electronApp, electronProcess);
+        } else {
+          await electronApp?.close().catch(() => undefined);
+        }
+      } catch {
+        runtimeCleanupFailed = true;
       }
       try {
         await waitForLoopbackPortRelease(backendPort);
       } finally {
         await removeE2eRunRoot(runRoot);
+      }
+      if (runtimeCleanupFailed) {
+        throw new Error('Electron E2E runtime cleanup failed.');
       }
     }
   },
@@ -355,7 +367,7 @@ async function launchElectronRuntime(input: {
       input.runtime.userDataPath,
       input.runtime.observationsPath,
     );
-    await electronApp.close().catch(() => undefined);
+    await stopOwnedElectronRuntime(electronApp, electronProcess);
     throw new Error(
       safeDiagnostics === ''
         ? 'Electron E2E window was not created.'

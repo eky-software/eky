@@ -11,9 +11,14 @@ function Read-W6bSourceSmokeResult {
   if (
     $metadata.PSIsContainer -or
     ($metadata.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -or
-    $metadata.Length -lt 1 -or
     $metadata.Length -gt 4096
   ) {
+    throw 'W6B_LEGACY_SOURCE_SMOKE_RESULT_INVALID'
+  }
+  if ($metadata.Length -lt 1) {
+    if ($AllowMissing) {
+      return $null
+    }
     throw 'W6B_LEGACY_SOURCE_SMOKE_RESULT_INVALID'
   }
   try {
@@ -123,6 +128,7 @@ function Invoke-W6bSourcePackagedSmoke {
         }
     } `
     -ReadResult { Read-W6bSourceSmokeResult -AllowMissing } `
+    -ReadFinalResult { Read-W6bSourceSmokeResult } `
     -ObserveResult {
       param($Result)
       Update-W6bSourceSmokeObservations -Result $Result

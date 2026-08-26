@@ -42,6 +42,17 @@ describe('local update handoff coordinator', () => {
     expect(fixture.createValidatedPreUpdatePoint).toHaveBeenCalledOnce();
   });
 
+  it('reads exclusive package cache slots sequentially', async () => {
+    const fixture = createFixture({ enforceSerialIdentityReads: true });
+
+    await expect(
+      fixture.coordinator.prepareConfirmedUpdate(),
+    ).resolves.toMatchObject({ state: 'recoveryPointValidated' });
+
+    expect(fixture.identityReadRoles).toEqual(['current', 'candidate']);
+    expect(fixture.maxConcurrentIdentityReads).toBe(1);
+  });
+
   it('writes awaitingFirstStart before one exact installer launch', async () => {
     const order: string[] = [];
     const fixture = createFixture({
@@ -114,14 +125,26 @@ describe('local update handoff coordinator', () => {
   it('fails preparation without shutdown when profile validation fails', async () => {
     const fixture = createFixture({ profileValidationFails: true });
 
-    await expect(
-      fixture.coordinator.prepareConfirmedUpdate(),
-    ).rejects.toThrow(LocalUpdateHandoffError);
+    await expect(fixture.coordinator.prepareConfirmedUpdate()).rejects.toMatchObject({
+      code: 'UPDATE_PREPARATION_PROFILE_FAILED',
+    });
 
     expect(fixture.shutdownRuntime).not.toHaveBeenCalled();
     expect(fixture.launchInstaller).not.toHaveBeenCalled();
     expect(fixture.currentJournal).toBeUndefined();
     expect(fixture.states).toEqual([]);
+  });
+
+  it('classifies recovery point preparation without exposing the raw failure', async () => {
+    const fixture = createFixture({ recoveryPointFails: true });
+
+    const result = fixture.coordinator.prepareConfirmedUpdate();
+
+    await expect(result).rejects.toMatchObject({
+      code: 'UPDATE_PREPARATION_RECOVERY_POINT_FAILED',
+      message: 'The local update could not be handed off safely.',
+    });
+    expect(fixture.currentJournal?.state).toBe('failed');
   });
 
   it('rejects handoff when the migration chain changes after recovery preparation', async () => {
@@ -143,9 +166,9 @@ describe('local update handoff coordinator', () => {
     const owner = await maintenanceLease.acquire('backup');
     const fixture = createFixture({ maintenanceLease });
 
-    await expect(
-      fixture.coordinator.prepareConfirmedUpdate(),
-    ).rejects.toThrow(LocalUpdateHandoffError);
+    await expect(fixture.coordinator.prepareConfirmedUpdate()).rejects.toMatchObject({
+      code: 'UPDATE_PREPARATION_MAINTENANCE_FAILED',
+    });
     expect(fixture.validateActiveProfile).not.toHaveBeenCalled();
     expect(fixture.states).toEqual([]);
 
@@ -157,17 +180,22 @@ describe('local update handoff coordinator', () => {
 });
 
 function createFixture(options: {
+  enforceSerialIdentityReads?: boolean;
   onLaunch?(): void;
   onShutdown?(): void;
   onWrite?(state: string): void;
   maintenanceLease?: WorkspaceMaintenanceLease;
   profileMigrationChanges?: boolean;
   profileValidationFails?: boolean;
+  recoveryPointFails?: boolean;
   revalidationFails?: boolean;
   shutdownFails?: boolean;
 } = {}) {
   let currentJournal: Readonly<UpdateJournal> | undefined;
+  let activeIdentityReads = 0;
+  let maxConcurrentIdentityReads = 0;
   let profileValidationCount = 0;
+  const identityReadRoles: Array<'candidate' | 'current'> = [];
   const states: string[] = [];
   const validateActiveProfile = vi.fn(async () => {
     profileValidationCount += 1;
@@ -185,7 +213,12 @@ function createFixture(options: {
     };
   });
   const createValidatedPreUpdatePoint = vi.fn(
-    async () => recoveryPointReference,
+    async () => {
+      if (options.recoveryPointFails) {
+        throw new Error('private recovery point path');
+      }
+      return recoveryPointReference;
+    },
   );
   const enterMaintenance = vi.fn(async () => undefined);
   const leaveMaintenance = vi.fn(async () => undefined);
@@ -204,7 +237,24 @@ function createFixture(options: {
   const coordinator = new LocalUpdateHandoffCoordinator({
     cache: {
       async readExpectedPackageIdentity(role) {
-        return role === 'current' ? currentIdentity : candidateIdentity;
+        identityReadRoles.push(role);
+        activeIdentityReads += 1;
+        maxConcurrentIdentityReads = Math.max(
+          maxConcurrentIdentityReads,
+          activeIdentityReads,
+        );
+        try {
+          if (
+            options.enforceSerialIdentityReads &&
+            activeIdentityReads > 1
+          ) {
+            throw new Error('concurrent package cache read');
+          }
+          await Promise.resolve();
+          return role === 'current' ? currentIdentity : candidateIdentity;
+        } finally {
+          activeIdentityReads -= 1;
+        }
       },
       async revalidateJournalPackage() {
         if (options.revalidationFails) {
@@ -260,6 +310,10 @@ function createFixture(options: {
     },
     launchInstaller,
     leaveMaintenance,
+    identityReadRoles,
+    get maxConcurrentIdentityReads() {
+      return maxConcurrentIdentityReads;
+    },
     operationCompleted,
     operationFailed,
     operationStarted,

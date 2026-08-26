@@ -8,15 +8,31 @@ import test from 'node:test';
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const helperPath = join(scriptDirectory, 'windowsInstallerTestSupport.ps1');
 const hostPath = join(scriptDirectory, 'windowsInstallerMsiExecHost.ps1');
+const observationPath = join(
+  scriptDirectory,
+  'windowsInstallerMsiProcessObservation.ps1',
+);
 const testPath = join(scriptDirectory, 'windowsInstallerTestSupport.test.ps1');
 
 test('MSI test runner has bounded waits and exact-process cleanup', () => {
   const source = readFileSync(helperPath, 'utf8');
   const hostSource = readFileSync(hostPath, 'utf8');
+  const observationSource = readFileSync(observationPath, 'utf8');
 
   assert.match(source, /function Get-EkyMsiExecPolicy/u);
+  assert.match(
+    source,
+    /'w6b2_source_install'\s*\{\s*@\('W6B2_SUCCESS_SOURCE_INSTALL', 300000\)\s*\}/u,
+  );
+  assert.match(
+    source,
+    /'w6b2_uninstall'\s*\{\s*@\('W6B2_SUCCESS_UNINSTALL', 180000\)\s*\}/u,
+  );
   assert.match(source, /function Start-EkyOwnedMsiExecHost/u);
   assert.match(source, /function Wait-EkyOwnedMsiProcess/u);
+  assert.match(source, /function Wait-EkyObservedOwnedMsiProcess/u);
+  assert.match(source, /function Invoke-EkyOwnedMsiProcessLifecycle/u);
+  assert.match(source, /function Invoke-EkyOwnedMsiProcessCleanup/u);
   assert.match(source, /function Stop-EkyOwnedMsiProcess/u);
   assert.match(source, /function Remove-EkyInstallerTestDirectory/u);
   assert.match(source, /EKY_INSTALLER_TEST_DELETE_ROOT/u);
@@ -25,6 +41,15 @@ test('MSI test runner has bounded waits and exact-process cleanup', () => {
     /Wait-EkyOwnedMsiProcess -Process \$cleanupProcess/u,
   );
   assert.match(source, /WaitForExit\(\$TimeoutMilliseconds\)/u);
+  assert.match(source, /WaitForExit\(\[Math\]::Max\(1, \$waitMilliseconds\)\)/u);
+  assert.match(
+    source,
+    /if \(\$EmitSafeProgress\) \{[\s\S]*Invoke-EkyOwnedMsiProcessLifecycle/u,
+  );
+  assert.match(
+    source,
+    /\$result = Wait-EkyOwnedMsiProcess -Process \$process/u,
+  );
   assert.match(source, /Stop-EkyProcessTree -Process \$Process/u);
   assert.doesNotMatch(
     source,
@@ -34,6 +59,12 @@ test('MSI test runner has bounded waits and exact-process cleanup', () => {
   assert.match(hostSource, /System32\\msiexec\.exe/u);
   assert.match(hostSource, /-Wait\s+`\s+-PassThru/u);
   assert.doesNotMatch(hostSource, /(?:taskkill|Stop-Process)/iu);
+  assert.match(observationSource, /phaseStartedAt/u);
+  assert.match(observationSource, /ConvertTo-Json -Compress/u);
+  assert.doesNotMatch(
+    observationSource,
+    /(?:processId|path|commandLine|stdout|stderr|stack)/iu,
+  );
 });
 
 test('bounded MSI runner exits safely and leaves a foreign sentinel running', {
@@ -64,8 +95,12 @@ test('bounded MSI runner exits safely and leaves a foreign sentinel running', {
     boundedUninstallPolicy: true,
     fastExitValidated: true,
     hostArgumentRoundTripValidated: true,
+    hostExitBeforeCleanupValidated: true,
     longPathCleanupValidated: true,
+    nonzeroExitPreserved: true,
+    safeProcessObservability: true,
     timeoutValidated: true,
+    timeoutCleanupFailurePreserved: true,
     ownedTreeWaitValidated: true,
     exactOwnedCleanup: true,
     foreignSentinelUntouched: true,

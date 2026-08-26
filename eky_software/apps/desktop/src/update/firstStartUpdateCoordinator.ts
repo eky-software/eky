@@ -477,22 +477,20 @@ export class FirstStartUpdateCoordinator {
 
     let rotated = false;
     try {
-      await Promise.all([
-        this.dependencies.cache.revalidateJournalPackage({
-          expectedIdentity: toExpectedIdentity(
-            journal.currentVersion,
-            journal.currentPackageIdentity,
-          ),
-          role: 'current',
-        }),
-        this.dependencies.cache.revalidateJournalPackage({
-          expectedIdentity: toExpectedIdentity(
-            journal.targetVersion,
-            journal.candidatePackageIdentity,
-          ),
-          role: 'candidate',
-        }),
-      ]);
+      await this.dependencies.cache.revalidateJournalPackage({
+        expectedIdentity: toExpectedIdentity(
+          journal.currentVersion,
+          journal.currentPackageIdentity,
+        ),
+        role: 'current',
+      });
+      await this.dependencies.cache.revalidateJournalPackage({
+        expectedIdentity: toExpectedIdentity(
+          journal.targetVersion,
+          journal.candidatePackageIdentity,
+        ),
+        role: 'candidate',
+      });
     } catch {
       await this.assertAcceptedRotation(journal);
       rotated = true;
@@ -687,22 +685,20 @@ export class FirstStartUpdateCoordinator {
   private async assertAcceptedRotation(
     journal: Readonly<UpdateJournal>,
   ): Promise<void> {
-    await Promise.all([
-      this.dependencies.cache.revalidateJournalPackage({
-        expectedIdentity: toExpectedIdentity(
-          journal.targetVersion,
-          journal.candidatePackageIdentity,
-        ),
-        role: 'current',
-      }),
-      this.dependencies.cache.revalidateJournalPackage({
-        expectedIdentity: toExpectedIdentity(
-          journal.currentVersion,
-          journal.currentPackageIdentity,
-        ),
-        role: 'previous',
-      }),
-    ]);
+    await this.dependencies.cache.revalidateJournalPackage({
+      expectedIdentity: toExpectedIdentity(
+        journal.targetVersion,
+        journal.candidatePackageIdentity,
+      ),
+      role: 'current',
+    });
+    await this.dependencies.cache.revalidateJournalPackage({
+      expectedIdentity: toExpectedIdentity(
+        journal.currentVersion,
+        journal.currentPackageIdentity,
+      ),
+      role: 'previous',
+    });
   }
 
   private async markRollbackRequired(
