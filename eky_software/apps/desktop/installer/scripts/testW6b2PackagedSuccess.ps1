@@ -243,7 +243,7 @@ finally {
     Start-W6b2SuccessStage -Stage cleanup
     Write-W6b2SuccessObservation -ResultCode cleanupOwnedProcessesStarted
     foreach ($observation in $ownedObservations) {
-      Stop-W6b2SuccessOwnedProcesses -Observation $observation
+      Stop-W6b2SuccessRecordedOwnedProcesses -Observation $observation
     }
     Write-W6b2SuccessObservation -ResultCode cleanupOwnedProcessesCompleted
     Write-W6b2SuccessObservation -ResultCode cleanupSourceProcessStarted

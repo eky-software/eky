@@ -324,6 +324,40 @@ function Get-W6b2SuccessOwnedProcessRole {
 function Stop-W6b2SuccessOwnedProcesses {
   param([Parameter(Mandatory = $true)]$Observation)
 
+  $snapshot = @(Get-EkyProcessSnapshot)
+  $remaining = @(Get-EkyRemainingOwnedProcessIdentitiesFromSnapshot `
+    -OwnedProcessIdentities @($Observation.owned.Values) `
+    -ProcessSnapshot $snapshot)
+  foreach ($identity in $remaining) {
+    try {
+      $process = Get-Process -Id ([int]$identity.processId) -ErrorAction Stop
+      try {
+        $token = ConvertTo-EkyProcessCreationToken `
+          -CreationTime ([DateTime]$process.StartTime)
+        if ($token -cne [string]$identity.creationToken) {
+          throw 'W6B2_SUCCESS_PROCESS_IDENTITY_CHANGED'
+        }
+        $process.Kill()
+        if (!$process.WaitForExit(10000)) {
+          throw 'W6B2_SUCCESS_PROCESS_REMAINS'
+        }
+        $process.WaitForExit()
+      }
+      finally {
+        $process.Dispose()
+      }
+    }
+    catch {
+      if ($_.Exception.Message -eq 'W6B2_SUCCESS_PROCESS_IDENTITY_CHANGED') {
+        throw
+      }
+    }
+  }
+}
+
+function Stop-W6b2SuccessRecordedOwnedProcesses {
+  param([Parameter(Mandatory = $true)]$Observation)
+
   foreach ($identity in @($Observation.owned.Values)) {
     $process = $null
     try {
@@ -335,6 +369,7 @@ function Stop-W6b2SuccessOwnedProcesses {
       catch [ArgumentException] {
         continue
       }
+
       try {
         $process.Refresh()
         if ($process.HasExited) {

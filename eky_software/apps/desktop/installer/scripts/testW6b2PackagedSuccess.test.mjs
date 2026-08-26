@@ -307,7 +307,7 @@ test('hardened inventory preserves the shared installer ordering contract', () =
 
 test('cleanup uses exact owned identities and never broad process termination', () => {
   const cleanupStart = applicationProcess.indexOf(
-    'function Stop-W6b2SuccessOwnedProcesses',
+    'function Stop-W6b2SuccessRecordedOwnedProcesses',
   );
   const cleanupEnd = applicationProcess.indexOf(
     '\nfunction Invoke-W6b2SuccessApplicationPhase',
@@ -317,6 +317,10 @@ test('cleanup uses exact owned identities and never broad process termination', 
   assert.notEqual(cleanupEnd, -1);
   const cleanupFunction = applicationProcess.slice(cleanupStart, cleanupEnd);
 
+  assert.match(
+    harness,
+    /Stop-W6b2SuccessRecordedOwnedProcesses -Observation \$observation/u,
+  );
   assert.match(applicationProcess, /creationToken/u);
   assert.match(
     applicationProcess,

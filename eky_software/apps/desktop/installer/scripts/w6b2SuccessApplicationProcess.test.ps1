@@ -130,14 +130,15 @@ exit 7
         $reusedIdentity
     }
   }
-  Stop-W6b2SuccessOwnedProcesses -Observation $reusedIdentityObservation
+  Stop-W6b2SuccessRecordedOwnedProcesses `
+    -Observation $reusedIdentityObservation
   $reusedIdentityProcess.Refresh()
   Assert-W6b2ProcessEqual $reusedIdentityProcess.HasExited $false `
     'W6B2_PROCESS_TEST_REUSED_IDENTITY_TERMINATED'
 
   $missingIdentity = New-EkyProcessIdentity -ProcessId ([int]::MaxValue) `
     -CreationToken '1'
-  Stop-W6b2SuccessOwnedProcesses -Observation ([pscustomobject]@{
+  Stop-W6b2SuccessRecordedOwnedProcesses -Observation ([pscustomobject]@{
     root = $missingIdentity
     owned = @{
       "$($missingIdentity.processId):$($missingIdentity.creationToken)" = `
