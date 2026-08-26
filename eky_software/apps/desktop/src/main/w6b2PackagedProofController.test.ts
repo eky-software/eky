@@ -5,7 +5,7 @@ import type { WorkspaceManagementStatusV1 } from '../workspaces/management/works
 import { validateWorkspaceId } from '../workspaces/registry/workspaceIdValidation.js';
 import { LocalUpdateHandoffError } from '../update/localUpdateHandoffCoordinator.js';
 import { runW6b2PackagedProofController } from './w6b2PackagedProofController.js';
-import type { W6b2PackagedProofConfiguration } from './w6b2PackagedProof.js';
+import type { W6b2PackagedSuccessProofConfiguration } from './w6b2PackagedProof.js';
 
 const workspaceIds = {
   A: validateWorkspaceId('11111111-1111-4111-8111-111111111111'),
@@ -273,8 +273,8 @@ describe('W6B.2 packaged proof controller', () => {
 });
 
 function createControllerFixture(
-  phase: W6b2PackagedProofConfiguration['phase'],
-  role: W6b2PackagedProofConfiguration['role'],
+  phase: W6b2PackagedSuccessProofConfiguration['phase'],
+  role: W6b2PackagedSuccessProofConfiguration['role'],
 ) {
   const state = { quitRequested: false, relaunchRequested: false };
   const cache = { stageSelectedPackage: vi.fn().mockResolvedValue({}) };
@@ -297,6 +297,7 @@ function createControllerFixture(
     options: {
       cache,
       configuration: {
+        controlFormatVersion: 1,
         enabled: true,
         phase,
         resultFilePath: 'result',
@@ -305,7 +306,7 @@ function createControllerFixture(
         sourceManifestPath: 'source-manifest',
         targetManifestPath: 'target-manifest',
         userDataPath: 'user-data',
-      } as W6b2PackagedProofConfiguration,
+      } as W6b2PackagedSuccessProofConfiguration,
       handoff,
       isQuitRequested: () => state.quitRequested,
       isRelaunchRequested: () => state.relaunchRequested,

@@ -14,9 +14,9 @@ import type {
 } from '../workspaces/management/workspaceManagementTypes.js';
 import type { DesktopLifecycleHandle } from './desktopComposition.js';
 import type {
-  W6b2PackagedProofConfiguration,
   W6b2PackagedProofErrorCode,
-  W6b2PackagedProofResult,
+  W6b2PackagedSuccessProofConfiguration,
+  W6b2PackagedSuccessProofResult,
 } from './w6b2PackagedProof.js';
 
 const workspaceLabels = Object.freeze({
@@ -84,7 +84,7 @@ const recoveryPointStorageFailureCodes = new Set([
 
 interface W6b2PackagedProofControllerOptions {
   readonly cache: Pick<LocalUpdatePackageCache, 'stageSelectedPackage'>;
-  readonly configuration: Readonly<W6b2PackagedProofConfiguration>;
+  readonly configuration: Readonly<W6b2PackagedSuccessProofConfiguration>;
   readonly handoff: Pick<
     LocalUpdateHandoffCoordinator,
     'handoffPreparedUpdate' | 'prepareConfirmedUpdate'
@@ -108,7 +108,7 @@ class W6b2PackagedProofControllerError extends Error {
 
 export async function runW6b2PackagedProofController(
   options: Readonly<W6b2PackagedProofControllerOptions>,
-): Promise<W6b2PackagedProofResult> {
+): Promise<W6b2PackagedSuccessProofResult> {
   try {
     switch (options.configuration.phase) {
       case 'sourceHandoff':
@@ -136,7 +136,7 @@ export async function runW6b2PackagedProofController(
 
 async function runSourceHandoff(
   options: Readonly<W6b2PackagedProofControllerOptions>,
-): Promise<W6b2PackagedProofResult> {
+): Promise<W6b2PackagedSuccessProofResult> {
   if (options.configuration.role !== 'source') {
     throw new W6b2PackagedProofControllerError(
       'W6B2_PROOF_CONFIGURATION_INVALID',
@@ -240,7 +240,7 @@ function classifyRecoveryPointFailure(
 
 async function verifyTargetFirstStart(
   options: Readonly<W6b2PackagedProofControllerOptions>,
-): Promise<W6b2PackagedProofResult> {
+): Promise<W6b2PackagedSuccessProofResult> {
   requireTarget(options);
   const status = await readExpectedStatus(options);
   requireWorkspace(status, 'A', true, 'ready');
@@ -253,7 +253,7 @@ async function verifyTargetFirstStart(
 async function verifyActiveWorkspace(
   options: Readonly<W6b2PackagedProofControllerOptions>,
   key: 'A' | 'B',
-): Promise<W6b2PackagedProofResult> {
+): Promise<W6b2PackagedSuccessProofResult> {
   requireTarget(options);
   const status = await readExpectedStatus(options);
   requireWorkspace(status, key, true, 'ready');
@@ -265,7 +265,7 @@ async function verifyActiveWorkspace(
 async function switchToWorkspace(
   options: Readonly<W6b2PackagedProofControllerOptions>,
   key: 'A' | 'B',
-): Promise<W6b2PackagedProofResult> {
+): Promise<W6b2PackagedSuccessProofResult> {
   requireTarget(options);
   const status = await readExpectedStatus(options);
   const target = requireWorkspace(status, key, undefined, 'ready');
@@ -286,7 +286,7 @@ async function switchToWorkspace(
 
 async function rejectRecoveryRequiredWorkspace(
   options: Readonly<W6b2PackagedProofControllerOptions>,
-): Promise<W6b2PackagedProofResult> {
+): Promise<W6b2PackagedSuccessProofResult> {
   requireTarget(options);
   const before = await readExpectedStatus(options);
   const source = requireWorkspace(before, 'A', true, 'ready');
@@ -381,15 +381,15 @@ async function shutdown(
 }
 
 function success(
-  phase: W6b2PackagedProofConfiguration['phase'],
+  phase: W6b2PackagedSuccessProofConfiguration['phase'],
   status: 'completed' | 'relaunching',
-): W6b2PackagedProofResult {
+): W6b2PackagedSuccessProofResult {
   return Object.freeze({ formatVersion: 1, phase, status });
 }
 
 function failure(
-  phase: W6b2PackagedProofConfiguration['phase'],
+  phase: W6b2PackagedSuccessProofConfiguration['phase'],
   errorCode: W6b2PackagedProofErrorCode,
-): W6b2PackagedProofResult {
+): W6b2PackagedSuccessProofResult {
   return Object.freeze({ errorCode, formatVersion: 1, phase, status: 'failed' });
 }

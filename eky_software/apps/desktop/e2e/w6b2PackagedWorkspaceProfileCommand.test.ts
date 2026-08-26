@@ -38,6 +38,9 @@ describe('W6B.2 packaged workspace profile command', () => {
     expect(parseW6b2PackagedProfileOperation('targetFirstStart')).toBe(
       'targetFirstStart',
     );
+    expect(parseW6b2PackagedProfileOperation('verifyActiveRollback')).toBe(
+      'verifyActiveRollback',
+    );
     expect(() => parseW6b2PackagedProfileOperation('sourceHandoff')).toThrow(
       'W6B2_PROFILE_COMMAND_INVALID',
     );
@@ -55,6 +58,22 @@ describe('W6B.2 packaged workspace profile command', () => {
     expect(expectedW6b2PackagedProfilePackage('verifyBRestart')).toEqual({
       appVersion: '0.2.8',
       phase: 'verifyBRestart',
+      role: 'target',
+    });
+    expect(
+      expectedW6b2PackagedProfilePackage('verifyPreUpdateFailure'),
+    ).toEqual({
+      appVersion: '0.2.7',
+      faultScenario: 'preUpdateRecoveryPointFailure',
+      phase: 'sourceHandoff',
+      role: 'source',
+    });
+    expect(
+      expectedW6b2PackagedProfilePackage('verifyAcceptanceRecovery'),
+    ).toEqual({
+      appVersion: '0.2.8',
+      faultScenario: 'acceptanceInterruption',
+      phase: 'targetAcceptanceRestart',
       role: 'target',
     });
   });
