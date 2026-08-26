@@ -20,7 +20,7 @@ export async function waitForLoopbackPortRelease(
     await delay(50);
   }
 
-  throw new Error(`Managed E2E process did not release loopback port ${port}.`);
+  throw new Error('E2E_LOOPBACK_PORT_RELEASE_TIMEOUT');
 }
 
 async function canListen(port: number): Promise<boolean> {

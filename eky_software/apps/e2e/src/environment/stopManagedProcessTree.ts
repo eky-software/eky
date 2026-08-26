@@ -1,5 +1,4 @@
-import { spawnSync } from 'node:child_process';
-
+import { runBoundedWindowsTaskkill } from './runBoundedWindowsTaskkill.js';
 import type { ManagedChildProcess } from './startManagedProcess.js';
 
 export async function stopManagedProcessTree(
@@ -11,11 +10,7 @@ export async function stopManagedProcessTree(
   }
 
   if (process.platform === 'win32') {
-    spawnSync(
-      'taskkill',
-      ['/pid', String(child.pid), '/t', '/f'],
-      { stdio: 'ignore', windowsHide: true },
-    );
+    await runBoundedWindowsTaskkill(child.pid, timeoutMilliseconds);
   } else {
     try {
       process.kill(-child.pid, 'SIGTERM');
@@ -38,7 +33,7 @@ export async function stopManagedProcessTree(
     await waitForExit(child, timeoutMilliseconds);
   }
   if (!hasExited(child)) {
-    throw new Error('Managed process tree did not stop.');
+    throw new Error('E2E_MANAGED_PROCESS_TREE_STOP_TIMEOUT');
   }
 }
 
@@ -51,11 +46,18 @@ function waitForExit(
   }
 
   return new Promise((resolveExit) => {
-    const timer = setTimeout(resolveExit, timeoutMilliseconds);
-    child.on('exit', () => {
+    let terminal = false;
+    const complete = () => {
+      if (terminal) {
+        return;
+      }
+      terminal = true;
       clearTimeout(timer);
+      child.removeListener('exit', complete);
       resolveExit();
-    });
+    };
+    const timer = setTimeout(complete, timeoutMilliseconds);
+    child.once('exit', complete);
   });
 }
 
