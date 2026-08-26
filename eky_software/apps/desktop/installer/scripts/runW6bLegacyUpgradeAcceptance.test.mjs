@@ -346,7 +346,11 @@ test('classifies current and legacy accepted-build slots independently', {
     .filter((line) => line.trim() !== '');
   assert.equal(lines.length, 1);
   assert.deepEqual(JSON.parse(lines[0]), {
+    atomicRecoverySlotsRecognized: true,
+    conflictingRecoverySlotsRejected: true,
     currentAndLegacyClassifiedSeparately: true,
+    identicalRecoverySlotsAccepted: true,
+    invalidCurrentRejectedBeforeRecoverySlots: true,
     invalidMetadataRejected: true,
     status: 'succeeded',
     targetRevisionMismatchDistinguished: true,

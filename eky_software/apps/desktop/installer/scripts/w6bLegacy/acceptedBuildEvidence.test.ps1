@@ -81,9 +81,48 @@ try {
   $slots = Read-TestSlots
   Assert-TestEqual $slots.Current 'invalid' 'W6B_TEST_INVALID_CLASS_FAILED'
 
+  Remove-Item -LiteralPath $currentPath -Force
+  Write-TestAcceptedBuild -Path "$currentPath.backup" `
+    -Version $targetVersion -Revision $targetRevision
+  $slots = Read-TestSlots
+  Assert-TestEqual $slots.Current 'targetIdentity' `
+    'W6B_TEST_BACKUP_RECOVERY_SLOT_FAILED'
+
+  Remove-Item -LiteralPath "$currentPath.backup" -Force
+  Write-TestAcceptedBuild -Path "$currentPath.next" `
+    -Version $targetVersion -Revision $targetRevision
+  $slots = Read-TestSlots
+  Assert-TestEqual $slots.Current 'targetIdentity' `
+    'W6B_TEST_NEXT_RECOVERY_SLOT_FAILED'
+
+  Write-TestAcceptedBuild -Path "$currentPath.backup" `
+    -Version $sourceVersion -Revision $sourceRevision
+  $slots = Read-TestSlots
+  Assert-TestEqual $slots.Current 'invalid' `
+    'W6B_TEST_CONFLICTING_RECOVERY_SLOTS_NOT_REJECTED'
+
+  Write-TestAcceptedBuild -Path "$currentPath.backup" `
+    -Version $targetVersion -Revision $targetRevision
+  $slots = Read-TestSlots
+  Assert-TestEqual $slots.Current 'targetIdentity' `
+    'W6B_TEST_IDENTICAL_RECOVERY_SLOTS_FAILED'
+
+  [System.IO.File]::WriteAllText(
+    $currentPath,
+    '{invalid',
+    (New-Object System.Text.UTF8Encoding($false))
+  )
+  $slots = Read-TestSlots
+  Assert-TestEqual $slots.Current 'invalid' `
+    'W6B_TEST_INVALID_CURRENT_PRECEDENCE_FAILED'
+
   [ordered]@{
     status = 'succeeded'
+    atomicRecoverySlotsRecognized = $true
+    conflictingRecoverySlotsRejected = $true
     currentAndLegacyClassifiedSeparately = $true
+    identicalRecoverySlotsAccepted = $true
+    invalidCurrentRejectedBeforeRecoverySlots = $true
     targetRevisionMismatchDistinguished = $true
     invalidMetadataRejected = $true
   } | ConvertTo-Json -Compress
