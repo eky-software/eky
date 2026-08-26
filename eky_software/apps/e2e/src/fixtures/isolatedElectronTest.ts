@@ -39,7 +39,10 @@ import {
   type ElectronWorkspaceBackupFixture,
 } from '../workspaces/createElectronWorkspaceBackupFixture.js';
 import { readE2eScenarioId } from './readE2eScenarioId.js';
-import { stopOwnedElectronRuntime } from './stopOwnedElectronRuntime.js';
+import {
+  closeOwnedElectronRuntime,
+  stopOwnedElectronRuntime,
+} from './stopOwnedElectronRuntime.js';
 
 export interface IsolatedElectronHarness {
   api: APIRequestContext;
@@ -285,7 +288,7 @@ export const test = base.extend<
       let runtimeCleanupFailed = false;
       try {
         if (electronApp !== undefined && electronProcess !== undefined) {
-          await stopOwnedElectronRuntime(electronApp, electronProcess);
+          await closeOwnedElectronRuntime(electronApp, electronProcess);
         } else {
           await electronApp?.close().catch(() => undefined);
         }

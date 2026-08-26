@@ -7,6 +7,28 @@ interface ClosableElectronRuntime {
 
 type ProcessTreeStopper = (process: ManagedChildProcess) => Promise<void>;
 
+export async function closeOwnedElectronRuntime(
+  runtime: ClosableElectronRuntime,
+  process: ManagedChildProcess,
+  stopProcessTree: ProcessTreeStopper = stopManagedProcessTree,
+): Promise<void> {
+  let runtimeCloseFailed = false;
+  try {
+    await runtime.close();
+  } catch {
+    runtimeCloseFailed = true;
+  }
+
+  try {
+    await stopProcessTree(process);
+  } catch {
+    throw new Error('Electron E2E runtime process cleanup failed.');
+  }
+  if (runtimeCloseFailed) {
+    throw new Error('Electron E2E runtime handle cleanup failed.');
+  }
+}
+
 export async function stopOwnedElectronRuntime(
   runtime: ClosableElectronRuntime,
   process: ManagedChildProcess,

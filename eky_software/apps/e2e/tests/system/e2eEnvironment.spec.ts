@@ -29,7 +29,10 @@ import {
   type ManagedChildProcess,
 } from '../../src/environment/startManagedProcess.js';
 import { stopManagedProcessTree } from '../../src/environment/stopManagedProcessTree.js';
-import { stopOwnedElectronRuntime } from '../../src/fixtures/stopOwnedElectronRuntime.js';
+import {
+  closeOwnedElectronRuntime,
+  stopOwnedElectronRuntime,
+} from '../../src/fixtures/stopOwnedElectronRuntime.js';
 import { waitForHttpHealth } from '../../src/environment/waitForHttpHealth.js';
 import { isAllowedE2eBrowserUrl } from '../../src/environment/e2eBrowserNetworkBoundary.js';
 import {
@@ -199,6 +202,47 @@ test.describe('managed E2E runtime primitives', () => {
     );
 
     expect(calls).toEqual(['stop', 'close']);
+  });
+
+  test('closes a healthy Electron runtime before applying process-tree cleanup', async () => {
+    const calls: string[] = [];
+    const processToken = {} as ManagedChildProcess;
+
+    await closeOwnedElectronRuntime(
+      {
+        async close() {
+          calls.push('close');
+        },
+      },
+      processToken,
+      async (process) => {
+        expect(process).toBe(processToken);
+        calls.push('stop');
+      },
+    );
+
+    expect(calls).toEqual(['close', 'stop']);
+  });
+
+  test('still applies process-tree cleanup when graceful Electron close fails', async () => {
+    let stopped = false;
+
+    const action = closeOwnedElectronRuntime(
+      {
+        async close() {
+          throw new Error('raw synthetic close failure');
+        },
+      },
+      {} as ManagedChildProcess,
+      async () => {
+        stopped = true;
+      },
+    );
+
+    await expect(action).rejects.toThrow(
+      'Electron E2E runtime handle cleanup failed.',
+    );
+    expect(stopped).toBe(true);
   });
 
   test('still closes the Electron handle when owned process cleanup fails', async () => {
