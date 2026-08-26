@@ -577,6 +577,42 @@ test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () 
   assert.doesNotMatch(sourceText, /Write-(?:Host|Output).*StackTrace/iu);
 });
 
+test('source smoke polling tolerates only a transient incomplete write', {
+  skip: process.platform !== 'win32',
+}, () => {
+  const result = spawnSync(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      resolve(
+        scriptDirectory,
+        'w6bLegacy',
+        'sourceSmokeResult.test.ps1',
+      ),
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  const lines = parseProcessChainOutput(result.stdout);
+
+  assert.equal(result.stderr, '');
+  assert.equal(
+    result.status,
+    0,
+    createSafeProcessChainFailureMessage('sourceSmokeResult', result.stdout),
+  );
+  assert.equal(lines.length, 1);
+  assert.deepEqual(JSON.parse(lines[0]), {
+    status: 'succeeded',
+    transientWriteIgnoredDuringPolling: true,
+    terminalReadRemainsStrict: true,
+    structuralInvalidityRejected: true,
+  });
+});
+
 for (const gracefulShutdownTestCase of gracefulShutdownTestCases) {
   test(`graceful application shutdown case ${gracefulShutdownTestCase}`, {
     skip: process.platform !== 'win32',
