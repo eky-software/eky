@@ -86,6 +86,37 @@ describe('Windows installer rollback handoff', () => {
     processHandle.emit('error', new Error('synthetic spawn failure'));
     await rejection;
   });
+
+  it('passes the private packaged-proof progress path only when supplied', async () => {
+    const processHandle = createProcessHandle();
+    const spawnProcess = vi.fn(() => processHandle);
+    const result = launchWindowsInstallerRollback(
+      {
+        ...createInput(),
+        progressFilePath:
+          'C:\\Users\\Example\\AppData\\Local\\Temp\\eky-w6b2\\proof\\result\\w6b2-rollback-installer-progress.jsonl',
+      },
+      spawnProcess as never,
+    );
+    processHandle.emit('spawn');
+    await result;
+
+    const call = spawnProcess.mock.calls[0] as unknown as [string, string[]];
+    const arguments_ = call[1];
+    expect(arguments_.slice(-2)).toEqual([
+      '-ProgressPath',
+      'C:\\Users\\Example\\AppData\\Local\\Temp\\eky-w6b2\\proof\\result\\w6b2-rollback-installer-progress.jsonl',
+    ]);
+  });
+
+  it('rejects an untrusted progress path', async () => {
+    await expect(
+      launchWindowsInstallerRollback(
+        { ...createInput(), progressFilePath: 'relative\\progress.jsonl' },
+        vi.fn() as never,
+      ),
+    ).rejects.toBeInstanceOf(WindowsInstallerRollbackHandoffError);
+  });
 });
 
 function createInput() {

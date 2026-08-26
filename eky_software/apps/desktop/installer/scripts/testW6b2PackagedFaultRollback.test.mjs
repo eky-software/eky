@@ -8,6 +8,7 @@ const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const harness = read('testW6b2PackagedFaultRollback.ps1');
 const evidence = read(join('w6b2Fault', 'evidence.ps1'));
 const progress = read(join('w6b2Fault', 'progress.ps1'));
+const rollbackProgress = read(join('w6b2Fault', 'rollbackProgress.ps1'));
 const applicationProcess = read(
   join('w6b2Fault', 'applicationProcess.ps1'),
 );
@@ -27,6 +28,7 @@ test('fault harness composes only named packaged proof responsibilities', () => 
   for (const responsibility of [
     'evidence.ps1',
     'progress.ps1',
+    'rollbackProgress.ps1',
     'applicationProcess.ps1',
     'scenarioOperations.ps1',
   ]) {
@@ -113,6 +115,31 @@ test('progress is closed safe JSONL with terminal stage and scenario events', ()
   assert.doesNotMatch(
     progress,
     /rawPath|commandLine|processId|pid|stack|ErrorRecord\.ToString|ScriptStackTrace/iu,
+  );
+});
+
+test('detached rollback progress exposes only closed helper phases', () => {
+  for (const phase of [
+    'inputValidation',
+    'launcherExitWait',
+    'failedPackageUninstall',
+    'rollbackPackageInstall',
+    'failedPackageRepair',
+  ]) {
+    assert.match(rollbackProgress, new RegExp(`'${phase}'`, 'u'));
+  }
+  for (const event of ['started', 'completed', 'failed']) {
+    assert.match(rollbackProgress, new RegExp(`'${event}'`, 'u'));
+  }
+  assert.match(
+    scenarioOperations,
+    /Publish-W6b2FaultRollbackProgress -Context \$Context/u,
+  );
+  assert.match(rollbackProgress, /16 \* 1024/u);
+  assert.match(rollbackProgress, /W6B2_FAULT_ROLLBACK_PROGRESS_INVALID/u);
+  assert.doesNotMatch(
+    rollbackProgress,
+    /commandLine|processId|pid|stack|ErrorRecord\.ToString|ScriptStackTrace/iu,
   );
 });
 

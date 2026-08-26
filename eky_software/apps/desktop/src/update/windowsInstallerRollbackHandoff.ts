@@ -13,6 +13,7 @@ export interface WindowsInstallerRollbackHandoffInput {
   failedPackagePath: string;
   failedProductCode: string;
   launcherProcessId: number;
+  progressFilePath?: string;
   rollbackPackagePath: string;
   rollbackScriptPath: string;
   systemRoot: string | undefined;
@@ -39,6 +40,13 @@ export function launchWindowsInstallerRollback(
     }
     const powershellPath = resolveWindowsPowerShellPath(input.systemRoot);
     const msiExecPath = resolveWindowsInstallerExecutable(input.systemRoot);
+    const progressArguments =
+      input.progressFilePath === undefined
+        ? []
+        : (() => {
+            assertCanonicalFilePath(input.progressFilePath, '.jsonl');
+            return ['-ProgressPath', input.progressFilePath];
+          })();
     const processHandle = spawnProcess(
       powershellPath,
       [
@@ -61,6 +69,7 @@ export function launchWindowsInstallerRollback(
         input.failedPackagePath,
         '-RollbackPackagePath',
         input.rollbackPackagePath,
+        ...progressArguments,
       ],
       {
         detached: true,

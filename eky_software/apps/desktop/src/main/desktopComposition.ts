@@ -85,9 +85,10 @@ import {
   type PackagedSmokeConfiguration,
   type PackagedSmokeStage,
 } from './packagedSmoke.js';
-import type {
-  W6b2PackagedProofConfiguration,
-  W6b2PackagedProofResult,
+import {
+  resolveW6b2PackagedRollbackProgressPath,
+  type W6b2PackagedProofConfiguration,
+  type W6b2PackagedProofResult,
 } from './w6b2PackagedProof.js';
 import {
   createW6b2PackagedFaultInjection,
@@ -701,10 +702,17 @@ async function startDesktopCompositionRuntime({
           launchInstaller: ({ failedPackage, rollbackPackage }) =>
             Promise.resolve().then(() => {
               w6b2PackagedFaultInjection?.failBinaryRollbackLaunchIfRequested();
+              const progressFilePath =
+                resolveW6b2PackagedRollbackProgressPath(
+                  options.w6b2PackagedProof?.configuration,
+                );
               return launchWindowsInstallerRollback({
                 failedPackagePath: failedPackage.packagePath,
                 failedProductCode: failedPackage.productCode,
                 launcherProcessId: process.pid,
+                ...(progressFilePath === undefined
+                  ? {}
+                  : { progressFilePath }),
                 rollbackPackagePath: rollbackPackage.packagePath,
                 rollbackScriptPath: join(
                   options.resourcesPath,

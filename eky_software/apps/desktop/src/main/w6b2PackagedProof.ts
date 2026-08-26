@@ -16,6 +16,8 @@ export const W6B2_PACKAGED_PROOF_MARKER_FILE =
   'w6b2-private-proof-v1.json';
 export const W6B2_PACKAGED_PROOF_DIRECTORY_NAME = 'eky-w6b2';
 export const W6B2_PACKAGED_PROOF_PATH_TOKEN_LENGTH = 32;
+export const W6B2_PACKAGED_ROLLBACK_PROGRESS_FILE =
+  'w6b2-rollback-installer-progress.jsonl';
 
 export const w6b2PackagedProofPhases = Object.freeze([
   'sourceHandoff',
@@ -330,6 +332,23 @@ export async function readW6b2PackagedProofConfiguration(input: {
     faultScenario: control.faultScenario,
     phase: control.phase,
   });
+}
+
+export function resolveW6b2PackagedRollbackProgressPath(
+  configuration: Readonly<W6b2PackagedProofConfiguration> | undefined,
+): string | undefined {
+  if (
+    configuration?.controlFormatVersion !== 2 ||
+    configuration.faultScenario !== 'activeWorkspaceFirstStartFailure' ||
+    configuration.phase !== 'businessRollback'
+  ) {
+    return undefined;
+  }
+  return join(
+    configuration.root,
+    'result',
+    W6B2_PACKAGED_ROLLBACK_PROGRESS_FILE,
+  );
 }
 
 export async function writeW6b2PackagedProofResult(

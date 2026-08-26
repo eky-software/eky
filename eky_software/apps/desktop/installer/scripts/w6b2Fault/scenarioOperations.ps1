@@ -43,6 +43,7 @@ function Invoke-W6b2FaultActiveWorkspaceFirstStartFailure {
     -ExpectedStatus relaunching -ResultCode expectedFaultObserved
 
   Start-W6b2FaultStage -Stage businessRollbackCompletion
+  $Context.RollbackProgressReportedCount = 0
   Set-W6b2FaultPhase -ProofRoot $Context.ProofRoot `
     -FaultScenario $Context.FaultScenario -Phase businessRollback
   $rollbackRun = Invoke-W6b2FaultApplicationHandoffPhase `
@@ -51,9 +52,7 @@ function Invoke-W6b2FaultActiveWorkspaceFirstStartFailure {
     -FaultScenario $Context.FaultScenario -Phase businessRollback `
     -ExpectedStatus relaunching
   Add-W6b2FaultOwnedRun -Context $Context -Run $rollbackRun
-  Wait-W6b2FaultSourceInstallation -Installer $Context.Installer `
-    -SourceProductCode $Context.SourceCode `
-    -TargetProductCode $Context.TargetCode
+  Wait-W6b2FaultSourceInstallation -Context $Context
   Close-W6b2FaultHandoffRun -Context $Context
   Complete-W6b2FaultStage -ResultCode sourceRestored
   Invoke-W6b2FaultPackageVerification -Context $Context -Expected source
@@ -228,23 +227,24 @@ function Close-W6b2FaultHandoffRun {
 
 function Wait-W6b2FaultSourceInstallation {
   param(
-    [Parameter(Mandatory = $true)]$Installer,
-    [Parameter(Mandatory = $true)][string]$SourceProductCode,
-    [Parameter(Mandatory = $true)][string]$TargetProductCode,
+    [Parameter(Mandatory = $true)]$Context,
     [int]$TimeoutMilliseconds = 300000
   )
 
   $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
   do {
-    $sourceState = Get-EkyProductState -Installer $Installer `
-      -Code $SourceProductCode
-    $targetState = Get-EkyProductState -Installer $Installer `
-      -Code $TargetProductCode
+    Publish-W6b2FaultRollbackProgress -Context $Context
+    $sourceState = Get-EkyProductState -Installer $Context.Installer `
+      -Code $Context.SourceCode
+    $targetState = Get-EkyProductState -Installer $Context.Installer `
+      -Code $Context.TargetCode
     $msiProcesses = @(Get-W6b2SuccessCurrentSessionMsiProcesses)
     if ($sourceState -ge 1 -and $targetState -lt 1 -and $msiProcesses.Count -eq 0) {
+      Publish-W6b2FaultRollbackProgress -Context $Context
       return
     }
     if ([DateTime]::UtcNow -ge $deadline) {
+      Publish-W6b2FaultRollbackProgress -Context $Context
       throw 'W6B2_FAULT_INSTALLER_FAILED'
     }
     Write-W6b2SuccessHeartbeat

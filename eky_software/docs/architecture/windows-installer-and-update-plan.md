@@ -1028,6 +1028,16 @@ prosessin poistumista ennen ensimmäistä `msiexec`-komentoa. Odotuksen
 epäonnistuminen keskeyttää rollbackin suljetusti; skripti ei yritä yleistä
 prosessien tappamista eikä jatka käynnissä olevan Eky-prosessin yli.
 
+W6B.2B:n paketoitu fault-harness voi antaa rollback-helperille vain
+tokenista johdetun yksityisen proof-juuren alla olevan, kiinteästi nimetyn
+JSONL-progresspolun. Helper kirjoittaa siihen ainoastaan suljetun vaiheen
+(`inputValidation`, `launcherExitWait`, `failedPackageUninstall`,
+`rollbackPackageInstall` tai `failedPackageRepair`), tapahtuman ja rajatut
+kestot. Polkua, PID:tä, komentoa, MSI-identiteettiä tai raakavirhettä ei
+tulosteta. Progress on vain testihavainto: puuttuva, keskeneräinen tai
+virheellinen havaintotiedosto ei muuta rollbackin exit-koodia, aikarajaa tai
+fail-closed-tulosta, eikä tavallinen production-handoff anna progresspolkua.
+
 Teknologiavalinnassa pitää todistaa:
 
 - pystyykö moottori säilyttämään tai palauttamaan edellisen version

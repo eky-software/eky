@@ -21,6 +21,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'w6b2Success\evidence.ps1')
 . (Join-Path $PSScriptRoot 'w6b2Fault\evidence.ps1')
 . (Join-Path $PSScriptRoot 'w6b2Fault\progress.ps1')
+. (Join-Path $PSScriptRoot 'w6b2Fault\rollbackProgress.ps1')
 . (Join-Path $PSScriptRoot 'w6b2Success\applicationProcess.ps1')
 . (Join-Path $PSScriptRoot 'w6b2Fault\applicationProcess.ps1')
 . (Join-Path $PSScriptRoot 'w6b2Success\installerLifecycle.ps1')
@@ -150,6 +151,9 @@ try {
     ProfileApplicationPath = $resolvedProfileApplication
     ProofRoot = $proofRoot
     ProofToken = $ProofToken
+    RollbackProgressPath = Resolve-W6b2FaultRollbackProgressPath `
+      -ProofRoot $proofRoot
+    RollbackProgressReportedCount = 0
     ShortcutPath = $shortcutPath
     SourceCode = $sourceCode
     SourceMsi = $sourceMsi

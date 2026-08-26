@@ -199,6 +199,24 @@ test('keeps direct downgrade blocked and rollback outside MSI authoring', async 
   assert.match(rollbackScript, /exit 25/);
   assert.match(rollbackScript, /exit 26/);
   assert.match(rollbackScript, /exit 27/);
+  assert.match(rollbackScript, /Test observability must never change rollback behavior/u);
+  for (const phase of [
+    'inputValidation',
+    'launcherExitWait',
+    'failedPackageUninstall',
+    'rollbackPackageInstall',
+    'failedPackageRepair',
+  ]) {
+    assert.match(rollbackScript, new RegExp(`-Phase ${phase}`, 'u'));
+    assert.match(
+      rollbackScript,
+      new RegExp(`ActiveProgressPhase = '${phase}'`, 'u'),
+    );
+  }
+  assert.match(
+    rollbackScript,
+    /if \(\$null -ne \$script:ActiveProgressPhase\)[\s\S]*Write-RollbackProgress -Phase \$script:ActiveProgressPhase -Event failed/u,
+  );
   assert.doesNotMatch(
     rollbackScript,
     /Invoke-Expression|Start-Process|cmd\.exe|\.bat\b|\.cmd\b/iu,

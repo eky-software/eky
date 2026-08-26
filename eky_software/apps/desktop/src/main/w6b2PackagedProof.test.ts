@@ -10,6 +10,7 @@ import {
   createW6b2PackagedProofUnexpectedFailure,
   parseW6b2PackagedProofResult,
   readW6b2PackagedProofConfiguration,
+  resolveW6b2PackagedRollbackProgressPath,
   W6B2_PACKAGED_PROOF_DIRECTORY_NAME,
   W6B2_PACKAGED_PROOF_PATH_TOKEN_LENGTH,
   writeW6b2PackagedProofResult,
@@ -27,6 +28,35 @@ afterEach(async () => {
 });
 
 describe('W6B.2 packaged proof configuration', () => {
+  it('derives rollback progress only for the private active rollback phase', () => {
+    const configuration = {
+      controlFormatVersion: 2 as const,
+      enabled: true as const,
+      faultScenario: 'activeWorkspaceFirstStartFailure' as const,
+      phase: 'businessRollback' as const,
+      resultFilePath: '/tmp/proof/result/w6b2-proof-result.json',
+      role: 'target' as const,
+      root: '/tmp/proof',
+      sourceManifestPath: '/tmp/proof/packages/source/manifest.json',
+      targetManifestPath: '/tmp/proof/packages/target/manifest.json',
+      userDataPath: '/tmp/proof/user-data',
+    };
+    expect(resolveW6b2PackagedRollbackProgressPath(configuration)).toBe(
+      join(
+        configuration.root,
+        'result',
+        'w6b2-rollback-installer-progress.jsonl',
+      ),
+    );
+    expect(
+      resolveW6b2PackagedRollbackProgressPath({
+        ...configuration,
+        phase: 'targetFirstStartFailure',
+      }),
+    ).toBeUndefined();
+    expect(resolveW6b2PackagedRollbackProgressPath(undefined)).toBeUndefined();
+  });
+
   it('stays disabled without the closed command-line switch', () => {
     expect(
       createW6b2PackagedProofBootstrapConfiguration({
