@@ -37,6 +37,9 @@ export async function stopManagedProcessTree(
     }
     await waitForExit(child, timeoutMilliseconds);
   }
+  if (!hasExited(child)) {
+    throw new Error('Managed process tree did not stop.');
+  }
 }
 
 function waitForExit(
