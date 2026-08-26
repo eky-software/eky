@@ -408,6 +408,10 @@ test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () 
     new URL('./w6bLegacy/sourceSmoke.ps1', import.meta.url),
     'utf8',
   );
+  const progressSourceText = readFileSync(
+    new URL('./w6bLegacy/progress.ps1', import.meta.url),
+    'utf8',
+  );
   const sourceText = [
     './testW6bLegacyUpgradeAcceptance.ps1',
     './w6bLegacy/evidence.ps1',
@@ -473,6 +477,44 @@ test('keeps the PowerShell acceptance boundary synthetic and identity-safe', () 
   assert.match(sourceText, /'msiExited'/u);
   assert.match(sourceText, /'productStateValidated'/u);
   assert.match(sourceText, /'payloadValidated'/u);
+  for (const cleanupSignal of [
+    'processStopStarted',
+    'processStopCompleted',
+    'processStopFailed',
+    'targetUninstallStarted',
+    'targetUninstallCompleted',
+    'targetUninstallFailed',
+    'sourceUninstallStarted',
+    'sourceUninstallCompleted',
+    'sourceUninstallFailed',
+    'postconditionsStarted',
+    'postconditionsCompleted',
+    'postconditionsFailed',
+    'installerReleaseStarted',
+    'installerReleaseCompleted',
+    'installerReleaseFailed',
+    'testRootRemovalStarted',
+    'testRootRemovalCompleted',
+    'testRootRemovalFailed',
+  ]) {
+    assert.match(sourceText, new RegExp(`'${cleanupSignal}'`, 'u'));
+  }
+  assert.match(
+    progressSourceText,
+    /function Write-W6bLegacyCleanupObservation/iu,
+  );
+  assert.match(
+    progressSourceText,
+    /if \(\$script:CurrentStage -ne 'cleanup'\)[\s\S]*?W6B_LEGACY_PROGRESS_STAGE_INVALID/iu,
+  );
+  const cleanupObservationSource = progressSourceText.match(
+    /function Write-W6bLegacyCleanupObservation[\s\S]*?(?=\nfunction Get-W6bSafeErrorCode)/iu,
+  )?.[0];
+  assert.ok(cleanupObservationSource);
+  assert.doesNotMatch(
+    cleanupObservationSource,
+    /\b(?:productCode|LogName|Path|ErrorRecord|processId)\b/u,
+  );
   assert.match(
     sourceText,
     /\$cleanupProducts = if \(\$script:PreflightIsolationEstablished\)[\s\S]*?if \(\$script:TargetCleanupAuthorized\)[\s\S]*?if \(\$script:SourceCleanupAuthorized\)/iu,

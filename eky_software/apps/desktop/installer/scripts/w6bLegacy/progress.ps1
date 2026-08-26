@@ -93,6 +93,45 @@ function Write-W6bLegacyInstallerObservation {
   } | ConvertTo-Json -Compress
 }
 
+function Write-W6bLegacyCleanupObservation {
+  param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet(
+      'processStopStarted',
+      'processStopCompleted',
+      'processStopFailed',
+      'targetUninstallStarted',
+      'targetUninstallCompleted',
+      'targetUninstallFailed',
+      'sourceUninstallStarted',
+      'sourceUninstallCompleted',
+      'sourceUninstallFailed',
+      'postconditionsStarted',
+      'postconditionsCompleted',
+      'postconditionsFailed',
+      'installerReleaseStarted',
+      'installerReleaseCompleted',
+      'installerReleaseFailed',
+      'testRootRemovalStarted',
+      'testRootRemovalCompleted',
+      'testRootRemovalFailed'
+    )]
+    [string]$Signal
+  )
+
+  if ($script:CurrentStage -ne 'cleanup') {
+    throw 'W6B_LEGACY_PROGRESS_STAGE_INVALID'
+  }
+  [ordered]@{
+    scenario = 'legacyUpgrade'
+    stage = $script:CurrentStage
+    status = 'observed'
+    resultCode = $Signal
+    durationMs = [long]([DateTime]::UtcNow - $script:StageStartedAt).TotalMilliseconds
+    elapsedMs = [long]([DateTime]::UtcNow - $script:ScenarioStartedAt).TotalMilliseconds
+  } | ConvertTo-Json -Compress
+}
+
 function Get-W6bSafeErrorCode {
   param([Parameter(Mandatory = $true)]$ErrorRecord)
 
