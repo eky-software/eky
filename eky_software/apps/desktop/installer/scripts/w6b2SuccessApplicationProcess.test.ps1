@@ -50,6 +50,7 @@ $testRoot = Join-Path ([IO.Path]::GetTempPath()) `
 $handoffProcess = $null
 $strictProcess = $null
 $earlyExitProcess = $null
+$reusedIdentityProcess = $null
 $observations = [Collections.Generic.List[object]]::new()
 $activationPhaseCalls = [Collections.Generic.List[object]]::new()
 $failureCode = $null
@@ -111,6 +112,38 @@ exit 7
       -Observation $earlyExitObservation -TimeoutMilliseconds 5000 `
       -ReadResult { throw 'W6B2_SUCCESS_RESULT_PENDING' }
   } 'W6B2_SUCCESS_PROCESS_EXITED_BEFORE_RESULT'
+
+  $reusedIdentityProcess = Start-W6b2ProcessFixture `
+    -Command 'Start-Sleep -Seconds 30'
+  $reusedIdentityOwnedObservation = New-W6b2SuccessProcessObservation `
+    -Process $reusedIdentityProcess
+  $observations.Add($reusedIdentityOwnedObservation)
+  $reusedIdentity = New-EkyProcessIdentity `
+    -ProcessId ([int]$reusedIdentityOwnedObservation.root.processId) `
+    -CreationToken ((
+      [long]$reusedIdentityOwnedObservation.root.creationToken + 1
+    ).ToString([Globalization.CultureInfo]::InvariantCulture))
+  $reusedIdentityObservation = [pscustomobject]@{
+    root = $reusedIdentity
+    owned = @{
+      "$($reusedIdentity.processId):$($reusedIdentity.creationToken)" = `
+        $reusedIdentity
+    }
+  }
+  Stop-W6b2SuccessOwnedProcesses -Observation $reusedIdentityObservation
+  $reusedIdentityProcess.Refresh()
+  Assert-W6b2ProcessEqual $reusedIdentityProcess.HasExited $false `
+    'W6B2_PROCESS_TEST_REUSED_IDENTITY_TERMINATED'
+
+  $missingIdentity = New-EkyProcessIdentity -ProcessId ([int]::MaxValue) `
+    -CreationToken '1'
+  Stop-W6b2SuccessOwnedProcesses -Observation ([pscustomobject]@{
+    root = $missingIdentity
+    owned = @{
+      "$($missingIdentity.processId):$($missingIdentity.creationToken)" = `
+        $missingIdentity
+    }
+  })
 
   function Invoke-W6b2SuccessApplicationPhase {
     param(
@@ -240,6 +273,8 @@ exit 7
     activationMigrationUsesExactRelaunch = $true
     proofFailureIsSafelyClassified = $true
     exactOwnedCleanup = $true
+    reusedProcessIdentityPreserved = $true
+    missingProcessIdentityIgnored = $true
     orphanProcessCount = 0
   }
 }
@@ -261,7 +296,12 @@ finally {
       $failureCode = 'W6B2_PROCESS_TEST_CLEANUP_FAILED'
     }
   }
-  foreach ($process in @($handoffProcess, $strictProcess, $earlyExitProcess)) {
+  foreach ($process in @(
+    $handoffProcess,
+    $strictProcess,
+    $earlyExitProcess,
+    $reusedIdentityProcess
+  )) {
     if ($null -ne $process) {
       try {
         Close-W6b2SuccessProcess -Process $process

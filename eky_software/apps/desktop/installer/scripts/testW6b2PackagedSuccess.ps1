@@ -241,28 +241,37 @@ finally {
       Fail-W6b2SuccessStage
     }
     Start-W6b2SuccessStage -Stage cleanup
+    Write-W6b2SuccessObservation -ResultCode cleanupOwnedProcessesStarted
     foreach ($observation in $ownedObservations) {
       Stop-W6b2SuccessOwnedProcesses -Observation $observation
     }
+    Write-W6b2SuccessObservation -ResultCode cleanupOwnedProcessesCompleted
+    Write-W6b2SuccessObservation -ResultCode cleanupSourceProcessStarted
     if ($null -ne $sourceProcess) {
       Wait-W6b2SuccessOwnedProcessesAbsent -Observation $sourceObservation `
         -TimeoutMilliseconds 30000
       Close-W6b2SuccessProcess -Process $sourceProcess
       $sourceProcess = $null
     }
+    Write-W6b2SuccessObservation -ResultCode cleanupSourceProcessCompleted
     if ($null -ne $installer) {
       foreach ($entry in @(
         [pscustomobject]@{
           authorized = $targetCleanupAuthorized
           code = $targetCode
           log = 'target-uninstall.log'
+          startedResultCode = 'cleanupTargetPackageStarted'
+          completedResultCode = 'cleanupTargetPackageCompleted'
         },
         [pscustomobject]@{
           authorized = $sourceCleanupAuthorized
           code = $sourceCode
           log = 'source-uninstall.log'
+          startedResultCode = 'cleanupSourcePackageStarted'
+          completedResultCode = 'cleanupSourcePackageCompleted'
         }
       )) {
+        Write-W6b2SuccessObservation -ResultCode $entry.startedResultCode
         if (
           $entry.authorized -and
           $null -ne $entry.code -and
@@ -271,6 +280,7 @@ finally {
           Uninstall-W6b2SuccessPackage -ProductCode $entry.code `
             -LogPath (Join-Path $proofRoot "private-logs\$($entry.log)")
         }
+        Write-W6b2SuccessObservation -ResultCode $entry.completedResultCode
       }
       if ($null -ne $sourceCode) {
         Assert-W6b2SuccessProductAbsent -Installer $installer `
@@ -281,6 +291,7 @@ finally {
           -ProductCode $targetCode
       }
     }
+    Write-W6b2SuccessObservation -ResultCode cleanupPostconditionsStarted
     Assert-EkyPathEventuallyAbsent -Path $installRoot `
       -Code W6B2_SUCCESS_INSTALL_ROOT_REMAINS -TimeoutMilliseconds 30000
     Assert-EkyPathEventuallyAbsent -Path $shortcutPath `
@@ -310,6 +321,7 @@ finally {
       Assert-W6b2SuccessPackageHash -Path $targetMsi `
         -ExpectedSha256 $TargetPackageSha256
     }
+    Write-W6b2SuccessObservation -ResultCode cleanupPostconditionsCompleted
     Complete-W6b2SuccessStage -ResultCode cleanupCompleted
   }
   catch {

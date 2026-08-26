@@ -306,12 +306,42 @@ test('hardened inventory preserves the shared installer ordering contract', () =
 });
 
 test('cleanup uses exact owned identities and never broad process termination', () => {
+  const cleanupStart = applicationProcess.indexOf(
+    'function Stop-W6b2SuccessOwnedProcesses',
+  );
+  const cleanupEnd = applicationProcess.indexOf(
+    '\nfunction Invoke-W6b2SuccessApplicationPhase',
+    cleanupStart,
+  );
+  assert.notEqual(cleanupStart, -1);
+  assert.notEqual(cleanupEnd, -1);
+  const cleanupFunction = applicationProcess.slice(cleanupStart, cleanupEnd);
+
   assert.match(applicationProcess, /creationToken/u);
-  assert.match(applicationProcess, /Get-Process -Id/u);
+  assert.match(
+    applicationProcess,
+    /\[Diagnostics\.Process\]::GetProcessById/u,
+  );
+  assert.doesNotMatch(cleanupFunction, /Get-EkyProcessSnapshot/u);
   assert.doesNotMatch(
     `${harness}\n${applicationProcess}\n${installerLifecycle}`,
     /taskkill|Stop-Process\s+-Name|Get-Process[^\n]+\|[^\n]+Stop-Process/iu,
   );
+  for (const cleanupResultCode of [
+    'cleanupOwnedProcessesStarted',
+    'cleanupOwnedProcessesCompleted',
+    'cleanupSourceProcessStarted',
+    'cleanupSourceProcessCompleted',
+    'cleanupTargetPackageStarted',
+    'cleanupTargetPackageCompleted',
+    'cleanupSourcePackageStarted',
+    'cleanupSourcePackageCompleted',
+    'cleanupPostconditionsStarted',
+    'cleanupPostconditionsCompleted',
+  ]) {
+    assert.match(progress, new RegExp(`'${cleanupResultCode}'`, 'u'));
+    assert.match(harness, new RegExp(cleanupResultCode, 'u'));
+  }
 });
 
 test('Windows Installer service processes do not block the current test session', () => {

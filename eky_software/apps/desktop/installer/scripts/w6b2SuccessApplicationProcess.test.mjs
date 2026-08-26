@@ -41,6 +41,8 @@ test('W6B2 handoff transfers validated proof without weakening strict phases', {
     activationMigrationUsesExactRelaunch: true,
     proofFailureIsSafelyClassified: true,
     exactOwnedCleanup: true,
+    reusedProcessIdentityPreserved: true,
+    missingProcessIdentityIgnored: true,
     orphanProcessCount: 0,
   });
 });

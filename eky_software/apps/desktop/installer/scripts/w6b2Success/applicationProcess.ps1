@@ -324,18 +324,26 @@ function Get-W6b2SuccessOwnedProcessRole {
 function Stop-W6b2SuccessOwnedProcesses {
   param([Parameter(Mandatory = $true)]$Observation)
 
-  $snapshot = @(Get-EkyProcessSnapshot)
-  $remaining = @(Get-EkyRemainingOwnedProcessIdentitiesFromSnapshot `
-    -OwnedProcessIdentities @($Observation.owned.Values) `
-    -ProcessSnapshot $snapshot)
-  foreach ($identity in $remaining) {
+  foreach ($identity in @($Observation.owned.Values)) {
+    $process = $null
     try {
-      $process = Get-Process -Id ([int]$identity.processId) -ErrorAction Stop
       try {
+        $process = [Diagnostics.Process]::GetProcessById(
+          [int]$identity.processId
+        )
+      }
+      catch [ArgumentException] {
+        continue
+      }
+      try {
+        $process.Refresh()
+        if ($process.HasExited) {
+          continue
+        }
         $token = ConvertTo-EkyProcessCreationToken `
           -CreationTime ([DateTime]$process.StartTime)
         if ($token -cne [string]$identity.creationToken) {
-          throw 'W6B2_SUCCESS_PROCESS_IDENTITY_CHANGED'
+          continue
         }
         $process.Kill()
         if (!$process.WaitForExit(10000)) {
@@ -343,13 +351,40 @@ function Stop-W6b2SuccessOwnedProcesses {
         }
         $process.WaitForExit()
       }
-      finally {
-        $process.Dispose()
+      catch [InvalidOperationException] {
+        continue
+      }
+      catch {
+        if ($_.Exception.Message -ceq 'W6B2_SUCCESS_PROCESS_REMAINS') {
+          throw
+        }
+        try {
+          $process.Refresh()
+          if ($process.HasExited) {
+            continue
+          }
+        }
+        catch [InvalidOperationException] {
+          continue
+        }
+        catch {}
+        throw 'W6B2_SUCCESS_PROCESS_CLEANUP_FAILED'
       }
     }
     catch {
-      if ($_.Exception.Message -eq 'W6B2_SUCCESS_PROCESS_IDENTITY_CHANGED') {
+      if (
+        $_.Exception.Message -cin @(
+          'W6B2_SUCCESS_PROCESS_CLEANUP_FAILED',
+          'W6B2_SUCCESS_PROCESS_REMAINS'
+        )
+      ) {
         throw
+      }
+      throw 'W6B2_SUCCESS_PROCESS_CLEANUP_FAILED'
+    }
+    finally {
+      if ($null -ne $process) {
+        $process.Dispose()
       }
     }
   }
