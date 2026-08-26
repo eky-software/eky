@@ -704,6 +704,7 @@ async function startDesktopCompositionRuntime({
               return launchWindowsInstallerRollback({
                 failedPackagePath: failedPackage.packagePath,
                 failedProductCode: failedPackage.productCode,
+                launcherProcessId: process.pid,
                 rollbackPackagePath: rollbackPackage.packagePath,
                 rollbackScriptPath: join(
                   options.resourcesPath,

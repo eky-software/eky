@@ -182,6 +182,11 @@ test('keeps direct downgrade blocked and rollback outside MSI authoring', async 
     "'/i', $RollbackPackagePath",
   );
   const failedRepairIndex = rollbackScript.indexOf("'/i', $FailedPackagePath");
+  const launcherExitIndex = rollbackScript.indexOf(
+    'Wait-LauncherProcessExit -ProcessId $LauncherProcessId',
+  );
+  assert.ok(launcherExitIndex >= 0);
+  assert.ok(uninstallIndex > launcherExitIndex);
   assert.ok(uninstallIndex >= 0);
   assert.ok(rollbackInstallIndex > uninstallIndex);
   assert.ok(failedRepairIndex > rollbackInstallIndex);
@@ -193,6 +198,7 @@ test('keeps direct downgrade blocked and rollback outside MSI authoring', async 
   assert.match(rollbackScript, /exit 24/);
   assert.match(rollbackScript, /exit 25/);
   assert.match(rollbackScript, /exit 26/);
+  assert.match(rollbackScript, /exit 27/);
   assert.doesNotMatch(
     rollbackScript,
     /Invoke-Expression|Start-Process|cmd\.exe|\.bat\b|\.cmd\b/iu,

@@ -1022,6 +1022,11 @@ Renderer ei anna komentoja, polkuja tai ProductCodea. Main muodostaa kiinteän
 PowerShell- ja `msiexec`-kutsun validoiduista yksityisen cachen handleista sekä
 paketoidusta projektin omasta rollback-skriptistä. Skripti ei ole yleinen
 shell-rajapinta eikä se salli ylimääräisiä argumentteja tai verkkolähteitä.
+Rollback-skripti sitoutuu lisäksi vain sen käynnistäneen Electronin main-
+prosessin validoituun prosessi-identiteettiin ja odottaa rajatusti tämän
+prosessin poistumista ennen ensimmäistä `msiexec`-komentoa. Odotuksen
+epäonnistuminen keskeyttää rollbackin suljetusti; skripti ei yritä yleistä
+prosessien tappamista eikä jatka käynnissä olevan Eky-prosessin yli.
 
 Teknologiavalinnassa pitää todistaa:
 
