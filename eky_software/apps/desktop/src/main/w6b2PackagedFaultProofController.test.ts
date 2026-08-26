@@ -97,7 +97,7 @@ describe('W6B.2 packaged fault proof controller', () => {
       'target',
     );
     fixture.workspaceManagement.getStatus.mockResolvedValue(
-      status('A', 'ready'),
+      status('A'),
     );
     fixture.journalStore.read.mockResolvedValue({ state: 'accepted' });
 
@@ -110,6 +110,49 @@ describe('W6B.2 packaged fault proof controller', () => {
       status: 'completed',
     });
     expect(fixture.lifecycle.shutdown).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the isolated passive workspace unavailable while preparing the acceptance restart', async () => {
+    const fixture = createFixture(
+      'acceptanceInterruption',
+      'targetAcceptanceRecovery',
+      'target',
+    );
+    fixture.workspaceManagement.getStatus.mockResolvedValue(status('A'));
+    fixture.journalStore.read.mockResolvedValue({ state: 'accepted' });
+
+    await expect(
+      runW6b2PackagedFaultProofController(fixture.options),
+    ).resolves.toEqual({
+      faultScenario: 'acceptanceInterruption',
+      formatVersion: 2,
+      phase: 'targetAcceptanceRecovery',
+      status: 'relaunching',
+    });
+    expect(fixture.lifecycle.shutdown).toHaveBeenCalledOnce();
+  });
+
+  it('fails closed if acceptance recovery makes the isolated workspace ready', async () => {
+    const fixture = createFixture(
+      'acceptanceInterruption',
+      'targetAcceptanceRecovery',
+      'target',
+    );
+    fixture.workspaceManagement.getStatus.mockResolvedValue(
+      status('A', 'ready'),
+    );
+    fixture.journalStore.read.mockResolvedValue({ state: 'accepted' });
+
+    await expect(
+      runW6b2PackagedFaultProofController(fixture.options),
+    ).resolves.toEqual({
+      errorCode: 'W6B2_FAULT_PROOF_WORKSPACE_STATE_INVALID',
+      faultScenario: 'acceptanceInterruption',
+      formatVersion: 2,
+      phase: 'targetAcceptanceRecovery',
+      status: 'failed',
+    });
+    expect(fixture.lifecycle.shutdown).not.toHaveBeenCalled();
   });
 
   it('switches through the real workspace service and requires relaunch', async () => {

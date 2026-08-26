@@ -57,9 +57,10 @@ export async function runW6b2PackagedFaultProofController(
       case 'sourceHandoff':
         return await runSourceHandoff(options);
       case 'targetFirstStart':
-      case 'targetAcceptanceRecovery':
       case 'targetAcceptanceRestart':
         return await verifyAcceptedTarget(options);
+      case 'targetAcceptanceRecovery':
+        return await verifyAcceptanceRecovery(options);
       case 'switchToB':
         return await switchToPassiveWorkspace(options);
       case 'passiveWorkspaceRecovery':
@@ -168,10 +169,23 @@ async function verifyAcceptedTarget(
   const status = await readExpectedStatus(options);
   requireWorkspace(status, 'A', true, 'ready');
   requireWorkspace(status, 'B', false, 'ready');
-  requireWorkspace(status, 'C', false, 'ready');
+  requireWorkspace(status, 'C', false, 'recoveryRequired');
   await requireJournalState(options, 'accepted');
   await shutdown(options);
   return completed(options.configuration);
+}
+
+async function verifyAcceptanceRecovery(
+  options: Readonly<W6b2PackagedFaultProofControllerOptions>,
+): Promise<W6b2PackagedFaultProofResult> {
+  requireTarget(options);
+  const status = await readExpectedStatus(options);
+  requireWorkspace(status, 'A', true, 'ready');
+  requireWorkspace(status, 'B', false, 'ready');
+  requireWorkspace(status, 'C', false, 'recoveryRequired');
+  await requireJournalState(options, 'accepted');
+  await shutdown(options);
+  return relaunching(options.configuration);
 }
 
 async function switchToPassiveWorkspace(
