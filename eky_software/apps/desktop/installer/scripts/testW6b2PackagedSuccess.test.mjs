@@ -58,6 +58,8 @@ test('progress output is closed JSONL without raw diagnostic fields', () => {
     assert.match(progress, new RegExp(`'${stage}'`, 'u'));
   }
   assert.match(progress, /ConvertTo-Json -InputObject \$line -Compress/u);
+  assert.match(progress, /\[Console\]::Out\.WriteLine/u);
+  assert.doesNotMatch(progress, /Write-Output/u);
   assert.doesNotMatch(progress, /errorMessage|stack|path|commandLine|processId/u);
   assert.doesNotMatch(progress, /Write-Host|Write-Error|Write-Warning/u);
   assert.match(progress, /Resolve-W6b2SuccessSafeErrorCode/u);
@@ -77,6 +79,12 @@ test('progress output is closed JSONL without raw diagnostic fields', () => {
     'W6B2_SUCCESS_SOURCE_INSTALL_RELATED_PRODUCT_PRESENT',
   ]) {
     assert.match(progress, new RegExp(`'${safeInstallerFailure}'`, 'u'));
+  }
+  for (const activationFailure of [
+    'W6B2_SUCCESS_MIGRATION_PHASE_FAILED',
+    'W6B2_SUCCESS_VALIDATION_PHASE_FAILED',
+  ]) {
+    assert.match(progress, new RegExp(`'${activationFailure}'`, 'u'));
   }
   assert.doesNotMatch(
     progress,
@@ -285,6 +293,9 @@ test('passive compatible workspace activation proves one migration relaunch befo
   );
   assert.match(applicationProcess, /-ObservationMode migration/u);
   assert.match(applicationProcess, /-ObservationMode validation/u);
+  assert.match(applicationProcess, /\[void\]\(& \$Observe \$resultCode\)/u);
+  assert.match(applicationProcess, /W6B2_SUCCESS_MIGRATION_PHASE_FAILED/u);
+  assert.match(applicationProcess, /W6B2_SUCCESS_VALIDATION_PHASE_FAILED/u);
   assert.match(harness, /profileVerificationStarted/u);
   assert.match(harness, /profileVerificationCompleted/u);
   assert.match(
@@ -395,6 +406,19 @@ test('cleanup uses exact owned identities and never broad process termination', 
     assert.match(progress, new RegExp(`'${cleanupResultCode}'`, 'u'));
     assert.match(harness, new RegExp(cleanupResultCode, 'u'));
   }
+  const packageCleanupStart = harness.indexOf(
+    "if ($null -ne $installer) {",
+  );
+  const packageCleanupEnd = harness.indexOf(
+    'Write-W6b2SuccessObservation -ResultCode cleanupPostconditionsStarted',
+    packageCleanupStart,
+  );
+  const packageCleanup = harness.slice(packageCleanupStart, packageCleanupEnd);
+  assert.doesNotMatch(packageCleanup, /Get-EkyProductState/u);
+  assert.match(installerLifecycle, /Invoke-EkyMsiExec/u);
+  assert.match(installerLifecycle, /-EmitSafeProgress \$true/u);
+  assert.match(installerLifecycle, /-AllowedExitCodes @\(0, 1605\)/u);
+  assert.doesNotMatch(installerLifecycle, /Start-EkyOwnedMsiExecHost/u);
 });
 
 test('Windows Installer service processes do not block the current test session', () => {

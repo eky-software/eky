@@ -34,50 +34,12 @@ function Assert-W6b2SuccessProductInstalled {
 function Invoke-W6b2SuccessMsiExec {
   param(
     [Parameter(Mandatory = $true)][string[]]$Arguments,
-    [Parameter(Mandatory = $true)][string]$Operation
+    [Parameter(Mandatory = $true)][string]$Operation,
+    [int[]]$AllowedExitCodes = @(0)
   )
 
-  $policy = Get-EkyMsiExecPolicy -Operation $Operation
-  $process = $null
-  $identity = $null
-  try {
-    $process = Start-EkyOwnedMsiExecHost -Arguments $Arguments
-    $identity = New-EkyOwnedMsiProcessIdentity -Process $process
-    $deadline = [DateTime]::UtcNow.AddMilliseconds(
-      $policy.timeoutMilliseconds
-    )
-    do {
-      $process.Refresh()
-      if ($process.HasExited) {
-        Assert-EkyMsiExecExitCode -ExitCode ([int]$process.ExitCode) `
-          -Operation $Operation
-        return
-      }
-      if ([DateTime]::UtcNow -ge $deadline) {
-        Stop-EkyOwnedMsiProcess -Process $process -Identity $identity
-        throw "$($policy.errorPrefix)_TIMEOUT"
-      }
-      Write-W6b2SuccessHeartbeat
-      Start-Sleep -Milliseconds 250
-    } while ($true)
-  }
-  catch {
-    if ($null -ne $process) {
-      try {
-        $process.Refresh()
-        if (!$process.HasExited -and $null -ne $identity) {
-          Stop-EkyOwnedMsiProcess -Process $process -Identity $identity
-        }
-      }
-      catch {}
-    }
-    throw
-  }
-  finally {
-    if ($null -ne $process) {
-      $process.Dispose()
-    }
-  }
+  [void](Invoke-EkyMsiExec -Arguments $Arguments -Operation $Operation `
+    -AllowedExitCodes $AllowedExitCodes -EmitSafeProgress $true)
 }
 
 function Install-W6b2SuccessSourcePackage {
@@ -109,7 +71,7 @@ function Uninstall-W6b2SuccessPackage {
     '/norestart',
     '/L*v',
     $LogPath
-  )
+  ) -AllowedExitCodes @(0, 1605)
 }
 
 function Wait-W6b2SuccessTargetInstallation {

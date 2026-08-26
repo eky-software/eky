@@ -54,6 +54,7 @@ $reusedIdentityProcess = $null
 $observations = [Collections.Generic.List[object]]::new()
 $activationPhaseCalls = [Collections.Generic.List[object]]::new()
 $milestones = [Collections.Generic.List[string]]::new()
+$activationFailureMode = $null
 $failureCode = $null
 $successResult = $null
 try {
@@ -166,6 +167,12 @@ exit 7
       observationMode = $ObservationMode
     }
     $script:activationPhaseCalls.Add($call)
+    if ($script:activationFailureMode -ceq "$ObservationMode`:raw") {
+      throw 'raw fixture failure'
+    }
+    if ($script:activationFailureMode -ceq "$ObservationMode`:safe") {
+      throw 'W6B2_SUCCESS_PROCESS_EXIT_FAILED'
+    }
     return [pscustomobject]@{ observation = $call }
   }
 
@@ -187,6 +194,26 @@ exit 7
   Assert-W6b2ProcessEqual $activation.validationObservation `
     $activationPhaseCalls[1] 'W6B2_PROCESS_TEST_ACTIVATION_OBSERVATION_INVALID'
 
+  $activationFailureMode = 'migration:raw'
+  Assert-W6b2ProcessThrows {
+    Invoke-W6b2SuccessWorkspaceActivationMigrationPhase `
+      -ExecutablePath 'fixture.exe' -ProofToken 'a' `
+      -ProofRoot 'fixture-root' -Phase verifyBRestart
+  } 'W6B2_SUCCESS_MIGRATION_PHASE_FAILED'
+  $activationFailureMode = 'validation:raw'
+  Assert-W6b2ProcessThrows {
+    Invoke-W6b2SuccessWorkspaceActivationMigrationPhase `
+      -ExecutablePath 'fixture.exe' -ProofToken 'a' `
+      -ProofRoot 'fixture-root' -Phase verifyBRestart
+  } 'W6B2_SUCCESS_VALIDATION_PHASE_FAILED'
+  $activationFailureMode = 'migration:safe'
+  Assert-W6b2ProcessThrows {
+    Invoke-W6b2SuccessWorkspaceActivationMigrationPhase `
+      -ExecutablePath 'fixture.exe' -ProofToken 'a' `
+      -ProofRoot 'fixture-root' -Phase verifyBRestart
+  } 'W6B2_SUCCESS_PROCESS_EXIT_FAILED'
+  $activationFailureMode = $null
+
   Invoke-W6b2SuccessProcessMilestone -ObservationMode migration `
     -Milestone launchStarted -Observe {
       param([string]$ResultCode)
@@ -199,6 +226,12 @@ exit 7
     }
   Invoke-W6b2SuccessProcessMilestone -ObservationMode migration `
     -Milestone rootExited -Observe { throw 'raw logger failure' }
+  $unexpectedMilestoneOutput = @(
+    Invoke-W6b2SuccessProcessMilestone -ObservationMode migration `
+      -Milestone rootExited -Observe { return 'unsafe writer output' }
+  )
+  Assert-W6b2ProcessEqual $unexpectedMilestoneOutput.Count 0 `
+    'W6B2_PROCESS_TEST_MILESTONE_OUTPUT_LEAKED'
   Assert-W6b2ProcessEqual ($milestones -join ',') `
     'migrationLaunchStarted,validationOutputDrainCompleted' `
     'W6B2_PROCESS_TEST_MILESTONE_INVALID'

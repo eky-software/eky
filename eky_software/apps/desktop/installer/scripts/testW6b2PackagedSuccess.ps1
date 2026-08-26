@@ -280,8 +280,7 @@ finally {
         Write-W6b2SuccessObservation -ResultCode $entry.startedResultCode
         if (
           $entry.authorized -and
-          $null -ne $entry.code -and
-          (Get-EkyProductState -Installer $installer -Code $entry.code) -ge 1
+          $null -ne $entry.code
         ) {
           Uninstall-W6b2SuccessPackage -ProductCode $entry.code `
             -LogPath (Join-Path $proofRoot "private-logs\$($entry.log)")

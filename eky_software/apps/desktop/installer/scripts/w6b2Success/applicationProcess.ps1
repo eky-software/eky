@@ -160,7 +160,7 @@ function Invoke-W6b2SuccessProcessMilestone {
     default { throw 'W6B2_SUCCESS_PROGRESS_INVALID' }
   }
   try {
-    & $Observe $resultCode
+    [void](& $Observe $resultCode)
   }
   catch {
     # Progress output must never change the process result.
@@ -587,14 +587,30 @@ function Invoke-W6b2SuccessWorkspaceActivationMigrationPhase {
     [scriptblock]$Observe = { param([string]$ResultCode) }
   )
 
-  $migrationRun = Invoke-W6b2SuccessApplicationPhase `
-    -ExecutablePath $ExecutablePath -ProofToken $ProofToken `
-    -ProofRoot $ProofRoot -Phase $Phase -ExpectedStatus relaunching `
-    -ObservationMode migration -Observe $Observe
-  $validationRun = Invoke-W6b2SuccessApplicationPhase `
-    -ExecutablePath $ExecutablePath -ProofToken $ProofToken `
-    -ProofRoot $ProofRoot -Phase $Phase -ExpectedStatus completed `
-    -ObservationMode validation -Observe $Observe
+  try {
+    $migrationRun = Invoke-W6b2SuccessApplicationPhase `
+      -ExecutablePath $ExecutablePath -ProofToken $ProofToken `
+      -ProofRoot $ProofRoot -Phase $Phase -ExpectedStatus relaunching `
+      -ObservationMode migration -Observe $Observe
+  }
+  catch {
+    if ($_.Exception.Message -cmatch '^W6B2_SUCCESS_[A-Z0-9_]+$') {
+      throw
+    }
+    throw 'W6B2_SUCCESS_MIGRATION_PHASE_FAILED'
+  }
+  try {
+    $validationRun = Invoke-W6b2SuccessApplicationPhase `
+      -ExecutablePath $ExecutablePath -ProofToken $ProofToken `
+      -ProofRoot $ProofRoot -Phase $Phase -ExpectedStatus completed `
+      -ObservationMode validation -Observe $Observe
+  }
+  catch {
+    if ($_.Exception.Message -cmatch '^W6B2_SUCCESS_[A-Z0-9_]+$') {
+      throw
+    }
+    throw 'W6B2_SUCCESS_VALIDATION_PHASE_FAILED'
+  }
 
   return [pscustomobject]@{
     migrationObservation = $migrationRun.observation
