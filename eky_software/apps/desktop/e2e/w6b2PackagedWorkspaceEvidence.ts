@@ -1,5 +1,12 @@
 import { createHash } from 'node:crypto';
-import { readFile, stat } from 'node:fs/promises';
+import type { Stats } from 'node:fs';
+import {
+  lstat,
+  open,
+  realpath,
+  type FileHandle,
+} from 'node:fs/promises';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 import type { W6b2PackagedWorkspaceFixture } from './w6b2PackagedWorkspaceFixtures.js';
@@ -20,9 +27,25 @@ export interface W6b2PackagedWorkspaceEvidence {
   readonly secretSentinel: Readonly<W6b2PackagedWorkspaceFileEvidence>;
 }
 
+interface W6b2EvidenceFileSystem {
+  lstat(path: string): Promise<Stats>;
+  open(path: string, flags: string): Promise<FileHandle>;
+  realpath(path: string): Promise<string>;
+}
+
+const defaultFileSystem: Readonly<W6b2EvidenceFileSystem> = Object.freeze({
+  lstat,
+  open,
+  realpath,
+});
+
 export async function snapshotW6b2PackagedWorkspaceEvidence(
   fixture: Readonly<W6b2PackagedWorkspaceFixture>,
 ): Promise<Readonly<W6b2PackagedWorkspaceEvidence>> {
+  const canonicalRoot = await requireCanonicalEvidenceRoot(
+    fixture.workspaceRoot,
+    defaultFileSystem,
+  );
   const businessRowsSha256 = snapshotBusinessRows(fixture);
   const [
     archiveConfig,
@@ -33,13 +56,13 @@ export async function snapshotW6b2PackagedWorkspaceEvidence(
     recoverySentinel,
     secretSentinel,
   ] = await Promise.all([
-    snapshotFile(fixture.archiveConfigFilePath),
-    snapshotFile(fixture.archiveJournalFilePath),
-    snapshotFile(fixture.archiveSentinelFilePath),
-    snapshotFile(fixture.databaseFilePath),
-    snapshotFile(fixture.businessArtifactPath),
-    snapshotFile(fixture.recoverySentinelFilePath),
-    snapshotFile(fixture.secretSentinelFilePath),
+    snapshotFile(fixture.archiveConfigFilePath, canonicalRoot, defaultFileSystem),
+    snapshotFile(fixture.archiveJournalFilePath, canonicalRoot, defaultFileSystem),
+    snapshotFile(fixture.archiveSentinelFilePath, canonicalRoot, defaultFileSystem),
+    snapshotFile(fixture.databaseFilePath, canonicalRoot, defaultFileSystem),
+    snapshotFile(fixture.businessArtifactPath, canonicalRoot, defaultFileSystem),
+    snapshotFile(fixture.recoverySentinelFilePath, canonicalRoot, defaultFileSystem),
+    snapshotFile(fixture.secretSentinelFilePath, canonicalRoot, defaultFileSystem),
   ]);
   if (
     pdf.sha256 !== fixture.business.pdfSha256 ||
@@ -236,16 +259,131 @@ function requireHealthyDatabase(database: DatabaseSync): void {
   }
 }
 
-async function snapshotFile(
+export async function snapshotW6b2PackagedWorkspaceFileEvidence(
   path: string,
+  workspaceRoot: string,
+  fileSystemOverrides: Partial<W6b2EvidenceFileSystem> = {},
 ): Promise<Readonly<W6b2PackagedWorkspaceFileEvidence>> {
-  const metadata = await stat(path);
-  if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.nlink !== 1) {
+  const fileSystem = Object.freeze({
+    ...defaultFileSystem,
+    ...fileSystemOverrides,
+  });
+  try {
+    const canonicalRoot = await requireCanonicalEvidenceRoot(
+      workspaceRoot,
+      fileSystem,
+    );
+    return await snapshotFile(path, canonicalRoot, fileSystem);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === 'W6B2_EVIDENCE_FILE_INVALID'
+    ) {
+      throw error;
+    }
     throw new Error('W6B2_EVIDENCE_FILE_INVALID');
   }
-  const bytes = await readFile(path);
-  return Object.freeze({
-    sha256: createHash('sha256').update(bytes).digest('hex'),
-    size: metadata.size,
-  });
+}
+
+async function snapshotFile(
+  path: string,
+  canonicalRoot: string,
+  fileSystem: Readonly<W6b2EvidenceFileSystem>,
+): Promise<Readonly<W6b2PackagedWorkspaceFileEvidence>> {
+  const resolvedPath = resolve(path);
+  const pathMetadata = await fileSystem.lstat(resolvedPath);
+  requireRegularSingleLinkFile(pathMetadata);
+  const canonicalPath = await fileSystem.realpath(resolvedPath);
+  requireContainedCanonicalPath(canonicalRoot, canonicalPath);
+
+  const handle = await fileSystem.open(resolvedPath, 'r');
+  try {
+    const openedMetadata = await handle.stat();
+    requireRegularSingleLinkFile(openedMetadata);
+    requireSameFileIdentity(pathMetadata, openedMetadata);
+    const bytes = await handle.readFile();
+    const [handleMetadataAfterRead, pathMetadataAfterRead, canonicalPathAfterRead] =
+      await Promise.all([
+        handle.stat(),
+        fileSystem.lstat(resolvedPath),
+        fileSystem.realpath(resolvedPath),
+      ]);
+    requireRegularSingleLinkFile(handleMetadataAfterRead);
+    requireRegularSingleLinkFile(pathMetadataAfterRead);
+    requireSameFileIdentity(pathMetadata, handleMetadataAfterRead);
+    requireSameFileIdentity(pathMetadata, pathMetadataAfterRead);
+    if (
+      !samePath(canonicalPath, canonicalPathAfterRead) ||
+      bytes.byteLength !== handleMetadataAfterRead.size
+    ) {
+      throw new Error('W6B2_EVIDENCE_FILE_INVALID');
+    }
+    requireContainedCanonicalPath(canonicalRoot, canonicalPathAfterRead);
+    return Object.freeze({
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+      size: handleMetadataAfterRead.size,
+    });
+  } finally {
+    await handle.close();
+  }
+}
+
+async function requireCanonicalEvidenceRoot(
+  root: string,
+  fileSystem: Readonly<W6b2EvidenceFileSystem>,
+): Promise<string> {
+  const resolvedRoot = resolve(root);
+  const metadata = await fileSystem.lstat(resolvedRoot);
+  if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+    throw new Error('W6B2_EVIDENCE_FILE_INVALID');
+  }
+  return fileSystem.realpath(resolvedRoot);
+}
+
+function requireRegularSingleLinkFile(
+  metadata: Stats,
+): void {
+  if (
+    !metadata.isFile() ||
+    metadata.isSymbolicLink() ||
+    metadata.nlink !== 1
+  ) {
+    throw new Error('W6B2_EVIDENCE_FILE_INVALID');
+  }
+}
+
+function requireSameFileIdentity(
+  left: Stats,
+  right: Stats,
+): void {
+  if (
+    left.dev !== right.dev ||
+    left.ino !== right.ino ||
+    left.mode !== right.mode ||
+    left.nlink !== right.nlink ||
+    left.size !== right.size ||
+    left.birthtimeMs !== right.birthtimeMs ||
+    left.ctimeMs !== right.ctimeMs ||
+    left.mtimeMs !== right.mtimeMs
+  ) {
+    throw new Error('W6B2_EVIDENCE_FILE_INVALID');
+  }
+}
+
+function requireContainedCanonicalPath(root: string, candidate: string): void {
+  const child = relative(root, candidate);
+  if (
+    child === '' ||
+    child === '..' ||
+    child.startsWith(`..${sep}`) ||
+    isAbsolute(child)
+  ) {
+    throw new Error('W6B2_EVIDENCE_FILE_INVALID');
+  }
+}
+
+function samePath(left: string, right: string): boolean {
+  return process.platform === 'win32'
+    ? resolve(left).toLowerCase() === resolve(right).toLowerCase()
+    : resolve(left) === resolve(right);
 }

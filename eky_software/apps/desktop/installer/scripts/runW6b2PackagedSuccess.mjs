@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process';
 import { lstat, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -15,6 +14,11 @@ import {
   removeW6b2PackagedSuccessRunFixture,
   verifyW6b2PackagedSuccessRunFixture,
 } from './w6b2PackagedSuccessRunFixture.mjs';
+import {
+  runW6b2PackagedScenarioProcess,
+  W6B2_PACKAGED_SCENARIO_CLEANUP_TIMEOUT_MILLISECONDS,
+  W6B2_PACKAGED_SCENARIO_TIMEOUT_MILLISECONDS,
+} from './w6b2PackagedScenarioProcess.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const desktopDirectory = resolve(scriptDirectory, '..', '..');
@@ -67,6 +71,7 @@ export async function runW6b2PackagedSuccess(options = {}) {
           targetPayloadRoot: installerPair.target.packagedApplicationPath,
           temporaryRoot,
         }),
+        { proofToken: run.token },
       );
       await dependencies.verifyRunFixture({ ...run, temporaryRoot });
       await dependencies.verifyInstallerPair(installerPair);
@@ -190,25 +195,16 @@ function requireRunInput(input) {
   }
 }
 
-function runProcess(command, arguments_) {
-  return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn(command, arguments_, {
-      cwd: repositoryRoot,
-      env: { ...process.env },
-      shell: false,
-      stdio: 'inherit',
-      windowsHide: true,
-    });
-    child.once('error', () => {
-      rejectPromise(new Error('W6B2_SUCCESS_PROCESS_FAILED'));
-    });
-    child.once('exit', (code, signal) => {
-      if (code === 0 && signal === null) {
-        resolvePromise();
-        return;
-      }
-      rejectPromise(new Error('W6B2_SUCCESS_PROCESS_FAILED'));
-    });
+function runProcess(command, arguments_, context) {
+  return runW6b2PackagedScenarioProcess({
+    arguments: arguments_,
+    cleanupTimeoutMilliseconds:
+      W6B2_PACKAGED_SCENARIO_CLEANUP_TIMEOUT_MILLISECONDS,
+    command,
+    cwd: repositoryRoot,
+    environment: process.env,
+    proofToken: context?.proofToken,
+    timeoutMilliseconds: W6B2_PACKAGED_SCENARIO_TIMEOUT_MILLISECONDS,
   });
 }
 

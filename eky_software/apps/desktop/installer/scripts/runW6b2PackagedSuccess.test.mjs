@@ -21,6 +21,7 @@ test('builds once and runs the same installer pair twice in isolated fixtures', 
   let createdCount = 0;
   let pairVerificationCount = 0;
   const processArguments = [];
+  const processProofTokens = [];
   const removedTokens = [];
   const verifiedTokens = [];
 
@@ -40,9 +41,10 @@ test('builds once and runs the same installer pair twice in isolated fixtures', 
       resolveElectronRuntime() {
         return { executablePath: 'C:\\fixture\\electron.exe' };
       },
-      async runProcess(command, arguments_) {
+      async runProcess(command, arguments_, context) {
         assert.equal(command, 'powershell.exe');
         processArguments.push(arguments_);
+        processProofTokens.push(context.proofToken);
       },
       temporaryRoot() {
         return tmpdir();
@@ -72,6 +74,7 @@ test('builds once and runs the same installer pair twice in isolated fixtures', 
   assert.equal(pairVerificationCount, 3);
   assert.deepEqual(verifiedTokens, ['1'.repeat(64), '2'.repeat(64)]);
   assert.deepEqual(removedTokens, ['1'.repeat(64), '2'.repeat(64)]);
+  assert.deepEqual(processProofTokens, ['1'.repeat(64), '2'.repeat(64)]);
   assert.equal(processArguments.length, 2);
   assert.notDeepEqual(processArguments[0], processArguments[1]);
   for (const arguments_ of processArguments) {
