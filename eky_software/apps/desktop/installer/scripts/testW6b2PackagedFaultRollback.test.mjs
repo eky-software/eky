@@ -150,6 +150,18 @@ test('every successful flow ends in package and profile terminal verification', 
     scenarioOperations,
     /Assert-W6b2FaultTerminalPackageState/u,
   );
+  assert.match(
+    scenarioOperations,
+    /function Assert-W6b2FaultProductRegistrationAbsent/u,
+  );
+  assert.match(
+    scenarioOperations,
+    /Get-EkyProductRegistrations -ProductCodes @\(\$ProductCode\)/u,
+  );
+  assert.doesNotMatch(
+    scenarioOperations,
+    /Assert-EkyInstallerRegistrationAbsent -ProductCodes @\(\$absentCode\)/u,
+  );
 });
 
 test('cleanup preserves the normal profile and proves all owned state absent', () => {

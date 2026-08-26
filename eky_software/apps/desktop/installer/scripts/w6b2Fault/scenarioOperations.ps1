@@ -292,11 +292,19 @@ function Assert-W6b2FaultTerminalPackageState {
     -PayloadInventory $payload -ShortcutPath $Context.ShortcutPath
   Write-W6b2FaultObservation -ResultCode payloadVerified
   Assert-EkyInstallerRegistrationPresent -ProductCode $presentCode
-  Assert-EkyInstallerRegistrationAbsent -ProductCodes @($absentCode)
+  Assert-W6b2FaultProductRegistrationAbsent -ProductCode $absentCode
   Write-W6b2FaultObservation -ResultCode registrationVerified
   Assert-W6b2SuccessPackageHash -Path $Context.SourceMsi `
     -ExpectedSha256 $Context.SourcePackageSha256
   Assert-W6b2SuccessPackageHash -Path $Context.TargetMsi `
     -ExpectedSha256 $Context.TargetPackageSha256
   Write-W6b2FaultObservation -ResultCode packageHashesVerified
+}
+
+function Assert-W6b2FaultProductRegistrationAbsent {
+  param([Parameter(Mandatory = $true)][string]$ProductCode)
+
+  if (@(Get-EkyProductRegistrations -ProductCodes @($ProductCode)).Count -ne 0) {
+    throw 'W6B2_FAULT_INSTALLER_FAILED'
+  }
 }
