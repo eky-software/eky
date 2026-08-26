@@ -23,7 +23,8 @@ function Install-W6bPackage {
     [string]$Operation
   )
 
-  Invoke-EkyMsiExec -Operation $Operation -Arguments @(
+  Invoke-EkyMsiExec -Operation $Operation `
+    -EmitSafeProgress ($Operation -eq 'w6b_target_install') -Arguments @(
     '/i',
     "`"$MsiPath`"",
     '/qn',

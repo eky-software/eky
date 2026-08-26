@@ -46,15 +46,21 @@ $ownedProcess = $null
 $sentinelProcess = $null
 $fastProcess = $null
 $treeProcess = $null
+$cleanupExitedProcess = $null
+$cleanupTimeoutProcess = $null
 $treeIdentities = @()
+$unobservedHostExitCode = $null
 $hostArgumentRoundTripExitCode = $null
 $longPathCleanupRoot = $null
 $failureCode = $null
 $successResult = $null
+$hostObservationLines = [System.Collections.Generic.List[string]]::new()
+$timeoutObservationLines = [System.Collections.Generic.List[string]]::new()
+$cleanupObservationLines = [System.Collections.Generic.List[string]]::new()
 try {
   $installPolicy = Get-EkyMsiExecPolicy -Operation w6b_target_install
   $uninstallPolicy = Get-EkyMsiExecPolicy -Operation w6b_uninstall
-  Assert-Equal ($installPolicy.timeoutMilliseconds -gt 0) $true `
+  Assert-Equal $installPolicy.timeoutMilliseconds 300000 `
     'INSTALLER_MSI_RUNNER_INSTALL_POLICY_INVALID'
   Assert-Equal ($uninstallPolicy.timeoutMilliseconds -gt 0) $true `
     'INSTALLER_MSI_RUNNER_UNINSTALL_POLICY_INVALID'
@@ -67,14 +73,58 @@ try {
     ConvertTo-EkyMsiExecArgumentsToken -Arguments @()
   } 'INSTALLER_MSI_ARGUMENTS_INVALID'
 
-  $hostArgumentRoundTripExitCode = Invoke-EkyMsiExecProcess -Arguments @(
+  $hostArguments = @(
     '/x',
     '{00000000-0000-0000-0000-000000000000}',
     '/qn',
     '/norestart'
-  ) -Operation downgrade
+  )
+  $unobservedHostExitCode = Invoke-EkyMsiExecProcess `
+    -Arguments $hostArguments -Operation downgrade
+  $hostArgumentRoundTripExitCode = Invoke-EkyMsiExecProcess `
+    -Arguments $hostArguments -Operation downgrade -EmitSafeProgress $true `
+    -ProgressWriter {
+      param([string]$Line)
+      $hostObservationLines.Add($Line)
+    }
   Assert-Equal $hostArgumentRoundTripExitCode 1605 `
     'INSTALLER_MSI_RUNNER_HOST_ARGUMENT_ROUND_TRIP_INVALID'
+  Assert-Equal $hostArgumentRoundTripExitCode $unobservedHostExitCode `
+    'INSTALLER_MSI_RUNNER_OBSERVATION_CHANGED_EXIT_CODE'
+  $hostObservations = @($hostObservationLines | ForEach-Object {
+    ConvertFrom-Json -InputObject $_
+  })
+  foreach ($observation in $hostObservations) {
+    $keys = @($observation.PSObject.Properties.Name | Sort-Object)
+    Assert-Equal (
+      @(Compare-Object $keys @(
+        'durationMs', 'elapsedMs', 'operation', 'phase', 'status'
+      )).Count
+    ) 0 'INSTALLER_MSI_RUNNER_OBSERVATION_KEYS_INVALID'
+    Assert-Equal $observation.operation downgrade `
+      'INSTALLER_MSI_RUNNER_OBSERVATION_OPERATION_INVALID'
+  }
+  $hostPhases = @($hostObservations | ForEach-Object { $_.phase })
+  foreach ($requiredPhase in @(
+    'hostStarted',
+    'hostIdentityCaptured',
+    'waitStarted',
+    'hostExited',
+    'processTreeAbsent'
+  )) {
+    Assert-Equal ($hostPhases -contains $requiredPhase) $true `
+      'INSTALLER_MSI_RUNNER_OBSERVATION_PHASE_MISSING'
+  }
+  Assert-ThrowsCode {
+    New-EkyMsiProcessObservationContext -Operation unknown_operation `
+      -Enabled $true
+  } 'INSTALLER_MSI_OPERATION_INVALID'
+  $invalidObservationContext = New-EkyMsiProcessObservationContext `
+    -Operation downgrade -Enabled $true -Writer { param([string]$Line) }
+  Assert-ThrowsCode {
+    Write-EkyMsiProcessObservation -Context $invalidObservationContext `
+      -Phase unknownPhase -Status started
+  } 'INSTALLER_MSI_PROCESS_OBSERVATION_INVALID'
 
   Assert-ThrowsCode {
     Remove-EkyInstallerTestDirectory -Path (Join-Path `
@@ -160,7 +210,6 @@ $child = Start-Process powershell.exe -ArgumentList @(
 ) -WindowStyle Hidden -PassThru
 [void]$child.WaitForExit()
 '@
-  $ownedIdentity = New-EkyOwnedMsiProcessIdentity -Process $ownedProcess
   $ownedTreeIdentity = New-EkyProcessIdentity `
     -ProcessId ([int]$ownedProcess.Id) `
     -CreationToken (ConvertTo-EkyProcessCreationToken `
@@ -180,12 +229,17 @@ $child = Start-Process powershell.exe -ArgumentList @(
     }
     [void]$ownedProcess.WaitForExit(25)
   } while ($true)
-  $timedResult = Wait-EkyOwnedMsiProcess -Process $ownedProcess `
-    -TimeoutMilliseconds 50
-  Assert-Equal $timedResult.state timedOut `
-    'INSTALLER_MSI_RUNNER_TIMEOUT_STATE_INVALID'
-  Stop-EkyOwnedMsiProcess -Process $ownedProcess -Identity $ownedIdentity `
-    -TimeoutMilliseconds 5000
+  $timeoutContext = New-EkyMsiProcessObservationContext `
+    -Operation w6b_target_install -Enabled $true -Writer {
+      param([string]$Line)
+      $timeoutObservationLines.Add($Line)
+    }
+  Assert-ThrowsCode {
+    Invoke-EkyOwnedMsiProcessLifecycle -Process $ownedProcess `
+      -ErrorPrefix INSTALLER_MSI_RUNNER_SIMULATED `
+      -TimeoutMilliseconds 50 -HeartbeatMilliseconds 20 `
+      -PollMilliseconds 10 -ObservationContext $timeoutContext
+  } 'INSTALLER_MSI_RUNNER_SIMULATED_TIMEOUT'
   $ownedProcess.Refresh()
   Assert-Equal $ownedProcess.HasExited $true `
     'INSTALLER_MSI_RUNNER_OWNED_PROCESS_REMAINS'
@@ -200,6 +254,63 @@ $child = Start-Process powershell.exe -ArgumentList @(
   Assert-Equal $sentinelProcess.HasExited $false `
     'INSTALLER_MSI_RUNNER_FOREIGN_SENTINEL_STOPPED'
 
+  $timeoutObservations = @($timeoutObservationLines | ForEach-Object {
+    ConvertFrom-Json -InputObject $_
+  })
+  $timeoutPhases = @($timeoutObservations | ForEach-Object { $_.phase })
+  foreach ($requiredPhase in @(
+    'waitHeartbeat',
+    'waitTimedOut',
+    'cleanupStarted',
+    'cleanupCompleted',
+    'processTreeAbsent'
+  )) {
+    Assert-Equal ($timeoutPhases -contains $requiredPhase) $true `
+      'INSTALLER_MSI_RUNNER_TIMEOUT_OBSERVATION_MISSING'
+  }
+
+  $cleanupExitedProcess = Start-MsiRunnerFixtureProcess -Command 'exit 0'
+  $cleanupExitedIdentity = New-EkyOwnedMsiProcessIdentity `
+    -Process $cleanupExitedProcess
+  [void]$cleanupExitedProcess.WaitForExit(5000)
+  $cleanupExitedContext = New-EkyMsiProcessObservationContext `
+    -Operation w6b_target_install -Enabled $true -Writer {
+      param([string]$Line)
+      $cleanupObservationLines.Add($Line)
+    }
+  Invoke-EkyOwnedMsiProcessCleanup -Process $cleanupExitedProcess `
+    -Identity $cleanupExitedIdentity `
+    -ErrorPrefix INSTALLER_MSI_RUNNER_SIMULATED `
+    -ObservationContext $cleanupExitedContext
+
+  $cleanupTimeoutProcess = Start-MsiRunnerFixtureProcess `
+    -Command 'Start-Sleep -Seconds 30; exit 0'
+  $cleanupTimeoutIdentity = New-EkyOwnedMsiProcessIdentity `
+    -Process $cleanupTimeoutProcess
+  Assert-ThrowsCode {
+    Invoke-EkyOwnedMsiProcessCleanup -Process $cleanupTimeoutProcess `
+      -Identity $cleanupTimeoutIdentity `
+      -ErrorPrefix INSTALLER_MSI_RUNNER_SIMULATED `
+      -ObservationContext $cleanupExitedContext -CleanupAction {
+        param($Process, $Identity)
+        throw 'INSTALLER_MSI_PROCESS_CLEANUP_TIMEOUT'
+      }
+  } 'INSTALLER_MSI_RUNNER_SIMULATED_CLEANUP_FAILED'
+  Stop-EkyOwnedMsiProcess -Process $cleanupTimeoutProcess `
+    -Identity $cleanupTimeoutIdentity -TimeoutMilliseconds 5000
+
+  $safeObservationPattern = `
+    '^\{"operation":"[a-z0-9_]+","phase":"[A-Za-z]+","status":"[a-z]+","durationMs":\d+,"elapsedMs":\d+\}$'
+  foreach ($line in @(
+    $hostObservationLines + $timeoutObservationLines + $cleanupObservationLines
+  )) {
+    Assert-Equal ($line -cmatch $safeObservationPattern) $true `
+      'INSTALLER_MSI_RUNNER_OBSERVATION_PAYLOAD_UNSAFE'
+    Assert-Equal (
+      $line -match '(?i)(path|pid|command|stack|stdout|stderr|\.msi)'
+    ) $false 'INSTALLER_MSI_RUNNER_OBSERVATION_PAYLOAD_UNSAFE'
+  }
+
   Assert-ThrowsCode {
     Wait-EkyOwnedMsiProcess -Process $sentinelProcess `
       -TimeoutMilliseconds 0
@@ -211,8 +322,12 @@ $child = Start-Process powershell.exe -ArgumentList @(
     boundedUninstallPolicy = $true
     fastExitValidated = $true
     hostArgumentRoundTripValidated = $true
+    hostExitBeforeCleanupValidated = $true
     longPathCleanupValidated = $true
+    nonzeroExitPreserved = $true
+    safeProcessObservability = $true
     timeoutValidated = $true
+    timeoutCleanupFailurePreserved = $true
     ownedTreeWaitValidated = $true
     exactOwnedCleanup = $true
     foreignSentinelUntouched = $true
@@ -233,7 +348,9 @@ finally {
     $ownedProcess,
     $sentinelProcess,
     $fastProcess,
-    $treeProcess
+    $treeProcess,
+    $cleanupExitedProcess,
+    $cleanupTimeoutProcess
   )) {
     if ($null -eq $process) {
       continue
