@@ -98,6 +98,11 @@ test('progress is closed safe JSONL with terminal stage and scenario events', ()
     'cleanupSourcePackageCompleted',
     'cleanupPostconditionsStarted',
     'cleanupPostconditionsCompleted',
+    'productStateVerified',
+    'payloadVerified',
+    'registrationVerified',
+    'packageHashesVerified',
+    'packageVerified',
   ]) {
     assert.match(progress, new RegExp(`'${resultCode}'`, 'u'));
   }
@@ -137,6 +142,10 @@ test('every successful flow ends in package and profile terminal verification', 
     assert.match(scenarioOperations, new RegExp(`-Operation ${operation}`, 'u'));
     assert.match(evidence, new RegExp(`'${operation}'`, 'u'));
   }
+  assert.match(
+    scenarioOperations,
+    /Invoke-W6b2FaultPackageVerification/u,
+  );
   assert.match(
     scenarioOperations,
     /Assert-W6b2FaultTerminalPackageState/u,

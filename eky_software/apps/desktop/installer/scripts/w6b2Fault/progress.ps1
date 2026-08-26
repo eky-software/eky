@@ -20,6 +20,7 @@ $script:W6b2FaultProgressStages = @(
   'passiveRecovery',
   'binaryRollbackFailure',
   'failedSafeVerification',
+  'packageVerification',
   'terminalVerification',
   'cleanup'
 )
@@ -53,6 +54,11 @@ $script:W6b2FaultResultCodes = @(
   'workspaceSwitchPrepared',
   'workspaceRecovered',
   'failedSafeObserved',
+  'productStateVerified',
+  'payloadVerified',
+  'registrationVerified',
+  'packageHashesVerified',
+  'packageVerified',
   'profileVerified',
   'cleanupOwnedProcessesStarted',
   'cleanupOwnedProcessesCompleted',

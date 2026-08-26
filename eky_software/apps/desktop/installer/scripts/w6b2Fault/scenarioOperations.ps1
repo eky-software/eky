@@ -29,7 +29,7 @@ function Invoke-W6b2FaultPreUpdateRecoveryPointFailure {
   Invoke-W6b2FaultApplicationStep -Context $Context `
     -Stage sourceHandoff -Phase sourceHandoff -ExpectedStatus completed `
     -ResultCode expectedFaultObserved
-  Assert-W6b2FaultTerminalPackageState -Context $Context -Expected source
+  Invoke-W6b2FaultPackageVerification -Context $Context -Expected source
   Invoke-W6b2FaultTerminalVerification -Context $Context `
     -Operation verifyPreUpdateFailure
 }
@@ -58,8 +58,8 @@ function Invoke-W6b2FaultActiveWorkspaceFirstStartFailure {
     -SourceProductCode $Context.SourceCode `
     -TargetProductCode $Context.TargetCode
   Close-W6b2FaultHandoffRun -Context $Context
-  Assert-W6b2FaultTerminalPackageState -Context $Context -Expected source
   Complete-W6b2FaultStage -ResultCode sourceRestored
+  Invoke-W6b2FaultPackageVerification -Context $Context -Expected source
 
   Invoke-W6b2FaultApplicationStep -Context $Context `
     -Stage rollbackFirstStart -Phase rollbackFirstStart `
@@ -81,7 +81,7 @@ function Invoke-W6b2FaultAcceptanceInterruption {
   Invoke-W6b2FaultApplicationStep -Context $Context `
     -Stage acceptanceRestart -Phase targetAcceptanceRestart `
     -ExpectedStatus completed -ResultCode targetAccepted
-  Assert-W6b2FaultTerminalPackageState -Context $Context -Expected target
+  Invoke-W6b2FaultPackageVerification -Context $Context -Expected target
   Invoke-W6b2FaultTerminalVerification -Context $Context `
     -Operation verifyAcceptanceRecovery
 }
@@ -103,7 +103,7 @@ function Invoke-W6b2FaultPassiveWorkspaceMigrationFailure {
   Invoke-W6b2FaultApplicationStep -Context $Context `
     -Stage passiveRecovery -Phase passiveWorkspaceRecovery `
     -ExpectedStatus completed -ResultCode workspaceRecovered
-  Assert-W6b2FaultTerminalPackageState -Context $Context -Expected target
+  Invoke-W6b2FaultPackageVerification -Context $Context -Expected target
   Invoke-W6b2FaultTerminalVerification -Context $Context `
     -Operation verifyPassiveRecovery
 }
@@ -124,7 +124,7 @@ function Invoke-W6b2FaultBinaryRollbackFailure {
   Invoke-W6b2FaultApplicationStep -Context $Context `
     -Stage failedSafeVerification -Phase failedSafeVerification `
     -ExpectedStatus completed -ResultCode failedSafeObserved
-  Assert-W6b2FaultTerminalPackageState -Context $Context -Expected target
+  Invoke-W6b2FaultPackageVerification -Context $Context -Expected target
   Invoke-W6b2FaultTerminalVerification -Context $Context `
     -Operation verifyBinaryFailedSafe
 }
@@ -186,6 +186,18 @@ function Invoke-W6b2FaultTerminalVerification {
     -ProofToken $Context.ProofToken -ProofRoot $Context.ProofRoot `
     -Operation $Operation
   Complete-W6b2FaultStage -ResultCode profileVerified
+}
+
+function Invoke-W6b2FaultPackageVerification {
+  param(
+    [Parameter(Mandatory = $true)]$Context,
+    [Parameter(Mandatory = $true)]
+    [ValidateSet('source', 'target')][string]$Expected
+  )
+
+  Start-W6b2FaultStage -Stage packageVerification
+  Assert-W6b2FaultTerminalPackageState -Context $Context -Expected $Expected
+  Complete-W6b2FaultStage -ResultCode packageVerified
 }
 
 function Add-W6b2FaultOwnedRun {
@@ -275,12 +287,16 @@ function Assert-W6b2FaultTerminalPackageState {
     -ProductCode $presentCode
   Assert-W6b2SuccessProductAbsent -Installer $Context.Installer `
     -ProductCode $absentCode
+  Write-W6b2FaultObservation -ResultCode productStateVerified
   Assert-EkyInstalledPayload -InstallRoot $Context.InstallRoot `
     -PayloadInventory $payload -ShortcutPath $Context.ShortcutPath
+  Write-W6b2FaultObservation -ResultCode payloadVerified
   Assert-EkyInstallerRegistrationPresent -ProductCode $presentCode
   Assert-EkyInstallerRegistrationAbsent -ProductCodes @($absentCode)
+  Write-W6b2FaultObservation -ResultCode registrationVerified
   Assert-W6b2SuccessPackageHash -Path $Context.SourceMsi `
     -ExpectedSha256 $Context.SourcePackageSha256
   Assert-W6b2SuccessPackageHash -Path $Context.TargetMsi `
     -ExpectedSha256 $Context.TargetPackageSha256
+  Write-W6b2FaultObservation -ResultCode packageHashesVerified
 }
