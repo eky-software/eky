@@ -202,14 +202,20 @@ try {
 
   Start-W6b2SuccessStage -Stage verifyBRestart
   Set-W6b2SuccessPhase -ProofRoot $proofRoot -Phase verifyBRestart
+  $verifyBObservation = {
+    param([string]$ResultCode)
+    Write-W6b2SuccessObservation -ResultCode $ResultCode
+  }
   $verifyB = Invoke-W6b2SuccessWorkspaceActivationMigrationPhase `
     -ExecutablePath $applicationPath -ProofToken $ProofToken `
-    -ProofRoot $proofRoot -Phase verifyBRestart
+    -ProofRoot $proofRoot -Phase verifyBRestart -Observe $verifyBObservation
   $ownedObservations.Add($verifyB.migrationObservation)
   $ownedObservations.Add($verifyB.validationObservation)
+  Write-W6b2SuccessObservation -ResultCode profileVerificationStarted
   Invoke-W6b2SuccessProfileOperation -ElectronPath $resolvedElectron `
     -ProfileApplicationPath $resolvedProfileApplication `
     -ProofToken $ProofToken -ProofRoot $proofRoot -Operation verifyBRestart
+  Write-W6b2SuccessObservation -ResultCode profileVerificationCompleted
   Complete-W6b2SuccessStage -ResultCode workspaceBActive
 
   Start-W6b2SuccessStage -Stage switchToA

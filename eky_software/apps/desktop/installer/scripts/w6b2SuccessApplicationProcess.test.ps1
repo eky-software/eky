@@ -53,6 +53,7 @@ $earlyExitProcess = $null
 $reusedIdentityProcess = $null
 $observations = [Collections.Generic.List[object]]::new()
 $activationPhaseCalls = [Collections.Generic.List[object]]::new()
+$milestones = [Collections.Generic.List[string]]::new()
 $failureCode = $null
 $successResult = $null
 try {
@@ -152,7 +153,9 @@ exit 7
       [string]$ProofToken,
       [string]$ProofRoot,
       [string]$Phase,
-      [string]$ExpectedStatus
+      [string]$ExpectedStatus,
+      [string]$ObservationMode,
+      [scriptblock]$Observe
     )
     $call = [pscustomobject]@{
       executablePath = $ExecutablePath
@@ -160,6 +163,7 @@ exit 7
       proofRoot = $ProofRoot
       phase = $Phase
       expectedStatus = $ExpectedStatus
+      observationMode = $ObservationMode
     }
     $script:activationPhaseCalls.Add($call)
     return [pscustomobject]@{ observation = $call }
@@ -174,10 +178,42 @@ exit 7
     'relaunching' 'W6B2_PROCESS_TEST_ACTIVATION_MIGRATION_INVALID'
   Assert-W6b2ProcessEqual $activationPhaseCalls[1].expectedStatus `
     'completed' 'W6B2_PROCESS_TEST_ACTIVATION_VALIDATION_INVALID'
+  Assert-W6b2ProcessEqual $activationPhaseCalls[0].observationMode `
+    'migration' 'W6B2_PROCESS_TEST_ACTIVATION_OBSERVATION_MODE_INVALID'
+  Assert-W6b2ProcessEqual $activationPhaseCalls[1].observationMode `
+    'validation' 'W6B2_PROCESS_TEST_ACTIVATION_OBSERVATION_MODE_INVALID'
   Assert-W6b2ProcessEqual $activation.migrationObservation `
     $activationPhaseCalls[0] 'W6B2_PROCESS_TEST_ACTIVATION_OBSERVATION_INVALID'
   Assert-W6b2ProcessEqual $activation.validationObservation `
     $activationPhaseCalls[1] 'W6B2_PROCESS_TEST_ACTIVATION_OBSERVATION_INVALID'
+
+  Invoke-W6b2SuccessProcessMilestone -ObservationMode migration `
+    -Milestone launchStarted -Observe {
+      param([string]$ResultCode)
+      $script:milestones.Add($ResultCode)
+    }
+  Invoke-W6b2SuccessProcessMilestone -ObservationMode validation `
+    -Milestone outputDrainCompleted -Observe {
+      param([string]$ResultCode)
+      $script:milestones.Add($ResultCode)
+    }
+  Invoke-W6b2SuccessProcessMilestone -ObservationMode migration `
+    -Milestone rootExited -Observe { throw 'raw logger failure' }
+  Assert-W6b2ProcessEqual ($milestones -join ',') `
+    'migrationLaunchStarted,validationOutputDrainCompleted' `
+    'W6B2_PROCESS_TEST_MILESTONE_INVALID'
+
+  $pendingOutput = [Threading.Tasks.TaskCompletionSource[bool]]::new()
+  $fakeProcess = [pscustomobject]@{
+    HasExited = $true
+    W6b2StandardOutputTask = $pendingOutput.Task
+    W6b2StandardErrorTask = [Threading.Tasks.Task]::CompletedTask
+  }
+  $fakeProcess | Add-Member -MemberType ScriptMethod -Name Refresh -Value {}
+  $fakeProcess | Add-Member -MemberType ScriptMethod -Name Dispose -Value {}
+  Assert-W6b2ProcessThrows {
+    Close-W6b2SuccessProcess -Process $fakeProcess -TimeoutMilliseconds 10
+  } 'W6B2_SUCCESS_PROCESS_OUTPUT_TIMEOUT'
 
   $roleFixtures = @(
     @('--type=crashpad-handler', 'crashpad'),
@@ -272,6 +308,8 @@ exit 7
     strictPhaseRequiresZeroExit = $true
     earlyExitRejected = $true
     activationMigrationUsesExactRelaunch = $true
+    boundedOutputDrain = $true
+    safeMilestones = $true
     proofFailureIsSafelyClassified = $true
     exactOwnedCleanup = $true
     reusedProcessIdentityPreserved = $true

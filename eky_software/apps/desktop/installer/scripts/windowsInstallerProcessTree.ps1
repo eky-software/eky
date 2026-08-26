@@ -37,8 +37,14 @@ function ConvertTo-EkyProcessSnapshotRecord {
 }
 
 function Get-EkyProcessSnapshot {
+  param([int]$OperationTimeoutSeconds = 5)
+
+  if ($OperationTimeoutSeconds -lt 1) {
+    throw 'INSTALLER_UPGRADE_PROCESS_SNAPSHOT_TIMEOUT_INVALID'
+  }
   return @(
-    Get-CimInstance Win32_Process -ErrorAction Stop |
+    Get-CimInstance Win32_Process -OperationTimeoutSec $OperationTimeoutSeconds `
+      -ErrorAction Stop |
       ForEach-Object { ConvertTo-EkyProcessSnapshotRecord -Process $_ }
   )
 }
@@ -190,7 +196,6 @@ function Stop-EkyExactProcessIdentity {
       if (!$candidate.WaitForExit($TimeoutMilliseconds)) {
         throw 'INSTALLER_UPGRADE_PROCESS_TREE_REMAINS'
       }
-      $candidate.WaitForExit()
     }
     catch [System.InvalidOperationException] {
       return

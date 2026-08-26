@@ -61,14 +61,25 @@ function Start-W6b2SuccessProcess {
 }
 
 function Close-W6b2SuccessProcess {
-  param([Parameter(Mandatory = $true)]$Process)
+  param(
+    [Parameter(Mandatory = $true)]$Process,
+    [int]$TimeoutMilliseconds = 10000,
+    [ValidateSet('none', 'migration', 'validation')]
+    [string]$ObservationMode = 'none',
+    [scriptblock]$Observe = { param([string]$ResultCode) }
+  )
 
-  $Process.Refresh()
-  if (!$Process.HasExited) {
-    throw 'W6B2_SUCCESS_PROCESS_REMAINS'
+  if ($TimeoutMilliseconds -lt 1) {
+    throw 'W6B2_SUCCESS_PROCESS_WAIT_INVALID'
   }
   try {
-    $Process.WaitForExit()
+    $Process.Refresh()
+    if (!$Process.HasExited) {
+      throw 'W6B2_SUCCESS_PROCESS_REMAINS'
+    }
+    Invoke-W6b2SuccessProcessMilestone -ObservationMode $ObservationMode `
+      -Milestone outputDrainStarted -Observe $Observe
+    $tasks = [Collections.Generic.List[Threading.Tasks.Task]]::new()
     foreach ($taskName in @(
       'W6b2StandardOutputTask',
       'W6b2StandardErrorTask'
@@ -77,17 +88,82 @@ function Close-W6b2SuccessProcess {
       if ($null -eq $property -or $null -eq $property.Value) {
         throw 'W6B2_SUCCESS_PROCESS_OUTPUT_FAILED'
       }
-      [void]$property.Value.GetAwaiter().GetResult()
+      $tasks.Add([Threading.Tasks.Task]$property.Value)
     }
+    if (
+      ![Threading.Tasks.Task]::WaitAll(
+        $tasks.ToArray(),
+        $TimeoutMilliseconds
+      )
+    ) {
+      throw 'W6B2_SUCCESS_PROCESS_OUTPUT_TIMEOUT'
+    }
+    foreach ($task in $tasks) {
+      [void]$task.GetAwaiter().GetResult()
+    }
+    Invoke-W6b2SuccessProcessMilestone -ObservationMode $ObservationMode `
+      -Milestone outputDrainCompleted -Observe $Observe
   }
   catch {
-    if ($_.Exception.Message -eq 'W6B2_SUCCESS_PROCESS_OUTPUT_FAILED') {
+    if (
+      $_.Exception.Message -cin @(
+        'W6B2_SUCCESS_PROCESS_OUTPUT_FAILED',
+        'W6B2_SUCCESS_PROCESS_OUTPUT_TIMEOUT',
+        'W6B2_SUCCESS_PROCESS_REMAINS'
+      )
+    ) {
       throw
     }
     throw 'W6B2_SUCCESS_PROCESS_OUTPUT_FAILED'
   }
   finally {
     $Process.Dispose()
+  }
+}
+
+function Invoke-W6b2SuccessProcessMilestone {
+  param(
+    [ValidateSet('none', 'migration', 'validation')]
+    [string]$ObservationMode = 'none',
+    [Parameter(Mandatory = $true)]
+    [ValidateSet(
+      'launchStarted',
+      'processStarted',
+      'resultObserved',
+      'rootExited',
+      'ownedTreeAbsent',
+      'outputDrainStarted',
+      'outputDrainCompleted'
+    )]
+    [string]$Milestone,
+    [scriptblock]$Observe = { param([string]$ResultCode) }
+  )
+
+  if ($ObservationMode -ceq 'none') {
+    return
+  }
+  $resultCode = switch -CaseSensitive ("$ObservationMode`:$Milestone") {
+    'migration:launchStarted' { 'migrationLaunchStarted' }
+    'migration:processStarted' { 'migrationProcessStarted' }
+    'migration:resultObserved' { 'migrationResultObserved' }
+    'migration:rootExited' { 'migrationRootExited' }
+    'migration:ownedTreeAbsent' { 'migrationOwnedTreeAbsent' }
+    'migration:outputDrainStarted' { 'migrationOutputDrainStarted' }
+    'migration:outputDrainCompleted' { 'migrationOutputDrainCompleted' }
+    'validation:launchStarted' { 'validationLaunchStarted' }
+    'validation:processStarted' { 'validationProcessStarted' }
+    'validation:resultObserved' { 'validationResultObserved' }
+    'validation:rootExited' { 'validationRootExited' }
+    'validation:ownedTreeAbsent' { 'validationOwnedTreeAbsent' }
+    'validation:outputDrainStarted' { 'validationOutputDrainStarted' }
+    'validation:outputDrainCompleted' { 'validationOutputDrainCompleted' }
+    default { throw 'W6B2_SUCCESS_PROGRESS_INVALID' }
+  }
+  try {
+    & $Observe $resultCode
+  }
+  catch {
+    # Progress output must never change the process result.
   }
 }
 
@@ -117,24 +193,49 @@ function Update-W6b2SuccessProcessObservation {
   return ,$snapshot
 }
 
+function Update-W6b2SuccessProcessObservationWhenDue {
+  param(
+    [Parameter(Mandatory = $true)]$Observation,
+    [Parameter(Mandatory = $true)][ref]$NextSnapshotAt,
+    [int]$IntervalMilliseconds = 1000
+  )
+
+  if ($IntervalMilliseconds -lt 1) {
+    throw 'W6B2_SUCCESS_PROCESS_WAIT_INVALID'
+  }
+  $now = [DateTime]::UtcNow
+  if ($now -lt $NextSnapshotAt.Value) {
+    return
+  }
+  [void](Update-W6b2SuccessProcessObservation -Observation $Observation)
+  $NextSnapshotAt.Value = $now.AddMilliseconds($IntervalMilliseconds)
+}
+
 function Wait-W6b2SuccessResultProcess {
   param(
     [Parameter(Mandatory = $true)]$Process,
     [Parameter(Mandatory = $true)]$Observation,
     [Parameter(Mandatory = $true)][scriptblock]$ReadResult,
-    [int]$TimeoutMilliseconds = 180000
+    [int]$TimeoutMilliseconds = 180000,
+    [ValidateSet('none', 'migration', 'validation')]
+    [string]$ObservationMode = 'none',
+    [scriptblock]$Observe = { param([string]$ResultCode) }
   )
 
   if ($TimeoutMilliseconds -lt 1) {
     throw 'W6B2_SUCCESS_PROCESS_WAIT_INVALID'
   }
   $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
+  $nextSnapshotAt = [DateTime]::MinValue
   $result = $null
   while ([DateTime]::UtcNow -lt $deadline) {
-    [void](Update-W6b2SuccessProcessObservation -Observation $Observation)
+    Update-W6b2SuccessProcessObservationWhenDue -Observation $Observation `
+      -NextSnapshotAt ([ref]$nextSnapshotAt)
     if ($null -eq $result) {
       try {
         $result = & $ReadResult
+        Invoke-W6b2SuccessProcessMilestone -ObservationMode $ObservationMode `
+          -Milestone resultObserved -Observe $Observe
       }
       catch {
         if ($_.Exception.Message -ne 'W6B2_SUCCESS_RESULT_PENDING') {
@@ -144,11 +245,14 @@ function Wait-W6b2SuccessResultProcess {
     }
     $Process.Refresh()
     if ($Process.HasExited) {
-      $Process.WaitForExit()
+      Invoke-W6b2SuccessProcessMilestone -ObservationMode $ObservationMode `
+        -Milestone rootExited -Observe $Observe
       [void](Update-W6b2SuccessProcessObservation -Observation $Observation)
       if ($null -eq $result) {
         try {
           $result = & $ReadResult
+          Invoke-W6b2SuccessProcessMilestone -ObservationMode $ObservationMode `
+            -Milestone resultObserved -Observe $Observe
         }
         catch {
           if ($_.Exception.Message -eq 'W6B2_SUCCESS_RESULT_PENDING') {
@@ -162,6 +266,8 @@ function Wait-W6b2SuccessResultProcess {
       }
       Wait-W6b2SuccessOwnedProcessesAbsent -Observation $Observation `
         -TimeoutMilliseconds 30000
+      Invoke-W6b2SuccessProcessMilestone -ObservationMode $ObservationMode `
+        -Milestone ownedTreeAbsent -Observe $Observe
       return $result
     }
     Write-W6b2SuccessHeartbeat
@@ -183,18 +289,16 @@ function Wait-W6b2SuccessHandoffResult {
     throw 'W6B2_SUCCESS_PROCESS_WAIT_INVALID'
   }
   $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
+  $nextSnapshotAt = [DateTime]::MinValue
   while ([DateTime]::UtcNow -lt $deadline) {
-    [void](Update-W6b2SuccessProcessObservation -Observation $Observation)
+    Update-W6b2SuccessProcessObservationWhenDue -Observation $Observation `
+      -NextSnapshotAt ([ref]$nextSnapshotAt)
     try {
       $result = & $ReadResult
       [void](Update-W6b2SuccessProcessObservation -Observation $Observation)
       $Process.Refresh()
       if ($Process.HasExited -and [int]$Process.ExitCode -ne 0) {
-        $Process.WaitForExit()
         throw 'W6B2_SUCCESS_PROCESS_EXIT_FAILED'
-      }
-      if ($Process.HasExited) {
-        $Process.WaitForExit()
       }
       return $result
     }
@@ -205,7 +309,6 @@ function Wait-W6b2SuccessHandoffResult {
     }
     $Process.Refresh()
     if ($Process.HasExited) {
-      $Process.WaitForExit()
       [void](Update-W6b2SuccessProcessObservation -Observation $Observation)
       try {
         $result = & $ReadResult
@@ -235,11 +338,12 @@ function Wait-W6b2SuccessOwnedProcessesAbsent {
   )
 
   $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
+  $nextSnapshotAt = [DateTime]::MinValue
   do {
-    $snapshot = @(Get-EkyProcessSnapshot)
-    $remaining = @(Get-EkyRemainingOwnedProcessIdentitiesFromSnapshot `
-      -OwnedProcessIdentities @($Observation.owned.Values) `
-      -ProcessSnapshot $snapshot)
+    Update-W6b2SuccessProcessObservationWhenDue -Observation $Observation `
+      -NextSnapshotAt ([ref]$nextSnapshotAt)
+    $remaining = @(Get-EkyRemainingExactProcessIdentities `
+      -OwnedProcessIdentities @($Observation.owned.Values))
     if ($remaining.Count -eq 0) {
       return
     }
@@ -261,7 +365,8 @@ function Get-W6b2SuccessOwnedProcessFailureCode {
     [scriptblock]$ReadProcess = {
       param([int]$ProcessId)
       return Get-CimInstance Win32_Process `
-        -Filter "ProcessId = $ProcessId" -ErrorAction Stop
+        -Filter "ProcessId = $ProcessId" -OperationTimeoutSec 5 `
+        -ErrorAction Stop
     }
   )
 
@@ -341,7 +446,6 @@ function Stop-W6b2SuccessOwnedProcesses {
         if (!$process.WaitForExit(10000)) {
           throw 'W6B2_SUCCESS_PROCESS_REMAINS'
         }
-        $process.WaitForExit()
       }
       finally {
         $process.Dispose()
@@ -384,7 +488,6 @@ function Stop-W6b2SuccessRecordedOwnedProcesses {
         if (!$process.WaitForExit(10000)) {
           throw 'W6B2_SUCCESS_PROCESS_REMAINS'
         }
-        $process.WaitForExit()
       }
       catch [InvalidOperationException] {
         continue
@@ -431,14 +534,21 @@ function Invoke-W6b2SuccessApplicationPhase {
     [Parameter(Mandatory = $true)][string]$ProofToken,
     [Parameter(Mandatory = $true)][string]$ProofRoot,
     [Parameter(Mandatory = $true)][string]$Phase,
-    [Parameter(Mandatory = $true)][string]$ExpectedStatus
+    [Parameter(Mandatory = $true)][string]$ExpectedStatus,
+    [ValidateSet('none', 'migration', 'validation')]
+    [string]$ObservationMode = 'none',
+    [scriptblock]$Observe = { param([string]$ResultCode) }
   )
 
   Clear-W6b2SuccessResultFiles -ProofRoot $ProofRoot
+  Invoke-W6b2SuccessProcessMilestone -ObservationMode $ObservationMode `
+    -Milestone launchStarted -Observe $Observe
   $process = Start-W6b2SuccessProcess -ExecutablePath $ExecutablePath `
     -Arguments @('--w6b2-packaged-proof') -EnvironmentOverrides @{
       EKY_W6B2_PROOF_TOKEN = $ProofToken
     }
+  Invoke-W6b2SuccessProcessMilestone -ObservationMode $ObservationMode `
+    -Milestone processStarted -Observe $Observe
   $observation = New-W6b2SuccessProcessObservation -Process $process
   $phaseCompleted = $false
   try {
@@ -450,7 +560,7 @@ function Invoke-W6b2SuccessApplicationPhase {
         }
         Read-W6b2SuccessProofResult -ProofRoot $ProofRoot `
           -ExpectedPhase $Phase -ExpectedStatus $ExpectedStatus
-      }
+      } -ObservationMode $ObservationMode -Observe $Observe
     $phaseCompleted = $true
     return [pscustomobject]@{
       result = $result
@@ -463,7 +573,8 @@ function Invoke-W6b2SuccessApplicationPhase {
       Wait-W6b2SuccessOwnedProcessesAbsent -Observation $observation `
         -TimeoutMilliseconds 30000
     }
-    Close-W6b2SuccessProcess -Process $process
+    Close-W6b2SuccessProcess -Process $process `
+      -ObservationMode $ObservationMode -Observe $Observe
   }
 }
 
@@ -472,15 +583,18 @@ function Invoke-W6b2SuccessWorkspaceActivationMigrationPhase {
     [Parameter(Mandatory = $true)][string]$ExecutablePath,
     [Parameter(Mandatory = $true)][string]$ProofToken,
     [Parameter(Mandatory = $true)][string]$ProofRoot,
-    [Parameter(Mandatory = $true)][string]$Phase
+    [Parameter(Mandatory = $true)][string]$Phase,
+    [scriptblock]$Observe = { param([string]$ResultCode) }
   )
 
   $migrationRun = Invoke-W6b2SuccessApplicationPhase `
     -ExecutablePath $ExecutablePath -ProofToken $ProofToken `
-    -ProofRoot $ProofRoot -Phase $Phase -ExpectedStatus relaunching
+    -ProofRoot $ProofRoot -Phase $Phase -ExpectedStatus relaunching `
+    -ObservationMode migration -Observe $Observe
   $validationRun = Invoke-W6b2SuccessApplicationPhase `
     -ExecutablePath $ExecutablePath -ProofToken $ProofToken `
-    -ProofRoot $ProofRoot -Phase $Phase -ExpectedStatus completed
+    -ProofRoot $ProofRoot -Phase $Phase -ExpectedStatus completed `
+    -ObservationMode validation -Observe $Observe
 
   return [pscustomobject]@{
     migrationObservation = $migrationRun.observation

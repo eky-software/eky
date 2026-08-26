@@ -130,12 +130,54 @@ test('progress output is closed JSONL without raw diagnostic fields', () => {
     'targetProductStateValidated',
     'sourcePayloadValidated',
     'sourceRegistrationValidated',
+    'migrationLaunchStarted',
+    'migrationProcessStarted',
+    'migrationResultObserved',
+    'migrationRootExited',
+    'migrationOwnedTreeAbsent',
+    'migrationOutputDrainStarted',
+    'migrationOutputDrainCompleted',
+    'validationLaunchStarted',
+    'validationProcessStarted',
+    'validationResultObserved',
+    'validationRootExited',
+    'validationOwnedTreeAbsent',
+    'validationOutputDrainStarted',
+    'validationOutputDrainCompleted',
+    'profileVerificationStarted',
+    'profileVerificationCompleted',
   ]) {
     assert.match(progress, new RegExp(`'${resultCode}'`, 'u'));
+  }
+  for (const harnessResultCode of [
+    'buildRevisionValidated',
+    'proofRootResolved',
+    'sourcePackageFileResolved',
+    'targetPackageFileResolved',
+    'payloadRootsResolved',
+    'runtimePathsResolved',
+    'packageHashesVerified',
+    'productCodesValidated',
+    'processBoundaryVerified',
+    'installationPathsVerified',
+    'installerServiceAvailable',
+    'productStateVerified',
+    'registrationStateVerified',
+    'payloadInventoriesVerified',
+    'normalProfileInventoried',
+    'privateLogsPrepared',
+    'sourceMsiCompleted',
+    'sourceProductStateValidated',
+    'targetProductStateValidated',
+    'sourcePayloadValidated',
+    'sourceRegistrationValidated',
+    'profileVerificationStarted',
+    'profileVerificationCompleted',
+  ]) {
     assert.match(
       harness,
       new RegExp(
-        `Write-W6b2SuccessObservation -ResultCode ${resultCode}`,
+        `Write-W6b2SuccessObservation -ResultCode ${harnessResultCode}`,
         'u',
       ),
     );
@@ -219,6 +261,9 @@ test('source handoff transfers proof before target installation owns process com
     /Invoke-W6b2SuccessApplicationHandoffPhase[\s\S]*\$sourceProcess = \$sourceRun\.process[\s\S]*Complete-W6b2SuccessStage -ResultCode handoffCompleted[\s\S]*Wait-W6b2SuccessTargetInstallation[\s\S]*Wait-W6b2SuccessOwnedProcessesAbsent[\s\S]*Close-W6b2SuccessProcess -Process \$sourceProcess/u,
   );
   assert.match(applicationProcess, /ReadToEndAsync/u);
+  assert.match(applicationProcess, /W6B2_SUCCESS_PROCESS_OUTPUT_TIMEOUT/u);
+  assert.match(applicationProcess, /Threading\.Tasks\.Task\]::WaitAll/u);
+  assert.doesNotMatch(applicationProcess, /\.WaitForExit\(\)/u);
   assert.doesNotMatch(
     applicationProcess,
     /BeginOutputReadLine|BeginErrorReadLine|CancelOutputRead|CancelErrorRead/u,
@@ -238,6 +283,10 @@ test('passive compatible workspace activation proves one migration relaunch befo
     applicationProcess,
     /-Phase \$Phase -ExpectedStatus relaunching[\s\S]*-Phase \$Phase -ExpectedStatus completed/u,
   );
+  assert.match(applicationProcess, /-ObservationMode migration/u);
+  assert.match(applicationProcess, /-ObservationMode validation/u);
+  assert.match(harness, /profileVerificationStarted/u);
+  assert.match(harness, /profileVerificationCompleted/u);
   assert.match(
     harness,
     /Invoke-W6b2SuccessWorkspaceActivationMigrationPhase[\s\S]*\$ownedObservations\.Add\(\$verifyB\.migrationObservation\)[\s\S]*\$ownedObservations\.Add\(\$verifyB\.validationObservation\)/u,
