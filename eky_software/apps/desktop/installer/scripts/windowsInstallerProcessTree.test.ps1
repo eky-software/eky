@@ -36,6 +36,7 @@ $allowedErrorCodes = @(
   'INSTALLER_PROCESS_TREE_CLEANUP_FAILED',
   'INSTALLER_PROCESS_TREE_UNEXPECTED_ERROR',
   'INSTALLER_UPGRADE_PROCESS_IDENTITY_INVALID',
+  'INSTALLER_UPGRADE_PROCESS_IDENTITY_CHECK_FAILED',
   'INSTALLER_UPGRADE_PROCESS_TREE_WAIT_INVALID',
   'INSTALLER_UPGRADE_PROCESS_TREE_REMAINS',
   'INSTALLER_UPGRADE_PROCESS_TREE_STOP_TIMEOUT',
@@ -147,9 +148,8 @@ function Wait-EkyOwnedProcessesReleased {
   try {
     do {
       $remaining = @(
-        Get-EkyRemainingOwnedProcessIdentitiesFromSnapshot `
-          -OwnedProcessIdentities $OwnedProcessIdentities `
-          -ProcessSnapshot (Get-EkyProcessSnapshot)
+        Get-EkyRemainingExactProcessIdentities `
+          -OwnedProcessIdentities $OwnedProcessIdentities
       )
       if ($remaining.Count -eq 0) {
         return [pscustomobject]@{ identities = @() }
@@ -247,16 +247,66 @@ try {
     -ProcessSnapshot $reusedSnapshot).Count) 0 `
     'INSTALLER_PROCESS_TREE_REUSED_PID_REMAINS'
 
+  $currentProcess = [System.Diagnostics.Process]::GetCurrentProcess()
+  try {
+    $currentIdentity = New-EkyProcessIdentity `
+      -ProcessId ([int]$currentProcess.Id) `
+      -CreationToken (ConvertTo-EkyProcessCreationToken `
+        -CreationTime ([DateTime]$currentProcess.StartTime))
+    Assert-Equal (Test-EkyExactProcessIdentityPresent `
+      -Identity $currentIdentity) $true `
+      'INSTALLER_PROCESS_TREE_OWNERSHIP_INVALID'
+    $reusedCurrentIdentity = New-EkyProcessIdentity `
+      -ProcessId ([int]$currentProcess.Id) -CreationToken '0'
+    Assert-Equal (Test-EkyExactProcessIdentityPresent `
+      -Identity $reusedCurrentIdentity) $false `
+      'INSTALLER_PROCESS_TREE_REUSED_PID_REMAINS'
+    Stop-EkyExactProcessIdentity -Identity $reusedCurrentIdentity `
+      -TimeoutMilliseconds 1000
+    Assert-Equal (Test-EkyExactProcessIdentityPresent `
+      -Identity $currentIdentity) $true `
+      'INSTALLER_PROCESS_TREE_UNRELATED_STOPPED'
+  }
+  finally {
+    $currentProcess.Dispose()
+  }
+
   $stage = 'alreadyExitedProcess'
   $alreadyExited = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
     '-NoProfile', '-NonInteractive', '-Command', 'exit 0'
   ) -WindowStyle Hidden -PassThru
   try {
+    $alreadyExitedIdentity = New-EkyProcessIdentity `
+      -ProcessId ([int]$alreadyExited.Id) `
+      -CreationToken (ConvertTo-EkyProcessCreationToken `
+        -CreationTime ([DateTime]$alreadyExited.StartTime))
     $alreadyExited.WaitForExit()
+    Assert-Equal (Test-EkyExactProcessIdentityPresent `
+      -Identity $alreadyExitedIdentity) $false `
+      'INSTALLER_PROCESS_TREE_REUSED_PID_REMAINS'
     Stop-EkyProcessTree -Process $alreadyExited -TimeoutMilliseconds 1000
   }
   finally {
     $alreadyExited.Dispose()
+  }
+
+  $stage = 'exactIdentityStop'
+  $exactStopProcess = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
+    '-NoProfile', '-NonInteractive', '-Command', 'Start-Sleep -Seconds 30'
+  ) -WindowStyle Hidden -PassThru
+  try {
+    $exactStopIdentity = New-EkyProcessIdentity `
+      -ProcessId ([int]$exactStopProcess.Id) `
+      -CreationToken (ConvertTo-EkyProcessCreationToken `
+        -CreationTime ([DateTime]$exactStopProcess.StartTime))
+    Stop-EkyExactProcessIdentity -Identity $exactStopIdentity `
+      -TimeoutMilliseconds 5000
+    $exactStopProcess.Refresh()
+    Assert-Equal $exactStopProcess.HasExited $true `
+      'INSTALLER_UPGRADE_PROCESS_TREE_REMAINS'
+  }
+  finally {
+    $exactStopProcess.Dispose()
   }
 
   $stage = 'fixtureStartup'
