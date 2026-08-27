@@ -1064,7 +1064,11 @@ Paikallinen 5 x 2 -matriisi, W6B.2A-success-regressio ja legacy 0.2.6 ->
 0.2.7 -hyväksyntä ovat vihreitä, ja loppuehto todistaa nolla omistettua
 orpoprosessia. Checkpoint ei muuta canonical-versiota, release-kanavaa,
 backup-formaattia tai tuotannon fault-semanticsia. Sama matriisi ajetaan
-omana Windows CI -porttinaan ennen mergeä.
+omana Windows CI -porttinaan ennen mergeä. CI:n viisi allowlistattua
+skenaariota ovat erillisiä matriisiajoja, joista kukin rakentaa yhden
+muuttumattoman fixtureparin ja ajaa oman skenaarionsa kahdesti. Vakaa
+aggregaattorijobi säilyttää branch protection -sopimuksen. Paikallinen
+argumentiton komento säilyttää yhden fixtureparin koko 5 x 2 -matriisille.
 
 Teknologiavalinnassa pitää todistaa:
 

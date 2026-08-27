@@ -1216,6 +1216,12 @@ tilan siellä missä automaattinen palautuminen ei ole turvallista sekä nollan
 omistetun orpoprosessin loppuehdon. Paikallinen koko matriisi,
 W6B.2A-success-regressio ja legacy 0.2.6 -> 0.2.7 -hyväksyntä ovat vihreitä.
 Matriisi ajetaan lisäksi omana Windows CI -jobinaan ennen mergeä.
+CI jakaa viisi allowlistattua fault-skenaariota omiksi Windows-
+matriisiajoikseen. Jokainen matriisiajo rakentaa yhden muuttumattoman
+fixtureparin ja ajaa valitun skenaarion kahdesti. Vakaa aggregaattori hyväksyy
+portin vasta kaikkien viiden matriisijobin onnistuttua. Argumentiton
+paikallinen ja manuaalinen release-komento säilyttää yhden fixtureparin koko
+5 x 2 -matriisille.
 
 Lisäksi install, reinstall/repair, uninstall ja reinstall todistetaan samalla
 synteettisellä multi-workspace-profiililla. Uninstall saa poistaa vain

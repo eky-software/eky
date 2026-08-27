@@ -149,7 +149,7 @@ export function parseW6b2PackagedFaultCliArguments(arguments_) {
   ) {
     const scenario = arguments_[0].slice('--scenario='.length);
     requireW6b2PackagedFaultScenario(scenario);
-    return Object.freeze({ runCount: 1, scenarios: Object.freeze([scenario]) });
+    return Object.freeze({ runCount: 2, scenarios: Object.freeze([scenario]) });
   }
   throw new Error('W6B2_FAULT_CLI_ARGUMENTS_INVALID');
 }

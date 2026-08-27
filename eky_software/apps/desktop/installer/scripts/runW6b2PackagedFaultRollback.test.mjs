@@ -82,12 +82,12 @@ test('removes the private fixture without changing a failed process result', asy
   assert.equal(events.some((event) => event.type === 'verifyRun'), false);
 });
 
-test('accepts only a closed isolated-scenario CLI argument', () => {
+test('accepts only a closed two-run matrix-scenario CLI argument', () => {
   assert.deepEqual(
     parseW6b2PackagedFaultCliArguments([
       '--scenario=acceptanceInterruption',
     ]),
-    { runCount: 1, scenarios: ['acceptanceInterruption'] },
+    { runCount: 2, scenarios: ['acceptanceInterruption'] },
   );
   assert.throws(
     () => parseW6b2PackagedFaultCliArguments(['--scenario=unknown']),
