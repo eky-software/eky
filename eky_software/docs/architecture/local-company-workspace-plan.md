@@ -1176,6 +1176,12 @@ C:n `invalidHistory`-torjunnan `recoveryRequired`-tilaan. Jokainen ajo käyttä�
 ajokohtaista synteettistä profiilia, rajattuja vaihekohtaisia timeoutteja,
 turvallista JSONL-observabilitya, omistettujen prosessien cleanupia ja nollan
 orpoprosessin loppuehtoa. Canonical-versiot ja release-kanava eivät muutu.
+Komennon oma 22 minuutin elinkaaribudjetti kattaa fixtureparin rakentamisen,
+tarkistamisen ja molempien ajojen väliset vastuut. Uusi ajo käynnistyy vain,
+jos sille on jäljellä nykyinen täysi 12 minuutin skenaarioraja sekä vähintään
+90 sekuntia fixture-cleanupiin. Budjetin loppuminen tuottaa suljetun,
+allowlistatun terminal-tuloksen ennen GitHub-jobin ulkoista aikarajaa; CI-jobin
+aikarajaa tai yksittäisen skenaarion aikarajaa ei tämän vuoksi kasvateta.
 
 Tämä checkpoint ei sulje koko W6-porttia. W6B.2B:n fault- ja rollback-
 matriisi, installer repair/uninstall -jatkuvuus sekä lopullinen release-portti

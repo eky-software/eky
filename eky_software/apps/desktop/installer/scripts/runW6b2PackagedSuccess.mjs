@@ -19,6 +19,10 @@ import {
   W6B2_PACKAGED_SCENARIO_CLEANUP_TIMEOUT_MILLISECONDS,
   W6B2_PACKAGED_SCENARIO_TIMEOUT_MILLISECONDS,
 } from './w6b2PackagedScenarioProcess.mjs';
+import {
+  createW6b2PackagedSuccessCommandLifecycle,
+  createW6b2PackagedSuccessRunPhase,
+} from './w6b2PackagedSuccessCommandLifecycle.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const desktopDirectory = resolve(scriptDirectory, '..', '..');
@@ -47,49 +51,113 @@ const defaultDependencies = Object.freeze({
 
 export async function runW6b2PackagedSuccess(options = {}) {
   const dependencies = options.dependencies ?? defaultDependencies;
-  const installerPair = await dependencies.buildInstallerPair();
-  await dependencies.verifyInstallerPair(installerPair);
-  const electronRuntime = dependencies.resolveElectronRuntime();
-  const profilePath = options.profileApplicationPath ?? profileApplicationPath;
-  await dependencies.verifyProfileApplication(profilePath);
-  const temporaryRoot = await realpath(resolve(dependencies.temporaryRoot()));
+  const lifecycle = createW6b2PackagedSuccessCommandLifecycle(
+    options.commandLifecycle,
+  );
+  try {
+    const installerPair = await lifecycle.runPhase(
+      'installerPairBuild',
+      () => dependencies.buildInstallerPair(),
+    );
+    await lifecycle.runPhase('installerPairVerification', () =>
+      dependencies.verifyInstallerPair(installerPair),
+    );
+    const profile = await lifecycle.runPhase(
+      'profilePreparation',
+      async () => {
+        const electronRuntime = dependencies.resolveElectronRuntime();
+        const profilePath =
+          options.profileApplicationPath ?? profileApplicationPath;
+        await dependencies.verifyProfileApplication(profilePath);
+        const temporaryRoot = await realpath(
+          resolve(dependencies.temporaryRoot()),
+        );
+        return Object.freeze({ electronRuntime, profilePath, temporaryRoot });
+      },
+    );
 
-  for (let runNumber = 1; runNumber <= 2; runNumber += 1) {
-    const run = await dependencies.createRunFixture({
-      installerPair,
-      temporaryRoot,
-    });
-    try {
-      await dependencies.runProcess(
-        'powershell.exe',
-        createW6b2PackagedSuccessArguments({
-          buildRevision: installerPair.buildRevision,
-          electronPath: electronRuntime.executablePath,
-          profileApplicationPath: profilePath,
-          run,
-          sourcePayloadRoot: installerPair.source.packagedApplicationPath,
-          targetPayloadRoot: installerPair.target.packagedApplicationPath,
-          temporaryRoot,
-        }),
-        { proofToken: run.token },
+    for (let runNumber = 1; runNumber <= 2; runNumber += 1) {
+      lifecycle.requireScenarioStartBudget(
+        W6B2_PACKAGED_SCENARIO_TIMEOUT_MILLISECONDS,
       );
-      await dependencies.verifyRunFixture({ ...run, temporaryRoot });
-      await dependencies.verifyInstallerPair(installerPair);
-    } finally {
-      await dependencies.removeRunFixture({
-        proofRoot: run.proofRoot,
-        temporaryRoot,
-        token: run.token,
-      });
+      const run = await lifecycle.runPhase(
+        createW6b2PackagedSuccessRunPhase(runNumber, 'FixtureCreate'),
+        () =>
+          dependencies.createRunFixture({
+            installerPair,
+            temporaryRoot: profile.temporaryRoot,
+          }),
+      );
+      try {
+        const scenarioTimeoutMilliseconds =
+          lifecycle.getScenarioTimeoutMilliseconds(
+            W6B2_PACKAGED_SCENARIO_TIMEOUT_MILLISECONDS,
+          );
+        await lifecycle.runPhase(
+          createW6b2PackagedSuccessRunPhase(runNumber, 'Scenario'),
+          () =>
+            dependencies.runProcess(
+              'powershell.exe',
+              createW6b2PackagedSuccessArguments({
+                buildRevision: installerPair.buildRevision,
+                electronPath: profile.electronRuntime.executablePath,
+                profileApplicationPath: profile.profilePath,
+                run,
+                sourcePayloadRoot:
+                  installerPair.source.packagedApplicationPath,
+                targetPayloadRoot:
+                  installerPair.target.packagedApplicationPath,
+                temporaryRoot: profile.temporaryRoot,
+              }),
+              {
+                proofToken: run.token,
+                timeoutMilliseconds: scenarioTimeoutMilliseconds,
+              },
+            ),
+        );
+        lifecycle.observeProcessTreeAbsent(runNumber);
+        await lifecycle.runPhase(
+          createW6b2PackagedSuccessRunPhase(
+            runNumber,
+            'FixtureVerification',
+          ),
+          () =>
+            dependencies.verifyRunFixture({
+              ...run,
+              temporaryRoot: profile.temporaryRoot,
+            }),
+        );
+        await lifecycle.runPhase(
+          createW6b2PackagedSuccessRunPhase(
+            runNumber,
+            'InstallerPairVerification',
+          ),
+          () => dependencies.verifyInstallerPair(installerPair),
+        );
+      } finally {
+        await lifecycle.runCleanupPhase(
+          createW6b2PackagedSuccessRunPhase(runNumber, 'FixtureRemove'),
+          () =>
+            dependencies.removeRunFixture({
+              proofRoot: run.proofRoot,
+              temporaryRoot: profile.temporaryRoot,
+              token: run.token,
+            }),
+        );
+      }
     }
-  }
 
-  return Object.freeze({
-    runCount: 2,
-    sourceVersion: installerPair.source.appVersion,
-    status: 'completed',
-    targetVersion: installerPair.target.appVersion,
-  });
+    lifecycle.complete();
+    return Object.freeze({
+      runCount: 2,
+      sourceVersion: installerPair.source.appVersion,
+      status: 'completed',
+      targetVersion: installerPair.target.appVersion,
+    });
+  } catch (error) {
+    lifecycle.fail(error);
+    throw error;
+  }
 }
 
 export function createW6b2PackagedSuccessArguments(input) {
@@ -196,6 +264,16 @@ function requireRunInput(input) {
 }
 
 function runProcess(command, arguments_, context) {
+  const timeoutMilliseconds =
+    context?.timeoutMilliseconds ??
+    W6B2_PACKAGED_SCENARIO_TIMEOUT_MILLISECONDS;
+  if (
+    !Number.isSafeInteger(timeoutMilliseconds) ||
+    timeoutMilliseconds < 1 ||
+    timeoutMilliseconds > W6B2_PACKAGED_SCENARIO_TIMEOUT_MILLISECONDS
+  ) {
+    return Promise.reject(new Error('W6B2_SUCCESS_PROCESS_TIMEOUT_INVALID'));
+  }
   return runW6b2PackagedScenarioProcess({
     arguments: arguments_,
     cleanupTimeoutMilliseconds:
@@ -204,7 +282,7 @@ function runProcess(command, arguments_, context) {
     cwd: repositoryRoot,
     environment: process.env,
     proofToken: context?.proofToken,
-    timeoutMilliseconds: W6B2_PACKAGED_SCENARIO_TIMEOUT_MILLISECONDS,
+    timeoutMilliseconds,
   });
 }
 
@@ -212,5 +290,9 @@ if (
   process.argv[1] !== undefined &&
   pathToFileURL(resolve(process.argv[1])).href === import.meta.url
 ) {
-  console.log(JSON.stringify(await runW6b2PackagedSuccess()));
+  try {
+    console.log(JSON.stringify(await runW6b2PackagedSuccess()));
+  } catch {
+    process.exitCode = 1;
+  }
 }

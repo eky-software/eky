@@ -22,6 +22,7 @@ test('builds once and runs the same installer pair twice in isolated fixtures', 
   let pairVerificationCount = 0;
   const processArguments = [];
   const processProofTokens = [];
+  const processTimeouts = [];
   const removedTokens = [];
   const verifiedTokens = [];
 
@@ -45,6 +46,7 @@ test('builds once and runs the same installer pair twice in isolated fixtures', 
         assert.equal(command, 'powershell.exe');
         processArguments.push(arguments_);
         processProofTokens.push(context.proofToken);
+        processTimeouts.push(context.timeoutMilliseconds);
       },
       temporaryRoot() {
         return tmpdir();
@@ -60,6 +62,7 @@ test('builds once and runs the same installer pair twice in isolated fixtures', 
         verifiedTokens.push(input.token);
       },
     },
+    commandLifecycle: quietLifecycle(),
     profileApplicationPath: 'C:\\fixture\\profile',
   });
 
@@ -75,6 +78,7 @@ test('builds once and runs the same installer pair twice in isolated fixtures', 
   assert.deepEqual(verifiedTokens, ['1'.repeat(64), '2'.repeat(64)]);
   assert.deepEqual(removedTokens, ['1'.repeat(64), '2'.repeat(64)]);
   assert.deepEqual(processProofTokens, ['1'.repeat(64), '2'.repeat(64)]);
+  assert.deepEqual(processTimeouts, [12 * 60 * 1000, 12 * 60 * 1000]);
   assert.equal(processArguments.length, 2);
   assert.notDeepEqual(processArguments[0], processArguments[1]);
   for (const arguments_ of processArguments) {
@@ -116,12 +120,77 @@ test('cleans the current fixture and stops after a failed run', async () => {
         async verifyProfileApplication() {},
         async verifyRunFixture() {},
       },
+      commandLifecycle: quietLifecycle(),
       profileApplicationPath: 'C:\\fixture\\profile',
     }),
     /private process failure/u,
   );
   assert.equal(createdCount, 1);
   assert.deepEqual(removedTokens, ['a'.repeat(64)]);
+});
+
+test('does not start a second run without its full scenario and cleanup budget', async () => {
+  let createdCount = 0;
+  let now = 0;
+  const events = [];
+  const removedTokens = [];
+
+  await assert.rejects(
+    runW6b2PackagedSuccess({
+      commandLifecycle: {
+        cleanupReserveMilliseconds: 100,
+        dependencies: {
+          now: () => now,
+          observe(event) {
+            events.push(event);
+          },
+        },
+        timeoutMilliseconds: 1_000_000,
+      },
+      dependencies: {
+        async buildInstallerPair() {
+          return pair;
+        },
+        async createRunFixture() {
+          createdCount += 1;
+          return runFixture('b'.repeat(64));
+        },
+        async removeRunFixture(input) {
+          removedTokens.push(input.token);
+          now = 280_000;
+        },
+        resolveElectronRuntime() {
+          return { executablePath: 'C:\\fixture\\electron.exe' };
+        },
+        async runProcess(_command, _arguments, context) {
+          assert.equal(context.timeoutMilliseconds, 12 * 60 * 1000);
+        },
+        temporaryRoot() {
+          return tmpdir();
+        },
+        async verifyInstallerPair() {},
+        async verifyProfileApplication() {},
+        async verifyRunFixture() {},
+      },
+      profileApplicationPath: 'C:\\fixture\\profile',
+    }),
+    /W6B2_SUCCESS_COMMAND_DEADLINE_EXCEEDED/u,
+  );
+
+  assert.equal(createdCount, 1);
+  assert.deepEqual(removedTokens, ['b'.repeat(64)]);
+  assert.equal(
+    events.some(
+      ({ errorCode, phase }) =>
+        phase === 'commandDeadline' &&
+        errorCode === 'W6B2_SUCCESS_COMMAND_DEADLINE_EXCEEDED',
+    ),
+    true,
+  );
+  assert.equal(
+    events.some(({ phase }) => phase === 'run2FixtureCreate'),
+    false,
+  );
 });
 
 test('rejects malformed proof tokens before creating process arguments', () => {
@@ -195,5 +264,13 @@ function runFixture(token) {
     source: pair.source,
     target: pair.target,
     token,
+  });
+}
+
+function quietLifecycle() {
+  return Object.freeze({
+    dependencies: Object.freeze({
+      observe() {},
+    }),
   });
 }
