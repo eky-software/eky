@@ -28,6 +28,20 @@ test('running upgrade uses a bounded asynchronous MSI attempt', async () => {
   );
   assert.match(harnessSource, /runningUpgradeWaitingForApplicationExit/);
   assert.match(harnessSource, /INSTALLER_UPGRADE_MSI_EXIT_TIMEOUT/);
+  assert.match(
+    harnessSource,
+    /\$runningEkyProcessId = \[int\]\$runningEkyProcess\.Id/,
+  );
+  assert.match(
+    harnessSource,
+    /\[Parameter\(Mandatory = \$true\)\]\[int\]\$LauncherProcessId/,
+  );
+  assert.match(harnessSource, /'-LauncherProcessId'/);
+  assert.equal(
+    [...harnessSource.matchAll(/-LauncherProcessId \$runningEkyProcessId/g)]
+      .length,
+    2,
+  );
   assert.doesNotMatch(harnessSource, /function Invoke-EkyUpgradeAttempt/);
 });
 
