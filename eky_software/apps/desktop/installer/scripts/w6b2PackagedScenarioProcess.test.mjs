@@ -27,6 +27,23 @@ test('preserves a normal exit and proves the owned tree absent', async () => {
   });
 });
 
+test('passes the closed scenario kind to exact owned-process cleanup', async () => {
+  const cleanupInputs = [];
+  const harness = createHarness({
+    async terminateOwnedProcessTree(input) {
+      cleanupInputs.push(input);
+      return { status: 'absent' };
+    },
+  });
+  const run = startScenario(harness, 'faultRollback');
+
+  harness.child.emit('exit', 0, null);
+
+  await assert.doesNotReject(run);
+  assert.equal(cleanupInputs.length, 1);
+  assert.equal(cleanupInputs[0].scenarioKind, 'faultRollback');
+});
+
 test('preserves a non-zero scenario exit after bounded cleanup', async () => {
   const harness = createHarness();
   const run = startScenario(harness);
@@ -141,14 +158,27 @@ test('cleanup script validates exact proof ownership without name-wide terminati
   );
 
   assert.match(source, /ValidatePattern\('\^\[0-9a-f\]\{64\}\$'\)/u);
-  assert.match(source, /testW6b2PackagedSuccess\\\.ps1/u);
+  assert.match(source, /ValidateSet\('success', 'faultRollback'\)/u);
+  assert.match(source, /testW6b2PackagedSuccess\.ps1/u);
+  assert.match(source, /testW6b2PackagedFaultRollback\.ps1/u);
+  assert.match(source, /\[regex\]::Escape\(\$scenarioScriptName\)/u);
   assert.match(source, /Stop-EkyProcessTree -Process \$process/u);
   assert.match(source, /actualCreationToken -cne \$expectedCreationToken/u);
   assert.doesNotMatch(source, /Stop-Process\s+-Name/iu);
   assert.doesNotMatch(source, /taskkill\.exe/iu);
 });
 
-function startScenario(harness) {
+test('rejects an unknown scenario kind before process creation', async () => {
+  const harness = createHarness();
+
+  await assert.rejects(
+    startScenario(harness, 'foreign'),
+    /W6B2_PACKAGED_SCENARIO_INPUT_INVALID/u,
+  );
+  assert.equal(harness.spawnCount(), 0);
+});
+
+function startScenario(harness, scenarioKind = 'success') {
   return runW6b2PackagedScenarioProcess(
     {
       arguments: ['-File', 'fixture-path', '-ProofToken', proofToken],
@@ -157,6 +187,7 @@ function startScenario(harness) {
       cwd: 'fixture-path',
       environment: {},
       proofToken,
+      scenarioKind,
       timeoutMilliseconds: 10,
     },
     { dependencies: harness.dependencies },
@@ -170,6 +201,7 @@ function createHarness(overrides = {}) {
   let cleanupCount = 0;
   let clearedTimerCount = 0;
   let deadline;
+  let spawnCount = 0;
   const terminateOwnedProcessTree =
     overrides.terminateOwnedProcessTree ??
     (async () => {
@@ -189,6 +221,7 @@ function createHarness(overrides = {}) {
       return Object.freeze({ timer: true });
     },
     spawnProcess() {
+      spawnCount += 1;
       return child;
     },
     async terminateOwnedProcessTree(input) {
@@ -206,6 +239,7 @@ function createHarness(overrides = {}) {
       assert.equal(typeof deadline, 'function');
       deadline();
     },
+    spawnCount: () => spawnCount,
   };
 }
 

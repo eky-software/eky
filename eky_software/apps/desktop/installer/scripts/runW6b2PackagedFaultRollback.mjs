@@ -318,6 +318,7 @@ function runProcess(command, arguments_, context) {
     cwd: repositoryRoot,
     environment: process.env,
     proofToken: context?.proofToken,
+    scenarioKind: 'faultRollback',
     timeoutMilliseconds:
       context?.timeoutMilliseconds ??
       W6B2_PACKAGED_SCENARIO_TIMEOUT_MILLISECONDS,

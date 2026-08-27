@@ -327,6 +327,7 @@ function runProcess(command, arguments_, context) {
     cwd: repositoryRoot,
     environment: process.env,
     proofToken: context?.proofToken,
+    scenarioKind: 'success',
     timeoutMilliseconds,
   });
 }

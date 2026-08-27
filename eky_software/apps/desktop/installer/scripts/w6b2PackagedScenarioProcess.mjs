@@ -8,6 +8,8 @@ const cleanupScriptPath = join(
   'stopW6b2PackagedScenarioProcess.ps1',
 );
 
+const scenarioKinds = new Set(['faultRollback', 'success']);
+
 export const W6B2_PACKAGED_SCENARIO_TIMEOUT_MILLISECONDS = 12 * 60 * 1000;
 export const W6B2_PACKAGED_SCENARIO_CLEANUP_TIMEOUT_MILLISECONDS = 30_000;
 
@@ -118,6 +120,7 @@ export async function runW6b2PackagedScenarioProcess(input, options = {}) {
     cleanupTimeoutMilliseconds: configuration.cleanupTimeoutMilliseconds,
     observe,
     proofToken: configuration.proofToken,
+    scenarioKind: configuration.scenarioKind,
     terminateOwnedProcessTree: dependencies.terminateOwnedProcessTree,
   });
 
@@ -142,6 +145,7 @@ async function cleanupOwnedProcessTree(input) {
       cleanupTimeoutMilliseconds: input.cleanupTimeoutMilliseconds,
       processId: input.child?.pid,
       proofToken: input.proofToken,
+      scenarioKind: input.scenarioKind,
     });
   } catch (error) {
     const errorCode =
@@ -192,7 +196,8 @@ function terminateOwnedProcessTree(input) {
   if (
     !Number.isSafeInteger(input.processId) ||
     input.processId < 1 ||
-    !/^[0-9a-f]{64}$/u.test(input.proofToken)
+    !/^[0-9a-f]{64}$/u.test(input.proofToken) ||
+    !scenarioKinds.has(input.scenarioKind)
   ) {
     return Promise.reject(
       new Error('W6B2_PACKAGED_SCENARIO_CLEANUP_FAILED'),
@@ -214,6 +219,8 @@ function terminateOwnedProcessTree(input) {
         String(input.processId),
         '-ProofToken',
         input.proofToken,
+        '-ScenarioKind',
+        input.scenarioKind,
       ],
       {
         shell: false,
@@ -264,6 +271,7 @@ function validateInput(input) {
     typeof input.environment !== 'object' ||
     input.environment === null ||
     !/^[0-9a-f]{64}$/u.test(input.proofToken) ||
+    !scenarioKinds.has(input.scenarioKind) ||
     !Number.isSafeInteger(input.timeoutMilliseconds) ||
     input.timeoutMilliseconds < 1 ||
     !Number.isSafeInteger(input.cleanupTimeoutMilliseconds) ||

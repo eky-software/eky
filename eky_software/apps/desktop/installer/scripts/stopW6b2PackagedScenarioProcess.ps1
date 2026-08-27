@@ -2,7 +2,9 @@ param(
   [Parameter(Mandatory = $true)][ValidateRange(1, 2147483647)]
   [int]$RootProcessId,
   [Parameter(Mandatory = $true)][ValidatePattern('^[0-9a-f]{64}$')]
-  [string]$ProofToken
+  [string]$ProofToken,
+  [Parameter(Mandatory = $true)][ValidateSet('success', 'faultRollback')]
+  [string]$ScenarioKind
 )
 
 Set-StrictMode -Version Latest
@@ -23,7 +25,13 @@ if ($record.Count -ne 1) {
 
 $tokenPattern = '(?i)(?:^|\s)-ProofToken\s+"?' +
   [regex]::Escape($ProofToken) + '"?(?:\s|$)'
-$scriptPattern = '(?i)(?:^|[\\/])testW6b2PackagedSuccess\.ps1(?:"|\s|$)'
+$scenarioScriptName = switch ($ScenarioKind) {
+  'success' { 'testW6b2PackagedSuccess.ps1' }
+  'faultRollback' { 'testW6b2PackagedFaultRollback.ps1' }
+  default { throw 'W6B2_PACKAGED_SCENARIO_PROCESS_OWNERSHIP_INVALID' }
+}
+$scriptPattern = '(?i)(?:^|[\\/])' +
+  [regex]::Escape($scenarioScriptName) + '(?:"|\s|$)'
 if (
   [string]::IsNullOrWhiteSpace([string]$record[0].CommandLine) -or
   [string]$record[0].CommandLine -notmatch $tokenPattern -or
