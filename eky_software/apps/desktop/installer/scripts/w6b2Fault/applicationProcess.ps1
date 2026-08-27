@@ -71,6 +71,8 @@ function Invoke-W6b2FaultApplicationHandoffPhase {
           -FaultScenario $FaultScenario -ExpectedPhase $Phase `
           -ExpectedStatus $ExpectedStatus
       }
+    Release-W6b2SuccessInstallerHandoffOwnership `
+      -Observation $observation
     return [pscustomobject]@{
       observation = $observation
       process = $process

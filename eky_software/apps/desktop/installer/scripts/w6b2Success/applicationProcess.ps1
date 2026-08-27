@@ -178,19 +178,73 @@ function New-W6b2SuccessProcessObservation {
   return [pscustomobject]@{
     root = $root
     owned = $owned
+    excludedInstallerRoots = @{}
   }
 }
 
 function Update-W6b2SuccessProcessObservation {
-  param([Parameter(Mandatory = $true)]$Observation)
+  param(
+    [Parameter(Mandatory = $true)]$Observation,
+    [AllowEmptyCollection()][array]$ProcessSnapshot = @()
+  )
 
-  $snapshot = @(Get-EkyProcessSnapshot)
+  $snapshot = if ($ProcessSnapshot.Count -eq 0) {
+    @(Get-EkyProcessSnapshot)
+  }
+  else {
+    @($ProcessSnapshot)
+  }
+  $excluded = @{}
+  foreach ($root in @($Observation.excludedInstallerRoots.Values)) {
+    foreach ($identity in @(Get-EkyOwnedProcessIdentitiesFromSnapshot `
+      -RootIdentity $root -ProcessSnapshot $snapshot)) {
+      $excluded["$($identity.processId):$($identity.creationToken)"] = $true
+    }
+  }
   foreach ($identity in @(Get-EkyOwnedProcessIdentitiesFromSnapshot `
     -RootIdentity $Observation.root -ProcessSnapshot $snapshot)) {
-    $Observation.owned["$($identity.processId):$($identity.creationToken)"] = `
-      $identity
+    $key = "$($identity.processId):$($identity.creationToken)"
+    if (!$excluded.ContainsKey($key)) {
+      $Observation.owned[$key] = $identity
+    }
   }
   return ,$snapshot
+}
+
+function Release-W6b2SuccessInstallerHandoffOwnership {
+  param(
+    [Parameter(Mandatory = $true)]$Observation,
+    [AllowEmptyCollection()][array]$ProcessSnapshot = @()
+  )
+
+  $snapshot = if ($ProcessSnapshot.Count -eq 0) {
+    @(Get-EkyProcessSnapshot)
+  }
+  else {
+    @($ProcessSnapshot)
+  }
+  [void](Update-W6b2SuccessProcessObservation `
+    -Observation $Observation -ProcessSnapshot $snapshot)
+  $ownedKeys = @($Observation.owned.Keys)
+  $installerRoots = @(
+    $snapshot | Where-Object {
+      $key = "$($_.processId):$($_.creationToken)"
+      $ownedKeys -contains $key -and
+      [string]$_.processName -ieq 'msiexec.exe'
+    } | ForEach-Object {
+      New-EkyProcessIdentity -ProcessId ([int]$_.processId) `
+        -CreationToken ([string]$_.creationToken)
+    }
+  )
+  foreach ($root in $installerRoots) {
+    $rootKey = "$($root.processId):$($root.creationToken)"
+    $Observation.excludedInstallerRoots[$rootKey] = $root
+    foreach ($identity in @(Get-EkyOwnedProcessIdentitiesFromSnapshot `
+      -RootIdentity $root -ProcessSnapshot $snapshot)) {
+      $key = "$($identity.processId):$($identity.creationToken)"
+      [void]$Observation.owned.Remove($key)
+    }
+  }
 }
 
 function Update-W6b2SuccessProcessObservationWhenDue {
@@ -641,6 +695,8 @@ function Invoke-W6b2SuccessApplicationHandoffPhase {
         Read-W6b2SuccessProofResult -ProofRoot $ProofRoot `
           -ExpectedPhase sourceHandoff -ExpectedStatus completed
       }
+    Release-W6b2SuccessInstallerHandoffOwnership `
+      -Observation $observation
     return [pscustomobject]@{
       result = $result
       observation = $observation

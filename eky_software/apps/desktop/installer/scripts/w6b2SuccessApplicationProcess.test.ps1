@@ -264,6 +264,60 @@ exit 7
       })) ([string]$roleFixture[1]) 'W6B2_PROCESS_TEST_ROLE_INVALID'
   }
 
+  $transferRoot = New-EkyProcessIdentity -ProcessId 200 `
+    -CreationToken '2000'
+  $transferObservation = [pscustomobject]@{
+    root = $transferRoot
+    owned = @{}
+    excludedInstallerRoots = @{}
+  }
+  $transferSnapshot = @(
+    [pscustomobject]@{
+      processId = 200
+      parentProcessId = 1
+      creationToken = '2000'
+      processName = 'Eky.exe'
+    },
+    [pscustomobject]@{
+      processId = 201
+      parentProcessId = 200
+      creationToken = '2001'
+      processName = 'msiexec.exe'
+    },
+    [pscustomobject]@{
+      processId = 202
+      parentProcessId = 201
+      creationToken = '2002'
+      processName = 'msiexec.exe'
+    },
+    [pscustomobject]@{
+      processId = 203
+      parentProcessId = 200
+      creationToken = '2003'
+      processName = 'Eky.exe'
+    }
+  )
+  Release-W6b2SuccessInstallerHandoffOwnership `
+    -Observation $transferObservation -ProcessSnapshot $transferSnapshot
+  Assert-W6b2ProcessEqual $transferObservation.owned.Count 2 `
+    'W6B2_PROCESS_TEST_TRANSFER_COUNT_INVALID'
+  Assert-W6b2ProcessEqual `
+    $transferObservation.owned.ContainsKey('200:2000') $true `
+    'W6B2_PROCESS_TEST_TRANSFER_ROOT_MISSING'
+  Assert-W6b2ProcessEqual `
+    $transferObservation.owned.ContainsKey('203:2003') $true `
+    'W6B2_PROCESS_TEST_TRANSFER_APPLICATION_CHILD_MISSING'
+  Assert-W6b2ProcessEqual `
+    $transferObservation.owned.ContainsKey('201:2001') $false `
+    'W6B2_PROCESS_TEST_TRANSFER_INSTALLER_REMAINS'
+  Assert-W6b2ProcessEqual `
+    $transferObservation.owned.ContainsKey('202:2002') $false `
+    'W6B2_PROCESS_TEST_TRANSFER_INSTALLER_CHILD_REMAINS'
+  [void](Update-W6b2SuccessProcessObservation `
+    -Observation $transferObservation -ProcessSnapshot $transferSnapshot)
+  Assert-W6b2ProcessEqual $transferObservation.owned.Count 2 `
+    'W6B2_PROCESS_TEST_TRANSFER_RECAPTURED'
+
   $roleObservation = [pscustomobject]@{
     root = New-EkyProcessIdentity -ProcessId 100 -CreationToken '1000'
   }
