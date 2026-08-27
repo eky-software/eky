@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import {
   existsSync,
   mkdtempSync,
+  realpathSync,
   rmSync,
   unlinkSync,
   writeFileSync,
@@ -84,7 +85,9 @@ test(
 );
 
 function createFixture(helperSource) {
-  const root = mkdtempSync(join(tmpdir(), 'eky rollback launch '));
+  const root = mkdtempSync(
+    join(realpathSync.native(tmpdir()), 'eky rollback launch '),
+  );
   const failedPackagePath = join(root, 'failed package.msi');
   const helperPath = join(root, 'rollback helper.ps1');
   const releasePath = join(root, 'helper-release.signal');
