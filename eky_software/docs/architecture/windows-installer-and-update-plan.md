@@ -1090,6 +1090,15 @@ minuutin skenaariorajaa ja 90 sekunnin cleanup-varaa ole jäljellä. Raakoja
 polkuja, PID-arvoja, komentorivejä, MSI-identiteettejä, virheitä tai
 stdout/stderr-sisältöä ei tulosteta.
 
+W6B.2A- ja W6B.2B-komentojen uloin testiharness omistaa yhden suljetulla
+proof-tokenilla sidotun worker-prosessipuun. Absoluuttinen komentobudjetti
+kattaa sekä Electron-E2E-buildin että varsinaisen packaged-skenaarion, jotta
+buildiin tai skenaarioon jäänyt operaatio ei voi ohittaa GitHub-jobia
+lyhyempää paikallista rajaa. Rajan täyttyessä harness sulkee täsmälleen oman
+worker-prosessipuunsa, odottaa rajatun cleanupin ja julkaisee vasta sen jälkeen
+turvallisen terminal-JSONL-tuloksen. Sisäinen vaihekohtainen lifecycle
+säilyttää scenario- ja cleanup-varat, mutta ei korvaa ulompaa prosessiomistajaa.
+
 Teknologiavalinnassa pitää todistaa:
 
 - pystyykö moottori säilyttämään tai palauttamaan edellisen version
