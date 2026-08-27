@@ -22,6 +22,8 @@ import {
 import {
   createW6b2PackagedSuccessCommandLifecycle,
   createW6b2PackagedSuccessRunPhase,
+  W6B2_PACKAGED_SUCCESS_COMMAND_TIMEOUT_MILLISECONDS,
+  W6B2_PACKAGED_SUCCESS_FULL_COMMAND_TIMEOUT_MILLISECONDS,
 } from './w6b2PackagedSuccessCommandLifecycle.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -51,8 +53,9 @@ const defaultDependencies = Object.freeze({
 
 export async function runW6b2PackagedSuccess(options = {}) {
   const dependencies = options.dependencies ?? defaultDependencies;
+  const runNumbers = requireRunNumbers(options.runNumbers ?? [1, 2]);
   const lifecycle = createW6b2PackagedSuccessCommandLifecycle(
-    options.commandLifecycle,
+    createCommandLifecycleOptions(options.commandLifecycle, runNumbers.length),
   );
   try {
     const installerPair = await lifecycle.runPhase(
@@ -76,7 +79,7 @@ export async function runW6b2PackagedSuccess(options = {}) {
       },
     );
 
-    for (let runNumber = 1; runNumber <= 2; runNumber += 1) {
+    for (const runNumber of runNumbers) {
       lifecycle.requireScenarioStartBudget(
         W6B2_PACKAGED_SCENARIO_TIMEOUT_MILLISECONDS,
       );
@@ -149,7 +152,7 @@ export async function runW6b2PackagedSuccess(options = {}) {
 
     lifecycle.complete();
     return Object.freeze({
-      runCount: 2,
+      runCount: runNumbers.length,
       sourceVersion: installerPair.source.appVersion,
       status: 'completed',
       targetVersion: installerPair.target.appVersion,
@@ -158,6 +161,23 @@ export async function runW6b2PackagedSuccess(options = {}) {
     lifecycle.fail(error);
     throw error;
   }
+}
+
+export function parseW6b2PackagedSuccessCliArguments(arguments_) {
+  if (arguments_.length === 0) {
+    return Object.freeze({ runNumbers: Object.freeze([1, 2]) });
+  }
+  if (
+    arguments_.length === 1 &&
+    (arguments_[0] === '--run=1' || arguments_[0] === '--run=2')
+  ) {
+    return Object.freeze({
+      runNumbers: Object.freeze([
+        Number.parseInt(arguments_[0].slice(-1), 10),
+      ]),
+    });
+  }
+  throw new Error('W6B2_SUCCESS_CLI_ARGUMENTS_INVALID');
 }
 
 export function createW6b2PackagedSuccessArguments(input) {
@@ -247,6 +267,31 @@ function samePath(left, right) {
     : resolve(left) === resolve(right);
 }
 
+function createCommandLifecycleOptions(options, runCount) {
+  const defaultTimeoutMilliseconds =
+    runCount === 1
+      ? W6B2_PACKAGED_SUCCESS_COMMAND_TIMEOUT_MILLISECONDS
+      : W6B2_PACKAGED_SUCCESS_FULL_COMMAND_TIMEOUT_MILLISECONDS;
+  return Object.freeze({
+    ...(options ?? {}),
+    timeoutMilliseconds:
+      options?.timeoutMilliseconds ?? defaultTimeoutMilliseconds,
+  });
+}
+
+function requireRunNumbers(values) {
+  if (
+    !Array.isArray(values) ||
+    (values.length !== 1 && values.length !== 2) ||
+    !values.every((value) => value === 1 || value === 2) ||
+    new Set(values).size !== values.length ||
+    (values.length === 2 && (values[0] !== 1 || values[1] !== 2))
+  ) {
+    throw new Error('W6B2_SUCCESS_RUN_SELECTION_INVALID');
+  }
+  return Object.freeze([...values]);
+}
+
 function requireRunInput(input) {
   if (
     typeof input.buildRevision !== 'string' ||
@@ -291,7 +336,10 @@ if (
   pathToFileURL(resolve(process.argv[1])).href === import.meta.url
 ) {
   try {
-    console.log(JSON.stringify(await runW6b2PackagedSuccess()));
+    const options = parseW6b2PackagedSuccessCliArguments(
+      process.argv.slice(2),
+    );
+    console.log(JSON.stringify(await runW6b2PackagedSuccess(options)));
   } catch {
     process.exitCode = 1;
   }

@@ -1176,15 +1176,17 @@ C:n `invalidHistory`-torjunnan `recoveryRequired`-tilaan. Jokainen ajo käyttä�
 ajokohtaista synteettistä profiilia, rajattuja vaihekohtaisia timeoutteja,
 turvallista JSONL-observabilitya, omistettujen prosessien cleanupia ja nollan
 orpoprosessin loppuehtoa. Canonical-versiot ja release-kanava eivät muutu.
-Komennon oma 25 minuutin elinkaaribudjetti kattaa fixtureparin rakentamisen,
-tarkistamisen ja molempien ajojen väliset vastuut. Uusi ajo käynnistyy vain,
-jos sille on jäljellä nykyinen täysi 12 minuutin skenaarioraja sekä vähintään
-90 sekuntia fixture-cleanupiin. Budjetti perustuu GitHubin mitattuun noin
-yhdeksän minuutin hitaaseen fixtureparin buildiin ja jättää 30 minuutin
-CI-jobissa erillisen marginaalin komennon terminalisointiin. Budjetin
-loppuminen tuottaa suljetun,
-allowlistatun terminal-tuloksen ennen GitHub-jobin ulkoista aikarajaa; CI-jobin
-aikarajaa tai yksittäisen skenaarion aikarajaa ei tämän vuoksi kasvateta.
+CI ajaa kaksi toistoa erillisinä Windows-matriisiajoina. Yksi ajo rakentaa ja
+tarkistaa oman muuttumattoman fixtureparinsa, käyttää vain valittua suljettua
+`--run=1|2`-toistoa ja noudattaa 25 minuutin elinkaaribudjettia. Paikallinen ja
+manuaalinen release-portti rakentaa yhden fixtureparin ja ajaa samat tavut
+edelleen kahdesti; sen mitattu kokonaisbudjetti on 38 minuuttia. Uusi ajo
+käynnistyy vain, jos sille on jäljellä nykyinen täysi 12 minuutin
+skenaarioraja sekä vähintään 90 sekuntia fixture-cleanupiin. Budjetit perustuvat
+GitHubin mitattuun noin yhdeksän minuutin hitaaseen fixtureparin buildiin.
+Budjetin loppuminen tuottaa suljetun, allowlistatun terminal-tuloksen ennen
+GitHub-jobin ulkoista aikarajaa; yksittäisen skenaarion aikarajaa ei tämän
+vuoksi kasvateta.
 
 Tämä checkpoint ei sulje koko W6-porttia. W6B.2B:n fault- ja rollback-
 matriisi, installer repair/uninstall -jatkuvuus sekä lopullinen release-portti

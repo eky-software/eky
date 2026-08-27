@@ -5,6 +5,7 @@ import test from 'node:test';
 
 import {
   createW6b2PackagedSuccessArguments,
+  parseW6b2PackagedSuccessCliArguments,
   runW6b2PackagedSuccess,
 } from './runW6b2PackagedSuccess.mjs';
 
@@ -127,6 +128,76 @@ test('cleans the current fixture and stops after a failed run', async () => {
   );
   assert.equal(createdCount, 1);
   assert.deepEqual(removedTokens, ['a'.repeat(64)]);
+});
+
+test('runs one selected CI repetition with the same closed proof contract', async () => {
+  const createdTokens = [];
+  const removedTokens = [];
+  const result = await runW6b2PackagedSuccess({
+    dependencies: {
+      async buildInstallerPair() {
+        return pair;
+      },
+      async createRunFixture() {
+        const token = '2'.repeat(64);
+        createdTokens.push(token);
+        return runFixture(token);
+      },
+      async removeRunFixture(input) {
+        removedTokens.push(input.token);
+      },
+      resolveElectronRuntime() {
+        return { executablePath: 'C:\\fixture\\electron.exe' };
+      },
+      async runProcess(_command, _arguments, context) {
+        assert.equal(context.proofToken, '2'.repeat(64));
+        assert.equal(context.timeoutMilliseconds, 12 * 60 * 1000);
+      },
+      temporaryRoot() {
+        return tmpdir();
+      },
+      async verifyInstallerPair() {},
+      async verifyProfileApplication() {},
+      async verifyRunFixture(input) {
+        assert.equal(input.token, '2'.repeat(64));
+      },
+    },
+    commandLifecycle: quietLifecycle(),
+    profileApplicationPath: 'C:\\fixture\\profile',
+    runNumbers: [2],
+  });
+
+  assert.deepEqual(result, {
+    runCount: 1,
+    sourceVersion: '0.2.7',
+    status: 'completed',
+    targetVersion: '0.2.8',
+  });
+  assert.deepEqual(createdTokens, ['2'.repeat(64)]);
+  assert.deepEqual(removedTokens, ['2'.repeat(64)]);
+});
+
+test('accepts only the closed one-run CI selector', () => {
+  assert.deepEqual(parseW6b2PackagedSuccessCliArguments([]), {
+    runNumbers: [1, 2],
+  });
+  assert.deepEqual(parseW6b2PackagedSuccessCliArguments(['--run=1']), {
+    runNumbers: [1],
+  });
+  assert.deepEqual(parseW6b2PackagedSuccessCliArguments(['--run=2']), {
+    runNumbers: [2],
+  });
+  for (const invalidArguments of [
+    ['--run=0'],
+    ['--run=3'],
+    ['--run=1', '--run=2'],
+    ['--scenario=1'],
+  ]) {
+    assert.throws(
+      () => parseW6b2PackagedSuccessCliArguments(invalidArguments),
+      /W6B2_SUCCESS_CLI_ARGUMENTS_INVALID/u,
+    );
+  }
 });
 
 test('does not start a second run without its full scenario and cleanup budget', async () => {
