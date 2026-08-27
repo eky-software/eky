@@ -66,25 +66,36 @@ test('isolates W6B acceptance jobs from the regular MSI release gate', async () 
   );
   const installerJobIndex = ci.indexOf('  installer-windows:');
   const legacyJobIndex = ci.indexOf('  installer-w6b-legacy-windows:');
-  const packagedSuccessJobIndex = ci.indexOf(
+  const packagedSuccessWorkerIndex = ci.indexOf(
+    '  installer-w6b2-success-windows-run:',
+  );
+  const packagedSuccessAggregatorIndex = ci.indexOf(
     '  installer-w6b2-success-windows:',
   );
-  const faultRollbackJobIndex = ci.indexOf(
+  const faultRollbackWorkerIndex = ci.indexOf(
+    '  installer-w6b2-fault-rollback-windows-run:',
+  );
+  const faultRollbackAggregatorIndex = ci.indexOf(
     '  installer-w6b2-fault-rollback-windows:',
   );
   const installerJob = ci.slice(installerJobIndex, legacyJobIndex);
-  const legacyJob = ci.slice(legacyJobIndex, packagedSuccessJobIndex);
-  const packagedSuccessJob = ci.slice(
-    packagedSuccessJobIndex,
-    faultRollbackJobIndex,
+  const legacyJob = ci.slice(legacyJobIndex, packagedSuccessWorkerIndex);
+  const packagedSuccessWorker = ci.slice(
+    packagedSuccessWorkerIndex,
+    packagedSuccessAggregatorIndex,
   );
-  const faultRollbackJob = ci.slice(faultRollbackJobIndex);
-  const legacyAcceptance =
-    'run: pnpm --filter @eky/desktop installer:w6b-legacy';
-  const packagedSuccessAcceptance =
-    'run: pnpm --filter @eky/desktop installer:w6b2-success';
-  const faultRollbackAcceptance =
-    'run: pnpm --filter @eky/desktop installer:w6b2-fault-rollback';
+  const packagedSuccessAggregator = ci.slice(
+    packagedSuccessAggregatorIndex,
+    faultRollbackWorkerIndex,
+  );
+  const faultRollbackWorker = ci.slice(
+    faultRollbackWorkerIndex,
+    faultRollbackAggregatorIndex,
+  );
+  const faultRollbackAggregator = ci.slice(faultRollbackAggregatorIndex);
+  const legacyAcceptance = 'installer:w6b-legacy';
+  const packagedSuccessAcceptance = 'installer:w6b2-success';
+  const faultRollbackAcceptance = 'installer:w6b2-fault-rollback';
   const prepareElectronRuntime =
     'run: pnpm --filter @eky/desktop e2e:prepare-electron-runtime';
   const localPilotBundle =
@@ -92,8 +103,10 @@ test('isolates W6B acceptance jobs from the regular MSI release gate', async () 
 
   assert.ok(installerJobIndex >= 0);
   assert.ok(legacyJobIndex > installerJobIndex);
-  assert.ok(packagedSuccessJobIndex > legacyJobIndex);
-  assert.ok(faultRollbackJobIndex > packagedSuccessJobIndex);
+  assert.ok(packagedSuccessWorkerIndex > legacyJobIndex);
+  assert.ok(packagedSuccessAggregatorIndex > packagedSuccessWorkerIndex);
+  assert.ok(faultRollbackWorkerIndex > packagedSuccessAggregatorIndex);
+  assert.ok(faultRollbackAggregatorIndex > faultRollbackWorkerIndex);
   assert.match(
     installerJob,
     /- name: Check out repository[\s\S]*?persist-credentials: false\s+fetch-depth: 0/u,
@@ -110,46 +123,69 @@ test('isolates W6B acceptance jobs from the regular MSI release gate', async () 
   assert.doesNotMatch(legacyJob, new RegExp(packagedSuccessAcceptance, 'u'));
   assert.doesNotMatch(legacyJob, new RegExp(localPilotBundle, 'u'));
   assert.match(
-    packagedSuccessJob,
+    packagedSuccessWorker,
     /- name: Check out repository[\s\S]*?persist-credentials: false\s+fetch-depth: 0/u,
   );
-  assert.match(packagedSuccessJob, /timeout-minutes: 30/u);
+  assert.match(packagedSuccessWorker, /timeout-minutes: 30/u);
   assert.match(
-    packagedSuccessJob,
+    packagedSuccessWorker,
     new RegExp(prepareElectronRuntime, 'u'),
   );
   assert.match(
-    packagedSuccessJob,
+    packagedSuccessWorker,
     new RegExp(packagedSuccessAcceptance, 'u'),
   );
+  assert.match(packagedSuccessWorker, /--run=\$\{\{ matrix\.repetition \}\}/u);
   assert.doesNotMatch(
-    packagedSuccessJob,
+    packagedSuccessWorker,
     new RegExp(legacyAcceptance, 'u'),
   );
   assert.doesNotMatch(
-    packagedSuccessJob,
+    packagedSuccessWorker,
     new RegExp(faultRollbackAcceptance, 'u'),
   );
-  assert.doesNotMatch(packagedSuccessJob, new RegExp(localPilotBundle, 'u'));
+  assert.doesNotMatch(
+    packagedSuccessWorker,
+    new RegExp(localPilotBundle, 'u'),
+  );
+  assert.match(packagedSuccessAggregator, /timeout-minutes: 2/u);
   assert.match(
-    faultRollbackJob,
+    packagedSuccessAggregator,
+    /needs: installer-w6b2-success-windows-run/u,
+  );
+  assert.doesNotMatch(packagedSuccessAggregator, /actions\/checkout@/u);
+  assert.match(
+    faultRollbackWorker,
     /- name: Check out repository[\s\S]*?persist-credentials: false\s+fetch-depth: 0/u,
   );
-  assert.match(faultRollbackJob, /timeout-minutes: 45/u);
+  assert.match(faultRollbackWorker, /timeout-minutes: 45/u);
   assert.match(
-    faultRollbackJob,
+    faultRollbackWorker,
     new RegExp(prepareElectronRuntime, 'u'),
   );
   assert.match(
-    faultRollbackJob,
+    faultRollbackWorker,
     new RegExp(faultRollbackAcceptance, 'u'),
   );
-  assert.doesNotMatch(faultRollbackJob, new RegExp(legacyAcceptance, 'u'));
+  assert.match(
+    faultRollbackWorker,
+    /--scenario=\$\{\{ matrix\.scenario \}\}/u,
+  );
+  assert.doesNotMatch(faultRollbackWorker, new RegExp(legacyAcceptance, 'u'));
   assert.doesNotMatch(
-    faultRollbackJob,
+    faultRollbackWorker,
     new RegExp(packagedSuccessAcceptance, 'u'),
   );
-  assert.doesNotMatch(faultRollbackJob, new RegExp(localPilotBundle, 'u'));
+  assert.doesNotMatch(
+    faultRollbackWorker,
+    new RegExp(localPilotBundle, 'u'),
+  );
+  assert.match(faultRollbackAggregator, /timeout-minutes: 2/u);
+  assert.match(
+    faultRollbackAggregator,
+    /needs: installer-w6b2-fault-rollback-windows-run/u,
+  );
+  assert.doesNotMatch(faultRollbackAggregator, /actions\/checkout@/u);
   assert.equal(ci.split('fetch-depth: 0').length - 1, 4);
   assert.equal(ci.split(legacyAcceptance).length - 1, 1);
   assert.equal(ci.split(packagedSuccessAcceptance).length - 1, 1);
