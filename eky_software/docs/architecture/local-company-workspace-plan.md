@@ -1144,6 +1144,16 @@ Satunnaista nykyisestä HEADista 0.2.6-versionumerolla rakennettua pakettia ei
 hyväksytä legacy-lähteeksi. Jos hyväksyttyä artifactia tai sen tarkkaa
 source-commitia ei voida todistaa, W6B pysähtyy ennen MSI-ajoa.
 
+Legacy-hyväksynnän PowerShell-hostia ympäröi lisäksi Node-harnessin omistama
+rajattu prosessielinkaari. Se antaa vain suljetut host-, wait-, heartbeat-,
+timeout- ja cleanup-tapahtumat, päättää odotuksen viimeistään 18 minuutissa ja
+varaa tämän jälkeen 30 sekuntia täsmälliseen prosessipuun siivoukseen.
+Siivous hyväksyy vain käynnistetyn legacy-skriptin, saman 64-hex-
+todistetunnisteen ja saman process creation -identiteetin. Se ei tapa prosesseja
+nimellä eikä muuta PowerShell-skenaarion sisäistä viiden minuutin MSI-
+aikarajaa. Näin ulompi GitHub-jobi ei jää yksin terminalisoimaan jumiutunutta
+legacy-hyväksyntää.
+
 Toinen lähtömalli todistaa tulevan multi-workspace-version sisäisen
 päivityksen. Synteettinen N ja N+1 käyttävät eri numeerisia fixture-versioita
 sekä yksityiseen, Gitistä ohitettuun stagingiin kirjoitettuja manifesteja.

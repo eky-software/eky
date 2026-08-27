@@ -898,6 +898,13 @@ paketista ja kulkee nykyisen sisäisen update/handoff-polun kautta N+1:een.
 Canonical release-identiteettiä ei muuteta eikä samaa versionumeroa käytetä
 eri build-revisioille.
 
+Legacy-acceptance-harnessin ulompi Node-prosessi rajaa PowerShell-hostin koko
+elinkaaren. Se tuottaa allowlistatut host-, wait-, heartbeat-, timeout- ja
+cleanup-tapahtumat, jättää ulomman CI-jobin aikarajaan siivousvaran ja
+terminalisoi vain täsmälliseen 64-hex-todisteeseen sekä process creation
+-identiteettiin sidotun prosessipuun. PowerShell-skenaarion sisäinen viiden
+minuutin MSI-operaation aikaraja säilyy erillisenä ja muuttumattomana.
+
 W6B:n success-todisteessa aktiivinen `compatiblePending`-työtila migroidaan
 first startissa, passiivinen `compatiblePending` säilyy siihen asti byte-
 identtisenä ja migroidaan vasta aktivoinnissa sekä passiivinen
