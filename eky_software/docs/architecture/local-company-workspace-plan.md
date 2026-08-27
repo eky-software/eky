@@ -1195,6 +1195,17 @@ Paketoitu fault-matriisi on rajattu viiteen korkean riskin tapaukseen:
 5. binary rollbackin virhe päättyy `recoveryRequired`-tilaan ilman
    automaattista retry-loopia tai väärän version käynnistystä.
 
+**W6B.2B fault/rollback -checkpoint 27.8.2026:** matriisi on toteutettu
+pysyvällä `pnpm --filter @eky/desktop installer:w6b2-fault-rollback`
+-komennolla. Yksi rakennettu 0.2.7 -> 0.2.8 -fixturepari käytetään viiden
+skenaarion kahdessa peräkkäisessä ajossa, yhteensä kymmenessä ajossa.
+Todistus varmistaa skenaariokohtaisen source- tai rollback-lopputilan,
+työtilojen ja installation-scopen eristyksen, suljetun recoveryRequired-
+tilan siellä missä automaattinen palautuminen ei ole turvallista sekä nollan
+omistetun orpoprosessin loppuehdon. Paikallinen koko matriisi,
+W6B.2A-success-regressio ja legacy 0.2.6 -> 0.2.7 -hyväksyntä ovat vihreitä.
+Matriisi ajetaan lisäksi omana Windows CI -jobinaan ennen mergeä.
+
 Lisäksi install, reinstall/repair, uninstall ja reinstall todistetaan samalla
 synteettisellä multi-workspace-profiililla. Uninstall saa poistaa vain
 installation-owned binaarit, shortcutit, install-rootin ja Windows Installer

@@ -69,13 +69,22 @@ test('isolates W6B acceptance jobs from the regular MSI release gate', async () 
   const packagedSuccessJobIndex = ci.indexOf(
     '  installer-w6b2-success-windows:',
   );
+  const faultRollbackJobIndex = ci.indexOf(
+    '  installer-w6b2-fault-rollback-windows:',
+  );
   const installerJob = ci.slice(installerJobIndex, legacyJobIndex);
   const legacyJob = ci.slice(legacyJobIndex, packagedSuccessJobIndex);
-  const packagedSuccessJob = ci.slice(packagedSuccessJobIndex);
+  const packagedSuccessJob = ci.slice(
+    packagedSuccessJobIndex,
+    faultRollbackJobIndex,
+  );
+  const faultRollbackJob = ci.slice(faultRollbackJobIndex);
   const legacyAcceptance =
     'run: pnpm --filter @eky/desktop installer:w6b-legacy';
   const packagedSuccessAcceptance =
     'run: pnpm --filter @eky/desktop installer:w6b2-success';
+  const faultRollbackAcceptance =
+    'run: pnpm --filter @eky/desktop installer:w6b2-fault-rollback';
   const prepareElectronRuntime =
     'run: pnpm --filter @eky/desktop e2e:prepare-electron-runtime';
   const localPilotBundle =
@@ -84,6 +93,7 @@ test('isolates W6B acceptance jobs from the regular MSI release gate', async () 
   assert.ok(installerJobIndex >= 0);
   assert.ok(legacyJobIndex > installerJobIndex);
   assert.ok(packagedSuccessJobIndex > legacyJobIndex);
+  assert.ok(faultRollbackJobIndex > packagedSuccessJobIndex);
   assert.match(
     installerJob,
     /- name: Check out repository[\s\S]*?persist-credentials: false\s+fetch-depth: 0/u,
@@ -116,10 +126,34 @@ test('isolates W6B acceptance jobs from the regular MSI release gate', async () 
     packagedSuccessJob,
     new RegExp(legacyAcceptance, 'u'),
   );
+  assert.doesNotMatch(
+    packagedSuccessJob,
+    new RegExp(faultRollbackAcceptance, 'u'),
+  );
   assert.doesNotMatch(packagedSuccessJob, new RegExp(localPilotBundle, 'u'));
-  assert.equal(ci.split('fetch-depth: 0').length - 1, 3);
+  assert.match(
+    faultRollbackJob,
+    /- name: Check out repository[\s\S]*?persist-credentials: false\s+fetch-depth: 0/u,
+  );
+  assert.match(faultRollbackJob, /timeout-minutes: 45/u);
+  assert.match(
+    faultRollbackJob,
+    new RegExp(prepareElectronRuntime, 'u'),
+  );
+  assert.match(
+    faultRollbackJob,
+    new RegExp(faultRollbackAcceptance, 'u'),
+  );
+  assert.doesNotMatch(faultRollbackJob, new RegExp(legacyAcceptance, 'u'));
+  assert.doesNotMatch(
+    faultRollbackJob,
+    new RegExp(packagedSuccessAcceptance, 'u'),
+  );
+  assert.doesNotMatch(faultRollbackJob, new RegExp(localPilotBundle, 'u'));
+  assert.equal(ci.split('fetch-depth: 0').length - 1, 4);
   assert.equal(ci.split(legacyAcceptance).length - 1, 1);
   assert.equal(ci.split(packagedSuccessAcceptance).length - 1, 1);
+  assert.equal(ci.split(faultRollbackAcceptance).length - 1, 1);
 });
 
 test('uses runtime-independent SHA-256 APIs in Windows installer gates', async () => {

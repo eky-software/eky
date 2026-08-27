@@ -1052,6 +1052,20 @@ tulosteta. Progress on vain testihavainto: puuttuva, keskeneräinen tai
 virheellinen havaintotiedosto ei muuta rollbackin exit-koodia, aikarajaa tai
 fail-closed-tulosta, eikä tavallinen production-handoff anna progresspolkua.
 
+**W6B.2B fault/rollback -checkpoint 27.8.2026:** pysyvä komento
+`pnpm --filter @eky/desktop installer:w6b2-fault-rollback` rakentaa yhden
+yksityisen 0.2.7 -> 0.2.8 -fixtureparin ja ajaa viisi fault-skenaariota
+kahdesti. Matriisi kattaa preUpdate-palautuspisteen virheen, aktiivisen
+työtilan first-start-virheen, hyväksynnän keskeytymisen, passiivisen työtilan
+aktivointimigraation virheen ja binary rollbackin virheen. Jokainen ajo
+käyttää erillistä synteettistä proof-juurta, suljettua JSONL-observabilitya,
+rajattuja vaihekohtaisia odotuksia ja vain omistetun prosessipuun cleanupia.
+Paikallinen 5 x 2 -matriisi, W6B.2A-success-regressio ja legacy 0.2.6 ->
+0.2.7 -hyväksyntä ovat vihreitä, ja loppuehto todistaa nolla omistettua
+orpoprosessia. Checkpoint ei muuta canonical-versiota, release-kanavaa,
+backup-formaattia tai tuotannon fault-semanticsia. Sama matriisi ajetaan
+omana Windows CI -porttinaan ennen mergeä.
+
 Teknologiavalinnassa pitää todistaa:
 
 - pystyykö moottori säilyttämään tai palauttamaan edellisen version
