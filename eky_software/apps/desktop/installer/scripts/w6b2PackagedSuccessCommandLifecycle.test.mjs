@@ -88,6 +88,25 @@ test('fails closed before a scenario that cannot retain cleanup reserve', () => 
   );
 });
 
+test('retains the full scenario and cleanup budget after a measured slow installer build', () => {
+  let now = 0;
+  const lifecycle = createW6b2PackagedSuccessCommandLifecycle({
+    dependencies: {
+      now: () => now,
+      observe() {},
+    },
+  });
+  now = 531_297;
+
+  assert.doesNotThrow(() =>
+    lifecycle.requireScenarioStartBudget(12 * 60 * 1000),
+  );
+  assert.equal(
+    lifecycle.getScenarioTimeoutMilliseconds(12 * 60 * 1000),
+    12 * 60 * 1000,
+  );
+});
+
 test('cleanup runs after the command deadline without changing its result', async () => {
   let now = 0;
   const events = [];

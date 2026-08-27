@@ -1176,10 +1176,13 @@ C:n `invalidHistory`-torjunnan `recoveryRequired`-tilaan. Jokainen ajo käyttä�
 ajokohtaista synteettistä profiilia, rajattuja vaihekohtaisia timeoutteja,
 turvallista JSONL-observabilitya, omistettujen prosessien cleanupia ja nollan
 orpoprosessin loppuehtoa. Canonical-versiot ja release-kanava eivät muutu.
-Komennon oma 22 minuutin elinkaaribudjetti kattaa fixtureparin rakentamisen,
+Komennon oma 25 minuutin elinkaaribudjetti kattaa fixtureparin rakentamisen,
 tarkistamisen ja molempien ajojen väliset vastuut. Uusi ajo käynnistyy vain,
 jos sille on jäljellä nykyinen täysi 12 minuutin skenaarioraja sekä vähintään
-90 sekuntia fixture-cleanupiin. Budjetin loppuminen tuottaa suljetun,
+90 sekuntia fixture-cleanupiin. Budjetti perustuu GitHubin mitattuun noin
+yhdeksän minuutin hitaaseen fixtureparin buildiin ja jättää 30 minuutin
+CI-jobissa erillisen marginaalin komennon terminalisointiin. Budjetin
+loppuminen tuottaa suljetun,
 allowlistatun terminal-tuloksen ennen GitHub-jobin ulkoista aikarajaa; CI-jobin
 aikarajaa tai yksittäisen skenaarion aikarajaa ei tämän vuoksi kasvateta.
 

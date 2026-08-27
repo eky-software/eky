@@ -1,7 +1,7 @@
 const operation = 'w6b2PackagedSuccessCommand';
 
 export const W6B2_PACKAGED_SUCCESS_COMMAND_TIMEOUT_MILLISECONDS =
-  22 * 60 * 1000;
+  25 * 60 * 1000;
 export const W6B2_PACKAGED_SUCCESS_CLEANUP_RESERVE_MILLISECONDS =
   90 * 1000;
 
