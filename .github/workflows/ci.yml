@@ -358,16 +358,17 @@ jobs:
         run: test "$MATRIX_RESULT" = "success"
 
   installer-w6b2-fault-rollback-windows-run:
-    name: Windows W6B.2B ${{ matrix.scenario }}
+    name: Windows W6B.2B ${{ matrix.scenario }} run ${{ matrix.repetition }}
     if: >-
       github.event_name == 'pull_request' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
 
     strategy:
       fail-fast: false
+      max-parallel: 5
       matrix:
         scenario:
           - preUpdateRecoveryPointFailure
@@ -375,6 +376,7 @@ jobs:
           - acceptanceInterruption
           - passiveWorkspaceMigrationFailure
           - binaryRollbackFailure
+        repetition: [1, 2]
 
     defaults:
       run:
@@ -410,10 +412,11 @@ jobs:
       - name: Restore locked WiX toolchain twice without lock drift
         run: pnpm --filter @eky/desktop installer:verify-restore-lock
 
-      - name: Verify one packaged fault scenario twice
+      - name: Verify one packaged fault scenario repetition
         run: >-
           pnpm --filter @eky/desktop installer:w6b2-fault-rollback --
           --scenario=${{ matrix.scenario }}
+          --run=${{ matrix.repetition }}
 
   installer-w6b2-fault-rollback-windows:
     name: Windows W6B.2B packaged workspace fault and rollback
@@ -427,7 +430,7 @@ jobs:
     timeout-minutes: 2
 
     steps:
-      - name: Require every packaged fault scenario
+      - name: Require every packaged fault scenario repetition
         env:
           MATRIX_RESULT: ${{ needs.installer-w6b2-fault-rollback-windows-run.result }}
         run: test "$MATRIX_RESULT" = "success"

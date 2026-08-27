@@ -1072,10 +1072,23 @@ Paikallinen 5 x 2 -matriisi, W6B.2A-success-regressio ja legacy 0.2.6 ->
 orpoprosessia. Checkpoint ei muuta canonical-versiota, release-kanavaa,
 backup-formaattia tai tuotannon fault-semanticsia. Sama matriisi ajetaan
 omana Windows CI -porttinaan ennen mergeä. CI:n viisi allowlistattua
-skenaariota ovat erillisiä matriisiajoja, joista kukin rakentaa yhden
-muuttumattoman fixtureparin ja ajaa oman skenaarionsa kahdesti. Vakaa
-aggregaattorijobi säilyttää branch protection -sopimuksen. Paikallinen
-argumentiton komento säilyttää yhden fixtureparin koko 5 x 2 -matriisille.
+skenaariota ja kaksi toistoa muodostavat kymmenen eristettyä matriisiajoa.
+Jokainen ajo rakentaa ja tarkistaa oman muuttumattoman fixtureparinsa sekä
+ajaa täsmälleen yhden `--scenario` + `--run`-yhdistelmän. Enintään viisi ajoa
+paketoi rinnakkain. Yhden ajon sisäinen 25 minuutin komentobudjetti päättyy
+ennen 30 minuutin jobirajaa ja varaa ajan omistetulle cleanupille sekä
+terminal-JSONL-tulokselle. Vakaa aggregaattorijobi säilyttää branch protection
+-sopimuksen. Paikallinen argumentiton komento säilyttää vahvemman yhden
+fixtureparin koko 5 x 2 -matriisille; CI:n kaksi toistoa todistavat lisäksi
+toistettavuuden kahdella toisistaan riippumattomalla paketoinnilla.
+
+W6B.2B-komennon turvallinen lifecycle raportoi vain allowlistatut build-,
+manifest verification-, profile preparation-, fixture-, scenario-, cleanup-
+ja process-tree-absent-vaiheet sekä skenaarion ja toiston suljetut arvot.
+Komentobudjetin loppuminen estää uuden skenaarion aloittamisen, ellei koko 12
+minuutin skenaariorajaa ja 90 sekunnin cleanup-varaa ole jäljellä. Raakoja
+polkuja, PID-arvoja, komentorivejä, MSI-identiteettejä, virheitä tai
+stdout/stderr-sisältöä ei tulosteta.
 
 Teknologiavalinnassa pitää todistaa:
 

@@ -158,7 +158,9 @@ test('isolates W6B acceptance jobs from the regular MSI release gate', async () 
     faultRollbackWorker,
     /- name: Check out repository[\s\S]*?persist-credentials: false\s+fetch-depth: 0/u,
   );
-  assert.match(faultRollbackWorker, /timeout-minutes: 45/u);
+  assert.match(faultRollbackWorker, /timeout-minutes: 30/u);
+  assert.match(faultRollbackWorker, /max-parallel: 5/u);
+  assert.match(faultRollbackWorker, /repetition: \[1, 2\]/u);
   assert.match(
     faultRollbackWorker,
     new RegExp(prepareElectronRuntime, 'u'),
@@ -170,6 +172,10 @@ test('isolates W6B acceptance jobs from the regular MSI release gate', async () 
   assert.match(
     faultRollbackWorker,
     /--scenario=\$\{\{ matrix\.scenario \}\}/u,
+  );
+  assert.match(
+    faultRollbackWorker,
+    /--run=\$\{\{ matrix\.repetition \}\}/u,
   );
   assert.doesNotMatch(faultRollbackWorker, new RegExp(legacyAcceptance, 'u'));
   assert.doesNotMatch(
