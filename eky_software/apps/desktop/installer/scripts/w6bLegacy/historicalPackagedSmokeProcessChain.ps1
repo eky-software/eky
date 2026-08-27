@@ -111,6 +111,39 @@ function Add-EkyHistoricalOwnedProcessIdentities {
     $countBefore = $OwnedIdentities.Count
     $ownedByProcessId = @{}
     foreach ($identity in @($OwnedIdentities.Values)) {
+      $matchingParents = @(
+        $ProcessSnapshot | Where-Object {
+          $_.processId -eq $identity.processId -and
+          $_.creationToken -eq $identity.creationToken
+        }
+      )
+      if ($matchingParents.Count -gt 1) {
+        throw 'W6B_LEGACY_SOURCE_PROCESS_IDENTITY_INVALID'
+      }
+      if ($matchingParents.Count -eq 0) {
+        continue
+      }
+      $matchingParent = $matchingParents[0]
+      if (
+        [string]::IsNullOrWhiteSpace(
+          [string]$matchingParent.executablePath
+        )
+      ) {
+        if (Test-EkyHistoricalSnapshotProcessStillMatches $matchingParent) {
+          throw 'W6B_LEGACY_SOURCE_PROCESS_EXECUTABLE_INVALID'
+        }
+        continue
+      }
+      $parentExecutablePath = Resolve-EkyHistoricalExecutablePath `
+        -Path ([string]$matchingParent.executablePath)
+      if (
+        !$parentExecutablePath.Equals(
+          [string]$identity.executablePath,
+          [StringComparison]::OrdinalIgnoreCase
+        )
+      ) {
+        throw 'W6B_LEGACY_SOURCE_PROCESS_IDENTITY_INVALID'
+      }
       $ownedByProcessId[[string]$identity.processId] = $identity
     }
     foreach ($candidate in $ProcessSnapshot) {
