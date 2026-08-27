@@ -24,7 +24,10 @@ test('runs every fault scenario twice with one immutable installer pair', async 
   const events = [];
   const dependencies = createDependencies(events);
 
-  const result = await runW6b2PackagedFaultRollback({ dependencies });
+  const result = await runW6b2PackagedFaultRollback({
+    commandLifecycle: quietLifecycle(),
+    dependencies,
+  });
 
   assert.deepEqual(result, {
     runCount: 10,
@@ -49,8 +52,9 @@ test('runs one allowlisted scenario once and always removes its fixture', async 
   const dependencies = createDependencies(events);
 
   await runW6b2PackagedFaultRollback({
+    commandLifecycle: quietLifecycle(),
     dependencies,
-    runCount: 1,
+    runNumbers: [2],
     scenarios: ['binaryRollbackFailure'],
   });
 
@@ -72,8 +76,9 @@ test('removes the private fixture without changing a failed process result', asy
 
   await assert.rejects(
     runW6b2PackagedFaultRollback({
+      commandLifecycle: quietLifecycle(),
       dependencies,
-      runCount: 1,
+      runNumbers: [1],
       scenarios: ['preUpdateRecoveryPointFailure'],
     }),
     /W6B2_PACKAGED_SCENARIO_PROCESS_EXIT_FAILED/u,
@@ -82,21 +87,27 @@ test('removes the private fixture without changing a failed process result', asy
   assert.equal(events.some((event) => event.type === 'verifyRun'), false);
 });
 
-test('accepts only a closed two-run matrix-scenario CLI argument', () => {
+test('accepts only a closed one-run matrix selector', () => {
+  assert.deepEqual(parseW6b2PackagedFaultCliArguments([]), {});
   assert.deepEqual(
     parseW6b2PackagedFaultCliArguments([
       '--scenario=acceptanceInterruption',
+      '--run=2',
     ]),
-    { runCount: 2, scenarios: ['acceptanceInterruption'] },
+    { runNumbers: [2], scenarios: ['acceptanceInterruption'] },
   );
-  assert.throws(
-    () => parseW6b2PackagedFaultCliArguments(['--scenario=unknown']),
-    /W6B2_FAULT_SCENARIO_INVALID/u,
-  );
-  assert.throws(
-    () => parseW6b2PackagedFaultCliArguments(['--run-count=1']),
-    /W6B2_FAULT_CLI_ARGUMENTS_INVALID/u,
-  );
+  for (const invalidArguments of [
+    ['--scenario=acceptanceInterruption'],
+    ['--scenario=unknown', '--run=1'],
+    ['--scenario=acceptanceInterruption', '--run=0'],
+    ['--run=1', '--scenario=acceptanceInterruption'],
+    ['--scenario=acceptanceInterruption', '--run=1', '--run=2'],
+  ]) {
+    assert.throws(
+      () => parseW6b2PackagedFaultCliArguments(invalidArguments),
+      /W6B2_FAULT_(?:CLI_ARGUMENTS|SCENARIO)_INVALID/u,
+    );
+  }
 });
 
 test('creates an exact PowerShell contract without a generic fault input', () => {
@@ -138,7 +149,8 @@ function createDependencies(events, overrides = {}) {
     async resolveTemporaryRoot() {
       return 'temporary-root';
     },
-    async runProcess(_command, arguments_) {
+    async runProcess(_command, arguments_, context) {
+      assert.equal(context.timeoutMilliseconds, 12 * 60 * 1000);
       events.push({
         faultScenario: arguments_[arguments_.indexOf('-FaultScenario') + 1],
         type: 'run',
@@ -156,6 +168,12 @@ function createDependencies(events, overrides = {}) {
     },
     ...overrides,
   };
+}
+
+function quietLifecycle() {
+  return Object.freeze({
+    dependencies: { observe() {} },
+  });
 }
 
 function createRun(faultScenario, number = 1) {

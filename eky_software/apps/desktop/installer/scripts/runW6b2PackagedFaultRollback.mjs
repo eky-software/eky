@@ -17,6 +17,11 @@ import {
   W6B2_PACKAGED_SCENARIO_CLEANUP_TIMEOUT_MILLISECONDS,
   W6B2_PACKAGED_SCENARIO_TIMEOUT_MILLISECONDS,
 } from './w6b2PackagedScenarioProcess.mjs';
+import {
+  createW6b2PackagedFaultCommandLifecycle,
+  W6B2_PACKAGED_FAULT_COMMAND_TIMEOUT_MILLISECONDS,
+  W6B2_PACKAGED_FAULT_FULL_COMMAND_TIMEOUT_MILLISECONDS,
+} from './w6b2PackagedFaultCommandLifecycle.mjs';
 import { verifyW6b2PackagedSuccessInstallerPair } from './runW6b2PackagedSuccess.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -49,55 +54,122 @@ export async function runW6b2PackagedFaultRollback(options = {}) {
   const scenarios = requireScenarios(
     options.scenarios ?? w6b2PackagedFaultScenarios,
   );
-  const runCount = requireRunCount(options.runCount ?? 2);
-  const installerPair = await dependencies.buildInstallerPair();
-  await dependencies.verifyInstallerPair(installerPair);
-  const electronRuntime = dependencies.resolveElectronRuntime();
-  const profilePath = options.profileApplicationPath ?? profileApplicationPath;
-  await dependencies.verifyProfileApplication(profilePath);
-  const temporaryRoot = await dependencies.resolveTemporaryRoot();
+  const runNumbers = requireRunNumbers(options.runNumbers ?? [1, 2]);
+  const lifecycle = createW6b2PackagedFaultCommandLifecycle(
+    createCommandLifecycleOptions(
+      options.commandLifecycle,
+      scenarios.length * runNumbers.length,
+    ),
+  );
+  try {
+    const installerPair = await lifecycle.runPhase(
+      'installerPairBuild',
+      () => dependencies.buildInstallerPair(),
+    );
+    await lifecycle.runPhase('installerPairVerification', () =>
+      dependencies.verifyInstallerPair(installerPair),
+    );
+    const profile = await lifecycle.runPhase(
+      'profilePreparation',
+      async () => {
+        const electronRuntime = dependencies.resolveElectronRuntime();
+        const profilePath =
+          options.profileApplicationPath ?? profileApplicationPath;
+        await dependencies.verifyProfileApplication(profilePath);
+        const temporaryRoot = await dependencies.resolveTemporaryRoot();
+        return Object.freeze({ electronRuntime, profilePath, temporaryRoot });
+      },
+    );
 
-  for (const faultScenario of scenarios) {
-    for (let runNumber = 1; runNumber <= runCount; runNumber += 1) {
-      const run = await dependencies.createRunFixture({
-        faultScenario,
-        installerPair,
-        temporaryRoot,
-      });
-      try {
-        await dependencies.runProcess(
-          'powershell.exe',
-          createW6b2PackagedFaultArguments({
-            buildRevision: installerPair.buildRevision,
-            electronPath: electronRuntime.executablePath,
-            faultScenario,
-            profileApplicationPath: profilePath,
-            run,
-            sourcePayloadRoot: installerPair.source.packagedApplicationPath,
-            targetPayloadRoot: installerPair.target.packagedApplicationPath,
-            temporaryRoot,
-          }),
-          { proofToken: run.token },
+    for (const faultScenario of scenarios) {
+      for (const runNumber of runNumbers) {
+        const context = Object.freeze({ faultScenario, runNumber });
+        lifecycle.requireScenarioStartBudget(
+          W6B2_PACKAGED_SCENARIO_TIMEOUT_MILLISECONDS,
+          context,
         );
-        await dependencies.verifyRunFixture({ ...run, temporaryRoot });
-        await dependencies.verifyInstallerPair(installerPair);
-      } finally {
-        await dependencies.removeRunFixture({
-          proofRoot: run.proofRoot,
-          temporaryRoot,
-          token: run.token,
-        });
+        const run = await lifecycle.runPhase(
+          'fixtureCreate',
+          () =>
+            dependencies.createRunFixture({
+              faultScenario,
+              installerPair,
+              temporaryRoot: profile.temporaryRoot,
+            }),
+          context,
+        );
+        try {
+          const scenarioTimeoutMilliseconds =
+            lifecycle.getScenarioTimeoutMilliseconds(
+              W6B2_PACKAGED_SCENARIO_TIMEOUT_MILLISECONDS,
+              context,
+            );
+          await lifecycle.runPhase(
+            'scenario',
+            () =>
+              dependencies.runProcess(
+                'powershell.exe',
+                createW6b2PackagedFaultArguments({
+                  buildRevision: installerPair.buildRevision,
+                  electronPath: profile.electronRuntime.executablePath,
+                  faultScenario,
+                  profileApplicationPath: profile.profilePath,
+                  run,
+                  sourcePayloadRoot:
+                    installerPair.source.packagedApplicationPath,
+                  targetPayloadRoot:
+                    installerPair.target.packagedApplicationPath,
+                  temporaryRoot: profile.temporaryRoot,
+                }),
+                {
+                  proofToken: run.token,
+                  timeoutMilliseconds: scenarioTimeoutMilliseconds,
+                },
+              ),
+            context,
+          );
+          lifecycle.observeProcessTreeAbsent(context);
+          await lifecycle.runPhase(
+            'fixtureVerification',
+            () =>
+              dependencies.verifyRunFixture({
+                ...run,
+                temporaryRoot: profile.temporaryRoot,
+              }),
+            context,
+          );
+          await lifecycle.runPhase(
+            'installerPairPostVerification',
+            () => dependencies.verifyInstallerPair(installerPair),
+            context,
+          );
+        } finally {
+          await lifecycle.runCleanupPhase(
+            'fixtureRemove',
+            () =>
+              dependencies.removeRunFixture({
+                proofRoot: run.proofRoot,
+                temporaryRoot: profile.temporaryRoot,
+                token: run.token,
+              }),
+            context,
+          );
+        }
       }
     }
-  }
 
-  return Object.freeze({
-    runCount: runCount * scenarios.length,
-    scenarioCount: scenarios.length,
-    sourceVersion: installerPair.source.appVersion,
-    status: 'completed',
-    targetVersion: installerPair.target.appVersion,
-  });
+    lifecycle.complete();
+    return Object.freeze({
+      runCount: runNumbers.length * scenarios.length,
+      scenarioCount: scenarios.length,
+      sourceVersion: installerPair.source.appVersion,
+      status: 'completed',
+      targetVersion: installerPair.target.appVersion,
+    });
+  } catch (error) {
+    lifecycle.fail(error);
+    throw error;
+  }
 }
 
 export function createW6b2PackagedFaultArguments(input) {
@@ -144,12 +216,18 @@ export function createW6b2PackagedFaultArguments(input) {
 export function parseW6b2PackagedFaultCliArguments(arguments_) {
   if (arguments_.length === 0) return Object.freeze({});
   if (
-    arguments_.length === 1 &&
-    arguments_[0]?.startsWith('--scenario=')
+    arguments_.length === 2 &&
+    arguments_[0]?.startsWith('--scenario=') &&
+    (arguments_[1] === '--run=1' || arguments_[1] === '--run=2')
   ) {
     const scenario = arguments_[0].slice('--scenario='.length);
     requireW6b2PackagedFaultScenario(scenario);
-    return Object.freeze({ runCount: 2, scenarios: Object.freeze([scenario]) });
+    return Object.freeze({
+      runNumbers: Object.freeze([
+        Number.parseInt(arguments_[1].slice(-1), 10),
+      ]),
+      scenarios: Object.freeze([scenario]),
+    });
   }
   throw new Error('W6B2_FAULT_CLI_ARGUMENTS_INVALID');
 }
@@ -183,11 +261,29 @@ function requireScenarios(values) {
   return Object.freeze([...values]);
 }
 
-function requireRunCount(value) {
-  if (!Number.isSafeInteger(value) || value < 1 || value > 2) {
-    throw new Error('W6B2_FAULT_RUN_COUNT_INVALID');
+function createCommandLifecycleOptions(options, totalRunCount) {
+  const defaultTimeoutMilliseconds =
+    totalRunCount === 1
+      ? W6B2_PACKAGED_FAULT_COMMAND_TIMEOUT_MILLISECONDS
+      : W6B2_PACKAGED_FAULT_FULL_COMMAND_TIMEOUT_MILLISECONDS;
+  return Object.freeze({
+    ...(options ?? {}),
+    timeoutMilliseconds:
+      options?.timeoutMilliseconds ?? defaultTimeoutMilliseconds,
+  });
+}
+
+function requireRunNumbers(values) {
+  if (
+    !Array.isArray(values) ||
+    (values.length !== 1 && values.length !== 2) ||
+    !values.every((value) => value === 1 || value === 2) ||
+    new Set(values).size !== values.length ||
+    (values.length === 2 && (values[0] !== 1 || values[1] !== 2))
+  ) {
+    throw new Error('W6B2_FAULT_RUN_SELECTION_INVALID');
   }
-  return value;
+  return Object.freeze([...values]);
 }
 
 function requireArgumentInput(input) {
@@ -222,7 +318,9 @@ function runProcess(command, arguments_, context) {
     cwd: repositoryRoot,
     environment: process.env,
     proofToken: context?.proofToken,
-    timeoutMilliseconds: W6B2_PACKAGED_SCENARIO_TIMEOUT_MILLISECONDS,
+    timeoutMilliseconds:
+      context?.timeoutMilliseconds ??
+      W6B2_PACKAGED_SCENARIO_TIMEOUT_MILLISECONDS,
   });
 }
 
