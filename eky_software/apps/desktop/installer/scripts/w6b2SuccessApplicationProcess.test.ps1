@@ -51,6 +51,8 @@ $handoffProcess = $null
 $strictProcess = $null
 $earlyExitProcess = $null
 $reusedIdentityProcess = $null
+$ownedTreeProcess = $null
+$foreignProcess = $null
 $observations = [Collections.Generic.List[object]]::new()
 $activationPhaseCalls = [Collections.Generic.List[object]]::new()
 $milestones = [Collections.Generic.List[string]]::new()
@@ -147,6 +149,59 @@ exit 7
         $missingIdentity
     }
   })
+
+  $ownedChildMarker = Join-Path $testRoot 'owned-child.ready'
+  $ownedChildCommand = ConvertTo-W6b2EncodedCommand `
+    -Command 'Start-Sleep -Seconds 30'
+  $ownedTreeCommand = @"
+`$child = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
+  '-NoLogo',
+  '-NoProfile',
+  '-NonInteractive',
+  '-EncodedCommand',
+  '$ownedChildCommand'
+) -WindowStyle Hidden -PassThru
+[IO.File]::WriteAllText('$($ownedChildMarker.Replace("'", "''"))', 'ready')
+Start-Sleep -Seconds 2
+exit 0
+"@
+  $ownedTreeProcess = Start-W6b2ProcessFixture -Command $ownedTreeCommand
+  $ownedTreeObservation = New-W6b2SuccessProcessObservation `
+    -Process $ownedTreeProcess
+  $observations.Add($ownedTreeObservation)
+  $ownedChildDeadline = [DateTime]::UtcNow.AddSeconds(5)
+  do {
+    [void](Update-W6b2SuccessProcessObservation `
+      -Observation $ownedTreeObservation)
+    if (Test-Path -LiteralPath $ownedChildMarker -PathType Leaf) {
+      break
+    }
+    Start-Sleep -Milliseconds 50
+  } while ([DateTime]::UtcNow -lt $ownedChildDeadline)
+  Assert-W6b2ProcessEqual `
+    (Test-Path -LiteralPath $ownedChildMarker -PathType Leaf) $true `
+    'W6B2_PROCESS_TEST_CHILD_MARKER_MISSING'
+  [void](Update-W6b2SuccessProcessObservation `
+    -Observation $ownedTreeObservation)
+  Assert-W6b2ProcessEqual ($ownedTreeObservation.owned.Count -ge 2) $true `
+    'W6B2_PROCESS_TEST_CHILD_OWNERSHIP_MISSING'
+  Assert-W6b2ProcessEqual ($ownedTreeProcess.WaitForExit(5000)) $true `
+    'W6B2_PROCESS_TEST_PARENT_EXIT_MISSING'
+
+  $foreignProcess = Start-W6b2ProcessFixture `
+    -Command 'Start-Sleep -Seconds 30'
+  $foreignObservation = New-W6b2SuccessProcessObservation `
+    -Process $foreignProcess
+  $observations.Add($foreignObservation)
+  Stop-W6b2SuccessRecordedOwnedProcesses `
+    -Observation $ownedTreeObservation
+  Wait-W6b2SuccessOwnedProcessesAbsent `
+    -Observation $ownedTreeObservation -TimeoutMilliseconds 5000
+  $foreignProcess.Refresh()
+  Assert-W6b2ProcessEqual $foreignProcess.HasExited $false `
+    'W6B2_PROCESS_TEST_FOREIGN_PROCESS_TERMINATED'
+  Close-W6b2SuccessProcess -Process $ownedTreeProcess
+  $ownedTreeProcess = $null
 
   function Invoke-W6b2SuccessApplicationPhase {
     param(
@@ -249,17 +304,27 @@ exit 7
   } 'W6B2_SUCCESS_PROCESS_OUTPUT_TIMEOUT'
 
   $roleFixtures = @(
+    @('fixture', 'applicationChild', 'Eky.exe'),
     @('--type=crashpad-handler', 'crashpad'),
     @('--type=gpu-process', 'gpu'),
     @('--type=renderer', 'renderer'),
     @('--type=utility --utility-sub-type=node.mojom.NodeService', `
       'backendUtility'),
     @('--type=utility --utility-sub-type=audio.mojom.AudioService', 'utility'),
-    @('--fixture-argument', 'unclassified')
+    @('--fixture-argument', 'unclassified'),
+    @('fixture', 'consoleHost', 'conhost.exe'),
+    @('fixture', 'installerHandoff', 'msiexec.exe'),
+    @('fixture', 'powershell', 'powershell.exe')
   )
   foreach ($roleFixture in $roleFixtures) {
     Assert-W6b2ProcessEqual `
       (Get-W6b2SuccessOwnedProcessRole -Process ([pscustomobject]@{
+        Name = if ($roleFixture.Count -eq 3) {
+          [string]$roleFixture[2]
+        }
+        else {
+          'fixture.exe'
+        }
         CommandLine = [string]$roleFixture[0]
       })) ([string]$roleFixture[1]) 'W6B2_PROCESS_TEST_ROLE_INVALID'
   }
@@ -489,6 +554,8 @@ exit 7
     safeMilestones = $true
     proofFailureIsSafelyClassified = $true
     exactOwnedCleanup = $true
+    parentExitChildOwnership = $true
+    foreignProcessPreserved = $true
     reusedProcessIdentityPreserved = $true
     missingProcessIdentityIgnored = $true
     orphanProcessCount = 0
@@ -516,7 +583,9 @@ finally {
     $handoffProcess,
     $strictProcess,
     $earlyExitProcess,
-    $reusedIdentityProcess
+    $reusedIdentityProcess,
+    $ownedTreeProcess,
+    $foreignProcess
   )) {
     if ($null -ne $process) {
       try {

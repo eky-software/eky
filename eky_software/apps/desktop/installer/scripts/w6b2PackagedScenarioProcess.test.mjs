@@ -88,7 +88,7 @@ test('keeps timeout as the terminal result if PowerShell exits before cleanup', 
   await assert.rejects(run, /W6B2_PACKAGED_SCENARIO_PROCESS_TIMEOUT/u);
 });
 
-test('fails closed when a child process remains after cleanup', async () => {
+test('keeps process timeout primary when a child remains after cleanup', async () => {
   const harness = createHarness({
     async terminateOwnedProcessTree() {
       return { status: 'remains' };
@@ -98,10 +98,17 @@ test('fails closed when a child process remains after cleanup', async () => {
 
   harness.fireDeadline();
 
-  await assert.rejects(run, /W6B2_PACKAGED_SCENARIO_CLEANUP_FAILED/u);
+  await assert.rejects(run, /W6B2_PACKAGED_SCENARIO_PROCESS_TIMEOUT/u);
+  assert.ok(
+    harness.events.some(
+      (event) =>
+        event.phase === 'cleanupCompleted' &&
+        event.errorCode === 'W6B2_PACKAGED_SCENARIO_CLEANUP_FAILED',
+    ),
+  );
 });
 
-test('preserves cleanup timeout as the terminal failure', async () => {
+test('preserves process timeout when bounded cleanup also times out', async () => {
   const harness = createHarness({
     async terminateOwnedProcessTree() {
       throw new Error('W6B2_PACKAGED_SCENARIO_CLEANUP_TIMEOUT');
@@ -110,6 +117,49 @@ test('preserves cleanup timeout as the terminal failure', async () => {
   const run = startScenario(harness);
 
   harness.fireDeadline();
+
+  await assert.rejects(run, /W6B2_PACKAGED_SCENARIO_PROCESS_TIMEOUT/u);
+  assert.ok(
+    harness.events.some(
+      (event) =>
+        event.phase === 'cleanupCompleted' &&
+        event.errorCode === 'W6B2_PACKAGED_SCENARIO_CLEANUP_TIMEOUT',
+    ),
+  );
+});
+
+test('preserves non-zero process exit when bounded cleanup also fails', async () => {
+  const harness = createHarness({
+    async terminateOwnedProcessTree() {
+      throw new Error('W6B2_PACKAGED_SCENARIO_CLEANUP_FAILED');
+    },
+  });
+  const run = startScenario(harness);
+
+  harness.child.emit('exit', 23, null);
+
+  await assert.rejects(
+    run,
+    /W6B2_PACKAGED_SCENARIO_PROCESS_EXIT_FAILED/u,
+  );
+  assert.ok(
+    harness.events.some(
+      (event) =>
+        event.phase === 'cleanupCompleted' &&
+        event.errorCode === 'W6B2_PACKAGED_SCENARIO_CLEANUP_FAILED',
+    ),
+  );
+});
+
+test('uses cleanup timeout when the scenario itself completed', async () => {
+  const harness = createHarness({
+    async terminateOwnedProcessTree() {
+      throw new Error('W6B2_PACKAGED_SCENARIO_CLEANUP_TIMEOUT');
+    },
+  });
+  const run = startScenario(harness);
+
+  harness.child.emit('exit', 0, null);
 
   await assert.rejects(run, /W6B2_PACKAGED_SCENARIO_CLEANUP_TIMEOUT/u);
 });

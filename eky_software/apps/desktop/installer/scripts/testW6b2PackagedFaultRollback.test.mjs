@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
@@ -14,6 +15,10 @@ const applicationProcess = read(
 );
 const scenarioOperations = read(
   join('w6b2Fault', 'scenarioOperations.ps1'),
+);
+const progressTestPath = join(
+  scriptDirectory,
+  'w6b2FaultProgress.test.ps1',
 );
 
 const scenarios = Object.freeze([
@@ -111,10 +116,57 @@ test('progress is closed safe JSONL with terminal stage and scenario events', ()
   assert.match(progress, /ConvertTo-Json -InputObject \$line -Compress/u);
   assert.match(progress, /\[Console\]::Out\.WriteLine/u);
   assert.match(progress, /Resolve-W6b2FaultSafeErrorCode/u);
+  assert.match(progress, /primaryFailure/u);
+  assert.match(progress, /secondaryFailure/u);
   assert.doesNotMatch(progress, /Write-Host|Write-Error|Write-Warning/u);
   assert.doesNotMatch(
     progress,
     /rawPath|commandLine|processId|pid|stack|ErrorRecord\.ToString|ScriptStackTrace/iu,
+  );
+});
+
+test('fault progress preserves the primary failure beside cleanup failure', {
+  skip: process.platform !== 'win32',
+}, () => {
+  const result = spawnSync(
+    'powershell.exe',
+    [
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      progressTestPath,
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  const events = result.stdout
+    .split(/\r?\n/u)
+    .filter((line) => line.trim() !== '')
+    .map((line) => JSON.parse(line));
+
+  assert.equal(result.stderr, '');
+  assert.equal(result.status, 0);
+  assert.deepEqual(events.at(-1), {
+    scenario: 'binaryRollbackFailure',
+    stage: 'scenario',
+    status: 'failed',
+    resultCode: 'scenarioFailed',
+    durationMs: events.at(-1).durationMs,
+    elapsedMs: events.at(-1).elapsedMs,
+    primaryFailure: 'W6B2_FAULT_OWNED_UNCLASSIFIED_REMAINS',
+    secondaryFailure: 'W6B2_FAULT_CLEANUP_OWNERSHIP_FAILED',
+  });
+  assert.equal(
+    events.some((event) =>
+      Object.values(event).some(
+        (value) =>
+          typeof value === 'string' &&
+          /raw fixture|stack|[A-Z]:\\/iu.test(value),
+      ),
+    ),
+    false,
   );
 });
 

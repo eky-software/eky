@@ -88,8 +88,27 @@ $script:W6b2FaultResultCodes = @(
   'cleanupCompleted'
 )
 $script:W6b2FaultSafeErrorCodes = @(
+  'W6B2_FAULT_CLEANUP_OWNERSHIP_FAILED',
   'W6B2_FAULT_CONTROL_INVALID',
+  'W6B2_FAULT_HOST_EXITED_BEFORE_RESULT',
+  'W6B2_FAULT_HOST_EXIT_FAILED',
+  'W6B2_FAULT_HOST_OUTPUT_FAILED',
+  'W6B2_FAULT_HOST_TIMEOUT',
   'W6B2_FAULT_INSTALLER_FAILED',
+  'W6B2_FAULT_OWNED_APPLICATION_CHILD_REMAINS',
+  'W6B2_FAULT_OWNED_APPLICATION_MAIN_REMAINS',
+  'W6B2_FAULT_OWNED_BACKEND_UTILITY_REMAINS',
+  'W6B2_FAULT_OWNED_CONSOLE_HOST_REMAINS',
+  'W6B2_FAULT_OWNED_CRASHPAD_REMAINS',
+  'W6B2_FAULT_OWNED_GPU_REMAINS',
+  'W6B2_FAULT_OWNED_INSTALLER_HANDOFF_REMAINS',
+  'W6B2_FAULT_OWNED_MIXED_REMAINS',
+  'W6B2_FAULT_OWNED_POWERSHELL_REMAINS',
+  'W6B2_FAULT_OWNED_PROCESS_REMAINS',
+  'W6B2_FAULT_OWNED_RENDERER_REMAINS',
+  'W6B2_FAULT_OWNED_UNCLASSIFIED_REMAINS',
+  'W6B2_FAULT_OWNED_UTILITY_REMAINS',
+  'W6B2_FAULT_OWNERSHIP_TRANSFER_INVALID',
   'W6B2_FAULT_PHASE_INVALID',
   'W6B2_FAULT_PROCESS_FAILED',
   'W6B2_FAULT_PROFILE_RESULT_INVALID',
@@ -137,9 +156,15 @@ function Complete-W6b2FaultScenario {
 }
 
 function Fail-W6b2FaultScenario {
+  param(
+    [Parameter(Mandatory = $true)][string]$PrimaryFailure,
+    [AllowEmptyString()][string]$SecondaryFailure = ''
+  )
+
   if ($script:W6b2FaultScenarioTerminal) { return }
   Write-W6b2FaultProgress -Stage scenario -Status failed `
-    -ResultCode scenarioFailed
+    -ResultCode scenarioFailed -PrimaryFailure $PrimaryFailure `
+    -SecondaryFailure $SecondaryFailure
   $script:W6b2FaultScenarioTerminal = $true
 }
 
@@ -192,9 +217,12 @@ function Write-W6b2FaultProgress {
     [Parameter(Mandatory = $true)][string]$Stage,
     [Parameter(Mandatory = $true)][string]$Status,
     [Parameter(Mandatory = $true)][string]$ResultCode,
-    [string]$ErrorCode = ''
+    [string]$ErrorCode = '',
+    [string]$PrimaryFailure = '',
+    [string]$SecondaryFailure = ''
   )
 
+  $hasFailureSummary = ![string]::IsNullOrEmpty($PrimaryFailure)
   if (
     $script:W6b2FaultScenarios -cnotcontains $script:W6b2FaultScenario -or
     $script:W6b2FaultProgressStages -cnotcontains $Stage -or
@@ -203,7 +231,16 @@ function Write-W6b2FaultProgress {
     (![string]::IsNullOrEmpty($ErrorCode) -and (
       $Status -cne 'failed' -or
       $script:W6b2FaultSafeErrorCodes -cnotcontains $ErrorCode
-    ))
+    )) -or
+    ($hasFailureSummary -and (
+      $Stage -cne 'scenario' -or
+      $Status -cne 'failed' -or
+      $ResultCode -cne 'scenarioFailed' -or
+      $script:W6b2FaultSafeErrorCodes -cnotcontains $PrimaryFailure -or
+      (![string]::IsNullOrEmpty($SecondaryFailure) -and
+        $script:W6b2FaultSafeErrorCodes -cnotcontains $SecondaryFailure)
+    )) -or
+    (!$hasFailureSummary -and ![string]::IsNullOrEmpty($SecondaryFailure))
   ) {
     throw 'W6B2_FAULT_STATE_INVALID'
   }
@@ -219,6 +256,12 @@ function Write-W6b2FaultProgress {
   if (![string]::IsNullOrEmpty($ErrorCode)) {
     $line['errorCode'] = $ErrorCode
   }
+  if ($hasFailureSummary) {
+    $line['primaryFailure'] = $PrimaryFailure
+    if (![string]::IsNullOrEmpty($SecondaryFailure)) {
+      $line['secondaryFailure'] = $SecondaryFailure
+    }
+  }
   [Console]::Out.WriteLine((ConvertTo-Json -InputObject $line -Compress))
 }
 
@@ -233,6 +276,49 @@ function Resolve-W6b2FaultSafeErrorCode {
   }
   if ($script:W6b2FaultSafeErrorCodes -ccontains $candidate) {
     return $candidate
+  }
+  if (
+    $script:W6b2FaultCurrentStage -ceq 'cleanup' -and
+    $candidate -cmatch '^W6B2_SUCCESS_(PROCESS|OWNED)_'
+  ) {
+    return 'W6B2_FAULT_CLEANUP_OWNERSHIP_FAILED'
+  }
+  $processErrorMap = @{
+    W6B2_SUCCESS_OWNED_APPLICATION_CHILD_REMAINS = `
+      'W6B2_FAULT_OWNED_APPLICATION_CHILD_REMAINS'
+    W6B2_SUCCESS_OWNED_APPLICATION_MAIN_REMAINS = `
+      'W6B2_FAULT_OWNED_APPLICATION_MAIN_REMAINS'
+    W6B2_SUCCESS_OWNED_BACKEND_UTILITY_REMAINS = `
+      'W6B2_FAULT_OWNED_BACKEND_UTILITY_REMAINS'
+    W6B2_SUCCESS_OWNED_CONSOLE_HOST_REMAINS = `
+      'W6B2_FAULT_OWNED_CONSOLE_HOST_REMAINS'
+    W6B2_SUCCESS_OWNED_CRASHPAD_REMAINS = `
+      'W6B2_FAULT_OWNED_CRASHPAD_REMAINS'
+    W6B2_SUCCESS_OWNED_GPU_REMAINS = 'W6B2_FAULT_OWNED_GPU_REMAINS'
+    W6B2_SUCCESS_OWNED_INSTALLER_HANDOFF_REMAINS = `
+      'W6B2_FAULT_OWNED_INSTALLER_HANDOFF_REMAINS'
+    W6B2_SUCCESS_OWNED_PROCESS_MIXED_REMAINS = `
+      'W6B2_FAULT_OWNED_MIXED_REMAINS'
+    W6B2_SUCCESS_OWNED_PROCESS_UNCLASSIFIED_REMAINS = `
+      'W6B2_FAULT_OWNED_UNCLASSIFIED_REMAINS'
+    W6B2_SUCCESS_OWNED_POWERSHELL_REMAINS = `
+      'W6B2_FAULT_OWNED_POWERSHELL_REMAINS'
+    W6B2_SUCCESS_OWNED_RENDERER_REMAINS = `
+      'W6B2_FAULT_OWNED_RENDERER_REMAINS'
+    W6B2_SUCCESS_OWNED_UTILITY_REMAINS = `
+      'W6B2_FAULT_OWNED_UTILITY_REMAINS'
+    W6B2_SUCCESS_PROCESS_EXITED_BEFORE_RESULT = `
+      'W6B2_FAULT_HOST_EXITED_BEFORE_RESULT'
+    W6B2_SUCCESS_PROCESS_EXIT_FAILED = 'W6B2_FAULT_HOST_EXIT_FAILED'
+    W6B2_SUCCESS_PROCESS_IDENTITY_CHANGED = `
+      'W6B2_FAULT_OWNERSHIP_TRANSFER_INVALID'
+    W6B2_SUCCESS_PROCESS_OUTPUT_FAILED = 'W6B2_FAULT_HOST_OUTPUT_FAILED'
+    W6B2_SUCCESS_PROCESS_OUTPUT_TIMEOUT = 'W6B2_FAULT_HOST_OUTPUT_FAILED'
+    W6B2_SUCCESS_PROCESS_REMAINS = 'W6B2_FAULT_OWNED_PROCESS_REMAINS'
+    W6B2_SUCCESS_PROCESS_TIMEOUT = 'W6B2_FAULT_HOST_TIMEOUT'
+  }
+  if ($processErrorMap.ContainsKey($candidate)) {
+    return [string]$processErrorMap[$candidate]
   }
   if ($candidate -cmatch '^W6B2_SUCCESS_(PROCESS|OWNED|RESULT)_') {
     return 'W6B2_FAULT_PROCESS_FAILED'

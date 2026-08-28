@@ -43,6 +43,8 @@ test('W6B2 handoff transfers validated proof without weakening strict phases', {
     safeMilestones: true,
     proofFailureIsSafelyClassified: true,
     exactOwnedCleanup: true,
+    parentExitChildOwnership: true,
+    foreignProcessPreserved: true,
     reusedProcessIdentityPreserved: true,
     missingProcessIdentityIgnored: true,
     orphanProcessCount: 0,

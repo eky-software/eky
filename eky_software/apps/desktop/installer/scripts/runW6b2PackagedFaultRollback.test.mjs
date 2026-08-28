@@ -87,6 +87,31 @@ test('removes the private fixture without changing a failed process result', asy
   assert.equal(events.some((event) => event.type === 'verifyRun'), false);
 });
 
+test('preserves a failed process result when fixture cleanup also fails', async () => {
+  const events = [];
+  const dependencies = createDependencies(events, {
+    async removeRunFixture() {
+      events.push({ type: 'removeFailed' });
+      throw new Error('W6B2_FAULT_FIXTURE_REMOVE_FAILED');
+    },
+    async runProcess() {
+      events.push({ type: 'runFailed' });
+      throw new Error('W6B2_PACKAGED_SCENARIO_PROCESS_EXIT_FAILED');
+    },
+  });
+
+  await assert.rejects(
+    runW6b2PackagedFaultRollback({
+      commandLifecycle: quietLifecycle(),
+      dependencies,
+      runNumbers: [1],
+      scenarios: ['preUpdateRecoveryPointFailure'],
+    }),
+    /W6B2_PACKAGED_SCENARIO_PROCESS_EXIT_FAILED/u,
+  );
+  assert.equal(events.filter((event) => event.type === 'removeFailed').length, 1);
+});
+
 test('accepts only a closed one-run matrix selector', () => {
   assert.deepEqual(parseW6b2PackagedFaultCliArguments([]), {});
   assert.deepEqual(

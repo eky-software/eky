@@ -115,26 +115,42 @@ export async function runW6b2PackagedScenarioProcess(input, options = {}) {
     );
   }
 
-  await cleanupOwnedProcessTree({
-    child,
-    cleanupTimeoutMilliseconds: configuration.cleanupTimeoutMilliseconds,
-    observe,
-    proofToken: configuration.proofToken,
-    scenarioKind: configuration.scenarioKind,
-    terminateOwnedProcessTree: dependencies.terminateOwnedProcessTree,
-  });
+  const terminalErrorCode = resolveTerminalErrorCode(terminal);
+  let cleanupError;
+  try {
+    await cleanupOwnedProcessTree({
+      child,
+      cleanupTimeoutMilliseconds: configuration.cleanupTimeoutMilliseconds,
+      observe,
+      proofToken: configuration.proofToken,
+      scenarioKind: configuration.scenarioKind,
+      terminateOwnedProcessTree: dependencies.terminateOwnedProcessTree,
+    });
+  } catch (error) {
+    cleanupError = error;
+  }
 
-  if (terminal.kind === 'timeout') {
-    throw new Error('W6B2_PACKAGED_SCENARIO_PROCESS_TIMEOUT');
+  if (terminalErrorCode !== undefined) {
+    throw new Error(terminalErrorCode);
   }
-  if (terminal.kind === 'startError') {
-    throw new Error('W6B2_PACKAGED_SCENARIO_PROCESS_START_FAILED');
-  }
-  if (terminal.exitCode !== 0 || terminal.signal !== null) {
-    throw new Error('W6B2_PACKAGED_SCENARIO_PROCESS_EXIT_FAILED');
+  if (cleanupError !== undefined) {
+    throw cleanupError;
   }
 
   return Object.freeze({ exitCode: 0, status: 'completed' });
+}
+
+function resolveTerminalErrorCode(terminal) {
+  if (terminal.kind === 'timeout') {
+    return 'W6B2_PACKAGED_SCENARIO_PROCESS_TIMEOUT';
+  }
+  if (terminal.kind === 'startError') {
+    return 'W6B2_PACKAGED_SCENARIO_PROCESS_START_FAILED';
+  }
+  if (terminal.exitCode !== 0 || terminal.signal !== null) {
+    return 'W6B2_PACKAGED_SCENARIO_PROCESS_EXIT_FAILED';
+  }
+  return undefined;
 }
 
 async function cleanupOwnedProcessTree(input) {

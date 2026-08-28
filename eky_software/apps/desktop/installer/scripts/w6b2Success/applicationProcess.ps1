@@ -408,8 +408,13 @@ function Wait-W6b2SuccessOwnedProcessesAbsent {
       return
     }
     if ([DateTime]::UtcNow -ge $deadline) {
+      $confirmedRemaining = @(Get-EkyRemainingExactProcessIdentities `
+        -OwnedProcessIdentities $remaining)
+      if ($confirmedRemaining.Count -eq 0) {
+        return
+      }
       $failureCode = Get-W6b2SuccessOwnedProcessFailureCode `
-        -Observation $Observation -Remaining $remaining
+        -Observation $Observation -Remaining $confirmedRemaining
       Stop-W6b2SuccessOwnedProcesses -Observation $Observation
       throw $failureCode
     }
@@ -454,9 +459,13 @@ function Get-W6b2SuccessOwnedProcessFailureCode {
   }
   $failureCode = switch ($distinctRoles[0]) {
     'applicationMain' { 'W6B2_SUCCESS_OWNED_APPLICATION_MAIN_REMAINS' }
+    'applicationChild' { 'W6B2_SUCCESS_OWNED_APPLICATION_CHILD_REMAINS' }
     'backendUtility' { 'W6B2_SUCCESS_OWNED_BACKEND_UTILITY_REMAINS' }
+    'consoleHost' { 'W6B2_SUCCESS_OWNED_CONSOLE_HOST_REMAINS' }
     'crashpad' { 'W6B2_SUCCESS_OWNED_CRASHPAD_REMAINS' }
     'gpu' { 'W6B2_SUCCESS_OWNED_GPU_REMAINS' }
+    'installerHandoff' { 'W6B2_SUCCESS_OWNED_INSTALLER_HANDOFF_REMAINS' }
+    'powershell' { 'W6B2_SUCCESS_OWNED_POWERSHELL_REMAINS' }
     'renderer' { 'W6B2_SUCCESS_OWNED_RENDERER_REMAINS' }
     'utility' { 'W6B2_SUCCESS_OWNED_UTILITY_REMAINS' }
     default { 'W6B2_SUCCESS_OWNED_PROCESS_UNCLASSIFIED_REMAINS' }
@@ -467,7 +476,29 @@ function Get-W6b2SuccessOwnedProcessFailureCode {
 function Get-W6b2SuccessOwnedProcessRole {
   param([Parameter(Mandatory = $true)]$Process)
 
-  $commandLine = [string]$Process.CommandLine
+  $processNameProperty = $Process.PSObject.Properties['Name']
+  $commandLineProperty = $Process.PSObject.Properties['CommandLine']
+  $processName = if ($null -eq $processNameProperty) {
+    ''
+  }
+  else {
+    [string]$processNameProperty.Value
+  }
+  $commandLine = if ($null -eq $commandLineProperty) {
+    ''
+  }
+  else {
+    [string]$commandLineProperty.Value
+  }
+  if ($processName -ieq 'msiexec.exe') {
+    return 'installerHandoff'
+  }
+  if ($processName -ieq 'powershell.exe') {
+    return 'powershell'
+  }
+  if ($processName -ieq 'conhost.exe') {
+    return 'consoleHost'
+  }
   if ($commandLine -match '--type=crashpad-handler(?:\s|$)') {
     return 'crashpad'
   }
@@ -482,6 +513,9 @@ function Get-W6b2SuccessOwnedProcessRole {
       return 'backendUtility'
     }
     return 'utility'
+  }
+  if ($processName -ieq 'Eky.exe') {
+    return 'applicationChild'
   }
   return 'unclassified'
 }

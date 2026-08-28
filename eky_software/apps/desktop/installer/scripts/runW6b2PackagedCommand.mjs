@@ -172,18 +172,24 @@ async function runOwnedCommandProcess(configuration, dependencies) {
     observe('hostExited', 'failed', terminalErrorCode);
   }
 
-  await cleanupOwnedProcessTree({
-    child,
-    cleanupTimeoutMilliseconds: configuration.cleanupTimeoutMilliseconds,
-    commandKind: configuration.commandKind,
-    observe,
-    proofToken: configuration.proofToken,
-    terminateOwnedProcessTree: dependencies.terminateOwnedProcessTree,
-  });
+  let cleanupErrorCode;
+  try {
+    await cleanupOwnedProcessTree({
+      child,
+      cleanupTimeoutMilliseconds: configuration.cleanupTimeoutMilliseconds,
+      commandKind: configuration.commandKind,
+      observe,
+      proofToken: configuration.proofToken,
+      terminateOwnedProcessTree: dependencies.terminateOwnedProcessTree,
+    });
+  } catch (error) {
+    cleanupErrorCode = resolveCleanupErrorCode(error);
+  }
 
-  if (terminalErrorCode !== undefined) {
-    observe('command', 'failed', terminalErrorCode);
-    throw new Error(terminalErrorCode);
+  const primaryErrorCode = terminalErrorCode ?? cleanupErrorCode;
+  if (primaryErrorCode !== undefined) {
+    observe('command', 'failed', primaryErrorCode);
+    throw new Error(primaryErrorCode);
   }
   observe('command', 'completed');
   return Object.freeze({ exitCode: 0, status: 'completed' });
@@ -200,23 +206,24 @@ async function cleanupOwnedProcessTree(input) {
       proofToken: input.proofToken,
     });
   } catch (error) {
-    const errorCode =
-      error instanceof Error &&
-      error.message === 'W6B2_PACKAGED_COMMAND_CLEANUP_TIMEOUT'
-        ? error.message
-        : 'W6B2_PACKAGED_COMMAND_CLEANUP_FAILED';
+    const errorCode = resolveCleanupErrorCode(error);
     input.observe('cleanupCompleted', 'failed', errorCode);
-    input.observe('command', 'failed', errorCode);
     throw new Error(errorCode);
   }
   if (result?.status !== 'absent' && result?.status !== 'stopped') {
     const errorCode = 'W6B2_PACKAGED_COMMAND_CLEANUP_FAILED';
     input.observe('cleanupCompleted', 'failed', errorCode);
-    input.observe('command', 'failed', errorCode);
     throw new Error(errorCode);
   }
   input.observe('cleanupCompleted', 'completed');
   input.observe('processTreeAbsent', 'completed');
+}
+
+function resolveCleanupErrorCode(error) {
+  return error instanceof Error &&
+    error.message === 'W6B2_PACKAGED_COMMAND_CLEANUP_TIMEOUT'
+    ? error.message
+    : 'W6B2_PACKAGED_COMMAND_CLEANUP_FAILED';
 }
 
 function waitForTerminalProcess(input) {

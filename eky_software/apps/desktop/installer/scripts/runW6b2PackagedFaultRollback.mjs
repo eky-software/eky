@@ -98,6 +98,7 @@ export async function runW6b2PackagedFaultRollback(options = {}) {
             }),
           context,
         );
+        let primaryFailure;
         try {
           const scenarioTimeoutMilliseconds =
             lifecycle.getScenarioTimeoutMilliseconds(
@@ -143,7 +144,10 @@ export async function runW6b2PackagedFaultRollback(options = {}) {
             () => dependencies.verifyInstallerPair(installerPair),
             context,
           );
-        } finally {
+        } catch (error) {
+          primaryFailure = error;
+        }
+        try {
           await lifecycle.runCleanupPhase(
             'fixtureRemove',
             () =>
@@ -154,7 +158,10 @@ export async function runW6b2PackagedFaultRollback(options = {}) {
               }),
             context,
           );
+        } catch (cleanupError) {
+          if (primaryFailure === undefined) throw cleanupError;
         }
+        if (primaryFailure !== undefined) throw primaryFailure;
       }
     }
 

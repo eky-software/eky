@@ -41,6 +41,8 @@ $sourceCleanupAuthorized = $false
 $targetCleanupAuthorized = $false
 $scenarioSucceeded = $false
 $cleanupFailed = $false
+$primaryFailure = $null
+$secondaryFailure = $null
 $installRoot = Join-Path $env:LOCALAPPDATA 'Programs\Eky'
 $applicationPath = Join-Path $installRoot 'Eky.exe'
 $shortcutPath = Join-Path $env:APPDATA `
@@ -170,6 +172,7 @@ try {
   $scenarioSucceeded = $true
 }
 catch {
+  $primaryFailure = Resolve-W6b2FaultSafeErrorCode -ErrorRecord $_
   Fail-W6b2FaultStage -ErrorRecord $_
 }
 finally {
@@ -265,6 +268,13 @@ finally {
   }
   catch {
     $cleanupFailed = $true
+    $cleanupFailure = Resolve-W6b2FaultSafeErrorCode -ErrorRecord $_
+    if ($null -eq $primaryFailure) {
+      $primaryFailure = $cleanupFailure
+    }
+    else {
+      $secondaryFailure = $cleanupFailure
+    }
     Fail-W6b2FaultStage -ErrorRecord $_
   }
   if ($null -ne $installer) {
@@ -273,7 +283,16 @@ finally {
 }
 
 if (!$scenarioSucceeded -or $cleanupFailed) {
-  Fail-W6b2FaultScenario
+  if ($null -eq $primaryFailure) {
+    $primaryFailure = 'W6B2_FAULT_UNCLASSIFIED_FAILURE'
+  }
+  Fail-W6b2FaultScenario -PrimaryFailure $primaryFailure `
+    -SecondaryFailure $(if ($null -eq $secondaryFailure) {
+      ''
+    }
+    else {
+      $secondaryFailure
+    })
   exit 1
 }
 Complete-W6b2FaultScenario

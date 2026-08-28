@@ -119,7 +119,7 @@ test('preserves non-zero worker exit after cleanup', async () => {
   assert.equal(harness.cleanupInputs.length, 1);
 });
 
-test('fails closed when the owned process tree remains', async () => {
+test('keeps process timeout primary when the owned process tree remains', async () => {
   const harness = createHarness({ cleanupResult: { status: 'remains' } });
   const run = startCommand(harness);
 
@@ -127,11 +127,19 @@ test('fails closed when the owned process tree remains', async () => {
 
   await assert.rejects(
     run,
-    /W6B2_PACKAGED_COMMAND_CLEANUP_FAILED/u,
+    /W6B2_PACKAGED_COMMAND_PROCESS_TIMEOUT/u,
+  );
+  assert.equal(
+    harness.events.some(
+      ({ errorCode, phase }) =>
+        phase === 'cleanupCompleted' &&
+        errorCode === 'W6B2_PACKAGED_COMMAND_CLEANUP_FAILED',
+    ),
+    true,
   );
 });
 
-test('preserves cleanup timeout as terminal failure', async () => {
+test('keeps process timeout primary when cleanup also times out', async () => {
   const harness = createHarness({
     cleanupError: new Error('W6B2_PACKAGED_COMMAND_CLEANUP_TIMEOUT'),
   });
@@ -141,7 +149,47 @@ test('preserves cleanup timeout as terminal failure', async () => {
 
   await assert.rejects(
     run,
+    /W6B2_PACKAGED_COMMAND_PROCESS_TIMEOUT/u,
+  );
+});
+
+test('uses cleanup timeout when the worker itself completed', async () => {
+  const harness = createHarness({
+    cleanupError: new Error('W6B2_PACKAGED_COMMAND_CLEANUP_TIMEOUT'),
+  });
+  const run = startCommand(harness);
+
+  harness.child.emit('exit', 0, null);
+
+  await assert.rejects(
+    run,
     /W6B2_PACKAGED_COMMAND_CLEANUP_TIMEOUT/u,
+  );
+  assert.equal(
+    harness.events.filter(
+      ({ phase, status }) => phase === 'command' && status === 'failed',
+    ).length,
+    1,
+  );
+});
+
+test('emits one command failure when worker exit and cleanup both fail', async () => {
+  const harness = createHarness({
+    cleanupError: new Error('W6B2_PACKAGED_COMMAND_CLEANUP_FAILED'),
+  });
+  const run = startCommand(harness);
+
+  harness.child.emit('exit', 19, null);
+
+  await assert.rejects(
+    run,
+    /W6B2_PACKAGED_COMMAND_PROCESS_EXIT_FAILED/u,
+  );
+  assert.deepEqual(
+    harness.events
+      .filter(({ phase, status }) => phase === 'command' && status === 'failed')
+      .map(({ errorCode }) => errorCode),
+    ['W6B2_PACKAGED_COMMAND_PROCESS_EXIT_FAILED'],
   );
 });
 
