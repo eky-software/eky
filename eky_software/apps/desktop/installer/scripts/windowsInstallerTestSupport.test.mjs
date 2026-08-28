@@ -41,7 +41,14 @@ test('MSI test runner has bounded waits and exact-process cleanup', () => {
     /Wait-EkyOwnedMsiProcess -Process \$cleanupProcess/u,
   );
   assert.match(source, /WaitForExit\(\$TimeoutMilliseconds\)/u);
-  assert.match(source, /WaitForExit\(\[Math\]::Max\(1, \$waitMilliseconds\)\)/u);
+  const observedWait = source.match(
+    /function Wait-EkyObservedOwnedMsiProcess[\s\S]*?\n\}\n\nfunction Invoke-EkyOwnedMsiProcessCleanup/u,
+  )?.[0];
+  assert.ok(observedWait);
+  assert.match(observedWait, /ManualResetEventSlim/u);
+  assert.match(observedWait, /\$Process\.Refresh\(\)/u);
+  assert.match(observedWait, /\$Process\.HasExited/u);
+  assert.doesNotMatch(observedWait, /WaitForExit\([^0]/u);
   assert.match(
     source,
     /if \(\$EmitSafeProgress\) \{[\s\S]*Invoke-EkyOwnedMsiProcessLifecycle/u,
