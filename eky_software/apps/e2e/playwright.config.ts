@@ -1,5 +1,9 @@
 import { defineConfig } from '@playwright/test';
 
+import {
+  ELECTRON_E2E_TEST_TIMEOUT_MILLISECONDS,
+} from './src/fixtures/electronLaunchBudgets.js';
+
 const isCi = Boolean(
   (
     globalThis as typeof globalThis & {
@@ -51,6 +55,7 @@ export default defineConfig({
     {
       name: 'electron-development',
       testMatch: /electron\/.*\.spec\.ts/,
+      timeout: ELECTRON_E2E_TEST_TIMEOUT_MILLISECONDS,
     },
     {
       name: 'electron-endurance',
