@@ -179,6 +179,7 @@ function New-W6b2SuccessProcessObservation {
     root = $root
     owned = $owned
     excludedInstallerRoots = @{}
+    installerHandoffReleased = $false
   }
 }
 
@@ -194,6 +195,26 @@ function Update-W6b2SuccessProcessObservation {
   else {
     @($ProcessSnapshot)
   }
+  $rootOwned = @(Get-EkyOwnedProcessIdentitiesFromSnapshot `
+    -RootIdentity $Observation.root -ProcessSnapshot $snapshot)
+  if ([bool]$Observation.installerHandoffReleased) {
+    $rootOwnedKeys = @{}
+    foreach ($identity in $rootOwned) {
+      $rootOwnedKeys["$($identity.processId):$($identity.creationToken)"] = `
+        $true
+    }
+    foreach ($candidate in @($snapshot | Where-Object {
+      $key = "$($_.processId):$($_.creationToken)"
+      $rootOwnedKeys.ContainsKey($key) -and
+      [string]$_.processName -ieq 'msiexec.exe'
+    })) {
+      $root = New-EkyProcessIdentity -ProcessId ([int]$candidate.processId) `
+        -CreationToken ([string]$candidate.creationToken)
+      $rootKey = "$($root.processId):$($root.creationToken)"
+      $Observation.excludedInstallerRoots[$rootKey] = $root
+    }
+  }
+
   $excluded = @{}
   foreach ($root in @($Observation.excludedInstallerRoots.Values)) {
     foreach ($identity in @(Get-EkyOwnedProcessIdentitiesFromSnapshot `
@@ -201,8 +222,12 @@ function Update-W6b2SuccessProcessObservation {
       $excluded["$($identity.processId):$($identity.creationToken)"] = $true
     }
   }
-  foreach ($identity in @(Get-EkyOwnedProcessIdentitiesFromSnapshot `
-    -RootIdentity $Observation.root -ProcessSnapshot $snapshot)) {
+  foreach ($key in @($Observation.owned.Keys)) {
+    if ($excluded.ContainsKey($key)) {
+      [void]$Observation.owned.Remove($key)
+    }
+  }
+  foreach ($identity in $rootOwned) {
     $key = "$($identity.processId):$($identity.creationToken)"
     if (!$excluded.ContainsKey($key)) {
       $Observation.owned[$key] = $identity
@@ -223,28 +248,9 @@ function Release-W6b2SuccessInstallerHandoffOwnership {
   else {
     @($ProcessSnapshot)
   }
+  $Observation.installerHandoffReleased = $true
   [void](Update-W6b2SuccessProcessObservation `
     -Observation $Observation -ProcessSnapshot $snapshot)
-  $ownedKeys = @($Observation.owned.Keys)
-  $installerRoots = @(
-    $snapshot | Where-Object {
-      $key = "$($_.processId):$($_.creationToken)"
-      $ownedKeys -contains $key -and
-      [string]$_.processName -ieq 'msiexec.exe'
-    } | ForEach-Object {
-      New-EkyProcessIdentity -ProcessId ([int]$_.processId) `
-        -CreationToken ([string]$_.creationToken)
-    }
-  )
-  foreach ($root in $installerRoots) {
-    $rootKey = "$($root.processId):$($root.creationToken)"
-    $Observation.excludedInstallerRoots[$rootKey] = $root
-    foreach ($identity in @(Get-EkyOwnedProcessIdentitiesFromSnapshot `
-      -RootIdentity $root -ProcessSnapshot $snapshot)) {
-      $key = "$($identity.processId):$($identity.creationToken)"
-      [void]$Observation.owned.Remove($key)
-    }
-  }
 }
 
 function Update-W6b2SuccessProcessObservationWhenDue {
