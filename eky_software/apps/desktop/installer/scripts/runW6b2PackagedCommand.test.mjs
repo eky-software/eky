@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { readFile } from 'node:fs/promises';
+import {
+  access,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 
 import {
@@ -235,6 +244,103 @@ test('cleanup script validates exact worker ownership', async () => {
   assert.doesNotMatch(source, /taskkill\.exe/iu);
 });
 
+test(
+  'real Windows worker timeout terminates its owned process tree',
+  { skip: process.platform !== 'win32', timeout: 40_000 },
+  async () => {
+    const temporaryRoot = await mkdtemp(
+      join(tmpdir(), 'eky-w6b2-command-contract-'),
+    );
+    const markerPath = join(temporaryRoot, 'worker-ready');
+    const hangingPnpmPath = join(temporaryRoot, 'hanging-pnpm.mjs');
+    const events = [];
+    const startedAt = Date.now();
+    let run;
+
+    try {
+      await writeFile(
+        hangingPnpmPath,
+        [
+          "import { spawn } from 'node:child_process';",
+          "import { writeFileSync } from 'node:fs';",
+          "const markerPath = process.env.EKY_W6B2_PROCESS_CONTRACT_MARKER;",
+          "if (typeof markerPath !== 'string' || markerPath.length === 0) process.exit(2);",
+          "spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore', windowsHide: true });",
+          "writeFileSync(markerPath, 'ready', 'utf8');",
+          'setInterval(() => {}, 1000);',
+        ].join('\n'),
+        'utf8',
+      );
+
+      run = runW6b2PackagedCommand(['--kind=success', '--run=1'], {
+        dependencies: {
+          createProofToken: () => proofToken,
+          observe(event) {
+            events.push(event);
+          },
+          setTimeout(callback) {
+            return globalThis.setTimeout(callback, 5_000);
+          },
+          spawnProcess(command, arguments_, options) {
+            return spawn(command, arguments_, {
+              ...options,
+              env: {
+                ...options.env,
+                EKY_W6B2_PROCESS_CONTRACT_MARKER: markerPath,
+                npm_execpath: hangingPnpmPath,
+              },
+            });
+          },
+        },
+      });
+
+      await waitForFile(markerPath, 4_000);
+      await assert.rejects(
+        run,
+        /W6B2_PACKAGED_COMMAND_PROCESS_TIMEOUT/u,
+      );
+
+      assert.deepEqual(
+        events
+          .filter(({ phase }) =>
+            [
+              'waitTimedOut',
+              'cleanupStarted',
+              'cleanupCompleted',
+              'processTreeAbsent',
+              'command',
+            ].includes(phase),
+          )
+          .slice(-5)
+          .map(({ errorCode, phase, status }) => ({
+            ...(errorCode === undefined ? {} : { errorCode }),
+            phase,
+            status,
+          })),
+        [
+          {
+            errorCode: 'W6B2_PACKAGED_COMMAND_PROCESS_TIMEOUT',
+            phase: 'waitTimedOut',
+            status: 'failed',
+          },
+          { phase: 'cleanupStarted', status: 'started' },
+          { phase: 'cleanupCompleted', status: 'completed' },
+          { phase: 'processTreeAbsent', status: 'completed' },
+          {
+            errorCode: 'W6B2_PACKAGED_COMMAND_PROCESS_TIMEOUT',
+            phase: 'command',
+            status: 'failed',
+          },
+        ],
+      );
+      assert.ok(Date.now() - startedAt < 35_000);
+    } finally {
+      if (run !== undefined) await run.catch(() => undefined);
+      await rm(temporaryRoot, { force: true, recursive: true });
+    }
+  },
+);
+
 function startCommand(harness) {
   return runW6b2PackagedCommand(['--kind=success', '--run=1'], {
     dependencies: harness.dependencies,
@@ -295,4 +401,19 @@ function createHarness(options = {}) {
 function lastEvent(events) {
   assert.ok(events.length > 0);
   return events.at(-1);
+}
+
+async function waitForFile(path, timeoutMilliseconds) {
+  const deadline = Date.now() + timeoutMilliseconds;
+  while (Date.now() < deadline) {
+    try {
+      await access(path);
+      return;
+    } catch {
+      await new Promise((resolvePromise) =>
+        globalThis.setTimeout(resolvePromise, 25),
+      );
+    }
+  }
+  throw new Error('W6B2_PACKAGED_COMMAND_WORKER_NOT_READY');
 }
