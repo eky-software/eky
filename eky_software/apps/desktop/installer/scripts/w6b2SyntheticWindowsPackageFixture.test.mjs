@@ -20,21 +20,27 @@ import { W6B2_PRIVATE_PROOF_PACKAGE_MARKER_FILE } from './w6b2PrivateProofPackag
 
 const canonicalRelease = Object.freeze({
   appIdentity: 'Eky',
-  appVersion: '0.2.6',
+  appVersion: '0.2.7',
   architecture: 'x64',
-  msiProductVersion: '0.2.6',
+  msiProductVersion: '0.2.7',
   platform: 'win32',
   releaseChannel: 'pilot',
 });
 
-test('creates private numeric 0.2.7 to 0.2.8 fixture releases without changing the canonical release', () => {
+test('keeps the private 0.2.7 to 0.2.8 fixture independent of the canonical release version', () => {
   const pair = createW6b2SyntheticReleasePair(canonicalRelease);
+  const previousPair = createW6b2SyntheticReleasePair({
+    ...canonicalRelease,
+    appVersion: '0.2.6',
+    msiProductVersion: '0.2.6',
+  });
 
   assert.equal(pair.source.appVersion, '0.2.7');
   assert.equal(pair.source.msiProductVersion, '0.2.7');
   assert.equal(pair.target.appVersion, '0.2.8');
   assert.equal(pair.target.msiProductVersion, '0.2.8');
-  assert.equal(canonicalRelease.appVersion, '0.2.6');
+  assert.deepEqual(previousPair, pair);
+  assert.equal(canonicalRelease.appVersion, '0.2.7');
 });
 
 test('limits historical preparation and package markers to private W6B.2 fixtures', async (context) => {
@@ -82,8 +88,15 @@ test('rejects unsupported fixture release baselines and package kinds', () => {
     () =>
       createW6b2SyntheticReleasePair({
         ...canonicalRelease,
-        appVersion: '0.2.7',
-        msiProductVersion: '0.2.7',
+        releaseChannel: 'stable',
+      }),
+    /W6B2_SYNTHETIC_RELEASE_PAIR_INVALID/u,
+  );
+  assert.throws(
+    () =>
+      createW6b2SyntheticReleasePair({
+        ...canonicalRelease,
+        msiProductVersion: '0.2.8',
       }),
     /W6B2_SYNTHETIC_RELEASE_PAIR_INVALID/u,
   );

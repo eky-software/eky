@@ -10,7 +10,7 @@ import {
 import { buildWindowsInstaller } from './buildWindowsInstaller.mjs';
 import {
   W6B_SYNTHETIC_WINDOWS_PACKAGE_PATHS,
-  createW6bSyntheticNextPatchRelease,
+  createW6bLegacyTargetRelease,
   packageW6bSyntheticNextPatchApplication,
 } from './w6bSyntheticWindowsPackageFixture.mjs';
 
@@ -40,7 +40,7 @@ export async function buildW6bSyntheticNextPatchInstaller() {
   const currentRelease = JSON.parse(
     await readFile(currentReleaseConfigPath, 'utf8'),
   );
-  const targetRelease = createW6bSyntheticNextPatchRelease(currentRelease);
+  const targetRelease = createW6bLegacyTargetRelease(currentRelease);
   if (currentPackage.version !== currentRelease.appVersion) {
     throw new Error('W6B_SYNTHETIC_PACKAGE_SOURCE_VERSION_MISMATCH');
   }

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   W6B_SYNTHETIC_WINDOWS_PACKAGE_PATHS,
+  createW6bLegacyTargetRelease,
   createW6bSyntheticNextPatchRelease,
 } from './w6bSyntheticWindowsPackageFixture.mjs';
 
@@ -14,9 +15,9 @@ const desktopDirectory = resolve(scriptDirectory, '../..');
 
 const currentRelease = Object.freeze({
   appIdentity: 'Eky',
-  appVersion: '0.2.6',
+  appVersion: '0.2.7',
   architecture: 'x64',
-  msiProductVersion: '0.2.6',
+  msiProductVersion: '0.2.7',
   platform: 'win32',
   releaseChannel: 'pilot',
 });
@@ -24,9 +25,24 @@ const currentRelease = Object.freeze({
 test('creates only the exact next patch W6B fixture identity', () => {
   assert.deepEqual(createW6bSyntheticNextPatchRelease(currentRelease), {
     ...currentRelease,
+    appVersion: '0.2.8',
+    msiProductVersion: '0.2.8',
+  });
+});
+
+test('keeps the private legacy target at 0.2.7 across the canonical version bump', () => {
+  const previousReleaseTarget = createW6bLegacyTargetRelease({
+    ...currentRelease,
+    appVersion: '0.2.6',
+    msiProductVersion: '0.2.6',
+  });
+
+  assert.deepEqual(createW6bLegacyTargetRelease(currentRelease), {
+    ...currentRelease,
     appVersion: '0.2.7',
     msiProductVersion: '0.2.7',
   });
+  assert.deepEqual(previousReleaseTarget, currentRelease);
 });
 
 test('rejects non-pilot, mismatched and malformed source identities', () => {
@@ -35,7 +51,7 @@ test('rejects non-pilot, mismatched and malformed source identities', () => {
     { ...currentRelease, appIdentity: 'Other' },
     { ...currentRelease, releaseChannel: 'stable' },
     { ...currentRelease, architecture: 'arm64' },
-    { ...currentRelease, appVersion: '0.2.5' },
+    { ...currentRelease, msiProductVersion: '0.2.6' },
     { ...currentRelease, appVersion: '0.2.6-alpha.1' },
   ]) {
     assert.throws(
@@ -43,6 +59,11 @@ test('rejects non-pilot, mismatched and malformed source identities', () => {
       /W6B_SYNTHETIC_RELEASE_SOURCE_INVALID|INSTALLER_UPGRADE_FIXTURE_APP_VERSION_INVALID/,
     );
   }
+
+  assert.throws(
+    () => createW6bLegacyTargetRelease({ ...currentRelease, extra: true }),
+    /W6B_SYNTHETIC_RELEASE_SOURCE_INVALID/,
+  );
 });
 
 test('keeps every W6B package artifact under the ignored desktop stage', () => {

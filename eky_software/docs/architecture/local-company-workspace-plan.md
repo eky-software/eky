@@ -1154,6 +1154,13 @@ nimellä eikä muuta PowerShell-skenaarion sisäistä viiden minuutin MSI-
 aikarajaa. Näin ulompi GitHub-jobi ei jää yksin terminalisoimaan jumiutunutta
 legacy-hyväksyntää.
 
+Legacy-target on yksityinen, täsmälleen versioon `0.2.7` sidottu synteettinen
+fixture. Canonical release-konfiguraatio validoidaan sille vain read-only-
+malliksi, joten sama 0.2.6 -> 0.2.7 -portti toimii sekä ennen versionostoa että
+versionostocommitissa ilman tracked version -tiedostojen väliaikaista
+muokkaamista. Fixtureä ei jaeta release-artifactina eikä sen identiteettiä
+siirretä canonical-version seuraavaan patchiin.
+
 Toinen lähtömalli todistaa tulevan multi-workspace-version sisäisen
 päivityksen. Synteettinen N ja N+1 käyttävät eri numeerisia fixture-versioita
 sekä yksityiseen, Gitistä ohitettuun stagingiin kirjoitettuja manifesteja.
@@ -1197,6 +1204,12 @@ GitHubin mitattuun noin yhdeksän minuutin hitaaseen fixtureparin buildiin.
 Budjetin loppuminen tuottaa suljetun, allowlistatun terminal-tuloksen ennen
 GitHub-jobin ulkoista aikarajaa; yksittäisen skenaarion aikarajaa ei tämän
 vuoksi kasvateta.
+
+Yksityinen 0.2.7 -> 0.2.8 -fixturepari on muuttumaton testisopimus eikä sitä
+johdeta kanonisen desktop-version seuraavasta patchista. Kanoninen release-
+konfiguraatio validoidaan edelleen read-only-syötteenä, mutta myöhempi
+versionosto ei siirrä tämän jo hyväksytyn todistuksen source- tai target-
+identiteettiä.
 
 Tämä checkpoint ei sulje koko W6-porttia. W6B.2B:n fault- ja rollback-
 matriisi, installer repair/uninstall -jatkuvuus sekä lopullinen release-portti
@@ -1265,13 +1278,16 @@ erillisenä commitina vihreästä lähdepuusta.
 
 ## W7: Workspace deletion
 
-**Tila:** deferred.
+**Tila:** 0.2.8-versioon rajattu erillinen jatkotyö.
 
 Poisto suunnitellaan erikseen vasta ensimmäisen multi-workspace-releasen
 jälkeen. Se vaatii ADR-0011:n quarantine-, backup-, typed confirmation-,
 native confirmation-, secret-, recovery- ja external artifact -rajat.
 
 W7 ei saa tulla mukaan W1-W6-PR:iin tai 0.2.7-releaseen sivutoimintona.
+0.2.8-tavoite ei vielä hyväksy toteutuksen yksityiskohtia, schema- tai
+backup-formaattimuutosta eikä poiston turvallisuussopimusta ilman omaa
+suunnittelu- ja hyväksyntäporttia.
 
 ## Checkpointien yhteinen Definition of Done
 
