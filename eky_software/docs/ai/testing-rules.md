@@ -345,6 +345,10 @@ identiteettiin, tiedostonimeen, kokoon ja SHA-256-tiivisteeseen suljetulla
 sidecar-manifestilla. Lifecycle-testit käyttävät tätä varmennettua MSI:tä.
 Synteettiset upgrade- ja rollback-fixturet rakennetaan erikseen, minkä jälkeen
 alkuperäisen release-MSI:n tavut varmennetaan uudelleen ilman rebuildiä.
+Fixture ei saa muodostaa kovia linkkejä unpacked- tai installer-artifactin
+tiedostoihin. Fixture käyttää itsenäisiä tiedostokopioita, jotta testin
+rakentaminen ei muuta alkuperäisen artifactin linkkimäärää tai tee sen tiukasta
+runtime-polkuvalidoinnista virheellistä.
 
 Jaeltavan unpacked desktopin tai installer-payloadin paikallinen
 release-candidate-portti käyttää samaa build-once-periaatetta. Puhtaasta
