@@ -12,6 +12,7 @@ import {
   verifyW6b2PackagedWorkspaceProfile,
   type W6b2PackagedWorkspacePreparationStage,
 } from './w6b2PackagedWorkspaceProfile.js';
+import { verifyW6b2PackagedFaultWorkspaceProfile } from './w6b2PackagedFaultWorkspaceProfile.js';
 import {
   createW6b2PackagedProfileCommandResult,
   expectedW6b2PackagedProfilePackage,
@@ -86,7 +87,11 @@ async function run(): Promise<void> {
   if (
     proof === undefined ||
     proof.phase !== expected.phase ||
-    proof.role !== expected.role
+    proof.role !== expected.role ||
+    ('faultScenario' in expected
+      ? proof.controlFormatVersion !== 2 ||
+        proof.faultScenario !== expected.faultScenario
+      : proof.controlFormatVersion !== 1)
   ) {
     throw new Error('W6B2_PROFILE_COMMAND_INVALID');
   }
@@ -117,9 +122,19 @@ async function run(): Promise<void> {
       resourcesPath: installed.resourcesPath,
       userDataRoot: proof.userDataPath,
     });
-  } else {
+  } else if (
+    operation === 'targetFirstStart' ||
+    operation === 'verifyBRestart' ||
+    operation === 'rejectC'
+  ) {
     await verifyW6b2PackagedWorkspaceProfile({
       phase: operation,
+      proofRoot: proof.root,
+      userDataRoot: proof.userDataPath,
+    });
+  } else {
+    await verifyW6b2PackagedFaultWorkspaceProfile({
+      operation,
       proofRoot: proof.root,
       userDataRoot: proof.userDataPath,
     });

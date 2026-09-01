@@ -49,6 +49,19 @@ describe('W6B.2 packaged proof termination', () => {
     expect(fixture.quitApplication).toHaveBeenCalledOnce();
   });
 
+  it('quits a pre-runtime installer handoff without requiring a lifecycle', async () => {
+    const fixture = createFixture({
+      lifecycleAvailable: false,
+      quitRequested: true,
+    });
+
+    await terminateW6b2PackagedProofRuntime(fixture.options);
+
+    expect(fixture.shutdown).not.toHaveBeenCalled();
+    expect(fixture.destroy).not.toHaveBeenCalled();
+    expect(fixture.quitApplication).toHaveBeenCalledOnce();
+  });
+
   it('rejects a missing lifecycle when no relaunch was requested', async () => {
     const fixture = createFixture({ lifecycleAvailable: false });
 
@@ -80,6 +93,7 @@ function createFixture(overrides?: Readonly<{
   isDestroyed?: boolean;
   lifecycleAvailable?: boolean;
   quitApplication?: () => void;
+  quitRequested?: boolean;
   relaunchRequested?: boolean;
   shutdown?: () => Promise<void>;
 }>) {
@@ -104,6 +118,7 @@ function createFixture(overrides?: Readonly<{
               shutdown,
             },
       quitApplication,
+      quitRequested: overrides?.quitRequested ?? false,
       relaunchRequested: overrides?.relaunchRequested ?? false,
     },
     quitApplication,

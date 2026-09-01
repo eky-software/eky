@@ -46,6 +46,7 @@ const target = Object.freeze({
   upgradeCode: '302530B2-D950-41F5-8397-264B485FEE9A',
 });
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
+const processProofToken = 'c'.repeat(64);
 const processChainTestCases = Object.freeze([
   Object.freeze({ name: 'observerNoOutput', progressCount: 0 }),
   Object.freeze({ name: 'observerSingleOutput', progressCount: 1 }),
@@ -158,6 +159,7 @@ test('uses the verified exact local release without rebuilding it', async () => 
   const calls = [];
   const result = await runW6bLegacyUpgradeAcceptance({
     buildTarget: async () => target,
+    createProcessProofToken: () => processProofToken,
     pathExists: async () => true,
     runProcess: async (command, arguments_) => {
       calls.push({ arguments_, command });
@@ -173,7 +175,11 @@ test('uses the verified exact local release without rebuilding it', async () => 
   assert.equal(calls[0].command, 'powershell.exe');
   assert.deepEqual(
     calls[0].arguments_,
-    createW6bLegacyUpgradeAcceptanceArguments({ source, target }),
+    createW6bLegacyUpgradeAcceptanceArguments({
+      processProofToken,
+      source,
+      target,
+    }),
   );
 });
 
@@ -187,6 +193,7 @@ test('uses the historical source rebuild only when the local bundle is absent', 
 
   const result = await runW6bLegacyUpgradeAcceptance({
     buildTarget: async () => target,
+    createProcessProofToken: () => processProofToken,
     pathExists: async () => false,
     runProcess: async () => undefined,
     verifyExactLocal: async () => {
@@ -209,6 +216,7 @@ test('does not hide an invalid local release behind a source rebuild', async () 
   await assert.rejects(
     runW6bLegacyUpgradeAcceptance({
       buildTarget: async () => target,
+      createProcessProofToken: () => processProofToken,
       pathExists: async () => true,
       runProcess: async () => undefined,
       verifyExactLocal: async () => {
@@ -227,6 +235,7 @@ test('rejects same-version, non-adjacent and same-product target fixtures', () =
   assert.throws(
     () =>
       createW6bLegacyUpgradeAcceptanceArguments({
+        processProofToken,
         source,
         target: { ...target, appVersion: '0.2.6', msiProductVersion: '0.2.6' },
       }),
@@ -235,6 +244,7 @@ test('rejects same-version, non-adjacent and same-product target fixtures', () =
   assert.throws(
     () =>
       createW6bLegacyUpgradeAcceptanceArguments({
+        processProofToken,
         source,
         target: { ...target, appVersion: '0.2.8', msiProductVersion: '0.2.8' },
       }),
@@ -243,6 +253,7 @@ test('rejects same-version, non-adjacent and same-product target fixtures', () =
   assert.throws(
     () =>
       createW6bLegacyUpgradeAcceptanceArguments({
+        processProofToken,
         source,
         target: { ...target, productCode: source.productCode },
       }),
@@ -251,6 +262,7 @@ test('rejects same-version, non-adjacent and same-product target fixtures', () =
   assert.throws(
     () =>
       createW6bLegacyUpgradeAcceptanceArguments({
+        processProofToken,
         source,
         target: { ...target, buildRevision: '123456' },
       }),
@@ -260,6 +272,7 @@ test('rejects same-version, non-adjacent and same-product target fixtures', () =
 
 test('passes only the closed identity and filesystem arguments to PowerShell', () => {
   const arguments_ = createW6bLegacyUpgradeAcceptanceArguments({
+    processProofToken,
     source,
     target,
   });
@@ -279,11 +292,33 @@ test('passes only the closed identity and filesystem arguments to PowerShell', (
   assert.equal(arguments_.includes('-TargetUpgradeCode'), true);
   assert.equal(arguments_.includes('-LineageProfileIdPattern'), true);
   assert.equal(arguments_.includes(w6bLineageProfileIdPattern), true);
+  assert.equal(arguments_.includes('-ProcessProofToken'), true);
+  assert.equal(arguments_.includes(processProofToken), true);
   assert.equal(arguments_.includes('--user-data-dir'), false);
   assert.equal(
     arguments_.some((value) => /password|companyId|session/iu.test(value)),
     false,
   );
+});
+
+test('requires a closed lowercase process proof token', () => {
+  for (const invalidToken of [
+    '',
+    'a'.repeat(63),
+    'a'.repeat(65),
+    'A'.repeat(64),
+    '11111111-1111-4111-8111-111111111111',
+  ]) {
+    assert.throws(
+      () =>
+        createW6bLegacyUpgradeAcceptanceArguments({
+          processProofToken: invalidToken,
+          source,
+          target,
+        }),
+      /W6B_LEGACY_PROCESS_PROOF_TOKEN_INVALID/u,
+    );
+  }
 });
 
 test('rejects a missing or drifting historical runtime identity', () => {
@@ -301,6 +336,7 @@ test('rejects a missing or drifting historical runtime identity', () => {
     assert.throws(
       () =>
         createW6bLegacyUpgradeAcceptanceArguments({
+          processProofToken,
           source: invalidSource,
           target,
         }),

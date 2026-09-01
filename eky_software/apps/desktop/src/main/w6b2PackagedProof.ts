@@ -16,6 +16,8 @@ export const W6B2_PACKAGED_PROOF_MARKER_FILE =
   'w6b2-private-proof-v1.json';
 export const W6B2_PACKAGED_PROOF_DIRECTORY_NAME = 'eky-w6b2';
 export const W6B2_PACKAGED_PROOF_PATH_TOKEN_LENGTH = 32;
+export const W6B2_PACKAGED_ROLLBACK_PROGRESS_FILE =
+  'w6b2-rollback-installer-progress.jsonl';
 
 export const w6b2PackagedProofPhases = Object.freeze([
   'sourceHandoff',
@@ -30,13 +32,44 @@ export type W6b2PackagedProofPhase =
   (typeof w6b2PackagedProofPhases)[number];
 export type W6b2PackagedProofRole = 'source' | 'target';
 
+export const w6b2PackagedFaultScenarios = Object.freeze([
+  'preUpdateRecoveryPointFailure',
+  'activeWorkspaceFirstStartFailure',
+  'acceptanceInterruption',
+  'passiveWorkspaceMigrationFailure',
+  'binaryRollbackFailure',
+] as const);
+
+export type W6b2PackagedFaultScenario =
+  (typeof w6b2PackagedFaultScenarios)[number];
+
+export const w6b2PackagedFaultPhases = Object.freeze([
+  'sourceHandoff',
+  'targetFirstStartFailure',
+  'businessRollback',
+  'rollbackFirstStart',
+  'targetAcceptanceInterruption',
+  'targetAcceptanceRecovery',
+  'targetAcceptanceRestart',
+  'targetFirstStart',
+  'switchToB',
+  'passiveWorkspaceMigrationFailure',
+  'passiveWorkspaceRecovery',
+  'binaryRollbackFailure',
+  'failedSafeVerification',
+] as const);
+
+export type W6b2PackagedFaultPhase =
+  (typeof w6b2PackagedFaultPhases)[number];
+
 export interface W6b2PackagedProofBootstrapConfiguration {
   readonly enabled: boolean;
   readonly root: string | undefined;
   readonly userDataPath: string | undefined;
 }
 
-export interface W6b2PackagedProofConfiguration {
+export interface W6b2PackagedSuccessProofConfiguration {
+  readonly controlFormatVersion: 1;
   readonly enabled: true;
   readonly phase: W6b2PackagedProofPhase;
   readonly resultFilePath: string;
@@ -47,7 +80,24 @@ export interface W6b2PackagedProofConfiguration {
   readonly userDataPath: string;
 }
 
-export type W6b2PackagedProofResult = Readonly<
+export interface W6b2PackagedFaultProofConfiguration {
+  readonly controlFormatVersion: 2;
+  readonly enabled: true;
+  readonly faultScenario: W6b2PackagedFaultScenario;
+  readonly phase: W6b2PackagedFaultPhase;
+  readonly resultFilePath: string;
+  readonly role: W6b2PackagedProofRole;
+  readonly root: string;
+  readonly sourceManifestPath: string;
+  readonly targetManifestPath: string;
+  readonly userDataPath: string;
+}
+
+export type W6b2PackagedProofConfiguration =
+  | W6b2PackagedSuccessProofConfiguration
+  | W6b2PackagedFaultProofConfiguration;
+
+export type W6b2PackagedSuccessProofResult = Readonly<
   | {
       readonly formatVersion: 1;
       readonly phase: W6b2PackagedProofPhase;
@@ -60,6 +110,35 @@ export type W6b2PackagedProofResult = Readonly<
       readonly status: 'failed';
     }
 >;
+
+export type W6b2PackagedFaultProofResult = Readonly<
+  | {
+      readonly faultScenario: W6b2PackagedFaultScenario;
+      readonly formatVersion: 2;
+      readonly phase: W6b2PackagedFaultPhase;
+      readonly status: 'completed' | 'interrupted' | 'relaunching';
+    }
+  | {
+      readonly errorCode: W6b2PackagedFaultProofErrorCode;
+      readonly faultScenario: W6b2PackagedFaultScenario;
+      readonly formatVersion: 2;
+      readonly phase: W6b2PackagedFaultPhase;
+      readonly status: 'failed';
+    }
+>;
+
+export type W6b2PackagedProofResult =
+  | W6b2PackagedSuccessProofResult
+  | W6b2PackagedFaultProofResult;
+
+export type W6b2PackagedFaultProofErrorCode =
+  | 'W6B2_FAULT_PROOF_EXPECTED_FAULT_NOT_OBSERVED'
+  | 'W6B2_FAULT_PROOF_HANDOFF_FAILED'
+  | 'W6B2_FAULT_PROOF_JOURNAL_STATE_INVALID'
+  | 'W6B2_FAULT_PROOF_PACKAGE_STAGE_FAILED'
+  | 'W6B2_FAULT_PROOF_SHUTDOWN_FAILED'
+  | 'W6B2_FAULT_PROOF_UNEXPECTED'
+  | 'W6B2_FAULT_PROOF_WORKSPACE_STATE_INVALID';
 
 export type W6b2PackagedProofErrorCode =
   | 'W6B2_PROOF_CANDIDATE_STAGE_FAILED'
@@ -102,6 +181,11 @@ const proofTokenPattern = /^[0-9a-f]{64}$/u;
 const maximumControlBytes = 4 * 1024;
 const markerKeys = ['appVersion', 'formatVersion', 'role'] as const;
 const controlKeys = ['formatVersion', 'phase'] as const;
+const faultControlKeys = [
+  'faultScenario',
+  'formatVersion',
+  'phase',
+] as const;
 const resultKeys = ['formatVersion', 'phase', 'status'] as const;
 const failureResultKeys = [
   'errorCode',
@@ -109,6 +193,28 @@ const failureResultKeys = [
   'phase',
   'status',
 ] as const;
+const faultResultKeys = [
+  'faultScenario',
+  'formatVersion',
+  'phase',
+  'status',
+] as const;
+const faultFailureResultKeys = [
+  'errorCode',
+  'faultScenario',
+  'formatVersion',
+  'phase',
+  'status',
+] as const;
+const faultResultErrorCodes = new Set<W6b2PackagedFaultProofErrorCode>([
+  'W6B2_FAULT_PROOF_EXPECTED_FAULT_NOT_OBSERVED',
+  'W6B2_FAULT_PROOF_HANDOFF_FAILED',
+  'W6B2_FAULT_PROOF_JOURNAL_STATE_INVALID',
+  'W6B2_FAULT_PROOF_PACKAGE_STAGE_FAILED',
+  'W6B2_FAULT_PROOF_SHUTDOWN_FAILED',
+  'W6B2_FAULT_PROOF_UNEXPECTED',
+  'W6B2_FAULT_PROOF_WORKSPACE_STATE_INVALID',
+]);
 const resultErrorCodes = new Set<W6b2PackagedProofErrorCode>([
   'W6B2_PROOF_CANDIDATE_STAGE_FAILED',
   'W6B2_PROOF_CONFIGURATION_INVALID',
@@ -197,26 +303,52 @@ export async function readW6b2PackagedProofConfiguration(input: {
   if (marker.appVersion !== input.appVersion) {
     throw new Error('W6B2_PROOF_PACKAGE_MARKER_INVALID');
   }
-  const phase = parseControl(
+  const control = parseControl(
     await readBoundedRegularJson(join(root, 'control', 'phase.json')),
   );
-  if (
-    (marker.role === 'source' && phase !== 'sourceHandoff') ||
-    (marker.role === 'target' && phase === 'sourceHandoff')
-  ) {
+  if (!controlAllowsPackage(control, marker.role)) {
     throw new Error('W6B2_PROOF_CONFIGURATION_INVALID');
   }
 
-  return Object.freeze({
-    enabled: true,
-    phase,
+  const paths = {
+    enabled: true as const,
     resultFilePath: join(root, 'result', 'w6b2-proof-result.json'),
     role: marker.role,
     root,
     sourceManifestPath: join(root, 'packages', 'source', 'manifest.json'),
     targetManifestPath: join(root, 'packages', 'target', 'manifest.json'),
     userDataPath,
+  };
+  if (control.formatVersion === 1) {
+    return Object.freeze({
+      ...paths,
+      controlFormatVersion: 1,
+      phase: control.phase,
+    });
+  }
+  return Object.freeze({
+    ...paths,
+    controlFormatVersion: 2,
+    faultScenario: control.faultScenario,
+    phase: control.phase,
   });
+}
+
+export function resolveW6b2PackagedRollbackProgressPath(
+  configuration: Readonly<W6b2PackagedProofConfiguration> | undefined,
+): string | undefined {
+  if (
+    configuration?.controlFormatVersion !== 2 ||
+    configuration.faultScenario !== 'activeWorkspaceFirstStartFailure' ||
+    configuration.phase !== 'businessRollback'
+  ) {
+    return undefined;
+  }
+  return join(
+    configuration.root,
+    'result',
+    W6B2_PACKAGED_ROLLBACK_PROGRESS_FILE,
+  );
 }
 
 export async function writeW6b2PackagedProofResult(
@@ -224,6 +356,7 @@ export async function writeW6b2PackagedProofResult(
   result: unknown,
 ): Promise<void> {
   const parsed = parseW6b2PackagedProofResult(result);
+  assertResultMatchesConfiguration(configuration, parsed);
   const resultDirectory = dirname(configuration.resultFilePath);
   await mkdir(resultDirectory, { mode: 0o700, recursive: true });
   const temporaryPath = `${configuration.resultFilePath}.next`;
@@ -235,10 +368,60 @@ export async function writeW6b2PackagedProofResult(
   await rename(temporaryPath, configuration.resultFilePath);
 }
 
+export function createW6b2PackagedProofFallbackResult(
+  configuration: Readonly<W6b2PackagedProofConfiguration>,
+  input: Readonly<{
+    quitRequested: boolean;
+    relaunchRequested: boolean;
+  }>,
+): W6b2PackagedProofResult {
+  if (configuration.controlFormatVersion === 1) {
+    return Object.freeze({
+      formatVersion: 1,
+      phase: configuration.phase,
+      status: 'relaunching',
+    });
+  }
+  if (!input.quitRequested && !input.relaunchRequested) {
+    return createW6b2PackagedProofUnexpectedFailure(configuration);
+  }
+  return Object.freeze({
+    faultScenario: configuration.faultScenario,
+    formatVersion: 2,
+    phase: configuration.phase,
+    status: 'relaunching',
+  });
+}
+
+export function createW6b2PackagedProofUnexpectedFailure(
+  configuration: Readonly<W6b2PackagedProofConfiguration>,
+): W6b2PackagedProofResult {
+  return configuration.controlFormatVersion === 1
+    ? Object.freeze({
+        errorCode: 'W6B2_PROOF_UNEXPECTED' as const,
+        formatVersion: 1 as const,
+        phase: configuration.phase,
+        status: 'failed' as const,
+      })
+    : Object.freeze({
+        errorCode: 'W6B2_FAULT_PROOF_UNEXPECTED' as const,
+        faultScenario: configuration.faultScenario,
+        formatVersion: 2 as const,
+        phase: configuration.phase,
+        status: 'failed' as const,
+      });
+}
+
 export function parseW6b2PackagedProofResult(
   value: unknown,
 ): W6b2PackagedProofResult {
-  if (!isRecord(value) || value.formatVersion !== 1) {
+  if (!isRecord(value)) {
+    throw new Error('W6B2_PROOF_RESULT_INVALID');
+  }
+  if (value.formatVersion === 2) {
+    return parseFaultResult(value);
+  }
+  if (value.formatVersion !== 1) {
     throw new Error('W6B2_PROOF_RESULT_INVALID');
   }
   const phase = parsePhase(value.phase);
@@ -282,15 +465,37 @@ function parseMarker(value: unknown): Readonly<W6b2PackagedProofMarker> {
   });
 }
 
-function parseControl(value: unknown): W6b2PackagedProofPhase {
-  if (
-    !isRecord(value) ||
-    !hasExactKeys(value, controlKeys) ||
-    value.formatVersion !== 1
-  ) {
+type W6b2PackagedProofControl = Readonly<
+  | {
+      readonly formatVersion: 1;
+      readonly phase: W6b2PackagedProofPhase;
+    }
+  | {
+      readonly faultScenario: W6b2PackagedFaultScenario;
+      readonly formatVersion: 2;
+      readonly phase: W6b2PackagedFaultPhase;
+    }
+>;
+
+function parseControl(value: unknown): W6b2PackagedProofControl {
+  if (!isRecord(value)) {
     throw new Error('W6B2_PROOF_CONFIGURATION_INVALID');
   }
-  return parsePhase(value.phase);
+  if (value.formatVersion === 1 && hasExactKeys(value, controlKeys)) {
+    return Object.freeze({
+      formatVersion: 1,
+      phase: parsePhase(value.phase),
+    });
+  }
+  if (value.formatVersion === 2 && hasExactKeys(value, faultControlKeys)) {
+    const faultScenario = parseFaultScenario(value.faultScenario);
+    const phase = parseFaultPhase(value.phase);
+    if (!faultScenarioAllowsPhase(faultScenario, phase)) {
+      throw new Error('W6B2_PROOF_CONFIGURATION_INVALID');
+    }
+    return Object.freeze({ faultScenario, formatVersion: 2, phase });
+  }
+  throw new Error('W6B2_PROOF_CONFIGURATION_INVALID');
 }
 
 function parsePhase(value: unknown): W6b2PackagedProofPhase {
@@ -301,6 +506,141 @@ function parsePhase(value: unknown): W6b2PackagedProofPhase {
     throw new Error('W6B2_PROOF_CONFIGURATION_INVALID');
   }
   return value as W6b2PackagedProofPhase;
+}
+
+function parseFaultScenario(value: unknown): W6b2PackagedFaultScenario {
+  if (
+    typeof value !== 'string' ||
+    !(w6b2PackagedFaultScenarios as readonly string[]).includes(value)
+  ) {
+    throw new Error('W6B2_PROOF_CONFIGURATION_INVALID');
+  }
+  return value as W6b2PackagedFaultScenario;
+}
+
+function parseFaultPhase(value: unknown): W6b2PackagedFaultPhase {
+  if (
+    typeof value !== 'string' ||
+    !(w6b2PackagedFaultPhases as readonly string[]).includes(value)
+  ) {
+    throw new Error('W6B2_PROOF_CONFIGURATION_INVALID');
+  }
+  return value as W6b2PackagedFaultPhase;
+}
+
+function controlAllowsPackage(
+  control: W6b2PackagedProofControl,
+  role: W6b2PackagedProofRole,
+): boolean {
+  if (control.formatVersion === 1) {
+    return (
+      (role === 'source' && control.phase === 'sourceHandoff') ||
+      (role === 'target' && control.phase !== 'sourceHandoff')
+    );
+  }
+  return roleAllowsFaultPhase(role, control.phase);
+}
+
+function roleAllowsFaultPhase(
+  role: W6b2PackagedProofRole,
+  phase: W6b2PackagedFaultPhase,
+): boolean {
+  if (role === 'source') {
+    return phase === 'sourceHandoff' || phase === 'rollbackFirstStart';
+  }
+  return phase !== 'sourceHandoff' && phase !== 'rollbackFirstStart';
+}
+
+function faultScenarioAllowsPhase(
+  scenario: W6b2PackagedFaultScenario,
+  phase: W6b2PackagedFaultPhase,
+): boolean {
+  const allowed: Readonly<
+    Record<W6b2PackagedFaultScenario, ReadonlySet<W6b2PackagedFaultPhase>>
+  > = {
+    preUpdateRecoveryPointFailure: new Set(['sourceHandoff']),
+    activeWorkspaceFirstStartFailure: new Set([
+      'sourceHandoff',
+      'targetFirstStartFailure',
+      'businessRollback',
+      'rollbackFirstStart',
+    ]),
+    acceptanceInterruption: new Set([
+      'sourceHandoff',
+      'targetAcceptanceInterruption',
+      'targetAcceptanceRecovery',
+      'targetAcceptanceRestart',
+    ]),
+    passiveWorkspaceMigrationFailure: new Set([
+      'sourceHandoff',
+      'targetFirstStart',
+      'switchToB',
+      'passiveWorkspaceMigrationFailure',
+      'passiveWorkspaceRecovery',
+    ]),
+    binaryRollbackFailure: new Set([
+      'sourceHandoff',
+      'targetFirstStartFailure',
+      'businessRollback',
+      'binaryRollbackFailure',
+      'failedSafeVerification',
+    ]),
+  };
+  return allowed[scenario].has(phase);
+}
+
+function parseFaultResult(
+  value: Readonly<Record<string, unknown>>,
+): W6b2PackagedFaultProofResult {
+  const faultScenario = parseFaultScenario(value.faultScenario);
+  const phase = parseFaultPhase(value.phase);
+  if (!faultScenarioAllowsPhase(faultScenario, phase)) {
+    throw new Error('W6B2_PROOF_RESULT_INVALID');
+  }
+  if (
+    (value.status === 'completed' ||
+      value.status === 'interrupted' ||
+      value.status === 'relaunching') &&
+    hasExactKeys(value, faultResultKeys)
+  ) {
+    return Object.freeze({
+      faultScenario,
+      formatVersion: 2,
+      phase,
+      status: value.status,
+    });
+  }
+  if (
+    value.status !== 'failed' ||
+    !hasExactKeys(value, faultFailureResultKeys) ||
+    !faultResultErrorCodes.has(
+      value.errorCode as W6b2PackagedFaultProofErrorCode,
+    )
+  ) {
+    throw new Error('W6B2_PROOF_RESULT_INVALID');
+  }
+  return Object.freeze({
+    errorCode: value.errorCode as W6b2PackagedFaultProofErrorCode,
+    faultScenario,
+    formatVersion: 2,
+    phase,
+    status: 'failed',
+  });
+}
+
+function assertResultMatchesConfiguration(
+  configuration: Readonly<W6b2PackagedProofConfiguration>,
+  result: Readonly<W6b2PackagedProofResult>,
+): void {
+  if (
+    configuration.controlFormatVersion !== result.formatVersion ||
+    configuration.phase !== result.phase ||
+    (configuration.controlFormatVersion === 2 &&
+      (result.formatVersion !== 2 ||
+        configuration.faultScenario !== result.faultScenario))
+  ) {
+    throw new Error('W6B2_PROOF_RESULT_INVALID');
+  }
 }
 
 async function readBoundedRegularJson(path: string): Promise<unknown> {

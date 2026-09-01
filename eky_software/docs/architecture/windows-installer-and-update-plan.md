@@ -898,6 +898,13 @@ paketista ja kulkee nykyisen sisäisen update/handoff-polun kautta N+1:een.
 Canonical release-identiteettiä ei muuteta eikä samaa versionumeroa käytetä
 eri build-revisioille.
 
+Legacy-acceptance-harnessin ulompi Node-prosessi rajaa PowerShell-hostin koko
+elinkaaren. Se tuottaa allowlistatut host-, wait-, heartbeat-, timeout- ja
+cleanup-tapahtumat, jättää ulomman CI-jobin aikarajaan siivousvaran ja
+terminalisoi vain täsmälliseen 64-hex-todisteeseen sekä process creation
+-identiteettiin sidotun prosessipuun. PowerShell-skenaarion sisäinen viiden
+minuutin MSI-operaation aikaraja säilyy erillisenä ja muuttumattomana.
+
 W6B:n success-todisteessa aktiivinen `compatiblePending`-työtila migroidaan
 first startissa, passiivinen `compatiblePending` säilyy siihen asti byte-
 identtisenä ja migroidaan vasta aktivoinnissa sekä passiivinen
@@ -1022,6 +1029,75 @@ Renderer ei anna komentoja, polkuja tai ProductCodea. Main muodostaa kiinteän
 PowerShell- ja `msiexec`-kutsun validoiduista yksityisen cachen handleista sekä
 paketoidusta projektin omasta rollback-skriptistä. Skripti ei ole yleinen
 shell-rajapinta eikä se salli ylimääräisiä argumentteja tai verkkolähteitä.
+Rollback-skripti sitoutuu lisäksi vain sen käynnistäneen Electronin main-
+prosessin validoituun prosessi-identiteettiin ja odottaa rajatusti tämän
+prosessin poistumista ennen ensimmäistä `msiexec`-komentoa. Odotuksen
+epäonnistuminen keskeyttää rollbackin suljetusti; skripti ei yritä yleistä
+prosessien tappamista eikä jatka käynnissä olevan Eky-prosessin yli.
+
+Windowsin binaaripalautuksen prosessiomistus käyttää kahta kiinteästi
+paketoitua skriptiä. Electron main käynnistää ensin vain
+`launchRollbackWindowsInstaller.ps1`-bootstrapin ilman shelliä tai detached-
+lippua ja odottaa siltä rajatusti täsmällisen turvallisen kuittauksen.
+Bootstrap validoi kiinteät tiedosto- ja argumenttirajat, käynnistää varsinaisen
+`rollbackWindowsInstaller.ps1`-helperin Windowsin `Start-Process`-rajalla ja
+poistuu vasta onnistuneen prosessiluonnin jälkeen. Main hyväksyy handoffin vain,
+jos bootstrap päättyy exit-koodiin nolla ja sen enintään 64 tavun stdout on
+täsmälleen sovittu kuittaus; timeout, ylimääräinen tuloste, signaali tai muu
+exit-koodi torjutaan suljetusti. Varsinainen helper jää bootstrapista
+riippumattomaksi, odottaa edelleen juuri Electron mainin validoitua PID:tä ja
+omistaa kaikki MSI-vaiheet. Renderer ei anna skriptiä, komentoa, polkua,
+ProductCodea tai kuittausta eikä bootstrap avaa yleistä prosessirajapintaa.
+
+W6B.2B:n paketoitu fault-harness voi antaa rollback-helperille vain
+tokenista johdetun yksityisen proof-juuren alla olevan, kiinteästi nimetyn
+JSONL-progresspolun. Helper kirjoittaa siihen ainoastaan suljetun vaiheen
+(`inputValidation`, `launcherExitWait`, `failedPackageUninstall`,
+`rollbackPackageInstall` tai `failedPackageRepair`), tapahtuman ja rajatut
+kestot. Polkua, PID:tä, komentoa, MSI-identiteettiä tai raakavirhettä ei
+tulosteta. Progress on vain testihavainto: puuttuva, keskeneräinen tai
+virheellinen havaintotiedosto ei muuta rollbackin exit-koodia, aikarajaa tai
+fail-closed-tulosta, eikä tavallinen production-handoff anna progresspolkua.
+
+**W6B.2B fault/rollback -checkpoint 27.8.2026:** pysyvä komento
+`pnpm --filter @eky/desktop installer:w6b2-fault-rollback` rakentaa yhden
+yksityisen 0.2.7 -> 0.2.8 -fixtureparin ja ajaa viisi fault-skenaariota
+kahdesti. Matriisi kattaa preUpdate-palautuspisteen virheen, aktiivisen
+työtilan first-start-virheen, hyväksynnän keskeytymisen, passiivisen työtilan
+aktivointimigraation virheen ja binary rollbackin virheen. Jokainen ajo
+käyttää erillistä synteettistä proof-juurta, suljettua JSONL-observabilitya,
+rajattuja vaihekohtaisia odotuksia ja vain omistetun prosessipuun cleanupia.
+Paikallinen 5 x 2 -matriisi, W6B.2A-success-regressio ja legacy 0.2.6 ->
+0.2.7 -hyväksyntä ovat vihreitä, ja loppuehto todistaa nolla omistettua
+orpoprosessia. Checkpoint ei muuta canonical-versiota, release-kanavaa,
+backup-formaattia tai tuotannon fault-semanticsia. Sama matriisi ajetaan
+omana Windows CI -porttinaan ennen mergeä. CI:n viisi allowlistattua
+skenaariota ja kaksi toistoa muodostavat kymmenen eristettyä matriisiajoa.
+Jokainen ajo rakentaa ja tarkistaa oman muuttumattoman fixtureparinsa sekä
+ajaa täsmälleen yhden `--scenario` + `--run`-yhdistelmän. Enintään viisi ajoa
+paketoi rinnakkain. Yhden ajon sisäinen 25 minuutin komentobudjetti päättyy
+ennen 30 minuutin jobirajaa ja varaa ajan omistetulle cleanupille sekä
+terminal-JSONL-tulokselle. Vakaa aggregaattorijobi säilyttää branch protection
+-sopimuksen. Paikallinen argumentiton komento säilyttää vahvemman yhden
+fixtureparin koko 5 x 2 -matriisille; CI:n kaksi toistoa todistavat lisäksi
+toistettavuuden kahdella toisistaan riippumattomalla paketoinnilla.
+
+W6B.2B-komennon turvallinen lifecycle raportoi vain allowlistatut build-,
+manifest verification-, profile preparation-, fixture-, scenario-, cleanup-
+ja process-tree-absent-vaiheet sekä skenaarion ja toiston suljetut arvot.
+Komentobudjetin loppuminen estää uuden skenaarion aloittamisen, ellei koko 12
+minuutin skenaariorajaa ja 90 sekunnin cleanup-varaa ole jäljellä. Raakoja
+polkuja, PID-arvoja, komentorivejä, MSI-identiteettejä, virheitä tai
+stdout/stderr-sisältöä ei tulosteta.
+
+W6B.2A- ja W6B.2B-komentojen uloin testiharness omistaa yhden suljetulla
+proof-tokenilla sidotun worker-prosessipuun. Absoluuttinen komentobudjetti
+kattaa sekä Electron-E2E-buildin että varsinaisen packaged-skenaarion, jotta
+buildiin tai skenaarioon jäänyt operaatio ei voi ohittaa GitHub-jobia
+lyhyempää paikallista rajaa. Rajan täyttyessä harness sulkee täsmälleen oman
+worker-prosessipuunsa, odottaa rajatun cleanupin ja julkaisee vasta sen jälkeen
+turvallisen terminal-JSONL-tuloksen. Sisäinen vaihekohtainen lifecycle
+säilyttää scenario- ja cleanup-varat, mutta ei korvaa ulompaa prosessiomistajaa.
 
 Teknologiavalinnassa pitää todistaa:
 

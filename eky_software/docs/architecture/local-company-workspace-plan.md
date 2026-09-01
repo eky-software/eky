@@ -1144,6 +1144,16 @@ Satunnaista nykyisestä HEADista 0.2.6-versionumerolla rakennettua pakettia ei
 hyväksytä legacy-lähteeksi. Jos hyväksyttyä artifactia tai sen tarkkaa
 source-commitia ei voida todistaa, W6B pysähtyy ennen MSI-ajoa.
 
+Legacy-hyväksynnän PowerShell-hostia ympäröi lisäksi Node-harnessin omistama
+rajattu prosessielinkaari. Se antaa vain suljetut host-, wait-, heartbeat-,
+timeout- ja cleanup-tapahtumat, päättää odotuksen viimeistään 18 minuutissa ja
+varaa tämän jälkeen 30 sekuntia täsmälliseen prosessipuun siivoukseen.
+Siivous hyväksyy vain käynnistetyn legacy-skriptin, saman 64-hex-
+todistetunnisteen ja saman process creation -identiteetin. Se ei tapa prosesseja
+nimellä eikä muuta PowerShell-skenaarion sisäistä viiden minuutin MSI-
+aikarajaa. Näin ulompi GitHub-jobi ei jää yksin terminalisoimaan jumiutunutta
+legacy-hyväksyntää.
+
 Toinen lähtömalli todistaa tulevan multi-workspace-version sisäisen
 päivityksen. Synteettinen N ja N+1 käyttävät eri numeerisia fixture-versioita
 sekä yksityiseen, Gitistä ohitettuun stagingiin kirjoitettuja manifesteja.
@@ -1176,6 +1186,17 @@ C:n `invalidHistory`-torjunnan `recoveryRequired`-tilaan. Jokainen ajo käyttä�
 ajokohtaista synteettistä profiilia, rajattuja vaihekohtaisia timeoutteja,
 turvallista JSONL-observabilitya, omistettujen prosessien cleanupia ja nollan
 orpoprosessin loppuehtoa. Canonical-versiot ja release-kanava eivät muutu.
+CI ajaa kaksi toistoa erillisinä Windows-matriisiajoina. Yksi ajo rakentaa ja
+tarkistaa oman muuttumattoman fixtureparinsa, käyttää vain valittua suljettua
+`--run=1|2`-toistoa ja noudattaa 25 minuutin elinkaaribudjettia. Paikallinen ja
+manuaalinen release-portti rakentaa yhden fixtureparin ja ajaa samat tavut
+edelleen kahdesti; sen mitattu kokonaisbudjetti on 38 minuuttia. Uusi ajo
+käynnistyy vain, jos sille on jäljellä nykyinen täysi 12 minuutin
+skenaarioraja sekä vähintään 90 sekuntia fixture-cleanupiin. Budjetit perustuvat
+GitHubin mitattuun noin yhdeksän minuutin hitaaseen fixtureparin buildiin.
+Budjetin loppuminen tuottaa suljetun, allowlistatun terminal-tuloksen ennen
+GitHub-jobin ulkoista aikarajaa; yksittäisen skenaarion aikarajaa ei tämän
+vuoksi kasvateta.
 
 Tämä checkpoint ei sulje koko W6-porttia. W6B.2B:n fault- ja rollback-
 matriisi, installer repair/uninstall -jatkuvuus sekä lopullinen release-portti
@@ -1194,6 +1215,26 @@ Paketoitu fault-matriisi on rajattu viiteen korkean riskin tapaukseen:
    aktiiviseksi ilman binary rollbackia
 5. binary rollbackin virhe päättyy `recoveryRequired`-tilaan ilman
    automaattista retry-loopia tai väärän version käynnistystä.
+
+**W6B.2B fault/rollback -checkpoint 27.8.2026:** matriisi on toteutettu
+pysyvällä `pnpm --filter @eky/desktop installer:w6b2-fault-rollback`
+-komennolla. Yksi rakennettu 0.2.7 -> 0.2.8 -fixturepari käytetään viiden
+skenaarion kahdessa peräkkäisessä ajossa, yhteensä kymmenessä ajossa.
+Todistus varmistaa skenaariokohtaisen source- tai rollback-lopputilan,
+työtilojen ja installation-scopen eristyksen, suljetun recoveryRequired-
+tilan siellä missä automaattinen palautuminen ei ole turvallista sekä nollan
+omistetun orpoprosessin loppuehdon. Paikallinen koko matriisi,
+W6B.2A-success-regressio ja legacy 0.2.6 -> 0.2.7 -hyväksyntä ovat vihreitä.
+Matriisi ajetaan lisäksi omana Windows CI -jobinaan ennen mergeä.
+CI jakaa viisi allowlistattua fault-skenaariota ja kaksi toistoa kymmeneksi
+Windows-matriisiajoiksi. Jokainen matriisiajo rakentaa ja tarkistaa oman
+muuttumattoman fixtureparinsa sekä ajaa yhden sallitun skenaario/toisto-
+yhdistelmän. Enintään viisi paketointia ajetaan rinnakkain. Vakaa
+aggregaattori hyväksyy portin vasta kaikkien kymmenen jobin onnistuttua.
+Argumentiton paikallinen ja manuaalinen release-komento säilyttää yhden
+fixtureparin koko 5 x 2 -matriisille. CI:n yhden ajon 25 minuutin sisäinen
+komentobudjetti jättää 30 minuutin jobirajan sisään rajatun cleanup- ja
+terminal-evidence-varan.
 
 Lisäksi install, reinstall/repair, uninstall ja reinstall todistetaan samalla
 synteettisellä multi-workspace-profiililla. Uninstall saa poistaa vain

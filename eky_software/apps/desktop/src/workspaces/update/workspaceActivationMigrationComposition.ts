@@ -16,6 +16,7 @@ import type { WorkspaceRuntimeAbsencePort } from '../runtime/workspaceRuntimeAbs
 import { WorkspaceSwitchJournalStore } from '../switch/workspaceSwitchJournal.js';
 import { NodeWorkspaceActivationMigrationStaging } from './nodeWorkspaceActivationMigrationStaging.js';
 import { WorkspaceActivationMigrationCoordinator } from './workspaceActivationMigrationCoordinator.js';
+import { createWorkspaceActivationMigrationCandidate } from './workspaceActivationMigrationCandidate.js';
 import { WorkspaceActivationMigrationError } from './workspaceActivationMigrationError.js';
 import { WorkspaceActivationMigrationGuard } from './workspaceActivationMigrationGuard.js';
 import { WorkspaceActivationMigrationInspector } from './workspaceActivationMigrationInspector.js';
@@ -26,6 +27,7 @@ export interface WorkspaceActivationMigrationCompositionOptions {
   readonly activeWorkspace: Readonly<ActiveWorkspaceStartupSelection>;
   readonly appVersion: string;
   readonly buildRevision: string;
+  readonly beforeCandidateMigration?: () => void;
   readonly maintenanceLease: WorkspaceMaintenanceLease;
   readonly recoveryPointService: Pick<
     RecoveryPointService,
@@ -65,6 +67,12 @@ export async function createWorkspaceActivationMigrationComposition(
   const backupCandidate = new PrivateWorkspaceBackupCandidateAdapter(
     runtimeFactory,
   );
+  const migrationCandidate = createWorkspaceActivationMigrationCandidate({
+    candidate: backupCandidate,
+    ...(options.beforeCandidateMigration === undefined
+      ? {}
+      : { beforeMigration: options.beforeCandidateMigration }),
+  });
   const registry = new WorkspaceRegistryStore({
     filePath: join(options.userDataRoot, WORKSPACE_REGISTRY_FILE_NAME),
     installationRoot: options.userDataRoot,
@@ -87,7 +95,7 @@ export async function createWorkspaceActivationMigrationComposition(
   const coordinator = new WorkspaceActivationMigrationCoordinator({
     activationAuthorityFactory:
       new ProfileRestoreWorkspaceReplacementActivationFactory(),
-    backupCandidate,
+    backupCandidate: migrationCandidate,
     guard,
     maintenanceLease: options.maintenanceLease,
     recoveryPoint,

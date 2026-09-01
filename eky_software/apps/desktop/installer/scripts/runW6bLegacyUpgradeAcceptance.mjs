@@ -1,10 +1,16 @@
-import { spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { access } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { INSTALLER_UPGRADE_CODE } from '../installerIdentity.mjs';
 import { buildW6bSyntheticNextPatchInstaller } from './buildW6bSyntheticNextPatchInstaller.mjs';
+import {
+  runW6bLegacyAcceptanceProcess,
+  W6B_LEGACY_ACCEPTANCE_CLEANUP_TIMEOUT_MILLISECONDS,
+  W6B_LEGACY_ACCEPTANCE_HEARTBEAT_MILLISECONDS,
+  W6B_LEGACY_ACCEPTANCE_TIMEOUT_MILLISECONDS,
+} from './w6bLegacyAcceptanceProcess.mjs';
 import {
   verifyExactLocalHistoricalWindowsInstallerFixture,
   withHistoricalSourceWindowsInstallerFixture,
@@ -44,13 +50,18 @@ export async function runW6bLegacyUpgradeAcceptance(dependencies = {}) {
   )();
   return withSelectedHistoricalFixture(
     async (source) => {
+      const processProofToken = (
+        dependencies.createProcessProofToken ?? createProcessProofToken
+      )();
       const arguments_ = createW6bLegacyUpgradeAcceptanceArguments({
+        processProofToken,
         source,
         target,
       });
       await (dependencies.runProcess ?? runProcess)(
         'powershell.exe',
         arguments_,
+        { processProofToken },
       );
       return Object.freeze({
         sourceClassification: source.artifactClass,
@@ -64,9 +75,16 @@ export async function runW6bLegacyUpgradeAcceptance(dependencies = {}) {
   );
 }
 
-export function createW6bLegacyUpgradeAcceptanceArguments({ source, target }) {
+export function createW6bLegacyUpgradeAcceptanceArguments({
+  processProofToken,
+  source,
+  target,
+}) {
   validateSourceFixture(source);
   validateTargetFixture(source, target);
+  if (!sha256Pattern.test(processProofToken)) {
+    throw new Error('W6B_LEGACY_PROCESS_PROOF_TOKEN_INVALID');
+  }
   return Object.freeze([
     '-NoLogo',
     '-NoProfile',
@@ -111,6 +129,8 @@ export function createW6bLegacyUpgradeAcceptanceArguments({ source, target }) {
     source.artifactClass,
     '-LineageProfileIdPattern',
     w6bLineageProfileIdPattern,
+    '-ProcessProofToken',
+    processProofToken,
   ]);
 }
 
@@ -215,25 +235,21 @@ async function pathExists(path) {
   }
 }
 
-function runProcess(command, arguments_) {
-  return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn(command, arguments_, {
-      cwd: repositoryRoot,
-      env: { ...process.env },
-      shell: false,
-      stdio: 'inherit',
-      windowsHide: true,
-    });
-    child.once('error', () => {
-      rejectPromise(new Error('W6B_LEGACY_ACCEPTANCE_PROCESS_FAILED'));
-    });
-    child.once('exit', (code, signal) => {
-      if (code === 0 && signal === null) {
-        resolvePromise();
-        return;
-      }
-      rejectPromise(new Error('W6B_LEGACY_ACCEPTANCE_PROCESS_FAILED'));
-    });
+function createProcessProofToken() {
+  return randomBytes(32).toString('hex');
+}
+
+function runProcess(command, arguments_, context) {
+  return runW6bLegacyAcceptanceProcess({
+    arguments: arguments_,
+    cleanupTimeoutMilliseconds:
+      W6B_LEGACY_ACCEPTANCE_CLEANUP_TIMEOUT_MILLISECONDS,
+    command,
+    cwd: repositoryRoot,
+    environment: process.env,
+    heartbeatMilliseconds: W6B_LEGACY_ACCEPTANCE_HEARTBEAT_MILLISECONDS,
+    proofToken: context.processProofToken,
+    timeoutMilliseconds: W6B_LEGACY_ACCEPTANCE_TIMEOUT_MILLISECONDS,
   });
 }
 

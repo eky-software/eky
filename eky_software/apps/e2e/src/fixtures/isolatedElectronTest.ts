@@ -43,6 +43,10 @@ import {
   closeOwnedElectronRuntime,
   stopOwnedElectronRuntime,
 } from './stopOwnedElectronRuntime.js';
+import {
+  ELECTRON_E2E_FIRST_WINDOW_TIMEOUT_MILLISECONDS,
+  ELECTRON_E2E_PROCESS_CONNECT_TIMEOUT_MILLISECONDS,
+} from './electronLaunchBudgets.js';
 
 export interface IsolatedElectronHarness {
   api: APIRequestContext;
@@ -346,7 +350,7 @@ async function launchElectronRuntime(input: {
         runRoot: input.runtime.runtimeRoot,
       }),
       executablePath: resolveElectronE2eExecutable(),
-      timeout: 45_000,
+      timeout: ELECTRON_E2E_PROCESS_CONNECT_TIMEOUT_MILLISECONDS,
     });
   } catch {
     throw createSafeElectronLaunchError(
@@ -359,7 +363,9 @@ async function launchElectronRuntime(input: {
   electronProcess.stdout?.on('data', input.appendStdout);
 
   try {
-    const page = await electronApp.firstWindow();
+    const page = await electronApp.firstWindow({
+      timeout: ELECTRON_E2E_FIRST_WINDOW_TIMEOUT_MILLISECONDS,
+    });
     await page.waitForLoadState('domcontentloaded');
     return { electronApp, page };
   } catch {

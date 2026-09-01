@@ -85,10 +85,16 @@ import {
   type PackagedSmokeConfiguration,
   type PackagedSmokeStage,
 } from './packagedSmoke.js';
-import type {
-  W6b2PackagedProofConfiguration,
-  W6b2PackagedProofResult,
+import {
+  resolveW6b2PackagedRollbackProgressPath,
+  type W6b2PackagedProofConfiguration,
+  type W6b2PackagedProofResult,
 } from './w6b2PackagedProof.js';
+import {
+  createW6b2PackagedFaultInjection,
+  createW6b2PackagedHandoffProfileProtection,
+} from './w6b2PackagedFaultInjection.js';
+import { runW6b2PackagedFaultProofController } from './w6b2PackagedFaultProofController.js';
 import { runW6b2PackagedProofController } from './w6b2PackagedProofController.js';
 import { restoreWindowInputFocus } from './windowInputFocus.js';
 import { resolveDesktopWorkspaceStartup } from './resolveDesktopWorkspaceStartup.js';
@@ -217,6 +223,12 @@ export interface StartDesktopCompositionOptions {
   userDataPath: string;
   w6b2PackagedProof?: Readonly<{
     configuration: Readonly<W6b2PackagedProofConfiguration>;
+    interruptProcess(
+      configuration: Extract<
+        W6b2PackagedProofConfiguration,
+        { readonly controlFormatVersion: 2 }
+      >,
+    ): Promise<never>;
     isQuitRequested(): boolean;
     isRelaunchRequested(): boolean;
     reportResult(result: W6b2PackagedProofResult): Promise<void>;
@@ -487,6 +499,13 @@ async function startDesktopCompositionRuntime({
   const workspaceRuntimeRelaunch = new DeferredWorkspaceRuntimeRelaunch(
     options.relaunchApplication,
   );
+  const w6b2PackagedFaultInjection =
+    options.w6b2PackagedProof === undefined
+      ? undefined
+      : createW6b2PackagedFaultInjection({
+          configuration: options.w6b2PackagedProof.configuration,
+          interruptProcess: options.w6b2PackagedProof.interruptProcess,
+        });
   const {
     acceptedBuildMetadataStore,
     directSetupMigrationRecoveryStore,
@@ -632,6 +651,11 @@ async function startDesktopCompositionRuntime({
     },
     updateJournalStore,
   });
+  const handoffProfileProtection =
+    createW6b2PackagedHandoffProfileProtection(
+      updateProfileProtection,
+      w6b2PackagedFaultInjection,
+    );
   const localUpdatePackageCache =
     options.releaseInfo === undefined
       ? undefined
@@ -676,16 +700,27 @@ async function startDesktopCompositionRuntime({
           cache: localUpdatePackageCache,
           journalStore: updateJournalStore,
           launchInstaller: ({ failedPackage, rollbackPackage }) =>
-            launchWindowsInstallerRollback({
-              failedPackagePath: failedPackage.packagePath,
-              failedProductCode: failedPackage.productCode,
-              rollbackPackagePath: rollbackPackage.packagePath,
-              rollbackScriptPath: join(
-                options.resourcesPath,
-                'update-runtime',
-                'rollbackWindowsInstaller.ps1',
-              ),
-              systemRoot: process.env.SystemRoot,
+            Promise.resolve().then(() => {
+              w6b2PackagedFaultInjection?.failBinaryRollbackLaunchIfRequested();
+              const progressFilePath =
+                resolveW6b2PackagedRollbackProgressPath(
+                  options.w6b2PackagedProof?.configuration,
+                );
+              return launchWindowsInstallerRollback({
+                failedPackagePath: failedPackage.packagePath,
+                failedProductCode: failedPackage.productCode,
+                launcherProcessId: process.pid,
+                ...(progressFilePath === undefined
+                  ? {}
+                  : { progressFilePath }),
+                rollbackPackagePath: rollbackPackage.packagePath,
+                rollbackScriptPath: join(
+                  options.resourcesPath,
+                  'update-runtime',
+                  'rollbackWindowsInstaller.ps1',
+                ),
+                systemRoot: process.env.SystemRoot,
+              });
             }),
           observer: updateObserver,
           releaseInfo: options.releaseInfo,
@@ -773,7 +808,7 @@ async function startDesktopCompositionRuntime({
     pendingUpdateJournal?.state === 'recoveryRequired' ||
     pendingUpdateJournal?.state === 'rollbackPackageRequired'
   ) {
-    return createUpdateRecoveryComposition({
+    const recoveryLifecycle = createUpdateRecoveryComposition({
       applicationPath: options.applicationPath,
       architecture: process.arch,
       createWindow: (windowOptions) => new BrowserWindow(windowOptions),
@@ -799,6 +834,22 @@ async function startDesktopCompositionRuntime({
       showOpenDialog: dependencies.showOpenDialog,
       showSaveDialog: dependencies.showSaveDialog,
     });
+    const proofConfiguration =
+      options.w6b2PackagedProof?.configuration;
+    if (
+      pendingUpdateJournal.state === 'failedSafe' &&
+      proofConfiguration?.controlFormatVersion === 2 &&
+      proofConfiguration.faultScenario === 'binaryRollbackFailure' &&
+      proofConfiguration.phase === 'failedSafeVerification'
+    ) {
+      await options.w6b2PackagedProof!.reportResult({
+        faultScenario: proofConfiguration.faultScenario,
+        formatVersion: 2,
+        phase: proofConfiguration.phase,
+        status: 'completed',
+      });
+    }
+    return recoveryLifecycle;
   }
   const activeProfileRestoreStartupRecovery =
     startupRecoveryAuthority === 'workspaceReplacement'
@@ -836,6 +887,12 @@ async function startDesktopCompositionRuntime({
           },
           resourcesPath: options.resourcesPath,
           userDataRoot: options.userDataPath,
+          ...(w6b2PackagedFaultInjection === undefined
+            ? {}
+            : {
+                beforeCandidateMigration: () =>
+                  w6b2PackagedFaultInjection.failPassiveWorkspaceMigrationIfRequested(),
+              }),
         })
       : undefined;
   const workspaceActivationMigrationPreparation =
@@ -1045,8 +1102,32 @@ async function startDesktopCompositionRuntime({
           await updateBusinessRollbackCoordinator
             .completeAfterProfileValidation({ inspection });
           await control.stopStartupRuntime();
-          const binaryRollback =
-            await updateBinaryRollbackCoordinator.startIfRequired();
+          let binaryRollback: 'launched' | 'notRequired';
+          try {
+            binaryRollback =
+              await updateBinaryRollbackCoordinator.startIfRequired();
+          } catch (error) {
+            const proofConfiguration =
+              options.w6b2PackagedProof?.configuration;
+            const journalAfterFailure = await updateJournalStore.read();
+            if (
+              proofConfiguration?.controlFormatVersion === 2 &&
+              proofConfiguration.faultScenario === 'binaryRollbackFailure' &&
+              proofConfiguration.phase === 'binaryRollbackFailure' &&
+              journalAfterFailure?.state === 'failedSafe'
+            ) {
+              await options.w6b2PackagedProof!.reportResult({
+                faultScenario: proofConfiguration.faultScenario,
+                formatVersion: 2,
+                phase: proofConfiguration.phase,
+                status: 'completed',
+              });
+              updateBinaryRollbackHandoffRequested = true;
+              options.quitApplication();
+              return;
+            }
+            throw error;
+          }
           if (binaryRollback !== 'launched') {
             throw new Error('UPDATE_BINARY_ROLLBACK_RECOVERY_REQUIRED');
           }
@@ -1065,6 +1146,7 @@ async function startDesktopCompositionRuntime({
             ? 'profileRestore'
             : 'update',
         });
+        w6b2PackagedFaultInjection?.failActiveWorkspaceFirstStartIfRequested();
       },
       config: {
         appVersion: desktopAppVersion,
@@ -1190,6 +1272,7 @@ async function startDesktopCompositionRuntime({
     await activeWorkspace.accept(activeProfileValidation.profileId);
     workspaceStartupAccepted = true;
     await workspaceFirstStartMigration.transitionRegistryAfterActiveWorkspaceAcceptance();
+    await w6b2PackagedFaultInjection?.interruptAfterRegistryTransitionIfRequested();
     if (firstStartUpdateCoordinator !== undefined) {
       await firstStartUpdateCoordinator.acceptAfterBackendReady();
     }
@@ -1769,7 +1852,7 @@ async function startDesktopCompositionRuntime({
         options.quitApplication();
       },
       observer: updateObserver,
-      profileProtection: updateProfileProtection,
+      profileProtection: handoffProfileProtection,
       shutdownRuntime: () => lifecycleHandle.shutdown(),
     });
     if (options.w6b2PackagedProof === undefined) {
@@ -1821,13 +1904,22 @@ async function startDesktopCompositionRuntime({
     const proof = options.w6b2PackagedProof;
     const result =
       localUpdatePackageCache === undefined || handoffCoordinator === undefined
-        ? {
-            errorCode: 'W6B2_PROOF_CONFIGURATION_INVALID' as const,
-            formatVersion: 1 as const,
-            phase: proof.configuration.phase,
-            status: 'failed' as const,
-          }
-        : await runW6b2PackagedProofController({
+        ? proof.configuration.controlFormatVersion === 1
+          ? {
+              errorCode: 'W6B2_PROOF_CONFIGURATION_INVALID' as const,
+              formatVersion: 1 as const,
+              phase: proof.configuration.phase,
+              status: 'failed' as const,
+            }
+          : {
+              errorCode: 'W6B2_FAULT_PROOF_UNEXPECTED' as const,
+              faultScenario: proof.configuration.faultScenario,
+              formatVersion: 2 as const,
+              phase: proof.configuration.phase,
+              status: 'failed' as const,
+            }
+        : proof.configuration.controlFormatVersion === 1
+          ? await runW6b2PackagedProofController({
             cache: localUpdatePackageCache,
             configuration: proof.configuration,
             handoff: handoffCoordinator,
@@ -1837,7 +1929,17 @@ async function startDesktopCompositionRuntime({
             readRecoveryPointFailureCode: () =>
               recoveryPointService.getStatus().lastSafeErrorCode,
             workspaceManagement: workspaceManagementComposition.service,
-          });
+          })
+          : await runW6b2PackagedFaultProofController({
+              cache: localUpdatePackageCache,
+              configuration: proof.configuration,
+              handoff: handoffCoordinator,
+              isQuitRequested: proof.isQuitRequested,
+              isRelaunchRequested: proof.isRelaunchRequested,
+              journalStore: updateJournalStore,
+              lifecycle: lifecycleHandle,
+              workspaceManagement: workspaceManagementComposition.service,
+            });
     await proof.reportResult(result);
     return lifecycleHandle;
   }

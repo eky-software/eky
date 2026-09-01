@@ -178,19 +178,79 @@ function New-W6b2SuccessProcessObservation {
   return [pscustomobject]@{
     root = $root
     owned = $owned
+    excludedInstallerRoots = @{}
+    installerHandoffReleased = $false
   }
 }
 
 function Update-W6b2SuccessProcessObservation {
-  param([Parameter(Mandatory = $true)]$Observation)
+  param(
+    [Parameter(Mandatory = $true)]$Observation,
+    [AllowEmptyCollection()][array]$ProcessSnapshot = @()
+  )
 
-  $snapshot = @(Get-EkyProcessSnapshot)
-  foreach ($identity in @(Get-EkyOwnedProcessIdentitiesFromSnapshot `
-    -RootIdentity $Observation.root -ProcessSnapshot $snapshot)) {
-    $Observation.owned["$($identity.processId):$($identity.creationToken)"] = `
-      $identity
+  $snapshot = if ($ProcessSnapshot.Count -eq 0) {
+    @(Get-EkyProcessSnapshot)
+  }
+  else {
+    @($ProcessSnapshot)
+  }
+  $rootOwned = @(Get-EkyOwnedProcessIdentitiesFromSnapshot `
+    -RootIdentity $Observation.root -ProcessSnapshot $snapshot)
+  if ([bool]$Observation.installerHandoffReleased) {
+    $rootOwnedKeys = @{}
+    foreach ($identity in $rootOwned) {
+      $rootOwnedKeys["$($identity.processId):$($identity.creationToken)"] = `
+        $true
+    }
+    foreach ($candidate in @($snapshot | Where-Object {
+      $key = "$($_.processId):$($_.creationToken)"
+      $rootOwnedKeys.ContainsKey($key) -and
+      [string]$_.processName -ieq 'msiexec.exe'
+    })) {
+      $root = New-EkyProcessIdentity -ProcessId ([int]$candidate.processId) `
+        -CreationToken ([string]$candidate.creationToken)
+      $rootKey = "$($root.processId):$($root.creationToken)"
+      $Observation.excludedInstallerRoots[$rootKey] = $root
+    }
+  }
+
+  $excluded = @{}
+  foreach ($root in @($Observation.excludedInstallerRoots.Values)) {
+    foreach ($identity in @(Get-EkyOwnedProcessIdentitiesFromSnapshot `
+      -RootIdentity $root -ProcessSnapshot $snapshot)) {
+      $excluded["$($identity.processId):$($identity.creationToken)"] = $true
+    }
+  }
+  foreach ($key in @($Observation.owned.Keys)) {
+    if ($excluded.ContainsKey($key)) {
+      [void]$Observation.owned.Remove($key)
+    }
+  }
+  foreach ($identity in $rootOwned) {
+    $key = "$($identity.processId):$($identity.creationToken)"
+    if (!$excluded.ContainsKey($key)) {
+      $Observation.owned[$key] = $identity
+    }
   }
   return ,$snapshot
+}
+
+function Release-W6b2SuccessInstallerHandoffOwnership {
+  param(
+    [Parameter(Mandatory = $true)]$Observation,
+    [AllowEmptyCollection()][array]$ProcessSnapshot = @()
+  )
+
+  $snapshot = if ($ProcessSnapshot.Count -eq 0) {
+    @(Get-EkyProcessSnapshot)
+  }
+  else {
+    @($ProcessSnapshot)
+  }
+  $Observation.installerHandoffReleased = $true
+  [void](Update-W6b2SuccessProcessObservation `
+    -Observation $Observation -ProcessSnapshot $snapshot)
 }
 
 function Update-W6b2SuccessProcessObservationWhenDue {
@@ -348,8 +408,13 @@ function Wait-W6b2SuccessOwnedProcessesAbsent {
       return
     }
     if ([DateTime]::UtcNow -ge $deadline) {
+      $confirmedRemaining = @(Get-EkyRemainingExactProcessIdentities `
+        -OwnedProcessIdentities $remaining)
+      if ($confirmedRemaining.Count -eq 0) {
+        return
+      }
       $failureCode = Get-W6b2SuccessOwnedProcessFailureCode `
-        -Observation $Observation -Remaining $remaining
+        -Observation $Observation -Remaining $confirmedRemaining
       Stop-W6b2SuccessOwnedProcesses -Observation $Observation
       throw $failureCode
     }
@@ -394,9 +459,13 @@ function Get-W6b2SuccessOwnedProcessFailureCode {
   }
   $failureCode = switch ($distinctRoles[0]) {
     'applicationMain' { 'W6B2_SUCCESS_OWNED_APPLICATION_MAIN_REMAINS' }
+    'applicationChild' { 'W6B2_SUCCESS_OWNED_APPLICATION_CHILD_REMAINS' }
     'backendUtility' { 'W6B2_SUCCESS_OWNED_BACKEND_UTILITY_REMAINS' }
+    'consoleHost' { 'W6B2_SUCCESS_OWNED_CONSOLE_HOST_REMAINS' }
     'crashpad' { 'W6B2_SUCCESS_OWNED_CRASHPAD_REMAINS' }
     'gpu' { 'W6B2_SUCCESS_OWNED_GPU_REMAINS' }
+    'installerHandoff' { 'W6B2_SUCCESS_OWNED_INSTALLER_HANDOFF_REMAINS' }
+    'powershell' { 'W6B2_SUCCESS_OWNED_POWERSHELL_REMAINS' }
     'renderer' { 'W6B2_SUCCESS_OWNED_RENDERER_REMAINS' }
     'utility' { 'W6B2_SUCCESS_OWNED_UTILITY_REMAINS' }
     default { 'W6B2_SUCCESS_OWNED_PROCESS_UNCLASSIFIED_REMAINS' }
@@ -407,7 +476,29 @@ function Get-W6b2SuccessOwnedProcessFailureCode {
 function Get-W6b2SuccessOwnedProcessRole {
   param([Parameter(Mandatory = $true)]$Process)
 
-  $commandLine = [string]$Process.CommandLine
+  $processNameProperty = $Process.PSObject.Properties['Name']
+  $commandLineProperty = $Process.PSObject.Properties['CommandLine']
+  $processName = if ($null -eq $processNameProperty) {
+    ''
+  }
+  else {
+    [string]$processNameProperty.Value
+  }
+  $commandLine = if ($null -eq $commandLineProperty) {
+    ''
+  }
+  else {
+    [string]$commandLineProperty.Value
+  }
+  if ($processName -ieq 'msiexec.exe') {
+    return 'installerHandoff'
+  }
+  if ($processName -ieq 'powershell.exe') {
+    return 'powershell'
+  }
+  if ($processName -ieq 'conhost.exe') {
+    return 'consoleHost'
+  }
   if ($commandLine -match '--type=crashpad-handler(?:\s|$)') {
     return 'crashpad'
   }
@@ -422,6 +513,9 @@ function Get-W6b2SuccessOwnedProcessRole {
       return 'backendUtility'
     }
     return 'utility'
+  }
+  if ($processName -ieq 'Eky.exe') {
+    return 'applicationChild'
   }
   return 'unclassified'
 }
@@ -641,6 +735,8 @@ function Invoke-W6b2SuccessApplicationHandoffPhase {
         Read-W6b2SuccessProofResult -ProofRoot $ProofRoot `
           -ExpectedPhase sourceHandoff -ExpectedStatus completed
       }
+    Release-W6b2SuccessInstallerHandoffOwnership `
+      -Observation $observation
     return [pscustomobject]@{
       result = $result
       observation = $observation

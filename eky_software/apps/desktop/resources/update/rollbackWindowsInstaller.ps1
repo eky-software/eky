@@ -5,17 +5,113 @@ param(
   [string]$FailedProductCode,
 
   [Parameter(Mandatory = $true)]
+  [ValidateRange(1, 2147483647)]
+  [int]$LauncherProcessId,
+
+  [Parameter(Mandatory = $true)]
   [string]$FailedPackagePath,
 
   [Parameter(Mandatory = $true)]
   [string]$RollbackPackagePath,
 
   [Parameter(Mandatory = $true)]
-  [string]$MsiExecPath
+  [string]$MsiExecPath,
+
+  [Parameter(Mandatory = $false)]
+  [string]$ProgressPath
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+$script:ProgressFilePath = $null
+$script:ProgressClock = [System.Diagnostics.Stopwatch]::StartNew()
+$script:ActiveProgressPhase = $null
+$script:ActiveProgressStartedAt = 0
+
+function Initialize-RollbackProgress {
+  if ([string]::IsNullOrWhiteSpace($ProgressPath)) {
+    return
+  }
+  try {
+    if ($ProgressPath.IndexOf([char]0) -ge 0) {
+      return
+    }
+    $resolved = [System.IO.Path]::GetFullPath($ProgressPath)
+    if (
+      $resolved -cne $ProgressPath -or
+      [System.IO.Path]::GetExtension($resolved).ToLowerInvariant() -ne '.jsonl'
+    ) {
+      return
+    }
+    $parentPath = [System.IO.Path]::GetDirectoryName($resolved)
+    $parent = Get-Item -LiteralPath $parentPath -Force
+    if (
+      !$parent.PSIsContainer -or
+      (($parent.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) -or
+      !$parent.FullName.Equals($parentPath, [StringComparison]::OrdinalIgnoreCase)
+    ) {
+      return
+    }
+    if (Test-Path -LiteralPath $resolved) {
+      $existing = Get-Item -LiteralPath $resolved -Force
+      if (
+        $existing.PSIsContainer -or
+        (($existing.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) -or
+        !$existing.FullName.Equals($resolved, [StringComparison]::OrdinalIgnoreCase)
+      ) {
+        return
+      }
+    }
+    [System.IO.File]::WriteAllText(
+      $resolved,
+      '',
+      [System.Text.UTF8Encoding]::new($false)
+    )
+    $script:ProgressFilePath = $resolved
+  } catch {
+    $script:ProgressFilePath = $null
+  }
+}
+
+function Write-RollbackProgress {
+  param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet(
+      'inputValidation',
+      'launcherExitWait',
+      'failedPackageUninstall',
+      'rollbackPackageInstall',
+      'failedPackageRepair'
+    )]
+    [string]$Phase,
+
+    [Parameter(Mandatory = $true)]
+    [ValidateSet('started', 'completed', 'failed')]
+    [string]$Event,
+
+    [Parameter(Mandatory = $true)]
+    [long]$DurationMs
+  )
+
+  if ($null -eq $script:ProgressFilePath) {
+    return
+  }
+  try {
+    $payload = [ordered]@{
+      event = $Event
+      phase = $Phase
+      durationMs = [Math]::Max(0, $DurationMs)
+      elapsedMs = [Math]::Max(0, $script:ProgressClock.ElapsedMilliseconds)
+    }
+    [System.IO.File]::AppendAllText(
+      $script:ProgressFilePath,
+      (($payload | ConvertTo-Json -Compress) + [Environment]::NewLine),
+      [System.Text.UTF8Encoding]::new($false)
+    )
+  } catch {
+    # Test observability must never change rollback behavior.
+  }
+}
 
 function Assert-RegularFile {
   param(
@@ -68,44 +164,128 @@ function Invoke-MsiExec {
   }
 }
 
+function Wait-LauncherProcessExit {
+  param([Parameter(Mandatory = $true)][int]$ProcessId)
+
+  $launcher = $null
+  try {
+    try {
+      $launcher = [System.Diagnostics.Process]::GetProcessById($ProcessId)
+    } catch [System.ArgumentException] {
+      return $true
+    }
+    return $launcher.WaitForExit(30000)
+  } catch {
+    return $false
+  } finally {
+    if ($null -ne $launcher) {
+      $launcher.Dispose()
+    }
+  }
+}
+
+Initialize-RollbackProgress
+
 try {
+  $phaseStartedAt = $script:ProgressClock.ElapsedMilliseconds
+  $script:ActiveProgressPhase = 'inputValidation'
+  $script:ActiveProgressStartedAt = $phaseStartedAt
+  Write-RollbackProgress -Phase inputValidation -Event started -DurationMs 0
   try {
     Assert-RegularFile -Path $MsiExecPath -Extension '.exe'
   } catch {
+    Write-RollbackProgress -Phase inputValidation -Event failed `
+      -DurationMs ($script:ProgressClock.ElapsedMilliseconds - $phaseStartedAt)
     exit 24
   }
   try {
     Assert-RegularFile -Path $FailedPackagePath -Extension '.msi'
   } catch {
+    Write-RollbackProgress -Phase inputValidation -Event failed `
+      -DurationMs ($script:ProgressClock.ElapsedMilliseconds - $phaseStartedAt)
     exit 25
   }
   try {
     Assert-RegularFile -Path $RollbackPackagePath -Extension '.msi'
   } catch {
+    Write-RollbackProgress -Phase inputValidation -Event failed `
+      -DurationMs ($script:ProgressClock.ElapsedMilliseconds - $phaseStartedAt)
     exit 26
   }
+  Write-RollbackProgress -Phase inputValidation -Event completed `
+    -DurationMs ($script:ProgressClock.ElapsedMilliseconds - $phaseStartedAt)
+  $script:ActiveProgressPhase = $null
 
+  $phaseStartedAt = $script:ProgressClock.ElapsedMilliseconds
+  $script:ActiveProgressPhase = 'launcherExitWait'
+  $script:ActiveProgressStartedAt = $phaseStartedAt
+  Write-RollbackProgress -Phase launcherExitWait -Event started -DurationMs 0
+  if (!(Wait-LauncherProcessExit -ProcessId $LauncherProcessId)) {
+    Write-RollbackProgress -Phase launcherExitWait -Event failed `
+      -DurationMs ($script:ProgressClock.ElapsedMilliseconds - $phaseStartedAt)
+    exit 27
+  }
+  Write-RollbackProgress -Phase launcherExitWait -Event completed `
+    -DurationMs ($script:ProgressClock.ElapsedMilliseconds - $phaseStartedAt)
+  $script:ActiveProgressPhase = $null
+
+  $phaseStartedAt = $script:ProgressClock.ElapsedMilliseconds
+  $script:ActiveProgressPhase = 'failedPackageUninstall'
+  $script:ActiveProgressStartedAt = $phaseStartedAt
+  Write-RollbackProgress -Phase failedPackageUninstall -Event started `
+    -DurationMs 0
   $uninstallExitCode = Invoke-MsiExec -Arguments @(
     '/x', $FailedProductCode, '/qn', '/norestart'
   )
   if ($uninstallExitCode -ne 0) {
+    Write-RollbackProgress -Phase failedPackageUninstall -Event failed `
+      -DurationMs ($script:ProgressClock.ElapsedMilliseconds - $phaseStartedAt)
     exit 20
   }
+  Write-RollbackProgress -Phase failedPackageUninstall -Event completed `
+    -DurationMs ($script:ProgressClock.ElapsedMilliseconds - $phaseStartedAt)
+  $script:ActiveProgressPhase = $null
 
+  $phaseStartedAt = $script:ProgressClock.ElapsedMilliseconds
+  $script:ActiveProgressPhase = 'rollbackPackageInstall'
+  $script:ActiveProgressStartedAt = $phaseStartedAt
+  Write-RollbackProgress -Phase rollbackPackageInstall -Event started `
+    -DurationMs 0
   $rollbackExitCode = Invoke-MsiExec -Arguments @(
     '/i', $RollbackPackagePath, '/qn', '/norestart'
   )
   if ($rollbackExitCode -eq 0) {
+    Write-RollbackProgress -Phase rollbackPackageInstall -Event completed `
+      -DurationMs ($script:ProgressClock.ElapsedMilliseconds - $phaseStartedAt)
     exit 0
   }
+  Write-RollbackProgress -Phase rollbackPackageInstall -Event failed `
+    -DurationMs ($script:ProgressClock.ElapsedMilliseconds - $phaseStartedAt)
+  $script:ActiveProgressPhase = $null
 
+  $phaseStartedAt = $script:ProgressClock.ElapsedMilliseconds
+  $script:ActiveProgressPhase = 'failedPackageRepair'
+  $script:ActiveProgressStartedAt = $phaseStartedAt
+  Write-RollbackProgress -Phase failedPackageRepair -Event started -DurationMs 0
   $repairExitCode = Invoke-MsiExec -Arguments @(
     '/i', $FailedPackagePath, '/qn', '/norestart'
   )
   if ($repairExitCode -eq 0) {
+    Write-RollbackProgress -Phase failedPackageRepair -Event completed `
+      -DurationMs ($script:ProgressClock.ElapsedMilliseconds - $phaseStartedAt)
     exit 21
   }
+  Write-RollbackProgress -Phase failedPackageRepair -Event failed `
+    -DurationMs ($script:ProgressClock.ElapsedMilliseconds - $phaseStartedAt)
+  $script:ActiveProgressPhase = $null
   exit 22
 } catch {
+  if ($null -ne $script:ActiveProgressPhase) {
+    Write-RollbackProgress -Phase $script:ActiveProgressPhase -Event failed `
+      -DurationMs (
+        $script:ProgressClock.ElapsedMilliseconds -
+        $script:ActiveProgressStartedAt
+      )
+  }
   exit 23
 }

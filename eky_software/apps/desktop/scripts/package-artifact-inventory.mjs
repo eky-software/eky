@@ -13,6 +13,7 @@ const smokeAllowlist = new Set([
 const updateRuntimeAllowlist = new Set([
   'inspectWindowsInstallerIdentity.ps1',
   'inspectWindowsRegularFile.ps1',
+  'launchRollbackWindowsInstaller.ps1',
   'rollbackWindowsInstaller.ps1',
 ]);
 const validStages = new Set([
@@ -48,7 +49,7 @@ const stageLimits = Object.freeze({
   }),
   updateRuntimeStage: Object.freeze({
     maximumDirectoryDepth: 1,
-    maximumFileCount: 3,
+    maximumFileCount: 4,
     maximumLogicalPathBytes: 64,
     maximumProjectOwnedFileBytes: 32_768,
     maximumTotalBytes: 64_000,

@@ -23,7 +23,9 @@ import {
   writePackagedSmokeResult,
 } from './packagedSmoke.js';
 import {
+  createW6b2PackagedProofFallbackResult,
   createW6b2PackagedProofBootstrapConfiguration,
+  createW6b2PackagedProofUnexpectedFailure,
   readW6b2PackagedProofConfiguration,
   W6B2_PACKAGED_PROOF_SWITCH,
   W6B2_PACKAGED_PROOF_TOKEN_ENV,
@@ -214,6 +216,17 @@ async function startDesktopRuntime(
       : {
           w6b2PackagedProof: {
             configuration: currentProofConfiguration,
+            async interruptProcess(configuration) {
+              await writeW6b2PackagedProofResult(configuration, {
+                faultScenario: configuration.faultScenario,
+                formatVersion: 2,
+                phase: configuration.phase,
+                status: 'interrupted',
+              });
+              w6b2ProofResultWritten = true;
+              app.exit(0);
+              return new Promise<never>(() => undefined);
+            },
             isQuitRequested: () => w6b2ProofQuitRequested,
             isRelaunchRequested: () => w6b2ProofRelaunchRequested,
             async reportResult(result) {
@@ -228,11 +241,16 @@ async function startDesktopRuntime(
   });
   if (currentProofConfiguration !== undefined) {
     if (!w6b2ProofResultWritten) {
-      await writeW6b2PackagedProofResult(currentProofConfiguration, {
-        formatVersion: 1,
-        phase: currentProofConfiguration.phase,
-        status: 'relaunching',
-      });
+      await writeW6b2PackagedProofResult(
+        currentProofConfiguration,
+        createW6b2PackagedProofFallbackResult(
+          currentProofConfiguration,
+          {
+            quitRequested: w6b2ProofQuitRequested,
+            relaunchRequested: w6b2ProofRelaunchRequested,
+          },
+        ),
+      );
       w6b2ProofResultWritten = true;
     }
     await terminateW6b2PackagedProofRuntime({
@@ -241,6 +259,7 @@ async function startDesktopRuntime(
         shutdownStarted = true;
         app.quit();
       },
+      quitRequested: w6b2ProofQuitRequested,
       relaunchRequested: w6b2ProofRelaunchRequested,
     });
   }
@@ -290,12 +309,12 @@ if (hasSingleInstanceLock) {
       }
 
       if (w6b2ProofConfiguration !== undefined) {
-        await writeW6b2PackagedProofResult(w6b2ProofConfiguration, {
-          errorCode: 'W6B2_PROOF_UNEXPECTED',
-          formatVersion: 1,
-          phase: w6b2ProofConfiguration.phase,
-          status: 'failed',
-        });
+        await writeW6b2PackagedProofResult(
+          w6b2ProofConfiguration,
+          createW6b2PackagedProofUnexpectedFailure(
+            w6b2ProofConfiguration,
+          ),
+        );
         return;
       }
 

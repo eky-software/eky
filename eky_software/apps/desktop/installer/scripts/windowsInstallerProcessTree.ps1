@@ -33,6 +33,7 @@ function ConvertTo-EkyProcessSnapshotRecord {
     parentProcessId = [int]$Process.ParentProcessId
     creationToken = ConvertTo-EkyProcessCreationToken `
       -CreationTime ([DateTime]$Process.CreationDate)
+    processName = [string]$Process.Name
   }
 }
 

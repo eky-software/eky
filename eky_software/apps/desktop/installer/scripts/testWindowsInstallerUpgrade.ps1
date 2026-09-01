@@ -21,6 +21,7 @@ $completed = $false
 $currentProductCode = $null
 $nextProductCode = $null
 $runningEkyProcess = $null
+$runningEkyProcessId = $null
 $runningUpgradeProcess = $null
 $runningUpgradeObservationMilliseconds = 5000
 $runningUpgradeExitTimeoutMilliseconds = 120000
@@ -56,6 +57,7 @@ function Resolve-FixtureMsi {
 function Invoke-EkyCoordinatedRollback {
   param(
     [Parameter(Mandatory = $true)][string]$FailedProductCode,
+    [Parameter(Mandatory = $true)][int]$LauncherProcessId,
     [Parameter(Mandatory = $true)][string]$FailedPackagePath,
     [Parameter(Mandatory = $true)][string]$RollbackPackagePath
   )
@@ -80,6 +82,10 @@ function Invoke-EkyCoordinatedRollback {
     "`"$msiExecPath`"",
     '-FailedProductCode',
     $FailedProductCode,
+    '-LauncherProcessId',
+    $LauncherProcessId.ToString(
+      [System.Globalization.CultureInfo]::InvariantCulture
+    ),
     '-FailedPackagePath',
     "`"$FailedPackagePath`"",
     '-RollbackPackagePath',
@@ -286,6 +292,7 @@ try {
     -DurationMs 0 -ResultCode started
   try {
     $runningEkyProcess = Start-EkyForUpgrade
+    $runningEkyProcessId = [int]$runningEkyProcess.Id
     Write-EkyUpgradeProgress -Stage runningApplicationStarted -Status completed `
       -DurationMs $stageTimer.ElapsedMilliseconds -ResultCode completed
   }
@@ -422,7 +429,9 @@ try {
   Set-Content -LiteralPath $failedRollbackBlocker `
     -Value 'synthetic rollback blocker' -Encoding ASCII -NoNewline
   $failedRollbackExitCode = Invoke-EkyCoordinatedRollback `
-    -FailedProductCode $nextProductCode -FailedPackagePath $nextMsiPath `
+    -FailedProductCode $nextProductCode `
+    -LauncherProcessId $runningEkyProcessId `
+    -FailedPackagePath $nextMsiPath `
     -RollbackPackagePath $rollbackMsiPath
   if ($failedRollbackExitCode -ne 21) {
     throw "INSTALLER_UPGRADE_ROLLBACK_REPAIR_RESULT_INVALID:$failedRollbackExitCode"
@@ -436,7 +445,9 @@ try {
   Assert-BusinessDataUnchanged
 
   $rollbackExitCode = Invoke-EkyCoordinatedRollback `
-    -FailedProductCode $nextProductCode -FailedPackagePath $nextMsiPath `
+    -FailedProductCode $nextProductCode `
+    -LauncherProcessId $runningEkyProcessId `
+    -FailedPackagePath $nextMsiPath `
     -RollbackPackagePath $currentMsiPath
   if ($rollbackExitCode -ne 0) {
     throw 'INSTALLER_UPGRADE_COORDINATED_ROLLBACK_FAILED'

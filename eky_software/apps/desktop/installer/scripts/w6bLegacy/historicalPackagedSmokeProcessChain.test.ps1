@@ -168,6 +168,35 @@ function Set-EkyHistoricalSyntheticProcessRelease {
   $state.release.Set() | Out-Null
 }
 
+function Assert-EkyHistoricalStaleParentPidIgnored {
+  $executablePath = (Resolve-Path -LiteralPath (
+    Join-Path $PSHOME 'powershell.exe'
+  )).Path
+  $staleParent = [pscustomobject]@{
+    processId = 424242
+    creationToken = '2000'
+    executablePath = $executablePath
+  }
+  $ownedIdentities = @{}
+  $ownedIdentities[
+    (Get-EkyHistoricalProcessIdentityKey -Identity $staleParent)
+  ] = $staleParent
+  $snapshot = @(
+    [pscustomobject]@{
+      processId = 31337
+      parentProcessId = $staleParent.processId
+      creationToken = '1000'
+      executablePath = $executablePath
+    }
+  )
+
+  Add-EkyHistoricalOwnedProcessIdentities `
+    -OwnedIdentities $ownedIdentities -ProcessSnapshot $snapshot
+  if ($ownedIdentities.Count -ne 1) {
+    throw 'W6B_LEGACY_STALE_PARENT_PID_WAS_ADOPTED'
+  }
+}
+
 function Start-EkyHistoricalSyntheticProcessGeneration {
   param(
     [Parameter(Mandatory = $true)]
@@ -914,6 +943,7 @@ try {
       -Name ownedDescendantChain
   ) {
     Set-EkyHistoricalProcessChainTestCase -Name ownedDescendantChain
+    Assert-EkyHistoricalStaleParentPidIgnored
     $foreignEventPrefix = 'Local\EkyW6bForeign-' + `
       [Guid]::NewGuid().ToString('N')
     $foreignReadyName = "$foreignEventPrefix-ready"

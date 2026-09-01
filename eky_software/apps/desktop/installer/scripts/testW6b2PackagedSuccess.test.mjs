@@ -265,6 +265,14 @@ test('source handoff transfers proof before target installation owns process com
     /function Invoke-W6b2SuccessApplicationHandoffPhase/u,
   );
   assert.match(
+    applicationProcess,
+    /function Release-W6b2SuccessInstallerHandoffOwnership/u,
+  );
+  assert.match(
+    applicationProcess,
+    /Release-W6b2SuccessInstallerHandoffOwnership[\s\S]*return \[pscustomobject\]/u,
+  );
+  assert.match(
     harness,
     /Invoke-W6b2SuccessApplicationHandoffPhase[\s\S]*\$sourceProcess = \$sourceRun\.process[\s\S]*Complete-W6b2SuccessStage -ResultCode handoffCompleted[\s\S]*Wait-W6b2SuccessTargetInstallation[\s\S]*Wait-W6b2SuccessOwnedProcessesAbsent[\s\S]*Close-W6b2SuccessProcess -Process \$sourceProcess/u,
   );

@@ -19,10 +19,20 @@ export const w6b2PackagedProfileOperations = Object.freeze([
   'targetFirstStart',
   'verifyBRestart',
   'rejectC',
+  'verifyPreUpdateFailure',
+  'verifyActiveRollback',
+  'verifyAcceptanceRecovery',
+  'verifyPassiveRecovery',
+  'verifyBinaryFailedSafe',
 ] as const);
 
 export type W6b2PackagedProfileOperation =
   (typeof w6b2PackagedProfileOperations)[number];
+
+export type W6b2PackagedFaultProfileOperation = Exclude<
+  W6b2PackagedProfileOperation,
+  'prepare' | 'rejectC' | 'targetFirstStart' | 'verifyBRestart'
+>;
 
 export const w6b2PackagedProfileFailureStages = Object.freeze([
   'electronReady',
@@ -98,8 +108,18 @@ export function expectedW6b2PackagedProfilePackage(
   operation: W6b2PackagedProfileOperation,
 ): Readonly<{
   appVersion: '0.2.7' | '0.2.8';
+  faultScenario?:
+    | 'acceptanceInterruption'
+    | 'activeWorkspaceFirstStartFailure'
+    | 'binaryRollbackFailure'
+    | 'passiveWorkspaceMigrationFailure'
+    | 'preUpdateRecoveryPointFailure';
   phase:
+    | 'failedSafeVerification'
+    | 'passiveWorkspaceRecovery'
     | 'sourceHandoff'
+    | 'rollbackFirstStart'
+    | 'targetAcceptanceRestart'
     | 'targetFirstStart'
     | 'verifyBRestart'
     | 'rejectC';
@@ -112,11 +132,58 @@ export function expectedW6b2PackagedProfilePackage(
       role: 'source',
     });
   }
+  const faultPackages = {
+    verifyAcceptanceRecovery: {
+      appVersion: '0.2.8',
+      faultScenario: 'acceptanceInterruption',
+      phase: 'targetAcceptanceRestart',
+      role: 'target',
+    },
+    verifyActiveRollback: {
+      appVersion: '0.2.7',
+      faultScenario: 'activeWorkspaceFirstStartFailure',
+      phase: 'rollbackFirstStart',
+      role: 'source',
+    },
+    verifyBinaryFailedSafe: {
+      appVersion: '0.2.8',
+      faultScenario: 'binaryRollbackFailure',
+      phase: 'failedSafeVerification',
+      role: 'target',
+    },
+    verifyPassiveRecovery: {
+      appVersion: '0.2.8',
+      faultScenario: 'passiveWorkspaceMigrationFailure',
+      phase: 'passiveWorkspaceRecovery',
+      role: 'target',
+    },
+    verifyPreUpdateFailure: {
+      appVersion: '0.2.7',
+      faultScenario: 'preUpdateRecoveryPointFailure',
+      phase: 'sourceHandoff',
+      role: 'source',
+    },
+  } as const;
+  if (isW6b2PackagedFaultProfileOperation(operation)) {
+    return faultPackages[operation];
+  }
   return Object.freeze({
     appVersion: '0.2.8',
     phase: operation,
     role: 'target',
   });
+}
+
+function isW6b2PackagedFaultProfileOperation(
+  operation: W6b2PackagedProfileOperation,
+): operation is W6b2PackagedFaultProfileOperation {
+  return (
+    operation === 'verifyAcceptanceRecovery' ||
+    operation === 'verifyActiveRollback' ||
+    operation === 'verifyBinaryFailedSafe' ||
+    operation === 'verifyPassiveRecovery' ||
+    operation === 'verifyPreUpdateFailure'
+  );
 }
 
 export async function resolveW6b2InstalledApplicationPaths(

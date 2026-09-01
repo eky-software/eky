@@ -18,7 +18,9 @@ param(
   [Parameter(Mandatory = $true)]
   [ValidateSet('exact-local-release', 'historical-source-rebuild')]
   [string]$SourceClassification,
-  [Parameter(Mandatory = $true)][string]$LineageProfileIdPattern
+  [Parameter(Mandatory = $true)][string]$LineageProfileIdPattern,
+  [Parameter(Mandatory = $true)][ValidatePattern('^[0-9a-f]{64}$')]
+  [string]$ProcessProofToken
 )
 
 Set-StrictMode -Version Latest
