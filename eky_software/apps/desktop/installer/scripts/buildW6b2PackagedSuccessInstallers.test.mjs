@@ -6,28 +6,28 @@ import { test } from 'node:test';
 
 import {
   buildW6b2PackagedSuccessInstallers,
-  requireCanonicalW6b2Baseline,
+  requireCanonicalW6b2Release,
   requireInstallerPair,
   requirePackagedApplicationPair,
 } from './buildW6b2PackagedSuccessInstallers.mjs';
 
 const canonicalRelease = Object.freeze({
   appIdentity: 'Eky',
-  appVersion: '0.2.6',
+  appVersion: '0.2.7',
   architecture: 'x64',
-  msiProductVersion: '0.2.6',
+  msiProductVersion: '0.2.7',
   platform: 'win32',
   releaseChannel: 'pilot',
 });
 const buildRevision = '1'.repeat(40);
 
-test('builds the private fixture pair serially without changing canonical versions', async (context) => {
+test('builds the fixed private fixture pair without changing the newer canonical release', async (context) => {
   const root = await createTemporaryRoot(context);
   const canonicalPackagePath = join(root, 'canonical-package.json');
   const canonicalReleasePath = join(root, 'canonical-release.json');
   await writeFile(
     canonicalPackagePath,
-    `${JSON.stringify({ version: '0.2.6' })}\n`,
+    `${JSON.stringify({ version: '0.2.7' })}\n`,
   );
   await writeFile(
     canonicalReleasePath,
@@ -78,19 +78,19 @@ test('builds the private fixture pair serially without changing canonical versio
   assert.notEqual(result.source.productCode, result.target.productCode);
   assert.equal(
     JSON.parse(await readFile(canonicalPackagePath, 'utf8')).version,
-    '0.2.6',
+    '0.2.7',
   );
   assert.equal(
     JSON.parse(await readFile(canonicalReleasePath, 'utf8')).appVersion,
-    '0.2.6',
+    '0.2.7',
   );
 });
 
 test('rejects canonical, packaged and installer identity mismatches', () => {
   assert.throws(
     () =>
-      requireCanonicalW6b2Baseline(
-        { version: '0.2.7' },
+      requireCanonicalW6b2Release(
+        { version: '0.2.8' },
         canonicalRelease,
       ),
     /W6B2_CANONICAL_RELEASE_INVALID/u,

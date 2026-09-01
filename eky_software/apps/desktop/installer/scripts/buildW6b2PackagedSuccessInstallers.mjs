@@ -8,6 +8,7 @@ import {
   verifyInstallerManifestPackage,
   writeInstallerManifest,
 } from '../installerManifest.mjs';
+import { validateInstallerReleaseConfig } from '../installerVersion.mjs';
 import { buildWindowsInstaller } from './buildWindowsInstaller.mjs';
 import {
   W6B2_SYNTHETIC_WINDOWS_PACKAGE_PATHS,
@@ -45,11 +46,16 @@ export async function buildW6b2PackagedSuccessInstallers(options = {}) {
   const canonicalReleaseSource = await readFile(canonicalReleasePath, 'utf8');
   const canonicalPackage = parseJson(canonicalPackageSource);
   const canonicalRelease = parseJson(canonicalReleaseSource);
-  requireCanonicalW6b2Baseline(canonicalPackage, canonicalRelease);
-  const releases = createW6b2SyntheticReleasePair(canonicalRelease);
+  const validatedCanonicalRelease = requireCanonicalW6b2Release(
+    canonicalPackage,
+    canonicalRelease,
+  );
+  const releases = createW6b2SyntheticReleasePair(validatedCanonicalRelease);
 
   await rm(paths.fixtureRoot, { force: true, recursive: true });
-  const packaged = await dependencies.packageApplications(canonicalRelease);
+  const packaged = await dependencies.packageApplications(
+    validatedCanonicalRelease,
+  );
   requirePackagedApplicationPair({ packaged, releases });
 
   const source = await buildFixtureInstaller({
@@ -85,17 +91,19 @@ export async function buildW6b2PackagedSuccessInstallers(options = {}) {
   });
 }
 
-export function requireCanonicalW6b2Baseline(
-  canonicalPackage,
-  canonicalRelease,
-) {
+export function requireCanonicalW6b2Release(canonicalPackage, canonicalRelease) {
   if (
     !isRecord(canonicalPackage) ||
-    canonicalPackage.version !== '0.2.6' ||
-    !isRecord(canonicalRelease) ||
-    canonicalRelease.appVersion !== '0.2.6' ||
-    canonicalRelease.msiProductVersion !== '0.2.6'
+    typeof canonicalPackage.version !== 'string'
   ) {
+    throw new Error('W6B2_CANONICAL_RELEASE_INVALID');
+  }
+  try {
+    return validateInstallerReleaseConfig(
+      canonicalRelease,
+      canonicalPackage.version,
+    );
+  } catch {
     throw new Error('W6B2_CANONICAL_RELEASE_INVALID');
   }
 }

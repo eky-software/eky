@@ -1198,6 +1198,12 @@ Budjetin loppuminen tuottaa suljetun, allowlistatun terminal-tuloksen ennen
 GitHub-jobin ulkoista aikarajaa; yksittäisen skenaarion aikarajaa ei tämän
 vuoksi kasvateta.
 
+Yksityinen 0.2.7 -> 0.2.8 -fixturepari on muuttumaton testisopimus eikä sitä
+johdeta kanonisen desktop-version seuraavasta patchista. Kanoninen release-
+konfiguraatio validoidaan edelleen read-only-syötteenä, mutta myöhempi
+versionosto ei siirrä tämän jo hyväksytyn todistuksen source- tai target-
+identiteettiä.
+
 Tämä checkpoint ei sulje koko W6-porttia. W6B.2B:n fault- ja rollback-
 matriisi, installer repair/uninstall -jatkuvuus sekä lopullinen release-portti
 ovat edelleen avoimia. W6B.2A ajetaan CI:ssä omana rajattuna Windows-jobina,
@@ -1265,13 +1271,16 @@ erillisenä commitina vihreästä lähdepuusta.
 
 ## W7: Workspace deletion
 
-**Tila:** deferred.
+**Tila:** 0.2.8-versioon rajattu erillinen jatkotyö.
 
 Poisto suunnitellaan erikseen vasta ensimmäisen multi-workspace-releasen
 jälkeen. Se vaatii ADR-0011:n quarantine-, backup-, typed confirmation-,
 native confirmation-, secret-, recovery- ja external artifact -rajat.
 
 W7 ei saa tulla mukaan W1-W6-PR:iin tai 0.2.7-releaseen sivutoimintona.
+0.2.8-tavoite ei vielä hyväksy toteutuksen yksityiskohtia, schema- tai
+backup-formaattimuutosta eikä poiston turvallisuussopimusta ilman omaa
+suunnittelu- ja hyväksyntäporttia.
 
 ## Checkpointien yhteinen Definition of Done
 

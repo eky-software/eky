@@ -5,6 +5,7 @@ import {
   createPackageLayout,
   packageWindowsApplication,
 } from '../../scripts/packageWindowsApplication.mjs';
+import { validateInstallerReleaseConfig } from '../installerVersion.mjs';
 import { createW6bSyntheticNextPatchRelease } from './w6bSyntheticWindowsPackageFixture.mjs';
 import { prepareW6b2HistoricalBackendStage } from './w6b2HistoricalBackendStage.mjs';
 import { writeW6b2PrivateProofPackageMarker } from './w6b2PrivateProofPackageMarker.mjs';
@@ -17,6 +18,7 @@ const fixtureRoot = join(
   'w6b2',
   'packaged-success',
 );
+const w6b2FixtureBaselineVersion = '0.2.6';
 
 export const W6B2_SYNTHETIC_WINDOWS_PACKAGE_PATHS = Object.freeze({
   fixtureRoot,
@@ -24,8 +26,9 @@ export const W6B2_SYNTHETIC_WINDOWS_PACKAGE_PATHS = Object.freeze({
   target: createFixturePackagePaths(join(fixtureRoot, 'target')),
 });
 
-export function createW6b2SyntheticReleasePair(canonicalRelease) {
-  const source = createW6bSyntheticNextPatchRelease(canonicalRelease);
+export function createW6b2SyntheticReleasePair(releaseTemplate) {
+  const fixtureBaseline = createW6b2FixtureBaselineRelease(releaseTemplate);
+  const source = createW6bSyntheticNextPatchRelease(fixtureBaseline);
   const target = createW6bSyntheticNextPatchRelease(source);
   if (
     source.appVersion !== '0.2.7' ||
@@ -36,6 +39,29 @@ export function createW6b2SyntheticReleasePair(canonicalRelease) {
     throw new Error('W6B2_SYNTHETIC_RELEASE_PAIR_INVALID');
   }
   return Object.freeze({ source, target });
+}
+
+function createW6b2FixtureBaselineRelease(releaseTemplate) {
+  let validatedRelease;
+  try {
+    validatedRelease = validateInstallerReleaseConfig(
+      releaseTemplate,
+      releaseTemplate?.appVersion,
+    );
+  } catch {
+    throw new Error('W6B2_SYNTHETIC_RELEASE_PAIR_INVALID');
+  }
+  if (
+    validatedRelease.releaseChannel !== 'pilot' ||
+    validatedRelease.appVersion !== validatedRelease.msiProductVersion
+  ) {
+    throw new Error('W6B2_SYNTHETIC_RELEASE_PAIR_INVALID');
+  }
+  return Object.freeze({
+    ...validatedRelease,
+    appVersion: w6b2FixtureBaselineVersion,
+    msiProductVersion: w6b2FixtureBaselineVersion,
+  });
 }
 
 export function createW6b2PackageRequest(input) {

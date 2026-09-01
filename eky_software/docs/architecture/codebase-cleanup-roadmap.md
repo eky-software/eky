@@ -766,6 +766,7 @@ korvataan viittauksella uuteen hyväksyttyyn ADR- tai moduulisuunnitelmaan.
 | Company Settings -composition | Valmis | `a0325d1` | `6109130` | Reitit, salaisuusauditointi ja repositoryn sidonta eristetty; Invoicing saa vain `InvoiceEmailSettingsReader`-portin |
 | Featurekohtainen i18n-jako | Valinnainen P3 | - | - | Tehdään vain, jos nykyinen `uiText`-sopimus säilyy ja jako vähentää todellisia merge-konflikteja |
 | `packages/ui` | Passiivinen | - | - | Skeletonia ei aktivoida eikä sinne lisätä React-komponentteja ilman dokumentoitua usean itsenäisen UI:n tarvetta |
+| Windows release-testiharnessin vastuurajojen katselmus | 0.2.7-pilotin jälkeinen korjausvelka | - | - | Inventoi W6B-, W6B.2A- ja W6B.2B-prosessi-, paketointi-, timeout-, cleanup- ja observability-vastuiden päällekkäisyydet ennen uusia release-skenaarioita; säilytä hyväksytyt fail-closed-portit |
 | Release gate | Seuraava erillinen kokonaisuus | - | - | Backup/restore, migraatioiden eheys ja Windows-jakelun portit eivät kuulu käyttäytymisen säilyttävään ydinsiivoukseen |
 
 Roadmapia ei käytetä vanhojen ADR-päätösten historian uudelleenkirjoittamiseen.
