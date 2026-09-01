@@ -5,6 +5,7 @@ import {
   createPackageLayout,
   packageWindowsApplication,
 } from '../../scripts/packageWindowsApplication.mjs';
+import { validateInstallerReleaseConfig } from '../installerVersion.mjs';
 import {
   createUpgradeFixtureAppVersion,
   createUpgradeFixtureMsiVersion,
@@ -18,6 +19,7 @@ const fixtureRoot = join(
   'w6b',
   'synthetic-next-patch',
 );
+const w6bLegacyTargetVersion = '0.2.7';
 
 export const W6B_SYNTHETIC_WINDOWS_PACKAGE_PATHS = Object.freeze({
   artifactsRoot: join(fixtureRoot, 'installer-artifacts'),
@@ -60,10 +62,34 @@ export function createW6bSyntheticNextPatchRelease(currentRelease) {
   });
 }
 
+export function createW6bLegacyTargetRelease(releaseTemplate) {
+  let validatedRelease;
+  try {
+    validatedRelease = validateInstallerReleaseConfig(
+      releaseTemplate,
+      releaseTemplate?.appVersion,
+    );
+  } catch {
+    throw new Error('W6B_SYNTHETIC_RELEASE_SOURCE_INVALID');
+  }
+  if (
+    validatedRelease.releaseChannel !== 'pilot' ||
+    validatedRelease.appVersion !== validatedRelease.msiProductVersion
+  ) {
+    throw new Error('W6B_SYNTHETIC_RELEASE_SOURCE_INVALID');
+  }
+
+  return Object.freeze({
+    ...validatedRelease,
+    appVersion: w6bLegacyTargetVersion,
+    msiProductVersion: w6bLegacyTargetVersion,
+  });
+}
+
 export async function packageW6bSyntheticNextPatchApplication(
   currentRelease,
 ) {
-  const release = createW6bSyntheticNextPatchRelease(currentRelease);
+  const release = createW6bLegacyTargetRelease(currentRelease);
   const packaged = await packageWindowsApplication({
     layout: createPackageLayout(W6B_SYNTHETIC_WINDOWS_PACKAGE_PATHS),
     pilotBuild: true,
