@@ -13,6 +13,11 @@ import {
 } from '../../src/fixtures/isolatedBackendTest.js';
 
 const activationConfirmation = 'OTA UUSI LASKUNUMEROSARJA KÄYTTÖÖN';
+const activityMonthFormatter = new Intl.DateTimeFormat('en-CA', {
+  month: '2-digit',
+  timeZone: 'Europe/Helsinki',
+  year: 'numeric',
+});
 const previewDate = '2026-08-02';
 
 interface ApprovedInvoiceIdentity {
@@ -21,6 +26,9 @@ interface ApprovedInvoiceIdentity {
 }
 
 interface NumberingSeriesOverview {
+  activeSeries: {
+    activatedAt: string;
+  };
   activationConfirmationText: string;
   history: unknown[];
   revision: number;
@@ -135,8 +143,16 @@ test('INV-NUMBERING-SERIES-001 @critical activates a new series without consumin
   expect(newInvoicePersistence.invoice_number).toBe(newInvoice.number);
   expect(newInvoice.number).not.toBe(oldInvoice.number);
 
+  const activityQuery = new URLSearchParams({
+    category: 'invoicing',
+    month: formatHelsinkiActivityMonth(
+      new Date(activatedOverview.activeSeries.activatedAt),
+    ),
+    page: '1',
+    pageSize: '20',
+  });
   const activityResponse = await e2eBackend.api.get(
-    '/activity?month=2026-08&category=invoicing&page=1&pageSize=20',
+    `/activity?${activityQuery.toString()}`,
   );
   expect(activityResponse.status()).toBe(200);
   const activityText = await activityResponse.text();
@@ -930,4 +946,17 @@ function requireString(value: unknown): string {
     throw new Error('E2E numbering series key is invalid.');
   }
   return value;
+}
+
+function formatHelsinkiActivityMonth(date: Date): string {
+  if (Number.isNaN(date.getTime())) {
+    throw new RangeError('E2E activity timestamp is invalid.');
+  }
+  const parts = activityMonthFormatter.formatToParts(date);
+  const year = parts.find(({ type }) => type === 'year')?.value;
+  const month = parts.find(({ type }) => type === 'month')?.value;
+  if (!/^\d{4}$/u.test(year ?? '') || !/^\d{2}$/u.test(month ?? '')) {
+    throw new RangeError('E2E Helsinki activity month is invalid.');
+  }
+  return `${year}-${month}`;
 }
