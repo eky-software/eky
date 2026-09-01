@@ -1,5 +1,13 @@
 import { execFile } from 'node:child_process';
-import { link, lstat, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import {
+  copyFile,
+  lstat,
+  mkdir,
+  readdir,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
@@ -149,7 +157,7 @@ export async function prepareWindowsInstallerUpgradeFixture() {
   if (nextBuild.inventory.stage !== 'packagedApp') {
     throw new Error('INSTALLER_UPGRADE_FIXTURE_PAYLOAD_MISMATCH');
   }
-  await cloneDirectoryWithHardLinks(payloadRoot, rollbackPayloadRoot);
+  await copyRollbackFixturePayload(payloadRoot, rollbackPayloadRoot);
   const rollbackProbeDirectory = join(
     rollbackPayloadRoot,
     'resources',
@@ -203,7 +211,7 @@ export async function prepareWindowsInstallerUpgradeFixture() {
   return Object.freeze({ fixture, fixturePath });
 }
 
-async function cloneDirectoryWithHardLinks(sourceRoot, targetRoot) {
+export async function copyRollbackFixturePayload(sourceRoot, targetRoot) {
   await mkdir(targetRoot, { recursive: true });
   const visit = async (sourceDirectory, targetDirectory) => {
     const entries = await readdir(sourceDirectory, { withFileTypes: true });
@@ -218,7 +226,7 @@ async function cloneDirectoryWithHardLinks(sourceRoot, targetRoot) {
         await mkdir(targetPath);
         await visit(sourcePath, targetPath);
       } else if (metadata.isFile()) {
-        await link(sourcePath, targetPath);
+        await copyFile(sourcePath, targetPath, constants.COPYFILE_EXCL);
       } else {
         throw new Error('INSTALLER_UPGRADE_FIXTURE_FILE_TYPE_FORBIDDEN');
       }
