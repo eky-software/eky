@@ -1,5 +1,4 @@
 export interface EkyDesktopApi {
-  activatePreparedProfileRestore(): Promise<unknown>;
   chooseInvoicePdfArchiveDirectory(): Promise<unknown>;
   createEncryptedProfileBackup(): Promise<unknown>;
   createManualRecoveryPoint(): Promise<unknown>;
@@ -21,7 +20,6 @@ export interface EkyDesktopApi {
   openInvoicePdf(invoiceId: string): Promise<void>;
   openInvoicePdfArchiveDirectory(): Promise<void>;
   openOperationalLogFolder(): Promise<void>;
-  prepareEncryptedProfileRestore(): Promise<unknown>;
   retryPendingInvoicePdfArchiveTasks(): Promise<unknown>;
   renameWorkspace(input: {
     workspaceId: string;

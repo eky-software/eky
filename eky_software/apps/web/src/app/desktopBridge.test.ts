@@ -185,9 +185,6 @@ describe('desktop bridge', () => {
   });
 
   it('exposes the narrow profile protection capability', async () => {
-    const activatePreparedProfileRestore = vi.fn(
-      async () => 'cancelled' as const,
-    );
     const createEncryptedProfileBackup = vi.fn(
       async () => 'created' as const,
     );
@@ -196,17 +193,12 @@ describe('desktop bridge', () => {
     const inspectEncryptedProfileBackup = vi.fn(
       async () => inspectedBackup,
     );
-    const prepareEncryptedProfileRestore = vi.fn(
-      async () => inspectedBackup,
-    );
     const capability = getDesktopProfileProtection({
       ekyDesktop: createDesktopApi({
-        activatePreparedProfileRestore,
         createEncryptedProfileBackup,
         createManualRecoveryPoint,
         getProfileBackupStatus,
         inspectEncryptedProfileBackup,
-        prepareEncryptedProfileRestore,
       }),
     });
 
@@ -215,14 +207,8 @@ describe('desktop bridge', () => {
     await expect(capability?.inspectBackup()).resolves.toEqual(
       inspectedBackup,
     );
-    await expect(capability?.prepareRestore()).resolves.toEqual(
-      inspectedBackup,
-    );
     await expect(capability?.createRecoveryPoint()).resolves.toEqual(
       protectionStatus,
-    );
-    await expect(capability?.activatePreparedRestore()).resolves.toBe(
-      'cancelled',
     );
   });
 
@@ -312,7 +298,6 @@ const protectionStatus = {
     operationState: 'idle' as const,
     pointCount: 3,
   },
-  restoreOperationState: 'idle' as const,
 };
 
 const inspectedBackup = {
@@ -333,7 +318,6 @@ function createDesktopApi(
   overrides: Partial<EkyDesktopApi> = {},
 ): EkyDesktopApi {
   return {
-    activatePreparedProfileRestore: vi.fn(async () => 'cancelled'),
     chooseInvoicePdfArchiveDirectory: vi.fn(async () => disabledStatus),
     createEncryptedProfileBackup: vi.fn(async () => 'cancelled'),
     createManualRecoveryPoint: vi.fn(async () => protectionStatus),
@@ -369,9 +353,6 @@ function createDesktopApi(
     openInvoicePdf: vi.fn(async () => undefined),
     openInvoicePdfArchiveDirectory: vi.fn(async () => undefined),
     openOperationalLogFolder: vi.fn(async () => undefined),
-    prepareEncryptedProfileRestore: vi.fn(async () => ({
-      status: 'cancelled',
-    })),
     renameWorkspace: vi.fn(async () => ({
       formatVersion: 1,
       status: 'completed',

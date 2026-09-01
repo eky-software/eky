@@ -7,7 +7,6 @@ import type { RecoveryPointStatus } from './recoveryPoint/recoveryPointService.j
 export function createProfileProtectionStatus(
   portableBackup: ProfileBackupStatus,
   recoveryPoints: RecoveryPointStatus,
-  restoreOperationState: ProfileProtectionStatus['restoreOperationState'],
 ): ProfileProtectionStatus {
   return {
     portableBackup: {
@@ -25,6 +24,5 @@ export function createProfileProtectionStatus(
       operationState: recoveryPoints.operationState,
       pointCount: recoveryPoints.pointCount,
     },
-    restoreOperationState,
   };
 }

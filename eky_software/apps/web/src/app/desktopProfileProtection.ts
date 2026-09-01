@@ -24,7 +24,6 @@ export interface ProfileProtectionStatus {
     operationState: 'checking' | 'creating' | 'idle';
     pointCount: number;
   };
-  restoreOperationState: 'idle' | 'ready' | 'restoring';
 }
 
 export type ProfileBackupInspectionResult =
@@ -35,21 +34,17 @@ export type ProfileBackupInspectionResult =
     };
 
 export interface ProfileProtectionCapability {
-  activatePreparedRestore(): Promise<'cancelled' | 'relaunching'>;
   createBackup(): Promise<'cancelled' | 'created'>;
   createRecoveryPoint(): Promise<ProfileProtectionStatus>;
   getStatus(): Promise<ProfileProtectionStatus>;
   inspectBackup(): Promise<ProfileBackupInspectionResult>;
-  prepareRestore(): Promise<ProfileBackupInspectionResult>;
 }
 
 interface ProfileProtectionDesktopApi {
-  activatePreparedProfileRestore(): Promise<unknown>;
   createEncryptedProfileBackup(): Promise<unknown>;
   createManualRecoveryPoint(): Promise<unknown>;
   getProfileBackupStatus(): Promise<unknown>;
   inspectEncryptedProfileBackup(): Promise<unknown>;
-  prepareEncryptedProfileRestore(): Promise<unknown>;
 }
 
 interface ProfileProtectionTarget {
@@ -62,22 +57,15 @@ export function getDesktopProfileProtection(
   const desktop = target.ekyDesktop;
 
   if (
-    typeof desktop?.activatePreparedProfileRestore !== 'function' ||
-    typeof desktop.createEncryptedProfileBackup !== 'function' ||
+    typeof desktop?.createEncryptedProfileBackup !== 'function' ||
     typeof desktop.createManualRecoveryPoint !== 'function' ||
     typeof desktop.getProfileBackupStatus !== 'function' ||
-    typeof desktop.inspectEncryptedProfileBackup !== 'function' ||
-    typeof desktop.prepareEncryptedProfileRestore !== 'function'
+    typeof desktop.inspectEncryptedProfileBackup !== 'function'
   ) {
     return undefined;
   }
 
   return {
-    async activatePreparedRestore() {
-      return readActivationResult(
-        await desktop.activatePreparedProfileRestore(),
-      );
-    },
     async createBackup() {
       return readCreateBackupResult(
         await desktop.createEncryptedProfileBackup(),
@@ -98,11 +86,6 @@ export function getDesktopProfileProtection(
         await desktop.inspectEncryptedProfileBackup(),
       );
     },
-    async prepareRestore() {
-      return readProfileBackupInspectionResult(
-        await desktop.prepareEncryptedProfileRestore(),
-      );
-    },
   };
 }
 
@@ -114,7 +97,6 @@ function readProfileProtectionStatus(
     !hasExactKeys(value, [
       'portableBackup',
       'recoveryPoints',
-      'restoreOperationState',
     ]) ||
     !isRecord(value.portableBackup) ||
     !hasExactKeys(value.portableBackup, [
@@ -157,12 +139,7 @@ function readProfileProtectionStatus(
       'creating',
       'idle',
     ]) ||
-    !isNonNegativeSafeInteger(value.recoveryPoints.pointCount) ||
-    !isOneOf(value.restoreOperationState, [
-      'idle',
-      'ready',
-      'restoring',
-    ])
+    !isNonNegativeSafeInteger(value.recoveryPoints.pointCount)
   ) {
     throw new Error('Invalid profile protection status.');
   }
@@ -228,15 +205,6 @@ function readCreateBackupResult(
 ): 'cancelled' | 'created' {
   if (!isOneOf(value, ['cancelled', 'created'])) {
     throw new Error('Invalid profile backup creation result.');
-  }
-  return value;
-}
-
-function readActivationResult(
-  value: unknown,
-): 'cancelled' | 'relaunching' {
-  if (!isOneOf(value, ['cancelled', 'relaunching'])) {
-    throw new Error('Invalid profile restore activation result.');
   }
   return value;
 }

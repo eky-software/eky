@@ -20,8 +20,6 @@ export function ProfileBackupPanel({
   );
   const [inspection, setInspection] =
     useState<ProfileBackupInspectionSummary | null>(null);
-  const [restoreInspection, setRestoreInspection] =
-    useState<ProfileBackupInspectionSummary | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(
     null,
@@ -94,33 +92,6 @@ export function ProfileBackupPanel({
     });
   }
 
-  async function prepareRestore(): Promise<void> {
-    if (capability === undefined) {
-      return;
-    }
-    await run(async () => {
-      const result = await capability.prepareRestore();
-      if (result.status === 'inspected') {
-        setRestoreInspection(result.summary);
-      }
-    });
-  }
-
-  async function activateRestore(): Promise<void> {
-    if (capability === undefined) {
-      return;
-    }
-    await run(async () => {
-      const result = await capability.activatePreparedRestore();
-      setRestoreInspection(null);
-      if (result === 'relaunching') {
-        setSuccessMessage(
-          uiText.companySettings.profileRestoreRestarting,
-        );
-      }
-    });
-  }
-
   async function createRecoveryPoint(): Promise<void> {
     if (capability === undefined) {
       return;
@@ -143,7 +114,6 @@ export function ProfileBackupPanel({
     try {
       await operation();
     } catch {
-      setRestoreInspection(null);
       setErrorMessage(uiText.companySettings.profileBackupOperationError);
     } finally {
       setIsBusy(false);
@@ -156,12 +126,9 @@ export function ProfileBackupPanel({
       errorMessage={errorMessage}
       inspection={inspection}
       isBusy={isBusy}
-      onActivateRestore={activateRestore}
       onCreateBackup={createBackup}
       onCreateRecoveryPoint={createRecoveryPoint}
       onInspectBackup={inspectBackup}
-      onPrepareRestore={prepareRestore}
-      restoreInspection={restoreInspection}
       status={status}
       successMessage={successMessage}
     />

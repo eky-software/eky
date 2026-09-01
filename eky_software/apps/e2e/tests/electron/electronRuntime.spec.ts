@@ -67,7 +67,6 @@ test('DESK-RUNTIME-001 starts an isolated Electron runtime', async ({
   expect(rendererBoundary).toEqual({
     e2eConfigVisible: false,
     exposedDesktopKeys: [
-      'activatePreparedProfileRestore',
       'cancelLocalUpdate',
       'chooseInvoicePdfArchiveDirectory',
       'confirmLocalUpdate',
@@ -86,7 +85,6 @@ test('DESK-RUNTIME-001 starts an isolated Electron runtime', async ({
       'openInvoicePdf',
       'openInvoicePdfArchiveDirectory',
       'openOperationalLogFolder',
-      'prepareEncryptedProfileRestore',
       'renameWorkspace',
       'retryPendingInvoicePdfArchiveTasks',
       'selectLocalUpdate',

@@ -1,8 +1,6 @@
 import type {
   BrowserWindow,
   IpcMain,
-  MessageBoxOptions,
-  MessageBoxReturnValue,
   OpenDialogOptions,
   OpenDialogReturnValue,
   SaveDialogOptions,
@@ -17,7 +15,6 @@ import { createBackupPasswordWindowController } from './passwordWindow/backupPas
 import { PortableProfileBackupService } from './portableProfileBackup.js';
 import type { ProfileBackupCapability } from './profileBackupCapability.js';
 import { createProfileBackupCapability } from './profileBackupCapability.js';
-import type { ProfileBackupInspectionSummary } from './profileBackupInspectionTypes.js';
 import type { ProfileRecoveryOperationalObserver } from './profileRecoveryOperationalObserver.js';
 import { PortableProfileBackupStatusStore } from './portableProfileBackupStatusStore.js';
 import type { ProfileSnapshotBrokerClient } from './profileSnapshotBrokerClient.js';
@@ -44,16 +41,12 @@ interface ProfileBackupCompositionOptions {
   profileSnapshotClient: ProfileSnapshotBrokerClient;
   recoveryPointService: RecoveryPointService;
   relaunchApplication(): void;
-  showMessageBox(
-    owner: BrowserWindow | undefined,
-    options: MessageBoxOptions,
-  ): Promise<MessageBoxReturnValue>;
   showOpenDialog(
     owner: BrowserWindow,
     options: OpenDialogOptions,
   ): Promise<OpenDialogReturnValue>;
   showSafeError(
-    kind: 'create' | 'inspect' | 'recoveryPoint' | 'restore',
+    kind: 'create' | 'inspect' | 'recoveryPoint',
   ): void;
   showSaveDialog(
     owner: BrowserWindow,
@@ -115,10 +108,6 @@ export async function createProfileBackupComposition(
   });
   const capability = createProfileBackupCapability({
     backupService,
-    confirmRestoreActivation: (restore) =>
-      confirmRestoreActivation(options, restore),
-    confirmRestoreReplacement: (summary) =>
-      confirmRestoreReplacement(options, summary),
     ipcMain: options.ipcMain,
     mainWindow: options.mainWindow,
     maintenanceLease: options.maintenanceLease,
@@ -126,12 +115,9 @@ export async function createProfileBackupComposition(
     operationalLogger: options.operationalLogger,
     passwordWindow,
     recoveryPointService: options.recoveryPointService,
-    restoreActivationService,
-    restoreStagingService,
     selectBackupSource: () => selectBackupSource(options),
     selectBackupTarget: (defaultFileName) =>
       selectBackupTarget(options, defaultFileName),
-    selectRestoreSource: () => selectRestoreSource(options),
     showSafeError: options.showSafeError,
   });
 
@@ -142,50 +128,6 @@ export async function createProfileBackupComposition(
     profileRestoreActivationService: restoreActivationService,
     profileRestoreStagingService: restoreStagingService,
   };
-}
-
-async function confirmRestoreActivation(
-  options: ProfileBackupCompositionOptions,
-  restore: { summary: ProfileBackupInspectionSummary },
-): Promise<boolean> {
-  const result = await options.showMessageBox(options.mainWindow, {
-    buttons: ['Peruuta', 'Korvaa tiedot ja käynnistä Eky uudelleen'],
-    cancelId: 0,
-    defaultId: 0,
-    detail: [
-      formatProfileBackupSummary(restore.summary),
-      '',
-      'Palautusta edeltävä konekohtainen palautuspiste on luotu.',
-      'Eky sulkee nykyisen työtilan ja käynnistyy uudelleen.',
-    ].join('\n'),
-    message: 'Vahvista vielä tietojen korvaaminen ja uudelleenkäynnistys.',
-    noLink: true,
-    title: 'Palauta Eky-varmuuskopio',
-    type: 'warning',
-  });
-  return result.response === 1;
-}
-
-async function confirmRestoreReplacement(
-  options: ProfileBackupCompositionOptions,
-  summary: ProfileBackupInspectionSummary,
-): Promise<boolean> {
-  const result = await options.showMessageBox(options.mainWindow, {
-    buttons: ['Peruuta', 'Jatka palautuksen valmisteluun'],
-    cancelId: 0,
-    defaultId: 0,
-    detail: [
-      formatProfileBackupSummary(summary),
-      '',
-      'Nykyinen paikallinen yritystyötila korvataan varmuuskopion tiedoilla.',
-      'Ennen korvaamista Eky luo konekohtaisen palautuspisteen.',
-    ].join('\n'),
-    message: 'Haluatko valmistella varmuuskopion palautuksen?',
-    noLink: true,
-    title: 'Palauta Eky-varmuuskopio',
-    type: 'warning',
-  });
-  return result.response === 1;
 }
 
 async function selectBackupSource(
@@ -216,45 +158,8 @@ async function selectBackupTarget(
     : result.filePath;
 }
 
-async function selectRestoreSource(
-  options: ProfileBackupCompositionOptions,
-): Promise<string | null> {
-  const result = await options.showOpenDialog(options.mainWindow, {
-    filters: [
-      { extensions: ['ekybackup'], name: 'Salattu Eky-varmuuskopio' },
-    ],
-    message: 'Valitse palautettava Eky-varmuuskopio',
-    properties: ['openFile'],
-    title: 'Palauta Eky-varmuuskopiosta',
-  });
-  return readSingleSelectedPath(result);
-}
-
 function readSingleSelectedPath(result: OpenDialogReturnValue): string | null {
   return result.canceled || result.filePaths.length !== 1
     ? null
     : result.filePaths[0] ?? null;
-}
-
-function formatProfileBackupSummary(
-  summary: ProfileBackupInspectionSummary,
-): string {
-  const createdAt = new Intl.DateTimeFormat('fi-FI', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(new Date(summary.createdAt));
-  const sizeInMegabytes = (
-    summary.totalBusinessByteSize /
-    (1024 * 1024)
-  ).toLocaleString('fi-FI', {
-    maximumFractionDigits: 1,
-    minimumFractionDigits: 1,
-  });
-
-  return [
-    `Varmuuskopio luotu: ${createdAt}`,
-    `Eky-versio: ${summary.appVersion}`,
-    `Laskuasiakirjoja: ${summary.documentCount}`,
-    `Tietojen koko: ${sizeInMegabytes} Mt`,
-  ].join('\n');
 }

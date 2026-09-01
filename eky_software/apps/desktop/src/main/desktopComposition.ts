@@ -747,9 +747,9 @@ async function startDesktopCompositionRuntime({
   let shutdownStarted = false;
   let workspaceStartupAccepted = false;
   let targetBuildAccepted = false;
-  let workspaceActivationRestoredProfileAwaitingDecision = false;
-  let workspaceActivationTargetCommitted = false;
-  let workspaceActivationRecoveryAmbiguous = false;
+  let restoredProfileAwaitingDecision = false;
+  let restoredProfileTransactionCommitted = false;
+  let workspaceReplacementRecoveryAmbiguous = false;
 
   await Promise.all(
     [
@@ -863,6 +863,13 @@ async function startDesktopCompositionRuntime({
   const isWorkspaceActivationReplacementRecovery =
     startupRecoveryAuthority === 'workspaceReplacement' &&
     activeWorkspace.mode === 'targetValidation';
+  const isLegacyRegisteredWorkspaceRestoreRecovery =
+    startupRecoveryAuthority === 'profileRestore' &&
+    activeWorkspace.mode === 'normal';
+  const shouldDeferRestoredProfileAcceptance =
+    profileRestoreStartupMode === 'validateRestoredProfile' &&
+    (isWorkspaceActivationReplacementRecovery ||
+      isLegacyRegisteredWorkspaceRestoreRecovery);
   if (
     activeWorkspace.mode === 'targetValidation' &&
     startupRecoveryAuthority !== 'none' &&
@@ -1196,8 +1203,7 @@ async function startDesktopCompositionRuntime({
     await profileSnapshotBrokerClient.getStatus();
     const restoreStartupResult =
       await activeProfileRestoreStartupRecovery.validateAfterBackend({
-        ...(isWorkspaceActivationReplacementRecovery &&
-        profileRestoreStartupMode === 'validateRestoredProfile'
+        ...(shouldDeferRestoredProfileAcceptance
           ? { deferRestoredProfileAcceptance: true }
           : {}),
         mode: profileRestoreStartupMode,
@@ -1241,30 +1247,36 @@ async function startDesktopCompositionRuntime({
       });
     }
     if (
-      isWorkspaceActivationReplacementRecovery &&
+      shouldDeferRestoredProfileAcceptance &&
       restoreStartupResult === 'restoredProfileReady'
     ) {
-      workspaceActivationRestoredProfileAwaitingDecision = true;
-      activeWorkspace.assertCanAccept(activeProfileValidation.profileId);
+      const restoredProfileId = activeProfileValidation.profileId;
+      restoredProfileAwaitingDecision = true;
       try {
         await activeProfileRestoreStartupRecovery
-          .acceptValidatedRestoredProfile();
-        workspaceActivationRestoredProfileAwaitingDecision = false;
-        workspaceActivationTargetCommitted = true;
-      } catch (error) {
-        const activationJournal = await workspaceReplacementStartupRecovery
-          .journalStore.read()
-          .catch(() => {
-            workspaceActivationRecoveryAmbiguous = true;
-            workspaceActivationRestoredProfileAwaitingDecision = false;
-            return undefined;
+          .acceptValidatedRestoredProfile({
+            assertTargetCanAccept: () =>
+              activeWorkspace.assertCanAccept(restoredProfileId),
           });
-        if (activationJournal?.phase === 'accepted') {
-          workspaceActivationRestoredProfileAwaitingDecision = false;
-          workspaceActivationTargetCommitted = true;
-        } else if (activationJournal === undefined) {
-          workspaceActivationRecoveryAmbiguous = true;
-          workspaceActivationRestoredProfileAwaitingDecision = false;
+        restoredProfileAwaitingDecision = false;
+        restoredProfileTransactionCommitted = true;
+      } catch (error) {
+        if (isWorkspaceActivationReplacementRecovery) {
+          const activationJournal =
+            await workspaceReplacementStartupRecovery.journalStore
+              .read()
+              .catch(() => {
+                workspaceReplacementRecoveryAmbiguous = true;
+                restoredProfileAwaitingDecision = false;
+                return undefined;
+              });
+          if (activationJournal?.phase === 'accepted') {
+            restoredProfileAwaitingDecision = false;
+            restoredProfileTransactionCommitted = true;
+          } else if (activationJournal === undefined) {
+            workspaceReplacementRecoveryAmbiguous = true;
+            restoredProfileAwaitingDecision = false;
+          }
         }
         throw error;
       }
@@ -1293,11 +1305,11 @@ async function startDesktopCompositionRuntime({
     ) {
       return undefined;
     }
-    if (workspaceActivationRecoveryAmbiguous) {
+    if (workspaceReplacementRecoveryAmbiguous) {
       await activeWorkspace.requireRecovery?.().catch(() => undefined);
       throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
     }
-    if (workspaceActivationRestoredProfileAwaitingDecision) {
+    if (restoredProfileAwaitingDecision) {
       try {
         await activeProfileRestoreStartupRecovery
           .rollbackValidatedRestoredProfile();
@@ -1307,7 +1319,11 @@ async function startDesktopCompositionRuntime({
           'WORKSPACE_SWITCH_RECOVERY_REQUIRED',
         );
       }
-      workspaceActivationRestoredProfileAwaitingDecision = false;
+      restoredProfileAwaitingDecision = false;
+      if (isLegacyRegisteredWorkspaceRestoreRecovery) {
+        options.relaunchApplication();
+        return undefined;
+      }
       const workspaceRecovery = await activeWorkspace.recoverFromFailure();
       if (workspaceRecovery === 'relaunchRequired') {
         options.relaunchApplication();
@@ -1315,7 +1331,7 @@ async function startDesktopCompositionRuntime({
       }
       throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
     }
-    if (!workspaceStartupAccepted && !workspaceActivationTargetCommitted) {
+    if (!workspaceStartupAccepted && !restoredProfileTransactionCommitted) {
       const workspaceRecovery = await activeWorkspace.recoverFromFailure();
       if (workspaceRecovery === 'relaunchRequired') {
         options.relaunchApplication();
@@ -1597,32 +1613,24 @@ async function startDesktopCompositionRuntime({
       recoveryPointService,
       relaunchApplication: options.relaunchApplication,
       restoreActivationTransaction: profileRestoreActivationTransaction,
-      showMessageBox: dependencies.showMessageBox,
       showOpenDialog: dependencies.showOpenDialog,
       showSaveDialog: dependencies.showSaveDialog,
       showSafeError(kind) {
-      if (kind === 'recoveryPoint') {
+        if (kind === 'recoveryPoint') {
+          deliveryConfirmation.showApplicationError(
+            'Palautuspistettä ei voitu luoda',
+            'Konekohtaista palautuspistettä ei voitu luoda turvallisesti.',
+          );
+          return;
+        }
         deliveryConfirmation.showApplicationError(
-          'Palautuspistettä ei voitu luoda',
-          'Konekohtaista palautuspistettä ei voitu luoda turvallisesti.',
+          kind === 'create'
+            ? 'Varmuuskopiota ei voitu luoda'
+            : 'Varmuuskopiota ei voitu tarkistaa',
+          kind === 'create'
+            ? 'Salattua varmuuskopiota ei voitu luoda turvallisesti.'
+            : 'Varmuuskopion salasana, eheys tai sisältö ei läpäissyt tarkistusta.',
         );
-        return;
-      }
-      if (kind === 'restore') {
-        deliveryConfirmation.showApplicationError(
-          'Varmuuskopiota ei voitu palauttaa',
-          'Palautusta ei voitu valmistella tai käynnistää turvallisesti. Nykyisiä tietoja ei korvattu.',
-        );
-        return;
-      }
-      deliveryConfirmation.showApplicationError(
-        kind === 'create'
-          ? 'Varmuuskopiota ei voitu luoda'
-          : 'Varmuuskopiota ei voitu tarkistaa',
-        kind === 'create'
-          ? 'Salattua varmuuskopiota ei voitu luoda turvallisesti.'
-          : 'Varmuuskopion salasana, eheys tai sisältö ei läpäissyt tarkistusta.',
-      );
       },
       async stopBusinessRuntime() {
         await recoveryPointScheduler.stopChecks();

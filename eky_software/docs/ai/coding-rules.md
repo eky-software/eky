@@ -96,6 +96,26 @@ Backend-validointi on pakollinen turvallisuuden ja datan eheyden kannalta.
 
 Validointi ei korvaa domain-logiikkaa.
 
+## Ajonaikaiset Polut Ja Vakiot
+
+Tuotantokoodiin ei kirjoiteta kone-, käyttäjä-, asema- tai repositorykohtaista
+absoluuttista polkua. Desktop-polut johdetaan Electronin omistamasta
+`userData`- tai `resources`-juuresta, backend-polut composition rootin
+validoidusta konfiguraatiosta ja käyttäjän valitsema tiedosto main-prosessin
+native-dialogista. Renderer, backup, workspace-label tai business-data eivät
+saa muodostaa luotettua paikallista polkua.
+
+Konekohtaiset työkalupolut ja paikalliset komennot kuuluvat vain Gitistä
+ohitettuun `.eky-local/`-inventaarioon ja runbookiin. Niitä ei kopioida
+lähdekoodiin, testifixtureen tai versionoituun dokumentaatioon eikä niihin
+tallenneta salaisuuksia.
+
+Kiinteä protokollan nimi, formaattiversio, tiedostonimi tai turvallisuusraja ei
+ole kielletty kovakoodaus, kun se on sopimuksen tarkoituksellinen osa. Arvo
+nimetään omistavassa moduulissa ja muut kerrokset käyttävät samaa sopimusta tai
+validoitua DTO:ta. Samaa merkitystä ei toisteta irrallisena magic string- tai
+magic number -arvona useissa tiedostoissa.
+
 ## API-tyyli
 
 Frontend ei kutsu raakaa `fetch`-kutsua suoraan komponenteista, jos api-client-kerros on olemassa.
@@ -119,6 +139,8 @@ Repository hoitaa tietokantayhteyden.
 - yleistä `everything.ts`-tiedostoa
 - uutta riippuvuutta ilman perustelua
 - koodia, joka toimii vain yhdessä yrityksessä kovakoodatuilla arvoilla
+- konekohtaista absoluuttista polkua tuotantokoodissa
+- samaa protokolla- tai raja-arvoa kopioituna useaan omistajuusrajaan
 
 ## Refaktorointi
 

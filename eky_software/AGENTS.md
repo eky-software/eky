@@ -333,6 +333,16 @@ Installer ja automaattipäivitys ovat tästä erillisiä hyväksyntäportteja.
 11. Backend tarkistaa aina käyttöoikeudet.
 12. AI-agentit eivät saa tulevaisuudessakaan ohittaa samoja sääntöjä, joita käyttöliittymä noudattaa.
 13. Nykyistä autentikoimatonta local-MVP:tä ei avata verkkoon eikä käytetä oikealla asiakas- tai laskutusdatalla.
+14. Tuotantokoodi ei saa sisältää kone-, käyttäjä- tai repositorykohtaista
+    absoluuttista polkua. Ajonaikaiset polut johdetaan omistavan runtimen
+    validoidusta juuresta, native-valinnasta tai injektoidusta konfiguraatiosta.
+15. Protokolla-arvot, formaattiversiot ja turvallisuusrajat nimetään ja
+    keskitetään omistavaan moduuliin. Samaa merkitystä ei kopioida irrallisina
+    merkkijonoina tai numeroina useaan kerrokseen.
+16. Release- tai runtime-artifactia ei kloonata hardlinkillä lähde- tai
+    hyväksyttyyn artifactiin. Testifixture käyttää itsenäisiä tiedostotavuja;
+    hardlink on sallittu vain dokumentoidussa atomisessa tiedosto-operaatiossa,
+    jossa linkki-identiteetti on osa tarkoitettua sopimusta ja validoidaan.
 
 ## Arkkitehtuurin päälinja
 

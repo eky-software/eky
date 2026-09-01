@@ -92,6 +92,15 @@ Mandatory boundaries:
   owner's private port, stop the active runtime before full SQLite validation,
   publish the root before the registry entry, and restore the previous runtime
   on every terminal success or failure path
+- expose no generic active-profile restore capability to the renderer in the
+  multi-workspace product; a different lineage is imported as a new workspace,
+  and active data replacement is allowed only through the exact-lineage
+  workspace replacement capability
+- when a legacy profile-restore activation journal is found for a registered
+  active workspace, defer transaction acceptance until backend validation and
+  the registry lineage assertion both pass; a mismatch must roll back while
+  the journal still owns the rollback slot and then relaunch the previous
+  profile
 - never expose a backup password, derived key, recovery-point key, raw
   manifest or local backup/update path to the renderer
 - never accept encryption parameters, an executable, process arguments, a

@@ -282,7 +282,6 @@ function createDesktopApi(
   overrides: Partial<EkyDesktopApi> = {},
 ): EkyDesktopApi {
   return {
-    activatePreparedProfileRestore: async () => ({ status: 'cancelled' }),
     cancelLocalUpdate: async () => ({ status: 'cancelled' }),
     chooseInvoicePdfArchiveDirectory: async () => ({}),
     confirmLocalUpdate: async () => ({ status: 'cancelled' }),
@@ -307,7 +306,6 @@ function createDesktopApi(
     openInvoicePdf: async () => undefined,
     openInvoicePdfArchiveDirectory: async () => undefined,
     openOperationalLogFolder: async () => undefined,
-    prepareEncryptedProfileRestore: async () => ({ status: 'cancelled' }),
     renameWorkspace: async () => ({
       formatVersion: 1,
       status: 'completed',

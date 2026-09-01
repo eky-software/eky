@@ -82,6 +82,22 @@ desktop-paketin omistuksessa.
 Yleistä `test-utils`-kaatopaikkaa ei luoda. Toistuva testi-infrastruktuuri
 irrotetaan vasta todelliseen tarpeeseen ja nimetään vastuun mukaan.
 
+## Tiedostoidentiteetti Testeissä
+
+Packaged-, installer-, rollback- ja release-fixturet muodostavat itsenäiset
+tiedostotavut. Lähdepuun `out`-hakemistoa, hyväksyttyä MSI:tä tai muuta
+release-artifactia ei hardlinkata fixtureen, koska linkitys muuttaa myös
+lähdetiedoston filesystem-identiteettiä ja voi rikkoa strict runtime-
+validoinnin. Artifactin byte-identtisyys todistetaan hashilla ja inventaariolla,
+ei yhteisellä inode-/file-id-identiteetillä.
+
+Hardlink on sallittu vain rajatussa tiedostojärjestelmätestissä tai
+tuotantosopimuksessa, jossa atominen no-overwrite-linkitys on nimenomaan
+toiminnon semantiikka. Tällöin lähde, kohde, containment, linkkimäärä,
+same-volume-ehto, rollback ja virhetilat validoidaan erikseen. Turvallisuustesti
+saa luoda haitallisen hardlinkin todistaakseen torjunnan, mutta se ei saa käyttää
+sitä release-payloadin monistamiseen.
+
 ## Mitä testataan aina
 
 Lisää testit aina, kun muutos koskee:
