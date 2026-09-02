@@ -24,7 +24,7 @@
     "@eky/permissions": "workspace:*",
     "@hono/node-server": "2.1.0",
     "better-sqlite3": "13.0.2",
-    "hono": "^4.13.1",
+    "hono": "^4.13.5",
     "pdfkit": "^0.19.1"
   },
   "devDependencies": {
