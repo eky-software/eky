@@ -68,14 +68,22 @@ function Get-EkyOwnedProcessIdentitiesFromSnapshot {
   }
 
   $ownedProcessIds = @([int]$RootIdentity.processId)
+  $ownedCreationTokens = @{
+    [int]$RootIdentity.processId = [long]$RootIdentity.creationToken
+  }
   do {
     $previousCount = $ownedProcessIds.Count
     foreach ($candidate in $ProcessSnapshot) {
+      $parentProcessId = [int]$candidate.parentProcessId
+      $processId = [int]$candidate.processId
       if (
-        $ownedProcessIds -contains [int]$candidate.parentProcessId -and
-        $ownedProcessIds -notcontains [int]$candidate.processId
+        $ownedCreationTokens.ContainsKey($parentProcessId) -and
+        !$ownedCreationTokens.ContainsKey($processId) -and
+        [long]$candidate.creationToken -ge
+          [long]$ownedCreationTokens[$parentProcessId]
       ) {
-        $ownedProcessIds += [int]$candidate.processId
+        $ownedProcessIds += $processId
+        $ownedCreationTokens[$processId] = [long]$candidate.creationToken
       }
     }
   } while ($ownedProcessIds.Count -ne $previousCount)

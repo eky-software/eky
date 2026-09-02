@@ -68,6 +68,12 @@ tarkistaa samaa nimettyä ehtoa ja sen pitää palautua heti ehdon toteutuessa.
 Erillinen enimmäisaika säilytetään fail-closed-turvarajana; sen täyttyminen on
 virhe eikä valmis-signaali.
 
+Windows-prosessipuun omistajuus ei saa perustua pelkkään parent PID -ketjuun,
+koska poistuneen prosessin PID voidaan käyttää uudelleen. Omistetun lapsen
+pitää kuulua samaan täsmälliseen creation identity -ketjuun ja sen syntymäajan
+pitää olla sama tai myöhempi kuin todistetun vanhemman. Ennen omistettua juurta
+syntynyt prosessi ja sen jälkeläiset torjutaan siivouksesta fail closed.
+
 ## Testien Sijainti
 
 Yksikkö- ja komponenttitestit pidetään lähtökohtaisesti testattavan tiedoston

@@ -203,6 +203,25 @@ try {
   if (@($owned | Where-Object { $_.processId -eq 200 }).Count -ne 0) {
     throw 'INSTALLER_PROCESS_TREE_UNRELATED_INCLUDED'
   }
+  $staleParentSnapshot = @(
+    New-SnapshotRecord -ProcessId 100 -ParentProcessId 1 `
+      -CreationToken '1000'
+    New-SnapshotRecord -ProcessId 300 -ParentProcessId 100 `
+      -CreationToken '900'
+    New-SnapshotRecord -ProcessId 301 -ParentProcessId 300 `
+      -CreationToken '1100'
+  )
+  $staleParentOwned = @(Get-EkyOwnedProcessIdentitiesFromSnapshot `
+    -RootIdentity $rootIdentity -ProcessSnapshot $staleParentSnapshot)
+  Assert-Equal $staleParentOwned.Count 1 `
+    'INSTALLER_PROCESS_TREE_STALE_PARENT_INCLUDED'
+  if (
+    @($staleParentOwned | Where-Object {
+      $_.processId -eq 300 -or $_.processId -eq 301
+    }).Count -ne 0
+  ) {
+    throw 'INSTALLER_PROCESS_TREE_STALE_PARENT_INCLUDED'
+  }
 
   $stage = 'outcomeRules'
   Assert-Equal (Get-EkyProcessTreeStopOutcome -TaskkillExitCode 0 `
