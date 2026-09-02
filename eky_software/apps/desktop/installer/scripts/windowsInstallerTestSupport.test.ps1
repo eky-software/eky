@@ -45,6 +45,7 @@ function Start-MsiRunnerFixtureProcess {
 $ownedProcess = $null
 $sentinelProcess = $null
 $fastProcess = $null
+$observedExitProcess = $null
 $treeProcess = $null
 $cleanupExitedProcess = $null
 $cleanupTimeoutProcess = $null
@@ -55,6 +56,7 @@ $longPathCleanupRoot = $null
 $failureCode = $null
 $successResult = $null
 $hostObservationLines = [System.Collections.Generic.List[string]]::new()
+$observedExitLines = [System.Collections.Generic.List[string]]::new()
 $timeoutObservationLines = [System.Collections.Generic.List[string]]::new()
 $cleanupObservationLines = [System.Collections.Generic.List[string]]::new()
 try {
@@ -173,6 +175,32 @@ try {
     'INSTALLER_MSI_RUNNER_FAST_PROCESS_STATE_INVALID'
   Assert-Equal $fastResult.exitCode 0 `
     'INSTALLER_MSI_RUNNER_FAST_PROCESS_EXIT_INVALID'
+
+  $observedExitProcess = Start-MsiRunnerFixtureProcess `
+    -Command 'Start-Sleep -Milliseconds 500; exit 7'
+  $observedExitContext = New-EkyMsiProcessObservationContext `
+    -Operation w6b_target_install -Enabled $true -Writer {
+      param([string]$Line)
+      $observedExitLines.Add($Line)
+    }
+  $observedExitCode = Invoke-EkyOwnedMsiProcessLifecycle `
+    -Process $observedExitProcess `
+    -ErrorPrefix INSTALLER_MSI_RUNNER_SIMULATED `
+    -TimeoutMilliseconds 5000 -HeartbeatMilliseconds 20 `
+    -PollMilliseconds 10 -ObservationContext $observedExitContext
+  Assert-Equal $observedExitCode 7 `
+    'INSTALLER_MSI_RUNNER_OBSERVED_EXIT_CODE_CHANGED'
+  $observedExitPhases = @($observedExitLines | ForEach-Object {
+    (ConvertFrom-Json -InputObject $_).phase
+  })
+  foreach ($requiredPhase in @(
+    'waitHeartbeat',
+    'hostExited',
+    'processTreeAbsent'
+  )) {
+    Assert-Equal ($observedExitPhases -contains $requiredPhase) $true `
+      'INSTALLER_MSI_RUNNER_OBSERVED_EXIT_PHASE_MISSING'
+  }
 
   $treeProcess = Start-MsiRunnerFixtureProcess -Command @'
 $child = Start-Process powershell.exe -ArgumentList @(
@@ -302,7 +330,8 @@ $child = Start-Process powershell.exe -ArgumentList @(
   $safeObservationPattern = `
     '^\{"operation":"[a-z0-9_]+","phase":"[A-Za-z]+","status":"[a-z]+","durationMs":\d+,"elapsedMs":\d+\}$'
   foreach ($line in @(
-    $hostObservationLines + $timeoutObservationLines + $cleanupObservationLines
+    $hostObservationLines + $observedExitLines + $timeoutObservationLines +
+      $cleanupObservationLines
   )) {
     Assert-Equal ($line -cmatch $safeObservationPattern) $true `
       'INSTALLER_MSI_RUNNER_OBSERVATION_PAYLOAD_UNSAFE'
@@ -321,6 +350,7 @@ $child = Start-Process powershell.exe -ArgumentList @(
     boundedInstallPolicy = $true
     boundedUninstallPolicy = $true
     fastExitValidated = $true
+    observedExitValidated = $true
     hostArgumentRoundTripValidated = $true
     hostExitBeforeCleanupValidated = $true
     longPathCleanupValidated = $true
@@ -348,6 +378,7 @@ finally {
     $ownedProcess,
     $sentinelProcess,
     $fastProcess,
+    $observedExitProcess,
     $treeProcess,
     $cleanupExitedProcess,
     $cleanupTimeoutProcess

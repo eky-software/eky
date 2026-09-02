@@ -190,17 +190,8 @@ function Wait-EkyObservedOwnedMsiProcess {
   }
   $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
   $nextHeartbeatMs = [long]$HeartbeatMilliseconds
-  $pollGate = [Threading.ManualResetEventSlim]::new($false)
   try {
     do {
-      $Process.Refresh()
-      if ($Process.HasExited) {
-        return [pscustomobject]@{
-          state = 'exited'
-          exitCode = [int]$Process.ExitCode
-          durationMs = [long]$stopwatch.ElapsedMilliseconds
-        }
-      }
       $remainingMs = [long]$TimeoutMilliseconds -
         [long]$stopwatch.ElapsedMilliseconds
       if ($remainingMs -le 0) {
@@ -222,7 +213,13 @@ function Wait-EkyObservedOwnedMsiProcess {
           $untilHeartbeatMs
         )
       }
-      [void]$pollGate.Wait([Math]::Max(1, $waitMilliseconds))
+      if ($Process.WaitForExit([Math]::Max(1, $waitMilliseconds))) {
+        return [pscustomobject]@{
+          state = 'exited'
+          exitCode = [int]$Process.ExitCode
+          durationMs = [long]$stopwatch.ElapsedMilliseconds
+        }
+      }
       if ($stopwatch.ElapsedMilliseconds -ge $nextHeartbeatMs) {
         Write-EkyMsiProcessObservation -Context $ObservationContext `
           -Phase waitHeartbeat -Status observed
@@ -237,7 +234,6 @@ function Wait-EkyObservedOwnedMsiProcess {
   }
   finally {
     $stopwatch.Stop()
-    $pollGate.Dispose()
   }
 }
 
