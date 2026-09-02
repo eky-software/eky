@@ -2,8 +2,9 @@
 
 Tämä dokumentti kirjaa `apps/desktop`-paketointispiken ensimmäisen rajatun
 riippuvuuspäätöksen 14.7.2026, Electron 43 / better-sqlite3 13
--yhteensopivuuden varmennuksen 3.8.2026 sekä Electron 43.3.0 -patch-päivityksen
-17.8.2026. Versiot tarkistetaan uudelleen ennen
+-yhteensopivuuden varmennuksen 3.8.2026, Electron 43.3.0 -patch-päivityksen
+17.8.2026 sekä transitiivisen XML-kirjaston tietoturvakorjauksen 2.9.2026.
+Versiot tarkistetaan uudelleen ennen
 tuotantojulkaisua, allekirjoitusta tai automaattipäivityksen toteutusta.
 
 ## Rajaus
@@ -36,6 +37,16 @@ Spikessä käytetään tarkasti lukittuja development-riippuvuuksia vain
 | `electron` | `43.3.0` | desktop-runtime ja Windows-binääri |
 | `@electron/packager` | `20.0.4` | rajattu paketoitu sovellushakemisto |
 | `@electron/fuses` | `2.1.3` | production-fusejen lukitseminen |
+
+`@electron/packager`-työkalun `plist`-riippuvuus toi transitiivisesti
+`@xmldom/xmldom`-version `0.9.10`. GitHub-advisory
+`GHSA-6gmq-8vp8-gcm6` koskee versioita `0.9.0`-`0.9.11`, ja korjattu
+yhteensopiva patch-versio on `0.9.12`. Projektin omistaja hyväksyi 2.9.2026
+täsmäversioon lukitun workspace-overriden `0.9.12`:een. Override ei lisää
+uutta suoraa riippuvuutta eikä muuta Eky-sovelluksen runtime-payloadia;
+se rajaa nykyisen paketointityökaluketjun transitiivisen XML-kirjaston
+korjattuun versioon. Override voidaan poistaa, kun hyväksytty upstream-ketju
+ratkaisee saman tai uudemman tarkistetun version ilman sitä.
 
 Rajattu installer-build käyttää lisäksi erikseen hyväksyttyjä build-työkaluja:
 
