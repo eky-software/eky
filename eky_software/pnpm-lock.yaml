@@ -28,8 +28,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/permissions
       '@hono/node-server':
-        specifier: 2.1.0
-        version: 2.1.0(hono@4.13.1)
+        specifier: 2.1.1
+        version: 2.1.1(hono@4.13.1)
       better-sqlite3:
         specifier: 13.0.2
         version: 13.0.2
@@ -161,8 +161,8 @@ packages:
     engines: {node: '>=22.12.0'}
     hasBin: true
 
-  '@hono/node-server@2.1.0':
-    resolution: {integrity: sha512-XovyyCCnBzW+zKu+z/zq8hwNs4KOR5rEMAOxo2f40Q5xoOI37IMm6MIg2COOUtUApo0i6850MTBKH2u4QLGIqg==}
+  '@hono/node-server@2.1.1':
+    resolution: {integrity: sha512-ELuehkj5VCBdgEw9zs+ivkKwyzzUCSQuE96YmiPvn1ECBoZCczbFXJLeEGMTYjphP6gydh4pHMqEYPVMYUVgQg==}
     engines: {node: '>=20'}
     peerDependencies:
       hono: ^4
@@ -968,7 +968,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@hono/node-server@2.1.0(hono@4.13.1)':
+  '@hono/node-server@2.1.1(hono@4.13.1)':
     dependencies:
       hono: 4.13.1
 
