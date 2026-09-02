@@ -15,6 +15,7 @@ import test from 'node:test';
 import {
   parseW6b2PackagedCommandArguments,
   runW6b2PackagedCommand,
+  terminalizeFailedOwnedProcessHandle,
   W6B2_PACKAGED_COMMAND_CLEANUP_TIMEOUT_MILLISECONDS,
   W6B2_PACKAGED_COMMAND_HEARTBEAT_MILLISECONDS,
 } from './runW6b2PackagedCommand.mjs';
@@ -160,6 +161,47 @@ test('keeps process timeout primary when cleanup also times out', async () => {
     run,
     /W6B2_PACKAGED_COMMAND_PROCESS_TIMEOUT/u,
   );
+  assert.equal(harness.childKillCount(), 1);
+  assert.equal(harness.childUnrefCount(), 1);
+});
+
+test('cleanup failure terminalizes only the direct owned child handle', () => {
+  const child = new EventEmitter();
+  child.exitCode = null;
+  child.signalCode = null;
+  let killCount = 0;
+  let unrefCount = 0;
+  child.kill = () => {
+    killCount += 1;
+    return true;
+  };
+  child.unref = () => {
+    unrefCount += 1;
+  };
+
+  terminalizeFailedOwnedProcessHandle(child);
+  assert.equal(killCount, 1);
+  assert.equal(unrefCount, 1);
+  assert.doesNotThrow(() => child.emit('error', new Error('late failure')));
+});
+
+test('completed child handle is unreferenced without a second kill', () => {
+  const child = new EventEmitter();
+  child.exitCode = 0;
+  child.signalCode = null;
+  let killCount = 0;
+  let unrefCount = 0;
+  child.kill = () => {
+    killCount += 1;
+    return true;
+  };
+  child.unref = () => {
+    unrefCount += 1;
+  };
+
+  terminalizeFailedOwnedProcessHandle(child);
+  assert.equal(killCount, 0);
+  assert.equal(unrefCount, 1);
 });
 
 test('uses cleanup timeout when the worker itself completed', async () => {
@@ -242,6 +284,12 @@ test('cleanup script validates exact worker ownership', async () => {
   assert.match(source, /actualCreationToken -cne \$expectedCreationToken/u);
   assert.doesNotMatch(source, /Stop-Process\s+-Name/iu);
   assert.doesNotMatch(source, /taskkill\.exe/iu);
+  const commandSource = await readFile(
+    new URL('./runW6b2PackagedCommand.mjs', import.meta.url),
+    'utf8',
+  );
+  assert.match(commandSource, /terminalizeFailedOwnedProcessHandle/u);
+  assert.match(commandSource, /child\.unref\?\.\(\)/u);
 });
 
 test(
@@ -353,6 +401,21 @@ function createHarness(options = {}) {
   const cleanupInputs = [];
   const events = [];
   const spawnArguments = [];
+  let childKillCount = 0;
+  let childUnrefCount = 0;
+  child.exitCode = null;
+  child.signalCode = null;
+  child.kill = () => {
+    childKillCount += 1;
+    return true;
+  };
+  child.unref = () => {
+    childUnrefCount += 1;
+  };
+  child.on('exit', (exitCode, signal) => {
+    child.exitCode = exitCode;
+    child.signalCode = signal;
+  });
   let deadline;
   let heartbeat;
   const dependencies = {
@@ -383,6 +446,8 @@ function createHarness(options = {}) {
   };
   return {
     child,
+    childKillCount: () => childKillCount,
+    childUnrefCount: () => childUnrefCount,
     cleanupInputs,
     dependencies,
     events,

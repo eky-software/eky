@@ -186,6 +186,10 @@ async function runOwnedCommandProcess(configuration, dependencies) {
     cleanupErrorCode = resolveCleanupErrorCode(error);
   }
 
+  if (cleanupErrorCode !== undefined) {
+    terminalizeFailedOwnedProcessHandle(child);
+  }
+
   const primaryErrorCode = terminalErrorCode ?? cleanupErrorCode;
   if (primaryErrorCode !== undefined) {
     observe('command', 'failed', primaryErrorCode);
@@ -224,6 +228,27 @@ function resolveCleanupErrorCode(error) {
     error.message === 'W6B2_PACKAGED_COMMAND_CLEANUP_TIMEOUT'
     ? error.message
     : 'W6B2_PACKAGED_COMMAND_CLEANUP_FAILED';
+}
+
+export function terminalizeFailedOwnedProcessHandle(child) {
+  if (child === undefined || child === null) return;
+  try {
+    child.once?.('error', () => undefined);
+  } catch {
+    // The direct child handle is still released below when possible.
+  }
+  try {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill?.();
+    }
+  } catch {
+    // Exact tree cleanup remains the authority; this only terminalizes the host.
+  }
+  try {
+    child.unref?.();
+  } catch {
+    // The original cleanup error remains the terminal command result.
+  }
 }
 
 function waitForTerminalProcess(input) {
@@ -318,7 +343,7 @@ function terminateOwnedProcessTree(input) {
     child.once('error', onError);
     child.once('exit', onExit);
     timer = globalThis.setTimeout(() => {
-      child.kill();
+      terminalizeFailedOwnedProcessHandle(child);
       finish(new Error('W6B2_PACKAGED_COMMAND_CLEANUP_TIMEOUT'));
     }, input.cleanupTimeoutMilliseconds);
   });

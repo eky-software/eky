@@ -233,6 +233,16 @@ try {
   Assert-Equal (Get-EkyProcessTreeStopOutcome -TaskkillExitCode 128 `
     -RemainingOwnedProcessIdentities @() -DeadlineReached $false) `
     'stopped' 'INSTALLER_PROCESS_TREE_CHILD_EXIT_STOP_INVALID'
+  Assert-Equal (Get-EkyRemainingProcessTreeTimeoutMilliseconds `
+    -TimeoutMilliseconds 5000 -ElapsedMilliseconds 1200) 3800 `
+    'INSTALLER_PROCESS_TREE_ROOT_WAIT_INVALID'
+  Assert-Equal (Get-EkyRemainingProcessTreeTimeoutMilliseconds `
+    -TimeoutMilliseconds 5000 -ElapsedMilliseconds 5000) 0 `
+    'INSTALLER_PROCESS_TREE_ROOT_WAIT_INVALID'
+  Assert-ThrowsCode {
+    Get-EkyRemainingProcessTreeTimeoutMilliseconds `
+      -TimeoutMilliseconds 5000 -ElapsedMilliseconds -1
+  } 'INSTALLER_UPGRADE_PROCESS_TREE_WAIT_INVALID'
 
   $stage = 'pidReuseRules'
   $reusedSnapshot = @(

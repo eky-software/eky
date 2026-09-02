@@ -388,6 +388,13 @@ Backup-, restore-, installer- tai update-polun onnistumista ei todisteta vain
 mockilla tai selain-E2E:llä. Windowsin tiedosto-, prosessi-, `safeStorage`- ja
 paketointirajat vaativat packaged-testin.
 
+Packaged-testin ulomman watchdogin pitää käyttää yhtä koko omistetun
+prosessipuun siivouksen kattavaa deadlinea. Jos täsmällinen prosessipuun
+siivous epäonnistuu, tulos pysyy virheenä, mutta wrapperin pitää lisäksi
+terminalisoida vain itse käynnistämänsä suora child-kahva. CI ei saa jäädä
+ulkoiseen aikakatkaisuun ilman turvallista terminal-tulosta eikä
+child-kahvan vapautusta saa tulkita onnistuneeksi siivoukseksi.
+
 Restorea muuttava packaged-testi käynnistää vähintään kaksi eri
 Electron-prosessia samaa synteettistä palautettua profiilia vasten. Sen pitää
 todistaa palautetun tietokannan identiteetti ennen backendin avausta,
