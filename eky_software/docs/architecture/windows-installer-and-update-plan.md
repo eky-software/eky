@@ -911,6 +911,17 @@ välittää timeoutin suljettuna tuloksena kutsuvalle harnessille. CI-runnerin
 output-kahvaa perivää `-NoNewWindow`-käynnistystä tai rajaamatonta
 `Start-Process -Wait` -jälkeläisodotusta ei käytetä.
 
+W6B.2:n prosessiharness ei peri CI-runnerin output-kahvoja suoraan.
+Workerin stdout ja stderr välitetään omien pipe-kahvojen kautta. Workerilta
+odotetaan prosessin exit-tapahtuma, sen omistama prosessipuu siivotaan tai
+todetaan poistuneeksi ja vasta sen jälkeen pipe-kahvat irrotetaan. Näin
+jälkeläisen auki pitämä output-kahva ei estä cleanupia tai CI-komennon
+terminalisoitumista. Installer-handoffissa omistajuus siirtyy dynaamisesti koko
+sille täsmälliselle omistetulle prosessihaaralle, jonka jälkeläisenä validoitu
+`msiexec.exe` havaitaan; rinnakkaiset application-haarat pysyvät harnessin
+omistuksessa. Deadline katkaisee puuttuvan terminal-signaalin, mutta sitä ei
+käytetä onnistumisen osoituksena.
+
 W6B:n success-todisteessa aktiivinen `compatiblePending`-työtila migroidaan
 first startissa, passiivinen `compatiblePending` säilyy siihen asti byte-
 identtisenä ja migroidaan vasta aktivoinnissa sekä passiivinen

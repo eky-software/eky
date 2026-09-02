@@ -140,6 +140,21 @@ function Test-EkyExactProcessIdentityPresent {
       return $false
     }
     catch {
+      try {
+        $candidate.Refresh()
+        if ($candidate.HasExited) {
+          return $false
+        }
+      }
+      catch [System.InvalidOperationException] {
+        return $false
+      }
+      catch [System.ArgumentException] {
+        return $false
+      }
+      catch {
+        # A live but unreadable process identity must remain fail closed.
+      }
       throw 'INSTALLER_UPGRADE_PROCESS_IDENTITY_CHECK_FAILED'
     }
     return $creationToken -eq [string]$Identity.creationToken

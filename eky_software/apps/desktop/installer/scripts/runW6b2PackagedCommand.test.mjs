@@ -67,7 +67,7 @@ test('preserves normal worker exit and proves exact cleanup', async () => {
   const harness = createHarness();
   const run = startCommand(harness);
 
-  harness.child.emit('exit', 0, null);
+  harness.complete(0, null);
 
   await assert.doesNotReject(run);
   assert.equal(harness.cleanupInputs.length, 1);
@@ -77,6 +77,11 @@ test('preserves normal worker exit and proves exact cleanup', async () => {
     harness.spawnArguments[0][1][2],
     /^--process-proof-token=[0-9a-f]{64}$/u,
   );
+  assert.deepEqual(
+    harness.spawnArguments[0][2].stdio,
+    ['ignore', 'pipe', 'pipe'],
+  );
+  assert.equal(harness.outputDisconnectCount(), 1);
   assert.deepEqual(lastEvent(harness.events), {
     commandKind: 'success',
     durationMs: 0,
@@ -114,13 +119,24 @@ test('turns the absolute deadline into cleanup and a safe timeout', async () => 
     ),
     true,
   );
+  assert.equal(harness.outputDisconnectCount(), 1);
+});
+
+test('releases isolated output after dynamic worker exit and cleanup', async () => {
+  const harness = createHarness();
+  const run = startCommand(harness);
+
+  harness.child.emit('exit', 0, null);
+  await assert.doesNotReject(run);
+  assert.equal(harness.cleanupInputs.length, 1);
+  assert.equal(harness.outputDisconnectCount(), 1);
 });
 
 test('preserves non-zero worker exit after cleanup', async () => {
   const harness = createHarness();
   const run = startCommand(harness);
 
-  harness.child.emit('exit', 19, null);
+  harness.complete(19, null);
 
   await assert.rejects(
     run,
@@ -210,7 +226,7 @@ test('uses cleanup timeout when the worker itself completed', async () => {
   });
   const run = startCommand(harness);
 
-  harness.child.emit('exit', 0, null);
+  harness.complete(0, null);
 
   await assert.rejects(
     run,
@@ -230,7 +246,7 @@ test('emits one command failure when worker exit and cleanup both fail', async (
   });
   const run = startCommand(harness);
 
-  harness.child.emit('exit', 19, null);
+  harness.complete(19, null);
 
   await assert.rejects(
     run,
@@ -261,7 +277,7 @@ test('safe events expose no command inputs or proof token', async () => {
   const harness = createHarness();
   const run = startCommand(harness);
 
-  harness.child.emit('exit', 7, null);
+  harness.complete(7, null);
   await assert.rejects(run);
 
   const output = JSON.stringify(harness.events);
@@ -403,6 +419,7 @@ function createHarness(options = {}) {
   const spawnArguments = [];
   let childKillCount = 0;
   let childUnrefCount = 0;
+  let outputDisconnectCount = 0;
   child.exitCode = null;
   child.signalCode = null;
   child.kill = () => {
@@ -422,6 +439,11 @@ function createHarness(options = {}) {
     clearInterval() {},
     clearTimeout() {},
     createProofToken: () => options.proofToken ?? proofToken,
+    connectProcessOutput() {
+      return () => {
+        outputDisconnectCount += 1;
+      };
+    },
     now: () => 1_000,
     observe(event) {
       events.push(event);
@@ -448,6 +470,9 @@ function createHarness(options = {}) {
     child,
     childKillCount: () => childKillCount,
     childUnrefCount: () => childUnrefCount,
+    complete(exitCode, signal) {
+      child.emit('exit', exitCode, signal);
+    },
     cleanupInputs,
     dependencies,
     events,
@@ -459,6 +484,7 @@ function createHarness(options = {}) {
       assert.equal(typeof heartbeat, 'function');
       heartbeat();
     },
+    outputDisconnectCount: () => outputDisconnectCount,
     spawnArguments,
   };
 }

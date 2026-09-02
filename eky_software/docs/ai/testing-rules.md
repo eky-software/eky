@@ -58,6 +58,16 @@ kesken, virhe rajataan ja baseline palautetaan vihreäksi ennen uuden
 toiminnallisuuden aloittamista. Testin ohittaminen, pidempi timeout tai uusi
 rebuild ei ole todiste ilman dokumentoitua juurisyytä.
 
+Asynkronisen testin valmistuminen sidotaan aina havaittavaan tapahtumaan tai
+tilaehtoon, kuten prosessin `exit`- ja `close`-tapahtumiin, health-vastaukseen,
+validoituun result-artifactiin, MSI:n product stateen tai täsmällisen
+prosessipuun poistumiseen. Kiinteää odotusta ei käytetä onnistumisen
+edellytyksenä eikä ajoitusongelmaa korjata vaihtamalla yksi sekuntiluku
+toiseen. Jos alustalta ei ole saatavissa tapahtumaa, rajattu polling saa vain
+tarkistaa samaa nimettyä ehtoa ja sen pitää palautua heti ehdon toteutuessa.
+Erillinen enimmäisaika säilytetään fail-closed-turvarajana; sen täyttyminen on
+virhe eikä valmis-signaali.
+
 ## Testien Sijainti
 
 Yksikkö- ja komponenttitestit pidetään lähtökohtaisesti testattavan tiedoston

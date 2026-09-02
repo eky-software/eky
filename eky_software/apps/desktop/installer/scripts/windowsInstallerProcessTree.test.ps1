@@ -300,6 +300,65 @@ try {
     $alreadyExited.Dispose()
   }
 
+  for ($raceIndex = 0; $raceIndex -lt 20; $raceIndex += 1) {
+    $releaseName = 'Local\EkyProcessIdentityRace-' + `
+      [Guid]::NewGuid().ToString('N')
+    $release = [Threading.EventWaitHandle]::new(
+      $false,
+      [Threading.EventResetMode]::ManualReset,
+      $releaseName
+    )
+    $raceProcess = $null
+    try {
+      $raceCommand = ConvertTo-EncodedPowerShellCommand -Command @"
+`$release = [Threading.EventWaitHandle]::OpenExisting('$releaseName')
+try {
+  if (!`$release.WaitOne(5000)) { exit 41 }
+  exit 0
+}
+finally {
+  `$release.Dispose()
+}
+"@
+      $raceProcess = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
+        '-NoProfile', '-NonInteractive', '-EncodedCommand', $raceCommand
+      ) -WindowStyle Hidden -PassThru
+      $raceIdentity = New-EkyProcessIdentity `
+        -ProcessId ([int]$raceProcess.Id) `
+        -CreationToken (ConvertTo-EkyProcessCreationToken `
+          -CreationTime ([DateTime]$raceProcess.StartTime))
+      $release.Set() | Out-Null
+      $raceDeadline = [DateTime]::UtcNow.AddSeconds(5)
+      do {
+        $present = Test-EkyExactProcessIdentityPresent `
+          -Identity $raceIdentity
+        if (!$present) {
+          break
+        }
+        if ([DateTime]::UtcNow -ge $raceDeadline) {
+          throw 'INSTALLER_PROCESS_TREE_ROOT_REMAINS'
+        }
+        [void]$raceProcess.WaitForExit(25)
+      } while ($true)
+    }
+    finally {
+      $release.Set() | Out-Null
+      if ($null -ne $raceProcess) {
+        try {
+          $raceProcess.Refresh()
+          if (!$raceProcess.HasExited) {
+            Stop-EkyProcessTree -Process $raceProcess `
+              -TimeoutMilliseconds 5000
+          }
+        }
+        finally {
+          $raceProcess.Dispose()
+        }
+      }
+      $release.Dispose()
+    }
+  }
+
   $stage = 'exactIdentityStop'
   $exactStopProcess = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
     '-NoProfile', '-NonInteractive', '-Command', 'Start-Sleep -Seconds 30'

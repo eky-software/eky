@@ -65,6 +65,7 @@ const defaultDependencies = Object.freeze({
   setInterval: globalThis.setInterval,
   setTimeout: globalThis.setTimeout,
   spawnProcess: spawn,
+  connectProcessOutput: connectOwnedProcessOutput,
   terminateOwnedProcessTree,
 });
 
@@ -125,6 +126,7 @@ async function runOwnedCommandProcess(configuration, dependencies) {
   observe('command', 'started');
   observe('hostStarted', 'started');
   let child;
+  let disconnectProcessOutput = () => undefined;
   try {
     child = dependencies.spawnProcess(
       configuration.command,
@@ -133,10 +135,11 @@ async function runOwnedCommandProcess(configuration, dependencies) {
         cwd: configuration.cwd,
         env: { ...configuration.environment },
         shell: false,
-        stdio: 'inherit',
+        stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true,
       },
     );
+    disconnectProcessOutput = dependencies.connectProcessOutput(child);
   } catch {
     const errorCode = 'W6B2_PACKAGED_COMMAND_PROCESS_START_FAILED';
     observe('hostStarted', 'failed', errorCode);
@@ -189,6 +192,7 @@ async function runOwnedCommandProcess(configuration, dependencies) {
   if (cleanupErrorCode !== undefined) {
     terminalizeFailedOwnedProcessHandle(child);
   }
+  disconnectProcessOutput();
 
   const primaryErrorCode = terminalErrorCode ?? cleanupErrorCode;
   if (primaryErrorCode !== undefined) {
@@ -279,6 +283,33 @@ function waitForTerminalProcess(input) {
       input.timeoutMilliseconds,
     );
   });
+}
+
+function connectOwnedProcessOutput(child) {
+  const connections = [
+    [child?.stdout, process.stdout],
+    [child?.stderr, process.stderr],
+  ].filter(([source]) => source !== undefined && source !== null);
+  for (const [source, destination] of connections) {
+    source.pipe(destination, { end: false });
+  }
+  let disconnected = false;
+  return () => {
+    if (disconnected) return;
+    disconnected = true;
+    for (const [source, destination] of connections) {
+      try {
+        source.unpipe(destination);
+      } catch {
+        // Exact process cleanup remains authoritative.
+      }
+      try {
+        source.destroy();
+      } catch {
+        // Output release must not replace the process result.
+      }
+    }
+  };
 }
 
 function terminateOwnedProcessTree(input) {
