@@ -203,6 +203,25 @@ try {
   if (@($owned | Where-Object { $_.processId -eq 200 }).Count -ne 0) {
     throw 'INSTALLER_PROCESS_TREE_UNRELATED_INCLUDED'
   }
+  $staleParentSnapshot = @(
+    New-SnapshotRecord -ProcessId 100 -ParentProcessId 1 `
+      -CreationToken '1000'
+    New-SnapshotRecord -ProcessId 300 -ParentProcessId 100 `
+      -CreationToken '900'
+    New-SnapshotRecord -ProcessId 301 -ParentProcessId 300 `
+      -CreationToken '1100'
+  )
+  $staleParentOwned = @(Get-EkyOwnedProcessIdentitiesFromSnapshot `
+    -RootIdentity $rootIdentity -ProcessSnapshot $staleParentSnapshot)
+  Assert-Equal $staleParentOwned.Count 1 `
+    'INSTALLER_PROCESS_TREE_STALE_PARENT_INCLUDED'
+  if (
+    @($staleParentOwned | Where-Object {
+      $_.processId -eq 300 -or $_.processId -eq 301
+    }).Count -ne 0
+  ) {
+    throw 'INSTALLER_PROCESS_TREE_STALE_PARENT_INCLUDED'
+  }
 
   $stage = 'outcomeRules'
   Assert-Equal (Get-EkyProcessTreeStopOutcome -TaskkillExitCode 0 `
@@ -233,6 +252,16 @@ try {
   Assert-Equal (Get-EkyProcessTreeStopOutcome -TaskkillExitCode 128 `
     -RemainingOwnedProcessIdentities @() -DeadlineReached $false) `
     'stopped' 'INSTALLER_PROCESS_TREE_CHILD_EXIT_STOP_INVALID'
+  Assert-Equal (Get-EkyRemainingProcessTreeTimeoutMilliseconds `
+    -TimeoutMilliseconds 5000 -ElapsedMilliseconds 1200) 3800 `
+    'INSTALLER_PROCESS_TREE_ROOT_WAIT_INVALID'
+  Assert-Equal (Get-EkyRemainingProcessTreeTimeoutMilliseconds `
+    -TimeoutMilliseconds 5000 -ElapsedMilliseconds 5000) 0 `
+    'INSTALLER_PROCESS_TREE_ROOT_WAIT_INVALID'
+  Assert-ThrowsCode {
+    Get-EkyRemainingProcessTreeTimeoutMilliseconds `
+      -TimeoutMilliseconds 5000 -ElapsedMilliseconds -1
+  } 'INSTALLER_UPGRADE_PROCESS_TREE_WAIT_INVALID'
 
   $stage = 'pidReuseRules'
   $reusedSnapshot = @(
@@ -288,6 +317,65 @@ try {
   }
   finally {
     $alreadyExited.Dispose()
+  }
+
+  for ($raceIndex = 0; $raceIndex -lt 20; $raceIndex += 1) {
+    $releaseName = 'Local\EkyProcessIdentityRace-' + `
+      [Guid]::NewGuid().ToString('N')
+    $release = [Threading.EventWaitHandle]::new(
+      $false,
+      [Threading.EventResetMode]::ManualReset,
+      $releaseName
+    )
+    $raceProcess = $null
+    try {
+      $raceCommand = ConvertTo-EncodedPowerShellCommand -Command @"
+`$release = [Threading.EventWaitHandle]::OpenExisting('$releaseName')
+try {
+  if (!`$release.WaitOne(5000)) { exit 41 }
+  exit 0
+}
+finally {
+  `$release.Dispose()
+}
+"@
+      $raceProcess = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
+        '-NoProfile', '-NonInteractive', '-EncodedCommand', $raceCommand
+      ) -WindowStyle Hidden -PassThru
+      $raceIdentity = New-EkyProcessIdentity `
+        -ProcessId ([int]$raceProcess.Id) `
+        -CreationToken (ConvertTo-EkyProcessCreationToken `
+          -CreationTime ([DateTime]$raceProcess.StartTime))
+      $release.Set() | Out-Null
+      $raceDeadline = [DateTime]::UtcNow.AddSeconds(5)
+      do {
+        $present = Test-EkyExactProcessIdentityPresent `
+          -Identity $raceIdentity
+        if (!$present) {
+          break
+        }
+        if ([DateTime]::UtcNow -ge $raceDeadline) {
+          throw 'INSTALLER_PROCESS_TREE_ROOT_REMAINS'
+        }
+        [void]$raceProcess.WaitForExit(25)
+      } while ($true)
+    }
+    finally {
+      $release.Set() | Out-Null
+      if ($null -ne $raceProcess) {
+        try {
+          $raceProcess.Refresh()
+          if (!$raceProcess.HasExited) {
+            Stop-EkyProcessTree -Process $raceProcess `
+              -TimeoutMilliseconds 5000
+          }
+        }
+        finally {
+          $raceProcess.Dispose()
+        }
+      }
+      $release.Dispose()
+    }
   }
 
   $stage = 'exactIdentityStop'

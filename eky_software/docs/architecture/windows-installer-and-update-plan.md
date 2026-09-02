@@ -904,6 +904,23 @@ cleanup-tapahtumat, jättää ulomman CI-jobin aikarajaan siivousvaran ja
 terminalisoi vain täsmälliseen 64-hex-todisteeseen sekä process creation
 -identiteettiin sidotun prosessipuun. PowerShell-skenaarion sisäinen viiden
 minuutin MSI-operaation aikaraja säilyy erillisenä ja muuttumattomana.
+Testikäytön `msiexec` käynnistetään olemassa olevan MSI-hostin kautta omilla
+konsoli- ja output-kahvoillaan. Hosti odottaa rajatusti vain käynnistämäänsä
+täsmällistä prosessia, siivoaa aikarajalla vain sen omistaman prosessipuun ja
+välittää timeoutin suljettuna tuloksena kutsuvalle harnessille. CI-runnerin
+output-kahvaa perivää `-NoNewWindow`-käynnistystä tai rajaamatonta
+`Start-Process -Wait` -jälkeläisodotusta ei käytetä.
+
+W6B.2:n prosessiharness ei peri CI-runnerin output-kahvoja suoraan.
+Workerin stdout ja stderr välitetään omien pipe-kahvojen kautta. Workerilta
+odotetaan prosessin exit-tapahtuma, sen omistama prosessipuu siivotaan tai
+todetaan poistuneeksi ja vasta sen jälkeen pipe-kahvat irrotetaan. Näin
+jälkeläisen auki pitämä output-kahva ei estä cleanupia tai CI-komennon
+terminalisoitumista. Installer-handoffissa omistajuus siirtyy dynaamisesti koko
+sille täsmälliselle omistetulle prosessihaaralle, jonka jälkeläisenä validoitu
+`msiexec.exe` havaitaan; rinnakkaiset application-haarat pysyvät harnessin
+omistuksessa. Deadline katkaisee puuttuvan terminal-signaalin, mutta sitä ei
+käytetä onnistumisen osoituksena.
 
 W6B:n success-todisteessa aktiivinen `compatiblePending`-työtila migroidaan
 first startissa, passiivinen `compatiblePending` säilyy siihen asti byte-
@@ -1098,6 +1115,13 @@ lyhyempää paikallista rajaa. Rajan täyttyessä harness sulkee täsmälleen om
 worker-prosessipuunsa, odottaa rajatun cleanupin ja julkaisee vasta sen jälkeen
 turvallisen terminal-JSONL-tuloksen. Sisäinen vaihekohtainen lifecycle
 säilyttää scenario- ja cleanup-varat, mutta ei korvaa ulompaa prosessiomistajaa.
+
+W6B.2A-success-cleanup ei käynnistä uutta MSI-poistotransaktiota jo
+major upgraden yhteydessä todistetusti poistuneelle lähde-ProductCodelle.
+Tämä optimointi sallitaan vasta, kun kohdepaketin tila, payload ja rekisteröinti
+on validoitu ja lähdepaketin poissaolo on siten yksiselitteinen. Kesken jääneen
+asennuksen, tuntemattoman tilan ja muiden failure-polkujen valtuutettu cleanup
+säilyttää pakotetun poistoyrityksen sekä lopulliset fail-closed-jälkiehdot.
 
 Teknologiavalinnassa pitää todistaa:
 

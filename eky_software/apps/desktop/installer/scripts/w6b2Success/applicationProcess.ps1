@@ -183,6 +183,59 @@ function New-W6b2SuccessProcessObservation {
   }
 }
 
+function Get-W6b2SuccessInstallerHandoffBranchRoots {
+  param(
+    [Parameter(Mandatory = $true)]$Observation,
+    [Parameter(Mandatory = $true)][AllowEmptyCollection()][array]
+    $ProcessSnapshot,
+    [Parameter(Mandatory = $true)][AllowEmptyCollection()][array]
+    $RootOwned
+  )
+
+  $knownOwned = @{}
+  foreach ($identity in @($Observation.owned.Values) + @($RootOwned)) {
+    $knownOwned["$($identity.processId):$($identity.creationToken)"] = $true
+  }
+  $recordsByProcessId = @{}
+  foreach ($record in $ProcessSnapshot) {
+    $recordsByProcessId[[int]$record.processId] = $record
+  }
+
+  $branchRoots = @{}
+  foreach ($candidate in @($ProcessSnapshot | Where-Object {
+    [string]$_.processName -ieq 'msiexec.exe'
+  })) {
+    $current = $candidate
+    $connectedToOwnedProcess = $false
+    $visited = @{}
+    while ($null -ne $current) {
+      $currentKey = "$($current.processId):$($current.creationToken)"
+      if ($visited.ContainsKey($currentKey)) {
+        break
+      }
+      $visited[$currentKey] = $true
+      if ($knownOwned.ContainsKey($currentKey)) {
+        $connectedToOwnedProcess = $true
+      }
+      if ([int]$current.parentProcessId -eq [int]$Observation.root.processId) {
+        if ($connectedToOwnedProcess) {
+          $root = New-EkyProcessIdentity `
+            -ProcessId ([int]$current.processId) `
+            -CreationToken ([string]$current.creationToken)
+          $branchRoots["$($root.processId):$($root.creationToken)"] = $root
+        }
+        break
+      }
+      $parentId = [int]$current.parentProcessId
+      if (!$recordsByProcessId.ContainsKey($parentId)) {
+        break
+      }
+      $current = $recordsByProcessId[$parentId]
+    }
+  }
+  return @($branchRoots.Values)
+}
+
 function Update-W6b2SuccessProcessObservation {
   param(
     [Parameter(Mandatory = $true)]$Observation,
@@ -198,18 +251,9 @@ function Update-W6b2SuccessProcessObservation {
   $rootOwned = @(Get-EkyOwnedProcessIdentitiesFromSnapshot `
     -RootIdentity $Observation.root -ProcessSnapshot $snapshot)
   if ([bool]$Observation.installerHandoffReleased) {
-    $rootOwnedKeys = @{}
-    foreach ($identity in $rootOwned) {
-      $rootOwnedKeys["$($identity.processId):$($identity.creationToken)"] = `
-        $true
-    }
-    foreach ($candidate in @($snapshot | Where-Object {
-      $key = "$($_.processId):$($_.creationToken)"
-      $rootOwnedKeys.ContainsKey($key) -and
-      [string]$_.processName -ieq 'msiexec.exe'
-    })) {
-      $root = New-EkyProcessIdentity -ProcessId ([int]$candidate.processId) `
-        -CreationToken ([string]$candidate.creationToken)
+    foreach ($root in @(Get-W6b2SuccessInstallerHandoffBranchRoots `
+      -Observation $Observation -ProcessSnapshot $snapshot `
+      -RootOwned $rootOwned)) {
       $rootKey = "$($root.processId):$($root.creationToken)"
       $Observation.excludedInstallerRoots[$rootKey] = $root
     }

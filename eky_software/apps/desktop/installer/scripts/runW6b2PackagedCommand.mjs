@@ -65,6 +65,7 @@ const defaultDependencies = Object.freeze({
   setInterval: globalThis.setInterval,
   setTimeout: globalThis.setTimeout,
   spawnProcess: spawn,
+  connectProcessOutput: connectOwnedProcessOutput,
   terminateOwnedProcessTree,
 });
 
@@ -125,6 +126,7 @@ async function runOwnedCommandProcess(configuration, dependencies) {
   observe('command', 'started');
   observe('hostStarted', 'started');
   let child;
+  let disconnectProcessOutput = () => undefined;
   try {
     child = dependencies.spawnProcess(
       configuration.command,
@@ -133,10 +135,11 @@ async function runOwnedCommandProcess(configuration, dependencies) {
         cwd: configuration.cwd,
         env: { ...configuration.environment },
         shell: false,
-        stdio: 'inherit',
+        stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true,
       },
     );
+    disconnectProcessOutput = dependencies.connectProcessOutput(child);
   } catch {
     const errorCode = 'W6B2_PACKAGED_COMMAND_PROCESS_START_FAILED';
     observe('hostStarted', 'failed', errorCode);
@@ -186,6 +189,11 @@ async function runOwnedCommandProcess(configuration, dependencies) {
     cleanupErrorCode = resolveCleanupErrorCode(error);
   }
 
+  if (cleanupErrorCode !== undefined) {
+    terminalizeFailedOwnedProcessHandle(child);
+  }
+  disconnectProcessOutput();
+
   const primaryErrorCode = terminalErrorCode ?? cleanupErrorCode;
   if (primaryErrorCode !== undefined) {
     observe('command', 'failed', primaryErrorCode);
@@ -226,6 +234,27 @@ function resolveCleanupErrorCode(error) {
     : 'W6B2_PACKAGED_COMMAND_CLEANUP_FAILED';
 }
 
+export function terminalizeFailedOwnedProcessHandle(child) {
+  if (child === undefined || child === null) return;
+  try {
+    child.once?.('error', () => undefined);
+  } catch {
+    // The direct child handle is still released below when possible.
+  }
+  try {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill?.();
+    }
+  } catch {
+    // Exact tree cleanup remains the authority; this only terminalizes the host.
+  }
+  try {
+    child.unref?.();
+  } catch {
+    // The original cleanup error remains the terminal command result.
+  }
+}
+
 function waitForTerminalProcess(input) {
   return new Promise((resolvePromise) => {
     let heartbeat;
@@ -254,6 +283,33 @@ function waitForTerminalProcess(input) {
       input.timeoutMilliseconds,
     );
   });
+}
+
+function connectOwnedProcessOutput(child) {
+  const connections = [
+    [child?.stdout, process.stdout],
+    [child?.stderr, process.stderr],
+  ].filter(([source]) => source !== undefined && source !== null);
+  for (const [source, destination] of connections) {
+    source.pipe(destination, { end: false });
+  }
+  let disconnected = false;
+  return () => {
+    if (disconnected) return;
+    disconnected = true;
+    for (const [source, destination] of connections) {
+      try {
+        source.unpipe(destination);
+      } catch {
+        // Exact process cleanup remains authoritative.
+      }
+      try {
+        source.destroy();
+      } catch {
+        // Output release must not replace the process result.
+      }
+    }
+  };
 }
 
 function terminateOwnedProcessTree(input) {
@@ -318,7 +374,7 @@ function terminateOwnedProcessTree(input) {
     child.once('error', onError);
     child.once('exit', onExit);
     timer = globalThis.setTimeout(() => {
-      child.kill();
+      terminalizeFailedOwnedProcessHandle(child);
       finish(new Error('W6B2_PACKAGED_COMMAND_CLEANUP_TIMEOUT'));
     }, input.cleanupTimeoutMilliseconds);
   });

@@ -8,6 +8,9 @@ import {
   waitForManagedBackendHealth,
   type E2eBackendStartupErrorCode,
 } from './e2eBackendStartupLifecycle.js';
+import {
+  E2E_BACKEND_STARTUP_SAFETY_TIMEOUT_MILLISECONDS,
+} from './e2eServiceStartupBudgets.js';
 import type { E2eWorkerPaths } from './e2eEnvironmentTypes.js';
 import {
   startManagedProcess,
@@ -92,7 +95,12 @@ export async function startE2eBackendProcess(input: {
     await waitForManagedBackendHealth({
       child: managedProcess.child,
       observe,
-      waitForHealth: () => waitForHttpHealth(`${backendOrigin}/health`),
+      waitForHealth: (signal) =>
+        waitForHttpHealth(`${backendOrigin}/health`, {
+          signal,
+          timeoutMilliseconds:
+            E2E_BACKEND_STARTUP_SAFETY_TIMEOUT_MILLISECONDS,
+        }),
     });
   } catch (error) {
     const startupErrorCode = resolveStartupErrorCode(error, managedProcess);

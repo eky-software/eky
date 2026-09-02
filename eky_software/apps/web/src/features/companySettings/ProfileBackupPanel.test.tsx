@@ -17,7 +17,7 @@ describe('ProfileBackupPanelView', () => {
       uiText.companySettings.profileBackupCreate,
     );
     expect(html).not.toContain(
-      uiText.companySettings.profileBackupRestore,
+      uiText.companySettings.profileBackupWorkspaceRestoreInfo,
     );
   });
 
@@ -26,7 +26,9 @@ describe('ProfileBackupPanelView', () => {
 
     expect(html).toContain(uiText.companySettings.profileBackupCreate);
     expect(html).toContain(uiText.companySettings.profileBackupInspect);
-    expect(html).toContain(uiText.companySettings.profileBackupRestore);
+    expect(html).toContain(
+      uiText.companySettings.profileBackupWorkspaceRestoreInfo,
+    );
     expect(html).toContain(
       uiText.companySettings.profileRecoveryPointCreate,
     );
@@ -35,26 +37,17 @@ describe('ProfileBackupPanelView', () => {
     expect(html).not.toContain('C:\\');
   });
 
-  it('shows only an inspected safe summary before restore activation', () => {
+  it('shows only an inspected safe backup summary', () => {
     const html = renderView({
-      restoreInspection: inspectionSummary,
-      status: {
-        ...availableStatus,
-        restoreOperationState: 'ready',
-      },
+      inspection: inspectionSummary,
+      status: availableStatus,
     });
 
     expect(html).toContain(
-      uiText.companySettings.profileRestoreSummaryHeading,
+      uiText.companySettings.profileBackupInspectionHeading,
     );
     expect(html).toContain('0.1.0');
     expect(html).toContain('4');
-    expect(html).toContain(
-      uiText.companySettings.profileRestoreReplacementWarning,
-    );
-    expect(html).toContain(
-      uiText.companySettings.profileRestoreActivate,
-    );
     expect(html).not.toContain('company-id');
     expect(html).not.toContain('operationId');
     expect(html).not.toContain('sha256');
@@ -102,7 +95,6 @@ const availableStatus = {
     operationState: 'idle' as const,
     pointCount: 3,
   },
-  restoreOperationState: 'idle' as const,
 };
 
 function renderView(
@@ -116,12 +108,9 @@ function renderView(
       errorMessage={null}
       inspection={null}
       isBusy={false}
-      onActivateRestore={vi.fn(async () => undefined)}
       onCreateBackup={vi.fn(async () => undefined)}
       onCreateRecoveryPoint={vi.fn(async () => undefined)}
       onInspectBackup={vi.fn(async () => undefined)}
-      onPrepareRestore={vi.fn(async () => undefined)}
-      restoreInspection={null}
       status={null}
       successMessage={null}
       {...overrides}

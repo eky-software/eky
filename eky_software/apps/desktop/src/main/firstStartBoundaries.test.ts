@@ -139,6 +139,49 @@ describe('desktop first-start boundaries', () => {
       'migrationAuthority: restoredProfileMigrationAuthorized',
     );
   });
+
+  it('keeps legacy restore rollback authority until workspace lineage is accepted', async () => {
+    const source = await readFile(
+      join(sourceRoot, 'main', 'desktopComposition.ts'),
+      'utf8',
+    );
+    const decisionStart = source.indexOf(
+      'shouldDeferRestoredProfileAcceptance &&',
+    );
+    const workspaceAcceptance = source.indexOf(
+      'await activeWorkspace.accept(activeProfileValidation.profileId)',
+      decisionStart,
+    );
+    const decision = source.slice(decisionStart, workspaceAcceptance);
+    const rollbackStart = source.indexOf(
+      'if (restoredProfileAwaitingDecision)',
+    );
+    const rollbackEnd = source.indexOf(
+      'if (!workspaceStartupAccepted',
+      rollbackStart,
+    );
+    const rollback = source.slice(rollbackStart, rollbackEnd);
+
+    expect(source).toContain(
+      "startupRecoveryAuthority === 'profileRestore' &&\n    activeWorkspace.mode === 'normal'",
+    );
+    expect(source).toContain(
+      'isLegacyRegisteredWorkspaceRestoreRecovery);',
+    );
+    expect(decisionStart).toBeGreaterThan(-1);
+    expect(workspaceAcceptance).toBeGreaterThan(decisionStart);
+    expect(decision).toContain('.acceptValidatedRestoredProfile({');
+    expect(decision).toContain('assertTargetCanAccept: () =>');
+    expect(decision).toContain('activeWorkspace.assertCanAccept(');
+    expect(rollbackStart).toBeGreaterThan(workspaceAcceptance);
+    expect(rollback).toContain('.rollbackValidatedRestoredProfile()');
+    expect(rollback).toContain(
+      'if (isLegacyRegisteredWorkspaceRestoreRecovery)',
+    );
+    expect(rollback.indexOf('options.relaunchApplication()')).toBeGreaterThan(
+      rollback.indexOf('.rollbackValidatedRestoredProfile()'),
+    );
+  });
 });
 
 function resolveSourceRoot(): string {

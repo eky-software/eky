@@ -628,19 +628,8 @@ palautettavaa polkua. Vaiheen pitää olla idempotentti restartin jälkeen.
 
 ## Cross-company-raja
 
-R0:ssa:
-
-- samaan asennukseen palautetaan vain sen nykyisen profiilin backup
-- toisesta asennuksesta tuotu backup voidaan palauttaa vain tyhjään
-  asennukseen
-- eri yrityksen profiilin päälle ei palauteta eikä tietoja yhdistetä
-
-Tyhjä asennus tarkoittaa backendin tarkistamaa profiilia, jossa tunnetut
-runtime-infrastruktuuritaulut voivat olla olemassa, mutta yhdessäkään muussa
-taulussa ei ole rivejä. Renderer ei päätä tyhjyyttä eikä saa taulu- tai
-yritystietoja tämän tarkistuksen tuloksena.
-
-ADR-0011:n myöhempi multi-workspace-malli erottaa kaksi toimintoa:
+Nykyinen ADR-0011:n multi-workspace-malli erottaa kaksi käyttäjälle näkyvää
+toimintoa:
 
 - rekisteröimättömän lineagen backup voidaan tuoda uutena työtilana
 - olemassa oleva exact-lineage-työtila voidaan korvata vain, kun se on ensin
@@ -649,8 +638,17 @@ ADR-0011:n myöhempi multi-workspace-malli erottaa kaksi toimintoa:
 Passiivista työtilaa ei korvata toisen työtilan runtimen ollessa aktiivinen.
 Molemmat operaatiot vaativat installation-scoped maintenance-leasen,
 candidate-stagingin ja nykyiset formaatti-, migraatio-, identity-, SQLite- ja
-artifact-validoinnit. Tämä ei kuulu nykyisen yhden työtilan restore-polkuun,
-vaan ADR-0011:n W3/W3b-checkpointteihin.
+artifact-validoinnit. Vanhaa yleistä active-profile restore -capabilityä ei
+altisteta rendererille eikä käyttöliittymälle; import ja korvaus käyttävät vain
+workspace management -palvelun nimettyjä reittejä.
+
+Ennen multi-workspace-kytkentää syntynyt profile restore -activation journal
+voi vielä löytyä käynnistyksessä. Rekisteröidyn aktiivisen workspacen
+tapauksessa transactionin hyväksyntä lykätään backend-, migration- ja
+artifact-validoinnin sekä registryltä johdetun exact-lineage-tarkistuksen
+jälkeen. Lineage-ristiriita palauttaa edellisen profiilin journalin omasta
+rollback-slotista ennen journalin siivousta ja käynnistää sovelluksen uudelleen.
+Tuntematonta tai journalitonta ristiriitaa ei korjata arvaamalla.
 
 ### W3:n backup-import uutena työtilana
 

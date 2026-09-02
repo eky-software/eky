@@ -804,6 +804,14 @@ muu business-arvo eivät ole identiteettitodisteita. Renderer ei valitse
 kohdetyötilaa eikä saa backup-polkuja, salasanaa, `companyId`:tä, lineagea,
 runtime-sessionia, journalia tai raakavirhettä.
 
+Multi-workspace-tuotteessa rendererille ei altisteta rinnakkaista yleistä
+profile restore -capabilityä. Eri lineage kulkee aina import-as-new-polkuun ja
+aktiivisen yrityksen korvaus vain tämän exact-lineage-sopimuksen kautta. Jos
+vanhan version käynnistyksestä löytyy keskeneräinen yleinen profile restore
+-journal, activation-transaction hyväksytään vasta aktiivisen registry-entryn
+lineage-tarkistuksen jälkeen; ristiriita rollbackataan journalin ollessa vielä
+auktoritatiivinen ja edellinen profiili käynnistetään uudelleen.
+
 Käyttäjäpolku on kaksivaiheinen:
 
 1. web-näkymä kertoo aktiivisen workspacen labelin, exact-lineage-vaatimuksen,

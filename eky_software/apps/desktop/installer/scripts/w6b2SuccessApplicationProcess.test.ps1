@@ -446,6 +446,149 @@ exit 0
     $lateInstallerObservation.owned.ContainsKey('304:3004') $true `
     'W6B2_PROCESS_TEST_LATE_APPLICATION_CHILD_MISSING'
 
+  $nestedHandoffObservation = [pscustomobject]@{
+    root = New-EkyProcessIdentity -ProcessId 500 -CreationToken '5000'
+    owned = @{}
+    excludedInstallerRoots = @{}
+    installerHandoffReleased = $false
+  }
+  $nestedHandoffSnapshot = @(
+    [pscustomobject]@{
+      processId = 500
+      parentProcessId = 1
+      creationToken = '5000'
+      processName = 'Eky.exe'
+    },
+    [pscustomobject]@{
+      processId = 501
+      parentProcessId = 500
+      creationToken = '5001'
+      processName = 'powershell.exe'
+    },
+    [pscustomobject]@{
+      processId = 502
+      parentProcessId = 501
+      creationToken = '5002'
+      processName = 'msiexec.exe'
+    },
+    [pscustomobject]@{
+      processId = 503
+      parentProcessId = 502
+      creationToken = '5003'
+      processName = 'msiexec.exe'
+    },
+    [pscustomobject]@{
+      processId = 504
+      parentProcessId = 500
+      creationToken = '5004'
+      processName = 'Eky.exe'
+    }
+  )
+  Release-W6b2SuccessInstallerHandoffOwnership `
+    -Observation $nestedHandoffObservation `
+    -ProcessSnapshot $nestedHandoffSnapshot
+  Assert-W6b2ProcessEqual `
+    $nestedHandoffObservation.owned.ContainsKey('501:5001') $false `
+    'W6B2_PROCESS_TEST_NESTED_HANDOFF_ROOT_REMAINS'
+  Assert-W6b2ProcessEqual `
+    $nestedHandoffObservation.owned.ContainsKey('502:5002') $false `
+    'W6B2_PROCESS_TEST_NESTED_INSTALLER_REMAINS'
+  Assert-W6b2ProcessEqual `
+    $nestedHandoffObservation.owned.ContainsKey('503:5003') $false `
+    'W6B2_PROCESS_TEST_NESTED_INSTALLER_CHILD_REMAINS'
+  Assert-W6b2ProcessEqual `
+    $nestedHandoffObservation.owned.ContainsKey('504:5004') $true `
+    'W6B2_PROCESS_TEST_NESTED_APPLICATION_CHILD_MISSING'
+
+  $delayedBranchObservation = [pscustomobject]@{
+    root = New-EkyProcessIdentity -ProcessId 600 -CreationToken '6000'
+    owned = @{}
+    excludedInstallerRoots = @{}
+    installerHandoffReleased = $false
+  }
+  $delayedBranchInitialSnapshot = @(
+    [pscustomobject]@{
+      processId = 600
+      parentProcessId = 1
+      creationToken = '6000'
+      processName = 'Eky.exe'
+    },
+    [pscustomobject]@{
+      processId = 601
+      parentProcessId = 600
+      creationToken = '6001'
+      processName = 'powershell.exe'
+    }
+  )
+  Release-W6b2SuccessInstallerHandoffOwnership `
+    -Observation $delayedBranchObservation `
+    -ProcessSnapshot $delayedBranchInitialSnapshot
+  Assert-W6b2ProcessEqual `
+    $delayedBranchObservation.owned.ContainsKey('601:6001') $true `
+    'W6B2_PROCESS_TEST_UNPROVEN_HANDOFF_NOT_OWNED'
+  $delayedBranchInstallerSnapshot = @(
+    $delayedBranchInitialSnapshot[1],
+    [pscustomobject]@{
+      processId = 602
+      parentProcessId = 601
+      creationToken = '6002'
+      processName = 'msiexec.exe'
+    },
+    [pscustomobject]@{
+      processId = 699
+      parentProcessId = 1
+      creationToken = '6990'
+      processName = 'msiexec.exe'
+    }
+  )
+  [void](Update-W6b2SuccessProcessObservation `
+    -Observation $delayedBranchObservation `
+    -ProcessSnapshot $delayedBranchInstallerSnapshot)
+  Assert-W6b2ProcessEqual `
+    $delayedBranchObservation.owned.ContainsKey('601:6001') $false `
+    'W6B2_PROCESS_TEST_DELAYED_HANDOFF_ROOT_REMAINS'
+  Assert-W6b2ProcessEqual `
+    $delayedBranchObservation.excludedInstallerRoots.ContainsKey('601:6001') `
+    $true 'W6B2_PROCESS_TEST_DELAYED_HANDOFF_NOT_TRANSFERRED'
+  Assert-W6b2ProcessEqual `
+    $delayedBranchObservation.excludedInstallerRoots.ContainsKey('699:6990') `
+    $false 'W6B2_PROCESS_TEST_FOREIGN_INSTALLER_TRANSFERRED'
+
+  $staleParentObservation = [pscustomobject]@{
+    root = New-EkyProcessIdentity -ProcessId 700 -CreationToken '7000'
+    owned = @{}
+    excludedInstallerRoots = @{}
+    installerHandoffReleased = $false
+  }
+  $staleParentSnapshot = @(
+    [pscustomobject]@{
+      processId = 700
+      parentProcessId = 1
+      creationToken = '7000'
+      processName = 'Eky.exe'
+    },
+    [pscustomobject]@{
+      processId = 701
+      parentProcessId = 700
+      creationToken = '6000'
+      processName = 'node.exe'
+    },
+    [pscustomobject]@{
+      processId = 702
+      parentProcessId = 701
+      creationToken = '7002'
+      processName = 'msiexec.exe'
+    }
+  )
+  Release-W6b2SuccessInstallerHandoffOwnership `
+    -Observation $staleParentObservation `
+    -ProcessSnapshot $staleParentSnapshot
+  Assert-W6b2ProcessEqual $staleParentObservation.owned.Count 1 `
+    'W6B2_PROCESS_TEST_STALE_PARENT_OWNED'
+  Assert-W6b2ProcessEqual `
+    $staleParentObservation.excludedInstallerRoots.Count 0 `
+    'W6B2_PROCESS_TEST_STALE_HANDOFF_TRANSFERRED'
+
   $strictInstallerObservation = [pscustomobject]@{
     root = New-EkyProcessIdentity -ProcessId 400 -CreationToken '4000'
     owned = @{}

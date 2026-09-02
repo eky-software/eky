@@ -101,14 +101,17 @@ export function createE2eBackendStartupReporter(input: {
 export async function waitForManagedBackendHealth(input: {
   readonly child: ManagedChildProcess;
   readonly observe: E2eBackendStartupObserver;
-  readonly waitForHealth: () => Promise<void>;
+  readonly waitForHealth: (signal: AbortSignal) => Promise<void>;
 }): Promise<void> {
   input.observe(newProgress('healthWaitStarted', 'started'));
   const exit = createChildTerminalSignal(input.child);
-  const health = input.waitForHealth().then(
-    () => ({ kind: 'healthy' as const }),
-    () => ({ kind: 'healthFailed' as const }),
-  );
+  const healthAbort = new AbortController();
+  const health = Promise.resolve()
+    .then(() => input.waitForHealth(healthAbort.signal))
+    .then(
+      () => ({ kind: 'healthy' as const }),
+      () => ({ kind: 'healthFailed' as const }),
+    );
 
   try {
     const outcome = await Promise.race([health, exit.promise]);
@@ -145,6 +148,8 @@ export async function waitForManagedBackendHealth(input: {
     );
     throw new Error('E2E_BACKEND_HEALTH_TIMEOUT');
   } finally {
+    healthAbort.abort();
+    await health;
     exit.dispose();
   }
 }

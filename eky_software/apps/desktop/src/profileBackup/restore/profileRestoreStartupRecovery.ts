@@ -127,8 +127,11 @@ export class ProfileRestoreStartupRecovery {
     }
   }
 
-  async acceptValidatedRestoredProfile(): Promise<void> {
+  async acceptValidatedRestoredProfile(input: {
+    assertTargetCanAccept(): void;
+  }): Promise<void> {
     this.assertRestoredProfileAwaitingDecision();
+    input.assertTargetCanAccept();
     await this.dependencies.transaction.accept();
     this.restoredProfileAwaitingDecision = false;
     this.activeCorrelationId = undefined;

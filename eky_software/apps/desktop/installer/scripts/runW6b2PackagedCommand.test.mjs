@@ -15,6 +15,7 @@ import test from 'node:test';
 import {
   parseW6b2PackagedCommandArguments,
   runW6b2PackagedCommand,
+  terminalizeFailedOwnedProcessHandle,
   W6B2_PACKAGED_COMMAND_CLEANUP_TIMEOUT_MILLISECONDS,
   W6B2_PACKAGED_COMMAND_HEARTBEAT_MILLISECONDS,
 } from './runW6b2PackagedCommand.mjs';
@@ -66,7 +67,7 @@ test('preserves normal worker exit and proves exact cleanup', async () => {
   const harness = createHarness();
   const run = startCommand(harness);
 
-  harness.child.emit('exit', 0, null);
+  harness.complete(0, null);
 
   await assert.doesNotReject(run);
   assert.equal(harness.cleanupInputs.length, 1);
@@ -76,6 +77,11 @@ test('preserves normal worker exit and proves exact cleanup', async () => {
     harness.spawnArguments[0][1][2],
     /^--process-proof-token=[0-9a-f]{64}$/u,
   );
+  assert.deepEqual(
+    harness.spawnArguments[0][2].stdio,
+    ['ignore', 'pipe', 'pipe'],
+  );
+  assert.equal(harness.outputDisconnectCount(), 1);
   assert.deepEqual(lastEvent(harness.events), {
     commandKind: 'success',
     durationMs: 0,
@@ -113,13 +119,24 @@ test('turns the absolute deadline into cleanup and a safe timeout', async () => 
     ),
     true,
   );
+  assert.equal(harness.outputDisconnectCount(), 1);
+});
+
+test('releases isolated output after dynamic worker exit and cleanup', async () => {
+  const harness = createHarness();
+  const run = startCommand(harness);
+
+  harness.child.emit('exit', 0, null);
+  await assert.doesNotReject(run);
+  assert.equal(harness.cleanupInputs.length, 1);
+  assert.equal(harness.outputDisconnectCount(), 1);
 });
 
 test('preserves non-zero worker exit after cleanup', async () => {
   const harness = createHarness();
   const run = startCommand(harness);
 
-  harness.child.emit('exit', 19, null);
+  harness.complete(19, null);
 
   await assert.rejects(
     run,
@@ -160,6 +177,47 @@ test('keeps process timeout primary when cleanup also times out', async () => {
     run,
     /W6B2_PACKAGED_COMMAND_PROCESS_TIMEOUT/u,
   );
+  assert.equal(harness.childKillCount(), 1);
+  assert.equal(harness.childUnrefCount(), 1);
+});
+
+test('cleanup failure terminalizes only the direct owned child handle', () => {
+  const child = new EventEmitter();
+  child.exitCode = null;
+  child.signalCode = null;
+  let killCount = 0;
+  let unrefCount = 0;
+  child.kill = () => {
+    killCount += 1;
+    return true;
+  };
+  child.unref = () => {
+    unrefCount += 1;
+  };
+
+  terminalizeFailedOwnedProcessHandle(child);
+  assert.equal(killCount, 1);
+  assert.equal(unrefCount, 1);
+  assert.doesNotThrow(() => child.emit('error', new Error('late failure')));
+});
+
+test('completed child handle is unreferenced without a second kill', () => {
+  const child = new EventEmitter();
+  child.exitCode = 0;
+  child.signalCode = null;
+  let killCount = 0;
+  let unrefCount = 0;
+  child.kill = () => {
+    killCount += 1;
+    return true;
+  };
+  child.unref = () => {
+    unrefCount += 1;
+  };
+
+  terminalizeFailedOwnedProcessHandle(child);
+  assert.equal(killCount, 0);
+  assert.equal(unrefCount, 1);
 });
 
 test('uses cleanup timeout when the worker itself completed', async () => {
@@ -168,7 +226,7 @@ test('uses cleanup timeout when the worker itself completed', async () => {
   });
   const run = startCommand(harness);
 
-  harness.child.emit('exit', 0, null);
+  harness.complete(0, null);
 
   await assert.rejects(
     run,
@@ -188,7 +246,7 @@ test('emits one command failure when worker exit and cleanup both fail', async (
   });
   const run = startCommand(harness);
 
-  harness.child.emit('exit', 19, null);
+  harness.complete(19, null);
 
   await assert.rejects(
     run,
@@ -219,7 +277,7 @@ test('safe events expose no command inputs or proof token', async () => {
   const harness = createHarness();
   const run = startCommand(harness);
 
-  harness.child.emit('exit', 7, null);
+  harness.complete(7, null);
   await assert.rejects(run);
 
   const output = JSON.stringify(harness.events);
@@ -242,6 +300,12 @@ test('cleanup script validates exact worker ownership', async () => {
   assert.match(source, /actualCreationToken -cne \$expectedCreationToken/u);
   assert.doesNotMatch(source, /Stop-Process\s+-Name/iu);
   assert.doesNotMatch(source, /taskkill\.exe/iu);
+  const commandSource = await readFile(
+    new URL('./runW6b2PackagedCommand.mjs', import.meta.url),
+    'utf8',
+  );
+  assert.match(commandSource, /terminalizeFailedOwnedProcessHandle/u);
+  assert.match(commandSource, /child\.unref\?\.\(\)/u);
 });
 
 test(
@@ -353,12 +417,33 @@ function createHarness(options = {}) {
   const cleanupInputs = [];
   const events = [];
   const spawnArguments = [];
+  let childKillCount = 0;
+  let childUnrefCount = 0;
+  let outputDisconnectCount = 0;
+  child.exitCode = null;
+  child.signalCode = null;
+  child.kill = () => {
+    childKillCount += 1;
+    return true;
+  };
+  child.unref = () => {
+    childUnrefCount += 1;
+  };
+  child.on('exit', (exitCode, signal) => {
+    child.exitCode = exitCode;
+    child.signalCode = signal;
+  });
   let deadline;
   let heartbeat;
   const dependencies = {
     clearInterval() {},
     clearTimeout() {},
     createProofToken: () => options.proofToken ?? proofToken,
+    connectProcessOutput() {
+      return () => {
+        outputDisconnectCount += 1;
+      };
+    },
     now: () => 1_000,
     observe(event) {
       events.push(event);
@@ -383,6 +468,11 @@ function createHarness(options = {}) {
   };
   return {
     child,
+    childKillCount: () => childKillCount,
+    childUnrefCount: () => childUnrefCount,
+    complete(exitCode, signal) {
+      child.emit('exit', exitCode, signal);
+    },
     cleanupInputs,
     dependencies,
     events,
@@ -394,6 +484,7 @@ function createHarness(options = {}) {
       assert.equal(typeof heartbeat, 'function');
       heartbeat();
     },
+    outputDisconnectCount: () => outputDisconnectCount,
     spawnArguments,
   };
 }

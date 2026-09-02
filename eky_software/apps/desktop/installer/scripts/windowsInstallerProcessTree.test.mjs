@@ -133,7 +133,15 @@ test('installer cleanup remains scoped to an exact process identity', () => {
   assert.match(helperSource, /System32\\taskkill\.exe/);
   assert.match(helperSource, /'\/PID'/);
   assert.match(helperSource, /-PassThru/);
-  assert.match(helperSource, /WaitForExit\(\$TimeoutMilliseconds\)/);
+  assert.match(
+    helperSource,
+    /Get-EkyRemainingProcessTreeTimeoutMilliseconds/,
+  );
+  assert.match(helperSource, /WaitForExit\(\$taskkillBudget\)/);
+  assert.match(
+    helperSource,
+    /Stop-EkyExactProcessIdentity[\s\S]+-TimeoutMilliseconds \$identityBudget/,
+  );
   assert.doesNotMatch(
     helperSource,
     /System32\\taskkill\.exe[\s\S]{0,260}-Wait/,

@@ -423,6 +423,15 @@ test('cleanup uses exact owned identities and never broad process termination', 
   );
   const packageCleanup = harness.slice(packageCleanupStart, packageCleanupEnd);
   assert.doesNotMatch(packageCleanup, /Get-EkyProductState/u);
+  assert.match(harness, /\$sourceProductReplaced = \$false/u);
+  assert.match(
+    harness,
+    /Assert-EkyInstallerRegistrationPresent -ProductCode \$targetCode[\s\S]+\$sourceProductReplaced = \$true[\s\S]+Complete-W6b2SuccessStage -ResultCode targetInstalled/u,
+  );
+  assert.match(
+    packageCleanup,
+    /authorized = \$sourceCleanupAuthorized -and !\$sourceProductReplaced/u,
+  );
   assert.match(installerLifecycle, /Invoke-EkyMsiExec/u);
   assert.match(installerLifecycle, /-EmitSafeProgress \$true/u);
   assert.match(installerLifecycle, /-AllowedExitCodes @\(0, 1605\)/u);

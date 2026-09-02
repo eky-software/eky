@@ -58,6 +58,22 @@ kesken, virhe rajataan ja baseline palautetaan vihreäksi ennen uuden
 toiminnallisuuden aloittamista. Testin ohittaminen, pidempi timeout tai uusi
 rebuild ei ole todiste ilman dokumentoitua juurisyytä.
 
+Asynkronisen testin valmistuminen sidotaan aina havaittavaan tapahtumaan tai
+tilaehtoon, kuten prosessin `exit`- ja `close`-tapahtumiin, health-vastaukseen,
+validoituun result-artifactiin, MSI:n product stateen tai täsmällisen
+prosessipuun poistumiseen. Kiinteää odotusta ei käytetä onnistumisen
+edellytyksenä eikä ajoitusongelmaa korjata vaihtamalla yksi sekuntiluku
+toiseen. Jos alustalta ei ole saatavissa tapahtumaa, rajattu polling saa vain
+tarkistaa samaa nimettyä ehtoa ja sen pitää palautua heti ehdon toteutuessa.
+Erillinen enimmäisaika säilytetään fail-closed-turvarajana; sen täyttyminen on
+virhe eikä valmis-signaali.
+
+Windows-prosessipuun omistajuus ei saa perustua pelkkään parent PID -ketjuun,
+koska poistuneen prosessin PID voidaan käyttää uudelleen. Omistetun lapsen
+pitää kuulua samaan täsmälliseen creation identity -ketjuun ja sen syntymäajan
+pitää olla sama tai myöhempi kuin todistetun vanhemman. Ennen omistettua juurta
+syntynyt prosessi ja sen jälkeläiset torjutaan siivouksesta fail closed.
+
 ## Testien Sijainti
 
 Yksikkö- ja komponenttitestit pidetään lähtökohtaisesti testattavan tiedoston
@@ -81,6 +97,22 @@ desktop-paketin omistuksessa.
 
 Yleistä `test-utils`-kaatopaikkaa ei luoda. Toistuva testi-infrastruktuuri
 irrotetaan vasta todelliseen tarpeeseen ja nimetään vastuun mukaan.
+
+## Tiedostoidentiteetti Testeissä
+
+Packaged-, installer-, rollback- ja release-fixturet muodostavat itsenäiset
+tiedostotavut. Lähdepuun `out`-hakemistoa, hyväksyttyä MSI:tä tai muuta
+release-artifactia ei hardlinkata fixtureen, koska linkitys muuttaa myös
+lähdetiedoston filesystem-identiteettiä ja voi rikkoa strict runtime-
+validoinnin. Artifactin byte-identtisyys todistetaan hashilla ja inventaariolla,
+ei yhteisellä inode-/file-id-identiteetillä.
+
+Hardlink on sallittu vain rajatussa tiedostojärjestelmätestissä tai
+tuotantosopimuksessa, jossa atominen no-overwrite-linkitys on nimenomaan
+toiminnon semantiikka. Tällöin lähde, kohde, containment, linkkimäärä,
+same-volume-ehto, rollback ja virhetilat validoidaan erikseen. Turvallisuustesti
+saa luoda haitallisen hardlinkin todistaakseen torjunnan, mutta se ei saa käyttää
+sitä release-payloadin monistamiseen.
 
 ## Mitä testataan aina
 
@@ -371,6 +403,13 @@ first-start-identiteetin ristiriidat havaitaan ennen käyttäjän profiilia.
 Backup-, restore-, installer- tai update-polun onnistumista ei todisteta vain
 mockilla tai selain-E2E:llä. Windowsin tiedosto-, prosessi-, `safeStorage`- ja
 paketointirajat vaativat packaged-testin.
+
+Packaged-testin ulomman watchdogin pitää käyttää yhtä koko omistetun
+prosessipuun siivouksen kattavaa deadlinea. Jos täsmällinen prosessipuun
+siivous epäonnistuu, tulos pysyy virheenä, mutta wrapperin pitää lisäksi
+terminalisoida vain itse käynnistämänsä suora child-kahva. CI ei saa jäädä
+ulkoiseen aikakatkaisuun ilman turvallista terminal-tulosta eikä
+child-kahvan vapautusta saa tulkita onnistuneeksi siivoukseksi.
 
 Restorea muuttava packaged-testi käynnistää vähintään kaksi eri
 Electron-prosessia samaa synteettistä palautettua profiilia vasten. Sen pitää

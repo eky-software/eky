@@ -13,12 +13,9 @@ export interface ProfileBackupPanelViewProps {
   errorMessage: string | null;
   inspection: ProfileBackupInspectionSummary | null;
   isBusy: boolean;
-  onActivateRestore(): Promise<void>;
   onCreateBackup(): Promise<void>;
   onCreateRecoveryPoint(): Promise<void>;
   onInspectBackup(): Promise<void>;
-  onPrepareRestore(): Promise<void>;
-  restoreInspection: ProfileBackupInspectionSummary | null;
   status: ProfileProtectionStatus | null;
   successMessage: string | null;
 }
@@ -28,12 +25,9 @@ export function ProfileBackupPanelView({
   errorMessage,
   inspection,
   isBusy,
-  onActivateRestore,
   onCreateBackup,
   onCreateRecoveryPoint,
   onInspectBackup,
-  onPrepareRestore,
-  restoreInspection,
   status,
   successMessage,
 }: ProfileBackupPanelViewProps): React.JSX.Element {
@@ -104,45 +98,15 @@ export function ProfileBackupPanelView({
             >
               {uiText.companySettings.profileBackupInspect}
             </button>
-            <button
-              className="ghost-button"
-              disabled={isBusy}
-              onClick={() => void onPrepareRestore()}
-              type="button"
-            >
-              {uiText.companySettings.profileBackupRestore}
-            </button>
           </div>
+          <MessageBanner variant="info">
+            {uiText.companySettings.profileBackupWorkspaceRestoreInfo}
+          </MessageBanner>
           {inspection ? (
             <ProfileBackupSummary
               heading={uiText.companySettings.profileBackupInspectionHeading}
               summary={inspection}
             />
-          ) : null}
-          {restoreInspection ? (
-            <div className={styles.restore}>
-              <ProfileBackupSummary
-                heading={uiText.companySettings.profileRestoreSummaryHeading}
-                summary={restoreInspection}
-              />
-              <MessageBanner variant="info">
-                {uiText.companySettings.profileRestoreReplacementWarning}
-              </MessageBanner>
-              <p className={styles.restoreNote}>
-                {uiText.companySettings.profileRestoreRecoveryPointNote}
-              </p>
-              <p className={styles.restoreNote}>
-                {uiText.companySettings.profileRestoreRestartNote}
-              </p>
-              <button
-                className="danger-button"
-                disabled={isBusy}
-                onClick={() => void onActivateRestore()}
-                type="button"
-              >
-                {uiText.companySettings.profileRestoreActivate}
-              </button>
-            </div>
           ) : null}
         </div>
       ) : null}

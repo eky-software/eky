@@ -84,12 +84,51 @@ describe('profile restore startup recovery', () => {
     expect(transaction.accept).not.toHaveBeenCalled();
 
     await expect(
-      recovery.acceptValidatedRestoredProfile(),
+      recovery.acceptValidatedRestoredProfile({
+        assertTargetCanAccept: vi.fn(),
+      }),
     ).resolves.toBeUndefined();
     expect(transaction.accept).toHaveBeenCalledTimes(1);
     await expect(
-      recovery.acceptValidatedRestoredProfile(),
+      recovery.acceptValidatedRestoredProfile({
+        assertTargetCanAccept: vi.fn(),
+      }),
     ).rejects.toThrow('PROFILE_RESTORE_DECISION_INVALID');
+  });
+
+  it('keeps rollback authority when the active target rejects restored lineage', async () => {
+    const operationId = randomUUID();
+    const transaction = createTransaction(operationId);
+    const recovery = new ProfileRestoreStartupRecovery({
+      journalStore: {
+        read: vi.fn(async () =>
+          createJournal(operationId, 'validationStarting'),
+        ),
+      },
+      transaction,
+    });
+
+    await recovery.prepareBeforeBackend();
+    await recovery.validateAfterBackend({
+      deferRestoredProfileAcceptance: true,
+      mode: 'validateRestoredProfile',
+      stopBackend: vi.fn(),
+      validateActiveProfile: vi.fn(),
+    });
+
+    await expect(
+      recovery.acceptValidatedRestoredProfile({
+        assertTargetCanAccept: vi.fn(() => {
+          throw new Error('WORKSPACE_SWITCH_INVALID');
+        }),
+      }),
+    ).rejects.toThrow('WORKSPACE_SWITCH_INVALID');
+    expect(transaction.accept).not.toHaveBeenCalled();
+
+    await expect(
+      recovery.rollbackValidatedRestoredProfile(),
+    ).resolves.toBeUndefined();
+    expect(transaction.rollback).toHaveBeenCalledTimes(1);
   });
 
   it('can roll back a healthy restored profile while acceptance is deferred', async () => {

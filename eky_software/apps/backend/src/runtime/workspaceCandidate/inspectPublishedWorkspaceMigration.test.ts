@@ -30,6 +30,69 @@ const releaseIdentity = Object.freeze({
   buildRevision: 'a'.repeat(40),
 });
 const temporaryRoots: string[] = [];
+type MigrationHistoryMutation = (database: Database.Database) => void;
+
+const invalidHistoryScenarios: ReadonlyArray<
+  readonly [name: string, mutate: MigrationHistoryMutation]
+> = [
+  [
+    'changed',
+    (database) => {
+      database
+        .prepare(
+          'UPDATE schema_migration_metadata SET source_sha256 = ? WHERE migration_name = (SELECT min(name) FROM schema_migrations)',
+        )
+        .run('b'.repeat(64));
+    },
+  ],
+  [
+    'missing-middle',
+    (database) => {
+      database.pragma('foreign_keys = OFF');
+      const name = database
+        .prepare(
+          'SELECT name FROM schema_migrations ORDER BY name LIMIT 1 OFFSET 4',
+        )
+        .pluck()
+        .get() as string;
+      database
+        .prepare(
+          'DELETE FROM schema_migration_metadata WHERE migration_name = ?',
+        )
+        .run(name);
+      database.prepare('DELETE FROM schema_migrations WHERE name = ?').run(name);
+    },
+  ],
+  [
+    'duplicate',
+    (database) => {
+      database.pragma('foreign_keys = OFF');
+      database.exec(`
+        CREATE TABLE duplicate_schema_migrations AS
+          SELECT name, run_at FROM schema_migrations;
+        DROP TABLE schema_migrations;
+        ALTER TABLE duplicate_schema_migrations RENAME TO schema_migrations;
+      `);
+      const first = database
+        .prepare(
+          'SELECT name, run_at FROM schema_migrations ORDER BY name LIMIT 1',
+        )
+        .get() as { name: string; run_at: string };
+      database
+        .prepare('INSERT INTO schema_migrations (name, run_at) VALUES (?, ?)')
+        .run(first.name, first.run_at);
+    },
+  ],
+  [
+    'unknown',
+    (database) => {
+      database.pragma('foreign_keys = OFF');
+      database
+        .prepare('INSERT INTO schema_migrations (name, run_at) VALUES (?, ?)')
+        .run('999_future.sql', '2026-08-21T00:00:00.000Z');
+    },
+  ],
+];
 
 afterEach(async () => {
   await Promise.all(
@@ -64,52 +127,9 @@ describe('inspectPublishedWorkspaceMigration', () => {
     );
   });
 
-  it('classifies changed, missing-middle, duplicate and unknown histories as invalid without writes', async () => {
-    const scenarios: Array<(
-      database: Database.Database,
-    ) => void> = [
-      (database) => {
-        database
-          .prepare(
-            'UPDATE schema_migration_metadata SET source_sha256 = ? WHERE migration_name = (SELECT min(name) FROM schema_migrations)',
-          )
-          .run('b'.repeat(64));
-      },
-      (database) => {
-        database.pragma('foreign_keys = OFF');
-        const name = database
-          .prepare('SELECT name FROM schema_migrations ORDER BY name LIMIT 1 OFFSET 4')
-          .pluck()
-          .get() as string;
-        database
-          .prepare('DELETE FROM schema_migration_metadata WHERE migration_name = ?')
-          .run(name);
-        database.prepare('DELETE FROM schema_migrations WHERE name = ?').run(name);
-      },
-      (database) => {
-        database.pragma('foreign_keys = OFF');
-        database.exec(`
-          CREATE TABLE duplicate_schema_migrations AS
-            SELECT name, run_at FROM schema_migrations;
-          DROP TABLE schema_migrations;
-          ALTER TABLE duplicate_schema_migrations RENAME TO schema_migrations;
-        `);
-        const first = database
-          .prepare('SELECT name, run_at FROM schema_migrations ORDER BY name LIMIT 1')
-          .get() as { name: string; run_at: string };
-        database
-          .prepare('INSERT INTO schema_migrations (name, run_at) VALUES (?, ?)')
-          .run(first.name, first.run_at);
-      },
-      (database) => {
-        database.pragma('foreign_keys = OFF');
-        database
-          .prepare('INSERT INTO schema_migrations (name, run_at) VALUES (?, ?)')
-          .run('999_future.sql', '2026-08-21T00:00:00.000Z');
-      },
-    ];
-
-    for (const mutate of scenarios) {
+  it.each(invalidHistoryScenarios)(
+    'classifies %s migration history as invalid without writes',
+    async (_name, mutate) => {
       const fixture = await createWorkspaceFixture();
       mutateDatabase(fixture.databaseFilePath, mutate);
       await expectUnchangedInspection(fixture, {
@@ -118,8 +138,8 @@ describe('inspectPublishedWorkspaceMigration', () => {
         pendingMigrationCount: 0,
         status: 'invalidHistory',
       });
-    }
-  });
+    },
+  );
 
   it('classifies a corrupt database as invalid without creating sidecars', async () => {
     const fixture = await createWorkspaceFixture();

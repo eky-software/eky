@@ -5,3 +5,5 @@ injectWorkspacePackages: true
 allowBuilds:
   better-sqlite3: false
   electron: true
+overrides:
+  "@xmldom/xmldom": "0.9.12"

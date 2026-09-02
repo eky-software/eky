@@ -68,14 +68,22 @@ function Get-EkyOwnedProcessIdentitiesFromSnapshot {
   }
 
   $ownedProcessIds = @([int]$RootIdentity.processId)
+  $ownedCreationTokens = @{
+    [int]$RootIdentity.processId = [long]$RootIdentity.creationToken
+  }
   do {
     $previousCount = $ownedProcessIds.Count
     foreach ($candidate in $ProcessSnapshot) {
+      $parentProcessId = [int]$candidate.parentProcessId
+      $processId = [int]$candidate.processId
       if (
-        $ownedProcessIds -contains [int]$candidate.parentProcessId -and
-        $ownedProcessIds -notcontains [int]$candidate.processId
+        $ownedCreationTokens.ContainsKey($parentProcessId) -and
+        !$ownedCreationTokens.ContainsKey($processId) -and
+        [long]$candidate.creationToken -ge
+          [long]$ownedCreationTokens[$parentProcessId]
       ) {
-        $ownedProcessIds += [int]$candidate.processId
+        $ownedProcessIds += $processId
+        $ownedCreationTokens[$processId] = [long]$candidate.creationToken
       }
     }
   } while ($ownedProcessIds.Count -ne $previousCount)
@@ -140,6 +148,21 @@ function Test-EkyExactProcessIdentityPresent {
       return $false
     }
     catch {
+      try {
+        $candidate.Refresh()
+        if ($candidate.HasExited) {
+          return $false
+        }
+      }
+      catch [System.InvalidOperationException] {
+        return $false
+      }
+      catch [System.ArgumentException] {
+        return $false
+      }
+      catch {
+        # A live but unreadable process identity must remain fail closed.
+      }
       throw 'INSTALLER_UPGRADE_PROCESS_IDENTITY_CHECK_FAILED'
     }
     return $creationToken -eq [string]$Identity.creationToken
@@ -235,6 +258,22 @@ function Get-EkyProcessTreeStopOutcome {
   return 'waiting'
 }
 
+function Get-EkyRemainingProcessTreeTimeoutMilliseconds {
+  param(
+    [Parameter(Mandatory = $true)][int]$TimeoutMilliseconds,
+    [Parameter(Mandatory = $true)][long]$ElapsedMilliseconds
+  )
+
+  if ($TimeoutMilliseconds -lt 1 -or $ElapsedMilliseconds -lt 0) {
+    throw 'INSTALLER_UPGRADE_PROCESS_TREE_WAIT_INVALID'
+  }
+  $remaining = [long]$TimeoutMilliseconds - $ElapsedMilliseconds
+  if ($remaining -le 0) {
+    return 0
+  }
+  return [int]$remaining
+}
+
 function Stop-EkyProcessTree {
   param(
     [AllowNull()]$Process,
@@ -257,6 +296,7 @@ function Stop-EkyProcessTree {
     throw 'INSTALLER_UPGRADE_PROCESS_TREE_WAIT_INVALID'
   }
 
+  $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
   try {
     $rootIdentity = New-EkyProcessIdentity -ProcessId ([int]$Process.Id) `
       -CreationToken (ConvertTo-EkyProcessCreationToken `
@@ -266,9 +306,24 @@ function Stop-EkyProcessTree {
     return
   }
 
+  $snapshotBudget = Get-EkyRemainingProcessTreeTimeoutMilliseconds `
+    -TimeoutMilliseconds $TimeoutMilliseconds `
+    -ElapsedMilliseconds $stopwatch.ElapsedMilliseconds
+  if ($snapshotBudget -eq 0) {
+    if ($null -ne $Observation) {
+      $Observation.deadlineReached = $true
+    }
+    throw 'INSTALLER_UPGRADE_PROCESS_TREE_REMAINS'
+  }
+  $snapshotTimeoutSeconds = [Math]::Max(
+    1,
+    [Math]::Min(5, [Math]::Ceiling($snapshotBudget / 1000.0))
+  )
   $ownedIdentities = @(
     Get-EkyOwnedProcessIdentitiesFromSnapshot `
-      -RootIdentity $rootIdentity -ProcessSnapshot (Get-EkyProcessSnapshot)
+      -RootIdentity $rootIdentity `
+      -ProcessSnapshot (Get-EkyProcessSnapshot `
+        -OperationTimeoutSeconds $snapshotTimeoutSeconds)
   )
   if ($null -ne $Observation) {
     $Observation.trackedCount = $ownedIdentities.Count
@@ -280,6 +335,16 @@ function Stop-EkyProcessTree {
   $rootStillOwned = Test-EkyExactProcessIdentityPresent -Identity $rootIdentity
   $taskkillExitCode = 0
   if ($rootStillOwned) {
+    $taskkillBudget = Get-EkyRemainingProcessTreeTimeoutMilliseconds `
+      -TimeoutMilliseconds $TimeoutMilliseconds `
+      -ElapsedMilliseconds $stopwatch.ElapsedMilliseconds
+    if ($taskkillBudget -eq 0) {
+      if ($null -ne $Observation) {
+        $Observation.remainingCount = $ownedIdentities.Count
+        $Observation.deadlineReached = $true
+      }
+      throw 'INSTALLER_UPGRADE_PROCESS_TREE_REMAINS'
+    }
     $taskkillProcess = Start-Process `
       -FilePath (Join-Path $env:SystemRoot 'System32\taskkill.exe') `
       -ArgumentList @(
@@ -293,10 +358,14 @@ function Stop-EkyProcessTree {
       -WindowStyle Hidden `
       -PassThru
     try {
-      if (!$taskkillProcess.WaitForExit($TimeoutMilliseconds)) {
+      if (!$taskkillProcess.WaitForExit($taskkillBudget)) {
+        if ($null -ne $Observation) {
+          $Observation.remainingCount = $ownedIdentities.Count
+          $Observation.deadlineReached = $true
+        }
         try {
           $taskkillProcess.Kill()
-          if (!$taskkillProcess.WaitForExit(5000)) {
+          if (!$taskkillProcess.WaitForExit(1000)) {
             throw 'INSTALLER_UPGRADE_PROCESS_TREE_STOP_FAILED'
           }
         }
@@ -331,35 +400,46 @@ function Stop-EkyProcessTree {
       -OwnedProcessIdentities $ownedIdentities
   )
   foreach ($identity in $remainingAfterTaskkill) {
-    Stop-EkyExactProcessIdentity -Identity $identity `
-      -TimeoutMilliseconds $TimeoutMilliseconds
-  }
-  $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-  try {
-    do {
-      $remaining = @(
-        Get-EkyRemainingExactProcessIdentities `
-          -OwnedProcessIdentities $ownedIdentities
-      )
-      $deadlineReached = (
-        $remaining.Count -ne 0 -and
-        $stopwatch.ElapsedMilliseconds -ge $TimeoutMilliseconds
-      )
+    $identityBudget = Get-EkyRemainingProcessTreeTimeoutMilliseconds `
+      -TimeoutMilliseconds $TimeoutMilliseconds `
+      -ElapsedMilliseconds $stopwatch.ElapsedMilliseconds
+    if ($identityBudget -eq 0) {
       if ($null -ne $Observation) {
-        $Observation.remainingCount = $remaining.Count
-        $Observation.deadlineReached = $deadlineReached
+        $Observation.remainingCount = $remainingAfterTaskkill.Count
+        $Observation.deadlineReached = $true
       }
-      $outcome = Get-EkyProcessTreeStopOutcome `
-        -TaskkillExitCode $taskkillExitCode `
-        -RemainingOwnedProcessIdentities $remaining `
-        -DeadlineReached $deadlineReached
-      if ($outcome -eq 'stopped') {
-        return
-      }
-      Start-Sleep -Milliseconds $PollMilliseconds
-    } while ($true)
+      throw 'INSTALLER_UPGRADE_PROCESS_TREE_REMAINS'
+    }
+    Stop-EkyExactProcessIdentity -Identity $identity `
+      -TimeoutMilliseconds $identityBudget
   }
-  finally {
-    $stopwatch.Stop()
-  }
+
+  do {
+    $remaining = @(
+      Get-EkyRemainingExactProcessIdentities `
+        -OwnedProcessIdentities $ownedIdentities
+    )
+    $remainingBudget = Get-EkyRemainingProcessTreeTimeoutMilliseconds `
+      -TimeoutMilliseconds $TimeoutMilliseconds `
+      -ElapsedMilliseconds $stopwatch.ElapsedMilliseconds
+    $deadlineReached = (
+      $remaining.Count -ne 0 -and
+      $remainingBudget -eq 0
+    )
+    if ($null -ne $Observation) {
+      $Observation.remainingCount = $remaining.Count
+      $Observation.deadlineReached = $deadlineReached
+    }
+    $outcome = Get-EkyProcessTreeStopOutcome `
+      -TaskkillExitCode $taskkillExitCode `
+      -RemainingOwnedProcessIdentities $remaining `
+      -DeadlineReached $deadlineReached
+    if ($outcome -eq 'stopped') {
+      return
+    }
+    Start-Sleep -Milliseconds ([Math]::Min(
+      $PollMilliseconds,
+      $remainingBudget
+    ))
+  } while ($true)
 }

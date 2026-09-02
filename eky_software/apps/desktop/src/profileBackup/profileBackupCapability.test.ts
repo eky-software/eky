@@ -5,12 +5,11 @@ import {
   createProfileBackupCapability,
 } from './profileBackupCapability.js';
 import {
-  activatePreparedProfileRestoreIpcChannel,
   createManualRecoveryPointIpcChannel,
   createProfileBackupIpcChannel,
   getProfileBackupStatusIpcChannel,
   inspectProfileBackupIpcChannel,
-  prepareProfileRestoreIpcChannel,
+  legacyProfileRestoreIpcChannels,
 } from './portableProfileBackupTypes.js';
 
 describe('profile backup capability', () => {
@@ -62,7 +61,6 @@ describe('profile backup capability', () => {
         operationState: 'idle',
         pointCount: 0,
       },
-      restoreOperationState: 'idle',
     });
     await expect(
       fixture.invoke(
@@ -165,68 +163,6 @@ describe('profile backup capability', () => {
     expect(fixture.showSafeError).toHaveBeenCalledWith('inspect');
   });
 
-  it('prepares and activates restore through two main-owned confirmations', async () => {
-    const fixture = createFixture();
-
-    await expect(
-      fixture.invoke(
-        prepareProfileRestoreIpcChannel,
-        fixture.trustedEvent,
-      ),
-    ).resolves.toEqual({
-      status: 'inspected',
-      summary: inspectionSummary,
-    });
-    expect(fixture.restoreInspect).toHaveBeenCalledWith({
-      containerPath: 'C:\\Backups\\Restore.ekybackup',
-      password: 'Synthetic backup password 2026!',
-    });
-
-    await expect(
-      fixture.invoke(
-        activatePreparedProfileRestoreIpcChannel,
-        fixture.trustedEvent,
-      ),
-    ).resolves.toBe('relaunching');
-    expect(fixture.confirmRestoreReplacement).toHaveBeenCalledWith(
-      inspectionSummary,
-    );
-    expect(fixture.restoreStage).toHaveBeenCalledWith({
-      inspectionId: '22222222-2222-4222-8222-222222222222',
-      password: 'Synthetic backup password 2026!',
-    });
-    expect(fixture.confirmRestoreActivation).toHaveBeenCalledWith({
-      operationId: '33333333-3333-4333-8333-333333333333',
-      summary: inspectionSummary,
-      targetDisposition: 'replaceActiveProfile',
-    });
-    expect(fixture.activateRestore).toHaveBeenCalledWith(
-      '33333333-3333-4333-8333-333333333333',
-    );
-  });
-
-  it('discards staged data when the exact second confirmation is cancelled', async () => {
-    const fixture = createFixture({
-      confirmRestoreActivation: false,
-    });
-
-    await fixture.invoke(
-      prepareProfileRestoreIpcChannel,
-      fixture.trustedEvent,
-    );
-    await expect(
-      fixture.invoke(
-        activatePreparedProfileRestoreIpcChannel,
-        fixture.trustedEvent,
-      ),
-    ).resolves.toBe('cancelled');
-
-    expect(fixture.discardPreparedRestore).toHaveBeenCalledWith(
-      '33333333-3333-4333-8333-333333333333',
-    );
-    expect(fixture.activateRestore).not.toHaveBeenCalled();
-  });
-
   it('creates a recovery point without returning its internal artifact identity', async () => {
     const fixture = createFixture();
 
@@ -244,7 +180,7 @@ describe('profile backup capability', () => {
     expect(fixture.createManualRecoveryPoint).toHaveBeenCalledWith();
   });
 
-  it('uses the shared maintenance authority only for mutating backup and restore operations', async () => {
+  it('uses the shared maintenance authority only for mutating backup operations', async () => {
     const fixture = createFixture();
 
     await fixture.invoke(
@@ -256,25 +192,12 @@ describe('profile backup capability', () => {
       fixture.trustedEvent,
     );
     await fixture.invoke(
-      prepareProfileRestoreIpcChannel,
-      fixture.trustedEvent,
-    );
-    await fixture.invoke(
-      activatePreparedProfileRestoreIpcChannel,
-      fixture.trustedEvent,
-    );
-    await fixture.invoke(
       createManualRecoveryPointIpcChannel,
       fixture.trustedEvent,
     );
 
-    expect(fixture.maintenancePurposes).toEqual([
-      'backup',
-      'restore',
-      'restore',
-      'backup',
-    ]);
-    expect(fixture.maintenanceReleaseCount).toBe(4);
+    expect(fixture.maintenancePurposes).toEqual(['backup', 'backup']);
+    expect(fixture.maintenanceReleaseCount).toBe(2);
   });
 
   it('fails closed before opening a dialog when shared maintenance is busy', async () => {
@@ -294,6 +217,9 @@ describe('profile backup capability', () => {
   it('rejects another renderer and removes every handler on dispose', async () => {
     const fixture = createFixture();
 
+    for (const channel of legacyProfileRestoreIpcChannels) {
+      expect(fixture.handlers.has(channel)).toBe(false);
+    }
     expect(() =>
       fixture.invoke(
         getProfileBackupStatusIpcChannel,
@@ -314,12 +240,9 @@ describe('profile backup capability', () => {
     expect(fixture.removeHandler).toHaveBeenCalledWith(
       getProfileBackupStatusIpcChannel,
     );
-    expect(fixture.removeHandler).toHaveBeenCalledWith(
-      prepareProfileRestoreIpcChannel,
-    );
-    expect(fixture.removeHandler).toHaveBeenCalledWith(
-      activatePreparedProfileRestoreIpcChannel,
-    );
+    for (const channel of legacyProfileRestoreIpcChannels) {
+      expect(fixture.removeHandler).toHaveBeenCalledWith(channel);
+    }
     expect(fixture.removeHandler).toHaveBeenCalledWith(
       createManualRecoveryPointIpcChannel,
     );
@@ -338,13 +261,10 @@ const inspectionSummary = {
 };
 
 function createFixture(options: {
-  confirmRestoreActivation?: boolean;
-  confirmRestoreReplacement?: boolean;
   createFails?: boolean;
   inspectFails?: boolean;
   maintenanceBusy?: boolean;
   operationalLoggerThrows?: boolean;
-  restoreSourcePath?: string | null;
   sourcePath?: string | null;
   targetPath?: string | null;
 } = {}) {
@@ -384,32 +304,9 @@ function createFixture(options: {
         ? 'C:\\Backups\\Eky.ekybackup'
         : options.targetPath,
   );
-  const selectRestoreSource = vi.fn(
-    async () =>
-      options.restoreSourcePath === undefined
-        ? 'C:\\Backups\\Restore.ekybackup'
-        : options.restoreSourcePath,
-  );
-  const confirmRestoreActivation = vi.fn(
-    async () => options.confirmRestoreActivation ?? true,
-  );
-  const confirmRestoreReplacement = vi.fn(
-    async () => options.confirmRestoreReplacement ?? true,
-  );
   const createManualRecoveryPoint = vi.fn(async () => ({
     artifactId: 'not-exposed',
   }));
-  const restoreInspect = vi.fn(async () => ({
-    inspectionId: '22222222-2222-4222-8222-222222222222',
-    summary: inspectionSummary,
-  }));
-  const restoreStage = vi.fn(async () => ({
-    operationId: '33333333-3333-4333-8333-333333333333',
-    summary: inspectionSummary,
-    targetDisposition: 'replaceActiveProfile' as const,
-  }));
-  const discardPreparedRestore = vi.fn(async () => undefined);
-  const activateRestore = vi.fn(async () => 'relaunching' as const);
   const operationalWrite = vi.fn(() => {
     if (options.operationalLoggerThrows === true) {
       throw new Error('SYNTHETIC_LOG_WRITE_FAILURE');
@@ -424,8 +321,6 @@ function createFixture(options: {
       getStatus: () => ({ operationState: 'idle' }),
       inspect,
     },
-    confirmRestoreActivation,
-    confirmRestoreReplacement,
     ipcMain: {
       handle(channel, handler) {
         handlers.set(channel, handler as never);
@@ -473,28 +368,16 @@ function createFixture(options: {
         pointCount: 0,
       }),
     },
-    restoreActivationService: {
-      activate: activateRestore,
-    },
-    restoreStagingService: {
-      discardPreparedRestore,
-      inspect: restoreInspect,
-      stage: restoreStage,
-    },
     selectBackupSource,
     selectBackupTarget,
-    selectRestoreSource,
     showSafeError,
   });
 
   return {
-    activateRestore,
     capability,
-    confirmRestoreActivation,
-    confirmRestoreReplacement,
     create,
     createManualRecoveryPoint,
-    discardPreparedRestore,
+    handlers,
     inspect,
     invoke(channel: string, event: IpcMainInvokeEvent, ...args: unknown[]) {
       const handler = handlers.get(channel);
@@ -510,11 +393,8 @@ function createFixture(options: {
     },
     removeHandler,
     requestPassword,
-    restoreInspect,
-    restoreStage,
     selectBackupSource,
     selectBackupTarget,
-    selectRestoreSource,
     showSafeError,
     trustedEvent: {
       sender: webContents,

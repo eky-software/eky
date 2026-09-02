@@ -198,7 +198,6 @@ export function createInvoicePdfPreviewWindowController(
     async hasRendererBridgeForSmoke() {
       return options.mainWindow.webContents.executeJavaScript(
         `typeof window.ekyDesktop === 'object' &&
-          typeof window.ekyDesktop.activatePreparedProfileRestore === 'function' &&
           typeof window.ekyDesktop.chooseInvoicePdfArchiveDirectory === 'function' &&
           typeof window.ekyDesktop.createEncryptedProfileBackup === 'function' &&
           typeof window.ekyDesktop.createManualRecoveryPoint === 'function' &&
@@ -217,13 +216,12 @@ export function createInvoicePdfPreviewWindowController(
           typeof window.ekyDesktop.openInvoicePdf === 'function' &&
           typeof window.ekyDesktop.openInvoicePdfArchiveDirectory === 'function' &&
           typeof window.ekyDesktop.openOperationalLogFolder === 'function' &&
-          typeof window.ekyDesktop.prepareEncryptedProfileRestore === 'function' &&
           typeof window.ekyDesktop.renameWorkspace === 'function' &&
           typeof window.ekyDesktop.replaceActiveWorkspaceFromBackup === 'function' &&
           typeof window.ekyDesktop.retryPendingInvoicePdfArchiveTasks === 'function' &&
           typeof window.ekyDesktop.selectLocalUpdate === 'function' &&
           typeof window.ekyDesktop.switchWorkspace === 'function' &&
-          Object.keys(window.ekyDesktop).length === 25`,
+          Object.keys(window.ekyDesktop).length === 23`,
         true,
       );
     },

@@ -39,6 +39,7 @@ $sourceProcess = $null
 $ownedObservations = [Collections.Generic.List[object]]::new()
 $sourceCleanupAuthorized = $false
 $targetCleanupAuthorized = $false
+$sourceProductReplaced = $false
 $scenarioSucceeded = $false
 $cleanupFailed = $false
 $installRoot = Join-Path $env:LOCALAPPDATA 'Programs\Eky'
@@ -179,6 +180,7 @@ try {
     -ExpectedSha256 $SourcePackageSha256
   Assert-W6b2SuccessPackageHash -Path $targetMsi `
     -ExpectedSha256 $TargetPackageSha256
+  $sourceProductReplaced = $true
   Complete-W6b2SuccessStage -ResultCode targetInstalled
 
   Start-W6b2SuccessStage -Stage targetFirstStart
@@ -270,7 +272,7 @@ finally {
           completedResultCode = 'cleanupTargetPackageCompleted'
         },
         [pscustomobject]@{
-          authorized = $sourceCleanupAuthorized
+          authorized = $sourceCleanupAuthorized -and !$sourceProductReplaced
           code = $sourceCode
           log = 'source-uninstall.log'
           startedResultCode = 'cleanupSourcePackageStarted'

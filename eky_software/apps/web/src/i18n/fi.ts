@@ -582,7 +582,8 @@ export const uiText = {
     profileBackupProfileDifferent: 'Toinen tai tyhjä yritystyötila',
     profileBackupProfileMatch: 'Työtilan vastaavuus',
     profileBackupProfileSame: 'Nykyinen yritystyötila',
-    profileBackupRestore: 'Palauta varmuuskopiosta',
+    profileBackupWorkspaceRestoreInfo:
+      'Varmuuskopion palautus kuuluu Yritykset-valikkoon: eri yritys tuodaan uutena ja vain saman yrityksen tiedot voidaan korvata.',
     profileBackupSecretExcluded:
       'SMTP-salasanaa tai muita käyttöjärjestelmän salaisuuksia ei sisällytetä varmuuskopioon.',
     profileRecoveryPointCreate: 'Luo palautuspiste nyt',
@@ -601,16 +602,6 @@ export const uiText = {
       'Käyttöjärjestelmän turvallinen salaus ei ole saatavilla. Palautuspisteitä ei luoda salaamattomana.',
     profileRecoveryPointsStatus: 'Tila',
     profileRecoveryPointsUnavailable: 'Ei käytettävissä',
-    profileRestoreActivate: 'Korvaa tiedot ja käynnistä uudelleen',
-    profileRestoreRecoveryPointNote:
-      'Eky luo ennen korvaamista konekohtaisen palautuspisteen nykyisistä tiedoista.',
-    profileRestoreReplacementWarning:
-      'Palautus korvaa nykyisen paikallisen yritystyötilan varmuuskopion tiedoilla.',
-    profileRestoreRestarting:
-      'Palautus käynnistyi. Eky käynnistyy uudelleen.',
-    profileRestoreRestartNote:
-      'Palautuksen aktivointi sulkee nykyisen työtilan ja käynnistää Eky-sovelluksen uudelleen.',
-    profileRestoreSummaryHeading: 'Palautettava varmuuskopio',
     invoiceNumberingDescription:
       'Määritä, miten viralliset laskunumerot muodostetaan hyväksynnässä. Varsinainen laskunumero annetaan vasta, kun lasku hyväksytään.',
     invoiceNumberingFirstSequenceNumber: 'Ensimmäinen numero',

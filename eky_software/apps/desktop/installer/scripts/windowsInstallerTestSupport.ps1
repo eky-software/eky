@@ -95,7 +95,10 @@ function ConvertTo-EkyMsiExecArgumentsToken {
 }
 
 function Start-EkyOwnedMsiExecHost {
-  param([Parameter(Mandatory = $true)][string[]]$Arguments)
+  param(
+    [Parameter(Mandatory = $true)][string[]]$Arguments,
+    [Parameter(Mandatory = $true)][int]$TimeoutMilliseconds
+  )
 
   if (!(Test-Path -LiteralPath $script:EkyMsiExecHostPath -PathType Leaf)) {
     throw 'INSTALLER_MSI_HOST_MISSING'
@@ -108,7 +111,11 @@ function Start-EkyOwnedMsiExecHost {
     '-File',
     "`"$script:EkyMsiExecHostPath`"",
     '-EncodedArguments',
-    $encodedArguments
+    $encodedArguments,
+    '-TimeoutMilliseconds',
+    $TimeoutMilliseconds.ToString(
+      [Globalization.CultureInfo]::InvariantCulture
+    )
   ) -WindowStyle Hidden -PassThru
 }
 
@@ -374,7 +381,8 @@ function Invoke-EkyMsiExecProcess {
       -Phase hostStarted -Status started
   }
   try {
-    $process = Start-EkyOwnedMsiExecHost -Arguments $Arguments
+    $process = Start-EkyOwnedMsiExecHost -Arguments $Arguments `
+      -TimeoutMilliseconds $policy.timeoutMilliseconds
   }
   catch {
     if ($EmitSafeProgress) {
@@ -389,25 +397,30 @@ function Invoke-EkyMsiExecProcess {
   }
   try {
     if ($EmitSafeProgress) {
-      return Invoke-EkyOwnedMsiProcessLifecycle -Process $process `
+      $exitCode = Invoke-EkyOwnedMsiProcessLifecycle -Process $process `
         -ErrorPrefix $policy.errorPrefix `
         -TimeoutMilliseconds $policy.timeoutMilliseconds `
         -ObservationContext $observationContext
     }
-
-    $identity = New-EkyOwnedMsiProcessIdentity -Process $process
-    $result = Wait-EkyOwnedMsiProcess -Process $process `
-      -TimeoutMilliseconds $policy.timeoutMilliseconds
-    if ($result.state -eq 'timedOut') {
-      try {
-        Stop-EkyOwnedMsiProcess -Process $process -Identity $identity
+    else {
+      $identity = New-EkyOwnedMsiProcessIdentity -Process $process
+      $result = Wait-EkyOwnedMsiProcess -Process $process `
+        -TimeoutMilliseconds $policy.timeoutMilliseconds
+      if ($result.state -eq 'timedOut') {
+        try {
+          Stop-EkyOwnedMsiProcess -Process $process -Identity $identity
+        }
+        catch {
+          throw "$($policy.errorPrefix)_CLEANUP_FAILED"
+        }
+        throw "$($policy.errorPrefix)_TIMEOUT"
       }
-      catch {
-        throw "$($policy.errorPrefix)_CLEANUP_FAILED"
-      }
+      $exitCode = [int]$result.exitCode
+    }
+    if ([int]$exitCode -eq 254) {
       throw "$($policy.errorPrefix)_TIMEOUT"
     }
-    return [int]$result.exitCode
+    return [int]$exitCode
   }
   finally {
     $process.Dispose()

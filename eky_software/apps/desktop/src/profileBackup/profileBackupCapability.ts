@@ -16,24 +16,17 @@ import {
   type PortableProfileBackupService,
 } from './portableProfileBackup.js';
 import {
-  activatePreparedProfileRestoreIpcChannel,
   createManualRecoveryPointIpcChannel,
   createProfileBackupIpcChannel,
   getProfileBackupStatusIpcChannel,
   inspectProfileBackupIpcChannel,
-  prepareProfileRestoreIpcChannel,
+  legacyProfileRestoreIpcChannels,
   type CreateProfileBackupResult,
   type InspectProfileBackupResult,
   type ProfileProtectionStatus,
 } from './portableProfileBackupTypes.js';
 import { createProfileProtectionStatus } from './profileProtectionStatus.js';
 import { createProfileBackupOperationalObserver } from './profileBackupOperationalObserver.js';
-import { createProfileRestoreCapabilityController } from './profileRestoreCapabilityController.js';
-import type { ProfileRestoreActivationService } from './restore/profileRestoreActivationService.js';
-import type {
-  PreparedProfileRestore,
-  ProfileRestoreStagingService,
-} from './restore/profileRestoreStagingService.js';
 
 interface ProfileBackupCapabilityOptions {
   backupService: Pick<
@@ -51,28 +44,10 @@ interface ProfileBackupCapabilityOptions {
     RecoveryPointService,
     'createManual' | 'getStatus'
   >;
-  restoreActivationService: Pick<
-    ProfileRestoreActivationService,
-    'activate'
-  >;
-  restoreStagingService: Pick<
-    ProfileRestoreStagingService,
-    'discardPreparedRestore' | 'inspect' | 'stage'
-  >;
-  confirmRestoreActivation(
-    restore: Pick<
-      PreparedProfileRestore,
-      'summary' | 'targetDisposition'
-    >,
-  ): Promise<boolean>;
-  confirmRestoreReplacement(
-    summary: PreparedProfileRestore['summary'],
-  ): Promise<boolean>;
   selectBackupSource(): Promise<string | null>;
   selectBackupTarget(defaultFileName: string): Promise<string | null>;
-  selectRestoreSource(): Promise<string | null>;
   showSafeError(
-    kind: 'create' | 'inspect' | 'recoveryPoint' | 'restore',
+    kind: 'create' | 'inspect' | 'recoveryPoint',
   ): void;
 }
 
@@ -88,15 +63,7 @@ export function createProfileBackupCapability(
     operationalIdentity: options.operationalIdentity,
     operationalLogger: options.operationalLogger,
   });
-  const restoreController = createProfileRestoreCapabilityController({
-    confirmActivation: options.confirmRestoreActivation,
-    confirmReplacement: options.confirmRestoreReplacement,
-    passwordWindow: options.passwordWindow,
-    restoreActivationService: options.restoreActivationService,
-    restoreStagingService: options.restoreStagingService,
-    selectSource: options.selectRestoreSource,
-    showSafeError: () => options.showSafeError('restore'),
-  });
+  removeLegacyProfileRestoreHandlers(options.ipcMain);
 
   registerNoArgumentHandler(
     options,
@@ -105,7 +72,6 @@ export function createProfileBackupCapability(
       createProfileProtectionStatus(
         options.backupService.getStatus(),
         options.recoveryPointService.getStatus(),
-        restoreController.getOperationState(),
       ),
   );
   registerNoArgumentHandler(
@@ -209,16 +175,6 @@ export function createProfileBackupCapability(
   );
   registerNoArgumentHandler(
     options,
-    prepareProfileRestoreIpcChannel,
-    () => runExclusive('restore', () => restoreController.prepare()),
-  );
-  registerNoArgumentHandler(
-    options,
-    activatePreparedProfileRestoreIpcChannel,
-    () => runExclusive('restore', () => restoreController.activate()),
-  );
-  registerNoArgumentHandler(
-    options,
     createManualRecoveryPointIpcChannel,
     () =>
       runExclusive('backup', async (): Promise<ProfileProtectionStatus> => {
@@ -227,7 +183,6 @@ export function createProfileBackupCapability(
           return createProfileProtectionStatus(
             options.backupService.getStatus(),
             options.recoveryPointService.getStatus(),
-            restoreController.getOperationState(),
           );
         } catch {
           options.showSafeError('recoveryPoint');
@@ -241,10 +196,7 @@ export function createProfileBackupCapability(
       options.ipcMain.removeHandler(getProfileBackupStatusIpcChannel);
       options.ipcMain.removeHandler(createProfileBackupIpcChannel);
       options.ipcMain.removeHandler(inspectProfileBackupIpcChannel);
-      options.ipcMain.removeHandler(prepareProfileRestoreIpcChannel);
-      options.ipcMain.removeHandler(
-        activatePreparedProfileRestoreIpcChannel,
-      );
+      removeLegacyProfileRestoreHandlers(options.ipcMain);
       options.ipcMain.removeHandler(
         createManualRecoveryPointIpcChannel,
       );
@@ -252,7 +204,7 @@ export function createProfileBackupCapability(
   };
 
   async function runExclusive<T>(
-    purpose: 'backup' | 'restore' | undefined,
+    purpose: 'backup' | undefined,
     operation: () => Promise<T>,
   ): Promise<T> {
     if (activeOperation) {
@@ -278,6 +230,14 @@ export function createProfileBackupCapability(
         activeOperation = false;
       }
     }
+  }
+}
+
+function removeLegacyProfileRestoreHandlers(
+  ipcMain: Pick<IpcMain, 'removeHandler'>,
+): void {
+  for (const channel of legacyProfileRestoreIpcChannels) {
+    ipcMain.removeHandler(channel);
   }
 }
 
