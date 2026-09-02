@@ -1,6 +1,9 @@
 import { resolve } from 'node:path';
 
 import { assertE2eSafetyBoundary } from './assertE2eSafetyBoundary.js';
+import {
+  E2E_WEB_STARTUP_SAFETY_TIMEOUT_MILLISECONDS,
+} from './e2eServiceStartupBudgets.js';
 import type { E2eWorkerPaths } from './e2eEnvironmentTypes.js';
 import {
   startManagedProcess,
@@ -69,7 +72,9 @@ export async function startE2eWebProcess(input: {
   });
 
   try {
-    await waitForHttpHealth(webOrigin);
+    await waitForHttpHealth(webOrigin, {
+      timeoutMilliseconds: E2E_WEB_STARTUP_SAFETY_TIMEOUT_MILLISECONDS,
+    });
   } catch {
     await stopManagedProcessTree(managedProcess.child);
     const diagnostics = [

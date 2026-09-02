@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import { createServer } from 'node:http';
 import {
   existsSync,
@@ -28,7 +29,10 @@ import {
   startManagedProcess,
   type ManagedChildProcess,
 } from '../../src/environment/startManagedProcess.js';
-import { stopManagedProcessTree } from '../../src/environment/stopManagedProcessTree.js';
+import {
+  stopManagedProcessTree,
+  waitForManagedProcessExit,
+} from '../../src/environment/stopManagedProcessTree.js';
 import {
   closeOwnedElectronRuntime,
   stopOwnedElectronRuntime,
@@ -219,9 +223,84 @@ test.describe('managed E2E runtime primitives', () => {
         expect(process).toBe(processToken);
         calls.push('stop');
       },
+      async (process, timeoutMilliseconds) => {
+        expect(process).toBe(processToken);
+        expect(timeoutMilliseconds).toBe(15_000);
+        calls.push('wait');
+        return true;
+      },
     );
 
-    expect(calls).toEqual(['close', 'stop']);
+    expect(calls).toEqual(['close', 'wait', 'stop']);
+  });
+
+  test('waits for graceful Electron exit before applying fallback cleanup', async () => {
+    const calls: string[] = [];
+    const processToken = {} as ManagedChildProcess;
+    let reportExit: (() => void) | undefined;
+
+    const action = closeOwnedElectronRuntime(
+      {
+        async close() {
+          calls.push('close');
+        },
+      },
+      processToken,
+      async () => {
+        calls.push('stop');
+      },
+      async () => {
+        calls.push('wait');
+        return new Promise<boolean>((resolveExit) => {
+          reportExit = () => resolveExit(true);
+        });
+      },
+    );
+
+    await expect.poll(() => calls).toEqual(['close', 'wait']);
+    expect(reportExit).toBeDefined();
+    reportExit?.();
+    await expect(action).resolves.toBeUndefined();
+    expect(calls).toEqual(['close', 'wait', 'stop']);
+  });
+
+  test('uses bounded process-tree cleanup when graceful Electron exit is absent', async () => {
+    const calls: string[] = [];
+
+    await closeOwnedElectronRuntime(
+      {
+        async close() {
+          calls.push('close');
+        },
+      },
+      {} as ManagedChildProcess,
+      async () => {
+        calls.push('stop');
+      },
+      async () => {
+        calls.push('wait');
+        return false;
+      },
+    );
+
+    expect(calls).toEqual(['close', 'wait', 'stop']);
+  });
+
+  test('observes managed process exit without consuming the safety deadline', async () => {
+    const synthetic = createSyntheticManagedChildProcess();
+    const exit = waitForManagedProcessExit(synthetic.process, 5_000);
+
+    synthetic.reportExit();
+
+    await expect(exit).resolves.toBe(true);
+  });
+
+  test('keeps an absent managed process exit as a bounded failure signal', async () => {
+    const synthetic = createSyntheticManagedChildProcess();
+
+    await expect(
+      waitForManagedProcessExit(synthetic.process, 5),
+    ).resolves.toBe(false);
   });
 
   test('still applies process-tree cleanup when graceful Electron close fails', async () => {
@@ -313,7 +392,9 @@ test.describe('managed E2E runtime primitives', () => {
         server.once('error', rejectListen);
         server.listen(port, '127.0.0.1', resolveListen);
       });
-      await waitForHttpHealth(`http://127.0.0.1:${port}/health`);
+      await waitForHttpHealth(`http://127.0.0.1:${port}/health`, {
+        timeoutMilliseconds: 5_000,
+      });
     } finally {
       await new Promise<void>((resolveClose) => {
         server.close(() => resolveClose());
@@ -501,4 +582,25 @@ async function waitForOutput(readOutput: () => string): Promise<void> {
     });
   }
   throw new Error('Managed process did not produce output.');
+}
+
+function createSyntheticManagedChildProcess(): {
+  process: ManagedChildProcess;
+  reportExit(): void;
+} {
+  const processEvents = new EventEmitter();
+  const syntheticProcess = Object.assign(processEvents, {
+    exitCode: null as number | null,
+    kill: () => true,
+    pid: 123,
+    signalCode: null as NodeJS.Signals | null,
+  });
+
+  return {
+    process: syntheticProcess as ManagedChildProcess,
+    reportExit() {
+      syntheticProcess.exitCode = 0;
+      syntheticProcess.emit('exit', 0, null);
+    },
+  };
 }

@@ -60,6 +60,9 @@ ja synteettistä profiilia.
 Testiruntime käynnistää backendin ja webin hallittuina lapsiprosesseina. Se:
 
 - odottaa eksplisiittistä health-valmiutta
+- palautuu heti health-ehdon täyttyessä eikä käytä kiinteää odotusta
+- keskeyttää ja terminalisoi keskeneräisen health-tarkistuksen, jos omistettu
+  lapsiprosessi poistuu ennen valmiutta
 - rajaa ja redaktoi stdout/stderr-keräyksen
 - pysäyttää koko prosessipuun testin, keskeytyksen ja runner-virheen jälkeen
 - tarkistaa, ettei portteja tai lapsiprosesseja jää käyttöön
@@ -74,7 +77,16 @@ vain Windowsin hetkellistä kahvan vapautumista; pysyvä `EPERM` tai muu
 cleanup-virhe epäonnistaa testin eikä sitä nielaista.
 
 Satunnaisia odotuksia tai `waitForTimeout`-kutsuja ei käytetä valmiuden
-todistamiseen.
+todistamiseen. Nimetty backend-startupin enimmäisaika on vain fail-closed-
+turvaraja. Electron-testin oma enimmäisaika koostetaan mahdollisen synteettisen
+backend-fixturen, Electron-yhteyden, ensimmäisen ikkunan, sulkemisen ja
+skenaarion turvabudjeteista; mikään näistä ajoista ei ole onnistumisen
+valmis-signaali.
+
+Playwrightin Electron-sulkemisen jälkeen testiruntime odottaa omistetun
+juuriprosessin todellista exit-tapahtumaa. Pakotettu prosessipuun cleanup on
+rajattu varmistus vain silloin, kun tapahtumaa ei saada turvallisen
+enimmäisajan sisällä; kiinteä odotus ei ole onnistumissignaali.
 
 System-fixture voi hallitussa recovery-testissä pysäyttää backendin ja
 käynnistää sen uudelleen samalla testikohtaisella SQLite-kannalla ja samalla

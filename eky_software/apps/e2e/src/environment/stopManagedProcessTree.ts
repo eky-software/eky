@@ -19,7 +19,7 @@ export async function stopManagedProcessTree(
     }
   }
 
-  await waitForExit(child, timeoutMilliseconds);
+  await waitForManagedProcessExit(child, timeoutMilliseconds);
   if (!hasExited(child)) {
     if (process.platform !== 'win32') {
       try {
@@ -30,34 +30,47 @@ export async function stopManagedProcessTree(
     } else {
       child.kill('SIGKILL');
     }
-    await waitForExit(child, timeoutMilliseconds);
+    await waitForManagedProcessExit(child, timeoutMilliseconds);
   }
   if (!hasExited(child)) {
     throw new Error('E2E_MANAGED_PROCESS_TREE_STOP_TIMEOUT');
   }
 }
 
-function waitForExit(
+export function waitForManagedProcessExit(
   child: ManagedChildProcess,
   timeoutMilliseconds: number,
-): Promise<void> {
+): Promise<boolean> {
+  if (!Number.isSafeInteger(timeoutMilliseconds) || timeoutMilliseconds < 1) {
+    throw new Error('E2E_MANAGED_PROCESS_EXIT_WAIT_INPUT_INVALID');
+  }
   if (hasExited(child)) {
-    return Promise.resolve();
+    return Promise.resolve(true);
   }
 
   return new Promise((resolveExit) => {
     let terminal = false;
-    const complete = () => {
+    let timer: NodeJS.Timeout | undefined;
+    const complete = (exited: boolean) => {
       if (terminal) {
         return;
       }
       terminal = true;
-      clearTimeout(timer);
-      child.removeListener('exit', complete);
-      resolveExit();
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
+      child.removeListener('exit', onExit);
+      resolveExit(exited);
     };
-    const timer = setTimeout(complete, timeoutMilliseconds);
-    child.once('exit', complete);
+    const onExit = () => complete(true);
+    timer = setTimeout(
+      () => complete(hasExited(child)),
+      timeoutMilliseconds,
+    );
+    child.once('exit', onExit);
+    if (hasExited(child)) {
+      complete(true);
+    }
   });
 }
 
