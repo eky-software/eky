@@ -1099,6 +1099,13 @@ worker-prosessipuunsa, odottaa rajatun cleanupin ja julkaisee vasta sen jälkeen
 turvallisen terminal-JSONL-tuloksen. Sisäinen vaihekohtainen lifecycle
 säilyttää scenario- ja cleanup-varat, mutta ei korvaa ulompaa prosessiomistajaa.
 
+W6B.2A-success-cleanup ei käynnistä uutta MSI-poistotransaktiota jo
+major upgraden yhteydessä todistetusti poistuneelle lähde-ProductCodelle.
+Tämä optimointi sallitaan vasta, kun kohdepaketin tila, payload ja rekisteröinti
+on validoitu ja lähdepaketin poissaolo on siten yksiselitteinen. Kesken jääneen
+asennuksen, tuntemattoman tilan ja muiden failure-polkujen valtuutettu cleanup
+säilyttää pakotetun poistoyrityksen sekä lopulliset fail-closed-jälkiehdot.
+
 Teknologiavalinnassa pitää todistaa:
 
 - pystyykö moottori säilyttämään tai palauttamaan edellisen version
