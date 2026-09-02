@@ -904,6 +904,12 @@ cleanup-tapahtumat, jättää ulomman CI-jobin aikarajaan siivousvaran ja
 terminalisoi vain täsmälliseen 64-hex-todisteeseen sekä process creation
 -identiteettiin sidotun prosessipuun. PowerShell-skenaarion sisäinen viiden
 minuutin MSI-operaation aikaraja säilyy erillisenä ja muuttumattomana.
+Testikäytön `msiexec` käynnistetään olemassa olevan MSI-hostin kautta omilla
+konsoli- ja output-kahvoillaan. Hosti odottaa rajatusti vain käynnistämäänsä
+täsmällistä prosessia, siivoaa aikarajalla vain sen omistaman prosessipuun ja
+välittää timeoutin suljettuna tuloksena kutsuvalle harnessille. CI-runnerin
+output-kahvaa perivää `-NoNewWindow`-käynnistystä tai rajaamatonta
+`Start-Process -Wait` -jälkeläisodotusta ei käytetä.
 
 W6B:n success-todisteessa aktiivinen `compatiblePending`-työtila migroidaan
 first startissa, passiivinen `compatiblePending` säilyy siihen asti byte-

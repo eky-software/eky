@@ -29,6 +29,10 @@ test('MSI test runner has bounded waits and exact-process cleanup', () => {
     /'w6b2_uninstall'\s*\{\s*@\('W6B2_SUCCESS_UNINSTALL', 180000\)\s*\}/u,
   );
   assert.match(source, /function Start-EkyOwnedMsiExecHost/u);
+  assert.match(
+    source,
+    /Start-EkyOwnedMsiExecHost -Arguments \$Arguments\s+`\s+-TimeoutMilliseconds \$policy\.timeoutMilliseconds/u,
+  );
   assert.match(source, /function Wait-EkyOwnedMsiProcess/u);
   assert.match(source, /function Wait-EkyObservedOwnedMsiProcess/u);
   assert.match(source, /function Invoke-EkyOwnedMsiProcessLifecycle/u);
@@ -64,8 +68,13 @@ test('MSI test runner has bounded waits and exact-process cleanup', () => {
   );
   assert.doesNotMatch(source, /(?:taskkill|Stop-Process)\s+-Name\s+msiexec/iu);
   assert.match(hostSource, /System32\\msiexec\.exe/u);
-  assert.match(hostSource, /-Wait\s+`\s+-PassThru/u);
+  assert.match(hostSource, /\.WaitForExit\(\$TimeoutMilliseconds\)/u);
+  assert.match(hostSource, /-WindowStyle Hidden\s+`\s+-PassThru/u);
+  assert.match(hostSource, /Stop-EkyProcessTree -Process \$process/u);
+  assert.doesNotMatch(hostSource, /-NoNewWindow/u);
+  assert.doesNotMatch(hostSource, /-Wait\s+`/u);
   assert.doesNotMatch(hostSource, /(?:taskkill|Stop-Process)/iu);
+  assert.match(source, /\[int\]\$exitCode -eq 254/u);
   assert.match(observationSource, /phaseStartedAt/u);
   assert.match(observationSource, /ConvertTo-Json -Compress/u);
   assert.doesNotMatch(
