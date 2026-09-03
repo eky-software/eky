@@ -6,6 +6,7 @@ Set-StrictMode -Version Latest
 
 $script:EkyMsiExecHostPath = Join-Path $PSScriptRoot `
   'windowsInstallerMsiExecHost.ps1'
+$script:EkyMsiExecHostFallbackReserveMilliseconds = 30000
 
 function Get-EkyFileSha256 {
   param([Parameter(Mandatory = $true)][string]$Path)
@@ -118,6 +119,22 @@ function Start-EkyOwnedMsiExecHost {
       [Globalization.CultureInfo]::InvariantCulture
     )
   ) -WindowStyle Hidden -PassThru
+}
+
+function Get-EkyMsiExecHostTimeoutMilliseconds {
+  param(
+    [Parameter(Mandatory = $true)][int]$OperationTimeoutMilliseconds
+  )
+
+  if (
+    $OperationTimeoutMilliseconds -lt 1 -or
+    $OperationTimeoutMilliseconds -gt
+      ([int]::MaxValue - $script:EkyMsiExecHostFallbackReserveMilliseconds)
+  ) {
+    throw 'INSTALLER_MSI_HOST_TIMEOUT_INVALID'
+  }
+  return $OperationTimeoutMilliseconds +
+    $script:EkyMsiExecHostFallbackReserveMilliseconds
 }
 
 function Assert-EkyOwnedMsiProcessIdentity {
@@ -380,8 +397,10 @@ function Invoke-EkyMsiExecProcess {
       -Phase hostStarted -Status started
   }
   try {
+    $hostTimeoutMilliseconds = Get-EkyMsiExecHostTimeoutMilliseconds `
+      -OperationTimeoutMilliseconds $policy.timeoutMilliseconds
     $process = Start-EkyOwnedMsiExecHost -Arguments $Arguments `
-      -TimeoutMilliseconds $policy.timeoutMilliseconds
+      -TimeoutMilliseconds $hostTimeoutMilliseconds
   }
   catch {
     if ($EmitSafeProgress) {

@@ -908,17 +908,20 @@ todisteeseen sekä process creation -identiteettiin sidotun prosessipuun.
 PowerShell-skenaarion sisäinen viiden minuutin MSI-operaation aikaraja säilyy
 erillisenä ja muuttumattomana.
 Testikäytön `msiexec` käynnistetään olemassa olevan MSI-hostin kautta omilla
-konsoli- ja output-kahvoillaan. Hosti odottaa rajatusti vain käynnistämäänsä
-täsmällistä prosessia, siivoaa aikarajalla vain sen omistaman prosessipuun ja
-välittää timeoutin suljettuna tuloksena kutsuvalle harnessille. CI-runnerin
-output-kahvaa perivää `-NoNewWindow`-käynnistystä tai rajaamatonta
+konsoli- ja output-kahvoillaan. Kutsuva harness omistaa varsinaisen
+operaatioaikarajan ja täsmällisen prosessipuun cleanupin. Hosti odottaa
+rajatusti vain käynnistämäänsä täsmällistä prosessia ja käyttää omaa
+varmistusrajaansa vasta 30 sekunnin cleanup-varan jälkeen. Näin hosti ja
+kutsuja eivät käynnistä saman prosessipuun timeout-cleanupia samanaikaisesti.
+CI-runnerin output-kahvaa perivää `-NoNewWindow`-käynnistystä tai rajaamatonta
 `Start-Process -Wait` -jälkeläisodotusta ei käytetä.
 
-W6B.2:n prosessiharness ei peri CI-runnerin output-kahvoja suoraan.
-Workerin stdout ja stderr välitetään omien pipe-kahvojen kautta. Workerilta
-odotetaan prosessin exit-tapahtuma, sen omistama prosessipuu siivotaan tai
-todetaan poistuneeksi ja vasta sen jälkeen pipe-kahvat irrotetaan. Näin
-jälkeläisen auki pitämä output-kahva ei estä cleanupia tai CI-komennon
+W6B.2:n ulompi prosessiharness ei välitä workerin stdout- tai stderr-virtaa
+oman Node-event loopinsa kautta. Worker kirjoittaa olemassa olevan turvallisen
+testievidenssin suoraan perittyihin runner-kahvoihin, kun taas ulomman omistajan
+deadline ja täsmällinen cleanup säilyvät lokivirrasta riippumattomina. Näin
+watchdog ei voi lukkiutua oman lapsensa output-putken backpressureen eikä
+jälkeläisen auki pitämä erillinen pipe-kahva estä CI-komennon
 terminalisoitumista. Installer-handoffissa omistajuus siirtyy dynaamisesti koko
 sille täsmälliselle omistetulle prosessihaaralle, jonka jälkeläisenä validoitu
 `msiexec.exe` havaitaan; rinnakkaiset application-haarat pysyvät harnessin

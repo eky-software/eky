@@ -79,9 +79,8 @@ test('preserves normal worker exit and proves exact cleanup', async () => {
   );
   assert.deepEqual(
     harness.spawnArguments[0][2].stdio,
-    ['ignore', 'pipe', 'pipe'],
+    ['ignore', 'inherit', 'inherit'],
   );
-  assert.equal(harness.outputDisconnectCount(), 1);
   assert.deepEqual(lastEvent(harness.events), {
     commandKind: 'success',
     durationMs: 0,
@@ -121,17 +120,19 @@ test('turns the absolute deadline into cleanup and a safe timeout', async () => 
   );
   assert.equal(harness.childKillCount(), 1);
   assert.equal(harness.childUnrefCount(), 1);
-  assert.equal(harness.outputDisconnectCount(), 1);
 });
 
-test('releases isolated output after dynamic worker exit and cleanup', async () => {
+test('preserves inherited output after dynamic worker exit and cleanup', async () => {
   const harness = createHarness();
   const run = startCommand(harness);
 
   harness.child.emit('exit', 0, null);
   await assert.doesNotReject(run);
   assert.equal(harness.cleanupInputs.length, 1);
-  assert.equal(harness.outputDisconnectCount(), 1);
+  assert.deepEqual(
+    harness.spawnArguments[0][2].stdio,
+    ['ignore', 'inherit', 'inherit'],
+  );
 });
 
 test('preserves non-zero worker exit after cleanup', async () => {
@@ -333,7 +334,7 @@ test(
           "import { writeFileSync } from 'node:fs';",
           "const markerPath = process.env.EKY_W6B2_PROCESS_CONTRACT_MARKER;",
           "if (typeof markerPath !== 'string' || markerPath.length === 0) process.exit(2);",
-          "spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore', windowsHide: true });",
+          "spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'inherit', windowsHide: true });",
           "writeFileSync(markerPath, 'ready', 'utf8');",
           'setInterval(() => {}, 1000);',
         ].join('\n'),
@@ -423,7 +424,6 @@ function createHarness(options = {}) {
   const spawnArguments = [];
   let childKillCount = 0;
   let childUnrefCount = 0;
-  let outputDisconnectCount = 0;
   child.exitCode = null;
   child.signalCode = null;
   child.kill = () => {
@@ -443,11 +443,6 @@ function createHarness(options = {}) {
     clearInterval() {},
     clearTimeout() {},
     createProofToken: () => options.proofToken ?? proofToken,
-    connectProcessOutput() {
-      return () => {
-        outputDisconnectCount += 1;
-      };
-    },
     now: () => 1_000,
     observe(event) {
       events.push(event);
@@ -488,7 +483,6 @@ function createHarness(options = {}) {
       assert.equal(typeof heartbeat, 'function');
       heartbeat();
     },
-    outputDisconnectCount: () => outputDisconnectCount,
     spawnArguments,
   };
 }

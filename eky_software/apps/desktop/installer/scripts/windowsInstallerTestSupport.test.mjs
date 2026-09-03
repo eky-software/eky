@@ -34,9 +34,14 @@ test('MSI test runner has bounded waits and exact-process cleanup', () => {
     /'w6b2_uninstall'\s*\{\s*@\('W6B2_SUCCESS_UNINSTALL', 180000\)\s*\}/u,
   );
   assert.match(source, /function Start-EkyOwnedMsiExecHost/u);
+  assert.match(source, /function Get-EkyMsiExecHostTimeoutMilliseconds/u);
   assert.match(
     source,
-    /Start-EkyOwnedMsiExecHost -Arguments \$Arguments\s+`\s+-TimeoutMilliseconds \$policy\.timeoutMilliseconds/u,
+    /Start-EkyOwnedMsiExecHost -Arguments \$Arguments\s+`\s+-TimeoutMilliseconds \$hostTimeoutMilliseconds/u,
+  );
+  assert.match(
+    source,
+    /EkyMsiExecHostFallbackReserveMilliseconds = 30000/u,
   );
   assert.match(source, /function Wait-EkyOwnedMsiProcess/u);
   assert.match(source, /function Wait-EkyObservedOwnedMsiProcess/u);
