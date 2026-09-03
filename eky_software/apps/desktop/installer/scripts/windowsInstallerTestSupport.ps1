@@ -2,6 +2,7 @@ Set-StrictMode -Version Latest
 
 . (Join-Path $PSScriptRoot 'windowsInstallerProcessTree.ps1')
 . (Join-Path $PSScriptRoot 'windowsInstallerMsiProcessObservation.ps1')
+. (Join-Path $PSScriptRoot 'windowsInstallerNativeProcessWait.ps1')
 
 $script:EkyMsiExecHostPath = Join-Path $PSScriptRoot `
   'windowsInstallerMsiExecHost.ps1'
@@ -150,7 +151,8 @@ function Wait-EkyOwnedMsiProcess {
   }
   $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
   try {
-    $exited = $Process.WaitForExit($TimeoutMilliseconds)
+    $exited = Wait-EkyNativeProcessSignal -Process $Process `
+      -TimeoutMilliseconds $TimeoutMilliseconds
     if (!$exited) {
       return [pscustomobject]@{
         state = 'timedOut'
@@ -160,7 +162,7 @@ function Wait-EkyOwnedMsiProcess {
     }
     return [pscustomobject]@{
       state = 'exited'
-      exitCode = [int]$Process.ExitCode
+      exitCode = Get-EkyNativeProcessExitCode -Process $Process
       durationMs = [long]$stopwatch.ElapsedMilliseconds
     }
   }
@@ -213,10 +215,11 @@ function Wait-EkyObservedOwnedMsiProcess {
           $untilHeartbeatMs
         )
       }
-      if ($Process.WaitForExit([Math]::Max(1, $waitMilliseconds))) {
+      if (Wait-EkyNativeProcessSignal -Process $Process `
+          -TimeoutMilliseconds ([Math]::Max(1, $waitMilliseconds))) {
         return [pscustomobject]@{
           state = 'exited'
-          exitCode = [int]$Process.ExitCode
+          exitCode = Get-EkyNativeProcessExitCode -Process $Process
           durationMs = [long]$stopwatch.ElapsedMilliseconds
         }
       }

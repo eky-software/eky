@@ -7,6 +7,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'windowsInstallerProcessTree.ps1')
+. (Join-Path $PSScriptRoot 'windowsInstallerNativeProcessWait.ps1')
 
 $hostFailureExitCode = 255
 $hostTimeoutExitCode = 254
@@ -34,11 +35,12 @@ try {
     -ArgumentList ([string[]]$decodedArguments) `
     -WindowStyle Hidden `
     -PassThru
-  if (!$process.WaitForExit($TimeoutMilliseconds)) {
+  if (!(Wait-EkyNativeProcessSignal -Process $process `
+      -TimeoutMilliseconds $TimeoutMilliseconds)) {
     Stop-EkyProcessTree -Process $process -TimeoutMilliseconds 10000
     exit $hostTimeoutExitCode
   }
-  exit ([int]$process.ExitCode)
+  exit (Get-EkyNativeProcessExitCode -Process $process)
 }
 catch {
   exit $hostFailureExitCode
