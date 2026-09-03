@@ -2,7 +2,9 @@ param(
   [Parameter(Mandatory = $true)][ValidateRange(1, 2147483647)]
   [int]$RootProcessId,
   [Parameter(Mandatory = $true)][ValidatePattern('^[0-9a-f]{64}$')]
-  [string]$ProofToken
+  [string]$ProofToken,
+  [Parameter(Mandatory = $true)][ValidateSet('acceptance', 'command')]
+  [string]$ProcessKind
 )
 
 Set-StrictMode -Version Latest
@@ -21,13 +23,29 @@ if ($record.Count -ne 1) {
   throw 'W6B_LEGACY_ACCEPTANCE_PROCESS_OWNERSHIP_INVALID'
 }
 
-$tokenPattern = '(?i)(?:^|\s)-ProcessProofToken\s+"?' +
-  [regex]::Escape($ProofToken) + '"?(?:\s|$)'
-$scriptPattern = '(?i)(?:^|[\\/])testW6bLegacyUpgradeAcceptance\.ps1(?:"|\s|$)'
+$tokenPattern = if ($ProcessKind -eq 'acceptance') {
+  '(?i)(?:^|\s)-ProcessProofToken\s+"?' +
+    [regex]::Escape($ProofToken) + '"?(?:\s|$)'
+}
+else {
+  '(?i)(?:^|\s)--process-proof-token="?' +
+    [regex]::Escape($ProofToken) + '"?(?:\s|$)'
+}
+$scriptPattern = if ($ProcessKind -eq 'acceptance') {
+  '(?i)(?:^|[\\/])testW6bLegacyUpgradeAcceptance\.ps1(?:"|\s|$)'
+}
+else {
+  '(?i)(?:^|[\\/])runW6bLegacyUpgradeCommand\.mjs(?:"|\s|$)'
+}
+$workerPattern = '(?i)(?:^|\s)--worker(?:\s|$)'
 if (
   [string]::IsNullOrWhiteSpace([string]$record[0].CommandLine) -or
   [string]$record[0].CommandLine -notmatch $tokenPattern -or
-  [string]$record[0].CommandLine -notmatch $scriptPattern
+  [string]$record[0].CommandLine -notmatch $scriptPattern -or
+  (
+    $ProcessKind -eq 'command' -and
+    [string]$record[0].CommandLine -notmatch $workerPattern
+  )
 ) {
   throw 'W6B_LEGACY_ACCEPTANCE_PROCESS_OWNERSHIP_INVALID'
 }

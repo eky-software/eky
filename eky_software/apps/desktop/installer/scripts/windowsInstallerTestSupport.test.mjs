@@ -8,6 +8,10 @@ import test from 'node:test';
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const helperPath = join(scriptDirectory, 'windowsInstallerTestSupport.ps1');
 const hostPath = join(scriptDirectory, 'windowsInstallerMsiExecHost.ps1');
+const nativeWaitPath = join(
+  scriptDirectory,
+  'windowsInstallerNativeProcessWait.ps1',
+);
 const observationPath = join(
   scriptDirectory,
   'windowsInstallerMsiProcessObservation.ps1',
@@ -17,6 +21,7 @@ const testPath = join(scriptDirectory, 'windowsInstallerTestSupport.test.ps1');
 test('MSI test runner has bounded waits and exact-process cleanup', () => {
   const source = readFileSync(helperPath, 'utf8');
   const hostSource = readFileSync(hostPath, 'utf8');
+  const nativeWaitSource = readFileSync(nativeWaitPath, 'utf8');
   const observationSource = readFileSync(observationPath, 'utf8');
 
   assert.match(source, /function Get-EkyMsiExecPolicy/u);
@@ -29,9 +34,14 @@ test('MSI test runner has bounded waits and exact-process cleanup', () => {
     /'w6b2_uninstall'\s*\{\s*@\('W6B2_SUCCESS_UNINSTALL', 180000\)\s*\}/u,
   );
   assert.match(source, /function Start-EkyOwnedMsiExecHost/u);
+  assert.match(source, /function Get-EkyMsiExecHostTimeoutMilliseconds/u);
   assert.match(
     source,
-    /Start-EkyOwnedMsiExecHost -Arguments \$Arguments\s+`\s+-TimeoutMilliseconds \$policy\.timeoutMilliseconds/u,
+    /Start-EkyOwnedMsiExecHost -Arguments \$Arguments\s+`\s+-TimeoutMilliseconds \$hostTimeoutMilliseconds/u,
+  );
+  assert.match(
+    source,
+    /EkyMsiExecHostFallbackReserveMilliseconds = 30000/u,
   );
   assert.match(source, /function Wait-EkyOwnedMsiProcess/u);
   assert.match(source, /function Wait-EkyObservedOwnedMsiProcess/u);
@@ -44,19 +54,23 @@ test('MSI test runner has bounded waits and exact-process cleanup', () => {
     source,
     /Wait-EkyOwnedMsiProcess -Process \$cleanupProcess/u,
   );
-  assert.match(source, /WaitForExit\(\$TimeoutMilliseconds\)/u);
+  assert.match(
+    source,
+    /windowsInstallerNativeProcessWait\.ps1/u,
+  );
   const observedWait = source.match(
     /function Wait-EkyObservedOwnedMsiProcess[\s\S]*?\n\}\n\nfunction Invoke-EkyOwnedMsiProcessCleanup/u,
   )?.[0];
   assert.ok(observedWait);
   assert.match(
     observedWait,
-    /\$Process\.WaitForExit\(\[Math\]::Max\(1, \$waitMilliseconds\)\)/u,
+    /Wait-EkyNativeProcessSignal -Process \$Process/u,
   );
   assert.doesNotMatch(observedWait, /ManualResetEventSlim/u);
   assert.doesNotMatch(observedWait, /\$Process\.Refresh\(\)/u);
   assert.doesNotMatch(observedWait, /\$Process\.HasExited/u);
   assert.doesNotMatch(observedWait, /WaitForExit\(\)/u);
+  assert.doesNotMatch(observedWait, /WaitForExit\(/u);
   assert.match(
     source,
     /if \(\$EmitSafeProgress\) \{[\s\S]*Invoke-EkyOwnedMsiProcessLifecycle/u,
@@ -72,12 +86,18 @@ test('MSI test runner has bounded waits and exact-process cleanup', () => {
   );
   assert.doesNotMatch(source, /(?:taskkill|Stop-Process)\s+-Name\s+msiexec/iu);
   assert.match(hostSource, /System32\\msiexec\.exe/u);
-  assert.match(hostSource, /\.WaitForExit\(\$TimeoutMilliseconds\)/u);
+  assert.match(hostSource, /windowsInstallerNativeProcessWait\.ps1/u);
+  assert.match(hostSource, /Wait-EkyNativeProcessSignal/u);
+  assert.match(hostSource, /Get-EkyNativeProcessExitCode/u);
+  assert.doesNotMatch(hostSource, /\.WaitForExit\(/u);
   assert.match(hostSource, /-WindowStyle Hidden\s+`\s+-PassThru/u);
   assert.match(hostSource, /Stop-EkyProcessTree -Process \$process/u);
   assert.doesNotMatch(hostSource, /-NoNewWindow/u);
   assert.doesNotMatch(hostSource, /-Wait\s+`/u);
   assert.doesNotMatch(hostSource, /(?:taskkill|Stop-Process)/iu);
+  assert.match(nativeWaitSource, /WaitForSingleObject/u);
+  assert.match(nativeWaitSource, /GetExitCodeProcess/u);
+  assert.doesNotMatch(nativeWaitSource, /Start-Sleep|WaitForExit|HasExited/u);
   assert.match(source, /\[int\]\$exitCode -eq 254/u);
   assert.match(observationSource, /phaseStartedAt/u);
   assert.match(observationSource, /ConvertTo-Json -Compress/u);

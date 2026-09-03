@@ -12,7 +12,25 @@ export const W6B_LEGACY_ACCEPTANCE_TIMEOUT_MILLISECONDS = 18 * 60 * 1000;
 export const W6B_LEGACY_ACCEPTANCE_CLEANUP_TIMEOUT_MILLISECONDS = 30_000;
 export const W6B_LEGACY_ACCEPTANCE_HEARTBEAT_MILLISECONDS = 60_000;
 
-const operation = 'w6bLegacyAcceptance';
+const processContracts = Object.freeze({
+  acceptance: Object.freeze({
+    cleanupFailed: 'W6B_LEGACY_ACCEPTANCE_CLEANUP_FAILED',
+    cleanupTimeout: 'W6B_LEGACY_ACCEPTANCE_CLEANUP_TIMEOUT',
+    operation: 'w6bLegacyAcceptance',
+    processExitFailed: 'W6B_LEGACY_ACCEPTANCE_PROCESS_EXIT_FAILED',
+    processStartFailed: 'W6B_LEGACY_ACCEPTANCE_PROCESS_START_FAILED',
+    processTimeout: 'W6B_LEGACY_ACCEPTANCE_PROCESS_TIMEOUT',
+  }),
+  command: Object.freeze({
+    cleanupFailed: 'W6B_LEGACY_COMMAND_CLEANUP_FAILED',
+    cleanupTimeout: 'W6B_LEGACY_COMMAND_CLEANUP_TIMEOUT',
+    operation: 'w6bLegacyCommandProcess',
+    processExitFailed: 'W6B_LEGACY_COMMAND_PROCESS_EXIT_FAILED',
+    processStartFailed: 'W6B_LEGACY_COMMAND_PROCESS_START_FAILED',
+    processTimeout: 'W6B_LEGACY_COMMAND_PROCESS_TIMEOUT',
+  }),
+});
+const processKinds = new Set(Object.keys(processContracts));
 const allowedPhases = new Set([
   'command',
   'hostStarted',
@@ -37,6 +55,11 @@ const safeErrorCodes = new Set([
   'W6B_LEGACY_ACCEPTANCE_PROCESS_EXIT_FAILED',
   'W6B_LEGACY_ACCEPTANCE_PROCESS_START_FAILED',
   'W6B_LEGACY_ACCEPTANCE_PROCESS_TIMEOUT',
+  'W6B_LEGACY_COMMAND_CLEANUP_FAILED',
+  'W6B_LEGACY_COMMAND_CLEANUP_TIMEOUT',
+  'W6B_LEGACY_COMMAND_PROCESS_EXIT_FAILED',
+  'W6B_LEGACY_COMMAND_PROCESS_START_FAILED',
+  'W6B_LEGACY_COMMAND_PROCESS_TIMEOUT',
 ]);
 
 const defaultDependencies = Object.freeze({
@@ -56,13 +79,14 @@ export async function runW6bLegacyAcceptanceProcess(input, options = {}) {
     ...(options.dependencies ?? {}),
   };
   const configuration = validateInput(input);
+  const contract = processContracts[configuration.processKind];
   const startedAt = dependencies.now();
   const observe = (phase, status, errorCode) => {
     safelyObserve(dependencies.observe, {
       durationMs: Math.max(0, dependencies.now() - startedAt),
       elapsedMs: Math.max(0, dependencies.now() - startedAt),
       errorCode,
-      operation,
+      operation: contract.operation,
       phase,
       status,
     });
@@ -84,17 +108,9 @@ export async function runW6bLegacyAcceptanceProcess(input, options = {}) {
       },
     );
   } catch {
-    observe(
-      'hostStarted',
-      'failed',
-      'W6B_LEGACY_ACCEPTANCE_PROCESS_START_FAILED',
-    );
-    observe(
-      'command',
-      'failed',
-      'W6B_LEGACY_ACCEPTANCE_PROCESS_START_FAILED',
-    );
-    throw new Error('W6B_LEGACY_ACCEPTANCE_PROCESS_START_FAILED');
+    observe('hostStarted', 'failed', contract.processStartFailed);
+    observe('command', 'failed', contract.processStartFailed);
+    throw new Error(contract.processStartFailed);
   }
   observe('hostStarted', 'completed');
   observe('hostIdentityCaptured', 'completed');
@@ -112,28 +128,36 @@ export async function runW6bLegacyAcceptanceProcess(input, options = {}) {
   });
   let terminalErrorCode;
   if (terminal.kind === 'timeout') {
-    terminalErrorCode = 'W6B_LEGACY_ACCEPTANCE_PROCESS_TIMEOUT';
+    terminalErrorCode = contract.processTimeout;
     observe('waitTimedOut', 'failed', terminalErrorCode);
   } else if (terminal.kind === 'startError') {
-    terminalErrorCode = 'W6B_LEGACY_ACCEPTANCE_PROCESS_START_FAILED';
+    terminalErrorCode = contract.processStartFailed;
     observe('hostExited', 'failed', terminalErrorCode);
   } else if (terminal.exitCode === 0 && terminal.signal === null) {
     observe('waitStarted', 'completed');
     observe('hostExited', 'completed');
   } else {
-    terminalErrorCode = 'W6B_LEGACY_ACCEPTANCE_PROCESS_EXIT_FAILED';
+    terminalErrorCode = contract.processExitFailed;
     observe('hostExited', 'failed', terminalErrorCode);
   }
 
-  await cleanupOwnedProcessTree({
-    child,
-    cleanupTimeoutMilliseconds: configuration.cleanupTimeoutMilliseconds,
-    observe,
-    proofToken: configuration.proofToken,
-    terminateOwnedProcessTree: dependencies.terminateOwnedProcessTree,
-  });
+  try {
+    await cleanupOwnedProcessTree({
+      child,
+      cleanupTimeoutMilliseconds: configuration.cleanupTimeoutMilliseconds,
+      contract,
+      observe,
+      processKind: configuration.processKind,
+      proofToken: configuration.proofToken,
+      terminateOwnedProcessTree: dependencies.terminateOwnedProcessTree,
+    });
+  } catch (error) {
+    terminalizeFailedOwnedProcessHandle(child);
+    throw error;
+  }
 
   if (terminalErrorCode !== undefined) {
+    terminalizeFailedOwnedProcessHandle(child);
     observe('command', 'failed', terminalErrorCode);
     throw new Error(terminalErrorCode);
   }
@@ -148,34 +172,48 @@ async function cleanupOwnedProcessTree(input) {
   try {
     result = await input.terminateOwnedProcessTree({
       cleanupTimeoutMilliseconds: input.cleanupTimeoutMilliseconds,
+      processKind: input.processKind,
       processId: input.child?.pid,
       proofToken: input.proofToken,
     });
   } catch (error) {
     const errorCode =
       error instanceof Error &&
-      error.message === 'W6B_LEGACY_ACCEPTANCE_CLEANUP_TIMEOUT'
+      error.message === input.contract.cleanupTimeout
         ? error.message
-        : 'W6B_LEGACY_ACCEPTANCE_CLEANUP_FAILED';
+        : input.contract.cleanupFailed;
     input.observe('cleanupCompleted', 'failed', errorCode);
     input.observe('command', 'failed', errorCode);
     throw new Error(errorCode);
   }
   if (result?.status !== 'absent' && result?.status !== 'stopped') {
-    input.observe(
-      'cleanupCompleted',
-      'failed',
-      'W6B_LEGACY_ACCEPTANCE_CLEANUP_FAILED',
-    );
-    input.observe(
-      'command',
-      'failed',
-      'W6B_LEGACY_ACCEPTANCE_CLEANUP_FAILED',
-    );
-    throw new Error('W6B_LEGACY_ACCEPTANCE_CLEANUP_FAILED');
+    input.observe('cleanupCompleted', 'failed', input.contract.cleanupFailed);
+    input.observe('command', 'failed', input.contract.cleanupFailed);
+    throw new Error(input.contract.cleanupFailed);
   }
   input.observe('cleanupCompleted', 'completed');
   input.observe('processTreeAbsent', 'completed');
+}
+
+export function terminalizeFailedOwnedProcessHandle(child) {
+  if (child === undefined || child === null) return;
+  try {
+    child.once?.('error', () => undefined);
+  } catch {
+    // Exact tree cleanup remains authoritative.
+  }
+  try {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill?.();
+    }
+  } catch {
+    // The original process or cleanup result remains authoritative.
+  }
+  try {
+    child.unref?.();
+  } catch {
+    // The original process or cleanup result remains authoritative.
+  }
 }
 
 function waitForTerminalProcess(input) {
@@ -209,12 +247,16 @@ function waitForTerminalProcess(input) {
 }
 
 function terminateOwnedProcessTree(input) {
+  const contract = processContracts[input.processKind];
   if (
     !Number.isSafeInteger(input.processId) ||
     input.processId < 1 ||
+    contract === undefined ||
     !/^[0-9a-f]{64}$/u.test(input.proofToken)
   ) {
-    return Promise.reject(new Error('W6B_LEGACY_ACCEPTANCE_CLEANUP_FAILED'));
+    return Promise.reject(
+      new Error(contract?.cleanupFailed ?? 'W6B_LEGACY_ACCEPTANCE_CLEANUP_FAILED'),
+    );
   }
 
   return new Promise((resolvePromise, rejectPromise) => {
@@ -232,6 +274,8 @@ function terminateOwnedProcessTree(input) {
         String(input.processId),
         '-ProofToken',
         input.proofToken,
+        '-ProcessKind',
+        input.processKind,
       ],
       {
         shell: false,
@@ -254,24 +298,25 @@ function terminateOwnedProcessTree(input) {
       resolvePromise(Object.freeze({ status: 'stopped' }));
     };
     const onError = () =>
-      finish(new Error('W6B_LEGACY_ACCEPTANCE_CLEANUP_FAILED'));
+      finish(new Error(contract.cleanupFailed));
     const onExit = (exitCode, signal) => {
       if (exitCode === 0 && signal === null) {
         finish();
         return;
       }
-      finish(new Error('W6B_LEGACY_ACCEPTANCE_CLEANUP_FAILED'));
+      finish(new Error(contract.cleanupFailed));
     };
     child.once('error', onError);
     child.once('exit', onExit);
     timer = globalThis.setTimeout(() => {
-      child.kill();
-      finish(new Error('W6B_LEGACY_ACCEPTANCE_CLEANUP_TIMEOUT'));
+      terminalizeFailedOwnedProcessHandle(child);
+      finish(new Error(contract.cleanupTimeout));
     }, input.cleanupTimeoutMilliseconds);
   });
 }
 
 function validateInput(input) {
+  const processKind = input?.processKind ?? 'acceptance';
   if (
     typeof input?.command !== 'string' ||
     input.command === '' ||
@@ -281,6 +326,7 @@ function validateInput(input) {
     input.cwd === '' ||
     typeof input.environment !== 'object' ||
     input.environment === null ||
+    !processKinds.has(processKind) ||
     !/^[0-9a-f]{64}$/u.test(input.proofToken) ||
     !Number.isSafeInteger(input.timeoutMilliseconds) ||
     input.timeoutMilliseconds < 1 ||
@@ -292,12 +338,14 @@ function validateInput(input) {
   ) {
     throw new Error('W6B_LEGACY_ACCEPTANCE_PROCESS_INPUT_INVALID');
   }
-  return Object.freeze({ ...input });
+  return Object.freeze({ ...input, processKind });
 }
 
 function safelyObserve(observer, event) {
   if (
-    event.operation !== operation ||
+    !Object.values(processContracts).some(
+      ({ operation }) => event.operation === operation,
+    ) ||
     !allowedPhases.has(event.phase) ||
     !allowedStatuses.has(event.status) ||
     (event.errorCode !== undefined && !safeErrorCodes.has(event.errorCode))

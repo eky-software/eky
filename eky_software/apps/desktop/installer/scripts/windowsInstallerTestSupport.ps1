@@ -2,9 +2,11 @@ Set-StrictMode -Version Latest
 
 . (Join-Path $PSScriptRoot 'windowsInstallerProcessTree.ps1')
 . (Join-Path $PSScriptRoot 'windowsInstallerMsiProcessObservation.ps1')
+. (Join-Path $PSScriptRoot 'windowsInstallerNativeProcessWait.ps1')
 
 $script:EkyMsiExecHostPath = Join-Path $PSScriptRoot `
   'windowsInstallerMsiExecHost.ps1'
+$script:EkyMsiExecHostFallbackReserveMilliseconds = 30000
 
 function Get-EkyFileSha256 {
   param([Parameter(Mandatory = $true)][string]$Path)
@@ -119,6 +121,22 @@ function Start-EkyOwnedMsiExecHost {
   ) -WindowStyle Hidden -PassThru
 }
 
+function Get-EkyMsiExecHostTimeoutMilliseconds {
+  param(
+    [Parameter(Mandatory = $true)][int]$OperationTimeoutMilliseconds
+  )
+
+  if (
+    $OperationTimeoutMilliseconds -lt 1 -or
+    $OperationTimeoutMilliseconds -gt
+      ([int]::MaxValue - $script:EkyMsiExecHostFallbackReserveMilliseconds)
+  ) {
+    throw 'INSTALLER_MSI_HOST_TIMEOUT_INVALID'
+  }
+  return $OperationTimeoutMilliseconds +
+    $script:EkyMsiExecHostFallbackReserveMilliseconds
+}
+
 function Assert-EkyOwnedMsiProcessIdentity {
   param(
     [Parameter(Mandatory = $true)]$Process,
@@ -150,7 +168,8 @@ function Wait-EkyOwnedMsiProcess {
   }
   $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
   try {
-    $exited = $Process.WaitForExit($TimeoutMilliseconds)
+    $exited = Wait-EkyNativeProcessSignal -Process $Process `
+      -TimeoutMilliseconds $TimeoutMilliseconds
     if (!$exited) {
       return [pscustomobject]@{
         state = 'timedOut'
@@ -160,7 +179,7 @@ function Wait-EkyOwnedMsiProcess {
     }
     return [pscustomobject]@{
       state = 'exited'
-      exitCode = [int]$Process.ExitCode
+      exitCode = Get-EkyNativeProcessExitCode -Process $Process
       durationMs = [long]$stopwatch.ElapsedMilliseconds
     }
   }
@@ -213,10 +232,11 @@ function Wait-EkyObservedOwnedMsiProcess {
           $untilHeartbeatMs
         )
       }
-      if ($Process.WaitForExit([Math]::Max(1, $waitMilliseconds))) {
+      if (Wait-EkyNativeProcessSignal -Process $Process `
+          -TimeoutMilliseconds ([Math]::Max(1, $waitMilliseconds))) {
         return [pscustomobject]@{
           state = 'exited'
-          exitCode = [int]$Process.ExitCode
+          exitCode = Get-EkyNativeProcessExitCode -Process $Process
           durationMs = [long]$stopwatch.ElapsedMilliseconds
         }
       }
@@ -377,8 +397,10 @@ function Invoke-EkyMsiExecProcess {
       -Phase hostStarted -Status started
   }
   try {
+    $hostTimeoutMilliseconds = Get-EkyMsiExecHostTimeoutMilliseconds `
+      -OperationTimeoutMilliseconds $policy.timeoutMilliseconds
     $process = Start-EkyOwnedMsiExecHost -Arguments $Arguments `
-      -TimeoutMilliseconds $policy.timeoutMilliseconds
+      -TimeoutMilliseconds $hostTimeoutMilliseconds
   }
   catch {
     if ($EmitSafeProgress) {

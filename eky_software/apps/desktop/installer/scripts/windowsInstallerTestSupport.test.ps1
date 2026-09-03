@@ -68,6 +68,17 @@ try {
     'INSTALLER_MSI_RUNNER_UNINSTALL_POLICY_INVALID'
   Assert-Equal $installPolicy.errorPrefix 'W6B_LEGACY_TARGET_INSTALL' `
     'INSTALLER_MSI_RUNNER_ERROR_PREFIX_INVALID'
+  Assert-Equal (
+    Get-EkyMsiExecHostTimeoutMilliseconds `
+      -OperationTimeoutMilliseconds $uninstallPolicy.timeoutMilliseconds
+  ) 210000 'INSTALLER_MSI_RUNNER_HOST_TIMEOUT_INVALID'
+  Assert-ThrowsCode {
+    Get-EkyMsiExecHostTimeoutMilliseconds -OperationTimeoutMilliseconds 0
+  } 'INSTALLER_MSI_HOST_TIMEOUT_INVALID'
+  Assert-ThrowsCode {
+    Get-EkyMsiExecHostTimeoutMilliseconds `
+      -OperationTimeoutMilliseconds ([int]::MaxValue)
+  } 'INSTALLER_MSI_HOST_TIMEOUT_INVALID'
   Assert-ThrowsCode {
     Get-EkyMsiExecPolicy -Operation unknown_operation
   } 'INSTALLER_MSI_OPERATION_INVALID'

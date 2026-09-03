@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { EventEmitter, once } from 'node:events';
-import { readFile } from 'node:fs/promises';
+import {
+  access,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 
 import {
@@ -35,6 +43,7 @@ test('preserves a normal host exit and proves the owned tree absent', async () =
 
   await assert.doesNotReject(run);
   assert.equal(harness.cleanupCount(), 1);
+  assert.equal(harness.cleanupInputs[0].processKind, 'acceptance');
   assert.equal(harness.clearedHeartbeatCount(), 1);
   assert.equal(harness.clearedDeadlineCount(), 1);
   assert.deepEqual(lastEvent(harness.events), {
@@ -44,6 +53,22 @@ test('preserves a normal host exit and proves the owned tree absent', async () =
     phase: 'command',
     status: 'completed',
   });
+});
+
+test('uses a distinct safe contract for the full legacy command owner', async () => {
+  const harness = createHarness();
+  const run = startAcceptance(harness, { processKind: 'command' });
+
+  harness.child.emit('exit', 17, null);
+
+  await assert.rejects(run, /W6B_LEGACY_COMMAND_PROCESS_EXIT_FAILED/u);
+  assert.equal(harness.cleanupInputs[0].processKind, 'command');
+  assert.equal(
+    harness.events.every(
+      ({ operation }) => operation === 'w6bLegacyCommandProcess',
+    ),
+    true,
+  );
 });
 
 test('preserves a non-zero host exit after exact cleanup', async () => {
@@ -121,6 +146,7 @@ test('preserves cleanup timeout as the terminal failure', async () => {
   harness.fireDeadline();
 
   await assert.rejects(run, /W6B_LEGACY_ACCEPTANCE_CLEANUP_TIMEOUT/u);
+  assert.equal(harness.childUnrefCount(), 1);
 });
 
 test('observer failure cannot change the host result or timer cleanup', async () => {
@@ -214,6 +240,66 @@ test('a real timeout stops only the owned child and preserves a foreign sentinel
   }
 });
 
+test(
+  'a real command timeout removes the exact worker and its descendant',
+  { skip: process.platform !== 'win32', timeout: 15_000 },
+  async () => {
+    const temporaryRoot = await mkdtemp(
+      join(tmpdir(), 'eky-w6b-legacy-command-contract-'),
+    );
+    const workerPath = join(
+      temporaryRoot,
+      'runW6bLegacyUpgradeCommand.mjs',
+    );
+    const markerPath = join(temporaryRoot, 'worker-ready.json');
+    const events = [];
+    try {
+      await writeFile(
+        workerPath,
+        [
+          "import { spawn } from 'node:child_process';",
+          "import { writeFileSync } from 'node:fs';",
+          "const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore', windowsHide: true });",
+          "writeFileSync(process.env.EKY_W6B_LEGACY_COMMAND_MARKER, JSON.stringify({ child: child.pid, root: process.pid }), 'utf8');",
+          'setInterval(() => {}, 1000);',
+        ].join('\n'),
+        'utf8',
+      );
+
+      const run = runW6bLegacyAcceptanceProcess(
+        {
+          arguments: [
+            workerPath,
+            '--worker',
+            `--process-proof-token=${proofToken}`,
+          ],
+          cleanupTimeoutMilliseconds: 5_000,
+          command: process.execPath,
+          cwd: temporaryRoot,
+          environment: {
+            ...process.env,
+            EKY_W6B_LEGACY_COMMAND_MARKER: markerPath,
+          },
+          heartbeatMilliseconds: 100,
+          processKind: 'command',
+          proofToken,
+          timeoutMilliseconds: 1_000,
+        },
+        { dependencies: { observe: (event) => events.push(event) } },
+      );
+
+      await waitForFile(markerPath, 800);
+      const marker = JSON.parse(await readFile(markerPath, 'utf8'));
+      await assert.rejects(run, /W6B_LEGACY_COMMAND_PROCESS_TIMEOUT/u);
+      await waitForProcessAbsent(marker.root, 2_000);
+      await waitForProcessAbsent(marker.child, 2_000);
+      assert.ok(events.some((event) => event.phase === 'processTreeAbsent'));
+    } finally {
+      await rm(temporaryRoot, { force: true, recursive: true });
+    }
+  },
+);
+
 test('cleanup script requires exact proof ownership without name-wide termination', async () => {
   const source = await readFile(
     new URL('./stopW6bLegacyAcceptanceProcess.ps1', import.meta.url),
@@ -221,15 +307,19 @@ test('cleanup script requires exact proof ownership without name-wide terminatio
   );
 
   assert.match(source, /ValidatePattern\('\^\[0-9a-f\]\{64\}\$'\)/u);
+  assert.match(source, /ValidateSet\('acceptance', 'command'\)/u);
   assert.match(source, /testW6bLegacyUpgradeAcceptance\\\.ps1/u);
+  assert.match(source, /runW6bLegacyUpgradeCommand\\\.mjs/u);
   assert.match(source, /-ProcessProofToken/u);
+  assert.match(source, /--process-proof-token/u);
+  assert.match(source, /--worker/u);
   assert.match(source, /Stop-EkyProcessTree -Process \$process/u);
   assert.match(source, /actualCreationToken -cne \$expectedCreationToken/u);
   assert.doesNotMatch(source, /Stop-Process\s+-Name/iu);
   assert.doesNotMatch(source, /taskkill\.exe/iu);
 });
 
-function startAcceptance(harness) {
+function startAcceptance(harness, overrides = {}) {
   return runW6bLegacyAcceptanceProcess(
     {
       arguments: ['-File', 'fixture-path', '-ProcessProofToken', proofToken],
@@ -238,6 +328,7 @@ function startAcceptance(harness) {
       cwd: 'fixture-path',
       environment: {},
       heartbeatMilliseconds: 5,
+      processKind: overrides.processKind ?? 'acceptance',
       proofToken,
       timeoutMilliseconds: 10,
     },
@@ -249,6 +340,9 @@ function createHarness(overrides = {}) {
   const child = new EventEmitter();
   child.pid = 42;
   const events = [];
+  const cleanupInputs = [];
+  let childKillCount = 0;
+  let childUnrefCount = 0;
   let cleanupCount = 0;
   let clearedDeadlineCount = 0;
   let clearedHeartbeatCount = 0;
@@ -283,12 +377,29 @@ function createHarness(overrides = {}) {
     },
     async terminateOwnedProcessTree(input) {
       cleanupCount += 1;
+      cleanupInputs.push(input);
       return terminateOwnedProcessTree(input);
     },
   };
+  child.exitCode = null;
+  child.signalCode = null;
+  child.kill = () => {
+    childKillCount += 1;
+    return true;
+  };
+  child.unref = () => {
+    childUnrefCount += 1;
+  };
+  child.on('exit', (exitCode, signalCode) => {
+    child.exitCode = exitCode;
+    child.signalCode = signalCode;
+  });
   return {
     child,
+    childKillCount: () => childKillCount,
+    childUnrefCount: () => childUnrefCount,
     cleanupCount: () => cleanupCount,
+    cleanupInputs,
     clearedDeadlineCount: () => clearedDeadlineCount,
     clearedHeartbeatCount: () => clearedHeartbeatCount,
     dependencies,
@@ -315,4 +426,35 @@ function createRealSentinel() {
 function lastEvent(events) {
   assert.ok(events.length > 0);
   return events.at(-1);
+}
+
+async function waitForFile(path, timeoutMilliseconds) {
+  const deadline = Date.now() + timeoutMilliseconds;
+  while (Date.now() < deadline) {
+    try {
+      await access(path);
+      return;
+    } catch {
+      await new Promise((resolvePromise) =>
+        globalThis.setTimeout(resolvePromise, 25),
+      );
+    }
+  }
+  throw new Error('W6B_LEGACY_COMMAND_WORKER_NOT_READY');
+}
+
+async function waitForProcessAbsent(processId, timeoutMilliseconds) {
+  const deadline = Date.now() + timeoutMilliseconds;
+  while (Date.now() < deadline) {
+    try {
+      process.kill(processId, 0);
+    } catch (error) {
+      if (error instanceof Error && error.code === 'ESRCH') return;
+      throw error;
+    }
+    await new Promise((resolvePromise) =>
+      globalThis.setTimeout(resolvePromise, 25),
+    );
+  }
+  throw new Error('W6B_LEGACY_COMMAND_PROCESS_REMAINS');
 }
