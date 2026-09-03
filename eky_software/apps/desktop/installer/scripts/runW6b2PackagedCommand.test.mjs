@@ -119,6 +119,8 @@ test('turns the absolute deadline into cleanup and a safe timeout', async () => 
     ),
     true,
   );
+  assert.equal(harness.childKillCount(), 1);
+  assert.equal(harness.childUnrefCount(), 1);
   assert.equal(harness.outputDisconnectCount(), 1);
 });
 
@@ -143,6 +145,8 @@ test('preserves non-zero worker exit after cleanup', async () => {
     /W6B2_PACKAGED_COMMAND_PROCESS_EXIT_FAILED/u,
   );
   assert.equal(harness.cleanupInputs.length, 1);
+  assert.equal(harness.childKillCount(), 0);
+  assert.equal(harness.childUnrefCount(), 1);
 });
 
 test('keeps process timeout primary when the owned process tree remains', async () => {

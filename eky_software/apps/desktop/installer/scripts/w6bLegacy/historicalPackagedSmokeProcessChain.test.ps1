@@ -756,9 +756,13 @@ finally {
         if ($null -eq $state -or $null -eq $state.process) {
           throw 'W6B_LEGACY_OBSERVER_STATE_MISSING'
         }
+        $state.release.Set() | Out-Null
+        if (!$state.process.WaitForExit(5000)) {
+          throw 'W6B_LEGACY_OBSERVER_EXIT_TIMEOUT'
+        }
         $state.process.Refresh()
-        if ($state.process.HasExited) {
-          throw 'W6B_LEGACY_OBSERVER_EXITED_BEFORE_FAILURE'
+        if ($state.process.ExitCode -ne 0) {
+          throw 'W6B_LEGACY_OBSERVER_PROCESS_FAILED'
         }
         return [pscustomobject]@{
           stage = 'restoreRestart'

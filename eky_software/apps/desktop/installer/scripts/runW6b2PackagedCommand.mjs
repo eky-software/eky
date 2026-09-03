@@ -189,12 +189,12 @@ async function runOwnedCommandProcess(configuration, dependencies) {
     cleanupErrorCode = resolveCleanupErrorCode(error);
   }
 
-  if (cleanupErrorCode !== undefined) {
+  const primaryErrorCode = terminalErrorCode ?? cleanupErrorCode;
+  if (primaryErrorCode !== undefined) {
     terminalizeFailedOwnedProcessHandle(child);
   }
   disconnectProcessOutput();
 
-  const primaryErrorCode = terminalErrorCode ?? cleanupErrorCode;
   if (primaryErrorCode !== undefined) {
     observe('command', 'failed', primaryErrorCode);
     throw new Error(primaryErrorCode);
