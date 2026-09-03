@@ -898,12 +898,15 @@ paketista ja kulkee nykyisen sisäisen update/handoff-polun kautta N+1:een.
 Canonical release-identiteettiä ei muuteta eikä samaa versionumeroa käytetä
 eri build-revisioille.
 
-Legacy-acceptance-harnessin ulompi Node-prosessi rajaa PowerShell-hostin koko
-elinkaaren. Se tuottaa allowlistatut host-, wait-, heartbeat-, timeout- ja
-cleanup-tapahtumat, jättää ulomman CI-jobin aikarajaan siivousvaran ja
-terminalisoi vain täsmälliseen 64-hex-todisteeseen sekä process creation
--identiteettiin sidotun prosessipuun. PowerShell-skenaarion sisäinen viiden
-minuutin MSI-operaation aikaraja säilyy erillisenä ja muuttumattomana.
+Legacy-acceptance-harnessissa koko komennon omistava Node-prosessi rajaa
+target- ja historical-source-buildit sekä varsinaisen acceptance-ajon yhteen
+25 minuutin deadlineen. Sen workerin sisällä toinen Node-prosessi rajaa vain
+PowerShell-hostin 18 minuuttiin. Molemmat tuottavat erikseen allowlistatut
+host-, wait-, heartbeat-, timeout- ja cleanup-tapahtumat, jättävät ulomman
+CI-jobin aikarajaan siivousvaran ja terminalisoivat vain täsmälliseen 64-hex-
+todisteeseen sekä process creation -identiteettiin sidotun prosessipuun.
+PowerShell-skenaarion sisäinen viiden minuutin MSI-operaation aikaraja säilyy
+erillisenä ja muuttumattomana.
 Testikäytön `msiexec` käynnistetään olemassa olevan MSI-hostin kautta omilla
 konsoli- ja output-kahvoillaan. Hosti odottaa rajatusti vain käynnistämäänsä
 täsmällistä prosessia, siivoaa aikarajalla vain sen omistaman prosessipuun ja

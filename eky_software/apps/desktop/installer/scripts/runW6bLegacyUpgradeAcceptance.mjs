@@ -248,6 +248,7 @@ function runProcess(command, arguments_, context) {
     cwd: repositoryRoot,
     environment: process.env,
     heartbeatMilliseconds: W6B_LEGACY_ACCEPTANCE_HEARTBEAT_MILLISECONDS,
+    processKind: 'acceptance',
     proofToken: context.processProofToken,
     timeoutMilliseconds: W6B_LEGACY_ACCEPTANCE_TIMEOUT_MILLISECONDS,
   });

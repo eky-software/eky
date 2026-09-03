@@ -1152,15 +1152,17 @@ Satunnaista nykyisestä HEADista 0.2.6-versionumerolla rakennettua pakettia ei
 hyväksytä legacy-lähteeksi. Jos hyväksyttyä artifactia tai sen tarkkaa
 source-commitia ei voida todistaa, W6B pysähtyy ennen MSI-ajoa.
 
-Legacy-hyväksynnän PowerShell-hostia ympäröi lisäksi Node-harnessin omistama
-rajattu prosessielinkaari. Se antaa vain suljetut host-, wait-, heartbeat-,
-timeout- ja cleanup-tapahtumat, päättää odotuksen viimeistään 18 minuutissa ja
-varaa tämän jälkeen 30 sekuntia täsmälliseen prosessipuun siivoukseen.
-Siivous hyväksyy vain käynnistetyn legacy-skriptin, saman 64-hex-
-todistetunnisteen ja saman process creation -identiteetin. Se ei tapa prosesseja
-nimellä eikä muuta PowerShell-skenaarion sisäistä viiden minuutin MSI-
-aikarajaa. Näin ulompi GitHub-jobi ei jää yksin terminalisoimaan jumiutunutta
-legacy-hyväksyntää.
+Legacy-hyväksynnän koko Node-komentoa ympäröi ensin 25 minuuttiin rajattu
+omistettu worker-prosessi. Raja kattaa target- ja historical-source-buildit,
+fixture-tarkistukset sekä varsinaisen acceptance-ajon. Workerin sisällä
+PowerShell-hostia ympäröi erillinen 18 minuutin rajattu prosessielinkaari.
+Molemmat antavat vain suljetut host-, wait-, heartbeat-, timeout- ja cleanup-
+tapahtumat ja varaavat tämän jälkeen 30 sekuntia täsmälliseen prosessipuun
+siivoukseen. Siivous hyväksyy vain oikean workerin tai legacy-skriptin, saman
+64-hex-todistetunnisteen ja saman process creation -identiteetin. Se ei tapa
+prosesseja nimellä eikä muuta PowerShell-skenaarion sisäistä viiden minuutin
+MSI-aikarajaa. Näin ulompi GitHub-jobi ei jää yksin terminalisoimaan buildiin
+tai legacy-hyväksyntään jumiutunutta komentoa.
 
 Legacy-target on yksityinen, täsmälleen versioon `0.2.7` sidottu synteettinen
 fixture. Canonical release-konfiguraatio validoidaan sille vain read-only-
