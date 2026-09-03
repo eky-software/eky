@@ -558,18 +558,117 @@ Silloin supervisor rakennetaan yhdeksi pitkäikäiseksi Node-prosessiksi, joka
 käynnistää ja omistaa yhden suoran lapsen kerrallaan, ja kaikki estävät OS-
 rajat eristetään rajattuihin child-adaptereihin.
 
+## V2.1 hyväksytty feasibility-checkpoint
+
+Projektin omistaja hyväksyi 3.9.2026 kaksi rajattua päätösporttia:
+
+1. repositoryn omistaman Windows Job Object -supervisorin feasibilityn
+   lukitulla .NET SDK 10.0.302:lla ilman uutta PackageReference-, NuGet-, npm-
+   tai runtime-riippuvuutta
+2. myöhempää immutable fixture -jakamista varten vain viralliset, täsmälliseen
+   commit-SHA:han lukitut `actions/upload-artifact`- ja
+   `actions/download-artifact`-toiminnot
+
+Hyväksyntä ei kata muuta Actionia, riippuvuutta, tuotantosovelluksen muutosta,
+versiota, pilot-pakettia eikä nykyisen harnessin korvaamista tässä
+checkpointissa.
+
+### Supervisorin prosessisopimus
+
+V2.1-supervisorin pitää:
+
+- käynnistää suora worker `CreateProcessW`-kutsulla `CREATE_SUSPENDED`-tilassa
+- liittää worker nimeämättömään Job Objectiin ennen `ResumeThread`-kutsua
+- käyttää ei-periytyvää job-kahvaa ja `KILL_ON_JOB_CLOSE`-rajaa
+- olla asettamatta `BREAKAWAY_OK`- tai `SILENT_BREAKAWAY_OK`-rajaa
+- omistaa yksi prosessipuu, yksi supervisor ja yksi monotonisesta kellosta
+  laskettu absoluuttinen deadline
+- odottaa prosessikahvoja ja todistaa puun poissaolo
+  `QueryInformationJobObject`-kutsulla
+- päättää deadline-tilassa vain oman jobinsa `TerminateJobObject`-kutsulla
+- olla käyttämättä CIM/WMI-kyselyä, parent-PID-ketjua, prosessinimeä,
+  `taskkill`-komentoa tai stdout/stderr-dataa omistajuuden tai onnistumisen
+  todisteena
+- olla tappamatta Windows Installer -palvelua nimellä tai olettamatta sen
+  service-side-prosessien kuuluvan jobiin
+
+Request ja terminal result ovat strict, versionoituja sopimuksia. Molemmat
+sidotaan 64-merkkiseen lowercase-hex-ajononceen, skenaarioon ja immutable
+artifact descriptorin SHA-256-tiivisteeseen. Supervisor onnistuu vain, kun
+workerin exit code on nolla, terminal result on nykyiseen ajoon sidottu ja
+jobin aktiivisten prosessien määrä on nolla.
+
+Workerin ensisijainen scenario-tulos, supervisorin prosessitulos, cleanup-
+tulos ja verifierin postcondition-tulos säilyvät eri kenttinä. Cleanup-virhe
+ei saa korvata alkuperäistä scenario- tai prosessivirhettä. Observability
+sisältää vain nimetyn operaation, allowlistatun vaiheen, tilan, keston,
+kokonaisajan sekä allowlistatun result- tai error-koodin.
+
+### Fixture- ja riskisopimus
+
+Yhdellä fixtureperheellä on yksi producer. W6B legacy, W6B.2A ja W6B.2B
+voivat käyttää omia immutable descriptor -kokonaisuuksiaan; niistä ei tehdä
+yhtä jättimäistä artifactia. Consumer tarkistaa aina descriptorin sekä
+source- ja target-tiedostojen omat SHA-256-tiivisteet ennen käyttöä.
+
+Matala riski, kuten tavallinen business-moduulin tai UI:n muutos, ei aja koko
+Windows acceptance -matriisia. Installer-, update-, backup-, restore-,
+workspace-, classifier- tai CI-sopimuksen muutos sekä tuntematon luokitus
+ovat täyden riskin muutoksia. `main`, yöajo, manuaalinen release-portti ja
+release-ehdokas ajavat koko matriisin.
+
+### Hyväksytyt artifact-actionit
+
+GitHub API:sta 3.9.2026 varmennetut viralliset upstream-versiot ovat:
+
+- `actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a`
+  (`v7.0.1`, MIT)
+- `actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c`
+  (`v8.0.1`, MIT)
+
+V2.1-feasibility ei vielä käytä näitä actioneita. Kun artifact fan-out
+myöhemmin toteutetaan, SHA-lukitus, rajattu retention, yksiselitteinen
+producer/consumer-nimi, read-only descriptor-verifiointi ja salaisuuksien,
+profiilien, lokien sekä business-datan poissulku ovat pakollisia.
+
+### V2.1:n hyväksyntä
+
+Feasibility todistetaan synteettisillä prosesseilla, ei Ekyllä tai MSI:llä.
+Testien pitää kattaa vähintään:
+
+- suoran lapsen job-jäsenyys ja normaali exit nolla
+- grandchildin periytyminen
+- non-zero exit
+- workerin exit nolla samalla, kun grandchild on yhä elossa
+- deadline-cleanup molemmille prosessisukupolville
+- supervisorin ulkoinen pysäytys ja kill-on-close
+- vieraan sentinel-prosessin säilyminen
+- kaksi rinnakkaista, toisistaan eristettyä supervisoria
+- malformed request
+- puuttuva, vanhalla noncella tai väärällä artifact-hashilla sidottu result
+- observabilityn riippumattomuus terminal-tuloksesta
+
+Paikallisesti timeout/cleanup-polku ajetaan vähintään 20 kertaa ilman retryä.
+GitHub `windows-latest` -feasibility ajetaan kahden repetition matriisina.
+Jos nested Job Object ei toimi GitHub-runnerissa, tähän malliin ei lisätä
+PID-wrapperia. V2.2 clean install / uninstall -siivuun edetään vasta, kun
+tämä checkpoint on terminal ja vihreä.
+
 ## Migraatiojärjestys
 
 V2 toteutetaan pieninä, itsenäisesti vihreinä checkpointteina:
 
-1. Synteettinen supervisor-, timeout-, cancellation- ja exact-cleanup-sopimus.
-2. Build-once descriptor ja read-only artifact-verifier.
-3. Clean install / uninstall.
-4. N -> N+1 upgrade, downgrade ja rollback.
-5. Historical 0.2.6 -> 0.2.7 legacy.
-6. W6B.2A success.
-7. W6B.2B fault/rollback.
-8. CI-kadenssi ja tarvittaessa immutable artifact fan-out.
+1. V2.1: synteettinen supervisor-, timeout-, cancellation- ja
+   exact-cleanup-sopimus.
+2. V2.2: clean install / uninstall yhden paikallisen immutable fixturen
+   ympärillä.
+3. V2.3: build-once descriptor, read-only artifact-verifier ja tarvittaessa
+   hyväksytty immutable artifact fan-out.
+4. V2.4: N -> N+1 upgrade, downgrade ja rollback.
+5. V2.5: historical 0.2.6 -> 0.2.7 legacy.
+6. V2.6: W6B.2A success.
+7. V2.7: W6B.2B fault/rollback.
+8. V2.8: riskiluokiteltu CI-kadenssi ja vakaa aggregaattori.
 
 Vanhan harnessin tiedosto poistetaan vasta, kun sen jokainen invariantti on
 nimetty migraatiotaulukossa ja vastaava V2-testi on samalla commitilla vihreä.
@@ -615,10 +714,10 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 
 ## Nykyinen päätös
 
-Katselmus ja V2-suunnitelma ovat valmiit. Testikoodia, workflowta tai
-tuotantokoodia ei muuteta ennen päätöstä GitHub artifact -toiminnoista ja
-Windows Job Object -feasibilitystä. Siihen asti PR #258 ja nykyiset vihreät
-W6B.2A/W6B.2B-todisteet säilytetään muuttumattomina.
+Katselmus ja V2-suunnitelma ovat valmiit. V2.1-feasibility on hyväksytty
+yllä rajatulla sopimuksella. PR #257 ja PR #258 sekä nykyiset W6B-, W6B.2A-
+ja W6B.2B-toteutukset säilytetään muuttumattomina. V2.1 ei vielä vaihda
+nykyisen acceptance-harnessin auktoritatiivista ajopolkua.
 
 ## Ulkoiset tekniset lähteet
 
