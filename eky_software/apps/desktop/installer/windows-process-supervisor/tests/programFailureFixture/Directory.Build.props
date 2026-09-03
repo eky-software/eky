@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <BaseOutputPath>$(MSBuildThisFileDirectory)..\..\..\bin\windows-process-supervisor-contract-fixture\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)..\..\..\obj\windows-process-supervisor-contract-fixture\</BaseIntermediateOutputPath>
+  </PropertyGroup>
+</Project>

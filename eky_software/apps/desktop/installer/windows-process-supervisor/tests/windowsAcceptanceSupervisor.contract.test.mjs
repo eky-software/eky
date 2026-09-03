@@ -1,0 +1,495 @@
+import assert from 'node:assert/strict';
+import { once } from 'node:events';
+import { access, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import test from 'node:test';
+import {
+  cleanupRunContext,
+  cleanupActiveSupervisors,
+  createRequest,
+  createRunContext,
+  isProcessAlive,
+  releaseFixture,
+  runSupervisor,
+  startForeignSentinel,
+  startProgramFailureFixture,
+  startSupervisor,
+  SUPERVISOR_DLL,
+  waitForMarker,
+  waitForProcessAbsent,
+  writeRequest,
+} from './supervisorContractTestSupport.mjs';
+import {
+  readWindowsAcceptanceSupervisorResult,
+} from '../windowsAcceptanceSupervisorResult.mjs';
+
+const WINDOWS_ONLY = {
+  skip: process.platform !== 'win32',
+  timeout: 120_000,
+};
+const repetitions = Number.parseInt(
+  process.env.EKY_SUPERVISOR_TIMEOUT_REPETITIONS || '1',
+  10,
+);
+if (!Number.isInteger(repetitions) || repetitions < 1 || repetitions > 50) {
+  throw new Error('WINDOWS_ACCEPTANCE_SUPERVISOR_REPETITIONS_INVALID');
+}
+
+test.afterEach(async () => cleanupActiveSupervisors());
+
+async function contextFor(testContext, label) {
+  const context = await createRunContext(label);
+  testContext.after(async () => cleanupRunContext(context));
+  return context;
+}
+
+async function readCompletedExecution(context, execution) {
+  const completion = await execution.completion;
+  const result = await readWindowsAcceptanceSupervisorResult(
+    context.resultPath,
+    {
+      artifactDescriptorSha256: context.artifactDescriptorSha256,
+      runNonce: context.runNonce,
+      scenario: context.scenario,
+      supervisorExitCode: completion.exitCode,
+    },
+  );
+  return { completion, result };
+}
+
+test('the supervisor binary is available', WINDOWS_ONLY, async () => {
+  await access(SUPERVISOR_DLL);
+});
+
+test(
+  'assigns the direct child before it runs and returns normal exit zero',
+  WINDOWS_ONLY,
+  async (testContext) => {
+    const context = await contextFor(testContext, 'direct-child');
+    const execution = await runSupervisor(context, 'exitZero');
+    assert.equal(execution.exitCode, 0);
+    assert.equal(execution.result.status, 'completed');
+    assert.equal(execution.result.processTreeAbsent, true);
+    assert.ok(
+      execution.evidence.find(
+        (entry) =>
+          entry.phase === 'jobHandlePolicy' &&
+          entry.resultCode === 'nonInheritableKillOnClose',
+      ),
+    );
+    const assignedIndex = execution.evidence.findIndex(
+      (entry) => entry.phase === 'hostAssigned',
+    );
+    const resumedIndex = execution.evidence.findIndex(
+      (entry) =>
+        entry.phase === 'hostStarted' && entry.status === 'completed',
+    );
+    assert.ok(assignedIndex >= 0);
+    assert.ok(resumedIndex > assignedIndex);
+  },
+);
+
+test(
+  'Windows command-line quoting preserves empty, spaced, Unicode, quoted, and backslash arguments',
+  WINDOWS_ONLY,
+  async (testContext) => {
+    const context = await contextFor(testContext, 'command-line-quoting');
+    const expectedArguments = [
+      '',
+      ' ',
+      'contains space',
+      'unicode-\u00e4\u00f6',
+      'inside"quote',
+      String.raw`backslash-before-\"quote`,
+      String.raw`two-backslashes-before-\\"quote`,
+      String.raw`spaced trailing-backslashes\\`,
+    ];
+    const request = createRequest(context, 'recordArguments');
+    request.arguments.push(...expectedArguments);
+    await writeRequest(context, request);
+
+    const execution = startSupervisor(context);
+    const terminal = await readCompletedExecution(context, execution);
+    assert.equal(terminal.result.status, 'completed');
+    const recorded = JSON.parse(
+      await readFile(join(context.runRoot, 'command-line-probe.json'), 'utf8'),
+    );
+    assert.deepEqual(recorded, {
+      schemaVersion: 1,
+      arguments: expectedArguments,
+    });
+  },
+);
+
+test(
+  'a grandchild inherits the job and the complete tree exits normally',
+  WINDOWS_ONLY,
+  async (testContext) => {
+    const context = await contextFor(testContext, 'grandchild-inheritance');
+    await writeRequest(
+      context,
+      createRequest(context, 'spawnGrandchildAndHold'),
+    );
+    const execution = startSupervisor(context);
+    const root = await waitForMarker(context, 'root');
+    const grandchild = await waitForMarker(context, 'grandchild');
+    await execution.waitForEvidence(
+      (entry) =>
+        entry.phase === 'processTreeObserved' &&
+        entry.resultCode === 'descendantObserved',
+    );
+    await releaseFixture(context, 'root');
+    const terminal = await readCompletedExecution(context, execution);
+    assert.equal(terminal.result.status, 'completed');
+    await waitForProcessAbsent(root.processId);
+    await waitForProcessAbsent(grandchild.processId);
+  },
+);
+
+test(
+  'a non-zero direct child exit remains a process failure',
+  WINDOWS_ONLY,
+  async (testContext) => {
+    const context = await contextFor(testContext, 'non-zero-exit');
+    const execution = await runSupervisor(context, 'exitNonZero');
+    assert.equal(execution.exitCode, 1);
+    assert.equal(execution.result.status, 'failed');
+    assert.equal(execution.result.processResultCode, 'processExitFailed');
+    assert.equal(execution.result.childExitCode, 23);
+    assert.equal(execution.result.processTreeAbsent, true);
+  },
+);
+
+test(
+  'worker exit zero with a live grandchild cannot become success',
+  WINDOWS_ONLY,
+  async (testContext) => {
+    const context = await contextFor(testContext, 'zero-with-live-grandchild');
+    await writeRequest(
+      context,
+      createRequest(context, 'spawnGrandchildThenExitOnRelease', {
+        cleanupReserveMilliseconds: 800,
+        timeoutMilliseconds: 2_500,
+      }),
+    );
+    const execution = startSupervisor(context);
+    const root = await waitForMarker(context, 'root');
+    const grandchild = await waitForMarker(context, 'grandchild');
+    await execution.waitForEvidence(
+      (entry) => entry.phase === 'processTreeObserved',
+    );
+    await releaseFixture(context, 'root');
+    await waitForProcessAbsent(root.processId);
+    assert.equal(isProcessAlive(grandchild.processId), true);
+    const terminal = await readCompletedExecution(context, execution);
+    assert.equal(terminal.completion.exitCode, 1);
+    assert.equal(terminal.result.processResultCode, 'deadlineExceeded');
+    assert.equal(terminal.result.childExitCode, 0);
+    assert.equal(terminal.result.cleanupResultCode, 'processTreeAbsent');
+    await waitForProcessAbsent(grandchild.processId);
+  },
+);
+
+test(
+  'the monotonic deadline terminates both owned generations repeatedly',
+  WINDOWS_ONLY,
+  async () => {
+    for (let repetition = 1; repetition <= repetitions; repetition += 1) {
+      const context = await createRunContext('deadline-' + repetition);
+      try {
+        const execution = await runSupervisor(
+          context,
+          'spawnGrandchildAndHold',
+          {
+            cleanupReserveMilliseconds: 800,
+            timeoutMilliseconds: 2_500,
+          },
+        );
+        const root = await waitForMarker(context, 'root');
+        const grandchild = await waitForMarker(context, 'grandchild');
+        assert.equal(execution.exitCode, 1);
+        assert.equal(execution.result.processResultCode, 'deadlineExceeded');
+        assert.equal(execution.result.cleanupResultCode, 'processTreeAbsent');
+        assert.equal(execution.result.processTreeAbsent, true);
+        await waitForProcessAbsent(root.processId);
+        await waitForProcessAbsent(grandchild.processId);
+      } finally {
+        await cleanupRunContext(context);
+      }
+    }
+  },
+);
+
+test(
+  'killing the supervisor closes the job and terminates its owned tree',
+  WINDOWS_ONLY,
+  async (testContext) => {
+    const context = await contextFor(testContext, 'kill-on-close');
+    await writeRequest(
+      context,
+      createRequest(context, 'spawnGrandchildAndHold'),
+    );
+    const execution = startSupervisor(context);
+    const root = await waitForMarker(context, 'root');
+    const grandchild = await waitForMarker(context, 'grandchild');
+    await execution.waitForEvidence(
+      (entry) => entry.phase === 'processTreeObserved',
+    );
+    assert.equal(execution.child.kill(), true);
+    await execution.completion;
+    await waitForProcessAbsent(root.processId);
+    await waitForProcessAbsent(grandchild.processId);
+    await assert.rejects(
+      readWindowsAcceptanceSupervisorResult(context.resultPath, {
+        artifactDescriptorSha256: context.artifactDescriptorSha256,
+        runNonce: context.runNonce,
+        scenario: context.scenario,
+        supervisorExitCode: 1,
+      }),
+      /WINDOWS_ACCEPTANCE_SUPERVISOR_TERMINAL_RESULT_MISSING/,
+    );
+  },
+);
+
+test(
+  'a foreign sentinel survives owned-tree deadline cleanup',
+  WINDOWS_ONLY,
+  async (testContext) => {
+    const sentinelContext = await contextFor(testContext, 'foreign-sentinel');
+    const sentinel = await startForeignSentinel(sentinelContext);
+
+    const ownedContext = await contextFor(testContext, 'owned-timeout');
+    const execution = await runSupervisor(ownedContext, 'hold', {
+      cleanupReserveMilliseconds: 800,
+      timeoutMilliseconds: 2_500,
+    });
+    assert.equal(execution.result.processResultCode, 'deadlineExceeded');
+    assert.equal(isProcessAlive(sentinel.marker.processId), true);
+
+    await releaseFixture(sentinelContext, 'sentinel');
+    await once(sentinel.child, 'close');
+    await waitForProcessAbsent(sentinel.marker.processId);
+  },
+);
+
+test(
+  'valid-request unexpected and result-writer failures remain distinct and fail closed',
+  WINDOWS_ONLY,
+  async (testContext) => {
+    const unexpectedContext = await contextFor(
+      testContext,
+      'unexpected-failure',
+    );
+    await writeRequest(
+      unexpectedContext,
+      createRequest(unexpectedContext, 'exitZero'),
+    );
+    const unexpectedExecution = startProgramFailureFixture(
+      unexpectedContext,
+      'unexpectedFailure',
+    );
+    const unexpected = await readCompletedExecution(
+      unexpectedContext,
+      unexpectedExecution,
+    );
+    assert.equal(unexpected.completion.exitCode, 1);
+    assert.equal(unexpected.result.status, 'failed');
+    assert.equal(unexpected.result.processResultCode, 'unexpectedFailure');
+    assert.equal(unexpected.result.cleanupResultCode, 'cleanupUnverified');
+    assert.equal(unexpected.result.processTreeAbsent, false);
+
+    const writerContext = await contextFor(
+      testContext,
+      'result-writer-failure',
+    );
+    await writeRequest(
+      writerContext,
+      createRequest(writerContext, 'exitZero'),
+    );
+    const writerExecution = startProgramFailureFixture(
+      writerContext,
+      'resultWriteFailure',
+    );
+    const writerCompletion = await writerExecution.completion;
+    assert.equal(writerCompletion.exitCode, 1);
+    assert.ok(
+      writerCompletion.evidence.find(
+        (entry) =>
+          entry.phase === 'resultWritten' &&
+          entry.status === 'failed' &&
+          entry.errorCode === 'resultWriteFailed',
+      ),
+    );
+    await assert.rejects(
+      readWindowsAcceptanceSupervisorResult(writerContext.resultPath, {
+        artifactDescriptorSha256: writerContext.artifactDescriptorSha256,
+        runNonce: writerContext.runNonce,
+        scenario: writerContext.scenario,
+        supervisorExitCode: writerCompletion.exitCode,
+      }),
+      /WINDOWS_ACCEPTANCE_SUPERVISOR_TERMINAL_RESULT_MISSING/,
+    );
+  },
+);
+
+test(
+  'two parallel supervisors keep their process ownership isolated',
+  WINDOWS_ONLY,
+  async (testContext) => {
+    const timeoutContext = await contextFor(testContext, 'parallel-timeout');
+    const successContext = await contextFor(testContext, 'parallel-success');
+    await writeRequest(
+      timeoutContext,
+      createRequest(timeoutContext, 'spawnGrandchildAndHold', {
+        cleanupReserveMilliseconds: 800,
+        timeoutMilliseconds: 3_000,
+      }),
+    );
+    await writeRequest(
+      successContext,
+      createRequest(successContext, 'spawnGrandchildAndHold'),
+    );
+
+    const timeoutExecution = startSupervisor(timeoutContext);
+    const successExecution = startSupervisor(successContext);
+    const timeoutGrandchild = await waitForMarker(
+      timeoutContext,
+      'grandchild',
+    );
+    const successRoot = await waitForMarker(successContext, 'root');
+    const successGrandchild = await waitForMarker(
+      successContext,
+      'grandchild',
+    );
+    await Promise.all([
+      timeoutExecution.waitForEvidence(
+        (entry) => entry.phase === 'processTreeObserved',
+      ),
+      successExecution.waitForEvidence(
+        (entry) => entry.phase === 'processTreeObserved',
+      ),
+    ]);
+
+    const timeoutTerminal = await readCompletedExecution(
+      timeoutContext,
+      timeoutExecution,
+    );
+    assert.equal(
+      timeoutTerminal.result.processResultCode,
+      'deadlineExceeded',
+    );
+    await waitForProcessAbsent(timeoutGrandchild.processId);
+    assert.equal(isProcessAlive(successRoot.processId), true);
+    assert.equal(isProcessAlive(successGrandchild.processId), true);
+
+    await releaseFixture(successContext, 'root');
+    const successTerminal = await readCompletedExecution(
+      successContext,
+      successExecution,
+    );
+    assert.equal(successTerminal.result.status, 'completed');
+    await waitForProcessAbsent(successRoot.processId);
+    await waitForProcessAbsent(successGrandchild.processId);
+  },
+);
+
+test(
+  'malformed requests are rejected without launching a worker',
+  WINDOWS_ONLY,
+  async (testContext) => {
+    const context = await contextFor(testContext, 'malformed-request');
+    await writeRequest(context, {
+      ...createRequest(context, 'exitZero'),
+      unknownKey: true,
+    });
+    const execution = startSupervisor(context);
+    const completion = await execution.completion;
+    assert.equal(completion.exitCode, 1);
+    assert.equal(await access(context.resultPath).then(() => true, () => false), false);
+    assert.equal(
+      completion.evidence.at(-1)?.errorCode,
+      'requestSchemaInvalid',
+    );
+    assert.equal(
+      await access(context.runRoot).then(() => true, () => false),
+      false,
+    );
+  },
+);
+
+test(
+  'worker exit zero without a terminal result is rejected',
+  WINDOWS_ONLY,
+  async (testContext) => {
+    const context = await contextFor(testContext, 'missing-worker-result');
+    const execution = await runSupervisor(context, 'exitZeroWithoutResult');
+    assert.equal(execution.exitCode, 1);
+    assert.equal(execution.result.processResultCode, 'processCompleted');
+    assert.equal(execution.result.workerResultCode, 'workerResultMissing');
+    assert.equal(execution.result.processTreeAbsent, true);
+  },
+);
+
+test(
+  'a worker result bound to a stale nonce is rejected',
+  WINDOWS_ONLY,
+  async (testContext) => {
+    const context = await contextFor(testContext, 'stale-worker-result');
+    const execution = await runSupervisor(context, 'exitZeroStaleResult');
+    assert.equal(execution.exitCode, 1);
+    assert.equal(execution.result.processResultCode, 'processCompleted');
+    assert.equal(
+      execution.result.workerResultCode,
+      'workerResultBindingInvalid',
+    );
+    assert.equal(execution.result.processTreeAbsent, true);
+  },
+);
+
+test(
+  'disabled or failed safe observability cannot change the terminal result',
+  WINDOWS_ONLY,
+  async (testContext) => {
+    const observedContext = await contextFor(testContext, 'observed-output');
+    const ignoredContext = await contextFor(testContext, 'ignored-output');
+    const observed = await runSupervisor(observedContext, 'exitZero');
+    const ignored = await runSupervisor(
+      ignoredContext,
+      'exitZero',
+      undefined,
+      { captureOutput: false },
+    );
+    const failedContext = await contextFor(testContext, 'failed-output');
+    await writeRequest(failedContext, createRequest(failedContext, 'hold'));
+    const failedExecution = startSupervisor(failedContext);
+    await waitForMarker(failedContext, 'root');
+    await failedExecution.waitForEvidence(
+      (entry) =>
+        entry.phase === 'hostStarted' && entry.status === 'completed',
+    );
+    failedExecution.child.stdout.destroy();
+    await once(failedExecution.child.stdout, 'close');
+    await releaseFixture(failedContext, 'root');
+    const failed = await readCompletedExecution(
+      failedContext,
+      failedExecution,
+    );
+
+    for (const key of [
+      'childExitCode',
+      'cleanupResultCode',
+      'cleanupWin32ErrorCode',
+      'processResultCode',
+      'processTreeAbsent',
+      'processWin32ErrorCode',
+      'status',
+      'workerResultCode',
+    ]) {
+      assert.equal(ignored.result[key], observed.result[key]);
+      assert.equal(failed.result[key], observed.result[key]);
+    }
+    assert.ok(observed.evidence.length > 0);
+    assert.equal(ignored.evidence.length, 0);
+    assert.equal(failed.result.status, 'completed');
+  },
+);

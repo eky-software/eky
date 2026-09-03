@@ -51,6 +51,14 @@ Checkpoint-kadenssi ei vähennä GitHubin required check -portteja. CI ajaa
 edelleen sille dokumentoidut merge-portit riippumatta paikallisen työn
 checkpoint-jaosta.
 
+Raskaan acceptance-matriisin CI-kadenssi erotetaan tavallisesta moduuli-PR:n
+palautesyklistä. Nopeiden porttien pitää antaa palaute jokaisesta muutoksesta,
+mutta installer-, packaged-, legacy- ja fault-matriisit ajetaan vain niiden
+suojaaman riskipinnan muutoksista sekä kokonaisina `main`-, yö-, manuaali- ja
+release-portteina. Required checkin nimi ja aggregaattorin terminal-tulos
+pidetään vakaana myös silloin, kun raskas alijoukko on riskiluokituksen vuoksi
+ohitettu.
+
 Seuraava checkpoint aloitetaan vain tunnetulta vihreältä baselinelta. Jos
 edellisen checkpointin paikallinen pakollinen testi tai sen täsmällisen
 commitin vaadittu GitHub-tarkistus on punainen, peruttu, flaky tai vielä
@@ -97,6 +105,23 @@ desktop-paketin omistuksessa.
 
 Yleistä `test-utils`-kaatopaikkaa ei luoda. Toistuva testi-infrastruktuuri
 irrotetaan vasta todelliseen tarpeeseen ja nimetään vastuun mukaan.
+
+Testi-infrastruktuurissa noudatetaan lisäksi seuraavia vastuurajoja:
+
+- yksi prosessipuu saa yhden timeout- ja emergency cleanup -omistajan
+- scenario worker ei saa rakentaa fixtureä tai omistaa supervisorin cleanupia
+- build, prosessiajo, postcondition-verifiointi ja fixture-cleanup ovat eri
+  vastuita
+- sama immutable fixture rakennetaan kerran yhtä hyväksyntämatriisia varten
+- stdout ja stderr ovat diagnostiikkaa, eivät readiness- tai terminal-
+  kontrolliprotokolla
+- pitkä testi pilkotaan vain tunnistettujen vastuiden perusteella, ei rivimäärän
+  vuoksi
+- testiä ei poisteta ennen kuin sen suojaama invariantti on nimetty ja
+  korvaava testi on vihreä samalla commitilla
+
+Windows installer -harnessin tavoiterakenne ja migraatio määritellään
+`docs/architecture/windows-installer-acceptance-harness-v2.md`-dokumentissa.
 
 ## Tiedostoidentiteetti Testeissä
 
@@ -404,12 +429,13 @@ Backup-, restore-, installer- tai update-polun onnistumista ei todisteta vain
 mockilla tai selain-E2E:llä. Windowsin tiedosto-, prosessi-, `safeStorage`- ja
 paketointirajat vaativat packaged-testin.
 
-Packaged-testin ulomman watchdogin pitää käyttää yhtä koko omistetun
-prosessipuun siivouksen kattavaa deadlinea. Jos täsmällinen prosessipuun
-siivous epäonnistuu, tulos pysyy virheenä, mutta wrapperin pitää lisäksi
-terminalisoida vain itse käynnistämänsä suora child-kahva. CI ei saa jäädä
-ulkoiseen aikakatkaisuun ilman turvallista terminal-tulosta eikä
-child-kahvan vapautusta saa tulkita onnistuneeksi siivoukseksi.
+Packaged-testin supervisor käyttää yhtä koko omistetun prosessipuun siivouksen
+kattavaa deadlinea. Saman puun ympärille ei lisätä sisäkkäistä command-,
+acceptance- tai scenario-watchdogia. Jos täsmällinen prosessipuun siivous
+epäonnistuu, tulos pysyy virheenä. CI ei saa jäädä ulkoiseen aikakatkaisuun
+ilman turvallista terminal-tulosta eikä child-kahvan vapautusta saa tulkita
+onnistuneeksi siivoukseksi. Business-postconditionit tarkistetaan erillisessä
+read-only-verifierissä vasta todistetun `processTreeAbsent`-tilan jälkeen.
 
 Restorea muuttava packaged-testi käynnistää vähintään kaksi eri
 Electron-prosessia samaa synteettistä palautettua profiilia vasten. Sen pitää
