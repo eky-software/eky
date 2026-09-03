@@ -29,8 +29,9 @@ internal sealed class SafeEvidenceWriter(string scenario, Stopwatch stopwatch)
         var durationMilliseconds = phaseStartedAt.TryGetValue(phase, out var startedAt)
             ? Math.Max(0, elapsedMilliseconds - startedAt)
             : 0;
-        Console.WriteLine(JsonSerializer.Serialize(new
+        TryWrite(new
         {
+            schemaVersion = 1,
             operation = Operation,
             scenario,
             phase,
@@ -40,7 +41,7 @@ internal sealed class SafeEvidenceWriter(string scenario, Stopwatch stopwatch)
             resultCode,
             errorCode,
             win32ErrorCode,
-        }, JsonOptions));
+        });
     }
 
     internal static void WriteInvalidRequest(
@@ -48,8 +49,9 @@ internal sealed class SafeEvidenceWriter(string scenario, Stopwatch stopwatch)
         int? win32ErrorCode = null
     )
     {
-        Console.WriteLine(JsonSerializer.Serialize(new
+        TryWrite(new
         {
+            schemaVersion = 1,
             operation = Operation,
             phase = "requestValidated",
             status = "failed",
@@ -57,7 +59,19 @@ internal sealed class SafeEvidenceWriter(string scenario, Stopwatch stopwatch)
             elapsedMs = 0,
             errorCode,
             win32ErrorCode,
-        }, JsonOptions));
+        });
+    }
+
+    private static void TryWrite(object value)
+    {
+        try
+        {
+            Console.WriteLine(JsonSerializer.Serialize(value, JsonOptions));
+        }
+        catch
+        {
+            // Observability is best effort and never changes the terminal result.
+        }
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new()

@@ -4,7 +4,16 @@ namespace Eky.WindowsProcessSupervisor;
 
 internal static class SupervisorProgram
 {
-    internal static int Run(string[] arguments)
+    internal static int Run(string[] arguments) => Run(
+        arguments,
+        static (request, stopwatch, evidence) =>
+            new WindowsJobProcessSupervisor(stopwatch, evidence).Run(request)
+    );
+
+    internal static int Run(
+        string[] arguments,
+        Func<SupervisorRequest, Stopwatch, SafeEvidenceWriter, SupervisorOutcome> execute
+    )
     {
         var stopwatch = Stopwatch.StartNew();
         SupervisorRequest? request = null;
@@ -16,10 +25,12 @@ internal static class SupervisorProgram
             evidence = new SafeEvidenceWriter(request.Scenario, stopwatch);
             evidence.Write("requestValidated", "completed");
 
-            var outcome = new WindowsJobProcessSupervisor(stopwatch, evidence)
-                .Run(request);
-            SupervisorResultWriter.Write(request, outcome, stopwatch.ElapsedMilliseconds);
-            evidence.Write("resultWritten", "completed");
+            var outcome = execute(request, stopwatch, evidence);
+            if (!TryWriteResult(request, outcome, stopwatch, evidence))
+            {
+                evidence.Write("supervisor", "failed", errorCode: "resultWriteFailed");
+                return 1;
+            }
             evidence.Write(
                 "supervisor",
                 outcome.Status,
@@ -34,23 +45,7 @@ internal static class SupervisorProgram
             if (request is not null)
             {
                 var outcome = SupervisorOutcome.UnverifiedFailure(failure);
-                try
-                {
-                    SupervisorResultWriter.Write(
-                        request,
-                        outcome,
-                        stopwatch.ElapsedMilliseconds
-                    );
-                    evidence?.Write("resultWritten", "completed");
-                }
-                catch
-                {
-                    evidence?.Write(
-                        "resultWritten",
-                        "failed",
-                        errorCode: "resultWriteFailed"
-                    );
-                }
+                TryWriteResult(request, outcome, stopwatch, evidence);
                 evidence?.Write(
                     "supervisor",
                     "failed",
@@ -71,6 +66,12 @@ internal static class SupervisorProgram
         {
             if (request is not null)
             {
+                var outcome = SupervisorOutcome.Failed(
+                    "unexpectedFailure",
+                    "cleanupUnverified",
+                    false
+                );
+                TryWriteResult(request, outcome, stopwatch, evidence);
                 evidence?.Write(
                     "supervisor",
                     "failed",
@@ -82,6 +83,34 @@ internal static class SupervisorProgram
                 SafeEvidenceWriter.WriteInvalidRequest("unexpectedFailure");
             }
             return 1;
+        }
+    }
+
+    private static bool TryWriteResult(
+        SupervisorRequest request,
+        SupervisorOutcome outcome,
+        Stopwatch stopwatch,
+        SafeEvidenceWriter? evidence
+    )
+    {
+        try
+        {
+            SupervisorResultWriter.Write(
+                request,
+                outcome,
+                stopwatch.ElapsedMilliseconds
+            );
+            evidence?.Write("resultWritten", "completed");
+            return true;
+        }
+        catch (SupervisorResultWriteFailure)
+        {
+            evidence?.Write(
+                "resultWritten",
+                "failed",
+                errorCode: "resultWriteFailed"
+            );
+            return false;
         }
     }
 }

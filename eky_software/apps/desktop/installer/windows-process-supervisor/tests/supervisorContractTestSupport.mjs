@@ -28,6 +28,15 @@ const SUPERVISOR_DLL = resolve(
   'net10.0',
   'Eky.WindowsProcessSupervisor.dll',
 );
+const PROGRAM_FAILURE_FIXTURE_DLL = resolve(
+  TOOL_DIRECTORY,
+  '..',
+  'bin',
+  'windows-process-supervisor-contract-fixture',
+  'Release',
+  'net10.0',
+  'Eky.WindowsProcessSupervisor.ContractFixture.dll',
+);
 const FIXTURE_PATH = resolve(TEST_DIRECTORY, 'processTreeFixture.mjs');
 const DOTNET_EXECUTABLE = process.env.EKY_DOTNET_EXE || 'dotnet';
 const activeSupervisorProcesses = new Set();
@@ -39,6 +48,7 @@ const EVIDENCE_KEYS = new Set([
   'phase',
   'resultCode',
   'scenario',
+  'schemaVersion',
   'status',
   'win32ErrorCode',
 ]);
@@ -73,6 +83,8 @@ export async function createRunContext(label) {
     runNonce,
     runRoot,
     scenario: 'jobObjectFeasibility',
+    fixtureProcesses: new Set(),
+    supervisorProcesses: new Set(),
     testRoot,
     workerResultPath,
   };
@@ -127,6 +139,7 @@ function parseEvidenceLine(line, context) {
     value === null ||
     Array.isArray(value) ||
     Object.keys(value).some((key) => !EVIDENCE_KEYS.has(key)) ||
+    value.schemaVersion !== 1 ||
     value.operation !== 'windowsAcceptanceSupervisor' ||
     typeof value.phase !== 'string' ||
     typeof value.status !== 'string' ||
@@ -142,7 +155,14 @@ function parseEvidenceLine(line, context) {
   return value;
 }
 
-export function startSupervisor(context, { captureOutput = true } = {}) {
+export function startSupervisor(
+  context,
+  {
+    captureOutput = true,
+    dotnetArguments = ['--request', context.requestPath],
+    dotnetAssembly = SUPERVISOR_DLL,
+  } = {},
+) {
   const evidence = [];
   const emitter = new EventEmitter();
   let evidenceFailure;
@@ -151,7 +171,7 @@ export function startSupervisor(context, { captureOutput = true } = {}) {
 
   const child = spawn(
     DOTNET_EXECUTABLE,
-    [SUPERVISOR_DLL, '--request', context.requestPath],
+    [dotnetAssembly, ...dotnetArguments],
     {
       cwd: context.testRoot,
       stdio: captureOutput ? ['ignore', 'pipe', 'pipe'] : 'ignore',
@@ -159,8 +179,10 @@ export function startSupervisor(context, { captureOutput = true } = {}) {
     },
   );
   activeSupervisorProcesses.add(child);
+  context.supervisorProcesses.add(child);
   child.once('close', () => {
     activeSupervisorProcesses.delete(child);
+    context.supervisorProcesses.delete(child);
   });
 
   if (captureOutput) {
@@ -243,6 +265,13 @@ export function startSupervisor(context, { captureOutput = true } = {}) {
   }
 
   return { child, completion, evidence, waitForEvidence };
+}
+
+export function startProgramFailureFixture(context, mode) {
+  return startSupervisor(context, {
+    dotnetArguments: ['--mode', mode, '--request', context.requestPath],
+    dotnetAssembly: PROGRAM_FAILURE_FIXTURE_DLL,
+  });
 }
 
 export async function runSupervisor(
@@ -342,31 +371,55 @@ export async function startForeignSentinel(context) {
       windowsHide: true,
     },
   );
+  context.fixtureProcesses.add(child);
+  child.once('close', () => {
+    context.fixtureProcesses.delete(child);
+  });
   const marker = await waitForMarker(context, 'sentinel');
   return { child, marker };
 }
 
 export async function cleanupRunContext(context) {
-  for (const role of ['root', 'grandchild', 'sentinel']) {
-    const markerPath = join(context.runRoot, role + '.ready.json');
-    if (!(await pathExists(markerPath))) {
-      continue;
-    }
+  let cleanupFailure;
+  for (const processes of [
+    context.supervisorProcesses,
+    context.fixtureProcesses,
+  ]) {
     try {
-      const marker = JSON.parse(await readFile(markerPath, 'utf8'));
-      if (
-        marker.runNonce === context.runNonce &&
-        Number.isInteger(marker.processId) &&
-        isProcessAlive(marker.processId)
-      ) {
-        process.kill(marker.processId);
-        await waitForProcessAbsent(marker.processId);
-      }
-    } catch {
-      // Test assertions retain the original failure; this is exact-run cleanup.
+      await terminateChildHandles(processes);
+    } catch (error) {
+      cleanupFailure ??= error;
     }
   }
-  await rm(context.testRoot, { force: true, recursive: true });
+
+  for (const role of ['root', 'grandchild', 'sentinel']) {
+    try {
+      const markerPath = join(context.runRoot, role + '.ready.json');
+      if (!(await pathExists(markerPath))) {
+        continue;
+      }
+      const marker = JSON.parse(await readFile(markerPath, 'utf8'));
+      if (
+        marker.runNonce !== context.runNonce ||
+        !Number.isInteger(marker.processId) ||
+        marker.processId <= 0
+      ) {
+        throw new Error('WINDOWS_ACCEPTANCE_FIXTURE_MARKER_INVALID');
+      }
+      await waitForProcessAbsent(marker.processId);
+    } catch (error) {
+      cleanupFailure ??= error;
+    }
+  }
+
+  try {
+    await rm(context.testRoot, { force: true, recursive: true });
+  } catch (error) {
+    cleanupFailure ??= error;
+  }
+  if (cleanupFailure) {
+    throw cleanupFailure;
+  }
 }
 
 export async function cleanupActiveSupervisors() {
@@ -381,13 +434,34 @@ export async function cleanupActiveSupervisors() {
   await Promise.all(completions);
 }
 
-function onceClose(child) {
+function onceClose(child, timeoutMilliseconds = 10_000) {
   if (child.exitCode !== null || child.signalCode !== null) {
     return Promise.resolve();
   }
-  return new Promise((resolvePromise) => {
-    child.once('close', resolvePromise);
+  return new Promise((resolvePromise, rejectPromise) => {
+    const onClose = () => {
+      clearTimeout(timer);
+      resolvePromise();
+    };
+    const timer = setTimeout(() => {
+      child.off('close', onClose);
+      rejectPromise(
+        new Error('WINDOWS_ACCEPTANCE_FIXTURE_HANDLE_CLEANUP_TIMEOUT'),
+      );
+    }, timeoutMilliseconds);
+    child.once('close', onClose);
   });
+}
+
+async function terminateChildHandles(processes) {
+  for (const child of [...processes]) {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      continue;
+    }
+    const completion = onceClose(child);
+    child.kill();
+    await completion;
+  }
 }
 
 export { SUPERVISOR_DLL };

@@ -6,10 +6,9 @@
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <InvariantGlobalization>true</InvariantGlobalization>
-    <AssemblyName>Eky.WindowsProcessSupervisor</AssemblyName>
+    <AssemblyName>Eky.WindowsProcessSupervisor.ContractFixture</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Remove="tests\programFailureFixture\**\*.cs" />
-    <InternalsVisibleTo Include="Eky.WindowsProcessSupervisor.ContractFixture" />
+    <ProjectReference Include="..\..\Eky.WindowsProcessSupervisor.csproj" />
   </ItemGroup>
 </Project>

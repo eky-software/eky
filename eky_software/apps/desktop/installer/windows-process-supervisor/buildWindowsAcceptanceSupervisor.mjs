@@ -7,6 +7,12 @@ const PROJECT_PATH = resolve(
   TOOL_DIRECTORY,
   'Eky.WindowsProcessSupervisor.csproj',
 );
+const PROGRAM_FAILURE_FIXTURE_PROJECT_PATH = resolve(
+  TOOL_DIRECTORY,
+  'tests',
+  'programFailureFixture',
+  'Eky.WindowsProcessSupervisor.ContractFixture.csproj',
+);
 const DOTNET_EXECUTABLE = process.env.EKY_DOTNET_EXE || 'dotnet';
 const REQUIRED_SDK_VERSION = '10.0.302';
 
@@ -35,6 +41,17 @@ runDotnet(
   [
     'build',
     PROJECT_PATH,
+    '--configuration',
+    'Release',
+    '--nologo',
+  ],
+  { stdio: 'inherit' },
+);
+
+runDotnet(
+  [
+    'build',
+    PROGRAM_FAILURE_FIXTURE_PROJECT_PATH,
     '--configuration',
     'Release',
     '--nologo',

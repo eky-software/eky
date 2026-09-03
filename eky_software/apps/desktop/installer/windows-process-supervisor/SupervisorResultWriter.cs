@@ -45,6 +45,10 @@ internal static class SupervisorResultWriter
             }
             File.Move(temporaryPath, request.ResultPath, false);
         }
+        catch
+        {
+            throw new SupervisorResultWriteFailure();
+        }
         finally
         {
             try
@@ -58,3 +62,6 @@ internal static class SupervisorResultWriter
         }
     }
 }
+
+internal sealed class SupervisorResultWriteFailure()
+    : Exception("resultWriteFailed");

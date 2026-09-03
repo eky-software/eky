@@ -604,6 +604,21 @@ ei saa korvata alkuperäistä scenario- tai prosessivirhettä. Observability
 sisältää vain nimetyn operaation, allowlistatun vaiheen, tilan, keston,
 kokonaisajan sekä allowlistatun result- tai error-koodin.
 
+Cooperative cancellation ja supervisorin hallitsema deadline ovat tavallisia
+terminal-polkuja: niiden pitää kirjoittaa strict supervisor-result ennen exit-
+tilaa ja todistaa cleanup-tulos. Ulkoinen hard kill, käyttöjärjestelmän kaatuminen
+tai runnerin menetys voi katkaista prosessin ennen resultin kirjoittamista.
+Silloin caller hylkää ajon puuttuvan terminal-resultin vuoksi, ja ei-periytyvän
+job-kahvan sulkeutuminen aktivoi `KILL_ON_JOB_CLOSE`-suojan omistetulle
+prosessipuulle. Puuttuva result ei koskaan merkitse onnistumista.
+
+Safe evidence käyttää `schemaVersion: 1` -sopimusta ja on best effort -
+diagnostiikkaa. Evidenssivirta ei saa muuttaa workerin, supervisorin tai
+cleanupin terminal-tulosta. Validin requestin jälkeinen odottamaton virhe
+yrittää kirjoittaa strict `unexpectedFailure`-resultin ennen exit-koodia 1;
+result-writerin oma epäonnistuminen jää erilliseksi `resultWriteFailed`-
+tilaksi, jonka caller käsittelee puuttuvana tai epävalidina terminal-tuloksena.
+
 ### Fixture- ja riskisopimus
 
 Yhdellä fixtureperheellä on yksi producer. W6B legacy, W6B.2A ja W6B.2B

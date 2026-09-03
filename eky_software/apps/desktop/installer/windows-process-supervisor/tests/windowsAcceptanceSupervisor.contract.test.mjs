@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
-import { access } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import test from 'node:test';
 import {
   cleanupRunContext,
@@ -11,6 +12,7 @@ import {
   releaseFixture,
   runSupervisor,
   startForeignSentinel,
+  startProgramFailureFixture,
   startSupervisor,
   SUPERVISOR_DLL,
   waitForMarker,
@@ -84,6 +86,38 @@ test(
     );
     assert.ok(assignedIndex >= 0);
     assert.ok(resumedIndex > assignedIndex);
+  },
+);
+
+test(
+  'Windows command-line quoting preserves empty, spaced, Unicode, quoted, and backslash arguments',
+  WINDOWS_ONLY,
+  async (testContext) => {
+    const context = await contextFor(testContext, 'command-line-quoting');
+    const expectedArguments = [
+      '',
+      ' ',
+      'contains space',
+      'unicode-\u00e4\u00f6',
+      'inside"quote',
+      String.raw`backslash-before-\"quote`,
+      String.raw`two-backslashes-before-\\"quote`,
+      String.raw`spaced trailing-backslashes\\`,
+    ];
+    const request = createRequest(context, 'recordArguments');
+    request.arguments.push(...expectedArguments);
+    await writeRequest(context, request);
+
+    const execution = startSupervisor(context);
+    const terminal = await readCompletedExecution(context, execution);
+    assert.equal(terminal.result.status, 'completed');
+    const recorded = JSON.parse(
+      await readFile(join(context.runRoot, 'command-line-probe.json'), 'utf8'),
+    );
+    assert.deepEqual(recorded, {
+      schemaVersion: 1,
+      arguments: expectedArguments,
+    });
   },
 );
 
@@ -223,11 +257,6 @@ test(
   async (testContext) => {
     const sentinelContext = await contextFor(testContext, 'foreign-sentinel');
     const sentinel = await startForeignSentinel(sentinelContext);
-    testContext.after(() => {
-      if (isProcessAlive(sentinel.marker.processId)) {
-        sentinel.child.kill();
-      }
-    });
 
     const ownedContext = await contextFor(testContext, 'owned-timeout');
     const execution = await runSupervisor(ownedContext, 'hold', {
@@ -240,6 +269,66 @@ test(
     await releaseFixture(sentinelContext, 'sentinel');
     await once(sentinel.child, 'close');
     await waitForProcessAbsent(sentinel.marker.processId);
+  },
+);
+
+test(
+  'valid-request unexpected and result-writer failures remain distinct and fail closed',
+  WINDOWS_ONLY,
+  async (testContext) => {
+    const unexpectedContext = await contextFor(
+      testContext,
+      'unexpected-failure',
+    );
+    await writeRequest(
+      unexpectedContext,
+      createRequest(unexpectedContext, 'exitZero'),
+    );
+    const unexpectedExecution = startProgramFailureFixture(
+      unexpectedContext,
+      'unexpectedFailure',
+    );
+    const unexpected = await readCompletedExecution(
+      unexpectedContext,
+      unexpectedExecution,
+    );
+    assert.equal(unexpected.completion.exitCode, 1);
+    assert.equal(unexpected.result.status, 'failed');
+    assert.equal(unexpected.result.processResultCode, 'unexpectedFailure');
+    assert.equal(unexpected.result.cleanupResultCode, 'cleanupUnverified');
+    assert.equal(unexpected.result.processTreeAbsent, false);
+
+    const writerContext = await contextFor(
+      testContext,
+      'result-writer-failure',
+    );
+    await writeRequest(
+      writerContext,
+      createRequest(writerContext, 'exitZero'),
+    );
+    const writerExecution = startProgramFailureFixture(
+      writerContext,
+      'resultWriteFailure',
+    );
+    const writerCompletion = await writerExecution.completion;
+    assert.equal(writerCompletion.exitCode, 1);
+    assert.ok(
+      writerCompletion.evidence.find(
+        (entry) =>
+          entry.phase === 'resultWritten' &&
+          entry.status === 'failed' &&
+          entry.errorCode === 'resultWriteFailed',
+      ),
+    );
+    await assert.rejects(
+      readWindowsAcceptanceSupervisorResult(writerContext.resultPath, {
+        artifactDescriptorSha256: writerContext.artifactDescriptorSha256,
+        runNonce: writerContext.runNonce,
+        scenario: writerContext.scenario,
+        supervisorExitCode: writerCompletion.exitCode,
+      }),
+      /WINDOWS_ACCEPTANCE_SUPERVISOR_TERMINAL_RESULT_MISSING/,
+    );
   },
 );
 
@@ -358,7 +447,7 @@ test(
 );
 
 test(
-  'safe observability cannot change the terminal result',
+  'disabled or failed safe observability cannot change the terminal result',
   WINDOWS_ONLY,
   async (testContext) => {
     const observedContext = await contextFor(testContext, 'observed-output');
@@ -370,18 +459,37 @@ test(
       undefined,
       { captureOutput: false },
     );
+    const failedContext = await contextFor(testContext, 'failed-output');
+    await writeRequest(failedContext, createRequest(failedContext, 'hold'));
+    const failedExecution = startSupervisor(failedContext);
+    await waitForMarker(failedContext, 'root');
+    await failedExecution.waitForEvidence(
+      (entry) =>
+        entry.phase === 'hostStarted' && entry.status === 'completed',
+    );
+    failedExecution.child.stdout.destroy();
+    await once(failedExecution.child.stdout, 'close');
+    await releaseFixture(failedContext, 'root');
+    const failed = await readCompletedExecution(
+      failedContext,
+      failedExecution,
+    );
 
     for (const key of [
       'childExitCode',
       'cleanupResultCode',
+      'cleanupWin32ErrorCode',
       'processResultCode',
       'processTreeAbsent',
+      'processWin32ErrorCode',
       'status',
       'workerResultCode',
     ]) {
       assert.equal(ignored.result[key], observed.result[key]);
+      assert.equal(failed.result[key], observed.result[key]);
     }
     assert.ok(observed.evidence.length > 0);
     assert.equal(ignored.evidence.length, 0);
+    assert.equal(failed.result.status, 'completed');
   },
 );

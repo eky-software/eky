@@ -11,6 +11,7 @@ const MODES = new Set([
   'exitZeroStaleResult',
   'exitZeroWithoutResult',
   'hold',
+  'recordArguments',
   'spawnGrandchildAndExit',
   'spawnGrandchildAndHold',
   'spawnGrandchildThenExitOnRelease',
@@ -18,8 +19,10 @@ const MODES = new Set([
 const ROLES = new Set(['grandchild', 'root', 'sentinel']);
 
 function readArguments(arguments_) {
+  const controlArguments = arguments_.slice(0, 7);
+  const commandLineProbe = arguments_.slice(7);
   const values = new Map();
-  for (const argument of arguments_) {
+  for (const argument of controlArguments) {
     const separator = argument.indexOf('=');
     if (!argument.startsWith('--') || separator <= 2) {
       throw new Error('FIXTURE_ARGUMENT_INVALID');
@@ -42,7 +45,9 @@ function readArguments(arguments_) {
   ];
   if (
     values.size !== expectedKeys.length ||
-    expectedKeys.some((key) => !values.has(key))
+    expectedKeys.some((key) => !values.has(key)) ||
+    (values.get('mode') !== 'recordArguments' && commandLineProbe.length > 0) ||
+    commandLineProbe.length > 32
   ) {
     throw new Error('FIXTURE_ARGUMENT_INVALID');
   }
@@ -68,6 +73,7 @@ function readArguments(arguments_) {
   }
   return {
     artifactDescriptorSha256,
+    commandLineProbe,
     mode,
     role,
     runNonce,
@@ -170,6 +176,19 @@ async function main() {
   });
 
   if (input.mode === 'exitZero') {
+    await writeWorkerResult(
+      input,
+      'completed',
+      'fixtureCompleted',
+      null,
+    );
+    return;
+  }
+  if (input.mode === 'recordArguments') {
+    await writeJsonAtomic(join(input.runRoot, 'command-line-probe.json'), {
+      schemaVersion: 1,
+      arguments: input.commandLineProbe,
+    });
     await writeWorkerResult(
       input,
       'completed',
