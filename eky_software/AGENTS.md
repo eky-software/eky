@@ -110,6 +110,10 @@ julkaisukanavaa, lue myös
 `docs/architecture/windows-installer-and-update-plan.md`,
 `docs/architecture/release-versioning-policy.md` ja
 `docs/architecture/local-desktop-dependency-review.md`.
+Jos työ koskee Windows installer -hyväksyntäharnessia, W6B-, W6B.2A- tai
+W6B.2B-skenaarioita, niiden prosessiomistajuutta, timeout-/cleanup-mallia tai
+raskaan Windows-matriisin CI-kadenssia, lue myös
+`docs/architecture/windows-installer-acceptance-harness-v2.md`.
 
 Jos työ koskee E2E-testejä, Playwrightia, selain- tai Electron development
 -käyttäjäpolkuja, testiruntimea, fault injectionia, hyökkäyssimulaatioita tai
