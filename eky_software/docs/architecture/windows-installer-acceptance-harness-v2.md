@@ -797,6 +797,18 @@ yhden vuorokauden retentionia. Kaksi toisistaan eristettyä Windows-consumeria
 ajaa samat artifact-tavut kerran ilman automaattista retryä. Artifact on
 testifixture, ei jaettava release, allekirjoitus tai stable-julkaisu.
 
+Tämä raja toteutetaan workflow'ssa
+`.github/workflows/windows-acceptance-v2-clean.yml`. Yksi
+`artifact_producer` rakentaa ja varmistaa fixturetavut sekä julkaisee
+descriptorin SHA-256:n ja täyden Git-revision job-outputteina. Kaksi
+`clean_consumer`-matriisin erillistä Windows-jobia lataa täsmälleen nimetyn
+artifactin, todistaa checkoutin saman Git-revision, varmistaa descriptorin ja
+MSI:n ennen V2.2-lifecyclea ja sen jälkeen sekä ajaa lifecyclen kerran.
+Consumer ei kutsu paketoijaa tai installer-builderia. Siirto käyttää vain
+hyväksyttyjä SHA-lukittuja artifact-actioneita, yhden vuorokauden retentionia
+ja pakkaamatonta siirtoa; artifactissa sallitaan edelleen vain descriptor ja
+sen nimeämä synteettinen allekirjoittamaton MSI.
+
 ## Migraatiojärjestys
 
 V2 toteutetaan pieninä, itsenäisesti vihreinä checkpointteina:
