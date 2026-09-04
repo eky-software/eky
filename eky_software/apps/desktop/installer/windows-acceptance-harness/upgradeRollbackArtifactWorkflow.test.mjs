@@ -35,6 +35,11 @@ test('V2.4 workflow builds once and fans identical bytes to two consumers', asyn
   assert.match(source, /retention-days: 1/u);
   assert.match(source, /compression-level: 0/u);
   assert.match(source, /pnpm install --frozen-lockfile/u);
+  assert.match(
+    source,
+    /Remove producer staging after native loader process exit/u,
+  );
+  assert.match(source, /WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_STAGE_CLEANUP_FAILED/u);
   assert.doesNotMatch(source, /continue-on-error|retry|re-run/iu);
 });
 

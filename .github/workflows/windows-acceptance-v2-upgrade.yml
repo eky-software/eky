@@ -135,6 +135,16 @@ jobs:
           "target_package_sha256=$($summary.targetPackageSha256)" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "windows_rollback_package_sha256=$($summary.windowsRollbackPackageSha256)" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
+      - name: Remove producer staging after native loader process exit
+        if: ${{ always() && steps.produce.outcome != 'skipped' }}
+        shell: pwsh
+        run: |
+          $stageRoot = Join-Path $PWD 'apps\desktop\.stage\windows-acceptance-v2-upgrade'
+          Remove-Item -LiteralPath $stageRoot -Recurse -Force -ErrorAction SilentlyContinue
+          if (Test-Path -LiteralPath $stageRoot) {
+            throw 'WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_STAGE_CLEANUP_FAILED'
+          }
+
       - name: Verify produced artifact bytes
         shell: pwsh
         env:

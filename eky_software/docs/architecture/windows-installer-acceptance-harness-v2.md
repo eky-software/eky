@@ -843,6 +843,13 @@ ovat tavallisia itsenäisiä tiedostoja. Tuntematon inventory, symlinkki,
 hardlinkki, väärä hash, väärä build-revision, epäjatkuva versio tai targetin ja
 rollback-proben virheellinen identiteetti torjutaan ennen MSI-operaatiota.
 
+Paketoinnin native SQLite -validointi lataa stagingin `.node`-tiedoston
+producer-prosessiin. Siksi producer ei yritä poistaa kiinteää, Gitistä
+ohitettua `.stage/windows-acceptance-v2-upgrade`-juurta samasta prosessista.
+CI poistaa juuri tämän staging-juuren erillisessä vaiheessa vasta producerin
+poistuttua; seuraava paikallinen producer korvaa saman juuren ennen buildia.
+Staging ei kuulu siirrettävään acceptance-artifactiin.
+
 Yksi strict worker suorittaa seuraavan järjestyksen:
 
 1. source- ja target-ProductCodejen sekä yhteisen footprintin puhdas preflight

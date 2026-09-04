@@ -20,7 +20,6 @@ import {
 } from '../installerManifest.mjs';
 import {
   buildUpgradeRollbackArtifact,
-  buildStagedInstallerSet,
   copyClosedPayloadTree,
   createUpgradeRollbackReleasePair,
   parseUpgradeRollbackArtifactBuildArguments,
@@ -272,7 +271,7 @@ test('local fixture copies independent bytes and detects source drift', async (t
   );
 });
 
-test('artifact producer consumes one staged installer set and removes staging', async (testContext) => {
+test('artifact producer consumes one staged installer set without rebuilding it', async (testContext) => {
   const root = await mkdtemp(resolve(tmpdir(), 'eky-v2-upgrade-producer-'));
   testContext.after(() => rm(root, { force: true, recursive: true }));
   const stageRoot = resolve(root, 'stage');
@@ -301,7 +300,11 @@ test('artifact producer consumes one staged installer set and removes staging', 
 
   assert.equal(buildCount, 1);
   assert.equal(result.resultCode, 'upgradeRollbackArtifactBuilt');
-  await assert.rejects(readdir(stageRoot), { code: 'ENOENT' });
+  assert.deepEqual((await readdir(stageRoot)).sort(), [
+    'source',
+    'target',
+    'windowsRollback',
+  ]);
   await verifyUpgradeRollbackArtifact({
     artifactRoot,
     expectedBuildRevision: BUILD_REVISION,
@@ -330,96 +333,6 @@ test('rollback payload copy creates its owned parent and independent bytes', asy
   assert.equal(await readFile(resolve(targetRoot, 'root.txt'), 'utf8'), 'root');
 });
 
-test('artifact producer removes its default staging after a package failure', async (testContext) => {
-  const root = await mkdtemp(resolve(tmpdir(), 'eky-v2-upgrade-stage-failure-'));
-  testContext.after(() => rm(root, { force: true, recursive: true }));
-  const stageRoot = resolve(root, 'stage');
-  await assert.rejects(
-    buildStagedInstallerSet({
-      stageRoot,
-      readGitState: async () => BUILD_REVISION,
-      packageApplication: async () => {
-        throw new Error('PACKAGE_FAILED');
-      },
-    }),
-    /PACKAGE_FAILED/,
-  );
-  await assert.rejects(readdir(stageRoot), { code: 'ENOENT' });
-});
-
-test('stage cleanup failure removes a completed artifact and fails closed', async (testContext) => {
-  const root = await mkdtemp(resolve(tmpdir(), 'eky-v2-upgrade-cleanup-failure-'));
-  testContext.after(() => rm(root, { force: true, recursive: true }));
-  const stageRoot = resolve(root, 'stage');
-  await mkdir(stageRoot);
-  const source = await createRole(stageRoot, 'source', '0.2.7', 'source');
-  const target = await createRole(stageRoot, 'target', '0.2.8', 'target');
-  const windowsRollback = await createRole(
-    stageRoot,
-    'windowsRollback',
-    '0.2.8',
-    'rollback',
-  );
-  const artifactRoot = resolve(root, 'artifact');
-  await assert.rejects(
-    buildUpgradeRollbackArtifact({
-      artifactRoot,
-      async createStagedInstallerSet() {
-        return {
-          buildRevision: BUILD_REVISION,
-          roles: { source, target, windowsRollback },
-          stageRoot,
-        };
-      },
-      async removeTree(path, options) {
-        if (resolve(path) === stageRoot) {
-          throw new Error('synthetic cleanup failure');
-        }
-        await rm(path, options);
-      },
-    }),
-    /WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_STAGE_CLEANUP_FAILED/,
-  );
-  await assert.rejects(readdir(artifactRoot), { code: 'ENOENT' });
-});
-
-test('stage cleanup failure does not replace the primary artifact error', async (testContext) => {
-  const root = await mkdtemp(resolve(tmpdir(), 'eky-v2-upgrade-primary-error-'));
-  testContext.after(() => rm(root, { force: true, recursive: true }));
-  const stageRoot = resolve(root, 'stage');
-  await mkdir(stageRoot);
-  const target = await createRole(stageRoot, 'target', '0.2.8', 'target');
-  const windowsRollback = await createRole(
-    stageRoot,
-    'windowsRollback',
-    '0.2.8',
-    'rollback',
-  );
-  await assert.rejects(
-    buildUpgradeRollbackArtifact({
-      artifactRoot: resolve(root, 'artifact'),
-      async createStagedInstallerSet() {
-        return {
-          buildRevision: BUILD_REVISION,
-          roles: {
-            source: { manifestPath: resolve(stageRoot, 'missing.json') },
-            target,
-            windowsRollback,
-          },
-          stageRoot,
-        };
-      },
-      async removeTree(path, options) {
-        if (resolve(path) === stageRoot) {
-          throw new Error('synthetic cleanup failure');
-        }
-        await rm(path, options);
-      },
-    }),
-    /WINDOWS_ACCEPTANCE_LOCAL_FIXTURE_INVALID/,
-  );
-});
-
 test('artifact producer rejects overlapping staging and artifact roots', async (testContext) => {
   const root = await mkdtemp(resolve(tmpdir(), 'eky-v2-upgrade-overlap-'));
   testContext.after(() => rm(root, { force: true, recursive: true }));
@@ -438,7 +351,7 @@ test('artifact producer rejects overlapping staging and artifact roots', async (
     }),
     /WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_STAGE_OVERLAP_INVALID/,
   );
-  await assert.rejects(readdir(stageRoot), { code: 'ENOENT' });
+  assert.deepEqual(await readdir(stageRoot), []);
 });
 
 test('release derivation and CLI arguments are closed', () => {

@@ -244,7 +244,6 @@ export async function buildStagedInstallerSet({
   buildInstaller = buildWindowsInstaller,
   packageApplication = packageWindowsApplication,
   readGitState = readInstallerReleaseGitState,
-  removeTree = rm,
   stageRoot = DEFAULT_STAGE_ROOT,
 } = {}) {
   const canonicalPackageSource = await readFile(CANONICAL_PACKAGE_PATH, 'utf8');
@@ -269,88 +268,77 @@ export async function buildStagedInstallerSet({
     throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_BUILD_IDENTITY_MISMATCH');
   }
 
-  await removeTree(stageRoot, { force: true, recursive: true });
+  await rm(stageRoot, { force: true, recursive: true });
   await mkdir(stageRoot, { recursive: true });
-  let completed = false;
-  try {
-    const sourcePaths = createRolePaths(stageRoot, 'source');
-    const targetPaths = createRolePaths(stageRoot, 'target');
-    const rollbackPaths = createRolePaths(stageRoot, 'windows-rollback');
-    const sourcePackaged = await packageApplication({
-      layout: sourcePaths.layout,
-      pilotBuild: true,
-      reportPackagedPath: false,
-      releaseOverride: releases.source,
-    });
-    requirePackagedApplication(sourcePackaged, releases.source, buildRevision);
-    const targetPackaged = await packageApplication({
-      layout: targetPaths.layout,
-      pilotBuild: true,
-      reportPackagedPath: false,
-      releaseOverride: releases.target,
-    });
-    requirePackagedApplication(targetPackaged, releases.target, buildRevision);
+  const sourcePaths = createRolePaths(stageRoot, 'source');
+  const targetPaths = createRolePaths(stageRoot, 'target');
+  const rollbackPaths = createRolePaths(stageRoot, 'windows-rollback');
+  const sourcePackaged = await packageApplication({
+    layout: sourcePaths.layout,
+    pilotBuild: true,
+    reportPackagedPath: false,
+    releaseOverride: releases.source,
+  });
+  requirePackagedApplication(sourcePackaged, releases.source, buildRevision);
+  const targetPackaged = await packageApplication({
+    layout: targetPaths.layout,
+    pilotBuild: true,
+    reportPackagedPath: false,
+    releaseOverride: releases.target,
+  });
+  requirePackagedApplication(targetPackaged, releases.target, buildRevision);
 
-    const source = await buildRoleInstaller({
-      buildRevision,
-      buildInstaller,
-      packagedPath: sourcePackaged.packagedPath,
-      paths: sourcePaths,
-      release: releases.source,
-    });
-    const target = await buildRoleInstaller({
-      buildRevision,
-      buildInstaller,
-      packagedPath: targetPackaged.packagedPath,
-      paths: targetPaths,
-      release: releases.target,
-    });
+  const source = await buildRoleInstaller({
+    buildRevision,
+    buildInstaller,
+    packagedPath: sourcePackaged.packagedPath,
+    paths: sourcePaths,
+    release: releases.source,
+  });
+  const target = await buildRoleInstaller({
+    buildRevision,
+    buildInstaller,
+    packagedPath: targetPackaged.packagedPath,
+    paths: targetPaths,
+    release: releases.target,
+  });
 
-    const rollbackPayloadRoot = resolve(rollbackPaths.root, 'payload');
-    await copyClosedPayloadTree(targetPackaged.packagedPath, rollbackPayloadRoot);
-    const rollbackProbeRoot = resolve(
-      rollbackPayloadRoot,
-      'resources',
-      'desktop-runtime',
-      'installer-rollback-probe',
-    );
-    await mkdir(rollbackProbeRoot, { recursive: true });
-    await writeFile(
-      resolve(rollbackProbeRoot, 'probe.txt'),
-      'Synthetic Windows Installer rollback probe.\n',
-      'utf8',
-    );
-    const windowsRollback = await buildRoleInstaller({
-      buildRevision,
-      buildInstaller,
-      packagedPath: rollbackPayloadRoot,
-      paths: rollbackPaths,
-      release: releases.target,
-    });
-    if (windowsRollback.payloadFileCount !== target.payloadFileCount + 1) {
-      throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_ROLLBACK_INVALID');
-    }
-
-    if (
-      (await readFile(CANONICAL_PACKAGE_PATH, 'utf8')) !== canonicalPackageSource ||
-      (await readFile(CANONICAL_RELEASE_PATH, 'utf8')) !== canonicalReleaseSource
-    ) {
-      throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_CANONICAL_CHANGED');
-    }
-    const result = Object.freeze({
-      buildRevision,
-      roles: Object.freeze({ source, target, windowsRollback }),
-      stageRoot,
-    });
-    completed = true;
-    return result;
-  } finally {
-    if (!completed) {
-      await removeTree(stageRoot, { force: true, recursive: true }).catch(
-        () => undefined,
-      );
-    }
+  const rollbackPayloadRoot = resolve(rollbackPaths.root, 'payload');
+  await copyClosedPayloadTree(targetPackaged.packagedPath, rollbackPayloadRoot);
+  const rollbackProbeRoot = resolve(
+    rollbackPayloadRoot,
+    'resources',
+    'desktop-runtime',
+    'installer-rollback-probe',
+  );
+  await mkdir(rollbackProbeRoot, { recursive: true });
+  await writeFile(
+    resolve(rollbackProbeRoot, 'probe.txt'),
+    'Synthetic Windows Installer rollback probe.\n',
+    'utf8',
+  );
+  const windowsRollback = await buildRoleInstaller({
+    buildRevision,
+    buildInstaller,
+    packagedPath: rollbackPayloadRoot,
+    paths: rollbackPaths,
+    release: releases.target,
+  });
+  if (windowsRollback.payloadFileCount !== target.payloadFileCount + 1) {
+    throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_ROLLBACK_INVALID');
   }
+
+  if (
+    (await readFile(CANONICAL_PACKAGE_PATH, 'utf8')) !== canonicalPackageSource ||
+    (await readFile(CANONICAL_RELEASE_PATH, 'utf8')) !== canonicalReleaseSource
+  ) {
+    throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_CANONICAL_CHANGED');
+  }
+  return Object.freeze({
+    buildRevision,
+    roles: Object.freeze({ source, target, windowsRollback }),
+    stageRoot,
+  });
 }
 
 async function materializeRole(stagedRole, artifactRoot, roleName) {
@@ -372,15 +360,11 @@ async function materializeRole(stagedRole, artifactRoot, roleName) {
 export async function buildUpgradeRollbackArtifact({
   artifactRoot: artifactRootInput,
   createStagedInstallerSet = buildStagedInstallerSet,
-  removeTree = rm,
 }) {
   const artifactRoot = resolve(artifactRootInput);
   let artifactCreated = false;
-  let result = null;
-  let staged = null;
-  let primaryError = null;
   try {
-    staged = await createStagedInstallerSet();
+    const staged = await createStagedInstallerSet();
     const stagedRoot = resolve(staged.stageRoot);
     if (
       isPathInside(stagedRoot, artifactRoot) ||
@@ -417,7 +401,7 @@ export async function buildUpgradeRollbackArtifact({
       expectedBuildRevision: staged.buildRevision,
       expectedDescriptorSha256: descriptorIdentity.sha256,
     });
-    result = Object.freeze({
+    return Object.freeze({
       schemaVersion: 1,
       status: 'completed',
       resultCode: 'upgradeRollbackArtifactBuilt',
@@ -429,39 +413,13 @@ export async function buildUpgradeRollbackArtifact({
         verified.roles.windowsRollback.packageSha256,
     });
   } catch (error) {
-    primaryError = error;
     if (artifactCreated) {
-      await removeTree(artifactRoot, { force: true, recursive: true }).catch(
+      await rm(artifactRoot, { force: true, recursive: true }).catch(
         () => undefined,
       );
     }
+    throw error;
   }
-
-  let stageCleanupFailed = false;
-  if (staged !== null) {
-    await removeTree(staged.stageRoot, { force: true, recursive: true }).catch(
-      () => {
-        stageCleanupFailed = true;
-      },
-    );
-  }
-  if (primaryError !== null) {
-    throw primaryError;
-  }
-  if (stageCleanupFailed) {
-    if (artifactCreated) {
-      await removeTree(artifactRoot, { force: true, recursive: true }).catch(
-        () => undefined,
-      );
-    }
-    throw new Error(
-      'WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_STAGE_CLEANUP_FAILED',
-    );
-  }
-  if (result === null) {
-    throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_BUILD_FAILED');
-  }
-  return result;
 }
 
 function safeErrorCode(error) {
