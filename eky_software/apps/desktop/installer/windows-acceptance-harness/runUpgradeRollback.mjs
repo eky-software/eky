@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { lstat, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -122,6 +122,21 @@ export function requireUpgradeRollbackProductPrecondition(result) {
   }
 }
 
+export async function resolveUpgradeRollbackTemporaryRoot(
+  temporaryRoot = tmpdir(),
+) {
+  try {
+    const canonicalRoot = await realpath(resolve(temporaryRoot));
+    const metadata = await lstat(canonicalRoot);
+    if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+      throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_TEMP_ROOT_INVALID');
+    }
+    return canonicalRoot;
+  } catch {
+    throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_TEMP_ROOT_INVALID');
+  }
+}
+
 export async function runUpgradeRollback(arguments_) {
   if (process.platform !== 'win32') {
     throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_WINDOWS_REQUIRED');
@@ -136,7 +151,10 @@ export async function runUpgradeRollback(arguments_) {
     'WINDOWS_ACCEPTANCE_SUPERVISOR_BINARY_INVALID',
   );
 
-  const runRoot = await mkdtemp(join(tmpdir(), 'eky-windows-acceptance-v2-upgrade-'));
+  const temporaryRoot = await resolveUpgradeRollbackTemporaryRoot();
+  const runRoot = await mkdtemp(
+    join(temporaryRoot, 'eky-windows-acceptance-v2-upgrade-'),
+  );
   const profileRoot = resolve(appData, 'Eky');
   let activeSupervisor = null;
   let artifact = null;

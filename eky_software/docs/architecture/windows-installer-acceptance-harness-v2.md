@@ -902,8 +902,10 @@ ainoan absoluuttisen deadlinen.
 Normaali `%APPDATA%\Eky` käsitellään samalla read-only-inventaariorajalla kuin
 V2.2:ssa. Onnistuminen edellyttää muuttumatonta tiedostomäärä-, koko- ja
 SHA-256-inventaarioa, mutta yksittäisiä nimiä tai tiivisteitä ei tulosteta.
-MSI-lokit ja ajokohtainen fixture pysyvät TEMP-juuressa ja poistetaan ajon
-jälkeen.
+Runner ratkaisee käyttöjärjestelmän TEMP-juuren realpathin ennen lapsipolkujen
+luontia, jotta Node- ja Windows PowerShell -rajalle välitetään yksi kanoninen
+Windows-polku. MSI-lokit ja ajokohtainen fixture pysyvät tässä juuresta
+johdetussa hakemistossa ja poistetaan ajon jälkeen.
 
 Paikallinen build-once-järjestys on:
 
