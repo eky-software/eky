@@ -741,6 +741,62 @@ riippuvuuksia, lockfilea, versiota tai pilot-artifactia. V2.3:ssa eriytetään
 build-once descriptor ja CI:n immutable artifact -siirto ennen upgrade-
 skenaarioiden migraatiota.
 
+## V2.3 build-once artifact -checkpoint
+
+V2.3:n clean lifecycle käyttää descriptorina nykyistä versionoitua
+`installer.manifest.json`-sopimusta. Uutta rinnakkaista release- tai
+descriptor-formaattia ei luoda. Manifesti sitoo app- ja MSI-version,
+build-revisionin, paketin nimen, koon ja SHA-256-tiivisteen. Producer laskee
+lisäksi descriptor-tiedoston oman SHA-256-tiivisteen, joka välitetään
+consumerille artifactin ulkopuolisena job-output-arvona.
+
+Producer:
+
+- toimii puhtaasta Git-revisiosta ja kutsuu nykyistä installer release
+  -builderia täsmälleen kerran
+- rakentaa nykyisen pilot Electron -payloadin täsmälleen kerran ennen MSI:tä
+  ja torjuu payloadin app-versio- tai build-revision-eron
+- irrottaa WiX/MSBuildin mahdollisen trusted staging -hardlinkin itsenäiseksi
+  hash-varmennetuksi build-outputiksi ennen immutable artifact -kopiota;
+  ulkoinen fixture tai consumer-artifact ei saa koskaan olla hardlinkki
+- kopioi descriptorin ja MSI:n itsenäisinä tavuina ajokohtaiseen artifact-
+  juureen ilman hardlinkkiä
+- hyväksyy artifact-juureen vain tiedostot `installer.manifest.json` ja
+  descriptorin nimeämän MSI:n
+- varmistaa lähdeartifactin muuttumattomuuden sekä kopion descriptor- ja
+  package-hashit ennen luovutusta
+- ei sisällytä profiilia, lokeja, salaisuuksia, backupia, business-dataa tai
+  release-arkistoa.
+
+Consumer:
+
+- saa artifact-juuren ja producer-jobin julkaiseman exact descriptor
+  SHA-256:n
+- torjuu tuntemattoman inventoryn, muuttuneet tavut, väärän build-revisionin,
+  symlinkin, hardlinkin ja erikoistiedoston ennen MSI-operaatiota
+- ajaa saman V2.2 clean install / uninstall -lifecycle-toteutuksen ilman
+  rebuildiä
+- varmistaa ladatut descriptor- ja MSI-tavut uudelleen lifecycle-ajon jälkeen.
+
+Paikallinen producer/consumer-järjestys on:
+
+```text
+pnpm --filter @eky/desktop installer:v2-artifact:build --artifact-root <absolute-new-artifact-root> --summary-path <absolute-summary-path-outside-artifact-root>
+pnpm --filter @eky/desktop installer:v2-artifact:verify --artifact-root <absolute-artifact-root> --expected-descriptor-sha256 <producer-descriptor-sha256> --expected-build-revision <producer-git-revision>
+pnpm --filter @eky/desktop installer:v2-clean --fixture-manifest <absolute-artifact-root>/installer.manifest.json
+```
+
+Verifier ajetaan sekä ennen V2.2-lifecyclea että sen jälkeen. Artifact-juuren
+pitää olla producerille uusi ja tyhjäksi oletettu polku; producer ei poista tai
+korvaa ennalta olemassa olevaa juurta. Summary-polku ei kuulu siirrettävään
+artifact-inventoryyn.
+
+CI:n build-once fan-out käyttää vain kohdassa "Hyväksytyt artifact-actionit"
+nimettyjä exact-SHA-versioita, yksiselitteistä ajokohtaista artifact-nimeä ja
+yhden vuorokauden retentionia. Kaksi toisistaan eristettyä Windows-consumeria
+ajaa samat artifact-tavut kerran ilman automaattista retryä. Artifact on
+testifixture, ei jaettava release, allekirjoitus tai stable-julkaisu.
+
 ## Migraatiojärjestys
 
 V2 toteutetaan pieninä, itsenäisesti vihreinä checkpointteina:
@@ -801,9 +857,11 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 
 ## Nykyinen päätös
 
-Katselmus ja V2-suunnitelma ovat valmiit. V2.1-feasibility on hyväksytty
-yllä rajatulla sopimuksella. PR #257 ja PR #258 sekä nykyiset W6B-, W6B.2A-
-ja W6B.2B-toteutukset säilytetään muuttumattomina. V2.1 ei vielä vaihda
+Katselmus ja V2-suunnitelma ovat valmiit. V2.1-feasibility ja V2.2 clean
+install / uninstall on toteutettu pinottuina draft-checkpointteina. V2.3
+erottaa build-once artifact producer/consumer -rajan ennen upgrade-polun
+migraatiota. PR #257 ja PR #258 sekä nykyiset W6B-, W6B.2A- ja W6B.2B-
+toteutukset säilytetään muuttumattomina. V2-checkpointit eivät vielä vaihda
 nykyisen acceptance-harnessin auktoritatiivista ajopolkua.
 
 ## Ulkoiset tekniset lähteet
