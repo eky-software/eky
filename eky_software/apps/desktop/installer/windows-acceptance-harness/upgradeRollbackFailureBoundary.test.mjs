@@ -132,6 +132,35 @@ test('worker scenario failure stays primary when semantic cleanup fails', async 
   );
 });
 
+test('binary rollback input category crosses the safe command boundary', async () => {
+  await assert.rejects(
+    resolveUpgradeRollbackTerminalOutcome({
+      supervisorResult: supervisor({
+        status: 'failed',
+        workerResultCode: 'workerReportedFailure',
+      }),
+      readScenarioResult: async () =>
+        scenario({
+          status: 'failed',
+          resultCode: 'upgradeRollbackFailed',
+          errorCode: 'binaryRollbackTargetPackagePathInvalid',
+        }),
+      verifyExactProductStates: async () => products('targetProductPresent'),
+      cleanupExactProducts: async () => ({
+        status: 'failed',
+        errorCode: 'semanticCleanupFailed',
+      }),
+    }),
+    (error) => {
+      assert.equal(
+        upgradeRollbackFailureDetails(error).errorCode,
+        'WINDOWS_ACCEPTANCE_UPGRADE_BINARY_ROLLBACK_TARGET_PATH_INVALID',
+      );
+      return true;
+    },
+  );
+});
+
 test('owned process tree blocks semantic cleanup without masking failure', async () => {
   let cleanupCount = 0;
   await assert.rejects(

@@ -888,6 +888,17 @@ ProductCode-kohtainen rekisteröinti ja asennuksen yhteinen
 ei saa tehdä poissa olevasta source- tai target-ProductCodesta asennettua, mutta
 sen pitää olla olemassa asennetussa tilassa ja poissa lopullisessa tilassa.
 
+Binary rollback käyttää tuotannon todellista launcher-sopimusta. Worker
+käynnistää yhden Job Objectin omistaman launcher-fixturen elävänä, antaa sen
+PID:n paketoidulle rollback-helperille ja vapauttaa launcherin vasta tuotannon
+olemassa olevan strict JSONL-kanavan `launcherExitWait:started`-havainnosta.
+Näin testi ei korvaa tuotannon handoffia jo poistuneella PID:llä eikä altistu
+PID:n uudelleenkäytölle. Progress-parseri hyväksyy vain tuotannon suljetut
+vaiheet, tapahtumat ja kestokentät; polkuja, PID-arvoja, komentorivejä tai
+raakavirheitä ei julkaista. Progress ohjaa vain synteettisen launcherin
+vapautusta. Yksi ulompi V2.1-supervisor omistaa edelleen kaikki prosessit ja
+ainoan absoluuttisen deadlinen.
+
 Normaali `%APPDATA%\Eky` käsitellään samalla read-only-inventaariorajalla kuin
 V2.2:ssa. Onnistuminen edellyttää muuttumatonta tiedostomäärä-, koko- ja
 SHA-256-inventaarioa, mutta yksittäisiä nimiä tai tiivisteitä ei tulosteta.

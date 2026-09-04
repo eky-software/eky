@@ -153,3 +153,28 @@ test('progress output failure cannot alter terminal semantics', async () => {
   const result = await executeUpgradeRollbackLifecycle(dependencies);
   assert.equal(result.status, 'completed');
 });
+
+test('binary rollback keeps a safe production exit category as primary', async () => {
+  const states = [
+    state(),
+    state('source'),
+    state('target'),
+    state('target'),
+    state('target'),
+    state(),
+    state(),
+  ];
+  const result = await executeUpgradeRollbackLifecycle({
+    ...createSuccessfulDependencies(),
+    inspectState: async () => states.shift(),
+    invokeBinaryRollback: async () => {
+      throw new Error('binaryRollbackTargetPackagePathInvalid');
+    },
+    runMsiOperation: async (operation) =>
+      operation === 'downgrade' ? 1638 : 0,
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.equal(result.errorCode, 'binaryRollbackTargetPackagePathInvalid');
+  assert.equal(result.cleanupResultCode, 'cleanupCompleted');
+});

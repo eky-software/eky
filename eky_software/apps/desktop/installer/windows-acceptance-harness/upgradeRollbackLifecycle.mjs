@@ -1,7 +1,19 @@
 const FAILURE_CODES = new Set([
   'artifactVerificationFailed',
   'binaryRollbackFailed',
+  'binaryRollbackLauncherExitedEarly',
+  'binaryRollbackLauncherFailed',
+  'binaryRollbackLauncherWaitFailed',
+  'binaryRollbackMsiExecPathInvalid',
+  'binaryRollbackProcessFailed',
+  'binaryRollbackProgressInvalid',
+  'binaryRollbackSourceInstallAndTargetRepairFailed',
+  'binaryRollbackSourceInstallFailedTargetRestored',
+  'binaryRollbackSourcePackagePathInvalid',
   'binaryRollbackStateInvalid',
+  'binaryRollbackTargetPackagePathInvalid',
+  'binaryRollbackTargetUninstallFailed',
+  'binaryRollbackUnexpectedFailure',
   'downgradeAccepted',
   'downgradeStateInvalid',
   'finalUninstallFailed',
@@ -101,8 +113,10 @@ function requireAllAbsent(state, errorCode) {
 }
 
 function errorCodeOf(error) {
-  return error instanceof UpgradeRollbackFailure && FAILURE_CODES.has(error.code)
-    ? error.code
+  const code =
+    error instanceof UpgradeRollbackFailure ? error.code : error?.message;
+  return typeof code === 'string' && FAILURE_CODES.has(code)
+    ? code
     : 'unexpectedFailure';
 }
 

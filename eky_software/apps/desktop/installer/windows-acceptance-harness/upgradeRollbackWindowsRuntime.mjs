@@ -6,24 +6,43 @@ import { fileURLToPath } from 'node:url';
 import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
 import { validateInstallerProductStateResult } from './cleanInstallUninstallWindowsRuntime.mjs';
 import { verifyUpgradeRollbackArtifact } from './upgradeRollbackArtifact.mjs';
+import { coordinateUpgradeRollbackBinaryHandoff } from './upgradeRollbackBinaryHandoff.mjs';
+import { createUpgradeRollbackProgressWaiter } from './upgradeRollbackProgress.mjs';
 
 const INSPECTOR_PATH = resolve(
   dirname(fileURLToPath(import.meta.url)),
   'inspectWindowsInstallerProductState.ps1',
+);
+const LAUNCHER_FIXTURE_PATH = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  'upgradeRollbackLauncherFixture.mjs',
 );
 
 function bracedProductCode(productCode) {
   return `{${productCode}}`;
 }
 
-function runOwnedProcess(command, arguments_, options = {}) {
-  return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn(command, arguments_, {
-      cwd: options.cwd,
-      stdio: 'ignore',
-      windowsHide: true,
+async function startOwnedProcess(command, arguments_, options = {}) {
+  const child = spawn(command, arguments_, {
+    cwd: options.cwd,
+    stdio: options.stdio ?? 'ignore',
+    windowsHide: true,
+  });
+  let processId = null;
+  const started = new Promise((resolvePromise, rejectPromise) => {
+    child.once('spawn', () => {
+      if (!Number.isInteger(child.pid)) {
+        rejectPromise(new Error('ownedProcessStartFailed'));
+        return;
+      }
+      processId = child.pid;
+      resolvePromise();
     });
-    const processId = child.pid;
+    child.once('error', () =>
+      rejectPromise(new Error('ownedProcessStartFailed')),
+    );
+  });
+  const completion = new Promise((resolvePromise, rejectPromise) => {
     child.once('error', () =>
       rejectPromise(new Error('ownedProcessStartFailed')),
     );
@@ -39,6 +58,18 @@ function runOwnedProcess(command, arguments_, options = {}) {
       resolvePromise(Object.freeze({ exitCode, processId }));
     });
   });
+  completion.catch(() => undefined);
+  try {
+    await started;
+  } catch (error) {
+    await completion.catch(() => undefined);
+    throw error;
+  }
+  return Object.freeze({ child, completion, processId });
+}
+
+async function runOwnedProcess(command, arguments_, options = {}) {
+  return (await startOwnedProcess(command, arguments_, options)).completion;
 }
 
 async function pathKind(path) {
@@ -93,7 +124,6 @@ export async function createUpgradeRollbackWindowsRuntime(request, artifact) {
     'powershell.exe',
   );
   const msiexec = resolve(systemRoot, 'System32', 'msiexec.exe');
-  const cmd = resolve(systemRoot, 'System32', 'cmd.exe');
   const installRoot = resolve(localAppData, 'Programs', 'Eky');
   const executablePath = resolve(installRoot, 'Eky.exe');
   const shortcutPath = resolve(
@@ -250,44 +280,83 @@ export async function createUpgradeRollbackWindowsRuntime(request, artifact) {
 
   async function invokeBinaryRollback() {
     await requireRegularFile(rollbackScriptPath, 'binaryRollbackFailed');
-    let launcher;
+    await requireRegularFile(LAUNCHER_FIXTURE_PATH, 'binaryRollbackFailed');
+    const progressPath = resolve(runRoot, 'binary-rollback-progress.jsonl');
     try {
-      launcher = await runOwnedProcess(cmd, ['/d', '/s', '/c', 'exit 0'], {
-        cwd: runRoot,
+      await writeFile(progressPath, '', {
+        encoding: 'ascii',
+        flag: 'wx',
       });
     } catch {
-      throw new Error('binaryRollbackFailed');
+      throw new Error('binaryRollbackProgressInvalid');
     }
-    if (launcher.exitCode !== 0) {
-      throw new Error('binaryRollbackFailed');
-    }
+    let primaryError = null;
     try {
-      const rollback = await runOwnedProcess(
-        powershell,
-        [
-          '-NoLogo',
-          '-NoProfile',
-          '-NonInteractive',
-          '-ExecutionPolicy',
-          'Bypass',
-          '-File',
-          rollbackScriptPath,
-          '-MsiExecPath',
-          msiexec,
-          '-FailedProductCode',
-          bracedProductCode(artifact.roles.target.productCode),
-          '-LauncherProcessId',
-          String(launcher.processId),
-          '-FailedPackagePath',
-          artifact.roles.target.installerPath,
-          '-RollbackPackagePath',
-          artifact.roles.source.installerPath,
-        ],
-        { cwd: runRoot },
-      );
-      return rollback.exitCode;
-    } catch {
-      return -1;
+      return await coordinateUpgradeRollbackBinaryHandoff({
+        createProgressWaiter: () =>
+          createUpgradeRollbackProgressWaiter({
+            event: 'started',
+            path: progressPath,
+            phase: 'launcherExitWait',
+          }),
+        async startLauncher() {
+          const launcher = await startOwnedProcess(
+            process.execPath,
+            [LAUNCHER_FIXTURE_PATH],
+            { cwd: runRoot, stdio: ['pipe', 'ignore', 'ignore'] },
+          );
+          launcher.child.stdin.on('error', () => undefined);
+          let released = false;
+          return Object.freeze({
+            completion: launcher.completion,
+            processId: launcher.processId,
+            async release() {
+              if (released) {
+                return;
+              }
+              released = true;
+              launcher.child.stdin.end('release\n');
+            },
+          });
+        },
+        startRollback: (launcherProcessId) =>
+          startOwnedProcess(
+            powershell,
+            [
+              '-NoLogo',
+              '-NoProfile',
+              '-NonInteractive',
+              '-ExecutionPolicy',
+              'Bypass',
+              '-File',
+              rollbackScriptPath,
+              '-MsiExecPath',
+              msiexec,
+              '-FailedProductCode',
+              bracedProductCode(artifact.roles.target.productCode),
+              '-LauncherProcessId',
+              String(launcherProcessId),
+              '-FailedPackagePath',
+              artifact.roles.target.installerPath,
+              '-RollbackPackagePath',
+              artifact.roles.source.installerPath,
+              '-ProgressPath',
+              progressPath,
+            ],
+            { cwd: runRoot },
+          ),
+      });
+    } catch (error) {
+      primaryError = error;
+      throw error;
+    } finally {
+      try {
+        await rm(progressPath, { force: false });
+      } catch {
+        if (primaryError === null) {
+          throw new Error('binaryRollbackProgressInvalid');
+        }
+      }
     }
   }
 
