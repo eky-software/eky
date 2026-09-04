@@ -1,0 +1,262 @@
+name: Windows acceptance V2 upgrade artifact
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/windows-acceptance-v2-upgrade.yml
+      - eky_software/apps/desktop/installer/windows-acceptance-harness/**
+      - eky_software/apps/desktop/installer/windows-process-supervisor/**
+      - eky_software/apps/desktop/installer/installerIdentity.mjs
+      - eky_software/apps/desktop/installer/installerManifest.mjs
+      - eky_software/apps/desktop/installer/installerReleaseContext.mjs
+      - eky_software/apps/desktop/installer/installerVersion.mjs
+      - eky_software/apps/desktop/installer/scripts/buildWindowsInstaller.mjs
+      - eky_software/apps/desktop/resources/update/rollbackWindowsInstaller.ps1
+      - eky_software/apps/desktop/scripts/packageWindowsApplication.mjs
+      - eky_software/apps/desktop/package.json
+      - eky_software/docs/architecture/windows-installer-acceptance-harness-v2.md
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-acceptance-v2-upgrade-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  EKY_V2_UPGRADE_ARTIFACT_NAME: eky-v2-upgrade-${{ github.run_id }}-${{ github.run_attempt }}
+
+jobs:
+  upgrade_artifact_producer:
+    name: Build upgrade acceptance artifact once
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    outputs:
+      build_revision: ${{ steps.produce.outputs.build_revision }}
+      descriptor_sha256: ${{ steps.produce.outputs.descriptor_sha256 }}
+      source_package_sha256: ${{ steps.produce.outputs.source_package_sha256 }}
+      target_package_sha256: ${{ steps.produce.outputs.target_package_sha256 }}
+      windows_rollback_package_sha256: ${{ steps.produce.outputs.windows_rollback_package_sha256 }}
+
+    defaults:
+      run:
+        working-directory: eky_software
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: eky_software/.node-version
+          package-manager-cache: false
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: 10.0.302
+
+      - name: Verify exact .NET SDK
+        shell: pwsh
+        run: |
+          if ((dotnet --version) -ne '10.0.302') {
+            throw 'WINDOWS_ACCEPTANCE_UPGRADE_DOTNET_SDK_INVALID'
+          }
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify V2.4 artifact contracts
+        run: pnpm --filter @eky/desktop installer:test:windows-acceptance-upgrade-artifact
+
+      - name: Restore locked WiX toolchain
+        run: pnpm --filter @eky/desktop installer:verify-restore-lock
+
+      - name: Build upgrade artifact once
+        id: produce
+        shell: pwsh
+        timeout-minutes: 22
+        run: |
+          $artifactRoot = Join-Path $env:RUNNER_TEMP 'eky-v2-upgrade-artifact'
+          $summaryPath = Join-Path $env:RUNNER_TEMP 'eky-v2-upgrade-summary.json'
+          if ((Test-Path -LiteralPath $artifactRoot) -or (Test-Path -LiteralPath $summaryPath)) {
+            throw 'WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_OUTPUT_EXISTS'
+          }
+
+          pnpm --filter @eky/desktop installer:v2-upgrade-artifact:build --artifact-root $artifactRoot --summary-path $summaryPath
+          if ($LASTEXITCODE -ne 0) {
+            throw 'WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_BUILD_FAILED'
+          }
+
+          $summary = Get-Content -LiteralPath $summaryPath -Raw -Encoding utf8 | ConvertFrom-Json
+          $expectedKeys = @(
+            'buildRevision',
+            'descriptorSha256',
+            'resultCode',
+            'schemaVersion',
+            'sourcePackageSha256',
+            'status',
+            'targetPackageSha256',
+            'windowsRollbackPackageSha256'
+          ) | Sort-Object
+          $actualKeys = @($summary.PSObject.Properties.Name | Sort-Object)
+          if (@(Compare-Object -ReferenceObject $expectedKeys -DifferenceObject $actualKeys).Count -ne 0) {
+            throw 'WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_SUMMARY_INVALID'
+          }
+          if (
+            $summary.schemaVersion -ne 1 -or
+            $summary.status -cne 'completed' -or
+            $summary.resultCode -cne 'upgradeRollbackArtifactBuilt' -or
+            $summary.buildRevision -notmatch '^[0-9a-f]{40}$' -or
+            $summary.descriptorSha256 -notmatch '^[0-9a-f]{64}$' -or
+            $summary.sourcePackageSha256 -notmatch '^[0-9a-f]{64}$' -or
+            $summary.targetPackageSha256 -notmatch '^[0-9a-f]{64}$' -or
+            $summary.windowsRollbackPackageSha256 -notmatch '^[0-9a-f]{64}$'
+          ) {
+            throw 'WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_SUMMARY_INVALID'
+          }
+          $headRevision = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $summary.buildRevision -cne $headRevision) {
+            throw 'WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_BUILD_IDENTITY_MISMATCH'
+          }
+
+          "build_revision=$($summary.buildRevision)" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "descriptor_sha256=$($summary.descriptorSha256)" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "source_package_sha256=$($summary.sourcePackageSha256)" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "target_package_sha256=$($summary.targetPackageSha256)" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "windows_rollback_package_sha256=$($summary.windowsRollbackPackageSha256)" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Remove producer staging after native loader process exit
+        if: ${{ always() && steps.produce.outcome != 'skipped' }}
+        shell: pwsh
+        run: |
+          $stageRoot = Join-Path $PWD 'apps\desktop\.stage\windows-acceptance-v2-upgrade'
+          Remove-Item -LiteralPath $stageRoot -Recurse -Force -ErrorAction SilentlyContinue
+          if (Test-Path -LiteralPath $stageRoot) {
+            throw 'WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_STAGE_CLEANUP_FAILED'
+          }
+
+      - name: Verify produced artifact bytes
+        shell: pwsh
+        env:
+          EXPECTED_BUILD_REVISION: ${{ steps.produce.outputs.build_revision }}
+          EXPECTED_DESCRIPTOR_SHA256: ${{ steps.produce.outputs.descriptor_sha256 }}
+        run: |
+          $artifactRoot = Join-Path $env:RUNNER_TEMP 'eky-v2-upgrade-artifact'
+          pnpm --filter @eky/desktop installer:v2-upgrade-artifact:verify --artifact-root $artifactRoot --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION
+          if ($LASTEXITCODE -ne 0) {
+            throw 'WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_VERIFICATION_FAILED'
+          }
+
+      - name: Upload exact upgrade artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.EKY_V2_UPGRADE_ARTIFACT_NAME }}
+          path: ${{ runner.temp }}/eky-v2-upgrade-artifact
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+
+  upgrade_consumer:
+    name: Verify upgrade and rollback run ${{ matrix.repetition }}
+    needs: upgrade_artifact_producer
+    runs-on: windows-latest
+    timeout-minutes: 18
+
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        repetition: [1, 2]
+
+    defaults:
+      run:
+        working-directory: eky_software
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: eky_software/.node-version
+          package-manager-cache: false
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: 10.0.302
+
+      - name: Verify exact .NET SDK
+        shell: pwsh
+        run: |
+          if ((dotnet --version) -ne '10.0.302') {
+            throw 'WINDOWS_ACCEPTANCE_UPGRADE_DOTNET_SDK_INVALID'
+          }
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download exact upgrade artifact
+        id: download
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ env.EKY_V2_UPGRADE_ARTIFACT_NAME }}
+          path: ${{ runner.temp }}/eky-v2-upgrade-artifact
+
+      - name: Verify downloaded artifact bytes
+        shell: pwsh
+        env:
+          EXPECTED_BUILD_REVISION: ${{ needs.upgrade_artifact_producer.outputs.build_revision }}
+          EXPECTED_DESCRIPTOR_SHA256: ${{ needs.upgrade_artifact_producer.outputs.descriptor_sha256 }}
+        run: |
+          $headRevision = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $headRevision -cne $env:EXPECTED_BUILD_REVISION) {
+            throw 'WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_BUILD_IDENTITY_MISMATCH'
+          }
+          $artifactRoot = Join-Path $env:RUNNER_TEMP 'eky-v2-upgrade-artifact'
+          pnpm --filter @eky/desktop installer:v2-upgrade-artifact:verify --artifact-root $artifactRoot --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION
+          if ($LASTEXITCODE -ne 0) {
+            throw 'WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_VERIFICATION_FAILED'
+          }
+
+      - name: Run supervised upgrade and rollback once
+        shell: pwsh
+        timeout-minutes: 12
+        run: |
+          $descriptorPath = Join-Path $env:RUNNER_TEMP 'eky-v2-upgrade-artifact\upgrade-rollback-artifact.json'
+          pnpm --filter @eky/desktop installer:v2-upgrade-rollback --artifact-descriptor $descriptorPath
+          if ($LASTEXITCODE -ne 0) {
+            throw 'WINDOWS_ACCEPTANCE_UPGRADE_LIFECYCLE_FAILED'
+          }
+
+      - name: Reverify downloaded artifact bytes
+        if: ${{ always() && steps.download.outcome == 'success' }}
+        shell: pwsh
+        env:
+          EXPECTED_BUILD_REVISION: ${{ needs.upgrade_artifact_producer.outputs.build_revision }}
+          EXPECTED_DESCRIPTOR_SHA256: ${{ needs.upgrade_artifact_producer.outputs.descriptor_sha256 }}
+        run: |
+          $artifactRoot = Join-Path $env:RUNNER_TEMP 'eky-v2-upgrade-artifact'
+          pnpm --filter @eky/desktop installer:v2-upgrade-artifact:verify --artifact-root $artifactRoot --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION
+          if ($LASTEXITCODE -ne 0) {
+            throw 'WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_POST_VERIFICATION_FAILED'
+          }

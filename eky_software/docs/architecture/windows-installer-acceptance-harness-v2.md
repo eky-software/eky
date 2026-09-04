@@ -813,6 +813,115 @@ hyväksyttyjä SHA-lukittuja artifact-actioneita, yhden vuorokauden retentionia
 ja pakkaamatonta siirtoa; artifactissa sallitaan edelleen vain descriptor ja
 sen nimeämä synteettinen allekirjoittamaton MSI.
 
+## V2.4 upgrade- ja rollback-checkpoint
+
+V2.4 siirtää installerin N -> N+1 major upgrade-, downgrade rejection-,
+Windows Installer rollback- ja tuotannon binary rollback -sopimukset saman
+V2.1-supervisorin ja V2.3:n build-once-rajan päälle. Checkpoint ei muuta
+nykyisiä W6-harnesseja tai tuotannon installer-, update-, backup-, restore- tai
+workspace-semanticsia.
+
+Producer rakentaa nykyisestä numeerisesta pilot-versiosta source-paketin ja
+täsmälleen yhden patch-version uudemman target-paketin. Nykyisessä
+checkpointissa pari on `0.2.7 -> 0.2.8`, mutta versioita ei kopioida
+protokollavakioiksi. Kolmas MSI käyttää targetin versiota ja ProductCodea sekä
+yhtä lisättyä, yksityiseen fixtureen rajattua payload-polkua Windows
+Installerin rollbackin todistamiseksi. Canonical `package.json` ja
+`installer-release.json` eivät muutu.
+
+Siirrettävän artifactin juuressa on yksi strict
+`upgrade-rollback-artifact.json`, joka sitoo täyteen Git-revisioon ja omiin
+SHA-256-tiivisteisiinsä seuraavat kolme roolia:
+
+- `source`
+- `target`
+- `windowsRollback`
+
+Jokaisessa roolihakemistossa sallitaan vain versionoitu
+`installer.manifest.json` ja sen nimeämä MSI. Descriptor, manifestit ja MSI:t
+ovat tavallisia itsenäisiä tiedostoja. Tuntematon inventory, symlinkki,
+hardlinkki, väärä hash, väärä build-revision, epäjatkuva versio tai targetin ja
+rollback-proben virheellinen identiteetti torjutaan ennen MSI-operaatiota.
+
+Paketoinnin native SQLite -validointi lataa stagingin `.node`-tiedoston
+producer-prosessiin. Siksi producer ei yritä poistaa kiinteää, Gitistä
+ohitettua `.stage/windows-acceptance-v2-upgrade`-juurta samasta prosessista.
+CI poistaa juuri tämän staging-juuren erillisessä vaiheessa vasta producerin
+poistuttua; seuraava paikallinen producer korvaa saman juuren ennen buildia.
+Staging ei kuulu siirrettävään acceptance-artifactiin.
+
+Yksi strict worker suorittaa seuraavan järjestyksen:
+
+1. source- ja target-ProductCodejen sekä yhteisen footprintin puhdas preflight
+2. source N:n asennus ja exact postcondition
+3. N -> N+1 major upgrade ja source/target-tilan exact postcondition
+4. N-paketin downgrade-yritys, jonka pitää epäonnistua targetia muuttamatta
+5. paketoidun tuotannon `rollbackWindowsInstaller.ps1`-polun binary rollback
+   takaisin source-versioon
+6. target-identiteetin rollback-probe, jonka MSI-asennuksen pitää epäonnistua
+   ja Windows Installerin pitää säilyttää source-versio
+7. source-version täsmällinen poisto ja kaikkien jälkien poissaolo
+8. artifact-tavujen uudelleentarkistus.
+
+Worker ei rakenna paketteja, käynnistä toista supervisoria, käytä W6-koodia tai
+omista prosessipuun emergency cleanupia. Se saa tehdä virheen jälkeen vain
+exact source- ja target-ProductCodeihin rajatun hallitun semanttisen cleanupin.
+V2.1:n Job Object -supervisor omistaa workerin ja kaikki sen suorat
+jälkeläiset, monotonisesta kellosta lasketun absoluuttisen deadlinen sekä
+pakotetun prosessipuun cleanupin.
+
+Supervisorin jälkeen erillinen rajattu verifier tarkistaa molemmat exact
+ProductCodet. Ensisijainen scenario- tai supervisor-virhe,
+`processTreeAbsent`, workerin cleanup, verifierin alkutila, semanttinen cleanup
+ja lopullinen postcondition säilyvät eri kenttinä. Semanttinen cleanup voidaan
+käynnistää vain, kun supervisor on todistanut omistetun prosessipuun poissaolon;
+se käyttää rajattua suoran prosessikahvan adapteria eikä muodosta uutta
+prosessipuun supervisoria.
+
+Sama verifier tekee ennen supervisorin käynnistämistä read-only-preflightin,
+joka vaatii molempien exact ProductCodejen poissaolon. Precondition-virhe ei
+koskaan käynnistä semanttista cleanupia, koska jo olemassa oleva asennus ei ole
+testin omistama. Supervisorin jälkeinen exact-product-cleanup on sallittu vain
+puhtaan ulomman preflightin jälkeen syntyneen muun terminal-virheen yhteydessä.
+ProductCode-kohtainen rekisteröinti ja asennuksen yhteinen
+`HKCU\Software\Eky\Installer`-footprint käsitellään eri tiloina: yhteinen avain
+ei saa tehdä poissa olevasta source- tai target-ProductCodesta asennettua, mutta
+sen pitää olla olemassa asennetussa tilassa ja poissa lopullisessa tilassa.
+
+Binary rollback käyttää tuotannon todellista launcher-sopimusta. Worker
+käynnistää yhden Job Objectin omistaman launcher-fixturen elävänä, antaa sen
+PID:n paketoidulle rollback-helperille ja vapauttaa launcherin vasta tuotannon
+olemassa olevan strict JSONL-kanavan `launcherExitWait:started`-havainnosta.
+Näin testi ei korvaa tuotannon handoffia jo poistuneella PID:llä eikä altistu
+PID:n uudelleenkäytölle. Progress-parseri hyväksyy vain tuotannon suljetut
+vaiheet, tapahtumat ja kestokentät; polkuja, PID-arvoja, komentorivejä tai
+raakavirheitä ei julkaista. Progress ohjaa vain synteettisen launcherin
+vapautusta. Yksi ulompi V2.1-supervisor omistaa edelleen kaikki prosessit ja
+ainoan absoluuttisen deadlinen.
+
+Normaali `%APPDATA%\Eky` käsitellään samalla read-only-inventaariorajalla kuin
+V2.2:ssa. Onnistuminen edellyttää muuttumatonta tiedostomäärä-, koko- ja
+SHA-256-inventaarioa, mutta yksittäisiä nimiä tai tiivisteitä ei tulosteta.
+Runner ratkaisee käyttöjärjestelmän TEMP-juuren realpathin ennen lapsipolkujen
+luontia, jotta Node- ja Windows PowerShell -rajalle välitetään yksi kanoninen
+Windows-polku. MSI-lokit ja ajokohtainen fixture pysyvät tässä juuresta
+johdetussa hakemistossa ja poistetaan ajon jälkeen.
+
+Paikallinen build-once-järjestys on:
+
+```text
+pnpm --filter @eky/desktop installer:v2-upgrade-artifact:build --artifact-root <absolute-new-artifact-root> --summary-path <absolute-summary-path-outside-artifact-root>
+pnpm --filter @eky/desktop installer:v2-upgrade-artifact:verify --artifact-root <absolute-artifact-root> --expected-descriptor-sha256 <producer-descriptor-sha256> --expected-build-revision <producer-git-revision>
+pnpm --filter @eky/desktop installer:v2-upgrade-rollback --artifact-descriptor <absolute-artifact-root>/upgrade-rollback-artifact.json
+```
+
+Workflow `.github/workflows/windows-acceptance-v2-upgrade.yml` käyttää yhtä
+Windows-produceria ja kahta toisistaan eristettyä ensimmäisen yrityksen
+consumeria. Producer rakentaa artifactin kerran, ja molemmat consumerit
+tarkistavat saman ulkoisesti välitetyn descriptor-hashin sekä kaikki kolme
+MSI-hashia ennen ja jälkeen lifecyclen. Artifact säilytetään yhden vuorokauden
+ajan, eikä se ole release, pilot-bundle tai käyttäjälle jaettava paketti.
+
 ## Migraatiojärjestys
 
 V2 toteutetaan pieninä, itsenäisesti vihreinä checkpointteina:
