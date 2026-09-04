@@ -792,7 +792,8 @@ korvaa ennalta olemassa olevaa juurta. Summary-polku ei kuulu siirrettävään
 artifact-inventoryyn. CLI:n polkuraja hyväksyy package manager -kuljetuksen
 lisäämät peräkkäiset hakemistoerottimet vain kanonisoimalla ne välittömästi.
 Suhteellinen polku, piste- tai parent-segmentti, NUL tai loppuerotin torjutaan
-ennen tiedostojärjestelmän käyttöä.
+ennen tiedostojärjestelmän käyttöä. Sama sääntö koskee read-only Windows
+Installer -state-inspectorin yksityistä tulospolkua.
 
 CI:n build-once fan-out käyttää vain kohdassa "Hyväksytyt artifact-actionit"
 nimettyjä exact-SHA-versioita, yksiselitteistä ajokohtaista artifact-nimeä ja

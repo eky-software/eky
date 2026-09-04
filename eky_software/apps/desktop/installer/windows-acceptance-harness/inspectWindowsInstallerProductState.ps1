@@ -6,22 +6,27 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $installer = $null
+$resolvedResultPath = $null
 $temporaryPath = $null
 
 try {
   if (
     $ProductCode -cnotmatch '^\{[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}\}$' -or
     ![IO.Path]::IsPathRooted($ResultPath) -or
-    [IO.Path]::GetFullPath($ResultPath) -cne $ResultPath -or
+    $ResultPath.IndexOf([char]0) -ge 0 -or
+    $ResultPath -match '(^|[\\/])(?:\.|\.\.)([\\/]|$)' -or
+    $ResultPath -match '[\\/]$' -or
     (Test-Path -LiteralPath $ResultPath)
   ) {
     exit 64
   }
 
-  $resultDirectory = [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($ResultPath))
+  $resolvedResultPath = [IO.Path]::GetFullPath($ResultPath)
+  $resultDirectory = [IO.Path]::GetDirectoryName($resolvedResultPath)
   if (!(Test-Path -LiteralPath $resultDirectory -PathType Container)) {
     exit 64
   }
+  $ResultPath = $resolvedResultPath
 
   $installer = New-Object -ComObject WindowsInstaller.Installer
   try {
