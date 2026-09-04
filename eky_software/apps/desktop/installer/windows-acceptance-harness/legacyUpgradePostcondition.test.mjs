@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { validateLegacyUpgradeSemanticEvidence } from './legacyUpgradePostcondition.mjs';
+import {
+  classifyLegacySemanticPostconditionFailure,
+  validateLegacyUpgradeSemanticEvidence,
+} from './legacyUpgradePostcondition.mjs';
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -86,5 +89,29 @@ test('legacy semantic evidence rejects the same runtime generation twice', () =>
   assert.throws(
     () => validateLegacyUpgradeSemanticEvidence(value),
     /legacySecondStartupNotIdempotent/,
+  );
+});
+
+test('legacy semantic postcondition exposes only closed failure classes', () => {
+  assert.equal(
+    classifyLegacySemanticPostconditionFailure(
+      'semanticValidation',
+      new Error('legacyTargetPayloadChanged'),
+    ),
+    'legacyTargetPayloadChanged',
+  );
+  assert.equal(
+    classifyLegacySemanticPostconditionFailure(
+      'currentEvidence',
+      new Error('private detail'),
+    ),
+    'legacyCurrentEvidenceCaptureFailed',
+  );
+  assert.equal(
+    classifyLegacySemanticPostconditionFailure(
+      'unknown',
+      new Error('legacyTargetPayloadChanged'),
+    ),
+    'legacySemanticProofFailed',
   );
 });

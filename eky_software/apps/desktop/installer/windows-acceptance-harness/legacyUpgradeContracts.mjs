@@ -6,6 +6,11 @@ import { writeJsonAtomicExclusive } from './cleanInstallUninstallContracts.mjs';
 import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
 
 export const LEGACY_UPGRADE_SCENARIO = 'historicalLegacyUpgrade';
+export const LEGACY_UPGRADE_WORKER_EXIT_CODES = Object.freeze({
+  completed: 0,
+  failed: 1,
+  invalidRequest: 64,
+});
 
 const SHA_256_PATTERN = /^[0-9a-f]{64}$/;
 const SAFE_CODE_PATTERN = /^[a-z][A-Za-z0-9]{0,63}$/;
@@ -27,6 +32,7 @@ const RESULT_KEYS = [
   'scenario',
   'schemaVersion',
   'sourceInstallExitCode',
+  'sourceNormalStartupValidated',
   'sourcePackagedSmokeValidated',
   'sourceStateValidated',
   'status',
@@ -110,6 +116,7 @@ export function validateLegacyUpgradeResult(value, expected) {
     !validExitCode(value.sourceInstallExitCode) ||
     !validExitCode(value.upgradeExitCode) ||
     typeof value.sourceStateValidated !== 'boolean' ||
+    typeof value.sourceNormalStartupValidated !== 'boolean' ||
     typeof value.sourcePackagedSmokeValidated !== 'boolean' ||
     typeof value.legacyBusinessFixtureValidated !== 'boolean' ||
     typeof value.majorUpgradeValidated !== 'boolean' ||
@@ -127,6 +134,7 @@ export function validateLegacyUpgradeResult(value, expected) {
     value.sourceInstallExitCode === 0 &&
     value.upgradeExitCode === 0 &&
     value.sourceStateValidated &&
+    value.sourceNormalStartupValidated &&
     value.sourcePackagedSmokeValidated &&
     value.legacyBusinessFixtureValidated &&
     value.majorUpgradeValidated &&

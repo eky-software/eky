@@ -68,6 +68,8 @@ test('legacy worker has one supervisor owner and no build, W6, retry, or emergen
   const runner = await readFile(resolve(DIRECTORY, 'runLegacyUpgrade.mjs'), 'utf8');
   const worker = await readFile(resolve(DIRECTORY, 'runLegacyUpgradeWorker.mjs'), 'utf8');
   assert.match(runner, /Eky\.WindowsProcessSupervisor\.dll/u);
+  assert.match(runner, /runtimeRoot: dirname\(artifact\.artifactRoot\)/u);
+  assert.match(worker, /process\.exit\(await runLegacyUpgradeWorker/u);
   assert.doesNotMatch(worker, /WindowsProcessSupervisor|taskkill|Get-CimInstance|packageWindows|buildWindows|w6b/iu);
   assert.doesNotMatch(`${runner}\n${worker}`, /retry|setTimeout|Start-Sleep/iu);
 });

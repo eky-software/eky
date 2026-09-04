@@ -12,8 +12,33 @@ import {
 } from './legacyUpgradeProfileEvidence.mjs';
 import { verifyLegacyUpgradeArtifact } from './legacyUpgradeArtifact.mjs';
 
+const POSTCONDITION_FAILURE_CODES = Object.freeze({
+  artifact: 'legacyArtifactReverificationFailed',
+  currentEvidence: 'legacyCurrentEvidenceCaptureFailed',
+  firstEvidence: 'legacyFirstEvidenceReadFailed',
+  installedPayload: 'legacyInstalledPayloadInspectionFailed',
+  secondEvidence: 'legacySecondEvidenceReadFailed',
+  sourceEvidence: 'legacySourceEvidenceReadFailed',
+});
+const SEMANTIC_VALIDATION_FAILURE_CODES = new Set([
+  'legacySecondStartupNotIdempotent',
+  'legacySemanticEvidenceChanged',
+  'legacyTargetPayloadChanged',
+]);
+
 function equal(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+export function classifyLegacySemanticPostconditionFailure(stage, error) {
+  if (
+    stage === 'semanticValidation' &&
+    typeof error?.message === 'string' &&
+    SEMANTIC_VALIDATION_FAILURE_CODES.has(error.message)
+  ) {
+    return error.message;
+  }
+  return POSTCONDITION_FAILURE_CODES[stage] ?? 'legacySemanticProofFailed';
 }
 
 export function validateLegacyUpgradeSemanticEvidence({
@@ -51,16 +76,19 @@ export function validateLegacyUpgradeSemanticEvidence({
 export async function verifyLegacyUpgradeSemanticPostcondition({
   artifact,
   runNonce,
-  scenarioRoot,
+  runtimeRoot,
 }) {
+  let stage = 'sourceEvidence';
   try {
-    const evidenceRoot = resolve(scenarioRoot, 'private-evidence');
+    const evidenceRoot = resolve(runtimeRoot, 'private-evidence');
     const sourceEvidence = await readLegacySourceEvidence(
       resolve(evidenceRoot, LEGACY_SOURCE_EVIDENCE_FILENAME),
     );
+    stage = 'firstEvidence';
     const firstEvidence = await readLegacyTargetEvidence(
       resolve(evidenceRoot, LEGACY_FIRST_START_EVIDENCE_FILENAME),
     );
+    stage = 'secondEvidence';
     const secondEvidence = await readLegacyTargetEvidence(
       resolve(evidenceRoot, LEGACY_SECOND_START_EVIDENCE_FILENAME),
     );
@@ -74,17 +102,20 @@ export async function verifyLegacyUpgradeSemanticPostcondition({
         buildRevision: artifact.target.buildRevision,
       }),
     });
+    stage = 'currentEvidence';
     const current = await captureLegacyTargetEvidence({
       identities,
       previousEvidence: firstEvidence,
       runtimeInstanceId: secondEvidence.runtimeInstanceId,
       sourceEvidence,
-      userDataRoot: deriveLegacySourceUserDataRoot(scenarioRoot, runNonce),
+      userDataRoot: deriveLegacySourceUserDataRoot(runtimeRoot, runNonce),
     });
+    stage = 'installedPayload';
     const installedPayload = await inspectPackageArtifactInventory({
       root: resolve(process.env.LOCALAPPDATA, 'Programs', 'Eky'),
       stage: 'packagedApp',
     });
+    stage = 'semanticValidation';
     const semanticResult = validateLegacyUpgradeSemanticEvidence({
       currentEvidence: current,
       expectedPayload: artifact.target.payloadInventory,
@@ -92,16 +123,17 @@ export async function verifyLegacyUpgradeSemanticPostcondition({
       installedPayload,
       secondEvidence,
     });
+    stage = 'artifact';
     await verifyLegacyUpgradeArtifact({
       artifactRoot: artifact.artifactRoot,
       expectedBuildRevision: artifact.buildRevision,
       expectedDescriptorSha256: artifact.descriptorSha256,
     });
     return semanticResult;
-  } catch {
+  } catch (error) {
     return Object.freeze({
       status: 'failed',
-      errorCode: 'legacySemanticProofFailed',
+      errorCode: classifyLegacySemanticPostconditionFailure(stage, error),
     });
   }
 }

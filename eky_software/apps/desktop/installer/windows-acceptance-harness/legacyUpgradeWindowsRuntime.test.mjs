@@ -23,7 +23,7 @@ test('legacy worker runtime has no nested supervisor, process scan, timeout, or 
   assert.match(source, /runHistoricalPackagedSmokeProcessChain/u);
 });
 
-test('legacy worker runtime uses the artifact packages and normal target startup', async () => {
+test('legacy worker runtime uses the artifact packages and normal source and target startup', async () => {
   const source = await readFile(
     resolve(DIRECTORY, 'legacyUpgradeWindowsRuntime.mjs'),
     'utf8',
@@ -31,5 +31,7 @@ test('legacy worker runtime uses the artifact packages and normal target startup
   assert.match(source, /artifact\[roleName\]\.installerPath/u);
   assert.match(source, /--desktop-smoke-restored/u);
   assert.match(source, /--user-data-dir=/u);
+  assert.match(source, /windowsHide: false/u);
+  assert.match(source, /runSourceStartup/u);
   assert.doesNotMatch(source, /w6b|packageWindows|buildWindows/iu);
 });

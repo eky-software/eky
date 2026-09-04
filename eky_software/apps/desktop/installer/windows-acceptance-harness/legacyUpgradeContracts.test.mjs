@@ -26,6 +26,7 @@ function completedResult(overrides = {}) {
     sourceInstallExitCode: 0,
     upgradeExitCode: 0,
     sourceStateValidated: true,
+    sourceNormalStartupValidated: true,
     sourcePackagedSmokeValidated: true,
     legacyBusinessFixtureValidated: true,
     majorUpgradeValidated: true,
@@ -57,7 +58,7 @@ test('legacy success requires every historical and target proof', () => {
   assert.throws(
     () =>
       validateLegacyUpgradeResult(
-        completedResult({ targetSecondStartupValidated: false }),
+        completedResult({ sourceNormalStartupValidated: false }),
         request,
       ),
     /WINDOWS_ACCEPTANCE_LEGACY_RESULT_INVALID/,

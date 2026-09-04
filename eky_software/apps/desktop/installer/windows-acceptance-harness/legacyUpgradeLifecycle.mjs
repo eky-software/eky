@@ -1,10 +1,15 @@
 const FAILURE_CODES = new Set([
   'artifactVerificationFailed',
+  'installerFootprintInspectionFailed',
+  'installerSourceProductInspectionFailed',
   'installerStateInspectionFailed',
+  'installerStateSnapshotChanged',
+  'installerTargetProductInspectionFailed',
   'legacyBusinessFixtureInvalid',
   'majorUpgradeFailed',
   'majorUpgradeStateInvalid',
   'sourceInstallFailed',
+  'sourceNormalStartupFailed',
   'sourcePackagedSmokeFailed',
   'sourceStateInvalid',
   'targetFirstStartupFailed',
@@ -103,6 +108,7 @@ function initialResult() {
     sourceInstallExitCode: null,
     upgradeExitCode: null,
     sourceStateValidated: false,
+    sourceNormalStartupValidated: false,
     sourcePackagedSmokeValidated: false,
     legacyBusinessFixtureValidated: false,
     majorUpgradeValidated: false,
@@ -157,6 +163,7 @@ export async function executeLegacyUpgradeLifecycle({
   inspectState,
   reportProgress,
   runMsiOperation,
+  runSourceStartup,
   runSourcePackagedSmoke,
   runTargetStartup,
   validateTargetPayload,
@@ -211,6 +218,13 @@ export async function executeLegacyUpgradeLifecycle({
       runSourcePackagedSmoke,
     );
     result.sourcePackagedSmokeValidated = true;
+    await progress.step(
+      'sourceNormalStartup',
+      'sourceNormalStartupValidated',
+      'sourceNormalStartupFailed',
+      runSourceStartup,
+    );
+    result.sourceNormalStartupValidated = true;
     await progress.step(
       'legacyBusinessEvidence',
       'legacyBusinessFixtureValidated',

@@ -37,7 +37,7 @@ async function startOwnedProcess(command, arguments_, options = {}) {
     cwd: options.cwd,
     env: options.env,
     stdio: options.stdio ?? 'ignore',
-    windowsHide: true,
+    windowsHide: options.windowsHide ?? true,
   });
   let processId = null;
   const started = new Promise((resolvePromise, rejectPromise) => {
@@ -168,6 +168,10 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact) {
   let firstTargetEvidence = null;
 
   async function inspectExactProduct(roleName) {
+    const errorCode =
+      roleName === 'source'
+        ? 'installerSourceProductInspectionFailed'
+        : 'installerTargetProductInspectionFailed';
     const resultPath = resolve(
       scenarioRoot,
       `legacy-product-state-${inspectionSequence}-${roleName}.json`,
@@ -191,7 +195,7 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact) {
         { cwd: scenarioRoot },
       );
       if (processResult.exitCode !== 0) {
-        throw new Error('installerStateInspectionFailed');
+        throw new Error(errorCode);
       }
       const metadata = await lstat(resultPath, { bigint: true });
       if (
@@ -201,15 +205,15 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact) {
         metadata.size < 2n ||
         metadata.size > 64n * 1024n
       ) {
-        throw new Error('installerStateInspectionFailed');
+        throw new Error(errorCode);
       }
       return validateInstallerProductStateResult(
         parseStrictJsonObjectBytes(await readFile(resultPath), {
-          errorCode: 'installerStateInspectionFailed',
+          errorCode,
         }),
       );
     } catch {
-      throw new Error('installerStateInspectionFailed');
+      throw new Error(errorCode);
     } finally {
       await rm(resultPath, { force: true }).catch(() => undefined);
     }
@@ -218,17 +222,28 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact) {
   async function inspectState() {
     const source = await inspectExactProduct('source');
     const target = await inspectExactProduct('target');
-    const installRootKind = await pathKind(installRoot);
-    const executableKind = await pathKind(executablePath);
-    const shortcutKind = await pathKind(shortcutPath);
+    let installRootKind;
+    let executableKind;
+    let shortcutKind;
+    try {
+      installRootKind = await pathKind(installRoot);
+      executableKind = await pathKind(executablePath);
+      shortcutKind = await pathKind(shortcutPath);
+    } catch {
+      throw new Error('installerFootprintInspectionFailed');
+    }
     if (
       !['absent', 'directory'].includes(installRootKind) ||
       !['absent', 'file'].includes(executableKind) ||
-      !['absent', 'file'].includes(shortcutKind) ||
+      !['absent', 'file'].includes(shortcutKind)
+    ) {
+      throw new Error('installerFootprintInspectionFailed');
+    }
+    if (
       source.ownedRegistryExists !== target.ownedRegistryExists ||
       source.ekyProcessCount !== target.ekyProcessCount
     ) {
-      throw new Error('installerStateInspectionFailed');
+      throw new Error('installerStateSnapshotChanged');
     }
     return Object.freeze({
       source,
@@ -349,14 +364,7 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact) {
     }
   }
 
-  async function runTargetStartup(generation) {
-    if (
-      sourceEvidence === null ||
-      !['first', 'second'].includes(generation) ||
-      (generation === 'second' && firstTargetEvidence === null)
-    ) {
-      throw new Error('targetStartupPreconditionFailed');
-    }
+  async function runInstalledApplication(expectedIdentity) {
     const logDirectory = resolve(userDataRoot, 'runtime', 'logs', 'desktop');
     const baselineEventIds = await captureDesktopLifecycleBaseline(logDirectory);
     const application = await startOwnedProcess(
@@ -365,25 +373,58 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact) {
       {
         cwd: scenarioRoot,
         env: withoutElectronNodeMode({ APPDATA: isolatedAppDataRoot }),
+        windowsHide: false,
       },
     );
-    const started = await waitForTargetDesktopStarted({
-      baselineEventIds,
-      childCompletion: application.completion,
-      expectedIdentity: identities.target,
-      logDirectory,
-    });
-    await requestGracefulClose(application.processId);
-    const applicationResult = await application.completion;
-    if (applicationResult.exitCode !== 0) {
-      throw new Error('targetGracefulShutdownFailed');
+    let closeRequested = false;
+    try {
+      const started = await waitForTargetDesktopStarted({
+        baselineEventIds,
+        childCompletion: application.completion,
+        expectedIdentity,
+        logDirectory,
+      });
+      closeRequested = true;
+      await requestGracefulClose(application.processId);
+      const applicationResult = await application.completion;
+      if (applicationResult.exitCode !== 0) {
+        throw new Error('targetGracefulShutdownFailed');
+      }
+      await requireTargetShutdownCompleted({
+        baselineEventIds,
+        expectedIdentity,
+        logDirectory,
+        runtimeInstanceId: started.runtimeInstanceId,
+      });
+      return started;
+    } catch (error) {
+      if (
+        !closeRequested &&
+        application.child.exitCode === null &&
+        application.child.signalCode === null
+      ) {
+        closeRequested = true;
+        await requestGracefulClose(application.processId).catch(
+          () => undefined,
+        );
+      }
+      throw error;
     }
-    await requireTargetShutdownCompleted({
-      baselineEventIds,
-      expectedIdentity: identities.target,
-      logDirectory,
-      runtimeInstanceId: started.runtimeInstanceId,
-    });
+  }
+
+  async function runSourceStartup() {
+    await runInstalledApplication(identities.source);
+  }
+
+  async function runTargetStartup(generation) {
+    if (
+      sourceEvidence === null ||
+      !['first', 'second'].includes(generation) ||
+      (generation === 'second' && firstTargetEvidence === null)
+    ) {
+      throw new Error('targetStartupPreconditionFailed');
+    }
+    const started = await runInstalledApplication(identities.target);
     const evidence = await captureLegacyTargetEvidence({
       identities,
       previousEvidence:
@@ -408,6 +449,7 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact) {
     captureSourceEvidence,
     inspectState,
     runMsiOperation,
+    runSourceStartup,
     runSourcePackagedSmoke,
     runTargetStartup,
     validateTargetPayload,

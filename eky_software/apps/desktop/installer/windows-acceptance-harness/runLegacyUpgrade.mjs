@@ -242,7 +242,7 @@ export async function runLegacyUpgrade(arguments_) {
         verifyLegacyUpgradeSemanticPostcondition({
           artifact,
           runNonce: workerRequest.runNonce,
-          scenarioRoot,
+          runtimeRoot: dirname(artifact.artifactRoot),
         }),
     });
   } catch (error) {

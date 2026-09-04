@@ -152,3 +152,67 @@ test('precondition failure never removes a pre-existing installation', async () 
   );
   assert.equal(cleanupCalls, 0);
 });
+
+for (const cleanupFails of [false, true]) {
+  test(`worker non-zero exit preserves the scenario error when semantic cleanup ${cleanupFails ? 'fails' : 'succeeds'}`, async () => {
+    const inspections = [products('targetProductPresent'), products('exactProductsAbsent')];
+    await assert.rejects(resolveLegacyUpgradeTerminalOutcome({
+      supervisorResult: supervisor({
+        status: 'failed', processResultCode: 'processExitFailed', childExitCode: 1,
+        workerResultCode: 'notChecked', cleanupResultCode: 'processTreeAbsent',
+      }),
+      readScenarioResult: async () => scenario({
+        status: 'failed', resultCode: 'historicalLegacyUpgradeFailed',
+        errorCode: 'targetFirstStartupFailed',
+      }),
+      verifyExactProductStates: async () => inspections.shift(),
+      cleanupExactProducts: async () => cleanupFails
+        ? { status: 'failed', errorCode: 'semanticCleanupFailed' }
+        : { status: 'completed', resultCode: 'semanticCleanupCompleted' },
+    }), (error) => {
+      const details = legacyUpgradeFailureDetails(error);
+      assert.equal(details.errorCode, 'WINDOWS_ACCEPTANCE_LEGACY_TARGET_FIRST_START_FAILED');
+      assert.equal(details.supervisorProcessResultCode, 'processExitFailed');
+      assert.equal(details.semanticCleanupResultCode, cleanupFails ? 'semanticCleanupFailed' : 'semanticCleanupCompleted');
+      return true;
+    });
+  });
+}
+
+for (const invalidResult of ['missing', 'successful']) {
+  test(`a ${invalidResult} scenario result cannot hide the supervisor process failure`, async () => {
+    await assert.rejects(resolveLegacyUpgradeTerminalOutcome({
+      supervisorResult: supervisor({
+        status: 'failed', processResultCode: 'processExitFailed', childExitCode: 1,
+        workerResultCode: 'notChecked', cleanupResultCode: 'processTreeAbsent',
+      }),
+      readScenarioResult: async () => {
+        if (invalidResult === 'missing') throw new Error('missing');
+        return scenario();
+      },
+      verifyExactProductStates: async () => products('exactProductsAbsent'),
+      cleanupExactProducts: () => assert.fail('No product exists'),
+    }), (error) => {
+      assert.equal(legacyUpgradeFailureDetails(error).errorCode, 'WINDOWS_ACCEPTANCE_SUPERVISOR_PROCESS_EXIT_FAILED');
+      return true;
+    });
+  });
+}
+
+test('non-zero precondition failure does not authorize removal of an existing product', async () => {
+  await assert.rejects(resolveLegacyUpgradeTerminalOutcome({
+    supervisorResult: supervisor({
+      status: 'failed', processResultCode: 'processExitFailed', childExitCode: 1,
+      workerResultCode: 'notChecked', cleanupResultCode: 'notRequired',
+    }),
+    readScenarioResult: async () => scenario({
+      status: 'failed', resultCode: 'historicalLegacyUpgradeFailed',
+      errorCode: 'upgradeLifecyclePreconditionFailed',
+    }),
+    verifyExactProductStates: async () => products('sourceProductPresent'),
+    cleanupExactProducts: () => assert.fail('Pre-existing product must be preserved'),
+  }), (error) => {
+    assert.equal(legacyUpgradeFailureDetails(error).semanticCleanupResultCode, 'blockedByPrecondition');
+    return true;
+  });
+});

@@ -987,13 +987,15 @@ synteettistä profiilia. Sen lifecycle on suljettu seuraavaan järjestykseen:
 2. historiallisen source-MSI:n asennus ja exact source-product-postcondition
 3. historiallisen `--desktop-smoke`-polun initial- ja restored-sukupolvi saman
    Job Objectin sisällä
-4. source-profiilin accepted-build-, SQLite-, business- ja PDF-evidence
-5. target-MSI:n major upgrade ja exact target-product- sekä payload-evidence
-6. targetin ensimmäinen normaali käynnistys, legacy-adoptio ja hallittu
+4. historiallisen source-version erillinen normaali käynnistys, accepted-build-
+   readiness ja hallittu shutdown samalla profiililla
+5. source-profiilin accepted-build-, SQLite-, business- ja PDF-evidence
+6. target-MSI:n major upgrade ja exact target-product- sekä payload-evidence
+7. targetin ensimmäinen normaali käynnistys, legacy-adoptio ja hallittu
    sovellusikkunan sulkeminen
-7. targetin toinen normaali käynnistys samalla profiililla ja hallittu
+8. targetin toinen normaali käynnistys samalla profiililla ja hallittu
    sovellusikkunan sulkeminen
-8. artifact-tavujen uudelleentarkistus.
+9. artifact-tavujen uudelleentarkistus.
 
 Historical smoke käynnistetään initial-sukupolvena täsmälleen kerran. Kun
 historiallinen runtime päättyy `restoreRestart`-vaiheeseen, worker käynnistää
@@ -1005,11 +1007,32 @@ PowerShell-adapteri saa pyytää workerin suoraan käynnistämää Electron-pros
 sulkemaan pääikkunansa kerran. Adapteri ei etsi, odota eikä tapa prosesseja,
 eikä siitä muodostu uutta prosessiomistajaa.
 
+Smoke-palautuksen jälkeen source-version erillinen normaali käynnistys kuuluu
+legacy-invarianttiin: se todistaa, että palautettu profiili avautuu tavallisessa
+ajossa, accepted-build on valmis ja runtime sulkeutuu hallitusti ennen
+target-MSI:n asentamista. Tätä vaihetta ei korvata pelkällä elossa olevalla
+prosessilla tai smoke-resultilla.
+
 Worker-result säilyttää vain strict turvallisen lopputuloksen. Yksityiseen
 scenario-juureen kirjoitettu evidence sitoo source- ja target-identiteetit,
 business-inventaarion, hyväksytyn lasku-PDF:n, workspace-adoption,
 runtime-sessionit ja toisen käynnistyksen idempotenssin. Näitä yksilöiviä
 arvoja ei tulosteta konsoliin tai CI-lokiin.
+
+V2.5-worker kirjoittaa scenario-resultin ja worker-resultin loppuun ennen
+prosessin exitia. Onnistuminen palauttaa `0`, epäonnistunut skenaario tai
+result-writer `1` ja virheellinen request `64`. Epäonnistunutta skenaariota ei
+saa palauttaa exit `0`:na: eloon jäänyt jälkeläinen siirtäisi silloin
+supervisorin cleanupin tarpeettomasti deadlineen asti. Ei-nolla-exit käyttää
+nykyisen Job Object -supervisorin olemassa olevaa failure-cleanupia.
+
+Post-supervisor-raja saa lukea strict runNonce/artifact-sidotun epäonnistuneen
+scenario-resultin workerin exit `1`:n jälkeen ja säilyttää sen alkuperäisen
+virhekoodin. Supervisorin process-, worker- ja cleanup-tulokset pysyvät
+erillisinä. Puuttuva tai onnistumista väittävä scenario-result ei peitä
+prosessivirhettä; deadline pysyy ensisijaisena eikä sitä tulkita workerin
+hallittuna virheenä. Preflightin torjunta ei anna lupaa poistaa ennestään
+asennettua tuotetta.
 
 Supervisorin todistettua `processTreeAbsent`-tilan erillinen postcondition-
 verifier tarkistaa ennen semanttista cleanupia:
@@ -1041,6 +1064,29 @@ V2.5 ei vielä poista, muuta tai kutsu vanhaa W6B legacy acceptance -harnessia.
 Cutover tehdään vasta, kun kaikki vanhan portin invariantit on nimetty,
 V2-vastineet ovat terminal ja paikalliset sekä GitHubin build-once-consumerit
 ovat hyväksytysti vihreät.
+
+### V2.5-invarianttien siirtokartta
+
+Taulukko kuvaa kattavuuden omistajuutta, ei anna vielä lupaa vanhan polun
+poistamiseen. Lopullisen puhtaan HEADin kaksi paikallista consumer-ajoa ja
+kaksi ensimmäisen yrityksen GitHub-consumeria ovat edelleen hyväksyntäportti.
+
+| Vanhan legacy-portin invariantti | V2.5-vastine ja kohdetesti | Poiston ehto |
+| --- | --- | --- |
+| Historiallinen source-identiteetti ja muuttumattomat MSI-tavut | `legacyUpgradeArtifact` ja sen testit; build-once producer/consumer | Paikallinen ja CI-artifact-varmennus samoille tavuille |
+| Puhdas kone ja exact ProductCode/payload | `legacyUpgradeLifecycle`, `legacyUpgradeWindowsRuntime`, `legacyUpgradePostcondition` | Täysi install/upgrade ja erillinen jälkitarkistus |
+| Initial -> restoreRestart -> restored -> shutdown | `legacyUpgradeSourceSmoke` ja ketjutestit | Historiallisen paketin täysi kaksiprosessinen smoke |
+| Source avautuu normaalisti ennen päivitystä | `runSourceStartup`, `legacyUpgradeLifecycle.test`, `legacyUpgradeStartupObserver.test` | Normaali source-start ja graceful shutdown packaged-ajossa |
+| Accepted-buildin ristiriidat torjutaan | `legacyUpgradeProfileEvidence.test` | Deterministiset slotit, korruptio- ja konfliktitestit sekä runtime-evidence |
+| SQLite/storage/PDF säilyvät; yksi adoptio ja uusi runtime toisella käynnistyksellä | `legacyUpgradeProfileEvidence` ja `legacyUpgradePostcondition` testeineen | Historiallisen smoken business-fixture ja täysi target-start kahdesti; hash-inventaario ei yksin korvaa business-fixturen todistetta |
+| Worker failure, deadline ja koko omistetun puun cleanup | Nykyinen V2.1-supervisor sekä `runLegacyUpgradeWorker.test` | Ei uutta valvojaa; live-child cleanup ja foreign sentinel säilyvät |
+| Alkuperäinen virhe ei katoa cleanupiin | `legacyUpgradeFailureBoundary.test` | Missing result, worker non-zero, preflight-esto ja cleanup failure testattu erikseen |
+| Normaali profiili ja source-artifact säilyvät | `runLegacyUpgrade`, `closedDirectoryInventory` ja artifact-verifier | In-memory ennen/jälkeen-vertailu sekä artifactin uudelleenvarmennus |
+
+`legacyUpgradeWindowsRuntime.test` sisältää lisäksi lähdekoodiin kohdistuvia
+arkkitehtuurirajoja. Ne eivät todista ikkunan näkyvyyttä tai sulkeutumista;
+nämä todisteet kuuluvat packaged consumerille. `desktop.started` kertoo
+runtimen käynnistymisestä, ei yksin renderöidyn ikkunan valmiudesta.
 
 ## Migraatiojärjestys
 

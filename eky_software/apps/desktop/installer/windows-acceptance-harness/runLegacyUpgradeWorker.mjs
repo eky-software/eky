@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import {
+  LEGACY_UPGRADE_WORKER_EXIT_CODES,
   createLegacyUpgradeWorkerTerminalResult,
   legacyUpgradeResultPathForRequest,
   legacyUpgradeWorkerResultPathForRequest,
@@ -31,6 +32,7 @@ function failedResult(errorCode) {
     sourceInstallExitCode: null,
     upgradeExitCode: null,
     sourceStateValidated: false,
+    sourceNormalStartupValidated: false,
     sourcePackagedSmokeValidated: false,
     legacyBusinessFixtureValidated: false,
     majorUpgradeValidated: false,
@@ -48,19 +50,19 @@ export async function runLegacyUpgradeWorker(arguments_) {
     typeof arguments_[1] !== 'string' ||
     arguments_[1].includes('\0')
   ) {
-    return 64;
+    return LEGACY_UPGRADE_WORKER_EXIT_CODES.invalidRequest;
   }
   let requestPath;
   try {
     requestPath = resolve(arguments_[1]);
   } catch {
-    return 64;
+    return LEGACY_UPGRADE_WORKER_EXIT_CODES.invalidRequest;
   }
   let request;
   try {
     request = await readLegacyUpgradeWorkerRequest(requestPath);
   } catch {
-    return 64;
+    return LEGACY_UPGRADE_WORKER_EXIT_CODES.invalidRequest;
   }
 
   let result;
@@ -88,6 +90,10 @@ export async function runLegacyUpgradeWorker(arguments_) {
     result = failedResult(safeCode(error, 'unexpectedFailure'));
   }
 
+  return writeLegacyUpgradeWorkerOutcome(requestPath, request, result);
+}
+
+export async function writeLegacyUpgradeWorkerOutcome(requestPath, request, result) {
   try {
     const boundResult = validateLegacyUpgradeResult(
       {
@@ -106,9 +112,9 @@ export async function runLegacyUpgradeWorker(arguments_) {
       legacyUpgradeWorkerResultPathForRequest(requestPath),
       createLegacyUpgradeWorkerTerminalResult(request, boundResult),
     );
-    return 0;
+    return LEGACY_UPGRADE_WORKER_EXIT_CODES[boundResult.status];
   } catch {
-    return 1;
+    return LEGACY_UPGRADE_WORKER_EXIT_CODES.failed;
   }
 }
 
@@ -116,5 +122,5 @@ if (
   process.argv[1] !== undefined &&
   import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 ) {
-  process.exitCode = await runLegacyUpgradeWorker(process.argv.slice(2));
+  process.exit(await runLegacyUpgradeWorker(process.argv.slice(2)));
 }

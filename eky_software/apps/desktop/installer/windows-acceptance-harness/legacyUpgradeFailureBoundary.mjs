@@ -1,14 +1,26 @@
+import { LEGACY_UPGRADE_WORKER_EXIT_CODES } from './legacyUpgradeContracts.mjs';
+
 const SCENARIO_ERROR_CODES = Object.freeze({
   artifactVerificationFailed:
     'WINDOWS_ACCEPTANCE_LEGACY_ARTIFACT_VERIFICATION_FAILED',
+  installerFootprintInspectionFailed:
+    'WINDOWS_ACCEPTANCE_LEGACY_FOOTPRINT_INSPECTION_FAILED',
+  installerSourceProductInspectionFailed:
+    'WINDOWS_ACCEPTANCE_LEGACY_SOURCE_PRODUCT_INSPECTION_FAILED',
   installerStateInspectionFailed:
     'WINDOWS_ACCEPTANCE_LEGACY_STATE_INSPECTION_FAILED',
+  installerStateSnapshotChanged:
+    'WINDOWS_ACCEPTANCE_LEGACY_STATE_SNAPSHOT_CHANGED',
+  installerTargetProductInspectionFailed:
+    'WINDOWS_ACCEPTANCE_LEGACY_TARGET_PRODUCT_INSPECTION_FAILED',
   legacyBusinessFixtureInvalid:
     'WINDOWS_ACCEPTANCE_LEGACY_BUSINESS_FIXTURE_INVALID',
   majorUpgradeFailed: 'WINDOWS_ACCEPTANCE_LEGACY_MAJOR_UPGRADE_FAILED',
   majorUpgradeStateInvalid:
     'WINDOWS_ACCEPTANCE_LEGACY_MAJOR_UPGRADE_STATE_INVALID',
   sourceInstallFailed: 'WINDOWS_ACCEPTANCE_LEGACY_SOURCE_INSTALL_FAILED',
+  sourceNormalStartupFailed:
+    'WINDOWS_ACCEPTANCE_LEGACY_SOURCE_NORMAL_START_FAILED',
   sourcePackagedSmokeFailed:
     'WINDOWS_ACCEPTANCE_LEGACY_SOURCE_SMOKE_FAILED',
   sourceStateInvalid: 'WINDOWS_ACCEPTANCE_LEGACY_SOURCE_STATE_INVALID',
@@ -280,8 +292,10 @@ export async function resolveLegacyUpgradeTerminalOutcome({
   let scenarioResultCode = 'notAvailable';
   let semanticCleanupAllowed = true;
   if (
-    supervisorResult.processResultCode === 'processCompleted' &&
-    supervisorResult.workerResultCode === 'workerReportedFailure'
+    (supervisorResult.processResultCode === 'processCompleted' &&
+      supervisorResult.workerResultCode === 'workerReportedFailure') ||
+    (supervisorResult.processResultCode === 'processExitFailed' &&
+      supervisorResult.childExitCode === LEGACY_UPGRADE_WORKER_EXIT_CODES.failed)
   ) {
     try {
       const scenarioResult = await readScenarioResult();
