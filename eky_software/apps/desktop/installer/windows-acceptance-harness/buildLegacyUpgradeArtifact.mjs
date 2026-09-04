@@ -9,6 +9,7 @@ import {
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { createInstallerProductCode } from '../installerIdentity.mjs';
 import { readInstallerReleaseGitState } from '../installerReleaseContext.mjs';
 import { createWindowsInstallerRelease } from '../scripts/releaseWindowsInstaller.mjs';
 import { withHistoricalSourceWindowsInstallerFixture } from '../scripts/historicalWindowsInstallerFixtureBuilder.mjs';
@@ -127,7 +128,9 @@ export async function materializeHistoricalLegacyRole({ artifactRoot }) {
       msiProductVersion: fixture.manifest.msiProductVersion,
       packageSha256: fixture.manifest.packageSha256,
       packageSize: fixture.manifest.packageSize,
-      productCode: historical.productCode,
+      productCode: createInstallerProductCode(
+        fixture.manifest.msiProductVersion,
+      ),
       provenancePath: 'source/historical-fixture-provenance.json',
       provenanceSha256: provenanceIdentity.sha256,
       runtimeBuildRevision: historical.runtimeBuildRevision,
