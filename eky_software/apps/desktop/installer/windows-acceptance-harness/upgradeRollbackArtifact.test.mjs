@@ -21,6 +21,7 @@ import {
 import {
   buildUpgradeRollbackArtifact,
   buildStagedInstallerSet,
+  copyClosedPayloadTree,
   createUpgradeRollbackReleasePair,
   parseUpgradeRollbackArtifactBuildArguments,
 } from './buildUpgradeRollbackArtifact.mjs';
@@ -306,6 +307,27 @@ test('artifact producer consumes one staged installer set and removes staging', 
     expectedBuildRevision: BUILD_REVISION,
     expectedDescriptorSha256: result.descriptorSha256,
   });
+});
+
+test('rollback payload copy creates its owned parent and independent bytes', async (testContext) => {
+  const root = await mkdtemp(resolve(tmpdir(), 'eky-v2-upgrade-payload-copy-'));
+  testContext.after(() => rm(root, { force: true, recursive: true }));
+  const sourceRoot = resolve(root, 'source');
+  const sourceNested = resolve(sourceRoot, 'nested');
+  const targetRoot = resolve(root, 'missing-parent', 'payload');
+  await mkdir(sourceNested, { recursive: true });
+  await writeFile(resolve(sourceRoot, 'root.txt'), 'root');
+  await writeFile(resolve(sourceNested, 'nested.txt'), 'nested');
+
+  await copyClosedPayloadTree(sourceRoot, targetRoot);
+
+  assert.equal(await readFile(resolve(targetRoot, 'root.txt'), 'utf8'), 'root');
+  assert.equal(
+    await readFile(resolve(targetRoot, 'nested', 'nested.txt'), 'utf8'),
+    'nested',
+  );
+  await writeFile(resolve(sourceRoot, 'root.txt'), 'changed');
+  assert.equal(await readFile(resolve(targetRoot, 'root.txt'), 'utf8'), 'root');
 });
 
 test('artifact producer removes its default staging after a package failure', async (testContext) => {

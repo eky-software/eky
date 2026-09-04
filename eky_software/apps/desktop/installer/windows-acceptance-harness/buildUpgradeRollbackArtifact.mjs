@@ -126,32 +126,45 @@ function createRolePaths(stageRoot, roleName) {
   });
 }
 
-async function copyClosedPayloadTree(sourceRoot, targetRoot) {
-  await mkdir(targetRoot, { recursive: false });
-  const visit = async (sourceDirectory, targetDirectory) => {
-    const entries = await readdir(sourceDirectory, { withFileTypes: true });
-    for (const entry of entries) {
-      const sourcePath = resolve(sourceDirectory, entry.name);
-      const targetPath = resolve(targetDirectory, entry.name);
-      const metadata = await lstat(sourcePath, { bigint: true });
-      if (metadata.isSymbolicLink()) {
-        throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_PAYLOAD_INVALID');
-      }
-      if (metadata.isDirectory()) {
-        await mkdir(targetPath, { recursive: false });
-        await visit(sourcePath, targetPath);
-      } else if (metadata.isFile()) {
-        await copyFile(sourcePath, targetPath, constants.COPYFILE_EXCL);
-        const copied = await lstat(targetPath, { bigint: true });
-        if (!copied.isFile() || copied.isSymbolicLink() || copied.nlink !== 1n) {
+export async function copyClosedPayloadTree(sourceRoot, targetRoot) {
+  try {
+    await mkdir(dirname(targetRoot), { recursive: true });
+    await mkdir(targetRoot, { recursive: false });
+    const visit = async (sourceDirectory, targetDirectory) => {
+      const entries = await readdir(sourceDirectory, { withFileTypes: true });
+      for (const entry of entries) {
+        const sourcePath = resolve(sourceDirectory, entry.name);
+        const targetPath = resolve(targetDirectory, entry.name);
+        const metadata = await lstat(sourcePath, { bigint: true });
+        if (metadata.isSymbolicLink()) {
           throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_PAYLOAD_INVALID');
         }
-      } else {
-        throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_PAYLOAD_INVALID');
+        if (metadata.isDirectory()) {
+          await mkdir(targetPath, { recursive: false });
+          await visit(sourcePath, targetPath);
+        } else if (metadata.isFile()) {
+          await copyFile(sourcePath, targetPath, constants.COPYFILE_EXCL);
+          const copied = await lstat(targetPath, { bigint: true });
+          if (
+            !copied.isFile() ||
+            copied.isSymbolicLink() ||
+            copied.nlink !== 1n
+          ) {
+            throw new Error(
+              'WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_PAYLOAD_INVALID',
+            );
+          }
+        } else {
+          throw new Error(
+            'WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_PAYLOAD_INVALID',
+          );
+        }
       }
-    }
-  };
-  await visit(sourceRoot, targetRoot);
+    };
+    await visit(sourceRoot, targetRoot);
+  } catch {
+    throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_PAYLOAD_INVALID');
+  }
 }
 
 async function writeRoleInputs(paths, release) {
