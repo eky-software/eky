@@ -10,7 +10,7 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import test from 'node:test';
 
 import {
@@ -299,6 +299,8 @@ test('stale packaged application prevents the MSI producer from running', async 
 test('producer and consumer CLIs require closed absolute arguments', () => {
   const artifactRoot = resolve(tmpdir(), 'artifact');
   const summaryPath = resolve(tmpdir(), 'summary.json');
+  const transportedArtifactRoot = artifactRoot.replaceAll(sep, sep.repeat(2));
+  const transportedSummaryPath = summaryPath.replaceAll(sep, sep.repeat(2));
   const hash = 'a'.repeat(64);
   assert.deepEqual(
     parseWindowsAcceptanceArtifactBuildArguments([
@@ -313,6 +315,30 @@ test('producer and consumer CLIs require closed absolute arguments', () => {
     parseWindowsAcceptanceArtifactVerifierArguments([
       '--artifact-root',
       artifactRoot,
+      '--expected-descriptor-sha256',
+      hash,
+      '--expected-build-revision',
+      BUILD_REVISION,
+    ]),
+    {
+      artifactRoot,
+      expectedDescriptorSha256: hash,
+      expectedBuildRevision: BUILD_REVISION,
+    },
+  );
+  assert.deepEqual(
+    parseWindowsAcceptanceArtifactBuildArguments([
+      '--artifact-root',
+      transportedArtifactRoot,
+      '--summary-path',
+      transportedSummaryPath,
+    ]),
+    { artifactRoot, summaryPath },
+  );
+  assert.deepEqual(
+    parseWindowsAcceptanceArtifactVerifierArguments([
+      '--artifact-root',
+      transportedArtifactRoot,
       '--expected-descriptor-sha256',
       hash,
       '--expected-build-revision',
@@ -353,6 +379,28 @@ test('producer and consumer CLIs require closed absolute arguments', () => {
         artifactRoot,
         '--expected-descriptor-sha256',
         'invalid',
+        '--expected-build-revision',
+        BUILD_REVISION,
+      ]),
+    /WINDOWS_ACCEPTANCE_ARTIFACT_ARGUMENTS_INVALID/,
+  );
+  assert.throws(
+    () =>
+      parseWindowsAcceptanceArtifactBuildArguments([
+        '--artifact-root',
+        `${artifactRoot}${sep}`,
+        '--summary-path',
+        summaryPath,
+      ]),
+    /WINDOWS_ACCEPTANCE_ARTIFACT_BUILD_ARGUMENTS_INVALID/,
+  );
+  assert.throws(
+    () =>
+      parseWindowsAcceptanceArtifactVerifierArguments([
+        '--artifact-root',
+        `${resolve(tmpdir(), 'parent')}${sep}..${sep}artifact`,
+        '--expected-descriptor-sha256',
+        hash,
         '--expected-build-revision',
         BUILD_REVISION,
       ]),

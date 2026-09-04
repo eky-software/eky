@@ -11,6 +11,9 @@ import {
   materializeImmutableInstallerFixture,
   verifyLocalImmutableSourceFixture,
 } from './localImmutableInstallerFixture.mjs';
+import {
+  parseAbsoluteWindowsAcceptancePath,
+} from './windowsAcceptancePathArgument.mjs';
 import { verifyWindowsAcceptanceArtifact } from './verifyWindowsAcceptanceArtifact.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
@@ -25,24 +28,24 @@ export function parseWindowsAcceptanceArtifactBuildArguments(arguments_) {
   if (
     arguments_.length !== 4 ||
     arguments_[0] !== '--artifact-root' ||
-    typeof arguments_[1] !== 'string' ||
-    arguments_[1].includes('\0') ||
-    !isAbsolute(arguments_[1]) ||
-    resolve(arguments_[1]) !== arguments_[1] ||
-    arguments_[2] !== '--summary-path' ||
-    typeof arguments_[3] !== 'string' ||
-    arguments_[3].includes('\0') ||
-    !isAbsolute(arguments_[3]) ||
-    resolve(arguments_[3]) !== arguments_[3]
+    arguments_[2] !== '--summary-path'
   ) {
     throw new Error('WINDOWS_ACCEPTANCE_ARTIFACT_BUILD_ARGUMENTS_INVALID');
   }
-  if (isPathInside(arguments_[1], arguments_[3])) {
+  const artifactRoot = parseAbsoluteWindowsAcceptancePath(
+    arguments_[1],
+    'WINDOWS_ACCEPTANCE_ARTIFACT_BUILD_ARGUMENTS_INVALID',
+  );
+  const summaryPath = parseAbsoluteWindowsAcceptancePath(
+    arguments_[3],
+    'WINDOWS_ACCEPTANCE_ARTIFACT_BUILD_ARGUMENTS_INVALID',
+  );
+  if (isPathInside(artifactRoot, summaryPath)) {
     throw new Error('WINDOWS_ACCEPTANCE_ARTIFACT_BUILD_ARGUMENTS_INVALID');
   }
   return Object.freeze({
-    artifactRoot: arguments_[1],
-    summaryPath: arguments_[3],
+    artifactRoot,
+    summaryPath,
   });
 }
 

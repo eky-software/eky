@@ -789,7 +789,10 @@ pnpm --filter @eky/desktop installer:v2-clean --fixture-manifest <absolute-artif
 Verifier ajetaan sekä ennen V2.2-lifecyclea että sen jälkeen. Artifact-juuren
 pitää olla producerille uusi ja tyhjäksi oletettu polku; producer ei poista tai
 korvaa ennalta olemassa olevaa juurta. Summary-polku ei kuulu siirrettävään
-artifact-inventoryyn.
+artifact-inventoryyn. CLI:n polkuraja hyväksyy package manager -kuljetuksen
+lisäämät peräkkäiset hakemistoerottimet vain kanonisoimalla ne välittömästi.
+Suhteellinen polku, piste- tai parent-segmentti, NUL tai loppuerotin torjutaan
+ennen tiedostojärjestelmän käyttöä.
 
 CI:n build-once fan-out käyttää vain kohdassa "Hyväksytyt artifact-actionit"
 nimettyjä exact-SHA-versioita, yksiselitteistä ajokohtaista artifact-nimeä ja

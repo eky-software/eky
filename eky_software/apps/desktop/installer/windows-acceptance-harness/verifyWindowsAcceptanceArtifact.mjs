@@ -1,13 +1,16 @@
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { lstat, readdir } from 'node:fs/promises';
-import { dirname, isAbsolute, resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import {
   readInstallerManifest,
   verifyInstallerManifestPackage,
 } from '../installerManifest.mjs';
+import {
+  parseAbsoluteWindowsAcceptancePath,
+} from './windowsAcceptancePathArgument.mjs';
 
 const DESCRIPTOR_FILENAME = 'installer.manifest.json';
 const BUILD_REVISION_PATTERN = /^[0-9a-f]{40}$/;
@@ -54,10 +57,6 @@ export function parseWindowsAcceptanceArtifactVerifierArguments(arguments_) {
   if (
     arguments_.length !== 6 ||
     arguments_[0] !== '--artifact-root' ||
-    typeof arguments_[1] !== 'string' ||
-    arguments_[1].includes('\0') ||
-    !isAbsolute(arguments_[1]) ||
-    resolve(arguments_[1]) !== arguments_[1] ||
     arguments_[2] !== '--expected-descriptor-sha256' ||
     typeof arguments_[3] !== 'string' ||
     !SHA_256_PATTERN.test(arguments_[3]) ||
@@ -68,7 +67,10 @@ export function parseWindowsAcceptanceArtifactVerifierArguments(arguments_) {
     throw new Error('WINDOWS_ACCEPTANCE_ARTIFACT_ARGUMENTS_INVALID');
   }
   return Object.freeze({
-    artifactRoot: resolve(arguments_[1]),
+    artifactRoot: parseAbsoluteWindowsAcceptancePath(
+      arguments_[1],
+      'WINDOWS_ACCEPTANCE_ARTIFACT_ARGUMENTS_INVALID',
+    ),
     expectedDescriptorSha256: arguments_[3],
     expectedBuildRevision: arguments_[5],
   });
