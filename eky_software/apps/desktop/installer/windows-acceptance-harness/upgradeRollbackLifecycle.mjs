@@ -30,18 +30,17 @@ function fail(code) {
   throw new UpgradeRollbackFailure(code);
 }
 
-function productPresent(product) {
+function exactProductPresent(product) {
   return (
     product.productState >= 1 ||
     product.productName !== null ||
     product.productVersion !== null ||
-    product.localPackagePresent ||
-    product.ownedRegistryExists
+    product.localPackagePresent
   );
 }
 
 function requireProductAbsent(product, errorCode) {
-  if (productPresent(product)) {
+  if (exactProductPresent(product)) {
     fail(errorCode);
   }
 }
@@ -63,6 +62,7 @@ function requireInstalledFootprint(state, errorCode) {
     !state.installRootExists ||
     !state.executableExists ||
     !state.shortcutExists ||
+    !state.installerRegistryExists ||
     state.ekyProcessCount !== 0
   ) {
     fail(errorCode);
@@ -74,6 +74,7 @@ function requireAbsentFootprint(state, errorCode) {
     state.installRootExists ||
     state.executableExists ||
     state.shortcutExists ||
+    state.installerRegistryExists ||
     state.ekyProcessCount !== 0 ||
     state.rollbackBlockerKind !== 'absent'
   ) {
@@ -200,7 +201,8 @@ async function attemptFailureCleanup({ inspectState, progress, removeRollbackBlo
       'installerStateInspectionFailed',
       () => inspectState('failure'),
     );
-    cleanupNeeded = productPresent(state.source) || productPresent(state.target);
+    cleanupNeeded =
+      exactProductPresent(state.source) || exactProductPresent(state.target);
   } catch {
     return 'cleanupFailed';
   }
@@ -209,7 +211,7 @@ async function attemptFailureCleanup({ inspectState, progress, removeRollbackBlo
     ['target', 'cleanupTarget'],
     ['source', 'cleanupSource'],
   ]) {
-    if (!productPresent(state[role])) {
+    if (!exactProductPresent(state[role])) {
       continue;
     }
     try {

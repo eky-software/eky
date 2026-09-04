@@ -186,6 +186,7 @@ export async function createUpgradeRollbackWindowsRuntime(request, artifact) {
       !['absent', 'file'].includes(executableKind) ||
       !['absent', 'file'].includes(shortcutKind) ||
       !['absent', 'file'].includes(rollbackBlockerKind) ||
+      source.ownedRegistryExists !== target.ownedRegistryExists ||
       source.ekyProcessCount !== target.ekyProcessCount
     ) {
       throw new Error('installerStateInspectionFailed');
@@ -196,6 +197,7 @@ export async function createUpgradeRollbackWindowsRuntime(request, artifact) {
       installRootExists: installRootKind === 'directory',
       executableExists: executableKind === 'file',
       shortcutExists: shortcutKind === 'file',
+      installerRegistryExists: source.ownedRegistryExists,
       rollbackBlockerKind,
       ekyProcessCount: source.ekyProcessCount,
     });

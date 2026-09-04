@@ -47,14 +47,47 @@ async function readInspectorResult(resultPath) {
   }
 }
 
-function productPresent(state) {
+function exactProductPresent(state) {
   return (
     state.productState >= 1 ||
     state.productName !== null ||
     state.productVersion !== null ||
-    state.localPackagePresent ||
-    state.ownedRegistryExists
+    state.localPackagePresent
   );
+}
+
+export function classifyUpgradeRollbackProductStates(source, target) {
+  if (
+    typeof source.exactProductPresent !== 'boolean' ||
+    typeof target.exactProductPresent !== 'boolean' ||
+    typeof source.installerRegistryPresent !== 'boolean' ||
+    typeof target.installerRegistryPresent !== 'boolean' ||
+    source.installerRegistryPresent !== target.installerRegistryPresent
+  ) {
+    return Object.freeze({
+      status: 'failed',
+      errorCode: 'productStateVerificationFailed',
+    });
+  }
+  const sourcePresent = source.exactProductPresent;
+  const targetPresent = target.exactProductPresent;
+  const installerRegistryPresent = source.installerRegistryPresent;
+  const resultCode = sourcePresent
+    ? targetPresent
+      ? 'multipleProductsPresent'
+      : 'sourceProductPresent'
+    : targetPresent
+      ? 'targetProductPresent'
+      : installerRegistryPresent
+        ? 'installerRegistryPresent'
+        : 'exactProductsAbsent';
+  return Object.freeze({
+    status: 'completed',
+    resultCode,
+    sourcePresent,
+    targetPresent,
+    installerRegistryPresent,
+  });
 }
 
 export function createUpgradeRollbackPostSupervisorWindowsRuntime({
@@ -108,11 +141,13 @@ export function createUpgradeRollbackPostSupervisorWindowsRuntime({
           ),
         });
       }
+      const inspected = await readInspectorResult(resultPath);
+      const present = exactProductPresent(inspected);
       return Object.freeze({
         status: 'completed',
-        resultCode: productPresent(await readInspectorResult(resultPath))
-          ? 'exactProductPresent'
-          : 'exactProductAbsent',
+        resultCode: present ? 'exactProductPresent' : 'exactProductAbsent',
+        exactProductPresent: present,
+        installerRegistryPresent: inspected.ownedRegistryExists,
       });
     } catch {
       return Object.freeze({
@@ -134,21 +169,7 @@ export function createUpgradeRollbackPostSupervisorWindowsRuntime({
           source.status === 'failed' ? source.errorCode : target.errorCode,
       });
     }
-    const sourcePresent = source.resultCode === 'exactProductPresent';
-    const targetPresent = target.resultCode === 'exactProductPresent';
-    const resultCode = sourcePresent
-      ? targetPresent
-        ? 'multipleProductsPresent'
-        : 'sourceProductPresent'
-      : targetPresent
-        ? 'targetProductPresent'
-        : 'exactProductsAbsent';
-    return Object.freeze({
-      status: 'completed',
-      resultCode,
-      sourcePresent,
-      targetPresent,
-    });
+    return classifyUpgradeRollbackProductStates(source, target);
   }
 
   async function uninstallRole(roleName) {

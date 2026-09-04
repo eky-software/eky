@@ -5,25 +5,33 @@ import { executeUpgradeRollbackLifecycle } from './upgradeRollbackLifecycle.mjs'
 
 const VERSIONS = Object.freeze({ source: '0.2.7', target: '0.2.8' });
 
-function product(version = null) {
+function product(version = null, installerRegistryExists = false) {
   return Object.freeze({
     schemaVersion: 1,
     productState: version === null ? -1 : 5,
     productName: version === null ? null : 'Eky',
     productVersion: version,
     localPackagePresent: version !== null,
-    ownedRegistryExists: version !== null,
+    ownedRegistryExists: installerRegistryExists,
     ekyProcessCount: 0,
   });
 }
 
 function state(active = null, rollbackBlockerKind = 'absent') {
+  const installerRegistryExists = active !== null;
   return Object.freeze({
-    source: product(active === 'source' ? VERSIONS.source : null),
-    target: product(active === 'target' ? VERSIONS.target : null),
+    source: product(
+      active === 'source' ? VERSIONS.source : null,
+      installerRegistryExists,
+    ),
+    target: product(
+      active === 'target' ? VERSIONS.target : null,
+      installerRegistryExists,
+    ),
     installRootExists: active !== null,
     executableExists: active !== null,
     shortcutExists: active !== null,
+    installerRegistryExists,
     ekyProcessCount: 0,
     rollbackBlockerKind,
   });

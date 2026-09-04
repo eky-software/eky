@@ -883,6 +883,10 @@ joka vaatii molempien exact ProductCodejen poissaolon. Precondition-virhe ei
 koskaan käynnistä semanttista cleanupia, koska jo olemassa oleva asennus ei ole
 testin omistama. Supervisorin jälkeinen exact-product-cleanup on sallittu vain
 puhtaan ulomman preflightin jälkeen syntyneen muun terminal-virheen yhteydessä.
+ProductCode-kohtainen rekisteröinti ja asennuksen yhteinen
+`HKCU\Software\Eky\Installer`-footprint käsitellään eri tiloina: yhteinen avain
+ei saa tehdä poissa olevasta source- tai target-ProductCodesta asennettua, mutta
+sen pitää olla olemassa asennetussa tilassa ja poissa lopullisessa tilassa.
 
 Normaali `%APPDATA%\Eky` käsitellään samalla read-only-inventaariorajalla kuin
 V2.2:ssa. Onnistuminen edellyttää muuttumatonta tiedostomäärä-, koko- ja

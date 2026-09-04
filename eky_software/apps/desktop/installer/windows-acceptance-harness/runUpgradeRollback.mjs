@@ -115,7 +115,8 @@ export function requireUpgradeRollbackProductPrecondition(result) {
     result?.status !== 'completed' ||
     result.resultCode !== 'exactProductsAbsent' ||
     result.sourcePresent !== false ||
-    result.targetPresent !== false
+    result.targetPresent !== false ||
+    result.installerRegistryPresent !== false
   ) {
     throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_PRECONDITION_FAILED');
   }

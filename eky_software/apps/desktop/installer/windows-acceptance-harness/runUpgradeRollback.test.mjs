@@ -58,6 +58,7 @@ test('outer product preflight accepts only exact source and target absence', () 
       resultCode: 'exactProductsAbsent',
       sourcePresent: false,
       targetPresent: false,
+      installerRegistryPresent: false,
     }),
   );
   assert.throws(
@@ -67,6 +68,18 @@ test('outer product preflight accepts only exact source and target absence', () 
         resultCode: 'sourceProductPresent',
         sourcePresent: true,
         targetPresent: false,
+        installerRegistryPresent: true,
+      }),
+    /WINDOWS_ACCEPTANCE_UPGRADE_PRECONDITION_FAILED/,
+  );
+  assert.throws(
+    () =>
+      requireUpgradeRollbackProductPrecondition({
+        status: 'completed',
+        resultCode: 'installerRegistryPresent',
+        sourcePresent: false,
+        targetPresent: false,
+        installerRegistryPresent: true,
       }),
     /WINDOWS_ACCEPTANCE_UPGRADE_PRECONDITION_FAILED/,
   );

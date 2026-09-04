@@ -59,6 +59,18 @@ function scenarioErrorCode(result) {
   );
 }
 
+function expectedProductStateResultCode(result) {
+  return result.sourcePresent
+    ? result.targetPresent
+      ? 'multipleProductsPresent'
+      : 'sourceProductPresent'
+    : result.targetPresent
+      ? 'targetProductPresent'
+      : result.installerRegistryPresent
+        ? 'installerRegistryPresent'
+        : 'exactProductsAbsent';
+}
+
 async function inspectProducts(verifyExactProductStates) {
   try {
     const result = await verifyExactProductStates();
@@ -66,12 +78,15 @@ async function inspectProducts(verifyExactProductStates) {
       result?.status === 'completed' &&
       typeof result.sourcePresent === 'boolean' &&
       typeof result.targetPresent === 'boolean' &&
+      typeof result.installerRegistryPresent === 'boolean' &&
       [
         'exactProductsAbsent',
+        'installerRegistryPresent',
         'sourceProductPresent',
         'targetProductPresent',
         'multipleProductsPresent',
-      ].includes(result.resultCode)
+      ].includes(result.resultCode) &&
+      result.resultCode === expectedProductStateResultCode(result)
     ) {
       return result;
     }

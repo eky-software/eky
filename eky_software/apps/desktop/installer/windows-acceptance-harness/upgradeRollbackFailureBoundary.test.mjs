@@ -27,7 +27,10 @@ function scenario(overrides = {}) {
   });
 }
 
-function products(resultCode = 'exactProductsAbsent') {
+function products(
+  resultCode = 'exactProductsAbsent',
+  installerRegistryPresent = resultCode !== 'exactProductsAbsent',
+) {
   return Object.freeze({
     status: 'completed',
     resultCode,
@@ -37,6 +40,7 @@ function products(resultCode = 'exactProductsAbsent') {
     targetPresent: ['targetProductPresent', 'multipleProductsPresent'].includes(
       resultCode,
     ),
+    installerRegistryPresent,
   });
 }
 
