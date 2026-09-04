@@ -669,6 +669,78 @@ Jos nested Job Object ei toimi GitHub-runnerissa, tähän malliin ei lisätä
 PID-wrapperia. V2.2 clean install / uninstall -siivuun edetään vasta, kun
 tämä checkpoint on terminal ja vihreä.
 
+## V2.2 clean install / uninstall -checkpoint
+
+V2.2 todistaa yhden jo rakennetun paikallisen MSI-fixturen puhtaan asennuksen
+ja poiston. Se ei rakenna pakettia, käynnistä Ekyä, käytä normaalia profiilia
+testifixturena eikä muuta nykyisiä W6B-, W6B.2A- tai W6B.2B-komentoja.
+
+Kutsu saa fixtureksi vain eksplisiittisen installer-manifestin. Ennen ajoa
+manifestin ja MSI:n pitää olla tavallisia itsenäisiä tiedostoja, niiden
+manifestisidoksen pitää täsmätä ja lähdetiedostot kopioidaan uusina tavuina
+ajokohtaiseen TEMP-juureen. Symlinkki, hardlinkki, tuntematon manifesttikenttä,
+väärä hash tai polun ulosjuoksu torjutaan ennen MSI-operaatiota. Lähdefixture
+varmennetaan uudelleen ajon jälkeen eikä sitä poisteta tai muuteta.
+
+Clean lifecycle etenee yhdessä strict worker -sopimuksessa:
+
+1. exact ProductCode, installer-rekisteröinti, install-root, executable,
+   shortcut ja Eky-prosessit todistetaan puhtaiksi
+2. immutable fixture varmennetaan
+3. MSI asennetaan hiljaisesti ilman uudelleenkäynnistystä
+4. asennettu versio, payload ja rekisteröinti varmennetaan
+5. sama fixture varmennetaan uudelleen
+6. täsmällinen tuote poistetaan ProductCodella
+7. kaikki ensimmäisen kohdan jäljet todistetaan poissa oleviksi
+8. fixture varmennetaan vielä kerran.
+
+Supervisor käynnistää vain yhden workerin ja omistaa sen jälkeläispuun sekä
+absoluuttisen deadlinen. Workerilla ei ole rinnakkaista watchdogia, retryä,
+PID-cleanupia tai emergency-timeoutia. Worker saa tehdä hallitun exact-product-
+cleanupin scenario-virheen jälkeen, mutta supervisor yksin omistaa prosessipuun
+pakotetun lopetuksen. Windows Installerin service-side-tila hyväksytään vain
+exact MSI-postconditionien perusteella.
+
+Supervisorin terminal-tulos luetaan ennen scenario-resultia. Deadline- tai
+prosessivirheessä puuttuva scenario-result ei saa peittää supervisorin tarkkaa
+`processResultCode`-, `workerResultCode`- tai `cleanupResultCode`-tulosta.
+Supervisorin jälkeen erillinen rajattu read-only-adapteri tarkistaa exact
+ProductCode -tilan. Jos exact tuote on yhä asennettu ja supervisorin omistettu
+prosessipuu on varmasti poissa, erillinen suoran prosessikahvan omistava
+semantic cleanup saa yrittää vain kyseisen ProductCoden poistoa ja tarkistaa
+tilan uudelleen. Se ei ole toinen prosessipuun supervisor. Alkuperäinen
+supervisor- tai scenario-virhe, ProductCode-verifierin tulos ja semantic
+cleanupin tulos säilytetään eri turvallisissa kentissä; cleanup-virhe ei muuta
+ensisijaista virhettä.
+
+Worker request ja scenario result ovat versionoituja exact-key-sopimuksia.
+Niiden virheellinen UTF-8, duplikaattiavain, tuntematon kenttä, väärä nonce tai
+artifact-hash torjutaan fail closed. Supervisor result validoidaan V2.1:n
+omalla strict schema- ja binding-sopimuksella. Safe JSONL-evidence käyttää
+`schemaVersion: 1` -rajaa ja sisältää vain skenaarion, operaation, allowlistatun
+vaiheen, tilan, keston, kokonaisajan ja result- tai error-koodin. Evidencen
+tulostusvirhe ei saa muuttaa scenario-, worker-, cleanup- tai supervisor-
+tulosta.
+
+Normaali `%APPDATA%\Eky` inventoidaan vain prosessimuistissa ennen ja jälkeen
+ajon suhteellisilla nimillä, tiedostokoolla ja SHA-256-tiivisteellä. Nimiä tai
+tiivisteitä ei tulosteta. Inventaario torjuu symlinkit, hardlinkit,
+erikoistiedostot ja luvun aikana muuttuvan tiedoston. Yksikin lisätty,
+poistettu tai muuttunut merkintä kaataa ajon. Onnistunut raportti saa näyttää
+vain tiedostomäärät ja `businessDataPreserved: true` -tuloksen.
+
+Paikallinen komento on:
+
+```text
+pnpm --filter @eky/desktop installer:v2-clean --fixture-manifest <manifest-path>
+```
+
+V2.2 ei vielä käytä GitHub artifact -actioneita eikä ole nykyisen release-
+portin auktoritatiivinen korvaaja. Checkpoint ei muuta tuotantokoodia,
+riippuvuuksia, lockfilea, versiota tai pilot-artifactia. V2.3:ssa eriytetään
+build-once descriptor ja CI:n immutable artifact -siirto ennen upgrade-
+skenaarioiden migraatiota.
+
 ## Migraatiojärjestys
 
 V2 toteutetaan pieninä, itsenäisesti vihreinä checkpointteina:
