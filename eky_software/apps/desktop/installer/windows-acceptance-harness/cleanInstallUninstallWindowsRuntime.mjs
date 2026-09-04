@@ -76,7 +76,7 @@ function runOwnedProcess(command, arguments_) {
   });
 }
 
-function validateInspectorResult(value) {
+export function validateInstallerProductStateResult(value) {
   const keys =
     typeof value === 'object' && value !== null && !Array.isArray(value)
       ? Object.keys(value).sort()
@@ -184,7 +184,7 @@ export async function createCleanInstallUninstallWindowsRuntime(
       ) {
         throw new Error('installerStateInspectionFailed');
       }
-      inspected = validateInspectorResult(
+      inspected = validateInstallerProductStateResult(
         parseStrictJsonObjectBytes(await readFile(resultPath), {
           errorCode: 'installerStateInspectionFailed',
         }),

@@ -16,6 +16,13 @@ import {
   inventoriesMatch,
 } from './closedDirectoryInventory.mjs';
 import {
+  cleanInstallUninstallFailureDetails,
+  resolveCleanInstallUninstallTerminalOutcome,
+} from './cleanInstallUninstallFailureBoundary.mjs';
+import {
+  createCleanInstallUninstallPostSupervisorWindowsRuntime,
+} from './cleanInstallUninstallPostSupervisorWindowsRuntime.mjs';
+import {
   readWindowsAcceptanceSupervisorResult,
 } from '../windows-process-supervisor/windowsAcceptanceSupervisorResult.mjs';
 import {
@@ -101,25 +108,6 @@ function safeErrorCode(error) {
     : 'WINDOWS_ACCEPTANCE_CLEAN_UNEXPECTED_FAILURE';
 }
 
-function scenarioErrorCode(result) {
-  const codes = Object.freeze({
-    cleanInstallFailed: 'WINDOWS_ACCEPTANCE_CLEAN_INSTALL_FAILED',
-    cleanInstalledStateInvalid:
-      'WINDOWS_ACCEPTANCE_CLEAN_INSTALLED_STATE_INVALID',
-    cleanLifecyclePreconditionFailed:
-      'WINDOWS_ACCEPTANCE_CLEAN_PRECONDITION_FAILED',
-    cleanUninstallFailed: 'WINDOWS_ACCEPTANCE_CLEAN_UNINSTALL_FAILED',
-    cleanUninstalledStateInvalid:
-      'WINDOWS_ACCEPTANCE_CLEAN_UNINSTALLED_STATE_INVALID',
-    fixtureVerificationFailed:
-      'WINDOWS_ACCEPTANCE_CLEAN_FIXTURE_VERIFICATION_FAILED',
-    installerStateInspectionFailed:
-      'WINDOWS_ACCEPTANCE_CLEAN_STATE_INSPECTION_FAILED',
-    unexpectedFailure: 'WINDOWS_ACCEPTANCE_CLEAN_UNEXPECTED_FAILURE',
-  });
-  return codes[result.errorCode] ?? 'WINDOWS_ACCEPTANCE_CLEAN_SCENARIO_FAILED';
-}
-
 export async function runCleanInstallUninstall(arguments_) {
   if (process.platform !== 'win32') {
     throw new Error('WINDOWS_ACCEPTANCE_CLEAN_WINDOWS_REQUIRED');
@@ -189,16 +177,20 @@ export async function runCleanInstallUninstall(arguments_) {
         supervisorExitCode,
       },
     );
-    const scenarioResult = await readCleanInstallUninstallResult(
-      cleanResultPathForRequest(workerRequestPath),
-      workerRequest,
-    );
-    if (
-      supervisorResult.status !== 'completed' ||
-      scenarioResult.status !== 'completed'
-    ) {
-      throw new Error(scenarioErrorCode(scenarioResult));
-    }
+    const postSupervisorRuntime =
+      createCleanInstallUninstallPostSupervisorWindowsRuntime({
+        manifest: fixture.manifest,
+        scenarioRoot,
+      });
+    await resolveCleanInstallUninstallTerminalOutcome({
+      ...postSupervisorRuntime,
+      supervisorResult,
+      readScenarioResult: () =>
+        readCleanInstallUninstallResult(
+          cleanResultPathForRequest(workerRequestPath),
+          workerRequest,
+        ),
+    });
   } catch (error) {
     primaryError = error;
   } finally {
@@ -249,6 +241,9 @@ export async function runCleanInstallUninstall(arguments_) {
     throw new Error(safeErrorCode(safetyError));
   }
   if (primaryError) {
+    if (cleanInstallUninstallFailureDetails(primaryError) !== null) {
+      throw primaryError;
+    }
     throw new Error(safeErrorCode(primaryError));
   }
   return Object.freeze({
@@ -275,13 +270,16 @@ async function main() {
     const summary = await runCleanInstallUninstall(process.argv.slice(2));
     console.log(JSON.stringify(summary));
   } catch (error) {
+    const failureDetails = cleanInstallUninstallFailureDetails(error);
     console.error(
-      JSON.stringify({
-        schemaVersion: 1,
-        scenario: CLEAN_INSTALL_UNINSTALL_SCENARIO,
-        status: 'failed',
-        errorCode: safeErrorCode(error),
-      }),
+      JSON.stringify(
+        failureDetails ?? {
+          schemaVersion: 1,
+          scenario: CLEAN_INSTALL_UNINSTALL_SCENARIO,
+          status: 'failed',
+          errorCode: safeErrorCode(error),
+        },
+      ),
     );
     process.exitCode = 1;
   }

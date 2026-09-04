@@ -701,6 +701,18 @@ cleanupin scenario-virheen jälkeen, mutta supervisor yksin omistaa prosessipuun
 pakotetun lopetuksen. Windows Installerin service-side-tila hyväksytään vain
 exact MSI-postconditionien perusteella.
 
+Supervisorin terminal-tulos luetaan ennen scenario-resultia. Deadline- tai
+prosessivirheessä puuttuva scenario-result ei saa peittää supervisorin tarkkaa
+`processResultCode`-, `workerResultCode`- tai `cleanupResultCode`-tulosta.
+Supervisorin jälkeen erillinen rajattu read-only-adapteri tarkistaa exact
+ProductCode -tilan. Jos exact tuote on yhä asennettu ja supervisorin omistettu
+prosessipuu on varmasti poissa, erillinen suoran prosessikahvan omistava
+semantic cleanup saa yrittää vain kyseisen ProductCoden poistoa ja tarkistaa
+tilan uudelleen. Se ei ole toinen prosessipuun supervisor. Alkuperäinen
+supervisor- tai scenario-virhe, ProductCode-verifierin tulos ja semantic
+cleanupin tulos säilytetään eri turvallisissa kentissä; cleanup-virhe ei muuta
+ensisijaista virhettä.
+
 Worker request ja scenario result ovat versionoituja exact-key-sopimuksia.
 Niiden virheellinen UTF-8, duplikaattiavain, tuntematon kenttä, väärä nonce tai
 artifact-hash torjutaan fail closed. Supervisor result validoidaan V2.1:n
