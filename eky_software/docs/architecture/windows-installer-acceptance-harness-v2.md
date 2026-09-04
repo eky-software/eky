@@ -979,6 +979,69 @@ Historical Electronin kahden vaiheen packaged-smoke on rajattu OS-adapteri
 saman Job Objectin sisällä; supervisor yksin omistaa absoluuttisen deadlinen ja
 pakotetun prosessipuun cleanupin.
 
+V2.5B:n worker käyttää vain validoitua artifact-descriptoria ja ajokohtaista
+synteettistä profiilia. Sen lifecycle on suljettu seuraavaan järjestykseen:
+
+1. source- ja target-ProductCodejen sekä yhteisen installer-footprintin puhdas
+   preflight
+2. historiallisen source-MSI:n asennus ja exact source-product-postcondition
+3. historiallisen `--desktop-smoke`-polun initial- ja restored-sukupolvi saman
+   Job Objectin sisällä
+4. source-profiilin accepted-build-, SQLite-, business- ja PDF-evidence
+5. target-MSI:n major upgrade ja exact target-product- sekä payload-evidence
+6. targetin ensimmäinen normaali käynnistys, legacy-adoptio ja hallittu
+   sovellusikkunan sulkeminen
+7. targetin toinen normaali käynnistys samalla profiililla ja hallittu
+   sovellusikkunan sulkeminen
+8. artifact-tavujen uudelleentarkistus.
+
+Historical smoke käynnistetään initial-sukupolvena täsmälleen kerran. Kun
+historiallinen runtime päättyy `restoreRestart`-vaiheeseen, worker käynnistää
+täsmälleen yhden restored-sukupolven historiallisen smoke-sopimuksen mukaisesti
+ja vaatii siltä terminal `shutdown/ok` -evidencen. Tavoiteversion readiness ja
+shutdown tunnistetaan versionoidusta operational JSONL -evidencestä;
+kiinteää odotusaikaa, pollingia tai retryä ei käytetä. Yksi rajattu
+PowerShell-adapteri saa pyytää workerin suoraan käynnistämää Electron-prosessia
+sulkemaan pääikkunansa kerran. Adapteri ei etsi, odota eikä tapa prosesseja,
+eikä siitä muodostu uutta prosessiomistajaa.
+
+Worker-result säilyttää vain strict turvallisen lopputuloksen. Yksityiseen
+scenario-juureen kirjoitettu evidence sitoo source- ja target-identiteetit,
+business-inventaarion, hyväksytyn lasku-PDF:n, workspace-adoption,
+runtime-sessionit ja toisen käynnistyksen idempotenssin. Näitä yksilöiviä
+arvoja ei tulosteta konsoliin tai CI-lokiin.
+
+Supervisorin todistettua `processTreeAbsent`-tilan erillinen postcondition-
+verifier tarkistaa ennen semanttista cleanupia:
+
+- source-profiilin legacy-data ja storage säilyivät muuttumattomina
+- targetissa on yksi ready-workspace ja kertaluonteinen adoptio ilman
+  journal- tai operation-jäämiä
+- ensimmäinen ja toinen käynnistys käyttävät samaa workspacea ja samaa
+  business-inventaarioa mutta eri runtime-sessionia
+- asennetun target-payloadin inventory vastaa immutable descriptorin
+  inventorya
+- source- ja target-artifactien tavut ovat edelleen muuttumattomat.
+
+Scenario-result, supervisor-result, semanttinen proof, exact ProductCode
+-cleanup ja lopullinen postcondition pysyvät eri tuloksina. Ensisijainen virhe
+ei peity cleanup-virheeseen. Semanttinen cleanup käyttää jo olemassa olevaa
+V2.4:n ProductCode-kohtaista, rajattua post-supervisor-adapteria eikä lisää
+toista deadline-, cleanup-, PID-, CIM-, retry-, wrapper- tai process-tree-
+omistajaa. Normaali `%APPDATA%\Eky` inventoidaan vain read-only ennen ja jälkeen
+ajon, eikä yksittäisiä polkuja tai tiivisteitä tulosteta.
+
+V2.5B:n paikallinen consumer-komento on:
+
+```text
+pnpm --filter @eky/desktop installer:v2-legacy --artifact-descriptor <absolute-artifact-root>/legacy-upgrade-artifact.json
+```
+
+V2.5 ei vielä poista, muuta tai kutsu vanhaa W6B legacy acceptance -harnessia.
+Cutover tehdään vasta, kun kaikki vanhan portin invariantit on nimetty,
+V2-vastineet ovat terminal ja paikalliset sekä GitHubin build-once-consumerit
+ovat hyväksytysti vihreät.
+
 ## Migraatiojärjestys
 
 V2 toteutetaan pieninä, itsenäisesti vihreinä checkpointteina:
@@ -1042,9 +1105,12 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 Katselmus ja V2-suunnitelma ovat valmiit. V2.1-feasibility ja V2.2 clean
 install / uninstall on toteutettu pinottuina draft-checkpointteina. V2.3
 erottaa build-once artifact producer/consumer -rajan ennen upgrade-polun
-migraatiota. PR #257 ja PR #258 sekä nykyiset W6B-, W6B.2A- ja W6B.2B-
-toteutukset säilytetään muuttumattomina. V2-checkpointit eivät vielä vaihda
-nykyisen acceptance-harnessin auktoritatiivista ajopolkua.
+migraatiota. V2.4 upgrade/rollback on jäädytetty draft-PR:ään #262. V2.5A:n
+historical legacy build-once artifact -raja on toteutettu, ja V2.5B:n yhden
+supervisorin lifecycle sekä erillinen postcondition-raja ovat paikallisessa
+checkpoint-toteutuksessa. PR #257 ja PR #258 sekä nykyiset W6B-, W6B.2A- ja
+W6B.2B-toteutukset säilytetään muuttumattomina. V2-checkpointit eivät vielä
+vaihda nykyisen acceptance-harnessin auktoritatiivista ajopolkua.
 
 ## Ulkoiset tekniset lähteet
 
