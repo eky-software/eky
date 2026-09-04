@@ -142,6 +142,7 @@ async function recoverAndThrow({
   errorCode,
   initialInspection,
   scenarioResultCode,
+  semanticCleanupAllowed = true,
   supervisorResult,
   verifyExactProductStates,
 }) {
@@ -155,7 +156,9 @@ async function recoverAndThrow({
     initial.status === 'completed' &&
     initial.resultCode !== 'exactProductsAbsent'
   ) {
-    if (!supervisorResult.processTreeAbsent) {
+    if (!semanticCleanupAllowed) {
+      semanticCleanupResultCode = 'blockedByPrecondition';
+    } else if (!supervisorResult.processTreeAbsent) {
       semanticCleanupResultCode = 'blockedByOwnedProcessTree';
       postconditionResultCode = 'notChecked';
     } else {
@@ -202,6 +205,8 @@ export async function resolveUpgradeRollbackTerminalOutcome({
         cleanupExactProducts,
         errorCode: scenarioErrorCode(scenarioResult),
         scenarioResultCode: scenarioResult.resultCode,
+        semanticCleanupAllowed:
+          scenarioResult.errorCode !== 'upgradeLifecyclePreconditionFailed',
         supervisorResult,
         verifyExactProductStates,
       });
@@ -225,6 +230,7 @@ export async function resolveUpgradeRollbackTerminalOutcome({
 
   let errorCode = supervisorErrorCode(supervisorResult);
   let scenarioResultCode = 'notAvailable';
+  let semanticCleanupAllowed = true;
   if (
     supervisorResult.processResultCode === 'processCompleted' &&
     supervisorResult.workerResultCode === 'workerReportedFailure'
@@ -234,6 +240,8 @@ export async function resolveUpgradeRollbackTerminalOutcome({
       if (scenarioResult.status === 'failed') {
         errorCode = scenarioErrorCode(scenarioResult);
         scenarioResultCode = scenarioResult.resultCode;
+        semanticCleanupAllowed =
+          scenarioResult.errorCode !== 'upgradeLifecyclePreconditionFailed';
       }
     } catch {
       scenarioResultCode = 'missingOrInvalid';
@@ -243,6 +251,7 @@ export async function resolveUpgradeRollbackTerminalOutcome({
     cleanupExactProducts,
     errorCode,
     scenarioResultCode,
+    semanticCleanupAllowed,
     supervisorResult,
     verifyExactProductStates,
   });

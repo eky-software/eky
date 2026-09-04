@@ -110,6 +110,17 @@ function safeErrorCode(error) {
     : 'WINDOWS_ACCEPTANCE_UPGRADE_UNEXPECTED_FAILURE';
 }
 
+export function requireUpgradeRollbackProductPrecondition(result) {
+  if (
+    result?.status !== 'completed' ||
+    result.resultCode !== 'exactProductsAbsent' ||
+    result.sourcePresent !== false ||
+    result.targetPresent !== false
+  ) {
+    throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_PRECONDITION_FAILED');
+  }
+}
+
 export async function runUpgradeRollback(arguments_) {
   if (process.platform !== 'win32') {
     throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_WINDOWS_REQUIRED');
@@ -151,6 +162,13 @@ export async function runUpgradeRollback(arguments_) {
     );
     const scenarioRoot = resolve(runRoot, 'scenario');
     await mkdir(scenarioRoot, { recursive: false });
+    const productRuntime = createUpgradeRollbackPostSupervisorWindowsRuntime({
+      artifact,
+      scenarioRoot,
+    });
+    requireUpgradeRollbackProductPrecondition(
+      await productRuntime.verifyExactProductStates(),
+    );
     const workerRequestPath = resolve(scenarioRoot, 'worker-request.json');
     const supervisorRequestPath = resolve(scenarioRoot, 'request.json');
     const workerRequest = createUpgradeRollbackWorkerRequest({
@@ -183,10 +201,7 @@ export async function runUpgradeRollback(arguments_) {
       },
     );
     await resolveUpgradeRollbackTerminalOutcome({
-      ...createUpgradeRollbackPostSupervisorWindowsRuntime({
-        artifact,
-        scenarioRoot,
-      }),
+      ...productRuntime,
       supervisorResult,
       readScenarioResult: () =>
         readUpgradeRollbackResult(

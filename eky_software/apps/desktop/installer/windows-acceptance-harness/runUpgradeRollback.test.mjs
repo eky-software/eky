@@ -4,7 +4,10 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
-import { parseUpgradeRollbackArguments } from './runUpgradeRollback.mjs';
+import {
+  parseUpgradeRollbackArguments,
+  requireUpgradeRollbackProductPrecondition,
+} from './runUpgradeRollback.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 
@@ -46,4 +49,33 @@ test('upgrade worker has no build, nested supervisor, W6, or emergency cleanup o
   assert.doesNotMatch(worker, /WindowsProcessSupervisor|taskkill|Get-CimInstance/iu);
   assert.doesNotMatch(runtime, /WindowsProcessSupervisor|taskkill|Get-CimInstance/iu);
   assert.match(runtime, /rollbackWindowsInstaller\.ps1/u);
+});
+
+test('outer product preflight accepts only exact source and target absence', () => {
+  assert.doesNotThrow(() =>
+    requireUpgradeRollbackProductPrecondition({
+      status: 'completed',
+      resultCode: 'exactProductsAbsent',
+      sourcePresent: false,
+      targetPresent: false,
+    }),
+  );
+  assert.throws(
+    () =>
+      requireUpgradeRollbackProductPrecondition({
+        status: 'completed',
+        resultCode: 'sourceProductPresent',
+        sourcePresent: true,
+        targetPresent: false,
+      }),
+    /WINDOWS_ACCEPTANCE_UPGRADE_PRECONDITION_FAILED/,
+  );
+  assert.throws(
+    () =>
+      requireUpgradeRollbackProductPrecondition({
+        status: 'failed',
+        errorCode: 'productStateVerificationFailed',
+      }),
+    /WINDOWS_ACCEPTANCE_UPGRADE_PRECONDITION_FAILED/,
+  );
 });

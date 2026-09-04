@@ -158,6 +158,40 @@ test('owned process tree blocks semantic cleanup without masking failure', async
   assert.equal(cleanupCount, 0);
 });
 
+test('precondition failure never cleans a pre-existing exact product', async () => {
+  let cleanupCount = 0;
+  await assert.rejects(
+    resolveUpgradeRollbackTerminalOutcome({
+      supervisorResult: supervisor({
+        status: 'failed',
+        workerResultCode: 'workerReportedFailure',
+      }),
+      readScenarioResult: async () =>
+        scenario({
+          status: 'failed',
+          resultCode: 'upgradeRollbackFailed',
+          errorCode: 'upgradeLifecyclePreconditionFailed',
+        }),
+      verifyExactProductStates: async () => products('sourceProductPresent'),
+      cleanupExactProducts: async () => {
+        cleanupCount += 1;
+      },
+    }),
+    (error) => {
+      const details = upgradeRollbackFailureDetails(error);
+      assert.equal(
+        details.errorCode,
+        'WINDOWS_ACCEPTANCE_UPGRADE_PRECONDITION_FAILED',
+      );
+      assert.equal(details.initialProductStateResultCode, 'sourceProductPresent');
+      assert.equal(details.semanticCleanupResultCode, 'blockedByPrecondition');
+      assert.equal(details.postconditionResultCode, 'sourceProductPresent');
+      return true;
+    },
+  );
+  assert.equal(cleanupCount, 0);
+});
+
 test('successful worker with a remaining product fails the independent postcondition', async () => {
   const inspections = [products('sourceProductPresent'), products()];
   await assert.rejects(

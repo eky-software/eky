@@ -878,6 +878,12 @@ käynnistää vain, kun supervisor on todistanut omistetun prosessipuun poissaol
 se käyttää rajattua suoran prosessikahvan adapteria eikä muodosta uutta
 prosessipuun supervisoria.
 
+Sama verifier tekee ennen supervisorin käynnistämistä read-only-preflightin,
+joka vaatii molempien exact ProductCodejen poissaolon. Precondition-virhe ei
+koskaan käynnistä semanttista cleanupia, koska jo olemassa oleva asennus ei ole
+testin omistama. Supervisorin jälkeinen exact-product-cleanup on sallittu vain
+puhtaan ulomman preflightin jälkeen syntyneen muun terminal-virheen yhteydessä.
+
 Normaali `%APPDATA%\Eky` käsitellään samalla read-only-inventaariorajalla kuin
 V2.2:ssa. Onnistuminen edellyttää muuttumatonta tiedostomäärä-, koko- ja
 SHA-256-inventaarioa, mutta yksittäisiä nimiä tai tiivisteitä ei tulosteta.
