@@ -922,6 +922,63 @@ tarkistavat saman ulkoisesti välitetyn descriptor-hashin sekä kaikki kolme
 MSI-hashia ennen ja jälkeen lifecyclen. Artifact säilytetään yhden vuorokauden
 ajan, eikä se ole release, pilot-bundle tai käyttäjälle jaettava paketti.
 
+## V2.5 historical legacy -checkpoint
+
+V2.5 siirtää historiallisen `0.2.6 -> 0.2.7` -yhteensopivuustodisteen saman
+V2.1-supervisorin ja build-once-rajan päälle. Checkpoint toteutetaan kahdessa
+itsenäisesti vihreässä osassa. V2.5A rakentaa ja varmistaa immutable artifactin;
+V2.5B lisää yhden workerin elinkaaren, erillisen postcondition-verifierin ja
+CI-consumerit. V2.5A ei vielä korvaa vanhaa W6B legacy acceptance -porttia.
+
+V2.5A:n portable producer rakentaa historical-source-rebuild-luokan lähteen
+täsmälleen commitista `6ed99f5319c328f4d3cfbc03b912f21dbc4d1032` ja
+nykyisestä puhtaasta HEADista targetin versiona `0.2.7`. Lähteen provenance
+säilyttää hyväksytyn source commit-, tree- ja source archive manifest
+-identiteetin. Descriptor tarkistaa source-artifactin luokituksen suoraan
+MSI-hashista; producerin ilmoittamaan luokitusbooleaniin ei luoteta.
+
+Siirrettävän artifactin juuressa sallitaan vain:
+
+```text
+legacy-upgrade-artifact.json
+source/
+  installer.manifest.json
+  Eky-0.2.6-x64.msi
+  historical-fixture-provenance.json
+target/
+  installer.manifest.json
+  Eky-0.2.7-x64.msi
+```
+
+Descriptor sitoo targetin täyteen Git-revisioon, yhteiseen UpgradeCodeen,
+molempien roolien ProductCodeen, manifesti- ja MSI-hasheihin sekä lähteen
+provenance-hashiin. Targetin packaged payloadista lasketaan lisäksi suljettu
+`packagedApp`-inventory-identiteetti, tiedostomäärä ja tavumäärä. Inventory
+lasketaan ennen MSI-buildia ja sen jälkeen, jotta build ei saa muuttaa
+payloadia. Koko unpacked payloadia ei kopioida artifactiin; V2.5B:n verifier
+laskee saman identiteetin asennetusta payloadista.
+
+Kaikki artifactin tiedostot ovat tavallisia itsenäisiä tiedostoja. Descriptor,
+manifesti, MSI tai provenance ei saa olla symlinkki tai hardlinkki.
+Tuntematon tiedosto, tuntematon avain, väärä hash, virheellinen provenance,
+epäjatkuva versio tai muuttunut canonical `package.json` /
+`installer-release.json` torjutaan fail closed. Artifact ei sisällä profiilia,
+business-dataa, backupia, lokia, salaisuutta tai paikallista release-arkistoa.
+
+V2.5A:n paikallinen build-once-järjestys on:
+
+```text
+pnpm --filter @eky/desktop installer:v2-legacy-artifact:build --artifact-root <absolute-new-artifact-root> --summary-path <absolute-summary-path-outside-artifact-root>
+pnpm --filter @eky/desktop installer:v2-legacy-artifact:verify --artifact-root <absolute-artifact-root> --expected-descriptor-sha256 <producer-descriptor-sha256> --expected-build-revision <producer-git-revision>
+```
+
+V2.5B saa käyttää tätä artifactia vain validoidun descriptorin kautta. Se ei
+saa rakentaa tai ladata paketteja workerissa, kutsua vanhaa W6B-orkestrointia
+eikä lisätä uutta timeout-, cleanup-, PID-, CIM-, retry- tai wrapper-omistajaa.
+Historical Electronin kahden vaiheen packaged-smoke on rajattu OS-adapteri
+saman Job Objectin sisällä; supervisor yksin omistaa absoluuttisen deadlinen ja
+pakotetun prosessipuun cleanupin.
+
 ## Migraatiojärjestys
 
 V2 toteutetaan pieninä, itsenäisesti vihreinä checkpointteina:
