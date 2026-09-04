@@ -5,6 +5,7 @@ import {
   lstat,
   mkdir,
   realpath,
+  rm,
 } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 
@@ -44,9 +45,9 @@ function sameFileIdentity(left, right) {
   return left.dev === right.dev && left.ino === right.ino;
 }
 
-export async function materializeLocalImmutableFixture(
+export async function materializeImmutableInstallerFixture(
   manifestInputPath,
-  runRoot,
+  fixtureRootInput,
 ) {
   const requestedManifestPath = resolve(manifestInputPath);
   await requireStandaloneRegularFile(
@@ -78,60 +79,87 @@ export async function materializeLocalImmutableFixture(
   });
   const sourceManifestIdentity = await hashFile(sourceManifestPath);
 
-  const fixtureRoot = resolve(runRoot, 'fixture');
-  await mkdir(fixtureRoot, { recursive: false });
-  const fixtureManifestPath = resolve(fixtureRoot, 'installer.manifest.json');
-  const fixtureInstallerPath = resolve(fixtureRoot, manifest.packageFilename);
-  await copyFile(
-    sourceManifestPath,
-    fixtureManifestPath,
-    constants.COPYFILE_EXCL,
-  );
-  await copyFile(
-    sourceInstallerPath,
-    fixtureInstallerPath,
-    constants.COPYFILE_EXCL,
-  );
+  const fixtureRoot = resolve(fixtureRootInput);
+  let fixtureRootCreated = false;
+  try {
+    await mkdir(fixtureRoot, { recursive: false });
+    fixtureRootCreated = true;
+    const fixtureManifestPath = resolve(
+      fixtureRoot,
+      'installer.manifest.json',
+    );
+    const fixtureInstallerPath = resolve(
+      fixtureRoot,
+      manifest.packageFilename,
+    );
+    await copyFile(
+      sourceManifestPath,
+      fixtureManifestPath,
+      constants.COPYFILE_EXCL,
+    );
+    await copyFile(
+      sourceInstallerPath,
+      fixtureInstallerPath,
+      constants.COPYFILE_EXCL,
+    );
 
-  const fixtureManifestMetadata = await requireStandaloneRegularFile(
-    fixtureManifestPath,
-    'WINDOWS_ACCEPTANCE_LOCAL_FIXTURE_COPY_INVALID',
-  );
-  const fixtureInstallerMetadata = await requireStandaloneRegularFile(
-    fixtureInstallerPath,
-    'WINDOWS_ACCEPTANCE_LOCAL_FIXTURE_COPY_INVALID',
-  );
-  if (
-    sameFileIdentity(sourceManifestMetadata, fixtureManifestMetadata) ||
-    sameFileIdentity(sourceInstallerMetadata, fixtureInstallerMetadata)
-  ) {
-    throw new Error('WINDOWS_ACCEPTANCE_LOCAL_FIXTURE_COPY_INVALID');
-  }
-  const copiedManifest = await readInstallerManifest(fixtureManifestPath);
-  if (JSON.stringify(copiedManifest) !== JSON.stringify(manifest)) {
-    throw new Error('WINDOWS_ACCEPTANCE_LOCAL_FIXTURE_COPY_INVALID');
-  }
-  await verifyInstallerManifestPackage({
-    installerPath: fixtureInstallerPath,
-    manifest: copiedManifest,
-  });
-  const descriptorIdentity = await hashFile(fixtureManifestPath);
-  if (
-    descriptorIdentity.sha256 !== sourceManifestIdentity.sha256 ||
-    descriptorIdentity.size !== sourceManifestIdentity.size
-  ) {
-    throw new Error('WINDOWS_ACCEPTANCE_LOCAL_FIXTURE_COPY_INVALID');
-  }
+    const fixtureManifestMetadata = await requireStandaloneRegularFile(
+      fixtureManifestPath,
+      'WINDOWS_ACCEPTANCE_LOCAL_FIXTURE_COPY_INVALID',
+    );
+    const fixtureInstallerMetadata = await requireStandaloneRegularFile(
+      fixtureInstallerPath,
+      'WINDOWS_ACCEPTANCE_LOCAL_FIXTURE_COPY_INVALID',
+    );
+    if (
+      sameFileIdentity(sourceManifestMetadata, fixtureManifestMetadata) ||
+      sameFileIdentity(sourceInstallerMetadata, fixtureInstallerMetadata)
+    ) {
+      throw new Error('WINDOWS_ACCEPTANCE_LOCAL_FIXTURE_COPY_INVALID');
+    }
+    const copiedManifest = await readInstallerManifest(fixtureManifestPath);
+    if (JSON.stringify(copiedManifest) !== JSON.stringify(manifest)) {
+      throw new Error('WINDOWS_ACCEPTANCE_LOCAL_FIXTURE_COPY_INVALID');
+    }
+    await verifyInstallerManifestPackage({
+      installerPath: fixtureInstallerPath,
+      manifest: copiedManifest,
+    });
+    const descriptorIdentity = await hashFile(fixtureManifestPath);
+    if (
+      descriptorIdentity.sha256 !== sourceManifestIdentity.sha256 ||
+      descriptorIdentity.size !== sourceManifestIdentity.size
+    ) {
+      throw new Error('WINDOWS_ACCEPTANCE_LOCAL_FIXTURE_COPY_INVALID');
+    }
 
-  return Object.freeze({
-    artifactDescriptorSha256: descriptorIdentity.sha256,
-    fixtureRoot,
-    manifest,
-    packageSha256: manifest.packageSha256,
-    sourceInstallerPath,
-    sourceManifestIdentity,
-    sourceManifestPath,
-  });
+    return Object.freeze({
+      artifactDescriptorSha256: descriptorIdentity.sha256,
+      fixtureRoot,
+      manifest,
+      packageSha256: manifest.packageSha256,
+      sourceInstallerPath,
+      sourceManifestIdentity,
+      sourceManifestPath,
+    });
+  } catch (error) {
+    if (fixtureRootCreated) {
+      await rm(fixtureRoot, { force: true, recursive: true }).catch(
+        () => undefined,
+      );
+    }
+    throw error;
+  }
+}
+
+export async function materializeLocalImmutableFixture(
+  manifestInputPath,
+  runRoot,
+) {
+  return materializeImmutableInstallerFixture(
+    manifestInputPath,
+    resolve(runRoot, 'fixture'),
+  );
 }
 
 export async function verifyLocalImmutableSourceFixture(fixture) {
