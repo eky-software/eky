@@ -1190,6 +1190,11 @@ result-sarja läpäisi **41/41**, mukaan lukien myöhäisen luonnin
 komentotason result/exit-raja, nested Job ja rinnakkaisten puiden eristys.
 Supervisorin toteutus ei muuttunut. `git diff --check` läpäisi.
 
+Revision `32715c6d520bb70db77a12c6a086398df72afa1f` normaali sarja päättyi
+tulokseen **138/139**. Release-buildit: 0 warnings / 0 errors. Virhe oli
+`visible`, `deadlineExceeded / notChecked / cleanupUnverified`,
+`processTreeAbsent=false`. Artifact- ja CI-vaiheita ei käynnistetty.
+
 #### Katselmointipisteen jälkeinen rajattu korjaus
 
 - `legacyUpgradeFailureBoundary` luokittelee myös onnistuneen supervisorin
@@ -1593,10 +1598,10 @@ supervisorin lifecycle sekä erillinen postcondition-raja ovat paikallisessa
 checkpoint-toteutuksessa. `abc26ee` on jaettu katselmusrevisio, ei hyväksytty
 V2.5. Virhepolkujen, komentotason kattavuuden ja sen jälkeisen testituen
 siivouskorjauksen näyttö on kuvattu avoimen checkpointin kohdalla.
-Siivouscheckpointin sarja on 15/15. GUI-fixturen sopimusmuutos on
-hyväksytty ja toteutettu: identiteettikohdesarja 9/9 ja GUI-sarja 6/6.
-Shared-fixture-valinta on poistettu. 102/103 säilyy epäonnistuneena;
-artifact/consumer-hyväksyntä puuttuu.
+GUI-fixturen sopimusmuutos ja epäonnistuneen ajon aineiston säilytys ovat
+toteutettuja. Revision `32715c6` koko sarja jäi 138/139:ään. Lopulliset
+artifact/consumer-portit ovat avoinna. Shared-fixture-valinta on poistettu
+normaaleista testeistä; diagnostiikka ei ole acceptance.
 V2.6 ei ole alkanut. PR #257 ja PR #258 sekä nykyiset W6B-, W6B.2A- ja
 W6B.2B-toteutukset säilytetään muuttumattomina. V2-checkpointit eivät vielä
 vaihda nykyisen acceptance-harnessin auktoritatiivista ajopolkua.
