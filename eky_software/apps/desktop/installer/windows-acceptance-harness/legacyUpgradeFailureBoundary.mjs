@@ -159,6 +159,17 @@ async function recoverAndThrow({
   supervisorResult,
   verifyExactProductStates,
 }) {
+  if (!supervisorResult.processTreeAbsent) {
+    throw new LegacyUpgradeCommandFailure(details({
+      errorCode,
+      initialProductStateResultCode: 'notChecked',
+      postconditionResultCode: 'notChecked',
+      scenarioResultCode,
+      semanticCleanupResultCode: 'blockedByOwnedProcessTree',
+      semanticProofResultCode,
+      supervisorResult,
+    }));
+  }
   const initial =
     initialInspection ?? (await inspectProducts(verifyExactProductStates));
   const initialProductStateResultCode =
@@ -171,9 +182,6 @@ async function recoverAndThrow({
   ) {
     if (!semanticCleanupAllowed) {
       semanticCleanupResultCode = 'blockedByPrecondition';
-    } else if (!supervisorResult.processTreeAbsent) {
-      semanticCleanupResultCode = 'blockedByOwnedProcessTree';
-      postconditionResultCode = 'notChecked';
     } else {
       const cleanup = await cleanupProducts(cleanupExactProducts);
       semanticCleanupResultCode =
@@ -207,13 +215,32 @@ async function recoverAndThrow({
 
 export async function resolveLegacyUpgradeTerminalOutcome({
   cleanupExactProducts,
+  productPrecondition,
   readScenarioResult,
   supervisorResult,
   verifyExactProductStates,
   verifySemanticPostcondition,
 }) {
+  const preconditionValidated =
+    productPrecondition?.status === 'completed' &&
+    productPrecondition.resultCode === 'exactProductsAbsent' &&
+    productPrecondition.sourcePresent === false &&
+    productPrecondition.targetPresent === false &&
+    productPrecondition.installerRegistryPresent === false;
   if (supervisorResult.status === 'completed') {
-    const scenarioResult = await readScenarioResult();
+    let scenarioResult;
+    try {
+      scenarioResult = await readScenarioResult();
+    } catch {
+      await recoverAndThrow({
+        cleanupExactProducts,
+        errorCode: 'WINDOWS_ACCEPTANCE_LEGACY_SCENARIO_RESULT_INVALID',
+        scenarioResultCode: 'missingOrInvalid',
+        semanticCleanupAllowed: preconditionValidated,
+        supervisorResult,
+        verifyExactProductStates,
+      });
+    }
     if (scenarioResult.status !== 'completed') {
       await recoverAndThrow({
         cleanupExactProducts,
@@ -290,7 +317,7 @@ export async function resolveLegacyUpgradeTerminalOutcome({
 
   let errorCode = supervisorErrorCode(supervisorResult);
   let scenarioResultCode = 'notAvailable';
-  let semanticCleanupAllowed = true;
+  let semanticCleanupAllowed = preconditionValidated;
   if (
     (supervisorResult.processResultCode === 'processCompleted' &&
       supervisorResult.workerResultCode === 'workerReportedFailure') ||

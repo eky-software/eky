@@ -12,6 +12,7 @@ import {
   writeJsonAtomicExclusive,
 } from './legacyUpgradeContracts.mjs';
 import {
+  LegacyUpgradeCommandFailure,
   legacyUpgradeFailureDetails,
   resolveLegacyUpgradeTerminalOutcome,
 } from './legacyUpgradeFailureBoundary.mjs';
@@ -147,7 +148,17 @@ function asProductRuntimeArtifact(artifact) {
   });
 }
 
-export async function runLegacyUpgrade(arguments_) {
+export async function runLegacyUpgrade(arguments_, {
+  materializeFixture = materializeLegacyUpgradeArtifactFixture,
+  inventoryProfile = createClosedDirectoryInventory,
+  createProductRuntime = createUpgradeRollbackPostSupervisorWindowsRuntime,
+  launchSupervisor = startSupervisor,
+  readSupervisorResult = readWindowsAcceptanceSupervisorResult,
+  readScenarioResult = readLegacyUpgradeResult,
+  verifySemanticPostcondition = verifyLegacyUpgradeSemanticPostcondition,
+  verifyArtifact = verifyLegacyUpgradeArtifactSourceFixture,
+  removeRunRoot = (root) => rm(root, { force: true, recursive: true }),
+} = {}) {
   if (process.platform !== 'win32') {
     throw new Error('WINDOWS_ACCEPTANCE_LEGACY_WINDOWS_REQUIRED');
   }
@@ -174,6 +185,9 @@ export async function runLegacyUpgrade(arguments_) {
   let safetyError = null;
   let supervisorResult = null;
   let terminal = null;
+  let supervisorAttempted = false;
+  let fixtureRemoved = false;
+  let fixtureCleanupResultCode = 'retainedUnverified';
   const stopActiveSupervisor = () => {
     if (
       activeSupervisor?.child.exitCode === null &&
@@ -185,20 +199,19 @@ export async function runLegacyUpgrade(arguments_) {
   process.once('SIGINT', stopActiveSupervisor);
   process.once('SIGTERM', stopActiveSupervisor);
   try {
-    profileBefore = await createClosedDirectoryInventory(profileRoot);
-    artifact = await materializeLegacyUpgradeArtifactFixture(
+    profileBefore = await inventoryProfile(profileRoot);
+    artifact = await materializeFixture(
       descriptorPath,
       resolve(runRoot, 'fixture'),
     );
     const scenarioRoot = resolve(runRoot, 'scenario');
     await mkdir(scenarioRoot, { recursive: false });
-    const productRuntime = createUpgradeRollbackPostSupervisorWindowsRuntime({
+    const productRuntime = createProductRuntime({
       artifact: asProductRuntimeArtifact(artifact),
       scenarioRoot,
     });
-    requireLegacyUpgradeProductPrecondition(
-      await productRuntime.verifyExactProductStates(),
-    );
+    const productPrecondition = await productRuntime.verifyExactProductStates();
+    requireLegacyUpgradeProductPrecondition(productPrecondition);
     const workerRequestPath = resolve(scenarioRoot, 'worker-request.json');
     const supervisorRequestPath = resolve(scenarioRoot, 'request.json');
     const workerRequest = createLegacyUpgradeWorkerRequest({
@@ -218,10 +231,11 @@ export async function runLegacyUpgrade(arguments_) {
       cleanupReserveMilliseconds: SUPERVISOR_CLEANUP_RESERVE_MILLISECONDS,
     });
 
-    activeSupervisor = startSupervisor(supervisorRequestPath, scenarioRoot);
+    supervisorAttempted = true;
+    activeSupervisor = launchSupervisor(supervisorRequestPath, scenarioRoot);
     const supervisorExitCode = await activeSupervisor.completion;
     activeSupervisor = null;
-    supervisorResult = await readWindowsAcceptanceSupervisorResult(
+    supervisorResult = await readSupervisorResult(
       resolve(scenarioRoot, 'result.json'),
       {
         artifactDescriptorSha256: artifact.descriptorSha256,
@@ -232,14 +246,15 @@ export async function runLegacyUpgrade(arguments_) {
     );
     terminal = await resolveLegacyUpgradeTerminalOutcome({
       ...productRuntime,
+      productPrecondition,
       supervisorResult,
       readScenarioResult: () =>
-        readLegacyUpgradeResult(
+        readScenarioResult(
           legacyUpgradeResultPathForRequest(workerRequestPath),
           workerRequest,
         ),
       verifySemanticPostcondition: () =>
-        verifyLegacyUpgradeSemanticPostcondition({
+        verifySemanticPostcondition({
           artifact,
           runNonce: workerRequest.runNonce,
           runtimeRoot: dirname(artifact.artifactRoot),
@@ -259,7 +274,7 @@ export async function runLegacyUpgrade(arguments_) {
     }
     if (artifact !== null) {
       try {
-        await verifyLegacyUpgradeArtifactSourceFixture(artifact);
+        await verifyArtifact(artifact);
       } catch {
         safetyError ??= new Error(
           'WINDOWS_ACCEPTANCE_LEGACY_LOCAL_FIXTURE_CHANGED',
@@ -268,7 +283,7 @@ export async function runLegacyUpgrade(arguments_) {
     }
     if (profileBefore !== null) {
       try {
-        profileAfter = await createClosedDirectoryInventory(profileRoot);
+        profileAfter = await inventoryProfile(profileRoot);
         if (!inventoriesMatch(profileBefore, profileAfter)) {
           throw new Error('WINDOWS_ACCEPTANCE_NORMAL_PROFILE_CHANGED');
         }
@@ -276,27 +291,47 @@ export async function runLegacyUpgrade(arguments_) {
         safetyError ??= new Error('WINDOWS_ACCEPTANCE_NORMAL_PROFILE_CHANGED');
       }
     }
-    try {
-      await rm(runRoot, { force: true, recursive: true });
-      await lstat(runRoot).then(
-        () => {
-          throw new Error('WINDOWS_ACCEPTANCE_LEGACY_FIXTURE_CLEANUP_FAILED');
-        },
-        (error) => {
-          if (error?.code !== 'ENOENT') throw error;
-        },
-      );
-    } catch {
-      primaryError ??= new Error(
-        'WINDOWS_ACCEPTANCE_LEGACY_FIXTURE_CLEANUP_FAILED',
-      );
+    const failure = legacyUpgradeFailureDetails(primaryError);
+    const cleanupVerified = terminal !== null || (
+      ['notRequired', 'semanticCleanupCompleted'].includes(failure?.semanticCleanupResultCode) &&
+      ['exactProductsAbsent', 'exactProductsAbsentAfterCleanup'].includes(failure?.postconditionResultCode)
+    );
+    if (safetyError === null && (!supervisorAttempted || (
+      supervisorResult?.processTreeAbsent === true && cleanupVerified
+    ))) {
+      try {
+        await removeRunRoot(runRoot);
+        await lstat(runRoot).then(
+          () => {
+            throw new Error('WINDOWS_ACCEPTANCE_LEGACY_FIXTURE_CLEANUP_FAILED');
+          },
+          (error) => {
+            if (error?.code !== 'ENOENT') throw error;
+          },
+        );
+        fixtureRemoved = true;
+        fixtureCleanupResultCode = 'fixtureRemoved';
+      } catch {
+        fixtureCleanupResultCode = 'fixtureCleanupFailed';
+        primaryError ??= new Error(
+          'WINDOWS_ACCEPTANCE_LEGACY_FIXTURE_CLEANUP_FAILED',
+        );
+      }
     }
   }
 
-  if (safetyError) throw new Error(safeErrorCode(safetyError));
-  if (primaryError) {
-    if (legacyUpgradeFailureDetails(primaryError) !== null) throw primaryError;
-    throw new Error(safeErrorCode(primaryError));
+  if (primaryError || safetyError) {
+    throw new LegacyUpgradeCommandFailure({
+      schemaVersion: 1,
+      scenario: LEGACY_UPGRADE_SCENARIO,
+      status: 'failed',
+      errorCode: safeErrorCode(primaryError ?? safetyError),
+      processTreeAbsent: supervisorResult?.processTreeAbsent === true,
+      ...legacyUpgradeFailureDetails(primaryError),
+      safetyErrorCode: safetyError === null ? null : safeErrorCode(safetyError),
+      fixtureCleanupResultCode,
+      fixtureRemoved,
+    });
   }
   return Object.freeze({
     schemaVersion: 1,
@@ -318,7 +353,7 @@ export async function runLegacyUpgrade(arguments_) {
     profileFileCountAfter: profileAfter.filter((entry) => entry.kind === 'file')
       .length,
     processTreeAbsent: supervisorResult.processTreeAbsent,
-    fixtureRemoved: true,
+    fixtureRemoved,
   });
 }
 

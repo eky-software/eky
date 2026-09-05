@@ -8,6 +8,14 @@ on:
       - eky_software/apps/desktop/package.json
       - eky_software/docs/architecture/windows-installer-acceptance-harness-v2.md
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Contract acceptance or a single diagnostic comparison (not acceptance)
+        type: choice
+        default: contracts
+        options:
+          - contracts
+          - window-startup-diagnostic
 
 permissions:
   contents: read
@@ -18,14 +26,14 @@ concurrency:
 
 jobs:
   job-object-feasibility:
-    name: Windows Job Object feasibility run ${{ matrix.repetition }}
+    name: ${{ inputs.mode == 'window-startup-diagnostic' && 'V2.5 window startup diagnostic (not acceptance)' || format('Windows Job Object feasibility run {0}', matrix.repetition) }}
     runs-on: windows-latest
     timeout-minutes: 10
 
     strategy:
       fail-fast: false
       matrix:
-        repetition: [1, 2]
+        repetition: ${{ fromJSON(inputs.mode == 'window-startup-diagnostic' && '[1]' || '[1, 2]') }}
 
     defaults:
       run:
@@ -59,7 +67,15 @@ jobs:
         run: node installer/windows-process-supervisor/buildWindowsAcceptanceSupervisor.mjs
 
       - name: Run supervisor unit and process contracts
+        if: inputs.mode != 'window-startup-diagnostic'
         run: >-
           node --test --test-concurrency=1
           installer/windows-process-supervisor/tests/windowsAcceptanceSupervisorResult.test.mjs
           installer/windows-process-supervisor/tests/windowsAcceptanceSupervisor.contract.test.mjs
+
+      - name: Diagnose one native window startup without MSI or acceptance matrix
+        if: inputs.mode == 'window-startup-diagnostic'
+        run: >-
+          node --test --test-concurrency=1
+          --test-name-pattern="^native close observation: visible$"
+          installer/windows-acceptance-harness/requestWindowsApplicationClose.test.mjs

@@ -1151,16 +1151,64 @@ ei ole vahvistettu. Fixtureen lisätyt turvalliset vaiheet tarkentavat jatkoraja
 
 ### Avoin ikkunavalmiuden checkpoint
 
-V2.5 ei ole hyväksytty. `cf1af6e` on tämän keskeneräisen työn lähtörevisiona;
-sen päälle tehty ikkunavalmius-, fixture- ja prosessiomistajuustyö tallennetaan
-omistajan pyynnöstä WIP-katselmointicommitiksi. Tämä on työn jakamista
-katselmointiin, ei vaiheen hyväksyntä: 102/103 säilyy epäonnistuneena
-hyväksyntätuloksena, ja alempana kuvatut diagnostiikan esteet ja komentotason
-myöhäisen valmistumisen todistusaukko ovat edelleen avoinna. Tälle diffille
-ei ole rakennettu uutta hyväksyntäartifactia eikä ajettu CI-consumereita.
+V2.5 ei ole hyväksytty. `7ecd017` on omistajan pyynnöstä jaettu
+WIP-katselmointicommit `cf1af6e`-lähtörevision päälle. Se ei ole vaiheen
+hyväksyntä: 102/103 säilyy epäonnistuneena hyväksyntätuloksena. Sen jälkeen
+tehty rajattu korjaus on kuvattu alla; natiivikäynnistyksen diagnoosi pysyy
+erillisenä avoimena esteenä. Tälle muutokselle ei ole rakennettu uutta
+hyväksyntäartifactia eikä ajettu CI-consumereita.
 Vanhan artifactin tai 81/81-tuloksen identiteettiä ei saa esittää nykyisen
 muutoksen hyväksyntänä. Paikalliset diagnostiikat ja jäljet eivät kuulu
 katselmointicommittiin.
+
+#### Katselmointipisteen jälkeinen rajattu korjaus
+
+- `legacyUpgradeFailureBoundary` luokittelee myös onnistuneen supervisorin
+  jälkeen puuttuvan tai lukukelvottoman scenario-resultin. Alkuperäinen virhe,
+  semanttinen cleanup ja jälkiehto säilyvät erillisinä. Puuttuva tulos ei
+  valtuuta uninstallia: callerin täytyy toimittaa ennen ajoa vahvistettu
+  exact-products-absent-esiehto. Epäselvä prosessipuu estää sekä uuden
+  tuoteverifierin että semanttisen cleanupin.
+- `runLegacyUpgrade` ei enää poista testijuurta ehdottomasti `finally`ssa.
+  Ennen käynnistysyritystä syntynyt turvallinen fixture voidaan poistaa;
+  käynnistetyn ajon juuren poisto vaatii varmennetun prosessipuun poissaolon
+  sekä onnistuneen cleanupin ja exact-products-absent-jälkiehdon. Puuttuva
+  supervisor-result, epäonnistunut cleanup tai turvallisuuspoikkeama säilyttää
+  yksityisen aineiston paikallisesti. Turvallinen päätetulos kertoo erikseen
+  `fixtureCleanupResultCode`- ja `fixtureRemoved`-arvot, ei paikallista polkua.
+- Nykyisen `LateProcessCreationContract`-fixturen komentotason testi pitää
+  luontirajan injektoidusti auki attribuutin ja Job-referenssin elossa ollessa.
+  Ulkopuolinen Node-testi lukee oikean strict resultin komentoprosessin ollessa
+  vielä elossa, vapauttaa vain fixturen exit-kuittauksen ja todistaa exit 1:n.
+  Result säilyy muuttumattomana: `deadlineExceeded / cleanupUnverified /
+  processTreeAbsent: false`. Tämä täydentää aiempaa Run-rajan testiä; se ei
+  väitä pysäyttävänsä oikeaa Windowsin kernel-kutsua eikä muuta supervisorin
+  toteutusta, deadlinea tai tuotannon poistumisjärjestystä.
+- Virhepolkujen ja suorien legacy-sopimusten paikallinen kohdesarja: 56/56.
+  Myöhäisen valmistumisen ja komentotason kohdesarja: 5/5 viimeistellyllä
+  fixturellä. .NET Release-buildit: 0 warnings / 0 errors; desktop typecheck,
+  desktop build ja `git diff --check` läpäisivät. Nämä eivät korvaa koko V2.5-
+  sarjaa, puhtaan revision artifactia tai sovittuja paikallisia/CI-consumereita.
+
+Ikkunatestin 10000 ms tulee `createRequest`-apurin alkuperäisestä V2.1-
+oletuksesta (`9c5dcf8`), ei erikseen hyväksytystä ikkunan suorituskyky-SLO:sta.
+Readiness on jo tapahtuma-/tilaehtopohjainen; enimmäisaika säilyy
+fail-closed-turvarajana. Aikarajaa ei muutettu. Sen mahdollinen muutos vaatii
+mittausperusteen ja omistajan dokumentoidun päätöksen; keinotekoisten timeout-
+ja cleanup-regressioiden tiukat rajat säilyvät.
+
+Nykyisen supervisor-feasibility-työnkulun manual-valinta
+`mode=window-startup-diagnostic` ajaa vain yhden `visible`-tapauksen
+nykyisellä ikkunatestillä ja kerran käännetyllä fixturellä. Tavallinen
+kahden ajon sopimusportti ei muutu. Tulos on diagnostiikkaa, ei acceptance,
+eikä ajo käynnistä MSI/W6-matriisia tai automaattista uusintaa.
+
+Identiteettijälkitarkistuksen virhe ei saa keskeyttää myöhempiä
+cleanup-hookeja. Tarkistus ja nykyisten kontekstien cleanup suoritetaan
+samassa testikohtaisessa teardownissa erilliset virheet säilyttäen.
+Legacy-virhepolkujen kohdesarja läpäisi 56/56.
+
+#### Aiemmat korjaukset ja mittaukset
 
 Omistaja hyväksyi tämän jälkeen kaksi rajattua korjausta olemassa olevaan
 supervisoriin: native-prosessinluonnin deadline-rajan ja Job-laskurin /
@@ -1246,7 +1294,7 @@ Contract-entrypoint, native-luontilippujen omistaja, 10000 ms:n budjetti,
 1000 ms:n cleanup-reservi ja foreign sentinel säilyvät. Noncet ja tulospolut
 ovat ajokohtaiset.
 
-Myöhäisen valmistumisen regressioiden kattavuus täsmennettiin lukemalla
+Checkpointissa `7ecd017` myöhäisen valmistumisen regressioiden kattavuus täsmennettiin lukemalla
 todellinen `SupervisorProgram.Run -> execute -> TryWriteResult -> exit`
 -järjestys. `LateProcessCreationContract` odottaa myöhäisen valmistumisen
 `WindowsJobProcessSupervisor.Run`-palautuksen jälkeen mutta ennen kuin
@@ -1258,7 +1306,9 @@ palautus pidetään auki. Puuttuvaksi jää yhdistetyn komentotason tapauksen
 deterministinen näyttö, jossa attribuuttireferenssin omistama varsinainen
 native-luonti on yhä kesken result-write/exit-rajalla. Tuntematon cleanup
 pysyy virheenä. Jo todistettuja regressioita ei rakenneta uudelleen eikä
-supervisoria muuteta tämän katselmuksen perusteella.
+supervisoria muuteta tämän katselmuksen perusteella. Yllä kuvattu myöhempi
+komentotason fixture täydentää tätä aukkoa injektoidun viiveen osalta;
+varsinainen Windows-viive pysyy erillisenä tutkimuksena.
 
 #### Korjausta edeltävän mittausrajan täsmennys
 
@@ -1403,8 +1453,9 @@ erottaa build-once artifact producer/consumer -rajan ennen upgrade-polun
 migraatiota. V2.4 upgrade/rollback on jäädytetty draft-PR:ään #262. V2.5A:n
 historical legacy build-once artifact -raja on toteutettu, ja V2.5B:n yhden
 supervisorin lifecycle sekä erillinen postcondition-raja ovat paikallisessa
-checkpoint-toteutuksessa. V2.5 ei ole hyväksytty: ikkunafixturen käynnistys-
-ja käännösfixturen supervisor-rajojen avoimet tulokset on eritelty yllä.
+checkpoint-toteutuksessa. `7ecd017` on jaettu WIP, ei hyväksytty V2.5.
+Sen jälkeinen rajattu virhepolku- ja komentotason kattavuuskorjaus on kuvattu
+avoimen checkpointin kohdalla. Lopulliset artifact/consumer-portit ovat vielä avoinna.
 V2.6 ei ole alkanut. PR #257 ja PR #258 sekä nykyiset W6B-, W6B.2A- ja
 W6B.2B-toteutukset säilytetään muuttumattomina. V2-checkpointit eivät vielä
 vaihda nykyisen acceptance-harnessin auktoritatiivista ajopolkua.

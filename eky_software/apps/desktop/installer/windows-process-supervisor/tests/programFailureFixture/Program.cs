@@ -10,6 +10,10 @@ if (
 }
 
 var mode = args[1];
+if (mode == "nativePendingAtCommandExit")
+{
+    return LateProcessCreationContract.RunPendingCommand(args[2..]);
+}
 if (LateProcessCreationContract.Modes.Contains(mode))
 {
     return SupervisorProgram.Run(args[2..], (request, stopwatch, evidence) =>

@@ -144,6 +144,38 @@ for (const mode of ['nativeAfterTerminal', 'handlesAfterTerminal', 'failureAfter
   });
 }
 
+test('command writes the failed result and exits with native creation still pending', WINDOWS_ONLY, async (t) => {
+  const context = await contextFor(t, 'native-pending-command-exit');
+  const sentinel = await startForeignSentinel(context);
+  await writeRequest(context, createRequest(context, 'exitZero', {
+    timeoutMilliseconds: 2_000, cleanupReserveMilliseconds: 1_000,
+  }));
+  const execution = startProgramFailureFixture(context, 'nativePendingAtCommandExit');
+  const exit = once(execution.child, 'exit');
+  const marker = await waitForMarker(context, 'command');
+  assert.equal(marker.executeReturned, true);
+  assert.equal(marker.resultWritten, true);
+  assert.equal(marker.creationStillPending, true);
+  assert.equal(execution.child.exitCode, null);
+  const resultBeforeExit = await readWindowsAcceptanceSupervisorResult(context.resultPath, {
+    ...context, supervisorExitCode: 1,
+  });
+  assert.equal(resultBeforeExit.processResultCode, 'deadlineExceeded');
+  assert.equal(resultBeforeExit.workerResultCode, 'notChecked');
+  assert.equal(resultBeforeExit.cleanupResultCode, 'cleanupUnverified');
+  assert.equal(resultBeforeExit.processTreeAbsent, false);
+  assert.equal(execution.child.exitCode, null);
+  await releaseFixture(context, 'command');
+  assert.deepEqual(await exit, [1, null]);
+  const { result, completion } = await readCompletedExecution(context, execution);
+  assert.deepEqual(result, resultBeforeExit);
+  assert.equal(completion.evidence.some((entry) => entry.phase === 'resultWritten' && entry.status === 'completed'), true);
+  assert.equal(completion.evidence.some((entry) => entry.phase === 'hostStarted' && entry.status === 'completed'), false);
+  assert.equal(isProcessAlive(sentinel.marker.processId), true);
+  await assert.rejects(access(join(context.runRoot, 'root.ready.json')), { code: 'ENOENT' });
+  await assert.rejects(access(context.workerResultPath), { code: 'ENOENT' });
+});
+
 for (const mode of ['exitZero', 'spawnGrandchildAndHold']) {
   test(`atomic Job assignment inside an inherited Job: ${mode}`, WINDOWS_ONLY, async (testContext) => {
     // The outer instance is only the test container, representing an existing runner Job.

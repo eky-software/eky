@@ -15,7 +15,26 @@ const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 let buildContext;
 let fixtureExecutable;
 let sharedFixture;
+let fixtureIdentity;
 const diagnostic = process.env.EKY_V25_SHARED_FIXTURE === '1';
+
+async function readFixtureIdentity() {
+  const info = await lstat(fixtureExecutable, { bigint: true });
+  assert.equal(info.isFile() && !info.isSymbolicLink(), true);
+  return {
+    device: info.dev, fileId: info.ino, size: info.size, links: Number(info.nlink),
+    sha256: createHash('sha256').update(await readFile(fixtureExecutable)).digest('hex'),
+  };
+}
+
+async function verifyFixtureIdentity(t, phase) {
+  const current = await readFixtureIdentity();
+  const sameFile = current.device === fixtureIdentity.device && current.fileId === fixtureIdentity.fileId;
+  const sameBytes = current.size === fixtureIdentity.size && current.sha256 === fixtureIdentity.sha256;
+  t.diagnostic(JSON.stringify({ schemaVersion: 1, operation: 'nativeFixtureIdentity', phase,
+    fixtureSha256: current.sha256, linkCount: current.links, sameFile, sameBytes }));
+  assert.equal(sameFile && sameBytes && current.links === 1, true, 'nativeFixtureIdentityChanged');
+}
 
 async function verifySharedFixture() {
   const info = await lstat(sharedFixture.fixtureExecutable);
@@ -32,6 +51,7 @@ before(async () => {
       '../../.stage/v25-native-fixture-context.json'), 'utf8'));
     await verifySharedFixture();
     fixtureExecutable = sharedFixture.fixtureExecutable;
+    fixtureIdentity = await readFixtureIdentity();
     return;
   }
   buildContext = await createRunContext('native-window-compilation');
@@ -49,6 +69,8 @@ before(async () => {
   assert.equal(result.processResultCode, 'processCompleted');
   assert.equal(result.workerResultCode, 'workerResultValidated');
   assert.equal(result.processTreeAbsent, true);
+  fixtureIdentity = await readFixtureIdentity();
+  assert.equal(fixtureIdentity.links, 1, 'nativeFixtureIdentityInvalid');
 });
 
 after(async () => {
@@ -77,10 +99,18 @@ test('graceful close adapter requests one exact window close without ownership l
 
 for (const mode of ['visible', 'delayed', 'exited', 'exitWhileWaiting', 'absent']) {
   test(`native close observation: ${mode}`, { skip: process.platform !== 'win32' }, async (t) => {
+    await verifyFixtureIdentity(t, 'before');
     const context = await createRunContext(`native-close-${mode}`);
-    t.after(() => cleanupRunContext(context));
-    const foreign = await createRunContext(`foreign-window-${mode}`);
-    t.after(() => cleanupRunContext(foreign));
+    let foreign;
+    t.after(async () => {
+      const failures = [];
+      for (const owned of [context, foreign].filter(Boolean)) {
+        try { await cleanupRunContext(owned); } catch (error) { failures.push(error); }
+      }
+      try { await verifyFixtureIdentity(t, 'after'); } catch (error) { failures.push(error); }
+      if (failures.length > 0) throw new AggregateError(failures, 'nativeWindowTeardownFailed');
+    });
+    foreign = await createRunContext(`foreign-window-${mode}`);
     const sentinel = await startForeignSentinel(foreign);
     const request = createRequest(context, 'exitZero');
     const templatePath = resolve(context.testRoot, 'expected-result.json');
@@ -98,13 +128,16 @@ for (const mode of ['visible', 'delayed', 'exited', 'exitWhileWaiting', 'absent'
     const result = await readWindowsAcceptanceSupervisorResult(context.resultPath, {
       ...context, supervisorExitCode: completion.exitCode,
     });
-    const fixturePhase = await readFile(context.requestPath + '.phase', 'utf8').catch(() => 'notStarted');
+    const rawFixturePhase = await readFile(context.requestPath + '.phase', 'utf8').catch(() => 'notStarted');
+    const fixturePhase = ['notStarted', 'observing', 'completed'].includes(rawFixturePhase)
+      ? rawFixturePhase : 'unknown';
     const timing = await readCreationTiming(context.testRoot);
-    if (diagnostic) console.log(JSON.stringify({ operation: 'nativeCreationComparison', mode,
-      fixtureSha256: sharedFixture.fixtureSha256,
+    t.diagnostic(JSON.stringify({ schemaVersion: 1, operation: 'nativeCreationComparison', mode,
+      fixtureSha256: fixtureIdentity.sha256,
       timeoutMilliseconds: request.timeoutMilliseconds,
       cleanupReserveMilliseconds: request.cleanupReserveMilliseconds,
-      processResultCode: result.processResultCode, cleanupResultCode: result.cleanupResultCode,
+      processResultCode: result.processResultCode, workerResultCode: result.workerResultCode,
+      cleanupResultCode: result.cleanupResultCode, processTreeAbsent: result.processTreeAbsent,
       fixturePhase, timing }));
     assert.equal(fixturePhase, mode === 'absent' ? 'observing' : 'completed', JSON.stringify({
       fixturePhase, process: result.processResultCode, cleanup: result.cleanupResultCode,

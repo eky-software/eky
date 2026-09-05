@@ -93,6 +93,7 @@ test('supervisor deadline remains primary and cleanup waits for process-tree abs
   let cleanupCalls = 0;
   await assert.rejects(
     resolveLegacyUpgradeTerminalOutcome({
+      productPrecondition: products('exactProductsAbsent'),
       supervisorResult: supervisor({
         status: 'failed',
         processResultCode: 'deadlineExceeded',
@@ -101,7 +102,7 @@ test('supervisor deadline remains primary and cleanup waits for process-tree abs
         processTreeAbsent: false,
       }),
       readScenarioResult: async () => scenario(),
-      verifyExactProductStates: async () => products('sourceProductPresent'),
+      verifyExactProductStates: () => assert.fail('Verifier must wait for owned process-tree absence'),
       verifySemanticPostcondition: async () => ({
         status: 'failed',
         errorCode: 'mustNotRun',
@@ -216,3 +217,44 @@ test('non-zero precondition failure does not authorize removal of an existing pr
     return true;
   });
 });
+
+for (const supervisorFailed of [false, true]) {
+  for (const precondition of [undefined, products('sourceProductPresent'), products('exactProductsAbsent')]) {
+    for (const cleanupFails of [false, true]) {
+      test(`unreadable scenario: supervisorFailed=${supervisorFailed}, precondition=${precondition?.resultCode}, cleanupFails=${cleanupFails}`, async () => {
+        const authorized = precondition?.resultCode === 'exactProductsAbsent';
+        const order = [];
+        let inspection = 0;
+        await assert.rejects(resolveLegacyUpgradeTerminalOutcome({
+          productPrecondition: precondition,
+          supervisorResult: supervisor(supervisorFailed ? {
+            status: 'failed', processResultCode: 'processExitFailed', childExitCode: 1,
+            workerResultCode: 'notChecked',
+          } : {}),
+          readScenarioResult: async () => { throw new Error('private result contents'); },
+          verifyExactProductStates: async () => {
+            order.push('inspect');
+            return products(inspection++ === 0 ? 'targetProductPresent' : 'exactProductsAbsent');
+          },
+          cleanupExactProducts: async () => {
+            order.push('cleanup');
+            if (cleanupFails) throw new Error('private cleanup failure');
+            return { status: 'completed', resultCode: 'semanticCleanupCompleted' };
+          },
+          verifySemanticPostcondition: () => assert.fail('No semantic proof without a scenario result'),
+        }), (error) => {
+          const failure = legacyUpgradeFailureDetails(error);
+          assert.equal(failure.errorCode, supervisorFailed
+            ? 'WINDOWS_ACCEPTANCE_SUPERVISOR_PROCESS_EXIT_FAILED'
+            : 'WINDOWS_ACCEPTANCE_LEGACY_SCENARIO_RESULT_INVALID');
+          assert.equal(failure.scenarioResultCode, 'missingOrInvalid');
+          assert.equal(failure.semanticCleanupResultCode, !authorized ? 'blockedByPrecondition'
+            : cleanupFails ? 'semanticCleanupFailed' : 'semanticCleanupCompleted');
+          assert.doesNotMatch(JSON.stringify(failure), /private/);
+          return true;
+        });
+        assert.deepEqual(order, authorized ? ['inspect', 'cleanup', 'inspect'] : ['inspect']);
+      });
+    }
+  }
+}
