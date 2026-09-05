@@ -1208,6 +1208,22 @@ cleanup-hookeja. Tarkistus ja nykyisten kontekstien cleanup suoritetaan
 samassa testikohtaisessa teardownissa erilliset virheet säilyttäen.
 Legacy-virhepolkujen kohdesarja läpäisi 56/56.
 
+Rajattu GitHub-vertailu valmistui ensimmäisellä yrityksellä commitista
+`50225e57c309c06984d20ecf3f846bb6e220178c`:
+[ajo 33966600849](https://github.com/eky-software/eky/actions/runs/33966600849),
+yksi Windows-jobi, 1/1 `visible`-testi, ei acceptance-matriisia tai rerunia.
+Native-kutsu kesti 13,59 ms (92,27 -> 105,86 ms), supervisorin terminal
+328,68 ms. Strict tulos oli `processCompleted / workerResultValidated /
+notRequired / processTreeAbsent: true`. Sentinel-cleanup läpäisi.
+Fixture-SHA-256 oli
+`7b7071834f1bad3f8e830836535189a0e7676da1370a64e5afee5de67431874d`;
+linkkimäärä pysyi 1 -> 1, file-id ja tavut säilyivät. Testin aikabudjetti oli
+muuttumaton 10000 ms ja cleanup-reserve 1000 ms. .NET-buildit olivat
+virheettömät. Uusia riippuvuuksia ei lisätty eikä MSI-artifactia rakennettu.
+
+Yksi vihreä diagnostinen CI-ajo ei hyväksy V2.5:tä. 56/56-virhepolkusarja
+ja 5/5-omistajuussarja läpäisivät; koko V2.5:n 102/103 säilyy epäonnistuneena.
+
 #### Aiemmat korjaukset ja mittaukset
 
 Omistaja hyväksyi tämän jälkeen kaksi rajattua korjausta olemassa olevaan
