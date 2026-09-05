@@ -10,6 +10,20 @@ if (
 }
 
 var mode = args[1];
+if (LateProcessCreationContract.Modes.Contains(mode))
+{
+    return SupervisorProgram.Run(args[2..], (request, stopwatch, evidence) =>
+        LateProcessCreationContract.Run(mode, request, stopwatch, evidence));
+}
+if (mode == "measureCreation")
+{
+    return SupervisorProgram.Run(args[2..], ProcessCreationMeasurement.Run);
+}
+if (ProcessBoundaryContract.Modes.Contains(mode))
+{
+    return SupervisorProgram.Run(args[2..], (request, stopwatch, evidence) =>
+        ProcessBoundaryContract.Run(mode, request, stopwatch, evidence));
+}
 if (mode is not ("unexpectedFailure" or "resultWriteFailure"))
 {
     return 64;

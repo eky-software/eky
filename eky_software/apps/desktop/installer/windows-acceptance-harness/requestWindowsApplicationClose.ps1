@@ -13,23 +13,19 @@ try {
   }
   $process = Get-Process -Id $ProcessId -ErrorAction Stop
   try {
+    $null = $process.Handle
     $process.Refresh()
     $actual = [System.IO.Path]::GetFullPath($process.Path)
-    if (
-      !$actual.Equals($expected, [System.StringComparison]::OrdinalIgnoreCase) -or
-      $process.HasExited -or
-      $process.MainWindowHandle -eq [IntPtr]::Zero
-    ) {
+    if (!$actual.Equals($expected, [System.StringComparison]::OrdinalIgnoreCase) -or $process.HasExited) {
       exit 65
     }
-    if (!$process.CloseMainWindow()) {
-      exit 66
-    }
+    Add-Type -Path (Join-Path $PSScriptRoot 'WindowsApplicationCloseRequest.cs')
+    $result = [Eky.WindowsAcceptance.WindowsApplicationCloseRequest]::Request($process, $null)
   }
   finally {
     $process.Dispose()
   }
-  exit 0
+  exit $result
 }
 catch {
   exit 67

@@ -75,16 +75,7 @@ internal sealed class WindowsJob : IDisposable
         return new WindowsJob(handle);
     }
 
-    internal void Assign(SafeProcessHandle process)
-    {
-        if (!NativeMethods.AssignProcessToJobObject(handle, process))
-        {
-            throw new SupervisorFailure(
-                "jobAssignFailed",
-                Marshal.GetLastWin32Error()
-            );
-        }
-    }
+    internal ProcessCreationJobAttribute CreateProcessAttribute() => new(handle);
 
     internal uint GetActiveProcessCount()
     {

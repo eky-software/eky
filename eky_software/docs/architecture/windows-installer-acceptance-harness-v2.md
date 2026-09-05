@@ -9,9 +9,11 @@ tietokanta-, laskutus- tai Electron-runtime-semanticsia. Se ei myöskään anna
 lupaa uudelle riippuvuudelle, GitHub Actionille, native-helperille,
 versiomuutokselle tai release-artifactille.
 
-## Lähtötilanne
+## Historiallinen lähtötilanne
 
-Katselmus tehtiin 3.9.2026 seuraavasta puhtaasta checkpointista:
+Katselmus tehtiin 3.9.2026 seuraavasta puhtaasta checkpointista. Tämän luvun
+SHA:t, testimäärät ja vanhojen prosessiketjujen kuvaus ovat historiallinen
+lähtötilanne, eivät myöhempien V2-checkpointtien hyväksyntätodiste:
 
 - `origin/main`: `c1d010263ccf4dc490a709f58ea8a4a5b34fa03a`
 - PR #258:n head: `bc875f17b63c117d9966a087a0a72af8831ae93a`
@@ -578,7 +580,8 @@ checkpointissa.
 V2.1-supervisorin pitää:
 
 - käynnistää suora worker `CreateProcessW`-kutsulla `CREATE_SUSPENDED`-tilassa
-- liittää worker nimeämättömään Job Objectiin ennen `ResumeThread`-kutsua
+- liittää worker nimeämättömään Job Objectiin atomisesti prosessinluonnissa
+  `PROC_THREAD_ATTRIBUTE_JOB_LIST`-attribuutilla ennen `ResumeThread`-kutsua
 - käyttää ei-periytyvää job-kahvaa ja `KILL_ON_JOB_CLOSE`-rajaa
 - olla asettamatta `BREAKAWAY_OK`- tai `SILENT_BREAKAWAY_OK`-rajaa
 - omistaa yksi prosessipuu, yksi supervisor ja yksi monotonisesta kellosta
@@ -595,8 +598,10 @@ V2.1-supervisorin pitää:
 Request ja terminal result ovat strict, versionoituja sopimuksia. Molemmat
 sidotaan 64-merkkiseen lowercase-hex-ajononceen, skenaarioon ja immutable
 artifact descriptorin SHA-256-tiivisteeseen. Supervisor onnistuu vain, kun
-workerin exit code on nolla, terminal result on nykyiseen ajoon sidottu ja
-jobin aktiivisten prosessien määrä on nolla.
+workerin exit code on nolla, terminal result on nykyiseen ajoon sidottu,
+juuriprosessin kahva on signaloitu ja jobin aktiivisten prosessien määrä on
+nolla. Job-laskuri ja prosessikahva ovat erillisiä havaintoja; hetkellinen
+ero ei ole onnistuminen eikä sellaisenaan `processStateInvalid`-virhe.
 
 Workerin ensisijainen scenario-tulos, supervisorin prosessitulos, cleanup-
 tulos ja verifierin postcondition-tulos säilyvät eri kenttinä. Cleanup-virhe
@@ -611,6 +616,25 @@ tai runnerin menetys voi katkaista prosessin ennen resultin kirjoittamista.
 Silloin caller hylkää ajon puuttuvan terminal-resultin vuoksi, ja ei-periytyvän
 job-kahvan sulkeutuminen aktivoi `KILL_ON_JOB_CLOSE`-suojan omistetulle
 prosessipuulle. Puuttuva result ei koskaan merkitse onnistumista.
+
+Prosessinluonti kuuluu samaan absoluuttiseen deadlineen. Nykyinen supervisor
+odottaa native-luontia taustatehtävän completionista, mutta vain sen pääsäie
+saa kutsua `ResumeThread`-metodia. Deadlineen myöhästyvää workeria ei
+käynnistetä. Cleanup-reservin sisällä palautuva suspended-prosessi poistetaan
+saman Jobin kautta. Jos native-kutsu ei palaa kokonaisbudjetissa, supervisor
+pyytää saman Jobin lopetusta ja kirjoittaa `deadlineExceeded` /
+`cleanupUnverified` / `processTreeAbsent: false` ennen virhe-exitiä. Jobin
+hetkellinen nolla ei todista puun poissaoloa, kun luonti on vielä kesken.
+Job-attribuutin kahvareferenssi säilyy native-kutsun ajan. Sama supervisor
+rekisteröi keskeneräisen tehtävän completioniin vastaanottajan, joka sulkee
+myöhäiset process/thread-kahvat tai vastaanottaa myöhäisen poikkeuksen.
+Vastaanottaja ei kutsu resumea, aloita uutta cleanupia eikä muuta jo palautettua
+virhetulosta. Attribuutin vapauttama viimeinen Job-kahva lopettaa myöhäisen
+suspended-jäsenen `KILL_ON_JOB_CLOSE`-rajalla. Koko supervisor-prosessin exit
+sulkee resurssit myös silloin, kun native-kutsu ei koskaan palaa. Tätä ei saa
+kuvata native-kutsun onnistuneeksi cooperative cancellationiksi tai
+vahvistetuksi cleanupiksi. Caller ei jatka business-verifieriin eikä hyväksy
+ajoa tällaisella tuloksella.
 
 Safe evidence käyttää `schemaVersion: 1` -sopimusta ja on best effort -
 diagnostiikkaa. Evidenssivirta ei saa muuttaa workerin, supervisorin tai
@@ -1004,8 +1028,19 @@ ja vaatii siltä terminal `shutdown/ok` -evidencen. Tavoiteversion readiness ja
 shutdown tunnistetaan versionoidusta operational JSONL -evidencestä;
 kiinteää odotusaikaa, pollingia tai retryä ei käytetä. Yksi rajattu
 PowerShell-adapteri saa pyytää workerin suoraan käynnistämää Electron-prosessia
-sulkemaan pääikkunansa kerran. Adapteri ei etsi, odota eikä tapa prosesseja,
-eikä siitä muodostu uutta prosessiomistajaa.
+sulkemaan pääikkunansa kerran. `desktop.started` ei yksin takaa näkyvää
+ikkunaa. Sulkuadapterin ikkunavalmius erotetaan siksi runtime-readinessista:
+rajattu Win32-tapahtumatilaus sidotaan jo käynnistettyyn prosessiin ennen
+ensimmäistä ikkunatarkistusta. Prosessin kahva pidetään avoimena tarkistuksen
+ja yhden sulkupyynnön ajan. Jo näkyvä ikkuna ja myöhemmin näkyvä ikkuna
+noudattavat samaa sopimusta.
+
+Adapteri saa odottaa vain kyseisen prosessin ikkunatapahtumaa tai exitia.
+Sillä ei ole omaa deadlinea, pollingia, retryä, prosessihakua tai kill-oikeutta;
+myös puuttuvan ikkunan tapauksessa nykyinen Job-supervisor omistaa ajan ja
+pakotetun cleanupin. Jos startup epäonnistuu, worker kirjoittaa epäonnistuneen
+tuloksen ja poistuu ei-nolla-koodilla. Se ei käynnistä toista best-effort-
+sulkuadapteria, joka voisi peittää alkuperäisen virheen.
 
 Smoke-palautuksen jälkeen source-version erillinen normaali käynnistys kuuluu
 legacy-invarianttiin: se todistaa, että palautettu profiili avautuu tavallisessa
@@ -1077,6 +1112,7 @@ kaksi ensimmäisen yrityksen GitHub-consumeria ovat edelleen hyväksyntäportti.
 | Puhdas kone ja exact ProductCode/payload | `legacyUpgradeLifecycle`, `legacyUpgradeWindowsRuntime`, `legacyUpgradePostcondition` | Täysi install/upgrade ja erillinen jälkitarkistus |
 | Initial -> restoreRestart -> restored -> shutdown | `legacyUpgradeSourceSmoke` ja ketjutestit | Historiallisen paketin täysi kaksiprosessinen smoke |
 | Source avautuu normaalisti ennen päivitystä | `runSourceStartup`, `legacyUpgradeLifecycle.test`, `legacyUpgradeStartupObserver.test` | Normaali source-start ja graceful shutdown packaged-ajossa |
+| Näkyvä ikkuna suljetaan kerran ilman kiinteää viivettä | `WindowsApplicationCloseRequest` ja native `requestWindowsApplicationClose.test` | Jo näkyvä / tapahtumasta näkyvä ikkuna, exit ja puuttuva ikkuna testattu nykyisen Jobin alla; lisäksi packaged consumer |
 | Accepted-buildin ristiriidat torjutaan | `legacyUpgradeProfileEvidence.test` | Deterministiset slotit, korruptio- ja konfliktitestit sekä runtime-evidence |
 | SQLite/storage/PDF säilyvät; yksi adoptio ja uusi runtime toisella käynnistyksellä | `legacyUpgradeProfileEvidence` ja `legacyUpgradePostcondition` testeineen | Historiallisen smoken business-fixture ja täysi target-start kahdesti; hash-inventaario ei yksin korvaa business-fixturen todistetta |
 | Worker failure, deadline ja koko omistetun puun cleanup | Nykyinen V2.1-supervisor sekä `runLegacyUpgradeWorker.test` | Ei uutta valvojaa; live-child cleanup ja foreign sentinel säilyvät |
@@ -1087,6 +1123,173 @@ kaksi ensimmäisen yrityksen GitHub-consumeria ovat edelleen hyväksyntäportti.
 arkkitehtuurirajoja. Ne eivät todista ikkunan näkyvyyttä tai sulkeutumista;
 nämä todisteet kuuluvat packaged consumerille. `desktop.started` kertoo
 runtimen käynnistymisestä, ei yksin renderöidyn ikkunan valmiudesta.
+
+Workerin failure-boundary-checkpointin kohdesarja läpäisi 81/81 testiä,
+ja live-child failure/cleanup -sopimus viisi peräkkäistä paikallista ajoa.
+Ikkunaobserverin erillinen native-sarja läpäisi 6/6 testiä. Se käyttää
+etukäteen TEMPiin käännettyä synteettistä GUI-executablea suoraan nykyisen
+supervisorin workerina, ei runtime-käännöstä tai Node -> PowerShell -ketjua.
+Fixture ei rakenna MSI:tä eikä lisää prosessiomistajaa.
+
+Testifixturen valmistelun deadlinea ei saa tulkita todisteeksi puuttuvan
+ikkunan oikeasta käsittelystä. Fixture todistaa sisältäpäin, että tapahtuma-
+tilaus ja ensimmäinen tyhjä ikkunatarkistus on tehty. Viivästetty ikkuna
+vapautetaan vasta tämän jälkeen. Myös prosessin poistuminen jo alkaneen
+odotuksen aikana testataan erikseen.
+
+Native-sarja ei todista PowerShell-adapterin käynnistymistä oikeassa worker-
+ympäristössä. Koko V2.5:n kaksi paikallista ja kaksi GitHub-consumeria
+vaaditaan edelleen lopulliselle puhtaalle commitille; alemman tason testejä
+ei saa merkitä täydeksi acceptance-todisteeksi.
+
+Ikkunavalmiuden muutos on vielä paikallista keskeneräistä työtä. Laajennetun
+kohdesarjan tulos oli 85/86: jo näkyvän ikkunan tapaus päättyi deadlineen.
+Erillinen 6/6-ajo tai myöhempi yksittäinen diagnostinen onnistuminen ei kumoa
+tätä tulosta. Tuossa epäonnistuneessa ajossa fixturen puuttuva vaihemerkintä
+ei vielä erottanut käynnistymistä, `Shown`-odotusta ja sulkemista; juurisyytä
+ei ole vahvistettu. Fixtureen lisätyt turvalliset vaiheet tarkentavat jatkorajausta.
+
+### Avoin ikkunavalmiuden checkpoint
+
+V2.5 ei ole hyväksytty. `cf1af6e` on tämän keskeneräisen työn lähtörevisiona;
+sen päälle tehty ikkunavalmius-, fixture- ja prosessiomistajuustyö tallennetaan
+omistajan pyynnöstä WIP-katselmointicommitiksi. Tämä on työn jakamista
+katselmointiin, ei vaiheen hyväksyntä: 102/103 säilyy epäonnistuneena
+hyväksyntätuloksena, ja alempana kuvatut diagnostiikan esteet ja komentotason
+myöhäisen valmistumisen todistusaukko ovat edelleen avoinna. Tälle diffille
+ei ole rakennettu uutta hyväksyntäartifactia eikä ajettu CI-consumereita.
+Vanhan artifactin tai 81/81-tuloksen identiteettiä ei saa esittää nykyisen
+muutoksen hyväksyntänä. Paikalliset diagnostiikat ja jäljet eivät kuulu
+katselmointicommittiin.
+
+Omistaja hyväksyi tämän jälkeen kaksi rajattua korjausta olemassa olevaan
+supervisoriin: native-prosessinluonnin deadline-rajan ja Job-laskurin /
+prosessin exit-signaalin havaintojärjestyksen. Paikallinen toteutus käyttää
+yllä kuvattua atomista Job-attribuuttia ja samaa alkuperäistä aikabudjettia.
+Vanha jälkikäteen tehty Job-assignment sekä sen erillinen direct-process-
+termination-haara poistuvat; uutta prosessipuun omistajaa ei lisätä.
+
+Uusi `ProcessBoundaryContract` kuuluu vain nykyiseen contract-fixture-
+assemblyyn. Se todistaa suspended-jäsenyyden ennen resumea, luontia edeltävän
+cancelin, myöhäisen paluun, palaamatta jäävän luontikutsun, alkuperäisen
+Win32-virheen, odottamattoman luontivirheen cleanupin ja molemmat exit-
+havaintojärjestykset. Testiohjausta ei lisätä varsinaisen supervisorin CLI-
+protokollaan. Supervisorin sopimussarja meni läpi 28/28; timeout ja kahden
+omistetun prosessisukupolven cleanup toistettiin 20 kertaa ilman retryä.
+Foreign sentinel ja rinnakkaisten Jobien eristys säilyivät. Molempien .NET-
+projektien Release-build oli 0 warnings / 0 errors.
+
+V2.5:n koko kohdesarja jäi tulokseen 96/97. Tulos oli
+`deadlineExceeded / cleanupUnverified`, `processTreeAbsent: false`.
+Tämä ei ole hyväksytty cleanup tai V2.5-hyväksyntä. Käännösfixturen kolme
+sopimustestiä läpäisivät, myös timeout-jälkeläisten poissaolo ja vieraan
+prosessin säilyminen.
+
+DLL/PowerShell-host-kokeilu poistettiin kokonaan; DLL-hostia tai uutta
+bootstrap-tiedostoa ei jätetä toteutukseen. Kokeen 93/97 ei ole hyväksyntä.
+Aikarajaa, assertioita tai tuotannon käynnistystä ei muutettu.
+
+Seuraava hyväksyntä tarvitsee tämän saman native-fixturen luontiviiveen
+syyn ja sovitun koko sarjan vihreän tuloksen. Ennen sitä ei tehdä valmista
+V2.5-checkpoint-committia, artifact-buildia, CI-kierrosta tai V2.6-aloitusta.
+Alla säilytetty 85/86-havainto kuvaa korjausta edeltävää tilannetta, ei
+nykyisen supervisorin deadline-käyttäytymistä.
+
+#### Luontirajan mittaus ja myöhäinen valmistuminen
+
+Nykyisen paikallisen diffin rajaus erottaa valmistelun, `CreateProcessW`-
+P/Invoke-rajan, kahvojen vastaanoton ja myöhemmän fixturen readinessin.
+Mittauspisteiden välissä ei kirjoiteta tiedostoa tai konsolia: ajat kerätään
+nykyisen contract-fixturen muistiin ja suljettu numerodata tallennetaan vasta
+supervisorin palattua. Mittaustiedoston kirjoitusvirhe ei muuta alkuperäistä
+prosessin, workerin tai cleanupin tulosta. Varsinaisen supervisorin CLI ei
+saa uutta diagnoosimoodia. Native-ikkunatesti käyttää samaa supervisorin
+`Run`-toteutusta mittaavan contract-entrypointin kautta.
+
+Koko V2.5-kohdesarja jäi tulokseen **102/103**. Epäonnistunut tapaus oli
+`native close observation: visible`. `deadlineExceeded / cleanupUnverified /
+processTreeAbsent: false` säilyy epäonnistumisena.
+
+Myöhäisen valmistumisen omistajuus korjattiin erikseen nykyisen supervisorin
+sisällä. Kolme determinististä regressiota vapauttaa luontitehtävän vasta
+`Run`-virhetuloksen jälkeen: native-kutsu alkaa myöhässä, valmis kahva palautuu
+myöhässä tai luontitehtävä epäonnistuu myöhässä. Ensimmäinen tapaus pitää
+Job-attribuutin ja kahvareferenssin elossa deadlinen yli ja todistaa Jobin
+olleen tyhjä ennen myöhäistä luontia. Kaikki tapaukset todistavat kahvojen
+sulkemisen ja täsmällisen prosessin poistumisen erillisellä pinnatulla
+prosessikahvalla. Workeria ei resumeta. Jälkikäteen havaittu poissaolo ei
+muuta alkuperäistä `cleanupUnverified`-resultia onnistumiseksi.
+
+`PROC_THREAD_ATTRIBUTE_JOB_LIST` on nykyisen Win32-adapterin rajattu korvaus
+erilliselle create–Assign-välille, ei viivekorjaus. Attribuuttilista ja sen
+Job-arvomuisti vapautetaan vasta native-kutsun päätyttyä, Job-kahva säilytetään
+SafeHandle-referenssillä ja prosessi/thread-kahvat saavat aina omistajan.
+Kaksi regressiota todistaa atomisen liittämisen jo perityn Jobin sisällä:
+normaali exit sekä jälkeläisen timeout-cleanup. Ne eivät lupaa yhteensopivuutta
+mielivaltaisten ulkoisten Job-rajoitusten kanssa; ristiriita jää fail closed.
+Taustalla ovat Microsoftin
+[Job-lista-attribuutin sopimus](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-updateprocthreadattribute)
+ja [nested Job -ehdot](https://learn.microsoft.com/en-us/windows/win32/procthread/nested-jobs).
+
+Tämän tarkistuksen omistajuuskohdetestit olivat 5/5, supervisorin ja
+käännösfixturen kohdesarja 36/36 sekä mittaustiedoston virheregressio 1/1.
+Koko 103 testin sarjassa näistä jokainen pysyi vihreänä, mutta visible-
+käynnistys esti hyväksynnän. Aiempia 96/97- tai 85/86-sarjoja ei poisteta
+historiasta eikä yksittäisistä vihreistä diagnooseista tehdä korvaavaa
+hyväksyntää. Lopullisia acceptance-toistoja, MSI-artifact-buildia,
+CI-consumereita tai V2.6:ta ei aloiteta tämän avoimen virheen yli.
+
+#### Kontrolloitu vertailu ja komentotason katselmus
+
+Tilapäinen yhteisen fixturen valinta poistetaan ennen valmista checkpointia.
+Contract-entrypoint, native-luontilippujen omistaja, 10000 ms:n budjetti,
+1000 ms:n cleanup-reservi ja foreign sentinel säilyvät. Noncet ja tulospolut
+ovat ajokohtaiset.
+
+Myöhäisen valmistumisen regressioiden kattavuus täsmennettiin lukemalla
+todellinen `SupervisorProgram.Run -> execute -> TryWriteResult -> exit`
+-järjestys. `LateProcessCreationContract` odottaa myöhäisen valmistumisen
+`WindowsJobProcessSupervisor.Run`-palautuksen jälkeen mutta ennen kuin
+`execute` palautuu ja komentotulos kirjoitetaan. Se todistaa Run-rajan ja
+kahvojen luovutuksen, ei myöhäistä completionia jo päättyneen komentoprosessin
+jälkeen. Vanha `creationPending` taas todistaa strict-virhetuloksen ja
+komentoprosessin exitin, kun suspended-lapsi on jo luotu ja luontitehtävän
+palautus pidetään auki. Puuttuvaksi jää yhdistetyn komentotason tapauksen
+deterministinen näyttö, jossa attribuuttireferenssin omistama varsinainen
+native-luonti on yhä kesken result-write/exit-rajalla. Tuntematon cleanup
+pysyy virheenä. Jo todistettuja regressioita ei rakenneta uudelleen eikä
+supervisoria muuteta tämän katselmuksen perusteella.
+
+#### Korjausta edeltävän mittausrajan täsmennys
+
+Korjausta edeltävä kohdesarja jäi 85/86:een. `deadlineExceeded` ja
+`cleanupFailed` eivät todista onnistunutta cleanupia. Valmistelu, native-luonti
+ja Job-assignment on erotettava, eikä aikarajoja muuteta oletuksen perusteella.
+
+Käännösfixturen valmistelusta on poistettu suoran PowerShell-prosessin
+bounded-adapteri. `fixtures/buildWindowsApplicationCloseFixture.mjs` käyttää
+samassa valmisteluvaiheessa yhtä nykyisen Job-supervisorin instanssia ja
+Windowsin jo mukana olevaa .NET Framework C# -kääntäjää. Kääntäjä ja sen
+jälkeläiset kuuluvat siihen Jobiin; valmistelu ei ole sisäkkäinen scenario-
+supervisor. Käännös ei kuulu packaged scenario workerille eikä asenna pakettia.
+`buildWindowsApplicationCloseFixture.test` todistaa kääntäjän ei-nolla-exitin
+alkuperäisen virheen sekä simuloidun kääntäjän ja sen lapsen timeout-cleanupin
+foreign sentinelin säilyessä. Kohdetulos oli 3/3, mutta sitä ei tulkita koko
+valmistelurajan hyväksynnäksi.
+
+Oikean käännösajon valmistelu paljasti lisäksi `processStateInvalid`-tuloksen
+nykyisessä supervisorissa: Jobin aktiivisten prosessien laskuri oli nolla,
+mutta juuriprosessin kahva ei ollut vielä signaloitu. Nämä ovat kaksi eri
+havaintoa, eivät atominen snapshot. Tämän rajan korjaus ja deterministinen
+regressio sekä prosessinluonnin deadline-/cleanup-sopimus on katselmoitava
+nykyisen supervisorin vastuuna. Uutta valvojaa, sokkoretryä, pidempää timeoutia
+tai fixturen lämmitysajoa ei lisätä hyväksynnän saamiseksi.
+
+Yksittäiset erillisen native-sarjan 6/6-ajot eivät kumoa koko sarjan virhettä.
+Koko V2.5-hyväksyntä pysyy avoimena, kunnes muuttumattoman toteutuksen sovitut
+kohdesarjat sekä puhtaan revision artifact- ja consumer-portit ovat vihreät.
+Keskeneräistä muutosta ei commitoida tai pushata valmiina, eikä vanhaa W6-
+porttia poisteta tämän näytön perusteella.
 
 ## Migraatiojärjestys
 
@@ -1125,6 +1328,52 @@ Ensimmäisiä katselmuskohteita ovat yli 800-riviset, useita selvästi nimettäv
 vastuita sisältävät backend-, API-client-, desktop update- ja E2E-
 testitiedostot. Pelkkä pituus ei ole poistoperuste.
 
+## Hyväksynnän kolme tasoa
+
+### Vaihekohtainen checkpoint
+
+V2.1-V2.8-vaiheen hyväksyntä koskee vain sen nimettyjä invariantteja ja
+täsmällistä harness-revisiota. Kohdetestit ja vaiheelle sovitut paikalliset
+sekä CI-ajot on saatettava terminal-tilaan. Artifact-vaiheissa kirjataan
+erikseen producer-revisio, descriptorin ja MSI-tavujen identiteetit sekä
+consumerien harness-revisio. Likainen työpuu, puuttuva terminal-result tai
+myöhemmän muutoksen epäonnistunut sarja ei peri aiemman checkpointin vihreyttä.
+Rerun-only-vihreä ei sulje epäonnistunutta hyväksyntää.
+
+Valmis vaihe jätetään katselmoitavaksi pinotuksi draft-PR:ksi ennen seuraavan
+vaiheen aloittamista. Se ei vaihda päähaaran portteja, poista vanhaa harnessia,
+hyväksy koko V2:ta tai tuota käyttäjälle pilot-pakettia.
+
+### Koko V2:n hyväksyntä
+
+Koko V2:n hyväksyntä edellyttää kaikkien vaiheiden yhteistä näyttöä,
+invarianttien siirtokartan kattavuutta ja alla olevan valmis-määritelmän
+täyttymistä samalla lopullisella integraatiorevisiolla. Vanha ja korvaava
+portti verrataan ennen poistoa. Yksittäinen legacy-, success- tai rollback-
+checkpoint ei yksin täytä tätä tasoa.
+
+### Hallittu käyttöönotto päähaaraan
+
+Käyttöönotto valmistellaan myöhemmin erikseen ajantasaista `main`-revisiota
+vasten. Jäädytettyjä PR:iä #257/#258 ei muuteta tai mergeä oikopolkuna.
+Integraatiosuunnitelma nimeää:
+
+1. päivitetyn main-baselinen, V2-integraatiorevision ja mahdolliset ristiriidat
+2. jokaisen poistettavan vanhan invariantin vihreän V2-vastineen
+3. riskiperusteisen CI-kytkennän, vakaan aggregaattorin sekä required checkien
+   nykyiset ja ehdotetut nimet
+4. poistettavat päällekkäiset prosessi-, timeout- ja cleanup-omistajat sekä
+   jäljelle jäävän auktoritatiivisen komennon
+5. integraatiorevision paikalliset ja ensimmäisen yrityksen CI-portit sekä
+   merge-commitin oman main-ajon tarkistuksen.
+
+Required checkien korvaaminen tai repository-asetusten muutos vaatii näkyvän
+omistajapäätöksen. Porttia ei ohiteta eikä vanhaa poisteta ennen vastaavaa
+todistettua kattavuutta. Koodin, komentojen, CI:n ja dokumentaation vaihto
+tehdään yhtenä katselmoitavana cutover-kokonaisuutena. Versionosto ja
+käyttäjälle toimitettava pilot-artifact ovat vasta tämän jälkeinen erillinen
+julkaisuvaihe.
+
 ## Valmis-määritelmä
 
 V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
@@ -1154,7 +1403,9 @@ erottaa build-once artifact producer/consumer -rajan ennen upgrade-polun
 migraatiota. V2.4 upgrade/rollback on jäädytetty draft-PR:ään #262. V2.5A:n
 historical legacy build-once artifact -raja on toteutettu, ja V2.5B:n yhden
 supervisorin lifecycle sekä erillinen postcondition-raja ovat paikallisessa
-checkpoint-toteutuksessa. PR #257 ja PR #258 sekä nykyiset W6B-, W6B.2A- ja
+checkpoint-toteutuksessa. V2.5 ei ole hyväksytty: ikkunafixturen käynnistys-
+ja käännösfixturen supervisor-rajojen avoimet tulokset on eritelty yllä.
+V2.6 ei ole alkanut. PR #257 ja PR #258 sekä nykyiset W6B-, W6B.2A- ja
 W6B.2B-toteutukset säilytetään muuttumattomina. V2-checkpointit eivät vielä
 vaihda nykyisen acceptance-harnessin auktoritatiivista ajopolkua.
 
@@ -1163,5 +1414,7 @@ vaihda nykyisen acceptance-harnessin auktoritatiivista ajopolkua.
 - Node.js child process: <https://nodejs.org/api/child_process.html>
 - Microsoft nested jobs: <https://learn.microsoft.com/en-us/windows/win32/procthread/nested-jobs>
 - Microsoft `TerminateJobObject`: <https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-terminatejobobject>
+- Microsoft `SetWinEventHook`: <https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwineventhook>
+- Microsoft `MsgWaitForMultipleObjects`: <https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-msgwaitformultipleobjects>
 - GitHub Actions workflow artifacts: <https://docs.github.com/en/actions/concepts/workflows-and-actions/workflow-artifacts>
 - GitHub Actions concurrency: <https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency>

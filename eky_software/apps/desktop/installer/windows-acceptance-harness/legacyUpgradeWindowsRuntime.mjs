@@ -376,40 +376,24 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact) {
         windowsHide: false,
       },
     );
-    let closeRequested = false;
-    try {
-      const started = await waitForTargetDesktopStarted({
-        baselineEventIds,
-        childCompletion: application.completion,
-        expectedIdentity,
-        logDirectory,
-      });
-      closeRequested = true;
-      await requestGracefulClose(application.processId);
-      const applicationResult = await application.completion;
-      if (applicationResult.exitCode !== 0) {
-        throw new Error('targetGracefulShutdownFailed');
-      }
-      await requireTargetShutdownCompleted({
-        baselineEventIds,
-        expectedIdentity,
-        logDirectory,
-        runtimeInstanceId: started.runtimeInstanceId,
-      });
-      return started;
-    } catch (error) {
-      if (
-        !closeRequested &&
-        application.child.exitCode === null &&
-        application.child.signalCode === null
-      ) {
-        closeRequested = true;
-        await requestGracefulClose(application.processId).catch(
-          () => undefined,
-        );
-      }
-      throw error;
+    const started = await waitForTargetDesktopStarted({
+      baselineEventIds,
+      childCompletion: application.completion,
+      expectedIdentity,
+      logDirectory,
+    });
+    await requestGracefulClose(application.processId);
+    const applicationResult = await application.completion;
+    if (applicationResult.exitCode !== 0) {
+      throw new Error('targetGracefulShutdownFailed');
     }
+    await requireTargetShutdownCompleted({
+      baselineEventIds,
+      expectedIdentity,
+      logDirectory,
+      runtimeInstanceId: started.runtimeInstanceId,
+    });
+    return started;
   }
 
   async function runSourceStartup() {
