@@ -139,6 +139,15 @@ same-volume-ehto, rollback ja virhetilat validoidaan erikseen. Turvallisuustesti
 saa luoda haitallisen hardlinkin todistaakseen torjunnan, mutta se ei saa käyttää
 sitä release-payloadin monistamiseen.
 
+V2.5:n `WindowContract.exe`-GUI-fixturen omistajan hyväksymässä sopimuksessa
+ulkopuolinen ajonaikainen linkkimäärän muutos on erillinen havainto, ei yksin
+ikkunan sulkemistestin hylkäys. Alkuperä, kanoninen polku ja testijuurisidos,
+regular-file-tyyppi, symlink-raja, root/file-id, koko, SHA-256 sekä toiminta- ja
+cleanup-tulokset tarkistetaan edelleen. Tämä ei salli harnessin tekemää
+executable-hardlink-kloonausta eikä muuta tuotannon tai release-artifactin
+linkkipolitiikkaa. Rajaus ja näyttö ovat samassa V2-harness-suunnitelmassa;
+vendor-allowlistiä ei lisätä normaaleihin testeihin.
+
 ## Mitä testataan aina
 
 Lisää testit aina, kun muutos koskee:

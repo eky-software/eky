@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
-import { lstat, readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test, { before, after } from 'node:test';
@@ -10,50 +9,29 @@ import {
   isProcessAlive, startForeignSentinel, startProgramFailureFixture, startSupervisor, writeRequest,
 } from '../windows-process-supervisor/tests/supervisorContractTestSupport.mjs';
 import { readWindowsAcceptanceSupervisorResult } from '../windows-process-supervisor/windowsAcceptanceSupervisorResult.mjs';
+import {
+  assertWindowsApplicationCloseFixtureIdentity,
+  readWindowsApplicationCloseFixtureIdentity,
+} from './fixtures/windowsApplicationCloseFixtureIdentity.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 let buildContext;
 let fixtureExecutable;
-let sharedFixture;
 let fixtureIdentity;
-const diagnostic = process.env.EKY_V25_SHARED_FIXTURE === '1';
 
 async function readFixtureIdentity() {
-  const info = await lstat(fixtureExecutable, { bigint: true });
-  assert.equal(info.isFile() && !info.isSymbolicLink(), true);
-  return {
-    device: info.dev, fileId: info.ino, size: info.size, links: Number(info.nlink),
-    sha256: createHash('sha256').update(await readFile(fixtureExecutable)).digest('hex'),
-  };
+  return readWindowsApplicationCloseFixtureIdentity(fixtureExecutable, buildContext.runRoot);
 }
 
 async function verifyFixtureIdentity(t, phase) {
   const current = await readFixtureIdentity();
-  const sameFile = current.device === fixtureIdentity.device && current.fileId === fixtureIdentity.fileId;
-  const sameBytes = current.size === fixtureIdentity.size && current.sha256 === fixtureIdentity.sha256;
+  const comparison = assertWindowsApplicationCloseFixtureIdentity(fixtureIdentity, current);
   t.diagnostic(JSON.stringify({ schemaVersion: 1, operation: 'nativeFixtureIdentity', phase,
-    fixtureSha256: current.sha256, linkCount: current.links, sameFile, sameBytes }));
-  assert.equal(sameFile && sameBytes && current.links === 1, true, 'nativeFixtureIdentityChanged');
-}
-
-async function verifySharedFixture() {
-  const info = await lstat(sharedFixture.fixtureExecutable);
-  assert.equal(info.isFile() && !info.isSymbolicLink() && info.nlink === 1, true);
-  assert.equal(createHash('sha256').update(await readFile(sharedFixture.fixtureExecutable)).digest('hex'),
-    sharedFixture.fixtureSha256);
+    fixtureSha256: current.sha256, ...comparison }));
 }
 
 before(async () => {
   if (process.platform !== 'win32') return;
-  // Temporary local diagnostic selection; the default test still owns its one compiled fixture.
-  if (diagnostic) {
-    sharedFixture = JSON.parse(await readFile(resolve(DIRECTORY,
-      '../../.stage/v25-native-fixture-context.json'), 'utf8'));
-    await verifySharedFixture();
-    fixtureExecutable = sharedFixture.fixtureExecutable;
-    fixtureIdentity = await readFixtureIdentity();
-    return;
-  }
   buildContext = await createRunContext('native-window-compilation');
   fixtureExecutable = resolve(buildContext.runRoot, 'WindowContract.exe');
   const request = createRequest(buildContext, 'exitZero');
@@ -70,11 +48,9 @@ before(async () => {
   assert.equal(result.workerResultCode, 'workerResultValidated');
   assert.equal(result.processTreeAbsent, true);
   fixtureIdentity = await readFixtureIdentity();
-  assert.equal(fixtureIdentity.links, 1, 'nativeFixtureIdentityInvalid');
 });
 
 after(async () => {
-  if (sharedFixture) await verifySharedFixture();
   if (buildContext) await cleanupRunContext(buildContext);
 });
 

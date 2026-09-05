@@ -1271,11 +1271,12 @@ läpäisi 15/15, ei skippejä tai retryjä. Helper palauttaa vain
 cleanupin ensimmäisen virheen; se ei omista tai korvaa varsinaisen testin
 virhettä, jonka Node-testirunner raportoi erillään teardownin tuloksesta.
 
-#### Seuraavat rajatut päätökset, ei vielä toteutusta
+#### Hyväksytty GUI-fixturen sopimus
 
-GUI-fixturen `links === 1` on nykyinen hyväksymisehto, mutta sulkemistestin
-varsinainen invariantti on oman ikkunaprosessin toiminta ja poistuminen.
-Ehdotus koskee vain kerran käännettyä `WindowContract.exe`-fixtureä:
+Omistaja hyväksyi 5.9.2026 GUI-fixturen linkkihavainnon erottamisen
+eheys- ja toimintatarkistuksista. Sulkemistestin invariantti on oman
+ikkunaprosessin toiminta ja poistuminen. Rajaus koskee vain kerran
+käännettyä `WindowContract.exe`-fixtureä:
 
 - Provenance säilyy: tunnetut repositoryn lähteet, nykyinen kääntäjä ja
   argumentit, onnistunut supervisorin omistama käännös sekä alkuperäinen
@@ -1284,19 +1285,36 @@ Ehdotus koskee vain kerran käännettyä `WindowContract.exe`-fixtureä:
 - Ennen/jälkeen-tarkistukset sitovat alkuperäisen kanonisen testijuuripolun,
   regular-file-tyypin, symlink-/polkurajan, device/file-id:n, koon ja SHA-256:n.
   Polun, tiedostoidentiteetin tai tavujen vaihtuminen hylätään edelleen.
-- Ajonaikainen linkkimäärä olisi turvallinen erillinen havainto, ei yksin
+- Ajonaikainen linkkimäärä on turvallinen erillinen havainto, ei yksin
   GUI-onnistumisen hylkäys. Tämä ei todista tiedoston olevan kaikkina hetkinä
   muuttumaton eikä korvaa tuotannon tiedostoturvallisuuden testejä.
 - Ikkunan valmius ja sulkeminen, worker-result, root-exit, Job-empty,
   foreign sentinel ja cleanup säilyvät erillisinä pakollisina tuloksina.
   Ei vendor-allowlistiä tai suojausprosessin tutkintaa normaaleihin testeihin.
 
-Tämä testisopimuksen muutos tarvitsee omistajan nimenomaisen päätöksen ennen
-toteutusta. Root-AGENTS:n hardlink-kloonauskielto sekä tuotannon, releasen,
+Root-AGENTS:n hardlink-kloonauskielto sekä tuotannon, releasen,
 backupin ja updaten linkki- ja containment-politiikat eivät muutu.
 
-Tilapäinen `EKY_V25_SHARED_FIXTURE` poistetaan ennen valmista
-hyväksyntächeckpointia. Diagnostiikka ei korvaa epäonnistunutta hyväksyntää.
+Toteutus keskittää vain tämän fixturen eheyden lukemisen ja vertailun
+`windowsApplicationCloseFixtureIdentity`-testitukeen. Tiedostokahvan `stat`
+sidotaan ennen/jälkeen-polkuhavaintoihin; regular-file-, juuri-, file-id- ja
+SHA-tarkistukset eivät riipu linkkimäärästä.
+Identiteettiregressiot sekä normaali GUI-sarja läpäisivät 14/14.
+Alkuperäinen 10000/1000 ms raja säilyi, ei retryä. Odotettu `absent`-deadline
+ja varmennettu Job-cleanup ovat erillisiä pakollisia tuloksia.
+
+Katselmuksessa lisättiin vielä rajattu regression tapaus, jossa testijuuri
+vaihtuu mutta leaf-file-id, kanoninen tiedostopolku ja tavut pysyvät samoina.
+Se hylätään juuren identiteetillä. Lopullinen identiteettikohdesarja läpäisi
+9/9, ilman GUI-kokeen tai käännöksen uusintaa. Kuuden normaalin
+GUI-tapauksen toteutus ei muuttunut tämän jälkeen. Uusi testitiedosto kuuluu
+pysyvästi olemassa olevaan `installer:test:windows-supervisor-v2-legacy`-
+komentoon; package.jsonin versio ja riippuvuudet eivät muutu. Koko V2.5-
+sarjaa tai artifact/consumer-portteja ei ajettu tässä rajatussa checkpointissa.
+
+Tilapäinen `EKY_V25_SHARED_FIXTURE`-valinta ja sen paikallisen tiedoston
+lukupolku poistettiin normaalista testistä. Diagnostiikka ei korvaa
+paikallista tai GitHub-hyväksyntää.
 
 #### Aiemmat korjaukset ja mittaukset
 
@@ -1546,8 +1564,10 @@ supervisorin lifecycle sekä erillinen postcondition-raja ovat paikallisessa
 checkpoint-toteutuksessa. `abc26ee` on jaettu katselmusrevisio, ei hyväksytty
 V2.5. Virhepolkujen, komentotason kattavuuden ja sen jälkeisen testituen
 siivouskorjauksen näyttö on kuvattu avoimen checkpointin kohdalla.
-Siivouscheckpointin rajattu sarja on 15/15. Lopulliset artifact/consumer-
-portit ovat avoinna; kohdetulos ei korvaa epäonnistunutta 102/103-hyväksyntää.
+Siivouscheckpointin sarja on 15/15. GUI-fixturen sopimusmuutos on
+hyväksytty ja toteutettu: identiteettikohdesarja 9/9 ja GUI-sarja 6/6.
+Shared-fixture-valinta on poistettu. 102/103 säilyy epäonnistuneena;
+artifact/consumer-hyväksyntä puuttuu.
 V2.6 ei ole alkanut. PR #257 ja PR #258 sekä nykyiset W6B-, W6B.2A- ja
 W6B.2B-toteutukset säilytetään muuttumattomina. V2-checkpointit eivät vielä
 vaihda nykyisen acceptance-harnessin auktoritatiivista ajopolkua.
