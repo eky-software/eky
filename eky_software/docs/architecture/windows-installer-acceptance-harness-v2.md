@@ -1151,15 +1151,44 @@ ei ole vahvistettu. Fixtureen lisätyt turvalliset vaiheet tarkentavat jatkoraja
 
 ### Avoin ikkunavalmiuden checkpoint
 
-V2.5 ei ole hyväksytty. Viimeisin jaettu katselmusrevisio on `abc26ee`
-(`7ecd017` oli aiempi WIP-checkpoint). Paikallinen ja etähaaran HEAD
-varmennettiin samaksi ennen alla kuvattua testituen siivouskorjausta.
-102/103 säilyy epäonnistuneena hyväksyntätuloksena. Natiivikäynnistyksen
-diagnoosi pysyy erillisenä avoimena esteenä. Siivouskorjaukselle ei ole
-rakennettu hyväksyntäartifactia eikä ajettu CI-consumereita.
+V2.5 ei ole hyväksytty. Etähaaran katselmusrevisio on edelleen `abc26ee`;
+paikalliset testituen checkpointit `11103d1` ja `0040456` ovat sen päällä.
+Omistaja hyväksyi normaalin V2.5-todentamisen jatkamisen yhtenä työpakettina:
+vihreät sopimukset, puhdas artifact-revisio, kaksi paikallista consumeria ja
+niiden jälkeen draft-PR:n producer sekä kaksi GitHub-consumeria. Supervisor,
+aikabudjetit ja hyväksymisehdot pysyvät jäädytettyinä. Historiallinen 102/103
+säilyy epäonnistuneena; sitä ei käytetä uuden toteutuksen hyväksyntänä.
+
+Revision `0040456bdf28643970612f81a27c0aa56b2cfc37` normaali V2.5-sarja
+päättyi tulokseen **136/137**, ilman retryä tai skippejä. Ainoa virhe oli
+`native close observation: visible`: `deadlineExceeded / notChecked /
+cleanupUnverified`, `processTreeAbsent=false`. Hyväksyntä jäi epäonnistuneeksi.
+
+Tulos pysäytti siitä riippuvat artifact-, consumer- ja CI-vaiheet.
+Hyväksyntäartifactia ei rakennettu eikä koko sarjaa uusittu vihreän toivossa.
 Vanhan artifactin tai 81/81-tuloksen identiteettiä ei saa esittää nykyisen
 muutoksen hyväksyntänä. Paikalliset diagnostiikat ja jäljet eivät kuulu
 katselmointicommittiin.
+
+GUI-testin teardownissa löytyi erillinen testituen puute: result voi ilmoittaa
+`cleanupUnverified`, vaikka jo poistuneiden suorien testikahvojen siivous
+onnistuu. Aiempi teardown poisti tällöin ajon testijuuren. Nykyinen pieni
+korjaus säilyttää epäonnistuneen GUI-ajon resultin, mittaukset ja kerran
+käännetyn fixturen yksityisessä TEMP-juuressa. Myös ennen/jälkeen-identiteetin
+virhe säilyttää aineiston. Olemassa oleva cleanup sulkee yhä kaikki sen omat
+kahvat; säilytysvalinta estää vain tiedostojen poiston. Se ei muuta
+supervisorin tulosta tai peitä cleanupin virhettä eikä lisää retention-
+järjestelmää tai prosessiomistajaa.
+
+Muuttuneen cleanup-vastuun kohdetestit läpäisivät **6/6**: säilytys
+ei ohita oman sentinelin sulkemista, resultin epäonnistuminen säilyy eikä
+marker-virhe katoa kummallakaan säilytysvalinnalla. GUI-sarja läpäisi
+**6/6**, mukaan lukien odotettu `absent`-deadline ja varmennettu
+Job-cleanup. Tämä testaa teardown-muutosta, ei kumoa 136/137-tulosta.
+Tämän jälkeen koko muuttunutta tukea käyttävä supervisorin contract- ja
+result-sarja läpäisi **41/41**, mukaan lukien myöhäisen luonnin
+komentotason result/exit-raja, nested Job ja rinnakkaisten puiden eristys.
+Supervisorin toteutus ei muuttunut. `git diff --check` läpäisi.
 
 #### Katselmointipisteen jälkeinen rajattu korjaus
 

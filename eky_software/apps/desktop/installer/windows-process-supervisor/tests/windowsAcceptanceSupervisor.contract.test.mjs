@@ -69,23 +69,37 @@ test('context cleanup removes the root only after its owned process exits', WIND
   await assert.rejects(access(context.testRoot), { code: 'ENOENT' });
 });
 
-test('context cleanup preserves evidence after marker rejection and still closes owned handles', WINDOWS_ONLY, async (t) => {
-  const context = await createRunContext('context-cleanup-invalid-marker');
-  const markerPath = join(context.runRoot, 'root.ready.json');
-  t.after(async () => {
-    await rm(markerPath, { force: true });
-    await cleanupRunContext(context);
-  });
+test('context cleanup can retain failed-run evidence without skipping owned handles', WINDOWS_ONLY, async (t) => {
+  const context = await contextFor(t, 'context-cleanup-retained-result');
+  const evidence = JSON.stringify({ processTreeAbsent: false, cleanupResultCode: 'cleanupUnverified' });
+  await writeFile(context.resultPath, evidence, { flag: 'wx' });
   const sentinel = await startForeignSentinel(context);
-  const invalidMarker = JSON.stringify({ runNonce: 'invalid', processId: sentinel.marker.processId });
-  await writeFile(markerPath, invalidMarker, { flag: 'wx' });
 
-  await assert.rejects(cleanupRunContext(context), {
-    message: 'WINDOWS_ACCEPTANCE_FIXTURE_MARKER_INVALID',
-  });
+  await assert.doesNotReject(cleanupRunContext(context, { preserveEvidence: true }));
   assert.equal(isProcessAlive(sentinel.marker.processId), false);
-  assert.equal(await readFile(markerPath, 'utf8'), invalidMarker);
+  assert.equal(await readFile(context.resultPath, 'utf8'), evidence);
+  await access(context.testRoot);
 });
+
+for (const preserveEvidence of [false, true]) {
+  test(`context cleanup preserves marker failure and closes owned handles: retain=${preserveEvidence}`, WINDOWS_ONLY, async (t) => {
+    const context = await createRunContext('context-cleanup-invalid-marker');
+    const markerPath = join(context.runRoot, 'root.ready.json');
+    t.after(async () => {
+      await rm(markerPath, { force: true });
+      await cleanupRunContext(context);
+    });
+    const sentinel = await startForeignSentinel(context);
+    const invalidMarker = JSON.stringify({ runNonce: 'invalid', processId: sentinel.marker.processId });
+    await writeFile(markerPath, invalidMarker, { flag: 'wx' });
+
+    await assert.rejects(cleanupRunContext(context, { preserveEvidence }), {
+      message: 'WINDOWS_ACCEPTANCE_FIXTURE_MARKER_INVALID',
+    });
+    assert.equal(isProcessAlive(sentinel.marker.processId), false);
+    assert.equal(await readFile(markerPath, 'utf8'), invalidMarker);
+  });
+}
 
 test('context cleanup preserves evidence after handle timeout and still closes remaining handles', WINDOWS_ONLY, async (t) => {
   const context = await createRunContext('context-cleanup-handle-timeout');

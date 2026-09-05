@@ -18,6 +18,7 @@ const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 let buildContext;
 let fixtureExecutable;
 let fixtureIdentity;
+let retainFixture = false;
 
 async function readFixtureIdentity() {
   return readWindowsApplicationCloseFixtureIdentity(fixtureExecutable, buildContext.runRoot);
@@ -51,7 +52,9 @@ before(async () => {
 });
 
 after(async () => {
-  if (buildContext) await cleanupRunContext(buildContext);
+  if (buildContext) {
+    await cleanupRunContext(buildContext, { preserveEvidence: retainFixture || !fixtureIdentity });
+  }
 });
 
 test('graceful close adapter requests one exact window close without ownership logic', async () => {
@@ -75,17 +78,25 @@ test('graceful close adapter requests one exact window close without ownership l
 
 for (const mode of ['visible', 'delayed', 'exited', 'exitWhileWaiting', 'absent']) {
   test(`native close observation: ${mode}`, { skip: process.platform !== 'win32' }, async (t) => {
-    await verifyFixtureIdentity(t, 'before');
     const context = await createRunContext(`native-close-${mode}`);
     let foreign;
+    let verified = false;
     t.after(async () => {
       const failures = [];
-      for (const owned of [context, foreign].filter(Boolean)) {
-        try { await cleanupRunContext(owned); } catch (error) { failures.push(error); }
-      }
       try { await verifyFixtureIdentity(t, 'after'); } catch (error) { failures.push(error); }
+      const preserveEvidence = !verified || failures.length > 0;
+      retainFixture ||= preserveEvidence;
+      for (const owned of [context, foreign].filter(Boolean)) {
+        try {
+          await cleanupRunContext(owned, { preserveEvidence });
+        } catch (error) {
+          retainFixture = true;
+          failures.push(error);
+        }
+      }
       if (failures.length > 0) throw new AggregateError(failures, 'nativeWindowTeardownFailed');
     });
+    await verifyFixtureIdentity(t, 'before');
     foreign = await createRunContext(`foreign-window-${mode}`);
     const sentinel = await startForeignSentinel(foreign);
     const request = createRequest(context, 'exitZero');
@@ -133,6 +144,7 @@ for (const mode of ['visible', 'delayed', 'exited', 'exitWhileWaiting', 'absent'
       assert.equal(result.workerResultCode, 'workerResultValidated');
       assert.equal(result.childExitCode, 0);
     }
+    verified = true;
   });
 }
 

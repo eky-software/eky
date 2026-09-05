@@ -379,7 +379,7 @@ export async function startForeignSentinel(context) {
   return { child, marker };
 }
 
-export async function cleanupRunContext(context) {
+export async function cleanupRunContext(context, { preserveEvidence = false } = {}) {
   let cleanupFailure;
   for (const processes of [
     context.supervisorProcesses,
@@ -415,7 +415,9 @@ export async function cleanupRunContext(context) {
   if (cleanupFailure) {
     throw cleanupFailure;
   }
-  await rm(context.testRoot, { force: true, recursive: true });
+  if (!preserveEvidence) {
+    await rm(context.testRoot, { force: true, recursive: true });
+  }
 }
 
 export async function cleanupActiveSupervisors() {
