@@ -1224,6 +1224,20 @@ virheettömät. Uusia riippuvuuksia ei lisätty eikä MSI-artifactia rakennettu.
 Yksi vihreä diagnostinen CI-ajo ei hyväksy V2.5:tä. 56/56-virhepolkusarja
 ja 5/5-omistajuussarja läpäisivät; koko V2.5:n 102/103 säilyy epäonnistuneena.
 
+#### Tarkennettu paluusopimus
+
+`runLegacyUpgrade.test.mjs` vaatii nyt `completed`-tapaukselta nimenomaisen
+poikkeuksettoman paluun sekä oikean `completed`-tilan ja result-koodin.
+Jokainen seitsemästä virhetapauksesta vaatii hylätyn paluun ja oman odotetun
+virhekoodinsa. Yhteinen catch ei enää voi hyväksyä epäonnistunutta
+onnistumistapausta pelkän onnistuneen siivouksen perusteella. Muuttuneen
+testitiedoston Windows-kohdesarja: 12/12. Runnerin ja supervisorin
+toteutukset eivät muuttuneet.
+
+Lukurajat: [NtQueryInformationFile](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntqueryinformationfile),
+[FileHardLinkInformation-rakenne](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_link_entry_information)
+ja [OpenFileById](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-openfilebyid).
+
 #### Aiemmat korjaukset ja mittaukset
 
 Omistaja hyväksyi tämän jälkeen kaksi rajattua korjausta olemassa olevaan

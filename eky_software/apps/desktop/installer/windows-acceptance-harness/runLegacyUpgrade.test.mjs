@@ -20,8 +20,16 @@ function productState(present = false) {
     sourcePresent: false, targetPresent: present, installerRegistryPresent: present };
 }
 
-for (const mode of ['completed', 'preflightFailed', 'launchFailed', 'missingSupervisor',
-  'processTreeUnverified', 'scenarioUnreadable', 'semanticCleanupFailed', 'fixtureCleanupFailed']) {
+for (const [mode, expectedErrorCode] of Object.entries({
+  completed: null,
+  preflightFailed: 'WINDOWS_ACCEPTANCE_LEGACY_PRECONDITION_FAILED',
+  launchFailed: 'WINDOWS_ACCEPTANCE_SUPERVISOR_START_FAILED',
+  missingSupervisor: 'WINDOWS_ACCEPTANCE_SUPERVISOR_TERMINAL_RESULT_MISSING',
+  processTreeUnverified: 'WINDOWS_ACCEPTANCE_SUPERVISOR_DEADLINE_EXCEEDED',
+  scenarioUnreadable: 'WINDOWS_ACCEPTANCE_LEGACY_SCENARIO_RESULT_INVALID',
+  semanticCleanupFailed: 'WINDOWS_ACCEPTANCE_LEGACY_FINAL_CLEANUP_FAILED',
+  fixtureCleanupFailed: 'WINDOWS_ACCEPTANCE_LEGACY_SCENARIO_RESULT_INVALID',
+})) {
   test(`legacy command retains evidence only when needed: ${mode}`, { skip: process.platform !== 'win32' }, async (t) => {
     let root;
     let launched = false;
@@ -78,15 +86,22 @@ for (const mode of ['completed', 'preflightFailed', 'launchFailed', 'missingSupe
         workerResultCode: 'notChecked', cleanupResultCode: 'cleanupUnverified', processTreeAbsent: false }
       : supervisor;
     let failure;
-    try {
-      const result = await runLegacyUpgrade(['--artifact-descriptor',
-        resolve(DIRECTORY, 'legacy-upgrade-artifact.json')], ports);
-      assert.equal(mode, 'completed');
+    const execute = () => runLegacyUpgrade(['--artifact-descriptor',
+      resolve(DIRECTORY, 'legacy-upgrade-artifact.json')], ports);
+    if (mode === 'completed') {
+      let result;
+      await assert.doesNotReject(async () => { result = await execute(); });
+      assert.equal(result.status, 'completed');
+      assert.equal(result.resultCode, 'historicalLegacyUpgradeCompleted');
       assert.equal(result.fixtureRemoved, true);
-    } catch (error) {
-      failure = legacyUpgradeFailureDetails(error);
-      assert.ok(failure);
-      assert.doesNotMatch(JSON.stringify(failure), /private|\\\\|\.msi/);
+    } else {
+      await assert.rejects(execute, (error) => {
+        failure = legacyUpgradeFailureDetails(error);
+        assert.ok(failure);
+        assert.equal(failure.errorCode, expectedErrorCode);
+        assert.doesNotMatch(JSON.stringify(failure), /private|\\\\|\.msi/);
+        return true;
+      });
     }
     const removed = ['completed', 'preflightFailed', 'scenarioUnreadable'].includes(mode);
     if (removed) await assert.rejects(lstat(root), { code: 'ENOENT' });
