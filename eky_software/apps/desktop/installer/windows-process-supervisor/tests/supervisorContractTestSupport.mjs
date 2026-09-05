@@ -412,14 +412,10 @@ export async function cleanupRunContext(context) {
     }
   }
 
-  try {
-    await rm(context.testRoot, { force: true, recursive: true });
-  } catch (error) {
-    cleanupFailure ??= error;
-  }
   if (cleanupFailure) {
     throw cleanupFailure;
   }
+  await rm(context.testRoot, { force: true, recursive: true });
 }
 
 export async function cleanupActiveSupervisors() {
@@ -454,13 +450,25 @@ function onceClose(child, timeoutMilliseconds = 10_000) {
 }
 
 async function terminateChildHandles(processes) {
+  let cleanupFailure;
   for (const child of [...processes]) {
     if (child.exitCode !== null || child.signalCode !== null) {
       continue;
     }
     const completion = onceClose(child);
-    child.kill();
-    await completion;
+    try {
+      child.kill();
+    } catch (error) {
+      cleanupFailure ??= error;
+    }
+    try {
+      await completion;
+    } catch (error) {
+      cleanupFailure ??= error;
+    }
+  }
+  if (cleanupFailure) {
+    throw cleanupFailure;
   }
 }
 

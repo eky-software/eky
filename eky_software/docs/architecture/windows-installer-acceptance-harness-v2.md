@@ -1115,7 +1115,7 @@ kaksi ensimmäisen yrityksen GitHub-consumeria ovat edelleen hyväksyntäportti.
 | Näkyvä ikkuna suljetaan kerran ilman kiinteää viivettä | `WindowsApplicationCloseRequest` ja native `requestWindowsApplicationClose.test` | Jo näkyvä / tapahtumasta näkyvä ikkuna, exit ja puuttuva ikkuna testattu nykyisen Jobin alla; lisäksi packaged consumer |
 | Accepted-buildin ristiriidat torjutaan | `legacyUpgradeProfileEvidence.test` | Deterministiset slotit, korruptio- ja konfliktitestit sekä runtime-evidence |
 | SQLite/storage/PDF säilyvät; yksi adoptio ja uusi runtime toisella käynnistyksellä | `legacyUpgradeProfileEvidence` ja `legacyUpgradePostcondition` testeineen | Historiallisen smoken business-fixture ja täysi target-start kahdesti; hash-inventaario ei yksin korvaa business-fixturen todistetta |
-| Worker failure, deadline ja koko omistetun puun cleanup | Nykyinen V2.1-supervisor sekä `runLegacyUpgradeWorker.test` | Ei uutta valvojaa; live-child cleanup ja foreign sentinel säilyvät |
+| Worker failure, deadline ja koko omistetun puun cleanup | Nykyinen V2.1-supervisor, `runLegacyUpgradeWorker.test` sekä contract-sarjan `context cleanup` -regressiot | Ei uutta valvojaa; live-child cleanup ja foreign sentinel säilyvät; testituen cleanup-virhe säilyttää aineiston ja muut omistetut kahvat käsitellään |
 | Alkuperäinen virhe ei katoa cleanupiin | `legacyUpgradeFailureBoundary.test` | Missing result, worker non-zero, preflight-esto ja cleanup failure testattu erikseen |
 | Normaali profiili ja source-artifact säilyvät | `runLegacyUpgrade`, `closedDirectoryInventory` ja artifact-verifier | In-memory ennen/jälkeen-vertailu sekä artifactin uudelleenvarmennus |
 
@@ -1151,12 +1151,12 @@ ei ole vahvistettu. Fixtureen lisätyt turvalliset vaiheet tarkentavat jatkoraja
 
 ### Avoin ikkunavalmiuden checkpoint
 
-V2.5 ei ole hyväksytty. `7ecd017` on omistajan pyynnöstä jaettu
-WIP-katselmointicommit `cf1af6e`-lähtörevision päälle. Se ei ole vaiheen
-hyväksyntä: 102/103 säilyy epäonnistuneena hyväksyntätuloksena. Sen jälkeen
-tehty rajattu korjaus on kuvattu alla; natiivikäynnistyksen diagnoosi pysyy
-erillisenä avoimena esteenä. Tälle muutokselle ei ole rakennettu uutta
-hyväksyntäartifactia eikä ajettu CI-consumereita.
+V2.5 ei ole hyväksytty. Viimeisin jaettu katselmusrevisio on `abc26ee`
+(`7ecd017` oli aiempi WIP-checkpoint). Paikallinen ja etähaaran HEAD
+varmennettiin samaksi ennen alla kuvattua testituen siivouskorjausta.
+102/103 säilyy epäonnistuneena hyväksyntätuloksena. Natiivikäynnistyksen
+diagnoosi pysyy erillisenä avoimena esteenä. Siivouskorjaukselle ei ole
+rakennettu hyväksyntäartifactia eikä ajettu CI-consumereita.
 Vanhan artifactin tai 81/81-tuloksen identiteettiä ei saa esittää nykyisen
 muutoksen hyväksyntänä. Paikalliset diagnostiikat ja jäljet eivät kuulu
 katselmointicommittiin.
@@ -1237,6 +1237,66 @@ toteutukset eivät muuttuneet.
 Lukurajat: [NtQueryInformationFile](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntqueryinformationfile),
 [FileHardLinkInformation-rakenne](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_link_entry_information)
 ja [OpenFileById](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-openfilebyid).
+
+#### Testituen siivousraja
+
+`WindowContract.exe` syntyy Windowsin .NET Framework64:n `csc.exe`-builderilla;
+supervisor ja mittausfixturen assembly rakennetaan lukitulla .NET SDK:lla.
+Näitä ei käsitellä samana käännöspolkuna eikä kääntäjää vaihdettu.
+Ennen/jälkeen-identiteetti vertaa `lstat`-metadatan `dev`- ja `ino`-arvoja,
+kokoa, linkkimäärää ja SHA-256:ta. GUI-fixturen `File.Copy` kopioi vain
+synteettisen JSON-tulosmallin worker-resultiksi, ei executablea. Tämä
+lähdekatselmus ei tunnista mahdollista ulkopuolista tiedostomuuttajaa.
+
+`supervisorContractTestSupport.cleanupRunContext` poisti testijuuren myös
+epäonnistuneen prosessi- tai marker-tarkistuksen jälkeen, ja
+`terminateChildHandles` keskeytti saman ryhmän myöhempien kahvojen käsittelyn
+ensimmäiseen timeoutiin. Kolme käyttäytymisregressiota toistivat virheet:
+1/3 läpäisi ennen korjausta, 3/3 sen jälkeen. Nykyinen toteutus käsittelee
+muut omistetut kahvat, säilyttää ensimmäisen cleanup-virheen ja poistaa
+testijuuren vain onnistuneiden cleanup-tarkistusten jälkeen. Uutta
+cleanup-omistajaa ei lisätty eikä supervisorin C#-toteutusta muutettu.
+
+Suoraan muuttunutta testitukea käyttävä rajattu Windows-sarja läpäisi
+14/14: uudet kolme regressiota, käännösfixturen failure/timeout,
+normaali ja ei-nolla-exit, mittaustuloksen kirjoitusvirhe, myöhäisen luonnin
+kolme tapausta, komentotason pending-creation ja foreign sentinel. Testituen
+10 sekunnin handle-timeout simuloidaan uudessa regressiossa Node-testin
+mock-kellolla; todellisia aikarajoja, sleepiä tai retryä ei muutettu.
+
+Checkpoint-katselmuksessa lisätty neljäs regressio todistaa myös synkronisen
+kahvavirheen: täsmälleen sama virheolio säilyy, seuraava prosessiryhmä
+käsitellään ja yksityinen evidenssi jää talteen. Nykyinen rajattu Windows-sarja
+läpäisi 15/15, ei skippejä tai retryjä. Helper palauttaa vain
+cleanupin ensimmäisen virheen; se ei omista tai korvaa varsinaisen testin
+virhettä, jonka Node-testirunner raportoi erillään teardownin tuloksesta.
+
+#### Seuraavat rajatut päätökset, ei vielä toteutusta
+
+GUI-fixturen `links === 1` on nykyinen hyväksymisehto, mutta sulkemistestin
+varsinainen invariantti on oman ikkunaprosessin toiminta ja poistuminen.
+Ehdotus koskee vain kerran käännettyä `WindowContract.exe`-fixtureä:
+
+- Provenance säilyy: tunnetut repositoryn lähteet, nykyinen kääntäjä ja
+  argumentit, onnistunut supervisorin omistama käännös sekä alkuperäinen
+  itsenäinen tiedosto. Harness ei luo executable-hardlinkkejä tai rakenna
+  uutta fixtureä saadakseen vihreän tuloksen.
+- Ennen/jälkeen-tarkistukset sitovat alkuperäisen kanonisen testijuuripolun,
+  regular-file-tyypin, symlink-/polkurajan, device/file-id:n, koon ja SHA-256:n.
+  Polun, tiedostoidentiteetin tai tavujen vaihtuminen hylätään edelleen.
+- Ajonaikainen linkkimäärä olisi turvallinen erillinen havainto, ei yksin
+  GUI-onnistumisen hylkäys. Tämä ei todista tiedoston olevan kaikkina hetkinä
+  muuttumaton eikä korvaa tuotannon tiedostoturvallisuuden testejä.
+- Ikkunan valmius ja sulkeminen, worker-result, root-exit, Job-empty,
+  foreign sentinel ja cleanup säilyvät erillisinä pakollisina tuloksina.
+  Ei vendor-allowlistiä tai suojausprosessin tutkintaa normaaleihin testeihin.
+
+Tämä testisopimuksen muutos tarvitsee omistajan nimenomaisen päätöksen ennen
+toteutusta. Root-AGENTS:n hardlink-kloonauskielto sekä tuotannon, releasen,
+backupin ja updaten linkki- ja containment-politiikat eivät muutu.
+
+Tilapäinen `EKY_V25_SHARED_FIXTURE` poistetaan ennen valmista
+hyväksyntächeckpointia. Diagnostiikka ei korvaa epäonnistunutta hyväksyntää.
 
 #### Aiemmat korjaukset ja mittaukset
 
@@ -1483,9 +1543,11 @@ erottaa build-once artifact producer/consumer -rajan ennen upgrade-polun
 migraatiota. V2.4 upgrade/rollback on jäädytetty draft-PR:ään #262. V2.5A:n
 historical legacy build-once artifact -raja on toteutettu, ja V2.5B:n yhden
 supervisorin lifecycle sekä erillinen postcondition-raja ovat paikallisessa
-checkpoint-toteutuksessa. `7ecd017` on jaettu WIP, ei hyväksytty V2.5.
-Sen jälkeinen rajattu virhepolku- ja komentotason kattavuuskorjaus on kuvattu
-avoimen checkpointin kohdalla. Lopulliset artifact/consumer-portit ovat vielä avoinna.
+checkpoint-toteutuksessa. `abc26ee` on jaettu katselmusrevisio, ei hyväksytty
+V2.5. Virhepolkujen, komentotason kattavuuden ja sen jälkeisen testituen
+siivouskorjauksen näyttö on kuvattu avoimen checkpointin kohdalla.
+Siivouscheckpointin rajattu sarja on 15/15. Lopulliset artifact/consumer-
+portit ovat avoinna; kohdetulos ei korvaa epäonnistunutta 102/103-hyväksyntää.
 V2.6 ei ole alkanut. PR #257 ja PR #258 sekä nykyiset W6B-, W6B.2A- ja
 W6B.2B-toteutukset säilytetään muuttumattomina. V2-checkpointit eivät vielä
 vaihda nykyisen acceptance-harnessin auktoritatiivista ajopolkua.

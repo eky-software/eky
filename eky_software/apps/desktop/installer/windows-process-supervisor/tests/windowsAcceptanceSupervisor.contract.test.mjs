@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { once } from 'node:events';
-import { access, mkdir, readFile } from 'node:fs/promises';
+import { EventEmitter, once } from 'node:events';
+import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import {
@@ -59,6 +59,96 @@ async function readCompletedExecution(context, execution) {
 
 test('the supervisor binary is available', WINDOWS_ONLY, async () => {
   await access(SUPERVISOR_DLL);
+});
+
+test('context cleanup removes the root only after its owned process exits', WINDOWS_ONLY, async (t) => {
+  const context = await contextFor(t, 'context-cleanup-completed');
+  const sentinel = await startForeignSentinel(context);
+  await assert.doesNotReject(cleanupRunContext(context));
+  assert.equal(isProcessAlive(sentinel.marker.processId), false);
+  await assert.rejects(access(context.testRoot), { code: 'ENOENT' });
+});
+
+test('context cleanup preserves evidence after marker rejection and still closes owned handles', WINDOWS_ONLY, async (t) => {
+  const context = await createRunContext('context-cleanup-invalid-marker');
+  const markerPath = join(context.runRoot, 'root.ready.json');
+  t.after(async () => {
+    await rm(markerPath, { force: true });
+    await cleanupRunContext(context);
+  });
+  const sentinel = await startForeignSentinel(context);
+  const invalidMarker = JSON.stringify({ runNonce: 'invalid', processId: sentinel.marker.processId });
+  await writeFile(markerPath, invalidMarker, { flag: 'wx' });
+
+  await assert.rejects(cleanupRunContext(context), {
+    message: 'WINDOWS_ACCEPTANCE_FIXTURE_MARKER_INVALID',
+  });
+  assert.equal(isProcessAlive(sentinel.marker.processId), false);
+  assert.equal(await readFile(markerPath, 'utf8'), invalidMarker);
+});
+
+test('context cleanup preserves evidence after handle timeout and still closes remaining handles', WINDOWS_ONLY, async (t) => {
+  const context = await createRunContext('context-cleanup-handle-timeout');
+  const unresponsive = Object.assign(new EventEmitter(), {
+    exitCode: null, signalCode: null, kill: t.mock.fn(() => true),
+  });
+  const remaining = Object.assign(new EventEmitter(), { exitCode: null, signalCode: null });
+  remaining.kill = t.mock.fn(() => {
+    remaining.exitCode = 0;
+    queueMicrotask(() => remaining.emit('close', 0, null));
+    return true;
+  });
+  context.supervisorProcesses.add(unresponsive);
+  context.supervisorProcesses.add(remaining);
+  t.after(async () => {
+    t.mock.timers.reset();
+    unresponsive.exitCode = 1;
+    remaining.exitCode = 0;
+    await cleanupRunContext(context);
+  });
+  const evidencePath = join(context.testRoot, 'retained-evidence.json');
+  await writeFile(evidencePath, 'synthetic evidence', { flag: 'wx' });
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+
+  const rejected = assert.rejects(cleanupRunContext(context), {
+    message: 'WINDOWS_ACCEPTANCE_FIXTURE_HANDLE_CLEANUP_TIMEOUT',
+  });
+  t.mock.timers.tick(10_000);
+  await rejected;
+  assert.equal(unresponsive.kill.mock.callCount(), 1);
+  assert.equal(remaining.kill.mock.callCount(), 1);
+  assert.equal(await readFile(evidencePath, 'utf8'), 'synthetic evidence');
+});
+
+test('context cleanup preserves a handle error and still closes the next process group', WINDOWS_ONLY, async (t) => {
+  const context = await createRunContext('context-cleanup-handle-error');
+  const handleError = new Error('syntheticHandleError');
+  const failing = Object.assign(new EventEmitter(), { exitCode: null, signalCode: null });
+  failing.kill = t.mock.fn(() => {
+    failing.exitCode = 1;
+    queueMicrotask(() => failing.emit('close', 1, null));
+    throw handleError;
+  });
+  const remaining = Object.assign(new EventEmitter(), { exitCode: null, signalCode: null });
+  remaining.kill = t.mock.fn(() => {
+    remaining.exitCode = 0;
+    queueMicrotask(() => remaining.emit('close', 0, null));
+    return true;
+  });
+  context.supervisorProcesses.add(failing);
+  context.fixtureProcesses.add(remaining);
+  t.after(async () => {
+    failing.exitCode = 1;
+    remaining.exitCode = 0;
+    await cleanupRunContext(context);
+  });
+  const evidencePath = join(context.testRoot, 'retained-evidence.json');
+  await writeFile(evidencePath, 'synthetic evidence', { flag: 'wx' });
+
+  await assert.rejects(cleanupRunContext(context), (error) => error === handleError);
+  assert.equal(failing.kill.mock.callCount(), 1);
+  assert.equal(remaining.kill.mock.callCount(), 1);
+  assert.equal(await readFile(evidencePath, 'utf8'), 'synthetic evidence');
 });
 
 test('creation measurement output failure preserves process and cleanup results', WINDOWS_ONLY, async (t) => {
