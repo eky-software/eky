@@ -155,6 +155,17 @@ Tarkista ennen laajaa AI-muutosta:
 
 `git status`
 
+### Ennen julkaisemista
+
+Jokaisen commitin, pushin, PR-/issue-tekstin ja artifact-latauksen edellä
+noudata juuri-`AGENTS.md`:n konekohtaisten tietojen julkaisukieltoa ja
+`docs/architecture/security-principles.md`:n omistajan tietojen julkaisurajaa.
+Tarkista julkaistava sisältö, ei vain tiedoston nimeä tai Git-ohitusta.
+Raporttiin saa jäädä projektin sopimus ja hyväksyntätila, ei omistajan
+koneeseen liittyvää diagnostiikkaa. Epäselvä sisältö jää paikalliseksi,
+kunnes julkaisukelpoisuus on ratkaistu. Jo julkaistu poikkeama kerrotaan
+omistajalle; historian siivousta ei käynnistetä ilman erillistä päätöstä.
+
 ## Puhdas baseline ja julkaistavan artifactin portti
 
 Uutta toiminnallista vaihetta ei aloiteta tietoisesti punaisen tai

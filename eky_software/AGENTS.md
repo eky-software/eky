@@ -4,6 +4,11 @@ Tämä tiedosto on pakollinen lähtökohta kaikelle AI-avusteiselle työlle täs
 
 Lue tämä tiedosto aina ennen kuin teet muutoksia projektiin.
 
+Omistajan ja hänen koneensa tiedot pysyvät paikallisina. Noudata kaikessa
+raportoinnissa ja julkaisemisessa tämän tiedoston
+[konekohtaisten tietojen julkaisukieltoa](#konekohtaisten-tietojen-julkaisukielto).
+Tutkimus- tai lukulupa ei ole julkaisulupa.
+
 Eky-projektissa tekoäly ei saa arvata arkkitehtuuria, liiketoimintasääntöjä, turvallisuussääntöjä tai moduulien vastuita. Jos jokin asia on epäselvä, työ rajataan pienemmäksi tai kysytään lisäohje.
 
 ## Projektin tavoite
@@ -462,6 +467,8 @@ Tarkista:
 8. Tarvitaanko dokumentaatiopäivitys?
 9. Syntyikö uusi riippuvuus?
 10. Muuttuiko jokin arkkitehtuuripäätös?
+11. Onko julkaistavan sisällön yksityisyys tarkistettu julkaisukiellon mukaan,
+    mukaan lukien raportit, staged diff, viestit ja artifactit?
 
 Jos muutos rikkoo projektin periaatteita, älä tee sitä ilman erillistä hyväksyntää.
 
