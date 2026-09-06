@@ -1217,6 +1217,56 @@ W6-matriisia. Vihreäkään vertailu ei hyväksy V2.5:tä tai kumoa paikallista
 epäonnistumista. Se erottaa konekohtaisen havainnon toistumisesta kahdessa
 puhtaassa runner-ympäristössä, ei yksin todista natiiviodotuksen aiheuttajaa.
 
+#### Vertailun päätetulos ja jatkopäätös 6.9.2026
+
+[Diagnostiikka 34000831989](https://github.com/eky-software/eky/actions/runs/34000831989)
+ajettiin revision `eba5ac261ba91618f03465eb14a731fb32ae4d3b` ensimmäisenä
+yrityksenä kahdella erillisellä runnerilla. Image oli `win25-vs2026`, versio
+`20260824.214.3`, Node `24.19.0`, SDK `10.0.302`. Molemmat buildit olivat
+varoituksettomia ja virheettömiä. Molempien jobien terminal oli **failure**:
+
+| Ajo | Jobin kesto | Sarjan kesto | Raportoitu testitulos | visible native / terminal |
+| --- | --- | --- | --- | --- |
+| 1 | 2 min 22 s | 61,33 s | 132/136, 4 failed, 0 skipped | 9,83 / 275,62 ms |
+| 2 | 2 min 18 s | 54,22 s | 132/136, 4 failed, 0 skipped | 17,00 / 311,92 ms |
+
+GUI:n kaikki viisi tilaa läpäisivät molemmilla; `absent` todisti odotetun
+deadlinen sekä Jobin tyhjenemisen. Muut tilat valmistuivat, sentinelit
+säilyivät ja identiteetti/linkkimäärä pysyi samana (1 -> 1). Fixture
+käännettiin kerran kummallakin runnerilla, ei samaksi yhteiseksi artifactiksi.
+Koko sarja ei ole vihreä: observer-tiedoston natiivikaatuminen esti sen
+neljän testin rekisteröinnin, mistä raportin 136 eikä odotettu 139 johtuu.
+
+- **Todistettu diagnostiikkakytkennän virhe:** `EKY_DOTNET_EXE` puuttui.
+  Kaksi nested-Job-testiä muodosti suhteellisen `command: dotnet` -pyynnön,
+  jonka strict lukija hylkää `requestCommandInvalid`-tilaan ennen käynnistystä.
+  Sama hylkäys toistettiin paikallisesti muuttumattomalla supervisorilla.
+  Absoluuttisella SDK-polulla nykyiset kaksi testiä läpäisivät 2/2.
+  Pienin korjaus sitoo jo asennetun ja versionvarmennetun SDK:n nykyiseen
+  ympäristömuuttujaan vain uudessa diagnostisessa workflow-valinnassa.
+  Korjausta ei lasketa CI-hyväksytyksi eikä epäonnistunutta kierrosta uusittu.
+- **Uusi erillinen havainto:** `legacyUpgradeStartupObserver.test.mjs`
+  keskeytyi libuvin `fs-event.c:72`-assertioon molemmilla runnereilla.
+  [libuv #5010](https://github.com/libuv/libuv/issues/5010) ja
+  [Node #63638](https://github.com/nodejs/node/issues/63638) kuvaavat saman
+  Windows-tiedostoseurannan virheluokan. Lyhyen/pitkän polun ero on rajattu
+  seuraava hypoteesi, ei vielä tässä repossa toistettu juurisyy. Testiä tai
+  observeria ei muutettu; seuraava todiste käyttää vain sen nykyistä rajaa.
+- **Avoin worker-fixture:** live-child-testissä `processExitFailed / exit 1`
+  säilyi ja `processTreeAbsent=true`, mutta cleanup oli `notRequired`, ei
+  testin edellyttämä `processTreeAbsent`. Lokista ei selviä, jäikö lapsi
+  käynnistymättä vai poistuiko se aiemmin. Odotusta ei löysennetä: tarvitaan
+  juuri fixturen vaihe- ja lapsen elinkaaritodiste, ei uusi valvoja.
+
+Normaalin 138/139-ajon hylkäys säilyy. GUI-integraation budjetin mahdollinen
+eriyttäminen keinotekoisista timeout-regressioista vaatii vielä mitatun
+perusteen ja päätöksen; kumpaakaan budjettia ei muutettu. V2.5-hyväksyntään
+palataan vasta rajattujen vikojen regressioiden, eheän kohdesarjan ja
+puhtaan revision sovittujen artifact-/consumer-porttien jälkeen. CI:n
+runner-cleanup poisti kääntäjäpalvelimen ja konsoliprosessin; koko runnerin
+orpoprosessien nollatulosta ei siksi väitetä omaksi todisteeksi. Ei MSI:tä,
+V2.6:ta, mergeä tai tuotantosemantiikan muutosta tämän vertailun perusteella.
+
 #### Katselmointipisteen jälkeinen rajattu korjaus
 
 - `legacyUpgradeFailureBoundary` luokittelee myös onnistuneen supervisorin
@@ -1617,13 +1667,12 @@ erottaa build-once artifact producer/consumer -rajan ennen upgrade-polun
 migraatiota. V2.4 upgrade/rollback on jäädytetty draft-PR:ään #262. V2.5A:n
 historical legacy build-once artifact -raja on toteutettu, ja V2.5B:n yhden
 supervisorin lifecycle sekä erillinen postcondition-raja ovat paikallisessa
-checkpoint-toteutuksessa. `abc26ee` on jaettu katselmusrevisio, ei hyväksytty
+checkpoint-toteutuksessa. `eba5ac2` on jaettu diagnostinen katselmusrevisio, ei hyväksytty
 V2.5. Virhepolkujen, komentotason kattavuuden ja sen jälkeisen testituen
 siivouskorjauksen näyttö on kuvattu avoimen checkpointin kohdalla.
 GUI-fixturen sopimusmuutos ja epäonnistuneen ajon aineiston säilytys ovat
-toteutettuja. Revision `32715c6` koko sarja jäi 138/139:ään. Lopulliset
-artifact/consumer-portit ovat avoinna. Shared-fixture-valinta on poistettu
-normaaleista testeistä; diagnostiikka ei ole acceptance.
+toteutettuja. Revision `32715c6` koko sarja jäi 138/139:ään. CI-vertailun
+`34000831989` molemmat sarjat jäivät 132/136:een. Nämä eivät ole V2.5-hyväksyntä.
 V2.6 ei ole alkanut. PR #257 ja PR #258 sekä nykyiset W6B-, W6B.2A- ja
 W6B.2B-toteutukset säilytetään muuttumattomina. V2-checkpointit eivät vielä
 vaihda nykyisen acceptance-harnessin auktoritatiivista ajopolkua.
