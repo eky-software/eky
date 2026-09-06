@@ -87,19 +87,22 @@ export async function initializeHistoricalPackagedSmokeResult(resultPath) {
   );
 }
 
-async function readResult(resultPath) {
+export async function readHistoricalPackagedSmokeResult(resultPath) {
   try {
     const metadata = await lstat(resultPath, { bigint: true });
     if (
       !metadata.isFile() ||
       metadata.isSymbolicLink() ||
       metadata.nlink !== 1n ||
-      metadata.size < 2n ||
       metadata.size > 4_096n
     ) {
       throw new Error('sourcePackagedSmokeResultInvalid');
     }
     const source = await readFile(resultPath, 'utf8');
+    if (Buffer.byteLength(source, 'utf8') > 4_096) {
+      throw new Error('sourcePackagedSmokeResultInvalid');
+    }
+    // The frozen historical writer truncates in place before writing JSON + LF.
     if (!source.endsWith('\n')) return null;
     return validateHistoricalPackagedSmokeResult(JSON.parse(source));
   } catch (error) {
@@ -136,7 +139,7 @@ export async function waitForHistoricalPackagedSmokeResult({
       }
       scanning = true;
       try {
-        const result = await readResult(resultPath);
+        const result = await readHistoricalPackagedSmokeResult(resultPath);
         if (result?.status === 'failed') {
           settle(rejectPromise, new Error('sourcePackagedSmokeFailed'));
         } else if (

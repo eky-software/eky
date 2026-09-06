@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { link, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
 
 import {
   runHistoricalPackagedSmokeProcessChain,
+  readHistoricalPackagedSmokeResult,
   validateHistoricalPackagedSmokeResult,
+  waitForHistoricalPackagedSmokeResult,
 } from './legacyUpgradeSourceSmoke.mjs';
 
 function deferred() {
@@ -16,6 +18,65 @@ function deferred() {
   });
   return { promise, resolve: resolvePromise };
 }
+
+test('historical non-atomic progress writes remain pending until a complete result', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'eky-legacy-smoke-write-'));
+  t.after(() => rm(root, { force: true, recursive: true }));
+  const resultPath = resolve(root, 'desktop-smoke-result.json');
+  await writeFile(resultPath, '', { flag: 'wx' });
+  assert.equal(await readHistoricalPackagedSmokeResult(resultPath), null);
+  await writeFile(resultPath, '{');
+  assert.equal(await readHistoricalPackagedSmokeResult(resultPath), null);
+
+  const child = deferred();
+  const expected = { stage: 'restoreRestart', status: 'started' };
+  const waiting = waitForHistoricalPackagedSmokeResult({
+    childCompletion: child.promise,
+    expectedStage: expected.stage,
+    expectedStatus: expected.status,
+    resultPath,
+  });
+  await writeFile(resultPath, `${JSON.stringify(expected)}\n`);
+  child.resolve({ exitCode: 0 });
+  assert.deepEqual(await waiting, expected);
+});
+
+test('historical incomplete progress at process exit remains a failure', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'eky-legacy-smoke-incomplete-'));
+  t.after(() => rm(root, { force: true, recursive: true }));
+  const resultPath = resolve(root, 'desktop-smoke-result.json');
+  for (const content of ['', '{']) {
+    await writeFile(resultPath, content);
+    await assert.rejects(
+      waitForHistoricalPackagedSmokeResult({
+        childCompletion: Promise.resolve({ exitCode: 0 }),
+        expectedStage: 'restoreRestart',
+        expectedStatus: 'started',
+        resultPath,
+      }),
+      /sourcePackagedSmokeExitedEarly/,
+    );
+  }
+});
+
+test('historical progress still rejects malformed, oversized and linked results', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'eky-legacy-smoke-invalid-'));
+  t.after(() => rm(root, { force: true, recursive: true }));
+  const resultPath = resolve(root, 'desktop-smoke-result.json');
+  for (const content of ['{\n', 'x'.repeat(4_097)]) {
+    await writeFile(resultPath, content);
+    await assert.rejects(
+      readHistoricalPackagedSmokeResult(resultPath),
+      /sourcePackagedSmokeResultInvalid/,
+    );
+  }
+  await writeFile(resultPath, '{"stage":"startup","status":"started"}\n');
+  await link(resultPath, resolve(root, 'linked-result.json'));
+  await assert.rejects(
+    readHistoricalPackagedSmokeResult(resultPath),
+    /sourcePackagedSmokeResultInvalid/,
+  );
+});
 
 test('historical smoke result has a closed schema', () => {
   assert.deepEqual(

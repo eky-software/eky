@@ -1722,7 +1722,8 @@ säilyvät historiallisina tuloksina, eivät uuden ajon hyväksyntänä.
 | Startup-observerin polku | `22be7dc`:n kanonisen polun regressiot läpäisivät nyt myös koko sarjan osana paikallisesti ja molemmilla CI-runnereilla | Ei uutta havaittua vikaa; packaged-portti erikseen |
 | Worker-fixturen kilpaileva Job-cleanup | `65829a9`:n live-child/foreign-sentinel-sopimus läpäisi nyt kaikissa kolmessa kokonaissarjassa | Ei supervisorin uutta muutosta ilman näyttöä |
 | Koko V2.5-hyväksyntä | Avoin. Normaali paikallinen 140/141; diagnostinen CI 141/141 kummallakin runnerilla. Historialliset epäonnistumiset säilyvät hylättyinä | Paikallinen hyväksyntä ja puhtaan revision artifact/consumer-hyväksyntä ovat edelleen erillisiä vaatimuksia |
-| Itsenäinen packaged CI -diagnoosi | Nykyinen producer, descriptor, yksi supervisor ja kaksi consumeria kytketään diagnostiseen työnkulkuun | Producer saa alkaa vasta saman revision molempien täysien CI-sopimussarjojen läpäistyä; tulos ei hyväksy paikallista ajoa tai julkaisua |
+| Itsenäinen packaged CI -diagnoosi | `7ce39f0`:n molemmat täyssarjat 141/141, build-once producer valmis; consumer 2 päättyi hallittuun source-smoke-virheeseen ja consumer 1 GitHubin ulkoiseen aikakatkaisuun | Omistajan viimeinen rivi: `majorUpgrade / started`, 39975 ms. Oma terminal/cleanup-tulos ei ole todistettu; ei uutta CI-kierrosta |
+| Historiallisen smoke-tuloksen lukija | Nykyinen rajattu korjaus: keskeneräinen truncate/write ei ole valmis eikä virheellinen tulos; regressio ennen korjausta 4/6, korjauksen jälkeen muuttuneen vastuun sarjat 40/40 | Erillinen paikallinen checkpoint, ei vielä packaged-hyväksyntää tai näyttöä ulkoisen aikakatkaisun syystä |
 
 `windows-acceptance-v2-legacy-diagnostic.yml` on nykyiseen V2-build-once-malliin
 rajattu diagnostinen kytkentä, ei uusi hyväksyntäportti. Se käynnistyy vain
@@ -1739,6 +1740,87 @@ job-/step-rajoja käytetään, eikä workerin 600000 ms budjetti muutu.
 Kytkennän lähdetestit eivät ole packaged-käyttäytymisen näyttö: artifactin
 nykyiset käyttäytymistestit ja oikeat diagnostiset consumerit raportoidaan
 erikseen. Paikallista MSI:tä ei rakenneta tai asenneta epäselvän cleanupin yli.
+
+### Packaged-diagnoosin terminal-checkpoint 6.9.2026
+
+Testattu CI-revisio on `7ce39f0ace1c1f1fcd3d2623823795d9f565c160`.
+Ensimmäisessä ajossa
+[34039443687](https://github.com/eky-software/eky/actions/runs/34039443687)
+molemmat sopimussarjat läpäisivät 141/141. Producer epäonnistui ennen
+artifact-buildia Corepackin pnpm-latauksen sisäiseen Undici-assertioon.
+Artifactia tai consumer-tulosta ei syntynyt. Ajo säilyy epäonnistuneena.
+
+Yksi erikseen diagnostiseksi nimetty uusi kokonaisajo
+[34040016182](https://github.com/eky-software/eky/actions/runs/34040016182)
+käytti samaa muuttumatonta revisiota. Tämä ei ole ensimmäisen epäonnistumisen
+korvaava hyväksyntä eikä hyväksyntä uusinta-ajon vihreyden perusteella.
+
+| Job | Tulos | Kesto |
+| --- | --- | --- |
+| Sopimussarja 1 | 141/141; sama normaali pnpm-polku | Testit 62,86 s; job 2 min 31 s |
+| Sopimussarja 2 | 141/141; sama normaali pnpm-polku | Testit 57,97 s; job 2 min 16 s |
+| Build-once producer | Historical source ja target rakennettu, tarkistettu ja ladattu kerran | 7 min 42 s |
+| Consumer 2 | `WINDOWS_ACCEPTANCE_LEGACY_SOURCE_SMOKE_FAILED`; oma terminal-tulos ja tarkistettu cleanup | 2 min 37 s |
+| Consumer 1 | GitHub `cancelled`: job ylitti 18 minuutin enimmäisajan | API:n start-to-completion 23 min 1 s, sisältää keskeytymisen viiveen |
+
+Artifact-descriptor SHA-256:
+`4825aadcf460c0e583fa7f55cc802bb9379d9fbac13675dd14654953346cadef`.
+Historiallisen source-MSI:n SHA-256:
+`4a1f9015b46766bea47ba29cbd3704cf748ed5f1a29a6dfda48bcb103e95d9e9`.
+Target-MSI:n SHA-256:
+`fd672333682c198cc5f1d941e82421c7f05670f3158741dcfc614cd6d744919f`.
+Consumer 2 varmisti samat tavut myös epäonnistumisen jälkeen. Consumer 1:n
+jälkivarmistusta ei ole todistettu. Artifact ei ole käyttäjän pilot-paketti.
+
+Consumer 2:n source install ja source postcondition läpäisivät. Smoke-vaihe
+epäonnistui 220 ms kohdalla. Supervisor raportoi `processExitFailed`,
+`processTreeAbsent=true` ja `resultWritten`. Caller raportoi erikseen
+`semanticCleanupCompleted`, `exactProductsAbsentAfterCleanup` ja
+`fixtureRemoved=true`. Tämä on onnistunut cleanup, ei onnistunut skenaario.
+
+Consumer 1:n oma job-loki palautti valmistumisen jälkeen HTTP 404:n ja
+puuttui myös koko ajon ladatusta lokipaketista. Omistaja toimitti tämän
+jälkeen selaimesta viimeisen turvallisen rivin: `historicalLegacyUpgradeLifecycle /
+majorUpgrade / started`, `elapsedMs=39975`. Se todistaa etenemisen source-smoken,
+source normal startupin ja legacy business evidence -vaiheiden jälkeen
+päivitysvaiheeseen. Se ei vielä todista MSI-prosessin luonnin paluuta tai
+poistumista; target first startiin ei tämän näytön perusteella edetty.
+Oman supervisorin
+terminal-tulosta, worker-resultia, semanttista cleanupia, profiilin
+muuttumattomuutta tai nollaa orpoprosessia ei tämän consumerin osalta voi
+vahvistaa. Tuntematon lopputila säilyy hylkäyksenä.
+
+Prosessipuun suunniteltu ainoa omistaja on `WindowsJobProcessSupervisor`:
+se hallitsee workerin ja jälkeläisten Job Objectia. `runLegacyUpgrade.mjs`
+odottaa supervisorin poistumista, lukee sen tuloksen ja omistaa erilliset
+postcondition-, profiili- ja fixture-tarkistukset. Viimeinen havaittu vaihe
+on workerin `runMsiOperation('majorUpgrade')`: target MSI käynnistetään
+nykyisellä `startOwnedProcess`-adapterilla, joka odottaa spawn-kuittausta ja
+close-tapahtumaa. Sen stdio on `ignore`, eikä sillä ole toista aikarajan tai
+prosessipuun omistajaa. Supervisorin 600000 ms kokonaisbudjetista 30000 ms
+on varattu cleanupiin, joten workerin työn raja on 570000 ms. Pelkkä
+workerin MSI-odotus ei selitä oman supervisor-tuloksen puuttumista.
+Olemassa olevat deadline-/jälkeläisregressiot ovat vihreät; puuttuva näyttö
+on tämän ajon todellinen odotuskohta ja miksi aikarajapolku ei terminalisoitunut.
+Puuttuva sopimustodiste on oman deadline/cleanup-tuloksen ja komentotason
+lopputuloksen valmistuminen ennen ulkoista aikakatkaisua. Uutta valvojaa,
+wrapperia, timeout-muutosta tai CI-ajoa ei lisätty tämän päälle.
+
+Rajattu, tästä erillinen lukijavirhe todistettiin frozen historical source
+`6ed99f5`:n todellisesta kirjoitussopimuksesta: se käyttää `writeFile`-kutsua
+muodossa JSON + LF, eli tyhjentää tiedoston ennen kirjoituksen valmistumista.
+V2-lukija hylkäsi 0/1 tavun välitilan ennen rivin päättymisen tarkistusta.
+Nykyinen lukija odottaa keskeneräistä riviä nykyisellä tapahtumapolulla;
+valmis virheellinen JSON, liian suuri tai linkitetty tiedosto ja prosessin
+poistuminen ilman täyttä tulosta hylätään edelleen. Kolme uutta
+käyttäytymisregressiota osoittivat ennen korjausta 4/6 ja korjauksen jälkeen
+smoke/lifecycle/failure-boundary/runtime-sarjat 40/40. Ei uutta retryä,
+odotusaikaa, riippuvuutta tai tuotanto-/historical-source-muutosta.
+Tämä korjaa todistetun lukijasopimuksen, mutta ei yksin todista CI:n
+source-smoke-virheen tarkkaa sisäistä syytä eikä consumer 1:n aikakatkaisua.
+
+V2.5, V2.6, cutover ja julkaisu ovat eri hyväksynnät. Tämä checkpoint
+ei hyväksy niistä ensimmäistäkään valmiiksi.
 
 ### Täyden sopimusvertailun tulos 6.9.2026
 
