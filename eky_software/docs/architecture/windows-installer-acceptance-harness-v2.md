@@ -1721,9 +1721,9 @@ säilyvät historiallisina tuloksina, eivät uuden ajon hyväksyntänä.
 | --- | --- | --- |
 | Startup-observerin polku | `22be7dc`:n kanonisen polun regressiot läpäisivät nyt myös koko sarjan osana paikallisesti ja molemmilla CI-runnereilla | Ei uutta havaittua vikaa; packaged-portti erikseen |
 | Worker-fixturen kilpaileva Job-cleanup | `65829a9`:n live-child/foreign-sentinel-sopimus läpäisi nyt kaikissa kolmessa kokonaissarjassa | Ei supervisorin uutta muutosta ilman näyttöä |
-| Koko V2.5-hyväksyntä | Avoin. Uusin normaali paikallinen 146/147; aiempi diagnostinen CI 141/141 kummallakin runnerilla. Historialliset epäonnistumiset säilyvät hylättyinä | Paikallinen hyväksyntä ja puhtaan revision artifact/consumer-hyväksyntä ovat edelleen erillisiä vaatimuksia |
-| Itsenäinen packaged CI -diagnoosi | `c71f625`:n molemmat sarjat päättyivät smoke-testitiedoston libuv-abortiin: 141 pass / 1 fail; producer ja consumerit jäivät ajamatta. Uudet blocked-output-testit läpäisivät kummassakin | Ei hyväksyntää tai artifactia tästä ajosta. Alla oleva watcher-korjaus on rajattu erillinen checkpoint |
-| Historiallisen smoke-tuloksen lukija | Truncate/write-regressiot ja uusi todellinen 8.3-alias, hakemistolinkin torjunta sekä varhainen child-rejection: nykyinen kohdesarja 49/49 | CI:n libuv-abort toistettu paikallisesti ennen korjausta; ei vielä uuden revision packaged-näyttöä tai selitystä vanhalle majorUpgrade-aikakatkaisulle |
+| Koko V2.5-hyväksyntä | Avoin. Paikallinen normaali `c71f625` jäi 146/147:ksi; `43128e6`:n diagnostinen CI läpäisi 150/150 kahdesti sekä yhden producerin ja molemmat consumerit ensimmäisellä yrityksellä | Uusimman revision paikallinen täyssarja ja kaksi paikallista artifact-consumeria puuttuvat. Diagnostinen CI ei muuta aiempia epäonnistumisia hyväksytyiksi |
+| Itsenäinen packaged CI -diagnoosi | `43128e6`, ajo `34054510669`: kaikki viisi jobia vihreinä, attempt 1; major upgrade 16,73 / 19,95 s, molemmissa oma terminal-tulos ja tarkistettu cleanup | Täysi V2.5-hyväksyntä erikseen. Vanhan ulkoisen aikakatkaisun toteutunutta odotuspaikkaa ei ole osoitettu |
+| Historiallisen smoke-tuloksen lukija | Truncate/write-regressiot, todellinen 8.3-alias, hakemistolinkin torjunta ja varhainen child-rejection: paikallisesti 49/49; molemmissa CI-täyssarjoissa 150/150 ja packaged smoke läpi | Uusi libuv-abort on paikallisesti toistettu ja korjattu. Ei uutta muutosta lukijaan ilman siihen kohdistuvaa havaintoa |
 | Supervisorin turvallinen lokikirjoitus | Injektoitu pysyvästi estetty kirjoittaja esti ennen korjausta kaikki kolme komentotulosta. Nykyinen rajattu best-effort-kirjoittaja säilyttää onnistumisen, non-zero-virheen ja deadline-cleanupin; supervisor 44/44, cleanup-toisto 20/20 | Tämä on todistettu harness-virhe, ei vielä consumer 1:n todistettu juurisyy. Prosessipuun omistaja ja aikabudjetti eivät muutu |
 
 `windows-acceptance-v2-legacy-diagnostic.yml` on nykyiseen V2-build-once-malliin
@@ -1896,6 +1896,61 @@ Smoke/startup/lifecycle/failure-boundary/runtime-kohdesarjat läpäisivät
 49/49. Ei uutta valvojaa, retryä, pollausmallia tai budjettimuutosta.
 Tämä selittää uuden sopimussarjan kaatumisen, ei aiemman MSI-vaiheen
 puuttuvaa terminal-tulosta.
+
+### Vihreä diagnostinen packaged-checkpoint 6.9.2026
+
+Testattu harness- ja artifact-revisio on
+`43128e6763cc59472e4a9a3f91c5957a8fd3bf88`. Omistajan hyväksymä normaali
+push käynnisti yhden uuden
+[diagnostisen ajon 34054510669](https://github.com/eky-software/eky/actions/runs/34054510669).
+Kaikki viisi jobia valmistuivat ensimmäisellä yrityksellä ilman rerunia,
+peruutusta tai ulkoista timeoutia. Tämä raporttipäivitys ei muuta testattua
+koodia eikä artifactin build-identiteettiä.
+
+| Job | Tulos | Kesto |
+| --- | --- | --- |
+| Sopimussarja 1 | 150/150; ei fail/cancel/skip | Testit 64,50 s; job 2 min 21 s |
+| Sopimussarja 2 | 150/150; ei fail/cancel/skip | Testit 65,64 s; job 2 min 28 s |
+| Build-once producer | Yksi tarkistettu historical source/target -artifact | 7 min 45 s |
+| Consumer 1 | `historicalLegacyUpgradeCompleted`; lifecycle 61,21 s | Job 2 min 45 s |
+| Consumer 2 | `historicalLegacyUpgradeCompleted`; lifecycle 65,99 s | Job 3 min 3 s |
+
+Artifact on `historical-source-rebuild`, historiallinen source 0.2.6
+revisiosta `6ed99f5` ja target 0.2.7 nykyisestä testirevisiosta. Tämä ei ole
+exact-local-release-todiste eikä käyttäjälle jaettava pilot-paketti.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| Descriptor | `1183bc32627edd0f934fa6d0557abe526bfc42e1148e9c1add31982524362ac1` |
+| Source MSI | `6f2511171fb5e56d1e4d7daa2a2c0e03ad10eb7cf47a6ec12171e8af9ac957c1` |
+| Target MSI | `f269ca927db487bb5d51ae44ea2d2ac66d0e30ae320da7ba1bca905f63622c42` |
+
+Molemmat consumerit tarkistivat samat tavut ennen ajoa ja sen jälkeen.
+Source install, historiallinen packaged smoke, normaali source-käynnistys,
+legacy business evidence, major upgrade, targetin ensimmäinen ja toinen
+käynnistys sekä semanttinen jälkivarmistus läpäisivät. Major upgrade kesti
+16,73 / 19,95 s. Molempien strict caller-terminal todisti:
+
+- `legacyBusinessFixtureValidated=true`, yksi adoptoitu työtila ja
+  `idempotentSecondStartup=true`
+- `businessDataPreserved=true`; normaalin profiilin tiedostomäärä 0 -> 0
+  kummallakin puhtaalla runnerilla, ei käyttäjän paikallisen profiilin koe
+- `processTreeAbsent=true` ja `fixtureRemoved=true`.
+
+Onnistunut caller-tulos vaatii lisäksi erillisen semanttisen cleanupin ja
+exact ProductCode -jälkitarkistuksen `exactProductsAbsent`; epäonnistuminen
+kummassakaan estää tämän terminal-tuloksen. Omistettuja orpoprosesseja jäi
+näissä kahdessa ajossa 0. Vanhan ajon puuttuvaa cleanup-näyttöä tämä ei korvaa.
+
+Revision `43128e6` kohdesarja on 49/49, mutta normaalia 150 testin
+hyväksyntäsarjaa ei ole vielä ajettu. Edellinen normaali sarja jäi
+146/147:ksi ja `cleanupUnverified`-tilaan. Diagnostinen CI ei korvaa sitä.
+
+V2.5 ei ole kokonaisuutena hyväksytty. Ei paikallista MSI-ajoa epäselvän
+cleanupin yli, V2.6:ta, vanhan W6-harnessin poistoa, mergeä, versionostoa tai
+pilot-paketointia. Yksi Job-supervisor, samat budjetit ja fail-closed-ehdot
+säilyvät. Seuraava työ on puuttuva paikallinen viivetodiste, ei uuden
+testikerroksen rakentaminen tai jo vihreiden vastuiden avaaminen uudelleen.
 
 ### Täyden sopimusvertailun tulos 6.9.2026
 
