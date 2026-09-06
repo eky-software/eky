@@ -9,6 +9,11 @@ tietokanta-, laskutus- tai Electron-runtime-semanticsia. Se ei myöskään anna
 lupaa uudelle riippuvuudelle, GitHub Actionille, native-helperille,
 versiomuutokselle tai release-artifactille.
 
+Ajantasainen etenemispäätös ja tilataulukko ovat kohdassa
+[Nykyinen päätös](#nykyinen-päätös). Alempien päivättyjen tutkimusmerkintöjen
+aiemmat pysäytysohjeet ovat historiaa siltä osin kuin nykyinen omistajapäätös
+korvaa niiden etenemisjärjestyksen; epäonnistuneita testituloksia ei kumota.
+
 ## Historiallinen lähtötilanne
 
 Katselmus tehtiin 3.9.2026 seuraavasta puhtaasta checkpointista. Tämän luvun
@@ -1707,24 +1712,55 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 
 ## Nykyinen päätös
 
-Katselmus ja V2-suunnitelma ovat valmiit. V2.1-feasibility ja V2.2 clean
-install / uninstall on toteutettu pinottuina draft-checkpointteina. V2.3
-erottaa build-once artifact producer/consumer -rajan ennen upgrade-polun
-migraatiota. V2.4 upgrade/rollback on jäädytetty draft-PR:ään #262. V2.5A:n
-historical legacy build-once artifact -raja on toteutettu, ja V2.5B:n yhden
-supervisorin lifecycle sekä erillinen postcondition-raja ovat paikallisessa
-checkpoint-toteutuksessa. `eba5ac2` on jaettu diagnostinen katselmusrevisio, ei hyväksytty
-V2.5. Virhepolkujen, komentotason kattavuuden ja sen jälkeisen testituen
-siivouskorjauksen näyttö on kuvattu avoimen checkpointin kohdalla.
-GUI-fixturen sopimusmuutos ja epäonnistuneen ajon aineiston säilytys ovat
-toteutettuja. Revision `32715c6` koko sarja jäi 138/139:ään. CI-vertailun
-`34000831989` molemmat sarjat jäivät 132/136:een. Nämä eivät ole V2.5-hyväksyntä.
-Startup-watcherin polkuraja ja worker-fixturen kilpaileva Job-omistus
-on korjattu. Revision `65829a9` CI-worker-kohde läpäisi 4/4 kummallakin
-runnerilla ensimmäisellä yrityksellä. Artifact/consumer-portit ovat avoinna.
-V2.6 ei ole alkanut. PR #257 ja PR #258 sekä nykyiset W6B-, W6B.2A- ja
-W6B.2B-toteutukset säilytetään muuttumattomina. V2-checkpointit eivät vielä
-vaihda nykyisen acceptance-harnessin auktoritatiivista ajopolkua.
+Omistajan 6.9.2026 hyväksymä yhtenäinen työpaketti korvaa aiemman vaatimuksen
+ratkaista ajoittaisen native-käynnistysviiveen tarkka sisäinen syy ennen uutta
+kokonaissarjaa. V2-arkkitehtuuri, budjetit ja hyväksyntäehdot eivät muutu.
+
+| Vastuu | Todistettu tila | Seuraava näyttö |
+| --- | --- | --- |
+| Startup-observerin polku | Kanoninen watch-polku korjattu `22be7dc`:ssä; lyhyt/pitkä Windows-polku ja junction-regressiot | Normaali koko sopimussarja samalla revisiolla paikallisesti ja CI:ssä |
+| Worker-fixturen kilpaileva Job-cleanup | `65829a9`: supervisor omistaa edelleen koko puun, Node-fixture ei lisää kilpailevaa Jobia; paikallisesti 5 x 4/4, CI `34026639207` molemmat 4/4 | Sama täysi sarja, ei supervisorin uutta muutosta ilman näyttöä |
+| Koko V2.5-hyväksyntä | Avoin. Historialliset paikallinen 138/139 (`32715c6`) ja CI 132/136 kummallakin runnerilla (`34000831989`) pysyvät hylättyinä | Täysi sopimusvertailu, sitten puhtaan revision artifact ja paikalliset/CI-consumerit |
+
+Työpaketti etenee samassa `codex/test-harness-v2-legacy-upgrade`-haarassa:
+
+1. Tarkista työpuu, local/remote SHA, työkalut ja prosessit. Commitoi vain
+   rajattu katselmoitu muutos ja aja puhtaalta revisiolta normaali
+   `pnpm --filter @eky/desktop installer:test:windows-supervisor-v2-legacy`.
+   Sarja valmistelee normaalit uudet fixturet; retained/shared-fixture-
+   diagnostiikkaa ei injektoida normaaliin polkuun.
+2. Pushaa sama revisio normaalisti ja aja olemassa olevan feasibility-
+   workflown `legacy-contracts-diagnostic` kahdella Windows-runnerilla kerran.
+   Vertailu todistaa koko sopimussarjan käyttäytymisen näissä ympäristöissä,
+   ei packaged legacy -hyväksyntää. Kirjaa todellinen testijoukko,
+   pass/fail/cancelled/skipped, ensimmäinen virhe ja terminal/cleanup-tulos;
+   testitiedoston kaatumisen pienentämä kokonaismäärä ei ole ohitus.
+   Älä pushaa tai dispatchaa uudelleen kesken vertailun.
+3. Jos kaikki kolme sarjaa läpäisevät, jatka ilman erillistä jatkolupaa
+   diff-katselmukseen, kohdetesteihin, typecheck/buildiin ja puhtaaseen
+   artifact-checkpointiin. Jos vain paikallinen ajo viivästyy, vertaile
+   todellista ympäristöä ja fixture-valmistelua. Yhteinen käyttäytymisvika
+   korjataan omistavassa vastuutiedostossa pienellä regressiolla.
+4. Rakenna hyväksyntään historical source/target -artifact kerran, varmista
+   se erillisellä verifierillä ja aja kaksi paikallista consumeria samoilla
+   tavuilla. CI:n producer rakentaa oman artifactinsa kerran, ja kaksi
+   ensimmäisen yrityksen consumeria tarkistaa ja käyttää sen täsmälleen
+   samoja tavuja. Paikallisen ja CI-buildin byte-identtisyyttä ei oleteta.
+   Puuttuva V2.5-workflow-kytkentä saa käyttää vain nykyisiä V2-malleja ja
+   jo hyväksyttyjä SHA-lukittuja actioneita. Päivitä invarianttien siirtokartta.
+
+Tuntematon prosessilopputila tai `cleanupUnverified` pysyy virheenä eikä
+myöhempi yleinen nollaprosessikysely muuta sitä onnistumiseksi. Epäonnistuneen
+ajon tarpeellinen aineisto säilyy yksityisesti; epäselvässä ympäristössä ei
+jatketa MSI-ajoihin. GUI-integraation 10 sekunnin raja ja tarkoituksella
+lyhyet timeout-regressiot ovat eri sopimuksia; niitä ei muuteta tässä
+työpaketissa.
+
+V2.1-V2.4:n pinotut checkpointit, mukaan lukien jäädytetty draft-PR #262,
+säilyvät. Ei V2.6:ta, mergeä, versionostoa, pilot-pakettia, W6-poistoa,
+tuotantosemantiikan muutosta tai uutta prosessi-/cleanup-omistajaa.
+PR #257/#258 ja nykyiset required check -ehdot eivät muutu. Valmis V2.5
+jätetään erikseen katselmoitavaksi draft-PR:ksi.
 
 ## Ulkoiset tekniset lähteet
 
