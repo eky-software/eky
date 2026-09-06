@@ -1718,9 +1718,36 @@ kokonaissarjaa. V2-arkkitehtuuri, budjetit ja hyväksyntäehdot eivät muutu.
 
 | Vastuu | Todistettu tila | Seuraava näyttö |
 | --- | --- | --- |
-| Startup-observerin polku | Kanoninen watch-polku korjattu `22be7dc`:ssä; lyhyt/pitkä Windows-polku ja junction-regressiot | Normaali koko sopimussarja samalla revisiolla paikallisesti ja CI:ssä |
-| Worker-fixturen kilpaileva Job-cleanup | `65829a9`: supervisor omistaa edelleen koko puun, Node-fixture ei lisää kilpailevaa Jobia; paikallisesti 5 x 4/4, CI `34026639207` molemmat 4/4 | Sama täysi sarja, ei supervisorin uutta muutosta ilman näyttöä |
-| Koko V2.5-hyväksyntä | Avoin. Historialliset paikallinen 138/139 (`32715c6`) ja CI 132/136 kummallakin runnerilla (`34000831989`) pysyvät hylättyinä | Täysi sopimusvertailu, sitten puhtaan revision artifact ja paikalliset/CI-consumerit |
+| Startup-observerin polku | `22be7dc`:n kanonisen polun regressiot läpäisivät nyt myös koko sarjan osana paikallisesti ja molemmilla CI-runnereilla | Ei uutta havaittua vikaa; packaged-portti erikseen |
+| Worker-fixturen kilpaileva Job-cleanup | `65829a9`:n live-child/foreign-sentinel-sopimus läpäisi nyt kaikissa kolmessa kokonaissarjassa | Ei supervisorin uutta muutosta ilman näyttöä |
+| Koko V2.5-hyväksyntä | Avoin. Normaali paikallinen 140/141; diagnostinen CI 141/141 kummallakin runnerilla. Historialliset epäonnistumiset säilyvät hylättyinä | Ei artifact-buildia tai MSI-consumereita paikallisen hylkäyksen yli |
+
+### Täyden sopimusvertailun tulos 6.9.2026
+
+Testattu ja pushattu harness-revisio on
+`ff514fdbc86f0b241770212ab3c9a907b847528b`. Viimeinen koodimuutos on edelleen
+`65829a9`; välissä muuttui vain tämä suunnitelma. Vertailun ajaksi työpuu
+oli puhdas. Tavallinen komento rakensi supervisorin ja contract-fixturen
+Release-assemblyt, molemmat 0 warnings / 0 errors, ja käytti normaalia
+uutta GUI-fixtureä ilman retained-fixture-kytkentää.
+
+| Ajo | Pass/fail/cancelled/skipped |
+| --- | --- |
+| Normaali paikallinen komento | 140/1/0/0 |
+| GitHub diagnostinen runner 1 | 141/0/0/0 |
+| GitHub diagnostinen runner 2 | 141/0/0/0 |
+| Erillinen komentokontrolli, ei hyväksyntä | 141/0/0/0 |
+
+GitHub-ajo [34035122217](https://github.com/eky-software/eky/actions/runs/34035122217)
+valmistui ensimmäisellä yrityksellä olemassa olevalla
+`legacy-contracts-diagnostic`-valinnalla. Kaikkien neljän sarjan 141 testin
+nimet ja järjestys verrattiin samoiksi, ei vain loppumäärää.
+
+Normaalin hyväksyntäajon `deadlineExceeded / notChecked / cleanupUnverified`,
+`processTreeAbsent=false` säilyy virheenä. Myöhäisen luonnin, komentotason
+poistumisen, nested Jobin ja eristyksen regressiot läpäisivät.
+
+### Hyväksytty etenemisjärjestys
 
 Työpaketti etenee samassa `codex/test-harness-v2-legacy-upgrade`-haarassa:
 
