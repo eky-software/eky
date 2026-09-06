@@ -1371,19 +1371,22 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 
 ## Nykyinen päätös
 
-V2.5:n hyväksyntä on edelleen avoin. Viimeinen testikoodirevisio on
-`43128e6763cc59472e4a9a3f91c5957a8fd3bf88`; sitä seuranneet
-`e8d2f5f` ja `3c68cbd` ovat dokumentaatiocheckpointeja, eivät uusia
-artifact- tai testirevisioita. Yksityisyyskorjaus ei hyväksy vaihetta eikä
-muuta nykyistä arkkitehtuuria, budjetteja tai etenemisjärjestystä.
+V2.5:n hyväksyntä on edelleen avoin. Nykyinen katselmoitu testi- ja
+diagnostiikkarevisio on `fea84837ce218a09455c8c170b6ba6698fc9a9ce` haarassa
+`codex/test-harness-v2-legacy-upgrade`. Sen normaali pnpm-sarja epäonnistui,
+mutta yksi uusi diagnostinen CI-kierros valmistui kokonaan ensimmäisellä
+yrityksellä. Tässä checkpointissa ei muutettu testitoteutusta, supervisoria,
+tuotantokoodia, aikarajoja tai hyväksymisehtoja. Tämä tulosraportti ei ole
+uusi artifact-revisio; historialliset tulokset kuuluvat alkuperäisille SHA:ille.
 
 | Vastuu | Projektin hyväksyntätila |
 | --- | --- |
 | Startup- ja smoke-watcher | Kanonisointi, linkkirajat ja varhainen child-rejection on katettu regressioilla; viimeisin kohdesarja 49/49 |
 | Worker-fixturen cleanup | Kilpaileva Job-cleanup on poistettu synteettisestä fixturestä; live-child ja foreign sentinel säilyvät pakollisina |
 | Supervisorin evidence-output | Estetty output ei saa estää strict resultia tai Job-cleanupia; supervisorin kohdesarja 44/44 ja deadline/cleanup-toisto 20/20 |
-| Normaali V2.5-sarja | Viimeisin hyväksyntäyritys 149/150, epäonnistunut; `deadlineExceeded / cleanupUnverified` ei ole hyväksytty cleanup |
-| Diagnostinen CI | `43128e6`: kaksi 150/150-sarjaa, yksi producer ja kaksi consumeria ensimmäisellä yrityksellä |
+| Normaali V2.5-sarja | `fea8483`: 149/150, epäonnistunut; `deadlineExceeded / cleanupUnverified` ei ole hyväksytty cleanup |
+| Suora Node-kontrolli nykyisen buildin jälkeen | `fea8483`: 150/150, vain diagnostiikkaa; ei korvaa normaalia pnpm-komentoa tai todista juurisyytä |
+| Diagnostinen CI | `fea8483`, ajo `34065428142`: kaksi 150/150-sarjaa, yksi producer ja kaksi consumeria ensimmäisellä yrityksellä |
 | Puuttuva hyväksyntä | Vihreä normaali sarja ja sovitut kaksi paikallista artifact-consumeria puhtaalta revisiolta; diagnostinen CI ei korvaa niitä |
 
 Konekohtaisen tutkimuksen aineisto, ympäristöhavainnot ja yksityiskohtaiset
@@ -1391,7 +1394,47 @@ mittaukset säilytetään vain Gitistä ohitettuina. Niiden poistaminen tästä
 suunnitelmasta ei poista epäonnistuneita testituloksia eikä osoita juurisyytä
 julkisen CI-ajon virheelle. Tutkimuslupa ei ole julkaisulupa.
 
+Nykyisen [diagnostisen ajon 34065428142](https://github.com/eky-software/eky/actions/runs/34065428142)
+kaikki viisi jobia valmistuivat ilman rerunia tai ulkoista timeoutia.
+Sopimussarjoissa ei ollut epäonnistuneita, peruutettuja tai ohitettuja testejä.
+
+| Job | Tulos | GitHub-jobin kesto |
+| --- | --- | --- |
+| Sopimussarja 1 | 150/150 | 2 min 28 s |
+| Sopimussarja 2 | 150/150 | 2 min 47 s |
+| Producer | Yksi tarkistettu source/target-artifact | 8 min 15 s |
+| Consumer 1 | `historicalLegacyUpgradeCompleted` | 2 min 58 s |
+| Consumer 2 | `historicalLegacyUpgradeCompleted` | 3 min 11 s |
+
+| Nykyisen CI-artifactin identiteetti | SHA-256 |
+| --- | --- |
+| Descriptor | `933b1c7035f51ce048260c05da9f363da1b4045b18b24d0c76dc39dfdefab500` |
+| Source MSI | `4d2d327057d8da7e37cf4f0c5b21b527c3b8792e2035a92d1eba08b5cc8c5716` |
+| Target MSI | `35d629d5c60fdf905803352477f3bde7a1d474f4aabb1f6338411dd5a38d5171` |
+
+Molemmat consumerit varmensivat saman descriptorin ja pakettitavut ennen
+ajoa ja sen jälkeen. Source on `historical-source-rebuild` 0.2.6, target
+synteettinen 0.2.7, ei exact-local-release tai käyttäjälle jaettava pilotti.
+Kummankin strict terminal vahvisti legacy business -todisteen, yhden adoptoidun
+työtilan, idempotentin toisen käynnistyksen, `businessDataPreserved=true`,
+`processTreeAbsent=true` ja `fixtureRemoved=true`. CI-profiilin tiedostomäärä
+oli 0 -> 0. Completed-polku edellyttää onnistunutta semanttista cleanupia ja
+erillistä `exactProductsAbsent`-jälkiehtoa; omistettuja orpoprosesseja jäi 0.
+Omistajan profiilia tai yksityistä tutkimusaineistoa ei siirretty CI:hin.
+
+Seuraava avoin päätös koskee käynnistysviiveen erottavaa diagnostiikkaa,
+ei uutta supervisor-kerrosta tai yleistä testiuudistusta. Vihreä suora
+kontrolli ja diagnostinen CI eivät hyväksy epäonnistunutta normaalia sarjaa.
+Mahdollinen erillinen mittausbudjetti tarvitsee omistajan päätöksen eikä muuta
+hyväksyntärajaa tai tarkoituksellisia timeout- ja cleanup-regressioita.
+Paikallisia MSI-consumereita ei ajettu epävarman cleanupin yli.
+
 ### Historialliset hyväksyntäyritykset
+
+Aiemman vihreän diagnostisen artifactin alkuperäinen testirevisio on
+`43128e6763cc59472e4a9a3f91c5957a8fd3bf88`. Sitä seuranneet `e8d2f5f` ja
+`3c68cbd` olivat dokumentaatiocheckpointeja, eivät uusia testirevisioita.
+Niiden tuloksia ei yhdistetä nykyiseen hyväksyntäyritykseen.
 
 Aiemmat 85/86-, 96/97-, 102/103-, 136/137-, 138/139-, 140/141- ja
 146/147-sarjat säilyvät epäonnistuneina; yksittäinen vihreä diagnostiikka ei
@@ -1448,7 +1491,7 @@ vuorokauden retentionilla. Consumerit tarkistavat tavut ennen lifecycleä
 ja sen jälkeen, myös virheessä. Profiilit ja yksityiset lokit eivät kuulu
 artifactiin. Nykyiset job-/step-rajat ja workerin budjetti säilyvät.
 
-### Vihreä diagnostinen packaged-checkpoint
+### Historiallinen vihreä packaged-checkpoint
 
 [Diagnostinen ajo 34054510669](https://github.com/eky-software/eky/actions/runs/34054510669)
 käytti revisiota `43128e6763cc59472e4a9a3f91c5957a8fd3bf88`.
