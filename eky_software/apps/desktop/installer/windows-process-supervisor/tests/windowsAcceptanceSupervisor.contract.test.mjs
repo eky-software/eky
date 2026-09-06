@@ -710,6 +710,50 @@ test(
   },
 );
 
+for (const mode of ['exitZero', 'exitNonZero', 'spawnGrandchildAndHold']) {
+  test(
+    `blocked safe evidence cannot prevent the command terminal result: ${mode}`,
+    { ...WINDOWS_ONLY, timeout: 10_000 },
+    async (testContext) => {
+      const context = await contextFor(testContext, 'blocked-evidence-' + mode);
+      const sentinel = await startForeignSentinel(context);
+      const deadlineExpected = mode === 'spawnGrandchildAndHold';
+      await writeRequest(
+        context,
+        createRequest(context, mode, {
+          timeoutMilliseconds: 2_500,
+          cleanupReserveMilliseconds: 1_000,
+        }),
+      );
+      const execution = startProgramFailureFixture(context, 'blockedEvidence');
+      const blocked = await waitForMarker(context, 'output');
+      assert.equal(blocked.writerBlocked, true);
+      const grandchild = deadlineExpected
+        ? await waitForMarker(context, 'grandchild') : null;
+      const { result, completion } = await readCompletedExecution(context, execution);
+      assert.equal(completion.exitCode, mode === 'exitZero' ? 0 : 1);
+      assert.equal(
+        result.processResultCode,
+        deadlineExpected ? 'deadlineExceeded'
+          : mode === 'exitZero' ? 'processCompleted' : 'processExitFailed',
+      );
+      assert.equal(
+        result.workerResultCode,
+        mode === 'exitZero' ? 'workerResultValidated' : 'notChecked',
+      );
+      assert.equal(
+        result.cleanupResultCode,
+        deadlineExpected ? 'processTreeAbsent' : 'notRequired',
+      );
+      assert.equal(result.processTreeAbsent, true);
+      if (mode === 'exitNonZero') assert.equal(result.childExitCode, 23);
+      assert.equal(isProcessAlive(blocked.processId), false);
+      if (grandchild !== null) await waitForProcessAbsent(grandchild.processId);
+      assert.equal(isProcessAlive(sentinel.marker.processId), true);
+    },
+  );
+}
+
 test(
   'disabled or failed safe observability cannot change the terminal result',
   WINDOWS_ONLY,

@@ -84,6 +84,11 @@ internal static class SupervisorProgram
             }
             return 1;
         }
+        finally
+        {
+            if (request is not null)
+                evidence?.CompleteWithinRequestBudget(request.TimeoutMilliseconds);
+        }
     }
 
     private static bool TryWriteResult(

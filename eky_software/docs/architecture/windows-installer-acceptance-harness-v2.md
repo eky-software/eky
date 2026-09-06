@@ -1721,13 +1721,14 @@ säilyvät historiallisina tuloksina, eivät uuden ajon hyväksyntänä.
 | --- | --- | --- |
 | Startup-observerin polku | `22be7dc`:n kanonisen polun regressiot läpäisivät nyt myös koko sarjan osana paikallisesti ja molemmilla CI-runnereilla | Ei uutta havaittua vikaa; packaged-portti erikseen |
 | Worker-fixturen kilpaileva Job-cleanup | `65829a9`:n live-child/foreign-sentinel-sopimus läpäisi nyt kaikissa kolmessa kokonaissarjassa | Ei supervisorin uutta muutosta ilman näyttöä |
-| Koko V2.5-hyväksyntä | Avoin. Normaali paikallinen 140/141; diagnostinen CI 141/141 kummallakin runnerilla. Historialliset epäonnistumiset säilyvät hylättyinä | Paikallinen hyväksyntä ja puhtaan revision artifact/consumer-hyväksyntä ovat edelleen erillisiä vaatimuksia |
-| Itsenäinen packaged CI -diagnoosi | `7ce39f0`:n molemmat täyssarjat 141/141, build-once producer valmis; consumer 2 päättyi hallittuun source-smoke-virheeseen ja consumer 1 GitHubin ulkoiseen aikakatkaisuun | Omistajan viimeinen rivi: `majorUpgrade / started`, 39975 ms. Oma terminal/cleanup-tulos ei ole todistettu; ei uutta CI-kierrosta |
+| Koko V2.5-hyväksyntä | Avoin. Uusin normaali paikallinen 146/147; aiempi diagnostinen CI 141/141 kummallakin runnerilla. Historialliset epäonnistumiset säilyvät hylättyinä | Paikallinen hyväksyntä ja puhtaan revision artifact/consumer-hyväksyntä ovat edelleen erillisiä vaatimuksia |
+| Itsenäinen packaged CI -diagnoosi | `7ce39f0`:n molemmat täyssarjat 141/141, build-once producer valmis; consumer 2 päättyi hallittuun source-smoke-virheeseen ja consumer 1 GitHubin ulkoiseen aikakatkaisuun | Omistajan jatkolupa sallii yhden korjatun revision diagnostisen kierroksen nykyisellä kaksi sarjaa -> producer -> kaksi consumeria -polulla; ei hyväksyntää paikallisen virheen yli |
 | Historiallisen smoke-tuloksen lukija | Nykyinen rajattu korjaus: keskeneräinen truncate/write ei ole valmis eikä virheellinen tulos; regressio ennen korjausta 4/6, korjauksen jälkeen muuttuneen vastuun sarjat 40/40 | Erillinen paikallinen checkpoint, ei vielä packaged-hyväksyntää tai näyttöä ulkoisen aikakatkaisun syystä |
+| Supervisorin turvallinen lokikirjoitus | Injektoitu pysyvästi estetty kirjoittaja esti ennen korjausta kaikki kolme komentotulosta. Nykyinen rajattu best-effort-kirjoittaja säilyttää onnistumisen, non-zero-virheen ja deadline-cleanupin; supervisor 44/44, cleanup-toisto 20/20 | Tämä on todistettu harness-virhe, ei vielä consumer 1:n todistettu juurisyy. Prosessipuun omistaja ja aikabudjetti eivät muutu |
 
 `windows-acceptance-v2-legacy-diagnostic.yml` on nykyiseen V2-build-once-malliin
 rajattu diagnostinen kytkentä, ei uusi hyväksyntäportti. Se käynnistyy vain
-V2.5-työhaaran koodiin osuvasta pushista tai käsin. Kaksi 141 testin sarjaa
+V2.5-työhaaran koodiin osuvasta pushista tai käsin. Kaksi nykyistä täyssarjaa
 käyttää normaalia pnpm-komentoa; molempien pitää läpäistä ennen produceria.
 Jokainen job checkouttaa saman täsmällisen revision. Producer rakentaa yhden
 historical-source-rebuild/target-artifactin, tarkistaa sen ja lähettää vain
@@ -1742,6 +1743,10 @@ nykyiset käyttäytymistestit ja oikeat diagnostiset consumerit raportoidaan
 erikseen. Paikallista MSI:tä ei rakenneta tai asenneta epäselvän cleanupin yli.
 
 ### Packaged-diagnoosin terminal-checkpoint 6.9.2026
+
+Tämä on aiemman `7ce39f0`-revision historiallinen tulos. Sen jälkeinen
+omistajan jatkolupa ja rajattu korjaus kuvataan seuraavassa checkpointissa;
+aiempia epäonnistumisia ei muuteta onnistumisiksi.
 
 Testattu CI-revisio on `7ce39f0ace1c1f1fcd3d2623823795d9f565c160`.
 Ensimmäisessä ajossa
@@ -1821,6 +1826,43 @@ source-smoke-virheen tarkkaa sisäistä syytä eikä consumer 1:n aikakatkaisua.
 
 V2.5, V2.6, cutover ja julkaisu ovat eri hyväksynnät. Tämä checkpoint
 ei hyväksy niistä ensimmäistäkään valmiiksi.
+
+### Estetyn lokikirjoituksen rajattu korjaus 6.9.2026
+
+Omistajan jatkoluvan jälkeen nykyisestä `SafeEvidenceWriter`-vastuusta
+löytyi riippumaton jumittumismahdollisuus: validin requestin turvallinen
+JSONL kirjoitettiin synkronisesti samalla säikeellä, joka tarkistaa deadlinen
+ja ohjaa Job-cleanupia. Rikkinäinen output oli testattu, mutta ilman
+poikkeusta pysyvästi odottavaa kirjoitusta ei ollut. Microsoftin
+[anonymous pipe -sopimus](https://learn.microsoft.com/en-us/windows/win32/ipc/anonymous-pipe-operations)
+vahvistaa, että täyteen putkeen tehty synkroninen kirjoitus odottaa lukijaa.
+Tämä ei ole havainto kyseisen GitHub-runnerin todellisesta putkitilasta.
+
+Nykyinen command-fixture pysäyttää injektoidun TextWriterin
+`waitStarted`-vaiheeseen. Ennen korjausta zero-exit, non-zero-exit ja
+elävän jälkeläisen deadline-tapaukset kaikki keskeytyivät testin 10 sekunnin
+ulkorajaan (0 pass, 3 cancelled), vaikka requestin budjetti oli 2500 ms.
+Korjauksessa sama kirjoittaja käyttää enintään 128 rivin ei-odottavaa jonoa
+ja yhtä supervisor-prosessin sisäistä background-output-säiettä. Täysi jono
+saa pudottaa diagnostisen rivin, ei muuttaa varsinaista tulosta.
+Strict supervisor-result kirjoitetaan edelleen erikseen tiedostoon;
+outputin loppudrain saa käyttää vain saman requestin jäljellä olevaa aikaa.
+Estetty output ei estä prosessin poistumista. Invalid-request-polku ennen
+Jobin käynnistystä ei kuulu tämän kokeen kattavuuteen.
+
+Prosessipuun, root-exitin, Job-empty-tilan, worker-resultin ja cleanupin
+omistajuus ja tulokset eivät muutu. Ei uutta prosessivalvojaa, timeoutia,
+retryä, tuotantomuutosta tai riippuvuutta. Sama olemassa oleva fixture ja
+sen tarkka prosessikahva omistavat testin epäonnistumissiivouksen.
+
+| Paikallinen näyttö ennen checkpointia | Tulos |
+| --- | --- |
+| Estetty output, aiempi output-failure ja myöhäinen command-exit | 5/5 |
+| Koko supervisor-sarja | 44/44; Release-buildit 0 warnings / 0 errors |
+| Deadline/cleanup 20 toistoa, foreign sentinel, parallel isolation, kolme blocked-output-tapausta | 6/6 testitapausta; 20/20 deadline-toistoa |
+| Koko normaali paikallinen V2.5-sarja | 146/147; yksi visible-native-virhe, ei cancelled/skipped |
+| Artifact- ja diagnostisen workflow-kytkennän sopimukset | 10/10; ei MSI-buildia |
+| Desktop typecheck/build ja diff --check | Läpäisivät; ei tuotantolähteen muutosta |
 
 ### Täyden sopimusvertailun tulos 6.9.2026
 
