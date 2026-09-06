@@ -1,5 +1,5 @@
 import { watch } from 'node:fs';
-import { lstat, readFile, readdir } from 'node:fs/promises';
+import { lstat, readFile, readdir, realpath } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 const UUID_V4_PATTERN =
@@ -136,6 +136,26 @@ function identityMatches(event, expected) {
   );
 }
 
+async function canonicalWatchDirectory(logDirectory) {
+  try {
+    const before = await lstat(logDirectory, { bigint: true });
+    if (!before.isDirectory() || before.isSymbolicLink()) {
+      throw new Error('targetOperationalLogInvalid');
+    }
+    const canonical = await realpath(logDirectory);
+    const after = await lstat(canonical, { bigint: true });
+    if (
+      !after.isDirectory() || after.isSymbolicLink() ||
+      before.dev !== after.dev || before.ino !== after.ino
+    ) {
+      throw new Error('targetOperationalLogInvalid');
+    }
+    return canonical;
+  } catch {
+    throw new Error('targetOperationalLogInvalid');
+  }
+}
+
 export async function waitForTargetDesktopStarted({
   baselineEventIds,
   childCompletion,
@@ -143,6 +163,8 @@ export async function waitForTargetDesktopStarted({
   logDirectory,
 }) {
   const baseline = new Set(baselineEventIds);
+  // libuv's Windows watcher can abort the process when given an 8.3 alias.
+  const watchDirectory = await canonicalWatchDirectory(logDirectory);
   return new Promise((resolvePromise, rejectPromise) => {
     let settled = false;
     let scanning = false;
@@ -198,7 +220,7 @@ export async function waitForTargetDesktopStarted({
     };
 
     try {
-      watcher = watch(logDirectory, { persistent: false }, () => void scan());
+      watcher = watch(watchDirectory, { persistent: false }, () => void scan());
       watcher.once('error', () =>
         settle(rejectPromise, new Error('targetOperationalLogInvalid')),
       );

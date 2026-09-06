@@ -1267,6 +1267,21 @@ runner-cleanup poisti kääntäjäpalvelimen ja konsoliprosessin; koko runnerin
 orpoprosessien nollatulosta ei siksi väitetä omaksi todisteeksi. Ei MSI:tä,
 V2.6:ta, mergeä tai tuotantosemantiikan muutosta tämän vertailun perusteella.
 
+#### Observerin polkukorjaus
+
+Windowsin 8.3-TEMP-alias toisti observerin `fs-event.c:72`-assertion.
+Worker-testit läpäisivät myös lyhyellä polulla. Tämä erottaa observerin
+polkurajan workerin erillisestä cleanup-sopimuksesta.
+
+Nykyinen `legacyUpgradeStartupObserver` antaa native-watcherille `realpath`-
+polun vasta hakemiston `lstat`- ja file identity -tarkistusten jälkeen.
+Tapahtumien lukeminen, identiteettisidonta ja virheluokitus säilyvät ennallaan.
+Ei uutta valvojaa, polling-fallbackia tai aikarajamuutosta. Oikea Windowsin
+8.3-alias ja hakemistolinkin torjunta on lukittu käyttäytymisregressioilla.
+Korjattu kohdepari läpäisi 10/10 sekä tavallisella että täsmälleen aiemman
+epäonnistumisen lyhyellä TEMP-polulla. Suorat legacy-regressiot läpäisivät
+47/47, ei skippejä. Nämä eivät korvaa epäonnistuneita paikallisia tai CI-sarjoja.
+
 #### Katselmointipisteen jälkeinen rajattu korjaus
 
 - `legacyUpgradeFailureBoundary` luokittelee myös onnistuneen supervisorin
