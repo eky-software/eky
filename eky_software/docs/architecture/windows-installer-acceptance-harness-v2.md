@@ -1712,15 +1712,33 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 
 ## Nykyinen päätös
 
-Omistajan 6.9.2026 hyväksymä yhtenäinen työpaketti korvaa aiemman vaatimuksen
-ratkaista ajoittaisen native-käynnistysviiveen tarkka sisäinen syy ennen uutta
-kokonaissarjaa. V2-arkkitehtuuri, budjetit ja hyväksyntäehdot eivät muutu.
+Omistajan 6.9.2026 tarkentama työpaketti erottaa paikallisen native-viiveen
+diagnoosin puhtaiden CI-runnerien packaged legacy -diagnoosista. V2-arkkitehtuuri,
+budjetit ja hyväksyntäehdot eivät muutu. Alla olevat aiemmat hyväksyntäyritykset
+säilyvät historiallisina tuloksina, eivät uuden ajon hyväksyntänä.
 
 | Vastuu | Todistettu tila | Seuraava näyttö |
 | --- | --- | --- |
 | Startup-observerin polku | `22be7dc`:n kanonisen polun regressiot läpäisivät nyt myös koko sarjan osana paikallisesti ja molemmilla CI-runnereilla | Ei uutta havaittua vikaa; packaged-portti erikseen |
 | Worker-fixturen kilpaileva Job-cleanup | `65829a9`:n live-child/foreign-sentinel-sopimus läpäisi nyt kaikissa kolmessa kokonaissarjassa | Ei supervisorin uutta muutosta ilman näyttöä |
-| Koko V2.5-hyväksyntä | Avoin. Normaali paikallinen 140/141; diagnostinen CI 141/141 kummallakin runnerilla. Historialliset epäonnistumiset säilyvät hylättyinä | Ei artifact-buildia tai MSI-consumereita paikallisen hylkäyksen yli |
+| Koko V2.5-hyväksyntä | Avoin. Normaali paikallinen 140/141; diagnostinen CI 141/141 kummallakin runnerilla. Historialliset epäonnistumiset säilyvät hylättyinä | Paikallinen hyväksyntä ja puhtaan revision artifact/consumer-hyväksyntä ovat edelleen erillisiä vaatimuksia |
+| Itsenäinen packaged CI -diagnoosi | Nykyinen producer, descriptor, yksi supervisor ja kaksi consumeria kytketään diagnostiseen työnkulkuun | Producer saa alkaa vasta saman revision molempien täysien CI-sopimussarjojen läpäistyä; tulos ei hyväksy paikallista ajoa tai julkaisua |
+
+`windows-acceptance-v2-legacy-diagnostic.yml` on nykyiseen V2-build-once-malliin
+rajattu diagnostinen kytkentä, ei uusi hyväksyntäportti. Se käynnistyy vain
+V2.5-työhaaran koodiin osuvasta pushista tai käsin. Kaksi 141 testin sarjaa
+käyttää normaalia pnpm-komentoa; molempien pitää läpäistä ennen produceria.
+Jokainen job checkouttaa saman täsmällisen revision. Producer rakentaa yhden
+historical-source-rebuild/target-artifactin, tarkistaa sen ja lähettää vain
+descriptorin suljetun tiedostojoukon jo hyväksytyillä SHA-lukituilla actioneilla
+yhden vuorokauden retentionilla. Kaksi itsenäistä consumeria tarkistaa samat
+tavut ennen nykyistä legacy-lifecycleä ja sen jälkeen, myös lifecycle-virheen
+jälkeen. Profiilia tai yksityisiä lokeja ei ladata artifactiin. V2.4:n nykyisiä
+job-/step-rajoja käytetään, eikä workerin 600000 ms budjetti muutu.
+
+Kytkennän lähdetestit eivät ole packaged-käyttäytymisen näyttö: artifactin
+nykyiset käyttäytymistestit ja oikeat diagnostiset consumerit raportoidaan
+erikseen. Paikallista MSI:tä ei rakenneta tai asenneta epäselvän cleanupin yli.
 
 ### Täyden sopimusvertailun tulos 6.9.2026
 
@@ -1768,6 +1786,10 @@ Työpaketti etenee samassa `codex/test-harness-v2-legacy-upgrade`-haarassa:
    artifact-checkpointiin. Jos vain paikallinen ajo viivästyy, vertaile
    todellista ympäristöä ja fixture-valmistelua. Yhteinen käyttäytymisvika
    korjataan omistavassa vastuutiedostossa pienellä regressiolla.
+   Omistajan tarkennuksen mukaan paikallisen viiveen jäädessä avoimeksi
+   puhtaan CI-revision kaksi vihreää sopimussarjaa saavat valtuuttaa yhden
+   erikseen diagnostisen historical source/target -producerin ja kaksi saman
+   artifactin consumeria. Se ei täytä seuraavan kohdan paikallista hyväksyntää.
 4. Rakenna hyväksyntään historical source/target -artifact kerran, varmista
    se erillisellä verifierillä ja aja kaksi paikallista consumeria samoilla
    tavuilla. CI:n producer rakentaa oman artifactinsa kerran, ja kaksi
