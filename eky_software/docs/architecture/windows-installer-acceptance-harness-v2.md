@@ -1284,6 +1284,17 @@ epäonnistumisen lyhyellä TEMP-polulla. Suorat legacy-regressiot läpäisivät
 
 #### Katselmointipisteen jälkeinen rajattu korjaus
 
+Workerin avoin CI-havainto rajataan nykyisen fixturen sisällä: testi vaatii
+requestin lukemisen, lapsen käynnistyskuittauksen, oikean workerin paluun
+sekä lapsen elossaolon ennen parentin exitia. Nämä tarkistetaan ennen
+supervisorin cleanup-odotusta; aiempi `notRequired` ei enää peitä puuttuvaa
+esiehtoa. Julkinen diagnostiikka sisältää vain version ja suljetut vaihenimet,
+ei PID:tä, polkua tai raakavirhettä. Paikallinen worker-kohde läpäisi 4/4.
+Nykyisen feasibility-workflown `legacy-worker-diagnostic` ajaa vain saman
+testitiedoston kahdella runnerilla ilman MSI:tä tai koko V2.5-sarjaa.
+Tulos on diagnostiikka, ei acceptance. Supervisor, cleanup-omistus ja
+10000/1000 ms rajat säilyvät muuttumattomina.
+
 - `legacyUpgradeFailureBoundary` luokittelee myös onnistuneen supervisorin
   jälkeen puuttuvan tai lukukelvottoman scenario-resultin. Alkuperäinen virhe,
   semanttinen cleanup ja jälkiehto säilyvät erillisinä. Puuttuva tulos ei

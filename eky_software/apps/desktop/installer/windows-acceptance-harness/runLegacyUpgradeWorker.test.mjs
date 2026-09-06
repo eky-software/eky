@@ -118,12 +118,32 @@ test('failed legacy worker exits with a live child and the existing Job supervis
     ...context,
     supervisorExitCode: completion.exitCode,
   });
+  const phases = [];
+  const expectedPhases = ['requestRead', 'childSpawned', 'childReady', 'workerReturned', 'childAliveBeforeExit'];
+  let progressText = '';
+  try {
+    progressText = await readFile(resolve(context.runRoot, 'legacy-worker-progress.jsonl'), 'utf8');
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw new Error('fixtureProgressUnreadable');
+  }
+  for (const line of progressText.trim().split('\n').filter(Boolean)) {
+    const entry = JSON.parse(line);
+    assert.deepEqual(Object.keys(entry).sort(), ['phase', 'runNonce', 'schemaVersion']);
+    assert.equal(entry.schemaVersion, 1);
+    assert.equal(entry.runNonce, context.runNonce);
+    assert.equal(expectedPhases.includes(entry.phase), true);
+    phases.push(entry.phase);
+  }
+  t.diagnostic(JSON.stringify({ schemaVersion: 1, operation: 'legacyWorkerChildContract', phases }));
+  assert.deepEqual(phases, expectedPhases, 'The fixture must prove its live child before supervisor cleanup is evaluated');
+  const scenarioResult = await readLegacyUpgradeResult(legacyUpgradeResultPathForRequest(workerRequestPath), request);
+  assert.equal(scenarioResult.errorCode, 'unexpectedFailure');
+  const child = await waitForMarker(context, 'grandchild');
   assert.equal(supervisorResult.processResultCode, 'processExitFailed');
   assert.equal(supervisorResult.childExitCode, 1);
   assert.equal(supervisorResult.cleanupResultCode, 'processTreeAbsent');
   assert.equal(supervisorResult.processTreeAbsent, true);
   assert.equal(completion.evidence.some((entry) => entry.phase === 'deadlineExceeded'), false);
-  const child = await waitForMarker(context, 'grandchild');
   assert.equal(isProcessAlive(child.processId), false);
   assert.equal(isProcessAlive(sentinel.marker.processId), true);
   await assert.rejects(resolveLegacyUpgradeTerminalOutcome({

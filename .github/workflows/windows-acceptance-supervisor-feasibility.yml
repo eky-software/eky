@@ -17,6 +17,7 @@ on:
           - contracts
           - window-startup-diagnostic
           - legacy-contracts-diagnostic
+          - legacy-worker-diagnostic
 
 permissions:
   contents: read
@@ -27,7 +28,7 @@ concurrency:
 
 jobs:
   job-object-feasibility:
-    name: ${{ inputs.mode == 'window-startup-diagnostic' && 'V2.5 window startup diagnostic (not acceptance)' || inputs.mode == 'legacy-contracts-diagnostic' && format('V2.5 contracts diagnostic run {0} (not acceptance)', matrix.repetition) || format('Windows Job Object feasibility run {0}', matrix.repetition) }}
+    name: ${{ inputs.mode == 'window-startup-diagnostic' && 'V2.5 window startup diagnostic (not acceptance)' || inputs.mode == 'legacy-worker-diagnostic' && format('V2.5 worker diagnostic run {0} (not acceptance)', matrix.repetition) || inputs.mode == 'legacy-contracts-diagnostic' && format('V2.5 contracts diagnostic run {0} (not acceptance)', matrix.repetition) || format('Windows Job Object feasibility run {0}', matrix.repetition) }}
     runs-on: windows-latest
     timeout-minutes: 10
 
@@ -69,7 +70,7 @@ jobs:
         run: node installer/windows-process-supervisor/buildWindowsAcceptanceSupervisor.mjs
 
       - name: Run supervisor unit and process contracts
-        if: inputs.mode != 'window-startup-diagnostic' && inputs.mode != 'legacy-contracts-diagnostic'
+        if: inputs.mode != 'window-startup-diagnostic' && inputs.mode != 'legacy-contracts-diagnostic' && inputs.mode != 'legacy-worker-diagnostic'
         run: >-
           node --test --test-concurrency=1
           installer/windows-process-supervisor/tests/windowsAcceptanceSupervisorResult.test.mjs
@@ -87,7 +88,7 @@ jobs:
         run: corepack enable
 
       - name: Bind the verified SDK executable for nested diagnostic requests
-        if: inputs.mode == 'legacy-contracts-diagnostic'
+        if: inputs.mode == 'legacy-contracts-diagnostic' || inputs.mode == 'legacy-worker-diagnostic'
         shell: pwsh
         run: |
           $dotnet = (Get-Command dotnet.exe -CommandType Application -ErrorAction Stop).Source
@@ -97,7 +98,7 @@ jobs:
           "EKY_DOTNET_EXE=$dotnet" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Record diagnostic revision and runner image
-        if: inputs.mode == 'legacy-contracts-diagnostic'
+        if: inputs.mode == 'legacy-contracts-diagnostic' || inputs.mode == 'legacy-worker-diagnostic'
         shell: pwsh
         env:
           DIAGNOSTIC_REPETITION: ${{ matrix.repetition }}
@@ -116,3 +117,9 @@ jobs:
       - name: Diagnose full V2.5 contract suite with unchanged default budgets
         if: inputs.mode == 'legacy-contracts-diagnostic'
         run: pnpm installer:test:windows-supervisor-v2-legacy
+
+      - name: Diagnose legacy worker live-child contract without MSI or acceptance matrix
+        if: inputs.mode == 'legacy-worker-diagnostic'
+        run: >-
+          node --test --test-concurrency=1
+          installer/windows-acceptance-harness/runLegacyUpgradeWorker.test.mjs
