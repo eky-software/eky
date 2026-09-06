@@ -1719,6 +1719,9 @@ siivouskorjauksen näyttö on kuvattu avoimen checkpointin kohdalla.
 GUI-fixturen sopimusmuutos ja epäonnistuneen ajon aineiston säilytys ovat
 toteutettuja. Revision `32715c6` koko sarja jäi 138/139:ään. CI-vertailun
 `34000831989` molemmat sarjat jäivät 132/136:een. Nämä eivät ole V2.5-hyväksyntä.
+Startup-watcherin polkuraja ja worker-fixturen kilpaileva Job-omistus
+on korjattu. Revision `65829a9` CI-worker-kohde läpäisi 4/4 kummallakin
+runnerilla ensimmäisellä yrityksellä. Artifact/consumer-portit ovat avoinna.
 V2.6 ei ole alkanut. PR #257 ja PR #258 sekä nykyiset W6B-, W6B.2A- ja
 W6B.2B-toteutukset säilytetään muuttumattomina. V2-checkpointit eivät vielä
 vaihda nykyisen acceptance-harnessin auktoritatiivista ajopolkua.
