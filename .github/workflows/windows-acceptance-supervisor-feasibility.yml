@@ -10,12 +10,13 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: Contract acceptance or a single diagnostic comparison (not acceptance)
+        description: Contract acceptance or diagnostic comparison (not acceptance)
         type: choice
         default: contracts
         options:
           - contracts
           - window-startup-diagnostic
+          - legacy-contracts-diagnostic
 
 permissions:
   contents: read
@@ -26,7 +27,7 @@ concurrency:
 
 jobs:
   job-object-feasibility:
-    name: ${{ inputs.mode == 'window-startup-diagnostic' && 'V2.5 window startup diagnostic (not acceptance)' || format('Windows Job Object feasibility run {0}', matrix.repetition) }}
+    name: ${{ inputs.mode == 'window-startup-diagnostic' && 'V2.5 window startup diagnostic (not acceptance)' || inputs.mode == 'legacy-contracts-diagnostic' && format('V2.5 contracts diagnostic run {0} (not acceptance)', matrix.repetition) || format('Windows Job Object feasibility run {0}', matrix.repetition) }}
     runs-on: windows-latest
     timeout-minutes: 10
 
@@ -64,10 +65,11 @@ jobs:
           }
 
       - name: Build Windows process supervisor
+        if: inputs.mode != 'legacy-contracts-diagnostic'
         run: node installer/windows-process-supervisor/buildWindowsAcceptanceSupervisor.mjs
 
       - name: Run supervisor unit and process contracts
-        if: inputs.mode != 'window-startup-diagnostic'
+        if: inputs.mode != 'window-startup-diagnostic' && inputs.mode != 'legacy-contracts-diagnostic'
         run: >-
           node --test --test-concurrency=1
           installer/windows-process-supervisor/tests/windowsAcceptanceSupervisorResult.test.mjs
@@ -79,3 +81,28 @@ jobs:
           node --test --test-concurrency=1
           --test-name-pattern="^native close observation: visible$"
           installer/windows-acceptance-harness/requestWindowsApplicationClose.test.mjs
+
+      - name: Enable existing package manager for diagnostic contracts
+        if: inputs.mode == 'legacy-contracts-diagnostic'
+        run: corepack enable
+
+      - name: Record diagnostic revision and runner image
+        if: inputs.mode == 'legacy-contracts-diagnostic'
+        shell: pwsh
+        env:
+          DIAGNOSTIC_REPETITION: ${{ matrix.repetition }}
+        run: |
+          [ordered]@{
+            schemaVersion = 1
+            diagnosticOnly = $true
+            harnessRevision = $env:GITHUB_SHA
+            repetition = [int]$env:DIAGNOSTIC_REPETITION
+            runnerImage = $env:ImageOS
+            runnerImageVersion = $env:ImageVersion
+            nodeVersion = (node --version)
+            dotnetVersion = (dotnet --version)
+          } | ConvertTo-Json -Compress
+
+      - name: Diagnose full V2.5 contract suite with unchanged default budgets
+        if: inputs.mode == 'legacy-contracts-diagnostic'
+        run: pnpm installer:test:windows-supervisor-v2-legacy

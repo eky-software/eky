@@ -1151,8 +1151,9 @@ ei ole vahvistettu. Fixtureen lisätyt turvalliset vaiheet tarkentavat jatkoraja
 
 ### Avoin ikkunavalmiuden checkpoint
 
-V2.5 ei ole hyväksytty. Etähaaran katselmusrevisio on edelleen `abc26ee`;
-paikalliset testituen checkpointit `11103d1` ja `0040456` ovat sen päällä.
+V2.5 ei ole hyväksytty. Aiempi etähaaran katselmusrevisio on `abc26ee`;
+katselmoitu paikallinen ketju `11103d1`, `0040456`, `32715c6`, `7734d7b`
+ja `c3e0fb6` sisältää testituen sekä tutkimusnäytön päivitykset sen päällä.
 Omistaja hyväksyi normaalin V2.5-todentamisen jatkamisen yhtenä työpakettina:
 vihreät sopimukset, puhdas artifact-revisio, kaksi paikallista consumeria ja
 niiden jälkeen draft-PR:n producer sekä kaksi GitHub-consumeria. Supervisor,
@@ -1194,6 +1195,27 @@ Revision `32715c6d520bb70db77a12c6a086398df72afa1f` normaali sarja päättyi
 tulokseen **138/139**. Release-buildit: 0 warnings / 0 errors. Virhe oli
 `visible`, `deadlineExceeded / notChecked / cleanupUnverified`,
 `processTreeAbsent=false`. Artifact- ja CI-vaiheita ei käynnistetty.
+
+#### Koko sopimussarjan diagnostinen Windows-vertailu 6.9.2026
+
+Omistaja hyväksyi rajatun poikkeuksen paikalliseen vihreään preflightiin:
+katselmoitu V2.5-ketju saa edetä normaalilla pushilla yhteen diagnostiseen
+GitHub-kierrokseen paikallisen **138/139**-tuloksen ollessa yhä epäonnistunut.
+Nykyisen supervisor-feasibility-työnkulun manual-valinta
+`mode=legacy-contracts-diagnostic` ajaa kahdella erillisellä Windows-runnerilla
+täsmälleen komennon `pnpm installer:test:windows-supervisor-v2-legacy`.
+Sarja rakentaa nykyisen supervisorin ja käyttää normaalin testipolun kerran
+käännettyä GUI-fixtureä. Testilistaa, testikoodia, 10000/1000 ms oletuksia,
+jobin 10 minuutin rajaa tai required-check-ehtoja ei muuteta. Työnkulun
+tavallinen sopimusajo ja aiempi yhden ikkunan diagnoosi säilyvät ennallaan.
+
+Molemmat ensimmäisen yrityksen tulokset säilyvät; `fail-fast: false`, ei
+rerunia, skip-muunnosta tai `continue-on-error`-poikkeusta. Turvallinen
+metadata sitoo revision, repetitionin, runner-imagen sekä Node- ja SDK-version.
+Diagnostiikka ei rakenna MSI:tä, producer-/consumer-artifactia eikä käynnistä
+W6-matriisia. Vihreäkään vertailu ei hyväksy V2.5:tä tai kumoa paikallista
+epäonnistumista. Se erottaa konekohtaisen havainnon toistumisesta kahdessa
+puhtaassa runner-ympäristössä, ei yksin todista natiiviodotuksen aiheuttajaa.
 
 #### Katselmointipisteen jälkeinen rajattu korjaus
 
