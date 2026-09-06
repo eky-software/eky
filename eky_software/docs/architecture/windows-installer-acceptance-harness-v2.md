@@ -1721,7 +1721,7 @@ säilyvät historiallisina tuloksina, eivät uuden ajon hyväksyntänä.
 | --- | --- | --- |
 | Startup-observerin polku | `22be7dc`:n kanonisen polun regressiot läpäisivät nyt myös koko sarjan osana paikallisesti ja molemmilla CI-runnereilla | Ei uutta havaittua vikaa; packaged-portti erikseen |
 | Worker-fixturen kilpaileva Job-cleanup | `65829a9`:n live-child/foreign-sentinel-sopimus läpäisi nyt kaikissa kolmessa kokonaissarjassa | Ei supervisorin uutta muutosta ilman näyttöä |
-| Koko V2.5-hyväksyntä | Avoin. Paikallinen normaali `c71f625` jäi 146/147:ksi; `43128e6`:n diagnostinen CI läpäisi 150/150 kahdesti sekä yhden producerin ja molemmat consumerit ensimmäisellä yrityksellä | Uusimman revision paikallinen täyssarja ja kaksi paikallista artifact-consumeria puuttuvat. Diagnostinen CI ei muuta aiempia epäonnistumisia hyväksytyiksi |
+| Koko V2.5-hyväksyntä | Avoin. Uusin paikallinen sarja 149/150; `43128e6`:n diagnostinen CI läpäisi 150/150 kahdesti sekä yhden producerin ja molemmat consumerit ensimmäisellä yrityksellä. `e8d2f5f` muutti vain raporttia | Vihreä normaali paikallinen sarja ja kaksi paikallista artifact-consumeria puuttuvat. Diagnostinen CI ei muuta paikallista epäonnistumista hyväksytyksi |
 | Itsenäinen packaged CI -diagnoosi | `43128e6`, ajo `34054510669`: kaikki viisi jobia vihreinä, attempt 1; major upgrade 16,73 / 19,95 s, molemmissa oma terminal-tulos ja tarkistettu cleanup | Täysi V2.5-hyväksyntä erikseen. Vanhan ulkoisen aikakatkaisun toteutunutta odotuspaikkaa ei ole osoitettu |
 | Historiallisen smoke-tuloksen lukija | Truncate/write-regressiot, todellinen 8.3-alias, hakemistolinkin torjunta ja varhainen child-rejection: paikallisesti 49/49; molemmissa CI-täyssarjoissa 150/150 ja packaged smoke läpi | Uusi libuv-abort on paikallisesti toistettu ja korjattu. Ei uutta muutosta lukijaan ilman siihen kohdistuvaa havaintoa |
 | Supervisorin turvallinen lokikirjoitus | Injektoitu pysyvästi estetty kirjoittaja esti ennen korjausta kaikki kolme komentotulosta. Nykyinen rajattu best-effort-kirjoittaja säilyttää onnistumisen, non-zero-virheen ja deadline-cleanupin; supervisor 44/44, cleanup-toisto 20/20 | Tämä on todistettu harness-virhe, ei vielä consumer 1:n todistettu juurisyy. Prosessipuun omistaja ja aikabudjetti eivät muutu |
@@ -1741,6 +1741,17 @@ job-/step-rajoja käytetään, eikä workerin 600000 ms budjetti muutu.
 Kytkennän lähdetestit eivät ole packaged-käyttäytymisen näyttö: artifactin
 nykyiset käyttäytymistestit ja oikeat diagnostiset consumerit raportoidaan
 erikseen. Paikallista MSI:tä ei rakenneta tai asenneta epäselvän cleanupin yli.
+
+### Hyväksyntäsarjan historiallinen tulos
+
+Ajettu HEAD oli `e8d2f5f1edddbbf205c4a73951e82f49c15f9ca4`; viimeinen
+testikoodimuutos oli `43128e6`. Normaali pnpm-sarja ajettiin ilman
+tutkimuskytkentää, retryä tai budjettimuutosta.
+
+| Hyväksyntä | Tulos |
+| --- | --- |
+| Sopimussarja | 149 pass / 1 fail / 0 cancelled / 0 skipped |
+| Virhe | `native close observation: visible`; `deadlineExceeded / notChecked / cleanupUnverified`, `processTreeAbsent=false` |
 
 ### Packaged-diagnoosin terminal-checkpoint 6.9.2026
 
