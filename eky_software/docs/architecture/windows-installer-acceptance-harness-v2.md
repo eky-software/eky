@@ -1295,6 +1295,21 @@ testitiedoston kahdella runnerilla ilman MSI:tä tai koko V2.5-sarjaa.
 Tulos on diagnostiikka, ei acceptance. Supervisor, cleanup-omistus ja
 10000/1000 ms rajat säilyvät muuttumattomina.
 
+[Worker-diagnoosi 34026267089](https://github.com/eky-software/eky/actions/runs/34026267089)
+revision `082f26f` ensimmäisellä yrityksellä todisti kaikki viisi fixture-vaihetta
+molemmilla runnereilla. Silti toinen raportoi `notRequired` ja toinen odotetun
+`processTreeAbsent`-cleanupin. Lapsen käynnistymättömyys ei selitä vikaa.
+[Node 24.19.0:n libuv-toteutus](https://github.com/nodejs/node/blob/v24.19.0/deps/uv/src/win/process.c)
+liittää ei-detached-lapsen omaan kill-on-parent-exit-Jobiinsa. Testifixture
+siis kilpaili supervisorin kanssa lapsen poistamisesta. Rajattu korjaus
+asettaa vain tämän synteettisen lapsen `detached: true`; se ei käytä
+breakaway-lippua eikä poista supervisorin perittyä Job-omistajuutta.
+Testi vaatii edelleen oikean worker-virheen, supervisorin suorittaman
+cleanupin, kuolleen lapsen ja elossa säilyneen foreign sentinelin.
+Korjattu worker-kohde läpäisi paikallisesti viisi peräkkäistä 4/4-kierrosta
+ilman uusintaa epäonnistumisen jälkeen. Korjatun revision CI-todiste on
+vielä erillinen vaatimus; supervisorin toteutusta ei muutettu.
+
 - `legacyUpgradeFailureBoundary` luokittelee myös onnistuneen supervisorin
   jälkeen puuttuvan tai lukukelvottoman scenario-resultin. Alkuperäinen virhe,
   semanttinen cleanup ja jälkiehto säilyvät erillisinä. Puuttuva tulos ei

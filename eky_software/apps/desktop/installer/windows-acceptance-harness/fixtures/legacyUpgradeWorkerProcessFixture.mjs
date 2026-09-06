@@ -14,7 +14,8 @@ await writeFile(progressPath, progressLine('requestRead'), { flag: 'wx' });
 const child = spawn(
   process.execPath,
   ['-e', "require('node:net').createServer().listen(0, '127.0.0.1', () => process.send('ready'));"],
-  { stdio: ['ignore', 'ignore', 'ignore', 'ipc'], windowsHide: true },
+  // Avoid libuv's kill-on-parent-exit Job; the inherited supervisor Job still owns this child.
+  { stdio: ['ignore', 'ignore', 'ignore', 'ipc'], windowsHide: true, detached: true },
 );
 const ready = once(child, 'message');
 await appendFile(progressPath, progressLine('childSpawned'));
