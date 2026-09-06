@@ -1,5 +1,5 @@
 import { watch } from 'node:fs';
-import { lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 const STAGES = Object.freeze([
@@ -119,6 +119,27 @@ export async function waitForHistoricalPackagedSmokeResult({
   expectedStatus,
   resultPath,
 }) {
+  // Observe rejection before yielding to filesystem validation.
+  const childFailed = childCompletion.then(() => false, () => true);
+  let watchDirectory;
+  try {
+    const directory = dirname(resultPath);
+    const before = await lstat(directory, { bigint: true });
+    if (!before.isDirectory() || before.isSymbolicLink()) {
+      throw new Error('sourcePackagedSmokeResultInvalid');
+    }
+    // libuv can abort on a Windows 8.3 alias; preserve the directory identity.
+    watchDirectory = await realpath(directory);
+    const after = await lstat(watchDirectory, { bigint: true });
+    if (
+      !after.isDirectory() || after.isSymbolicLink() ||
+      before.dev !== after.dev || before.ino !== after.ino
+    ) {
+      throw new Error('sourcePackagedSmokeResultInvalid');
+    }
+  } catch {
+    throw new Error('sourcePackagedSmokeResultInvalid');
+  }
   return new Promise((resolvePromise, rejectPromise) => {
     let settled = false;
     let scanning = false;
@@ -161,7 +182,7 @@ export async function waitForHistoricalPackagedSmokeResult({
       }
     };
     try {
-      watcher = watch(dirname(resultPath), { persistent: false }, () =>
+      watcher = watch(watchDirectory, { persistent: false }, () =>
         void scan(),
       );
       watcher.once('error', () =>
@@ -172,13 +193,14 @@ export async function waitForHistoricalPackagedSmokeResult({
       return;
     }
     void scan();
-    childCompletion.then(
-      () => {
+    childFailed.then((failed) => {
+      if (failed) {
+        settle(rejectPromise, new Error('sourcePackagedSmokeExitedEarly'));
+      } else {
         childExited = true;
         void scan();
-      },
-      () => settle(rejectPromise, new Error('sourcePackagedSmokeExitedEarly')),
-    );
+      }
+    });
   });
 }
 

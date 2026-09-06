@@ -1722,8 +1722,8 @@ säilyvät historiallisina tuloksina, eivät uuden ajon hyväksyntänä.
 | Startup-observerin polku | `22be7dc`:n kanonisen polun regressiot läpäisivät nyt myös koko sarjan osana paikallisesti ja molemmilla CI-runnereilla | Ei uutta havaittua vikaa; packaged-portti erikseen |
 | Worker-fixturen kilpaileva Job-cleanup | `65829a9`:n live-child/foreign-sentinel-sopimus läpäisi nyt kaikissa kolmessa kokonaissarjassa | Ei supervisorin uutta muutosta ilman näyttöä |
 | Koko V2.5-hyväksyntä | Avoin. Uusin normaali paikallinen 146/147; aiempi diagnostinen CI 141/141 kummallakin runnerilla. Historialliset epäonnistumiset säilyvät hylättyinä | Paikallinen hyväksyntä ja puhtaan revision artifact/consumer-hyväksyntä ovat edelleen erillisiä vaatimuksia |
-| Itsenäinen packaged CI -diagnoosi | `7ce39f0`:n molemmat täyssarjat 141/141, build-once producer valmis; consumer 2 päättyi hallittuun source-smoke-virheeseen ja consumer 1 GitHubin ulkoiseen aikakatkaisuun | Omistajan jatkolupa sallii yhden korjatun revision diagnostisen kierroksen nykyisellä kaksi sarjaa -> producer -> kaksi consumeria -polulla; ei hyväksyntää paikallisen virheen yli |
-| Historiallisen smoke-tuloksen lukija | Nykyinen rajattu korjaus: keskeneräinen truncate/write ei ole valmis eikä virheellinen tulos; regressio ennen korjausta 4/6, korjauksen jälkeen muuttuneen vastuun sarjat 40/40 | Erillinen paikallinen checkpoint, ei vielä packaged-hyväksyntää tai näyttöä ulkoisen aikakatkaisun syystä |
+| Itsenäinen packaged CI -diagnoosi | `c71f625`:n molemmat sarjat päättyivät smoke-testitiedoston libuv-abortiin: 141 pass / 1 fail; producer ja consumerit jäivät ajamatta. Uudet blocked-output-testit läpäisivät kummassakin | Ei hyväksyntää tai artifactia tästä ajosta. Alla oleva watcher-korjaus on rajattu erillinen checkpoint |
+| Historiallisen smoke-tuloksen lukija | Truncate/write-regressiot ja uusi todellinen 8.3-alias, hakemistolinkin torjunta sekä varhainen child-rejection: nykyinen kohdesarja 49/49 | CI:n libuv-abort toistettu paikallisesti ennen korjausta; ei vielä uuden revision packaged-näyttöä tai selitystä vanhalle majorUpgrade-aikakatkaisulle |
 | Supervisorin turvallinen lokikirjoitus | Injektoitu pysyvästi estetty kirjoittaja esti ennen korjausta kaikki kolme komentotulosta. Nykyinen rajattu best-effort-kirjoittaja säilyttää onnistumisen, non-zero-virheen ja deadline-cleanupin; supervisor 44/44, cleanup-toisto 20/20 | Tämä on todistettu harness-virhe, ei vielä consumer 1:n todistettu juurisyy. Prosessipuun omistaja ja aikabudjetti eivät muutu |
 
 `windows-acceptance-v2-legacy-diagnostic.yml` on nykyiseen V2-build-once-malliin
@@ -1863,6 +1863,39 @@ sen tarkka prosessikahva omistavat testin epäonnistumissiivouksen.
 | Koko normaali paikallinen V2.5-sarja | 146/147; yksi visible-native-virhe, ei cancelled/skipped |
 | Artifact- ja diagnostisen workflow-kytkennän sopimukset | 10/10; ei MSI-buildia |
 | Desktop typecheck/build ja diff --check | Läpäisivät; ei tuotantolähteen muutosta |
+
+### Diagnostisen CI:n watcher-virhe
+
+Puhtaan `c71f625d8c18ca4f35775b40c8c2ded7ad757aac`-revision supervisor-sarja
+läpäisi 44/44. Omistajan erikseen hyväksymä fast-forward-push
+sisälsi myös smoke-lukijan `ac13ebb`-checkpointin. Yksi push-driven
+[diagnostinen ajo 34052822072](https://github.com/eky-software/eky/actions/runs/34052822072)
+päättyi ensimmäisellä yrityksellä hylättynä. Molemmissa sopimussarjoissa
+smoke-testitiedoston Node-prosessi keskeytyi libuvin
+`_wcsnicmp(filename, dir, dirlen)`-assertioon. Raportti oli kummassakin
+141 pass / 1 fail, ei cancelled/skipped; kesto 65,02 / 67,04 s.
+Tämä ei tarkoita 141/142 hyväksyttyä V2.5-testiä: koko kaatunut tiedosto
+raportoitiin yhtenä virheenä, eikä sen kuutta testiä suoritettu loppuun.
+Produceria tai consumereita ei käynnistetty, joten uutta MSI-artifactia ei
+syntynyt. Blocked-output-testit läpäisivät molemmissa. CI:n visible-native
+kesti 7,98 / 12,18 ms ja tuotti onnistuneen cleanup-tuloksen.
+
+Smoke-vahti käytti suoraan TEMP-pohjaisen hakemiston polkua, kun taas
+nykyinen target-startup-observer oli jo suojattu Windowsin 8.3-aliasilta.
+[libuvin oma virheraportti](https://github.com/libuv/libuv/issues/5010)
+kuvaa vastaavan lyhytpolkuassertion. Uusi oikeaa Windowsin lyhyttä nimeä
+käyttävä paikallinen kohdetesti keskeytti ennen korjausta Node-prosessin
+täsmälleen samaan assertioon (0 pass / 1 failed test file).
+Korjaus tehtiin nykyiseen smoke-vahtiin: lstat ennen realpathia ja sen
+jälkeen varmistaa saman hakemiston dev/ino-identiteetin, ja watch saa
+kanonisen polun. Hakemistolinkki ja tiedoston hardlink torjutaan edelleen.
+Asynkronisen polkutarkistuksen aikana saapuva child-rejection sidotaan
+heti, jotta alkuperäinen hallittu virhe ei muutu käsittelemättömäksi
+poikkeukseksi. Tämänkin rajan regressio epäonnistui ennen korjausta.
+Smoke/startup/lifecycle/failure-boundary/runtime-kohdesarjat läpäisivät
+49/49. Ei uutta valvojaa, retryä, pollausmallia tai budjettimuutosta.
+Tämä selittää uuden sopimussarjan kaatumisen, ei aiemman MSI-vaiheen
+puuttuvaa terminal-tulosta.
 
 ### Täyden sopimusvertailun tulos 6.9.2026
 

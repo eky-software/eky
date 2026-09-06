@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { link, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { link, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
@@ -18,6 +19,66 @@ function deferred() {
   });
   return { promise, resolve: resolvePromise };
 }
+
+test('historical watcher accepts the same directory through a Windows 8.3 alias', {
+  skip: process.platform !== 'win32',
+}, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'eky-legacy-smoke-alias-'));
+  t.after(() => rm(root, { force: true, recursive: true }));
+  const shortRoot = execFileSync(
+    resolve(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
+    ['-NoProfile', '-NonInteractive', '-Command',
+      '$fso = New-Object -ComObject Scripting.FileSystemObject; $fso.GetFolder($env:EKY_SMOKE_TEST_ROOT).ShortPath'],
+    {
+      env: { ...process.env, EKY_SMOKE_TEST_ROOT: root },
+      encoding: 'utf8',
+      timeout: 10_000,
+      windowsHide: true,
+    },
+  ).trim();
+  assert.notEqual(shortRoot, root, 'The fixture must exercise a real 8.3 alias');
+  assert.match(shortRoot, /~[0-9]/);
+  const child = deferred();
+  const resultPath = resolve(root, 'desktop-smoke-result.json');
+  await writeFile(resultPath, '');
+  const waiting = waitForHistoricalPackagedSmokeResult({
+    childCompletion: child.promise,
+    expectedStage: 'restoreRestart',
+    expectedStatus: 'started',
+    resultPath: resolve(shortRoot, 'desktop-smoke-result.json'),
+  });
+  const expected = { stage: 'restoreRestart', status: 'started' };
+  await writeFile(resultPath, `${JSON.stringify(expected)}\n`);
+  assert.deepEqual(await waiting, expected);
+});
+
+test('historical watcher rejects a directory link before watching its target', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'eky-legacy-smoke-linked-root-'));
+  t.after(() => rm(root, { force: true, recursive: true }));
+  const linked = resolve(root, 'linked');
+  const resultPath = resolve(root, 'desktop-smoke-result.json');
+  await writeFile(resultPath, '{"stage":"restoreRestart","status":"started"}\n');
+  await symlink(root, linked, process.platform === 'win32' ? 'junction' : 'dir');
+  await assert.rejects(waitForHistoricalPackagedSmokeResult({
+    childCompletion: deferred().promise,
+    expectedStage: 'restoreRestart',
+    expectedStatus: 'started',
+    resultPath: resolve(linked, 'desktop-smoke-result.json'),
+  }), /sourcePackagedSmokeResultInvalid/);
+});
+
+test('historical watcher preserves child failure during asynchronous path validation', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'eky-legacy-smoke-child-failure-'));
+  t.after(() => rm(root, { force: true, recursive: true }));
+  const resultPath = resolve(root, 'desktop-smoke-result.json');
+  await writeFile(resultPath, '');
+  await assert.rejects(waitForHistoricalPackagedSmokeResult({
+    childCompletion: Promise.reject(new Error('syntheticChildFailure')),
+    expectedStage: 'restoreRestart',
+    expectedStatus: 'started',
+    resultPath,
+  }), /sourcePackagedSmokeExitedEarly/);
+});
 
 test('historical non-atomic progress writes remain pending until a complete result', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'eky-legacy-smoke-write-'));
