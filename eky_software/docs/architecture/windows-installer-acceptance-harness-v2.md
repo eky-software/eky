@@ -1307,8 +1307,13 @@ breakaway-lippua eikä poista supervisorin perittyä Job-omistajuutta.
 Testi vaatii edelleen oikean worker-virheen, supervisorin suorittaman
 cleanupin, kuolleen lapsen ja elossa säilyneen foreign sentinelin.
 Korjattu worker-kohde läpäisi paikallisesti viisi peräkkäistä 4/4-kierrosta
-ilman uusintaa epäonnistumisen jälkeen. Korjatun revision CI-todiste on
-vielä erillinen vaatimus; supervisorin toteutusta ei muutettu.
+ilman uusintaa epäonnistumisen jälkeen. Revision
+`65829a9ad42f455198c14869804f37c580c9d32c`
+[vertailu 34026639207](https://github.com/eky-software/eky/actions/runs/34026639207)
+läpäisi molemmilla runnereilla ensimmäisellä yrityksellä 4/4, ei skippejä
+(786,86 ja 942,02 ms; jobit 1:00 ja 1:20). Sama tiukka lapsen cleanup- ja
+foreign-sentinel-todiste läpäisi molemmilla. Suorat paikalliset legacy-testit
+läpäisivät lisäksi 47/47. Supervisorin toteutusta ei muutettu.
 
 - `legacyUpgradeFailureBoundary` luokittelee myös onnistuneen supervisorin
   jälkeen puuttuvan tai lukukelvottoman scenario-resultin. Alkuperäinen virhe,
