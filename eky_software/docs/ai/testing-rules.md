@@ -123,6 +123,15 @@ Testi-infrastruktuurissa noudatetaan lisäksi seuraavia vastuurajoja:
 Windows installer -harnessin tavoiterakenne ja migraatio määritellään
 `docs/architecture/windows-installer-acceptance-harness-v2.md`-dokumentissa.
 
+Testiraportin julkaisuraja määräytyy
+`docs/architecture/security-principles.md`-dokumentista. Omistajan koneen
+ohjelma-, ajuri- ja ympäristöhavainnot sekä yksityiskohtaiset paikalliset
+mittaukset pidetään Gitistä ohitettuina; niitä ei kopioida yhteiseen
+suunnitelmaan, PR:ään tai CI-artifactiin edes ilman nimiä tai polkuja.
+Julkinen hyväksyntätila ja avoimet testisopimukset raportoidaan silti
+rehellisesti. Yksityisyys ei muuta epäonnistunutta tai varmentamatonta ajoa
+onnistumiseksi. Diagnostiikan lupa ei anna lupaa tulosten julkaisemiseen.
+
 ## Tiedostoidentiteetti Testeissä
 
 Packaged-, installer-, rollback- ja release-fixturet muodostavat itsenäiset
