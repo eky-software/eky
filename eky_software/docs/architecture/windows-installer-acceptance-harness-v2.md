@@ -1384,9 +1384,11 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 ## Nykyinen päätös
 
 V2.5:n hyväksyntä on edelleen avoin haarassa
-`codex/test-harness-v2-legacy-upgrade`. Viimeisin normaali pnpm-sarja ja
-diagnostinen CI kuuluvat revisiolle
-`fea84837ce218a09455c8c170b6ba6698fc9a9ce`; niitä ei siirretä uuden
+`codex/test-harness-v2-legacy-upgrade`. Normaali pnpm-sarja revisiolta
+`7ee2fa332567d3769f1f95c670a75d600d8394fe` läpäisi 151/151 ilman
+peruutettuja tai ohitettuja testejä. Artifact-sopimukset 10/10 sekä desktopin
+typecheck/build läpäisivät. Aiempi diagnostinen CI kuuluu revisiolle
+`fea84837ce218a09455c8c170b6ba6698fc9a9ce`; sitä ei siirretä uuden
 checkpointin hyväksynnäksi. Erillinen checkpoint `4f5a4db` poistaa
 virheellisen pyynnön estävän evidence-kirjoituksen. Omistaja on hyväksynyt
 yllä kuvatun neljän GUI-tapauksen 30000 ms kokonaisbudjetin. Prosessiomistajuus,
@@ -1398,10 +1400,20 @@ tuotantokoodi, muut aikarajat ja tulosten hyväksymisehdot eivät muutu.
 | Worker-fixturen cleanup | Kilpaileva Job-cleanup on poistettu synteettisestä fixturestä; live-child ja foreign sentinel säilyvät pakollisina |
 | Supervisorin evidence-output | Myös invalid-request käyttää ei-estävää writera; regressio epäonnistui ennen korjausta, kohdesarja 45/45 ja kaksi invalid-request-regressiota 20/20 kierrosta ilman retryä |
 | GUI-testisopimus | Neljän onnistumispolun hyväksytty 30000 ms kokonaisbudjetti, 1000 ms cleanup-varaus; kohdetestit 6/6, myös muuttumaton `absent`-regressio |
-| Normaali V2.5-sarja | `fea8483`: 149/150, epäonnistunut; `deadlineExceeded / cleanupUnverified` ei ole hyväksytty cleanup |
+| Normaali V2.5-sarja | `7ee2fa3`: 151/151; aiempi `fea8483`: 149/150 pysyy epäonnistuneena, eikä `cleanupUnverified` ole hyväksytty cleanup |
 | Suora Node-kontrolli nykyisen buildin jälkeen | `fea8483`: 150/150, vain diagnostiikkaa; ei korvaa normaalia pnpm-komentoa tai todista juurisyytä |
 | Diagnostinen CI | `fea8483`, ajo `34065428142`: kaksi 150/150-sarjaa, yksi producer ja kaksi consumeria ensimmäisellä yrityksellä |
-| Puuttuva hyväksyntä | Vihreä normaali sarja ja sovitut kaksi paikallista artifact-consumeria puhtaalta revisiolta; diagnostinen CI ei korvaa niitä |
+| Puuttuva hyväksyntä | Lopullisen puhtaan revision normaali sarja, kaksi paikallista artifact-consumeria ja tuore CI samalla revisiolla; diagnostinen CI ei korvaa niitä |
+
+Nykyinen `windows-acceptance-v2-legacy-diagnostic.yml` säilyy samana
+työnkulkuna, mutta sen uusi ajotarkoitus on **V2.5-vaihehyväksyntä**:
+kaksi sopimussarjaa, yksi producer ja kaksi saman artifactin consumeria.
+Historiallisia diagnostisia ajoja ei nimetä jälkikäteen hyväksynnöiksi.
+Jobit, komennot, aikarajat, SHA-lukitut actionit ja yhden päivän
+artifact-retentio säilyvät; ei uutta rinnakkaista CI-putkea. Tämä ei ole
+koko V2:n hyväksyntä, päähaaran cutover tai release-portti, eikä muuta
+nykyisiä required check -ehtoja. Lopullinen vaihehyväksyntä vaatii myös
+alla mainitut paikalliset portit.
 
 Konekohtaisen tutkimuksen aineisto, ympäristöhavainnot ja yksityiskohtaiset
 mittaukset säilytetään vain Gitistä ohitettuina. Niiden poistaminen tästä
@@ -1556,29 +1568,23 @@ Työpaketti etenee samassa `codex/test-harness-v2-legacy-upgrade`-haarassa:
    `pnpm --filter @eky/desktop installer:test:windows-supervisor-v2-legacy`.
    Sarja valmistelee normaalit uudet fixturet; retained/shared-fixture-
    diagnostiikkaa ei injektoida normaaliin polkuun.
-2. Pushaa sama revisio normaalisti ja aja olemassa olevan feasibility-
-   workflown `legacy-contracts-diagnostic` kahdella Windows-runnerilla kerran.
-   Vertailu todistaa koko sopimussarjan käyttäytymisen näissä ympäristöissä,
-   ei packaged legacy -hyväksyntää. Kirjaa todellinen testijoukko,
-   pass/fail/cancelled/skipped, ensimmäinen virhe ja terminal/cleanup-tulos;
+2. Vihreän normaalin sarjan jälkeen katselmoi diff ja aja artifact-
+   kohdetestit sekä desktopin typecheck/build. Rakenna puhtaalta revisiolta
+   historical source/target -artifact kerran, varmista se erillisellä
+   verifierillä ja aja kaksi paikallista consumeria samoilla tavuilla.
+3. Pushaa sama revisio normaalisti. Nykyinen V2.5-työnkulku ajaa kaksi
+   kokonaista sopimussarjaa, niiden jälkeen yhden producerin ja kaksi
+   consumeria ensimmäisellä yrityksellä. Älä käynnistä erillistä
+   feasibility- tai diagnostista uusintaa saman hyväksynnän rinnalle.
+   Kirjaa pass/fail/cancelled/skipped sekä terminal/cleanup-tulos;
    testitiedoston kaatumisen pienentämä kokonaismäärä ei ole ohitus.
-   Älä pushaa tai dispatchaa uudelleen kesken vertailun.
-3. Jos kaikki kolme sarjaa läpäisevät, jatka ilman erillistä jatkolupaa
-   diff-katselmukseen, kohdetesteihin, typecheck/buildiin ja puhtaaseen
-   artifact-checkpointiin. Jos vain paikallinen ajo viivästyy, vertaile
-   todellista ympäristöä ja fixture-valmistelua. Yhteinen käyttäytymisvika
-   korjataan omistavassa vastuutiedostossa pienellä regressiolla.
-   Omistajan tarkennuksen mukaan paikallisen viiveen jäädessä avoimeksi
-   puhtaan CI-revision kaksi vihreää sopimussarjaa saavat valtuuttaa yhden
-   erikseen diagnostisen historical source/target -producerin ja kaksi saman
-   artifactin consumeria. Se ei täytä seuraavan kohdan paikallista hyväksyntää.
-4. Rakenna hyväksyntään historical source/target -artifact kerran, varmista
-   se erillisellä verifierillä ja aja kaksi paikallista consumeria samoilla
-   tavuilla. CI:n producer rakentaa oman artifactinsa kerran, ja kaksi
-   ensimmäisen yrityksen consumeria tarkistaa ja käyttää sen täsmälleen
-   samoja tavuja. Paikallisen ja CI-buildin byte-identtisyyttä ei oleteta.
-   Puuttuva V2.5-workflow-kytkentä saa käyttää vain nykyisiä V2-malleja ja
-   jo hyväksyttyjä SHA-lukittuja actioneita. Päivitä invarianttien siirtokartta.
+   Älä pushaa tai dispatchaa uudelleen kesken kierroksen.
+4. CI:n producer rakentaa oman artifactinsa kerran. Kaksi consumeria
+   tarkistaa ja käyttää sen täsmälleen samoja tavuja ennen/jälkeen-ajossa.
+   Paikallisen ja CI-buildin byte-identtisyyttä ei oleteta. V2.5-vaihe
+   hyväksytään vasta kaikkien paikallisten ja CI-porttien valmistuttua;
+   alkuperäinen virhe ja puuttuva cleanup säilyvät hylkäyksinä.
+   Päivitä invarianttien siirtokartta.
 
 Tuntematon prosessilopputila tai `cleanupUnverified` pysyy virheenä eikä
 myöhempi yleinen nollaprosessikysely muuta sitä onnistumiseksi. Epäonnistuneen
