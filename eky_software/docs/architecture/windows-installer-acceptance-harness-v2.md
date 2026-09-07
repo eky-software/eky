@@ -1406,8 +1406,17 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 V2.5:n hyväksyntä on edelleen avoin haarassa
 `codex/test-harness-v2-legacy-upgrade`. Nykyinen rajattu checkpoint tarkentaa
 footprint-virheen roolin ja ehdon sekä estää artifactin sijoittamisen buildin
-cleanup-juureen; käyttäytymisregressiot 59/59. Paketoitu diagnoosi ja uuden
-revision hyväksyntä ovat vielä avoimet. Normaali pnpm-sarja revisiolta
+cleanup-juureen; käyttäytymisregressiot 59/59. Revisio `7bfab86` läpäisi
+normaalin pnpm-sarjan 166/166, artifact-sopimukset 11/11 ja desktopin
+typecheck/buildin. Paketoitu hyväksyntä on edelleen kesken. Yksityiskohtainen
+diagnoosi säilyy vain paikallisena aineistona. Single-link-sopimus säilyy;
+sen mahdollinen muutos tarvitsee omistajapäätöksen. GUI-fixturen poikkeusta
+ei laajenneta asennettuun payloadiin tällä checkpointilla.
+Checkpoint voidaan julkaista keskeneräisenä draft-katselmukseen. Uutta
+lopullista artifactia tai kahta paikallista hyväksyntäconsumeria ei ajeta
+tämän avoimen rajan yli. CI:n mahdollinen vihreys ei korvaa tätä puutetta.
+
+Edellisen checkpointin normaali pnpm-sarja revisiolta
 `c859c5ab9c6723ca08529173e4a2e87b34c9bcd7` läpäisi 151/151 ilman
 peruutettuja tai ohitettuja testejä. Artifact-sopimukset 10/10 sekä desktopin
 typecheck/build ja locked restore läpäisivät. Ensimmäinen consumer hylättiin
@@ -1425,13 +1434,13 @@ tuotantokoodi, muut aikarajat ja tulosten hyväksymisehdot eivät muutu.
 | Worker-fixturen cleanup | Kilpaileva Job-cleanup on poistettu synteettisestä fixturestä; live-child ja foreign sentinel säilyvät pakollisina |
 | Supervisorin evidence-output | Myös invalid-request käyttää ei-estävää writera; regressio epäonnistui ennen korjausta, kohdesarja 45/45 ja kaksi invalid-request-regressiota 20/20 kierrosta ilman retryä |
 | GUI-testisopimus | Neljän onnistumispolun hyväksytty 30000 ms kokonaisbudjetti, 1000 ms cleanup-varaus; kohdetestit 6/6, myös muuttumaton `absent`-regressio |
-| Normaali V2.5-sarja | `c859c5a`: 151/151; aiempi `fea8483`: 149/150 pysyy epäonnistuneena, eikä `cleanupUnverified` ole hyväksytty cleanup |
+| Normaali V2.5-sarja | `7bfab86`: 166/166; aiempi `fea8483`: 149/150 pysyy epäonnistuneena, eikä `cleanupUnverified` ole hyväksytty cleanup |
 | Artifact | `c859c5a`: producer ja erillinen ennen/jälkeen-verifier läpäisivät; canonical- ja locked-inputit muuttumattomat |
 | Consumer 1 | `c859c5a`: `WINDOWS_ACCEPTANCE_LEGACY_FOOTPRINT_INSPECTION_FAILED`; major upgrade valmistui, mutta target-postcondition hylättiin ennen targetin käynnistystä |
 | Consumerin failure boundary | Alkuperäinen virhe säilyi; `processTreeAbsent=true`, `semanticCleanupCompleted`, `exactProductsAbsentAfterCleanup`, `fixtureRemoved=true` |
 | Suora Node-kontrolli nykyisen buildin jälkeen | `fea8483`: 150/150, vain diagnostiikkaa; ei korvaa normaalia pnpm-komentoa tai todista juurisyytä |
 | Diagnostinen CI | `fea8483`, ajo `34065428142`: kaksi 150/150-sarjaa, yksi producer ja kaksi consumeria ensimmäisellä yrityksellä |
-| Puuttuva hyväksyntä | Footprint-hylkäyksen täsmällinen syy, kaksi vihreää paikallista consumeria sekä tuore CI; aiempi diagnostinen CI ei korvaa niitä |
+| Puuttuva hyväksyntä | Asennetun payloadin testisopimuksen katselmus, lopullisen revision kaksi vihreää paikallista consumeria sekä tuore CI ovat edelleen avoinna |
 
 Nykyinen `windows-acceptance-v2-legacy-diagnostic.yml` säilyy samana
 työnkulkuna, mutta sen uusi ajotarkoitus on **V2.5-vaihehyväksyntä**:
@@ -1484,12 +1493,11 @@ muutoksen; mittauslupaa ei käytetä hyväksyntänä. Onnistuminen edellyttää 
 todellisia readiness-, worker-, process-tree- ja cleanup-tuloksia.
 Tarkoitukselliset timeout-, puuttuvan ikkunan ja myöhäisen prosessinluonnin
 regressiot säilyvät ennallaan. Normaali sarja on vihreä, mutta packaged-
-hyväksyntä ei ole valmis. Nykyinen footprint-lukija yhdistää lukemisen ja
-tiedostotyypin/linkkirajan hylkäykset samaan suljettuun virhekoodiin.
-Tulos ei yksin nimeä hylättyä roolia tai osoita juurisyytä. Seuraava rajattu
-selvitys koskee tätä nykyistä read-only-vastuuta; linkki- tai containment-
-rajaa ei löysennetä eikä uutta supervisor- tai cleanup-omistajaa lisätä.
-Uutta laajaa sarjaa tai CI-uusintaa ei käytetä puuttuvan syytiedon tilalla.
+hyväksyntä ei ole valmis. Aiempi footprint-lukijan yhteinen hylkäyskoodi on
+nyt tarkennettu rooli-/ehtoluokaksi. Luokitus osoittaa hylätyn tarkistuksen,
+ei tiedostomuutoksen tekijää. Linkki- tai containment-rajaa ei löysennetä
+eikä uutta supervisor- tai cleanup-omistajaa lisätä. Uutta laajaa sarjaa tai
+CI-uusintaa ei käytetä avoimen luottamusrajan päätöksen korvikkeena.
 
 ### Historialliset hyväksyntäyritykset
 
@@ -1542,11 +1550,12 @@ Prosessipuun ainoa omistaja säilyy `WindowsJobProcessSupervisor`issa.
 fixture-tarkistukset. Worker ei saa uutta deadline- tai cleanup-omistajaa.
 Todistettu output-virhe ei yksin nimeä vanhan CI-timeoutin juurisyytä.
 
-### Diagnostinen artifact-raja
+### Historiallinen diagnostinen artifact-raja
 
-`windows-acceptance-v2-legacy-diagnostic.yml` käyttää nykyistä build-once-
-mallia. Se käynnistyy työhaaran koodimuutoksesta tai käsin, ei muodosta uutta
-hyväksyntäporttia. Kaksi normaalia pnpm-sopimussarjaa läpäisee ennen produceria.
+Työnkulun aiempi diagnostinen versio käytti samaa build-once-mallia.
+Sen ajot eivät muodostaneet hyväksyntäporttia. Nykyinen vaihehyväksynnän
+tarkoitus on kuvattu yllä; aiempia ajoja ei nimetä uudelleen.
+Kaksi normaalia pnpm-sopimussarjaa läpäisee ennen produceria.
 Kaikki jobit käyttävät samaa revisiota. Producer lähettää vain descriptorin
 suljetun synteettisen tiedostojoukon SHA-lukituilla actioneilla yhden
 vuorokauden retentionilla. Consumerit tarkistavat tavut ennen lifecycleä
