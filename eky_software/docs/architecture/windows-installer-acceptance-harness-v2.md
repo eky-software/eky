@@ -1255,10 +1255,12 @@ Hyväksyntä käyttää normaalia kerran käännettyä fixtureä, ei säilytetty
 tutkimusfixtureä tai lämmitysajoa.
 
 Readiness perustuu tapahtumaan tai tilaehtoon, ei kiinteään odotukseen.
-GUI-testin 10000 ms raja on `createRequest`-apurin alkuperäinen oletus, ei
-erikseen hyväksytty suorituskyky-SLO. Mahdollinen budjettimuutos vaatii
-mittausperusteen ja omistajan päätöksen; keinotekoiset timeout-/cleanup-
-regressiot säilyvät tiukkoina.
+Omistajan hyväksymä `visible`-, `delayed`-, `exited`- ja `exitWhileWaiting`-
+tapausten kokonaisbudjetti on 30000 ms. Nykyinen 1000 ms cleanup-varaus
+säilyy, joten työn määräaika on 29000 ms. Tämä on nimetty GUI-integraation
+testisopimus, ei suorituskyky-SLO tai kiinteä odotus. Jaettu `createRequest`-
+oletus, `absent`-tapaus sekä keinotekoiset timeout-, late-creation- ja
+cleanup-regressiot eivät muutu.
 
 #### Watcher ja worker-fixture
 
@@ -1385,15 +1387,17 @@ V2.5:n hyväksyntä on edelleen avoin haarassa
 `codex/test-harness-v2-legacy-upgrade`. Viimeisin normaali pnpm-sarja ja
 diagnostinen CI kuuluvat revisiolle
 `fea84837ce218a09455c8c170b6ba6698fc9a9ce`; niitä ei siirretä uuden
-checkpointin hyväksynnäksi. Nykyinen rajattu korjaus poistaa virheellisen
-pyynnön estävän evidence-kirjoituksen. Prosessiomistajuus, tuotantokoodi,
-normaalit aikarajat ja hyväksymisehdot eivät muutu.
+checkpointin hyväksynnäksi. Erillinen checkpoint `4f5a4db` poistaa
+virheellisen pyynnön estävän evidence-kirjoituksen. Omistaja on hyväksynyt
+yllä kuvatun neljän GUI-tapauksen 30000 ms kokonaisbudjetin. Prosessiomistajuus,
+tuotantokoodi, muut aikarajat ja tulosten hyväksymisehdot eivät muutu.
 
 | Vastuu | Projektin hyväksyntätila |
 | --- | --- |
 | Startup- ja smoke-watcher | Kanonisointi, linkkirajat ja varhainen child-rejection on katettu regressioilla; viimeisin kohdesarja 49/49 |
 | Worker-fixturen cleanup | Kilpaileva Job-cleanup on poistettu synteettisestä fixturestä; live-child ja foreign sentinel säilyvät pakollisina |
 | Supervisorin evidence-output | Myös invalid-request käyttää ei-estävää writera; regressio epäonnistui ennen korjausta, kohdesarja 45/45 ja kaksi invalid-request-regressiota 20/20 kierrosta ilman retryä |
+| GUI-testisopimus | Neljän onnistumispolun hyväksytty 30000 ms kokonaisbudjetti, 1000 ms cleanup-varaus; kohdetestit 6/6, myös muuttumaton `absent`-regressio |
 | Normaali V2.5-sarja | `fea8483`: 149/150, epäonnistunut; `deadlineExceeded / cleanupUnverified` ei ole hyväksytty cleanup |
 | Suora Node-kontrolli nykyisen buildin jälkeen | `fea8483`: 150/150, vain diagnostiikkaa; ei korvaa normaalia pnpm-komentoa tai todista juurisyytä |
 | Diagnostinen CI | `fea8483`, ajo `34065428142`: kaksi 150/150-sarjaa, yksi producer ja kaksi consumeria ensimmäisellä yrityksellä |
@@ -1435,12 +1439,12 @@ Omistajan profiilia tai yksityistä tutkimusaineistoa ei siirretty CI:hin.
 Hyväksytty kertaluonteinen pnpm-ketjun mittaus on suoritettu ja sen
 väliaikainen muutos palautettu. Se ei muuta normaalia hyväksyntää.
 Invalid-request-evidence-korjaus on itsenäinen eikä selitä natiivikäynnistystä.
-Seuraava päätös koskee GUI-integraation normaalia aikabudjettia; erillinen
-mittauslupa ei hyväksy sen muuttamista. Onnistuminen edellyttää edelleen
+Erillinen omistajapäätös hyväksyy GUI-integraation rajatun aikabudjetin
+muutoksen; mittauslupaa ei käytetä hyväksyntänä. Onnistuminen edellyttää edelleen
 todellisia readiness-, worker-, process-tree- ja cleanup-tuloksia.
 Tarkoitukselliset timeout-, puuttuvan ikkunan ja myöhäisen prosessinluonnin
-regressiot säilyvät ennallaan. Uutta saman revision diagnostista CI-kierrosta
-tai paikallista MSI-consumeria ei ajeta tämän päätöksen tilalle.
+regressiot säilyvät ennallaan. Seuraava portti on normaali V2.5-sarja puhtaalta
+checkpointilta ja sen jälkeen sovittu artifact- ja consumer-hyväksyntä.
 
 ### Historialliset hyväksyntäyritykset
 
@@ -1579,10 +1583,11 @@ Työpaketti etenee samassa `codex/test-harness-v2-legacy-upgrade`-haarassa:
 Tuntematon prosessilopputila tai `cleanupUnverified` pysyy virheenä eikä
 myöhempi yleinen nollaprosessikysely muuta sitä onnistumiseksi. Epäonnistuneen
 ajon tarpeellinen aineisto säilyy yksityisesti; epäselvässä ympäristössä ei
-jatketa MSI-ajoihin. GUI-integraation 10 sekunnin raja ja tarkoituksella
-lyhyet timeout-regressiot ovat eri sopimuksia; niitä ei muuteta tässä
-työpaketissa. Konekohtaisen diagnoosin yksityiskohdat eivät muodosta
-uutta hyväksyntäporttia eikä niitä julkaista tässä suunnitelmassa.
+jatketa MSI-ajoihin. Omistajan erikseen hyväksymä GUI-onnistumispolkujen
+30 sekunnin kokonaisbudjetti ja tarkoituksella lyhyet timeout-regressiot
+ovat eri sopimuksia; jälkimmäisiä ei muuteta. Konekohtaisen diagnoosin
+yksityiskohdat eivät muodosta uutta hyväksyntäporttia eikä niitä julkaista
+tässä suunnitelmassa.
 
 V2.1-V2.4:n pinotut checkpointit, mukaan lukien jäädytetty draft-PR #262,
 säilyvät. Ei V2.6:ta, mergeä, versionostoa, pilot-pakettia, W6-poistoa,

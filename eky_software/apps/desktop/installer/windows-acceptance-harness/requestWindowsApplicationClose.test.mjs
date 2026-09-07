@@ -15,6 +15,7 @@ import {
 } from './fixtures/windowsApplicationCloseFixtureIdentity.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
+const GUI_OBSERVATION_TIMEOUT_MILLISECONDS = 30_000;
 let buildContext;
 let fixtureExecutable;
 let fixtureIdentity;
@@ -99,7 +100,11 @@ for (const mode of ['visible', 'delayed', 'exited', 'exitWhileWaiting', 'absent'
     await verifyFixtureIdentity(t, 'before');
     foreign = await createRunContext(`foreign-window-${mode}`);
     const sentinel = await startForeignSentinel(foreign);
-    const request = createRequest(context, 'exitZero');
+    const request = createRequest(context, 'exitZero', mode === 'absent' ? {} : {
+      timeoutMilliseconds: GUI_OBSERVATION_TIMEOUT_MILLISECONDS,
+    });
+    assert.equal(request.timeoutMilliseconds, mode === 'absent' ? 10_000 : 30_000);
+    assert.equal(request.cleanupReserveMilliseconds, 1_000);
     const templatePath = resolve(context.testRoot, 'expected-result.json');
     await writeFile(templatePath, JSON.stringify({
       schemaVersion: 1, runNonce: context.runNonce, scenario: context.scenario,
