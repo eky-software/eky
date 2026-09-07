@@ -1491,10 +1491,13 @@ Kohdesarja käyttää normaalia `e2e:build`-käännöstä ennen testituen lataam
 Sopimustestit kattavat myös puuttuvat/ristiriitaiset tulokset, väärän ajo-
 identiteetin, vaaralliset linkit ennen SQLite-avausta, epäonnistuneen cleanupin,
 fixture-juuren säilyttämisen ja turvallisen tuloksen ilman raakavirheitä.
-Lopullinen kohdesarja läpäisee 172/172, artifact-sarja 52/52 ja käytettyjen
+Lopullinen kohdesarja läpäisee 172/172, artifact-sarja 53/53 ja käytettyjen
 profiili-/adapterivastuiden regressiot 49/49. Desktopin typecheck ja build
 läpäisevät. Lifecycle-jälkiehto hylkää myös sulkemisen ilman vastaavaa
 käynnistystä sekä käynnistyksestä poikkeavan sulkemisversion.
+Artifactin materialisointitesti käyttää ajokomennon tavoin kanonista
+väliaikaisjuurta ennen strict request -sidontaa. Windows-polun vaihtoehtoinen
+kirjainkoko on oma regressionsa; polkujen turvallisuustarkistuksia ei löysennetä.
 Paketoidun consumerin pysyvä komento on:
 
 ```text
