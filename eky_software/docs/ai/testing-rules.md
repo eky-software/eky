@@ -123,6 +123,13 @@ Testi-infrastruktuurissa noudatetaan lisäksi seuraavia vastuurajoja:
 Windows installer -harnessin tavoiterakenne ja migraatio määritellään
 `docs/architecture/windows-installer-acceptance-harness-v2.md`-dokumentissa.
 
+V2.5:n omistajan hyväksymä vaihekohtainen ympäristöraja käyttää kahta
+eristettyä Windows CI -consumeria samalle build-once-artifactille kahden
+paikallisen packaged-ajon sijaan. Paikalliset sopimustestit ja muut vaiheelle
+sovitut portit säilyvät pakollisina. Rajaus ei muuta testien turvallisuusehtoja,
+epäonnistuneiden ajojen tuloksia, muiden vaiheiden hyväksyntää tai release-
+portteja. Täsmällinen sopimus ja revision näyttö ovat samassa V2-suunnitelmassa.
+
 Testiraportin julkaisuraja määräytyy
 `docs/architecture/security-principles.md`-dokumentista. Omistajan koneen
 ohjelma-, ajuri- ja ympäristöhavainnot sekä yksityiskohtaiset paikalliset

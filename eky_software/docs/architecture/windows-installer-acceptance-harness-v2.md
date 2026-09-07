@@ -1131,20 +1131,53 @@ V2.5B:n paikallinen consumer-komento on:
 pnpm --filter @eky/desktop installer:v2-legacy --artifact-descriptor <absolute-artifact-root>/legacy-upgrade-artifact.json
 ```
 
+### V2.5:n hyväksytty suoritusympäristö
+
+Omistajan hyväksymä rajaus koskee vain V2.5:n vaihehyväksyntää: kaksi
+paketoitua consumer-ajoa suoritetaan kahdessa toisistaan eristetyssä
+GitHub Windows -jobissa samalla puhtaan revision build-once-artifactilla.
+Tämä korvaa aiemman vaatimuksen kahdesta paikallisesta packaged-consumerista;
+se ei poista paikallisia kohde-, normaali- tai artifact-sopimustestejä eikä
+desktopin typecheck/build-portteja. Paikallinen consumer-komento säilyy
+käytettävissä samoilla turvallisuusehdoilla, mutta sen ajo ei ole tämän
+vaiheen pakollinen hyväksyntäportti.
+
+- Producer ja molemmat consumerit on sidottava täsmälliseen harness-revisioon.
+  Descriptor ja kummankin MSI:n SHA-256 tarkistetaan ennen ja jälkeen
+  kummankin consumerin; eri buildien byte-identtisyyttä ei oleteta.
+- Molempien consumerien pitää valmistua ensimmäisellä yrityksellä nykyisten
+  worker-, process-, semantic proof-, cleanup- ja postcondition-sopimusten
+  mukaisesti. Tuntematon tila, puuttuva tulos tai rerun-only-vihreä ei riitä.
+- Artifactien ja asennetun footprintin single-link-, symlink-, containment-,
+  identiteetti- ja sisältötarkistukset säilyvät. GUI-fixturen poikkeusta ei
+  siirretä asennettuun payloadiin, eikä vendor-allowlistiä lisätä.
+- Epäonnistunut paikallinen tai CI-ajo säilyy epäonnistuneena. Ympäristön
+  rajaus ei selitä aiempia virheitä eikä muuta niitä hyväksyntätodisteiksi.
+- Päätös ei muuta koko V2:n valmis-määritelmää, päähaaran required checkejä,
+  cutoveria, release-portteja tai pilotin paikallista testausta.
+
+Pelkkä dokumentaatiomuutos ei vaadi uutta MSI-buildia tai saman muuttumattoman
+koodirevision manuaalista CI-uusintaa. Raportissa erotetaan testattu
+harness-/artifact-revisio dokumentaation HEADista ja varmennetaan, ettei
+toteutus tai testikytkentä muuttunut niiden välillä. Automaattisia nykyisiä
+PR-tarkistuksia ei ohiteta, peruta tai korvata vanhan revision tuloksilla.
+
 V2.5 ei vielä poista, muuta tai kutsu vanhaa W6B legacy acceptance -harnessia.
 Cutover tehdään vasta, kun kaikki vanhan portin invariantit on nimetty,
-V2-vastineet ovat terminal ja paikalliset sekä GitHubin build-once-consumerit
-ovat hyväksytysti vihreät.
+V2-vastineet ovat terminal ja koko V2:n erikseen määritellyt paikalliset ja
+GitHub-portit ovat hyväksytysti vihreät. Vaiheen suoritusympäristöpäätös
+ei yksin valtuuta vanhan polun poistamista.
 
 ### V2.5-invarianttien siirtokartta
 
 Taulukko kuvaa kattavuuden omistajuutta, ei anna vielä lupaa vanhan polun
-poistamiseen. Lopullisen puhtaan HEADin kaksi paikallista consumer-ajoa ja
-kaksi ensimmäisen yrityksen GitHub-consumeria ovat edelleen hyväksyntäportti.
+poistamiseen. V2.5:n vaihekohtaiset portit ovat yllä hyväksytyn ympäristörajan
+mukaiset paikalliset sopimustestit ja kaksi ensimmäisen yrityksen
+GitHub-consumeria samalle puhtaan revision artifactille.
 
 | Vanhan legacy-portin invariantti | V2.5-vastine ja kohdetesti | Poiston ehto |
 | --- | --- | --- |
-| Historiallinen source-identiteetti ja muuttumattomat MSI-tavut | `legacyUpgradeArtifact` ja sen testit; build-once producer/consumer | Paikallinen ja CI-artifact-varmennus samoille tavuille |
+| Historiallinen source-identiteetti ja muuttumattomat MSI-tavut | `legacyUpgradeArtifact` ja sen testit; build-once producer/consumer | Paikalliset artifact-sopimustestit ja molempien CI-consumerien ennen/jälkeen-varmennus samoille tavuille |
 | Puhdas kone ja exact ProductCode/payload | `legacyUpgradeLifecycle`, `legacyUpgradeWindowsRuntime`, `legacyUpgradePostcondition` | Täysi install/upgrade ja erillinen jälkitarkistus |
 | Initial -> restoreRestart -> restored -> shutdown | `legacyUpgradeSourceSmoke` ja ketjutestit | Historiallisen paketin täysi kaksiprosessinen smoke |
 | Source avautuu normaalisti ennen päivitystä | `runSourceStartup`, `legacyUpgradeLifecycle.test`, `legacyUpgradeStartupObserver.test` | Normaali source-start ja graceful shutdown packaged-ajossa |
@@ -1160,6 +1193,11 @@ arkkitehtuurirajoja. Ne eivät todista ikkunan näkyvyyttä tai sulkeutumista;
 nämä todisteet kuuluvat packaged consumerille. `desktop.started` kertoo
 runtimen käynnistymisestä, ei yksin renderöidyn ikkunan valmiudesta.
 
+#### Historiallinen ikkunavalmiuden välitila
+
+Seuraavat välitulokset säilyttävät aiemman checkpointin historian. Nykyinen
+suoritusympäristö ja hyväksyntätila on määritelty erikseen tässä dokumentissa.
+
 Workerin failure-boundary-checkpointin kohdesarja läpäisi 81/81 testiä,
 ja live-child failure/cleanup -sopimus viisi peräkkäistä paikallista ajoa.
 Ikkunaobserverin erillinen native-sarja läpäisi 6/6 testiä. Se käyttää
@@ -1174,9 +1212,9 @@ vapautetaan vasta tämän jälkeen. Myös prosessin poistuminen jo alkaneen
 odotuksen aikana testataan erikseen.
 
 Native-sarja ei todista PowerShell-adapterin käynnistymistä oikeassa worker-
-ympäristössä. Koko V2.5:n kaksi paikallista ja kaksi GitHub-consumeria
-vaaditaan edelleen lopulliselle puhtaalle commitille; alemman tason testejä
-ei saa merkitä täydeksi acceptance-todisteeksi.
+ympäristössä. Tuolloin vaadittiin kaksi paikallista ja kaksi GitHub-consumeria.
+Nykyinen suoritusympäristöpäätös korvaa paikallisen consumer-vaatimuksen;
+alemman tason testejä ei edelleenkään merkitä packaged-todisteeksi.
 
 Ikkunavalmiuden muutos on vielä paikallista keskeneräistä työtä. Laajennetun
 kohdesarjan tulos oli 85/86: jo näkyvän ikkunan tapaus päättyi deadlineen.
@@ -1185,9 +1223,9 @@ tätä tulosta. Tuossa epäonnistuneessa ajossa fixturen puuttuva vaihemerkintä
 ei vielä erottanut käynnistymistä, `Shown`-odotusta ja sulkemista; juurisyytä
 ei ole vahvistettu. Fixtureen lisätyt turvalliset vaiheet tarkentavat jatkorajausta.
 
-### Avoin ikkunavalmiuden checkpoint
+### Ikkunavalmiuden ja virherajojen sopimukset
 
-V2.5 ei ole hyväksytty. Tämä luku säilyttää toteutuksen vastuut ja hyväksytyt
+Tämä luku säilyttää toteutuksen vastuut ja hyväksytyt
 rajaukset; konekohtaiset tutkimuspäiväkirjat ja mittaukset eivät kuulu
 versionoituun suunnitelmaan. Niitä käsitellään vain Gitistä ohitetussa
 paikallisessa aineistossa. Yksityisyyskorjaus ei muuta testituloksia,
@@ -1402,6 +1440,39 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 - dependency- ja lockfile-muutoksia ei ole ilman erillistä hyväksyntää
 
 ## Nykyinen päätös
+
+V2.5:n tekniset portit täyttyvät revisiolla
+`47847f9dcac5eb296ee93deac65b2440f80614cd` omistajan hyväksymän yllä olevan
+suoritusympäristörajauksen mukaisesti. Vaiheen lopullinen katselmus on vielä
+kesken ja PR #263 pysyy draftina. Ei mergeä, V2.6:ta, vanhan harnessin
+poistamista, versionostoa tai pilot-pakettia tässä checkpointissa.
+
+| Portti | Revision `47847f9` näyttö |
+| --- | --- |
+| Paikallinen normaali V2.5-sarja | 166/166, ei epäonnistuneita, peruutettuja tai ohitettuja testejä |
+| Artifact-/työnkulkusopimukset | 12/12; desktopin typecheck/build läpäisseet, niiden jälkeen ei desktop-toteutusmuutoksia |
+| CI-sopimukset | [Vaiheajo 34127535051](https://github.com/eky-software/eky/actions/runs/34127535051): molemmat sarjat 166/166, attempt 1 |
+| CI-producer | Samassa vaiheajossa yksi varmennettu historical source / synthetic target -artifact, attempt 1 |
+| CI-consumerit | Kaksi eristettyä Windows-jobia: `historicalLegacyUpgradeCompleted`, attempt 1, samat tavut ennen/jälkeen |
+| Semanttiset jälkiehdot | Molemmissa business-evidence, yksi adoptio ja idempotentti toinen käynnistys; `businessDataPreserved`, `processTreeAbsent` ja `fixtureRemoved` kaikki `true` |
+| Jaetut V2-portit | [Supervisor](https://github.com/eky-software/eky/actions/runs/34127539610), [clean artifact](https://github.com/eky-software/eky/actions/runs/34127539680) ja [upgrade artifact](https://github.com/eky-software/eky/actions/runs/34127539566) valmistuivat vihreinä |
+
+| CI-artifactin identiteetti, producer `47847f9` | SHA-256 |
+| --- | --- |
+| Descriptor | `994b1bb3cc3973c38cc0fdf32c45ca24c3973f367cc83fe959866c7cdcc0bce4` |
+| Historical-source-rebuild 0.2.6 MSI | `98eeffe5a55965121ea78f455c9c1f61848a525aaa73c86d81b44b1b667c74eb` |
+| Synteettinen 0.2.7 target MSI | `5722cd006b062d4cf6065fadd8dd827863a921bfda7c09446106cc4dc40ebe3a` |
+
+Nämä ovat tämän repositoryn CI-artifactin tunnisteita, eivät paikallisen
+buildin tai käyttäjälle annettavan julkaisun tunnisteita. Dokumentaation
+myöhempi commit ei saa itselleen uutta artifact-hyväksyntää näillä hasheilla.
+Konekohtaisia havaintoja tai mittauksia ei sisällytetä tähän päätökseen.
+
+### Aiempi päätöstila ennen suoritusympäristön rajausta
+
+Seuraava osuus säilyttää aiemmat hyväksyntätilat historiallisina. Sen avoimia
+paikallisia consumer-vaatimuksia ei tulkita uuden ympäristöpäätöksen rinnalle
+uusiksi porteiksi, eikä sen epäonnistuneita ajoja nimetä onnistuneiksi.
 
 V2.5:n hyväksyntä on edelleen avoin haarassa
 `codex/test-harness-v2-legacy-upgrade`. Nykyinen rajattu checkpoint tarkentaa
@@ -1626,9 +1697,9 @@ Työpaketti etenee samassa `codex/test-harness-v2-legacy-upgrade`-haarassa:
    Sarja valmistelee normaalit uudet fixturet; retained/shared-fixture-
    diagnostiikkaa ei injektoida normaaliin polkuun.
 2. Vihreän normaalin sarjan jälkeen katselmoi diff ja aja artifact-
-   kohdetestit sekä desktopin typecheck/build. Rakenna puhtaalta revisiolta
-   historical source/target -artifact kerran, varmista se erillisellä
-   verifierillä ja aja kaksi paikallista consumeria samoilla tavuilla.
+   kohdetestit sekä desktopin typecheck/build. V2.5:n paketoitu hyväksyntä
+   tehdään yllä hyväksytyssä kahden eristetyn Windows-jobin ympäristössä;
+   kahta paikallista consumeria tai uutta paikallista MSI-buildia ei vaadita.
 3. Pushaa sama revisio normaalisti. Nykyinen V2.5-työnkulku ajaa kaksi
    kokonaista sopimussarjaa, niiden jälkeen yhden producerin ja kaksi
    consumeria ensimmäisellä yrityksellä. Älä käynnistä erillistä
@@ -1638,10 +1709,12 @@ Työpaketti etenee samassa `codex/test-harness-v2-legacy-upgrade`-haarassa:
    Älä pushaa tai dispatchaa uudelleen kesken kierroksen.
 4. CI:n producer rakentaa oman artifactinsa kerran. Kaksi consumeria
    tarkistaa ja käyttää sen täsmälleen samoja tavuja ennen/jälkeen-ajossa.
-   Paikallisen ja CI-buildin byte-identtisyyttä ei oleteta. V2.5-vaihe
-   hyväksytään vasta kaikkien paikallisten ja CI-porttien valmistuttua;
+   V2.5-vaihe hyväksytään vasta pakollisten paikallisten sopimus- ja
+   build-porttien sekä molempien CI-consumerien valmistuttua;
    alkuperäinen virhe ja puuttuva cleanup säilyvät hylkäyksinä.
-   Päivitä invarianttien siirtokartta.
+   Päivitä invarianttien siirtokartta. Muuttumattoman toteutuksen jo varmennettu
+   näyttö säilyy omalla revisiollaan; pelkkä sopimuksen dokumentointi ei
+   käynnistä manuaalista uusintaa. Nykyiset automaattiset PR-checkit säilyvät.
 
 Tuntematon prosessilopputila tai `cleanupUnverified` pysyy virheenä eikä
 myöhempi yleinen nollaprosessikysely muuta sitä onnistumiseksi. Epäonnistuneen
